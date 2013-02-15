@@ -1,0 +1,15 @@
+#
+# $FreeBSD: head/sys/mips/conf/SWARM_SMP 233644 2012-03-29 02:54:35Z jmallett $
+#
+
+include		"std.SWARM"
+
+ident		SWARM_SMP
+
+options		SMP
+options		PRINTF_BUFR_SIZE=128
+
+machine		mips mips
+
+makeoptions	ARCH_FLAGS="-mabi=32 -march=mips32"
+makeoptions	LDSCRIPT_NAME=	ldscript.mips.cfe

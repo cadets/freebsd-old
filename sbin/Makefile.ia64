@@ -1,0 +1,3 @@
+# $FreeBSD: head/sbin/Makefile.ia64 212527 2010-09-13 02:25:21Z imp $
+
+SUBDIR += mca

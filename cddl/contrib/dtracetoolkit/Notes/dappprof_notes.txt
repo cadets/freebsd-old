@@ -1,0 +1,14 @@
+**************************************************************************
+* The following are extra notes on the dappprof command.
+*
+* $Id$
+*
+* COPYRIGHT: Copyright (c) 2007 Brendan Gregg.
+**************************************************************************
+
+
+* Can I trust the elapsed and on-cpu times?
+
+See the documentation for this point in the dtruss_notes.txt file.
+
+

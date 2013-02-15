@@ -1,0 +1,8 @@
+#!/bin/sh
+# $Id$
+while true
+do
+ls -lrt
+date
+sleep 1
+done

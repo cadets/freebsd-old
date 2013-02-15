@@ -1,0 +1,2 @@
+.\" $FreeBSD: head/tools/build/options/WITH_BSDCONFIG 238448 2012-07-14 10:17:47Z zeising $
+Set to install bsdconfig(8), a BSD-licensed configuration/management utility.

@@ -1,0 +1,14 @@
+#! /bin/sh
+# $Id$
+
+. ./setup-vars
+
+. ./setup-utf8
+
+DIALOG_ERROR=254
+export DIALOG_ERROR
+
+$DIALOG "$@" --yesno "Are you a ＤＯＧ?" 0 0
+retval=$?
+
+. ./report-yesno

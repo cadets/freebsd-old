@@ -1,0 +1,11 @@
+# $Id$
+# vile:shmode
+
+case none"$LANG$LC_ALL$LC_CTYPE" in
+*UTF-8*)
+	;;
+*)
+	echo "This script must be run in a UTF-8 locale"
+	exit 1
+	;;
+esac

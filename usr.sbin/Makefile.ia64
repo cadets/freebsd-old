@@ -1,0 +1,8 @@
+# $FreeBSD: head/usr.sbin/Makefile.ia64 241680 2012-10-18 12:04:56Z attilio $
+
+.if ${MK_ACPI} != "no"
+SUBDIR+=	acpi
+.endif
+SUBDIR+=	kgmon
+SUBDIR:=	${SUBDIR:Nuathload}
+SUBDIR+=	zzz

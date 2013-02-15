@@ -1,0 +1,45 @@
+#
+# TP-1043ND -- Kernel configuration file for the TP-Link WR-1043ND
+#
+# $FreeBSD: head/sys/mips/conf/TP-WN1043ND 239625 2012-08-23 22:23:56Z ray $
+#
+
+# Include the default AR913x parameters common to all AR913x SoC users.
+include         "AR91XX_BASE"
+
+ident           TP-WN1043ND
+
+# Override hints with board values
+hints           "TP-WN1043ND.hints"
+
+# Force the board memory - 32mb
+options         AR71XX_REALMEM=32*1024*1024
+
+# i2c GPIO bus
+device		gpioiic
+device		iicbb
+device		iicbus
+device		iic
+
+# ethernet switch device
+device		etherswitch
+
+# RTL8366RB support
+device		rtl8366rb
+
+# read MSDOS formatted disks - USB
+options		MSDOSFS
+
+# Enable the uboot environment stuff rather then the
+# redboot stuff.
+options		AR71XX_ENV_UBOOT
+
+# uzip - to boot natively from flash
+device		geom_uzip
+options		GEOM_UZIP
+
+# Used for the static uboot partition map
+device          geom_map
+
+# Boot off of the rootfs, as defined in the geom_map setup.
+options		ROOTDEVNAME=\"ufs:map/rootfs.uzip\"

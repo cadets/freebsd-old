@@ -1,0 +1,14 @@
+#!/bin/sh
+# $Id$
+
+. ./setup-vars
+
+$DIALOG --title "PAUSE" \
+	--help-button \
+	--extra-button "$@" \
+	--pause "Hi, this is a pause widget" 20 70 10
+
+retval=$?
+echo return $retval
+
+. ./report-button

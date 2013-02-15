@@ -1,0 +1,23 @@
+# $FreeBSD: head/usr.bin/clang/clang-tblgen/Makefile 246705 2013-02-12 05:56:00Z andrew $
+
+NO_MAN=
+.include <bsd.own.mk>
+
+PROG_CXX=clang-tblgen
+
+SRCDIR=	tools/clang/utils/TableGen
+SRCS=	ClangASTNodesEmitter.cpp \
+	ClangAttrEmitter.cpp \
+	ClangCommentCommandInfoEmitter.cpp \
+	ClangCommentHTMLTagsEmitter.cpp \
+	ClangDiagnosticsEmitter.cpp \
+	ClangSACheckersEmitter.cpp \
+	NeonEmitter.cpp \
+	OptParserEmitter.cpp \
+	TableGen.cpp
+LLVM_REQUIRES_EH=
+
+LIBDEPS=llvmtablegen \
+	llvmsupport
+
+.include "../clang.prog.mk"

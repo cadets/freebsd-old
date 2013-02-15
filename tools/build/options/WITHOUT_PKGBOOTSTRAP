@@ -1,0 +1,4 @@
+.\" $FreeBSD: head/tools/build/options/WITHOUT_PKGBOOTSTRAP 238023 2012-07-02 20:26:11Z marcel $
+Set to not build
+.Xr pkg 1
+bootstrap tool

@@ -1,0 +1,12 @@
+# $Id$
+# $FreeBSD: head/usr.bin/bluetooth/btsockstat/Makefile 140941 2005-01-28 16:08:11Z ru $
+
+PROG=		btsockstat
+WARNS?=		2
+BINGRP=		kmem
+BINMODE=	2555
+
+DPADD=		${LIBBLUETOOTH} ${LIBKVM}
+LDADD=		-lbluetooth -lkvm
+
+.include <bsd.prog.mk>

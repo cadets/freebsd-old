@@ -1,0 +1,2 @@
+.\" $FreeBSD: head/tools/build/options/WITH_BSD_PATCH 246074 2013-01-29 17:03:18Z gabor $
+Install BSD-licensed patch as 'patch' instead of GNU patch.

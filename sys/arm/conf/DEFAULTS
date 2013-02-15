@@ -1,0 +1,9 @@
+#
+# DEFAULTS -- Default kernel configuration file for FreeBSD/arm
+#
+# $FreeBSD: head/sys/arm/conf/DEFAULTS 239362 2012-08-18 05:48:19Z andrew $
+
+device		mem
+
+options 	GEOM_PART_BSD
+options 	GEOM_PART_MBR

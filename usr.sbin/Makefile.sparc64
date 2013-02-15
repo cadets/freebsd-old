@@ -1,0 +1,4 @@
+# $FreeBSD: head/usr.sbin/Makefile.sparc64 244859 2012-12-30 14:35:00Z nwhitehorn $
+
+SUBDIR+=	eeprom
+SUBDIR+=	ofwdump

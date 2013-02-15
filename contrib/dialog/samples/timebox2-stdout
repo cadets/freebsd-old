@@ -1,0 +1,10 @@
+#!/bin/sh
+# $Id$
+
+. ./setup-vars
+
+RESULT=`$DIALOG --stdout --title "TIMEBOX" "$@" --timebox "Please set the time..." 0 0`
+
+retval=$?
+
+. ./report-string

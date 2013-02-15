@@ -1,0 +1,17 @@
+/*
+ * $FreeBSD: head/lib/libulog/Symbol.map 226111 2011-10-07 15:05:24Z ed $
+ */
+
+FBSD_1.2 {
+	ulog_login;
+	ulog_login_pseudo;
+	ulog_logout;
+	ulog_logout_pseudo;
+
+	addToUtmp;
+	removeFromUtmp;
+	removeLineFromUtmp;
+	utempter_add_record;
+	utempter_remove_added_record;
+	utempter_remove_record;
+};

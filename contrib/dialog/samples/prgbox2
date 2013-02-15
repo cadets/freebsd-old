@@ -1,0 +1,6 @@
+#!/bin/sh
+# $Id$
+
+. ./setup-vars
+
+$DIALOG --title "PRGBOX" "$@" --prgbox "./shortlist 3" 20 70

@@ -1,0 +1,5 @@
+.\" $FreeBSD: head/tools/build/options/WITH_LDNS_UTILS 246830 2013-02-15 13:57:51Z des $
+Setting this variable will enable the LDNS-based versions of
+.Xr dig 1
+and
+.Xr host 1 .

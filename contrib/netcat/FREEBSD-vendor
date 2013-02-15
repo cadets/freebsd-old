@@ -1,0 +1,5 @@
+# $FreeBSD: head/contrib/netcat/FREEBSD-vendor 241906 2012-10-22 18:56:31Z delphij $
+Project:	netcat (aka src/usr.bin/nc in OpenBSD)
+ProjectURL:	http://www.openbsd.org/
+Version:	5.2
+License:	BSD

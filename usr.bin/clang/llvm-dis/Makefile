@@ -1,0 +1,20 @@
+# $FreeBSD: head/usr.bin/clang/llvm-dis/Makefile 246705 2013-02-12 05:56:00Z andrew $
+
+.include <bsd.own.mk>
+
+PROG_CXX=llvm-dis
+
+SRCDIR=	tools/llvm-dis
+SRCS=	llvm-dis.cpp
+LLVM_REQUIRES_EH=
+
+TGHDRS=	Intrinsics
+LIBDEPS=llvmanalysis \
+	llvmtarget \
+	llvmmc \
+	llvmobject \
+	llvmbitreader \
+	llvmcore \
+	llvmsupport
+
+.include "../clang.prog.mk"

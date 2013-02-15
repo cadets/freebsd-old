@@ -1,0 +1,10 @@
+#!/bin/sh
+#
+# $FreeBSD: head/etc/rc.d/SERVERS 231563 2012-02-12 14:58:50Z avg $
+#
+
+# PROVIDE: SERVERS
+# REQUIRE: mountcritremote abi ldconfig savecore watchdogd
+
+#	This is a dummy dependency, for early-start servers relying on
+#	some basic configuration.

@@ -1,0 +1,19 @@
+#!/bin/sh
+#
+# $FreeBSD: head/etc/rc.d/rpcbind 230099 2012-01-14 02:18:41Z dougb $
+#
+
+# PROVIDE: rpcbind
+# REQUIRE: NETWORKING ntpdate syslogd named
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="rpcbind"
+rcvar="rpcbind_enable"
+command="/usr/sbin/${name}"
+
+stop_postcmd='/bin/rm -f /var/run/rpcbind.*'
+
+load_rc_config $name
+run_rc_command "$1"
