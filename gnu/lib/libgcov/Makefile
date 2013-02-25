@@ -1,6 +1,7 @@
 # $FreeBSD: head/gnu/lib/libgcov/Makefile 245539 2013-01-17 05:56:28Z andrew $
 
 NO_PROFILE=
+NO_LLVM_IR=No SRCS
 .include <bsd.own.mk>
 MK_SSP=		no
 .include "${.CURDIR}/../../usr.bin/cc/Makefile.tgt"

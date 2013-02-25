@@ -1,5 +1,7 @@
 # $FreeBSD: head/gnu/usr.bin/cc/Makefile.inc 245539 2013-01-17 05:56:28Z andrew $
 
+NO_LLVM_IR=version.c fails
+
 .include "../Makefile.inc"
 
 # Sometimes this is .include'd several times...

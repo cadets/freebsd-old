@@ -1,5 +1,7 @@
 # $FreeBSD: head/gnu/usr.bin/binutils/libbfd/Makefile 218822 2011-02-18 20:54:12Z dim $
 
+NO_LLVM_IR=efi-app-ia32.oll duplicated
+
 .include "../Makefile.inc0"
 
 .PATH: ${SRCDIR}/bfd ${SRCDIR}/opcodes

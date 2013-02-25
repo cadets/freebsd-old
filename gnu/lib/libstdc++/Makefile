@@ -1,5 +1,6 @@
 # $FreeBSD: head/gnu/lib/libstdc++/Makefile 245539 2013-01-17 05:56:28Z andrew $
 
+NO_LLVM_IR=include path
 .include <bsd.own.mk>
 
 GCCVER=	4.2
