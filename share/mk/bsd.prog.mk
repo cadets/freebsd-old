@@ -1,4 +1,4 @@
-#	from: @(#)bsd.prog.mk	5.26 (Berkeley) 6/25/91
+#	from: @(#)bsd.prog.mk   5.26 (Berkeley) 6/25/91
 # $FreeBSD: head/share/mk/bsd.prog.mk 245515 2013-01-16 23:21:04Z brooks $
 
 .include <bsd.init.mk>
@@ -91,6 +91,28 @@ ${PROG}: ${OBJS}
 .endif
 
 .endif # !defined(SRCS)
+
+.if defined(LLVM_IR) && !defined(NO_LLVM_IR)
+LOBJS:=		${SRCS:M*.[Cc]:R:S/$/.obc/:N.obc} \
+		${SRCS:M*.cc:R:S/$/.obc/:N.obc} \
+		${SRCS:M*.cpp:R:S/$/.obc/:N.obc} \
+		${SRCS:M*.cxx:R:S/$/.obc/:N.obc}
+CLEANFILES+=	${PROG}.bc ${LOBJS}
+
+.if !empty(LOBJS)
+all: ${PROG}.bc
+${PROG}.bc: ${LOBJS}
+	${LLVM_LINK} -o ${.TARGET} ${LOBJS}
+
+all: ${PROG}.bc-opt
+${PROG}.bc-opt: ${PROG}.bc
+.if empty(OPT_PASSES)
+	cp ${PROG}.bc ${.TARGET}
+.else
+	${OPT} -o ${.TARGET} ${OPT_PASSES} ${.IMPSRC}
+.endif
+.endif
+.endif
 
 .if	${MK_MAN} != "no" && !defined(MAN) && \
 	!defined(MAN1) && !defined(MAN2) && !defined(MAN3) && \

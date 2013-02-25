@@ -48,7 +48,7 @@ STRIP?=	-s
 # prefer .s to a .c, add .po, remove stuff not used in the BSD libraries
 # .So used for PIC object files
 .SUFFIXES:
-.SUFFIXES: .out .o .po .So .S .asm .s .c .cc .cpp .cxx .C .f .y .l .ln
+.SUFFIXES: .out .o .po .So .S .asm .s .c .cc .cpp .cxx .C .f .y .l .obc .ln
 
 .if !defined(PICFLAG)
 .if ${MACHINE_CPUARCH} == "sparc64"
@@ -59,6 +59,9 @@ PICFLAG=-fpic
 .endif
 
 PO_FLAG=-pg
+
+.c.obc:
+	${CC} -c -g -emit-llvm ${CFLAGS} ${.IMPSRC} -o ${.TARGET}
 
 .c.o:
 	${CC} ${STATIC_CFLAGS} ${CFLAGS} -c ${.IMPSRC} -o ${.TARGET}
@@ -138,6 +141,29 @@ lib${LIB}.a: ${OBJS} ${STATICOBJS}
 	@${AR} ${ARFLAGS} ${.TARGET} `NM='${NM}' lorder ${OBJS} ${STATICOBJS} | tsort -q` ${ARADD}
 .endif
 	${RANLIB} ${.TARGET}
+
+.if defined(LLVM_IR) && !defined(NO_LLVM_IR)
+_LIBS+=	lib${LIB}.bc lib${LIB}.bc-opt
+# XXX: force expantion now to avoid picking up generated C code.
+# Ideally we do want it, but there is an undiagnosed dependency issue that
+# causes the .obc file to not be built.
+LOBJS:=		${SRCS:M*.[Cc]:R:S/$/.obc/:N.obc} \
+		${SRCS:M*.cc:R:S/$/.obc/:N.obc} \
+		${SRCS:M*.cpp:R:S/$/.obc/:N.obc} \
+		${SRCS:M*.cxx:R:S/$/.obc/:N.obc}
+LLVM_LINK?=	llvm-link
+
+lib${LIB}.bc: ${LOBJS}
+	${LLVM_LINK} -o ${.TARGET} ${LOBJS}
+
+lib${LIB}.bc-opt: lib${LIB}.bc
+.if empty(OPT_PASSES)
+	cp lib${LIB}.bc ${.TARGET}
+.else
+	${OPT} -o ${.TARGET} ${OPT_PASSES} ${.ALLSRC}
+.endif
+
+.endif
 .endif
 
 .if !defined(INTERNALLIB)
@@ -380,6 +406,9 @@ clean:
 .endif
 .if defined(LIB) && !empty(LIB)
 	rm -f a.out ${OBJS} ${OBJS:S/$/.tmp/} ${STATICOBJS}
+.if defined(LLVM_IR)
+	rm -f ${LOBJS}
+.endif
 .endif
 .if !defined(INTERNALLIB)
 .if ${MK_PROFILE} != "no" && defined(LIB) && !empty(LIB)
