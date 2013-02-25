@@ -29,7 +29,7 @@ SRCS+=		condition.c mutex.c \
 SRCS+=		inet_pton.c \
 		assertions.c backtrace.c base32.c base64.c bitstring.c \
 		buffer.c bufferlist.c commandline.c error.c event.c \
-		fsaccess.c hash.c \
+		hash.c \
 		heap.c hex.c hmacmd5.c hmacsha.c \
 		httpd.c inet_aton.c \
 		inet_ntop.c \
