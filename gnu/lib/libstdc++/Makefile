@@ -1,5 +1,6 @@
 # $FreeBSD$
 
+NO_LLVM_IR=include path
 .include <bsd.own.mk>
 
 GCCVER=	4.2

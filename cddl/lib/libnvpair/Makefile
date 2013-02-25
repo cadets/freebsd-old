@@ -11,6 +11,8 @@ SRCS=	libnvpair.c \
 	nvpair.c \
 	fnvpair.c
 
+NO_LLVM_IR=
+
 WARNS?=	0
 CFLAGS+= -I${.CURDIR}/../../../cddl/compat/opensolaris/include
 CFLAGS+= -I${.CURDIR}/../../../cddl/contrib/opensolaris/lib/libzpool/common

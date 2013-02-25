@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+NO_LLVM_IR=efi-app-ia32.oll duplicated
+
 .include "../Makefile.inc0"
 
 .PATH: ${SRCDIR}/bfd ${SRCDIR}/opcodes

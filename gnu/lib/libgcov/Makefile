@@ -1,6 +1,7 @@
 # $FreeBSD$
 
 NO_PROFILE=
+NO_LLVM_IR=No SRCS
 .include <bsd.own.mk>
 MK_SSP=		no
 .include "${.CURDIR}/../../usr.bin/cc/Makefile.tgt"

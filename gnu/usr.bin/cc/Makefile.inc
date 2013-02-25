@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+NO_LLVM_IR=version.c fails
+
 .include "../Makefile.inc"
 
 # Sometimes this is .include'd several times...
