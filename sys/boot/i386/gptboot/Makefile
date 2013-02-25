@@ -35,6 +35,10 @@ CFLAGS=	-DBOOTPROG=\"gptboot\" \
 	-Wmissing-declarations -Wmissing-prototypes -Wnested-externs \
 	-Wpointer-arith -Wshadow -Wstrict-prototypes -Wwrite-strings \
 	-Winline --param max-inline-insns-single=100
+.if defined(SYSROOT)
+CFLAGS+=	--sysroot=${SYSROOT}
+.endif
+
 
 LDFLAGS=-static -N --gc-sections
 

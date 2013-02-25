@@ -280,16 +280,23 @@ WMAKEENV=	${CROSSENV} \
 .if ${MK_CDDL} == "no"
 WMAKEENV+=	NO_CTF=1
 .endif
-.if ${CC:T:Mgcc} == "gcc"
+XCC?=	${CC}
+XCXX?=	${CXX}
+XCPP?=	${CPP}
+.if ${XCC:T:Mgcc} == "gcc"
 WMAKE_COMPILER_TYPE=	gcc
-.elif ${CC:T:Mclang} == "clang"
+.elif ${XCC:T:Mclang} == "clang"
 WMAKE_COMPILER_TYPE=	clang
 .elif ${MK_CLANG_IS_CC} == "no"
 WMAKE_COMPILER_TYPE=	gcc
 .else
 WMAKE_COMPILER_TYPE=	clang
 .endif
-WMAKEENV+=	COMPILER_TYPE=${WMAKE_COMPILER_TYPE}
+.if ${XCC:M/*}
+WMAKEENV+=	SYSROOT=${WORLDTMP}
+.endif
+WMAKEENV+=	CC=${XCC} CXX=${XCXX} CPP=${XCPP} \
+		COMPILER_TYPE=${WMAKE_COMPILER_TYPE}
 WMAKE=		${WMAKEENV} ${MAKE} ${WORLD_FLAGS} -f Makefile.inc1 DESTDIR=${WORLDTMP}
 
 .if ${TARGET_ARCH} == "amd64" || ${TARGET_ARCH} == "powerpc64"
