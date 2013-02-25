@@ -26,7 +26,7 @@ SRCS=	annotate.c arch-utils.c auxv.c ax-gdb.c ax-general.c \
 	elfread.c environ.c eval.c event-loop.c event-top.c exec.c \
 	expprint.c \
 	f-exp.y f-lang.c f-typeprint.c f-valprint.c findvar.c \
-	${_fork_child} frame-base.c frame-unwind-kluge.c frame.c \
+	${_fork_child} frame-base.c frame.c \
 	gdb-events.c gdbarch.c gdbtypes.c gnu-v2-abi.c gnu-v3-abi.c \
 	hpacc-abi.c \
 	inf-loop.c infcall.c infcmd.c inflow.c ${_infptrace} infrun.c \
