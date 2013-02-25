@@ -92,6 +92,28 @@ ${PROG}: ${OBJS}
 
 .endif # !defined(SRCS)
 
+.if defined(LLVM_IR) && !defined(NO_LLVM_IR)
+LOBJS:=		${SRCS:M*.[Cc]:R:S/$/.obc/:N.obc} \
+		${SRCS:M*.cc:R:S/$/.obc/:N.obc} \
+		${SRCS:M*.cpp:R:S/$/.obc/:N.obc} \
+		${SRCS:M*.cxx:R:S/$/.obc/:N.obc}
+CLEANFILES+=	${PROG}.bc ${LOBJS}
+
+.if !empty(LOBJS)
+all: ${PROG}.bc
+${PROG}.bc: ${LOBJS}
+	${LLVM_LINK} -o ${.TARGET} ${LOBJS}
+
+all: ${PROG}.bc-opt
+${PROG}.bc-opt: ${PROG}.bc
+.if empty(OPT_PASSES)
+	cp ${PROG}.bc ${.TARGET}
+.else
+	${OPT} -o ${.TARGET} ${OPT_PASSES} ${.IMPSRC}
+.endif
+.endif
+.endif
+
 .if	${MK_MAN} != "no" && !defined(MAN) && \
 	!defined(MAN1) && !defined(MAN2) && !defined(MAN3) && \
 	!defined(MAN4) && !defined(MAN5) && !defined(MAN6) && \
