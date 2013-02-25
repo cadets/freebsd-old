@@ -42,6 +42,10 @@ CFLAGS=	-Os \
 	-Wpointer-arith -Wshadow -Wstrict-prototypes -Wwrite-strings \
 	-Winline --param max-inline-insns-single=100 \
 	${CLANG_OPT_SMALL}
+.if defined(SYSROOT)
+CFLAGS+=	--sysroot=${SYSROOT}
+.endif
+
 
 LDFLAGS=-static -N --gc-sections
 

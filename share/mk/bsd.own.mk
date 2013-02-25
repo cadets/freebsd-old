@@ -646,4 +646,9 @@ $xGRP=	${_gid}
 
 .endif # !_WITHOUT_SRCCONF
 
+.if defined(SYSROOT)
+CFLAGS+=	--sysroot=${SYSROOT}
+LDFLAGS+=	--sysroot=${SYSROOT}
+.endif
+
 .endif	# !target(__<bsd.own.mk>__)
