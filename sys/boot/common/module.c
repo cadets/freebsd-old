@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/boot/common/module.c 241070 2012-09-30 13:17:33Z ae $");
+__FBSDID("$FreeBSD: head/sys/boot/common/module.c 247250 2013-02-25 01:50:04Z kientzle $");
 
 /*
  * file/module function dispatcher, support, etc.
@@ -351,6 +351,7 @@ file_load_dependencies(struct preloaded_file *base_file)
     }
     return (error);
 }
+
 /*
  * We've been asked to load (name) as (type), so just suck it in,
  * no arguments or anything.

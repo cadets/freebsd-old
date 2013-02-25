@@ -90,7 +90,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/sys_pipe.c 238936 2012-07-31 05:48:35Z davidxu $");
+__FBSDID("$FreeBSD: head/sys/kern/sys_pipe.c 246907 2013-02-17 11:48:16Z pjd $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -473,7 +473,7 @@ sys_pipe(struct thread *td, struct pipe_args *uap)
 	error = kern_pipe(td, fildes);
 	if (error)
 		return (error);
-	
+
 	td->td_retval[0] = fildes[0];
 	td->td_retval[1] = fildes[1];
 

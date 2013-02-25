@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# $FreeBSD: head/etc/rc.d/rtadvd 242181 2012-10-27 17:06:26Z hrs $
+# $FreeBSD: head/etc/rc.d/rtadvd 247271 2013-02-25 17:07:42Z des $
 #
 
 # PROVIDE: rtadvd
@@ -45,6 +45,8 @@ rtadvd_precmd()
 				command_args="${command_args} ${i}"
 			fi
 		done
+		;;
+	[Nn][Oo][Nn][Ee])
 		;;
 	*)
 		command_args="${rtadvd_interfaces}"

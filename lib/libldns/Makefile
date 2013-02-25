@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/libldns/Makefile 246827 2013-02-15 13:44:18Z des $
+# $FreeBSD: head/lib/libldns/Makefile 246854 2013-02-15 21:49:12Z des $
 
 # Vendor sources and generated files
 LDNSDIR = ${.CURDIR}/../../contrib/ldns
@@ -11,6 +11,7 @@ INTERNALLIB = true
 CFLAGS += -I${LDNSDIR}
 
 SRCS +=	buffer.c
+SRCS += dane.c
 SRCS +=	dname.c
 SRCS +=	dnssec.c
 SRCS +=	dnssec_sign.c

@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/i386/acpica/acpi_machdep.c 241885 2012-10-22 13:06:09Z eadler $");
+__FBSDID("$FreeBSD: head/sys/i386/acpica/acpi_machdep.c 246855 2013-02-15 22:43:08Z jkim $");
 
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -139,7 +139,7 @@ table_map(vm_paddr_t pa, int offset, vm_offset_t length)
 	void *data;
 
 	off = pa & PAGE_MASK;
-	length = roundup(length + off, PAGE_SIZE);
+	length = round_page(length + off);
 	pa = pa & PG_FRAME;
 	va = (vm_offset_t)pmap_kenter_temporary(pa, offset) +
 	    (offset * PAGE_SIZE);
@@ -163,7 +163,7 @@ table_unmap(void *data, vm_offset_t length)
 
 	va = (vm_offset_t)data;
 	off = va & PAGE_MASK;
-	length = roundup(length + off, PAGE_SIZE);
+	length = round_page(length + off);
 	va &= ~PAGE_MASK;
 	while (length > 0) {
 		pmap_kremove(va);

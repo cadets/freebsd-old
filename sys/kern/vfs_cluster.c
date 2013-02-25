@@ -32,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/vfs_cluster.c 239315 2012-08-15 22:12:01Z alc $");
+__FBSDID("$FreeBSD: head/sys/kern/vfs_cluster.c 246876 2013-02-16 14:51:30Z mckusick $");
 
 #include "opt_debug_cluster.h"
 
@@ -944,11 +944,17 @@ cluster_wbuild(vp, size, start_lbn, len)
 			}
 			bp->b_bcount += size;
 			bp->b_bufsize += size;
-			bundirty(tbp);
-			tbp->b_flags &= ~B_DONE;
-			tbp->b_ioflags &= ~BIO_ERROR;
+			/*
+			 * If any of the clustered buffers have their
+			 * B_BARRIER flag set, transfer that request to
+			 * the cluster.
+			 */
+			bp->b_flags |= (tbp->b_flags & B_BARRIER);
+			tbp->b_flags &= ~(B_DONE | B_BARRIER);
 			tbp->b_flags |= B_ASYNC;
+			tbp->b_ioflags &= ~BIO_ERROR;
 			tbp->b_iocmd = BIO_WRITE;
+			bundirty(tbp);
 			reassignbuf(tbp);		/* put on clean list */
 			bufobj_wref(tbp->b_bufobj);
 			BUF_KERNPROC(tbp);

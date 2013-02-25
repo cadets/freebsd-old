@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/arm/busdma_machdep.c 246713 2013-02-12 16:57:20Z kib $");
+__FBSDID("$FreeBSD: head/sys/arm/arm/busdma_machdep.c 246881 2013-02-16 20:43:16Z ian $");
 
 /*
  * ARM bus dma support routines.
@@ -913,7 +913,7 @@ _bus_dmamap_addseg(bus_dma_tag_t dmat, bus_dmamap_t map, bus_addr_t curaddr,
 		dr = _bus_dma_inrange(dmat->ranges, dmat->_nranges,
 		    curaddr);
 		if (dr == NULL)
-			return (EINVAL);
+			return (0);
 		/*
 		 * In a valid DMA range.  Translate the physical
 		 * memory address to an address in the DMA window.
@@ -935,12 +935,12 @@ _bus_dmamap_addseg(bus_dma_tag_t dmat, bus_dmamap_t map, bus_addr_t curaddr,
 		segs[seg].ds_len += sgsize;
 	} else {
 		if (++seg >= dmat->nsegments)
-			return (EFBIG);
+			return (0);
 		segs[seg].ds_addr = curaddr;
 		segs[seg].ds_len = sgsize;
 	}
 	*segp = seg;
-	return (0);
+	return (sgsize);
 }
 
 /*

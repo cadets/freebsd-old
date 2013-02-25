@@ -28,7 +28,7 @@
  */ 
 #include <sys/cdefs.h>
 #ifdef __FreeBSD__
-__FBSDID("$FreeBSD: head/sys/net80211/ieee80211_mesh.c 246710 2013-02-12 11:24:37Z glebius $");
+__FBSDID("$FreeBSD: head/sys/net80211/ieee80211_mesh.c 246861 2013-02-16 00:12:21Z adrian $");
 #endif
 
 /*
@@ -2625,7 +2625,7 @@ mesh_parse_meshgate_action(struct ieee80211_node *ni,
 		switch (*frm) {
 		case IEEE80211_ELEMID_MESHGANN:
 			gannie = (const struct ieee80211_meshgann_ie *) frm;
-			memset(ie, 0, sizeof(ie));
+			memset(ie, 0, sizeof(*ie));
 			ie->gann_ie = gannie->gann_ie;
 			ie->gann_len = gannie->gann_len;
 			ie->gann_flags = gannie->gann_flags;

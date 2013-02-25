@@ -33,7 +33,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/fs/nfsclient/nfs_clvfsops.c 244056 2012-12-09 22:23:50Z rmacklem $");
+__FBSDID("$FreeBSD: head/sys/fs/nfsclient/nfs_clvfsops.c 247116 2013-02-21 19:02:50Z jhb $");
 
 
 #include "opt_bootp.h"
@@ -132,7 +132,7 @@ static struct vfsops nfs_vfsops = {
 	.vfs_unmount =		nfs_unmount,
 	.vfs_sysctl =		nfs_sysctl,
 };
-VFS_SET(nfs_vfsops, nfs, VFCF_NETWORK);
+VFS_SET(nfs_vfsops, nfs, VFCF_NETWORK | VFCF_SBDRY);
 
 /* So that loader and kldload(2) can find us, wherever we are.. */
 MODULE_VERSION(nfs, 1);

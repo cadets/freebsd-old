@@ -27,7 +27,7 @@
 /* Simple clock driver for Allwinner A10 */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/allwinner/a10_clk.c 246353 2013-02-05 04:13:34Z ganbold $");
+__FBSDID("$FreeBSD: head/sys/arm/allwinner/a10_clk.c 246851 2013-02-15 21:29:03Z gonzo $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -129,6 +129,7 @@ a10_clk_usb_activate(void)
 	/* Gating AHB clock for USB */
 	reg_value = ccm_read_4(sc, CCM_AHB_GATING0);
 	reg_value |= CCM_AHB_GATING_USB0; /* AHB clock gate usb0 */
+	reg_value |= CCM_AHB_GATING_EHCI0; /* AHB clock gate ehci1 */
 	reg_value |= CCM_AHB_GATING_EHCI1; /* AHB clock gate ehci1 */
 	ccm_write_4(sc, CCM_AHB_GATING0, reg_value);
 

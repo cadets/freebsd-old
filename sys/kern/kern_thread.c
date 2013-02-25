@@ -31,7 +31,7 @@
 #include "opt_hwpmc_hooks.h"
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/kern_thread.c 240951 2012-09-26 09:25:11Z kib $");
+__FBSDID("$FreeBSD: head/sys/kern/kern_thread.c 246996 2013-02-19 16:35:27Z jhb $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -748,10 +748,10 @@ stopme:
  * P_SINGLE_EXIT | return_instead == 0| return_instead != 0
  *---------------+--------------------+---------------------
  *       0       | returns 0          |   returns 0 or 1
- *               | when ST ends       |   immediatly
+ *               | when ST ends       |   immediately
  *---------------+--------------------+---------------------
  *       1       | thread exits       |   returns 1
- *               |                    |  immediatly
+ *               |                    |  immediately
  * 0 = thread_exit() or suspension ok,
  * other = return error instead of stopping the thread.
  *

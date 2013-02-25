@@ -14,7 +14,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD: head/sys/dev/ath/ath_hal/ar5416/ar5416_reset.c 240471 2012-09-13 18:24:13Z adrian $
+ * $FreeBSD: head/sys/dev/ath/ath_hal/ar5416/ar5416_reset.c 247092 2013-02-21 08:42:40Z adrian $
  */
 #include "opt_ah.h"
 
@@ -569,6 +569,10 @@ ar5416InitDMA(struct ath_hal *ah)
 
 	/*
 	 * let mac dma writes be in 128 byte chunks
+	 */
+	/*
+	 * XXX If you change this, you must change the headroom
+	 * assigned in ah_maxTxTrigLev - see ar5416InitState().
 	 */
 	OS_REG_WRITE(ah, AR_RXCFG, 
 		(OS_REG_READ(ah, AR_RXCFG) & ~AR_RXCFG_DMASZ_MASK) | AR_RXCFG_DMASZ_128B);

@@ -26,7 +26,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
  *
- * $FreeBSD: head/sys/dev/ath/if_ath_tx.h 243162 2012-11-16 19:57:16Z adrian $
+ * $FreeBSD: head/sys/dev/ath/if_ath_tx.h 247085 2013-02-21 06:18:40Z adrian $
  */
 #ifndef	__IF_ATH_TX_H__
 #define	__IF_ATH_TX_H__
@@ -78,6 +78,11 @@
  */
 #define	BAW_WITHIN(_start, _bawsz, _seqno)	\
 	    ((((_seqno) - (_start)) & 4095) < (_bawsz))
+
+/*
+ * Maximum aggregate size
+ */
+#define	ATH_AGGR_MAXSIZE	65530
 
 extern void ath_freetx(struct mbuf *m);
 extern void ath_tx_node_flush(struct ath_softc *sc, struct ath_node *an);

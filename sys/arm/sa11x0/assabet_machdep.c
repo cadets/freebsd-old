@@ -47,7 +47,7 @@
 
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/sa11x0/assabet_machdep.c 240802 2012-09-22 06:41:56Z andrew $");
+__FBSDID("$FreeBSD: head/sys/arm/sa11x0/assabet_machdep.c 247046 2013-02-20 16:48:52Z alc $");
 
 #include "opt_md.h"
 
@@ -381,7 +381,8 @@ initarm(struct arm_boot_params *abp)
 	dump_avail[3] = phys_avail[3] = 0;
 					
 	mutex_init();
-	pmap_bootstrap(freemempos, 0xd0000000, &kernel_l1pt);
+	vm_max_kernel_address = 0xd0000000;
+	pmap_bootstrap(freemempos, &kernel_l1pt);
 
 	init_param2(physmem);
 	kdb_init();

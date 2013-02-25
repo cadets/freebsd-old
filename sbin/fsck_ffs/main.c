@@ -39,7 +39,7 @@ static char sccsid[] = "@(#)main.c	8.6 (Berkeley) 5/14/95";
 #endif /* not lint */
 #endif
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sbin/fsck_ffs/main.c 241035 2012-09-28 17:34:34Z mdf $");
+__FBSDID("$FreeBSD: head/sbin/fsck_ffs/main.c 247212 2013-02-24 06:44:29Z mckusick $");
 
 #include <sys/param.h>
 #include <sys/file.h>
@@ -424,7 +424,9 @@ checkfilesys(char *filesys)
 			printf("** Root file system\n");
 		printf("** Phase 1 - Check Blocks and Sizes\n");
 	}
+	clock_gettime(CLOCK_REALTIME_PRECISE, &startprog);
 	pass1();
+	IOstats("Pass1");
 
 	/*
 	 * 1b: locate first references to duplicates, if any
@@ -437,6 +439,7 @@ checkfilesys(char *filesys)
 			    usedsoftdep ? "softupdates" : "");
 		printf("** Phase 1b - Rescan For More DUPS\n");
 		pass1b();
+		IOstats("Pass1b");
 	}
 
 	/*
@@ -445,6 +448,7 @@ checkfilesys(char *filesys)
 	if (preen == 0)
 		printf("** Phase 2 - Check Pathnames\n");
 	pass2();
+	IOstats("Pass2");
 
 	/*
 	 * 3: scan inodes looking for disconnected directories
@@ -452,6 +456,7 @@ checkfilesys(char *filesys)
 	if (preen == 0)
 		printf("** Phase 3 - Check Connectivity\n");
 	pass3();
+	IOstats("Pass3");
 
 	/*
 	 * 4: scan inodes looking for disconnected files; check reference counts
@@ -459,6 +464,7 @@ checkfilesys(char *filesys)
 	if (preen == 0)
 		printf("** Phase 4 - Check Reference Counts\n");
 	pass4();
+	IOstats("Pass4");
 
 	/*
 	 * 5: check and repair resource counts in cylinder groups
@@ -466,6 +472,7 @@ checkfilesys(char *filesys)
 	if (preen == 0)
 		printf("** Phase 5 - Check Cyl groups\n");
 	pass5();
+	IOstats("Pass5");
 
 	/*
 	 * print out summary statistics
@@ -519,6 +526,7 @@ checkfilesys(char *filesys)
 	}
 	if (rerun)
 		resolved = 0;
+	finalIOstats();
 
 	/*
 	 * Check to see if the file system is mounted read-write.

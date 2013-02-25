@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/vfs_lookup.c 243746 2012-12-01 08:59:36Z pjd $");
+__FBSDID("$FreeBSD: head/sys/kern/vfs_lookup.c 247116 2013-02-21 19:02:50Z jhb $");
 
 #include "opt_capsicum.h"
 #include "opt_kdtrace.h"
@@ -339,7 +339,7 @@ namei(struct nameidata *ndp)
 		auio.uio_offset = 0;
 		auio.uio_rw = UIO_READ;
 		auio.uio_segflg = UIO_SYSSPACE;
-		auio.uio_td = (struct thread *)0;
+		auio.uio_td = td;
 		auio.uio_resid = MAXPATHLEN;
 		error = VOP_READLINK(ndp->ni_vp, &auio, cnp->cn_cred);
 		if (error) {

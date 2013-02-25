@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/vfs_export.c 244226 2012-12-14 21:49:06Z rmacklem $");
+__FBSDID("$FreeBSD: head/sys/kern/vfs_export.c 247116 2013-02-21 19:02:50Z jhb $");
 
 #include <sys/param.h>
 #include <sys/dirent.h>
@@ -49,6 +49,7 @@ __FBSDID("$FreeBSD: head/sys/kern/vfs_export.c 244226 2012-12-14 21:49:06Z rmack
 #include <sys/mutex.h>
 #include <sys/rwlock.h>
 #include <sys/refcount.h>
+#include <sys/signalvar.h>
 #include <sys/socket.h>
 #include <sys/systm.h>
 #include <sys/vnode.h>

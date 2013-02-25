@@ -30,7 +30,7 @@
 .\" SUCH DAMAGE.
 .\"
 .\"     From: @(#)group.5	8.3 (Berkeley) 4/19/94
-.\" $FreeBSD: head/share/man/man5/group.5 246552 2013-02-08 14:11:12Z des $
+.\" $FreeBSD: head/share/man/man5/group.5 246949 2013-02-18 20:21:26Z joel $
 .\"
 .Dd February 8, 2013
 .Dt GROUP 5
@@ -116,6 +116,17 @@ file.
 .\"	char    **gr_mem;        /* group members */
 .\" };
 .\" .Ed
+.Sh IMPLEMENTATION NOTES
+The
+.Xr passwd 1
+command does not change the
+.Nm
+passwords.
+The
+.Xr pw 8
+utility's
+.Cm groupmod
+command should be used instead.
 .Sh LIMITS
 There are various limitations which are explained in
 the function where they occur; see section
@@ -157,14 +168,3 @@ file format appeared in
 .At v6 .
 Support for comments first appeared in
 .Fx 3.0 .
-.Sh IMPLEMENTATION NOTES
-The
-.Xr passwd 1
-command does not change the
-.Nm
-passwords.
-The
-.Xr pw 8
-utility's
-.Cm groupmod
-command should be used instead.

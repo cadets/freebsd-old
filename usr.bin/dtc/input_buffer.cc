@@ -27,7 +27,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/usr.bin/dtc/input_buffer.cc 245839 2013-01-23 08:54:34Z theraven $
+ * $FreeBSD: head/usr.bin/dtc/input_buffer.cc 247006 2013-02-19 18:28:25Z uqs $
  */
 
 #include "input_buffer.hh"
@@ -42,6 +42,10 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <assert.h>
+
+#ifndef MAP_PREFAULT_READ
+#define MAP_PREFAULT_READ 0
+#endif
 
 namespace dtc
 {

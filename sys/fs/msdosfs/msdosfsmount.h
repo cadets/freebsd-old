@@ -1,4 +1,4 @@
-/* $FreeBSD: head/sys/fs/msdosfs/msdosfsmount.h 224290 2011-07-24 17:43:09Z mckusick $ */
+/* $FreeBSD: head/sys/fs/msdosfs/msdosfsmount.h 246921 2013-02-17 20:35:54Z kib $ */
 /*	$NetBSD: msdosfsmount.h,v 1.17 1997/11/17 15:37:07 ws Exp $	*/
 
 /*-
@@ -262,6 +262,7 @@ struct msdosfs_args {
 #define	MSDOSFSMNT_WAITONFAT	0x40000000	/* mounted synchronous	*/
 #define	MSDOSFS_FATMIRROR	0x20000000	/* FAT is mirrored */
 #define	MSDOSFS_LARGEFS		0x10000000	/* perform fileno mapping */
+#define	MSDOSFS_FSIMOD		0x01000000
 
 #define MSDOSFS_ARGSMAGIC	0xe4eff300
 

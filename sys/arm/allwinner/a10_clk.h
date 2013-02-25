@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/arm/allwinner/a10_clk.h 246057 2013-01-29 07:21:50Z ganbold $
+ * $FreeBSD: head/sys/arm/allwinner/a10_clk.h 246851 2013-02-15 21:29:03Z gonzo $
  */
 
 #ifndef _A10_CLK_H_
@@ -101,6 +101,7 @@
 #define CCM_MALI400_CLK		0x0154
 
 #define CCM_AHB_GATING_USB0	(1 << 0)
+#define CCM_AHB_GATING_EHCI0	(1 << 1)
 #define CCM_AHB_GATING_EHCI1	(1 << 3)
 
 #define CCM_USB_PHY		(1 << 8)

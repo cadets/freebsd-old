@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/kern_descrip.c 246763 2013-02-13 15:09:16Z ian $");
+__FBSDID("$FreeBSD: head/sys/kern/kern_descrip.c 246905 2013-02-17 11:47:30Z pjd $");
 
 #include "opt_capsicum.h"
 #include "opt_compat.h"
@@ -1949,11 +1949,11 @@ fdfree(struct thread *td)
 	fdp->fd_jdir = NULL;
 	FILEDESC_XUNLOCK(fdp);
 
-	if (cdir)
+	if (cdir != NULL)
 		vrele(cdir);
-	if (rdir)
+	if (rdir != NULL)
 		vrele(rdir);
-	if (jdir)
+	if (jdir != NULL)
 		vrele(jdir);
 
 	fddrop(fdp);

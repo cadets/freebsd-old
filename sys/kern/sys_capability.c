@@ -52,7 +52,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/sys_capability.c 236858 2012-06-10 20:22:10Z pjd $");
+__FBSDID("$FreeBSD: head/sys/kern/sys_capability.c 246908 2013-02-17 11:49:21Z pjd $");
 
 #include "opt_capsicum.h"
 #include "opt_ktrace.h"
@@ -113,7 +113,7 @@ sys_cap_getmode(struct thread *td, struct cap_getmode_args *uap)
 {
 	u_int i;
 
-	i = (IN_CAPABILITY_MODE(td)) ? 1 : 0;
+	i = IN_CAPABILITY_MODE(td) ? 1 : 0;
 	return (copyout(&i, uap->modep, sizeof(i)));
 }
 

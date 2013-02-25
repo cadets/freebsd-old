@@ -33,7 +33,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/nfsclient/nfs_krpc.c 246417 2013-02-06 17:06:51Z jhb $");
+__FBSDID("$FreeBSD: head/sys/nfsclient/nfs_krpc.c 247116 2013-02-21 19:02:50Z jhb $");
 
 /*
  * Socket operations for use by nfs
@@ -748,7 +748,6 @@ nfs_set_sigmask(struct thread *td, sigset_t *oldset)
 			SIGDELSET(newset, nfs_sig_set[i]);
 	}
 	mtx_unlock(&p->p_sigacts->ps_mtx);
-	sigdeferstop(td);
 	kern_sigprocmask(td, SIG_SETMASK, &newset, oldset,
 	    SIGPROCMASK_PROC_LOCKED);
 	PROC_UNLOCK(p);
@@ -760,7 +759,6 @@ nfs_restore_sigmask(struct thread *td, sigset_t *set)
 	if (td == NULL)
 		td = curthread; /* XXX */
 	kern_sigprocmask(td, SIG_SETMASK, set, NULL, 0);
-	sigallowstop(td);
 }
 
 /*

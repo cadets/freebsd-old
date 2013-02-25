@@ -43,7 +43,7 @@ static char sccsid[] = "@(#)mountd.c	8.15 (Berkeley) 5/1/95";
 #endif
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.sbin/mountd/mountd.c 244538 2012-12-21 15:54:13Z kevlo $");
+__FBSDID("$FreeBSD: head/usr.sbin/mountd/mountd.c 247034 2013-02-20 12:40:26Z pluknet $");
 
 #include <sys/param.h>
 #include <sys/fcntl.h>
@@ -2235,7 +2235,7 @@ do_opt(char **cpp, char **endcpp, struct exportlist *ep, struct grouplist *grp,
 			ep->ex_indexfile = strdup(cpoptarg);
 		} else if (!strcmp(cpopt, "quiet")) {
 			opt_flags |= OP_QUIET;
-		} else if (!strcmp(cpopt, "sec")) {
+		} else if (cpoptarg && !strcmp(cpopt, "sec")) {
 			if (parsesec(cpoptarg, ep))
 				return (1);
 			opt_flags |= OP_SEC;

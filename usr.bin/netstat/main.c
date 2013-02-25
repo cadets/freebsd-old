@@ -40,7 +40,7 @@ static char sccsid[] = "@(#)main.c	8.4 (Berkeley) 3/1/94";
 #endif
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.bin/netstat/main.c 219820 2011-03-21 09:58:24Z jeff $");
+__FBSDID("$FreeBSD: head/usr.bin/netstat/main.c 246988 2013-02-19 13:17:16Z charnier $");
 
 #include <sys/param.h>
 #include <sys/file.h>
@@ -640,9 +640,7 @@ main(int argc, char *argv[])
  * is not in the namelist, ignore this one.
  */
 static void
-printproto(tp, name)
-	struct protox *tp;
-	const char *name;
+printproto(struct protox *tp, const char *name)
 {
 	void (*pr)(u_long, const char *, int, int);
 	u_long off;

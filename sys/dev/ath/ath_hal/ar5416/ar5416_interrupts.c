@@ -14,7 +14,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD: head/sys/dev/ath/ath_hal/ar5416/ar5416_interrupts.c 234088 2012-04-10 07:11:33Z adrian $
+ * $FreeBSD: head/sys/dev/ath/ath_hal/ar5416/ar5416_interrupts.c 247030 2013-02-20 11:24:11Z adrian $
  */
 #include "opt_ah.h"
 
@@ -307,6 +307,8 @@ ar5416SetInterrupts(struct ath_hal *ah, HAL_INT ints)
 			mask |= AR_IMR_TXDESC;
 		if (ahp->ah_txEolInterruptMask)
 			mask |= AR_IMR_TXEOL;
+		if (ahp->ah_txUrnInterruptMask)
+			mask |= AR_IMR_TXURN;
 	}
 	if (ints & (HAL_INT_BMISC)) {
 		mask |= AR_IMR_BCNMISC;

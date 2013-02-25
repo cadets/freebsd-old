@@ -34,7 +34,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/usr.sbin/makefs/makefs.h 239562 2012-08-22 06:37:30Z hrs $
+ * $FreeBSD: head/usr.sbin/makefs/makefs.h 247052 2013-02-20 19:32:31Z brooks $
  */
 
 #ifndef	_MAKEFS_H
@@ -169,6 +169,7 @@ void		cd9660_makefs(const char *, const char *, fsnode *, fsinfo_t *);
 
 
 extern	u_int		debug;
+extern	int		dupsok;
 extern	struct timespec	start_time;
 
 /*
@@ -278,6 +279,8 @@ extern	struct timespec	start_time;
 
 struct fs;
 void   ffs_fragacct_swap(struct fs *, int, int32_t [], int, int);
+
+fsinode *link_check(fsinode *);
 
 /*
  * Declarations for compat routines.

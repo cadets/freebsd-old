@@ -48,7 +48,7 @@
 #include "opt_ddb.h"
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/xscale/pxa/pxa_machdep.c 240802 2012-09-22 06:41:56Z andrew $");
+__FBSDID("$FreeBSD: head/sys/arm/xscale/pxa/pxa_machdep.c 247046 2013-02-20 16:48:52Z alc $");
 
 #define _ARM32_BUS_DMA_PRIVATE
 #include <sys/param.h>
@@ -365,7 +365,8 @@ initarm(struct arm_boot_params *abp)
 	}
 	dump_avail[i] = 0;
 	dump_avail[i] = 0;
-	pmap_bootstrap(pmap_curmaxkvaddr, 0xd0000000, &kernel_l1pt);
+	vm_max_kernel_address = 0xd0000000;
+	pmap_bootstrap(pmap_curmaxkvaddr, &kernel_l1pt);
 	msgbufp = (void*)msgbufpv.pv_va;
 	msgbufinit(msgbufp, msgbufsize);
 	mutex_init();

@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  * 
- * $FreeBSD: head/sys/boot/fdt/dts/cubieboard.dts 246660 2013-02-11 11:31:23Z gonzo $
+ * $FreeBSD: head/sys/boot/fdt/dts/cubieboard.dts 246851 2013-02-15 21:29:03Z gonzo $
  */
 
 /dts-v1/;
@@ -91,7 +91,14 @@
 			interrupt-parent = <&AINTC>;
 		};
 
-		usb1: usb@01c1c000 {
+		usb1: usb@01c14000 {
+			compatible = "allwinner,usb-ehci", "usb-ehci";
+			reg = <0x01c14000 0x1000>;
+			interrupts = < 39 >;
+			interrupt-parent = <&AINTC>;
+		};
+
+		usb2: usb@01c1c000 {
 			compatible = "allwinner,usb-ehci", "usb-ehci";
 			reg = <0x01c1c000 0x1000>;
 			interrupts = < 40 >;

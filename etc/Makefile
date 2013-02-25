@@ -1,5 +1,5 @@
 #	from: @(#)Makefile	5.11 (Berkeley) 5/21/91
-# $FreeBSD: head/etc/Makefile 246127 2013-01-30 17:39:43Z brooks $
+# $FreeBSD: head/etc/Makefile 247162 2013-02-22 19:57:18Z ache $
 
 .include <bsd.own.mk>
 

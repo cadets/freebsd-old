@@ -27,7 +27,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)namei.h	8.5 (Berkeley) 1/9/95
- * $FreeBSD: head/sys/sys/namei.h 243612 2012-11-27 10:32:35Z pjd $
+ * $FreeBSD: head/sys/sys/namei.h 246903 2013-02-17 11:36:41Z pjd $
  */
 
 #ifndef _SYS_NAMEI_H_
@@ -145,7 +145,7 @@ struct nameidata {
 #define	NOCROSSMOUNT	0x00400000 /* do not cross mount points */
 #define	NOMACCHECK	0x00800000 /* do not perform MAC checks */
 #define	AUDITVNODE1	0x04000000 /* audit the looked up vnode information */
-#define	AUDITVNODE2 	0x08000000 /* audit the looked up vnode information */
+#define	AUDITVNODE2	0x08000000 /* audit the looked up vnode information */
 #define	TRAILINGSLASH	0x10000000 /* path ended in a slash */
 #define	NOCAPCHECK	0x20000000 /* do not perform capability checks */
 #define	PARAMASK	0x3ffffe00 /* mask of parameter descriptors */

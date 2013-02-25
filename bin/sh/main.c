@@ -42,7 +42,7 @@ static char sccsid[] = "@(#)main.c	8.6 (Berkeley) 5/28/95";
 #endif
 #endif /* not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/bin/sh/main.c 245689 2013-01-20 12:44:50Z jilles $");
+__FBSDID("$FreeBSD: head/bin/sh/main.c 247206 2013-02-23 22:50:57Z jilles $");
 
 #include <stdio.h>
 #include <signal.h>
@@ -196,7 +196,7 @@ cmdloop(int top)
 	TRACE(("cmdloop(%d) called\n", top));
 	setstackmark(&smark);
 	for (;;) {
-		if (pendingsigs)
+		if (pendingsig)
 			dotrap();
 		inter = 0;
 		if (iflag && top) {

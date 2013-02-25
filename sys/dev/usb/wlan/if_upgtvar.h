@@ -1,5 +1,5 @@
 /*	$OpenBSD: if_upgtvar.h,v 1.14 2008/02/02 13:48:44 mglocker Exp $ */
-/*	$FreeBSD: head/sys/dev/usb/wlan/if_upgtvar.h 246765 2013-02-13 15:43:15Z hselasky $ */
+/*	$FreeBSD: head/sys/dev/usb/wlan/if_upgtvar.h 246944 2013-02-18 17:55:27Z hselasky $ */
 
 /*
  * Copyright (c) 2007 Marcus Glocker <mglocker@openbsd.org>
@@ -453,7 +453,7 @@ struct upgt_softc {
 	struct upgt_memory	 sc_memory;
 
 	/* data which we found in the EEPROM */
-	uint8_t			 sc_eeprom[UPGT_EEPROM_SIZE];
+	uint8_t			 sc_eeprom[2 * UPGT_EEPROM_SIZE] __aligned(4);
 	uint16_t		 sc_eeprom_hwrx;
 	struct upgt_lmac_freq3	 sc_eeprom_freq3[IEEE80211_CHAN_MAX];
 	struct upgt_lmac_freq4	 sc_eeprom_freq4[IEEE80211_CHAN_MAX][8];

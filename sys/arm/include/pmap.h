@@ -44,7 +44,7 @@
  *      from: @(#)pmap.h        7.4 (Berkeley) 5/12/91
  * 	from: FreeBSD: src/sys/i386/include/pmap.h,v 1.70 2000/11/30
  *
- * $FreeBSD: head/sys/arm/include/pmap.h 245147 2013-01-08 02:40:20Z gonzo $
+ * $FreeBSD: head/sys/arm/include/pmap.h 247046 2013-02-20 16:48:52Z alc $
  */
 
 #ifndef _MACHINE_PMAP_H_
@@ -222,7 +222,7 @@ extern vm_paddr_t phys_avail[];
 extern vm_offset_t virtual_avail;
 extern vm_offset_t virtual_end;
 
-void	pmap_bootstrap(vm_offset_t, vm_offset_t, struct pv_addr *);
+void	pmap_bootstrap(vm_offset_t firstaddr, struct pv_addr *l1pt);
 int	pmap_change_attr(vm_offset_t, vm_size_t, int);
 void	pmap_kenter(vm_offset_t va, vm_paddr_t pa);
 void	pmap_kenter_nocache(vm_offset_t va, vm_paddr_t pa);

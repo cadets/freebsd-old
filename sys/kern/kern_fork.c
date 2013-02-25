@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/kern_fork.c 244237 2012-12-15 02:02:11Z kib $");
+__FBSDID("$FreeBSD: head/sys/kern/kern_fork.c 246904 2013-02-17 11:47:01Z pjd $");
 
 #include "opt_kdtrace.h"
 #include "opt_ktrace.h"
@@ -942,7 +942,7 @@ fail1:
 		vmspace_free(vm2);
 	uma_zfree(proc_zone, newproc);
 #ifdef PROCDESC
-	if (((flags & RFPROCDESC) != 0) && (fp_procdesc != NULL)) {
+	if ((flags & RFPROCDESC) != 0 && fp_procdesc != NULL) {
 		fdclose(td->td_proc->p_fd, fp_procdesc, *procdescp, td);
 		fdrop(fp_procdesc, td);
 	}

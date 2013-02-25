@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/netinet/tcp_lro.c 236394 2012-06-01 11:42:50Z bz $");
+__FBSDID("$FreeBSD: head/sys/netinet/tcp_lro.c 247104 2013-02-21 17:00:35Z gallatin $");
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
@@ -333,7 +333,7 @@ tcp_lro_rx_ipv4(struct lro_ctrl *lc, struct mbuf *m, struct ip *ip4,
 		}
 	} else {
 		csum = in_cksum_hdr(ip4);
-		if (__predict_false((csum ^ 0xffff) != 0)) {
+		if (__predict_false((csum) != 0)) {
 			lc->lro_bad_csum++;
 			return (TCP_LRO_CANNOT);
 		}

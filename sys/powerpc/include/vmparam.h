@@ -29,7 +29,7 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  *	$NetBSD: vmparam.h,v 1.11 2000/02/11 19:25:16 thorpej Exp $
- * $FreeBSD: head/sys/powerpc/include/vmparam.h 236141 2012-05-27 10:25:20Z raj $
+ * $FreeBSD: head/sys/powerpc/include/vmparam.h 247153 2013-02-22 16:59:52Z alc $
  */
 
 #ifndef _MACHINE_VMPARAM_H_
@@ -120,11 +120,6 @@
 #define	VM_MAX_KERNEL_ADDRESS	0xf8000000
 
 #endif /* AIM/E500 */
-
-/* XXX max. amount of KVM to be used by buffers. */
-#ifndef VM_MAX_KERNEL_BUF
-#define	VM_MAX_KERNEL_BUF	(SEGMENT_LENGTH * 7 / 10)
-#endif
 
 #if !defined(LOCORE)
 struct pmap_physseg {

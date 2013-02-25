@@ -57,7 +57,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/subr_turnstile.c 240424 2012-09-12 22:10:53Z attilio $");
+__FBSDID("$FreeBSD: head/sys/kern/subr_turnstile.c 246923 2013-02-17 21:37:32Z pjd $");
 
 #include "opt_ddb.h"
 #include "opt_kdtrace.h"
@@ -215,10 +215,9 @@ propagate_priority(struct thread *td)
 
 		/*
 		 * If the thread is asleep, then we are probably about
-		 * to deadlock.  To make debugging this easier, just
-		 * panic and tell the user which thread misbehaved so
-		 * they can hopefully get a stack trace from the truly
-		 * misbehaving thread.
+		 * to deadlock.  To make debugging this easier, show
+		 * backtrace of misbehaving thread and panic to not
+		 * leave the kernel deadlocked.
 		 */
 		if (TD_IS_SLEEPING(td)) {
 			printf(

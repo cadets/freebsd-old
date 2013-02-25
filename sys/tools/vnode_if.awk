@@ -30,7 +30,7 @@
 
 #
 #	@(#)vnode_if.sh	8.1 (Berkeley) 6/10/93
-# $FreeBSD: head/sys/tools/vnode_if.awk 244765 2012-12-28 06:52:53Z gonzo $
+# $FreeBSD: head/sys/tools/vnode_if.awk 247116 2013-02-21 19:02:50Z jhb $
 #
 # Script to produce VFS front-end sugar.
 #
@@ -142,7 +142,7 @@ common_head = \
     " * This file is produced automatically.\n" \
     " * Do not modify anything in here by hand.\n" \
     " *\n" \
-    " * Created from $FreeBSD: head/sys/tools/vnode_if.awk 244765 2012-12-28 06:52:53Z gonzo $\n" \
+    " * Created from $FreeBSD: head/sys/tools/vnode_if.awk 247116 2013-02-21 19:02:50Z jhb $\n" \
     " */\n" \
     "\n";
 
@@ -172,6 +172,7 @@ if (cfile) {
 	    "#include <sys/kernel.h>\n" \
 	    "#include <sys/mount.h>\n" \
 	    "#include <sys/sdt.h>\n" \
+	    "#include <sys/signalvar.h>\n" \
 	    "#include <sys/systm.h>\n" \
 	    "#include <sys/vnode.h>\n" \
 	    "\n" \
@@ -365,10 +366,12 @@ while ((getline < srcfile) > 0) {
 			add_debug_code(name, args[i], "Entry", "\t");
 		printc("\tKTR_START" ctrstr);
 		add_pre(name);
+		printc("\tVFS_PROLOGUE(a->a_" args[0]"->v_mount);")
 		printc("\tif (vop->"name" != NULL)")
 		printc("\t\trc = vop->"name"(a);")
 		printc("\telse")
 		printc("\t\trc = vop->vop_bypass(&a->a_gen);")
+		printc("\tVFS_EPILOGUE(a->a_" args[0]"->v_mount);")
 		printc("\tSDT_PROBE(vfs, vop, " name ", return, a->a_" args[0] ", a, rc, 0, 0);\n");
 		printc("\tif (rc == 0) {");
 		for (i = 0; i < numargs; ++i)

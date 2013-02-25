@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/boot/uboot/lib/copy.c 235694 2012-05-20 18:07:35Z kientzle $");
+__FBSDID("$FreeBSD: head/sys/boot/uboot/lib/copy.c 246948 2013-02-18 20:11:20Z kientzle $");
 
 #include <stand.h>
 #include <stdint.h>
@@ -66,7 +66,7 @@ uboot_vm_translate(vm_offset_t o) {
 		*/
 	}
 	if (o > size)
-		panic("Address 0x%08jX bigger than size 0x%08X\n",
+		panic("Address offset 0x%08jX bigger than size 0x%08X\n",
 		      (intmax_t)o, size);
 	return (void *)(start + o);
 }

@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/libstand/Makefile 246369 2013-02-05 20:03:58Z andrew $
+# $FreeBSD: head/lib/libstand/Makefile 246931 2013-02-18 01:55:53Z kientzle $
 # Originally from	$NetBSD: Makefile,v 1.21 1997/10/26 22:08:38 lukem Exp $
 #
 # Notes:
@@ -39,7 +39,7 @@ CFLAGS+=	-msoft-float -D_STANDALONE
 
 # standalone components and stuff we have modified locally
 SRCS+=	gzguts.h zutil.h __main.c assert.c bcd.c bswap.c environment.c getopt.c gets.c \
-	globals.c pager.c printf.c strdup.c strerror.c strtol.c random.c \
+	globals.c pager.c printf.c strdup.c strerror.c strtol.c strtoul.c random.c \
 	sbrk.c twiddle.c zalloc.c zalloc_malloc.c
 
 # private (pruned) versions of libc string functions

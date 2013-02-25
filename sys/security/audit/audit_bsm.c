@@ -28,7 +28,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/security/audit/audit_bsm.c 245573 2013-01-17 21:02:53Z csjp $");
+__FBSDID("$FreeBSD: head/sys/security/audit/audit_bsm.c 246911 2013-02-17 11:57:47Z pjd $");
 
 #include <sys/param.h>
 #include <sys/vnode.h>
@@ -223,9 +223,7 @@ kau_free(struct au_record *rec)
 } while (0)
 
 #define	UPATH1_VNODE1_TOKENS do {					\
-	if (ARG_IS_VALID(kar, ARG_UPATH1)) {				\
-		UPATH1_TOKENS;						\
-	}								\
+	UPATH1_TOKENS;							\
 	if (ARG_IS_VALID(kar, ARG_VNODE1)) {				\
 		tok = au_to_attr32(&ar->ar_arg_vnode1);			\
 		kau_write(rec, tok);					\

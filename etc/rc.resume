@@ -24,7 +24,7 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD: head/etc/rc.resume 231226 2012-02-08 20:31:42Z jkim $
+# $FreeBSD: head/etc/rc.resume 246856 2013-02-15 22:58:44Z jkim $
 #
 
 # sample run command file for APM Resume Event
@@ -41,10 +41,6 @@ if [ -r /var/run/rc.suspend.pid ]; then
 	kill -9 `cat /var/run/rc.suspend.pid`
 	/bin/rm -f /var/run/rc.suspend.pid
 	echo 'rc.resume: killed rc.suspend that was still around'
-fi
-
-if [ -r /var/run/moused.pid ]; then
-	pkill -HUP -F /var/run/moused.pid
 fi
 
 # Turns on a power supply of a card in the slot inactivated.

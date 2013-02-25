@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/lib/libelf/elf_data.c 221595 2011-05-07 11:04:36Z kaiw $");
+__FBSDID("$FreeBSD: head/lib/libelf/elf_data.c 246978 2013-02-19 03:23:13Z markj $");
 
 #include <assert.h>
 #include <errno.h>
@@ -78,8 +78,10 @@ elf_getdata(Elf_Scn *s, Elf_Data *d)
 		sh_align  = s->s_shdr.s_shdr64.sh_addralign;
 	}
 
-	if (sh_type == SHT_NULL)
+	if (sh_type == SHT_NULL) {
+		LIBELF_SET_ERROR(SECTION, 0);
 		return (NULL);
+	}
 
 	if ((elftype = _libelf_xlate_shtype(sh_type)) < ELF_T_FIRST ||
 	    elftype > ELF_T_LAST || (sh_type != SHT_NOBITS &&
@@ -219,8 +221,10 @@ elf_rawdata(Elf_Scn *s, Elf_Data *d)
 		sh_align  = s->s_shdr.s_shdr64.sh_addralign;
 	}
 
-	if (sh_type == SHT_NULL)
+	if (sh_type == SHT_NULL) {
+		LIBELF_SET_ERROR(SECTION, 0);
 		return (NULL);
+	}
 
 	if ((d = _libelf_allocate_data(s)) == NULL)
 		return (NULL);

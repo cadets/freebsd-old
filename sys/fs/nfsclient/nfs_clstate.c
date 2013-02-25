@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/fs/nfsclient/nfs_clstate.c 245909 2013-01-25 15:25:24Z jhb $");
+__FBSDID("$FreeBSD: head/sys/fs/nfsclient/nfs_clstate.c 247072 2013-02-21 02:43:44Z imp $");
 
 /*
  * These functions implement the client side state handling for NFSv4.
@@ -1888,7 +1888,7 @@ nfscl_recover(struct nfsclclient *clp, struct ucred *cred, NFSPROC_T *p)
 	struct nfsreq *rep;
 	u_int64_t len;
 	u_int32_t delegtype = NFSV4OPEN_DELEGATEWRITE, mode;
-	int i, igotlock = 0, error, trycnt, firstlock, s;
+	int i, igotlock = 0, error, trycnt, firstlock;
 	struct nfscllayout *lyp, *nlyp;
 
 	/*
@@ -1945,14 +1945,12 @@ nfscl_recover(struct nfsclclient *clp, struct ucred *cred, NFSPROC_T *p)
 	 * This will be translated to NFSERR_STALEDONTRECOVER when
 	 * R_DONTRECOVER is set.
 	 */
-	s = splsoftclock();
 	NFSLOCKREQ();
 	TAILQ_FOREACH(rep, &nfsd_reqq, r_chain) {
 		if (rep->r_nmp == nmp)
 			rep->r_flags |= R_DONTRECOVER;
 	}
 	NFSUNLOCKREQ();
-	splx(s);
 
 	/*
 	 * Now, mark all delegations "need reclaim".

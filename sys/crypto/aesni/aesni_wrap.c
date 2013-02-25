@@ -1,4 +1,5 @@
 /*-
+ * Copyright (C) 2008 Damien Miller <djm@mindrot.org>
  * Copyright (c) 2010 Konstantin Belousov <kib@FreeBSD.org>
  * Copyright (c) 2010-2011 Pawel Jakub Dawidek <pawel@dawidek.net>
  * All rights reserved.
@@ -26,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/crypto/aesni/aesni_wrap.c 230426 2012-01-21 17:45:27Z kib $");
+__FBSDID("$FreeBSD: head/sys/crypto/aesni/aesni_wrap.c 247061 2013-02-20 22:59:53Z pjd $");
 
 #include <sys/param.h>
 #include <sys/libkern.h>

@@ -35,7 +35,7 @@ static char sccsid[] = "@(#)inet6.c	8.4 (Berkeley) 4/20/94";
 #endif
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.bin/netstat/inet6.c 229403 2012-01-03 18:51:58Z ed $");
+__FBSDID("$FreeBSD: head/usr.bin/netstat/inet6.c 246988 2013-02-19 13:17:16Z charnier $");
 
 #ifdef INET6
 #include <sys/param.h>
@@ -335,7 +335,7 @@ static	const char *ip6nh[] = {
 	"#255",
 };
 
-static char *srcrule_str[] = {
+static const char *srcrule_str[] = {
 	"first candidate",
 	"same address",
 	"appropriate scope",

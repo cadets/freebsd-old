@@ -26,7 +26,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
  *
- * $FreeBSD: head/sys/dev/ath/if_athvar.h 246745 2013-02-13 05:32:19Z adrian $
+ * $FreeBSD: head/sys/dev/ath/if_athvar.h 247087 2013-02-21 06:38:49Z adrian $
  */
 
 /*
@@ -718,6 +718,8 @@ struct ath_softc {
 	int			sc_txchainmask;	/* currently configured TX chainmask */
 	int			sc_rxchainmask;	/* currently configured RX chainmask */
 	int			sc_rts_aggr_limit;	/* TX limit on RTS aggregates */
+	int			sc_aggr_limit;	/* TX limit on all aggregates */
+	int			sc_delim_min_pad;	/* Minimum delimiter count */
 
 	/* Queue limits */
 

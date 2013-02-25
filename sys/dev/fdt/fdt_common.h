@@ -26,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/dev/fdt/fdt_common.h 243690 2012-11-30 03:08:49Z gonzo $
+ * $FreeBSD: head/sys/dev/fdt/fdt_common.h 247207 2013-02-23 22:58:04Z gonzo $
  */
 
 #ifndef _FDT_COMMON_H_
@@ -39,7 +39,7 @@
 
 #define FDT_MEM_REGIONS	8
 
-#define DI_MAX_INTR_NUM	8
+#define DI_MAX_INTR_NUM	32
 
 struct fdt_pci_range {
 	u_long	base_pci;

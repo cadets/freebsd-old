@@ -27,7 +27,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)filedesc.h	8.1 (Berkeley) 6/2/93
- * $FreeBSD: head/sys/sys/filedesc.h 237081 2012-06-14 16:24:03Z pjd $
+ * $FreeBSD: head/sys/sys/filedesc.h 246912 2013-02-17 11:58:30Z pjd $
  */
 
 #ifndef _SYS_FILEDESC_H_
@@ -88,7 +88,7 @@ struct filedesc_to_leader {
 /*
  * Per-process open flags.
  */
-#define	UF_EXCLOSE 	0x01		/* auto-close on exec */
+#define	UF_EXCLOSE	0x01		/* auto-close on exec */
 
 #ifdef _KERNEL
 

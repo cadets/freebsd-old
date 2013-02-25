@@ -30,7 +30,7 @@
   POSSIBILITY OF SUCH DAMAGE.
 
 ******************************************************************************/
-/*$FreeBSD: head/sys/dev/e1000/if_lem.c 246128 2013-01-30 18:01:20Z sbz $*/
+/*$FreeBSD: head/sys/dev/e1000/if_lem.c 247064 2013-02-21 00:25:45Z jfv $*/
 
 #ifdef HAVE_KERNEL_OPTION_HEADERS
 #include "opt_device_polling.h"
@@ -3782,10 +3782,6 @@ lem_setup_vlan_hw_support(struct adapter *adapter)
 	reg &= ~E1000_RCTL_CFIEN;
 	reg |= E1000_RCTL_VFE;
 	E1000_WRITE_REG(hw, E1000_RCTL, reg);
-
-	/* Update the frame size */
-	E1000_WRITE_REG(&adapter->hw, E1000_RLPML,
-	    adapter->max_frame_size + VLAN_TAG_SIZE);
 }
 
 static void

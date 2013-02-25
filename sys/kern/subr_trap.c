@@ -42,7 +42,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/subr_trap.c 242361 2012-10-30 15:10:50Z attilio $");
+__FBSDID("$FreeBSD: head/sys/kern/subr_trap.c 247116 2013-02-21 19:02:50Z jhb $");
 
 #include "opt_hwpmc_hooks.h"
 #include "opt_ktrace.h"
@@ -164,6 +164,8 @@ userret(struct thread *td, struct trapframe *frame)
 	    ("userret: Returning with with pinned thread"));
 	KASSERT(td->td_vp_reserv == 0,
 	    ("userret: Returning while holding vnode reservation"));
+	KASSERT((td->td_flags & TDF_SBDRY) == 0,
+	    ("userret: Returning with stop signals deferred"));
 #ifdef VIMAGE
 	/* Unfortunately td_vnet_lpush needs VNET_DEBUG. */
 	VNET_ASSERT(curvnet == NULL,

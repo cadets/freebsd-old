@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/geom/geom_vfs.c 241896 2012-10-22 17:50:54Z kib $");
+__FBSDID("$FreeBSD: head/sys/geom/geom_vfs.c 246876 2013-02-16 14:51:30Z mckusick $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -192,6 +192,10 @@ g_vfs_strategy(struct bufobj *bo, struct buf *bp)
 	bip->bio_done = g_vfs_done;
 	bip->bio_caller2 = bp;
 	bip->bio_length = bp->b_bcount;
+	if (bp->b_flags & B_BARRIER) {
+		bip->bio_flags |= BIO_ORDERED;
+		bp->b_flags &= ~B_BARRIER;
+	}
 	g_io_request(bip, cp);
 }
 

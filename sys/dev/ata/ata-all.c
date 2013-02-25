@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/ata/ata-all.c 242422 2012-11-01 00:09:01Z mav $");
+__FBSDID("$FreeBSD: head/sys/dev/ata/ata-all.c 247165 2013-02-22 21:43:21Z mav $");
 
 #include "opt_ata.h"
 #include <sys/param.h>
@@ -1532,6 +1532,7 @@ ata_cam_begin_transaction(device_t dev, union ccb *ccb)
 	request->timeout = (ccb->ccb_h.timeout + 999) / 1000;
 	callout_init_mtx(&request->callout, &ch->state_mtx, CALLOUT_RETURNUNLOCKED);
 	request->ccb = ccb;
+	request->flags |= ATA_R_DATA_IN_CCB;
 
 	ch->running = request;
 	ch->state = ATA_ACTIVE;

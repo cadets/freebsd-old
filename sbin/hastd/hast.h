@@ -27,7 +27,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sbin/hastd/hast.h 235789 2012-05-22 16:33:10Z bapt $
+ * $FreeBSD: head/sbin/hastd/hast.h 246922 2013-02-17 21:12:34Z pjd $
  */
 
 #ifndef	_HAST_H_
@@ -53,8 +53,9 @@
  * Version history:
  * 0 - initial version
  * 1 - HIO_KEEPALIVE added
+ * 2 - "memsync" and "received" attributes added for memsync mode
  */
-#define	HAST_PROTO_VERSION	1
+#define	HAST_PROTO_VERSION	2
 
 #define	EHAST_OK		0
 #define	EHAST_NOENTRY		1
@@ -142,8 +143,10 @@ struct hastd_config {
 struct hast_resource {
 	/* Resource name. */
 	char	hr_name[NAME_MAX];
-	/* Replication mode (HAST_REPLICATION_*). */
+	/* Negotiated replication mode (HAST_REPLICATION_*). */
 	int	hr_replication;
+	/* Configured replication mode (HAST_REPLICATION_*). */
+	int	hr_original_replication;
 	/* Provider name that will appear in /dev/hast/. */
 	char	hr_provname[NAME_MAX];
 	/* Synchronization extent size. */
@@ -156,6 +159,8 @@ struct hast_resource {
 	int	hr_compression;
 	/* Checksum algorithm. */
 	int	hr_checksum;
+	/* Protocol version. */
+	int	hr_version;
 
 	/* Path to local component. */
 	char	hr_localpath[PATH_MAX];

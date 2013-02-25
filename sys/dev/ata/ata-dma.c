@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/ata/ata-dma.c 246713 2013-02-12 16:57:20Z kib $");
+__FBSDID("$FreeBSD: head/sys/dev/ata/ata-dma.c 247165 2013-02-22 21:43:21Z mav $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -305,7 +305,7 @@ ata_dmaload(struct ata_request *request, void *addr, int *entries)
 	dspa.dmatab = request->dma->sg;
 
 #ifdef ATA_CAM
-    if (request->ccb)
+    if (request->flags & ATA_R_DATA_IN_CCB)
         error = bus_dmamap_load_ccb(request->dma->data_tag,
 				request->dma->data_map, request->ccb,
 				ch->dma.setprd, &dspa, BUS_DMA_NOWAIT);

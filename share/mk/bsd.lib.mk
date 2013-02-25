@@ -1,5 +1,5 @@
 #	from: @(#)bsd.lib.mk	5.26 (Berkeley) 5/2/91
-# $FreeBSD: head/share/mk/bsd.lib.mk 245885 2013-01-24 15:55:24Z brooks $
+# $FreeBSD: head/share/mk/bsd.lib.mk 247054 2013-02-20 20:42:56Z emaste $
 #
 
 .include <bsd.init.mk>
@@ -116,12 +116,20 @@ PO_FLAG=-pg
 
 all: objwarn
 
+.if defined(SHLIB_NAME)
+.if defined(DEBUG_FLAGS)
+SHLIB_NAME_FULL=${SHLIB_NAME}.debug
+.else
+SHLIB_NAME_FULL=${SHLIB_NAME}
+.endif
+.endif
+
 .include <bsd.symver.mk>
 
 # Allow libraries to specify their own version map or have it
 # automatically generated (see bsd.symver.mk above).
 .if ${MK_SYMVER} == "yes" && !empty(VERSION_MAP)
-${SHLIB_NAME}:	${VERSION_MAP}
+${SHLIB_NAME_FULL}:	${VERSION_MAP}
 LDFLAGS+=	-Wl,--version-script=${VERSION_MAP}
 .endif
 
@@ -190,12 +198,6 @@ SOBJS+=		${OBJS:.o=.So}
 
 .if defined(SHLIB_NAME)
 _LIBS+=		${SHLIB_NAME}
-
-.if defined(DEBUG_FLAGS)
-SHLIB_NAME_FULL=${SHLIB_NAME}.debug
-.else
-SHLIB_NAME_FULL=${SHLIB_NAME}
-.endif
 
 SOLINKOPTS=	-shared -Wl,-x
 .if !defined(ALLOW_SHARED_TEXTREL)

@@ -33,7 +33,7 @@ static char sccsid[] = "@(#)aux.c	8.1 (Berkeley) 6/6/93";
 #endif
 #endif /* not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.bin/mail/util.c 239991 2012-09-01 14:45:15Z ed $");
+__FBSDID("$FreeBSD: head/usr.bin/mail/util.c 246860 2013-02-15 23:59:57Z dim $");
 
 #include <sys/time.h>
 
@@ -236,8 +236,8 @@ istrncpy(char *dest, const char *src, size_t dsize)
 {
 
 	strlcpy(dest, src, dsize);
-	while (*dest)
-		*dest++ = tolower((unsigned char)*dest);
+	for (; *dest; dest++)
+		*dest = tolower((unsigned char)*dest);
 }
 
 /*

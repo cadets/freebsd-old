@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/usr.sbin/bhyve/mem.h 243651 2012-11-28 13:34:44Z neel $
+ * $FreeBSD: head/usr.sbin/bhyve/mem.h 247144 2013-02-22 00:46:32Z grehan $
  */
 
 #ifndef _MEM_H_
@@ -53,5 +53,6 @@ void	init_mem(void);
 int     emulate_mem(struct vmctx *, int vcpu, uint64_t paddr, struct vie *vie);
 		    
 int	register_mem(struct mem_range *memp);
+int	register_mem_fallback(struct mem_range *memp);
 
 #endif	/* _MEM_H_ */

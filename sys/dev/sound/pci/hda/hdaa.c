@@ -45,7 +45,7 @@
 
 #include "mixer_if.h"
 
-SND_DECLARE_FILE("$FreeBSD: head/sys/dev/sound/pci/hda/hdaa.c 243535 2012-11-26 02:04:11Z mav $");
+SND_DECLARE_FILE("$FreeBSD: head/sys/dev/sound/pci/hda/hdaa.c 246983 2013-02-19 10:25:51Z uqs $");
 
 #define hdaa_lock(devinfo)	snd_mtxlock((devinfo)->lock)
 #define hdaa_unlock(devinfo)	snd_mtxunlock((devinfo)->lock)
@@ -557,7 +557,7 @@ hdaa_presence_handler(struct hdaa_widget *w)
 	HDA_BOOTVERBOSE(
 		if (connected || old != 2) {
 			device_printf(devinfo->dev,
-			    "Pin sense: nid=%d sence=0x%08x (%sconnected)\n",
+			    "Pin sense: nid=%d sense=0x%08x (%sconnected)\n",
 			    w->nid, res, !connected ? "dis" : "");
 		}
 	);
@@ -706,7 +706,7 @@ hdaa_eld_handler(struct hdaa_widget *w)
 	}
 	HDA_BOOTVERBOSE(
 		device_printf(devinfo->dev,
-		    "Pin sense: nid=%d sence=0x%08x "
+		    "Pin sense: nid=%d sense=0x%08x "
 		    "(%sconnected, ELD %svalid)\n",
 		    w->nid, res,
 		    (res & HDA_CMD_GET_PIN_SENSE_PRESENCE_DETECT) ? "" : "dis",

@@ -23,7 +23,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/dev/ata/ata-all.h 246257 2013-02-02 21:57:06Z marius $
+ * $FreeBSD: head/sys/dev/ata/ata-all.h 247165 2013-02-22 21:43:21Z mav $
  */
 
 #include "opt_ata.h"
@@ -398,6 +398,7 @@ struct ata_request {
 #define         ATA_R_THREAD            0x00000800
 #define         ATA_R_DIRECT            0x00001000
 #define         ATA_R_NEEDRESULT        0x00002000
+#define         ATA_R_DATA_IN_CCB       0x00004000
 
 #define         ATA_R_ATAPI16           0x00010000
 #define         ATA_R_ATAPI_INTR        0x00020000

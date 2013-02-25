@@ -36,7 +36,7 @@ static char sccsid[] = "@(#)eval.c	8.9 (Berkeley) 6/8/95";
 #endif
 #endif /* not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/bin/sh/eval.c 246288 2013-02-03 15:54:57Z jilles $");
+__FBSDID("$FreeBSD: head/bin/sh/eval.c 247206 2013-02-23 22:50:57Z jilles $");
 
 #include <paths.h>
 #include <signal.h>
@@ -174,6 +174,7 @@ evalstring(char *s, int flags)
 			any = 1;
 		}
 		popstackmark(&smark);
+		setstackmark(&smark);
 	}
 	popfile();
 	popstackmark(&smark);
@@ -296,10 +297,11 @@ evaltree(union node *n, int flags)
 		}
 		n = next;
 		popstackmark(&smark);
+		setstackmark(&smark);
 	} while (n != NULL);
 out:
 	popstackmark(&smark);
-	if (pendingsigs)
+	if (pendingsig)
 		dotrap();
 	if (eflag && exitstatus != 0 && do_etest)
 		exitshell(exitstatus);

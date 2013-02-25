@@ -33,7 +33,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/usr.sbin/extattr/rmextattr.c 208004 2010-05-12 21:25:05Z zml $
+ * $FreeBSD: head/usr.sbin/extattr/rmextattr.c 247164 2013-02-22 20:49:50Z pjd $
  */
 
 #include <sys/types.h>
@@ -237,7 +237,8 @@ main(int argc, char *argv[])
 			    printf("%s%*.*s", i ? "\t" : "",
 				ch, ch, buf + i + 1);
 			}
-			printf("\n");
+			if (!flag_quiet || error > 0)
+				printf("\n");
 			continue;
 		case EAGET:
 			if (flag_nofollow)

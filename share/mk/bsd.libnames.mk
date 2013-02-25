@@ -1,4 +1,4 @@
-# $FreeBSD: head/share/mk/bsd.libnames.mk 246827 2013-02-15 13:44:18Z des $
+# $FreeBSD: head/share/mk/bsd.libnames.mk 246852 2013-02-15 21:31:01Z des $
 
 # The include file <bsd.libnames.mk> define library names.
 # Other include files (e.g. bsd.prog.mk, bsd.lib.mk) include this
@@ -86,7 +86,7 @@ LIBKRB5?=	${DESTDIR}${LIBDIR}/libkrb5.a
 LIBKVM?=	${DESTDIR}${LIBDIR}/libkvm.a
 LIBL?=		${DESTDIR}${LIBDIR}/libl.a
 .if ${MK_LDNS} != "no"
-LIBLDNS?=	${DESTDIR}${LIBDIR}/lib_ldns.a
+LIBLDNS?=	${DESTDIR}${LIBDIR}/libldns.a
 .endif
 LIBLN?=		"don't use LIBLN, use LIBL"
 .if ${MK_BIND} != "no"

@@ -28,7 +28,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/gnu/usr.bin/gdb/kgdb/trgt_mips.c 214962 2010-11-07 23:23:48Z gonzo $");
+__FBSDID("$FreeBSD: head/gnu/usr.bin/gdb/kgdb/trgt_mips.c 246893 2013-02-17 02:15:19Z marcel $");
 
 #include <sys/types.h>
 #include <machine/asm.h>
@@ -51,6 +51,12 @@ __FBSDID("$FreeBSD: head/gnu/usr.bin/gdb/kgdb/trgt_mips.c 214962 2010-11-07 23:2
 #endif
 
 #include "kgdb.h"
+
+CORE_ADDR
+kgdb_trgt_core_pcb(u_int cpuid)
+{
+	return (kgdb_trgt_stop_pcb(cpuid, sizeof(struct pcb)));
+}
 
 void
 kgdb_trgt_fetch_registers(int regno __unused)

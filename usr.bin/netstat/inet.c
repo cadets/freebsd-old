@@ -34,7 +34,7 @@ static char sccsid[] = "@(#)inet.c	8.5 (Berkeley) 5/24/95";
 #endif
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.bin/netstat/inet.c 245806 2013-01-22 18:07:59Z glebius $");
+__FBSDID("$FreeBSD: head/usr.bin/netstat/inet.c 246988 2013-02-19 13:17:16Z charnier $");
 
 #include <sys/param.h>
 #include <sys/queue.h>
@@ -89,7 +89,7 @@ static int udp_done, tcp_done, sdp_done;
 #endif /* INET6 */
 
 static int
-pcblist_sysctl(int proto, const char *name, char **bufp, int istcp)
+pcblist_sysctl(int proto, const char *name, char **bufp, int istcp __unused)
 {
 	const char *mibvar;
 	char *buf;

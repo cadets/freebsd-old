@@ -27,7 +27,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)protosw.h	8.1 (Berkeley) 6/2/93
- * $FreeBSD: head/sys/sys/protosw.h 243965 2012-12-07 02:22:48Z kevlo $
+ * $FreeBSD: head/sys/sys/protosw.h 246954 2013-02-18 23:58:05Z pjd $
  */
 
 #ifndef _SYS_PROTOSW_H_
@@ -203,15 +203,15 @@ struct pr_usrreqs {
 	int	(*pru_peeraddr)(struct socket *so, struct sockaddr **nam);
 	int	(*pru_rcvd)(struct socket *so, int flags);
 	int	(*pru_rcvoob)(struct socket *so, struct mbuf *m, int flags);
-	int	(*pru_send)(struct socket *so, int flags, struct mbuf *m, 
+	int	(*pru_send)(struct socket *so, int flags, struct mbuf *m,
 		    struct sockaddr *addr, struct mbuf *control,
 		    struct thread *td);
 #define	PRUS_OOB	0x1
 #define	PRUS_EOF	0x2
 #define	PRUS_MORETOCOME	0x4
 	int	(*pru_sense)(struct socket *so, struct stat *sb);
-        int	(*pru_shutdown)(struct socket *so);
-	int	(*pru_flush)(struct socket *so, int direction);  
+	int	(*pru_shutdown)(struct socket *so);
+	int	(*pru_flush)(struct socket *so, int direction);
 	int	(*pru_sockaddr)(struct socket *so, struct sockaddr **nam);
 	int	(*pru_sosend)(struct socket *so, struct sockaddr *addr,
 		    struct uio *uio, struct mbuf *top, struct mbuf *control,
@@ -266,7 +266,7 @@ int	pru_sopoll_notsupp(struct socket *so, int events, struct ucred *cred,
  */
 #define	PRC_IFDOWN		0	/* interface transition */
 #define	PRC_ROUTEDEAD		1	/* select new route if possible ??? */
-#define	PRC_IFUP		2 	/* interface has come back up */
+#define	PRC_IFUP		2	/* interface has come back up */
 #define	PRC_QUENCH2		3	/* DEC congestion bit says slow down */
 #define	PRC_QUENCH		4	/* some one said to slow down */
 #define	PRC_MSGSIZE		5	/* message size forced drop */

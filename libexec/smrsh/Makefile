@@ -1,5 +1,5 @@
 #	@(#)Makefile	8.1 (Berkeley) 7/2/95
-# $FreeBSD: head/libexec/smrsh/Makefile 232263 2012-02-28 18:30:18Z dim $
+# $FreeBSD: head/libexec/smrsh/Makefile 246880 2013-02-16 20:17:31Z dim $
 
 SENDMAIL_DIR=${.CURDIR}/../../contrib/sendmail
 .PATH:	${SENDMAIL_DIR}/smrsh
@@ -16,11 +16,6 @@ DPADD=	${LIBSM}
 LDADD=	${LIBSM}
 
 WARNS?=	2
-
-# Unfortunately, clang gives warnings about sendmail code that cannot
-# be turned off yet.  Since this is contrib code, and we don't really
-# care about the warnings, just make them non-fatal for now.
-NO_WERROR.clang=
 
 SRCS+=	sm_os.h
 CLEANFILES+=sm_os.h

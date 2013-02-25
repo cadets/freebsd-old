@@ -36,7 +36,7 @@ static char sccsid[] = "@(#)jobs.c	8.5 (Berkeley) 5/4/95";
 #endif
 #endif /* not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/bin/sh/jobs.c 246495 2013-02-07 19:00:54Z delphij $");
+__FBSDID("$FreeBSD: head/bin/sh/jobs.c 247206 2013-02-23 22:50:57Z jilles $");
 
 #include <sys/ioctl.h>
 #include <sys/param.h>
@@ -521,7 +521,7 @@ waitcmd(int argc, char **argv)
 	} while (dowait(DOWAIT_BLOCK | DOWAIT_SIG, (struct job *)NULL) != -1);
 	in_waitcmd--;
 
-	return 0;
+	return pendingsig + 128;
 }
 
 

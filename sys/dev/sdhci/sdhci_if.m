@@ -50,7 +50,7 @@
 # or the SD Card Association to disclose or distribute any technical
 # information, know-how or other confidential information to any third party.
 #
-# $FreeBSD: head/sys/dev/sdhci/sdhci_if.m 241600 2012-10-16 01:10:43Z gonzo $
+# $FreeBSD: head/sys/dev/sdhci/sdhci_if.m 246886 2013-02-16 23:12:06Z gonzo $
 #
 
 #
@@ -58,7 +58,18 @@
 # that mmc/sd card drivers call to make requests.
 #
 
+#include <sys/types.h>
+#include <sys/systm.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
+#include <sys/taskqueue.h>
+
 #include <machine/bus.h>
+
+#include <dev/mmc/bridge.h>
+#include <dev/mmc/mmcreg.h>
+#include <dev/sdhci/sdhci.h>
+
 CODE {
 	struct sdhci_slot;
 }
@@ -119,3 +130,8 @@ METHOD void write_multi_4 {
 	uint32_t		*data;
 	bus_size_t		count;
 }
+
+METHOD uint32_t min_freq {
+	device_t		brdev;
+	struct sdhci_slot	*slot;
+} DEFAULT sdhci_generic_min_freq;

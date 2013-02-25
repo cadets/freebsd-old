@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/cam/ata/ata_pmp.c 241404 2012-10-10 18:10:11Z mav $");
+__FBSDID("$FreeBSD: head/sys/cam/ata/ata_pmp.c 247161 2013-02-22 19:53:12Z mav $");
 
 #include <sys/param.h>
 
@@ -595,7 +595,9 @@ pmpdone(struct cam_periph *periph, union ccb *done_ccb)
 			 * causes timeouts if external SEP is not connected
 			 * to PMP over I2C.
 			 */
-			if (softc->pm_pid == 0x37261095 && softc->pm_ports == 6)
+			if ((softc->pm_pid == 0x37261095 ||
+			     softc->pm_pid == 0x38261095) &&
+			    softc->pm_ports == 6)
 				softc->pm_ports = 5;
 
 			/*

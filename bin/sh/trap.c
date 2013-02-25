@@ -36,7 +36,7 @@ static char sccsid[] = "@(#)trap.c	8.5 (Berkeley) 6/5/95";
 #endif
 #endif /* not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/bin/sh/trap.c 238888 2012-07-29 18:04:38Z jilles $");
+__FBSDID("$FreeBSD: head/bin/sh/trap.c 247206 2013-02-23 22:50:57Z jilles $");
 
 #include <signal.h>
 #include <unistd.h>
@@ -73,7 +73,7 @@ __FBSDID("$FreeBSD: head/bin/sh/trap.c 238888 2012-07-29 18:04:38Z jilles $");
 
 
 MKINIT char sigmode[NSIG];	/* current value of signal */
-int pendingsigs;		/* indicates some signal received */
+volatile sig_atomic_t pendingsig;	/* indicates some signal received */
 int in_dotrap;			/* do we execute in a trap handler? */
 static char *volatile trap[NSIG];	/* trap handler commands */
 static volatile sig_atomic_t gotsig[NSIG];
@@ -388,22 +388,25 @@ onsig(int signo)
 		return;
 	}
 
-	if (signo != SIGCHLD || !ignore_sigchld)
-		gotsig[signo] = 1;
-	pendingsigs++;
-
 	/* If we are currently in a wait builtin, prepare to break it */
-	if ((signo == SIGINT || signo == SIGQUIT) && in_waitcmd != 0)
+	if ((signo == SIGINT || signo == SIGQUIT) && in_waitcmd != 0) {
 		breakwaitcmd = 1;
-	/*
-	 * If a trap is set, not ignored and not the null command, we need
-	 * to make sure traps are executed even when a child blocks signals.
-	 */
-	if (Tflag &&
-	    trap[signo] != NULL &&
-	    ! (trap[signo][0] == '\0') &&
-	    ! (trap[signo][0] == ':' && trap[signo][1] == '\0'))
-		breakwaitcmd = 1;
+		pendingsig = signo;
+	}
+
+	if (trap[signo] != NULL && trap[signo][0] != '\0' &&
+	    (signo != SIGCHLD || !ignore_sigchld)) {
+		gotsig[signo] = 1;
+		pendingsig = signo;
+
+		/*
+		 * If a trap is set, not ignored and not the null command, we
+		 * need to make sure traps are executed even when a child
+		 * blocks signals.
+		 */
+		if (Tflag && !(trap[signo][0] == ':' && trap[signo][1] == '\0'))
+			breakwaitcmd = 1;
+	}
 
 #ifndef NO_HISTORY
 	if (signo == SIGWINCH)
@@ -424,7 +427,7 @@ dotrap(void)
 
 	in_dotrap++;
 	for (;;) {
-		pendingsigs = 0;
+		pendingsig = 0;
 		for (i = 1; i < NSIG; i++) {
 			if (gotsig[i]) {
 				gotsig[i] = 0;

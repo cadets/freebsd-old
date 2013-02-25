@@ -1,4 +1,4 @@
-# $FreeBSD: head/share/mk/bsd.sys.mk 241298 2012-10-06 20:01:05Z marcel $
+# $FreeBSD: head/share/mk/bsd.sys.mk 246880 2013-02-16 20:17:31Z dim $
 #
 # This file contains common settings used for building FreeBSD
 # sources.
@@ -72,7 +72,7 @@ CWARNFLAGS+=	-Wno-tautological-compare -Wno-unused-value\
 		-Wno-parentheses-equality -Wno-unused-function -Wno-conversion
 .endif # WARNS <= 3
 .if ${WARNS} <= 2
-CWARNFLAGS+=	-Wno-switch -Wno-switch-enum
+CWARNFLAGS+=	-Wno-switch -Wno-switch-enum -Wno-knr-promoted-parameter
 .endif # WARNS <= 2
 .if ${WARNS} <= 1
 CWARNFLAGS+=	-Wno-parentheses

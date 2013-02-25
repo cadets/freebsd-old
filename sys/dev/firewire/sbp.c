@@ -31,7 +31,7 @@
  * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  * 
- * $FreeBSD: head/sys/dev/firewire/sbp.c 246713 2013-02-12 16:57:20Z kib $
+ * $FreeBSD: head/sys/dev/firewire/sbp.c 247109 2013-02-21 17:50:21Z imp $
  *
  */
 
@@ -2488,16 +2488,14 @@ printf("ORB %08x %08x %08x %08x\n", ntohl(ocb->orb[0]), ntohl(ocb->orb[1]), ntoh
 printf("ORB %08x %08x %08x %08x\n", ntohl(ocb->orb[4]), ntohl(ocb->orb[5]), ntohl(ocb->orb[6]), ntohl(ocb->orb[7]));
 */
 		if (ccb->csio.dxfer_len > 0) {
-			int s, error;
+			int error;
 
-			s = splsoftvm();
 			error = bus_dmamap_load_ccb(/*dma tag*/sbp->dmat,
 					/*dma map*/ocb->dmamap,
 					ccb,
 					sbp_execute_ocb,
 					ocb,
 					/*flags*/0);
-			splx(s);
 			if (error)
 				printf("sbp: bus_dmamap_load error %d\n", error);
 		} else

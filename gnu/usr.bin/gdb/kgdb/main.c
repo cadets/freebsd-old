@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/gnu/usr.bin/gdb/kgdb/main.c 245705 2013-01-21 01:46:36Z adrian $");
+__FBSDID("$FreeBSD: head/gnu/usr.bin/gdb/kgdb/main.c 246958 2013-02-19 02:09:18Z adrian $");
 
 #include <sys/param.h>
 #include <sys/stat.h>
@@ -83,7 +83,7 @@ usage(void)
 {
 
 	fprintf(stderr,
-	    "usage: %s [-afqvw] [-d crashdir] [-c core | -n dumpnr | -r device]\n"
+	    "usage: %s [-afqvw] [-b rate] [-d crashdir] [-c core | -n dumpnr | -r device]\n"
 	    "\t[kernel [core]]\n", getprogname());
 	exit(1);
 }
@@ -338,19 +338,18 @@ main(int argc, char *argv[])
 		case 'a':
 			annotation_level++;
 			break;
-		case 'b':
-			{
-				int i;
-				char *p;
+		case 'b': {
+			int i;
+			char *p;
 
-				i = strtol (optarg, &p, 0);
-				if (i == 0 && p == optarg)
+			i = strtol(optarg, &p, 0);
+			if (*p != '\0' || p == optarg)
 				warnx("warning: could not set baud rate to `%s'.\n",
 				    optarg);
-				else
-					baud_rate = i;
-			}
+			else
+				baud_rate = i;
 			break;
+		}
 		case 'c':	/* use given core file. */
 			if (vmcore != NULL) {
 				warnx("option %c: can only be specified once",

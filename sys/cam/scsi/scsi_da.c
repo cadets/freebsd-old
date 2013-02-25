@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/cam/scsi/scsi_da.c 245306 2013-01-11 16:10:11Z mav $");
+__FBSDID("$FreeBSD: head/sys/cam/scsi/scsi_da.c 247154 2013-02-22 17:45:32Z mav $");
 
 #include <sys/param.h>
 
@@ -606,6 +606,10 @@ static struct da_quirk_entry da_quirk_table[] =
 		 */
 		{T_DIRECT, SIP_MEDIA_REMOVABLE, "Sony", "Sony DSC", "*"},
 		/*quirks*/ DA_Q_NO_SYNC_CACHE | DA_Q_NO_PREVENT
+	},
+	{
+		{T_DIRECT, SIP_MEDIA_REMOVABLE, "Kingston", "DataTraveler G3",
+		 "1.00"}, /*quirks*/ DA_Q_NO_PREVENT
 	},
 	/* ATA/SATA devices over SAS/USB/... */
 	{
