@@ -262,6 +262,7 @@ __DEFAULT_YES_OPTIONS = \
     CAPSICUM \
     CDDL \
     CPP \
+    CROSS_COMPILER \
     CRYPT \
     CTM \
     CVS \

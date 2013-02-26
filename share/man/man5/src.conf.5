@@ -343,6 +343,10 @@ amd64/amd64, i386/i386 and pc98/i386.
 .\" from FreeBSD: head/tools/build/options/WITHOUT_CPP 156932 2006-03-21 07:50:50Z ru
 Set to not build
 .Xr cpp 1 .
+.It Va WITHOUT_CROSS_COMPILER
+.\" $FreeBSD$
+Set to not build a cross compiler in the cross-tools stage of
+buildworld, buildkernel, etc.
 .It Va WITHOUT_CRYPT
 .\" from FreeBSD: head/tools/build/options/WITHOUT_CRYPT 156932 2006-03-21 07:50:50Z ru
 Set to not build any crypto code.

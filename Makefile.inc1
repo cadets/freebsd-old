@@ -1307,6 +1307,9 @@ _kgzip=		usr.sbin/kgzip
 _binutils=	gnu/usr.bin/binutils
 .endif
 
+# If an full path to an external cross compiler is given, don't build
+# a cross compiler.
+.if ${XCC:M/*} == "" && ${MK_CROSS_COMPILER} != "no"
 .if ${MK_CLANG} != "no" && (${MK_CLANG_IS_CC} != "no" || ${CC:T:Mclang} == "clang")
 _clang=		usr.bin/clang
 _clang_libs=	lib/clang
@@ -1314,6 +1317,7 @@ _clang_libs=	lib/clang
 
 .if ${MK_GCC} != "no" && (${MK_CLANG_IS_CC} == "no" || ${TARGET} == "pc98")
 _cc=		gnu/usr.bin/cc
+.endif
 .endif
 
 cross-tools:
