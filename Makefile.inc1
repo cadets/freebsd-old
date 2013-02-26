@@ -293,7 +293,7 @@ WMAKE_COMPILER_TYPE=	gcc
 WMAKE_COMPILER_TYPE=	clang
 .endif
 .if ${XCC:M/*}
-XFLAGS=		--sysroot=${WORLDTMP}
+XFLAGS=		--sysroot=${WORLDTMP} -B${WORLDTMP}/usr/bin
 .if ${TARGET_ARCH} != ${MACHINE_ARCH} && ${WMAKE_COMPILER_TYPE} == "clang"
 .if (${TARGET_ARCH} == "arm" || ${TARGET_ARCH} == "armv6") && \
 ${MK_ARM_EABI} != "no"
