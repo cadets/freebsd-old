@@ -294,6 +294,16 @@ WMAKE_COMPILER_TYPE=	clang
 .endif
 .if ${XCC:M/*}
 XFLAGS=		--sysroot=${WORLDTMP}
+.if ${TARGET_ARCH} != ${MACHINE_ARCH} && ${WMAKE_COMPILER_TYPE} == "clang"
+.if (${TARGET_ARCH} == "arm" || ${TARGET_ARCH} == "armv6") && \
+${MK_ARM_EABI} != "no"
+TARGET_ABI=	gnueabi
+.else
+TARGET_ABI=	unknown
+.endif
+TARGET_TRIPLE?=	${TARGET_ARCH:C/amd64/x86_64/}-${TARGET_ABI}-freebsd10.0
+XFLAGS+=	-target ${TARGET_TRIPLE}
+.endif
 .endif
 WMAKEENV+=	CC="${XCC} ${XFLAGS}" CXX="${XCXX} ${XFLAGS}" \
 		CPP="${XCPP} ${XFLAGS}" \
