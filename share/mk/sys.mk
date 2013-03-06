@@ -32,7 +32,7 @@ MACHINE_CPUARCH=${MACHINE_ARCH:C/mips(n32|64)?(el)?/mips/:C/arm(v6)?(eb)?/arm/:C
 .if defined(%POSIX)
 .SUFFIXES:	.o .c .y .l .a .sh .f
 .else
-.SUFFIXES:	.out .a .obc .ln .o .c .cc .cpp .cxx .C .m .F .f .e .r .y .l .S .asm .s .cl .p .h .sh
+.SUFFIXES:	.out .a .instrll .instro .oll .obc .ln .o .c .cc .cpp .cxx .C .m .F .f .e .r .tesla .y .l .S .asm .s .cl .p .h .sh
 .endif
 
 AR		?=	ar
@@ -150,6 +150,8 @@ RFLAGS		?=
 
 SHELL		?=	sh
 
+TESLA		?=	tesla
+
 YACC		?=	yacc
 .if defined(%POSIX)
 YFLAGS		?=
@@ -228,6 +230,9 @@ YFLAGS		?=	-d
 	cp -fp ${.IMPSRC} ${.TARGET}
 	chmod a+x ${.TARGET}
 
+.c.oll:
+	${CC} ${CFLAGS} -emit-llvm -S ${.IMPSRC} -o ${.TARGET}
+
 .c.obc:
 	${CC} ${CFLAGS} -cc1 -emit-llvm -c ${.IMPSRC} -o ${.TARGET}
 
@@ -246,6 +251,9 @@ YFLAGS		?=	-d
 .c.o:
 	${CC} ${CFLAGS} -c ${.IMPSRC}
 	${CTFCONVERT_CMD}
+
+.c.tesla:
+	${TESLA} analyse ${.IMPSRC} -o ${.TARGET} -- ${CFLAGS} -D TESLA
 
 .cc .cpp .cxx .C:
 	${CXX} ${CXXFLAGS} ${LDFLAGS} ${.IMPSRC} ${LDLIBS} -o ${.TARGET}
@@ -270,6 +278,13 @@ YFLAGS		?=	-d
 
 .e.o .r.o .F.o .f.o:
 	${FC} ${RFLAGS} ${EFLAGS} ${FFLAGS} -c ${.IMPSRC}
+
+.instrll.instro: tesla.manifest
+	${LLC} -filetype=obj ${.IMPSRC} -o ${.TARGET}
+
+.oll.instrll:
+	${TESLA} instrument -S -verify-each -tesla-manifest tesla.manifest \
+		${.IMPSRC} -o ${.TARGET}
 
 .S.o:
 	${CC} ${CFLAGS} ${ACFLAGS} -c ${.IMPSRC}
