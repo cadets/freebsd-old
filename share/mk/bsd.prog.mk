@@ -92,6 +92,20 @@ ${PROG}: ${OBJS}
 
 .endif # !defined(SRCS)
 
+TESLA_FILES=	${SRCS:.c=.tesla}
+OLLS=		${SRCS:.c=.oll}
+INSTRLLS=	${SRCS:.c=.instrll}
+INSTROBJS=	${SRCS:.c=.instro}
+CLEANFILES+=	${TESLA_FILES} tesla.manifest ${OLLS} ${INSTRLLS} ${INSTROBJS}
+
+tesla.manifest: ${TESLA_FILES}
+	cat ${TESLA_FILES} > ${.TARGET}
+
+tesla: ${PROG}.instrumented
+
+${PROG}.instrumented: ${INSTROBJS}
+	${CC} ${CFLAGS} ${LDFLAGS} -o ${.TARGET} ${INSTROBJS} ${LDADD} -ltesla
+
 .if defined(LLVM_IR) && !defined(NO_LLVM_IR)
 LOBJS:=		${SRCS:M*.[Cc]:R:S/$/.obc/:N.obc} \
 		${SRCS:M*.cc:R:S/$/.obc/:N.obc} \
