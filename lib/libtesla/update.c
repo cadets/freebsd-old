@@ -121,7 +121,7 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 			// instructed to fork), just update the state.
 			if (!t->fork
 			    && SUBSET(key->tk_mask, k->tk_mask)) {
-				VERBOSE_PRINT("update %ld: %tx->%tx\n",
+				VERBOSE_PRINT("update %td: %tx->%tx\n",
 				              inst - start, t->from, t->to);
 
 				inst->ti_state = t->to;
@@ -133,7 +133,7 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 			// a new (more specific) automaton instance.
 			struct tesla_instance *copy;
 			CHECK(tesla_clone, class, inst, &copy);
-			VERBOSE_PRINT("clone  %ld:%tx -> %ld:%tx\n",
+			VERBOSE_PRINT("clone  %td:%tx -> %td:%tx\n",
 			              inst - start, inst->ti_state,
 			              copy - start, t->to);
 
@@ -157,7 +157,7 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 		CHECK(tesla_instance_new, class, key, t->to, &inst);
 		assert(tesla_instance_active(inst));
 
-		VERBOSE_PRINT("new    %ld: %tx\n",
+		VERBOSE_PRINT("new    %td: %tx\n",
 		              inst - start, inst->ti_state);
 	}
 

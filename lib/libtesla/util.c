@@ -32,8 +32,6 @@
 
 #include "tesla_internal.h"
 
-#include <libtesla.h>
-
 
 void
 tesla_die(char *message)

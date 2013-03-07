@@ -99,7 +99,7 @@ struct __tesla_automaton_description*	__tesla_automaton_done();
 
 /** Declare an automaton that describes behaviour of this struct. */
 #define	__tesla_struct_automaton(fn_name) \
-	void *__tesla_struct_annotation_##fn_name;
+	void *__tesla_automaton_struct_uses_##fn_name;
 
 /**
  * Define an automaton to describe a struct's behaviour.
