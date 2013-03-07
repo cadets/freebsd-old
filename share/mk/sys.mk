@@ -253,7 +253,7 @@ YFLAGS		?=	-d
 	${CTFCONVERT_CMD}
 
 .c.tesla:
-	${TESLA} analyse ${.IMPSRC} -o ${.TARGET} -- ${CFLAGS} -D TESLA
+	${TESLA} analyse ${.IMPSRC} -o ${.TARGET} -- ${CFLAGS} ${XFLAGS} -D TESLA
 
 .cc .cpp .cxx .C:
 	${CXX} ${CXXFLAGS} ${LDFLAGS} ${.IMPSRC} ${LDLIBS} -o ${.TARGET}
