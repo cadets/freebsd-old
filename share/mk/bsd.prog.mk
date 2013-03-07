@@ -96,7 +96,8 @@ TESLA_FILES=	${SRCS:.c=.tesla}
 OLLS=		${SRCS:.c=.oll}
 INSTRLLS=	${SRCS:.c=.instrll}
 INSTROBJS=	${SRCS:.c=.instro}
-CLEANFILES+=	${TESLA_FILES} tesla.manifest ${OLLS} ${INSTRLLS} ${INSTROBJS}
+CLEANFILES+=	${TESLA_FILES} tesla.manifest ${OLLS} ${INSTRLLS} ${INSTROBJS} \
+		${PROG}.instrumented
 
 tesla.manifest: ${TESLA_FILES}
 	cat ${TESLA_FILES} > ${.TARGET}
