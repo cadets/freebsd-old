@@ -1441,7 +1441,7 @@ _prebuild_libs=	${_kerberos5_lib_libasn1} \
 		${_lib_libgssapi} ${_lib_libipx} \
 		lib/libkiconv lib/libkvm lib/liblzma lib/libmd \
 		lib/ncurses/ncurses lib/ncurses/ncursesw \
-		lib/libopie lib/libpam ${_lib_libthr} \
+		lib/libopie lib/libpam lib/libtesla ${_lib_libthr} \
 		lib/libradius lib/libsbuf lib/libtacplus \
 		${_cddl_lib_libumem} ${_cddl_lib_libnvpair} \
 		lib/libutil ${_lib_libypclnt} lib/libz lib/msun \

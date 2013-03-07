@@ -108,6 +108,7 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	libstdbuf \
 	libstdthreads \
 	${_libtelnet} \
+	libtesla \
 	${_libthr} \
 	libthread_db \
 	libufs \
