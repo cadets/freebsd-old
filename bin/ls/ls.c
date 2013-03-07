@@ -573,6 +573,7 @@ display(const FTSENT *p, FTSENT *list, int options)
 {
 #ifdef	TESLA
 	TESLA_GLOBAL(since(called(main), called(traverse)));
+	TESLA_GLOBAL(before(returned(main), returned(display)));
 #endif
 
 	struct stat *sp;
