@@ -32,7 +32,7 @@ MACHINE_CPUARCH=${MACHINE_ARCH:C/mips(n32|64)?(el)?/mips/:C/arm(v6)?(eb)?/arm/:C
 .if defined(%POSIX)
 .SUFFIXES:	.o .c .y .l .a .sh .f
 .else
-.SUFFIXES:	.out .a .instrll .instro .oll .obc .ln .o .c .cc .cpp .cxx .C .m .F .f .e .r .tesla .y .l .S .asm .s .cl .p .h .sh
+.SUFFIXES:	.out .a .dot .instrll .instro .oll .obc .ln .manifest .o .c .cc .cpp .cxx .C .m .F .f .e .r .tesla .y .l .S .asm .s .cl .p .h .sh
 .endif
 
 AR		?=	ar
@@ -281,6 +281,9 @@ YFLAGS		?=	-d
 
 .instrll.instro: tesla.manifest
 	${LLC} -filetype=obj ${.IMPSRC} -o ${.TARGET}
+
+.manifest.dot:
+	${TESLA} graph ${.IMPSRC} -o ${.TARGET}
 
 .oll.instrll:
 	${TESLA} instrument -S -verify-each -tesla-manifest tesla.manifest \
