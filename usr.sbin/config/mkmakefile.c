@@ -69,7 +69,7 @@ static char *tail(char *);
 static void do_clean(FILE *);
 static void do_rules(FILE *);
 static void do_xxfiles(char *, FILE *);
-static void do_objs(FILE *);
+static void do_tesla(FILE *);
 static void do_before_depend(FILE *);
 static int opteq(const char *, const char *);
 static void read_files(void);
@@ -162,7 +162,9 @@ makefile(void)
 		if (eq(line, "%BEFORE_DEPEND\n"))
 			do_before_depend(ofp);
 		else if (eq(line, "%OBJS\n"))
-			do_objs(ofp);
+			;/* Do nothing */
+		else if (eq(line, "%TESLA\n"))
+			do_tesla(ofp);
 		else if (strncmp(line, "%FILES.", 7) == 0)
 			do_xxfiles(line, ofp);
 		else if (eq(line, "%RULES\n"))
@@ -618,32 +620,13 @@ do_before_depend(FILE *fp)
 }
 
 static void
-do_objs(FILE *fp)
+do_tesla(FILE *fp)
 {
-	struct file_list *tp;
-	int lpos, len;
-	char *cp, och, *sp;
 
-	fprintf(fp, "OBJS=");
-	lpos = 6;
-	STAILQ_FOREACH(tp, &ftab, f_next) {
-		if (tp->f_flags & NO_OBJ)
-			continue;
-		sp = tail(tp->f_fn);
-		cp = sp + (len = strlen(sp)) - 1;
-		och = *cp;
-		*cp = 'o';
-		len += strlen(tp->f_objprefix);
-		if (len + lpos > 72) {
-			lpos = 8;
-			fprintf(fp, "\\\n\t");
-		}
-		fprintf(fp, "%s%s ", tp->f_objprefix, sp);
-		lpos += len + 1;
-		*cp = och;
-	}
-	if (lpos != 8)
-		putc('\n', fp);
+	if (!tesla)
+		return;
+
+	fprintf(fp, "DO_TESLA=yes\n");
 }
 
 static void
@@ -682,6 +665,17 @@ do_xxfiles(char *tag, FILE *fp)
 		}
 	if (lpos != 8)
 		putc('\n', fp);
+	/* locore.o is manually included in kern.pre.mk */
+	fprintf(fp, "OBJS+=\t${%sFILES:T:Nlocore.%s:.%s=.o}\n", SUFF, suff,
+	    suff);
+	if (tesla) {
+		if (strcmp(suff, "c") == 0)
+			fprintf(fp, "C_OBJS+=${%sFILES:T:.%s=.o}\n",
+			    SUFF, suff);
+		else
+			fprintf(fp, "NOT_C_OBJS+=${%sFILES:T:.%s=.o}\n",
+			    SUFF, suff);
+	}
 }
 
 static char *
@@ -767,7 +761,6 @@ do_rules(FILE *f)
 			    ftp->f_flags & NOWERROR ? "_NOWERROR" : "");
 			compilewith = cmd;
 		}
-		*cp = och;
 		if (strlen(ftp->f_objprefix))
 			fprintf(f, "\t%s $S/%s\n", compilewith, np);
 		else
@@ -777,6 +770,37 @@ do_rules(FILE *f)
 			fprintf(f, "\t${NORMAL_CTFCONVERT}\n\n");
 		else
 			fprintf(f, "\n");
+
+		if (tesla && och == 'c') {
+			if (ftp->f_depends)
+				fprintf(f, "%s%soll: $S/%s%c %s\n",
+					ftp->f_objprefix, tail(np), np, och,
+					ftp->f_depends);
+			else
+				fprintf(f, "%s%soll: $S/%s%c\n",
+					ftp->f_objprefix, tail(np), np, och);
+			if (strlen(ftp->f_objprefix))
+				fprintf(f,
+				    "\t%s $S/%s -S -emit-llvm -o ${.TARGET}\n",
+				    compilewith, np);
+			else
+				fprintf(f, "\t%s -S -emit-llvm -o ${.TARGET}\n",
+				    compilewith);
+			fprintf(f, "\n");
+
+			if (ftp->f_depends)
+				fprintf(f, "%s%stesla: $S/%s%c %s\n",
+					ftp->f_objprefix, tail(np), np, och,
+					ftp->f_depends);
+			else
+				fprintf(f, "%s%stesla: $S/%s%c\n",
+					ftp->f_objprefix, tail(np), np, och);
+			fprintf(f,
+			    "\t${TESLA} analyse $S/%s%c -o ${.TARGET} -- ${CFLAGS} ${XFLAGS} -DTESLA\n",
+			    np, och);
+			fprintf(f, "\n");
+		}
+		*cp = och;
 	}
 }
 

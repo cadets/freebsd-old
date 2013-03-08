@@ -164,6 +164,7 @@ extern int	do_trace;
 extern int	envmode;
 extern int	hintmode;
 extern int	incignore;
+extern int	tesla;
 
 char	*get_word(FILE *);
 char	*get_quoted_word(FILE *);

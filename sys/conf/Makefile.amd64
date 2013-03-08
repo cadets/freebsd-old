@@ -48,9 +48,11 @@ ASM_CFLAGS+=			${ASM_CFLAGS.${.IMPSRC:T}}
 
 %OBJS
 
+%TESLA
+
 %FILES.c
 
-%FILES.s
+%FILES.S
 
 %FILES.m
 

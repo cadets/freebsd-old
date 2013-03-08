@@ -78,6 +78,7 @@ int	debugging;
 int	profiling;
 int	found_defaults;
 int	incignore;
+int	tesla;
 
 /*
  * Preserve old behaviour in INCLUDE_CONFIG_FILE handling (files are included
@@ -114,7 +115,7 @@ main(int argc, char **argv)
 
 	printmachine = 0;
 	kernfile = NULL;
-	while ((ch = getopt(argc, argv, "Cd:gmpVx:")) != -1)
+	while ((ch = getopt(argc, argv, "Cd:gmptVx:")) != -1)
 		switch (ch) {
 		case 'C':
 			filebased = 1;
@@ -133,6 +134,9 @@ main(int argc, char **argv)
 			break;
 		case 'p':
 			profiling++;
+			break;
+		case 't':
+			tesla++;
 			break;
 		case 'V':
 			printf("%d\n", CONFIGVERS);
