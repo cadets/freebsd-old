@@ -168,7 +168,7 @@ lib${LIB}.bc-opt: lib${LIB}.bc
 .if empty(OPT_PASSES)
 	cp lib${LIB}.bc ${.TARGET}
 .else
-	${OPT} -o ${.TARGET} ${OPT_PASSES} ${.ALLSRC}
+	${OPT} -o ${.TARGET} ${OPT_PASSES} lib${LIB}.bc
 .endif
 
 .endif
