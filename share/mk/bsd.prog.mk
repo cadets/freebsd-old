@@ -124,7 +124,7 @@ ${PROG}.bc-opt: ${PROG}.bc
 .if empty(OPT_PASSES)
 	cp ${PROG}.bc ${.TARGET}
 .else
-	${OPT} -o ${.TARGET} ${OPT_PASSES} ${.IMPSRC}
+	${OPT} -o ${.TARGET} ${OPT_PASSES} ${PROG}.bc
 .endif
 .endif
 .endif
