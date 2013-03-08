@@ -285,9 +285,9 @@ YFLAGS		?=	-d
 .manifest.dot:
 	${TESLA} graph ${.IMPSRC} -o ${.TARGET}
 
-.oll.instrll:
+.oll.instrll: tesla.manifest
 	${TESLA} instrument -S -verify-each -tesla-manifest tesla.manifest \
-		${.IMPSRC} -o ${.TARGET}
+	    ${.IMPSRC} -o ${.TARGET}
 
 .S.o:
 	${CC} ${CFLAGS} ${ACFLAGS} -c ${.IMPSRC}
