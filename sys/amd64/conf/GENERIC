@@ -102,17 +102,17 @@ device		fdc
 # ATA controllers
 device		ahci		# AHCI-compatible SATA controllers
 device		ata		# Legacy ATA/SATA controllers
-options 	ATA_CAM		# Handle legacy controllers with CAM
+#options 	ATA_CAM		# Handle legacy controllers with CAM
 options 	ATA_STATIC_ID	# Static device numbering
 device		mvs		# Marvell 88SX50XX/88SX60XX/88SX70XX/SoC SATA
 device		siis		# SiliconImage SiI3124/SiI3132/SiI3531 SATA
 
 # SCSI Controllers
-device		ahc		# AHA2940 and onboard AIC7xxx devices
-options 	AHC_REG_PRETTY_PRINT	# Print register bitfields in debug
+#device		ahc		# AHA2940 and onboard AIC7xxx devices
+#options 	AHC_REG_PRETTY_PRINT	# Print register bitfields in debug
 					# output.  Adds ~128k to driver.
-device		ahd		# AHA39320/29320 and onboard AIC79xx devices
-options 	AHD_REG_PRETTY_PRINT	# Print register bitfields in debug
+#device		ahd		# AHA39320/29320 and onboard AIC79xx devices
+#options 	AHD_REG_PRETTY_PRINT	# Print register bitfields in debug
 					# output.  Adds ~215k to driver.
 device		esp		# AMD Am53C974 (Tekram DC-390(T))
 #device		hptiop		# Highpoint RocketRaid 3xxx series
@@ -126,7 +126,7 @@ device		trm		# Tekram DC395U/UW/F DC315U adapters
 
 device		adv		# Advansys SCSI adapters
 device		adw		# Advansys wide SCSI adapters
-device		aic		# Adaptec 15[012]x SCSI adapters, AIC-6[23]60.
+#device		aic		# Adaptec 15[012]x SCSI adapters, AIC-6[23]60.
 device		bt		# Buslogic/Mylex MultiMaster SCSI adapters
 device		isci		# Intel C600 SAS controller
 
@@ -138,7 +138,7 @@ device		sa		# Sequential Access (tape etc)
 device		cd		# CD
 device		pass		# Passthrough device (direct ATA/SCSI access)
 device		ses		# Enclosure Services (SES and SAF-TE)
-device		ctl		# CAM Target Layer
+#device		ctl		# CAM Target Layer
 
 # RAID controllers interfaced to the SCSI subsystem
 device		amr		# AMI MegaRAID
@@ -158,7 +158,7 @@ device		tws		# LSI 3ware 9750 SATA+SAS 6Gb/s RAID controller
 
 # RAID controllers
 device		aac		# Adaptec FSA RAID
-device		aacp		# SCSI passthrough for aac (requires CAM)
+#device		aacp		# SCSI passthrough for aac (requires CAM)
 device		ida		# Compaq Smart RAID
 device		mfi		# LSI MegaRAID SAS
 device		mlx		# Mylex DAC960 family
@@ -204,7 +204,7 @@ device		puc		# Multi I/O cards and multi-channel UARTs
 
 # PCI Ethernet NICs.
 device		bxe		# Broadcom BCM57710/BCM57711/BCM57711E 10Gb Ethernet
-device		de		# DEC/Intel DC21x4x (``Tulip'')
+#device		de		# DEC/Intel DC21x4x (``Tulip'')
 device		em		# Intel PRO/1000 Gigabit Ethernet Family
 device		igb		# Intel PRO/1000 PCIE Server Gigabit Family
 device		ixgbe		# Intel PRO/10GbE PCIE Ethernet Family
@@ -274,10 +274,10 @@ device		an		# Aironet 4500/4800 802.11 wireless NICs.
 device		ath		# Atheros NICs
 device		ath_pci		# Atheros pci/cardbus glue
 device		ath_hal		# pci/cardbus chip support
-options 	AH_SUPPORT_AR5416	# enable AR5416 tx/rx descriptors
-options 	AH_AR5416_INTERRUPT_MITIGATION	# AR5416 interrupt mitigation
-options 	ATH_ENABLE_11N	# Enable 802.11n support for AR5416 and later
-device		ath_rate_sample	# SampleRate tx rate control for ath
+options		AH_SUPPORT_AR5416	# enable AR5416 tx/rx descriptors
+options		AH_AR5416_INTERRUPT_MITIGATION	# AR5416 interrupt mitigation
+options		ATH_ENABLE_11N	# Enable 802.11n support for AR5416 and later
+#device		ath_rate_sample	# SampleRate tx rate control for ath
 #device		bwi		# Broadcom BCM430x/BCM431x wireless NICs.
 #device		bwn		# Broadcom BCM43xx wireless NICs.
 device		ipw		# Intel 2100 wireless NICs.
