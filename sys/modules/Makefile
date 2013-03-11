@@ -22,8 +22,6 @@ SUBDIR=	\
 	aha \
 	${_ahb} \
 	ahci \
-	${_aic} \
-	aic7xxx \
 	aio \
 	alc \
 	ale \
@@ -39,8 +37,6 @@ SUBDIR=	\
 	${_asmc} \
 	${_asr} \
 	ata \
-	ath \
-	ath_pci \
 	${_auxio} \
 	${_bce} \
 	bfe \
@@ -84,7 +80,6 @@ SUBDIR=	\
 	dc \
 	dcons \
 	dcons_crom \
-	de \
 	${_dpms} \
 	${_dpt} \
 	${_drm} \
