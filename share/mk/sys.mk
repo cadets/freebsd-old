@@ -280,7 +280,7 @@ YFLAGS		?=	-d
 	${FC} ${RFLAGS} ${EFLAGS} ${FFLAGS} -c ${.IMPSRC}
 
 .instrll.instro: tesla.manifest
-	${LLC} -filetype=obj -code-model=kernel ${.IMPSRC} -o ${.TARGET}
+	${LLC} -filetype=obj ${LLCFLAGS} ${.IMPSRC} -o ${.TARGET}
 
 .manifest.dot:
 	${TESLA} graph ${.IMPSRC} -o ${.TARGET}
