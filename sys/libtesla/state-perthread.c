@@ -64,7 +64,7 @@ tesla_perthread_ctor(__unused void *arg, struct thread *td)
 	error = tesla_store_init(store, TESLA_SCOPE_PERTHREAD,
 	    TESLA_MAX_CLASSES, TESLA_MAX_INSTANCES);
 	tesla_assert(error == TESLA_SUCCESS, ("tesla_store_init failed"));
-	curthread->td_tesla = store;
+	td->td_tesla = store;
 }
 
 static void
@@ -72,8 +72,8 @@ tesla_perthread_dtor(struct thread *td)
 {
 	struct tesla_store *store;
 
-	store = curthread->td_tesla;
-	curthread->td_tesla = NULL;
+	store = td->td_tesla;
+	td->td_tesla = NULL;
 	tesla_store_free(store);
 	tesla_free(store);
 }
