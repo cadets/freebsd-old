@@ -1,5 +1,6 @@
 /*-
  * Copyright (c) 2011 Robert N. M. Watson
+ * Copyright (c) 2012-2013 Jonathan Anderson
  * All rights reserved.
  *
  * This software was developed by SRI International and the University of
@@ -34,9 +35,9 @@
 
 
 void
-tesla_die(char *message)
+tesla_die(const char *event)
 {
-	tesla_panic("tesla_die: '%s'\n", message);
+	tesla_panic("tesla_die: fatal error in event '%s'\n", event);
 }
 
 const char *

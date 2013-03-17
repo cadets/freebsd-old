@@ -1,6 +1,7 @@
 /*-
  * Copyright (c) 2011 Robert N. M. Watson
  * Copyright (c) 2011 Anil Madhavapeddy
+ * Copyright (c) 2012-2013 Jonathan Anderson
  * All rights reserved.
  *
  * This software was developed by SRI International and the University of
@@ -77,6 +78,14 @@ tesla_class_init(struct tesla_class *tclass,
 		assert(0 && "unhandled TESLA context");
 		return (TESLA_ERROR_UNKNOWN);
 	}
+}
+
+
+void
+tesla_class_free(struct tesla_class *class)
+{
+	free(class->ts_table);
+	free(class);
 }
 
 
@@ -202,6 +211,53 @@ tesla_class_reset(struct tesla_class *c)
 }
 
 void
+tesla_match_fail(struct tesla_class *class, const struct tesla_key *key,
+                 const struct tesla_transitions *trans)
+{
+	assert(class !=NULL);
+
+	if (class->ts_handler != NULL) {
+		class->ts_handler(NULL);
+		return;
+	}
+
+	static const char *message =
+		"TESLA failure in automaton '%s':\n%s\n\n"
+		"no instance found to match key '%s' for transition(s) %s";
+
+	// Assume a pretty big key...
+	static const size_t LEN = 160;
+	char key_str[LEN];
+	int err = key_string(key_str, LEN, key);
+	assert(err == TESLA_SUCCESS);
+
+	char *trans_str = transition_matrix(trans);
+
+	switch (class->ts_action) {
+	case TESLA_ACTION_FAILSTOP:
+		tesla_panic(message, class->ts_name, class->ts_description,
+		            key_str, trans_str);
+		break;
+
+#ifdef NOTYET
+	case TESLA_ACTION_DTRACE:
+		dtrace_probe(...);
+		return;
+#endif
+
+	case TESLA_ACTION_PRINTF:
+#if defined(_KERNEL) && defined(KDB)
+		kdb_backtrace();
+#endif
+		printf(message, class->ts_name, class->ts_description,
+		       key_str, trans_str);
+		break;
+	}
+
+	free(trans_str);
+}
+
+void
 tesla_assert_fail(struct tesla_class *tsp, struct tesla_instance *tip,
                   const struct tesla_transitions *trans)
 {
@@ -216,11 +272,11 @@ tesla_assert_fail(struct tesla_class *tsp, struct tesla_instance *tip,
 	switch (tsp->ts_action) {
 	case TESLA_ACTION_FAILSTOP:
 		tesla_panic(
-			"tesla_assert_failed: "
-			"unable to move '%s' from state %d"
-			" according to transition matrix %s",
-			tsp->ts_name, tip->ti_state,
-			transition_matrix(trans));
+			"TESLA failure; in automaton '%s':\n%s\n\n"
+			"required to take a transition in %s "
+			"but currently in state %d",
+			tsp->ts_name, tsp->ts_description,
+			transition_matrix(trans), tip->ti_state);
 		break;		/* A bit gratuitous. */
 #ifdef NOTYET
 	case TESLA_ACTION_DTRACE:
