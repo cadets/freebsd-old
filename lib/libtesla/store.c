@@ -1,7 +1,7 @@
 /** @file tesla_store.c  Implementation of @ref tesla_store. */
 /*-
  * Copyright (c) 2012 Jonathan Anderson
- * Copyright (c) 2011 Robert N. M. Watson
+ * Copyright (c) 2011, 2013 Robert N. M. Watson
  * Copyright (c) 2011 Anil Madhavapeddy
  * All rights reserved.
  *
@@ -38,16 +38,27 @@
 #ifndef _KERNEL
 #include <errno.h>
 
-struct tesla_store global_store = { .length = 0 };
-
 /** The pthreads key used to identify TESLA data. */
 pthread_key_t	pthread_key(void);
 #endif
 
+struct tesla_store global_store = { .length = 0 };
+
 static void	tesla_class_acquire(tesla_class*);
 
-static int	tesla_store_init(tesla_store*,
-		uint32_t context, uint32_t classes, uint32_t instances);
+#ifdef _KERNEL
+static void
+tesla_global_store_sysinit(__unused void *arg)
+{
+	uint32_t error;
+
+	error = tesla_store_init(&global_store, TESLA_SCOPE_GLOBAL,
+	    TESLA_MAX_CLASSES, TESLA_MAX_INSTANCES);
+	tesla_assert(error == TESLA_SUCCESS, ("tesla_store_init failed"));
+}
+SYSINIT(tesla_global_store, SI_SUB_TESLA, SI_ORDER_FIRST,
+    tesla_global_store_sysinit, NULL);
+#endif
 
 int32_t
 tesla_store_get(uint32_t context, uint32_t classes, uint32_t instances,
@@ -101,7 +112,7 @@ tesla_store_get(uint32_t context, uint32_t classes, uint32_t instances,
 }
 
 
-static int32_t
+int32_t
 tesla_store_init(tesla_store *store, uint32_t context,
                  uint32_t classes, uint32_t instances)
 {
@@ -132,7 +143,7 @@ tesla_store_free(tesla_store *store)
 	for (uint32_t i = 0; i < store->length; i++)
 		tesla_class_free(store->classes + i);
 
-	free(store);
+	tesla_free(store);
 }
 
 

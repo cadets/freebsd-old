@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2011 Robert N. M. Watson
+ * Copyright (c) 2011, 2013 Robert N. M. Watson
  * Copyright (c) 2011 Anil Madhavapeddy
  * Copyright (c) 2012-2013 Jonathan Anderson
  * All rights reserved.
@@ -34,11 +34,11 @@
 
 #include "tesla_internal.h"
 
-#include <inttypes.h>
-#include <stdio.h>
-
 #ifdef _KERNEL
 MALLOC_DEFINE(M_TESLA, "tesla", "TESLA internal state");
+#else
+#include <inttypes.h>
+#include <stdio.h>
 #endif
 
 
@@ -84,8 +84,8 @@ tesla_class_init(struct tesla_class *tclass,
 void
 tesla_class_free(struct tesla_class *class)
 {
-	free(class->ts_table);
-	free(class);
+	tesla_free(class->ts_table);
+	tesla_free(class);
 }
 
 
@@ -144,7 +144,7 @@ tesla_instance_new(struct tesla_class *tclass, const struct tesla_key *name,
 
 	struct tesla_table *ttp = tclass->ts_table;
 	assert(ttp != NULL);
-	tesla_assert(ttp->tt_length != 0, "Uninitialized tesla_table");
+	tesla_assert(ttp->tt_length != 0, ("Uninitialized tesla_table"));
 
 	if (ttp->tt_free == 0)
 		return (TESLA_ERROR_ENOMEM);
@@ -163,7 +163,7 @@ tesla_instance_new(struct tesla_class *tclass, const struct tesla_key *name,
 		break;
 	}
 
-	tesla_assert(*out != NULL, "no free instances but tt_free was > 0");
+	tesla_assert(*out != NULL, ("no free instances but tt_free was > 0"));
 
 	return (TESLA_SUCCESS);
 }
@@ -193,6 +193,8 @@ tesla_class_put(struct tesla_class *tsp)
 void
 tesla_class_reset(struct tesla_class *c)
 {
+
+	DEBUG_PRINT("tesla_class_reset(%" PRId64 ")\n", (uint64_t) c);
 
 	struct tesla_table *t = c->ts_table;
 	bzero(&t->tt_instances, sizeof(struct tesla_instance) * t->tt_length);
@@ -254,7 +256,7 @@ tesla_match_fail(struct tesla_class *class, const struct tesla_key *key,
 		break;
 	}
 
-	free(trans_str);
+	tesla_free(trans_str);
 }
 
 void

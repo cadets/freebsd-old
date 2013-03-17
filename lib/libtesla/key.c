@@ -32,8 +32,10 @@
 
 #include "tesla_internal.h"
 
+#ifndef _KERNEL
 #include <inttypes.h>
 #include <stdio.h>
+#endif
 
 
 #define	IS_SET(mask, index) (mask & (1 << index))

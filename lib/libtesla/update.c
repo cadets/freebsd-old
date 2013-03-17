@@ -32,8 +32,10 @@
 
 #include "tesla_internal.h"
 
+#ifndef _KERNEL
 #include <stdbool.h>
 #include <inttypes.h>
+#endif
 
 #define	CHECK(fn, ...) do { \
 	int err = fn(__VA_ARGS__); \
@@ -67,7 +69,8 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 	}
 
 	struct tesla_store *store;
-	CHECK(tesla_store_get, tesla_context, 12, 8, &store);
+	CHECK(tesla_store_get, tesla_context, TESLA_MAX_CLASSES,
+	    TESLA_MAX_INSTANCES, &store);
 	VERBOSE_PRINT("store: 0x%tx", (intptr_t) store);
 	VERBOSE_PRINT("\n----\n");
 
@@ -116,6 +119,9 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 			if (!tesla_key_matches(&masked, k))
 				continue;
 
+			if (k->tk_mask != t->mask)
+				continue;
+
 			if (inst->ti_state != t->from) {
 				// If the instance matches everything but the
 				// state, so there had better be a transition
@@ -133,7 +139,8 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 
 			// If the keys just match (and we haven't been explictly
 			// instructed to fork), just update the state.
-			if (!t->fork && key->tk_mask == k->tk_mask) {
+			if (!(t->flags & TESLA_TRANS_FORK)
+			    && key->tk_mask == k->tk_mask) {
 				VERBOSE_PRINT("update %td: %tx->%tx\n",
 				              inst - start, t->from, t->to);
 
@@ -168,19 +175,22 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 	}
 
 
-	// If there is a (0 -> anything) transition, create a new instance.
+	// Is the transition "special" (e.g. init/cleanup)?
 	for (uint32_t i = 0; i < trans->length; i++) {
 		const tesla_transition *t = trans->transitions + i;
-		if (t->from != 0)
-			continue;
+		if (t->from == 0) {
+			struct tesla_instance *inst;
+			CHECK(tesla_instance_new, class, key, t->to, &inst);
+			assert(tesla_instance_active(inst));
 
-		struct tesla_instance *inst;
-		CHECK(tesla_instance_new, class, key, t->to, &inst);
-		assert(tesla_instance_active(inst));
+			matched_something = true;
+			VERBOSE_PRINT("new    %td: %tx\n",
+			              inst - start, inst->ti_state);
+		}
 
-		matched_something = true;
-		VERBOSE_PRINT("new    %td: %tx\n",
-		              inst - start, inst->ti_state);
+		if (t->flags & TESLA_TRANS_CLEANUP) {
+			tesla_class_reset(class);
+		}
 	}
 
 	if (verbose_debug()) {
