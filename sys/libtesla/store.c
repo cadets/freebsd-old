@@ -123,6 +123,16 @@ tesla_store_init(tesla_store *store, uint32_t context,
 }
 
 
+void
+tesla_store_free(tesla_store *store)
+{
+	for (uint32_t i = 0; i < store->length; i++)
+		tesla_class_free(store->classes + i);
+
+	tesla_free(store);
+}
+
+
 int32_t
 tesla_class_get(tesla_store *store, uint32_t id, tesla_class **tclassp,
                 const char *name, const char *description)

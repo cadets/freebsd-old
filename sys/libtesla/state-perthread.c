@@ -1,5 +1,6 @@
 /*-
  * Copyright (c) 2011 Robert N. M. Watson
+ * Copyright (c) 2012-2013 Jonathan Anderson
  * All rights reserved.
  *
  * This software was developed by SRI International and the University of
@@ -73,7 +74,7 @@ tesla_perthread_dtor(struct thread *td)
 
 	store = curthread->td_tesla;
 	curthread->td_tesla = NULL;
-	tesla_store_destroy(store);
+	tesla_store_free(store);
 	tesla_free(store);
 }
 

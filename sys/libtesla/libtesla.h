@@ -122,6 +122,8 @@ int32_t	tesla_store_get(uint32_t context, uint32_t classes, uint32_t instances,
 int32_t	tesla_store_reset(struct tesla_store *store);
 
 
+/** Clean up a @ref tesla_store. */
+void	tesla_store_free(struct tesla_store*);
 
 /**
  * A description of a TESLA automaton, which may be instantiated a number of
