@@ -1,6 +1,6 @@
-/** @file  tesla_debug.c    Debugging helpers for TESLA state. */
+/** @file  debug.c    Debugging helpers for TESLA state. */
 /*-
- * Copyright (c) 2012 Jonathan Anderson
+ * Copyright (c) 2012-2013 Jonathan Anderson
  * All rights reserved.
  *
  * This software was developed by SRI International and the University of
@@ -37,6 +37,11 @@
 #include <stdlib.h>
 #endif
 
+#define SAFE_SPRINTF(dest, end,  ...)					\
+	dest += snprintf(dest, end - dest, __VA_ARGS__);		\
+	if (dest >= end)						\
+		return (TESLA_ERROR_ENOMEM);
+
 char*
 transition_matrix(const struct tesla_transitions *trans)
 {
@@ -57,6 +62,27 @@ transition_matrix(const struct tesla_transitions *trans)
 	c += sprintf(c, "]");
 
 	return buffer;
+}
+
+int
+key_string(char *buffer, size_t len, const struct tesla_key *key)
+{
+	char *current = buffer;
+	const char *end = buffer + len;
+
+	SAFE_SPRINTF(current, end, "0x%tx [ ", key->tk_mask);
+
+	for (int32_t i = 0; i < TESLA_KEY_SIZE; i++) {
+		if (key->tk_mask & (1 << i)) {
+			SAFE_SPRINTF(current, end, "%tx ", key->tk_keys[i]);
+		} else {
+			SAFE_SPRINTF(current, end, "X ");
+		}
+	}
+
+	SAFE_SPRINTF(current, end, "]");
+
+	return (TESLA_SUCCESS);
 }
 
 #ifndef NDEBUG
@@ -136,17 +162,13 @@ print_class(const struct tesla_class *c)
 void
 print_key(const struct tesla_key *key)
 {
-	print("0x%tx [ ", key->tk_mask);
+	static const size_t LEN = 15 * TESLA_KEY_SIZE + 10;
+	char buffer[LEN];
 
-	for (int32_t i = 0; i < TESLA_KEY_SIZE; i++) {
-		if (key->tk_mask & (1 << i)) {
-			print("%tx ", key->tk_keys[i]);
-		} else {
-			print("X ");
-		}
-	}
+	int err = key_string(buffer, LEN, key);
+	assert(err == TESLA_SUCCESS);
 
-	print("]");
+	printf("%s", buffer);
 }
 
 #endif /* !NDEBUG */

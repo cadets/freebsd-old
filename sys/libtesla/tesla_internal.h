@@ -63,7 +63,12 @@
 /**
  * Call this if things go catastrophically, unrecoverably wrong.
  */
-void	tesla_die(char *message) __attribute__((noreturn));
+void	tesla_die(const char *event) __attribute__((noreturn));
+
+/**
+ * Clean up a @ref tesla_class.
+ */
+void	tesla_class_free(struct tesla_class*);
 
 /**
  * Create a new @ref tesla_instance.
@@ -108,7 +113,7 @@ int32_t	tesla_key_union(struct tesla_key *dest, const struct tesla_key *source);
 #define DEBUG_PRINT(...) printf(__VA_ARGS__)
 #else
 #include <stdio.h>
-#define DEBUG_PRINT(...) fprintf(stderr, __VA_ARGS__)
+#define DEBUG_PRINT(...) printf(__VA_ARGS__)
 #endif
 #define VERBOSE_PRINT(...) if (verbose_debug()) DEBUG_PRINT(__VA_ARGS__)
 
@@ -126,6 +131,13 @@ int32_t	verbose_debug(void) { return 0; }
 
 #endif
 
+#ifndef __unused
+#if __has_attribute(unused)
+#define __unused __attribute__((unused))
+#else
+#define __unused
+#endif
+#endif
 
 // Kernel vs userspace implementation details.
 #ifdef _KERNEL
@@ -226,7 +238,6 @@ struct tesla_store {
  */
 int	tesla_store_init(tesla_store*, uint32_t context, uint32_t classes,
 		uint32_t instances);
-void	tesla_store_destroy(tesla_store*);
 
 /**
  * Initialize @ref tesla_class internals.
@@ -234,6 +245,10 @@ void	tesla_store_destroy(tesla_store*);
  */
 int	tesla_class_init(struct tesla_class*, uint32_t context,
 		uint32_t instances);
+
+//! We have failed to find an instance that matches a @ref tesla_key.
+void	tesla_match_fail(struct tesla_class*, const struct tesla_key*,
+		const struct tesla_transitions*);
 
 /*
  * XXXRW: temporarily, maximum number of classes and instances are hard-coded
@@ -283,6 +298,9 @@ void	tesla_class_perthread_destroy(struct tesla_class*);
  * @param   tclass     the expected class of @ref #i
  */
 void	assert_instanceof(struct tesla_instance *i, struct tesla_class *tclass);
+
+/** Print a key into a buffer. */
+int	key_string(char *buffer, size_t len, const struct tesla_key *key);
 
 /** Print a @ref tesla_key to stderr. */
 void	print_key(const struct tesla_key *key);
