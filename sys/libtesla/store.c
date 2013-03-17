@@ -38,16 +38,13 @@
 #ifndef _KERNEL
 #include <errno.h>
 
-struct tesla_store global_store = { .length = 0 };
-
 /** The pthreads key used to identify TESLA data. */
 pthread_key_t	pthread_key(void);
 #endif
 
-static void	tesla_class_acquire(tesla_class*);
+struct tesla_store global_store = { .length = 0 };
 
-static int	tesla_store_init(tesla_store*,
-		uint32_t context, uint32_t classes, uint32_t instances);
+static void	tesla_class_acquire(tesla_class*);
 
 int32_t
 tesla_store_get(uint32_t context, uint32_t classes, uint32_t instances,
@@ -101,7 +98,7 @@ tesla_store_get(uint32_t context, uint32_t classes, uint32_t instances,
 }
 
 
-static int32_t
+int32_t
 tesla_store_init(tesla_store *store, uint32_t context,
                  uint32_t classes, uint32_t instances)
 {

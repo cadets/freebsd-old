@@ -221,12 +221,26 @@ struct tesla_store {
 };
 
 /**
+ * Initialise @ref tesla_store internals.
+ * Locking is the responsibility of the caller.
+ */
+int	tesla_store_init(tesla_store*, uint32_t context, uint32_t classes,
+		uint32_t instances);
+void	tesla_store_destroy(tesla_store*);
+
+/**
  * Initialize @ref tesla_class internals.
  * Locking is the responsibility of the caller.
  */
 int	tesla_class_init(struct tesla_class*, uint32_t context,
 		uint32_t instances);
 
+/*
+ * XXXRW: temporarily, maximum number of classes and instances are hard-coded
+ * constants.  In the future, this should somehow be more dynamic.
+ */
+#define	TESLA_MAX_CLASSES		12
+#define	TESLA_MAX_INSTANCES		8
 
 /*
  * When the assertion fails, what to do?
