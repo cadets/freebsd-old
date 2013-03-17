@@ -1,7 +1,7 @@
 /** @file tesla_store.c  Implementation of @ref tesla_store. */
 /*-
  * Copyright (c) 2012 Jonathan Anderson
- * Copyright (c) 2011 Robert N. M. Watson
+ * Copyright (c) 2011, 2013 Robert N. M. Watson
  * Copyright (c) 2011 Anil Madhavapeddy
  * All rights reserved.
  *

@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2011 Robert N. M. Watson
+ * Copyright (c) 2011, 2013 Robert N. M. Watson
  * Copyright (c) 2012-2013 Jonathan Anderson
  * All rights reserved.
  *
