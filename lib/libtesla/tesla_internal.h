@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2011 Robert N. M. Watson
+ * Copyright (c) 2011, 2013 Robert N. M. Watson
  * All rights reserved.
  *
  * This software was developed by SRI International and the University of
@@ -36,21 +36,26 @@
 #ifdef _KERNEL
 #include "opt_kdb.h"
 #include <sys/param.h>
+#include <sys/eventhandler.h>
 #include <sys/kdb.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/malloc.h>
+#include <sys/proc.h>
+#include <sys/sx.h>
 #include <sys/systm.h>
+
+#include <libtesla/libtesla.h>
 #else
 #include <assert.h>
 #include <err.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
-#endif
 
 #include <libtesla.h>
+#endif
 
 //! Is @ref x a subset of @ref y?
 #define	SUBSET(x,y) ((x & y) == x)
@@ -103,8 +108,13 @@ int32_t	tesla_key_union(struct tesla_key *dest, const struct tesla_key *source);
 
 #define __debug
 
+#ifdef _KERNEL
+#include <sys/systm.h>
+#define DEBUG_PRINT(...) printf(__VA_ARGS__)
+#else
 #include <stdio.h>
 #define DEBUG_PRINT(...) printf(__VA_ARGS__)
+#endif
 #define VERBOSE_PRINT(...) if (verbose_debug()) DEBUG_PRINT(__VA_ARGS__)
 
 /** Are we in (verbose) debug mode? */
@@ -139,7 +149,7 @@ int32_t	verbose_debug(void) { return 0; }
 #define tesla_assert(...) KASSERT(__VA_ARGS__)
 
 /** Emulate simple POSIX assertions. */
-#define assert(cond) KASSERT(cond, "Assertion failed: '" # cond "'")
+#define assert(cond) KASSERT((cond), ("Assertion failed: '%s'", #cond))
 
 #define tesla_malloc(len) malloc(len, M_TESLA, M_WAITOK | M_ZERO)
 #define tesla_free(x) free(x, M_TESLA)
@@ -223,6 +233,13 @@ struct tesla_store {
 };
 
 /**
+ * Initialise @ref tesla_store internals.
+ * Locking is the responsibility of the caller.
+ */
+int	tesla_store_init(tesla_store*, uint32_t context, uint32_t classes,
+		uint32_t instances);
+
+/**
  * Initialize @ref tesla_class internals.
  * Locking is the responsibility of the caller.
  */
@@ -232,6 +249,13 @@ int	tesla_class_init(struct tesla_class*, uint32_t context,
 //! We have failed to find an instance that matches a @ref tesla_key.
 void	tesla_match_fail(struct tesla_class*, const struct tesla_key*,
 		const struct tesla_transitions*);
+
+/*
+ * XXXRW: temporarily, maximum number of classes and instances are hard-coded
+ * constants.  In the future, this should somehow be more dynamic.
+ */
+#define	TESLA_MAX_CLASSES		12
+#define	TESLA_MAX_INSTANCES		8
 
 /*
  * When the assertion fails, what to do?

@@ -32,7 +32,10 @@
  */
 
 #include "tesla_internal.h"
+
+#ifndef _KERNEL
 #include <stdlib.h>
+#endif
 
 #define SAFE_SPRINTF(dest, end,  ...)					\
 	dest += snprintf(dest, end - dest, __VA_ARGS__);		\
@@ -42,9 +45,9 @@
 char*
 transition_matrix(const struct tesla_transitions *trans)
 {
-	static const char EACH[] = "(%d:0x%tx -> %d%s) ";
+	static const char EACH[] = "(%d:0x%tx -> %d%s%s%s) ";
 
-	size_t needed = trans->length * (sizeof(EACH) + 4) + 4;
+	size_t needed = trans->length * (sizeof(EACH) + 12) + 4;
 	char *buffer = tesla_malloc(needed);
 	char *c = buffer;
 
@@ -53,7 +56,10 @@ transition_matrix(const struct tesla_transitions *trans)
 	for (size_t i = 0; i < trans->length; i++) {
 		const tesla_transition *t = trans->transitions + i;
 		c += sprintf(c, EACH, t->from, t->mask, t->to,
-			     t->fork ? " <fork>" : "");
+			     (t->flags & TESLA_TRANS_FORK ? " <fork>" : ""),
+			     (t->flags & TESLA_TRANS_INIT ? " <init>" : ""),
+			     (t->flags & TESLA_TRANS_CLEANUP ? " <clean>" : "")
+		);
 	}
 
 	c += sprintf(c, "]");
