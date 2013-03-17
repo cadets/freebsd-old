@@ -32,8 +32,10 @@
 
 #include "tesla_internal.h"
 
+#ifndef _KERNEL
 #include <stdbool.h>
 #include <inttypes.h>
+#endif
 
 #define	CHECK(fn, ...) do { \
 	int err = fn(__VA_ARGS__); \

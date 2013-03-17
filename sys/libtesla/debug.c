@@ -32,7 +32,10 @@
  */
 
 #include "tesla_internal.h"
+
+#ifndef _KERNEL
 #include <stdlib.h>
+#endif
 
 char*
 transition_matrix(const struct tesla_transitions *trans)

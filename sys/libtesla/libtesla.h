@@ -34,7 +34,11 @@
 #ifndef _TESLA_STATE
 #define	_TESLA_STATE
 
+#ifdef _KERNEL
+#include <sys/types.h>
+#else
 #include <stdint.h>		/* int32_t, uint32_t */
+#endif
 
 /*
  * libtesla functions mostly return error values, and therefore return
