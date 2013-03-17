@@ -33,11 +33,11 @@
 
 #include "tesla_internal.h"
 
-#include <inttypes.h>
-#include <stdio.h>
-
 #ifdef _KERNEL
 MALLOC_DEFINE(M_TESLA, "tesla", "TESLA internal state");
+#else
+#include <inttypes.h>
+#include <stdio.h>
 #endif
 
 
@@ -135,7 +135,7 @@ tesla_instance_new(struct tesla_class *tclass, const struct tesla_key *name,
 
 	struct tesla_table *ttp = tclass->ts_table;
 	assert(ttp != NULL);
-	tesla_assert(ttp->tt_length != 0, "Uninitialized tesla_table");
+	tesla_assert(ttp->tt_length != 0, ("Uninitialized tesla_table"));
 
 	if (ttp->tt_free == 0)
 		return (TESLA_ERROR_ENOMEM);
@@ -154,7 +154,7 @@ tesla_instance_new(struct tesla_class *tclass, const struct tesla_key *name,
 		break;
 	}
 
-	tesla_assert(*out != NULL, "no free instances but tt_free was > 0");
+	tesla_assert(*out != NULL, ("no free instances but tt_free was > 0"));
 
 	return (TESLA_SUCCESS);
 }
