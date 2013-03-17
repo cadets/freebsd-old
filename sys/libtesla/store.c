@@ -46,6 +46,20 @@ struct tesla_store global_store = { .length = 0 };
 
 static void	tesla_class_acquire(tesla_class*);
 
+#ifdef _KERNEL
+static void
+tesla_global_store_sysinit(__unused void *arg)
+{
+	uint32_t error;
+
+	error = tesla_store_init(&global_store, TESLA_SCOPE_GLOBAL,
+	    TESLA_MAX_CLASSES, TESLA_MAX_INSTANCES);
+	tesla_assert(error == TESLA_SUCCESS, ("tesla_store_init failed"));
+}
+SYSINIT(tesla_global_store, SI_SUB_TESLA, SI_ORDER_FIRST,
+    tesla_global_store_sysinit, NULL);
+#endif
+
 int32_t
 tesla_store_get(uint32_t context, uint32_t classes, uint32_t instances,
                 tesla_store* *storep)
