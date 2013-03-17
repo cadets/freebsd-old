@@ -194,6 +194,8 @@ void
 tesla_class_reset(struct tesla_class *c)
 {
 
+	DEBUG_PRINT("tesla_class_reset(%" PRId64 ")\n", (uint64_t) c);
+
 	struct tesla_table *t = c->ts_table;
 	bzero(&t->tt_instances, sizeof(struct tesla_instance) * t->tt_length);
 	t->tt_free = t->tt_length;

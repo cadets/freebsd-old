@@ -65,14 +65,14 @@ struct tesla_transition {
 	/** The state we are moving to. */
 	uint32_t	to;
 
-	/**
-	 * Explicit declaration that libtesla should fork on this transition.
-	 *
-	 * This is useful for e.g. TELSA "or" expressions, when we need to
-	 * allow either or both paths to be followed.
-	 */
-	int		fork;
+	/** Things we may need to do on this transition. */
+	int		flags;
 };
+
+#define	TESLA_TRANS_FORK	0x01	/* Always fork on this transition. */
+#define	TESLA_TRANS_INIT	0x02	/* May need to initialise the class. */
+#define	TESLA_TRANS_CLEANUP	0x04	/* Clean up the class now. */
+
 
 /**
  * A set of permissible state transitions for an automata instance.
