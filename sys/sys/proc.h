@@ -171,6 +171,7 @@ struct racct;
 struct sbuf;
 struct sleepqueue;
 struct td_sched;
+struct tesla_store;
 struct thread;
 struct trapframe;
 struct turnstile;
@@ -317,6 +318,7 @@ struct thread {
 	struct proc	*td_rfppwait_p;	/* (k) The vforked child */
 	struct vm_page	**td_ma;	/* (k) uio pages held */
 	int		td_ma_cnt;	/* (k) size of *td_ma */
+	struct tesla_store	*td_tesla;	/* (k) TESLA per-thread state */
 };
 
 struct mtx *thread_lock_block(struct thread *);
