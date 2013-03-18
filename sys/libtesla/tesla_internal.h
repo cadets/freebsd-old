@@ -287,6 +287,16 @@ void	tesla_class_perthread_release(struct tesla_class*);
 void	tesla_class_perthread_destroy(struct tesla_class*);
 
 /*
+ * DTrace notifications of various events.
+ */
+void	tesla_state_transition_dtrace(struct tesla_class *,
+	    struct tesla_instance *);
+void	tesla_assert_fail_dtrace(struct tesla_class *,
+	    struct tesla_instance *);
+void	tesla_assert_pass_dtrace(struct tesla_class *,
+	    struct tesla_instance *);
+
+/*
  * Debug helpers.
  */
 

@@ -2874,6 +2874,7 @@ libtesla/state.c		optional tesla
 libtesla/state-global.c		optional tesla
 libtesla/state-perthread.c	optional tesla
 libtesla/store.c		optional tesla
+libtesla/tesla_dtrace.c		optional tesla kdtrace_hooks
 libtesla/update.c		optional tesla
 libtesla/util.c			optional tesla
 net/bpf.c			standard
