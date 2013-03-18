@@ -32,8 +32,12 @@
 #ifndef	TESLA_MACROS_H
 #define	TESLA_MACROS_H
 
+#ifdef _KERNEL
+#include <libtesla/tesla.h>
+#else
 #include <limits.h>
 #include <tesla.h>
+#endif
 
 /*
  * Macros to make TESLA assertions a little easier to read.
