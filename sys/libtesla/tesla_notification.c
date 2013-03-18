@@ -48,6 +48,12 @@ tesla_state_notify_new_instance(struct tesla_class *tcp,
 		VERBOSE_PRINT("new    %td: %tx\n",
 		              tip - tcp->ts_table->tt_instances,
 		              tip->ti_state);
+
+		/*
+		 * XXXJA: convince self that we can never "pass" an assertion
+		 *        with an event that creates a new instance
+		 */
+
 		break;
 	}
 }
@@ -72,6 +78,10 @@ tesla_state_notify_clone(struct tesla_class *tcp, struct tesla_instance *tip,
 		VERBOSE_PRINT("clone  %td:%tx -> %tx\n",
 		              tip - tcp->ts_table->tt_instances,
 		              tip->ti_state, t->to);
+
+		if (t->flags & TESLA_TRANS_CLEANUP)
+			tesla_state_notify_pass(tcp, tip);
+
 		break;
 	}
 	}
@@ -97,6 +107,10 @@ tesla_state_notify_transition(struct tesla_class *tcp,
 		VERBOSE_PRINT("update %td: %tx->%tx\n",
 		              tip - tcp->ts_table->tt_instances,
 		              t->from, t->to);
+
+		if (t->flags & TESLA_TRANS_CLEANUP)
+			tesla_state_notify_pass(tcp, tip);
+
 		break;
 	}
 	}
@@ -128,7 +142,8 @@ tesla_state_notify_pass(struct tesla_class *tcp, struct tesla_instance *tip)
 		return;
 
 	default:
-		/* for now, don't do anything */
+		VERBOSE_PRINT("pass '%s': %td\n", tcp->ts_name,
+		    tip - tcp->ts_table->tt_instances);
 		break;
 	}
 }
