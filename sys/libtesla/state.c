@@ -241,11 +241,9 @@ tesla_match_fail(struct tesla_class *class, const struct tesla_key *key,
 		            key_str, trans_str);
 		break;
 
-#ifdef NOTYET
 	case TESLA_ACTION_DTRACE:
-		dtrace_probe(...);
+		tesla_assert_fail_dtrace(class, NULL, trans);
 		return;
-#endif
 
 	case TESLA_ACTION_PRINTF:
 #if defined(_KERNEL) && defined(KDB)
@@ -280,11 +278,11 @@ tesla_assert_fail(struct tesla_class *tsp, struct tesla_instance *tip,
 			tsp->ts_name, tsp->ts_description,
 			transition_matrix(trans), tip->ti_state);
 		break;		/* A bit gratuitous. */
-#ifdef NOTYET
+
 	case TESLA_ACTION_DTRACE:
-		dtrace_probe(...);
+		tesla_assert_fail_dtrace(tsp, tip, trans);
 		return;
-#endif
+
 	case TESLA_ACTION_PRINTF:
 #if defined(_KERNEL) && defined(KDB)
 		kdb_backtrace();

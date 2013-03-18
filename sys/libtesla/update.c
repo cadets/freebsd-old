@@ -83,8 +83,6 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 	}
 
 	tesla_table *table = class->ts_table;
-	tesla_instance *start = table->tt_instances;
-
 	assert(table->tt_length <= 32);
 
 	// Did we match any instances?
@@ -141,8 +139,8 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 			// instructed to fork), just update the state.
 			if (!(t->flags & TESLA_TRANS_FORK)
 			    && key->tk_mask == k->tk_mask) {
-				VERBOSE_PRINT("update %td: %tx->%tx\n",
-				              inst - start, t->from, t->to);
+				tesla_state_notify_transition(class, inst,
+					trans, j);
 
 				inst->ti_state = t->to;
 				break;
@@ -150,13 +148,11 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 
 			// If the keys weren't an exact match, we need to fork
 			// a new (more specific) automaton instance.
+			tesla_state_notify_clone(class, inst, trans, j);
+
 			struct tesla_instance *clone = clones + cloned++;
 			*clone = *inst;
 			clone->ti_state = t->to;
-
-			VERBOSE_PRINT("clone  %td:%tx -> %tx\n",
-			              inst - start, inst->ti_state,
-			              t->to);
 
 			CHECK(tesla_key_union, &clone->ti_key, key);
 			break;
@@ -184,8 +180,7 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 			assert(tesla_instance_active(inst));
 
 			matched_something = true;
-			VERBOSE_PRINT("new    %td: %tx\n",
-			              inst - start, inst->ti_state);
+			tesla_state_notify_new_instance(class, inst);
 		}
 
 		if (t->flags & TESLA_TRANS_CLEANUP) {
