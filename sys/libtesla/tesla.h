@@ -38,7 +38,15 @@ typedef	struct __tesla_locality {}	__tesla_locality;
 /** A number of times to match an event: positive or "any number". */
 typedef	int	__tesla_count;
 
-/** Magic "function" representing a TESLA assertion. */
+/**
+ * Magic "function" representing a TESLA assertion.
+ *
+ * Its arguments are:
+ *  * name of the file the assertion is located in (__FILE__)
+ *  * the line the assertion is defined at (__LINE__)
+ *  * a counter to ensure uniqueness (__COUNTER__)
+ *  * the TESLA context (per-thread or global)
+ */
 void __tesla_inline_assertion(const char *filename, int line, int count,
 		__tesla_locality*, ...);
 
@@ -66,6 +74,14 @@ struct __tesla_event* __tesla_call(void*, ...);
 /** Exiting a function (with optionally-specified arguments). */
 struct __tesla_event* __tesla_return(void*, ...);
 
+
+/** Function events inside this predicate refer to the callee context. */
+struct __tesla_event* __tesla_callee(__tesla_event*, ...);
+
+/** Function events inside this predicate refer to the caller context. */
+struct __tesla_event* __tesla_caller(__tesla_event*, ...);
+
+
 /** Nothing to see here, move along... */
 struct __tesla_event* __tesla_ignore;
 
@@ -73,9 +89,6 @@ struct __tesla_event* __tesla_ignore;
 struct __tesla_event* __tesla_now;
 
 struct __tesla_event* __tesla_optional(__tesla_event*, ...);
-
-/** A repetition of events — this allows globby "?", "*", "+", etc. */
-struct __tesla_event* __tesla_repeat(__tesla_count, __tesla_count, ...);
 
 /** A value that could match a lot of function parameters. Maybe anything? */
 void*		__tesla_any_ptr();
@@ -126,6 +139,15 @@ struct __tesla_automaton_description*	__tesla_automaton_done();
 
 #define	__tesla_struct_automaton(fn_name)
 #define	__tesla_automaton(name, ...)
+
+#define	__tesla_call(...)	0
+#define	__tesla_return(...)	0
+
+#define	__tesla_callee(...)	0
+#define	__tesla_caller(...)	0
+
+#define	__tesla_optional(...)	0
+#define	__tesla_any(...)	0
 
 #endif	/* __TESLA_ANALYSER__ */
 
