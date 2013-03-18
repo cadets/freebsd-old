@@ -408,6 +408,14 @@ ffs_lock(ap)
 #endif
 }
 
+#ifdef TESLA
+/*
+ * XXXRW: It would be nice if we didn't have to do this.
+ */
+#include <security/mac/mac_framework.h>
+void	trap(struct trapframe *frame);
+#endif
+
 /*
  * Vnode op for reading.
  */
@@ -434,6 +442,9 @@ ffs_read(ap)
 	int ioflag;
 
 	vp = ap->a_vp;
+	TESLA_WITHIN(trap, previously(mac_vnode_check_read(ANY(ptr), ANY(ptr),
+	    vp) == 0));
+
 	uio = ap->a_uio;
 	ioflag = ap->a_ioflag;
 	if (ap->a_ioflag & IO_EXT)
@@ -646,10 +657,10 @@ ffs_write(ap)
 	int seqcount;
 	int blkoffset, error, flags, ioflag, size, xfersize;
 
-	TESLA_WITHIN(trap, previously(mac_check_vnode_write(ANY(ptr), ANY(ptr),
-	    ap->a_vp)));
-
 	vp = ap->a_vp;
+	TESLA_WITHIN(trap, previously(mac_vnode_check_write(ANY(ptr),
+	    ANY(ptr), vp) == 0));
+
 	uio = ap->a_uio;
 	ioflag = ap->a_ioflag;
 	if (ap->a_ioflag & IO_EXT)
