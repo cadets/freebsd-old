@@ -79,6 +79,9 @@ __FBSDID("$FreeBSD: head/sys/ufs/ffs/ffs_vnops.c 239065 2012-08-05 14:11:42Z kib
 #include <sys/vmmeter.h>
 #include <sys/vnode.h>
 
+#include <libtesla/tesla.h>
+#include <libtesla/tesla-macros.h>
+
 #include <vm/vm.h>
 #include <vm/vm_param.h>
 #include <vm/vm_extern.h>
@@ -642,6 +645,9 @@ ffs_write(ap)
 	ssize_t resid;
 	int seqcount;
 	int blkoffset, error, flags, ioflag, size, xfersize;
+
+	TESLA_WITHIN(trap, previously(mac_check_vnode_write(ANY(ptr), ANY(ptr),
+	    ap->a_vp)));
 
 	vp = ap->a_vp;
 	uio = ap->a_uio;
