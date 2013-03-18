@@ -39,18 +39,26 @@
  * Macros to make TESLA assertions a little easier to read.
  */
 
+/** An assertion made within the execution of a particular function. */
+#define	TESLA_WITHIN(function, expression)				\
+	TESLA_PERTHREAD(						\
+		callee(called(function)),				\
+		callee(returned(function)),				\
+		expression						\
+	)
+
 /** An inline assertion. */
-#define	TESLA_ASSERT(locality, predicate)				\
+#define	TESLA_ASSERT(locality, start, end, predicate)			\
 	__tesla_inline_assertion(					\
 		__FILE__, __LINE__, __COUNTER__,			\
-		locality, predicate					\
+		locality, start, end, predicate				\
 	)
 
 /** An assertion in the global TESLA context. */
-#define	TESLA_GLOBAL(pred)	TESLA_ASSERT(__tesla_global, pred)
+#define	TESLA_GLOBAL(...)	TESLA_ASSERT(__tesla_global, __VA_ARGS__)
 
 /** An assertion in a thread's TESLA context. */
-#define	TESLA_PERTHREAD(pred)	TESLA_ASSERT(__tesla_perthread, pred)
+#define	TESLA_PERTHREAD(...)	TESLA_ASSERT(__tesla_perthread, __VA_ARGS__)
 
 /** A strictly-ordered sequence of events. */
 #define	TSEQUENCE(...)	__tesla_sequence(__tesla_ignore, __VA_ARGS__)
@@ -61,7 +69,7 @@
 #define	callee(...)	__tesla_callee(__tesla_ignore, __VA_ARGS__)
 #define	caller(...)	__tesla_caller(__tesla_ignore, __VA_ARGS__)
 
-#define	TESLA_NOW &__tesla_now
+#define	TESLA_NOW __tesla_now
 
 
 #define	TESLA_STRUCT_AUTOMATON(fn_name)	__tesla_struct_automaton(fn_name)
@@ -78,20 +86,10 @@
 #define	ANY(int_type)		__tesla_any(int_type)
 
 /** A more programmer-friendly way to write assertions about the past. */
-#define since(bound, x)						\
-	__tesla_sequence(						\
-		bound,							\
-		x,							\
-		__tesla_now						\
-	)
+#define previously(x)    TSEQUENCE(x, TESLA_NOW)
 
 /** A more programmer-friendly way to write assertions about the future. */
-#define before(bound, x)						\
-	__tesla_sequence(						\
-		__tesla_now,						\
-		x,							\
-		bound							\
-	)
+#define eventually(x)    TSEQUENCE(TESLA_NOW, x)
 
 #endif	/* !TESLA_MACROS_H */
 
