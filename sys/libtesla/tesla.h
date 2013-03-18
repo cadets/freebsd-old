@@ -149,6 +149,12 @@ struct __tesla_automaton_description*	__tesla_automaton_done();
 #define	__tesla_optional(...)	0
 #define	__tesla_any(...)	0
 
+inline void
+__tesla_inline_assertion(const char *filename, int line, int count,
+    __tesla_locality *loc, ...)
+{
+}
+
 #endif	/* __TESLA_ANALYSER__ */
 
 #endif	/* TESLA_H */
