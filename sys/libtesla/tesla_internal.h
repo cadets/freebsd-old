@@ -46,6 +46,8 @@
 #include <sys/sx.h>
 #include <sys/systm.h>
 
+#include <machine/_inttypes.h>
+
 #include <libtesla/libtesla.h>
 #else
 #include <assert.h>
