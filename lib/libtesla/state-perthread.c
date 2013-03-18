@@ -68,7 +68,7 @@ tesla_perthread_ctor(__unused void *arg, struct thread *td)
 }
 
 static void
-tesla_perthread_dtor(struct thread *td)
+tesla_perthread_dtor(__unused void *arg, struct thread *td)
 {
 	struct tesla_store *store;
 
