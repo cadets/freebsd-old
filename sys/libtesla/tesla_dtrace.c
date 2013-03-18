@@ -43,39 +43,66 @@ SDT_PROBE_DEFINE2(tesla, kernel, assert, fail, fail, "struct tesla_class *",
     "struct tesla_instance *");
 SDT_PROBE_DEFINE2(tesla, kernel, assert, pass, pass, "struct tesla_class *",
     "struct tesla_instance *");
-#endif
 
-/*
- * XXXRW: Several of these functions might want additional state-related
- * arguments -- e.g., next-state for transition, etc.
- */
 void
 tesla_state_transition_dtrace(struct tesla_class *tcp,
-    struct tesla_instance *tip)
+    struct tesla_instance *tip,
+    __unused const struct tesla_transitions *transp,
+    __unused uint32_t transition_index)
 {
 
-#ifdef _KERNEL
 	SDT_PROBE(tesla, kernel, , state_transition, tcp, tip, 0, 0, 0);
-#else
-#endif
 }
 
 void
-tesla_assert_fail_dtrace(struct tesla_class *tcp, struct tesla_instance *tip)
+tesla_assert_fail_dtrace(struct tesla_class *tcp, struct tesla_instance *tip,
+    __unused const struct tesla_transitions *transp)
 {
 
-#ifdef _KERNEL
-	SDT_PROBE(tesla, kernel, assert, fail, tcp, tip, 0, 0, 0);
-#else
-#endif
+	if (tip)
+	    SDT_PROBE(tesla, kernel, assert, fail, tcp, tip, 0, 0, 0);
+
+	/* XXXRW:
+	 * 'tip' could be NULL if we failed to match any automaton instances
+	 * to go with a supplied key; perhaps a separate probe?
+	 */
 }
 
 void
 tesla_assert_pass_dtrace(struct tesla_class *tcp, struct tesla_instance *tip)
 {
 
-#ifdef _KERNEL
 	SDT_PROBE(tesla, kernel, assert, pass, tcp, tip, 0, 0, 0);
-#else
-#endif
 }
+
+#else /* !_KERNEL */
+
+void
+tesla_state_transition_dtrace(__unused struct tesla_class *tcp,
+    __unused struct tesla_instance *tip,
+    __unused const struct tesla_transitions *transp,
+    __unused uint32_t transition_index)
+{
+
+	assert(0 && "DTrace not implemented in userspace");
+}
+
+void
+tesla_assert_fail_dtrace(__unused struct tesla_class *tcp,
+    __unused struct tesla_instance *tip,
+    __unused const struct tesla_transitions *transp)
+{
+
+	assert(0 && "DTrace not implemented in userspace");
+}
+
+void
+tesla_assert_pass_dtrace(__unused struct tesla_class *tcp,
+    __unused struct tesla_instance *tip)
+{
+
+	assert(0 && "DTrace not implemented in userspace");
+}
+
+#endif /* _KERNEL */
+
