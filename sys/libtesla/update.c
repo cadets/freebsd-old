@@ -58,10 +58,8 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 			     : "per-thread"));
 		DEBUG_PRINT("  class:        %d ('%s')\n", class_id, name);
 
-		char *matrix = transition_matrix(trans);
-		DEBUG_PRINT("  transitions:  %s", matrix);
-		tesla_free(matrix);
-
+		DEBUG_PRINT("  transitions:  ");
+		print_transitions(trans);
 		DEBUG_PRINT("\n");
 		DEBUG_PRINT("  key:          ");
 		print_key(key);
@@ -139,8 +137,7 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 			// instructed to fork), just update the state.
 			if (!(t->flags & TESLA_TRANS_FORK)
 			    && key->tk_mask == k->tk_mask) {
-				tesla_state_notify_transition(class, inst,
-					trans, j);
+				tesla_notify_transition(class, inst, trans, j);
 
 				inst->ti_state = t->to;
 				break;
@@ -148,7 +145,7 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 
 			// If the keys weren't an exact match, we need to fork
 			// a new (more specific) automaton instance.
-			tesla_state_notify_clone(class, inst, trans, j);
+			tesla_notify_clone(class, inst, trans, j);
 
 			struct tesla_instance *clone = clones + cloned++;
 			*clone = *inst;
@@ -159,7 +156,7 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 		}
 
 		if (transition_required && !transition_taken)
-			tesla_assert_fail(class, inst, trans);
+			tesla_notify_assert_fail(class, inst, trans);
 	}
 
 	// Move any clones into the instance.
@@ -180,7 +177,7 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 			assert(tesla_instance_active(inst));
 
 			matched_something = true;
-			tesla_state_notify_new_instance(class, inst);
+			tesla_notify_new_instance(class, inst);
 		}
 
 		if (t->flags & TESLA_TRANS_CLEANUP) {
@@ -195,7 +192,7 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 	}
 
 	if (!matched_something)
-		tesla_match_fail(class, key, trans);
+		tesla_notify_match_fail(class, key, trans);
 
 	tesla_class_put(class);
 

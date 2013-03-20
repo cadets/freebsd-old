@@ -106,33 +106,6 @@ int32_t	tesla_match(struct tesla_class *tclass, const struct tesla_key *key,
 int32_t	tesla_key_union(struct tesla_key *dest, const struct tesla_key *source);
 
 
-#ifndef NDEBUG
-
-#define __debug
-
-#ifdef _KERNEL
-#include <sys/systm.h>
-#define DEBUG_PRINT(...) printf(__VA_ARGS__)
-#else
-#include <stdio.h>
-#define DEBUG_PRINT(...) printf(__VA_ARGS__)
-#endif
-#define VERBOSE_PRINT(...) if (verbose_debug()) DEBUG_PRINT(__VA_ARGS__)
-
-/** Are we in (verbose) debug mode? */
-int32_t	verbose_debug(void);
-
-#else // NDEBUG
-
-// When not in debug mode, some values might not get checked.
-#define __debug __unused
-#define DEBUG_PRINT(...)
-#define VERBOSE_PRINT(...)
-
-int32_t	verbose_debug(void) { return 0; }
-
-#endif
-
 #ifndef __unused
 #if __has_attribute(unused)
 #define __unused __attribute__((unused))
@@ -198,7 +171,6 @@ struct tesla_class {
 	const char	*ts_description;/* Description of the assertion. */
 	uint32_t	 ts_scope;	/* Per-thread or global. */
 	uint32_t	 ts_limit;	/* Simultaneous automata limit. */
-	tesla_assert_fail_callback	ts_handler;	/* Run on failure. */
 	uint32_t	 ts_action;	/* What to do on failure. */
 
 	/*
@@ -248,9 +220,11 @@ int	tesla_store_init(tesla_store*, uint32_t context, uint32_t classes,
 int	tesla_class_init(struct tesla_class*, uint32_t context,
 		uint32_t instances);
 
+#if 0
 //! We have failed to find an instance that matches a @ref tesla_key.
 void	tesla_match_fail(struct tesla_class*, const struct tesla_key*,
 		const struct tesla_transitions*);
+#endif
 
 /*
  * XXXRW: temporarily, maximum number of classes and instances are hard-coded
@@ -289,19 +263,28 @@ void	tesla_class_perthread_destroy(struct tesla_class*);
 /*
  * Event notification:
  */
-void	tesla_state_notify_new_instance(struct tesla_class *,
+/** A new @ref tesla_instance has been created. */
+void	tesla_notify_new_instance(struct tesla_class *,
     struct tesla_instance *);
 
-void	tesla_state_notify_transition(struct tesla_class *,
-    struct tesla_instance *, const struct tesla_transitions *, uint32_t index);
-
-void	tesla_state_notify_clone(struct tesla_class *, struct tesla_instance *,
+/** A @ref tesla_instance has taken an expected transition. */
+void	tesla_notify_transition(struct tesla_class *, struct tesla_instance *,
     const struct tesla_transitions *, uint32_t index);
 
-void	tesla_state_notify_fail(struct tesla_class *, struct tesla_instance *,
+/** An exisiting @ref tesla_instance has been cloned because of an event. */
+void	tesla_notify_clone(struct tesla_class *, struct tesla_instance *,
+    const struct tesla_transitions *, uint32_t index);
+
+/** A @ref tesla_instance was unable to take any of a set of transitions. */
+void	tesla_notify_assert_fail(struct tesla_class *, struct tesla_instance *,
     const struct tesla_transitions *);
 
-void	tesla_state_notify_pass(struct tesla_class *, struct tesla_instance *);
+/** No @ref tesla_class instance was found to match a @ref tesla_key. */
+void	tesla_notify_match_fail(struct tesla_class *, const struct tesla_key *,
+    const struct tesla_transitions *);
+
+/** A @ref tesla_instance has "passed" (worked through the automaton). */
+void	tesla_notify_pass(struct tesla_class *, struct tesla_instance *);
 
 /*
  * DTrace notifications of various events.
@@ -318,6 +301,47 @@ void	tesla_assert_pass_dtrace(struct tesla_class *,
  * Debug helpers.
  */
 
+#define	SAFE_SPRINTF(current, end, ...) do {				\
+	int written = snprintf(current, end - current, __VA_ARGS__);	\
+	if ((written > 0) && (current + written < end))			\
+		current += written;					\
+} while (0)
+
+#define print(...)	printf(__VA_ARGS__)
+
+#ifdef _KERNEL
+#define error(...)	printf(__VA_ARGS__)
+#else
+#define error(...)	fprintf(stderr, __VA_ARGS__)
+#endif
+
+#ifndef NDEBUG
+
+#define __debug
+
+#ifdef _KERNEL
+#include <sys/systm.h>
+#define DEBUG_PRINT(...) print(__VA_ARGS__)
+#else
+#include <stdio.h>
+#define DEBUG_PRINT(...) print(__VA_ARGS__)
+#endif
+#define VERBOSE_PRINT(...) if (verbose_debug()) DEBUG_PRINT(__VA_ARGS__)
+
+/** Are we in (verbose) debug mode? */
+int32_t	verbose_debug(void);
+
+#else // NDEBUG
+
+// When not in debug mode, some values might not get checked.
+#define __debug __unused
+#define DEBUG_PRINT(...)
+#define VERBOSE_PRINT(...)
+
+int32_t	verbose_debug(void) { return 0; }
+
+#endif
+
 /**
  * Assert that a @ref tesla_instance is an instance of a @ref tesla_class.
  *
@@ -330,7 +354,7 @@ void	tesla_assert_pass_dtrace(struct tesla_class *,
 void	assert_instanceof(struct tesla_instance *i, struct tesla_class *tclass);
 
 /** Print a key into a buffer. */
-int	key_string(char *buffer, size_t len, const struct tesla_key *key);
+char*	key_string(char *buffer, const char *end, const struct tesla_key *);
 
 /** Print a @ref tesla_key to stderr. */
 void	print_key(const struct tesla_key *key);
@@ -338,7 +362,11 @@ void	print_key(const struct tesla_key *key);
 /** Print a @ref tesla_class to stderr. */
 void	print_class(const struct tesla_class*);
 
-/** Provide a human-readable rendition of a transition matrix. */
-char*	transition_matrix(const struct tesla_transitions*);
+/** Print a human-readable version of @ref tesla_transitions. */
+void	print_transitions(const struct tesla_transitions *);
+
+/** Print a human-readable version of @ref tesla_transitions into a buffer. */
+char*	sprint_transitions(char *buffer, const char *end,
+    const struct tesla_transitions *);
 
 #endif /* TESLA_INTERNAL_H */
