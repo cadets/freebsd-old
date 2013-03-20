@@ -205,14 +205,6 @@ struct tesla_instance {
 #define	TESLA_SCOPE_PERTHREAD	1
 #define	TESLA_SCOPE_GLOBAL	2
 
-/**
- * Set the action to take when a TESLA assertion fails; implemented via a
- * callback from the TESLA runtime.
- */
-typedef void	(*tesla_assert_fail_callback)(const struct tesla_instance *tip);
-void	tesla_class_setaction(struct tesla_class *tsp,
-	    tesla_assert_fail_callback handler);
-
 
 /**
  * Checks whether or not a TESLA automata instance is active (in use).
@@ -241,16 +233,5 @@ void	tesla_class_reset(struct tesla_class*);
  */
 void	tesla_instance_destroy(struct tesla_class *tsp,
 	    struct tesla_instance *tip);
-
-/**
- * Function to invoke when a TESLA assertion fails.
- *
- * May not actually fail stop at this point, so assertions must handle
- * continuation after this call.  Further cases of this particular instance
- * firing should be suppressed so that e.g. DTrace probes fire only once
- * per failure.
- */
-void	tesla_assert_fail(struct tesla_class *tsp,
-		struct tesla_instance *tip, const struct tesla_transitions*);
 
 #endif /* _TESLA_STATE */
