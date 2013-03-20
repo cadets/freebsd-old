@@ -95,6 +95,15 @@
 /** A more programmer-friendly way to write assertions about the future. */
 #define eventually(x)    TSEQUENCE(TESLA_NOW, x)
 
+#ifdef _KERNEL
+
+#define	TESLA_SYSCALL(x)	TESLA_PERTHREAD(			\
+				    callee(returned(syscall_thread_enter)), \
+				    callee(called(syscall_thread_exit)), \
+				    x)
+
+#endif
+
 #endif	/* !TESLA_MACROS_H */
 
 

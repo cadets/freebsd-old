@@ -37,60 +37,72 @@
 #include <stdlib.h>
 #endif
 
-#define SAFE_SPRINTF(dest, end,  ...)					\
-	dest += snprintf(dest, end - dest, __VA_ARGS__);		\
-	if (dest >= end)						\
-		return (TESLA_ERROR_ENOMEM);
-
-char*
-transition_matrix(const struct tesla_transitions *trans)
+void
+print_transitions(const struct tesla_transitions *transp)
 {
-	static const char EACH[] = "(%d:0x%tx -> %d%s%s%s) ";
+	char buffer[1024];
+	char *end = buffer + sizeof(buffer);
 
-	size_t needed = trans->length * (sizeof(EACH) + 12) + 4;
-	char *buffer = tesla_malloc(needed);
-	char *c = buffer;
-
-	c += sprintf(c, "[ ");
-
-	for (size_t i = 0; i < trans->length; i++) {
-		const tesla_transition *t = trans->transitions + i;
-		c += sprintf(c, EACH, t->from, t->mask, t->to,
-			     (t->flags & TESLA_TRANS_FORK ? " <fork>" : ""),
-			     (t->flags & TESLA_TRANS_INIT ? " <init>" : ""),
-			     (t->flags & TESLA_TRANS_CLEANUP ? " <clean>" : "")
-		);
-	}
-
-	c += sprintf(c, "]");
-
-	return buffer;
+	sprint_transitions(buffer, end, transp);
+	print("%s", buffer);
 }
 
-int
-key_string(char *buffer, size_t len, const struct tesla_key *key)
+char*
+sprint_transitions(char *buffer, const char *end,
+    const struct tesla_transitions *tp)
 {
-	char *current = buffer;
-	const char *end = buffer + len;
+	char *c = buffer;
 
-	SAFE_SPRINTF(current, end, "0x%tx [ ", key->tk_mask);
+	SAFE_SPRINTF(c, end, "[ ");
 
-	for (int32_t i = 0; i < TESLA_KEY_SIZE; i++) {
-		if (key->tk_mask & (1 << i)) {
-			SAFE_SPRINTF(current, end, "%tx ", key->tk_keys[i]);
-		} else {
-			SAFE_SPRINTF(current, end, "X ");
-		}
+	for (size_t i = 0; i < tp->length; i++) {
+		const tesla_transition *t = tp->transitions + i;
+
+		/* Note: On at least one Mac, combining the following
+		 *       into a single snprintf() causes the wrong thing
+		 *       to be printed (instead of t->mask, we get an address!).
+		 */
+		SAFE_SPRINTF(c, end, "(%d:", t->from);
+		SAFE_SPRINTF(c, end, "0x%tx", t->mask);
+		SAFE_SPRINTF(c, end, " -> %d", t->to);
+
+		if (t->flags & TESLA_TRANS_FORK)
+			SAFE_SPRINTF(c, end, " <fork>");
+
+		if (t->flags & TESLA_TRANS_INIT)
+			SAFE_SPRINTF(c, end, " <init>");
+
+		if (t->flags & TESLA_TRANS_CLEANUP)
+			SAFE_SPRINTF(c, end, " <clean>");
+
+		SAFE_SPRINTF(c, end, ") ");
 	}
 
-	SAFE_SPRINTF(current, end, "]");
+	SAFE_SPRINTF(c, end, "]");
 
-	return (TESLA_SUCCESS);
+	return c;
+}
+
+char*
+key_string(char *buffer, const char *end, const struct tesla_key *key)
+{
+	char *c = buffer;
+
+	SAFE_SPRINTF(c, end, "0x%tx [ ", key->tk_mask);
+
+	for (int32_t i = 0; i < TESLA_KEY_SIZE; i++) {
+		if (key->tk_mask & (1 << i))
+			SAFE_SPRINTF(c, end, "%tx ", key->tk_keys[i]);
+		else
+			SAFE_SPRINTF(c, end, "X ");
+	}
+
+	SAFE_SPRINTF(c, end, "]");
+
+	return c;
 }
 
 #ifndef NDEBUG
-
-#define print DEBUG_PRINT
 
 /* TODO: kernel version... probably just say no? */
 int32_t
@@ -167,11 +179,12 @@ print_key(const struct tesla_key *key)
 {
 	static const size_t LEN = 15 * TESLA_KEY_SIZE + 10;
 	char buffer[LEN];
+	char *end = buffer + LEN;
 
-	int err = key_string(buffer, LEN, key);
-	assert(err == TESLA_SUCCESS);
+	char *e = key_string(buffer, end, key);
+	assert(e < end);
 
-	printf("%s", buffer);
+	print("%s", buffer);
 }
 
 #endif /* !NDEBUG */
