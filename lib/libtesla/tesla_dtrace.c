@@ -47,8 +47,7 @@ SDT_PROBE_DEFINE2(tesla, kernel, assert, pass, pass, "struct tesla_class *",
 void
 tesla_state_transition_dtrace(struct tesla_class *tcp,
     struct tesla_instance *tip,
-    __unused const struct tesla_transitions *transp,
-    __unused uint32_t transition_index)
+    __unused const struct tesla_transition *transp)
 {
 
 	SDT_PROBE(tesla, kernel, , state_transition, tcp, tip, 0, 0, 0);
@@ -80,8 +79,7 @@ tesla_assert_pass_dtrace(struct tesla_class *tcp, struct tesla_instance *tip)
 void
 tesla_state_transition_dtrace(__unused struct tesla_class *tcp,
     __unused struct tesla_instance *tip,
-    __unused const struct tesla_transitions *transp,
-    __unused uint32_t transition_index)
+    __unused const struct tesla_transition *transp)
 {
 
 	assert(0 && "DTrace not implemented in userspace");

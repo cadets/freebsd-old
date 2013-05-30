@@ -60,16 +60,18 @@ struct tesla_transition {
 	uint32_t	from;
 
 	/** The mask of the state we're moving from. */
-	uint32_t	mask;
+	uint32_t	from_mask;
 
 	/** The state we are moving to. */
 	uint32_t	to;
+
+	/** A mask of the keys that the 'to' state should have set. */
+	uint32_t	to_mask;
 
 	/** Things we may need to do on this transition. */
 	int		flags;
 };
 
-#define	TESLA_TRANS_FORK	0x01	/* Always fork on this transition. */
 #define	TESLA_TRANS_INIT	0x02	/* May need to initialise the class. */
 #define	TESLA_TRANS_CLEANUP	0x04	/* Clean up the class now. */
 
@@ -213,7 +215,7 @@ struct tesla_instance {
  *
  * @returns     1 if active, 0 if inactive
  */
-int32_t	tesla_instance_active(struct tesla_instance *i);
+int32_t	tesla_instance_active(const struct tesla_instance *i);
 
 
 /** Clone an existing instance into a new instance. */
