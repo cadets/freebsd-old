@@ -84,6 +84,26 @@ struct __tesla_event* __tesla_callee(__tesla_event*, ...);
 /** Function events inside this predicate refer to the caller context. */
 struct __tesla_event* __tesla_caller(__tesla_event*, ...);
 
+/**
+ * Events named in this predicate should only occur exactly as described.
+ *
+ * This is the default behaviour for explicit automata representations.
+ */
+struct __tesla_event* __tesla_strict(__tesla_event*, ...);
+
+/**
+ * Events named in this predicate must occur as described <i>if</i> the
+ * execution trace includes a NOW event; otherwise, any number of non-NOW
+ * events can occur in any order.
+ *
+ * For instance, if the assertion names the VOP_WRITE() event, we don't want
+ * to preclude the use of VOP_WRITE() in code paths that don't include this
+ * assertion's NOW event.
+ *
+ * This is the default behaviour for inline assertions.
+ */
+struct __tesla_event* __tesla_conditional(__tesla_event*, ...);
+
 
 /** Nothing to see here, move along... */
 struct __tesla_event* __tesla_ignore;
@@ -108,14 +128,35 @@ register_t	__tesla_any_register_t();
  */
 
 struct __tesla_automaton_description;
+struct __tesla_automaton_usage;
 
 /** In an explicit automata description, return this to say "we're done". */
 struct __tesla_automaton_description*	__tesla_automaton_done();
 
+inline struct __tesla_automaton_usage*
+__tesla_struct_uses_automaton(const char *automaton,
+	__tesla_locality *loc, ...)
+{
+	return 0;
+}
 
-/** Declare an automaton that describes behaviour of this struct. */
-#define	__tesla_struct_automaton(fn_name) \
-	void *__tesla_automaton_struct_uses_##fn_name;
+
+/**
+ * Declare that a struct's behaviour is described by an automaton.
+ *
+ * @param	struct_name	name of the struct that uses the automaton
+ * @param	automaton	reference to the automaton description
+ * @param	loc		a TESLA locality (global, per-thread...)
+ * @param	start		event that kicks off the automaton
+ * @param	end		event that winds up the automaton
+ */
+#define	__tesla_struct_usage(subject, automaton, loc, start, end) \
+	struct __tesla_automaton_usage*					\
+	__tesla_struct_automaton_usage_##struct_name##_##automaton(subject) { \
+		return __tesla_struct_uses_automaton(			\
+			#automaton, loc, start, end);	\
+	}
+
 
 /**
  * Define an automaton to describe a struct's behaviour.
@@ -138,19 +179,22 @@ struct __tesla_automaton_description*	__tesla_automaton_done();
 #define	__tesla_global		((struct __tesla_locality*) 0)
 #define	__tesla_perthread	((struct __tesla_locality*) 0)
 
-#define __tesla_sequence(...)	1
+#define __tesla_sequence(...)		1
 
-#define	__tesla_struct_automaton(fn_name)
+#define	__tesla_struct_automaton(...)
 #define	__tesla_automaton(name, ...)
 
-#define	__tesla_call(...)	0
-#define	__tesla_return(...)	0
+#define	__tesla_call(...)		0
+#define	__tesla_return(...)		0
 
-#define	__tesla_callee(...)	0
-#define	__tesla_caller(...)	0
+#define	__tesla_callee(...)		0
+#define	__tesla_caller(...)		0
 
-#define	__tesla_optional(...)	0
-#define	__tesla_any(...)	0
+#define	__tesla_optional(...)		0
+#define	__tesla_any(...)		0
+
+#define	__tesla_strict(...)		0
+#define	__tesla_conditional(...)	0
 
 #endif	/* __TESLA_ANALYSER__ */
 

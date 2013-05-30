@@ -40,7 +40,7 @@ int
 tesla_class_global_postinit(struct tesla_class *tsp)
 {
 
-	assert(tsp->ts_scope == TESLA_SCOPE_GLOBAL);
+	assert(tsp->tc_scope == TESLA_SCOPE_GLOBAL);
 	tesla_class_global_lock_init(tsp);
 	return (TESLA_SUCCESS);
 }
@@ -49,16 +49,16 @@ void
 tesla_class_global_acquire(struct tesla_class *tsp)
 {
 
-	assert(tsp->ts_scope == TESLA_SCOPE_GLOBAL);
-	tesla_lock(&tsp->ts_lock);
+	assert(tsp->tc_scope == TESLA_SCOPE_GLOBAL);
+	tesla_lock(&tsp->tc_lock);
 }
 
 void
 tesla_class_global_release(struct tesla_class *tsp)
 {
 
-	assert(tsp->ts_scope == TESLA_SCOPE_GLOBAL);
-	tesla_unlock(&tsp->ts_lock);
+	assert(tsp->tc_scope == TESLA_SCOPE_GLOBAL);
+	tesla_unlock(&tsp->tc_lock);
 }
 
 void
@@ -81,9 +81,9 @@ tesla_class_global_lock_init(struct tesla_class *tsp)
 {
 
 #ifdef _KERNEL
-	mtx_init(&tsp->ts_lock, "tesla", NULL, MTX_DEF);
+	mtx_init(&tsp->tc_lock, "tesla", NULL, MTX_DEF);
 #else
-	__debug int error = pthread_mutex_init(&tsp->ts_lock, NULL);
+	__debug int error = pthread_mutex_init(&tsp->tc_lock, NULL);
 	assert(error == 0);
 #endif
 }
@@ -93,9 +93,9 @@ tesla_class_global_lock_destroy(struct tesla_class *tsp)
 {
 
 #ifdef _KERNEL
-	mtx_destroy(&tsp->ts_lock);
+	mtx_destroy(&tsp->tc_lock);
 #else
-	__debug int error = pthread_mutex_destroy(&tsp->ts_lock);
+	__debug int error = pthread_mutex_destroy(&tsp->tc_lock);
 	assert(error == 0);
 #endif
 }

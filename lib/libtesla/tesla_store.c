@@ -40,6 +40,7 @@
 
 /** The pthreads key used to identify TESLA data. */
 pthread_key_t	pthread_key(void);
+void		tesla_pthread_destructor(void*);
 #endif
 
 struct tesla_store global_store = { .length = 0 };
@@ -116,6 +117,9 @@ int32_t
 tesla_store_init(tesla_store *store, uint32_t context,
                  uint32_t classes, uint32_t instances)
 {
+	assert(classes > 0);
+	assert(instances > 0);
+
 	store->length = classes;
 	store->classes = tesla_malloc(classes * sizeof(tesla_class));
 	if (store->classes == NULL)
@@ -124,13 +128,11 @@ tesla_store_init(tesla_store *store, uint32_t context,
 	int error = TESLA_SUCCESS;
 	for (uint32_t i = 0; i < classes; i++) {
 		error = tesla_class_init(store->classes + i, context, instances);
-		if (error != TESLA_SUCCESS) break;
-		assert(store->classes[i].ts_table != NULL);
-	}
+		assert(error == TESLA_SUCCESS);
+		if (error != TESLA_SUCCESS)
+			break;
 
-	for (uint32_t i = 0; i < classes; i++) {
-		assert(store->classes[i].ts_table != NULL);
-		assert(store->classes[i].ts_table->tt_length > 0);
+		assert(store->classes[i].tc_scope > 0);
 	}
 
 	return (error);
@@ -140,8 +142,10 @@ tesla_store_init(tesla_store *store, uint32_t context,
 void
 tesla_store_free(tesla_store *store)
 {
+	DEBUG(libtesla.store.free, "tesla_store_free %tx\n", store);
+
 	for (uint32_t i = 0; i < store->length; i++)
-		tesla_class_free(store->classes + i);
+		tesla_class_destroy(store->classes + i);
 
 	tesla_free(store);
 }
@@ -159,11 +163,12 @@ tesla_class_get(tesla_store *store, uint32_t id, tesla_class **tclassp,
 
 	tesla_class *tclass = &store->classes[id];
 	assert(tclass != NULL);
-	assert(tclass->ts_table != NULL);
+	assert(tclass->tc_instances != NULL);
+	assert(tclass->tc_scope > 0);
 
-	if (tclass->ts_name == NULL) tclass->ts_name = name;
-	if (tclass->ts_description == NULL)
-		tclass->ts_description = description;
+	if (tclass->tc_name == NULL) tclass->tc_name = name;
+	if (tclass->tc_description == NULL)
+		tclass->tc_description = description;
 
 	tesla_class_acquire(tclass);
 
@@ -173,7 +178,7 @@ tesla_class_get(tesla_store *store, uint32_t id, tesla_class **tclassp,
 
 void
 tesla_class_acquire(tesla_class *class) {
-	switch (class->ts_scope) {
+	switch (class->tc_scope) {
 	case TESLA_SCOPE_GLOBAL:
 		return tesla_class_global_acquire(class);
 
@@ -206,7 +211,7 @@ pthread_key()
 	// initialise the key twice.
 	if (key_initialised) return key;
 
-	error = pthread_key_create(&key, NULL);
+	error = pthread_key_create(&key, tesla_pthread_destructor);
 	assert(error == 0 && "failed to create pthread_key_t");
 
 	key_initialised = 1;
@@ -215,6 +220,13 @@ pthread_key()
 	assert(error == 0 && "failed to unlock pthread key mutex");
 
 	return key;
+}
+
+void
+tesla_pthread_destructor(__unused void *x)
+{
+	tesla_store *store = (tesla_store*) x;
+	tesla_store_free(store);
 }
 #endif
 
