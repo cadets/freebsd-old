@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/libprocstat/Makefile 241680 2012-10-18 12:04:56Z attilio $
+# $FreeBSD: head/lib/libprocstat/Makefile 249666 2013-04-20 07:47:26Z trociny $
 
 .include <bsd.own.mk>
 
@@ -6,6 +6,7 @@ LIB=	procstat
 
 SRCS=	cd9660.c	\
 	common_kvm.c	\
+	core.c		\
 	libprocstat.c	\
         msdosfs.c	\
 	udf.c
@@ -17,8 +18,8 @@ INCS=		libprocstat.h
 CFLAGS+=	-I. -I${.CURDIR} -D_KVM_VNODE
 SHLIB_MAJOR=	1
 
-DPADD=		${LIBKVM} ${LIBUTIL}
-LDADD=		-lkvm -lutil
+DPADD=		${LIBELF} ${LIBKVM} ${LIBUTIL}
+LDADD=		-lelf -lkvm -lutil
 
 MAN=		libprocstat.3
 

@@ -1,5 +1,5 @@
 #	@(#)Makefile	8.1 (Berkeley) 6/4/93
-# $FreeBSD: head/lib/libkvm/Makefile 221869 2011-05-14 01:53:38Z attilio $
+# $FreeBSD: head/lib/libkvm/Makefile 249358 2013-04-11 10:14:28Z glebius $
 
 LIB=	kvm
 SHLIBDIR?= /lib
@@ -25,8 +25,10 @@ MAN=	kvm.3 kvm_getcptime.3 kvm_geterr.3 kvm_getfiles.3 kvm_getloadavg.3 \
 	kvm_getpcpu.3 kvm_getprocs.3 kvm_getswapinfo.3 kvm_nlist.3 kvm_open.3 \
 	kvm_read.3
 
-MLINKS+=kvm_getpcpu.3 kvm_getmaxcpu.3
-MLINKS+=kvm_getpcpu.3 kvm_dpcpu_setcpu.3
+MLINKS+=kvm_getpcpu.3 kvm_getmaxcpu.3 \
+	kvm_getpcpu.3 kvm_dpcpu_setcpu.3 \
+	kvm_getpcpu.3 kvm_read_zpcpu.3 \
+	kvm_getpcpu.3 kvm_counter_u64_fetch.3
 MLINKS+=kvm_getprocs.3 kvm_getargv.3 kvm_getprocs.3 kvm_getenvv.3
 MLINKS+=kvm_open.3 kvm_close.3 kvm_open.3 kvm_openfiles.3
 MLINKS+=kvm_read.3 kvm_write.3

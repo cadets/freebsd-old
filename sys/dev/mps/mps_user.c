@@ -56,11 +56,11 @@
  *
  * LSI MPT-Fusion Host Adapter FreeBSD
  *
- * $FreeBSD: head/sys/dev/mps/mps_user.c 241844 2012-10-22 03:00:37Z eadler $
+ * $FreeBSD: head/sys/dev/mps/mps_user.c 250900 2013-05-22 02:15:07Z mav $
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/mps/mps_user.c 241844 2012-10-22 03:00:37Z eadler $");
+__FBSDID("$FreeBSD: head/sys/dev/mps/mps_user.c 250900 2013-05-22 02:15:07Z mav $");
 
 #include "opt_compat.h"
 
@@ -208,8 +208,8 @@ mps_detach_user(struct mps_softc *sc)
 {
 
 	/* XXX: do a purge of pending requests? */
-	destroy_dev(sc->mps_cdev);
-
+	if (sc->mps_cdev != NULL)
+		destroy_dev(sc->mps_cdev);
 }
 
 static int

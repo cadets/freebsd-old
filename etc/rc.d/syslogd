@@ -1,10 +1,12 @@
 #!/bin/sh
 #
-# $FreeBSD: head/etc/rc.d/syslogd 240336 2012-09-11 05:04:59Z obrien $
+# $FreeBSD: head/etc/rc.d/syslogd 250617 2013-05-13 20:28:24Z asomers $
 #
 
+# netif is required for lo0 because syslogd tries to open a local socket
+#
 # PROVIDE: syslogd
-# REQUIRE: mountcritremote FILESYSTEMS newsyslog
+# REQUIRE: mountcritremote FILESYSTEMS newsyslog netif
 # BEFORE:  SERVERS
 
 . /etc/rc.subr

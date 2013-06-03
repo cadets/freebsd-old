@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/clang/libllvmdebuginfo/Makefile 246259 2013-02-02 22:28:29Z dim $
+# $FreeBSD: head/lib/clang/libllvmdebuginfo/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
@@ -12,6 +12,7 @@ SRCS=	DIContext.cpp \
 	DWARFDebugAbbrev.cpp \
 	DWARFDebugArangeSet.cpp \
 	DWARFDebugAranges.cpp \
+	DWARFDebugFrame.cpp \
 	DWARFDebugInfoEntry.cpp \
 	DWARFDebugLine.cpp \
 	DWARFDebugRangeList.cpp \

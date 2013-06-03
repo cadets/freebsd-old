@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/lib/libc/powerpc/gen/getcontextx.c 230864 2012-02-01 13:33:53Z kib $");
+__FBSDID("$FreeBSD: head/lib/libc/powerpc/gen/getcontextx.c 251047 2013-05-28 04:54:16Z kib $");
 
 #include <sys/types.h>
 #include <sys/ucontext.h>
@@ -37,6 +37,13 @@ __getcontextx_size(void)
 {
 
 	return (sizeof(ucontext_t));
+}
+
+int
+__fillcontextx2(char *ctx)
+{
+
+	return (0);
 }
 
 int

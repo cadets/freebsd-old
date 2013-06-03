@@ -1,4 +1,4 @@
-# $FreeBSD: head/sys/dev/etherswitch/etherswitch_if.m 241578 2012-10-15 12:20:40Z ray $
+# $FreeBSD: head/sys/dev/etherswitch/etherswitch_if.m 250381 2013-05-08 20:46:54Z adrian $
 
 #include <sys/bus.h>
 
@@ -22,6 +22,18 @@ CODE {
 	static void
 	null_etherswitch_unlock(device_t dev)
 	{
+	}
+
+	static int
+	null_etherswitch_getconf(device_t dev, etherswitch_conf_t *conf)
+	{
+		return (0);
+	}
+
+	static int
+	null_etherswitch_setconf(device_t dev, etherswitch_conf_t *conf)
+	{
+		return (0);
 	}
 };
 
@@ -113,3 +125,19 @@ METHOD int setvgroup {
 	device_t	dev;
 	etherswitch_vlangroup_t *vg;
 }
+
+#
+# Get the Switch configuration
+#
+METHOD int getconf {
+	device_t	dev;
+	etherswitch_conf_t	*conf;
+} DEFAULT null_etherswitch_getconf;
+
+#
+# Set the Switch configuration
+#
+METHOD int setconf {
+	device_t	dev;
+	etherswitch_conf_t	*conf;
+} DEFAULT null_etherswitch_setconf;

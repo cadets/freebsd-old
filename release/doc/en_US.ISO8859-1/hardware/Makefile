@@ -1,4 +1,4 @@
-# $FreeBSD: head/release/doc/en_US.ISO8859-1/hardware/Makefile 241096 2012-10-01 11:26:49Z gabor $
+# $FreeBSD: head/release/doc/en_US.ISO8859-1/hardware/Makefile 250805 2013-05-19 05:49:21Z hrs $
 
 RELN_ROOT?= ${.CURDIR}/../..
 
@@ -18,7 +18,7 @@ JADEFLAGS+=	-V %generate-article-toc%
 # SGML content
 SRCS+=	article.xml
 SRCS+=	${DEV-AUTODIR}/catalog-auto
-SRCS+=	${DEV-AUTODIR}/dev-auto.xml
+SRCS+=	${DEV-AUTODIR}/dev-auto.ent
 
 CATALOGS+=	-c ${DEV-AUTODIR}/catalog-auto
 

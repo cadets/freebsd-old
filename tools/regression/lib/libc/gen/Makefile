@@ -1,7 +1,7 @@
-# $FreeBSD: head/tools/regression/lib/libc/gen/Makefile 239160 2012-08-09 22:05:40Z jilles $
+# $FreeBSD: head/tools/regression/lib/libc/gen/Makefile 250825 2013-05-20 13:05:51Z jilles $
 
 TESTS=	test-arc4random test-fmtcheck test-fmtmsg test-fnmatch \
-	test-fpclassify test-ftw test-posix_spawn test-wordexp
+	test-fpclassify test-ftw test-popen test-posix_spawn test-wordexp
 
 .PHONY: tests
 tests: ${TESTS}

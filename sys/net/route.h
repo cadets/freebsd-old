@@ -27,7 +27,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)route.h	8.4 (Berkeley) 1/9/95
- * $FreeBSD: head/sys/net/route.h 238092 2012-07-04 07:37:53Z glebius $
+ * $FreeBSD: head/sys/net/route.h 248070 2013-03-08 20:33:50Z melifaro $
  */
 
 #ifndef _NET_ROUTE_H_
@@ -176,7 +176,7 @@ struct ortentry {
 /*			0x20000		   unused, was RTF_WASCLONED */
 #define RTF_PROTO3	0x40000		/* protocol specific routing flag */
 /*			0x80000		   unused */
-#define RTF_PINNED	0x100000	/* future use */
+#define RTF_PINNED	0x100000	/* route is immutable */
 #define	RTF_LOCAL	0x200000 	/* route represents a local address */
 #define	RTF_BROADCAST	0x400000	/* route represents a bcast address */
 #define	RTF_MULTICAST	0x800000	/* route represents a mcast address */

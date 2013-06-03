@@ -31,11 +31,13 @@
  * SUCH DAMAGE.
  *
  *	JNPR: frame.h,v 1.6.2.1 2007/09/10 08:14:57 girish
- * $FreeBSD: head/sys/mips/include/frame.h 232855 2012-03-12 08:13:04Z jmallett $
+ * $FreeBSD: head/sys/mips/include/frame.h 249790 2013-04-23 09:38:18Z imp $
  *
  */
 #ifndef _MACHINE_FRAME_H_
 #define	_MACHINE_FRAME_H_
+
+/* Note: This must also match regnum.h and regdef.h */
 
 struct trapframe {
 	register_t	zero;
@@ -46,6 +48,16 @@ struct trapframe {
 	register_t	a1;
 	register_t	a2;
 	register_t	a3;
+#if defined(__mips_n32) || defined(__mips_n64)
+	register_t	a4;
+	register_t	a5;
+	register_t	a6;
+	register_t	a7;
+	register_t	t0;
+	register_t	t1;
+	register_t	t2;
+	register_t	t3;
+#else
 	register_t	t0;
 	register_t	t1;
 	register_t	t2;
@@ -54,6 +66,7 @@ struct trapframe {
 	register_t	t5;
 	register_t	t6;
 	register_t	t7;
+#endif
 	register_t	s0;
 	register_t	s1;
 	register_t	s2;

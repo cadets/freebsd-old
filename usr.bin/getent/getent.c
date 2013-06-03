@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.bin/getent/getent.c 240954 2012-09-26 09:29:48Z kevlo $");
+__FBSDID("$FreeBSD: head/usr.bin/getent/getent.c 250942 2013-05-23 20:52:30Z ghelmer $");
 
 #include <sys/socket.h>
 #include <sys/param.h>
@@ -61,6 +61,7 @@ static int	parsenum(const char *, unsigned long *);
 static int	ethers(int, char *[]);
 static int	group(int, char *[]);
 static int	hosts(int, char *[]);
+static int	netgroup(int, char *[]);
 static int	networks(int, char *[]);
 static int	passwd(int, char *[]);
 static int	protocols(int, char *[]);
@@ -89,6 +90,7 @@ static struct getentdb {
 	{	"rpc",		rpc,		},
 	{	"services",	services,	},
 	{	"shells",	shells,		},
+	{	"netgroup",	netgroup,	},
 	{	"utmpx",	utmpx,		},
 
 	{	NULL,		NULL,		},
@@ -567,6 +569,47 @@ shells(int argc, char *argv[])
 		}
 	}
 	endusershell();
+	return rv;
+}
+
+/*
+ * netgroup
+ */
+static int
+netgroup(int argc, char *argv[])
+{
+	char		*host, *user, *domain;
+	int		first;
+	int		rv, i;
+
+	assert(argc > 1);
+	assert(argv != NULL);
+
+#define NETGROUPPRINT(s)	(((s) != NULL) ? (s) : "")
+
+	rv = RV_OK;
+	if (argc == 2) {
+		fprintf(stderr, "Enumeration not supported on netgroup\n");
+		rv = RV_NOENUM;
+	} else {
+		for (i = 2; i < argc; i++) {
+			setnetgrent(argv[i]);
+			first = 1;
+			while (getnetgrent(&host, &user, &domain) != 0) {
+				if (first) {
+					first = 0;
+					(void)fputs(argv[i], stdout);
+				}
+				(void)printf(" (%s,%s,%s)",
+				    NETGROUPPRINT(host),
+				    NETGROUPPRINT(user),
+				    NETGROUPPRINT(domain));
+			}
+			if (!first)
+				(void)putchar('\n');
+			endnetgrent();
+		}
+	}
 	return rv;
 }
 

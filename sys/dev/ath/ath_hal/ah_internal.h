@@ -14,7 +14,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD: head/sys/dev/ath/ath_hal/ah_internal.h 244853 2012-12-30 06:46:11Z adrian $
+ * $FreeBSD: head/sys/dev/ath/ath_hal/ah_internal.h 249137 2013-04-05 09:06:39Z adrian $
  */
 #ifndef _ATH_AH_INTERAL_H_
 #define _ATH_AH_INTERAL_H_
@@ -392,6 +392,7 @@ struct ath_hal_private {
 	int16_t		ah_powerLimit;		/* tx power cap */
 	uint16_t	ah_maxPowerLevel;	/* calculated max tx power */
 	u_int		ah_tpScale;		/* tx power scale factor */
+	u_int16_t	ah_extraTxPow;		/* low rates extra-txpower */
 	uint32_t	ah_11nCompat;		/* 11n compat controls */
 
 	/*

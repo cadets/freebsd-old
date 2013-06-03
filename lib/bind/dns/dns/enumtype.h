@@ -1,7 +1,7 @@
-/* $FreeBSD: head/lib/bind/dns/dns/enumtype.h 236196 2012-05-28 19:47:56Z dougb $ */
+/* $FreeBSD: head/lib/bind/dns/dns/enumtype.h 248788 2013-03-27 10:11:43Z erwin $ */
 
 /*
- * Copyright (C) 2004-2012 Internet Systems Consortium, Inc. ("ISC")
+ * Copyright (C) 2004-2013 Internet Systems Consortium, Inc. ("ISC")
  * Copyright (C) 1998-2003 Internet Software Consortium.
  *
  * Permission to use, copy, modify, and distribute this software for any

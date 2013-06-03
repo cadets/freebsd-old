@@ -1,4 +1,4 @@
-/*	$OpenBSD: extern.h,v 1.51 2011/09/27 07:24:02 espie Exp $	*/
+/*	$OpenBSD: extern.h,v 1.52 2012/04/12 17:00:11 espie Exp $	*/
 /*	$NetBSD: extern.h,v 1.3 1996/01/13 23:25:24 pk Exp $	*/
 
 /*-
@@ -33,7 +33,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)extern.h	8.1 (Berkeley) 6/6/93
- * $FreeBSD: head/usr.bin/m4/extern.h 241777 2012-10-20 10:33:15Z ed $
+ * $FreeBSD: head/usr.bin/m4/extern.h 250226 2013-05-03 23:29:38Z jkim $
  */
 
 /* eval.c */

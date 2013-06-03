@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_open_filename.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_open_filename.c 248616 2013-03-22 13:36:03Z mm $");
 
 static void
 test_open_filename_mbs(void)
@@ -35,7 +35,7 @@ test_open_filename_mbs(void)
 	/* Write an archive through this FILE *. */
 	assert((a = archive_write_new()) != NULL);
 	assertEqualIntA(a, ARCHIVE_OK, archive_write_set_format_ustar(a));
-	assertEqualIntA(a, ARCHIVE_OK, archive_write_set_compression_none(a));
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_add_filter_none(a));
 	assertEqualIntA(a, ARCHIVE_OK,
 	    archive_write_open_filename(a, "test.tar"));
 
@@ -119,7 +119,7 @@ test_open_filename_wcs(void)
 	/* Write an archive through this FILE *. */
 	assert((a = archive_write_new()) != NULL);
 	assertEqualIntA(a, ARCHIVE_OK, archive_write_set_format_ustar(a));
-	assertEqualIntA(a, ARCHIVE_OK, archive_write_set_compression_none(a));
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_add_filter_none(a));
 	assertEqualIntA(a, ARCHIVE_OK,
 	    archive_write_open_filename_w(a, L"test.tar"));
 

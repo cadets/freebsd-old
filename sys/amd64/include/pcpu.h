@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/amd64/include/pcpu.h 238723 2012-07-23 19:16:31Z kib $
+ * $FreeBSD: head/sys/amd64/include/pcpu.h 250851 2013-05-21 11:24:32Z kib $
  */
 
 #ifndef _MACHINE_PCPU_H_
@@ -77,7 +77,14 @@
 	/* Pointer to the CPU TSS descriptor */				\
 	struct system_segment_descriptor *pc_tss;			\
 	u_int	pc_cmci_mask		/* MCx banks for CMCI */	\
-	PCPU_XEN_FIELDS
+	PCPU_XEN_FIELDS;						\
+	uint64_t pc_dbreg[16];		/* ddb debugging regs */	\
+	int pc_dbreg_cmd;		/* ddb debugging reg cmd */	\
+	char	__pad[161]		/* be divisor of PAGE_SIZE	\
+					   after cache alignment */
+
+#define	PC_DBREG_CMD_NONE	0
+#define	PC_DBREG_CMD_LOAD	1
 
 #ifdef _KERNEL
 

@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/clang/libllvminstrumentation/Makefile 246259 2013-02-02 22:28:29Z dim $
+# $FreeBSD: head/lib/clang/libllvminstrumentation/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
@@ -10,6 +10,7 @@ SRCS=	AddressSanitizer.cpp \
 	BoundsChecking.cpp \
 	EdgeProfiling.cpp \
 	GCOVProfiling.cpp \
+	MemorySanitizer.cpp \
 	Instrumentation.cpp \
 	OptimalEdgeProfiling.cpp \
 	PathProfiling.cpp \

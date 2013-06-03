@@ -32,7 +32,7 @@
  * SUCH DAMAGE.
  */
 
-/* $FreeBSD: head/sys/arm/include/sysarch.h 239268 2012-08-15 03:03:03Z gonzo $ */
+/* $FreeBSD: head/sys/arm/include/sysarch.h 249582 2013-04-17 11:40:10Z gabor $ */
 
 #ifndef _ARM_SYSARCH_H_
 #define _ARM_SYSARCH_H_
@@ -47,7 +47,7 @@
  * update the cpu_switch() (and cpu_throw()) code as well.
  * In addition, code in arm/include/atomic.h and arm/include/asmacros.h
  * assumes that ARM_RAS_END is at ARM_RAS_START+4, so be sure to update those
- * if ARM_RAS_END moves in relation to ARM_RAS_START (look for occurrances
+ * if ARM_RAS_END moves in relation to ARM_RAS_START (look for occurrences
  * of ldr/str rm,[rn, #4]).
  */
 

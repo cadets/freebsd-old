@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/geom/label/g_label.c 244585 2012-12-22 13:43:12Z jh $");
+__FBSDID("$FreeBSD: head/sys/geom/label/g_label.c 249508 2013-04-15 16:09:24Z ivoras $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -89,6 +89,7 @@ const struct g_label_desc *g_labels[] = {
 	&g_label_ntfs,
 	&g_label_gpt,
 	&g_label_gpt_uuid,
+	&g_label_disk_ident,
 	NULL
 };
 
@@ -339,7 +340,7 @@ g_label_taste(struct g_class *mp, struct g_provider *pp, int flags __unused)
 		    pp->mediasize - pp->sectorsize);
 	} while (0);
 	for (i = 0; g_labels[i] != NULL; i++) {
-		char label[64];
+		char label[128];
 
 		if (g_labels[i]->ld_enabled == 0)
 			continue;

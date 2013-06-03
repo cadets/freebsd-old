@@ -32,7 +32,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/geom/geom.h 243333 2012-11-20 12:32:18Z jh $
+ * $FreeBSD: head/sys/geom/geom.h 248508 2013-03-19 14:13:12Z kib $
  */
 
 #ifndef _GEOM_GEOM_H_
@@ -205,6 +205,7 @@ struct g_provider {
 	u_int			flags;
 #define G_PF_WITHER		0x2
 #define G_PF_ORPHAN		0x4
+#define	G_PF_ACCEPT_UNMAPPED	0x8
 
 	/* Two fields for the implementing class to use */
 	void			*private;

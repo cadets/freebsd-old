@@ -23,10 +23,10 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/mips/cavium/octeon_machdep.c 243470 2012-11-24 02:12:24Z jmallett $
+ * $FreeBSD: head/sys/mips/cavium/octeon_machdep.c 247297 2013-02-26 01:00:11Z attilio $
  */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/mips/cavium/octeon_machdep.c 243470 2012-11-24 02:12:24Z jmallett $");
+__FBSDID("$FreeBSD: head/sys/mips/cavium/octeon_machdep.c 247297 2013-02-26 01:00:11Z attilio $");
 
 #include <sys/param.h>
 #include <sys/conf.h>
@@ -55,7 +55,6 @@ __FBSDID("$FreeBSD: head/sys/mips/cavium/octeon_machdep.c 243470 2012-11-24 02:1
 #include <vm/vm.h>
 #include <vm/vm_object.h>
 #include <vm/vm_page.h>
-#include <vm/vm_pager.h>
 
 #include <machine/atomic.h>
 #include <machine/cache.h>

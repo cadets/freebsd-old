@@ -27,7 +27,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)rtsock.c	8.7 (Berkeley) 10/12/95
- * $FreeBSD: head/sys/net/rtsock.c 243903 2012-12-05 19:45:24Z hrs $
+ * $FreeBSD: head/sys/net/rtsock.c 248322 2013-03-15 12:52:59Z glebius $
  */
 #include "opt_compat.h"
 #include "opt_sctp.h"
@@ -1118,20 +1118,17 @@ rt_msg1(int type, struct rt_addrinfo *rtinfo)
 	default:
 		len = sizeof(struct rt_msghdr);
 	}
-	if (len > MCLBYTES)
-		panic("rt_msg1");
-	m = m_gethdr(M_NOWAIT, MT_DATA);
-	if (m && len > MHLEN) {
-		MCLGET(m, M_NOWAIT);
-		if ((m->m_flags & M_EXT) == 0) {
-			m_free(m);
-			m = NULL;
-		}
-	}
+
+	/* XXXGL: can we use MJUMPAGESIZE cluster here? */
+	KASSERT(len <= MCLBYTES, ("%s: message too big", __func__));
+	if (len > MHLEN)
+		m = m_getcl(M_NOWAIT, MT_DATA, M_PKTHDR);
+	else
+		m = m_gethdr(M_NOWAIT, MT_DATA);
 	if (m == NULL)
 		return (m);
+
 	m->m_pkthdr.len = m->m_len = len;
-	m->m_pkthdr.rcvif = NULL;
 	rtm = mtod(m, struct rt_msghdr *);
 	bzero((caddr_t)rtm, len);
 	for (i = 0; i < RTAX_MAX; i++) {

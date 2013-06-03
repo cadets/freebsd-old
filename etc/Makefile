@@ -1,5 +1,5 @@
 #	from: @(#)Makefile	5.11 (Berkeley) 5/21/91
-# $FreeBSD: head/etc/Makefile 247162 2013-02-22 19:57:18Z ache $
+# $FreeBSD: head/etc/Makefile 250116 2013-04-30 19:26:44Z brooks $
 
 .include <bsd.own.mk>
 
@@ -328,7 +328,7 @@ MTREES+=	mtree/BSD.sendmail.dist		/
 MTREES+=	../${mtree}			/
 .endfor
 
-distrib-dirs:
+distrib-dirs: ${MTREES:N/*}
 	@set ${MTREES}; \
 	while test $$# -ge 2; do \
 		m=${.CURDIR}/$$1; \

@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/mfi/mfi_disk.c 242681 2012-11-06 23:25:06Z ambrisko $");
+__FBSDID("$FreeBSD: head/sys/dev/mfi/mfi_disk.c 248627 2013-03-22 22:46:19Z delphij $");
 
 #include "opt_mfi.h"
 
@@ -261,7 +261,6 @@ mfi_disk_strategy(struct bio *bio)
 	struct mfi_softc *controller;
 
 	sc = bio->bio_disk->d_drv1;
-	controller = sc->ld_controller;
 
 	if (sc == NULL) {
 		bio->bio_error = EINVAL;
@@ -271,6 +270,7 @@ mfi_disk_strategy(struct bio *bio)
 		return;
 	}
 
+	controller = sc->ld_controller;
 	if (controller->adpreset) {
 		bio->bio_error = EBUSY;
 		return;

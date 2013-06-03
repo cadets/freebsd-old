@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/usr.sbin/bhyve/bhyverun.h 245678 2013-01-20 03:42:49Z neel $
+ * $FreeBSD: head/usr.sbin/bhyve/bhyverun.h 248477 2013-03-18 22:38:30Z neel $
  */
 
 #ifndef	_FBSDRUN_H_
@@ -41,9 +41,7 @@ extern int guest_tslice;
 extern int guest_ncpus;
 extern char *vmname;
 
-extern u_long lomem_sz, himem_sz;
-
-void *paddr_guest2host(uintptr_t);
+void *paddr_guest2host(struct vmctx *ctx, uintptr_t addr, size_t len);
 
 void fbsdrun_addcpu(struct vmctx *ctx, int cpu, uint64_t rip);
 int  fbsdrun_muxed(void);

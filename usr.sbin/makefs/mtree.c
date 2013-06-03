@@ -24,7 +24,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.sbin/makefs/mtree.c 247052 2013-02-20 19:32:31Z brooks $");
+__FBSDID("$FreeBSD: head/usr.sbin/makefs/mtree.c 250605 2013-05-13 18:34:33Z marcel $");
 
 #include <sys/param.h>
 #include <sys/queue.h>
@@ -1050,6 +1050,7 @@ read_mtree(const char *fname, fsnode *node)
 	bzero(&mtree_global_inode, sizeof(mtree_global_inode));
 	mtree_global.inode = &mtree_global_inode;
 	mtree_global_inode.nlink = 1;
+	mtree_global_inode.st.st_nlink = 1;
 	mtree_global_inode.st.st_atime = mtree_global_inode.st.st_ctime =
 	    mtree_global_inode.st.st_mtime = time(NULL);
 	errors = warnings = 0;

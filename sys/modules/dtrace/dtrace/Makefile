@@ -1,8 +1,9 @@
-# $FreeBSD: head/sys/modules/dtrace/dtrace/Makefile 232506 2012-03-04 16:46:27Z eadler $
+# $FreeBSD: head/sys/modules/dtrace/dtrace/Makefile 248983 2013-04-01 19:13:46Z pfg $
 
 ARCHDIR=	${MACHINE_CPUARCH}
 
 .PATH: ${.CURDIR}/../../../cddl/contrib/opensolaris/uts/common/dtrace
+.PATH: ${.CURDIR}/../../../cddl/compat/opensolaris/kern
 .PATH: ${.CURDIR}/../../../cddl/kern
 .PATH: ${.CURDIR}/../../../cddl/dev/dtrace
 .PATH: ${.CURDIR}/../../../cddl/dev/dtrace/${ARCHDIR}
@@ -25,6 +26,9 @@ SRCS+=		assym.s
 
 # These are needed for assym.s
 SRCS+=		opt_compat.h opt_kstack_pages.h opt_nfs.h opt_hwpmc_hooks.h
+
+#This is needed for dtrace.c
+SRCS += 	opensolaris_taskq.c
 
 .if ${MACHINE_CPUARCH} == "i386"
 SRCS+=		opt_apic.h

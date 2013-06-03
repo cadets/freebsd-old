@@ -24,7 +24,7 @@
  */
 
 #include "archive_platform.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_read_open_fd.c 238856 2012-07-28 06:38:44Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_read_open_fd.c 248616 2013-03-22 13:36:03Z mm $");
 
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
@@ -119,7 +119,8 @@ file_read(struct archive *a, void *client_data, const void **buff)
 		if (bytes_read < 0) {
 			if (errno == EINTR)
 				continue;
-			archive_set_error(a, errno, "Error reading fd %d", mine->fd);
+			archive_set_error(a, errno, "Error reading fd %d",
+			    mine->fd);
 		}
 		return (bytes_read);
 	}

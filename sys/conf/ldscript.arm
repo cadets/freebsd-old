@@ -1,4 +1,4 @@
-/* $FreeBSD: head/sys/conf/ldscript.arm 245675 2013-01-19 22:08:16Z andrew $ */
+/* $FreeBSD: head/sys/conf/ldscript.arm 248122 2013-03-10 00:47:19Z andrew $ */
 OUTPUT_ARCH(arm)
 ENTRY(_start)
 
@@ -56,6 +56,7 @@ SECTIONS
   .init          : { *(.init)	} =0x9090
   .plt      : { *(.plt)	}
 
+  . = ALIGN(4);
   _extab_start = .;
   PROVIDE(extab_start = .);
   .ARM.extab : { *(.ARM.extab) }

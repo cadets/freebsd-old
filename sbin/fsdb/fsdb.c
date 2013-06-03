@@ -30,7 +30,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-  "$FreeBSD: head/sbin/fsdb/fsdb.c 241013 2012-09-27 23:31:06Z mdf $";
+  "$FreeBSD: head/sbin/fsdb/fsdb.c 248658 2013-03-23 20:00:02Z mckusick $";
 #endif /* not lint */
 
 #include <sys/param.h>
@@ -441,7 +441,8 @@ CMDFUNCSTART(findblk)
     ino_t inum, inosused;
     uint32_t *wantedblk32;
     uint64_t *wantedblk64;
-    struct cg *cgp = &cgrp;
+    struct bufarea *cgbp;
+    struct cg *cgp;
     int c, i, is_ufs2;
 
     wantedblksize = (argc - 1);
@@ -473,8 +474,8 @@ CMDFUNCSTART(findblk)
 	 */
 	inum = c * sblock.fs_ipg;
 	/* Read cylinder group. */
-	getblk(&cgblk, cgtod(&sblock, c), sblock.fs_cgsize);
-	memcpy(cgp, cgblk.b_un.b_cg, sblock.fs_cgsize);
+	cgbp = cgget(c);
+	cgp = cgbp->b_un.b_cg;
 	/*
 	 * Get a highest used inode number for a given cylinder group.
 	 * For UFS1 all inodes initialized at the newfs stage.

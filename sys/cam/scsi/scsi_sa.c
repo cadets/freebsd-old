@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/cam/scsi/scsi_sa.c 241404 2012-10-10 18:10:11Z mav $");
+__FBSDID("$FreeBSD: head/sys/cam/scsi/scsi_sa.c 250792 2013-05-18 23:36:21Z smh $");
 
 #include <sys/param.h>
 #include <sys/queue.h>
@@ -172,6 +172,17 @@ typedef enum {
 	SA_QUIRK_NO_MODESEL	= 0x40,	/* Don't do mode select at all */
 	SA_QUIRK_NO_CPAGE	= 0x80	/* Don't use DEVICE COMPRESSION page */
 } sa_quirks;
+
+#define SA_QUIRK_BIT_STRING	\
+	"\020"			\
+	"\001NOCOMP"		\
+	"\002FIXED"		\
+	"\003VARIABLE"		\
+	"\0042FM"		\
+	"\0051FM"		\
+	"\006NODREAD"		\
+	"\007NO_MODESEL"	\
+	"\010NO_CPAGE"
 
 #define	SAMODE(z)	(dev2unit(z) & 0x3)
 #define	SADENSITY(z)	((dev2unit(z) >> 2) & 0x3)
@@ -1546,6 +1557,7 @@ saregister(struct cam_periph *periph, void *arg)
 	xpt_register_async(AC_LOST_DEVICE, saasync, periph, periph->path);
 
 	xpt_announce_periph(periph, NULL);
+	xpt_announce_quirks(periph, softc->quirks, SA_QUIRK_BIT_STRING);
 
 	return (CAM_REQ_CMP);
 }

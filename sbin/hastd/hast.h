@@ -27,7 +27,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sbin/hastd/hast.h 246922 2013-02-17 21:12:34Z pjd $
+ * $FreeBSD: head/sbin/hastd/hast.h 250914 2013-05-22 17:47:45Z jkim $
  */
 
 #ifndef	_HAST_H_
@@ -239,6 +239,18 @@ struct hast_resource {
 	uint64_t	hr_stat_flush;
 	/* Number of activemap updates. */
 	uint64_t	hr_stat_activemap_update;
+	/* Number of local read errors. */
+	uint64_t	hr_stat_read_error;
+	/* Number of local write errors. */
+	uint64_t	hr_stat_write_error;
+	/* Number of local delete errors. */
+	uint64_t	hr_stat_delete_error;
+	/* Number of flush errors. */
+	uint64_t	hr_stat_flush_error;
+	/* Number of activemap write errors. */
+	uint64_t	hr_stat_activemap_write_error;
+	/* Number of activemap flush errors. */
+	uint64_t	hr_stat_activemap_flush_error;
 
 	/* Next resource. */
 	TAILQ_ENTRY(hast_resource) hr_next;
@@ -246,8 +258,5 @@ struct hast_resource {
 
 struct hastd_config *yy_config_parse(const char *config, bool exitonerror);
 void yy_config_free(struct hastd_config *config);
-
-void yyerror(const char *);
-int yylex(void);
 
 #endif	/* !_HAST_H_ */

@@ -27,7 +27,7 @@
  *
  */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/allwinner/a10_gpio.c 246955 2013-02-19 02:01:35Z ganbold $");
+__FBSDID("$FreeBSD: head/sys/arm/allwinner/a10_gpio.c 249449 2013-04-13 21:21:13Z dim $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -300,8 +300,8 @@ a10_gpio_pin_setflags(device_t dev, uint32_t pin, uint32_t flags)
 	if (i >= sc->sc_gpio_npins)
 		return (EINVAL);
 
-	/* Filter out unwanted flags. */
-	if ((flags &= sc->sc_gpio_pins[i].gp_caps) != flags)
+	/* Check for unwanted flags. */
+	if ((flags & sc->sc_gpio_pins[i].gp_caps) != flags)
 		return (EINVAL);
 
 	/* Can't mix input/output together. */

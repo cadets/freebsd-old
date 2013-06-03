@@ -1,5 +1,5 @@
 /*-
- * Copyright (C) 2012 Oleg Moskalenko <oleg.moskalenko@citrix.com>
+ * Copyright (C) 2012 Oleg Moskalenko <mom040267@gmail.com>
  * Copyright (C) 2012 Gabor Kovesdan <gabor@FreeBSD.org>
  * All rights reserved.
  *
@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.bin/sort/vsort.c 235267 2012-05-11 12:37:16Z gabor $");
+__FBSDID("$FreeBSD: head/usr.bin/sort/vsort.c 251245 2013-06-02 09:43:48Z gabor $");
 
 #include <sys/types.h>
 

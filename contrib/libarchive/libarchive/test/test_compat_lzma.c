@@ -24,7 +24,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_compat_lzma.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_compat_lzma.c 248616 2013-03-22 13:36:03Z mm $");
 
 /*
 Execute the following to rebuild the data for this program:
@@ -130,8 +130,8 @@ compat_lzma(const char *name)
 	assertEqualIntA(a, ARCHIVE_EOF, archive_read_next_header(a, &ae));
 
 	/* Verify that the format detection worked. */
-	assertEqualInt(archive_compression(a), ARCHIVE_COMPRESSION_LZMA);
-	assertEqualString(archive_compression_name(a), "lzma");
+	assertEqualInt(archive_filter_code(a, 0), ARCHIVE_FILTER_LZMA);
+	assertEqualString(archive_filter_name(a, 0), "lzma");
 	assertEqualInt(archive_format(a), ARCHIVE_FORMAT_TAR_USTAR);
 
 	assertEqualInt(ARCHIVE_OK, archive_read_close(a));

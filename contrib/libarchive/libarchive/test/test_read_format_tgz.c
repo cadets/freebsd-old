@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_read_format_tgz.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_read_format_tgz.c 248616 2013-03-22 13:36:03Z mm $");
 
 static unsigned char archive[] = {
 31,139,8,0,222,'C','p','C',0,3,211,'c',160,'=','0','0','0','0','7','5','U',
@@ -51,8 +51,8 @@ DEFINE_TEST(test_read_format_tgz)
 	    archive_read_open_memory(a, archive, sizeof(archive)));
 	assertEqualInt(ARCHIVE_OK, archive_read_next_header(a, &ae));
 	assertEqualInt(1, archive_file_count(a));
-	assertEqualInt(archive_compression(a),
-	    ARCHIVE_COMPRESSION_GZIP);
+	assertEqualInt(archive_filter_code(a, 0),
+	    ARCHIVE_FILTER_GZIP);
 	assertEqualInt(archive_format(a), ARCHIVE_FORMAT_TAR_USTAR);
 	assertEqualInt(ARCHIVE_OK, archive_read_close(a));
 	assertEqualInt(ARCHIVE_OK,archive_read_free(a));

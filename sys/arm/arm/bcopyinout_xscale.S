@@ -36,7 +36,7 @@
  */
 
 #include <machine/asm.h>
-__FBSDID("$FreeBSD: head/sys/arm/arm/bcopyinout_xscale.S 239268 2012-08-15 03:03:03Z gonzo $");
+__FBSDID("$FreeBSD: head/sys/arm/arm/bcopyinout_xscale.S 248361 2013-03-16 02:48:49Z andrew $");
 
 	.text
 	.align	0
@@ -492,7 +492,7 @@ ENTRY(copyin)
 	ldrbt	ip, [r0]
 	strb	ip, [r1]
 	RET
-
+END(copyin)
 
 /*
  * r0 = kernel space address
@@ -935,3 +935,5 @@ ENTRY(copyout)
 	ldrb	ip, [r0]
 	strbt	ip, [r1]
 	RET
+END(copyout)
+

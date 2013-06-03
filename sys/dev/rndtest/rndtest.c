@@ -32,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/rndtest/rndtest.c 241394 2012-10-10 08:36:38Z kevlo $");
+__FBSDID("$FreeBSD: head/sys/dev/rndtest/rndtest.c 249582 2013-04-17 11:40:10Z gabor $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -360,7 +360,7 @@ rndtest_chi_4(struct rndtest_state *rsp)
 	for (i = 0; i < RNDTEST_CHI4_K; i++)
 		freq[i] = 0;
 
-	/* Get number of occurances of each 4 bit pattern */
+	/* Get number of occurrences of each 4 bit pattern */
 	for (i = 0; i < RNDTEST_NBYTES; i++) {
 		freq[(rsp->rs_buf[i] >> 4) & RNDTEST_CHI4_K_MASK]++;
 		freq[(rsp->rs_buf[i] >> 0) & RNDTEST_CHI4_K_MASK]++;

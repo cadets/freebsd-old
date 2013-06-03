@@ -28,7 +28,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/acpica/acpi.c 246252 2013-02-02 12:52:43Z avg $");
+__FBSDID("$FreeBSD: head/sys/dev/acpica/acpi.c 249767 2013-04-22 15:51:06Z jhb $");
 
 #include "opt_acpi.h"
 #include <sys/param.h>
@@ -2334,7 +2334,7 @@ acpi_AppendBufferResource(ACPI_BUFFER *buf, ACPI_RESOURCE *res)
 	    return (AE_NO_MEMORY);
 	rp = (ACPI_RESOURCE *)buf->Pointer;
 	rp->Type = ACPI_RESOURCE_TYPE_END_TAG;
-	rp->Length = 0;
+	rp->Length = ACPI_RS_SIZE_MIN;
     }
     if (res == NULL)
 	return (AE_OK);
@@ -2384,7 +2384,7 @@ acpi_AppendBufferResource(ACPI_BUFFER *buf, ACPI_RESOURCE *res)
     /* And add the terminator. */
     rp = ACPI_NEXT_RESOURCE(rp);
     rp->Type = ACPI_RESOURCE_TYPE_END_TAG;
-    rp->Length = 0;
+    rp->Length = ACPI_RS_SIZE_MIN;
 
     return (AE_OK);
 }

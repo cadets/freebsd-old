@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.sbin/nandsim/nandsim_cfgparse.c 235607 2012-05-18 14:12:17Z gber $");
+__FBSDID("$FreeBSD: head/usr.sbin/nandsim/nandsim_cfgparse.c 249744 2013-04-21 22:47:24Z ed $");
 
 #include <sys/errno.h>
 #include <sys/ioctl.h>
@@ -130,7 +130,7 @@ static struct nandsim_key nandsim_chip_keys[] = {
 	{NULL, 0, 0, NULL, 0},
 };
 
-struct nandsim_section sections[] = {
+static struct nandsim_section sections[] = {
 	{"ctrl", (struct nandsim_key *)&nandsim_ctrl_keys},
 	{"chip", (struct nandsim_key *)&nandsim_chip_keys},
 	{NULL, NULL},
@@ -575,7 +575,7 @@ parse_config(char *cfgfname, const char *devfname)
 
 /*
  * Function tries to get appropriate value for given key, convert it to
- * array of ints (of given size), and perform all the neccesary checks and
+ * array of ints (of given size), and perform all the necessary checks and
  * conversions.
  */
 static int

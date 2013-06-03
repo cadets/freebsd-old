@@ -27,7 +27,7 @@
  * SUCH DAMAGE.
  *
  *	$KAME: in6_ifattach.h,v 1.14 2001/02/08 12:48:39 jinmei Exp $
- * $FreeBSD: head/sys/netinet6/in6_ifattach.h 241916 2012-10-22 21:49:56Z delphij $
+ * $FreeBSD: head/sys/netinet6/in6_ifattach.h 250251 2013-05-04 19:16:26Z hrs $
  */
 
 #ifndef _NETINET6_IN6_IFATTACH_H_
@@ -40,6 +40,7 @@ int in6_get_tmpifid(struct ifnet *, u_int8_t *, const u_int8_t *, int);
 void in6_tmpaddrtimer(void *);
 int in6_get_hw_ifid(struct ifnet *, struct in6_addr *);
 int in6_nigroup(struct ifnet *, const char *, int, struct in6_addr *);
+int in6_nigroup_oldmcprefix(struct ifnet *, const char *, int, struct in6_addr *);
 #endif /* _KERNEL */
 
 #endif /* _NETINET6_IN6_IFATTACH_H_ */

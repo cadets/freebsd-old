@@ -31,7 +31,7 @@
 #include "opt_hwpmc_hooks.h"
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/kern_thread.c 246996 2013-02-19 16:35:27Z jhb $");
+__FBSDID("$FreeBSD: head/sys/kern/kern_thread.c 248584 2013-03-21 14:06:27Z jhb $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -793,6 +793,17 @@ thread_suspend_check(int return_instead)
 		if (P_SHOULDSTOP(p) == P_STOPPED_SINGLE &&
 		    (p->p_flag & P_SINGLE_BOUNDARY) && return_instead)
 			return (ERESTART);
+
+		/*
+		 * Ignore suspend requests for stop signals if they
+		 * are deferred.
+		 */
+		if (P_SHOULDSTOP(p) == P_STOPPED_SIG &&
+		    td->td_flags & TDF_SBDRY) {
+			KASSERT(return_instead,
+			    ("TDF_SBDRY set for unsafe thread_suspend_check"));
+			return (0);
+		}
 
 		/*
 		 * If the process is waiting for us to exit,

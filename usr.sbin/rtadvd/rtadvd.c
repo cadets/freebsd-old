@@ -1,4 +1,4 @@
-/*	$FreeBSD: head/usr.sbin/rtadvd/rtadvd.c 247270 2013-02-25 16:47:09Z des $	*/
+/*	$FreeBSD: head/usr.sbin/rtadvd/rtadvd.c 247863 2013-03-06 04:58:48Z hrs $	*/
 /*	$KAME: rtadvd.c,v 1.82 2003/08/05 12:34:23 itojun Exp $	*/
 
 /*
@@ -1008,6 +1008,8 @@ set_short_delay(struct ifinfo *ifi)
 	long delay;	/* must not be greater than 1000000 */
 	struct timeval interval, now, min_delay, tm_tmp, *rest;
 
+	if (ifi->ifi_ra_timer == NULL)
+		return;
 	/*
 	 * Compute a random delay. If the computed value
 	 * corresponds to a time later than the time the next

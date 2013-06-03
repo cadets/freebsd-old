@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/vfs_extattr.c 241896 2012-10-22 17:50:54Z kib $");
+__FBSDID("$FreeBSD: head/sys/kern/vfs_extattr.c 248933 2013-03-30 15:09:04Z mdf $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -326,7 +326,7 @@ extattr_get_vp(struct vnode *vp, int attrnamespace, const char *attrname,
 	size_t size, *sizep;
 	int error;
 
-	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+	vn_lock(vp, LK_SHARED | LK_RETRY);
 
 	/*
 	 * Slightly unusual semantics: if the user provides a NULL data

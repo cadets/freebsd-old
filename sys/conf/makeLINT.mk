@@ -1,4 +1,4 @@
-# $FreeBSD: head/sys/conf/makeLINT.mk 233893 2012-04-04 21:31:20Z jhb $
+# $FreeBSD: head/sys/conf/makeLINT.mk 249390 2013-04-11 22:18:20Z bz $
 
 all:
 	@echo "make LINT only"
@@ -46,6 +46,12 @@ LINT: ${NOTES} ../../conf/makeLINT.sed
 	echo "nodevice txp"		>> ${.TARGET}-NOIP
 	echo "nodevice vxge"		>> ${.TARGET}-NOIP
 .endif
-.if ${TARGET} == "powerpc" || ${TARGET} == "mips"
+.if ${TARGET} == "mips"
 	echo "machine	${TARGET} ${TARGET_ARCH}" >> ${.TARGET}
+.endif
+.if ${TARGET} == "powerpc"
+	# cat is available, not sure if cp is?
+	cat ${.TARGET} > ${.TARGET}64
+	echo "machine	${TARGET} powerpc" >> ${.TARGET}
+	echo "machine	${TARGET} powerpc64" >> ${.TARGET}64
 .endif

@@ -65,7 +65,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/netinet6/in6_pcb.c 233272 2012-03-21 08:43:38Z glebius $");
+__FBSDID("$FreeBSD: head/sys/netinet6/in6_pcb.c 249837 2013-04-24 10:24:01Z ae $");
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
@@ -105,8 +105,6 @@ __FBSDID("$FreeBSD: head/sys/netinet6/in6_pcb.c 233272 2012-03-21 08:43:38Z gleb
 #include <netinet/in_pcb.h>
 #include <netinet6/in6_pcb.h>
 #include <netinet6/scope6_var.h>
-
-struct	in6_addr zeroin6_addr;
 
 int
 in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,

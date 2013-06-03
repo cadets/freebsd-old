@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/at91/at91_mci.c 239805 2012-08-29 06:42:39Z imp $");
+__FBSDID("$FreeBSD: head/sys/arm/at91/at91_mci.c 248899 2013-03-29 17:57:24Z ian $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -1069,8 +1069,6 @@ at91_mci_stop_done(struct at91_mci_softc *sc, uint32_t sr)
 			}
 		} while (sr & MCI_SR_RXRDY);
 		at91_mci_reset(sc);
-		if (count != 0)
-			printf("Had to soak up %d words after read\n", count);
 	}
 
 	cmd->error = MMC_ERR_NONE;

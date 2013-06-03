@@ -25,7 +25,7 @@
  */
 
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_write_format_mtree.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_write_format_mtree.c 248616 2013-03-22 13:36:03Z mm $");
 
 static char buff[4096];
 static struct {
@@ -35,11 +35,11 @@ static struct {
 	uid_t	 	 uid;
 	gid_t		 gid;
 } entries[] = {
+	{ "./COPYING",		S_IFREG | 0644, 1231975636, 1001, 1001 },
 	{ "./Makefile", 	S_IFREG | 0644, 1233041050, 1001, 1001 },
 	{ "./NEWS", 		S_IFREG | 0644, 1231975636, 1001, 1001 },
 	{ "./PROJECTS", 	S_IFREG | 0644, 1231975636, 1001, 1001 },
 	{ "./README",		S_IFREG | 0644, 1231975636, 1001, 1001 },
-	{ "./COPYING",		S_IFREG | 0644, 1231975636, 1001, 1001 },
 	{ "./subdir",		S_IFDIR | 0755, 1233504586, 1001, 1001 },
 	{ "./subdir/README",	S_IFREG | 0664, 1231975636, 1002, 1001 },
 	{ "./subdir/config",	S_IFREG | 0664, 1232266273, 1003, 1003 },

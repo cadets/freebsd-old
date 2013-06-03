@@ -1,4 +1,4 @@
-# $FreeBSD: head/share/misc/pci_vendors 242471 2012-11-02 11:13:44Z philip $
+# $FreeBSD: head/share/misc/pci_vendors 250460 2013-05-10 16:41:26Z eadler $
 
 #
 #	List of PCI ID's
@@ -11402,7 +11402,7 @@
 	0040  QSC-200/300
 	0050  ESC-100D
 	0060  ESC-100M
-	00f0  MPAC-100 Syncronous Serial Card (Zilog 85230)
+	00f0  MPAC-100 Synchronous Serial Card (Zilog 85230)
 	0170  QSCLP-100
 	0180  DSCLP-100
 	0190  SSCLP-100

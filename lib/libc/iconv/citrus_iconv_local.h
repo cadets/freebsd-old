@@ -1,4 +1,4 @@
-/* $FreeBSD: head/lib/libc/iconv/citrus_iconv_local.h 219019 2011-02-25 00:04:39Z gabor $ */
+/* $FreeBSD: head/lib/libc/iconv/citrus_iconv_local.h 250938 2013-05-23 18:07:01Z ed $ */
 /* $NetBSD: citrus_iconv_local.h,v 1.3 2008/02/09 14:56:20 junyoung Exp $ */
 
 /*-
@@ -57,6 +57,7 @@ static void	 _citrus_##_m_##_iconv_uninit_context			\
 
 
 #define _CITRUS_ICONV_DEF_OPS(_m_)					\
+extern struct _citrus_iconv_ops _citrus_##_m_##_iconv_ops;		\
 struct _citrus_iconv_ops _citrus_##_m_##_iconv_ops = {			\
 	/* io_init_shared */	&_citrus_##_m_##_iconv_init_shared,	\
 	/* io_uninit_shared */	&_citrus_##_m_##_iconv_uninit_shared,	\

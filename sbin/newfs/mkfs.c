@@ -42,7 +42,7 @@ static char sccsid[] = "@(#)mkfs.c	8.11 (Berkeley) 5/3/95";
 #endif /* not lint */
 #endif
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sbin/newfs/mkfs.c 242379 2012-10-30 21:32:10Z trasz $");
+__FBSDID("$FreeBSD: head/sbin/newfs/mkfs.c 248623 2013-03-22 21:45:28Z mckusick $");
 
 #include <sys/param.h>
 #include <sys/disklabel.h>
@@ -444,6 +444,12 @@ restart:
 	if (sblock.fs_sbsize > SBLOCKSIZE)
 		sblock.fs_sbsize = SBLOCKSIZE;
 	sblock.fs_minfree = minfree;
+	if (metaspace > 0 && metaspace < sblock.fs_fpg / 2)
+		sblock.fs_metaspace = blknum(&sblock, metaspace);
+	else if (metaspace != -1)
+		/* reserve half of minfree for metadata blocks */
+		sblock.fs_metaspace = blknum(&sblock,
+		    (sblock.fs_fpg * minfree) / 200);
 	if (maxbpg == 0)
 		sblock.fs_maxbpg = MAXBLKPG(sblock.fs_bsize);
 	else

@@ -24,7 +24,7 @@
  *
  */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/usb/net/uhso.c 243857 2012-12-04 09:32:43Z glebius $");
+__FBSDID("$FreeBSD: head/sys/dev/usb/net/uhso.c 249925 2013-04-26 12:50:32Z glebius $");
 
 #include <sys/param.h>
 #include <sys/types.h>
@@ -467,8 +467,8 @@ static void uhso_if_init(void *);
 static void uhso_if_start(struct ifnet *);
 static void uhso_if_stop(struct uhso_softc *);
 static int  uhso_if_ioctl(struct ifnet *, u_long, caddr_t);
-static int  uhso_if_output(struct ifnet *, struct mbuf *, struct sockaddr *,
-    struct route *);
+static int  uhso_if_output(struct ifnet *, struct mbuf *,
+    const struct sockaddr *, struct route *);
 static void uhso_if_rxflush(void *);
 
 static device_probe_t uhso_probe;
@@ -1881,7 +1881,7 @@ uhso_if_init(void *priv)
 }
 
 static int
-uhso_if_output(struct ifnet *ifp, struct mbuf *m0, struct sockaddr *dst,
+uhso_if_output(struct ifnet *ifp, struct mbuf *m0, const struct sockaddr *dst,
     struct route *ro)
 {
 	int error;

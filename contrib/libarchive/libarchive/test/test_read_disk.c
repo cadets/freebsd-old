@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_read_disk.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_read_disk.c 248616 2013-03-22 13:36:03Z mm $");
 
 static void
 gname_cleanup(void *d)
@@ -126,7 +126,8 @@ DEFINE_TEST(test_read_disk)
 
 		/* Get the group name for group 0 and see if it makes sense. */
 		p = archive_read_disk_gname(a, 0);
-		if (assert(p != NULL)) {
+		assert(p != NULL);
+		if (p != NULL) {
 			i = 0;
 			while (i < sizeof(zero_groups)/sizeof(zero_groups[0])) {
 				if (strcmp(zero_groups[i], p) == 0)

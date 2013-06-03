@@ -25,9 +25,8 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/ata/chipsets/ata-cyrix.c 233282 2012-03-21 16:59:39Z marius $");
+__FBSDID("$FreeBSD: head/sys/dev/ata/chipsets/ata-cyrix.c 249213 2013-04-06 19:12:49Z marius $");
 
-#include "opt_ata.h"
 #include <sys/param.h>
 #include <sys/module.h>
 #include <sys/systm.h>

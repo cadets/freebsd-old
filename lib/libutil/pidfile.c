@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/lib/libutil/pidfile.c 231938 2012-02-20 13:59:24Z ghelmer $");
+__FBSDID("$FreeBSD: head/lib/libutil/pidfile.c 248281 2013-03-14 20:22:52Z pjd $");
 
 #include <sys/param.h>
 #include <sys/file.h>
@@ -126,20 +126,25 @@ pidfile_open(const char *path, mode_t mode, pid_t *pidptr)
 	fd = flopen(pfh->pf_path,
 	    O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NONBLOCK, mode);
 	if (fd == -1) {
-		if (errno == EWOULDBLOCK && pidptr != NULL) {
-			count = 20;
-			rqtp.tv_sec = 0;
-			rqtp.tv_nsec = 5000000;
-			for (;;) {
-				errno = pidfile_read(pfh->pf_path, pidptr);
-				if (errno != EAGAIN || --count == 0)
-					break;
-				nanosleep(&rqtp, 0);
-			}
-			if (errno == EAGAIN)
-				*pidptr = -1;
-			if (errno == 0 || errno == EAGAIN)
+		if (errno == EWOULDBLOCK) {
+			if (pidptr == NULL) {
 				errno = EEXIST;
+			} else {
+				count = 20;
+				rqtp.tv_sec = 0;
+				rqtp.tv_nsec = 5000000;
+				for (;;) {
+					errno = pidfile_read(pfh->pf_path,
+					    pidptr);
+					if (errno != EAGAIN || --count == 0)
+						break;
+					nanosleep(&rqtp, 0);
+				}
+				if (errno == EAGAIN)
+					*pidptr = -1;
+				if (errno == 0 || errno == EAGAIN)
+					errno = EEXIST;
+			}
 		}
 		free(pfh);
 		return (NULL);

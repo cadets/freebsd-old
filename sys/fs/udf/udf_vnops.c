@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/fs/udf/udf_vnops.c 232821 2012-03-11 12:19:58Z kib $
+ * $FreeBSD: head/sys/fs/udf/udf_vnops.c 248282 2013-03-14 20:28:26Z kib $
  */
 
 /* udf_vnops.c */
@@ -478,8 +478,9 @@ udf_read(struct vop_read_args *ap)
 		rablock = lbn + 1;
 		if ((vp->v_mount->mnt_flag & MNT_NOCLUSTERR) == 0) {
 			if (lblktosize(udfmp, rablock) < fsize) {
-				error = cluster_read(vp, fsize, lbn, size, NOCRED,
-					uio->uio_resid, (ap->a_ioflag >> 16), &bp);
+				error = cluster_read(vp, fsize, lbn, size,
+				    NOCRED, uio->uio_resid,
+				    (ap->a_ioflag >> 16), 0, &bp);
 			} else {
 				error = bread(vp, lbn, size, NOCRED, &bp);
 			}

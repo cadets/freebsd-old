@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/boot/pc98/libpc98/biosdisk.c 235155 2012-05-09 08:05:50Z avg $");
+__FBSDID("$FreeBSD: head/sys/boot/pc98/libpc98/biosdisk.c 250333 2013-05-07 18:08:49Z jhb $");
 
 /*
  * BIOS disk device handling.
@@ -296,7 +296,7 @@ display_size(uint64_t size)
 	size /= 1024;
 	unit = 'M';
     }
-    sprintf(buf, "%.6ld%cB", (long)size, unit);
+    sprintf(buf, "%6ld%cB", (long)size, unit);
     return (buf);
 }
 

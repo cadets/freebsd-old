@@ -1,4 +1,7 @@
-# $FreeBSD: head/lib/libsbuf/Version.def 222036 2011-05-17 19:20:32Z phk $
+# $FreeBSD: head/lib/libsbuf/Version.def 249378 2013-04-11 19:50:10Z trociny $
 
 FBSD_1.2 {
 };
+
+FBSD_1.3 {
+} FBSD_1.2;

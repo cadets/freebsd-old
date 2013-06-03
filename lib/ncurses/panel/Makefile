@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/ncurses/panel/Makefile 245887 2013-01-24 16:38:47Z brooks $
+# $FreeBSD: head/lib/ncurses/panel/Makefile 251250 2013-06-02 11:44:23Z tijl $
 
 .include "${.CURDIR}/../config.mk"
 
@@ -29,7 +29,7 @@ CLEANFILES=	ncurses_def.h
 
 CFLAGS+=	-I${SRCDIR}
 
-DPADD=	${LIBNCURSES${LIB_SUFFIX:U}}
+DPADD=	${LIBNCURSES${LIB_SUFFIX:tu}}
 LDADD=	-lncurses${LIB_SUFFIX}
 
 .if defined(ENABLE_WIDEC)

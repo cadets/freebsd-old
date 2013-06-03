@@ -28,7 +28,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/twa/tw_osl_freebsd.c 246713 2013-02-12 16:57:20Z kib $");
+__FBSDID("$FreeBSD: head/sys/dev/twa/tw_osl_freebsd.c 248583 2013-03-21 13:06:28Z kib $");
 
 /*
  * AMCC'S 3ware driver for 9000 series storage controllers.
@@ -1475,7 +1475,7 @@ tw_osli_map_request(struct tw_osli_req_context *req)
 			mtx_unlock_spin(sc->io_lock);
 		} else if (req->flags & TW_OSLI_REQ_FLAGS_CCB) {
 			error = bus_dmamap_load_ccb(sc->dma_tag, req->dma_map,
-				req->data, twa_map_load_data_callback, req,
+				req->orig_req, twa_map_load_data_callback, req,
 				BUS_DMA_WAITOK);
 		} else {
 			/*

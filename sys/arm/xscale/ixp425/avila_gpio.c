@@ -32,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/xscale/ixp425/avila_gpio.c 236987 2012-06-13 04:38:09Z imp $");
+__FBSDID("$FreeBSD: head/sys/arm/xscale/ixp425/avila_gpio.c 249449 2013-04-13 21:21:13Z dim $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -220,8 +220,8 @@ avila_gpio_pin_setflags(device_t dev, uint32_t pin, uint32_t flags)
 	if (pin >= IXP4XX_GPIO_PINS || !(sc->sc_valid & mask))
 		return (EINVAL);
 
-	/* Filter out unwanted flags */
-	if ((flags &= sc->sc_pins[pin].gp_caps) != flags)
+	/* Check for unwanted flags. */
+	if ((flags & sc->sc_pins[pin].gp_caps) != flags)
 		return (EINVAL);
 
 	/* Can't mix input/output together */

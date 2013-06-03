@@ -29,7 +29,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.bin/fstat/fstat.c 235602 2012-05-18 10:15:46Z gleb $");
+__FBSDID("$FreeBSD: head/usr.bin/fstat/fstat.c 250223 2013-05-03 21:11:57Z jhb $");
 
 #include <sys/param.h>
 #include <sys/user.h>
@@ -83,6 +83,8 @@ static void	print_file_info(struct procstat *procstat,
 static void	print_pipe_info(struct procstat *procstat,
     struct filestat *fst);
 static void	print_pts_info(struct procstat *procstat,
+    struct filestat *fst);
+static void	print_sem_info(struct procstat *procstat,
     struct filestat *fst);
 static void	print_shm_info(struct procstat *procstat,
     struct filestat *fst);
@@ -294,6 +296,9 @@ print_file_info(struct procstat *procstat, struct filestat *fst,
 	case PS_FST_TYPE_SHM:
 		print_shm_info(procstat, fst);
 		break;
+	case PS_FST_TYPE_SEM:
+		print_sem_info(procstat, fst);
+		break;
 	default:	
 		if (vflg)
 			fprintf(stderr,
@@ -420,6 +425,30 @@ print_pts_info(struct procstat *procstat, struct filestat *fst)
 	} else {
 		printf("%10s", pts.devname);
 	}
+	print_access_flags(fst->fs_fflags);
+}
+
+static void
+print_sem_info(struct procstat *procstat, struct filestat *fst)
+{
+	struct semstat sem;
+	char errbuf[_POSIX2_LINE_MAX];
+	char mode[15];
+	int error;
+
+	error = procstat_get_sem_info(procstat, fst, &sem, errbuf);
+	if (error != 0) {
+		printf("* error");
+		return;
+	}
+	if (nflg) {
+		printf("             ");
+		(void)snprintf(mode, sizeof(mode), "%o", sem.mode);
+	} else {
+		printf(" %-15s", fst->fs_path != NULL ? fst->fs_path : "-");
+		strmode(sem.mode, mode);
+	}
+	printf(" %10s %6u", mode, sem.value);
 	print_access_flags(fst->fs_fflags);
 }
 

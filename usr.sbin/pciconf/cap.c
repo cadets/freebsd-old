@@ -30,7 +30,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-  "$FreeBSD: head/usr.sbin/pciconf/cap.c 246221 2013-02-01 19:24:16Z neel $";
+  "$FreeBSD: head/usr.sbin/pciconf/cap.c 250741 2013-05-17 14:05:31Z kib $";
 #endif /* not lint */
 
 #include <sys/types.h>
@@ -275,6 +275,18 @@ cap_ht(int fd, struct pci_conf *p, uint8_t ptr)
 			break;
 		case PCIM_HTCAP_X86_ENCODING:
 			printf("X86 encoding");
+			break;
+		case PCIM_HTCAP_GEN3:
+			printf("Gen3");
+			break;
+		case PCIM_HTCAP_FLE:
+			printf("function-level extension");
+			break;
+		case PCIM_HTCAP_PM:
+			printf("power management");
+			break;
+		case PCIM_HTCAP_HIGH_NODE_COUNT:
+			printf("high node count");
 			break;
 		default:
 			printf("unknown %02x", command);

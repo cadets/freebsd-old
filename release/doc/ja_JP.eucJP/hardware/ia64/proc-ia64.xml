@@ -1,5 +1,6 @@
+<?xml version="1.0" encoding="euc-jp"?>
 <!--
-    $FreeBSD: head/release/doc/ja_JP.eucJP/hardware/ia64/proc-ia64.xml 241096 2012-10-01 11:26:49Z gabor $
+    $FreeBSD: head/release/doc/ja_JP.eucJP/hardware/ia64/proc-ia64.xml 250746 2013-05-17 18:53:29Z gabor $
     Original revision: 1.9
 -->
 <sect1 id="proc-ia64">

@@ -1,4 +1,4 @@
-# $FreeBSD: head/usr.sbin/bsdconfig/Makefile 246546 2013-02-08 11:14:01Z dteske $
+# $FreeBSD: head/usr.sbin/bsdconfig/Makefile 250323 2013-05-07 05:40:20Z dteske $
 
 SUBDIR=	console \
 	diskmgmt \
@@ -8,6 +8,7 @@ SUBDIR=	console \
 	include \
 	mouse \
 	networking \
+	packages \
 	password \
 	security \
 	share \

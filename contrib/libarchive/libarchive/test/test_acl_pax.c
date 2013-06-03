@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_acl_pax.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_acl_pax.c 248616 2013-03-22 13:36:03Z mm $");
 
 /*
  * Exercise the system-independent portion of the ACL support.
@@ -184,7 +184,7 @@ DEFINE_TEST(test_acl_pax)
 	/* Write an archive to memory. */
 	assert(NULL != (a = archive_write_new()));
 	assertA(0 == archive_write_set_format_pax(a));
-	assertA(0 == archive_write_set_compression_none(a));
+	assertA(0 == archive_write_add_filter_none(a));
 	assertA(0 == archive_write_set_bytes_per_block(a, 1));
 	assertA(0 == archive_write_set_bytes_in_last_block(a, 1));
 	assertA(0 == archive_write_open_memory(a, buff, sizeof(buff), &used));

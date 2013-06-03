@@ -27,7 +27,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/sys/pcpu.h 240624 2012-09-18 00:43:15Z attilio $
+ * $FreeBSD: head/sys/sys/pcpu.h 249265 2013-04-08 19:19:10Z glebius $
  */
 
 #ifndef _SYS_PCPU_H_
@@ -180,6 +180,14 @@ struct pcpu {
 	PCPU_MD_FIELDS;
 } __aligned(CACHE_LINE_SIZE);
 
+#ifdef CTASSERT
+/*
+ * To minimize memory waste in per-cpu UMA zones, size of struct pcpu
+ * should be denominator of PAGE_SIZE.
+ */
+CTASSERT((PAGE_SIZE / sizeof(struct pcpu)) * sizeof(struct pcpu) == PAGE_SIZE);
+#endif
+
 #ifdef _KERNEL
 
 STAILQ_HEAD(cpuhead, pcpu);
@@ -193,6 +201,14 @@ extern struct pcpu *cpuid_to_pcpu[];
 #define	curthread	PCPU_GET(curthread)
 #endif
 #define	curvidata	PCPU_GET(vidata)
+
+/* Accessor to elements allocated via UMA_ZONE_PCPU zone. */
+static inline void *
+zpcpu_get(void *base)
+{
+
+	return ((char *)(base) + sizeof(struct pcpu) * curcpu);
+}
 
 /*
  * Machine dependent callouts.  cpu_pcpu_init() is responsible for

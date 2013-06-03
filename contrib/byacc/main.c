@@ -5,15 +5,11 @@
 
 #include "defs.h"
 
-#if defined(HAVE_ATEXIT)
-# ifdef HAVE_MKSTEMP
-#  define USE_MKSTEMP 1
-# elif defined(HAVE_FCNTL_H)
-#  define USE_MKSTEMP 1
-#  include <fcntl.h>		/* for open(), O_EXCL, etc. */
-# else
-#  define USE_MKSTEMP 0
-# endif
+#ifdef HAVE_MKSTEMP
+# define USE_MKSTEMP 1
+#elif defined(HAVE_FCNTL_H)
+# define USE_MKSTEMP 1
+# include <fcntl.h>		/* for open(), O_EXCL, etc. */
 #else
 # define USE_MKSTEMP 0
 #endif

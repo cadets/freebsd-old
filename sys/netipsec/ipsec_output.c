@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/netipsec/ipsec_output.c 243882 2012-12-05 08:04:20Z glebius $
+ * $FreeBSD: head/sys/netipsec/ipsec_output.c 249294 2013-04-09 07:11:22Z ae $
  */
 
 /*
@@ -863,7 +863,7 @@ ipsec6_output_tunnel(struct ipsec_output_state *state, struct secpolicy *sp, int
 			rtalloc_ign_fib(state->ro, 0UL, M_GETFIB(m));
 		}
 		if (state->ro->ro_rt == NULL) {
-			V_ip6stat.ip6s_noroute++;
+			IP6STAT_INC(ip6s_noroute);
 			V_ipsec6stat.ips_out_noroute++;
 			error = EHOSTUNREACH;
 			goto bad;

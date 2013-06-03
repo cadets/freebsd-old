@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/clang/libllvmipa/Makefile 231057 2012-02-05 23:56:22Z dim $
+# $FreeBSD: head/lib/clang/libllvmipa/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
@@ -7,8 +7,10 @@ LIB=	llvmipa
 SRCDIR=	lib/Analysis/IPA
 SRCS=	CallGraph.cpp \
 	CallGraphSCCPass.cpp \
+	CallPrinter.cpp \
 	FindUsedTypes.cpp \
-	GlobalsModRef.cpp
+	GlobalsModRef.cpp \
+	InlineCost.cpp
 
 .if ${MK_CLANG_EXTRAS} != "no"
 SRCS+=	IPA.cpp

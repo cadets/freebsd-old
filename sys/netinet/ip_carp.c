@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/netinet/ip_carp.c 246659 2013-02-11 10:58:22Z glebius $");
+__FBSDID("$FreeBSD: head/sys/netinet/ip_carp.c 249925 2013-04-26 12:50:32Z glebius $");
 
 #include "opt_bpf.h"
 #include "opt_inet.h"
@@ -764,7 +764,7 @@ carp_send_ad_locked(struct carp_softc *sc)
 	if (sc->sc_naddrs) {
 		struct ip *ip;
 
-		MGETHDR(m, M_NOWAIT, MT_HEADER);
+		m = m_gethdr(M_NOWAIT, MT_DATA);
 		if (m == NULL) {
 			CARPSTATS_INC(carps_onomem);
 			goto resched;
@@ -832,7 +832,7 @@ carp_send_ad_locked(struct carp_softc *sc)
 	if (sc->sc_naddrs6) {
 		struct ip6_hdr *ip6;
 
-		MGETHDR(m, M_NOWAIT, MT_HEADER);
+		m = m_gethdr(M_NOWAIT, MT_DATA);
 		if (m == NULL) {
 			CARPSTATS_INC(carps_onomem);
 			goto resched;
@@ -1372,7 +1372,7 @@ carp_multicast_cleanup(struct carp_if *cif, sa_family_t sa)
 }
 
 int
-carp_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *sa)
+carp_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *sa)
 {
 	struct m_tag *mtag;
 	struct carp_softc *sc;

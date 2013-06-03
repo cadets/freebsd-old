@@ -32,7 +32,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)in_pcb.h	8.1 (Berkeley) 6/10/93
- * $FreeBSD: head/sys/netinet/in_pcb.h 241129 2012-10-02 12:03:02Z glebius $
+ * $FreeBSD: head/sys/netinet/in_pcb.h 250300 2013-05-06 16:42:18Z andre $
  */
 
 #ifndef _NETINET_IN_PCB_H_

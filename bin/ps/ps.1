@@ -27,9 +27,9 @@
 .\" SUCH DAMAGE.
 .\"
 .\"     @(#)ps.1	8.3 (Berkeley) 4/18/94
-.\" $FreeBSD: head/bin/ps/ps.1 246486 2013-02-07 15:37:51Z kib $
+.\" $FreeBSD: head/bin/ps/ps.1 248342 2013-03-15 20:12:54Z joel $
 .\"
-.Dd February 7, 2013
+.Dd March 15, 2013
 .Dt PS 1
 .Os
 .Sh NAME
@@ -689,6 +689,10 @@ attempts to automatically determine the terminal width.
 .It Pa /boot/kernel/kernel
 default system namelist
 .El
+.Sh EXAMPLES
+Display information on all system processes:
+.Pp
+.Dl $ ps -auxw
 .Sh SEE ALSO
 .Xr kill 1 ,
 .Xr pgrep 1 ,

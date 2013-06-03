@@ -24,7 +24,7 @@
  * behaviour
  *
  * $OpenBSD: patch.c,v 1.50 2012/05/15 19:32:02 millert Exp $
- * $FreeBSD: head/usr.bin/patch/patch.c 246091 2013-01-29 20:05:16Z delphij $
+ * $FreeBSD: head/usr.bin/patch/patch.c 250975 2013-05-25 07:17:16Z gjb $
  *
  */
 

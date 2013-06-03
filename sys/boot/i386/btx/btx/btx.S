@@ -12,7 +12,7 @@
  * warranties of merchantability and fitness for a particular
  * purpose.
  *
- * $FreeBSD: head/sys/boot/i386/btx/btx/btx.S 241301 2012-10-06 20:08:29Z avg $
+ * $FreeBSD: head/sys/boot/i386/btx/btx/btx.S 249846 2013-04-24 17:20:45Z dim $
  */
 
 #include <bootargs.h>
@@ -248,7 +248,7 @@ exit:		cli				# Disable interrupts
 /*
  * Restore the GDT in case we caught a kernel trap.
  */
-		lgdt gdtdesc	 		# Set GDT
+		lgdt %cs:gdtdesc		# Set GDT
 /*
  * To 16 bits.
  */

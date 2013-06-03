@@ -1,6 +1,6 @@
 /*	$OpenBSD: if_zydreg.h,v 1.19 2006/11/30 19:28:07 damien Exp $	*/
 /*	$NetBSD: if_zydreg.h,v 1.2 2007/06/16 11:18:45 kiyohara Exp $	*/
-/*	$FreeBSD: head/sys/dev/usb/wlan/if_zydreg.h 246614 2013-02-10 10:36:16Z hselasky $	*/
+/*	$FreeBSD: head/sys/dev/usb/wlan/if_zydreg.h 249584 2013-04-17 11:43:46Z gabor $	*/
 
 /*-
  * Copyright (c) 2006 by Damien Bergamini <damien.bergamini@free.fr>
@@ -112,7 +112,7 @@
 #define ZYD_MACB_MAX_RETRY	0x9b28
 
 /*
- * Miscellanous registers.
+ * Miscellaneous registers.
  */
 #define ZYD_FIRMWARE_START_ADDR	0xee00
 #define ZYD_FIRMWARE_BASE_ADDR	0xee1d /* Firmware base address */

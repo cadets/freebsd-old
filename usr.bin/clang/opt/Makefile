@@ -1,4 +1,4 @@
-# $FreeBSD: head/usr.bin/clang/opt/Makefile 246705 2013-02-12 05:56:00Z andrew $
+# $FreeBSD: head/usr.bin/clang/opt/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
@@ -12,34 +12,35 @@ SRCS=	AnalysisWrappers.cpp \
 
 TGHDRS=	Intrinsics
 LIBDEPS=llvmarmdisassembler \
-	llvmarmasmparser \
 	llvmarmcodegen \
+	llvmarmasmparser \
 	llvmarmdesc \
 	llvmarminfo \
 	llvmarminstprinter \
-	llvmmipsasmparser \
-	llvmmipscodegen \
-	llvmmipsdesc \
-	llvmmipsinstprinter \
 	llvmmipsdisassembler \
+	llvmmipscodegen \
+	llvmmipsasmparser \
+	llvmmipsdesc \
 	llvmmipsinfo \
+	llvmmipsinstprinter \
 	llvmpowerpccodegen \
 	llvmpowerpcdesc \
 	llvmpowerpcinfo \
 	llvmpowerpcinstprinter \
+	llvmx86disassembler \
 	llvmx86asmparser \
 	llvmx86codegen \
 	llvmselectiondag \
 	llvmasmprinter \
 	llvmmcparser \
 	llvmcodegen \
-	llvmx86disassembler \
 	llvmx86desc \
 	llvmx86info \
 	llvmx86instprinter \
 	llvmx86utils \
 	llvmipo \
 	llvmvectorize \
+	llvmobjcarcopts \
 	llvmscalaropts \
 	llvminstcombine \
 	llvminstrumentation \
@@ -49,6 +50,7 @@ LIBDEPS=llvmarmdisassembler \
 	llvmtarget \
 	llvmmc \
 	llvmobject \
+	llvmirreader \
 	llvmasmparser \
 	llvmbitwriter \
 	llvmbitreader \

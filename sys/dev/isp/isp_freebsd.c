@@ -28,7 +28,7 @@
  * Platform (FreeBSD) dependent common attachment code for Qlogic adapters.
  */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/isp/isp_freebsd.c 240590 2012-09-17 02:50:16Z mjacob $");
+__FBSDID("$FreeBSD: head/sys/dev/isp/isp_freebsd.c 249468 2013-04-14 09:55:48Z mav $");
 #include <dev/isp/isp_freebsd.h>
 #include <sys/unistd.h>
 #include <sys/kthread.h>
@@ -4140,8 +4140,6 @@ isp_target_thread(ispsoftc_t *isp, int chan)
 		return;
 	}
 
-	ccb = xpt_alloc_ccb();
-
 	ISP_LOCK(isp);
 	status = cam_periph_alloc(isptargctor, NULL, isptargdtor, isptargstart, "isptarg", CAM_PERIPH_BIO, wpath, NULL, 0, softc);
 	if (status != CAM_REQ_CMP) {
@@ -4556,7 +4554,8 @@ isp_make_here(ispsoftc_t *isp, int chan, int tgt)
 		isp_prt(isp, ISP_LOGWARN, "Chan %d unable to alloc CCB for rescan", chan);
 		return;
 	}
-	if (xpt_create_path(&ccb->ccb_h.path, xpt_periph, cam_sim_path(fc->sim), tgt, CAM_LUN_WILDCARD) != CAM_REQ_CMP) {
+	if (xpt_create_path(&ccb->ccb_h.path, NULL, cam_sim_path(fc->sim),
+	    tgt, CAM_LUN_WILDCARD) != CAM_REQ_CMP) {
 		isp_prt(isp, ISP_LOGWARN, "unable to create path for rescan");
 		xpt_free_ccb(ccb);
 		return;

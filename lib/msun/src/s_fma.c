@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/lib/msun/src/s_fma.c 226601 2011-10-21 06:30:43Z das $");
+__FBSDID("$FreeBSD: head/lib/msun/src/s_fma.c 251024 2013-05-27 08:50:10Z das $");
 
 #include <fenv.h>
 #include <float.h>
@@ -238,6 +238,8 @@ fma(double x, double y, double z)
 		zs = copysign(DBL_MIN, zs);
 
 	fesetround(FE_TONEAREST);
+	/* work around clang bug 8100 */
+	volatile double vxs = xs;
 
 	/*
 	 * Basic approach for round-to-nearest:
@@ -247,7 +249,7 @@ fma(double x, double y, double z)
 	 *     adj = xy.lo + r.lo		(inexact; low bit is sticky)
 	 *     result = r.hi + adj		(correctly rounded)
 	 */
-	xy = dd_mul(xs, ys);
+	xy = dd_mul(vxs, ys);
 	r = dd_add(xy.hi, zs);
 
 	spread = ex + ey;
@@ -268,7 +270,9 @@ fma(double x, double y, double z)
 		 * rounding modes.
 		 */
 		fesetround(oround);
-		adj = r.lo + xy.lo;
+		/* work around clang bug 8100 */
+		volatile double vrlo = r.lo;
+		adj = vrlo + xy.lo;
 		return (ldexp(r.hi + adj, spread));
 	}
 

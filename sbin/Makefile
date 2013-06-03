@@ -1,12 +1,11 @@
 #	@(#)Makefile	8.5 (Berkeley) 3/31/94
-# $FreeBSD: head/sbin/Makefile 241636 2012-10-17 11:30:00Z attilio $
+# $FreeBSD: head/sbin/Makefile 249083 2013-04-04 07:12:24Z mav $
 
 .include <bsd.own.mk>
 
 # XXX MISSING:		icheck ncheck
 
 SUBDIR=adjkerntz \
-	atacontrol \
 	badsect \
 	camcontrol \
 	ccdconfig \

@@ -27,7 +27,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/net/if_fwsubr.c 243882 2012-12-05 08:04:20Z glebius $
+ * $FreeBSD: head/sys/net/if_fwsubr.c 249925 2013-04-26 12:50:32Z glebius $
  */
 
 #include "opt_inet.h"
@@ -75,7 +75,7 @@ struct fw_hwaddr firewire_broadcastaddr = {
 };
 
 static int
-firewire_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
+firewire_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
     struct route *ro)
 {
 	struct fw_com *fc = IFP2FWC(ifp);

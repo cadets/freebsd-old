@@ -41,7 +41,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/i386/i386/vm_machdep.c 238792 2012-07-26 09:11:37Z kib $");
+__FBSDID("$FreeBSD: head/sys/i386/i386/vm_machdep.c 250624 2013-05-13 21:47:17Z ed $");
 
 #include "opt_isa.h"
 #include "opt_npx.h"
@@ -106,9 +106,10 @@ __FBSDID("$FreeBSD: head/sys/i386/i386/vm_machdep.c 238792 2012-07-26 09:11:37Z 
 #define	NSFBUFS		(512 + maxusers * 16)
 #endif
 
-CTASSERT((struct thread **)OFFSETOF_CURTHREAD ==
-    &((struct pcpu *)NULL)->pc_curthread);
-CTASSERT((struct pcb **)OFFSETOF_CURPCB == &((struct pcpu *)NULL)->pc_curpcb);
+_Static_assert(OFFSETOF_CURTHREAD == offsetof(struct pcpu, pc_curthread),
+    "OFFSETOF_CURTHREAD does not correspond with offset of pc_curthread.");
+_Static_assert(OFFSETOF_CURPCB == offsetof(struct pcpu, pc_curpcb),
+    "OFFSETOF_CURPCB does not correspond with offset of pc_curpcb.");
 
 static void	cpu_reset_real(void);
 #ifdef SMP

@@ -26,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/sys/rwlock.h 242515 2012-11-03 15:57:37Z attilio $
+ * $FreeBSD: head/sys/sys/rwlock.h 247787 2013-03-04 12:48:41Z davide $
  */
 
 #ifndef _SYS_RWLOCK_H_
@@ -211,7 +211,8 @@ void	__rw_assert(const volatile uintptr_t *c, int what, const char *file,
 		rw_runlock(rw);						\
 } while (0)
 #define	rw_sleep(chan, rw, pri, wmesg, timo)				\
-	_sleep((chan), &(rw)->lock_object, (pri), (wmesg), (timo))
+	_sleep((chan), &(rw)->lock_object, (pri), (wmesg),		\
+	    tick_sbt * (timo), 0, C_HARDCLOCK)
 
 #define	rw_initialized(rw)	lock_initalized(&(rw)->lock_object)
 

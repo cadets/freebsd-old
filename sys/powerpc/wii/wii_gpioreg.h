@@ -23,15 +23,16 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/powerpc/wii/wii_gpioreg.h 239478 2012-08-21 06:31:26Z adrian $
+ * $FreeBSD: head/sys/powerpc/wii/wii_gpioreg.h 250788 2013-05-18 19:30:42Z rpaulo $
  */
 
 #ifndef	_POWERPC_WII_WII_GPIOREG_H
 #define	_POWERPC_WII_WII_GPIOREG_H
 
-#define	WIIGPIO_NPINS		32
+#define	WIIGPIO_NPINS		64
+#define	WIIGPIO_POWEROFF_PIN	33
 
 #define	WIIGPIO_REG_ADDR	0x0d8000c0
-#define	WIIGPIO_REG_LEN		0x4
+#define	WIIGPIO_REG_LEN		0x40
 
 #endif	/* _POWERPC_WII_WII_GPIOREG_H */

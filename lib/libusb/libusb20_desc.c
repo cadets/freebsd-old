@@ -1,4 +1,4 @@
-/* $FreeBSD: head/lib/libusb/libusb20_desc.c 234491 2012-04-20 14:29:45Z hselasky $ */
+/* $FreeBSD: head/lib/libusb/libusb20_desc.c 248236 2013-03-13 12:23:14Z hselasky $ */
 /*-
  * Copyright (c) 2008 Hans Petter Selasky. All rights reserved.
  *
@@ -24,11 +24,15 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/queue.h>
-
+#ifdef LIBUSB_GLOBAL_INCLUDE_FILE
+#include LIBUSB_GLOBAL_INCLUDE_FILE
+#else
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <sys/queue.h>
+#endif
 
 #include "libusb20.h"
 #include "libusb20_desc.h"

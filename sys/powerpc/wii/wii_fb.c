@@ -25,7 +25,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/powerpc/wii/wii_fb.c 239478 2012-08-21 06:31:26Z adrian $");
+__FBSDID("$FreeBSD: head/sys/powerpc/wii/wii_fb.c 249965 2013-04-27 01:57:45Z rpaulo $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -514,8 +514,12 @@ wiifb_configure(int flags)
 	int progressive;
 
 	sc = &wiifb_softc;
-	if (sc->sc_initialized)
+	if (sc->sc_initialized) {
+		/* XXX We should instead use bus_space */
+		sc->sc_fb_addr = (intptr_t)pmap_mapdev(WIIFB_FB_ADDR, WIIFB_FB_LEN);
+		sc->sc_reg_addr = (intptr_t)pmap_mapdev(WIIFB_REG_ADDR, WIIFB_REG_LEN);
 		return 0;
+	}
 
 	sc->sc_console = 1;
 

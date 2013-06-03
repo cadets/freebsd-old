@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/compat/freebsd32/freebsd32_misc.c 243133 2012-11-16 06:22:14Z kib $");
+__FBSDID("$FreeBSD: head/sys/compat/freebsd32/freebsd32_misc.c 251198 2013-05-31 21:43:17Z obrien $");
 
 #include "opt_compat.h"
 #include "opt_inet.h"
@@ -103,6 +103,8 @@ __FBSDID("$FreeBSD: head/sys/compat/freebsd32/freebsd32_misc.c 243133 2012-11-16
 #include <compat/freebsd32/freebsd32_ipc.h>
 #include <compat/freebsd32/freebsd32_signal.h>
 #include <compat/freebsd32/freebsd32_proto.h>
+
+FEATURE(compat_freebsd_32bit, "Compatible with 32-bit FreeBSD");
 
 #ifndef __mips__
 CTASSERT(sizeof(struct timeval32) == 8);
@@ -198,8 +200,8 @@ freebsd32_wait6(struct thread *td, struct freebsd32_wait6_args *uap)
 		bzero(sip, sizeof(*sip));
 	} else
 		sip = NULL;
-	error = kern_wait6(td, uap->idtype, uap->id, &status, uap->options,
-	    wrup, sip);
+	error = kern_wait6(td, uap->idtype, PAIR32TO64(id_t, uap->id),
+	    &status, uap->options, wrup, sip);
 	if (error != 0)
 		return (error);
 	if (uap->status != NULL)

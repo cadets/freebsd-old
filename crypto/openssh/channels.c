@@ -1,5 +1,5 @@
-/* $OpenBSD: channels.c,v 1.318 2012/04/23 08:18:17 djm Exp $ */
-/* $FreeBSD: head/crypto/openssh/channels.c 240075 2012-09-03 16:51:41Z des $ */
+/* $OpenBSD: channels.c,v 1.319 2012/12/02 20:46:11 djm Exp $ */
+/* $FreeBSD: head/crypto/openssh/channels.c 248619 2013-03-22 17:55:38Z des $ */
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -3234,12 +3234,10 @@ channel_add_adm_permitted_opens(char *host, int port)
 void
 channel_disable_adm_local_opens(void)
 {
-	if (num_adm_permitted_opens == 0) {
-		permitted_adm_opens = xmalloc(sizeof(*permitted_adm_opens));
-		permitted_adm_opens[num_adm_permitted_opens].host_to_connect
-		   = NULL;
-		num_adm_permitted_opens = 1;
-	}
+	channel_clear_adm_permitted_opens();
+	permitted_adm_opens = xmalloc(sizeof(*permitted_adm_opens));
+	permitted_adm_opens[num_adm_permitted_opens].host_to_connect = NULL;
+	num_adm_permitted_opens = 1;
 }
 
 void

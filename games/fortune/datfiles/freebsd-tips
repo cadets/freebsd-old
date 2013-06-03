@@ -1,5 +1,5 @@
 This fortune brought to you by:
-$FreeBSD: head/games/fortune/datfiles/freebsd-tips 241934 2012-10-23 15:03:25Z eadler $
+$FreeBSD: head/games/fortune/datfiles/freebsd-tips 248580 2013-03-21 12:42:25Z eadler $
 %
 Any user that is a member of the wheel group can use "su -" to simulate
 a root login. You can add a user to the wheel group by editing /etc/group.
@@ -372,16 +372,6 @@ modes.
 		-- Konstantinos Konstantinidis <kkonstan@duth.gr>
 %
 You can disable tcsh's terminal beep if you `set nobeep'.
-%
-You can get a good generic server install by using the
-instant-server port/package.  If you have ports installed, you can
-install it by doing
-
-	# cd /usr/ports/misc/instant-server
-	# make install && make clean
-
-as root.  This will install a collection of packages that is appropriate for
-running a "generic" server.
 %
 You can install extra packages for FreeBSD by using the ports system.
 If you have installed it, you can download, compile, and install software by

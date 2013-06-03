@@ -24,8 +24,7 @@
  */
 
 /*
- * $FreeBSD: head/sys/dev/netmap/if_igb_netmap.h 245579 2013-01-17 22:14:58Z luigi $
- * $Id$
+ * $FreeBSD: head/sys/dev/netmap/if_igb_netmap.h 250052 2013-04-29 18:00:53Z luigi $
  *
  * Netmap support for igb, partly contributed by Ahmed Kooli
  * For details on netmap support please see ixgbe_netmap.h

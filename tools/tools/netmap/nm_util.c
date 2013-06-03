@@ -24,7 +24,7 @@
  */
 
 /*
- * $FreeBSD: head/tools/tools/netmap/nm_util.c 246896 2013-02-17 04:43:22Z luigi $
+ * $FreeBSD: head/tools/tools/netmap/nm_util.c 251130 2013-05-30 11:08:16Z luigi $
  * $Id$
  *
  * utilities to use netmap devices.
@@ -221,7 +221,6 @@ netmap_close(struct my_ring *me)
 	D("");
 	if (me->mem)
 		munmap(me->mem, me->memsize);
-	ioctl(me->fd, NIOCUNREGIF, NULL);
 	close(me->fd);
 	return (0);
 }

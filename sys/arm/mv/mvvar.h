@@ -34,7 +34,7 @@
  *
  * from: FreeBSD: //depot/projects/arm/src/sys/arm/xscale/pxa2x0/pxa2x0var.h, rev 1
  *
- * $FreeBSD: head/sys/arm/mv/mvvar.h 240492 2012-09-14 10:05:01Z gber $
+ * $FreeBSD: head/sys/arm/mv/mvvar.h 250295 2013-05-06 14:54:17Z gber $
  */
 
 #ifndef _MVVAR_H_
@@ -97,6 +97,7 @@ int decode_win_overlap(int, int, const struct decode_win *);
 int win_cpu_can_remap(int);
 void decode_win_pcie_setup(u_long);
 
+void ddr_disable(int i);
 int ddr_is_active(int i);
 uint32_t ddr_base(int i);
 uint32_t ddr_size(int i);

@@ -1,4 +1,4 @@
-# $FreeBSD: head/usr.bin/clang/llvm-diff/Makefile 246705 2013-02-12 05:56:00Z andrew $
+# $FreeBSD: head/usr.bin/clang/llvm-diff/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
@@ -10,7 +10,8 @@ SRCS=	llvm-diff.cpp \
 	DiffLog.cpp \
 	DifferenceEngine.cpp
 
-LIBDEPS=llvmbitreader \
+LIBDEPS=llvmirreader \
+	llvmbitreader \
 	llvmasmparser \
 	llvmcore \
 	llvmsupport

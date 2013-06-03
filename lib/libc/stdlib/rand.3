@@ -30,9 +30,9 @@
 .\" SUCH DAMAGE.
 .\"
 .\"     @(#)rand.3	8.1 (Berkeley) 6/4/93
-.\" $FreeBSD: head/lib/libc/stdlib/rand.3 240111 2012-09-04 22:03:16Z des $
+.\" $FreeBSD: head/lib/libc/stdlib/rand.3 249035 2013-04-02 23:41:20Z delphij $
 .\"
-.Dd September 4, 2012
+.Dd April 2, 2013
 .Dt RAND 3
 .Os
 .Sh NAME
@@ -91,9 +91,7 @@ seeded with a value of 1.
 .Pp
 The
 .Fn sranddev
-function initializes a seed using the
-.Xr random 4
-random number device which returns good random numbers.
+function initializes a seed using pseudo-random numbers obtained from the kernel.
 .Pp
 The
 .Fn rand_r

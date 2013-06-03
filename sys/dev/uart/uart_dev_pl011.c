@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/uart/uart_dev_pl011.c 242333 2012-10-30 01:52:49Z gonzo $");
+__FBSDID("$FreeBSD: head/sys/dev/uart/uart_dev_pl011.c 248965 2013-04-01 00:44:20Z ian $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -278,9 +278,6 @@ uart_pl011_bus_attach(struct uart_softc *sc)
 	/* Clear RX & TX interrupts */
 	__uart_setreg(bas, UART_ICR, IMSC_MASK_ALL);
 
-	sc->sc_rxfifosz = 1;
-	sc->sc_txfifosz = 1;
-
 	return (0);
 }
 
@@ -376,6 +373,9 @@ uart_pl011_bus_probe(struct uart_softc *sc)
 {
 
 	device_set_desc(sc->sc_dev, "PrimeCell UART (PL011)");
+
+	sc->sc_rxfifosz = 1;
+	sc->sc_txfifosz = 1;
 
 	return (0);
 }

@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "archive_platform.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_read_support_format_xar.c 238856 2012-07-28 06:38:44Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_read_support_format_xar.c 248616 2013-03-22 13:36:03Z mm $");
 
 #ifdef HAVE_ERRNO_H
 #include <errno.h>
@@ -467,6 +467,7 @@ archive_read_support_format_xar(struct archive *_a)
 	    xar_read_header,
 	    xar_read_data,
 	    xar_read_data_skip,
+	    NULL,
 	    xar_cleanup);
 	if (r != ARCHIVE_OK)
 		free(xar);

@@ -28,7 +28,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/usb/serial/usb_serial.c 244489 2012-12-20 16:21:02Z hselasky $");
+__FBSDID("$FreeBSD: head/sys/dev/usb/serial/usb_serial.c 250576 2013-05-12 16:43:26Z eadler $");
 
 /*-
  * Copyright (c) 1998, 2000 The NetBSD Foundation, Inc.
@@ -965,7 +965,7 @@ ucom_cfg_line_state(struct usb_proc_msg *_task)
 	sc->sc_pls_set = 0;
 	sc->sc_pls_clr = 0;
 
-	/* ensure that we don't loose any levels */
+	/* ensure that we don't lose any levels */
 	if (notch_bits & UCOM_LS_DTR)
 		sc->sc_callback->ucom_cfg_set_dtr(sc,
 		    (prev_value & UCOM_LS_DTR) ? 1 : 0);

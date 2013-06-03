@@ -28,7 +28,7 @@
  */
 
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_write_format_zip_no_compression.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_write_format_zip_no_compression.c 248616 2013-03-22 13:36:03Z mm $");
 
 static unsigned long
 bitcrc32(unsigned long c, void *_p, size_t s)
@@ -99,7 +99,7 @@ DEFINE_TEST(test_write_format_zip_no_compression)
 	assert((a = archive_write_new()) != NULL);
 	assertA(0 == archive_write_set_format_zip(a));
 	assertA(0 == archive_write_set_options(a, "zip:compression=store"));
-	assertA(0 == archive_write_set_compression_none(a));
+	assertA(0 == archive_write_add_filter_none(a));
 	assertA(0 == archive_write_set_bytes_per_block(a, 1));
 	assertA(0 == archive_write_set_bytes_in_last_block(a, 1));
 	assertA(0 == archive_write_open_memory(a, buff, sizeof(buff), &used));

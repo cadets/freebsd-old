@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/clang/libllvmx86disassembler/Makefile 231057 2012-02-05 23:56:22Z dim $
+# $FreeBSD: head/lib/clang/libllvmx86disassembler/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
@@ -13,7 +13,6 @@ SRCS+=	X86DisassemblerDecoder.c
 .endif
 
 TGHDRS=	X86GenDisassemblerTables \
-	X86GenEDInfo \
 	X86GenInstrInfo \
 	X86GenRegisterInfo
 

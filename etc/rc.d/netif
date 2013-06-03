@@ -22,13 +22,13 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
-# $FreeBSD: head/etc/rc.d/netif 240336 2012-09-11 05:04:59Z obrien $
+# $FreeBSD: head/etc/rc.d/netif 250804 2013-05-19 04:10:34Z jamie $
 #
 
 # PROVIDE: netif
 # REQUIRE: atm1 FILESYSTEMS serial sppp sysctl
 # REQUIRE: ipfilter ipfs
-# KEYWORD: nojail
+# KEYWORD: nojailvnet
 
 . /etc/rc.subr
 . /etc/network.subr

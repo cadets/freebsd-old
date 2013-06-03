@@ -1,4 +1,4 @@
-/* $FreeBSD: head/sys/dev/usb/controller/xhci.h 246363 2013-02-05 14:44:25Z hselasky $ */
+/* $FreeBSD: head/sys/dev/usb/controller/xhci.h 251247 2013-06-02 10:32:57Z hselasky $ */
 
 /*-
  * Copyright (c) 2010 Hans Petter Selasky. All rights reserved.
@@ -369,6 +369,7 @@ struct xhci_endpoint_ext {
 	uint8_t			trb_index[XHCI_MAX_STREAMS];
 	uint8_t			trb_halted;
 	uint8_t			trb_running;
+	uint8_t			trb_ep_mode;
 };
 
 enum {

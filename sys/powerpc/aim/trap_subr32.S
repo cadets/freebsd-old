@@ -1,4 +1,4 @@
-/* $FreeBSD: head/sys/powerpc/aim/trap_subr32.S 242723 2012-11-07 23:45:09Z jhibbits $ */
+/* $FreeBSD: head/sys/powerpc/aim/trap_subr32.S 248457 2013-03-18 05:30:18Z jhibbits $ */
 /* $NetBSD: trap_subr.S,v 1.20 2002/04/22 23:20:08 kleink Exp $	*/
 
 /*-
@@ -242,13 +242,6 @@
 
 #ifdef KDTRACE_HOOKS
 	.data
-	.globl	dtrace_invop_jump_addr
-	.align	4
-	.type	dtrace_invop_jump_addr, @object
-        .size	dtrace_invop_jump_addr, 4
-dtrace_invop_jump_addr:
-	.word	0
-	.word	0
 	.globl	dtrace_invop_calltrap_addr
 	.align	4
 	.type	dtrace_invop_calltrap_addr, @object

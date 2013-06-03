@@ -1,4 +1,4 @@
-/* $FreeBSD: head/sys/cam/ctl/README.ctl.txt 229997 2012-01-12 00:34:33Z ken $ */
+/* $FreeBSD: head/sys/cam/ctl/README.ctl.txt 249009 2013-04-02 09:42:42Z trasz $ */
 
 CTL - CAM Target Layer Description
 
@@ -226,9 +226,6 @@ Revision 1.2 Changes
 
 To Do List:
 ==========
-
- - Make CTL buildable as a module.  Work needs to be done on initialization,
-   and on freeing resources and LUNs when it is built as a module.
 
  - Use devstat(9) for CTL's statistics collection.  CTL uses a home-grown
    statistics collection system that is similar to devstat(9).  ctlstat

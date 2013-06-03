@@ -32,7 +32,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)ttydefaults.h	8.4 (Berkeley) 1/21/94
- * $FreeBSD: head/sys/sys/ttydefaults.h 231095 2012-02-06 18:15:46Z ed $
+ * $FreeBSD: head/sys/sys/ttydefaults.h 249311 2013-04-09 16:16:34Z ed $
  */
 
 /*
@@ -95,10 +95,17 @@
  * #define TTYDEFCHARS to include an array of default control characters.
  */
 #ifdef TTYDEFCHARS
-static cc_t	ttydefchars[NCCS] = {
-	CEOF,	CEOL,	CEOL,	CERASE, CWERASE, CKILL, CREPRINT,
-	CERASE2, CINTR,	CQUIT,	CSUSP,	CDSUSP,	CSTART,	CSTOP,	CLNEXT,
-	CDISCARD, CMIN,	CTIME,  CSTATUS, _POSIX_VDISABLE
+
+#include <sys/cdefs.h>
+#include <sys/_termios.h>
+
+static const cc_t ttydefchars[] = {
+	CEOF, CEOL, CEOL, CERASE, CWERASE, CKILL, CREPRINT, CERASE2, CINTR,
+	CQUIT, CSUSP, CDSUSP, CSTART, CSTOP, CLNEXT, CDISCARD, CMIN, CTIME,
+	CSTATUS, _POSIX_VDISABLE
 };
+_Static_assert(sizeof(ttydefchars) / sizeof(cc_t) == NCCS,
+    "Size of ttydefchars does not match NCCS");
+
 #undef TTYDEFCHARS
-#endif
+#endif /* TTYDEFCHARS */

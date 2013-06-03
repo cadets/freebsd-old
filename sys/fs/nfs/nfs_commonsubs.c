@@ -32,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/fs/nfs/nfs_commonsubs.c 246213 2013-02-01 16:57:02Z kib $");
+__FBSDID("$FreeBSD: head/sys/fs/nfs/nfs_commonsubs.c 249592 2013-04-17 21:00:22Z ken $");
 
 /*
  * These functions support the macros and help fiddle mbuf chains for
@@ -271,7 +271,7 @@ out:
  * cases.
  */
 APPLESTATIC void *
-nfsm_dissct(struct nfsrv_descript *nd, int siz)
+nfsm_dissct(struct nfsrv_descript *nd, int siz, int how)
 {
 	mbuf_t mp2;
 	int siz2, xfer;
@@ -296,7 +296,9 @@ nfsm_dissct(struct nfsrv_descript *nd, int siz)
 	} else if (siz > ncl_mbuf_mhlen) {
 		panic("nfs S too big");
 	} else {
-		NFSMGET(mp2);
+		MGET(mp2, MT_DATA, how);
+		if (mp2 == NULL)
+			return (NULL);
 		mbuf_setnext(mp2, mbuf_next(nd->nd_md));
 		mbuf_setnext(nd->nd_md, mp2);
 		mbuf_setlen(nd->nd_md, mbuf_len(nd->nd_md) - left);

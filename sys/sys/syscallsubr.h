@@ -22,7 +22,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/sys/syscallsubr.h 243135 2012-11-16 06:29:52Z kib $
+ * $FreeBSD: head/sys/sys/syscallsubr.h 250154 2013-05-01 20:10:21Z jilles $
  */
 
 #ifndef _SYS_SYSCALLSUBR_H_
@@ -60,6 +60,8 @@ int	kern___getcwd(struct thread *td, u_char *buf, enum uio_seg bufseg,
 	    u_int buflen);
 int	kern_accept(struct thread *td, int s, struct sockaddr **name,
 	    socklen_t *namelen, struct file **fp);
+int	kern_accept4(struct thread *td, int s, struct sockaddr **name,
+	    socklen_t *namelen, int flags, struct file **fp);
 int	kern_access(struct thread *td, char *path, enum uio_seg pathseg,
 	    int flags);
 int	kern_accessat(struct thread *td, int fd, char *path,
@@ -156,6 +158,7 @@ int	kern_openat(struct thread *td, int fd, char *path,
 int	kern_pathconf(struct thread *td, char *path, enum uio_seg pathseg,
 	    int name, u_long flags);
 int	kern_pipe(struct thread *td, int fildes[2]);
+int	kern_pipe2(struct thread *td, int fildes[2], int flags);
 int	kern_posix_fadvise(struct thread *td, int fd, off_t offset, off_t len,
 	    int advice);
 int	kern_posix_fallocate(struct thread *td, int fd, off_t offset,

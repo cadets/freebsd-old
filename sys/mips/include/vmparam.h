@@ -37,7 +37,7 @@
  *	from: Utah Hdr: vmparam.h 1.16 91/01/18
  *	@(#)vmparam.h	8.2 (Berkeley) 4/22/94
  *	JNPR: vmparam.h,v 1.3.2.1 2007/09/10 06:01:28 girish
- * $FreeBSD: head/sys/mips/include/vmparam.h 245337 2013-01-12 18:06:21Z alc $
+ * $FreeBSD: head/sys/mips/include/vmparam.h 250338 2013-05-07 22:46:24Z attilio $
  */
 
 #ifndef _MACHINE_VMPARAM_H_
@@ -98,13 +98,6 @@
 #define	USRSTACK		(VM_MAXUSER_ADDRESS - PAGE_SIZE)
 #ifdef __mips_n64
 #define	FREEBSD32_USRSTACK	(((vm_offset_t)0x80000000) - PAGE_SIZE)
-#endif
-
-/*
- * Only one memory domain.
- */
-#ifndef VM_NDOMAIN
-#define	VM_NDOMAIN		1
 #endif
 
 /*

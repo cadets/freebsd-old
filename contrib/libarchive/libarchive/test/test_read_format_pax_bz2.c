@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_read_format_pax_bz2.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_read_format_pax_bz2.c 248616 2013-03-22 13:36:03Z mm $");
 
 static unsigned char archive[] = {
 'B','Z','h','9','1','A','Y','&','S','Y',152,180,30,185,0,0,140,127,176,212,
@@ -58,7 +58,7 @@ DEFINE_TEST(test_read_format_pax_bz2)
 	    archive_read_open_memory(a, archive, sizeof(archive)));
 	assertEqualIntA(a,ARCHIVE_OK, archive_read_next_header(a, &ae));
 	assertEqualInt(1, archive_file_count(a));
-	assertEqualInt(archive_compression(a), ARCHIVE_COMPRESSION_BZIP2);
+	assertEqualInt(archive_filter_code(a, 0), ARCHIVE_FILTER_BZIP2);
 	assertEqualInt(archive_format(a), ARCHIVE_FORMAT_TAR_PAX_INTERCHANGE);
 	assertEqualIntA(a,ARCHIVE_OK, archive_read_close(a));
 	assertEqualInt(ARCHIVE_OK, archive_read_free(a));

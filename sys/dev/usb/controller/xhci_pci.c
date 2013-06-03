@@ -24,7 +24,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/usb/controller/xhci_pci.c 239617 2012-08-23 17:40:20Z hselasky $");
+__FBSDID("$FreeBSD: head/sys/dev/usb/controller/xhci_pci.c 249336 2013-04-10 17:43:20Z mav $");
 
 #include <sys/stdint.h>
 #include <sys/stddef.h>
@@ -98,6 +98,9 @@ xhci_pci_match(device_t self)
 	switch (device_id) {
 	case 0x01941033:
 		return ("NEC uPD720200 USB 3.0 controller");
+
+	case 0x10421b21:
+		return ("ASMedia ASM1042 USB 3.0 controller");
 
 	case 0x1e318086:
 		return ("Intel Panther Point USB 3.0 controller");

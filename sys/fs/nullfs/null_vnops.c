@@ -36,7 +36,7 @@
  *	...and...
  *	@(#)null_vnodeops.c 1.20 92/07/07 UCLA Ficus project
  *
- * $FreeBSD: head/sys/fs/nullfs/null_vnops.c 245262 2013-01-10 18:24:48Z kib $
+ * $FreeBSD: head/sys/fs/nullfs/null_vnops.c 250505 2013-05-11 11:17:44Z kib $
  */
 
 /*
@@ -692,18 +692,24 @@ null_unlock(struct vop_unlock_args *ap)
 static int
 null_inactive(struct vop_inactive_args *ap __unused)
 {
-	struct vnode *vp;
+	struct vnode *vp, *lvp;
+	struct null_node *xp;
 	struct mount *mp;
 	struct null_mount *xmp;
 
 	vp = ap->a_vp;
+	xp = VTONULL(vp);
+	lvp = NULLVPTOLOWERVP(vp);
 	mp = vp->v_mount;
 	xmp = MOUNTTONULLMOUNT(mp);
-	if ((xmp->nullm_flags & NULLM_CACHE) == 0) {
+	if ((xmp->nullm_flags & NULLM_CACHE) == 0 ||
+	    (xp->null_flags & NULLV_DROP) != 0 ||
+	    (lvp->v_vflag & VV_NOSYNC) != 0) {
 		/*
 		 * If this is the last reference and caching of the
-		 * nullfs vnodes is not enabled, then free up the
-		 * vnode so as not to tie up the lower vnodes.
+		 * nullfs vnodes is not enabled, or the lower vnode is
+		 * deleted, then free up the vnode so as not to tie up
+		 * the lower vnodes.
 		 */
 		vp->v_object = NULL;
 		vrecycle(vp);
@@ -748,7 +754,10 @@ null_reclaim(struct vop_reclaim_args *ap)
 	 */
 	if (vp->v_writecount > 0)
 		VOP_ADD_WRITECOUNT(lowervp, -1);
-	vput(lowervp);
+	if ((xp->null_flags & NULLV_NOUNLOCK) != 0)
+		vunref(lowervp);
+	else
+		vput(lowervp);
 	free(xp, M_NULLFSNODE);
 
 	return (0);

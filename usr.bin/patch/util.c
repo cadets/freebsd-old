@@ -24,7 +24,7 @@
  * behaviour
  *
  * $OpenBSD: util.c,v 1.35 2010/07/24 01:10:12 ray Exp $
- * $FreeBSD: head/usr.bin/patch/util.c 246560 2013-02-08 19:39:15Z pfg $
+ * $FreeBSD: head/usr.bin/patch/util.c 250975 2013-05-25 07:17:16Z gjb $
  */
 
 #include <sys/param.h>

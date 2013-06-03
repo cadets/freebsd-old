@@ -1,4 +1,4 @@
-# $FreeBSD: head/cddl/lib/Makefile 242723 2012-11-07 23:45:09Z jhibbits $
+# $FreeBSD: head/cddl/lib/Makefile 248571 2013-03-21 08:38:03Z mm $
 
 .include <bsd.own.mk>
 
@@ -9,10 +9,12 @@ SUBDIR=	${_drti} \
 	libnvpair \
 	libumem \
 	libuutil \
+	${_libzfs_core} \
 	${_libzfs} \
 	${_libzpool}
 
 .if ${MK_ZFS} != "no"
+_libzfs_core=	libzfs_core
 _libzfs=	libzfs
 .if ${MK_LIBTHR} != "no"
 _libzpool=	libzpool

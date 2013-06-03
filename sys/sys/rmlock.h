@@ -26,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/sys/rmlock.h 227588 2011-11-16 21:51:17Z pjd $
+ * $FreeBSD: head/sys/sys/rmlock.h 247588 2013-03-01 22:03:31Z jhb $
  */
 
 #ifndef _SYS_RMLOCK_H_
@@ -40,7 +40,7 @@
 #ifdef _KERNEL
 
 /*
- * Flags passed to rm_init(9).
+ * Flags passed to rm_init_flags(9).
  */
 #define	RM_NOWITNESS	0x00000001
 #define	RM_RECURSE	0x00000002

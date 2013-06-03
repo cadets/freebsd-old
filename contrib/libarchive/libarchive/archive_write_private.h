@@ -22,7 +22,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/contrib/libarchive/libarchive/archive_write_private.h 238856 2012-07-28 06:38:44Z mm $
+ * $FreeBSD: head/contrib/libarchive/libarchive/archive_write_private.h 248616 2013-03-22 13:36:03Z mm $
  */
 
 #ifndef __LIBARCHIVE_BUILD
@@ -133,4 +133,13 @@ __archive_write_format_header_ustar(struct archive_write *, char buff[512],
     struct archive_entry *, int tartype, int strict,
     struct archive_string_conv *);
 
+struct archive_write_program_data;
+struct archive_write_program_data * __archive_write_program_allocate(void);
+int	__archive_write_program_free(struct archive_write_program_data *);
+int	__archive_write_program_open(struct archive_write_filter *,
+	    struct archive_write_program_data *, const char *);
+int	__archive_write_program_close(struct archive_write_filter *,
+	    struct archive_write_program_data *);
+int	__archive_write_program_write(struct archive_write_filter *,
+	    struct archive_write_program_data *, const void *, size_t);
 #endif

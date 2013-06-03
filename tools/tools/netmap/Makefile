@@ -1,9 +1,9 @@
 #
-# $FreeBSD: head/tools/tools/netmap/Makefile 246896 2013-02-17 04:43:22Z luigi $
+# $FreeBSD: head/tools/tools/netmap/Makefile 251139 2013-05-30 14:07:14Z luigi $
 #
 # For multiple programs using a single source file each,
 # we can just define 'progs' and create custom targets.
-PROGS	=	pkt-gen bridge testpcap libnetmap.so
+PROGS	=	pkt-gen bridge vale-ctl testpcap libnetmap.so
 
 CLEANFILES = $(PROGS) pcap.o nm_util.o
 NO_MAN=

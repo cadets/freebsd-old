@@ -43,7 +43,7 @@
 #include <machine/asm.h>
 #include <machine/armreg.h>
 #include <machine/asmacros.h>
-__FBSDID("$FreeBSD: head/sys/arm/arm/copystr.S 239268 2012-08-15 03:03:03Z gonzo $");
+__FBSDID("$FreeBSD: head/sys/arm/arm/copystr.S 248361 2013-03-16 02:48:49Z andrew $");
 
 #include <sys/errno.h>
 
@@ -93,6 +93,7 @@ ENTRY(copystr)
 
 	ldmfd	sp!, {r4-r5}			/* stack is 8 byte aligned */
 	RET
+END(copystr)
 
 #define SAVE_REGS	stmfd	sp!, {r4-r6}
 #define RESTORE_REGS	ldmfd	sp!, {r4-r6}
@@ -143,6 +144,7 @@ ENTRY(copyinstr)
 
 	RESTORE_REGS
 	RET
+END(copyinstr)
 
 /*
  * r0 - kernel space address
@@ -190,6 +192,7 @@ ENTRY(copyoutstr)
 
 	RESTORE_REGS
 	RET
+END(copyoutstr)
 
 /* A fault occurred during the copy */
 .Lcopystrfault:

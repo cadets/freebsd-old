@@ -45,7 +45,7 @@ static const char copyright[] =
 static char sccsid[] = "@(#)mount_cd9660.c	8.7 (Berkeley) 5/1/95";
 */
 static const char rcsid[] =
-  "$FreeBSD: head/sbin/mount_cd9660/mount_cd9660.c 230226 2012-01-16 19:34:21Z jh $";
+  "$FreeBSD: head/sbin/mount_cd9660/mount_cd9660.c 247856 2013-03-05 22:41:35Z jkim $";
 #endif /* not lint */
 
 #include <sys/cdio.h>
@@ -83,7 +83,7 @@ main(int argc, char **argv)
 {
 	struct iovec *iov;
 	int iovlen;
-	int ch, mntflags, opts;
+	int ch, mntflags;
 	char *dev, *dir, *p, *val, mntpath[MAXPATHLEN];
 	int verbose;
 	int ssector;		/* starting sector, 0 for 1st session */
@@ -91,7 +91,7 @@ main(int argc, char **argv)
 
 	iov = NULL;
 	iovlen = 0;
-	mntflags = opts = verbose = 0;
+	mntflags = verbose = 0;
 	ssector = -1;
 
 	while ((ch = getopt(argc, argv, "begjo:rs:vC:")) != -1)
@@ -109,7 +109,7 @@ main(int argc, char **argv)
 			build_iovec(&iov, &iovlen, "nojoliet", NULL, (size_t)-1);
 			break;
 		case 'o':
-			getmntopts(optarg, mopts, &mntflags, &opts);
+			getmntopts(optarg, mopts, &mntflags, NULL);
 			p = strchr(optarg, '=');
 			val = NULL;
 			if (p != NULL) {

@@ -14,7 +14,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD: head/sys/dev/ath/ath_hal/ar5416/ar5416_recv.c 237626 2012-06-27 05:23:33Z adrian $
+ * $FreeBSD: head/sys/dev/ath/ath_hal/ar5416/ar5416_recv.c 250346 2013-05-08 01:11:25Z adrian $
  */
 #include "opt_ah.h"
 
@@ -208,6 +208,14 @@ ar5416ProcRxDesc(struct ath_hal *ah, struct ath_desc *ds,
 		rs->rs_flags |= HAL_RX_GI;
 	if (ads->ds_rxstatus3 & AR_2040)
 		rs->rs_flags |= HAL_RX_2040;
+
+	/*
+	 * Only the AR9280 and later chips support STBC RX, so
+	 * ensure we only set this bit for those chips.
+	 */
+	if (AR_SREV_MERLIN_10_OR_LATER(ah)
+	    && ads->ds_rxstatus3 & AR_STBCFrame)
+		rs->rs_flags |= HAL_RX_STBC;
 
 	if (ads->ds_rxstatus8 & AR_PreDelimCRCErr)
 		rs->rs_flags |= HAL_RX_DELIM_CRC_PRE;

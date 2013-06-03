@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/kern_fork.c 246904 2013-02-17 11:47:01Z pjd $");
+__FBSDID("$FreeBSD: head/sys/kern/kern_fork.c 249650 2013-04-19 15:19:29Z jh $");
 
 #include "opt_kdtrace.h"
 #include "opt_ktrace.h"
@@ -342,7 +342,7 @@ fork_norfproc(struct thread *td, int flags)
 	if (flags & RFCFDG) {
 		struct filedesc *fdtmp;
 		fdtmp = fdinit(td->td_proc->p_fd);
-		fdfree(td);
+		fdescfree(td);
 		p1->p_fd = fdtmp;
 	}
 
@@ -930,8 +930,8 @@ fork1(struct thread *td, int flags, int pages, struct proc **procp,
 fail:
 	sx_sunlock(&proctree_lock);
 	if (ppsratecheck(&lastfail, &curfail, 1))
-		printf("maxproc limit exceeded by uid %i, please see tuning(7) and login.conf(5).\n",
-		    td->td_ucred->cr_ruid);
+		printf("maxproc limit exceeded by uid %u (pid %d); see tuning(7) and login.conf(5)\n",
+		    td->td_ucred->cr_ruid, p1->p_pid);
 	sx_xunlock(&allproc_lock);
 #ifdef MAC
 	mac_proc_destroy(newproc);

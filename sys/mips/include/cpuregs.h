@@ -52,7 +52,7 @@
  * from: Header: /sprite/src/kernel/vm/ds3100.md/RCS/vmPmaxConst.h,
  *	v 9.1 89/09/18 17:33:00 shirriff Exp  SPRITE (DECWRL)
  *
- * $FreeBSD: head/sys/mips/include/cpuregs.h 232615 2012-03-06 19:01:32Z jmallett $
+ * $FreeBSD: head/sys/mips/include/cpuregs.h 249415 2013-04-12 17:22:12Z jchandra $
  */
 
 #ifndef _MIPS_CPUREGS_H_
@@ -521,7 +521,6 @@
 
 #define MIPS_CONFIG1_TLBSZ_MASK		0x7E000000	/* bits 30..25 # tlb entries minus one */
 #define MIPS_CONFIG1_TLBSZ_SHIFT	25
-#define	MIPS_MAX_TLB_ENTRIES		128
 
 #define MIPS_CONFIG1_IS_MASK		0x01C00000	/* bits 24..22 icache sets per way */
 #define MIPS_CONFIG1_IS_SHIFT		22

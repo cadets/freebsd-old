@@ -27,7 +27,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/sys/pmckern.h 239591 2012-08-22 20:22:55Z jimharris $
+ * $FreeBSD: head/sys/sys/pmckern.h 247836 2013-03-05 10:18:48Z fabient $
  */
 
 /*
@@ -87,15 +87,18 @@ struct pmckern_soft {
  * Soft PMC.
  */
 
-#define PMC_SOFT_DEFINE(prov, mod, func, name)					\
+#define PMC_SOFT_DEFINE_EX(prov, mod, func, name, alloc, release)		\
 	struct pmc_soft pmc_##prov##_##mod##_##func##_##name =			\
-	    { 0, { #prov "_" #mod "_" #func "." #name, 0 } };			\
+	    { 0, alloc, release, { #prov "_" #mod "_" #func "." #name, 0 } };	\
 	SYSINIT(pmc_##prov##_##mod##_##func##_##name##_init, SI_SUB_KDTRACE, 	\
 	    SI_ORDER_SECOND + 1, pmc_soft_ev_register, 				\
 	    &pmc_##prov##_##mod##_##func##_##name );				\
 	SYSUNINIT(pmc_##prov##_##mod##_##func##_##name##_uninit, 		\
 	    SI_SUB_KDTRACE, SI_ORDER_SECOND + 1, pmc_soft_ev_deregister,	\
 	    &pmc_##prov##_##mod##_##func##_##name )
+
+#define PMC_SOFT_DEFINE(prov, mod, func, name)					\
+	PMC_SOFT_DEFINE_EX(prov, mod, func, name, NULL, NULL)
 
 #define PMC_SOFT_DECLARE(prov, mod, func, name)					\
 	extern struct pmc_soft pmc_##prov##_##mod##_##func##_##name
@@ -147,6 +150,8 @@ do {										\
 
 struct pmc_soft {
 	int				ps_running;
+	void				(*ps_alloc)(void);
+	void				(*ps_release)(void);
 	struct pmc_dyn_event_descr	ps_ev;
 };
 

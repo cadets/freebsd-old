@@ -1,4 +1,4 @@
-/* $FreeBSD: head/usr.bin/mkcsmapper/lex.l 240365 2012-09-11 16:32:31Z dim $ */
+/* $FreeBSD: head/usr.bin/mkcsmapper/lex.l 250984 2013-05-25 15:36:15Z ed $ */
 /* $NetBSD: lex.l,v 1.4 2006/02/09 22:03:15 dogcow Exp $	*/
 
 %{
@@ -41,7 +41,7 @@
 #include "ldef.h"
 #include "yacc.h"
 
-int line_number = 1;
+int linenumber = 1;
 %}
 %option	noinput
 %option	nounput
@@ -51,11 +51,11 @@ int line_number = 1;
 %%
 
 [ \t]+	{ }
-#.*[\n]|"//".*[\n]|[\n]	{ line_number++; return (R_LN); }
+#.*[\n]|"//".*[\n]|[\n]	{ linenumber++; return (R_LN); }
 
 "/*"		{ BEGIN COMMENT; }
 <COMMENT>"*/"	{ BEGIN 0; }
-<COMMENT>[\n]	{ line_number++; }
+<COMMENT>[\n]	{ linenumber++; }
 <COMMENT>.	{ }
 <COMMENT><<EOF>>	{
 		yyerror("unexpected file end (unterminated comment)\n");

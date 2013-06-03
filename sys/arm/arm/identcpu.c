@@ -42,7 +42,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/arm/identcpu.c 244480 2012-12-20 04:32:02Z gonzo $");
+__FBSDID("$FreeBSD: head/sys/arm/arm/identcpu.c 249999 2013-04-27 23:07:49Z wkoszek $");
 #include <sys/systm.h>
 #include <sys/param.h>
 #include <sys/malloc.h>
@@ -245,6 +245,8 @@ const struct cpuidtab cpuids[] = {
 	{ CPU_ID_CORTEXA9R1,	CPU_CLASS_CORTEXA,	"Cortex A9-r1",
 	  generic_steppings },
 	{ CPU_ID_CORTEXA9R2,	CPU_CLASS_CORTEXA,	"Cortex A9-r2",
+	  generic_steppings },
+	{ CPU_ID_CORTEXA9R3,	CPU_CLASS_CORTEXA,	"Cortex A9-r3",
 	  generic_steppings },
 
 	{ CPU_ID_SA110,		CPU_CLASS_SA1,		"SA-110",

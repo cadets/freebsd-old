@@ -28,7 +28,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sbin/hastd/token.l 230395 2012-01-20 21:45:24Z pjd $
+ * $FreeBSD: head/sbin/hastd/token.l 250914 2013-05-22 17:47:45Z jkim $
  */
 
 #include <stdio.h>
@@ -42,10 +42,14 @@ int depth;
 int lineno;
 
 #define	DP	do { } while (0)
+#define	YY_DECL	int yylex(void)
+
+extern int yylex(void);
 %}
 
 %option noinput
 %option nounput
+%option noyywrap
 
 %%
 control			{ DP; return CONTROL; }

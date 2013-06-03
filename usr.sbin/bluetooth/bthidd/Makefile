@@ -1,5 +1,5 @@
 # $Id$
-# $FreeBSD: head/usr.sbin/bluetooth/bthidd/Makefile 204596 2010-03-02 18:44:08Z uqs $
+# $FreeBSD: head/usr.sbin/bluetooth/bthidd/Makefile 249657 2013-04-19 19:45:00Z ed $
 
 PROG=		bthidd
 MAN=		bthidd.8
@@ -12,5 +12,7 @@ DEBUG_FLAGS=	-g
 
 DPADD=          ${LIBBLUETOOTH} ${LIBUSBHID}
 LDADD=		-lbluetooth -lusbhid
+
+NO_WMISSING_VARIABLE_DECLARATIONS=
 
 .include <bsd.prog.mk>

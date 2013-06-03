@@ -36,7 +36,7 @@ static char sccsid[] = "@(#)eval.c	8.9 (Berkeley) 6/8/95";
 #endif
 #endif /* not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/bin/sh/eval.c 247206 2013-02-23 22:50:57Z jilles $");
+__FBSDID("$FreeBSD: head/bin/sh/eval.c 249407 2013-04-12 15:19:35Z jilles $");
 
 #include <paths.h>
 #include <signal.h>
@@ -279,6 +279,8 @@ evaltree(union node *n, int flags)
 			break;
 		case NNOT:
 			evaltree(n->nnot.com, EV_TESTED);
+			if (evalskip)
+				goto out;
 			exitstatus = !exitstatus;
 			break;
 

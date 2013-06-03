@@ -1,5 +1,5 @@
 %{
-/* $OpenBSD: parser.y,v 1.6 2008/08/21 21:00:14 espie Exp $ */
+/* $OpenBSD: parser.y,v 1.7 2012/04/12 17:00:11 espie Exp $ */
 /*
  * Copyright (c) 2004 Marc Espie <espie@cvs.openbsd.org>
  *
@@ -15,7 +15,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD: head/usr.bin/m4/parser.y 241777 2012-10-20 10:33:15Z ed $
+ * $FreeBSD: head/usr.bin/m4/parser.y 250226 2013-05-03 23:29:38Z jkim $
  */
 
 #include <math.h>

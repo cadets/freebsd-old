@@ -28,7 +28,7 @@ POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/mxge/if_mxge.c 247268 2013-02-25 16:22:40Z gallatin $");
+__FBSDID("$FreeBSD: head/sys/dev/mxge/if_mxge.c 249586 2013-04-17 11:47:32Z gabor $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -3418,7 +3418,7 @@ mxge_alloc_slice_rings(struct mxge_slice_state *ss, int rx_ring_entries,
 		return err;
 	}
 
-	/* now allocate TX resouces */
+	/* now allocate TX resources */
 
 #ifndef IFNET_BUF_RING
 	/* only use a single TX ring for now */

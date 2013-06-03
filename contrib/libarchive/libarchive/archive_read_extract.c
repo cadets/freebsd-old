@@ -24,7 +24,7 @@
  */
 
 #include "archive_platform.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_read_extract.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_read_extract.c 248616 2013-03-22 13:36:03Z mm $");
 
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
@@ -154,7 +154,7 @@ copy_data(struct archive *ar, struct archive *aw)
 			return (ARCHIVE_OK);
 		if (r != ARCHIVE_OK)
 			return (r);
-		r = archive_write_data_block(aw, buff, size, offset);
+		r = (int)archive_write_data_block(aw, buff, size, offset);
 		if (r < ARCHIVE_WARN)
 			r = ARCHIVE_WARN;
 		if (r != ARCHIVE_OK) {

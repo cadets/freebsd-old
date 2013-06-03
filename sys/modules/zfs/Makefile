@@ -1,4 +1,4 @@
-# $FreeBSD: head/sys/modules/zfs/Makefile 240868 2012-09-23 19:40:58Z pjd $
+# $FreeBSD: head/sys/modules/zfs/Makefile 248084 2013-03-09 02:32:23Z attilio $
 
 KMOD=	zfs
 
@@ -28,6 +28,7 @@ SRCS+=	opensolaris_sysevent.c
 SRCS+=	opensolaris_taskq.c
 SRCS+=	opensolaris_uio.c
 SRCS+=	opensolaris_vfs.c
+SRCS+=	opensolaris_vm.c
 SRCS+=	opensolaris_zone.c
 
 _A=${.CURDIR}/../../cddl/contrib/opensolaris/common/atomic

@@ -1,4 +1,4 @@
-/*	$FreeBSD: head/sys/dev/usb/wlan/if_rum.c 246614 2013-02-10 10:36:16Z hselasky $	*/
+/*	$FreeBSD: head/sys/dev/usb/wlan/if_rum.c 248566 2013-03-21 07:04:17Z hselasky $	*/
 
 /*-
  * Copyright (c) 2005-2007 Damien Bergamini <damien.bergamini@free.fr>
@@ -19,7 +19,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/usb/wlan/if_rum.c 246614 2013-02-10 10:36:16Z hselasky $");
+__FBSDID("$FreeBSD: head/sys/dev/usb/wlan/if_rum.c 248566 2013-03-21 07:04:17Z hselasky $");
 
 /*-
  * Ralink Technology RT2501USB/RT2601USB chipset driver
@@ -120,6 +120,7 @@ static const STRUCT_USB_HOST_ID rum_devs[] = {
     RUM_DEV(HUAWEI3COM, WUB320G),
     RUM_DEV(MELCO, G54HP),
     RUM_DEV(MELCO, SG54HP),
+    RUM_DEV(MELCO, SG54HG),
     RUM_DEV(MELCO, WLIUCG),
     RUM_DEV(MELCO, WLRUCG),
     RUM_DEV(MELCO, WLRUCGAOSS),

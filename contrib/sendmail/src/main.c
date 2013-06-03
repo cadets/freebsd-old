@@ -2103,7 +2103,7 @@ main(argc, argv, envp)
 							     "> ");
 				(void) sm_io_flush(smioout, SM_TIME_DEFAULT);
 				if (sm_io_fgets(smioin, SM_TIME_DEFAULT, buf,
-						sizeof(buf)) == NULL)
+						sizeof(buf)) < 0)
 					testmodeline("/quit", &MainEnvelope);
 				p = strchr(buf, '\n');
 				if (p != NULL)
@@ -2153,7 +2153,13 @@ main(argc, argv, envp)
 	if (tls_ok)
 	{
 		/* basic TLS initialization */
-		tls_ok = init_tls_library();
+		tls_ok = init_tls_library(FipsMode);
+		if (!tls_ok && FipsMode)
+		{
+			(void) sm_io_fprintf(smioout, SM_TIME_DEFAULT,
+				     "ERROR: FIPSMode failed to initialize\n");
+			exit(EX_USAGE);
+		}
 	}
 
 	if (!tls_ok && (OpMode == MD_QUEUERUN || OpMode == MD_DELIVER))

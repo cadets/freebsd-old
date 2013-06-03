@@ -25,9 +25,8 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/ata/chipsets/ata-acerlabs.c 242625 2012-11-05 19:16:27Z dim $");
+__FBSDID("$FreeBSD: head/sys/dev/ata/chipsets/ata-acerlabs.c 249213 2013-04-06 19:12:49Z marius $");
 
-#include "opt_ata.h"
 #include <sys/param.h>
 #include <sys/module.h>
 #include <sys/systm.h>
@@ -213,10 +212,8 @@ ata_ali_ch_attach(device_t dev)
 	if (ch->dma.max_iosize > 256 * 512)
 		ch->dma.max_iosize = 256 * 512;
     }
-#ifdef ATA_CAM
 	if (ctlr->chip->cfg2 & ALI_NEW)
 		ch->flags |= ATA_NO_ATAPI_DMA;
-#endif
 
     return 0;
 }

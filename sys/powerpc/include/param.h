@@ -35,7 +35,7 @@
  * SUCH DAMAGE.
  *
  *	from: @(#)param.h	5.8 (Berkeley) 6/28/91
- * $FreeBSD: head/sys/powerpc/include/param.h 224207 2011-07-19 00:37:24Z attilio $
+ * $FreeBSD: head/sys/powerpc/include/param.h 250338 2013-05-07 22:46:24Z attilio $
  */
 
 #ifndef _POWERPC_INCLUDE_PARAM_H_
@@ -74,6 +74,10 @@
 #else
 #define	MAXCPU		1
 #endif /* SMP || KLD_MODULE */
+
+#ifndef MAXMEMDOM
+#define	MAXMEMDOM	1
+#endif
 
 #define	ALIGNBYTES	_ALIGNBYTES
 #define	ALIGN(p)	_ALIGN(p)

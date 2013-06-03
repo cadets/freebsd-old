@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/x86/x86/busdma_machdep.c 246713 2013-02-12 16:57:20Z kib $");
+__FBSDID("$FreeBSD: head/sys/x86/x86/busdma_machdep.c 248968 2013-04-01 09:57:46Z kib $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -251,7 +251,7 @@ bus_dma_tag_create(bus_dma_tag_t parent, bus_size_t alignment,
 	    M_ZERO | M_NOWAIT);
 	if (newtag == NULL) {
 		CTR4(KTR_BUSDMA, "%s returned tag %p tag flags 0x%x error %d",
-		    __func__, newtag, 0, error);
+		    __func__, newtag, 0, ENOMEM);
 		return (ENOMEM);
 	}
 

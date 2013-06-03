@@ -1,5 +1,5 @@
 #	From: @(#)Makefile	8.3 (Berkeley) 1/7/94
-# $FreeBSD: head/usr.bin/Makefile 246600 2013-02-09 18:14:26Z kientzle $
+# $FreeBSD: head/usr.bin/Makefile 250024 2013-04-28 17:58:11Z eadler $
 
 .include <bsd.own.mk>
 
@@ -148,7 +148,6 @@ SUBDIR=	alias \
 	sockstat \
 	sort \
 	split \
-	ssh-copy-id \
 	stat \
 	stdbuf \
 	su \
@@ -301,6 +300,10 @@ SUBDIR+=	nc
 SUBDIR+=	ypcat
 SUBDIR+=	ypmatch
 SUBDIR+=	ypwhich
+.endif
+
+.if ${MK_OPENSSH} != "no"
+SUBDIR+=	ssh-copy-id
 .endif
 
 .if ${MK_OPENSSL} != "no"

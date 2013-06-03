@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/mips/sibyte/sb_machdep.c 232853 2012-03-12 07:34:15Z jmallett $");
+__FBSDID("$FreeBSD: head/sys/mips/sibyte/sb_machdep.c 247297 2013-02-26 01:00:11Z attilio $");
 
 #include "opt_ddb.h"
 #include "opt_kdb.h"
@@ -55,7 +55,6 @@ __FBSDID("$FreeBSD: head/sys/mips/sibyte/sb_machdep.c 232853 2012-03-12 07:34:15
 #include <vm/vm.h>
 #include <vm/vm_object.h>
 #include <vm/vm_page.h>
-#include <vm/vm_pager.h>
 
 #include <machine/cache.h>
 #include <machine/clock.h>

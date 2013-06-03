@@ -1,6 +1,6 @@
 <!-- -*- sgml -*-
 
-     $FreeBSD: head/release/doc/share/xml/release.ent 242816 2012-11-09 04:52:15Z gjb $
+     $FreeBSD: head/release/doc/share/xml/release.ent 250746 2013-05-17 18:53:29Z gabor $
 
      OS Release Information -->
 
@@ -29,10 +29,23 @@
 
 <!-- The type of release (usually this will be either "snapshot"
      or "release" -->
+<!-- WARNING: Do not forget to also change the release type in
+     doc.relnotes.mk when updating this -->
 <!ENTITY release.type "snapshot">
 <!ENTITY % release.type.current  "INCLUDE">
 <!ENTITY % release.type.snapshot "IGNORE">
 <!ENTITY % release.type.release "IGNORE">
+
+<![%release.type.current;[
+<!ENTITY release '&release.current;'>
+]]>
+<![%release.type.snapshot;[
+<!ENTITY release '&release.prev;'>
+]]>
+<![%release.type.release;[
+<!ENTITY release '&release.current;'>
+]]>
+<!ENTITY release ''>
 
 <!-- The manpaths for man page references -->
 <!ENTITY release.man.url "http://www.FreeBSD.org/cgi/man.cgi">

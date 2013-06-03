@@ -32,7 +32,7 @@
  * SUCH DAMAGE.
  *
  *	from: @(#)vmparam.h	5.9 (Berkeley) 5/12/91
- * $FreeBSD: head/sys/i386/include/vmparam.h 246207 2013-02-01 14:16:37Z andre $
+ * $FreeBSD: head/sys/i386/include/vmparam.h 250338 2013-05-07 22:46:24Z attilio $
  */
 
 
@@ -104,13 +104,6 @@
 #define	VM_NFREEORDER		10
 #else
 #define	VM_NFREEORDER		11
-#endif
-
-/*
- * Only one memory domain.
- */
-#ifndef VM_NDOMAIN
-#define	VM_NDOMAIN		1
 #endif
 
 /*

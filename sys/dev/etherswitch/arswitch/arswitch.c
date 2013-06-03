@@ -24,7 +24,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/dev/etherswitch/arswitch/arswitch.c 242716 2012-11-07 22:43:09Z ray $
+ * $FreeBSD: head/sys/dev/etherswitch/arswitch/arswitch.c 250383 2013-05-08 20:54:59Z adrian $
  */
 
 #include <sys/param.h>
@@ -435,11 +435,12 @@ arswitch_getport(device_t dev, etherswitch_port_t *p)
 	
 	if (p->es_port < 0 || p->es_port >= AR8X16_NUM_PORTS)
 		return (ENXIO);
-	p->es_vlangroup = 0;
+	p->es_pvid = 0;
 
 	mii = arswitch_miiforport(sc, p->es_port);
 	if (p->es_port == 0) {
 		/* fill in fixed values for CPU port */
+		p->es_flags |= ETHERSWITCH_PORT_CPU;
 		ifmr->ifm_count = 0;
 		ifmr->ifm_current = ifmr->ifm_active =
 		    IFM_ETHER | IFM_1000_T | IFM_FDX;

@@ -20,7 +20,7 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/sys/mouse.h 165335 2006-12-18 18:48:28Z keramida $
+ * $FreeBSD: head/sys/sys/mouse.h 248478 2013-03-18 23:22:47Z jkim $
  */
 
 #ifndef _SYS_MOUSE_H_
@@ -141,6 +141,7 @@ typedef struct synapticshw {
 #define MOUSE_MODEL_4D			11
 #define MOUSE_MODEL_4DPLUS		12
 #define MOUSE_MODEL_SYNAPTICS		13
+#define	MOUSE_MODEL_TRACKPOINT		14
 
 typedef struct mousemode {
 	int protocol;		/* MOUSE_PROTO_XXX */

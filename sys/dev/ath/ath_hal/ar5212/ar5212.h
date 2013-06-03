@@ -14,7 +14,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD: head/sys/dev/ath/ath_hal/ar5212/ar5212.h 242625 2012-11-05 19:16:27Z dim $
+ * $FreeBSD: head/sys/dev/ath/ath_hal/ar5212/ar5212.h 247286 2013-02-25 22:42:43Z adrian $
  */
 #ifndef _ATH_AR5212_H_
 #define _ATH_AR5212_H_
@@ -513,6 +513,7 @@ extern	HAL_STATUS ar5212SetQuiet(struct ath_hal *ah, uint32_t period,
 		uint32_t duration, uint32_t nextStart, HAL_QUIET_FLAG flag);
 extern	HAL_BOOL ar5212GetMibCycleCounts(struct ath_hal *,
 		HAL_SURVEY_SAMPLE *);
+extern	void ar5212SetChainMasks(struct ath_hal *, uint32_t, uint32_t);
 
 extern	HAL_BOOL ar5212SetPowerMode(struct ath_hal *ah, HAL_POWER_MODE mode,
 		int setChip);

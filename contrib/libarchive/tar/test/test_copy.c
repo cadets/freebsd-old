@@ -23,11 +23,14 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/tar/test/test_copy.c 228763 2011-12-21 11:13:29Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/tar/test/test_copy.c 248616 2013-03-22 13:36:03Z mm $");
 
 #if defined(__CYGWIN__)
 # include <limits.h>
 # include <sys/cygwin.h>
+#endif
+#if defined(_WIN32) && !defined(__CYGWIN__)
+# include <direct.h>
 #endif
 
 /*
@@ -119,7 +122,7 @@ compute_filenames(void)
 		if (i > 9) {
 			buff[j--] = '0' + ((i / 10) % 10);
 			if (i > 99)
-				buff[j--] = '0' + (i / 100);
+				buff[j--] = '0' + (char)(i / 100);
 		}
 		buff[j] = '_';
 		/* Guard against obvious screwups in the above code. */
@@ -202,7 +205,7 @@ verify_tree(size_t limit)
 		sprintf(name1, "f/%s", filenames[i]);
 		if (i <= limit) {
 			assertFileExists(name1);
-			assertFileContents(name1, strlen(name1), name1);
+			assertFileContents(name1, (int)strlen(name1), name1);
 		}
 
 		sprintf(name2, "l/%s", filenames[i]);

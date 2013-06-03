@@ -16,7 +16,7 @@
 # If you are in doubt as to the purpose or necessity of a line, check first
 # in NOTES.
 #
-# $FreeBSD: head/sys/arm/conf/CAMBRIA 243227 2012-11-18 14:05:28Z adrian $
+# $FreeBSD: head/sys/arm/conf/CAMBRIA 249083 2013-04-04 07:12:24Z mav $
 
 ident		CAMBRIA
 
@@ -96,7 +96,6 @@ device		cambria_gpio	# GPIO pins on J11
 
 device		ata
 device		avila_ata	# Gateworks CF/IDE support
-options 	ATA_CAM
 
 device		npe		# Network Processing Engine
 device		npe_fw

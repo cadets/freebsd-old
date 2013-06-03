@@ -31,7 +31,7 @@
  * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/dev/tws/tws_user.c 241753 2012-10-19 22:07:40Z delphij $
+ * $FreeBSD: head/sys/dev/tws/tws_user.c 248973 2013-04-01 13:18:34Z mav $
  */
 
 #include <dev/tws/tws.h>
@@ -73,9 +73,7 @@ tws_ioctl(struct cdev *dev, u_long cmd, caddr_t buf, int flags,
             break;
         case TWS_IOCTL_SCAN_BUS :
             TWS_TRACE_DEBUG(sc, "scan-bus", 0, 0);
-            mtx_lock(&sc->sim_lock);
             error = tws_bus_scan(sc);
-            mtx_unlock(&sc->sim_lock);
             break;
         default :
             TWS_TRACE_DEBUG(sc, "ioctl-aen", cmd, buf);

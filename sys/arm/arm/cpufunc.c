@@ -45,7 +45,7 @@
  * Created      : 30/01/97
  */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/arm/cpufunc.c 245478 2013-01-15 22:11:28Z cognet $");
+__FBSDID("$FreeBSD: head/sys/arm/arm/cpufunc.c 249999 2013-04-27 23:07:49Z wkoszek $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -1480,7 +1480,8 @@ set_cpufuncs()
 	    cputype == CPU_ID_CORTEXA8R2 ||
 	    cputype == CPU_ID_CORTEXA8R3 ||
 	    cputype == CPU_ID_CORTEXA9R1 ||
-	    cputype == CPU_ID_CORTEXA9R2) {
+	    cputype == CPU_ID_CORTEXA9R2 ||
+	    cputype == CPU_ID_CORTEXA9R3) {
 		cpufuncs = cortexa_cpufuncs;
 		cpu_reset_needs_v4_MMU_disable = 1;     /* V4 or higher */
 		get_cachetype_cp15();

@@ -16,7 +16,7 @@
 # If you are in doubt as to the purpose or necessity of a line, check first
 # in NOTES.
 #
-# $FreeBSD: head/sys/arm/conf/AVILA 239699 2012-08-26 01:21:02Z gjb $
+# $FreeBSD: head/sys/arm/conf/AVILA 249083 2013-04-04 07:12:24Z mav $
 
 ident		AVILA
 
@@ -93,7 +93,6 @@ device		avila_gpio	# GPIO pins on J8
 
 device		ata
 device		avila_ata	# Gateworks CF/IDE support
-options 	ATA_CAM
 
 device		npe		# Network Processing Engine
 device		npe_fw

@@ -33,7 +33,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)ffs_alloc.c	8.8 (Berkeley) 2/21/94
- * $FreeBSD: head/sys/fs/ext2fs/ext2_alloc.c 246634 2013-02-10 19:49:37Z pfg $
+ * $FreeBSD: head/sys/fs/ext2fs/ext2_alloc.c 249218 2013-04-06 22:21:23Z jeff $
  */
 
 #include <sys/param.h>
@@ -794,8 +794,6 @@ ext2_clusteralloc(struct inode *ip, int cg, daddr_t bpref, int len)
 		goto fail_lock;
 
 	bbp = (char *)bp->b_data;
-	bp->b_xflags |= BX_BKGRDWRITE;
-
 	EXT2_LOCK(ump);
 	/*
 	 * Check to see if a cluster of the needed size (or bigger) is

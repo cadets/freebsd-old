@@ -39,7 +39,7 @@ static char sccsid[] = "@(#)main.c	8.6 (Berkeley) 5/14/95";
 #endif /* not lint */
 #endif
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sbin/fsck_ffs/main.c 247212 2013-02-24 06:44:29Z mckusick $");
+__FBSDID("$FreeBSD: head/sbin/fsck_ffs/main.c 250056 2013-04-29 20:13:09Z des $");
 
 #include <sys/param.h>
 #include <sys/file.h>
@@ -82,7 +82,7 @@ main(int argc, char *argv[])
 	sync();
 	skipclean = 1;
 	inoopt = 0;
-	while ((ch = getopt(argc, argv, "b:Bc:CdEfFm:npry")) != -1) {
+	while ((ch = getopt(argc, argv, "b:Bc:CdEfFm:npryZ")) != -1) {
 		switch (ch) {
 		case 'b':
 			skipclean = 0;
@@ -145,6 +145,10 @@ main(int argc, char *argv[])
 		case 'y':
 			yflag++;
 			nflag = 0;
+			break;
+
+		case 'Z':
+			Zflag++;
 			break;
 
 		default:

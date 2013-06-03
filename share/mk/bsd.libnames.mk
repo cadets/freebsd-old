@@ -1,4 +1,4 @@
-# $FreeBSD: head/share/mk/bsd.libnames.mk 246852 2013-02-15 21:31:01Z des $
+# $FreeBSD: head/share/mk/bsd.libnames.mk 248571 2013-03-21 08:38:03Z mm $
 
 # The include file <bsd.libnames.mk> define library names.
 # Other include files (e.g. bsd.prog.mk, bsd.lib.mk) include this
@@ -25,6 +25,7 @@ LIBBIND9?=	${DESTDIR}${LIBDIR}/libbind9.a
 .endif
 LIBBLUETOOTH?=	${DESTDIR}${LIBDIR}/libbluetooth.a
 LIBBSDXML?=	${DESTDIR}${LIBDIR}/libbsdxml.a
+LIBBSDYML?=	${DESTDIR}${LIBDIR}/libbsdyml.a
 LIBBSM?=	${DESTDIR}${LIBDIR}/libbsm.a
 LIBBSNMP?=	${DESTDIR}${LIBDIR}/libbsnmp.a
 LIBBZ2?=	${DESTDIR}${LIBDIR}/libbz2.a
@@ -173,4 +174,5 @@ LIBY?=		${DESTDIR}${LIBDIR}/liby.a
 LIBYPCLNT?=	${DESTDIR}${LIBDIR}/libypclnt.a
 LIBZ?=		${DESTDIR}${LIBDIR}/libz.a
 LIBZFS?=	${DESTDIR}${LIBDIR}/libzfs.a
+LIBZFS_CORE?=	${DESTDIR}${LIBDIR}/libzfs_core.a
 LIBZPOOL?=	${DESTDIR}${LIBDIR}/libzpool.a

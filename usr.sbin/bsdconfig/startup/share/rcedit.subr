@@ -24,7 +24,7 @@ if [ ! "$_STARTUP_RCEDIT_SUBR" ]; then _STARTUP_RCEDIT_SUBR=1
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD: head/usr.sbin/bsdconfig/startup/share/rcedit.subr 245437 2013-01-14 21:03:34Z dteske $
+# $FreeBSD: head/usr.sbin/bsdconfig/startup/share/rcedit.subr 251242 2013-06-02 05:45:25Z dteske $
 #
 ############################################################ INCLUDES
 
@@ -68,9 +68,8 @@ f_dialog_rcedit()
 	fi
 
 	# Return if user has either pressed ESC or chosen Cancel/No
-	_input=$( f_dialog_input "$msg" "$_input" \
-	                         "$hline_alnum_punc_tab_enter"
-	        ) || return
+	f_dialog_input _input "$msg" "$_input" \
+	               "$hline_alnum_punc_tab_enter" || return
 
 	# Return if the value has not changed from current
 	local cur_val="$( f_sysrc_get "$var" )"

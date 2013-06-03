@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/subr_uio.c 246713 2013-02-12 16:57:20Z kib $");
+__FBSDID("$FreeBSD: head/sys/kern/subr_uio.c 248084 2013-03-09 02:32:23Z attilio $");
 
 #include "opt_zero.h"
 
@@ -45,9 +45,9 @@ __FBSDID("$FreeBSD: head/sys/kern/subr_uio.c 246713 2013-02-12 16:57:20Z kib $")
 #include <sys/limits.h>
 #include <sys/lock.h>
 #include <sys/mman.h>
-#include <sys/mutex.h>
 #include <sys/proc.h>
 #include <sys/resourcevar.h>
+#include <sys/rwlock.h>
 #include <sys/sched.h>
 #include <sys/sysctl.h>
 #include <sys/vnode.h>
@@ -104,7 +104,7 @@ vm_pgmoveco(vm_map_t mapa, vm_offset_t kaddr, vm_offset_t uaddr)
 			   &upindex, &prot, &wired)) != KERN_SUCCESS) {
 		return(EFAULT);
 	}
-	VM_OBJECT_LOCK(uobject);
+	VM_OBJECT_WLOCK(uobject);
 retry:
 	if ((user_pg = vm_page_lookup(uobject, upindex)) != NULL) {
 		if (vm_page_sleep_if_busy(user_pg, TRUE, "vm_pgmoveco"))
@@ -124,7 +124,7 @@ retry:
 	}
 	vm_page_insert(kern_pg, uobject, upindex);
 	vm_page_dirty(kern_pg);
-	VM_OBJECT_UNLOCK(uobject);
+	VM_OBJECT_WUNLOCK(uobject);
 	vm_map_lookup_done(map, entry);
 	return(KERN_SUCCESS);
 }

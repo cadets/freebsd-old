@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "archive_platform.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_read_support_format_raw.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_read_support_format_raw.c 248616 2013-03-22 13:36:03Z mm $");
 
 #ifdef HAVE_ERRNO_H
 #include <errno.h>
@@ -77,6 +77,7 @@ archive_read_support_format_raw(struct archive *_a)
 	    archive_read_format_raw_read_header,
 	    archive_read_format_raw_read_data,
 	    archive_read_format_raw_read_data_skip,
+	    NULL,
 	    archive_read_format_raw_cleanup);
 	if (r != ARCHIVE_OK)
 		free(info);
@@ -157,7 +158,7 @@ archive_read_format_raw_read_data(struct archive_read *a,
 		/* Record and return an error. */
 		*size = 0;
 		*offset = info->offset;
-		return (avail);
+		return ((int)avail);
 	}
 }
 

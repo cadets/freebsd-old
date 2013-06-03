@@ -26,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/usr.sbin/mfiutil/mfiutil.c 241776 2012-10-20 10:20:06Z ed $
+ * $FreeBSD: head/usr.sbin/mfiutil/mfiutil.c 249257 2013-04-08 17:46:45Z markj $
  */
 
 #include <sys/errno.h>
@@ -84,6 +84,8 @@ usage(void)
 	fprintf(stderr, "    start patrol              - start a patrol read\n");
 	fprintf(stderr, "    stop patrol               - stop a patrol read\n");
 	fprintf(stderr, "    flash <firmware>\n");
+	fprintf(stderr, "    start learn               - start a BBU relearn\n");
+	fprintf(stderr, "    bbu <setting> <value>     - set BBU properties\n");
 #ifdef DEBUG
 	fprintf(stderr, "    debug                     - debug 'show config'\n");
 	fprintf(stderr, "    dump                      - display 'saved' config\n");

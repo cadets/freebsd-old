@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/cpio/test/test_format_newc.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/cpio/test/test_format_newc.c 248616 2013-03-22 13:36:03Z mm $");
 
 /* Number of bytes needed to pad 'n' to multiple of 'block', assuming
  * that 'block' is a power of two. This trick can be more easily
@@ -157,9 +157,9 @@ DEFINE_TEST(test_format_newc)
 
 	/* Verify that nothing went to stderr. */
 	if (canSymlink()) {
-		strncat(result, "2 blocks\n", sizeof(result) - strlen(result));
+		strncat(result, "2 blocks\n", sizeof(result) - strlen(result) -1);
 	} else {
-		strncat(result, "1 block\n", sizeof(result) - strlen(result));
+		strncat(result, "1 block\n", sizeof(result) - strlen(result) -1);
 	}
 	assertTextFileContents(result, "newc.err");
 

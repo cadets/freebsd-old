@@ -33,7 +33,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/compat/svr4/svr4_misc.c 241896 2012-10-22 17:50:54Z kib $");
+__FBSDID("$FreeBSD: head/sys/compat/svr4/svr4_misc.c 247602 2013-03-02 00:53:12Z pjd $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -247,10 +247,8 @@ svr4_sys_getdents64(td, uap)
 
 	DPRINTF(("svr4_sys_getdents64(%d, *, %d)\n",
 		uap->fd, uap->nbytes));
-	if ((error = getvnode(td->td_proc->p_fd, uap->fd,
-	    CAP_READ | CAP_SEEK, &fp)) != 0) {
+	if ((error = getvnode(td->td_proc->p_fd, uap->fd, CAP_READ, &fp)) != 0)
 		return (error);
-	}
 
 	if ((fp->f_flag & FREAD) == 0) {
 		fdrop(fp, td);
@@ -426,8 +424,7 @@ svr4_sys_getdents(td, uap)
 	if (uap->nbytes < 0)
 		return (EINVAL);
 
-	if ((error = getvnode(td->td_proc->p_fd, uap->fd,
-	    CAP_READ | CAP_SEEK, &fp)) != 0)
+	if ((error = getvnode(td->td_proc->p_fd, uap->fd, CAP_READ, &fp)) != 0)
 		return (error);
 
 	if ((fp->f_flag & FREAD) == 0) {

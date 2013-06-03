@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sbin/fsck_ffs/suj.c 243017 2012-11-14 06:31:47Z jeff $");
+__FBSDID("$FreeBSD: head/sbin/fsck_ffs/suj.c 248658 2013-03-23 20:00:02Z mckusick $");
 
 #include <sys/param.h>
 #include <sys/disk.h>
@@ -161,7 +161,7 @@ errmalloc(size_t n)
 {
 	void *a;
 
-	a = malloc(n);
+	a = Malloc(n);
 	if (a == NULL)
 		err(EX_OSERR, "malloc(%zu)", n);
 	return (a);
@@ -194,7 +194,7 @@ opendisk(const char *devnam)
 {
 	if (disk != NULL)
 		return;
-	disk = malloc(sizeof(*disk));
+	disk = Malloc(sizeof(*disk));
 	if (disk == NULL)
 		err(EX_OSERR, "malloc(%zu)", sizeof(*disk));
 	if (ufs_disk_fillout(disk, devnam) == -1) {

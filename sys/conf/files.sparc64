@@ -1,7 +1,7 @@
 # This file tells config what files go into building a kernel,
 # files marked standard are always included.
 #
-# $FreeBSD: head/sys/conf/files.sparc64 241680 2012-10-18 12:04:56Z attilio $
+# $FreeBSD: head/sys/conf/files.sparc64 249083 2013-04-04 07:12:24Z mav $
 #
 # The long compile-with and dependency lines are required because of
 # limitations in config: backslash-newline doesn't work in strings, and
@@ -88,7 +88,7 @@ sparc64/pci/schizo.c		optional	pci
 sparc64/sbus/dma_sbus.c		optional	sbus
 sparc64/sbus/sbus.c		optional	sbus
 sparc64/sbus/lsi64854.c		optional	sbus
-sparc64/sparc64/ata_machdep.c	optional	ada | atadisk | da
+sparc64/sparc64/ata_machdep.c	optional	ada | da
 sparc64/sparc64/autoconf.c	standard
 sparc64/sparc64/bus_machdep.c	standard
 sparc64/sparc64/cache.c		standard

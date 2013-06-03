@@ -14,7 +14,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD: head/sys/dev/ath/ath_hal/ar5211/ar5211_attach.c 239643 2012-08-24 07:35:18Z adrian $
+ * $FreeBSD: head/sys/dev/ath/ath_hal/ar5211/ar5211_attach.c 247286 2013-02-25 22:42:43Z adrian $
  */
 #include "opt_ah.h"
 
@@ -137,6 +137,7 @@ static const struct ath_hal_private ar5211hal = {{
 	.ah_setCoverageClass		= ar5211SetCoverageClass,
 	.ah_get11nExtBusy		= ar5211Get11nExtBusy,
 	.ah_getMibCycleCounts		= ar5211GetMibCycleCounts,
+	.ah_setChainMasks		= ar5211SetChainMasks,
 	.ah_enableDfs			= ar5211EnableDfs,
 	.ah_getDfsThresh		= ar5211GetDfsThresh,
 	/* XXX procRadarEvent */

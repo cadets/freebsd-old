@@ -1,13 +1,13 @@
 # This is a generated file, do NOT edit!
 # See contrib/bmake/bsd.after-import.mk
 #
-# $FreeBSD: head/usr.bin/bmake/unit-tests/Makefile 246325 2013-02-04 17:41:17Z sjg $
+# $FreeBSD: head/usr.bin/bmake/unit-tests/Makefile 249033 2013-04-02 21:31:11Z sjg $
 
 SRCTOP?= ${.CURDIR:H:H:H}
 
 # $Id$
 #
-# $NetBSD: Makefile,v 1.35 2012/11/09 19:08:28 sjg Exp $
+# $NetBSD: Makefile,v 1.36 2013/03/22 16:36:46 sjg Exp $
 #
 # Unit tests for make(1)
 # The main targets are:
@@ -35,6 +35,7 @@ SUBFILES= \
 	error \
 	export \
 	export-all \
+	export-env \
 	doterror \
 	dotwait \
 	forloop \

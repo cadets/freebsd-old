@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/boot/common/module.c 247250 2013-02-25 01:50:04Z kientzle $");
+__FBSDID("$FreeBSD: head/sys/boot/common/module.c 249719 2013-04-21 09:10:35Z ae $");
 
 /*
  * file/module function dispatcher, support, etc.
@@ -289,7 +289,8 @@ file_load(char *filename, vm_offset_t dest, struct preloaded_file **result)
 	    break;
 	} else if (last_file_format == i && i != 0) {
 	    /* Restart from the beginning */
-	    last_file_format = i = 0;
+	    i = -1;
+	    last_file_format = 0;
 	    fp = NULL;
 	    continue;
 	}

@@ -7,7 +7,7 @@
  * This is not 100% complete but enough to let tcpdump, trafshow
  * and other apps work.
  *
- * $FreeBSD: head/tools/tools/netmap/pcap.c 246896 2013-02-17 04:43:22Z luigi $
+ * $FreeBSD: head/tools/tools/netmap/pcap.c 251130 2013-05-30 11:08:16Z luigi $
  */
 
 #define MY_PCAP
@@ -445,7 +445,6 @@ pcap_close(pcap_t *p)
 	if (me->mem)
 		munmap(me->mem, me->memsize);
 	/* restore original flags ? */
-	ioctl(me->fd, NIOCUNREGIF, NULL);
 	close(me->fd);
 	bzero(me, sizeof(*me));
 	free(me);

@@ -23,7 +23,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/dev/ata/ata-pci.h 244983 2013-01-02 22:26:46Z jfv $
+ * $FreeBSD: head/sys/dev/ata/ata-pci.h 249083 2013-04-04 07:12:24Z mav $
  */
 
 /* structure holding chipset config info */
@@ -62,9 +62,6 @@ struct ata_pci_controller {
     int                 (*ch_detach)(device_t);
     int                 (*ch_suspend)(device_t);
     int                 (*ch_resume)(device_t);
-#ifndef ATA_CAM
-    int                 (*locking)(device_t, int);
-#endif
     void                (*reset)(device_t);
     int                 (*setmode)(device_t, int, int);
     int                 (*getrev)(device_t, int);

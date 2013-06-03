@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/nand/nandbus.c 235537 2012-05-17 10:11:18Z gber $");
+__FBSDID("$FreeBSD: head/sys/dev/nand/nandbus.c 251022 2013-05-27 06:24:31Z gber $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -331,7 +331,7 @@ static int
 nand_probe_onfi(device_t bus, uint8_t *onfi_compliant)
 {
 	device_t nfc;
-	char onfi_id[] = {'o', 'n', 'f', 'i', '\0'};
+	char onfi_id[] = {'O', 'N', 'F', 'I', '\0'};
 	int i;
 
 	nand_debug(NDBG_BUS,"probing ONFI");

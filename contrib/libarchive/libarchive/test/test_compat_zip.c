@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_compat_zip.c 238856 2012-07-28 06:38:44Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_compat_zip.c 248616 2013-03-22 13:36:03Z mm $");
 
 #ifdef HAVE_LIBZ
 static const int libz_enabled = 1;
@@ -62,7 +62,7 @@ test_compat_zip_1(void)
 
 	assertEqualIntA(a, ARCHIVE_EOF, archive_read_next_header(a, &ae));
 
-	assertEqualInt(archive_compression(a), ARCHIVE_COMPRESSION_NONE);
+	assertEqualInt(archive_filter_code(a, 0), ARCHIVE_FILTER_NONE);
 	assertEqualInt(archive_format(a), ARCHIVE_FORMAT_ZIP);
 
 finish:

@@ -26,7 +26,7 @@
 # SUCH DAMAGE.
 #
 #	JNPR: options.mips,v 1.2 2006/09/15 12:52:34
-# $FreeBSD: head/sys/conf/options.mips 244984 2013-01-02 23:17:50Z jmallett $
+# $FreeBSD: head/sys/conf/options.mips 249791 2013-04-23 09:40:42Z imp $
 
 CPU_MIPS4KC	opt_global.h
 CPU_MIPS32	opt_global.h
@@ -75,6 +75,7 @@ OCTEON_MODEL			opt_cvmx.h
 OCTEON_VENDOR_LANNER		opt_cvmx.h
 OCTEON_VENDOR_UBIQUITI		opt_cvmx.h
 OCTEON_VENDOR_RADISYS		opt_cvmx.h
+OCTEON_VENDOR_GEFES		opt_cvmx.h
 OCTEON_BOARD_CAPK_0100ND	opt_cvmx.h
 
 #

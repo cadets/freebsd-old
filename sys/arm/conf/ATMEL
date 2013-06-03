@@ -2,7 +2,7 @@
 # configuration.  This kernel will not (presently) boot.  Do not copy
 # it to create your own custom config file.
 #
-# $FreeBSD: head/sys/arm/conf/ATMEL 238956 2012-07-31 19:39:21Z imp $
+# $FreeBSD: head/sys/arm/conf/ATMEL 249410 2013-04-12 16:25:03Z trasz $
 
 ident		ATMEL
 
@@ -150,7 +150,7 @@ device		sa		# Sequential Access (tape etc)
 device		cd		# CD
 device		pass		# Passthrough device (direct ATA/SCSI access)
 device		ses		# Enclosure Services (SES and SAF-TE)
-device		ctl		# CAM Target Layer
+#device		ctl		# CAM Target Layer
 
 # Serial (COM) ports
 device		uart		# Multi-uart driver

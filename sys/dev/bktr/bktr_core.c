@@ -63,7 +63,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/bktr/bktr_core.c 225617 2011-09-16 13:58:51Z kmacy $");
+__FBSDID("$FreeBSD: head/sys/dev/bktr/bktr_core.c 249816 2013-04-23 18:30:33Z jkim $");
 
 /*
  * This is part of the Driver for Video Capture Cards (Frame grabbers)
@@ -1936,7 +1936,7 @@ int
 tuner_ioctl( bktr_ptr_t bktr, int unit, ioctl_cmd_t cmd, caddr_t arg, struct thread* td )
 {
 	int		tmp_int;
-	unsigned int	temp, temp1;
+	int		temp, temp1;
 	int		offset;
 	int		count;
 	u_char		*buf;

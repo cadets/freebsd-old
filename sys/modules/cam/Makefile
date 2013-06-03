@@ -1,4 +1,4 @@
-# $FreeBSD: head/sys/modules/cam/Makefile 238894 2012-07-30 03:00:58Z bz $
+# $FreeBSD: head/sys/modules/cam/Makefile 249213 2013-04-06 19:12:49Z marius $
 
 S=	${.CURDIR}/../..
 
@@ -9,7 +9,6 @@ KMOD=	cam
 # See sys/conf/options for the flags that go into the different opt_*.h files.
 SRCS=	opt_cam.h
 SRCS+=	opt_ada.h
-SRCS+=	opt_ata.h
 SRCS+=	opt_scsi.h
 SRCS+=	opt_cd.h
 SRCS+=	opt_pt.h

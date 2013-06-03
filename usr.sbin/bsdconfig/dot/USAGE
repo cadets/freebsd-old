@@ -1,4 +1,4 @@
-# Copyright (c) 2012 Devin Teske
+# Copyright (c) 2012-2013 Devin Teske
 # All Rights Reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -22,12 +22,12 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD: head/usr.sbin/bsdconfig/dot/USAGE 238438 2012-07-14 03:16:57Z dteske $
+# $FreeBSD: head/usr.sbin/bsdconfig/dot/USAGE 249746 2013-04-22 05:02:34Z dteske $
 
 Usage: bsdconfig @PROGRAM_NAME@ [OPTIONS]
 
 OPTIONS:
-	-h    Print usage statement and exit.
+	-h    Print this usage statement and exit.
 	-c    Don't show command-line shortcut relationships.
 	-d    Don't show the date in the graph label.
 	-i    Don't show include relationships.

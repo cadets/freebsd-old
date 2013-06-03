@@ -1,4 +1,4 @@
-# $FreeBSD: head/usr.bin/cpio/Makefile 238856 2012-07-28 06:38:44Z mm $
+# $FreeBSD: head/usr.bin/cpio/Makefile 248616 2013-03-22 13:36:03Z mm $
 
 .include <bsd.own.mk>
 
@@ -6,7 +6,7 @@ LIBARCHIVEDIR=	${.CURDIR}/../../contrib/libarchive
 LIBARCHIVECONFDIR=	${.CURDIR}/../../lib/libarchive
 
 PROG=	bsdcpio
-BSDCPIO_VERSION_STRING=	3.0.4
+BSDCPIO_VERSION_STRING=	3.1.2
 
 .PATH:	${LIBARCHIVEDIR}/cpio
 SRCS=	cpio.c cmdline.c

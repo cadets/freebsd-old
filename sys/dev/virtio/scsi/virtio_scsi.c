@@ -27,7 +27,7 @@
 /* Driver for VirtIO SCSI devices. */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/virtio/scsi/virtio_scsi.c 246713 2013-02-12 16:57:20Z kib $");
+__FBSDID("$FreeBSD: head/sys/dev/virtio/scsi/virtio_scsi.c 249468 2013-04-14 09:55:48Z mav $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -1702,7 +1702,7 @@ vtscsi_execute_rescan(struct vtscsi_softc *sc, target_id_t target_id,
 		return;
 	}
 
-	status = xpt_create_path(&ccb->ccb_h.path, xpt_periph,
+	status = xpt_create_path(&ccb->ccb_h.path, NULL,
 	    cam_sim_path(sc->vtscsi_sim), target_id, lun_id);
 	if (status != CAM_REQ_CMP) {
 		xpt_free_ccb(ccb);

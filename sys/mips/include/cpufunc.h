@@ -53,7 +53,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  *	JNPR: cpufunc.h,v 1.5 2007/08/09 11:23:32 katta
- * $FreeBSD: head/sys/mips/include/cpufunc.h 241374 2012-10-09 14:32:30Z attilio $
+ * $FreeBSD: head/sys/mips/include/cpufunc.h 249776 2013-04-22 19:02:37Z brooks $
  */
 
 #ifndef _MACHINE_CPUFUNC_H_
@@ -354,9 +354,15 @@ void mips3_sd(volatile uint64_t *, uint64_t);
 #define	readb(va)	(*(volatile uint8_t *) (va))
 #define	readw(va)	(*(volatile uint16_t *) (va))
 #define	readl(va)	(*(volatile uint32_t *) (va))
+#if defined(__GNUC__) && !defined(__mips_o32)
+#define	readq(a)	(*(volatile uint64_t *)(a))
+#endif
  
 #define	writeb(va, d)	(*(volatile uint8_t *) (va) = (d))
 #define	writew(va, d)	(*(volatile uint16_t *) (va) = (d))
 #define	writel(va, d)	(*(volatile uint32_t *) (va) = (d))
+#if defined(__GNUC__) && !defined(__mips_o32)
+#define	writeq(va, d)	(*(volatile uint64_t *) (va) = (d))
+#endif
 
 #endif /* !_MACHINE_CPUFUNC_H_ */

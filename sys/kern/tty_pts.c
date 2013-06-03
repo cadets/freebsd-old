@@ -28,7 +28,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/tty_pts.c 243234 2012-11-18 15:48:34Z mjg $");
+__FBSDID("$FreeBSD: head/sys/kern/tty_pts.c 248593 2013-03-21 21:39:15Z jilles $");
 
 /* Add compatibility bits for FreeBSD. */
 #define PTS_COMPAT
@@ -825,10 +825,10 @@ sys_posix_openpt(struct thread *td, struct posix_openpt_args *uap)
 	 * POSIX states it's unspecified when other flags are passed. We
 	 * don't allow this.
 	 */
-	if (uap->flags & ~(O_RDWR|O_NOCTTY))
+	if (uap->flags & ~(O_RDWR|O_NOCTTY|O_CLOEXEC))
 		return (EINVAL);
 
-	error = falloc(td, &fp, &fd, 0);
+	error = falloc(td, &fp, &fd, uap->flags);
 	if (error)
 		return (error);
 

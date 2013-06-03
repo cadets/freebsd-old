@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000-2002, 2004 Sendmail, Inc. and its suppliers.
+ * Copyright (c) 2000-2002, 2004, 2013 Sendmail, Inc. and its suppliers.
  *      All rights reserved.
  * Copyright (c) 1990
  * 	 The Regents of the University of California.  All rights reserved.
@@ -269,7 +269,7 @@ int	 sm_io_close __P((SM_FILE_T *, int SM_NONVOLATILE));
 SM_FILE_T *sm_io_dup __P((SM_FILE_T *));
 int	 sm_io_eof __P((SM_FILE_T *));
 int	 sm_io_error __P((SM_FILE_T *));
-char	*sm_io_fgets __P((SM_FILE_T *, int, char *, int));
+int	 sm_io_fgets __P((SM_FILE_T *, int, char *, int));
 int	 sm_io_flush __P((SM_FILE_T *, int SM_NONVOLATILE));
 
 int PRINTFLIKE(3, 4)

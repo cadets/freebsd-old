@@ -22,7 +22,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/usr.bin/at/privs.h 241852 2012-10-22 03:31:22Z eadler $
+ * $FreeBSD: head/usr.bin/at/privs.h 249404 2013-04-12 14:19:44Z gahr $
  */
 
 #ifndef _PRIVS_H
@@ -99,8 +99,8 @@ gid_t real_gid, effective_gid;
 	PRIV_START \
 	effective_uid = (a); \
 	effective_gid = (b); \
-	if (setreuid((uid_t)-1, effective_uid) != 0) err(1, "setreuid failed"); \
 	if (setregid((gid_t)-1, effective_gid) != 0) err(1, "setregid failed"); \
+	if (setreuid((uid_t)-1, effective_uid) != 0) err(1, "setreuid failed"); \
 	PRIV_END \
 }
 #endif

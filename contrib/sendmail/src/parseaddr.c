@@ -2350,6 +2350,14 @@ sameaddr(a, b)
 	if (a->q_mailer != b->q_mailer)
 		return false;
 
+	/*
+	**  Addresses resolving to error mailer
+	**  should not be considered identical
+	*/
+
+	if (a->q_mailer == &errormailer)
+		return false;
+
 	/* if the user isn't the same, we can drop out */
 	if (strcmp(a->q_user, b->q_user) != 0)
 		return false;

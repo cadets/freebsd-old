@@ -1,5 +1,5 @@
 /*
- * $FreeBSD: head/lib/msun/Symbol.map 238722 2012-07-23 19:13:55Z kargl $
+ * $FreeBSD: head/lib/msun/Symbol.map 251292 2013-06-03 09:14:31Z das $
  */
 
 /* 7.0-CURRENT */
@@ -237,6 +237,18 @@ FBSD_1.3 {
 	fegetround;
 	fesetround;
 	fesetenv;
+	cacos;
+	cacosf;
+	cacosh;
+	cacoshf;
+	casin;
+	casinf;
+	casinh;
+	casinhf;
+	catan;
+	catanf;
+	catanh;
+	catanhf;
 	csin;
 	csinf;
 	csinh;
@@ -250,4 +262,8 @@ FBSD_1.3 {
 	ctanh;
 	ctanhf;
 	expl;
+	log10l;
+	log1pl;
+	log2l;
+	logl;
 };

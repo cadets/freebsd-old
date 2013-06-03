@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/mips/atheros/apb.c 233318 2012-03-22 17:47:52Z gonzo $");
+__FBSDID("$FreeBSD: head/sys/mips/atheros/apb.c 249119 2013-04-05 00:22:53Z adrian $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -357,6 +357,8 @@ apb_filter(void *arg)
 			case AR71XX_SOC_AR7240:
 			case AR71XX_SOC_AR7241:
 			case AR71XX_SOC_AR7242:
+			case AR71XX_SOC_AR9330:
+			case AR71XX_SOC_AR9331:
 				/* Ack/clear the irq on status register for AR724x */
 				ATH_WRITE_REG(AR71XX_MISC_INTR_STATUS,
 				    reg & ~(1 << irq));

@@ -23,11 +23,11 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/usr.sbin/bhyve/dbgport.c 245678 2013-01-20 03:42:49Z neel $
+ * $FreeBSD: head/usr.sbin/bhyve/dbgport.c 249321 2013-04-10 02:12:39Z neel $
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.sbin/bhyve/dbgport.c 245678 2013-01-20 03:42:49Z neel $");
+__FBSDID("$FreeBSD: head/usr.sbin/bhyve/dbgport.c 249321 2013-04-10 02:12:39Z neel $");
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -105,6 +105,7 @@ again:
 static struct inout_port dbgport = {
 	"bvmdbg",
 	BVM_DBG_PORT,
+	1,
 	IOPORT_F_INOUT,
 	dbg_handler
 };

@@ -1,4 +1,4 @@
-# $FreeBSD: head/share/i18n/csmapper/Makefile 219019 2011-02-25 00:04:39Z gabor $
+# $FreeBSD: head/share/i18n/csmapper/Makefile 250919 2013-05-22 22:34:48Z ed $
 # $NetBSD: Makefile,v 1.13 2007/03/13 16:34:37 tnozaki Exp $
 
 FILESDIR= ${CSMAPPERDIR}
@@ -7,7 +7,7 @@ SUBDIR=	APPLE AST BIG5 CNS CP EBCDIC GB GEORGIAN ISO646 ISO-8859 JIS \
 	KAZAKH KOI KS MISC TCVN
 
 mapper.dir: ${SUBDIR}
-	touch ${.TARGET}
+	> ${.TARGET}
 .for i in ${SUBDIR}
 	cat ${i}/mapper.dir.${i} >> ${.TARGET}
 .endfor
@@ -18,7 +18,7 @@ FILES+=	mapper.dir mapper.dir.db
 CLEANFILES+= mapper.dir mapper.dir.db
 
 charset.pivot: ${SUBDIR}
-	touch ${.TARGET}
+	> ${.TARGET}
 .for i in ${SUBDIR}
 	cat ${i}/charset.pivot.${i} >> ${.TARGET}
 .endfor

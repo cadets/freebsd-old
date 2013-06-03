@@ -28,7 +28,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sbin/hastd/parse.y 246922 2013-02-17 21:12:34Z pjd $
+ * $FreeBSD: head/sbin/hastd/parse.y 250914 2013-05-22 17:47:45Z jkim $
  */
 
 #include <sys/param.h>	/* MAXHOSTNAMELEN */
@@ -75,6 +75,8 @@ static char depth1_provname[PATH_MAX];
 static char depth1_localpath[PATH_MAX];
 static int depth1_metaflush;
 
+extern void yyerror(const char *);
+extern int yylex(void);
 extern void yyrestart(FILE *);
 
 static int isitme(const char *name);

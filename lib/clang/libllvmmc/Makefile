@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/clang/libllvmmc/Makefile 239462 2012-08-20 18:33:03Z dim $
+# $FreeBSD: head/lib/clang/libllvmmc/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
@@ -41,7 +41,6 @@ SRCS=	ELFObjectWriter.cpp \
 	MCStreamer.cpp \
 	MCSubtargetInfo.cpp \
 	MCSymbol.cpp \
-	MCTargetAsmLexer.cpp \
 	MCValue.cpp \
 	MCWin64EH.cpp \
 	MachObjectWriter.cpp \

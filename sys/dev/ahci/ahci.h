@@ -24,7 +24,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/dev/ahci/ahci.h 238805 2012-07-26 13:44:48Z mav $
+ * $FreeBSD: head/sys/dev/ahci/ahci.h 249346 2013-04-10 20:38:15Z mav $
  */
 
 /* ATA register defines */
@@ -348,7 +348,6 @@ struct ata_dma {
     uint8_t                     *rfis;          /* FIS receive area */
     bus_addr_t                  rfis_bus;       /* bus address of rfis */
     bus_dma_tag_t               data_tag;       /* data DMA tag */
-    u_int64_t                   max_address;    /* highest DMA'able address */
 };
 
 enum ahci_slot_states {
@@ -453,6 +452,7 @@ struct ahci_enclosure {
 /* structure describing a AHCI controller */
 struct ahci_controller {
 	device_t		dev;
+	bus_dma_tag_t		dma_tag;
 	int			r_rid;
 	struct resource		*r_mem;
 	struct rman		sc_iomem;

@@ -1,4 +1,4 @@
-$FreeBSD: head/sys/dev/e1000/README 230742 2012-01-29 14:52:42Z eadler $
+$FreeBSD: head/sys/dev/e1000/README 250168 2013-05-02 01:36:52Z eadler $
 FreeBSD* Driver for Intel Network Connection
 =============================================
 
@@ -389,7 +389,7 @@ For general information and support, go to the Intel support website at:
         http://support.intel.com
 
 If an issue is identified, support is through email only at:
-freebsdnic@mailbox.intel.com
+freebsd@intel.com
 
 
 License

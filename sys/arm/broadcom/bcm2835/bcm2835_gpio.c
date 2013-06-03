@@ -26,7 +26,7 @@
  *
  */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/broadcom/bcm2835/bcm2835_gpio.c 244412 2012-12-18 22:18:54Z gonzo $");
+__FBSDID("$FreeBSD: head/sys/arm/broadcom/bcm2835/bcm2835_gpio.c 249449 2013-04-13 21:21:13Z dim $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -385,8 +385,8 @@ bcm_gpio_pin_setflags(device_t dev, uint32_t pin, uint32_t flags)
 	if (bcm_gpio_pin_is_ro(sc, pin))
 		return (EINVAL);
 
-	/* Filter out unwanted flags. */
-	if ((flags &= sc->sc_gpio_pins[i].gp_caps) != flags)
+	/* Check for unwanted flags. */
+	if ((flags & sc->sc_gpio_pins[i].gp_caps) != flags)
 		return (EINVAL);
 
 	/* Can't mix input/output together. */

@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/compat/ndis/kern_ndis.c 243882 2012-12-05 08:04:20Z glebius $");
+__FBSDID("$FreeBSD: head/sys/compat/ndis/kern_ndis.c 248324 2013-03-15 12:55:30Z glebius $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -566,7 +566,7 @@ ndis_convert_res(arg)
 		return (ENOMEM);
 
 	rl->cprl_version = 5;
-	rl->cprl_version = 1;
+	rl->cprl_revision = 1;
 	rl->cprl_count = sc->ndis_rescnt;
 	prd = rl->cprl_partial_descs;
 
@@ -656,13 +656,9 @@ ndis_ptom(m0, p)
 
 	for (buf = priv->npp_head; buf != NULL; buf = buf->mdl_next) {
 		if (buf == priv->npp_head)
-#ifdef MT_HEADER
-			MGETHDR(m, M_NOWAIT, MT_HEADER);
-#else
-			MGETHDR(m, M_NOWAIT, MT_DATA);
-#endif
+			m = m_gethdr(M_NOWAIT, MT_DATA);
 		else
-			MGET(m, M_NOWAIT, MT_DATA);
+			m = m_get(M_NOWAIT, MT_DATA);
 		if (m == NULL) {
 			m_freem(*m0);
 			*m0 = NULL;

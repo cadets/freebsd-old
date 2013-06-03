@@ -39,7 +39,7 @@
  *
  *	@(#)ufs_vnops.c	8.7 (Berkeley) 2/3/94
  *	@(#)ufs_vnops.c 8.27 (Berkeley) 5/27/95
- * $FreeBSD: head/sys/fs/ext2fs/ext2_vnops.c 246634 2013-02-10 19:49:37Z pfg $
+ * $FreeBSD: head/sys/fs/ext2fs/ext2_vnops.c 248282 2013-03-14 20:28:26Z kib $
  */
 
 #include "opt_suiddir.h"
@@ -1618,10 +1618,11 @@ ext2_read(struct vop_read_args *ap)
 
 		if (lblktosize(fs, nextlbn) >= ip->i_size)
 			error = bread(vp, lbn, size, NOCRED, &bp);
-		else if ((vp->v_mount->mnt_flag & MNT_NOCLUSTERR) == 0)
+		else if ((vp->v_mount->mnt_flag & MNT_NOCLUSTERR) == 0) {
 			error = cluster_read(vp, ip->i_size, lbn, size,
-			    NOCRED, blkoffset + uio->uio_resid, seqcount, &bp);
-		else if (seqcount > 1) {
+			    NOCRED, blkoffset + uio->uio_resid, seqcount,
+			    0, &bp);
+		} else if (seqcount > 1) {
 			int nextsize = blksize(fs, ip, nextlbn);
 			error = breadn(vp, lbn,
 			    size, &nextlbn, &nextsize, 1, NOCRED, &bp);
@@ -1831,7 +1832,7 @@ ext2_write(struct vop_write_args *ap)
 		} else if (xfersize + blkoffset == fs->e2fs_fsize) {
 			if ((vp->v_mount->mnt_flag & MNT_NOCLUSTERW) == 0) {
 				bp->b_flags |= B_CLUSTEROK;
-				cluster_write(vp, bp, ip->i_size, seqcount);
+				cluster_write(vp, bp, ip->i_size, seqcount, 0);
 			} else {
 				bawrite(bp);
 			}

@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/mips/atheros/ar91xx_chip.c 234907 2012-05-02 04:51:43Z adrian $");
+__FBSDID("$FreeBSD: head/sys/mips/atheros/ar91xx_chip.c 248781 2013-03-27 03:33:19Z adrian $");
 
 #include "opt_ddb.h"
 
@@ -70,6 +70,8 @@ ar91xx_chip_detect_sys_frequency(void)
 	uint32_t pll;
 	uint32_t freq;
 	uint32_t div;
+
+	u_ar71xx_refclk = AR91XX_BASE_FREQ;
 
 	pll = ATH_READ_REG(AR91XX_PLL_REG_CPU_CONFIG);
 

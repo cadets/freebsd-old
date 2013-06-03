@@ -24,7 +24,7 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD: head/tools/tools/sysbuild/sysbuild.sh 244269 2012-12-15 17:54:29Z phk $
+# $FreeBSD: head/tools/tools/sysbuild/sysbuild.sh 249959 2013-04-26 23:24:41Z eadler $
 #
 
 set -e
@@ -91,7 +91,7 @@ SERCONS=false
 PORTS_WE_WANT='
 '
 
-PORTS_OPTS="BATCH=YES MAKE_IDEA=YES A4=yes"
+PORTS_OPTS="BATCH=YES A4=yes"
 
 CONFIGFILES='
 '

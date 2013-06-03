@@ -36,7 +36,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/netpfil/pf/pf_ioctl.c 244769 2012-12-28 09:19:49Z glebius $");
+__FBSDID("$FreeBSD: head/sys/netpfil/pf/pf_ioctl.c 250519 2013-05-11 17:58:26Z glebius $");
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
@@ -1691,7 +1691,7 @@ relock_DIOCKILLSTATES:
 			PF_RULES_RLOCK();
 			error = pfsync_state_import_ptr(sp, PFSYNC_SI_IOCTL);
 			PF_RULES_RUNLOCK();
-		}
+		} else
 			error = EOPNOTSUPP;
 		break;
 	}

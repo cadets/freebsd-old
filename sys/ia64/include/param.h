@@ -1,4 +1,4 @@
-/* $FreeBSD: head/sys/ia64/include/param.h 238184 2012-07-07 00:25:17Z marcel $ */
+/* $FreeBSD: head/sys/ia64/include/param.h 250338 2013-05-07 22:46:24Z attilio $ */
 /* From: NetBSD: param.h,v 1.20 1997/09/19 13:52:53 leo Exp */
 
 /*-
@@ -67,6 +67,10 @@
 #endif
 #else
 #define MAXCPU		1
+#endif
+
+#ifndef MAXMEMDOM
+#define	MAXMEMDOM	1
 #endif
 
 #define	ALIGNBYTES		_ALIGNBYTES

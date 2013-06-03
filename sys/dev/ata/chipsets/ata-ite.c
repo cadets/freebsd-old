@@ -25,9 +25,8 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/ata/chipsets/ata-ite.c 242625 2012-11-05 19:16:27Z dim $");
+__FBSDID("$FreeBSD: head/sys/dev/ata/chipsets/ata-ite.c 249213 2013-04-06 19:12:49Z marius $");
 
-#include "opt_ata.h"
 #include <sys/param.h>
 #include <sys/module.h>
 #include <sys/systm.h>
@@ -119,9 +118,7 @@ ata_ite_ch_attach(device_t dev)
  
 	error = ata_pci_ch_attach(dev);
 	ch->flags |= ATA_CHECKS_CABLE;
-#ifdef ATA_CAM
 	ch->flags |= ATA_NO_ATAPI_DMA;
-#endif
 	return (error);
 }
 

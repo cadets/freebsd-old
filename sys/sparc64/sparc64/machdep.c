@@ -36,7 +36,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/sparc64/sparc64/machdep.c 241371 2012-10-09 12:22:43Z attilio $");
+__FBSDID("$FreeBSD: head/sys/sparc64/sparc64/machdep.c 248084 2013-03-09 02:32:23Z attilio $");
 
 #include "opt_compat.h"
 #include "opt_ddb.h"
@@ -65,6 +65,7 @@ __FBSDID("$FreeBSD: head/sys/sparc64/sparc64/machdep.c 241371 2012-10-09 12:22:4
 #include <sys/pcpu.h>
 #include <sys/ptrace.h>
 #include <sys/reboot.h>
+#include <sys/rwlock.h>
 #include <sys/signalvar.h>
 #include <sys/smp.h>
 #include <sys/syscallsubr.h>

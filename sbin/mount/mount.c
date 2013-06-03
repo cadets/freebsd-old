@@ -37,7 +37,7 @@ static char sccsid[] = "@(#)mount.c	8.25 (Berkeley) 5/8/95";
 #endif /* not lint */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sbin/mount/mount.c 241680 2012-10-18 12:04:56Z attilio $");
+__FBSDID("$FreeBSD: head/sbin/mount/mount.c 250235 2013-05-04 14:00:16Z crees $");
 
 #include <sys/param.h>
 #include <sys/mount.h>
@@ -245,14 +245,15 @@ main(int argc, char *argv[])
 	struct fstab *fs;
 	struct statfs *mntbuf;
 	int all, ch, i, init_flags, late, failok, mntsize, rval, have_fstab, ro;
+	int onlylate;
 	char *cp, *ep, *options;
 
-	all = init_flags = late = 0;
+	all = init_flags = late = onlylate = 0;
 	ro = 0;
 	options = NULL;
 	vfslist = NULL;
 	vfstype = "ufs";
-	while ((ch = getopt(argc, argv, "adF:flo:prt:uvw")) != -1)
+	while ((ch = getopt(argc, argv, "adF:fLlo:prt:uvw")) != -1)
 		switch (ch) {
 		case 'a':
 			all = 1;
@@ -265,6 +266,10 @@ main(int argc, char *argv[])
 			break;
 		case 'f':
 			init_flags |= MNT_FORCE;
+			break;
+		case 'L':
+			onlylate = 1;
+			late = 1;
 			break;
 		case 'l':
 			late = 1;
@@ -326,6 +331,8 @@ main(int argc, char *argv[])
 				if (checkvfsname(fs->fs_vfstype, vfslist))
 					continue;
 				if (hasopt(fs->fs_mntops, "noauto"))
+					continue;
+				if (!hasopt(fs->fs_mntops, "late") && onlylate)
 					continue;
 				if (hasopt(fs->fs_mntops, "late") && !late)
 					continue;

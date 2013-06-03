@@ -37,7 +37,7 @@ static char sccsid[] = "@(#)option.c	8.2 (Berkeley) 4/16/94";
 #endif /* not lint */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.bin/find/option.c 238780 2012-07-25 21:59:10Z jilles $");
+__FBSDID("$FreeBSD: head/usr.bin/find/option.c 247730 2013-03-03 20:10:56Z dwmalone $");
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -145,6 +145,7 @@ static OPTION const options[] = {
 	{ "-regex",	c_regex,	f_regex,	0 },
 	{ "-samefile",	c_samefile,	f_inum,		0 },
 	{ "-size",	c_size,		f_size,		0 },
+	{ "-sparse",	c_sparse,	f_sparse,	0 },
 	{ "-true",	c_simple,	f_always_true,	0 },
 	{ "-type",	c_type,		f_type,		0 },
 	{ "-uid",	c_user,		f_user,		0 },

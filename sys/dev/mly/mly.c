@@ -24,7 +24,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- *	$FreeBSD: head/sys/dev/mly/mly.c 246713 2013-02-12 16:57:20Z kib $
+ *	$FreeBSD: head/sys/dev/mly/mly.c 249468 2013-04-14 09:55:48Z mav $
  */
 
 #include <sys/param.h>
@@ -2025,7 +2025,7 @@ mly_cam_rescan_btl(struct mly_softc *sc, int bus, int target)
 	mly_printf(sc, "rescan failed (can't allocate CCB)\n");
 	return;
     }
-    if (xpt_create_path(&ccb->ccb_h.path, xpt_periph, 
+    if (xpt_create_path(&ccb->ccb_h.path, NULL,
 	    cam_sim_path(sc->mly_cam_sim[bus]), target, 0) != CAM_REQ_CMP) {
 	mly_printf(sc, "rescan failed (can't create path)\n");
 	xpt_free_ccb(ccb);

@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/usr.sbin/bhyve/virtio.h 246109 2013-01-30 04:30:36Z neel $
+ * $FreeBSD: head/usr.sbin/bhyve/virtio.h 250197 2013-05-03 01:16:18Z neel $
  */
 
 #ifndef	_VIRTIO_H_
@@ -84,5 +84,23 @@ struct virtio_used {
 #define VTCFG_R_CFG0		20	/* No MSI-X */
 #define VTCFG_R_CFG1		24	/* With MSI-X */
 #define VTCFG_R_MSIX		20
+
+/* Feature flags */
+#define	VIRTIO_F_NOTIFY_ON_EMPTY	(1 << 24)
+
+/* From section 2.3, "Virtqueue Configuration", of the virtio specification */
+static inline u_int
+vring_size(u_int qsz)
+{
+	u_int size;
+
+	size = sizeof(struct virtio_desc) * qsz + sizeof(uint16_t) * (3 + qsz);
+	size = roundup2(size, VRING_ALIGN);
+
+	size += sizeof(uint16_t) * 3 + sizeof(struct virtio_used) * qsz;
+	size = roundup2(size, VRING_ALIGN);
+
+	return (size);
+}
 
 #endif	/* _VIRTIO_H_ */

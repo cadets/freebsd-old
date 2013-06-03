@@ -14,7 +14,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD: head/sys/dev/ath/ath_hal/ar9001/ar9160_attach.c 242409 2012-10-31 21:04:23Z adrian $
+ * $FreeBSD: head/sys/dev/ath/ath_hal/ar9001/ar9160_attach.c 249579 2013-04-17 07:22:23Z adrian $
  */
 #include "opt_ah.h"
 
@@ -183,7 +183,7 @@ ar9160Attach(uint16_t devid, HAL_SOFTC sc,
 	HAL_INI_INIT(&AH5416(ah)->ah_ini_bank1, ar9160Bank1, 2);
 	HAL_INI_INIT(&AH5416(ah)->ah_ini_bank2, ar9160Bank2, 2);
 	HAL_INI_INIT(&AH5416(ah)->ah_ini_bank3, ar9160Bank3, 3);
-	HAL_INI_INIT(&AH5416(ah)->ah_ini_bank6, ar9160Bank6, 3);
+	HAL_INI_INIT(&AH5416(ah)->ah_ini_bank6, ar9160Bank6TPC, 3);
 	HAL_INI_INIT(&AH5416(ah)->ah_ini_bank7, ar9160Bank7, 2);
 	if (AR_SREV_SOWL_11(ah))
 		HAL_INI_INIT(&AH5416(ah)->ah_ini_addac, ar9160Addac_1_1, 2);

@@ -1,4 +1,4 @@
-#$FreeBSD: head/sys/conf/options.arm 244480 2012-12-20 04:32:02Z gonzo $
+#$FreeBSD: head/sys/conf/options.arm 250634 2013-05-14 09:47:58Z gber $
 ARM9_CACHE_WRITE_THROUGH	opt_global.h
 ARM_CACHE_LOCK_ENABLE	opt_global.h
 ARMFPE			opt_global.h
@@ -36,6 +36,7 @@ LINUX_BOOT_ABI		opt_global.h
 LOADERRAMADDR		opt_global.h
 NO_EVENTTIMERS		opt_timer.h
 PHYSADDR		opt_global.h
+PV_STATS		opt_pmap.h
 QEMU_WORKAROUNDS	opt_global.h
 SOC_MV_ARMADAXP		opt_global.h
 SOC_MV_DISCOVERY	opt_global.h

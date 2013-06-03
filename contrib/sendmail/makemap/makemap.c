@@ -242,7 +242,7 @@ main(argc, argv)
 			      cfile, sm_errstring(errno));
 		exit(EX_NOINPUT);
 	}
-	while (sm_io_fgets(cfp, SM_TIME_DEFAULT, buf, sizeof(buf)) != NULL)
+	while (sm_io_fgets(cfp, SM_TIME_DEFAULT, buf, sizeof(buf)) >= 0)
 	{
 		register char *b;
 
@@ -392,7 +392,7 @@ main(argc, argv)
 	{
 		lineno = 0;
 		while (sm_io_fgets(smioin, SM_TIME_DEFAULT, ibuf, sizeof ibuf)
-		       != NULL)
+		       >= 0)
 		{
 			register char *p;
 

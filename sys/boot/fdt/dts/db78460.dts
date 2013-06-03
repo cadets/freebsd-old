@@ -26,7 +26,7 @@
  *
  * Marvell DB-78460 Device Tree Source.
  *
- * $FreeBSD: head/sys/boot/fdt/dts/db78460.dts 240492 2012-09-14 10:05:01Z gber $
+ * $FreeBSD: head/sys/boot/fdt/dts/db78460.dts 250291 2013-05-06 13:34:36Z gber $
  */
 
 /dts-v1/;
@@ -301,6 +301,11 @@
 			0x0800 0x0 0x0 0x3 &MPIC 0x3A
 			0x0800 0x0 0x0 0x4 &MPIC 0x3A
 			>;
+	};
+
+	sram@ffff0000 {
+		compatible = "mrvl,cesa-sram";
+		reg = <0xffff0000 0x00010000>;
 	};
 
 	chosen {

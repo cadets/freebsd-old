@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/kern_jail.c 244404 2012-12-18 18:34:36Z mjg $");
+__FBSDID("$FreeBSD: head/sys/kern/kern_jail.c 250804 2013-05-19 04:10:34Z jamie $");
 
 #include "opt_compat.h"
 #include "opt_ddb.h"
@@ -4131,6 +4131,26 @@ sysctl_jail_jailed(SYSCTL_HANDLER_ARGS)
 SYSCTL_PROC(_security_jail, OID_AUTO, jailed,
     CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, 0,
     sysctl_jail_jailed, "I", "Process in jail?");
+
+static int
+sysctl_jail_vnet(SYSCTL_HANDLER_ARGS)
+{
+	int error, havevnet;
+#ifdef VIMAGE
+	struct ucred *cred = req->td->td_ucred;
+
+	havevnet = jailed(cred) && prison_owns_vnet(cred);
+#else
+	havevnet = 0;
+#endif
+	error = SYSCTL_OUT(req, &havevnet, sizeof(havevnet));
+
+	return (error);
+}
+
+SYSCTL_PROC(_security_jail, OID_AUTO, vnet,
+    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, 0,
+    sysctl_jail_vnet, "I", "Jail owns VNET?");
 
 #if defined(INET) || defined(INET6)
 SYSCTL_UINT(_security_jail, OID_AUTO, jail_max_af_ips, CTLFLAG_RW,

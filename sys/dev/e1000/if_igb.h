@@ -30,7 +30,7 @@
   POSSIBILITY OF SUCH DAMAGE.
 
 ******************************************************************************/
-/*$FreeBSD: head/sys/dev/e1000/if_igb.h 240968 2012-09-26 18:11:43Z jhb $*/
+/*$FreeBSD: head/sys/dev/e1000/if_igb.h 248908 2013-03-29 18:46:13Z jfv $*/
 
 #ifndef _IGB_H_DEFINED_
 #define _IGB_H_DEFINED_
@@ -297,7 +297,7 @@ struct tx_ring {
 	u32			next_to_clean;
 	volatile u16		tx_avail;
 	struct igb_tx_buffer	*tx_buffers;
-#if __FreeBSD_version >= 800000
+#ifndef IGB_LEGACY_TX
 	struct buf_ring		*br;
 	struct task		txq_task;
 #endif

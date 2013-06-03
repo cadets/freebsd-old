@@ -23,11 +23,11 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/usr.sbin/bhyve/mptbl.c 245678 2013-01-20 03:42:49Z neel $
+ * $FreeBSD: head/usr.sbin/bhyve/mptbl.c 249173 2013-04-05 22:14:07Z grehan $
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.sbin/bhyve/mptbl.c 245678 2013-01-20 03:42:49Z neel $");
+__FBSDID("$FreeBSD: head/usr.sbin/bhyve/mptbl.c 249173 2013-04-05 22:14:07Z grehan $");
 
 #include <sys/types.h>
 #include <sys/errno.h>
@@ -40,6 +40,9 @@ __FBSDID("$FreeBSD: head/usr.sbin/bhyve/mptbl.c 245678 2013-01-20 03:42:49Z neel
 #include "mptbl.h"
 
 #define MPTABLE_BASE		0xF0000
+
+/* floating pointer length + maximum length of configuration table */
+#define	MPTABLE_MAX_LENGTH	(65536 + 16)
 
 #define LAPIC_PADDR		0xFEE00000
 #define LAPIC_VERSION 		16
@@ -346,13 +349,13 @@ mptable_build(struct vmctx *ctx, int ncpu, int ioapic)
 	char 			*curraddr;
 	char 			*startaddr;
 
-	if (paddr_guest2host(0) == NULL) {
+	startaddr = paddr_guest2host(ctx, MPTABLE_BASE, MPTABLE_MAX_LENGTH);
+	if (startaddr == NULL) {
 		printf("mptable requires mapped mem\n");
 		return (ENOMEM);
 	}
 
-	startaddr = curraddr = paddr_guest2host(MPTABLE_BASE);
-
+	curraddr = startaddr;
 	mpfp = (mpfps_t)curraddr;
 	mpt_build_mpfp(mpfp, MPTABLE_BASE);
 	curraddr += sizeof(*mpfp);
@@ -392,7 +395,7 @@ mptable_build(struct vmctx *ctx, int ncpu, int ioapic)
 	}
 
 	mpch->base_table_length = curraddr - (char *)mpch;
-	mpch->checksum = mpt_compute_checksum(mpch, sizeof(*mpch));
+	mpch->checksum = mpt_compute_checksum(mpch, mpch->base_table_length);
 
 	return (0);
 }

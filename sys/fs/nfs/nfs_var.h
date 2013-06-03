@@ -29,7 +29,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/fs/nfs/nfs_var.h 244042 2012-12-08 22:52:39Z rmacklem $
+ * $FreeBSD: head/sys/fs/nfs/nfs_var.h 249592 2013-04-17 21:00:22Z ken $
  */
 
 /*
@@ -235,7 +235,7 @@ int nfsm_strtom(struct nfsrv_descript *, const char *, int);
 int nfsm_mbufuio(struct nfsrv_descript *, struct uio *, int);
 int nfsm_fhtom(struct nfsrv_descript *, u_int8_t *, int, int);
 int nfsm_advance(struct nfsrv_descript *, int, int);
-void *nfsm_dissct(struct nfsrv_descript *, int);
+void *nfsm_dissct(struct nfsrv_descript *, int, int);
 void newnfs_trimleading(struct nfsrv_descript *);
 void newnfs_trimtrailing(struct nfsrv_descript *, mbuf_t,
     caddr_t);

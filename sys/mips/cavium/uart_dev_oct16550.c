@@ -55,7 +55,7 @@
 
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/mips/cavium/uart_dev_oct16550.c 242273 2012-10-29 00:51:53Z jmallett $");
+__FBSDID("$FreeBSD: head/sys/mips/cavium/uart_dev_oct16550.c 249919 2013-04-26 05:42:35Z imp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -656,7 +656,7 @@ oct16550_bus_probe (struct uart_softc *sc)
 	int error;
 
 	bas = &sc->sc_bas;
-	bas->rclk = uart_oct16550_class.uc_rclk = cvmx_sysinfo_get()->cpu_clock_hz;
+	bas->rclk = uart_oct16550_class.uc_rclk = cvmx_clock_get_rate(CVMX_CLOCK_SCLK);
 
 	error = oct16550_probe(bas);
 	if (error) {

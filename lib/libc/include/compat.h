@@ -24,7 +24,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/lib/libc/include/compat.h 215144 2010-11-11 21:36:52Z dim $
+ * $FreeBSD: head/lib/libc/include/compat.h 247602 2013-03-02 00:53:12Z pjd $
  */
 
 /*
@@ -41,6 +41,8 @@
 __sym_compat(__semctl, freebsd7___semctl, FBSD_1.0);
 __sym_compat(msgctl, freebsd7_msgctl, FBSD_1.0);
 __sym_compat(shmctl, freebsd7_shmctl, FBSD_1.0);
+
+__sym_compat(cap_getrights, cap_rights_get, FBSD_1.2);
 
 #undef __sym_compat
 

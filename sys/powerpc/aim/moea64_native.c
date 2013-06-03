@@ -91,7 +91,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/powerpc/aim/moea64_native.c 234760 2012-04-28 14:42:49Z nwhitehorn $");
+__FBSDID("$FreeBSD: head/sys/powerpc/aim/moea64_native.c 247297 2013-02-26 01:00:11Z attilio $");
 
 /*
  * Native 64-bit page table operations for running without a hypervisor.
@@ -117,7 +117,6 @@ __FBSDID("$FreeBSD: head/sys/powerpc/aim/moea64_native.c 234760 2012-04-28 14:42
 #include <vm/vm_object.h>
 #include <vm/vm_extern.h>
 #include <vm/vm_pageout.h>
-#include <vm/vm_pager.h>
 
 #include <machine/md_var.h>
 #include <machine/mmuvar.h>

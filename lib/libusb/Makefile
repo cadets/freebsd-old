@@ -1,5 +1,5 @@
 #
-# $FreeBSD: head/lib/libusb/Makefile 246789 2013-02-14 12:22:40Z hselasky $
+# $FreeBSD: head/lib/libusb/Makefile 250201 2013-05-03 07:44:58Z hselasky $
 #
 # Makefile for the FreeBSD specific LibUSB 2.0
 #
@@ -35,6 +35,19 @@ SRCS+=		libusb10_io.c
 
 .if defined(COMPAT_32BIT)
 CFLAGS+=	-DCOMPAT_32BIT
+.endif
+
+#
+# Cross platform support
+#
+# Examples:
+# make LIBUSB_GLOBAL_INCLUDE_FILE=libusb_global_linux.h
+# make COMPAT_32BIT=YES LIBUSB_GLOBAL_INCLUDE_FILE=libusb_global_linux.h
+#
+.if defined(LIBUSB_GLOBAL_INCLUDE_FILE)
+CFLAGS+=	-DLIBUSB_GLOBAL_INCLUDE_FILE=\"${LIBUSB_GLOBAL_INCLUDE_FILE}\"
+CFLAGS+=	-DUSB_GLOBAL_INCLUDE_FILE=\"${LIBUSB_GLOBAL_INCLUDE_FILE}\"
+CFLAGS+=	-I ../../sys
 .endif
 
 .include <bsd.lib.mk>
@@ -190,6 +203,7 @@ MLINKS += libusb20.3 libusb20_dev_reset.3
 MLINKS += libusb20.3 libusb20_dev_check_connected.3
 MLINKS += libusb20.3 libusb20_dev_set_power_mode.3
 MLINKS += libusb20.3 libusb20_dev_get_power_mode.3
+MLINKS += libusb20.3 libusb20_dev_get_port_path.3
 MLINKS += libusb20.3 libusb20_dev_get_power_usage.3
 MLINKS += libusb20.3 libusb20_dev_set_alt_index.3
 MLINKS += libusb20.3 libusb20_dev_get_device_desc.3

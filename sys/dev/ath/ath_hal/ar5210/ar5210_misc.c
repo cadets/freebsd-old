@@ -14,7 +14,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD: head/sys/dev/ath/ath_hal/ar5210/ar5210_misc.c 243317 2012-11-19 23:42:46Z adrian $
+ * $FreeBSD: head/sys/dev/ath/ath_hal/ar5210/ar5210_misc.c 247286 2013-02-25 22:42:43Z adrian $
  */
 #include "opt_ah.h"
 
@@ -668,6 +668,12 @@ ar5210GetMibCycleCounts(struct ath_hal *ah, HAL_SURVEY_SAMPLE *hsample)
 {
 
 	return (AH_FALSE);
+}
+
+void
+ar5210SetChainMasks(struct ath_hal *ah, uint32_t txchainmask,
+    uint32_t rxchainmask)
+{
 }
 
 void

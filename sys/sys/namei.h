@@ -27,12 +27,13 @@
  * SUCH DAMAGE.
  *
  *	@(#)namei.h	8.5 (Berkeley) 1/9/95
- * $FreeBSD: head/sys/sys/namei.h 246903 2013-02-17 11:36:41Z pjd $
+ * $FreeBSD: head/sys/sys/namei.h 247602 2013-03-02 00:53:12Z pjd $
  */
 
 #ifndef _SYS_NAMEI_H_
 #define	_SYS_NAMEI_H_
 
+#include <sys/filedesc.h>
 #include <sys/queue.h>
 #include <sys/uio.h>
 
@@ -75,7 +76,7 @@ struct nameidata {
 	/*
 	 * Results: returned from namei
 	 */
-	cap_rights_t ni_baserights;	/* rights the *at base has (or -1) */
+	struct filecaps ni_filecaps;	/* rights the *at base has */
 	/*
 	 * Results: returned from/manipulated by lookup
 	 */
@@ -180,7 +181,7 @@ NDINIT_ALL(struct nameidata *ndp,
 	ndp->ni_startdir = startdir;
 	ndp->ni_strictrelative = 0;
 	ndp->ni_rightsneeded = rights;
-	ndp->ni_baserights = 0;
+	filecaps_init(&ndp->ni_filecaps);
 	ndp->ni_cnd.cn_thread = td;
 }
 

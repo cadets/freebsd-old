@@ -14,7 +14,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD: head/sys/dev/ath/ath_hal/ar5416/ar5416_attach.c 247092 2013-02-21 08:42:40Z adrian $
+ * $FreeBSD: head/sys/dev/ath/ath_hal/ar5416/ar5416_attach.c 247774 2013-03-04 07:40:49Z adrian $
  */
 #include "opt_ah.h"
 
@@ -150,6 +150,7 @@ ar5416InitState(struct ath_hal_5416 *ahp5416, uint16_t devid, HAL_SOFTC sc,
 	ah->ah_setCoverageClass		= ar5416SetCoverageClass;
 	ah->ah_setQuiet			= ar5416SetQuiet;
 	ah->ah_getMibCycleCounts	= ar5416GetMibCycleCounts;
+	ah->ah_setChainMasks		= ar5416SetChainMasks;
 
 	ah->ah_resetKeyCacheEntry	= ar5416ResetKeyCacheEntry;
 	ah->ah_setKeyCacheEntry		= ar5416SetKeyCacheEntry;
@@ -193,6 +194,7 @@ ar5416InitState(struct ath_hal_5416 *ahp5416, uint16_t devid, HAL_SOFTC sc,
 	ah->ah_set11nMac2040		= ar5416Set11nMac2040;
 	ah->ah_get11nRxClear		= ar5416Get11nRxClear;
 	ah->ah_set11nRxClear		= ar5416Set11nRxClear;
+	ah->ah_set11nVirtMoreFrag	= ar5416Set11nVirtualMoreFrag;
 
 	/* Interrupt functions */
 	ah->ah_isInterruptPending	= ar5416IsInterruptPending;

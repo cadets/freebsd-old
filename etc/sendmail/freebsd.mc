@@ -41,10 +41,10 @@ divert(-1)
 #  The best documentation for this .mc file is:
 #  /usr/share/sendmail/cf/README or
 #  /usr/src/contrib/sendmail/cf/README
-#
+# 
 
 divert(0)
-VERSIONID(`$FreeBSD: head/etc/sendmail/freebsd.mc 244835 2012-12-29 20:42:28Z gshapiro $')
+VERSIONID(`$FreeBSD: head/etc/sendmail/freebsd.mc 249732 2013-04-21 17:11:45Z gshapiro $')
 OSTYPE(freebsd6)
 DOMAIN(generic)
 

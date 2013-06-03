@@ -1,4 +1,4 @@
-/*	$OpenBSD: eval.c,v 1.69 2011/03/24 11:23:08 espie Exp $	*/
+/*	$OpenBSD: eval.c,v 1.70 2012/04/12 17:00:11 espie Exp $	*/
 /*	$NetBSD: eval.c,v 1.7 1996/11/10 21:21:29 pk Exp $	*/
 
 /*
@@ -34,7 +34,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.bin/m4/eval.c 234310 2012-04-15 13:25:51Z bapt $");
+__FBSDID("$FreeBSD: head/usr.bin/m4/eval.c 250226 2013-05-03 23:29:38Z jkim $");
 
 
 /*

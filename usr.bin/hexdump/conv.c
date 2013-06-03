@@ -31,7 +31,7 @@
 static const char sccsid[] = "@(#)conv.c	8.1 (Berkeley) 6/6/93";
 #endif /* not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.bin/hexdump/conv.c 228636 2011-12-17 15:33:26Z dim $");
+__FBSDID("$FreeBSD: head/usr.bin/hexdump/conv.c 247753 2013-03-04 02:21:06Z eadler $");
 
 #include <sys/types.h>
 
@@ -151,7 +151,7 @@ conv_u(PR *pr, u_char *p)
 	static char const * list[] = {
 		"nul", "soh", "stx", "etx", "eot", "enq", "ack", "bel",
 		 "bs",  "ht",  "lf",  "vt",  "ff",  "cr",  "so",  "si",
-		"dle", "dcl", "dc2", "dc3", "dc4", "nak", "syn", "etb",
+		"dle", "dc1", "dc2", "dc3", "dc4", "nak", "syn", "etb",
 		"can",  "em", "sub", "esc",  "fs",  "gs",  "rs",  "us",
 	};
 

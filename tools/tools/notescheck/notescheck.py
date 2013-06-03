@@ -5,7 +5,7 @@
 # such as options or devices that are not specified in any NOTES files
 # or MI devices specified in MD NOTES files.
 #
-# $FreeBSD: head/tools/tools/notescheck/notescheck.py 245804 2013-01-22 18:02:48Z emaste $
+# $FreeBSD: head/tools/tools/notescheck/notescheck.py 249587 2013-04-17 11:48:46Z gabor $
 
 from __future__ import print_function
 
@@ -93,7 +93,7 @@ class Option:
             return
 
         if global_platform in self.defines:
-            # If the device is defined globally ans is never tested, whine.
+            # If the device is defined globally and is never tested, whine.
             if len(self.tests) == 0:
                 print('WARN: %s is defined globally but never tested' % \
                     (self.title()))

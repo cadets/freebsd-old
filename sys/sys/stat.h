@@ -32,7 +32,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)stat.h	8.12 (Berkeley) 6/16/95
- * $FreeBSD: head/sys/sys/stat.h 238703 2012-07-22 20:08:38Z kib $
+ * $FreeBSD: head/sys/sys/stat.h 248599 2013-03-21 22:59:01Z pjd $
  */
 
 #ifndef _SYS_STAT_H_
@@ -293,6 +293,7 @@ struct nstat {
 __BEGIN_DECLS
 #if __BSD_VISIBLE
 int	chflags(const char *, unsigned long);
+int	chflagsat(int, const char *, unsigned long, int);
 #endif
 int	chmod(const char *, mode_t);
 #if __BSD_VISIBLE
@@ -306,7 +307,7 @@ int	fchmodat(int, const char *, mode_t, int);
 #endif
 int	fstat(int, struct stat *);
 #if __BSD_VISIBLE
-int	lchflags(const char *, int);
+int	lchflags(const char *, unsigned long);
 int	lchmod(const char *, mode_t);
 #endif
 #if __POSIX_VISIBLE >= 200112

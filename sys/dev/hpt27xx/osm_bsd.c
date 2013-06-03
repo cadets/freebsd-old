@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/dev/hpt27xx/osm_bsd.c 246713 2013-02-12 16:57:20Z kib $
+ * $FreeBSD: head/sys/dev/hpt27xx/osm_bsd.c 249468 2013-04-14 09:55:48Z mav $
  */
 
 #include <dev/hpt27xx/hpt27xx_config.h>
@@ -1347,7 +1347,7 @@ static int	hpt_rescan_bus(void)
 #endif
 
 	ldm_for_each_vbus(vbus, vbus_ext) {
-		if (xpt_create_path(&path, xpt_periph, cam_sim_path(vbus_ext->sim),
+		if (xpt_create_path(&path, NULL, cam_sim_path(vbus_ext->sim),
 			CAM_TARGET_WILDCARD, CAM_LUN_WILDCARD) != CAM_REQ_CMP)	
 			return(EIO);
 		if ((ccb = malloc(sizeof(union ccb), M_TEMP, M_WAITOK)) == NULL)

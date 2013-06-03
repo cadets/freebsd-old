@@ -28,7 +28,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/cam/scsi/scsi_target.c 246713 2013-02-12 16:57:20Z kib $");
+__FBSDID("$FreeBSD: head/sys/cam/scsi/scsi_target.c 249582 2013-04-17 11:40:10Z gabor $");
 
 
 #include <sys/param.h>
@@ -734,7 +734,7 @@ targsendccb(struct targ_softc *softc, union ccb *ccb,
 	 * match CCBs.  For the SCSI CCBs, we only pass the CCB in if
 	 * there's actually data to map.  cam_periph_mapmem() will do the
 	 * right thing, even if there isn't data to map, but since CCBs
-	 * without data are a reasonably common occurance (e.g. test unit
+	 * without data are a reasonably common occurrence (e.g. test unit
 	 * ready), it will save a few cycles if we check for it here.
 	 */
 	if (((ccb_h->flags & CAM_DATA_MASK) == CAM_DATA_VADDR)

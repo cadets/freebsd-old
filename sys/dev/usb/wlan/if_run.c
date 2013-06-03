@@ -17,7 +17,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/usb/wlan/if_run.c 246614 2013-02-10 10:36:16Z hselasky $");
+__FBSDID("$FreeBSD: head/sys/dev/usb/wlan/if_run.c 248458 2013-03-18 07:02:58Z hselasky $");
 
 /*-
  * Ralink Technology RT2700U/RT2800U/RT3000U chipset driver.
@@ -211,6 +211,7 @@ static const STRUCT_USB_HOST_ID run_devs[] = {
     RUN_DEV(LOGITEC,		RT2870_3),
     RUN_DEV(LOGITEC,		LANW300NU2),
     RUN_DEV(LOGITEC,		LANW150NU2),
+    RUN_DEV(LOGITEC,		LANW300NU2S),
     RUN_DEV(MELCO,		RT2870_1),
     RUN_DEV(MELCO,		RT2870_2),
     RUN_DEV(MELCO,		WLIUCAG300N),

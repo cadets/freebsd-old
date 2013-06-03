@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/clang/libllvmpowerpccodegen/Makefile 246259 2013-02-02 22:28:29Z dim $
+# $FreeBSD: head/lib/clang/libllvmpowerpccodegen/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
@@ -20,7 +20,8 @@ SRCS=	PPCAsmPrinter.cpp \
 	PPCRegisterInfo.cpp \
 	PPCSelectionDAGInfo.cpp \
 	PPCSubtarget.cpp \
-	PPCTargetMachine.cpp
+	PPCTargetMachine.cpp \
+	PPCTargetTransformInfo.cpp
 
 TGHDRS=	Intrinsics \
 	PPCGenCallingConv \

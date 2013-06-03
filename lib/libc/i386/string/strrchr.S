@@ -29,15 +29,15 @@
  */
 
 #include <machine/asm.h>
-__FBSDID("$FreeBSD: head/lib/libc/i386/string/strrchr.S 229571 2012-01-05 10:32:53Z ed $");
+__FBSDID("$FreeBSD: head/lib/libc/i386/string/strrchr.S 249582 2013-04-17 11:40:10Z gabor $");
 
 /*
  * strrchr(s, c)
- *	return a pointer to the last occurance of the character c in
+ *	return a pointer to the last occurrence of the character c in
  *	string s, or NULL if c does not occur in the string.
  *
  * %edx - pointer iterating through string
- * %eax - pointer to last occurance of 'c'
+ * %eax - pointer to last occurrence of 'c'
  * %cl  - character we're comparing against
  * %bl  - character at %edx
  *

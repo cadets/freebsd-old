@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/tools/regression/lib/msun/test-rem.c 233974 2012-04-07 04:00:30Z das $");
+__FBSDID("$FreeBSD: head/tools/regression/lib/msun/test-rem.c 251120 2013-05-30 04:47:03Z das $");
 
 #include <assert.h>
 #include <float.h>
@@ -67,8 +67,8 @@ main(int argc, char *argv[])
 
 	test(4, 4, 0, 1);
 	test(0, 3.0, 0, 0);
-	testd(0x1p-1074, 1, 0x1p-1074, 0x1p-1074);
-	testf(0x1p-149, 1, 0x1p-149, 0x1p-149);
+	testd(0x1p-1074, 1, 0x1p-1074, 0);
+	testf(0x1p-149, 1, 0x1p-149, 0);
 	test(3.0, 4, -1, 1);
 	test(3.0, -4, -1, -1);
 	testd(275 * 1193040, 275, 0, 1193040);

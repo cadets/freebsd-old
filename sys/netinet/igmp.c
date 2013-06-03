@@ -48,7 +48,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/netinet/igmp.c 243882 2012-12-05 08:04:20Z glebius $");
+__FBSDID("$FreeBSD: head/sys/netinet/igmp.c 248373 2013-03-16 08:58:28Z glebius $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -523,7 +523,7 @@ igmp_ra_alloc(void)
 	struct mbuf	*m;
 	struct ipoption	*p;
 
-	MGET(m, M_NOWAIT, MT_DATA);
+	m = m_get(M_WAITOK, MT_DATA);
 	p = mtod(m, struct ipoption *);
 	p->ipopt_dst.s_addr = INADDR_ANY;
 	p->ipopt_list[0] = IPOPT_RA;	/* Router Alert Option */
@@ -2203,7 +2203,7 @@ igmp_v1v2_queue_report(struct in_multi *inm, const int type)
 
 	ifp = inm->inm_ifp;
 
-	MGETHDR(m, M_NOWAIT, MT_DATA);
+	m = m_gethdr(M_NOWAIT, MT_DATA);
 	if (m == NULL)
 		return (ENOMEM);
 	MH_ALIGN(m, sizeof(struct ip) + sizeof(struct igmp));

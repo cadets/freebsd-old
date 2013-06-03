@@ -1,7 +1,7 @@
 #
 # Ubiquiti Routerstation: Boot from onboard flash
 #
-# $FreeBSD: head/sys/mips/conf/ROUTERSTATION 239625 2012-08-23 22:23:56Z ray $
+# $FreeBSD: head/sys/mips/conf/ROUTERSTATION 250385 2013-05-08 20:57:37Z adrian $
 #
 
 include		"AR71XX_BASE"
@@ -17,6 +17,12 @@ options		GEOM_UZIP
 
 # For DOS
 options		MSDOSFS
+
+# Etherswitch support
+options		ARGE_MDIO
+device		miiproxy
+device		etherswitch
+device		ukswitch
 
 # Boot path - redboot MFS
 options		ROOTDEVNAME=\"ufs:redboot/rootfs.uzip\"

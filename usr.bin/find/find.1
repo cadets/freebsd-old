@@ -29,7 +29,7 @@
 .\" SUCH DAMAGE.
 .\"
 .\"	@(#)find.1	8.7 (Berkeley) 5/9/95
-.\" $FreeBSD: head/usr.bin/find/find.1 243280 2012-11-19 15:12:44Z eadler $
+.\" $FreeBSD: head/usr.bin/find/find.1 247730 2013-03-03 20:10:56Z dwmalone $
 .\"
 .Dd November 18, 2012
 .Dt FIND 1
@@ -816,6 +816,10 @@ terabytes (1024 gigabytes)
 .It Cm P
 petabytes (1024 terabytes)
 .El
+.It Ic -sparse
+True if the current file is sparse,
+i.e. has fewer blocks allocated than expected based on its size in bytes.
+This might also match files that have been compressed by the filesystem.
 .It Ic -type Ar t
 True if the file is of the specified type.
 Possible file types are as follows:
@@ -997,7 +1001,7 @@ and
 as well as
 .Ic -amin , -anewer , -cmin , -cnewer , -delete , -empty , -fstype ,
 .Ic -iname , -inum , -iregex , -ls , -maxdepth , -mindepth , -mmin ,
-.Ic -path , -print0 , -regex
+.Ic -path , -print0 , -regex, -sparse
 and all of the
 .Ic -B*
 birthtime related primaries are extensions to

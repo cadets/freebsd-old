@@ -26,7 +26,7 @@
  */
 
 #include "archive_platform.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_write_set_format_ar.c 238856 2012-07-28 06:38:44Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_write_set_format_ar.c 248616 2013-03-22 13:36:03Z mm $");
 
 #ifdef HAVE_ERRNO_H
 #include <errno.h>
@@ -165,7 +165,7 @@ archive_write_ar_header(struct archive_write *a, struct archive_entry *entry)
 	 * Reject files with empty name.
 	 */
 	pathname = archive_entry_pathname(entry);
-	if (*pathname == '\0') {
+	if (pathname == NULL || *pathname == '\0') {
 		archive_set_error(&a->archive, EINVAL,
 		    "Invalid filename");
 		return (ARCHIVE_WARN);

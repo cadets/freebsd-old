@@ -14,7 +14,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD: head/sys/dev/ath/ath_hal/ar5211/ar5211.h 239051 2012-08-05 10:12:27Z adrian $
+ * $FreeBSD: head/sys/dev/ath/ath_hal/ar5211/ar5211.h 247286 2013-02-25 22:42:43Z adrian $
  */
 #ifndef _ATH_AR5211_H_
 #define _ATH_AR5211_H_
@@ -286,6 +286,8 @@ extern	HAL_BOOL ar5211GetDiagState(struct ath_hal *ah, int request,
 extern	uint32_t ar5211Get11nExtBusy(struct ath_hal *);
 extern	HAL_BOOL ar5211GetMibCycleCounts(struct ath_hal *,
 		HAL_SURVEY_SAMPLE *);
+extern	void ar5211SetChainMasks(struct ath_hal *ah, uint32_t, uint32_t);
+
 extern	void ar5211EnableDfs(struct ath_hal *, HAL_PHYERR_PARAM *);
 extern	void ar5211GetDfsThresh(struct ath_hal *, HAL_PHYERR_PARAM *);
 

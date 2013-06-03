@@ -32,7 +32,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)types.h	8.6 (Berkeley) 2/19/95
- * $FreeBSD: head/sys/sys/types.h 243135 2012-11-16 06:29:52Z kib $
+ * $FreeBSD: head/sys/sys/types.h 247476 2013-02-28 17:10:30Z davide $
  */
 
 #ifndef _SYS_TYPES_H_
@@ -187,6 +187,8 @@ typedef	__register_t	register_t;
 typedef	__rlim_t	rlim_t;		/* resource limit */
 #define	_RLIM_T_DECLARED
 #endif
+
+typedef	__int64_t	sbintime_t;
 
 typedef	__segsz_t	segsz_t;	/* segment size (in pages) */
 

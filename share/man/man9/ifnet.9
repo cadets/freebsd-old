@@ -26,9 +26,9 @@
 .\" OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\" $FreeBSD: head/share/man/man9/ifnet.9 235693 2012-05-20 16:43:47Z gjb $
+.\" $FreeBSD: head/share/man/man9/ifnet.9 249928 2013-04-26 13:18:07Z glebius $
 .\"
-.Dd March 23, 2012
+.Dd April 26, 2013
 .Dt IFNET 9
 .Os
 .Sh NAME
@@ -103,7 +103,7 @@
 .Ft int
 .Fo \*(lp*if_output\*(rp
 .Fa "struct ifnet *ifp" "struct mbuf *m"
-.Fa "struct sockaddr *dst" "struct route *ro"
+.Fa "const struct sockaddr *dst" "struct route *ro"
 .Fc
 .Ft void
 .Fn \*(lp*if_start\*(rp "struct ifnet *ifp"

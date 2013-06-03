@@ -1,7 +1,7 @@
 #
 # XBOX -- kernel for an XBOX
 #
-# $FreeBSD: head/sys/i386/conf/XBOX 233271 2012-03-21 08:38:42Z ed $
+# $FreeBSD: head/sys/i386/conf/XBOX 249083 2013-04-04 07:12:24Z mav $
 cpu		I686_CPU		# Celeron
 ident		XBOX
 
@@ -51,7 +51,6 @@ device		pci
 
 # ATA and ATAPI devices
 device		ata
-options 	ATA_CAM
 options 	ATA_STATIC_ID	# Static device numbering
 
 # ATA/SCSI peripherals

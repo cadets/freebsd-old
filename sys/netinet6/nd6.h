@@ -27,7 +27,7 @@
  * SUCH DAMAGE.
  *
  *	$KAME: nd6.h,v 1.76 2001/12/18 02:10:31 itojun Exp $
- * $FreeBSD: head/sys/netinet6/nd6.h 245230 2013-01-09 18:18:08Z ume $
+ * $FreeBSD: head/sys/netinet6/nd6.h 249925 2013-04-26 12:50:32Z glebius $
  */
 
 #ifndef _NETINET6_ND6_H_
@@ -417,7 +417,7 @@ int nd6_output_flush(struct ifnet *, struct ifnet *, struct mbuf *,
 	struct sockaddr_in6 *, struct route *);
 int nd6_need_cache(struct ifnet *);
 int nd6_storelladdr(struct ifnet *, struct mbuf *,
-	struct sockaddr *, u_char *, struct llentry **);
+	const struct sockaddr *, u_char *, struct llentry **);
 
 /* nd6_nbr.c */
 void nd6_na_input(struct mbuf *, int, int);

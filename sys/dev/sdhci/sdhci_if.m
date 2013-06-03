@@ -50,7 +50,7 @@
 # or the SD Card Association to disclose or distribute any technical
 # information, know-how or other confidential information to any third party.
 #
-# $FreeBSD: head/sys/dev/sdhci/sdhci_if.m 246886 2013-02-16 23:12:06Z gonzo $
+# $FreeBSD: head/sys/dev/sdhci/sdhci_if.m 247495 2013-02-28 19:43:14Z gonzo $
 #
 
 #
@@ -129,6 +129,22 @@ METHOD void write_multi_4 {
 	bus_size_t		off;
 	uint32_t		*data;
 	bus_size_t		count;
+}
+
+METHOD int platform_will_handle {
+	device_t		brdev;
+	struct sdhci_slot	*slot;
+}
+
+METHOD void platform_start_transfer {
+	device_t		brdev;
+	struct sdhci_slot	*slot;
+	uint32_t		*intmask;
+}
+
+METHOD void platform_finish_transfer {
+	device_t		brdev;
+	struct sdhci_slot	*slot;
 }
 
 METHOD uint32_t min_freq {

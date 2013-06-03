@@ -31,7 +31,7 @@
  * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/dev/tws/tws.h 246713 2013-02-12 16:57:20Z kib $
+ * $FreeBSD: head/sys/dev/tws/tws.h 250936 2013-05-23 16:37:43Z kib $
  */
 
 #include <sys/param.h>        /* defines used in kernel.h */
@@ -137,7 +137,7 @@ enum tws_req_flags {
     TWS_DIR_IN = 0x2,
     TWS_DIR_OUT = 0x4,
     TWS_DIR_NONE = 0x8,
-    TWS_DATA_CCB = 0x16,
+    TWS_DATA_CCB = 0x10,
 };
  
 enum tws_intrs {

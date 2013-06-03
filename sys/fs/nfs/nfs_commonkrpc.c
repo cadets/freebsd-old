@@ -32,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/fs/nfs/nfs_commonkrpc.c 247116 2013-02-21 19:02:50Z jhb $");
+__FBSDID("$FreeBSD: head/sys/fs/nfs/nfs_commonkrpc.c 249592 2013-04-17 21:00:22Z ken $");
 
 /*
  * Socket operations for use by nfs
@@ -797,7 +797,7 @@ tryagain:
 	 * These could cause pointer alignment problems, so copy them to
 	 * well aligned mbufs.
 	 */
-	newnfs_realign(&nd->nd_mrep);
+	newnfs_realign(&nd->nd_mrep, M_WAITOK);
 	nd->nd_md = nd->nd_mrep;
 	nd->nd_dpos = NFSMTOD(nd->nd_md, caddr_t);
 	nd->nd_repstat = 0;

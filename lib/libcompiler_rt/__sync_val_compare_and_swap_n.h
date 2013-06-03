@@ -25,13 +25,18 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/lib/libcompiler_rt/__sync_val_compare_and_swap_n.h 228919 2011-12-27 22:13:51Z ed $");
+__FBSDID("$FreeBSD: head/lib/libcompiler_rt/__sync_val_compare_and_swap_n.h 251123 2013-05-30 06:20:23Z ed $");
 
 #include <sys/types.h>
 #include <machine/atomic.h>
 
+#ifdef __clang__
+static TYPE
+atomic_func(volatile TYPE *ptr, TYPE oldval, TYPE newval, ...)
+#else
 TYPE
 NAME(volatile TYPE *ptr, TYPE oldval, TYPE newval)
+#endif
 {
 	TYPE t;
 
@@ -43,3 +48,7 @@ NAME(volatile TYPE *ptr, TYPE oldval, TYPE newval)
 
 	return (oldval);
 }
+
+#ifdef __clang__
+__strong_reference(atomic_func, NAME);
+#endif

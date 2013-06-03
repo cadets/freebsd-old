@@ -35,7 +35,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sbin/newfs/newfs.h 242379 2012-10-30 21:32:10Z trasz $
+ * $FreeBSD: head/sbin/newfs/newfs.h 248623 2013-03-22 21:45:28Z mckusick $
  */
 
 #include <libufs.h>
@@ -96,6 +96,7 @@ extern int	bsize;		/* block size */
 extern int	maxbsize;	/* maximum clustering */
 extern int	maxblkspercg;	/* maximum blocks per cylinder group */
 extern int	minfree;	/* free space threshold */
+extern int	metaspace;	/* space held for metadata blocks */
 extern int	opt;		/* optimization preference (space or time) */
 extern int	density;	/* number of bytes per inode */
 extern int	maxcontig;	/* max contiguous blocks to allocate */

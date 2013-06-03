@@ -55,7 +55,7 @@
  * any improvements or extensions that they make and grant Carnegie the
  * rights to redistribute these changes.
  *
- * $FreeBSD: head/sys/vm/vm.h 244384 2012-12-18 07:35:01Z zont $
+ * $FreeBSD: head/sys/vm/vm.h 248508 2013-03-19 14:13:12Z kib $
  */
 
 #ifndef VM_H
@@ -136,6 +136,8 @@ struct kva_md_info {
 	vm_offset_t	clean_eva;
 	vm_offset_t	pager_sva;
 	vm_offset_t	pager_eva;
+	vm_offset_t	bio_transient_sva;
+	vm_offset_t	bio_transient_eva;
 };
 
 extern struct kva_md_info	kmi;

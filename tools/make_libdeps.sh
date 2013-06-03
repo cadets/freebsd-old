@@ -24,7 +24,7 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD: head/tools/make_libdeps.sh 233294 2012-03-22 08:48:42Z stas $
+# $FreeBSD: head/tools/make_libdeps.sh 247779 2013-03-04 11:27:41Z bapt $
 
 export PATH=/bin:/usr/bin
 
@@ -47,6 +47,7 @@ sed -E
     -e's; ;! ;g'
     -e's;$;!;'
     -e's;-lbsdxml!;lib/libexpat;g'
+    -e's;-lbsdyml!;lib/libyaml;g'
     -e's;-lpthread!;lib/libthr;g'
     -e's;-lm!;lib/msun;g'
     -e's;-l(ncurses|termcap)!;lib/ncurses/ncurses;g'

@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/sn/if_sn.c 243857 2012-12-04 09:32:43Z glebius $");
+__FBSDID("$FreeBSD: head/sys/dev/sn/if_sn.c 250460 2013-05-10 16:41:26Z eadler $");
 
 /*
  * This is a driver for SMC's 9000 series of Ethernet adapters.
@@ -443,7 +443,7 @@ startagain:
 	/*
 	 * Wait a short amount of time to see if the allocation request
 	 * completes.  Otherwise, I enable the interrupt and wait for
-	 * completion asyncronously.
+	 * completion asynchronously.
 	 */
 
 	time_out = MEMORY_WAIT_TIME;

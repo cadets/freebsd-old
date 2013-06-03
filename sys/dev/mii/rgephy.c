@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/mii/rgephy.c 232246 2012-02-28 05:23:29Z yongari $");
+__FBSDID("$FreeBSD: head/sys/dev/mii/rgephy.c 248542 2013-03-20 05:31:34Z yongari $");
 
 /*
  * Driver for the RealTek 8169S/8110S/8211B/8211C internal 10/100/1000 PHY.
@@ -488,7 +488,7 @@ rgephy_load_dspcode(struct mii_softc *sc)
 static void
 rgephy_reset(struct mii_softc *sc)
 {
-	uint16_t ssr;
+	uint16_t pcr, ssr;
 
 	if ((sc->mii_flags & MIIF_PHYPRIV0) == 0 && sc->mii_mpd_rev == 3) {
 		/* RTL8211C(L) */
@@ -496,6 +496,15 @@ rgephy_reset(struct mii_softc *sc)
 		if ((ssr & RGEPHY_SSR_ALDPS) != 0) {
 			ssr &= ~RGEPHY_SSR_ALDPS;
 			PHY_WRITE(sc, RGEPHY_MII_SSR, ssr);
+		}
+	}
+
+	if (sc->mii_mpd_rev >= 2) {
+		pcr = PHY_READ(sc, RGEPHY_MII_PCR);
+		if ((pcr & RGEPHY_PCR_MDIX_AUTO) == 0) {
+			pcr &= ~RGEPHY_PCR_MDI_MASK;
+			pcr |= RGEPHY_PCR_MDIX_AUTO;
+			PHY_WRITE(sc, RGEPHY_MII_PCR, pcr);
 		}
 	}
 

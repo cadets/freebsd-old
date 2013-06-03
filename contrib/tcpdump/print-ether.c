@@ -18,7 +18,7 @@
  * WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
  * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  *
- * $FreeBSD: head/contrib/tcpdump/print-ether.c 241235 2012-10-05 20:19:28Z delphij $
+ * $FreeBSD: head/contrib/tcpdump/print-ether.c 251158 2013-05-30 20:51:22Z delphij $
  */
 #ifndef lint
 static const char rcsid[] _U_ =
@@ -78,6 +78,7 @@ const struct tok ethertype_values[] = {
     { ETHERTYPE_PPPOES,         "PPPoE S" },
     { ETHERTYPE_EAPOL,          "EAPOL" },
     { ETHERTYPE_RRCP,           "RRCP" },
+    { ETHERTYPE_MS_NLB_HB,      "MS NLB heartbeat" },
     { ETHERTYPE_JUMBO,          "Jumbo" },
     { ETHERTYPE_LOOPBACK,       "Loopback" },
     { ETHERTYPE_ISO,            "OSI" },
@@ -412,6 +413,10 @@ ethertype_print(netdissect_options *ndo,
 
 	case ETHERTYPE_TIPC:
 		tipc_print(ndo, p, length, caplen);
+		return (1);
+
+	case ETHERTYPE_MS_NLB_HB:
+		msnlb_print(ndo, p, length);
 		return (1);
 
 	case ETHERTYPE_LAT:

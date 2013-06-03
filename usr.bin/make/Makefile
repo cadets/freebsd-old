@@ -1,6 +1,6 @@
 #	@(#)Makefile	5.2 (Berkeley) 12/28/90
 #	$Id$
-# $FreeBSD: head/usr.bin/make/Makefile 237282 2012-06-20 00:37:00Z obrien $
+# $FreeBSD: head/usr.bin/make/Makefile 250719 2013-05-16 21:26:46Z sjg $
 
 .include <bsd.own.mk>
 
@@ -109,6 +109,13 @@ MAKE_SHELL?=	sh
 CFLAGS+=	-DDEFSHELLNAME=\"${MAKE_SHELL}\"
 .else
 .error "MAKE_SHELL must be set to one of \"csh\", \"sh\" or \"ksh\"."
+.endif
+
+.if defined(MK_BMAKE) && ${MK_BMAKE} != "no"
+# if we are here we don't want this called 'make'
+PROG=	fmake
+fmake.1: make.1
+	cp ${.ALLSRC} ${.TARGET}
 .endif
 
 .include <bsd.prog.mk>

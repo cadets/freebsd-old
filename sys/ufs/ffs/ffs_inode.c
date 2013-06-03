@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/ufs/ffs/ffs_inode.c 246289 2013-02-03 17:16:32Z mckusick $");
+__FBSDID("$FreeBSD: head/sys/ufs/ffs/ffs_inode.c 251171 2013-05-31 00:43:41Z jeff $");
 
 #include "opt_quota.h"
 
@@ -43,6 +43,7 @@ __FBSDID("$FreeBSD: head/sys/ufs/ffs/ffs_inode.c 246289 2013-02-03 17:16:32Z mck
 #include <sys/vnode.h>
 #include <sys/malloc.h>
 #include <sys/resourcevar.h>
+#include <sys/rwlock.h>
 #include <sys/vmmeter.h>
 #include <sys/stat.h>
 

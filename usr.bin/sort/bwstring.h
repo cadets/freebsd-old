@@ -1,8 +1,8 @@
-/*	$FreeBSD: head/usr.bin/sort/bwstring.h 242430 2012-11-01 11:38:34Z gabor $	*/
+/*	$FreeBSD: head/usr.bin/sort/bwstring.h 251245 2013-06-02 09:43:48Z gabor $	*/
 
 /*-
  * Copyright (C) 2009 Gabor Kovesdan <gabor@FreeBSD.org>
- * Copyright (C) 2012 Oleg Moskalenko <oleg.moskalenko@citrix.com>
+ * Copyright (C) 2012 Oleg Moskalenko <mom040267@gmail.com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without

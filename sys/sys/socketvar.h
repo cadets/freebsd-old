@@ -28,7 +28,7 @@
  *
  *	@(#)socketvar.h	8.3 (Berkeley) 2/19/95
  *
- * $FreeBSD: head/sys/sys/socketvar.h 244022 2012-12-08 08:35:49Z pjd $
+ * $FreeBSD: head/sys/sys/socketvar.h 250300 2013-05-06 16:42:18Z andre $
  */
 
 #ifndef _SYS_SOCKETVAR_H_
@@ -318,8 +318,12 @@ void	soabort(struct socket *so);
 int	soaccept(struct socket *so, struct sockaddr **nam);
 int	socheckuid(struct socket *so, uid_t uid);
 int	sobind(struct socket *so, struct sockaddr *nam, struct thread *td);
+int	sobindat(int fd, struct socket *so, struct sockaddr *nam,
+	    struct thread *td);
 int	soclose(struct socket *so);
 int	soconnect(struct socket *so, struct sockaddr *nam, struct thread *td);
+int	soconnectat(int fd, struct socket *so, struct sockaddr *nam,
+	    struct thread *td);
 int	soconnect2(struct socket *so1, struct socket *so2);
 int	socow_setup(struct mbuf *m0, struct uio *uio);
 int	socreate(int dom, struct socket **aso, int type, int proto,

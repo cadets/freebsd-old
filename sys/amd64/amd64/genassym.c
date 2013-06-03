@@ -33,7 +33,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/amd64/amd64/genassym.c 236772 2012-06-09 00:37:26Z iwasaki $");
+__FBSDID("$FreeBSD: head/sys/amd64/amd64/genassym.c 250423 2013-05-09 21:42:43Z dchagin $");
 
 #include "opt_compat.h"
 #include "opt_hwpmc_hooks.h"
@@ -167,7 +167,6 @@ ASSYM(PCB_FPUSUSPEND, offsetof(struct pcb, pcb_fpususpend));
 ASSYM(PCB_SIZE, sizeof(struct pcb));
 ASSYM(PCB_FULL_IRET, PCB_FULL_IRET);
 ASSYM(PCB_DBREGS, PCB_DBREGS);
-ASSYM(PCB_GS32BIT, PCB_GS32BIT);
 ASSYM(PCB_32BIT, PCB_32BIT);
 
 ASSYM(COMMON_TSS_RSP0, offsetof(struct amd64tss, tss_rsp0));

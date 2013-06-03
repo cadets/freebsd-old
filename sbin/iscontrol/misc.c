@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sbin/iscontrol/misc.c 211095 2010-08-09 12:36:36Z des $");
+__FBSDID("$FreeBSD: head/sbin/iscontrol/misc.c 250303 2013-05-06 17:44:12Z eadler $");
 
 #include <sys/param.h>
 #include <sys/types.h>
@@ -40,9 +40,6 @@ __FBSDID("$FreeBSD: head/sbin/iscontrol/misc.c 211095 2010-08-09 12:36:36Z des $
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
-#if __FreeBSD_version < 500000
-#include <sys/time.h>
-#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>

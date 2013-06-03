@@ -79,7 +79,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/netinet6/ip6_mroute.c 243882 2012-12-05 08:04:20Z glebius $");
+__FBSDID("$FreeBSD: head/sys/netinet6/ip6_mroute.c 249294 2013-04-09 07:11:22Z ae $");
 
 #include "opt_inet6.h"
 
@@ -1100,7 +1100,7 @@ X_ip6_mforward(struct ip6_hdr *ip6, struct ifnet *ifp, struct mbuf *m)
 	 * (although such packets must normally set 1 to the hop limit field).
 	 */
 	if (IN6_IS_ADDR_UNSPECIFIED(&ip6->ip6_src)) {
-		V_ip6stat.ip6s_cantforward++;
+		IP6STAT_INC(ip6s_cantforward);
 		if (V_ip6_log_time + V_ip6_log_interval < time_second) {
 			V_ip6_log_time = time_second;
 			log(LOG_DEBUG,
@@ -1535,7 +1535,7 @@ ip6_mdq(struct mbuf *m, struct ifnet *ifp, struct mf6c *rt)
 	dst0 = ip6->ip6_dst;
 	if ((error = in6_setscope(&src0, ifp, &iszone)) != 0 ||
 	    (error = in6_setscope(&dst0, ifp, &idzone)) != 0) {
-		V_ip6stat.ip6s_badscope++;
+		IP6STAT_INC(ip6s_badscope);
 		return (error);
 	}
 	for (mifp = mif6table, mifi = 0; mifi < nummifs; mifp++, mifi++) {
@@ -1555,7 +1555,7 @@ ip6_mdq(struct mbuf *m, struct ifnet *ifp, struct mf6c *rt)
 				    &odzone) ||
 				    iszone != oszone ||
 				    idzone != odzone) {
-					V_ip6stat.ip6s_badscope++;
+					IP6STAT_INC(ip6s_badscope);
 					continue;
 				}
 			}
@@ -1698,11 +1698,10 @@ register_send(struct ip6_hdr *ip6, struct mif6 *mif, struct mbuf *m)
 #endif
 	++pim6stat.pim6s_snd_registers;
 
-	/* Make a copy of the packet to send to the user level process */
-	MGETHDR(mm, M_NOWAIT, MT_HEADER);
+	/* Make a copy of the packet to send to the user level process. */
+	mm = m_gethdr(M_NOWAIT, MT_DATA);
 	if (mm == NULL)
 		return (ENOBUFS);
-	mm->m_pkthdr.rcvif = NULL;
 	mm->m_data += max_linkhdr;
 	mm->m_len = sizeof(struct ip6_hdr);
 

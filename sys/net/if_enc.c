@@ -24,7 +24,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/net/if_enc.c 241610 2012-10-16 13:37:54Z glebius $
+ * $FreeBSD: head/sys/net/if_enc.c 249925 2013-04-26 12:50:32Z glebius $
  */
 
 #include "opt_inet.h"
@@ -88,7 +88,7 @@ struct enc_softc {
 
 static int	enc_ioctl(struct ifnet *, u_long, caddr_t);
 static int	enc_output(struct ifnet *ifp, struct mbuf *m,
-		    struct sockaddr *dst, struct route *ro);
+		    const struct sockaddr *dst, struct route *ro);
 static int	enc_clone_create(struct if_clone *, int, caddr_t);
 static void	enc_clone_destroy(struct ifnet *);
 static struct if_clone *enc_cloner;
@@ -188,7 +188,7 @@ static moduledata_t enc_mod = {
 DECLARE_MODULE(if_enc, enc_mod, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_ANY);
 
 static int
-enc_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
+enc_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
     struct route *ro)
 {
 	m_freem(m);

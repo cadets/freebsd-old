@@ -1,12 +1,11 @@
 #	From: @(#)Makefile	5.20 (Berkeley) 6/12/93
-# $FreeBSD: head/usr.sbin/Makefile 245853 2013-01-23 23:51:44Z brooks $
+# $FreeBSD: head/usr.sbin/Makefile 249090 2013-04-04 09:21:24Z mav $
 
 .include <bsd.own.mk>
 
 SUBDIR=	adduser \
 	arp \
 	bootparamd \
-	burncd \
 	bsdinstall \
 	cdcontrol \
 	chkgrp \

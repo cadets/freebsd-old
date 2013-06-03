@@ -1,4 +1,4 @@
-# $FreeBSD: head/sbin/gbde/Makefile 228610 2011-12-17 00:14:40Z dim $
+# $FreeBSD: head/sbin/gbde/Makefile 249657 2013-04-19 19:45:00Z ed $
 
 PROG=	gbde
 SRCS=	gbde.c template.c
@@ -10,6 +10,7 @@ SRCS+=	g_bde_lock.c
 # rijndael-fst.c does evil casting things which can results in warnings,
 # the test-vectors check out however, so it works right.
 NO_WCAST_ALIGN=
+NO_WMISSING_VARIABLE_DECLARATIONS=
 
 CFLAGS+= -I${.CURDIR}/../../sys
 .PATH:	${.CURDIR}/../../sys/geom/bde \

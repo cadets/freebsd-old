@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/tar/test/test_stdio.c 228763 2011-12-21 11:13:29Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/tar/test/test_stdio.c 248616 2013-03-22 13:36:03Z mm $");
 
 DEFINE_TEST(test_stdio)
 {
@@ -113,7 +113,7 @@ DEFINE_TEST(test_stdio)
 	assertEqualInt(r, 0);
 	/* Verify xvOf.out is the file contents */
 	p = slurpfile(&s, "xvOf.out");
-	assert(s = 3);
+	assertEqualInt((int)s, 3);
 	assertEqualMem(p, "abc", 3);
 	/* TODO: Verify xvf.err */
 

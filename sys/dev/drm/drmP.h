@@ -32,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/drm/drmP.h 242132 2012-10-26 14:29:57Z nwhitehorn $");
+__FBSDID("$FreeBSD: head/sys/dev/drm/drmP.h 248084 2013-03-09 02:32:23Z attilio $");
 
 #ifndef _DRM_P_H_
 #define _DRM_P_H_
@@ -59,6 +59,7 @@ struct drm_file;
 #include <sys/fcntl.h>
 #include <sys/uio.h>
 #include <sys/filio.h>
+#include <sys/rwlock.h>
 #include <sys/sysctl.h>
 #include <sys/bus.h>
 #include <sys/queue.h>

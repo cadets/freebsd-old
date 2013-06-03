@@ -54,7 +54,7 @@ sm_cf_getopt(path, optc, optv)
 	if (cfp == NULL)
 		return errno;
 
-	while (sm_io_fgets(cfp, SM_TIME_DEFAULT, buf, sizeof(buf)) != NULL)
+	while (sm_io_fgets(cfp, SM_TIME_DEFAULT, buf, sizeof(buf)) >= 0)
 	{
 		p = strchr(buf, '\n');
 		if (p != NULL)

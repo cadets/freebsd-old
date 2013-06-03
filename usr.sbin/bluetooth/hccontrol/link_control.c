@@ -26,7 +26,7 @@
  * SUCH DAMAGE.
  *
  * $Id$
- * $FreeBSD: head/usr.sbin/bluetooth/hccontrol/link_control.c 162529 2006-09-21 17:16:37Z emax $
+ * $FreeBSD: head/usr.sbin/bluetooth/hccontrol/link_control.c 250460 2013-05-10 16:41:26Z eadler $
  */
 
 #include <bluetooth.h>
@@ -357,7 +357,7 @@ again:
 		goto again;
 
 	return (OK);
-} /* hci_diconnect */
+} /* hci_disconnect */
 
 /* Send Add_SCO_Connection command to the unit */
 static int

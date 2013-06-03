@@ -28,7 +28,7 @@
  * WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/vm/vm_reserv.h 228287 2011-12-05 18:29:25Z alc $
+ * $FreeBSD: head/sys/vm/vm_reserv.h 250577 2013-05-12 16:50:18Z alc $
  */
 
 /*
@@ -48,7 +48,8 @@
 vm_page_t	vm_reserv_alloc_contig(vm_object_t object, vm_pindex_t pindex,
 		    u_long npages, vm_paddr_t low, vm_paddr_t high,
 		    u_long alignment, vm_paddr_t boundary);
-vm_page_t	vm_reserv_alloc_page(vm_object_t object, vm_pindex_t pindex);
+vm_page_t	vm_reserv_alloc_page(vm_object_t object, vm_pindex_t pindex,
+		    vm_page_t mpred);
 void		vm_reserv_break_all(vm_object_t object);
 boolean_t	vm_reserv_free_page(vm_page_t m);
 void		vm_reserv_init(void);

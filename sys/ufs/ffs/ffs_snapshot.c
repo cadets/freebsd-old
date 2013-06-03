@@ -34,7 +34,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/ufs/ffs/ffs_snapshot.c 245286 2013-01-11 06:08:32Z kib $");
+__FBSDID("$FreeBSD: head/sys/ufs/ffs/ffs_snapshot.c 251171 2013-05-31 00:43:41Z jeff $");
 
 #include "opt_quota.h"
 
@@ -53,6 +53,7 @@ __FBSDID("$FreeBSD: head/sys/ufs/ffs/ffs_snapshot.c 245286 2013-01-11 06:08:32Z 
 #include <sys/mount.h>
 #include <sys/resource.h>
 #include <sys/resourcevar.h>
+#include <sys/rwlock.h>
 #include <sys/vnode.h>
 
 #include <geom/geom.h>
@@ -2204,10 +2205,8 @@ ffs_bdflush(bo, bp)
 			if (bp_bdskip) {
 				VI_LOCK(devvp);
 				if (!ffs_bp_snapblk(vp, nbp)) {
-					if (BO_MTX(bo) != VI_MTX(vp)) {
-						VI_UNLOCK(devvp);
-						BO_LOCK(bo);
-					}
+					VI_UNLOCK(devvp);
+					BO_LOCK(bo);
 					BUF_UNLOCK(nbp);
 					continue;
 				}

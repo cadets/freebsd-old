@@ -26,7 +26,7 @@
  */
 
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_write_format_ar.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_write_format_ar.c 248616 2013-03-22 13:36:03Z mm $");
 
 char buff[4096];
 char buff2[64];
@@ -98,9 +98,9 @@ DEFINE_TEST(test_write_format_ar)
 	archive_entry_free(ae);
 
 	assertEqualIntA(a, ARCHIVE_OK, archive_write_close(a));
-	assertEqualInt(archive_position_compressed(a),
-	    archive_position_uncompressed(a));
-	assertEqualInt(used, archive_position_uncompressed(a));
+	assertEqualInt(archive_filter_bytes(a, -1),
+	    archive_filter_bytes(a, 0));
+	assertEqualInt(used, archive_filter_bytes(a, 0));
 	assertEqualInt(ARCHIVE_OK, archive_write_free(a));
 
 	/*

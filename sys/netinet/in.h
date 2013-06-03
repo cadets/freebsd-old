@@ -27,7 +27,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)in.h	8.3 (Berkeley) 1/3/94
- * $FreeBSD: head/sys/netinet/in.h 241913 2012-10-22 21:09:03Z glebius $
+ * $FreeBSD: head/sys/netinet/in.h 250000 2013-04-27 23:36:01Z cperciva $
  */
 
 #ifndef _NETINET_IN_H_
@@ -123,6 +123,7 @@ __END_DECLS
 #endif /* !_KERNEL && __BSD_VISIBLE */
 
 #if __POSIX_VISIBLE >= 200112
+#define	IPPROTO_IPV6		41		/* IP6 header */
 #define	IPPROTO_RAW		255		/* raw IP packet */
 #define	INET_ADDRSTRLEN		16
 #endif
@@ -174,7 +175,6 @@ __END_DECLS
 #define	IPPROTO_CMTP		38		/* Control Message Transport */
 #define	IPPROTO_TPXX		39		/* TP++ Transport */
 #define	IPPROTO_IL		40		/* IL transport protocol */
-#define	IPPROTO_IPV6		41		/* IP6 header */
 #define	IPPROTO_SDRP		42		/* Source Demand Routing */
 #define	IPPROTO_ROUTING		43		/* IP6 routing header */
 #define	IPPROTO_FRAGMENT	44		/* IP6 fragmentation header */

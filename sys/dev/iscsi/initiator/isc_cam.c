@@ -28,7 +28,7 @@
  | $Id$
  */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/iscsi/initiator/isc_cam.c 211095 2010-08-09 12:36:36Z des $");
+__FBSDID("$FreeBSD: head/sys/dev/iscsi/initiator/isc_cam.c 249468 2013-04-14 09:55:48Z mav $");
 
 #include "opt_iscsi_initiator.h"
 
@@ -150,7 +150,7 @@ ic_scan(isc_session_t *sp)
      sp->flags |= ISC_SCANWAIT;
 
      CAM_LOCK(sp);
-     if(xpt_create_path(&sp->cam_path, xpt_periph, cam_sim_path(sp->cam_sim),
+     if(xpt_create_path(&sp->cam_path, NULL, cam_sim_path(sp->cam_sim),
 			0, CAM_LUN_WILDCARD) != CAM_REQ_CMP) {
 	  xdebug("can't create cam path");
 	  CAM_UNLOCK(sp);

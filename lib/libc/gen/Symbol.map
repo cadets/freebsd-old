@@ -1,5 +1,5 @@
 /*
- * $FreeBSD: head/lib/libc/gen/Symbol.map 245305 2013-01-11 15:50:01Z brooks $
+ * $FreeBSD: head/lib/libc/gen/Symbol.map 251047 2013-05-28 04:54:16Z kib $
  */
 
 FBSD_1.0 {
@@ -391,10 +391,12 @@ FBSD_1.3 {
 	pwcache_userdb;
 	pwcache_groupdb;
 	snvis;
+	strenvisx;
 	strnunvis;
 	strnunvisx;
 	strnvis;
 	strnvisx;
+	strsenvisx;
 	strsnvis;
 	strsnvisx;
 	strsvis;
@@ -527,5 +529,6 @@ FBSDprivate_1.0 {
 	__elf_aux_vector;
 	__pthread_map_stacks_exec;
 	__fillcontextx;
+	__fillcontextx2;
 	__getcontextx_size;
 };

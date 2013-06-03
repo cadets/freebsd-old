@@ -33,7 +33,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)ffs_balloc.c	8.4 (Berkeley) 9/23/93
- * $FreeBSD: head/sys/fs/ext2fs/ext2_balloc.c 246634 2013-02-10 19:49:37Z pfg $
+ * $FreeBSD: head/sys/fs/ext2fs/ext2_balloc.c 248282 2013-03-14 20:28:26Z kib $
  */
 
 #include <sys/param.h>
@@ -276,7 +276,7 @@ ext2_balloc(struct inode *ip, int32_t lbn, int size, struct ucred *cred,
 		if (seqcount && (vp->v_mount->mnt_flag & MNT_NOCLUSTERR) == 0) {
 			error = cluster_read(vp, ip->i_size, lbn,
 			    (int)fs->e2fs_bsize, NOCRED,
-			    MAXBSIZE, seqcount, &nbp);
+			    MAXBSIZE, seqcount, 0, &nbp);
 		} else {
 			error = bread(vp, lbn, (int)fs->e2fs_bsize, NOCRED, &nbp);
 		}

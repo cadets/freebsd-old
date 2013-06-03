@@ -1,4 +1,4 @@
-# $FreeBSD: head/release/Makefile 246283 2013-02-03 10:26:24Z hrs $
+# $FreeBSD: head/release/Makefile 251250 2013-06-02 11:44:23Z tijl $
 #
 # Makefile for building releases and release media.
 # 
@@ -113,8 +113,8 @@ reldoc:
 	    INSTALL_COMPRESSED='' URLS_ABSOLUTE=YES DOCDIR=${.OBJDIR}/rdoc
 	mkdir -p reldoc
 .for i in hardware readme relnotes errata
-	ln -f rdoc/${RELNOTES_LANG}/${i}/article.txt reldoc/${i:U}.TXT
-	ln -f rdoc/${RELNOTES_LANG}/${i}/article.html reldoc/${i:U}.HTM
+	ln -f rdoc/${RELNOTES_LANG}/${i}/article.txt reldoc/${i:tu}.TXT
+	ln -f rdoc/${RELNOTES_LANG}/${i}/article.html reldoc/${i:tu}.HTM
 .endfor
 	cp rdoc/${RELNOTES_LANG}/readme/docbook.css reldoc
 

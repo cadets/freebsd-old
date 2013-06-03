@@ -33,7 +33,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/lib/libutil/libutil.h 244739 2012-12-27 16:51:29Z bapt $
+ * $FreeBSD: head/lib/libutil/libutil.h 247919 2013-03-07 19:00:00Z db $
  */
 
 #ifndef _LIBUTIL_H_
@@ -167,7 +167,7 @@ int 	gr_copy(int __ffd, int _tfd, const struct group *_gr,
 struct group *
 	gr_dup(const struct group *_gr);
 struct group *
-	gr_add(struct group *_gr, char *_newmember);
+	gr_add(const struct group *_gr, const char *_newmember);
 int	gr_equal(const struct group *_gr1, const struct group *_gr2);
 void	gr_fini(void);
 int	gr_init(const char *_dir, const char *_master);

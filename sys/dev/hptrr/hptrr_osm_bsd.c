@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/hptrr/hptrr_osm_bsd.c 246713 2013-02-12 16:57:20Z kib $");
+__FBSDID("$FreeBSD: head/sys/dev/hptrr/hptrr_osm_bsd.c 250032 2013-04-28 20:55:45Z sbruno $");
 
 #include <dev/hptrr/hptrr_config.h>
 /* $Id$
@@ -175,7 +175,8 @@ static int hpt_alloc_mem(PVBUS_EXT vbus_ext)
 
 		HPT_ASSERT((f->size & (f->alignment-1))==0);
 
-		for (order=0, size=PAGE_SIZE; size<f->size; order++, size<<=1) ;
+		for (order=0, size=PAGE_SIZE; size<f->size; order++, size<<=1)
+			;
 
 		KdPrint(("%s: %d*%d=%d bytes, order %d",
 			f->tag, f->count, f->size, f->count*f->size, order));
@@ -1355,7 +1356,7 @@ static int	hpt_rescan_bus(void)
 	ldm_for_each_vbus(vbus, vbus_ext) {
 		if ((ccb = xpt_alloc_ccb()) == NULL)
 			return(ENOMEM);
-		if (xpt_create_path(&ccb->ccb_h.path, xpt_periph,
+		if (xpt_create_path(&ccb->ccb_h.path, NULL,
 		    cam_sim_path(vbus_ext->sim),
 		    CAM_TARGET_WILDCARD, CAM_LUN_WILDCARD) != CAM_REQ_CMP) {
 			xpt_free_ccb(ccb);

@@ -30,7 +30,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)find.h	8.1 (Berkeley) 6/6/93
- *	$FreeBSD: head/usr.bin/find/find.h 216370 2010-12-11 08:32:16Z joel $
+ *	$FreeBSD: head/usr.bin/find/find.h 248446 2013-03-17 22:51:58Z jilles $
  */
 
 #include <regex.h>
@@ -88,7 +88,7 @@ typedef struct _plandata {
 		nlink_t _l_data;		/* link count */
 		short _d_data;			/* level depth (-1 to N) */
 		off_t _o_data;			/* file size */
-		time_t _t_data;			/* time value */
+		struct timespec _t_data;	/* time value */
 		uid_t _u_data;			/* uid */
 		short _mt_data;			/* mount flags */
 		struct _plandata *_p_data[2];	/* PLAN trees */

@@ -1,4 +1,4 @@
-/*	$FreeBSD: head/sys/netinet/icmp6.h 232513 2012-03-04 18:47:20Z bz $	*/
+/*	$FreeBSD: head/sys/netinet/icmp6.h 250251 2013-05-04 19:16:26Z hrs $	*/
 /*	$KAME: icmp6.h,v 1.46 2001/04/27 15:09:48 itojun Exp $	*/
 
 /*-
@@ -659,7 +659,8 @@ void	kmod_icmp6stat_inc(int statnum);
 #define ICMPV6CTL_MLD_SOMAXSRC	22
 #define ICMPV6CTL_MLD_VERSION	23
 #define ICMPV6CTL_ND6_MAXQLEN	24
-#define ICMPV6CTL_MAXID		25
+#define ICMPV6CTL_NODEINFO_OLDMCPREFIX	25
+#define ICMPV6CTL_MAXID		26
 
 #define RTF_PROBEMTU	RTF_PROTO1
 

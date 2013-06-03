@@ -34,7 +34,7 @@
 
 /* #pragma ident	"@(#)rpc_generic.c	1.17	94/04/24 SMI" */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/rpc/rpc_generic.c 243882 2012-12-05 08:04:20Z glebius $");
+__FBSDID("$FreeBSD: head/sys/rpc/rpc_generic.c 248195 2013-03-12 12:17:19Z glebius $");
 
 /*
  * rpc_generic.c, Miscl routines for RPC.
@@ -750,9 +750,7 @@ clnt_call_private(
 	struct mbuf *mrep;
 	enum clnt_stat stat;
 
-	MGET(mreq, M_WAITOK, MT_DATA);
-	MCLGET(mreq, M_WAITOK);
-	mreq->m_len = 0;
+	mreq = m_getcl(M_WAITOK, MT_DATA, 0);
 
 	xdrmbuf_create(&xdrs, mreq, XDR_ENCODE);
 	if (!xargs(&xdrs, argsp)) {

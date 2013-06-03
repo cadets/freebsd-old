@@ -25,7 +25,7 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\" $FreeBSD: head/lib/libc/posix1e/acl_is_trivial_np.3 216416 2010-12-13 19:03:10Z trasz $
+.\" $FreeBSD: head/lib/libc/posix1e/acl_is_trivial_np.3 250576 2013-05-12 16:43:26Z eadler $
 .\"
 .Dd December 13, 2010
 .Dt ACL_STRIP_NP 3
@@ -52,7 +52,7 @@ will be set to 1, if the ACL
 .Fa aclp
 points to is trivial, or 0 if it's not.
 .Pp
-ACL is trivial if it can be fully expressed as a file mode without loosing
+ACL is trivial if it can be fully expressed as a file mode without losing
 any access rules.
 For POSIX.1e ACLs, ACL is trivial if it has the three required entries,
 one for owner, one for owning group, and one for other.

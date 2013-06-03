@@ -80,6 +80,10 @@ struct timespec {
 int nanosleep(const struct timespec *, struct timespec *);
 #endif
 
+#ifndef HAVE_USLEEP
+int usleep(unsigned int useconds);
+#endif
+
 #ifndef HAVE_TCGETPGRP
 pid_t tcgetpgrp(int);
 #endif
@@ -100,6 +104,10 @@ mysig_t mysignal(int sig, mysig_t act);
 
 #ifndef HAVE_ISBLANK
 int	isblank(int);
+#endif
+
+#ifndef HAVE_GETPGID
+pid_t getpgid(pid_t);
 #endif
 
 #endif /* _BSD_MISC_H */

@@ -24,8 +24,7 @@
  */
 
 /*
- * $FreeBSD: head/sys/dev/netmap/if_em_netmap.h 245579 2013-01-17 22:14:58Z luigi $
- * $Id$
+ * $FreeBSD: head/sys/dev/netmap/if_em_netmap.h 250184 2013-05-02 16:01:04Z luigi $
  *
  * netmap support for em.
  *
@@ -277,7 +276,7 @@ em_netmap_rxsync(struct ifnet *ifp, u_int ring_nr, int do_lock)
 	k = ring->cur;
 	if (k > lim)
 		return netmap_ring_reinit(kring);
- 
+
 	if (do_lock)
 		EM_RX_LOCK(rxr);
 

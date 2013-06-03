@@ -1,4 +1,4 @@
-/* $FreeBSD: head/sys/dev/usb/usb_msctest.c 246616 2013-02-10 10:56:13Z hselasky $ */
+/* $FreeBSD: head/sys/dev/usb/usb_msctest.c 250986 2013-05-25 17:09:58Z hselasky $ */
 /*-
  * Copyright (c) 2008,2011 Hans Petter Selasky. All rights reserved.
  *
@@ -802,7 +802,6 @@ usb_msc_eject(struct usb_device *udev, uint8_t iface_index, int method)
 	if (sc == NULL)
 		return (USB_ERR_INVAL);
 
-	err = 0;
 	switch (method) {
 	case MSC_EJECT_STOPUNIT:
 		err = bbb_command_start(sc, DIR_IN, 0, NULL, 0,
@@ -844,6 +843,7 @@ usb_msc_eject(struct usb_device *udev, uint8_t iface_index, int method)
 		break;
 	default:
 		DPRINTF("Unknown eject method (%d)\n", method);
+		err = 0;
 		break;
 	}
 	DPRINTF("Eject CD command status: %s\n", usbd_errstr(err));

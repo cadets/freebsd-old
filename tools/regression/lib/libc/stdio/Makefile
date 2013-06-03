@@ -1,6 +1,8 @@
-# $FreeBSD: head/tools/regression/lib/libc/stdio/Makefile 189142 2009-02-28 06:39:39Z das $
+# $FreeBSD: head/tools/regression/lib/libc/stdio/Makefile 247411 2013-02-27 19:50:46Z jhb $
 
-TESTS=	test-getdelim test-perror test-print-positional test-printbasic test-printfloat test-scanfloat
+TESTS=	test-fmemopen test-getdelim test-open_memstream test-open_wmemstream \
+	test-perror test-print-positional test-printbasic test-printfloat \
+	test-scanfloat 
 CFLAGS+= -lm
 
 .PHONY: tests

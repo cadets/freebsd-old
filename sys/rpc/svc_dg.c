@@ -37,7 +37,7 @@
 #ident	"@(#)svc_dg.c	1.17	94/04/24 SMI"
 #endif
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/rpc/svc_dg.c 243882 2012-12-05 08:04:20Z glebius $");
+__FBSDID("$FreeBSD: head/sys/rpc/svc_dg.c 248195 2013-03-12 12:17:19Z glebius $");
 
 /*
  * svc_dg.c, Server side for connectionless RPC.
@@ -238,8 +238,7 @@ svc_dg_reply(SVCXPRT *xprt, struct rpc_msg *msg,
 	bool_t stat = TRUE;
 	int error;
 
-	MGETHDR(mrep, M_WAITOK, MT_DATA);
-	mrep->m_len = 0;
+	mrep = m_gethdr(M_WAITOK, MT_DATA);
 
 	xdrmbuf_create(&xdrs, mrep, XDR_ENCODE);
 

@@ -1,9 +1,10 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
 <!--
      The FreeBSD Documentation Project
      The FreeBSD French Documentation Project
 
      $Id$
-     $FreeBSD: head/release/doc/fr_FR.ISO8859-1/installation/common/layout.xml 241096 2012-10-01 11:26:49Z gabor $
+     $FreeBSD: head/release/doc/fr_FR.ISO8859-1/installation/common/layout.xml 250746 2013-05-17 18:53:29Z gabor $
      Original revision: 1.5
 
      This section contains the contents of the old LAYOUT.TXT file.
@@ -32,7 +33,7 @@ README.HTM      cdrom.inf       crypto          info            tools</screen>
     suivre les instructions. Le reste des donn&eacute;es
     n&eacute;cessaires a l'installation serontcharg&eacute;es
     automatiquement en fonction de vos s&eacute;lections. Si vous n'avez
-    jamais install&eacute; &os, pr&eacute;cedemment, il est
+    jamais install&eacute; &os;, pr&eacute;cedemment, il est
     n&eacute;cessaire de lire enti&egrave;rement ce document.</para>
 
 

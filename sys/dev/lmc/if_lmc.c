@@ -1,5 +1,5 @@
 /*
- * $FreeBSD: head/sys/dev/lmc/if_lmc.c 243857 2012-12-04 09:32:43Z glebius $
+ * $FreeBSD: head/sys/dev/lmc/if_lmc.c 249925 2013-04-26 12:50:32Z glebius $
  *
  * Copyright (c) 2002-2004 David Boggs. <boggs@boggs.palo-alto.ca.us>
  * All rights reserved.
@@ -4587,7 +4587,7 @@ lmc_ifnet_start(struct ifnet *ifp)
 /* Called from a syscall (user context; no spinlocks). */
 static int
 lmc_raw_output(struct ifnet *ifp, struct mbuf *m,
- struct sockaddr *dst, struct route *ro)
+ const struct sockaddr *dst, struct route *ro)
   {
   softc_t *sc = IFP2SC(ifp);
   int error = 0;

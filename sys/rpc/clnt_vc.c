@@ -35,7 +35,7 @@ static char *sccsid = "@(#)clnt_tcp.c	2.2 88/08/01 4.0 RPCSRC";
 static char sccsid3[] = "@(#)clnt_vc.c 1.19 89/03/16 Copyr 1988 Sun Micro";
 #endif
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/rpc/clnt_vc.c 244008 2012-12-08 00:29:16Z rmacklem $");
+__FBSDID("$FreeBSD: head/sys/rpc/clnt_vc.c 248255 2013-03-13 21:06:03Z jhb $");
  
 /*
  * clnt_tcp.c, Implements a TCP/IP based, client side RPC.
@@ -162,7 +162,7 @@ clnt_vc_create(
 		interrupted = 0;
 		sleep_flag = PSOCK;
 		if (intrflag != 0)
-			sleep_flag |= (PCATCH | PBDRY);
+			sleep_flag |= PCATCH;
 		while ((so->so_state & SS_ISCONNECTING)
 		    && so->so_error == 0) {
 			error = msleep(&so->so_timeo, SOCK_MTX(so),
@@ -349,7 +349,7 @@ call_again:
 	/*
 	 * Leave space to pre-pend the record mark.
 	 */
-	MGETHDR(mreq, M_WAITOK, MT_DATA);
+	mreq = m_gethdr(M_WAITOK, MT_DATA);
 	mreq->m_data += sizeof(uint32_t);
 	KASSERT(ct->ct_mpos + sizeof(uint32_t) <= MHLEN,
 	    ("RPC header too big"));
@@ -470,7 +470,6 @@ call_again:
 		errp->re_errno = error;
 		switch (error) {
 		case EINTR:
-		case ERESTART:
 			stat = RPC_INTR;
 			break;
 		case EWOULDBLOCK:
@@ -704,7 +703,7 @@ clnt_vc_control(CLIENT *cl, u_int request, void *info)
 
 	case CLSET_INTERRUPTIBLE:
 		if (*(int *) info)
-			ct->ct_waitflag = PCATCH | PBDRY;
+			ct->ct_waitflag = PCATCH;
 		else
 			ct->ct_waitflag = 0;
 		break;

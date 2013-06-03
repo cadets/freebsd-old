@@ -1,4 +1,4 @@
-# $FreeBSD: head/share/examples/cvsup/cvs-supfile 244998 2013-01-03 16:15:35Z peter $
+# $FreeBSD: head/share/examples/cvsup/cvs-supfile 248151 2013-03-11 10:48:26Z bapt $
 #
 # BEWARE, CVS is deprecated and no longer supported by the FreeBSD project.
 #
@@ -43,9 +43,8 @@
 # prefix=/home/ncvs
 #		This specifies where to place the requested files.  A
 #		setting of "/home/ncvs" will place all of the files
-#		requested in /home/ncvs (e.g., "/home/ncvs/src/bin",
-#		"/home/ncvs/ports/archivers").  The prefix directory
-#		must exist in order to run CVSup.
+#		requested in /home/ncvs (e.g., "/home/ncvs/src/bin").
+#		The prefix directory must exist in order to run CVSup.
 
 # Defaults that apply to all the collections
 #
@@ -67,13 +66,6 @@
 # The easiest way to get the main source tree is to use the "src-all"
 # mega-collection.  It includes all of the individual "src-*" collections.
 src-all
-
-## Ports Collection.
-#
-# The easiest way to get the ports tree is to use the "ports-all"
-# mega-collection.  It includes all of the individual "ports-*"
-# collections,
-ports-all
 
 ## Projects
 #

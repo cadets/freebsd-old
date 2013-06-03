@@ -24,7 +24,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/dev/cxgbe/t4_ioctl.h 241409 2012-10-10 19:27:40Z np $
+ * $FreeBSD: head/sys/dev/cxgbe/t4_ioctl.h 248925 2013-03-30 02:26:20Z np $
  *
  */
 
@@ -60,6 +60,7 @@ struct t4_reg {
 };
 
 #define T4_REGDUMP_SIZE  (160 * 1024)
+#define T5_REGDUMP_SIZE  (332 * 1024)
 struct t4_regdump {
 	uint32_t version;
 	uint32_t len; /* bytes */

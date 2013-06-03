@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/mips/atheros/ar71xx_setup.c 223562 2011-06-26 10:07:48Z kevlo $");
+__FBSDID("$FreeBSD: head/sys/mips/atheros/ar71xx_setup.c 249118 2013-04-05 00:22:17Z adrian $");
 
 #include "opt_ddb.h"
 
@@ -52,6 +52,8 @@ __FBSDID("$FreeBSD: head/sys/mips/atheros/ar71xx_setup.c 223562 2011-06-26 10:07
 #include <machine/vmparam.h>
  
 #include <mips/atheros/ar71xxreg.h>
+#include <mips/atheros/ar933xreg.h>
+
 #include <mips/atheros/ar71xx_setup.h>
 
 #include <mips/atheros/ar71xx_cpudef.h>
@@ -59,8 +61,7 @@ __FBSDID("$FreeBSD: head/sys/mips/atheros/ar71xx_setup.c 223562 2011-06-26 10:07
 #include <mips/atheros/ar71xx_chip.h>
 #include <mips/atheros/ar724x_chip.h>
 #include <mips/atheros/ar91xx_chip.h>
-
-#include <mips/sentry5/s5reg.h>
+#include <mips/atheros/ar933x_chip.h>
 
 #define	AR71XX_SYS_TYPE_LEN		128
 
@@ -142,7 +143,20 @@ ar71xx_detect_sys_type(void)
 			break;
 		}
 		break;
-
+	case REV_ID_MAJOR_AR9330:
+		minor = 0;
+		rev = (id & AR933X_REV_ID_REVISION_MASK);
+		chip = "9330";
+		ar71xx_cpu_ops = &ar933x_chip_def;
+		ar71xx_soc = AR71XX_SOC_AR9330;
+		break;
+	case REV_ID_MAJOR_AR9331:
+		minor = 1;
+		rev = (id & AR933X_REV_ID_REVISION_MASK);
+		chip = "9331";
+		ar71xx_soc = AR71XX_SOC_AR9331;
+		ar71xx_cpu_ops = &ar933x_chip_def;
+		break;
 
 	default:
 		panic("ar71xx: unknown chip id:0x%08x\n", id);

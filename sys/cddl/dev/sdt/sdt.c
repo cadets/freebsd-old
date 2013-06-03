@@ -20,7 +20,7 @@
  *
  * Portions Copyright 2006-2008 John Birrell jb@freebsd.org
  *
- * $FreeBSD: head/sys/cddl/dev/sdt/sdt.c 233552 2012-03-27 15:07:43Z rstone $
+ * $FreeBSD: head/sys/cddl/dev/sdt/sdt.c 251238 2013-06-02 01:05:36Z markj $
  *
  */
 
@@ -134,7 +134,7 @@ sdt_probe_callback(struct sdt_probe *probe, void *arg __unused)
 		return (0);
 
 	(void) dtrace_probe_create(prov->id, probe->mod, probe->func,
-	    probe->name, 0, probe);
+	    probe->name, 1, probe);
 
 	return (0);
 }

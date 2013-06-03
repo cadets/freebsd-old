@@ -122,7 +122,7 @@ main(argc, argv)
 		exit(EX_NOINPUT);
 	}
 
-	while (sm_io_fgets(cfp, SM_TIME_DEFAULT, buf, sizeof(buf)) != NULL)
+	while (sm_io_fgets(cfp, SM_TIME_DEFAULT, buf, sizeof(buf)) >= 0)
 	{
 		register char *b, *p;
 

@@ -18,7 +18,7 @@
  *
  * CDDL HEADER END
  *
- * $FreeBSD: head/cddl/lib/libdtrace/io.d 238366 2012-07-11 16:27:02Z gnn $
+ * $FreeBSD: head/cddl/lib/libdtrace/io.d 248846 2013-03-28 20:22:43Z gnn $
  */
 /*
  * Copyright 2006 Sun Microsystems, Inc.  All rights reserved.

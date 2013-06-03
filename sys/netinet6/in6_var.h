@@ -58,7 +58,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)in_var.h	8.1 (Berkeley) 6/10/93
- * $FreeBSD: head/sys/netinet6/in6_var.h 244272 2012-12-15 20:04:24Z ae $
+ * $FreeBSD: head/sys/netinet6/in6_var.h 249837 2013-04-24 10:24:01Z ae $
  */
 
 #ifndef _NETINET6_IN6_VAR_H_
@@ -542,7 +542,6 @@ do {								\
 		((struct in6_ifextra *)((ifp)->if_afdata[AF_INET6]))->in6_ifstat->tag++; \
 } while (/*CONSTCOND*/ 0)
 
-extern struct in6_addr zeroin6_addr;
 extern u_char inet6ctlerrmap[];
 VNET_DECLARE(unsigned long, in6_maxmtu);
 #define	V_in6_maxmtu			VNET(in6_maxmtu)

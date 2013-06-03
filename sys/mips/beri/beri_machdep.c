@@ -29,7 +29,7 @@
  * SUCH DAMAGE.
  */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/mips/beri/beri_machdep.c 245330 2013-01-12 13:20:21Z rwatson $");
+__FBSDID("$FreeBSD: head/sys/mips/beri/beri_machdep.c 247297 2013-02-26 01:00:11Z attilio $");
 
 #include "opt_ddb.h"
 #include "opt_platform.h"
@@ -64,7 +64,6 @@ __FBSDID("$FreeBSD: head/sys/mips/beri/beri_machdep.c 245330 2013-01-12 13:20:21
 #include <vm/vm.h>
 #include <vm/vm_object.h>
 #include <vm/vm_page.h>
-#include <vm/vm_pager.h>
 
 #include <machine/clock.h>
 #include <machine/cpu.h>

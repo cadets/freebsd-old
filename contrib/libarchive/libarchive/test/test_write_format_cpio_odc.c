@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_write_format_cpio_odc.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_write_format_cpio_odc.c 248616 2013-03-22 13:36:03Z mm $");
 
 
 static int
@@ -55,7 +55,7 @@ DEFINE_TEST(test_write_format_cpio_odc)
 	/* Create a new archive in memory. */
 	assert((a = archive_write_new()) != NULL);
 	assertEqualIntA(a, 0, archive_write_set_format_cpio(a));
-	assertEqualIntA(a, 0, archive_write_set_compression_none(a));
+	assertEqualIntA(a, 0, archive_write_add_filter_none(a));
 	assertEqualIntA(a, 0, archive_write_open_memory(a, buff, buffsize, &used));
 
 	/*

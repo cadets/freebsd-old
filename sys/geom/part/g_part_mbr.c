@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/geom/part/g_part_mbr.c 234417 2012-04-18 11:59:03Z marck $");
+__FBSDID("$FreeBSD: head/sys/geom/part/g_part_mbr.c 247961 2013-03-07 22:32:41Z gavin $");
 
 #include <sys/param.h>
 #include <sys/bio.h>
@@ -118,6 +118,7 @@ static struct g_part_mbr_alias {
 	{ DOSPTYP_386BSD,	G_PART_ALIAS_FREEBSD },
 	{ DOSPTYP_EXT,		G_PART_ALIAS_EBR },
 	{ DOSPTYP_NTFS,		G_PART_ALIAS_MS_NTFS },
+	{ DOSPTYP_FAT16,	G_PART_ALIAS_MS_FAT16 },
 	{ DOSPTYP_FAT32,	G_PART_ALIAS_MS_FAT32 },
 	{ DOSPTYP_EXTLBA,	G_PART_ALIAS_EBR },
 	{ DOSPTYP_LDM,		G_PART_ALIAS_MS_LDM_DATA },

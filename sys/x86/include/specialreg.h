@@ -27,7 +27,7 @@
  * SUCH DAMAGE.
  *
  *	from: @(#)specialreg.h	7.1 (Berkeley) 5/9/91
- * $FreeBSD: head/sys/x86/include/specialreg.h 245055 2013-01-05 04:20:14Z neel $
+ * $FreeBSD: head/sys/x86/include/specialreg.h 249608 2013-04-18 07:09:27Z rpaulo $
  */
 
 #ifndef _MACHINE_SPECIALREG_H_
@@ -278,11 +278,22 @@
 #define	AMDID_COREID_SIZE	0x0000f000
 #define	AMDID_COREID_SIZE_SHIFT	12
 
+/*
+ * Structured Extended Features
+ */
 #define	CPUID_STDEXT_FSGSBASE	0x00000001
 #define	CPUID_STDEXT_TSC_ADJUST	0x00000002
+#define	CPUID_STDEXT_BMI1	0x00000008
+#define	CPUID_STDEXT_HLE	0x00000010
+#define	CPUID_STDEXT_AVX2	0x00000020
 #define	CPUID_STDEXT_SMEP	0x00000080
+#define	CPUID_STDEXT_BMI2	0x00000100
 #define	CPUID_STDEXT_ENH_MOVSB	0x00000200
+#define	CPUID_STDEXT_RTM	0x00000800
 #define	CPUID_STDEXT_INVPCID	0x00000400
+#define	CPUID_STDEXT_RDSEED	0x00040000
+#define	CPUID_STDEXT_ADX	0x00080000
+#define	CPUID_STDEXT_SMAP	0x00100000
 
 /*
  * CPUID manufacturers identifiers
@@ -417,6 +428,11 @@
 #define	APICBASE_X2APIC		0x00000400
 #define	APICBASE_ENABLED	0x00000800
 #define	APICBASE_ADDRESS	0xfffff000
+
+/* MSR_IA32_FEATURE_CONTROL related */
+#define	IA32_FEATURE_CONTROL_LOCK	0x01	/* lock bit */
+#define	IA32_FEATURE_CONTROL_SMX_EN	0x02	/* enable VMX inside SMX */
+#define	IA32_FEATURE_CONTROL_VMX_EN	0x04	/* enable VMX outside SMX */
 
 /*
  * PAT modes.

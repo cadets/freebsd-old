@@ -1,4 +1,4 @@
-# $FreeBSD: head/etc/periodic/daily/Makefile 244484 2012-12-20 11:39:20Z bapt $
+# $FreeBSD: head/etc/periodic/daily/Makefile 250533 2013-05-11 23:55:43Z eadler $
 
 .include <bsd.own.mk>
 
@@ -6,9 +6,10 @@ FILES=	100.clean-disks \
 	110.clean-tmps \
 	120.clean-preserve \
 	200.backup-passwd \
+	210.backup-aliases \
 	330.news \
 	400.status-disks \
-	405.status-ata-raid \
+	401.status-graid \
 	406.status-gmirror \
 	407.status-graid3 \
 	408.status-gstripe \
@@ -51,7 +52,6 @@ FILES+=	140.clean-rwho \
 
 .if ${MK_SENDMAIL} != "no"
 FILES+=	150.clean-hoststat \
-	210.backup-aliases \
 	440.status-mailq \
 	460.status-mail-rejects \
 	500.queuerun

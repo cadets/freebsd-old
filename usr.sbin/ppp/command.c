@@ -25,7 +25,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/usr.sbin/ppp/command.c 228990 2011-12-30 10:58:14Z uqs $
+ * $FreeBSD: head/usr.sbin/ppp/command.c 249582 2013-04-17 11:40:10Z gabor $
  */
 
 #include <sys/param.h>
@@ -416,7 +416,7 @@ DialCommand(struct cmdargs const *arg)
 static char *
 strstrword(char *big, const char *little)
 {
-  /* Get the first occurrance of the word ``little'' in ``big'' */
+  /* Get the first occurrence of the word ``little'' in ``big'' */
   char *pos;
   int len;
 

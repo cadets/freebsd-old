@@ -48,7 +48,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/arm/disassem.c 239687 2012-08-25 20:01:31Z gonzo $");
+__FBSDID("$FreeBSD: head/sys/arm/arm/disassem.c 248119 2013-03-09 23:55:23Z andrew $");
 #include <sys/param.h>
 
 
@@ -130,7 +130,7 @@ static const struct arm32_insn arm32_i[] = {
     { 0x0c500000, 0x04100000, "ldr",	"daW" },
     { 0x0c500000, 0x04400000, "strb",	"daW" },
     { 0x0c500000, 0x04500000, "ldrb",	"daW" },
-#ifdef	__FreeBSD_ARCH_armv6__
+#if defined(__FreeBSD_ARCH_armv6__)  || (defined(__ARM_ARCH) && __ARM_ARCH >= 6)
     { 0xffffffff, 0xf57ff01f, "clrex",	"c" },
     { 0x0ff00ff0, 0x01800f90, "strex",	"dmo" },
     { 0x0ff00fff, 0x01900f9f, "ldrex",	"do" },

@@ -25,7 +25,7 @@
  *
  * From: FreeBSD: src/sys/miscfs/kernfs/kernfs_vfsops.c 1.36
  *
- * $FreeBSD: head/sys/fs/devfs/devfs_devs.c 243039 2012-11-14 19:50:21Z kib $
+ * $FreeBSD: head/sys/fs/devfs/devfs_devs.c 249583 2013-04-17 11:42:40Z gabor $
  */
 
 #include <sys/param.h>
@@ -655,7 +655,7 @@ devfs_cleanup(struct devfs_mount *dm)
 /*
  * devfs_create() and devfs_destroy() are called from kern_conf.c and
  * in both cases the devlock() mutex is held, so no further locking
- * is necesary and no sleeping allowed.
+ * is necessary and no sleeping allowed.
  */
 
 void

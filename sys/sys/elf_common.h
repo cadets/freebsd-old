@@ -24,7 +24,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/sys/elf_common.h 235099 2012-05-06 18:34:31Z kib $
+ * $FreeBSD: head/sys/sys/elf_common.h 249558 2013-04-16 19:19:14Z trociny $
  */
 
 #ifndef _SYS_ELF_COMMON_H_
@@ -487,6 +487,15 @@ typedef struct {
 #define	NT_FPREGSET	2	/* Floating point registers. */
 #define	NT_PRPSINFO	3	/* Process state info. */
 #define	NT_THRMISC	7	/* Thread miscellaneous info. */
+#define	NT_PROCSTAT_PROC	8	/* Procstat proc data. */
+#define	NT_PROCSTAT_FILES	9	/* Procstat files data. */
+#define	NT_PROCSTAT_VMMAP	10	/* Procstat vmmap data. */
+#define	NT_PROCSTAT_GROUPS	11	/* Procstat groups data. */
+#define	NT_PROCSTAT_UMASK	12	/* Procstat umask data. */
+#define	NT_PROCSTAT_RLIMIT	13	/* Procstat rlimit data. */
+#define	NT_PROCSTAT_OSREL	14	/* Procstat osreldate data. */
+#define	NT_PROCSTAT_PSSTRINGS	15	/* Procstat ps_strings data. */
+#define	NT_PROCSTAT_AUXV	16	/* Procstat auxv data. */
 
 /* Symbol Binding - ELFNN_ST_BIND - st_info */
 #define	STB_LOCAL	0	/* Local symbol */

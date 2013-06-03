@@ -1,6 +1,6 @@
 %option nounput noinput
 %{
-/* $OpenBSD: tokenizer.l,v 1.7 2010/03/22 20:40:44 espie Exp $ */
+/* $OpenBSD: tokenizer.l,v 1.8 2012/04/12 17:00:11 espie Exp $ */
 /*
  * Copyright (c) 2004 Marc Espie <espie@cvs.openbsd.org>
  *
@@ -16,7 +16,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD: head/usr.bin/m4/tokenizer.l 228697 2011-12-18 22:04:55Z bapt $
+ * $FreeBSD: head/usr.bin/m4/tokenizer.l 250926 2013-05-23 05:42:35Z jkim $
  */
 #include "parser.h"
 #include <assert.h>
@@ -31,6 +31,8 @@ extern int32_t yylval;
 int32_t number(void);
 int32_t parse_radix(void);
 extern int yylex(void);
+
+#define	YY_DECL	int yylex(void)
 %}
 
 delim 	[ \t\n]

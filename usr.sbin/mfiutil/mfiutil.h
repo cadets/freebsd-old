@@ -26,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/usr.sbin/mfiutil/mfiutil.h 241776 2012-10-20 10:20:06Z ed $
+ * $FreeBSD: head/usr.sbin/mfiutil/mfiutil.h 249257 2013-04-08 17:46:45Z markj $
  */
 
 #ifndef __MFIUTIL_H__
@@ -152,6 +152,13 @@ int	mfi_reconfig_supported(void);
 const char *mfi_status(u_int status_code);
 const char *mfi_drive_name(struct mfi_pd_info *pinfo, uint16_t device_id,
     uint32_t def);
+int	mfi_bbu_get_props(int fd, struct mfi_bbu_properties *props,
+	    uint8_t *statusp);
+int	mfi_bbu_set_props(int fd, struct mfi_bbu_properties *props,
+	    uint8_t *statusp);
+void	mfi_autolearn_period(uint32_t, char *, size_t);
+void	mfi_next_learn_time(uint32_t, char *, size_t);
+void	mfi_autolearn_mode(uint8_t, char *, size_t);
 
 void	scan_firmware(struct mfi_info_component *comp);
 void	display_firmware(struct mfi_info_component *comp, const char *tag);

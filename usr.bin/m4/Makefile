@@ -1,5 +1,5 @@
 #	$OpenBSD: Makefile,v 1.10 2002/04/26 13:13:41 espie Exp $
-# $FreeBSD: head/usr.bin/m4/Makefile 244927 2013-01-01 18:25:14Z antoine $
+# $FreeBSD: head/usr.bin/m4/Makefile 249657 2013-04-19 19:45:00Z ed $
 
 # -DEXTENDED 
 # 	if you want the paste & spaste macros.
@@ -8,8 +8,8 @@ PROG=	m4
 CFLAGS+=-DEXTENDED -I${.CURDIR} -I${.CURDIR}/lib
 DPADD=	${LIBY} ${LIBL} ${LIBM}
 LDADD=	-ly -ll -lm
-# clang needs 1 while with gcc we can use 2
-#WARNS=	1
+
+NO_WMISSING_VARIABLE_DECLARATIONS=
 
 SRCS=	eval.c expr.c look.c main.c misc.c gnum4.c trace.c parser.y tokenizer.l
 .PATH: ${.CURDIR}/lib

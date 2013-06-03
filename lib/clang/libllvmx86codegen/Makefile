@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/clang/libllvmx86codegen/Makefile 246259 2013-02-02 22:28:29Z dim $
+# $FreeBSD: head/lib/clang/libllvmx86codegen/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
@@ -17,12 +17,14 @@ SRCS=	X86AsmPrinter.cpp \
 	X86JITInfo.cpp \
 	X86MCInstLower.cpp \
 	X86MachineFunctionInfo.cpp \
+	X86PadShortFunction.cpp \
 	X86RegisterInfo.cpp \
 	X86SelectionDAGInfo.cpp \
 	X86Subtarget.cpp \
 	X86TargetMachine.cpp \
 	X86TargetObjectFile.cpp \
-	X86VZeroUpper.cpp \
+	X86TargetTransformInfo.cpp \
+	X86VZeroUpper.cpp
 
 TGHDRS=	Intrinsics \
 	X86GenCallingConv \

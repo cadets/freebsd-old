@@ -38,7 +38,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/netinet/ip_gre.c 241913 2012-10-22 21:09:03Z glebius $");
+__FBSDID("$FreeBSD: head/sys/netinet/ip_gre.c 250523 2013-05-11 19:05:38Z hrs $");
 
 #include "opt_inet.h"
 #include "opt_atalk.h"
@@ -205,6 +205,11 @@ gre_input2(struct mbuf *m ,int hlen, u_char proto)
 		bpf_mtap2(GRE2IFP(sc)->if_bpf, &af, sizeof(af), m);
 	}
 
+	if ((GRE2IFP(sc)->if_flags & IFF_MONITOR) != 0) {
+		m_freem(m);
+		return(NULL);
+	}
+
 	m->m_pkthdr.rcvif = GRE2IFP(sc);
 
 	netisr_queue(isr, m);
@@ -285,6 +290,11 @@ gre_mobile_input(struct mbuf *m, int hlen)
 	if (bpf_peers_present(GRE2IFP(sc)->if_bpf)) {
 		u_int32_t af = AF_INET;
 		bpf_mtap2(GRE2IFP(sc)->if_bpf, &af, sizeof(af), m);
+	}
+
+	if ((GRE2IFP(sc)->if_flags & IFF_MONITOR) != 0) {
+		m_freem(m);
+		return;
 	}
 
 	m->m_pkthdr.rcvif = GRE2IFP(sc);

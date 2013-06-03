@@ -28,7 +28,7 @@
  * WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/vm/vm_phys.h 243132 2012-11-16 05:55:56Z kib $
+ * $FreeBSD: head/sys/vm/vm_phys.h 250601 2013-05-13 15:40:51Z attilio $
  */
 
 /*
@@ -48,6 +48,7 @@ struct mem_affinity {
 };
 
 extern struct mem_affinity *mem_affinity;
+extern int vm_ndomains;
 
 /*
  * The following functions are only to be used by the virtual memory system.

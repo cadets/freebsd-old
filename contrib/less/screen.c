@@ -1,4 +1,3 @@
-/* $FreeBSD: head/contrib/less/screen.c 242584 2012-11-04 20:52:26Z delphij $ */
 /*
  * Copyright (C) 1984-2012  Mark Nudelman
  *

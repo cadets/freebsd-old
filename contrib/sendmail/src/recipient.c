@@ -1824,7 +1824,7 @@ resetuid:
 	LineNumber = 0;
 	ctladdr->q_flags &= ~QSELFREF;
 	nincludes = 0;
-	while (sm_io_fgets(fp, SM_TIME_DEFAULT, buf, sizeof(buf)) != NULL &&
+	while (sm_io_fgets(fp, SM_TIME_DEFAULT, buf, sizeof(buf)) >= 0 &&
 	       !maxreached)
 	{
 		fixcrlf(buf, true);

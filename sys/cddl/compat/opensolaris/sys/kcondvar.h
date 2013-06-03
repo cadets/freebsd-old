@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/cddl/compat/opensolaris/sys/kcondvar.h 177698 2008-03-28 22:16:18Z jb $
+ * $FreeBSD: head/sys/cddl/compat/opensolaris/sys/kcondvar.h 247684 2013-03-03 06:42:36Z rpaulo $
  */
 
 #ifndef _OPENSOLARIS_SYS_CONDVAR_H_
@@ -55,7 +55,7 @@ typedef enum {
 		_name = #cv;						\
 	cv_init((cv), _name);						\
 } while (0)
-#define	cv_init(cv, name, type, arg)	zfs_cv_init((cv), (name), (type), (arg))
+#define	cv_init(cv, name, type, arg)	zfs_cv_init(cv, name, type, arg)
 
 #endif	/* _KERNEL */
 

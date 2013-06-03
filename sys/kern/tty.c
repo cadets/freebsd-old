@@ -28,7 +28,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/tty.c 242692 2012-11-07 07:00:59Z kevlo $");
+__FBSDID("$FreeBSD: head/sys/kern/tty.c 247602 2013-03-02 00:53:12Z pjd $");
 
 #include "opt_capsicum.h"
 #include "opt_compat.h"
@@ -1840,22 +1840,14 @@ ttyhook_register(struct tty **rtp, struct proc *p, int fd,
 	int error, ref;
 
 	/* Validate the file descriptor. */
-	if ((fdp = p->p_fd) == NULL)
-		return (EBADF);
-
-	fp = fget_unlocked(fdp, fd);
-	if (fp == NULL)
-		return (EBADF);
+	fdp = p->p_fd;
+	error = fget_unlocked(fdp, fd, CAP_TTYHOOK, 0, &fp, NULL);
+	if (error != 0)
+		return (error);
 	if (fp->f_ops == &badfileops) {
 		error = EBADF;
 		goto done1;
 	}
-
-#ifdef CAPABILITIES
-	error = cap_funwrap(fp, CAP_TTYHOOK, &fp);
-	if (error)
-		goto done1;
-#endif
 
 	/*
 	 * Make sure the vnode is bound to a character device.

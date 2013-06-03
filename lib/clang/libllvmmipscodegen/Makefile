@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/clang/libllvmmipscodegen/Makefile 246259 2013-02-02 22:28:29Z dim $
+# $FreeBSD: head/lib/clang/libllvmmipscodegen/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
@@ -6,11 +6,14 @@ LIB=	llvmmipscodegen
 
 SRCDIR=	lib/Target/Mips
 SRCS=	Mips16FrameLowering.cpp \
+	Mips16ISelDAGToDAG.cpp \
+	Mips16ISelLowering.cpp \
 	Mips16InstrInfo.cpp \
 	Mips16RegisterInfo.cpp \
 	MipsAnalyzeImmediate.cpp \
 	MipsAsmPrinter.cpp \
 	MipsCodeEmitter.cpp \
+	MipsConstantIslandPass.cpp \
 	MipsDelaySlotFiller.cpp \
 	MipsFrameLowering.cpp \
 	MipsISelDAGToDAG.cpp \
@@ -22,6 +25,8 @@ SRCS=	Mips16FrameLowering.cpp \
 	MipsMachineFunction.cpp \
 	MipsRegisterInfo.cpp \
 	MipsSEFrameLowering.cpp \
+	MipsSEISelDAGToDAG.cpp \
+	MipsSEISelLowering.cpp \
 	MipsSEInstrInfo.cpp \
 	MipsSERegisterInfo.cpp \
 	MipsSelectionDAGInfo.cpp \

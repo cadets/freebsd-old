@@ -32,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/fs/nfsclient/nfs_clkrpc.c 244042 2012-12-08 22:52:39Z rmacklem $");
+__FBSDID("$FreeBSD: head/sys/fs/nfsclient/nfs_clkrpc.c 249592 2013-04-17 21:00:22Z ken $");
 
 #include "opt_kgssapi.h"
 
@@ -83,7 +83,7 @@ nfscb_program(struct svc_req *rqst, SVCXPRT *xprt)
 	 */
 	nd.nd_mrep = rqst->rq_args;
 	rqst->rq_args = NULL;
-	newnfs_realign(&nd.nd_mrep);
+	newnfs_realign(&nd.nd_mrep, M_WAITOK);
 	nd.nd_md = nd.nd_mrep;
 	nd.nd_dpos = mtod(nd.nd_md, caddr_t);
 	nd.nd_nam = svc_getrpccaller(rqst);

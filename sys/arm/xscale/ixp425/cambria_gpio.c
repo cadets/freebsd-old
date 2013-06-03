@@ -39,7 +39,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/xscale/ixp425/cambria_gpio.c 239351 2012-08-17 04:44:57Z rpaulo $");
+__FBSDID("$FreeBSD: head/sys/arm/xscale/ixp425/cambria_gpio.c 249449 2013-04-13 21:21:13Z dim $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -317,8 +317,8 @@ cambria_gpio_pin_setflags(device_t dev, uint32_t pin, uint32_t flags)
 	if (pin >= GPIO_PINS)
 		return (EINVAL);
 
-	/* Filter out unwanted flags */
-	if ((flags &= sc->sc_pins[pin].gp_caps) != flags)
+	/* Check for unwanted flags. */
+	if ((flags & sc->sc_pins[pin].gp_caps) != flags)
 		return (EINVAL);
 
 	/* Can't mix input/output together */

@@ -41,7 +41,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sbin/dhclient/packet.c 198352 2009-10-21 23:50:35Z philip $");
+__FBSDID("$FreeBSD: head/sbin/dhclient/packet.c 249766 2013-04-22 15:02:32Z jhb $");
 
 #include "dhcpd.h"
 
@@ -128,7 +128,7 @@ assemble_udp_ip_header(unsigned char *buf, int *bufix, u_int32_t from,
 	ip.ip_len = htons(sizeof(ip) + sizeof(udp) + len);
 	ip.ip_id = 0;
 	ip.ip_off = 0;
-	ip.ip_ttl = 16;
+	ip.ip_ttl = 128;
 	ip.ip_p = IPPROTO_UDP;
 	ip.ip_sum = 0;
 	ip.ip_src.s_addr = from;

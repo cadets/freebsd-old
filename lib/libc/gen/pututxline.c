@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/lib/libc/gen/pututxline.c 241046 2012-09-29 11:54:34Z jilles $");
+__FBSDID("$FreeBSD: head/lib/libc/gen/pututxline.c 249593 2013-04-17 21:08:15Z jilles $");
 
 #include "namespace.h"
 #include <sys/endian.h>
@@ -131,7 +131,8 @@ exact:
 	else
 		error = 0;
 	fclose(fp);
-	errno = error;
+	if (error != 0)
+		errno = error;
 	return (error == 0 ? 0 : 1);
 }
 
@@ -169,7 +170,8 @@ utx_active_remove(struct futx *fu)
 		}
 
 	fclose(fp);
-	errno = error;
+	if (ret != 0)
+		errno = error;
 	return (ret);
 }
 
@@ -225,7 +227,8 @@ utx_lastlogin_add(const struct futx *fu)
 		ret = -1;
 	}
 	fclose(fp);
-	errno = error;
+	if (ret == -1)
+		errno = error;
 	return (ret);
 }
 
@@ -277,7 +280,8 @@ utx_log_add(const struct futx *fu)
 	else
 		error = 0;
 	_close(fd);
-	errno = error;
+	if (error != 0)
+		errno = error;
 	return (error == 0 ? 0 : 1);
 }
 

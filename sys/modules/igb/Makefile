@@ -1,4 +1,4 @@
-#$FreeBSD: head/sys/modules/igb/Makefile 238148 2012-07-05 20:26:57Z jfv $
+#$FreeBSD: head/sys/modules/igb/Makefile 248906 2013-03-29 18:25:45Z jfv $
 .PATH:  ${.CURDIR}/../../dev/e1000
 KMOD    = if_igb
 SRCS    = device_if.h bus_if.h pci_if.h opt_inet.h
@@ -13,5 +13,11 @@ CFLAGS += -I${.CURDIR}/../../dev/e1000 -DSMP
 # DEVICE_POLLING gives you non-interrupt handling
 # not advisable since MSIX gives better results
 #CFLAGS  += -DDEVICE_POLLING
+
+# IGB_LEGACY_TX will override the stack if_transmit path and
+# instead use the older if_start non-multiqueue capable interface.
+# This might be desireable for testing, or to enable the use of
+# ALTQ. 
+#CFLAGS  += -DIGB_LEGACY_TX
 
 .include <bsd.kmod.mk>

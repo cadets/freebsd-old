@@ -59,7 +59,7 @@
  ******************************************************/
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/netinet/siftr.c 241913 2012-10-22 21:09:03Z glebius $");
+__FBSDID("$FreeBSD: head/sys/netinet/siftr.c 247906 2013-03-07 04:42:20Z lstewart $");
 
 #include <sys/param.h>
 #include <sys/alq.h>
@@ -1314,7 +1314,7 @@ siftr_manage_ops(uint8_t action)
 		 * flow seen and freeing any malloc'd memory.
 		 * The hash consists of an array of LISTs (man 3 queue).
 		 */
-		for (i = 0; i < siftr_hashmask; i++) {
+		for (i = 0; i <= siftr_hashmask; i++) {
 			LIST_FOREACH_SAFE(counter, counter_hash + i, nodes,
 			    tmp_counter) {
 				key = counter->key;

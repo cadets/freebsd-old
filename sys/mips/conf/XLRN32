@@ -15,7 +15,7 @@
 # If you are in doubt as to the purpose or necessity of a line, check first 
 # in NOTES.
 #
-# $FreeBSD: head/sys/mips/conf/XLRN32 233644 2012-03-29 02:54:35Z jmallett $
+# $FreeBSD: head/sys/mips/conf/XLRN32 249083 2013-04-04 07:12:24Z mav $
 
 machine 	mips mipsn32
 ident 		XLRN32
@@ -79,7 +79,6 @@ options 	INVARIANT_SUPPORT	#Extra sanity checks of internal structures, required
 
 device		pci
 #device		ata
-#device		atadisk
 #options 	XLR_PERFMON		# Enable XLR processor activity monitoring
 options  	BREAK_TO_DEBUGGER
 device 		uart

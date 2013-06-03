@@ -42,7 +42,7 @@
 static char sccsid[] = "@(#)regcomp.c	8.5 (Berkeley) 3/20/94";
 #endif /* LIBC_SCCS and not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/lib/libc/regex/regcomp.c 232601 2012-03-06 12:53:44Z theraven $");
+__FBSDID("$FreeBSD: head/lib/libc/regex/regcomp.c 247596 2013-03-01 23:26:13Z delphij $");
 
 #include <sys/types.h>
 #include <stdio.h>
@@ -1212,7 +1212,7 @@ CHaddrange(struct parse *p, cset *cs, wint_t min, wint_t max)
 	}
 	cs->ranges = newranges;
 	cs->ranges[cs->nranges].min = min;
-	cs->ranges[cs->nranges].min = max;
+	cs->ranges[cs->nranges].max = max;
 	cs->nranges++;
 }
 

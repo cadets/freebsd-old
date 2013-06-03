@@ -6,7 +6,7 @@
  * this stuff is worth it, you can buy me a beer in return.   Poul-Henning Kamp
  * ----------------------------------------------------------------------------
  *
- * $FreeBSD: head/sbin/recoverdisk/recoverdisk.c 246329 2013-02-04 19:17:15Z delphij $
+ * $FreeBSD: head/sbin/recoverdisk/recoverdisk.c 248279 2013-03-14 20:05:49Z delphij $
  */
 #include <sys/param.h>
 #include <sys/queue.h>
@@ -156,7 +156,7 @@ main(int argc, char * const argv[])
 	int error, state;
 	u_char *buf;
 	u_int sectorsize;
-	u_int stripesize;
+	off_t stripesize;
 	time_t t1, t2;
 	struct stat sb;
 	u_int n, snapshot = 60;

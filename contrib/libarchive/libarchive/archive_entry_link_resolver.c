@@ -24,7 +24,7 @@
  */
 
 #include "archive_platform.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_entry_link_resolver.c 238856 2012-07-28 06:38:44Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_entry_link_resolver.c 248616 2013-03-22 13:36:03Z mm $");
 
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
@@ -244,6 +244,9 @@ archive_entry_linkify(struct archive_entry_linkresolver *res,
 			 * for future use.
 			 */
 			le = insert_entry(res, *e);
+			if (le == NULL)
+				/* XXX We should return an error code XXX */
+				return;
 			le->entry = *e;
 			*e = NULL;
 		}

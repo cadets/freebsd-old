@@ -1,5 +1,5 @@
 #	from: @(#)bsd.prog.mk   5.26 (Berkeley) 6/25/91
-# $FreeBSD: head/share/mk/bsd.prog.mk 245515 2013-01-16 23:21:04Z brooks $
+# $FreeBSD: head/share/mk/bsd.prog.mk 248753 2013-03-26 20:32:46Z emaste $
 
 .include <bsd.init.mk>
 
@@ -41,6 +41,7 @@ PROG=	${PROG_CXX}
 .endif
 
 .if defined(PROG)
+PROGNAME?=	${PROG}
 .if defined(SRCS)
 
 OBJS+=  ${SRCS:N*.h:R:S/$/.o/g}
@@ -73,7 +74,7 @@ SRCS=	${PROG}.c
 # - the name of the object gets put into the executable symbol table instead of
 #   the name of a variable temporary object.
 # - it's useful to keep objects around for crunching.
-OBJS=	${PROG}.o
+OBJS+=	${PROG}.o
 
 .if target(beforelinking)
 beforelinking: ${OBJS}
@@ -196,13 +197,8 @@ realinstall: _proginstall
 .ORDER: beforeinstall _proginstall
 _proginstall:
 .if defined(PROG)
-.if defined(PROGNAME)
 	${INSTALL} ${STRIP} -o ${BINOWN} -g ${BINGRP} -m ${BINMODE} \
 	    ${_INSTALLFLAGS} ${PROG} ${DESTDIR}${BINDIR}/${PROGNAME}
-.else
-	${INSTALL} ${STRIP} -o ${BINOWN} -g ${BINGRP} -m ${BINMODE} \
-	    ${_INSTALLFLAGS} ${PROG} ${DESTDIR}${BINDIR}
-.endif
 .endif
 .endif	# !target(realinstall)
 

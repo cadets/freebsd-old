@@ -30,7 +30,7 @@
 .\" SUCH DAMAGE.
 .\"
 .\"	@(#)queue.3	8.2 (Berkeley) 1/24/94
-.\" $FreeBSD: head/share/man/man3/queue.3 240422 2012-09-12 21:03:48Z ed $
+.\" $FreeBSD: head/share/man/man3/queue.3 250400 2013-05-09 02:04:28Z eadler $
 .\"
 .Dd Sep 12, 2012
 .Dt QUEUE 3
@@ -404,7 +404,8 @@ The macro
 .Nm SLIST_REMOVE_AFTER
 removes the element after
 .Fa elm
-from the list. Unlike
+from the list.
+Unlike
 .Fa SLIST_REMOVE ,
 this macro does not traverse the entire list.
 .Pp
@@ -595,7 +596,8 @@ The macro
 .Nm STAILQ_REMOVE_AFTER
 removes the element after
 .Fa elm
-from the tail queue. Unlike
+from the tail queue.
+Unlike
 .Fa STAILQ_REMOVE ,
 this macro does not traverse the entire tail queue.
 .Pp

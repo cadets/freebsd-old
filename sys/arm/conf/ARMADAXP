@@ -1,7 +1,7 @@
 #
 # Custom kernel for Marvell Armada XP
 #
-# $FreeBSD: head/sys/arm/conf/ARMADAXP 240572 2012-09-16 19:48:48Z jmg $
+# $FreeBSD: head/sys/arm/conf/ARMADAXP 249083 2013-04-04 07:12:24Z mav $
 #
 
 ident		MV-88F78XX0
@@ -76,7 +76,6 @@ device		da
 
 # SATA
 device		ata
-device		atadisk
 #device		mvs
 
 # Serial ports

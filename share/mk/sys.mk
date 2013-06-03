@@ -1,5 +1,5 @@
 #	from: @(#)sys.mk	8.2 (Berkeley) 3/21/94
-# $FreeBSD: head/share/mk/sys.mk 245269 2013-01-10 22:44:19Z des $
+# $FreeBSD: head/share/mk/sys.mk 249057 2013-04-03 16:20:21Z sjg $
 
 unix		?=	We run FreeBSD, not UNIX.
 .FreeBSD	?=	true
@@ -362,6 +362,9 @@ OBJFORMAT?=	elf
 
 # Tell bmake to expand -V VAR by default
 .MAKE.EXPAND_VARIABLES= yes
+
+# Tell bmake the makefile preference
+.MAKE.MAKEFILE_PREFERENCE?= BSDmakefile makefile Makefile
 
 .if !defined(.PARSEDIR)
 # We are not bmake, which is more aggressive about searching .PATH

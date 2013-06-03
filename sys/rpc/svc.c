@@ -34,7 +34,7 @@ static char *sccsid2 = "@(#)svc.c 1.44 88/02/08 Copyr 1984 Sun Micro";
 static char *sccsid = "@(#)svc.c	2.4 88/08/11 4.0 RPCSRC";
 #endif
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/rpc/svc.c 243882 2012-12-05 08:04:20Z glebius $");
+__FBSDID("$FreeBSD: head/sys/rpc/svc.c 248195 2013-03-12 12:17:19Z glebius $");
 
 /*
  * svc.c, Server-side remote procedure call interface.
@@ -563,9 +563,7 @@ svc_sendreply(struct svc_req *rqstp, xdrproc_t xdr_results, void * xdr_location)
 	rply.acpted_rply.ar_results.where = NULL;
 	rply.acpted_rply.ar_results.proc = (xdrproc_t) xdr_void;
 
-	MGET(m, M_WAITOK, MT_DATA);
-	MCLGET(m, M_WAITOK);
-	m->m_len = 0;
+	m = m_getcl(M_WAITOK, MT_DATA, 0);
 	xdrmbuf_create(&xdrs, m, XDR_ENCODE);
 	ok = xdr_results(&xdrs, xdr_location);
 	XDR_DESTROY(&xdrs);

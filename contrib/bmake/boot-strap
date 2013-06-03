@@ -159,6 +159,9 @@ source_rc() {
 
 cmd_args="$@"
 
+# clear some things from the environment that we care about
+unset MAKEOBJDIR MAKEOBJDIRPREFIX
+
 # --install[-host-target] will set this
 INSTALL_PREFIX=
 # other things we pass to install step

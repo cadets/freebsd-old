@@ -24,7 +24,7 @@
  */
 
 #include "archive_platform.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_write_set_format_by_name.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_write_set_format_by_name.c 248616 2013-03-22 13:36:03Z mm $");
 
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
@@ -56,8 +56,10 @@ struct { const char *name; int (*setter)(struct archive *); } names[] =
 	{ "iso",	archive_write_set_format_iso9660 },
 	{ "iso9660",	archive_write_set_format_iso9660 },
 	{ "mtree",	archive_write_set_format_mtree },
+	{ "mtree-classic",	archive_write_set_format_mtree_classic },
 	{ "newc",	archive_write_set_format_cpio_newc },
 	{ "odc",	archive_write_set_format_cpio },
+	{ "oldtar",	archive_write_set_format_v7tar },
 	{ "pax",	archive_write_set_format_pax },
 	{ "paxr",	archive_write_set_format_pax_restricted },
 	{ "posix",	archive_write_set_format_pax },
@@ -65,6 +67,8 @@ struct { const char *name; int (*setter)(struct archive *); } names[] =
 	{ "shar",	archive_write_set_format_shar },
 	{ "shardump",	archive_write_set_format_shar_dump },
 	{ "ustar",	archive_write_set_format_ustar },
+	{ "v7tar",	archive_write_set_format_v7tar },
+	{ "v7",		archive_write_set_format_v7tar },
 	{ "xar",	archive_write_set_format_xar },
 	{ "zip",	archive_write_set_format_zip },
 	{ NULL,		NULL }

@@ -1,4 +1,4 @@
-/* $FreeBSD: head/lib/bind/config.h 243981 2012-12-07 12:39:58Z erwin $ */
+/* $FreeBSD: head/lib/bind/config.h 248788 2013-03-27 10:11:43Z erwin $ */
 
 /* config.h.  Generated from config.h.in by configure.  */
 /* config.h.in.  Generated from configure.in by autoheader.  */
@@ -285,9 +285,6 @@ int sigwait(const unsigned int *set, int *sig);
 
 /* Define if your OpenSSL version supports GOST. */
 /* #undef HAVE_OPENSSL_GOST */
-
-/* Define to 1 if you have the <regex.h> header file. */
-#define HAVE_REGEX_H 1
 
 /* Define to 1 if you have the `setegid' function. */
 #define HAVE_SETEGID 1

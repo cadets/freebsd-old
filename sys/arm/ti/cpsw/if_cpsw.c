@@ -44,7 +44,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/ti/cpsw/if_cpsw.c 246276 2013-02-03 01:08:01Z kientzle $");
+__FBSDID("$FreeBSD: head/sys/arm/ti/cpsw/if_cpsw.c 248407 2013-03-17 03:04:43Z ian $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -327,7 +327,7 @@ cpsw_debugf(const char *fmt, ...)
 #define	cpsw_cpdma_bd_offset(i)	(CPSW_CPPI_RAM_OFFSET + ((i)*16))
 
 #define	cpsw_cpdma_bd_paddr(sc, slot)				\
-	(slot->bd_offset + vtophys(rman_get_start(sc->res[0])))
+	BUS_SPACE_PHYSADDR(sc->res[0], slot->bd_offset)
 #define	cpsw_cpdma_read_bd(sc, slot, val)				\
 	bus_read_region_4(sc->res[0], slot->bd_offset, (uint32_t *) val, 4)
 #define	cpsw_cpdma_write_bd(sc, slot, val)				\

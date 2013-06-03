@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/kern_exit.c 246484 2013-02-07 15:34:22Z kib $");
+__FBSDID("$FreeBSD: head/sys/kern/kern_exit.c 247602 2013-03-02 00:53:12Z pjd $");
 
 #include "opt_compat.h"
 #include "opt_kdtrace.h"
@@ -297,7 +297,7 @@ exit1(struct thread *td, int rv)
 	 * Close open files and release open-file table.
 	 * This may block!
 	 */
-	fdfree(td);
+	fdescfree(td);
 
 	/*
 	 * If this thread tickled GEOM, we need to wait for the giggling to

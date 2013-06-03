@@ -26,7 +26,7 @@
  * SUCH DAMAGE.
  *
  *	from BSDI Id: mutex.h,v 2.7.2.35 2000/04/27 03:10:26 cp
- * $FreeBSD: head/sys/sys/lock.h 242988 2012-11-13 18:24:47Z attilio $
+ * $FreeBSD: head/sys/sys/lock.h 250411 2013-05-09 16:28:18Z marcel $
  */
 
 #ifndef _SYS_LOCK_H_
@@ -79,6 +79,7 @@ struct lock_class {
 #define	LO_SLEEPABLE	0x00100000	/* Lock may be held while sleeping. */
 #define	LO_UPGRADABLE	0x00200000	/* Lock may be upgraded/downgraded. */
 #define	LO_DUPOK	0x00400000	/* Don't check for duplicate acquires */
+#define	LO_IS_VNODE	0x00800000	/* Tell WITNESS about a VNODE lock */
 #define	LO_CLASSMASK	0x0f000000	/* Class index bitmask. */
 #define LO_NOPROFILE    0x10000000      /* Don't profile this lock */
 

@@ -1,4 +1,4 @@
-# $FreeBSD: head/usr.bin/clang/llvm-ranlib/Makefile 246705 2013-02-12 05:56:00Z andrew $
+# $FreeBSD: head/usr.bin/clang/llvm-ranlib/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
@@ -6,7 +6,6 @@ PROG_CXX=llvm-ranlib
 
 SRCDIR=	tools/llvm-ranlib
 SRCS=	llvm-ranlib.cpp
-LLVM_REQUIRES_EH=
 
 LIBDEPS=llvmarchive \
 	llvmbitreader \

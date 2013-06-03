@@ -34,7 +34,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)conf.h	8.5 (Berkeley) 1/9/95
- * $FreeBSD: head/sys/sys/conf.h 242439 2012-11-01 17:01:05Z alfred $
+ * $FreeBSD: head/sys/sys/conf.h 248792 2013-03-27 11:34:27Z kib $
  */
 
 #ifndef _SYS_CONF_H_
@@ -167,6 +167,7 @@ typedef int dumper_t(
 #define	D_MMAP_ANON	0x00100000	/* special treatment in vm_mmap.c */
 #define	D_NEEDGIANT	0x00400000	/* driver want Giant */
 #define	D_NEEDMINOR	0x00800000	/* driver uses clone_create() */
+#define	D_UNMAPPED_IO   0x01000000	/* d_strategy can accept unmapped IO */
 
 /*
  * Version numbers.
@@ -254,6 +255,7 @@ void	dev_ref(struct cdev *dev);
 void	dev_refl(struct cdev *dev);
 void	dev_rel(struct cdev *dev);
 void	dev_strategy(struct cdev *dev, struct buf *bp);
+void	dev_strategy_csw(struct cdev *dev, struct cdevsw *csw, struct buf *bp);
 struct cdev *make_dev(struct cdevsw *_devsw, int _unit, uid_t _uid, gid_t _gid,
 		int _perms, const char *_fmt, ...) __printflike(6, 7);
 struct cdev *make_dev_cred(struct cdevsw *_devsw, int _unit,

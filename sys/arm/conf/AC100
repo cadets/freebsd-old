@@ -1,7 +1,7 @@
 #
 # Custom kernel for Toshiba AC100
 #
-# $FreeBSD: head/sys/arm/conf/AC100 240596 2012-09-17 09:22:59Z andrew $
+# $FreeBSD: head/sys/arm/conf/AC100 249083 2013-04-04 07:12:24Z mav $
 #
 
 ident		AC100
@@ -76,7 +76,6 @@ device		md
 
 # SATA
 #device		ata
-#device		atadisk
 #device		mvs
 
 # Serial ports

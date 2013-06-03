@@ -32,7 +32,7 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGES.
  *
- * $FreeBSD: head/sys/dev/ath/ath_hal/ar9003/ar9300_devid.h 239604 2012-08-23 03:03:00Z adrian $
+ * $FreeBSD: head/sys/dev/ath/ath_hal/ar9003/ar9300_devid.h 250166 2013-05-02 00:59:39Z adrian $
  *
  */
 #ifndef	__AR9300_DEVID_H__
@@ -48,6 +48,7 @@
 #define	AR_SREV_VERSION_AR9380		0x1C0
 #define	AR_SREV_VERSION_AR9580		0x1C0
 #define	AR_SREV_VERSION_AR9460		0x280
+#define	AR_SREV_VERSION_QCA9565		0x2c0
 
 #define	AR_SREV_VERSION_AR9330		0x200
 #define	AR_SREV_VERSION_AR9340		0x300

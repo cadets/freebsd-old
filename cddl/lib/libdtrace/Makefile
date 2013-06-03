@@ -1,4 +1,4 @@
-# $FreeBSD: head/cddl/lib/libdtrace/Makefile 245561 2013-01-17 17:27:10Z brooks $
+# $FreeBSD: head/cddl/lib/libdtrace/Makefile 250574 2013-05-12 16:26:33Z markj $
 
 .PATH: ${.CURDIR}/../../../cddl/contrib/opensolaris/lib/libdtrace/common
 .PATH: ${.CURDIR}/../../../cddl/contrib/opensolaris/lib/libgen/common
@@ -31,7 +31,9 @@ SRCS=		dt_aggregate.c \
 		dt_parser.c \
 		dt_pcb.c \
 		dt_pid.c \
+		dt_pq.c \
 		dt_pragma.c \
+		dt_print.c \
 		dt_printf.c \
 		dt_proc.c \
 		dt_program.c \

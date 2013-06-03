@@ -1,4 +1,4 @@
-/* $FreeBSD: head/usr.bin/grep/regex/tre-fastmatch.c 246917 2013-02-17 19:48:23Z markj $ */
+/* $FreeBSD: head/usr.bin/grep/regex/tre-fastmatch.c 248214 2013-03-12 19:18:10Z markj $ */
 
 /*-
  * Copyright (c) 1999 James Howard and Dag-Erling Coïdan Smørgrav
@@ -103,7 +103,7 @@ static int	fastcmp(const fastmatch_t *fg, const void *data,
   ((!fg->reversed							\
     ? ((type == STR_WIDE) ? ((j + fg->wlen) > len)			\
 			  : ((j + fg->len) > len))			\
-    : (j <= 0)))
+    : (j < 0)))
 
 /*
  * Checks whether the new position after shifting in the input string

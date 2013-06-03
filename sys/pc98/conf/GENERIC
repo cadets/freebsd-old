@@ -16,7 +16,7 @@
 # If you are in doubt as to the purpose or necessity of a line, check first
 # in NOTES.
 #
-# $FreeBSD: head/sys/pc98/conf/GENERIC 246222 2013-02-01 20:17:11Z eadler $
+# $FreeBSD: head/sys/pc98/conf/GENERIC 249083 2013-04-04 07:12:24Z mav $
 
 cpu		I486_CPU
 cpu		I586_CPU
@@ -83,7 +83,6 @@ device		fdc
 # ATA controllers
 device		ahci		# AHCI-compatible SATA controllers
 device		ata		# Legacy ATA/SATA controllers
-options 	ATA_CAM		# Handle legacy controllers with CAM
 options 	ATA_STATIC_ID	# Static device numbering
 device		mvs		# Marvell 88SX50XX/88SX60XX/88SX70XX/SoC SATA
 device		siis		# SiliconImage SiI3124/SiI3132/SiI3531 SATA

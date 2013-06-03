@@ -28,7 +28,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/netinet6/ip6_ipsec.c 241913 2012-10-22 21:09:03Z glebius $");
+__FBSDID("$FreeBSD: head/sys/netinet6/ip6_ipsec.c 249294 2013-04-09 07:11:22Z ae $");
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
@@ -149,7 +149,7 @@ ip6_ipsec_fwd(struct mbuf *m)
 	error = ipsec_in_reject(sp, m);
 	KEY_FREESP(&sp);
 	if (error) {
-		V_ip6stat.ip6s_cantforward++;
+		IP6STAT_INC(ip6s_cantforward);
 		return 1;
 	}
 #endif /* IPSEC */

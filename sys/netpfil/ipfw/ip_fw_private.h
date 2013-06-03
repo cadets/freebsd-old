@@ -22,7 +22,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/netpfil/ipfw/ip_fw_private.h 244634 2012-12-23 18:35:42Z melifaro $
+ * $FreeBSD: head/sys/netpfil/ipfw/ip_fw_private.h 248491 2013-03-19 06:04:17Z ae $
  */
 
 #ifndef _IPFW2_PRIVATE_H
@@ -278,10 +278,12 @@ struct sockopt;	/* used by tcp_var.h */
 #define	IPFW_RLOCK_ASSERT(_chain)	rw_assert(&(_chain)->rwmtx, RA_RLOCKED)
 #define	IPFW_WLOCK_ASSERT(_chain)	rw_assert(&(_chain)->rwmtx, RA_WLOCKED)
 
-#define IPFW_RLOCK(p) rw_rlock(&(p)->rwmtx)
-#define IPFW_RUNLOCK(p) rw_runlock(&(p)->rwmtx)
-#define IPFW_WLOCK(p) rw_wlock(&(p)->rwmtx)
-#define IPFW_WUNLOCK(p) rw_wunlock(&(p)->rwmtx)
+#define	IPFW_RLOCK(p)			rw_rlock(&(p)->rwmtx)
+#define	IPFW_RUNLOCK(p)			rw_runlock(&(p)->rwmtx)
+#define	IPFW_WLOCK(p)			rw_wlock(&(p)->rwmtx)
+#define	IPFW_WUNLOCK(p)			rw_wunlock(&(p)->rwmtx)
+#define	IPFW_PF_RLOCK(p)		IPFW_RLOCK(p)
+#define	IPFW_PF_RUNLOCK(p)		IPFW_RUNLOCK(p)
 
 #define	IPFW_UH_RLOCK_ASSERT(_chain)	rw_assert(&(_chain)->uh_lock, RA_RLOCKED)
 #define	IPFW_UH_WLOCK_ASSERT(_chain)	rw_assert(&(_chain)->uh_lock, RA_WLOCKED)

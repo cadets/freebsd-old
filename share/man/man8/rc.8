@@ -33,7 +33,7 @@
 .\" SUCH DAMAGE.
 .\"
 .\"     @(#)rc.8	8.2 (Berkeley) 12/11/93
-.\" $FreeBSD: head/share/man/man8/rc.8 235873 2012-05-24 02:24:03Z wblock $
+.\" $FreeBSD: head/share/man/man8/rc.8 250968 2013-05-24 14:57:38Z jamie $
 .\"
 .Dd January 14, 2012
 .Dt RC 8
@@ -124,7 +124,9 @@ Load the configuration files.
 Determine if booting in a jail,
 and add
 .Dq Li nojail
-to the list of KEYWORDS to skip in
+(no jails allowed) or
+.Dq Li nojailvnet
+(only allow vnet-enabled jails) to the list of KEYWORDS to skip in
 .Xr rcorder 8 .
 .It
 Invoke

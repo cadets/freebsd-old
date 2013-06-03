@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_empty_write.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_empty_write.c 248616 2013-03-22 13:36:03Z mm $");
 
 DEFINE_TEST(test_empty_write)
 {
@@ -40,11 +40,14 @@ DEFINE_TEST(test_empty_write)
 	/* Create a new archive in memory. */
 	assert((a = archive_write_new()) != NULL);
 	assertA(0 == archive_write_set_format_ustar(a));
-	r = archive_write_set_compression_gzip(a);
-	if (r == ARCHIVE_FATAL) {
+	r = archive_write_add_filter_gzip(a);
+	if (r != ARCHIVE_OK && !canGzip()) {
 		skipping("Empty write to gzip-compressed archive");
 	} else {
-		assertEqualIntA(a, ARCHIVE_OK, r);
+		if (r != ARCHIVE_OK && canGzip())
+			assertEqualIntA(a, ARCHIVE_WARN, r);
+		else
+			assertEqualIntA(a, ARCHIVE_OK, r);
 		assertEqualIntA(a, ARCHIVE_OK,
 		    archive_write_open_memory(a, buff, sizeof(buff), &used));
 		/* Write a file to it. */
@@ -71,11 +74,14 @@ DEFINE_TEST(test_empty_write)
 	/* Create a new archive in memory. */
 	assert((a = archive_write_new()) != NULL);
 	assertA(0 == archive_write_set_format_ustar(a));
-	r = archive_write_set_compression_bzip2(a);
-	if (r == ARCHIVE_FATAL) {
+	r = archive_write_add_filter_bzip2(a);
+	if (r != ARCHIVE_OK && !canBzip2()) {
 		skipping("Empty write to bzip2-compressed archive");
 	} else {
-		assertEqualIntA(a, ARCHIVE_OK, r);
+		if (r != ARCHIVE_OK && canBzip2())
+			assertEqualIntA(a, ARCHIVE_WARN, r);
+		else
+			assertEqualIntA(a, ARCHIVE_OK, r);
 		assertEqualIntA(a, ARCHIVE_OK,
 		    archive_write_open_memory(a, buff, sizeof(buff), &used));
 		/* Write a file to it. */
@@ -101,7 +107,7 @@ DEFINE_TEST(test_empty_write)
 	/* Create a new archive in memory. */
 	assert((a = archive_write_new()) != NULL);
 	assertA(0 == archive_write_set_format_ustar(a));
-	assertA(0 == archive_write_set_compression_none(a));
+	assertA(0 == archive_write_add_filter_none(a));
 	assertA(0 == archive_write_open_memory(a, buff, sizeof(buff), &used));
 	/* Write a file to it. */
 	assert((ae = archive_entry_new()) != NULL);

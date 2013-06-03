@@ -1,8 +1,8 @@
-/*	$FreeBSD: head/usr.bin/sort/mem.h 235267 2012-05-11 12:37:16Z gabor $	*/
+/*	$FreeBSD: head/usr.bin/sort/mem.h 251245 2013-06-02 09:43:48Z gabor $	*/
 
 /*-
  * Copyright (C) 2009 Gabor Kovesdan <gabor@FreeBSD.org>
- * Copyright (C) 2012 Oleg Moskalenko <oleg.moskalenko@citrix.com>
+ * Copyright (C) 2012 Oleg Moskalenko <mom040267@gmail.com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without

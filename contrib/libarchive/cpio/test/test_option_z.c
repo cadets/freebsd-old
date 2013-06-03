@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/cpio/test/test_option_z.c 228763 2011-12-21 11:13:29Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/cpio/test/test_option_z.c 248616 2013-03-22 13:36:03Z mm $");
 
 DEFINE_TEST(test_option_z)
 {
@@ -40,9 +40,8 @@ DEFINE_TEST(test_option_z)
 	p = slurpfile(&s, "archive.err");
 	p[s] = '\0';
 	if (r != 0) {
-		if (strstr(p, "compression not available") != NULL) {
-			skipping("This version of bsdcpio was compiled "
-			    "without gzip support");
+		if (!canGzip()) {
+			skipping("gzip is not supported on this platform");
 			return;
 		}
 		failure("-z option is broken");

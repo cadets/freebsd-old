@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/compat/linux/linux_socket.c 245849 2013-01-23 21:44:48Z jhb $");
+__FBSDID("$FreeBSD: head/sys/compat/linux/linux_socket.c 247764 2013-03-04 02:21:34Z eadler $");
 
 /* XXX we use functions that might not exist. */
 #include "opt_compat.h"
@@ -1443,10 +1443,8 @@ out:
 
 bad:
 	free(iov, M_IOV);
-	if (control != NULL)
-		m_freem(control);
-	if (linux_cmsg != NULL)
-		free(linux_cmsg, M_TEMP);
+	m_freem(control);
+	free(linux_cmsg, M_TEMP);
 
 	return (error);
 }

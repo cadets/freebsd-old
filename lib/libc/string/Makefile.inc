@@ -1,5 +1,5 @@
 #	@(#)Makefile.inc	8.1 (Berkeley) 6/4/93
-# $FreeBSD: head/lib/libc/string/Makefile.inc 246766 2013-02-13 15:46:33Z zeising $
+# $FreeBSD: head/lib/libc/string/Makefile.inc 247899 2013-03-06 19:59:42Z zeising $
 
 .PATH: ${.CURDIR}/${LIBC_ARCH}/string ${.CURDIR}/string
 
@@ -46,7 +46,8 @@ MLINKS+=strcasecmp.3 strncasecmp.3 \
 	strcasecmp.3 strcasecmp_l.3 \
 	strcasecmp.3 strncasecmp_l.3
 MLINKS+=strcat.3 strncat.3
-MLINKS+=strchr.3 strrchr.3
+MLINKS+=strchr.3 strrchr.3 \
+	strchr.3 strchrnul.3
 MLINKS+=strcmp.3 strncmp.3
 MLINKS+=strcoll.3 strcoll_l.3
 MLINKS+=strcpy.3 stpcpy.3 \

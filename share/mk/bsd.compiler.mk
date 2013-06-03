@@ -1,4 +1,4 @@
-# $FreeBSD: head/share/mk/bsd.compiler.mk 242658 2012-11-06 07:51:20Z dim $
+# $FreeBSD: head/share/mk/bsd.compiler.mk 247527 2013-03-01 03:25:43Z brooks $
 
 .if !defined(COMPILER_TYPE)
 . if ${CC:T:Mgcc*}
@@ -14,7 +14,7 @@ COMPILER_TYPE:=	gcc
 .  elif ${_COMPILER_VERSION:Mclang}
 COMPILER_TYPE:=	clang
 .  else
-.error Unable to determine compiler type for ${CC}
+.error Unable to determine compiler type for ${CC}.  Consider setting COMPILER_TYPE.
 .  endif
 .  undef _COMPILER_VERSION
 . endif

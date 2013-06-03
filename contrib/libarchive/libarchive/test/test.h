@@ -22,7 +22,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/contrib/libarchive/libarchive/test/test.h 238856 2012-07-28 06:38:44Z mm $
+ * $FreeBSD: head/contrib/libarchive/libarchive/test/test.h 248616 2013-03-22 13:36:03Z mm $
  */
 
 /* Every test program should #include "test.h" as the first thing. */
@@ -266,11 +266,32 @@ void sleepUntilAfter(time_t);
 /* Return true if this platform can create symlinks. */
 int canSymlink(void);
 
+/* Return true if this platform can run the "bzip2" program. */
+int canBzip2(void);
+
+/* Return true if this platform can run the "grzip" program. */
+int canGrzip(void);
+
 /* Return true if this platform can run the "gzip" program. */
 int canGzip(void);
 
-/* Return true if this platform can run the "gunzip" program. */
-int canGunzip(void);
+/* Return true if this platform can run the specified command. */
+int canRunCommand(const char *);
+
+/* Return true if this platform can run the "lrzip" program. */
+int canLrzip(void);
+
+/* Return true if this platform can run the "lzip" program. */
+int canLzip(void);
+
+/* Return true if this platform can run the "lzma" program. */
+int canLzma(void);
+
+/* Return true if this platform can run the "lzop" program. */
+int canLzop(void);
+
+/* Return true if this platform can run the "xz" program. */
+int canXz(void);
 
 /* Return true if this filesystem can handle nodump flags. */
 int canNodump(void);
@@ -284,6 +305,11 @@ char *slurpfile(size_t *, const char *fmt, ...);
 
 /* Extracts named reference file to the current directory. */
 void extract_reference_file(const char *);
+
+/* Extracts a list of files to the current directory.
+ * List must be NULL terminated.
+ */
+void extract_reference_files(const char **);
 
 /* Path to working directory for current test */
 const char *testworkdir;

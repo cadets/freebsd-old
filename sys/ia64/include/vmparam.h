@@ -35,7 +35,7 @@
  *
  *	@(#)vmparam.h	8.2 (Berkeley) 4/22/94
  *
- * $FreeBSD: head/sys/ia64/include/vmparam.h 247251 2013-02-25 02:41:38Z marcel $
+ * $FreeBSD: head/sys/ia64/include/vmparam.h 250338 2013-05-07 22:46:24Z attilio $
  */
 
 #ifndef	_MACHINE_VMPARAM_H_
@@ -101,13 +101,6 @@
  * use of the identity mappings in region 7 by UMA.
  */
 #define	VM_NFREEORDER		16
-
-/*
- * Only one memory domain.
- */
-#ifndef VM_NDOMAIN
-#define	VM_NDOMAIN		1
-#endif
 
 /*
  * Disable superpage reservations.

@@ -1,4 +1,4 @@
-# $FreeBSD: head/gnu/usr.bin/diff/Makefile 239360 2012-08-17 18:20:38Z obrien $
+# $FreeBSD: head/gnu/usr.bin/diff/Makefile 250860 2013-05-21 17:28:19Z marcel $
 
 DIFFSRC=${.CURDIR}/../../../contrib/diff/src
 .PATH: ${DIFFSRC} \
@@ -17,10 +17,10 @@ CFLAGS+=-funsigned-char
 
 CFLAGS+=-DHAVE_CONFIG_H
 CFLAGS+=-DPR_PROGRAM=\"/usr/bin/pr\"
-CFLAGS+=-I${DESTDIR}/usr/include/gnu
 CFLAGS+=-I${.CURDIR}/../../../contrib/diff
 CFLAGS+=-I${.CURDIR}/../../../contrib/diff/src
 CFLAGS+=-I${.CURDIR}/../../../contrib/diff/lib
+CFLAGS+=-I${.CURDIR}/../../lib/libregex
 
 SUBDIR+=doc
 

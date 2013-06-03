@@ -21,7 +21,7 @@
  *
  * Portions Copyright 2012,2013 Justin Hibbits <jhibbits@freebsd.org>
  *
- * $FreeBSD: head/sys/cddl/dev/dtrace/powerpc/dtrace_isa.c 246275 2013-02-03 00:19:34Z jhibbits $
+ * $FreeBSD: head/sys/cddl/dev/dtrace/powerpc/dtrace_isa.c 248457 2013-03-18 05:30:18Z jhibbits $
  */
 /*
  * Copyright 2005 Sun Microsystems, Inc.  All rights reserved.
@@ -558,6 +558,20 @@ uint64_t
 dtrace_fuword64(void *uaddr)
 {
 	uint64_t ret = 0;
+
+	if (dtrace_copycheck((uintptr_t)uaddr, (uintptr_t)&ret, sizeof(ret))) {
+		if (copyin((const void *)uaddr, (void *)&ret, sizeof(ret))) {
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_BADADDR);
+			cpu_core[curcpu].cpuc_dtrace_illval = (uintptr_t)uaddr;
+		}
+	}
+	return ret;
+}
+
+uintptr_t
+dtrace_fulword(void *uaddr)
+{
+	uintptr_t ret = 0;
 
 	if (dtrace_copycheck((uintptr_t)uaddr, (uintptr_t)&ret, sizeof(ret))) {
 		if (copyin((const void *)uaddr, (void *)&ret, sizeof(ret))) {

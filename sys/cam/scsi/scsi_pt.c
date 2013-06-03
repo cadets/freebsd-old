@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/cam/scsi/scsi_pt.c 241952 2012-10-23 16:03:00Z mav $");
+__FBSDID("$FreeBSD: head/sys/cam/scsi/scsi_pt.c 250460 2013-05-10 16:41:26Z eadler $");
 
 #include <sys/param.h>
 #include <sys/queue.h>
@@ -455,7 +455,7 @@ ptstart(struct cam_periph *periph, union ccb *start_ccb)
 		start_ccb->ccb_h.ccb_state = PT_CCB_BUFFER_IO_UA;
 
 		/*
-		 * Block out any asyncronous callbacks
+		 * Block out any asynchronous callbacks
 		 * while we touch the pending ccb list.
 		 */
 		LIST_INSERT_HEAD(&softc->pending_ccbs, &start_ccb->ccb_h,
@@ -549,7 +549,7 @@ ptdone(struct cam_periph *periph, union ccb *done_ccb)
 		}
 
 		/*
-		 * Block out any asyncronous callbacks
+		 * Block out any asynchronous callbacks
 		 * while we touch the pending ccb list.
 		 */
 		LIST_REMOVE(&done_ccb->ccb_h, periph_links.le);

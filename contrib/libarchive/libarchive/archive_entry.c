@@ -24,7 +24,7 @@
  */
 
 #include "archive_platform.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_entry.c 238856 2012-07-28 06:38:44Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_entry.c 248616 2013-03-22 13:36:03Z mm $");
 
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
@@ -1448,6 +1448,9 @@ static struct flag {
 #ifdef UF_NOUNLINK
 	{ "nouunlnk",	L"nouunlnk",		UF_NOUNLINK,	0 },
 	{ "nouunlink",	L"nouunlink",		UF_NOUNLINK,	0 },
+#endif
+#ifdef UF_COMPRESSED
+	{ "nocompressed",L"nocompressed",	UF_COMPRESSED,	0 },
 #endif
 #ifdef EXT2_UNRM_FL
         { "nouunlink",	L"nouunlink",		EXT2_UNRM_FL,	0},

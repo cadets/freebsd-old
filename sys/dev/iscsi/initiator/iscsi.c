@@ -29,7 +29,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/iscsi/initiator/iscsi.c 241394 2012-10-10 08:36:38Z kevlo $");
+__FBSDID("$FreeBSD: head/sys/dev/iscsi/initiator/iscsi.c 247602 2013-03-02 00:53:12Z pjd $");
 
 #include "opt_iscsi_initiator.h"
 
@@ -387,11 +387,11 @@ i_setsoc(isc_session_t *sp, int fd, struct thread *td)
      if(sp->soc != NULL)
 	  isc_stop_receiver(sp);
 
-     error = fget(td, fd, CAP_SOCK_ALL, &sp->fp);
+     error = fget(td, fd, CAP_SOCK_CLIENT, &sp->fp);
      if(error)
 	  return error;
 
-     if((error = fgetsock(td, fd, CAP_SOCK_ALL, &sp->soc, 0)) == 0) {
+     if((error = fgetsock(td, fd, CAP_SOCK_CLIENT, &sp->soc, 0)) == 0) {
 	  sp->td = td;
 	  isc_start_receiver(sp);
      }

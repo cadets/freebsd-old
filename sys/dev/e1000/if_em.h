@@ -30,7 +30,7 @@
   POSSIBILITY OF SUCH DAMAGE.
 
 ******************************************************************************/
-/*$FreeBSD: head/sys/dev/e1000/if_em.h 228387 2011-12-10 07:08:52Z jfv $*/
+/*$FreeBSD: head/sys/dev/e1000/if_em.h 250414 2013-05-09 17:07:30Z luigi $*/
 
 
 #ifndef _EM_H_DEFINED_
@@ -429,6 +429,7 @@ struct adapter {
 	struct em_int_delay_info tx_abs_int_delay;
 	struct em_int_delay_info rx_int_delay;
 	struct em_int_delay_info rx_abs_int_delay;
+	struct em_int_delay_info tx_itr;
 
 	/* Misc stats maintained by the driver */
 	unsigned long	dropped_pkts;

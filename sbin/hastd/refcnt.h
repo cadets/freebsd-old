@@ -26,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sbin/hastd/refcnt.h 246922 2013-02-17 21:12:34Z pjd $
+ * $FreeBSD: head/sbin/hastd/refcnt.h 249970 2013-04-27 05:06:25Z ed $
  */
 
 #ifndef __REFCNT_H__
@@ -36,15 +36,24 @@
 
 #include "pjdlog.h"
 
+typedef unsigned int refcnt_t;
+
 static __inline void
-refcnt_acquire(volatile unsigned int *count)
+refcnt_init(refcnt_t *count, unsigned int v)
+{
+
+	*count = v;
+}
+
+static __inline void
+refcnt_acquire(refcnt_t *count)
 {
 
 	atomic_add_acq_int(count, 1);
 }
 
 static __inline unsigned int
-refcnt_release(volatile unsigned int *count)
+refcnt_release(refcnt_t *count)
 {
 	unsigned int old;
 

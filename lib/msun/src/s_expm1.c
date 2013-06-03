@@ -11,7 +11,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/lib/msun/src/s_expm1.c 226596 2011-10-21 06:26:38Z das $");
+__FBSDID("$FreeBSD: head/lib/msun/src/s_expm1.c 251024 2013-05-27 08:50:10Z das $");
 
 /* expm1(x)
  * Returns exp(x)-1, the exponential of x minus 1.
@@ -115,7 +115,6 @@ __FBSDID("$FreeBSD: head/lib/msun/src/s_expm1.c 226596 2011-10-21 06:26:38Z das 
 
 static const double
 one		= 1.0,
-huge		= 1.0e+300,
 tiny		= 1.0e-300,
 o_threshold	= 7.09782712893383973096e+02,/* 0x40862E42, 0xFEFA39EF */
 ln2_hi		= 6.93147180369123816490e-01,/* 0x3fe62e42, 0xfee00000 */
@@ -127,6 +126,8 @@ Q2  =   1.58730158725481460165e-03, /* 3F5A01A0 19FE5585 */
 Q3  =  -7.93650757867487942473e-05, /* BF14CE19 9EAADBB7 */
 Q4  =   4.00821782732936239552e-06, /* 3ED0CFCA 86E65239 */
 Q5  =  -2.01099218183624371326e-07; /* BE8AFDB7 6E09C32D */
+
+static volatile double huge = 1.0e+300;
 
 double
 expm1(double x)

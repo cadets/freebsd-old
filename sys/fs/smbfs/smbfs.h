@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/fs/smbfs/smbfs.h 243397 2012-11-22 09:13:45Z davide $
+ * $FreeBSD: head/sys/fs/smbfs/smbfs.h 250236 2013-05-04 14:03:18Z davide $
  */
 #ifndef _SMBFS_SMBFS_H_
 #define _SMBFS_SMBFS_H_
@@ -75,6 +75,7 @@ struct smbmount {
 	mode_t 			sm_dir_mode;
 	struct mount * 		sm_mp;
 	struct smbnode *	sm_root;
+	struct smb_dev *	sm_dev;
 	struct ucred *		sm_owner;
 	uint64_t		sm_flags;
 	long			sm_nextino;

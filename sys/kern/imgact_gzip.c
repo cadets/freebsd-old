@@ -18,11 +18,11 @@
  *	inflate isn't quite reentrant yet...
  *	error-handling is a mess...
  *	so is the rest...
- *	tidy up unnecesary includes
+ *	tidy up unnecessary includes
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/imgact_gzip.c 237694 2012-06-28 07:33:43Z imp $");
+__FBSDID("$FreeBSD: head/sys/kern/imgact_gzip.c 249583 2013-04-17 11:42:40Z gabor $");
 
 #include <sys/param.h>
 #include <sys/exec.h>

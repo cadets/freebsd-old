@@ -801,7 +801,7 @@ readauth(filename, safe, sai, rpool)
 
 	lc = 0;
 	while (lc <= SASL_MECHLIST &&
-		sm_io_fgets(f, SM_TIME_DEFAULT, buf, sizeof(buf)) != NULL)
+		sm_io_fgets(f, SM_TIME_DEFAULT, buf, sizeof(buf)) >= 0)
 	{
 		if (buf[0] != '#')
 		{

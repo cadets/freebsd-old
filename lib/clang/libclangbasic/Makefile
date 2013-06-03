@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/clang/libclangbasic/Makefile 246259 2013-02-02 22:28:29Z dim $
+# $FreeBSD: head/lib/clang/libclangbasic/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
@@ -6,8 +6,7 @@ LIB=	clangbasic
 
 SRCDIR=	tools/clang/lib/Basic
 SRCS=	Builtins.cpp \
-	ConvertUTF.c \
-	ConvertUTFWrapper.cpp \
+	CharInfo.cpp \
 	Diagnostic.cpp \
 	DiagnosticIDs.cpp \
 	FileManager.cpp \
@@ -16,13 +15,15 @@ SRCS=	Builtins.cpp \
 	LangOptions.cpp \
 	Module.cpp \
 	ObjCRuntime.cpp \
+	OpenMPKinds.cpp \
+	OperatorPrecedence.cpp \
 	SourceLocation.cpp \
 	SourceManager.cpp \
 	TargetInfo.cpp \
 	Targets.cpp \
 	TokenKinds.cpp \
-	VersionTuple.cpp \
-	Version.cpp
+	Version.cpp \
+	VersionTuple.cpp
 
 TGHDRS=	DiagnosticAnalysisKinds \
 	DiagnosticASTKinds \

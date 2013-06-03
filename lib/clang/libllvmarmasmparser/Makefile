@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/clang/libllvmarmasmparser/Makefile 246259 2013-02-02 22:28:29Z dim $
+# $FreeBSD: head/lib/clang/libllvmarmasmparser/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
@@ -6,8 +6,7 @@ LIB=	llvmarmasmparser
 
 SRCDIR=	lib/Target/ARM/AsmParser
 INCDIR=	lib/Target/ARM
-SRCS=	ARMAsmLexer.cpp \
-	ARMAsmParser.cpp
+SRCS=	ARMAsmParser.cpp
 
 TGHDRS=	ARMGenAsmMatcher \
 	ARMGenInstrInfo \

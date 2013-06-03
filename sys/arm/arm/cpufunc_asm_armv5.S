@@ -34,7 +34,7 @@
  */
 
 #include <machine/asm.h>
-__FBSDID("$FreeBSD: head/sys/arm/arm/cpufunc_asm_armv5.S 236991 2012-06-13 04:59:55Z imp $");
+__FBSDID("$FreeBSD: head/sys/arm/arm/cpufunc_asm_armv5.S 248361 2013-03-16 02:48:49Z andrew $");
 
 /*
  * Functions to set the MMU Translation Table Base register
@@ -51,6 +51,7 @@ ENTRY(armv5_setttb)
 
 	mcr	p15, 0, r0, c8, c7, 0	/* invalidate I+D TLBs */
 	RET
+END(armv5_setttb)
 
 /*
  * Cache operations.  For the entire cache we use the set/index
@@ -79,6 +80,7 @@ ENTRY_NP(armv5_icache_sync_range)
 	bpl	1b
 	mcr	p15, 0, r0, c7, c10, 4	/* drain the write buffer */
 	RET
+END(armv5_icache_sync_range)
 
 ENTRY_NP(armv5_icache_sync_all)
 .Larmv5_icache_sync_all:
@@ -105,6 +107,7 @@ ENTRY_NP(armv5_icache_sync_all)
 	bpl	1b			/* Next set */
 	mcr	p15, 0, r0, c7, c10, 4	/* drain the write buffer */
 	RET
+END(armv5_icache_sync_all)
 
 .Larmv5_line_size:
 	.word	_C_LABEL(arm_pdcache_line_size)
@@ -126,6 +129,7 @@ ENTRY(armv5_dcache_wb_range)
 	bpl	1b
 	mcr	p15, 0, r0, c7, c10, 4	/* drain the write buffer */
 	RET
+END(armv5_dcache_wb_range)
 	
 ENTRY(armv5_dcache_wbinv_range)
 	ldr	ip, .Larmv5_line_size
@@ -144,6 +148,7 @@ ENTRY(armv5_dcache_wbinv_range)
 	bpl	1b
 	mcr	p15, 0, r0, c7, c10, 4	/* drain the write buffer */
 	RET
+END(armv5_dcache_wbinv_range)
 	
 /*
  * Note, we must not invalidate everything.  If the range is too big we
@@ -166,6 +171,7 @@ ENTRY(armv5_dcache_inv_range)
 	bpl	1b
 	mcr	p15, 0, r0, c7, c10, 4	/* drain the write buffer */
 	RET
+END(armv5_dcache_inv_range)
 
 ENTRY(armv5_idcache_wbinv_range)
 	ldr	ip, .Larmv5_line_size
@@ -185,6 +191,7 @@ ENTRY(armv5_idcache_wbinv_range)
 	bpl	1b
 	mcr	p15, 0, r0, c7, c10, 4	/* drain the write buffer */
 	RET
+END(armv5_idcache_wbinv_range)
 
 ENTRY_NP(armv5_idcache_wbinv_all)
 .Larmv5_idcache_wbinv_all:
@@ -212,6 +219,8 @@ ENTRY(armv5_dcache_wbinv_all)
 	bpl	1b			/* Next set */
 	mcr	p15, 0, r0, c7, c10, 4	/* drain the write buffer */
 	RET
+END(armv5_idcache_wbinv_all)
+END(armv5_dcache_wbinv_all)
 
 .Larmv5_cache_data:
 	.word	_C_LABEL(armv5_dcache_sets_max)

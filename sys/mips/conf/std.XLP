@@ -1,4 +1,4 @@
-# $FreeBSD: head/sys/mips/conf/std.XLP 233564 2012-03-27 15:43:32Z jchandra $
+# $FreeBSD: head/sys/mips/conf/std.XLP 249083 2013-04-04 07:12:24Z mav $
 
 include		"../nlm/std.xlp"
 makeoptions	MODULES_OVERRIDE=""
@@ -81,7 +81,6 @@ device		siis
 device		da
 device		scbus
 #device		ata
-#device		atadisk
 
 # USB
 device		usb			# USB Bus (required)

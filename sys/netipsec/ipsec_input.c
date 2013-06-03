@@ -1,4 +1,4 @@
-/*	$FreeBSD: head/sys/netipsec/ipsec_input.c 241922 2012-10-23 08:22:01Z glebius $	*/
+/*	$FreeBSD: head/sys/netipsec/ipsec_input.c 249294 2013-04-09 07:11:22Z ae $	*/
 /*	$OpenBSD: ipsec_input.c,v 1.63 2003/02/20 18:35:43 deraadt Exp $	*/
 /*-
  * The authors of this code are John Ioannidis (ji@tla.org),
@@ -768,7 +768,7 @@ ipsec6_common_input_cb(struct mbuf *m, struct secasvar *sav, int skip, int proto
 	nxt = nxt8;
 	while (nxt != IPPROTO_DONE) {
 		if (V_ip6_hdrnestlimit && (++nest > V_ip6_hdrnestlimit)) {
-			V_ip6stat.ip6s_toomanyhdr++;
+			IP6STAT_INC(ip6s_toomanyhdr);
 			error = EINVAL;
 			goto bad;
 		}
@@ -778,7 +778,7 @@ ipsec6_common_input_cb(struct mbuf *m, struct secasvar *sav, int skip, int proto
 		 * more sanity checks in header chain processing.
 		 */
 		if (m->m_pkthdr.len < skip) {
-			V_ip6stat.ip6s_tooshort++;
+			IP6STAT_INC(ip6s_tooshort);
 			in6_ifstat_inc(m->m_pkthdr.rcvif, ifs6_in_truncated);
 			error = EINVAL;
 			goto bad;

@@ -1,5 +1,5 @@
 /*	$NetBSD: if_arcsubr.c,v 1.36 2001/06/14 05:44:23 itojun Exp $	*/
-/*	$FreeBSD: head/sys/net/if_arcsubr.c 243882 2012-12-05 08:04:20Z glebius $ */
+/*	$FreeBSD: head/sys/net/if_arcsubr.c 249925 2013-04-26 12:50:32Z glebius $ */
 
 /*-
  * Copyright (c) 1994, 1995 Ignatios Souvatzis
@@ -92,8 +92,8 @@ u_int8_t  arcbroadcastaddr = 0;
 #define ARC_LLADDR(ifp)	(*(u_int8_t *)IF_LLADDR(ifp))
 
 #define senderr(e) { error = (e); goto bad;}
-#define SIN(s)	((struct sockaddr_in *)s)
-#define SIPX(s)	((struct sockaddr_ipx *)s)
+#define SIN(s)	((const struct sockaddr_in *)(s))
+#define SIPX(s)	((const struct sockaddr_ipx *)(s))
 
 /*
  * ARCnet output routine.
@@ -101,7 +101,7 @@ u_int8_t  arcbroadcastaddr = 0;
  * Assumes that ifp is actually pointer to arccom structure.
  */
 int
-arc_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
+arc_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
     struct route *ro)
 {
 	struct arc_header	*ah;
@@ -186,8 +186,11 @@ arc_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 #endif
 
 	case AF_UNSPEC:
+	    {
+		const struct arc_header *ah;
+
 		loop_copy = -1;
-		ah = (struct arc_header *)dst->sa_data;
+		ah = (const struct arc_header *)dst->sa_data;
 		adst = ah->arc_dhost;
 		atype = ah->arc_type;
 
@@ -207,7 +210,7 @@ arc_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 #endif
 		}
 		break;
-
+	    }
 	default:
 		if_printf(ifp, "can't handle af%d\n", dst->sa_family);
 		senderr(EAFNOSUPPORT);
@@ -638,11 +641,7 @@ arc_ifattach(struct ifnet *ifp, u_int8_t lla)
 	ifp->if_resolvemulti = arc_resolvemulti;
 	if (ifp->if_baudrate == 0)
 		ifp->if_baudrate = 2500000;
-#if __FreeBSD_version < 500000
-	ifa = ifnet_addrs[ifp->if_index - 1];
-#else
 	ifa = ifp->if_addr;
-#endif
 	KASSERT(ifa != NULL, ("%s: no lladdr!\n", __func__));
 	sdl = (struct sockaddr_dl *)ifa->ifa_addr;
 	sdl->sdl_type = IFT_ARCNET;

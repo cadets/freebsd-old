@@ -1,4 +1,4 @@
-# $FreeBSD: head/etc/mtree/BSD.include.dist 246367 2013-02-05 18:55:09Z jhb $
+# $FreeBSD: head/etc/mtree/BSD.include.dist 249423 2013-04-12 17:57:40Z dim $
 #
 # Please see the file src/etc/mtree/README before making changes to this file.
 #
@@ -92,7 +92,7 @@
         ..
     ..
     clang
-        3.2
+        3.3
         ..
     ..
     crypto
@@ -173,8 +173,6 @@
         nfs
         ..
         nullfs
-        ..
-        portalfs
         ..
         procfs
         ..

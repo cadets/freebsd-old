@@ -47,7 +47,7 @@
 
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/sa11x0/assabet_machdep.c 247046 2013-02-20 16:48:52Z alc $");
+__FBSDID("$FreeBSD: head/sys/arm/sa11x0/assabet_machdep.c 247313 2013-02-26 07:41:34Z alc $");
 
 #include "opt_md.h"
 
@@ -79,9 +79,7 @@ __FBSDID("$FreeBSD: head/sys/arm/sa11x0/assabet_machdep.c 247046 2013-02-20 16:4
 #include <vm/pmap.h>
 #include <vm/vm_object.h>
 #include <vm/vm_page.h>
-#include <vm/vm_pager.h>
 #include <vm/vm_map.h>
-#include <machine/pmap.h>
 #include <machine/vmparam.h>
 #include <machine/pcb.h>
 #include <machine/undefined.h>

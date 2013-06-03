@@ -1,4 +1,4 @@
-# $FreeBSD: head/gnu/usr.bin/grep/Makefile 222273 2011-05-25 01:04:12Z obrien $
+# $FreeBSD: head/gnu/usr.bin/grep/Makefile 250861 2013-05-21 17:30:27Z marcel $
 
 .include <bsd.own.mk>
 
@@ -13,7 +13,7 @@ SRCS=	closeout.c dfa.c error.c exclude.c grep.c grepmat.c hard-locale.c \
 	isdir.c kwset.c obstack.c quotearg.c savedir.c search.c xmalloc.c \
 	xstrtoumax.c
 
-CFLAGS+=-I${.CURDIR} -I${DESTDIR}/usr/include/gnu -DHAVE_CONFIG_H
+CFLAGS+=-I${.CURDIR} -I${.CURDIR}/../../lib/libregex -DHAVE_CONFIG_H
 
 .if ${MK_BSD_GREP} != "yes"
 LINKS+=	${BINDIR}/grep ${BINDIR}/egrep \

@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/netinet/ip_options.c 243882 2012-12-05 08:04:20Z glebius $");
+__FBSDID("$FreeBSD: head/sys/netinet/ip_options.c 248373 2013-03-16 08:58:28Z glebius $");
 
 #include "opt_ipstealth.h"
 
@@ -495,12 +495,12 @@ ip_insertoptions(struct mbuf *m, struct mbuf *opt, int *phlen)
 	if (p->ipopt_dst.s_addr)
 		ip->ip_dst = p->ipopt_dst;
 	if (m->m_flags & M_EXT || m->m_data - optlen < m->m_pktdat) {
-		MGETHDR(n, M_NOWAIT, MT_DATA);
+		n = m_gethdr(M_NOWAIT, MT_DATA);
 		if (n == NULL) {
 			*phlen = 0;
 			return (m);
 		}
-		M_MOVE_PKTHDR(n, m);
+		m_move_pkthdr(n, m);
 		n->m_pkthdr.rcvif = NULL;
 		n->m_pkthdr.len += optlen;
 		m->m_len -= sizeof(struct ip);

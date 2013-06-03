@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/cddl/compat/opensolaris/sys/vnode.h 241896 2012-10-22 17:50:54Z kib $
+ * $FreeBSD: head/sys/cddl/compat/opensolaris/sys/vnode.h 248082 2013-03-09 02:05:29Z attilio $
  */
 
 #ifndef _OPENSOLARIS_SYS_VNODE_H_
@@ -76,7 +76,7 @@ vn_is_readonly(vnode_t *vp)
 #define	vn_has_cached_data(vp)	\
 	((vp)->v_object != NULL && \
 	 ((vp)->v_object->resident_page_count > 0 || \
-	  (vp)->v_object->cache != NULL))
+	  !vm_object_cache_is_empty((vp)->v_object)))
 #define	vn_exists(vp)		do { } while (0)
 #define	vn_invalid(vp)		do { } while (0)
 #define	vn_renamepath(tdvp, svp, tnm, lentnm)	do { } while (0)

@@ -94,7 +94,7 @@
  * OWNER OR CONTRIBUTOR IS ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/mpt/mpt_cam.c 246713 2013-02-12 16:57:20Z kib $");
+__FBSDID("$FreeBSD: head/sys/dev/mpt/mpt_cam.c 249468 2013-04-14 09:55:48Z mav $");
 
 #include <dev/mpt/mpt.h>
 #include <dev/mpt/mpt_cam.h>
@@ -2364,7 +2364,7 @@ mpt_cam_event(struct mpt_softc *mpt, request_t *req,
 			break;
 		}
 
-		if (xpt_create_path(&ccb->ccb_h.path, xpt_periph, pathid,
+		if (xpt_create_path(&ccb->ccb_h.path, NULL, pathid,
 		    CAM_TARGET_WILDCARD, CAM_LUN_WILDCARD) != CAM_REQ_CMP) {
 			mpt_prt(mpt, "unable to create path for rescan\n");
 			xpt_free_ccb(ccb);
@@ -2512,7 +2512,7 @@ mpt_cam_event(struct mpt_softc *mpt, request_t *req,
 				    "unable to alloc CCB for rescan\n");
 				break;
 			}
-			if (xpt_create_path(&ccb->ccb_h.path, xpt_periph,
+			if (xpt_create_path(&ccb->ccb_h.path, NULL,
 			    cam_sim_path(sim), psdsc->TargetID,
 			    CAM_LUN_WILDCARD) != CAM_REQ_CMP) {
 				mpt_prt(mpt,

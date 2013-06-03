@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/kern_shutdown.c 244105 2012-12-11 01:23:50Z alfred $");
+__FBSDID("$FreeBSD: head/sys/kern/kern_shutdown.c 248084 2013-03-09 02:32:23Z attilio $");
 
 #include "opt_ddb.h"
 #include "opt_kdb.h"
@@ -62,6 +62,7 @@ __FBSDID("$FreeBSD: head/sys/kern/kern_shutdown.c 244105 2012-12-11 01:23:50Z al
 #include <sys/proc.h>
 #include <sys/reboot.h>
 #include <sys/resourcevar.h>
+#include <sys/rwlock.h>
 #include <sys/sched.h>
 #include <sys/smp.h>
 #include <sys/sysctl.h>

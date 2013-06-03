@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/fs/nandfs/nandfs_segment.c 245000 2013-01-03 19:01:56Z kib $");
+__FBSDID("$FreeBSD: head/sys/fs/nandfs/nandfs_segment.c 251171 2013-05-31 00:43:41Z jeff $");
 
 #include "opt_ddb.h"
 
@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD: head/sys/fs/nandfs/nandfs_segment.c 245000 2013-01-03 19:01:
 #include <sys/mount.h>
 #include <sys/mutex.h>
 #include <sys/namei.h>
+#include <sys/rwlock.h>
 #include <sys/sysctl.h>
 #include <sys/vnode.h>
 #include <sys/buf.h>
@@ -702,7 +703,7 @@ nandfs_save_buf(struct buf *bp, uint64_t blocknr, struct nandfs_device *fsdev)
 	if (bp->b_bufobj != bo) {
 		BO_LOCK(bp->b_bufobj);
 		BUF_LOCK(bp, LK_EXCLUSIVE | LK_NOWAIT | LK_INTERLOCK,
-		    BO_MTX(bp->b_bufobj));
+		    BO_LOCKPTR(bp->b_bufobj));
 		KASSERT(BUF_ISLOCKED(bp), ("Problem with locking buffer"));
 	}
 

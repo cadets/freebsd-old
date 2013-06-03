@@ -33,7 +33,7 @@
  *
  *	from: @(#)vmparam.h     5.9 (Berkeley) 5/12/91
  *	from: FreeBSD: src/sys/i386/include/vmparam.h,v 1.33 2000/03/30
- * $FreeBSD: head/sys/sparc64/include/vmparam.h 246554 2013-02-08 15:52:20Z kib $
+ * $FreeBSD: head/sys/sparc64/include/vmparam.h 250338 2013-05-07 22:46:24Z attilio $
  */
 
 #ifndef	_MACHINE_VMPARAM_H_
@@ -104,13 +104,6 @@
  * page TLB misses and cache misses caused by 4MB page TLB misses.
  */
 #define	VM_NFREEORDER		12
-
-/*
- * Only one memory domain.
- */
-#ifndef VM_NDOMAIN
-#define	VM_NDOMAIN		1
-#endif
 
 /*
  * Enable superpage reservations: 1 level.

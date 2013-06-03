@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_open_failure.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_open_failure.c 248616 2013-03-22 13:36:03Z mm $");
 
 #define MAGIC 123456789
 struct my_data {
@@ -97,7 +97,7 @@ DEFINE_TEST(test_open_failure)
 	assertEqualInt(1, private.open_called);
 	assertEqualInt(0, private.read_called);
 	assertEqualInt(1, private.close_called);
-	assertEqualInt(ARCHIVE_OK, archive_read_finish(a));
+	assertEqualInt(ARCHIVE_OK, archive_read_free(a));
 	assertEqualInt(1, private.open_called);
 	assertEqualInt(0, private.read_called);
 	assertEqualInt(1, private.close_called);
@@ -112,7 +112,7 @@ DEFINE_TEST(test_open_failure)
 	assertEqualInt(1, private.open_called);
 	assertEqualInt(0, private.read_called);
 	assertEqualInt(1, private.close_called);
-	assertEqualInt(ARCHIVE_OK, archive_read_finish(a));
+	assertEqualInt(ARCHIVE_OK, archive_read_free(a));
 	assertEqualInt(1, private.open_called);
 	assertEqualInt(0, private.read_called);
 	assertEqualInt(1, private.close_called);
@@ -127,7 +127,7 @@ DEFINE_TEST(test_open_failure)
 	assertEqualInt(1, private.open_called);
 	assertEqualInt(0, private.read_called);
 	assertEqualInt(1, private.close_called);
-	assertEqualInt(ARCHIVE_OK, archive_read_finish(a));
+	assertEqualInt(ARCHIVE_OK, archive_read_free(a));
 	assertEqualInt(1, private.open_called);
 	assertEqualInt(0, private.read_called);
 	assertEqualInt(1, private.close_called);
@@ -146,7 +146,7 @@ DEFINE_TEST(test_open_failure)
 	assertEqualInt(1, private.open_called);
 	assertEqualInt(1, private.read_called);
 	assertEqualInt(1, private.close_called);
-	assertEqualInt(ARCHIVE_OK, archive_read_finish(a));
+	assertEqualInt(ARCHIVE_OK, archive_read_free(a));
 	assertEqualInt(1, private.open_called);
 	assertEqualInt(1, private.read_called);
 	assertEqualInt(1, private.close_called);
@@ -161,7 +161,7 @@ DEFINE_TEST(test_open_failure)
 	assertEqualInt(1, private.open_called);
 	assertEqualInt(0, private.write_called);
 	assertEqualInt(1, private.close_called);
-	assertEqualInt(ARCHIVE_OK, archive_write_finish(a));
+	assertEqualInt(ARCHIVE_OK, archive_write_free(a));
 	assertEqualInt(1, private.open_called);
 	assertEqualInt(0, private.write_called);
 	assertEqualInt(1, private.close_called);
@@ -178,7 +178,7 @@ DEFINE_TEST(test_open_failure)
 	assertEqualInt(1, private.open_called);
 	assertEqualInt(0, private.write_called);
 	assertEqualInt(1, private.close_called);
-	assertEqualInt(ARCHIVE_OK, archive_write_finish(a));
+	assertEqualInt(ARCHIVE_OK, archive_write_free(a));
 	assertEqualInt(1, private.open_called);
 	assertEqualInt(0, private.write_called);
 	assertEqualInt(1, private.close_called);
@@ -194,7 +194,7 @@ DEFINE_TEST(test_open_failure)
 	assertEqualInt(1, private.open_called);
 	assertEqualInt(0, private.write_called);
 	assertEqualInt(1, private.close_called);
-	assertEqualInt(ARCHIVE_OK, archive_write_finish(a));
+	assertEqualInt(ARCHIVE_OK, archive_write_free(a));
 	assertEqualInt(1, private.open_called);
 	assertEqualInt(0, private.write_called);
 	assertEqualInt(1, private.close_called);
@@ -210,7 +210,7 @@ DEFINE_TEST(test_open_failure)
 	assertEqualInt(1, private.open_called);
 	assertEqualInt(0, private.write_called);
 	assertEqualInt(1, private.close_called);
-	assertEqualInt(ARCHIVE_OK, archive_write_finish(a));
+	assertEqualInt(ARCHIVE_OK, archive_write_free(a));
 	assertEqualInt(1, private.open_called);
 	assertEqualInt(0, private.write_called);
 	assertEqualInt(1, private.close_called);

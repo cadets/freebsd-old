@@ -23,7 +23,7 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD: head/usr.sbin/bsdconfig/USAGE 245106 2013-01-06 18:18:09Z dteske $
+# $FreeBSD: head/usr.sbin/bsdconfig/USAGE 249746 2013-04-22 05:02:34Z dteske $
 
 Usage:
 	@PROGRAM_NAME@ [-h]
@@ -31,10 +31,14 @@ Usage:
 	@PROGRAM_NAME@ [OPTIONS] [command [OPTIONS]]
 
 OPTIONS:
+	-d         Provide lots of debugging info on standard-out when running.
+	-D file    Send debugging info to file. If file begins with a plus-sign
+	           debug info is sent to both standard-out and file (minus the
+	           leading plus).
 	-f file    Load file as script and then exit. If multiple occurrences,
 	           program will only exit after last occurrence. If file is a
 	           single dash (`-'), @PROGRAM_NAME@ reads from standard input.
-	-h         Print usage statement and exit.
+	-h         Print this usage statement and exit.
 	-S         Secure X11 mode (implies `-X'). As root, always prompt-for
 	           and validate sudo(8) username/password before starting.
 	-X         Use Xdialog(1) in place of dialog(1).

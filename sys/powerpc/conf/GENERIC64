@@ -16,7 +16,7 @@
 # If you are in doubt as to the purpose or necessity of a line, check first 
 # in NOTES.
 #
-# $FreeBSD: head/sys/powerpc/conf/GENERIC64 245003 2013-01-03 19:03:41Z kib $
+# $FreeBSD: head/sys/powerpc/conf/GENERIC64 249083 2013-04-04 07:12:24Z mav $
 
 cpu		AIM
 ident		GENERIC
@@ -95,7 +95,6 @@ device		agp
 # ATA controllers
 device		ahci		# AHCI-compatible SATA controllers
 device		ata		# Legacy ATA/SATA controllers
-options 	ATA_CAM		# Handle legacy controllers with CAM
 device		mvs		# Marvell 88SX50XX/88SX60XX/88SX70XX/SoC SATA
 device		siis		# SiliconImage SiI3124/SiI3132/SiI3531 SATA
 

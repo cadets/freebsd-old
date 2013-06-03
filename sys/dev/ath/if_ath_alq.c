@@ -26,7 +26,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
  *
- * $FreeBSD: head/sys/dev/ath/if_ath_alq.c 246648 2013-02-11 02:48:49Z adrian $
+ * $FreeBSD: head/sys/dev/ath/if_ath_alq.c 250618 2013-05-13 21:17:27Z adrian $
  */
 #include "opt_ah.h"
 #include "opt_ath.h"
@@ -184,9 +184,11 @@ if_ath_alq_post(struct if_ath_alq *alq, uint16_t op, uint16_t len,
 	/*
 	 * Copy the payload _after_ the header field.
 	 */
-	memcpy(((char *) ap) + sizeof(struct if_ath_alq_hdr),
-	    buf,
-	    len);
+	if (buf != NULL) {
+		memcpy(((char *) ap) + sizeof(struct if_ath_alq_hdr),
+		    buf,
+		    len);
+	}
 
 	alq_post(alq->sc_alq_alq, ale);
 }

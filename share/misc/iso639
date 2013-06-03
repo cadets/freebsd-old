@@ -1,4 +1,4 @@
-# $FreeBSD: head/share/misc/iso639 244017 2012-12-08 05:51:27Z eadler $
+# $FreeBSD: head/share/misc/iso639 249824 2013-04-24 00:41:36Z eadler $
 #
 # ISO 639-2 language codes
 #
@@ -517,6 +517,7 @@ yo	yor	yor	Yoruba
 	zap	zap	Zapotec
 	zbl	zbl	Blissymbols; Blissymbolics; Bliss
 	zen	zen	Zenaga
+	zgh	zgh	Standard Moroccan Tamazight
 za	zha	zha	Zhuang; Chuang
 	znd	znd	Zande languages
 zu	zul	zul	Zulu

@@ -57,7 +57,7 @@
  * SUCH DAMAGE.
 */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/xscale/ixp425/ixp425_npe.c 236987 2012-06-13 04:38:09Z imp $");
+__FBSDID("$FreeBSD: head/sys/arm/xscale/ixp425/ixp425_npe.c 249582 2013-04-17 11:40:10Z gabor $");
 
 /*
  * Intel XScale Network Processing Engine (NPE) support.
@@ -419,7 +419,7 @@ ixpnpe_stop(struct ixpnpe_softc *sc)
 
 /*
  * Indicates the start of an NPE Image, in new NPE Image Library format.
- * 2 consecutive occurances indicates the end of the NPE Image Library
+ * 2 consecutive occurrences indicates the end of the NPE Image Library
  */
 #define NPE_IMAGE_MARKER 0xfeedf00d
 

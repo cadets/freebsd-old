@@ -1,4 +1,4 @@
-# $FreeBSD: head/sys/Makefile 243796 2012-12-02 20:51:24Z rpaulo $
+# $FreeBSD: head/sys/Makefile 248209 2013-03-12 14:21:52Z bryanv $
 
 .include <bsd.own.mk>
 
@@ -10,7 +10,7 @@ SUBDIR=	boot
 # Directories to include in cscope name file and TAGS.
 CSCOPEDIRS=	boot bsm cam cddl compat conf contrib crypto ddb dev fs gdb \
 		geom gnu isa kern libkern modules net net80211 netatalk \
-		netgraph netinet netinet6 netipsec netipx netnatm netncp \
+		netgraph netinet netinet6 netipsec netipx netnatm \
 		netsmb nfs nfsclient nfsserver nlm ofed opencrypto \
 		pci rpc security sys ufs vm xdr xen ${CSCOPE_ARCHDIR}
 .if !defined(CSCOPE_ARCHDIR)

@@ -30,7 +30,7 @@
 
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/xen/xenstore/xenstore.c 228526 2011-12-15 06:29:13Z kevlo $");
+__FBSDID("$FreeBSD: head/sys/xen/xenstore/xenstore.c 250081 2013-04-29 23:08:13Z gibbs $");
 
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -307,7 +307,8 @@ split(char *strings, u_int len, u_int *num)
 	const char **ret;
 
 	/* Protect against unterminated buffers. */
-	strings[len - 1] = '\0';
+	if (len > 0)
+		strings[len - 1] = '\0';
 
 	/* Count the strings. */
 	*num = extract_strings(strings, /*dest*/NULL, len);

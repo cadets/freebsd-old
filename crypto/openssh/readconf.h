@@ -1,5 +1,5 @@
-/* $OpenBSD: readconf.h,v 1.91 2011/09/23 07:45:05 markus Exp $ */
-/* $FreeBSD: head/crypto/openssh/readconf.h 240075 2012-09-03 16:51:41Z des $ */
+/* $OpenBSD: readconf.h,v 1.93 2013/02/22 04:45:09 dtucker Exp $ */
+/* $FreeBSD: head/crypto/openssh/readconf.h 249839 2013-04-24 12:36:37Z des $ */
 
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
@@ -97,6 +97,7 @@ typedef struct {
 
 	int     num_identity_files;	/* Number of files for RSA/DSA identities. */
 	char   *identity_files[SSH_MAX_IDENTITY_FILES];
+	int    identity_file_userprovided[SSH_MAX_IDENTITY_FILES];
 	Key    *identity_keys[SSH_MAX_IDENTITY_FILES];
 
 	/* Local TCP/IP forward requests. */
@@ -162,15 +163,20 @@ typedef struct {
 #define REQUEST_TTY_YES		2
 #define REQUEST_TTY_FORCE	3
 
+#define SSHCONF_CHECKPERM	1  /* check permissions on config file */
+#define SSHCONF_USERCONF	2  /* user provided config file not system */
+
 void     initialize_options(Options *);
 void     fill_default_options(Options *);
 int	 read_config_file(const char *, const char *, Options *, int);
 int	 parse_forward(Forward *, const char *, int, int);
 
 int
-process_config_line(Options *, const char *, char *, const char *, int, int *);
+process_config_line(Options *, const char *, char *, const char *, int, int *,
+    int);
 
 void	 add_local_forward(Options *, const Forward *);
 void	 add_remote_forward(Options *, const Forward *);
+void	 add_identity_file(Options *, const char *, const char *, int);
 
 #endif				/* READCONF_H */

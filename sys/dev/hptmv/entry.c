@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/hptmv/entry.c 246713 2013-02-12 16:57:20Z kib $");
+__FBSDID("$FreeBSD: head/sys/dev/hptmv/entry.c 250460 2013-05-10 16:41:26Z eadler $");
  
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -914,8 +914,8 @@ hptmv_event_notify(MV_SATA_ADAPTER *pMvSataAdapter, MV_EVENT_TYPE eventType,
 				else
 				{
 
-					MV_ERROR("RR18xx: illigal value for param1(%d) at "
-							 "connect/disconect event, host=%d\n", param1,
+					MV_ERROR("RR18xx: illegal value for param1(%d) at "
+							 "connect/disconnect event, host=%d\n", param1,
 							 pMvSataAdapter->adapterId );
 
 				}
@@ -983,7 +983,7 @@ hptmv_allocate_edma_queues(IAL_ADAPTER_T *pAdapter)
 	if ((pAdapter->responsesArrayBaseDmaAlignedAddr - pAdapter->responsesArrayBaseDmaAddr) != 
 		(pAdapter->responsesArrayBaseAlignedAddr - pAdapter->responsesArrayBaseAddr))
 	{
-		MV_ERROR("RR18xx[%d]: Error in Response Quueues Alignment\n",
+		MV_ERROR("RR18xx[%d]: Error in Response Queues Alignment\n",
 				 pAdapter->mvSataAdapter.adapterId);
 		contigfree(pAdapter->requestsArrayBaseAddr, REQUESTS_ARRAY_SIZE, M_DEVBUF);
 		contigfree(pAdapter->responsesArrayBaseAddr, RESPONSES_ARRAY_SIZE, M_DEVBUF);
@@ -2605,9 +2605,11 @@ launch_worker_thread(void)
 	 * hpt_worker_thread needs to be suspended after shutdown sync, when fs sync finished.
 	 */
 #if (__FreeBSD_version < 500043)
-	EVENTHANDLER_REGISTER(shutdown_post_sync, shutdown_kproc, hptdaemonproc, SHUTDOWN_PRI_FIRST);
+	EVENTHANDLER_REGISTER(shutdown_post_sync, shutdown_kproc, hptdaemonproc,
+	    SHUTDOWN_PRI_LAST);
 #else 
-	EVENTHANDLER_REGISTER(shutdown_post_sync, kproc_shutdown, hptdaemonproc, SHUTDOWN_PRI_FIRST);
+	EVENTHANDLER_REGISTER(shutdown_post_sync, kproc_shutdown, hptdaemonproc,
+	    SHUTDOWN_PRI_LAST);
 #endif
 }
 /*

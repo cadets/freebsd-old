@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/clang/libclangstaticanalyzercheckers/Makefile 246259 2013-02-02 22:28:29Z dim $
+# $FreeBSD: head/lib/clang/libclangstaticanalyzercheckers/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
@@ -8,7 +8,6 @@ SRCDIR=	tools/clang/lib/StaticAnalyzer/Checkers
 SRCS=	AnalyzerStatsChecker.cpp \
 	ArrayBoundChecker.cpp \
 	ArrayBoundCheckerV2.cpp \
-	AttrNonNullChecker.cpp \
 	BasicObjCFoundationChecks.cpp \
 	BoolAssignmentChecker.cpp \
 	BuiltinFunctionChecker.cpp \
@@ -44,6 +43,7 @@ SRCS=	AnalyzerStatsChecker.cpp \
 	MallocSizeofChecker.cpp \
 	NSAutoreleasePoolChecker.cpp \
 	NSErrorChecker.cpp \
+	NonNullParamChecker.cpp \
 	NoReturnFunctionChecker.cpp \
 	ObjCAtSyncChecker.cpp \
 	ObjCContainersASTChecker.cpp \
@@ -75,6 +75,7 @@ SRCS=	AnalyzerStatsChecker.cpp \
 TGHDRS=	AttrList \
 	Attrs \
 	Checkers \
+	CommentCommandList \
 	CommentNodes \
 	DeclNodes \
 	DiagnosticCommonKinds \

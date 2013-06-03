@@ -19,7 +19,7 @@
 /* Written July 1992 by Mike Haertel.  */
 /* Builtin decompression 1997 by Wolfram Schneider <wosch@FreeBSD.org>.  */
 
-/* $FreeBSD: head/gnu/usr.bin/grep/grep.c 245761 2013-01-22 03:23:14Z davidxu $ */
+/* $FreeBSD: head/gnu/usr.bin/grep/grep.c 250823 2013-05-20 03:15:25Z pfg $ */
 
 #ifdef HAVE_CONFIG_H
 # include <config.h>
@@ -1350,9 +1350,9 @@ int
 main (int argc, char **argv)
 {
   char *keys;
-  size_t keycc, oldcc, keyalloc;
+  size_t cc, keycc, oldcc, keyalloc;
   int with_filenames;
-  int opt, cc, status;
+  int opt, status;
   int default_context;
   FILE *fp;
   extern char *optarg;

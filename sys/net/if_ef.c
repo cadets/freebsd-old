@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/net/if_ef.c 243882 2012-12-05 08:04:20Z glebius $
+ * $FreeBSD: head/sys/net/if_ef.c 249925 2013-04-26 12:50:32Z glebius $
  */
 
 #include "opt_inet.h"
@@ -102,7 +102,7 @@ static int efcount;
 
 extern int (*ef_inputp)(struct ifnet*, struct ether_header *eh, struct mbuf *m);
 extern int (*ef_outputp)(struct ifnet *ifp, struct mbuf **mp,
-		struct sockaddr *dst, short *tp, int *hlen);
+		const struct sockaddr *dst, short *tp, int *hlen);
 
 /*
 static void ef_reset (struct ifnet *);
@@ -114,7 +114,7 @@ static int ef_ioctl(struct ifnet *, u_long, caddr_t);
 static void ef_start(struct ifnet *);
 static int ef_input(struct ifnet*, struct ether_header *, struct mbuf *);
 static int ef_output(struct ifnet *ifp, struct mbuf **mp,
-		struct sockaddr *dst, short *tp, int *hlen);
+		const struct sockaddr *dst, short *tp, int *hlen);
 
 static int ef_load(void);
 static int ef_unload(void);
@@ -386,8 +386,8 @@ ef_input(struct ifnet *ifp, struct ether_header *eh, struct mbuf *m)
 }
 
 static int
-ef_output(struct ifnet *ifp, struct mbuf **mp, struct sockaddr *dst, short *tp,
-	int *hlen)
+ef_output(struct ifnet *ifp, struct mbuf **mp, const struct sockaddr *dst,
+	short *tp, int *hlen)
 {
 	struct efnet *sc = (struct efnet*)ifp->if_softc;
 	struct mbuf *m = *mp;

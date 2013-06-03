@@ -40,7 +40,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/mips/mips/machdep.c 239671 2012-08-25 08:31:21Z rwatson $");
+__FBSDID("$FreeBSD: head/sys/mips/mips/machdep.c 248084 2013-03-09 02:32:23Z attilio $");
 
 #include "opt_ddb.h"
 #include "opt_md.h"
@@ -58,6 +58,7 @@ __FBSDID("$FreeBSD: head/sys/mips/mips/machdep.c 239671 2012-08-25 08:31:21Z rwa
 #include <sys/mbuf.h>
 #include <sys/msgbuf.h>
 #include <sys/reboot.h>
+#include <sys/rwlock.h>
 #include <sys/sched.h>
 #include <sys/sysctl.h>
 #include <sys/sysproto.h>

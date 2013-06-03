@@ -15,7 +15,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * $FreeBSD: head/sys/dev/ath/ath_hal/ar9002/ar9285_btcoex.c 243841 2012-12-04 00:01:24Z adrian $
+ * $FreeBSD: head/sys/dev/ath/ath_hal/ar9002/ar9285_btcoex.c 248182 2013-03-12 03:03:24Z adrian $
  */
 
 #include "opt_ah.h"
@@ -50,7 +50,7 @@ ar9285BTCoexAntennaDiversity(struct ath_hal *ah)
 	if ((ahp->ah_btCoexFlag & HAL_BT_COEX_FLAG_ANT_DIV_ALLOW) ||
 	    (AH5212(ah)->ah_diversity != HAL_ANT_VARIABLE)) {
 	if ((ahp->ah_btCoexFlag & HAL_BT_COEX_FLAG_ANT_DIV_ENABLE) &&
-	     (AH5212(ah)->ah_diversity == HAL_ANT_VARIABLE)) {
+	     (AH5212(ah)->ah_antControl == HAL_ANT_VARIABLE)) {
 		/* Enable antenna diversity */
 		ant_div_control1 = HAL_BT_COEX_ANTDIV_CONTROL1_ENABLE;
 		ant_div_control2 = HAL_BT_COEX_ANTDIV_CONTROL2_ENABLE;
@@ -63,7 +63,7 @@ ar9285BTCoexAntennaDiversity(struct ath_hal *ah)
 		OS_REG_WRITE(ah, AR_PHY_SWITCH_COM,
 		    HAL_BT_COEX_ANT_DIV_SWITCH_COM);
 		OS_REG_RMW(ah, AR_PHY_SWITCH_CHAIN_0, 0, 0xf0000000);
-	} else if (AH5212(ah)->ah_diversity == HAL_ANT_FIXED_B) {
+	} else if (AH5212(ah)->ah_antControl == HAL_ANT_FIXED_B) {
 		/* Disable antenna diversity. Use antenna B(LNA2) only. */
 		ant_div_control1 = HAL_BT_COEX_ANTDIV_CONTROL1_FIXED_B;
 		ant_div_control2 = HAL_BT_COEX_ANTDIV_CONTROL2_FIXED_B;

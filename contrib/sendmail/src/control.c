@@ -301,7 +301,7 @@ control_command(sock, e)
 	(void) sm_io_setvbuf(s, SM_TIME_DEFAULT, NULL,
 			     SM_IO_NBF, SM_IO_BUFSIZ);
 
-	if (sm_io_fgets(s, SM_TIME_DEFAULT, inp, sizeof(inp)) == NULL)
+	if (sm_io_fgets(s, SM_TIME_DEFAULT, inp, sizeof(inp)) < 0)
 	{
 		(void) sm_io_close(s, SM_TIME_DEFAULT);
 		exit(EX_IOERR);

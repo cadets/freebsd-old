@@ -1,10 +1,11 @@
 /* $NetBSD: machdep.h,v 1.7 2002/02/21 02:52:21 thorpej Exp $ */
-/* $FreeBSD: head/sys/arm/include/machdep.h 245079 2013-01-05 23:08:10Z gonzo $ */
+/* $FreeBSD: head/sys/arm/include/machdep.h 248907 2013-03-29 18:43:10Z ian $ */
 
 #ifndef _MACHDEP_BOOT_MACHDEP_H_
 #define _MACHDEP_BOOT_MACHDEP_H_
 
 /* Structs that need to be initialised by initarm */
+struct pv_addr;
 extern struct pv_addr irqstack;
 extern struct pv_addr undstack;
 extern struct pv_addr abtstack;
@@ -15,13 +16,14 @@ extern struct pv_addr abtstack;
 #define UND_STACK_SIZE	1
 
 /* misc prototypes used by the many arm machdeps */
+struct trapframe;
 void arm_lock_cache_line(vm_offset_t);
 void init_proc0(vm_offset_t kstack);
 void halt(void);
-void data_abort_handler(trapframe_t *);
-void prefetch_abort_handler(trapframe_t *);
+void data_abort_handler(struct trapframe *);
+void prefetch_abort_handler(struct trapframe *);
 void set_stackptrs(int cpu);
-void undefinedinstruction_bounce(trapframe_t *);
+void undefinedinstruction_bounce(struct trapframe *);
 
 /* Early boot related helper functions */
 struct arm_boot_params;

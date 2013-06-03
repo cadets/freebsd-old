@@ -36,7 +36,7 @@ static char sccsid[] = "@(#)exec.c	8.4 (Berkeley) 6/8/95";
 #endif
 #endif /* not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/bin/sh/exec.c 245426 2013-01-14 16:40:50Z jilles $");
+__FBSDID("$FreeBSD: head/bin/sh/exec.c 248980 2013-04-01 17:18:22Z jilles $");
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -165,7 +165,7 @@ tryexec(char *cmd, char **argv, char **envp)
 			}
 		}
 		*argv = cmd;
-		*--argv = _PATH_BSHELL;
+		*--argv = __DECONST(char *, _PATH_BSHELL);
 		execve(_PATH_BSHELL, argv, envp);
 	}
 	errno = e;
@@ -188,7 +188,7 @@ padvance(const char **path, const char *name)
 {
 	const char *p, *start;
 	char *q;
-	int len;
+	size_t len;
 
 	if (*path == NULL)
 		return NULL;

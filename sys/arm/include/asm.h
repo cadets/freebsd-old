@@ -33,7 +33,7 @@
  *
  *	from: @(#)asm.h	5.5 (Berkeley) 5/7/91
  *
- * $FreeBSD: head/sys/arm/include/asm.h 239268 2012-08-15 03:03:03Z gonzo $
+ * $FreeBSD: head/sys/arm/include/asm.h 248361 2013-03-16 02:48:49Z andrew $
  */
 
 #ifndef _MACHINE_ASM_H_
@@ -66,6 +66,16 @@
 # define _ALIGN_TEXT .align 0
 #endif
 
+#ifdef __ARM_EABI__
+#define	STOP_UNWINDING	.cantunwind
+#define	_FNSTART	.fnstart
+#define	_FNEND		.fnend
+#else
+#define	STOP_UNWINDING
+#define	_FNSTART
+#define	_FNEND
+#endif
+
 /*
  * gas/arm uses @ as a single comment character and thus cannot be used here
  * Instead it recognised the # instead of an @ symbols in .type directives
@@ -76,7 +86,9 @@
 #define _ASM_TYPE_OBJECT	#object
 #define GLOBAL(X) .globl x
 #define _ENTRY(x) \
-	.text; _ALIGN_TEXT; .globl x; .type x,_ASM_TYPE_FUNCTION; x:
+	.text; _ALIGN_TEXT; .globl x; .type x,_ASM_TYPE_FUNCTION; x: _FNSTART
+
+#define	END(x)	.size x, . - x; _FNEND
 
 #ifdef GPROF
 #  define _PROF_PROLOGUE	\

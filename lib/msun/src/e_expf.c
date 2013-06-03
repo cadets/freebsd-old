@@ -14,7 +14,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/lib/msun/src/e_expf.c 241887 2012-10-22 13:21:11Z imp $");
+__FBSDID("$FreeBSD: head/lib/msun/src/e_expf.c 251024 2013-05-27 08:50:10Z das $");
 
 #include <float.h>
 
@@ -24,7 +24,6 @@ __FBSDID("$FreeBSD: head/lib/msun/src/e_expf.c 241887 2012-10-22 13:21:11Z imp $
 static const float
 one	= 1.0,
 halF[2]	= {0.5,-0.5,},
-huge	= 1.0e+30,
 o_threshold=  8.8721679688e+01,  /* 0x42b17180 */
 u_threshold= -1.0397208405e+02,  /* 0xc2cff1b5 */
 ln2HI[2]   ={ 6.9314575195e-01,		/* 0x3f317200 */
@@ -39,7 +38,9 @@ invln2 =  1.4426950216e+00, 		/* 0x3fb8aa3b */
 P1 =  1.6666625440e-1,		/*  0xaaaa8f.0p-26 */
 P2 = -2.7667332906e-3;		/* -0xb55215.0p-32 */
 
-static volatile float twom100 = 7.8886090522e-31;      /* 2**-100=0x0d800000 */
+static volatile float
+huge	= 1.0e+30,
+twom100 = 7.8886090522e-31;      /* 2**-100=0x0d800000 */
 
 float
 __ieee754_expf(float x)

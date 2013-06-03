@@ -24,7 +24,7 @@
  */
 
 #include "archive_platform.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_virtual.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/archive_virtual.c 248616 2013-03-22 13:36:03Z mm $");
 
 #include "archive.h"
 #include "archive_entry.h"
@@ -64,6 +64,13 @@ int
 archive_read_close(struct archive *a)
 {
 	return ((a->vtable->archive_close)(a));
+}
+
+int
+archive_write_fail(struct archive *a)
+{
+	a->state = ARCHIVE_STATE_FATAL;
+	return a->state;
 }
 
 int

@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/amd64/include/vmm_instruction_emul.h 246108 2013-01-30 04:09:09Z neel $
+ * $FreeBSD: head/sys/amd64/include/vmm_instruction_emul.h 248855 2013-03-28 21:26:19Z neel $
  */
 
 #ifndef	_VMM_INSTRUCTION_EMUL_H_
@@ -107,6 +107,18 @@ int vmm_fetch_instruction(struct vm *vm, int cpuid,
 			  uint64_t rip, int inst_length, uint64_t cr3,
 			  struct vie *vie);
 
+/*
+ * Decode the instruction fetched into 'vie' so it can be emulated.
+ *
+ * 'gla' is the guest linear address provided by the hardware assist
+ * that caused the nested page table fault. It is used to verify that
+ * the software instruction decoding is in agreement with the hardware.
+ * 
+ * Some hardware assists do not provide the 'gla' to the hypervisor.
+ * To skip the 'gla' verification for this or any other reason pass
+ * in VIE_INVALID_GLA instead.
+ */
+#define	VIE_INVALID_GLA		(1UL << 63)	/* a non-canonical address */
 int vmm_decode_instruction(struct vm *vm, int cpuid,
 			   uint64_t gla, struct vie *vie);
 #endif	/* _KERNEL */

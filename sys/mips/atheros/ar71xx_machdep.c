@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/mips/atheros/ar71xx_machdep.c 232853 2012-03-12 07:34:15Z jmallett $");
+__FBSDID("$FreeBSD: head/sys/mips/atheros/ar71xx_machdep.c 248865 2013-03-29 06:31:31Z adrian $");
 
 #include "opt_ddb.h"
 #include "opt_ar71xx.h"
@@ -232,9 +232,9 @@ platform_start(__register_t a0 __unused, __register_t a1 __unused,
 	printf("CPU platform: %s\n", ar71xx_get_system_type());
 	printf("CPU Frequency=%d MHz\n", u_ar71xx_cpu_freq / 1000000);
 	printf("CPU DDR Frequency=%d MHz\n", u_ar71xx_ddr_freq / 1000000);
-	printf("CPU AHB Frequency=%d MHz\n", u_ar71xx_ahb_freq / 1000000); 
-
+	printf("CPU AHB Frequency=%d MHz\n", u_ar71xx_ahb_freq / 1000000);
 	printf("platform frequency: %lld\n", platform_counter_freq);
+	printf("CPU reference clock: %d MHz\n", u_ar71xx_refclk / 1000000);
 	printf("arguments: \n");
 	printf("  a0 = %08x\n", a0);
 	printf("  a1 = %08x\n", a1);

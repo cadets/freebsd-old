@@ -29,7 +29,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/dev/sis/if_sisreg.h 226995 2011-11-01 16:13:59Z marius $
+ * $FreeBSD: head/sys/dev/sis/if_sisreg.h 248456 2013-03-18 04:46:17Z yongari $
  */
 
 /*
@@ -439,7 +439,6 @@ struct sis_type {
 #define SIS_TYPE_900	1
 #define SIS_TYPE_7016	2
 #define SIS_TYPE_83815	3
-#define SIS_TYPE_83816	4
 
 struct sis_txdesc {
 	struct mbuf		*tx_m;

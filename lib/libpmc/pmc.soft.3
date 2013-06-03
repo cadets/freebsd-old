@@ -21,9 +21,9 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\" $FreeBSD: head/lib/libpmc/pmc.soft.3 233650 2012-03-29 06:19:00Z joel $
+.\" $FreeBSD: head/lib/libpmc/pmc.soft.3 247329 2013-02-26 18:13:42Z mav $
 .\"
-.Dd March 28, 2012
+.Dd February 26, 2013
 .Dt PMC.SOFT 3
 .Os
 .Sh NAME
@@ -61,6 +61,8 @@ The event specifiers supported by software are:
 Hard clock ticks.
 .It Li CLOCK.STAT
 Stat clock ticks.
+.It Li CLOCK.PROF
+Profiling clock ticks.
 .It Li LOCK.FAILED
 Lock acquisition failed.
 .It Li PAGE_FAULT.ALL

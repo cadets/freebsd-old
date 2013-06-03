@@ -16,7 +16,7 @@
 # If you are in doubt as to the purpose or necessity of a line, check first
 # in NOTES.
 #
-# $FreeBSD: head/sys/sparc64/conf/GENERIC 246222 2013-02-01 20:17:11Z eadler $
+# $FreeBSD: head/sys/sparc64/conf/GENERIC 249410 2013-04-12 16:25:03Z trasz $
 
 cpu		SUN4U
 ident		GENERIC
@@ -97,7 +97,6 @@ device		fhc
 # ATA controllers
 device		ahci		# AHCI-compatible SATA controllers
 device		ata		# Legacy ATA/SATA controllers
-options 	ATA_CAM		# Handle legacy controllers with CAM
 device		mvs		# Marvell 88SX50XX/88SX60XX/88SX70XX/SoC SATA
 device		siis		# SiliconImage SiI3124/SiI3132/SiI3531 SATA
 
@@ -121,7 +120,7 @@ device		sa		# Sequential Access (tape etc)
 device		cd		# CD
 device		pass		# Passthrough device (direct ATA/SCSI access)
 device		ses		# Enclosure Services (SES and SAF-TE)
-device		ctl		# CAM Target Layer
+#device		ctl		# CAM Target Layer
 
 # RAID controllers
 #device		amr		# AMI MegaRAID

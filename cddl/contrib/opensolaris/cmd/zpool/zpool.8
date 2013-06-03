@@ -23,9 +23,9 @@
 .\" Copyright (c) 2012 by Delphix. All Rights Reserved.
 .\" Copyright (c) 2012, Glen Barber <gjb@FreeBSD.org>
 .\"
-.\" $FreeBSD: head/cddl/contrib/opensolaris/cmd/zpool/zpool.8 243561 2012-11-26 13:16:55Z mm $
+.\" $FreeBSD: head/cddl/contrib/opensolaris/cmd/zpool/zpool.8 248267 2013-03-14 10:02:59Z mm $
 .\"
-.Dd November 15, 2012
+.Dd March 14, 2013
 .Dt ZPOOL 8
 .Os
 .Sh NAME
@@ -1608,14 +1608,15 @@ is specified, the command exits after
 .Ar count
 reports are printed.
 .Pp
-If a scrub or resilver is in progress, this command reports the percentage done
-and the estimated time to completion. Both of these are only approximate,
+If a scrub or resilver is in progress, this command reports the percentage
+done and the estimated time to completion. Both of these are only approximate,
 because the amount of data in the pool and the other workloads on the system
 can change.
 .Bl -tag -width indent
 .It Fl x
 Only display status for pools that are exhibiting errors or are otherwise
 unavailable.
+Warnings about pools not using the latest on-disk format will not be included.
 .It Fl v
 Displays verbose data error information, printing out a complete list of all
 data errors since the last complete pool scrub.

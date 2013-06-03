@@ -39,8 +39,9 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/net/if_vlan.c 243624 2012-11-27 19:31:49Z andre $");
+__FBSDID("$FreeBSD: head/sys/net/if_vlan.c 249628 2013-04-18 20:13:33Z oleg $");
 
+#include "opt_inet.h"
 #include "opt_vlan.h"
 
 #include <sys/param.h>
@@ -65,6 +66,11 @@ __FBSDID("$FreeBSD: head/sys/net/if_vlan.c 243624 2012-11-27 19:31:49Z andre $")
 #include <net/if_types.h>
 #include <net/if_vlan_var.h>
 #include <net/vnet.h>
+
+#ifdef INET
+#include <netinet/in.h>
+#include <netinet/if_ether.h>
+#endif
 
 #define	VLAN_DEF_HWIDTH	4
 #define	VLAN_IFFLAGS	(IFF_BROADCAST | IFF_MULTICAST)

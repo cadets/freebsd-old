@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/tar/test/test_option_r.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/tar/test/test_option_r.c 248616 2013-03-22 13:36:03Z mm $");
 
 /*
  * Also see test_option_q for additional validation of -r support.
@@ -60,6 +60,11 @@ DEFINE_TEST(test_option_r)
 	/* Edit that file with a lot more data and update the archive with a new copy. */
 	buff = malloc(buff_size);
 	assert(buff != NULL);
+	if (buff == NULL) {
+		free(p0);
+		return;
+	}
+
 	for (i = 0; i < (int)buff_size; ++i)
 		buff[i] = "abcdefghijklmnopqrstuvwxyz"[rand() % 26];
 	buff[buff_size - 1] = '\0';
@@ -126,5 +131,5 @@ DEFINE_TEST(test_option_r)
 	assertEmptyFile("extract.err");
 
 	/* Verify that the second copy of f1 overwrote the first. */
-	assertFileContents(buff, strlen(buff), "f1");
+	assertFileContents(buff, (int)strlen(buff), "f1");
 }

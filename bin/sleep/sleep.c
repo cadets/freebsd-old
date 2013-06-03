@@ -39,10 +39,11 @@ static char sccsid[] = "@(#)sleep.c	8.3 (Berkeley) 4/2/94";
 #endif /* not lint */
 #endif
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/bin/sleep/sleep.c 210749 2010-08-02 10:57:56Z kib $");
+__FBSDID("$FreeBSD: head/bin/sleep/sleep.c 251078 2013-05-28 22:07:31Z jilles $");
 
 #include <ctype.h>
 #include <err.h>
+#include <errno.h>
 #include <limits.h>
 #include <signal.h>
 #include <stdint.h>
@@ -87,8 +88,8 @@ main(int argc, char *argv[])
 			warnx("about %d second(s) left out of the original %d",
 			    (int)time_to_sleep.tv_sec, (int)original);
 			report_requested = 0;
-		} else
-			break;
+		} else if (errno != EINTR)
+			err(1, "nanosleep");
 	}
 	return (0);
 }

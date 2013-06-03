@@ -22,7 +22,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/lib/libarchive/config_freebsd.h 238909 2012-07-30 14:47:35Z mm $
+ * $FreeBSD: head/lib/libarchive/config_freebsd.h 248616 2013-03-22 13:36:03Z mm $
  */
 
 /* FreeBSD 5.0 and later have ACL and extattr support. */
@@ -47,6 +47,8 @@
 #endif
 
 #ifdef WITH_OPENSSL
+#define HAVE_LIBCRYPTO 1
+#define HAVE_OPENSSL_EVP_H 1
 #define HAVE_OPENSSL_MD5_H 1
 #define HAVE_OPENSSL_RIPEMD_H 1
 #define HAVE_OPENSSL_SHA_H 1
@@ -57,8 +59,10 @@
 #define HAVE_SHA384 1
 #define HAVE_SHA512 1
 #else
+#define HAVE_LIBMD 1
 #define HAVE_MD5_H 1
 #define HAVE_MD5INIT 1
+#define HAVE_RIPEMD_H 1
 #define HAVE_SHA_H 1
 #define HAVE_SHA1 1
 #define HAVE_SHA1_INIT 1
@@ -144,6 +148,7 @@
 #define HAVE_PIPE 1
 #define HAVE_POLL 1
 #define HAVE_POLL_H 1
+#define HAVE_POSIX_SPAWNP 1
 #define HAVE_PWD_H 1
 #define HAVE_READDIR_R 1
 #define HAVE_READLINK 1
@@ -154,6 +159,7 @@
 #define HAVE_SETLOCALE 1
 #define HAVE_SIGACTION 1
 #define HAVE_SIGNAL_H 1
+#define HAVE_SPAWN_H 1
 #define HAVE_STATFS 1
 #define HAVE_STATVFS 1
 #define HAVE_STDARG_H 1

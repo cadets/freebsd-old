@@ -26,11 +26,11 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/kern/kern_racct.c 243088 2012-11-15 15:55:49Z trasz $
+ * $FreeBSD: head/sys/kern/kern_racct.c 248298 2013-03-14 23:20:18Z trasz $
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/kern_racct.c 243088 2012-11-15 15:55:49Z trasz $");
+__FBSDID("$FreeBSD: head/sys/kern/kern_racct.c 248298 2013-03-14 23:20:18Z trasz $");
 
 #include "opt_kdtrace.h"
 #include "opt_sched.h"
@@ -1033,6 +1033,7 @@ racct_proc_throttle(struct proc *p)
 	p->p_throttled = 1;
 
 	FOREACH_THREAD_IN_PROC(p, td) {
+		thread_lock(td);
 		switch (td->td_state) {
 		case TDS_RUNQ:
 			/*
@@ -1041,27 +1042,24 @@ racct_proc_throttle(struct proc *p)
 			 * TDF_NEEDRESCHED for the thread, so that once it is
 			 * running, it is taken off the cpu as soon as possible.
 			 */
-			thread_lock(td);
 			td->td_flags |= TDF_NEEDRESCHED;
-			thread_unlock(td);
 			break;
 		case TDS_RUNNING:
 			/*
 			 * If the thread is running, we request a context
 			 * switch for it by setting the TDF_NEEDRESCHED flag.
 			 */
-			thread_lock(td);
 			td->td_flags |= TDF_NEEDRESCHED;
 #ifdef SMP
 			cpuid = td->td_oncpu;
 			if ((cpuid != NOCPU) && (td != curthread))
 				ipi_cpu(cpuid, IPI_AST);
 #endif
-			thread_unlock(td);
 			break;
 		default:
 			break;
 		}
+		thread_unlock(td);
 	}
 }
 

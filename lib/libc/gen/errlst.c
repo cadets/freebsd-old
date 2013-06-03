@@ -31,7 +31,7 @@
 static char sccsid[] = "@(#)errlst.c	8.2 (Berkeley) 11/16/93";
 #endif /* LIBC_SCCS and not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/lib/libc/gen/errlst.c 220376 2011-04-05 21:56:05Z jilles $");
+__FBSDID("$FreeBSD: head/lib/libc/gen/errlst.c 250250 2013-05-04 19:07:22Z pluknet $");
 
 #include <stdio.h>
 
@@ -152,5 +152,7 @@ const char *const sys_errlist[] = {
 	"Protocol error",			/* 92 - EPROTO */
 	"Capabilities insufficient",		/* 93 - ENOTCAPABLE */
 	"Not permitted in capability mode",	/* 94 - ECAPMODE */
+	"State not recoverable",		/* 95 - ENOTRECOVERABLE */
+	"Previous owner died",			/* 96 - EOWNERDEAD */
 };
 const int sys_nerr = sizeof(sys_errlist) / sizeof(sys_errlist[0]);

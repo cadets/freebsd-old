@@ -26,7 +26,7 @@
 .\" SUCH DAMAGE.
 .\"
 .\"     @(#)mount.8	8.8 (Berkeley) 6/16/94
-.\" $FreeBSD: head/sbin/mount/mount.8 241680 2012-10-18 12:04:56Z attilio $
+.\" $FreeBSD: head/sbin/mount/mount.8 250235 2013-05-04 14:00:16Z crees $
 .\"
 .Dd July 12, 2012
 .Dt MOUNT 8
@@ -106,6 +106,13 @@ a file system mount status from read-write to read-only.
 Also
 forces the R/W mount of an unclean file system (dangerous; use with
 caution).
+.It Fl L
+When used in conjunction with the
+.Fl a
+option, mount
+.Em only
+those file systems which are marked as
+.Dq Li late .
 .It Fl l
 When used in conjunction with the
 .Fl a

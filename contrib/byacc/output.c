@@ -861,9 +861,12 @@ output_defines(FILE * fp)
     {
 	if (unionized)
 	{
-	    rewind(union_file);
-	    while ((c = getc(union_file)) != EOF)
-		putc(c, fp);
+	    if (union_file != 0)
+	    {
+		rewind(union_file);
+		while ((c = getc(union_file)) != EOF)
+		    putc(c, fp);
+	    }
 	    fprintf(fp, "extern YYSTYPE %slval;\n", symbol_prefix);
 	}
     }
@@ -1446,9 +1449,12 @@ output(void)
 
     if (iflag)
     {
-	++outline;
-	fprintf(code_file, "#include \"%s\"\n", defines_file_name);
-	if (!dflag)
+	if (dflag)
+	{
+	    ++outline;
+	    fprintf(code_file, "#include \"%s\"\n", defines_file_name);
+	}
+	else
 	    output_defines(externs_file);
     }
     else

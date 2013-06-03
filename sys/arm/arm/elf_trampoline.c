@@ -30,7 +30,7 @@
 #include "opt_kernname.h"
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/arm/elf_trampoline.c 244480 2012-12-20 04:32:02Z gonzo $");
+__FBSDID("$FreeBSD: head/sys/arm/arm/elf_trampoline.c 248364 2013-03-16 03:50:27Z andrew $");
 #include <machine/asm.h>
 #include <sys/param.h>
 #include <sys/elf32.h>
@@ -701,3 +701,18 @@ __start(void)
 	do_call(dst, kernel, dst + (unsigned int)(&func_end) -
 	    (unsigned int)(&load_kernel) + 800, sp);
 }
+
+#ifdef __ARM_EABI__
+/* We need to provide these functions but never call them */
+void __aeabi_unwind_cpp_pr0(void);
+void __aeabi_unwind_cpp_pr1(void);
+void __aeabi_unwind_cpp_pr2(void);
+
+__strong_reference(__aeabi_unwind_cpp_pr0, __aeabi_unwind_cpp_pr1);
+__strong_reference(__aeabi_unwind_cpp_pr0, __aeabi_unwind_cpp_pr2);
+void
+__aeabi_unwind_cpp_pr0(void)
+{
+}
+#endif
+

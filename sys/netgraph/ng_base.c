@@ -34,7 +34,7 @@
  * Authors: Julian Elischer <julian@freebsd.org>
  *          Archie Cobbs <archie@freebsd.org>
  *
- * $FreeBSD: head/sys/netgraph/ng_base.c 241009 2012-09-27 20:12:51Z rstone $
+ * $FreeBSD: head/sys/netgraph/ng_base.c 249583 2013-04-17 11:42:40Z gabor $
  * $Whistle: ng_base.c,v 1.39 1999/01/28 23:54:53 julian Exp $
  */
 
@@ -92,7 +92,7 @@ static void ng_dumphooks(void);
 #endif	/* NETGRAPH_DEBUG */
 /*
  * DEAD versions of the structures.
- * In order to avoid races, it is sometimes neccesary to point
+ * In order to avoid races, it is sometimes necessary to point
  * at SOMETHING even though theoretically, the current entity is
  * INVALID. Use these to avoid these races.
  */

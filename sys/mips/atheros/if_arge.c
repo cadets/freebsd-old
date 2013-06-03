@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/mips/atheros/if_arge.c 243882 2012-12-05 08:04:20Z glebius $");
+__FBSDID("$FreeBSD: head/sys/mips/atheros/if_arge.c 249123 2013-04-05 01:35:59Z adrian $");
 
 /*
  * AR71XX gigabit ethernet driver
@@ -572,6 +572,8 @@ arge_attach(device_t dev)
 		case AR71XX_SOC_AR7240:
 		case AR71XX_SOC_AR7241:
 		case AR71XX_SOC_AR7242:
+		case AR71XX_SOC_AR9330:
+		case AR71XX_SOC_AR9331:
 			ARGE_WRITE(sc, AR71XX_MAC_FIFO_CFG1, 0x0010ffff);
 			ARGE_WRITE(sc, AR71XX_MAC_FIFO_CFG2, 0x015500aa);
 			break;
@@ -899,6 +901,8 @@ arge_set_pll(struct arge_softc *sc, int media, int duplex)
 		case AR71XX_SOC_AR7240:
 		case AR71XX_SOC_AR7241:
 		case AR71XX_SOC_AR7242:
+		case AR71XX_SOC_AR9330:
+		case AR71XX_SOC_AR9331:
 			fifo_tx = 0x01f00140;
 			break;
 		case AR71XX_SOC_AR9130:

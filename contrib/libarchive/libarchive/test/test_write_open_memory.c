@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_write_open_memory.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_write_open_memory.c 248616 2013-03-22 13:36:03Z mm $");
 
 /* Try to force archive_write_open_memory.c to write past the end of an array. */
 static unsigned char buff[16384];
@@ -72,9 +72,9 @@ DEFINE_TEST(test_write_open_memory)
 			    archive_write_close(a));
 		else {
 			assertEqualIntA(a, ARCHIVE_OK, archive_write_close(a));
-			assertEqualInt(used, archive_position_compressed(a));
-			assertEqualInt(archive_position_compressed(a),
-			    archive_position_uncompressed(a));
+			assertEqualInt(used, archive_filter_bytes(a, -1));
+			assertEqualInt(archive_filter_bytes(a, -1),
+			    archive_filter_bytes(a, 0));
 		}
 		assertEqualInt(ARCHIVE_OK, archive_write_free(a));
 		assertEqualInt(buff[i], 0xAE);

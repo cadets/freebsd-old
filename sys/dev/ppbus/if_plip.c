@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/ppbus/if_plip.c 223741 2011-07-03 16:08:38Z bz $");
+__FBSDID("$FreeBSD: head/sys/dev/ppbus/if_plip.c 249925 2013-04-26 12:50:32Z glebius $");
 
 /*
  * Parallel port TCP/IP interfaces added.  I looked at the driver from
@@ -173,7 +173,7 @@ static u_char *ctxmith;
 /* Functions for the lp# interface */
 static int lpinittables(void);
 static int lpioctl(struct ifnet *, u_long, caddr_t);
-static int lpoutput(struct ifnet *, struct mbuf *, struct sockaddr *,
+static int lpoutput(struct ifnet *, struct mbuf *, const struct sockaddr *,
        struct route *);
 static void lpstop(struct lp_data *);
 static void lp_intr(void *);
@@ -682,7 +682,7 @@ lpoutbyte(u_char byte, int spin, device_t ppbus)
 }
 
 static int
-lpoutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
+lpoutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
     struct route *ro)
 {
 	struct lp_data *sc = ifp->if_softc;

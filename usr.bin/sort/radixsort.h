@@ -1,7 +1,7 @@
-/*	$FreeBSD: head/usr.bin/sort/radixsort.h 235267 2012-05-11 12:37:16Z gabor $	*/
+/*	$FreeBSD: head/usr.bin/sort/radixsort.h 251245 2013-06-02 09:43:48Z gabor $	*/
 
 /*-
- * Copyright (C) 2012 Oleg Moskalenko <oleg.moskalenko@citrix.com>
+ * Copyright (C) 2012 Oleg Moskalenko <mom040267@gmail.com>
  * Copyright (C) 2012 Gabor Kovesdan <gabor@FreeBSD.org>
  * All rights reserved.
  *

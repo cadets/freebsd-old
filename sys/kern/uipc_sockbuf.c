@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/uipc_sockbuf.c 243882 2012-12-05 08:04:20Z glebius $");
+__FBSDID("$FreeBSD: head/sys/kern/uipc_sockbuf.c 248886 2013-03-29 14:06:04Z glebius $");
 
 #include "opt_param.h"
 
@@ -528,6 +528,9 @@ sbappendstream_locked(struct sockbuf *sb, struct mbuf *m)
 
 	SBLASTMBUFCHK(sb);
 
+	/* Remove all packet headers and mbuf tags to get a pure data chain. */
+	m_demote(m, 1);
+	
 	sbcompress(sb, m, sb->sb_mbtail);
 
 	sb->sb_lastrecord = sb->sb_mb;
@@ -644,8 +647,8 @@ sbappendaddr_locked(struct sockbuf *sb, const struct sockaddr *asa,
 	if (asa->sa_len > MLEN)
 		return (0);
 #endif
-	MGET(m, M_NOWAIT, MT_SONAME);
-	if (m == 0)
+	m = m_get(M_NOWAIT, MT_SONAME);
+	if (m == NULL)
 		return (0);
 	m->m_len = asa->sa_len;
 	bcopy(asa, mtod(m, caddr_t), asa->sa_len);

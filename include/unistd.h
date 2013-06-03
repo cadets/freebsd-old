@@ -27,7 +27,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)unistd.h	8.12 (Berkeley) 4/27/95
- * $FreeBSD: head/include/unistd.h 240296 2012-09-10 05:09:39Z davidxu $
+ * $FreeBSD: head/include/unistd.h 250159 2013-05-01 22:42:42Z jilles $
  */
 
 #ifndef _UNISTD_H_
@@ -533,6 +533,7 @@ char	*mktemp(char *);
 #endif
 int	 nfssvc(int, void *);
 int	 nlm_syscall(int, int, int, char **);
+int	 pipe2(int *, int);
 int	 profil(char *, size_t, vm_offset_t, int);
 int	 rcmd(char **, int, const char *, const char *, const char *, int *);
 int	 rcmd_af(char **, int, const char *,

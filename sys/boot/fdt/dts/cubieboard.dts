@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  * 
- * $FreeBSD: head/sys/boot/fdt/dts/cubieboard.dts 246851 2013-02-15 21:29:03Z gonzo $
+ * $FreeBSD: head/sys/boot/fdt/dts/cubieboard.dts 247520 2013-03-01 01:47:11Z ganbold $
  */
 
 /dts-v1/;
@@ -121,6 +121,8 @@
 			interrupt-parent = <&AINTC>;
 			current-speed = <115200>;
 			clock-frequency = < 24000000 >;
+			busy-detect = <1>;
+			broken-txfifo = <1>;
 		};
 	};
 

@@ -1,9 +1,8 @@
-<?xml version="1.0" encoding="iso-8859-1" standalone="no"?>
-<!DOCTYPE article PUBLIC "-//FreeBSD//DTD DocBook XML V4.2-Based Extension//EN" [
-<!ENTITY % entities PUBLIC "-//FreeBSD//ENTITIES DocBook FreeBSD Entity Set//DE">
-%entities;
-<!ENTITY % release PUBLIC "-//FreeBSD//ENTITIES Release Specification//EN">
-%release;
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE article PUBLIC "-//FreeBSD//DTD DocBook XML V4.5-Based Extension//EN"
+        "../../../share/xml/freebsd45.dtd" [
+<!ENTITY % release PUBLIC "-//FreeBSD//ENTITIES Release Specification//EN" "release.ent">
+ %release;
 
 <!ENTITY release.4x "4.<replaceable>X</replaceable>">
 <!ENTITY release.5x "5.<replaceable>X</replaceable>">
@@ -12,7 +11,7 @@
 <!--
   The FreeBSD Documentation Project
   The FreeBSD German Documentation Project
-  $FreeBSD: head/release/doc/de_DE.ISO8859-1/early-adopter/article.xml 241096 2012-10-01 11:26:49Z gabor $
+  $FreeBSD: head/release/doc/de_DE.ISO8859-1/early-adopter/article.xml 250746 2013-05-17 18:53:29Z gabor $
   $FreeBSDde: de-docproj/relnotes/de_DE.ISO8859-1/early-adopter/article.xml,v 1.24 2003/05/25 12:44:41 mheinen Exp $
   basiert auf: 1.15
 -->
@@ -26,7 +25,7 @@
       <corpauthor>The &os; Release Engineering Team</corpauthor>
     </authorgroup>
 
-    <pubdate>$FreeBSD: head/release/doc/de_DE.ISO8859-1/early-adopter/article.xml 241096 2012-10-01 11:26:49Z gabor $</pubdate>
+    <pubdate>$FreeBSD: head/release/doc/de_DE.ISO8859-1/early-adopter/article.xml 250746 2013-05-17 18:53:29Z gabor $</pubdate>
 
     <copyright>
       <year>2002</year>

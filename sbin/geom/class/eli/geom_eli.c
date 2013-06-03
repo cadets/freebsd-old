@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sbin/geom/class/eli/geom_eli.c 246622 2013-02-10 15:56:47Z pjd $");
+__FBSDID("$FreeBSD: head/sbin/geom/class/eli/geom_eli.c 248475 2013-03-18 21:11:31Z pjd $");
 
 #include <sys/param.h>
 #include <sys/mman.h>
@@ -259,6 +259,8 @@ struct g_command class_commands[] = {
 
 static int verbose = 0;
 
+#define	BUFSIZE	1024
+
 static int
 eli_protect(struct gctl_req *req)
 {
@@ -344,7 +346,7 @@ static int
 eli_genkey_files(struct gctl_req *req, bool new, const char *type,
     struct hmac_ctx *ctxp, char *passbuf, size_t passbufsize)
 {
-	char *p, buf[MAXPHYS], argname[16];
+	char *p, buf[BUFSIZE], argname[16];
 	const char *file;
 	int error, fd, i;
 	ssize_t done;
@@ -431,7 +433,7 @@ eli_genkey_passphrase_prompt(struct gctl_req *req, bool new, char *passbuf,
 		}
 
 		if (new) {
-			char tmpbuf[BUFSIZ];
+			char tmpbuf[BUFSIZE];
 
 			p = readpassphrase("Reenter new passphrase: ",
 			    tmpbuf, sizeof(tmpbuf),
@@ -460,7 +462,7 @@ static int
 eli_genkey_passphrase(struct gctl_req *req, struct g_eli_metadata *md, bool new,
     struct hmac_ctx *ctxp)
 {
-	char passbuf[MAXPHYS];
+	char passbuf[BUFSIZE];
 	bool nopassphrase;
 	int nfiles;
 

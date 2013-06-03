@@ -17,7 +17,7 @@
  *
  * NEW command line interface for IP firewall facility
  *
- * $FreeBSD: head/sbin/ipfw/ipfw2.h 223666 2011-06-29 10:06:58Z ae $
+ * $FreeBSD: head/sbin/ipfw/ipfw2.h 248552 2013-03-20 10:35:33Z melifaro $
  */
 
 /*
@@ -203,6 +203,7 @@ enum tokens {
 	TOK_SETFIB,
 	TOK_LOOKUP,
 	TOK_SOCKARG,
+	TOK_SETDSCP,
 };
 /*
  * the following macro returns an error message if we run out of
@@ -283,10 +284,10 @@ void print_flow6id(struct _ipfw_insn_u32 *cmd);
 void print_icmp6types(struct _ipfw_insn_u32 *cmd);
 void print_ext6hdr(struct _ipfw_insn *cmd );
 
-struct _ipfw_insn *add_srcip6(struct _ipfw_insn *cmd, char *av);
-struct _ipfw_insn *add_dstip6(struct _ipfw_insn *cmd, char *av);
+struct _ipfw_insn *add_srcip6(struct _ipfw_insn *cmd, char *av, int cblen);
+struct _ipfw_insn *add_dstip6(struct _ipfw_insn *cmd, char *av, int cblen);
 
-void fill_flow6(struct _ipfw_insn_u32 *cmd, char *av );
+void fill_flow6(struct _ipfw_insn_u32 *cmd, char *av, int cblen);
 void fill_unreach6_code(u_short *codep, char *str);
-void fill_icmp6types(struct _ipfw_insn_icmp6 *cmd, char *av);
+void fill_icmp6types(struct _ipfw_insn_icmp6 *cmd, char *av, int cblen);
 int fill_ext6hdr(struct _ipfw_insn *cmd, char *av);

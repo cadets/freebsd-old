@@ -24,7 +24,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/at91/at91rm9200_devices.c 238465 2012-07-15 05:41:43Z imp $");
+__FBSDID("$FreeBSD: head/sys/arm/at91/at91rm9200_devices.c 248902 2013-03-29 18:06:54Z ian $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -92,7 +92,7 @@ at91rm9200_config_uart(unsigned devid, unsigned unit, unsigned pinmask)
 
 	case AT91RM9200_ID_USART0:
 		at91_pio_use_periph_a(AT91RM92_PIOA_BASE, AT91C_PIO_PA17, 1); /* TXD0 */
-		at91_pio_use_periph_a(AT91RM92_PIOA_BASE, AT91C_PIO_PA19, 0); /* RXD0 */
+		at91_pio_use_periph_a(AT91RM92_PIOA_BASE, AT91C_PIO_PA18, 0); /* RXD0 */
 		/* CTS PA20 */
 		/* RTS -- errata #39 PA21 */
 		break;

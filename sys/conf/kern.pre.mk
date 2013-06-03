@@ -1,4 +1,4 @@
-# $FreeBSD: head/sys/conf/kern.pre.mk 243664 2012-11-29 03:48:39Z marcel $
+# $FreeBSD: head/sys/conf/kern.pre.mk 250173 2013-05-02 07:05:34Z adrian $
 
 # Part of a unified Makefile for building kernels.  This part contains all
 # of the definitions that need to be before %BEFORE_DEPEND.
@@ -65,7 +65,7 @@ INCLUDES+= -I$S/contrib/altq
 INCLUDES+= -I$S/contrib/ipfilter
 
 # ... and the same for ath
-INCLUDES+= -I$S/dev/ath -I$S/dev/ath/ath_hal
+INCLUDES+= -I$S/dev/ath -I$S/dev/ath/ath_hal -I$S/contrib/dev/ath/ath_hal
 
 # ... and the same for the NgATM stuff
 INCLUDES+= -I$S/contrib/ngatm

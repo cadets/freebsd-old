@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/amd64/linux32/linux32_sysvec.c 246085 2013-01-29 18:41:30Z jhb $");
+__FBSDID("$FreeBSD: head/sys/amd64/linux32/linux32_sysvec.c 250423 2013-05-09 21:42:43Z dchagin $");
 #include "opt_compat.h"
 
 #ifndef COMPAT_FREEBSD32
@@ -868,7 +868,6 @@ exec_linux_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 
 	/* Do full restore on return so that we can change to a different %cs */
 	set_pcb_flags(pcb, PCB_32BIT | PCB_FULL_IRET);
-	clear_pcb_flags(pcb, PCB_GS32BIT);
 	td->td_retval[1] = 0;
 }
 

@@ -31,7 +31,7 @@
 #
 # Author: George V. Neville-Neil
 #
-# $FreeBSD: head/tools/test/hwpmc/pmctest.py 241826 2012-10-22 02:12:02Z eadler $
+# $FreeBSD: head/tools/test/hwpmc/pmctest.py 250612 2013-05-13 19:53:19Z hiren $
 
 # Description: A program to run a simple program against every available
 # pmc counter present in a system.
@@ -50,6 +50,10 @@
 import sys
 import subprocess
 from subprocess import PIPE
+
+# Use input() for Python version 3
+if sys.version_info[0] == 3:
+    raw_input = input
 
 # A list of strings that are not really counters, just
 # name tags that are output by pmccontrol -L
@@ -87,7 +91,7 @@ def main():
         print(result)
         if (options.wait == True):
             try:
-                value = input("next?")
+                value = raw_input("next?")
             except EOFError:
                 sys.exit()
 

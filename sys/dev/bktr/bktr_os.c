@@ -32,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/bktr/bktr_os.c 227309 2011-11-07 15:43:11Z ed $");
+__FBSDID("$FreeBSD: head/sys/dev/bktr/bktr_os.c 249585 2013-04-17 11:45:15Z gabor $");
 
 /*
  * This is part of the Driver for Video Capture Cards (Frame grabbers)
@@ -404,7 +404,7 @@ bktr_attach( device_t dev )
 
 #if defined( BKTR_SIS_VIA_MODE )
 	if (bootverbose) printf("Using SiS/VIA chipset compatibilty mode\n");
-        fun = fun | 4;	/* Enable SiS/VIA compatibility mode (usefull for
+        fun = fun | 4;	/* Enable SiS/VIA compatibility mode (useful for
                            OPTi chipset motherboards too */
 #endif
 	pci_write_config(dev, 0x40, fun, 2);

@@ -30,9 +30,9 @@
 .\" SUCH DAMAGE.
 .\"
 .\"	@(#)mv.1	8.1 (Berkeley) 5/31/93
-.\" $FreeBSD: head/bin/mv/mv.1 239951 2012-08-31 14:35:01Z jhb $
+.\" $FreeBSD: head/bin/mv/mv.1 248342 2013-03-15 20:12:54Z joel $
 .\"
-.Dd August 28, 2012
+.Dd March 15, 2013
 .Dt MV 1
 .Os
 .Sh NAME
@@ -155,6 +155,16 @@ rm -rf source_file
 .Ed
 .Sh EXIT STATUS
 .Ex -std
+.Sh EXAMPLES
+Rename file
+.Pa foo
+to
+.Pa bar ,
+overwriting
+.Pa bar
+if it already exists:
+.Pp
+.Dl $ mv -f foo bar
 .Sh COMPATIBILITY
 The
 .Fl h ,

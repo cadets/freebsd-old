@@ -33,7 +33,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)ffs_inode.c	8.5 (Berkeley) 12/30/93
- * $FreeBSD: head/sys/fs/ext2fs/ext2_inode.c 246634 2013-02-10 19:49:37Z pfg $
+ * $FreeBSD: head/sys/fs/ext2fs/ext2_inode.c 251171 2013-05-31 00:43:41Z jeff $
  */
 
 #include <sys/param.h>
@@ -43,6 +43,7 @@
 #include <sys/buf.h>
 #include <sys/vnode.h>
 #include <sys/malloc.h>
+#include <sys/rwlock.h>
 
 #include <vm/vm.h>
 #include <vm/vm_extern.h>

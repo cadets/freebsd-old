@@ -39,7 +39,7 @@
 static char sccsid[] = "@(#)glob.c	8.3 (Berkeley) 10/13/93";
 #endif /* LIBC_SCCS and not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/lib/libc/gen/glob.c 243779 2012-12-01 21:26:46Z marcel $");
+__FBSDID("$FreeBSD: head/lib/libc/gen/glob.c 249381 2013-04-11 20:15:37Z emaste $");
 
 /*
  * glob(3) -- a superset of the one defined in POSIX 1003.2.
@@ -738,7 +738,7 @@ glob3(Char *pathbuf, Char *pathend, Char *pathend_last,
 
 
 /*
- * Extend the gl_pathv member of a glob_t structure to accomodate a new item,
+ * Extend the gl_pathv member of a glob_t structure to accommodate a new item,
  * add the new item, and update gl_pathc.
  *
  * This assumes the BSD realloc, which only copies the block when its size

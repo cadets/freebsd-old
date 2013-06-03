@@ -1,4 +1,4 @@
-# $FreeBSD: head/cddl/sbin/zfs/Makefile 240696 2012-09-19 16:20:49Z bapt $
+# $FreeBSD: head/cddl/sbin/zfs/Makefile 248571 2013-03-21 08:38:03Z mm $
 
 .PATH: ${.CURDIR}/../../../cddl/contrib/opensolaris/cmd/zfs
 
@@ -14,6 +14,7 @@ CFLAGS+= -I${.CURDIR}/../../../sys/cddl/compat/opensolaris
 CFLAGS+= -I${.CURDIR}/../../../cddl/contrib/opensolaris/head
 CFLAGS+= -I${.CURDIR}/../../../cddl/contrib/opensolaris/lib/libuutil/common
 CFLAGS+= -I${.CURDIR}/../../../cddl/contrib/opensolaris/lib/libzfs/common
+CFLAGS+= -I${.CURDIR}/../../../cddl/contrib/opensolaris/lib/libzfs_core/common
 CFLAGS+= -I${.CURDIR}/../../../cddl/contrib/opensolaris/lib/libumem/common
 CFLAGS+= -I${.CURDIR}/../../../cddl/contrib/opensolaris/lib/libnvpair
 CFLAGS+= -I${.CURDIR}/../../../sys/cddl/contrib/opensolaris/uts/common
@@ -22,7 +23,7 @@ CFLAGS+= -I${.CURDIR}/../../../sys/cddl/contrib/opensolaris/uts/common/sys
 CFLAGS+= -I${.CURDIR}/../../../sys/cddl/contrib/opensolaris/common/zfs
 
 DPADD=	${LIBGEOM} ${LIBJAIL} ${LIBNVPAIR} ${LIBUMEM} \
-	${LIBUTIL} ${LIBUUTIL} ${LIBZFS}
-LDADD=	-lgeom -ljail -lnvpair -lumem -lutil -luutil -lzfs
+	${LIBUTIL} ${LIBUUTIL} ${LIBZFS_CORE} ${LIBZFS}
+LDADD=	-lgeom -ljail -lnvpair -lumem -lutil -luutil -lzfs_core -lzfs
 
 .include <bsd.prog.mk>

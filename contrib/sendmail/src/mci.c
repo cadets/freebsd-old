@@ -972,7 +972,7 @@ mci_read_persistent(fp, mci)
 	sm_io_rewind(fp, SM_TIME_DEFAULT);
 	ver = -1;
 	LineNumber = 0;
-	while (sm_io_fgets(fp, SM_TIME_DEFAULT, buf, sizeof(buf)) != NULL)
+	while (sm_io_fgets(fp, SM_TIME_DEFAULT, buf, sizeof(buf)) >= 0)
 	{
 		LineNumber++;
 		p = strchr(buf, '\n');

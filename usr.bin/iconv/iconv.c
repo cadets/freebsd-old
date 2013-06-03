@@ -1,4 +1,4 @@
-/* $FreeBSD: head/usr.bin/iconv/iconv.c 219019 2011-02-25 00:04:39Z gabor $ */
+/* $FreeBSD: head/usr.bin/iconv/iconv.c 250938 2013-05-23 18:07:01Z ed $ */
 /* $NetBSD: iconv.c,v 1.16 2009/02/20 15:28:21 yamt Exp $ */
 
 /*-
@@ -47,8 +47,7 @@ static void		 do_conv(FILE *, const char *, const char *, bool, bool);
 static int		 do_list(unsigned int, const char * const *, void *);
 static void		 usage(void);
 
-struct option long_options[] =
-{
+static struct option long_options[] = {
 	{"from-code",		required_argument,	NULL, 'f'},
 	{"list",		no_argument,		NULL, 'l'},
 	{"silent",		no_argument,		NULL, 's'},

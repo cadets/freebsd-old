@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/fs/nandfs/nandfs_vnops.c 235537 2012-05-17 10:11:18Z gber $");
+__FBSDID("$FreeBSD: head/sys/fs/nandfs/nandfs_vnops.c 251171 2013-05-31 00:43:41Z jeff $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -46,6 +46,7 @@ __FBSDID("$FreeBSD: head/sys/fs/nandfs/nandfs_vnops.c 235537 2012-05-17 10:11:18
 #include <sys/bio.h>
 #include <sys/fcntl.h>
 #include <sys/dirent.h>
+#include <sys/rwlock.h>
 #include <sys/stat.h>
 #include <sys/priv.h>
 
@@ -556,7 +557,7 @@ restart_locked:
 			continue;
 		if (BUF_LOCK(bp,
 		    LK_EXCLUSIVE | LK_SLEEPFAIL | LK_INTERLOCK,
-		    BO_MTX(bo)) == ENOLCK)
+		    BO_LOCKPTR(bo)) == ENOLCK)
 			goto restart;
 		bp->b_flags |= (B_INVAL | B_RELBUF);
 		bp->b_flags &= ~(B_ASYNC | B_MANAGED);

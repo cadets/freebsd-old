@@ -1,4 +1,4 @@
-/* $FreeBSD: head/usr.bin/bmake/config.h 246223 2013-02-01 22:55:27Z sjg $ */
+/* $FreeBSD: head/usr.bin/bmake/config.h 249033 2013-04-02 21:31:11Z sjg $ */
 /* config.h.  Generated from config.h.in by configure.  */
 /* config.h.in.  Generated from configure.in by autoheader.  */
 
@@ -230,7 +230,7 @@
 #define PACKAGE_NAME "bmake"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "bmake 20121212"
+#define PACKAGE_STRING "bmake 20130303"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "bmake"
@@ -239,7 +239,7 @@
 #define PACKAGE_URL ""
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "20121212"
+#define PACKAGE_VERSION "20130303"
 
 /* Define as the return type of signal handlers (`int' or `void'). */
 #define RETSIGTYPE void

@@ -28,7 +28,7 @@
  * SUCH DAMAGE.
  *
  * $Id$
- * $FreeBSD: head/sys/netgraph/bluetooth/hci/ng_hci_ulpi.c 243882 2012-12-05 08:04:20Z glebius $
+ * $FreeBSD: head/sys/netgraph/bluetooth/hci/ng_hci_ulpi.c 250576 2013-05-12 16:43:26Z eadler $
  */
 
 #include <sys/param.h>
@@ -391,7 +391,7 @@ ng_hci_lp_sco_con_req(ng_hci_unit_p unit, item_p item, hook_p hook)
 
 		default:
 			panic(
-"%s: %s - Inavalid connection state=%d\n",
+"%s: %s - Invalid connection state=%d\n",
 				__func__, NG_NODE_NAME(unit->node),
 				sco_con->state);
 			break;

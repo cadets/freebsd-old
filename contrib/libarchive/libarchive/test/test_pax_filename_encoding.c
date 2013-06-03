@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_pax_filename_encoding.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_pax_filename_encoding.c 248616 2013-03-22 13:36:03Z mm $");
 
 #include <locale.h>
 
@@ -115,7 +115,7 @@ test_pax_filename_encoding_2(void)
 
 	assert((a = archive_write_new()) != NULL);
 	assertEqualIntA(a, 0, archive_write_set_format_pax(a));
-	assertEqualIntA(a, 0, archive_write_set_compression_none(a));
+	assertEqualIntA(a, 0, archive_write_add_filter_none(a));
 	assertEqualIntA(a, 0, archive_write_set_bytes_per_block(a, 0));
 	assertEqualInt(0,
 	    archive_write_open_memory(a, buff, sizeof(buff), &used));
@@ -234,7 +234,7 @@ test_pax_filename_encoding_3(void)
 
 	assert((a = archive_write_new()) != NULL);
 	assertEqualIntA(a, 0, archive_write_set_format_pax(a));
-	assertEqualIntA(a, 0, archive_write_set_compression_none(a));
+	assertEqualIntA(a, 0, archive_write_add_filter_none(a));
 	assertEqualIntA(a, 0, archive_write_set_bytes_per_block(a, 0));
 	assertEqualInt(0,
 	    archive_write_open_memory(a, buff, sizeof(buff), &used));

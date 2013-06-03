@@ -1,4 +1,4 @@
-# Copyright (c) 2006-2012 Devin Teske
+# Copyright (c) 2006-2013 Devin Teske
 # All Rights Reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -22,12 +22,16 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD: head/usr.sbin/bsdconfig/networking/USAGE 238438 2012-07-14 03:16:57Z dteske $
+# $FreeBSD: head/usr.sbin/bsdconfig/networking/USAGE 249746 2013-04-22 05:02:34Z dteske $
 
 Usage: bsdconfig @PROGRAM_NAME@ [OPTIONS]
 
 OPTIONS:
-	-h         Print usage statement and exit.
+	-d         Provide lots of debugging info on standard-out when running.
+	-D file    Send debugging info to file. If file begins with a plus-sign
+	           debug info is sent to both standard-out and file (minus the
+	           leading plus).
+	-h         Print this usage statement and exit.
 	-S         Secure X11 mode (implies `-X'). As root, always prompt-for
 	           and validate sudo(8) username/password before starting.
 	-X         Use Xdialog(1) in place of dialog(1).

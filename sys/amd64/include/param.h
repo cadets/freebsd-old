@@ -36,7 +36,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)param.h	8.1 (Berkeley) 6/10/93
- * $FreeBSD: head/sys/amd64/include/param.h 239255 2012-08-14 17:01:21Z des $
+ * $FreeBSD: head/sys/amd64/include/param.h 250338 2013-05-07 22:46:24Z attilio $
  */
 
 
@@ -69,6 +69,10 @@
 #endif
 #else
 #define MAXCPU		1
+#endif
+
+#ifndef MAXMEMDOM
+#define	MAXMEMDOM	1
 #endif
 
 #define	ALIGNBYTES		_ALIGNBYTES

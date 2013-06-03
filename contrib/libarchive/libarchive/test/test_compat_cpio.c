@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_compat_cpio.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_compat_cpio.c 248616 2013-03-22 13:36:03Z mm $");
 
 /*
  * Verify our ability to read various sample files.
@@ -90,7 +90,7 @@ test_compat_cpio_1(void)
 	assertEqualInt(0100644, archive_entry_mode(ae));
 
 	/* Verify that the format detection worked. */
-	assertEqualInt(archive_compression(a), ARCHIVE_COMPRESSION_NONE);
+	assertEqualInt(archive_filter_code(a, 0), ARCHIVE_FILTER_NONE);
 	assertEqualInt(archive_format(a), ARCHIVE_FORMAT_CPIO_SVR4_NOCRC);
 
 	assertEqualInt(ARCHIVE_OK, archive_read_close(a));

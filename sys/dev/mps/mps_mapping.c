@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/mps/mps_mapping.c 237683 2012-06-28 03:48:54Z ken $");
+__FBSDID("$FreeBSD: head/sys/dev/mps/mps_mapping.c 250206 2013-05-03 10:37:59Z smh $");
 
 /* TODO Move headers to mpsvar */
 #include <sys/types.h>
@@ -331,6 +331,8 @@ _mapping_get_high_missing_mt_idx(struct mps_softc *sc)
 	u16 ioc_pg8_flags = le16toh(sc->ioc_pg8.Flags);
 
 	start_idx = 0;
+	start_idx_ir = 0;
+	end_idx_ir = 0;
 	end_idx = sc->max_devices;
 	if (ioc_pg8_flags & MPI2_IOCPAGE8_FLAGS_RESERVED_TARGETID_0)
 		start_idx = 1;

@@ -90,7 +90,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/sys_pipe.c 246907 2013-02-17 11:48:16Z pjd $");
+__FBSDID("$FreeBSD: head/sys/kern/sys_pipe.c 250159 2013-05-01 22:42:42Z jilles $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -128,9 +128,6 @@ __FBSDID("$FreeBSD: head/sys/kern/sys_pipe.c 246907 2013-02-17 11:48:16Z pjd $")
 #include <vm/vm_map.h>
 #include <vm/vm_page.h>
 #include <vm/uma.h>
-
-/* XXX */
-int	do_pipe(struct thread *td, int fildes[2], int flags);
 
 /*
  * Use this define if you want to disable *fancy* VM things.  Expect an
@@ -408,11 +405,11 @@ int
 kern_pipe(struct thread *td, int fildes[2])
 {
 
-	return (do_pipe(td, fildes, 0));
+	return (kern_pipe2(td, fildes, 0));
 }
 
 int
-do_pipe(struct thread *td, int fildes[2], int flags)
+kern_pipe2(struct thread *td, int fildes[2], int flags)
 {
 	struct filedesc *fdp; 
 	struct file *rf, *wf;
@@ -478,6 +475,24 @@ sys_pipe(struct thread *td, struct pipe_args *uap)
 	td->td_retval[1] = fildes[1];
 
 	return (0);
+}
+
+int
+sys_pipe2(struct thread *td, struct pipe2_args *uap)
+{
+	int error, fildes[2];
+
+	if (uap->flags & ~(O_CLOEXEC | O_NONBLOCK))
+		return (EINVAL);
+	error = kern_pipe2(td, fildes, uap->flags);
+	if (error)
+		return (error);
+	error = copyout(fildes, uap->fildes, 2 * sizeof(int));
+	if (error) {
+		(void)kern_close(td, fildes[0]);
+		(void)kern_close(td, fildes[1]);
+	}
+	return (error);
 }
 
 /*

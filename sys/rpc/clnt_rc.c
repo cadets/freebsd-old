@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/rpc/clnt_rc.c 244008 2012-12-08 00:29:16Z rmacklem $");
+__FBSDID("$FreeBSD: head/sys/rpc/clnt_rc.c 248255 2013-03-13 21:06:03Z jhb $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -247,8 +247,7 @@ clnt_reconnect_call(
 			stat = clnt_reconnect_connect(cl);
 			if (stat == RPC_SYSTEMERROR) {
 				error = tsleep(&fake_wchan,
-				    rc->rc_intr ? PCATCH | PBDRY : 0, "rpccon",
-				    hz);
+				    rc->rc_intr ? PCATCH : 0, "rpccon", hz);
 				if (error == EINTR || error == ERESTART)
 					return (RPC_INTR);
 				tries++;

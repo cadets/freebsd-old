@@ -11,7 +11,7 @@
  *
  * See README and COPYING for more details.
  *
- * $FreeBSD: head/usr.sbin/wpa/wpa_supplicant/driver_freebsd.c 214735 2010-11-03 10:44:25Z rpaulo $
+ * $FreeBSD: head/usr.sbin/wpa/wpa_supplicant/driver_freebsd.c 250528 2013-05-11 20:55:14Z eadler $
  */
 
 #include <stdlib.h>
@@ -693,6 +693,11 @@ wpa_driver_bsd_add_scan_entry(struct wpa_scan_results *res,
         result->caps = sr->isr_capinfo;
         result->qual = sr->isr_rssi;
         result->noise = sr->isr_noise;
+        /*
+         * the rssi value reported by the kernel is in 0.5dB steps relative to
+         * the reported noise floor. see ieee80211_node.h for details.
+         */
+        result->level = sr->isr_rssi / 2 + sr->isr_noise;
 
         pos = (u8 *)(result + 1);
 

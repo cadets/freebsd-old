@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/lib/libpam/modules/pam_unix/pam_unix.c 239100 2012-08-06 18:44:59Z dim $");
+__FBSDID("$FreeBSD: head/lib/libpam/modules/pam_unix/pam_unix.c 249177 2013-04-05 23:41:34Z jkim $");
 
 #include <sys/param.h>
 #include <sys/socket.h>
@@ -460,14 +460,14 @@ to64(char *s, long v, int n)
 }
 
 /* Salt suitable for traditional DES and MD5 */
-void
-makesalt(char salt[SALTSIZE])
+static void
+makesalt(char salt[SALTSIZE + 1])
 {
 	int i;
 
 	/* These are not really random numbers, they are just
 	 * numbers that change to thwart construction of a
-	 * dictionary. This is exposed to the public.
+	 * dictionary.
 	 */
 	for (i = 0; i < SALTSIZE; i += 4)
 		to64(&salt[i], arc4random(), 4);

@@ -2,12 +2,12 @@
 #
 # Configure routing and miscellaneous network tunables
 #
-# $FreeBSD: head/etc/rc.d/routing 243212 2012-11-18 11:22:15Z hrs $
+# $FreeBSD: head/etc/rc.d/routing 250804 2013-05-19 04:10:34Z jamie $
 #
 
 # PROVIDE: routing
 # REQUIRE: faith netif ppp stf
-# KEYWORD: nojail
+# KEYWORD: nojailvnet
 
 . /etc/rc.subr
 . /etc/network.subr

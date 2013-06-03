@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/netinet6/sctp6_usrreq.c 243186 2012-11-17 20:04:04Z tuexen $");
+__FBSDID("$FreeBSD: head/sys/netinet6/sctp6_usrreq.c 250466 2013-05-10 18:09:38Z tuexen $");
 
 #include <netinet/sctp_os.h>
 #ifdef INET6
@@ -787,18 +787,11 @@ sctp6_send(struct socket *so, int flags, struct mbuf *m, struct sockaddr *addr,
 		}
 	}
 	if (IN6_IS_ADDR_V4MAPPED(&sin6->sin6_addr)) {
-		if (!MODULE_GLOBAL(ip6_v6only)) {
-			struct sockaddr_in sin;
+		struct sockaddr_in sin;
 
-			/* convert v4-mapped into v4 addr and send */
-			in6_sin6_2_sin(&sin, sin6);
-			return (sctp_sendm(so, flags, m, (struct sockaddr *)&sin,
-			    control, p));
-		} else {
-			/* mapped addresses aren't enabled */
-			SCTP_LTRACE_ERR_RET(inp, NULL, NULL, SCTP_FROM_SCTP6_USRREQ, EINVAL);
-			return (EINVAL);
-		}
+		/* convert v4-mapped into v4 addr and send */
+		in6_sin6_2_sin(&sin, sin6);
+		return (sctp_sendm(so, flags, m, (struct sockaddr *)&sin, control, p));
 	}
 #endif				/* INET */
 connected_type:
@@ -932,17 +925,9 @@ sctp6_connect(struct socket *so, struct sockaddr *addr, struct thread *p)
 		}
 	}
 	if (IN6_IS_ADDR_V4MAPPED(&sin6->sin6_addr)) {
-		if (!MODULE_GLOBAL(ip6_v6only)) {
-			/* convert v4-mapped into v4 addr */
-			in6_sin6_2_sin((struct sockaddr_in *)&ss, sin6);
-			addr = (struct sockaddr *)&ss;
-		} else {
-			/* mapped addresses aren't enabled */
-			SCTP_INP_RUNLOCK(inp);
-			SCTP_ASOC_CREATE_UNLOCK(inp);
-			SCTP_LTRACE_ERR_RET(inp, NULL, NULL, SCTP_FROM_SCTP6_USRREQ, EINVAL);
-			return (EINVAL);
-		}
+		/* convert v4-mapped into v4 addr */
+		in6_sin6_2_sin((struct sockaddr_in *)&ss, sin6);
+		addr = (struct sockaddr *)&ss;
 	}
 #endif				/* INET */
 	/* Now do we connect? */

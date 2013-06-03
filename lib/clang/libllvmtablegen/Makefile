@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/clang/libllvmtablegen/Makefile 246259 2013-02-02 22:28:29Z dim $
+# $FreeBSD: head/lib/clang/libllvmtablegen/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
@@ -12,6 +12,5 @@ SRCS=	Error.cpp \
 	TableGenBackend.cpp \
 	TGLexer.cpp \
 	TGParser.cpp
-LLVM_REQUIRES_EH=
 
 .include "../clang.lib.mk"

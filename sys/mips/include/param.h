@@ -36,7 +36,7 @@
  *	from: Utah Hdr: machparam.h 1.11 89/08/14
  *	from: @(#)param.h	8.1 (Berkeley) 6/10/93
  *	JNPR: param.h,v 1.6.2.1 2007/09/10 07:49:36 girish
- * $FreeBSD: head/sys/mips/include/param.h 244417 2012-12-19 05:07:27Z alc $
+ * $FreeBSD: head/sys/mips/include/param.h 250338 2013-05-07 22:46:24Z attilio $
  */
 
 #ifndef _MIPS_INCLUDE_PARAM_H_
@@ -99,6 +99,10 @@
 #else
 #define	MAXSMPCPU	1
 #define	MAXCPU		1
+#endif
+
+#ifndef MAXMEMDOM
+#define	MAXMEMDOM	1
 #endif
 
 /*

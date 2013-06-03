@@ -29,7 +29,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/fs/nfs/nfsport.h 245909 2013-01-25 15:25:24Z jhb $
+ * $FreeBSD: head/sys/fs/nfs/nfsport.h 249592 2013-04-17 21:00:22Z ken $
  */
 
 #ifndef _NFS_NFSPORT_H_
@@ -140,32 +140,32 @@
  * Allocate mbufs. Must succeed and never set the mbuf ptr to NULL.
  */
 #define	NFSMGET(m)	do { 					\
-		MGET((m), M_TRYWAIT, MT_DATA); 			\
+		MGET((m), M_WAITOK, MT_DATA); 			\
 		while ((m) == NULL ) { 				\
 			(void) nfs_catnap(PZERO, 0, "nfsmget");	\
-			MGET((m), M_TRYWAIT, MT_DATA); 		\
+			MGET((m), M_WAITOK, MT_DATA); 		\
 		} 						\
 	} while (0)
 #define	NFSMGETHDR(m)	do { 					\
-		MGETHDR((m), M_TRYWAIT, MT_DATA);		\
+		MGETHDR((m), M_WAITOK, MT_DATA);		\
 		while ((m) == NULL ) { 				\
 			(void) nfs_catnap(PZERO, 0, "nfsmget");	\
-			MGETHDR((m), M_TRYWAIT, MT_DATA); 	\
+			MGETHDR((m), M_WAITOK, MT_DATA); 	\
 		} 						\
 	} while (0)
 #define	NFSMCLGET(m, w)	do { 					\
-		MGET((m), M_TRYWAIT, MT_DATA); 			\
+		MGET((m), M_WAITOK, MT_DATA); 			\
 		while ((m) == NULL ) { 				\
 			(void) nfs_catnap(PZERO, 0, "nfsmget");	\
-			MGET((m), M_TRYWAIT, MT_DATA); 		\
+			MGET((m), M_WAITOK, MT_DATA); 		\
 		} 						\
 		MCLGET((m), (w));				\
 	} while (0)
 #define	NFSMCLGETHDR(m, w) do { 				\
-		MGETHDR((m), M_TRYWAIT, MT_DATA);		\
+		MGETHDR((m), M_WAITOK, MT_DATA);		\
 		while ((m) == NULL ) { 				\
 			(void) nfs_catnap(PZERO, 0, "nfsmget");	\
-			MGETHDR((m), M_TRYWAIT, MT_DATA); 	\
+			MGETHDR((m), M_WAITOK, MT_DATA); 	\
 		} 						\
 	} while (0)
 #define	NFSMTOD	mtod
@@ -806,7 +806,7 @@ MALLOC_DECLARE(M_NEWNFSLAYRECALL);
  */
 int nfscl_loadattrcache(struct vnode **, struct nfsvattr *, void *, void *,
     int, int);
-void newnfs_realign(struct mbuf **);
+int newnfs_realign(struct mbuf **, int);
 
 /*
  * If the port runs on an SMP box that can enforce Atomic ops with low
@@ -980,13 +980,6 @@ struct nfsreq {
 #else
 #define	NFSVNO_DELEGOK(v)	(1)
 #endif
-
-/*
- * Define this as the flags argument for msleep() when catching signals
- * while holding a resource that other threads would block for, such as
- * a vnode lock.
- */
-#define	NFS_PCATCH	(PCATCH | PBDRY)
 
 #endif	/* _KERNEL */
 

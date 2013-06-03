@@ -1,10 +1,11 @@
-# $FreeBSD: head/usr.sbin/bsdinstall/partedit/Makefile 245700 2013-01-20 22:25:58Z nwhitehorn $
+# $FreeBSD: head/usr.sbin/bsdinstall/partedit/Makefile 250511 2013-05-11 13:46:05Z antoine $
 
 BINDIR= /usr/libexec/bsdinstall
 PROG=	partedit
 LINKS= ${BINDIR}/partedit ${BINDIR}/autopart \
        ${BINDIR}/partedit ${BINDIR}/scriptedpart
 SYMLINKS= ${BINDIR}/partedit /usr/sbin/sade
+DPADD=	${LIBGEOM} ${LIBNCURSESW} ${LIBUTIL} ${LIBDIALOG} ${LIBM}
 LDADD=	-lgeom -lncursesw -lutil -ldialog -lm
 
 PARTEDIT_ARCH= ${MACHINE}

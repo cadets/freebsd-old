@@ -72,7 +72,7 @@
 #include <machine/asm.h>
 #include <machine/asmacros.h>
 #include <machine/armreg.h>
-__FBSDID("$FreeBSD: head/sys/arm/arm/irq_dispatch.S 236991 2012-06-13 04:59:55Z imp $");
+__FBSDID("$FreeBSD: head/sys/arm/arm/irq_dispatch.S 248361 2013-03-16 02:48:49Z andrew $");
 
 /*
  * irq_entry:
@@ -97,6 +97,7 @@ ASENTRY_NP(irq_entry)
 	DO_AST
 	PULLFRAMEFROMSVCANDEXIT
 	movs	pc, lr			/* Exit */
+END(irq_entry)
 
 	.data
 	.align	0

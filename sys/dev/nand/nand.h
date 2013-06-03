@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/dev/nand/nand.h 235537 2012-05-17 10:11:18Z gber $
+ * $FreeBSD: head/sys/dev/nand/nand.h 251022 2013-05-27 06:24:31Z gber $
  */
 
 #ifndef _DEV_NAND_H_
@@ -219,7 +219,7 @@ struct onfi_params {
 	uint16_t	vendor_rev;
 	uint8_t		vendor_spec[8];
 	uint16_t	crc;
-};
+}__attribute__((packed));
 
 struct nand_ecc_data {
 	int	eccsize;		/* Number of data bytes per ECC step */

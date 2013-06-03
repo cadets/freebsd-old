@@ -1,10 +1,10 @@
-# $FreeBSD: head/lib/clang/libllvmcore/Makefile 246259 2013-02-02 22:28:29Z dim $
+# $FreeBSD: head/lib/clang/libllvmcore/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
 LIB=	llvmcore
 
-SRCDIR=	lib/VMCore
+SRCDIR=	lib/IR
 SRCS=	AsmWriter.cpp \
 	Attributes.cpp \
 	AutoUpgrade.cpp \
@@ -37,14 +37,12 @@ SRCS=	AsmWriter.cpp \
 	PrintModulePass.cpp \
 	Type.cpp \
 	TypeFinder.cpp \
-	TargetTransformInfo.cpp \
 	Use.cpp \
 	User.cpp \
 	Value.cpp \
 	ValueSymbolTable.cpp \
 	ValueTypes.cpp \
 	Verifier.cpp
-LLVM_REQUIRES_RTTI=
 
 TGHDRS=	Intrinsics
 

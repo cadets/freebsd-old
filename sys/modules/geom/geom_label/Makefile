@@ -1,9 +1,10 @@
-# $FreeBSD: head/sys/modules/geom/geom_label/Makefile 241706 2012-10-18 22:18:11Z attilio $
+# $FreeBSD: head/sys/modules/geom/geom_label/Makefile 249581 2013-04-17 09:19:29Z ivoras $
 
 .PATH: ${.CURDIR}/../../../geom/label
 
 KMOD=	geom_label
 SRCS=	g_label.c
+SRCS+=	g_label_disk_ident.c
 SRCS+=	g_label_ext2fs.c
 SRCS+=	g_label_gpt.c
 SRCS+=	g_label_iso9660.c

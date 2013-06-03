@@ -32,7 +32,7 @@
 #include "opt_kdtrace.h"
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/kern_lock.c 245113 2013-01-06 21:47:59Z mjg $");
+__FBSDID("$FreeBSD: head/sys/kern/kern_lock.c 250411 2013-05-09 16:28:18Z marcel $");
 
 #include <sys/param.h>
 #include <sys/kdb.h>
@@ -393,6 +393,8 @@ lockinit(struct lock *lk, int pri, const char *wmesg, int timo, int flags)
 		iflags |= LO_WITNESS;
 	if (flags & LK_QUIET)
 		iflags |= LO_QUIET;
+	if (flags & LK_IS_VNODE)
+		iflags |= LO_IS_VNODE;
 	iflags |= flags & (LK_ADAPTIVE | LK_NOSHARE);
 
 	lk->lk_lock = LK_UNLOCKED;

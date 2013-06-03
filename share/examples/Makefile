@@ -1,4 +1,4 @@
-# $FreeBSD: head/share/examples/Makefile 244998 2013-01-03 16:15:35Z peter $
+# $FreeBSD: head/share/examples/Makefile 248484 2013-03-18 23:46:14Z neel $
 #
 # Doing a make install builds /usr/share/examples
 
@@ -7,6 +7,7 @@
 LDIRS=	BSD_daemon \
 	FreeBSD_version \
 	IPv6 \
+	bhyve \
 	bootforth \
 	csh \
 	cvsup \
@@ -42,6 +43,7 @@ XFILES=	BSD_daemon/FreeBSD.pfa \
 	FreeBSD_version/Makefile \
 	FreeBSD_version/README \
 	IPv6/USAGE \
+	bhyve/vmrun.sh \
 	bootforth/README \
 	bootforth/boot.4th \
 	bootforth/frames.4th \
@@ -52,9 +54,6 @@ XFILES=	BSD_daemon/FreeBSD.pfa \
 	csh/dot.cshrc \
 	cvsup/README \
 	cvsup/cvs-supfile \
-	cvsup/ports-supfile \
-	cvsup/refuse \
-	cvsup/refuse.README \
 	cvsup/stable-supfile \
 	cvsup/standard-supfile \
 	diskless/ME \

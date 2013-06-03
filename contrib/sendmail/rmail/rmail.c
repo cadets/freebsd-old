@@ -8,7 +8,7 @@
  * forth in the LICENSE file which can be found at the top level of
  * the sendmail distribution.
  *
- * $FreeBSD: head/contrib/sendmail/rmail/rmail.c 182352 2008-08-28 06:08:29Z gshapiro $
+ * $FreeBSD: head/contrib/sendmail/rmail/rmail.c 249729 2013-04-21 17:08:44Z gshapiro $
  *
  */
 
@@ -136,7 +136,7 @@ main(argc, argv)
 	{
 		/* Get and nul-terminate the line. */
 		if (sm_io_fgets(smioin, SM_TIME_DEFAULT, lbuf,
-				sizeof(lbuf)) == NULL)
+				sizeof(lbuf)) < 0)
 			err(EX_DATAERR, "no data");
 		if ((p = strchr(lbuf, '\n')) == NULL)
 			err(EX_DATAERR, "line too long");
@@ -385,7 +385,7 @@ main(argc, argv)
 	{
 		(void) sm_io_fprintf(fp, SM_TIME_DEFAULT, "%s", lbuf);
 	} while (sm_io_fgets(smioin, SM_TIME_DEFAULT, lbuf,
-			     sizeof(lbuf)) != NULL);
+			     sizeof(lbuf)) >= 0);
 
 	if (sm_io_error(smioin))
 		err(EX_TEMPFAIL, "stdin: %s", sm_errstring(errno));

@@ -23,11 +23,11 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/usr.sbin/bhyve/pci_passthru.c 246191 2013-02-01 03:49:09Z neel $
+ * $FreeBSD: head/usr.sbin/bhyve/pci_passthru.c 248171 2013-03-11 17:36:37Z neel $
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.sbin/bhyve/pci_passthru.c 246191 2013-02-01 03:49:09Z neel $");
+__FBSDID("$FreeBSD: head/usr.sbin/bhyve/pci_passthru.c 248171 2013-03-11 17:36:37Z neel $");
 
 #include <sys/param.h>
 #include <sys/types.h>
@@ -279,6 +279,7 @@ msix_table_read(struct passthru_softc *sc, uint64_t offset, int size)
 	int index;
 
 	pi = sc->psc_pi;
+	offset -= pi->pi_msix.table_offset;
 
 	index = offset / MSIX_TABLE_ENTRY_SIZE;
 	if (index >= pi->pi_msix.table_count)
@@ -323,6 +324,8 @@ msix_table_write(struct vmctx *ctx, int vcpu, struct passthru_softc *sc,
 	int error, index;
 
 	pi = sc->psc_pi;
+	offset -= pi->pi_msix.table_offset;
+
 	index = offset / MSIX_TABLE_ENTRY_SIZE;
 	if (index >= pi->pi_msix.table_count)
 		return;

@@ -26,9 +26,9 @@
 .\" SUCH DAMAGE.
 .\"
 .\"     @(#)random.3	8.1 (Berkeley) 6/4/93
-.\" $FreeBSD: head/lib/libc/stdlib/random.3 240361 2012-09-11 12:55:15Z des $
+.\" $FreeBSD: head/lib/libc/stdlib/random.3 249035 2013-04-02 23:41:20Z delphij $
 .\"
-.Dd September 4, 2012
+.Dd April 2, 2013
 .Dt RANDOM 3
 .Os
 .Sh NAME
@@ -106,8 +106,8 @@ as the seed.
 .Pp
 The
 .Fn srandomdev
-routine initializes a state array using data from
-.Xr random 4 .
+routine initializes a state array using
+pseudo-random numbers obtained from the kernel.
 Note that this particular seeding
 procedure can generate states which are impossible to reproduce by
 calling

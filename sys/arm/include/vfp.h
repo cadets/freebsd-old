@@ -23,7 +23,7 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- * $FreeBSD: head/sys/arm/include/vfp.h 239268 2012-08-15 03:03:03Z gonzo $
+ * $FreeBSD: head/sys/arm/include/vfp.h 247341 2013-02-26 20:01:05Z cognet $
  */
 
 
@@ -124,5 +124,6 @@
 #define COPROC10		(0x3 << 20)
 #define COPROC11		(0x3 << 22)
 
+void    vfp_init(void);
 
 #endif

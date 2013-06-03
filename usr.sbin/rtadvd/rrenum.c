@@ -1,4 +1,4 @@
-/*	$FreeBSD: head/usr.sbin/rtadvd/rrenum.c 224144 2011-07-17 19:24:54Z hrs $	*/
+/*	$FreeBSD: head/usr.sbin/rtadvd/rrenum.c 250302 2013-05-06 17:21:28Z eadler $	*/
 /*	$KAME: rrenum.c,v 1.12 2002/06/10 19:59:47 itojun Exp $	*/
 
 /*
@@ -325,7 +325,7 @@ do_rr(int len, struct icmp6_router_renum *rr)
 		if ((size_t)len < sizeof(struct rr_pco_match)) {
 		    tooshort:
 			syslog(LOG_ERR, "<%s> pkt too short. left len = %d. "
-			    "gabage at end of pkt?", __func__, len);
+			    "garbage at end of pkt?", __func__, len);
 			return (1);
 		}
 		rpmlen = rpm->rpm_len << 3;

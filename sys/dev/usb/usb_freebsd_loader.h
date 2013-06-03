@@ -1,4 +1,4 @@
-/* $FreeBSD: head/sys/dev/usb/usb_freebsd_loader.h 246363 2013-02-05 14:44:25Z hselasky $ */
+/* $FreeBSD: head/sys/dev/usb/usb_freebsd_loader.h 250207 2013-05-03 11:10:04Z hselasky $ */
 /*-
  * Copyright (c) 2013 Hans Petter Selasky. All rights reserved.
  *
@@ -45,6 +45,10 @@
 #define	USB_HAVE_ROOT_MOUNT_HOLD 0
 #define	USB_HAVE_ID_SECTION 0
 #define	USB_HAVE_PER_BUS_PROCESS 0
+#define	USB_HAVE_FIXED_ENDPOINT 0
+#define	USB_HAVE_FIXED_IFACE 0
+#define	USB_HAVE_FIXED_CONFIG 0
+#define	USB_HAVE_FIXED_PORT 0
 
 #define	USB_TD_GET_PROC(td) (td)->td_proc
 #define	USB_PROC_GET_GID(td) (td)->p_pgid
@@ -61,9 +65,12 @@
 #define	USB_FS_ISOC_UFRAME_MAX 4	/* exclusive unit */
 #define	USB_BUS_MAX 256			/* units */
 #define	USB_MAX_DEVICES 128		/* units */
+#define	USB_CONFIG_MAX 65535		/* bytes */
 #define	USB_IFACE_MAX 32		/* units */
 #define	USB_FIFO_MAX 128		/* units */
+#define	USB_MAX_EP_UNITS 32		/* units */
 #define	USB_MAX_EP_STREAMS 8		/* units */
+#define	USB_MAX_PORTS 255		/* units */
 
 #define	USB_MAX_FS_ISOC_FRAMES_PER_XFER (120)	/* units */
 #define	USB_MAX_HS_ISOC_FRAMES_PER_XFER (8*120)	/* units */

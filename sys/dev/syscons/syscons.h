@@ -28,7 +28,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/dev/syscons/syscons.h 230132 2012-01-15 13:23:18Z uqs $
+ * $FreeBSD: head/sys/dev/syscons/syscons.h 247792 2013-03-04 14:00:58Z davide $
  */
 
 #ifndef _DEV_SYSCONS_SYSCONS_H_
@@ -269,6 +269,8 @@ typedef struct sc_softc {
 #ifdef KDB
 	int		sc_altbrk;
 #endif
+	struct callout	ctimeout;
+	struct callout	cblink;
 } sc_softc_t;
 
 /* virtual screen */

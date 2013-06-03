@@ -22,7 +22,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/net80211/ieee80211_freebsd.h 243532 2012-11-26 00:06:55Z adrian $
+ * $FreeBSD: head/sys/net80211/ieee80211_freebsd.h 248069 2013-03-08 20:23:55Z adrian $
  */
 #ifndef _NET80211_IEEE80211_FREEBSD_H_
 #define _NET80211_IEEE80211_FREEBSD_H_
@@ -55,6 +55,30 @@ typedef struct {
 	mtx_assert(IEEE80211_LOCK_OBJ(_ic), MA_OWNED)
 #define	IEEE80211_UNLOCK_ASSERT(_ic) \
 	mtx_assert(IEEE80211_LOCK_OBJ(_ic), MA_NOTOWNED)
+
+/*
+ * Transmit lock.
+ *
+ * This is a (mostly) temporary lock designed to serialise all of the
+ * transmission operations throughout the stack.
+ */
+typedef struct {
+	char		name[16];		/* e.g. "ath0_com_lock" */
+	struct mtx	mtx;
+} ieee80211_tx_lock_t;
+#define	IEEE80211_TX_LOCK_INIT(_ic, _name) do {				\
+	ieee80211_tx_lock_t *cl = &(_ic)->ic_txlock;			\
+	snprintf(cl->name, sizeof(cl->name), "%s_tx_lock", _name);	\
+	mtx_init(&cl->mtx, cl->name, NULL, MTX_DEF);	\
+} while (0)
+#define	IEEE80211_TX_LOCK_OBJ(_ic)	(&(_ic)->ic_txlock.mtx)
+#define	IEEE80211_TX_LOCK_DESTROY(_ic) mtx_destroy(IEEE80211_TX_LOCK_OBJ(_ic))
+#define	IEEE80211_TX_LOCK(_ic)	   mtx_lock(IEEE80211_TX_LOCK_OBJ(_ic))
+#define	IEEE80211_TX_UNLOCK(_ic)	   mtx_unlock(IEEE80211_TX_LOCK_OBJ(_ic))
+#define	IEEE80211_TX_LOCK_ASSERT(_ic) \
+	mtx_assert(IEEE80211_TX_LOCK_OBJ(_ic), MA_OWNED)
+#define	IEEE80211_TX_UNLOCK_ASSERT(_ic) \
+	mtx_assert(IEEE80211_TX_LOCK_OBJ(_ic), MA_NOTOWNED)
 
 /*
  * Node locking definitions.
@@ -272,9 +296,11 @@ int	ieee80211_add_callback(struct mbuf *m,
 		void (*func)(struct ieee80211_node *, void *, int), void *arg);
 void	ieee80211_process_callback(struct ieee80211_node *, struct mbuf *, int);
 
-void	get_random_bytes(void *, size_t);
-
 struct ieee80211com;
+int	ieee80211_parent_transmit(struct ieee80211com *, struct mbuf *);
+int	ieee80211_vap_transmit(struct ieee80211vap *, struct mbuf *);
+
+void	get_random_bytes(void *, size_t);
 
 void	ieee80211_sysctl_attach(struct ieee80211com *);
 void	ieee80211_sysctl_detach(struct ieee80211com *);

@@ -32,7 +32,7 @@
  *
  *	@(#)procfs_status.c	8.3 (Berkeley) 2/17/94
  *
- * $FreeBSD: head/sys/fs/procfs/procfs_map.c 241896 2012-10-22 17:50:54Z kib $
+ * $FreeBSD: head/sys/fs/procfs/procfs_map.c 248084 2013-03-09 02:32:23Z attilio $
  */
 
 #include "opt_compat.h"
@@ -43,9 +43,9 @@
 #include <sys/filedesc.h>
 #include <sys/malloc.h>
 #include <sys/mount.h>
-#include <sys/mutex.h>
 #include <sys/proc.h>
 #include <sys/resourcevar.h>
+#include <sys/rwlock.h>
 #include <sys/sbuf.h>
 #ifdef COMPAT_FREEBSD32
 #include <sys/sysent.h>
@@ -132,7 +132,7 @@ procfs_doprocmap(PFS_FILL_ARGS)
 		privateresident = 0;
 		obj = entry->object.vm_object;
 		if (obj != NULL) {
-			VM_OBJECT_LOCK(obj);
+			VM_OBJECT_WLOCK(obj);
 			if (obj->shadow_count == 1)
 				privateresident = obj->resident_page_count;
 		}
@@ -148,9 +148,9 @@ procfs_doprocmap(PFS_FILL_ARGS)
 
 		for (lobj = tobj = obj; tobj; tobj = tobj->backing_object) {
 			if (tobj != obj)
-				VM_OBJECT_LOCK(tobj);
+				VM_OBJECT_WLOCK(tobj);
 			if (lobj != obj)
-				VM_OBJECT_UNLOCK(lobj);
+				VM_OBJECT_WUNLOCK(lobj);
 			lobj = tobj;
 		}
 		last_timestamp = map->timestamp;
@@ -181,12 +181,12 @@ procfs_doprocmap(PFS_FILL_ARGS)
 				break;
 			}
 			if (lobj != obj)
-				VM_OBJECT_UNLOCK(lobj);
+				VM_OBJECT_WUNLOCK(lobj);
 
 			flags = obj->flags;
 			ref_count = obj->ref_count;
 			shadow_count = obj->shadow_count;
-			VM_OBJECT_UNLOCK(obj);
+			VM_OBJECT_WUNLOCK(obj);
 			if (vp != NULL) {
 				vn_fullpath(td, vp, &fullpath, &freepath);
 				vrele(vp);

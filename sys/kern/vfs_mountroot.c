@@ -38,7 +38,7 @@
 #include "opt_rootdevname.h"
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/vfs_mountroot.c 243868 2012-12-04 20:49:04Z kib $");
+__FBSDID("$FreeBSD: head/sys/kern/vfs_mountroot.c 248645 2013-03-23 08:59:34Z avg $");
 
 #include <sys/param.h>
 #include <sys/conf.h>
@@ -199,8 +199,6 @@ set_rootvnode(void)
 	VREF(rootvnode);
 
 	FILEDESC_XUNLOCK(p->p_fd);
-
-	EVENTHANDLER_INVOKE(mountroot);
 }
 
 static int
@@ -991,6 +989,8 @@ vfs_mountroot(void)
 	atomic_store_rel_int(&root_mount_complete, 1);
 	wakeup(&root_mount_complete);
 	mtx_unlock(&mountlist_mtx);
+
+	EVENTHANDLER_INVOKE(mountroot);
 }
 
 static struct mntarg *

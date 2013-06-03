@@ -28,7 +28,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/fdt/fdt_common.c 243690 2012-11-30 03:08:49Z gonzo $");
+__FBSDID("$FreeBSD: head/sys/dev/fdt/fdt_common.c 248509 2013-03-19 14:15:41Z ray $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -421,12 +421,11 @@ fdt_regsize(phandle_t node, u_long *base, u_long *size)
 int
 fdt_reg_to_rl(phandle_t node, struct resource_list *rl)
 {
-	u_long start, end, count;
+	u_long end, count, start;
 	pcell_t *reg, *regptr;
 	pcell_t addr_cells, size_cells;
 	int tuple_size, tuples;
 	int i, rv;
-	bus_space_handle_t vaddr;
 	long busaddr, bussize;
 
 	if (fdt_addrsize_cells(OF_parent(node), &addr_cells, &size_cells) != 0)
@@ -457,14 +456,12 @@ fdt_reg_to_rl(phandle_t node, struct resource_list *rl)
 
 		/* Calculate address range relative to base. */
 		start += busaddr;
-		if (bus_space_map(fdtbus_bs_tag, start, count, 0, &vaddr) != 0)
-			panic("Couldn't map the device memory");
-		end = vaddr + count - 1;
+		end = start + count - 1;
 
-		debugf("reg addr start = %lx, end = %lx, count = %lx\n", vaddr,
+		debugf("reg addr start = %lx, end = %lx, count = %lx\n", start,
 		    end, count);
 
-		resource_list_add(rl, SYS_RES_MEMORY, i, vaddr, end,
+		resource_list_add(rl, SYS_RES_MEMORY, i, start, end,
 		    count);
 	}
 	rv = 0;

@@ -36,7 +36,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/cam/ctl/ctl_backend.c 237726 2012-06-28 19:39:30Z ken $");
+__FBSDID("$FreeBSD: head/sys/cam/ctl/ctl_backend.c 249410 2013-04-12 16:25:03Z trasz $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -62,7 +62,6 @@ __FBSDID("$FreeBSD: head/sys/cam/ctl/ctl_backend.c 237726 2012-06-28 19:39:30Z k
 #include <cam/ctl/ctl_debug.h>
 
 extern struct ctl_softc *control_softc;
-extern int ctl_disable;
 
 int
 ctl_backend_register(struct ctl_backend_driver *be)
@@ -71,10 +70,6 @@ ctl_backend_register(struct ctl_backend_driver *be)
 	struct ctl_backend_driver *be_tmp;
 
 	ctl_softc = control_softc;
-
-	/* Don't continue if CTL is disabled */
-	if (ctl_disable != 0)
-		return (0);
 
 	mtx_lock(&ctl_softc->ctl_lock);
 	/*

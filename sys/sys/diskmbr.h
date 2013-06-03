@@ -27,7 +27,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)disklabel.h	8.2 (Berkeley) 7/10/94
- * $FreeBSD: head/sys/sys/diskmbr.h 246630 2013-02-10 19:27:17Z ae $
+ * $FreeBSD: head/sys/sys/diskmbr.h 247961 2013-03-07 22:32:41Z gavin $
  */
 
 #ifndef _SYS_DISKMBR_H_
@@ -45,6 +45,7 @@
 #define	DOSMAGIC	0xAA55
 
 #define	DOSPTYP_EXT	0x05	/* DOS extended partition */
+#define	DOSPTYP_FAT16	0x06	/* FAT16 partition */
 #define	DOSPTYP_NTFS	0x07	/* NTFS partition */
 #define	DOSPTYP_FAT32	0x0b	/* FAT32 partition */
 #define	DOSPTYP_EXTLBA	0x0f	/* DOS extended partition */

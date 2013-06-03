@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.bin/truss/main.c 245957 2013-01-27 03:17:35Z mjg $");
+__FBSDID("$FreeBSD: head/usr.bin/truss/main.c 247975 2013-03-07 23:44:35Z cognet $");
 
 /*
  * The main module for truss.  Surprisingly simple, but, then, the other
@@ -79,6 +79,9 @@ static struct ex_types {
 	void (*enter_syscall)(struct trussinfo *, int);
 	long (*exit_syscall)(struct trussinfo *, int);
 } ex_types[] = {
+#ifdef __arm__
+	{ "FreeBSD ELF32", arm_syscall_entry, arm_syscall_exit },
+#endif
 #ifdef __amd64__
 	{ "FreeBSD ELF64", amd64_syscall_entry, amd64_syscall_exit },
 	{ "FreeBSD ELF32", amd64_fbsd32_syscall_entry, amd64_fbsd32_syscall_exit },

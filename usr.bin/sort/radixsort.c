@@ -1,5 +1,5 @@
 /*-
- * Copyright (C) 2012 Oleg Moskalenko <oleg.moskalenko@citrix.com>
+ * Copyright (C) 2012 Oleg Moskalenko <mom040267@gmail.com>
  * Copyright (C) 2012 Gabor Kovesdan <gabor@FreeBSD.org>
  * All rights reserved.
  *
@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.bin/sort/radixsort.c 242430 2012-11-01 11:38:34Z gabor $");
+__FBSDID("$FreeBSD: head/usr.bin/sort/radixsort.c 251245 2013-06-02 09:43:48Z gabor $");
 
 #include <errno.h>
 #include <err.h>

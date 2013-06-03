@@ -1,4 +1,4 @@
-/* $FreeBSD: head/sys/dev/usb/quirk/usb_quirk.c 245947 2013-01-26 13:44:24Z hselasky $ */
+/* $FreeBSD: head/sys/dev/usb/quirk/usb_quirk.c 250848 2013-05-21 06:13:38Z hselasky $ */
 /*-
  * Copyright (c) 1998 The NetBSD Foundation, Inc. All rights reserved.
  * Copyright (c) 1998 Lennart Augustsson. All rights reserved.
@@ -427,6 +427,7 @@ static struct usb_quirk_entry usb_quirks[USB_DEV_QUIRKS_MAX] = {
 	    UQ_MSC_FORCE_PROTO_SCSI, UQ_MSC_NO_INQUIRY_EVPD,
 	    UQ_MSC_NO_SYNC_CACHE),
 	USB_QUIRK(WESTERN, MYPASSWORD, 0x0000, 0xffff, UQ_MSC_FORCE_SHORT_INQ),
+	USB_QUIRK(WESTERN, MYPASSPORT, 0x0000, 0xffff, UQ_MSC_NO_SYNC_CACHE),
 	USB_QUIRK(WINMAXGROUP, FLASH64MC, 0x0000, 0xffff, UQ_MSC_FORCE_WIRE_BBB,
 	    UQ_MSC_FORCE_PROTO_SCSI, UQ_MSC_NO_INQUIRY),
 	USB_QUIRK(YANO, FW800HD, 0x0000, 0xffff, UQ_MSC_FORCE_WIRE_BBB,

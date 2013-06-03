@@ -25,7 +25,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/usr.bin/unzip/unzip.c 236226 2012-05-29 09:11:19Z des $
+ * $FreeBSD: head/usr.bin/unzip/unzip.c 248612 2013-03-22 10:17:42Z mm $
  *
  * This file would be much shorter if we didn't care about command-line
  * compatibility with Info-ZIP's UnZip, which requires us to duplicate
@@ -926,7 +926,7 @@ unzip(const char *fn)
 	}
 
 	ac(archive_read_close(a));
-	(void)archive_read_finish(a);
+	(void)archive_read_free(a);
 
 	if (t_opt) {
 		if (error_count > 0) {

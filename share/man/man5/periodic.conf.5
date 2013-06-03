@@ -23,7 +23,7 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.\" $FreeBSD: head/share/man/man5/periodic.conf.5 236352 2012-05-31 07:16:50Z eadler $
+.\" $FreeBSD: head/share/man/man5/periodic.conf.5 249087 2013-04-04 08:45:37Z joel $
 .\"
 .Dd May 30, 2012
 .Dt PERIODIC.CONF 5
@@ -357,15 +357,6 @@ Requires
 .Va daily_status_zfs_enable
 to be set to
 .Li YES .
-.It Va daily_status_ata_raid_enable
-.Pq Vt bool
-Set to
-.Dq Li YES
-if you want to run
-.Nm atacontrol Cm status
-on your
-.Xr ataraid 4
-arrays.
 .It Va daily_status_gmirror_enable
 .Pq Vt bool
 Set to

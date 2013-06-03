@@ -22,7 +22,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/contrib/libarchive/libarchive/archive_private.h 238856 2012-07-28 06:38:44Z mm $
+ * $FreeBSD: head/contrib/libarchive/libarchive/archive_private.h 248616 2013-03-22 13:36:03Z mm $
  */
 
 #ifndef __LIBARCHIVE_BUILD
@@ -134,6 +134,7 @@ int	__archive_check_magic(struct archive *, unsigned int magic,
 
 void	__archive_errx(int retvalue, const char *msg) __LA_DEAD;
 
+void	__archive_ensure_cloexec_flag(int fd);
 int	__archive_mktemp(const char *tmpdir);
 
 int	__archive_clean(struct archive *);

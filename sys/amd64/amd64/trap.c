@@ -38,7 +38,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/amd64/amd64/trap.c 241549 2012-10-14 17:08:46Z kib $");
+__FBSDID("$FreeBSD: head/sys/amd64/amd64/trap.c 251035 2013-05-27 18:29:20Z kib $");
 
 /*
  * AMD64 Trap and System call handling
@@ -617,10 +617,10 @@ trap(struct trapframe *frame)
 	ksi.ksi_addr = (void *)addr;
 	if (uprintf_signal) {
 		uprintf("pid %d comm %s: signal %d err %lx code %d type %d "
-		    "addr 0x%lx rip 0x%lx "
+		    "addr 0x%lx rsp 0x%lx rip 0x%lx "
 		    "<%02x %02x %02x %02x %02x %02x %02x %02x>\n",
 		    p->p_pid, p->p_comm, i, frame->tf_err, ucode, type, addr,
-		    frame->tf_rip,
+		    frame->tf_rsp, frame->tf_rip,
 		    fubyte((void *)(frame->tf_rip + 0)),
 		    fubyte((void *)(frame->tf_rip + 1)),
 		    fubyte((void *)(frame->tf_rip + 2)),

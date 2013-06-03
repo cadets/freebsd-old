@@ -42,7 +42,7 @@ static char sccsid[] = "@(#)mv.c	8.2 (Berkeley) 4/2/94";
 #endif /* not lint */
 #endif
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/bin/mv/mv.c 243072 2012-11-15 15:05:51Z eadler $");
+__FBSDID("$FreeBSD: head/bin/mv/mv.c 248597 2013-03-21 22:44:33Z pjd $");
 
 #include <sys/types.h>
 #include <sys/acl.h>
@@ -337,7 +337,7 @@ err:		if (unlink(to))
 	 * on a file that we copied, i.e., that we didn't create.)
 	 */
 	errno = 0;
-	if (fchflags(to_fd, (u_long)sbp->st_flags))
+	if (fchflags(to_fd, sbp->st_flags))
 		if (errno != EOPNOTSUPP || sbp->st_flags != 0)
 			warn("%s: set flags (was: 0%07o)", to, sbp->st_flags);
 

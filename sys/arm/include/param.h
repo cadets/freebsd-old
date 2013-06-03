@@ -35,7 +35,7 @@
  * SUCH DAMAGE.
  *
  *	from: @(#)param.h	5.8 (Berkeley) 6/28/91
- * $FreeBSD: head/sys/arm/include/param.h 239268 2012-08-15 03:03:03Z gonzo $
+ * $FreeBSD: head/sys/arm/include/param.h 250338 2013-05-07 22:46:24Z attilio $
  */
 
 #ifndef _ARM_INCLUDE_PARAM_H_
@@ -56,7 +56,7 @@
 #define	MACHINE		"arm"
 #endif
 #ifndef MACHINE_ARCH
-#ifdef __FreeBSD_ARCH_armv6__
+#if defined(__FreeBSD_ARCH_armv6__) || (defined(__ARM_ARCH) && __ARM_ARCH >= 6)
 #ifdef __ARMEB__
 #define	MACHINE_ARCH	"armv6eb"
 #else
@@ -79,6 +79,10 @@
 #else
 #define	MAXCPU		1
 #endif /* SMP || KLD_MODULE */
+
+#ifndef MAXMEMDOM
+#define	MAXMEMDOM	1
+#endif
 
 #define	ALIGNBYTES	_ALIGNBYTES
 #define	ALIGN(p)	_ALIGN(p)

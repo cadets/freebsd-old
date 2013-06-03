@@ -30,7 +30,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)stdio.h	8.5 (Berkeley) 4/29/95
- * $FreeBSD: head/include/stdio.h 246120 2013-01-30 14:59:26Z gahr $
+ * $FreeBSD: head/include/stdio.h 247411 2013-02-27 19:50:46Z jhb $
  */
 
 #ifndef	_STDIO_H_
@@ -346,6 +346,7 @@ char	*tempnam(const char *, const char *);
 FILE	*fmemopen(void * __restrict, size_t, const char * __restrict);
 ssize_t	 getdelim(char ** __restrict, size_t * __restrict, int,
 	    FILE * __restrict);
+FILE	*open_memstream(char **, size_t *);
 int	 renameat(int, const char *, int, const char *);
 int	 vdprintf(int, const char * __restrict, __va_list);
 

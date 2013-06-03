@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/include/wchar.h 237517 2012-06-24 04:15:58Z andrew $
+ * $FreeBSD: head/include/wchar.h 247411 2013-02-27 19:50:46Z jhb $
  */
 
 /*-
@@ -207,6 +207,7 @@ int	wcwidth(wchar_t);
 #if __POSIX_VISIBLE >= 200809 || __BSD_VISIBLE
 size_t	mbsnrtowcs(wchar_t * __restrict, const char ** __restrict, size_t,
 	    size_t, mbstate_t * __restrict);
+FILE	*open_wmemstream(wchar_t **, size_t *);
 wchar_t	*wcpcpy(wchar_t * __restrict, const wchar_t * __restrict);
 wchar_t	*wcpncpy(wchar_t * __restrict, const wchar_t * __restrict, size_t);
 wchar_t	*wcsdup(const wchar_t *) __malloc_like;

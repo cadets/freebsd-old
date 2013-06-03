@@ -28,7 +28,7 @@
 
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/ti/aintc.c 239281 2012-08-15 06:31:32Z gonzo $");
+__FBSDID("$FreeBSD: head/sys/arm/ti/aintc.c 249181 2013-04-06 03:31:28Z gonzo $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -157,6 +157,7 @@ arm_get_next_irq(int last_irq)
 	if ((active_irq & 0xffffff80)) {
 		device_printf(ti_aintc_sc->sc_dev,
 			"Spurious interrupt detected (0x%08x)\n", active_irq);
+		aintc_write_4(INTC_SIR_IRQ, 0);
 		return -1;
 	}
 

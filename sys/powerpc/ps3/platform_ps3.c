@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/powerpc/ps3/platform_ps3.c 246732 2013-02-13 02:21:45Z rpaulo $");
+__FBSDID("$FreeBSD: head/sys/powerpc/ps3/platform_ps3.c 247454 2013-02-28 10:46:54Z davide $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -70,7 +70,7 @@ static int ps3_smp_start_cpu(platform_t, struct pcpu *cpu);
 static struct cpu_group *ps3_smp_topo(platform_t);
 #endif
 static void ps3_reset(platform_t);
-static void ps3_cpu_idle(void);
+static void ps3_cpu_idle(sbintime_t);
 
 static platform_method_t ps3_methods[] = {
 	PLATFORMMETHOD(platform_probe, 		ps3_probe),
@@ -245,7 +245,7 @@ ps3_real_maxaddr(platform_t plat)
 }
 
 static void
-ps3_cpu_idle(void)
+ps3_cpu_idle(sbintime_t sbt)
 {
 	lv1_pause(0);
 }

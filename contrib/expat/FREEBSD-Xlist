@@ -1,0 +1,19 @@
+# $FreeBSD: head/contrib/expat/FREEBSD-Xlist 247296 2013-02-26 00:58:44Z delphij $
+*.MPW
+*.cmake
+*.def
+*.dsp
+*.dsw
+*.m4
+*.pc.in
+*config.h
+CMake*
+Configure*
+amiga
+bcb5
+configure
+conftools
+doc/valid-xhtml10.png
+m4
+vms
+win32

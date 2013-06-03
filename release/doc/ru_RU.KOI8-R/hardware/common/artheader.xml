@@ -1,7 +1,8 @@
+<?xml version="1.0" encoding="koi8-r"?>
 <!--
      The FreeBSD Russian Documentation Project
 
-     $FreeBSD: head/release/doc/ru_RU.KOI8-R/hardware/common/artheader.xml 241096 2012-10-01 11:26:49Z gabor $
+     $FreeBSD: head/release/doc/ru_RU.KOI8-R/hardware/common/artheader.xml 250746 2013-05-17 18:53:29Z gabor $
      $FreeBSDru: frdp/release/doc/ru_RU.KOI8-R/hardware/common/artheader.xml,v 1.2 2005/04/25 12:23:24 den Exp $
 
      Original revision: 1.7

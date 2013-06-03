@@ -26,7 +26,7 @@
  */
 
 #include <machine/asm.h>
-__FBSDID("$FreeBSD: head/sys/libkern/arm/ldivmod.S 245548 2013-01-17 09:37:42Z andrew $");
+__FBSDID("$FreeBSD: head/sys/libkern/arm/ldivmod.S 248367 2013-03-16 04:08:01Z andrew $");
 
 #ifdef __ARM_EABI__
 
@@ -53,6 +53,7 @@ ENTRY_NP(__aeabi_ldivmod)
 	add	sp, sp, #8	/* Move sp to the remainder value */
 	ldmfd	sp!, {r2, r3}	/* Load the remainder */
 	RET
+END(__aeabi_ldivmod)
 
 ENTRY_NP(__aeabi_uldivmod)
 	sub	sp, sp, #8	/* Space for the remainder */
@@ -62,6 +63,7 @@ ENTRY_NP(__aeabi_uldivmod)
 	add	sp, sp, #8	/* Move sp to the remainder value */
 	ldmfd	sp!, {r2, r3}	/* Load the remainder */
 	RET
+END(__aeabi_uldivmod)
 
 #endif
 

@@ -2746,7 +2746,7 @@ gatherq(qgrp, qdir, doall, full, more, pnentries)
 			i |= NEED_QUARANTINE;
 		while (cf != NULL && i != 0 &&
 		       sm_io_fgets(cf, SM_TIME_DEFAULT, lbuf,
-				   sizeof(lbuf)) != NULL)
+				   sizeof(lbuf)) >= 0)
 		{
 			int c;
 			time_t age;
@@ -4981,7 +4981,7 @@ print_single_queue(qgrp, qdir)
 		quarmsg[0] = '\0';
 		statmsg[0] = bodytype[0] = '\0';
 		qfver = 0;
-		while (sm_io_fgets(f, SM_TIME_DEFAULT, buf, sizeof(buf)) != NULL)
+		while (sm_io_fgets(f, SM_TIME_DEFAULT, buf, sizeof(buf)) >= 0)
 		{
 			register int i;
 			register char *p;

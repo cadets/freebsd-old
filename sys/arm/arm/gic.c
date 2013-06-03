@@ -32,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/arm/gic.c 239268 2012-08-15 03:03:03Z gonzo $");
+__FBSDID("$FreeBSD: head/sys/arm/arm/gic.c 249762 2013-04-22 08:28:53Z dmarion $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -134,6 +134,9 @@ gic_init_secondary(void)
 	/* Enable CPU interface */
 	gic_c_write_4(GICC_CTLR, 1);
 
+	/* Set priority mask register. */
+	gic_c_write_4(GICC_PMR, 0xff);
+
 	/* Enable interrupt distribution */
 	gic_d_write_4(GICD_CTLR, 0x01);
 		
@@ -198,6 +201,9 @@ arm_gic_attach(device_t dev)
 
 	/* Enable CPU interface */
 	gic_c_write_4(GICC_CTLR, 1);
+
+	/* Set priority mask register. */
+	gic_c_write_4(GICC_PMR, 0xff);
 
 	/* Enable interrupt distribution */
 	gic_d_write_4(GICD_CTLR, 0x01);

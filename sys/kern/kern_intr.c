@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/kern_intr.c 246452 2013-02-07 06:48:47Z neel $");
+__FBSDID("$FreeBSD: head/sys/kern/kern_intr.c 249163 2013-04-05 14:30:51Z kib $");
 
 #include "opt_ddb.h"
 
@@ -1103,7 +1103,6 @@ int
 swi_add(struct intr_event **eventp, const char *name, driver_intr_t handler,
 	    void *arg, int pri, enum intr_type flags, void **cookiep)
 {
-	struct thread *td;
 	struct intr_event *ie;
 	int error;
 
@@ -1125,15 +1124,7 @@ swi_add(struct intr_event **eventp, const char *name, driver_intr_t handler,
 	}
 	error = intr_event_add_handler(ie, name, NULL, handler, arg,
 	    PI_SWI(pri), flags, cookiep);
-	if (error)
-		return (error);
-	if (pri == SWI_CLOCK) {
-		td = ie->ie_thread->it_thread;
-		thread_lock(td);
-		td->td_flags |= TDF_NOLOAD;
-		thread_unlock(td);
-	}
-	return (0);
+	return (error);
 }
 
 /*
@@ -1748,7 +1739,16 @@ db_dump_intrhand(struct intr_handler *ih)
 		break;
 	}
 	db_printf(" ");
-	db_printsym((uintptr_t)ih->ih_handler, DB_STGY_PROC);
+	if (ih->ih_filter != NULL) {
+		db_printf("[F]");
+		db_printsym((uintptr_t)ih->ih_filter, DB_STGY_PROC);
+	}
+	if (ih->ih_handler != NULL) {
+		if (ih->ih_filter != NULL)
+			db_printf(",");
+		db_printf("[H]");
+		db_printsym((uintptr_t)ih->ih_handler, DB_STGY_PROC);
+	}
 	db_printf("(%p)", ih->ih_argument);
 	if (ih->ih_need ||
 	    (ih->ih_flags & (IH_EXCLUSIVE | IH_ENTROPY | IH_DEAD |

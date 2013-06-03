@@ -40,7 +40,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/nsp/nsp.c 240325 2012-09-10 18:49:49Z jhb $");
+__FBSDID("$FreeBSD: head/sys/dev/nsp/nsp.c 250460 2013-05-10 16:41:26Z eadler $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -63,7 +63,7 @@ __FBSDID("$FreeBSD: head/sys/dev/nsp/nsp.c 240325 2012-09-10 18:49:49Z jhb $");
  ***************************************************/
 /* DEVICE CONFIGURATION FLAGS (MINOR)
  *
- * 0x01   DISCONECT OFF
+ * 0x01   DISCONNECT OFF
  * 0x02   PARITY LINE OFF
  * 0x04   IDENTIFY MSG OFF ( = single lun)
  * 0x08   SYNC TRANSFER OFF

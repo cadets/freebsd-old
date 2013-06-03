@@ -27,7 +27,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)signalvar.h	8.6 (Berkeley) 2/19/95
- * $FreeBSD: head/sys/sys/signalvar.h 247116 2013-02-21 19:02:50Z jhb $
+ * $FreeBSD: head/sys/sys/signalvar.h 248470 2013-03-18 17:23:58Z jhb $
  */
 
 #ifndef _SYS_SIGNALVAR_H_
@@ -318,16 +318,12 @@ struct thread;
 
 extern struct mtx	sigio_lock;
 
-/* Values for stop_allowed parameter for cursig(). */
-#define	SIG_STOP_ALLOWED	100
-#define	SIG_STOP_NOT_ALLOWED	101
-
 /* Flags for kern_sigprocmask(). */
 #define	SIGPROCMASK_OLD		0x0001
 #define	SIGPROCMASK_PROC_LOCKED	0x0002
 #define	SIGPROCMASK_PS_LOCKED	0x0004
 
-int	cursig(struct thread *td, int stop_allowed);
+int	cursig(struct thread *td);
 int	sigdeferstop(void);
 void	sigallowstop(void);
 void	execsigs(struct proc *p);

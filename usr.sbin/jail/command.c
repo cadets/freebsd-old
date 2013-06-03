@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.sbin/jail/command.c 246804 2013-02-14 19:27:52Z jamie $");
+__FBSDID("$FreeBSD: head/usr.sbin/jail/command.c 248854 2013-03-28 21:02:49Z jamie $");
 
 #include <sys/types.h>
 #include <sys/event.h>
@@ -88,13 +88,14 @@ int
 next_command(struct cfjail *j)
 {
 	enum intparam comparam;
-	int create_failed;
+	int create_failed, stopping;
 
 	if (paralimit == 0) {
 		requeue(j, &runnable);
 		return 1;
 	}
 	create_failed = (j->flags & (JF_STOP | JF_FAILED)) == JF_FAILED;
+	stopping = (j->flags & JF_STOP) != 0;
 	comparam = *j->comparam;
 	for (;;) {
 		if (j->comstring == NULL) {
@@ -113,14 +114,16 @@ next_command(struct cfjail *j)
 			default:
 				if (j->intparams[comparam] == NULL)
 					continue;
-				j->comstring = create_failed
+				j->comstring = create_failed || (stopping &&
+				    (j->intparams[comparam]->flags & PF_REV))
 				    ? TAILQ_LAST(&j->intparams[comparam]->val,
 					cfstrings)
 				    : TAILQ_FIRST(&j->intparams[comparam]->val);
 			}
 		} else {
 			j->comstring = j->comstring == &dummystring ? NULL :
-			    create_failed
+			    create_failed || (stopping &&
+			    (j->intparams[comparam]->flags & PF_REV))
 			    ? TAILQ_PREV(j->comstring, cfstrings, tq)
 			    : TAILQ_NEXT(j->comstring, tq);
 		}

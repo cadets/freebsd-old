@@ -149,6 +149,7 @@ int writev(int, struct iovec *, int);
 
 /* Home grown routines */
 #include "bsd-misc.h"
+#include "bsd-setres_id.h"
 #include "bsd-statvfs.h"
 #include "bsd-waitpid.h"
 #include "bsd-poll.h"
@@ -187,6 +188,14 @@ int snprintf(char *, size_t, SNPRINTF_CONST char *, ...);
 
 #ifndef HAVE_STRTOLL
 long long strtoll(const char *, char **, int);
+#endif
+
+#ifndef HAVE_STRTOUL
+unsigned long strtoul(const char *, char **, int);
+#endif
+
+#ifndef HAVE_STRTOULL
+unsigned long long strtoull(const char *, char **, int);
 #endif
 
 #ifndef HAVE_STRTONUM

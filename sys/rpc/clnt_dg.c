@@ -37,7 +37,7 @@
 static char sccsid[] = "@(#)clnt_dg.c 1.19 89/03/16 Copyr 1988 Sun Micro";
 #endif
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/rpc/clnt_dg.c 243882 2012-12-05 08:04:20Z glebius $");
+__FBSDID("$FreeBSD: head/sys/rpc/clnt_dg.c 248195 2013-03-12 12:17:19Z glebius $");
 
 /*
  * Implements a connectionless client side RPC.
@@ -431,7 +431,7 @@ call_again:
 send_again:
 	mtx_unlock(&cs->cs_lock);
 
-	MGETHDR(mreq, M_WAITOK, MT_DATA);
+	mreq = m_gethdr(M_WAITOK, MT_DATA);
 	KASSERT(cu->cu_mcalllen <= MHLEN, ("RPC header too big"));
 	bcopy(cu->cu_mcallc, mreq->m_data, cu->cu_mcalllen);
 	mreq->m_len = cu->cu_mcalllen;

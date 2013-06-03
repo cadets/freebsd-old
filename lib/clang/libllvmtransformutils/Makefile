@@ -1,12 +1,11 @@
-# $FreeBSD: head/lib/clang/libllvmtransformutils/Makefile 243830 2012-12-03 19:24:08Z dim $
+# $FreeBSD: head/lib/clang/libllvmtransformutils/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
 LIB=	llvmtransformutils
 
 SRCDIR=	lib/Transforms/Utils
-SRCS=	AddrModeMatcher.cpp \
-	BasicBlockUtils.cpp \
+SRCS=	BasicBlockUtils.cpp \
 	BreakCriticalEdges.cpp \
 	BuildLibCalls.cpp \
 	BypassSlowDivision.cpp \

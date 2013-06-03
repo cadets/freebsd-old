@@ -1,5 +1,5 @@
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/usb/controller/at91dci_atmelarm.c 240314 2012-09-10 13:50:34Z hselasky $");
+__FBSDID("$FreeBSD: head/sys/dev/usb/controller/at91dci_atmelarm.c 249232 2013-04-07 13:03:57Z hselasky $");
 
 /*-
  * Copyright (c) 2007-2008 Hans Petter Selasky. All rights reserved.
@@ -91,7 +91,7 @@ at91_vbus_poll(struct at91_udp_softc *sc)
 {
 	uint8_t vbus_val;
 
-	vbus_val = at91_pio_gpio_get(VBUS_BASE, VBUS_MASK);
+	vbus_val = at91_pio_gpio_get(VBUS_BASE, VBUS_MASK) != 0;
 	at91dci_vbus_interrupt(&sc->sc_dci, vbus_val);
 
 	callout_reset(&sc->sc_vbus, hz, (void *)&at91_vbus_poll, sc);

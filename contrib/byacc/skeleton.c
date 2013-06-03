@@ -152,7 +152,7 @@ const char *const body_1[] =
     "    else if ((newsize *= 2) > YYMAXDEPTH)",
     "        newsize = YYMAXDEPTH;",
     "",
-    "    i = data->s_mark - data->s_base;",
+    "    i = (int) (data->s_mark - data->s_base);",
     "    newss = (short *)realloc(data->s_base, newsize * sizeof(*newss));",
     "    if (newss == 0)",
     "        return -1;",

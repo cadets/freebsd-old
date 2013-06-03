@@ -27,7 +27,7 @@
  * SUCH DAMAGE.
  *
  *	@(#)libkern.h	8.1 (Berkeley) 6/10/93
- * $FreeBSD: head/sys/sys/libkern.h 233517 2012-03-26 18:22:04Z marius $
+ * $FreeBSD: head/sys/sys/libkern.h 249631 2013-04-19 00:30:52Z ache $
  */
 
 #ifndef _SYS_LIBKERN_H_
@@ -69,6 +69,11 @@ static __inline off_t omin(off_t a, off_t b) { return (a < b ? a : b); }
 static __inline int abs(int a) { return (a < 0 ? -a : a); }
 static __inline long labs(long a) { return (a < 0 ? -a : a); }
 static __inline quad_t qabs(quad_t a) { return (a < 0 ? -a : a); }
+
+#define	ARC4_ENTR_NONE	0	/* Don't have entropy yet. */
+#define	ARC4_ENTR_HAVE	1	/* Have entropy. */
+#define	ARC4_ENTR_SEED	2	/* Reseeding. */
+extern int arc4rand_iniseed_state;
 
 /* Prototypes for non-quad routines. */
 struct malloc_type;

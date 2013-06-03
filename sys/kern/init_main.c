@@ -42,7 +42,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/init_main.c 246246 2013-02-02 11:58:35Z avg $");
+__FBSDID("$FreeBSD: head/sys/kern/init_main.c 249071 2013-04-03 22:24:36Z brooks $");
 
 #include "opt_ddb.h"
 #include "opt_init_path.h"
@@ -101,10 +101,17 @@ struct	thread thread0 __aligned(16);
 struct	vmspace vmspace0;
 struct	proc *initproc;
 
-int	boothowto = 0;		/* initialized so that it can be patched */
+#ifndef BOOTHOWTO
+#define	BOOTHOWTO	0
+#endif
+int	boothowto = BOOTHOWTO;	/* initialized so that it can be patched */
 SYSCTL_INT(_debug, OID_AUTO, boothowto, CTLFLAG_RD, &boothowto, 0,
 	"Boot control flags, passed from loader");
-int	bootverbose;
+
+#ifndef BOOTVERBOSE
+#define	BOOTVERBOSE	0
+#endif
+int	bootverbose = BOOTVERBOSE;
 SYSCTL_INT(_debug, OID_AUTO, bootverbose, CTLFLAG_RW, &bootverbose, 0,
 	"Control the output of verbose kernel messages");
 

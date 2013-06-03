@@ -1,4 +1,4 @@
-/*	$OpenBSD: main.c,v 1.80 2011/09/27 07:24:02 espie Exp $	*/
+/*	$OpenBSD: main.c,v 1.81 2012/04/12 17:00:11 espie Exp $	*/
 /*	$NetBSD: main.c,v 1.12 1997/02/08 23:54:49 cgd Exp $	*/
 
 /*-
@@ -39,7 +39,7 @@
  * by: oz
  */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/usr.bin/m4/main.c 241777 2012-10-20 10:33:15Z ed $");
+__FBSDID("$FreeBSD: head/usr.bin/m4/main.c 250226 2013-05-03 23:29:38Z jkim $");
 
 #include <assert.h>
 #include <signal.h>

@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/netpfil/pf/if_pflog.c 244769 2012-12-28 09:19:49Z glebius $");
+__FBSDID("$FreeBSD: head/sys/netpfil/pf/if_pflog.c 249925 2013-04-26 12:50:32Z glebius $");
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
@@ -82,8 +82,8 @@ __FBSDID("$FreeBSD: head/sys/netpfil/pf/if_pflog.c 244769 2012-12-28 09:19:49Z g
 #define DPRINTF(x)
 #endif
 
-static int	pflogoutput(struct ifnet *, struct mbuf *, struct sockaddr *,
-		    struct route *);
+static int	pflogoutput(struct ifnet *, struct mbuf *,
+		    const struct sockaddr *, struct route *);
 static void	pflogattach(int);
 static int	pflogioctl(struct ifnet *, u_long, caddr_t);
 static void	pflogstart(struct ifnet *);
@@ -169,7 +169,7 @@ pflogstart(struct ifnet *ifp)
 }
 
 static int
-pflogoutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
+pflogoutput(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst,
 	struct route *rt)
 {
 	m_freem(m);

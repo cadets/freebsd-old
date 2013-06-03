@@ -24,7 +24,7 @@
  * SUCH DAMAGE.
  */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/arm/mp_machdep.c 239268 2012-08-15 03:03:03Z gonzo $");
+__FBSDID("$FreeBSD: head/sys/arm/arm/mp_machdep.c 250294 2013-05-06 14:27:46Z gber $");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>
@@ -49,6 +49,9 @@ __FBSDID("$FreeBSD: head/sys/arm/arm/mp_machdep.c 239268 2012-08-15 03:03:03Z go
 #include <machine/pte.h>
 #include <machine/intr.h>
 #include <machine/vmparam.h>
+#ifdef ARM_VFP_SUPPORT
+#include <machine/vfp.h>
+#endif
 
 #include "opt_smp.h"
 
@@ -124,6 +127,13 @@ cpu_mp_start(void)
 			KERNPHYSADDR + KERNVIRTADDR) >> L1_S_SHIFT] = 
 		    L1_TYPE_S|L1_SHARED|L1_S_C|L1_S_AP(AP_KRW)|L1_S_DOM(PMAP_DOMAIN_KERNEL)|addr;
 	}
+
+#if defined(CPU_MV_PJ4B)
+	/* Add ARMADAXP registers required for snoop filter initialization */
+	((int *)(temp_pagetable_va))[0xf1000000 >> L1_S_SHIFT] =
+	    L1_TYPE_S|L1_SHARED|L1_S_B|L1_S_AP(AP_KRW)|0xd0000000;
+#endif
+
 	temp_pagetable = (void*)(vtophys(temp_pagetable_va));
 	cpu_idcache_wbinv_all();
 	cpu_l2cache_wbinv_all();
@@ -163,8 +173,15 @@ init_secondary(int cpu)
 
 	pc = &__pcpu[cpu];
 	set_pcpu(pc);
-	pcpu_init(pc, cpu, sizeof(struct pcpu));
 
+	/*
+	 * pcpu_init() updates queue, so it should not be executed in parallel
+	 * on several cores
+	 */
+	while(mp_naps < (cpu - 1))
+		;
+
+	pcpu_init(pc, cpu, sizeof(struct pcpu));
 	dpcpu_init(dpcpu[cpu - 1], cpu);
 
 	/* Provide stack pointers for other processor modes. */
@@ -181,6 +198,11 @@ init_secondary(int cpu)
 	KASSERT(PCPU_GET(idlethread) != NULL, ("no idle thread"));
 	pc->pc_curthread = pc->pc_idlethread;
 	pc->pc_curpcb = pc->pc_idlethread->td_pcb;
+#ifdef ARM_VFP_SUPPORT
+	pc->pc_cpu = cpu;
+
+	vfp_init();
+#endif
 
 	mtx_lock_spin(&ap_boot_mtx);
 

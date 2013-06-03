@@ -56,7 +56,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/ichwd/ichwd.c 244977 2013-01-02 21:45:20Z jfv $");
+__FBSDID("$FreeBSD: head/sys/dev/ichwd/ichwd.c 248104 2013-03-09 15:04:44Z markj $");
 
 #include <sys/param.h>
 #include <sys/kernel.h>
@@ -323,8 +323,6 @@ ichwd_tmr_reload(struct ichwd_softc *sc)
 		ichwd_write_tco_1(sc, TCO_RLD, 1);
 	else
 		ichwd_write_tco_2(sc, TCO_RLD, 1);
-
-	ichwd_verbose_printf(sc->device, "timer reloaded\n");
 }
 
 /*

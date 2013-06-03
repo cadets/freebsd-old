@@ -23,11 +23,14 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_open_fd.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_open_fd.c 248616 2013-03-22 13:36:03Z mm $");
 
 #if defined(_WIN32) && !defined(__CYGWIN__)
 #define open _open
 #if !defined(__BORLANDC__)
+#ifdef lseek
+#undef lseek
+#endif
 #define lseek _lseek
 #endif
 #define close _close
@@ -52,7 +55,7 @@ DEFINE_TEST(test_open_fd)
 	/* Write an archive through this fd. */
 	assert((a = archive_write_new()) != NULL);
 	assertEqualIntA(a, ARCHIVE_OK, archive_write_set_format_ustar(a));
-	assertEqualIntA(a, ARCHIVE_OK, archive_write_set_compression_none(a));
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_add_filter_none(a));
 	assertEqualIntA(a, ARCHIVE_OK, archive_write_open_fd(a, fd));
 
 	/*

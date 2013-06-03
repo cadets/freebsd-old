@@ -23,10 +23,11 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/boot/arm/uboot/start.S 234908 2012-05-02 05:49:58Z kientzle $
+ * $FreeBSD: head/sys/boot/arm/uboot/start.S 248962 2013-03-31 22:43:16Z ian $
  */
 
 #include <machine/asm.h>
+#include <machine/armreg.h>
 
 /*
  * Entry point to the loader that U-Boot passes control to.
@@ -41,6 +42,13 @@ _start:
 	/* Save U-Boot's r8 */
 	ldr	ip, =saved_regs
 	str	r8, [ip, #0]
+
+#ifdef _ARM_ARCH_6
+	mrc     p15, 0, r2, c1, c0, 0
+	orr	r2, r2, #(CPU_CONTROL_UNAL_ENABLE)
+	orr	r2, r2, #(CPU_CONTROL_AFLT_ENABLE)
+	mcr     p15, 0, r2, c1, c0, 0
+#endif
 
 	/* Start loader */
 	b	main

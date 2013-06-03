@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_tar_filenames.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_tar_filenames.c 248616 2013-03-22 13:36:03Z mm $");
 
 /*
  * Exercise various lengths of filenames in tar archives,
@@ -62,7 +62,7 @@ test_filename(const char *prefix, int dlen, int flen)
 	/* Create a new archive in memory. */
 	assert((a = archive_write_new()) != NULL);
 	assertA(0 == archive_write_set_format_pax_restricted(a));
-	assertA(0 == archive_write_set_compression_none(a));
+	assertA(0 == archive_write_add_filter_none(a));
 	assertA(0 == archive_write_set_bytes_per_block(a,0));
 	assertA(0 == archive_write_open_memory(a, buff, sizeof(buff), &used));
 

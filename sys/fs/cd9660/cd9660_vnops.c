@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/fs/cd9660/cd9660_vnops.c 232821 2012-03-11 12:19:58Z kib $");
+__FBSDID("$FreeBSD: head/sys/fs/cd9660/cd9660_vnops.c 248282 2013-03-14 20:28:26Z kib $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -329,7 +329,7 @@ cd9660_read(ap)
 			if (lblktosize(imp, rablock) < ip->i_size)
 				error = cluster_read(vp, (off_t)ip->i_size,
 					 lbn, size, NOCRED, uio->uio_resid,
-					 (ap->a_ioflag >> 16), &bp);
+					 (ap->a_ioflag >> 16), 0, &bp);
 			else
 				error = bread(vp, lbn, size, NOCRED, &bp);
 		} else {

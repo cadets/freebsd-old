@@ -1,8 +1,5 @@
-# $FreeBSD: head/sys/powerpc/conf/Makefile 211483 2010-08-19 03:19:26Z nwhitehorn $
+# $FreeBSD: head/sys/powerpc/conf/Makefile 249390 2013-04-11 22:18:20Z bz $
 
 TARGET=powerpc
-.if ${MACHINE_ARCH} == powerpc || ${MACHINE_ARCH} == powerpc64
-TARGET_ARCH?=${MACHINE_ARCH}
-.endif
 
 .include "${.CURDIR}/../../conf/makeLINT.mk"

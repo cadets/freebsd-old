@@ -30,7 +30,7 @@
 static char sccsid[] = "@(#)realpath.c	8.1 (Berkeley) 2/16/94";
 #endif /* LIBC_SCCS and not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/lib/libc/stdlib/realpath.c 240410 2012-09-12 17:05:39Z emaste $");
+__FBSDID("$FreeBSD: head/lib/libc/stdlib/realpath.c 249582 2013-04-17 11:40:10Z gabor $");
 
 #include "namespace.h"
 #include <sys/param.h>
@@ -139,7 +139,7 @@ realpath(const char * __restrict path, char * __restrict resolved)
 			 * Only the trailing slashes are not covered
 			 * by other checks in the loop, but we verify
 			 * the prefix for any (rare) "//" or "/\0"
-			 * occurence to not implement lookahead.
+			 * occurrence to not implement lookahead.
 			 */
 			if (lstat(resolved, &sb) != 0) {
 				if (m)

@@ -26,7 +26,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
  *
- * $FreeBSD: head/sys/dev/ath/if_ath_rx.h 238316 2012-07-10 00:02:19Z adrian $
+ * $FreeBSD: head/sys/dev/ath/if_ath_rx.h 249085 2013-04-04 08:21:56Z adrian $
  */
 #ifndef	__IF_ATH_RX_H__
 #define	__IF_ATH_RX_H__
@@ -58,7 +58,7 @@ extern	int ath_startrecv(struct ath_softc *sc);
 
 extern	int ath_rx_pkt(struct ath_softc *sc, struct ath_rx_status *rs,
 	    HAL_STATUS status, uint64_t tsf, int nf, HAL_RX_QUEUE qtype,
-	    struct ath_buf *bf);
+	    struct ath_buf *bf, struct mbuf *m);
 
 extern	void ath_recv_setup_legacy(struct ath_softc *sc);
 

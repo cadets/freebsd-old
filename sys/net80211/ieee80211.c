@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/net80211/ieee80211.c 242149 2012-10-26 16:56:55Z adrian $");
+__FBSDID("$FreeBSD: head/sys/net80211/ieee80211.c 249925 2013-04-26 12:50:32Z glebius $");
 
 /*
  * IEEE 802.11 generic handler
@@ -243,7 +243,7 @@ null_transmit(struct ifnet *ifp, struct mbuf *m)
 
 static int
 null_output(struct ifnet *ifp, struct mbuf *m,
-	struct sockaddr *dst, struct route *ro)
+	const struct sockaddr *dst, struct route *ro)
 {
 	if_printf(ifp, "discard raw packet\n");
 	return null_transmit(ifp, m);
@@ -278,6 +278,7 @@ ieee80211_ifattach(struct ieee80211com *ic,
 	KASSERT(ifp->if_type == IFT_IEEE80211, ("if_type %d", ifp->if_type));
 
 	IEEE80211_LOCK_INIT(ic, ifp->if_xname);
+	IEEE80211_TX_LOCK_INIT(ic, ifp->if_xname);
 	TAILQ_INIT(&ic->ic_vaps);
 
 	/* Create a taskqueue for all state changes */
@@ -385,6 +386,7 @@ ieee80211_ifdetach(struct ieee80211com *ic)
 	ifmedia_removeall(&ic->ic_media);
 
 	taskqueue_free(ic->ic_tq);
+	IEEE80211_TX_LOCK_DESTROY(ic);
 	IEEE80211_LOCK_DESTROY(ic);
 }
 

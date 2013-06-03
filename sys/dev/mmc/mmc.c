@@ -51,7 +51,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/mmc/mmc.c 245755 2013-01-21 23:24:16Z gonzo $");
+__FBSDID("$FreeBSD: head/sys/dev/mmc/mmc.c 249999 2013-04-27 23:07:49Z wkoszek $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -412,6 +412,7 @@ mmc_wait_for_cmd(struct mmc_softc *sc, struct mmc_command *cmd, int retries)
 	memset(&mreq, 0, sizeof(mreq));
 	memset(cmd->resp, 0, sizeof(cmd->resp));
 	cmd->retries = retries;
+	cmd->mrq = &mreq;
 	mreq.cmd = cmd;
 	mmc_wait_for_req(sc, &mreq);
 	return (cmd->error);
@@ -1733,3 +1734,4 @@ DRIVER_MODULE(mmc, ti_mmchs, mmc_driver, mmc_devclass, NULL, NULL);
 DRIVER_MODULE(mmc, at91_mci, mmc_driver, mmc_devclass, NULL, NULL);
 DRIVER_MODULE(mmc, sdhci_pci, mmc_driver, mmc_devclass, NULL, NULL);
 DRIVER_MODULE(mmc, sdhci_bcm, mmc_driver, mmc_devclass, NULL, NULL);
+DRIVER_MODULE(mmc, sdhci_fdt, mmc_driver, mmc_devclass, NULL, NULL);

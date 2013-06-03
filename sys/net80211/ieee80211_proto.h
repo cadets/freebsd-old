@@ -23,7 +23,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/net80211/ieee80211_proto.h 228622 2011-12-17 10:32:31Z bschmidt $
+ * $FreeBSD: head/sys/net80211/ieee80211_proto.h 249925 2013-04-26 12:50:32Z glebius $
  */
 #ifndef _NET80211_IEEE80211_PROTO_H_
 #define _NET80211_IEEE80211_PROTO_H_
@@ -97,11 +97,13 @@ int	ieee80211_mgmt_output(struct ieee80211_node *, struct mbuf *, int,
 int	ieee80211_raw_xmit(struct ieee80211_node *, struct mbuf *,
 		const struct ieee80211_bpf_params *);
 int	ieee80211_output(struct ifnet *, struct mbuf *,
-               struct sockaddr *, struct route *ro);
+               const struct sockaddr *, struct route *ro);
+int	ieee80211_raw_output(struct ieee80211vap *, struct ieee80211_node *,
+		struct mbuf *, const struct ieee80211_bpf_params *);
 void	ieee80211_send_setup(struct ieee80211_node *, struct mbuf *, int, int,
         const uint8_t [IEEE80211_ADDR_LEN], const uint8_t [IEEE80211_ADDR_LEN],
         const uint8_t [IEEE80211_ADDR_LEN]);
-void	ieee80211_start(struct ifnet *);
+void	ieee80211_start(struct ifnet *ifp);
 int	ieee80211_send_nulldata(struct ieee80211_node *);
 int	ieee80211_classify(struct ieee80211_node *, struct mbuf *m);
 struct mbuf *ieee80211_mbuf_adjust(struct ieee80211vap *, int,

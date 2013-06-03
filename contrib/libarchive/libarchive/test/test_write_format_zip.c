@@ -29,7 +29,7 @@
  */
 
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_write_format_zip.c 238856 2012-07-28 06:38:44Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_write_format_zip.c 248616 2013-03-22 13:36:03Z mm $");
 
 static void
 verify_contents(struct archive *a, int expect_details)
@@ -136,7 +136,7 @@ DEFINE_TEST(test_write_format_zip)
 #endif
 	assertEqualIntA(a, ARCHIVE_OK,
 	    archive_write_set_format_option(a, "zip", "compression", compression_type));
-	assertEqualIntA(a, ARCHIVE_OK, archive_write_set_compression_none(a));
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_add_filter_none(a));
 	assertEqualIntA(a, ARCHIVE_OK,
 	    archive_write_open_memory(a, buff, buffsize, &used));
 

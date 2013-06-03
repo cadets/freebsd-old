@@ -1,4 +1,4 @@
-# $FreeBSD: head/share/mk/bsd.progs.mk 242710 2012-11-07 21:44:04Z sjg $
+# $FreeBSD: head/share/mk/bsd.progs.mk 249770 2013-04-22 18:11:29Z sjg $
 # $Id$
 #
 #	@(#) Copyright (c) 2006, Simon J. Gerraty
@@ -36,9 +36,11 @@ PROG ?= $t
 
 .if defined(PROG)
 # just one of many
-PROG_VARS += CFLAGS CPPFLAGS CXXFLAGS DPADD DPLIBS LDADD MAN SRCS
+PROG_VARS += BINDIR CFLAGS CPPFLAGS CXXFLAGS DPADD DPLIBS LDADD MAN SRCS
 .for v in ${PROG_VARS:O:u}
+.if defined(${v}.${PROG})
 $v += ${${v}_${PROG}:U${${v}.${PROG}}}
+.endif
 .endfor
 
 # for meta mode, there can be only one!
@@ -64,7 +66,8 @@ UPDATE_DEPENDFILE = NO
 .include <${.PARSEFILE:S,progs,prog,}>
 
 .ifndef PROG
-PROGS_TARGETS += clean
+# tell progs.mk we might want to install things
+PROGS_TARGETS+= cleandepend cleandir cleanobj depend install
 
 .for p in ${PROGS}
 .if defined(PROGS_CXX) && !empty(PROGS_CXX:M$p)

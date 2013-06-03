@@ -1,4 +1,4 @@
-# $FreeBSD: head/share/mk/bsd.sys.mk 246880 2013-02-16 20:17:31Z dim $
+# $FreeBSD: head/share/mk/bsd.sys.mk 249657 2013-04-19 19:45:00Z ed $
 #
 # This file contains common settings used for building FreeBSD
 # sources.
@@ -54,6 +54,10 @@ CWARNFLAGS+=	-Wcast-align
 .if ${WARNS} >= 6
 CWARNFLAGS+=	-Wchar-subscripts -Winline -Wnested-externs -Wredundant-decls\
 		-Wold-style-definition
+.if ${COMPILER_TYPE} == "clang" && !defined(EARLY_BUILD) && \
+    !defined(NO_WMISSING_VARIABLE_DECLARATIONS)
+CWARNFLAGS+=	-Wmissing-variable-declarations
+.endif
 .endif # WARNS >= 6
 .if ${WARNS} >= 2 && ${WARNS} <= 4
 # XXX Delete -Wuninitialized by default for now -- the compiler doesn't

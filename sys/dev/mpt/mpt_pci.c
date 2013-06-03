@@ -99,7 +99,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/mpt/mpt_pci.c 241863 2012-10-22 04:18:17Z eadler $");
+__FBSDID("$FreeBSD: head/sys/dev/mpt/mpt_pci.c 249849 2013-04-24 19:00:45Z mav $");
 
 #include <dev/mpt/mpt.h>
 #include <dev/mpt/mpt_cam.h>
@@ -563,7 +563,7 @@ mpt_pci_attach(device_t dev)
 	}
 
 	mpt->eh = EVENTHANDLER_REGISTER(shutdown_post_sync, mpt_pci_shutdown,
-	    dev, SHUTDOWN_PRI_DEFAULT);
+	    dev, SHUTDOWN_PRI_LAST);
 
 	if (mpt->eh == NULL) {
 		mpt_prt(mpt, "shutdown event registration failed\n");

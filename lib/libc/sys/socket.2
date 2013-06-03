@@ -26,9 +26,9 @@
 .\" SUCH DAMAGE.
 .\"
 .\"     From: @(#)socket.2	8.1 (Berkeley) 6/4/93
-.\" $FreeBSD: head/lib/libc/sys/socket.2 243966 2012-12-07 02:26:08Z kevlo $
+.\" $FreeBSD: head/lib/libc/sys/socket.2 248534 2013-03-19 20:58:17Z jilles $
 .\"
-.Dd December 7, 2012
+.Dd March 19, 2013
 .Dt SOCKET 2
 .Os
 .Sh NAME
@@ -114,6 +114,15 @@ which is available only to the super-user, and
 .Dv SOCK_RDM ,
 which is planned,
 but not yet implemented, are not described here.
+.Pp
+Additionally, the following flags are allowed in the
+.Fa type
+argument:
+.Pp
+.Bd -literal -offset indent -compact
+SOCK_CLOEXEC	Set close-on-exec on the new descriptor,
+SOCK_NONBLOCK	Set non-blocking mode on the new socket
+.Ed
 .Pp
 The
 .Fa protocol

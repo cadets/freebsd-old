@@ -36,7 +36,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/kern/sched_ule.c 243069 2012-11-15 14:10:51Z mav $");
+__FBSDID("$FreeBSD: head/sys/kern/sched_ule.c 249514 2013-04-15 17:21:02Z gnn $");
 
 #include "opt_hwpmc_hooks.h"
 #include "opt_kdtrace.h"
@@ -1930,7 +1930,7 @@ sched_switch(struct thread *td, struct thread *newtd, int flags)
 		if (PMC_PROC_IS_USING_PMCS(td->td_proc))
 			PMC_SWITCH_CONTEXT(td, PMC_FN_CSW_OUT);
 #endif
-		SDT_PROBE2(sched, , , off_cpu, td, td->td_proc);
+		SDT_PROBE2(sched, , , off_cpu, newtd, newtd->td_proc);
 		lock_profile_release_lock(&TDQ_LOCKPTR(tdq)->lock_object);
 		TDQ_LOCKPTR(tdq)->mtx_lock = (uintptr_t)newtd;
 		sched_pctcpu_update(newtd->td_sched, 0);

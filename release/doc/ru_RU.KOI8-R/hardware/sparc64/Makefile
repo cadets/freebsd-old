@@ -1,6 +1,6 @@
 # The FreeBSD Russian Documentation Project
 #
-# $FreeBSD: head/release/doc/ru_RU.KOI8-R/hardware/sparc64/Makefile 241096 2012-10-01 11:26:49Z gabor $
+# $FreeBSD: head/release/doc/ru_RU.KOI8-R/hardware/sparc64/Makefile 250805 2013-05-19 05:49:21Z hrs $
 # $FreeBSDru: frdp/release/doc/ru_RU.KOI8-R/hardware/sparc64/Makefile,v 1.3 2005/03/10 11:19:56 den Exp $
 #
 # Original revision: 1.4
@@ -21,8 +21,8 @@ SRCS+=	../common/hw.ent
 SRCS+=	../common/artheader.xml
 SRCS+=	../common/dev.xml
 SRCS+=	${DEV-AUTODIR}/catalog-auto
-SRCS+=	${DEV-AUTODIR}/dev-auto.xml
-SRCS+= ../../share/xml/dev-auto-ru.xml
+SRCS+=	${DEV-AUTODIR}/dev-auto.ent
+SRCS+= ../../share/xml/dev-auto-ru.ent
 
 .include "${RELN_ROOT}/share/mk/doc.relnotes.mk"
 .include "${DOC_PREFIX}/share/mk/doc.project.mk"

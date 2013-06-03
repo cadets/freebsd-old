@@ -25,7 +25,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
  * DAMAGE.
  *
- * $FreeBSD: head/sys/sys/lockmgr.h 227588 2011-11-16 21:51:17Z pjd $
+ * $FreeBSD: head/sys/sys/lockmgr.h 250411 2013-05-09 16:28:18Z marcel $
  */
 
 #ifndef	_SYS_LOCKMGR_H_
@@ -146,6 +146,7 @@ _lockmgr_args_rw(struct lock *lk, u_int flags, struct rwlock *ilk,
 #define	LK_NOWITNESS	0x000010
 #define	LK_QUIET	0x000020
 #define	LK_ADAPTIVE	0x000040
+#define	LK_IS_VNODE	0x000080	/* Tell WITNESS about a VNODE lock */
 
 /*
  * Additional attributes to be used in lockmgr().

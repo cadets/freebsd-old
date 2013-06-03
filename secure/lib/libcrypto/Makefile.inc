@@ -1,4 +1,4 @@
-# $FreeBSD: head/secure/lib/libcrypto/Makefile.inc 246772 2013-02-13 23:07:20Z jkim $
+# $FreeBSD: head/secure/lib/libcrypto/Makefile.inc 249971 2013-04-27 05:44:39Z ed $
 
 .include <bsd.own.mk>
 
@@ -12,10 +12,6 @@ LCRYPTO_DOC=	${.CURDIR}/../../../crypto/openssl/doc
 CFLAGS+=	-DTERMIOS -DANSI_SOURCE
 CFLAGS+=	-I${LCRYPTO_SRC} -I${LCRYPTO_SRC}/crypto -I${.OBJDIR}
 CFLAGS+=	-DOPENSSL_THREADS -DDSO_DLFCN -DHAVE_DLFCN_H
-
-.if ${MK_IDEA} == "no"
-CFLAGS+=	-DOPENSSL_NO_IDEA
-.endif
 
 .if ${MACHINE_CPUARCH} == "amd64"
 CFLAGS+=-DL_ENDIAN -DOPENSSL_IA32_SSE2

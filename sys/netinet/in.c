@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/netinet/in.c 246143 2013-01-31 08:55:21Z glebius $");
+__FBSDID("$FreeBSD: head/sys/netinet/in.c 249742 2013-04-21 21:28:38Z oleg $");
 
 #include "opt_mpath.h"
 
@@ -1467,10 +1467,14 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 			LLE_WLOCK(lle);
 			lle->la_flags |= LLE_DELETED;
 			EVENTHANDLER_INVOKE(lle_event, lle, LLENTRY_DELETED);
-			LLE_WUNLOCK(lle);
 #ifdef DIAGNOSTIC
-			log(LOG_INFO, "ifaddr cache = %p  is deleted\n", lle);
+			log(LOG_INFO, "ifaddr cache = %p is deleted\n", lle);
 #endif
+			if ((lle->la_flags &
+			    (LLE_STATIC | LLE_IFADDR)) == LLE_STATIC)
+				llentry_free(lle);
+			else
+				LLE_WUNLOCK(lle);
 		}
 		lle = (void *)-1;
 

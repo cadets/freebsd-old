@@ -25,9 +25,10 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/amd64/amd64/mp_machdep.c 246248 2013-02-02 12:04:32Z avg $");
+__FBSDID("$FreeBSD: head/sys/amd64/amd64/mp_machdep.c 250851 2013-05-21 11:24:32Z kib $");
 
 #include "opt_cpu.h"
+#include "opt_ddb.h"
 #include "opt_kstack_pages.h"
 #include "opt_sched.h"
 #include "opt_smp.h"
@@ -1395,6 +1396,10 @@ cpustop_handler(void)
 
 	CPU_CLR_ATOMIC(cpu, &started_cpus);
 	CPU_CLR_ATOMIC(cpu, &stopped_cpus);
+
+#ifdef DDB
+	amd64_db_resume_dbreg();
+#endif
 
 	if (cpu == 0 && cpustop_restartfunc != NULL) {
 		cpustop_restartfunc();

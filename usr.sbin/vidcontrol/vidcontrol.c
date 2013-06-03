@@ -33,7 +33,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-  "$FreeBSD: head/usr.sbin/vidcontrol/vidcontrol.c 241737 2012-10-19 14:49:42Z ed $";
+  "$FreeBSD: head/usr.sbin/vidcontrol/vidcontrol.c 250509 2013-05-11 13:32:38Z eadler $";
 #endif /* not lint */
 
 #include <ctype.h>
@@ -959,7 +959,7 @@ show_mode_info(void)
 	printf("---------------------------------------"
 	       "---------------------------------------\n");
 
-	for (mode = 0; mode < M_VESA_MODE_MAX; ++mode) {
+	for (mode = 0; mode <= M_VESA_MODE_MAX; ++mode) {
 		_info.vi_mode = mode;
 		if (ioctl(0, CONS_MODEINFO, &_info))
 			continue;

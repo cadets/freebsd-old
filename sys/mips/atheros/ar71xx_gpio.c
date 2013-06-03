@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/mips/atheros/ar71xx_gpio.c 239351 2012-08-17 04:44:57Z rpaulo $");
+__FBSDID("$FreeBSD: head/sys/mips/atheros/ar71xx_gpio.c 250165 2013-05-02 00:40:45Z adrian $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -49,6 +49,7 @@ __FBSDID("$FreeBSD: head/sys/mips/atheros/ar71xx_gpio.c 239351 2012-08-17 04:44:
 #include <mips/atheros/ar71xxreg.h>
 #include <mips/atheros/ar71xx_setup.h>
 #include <mips/atheros/ar71xx_gpiovar.h>
+#include <mips/atheros/ar933xreg.h>
 
 #include "gpio_if.h"
 
@@ -136,6 +137,10 @@ ar71xx_gpio_pin_max(device_t dev, int *maxpin)
 		case AR71XX_SOC_AR7242:
 			*maxpin = AR724X_GPIO_PINS - 1;
 			break;
+		case AR71XX_SOC_AR9330:
+		case AR71XX_SOC_AR9331:
+			*maxpin = AR933X_GPIO_COUNT - 1;
+			break;
 		default:
 			*maxpin = AR71XX_GPIO_PINS - 1;
 	}
@@ -219,8 +224,8 @@ ar71xx_gpio_pin_setflags(device_t dev, uint32_t pin, uint32_t flags)
 	if (i >= sc->gpio_npins)
 		return (EINVAL);
 
-	/* Filter out unwanted flags */
-	if ((flags &= sc->gpio_pins[i].gp_caps) != flags)
+	/* Check for unwanted flags. */
+	if ((flags & sc->gpio_pins[i].gp_caps) != flags)
 		return (EINVAL);
 
 	/* Can't mix input/output together */

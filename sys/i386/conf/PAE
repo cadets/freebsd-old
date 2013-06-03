@@ -1,7 +1,7 @@
 #
 # PAE -- Generic kernel configuration file for FreeBSD/i386 PAE
 #
-# $FreeBSD: head/sys/i386/conf/PAE 239699 2012-08-26 01:21:02Z gjb $
+# $FreeBSD: head/sys/i386/conf/PAE 249410 2013-04-12 16:25:03Z trasz $
 
 include GENERIC
 
@@ -37,8 +37,6 @@ nodevice	bt
 nodevice	ncv
 nodevice	nsp
 nodevice	stg
-
-nodevice	ctl
 
 nodevice	asr
 nodevice	dpt

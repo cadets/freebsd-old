@@ -26,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/amd64/include/md_var.h 242432 2012-11-01 15:14:37Z kib $
+ * $FreeBSD: head/sys/amd64/include/md_var.h 250851 2013-05-21 11:24:32Z kib $
  */
 
 #ifndef _MACHINE_MD_VAR_H_
@@ -117,5 +117,6 @@ void	minidumpsys(struct dumperinfo *);
 struct savefpu *get_pcb_user_save_td(struct thread *td);
 struct savefpu *get_pcb_user_save_pcb(struct pcb *pcb);
 struct pcb *get_pcb_td(struct thread *td);
+void	amd64_db_resume_dbreg(void);
 
 #endif /* !_MACHINE_MD_VAR_H_ */

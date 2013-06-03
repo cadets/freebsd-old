@@ -1,11 +1,11 @@
 #!/bin/sh
 #
-# $FreeBSD: head/etc/rc.d/ipfw 242301 2012-10-29 06:31:51Z hrs $
+# $FreeBSD: head/etc/rc.d/ipfw 250804 2013-05-19 04:10:34Z jamie $
 #
 
 # PROVIDE: ipfw
 # REQUIRE: ppp
-# KEYWORD: nojail
+# KEYWORD: nojailvnet
 
 . /etc/rc.subr
 . /etc/network.subr

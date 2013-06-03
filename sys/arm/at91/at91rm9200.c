@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/at91/at91rm9200.c 238397 2012-07-12 13:45:58Z imp $");
+__FBSDID("$FreeBSD: head/sys/arm/at91/at91rm9200.c 248944 2013-03-31 12:51:56Z ian $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -125,7 +125,7 @@ static const struct cpu_devs at91_devs[] =
 	DEVICE("at91_tc",    TC0,    0),
 	DEVICE("at91_tc",    TC1,    1),
 	DEVICE("ohci",       OHCI,   0),
-	DEVICE("af91_cfata", CF,     0),
+	DEVICE("at91_cfata", CF,     0),
 	{	0, 0, 0, 0, 0 }
 };
 

@@ -1,4 +1,4 @@
-# $FreeBSD: head/cddl/usr.sbin/zdb/Makefile 240415 2012-09-12 18:05:43Z mm $
+# $FreeBSD: head/cddl/usr.sbin/zdb/Makefile 248571 2013-03-21 08:38:03Z mm $
 
 .PATH: ${.CURDIR}/../../../cddl/contrib/opensolaris/cmd/zdb
 
@@ -24,8 +24,8 @@ CFLAGS+= -I${.CURDIR}/../../../cddl/contrib/opensolaris/head
 CFLAGS+= -I${.CURDIR}/../../lib/libumem
 
 DPADD=	${LIBGEOM} ${LIBM} ${LIBNVPAIR} ${LIBPTHREAD} ${LIBUMEM} \
-	${LIBUUTIL} ${LIBZFS} ${LIBZPOOL}
-LDADD=	-lgeom -lm -lnvpair -lpthread -lumem -luutil -lzfs -lzpool
+	${LIBUUTIL} ${LIBZFS_CORE} ${LIBZFS} ${LIBZPOOL}
+LDADD=	-lgeom -lm -lnvpair -lpthread -lumem -luutil -lzfs_core -lzfs -lzpool
 
 CFLAGS+=	-DDEBUG=1
 #DEBUG_FLAGS+=	-g

@@ -1,12 +1,14 @@
-# $FreeBSD: head/usr.bin/ar/Makefile 234782 2012-04-29 09:32:44Z kib $
+# $FreeBSD: head/usr.bin/ar/Makefile 249657 2013-04-19 19:45:00Z ed $
 
 .include <bsd.own.mk>
 
 PROG=	ar
 SRCS=	ar.c acplex.l acpyacc.y read.c util.c write.c y.tab.h
 
-DPADD=	${LIBARCHIVE} ${LIBELF}
-LDADD=	-larchive -lelf
+DPADD=	${LIBARCHIVE} ${LIBELF} ${LIBZ}
+LDADD=	-larchive -lelf -lz
+
+NO_WMISSING_VARIABLE_DECLARATIONS=
 
 CFLAGS+=-I. -I${.CURDIR}
 

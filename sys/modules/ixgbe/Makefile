@@ -1,10 +1,10 @@
-#$FreeBSD: head/sys/modules/ixgbe/Makefile 236311 2012-05-30 13:55:43Z uqs $
+#$FreeBSD: head/sys/modules/ixgbe/Makefile 247505 2013-02-28 22:48:00Z jfv $
 
 .include <bsd.own.mk>
 
 .PATH:  ${.CURDIR}/../../dev/ixgbe
 
-KMOD    = ixgbe
+KMOD    = if_ixgbe
 SRCS    = device_if.h bus_if.h pci_if.h
 SRCS	+= opt_inet.h opt_inet6.h
 SRCS    += ixgbe.c ixv.c

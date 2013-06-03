@@ -36,7 +36,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/econa/econa_machdep.c 247046 2013-02-20 16:48:52Z alc $");
+__FBSDID("$FreeBSD: head/sys/arm/econa/econa_machdep.c 247564 2013-03-01 19:02:41Z alc $");
 
 #define	_ARM32_BUS_DMA_PRIVATE
 #include <sys/param.h>
@@ -67,10 +67,7 @@ __FBSDID("$FreeBSD: head/sys/arm/econa/econa_machdep.c 247046 2013-02-20 16:48:5
 #include <vm/pmap.h>
 #include <vm/vm_object.h>
 #include <vm/vm_page.h>
-#include <vm/vm_pager.h>
 #include <vm/vm_map.h>
-#include <vm/vnode_pager.h>
-#include <machine/pmap.h>
 #include <machine/vmparam.h>
 #include <machine/pcb.h>
 #include <machine/undefined.h>

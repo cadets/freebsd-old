@@ -1,4 +1,3 @@
-/* $FreeBSD: head/contrib/less/prompt.c 238730 2012-07-24 01:09:11Z delphij $ */
 /*
  * Copyright (C) 1984-2012  Mark Nudelman
  *

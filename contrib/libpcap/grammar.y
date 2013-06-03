@@ -19,7 +19,7 @@
  * WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
  * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  *
- * $FreeBSD: head/contrib/libpcap/grammar.y 235426 2012-05-14 05:12:56Z delphij $
+ * $FreeBSD: head/contrib/libpcap/grammar.y 251129 2013-05-30 08:02:00Z delphij $
  */
 #ifndef lint
 static const char rcsid[] _U_ =
@@ -168,7 +168,7 @@ yyerror(const char *msg)
 	/* NOTREACHED */
 }
 
-#ifndef YYBISON
+#ifdef NEED_YYPARSE_WRAPPER
 int yyparse(void);
 
 int

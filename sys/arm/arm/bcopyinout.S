@@ -46,7 +46,7 @@
 .L_min_memcpy_size:
 	.word	_C_LABEL(_min_memcpy_size)
 
-__FBSDID("$FreeBSD: head/sys/arm/arm/bcopyinout.S 239268 2012-08-15 03:03:03Z gonzo $");
+__FBSDID("$FreeBSD: head/sys/arm/arm/bcopyinout.S 248361 2013-03-16 02:48:49Z andrew $");
 #ifdef _ARM_ARCH_5E
 #include <arm/arm/bcopyinout_xscale.S>
 #else
@@ -312,6 +312,7 @@ ENTRY(copyin)
 	RESTORE_REGS
 
 	RET
+END(copyin)
 
 /*
  * r0 = kernel space address
@@ -538,6 +539,7 @@ ENTRY(copyout)
 	RESTORE_REGS
 
 	RET
+END(copyout)
 #endif
 
 /*
@@ -564,6 +566,7 @@ ENTRY(badaddr_read_1)
 	mov	r0, #0		/* No fault */
 1:	str	ip, [r2, #PCB_ONFAULT]
 	RET
+END(badaddr_read_1)
 
 /*
  * int badaddr_read_2(const uint16_t *src, uint16_t *dest)
@@ -589,6 +592,7 @@ ENTRY(badaddr_read_2)
 	mov	r0, #0		/* No fault */
 1:	str	ip, [r2, #PCB_ONFAULT]
 	RET
+END(badaddr_read_2)
 
 /*
  * int badaddr_read_4(const uint32_t *src, uint32_t *dest)
@@ -614,4 +618,5 @@ ENTRY(badaddr_read_4)
 	mov	r0, #0		/* No fault */
 1:	str	ip, [r2, #PCB_ONFAULT]
 	RET
+END(badaddr_read_4)
 

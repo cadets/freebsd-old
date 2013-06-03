@@ -49,7 +49,7 @@
 #include "opt_timer.h"
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/arm/machdep.c 247195 2013-02-23 18:32:42Z mav $");
+__FBSDID("$FreeBSD: head/sys/arm/arm/machdep.c 249176 2013-04-05 23:35:23Z andrew $");
 
 #include <sys/param.h>
 #include <sys/proc.h>
@@ -71,6 +71,7 @@ __FBSDID("$FreeBSD: head/sys/arm/arm/machdep.c 247195 2013-02-23 18:32:42Z mav $
 #include <sys/mutex.h>
 #include <sys/pcpu.h>
 #include <sys/ptrace.h>
+#include <sys/rwlock.h>
 #include <sys/sched.h>
 #include <sys/signalvar.h>
 #include <sys/syscallsubr.h>
@@ -181,6 +182,10 @@ SYSCTL_UINT(_hw_board, OID_AUTO, revision, CTLFLAG_RD,
     &board_revision, 0, "Board revision");
 SYSCTL_STRING(_hw_board, OID_AUTO, serial, CTLFLAG_RD,
     board_serial, 0, "Board serial");
+
+int vfp_exists;
+SYSCTL_INT(_hw, HW_FLOATINGPT, floatingpoint, CTLFLAG_RD,
+    &vfp_exists, 0, "Floating point support enabled");
 
 void
 board_set_serial(uint64_t serial)

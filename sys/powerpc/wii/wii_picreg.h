@@ -23,16 +23,17 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/powerpc/wii/wii_picreg.h 239478 2012-08-21 06:31:26Z adrian $
+ * $FreeBSD: head/sys/powerpc/wii/wii_picreg.h 249826 2013-04-24 01:36:35Z rpaulo $
  */
 
 #ifndef	_POWERPC_WII_WII_PICREG_H
 #define	_POWERPC_WII_WII_PICREG_H
 
 #define	WIIPIC_REG_ADDR		0x0c003000
-#define	WIIPIC_REG_LEN		0x08
+#define	WIIPIC_REG_LEN		0x28
 
 #define	WIIPIC_ICR		0x00
+#define	WIIPIC_RBS		0x10000
 #define	WIIPIC_IMR		0x04
 #define	WIIPIC_RESET		0x24
 

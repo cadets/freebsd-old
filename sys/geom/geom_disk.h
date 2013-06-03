@@ -31,7 +31,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/geom/geom_disk.h 242322 2012-10-29 17:52:43Z trasz $
+ * $FreeBSD: head/sys/geom/geom_disk.h 249940 2013-04-26 16:22:54Z smh $
  */
 
 #ifndef _GEOM_GEOM_DISK_H_
@@ -43,6 +43,8 @@
 #include <sys/_lock.h>
 #include <sys/_mutex.h>
 #include <sys/disk.h>
+
+#define G_DISK_CLASS_NAME	"DISK"
 
 struct disk;
 
@@ -86,6 +88,7 @@ struct disk {
 	u_int			d_fwsectors;
 	u_int			d_fwheads;
 	u_int			d_maxsize;
+	off_t			d_delmaxsize;
 	u_int			d_stripeoffset;
 	u_int			d_stripesize;
 	char			d_ident[DISK_IDENT_SIZE];
@@ -103,6 +106,7 @@ struct disk {
 #define DISKFLAG_OPEN		0x2
 #define DISKFLAG_CANDELETE	0x4
 #define DISKFLAG_CANFLUSHCACHE	0x8
+#define	DISKFLAG_UNMAPPED_BIO	0x10
 
 struct disk *disk_alloc(void);
 void disk_create(struct disk *disk, int version);

@@ -26,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
  * DAMAGE.
  *
- * $FreeBSD: head/sys/sys/sx.h 227788 2011-11-21 12:59:52Z attilio $
+ * $FreeBSD: head/sys/sys/sx.h 247787 2013-03-04 12:48:41Z davide $
  */
 
 #ifndef	_SYS_SX_H_
@@ -275,7 +275,8 @@ __sx_sunlock(struct sx *sx, const char *file, int line)
 #define	sx_unlock(sx)	sx_unlock_((sx), LOCK_FILE, LOCK_LINE)
 
 #define	sx_sleep(chan, sx, pri, wmesg, timo)				\
-	_sleep((chan), &(sx)->lock_object, (pri), (wmesg), (timo))
+	_sleep((chan), &(sx)->lock_object, (pri), (wmesg),		\
+	    tick_sbt * (timo), 0,  C_HARDCLOCK)
 
 /*
  * Options passed to sx_init_flags().

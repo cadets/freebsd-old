@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_write_format_shar_empty.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_write_format_shar_empty.c 248616 2013-03-22 13:36:03Z mm $");
 
 /*
  * Check that an "empty" shar archive is correctly created as an empty file.
@@ -38,7 +38,7 @@ DEFINE_TEST(test_write_format_shar_empty)
 	/* Create a new archive in memory. */
 	assert((a = archive_write_new()) != NULL);
 	assertA(0 == archive_write_set_format_shar(a));
-	assertA(0 == archive_write_set_compression_none(a));
+	assertA(0 == archive_write_add_filter_none(a));
 	/* 1-byte block size ensures we see only the required bytes. */
 	/* We're not testing the padding here. */
 	assertA(0 == archive_write_set_bytes_per_block(a, 1));

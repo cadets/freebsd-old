@@ -13,7 +13,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -34,7 +34,7 @@
 static char sccsid[] = "@(#)freopen.c	8.1 (Berkeley) 6/4/93";
 #endif /* LIBC_SCCS and not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/lib/libc/stdio/freopen.c 243731 2012-11-30 23:51:33Z jilles $");
+__FBSDID("$FreeBSD: head/lib/libc/stdio/freopen.c 249810 2013-04-23 14:36:44Z emaste $");
 
 #include "namespace.h"
 #include <sys/types.h>
@@ -55,10 +55,8 @@ __FBSDID("$FreeBSD: head/lib/libc/stdio/freopen.c 243731 2012-11-30 23:51:33Z ji
  * all possible, no matter what.
  */
 FILE *
-freopen(file, mode, fp)
-	const char * __restrict file;
-	const char * __restrict mode;
-	FILE *fp;
+freopen(const char * __restrict file, const char * __restrict mode,
+    FILE * __restrict fp)
 {
 	int f;
 	int dflags, flags, isopen, oflags, sverrno, wantfd;

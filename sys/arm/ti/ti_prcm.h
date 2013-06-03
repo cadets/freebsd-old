@@ -29,7 +29,7 @@
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/arm/ti/ti_prcm.h 239281 2012-08-15 06:31:32Z gonzo $
+ * $FreeBSD: head/sys/arm/ti/ti_prcm.h 251015 2013-05-27 00:06:24Z gonzo $
  */
 
 
@@ -140,6 +140,14 @@ typedef enum {
 	EDMA_TPTC0_CLK,
 	EDMA_TPTC1_CLK,
 	EDMA_TPTC2_CLK,
+
+	/* LCD controller module */
+	LCDC_CLK = 1300,
+
+	/* PWM modules */
+	PWMSS0_CLK = 1400,
+	PWMSS1_CLK,
+	PWMSS2_CLK,
 
 	INVALID_CLK_IDENT
 

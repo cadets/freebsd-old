@@ -1,4 +1,4 @@
-/* $FreeBSD: head/lib/libc/iconv/citrus_iconv.c 219019 2011-02-25 00:04:39Z gabor $ */
+/* $FreeBSD: head/lib/libc/iconv/citrus_iconv.c 250980 2013-05-25 12:11:20Z ed $ */
 /* $NetBSD: citrus_iconv.c,v 1.7 2008/07/25 14:05:25 christos Exp $ */
 
 /*-
@@ -258,7 +258,7 @@ int
 _citrus_iconv_open(struct _citrus_iconv * __restrict * __restrict rcv,
     const char * __restrict src, const char * __restrict dst)
 {
-	struct _citrus_iconv *cv;
+	struct _citrus_iconv *cv = NULL;
 	struct _citrus_iconv_shared *ci = NULL;
 	char realdst[PATH_MAX], realsrc[PATH_MAX];
 	char buf[PATH_MAX], path[PATH_MAX];
@@ -301,7 +301,7 @@ _citrus_iconv_open(struct _citrus_iconv * __restrict * __restrict rcv,
 	ret = (*ci->ci_ops->io_init_context)(*rcv);
 	if (ret) {
 		release_shared(ci);
-		free(*rcv);
+		free(cv);
 		return (ret);
 	}
 	return (0);

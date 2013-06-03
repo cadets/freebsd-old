@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/ahci/ahciem.c 242719 2012-11-07 22:53:46Z mav $");
+__FBSDID("$FreeBSD: head/sys/dev/ahci/ahciem.c 249089 2013-04-04 09:15:19Z mav $");
 
 #include <sys/param.h>
 #include <sys/module.h>
@@ -104,7 +104,10 @@ ahci_em_attach(device_t dev)
 	} else
 		enc->r_memr = NULL;
 	mtx_lock(&enc->mtx);
-	ahci_em_reset(dev);
+	if (ahci_em_reset(dev) != 0) {
+	    error = ENXIO;
+	    goto err1;
+	}
 	rid = ATA_IRQ_RID;
 	/* Create the device queue for our SIM. */
 	devq = cam_simq_alloc(1);

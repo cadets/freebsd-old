@@ -27,7 +27,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGES.
  *
- * $FreeBSD: head/sys/dev/ath/if_athrate.h 238632 2012-07-20 01:27:20Z adrian $
+ * $FreeBSD: head/sys/dev/ath/if_athrate.h 249578 2013-04-17 07:21:30Z adrian $
  */
 #ifndef _ATH_RATECTRL_H_
 #define _ATH_RATECTRL_H_
@@ -84,13 +84,16 @@ void	ath_rate_detach(struct ath_ratectrl *);
 #define	ATH_RC_SGI_FLAG		0x04	/* use short-GI */
 #define	ATH_RC_HT_FLAG		0x08	/* use HT */
 #define	ATH_RC_RTSCTS_FLAG	0x10	/* enable RTS/CTS protection */
+#define	ATH_RC_STBC_FLAG	0x20	/* enable STBC */
+#define	ATH_RC_TS_FLAG		0x40	/* triple-stream rate */
 
 struct ath_rc_series {
 	uint8_t rix;		/* ratetable index, not rate code */
 	uint8_t ratecode;	/* hardware rate code */
 	uint8_t tries;
-	uint8_t flags;
-	uint32_t max4msframelen;
+	uint8_t tx_power_cap;
+	uint16_t flags;
+	uint16_t max4msframelen;
 };
 
 /*

@@ -36,7 +36,9 @@
  * Costa Mesa, CA 92626
  */
 
-/* $FreeBSD: head/sys/dev/oce/oce_util.c 231879 2012-02-17 13:55:17Z luigi $ */
+
+/* $FreeBSD: head/sys/dev/oce/oce_util.c 247880 2013-03-06 09:53:38Z delphij $ */
+
 
 #include "oce_if.h"
 
@@ -71,7 +73,8 @@ oce_dma_alloc(POCE_SOFTC sc, bus_size_t size, POCE_DMA_MEM dma, int flags)
 	if (rc == 0) {
 		rc = bus_dmamem_alloc(dma->tag,
 				      &dma->ptr,
-				      BUS_DMA_NOWAIT | BUS_DMA_COHERENT,
+				      BUS_DMA_NOWAIT | BUS_DMA_COHERENT |
+					BUS_DMA_ZERO,
 				      &dma->map);
 	}
 

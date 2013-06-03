@@ -23,7 +23,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "test.h"
-__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_write_format_tar.c 232153 2012-02-25 10:58:02Z mm $");
+__FBSDID("$FreeBSD: head/contrib/libarchive/libarchive/test/test_write_format_tar.c 248616 2013-03-22 13:36:03Z mm $");
 
 char buff[1000000];
 char buff2[64];
@@ -43,7 +43,7 @@ DEFINE_TEST(test_write_format_tar)
 		assertEqualIntA(a, ARCHIVE_OK,
 		    archive_write_set_format_ustar(a));
 		assertEqualIntA(a, ARCHIVE_OK,
-		    archive_write_set_compression_none(a));
+		    archive_write_add_filter_none(a));
 		assertEqualIntA(a, ARCHIVE_OK,
 		    archive_write_set_bytes_per_block(a, (int)blocksize));
 		assertEqualIntA(a, ARCHIVE_OK,

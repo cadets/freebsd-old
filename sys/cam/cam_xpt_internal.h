@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/sys/cam/cam_xpt_internal.h 230590 2012-01-26 18:09:28Z ken $
+ * $FreeBSD: head/sys/cam/cam_xpt_internal.h 249470 2013-04-14 10:14:26Z mav $
  */
 
 #ifndef _CAM_CAM_XPT_INTERNAL_H
@@ -71,8 +71,7 @@ struct cam_ed_qinfo {
  */
 struct cam_ed {
 	TAILQ_ENTRY(cam_ed) links;
-	struct	cam_ed_qinfo alloc_ccb_entry;
-	struct	cam_ed_qinfo send_ccb_entry;
+	struct	cam_ed_qinfo devq_entry;
 	struct	cam_et	 *target;
 	struct	cam_sim  *sim;
 	lun_id_t	 lun_id;
@@ -84,7 +83,6 @@ struct cam_ed {
 	struct	async_list asyncs;	/* Async callback info for this B/T/L */
 	struct	periph_list periphs;	/* All attached devices */
 	u_int	generation;		/* Generation number */
-	struct	cam_periph *owner;	/* Peripheral driver's ownership tag */
 	void		 *quirk;	/* Oddities about this device */
 	u_int		 maxtags;
 	u_int		 mintags;

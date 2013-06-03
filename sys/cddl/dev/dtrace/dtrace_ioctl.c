@@ -18,7 +18,7 @@
  *
  * CDDL HEADER END
  *
- * $FreeBSD: head/sys/cddl/dev/dtrace/dtrace_ioctl.c 246538 2013-02-08 09:54:53Z pluknet $
+ * $FreeBSD: head/sys/cddl/dev/dtrace/dtrace_ioctl.c 250574 2013-05-12 16:26:33Z markj $
  *
  */
 
@@ -274,6 +274,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 			desc.dtbd_drops = buf->dtb_drops;
 			desc.dtbd_errors = buf->dtb_errors;
 			desc.dtbd_oldest = buf->dtb_xamot_offset;
+			desc.dtbd_timestamp = dtrace_gethrtime();
 
 			mutex_exit(&dtrace_lock);
 
@@ -328,6 +329,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		desc.dtbd_drops = buf->dtb_xamot_drops;
 		desc.dtbd_errors = buf->dtb_xamot_errors;
 		desc.dtbd_oldest = 0;
+		desc.dtbd_timestamp = buf->dtb_switched;
 
 		mutex_exit(&dtrace_lock);
 

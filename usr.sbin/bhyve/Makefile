@@ -1,5 +1,5 @@
 #
-# $FreeBSD: head/usr.sbin/bhyve/Makefile 246367 2013-02-05 18:55:09Z jhb $
+# $FreeBSD: head/usr.sbin/bhyve/Makefile 249175 2013-04-05 22:19:02Z grehan $
 #
 
 PROG=	bhyve
@@ -9,7 +9,7 @@ DEBUG_FLAGS= -g -O0
 SRCS=	acpi.c atpic.c bhyverun.c consport.c dbgport.c elcr.c inout.c 
 SRCS+=  ioapic.c mem.c mevent.c mptbl.c
 SRCS+=	pci_emul.c pci_hostbridge.c pci_passthru.c pci_virtio_block.c
-SRCS+=	pci_virtio_net.c pci_uart.c pit_8254.c pmtmr.c post.c rtc.c uart.c
+SRCS+=	pci_virtio_net.c pci_uart.c pit_8254.c pmtmr.c post.c rtc.c
 SRCS+=	xmsr.c spinup_ap.c
 
 .PATH:	${.CURDIR}/../../sys/amd64/vmm

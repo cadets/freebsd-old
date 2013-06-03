@@ -67,7 +67,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-/* $FreeBSD: head/sys/sys/bus_dma.h 246713 2013-02-12 16:57:20Z kib $ */
+/* $FreeBSD: head/sys/sys/bus_dma.h 248896 2013-03-29 16:26:25Z jimharris $ */
 
 #ifndef _BUS_DMA_H_
 #define _BUS_DMA_H_
@@ -229,6 +229,13 @@ int bus_dmamap_load_uio(bus_dma_tag_t dmat, bus_dmamap_t map,
  * Like bus_dmamap_load but for cam control blocks.
  */
 int bus_dmamap_load_ccb(bus_dma_tag_t dmat, bus_dmamap_t map, union ccb *ccb,
+			bus_dmamap_callback_t *callback, void *callback_arg,
+			int flags);
+
+/*
+ * Like bus_dmamap_load but for bios.
+ */
+int bus_dmamap_load_bio(bus_dma_tag_t dmat, bus_dmamap_t map, struct bio *bio,
 			bus_dmamap_callback_t *callback, void *callback_arg,
 			int flags);
 

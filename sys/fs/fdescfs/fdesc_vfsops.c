@@ -31,7 +31,7 @@
  *
  *	@(#)fdesc_vfsops.c	8.4 (Berkeley) 1/21/94
  *
- * $FreeBSD: head/sys/fs/fdescfs/fdesc_vfsops.c 246793 2013-02-14 15:17:53Z bapt $
+ * $FreeBSD: head/sys/fs/fdescfs/fdesc_vfsops.c 247602 2013-03-02 00:53:12Z pjd $
  */
 
 /*
@@ -205,7 +205,7 @@ fdesc_statfs(mp, sbp)
 	last = min(fdp->fd_nfiles, lim);
 	freefd = 0;
 	for (i = fdp->fd_freefile; i < last; i++)
-		if (fdp->fd_ofiles[i] == NULL)
+		if (fdp->fd_ofiles[i].fde_file == NULL)
 			freefd++;
 
 	/*

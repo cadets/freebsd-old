@@ -1,6 +1,6 @@
 # A Programmer Dvorak keyboard for US English
 #
-# $FreeBSD: head/share/syscons/keymaps/us.dvorakp.kbd 243935 2012-12-06 01:44:19Z eadler $
+# $FreeBSD: head/share/syscons/keymaps/us.dvorakp.kbd 249860 2013-04-24 21:41:24Z eadler $
 #                                                         alt
 # scan                       cntrl          alt    alt   cntrl lock
 # code  base   shift  cntrl  shift  alt    shift  cntrl  shift state
@@ -113,5 +113,4 @@
   105   fkey62 fkey62 fkey62 fkey62 fkey62 fkey62 fkey62 fkey62  O
   106   fkey63 fkey63 fkey63 fkey63 fkey63 fkey63 fkey63 fkey63  O
   107   fkey64 fkey64 fkey64 fkey64 fkey64 fkey64 fkey64 fkey64  O
-  108   nop    nop    nop    nop    nop    nop    nop    nop
-
+  108   nop    nop    nop    nop    nop    nop    nop    nop     O

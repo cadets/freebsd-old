@@ -23,7 +23,7 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# $FreeBSD: head/usr.sbin/pc-sysinstall/backend/functions-disk.sh 240165 2012-09-06 14:59:53Z jpaetzel $
+# $FreeBSD: head/usr.sbin/pc-sysinstall/backend/functions-disk.sh 247735 2013-03-03 23:07:27Z jpaetzel $
 
 # Functions related to disk operations using gpart
 
@@ -33,6 +33,7 @@ is_disk()
   for _dsk in `sysctl -n kern.disks`
   do
     [ "$_dsk" = "${1}" ] && return 0
+    [ "/dev/$_dsk" = "${1}" ] && return 0
   done
 
   return 1

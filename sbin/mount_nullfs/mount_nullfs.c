@@ -41,7 +41,7 @@ static const char copyright[] =
 static char sccsid[] = "@(#)mount_null.c	8.6 (Berkeley) 4/26/95";
 #endif
 static const char rcsid[] =
-  "$FreeBSD: head/sbin/mount_nullfs/mount_nullfs.c 245005 2013-01-03 19:18:46Z kib $";
+  "$FreeBSD: head/sbin/mount_nullfs/mount_nullfs.c 247856 2013-03-05 22:41:35Z jkim $";
 #endif /* not lint */
 
 #include <sys/param.h>
@@ -68,12 +68,11 @@ main(int argc, char *argv[])
 	char source[MAXPATHLEN];
 	char target[MAXPATHLEN];
 	char errmsg[255];
-	int ch, mntflags, iovlen;
+	int ch, iovlen;
 	char nullfs[] = "nullfs";
 
 	iov = NULL;
 	iovlen = 0;
-	mntflags = 0;
 	errmsg[0] = '\0';
 	while ((ch = getopt(argc, argv, "o:")) != -1)
 		switch(ch) {
@@ -111,7 +110,7 @@ main(int argc, char *argv[])
 	build_iovec(&iov, &iovlen, "fspath", source, (size_t)-1);
 	build_iovec(&iov, &iovlen, "target", target, (size_t)-1);
 	build_iovec(&iov, &iovlen, "errmsg", errmsg, sizeof(errmsg));
-	if (nmount(iov, iovlen, mntflags) < 0) {
+	if (nmount(iov, iovlen, 0) < 0) {
 		if (errmsg[0] != 0)
 			err(1, "%s: %s", source, errmsg);
 		else

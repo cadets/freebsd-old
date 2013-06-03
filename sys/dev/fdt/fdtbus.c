@@ -28,7 +28,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/dev/fdt/fdtbus.c 244871 2012-12-30 21:10:48Z rwatson $");
+__FBSDID("$FreeBSD: head/sys/dev/fdt/fdtbus.c 248467 2013-03-18 15:18:55Z ray $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -617,6 +617,16 @@ static int
 fdtbus_activate_resource(device_t bus, device_t child, int type, int rid,
     struct resource *res)
 {
+	bus_space_handle_t p;
+	int error;
+
+	if (type == SYS_RES_MEMORY || type == SYS_RES_IOPORT) {
+		error = bus_space_map(rman_get_bustag(res),
+		    rman_get_bushandle(res), rman_get_size(res), 0, &p);
+		if (error)
+			return (error);
+		rman_set_bushandle(res, p);
+	}
 
 	return (rman_activate_resource(res));
 }

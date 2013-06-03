@@ -55,7 +55,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/powerpc/aim/machdep.c 239682 2012-08-25 17:15:33Z rpaulo $");
+__FBSDID("$FreeBSD: head/sys/powerpc/aim/machdep.c 248084 2013-03-09 02:32:23Z attilio $");
 
 #include "opt_compat.h"
 #include "opt_ddb.h"
@@ -84,6 +84,7 @@ __FBSDID("$FreeBSD: head/sys/powerpc/aim/machdep.c 239682 2012-08-25 17:15:33Z r
 #include <sys/mutex.h>
 #include <sys/ptrace.h>
 #include <sys/reboot.h>
+#include <sys/rwlock.h>
 #include <sys/signalvar.h>
 #include <sys/syscallsubr.h>
 #include <sys/sysctl.h>

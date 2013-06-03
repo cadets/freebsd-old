@@ -15,7 +15,7 @@
 static const char sccsid[] = "@(#)exf.c	10.49 (Berkeley) 10/10/96";
 #endif
 static const char rcsid[] = 
-  "$FreeBSD: head/contrib/nvi/common/exf.c 85526 2001-10-26 08:25:32Z jkh $";
+  "$FreeBSD: head/contrib/nvi/common/exf.c 250667 2013-05-15 18:41:49Z jh $";
 #endif /* not lint */
 
 #include <sys/param.h>
@@ -187,10 +187,10 @@ file_init(sp, frp, rcv_name, flags)
 	 */
 	oname = frp->name;
 	if (LF_ISSET(FS_OPENERR) || oname == NULL || !exists) {
-		if (opts_empty(sp, O_DIRECTORY, 0))
+		if (opts_empty(sp, O_TMP_DIRECTORY, 0))
 			goto err;
 		(void)snprintf(tname, sizeof(tname),
-		    "%s/vi.XXXXXXXXXX", O_STR(sp, O_DIRECTORY));
+		    "%s/vi.XXXXXXXXXX", O_STR(sp, O_TMP_DIRECTORY));
 		if ((fd = mkstemp(tname)) == -1) {
 			msgq(sp, M_SYSERR,
 			    "237|Unable to create temporary file");

@@ -1,4 +1,4 @@
-# $FreeBSD: head/lib/clang/libclangarcmigrate/Makefile 246259 2013-02-02 22:28:29Z dim $
+# $FreeBSD: head/lib/clang/libclangarcmigrate/Makefile 249423 2013-04-12 17:57:40Z dim $
 
 .include <bsd.own.mk>
 
@@ -15,19 +15,21 @@ SRCS=	ARCMT.cpp \
 	TransAutoreleasePool.cpp \
 	TransBlockObjCVariable.cpp \
 	TransEmptyStatementsAndDealloc.cpp \
-	TransformActions.cpp \
-	Transforms.cpp \
 	TransGCAttrs.cpp \
 	TransGCCalls.cpp \
 	TransProperties.cpp \
+	TransProtectedScope.cpp \
 	TransRetainReleaseDealloc.cpp \
 	TransUnbridgedCasts.cpp \
 	TransUnusedInitDelegate.cpp \
-	TransZeroOutPropsInDealloc.cpp
+	TransZeroOutPropsInDealloc.cpp \
+	TransformActions.cpp \
+	Transforms.cpp
 
 TGHDRS=	AttrList \
 	AttrParsedAttrList \
 	Attrs \
+	CommentCommandList \
 	CommentNodes \
 	DeclNodes \
 	DiagnosticCommonKinds \

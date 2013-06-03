@@ -3,7 +3,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-  "$FreeBSD: head/sbin/ifconfig/iflagg.c 236178 2012-05-28 12:13:04Z rea $";
+  "$FreeBSD: head/sbin/ifconfig/iflagg.c 249897 2013-04-25 16:34:04Z glebius $";
 #endif /* not lint */
 
 #include <sys/param.h>
@@ -98,10 +98,8 @@ setlagghash(const char *val, int d, int s, const struct afswtch *afp)
 			rf.rf_flags |= LAGG_F_HASHL3;
 		else if (strcmp(tok, "l4") == 0)
 			rf.rf_flags |= LAGG_F_HASHL4;
-		else  {
-			free(str);
+		else
 			errx(1, "Invalid lagghash option: %s", tok);
-		}
 	}
 	free(str);
 	if (rf.rf_flags == 0)

@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/compat/svr4/svr4_filio.c 225617 2011-09-16 13:58:51Z kmacy $");
+__FBSDID("$FreeBSD: head/sys/compat/svr4/svr4_filio.c 247602 2013-03-02 00:53:12Z pjd $");
 
 #include <sys/param.h>
 #include <sys/proc.h>
@@ -197,22 +197,24 @@ svr4_fil_ioctl(fp, td, retval, fd, cmd, data)
 	u_long cmd;
 	caddr_t data;
 {
-	int error;
-	int num;
 	struct filedesc *fdp = td->td_proc->p_fd;
+	struct filedescent *fde;
+	int error, num;
 
 	*retval = 0;
 
 	switch (cmd) {
 	case SVR4_FIOCLEX:
 		FILEDESC_XLOCK(fdp);
-		fdp->fd_ofileflags[fd] |= UF_EXCLOSE;
+		fde = &fdp->fd_ofiles[fd];
+		fde->fde_flags |= UF_EXCLOSE;
 		FILEDESC_XUNLOCK(fdp);
 		return 0;
 
 	case SVR4_FIONCLEX:
 		FILEDESC_XLOCK(fdp);
-		fdp->fd_ofileflags[fd] &= ~UF_EXCLOSE;
+		fde = &fdp->fd_ofiles[fd];
+		fde->fde_flags &= ~UF_EXCLOSE;
 		FILEDESC_XUNLOCK(fdp);
 		return 0;
 

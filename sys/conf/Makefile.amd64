@@ -2,7 +2,7 @@
 # Copyright 1990 W. Jolitz
 #	from: @(#)Makefile.i386	7.1 5/10/91
 #	from FreeBSD: src/sys/conf/Makefile.i386,v 1.255 2002/02/20 23:35:49
-# $FreeBSD: head/sys/conf/Makefile.amd64 240402 2012-09-12 14:19:40Z obrien $
+# $FreeBSD: head/sys/conf/Makefile.amd64 250840 2013-05-21 03:05:49Z marcel $
 #
 # Makefile for FreeBSD
 #
@@ -30,6 +30,8 @@ S=	../../..
 .endif
 .endif
 .include "$S/conf/kern.pre.mk"
+
+INCLUDES+= -I$S/contrib/libfdt
 
 .if !empty(DDB_ENABLED) || !empty(DTR_ENABLED) || !empty(HWPMC_ENABLED)
 CFLAGS+=	-fno-omit-frame-pointer

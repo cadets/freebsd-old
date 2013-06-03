@@ -1,4 +1,4 @@
-# $FreeBSD: head/sys/modules/nvme/Makefile 240619 2012-09-17 19:58:02Z jimharris $
+# $FreeBSD: head/sys/modules/nvme/Makefile 249420 2013-04-12 17:48:45Z jimharris $
 
 .PATH: ${.CURDIR}/../../dev/nvme
 
@@ -12,7 +12,6 @@ SRCS =	nvme.c			\
 	nvme_qpair.c		\
 	nvme_sysctl.c		\
 	nvme_test.c		\
-	nvme_uio.c		\
 				\
 	bus_if.h		\
 	device_if.h		\

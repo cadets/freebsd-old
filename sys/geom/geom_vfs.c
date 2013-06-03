@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/geom/geom_vfs.c 246876 2013-02-16 14:51:30Z mckusick $");
+__FBSDID("$FreeBSD: head/sys/geom/geom_vfs.c 248508 2013-03-19 14:13:12Z kib $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -188,14 +188,14 @@ g_vfs_strategy(struct bufobj *bo, struct buf *bp)
 	bip = g_alloc_bio();
 	bip->bio_cmd = bp->b_iocmd;
 	bip->bio_offset = bp->b_iooffset;
-	bip->bio_data = bp->b_data;
-	bip->bio_done = g_vfs_done;
-	bip->bio_caller2 = bp;
 	bip->bio_length = bp->b_bcount;
-	if (bp->b_flags & B_BARRIER) {
+	bdata2bio(bp, bip);
+	if ((bp->b_flags & B_BARRIER) != 0) {
 		bip->bio_flags |= BIO_ORDERED;
 		bp->b_flags &= ~B_BARRIER;
 	}
+	bip->bio_done = g_vfs_done;
+	bip->bio_caller2 = bp;
 	g_io_request(bip, cp);
 }
 

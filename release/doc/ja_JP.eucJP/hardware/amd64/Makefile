@@ -1,4 +1,4 @@
-# $FreeBSD: head/release/doc/ja_JP.eucJP/hardware/amd64/Makefile 241096 2012-10-01 11:26:49Z gabor $
+# $FreeBSD: head/release/doc/ja_JP.eucJP/hardware/amd64/Makefile 250805 2013-05-19 05:49:21Z hrs $
 # Original revision: 1.2
 
 RELN_ROOT?= ${.CURDIR}/../../..
@@ -17,8 +17,8 @@ SRCS+=	../common/hw.ent
 SRCS+=	../common/artheader.xml
 SRCS+=	../common/dev.xml
 SRCS+=	${DEV-AUTODIR}/catalog-auto
-SRCS+=	${DEV-AUTODIR}/dev-auto.xml
-SRCS+=	../../share/xml/dev-auto-ja.xml
+SRCS+=	${DEV-AUTODIR}/dev-auto.ent
+SRCS+=	../../share/xml/dev-auto-ja.ent
 
 .include "${RELN_ROOT}/share/mk/doc.relnotes.mk"
 .include "${DOC_PREFIX}/share/mk/doc.project.mk"

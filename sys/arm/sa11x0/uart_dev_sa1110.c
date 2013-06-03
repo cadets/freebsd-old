@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/arm/sa11x0/uart_dev_sa1110.c 236990 2012-06-13 04:59:00Z imp $");
+__FBSDID("$FreeBSD: head/sys/arm/sa11x0/uart_dev_sa1110.c 248965 2013-04-01 00:44:20Z ian $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -156,6 +156,8 @@ static kobj_method_t sa1110_methods[] = {
 int
 sa1110_bus_probe(struct uart_softc *sc)
 {
+	sc->sc_txfifosz = 3;
+	sc->sc_rxfifosz = 1;
 	return (0);
 }
 
@@ -164,8 +166,6 @@ sa1110_bus_attach(struct uart_softc *sc)
 {
 	 bcopy(&sc->sc_sysdev->bas, &sc->sc_bas, sizeof(sc->sc_bas));
 
-	 sc->sc_txfifosz = 3;
-	 sc->sc_rxfifosz = 1;
 	 sc->sc_hwiflow = 0;
 	 uart_setreg(&sc->sc_bas, SACOM_CR3, CR3_RXE | CR3_TXE | CR3_RIE | CR3_TIE);
 	return (0);

@@ -1,4 +1,4 @@
-/* $FreeBSD: head/sys/dev/usb/usb_hub.h 234803 2012-04-29 17:12:33Z hselasky $ */
+/* $FreeBSD: head/sys/dev/usb/usb_hub.h 250207 2013-05-03 11:10:04Z hselasky $ */
 /*-
  * Copyright (c) 2008 Hans Petter Selasky. All rights reserved.
  *
@@ -48,7 +48,11 @@ struct usb_hub {
 	uint16_t portpower;		/* mA per USB port */
 	uint8_t	isoc_last_time;
 	uint8_t	nports;
+#if (USB_HAVE_FIXED_PORT == 0)
 	struct usb_port ports[0];
+#else
+	struct usb_port ports[USB_MAX_PORTS];
+#endif
 };
 
 /* function prototypes */

@@ -22,7 +22,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/contrib/libarchive/libarchive/filter_fork.h 228763 2011-12-21 11:13:29Z mm $
+ * $FreeBSD: head/contrib/libarchive/libarchive/filter_fork.h 248616 2013-03-22 13:36:03Z mm $
  */
 
 #ifndef __LIBARCHIVE_BUILD
@@ -33,7 +33,7 @@
 #define FILTER_FORK_H
 
 pid_t
-__archive_create_child(const char *path, int *child_stdin, int *child_stdout);
+__archive_create_child(const char *cmd, int *child_stdin, int *child_stdout);
 
 void
 __archive_check_child(int in, int out);
