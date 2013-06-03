@@ -43,7 +43,7 @@ pthread_key_t	pthread_key(void);
 void		tesla_pthread_destructor(void*);
 #endif
 
-struct tesla_store global_store = { .length = 0 };
+static struct tesla_store global_store = { .length = 0 };
 
 static void	tesla_class_acquire(tesla_class*);
 
