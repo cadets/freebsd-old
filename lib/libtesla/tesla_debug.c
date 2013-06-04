@@ -1,4 +1,4 @@
-/** @file  debug.c    Debugging helpers for TESLA state. */
+/** @file  tesla_debug.c    Debugging helpers for TESLA state. */
 /*-
  * Copyright (c) 2012-2013 Jonathan Anderson
  * All rights reserved.
@@ -194,14 +194,6 @@ print_class(const struct tesla_class *c)
 		default:                     print("UNKNOWN (0x%x)\n", c->tc_scope);
 	}
 	print("  limit:        %d\n", c->tc_limit);
-	print("  fail action:  ");
-	switch (c->tc_action) {
-		case TESLA_ACTION_FAILSTOP:  print("fail-stop\n"); break;
-		case TESLA_ACTION_DTRACE:    print("DTrace probe\n"); break;
-		case TESLA_ACTION_PRINTF:    print("printf()\n"); break;
-		default:                     print("UNKNOWN (0x%x)\n", c->tc_action);
-	}
-
 	print("  %d/%d instances\n", c->tc_limit - c->tc_free, c->tc_limit);
 	for (uint32_t i = 0; i < c->tc_limit; i++) {
 		const struct tesla_instance *inst = c->tc_instances + i;

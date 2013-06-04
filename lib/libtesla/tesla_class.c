@@ -53,12 +53,6 @@ tesla_class_init(struct tesla_class *tclass,
 
 	tclass->tc_limit = instances;
 
-#ifdef _KERNEL
-	tclass->tc_action = TESLA_ACTION_PRINTF;
-#else
-	tclass->tc_action = TESLA_ACTION_FAILSTOP;
-#endif
-
 	tclass->tc_scope = context;
 	tclass->tc_limit = instances;
 	tclass->tc_free = instances;

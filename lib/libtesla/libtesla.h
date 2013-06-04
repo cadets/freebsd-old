@@ -34,6 +34,12 @@
 #ifndef _TESLA_STATE
 #define	_TESLA_STATE
 
+/**
+ * Support library for TESLA instrumentation.
+ * @addtogroup libtesla
+ * @{
+ */
+
 #ifdef _KERNEL
 #include <sys/types.h>
 #else
@@ -180,7 +186,7 @@ struct tesla_key {
 /**
  * Check to see if a key matches a pattern.
  *
- * @returns  1 if @ref #k matches @ref pattern, 0 otherwise
+ * @returns  1 if @a k matches @a pattern, 0 otherwise
  */
 int32_t	tesla_key_matches(
 	    const struct tesla_key *pattern, const struct tesla_key *k);
@@ -235,5 +241,49 @@ void	tesla_class_reset(struct tesla_class*);
  */
 void	tesla_instance_destroy(struct tesla_class *tsp,
 	    struct tesla_instance *tip);
+
+
+/*
+ * Event notification:
+ */
+/** A new @ref tesla_instance has been created. */
+typedef void	(*tesla_ev_new_instance)(struct tesla_class *,
+	    struct tesla_instance *);
+
+/** A @ref tesla_instance has taken a transition. */
+typedef void	(*tesla_ev_transition)(struct tesla_class *,
+	    struct tesla_instance *, const struct tesla_transition*);
+
+/** An exisiting @ref tesla_instance has been cloned because of an event. */
+typedef void	(*tesla_ev_clone)(struct tesla_class *,
+	    struct tesla_instance *orig, struct tesla_instance *copy,
+	    const struct tesla_transition*);
+
+/** No @ref tesla_class instance was found to match a @ref tesla_key. */
+typedef void	(*tesla_ev_no_instance)(struct tesla_class *,
+	    const struct tesla_key *, const struct tesla_transitions *);
+
+/** A @ref tesla_instance is not in the right state to take a transition. */
+typedef void	(*tesla_ev_bad_transition)(struct tesla_class *,
+	    struct tesla_instance *, const struct tesla_transitions *);
+
+/** A @ref tesla_instance has accepted a sequence of events. */
+typedef void	(*tesla_ev_accept)(struct tesla_class *,
+	    struct tesla_instance *);
+
+/** A vector of event handlers. */
+struct tesla_event_handlers {
+	tesla_ev_new_instance	teh_init;
+	tesla_ev_transition	teh_transition;
+	tesla_ev_clone		teh_clone;
+	tesla_ev_no_instance	teh_fail_no_instance;
+	tesla_ev_bad_transition	teh_bad_transition;
+	tesla_ev_accept		teh_accept;
+};
+
+/** Register a set of event handlers. */
+int	tesla_set_event_handlers(struct tesla_event_handlers *);
+
+/** @} */
 
 #endif /* _TESLA_STATE */

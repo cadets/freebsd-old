@@ -28,10 +28,25 @@
  * SUCH DAMAGE.
  */
 
+/**
+ * @mainpage TESLA API documentation
+ *
+ * This is the API documentation for TESLA's programmer interface
+ * (@ref ConsumerAPI), runtime support library (@ref libtesla) and
+ * analysis/instrumentation implementation.
+ */
+
 #ifndef	TESLA_H
 #define	TESLA_H
 
-/** Basic TESLA types (magic for the compiler to munge). */
+/**
+ * API for programmers who want to use TESLA in their code.
+ *
+ * @addtogroup ConsumerAPI
+ * @{
+ */
+
+/** The basic TESLA type is a pointer to a TESLA Basic TESLA types (magic for the compiler to munge). */
 typedef	struct __tesla_event {}		__tesla_event;
 typedef	struct __tesla_locality {}	__tesla_locality;
 
@@ -144,7 +159,7 @@ __tesla_struct_uses_automaton(const char *automaton,
 /**
  * Declare that a struct's behaviour is described by an automaton.
  *
- * @param	struct_name	name of the struct that uses the automaton
+ * @param	subject		name of the struct that uses the automaton
  * @param	automaton	reference to the automaton description
  * @param	loc		a TESLA locality (global, per-thread...)
  * @param	start		event that kicks off the automaton
@@ -198,5 +213,6 @@ __tesla_struct_uses_automaton(const char *automaton,
 
 #endif	/* __TESLA_ANALYSER__ */
 
-#endif	/* TESLA_H */
+/** @} */
 
+#endif	/* TESLA_H */
