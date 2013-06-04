@@ -59,6 +59,9 @@ INCLUDES= ${NOSTDINC} ${INCLMAGIC} -I. -I$S
 # include path into contrib'ed source files.
 INCLUDES+= -I$S/contrib/altq
 
+# ... and the same for TESLA
+INCLUDES+= -I$S/contrib/tesla/include
+
 .if make(depend) || make(kernel-depend)
 
 # ... and the same for ipfilter

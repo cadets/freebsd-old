@@ -4,7 +4,7 @@ LIB=		tesla
 #MAN=		tesla.3
 
 SHLIB_MAJOR=	1
-CFLAGS+=	-I${.CURDIR}
+CFLAGS+=	-DHAVE_CONFIG_H -I${.CURDIR}
 
 .PATH: ${.CURDIR}/../../sys/contrib/tesla/include
 .PATH: ${.CURDIR}/../../sys/contrib/tesla/libtesla

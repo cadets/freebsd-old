@@ -128,10 +128,12 @@ key_string(char *buffer, const char *end, const struct tesla_key *key)
 
 #ifndef NDEBUG
 
-/* TODO: kernel version... probably just say no? */
 int32_t
 tesla_debugging(const char *name)
 {
+#ifdef _KERNEL
+	return 0;
+#else
 #ifdef HAVE_ISSETUGID
 	/*
 	 * Debugging paths could be more vulnerable to format string problems
@@ -154,6 +156,7 @@ tesla_debugging(const char *name)
 
 	/* Otherwise, use fnmatch's normal star-matching. */
 	return (fnmatch(env, name, 0) == 0);
+#endif
 }
 
 void

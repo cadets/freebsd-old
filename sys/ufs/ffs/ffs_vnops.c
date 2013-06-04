@@ -80,8 +80,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/vmmeter.h>
 #include <sys/vnode.h>
 
-#include <libtesla/tesla.h>
-#include <libtesla/tesla-macros.h>
+#include <tesla.h>
+#include <tesla-macros.h>
 
 #include <vm/vm.h>
 #include <vm/vm_param.h>
