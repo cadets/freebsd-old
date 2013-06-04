@@ -2936,16 +2936,16 @@ libkern/strtoq.c		standard
 libkern/strtoul.c		standard
 libkern/strtouq.c		standard
 libkern/strvalid.c		standard
-libtesla/debug.c		optional tesla
-libtesla/key.c			optional tesla
-libtesla/state.c		optional tesla
-libtesla/state-global.c		optional tesla
-libtesla/state-perthread.c	optional tesla
-libtesla/store.c		optional tesla
-libtesla/tesla_dtrace.c		optional tesla kdtrace_hooks
+libtesla/tesla_class.c		optional tesla
+libtesla/tesla_class_global.c	optional tesla
+libtesla/tesla_class_perthread.c optional tesla
+libtesla/tesla_debug.c		optional tesla
+libtesla/tesla_dtrace.c		optional tesla
+libtesla/tesla_key.c		optional tesla
 libtesla/tesla_notification.c	optional tesla
-libtesla/update.c		optional tesla
-libtesla/util.c			optional tesla
+libtesla/tesla_store.c		optional tesla
+libtesla/tesla_update.c		optional tesla
+libtesla/tesla_util.c		optional tesla
 net/bpf.c			standard
 net/bpf_buffer.c		optional bpf
 net/bpf_jitter.c		optional bpf_jitter
