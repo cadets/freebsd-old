@@ -487,6 +487,16 @@ contrib/libfdt/fdt_rw.c		optional fdt
 contrib/libfdt/fdt_strerror.c	optional fdt
 contrib/libfdt/fdt_sw.c		optional fdt
 contrib/libfdt/fdt_wip.c	optional fdt
+contrib/tesla/libtesla/tesla_class.c		optional tesla
+contrib/tesla/libtesla/tesla_class_global.c	optional tesla
+contrib/tesla/libtesla/tesla_class_perthread.c	optional tesla
+contrib/tesla/libtesla/tesla_debug.c		optional tesla
+contrib/tesla/libtesla/tesla_dtrace.c		optional tesla kdtrace_hooks
+contrib/tesla/libtesla/tesla_key.c		optional tesla
+contrib/tesla/libtesla/tesla_notification.c	optional tesla
+contrib/tesla/libtesla/tesla_store.c		optional tesla
+contrib/tesla/libtesla/tesla_update.c		optional tesla
+contrib/tesla/libtesla/tesla_util.c		optional tesla
 contrib/ngatm/netnatm/api/cc_conn.c optional ngatm_ccatm \
 	compile-with "${NORMAL_C_NOWERROR} -I$S/contrib/ngatm"
 contrib/ngatm/netnatm/api/cc_data.c optional ngatm_ccatm \
@@ -2936,16 +2946,6 @@ libkern/strtoq.c		standard
 libkern/strtoul.c		standard
 libkern/strtouq.c		standard
 libkern/strvalid.c		standard
-libtesla/tesla_class.c		optional tesla
-libtesla/tesla_class_global.c	optional tesla
-libtesla/tesla_class_perthread.c optional tesla
-libtesla/tesla_debug.c		optional tesla
-libtesla/tesla_dtrace.c		optional tesla
-libtesla/tesla_key.c		optional tesla
-libtesla/tesla_notification.c	optional tesla
-libtesla/tesla_store.c		optional tesla
-libtesla/tesla_update.c		optional tesla
-libtesla/tesla_util.c		optional tesla
 net/bpf.c			standard
 net/bpf_buffer.c		optional bpf
 net/bpf_jitter.c		optional bpf_jitter

@@ -2,3 +2,5 @@ include GENERIC
 ident TESLA
 
 options TESLA
+nooptions KDTRACE_HOOKS
+

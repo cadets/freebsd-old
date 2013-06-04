@@ -98,9 +98,12 @@ struct tesla_event_handlers failstop_handlers = {
 };
 
 
-/** Default to print-with-failstop in userspace, DTrace in the kernel. */
+/**
+ * Default to print-with-failstop except in the kernel when DTrace is
+ * available.
+ */
 struct tesla_event_handlers	*ev_handlers =
-#ifdef _KERNEL
+#if defined(_KERNEL) && defined(KDTRACE_HOOKS)
 	&dtrace_handlers
 #else
 	&failstop_handlers
