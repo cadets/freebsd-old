@@ -7,8 +7,8 @@ SHLIB_MAJOR=	1
 CFLAGS+=	-I${.CURDIR}
 
 INCS=		tesla.h libtesla.h
-SRCS=		debug.c key.c tesla_dtrace.c tesla_notification.c state.c \
-		state-global.c state-perthread.c store.c update.c util.c
+SRCS=		tesla_class.c tesla_class_global.c tesla_class_perthread.c \
+		tesla_debug.c tesla_dtrace.c tesla_key.c tesla_notification.c \
+		tesla_store.c tesla_update.c tesla_util.c
 
 .include <bsd.lib.mk>
-

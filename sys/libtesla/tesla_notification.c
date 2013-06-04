@@ -34,185 +34,208 @@
 
 #define	ERROR_BUFFER_LENGTH	1024
 
+int
+tesla_set_event_handlers(struct tesla_event_handlers *tehp)
+{
+
+	if (!tehp || !tehp->teh_init || !tehp->teh_transition
+	    || !tehp->teh_clone || !tehp->teh_fail_no_instance
+	    || !tehp->teh_bad_transition
+	    || !tehp->teh_accept)
+		return (TESLA_ERROR_EINVAL);
+
+	ev_handlers = tehp;
+	return (TESLA_SUCCESS);
+}
+
+/*
+ * printf()-based event handlers:
+ */
+static void	print_new_instance(struct tesla_class *,
+	    struct tesla_instance *);
+
+static void	print_transition_taken(struct tesla_class *,
+	    struct tesla_instance *, const struct tesla_transition*);
+
+static void	print_clone(struct tesla_class *,
+	    struct tesla_instance *orig, struct tesla_instance *copy,
+	    const struct tesla_transition*);
+
+static void	print_no_instance(struct tesla_class *,
+	    const struct tesla_key *, const struct tesla_transitions *);
+
+static void	print_bad_transition(struct tesla_class *,
+	    struct tesla_instance *, const struct tesla_transitions *);
+
+static void	print_accept(struct tesla_class *, struct tesla_instance *);
+
+struct tesla_event_handlers printf_handlers = {
+	.teh_init		= print_new_instance,
+	.teh_transition		= print_transition_taken,
+	.teh_clone		= print_clone,
+	.teh_fail_no_instance	= print_no_instance,
+	.teh_bad_transition	= print_bad_transition,
+	.teh_accept		= print_accept
+};
+
+
+/*
+ * Wrappers that panic on failure:
+ */
+static void	panic_no_instance(struct tesla_class *,
+	    const struct tesla_key *, const struct tesla_transitions *);
+
+static void	panic_bad_transition(struct tesla_class *,
+	    struct tesla_instance *, const struct tesla_transitions *);
+
+struct tesla_event_handlers failstop_handlers = {
+	.teh_init		= print_new_instance,
+	.teh_transition		= print_transition_taken,
+	.teh_clone		= print_clone,
+	.teh_fail_no_instance	= panic_no_instance,
+	.teh_bad_transition	= panic_bad_transition,
+	.teh_accept		= print_accept
+};
+
+
+/** Default to print-with-failstop in userspace, DTrace in the kernel. */
+struct tesla_event_handlers	*ev_handlers =
+#ifdef _KERNEL
+	&dtrace_handlers
+#else
+	&failstop_handlers
+#endif
+	;
+
 static void	print_failure_header(const struct tesla_class *);
 
+
 void
-tesla_notify_new_instance(struct tesla_class *tcp,
-    struct tesla_instance *tip)
+print_new_instance(struct tesla_class *tcp, struct tesla_instance *tip)
 {
 
-	switch (tcp->ts_action) {
-	case TESLA_ACTION_DTRACE:
-		/* XXXRW: more fine-grained DTrace probes? */
-		tesla_state_transition_dtrace(tcp, tip, NULL, -1);
-		return;
-
-	default:
-		/* for the PRINTF action, should this be a non-verbose print? */
-		VERBOSE_PRINT("new    %td: %tx\n",
-		              tip - tcp->ts_table->tt_instances,
-		              tip->ti_state);
-
-		/*
-		 * XXXJA: convince self that we can never "pass" an assertion
-		 *        with an event that creates a new instance
-		 */
-
-		break;
-	}
+	DEBUG(libtesla.instance.new, "new    %td: %tx\n",
+		tip - tcp->tc_instances, tip->ti_state);
 }
 
 void
-tesla_notify_clone(struct tesla_class *tcp, struct tesla_instance *tip,
-    const struct tesla_transitions *transp, uint32_t index)
+print_transition_taken(struct tesla_class *tcp,
+    struct tesla_instance *tip, const struct tesla_transition *transp)
 {
 
-	switch (tcp->ts_action) {
-	case TESLA_ACTION_DTRACE:
-		/* XXXRW: more fine-grained DTrace probes? */
-		tesla_state_transition_dtrace(tcp, tip, transp, index);
-		return;
-
-	default: {
-		/* for the PRINTF action, should this be a non-verbose print? */
-		assert(index >= 0);
-		assert(index < transp->length);
-		const struct tesla_transition *t = transp->transitions + index;
-
-		VERBOSE_PRINT("clone  %td:%tx -> %tx\n",
-		              tip - tcp->ts_table->tt_instances,
-		              tip->ti_state, t->to);
-
-		if (t->flags & TESLA_TRANS_CLEANUP)
-			tesla_notify_pass(tcp, tip);
-
-		break;
-	}
-	}
+	DEBUG(libtesla.state.transition, "update %td: %tx->%tx\n",
+		tip - tcp->tc_instances, transp->from, transp->to);
 }
 
 void
-tesla_notify_transition(struct tesla_class *tcp,
-    struct tesla_instance *tip, const struct tesla_transitions *transp,
-    uint32_t index)
+print_clone(struct tesla_class *tcp,
+    struct tesla_instance *old_instance, struct tesla_instance *new_instance,
+    const struct tesla_transition *transp)
 {
 
-	switch (tcp->ts_action) {
-	case TESLA_ACTION_DTRACE:
-		tesla_state_transition_dtrace(tcp, tip, transp, index);
-		return;
-
-	default: {
-		/* for the PRINTF action, should this be a non-verbose print? */
-		assert(index >= 0);
-		assert(index < transp->length);
-		const struct tesla_transition *t = transp->transitions + index;
-
-		VERBOSE_PRINT("update %td: %tx->%tx\n",
-		              tip - tcp->ts_table->tt_instances,
-		              t->from, t->to);
-
-		if (t->flags & TESLA_TRANS_CLEANUP)
-			tesla_notify_pass(tcp, tip);
-
-		break;
-	}
-	}
+	DEBUG(libtesla.instance.clone, "clone  %td:%tx -> %td:%tx\n",
+		old_instance - tcp->tc_instances, transp->from,
+		new_instance - tcp->tc_instances, transp->to);
 }
 
-void
-tesla_notify_assert_fail(struct tesla_class *tcp, struct tesla_instance *tip,
+static void
+no_instance_message(char *buffer, const char *end,
+    struct tesla_class *tcp, const struct tesla_key *tkp,
     const struct tesla_transitions *transp)
 {
-	assert(tcp != NULL);
-	assert(tip != NULL);
 
-	if (tcp->ts_action == TESLA_ACTION_DTRACE) {
-		tesla_assert_fail_dtrace(tcp, tip, transp);
-		return;
-	}
-
-	print_failure_header(tcp);
-
-	char buffer[ERROR_BUFFER_LENGTH];
-	char *next = buffer;
-	const char *end = buffer + sizeof(buffer);
-
-	SAFE_SPRINTF(next, end,
-		"Instance %td is in state %d\n"
-		"but required to take a transition in ",
-		(tip - tcp->ts_table->tt_instances), tip->ti_state);
-	assert(next > buffer);
-
-	next = sprint_transitions(next, end, transp);
-
-	switch (tcp->ts_action) {
-	case TESLA_ACTION_DTRACE:
-		assert(0 && "handled above");
-		return;
-
-	case TESLA_ACTION_FAILSTOP:
-		tesla_panic("%s", buffer);
-		break;
-
-	case TESLA_ACTION_PRINTF:
-		error("%s", buffer);
-		break;
-	}
-}
-
-void
-tesla_notify_match_fail(struct tesla_class *tcp, const struct tesla_key *tkp,
-    const struct tesla_transitions *transp)
-{
 	assert(tcp != NULL);
 	assert(tkp != NULL);
 
-	if (tcp->ts_action == TESLA_ACTION_DTRACE) {
-		tesla_assert_fail_dtrace(tcp, NULL, NULL);
-		return;
-	}
-
 	print_failure_header(tcp);
 
-	char buffer[ERROR_BUFFER_LENGTH];
 	char *next = buffer;
-	const char *end = buffer + sizeof(buffer);
 
 	SAFE_SPRINTF(next, end, "No instance matched key '");
 	next = key_string(next, end, tkp);
 	SAFE_SPRINTF(next, end, "' for transition(s) ");
 	next = sprint_transitions(next, end, transp);
-
-	switch (tcp->ts_action) {
-	case TESLA_ACTION_DTRACE:
-		assert(0 && "handled above");
-		break;
-
-	case TESLA_ACTION_FAILSTOP:
-		tesla_panic("%s", buffer);
-		break;
-
-	case TESLA_ACTION_PRINTF:
-		error("%s", buffer);
-		break;
-	}
+	assert(next > buffer);
 }
 
 void
-tesla_notify_pass(struct tesla_class *tcp, struct tesla_instance *tip)
+print_no_instance(struct tesla_class *tcp, const struct tesla_key *tkp,
+    const struct tesla_transitions *transp)
 {
 
-	switch (tcp->ts_action) {
-	case TESLA_ACTION_DTRACE:
-		tesla_assert_pass_dtrace(tcp, tip);
-		return;
+	char buffer[ERROR_BUFFER_LENGTH];
+	const char *end = buffer + sizeof(buffer);
 
-	default:
-		VERBOSE_PRINT("pass '%s': %td\n", tcp->ts_name,
-		    tip - tcp->ts_table->tt_instances);
-		break;
-	}
+	no_instance_message(buffer, end, tcp, tkp, transp);
+	error("%s", buffer);
+}
+
+void
+panic_no_instance(struct tesla_class *tcp, const struct tesla_key *tkp,
+    const struct tesla_transitions *transp)
+{
+
+	char buffer[ERROR_BUFFER_LENGTH];
+	const char *end = buffer + sizeof(buffer);
+
+	no_instance_message(buffer, end, tcp, tkp, transp);
+	tesla_panic("%s", buffer);
+}
+
+static void
+bad_transition_message(char *buffer, const char *end,
+    struct tesla_class *tcp, struct tesla_instance *tip,
+    const struct tesla_transitions *transp)
+{
+
+	assert(tcp != NULL);
+	assert(tip != NULL);
+
+	print_failure_header(tcp);
+
+	char *next = buffer;
+
+	SAFE_SPRINTF(next, end,
+		"Instance %td is in state %d\n"
+		"but required to take a transition in ",
+		(tip - tcp->tc_instances), tip->ti_state);
+	assert(next > buffer);
+
+	next = sprint_transitions(next, end, transp);
+	assert(next > buffer);
+}
+
+void
+print_bad_transition(struct tesla_class *tcp, struct tesla_instance *tip,
+    const struct tesla_transitions *transp)
+{
+
+	char buffer[ERROR_BUFFER_LENGTH];
+	const char *end = buffer + sizeof(buffer);
+
+	bad_transition_message(buffer, end, tcp, tip, transp);
+	error("%s", buffer);
+}
+
+void
+panic_bad_transition(struct tesla_class *tcp, struct tesla_instance *tip,
+    const struct tesla_transitions *transp)
+{
+
+	char buffer[ERROR_BUFFER_LENGTH];
+	const char *end = buffer + sizeof(buffer);
+
+	bad_transition_message(buffer, end, tcp, tip, transp);
+	tesla_panic("%s", buffer);
+}
+
+void
+print_accept(struct tesla_class *tcp, struct tesla_instance *tip)
+{
+
+	DEBUG(libtesla.instance.success,
+		"pass '%s': %td\n", tcp->tc_name,
+		tip - tcp->tc_instances);
 }
 
 
@@ -225,6 +248,5 @@ print_failure_header(const struct tesla_class *tcp)
 	kdb_backtrace();
 #endif
 
-	error("In automaton '%s':\n%s\n", tcp->ts_name, tcp->ts_description);
+	error("In automaton '%s':\n%s\n", tcp->tc_name, tcp->tc_description);
 }
-
