@@ -59,7 +59,7 @@ static void
 new_instance(struct tesla_class *tcp, struct tesla_instance *tip)
 {
 
-	SDT_PROBE(tesla, kernel, assert, new_instance, tcp, tip, 0, 0, 0);
+	SDT_PROBE(tesla, kernel, notify, new_instance, tcp, tip, 0, 0, 0);
 }
 
 static void
@@ -80,7 +80,7 @@ clone(struct tesla_class *tcp, struct tesla_instance *origp,
 
 static void
 no_instance(struct tesla_class *tcp, const struct tesla_key *tkp,
-    const struct tesla_transitions *)
+    const struct tesla_transitions *ttp)
 {
 
 	SDT_PROBE(tesla, kernel, notify, no_instance, tcp, tkp, ttp, 0, 0);
@@ -101,12 +101,12 @@ accept(struct tesla_class *tcp, struct tesla_instance *tip)
 	SDT_PROBE(tesla, kernel, notify, accept, tcp, tip, 0, 0, 0);
 }
 
-struct tesla_event_handlers dtrace_handler = {
+struct tesla_event_handlers dtrace_handlers = {
 	.teh_init			= new_instance,
 	.teh_transition			= transition,
 	.teh_clone			= clone,
 	.teh_fail_no_instance		= no_instance,
-	.teh_fail_bad_transition	= bad_transition,
+	.teh_bad_transition		= bad_transition,
 	.teh_accept			= accept
 };
 
