@@ -33,6 +33,11 @@
 #ifndef TESLA_INTERNAL_H
 #define	TESLA_INTERNAL_H
 
+/**
+ * @addtogroup libtesla
+ * @{
+ */
+
 #include "config.h"
 
 #ifdef _KERNEL
@@ -61,7 +66,7 @@
 #include <libtesla.h>
 #endif
 
-//! Is @ref x a subset of @ref y?
+/** Is @a x a subset of @a y? */
 #define	SUBSET(x,y) ((x & y) == x)
 
 /**
@@ -129,7 +134,7 @@ enum tesla_action_t	tesla_action(const struct tesla_instance*,
 	    const struct tesla_key*, const struct tesla_transitions*,
 	    const struct tesla_transition** trigger);
 
-/** Copy new entries from @ref source into @ref dest. */
+/** Copy new entries from @a source into @a dest. */
 int32_t	tesla_key_union(struct tesla_key *dest, const struct tesla_key *source);
 
 
@@ -161,10 +166,10 @@ int32_t	tesla_key_union(struct tesla_key *dest, const struct tesla_key *source);
 
 #else	/* !_KERNEL */
 
-/** @ref errx() is the userspace equivalent of panic(). */
+/** @a errx() is the userspace equivalent of panic(). */
 #define tesla_panic(...) errx(1, __VA_ARGS__)
 
-/** POSIX @ref assert() doesn't let us provide an error message. */
+/** POSIX @a assert() doesn't let us provide an error message. */
 #define tesla_assert(condition, ...) assert(condition)
 
 #define tesla_malloc(len) calloc(1, len)
@@ -188,7 +193,6 @@ struct tesla_class {
 	const char	*tc_description;/* Description of the assertion. */
 	uint32_t	 tc_scope;	/* Per-thread or global. */
 	uint32_t	 tc_limit;	/* Simultaneous automata limit. */
-	uint32_t	 tc_action;	/* What to do on failure. */
 
 	struct tesla_instance	*tc_instances;	/* Instances of this class. */
 	uint32_t		tc_free;	/* Unused instances. */
@@ -233,12 +237,6 @@ int	tesla_store_init(tesla_store*, uint32_t context, uint32_t classes,
 int	tesla_class_init(struct tesla_class*, uint32_t context,
 		uint32_t instances);
 
-#if 0
-//! We have failed to find an instance that matches a @ref tesla_key.
-void	tesla_match_fail(struct tesla_class*, const struct tesla_key*,
-		const struct tesla_transitions*);
-#endif
-
 /*
  * XXXRW: temporarily, maximum number of classes and instances are hard-coded
  * constants.  In the future, this should somehow be more dynamic.
@@ -268,7 +266,7 @@ void	tesla_class_global_acquire(struct tesla_class*);
 void	tesla_class_global_release(struct tesla_class*);
 void	tesla_class_global_destroy(struct tesla_class*);
 
-int32_t	tesla_class_perthread_postinit(struct tesla_class*c);
+int32_t	tesla_class_perthread_postinit(struct tesla_class*);
 void	tesla_class_perthread_acquire(struct tesla_class*);
 void	tesla_class_perthread_release(struct tesla_class*);
 void	tesla_class_perthread_destroy(struct tesla_class*);
@@ -276,44 +274,19 @@ void	tesla_class_perthread_destroy(struct tesla_class*);
 /*
  * Event notification:
  */
-/** A new @ref tesla_instance has been created. */
-void	tesla_notify_new_instance(struct tesla_class *,
-    struct tesla_instance *);
+extern struct tesla_event_handlers	*ev_handlers;
+extern struct tesla_event_handlers	failstop_handlers;
+extern struct tesla_event_handlers	printf_handlers;
 
-/** A @ref tesla_instance has taken an expected transition. */
-void	tesla_notify_transition(struct tesla_class *, struct tesla_instance *,
-    const struct tesla_transition*);
-
-/** An exisiting @ref tesla_instance has been cloned because of an event. */
-void	tesla_notify_clone(struct tesla_class *,
-    struct tesla_instance *old_instance, struct tesla_instance *new_instance,
-    const struct tesla_transition*);
-
-/** A @ref tesla_instance was unable to take any of a set of transitions. */
-void	tesla_notify_assert_fail(struct tesla_class *, struct tesla_instance *,
-    const struct tesla_transitions *);
-
-/** No @ref tesla_class instance was found to match a @ref tesla_key. */
-void	tesla_notify_match_fail(struct tesla_class *, const struct tesla_key *,
-    const struct tesla_transitions *);
-
-/** A @ref tesla_instance has "passed" (worked through the automaton). */
-void	tesla_notify_pass(struct tesla_class *, struct tesla_instance *);
-
-/*
- * DTrace notifications of various events.
- */
-void	tesla_state_transition_dtrace(struct tesla_class *,
-	    struct tesla_instance *, const struct tesla_transition *);
-void	tesla_assert_fail_dtrace(struct tesla_class *,
-	    struct tesla_instance *, const struct tesla_transitions *);
-void	tesla_assert_pass_dtrace(struct tesla_class *,
-	    struct tesla_instance *);
+#ifdef _KERNEL
+extern struct tesla_event_handlers	dtrace_handlers;
+#endif
 
 /*
  * Debug helpers.
  */
 
+/** Do a @a sprintf() into a buffer, checking bounds appropriately. */
 #define	SAFE_SPRINTF(current, end, ...) do {				\
 	int written = snprintf(current, end - current, __VA_ARGS__);	\
 	if ((written > 0) && (current + written < end))			\
@@ -341,6 +314,7 @@ void	tesla_assert_pass_dtrace(struct tesla_class *,
 /** Are we in (verbose) debug mode? */
 int32_t	tesla_debugging(const char*);
 
+/** Emit debugging information with a debug name (e.g., libtesla.event). */
 #define DEBUG(dclass, ...) \
 	if (tesla_debugging(#dclass)) printf(__VA_ARGS__)
 
@@ -358,10 +332,10 @@ int32_t	tesla_debugging(const char*) { return 0; }
  * Assert that a @ref tesla_instance is an instance of a @ref tesla_class.
  *
  * This could be expensive (a linear walk over all @ref tesla_instance in
- * @ref #tclass), so it should only be called from debug code.
+ * @a tclass), so it should only be called from debug code.
  *
  * @param   i          the instance to test
- * @param   tclass     the expected class of @ref #i
+ * @param   tclass     the expected class of @a i
  */
 void	assert_instanceof(struct tesla_instance *i, struct tesla_class *tclass);
 
@@ -387,5 +361,7 @@ void	print_transitions(const char *debug, const struct tesla_transitions *);
 /** Print a human-readable version of @ref tesla_transitions into a buffer. */
 char*	sprint_transitions(char *buffer, const char *end,
     const struct tesla_transitions *);
+
+/** @} */
 
 #endif /* TESLA_INTERNAL_H */

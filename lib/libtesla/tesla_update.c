@@ -54,6 +54,9 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 	const char *name, const char *description,
 	const struct tesla_transitions *trans)
 {
+
+	assert(ev_handlers != NULL);
+
 	if (tesla_debugging(DEBUG_NAME)) {
 		/* We should never see with multiple <<init>> transitions. */
 		int init_count = 0;
@@ -111,16 +114,20 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 
 		switch (action) {
 		case FAIL:
-			tesla_notify_assert_fail(class, inst, trans);
+			ev_handlers->teh_bad_transition(class, inst, trans);
 			break;
 
 		case IGNORE:
 			break;
 
 		case UPDATE:
-			tesla_notify_transition(class, inst, trigger);
+			ev_handlers->teh_transition(class, inst, trigger);
 			inst->ti_state = trigger->to;
 			matched_something = true;
+
+			if (trigger->flags & TESLA_TRANS_CLEANUP)
+				ev_handlers->teh_accept(class, inst);
+
 			break;
 
 		case FORK: {
@@ -148,7 +155,10 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 
 		clone->ti_state = c->transition->to;
 
-		tesla_notify_clone(class, c->old, clone, c->transition);
+		ev_handlers->teh_clone(class, c->old, clone, c->transition);
+
+		if (c->transition->flags & TESLA_TRANS_CLEANUP)
+			ev_handlers->teh_accept(class, clone);
 	}
 
 
@@ -161,7 +171,7 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 			assert(tesla_instance_active(inst));
 
 			matched_something = true;
-			tesla_notify_new_instance(class, inst);
+			ev_handlers->teh_init(class, inst);
 		}
 	}
 
@@ -173,7 +183,7 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 	PRINT("\n====\n\n");
 
 	if (!matched_something)
-		tesla_notify_match_fail(class, pattern, trans);
+		ev_handlers->teh_fail_no_instance(class, pattern, trans);
 
 	tesla_class_put(class);
 
