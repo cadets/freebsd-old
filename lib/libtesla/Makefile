@@ -6,6 +6,9 @@ LIB=		tesla
 SHLIB_MAJOR=	1
 CFLAGS+=	-I${.CURDIR}
 
+.PATH: ${.CURDIR}/../../sys/contrib/tesla/include
+.PATH: ${.CURDIR}/../../sys/contrib/tesla/libtesla
+
 INCS=		tesla.h libtesla.h
 SRCS=		tesla_class.c tesla_class_global.c tesla_class_perthread.c \
 		tesla_debug.c tesla_dtrace.c tesla_key.c tesla_notification.c \
