@@ -414,7 +414,7 @@ ffs_lock(ap)
  * XXXRW: It would be nice if we didn't have to do this.
  */
 #include <security/mac/mac_framework.h>
-void	trap(struct trapframe *frame);
+#include <sys/sysent.h>
 #endif
 
 /*
@@ -443,8 +443,8 @@ ffs_read(ap)
 	int ioflag;
 
 	vp = ap->a_vp;
-	TESLA_WITHIN(trap, previously(mac_vnode_check_read(ANY(ptr), ANY(ptr),
-	    vp) == 0));
+	TESLA_SYSCALL(previously(mac_vnode_check_read(ANY(ptr), ANY(ptr), vp)
+	    == 0));
 
 	uio = ap->a_uio;
 	ioflag = ap->a_ioflag;
@@ -667,8 +667,8 @@ ffs_write(ap)
 	int blkoffset, error, flags, ioflag, size, xfersize;
 
 	vp = ap->a_vp;
-	TESLA_WITHIN(trap, previously(mac_vnode_check_write(ANY(ptr),
-	    ANY(ptr), vp) == 0));
+	TESLA_SYSCALL(previously(mac_vnode_check_write(ANY(ptr), ANY(ptr), vp)
+	    == 0));
 
 	uio = ap->a_uio;
 	ioflag = ap->a_ioflag;
