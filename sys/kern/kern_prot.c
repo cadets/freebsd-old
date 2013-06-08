@@ -71,6 +71,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/syscallsubr.h>
 #include <sys/sysctl.h>
 
+#include <tesla.h>
+#include <tesla-macros.h>
+#include <sys/tesla-kernel.h>
+
 #ifdef REGRESSION
 FEATURE(regression,
     "Kernel support for interfaces necessary for regression testing (SECURITY RISK!)");
@@ -2142,8 +2146,19 @@ setsugid(struct proc *p)
 void
 change_euid(struct ucred *newcred, struct uidinfo *euip)
 {
+	uid_t euid;
 
-	newcred->cr_uid = euip->ui_uid;
+
+	euid = euip->ui_uid;
+	TESLA_SYSCALL(
+	    previously(mac_cred_check_setuid(ANY(ptr), euid) == 0) ||
+	    previously(mac_cred_check_setreuid(ANY(ptr), ANY(int), euid)
+	    == 0) ||
+	    previously(mac_cred_check_setresuid(ANY(ptr), ANY(int), euid,
+	    ANY(int)) == 0));
+	TESLA_SYSCALL(eventually(called(setsugid)));
+
+	newcred->cr_uid = euid;
 	uihold(euip);
 	uifree(newcred->cr_uidinfo);
 	newcred->cr_uidinfo = euip;
@@ -2159,6 +2174,14 @@ void
 change_egid(struct ucred *newcred, gid_t egid)
 {
 
+	TESLA_SYSCALL(
+	    previously(mac_cred_check_setgid(ANY(ptr), egid) == 0) ||
+	    previously(mac_cred_check_setregid(ANY(ptr), ANY(int), egid)
+	    == 0) ||
+	    previously(mac_cred_check_setresgid(ANY(ptr), ANY(int), egid,
+	    ANY(int)) == 0));
+	TESLA_SYSCALL(eventually(called(setsugid)));
+	
 	newcred->cr_groups[0] = egid;
 }
 
@@ -2174,8 +2197,17 @@ void
 change_ruid(struct ucred *newcred, struct uidinfo *ruip)
 {
 
+	uid_t ruid = ruip->ui_uid;
+	TESLA_SYSCALL(
+	    previously(mac_cred_check_setuid(ANY(ptr), ruid) == 0) ||
+	    previously(mac_cred_check_setreuid(ANY(ptr), ruid, ANY(int))
+	    == 0) ||
+	    previously(mac_cred_check_setresuid(ANY(ptr), ruid, ANY(int),
+	    ANY(int)) == 0));
+	TESLA_SYSCALL(eventually(called(setsugid)));
+
 	(void)chgproccnt(newcred->cr_ruidinfo, -1, 0);
-	newcred->cr_ruid = ruip->ui_uid;
+	newcred->cr_ruid = ruid;
 	uihold(ruip);
 	uifree(newcred->cr_ruidinfo);
 	newcred->cr_ruidinfo = ruip;
@@ -2192,6 +2224,14 @@ void
 change_rgid(struct ucred *newcred, gid_t rgid)
 {
 
+	TESLA_SYSCALL(
+	    previously(mac_cred_check_setgid(ANY(ptr), rgid) == 0) ||
+	    previously(mac_cred_check_setregid(ANY(ptr), rgid, ANY(int))
+	    == 0) ||
+	    previously(mac_cred_check_setresgid(ANY(ptr), rgid, ANY(int),
+	    ANY(int)) == 0));
+	TESLA_SYSCALL(eventually(called(setsugid)));
+	
 	newcred->cr_rgid = rgid;
 }
 
@@ -2204,6 +2244,14 @@ change_rgid(struct ucred *newcred, gid_t rgid)
 void
 change_svuid(struct ucred *newcred, uid_t svuid)
 {
+
+	TESLA_SYSCALL(
+	    previously(mac_cred_check_setuid(ANY(ptr), ANY(int)) == 0) ||
+	    previously(mac_cred_check_setreuid(ANY(ptr), ANY(int),
+	    ANY(int)) == 0) ||
+	    previously(mac_cred_check_setresuid(ANY(ptr), ANY(int),
+	    ANY(int), ANY(int)) == 0));
+	TESLA_SYSCALL(eventually(called(setsugid)));
 
 	newcred->cr_svuid = svuid;
 }
@@ -2218,5 +2266,13 @@ void
 change_svgid(struct ucred *newcred, gid_t svgid)
 {
 
+	TESLA_SYSCALL(
+	    previously(mac_cred_check_setgid(ANY(ptr), ANY(int)) == 0) ||
+	    previously(mac_cred_check_setregid(ANY(ptr), ANY(int), ANY(int))
+	    == 0) ||
+	    previously(mac_cred_check_setresgid(ANY(ptr), ANY(int), ANY(int),
+	    ANY(int)) == 0));
+	TESLA_SYSCALL(eventually(called(setsugid)));
+	
 	newcred->cr_svgid = svgid;
 }
