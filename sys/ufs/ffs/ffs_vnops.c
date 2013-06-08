@@ -414,7 +414,9 @@ ffs_lock(ap)
  * XXXRW: It would be nice if we didn't have to do this.
  */
 #include <security/mac/mac_framework.h>
-#include <sys/sysent.h>
+
+void syscall(void);		/* Varies by arch but we only need symbol. */
+#define	TESLA_SYSCALL(x)	TESLA_WITHIN(syscall, x)
 #endif
 
 /*
