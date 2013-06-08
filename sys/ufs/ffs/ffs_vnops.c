@@ -80,8 +80,11 @@ __FBSDID("$FreeBSD$");
 #include <sys/vmmeter.h>
 #include <sys/vnode.h>
 
+#include <security/mac/mac_framework.h>
+
 #include <tesla.h>
 #include <tesla-macros.h>
+#include <sys/tesla-kernel.h>
 
 #include <vm/vm.h>
 #include <vm/vm_param.h>
@@ -409,16 +412,6 @@ ffs_lock(ap)
 #endif
 }
 
-#ifdef TESLA
-/*
- * XXXRW: It would be nice if we didn't have to do this.
- */
-#include <security/mac/mac_framework.h>
-
-void syscall(void);		/* Varies by arch but we only need symbol. */
-#define	TESLA_SYSCALL(x)	TESLA_WITHIN(syscall, x)
-#endif
-
 /*
  * Vnode op for reading.
  */
@@ -446,6 +439,8 @@ ffs_read(ap)
 
 	vp = ap->a_vp;
 	TESLA_SYSCALL(previously(mac_vnode_check_read(ANY(ptr), ANY(ptr), vp)
+	    == 0));
+	TESLA_VM_FAULT(previously(mac_vnode_check_read(ANY(ptr), ANY(ptr), vp)
 	    == 0));
 
 	uio = ap->a_uio;
@@ -671,6 +666,8 @@ ffs_write(ap)
 	vp = ap->a_vp;
 	TESLA_SYSCALL(previously(mac_vnode_check_write(ANY(ptr), ANY(ptr), vp)
 	    == 0));
+	TESLA_VM_FAULT(previously(mac_vnode_check_WRITE(ANY(ptr), ANY(ptr),
+	    vp) == 0));
 
 	uio = ap->a_uio;
 	ioflag = ap->a_ioflag;
