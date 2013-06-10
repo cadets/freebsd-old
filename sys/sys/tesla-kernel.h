@@ -38,14 +38,25 @@
 /*
  * Un-protyped functions that we care about.
  *
- * XXXRW: Solution is actually to prototype them properly.
+ * XXXRW: Solution is actually to prototype them properly.  Some don't have
+ * consistent prototypes across architectures.
  */
 extern void syscall(void);
+extern void trap_pfault(struct trapframe *, int, vm_offset_t);
 
 /*
  * Convenient assertion wrappers for various scopes.
  */
 #define	TESLA_SYSCALL(x)	TESLA_WITHIN(syscall, x)
-#define	TESLA_VM_FAULT(x)	TESLA_WITHIN(vm_fault, x)
+
+/*
+ * XXXRW: Not all architectures have a trap_pfault() function.  Can't use
+ * vm_fault() as it is used in non-trap contexts -- e.g., PMAP initialisation.
+ */
+#if 0
+#define	TESLA_PAGE_FAULT(x)	TESLA_WITHIN(trap_pfault, x)
+#else
+#define	TESLA_PAGE_FAULT(x)
+#endif
 
 #endif /* _SYS_TESLA_KERNEL_H_ */

@@ -440,8 +440,8 @@ ffs_read(ap)
 	vp = ap->a_vp;
 	TESLA_SYSCALL(previously(mac_vnode_check_read(ANY(ptr), ANY(ptr), vp)
 	    == 0));
-	TESLA_VM_FAULT(previously(mac_vnode_check_read(ANY(ptr), ANY(ptr), vp)
-	    == 0));
+	TESLA_PAGE_FAULT(previously(mac_vnode_check_read(ANY(ptr), ANY(ptr),
+	    vp) == 0));
 
 	uio = ap->a_uio;
 	ioflag = ap->a_ioflag;
@@ -666,7 +666,7 @@ ffs_write(ap)
 	vp = ap->a_vp;
 	TESLA_SYSCALL(previously(mac_vnode_check_write(ANY(ptr), ANY(ptr), vp)
 	    == 0));
-	TESLA_VM_FAULT(previously(mac_vnode_check_WRITE(ANY(ptr), ANY(ptr),
+	TESLA_PAGE_FAULT(previously(mac_vnode_check_WRITE(ANY(ptr), ANY(ptr),
 	    vp) == 0));
 
 	uio = ap->a_uio;
