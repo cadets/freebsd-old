@@ -163,7 +163,7 @@ int32_t	tesla_class_get(struct tesla_store *store,
 
 
 
-#define	TESLA_KEY_SIZE		4
+#define	TESLA_KEY_SIZE		8
 
 /**
  * A TESLA instance can be identified by a @ref tesla_class and a
