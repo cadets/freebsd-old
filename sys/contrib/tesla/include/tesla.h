@@ -29,7 +29,7 @@
  */
 
 /**
- * @mainpage TESLA API documentation
+ * @mainpage API documentation
  *
  * This is the API documentation for TESLA's programmer interface
  * (@ref ConsumerAPI), runtime support library (@ref libtesla) and

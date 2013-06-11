@@ -52,10 +52,10 @@
 	)
 
 /** An inline assertion. */
-#define	TESLA_ASSERT(locality, start, end, predicate)			\
+#define	TESLA_ASSERT(locality, start, end, expression)			\
 	__tesla_inline_assertion(					\
 		__FILE__, __LINE__, __COUNTER__,			\
-		locality, start, end, predicate				\
+		locality, start, end, expression			\
 	)
 
 /** An assertion in the global TESLA context. */
@@ -82,7 +82,7 @@
 
 #define automaton(name, ...)    __tesla_automaton(name, __VA_ARGS__)
 
-#define	tdone return (__tesla_automaton_done())
+#define	tesla_done return (__tesla_automaton_done())
 
 #define	optional(...)	__tesla_optional(__tesla_ignore, __VA_ARGS__)
 #define	ANY_REP	INT_MAX

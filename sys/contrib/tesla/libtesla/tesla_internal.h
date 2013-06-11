@@ -73,7 +73,7 @@
 /**
  * Call this if things go catastrophically, unrecoverably wrong.
  */
-void	tesla_die(const char *event) __attribute__((noreturn));
+void	tesla_die(int32_t errno, const char *event) __attribute__((noreturn));
 
 /**
  * Clean up a @ref tesla_class.
