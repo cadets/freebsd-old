@@ -175,15 +175,22 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 		}
 	}
 
+	if (!matched_something) {
+		// If the class hasn't received any <<init>> events yet,
+		// simply ignore the event: it is out of scope.
+		if (class->tc_free == class->tc_limit)
+			ev_handlers->teh_ignored(class, pattern, trans);
+
+		// Otherwise, we ought to have matched something.
+		else ev_handlers->teh_fail_no_instance(class, pattern, trans);
+	}
+
 	// Does it cause class cleanup?
 	if (cleanup_required)
 		tesla_class_reset(class);
 
 	print_class(class);
 	PRINT("\n====\n\n");
-
-	if (!matched_something)
-		ev_handlers->teh_fail_no_instance(class, pattern, trans);
 
 	tesla_class_put(class);
 
