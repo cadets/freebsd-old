@@ -105,11 +105,11 @@ accept(struct tesla_class *tcp, struct tesla_instance *tip)
 }
 
 static void
-ignored(struct tesla_class *tcp, const struct tesla_key *tkp,
+ignored(const struct tesla_class *tcp, const struct tesla_key *tkp,
     const struct tesla_transitions *ttp)
 {
 
-	SDT_PROBE(tesla, kernel, notify, ignored, tcp, tkp, tip, 0, 0);
+	SDT_PROBE(tesla, kernel, notify, ignored, tcp, tkp, ttp, 0, 0);
 }
 
 struct tesla_event_handlers dtrace_handlers = {
