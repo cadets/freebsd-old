@@ -41,7 +41,7 @@ tesla_set_event_handlers(struct tesla_event_handlers *tehp)
 	if (!tehp || !tehp->teh_init || !tehp->teh_transition
 	    || !tehp->teh_clone || !tehp->teh_fail_no_instance
 	    || !tehp->teh_bad_transition
-	    || !tehp->teh_accept)
+	    || !tehp->teh_accept || !tehp->teh_ignored)
 		return (TESLA_ERROR_EINVAL);
 
 	ev_handlers = tehp;
@@ -69,13 +69,17 @@ static void	print_bad_transition(struct tesla_class *,
 
 static void	print_accept(struct tesla_class *, struct tesla_instance *);
 
+static void	print_ignored(const struct tesla_class *,
+	    const struct tesla_key *, const struct tesla_transitions *);
+
 struct tesla_event_handlers printf_handlers = {
 	.teh_init		= print_new_instance,
 	.teh_transition		= print_transition_taken,
 	.teh_clone		= print_clone,
 	.teh_fail_no_instance	= print_no_instance,
 	.teh_bad_transition	= print_bad_transition,
-	.teh_accept		= print_accept
+	.teh_accept		= print_accept,
+	.teh_ignored		= print_ignored,
 };
 
 
@@ -94,7 +98,8 @@ struct tesla_event_handlers failstop_handlers = {
 	.teh_clone		= print_clone,
 	.teh_fail_no_instance	= panic_no_instance,
 	.teh_bad_transition	= panic_bad_transition,
-	.teh_accept		= print_accept
+	.teh_accept		= print_accept,
+	.teh_ignored		= print_ignored,
 };
 
 
@@ -239,6 +244,21 @@ print_accept(struct tesla_class *tcp, struct tesla_instance *tip)
 	DEBUG(libtesla.instance.success,
 		"pass '%s': %td\n", tcp->tc_name,
 		tip - tcp->tc_instances);
+}
+
+void
+print_ignored(const struct tesla_class *tcp, const struct tesla_key *tkp,
+    const struct tesla_transitions *transp)
+{
+	char buffer[ERROR_BUFFER_LENGTH];
+	char *next = buffer;
+	const char *end = buffer + sizeof(buffer);
+
+	next = key_string(next, end, tkp);
+	SAFE_SPRINTF(next, end, " : ");
+	sprint_transitions(next, end, transp);
+
+	DEBUG(libtesla.event, "ignore '%s':%s", tcp->tc_name, buffer);
 }
 
 

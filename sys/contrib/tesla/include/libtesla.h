@@ -271,6 +271,10 @@ typedef void	(*tesla_ev_bad_transition)(struct tesla_class *,
 typedef void	(*tesla_ev_accept)(struct tesla_class *,
 	    struct tesla_instance *);
 
+/** An event is being ignored. */
+typedef void	(*tesla_ev_ignored)(const struct tesla_class *,
+	    const struct tesla_key *, const struct tesla_transitions *);
+
 /** A vector of event handlers. */
 struct tesla_event_handlers {
 	tesla_ev_new_instance	teh_init;
@@ -279,6 +283,7 @@ struct tesla_event_handlers {
 	tesla_ev_no_instance	teh_fail_no_instance;
 	tesla_ev_bad_transition	teh_bad_transition;
 	tesla_ev_accept		teh_accept;
+	tesla_ev_ignored	teh_ignored;
 };
 
 /** Register a set of event handlers. */
