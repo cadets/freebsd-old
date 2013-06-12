@@ -42,7 +42,11 @@ tesla_set_event_handlers(struct tesla_event_handlers *tehp)
 	    || !tehp->teh_clone || !tehp->teh_fail_no_instance
 	    || !tehp->teh_bad_transition
 	    || !tehp->teh_accept || !tehp->teh_ignored)
+#ifdef _KERNEL
+		tesla_panic("invalid error handler vector");
+#else
 		return (TESLA_ERROR_EINVAL);
+#endif
 
 	ev_handlers = tehp;
 	return (TESLA_SUCCESS);
