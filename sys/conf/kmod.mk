@@ -109,6 +109,10 @@ CFLAGS+=	-I. -I@
 # for example.
 CFLAGS+=	-I@/contrib/altq
 
+# Add -I path for TESLA headers as they may be included from anywhere.
+CFLAGS+=	-I@/contrib/tesla/include
+
+.if ${COMPILER_TYPE} != "clang"
 .if ${COMPILER_TYPE} != "clang"
 CFLAGS+=	-finline-limit=${INLINE_LIMIT}
 CFLAGS+= --param inline-unit-growth=100
