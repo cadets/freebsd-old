@@ -96,7 +96,11 @@ tesla_store_get(uint32_t context, uint32_t classes, uint32_t instances,
 	}
 
 	default:
+#ifdef _KERNEL
+		tesla_panic("invalid TESLA_SCOPE %d", context);
+#else
 		return (TESLA_ERROR_EINVAL);
+#endif
 	}
 
 	if (store->length == 0) {
@@ -159,7 +163,11 @@ tesla_class_get(tesla_store *store, uint32_t id, tesla_class **tclassp,
 	assert(tclassp != NULL);
 
 	if (id >= store->length)
+#ifdef _KERNEL
+		tesla_panic("requested class id %d > store length (%d)", id, store->length);
+#else
 		return (TESLA_ERROR_EINVAL);
+#endif
 
 	tesla_class *tclass = &store->classes[id];
 	assert(tclass != NULL);
