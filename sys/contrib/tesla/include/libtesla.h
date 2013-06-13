@@ -249,8 +249,28 @@ struct tesla_event_handlers {
 	tesla_ev_ignored	teh_ignored;
 };
 
-/** Register a set of event handlers. */
-int	tesla_set_event_handlers(struct tesla_event_handlers *);
+/**
+ * A 'meta-handler' that wraps a number of event handling vectors.
+ *
+ * This event handler dispatches events to any number of backends, governed
+ * by @a tem_mask: if bit 0 is set, tem_handler[0] is called, etc.
+ */
+struct tesla_event_metahandler {
+	/** The number of event handlers wrapped by this handler. */
+	const uint32_t	tem_length;
+
+	/** Which backend handlers to use; may be modified dynamically. */
+	uint32_t	tem_mask;
+
+	/** The backend event handlers. */
+	const struct tesla_event_handlers* const *tem_handlers;
+};
+
+/** Register an event handler vector. */
+int	tesla_set_event_handler(struct tesla_event_handlers *);
+
+/** Register a set of event handling vectors. */
+int	tesla_set_event_handlers(struct tesla_event_metahandler *);
 
 /** @} */
 

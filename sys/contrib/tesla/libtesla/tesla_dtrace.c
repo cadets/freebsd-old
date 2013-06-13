@@ -112,7 +112,7 @@ ignored(const struct tesla_class *tcp, const struct tesla_key *tkp,
 	SDT_PROBE(tesla, kernel, notify, ignored, tcp, tkp, ttp, 0, 0);
 }
 
-struct tesla_event_handlers dtrace_handlers = {
+const struct tesla_event_handlers dtrace_handlers = {
 	.teh_init			= new_instance,
 	.teh_transition			= transition,
 	.teh_clone			= clone,
