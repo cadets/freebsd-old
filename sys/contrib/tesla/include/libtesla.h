@@ -46,64 +46,25 @@
 #include <stdint.h>		/* int32_t, uint32_t */
 #endif
 
-/*
+/**
+ * Error values that can be returned by libtesla functions.
+ *
  * libtesla functions mostly return error values, and therefore return
- * pointers, etc, via call-by-reference arguments.  These errors are modeled
- * on errno(2), but a separate namespace.
+ * pointers, etc, via call-by-reference arguments.
  */
-#define	TESLA_SUCCESS		0	/* Success. */
-#define	TESLA_ERROR_ENOENT	1	/* Entry not found. */
-#define	TESLA_ERROR_EEXIST	2	/* Entry already present. */
-#define	TESLA_ERROR_ENOMEM	3	/* Insufficient memory. */
-#define	TESLA_ERROR_EINVAL	4	/* Invalid parameters. */
-#define	TESLA_ERROR_UNKNOWN	5	/* An unknown (e.g. platform) error. */
-
-struct tesla_key;
-
-/** A single allowable transition in a TESLA automaton. */
-struct tesla_transition {
-	/** The state we are moving from. */
-	uint32_t	from;
-
-	/** The mask of the state we're moving from. */
-	uint32_t	from_mask;
-
-	/** The state we are moving to. */
-	uint32_t	to;
-
-	/** A mask of the keys that the 'to' state should have set. */
-	uint32_t	to_mask;
-
-	/** Things we may need to do on this transition. */
-	int		flags;
+enum tesla_err_t {
+	TESLA_SUCCESS,		/* Success. */
+	TESLA_ERROR_ENOENT,	/* Entry not found. */
+	TESLA_ERROR_ENOMEM,	/* Insufficient memory. */
+	TESLA_ERROR_EINVAL,	/* Invalid parameters. */
+	TESLA_ERROR_UNKNOWN,	/* An unknown (e.g. platform) error. */
 };
-
-#define	TESLA_TRANS_INIT	0x02	/* May need to initialise the class. */
-#define	TESLA_TRANS_CLEANUP	0x04	/* Clean up the class now. */
-
 
 /**
- * A set of permissible state transitions for an automata instance.
- *
- * An automaton must take exactly one of these transitions.
- */
-struct tesla_transitions {
-	/** The number of possible transitions in @ref #transitions. */
-	uint32_t		 length;
-
-	/** Possible transitions: exactly one must be taken. */
-	struct tesla_transition	*transitions;
-};
-
-/** Update all automata instances that match a given key to a new state. */
-int32_t	tesla_update_state(uint32_t context, uint32_t class_id,
-	const struct tesla_key *key, const char *name, const char *description,
-	const struct tesla_transitions*);
-
-/*
  * Provide string versions of TESLA errors.
  */
 const char	*tesla_strerror(int32_t error);
+
 
 /**
  * A storage container for one or more @ref tesla_class objects.
@@ -114,24 +75,34 @@ const char	*tesla_strerror(int32_t error);
 struct tesla_store;
 
 /**
+ * A context where TESLA data is stored.
+ *
+ * TESLA data can be stored in a number of places that imply different
+ * synchronisation requirements. For instance, thread-local storage does not
+ * require synchronisation on access, whereas global storage does.
+ * On the other hand, thread-local storage cannot be used to track events
+ * across multiple threads.
+ */
+enum tesla_context {
+	TESLA_CONTEXT_GLOBAL,
+	TESLA_CONTEXT_THREAD,
+};
+
+/**
  * Retrieve the @ref tesla_store for a context (e.g., a thread).
  *
  * If the @ref tesla_store does not exist yet, it will be created.
  *
- * @param[in]  context     @ref TESLA_SCOPE_PERTHREAD or @ref TESLA_SCOPE_GLOBAL
+ * @param[in]  context     @ref TESLA_CONTEXT_THREAD or
+ *                         @ref TESLA_CONTEXT_GLOBAL
  * @param[in]  classes     number of @ref tesla_class'es to expect
  * @param[in]  instances   @ref tesla_instance count per @ref tesla_class
  * @param[out] store       return parameter for @ref tesla_store pointer
  */
-int32_t	tesla_store_get(uint32_t context, uint32_t classes, uint32_t instances,
+int32_t	tesla_store_get(enum tesla_context context,
+	                uint32_t classes, uint32_t instances,
 	                struct tesla_store* *store);
 
-/** Reset all automata in a store to the inactive state. */
-int32_t	tesla_store_reset(struct tesla_store *store);
-
-
-/** Clean up a @ref tesla_store. */
-void	tesla_store_free(struct tesla_store*);
 
 /**
  * A description of a TESLA automaton, which may be instantiated a number of
@@ -161,7 +132,43 @@ int32_t	tesla_class_get(struct tesla_store *store,
 	                const char *name,
 	                const char *description);
 
+/** Release resources (e.g., locks) associated with a @ref tesla_class. */
+void	tesla_class_put(struct tesla_class*);
 
+
+/** A single allowable transition in a TESLA automaton. */
+struct tesla_transition {
+	/** The state we are moving from. */
+	uint32_t	from;
+
+	/** The mask of the state we're moving from. */
+	uint32_t	from_mask;
+
+	/** The state we are moving to. */
+	uint32_t	to;
+
+	/** A mask of the keys that the 'to' state should have set. */
+	uint32_t	to_mask;
+
+	/** Things we may need to do on this transition. */
+	int		flags;
+};
+
+#define	TESLA_TRANS_INIT	0x02	/* May need to initialise the class. */
+#define	TESLA_TRANS_CLEANUP	0x04	/* Clean up the class now. */
+
+/**
+ * A set of permissible state transitions for an automata instance.
+ *
+ * An automaton must take exactly one of these transitions.
+ */
+struct tesla_transitions {
+	/** The number of possible transitions in @ref #transitions. */
+	uint32_t		 length;
+
+	/** Possible transitions: exactly one must be taken. */
+	struct tesla_transition	*transitions;
+};
 
 #define	TESLA_KEY_SIZE		4
 
@@ -183,13 +190,13 @@ struct tesla_key {
 	uint32_t	tk_mask;
 };
 
+
 /**
- * Check to see if a key matches a pattern.
- *
- * @returns  1 if @a k matches @a pattern, 0 otherwise
+ * Update all automata instances that match a given key to a new state.
  */
-int32_t	tesla_key_matches(
-	    const struct tesla_key *pattern, const struct tesla_key *k);
+int32_t	tesla_update_state(enum tesla_context context, uint32_t class_id,
+	const struct tesla_key *key, const char *name, const char *description,
+	const struct tesla_transitions*);
 
 
 /** A single instance of an automaton: a name (@ref ti_key) and a state. */
@@ -197,50 +204,6 @@ struct tesla_instance {
 	struct tesla_key	ti_key;
 	uint32_t		ti_state;
 };
-
-/**
- * Instances of tesla_class each have a "scope", used to determine where data
- * should be stored, and how it should be synchronised.
- *
- * Two scopes are currently supported: thread-local and global. Thread-local
- * storage does not require explicit synchronisation, as accesses are
- * serialised by the executing thread, whereas global storage does.  On the
- * other hand, thread-local storage is accessible only to the thread itself,
- * so cannot be used to track events across multiple threads.  Global storage
- * is globally visible, but requires explicit (and potentially expensive)
- * synchronisation.
- */
-#define	TESLA_SCOPE_PERTHREAD	1
-#define	TESLA_SCOPE_GLOBAL	2
-
-
-/**
- * Checks whether or not a TESLA automata instance is active (in use).
- *
- * @param  i    pointer to a <b>valid</b> @ref tesla_instance
- *
- * @returns     1 if active, 0 if inactive
- */
-int32_t	tesla_instance_active(const struct tesla_instance *i);
-
-
-/** Clone an existing instance into a new instance. */
-int32_t	tesla_instance_clone(struct tesla_class *tclass,
-	    struct tesla_instance *original, struct tesla_instance **copy);
-
-/** Release resources (e.g., locks) associated with a @ref tesla_class. */
-void	tesla_class_put(struct tesla_class*);
-
-/** Reset a @ref tesla_class for re-use from a clean state. */
-void	tesla_class_reset(struct tesla_class*);
-
-/**
- * This interface releases an instance for reuse; some types of automata will
- * prefer tesla_class_reset(), which clears all instances associated with a
- * particular tesla_class.
- */
-void	tesla_instance_destroy(struct tesla_class *tsp,
-	    struct tesla_instance *tip);
 
 
 /*

@@ -49,7 +49,7 @@
 #define PRINT(...) DEBUG(libtesla.state.update, __VA_ARGS__)
 
 int32_t
-tesla_update_state(uint32_t tesla_context, uint32_t class_id,
+tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 	const struct tesla_key *pattern,
 	const char *name, const char *description,
 	const struct tesla_transitions *trans)
@@ -69,7 +69,7 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 
 	PRINT("\n====\n%s()\n", __func__);
 	PRINT("  context:      %s\n",
-	            (tesla_context == TESLA_SCOPE_GLOBAL
+	            (tesla_context == TESLA_CONTEXT_GLOBAL
 		     ? "global"
 		     : "per-thread"));
 	PRINT("  class:        %d ('%s')\n", class_id, name);
@@ -147,7 +147,7 @@ tesla_update_state(uint32_t tesla_context, uint32_t class_id,
 	for (size_t i = 0; i < cloned; i++) {
 		struct clone_info *c = clones + i;
 		struct tesla_instance *clone;
-		CHECK(tesla_clone, class, c->old, &clone);
+		CHECK(tesla_instance_clone, class, c->old, &clone);
 
 		tesla_key new_name = *pattern;
 		new_name.tk_mask &= c->transition->to_mask;

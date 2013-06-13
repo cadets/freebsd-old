@@ -76,9 +76,26 @@
 void	tesla_die(int32_t errno, const char *event) __attribute__((noreturn));
 
 /**
+ * Reset all automata in a store to the inactive state.
+ */
+int32_t	tesla_store_reset(struct tesla_store *store);
+
+/**
+ * Clean up a @ref tesla_store.
+ */
+void	tesla_store_free(struct tesla_store*);
+
+
+/**
+ * Reset a @ref tesla_class for re-use from a clean state.
+ */
+void	tesla_class_reset(struct tesla_class*);
+
+/**
  * Clean up a @ref tesla_class.
  */
 void	tesla_class_destroy(struct tesla_class*);
+
 
 /**
  * Create a new @ref tesla_instance.
@@ -90,10 +107,27 @@ int32_t	tesla_instance_new(struct tesla_class *tclass,
 	    struct tesla_instance **out);
 
 /**
- * Clone an existing @ref tesla_instance within a @ref tesla_class.
+ * Checks whether or not a TESLA automata instance is active (in use).
+ *
+ * @param  i    pointer to a <b>valid</b> @ref tesla_instance
+ *
+ * @returns     1 if active, 0 if inactive
  */
-int32_t	tesla_clone(struct tesla_class*, const struct tesla_instance *orig,
-	    struct tesla_instance **copy);
+int32_t	tesla_instance_active(const struct tesla_instance *i);
+
+
+/** Clone an existing instance into a new instance. */
+int32_t	tesla_instance_clone(struct tesla_class *tclass,
+	    const struct tesla_instance *orig, struct tesla_instance **copy);
+
+/**
+ * This interface releases an instance for reuse; some types of automata will
+ * prefer tesla_class_reset(), which clears all instances associated with a
+ * particular tesla_class.
+ */
+void	tesla_instance_destroy(struct tesla_class *tsp,
+	    struct tesla_instance *tip);
+
 
 /**
  * Find all automata instances in a class that match a particular key.
@@ -109,6 +143,15 @@ int32_t	tesla_clone(struct tesla_class*, const struct tesla_instance *orig,
  */
 int32_t	tesla_match(struct tesla_class *tclass, const struct tesla_key *key,
 	    struct tesla_instance **array, uint32_t *size);
+
+/**
+ * Check to see if a key matches a pattern.
+ *
+ * @returns  1 if @a k matches @a pattern, 0 otherwise
+ */
+int32_t	tesla_key_matches(
+	    const struct tesla_key *pattern, const struct tesla_key *k);
+
 
 /** Actions that can be taken by @ref tesla_update_state. */
 enum tesla_action_t {
@@ -190,10 +233,10 @@ int32_t	tesla_key_union(struct tesla_key *dest, const struct tesla_key *source);
  * we need to.
  */
 struct tesla_class {
-	const char	*tc_name;	/* Name of the assertion. */
-	const char	*tc_description;/* Description of the assertion. */
-	uint32_t	 tc_scope;	/* Per-thread or global. */
-	uint32_t	 tc_limit;	/* Simultaneous automata limit. */
+	const char		*tc_name;	/* Name of the assertion. */
+	const char		*tc_description;/* Automaton representation. */
+	enum tesla_context	 tc_context;	/* Global, thread... */
+	uint32_t		 tc_limit;	/* Maximum instances. */
 
 	struct tesla_instance	*tc_instances;	/* Instances of this class. */
 	uint32_t		tc_free;	/* Unused instances. */
@@ -228,31 +271,22 @@ struct tesla_store {
  * Initialise @ref tesla_store internals.
  * Locking is the responsibility of the caller.
  */
-int	tesla_store_init(tesla_store*, uint32_t context, uint32_t classes,
-		uint32_t instances);
+int	tesla_store_init(tesla_store*, enum tesla_context context,
+		uint32_t classes, uint32_t instances);
 
 /**
  * Initialize @ref tesla_class internals.
  * Locking is the responsibility of the caller.
  */
-int	tesla_class_init(struct tesla_class*, uint32_t context,
+int	tesla_class_init(struct tesla_class*, enum tesla_context context,
 		uint32_t instances);
 
 /*
  * XXXRW: temporarily, maximum number of classes and instances are hard-coded
  * constants.  In the future, this should somehow be more dynamic.
- *
- * XXXRW: this is still true.
  */
 #define	TESLA_MAX_CLASSES		128
 #define	TESLA_MAX_INSTANCES		128
-
-/*
- * When the assertion fails, what to do?
- */
-#define	TESLA_ACTION_FAILSTOP	1	/* Stop on failure. */
-#define	TESLA_ACTION_DTRACE	2	/* Fire DTrace probe on failure. */
-#define	TESLA_ACTION_PRINTF	3	/* Console/stdio printf. */
 
 #if defined(_KERNEL) && defined(MALLOC_DECLARE)
 /*

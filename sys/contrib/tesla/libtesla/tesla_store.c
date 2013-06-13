@@ -53,7 +53,7 @@ tesla_global_store_sysinit(__unused void *arg)
 {
 	uint32_t error;
 
-	error = tesla_store_init(&global_store, TESLA_SCOPE_GLOBAL,
+	error = tesla_store_init(&global_store, TESLA_CONTEXT_GLOBAL,
 	    TESLA_MAX_CLASSES, TESLA_MAX_INSTANCES);
 	tesla_assert(error == TESLA_SUCCESS, ("tesla_store_init failed"));
 }
@@ -62,19 +62,19 @@ SYSINIT(tesla_global_store, SI_SUB_TESLA, SI_ORDER_FIRST,
 #endif
 
 int32_t
-tesla_store_get(uint32_t context, uint32_t classes, uint32_t instances,
-                tesla_store* *storep)
+tesla_store_get(enum tesla_context context, uint32_t classes,
+	uint32_t instances, tesla_store* *storep)
 {
 	assert(storep);
 
 	tesla_store *store;
 
 	switch (context) {
-	case TESLA_SCOPE_GLOBAL:
+	case TESLA_CONTEXT_GLOBAL:
 		store = &global_store;
 		break;
 
-	case TESLA_SCOPE_PERTHREAD: {
+	case TESLA_CONTEXT_THREAD: {
 #ifdef _KERNEL
 		store = curthread->td_tesla;
 #else
@@ -97,7 +97,7 @@ tesla_store_get(uint32_t context, uint32_t classes, uint32_t instances,
 
 	default:
 #ifdef _KERNEL
-		tesla_panic("invalid TESLA_SCOPE %d", context);
+		tesla_panic("invliad TESLA_CONTEXT %d", context);
 #else
 		return (TESLA_ERROR_EINVAL);
 #endif
@@ -118,7 +118,7 @@ tesla_store_get(uint32_t context, uint32_t classes, uint32_t instances,
 
 
 int32_t
-tesla_store_init(tesla_store *store, uint32_t context,
+tesla_store_init(tesla_store *store, enum tesla_context context,
                  uint32_t classes, uint32_t instances)
 {
 	assert(classes > 0);
@@ -136,7 +136,7 @@ tesla_store_init(tesla_store *store, uint32_t context,
 		if (error != TESLA_SUCCESS)
 			break;
 
-		assert(store->classes[i].tc_scope > 0);
+		assert(store->classes[i].tc_context >= 0);
 	}
 
 	return (error);
@@ -172,7 +172,7 @@ tesla_class_get(tesla_store *store, uint32_t id, tesla_class **tclassp,
 	tesla_class *tclass = &store->classes[id];
 	assert(tclass != NULL);
 	assert(tclass->tc_instances != NULL);
-	assert(tclass->tc_scope > 0);
+	assert(tclass->tc_context >= 0);
 
 	if (tclass->tc_name == NULL) tclass->tc_name = name;
 	if (tclass->tc_description == NULL)
@@ -186,11 +186,11 @@ tesla_class_get(tesla_store *store, uint32_t id, tesla_class **tclassp,
 
 void
 tesla_class_acquire(tesla_class *class) {
-	switch (class->tc_scope) {
-	case TESLA_SCOPE_GLOBAL:
+	switch (class->tc_context) {
+	case TESLA_CONTEXT_GLOBAL:
 		return tesla_class_global_acquire(class);
 
-	case TESLA_SCOPE_PERTHREAD:
+	case TESLA_CONTEXT_THREAD:
 		return tesla_class_perthread_acquire(class);
 
 	default:
