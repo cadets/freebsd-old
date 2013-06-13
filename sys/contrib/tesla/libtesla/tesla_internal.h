@@ -241,9 +241,11 @@ int	tesla_class_init(struct tesla_class*, uint32_t context,
 /*
  * XXXRW: temporarily, maximum number of classes and instances are hard-coded
  * constants.  In the future, this should somehow be more dynamic.
+ *
+ * XXXRW: this is still true.
  */
-#define	TESLA_MAX_CLASSES		12
-#define	TESLA_MAX_INSTANCES		8
+#define	TESLA_MAX_CLASSES		128
+#define	TESLA_MAX_INSTANCES		128
 
 /*
  * When the assertion fails, what to do?
