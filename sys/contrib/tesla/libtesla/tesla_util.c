@@ -51,8 +51,6 @@ tesla_strerror(int error)
 		return ("Success");
 	case TESLA_ERROR_ENOENT:
 		return ("Entry not found");
-	case TESLA_ERROR_EEXIST:
-		return ("Entry already present");
 	case TESLA_ERROR_ENOMEM:
 		return ("Insufficient memory");
 	case TESLA_ERROR_EINVAL:

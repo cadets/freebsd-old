@@ -40,7 +40,7 @@ int
 tesla_class_global_postinit(struct tesla_class *tsp)
 {
 
-	assert(tsp->tc_scope == TESLA_SCOPE_GLOBAL);
+	assert(tsp->tc_context == TESLA_CONTEXT_GLOBAL);
 	tesla_class_global_lock_init(tsp);
 	return (TESLA_SUCCESS);
 }
@@ -49,7 +49,7 @@ void
 tesla_class_global_acquire(struct tesla_class *tsp)
 {
 
-	assert(tsp->tc_scope == TESLA_SCOPE_GLOBAL);
+	assert(tsp->tc_context == TESLA_CONTEXT_GLOBAL);
 	tesla_lock(&tsp->tc_lock);
 }
 
@@ -57,7 +57,7 @@ void
 tesla_class_global_release(struct tesla_class *tsp)
 {
 
-	assert(tsp->tc_scope == TESLA_SCOPE_GLOBAL);
+	assert(tsp->tc_context == TESLA_CONTEXT_GLOBAL);
 	tesla_unlock(&tsp->tc_lock);
 }
 

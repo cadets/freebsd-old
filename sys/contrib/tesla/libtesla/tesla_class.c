@@ -43,27 +43,27 @@ MALLOC_DEFINE(M_TESLA, "tesla", "TESLA internal state");
 
 
 int
-tesla_class_init(struct tesla_class *tclass,
-                 uint32_t context, uint32_t instances)
+tesla_class_init(struct tesla_class *tclass, enum tesla_context context,
+	uint32_t instances)
 {
 	assert(tclass != NULL);
-	assert(context > 0);
+	assert(context >= 0);
 	assert(instances > 0);
 	// TODO: write a TESLA assertion about locking here.
 
 	tclass->tc_limit = instances;
 
-	tclass->tc_scope = context;
+	tclass->tc_context = context;
 	tclass->tc_limit = instances;
 	tclass->tc_free = instances;
 	tclass->tc_instances =
 		tesla_malloc(instances * sizeof(tclass->tc_instances[0]));
 
 	switch (context) {
-	case TESLA_SCOPE_GLOBAL:
+	case TESLA_CONTEXT_GLOBAL:
 		return tesla_class_global_postinit(tclass);
 
-	case TESLA_SCOPE_PERTHREAD:
+	case TESLA_CONTEXT_THREAD:
 		return tesla_class_perthread_postinit(tclass);
 
 	default:
@@ -77,12 +77,12 @@ void
 tesla_class_destroy(struct tesla_class *class)
 {
 	tesla_free(class->tc_instances);
-	switch (class->tc_scope) {
-	case TESLA_SCOPE_GLOBAL:
+	switch (class->tc_context) {
+	case TESLA_CONTEXT_GLOBAL:
 		tesla_class_global_destroy(class);
 		break;
 
-	case TESLA_SCOPE_PERTHREAD:
+	case TESLA_CONTEXT_THREAD:
 		tesla_class_perthread_destroy(class);
 		break;
 	}
@@ -168,8 +168,8 @@ tesla_instance_new(struct tesla_class *tclass, const struct tesla_key *name,
 }
 
 int
-tesla_clone(struct tesla_class *tclass, const struct tesla_instance *orig,
-	struct tesla_instance **copy)
+tesla_instance_clone(struct tesla_class *tclass,
+	const struct tesla_instance *orig, struct tesla_instance **copy)
 {
 	return tesla_instance_new(tclass, &orig->ti_key, orig->ti_state, copy);
 }
@@ -177,11 +177,11 @@ tesla_clone(struct tesla_class *tclass, const struct tesla_instance *orig,
 void
 tesla_class_put(struct tesla_class *tsp)
 {
-	switch (tsp->tc_scope) {
-	case TESLA_SCOPE_GLOBAL:
+	switch (tsp->tc_context) {
+	case TESLA_CONTEXT_GLOBAL:
 		return tesla_class_global_release(tsp);
 
-	case TESLA_SCOPE_PERTHREAD:
+	case TESLA_CONTEXT_THREAD:
 		return tesla_class_perthread_release(tsp);
 
 	default:
@@ -198,11 +198,11 @@ tesla_class_reset(struct tesla_class *c)
 	bzero(c->tc_instances, sizeof(c->tc_instances[0]) * c->tc_limit);
 	c->tc_free = c->tc_limit;
 
-	switch (c->tc_scope) {
-	case TESLA_SCOPE_GLOBAL:
+	switch (c->tc_context) {
+	case TESLA_CONTEXT_GLOBAL:
 		return tesla_class_global_release(c);
 
-	case TESLA_SCOPE_PERTHREAD:
+	case TESLA_CONTEXT_THREAD:
 		return tesla_class_perthread_release(c);
 
 	default:

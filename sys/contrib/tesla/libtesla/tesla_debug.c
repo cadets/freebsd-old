@@ -191,10 +191,11 @@ print_class(const struct tesla_class *c)
 	print("  name:         '%s',\n", c->tc_name);
 	print("  description:  '[...]',\n");   // TL;DR
 	print("  scope:        ");
-	switch (c->tc_scope) {
-		case TESLA_SCOPE_PERTHREAD:  print("thread-local\n"); break;
-		case TESLA_SCOPE_GLOBAL:     print("global\n");       break;
-		default:                     print("UNKNOWN (0x%x)\n", c->tc_scope);
+	switch (c->tc_context) {
+		case TESLA_CONTEXT_THREAD:  print("thread-local\n"); break;
+		case TESLA_CONTEXT_GLOBAL:  print("global\n");       break;
+		default:
+			print("UNKNOWN (0x%x)\n", c->tc_context);
 	}
 	print("  limit:        %d\n", c->tc_limit);
 	print("  %d/%d instances\n", c->tc_limit - c->tc_free, c->tc_limit);
