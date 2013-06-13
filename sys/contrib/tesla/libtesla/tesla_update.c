@@ -55,8 +55,6 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 	const struct tesla_transitions *trans)
 {
 
-	assert(ev_handlers != NULL);
-
 	if (tesla_debugging(DEBUG_NAME)) {
 		/* We should never see with multiple <<init>> transitions. */
 		int init_count = 0;
@@ -114,19 +112,19 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 
 		switch (action) {
 		case FAIL:
-			ev_handlers->teh_bad_transition(class, inst, trans);
+			ev_bad_transition(class, inst, trans);
 			break;
 
 		case IGNORE:
 			break;
 
 		case UPDATE:
-			ev_handlers->teh_transition(class, inst, trigger);
+			ev_transition(class, inst, trigger);
 			inst->ti_state = trigger->to;
 			matched_something = true;
 
 			if (trigger->flags & TESLA_TRANS_CLEANUP)
-				ev_handlers->teh_accept(class, inst);
+				ev_accept(class, inst);
 
 			break;
 
@@ -155,10 +153,10 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 
 		clone->ti_state = c->transition->to;
 
-		ev_handlers->teh_clone(class, c->old, clone, c->transition);
+		ev_clone(class, c->old, clone, c->transition);
 
 		if (c->transition->flags & TESLA_TRANS_CLEANUP)
-			ev_handlers->teh_accept(class, clone);
+			ev_accept(class, clone);
 	}
 
 
@@ -171,7 +169,7 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 			assert(tesla_instance_active(inst));
 
 			matched_something = true;
-			ev_handlers->teh_init(class, inst);
+			ev_new_instance(class, inst);
 		}
 	}
 
@@ -179,10 +177,10 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 		// If the class hasn't received any <<init>> events yet,
 		// simply ignore the event: it is out of scope.
 		if (class->tc_free == class->tc_limit)
-			ev_handlers->teh_ignored(class, pattern, trans);
+			ev_ignored(class, pattern, trans);
 
 		// Otherwise, we ought to have matched something.
-		else ev_handlers->teh_fail_no_instance(class, pattern, trans);
+		else ev_no_instance(class, pattern, trans);
 	}
 
 	// Does it cause class cleanup?

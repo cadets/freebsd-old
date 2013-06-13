@@ -34,95 +34,154 @@
 
 #define	ERROR_BUFFER_LENGTH	1024
 
-int
-tesla_set_event_handlers(struct tesla_event_handlers *tehp)
+/**
+ * The currently-active event handlers.
+ */
+static struct tesla_event_metahandler *event_handlers;
+
+
+/** Perform sanity checks on an event handling vector. */
+static int
+check_event_handler(const struct tesla_event_handlers *tehp)
 {
 
 	if (!tehp || !tehp->teh_init || !tehp->teh_transition
 	    || !tehp->teh_clone || !tehp->teh_fail_no_instance
 	    || !tehp->teh_bad_transition
 	    || !tehp->teh_accept || !tehp->teh_ignored)
-#ifdef _KERNEL
-		tesla_panic("invalid error handler vector");
-#else
 		return (TESLA_ERROR_EINVAL);
-#endif
 
-	ev_handlers = tehp;
 	return (TESLA_SUCCESS);
 }
+
+
+int
+tesla_set_event_handler(struct tesla_event_handlers *tehp)
+{
+	int error = check_event_handler(tehp);
+	if (error != TESLA_SUCCESS)
+		return (error);
+
+	const static struct tesla_event_handlers* singleton[1];
+	static struct tesla_event_metahandler singleton_handler = {
+		.tem_length = 1,
+		.tem_mask = 1,
+		.tem_handlers = singleton,
+	};
+
+	singleton[0] = tehp;
+	event_handlers = &singleton_handler;
+
+	return (TESLA_SUCCESS);
+}
+
+int
+tesla_set_event_handlers(struct tesla_event_metahandler *temp)
+{
+	int error = TESLA_SUCCESS;
+
+	if (!temp)
+		return (TESLA_ERROR_EINVAL);
+
+	/*
+	 * It's ok to disable event handlers dynamically using the bitmask,
+	 * but all event handlers passed in must be valid.
+	 */
+	for (uint32_t i = 0; i < temp->tem_length; i++) {
+		error = check_event_handler(temp->tem_handlers[i]);
+		if (error != TESLA_SUCCESS)
+			return (error);
+	}
+
+	event_handlers = temp;
+	return (TESLA_SUCCESS);
+}
+
+
+/*
+ * generic event handlers:
+ */
+#define	FOREACH_ERROR_HANDLER() \
+	for (uint32_t i = 0; i < event_handlers->tem_length; i++) \
+		if (event_handlers->tem_mask & (1 << i)) \
+			event_handlers->tem_handlers[i]
+
+static void
+ev_noop()
+{
+}
+
+void
+ev_new_instance(struct tesla_class *tcp, struct tesla_instance *tip)
+{
+
+	FOREACH_ERROR_HANDLER()->teh_init(tcp, tip);
+}
+
+void
+ev_transition(struct tesla_class *tcp, struct tesla_instance *tip,
+	const struct tesla_transition *ttp)
+{
+
+	FOREACH_ERROR_HANDLER()->teh_transition(tcp, tip, ttp);
+}
+
+void
+ev_clone(struct tesla_class *tcp, struct tesla_instance *orig,
+	struct tesla_instance *copy, const struct tesla_transition *ttp)
+{
+
+	FOREACH_ERROR_HANDLER()->teh_clone(tcp, orig, copy, ttp);
+}
+
+void
+ev_no_instance(struct tesla_class *tcp, const struct tesla_key *tkp,
+	const struct tesla_transitions *ttp)
+{
+
+	FOREACH_ERROR_HANDLER()->teh_fail_no_instance(tcp, tkp, ttp);
+}
+
+void
+ev_bad_transition(struct tesla_class *tcp, struct tesla_instance *tip,
+	const struct tesla_transitions *ttp)
+{
+
+	FOREACH_ERROR_HANDLER()->teh_bad_transition(tcp, tip, ttp);
+}
+
+void
+ev_accept(struct tesla_class *tcp, struct tesla_instance *tip)
+{
+
+	FOREACH_ERROR_HANDLER()->teh_accept(tcp, tip);
+}
+
+void
+ev_ignored(const struct tesla_class *tcp, const struct tesla_key *tkp,
+	const struct tesla_transitions *ttp)
+{
+
+	FOREACH_ERROR_HANDLER()->teh_ignored(tcp, tkp, ttp);
+}
+
 
 /*
  * printf()-based event handlers:
  */
-static void	print_new_instance(struct tesla_class *,
-	    struct tesla_instance *);
+static void
+print_failure_header(const struct tesla_class *tcp)
+{
 
-static void	print_transition_taken(struct tesla_class *,
-	    struct tesla_instance *, const struct tesla_transition*);
-
-static void	print_clone(struct tesla_class *,
-	    struct tesla_instance *orig, struct tesla_instance *copy,
-	    const struct tesla_transition*);
-
-static void	print_no_instance(struct tesla_class *,
-	    const struct tesla_key *, const struct tesla_transitions *);
-
-static void	print_bad_transition(struct tesla_class *,
-	    struct tesla_instance *, const struct tesla_transitions *);
-
-static void	print_accept(struct tesla_class *, struct tesla_instance *);
-
-static void	print_ignored(const struct tesla_class *,
-	    const struct tesla_key *, const struct tesla_transitions *);
-
-struct tesla_event_handlers printf_handlers = {
-	.teh_init		= print_new_instance,
-	.teh_transition		= print_transition_taken,
-	.teh_clone		= print_clone,
-	.teh_fail_no_instance	= print_no_instance,
-	.teh_bad_transition	= print_bad_transition,
-	.teh_accept		= print_accept,
-	.teh_ignored		= print_ignored,
-};
-
-
-/*
- * Wrappers that panic on failure:
- */
-static void	panic_no_instance(struct tesla_class *,
-	    const struct tesla_key *, const struct tesla_transitions *);
-
-static void	panic_bad_transition(struct tesla_class *,
-	    struct tesla_instance *, const struct tesla_transitions *);
-
-struct tesla_event_handlers failstop_handlers = {
-	.teh_init		= print_new_instance,
-	.teh_transition		= print_transition_taken,
-	.teh_clone		= print_clone,
-	.teh_fail_no_instance	= panic_no_instance,
-	.teh_bad_transition	= panic_bad_transition,
-	.teh_accept		= print_accept,
-	.teh_ignored		= print_ignored,
-};
-
-
-/**
- * Default to print-with-failstop except in the kernel when DTrace is
- * available.
- */
-struct tesla_event_handlers	*ev_handlers =
-#if defined(_KERNEL) && defined(KDTRACE_HOOKS)
-	&dtrace_handlers
-#else
-	&failstop_handlers
+	error("\n\nTESLA failure:\n");
+#if defined(_KERNEL) && defined(KDB)
+	kdb_backtrace();
 #endif
-	;
 
-static void	print_failure_header(const struct tesla_class *);
+	error("In automaton '%s':\n%s\n", tcp->tc_name, tcp->tc_description);
+}
 
-
-void
+static void
 print_new_instance(struct tesla_class *tcp, struct tesla_instance *tip)
 {
 
@@ -130,7 +189,7 @@ print_new_instance(struct tesla_class *tcp, struct tesla_instance *tip)
 		tip - tcp->tc_instances, tip->ti_state);
 }
 
-void
+static void
 print_transition_taken(struct tesla_class *tcp,
     struct tesla_instance *tip, const struct tesla_transition *transp)
 {
@@ -139,7 +198,7 @@ print_transition_taken(struct tesla_class *tcp,
 		tip - tcp->tc_instances, transp->from, transp->to);
 }
 
-void
+static void
 print_clone(struct tesla_class *tcp,
     struct tesla_instance *old_instance, struct tesla_instance *new_instance,
     const struct tesla_transition *transp)
@@ -151,8 +210,7 @@ print_clone(struct tesla_class *tcp,
 }
 
 static void
-no_instance_message(char *buffer, const char *end,
-    struct tesla_class *tcp, const struct tesla_key *tkp,
+print_no_instance(struct tesla_class *tcp, const struct tesla_key *tkp,
     const struct tesla_transitions *transp)
 {
 
@@ -161,6 +219,8 @@ no_instance_message(char *buffer, const char *end,
 
 	print_failure_header(tcp);
 
+	char buffer[ERROR_BUFFER_LENGTH];
+	const char *end = buffer + sizeof(buffer);
 	char *next = buffer;
 
 	SAFE_SPRINTF(next, end, "No instance matched key '");
@@ -168,35 +228,12 @@ no_instance_message(char *buffer, const char *end,
 	SAFE_SPRINTF(next, end, "' for transition(s) ");
 	next = sprint_transitions(next, end, transp);
 	assert(next > buffer);
-}
 
-void
-print_no_instance(struct tesla_class *tcp, const struct tesla_key *tkp,
-    const struct tesla_transitions *transp)
-{
-
-	char buffer[ERROR_BUFFER_LENGTH];
-	const char *end = buffer + sizeof(buffer);
-
-	no_instance_message(buffer, end, tcp, tkp, transp);
 	error("%s", buffer);
 }
 
-void
-panic_no_instance(struct tesla_class *tcp, const struct tesla_key *tkp,
-    const struct tesla_transitions *transp)
-{
-
-	char buffer[ERROR_BUFFER_LENGTH];
-	const char *end = buffer + sizeof(buffer);
-
-	no_instance_message(buffer, end, tcp, tkp, transp);
-	tesla_panic("%s", buffer);
-}
-
 static void
-bad_transition_message(char *buffer, const char *end,
-    struct tesla_class *tcp, struct tesla_instance *tip,
+print_bad_transition(struct tesla_class *tcp, struct tesla_instance *tip,
     const struct tesla_transitions *transp)
 {
 
@@ -205,6 +242,8 @@ bad_transition_message(char *buffer, const char *end,
 
 	print_failure_header(tcp);
 
+	char buffer[ERROR_BUFFER_LENGTH];
+	const char *end = buffer + sizeof(buffer);
 	char *next = buffer;
 
 	SAFE_SPRINTF(next, end,
@@ -215,33 +254,11 @@ bad_transition_message(char *buffer, const char *end,
 
 	next = sprint_transitions(next, end, transp);
 	assert(next > buffer);
-}
 
-void
-print_bad_transition(struct tesla_class *tcp, struct tesla_instance *tip,
-    const struct tesla_transitions *transp)
-{
-
-	char buffer[ERROR_BUFFER_LENGTH];
-	const char *end = buffer + sizeof(buffer);
-
-	bad_transition_message(buffer, end, tcp, tip, transp);
 	error("%s", buffer);
 }
 
-void
-panic_bad_transition(struct tesla_class *tcp, struct tesla_instance *tip,
-    const struct tesla_transitions *transp)
-{
-
-	char buffer[ERROR_BUFFER_LENGTH];
-	const char *end = buffer + sizeof(buffer);
-
-	bad_transition_message(buffer, end, tcp, tip, transp);
-	tesla_panic("%s", buffer);
-}
-
-void
+static void
 print_accept(struct tesla_class *tcp, struct tesla_instance *tip)
 {
 
@@ -250,7 +267,7 @@ print_accept(struct tesla_class *tcp, struct tesla_instance *tip)
 		tip - tcp->tc_instances);
 }
 
-void
+static void
 print_ignored(const struct tesla_class *tcp, const struct tesla_key *tkp,
     const struct tesla_transitions *transp)
 {
@@ -265,15 +282,66 @@ print_ignored(const struct tesla_class *tcp, const struct tesla_key *tkp,
 	DEBUG(libtesla.event, "ignore '%s':%s", tcp->tc_name, buffer);
 }
 
+const struct tesla_event_handlers printf_handlers = {
+	.teh_init		= print_new_instance,
+	.teh_transition		= print_transition_taken,
+	.teh_clone		= print_clone,
+	.teh_fail_no_instance	= print_no_instance,
+	.teh_bad_transition	= print_bad_transition,
+	.teh_accept		= print_accept,
+	.teh_ignored		= print_ignored,
+};
 
+
+/*
+ * Wrappers that panic on failure:
+ */
 static void
-print_failure_header(const struct tesla_class *tcp)
+panic_no_instance(struct tesla_class *tcp,
+	__unused const struct tesla_key *tkp,
+	__unused const struct tesla_transitions *ttp)
 {
 
-	error("\n\nTESLA failure:\n");
-#if defined(_KERNEL) && defined(KDB)
-	kdb_backtrace();
-#endif
-
-	error("In automaton '%s':\n%s\n", tcp->tc_name, tcp->tc_description);
+	tesla_panic("TESLA: failure in '%s': no such instance", tcp->tc_name);
 }
+
+static void
+panic_bad_transition(struct tesla_class *tcp,
+	__unused struct tesla_instance *tip,
+	__unused const struct tesla_transitions *ttp)
+{
+
+	tesla_panic("TESLA: failure in '%s': bad transition", tcp->tc_name);
+}
+
+const struct tesla_event_handlers failstop_handlers = {
+	.teh_init		= ev_noop,
+	.teh_transition		= ev_noop,
+	.teh_clone		= ev_noop,
+	.teh_fail_no_instance	= panic_no_instance,
+	.teh_bad_transition	= panic_bad_transition,
+	.teh_accept		= ev_noop,
+	.teh_ignored		= ev_noop,
+};
+
+
+/**
+ * Default event handlers: always print, then use DTrace in the kernel
+ * if it's available; if it isn't, panic on failure.
+ */
+const static struct tesla_event_handlers* const default_handlers[] = {
+	&printf_handlers,
+#if defined(_KERNEL) && defined(KDTRACE_HOOKS)
+	&dtrace_handlers,
+#else
+	&failstop_handlers,
+#endif
+};
+
+static struct tesla_event_metahandler default_event_handlers = {
+	.tem_length = sizeof(default_handlers) / sizeof(*default_handlers),
+	.tem_mask = 0xFFFF,
+	.tem_handlers = default_handlers,
+};
+
+static struct tesla_event_metahandler *event_handlers = &default_event_handlers;

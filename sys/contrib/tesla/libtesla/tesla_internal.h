@@ -311,13 +311,22 @@ void	tesla_class_perthread_destroy(struct tesla_class*);
 /*
  * Event notification:
  */
-extern struct tesla_event_handlers	*ev_handlers;
-extern struct tesla_event_handlers	failstop_handlers;
-extern struct tesla_event_handlers	printf_handlers;
-
-#ifdef _KERNEL
-extern struct tesla_event_handlers	dtrace_handlers;
+#if defined(_KERNEL) && defined(KDTRACE_HOOKS)
+extern const struct tesla_event_handlers dtrace_handlers;
 #endif
+
+void	ev_new_instance(struct tesla_class *, struct tesla_instance *);
+void	ev_transition(struct tesla_class *, struct tesla_instance *,
+	    const struct tesla_transition*);
+void	ev_clone(struct tesla_class *, struct tesla_instance *orig,
+	    struct tesla_instance *copy, const struct tesla_transition *);
+void	ev_no_instance(struct tesla_class *, const struct tesla_key *,
+	    const struct tesla_transitions *);
+void	ev_bad_transition(struct tesla_class *, struct tesla_instance *,
+	    const struct tesla_transitions *);
+void	ev_accept(struct tesla_class *, struct tesla_instance *);
+void	ev_ignored(const struct tesla_class *, const struct tesla_key *,
+	    const struct tesla_transitions *);
 
 /*
  * Debug helpers.
