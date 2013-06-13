@@ -75,7 +75,6 @@ tesla_perthread_dtor(__unused void *arg, struct thread *td)
 	store = td->td_tesla;
 	td->td_tesla = NULL;
 	tesla_store_free(store);
-	tesla_free(store);
 }
 
 static void
