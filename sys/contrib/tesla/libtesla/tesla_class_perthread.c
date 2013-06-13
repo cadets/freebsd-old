@@ -61,7 +61,7 @@ tesla_perthread_ctor(__unused void *arg, struct thread *td)
 	uint32_t error;
 
 	store = tesla_malloc(sizeof(*store));
-	error = tesla_store_init(store, TESLA_CONTEXT_PERTHREAD,
+	error = tesla_store_init(store, TESLA_CONTEXT_THREAD,
 	    TESLA_MAX_CLASSES, TESLA_MAX_INSTANCES);
 	tesla_assert(error == TESLA_SUCCESS, ("tesla_store_init failed"));
 	td->td_tesla = store;
