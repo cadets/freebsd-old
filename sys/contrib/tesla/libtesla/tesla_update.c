@@ -46,7 +46,6 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 	const char *name, const char *description,
 	const struct tesla_transitions *trans)
 {
-	int err;
 
 	if (tesla_debugging(DEBUG_NAME)) {
 		/* We should never see with multiple <<init>> transitions. */
@@ -73,15 +72,13 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 	PRINT("\n----\n");
 
 	struct tesla_store *store;
-	err = tesla_store_get(tesla_context, TESLA_MAX_CLASSES,
-			TESLA_MAX_INSTANCES, &store);
-	if (err != TESLA_SUCCESS)
-		return;
+	assert(tesla_store_get(tesla_context, TESLA_MAX_CLASSES,
+			TESLA_MAX_INSTANCES, &store) == TESLA_SUCCESS);
 
 	PRINT("store: 0x%tx\n", (intptr_t) store);
 
 	struct tesla_class *class;
-	err = tesla_class_get(store, class_id, &class, name, description);
+	int err = tesla_class_get(store, class_id, &class, name, description);
 	if (err != TESLA_SUCCESS)
 		return;
 
