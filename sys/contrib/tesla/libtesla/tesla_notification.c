@@ -282,7 +282,7 @@ print_ignored(const struct tesla_class *tcp, const struct tesla_key *tkp,
 	DEBUG(libtesla.event, "ignore '%s':%s", tcp->tc_name, buffer);
 }
 
-const struct tesla_event_handlers printf_handlers = {
+static const struct tesla_event_handlers printf_handlers = {
 	.teh_init		= print_new_instance,
 	.teh_transition		= print_transition_taken,
 	.teh_clone		= print_clone,
@@ -314,7 +314,7 @@ panic_bad_transition(struct tesla_class *tcp,
 	tesla_panic("TESLA: failure in '%s': bad transition", tcp->tc_name);
 }
 
-const struct tesla_event_handlers failstop_handlers = {
+static const struct tesla_event_handlers failstop_handlers = {
 	.teh_init		= ev_noop,
 	.teh_transition		= ev_noop,
 	.teh_clone		= ev_noop,
