@@ -230,6 +230,9 @@ typedef void	(*tesla_ev_no_instance)(struct tesla_class *,
 typedef void	(*tesla_ev_bad_transition)(struct tesla_class *,
 	    struct tesla_instance *, const struct tesla_transitions *);
 
+/** Generic error handler. */
+typedef void	(*tesla_ev_error)(struct tesla_class *, int32_t, const char *);
+
 /** A @ref tesla_instance has accepted a sequence of events. */
 typedef void	(*tesla_ev_accept)(struct tesla_class *,
 	    struct tesla_instance *);
@@ -245,6 +248,7 @@ struct tesla_event_handlers {
 	tesla_ev_clone		teh_clone;
 	tesla_ev_no_instance	teh_fail_no_instance;
 	tesla_ev_bad_transition	teh_bad_transition;
+	tesla_ev_error		teh_err;
 	tesla_ev_accept		teh_accept;
 	tesla_ev_ignored	teh_ignored;
 };
