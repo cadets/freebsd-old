@@ -78,9 +78,8 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 	PRINT("store: 0x%tx\n", (intptr_t) store);
 
 	struct tesla_class *class;
-	int err = tesla_class_get(store, class_id, &class, name, description);
-	if (err != TESLA_SUCCESS)
-		return;
+	assert(tesla_class_get(store, class_id, &class, name, description)
+		== TESLA_SUCCESS);
 
 	print_class(class);
 
@@ -99,6 +98,7 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 	} clones[max_clones];
 
 	// Iterate over existing instances, figure out what to do with each.
+	int err = TESLA_SUCCESS;
 	for (uint32_t i = 0; i < class->tc_limit; i++) {
 		assert(class->tc_instances != NULL);
 		tesla_instance *inst = class->tc_instances + i;
