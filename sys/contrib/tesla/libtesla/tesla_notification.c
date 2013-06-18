@@ -236,7 +236,7 @@ print_no_instance(struct tesla_class *tcp, const struct tesla_key *tkp,
 	next = sprint_transitions(next, end, transp);
 	assert(next > buffer);
 
-	DEBUG(libtesla.instance.fail, "%s", buffer);
+	error("%s", buffer);
 }
 
 static void
@@ -262,7 +262,7 @@ print_bad_transition(struct tesla_class *tcp, struct tesla_instance *tip,
 	next = sprint_transitions(next, end, transp);
 	assert(next > buffer);
 
-	DEBUG(libtesla.instance.fail, "%s", buffer);
+	error("%s", buffer);
 }
 
 static void

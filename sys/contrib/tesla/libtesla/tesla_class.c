@@ -138,12 +138,7 @@ tesla_instance_new(struct tesla_class *tclass, const struct tesla_key *name,
 
 	// A new instance must not look inactive.
 	if ((state == 0) && (name->tk_mask == 0))
-#ifdef _KERNEL
-		tesla_panic("inactive-looking new instance: state %d, mask 0x%x",
-			state, name->tk_mask);
-#else
 		return (TESLA_ERROR_EINVAL);
-#endif
 
 	if (tclass->tc_free == 0)
 		return (TESLA_ERROR_ENOMEM);
