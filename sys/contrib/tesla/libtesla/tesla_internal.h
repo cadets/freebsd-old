@@ -324,6 +324,7 @@ void	ev_no_instance(struct tesla_class *, const struct tesla_key *,
 	    const struct tesla_transitions *);
 void	ev_bad_transition(struct tesla_class *, struct tesla_instance *,
 	    const struct tesla_transitions *);
+void	ev_err(struct tesla_class *tcp, int errno, const char *message);
 void	ev_accept(struct tesla_class *, struct tesla_instance *);
 void	ev_ignored(const struct tesla_class *, const struct tesla_key *,
 	    const struct tesla_transitions *);
