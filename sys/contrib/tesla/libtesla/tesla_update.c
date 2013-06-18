@@ -37,23 +37,16 @@
 #include <inttypes.h>
 #endif
 
-#define	CHECK(fn, ...) do { \
-	int err = fn(__VA_ARGS__); \
-	if (err != TESLA_SUCCESS) { \
-		PRINT("error in " #fn ": %s\n", tesla_strerror(err)); \
-		return (err); \
-	} \
-} while(0)
-
 #define	DEBUG_NAME	"libtesla.state.update"
 #define PRINT(...) DEBUG(libtesla.state.update, __VA_ARGS__)
 
-int32_t
+void
 tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 	const struct tesla_key *pattern,
 	const char *name, const char *description,
 	const struct tesla_transitions *trans)
 {
+	int err;
 
 	if (tesla_debugging(DEBUG_NAME)) {
 		/* We should never see with multiple <<init>> transitions. */
@@ -80,16 +73,19 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 	PRINT("\n----\n");
 
 	struct tesla_store *store;
-	CHECK(tesla_store_get, tesla_context, TESLA_MAX_CLASSES,
-	    TESLA_MAX_INSTANCES, &store);
+	err = tesla_store_get(tesla_context, TESLA_MAX_CLASSES,
+			TESLA_MAX_INSTANCES, &store);
+	if (err != TESLA_SUCCESS)
+		return;
+
 	PRINT("store: 0x%tx\n", (intptr_t) store);
 
 	struct tesla_class *class;
-	CHECK(tesla_class_get, store, class_id, &class, name, description);
+	err = tesla_class_get(store, class_id, &class, name, description);
+	if (err != TESLA_SUCCESS)
+		return;
 
 	print_class(class);
-
-	int error = TESLA_SUCCESS;
 
 	// Did we match any instances?
 	bool matched_something = false;
@@ -134,7 +130,8 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 
 		case FORK: {
 			if (cloned >= max_clones) {
-				error = TESLA_ERROR_ENOMEM;
+				err = TESLA_ERROR_ENOMEM;
+				ev_err(class, err, "too many clones");
 				goto cleanup;
 			}
 
@@ -154,11 +151,19 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 	for (size_t i = 0; i < cloned; i++) {
 		struct clone_info *c = clones + i;
 		struct tesla_instance *clone;
-		CHECK(tesla_instance_clone, class, c->old, &clone);
+		err = tesla_instance_clone(class, c->old, &clone);
+		if (err != TESLA_SUCCESS) {
+			ev_err(class, err, "failed to clone instance");
+			goto cleanup;
+		}
 
 		tesla_key new_name = *pattern;
 		new_name.tk_mask &= c->transition->to_mask;
-		CHECK(tesla_key_union, &clone->ti_key, &new_name);
+		err = tesla_key_union(&clone->ti_key, &new_name);
+		if (err != TESLA_SUCCESS) {
+			ev_err(class, err, "failed to union keys");
+			goto cleanup;
+		}
 
 		clone->ti_state = c->transition->to;
 
@@ -174,7 +179,12 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 		const tesla_transition *t = trans->transitions + i;
 		if (t->flags & TESLA_TRANS_INIT) {
 			struct tesla_instance *inst;
-			CHECK(tesla_instance_new, class, pattern, t->to, &inst);
+			err = tesla_instance_new(class, pattern, t->to, &inst);
+			if (err != TESLA_SUCCESS) {
+				ev_err(class, err, "failed to create instance");
+				goto cleanup;
+			}
+
 			assert(tesla_instance_active(inst));
 
 			matched_something = true;
@@ -201,7 +211,6 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 
 cleanup:
 	tesla_class_put(class);
-	return error;
 }
 
 enum tesla_action_t

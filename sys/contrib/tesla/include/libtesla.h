@@ -194,7 +194,7 @@ struct tesla_key {
 /**
  * Update all automata instances that match a given key to a new state.
  */
-int32_t	tesla_update_state(enum tesla_context context, uint32_t class_id,
+void	tesla_update_state(enum tesla_context context, uint32_t class_id,
 	const struct tesla_key *key, const char *name, const char *description,
 	const struct tesla_transitions*);
 
