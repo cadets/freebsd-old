@@ -72,10 +72,6 @@ tesla_key_union(tesla_key *dest, const tesla_key *source)
 		if (IS_SET(source->tk_mask, i)) {
 			if (IS_SET(dest->tk_mask, i)) {
 			    if (dest->tk_keys[i] != source->tk_keys[i])
-#ifdef _KERNEL
-				tesla_panic("dest key %d (0x%x) != source (0x%x)",
-					i, dest->tk_keys[i], source->tk_keys[i]);
-#endif
 				return (TESLA_ERROR_EINVAL);
 			} else {
 				dest->tk_keys[i] = source->tk_keys[i];

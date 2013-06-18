@@ -96,11 +96,7 @@ tesla_store_get(enum tesla_context context, uint32_t classes,
 	}
 
 	default:
-#ifdef _KERNEL
-		tesla_panic("invliad TESLA_CONTEXT %d", context);
-#else
 		return (TESLA_ERROR_EINVAL);
-#endif
 	}
 
 	if (store->length == 0) {
@@ -163,11 +159,7 @@ tesla_class_get(tesla_store *store, uint32_t id, tesla_class **tclassp,
 	assert(tclassp != NULL);
 
 	if (id >= store->length)
-#ifdef _KERNEL
-		tesla_panic("requested class id %d > store length (%d)", id, store->length);
-#else
 		return (TESLA_ERROR_EINVAL);
-#endif
 
 	tesla_class *tclass = &store->classes[id];
 	assert(tclass != NULL);
