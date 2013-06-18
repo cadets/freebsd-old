@@ -89,6 +89,8 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 
 	print_class(class);
 
+	int error = TESLA_SUCCESS;
+
 	// Did we match any instances?
 	bool matched_something = false;
 
@@ -97,13 +99,15 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 
 	// Make space for cloning existing instances.
 	size_t cloned = 0;
+	const size_t max_clones = class->tc_free;
 	struct clone_info {
 		tesla_instance *old;
 		const tesla_transition *transition;
-	} clones[class->tc_free];
+	} clones[max_clones];
 
 	// Iterate over existing instances, figure out what to do with each.
 	for (uint32_t i = 0; i < class->tc_limit; i++) {
+		assert(class->tc_instances != NULL);
 		tesla_instance *inst = class->tc_instances + i;
 
 		const tesla_transition *trigger = NULL;
@@ -129,6 +133,11 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 			break;
 
 		case FORK: {
+			if (cloned >= max_clones) {
+				error = TESLA_ERROR_ENOMEM;
+				goto cleanup;
+			}
+
 			struct clone_info *clone = clones + cloned++;
 			clone->old = inst;
 			clone->transition = trigger;
@@ -190,9 +199,9 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 	print_class(class);
 	PRINT("\n====\n\n");
 
+cleanup:
 	tesla_class_put(class);
-
-	return (TESLA_SUCCESS);
+	return error;
 }
 
 enum tesla_action_t
