@@ -52,6 +52,8 @@ SDT_PROBE_DEFINE3(tesla, kernel, notify, no_instance, no-instance-match,
 SDT_PROBE_DEFINE3(tesla, kernel, notify, bad_transition, bad-transition,
     "struct tesla_class *", "struct tesla_instance *",
     "struct tesla_transitions *");
+SDT_PROBE_DEFINE3(tesla, kernel, notify, err, err, "struct tesla_class *",
+    "int", "const char *");
 SDT_PROBE_DEFINE2(tesla, kernel, notify, accept, accept,
     "struct tesla_class *", "struct tesla_instance *");
 SDT_PROBE_DEFINE3(tesla, kernel, notify, ignored, ignored-event,
@@ -98,6 +100,13 @@ bad_transition(struct tesla_class *tcp, struct tesla_instance *tip,
 }
 
 static void
+err(struct tesla_class *tcp, int errno, const char *message)
+{
+
+	SDT_PROBE(tesla, kernel, notify, err, tcp, errno, message, 0, 0);
+}
+
+static void
 accept(struct tesla_class *tcp, struct tesla_instance *tip)
 {
 
@@ -118,6 +127,7 @@ const struct tesla_event_handlers dtrace_handlers = {
 	.teh_clone			= clone,
 	.teh_fail_no_instance		= no_instance,
 	.teh_bad_transition		= bad_transition,
+	.teh_err			= err,
 	.teh_accept			= accept,
 	.teh_ignored			= ignored,
 };
