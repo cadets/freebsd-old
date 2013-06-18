@@ -229,7 +229,7 @@ print_no_instance(struct tesla_class *tcp, const struct tesla_key *tkp,
 	next = sprint_transitions(next, end, transp);
 	assert(next > buffer);
 
-	error("%s", buffer);
+	DEBUG(libtesla.instance.fail, "%s", buffer);
 }
 
 static void
@@ -255,7 +255,7 @@ print_bad_transition(struct tesla_class *tcp, struct tesla_instance *tip,
 	next = sprint_transitions(next, end, transp);
 	assert(next > buffer);
 
-	error("%s", buffer);
+	DEBUG(libtesla.instance.fail, "%s", buffer);
 }
 
 static void
@@ -326,8 +326,8 @@ static const struct tesla_event_handlers failstop_handlers = {
 
 
 /**
- * Default event handlers: always print, then use DTrace in the kernel
- * if it's available; if it isn't, panic on failure.
+ * Default event handlers: printf first (but disable in kernel), then
+ * either use DTrace or fail-stop if DTrace is not available.
  */
 const static struct tesla_event_handlers* const default_handlers[] = {
 	&printf_handlers,
@@ -340,7 +340,11 @@ const static struct tesla_event_handlers* const default_handlers[] = {
 
 static struct tesla_event_metahandler default_event_handlers = {
 	.tem_length = sizeof(default_handlers) / sizeof(*default_handlers),
-	.tem_mask = 0xFFFF,
+#if defined(_KERNEL) && defined(KDTRACE_HOOKS)
+	.tem_mask = 0x2,
+#else
+	.tem_mask = 0x3,
+#endif
 	.tem_handlers = default_handlers,
 };
 

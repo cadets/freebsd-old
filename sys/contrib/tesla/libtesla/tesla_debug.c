@@ -132,6 +132,24 @@ int32_t
 tesla_debugging(const char *name)
 {
 #ifdef _KERNEL
+	/*
+	 * In the kernel, only print 'libtesla.{event,instance}*' output.
+	 */
+	static const char* allowed[] = {
+		"libtesla.event",
+		"libtesla.instance",
+		NULL,
+	};
+	const size_t len = sizeof(allowed) / sizeof(allowed[0]);
+
+	for (size_t i = 0; (i < len) && (allowed[i] != NULL); i++) {
+		const char *s = allowed[i];
+		const size_t len = strlen(s);
+
+		if (strncmp(s, name, len) == 0)
+			return 1;
+	}
+
 	return 0;
 #else
 #ifdef HAVE_ISSETUGID
