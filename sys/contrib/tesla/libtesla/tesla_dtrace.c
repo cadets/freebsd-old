@@ -38,25 +38,25 @@
 
 SDT_PROVIDER_DEFINE(tesla);
 
-SDT_PROBE_DEFINE2(tesla, kernel, notify, new_instance, new-instance,
+SDT_PROBE_DEFINE2(tesla, automata, instance, create, create,
     "struct tesla_class *", "struct tesla_instance *");
-SDT_PROBE_DEFINE3(tesla, kernel, notify, transition, transition,
+SDT_PROBE_DEFINE3(tesla, automata, event, transition, state-transition,
     "struct tesla_class *", "struct tesla_instance *",
     "struct tesla_transition *");
-SDT_PROBE_DEFINE4(tesla, kernel, notify, clone, clone,
+SDT_PROBE_DEFINE4(tesla, automata, instance, clone, clone,
     "struct tesla_class *", "struct tesla_instance *",
     "struct tesla_instance *", "struct tesla_transition *");
-SDT_PROBE_DEFINE3(tesla, kernel, notify, no_instance, no-instance-match,
+SDT_PROBE_DEFINE3(tesla, automata, fail, no_instance, no-instance-match,
     "struct tesla_class *", "struct tesla_key *",
     "struct tesla_transitions *");
-SDT_PROBE_DEFINE3(tesla, kernel, notify, bad_transition, bad-transition,
+SDT_PROBE_DEFINE3(tesla, automata, fail, bad_transition, bad-transition,
     "struct tesla_class *", "struct tesla_instance *",
     "struct tesla_transitions *");
-SDT_PROBE_DEFINE3(tesla, kernel, notify, err, err, "struct tesla_class *",
-    "int", "const char *");
-SDT_PROBE_DEFINE2(tesla, kernel, notify, accept, accept,
+SDT_PROBE_DEFINE3(tesla, automata, fail, other_err, other-error,
+    "struct tesla_class *", "int", "const char *");
+SDT_PROBE_DEFINE2(tesla, automata, success, accept, accept,
     "struct tesla_class *", "struct tesla_instance *");
-SDT_PROBE_DEFINE3(tesla, kernel, notify, ignored, ignored-event,
+SDT_PROBE_DEFINE3(tesla, automata, event, ignored, ignored-event,
     "struct tesla_class *", "struct tesla_key *",
     "struct tesla_transitions *");
 
@@ -64,7 +64,7 @@ static void
 new_instance(struct tesla_class *tcp, struct tesla_instance *tip)
 {
 
-	SDT_PROBE(tesla, kernel, notify, new_instance, tcp, tip, 0, 0, 0);
+	SDT_PROBE(tesla, automata, instance, create, tcp, tip, 0, 0, 0);
 }
 
 static void
@@ -72,7 +72,7 @@ transition(struct tesla_class *tcp, struct tesla_instance *tip,
     const struct tesla_transition *ttp)
 {
 
-	SDT_PROBE(tesla, kernel, notify, transition, tcp, tip, ttp, 0, 0);
+	SDT_PROBE(tesla, automata, event, transition, tcp, tip, ttp, 0, 0);
 }
 
 static void
@@ -80,7 +80,7 @@ clone(struct tesla_class *tcp, struct tesla_instance *origp,
     struct tesla_instance *copyp, const struct tesla_transition *ttp)
 {
 
-	SDT_PROBE(tesla, kernel, notify, clone, tcp, origp, copyp, ttp, 0);
+	SDT_PROBE(tesla, automata, instance, clone, tcp, origp, copyp, ttp, 0);
 }
 
 static void
@@ -88,7 +88,7 @@ no_instance(struct tesla_class *tcp, const struct tesla_key *tkp,
     const struct tesla_transitions *ttp)
 {
 
-	SDT_PROBE(tesla, kernel, notify, no_instance, tcp, tkp, ttp, 0, 0);
+	SDT_PROBE(tesla, automata, fail, no_instance, tcp, tkp, ttp, 0, 0);
 }
 
 static void
@@ -96,21 +96,21 @@ bad_transition(struct tesla_class *tcp, struct tesla_instance *tip,
     const struct tesla_transitions *ttp)
 {
 
-	SDT_PROBE(tesla, kernel, notify, bad_transition, tcp, tip, ttp, 0, 0);
+	SDT_PROBE(tesla, automata, fail, bad_transition, tcp, tip, ttp, 0, 0);
 }
 
 static void
 err(struct tesla_class *tcp, int errno, const char *message)
 {
 
-	SDT_PROBE(tesla, kernel, notify, err, tcp, errno, message, 0, 0);
+	SDT_PROBE(tesla, automata, fail, other_err, tcp, errno, message, 0, 0);
 }
 
 static void
 accept(struct tesla_class *tcp, struct tesla_instance *tip)
 {
 
-	SDT_PROBE(tesla, kernel, notify, accept, tcp, tip, 0, 0, 0);
+	SDT_PROBE(tesla, automata, success, accept, tcp, tip, 0, 0, 0);
 }
 
 static void
@@ -118,7 +118,7 @@ ignored(const struct tesla_class *tcp, const struct tesla_key *tkp,
     const struct tesla_transitions *ttp)
 {
 
-	SDT_PROBE(tesla, kernel, notify, ignored, tcp, tkp, ttp, 0, 0);
+	SDT_PROBE(tesla, automata, event, ignored, tcp, tkp, ttp, 0, 0);
 }
 
 const struct tesla_event_handlers dtrace_handlers = {
