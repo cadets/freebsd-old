@@ -192,15 +192,4 @@ tesla_class_reset(struct tesla_class *c)
 
 	bzero(c->tc_instances, sizeof(c->tc_instances[0]) * c->tc_limit);
 	c->tc_free = c->tc_limit;
-
-	switch (c->tc_context) {
-	case TESLA_CONTEXT_GLOBAL:
-		return tesla_class_global_release(c);
-
-	case TESLA_CONTEXT_THREAD:
-		return tesla_class_perthread_release(c);
-
-	default:
-		assert(0 && "unhandled TESLA context");
-	}
 }
