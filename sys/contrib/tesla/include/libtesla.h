@@ -276,6 +276,12 @@ int	tesla_set_event_handler(struct tesla_event_handlers *);
 /** Register a set of event handling vectors. */
 int	tesla_set_event_handlers(struct tesla_event_metahandler *);
 
+#ifdef _KERNEL
+#define	TESLA_KERN_PRINTF_EV	0x1
+#define	TESLA_KERN_DTRACE_EV	0x2
+#define	TESLA_KERN_PANIC_EV	0x4
+#endif
+
 /** @} */
 
 #endif /* _TESLA_STATE */
