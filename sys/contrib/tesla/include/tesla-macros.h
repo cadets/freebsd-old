@@ -64,29 +64,29 @@
 /** An assertion in a thread's TESLA context. */
 #define	TESLA_PERTHREAD(...)	TESLA_ASSERT(__tesla_perthread, __VA_ARGS__)
 
-/** A strictly-ordered sequence of events. */
-#define	TSEQUENCE(...)		__tesla_sequence(__tesla_ignore, __VA_ARGS__)
+/** An epsilon transition in a a TESLA NFA; a non-event. */
+#define TIGNORE			__tesla_ignore
 
-// This can be removed once all users are converted to the new syntax for calls.
-#pragma clang diagnostic ignored "-Wunused"
-#define	called(...)		__tesla_call(((void)__VA_ARGS__, __tesla_ignore))
+/** A strictly-ordered sequence of events. */
+#define	TSEQUENCE(...)		__tesla_sequence(TIGNORE, __VA_ARGS__)
+
+#define	called(...)		__tesla_call(((void)__VA_ARGS__, TIGNORE))
 #define	returned(...)		__tesla_return(__VA_ARGS__)
 
-#define	callee(...)		__tesla_callee(__tesla_ignore, __VA_ARGS__)
-#define	caller(...)		__tesla_caller(__tesla_ignore, __VA_ARGS__)
-#define	strict(...)		__tesla_strict(__tesla_ignore, __VA_ARGS__)
-#define	conditional(...)	__tesla_conditional(__tesla_ignore, __VA_ARGS__)
+#define	callee(...)		__tesla_callee(TIGNORE, __VA_ARGS__)
+#define	caller(...)		__tesla_caller(TIGNORE, __VA_ARGS__)
+#define	strict(...)		__tesla_strict(TIGNORE, __VA_ARGS__)
+#define	conditional(...)	__tesla_conditional(TIGNORE, __VA_ARGS__)
 
 #define	TESLA_NOW __tesla_now
 
 
 #define	TESLA_STRUCT_AUTOMATON(...)	__tesla_struct_usage(__VA_ARGS__)
 
-#define automaton(name, ...)    __tesla_automaton(name, __VA_ARGS__)
+#define automaton(name, ...)	__tesla_automaton(name, __VA_ARGS__)
+#define	tesla_done		return (__tesla_automaton_done())
 
-#define	tesla_done return (__tesla_automaton_done())
-
-#define	optional(...)	__tesla_optional(__tesla_ignore, __VA_ARGS__)
+#define	optional(...)		__tesla_optional(TIGNORE, __VA_ARGS__)
 #define	ANY_REP	INT_MAX
 #define	REPEAT(m, n, ...)	__tesla_repeat(m, n, __VA_ARGS__)
 #define	UPTO(n, ...)		__tesla_repeat(0, n, __VA_ARGS__)
