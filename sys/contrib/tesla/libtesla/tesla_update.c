@@ -143,7 +143,7 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 #ifndef	NDEBUG
 			{
 			int target = -1;
-			for (int j = 0; j < class->tc_limit; j++) {
+			for (uint32_t j = 0; j < class->tc_limit; j++) {
 				tesla_instance *t = class->tc_instances + j;
 				if (t->ti_state == trigger->to) {
 					target = j;
