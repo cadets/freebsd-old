@@ -278,8 +278,9 @@ int	tesla_set_event_handlers(struct tesla_event_metahandler *);
 
 #ifdef _KERNEL
 #define	TESLA_KERN_PRINTF_EV	0x1
-#define	TESLA_KERN_DTRACE_EV	0x2
-#define	TESLA_KERN_PANIC_EV	0x4
+#define	TESLA_KERN_PRINTERR_EV	0x2
+#define	TESLA_KERN_DTRACE_EV	0x4
+#define	TESLA_KERN_PANIC_EV	0x8
 #endif
 
 /** @} */

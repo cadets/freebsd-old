@@ -170,6 +170,14 @@ tesla_instance_clone(struct tesla_class *tclass,
 }
 
 void
+tesla_instance_clear(struct tesla_instance *tip)
+{
+
+	bzero(tip, sizeof(*tip));
+	assert(!tesla_instance_active(tip));
+}
+
+void
 tesla_class_put(struct tesla_class *tsp)
 {
 	switch (tsp->tc_context) {

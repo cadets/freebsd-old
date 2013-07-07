@@ -99,6 +99,12 @@ struct __tesla_event* __tesla_callee(__tesla_event*, ...);
 /** Function events inside this predicate refer to the caller context. */
 struct __tesla_event* __tesla_caller(__tesla_event*, ...);
 
+/** A mask of flags we expect to see. */
+int __tesla_flags(int);
+
+/** A bitmask that an argument must not exceed. */
+int __tesla_mask(int);
+
 /**
  * Events named in this predicate should only occur exactly as described.
  *

@@ -78,6 +78,9 @@
 #define	strict(...)		__tesla_strict(TIGNORE, __VA_ARGS__)
 #define	conditional(...)	__tesla_conditional(TIGNORE, __VA_ARGS__)
 
+#define	flags(...)		__tesla_flags(__VA_ARGS__)
+#define	bitmask(...)		__tesla_mask(__VA_ARGS__)
+
 #define	TESLA_NOW __tesla_now
 
 

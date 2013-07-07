@@ -192,7 +192,7 @@ static void
 print_new_instance(struct tesla_class *tcp, struct tesla_instance *tip)
 {
 
-	DEBUG(libtesla.instance.new, "new    %td: %tx\n",
+	DEBUG(libtesla.instance.new, "new    %td: %d\n",
 		tip - tcp->tc_instances, tip->ti_state);
 }
 
@@ -201,7 +201,7 @@ print_transition_taken(struct tesla_class *tcp,
     struct tesla_instance *tip, const struct tesla_transition *transp)
 {
 
-	DEBUG(libtesla.state.transition, "update %td: %tx->%tx\n",
+	DEBUG(libtesla.state.transition, "update %td: %d->%d\n",
 		tip - tcp->tc_instances, transp->from, transp->to);
 }
 
@@ -211,7 +211,7 @@ print_clone(struct tesla_class *tcp,
     const struct tesla_transition *transp)
 {
 
-	DEBUG(libtesla.instance.clone, "clone  %td:%tx -> %td:%tx\n",
+	DEBUG(libtesla.instance.clone, "clone  %td:%d -> %td:%d\n",
 		old_instance - tcp->tc_instances, transp->from,
 		new_instance - tcp->tc_instances, transp->to);
 }
@@ -308,6 +308,16 @@ static const struct tesla_event_handlers printf_handlers = {
 	.teh_ignored		= print_ignored,
 };
 
+static const struct tesla_event_handlers printf_on_failure = {
+	.teh_init		= ev_noop,
+	.teh_transition		= ev_noop,
+	.teh_clone		= ev_noop,
+	.teh_fail_no_instance	= print_no_instance,
+	.teh_bad_transition	= print_bad_transition,
+	.teh_err		= print_error,
+	.teh_accept		= ev_noop,
+	.teh_ignored		= ev_noop,
+};
 
 /*
  * Wrappers that panic on failure:
@@ -330,21 +340,12 @@ panic_bad_transition(struct tesla_class *tcp,
 	tesla_panic("TESLA: failure in '%s': bad transition", tcp->tc_name);
 }
 
-static void
-panic_err(struct tesla_class *tcp, int errno, const char *message)
-{
-
-	tesla_panic("TESLA: error in '%s': %s (%d)", tcp->tc_name, message,
-	    errno);
-}
-
 static const struct tesla_event_handlers failstop_handlers = {
 	.teh_init		= ev_noop,
 	.teh_transition		= ev_noop,
 	.teh_clone		= ev_noop,
 	.teh_fail_no_instance	= panic_no_instance,
 	.teh_bad_transition	= panic_bad_transition,
-	.teh_err		= panic_err,
 	.teh_accept		= ev_noop,
 	.teh_ignored		= ev_noop,
 };
@@ -356,6 +357,7 @@ static const struct tesla_event_handlers failstop_handlers = {
  */
 const static struct tesla_event_handlers* const default_handlers[] = {
 	&printf_handlers,
+	&printf_on_failure,
 #if defined(_KERNEL) && defined(KDTRACE_HOOKS)
 	&dtrace_handlers,
 #endif
@@ -365,9 +367,9 @@ const static struct tesla_event_handlers* const default_handlers[] = {
 static struct tesla_event_metahandler default_event_handlers = {
 	.tem_length = sizeof(default_handlers) / sizeof(*default_handlers),
 #if defined(_KERNEL) && defined(KDTRACE_HOOKS)
-	.tem_mask = 0x2,
+	.tem_mask = TESLA_KERN_DTRACE_EV,
 #else
-	.tem_mask = 0x3,
+	.tem_mask = 0x5,
 #endif
 	.tem_handlers = default_handlers,
 };

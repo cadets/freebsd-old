@@ -138,6 +138,23 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 			matched_something = true;
 			break;
 		}
+
+		case JOIN:
+#ifndef	NDEBUG
+			{
+			int target = -1;
+			for (int j = 0; j < class->tc_limit; j++) {
+				tesla_instance *t = class->tc_instances + j;
+				if (t->ti_state == trigger->to) {
+					target = j;
+					break;
+				}
+			}
+			assert(target >= 0);
+			}
+#endif
+			tesla_instance_clear(inst);
+			break;
 		}
 
 		if (trigger && (trigger->flags & TESLA_TRANS_CLEANUP))
@@ -230,7 +247,6 @@ tesla_action(const tesla_instance *inst, const tesla_key *event_data,
 
 		if (t->from == inst->ti_state) {
 			assert(inst->ti_key.tk_mask == t->from_mask);
-			assert(SUBSET(t->from_mask, t->to_mask));
 
 			/*
 			 * We need to match events against a pattern based on
@@ -246,10 +262,20 @@ tesla_action(const tesla_instance *inst, const tesla_key *event_data,
 			pattern.tk_mask &= t->from_mask;
 
 			/*
+			 * Losing information implies a join
+			 * (except during automaton instance cleanup).
+			 */
+			if (!SUBSET(t->from_mask, t->to_mask)
+			    && ((t->flags & TESLA_TRANS_CLEANUP) == 0)) {
+				*trigger = t;
+				return JOIN;
+			}
+
+			/*
 			 * Does the transition cause key data to be added
 			 * to the instance's name?
 			 */
-			if (t->from_mask == t->to_mask) {
+			if (SUBSET(t->to_mask, t->from_mask)) {
 				/*
 				 * No: just just update the instance
 				 *     if its (masked) name matches.
