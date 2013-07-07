@@ -120,13 +120,8 @@ int32_t	tesla_instance_active(const struct tesla_instance *i);
 int32_t	tesla_instance_clone(struct tesla_class *tclass,
 	    const struct tesla_instance *orig, struct tesla_instance **copy);
 
-/**
- * This interface releases an instance for reuse; some types of automata will
- * prefer tesla_class_reset(), which clears all instances associated with a
- * particular tesla_class.
- */
-void	tesla_instance_destroy(struct tesla_class *tsp,
-	    struct tesla_instance *tip);
+/** Zero an instance for re-use. */
+void	tesla_instance_clear(struct tesla_instance *tip);
 
 
 /**
@@ -160,6 +155,9 @@ enum tesla_action_t {
 
 	/** The instance should be copied to a new instance. */
 	FORK,
+
+	/** The instance should be merged into another instance. */
+	JOIN,
 
 	/** The instance is irrelevant to the given transitions. */
 	IGNORE,
