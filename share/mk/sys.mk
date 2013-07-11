@@ -281,6 +281,7 @@ YFLAGS		?=	-d
 
 .instrll.instro: tesla.manifest
 	${LLC} -filetype=obj ${LLCFLAGS} ${.IMPSRC} -o ${.TARGET}
+	${CTFCONVERT_CMD}
 
 .manifest.dot:
 	${TESLA} graph ${.IMPSRC} -o ${.TARGET}
