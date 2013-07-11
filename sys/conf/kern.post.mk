@@ -184,6 +184,9 @@ ${KERNEL_KO}.instrumented: ${INSTROBJS}
 	${LD} -Bdynamic -T ${LDSCRIPT} ${LDFLAGS} --no-warn-mismatch \
 	    -warn-common -export-dynamic -dynamic-linker /red/herring \
 	    -o ${.TARGET} -X ${INSTROBJS} ${NOT_C_OBJS} vers.o hack.So
+.if ${MK_CTF} != "no"
+	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${INSTROBJS} ${NOT_C_OBJS} vers.o
+.endif
 
 # This is a hack.  BFD "optimizes" away dynamic mode if there are no
 # dynamic references.  We could probably do a '-Bforcedynamic' mode like
