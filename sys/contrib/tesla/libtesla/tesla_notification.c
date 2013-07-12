@@ -340,12 +340,21 @@ panic_bad_transition(struct tesla_class *tcp,
 	tesla_panic("TESLA: failure in '%s': bad transition", tcp->tc_name);
 }
 
+static void
+panic_errno(struct tesla_class *tcp, int errno, const char *message)
+{
+
+	tesla_panic("TESLA: %s in '%s': %s",
+	            tesla_strerror(errno), tcp->tc_name, message);
+}
+
 static const struct tesla_event_handlers failstop_handlers = {
 	.teh_init		= ev_noop,
 	.teh_transition		= ev_noop,
 	.teh_clone		= ev_noop,
 	.teh_fail_no_instance	= panic_no_instance,
 	.teh_bad_transition	= panic_bad_transition,
+	.teh_err		= panic_errno,
 	.teh_accept		= ev_noop,
 	.teh_ignored		= ev_noop,
 };
