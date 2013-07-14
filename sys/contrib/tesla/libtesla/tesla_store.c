@@ -151,6 +151,16 @@ tesla_store_free(tesla_store *store)
 }
 
 
+void
+tesla_store_reset(struct tesla_store *store)
+{
+	DEBUG(libtesla.store.reset, "tesla_store_reset %tx\n", store);
+
+	for (uint32_t i = 0; i < store->length; i++)
+		tesla_class_reset(store->classes + i);
+}
+
+
 int32_t
 tesla_class_get(tesla_store *store, uint32_t id, tesla_class **tclassp,
                 const char *name, const char *description)
