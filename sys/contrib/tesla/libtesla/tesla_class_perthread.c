@@ -36,7 +36,7 @@
 /*
  * Routines for managing TESLA per-thread state, used in per-thread automata.
  * Kernel and userspace implementations differ quite a lot, due to very
- * different guarantees for kernel per-thread storage and pthread
+ * different guarantees for kernel per-thread storage and perthread
  * thread-specific state.  For example, the kernel implementation guarantees
  * that space will be available if the initial tesla_class allocation
  * succeedes, and instruments thread create and destroy to ensure this is the
@@ -51,11 +51,22 @@
 /*
  * Registration state for per-thread storage.
  */
-static eventhandler_tag	tesla_perthread_ctor_tag;
-static eventhandler_tag	tesla_perthread_dtor_tag;
+static eventhandler_tag	tesla_perthread_thread_ctor_tag;
+static eventhandler_tag	tesla_perthread_thread_dtor_tag;
+static eventhandler_tag tesla_perthread_process_dtor_tag;
 
 static void
-tesla_perthread_ctor(__unused void *arg, struct thread *td)
+tesla_perthread_process_dtor(__unused void *arg, struct proc *p)
+{
+	struct thread *td;
+
+	td = FIRST_THREAD_IN_PROC(p);
+	if (td != NULL && td->td_tesla != NULL)
+		tesla_store_reset(td->td_tesla);
+}
+
+static void
+tesla_perthread_thread_ctor(__unused void *arg, struct thread *td)
 {
 	struct tesla_store *store;
 	uint32_t error;
@@ -68,7 +79,7 @@ tesla_perthread_ctor(__unused void *arg, struct thread *td)
 }
 
 static void
-tesla_perthread_dtor(__unused void *arg, struct thread *td)
+tesla_perthread_thread_dtor(__unused void *arg, struct thread *td)
 {
 	struct tesla_store *store;
 
@@ -81,10 +92,12 @@ static void
 tesla_perthread_sysinit(__unused void *arg)
 {
 
-	tesla_perthread_ctor_tag = EVENTHANDLER_REGISTER(thread_ctor,
-	    tesla_perthread_ctor, NULL, EVENTHANDLER_PRI_ANY);
-	tesla_perthread_dtor_tag = EVENTHANDLER_REGISTER(thread_dtor,
-	    tesla_perthread_dtor, NULL, EVENTHANDLER_PRI_ANY);
+	tesla_perthread_process_dtor_tag = EVENTHANDLER_REGISTER(process_dtor,
+	    tesla_perthread_process_dtor, NULL, EVENTHANDLER_PRI_ANY);
+	tesla_perthread_thread_ctor_tag = EVENTHANDLER_REGISTER(thread_ctor,
+	    tesla_perthread_thread_ctor, NULL, EVENTHANDLER_PRI_ANY);
+	tesla_perthread_thread_dtor_tag = EVENTHANDLER_REGISTER(thread_dtor,
+	    tesla_perthread_thread_dtor, NULL, EVENTHANDLER_PRI_ANY);
 }
 SYSINIT(tesla_perthread, SI_SUB_TESLA, SI_ORDER_FIRST,
     tesla_perthread_sysinit, NULL);
