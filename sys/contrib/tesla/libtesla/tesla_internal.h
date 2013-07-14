@@ -78,7 +78,7 @@ void	tesla_die(int32_t errno, const char *event) __attribute__((noreturn));
 /**
  * Reset all automata in a store to the inactive state.
  */
-int32_t	tesla_store_reset(struct tesla_store *store);
+void	tesla_store_reset(struct tesla_store *store);
 
 /**
  * Clean up a @ref tesla_store.
