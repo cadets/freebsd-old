@@ -50,7 +50,7 @@ static int debug_tesla_func_counter;
 /*
  * To avoid a no-op function.
  */
-static void
+static void __noinline
 debug_tesla_func(void)
 {
 
@@ -62,7 +62,7 @@ debug_tesla_eventually_pass(SYSCTL_HANDLER_ARGS)
 {
 	int error;
 
-	TESLA_SYSCALL(eventually(debug_tesla_func()));
+	TESLA_SYSCALL(eventually(called(debug_tesla_func())));
 	error = sysctl_handle_int(oidp, &debug_tesla_func_counter, 0, req);
 	if (error)
 		return (error);
@@ -80,7 +80,7 @@ debug_tesla_eventually_fail(SYSCTL_HANDLER_ARGS)
 {
 	int error;
 
-	TESLA_SYSCALL(eventually(debug_tesla_func()));
+	TESLA_SYSCALL(eventually(called(debug_tesla_func())));
 	error = sysctl_handle_int(oidp, &debug_tesla_func_counter, 0, req);
 	if (error)
 		return (error);
@@ -102,7 +102,7 @@ debug_tesla_previously_pass(SYSCTL_HANDLER_ARGS)
 	if (error)
 		return (error);
 
-	TESLA_SYSCALL(previously(debug_tesla_func()));
+	TESLA_SYSCALL(previously(called(debug_tesla_func())));
 	return (0);
 }
 
@@ -119,7 +119,7 @@ debug_tesla_previously_fail(SYSCTL_HANDLER_ARGS)
 	if (error)
 		return (error);
 
-	TESLA_SYSCALL(previously(debug_tesla_func()));
+	TESLA_SYSCALL(previously(called(debug_tesla_func())));
 	return (0);
 }
 
