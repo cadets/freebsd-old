@@ -497,6 +497,7 @@ contrib/tesla/libtesla/tesla_notification.c	optional tesla
 contrib/tesla/libtesla/tesla_store.c		optional tesla
 contrib/tesla/libtesla/tesla_update.c		optional tesla
 contrib/tesla/libtesla/tesla_util.c		optional tesla
+contrib/tesla/test/tesla_test.c			optional tesla
 contrib/ngatm/netnatm/api/cc_conn.c optional ngatm_ccatm \
 	compile-with "${NORMAL_C_NOWERROR} -I$S/contrib/ngatm"
 contrib/ngatm/netnatm/api/cc_data.c optional ngatm_ccatm \
