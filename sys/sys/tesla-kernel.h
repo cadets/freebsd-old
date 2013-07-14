@@ -40,6 +40,7 @@
  */
 
 #if defined(__amd64__)
+struct trapframe;
 extern void amd64_syscall(struct trapframe *, int);
 #define	TESLA_SYSCALL(x)	TESLA_WITHIN(amd64_syscall, x)
 #else
