@@ -697,9 +697,9 @@ tail(char *fn)
 static void
 do_rules(FILE *f)
 {
-	char *cp, *np, och;
+	char *cp, *cwcp, *np, och, *tcp;
 	struct file_list *ftp;
-	char *compilewith;
+	char *compilewith, *teslacompilewith;
 	char cmd[128];
 
 	STAILQ_FOREACH(ftp, &ftab, f_next) {
@@ -773,6 +773,39 @@ do_rules(FILE *f)
 			fprintf(f, "\n");
 
 		if (tesla && och == 'c') {
+			int i;
+			const char *compilers[] = {
+			    "{NORMAL_C}",
+			    "{NORMAL_C_NOWERROR}",
+			    "{OFED_C}",
+			    "{PROFILE_C}",
+			    "{ZFS_C}",
+			    NULL
+			};
+
+			cwcp = NULL;
+			for(i = 0; compilers[i] != NULL; i++) {
+				if ((cwcp = strstr(compilewith, compilers[i]))
+				    == NULL)
+					continue;
+				/* Find the closing } */
+				cwcp += strlen(compilers[i]) - 1;
+				break;
+			}
+
+			if (cwcp != NULL) {
+				if ((tcp = teslacompilewith =
+				    malloc(strlen(compilewith) + 6)) == NULL)
+					err(1, "malloc\n");
+				strncpy(tcp, compilewith,
+				    cwcp - compilewith);
+				tcp += cwcp - compilewith;
+				strcpy(tcp, ":N-O*");
+				tcp += strlen(":N-O*");
+				strcpy(tcp, cwcp);
+			} else
+				teslacompilewith = compilewith;
+
 			if (ftp->f_depends)
 				fprintf(f, "%s%soll: $S/%s%c %s\n",
 					ftp->f_objprefix, tail(np), np, och,
@@ -783,11 +816,13 @@ do_rules(FILE *f)
 			if (strlen(ftp->f_objprefix))
 				fprintf(f,
 				    "\t%s $S/%s -S -emit-llvm -o ${.TARGET}\n",
-				    compilewith, np);
+				    teslacompilewith, np);
 			else
 				fprintf(f, "\t%s -S -emit-llvm -o ${.TARGET}\n",
-				    compilewith);
+				    teslacompilewith);
 			fprintf(f, "\n");
+			if (teslacompilewith != compilewith)
+				free(teslacompilewith);
 
 			if (ftp->f_depends)
 				fprintf(f, "%s%stesla: $S/%s%c %s\n",
