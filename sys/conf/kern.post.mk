@@ -83,10 +83,6 @@ ports-${__target}:
 
 kernel-all: ${KERNEL_KO} ${KERNEL_EXTRA}
 
-.if defined(DO_TESLA)
-kernel-all: ${KERNEL_KO}.instrumented
-.endif
-
 kernel-cleandir: kernel-clean kernel-cleandepend
 
 kernel-clobber:
@@ -162,30 +158,19 @@ kernel-clean:
 	    vnode_if.c vnode_if.h vnode_if_newproto.h vnode_if_typedef.h \
 	    ${MFILES:T:S/.m$/.c/} ${MFILES:T:S/.m$/.h/} \
 	    ${TESLA_FILES} ${OLLS} ${INSTRLLS} ${INSTROBJS} \
-	    tesla.manifest ${KERNEL_KO}.instrumented \
+	    tesla.manifest \
 	    ${CLEAN}
 
 lint: ${LNFILES}
 	${LINT} ${LINTKERNFLAGS} ${CFLAGS:M-[DILU]*} ${.ALLSRC} 2>&1 | \
 	    tee -a linterrs
 
-TESLA_CFILES=	${CFILES} ${SYSTEM_CFILES}
-TESLA_FILES=	${TESLA_CFILES:T:.c=.tesla}
-OLLS=		${TESLA_CFILES:T:.c=.oll}
-INSTRLLS=	${TESLA_CFILES:T:.c=.instrll}
-INSTROBJS=	${TESLA_CFILES:T:.c=.instro}
-
+.if ${MK_TESLA} != "no"
 tesla.manifest: ${TESLA_FILES}
 	cat ${TESLA_FILES} > ${.TARGET}
-
-tesla: ${KERNEL_KO}.instrumented
-
-${KERNEL_KO}.instrumented: ${INSTROBJS}
-	${LD} -Bdynamic -T ${LDSCRIPT} ${LDFLAGS} --no-warn-mismatch \
-	    -warn-common -export-dynamic -dynamic-linker /red/herring \
-	    -o ${.TARGET} -X ${INSTROBJS} ${NOT_C_OBJS} vers.o hack.So
-.if ${MK_CTF} != "no"
-	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${INSTROBJS} ${NOT_C_OBJS} vers.o
+.else
+tesla.manifest:
+	touch ${.TARGET}
 .endif
 
 # This is a hack.  BFD "optimizes" away dynamic mode if there are no

@@ -670,11 +670,12 @@ do_xxfiles(char *tag, FILE *fp)
 	    suff);
 	if (tesla) {
 		if (strcmp(suff, "c") == 0)
-			fprintf(fp, "C_OBJS+=${%sFILES:T:.%s=.o}\n",
-			    SUFF, suff);
+			fprintf(fp, "C_OBJS+=${%sFILES:T:Nlocore.%s:.%s=.o}\n",
+			    SUFF, suff, suff);
 		else
-			fprintf(fp, "NOT_C_OBJS+=${%sFILES:T:.%s=.o}\n",
-			    SUFF, suff);
+			fprintf(fp,
+			    "NOT_C_OBJS+=${%sFILES:T:Nlocore.%s:.%s=.o}\n",
+			    SUFF, suff, suff);
 	}
 }
 
