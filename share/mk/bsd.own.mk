@@ -374,7 +374,8 @@ __DEFAULT_NO_OPTIONS = \
     NAND \
     OFED \
     OPENSSH_NONE_CIPHER \
-    SHARED_TOOLCHAIN
+    SHARED_TOOLCHAIN \
+    TESLA
 
 #
 # Default behaviour of some options depends on the architecture.  Unfortunately
@@ -620,6 +621,39 @@ MK_${var}:=	no
 .endif
 .endif
 .endfor
+
+
+#
+# Some targets require a different build process in order to allow LLVM
+# instrumentation passes to be applied.
+#
+# XXX: The current construction allow an empty insturmentation path or
+# a tesla one.
+#
+.if defined(WITH_LLVM_INSTRUMENTED) && defined(WITHOUT_LLVM_INSTRUMENTED)
+.error WITH_LLVM_INSTRUMENTED and WITHOUT_LLVM_INSTRUMENTED can't both be set.
+.endif
+.if defined(MK_LLVM_INSTRUMENTED)
+.error MK_LLVM_INSTRUMENTED can't be set by a user.
+.endif
+.if ${MK_TESLA} == "no"
+LLVM_INSTR_DEP?=
+LLVM_INSTR_COMMAND?= cp ${.IMPSRC} ${.TARGET}
+.if defined(WITH_LLVM_INSTRUMENTED)
+MK_LLVM_INSTRUMENTED:=	yes
+.else
+MK_LLVM_INSTRUMENTED:=	no
+.endif
+.else
+LLVM_INSTR_DEP= tesla.manifest
+LLVM_INSTR_COMMAND= ${TESLA} instrument -S -verify-each -tesla-manifest \
+    tesla.manifest ${.IMPSRC} -o ${.TARGET}
+.if defined(WITHOUT_LLVM_INSTRUMENTED)
+.error WITHOUT_LLVM_INSTRUMENTED and WITH_TESLA can't both be set.
+.else
+MK_LLVM_INSTRUMENTED:=	yes
+.endif
+.endif
 
 .if ${MK_CTF} != "no"
 CTFCONVERT_CMD=	${CTFCONVERT} ${CTFFLAGS} ${.TARGET}

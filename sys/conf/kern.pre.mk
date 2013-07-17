@@ -169,10 +169,20 @@ OFED_C=		${OFED_C_NOIMP} ${.IMPSRC}
 GEN_CFILES= $S/$M/$M/genassym.c ${MFILES:T:S/.m$/.c/}
 SYSTEM_CFILES= config.c env.c hints.c vnode_if.c
 SYSTEM_DEP= Makefile ${SYSTEM_OBJS}
-SYSTEM_OBJS= locore.o ${MDOBJS} ${OBJS}
-SYSTEM_OBJS+= ${SYSTEM_CFILES:.c=.o}
+SYSTEM_OBJS= locore.o ${MDOBJS}
+.if ${MK_LLVM_INSTRUMENTED} == "no"
+SYSTEM_OBJS+= ${OBJS} ${SYSTEM_CFILES:.c=.o}
+.else
+# XXX: should probably include GEN_CFILES, but may be tricky
+LLVM_CFILES= ${CFILES} ${SYSTEM_CFILES}
+TESLA_FILES= ${LLVM_CFILES:T:.c=.tesla}
+OLLS= ${LLVM_CFILES:T:.c=.oll}
+INSTRLLS= ${LLVM_CFILES:T:.c=.instrll}
+INSTROBJS= ${LLVM_CFILES:T:.c=.instro}
+SYSTEM_OBJS+= ${LLVM_CFILES:T:.c=.instro} ${NOT_C_OBJS}
+.endif
 SYSTEM_OBJS+= hack.So
-SYSTEM_LD= @${LD} -Bdynamic -T ${LDSCRIPT} ${LDFLAGS} --no-warn-mismatch \
+SYSTEM_LD= ${LD} -Bdynamic -T ${LDSCRIPT} ${LDFLAGS} --no-warn-mismatch \
 	-warn-common -export-dynamic -dynamic-linker /red/herring \
 	-o ${.TARGET} -X ${SYSTEM_OBJS} vers.o
 SYSTEM_LD_TAIL= @${OBJCOPY} --strip-symbol gcc2_compiled. ${.TARGET} ; \

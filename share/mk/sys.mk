@@ -279,7 +279,7 @@ YFLAGS		?=	-d
 .e.o .r.o .F.o .f.o:
 	${FC} ${RFLAGS} ${EFLAGS} ${FFLAGS} -c ${.IMPSRC}
 
-.instrll.instro: tesla.manifest
+.instrll.instro:
 	${LLC} -filetype=obj ${LLCFLAGS} ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
 
@@ -287,8 +287,7 @@ YFLAGS		?=	-d
 	${TESLA} graph ${.IMPSRC} -o ${.TARGET}
 
 .oll.instrll: tesla.manifest
-	${TESLA} instrument -S -verify-each -tesla-manifest tesla.manifest \
-	    ${.IMPSRC} -o ${.TARGET}
+	${LLVM_INSTR_COMMAND}
 
 .S.o:
 	${CC} ${CFLAGS} ${ACFLAGS} -c ${.IMPSRC}
