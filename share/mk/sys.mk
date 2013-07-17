@@ -32,7 +32,7 @@ MACHINE_CPUARCH=${MACHINE_ARCH:C/mips(n32|64)?(el)?/mips/:C/arm(v6)?(eb)?/arm/:C
 .if defined(%POSIX)
 .SUFFIXES:	.o .c .y .l .a .sh .f
 .else
-.SUFFIXES:	.out .a .dot .instrll .instro .oll .obc .ln .manifest .o .c .cc .cpp .cxx .C .m .F .f .e .r .tesla .y .l .S .asm .s .cl .p .h .sh
+.SUFFIXES:	.out .a .dot .instrll .instro .oll .ln .manifest .o .c .cc .cpp .cxx .C .m .F .f .e .r .tesla .y .l .S .asm .s .cl .p .h .sh
 .endif
 
 AR		?=	ar
@@ -126,6 +126,7 @@ LINTOBJKERNFLAGS?=	${LINTOBJFLAGS}
 LINTLIBFLAGS	?=	-cghapbxu -C ${LIB}
 
 LLC		?=	llc
+LLCFLAGS	?=	${CFLAGS:M-O*:S/^-O$/-O1/:S/-O/-O=/}
 
 LLVM_LINK	?=	llvm-link
 
@@ -231,10 +232,7 @@ YFLAGS		?=	-d
 	chmod a+x ${.TARGET}
 
 .c.oll:
-	${CC} ${CFLAGS} -emit-llvm -S ${.IMPSRC} -o ${.TARGET}
-
-.c.obc:
-	${CC} ${CFLAGS} -cc1 -emit-llvm -c ${.IMPSRC} -o ${.TARGET}
+	${CC} ${CFLAGS:N-O*} -emit-llvm -S ${.IMPSRC} -o ${.TARGET}
 
 .c.ln:
 	${LINT} ${LINTOBJFLAGS} ${CFLAGS:M-[DIU]*} ${.IMPSRC} || \
@@ -257,9 +255,6 @@ YFLAGS		?=	-d
 
 .cc .cpp .cxx .C:
 	${CXX} ${CXXFLAGS} ${LDFLAGS} ${.IMPSRC} ${LDLIBS} -o ${.TARGET}
-
-.cc.obc .C.obc .cpp.obc .cxx.obc:
-	${CXX} ${CXXFLAGS} -cc1 -emit-llvm -c ${.IMPSRC} -o ${.TARGET}
 
 .cc.o .cpp.o .cxx.o .C.o:
 	${CXX} ${CXXFLAGS} -c ${.IMPSRC}

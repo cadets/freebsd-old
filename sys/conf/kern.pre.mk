@@ -97,7 +97,7 @@ CFLAGS+= --param max-inline-insns-single=10000
 .endif
 WERROR?= -Werror
 
-LLCFLAGS=	-code-model=kernel
+LLCFLAGS+=	-code-model=kernel
 
 # XXX LOCORE means "don't declare C stuff" not "for locore.s".
 ASM_CFLAGS= -x assembler-with-cpp -DLOCORE ${CFLAGS}
