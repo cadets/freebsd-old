@@ -62,11 +62,9 @@ typedef	int	__tesla_count;
  *  * a counter to ensure uniqueness (__COUNTER__)
  *  * the TESLA context (per-thread or global)
  */
-inline void
+void
 __tesla_inline_assertion(const char *filename, int line, int count,
-	__tesla_locality *loc, ...)
-{
-}
+	__tesla_locality *loc, ...);
 
 
 /* Only define the following things if doing TESLA analysis, not compiling. */
@@ -135,6 +133,9 @@ struct __tesla_event* __tesla_now;
 struct __tesla_event* __tesla_optional(__tesla_event*, ...);
 
 /** A value that could match a lot of function parameters. Maybe anything? */
+#ifdef __OBJC__
+id		__tesla_any_id();
+#endif
 void*		__tesla_any_ptr();
 int		__tesla_any_int();
 long		__tesla_any_long();
