@@ -2156,7 +2156,8 @@ change_euid(struct ucred *newcred, struct uidinfo *euip)
 	    == 0) ||
 	    previously(mac_cred_check_setresuid(ANY(ptr), ANY(int), euid,
 	    ANY(int)) == 0));
-	TESLA_SYSCALL(eventually(called(setsugid)));
+	TESLA_SYSCALL(previously(called(setsugid)) ||
+	    eventually(called(setsugid)));
 
 	newcred->cr_uid = euid;
 	uihold(euip);
@@ -2180,7 +2181,8 @@ change_egid(struct ucred *newcred, gid_t egid)
 	    == 0) ||
 	    previously(mac_cred_check_setresgid(ANY(ptr), ANY(int), egid,
 	    ANY(int)) == 0));
-	TESLA_SYSCALL(eventually(called(setsugid)));
+	TESLA_SYSCALL(previously(called(setsugid)) ||
+	    eventually(called(setsugid)));
 	
 	newcred->cr_groups[0] = egid;
 }
@@ -2204,7 +2206,8 @@ change_ruid(struct ucred *newcred, struct uidinfo *ruip)
 	    == 0) ||
 	    previously(mac_cred_check_setresuid(ANY(ptr), ruid, ANY(int),
 	    ANY(int)) == 0));
-	TESLA_SYSCALL(eventually(called(setsugid)));
+	TESLA_SYSCALL(previously(called(setsugid)) ||
+	    eventually(called(setsugid)));
 
 	(void)chgproccnt(newcred->cr_ruidinfo, -1, 0);
 	newcred->cr_ruid = ruid;
@@ -2230,7 +2233,8 @@ change_rgid(struct ucred *newcred, gid_t rgid)
 	    == 0) ||
 	    previously(mac_cred_check_setresgid(ANY(ptr), rgid, ANY(int),
 	    ANY(int)) == 0));
-	TESLA_SYSCALL(eventually(called(setsugid)));
+	TESLA_SYSCALL(previously(called(setsugid)) ||
+	    eventually(called(setsugid)));
 	
 	newcred->cr_rgid = rgid;
 }
@@ -2251,7 +2255,8 @@ change_svuid(struct ucred *newcred, uid_t svuid)
 	    ANY(int)) == 0) ||
 	    previously(mac_cred_check_setresuid(ANY(ptr), ANY(int),
 	    ANY(int), ANY(int)) == 0));
-	TESLA_SYSCALL(eventually(called(setsugid)));
+	TESLA_SYSCALL(previously(called(setsugid)) ||
+	    eventually(called(setsugid)));
 
 	newcred->cr_svuid = svuid;
 }
@@ -2272,7 +2277,8 @@ change_svgid(struct ucred *newcred, gid_t svgid)
 	    == 0) ||
 	    previously(mac_cred_check_setresgid(ANY(ptr), ANY(int), ANY(int),
 	    ANY(int)) == 0));
-	TESLA_SYSCALL(eventually(called(setsugid)));
+	TESLA_SYSCALL(previously(called(setsugid)) ||
+	    eventually(called(setsugid)));
 	
 	newcred->cr_svgid = svgid;
 }
