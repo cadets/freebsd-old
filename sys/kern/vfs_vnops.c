@@ -68,9 +68,15 @@ __FBSDID("$FreeBSD$");
 #include <sys/conf.h>
 #include <sys/syslog.h>
 #include <sys/unistd.h>
+#include <sys/capability.h>
+#include <sys/syscallsubr.h>
+#include <sys/tesla-kernel.h>
 
 #include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
+
+#include <tesla-macros.h>
+#include <tesla.h>
 
 #include <vm/vm.h>
 #include <vm/vm_extern.h>
@@ -707,6 +713,10 @@ vn_read(fp, uio, active_cred, flags, td)
 	}
 	offset = uio->uio_offset;
 
+	TESLA_WITHIN(kern_readv, previously(fget_unlocked(ANY(ptr), ANY(int),
+	    bitmask(CAP_READ), ANY(int), &fp, ANY(ptr)) == 0));
+	TESLA_WITHIN(kern_preadv, previously(fget_unlocked(ANY(ptr), ANY(int),
+	    bitmask(CAP_PREAD), ANY(int), &fp, ANY(ptr)) == 0));
 #ifdef MAC
 	error = mac_vnode_check_read(active_cred, fp->f_cred, vp);
 	if (error == 0)
@@ -812,6 +822,10 @@ vn_write(fp, uio, active_cred, flags, td)
 	}
 	offset = uio->uio_offset;
 
+	TESLA_WITHIN(kern_writev, previously(fget_unlocked(ANY(ptr), ANY(int),
+	    bitmask(CAP_WRITE), ANY(int), &fp, ANY(ptr)) == 0));
+	TESLA_WITHIN(kern_pwritev, previously(fget_unlocked(ANY(ptr), ANY(int),
+	    bitmask(CAP_PWRITE), ANY(int), &fp, ANY(ptr)) == 0));
 #ifdef MAC
 	error = mac_vnode_check_write(active_cred, fp->f_cred, vp);
 	if (error == 0)
@@ -1200,6 +1214,8 @@ vn_truncate(struct file *fp, off_t length, struct ucred *active_cred,
 	if (error)
 		goto out;
 #endif
+	TESLA_WITHIN(kern_ftruncate, previously(fget_unlocked(ANY(ptr),
+	    ANY(int), bitmask(CAP_FTRUNCATE), ANY(int), &fp, ANY(ptr)) == 0));
 	error = vn_writechk(vp);
 	if (error == 0) {
 		VATTR_NULL(&vattr);
