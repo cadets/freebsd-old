@@ -439,9 +439,11 @@ ffs_read(ap)
 
 	vp = ap->a_vp;
 	TESLA_SYSCALL(previously(mac_vnode_check_read(ANY(ptr), ANY(ptr), vp)
-	    == 0));
+	    == 0) ||
+	    previously(mac_vnode_check_readdir(ANY(ptr), vp) == 0));
 	TESLA_PAGE_FAULT(previously(mac_vnode_check_read(ANY(ptr), ANY(ptr),
-	    vp) == 0));
+	    vp) == 0) ||
+	    previously(mac_vnode_check_readdir(ANY(ptr), vp) == 0));
 
 	uio = ap->a_uio;
 	ioflag = ap->a_ioflag;
