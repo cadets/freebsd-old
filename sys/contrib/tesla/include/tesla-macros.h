@@ -81,7 +81,7 @@
 #define	flags(...)		__tesla_flags(__VA_ARGS__)
 #define	bitmask(...)		__tesla_mask(__VA_ARGS__)
 
-#define	TESLA_NOW __tesla_now
+#define	TESLA_ASSERTION_SITE	__tesla_assertion_site
 
 
 #define	TESLA_STRUCT_AUTOMATON(...)	__tesla_struct_usage(__VA_ARGS__)
@@ -97,10 +97,10 @@
 #define	ANY(int_type)		__tesla_any(int_type)
 
 /** A more programmer-friendly way to write assertions about the past. */
-#define previously(...)    TSEQUENCE(__VA_ARGS__, TESLA_NOW)
+#define previously(...)    TSEQUENCE(__VA_ARGS__, TESLA_ASSERTION_SITE)
 
 /** A more programmer-friendly way to write assertions about the future. */
-#define eventually(...)    TSEQUENCE(TESLA_NOW, __VA_ARGS__)
+#define eventually(...)    TSEQUENCE(TESLA_ASSERTION_SITE, __VA_ARGS__)
 
 /** @} */
 
