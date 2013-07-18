@@ -128,7 +128,7 @@ struct __tesla_event* __tesla_conditional(__tesla_event*, ...);
 struct __tesla_event* __tesla_ignore;
 
 /** Reaching the inline assertion. */
-struct __tesla_event* __tesla_now;
+struct __tesla_event* __tesla_assertion_site;
 
 struct __tesla_event* __tesla_optional(__tesla_event*, ...);
 
