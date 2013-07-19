@@ -47,7 +47,7 @@ SDT_PROBE_DEFINE4(tesla, automata, instance, clone, clone,
     "struct tesla_class *", "struct tesla_instance *",
     "struct tesla_instance *", "struct tesla_transition *");
 SDT_PROBE_DEFINE3(tesla, automata, fail, no_instance, no-instance-match,
-    "struct tesla_class *", "struct tesla_key *",
+    "struct tesla_class *", "const char *",
     "struct tesla_transitions *");
 SDT_PROBE_DEFINE3(tesla, automata, fail, bad_transition, bad-transition,
     "struct tesla_class *", "struct tesla_instance *",
@@ -87,8 +87,10 @@ static void
 no_instance(struct tesla_class *tcp, const struct tesla_key *tkp,
     const struct tesla_transitions *ttp)
 {
+	char keybuf[20];
+	key_string(keybuf, keybuf + sizeof(keybuf), tkp);
 
-	SDT_PROBE(tesla, automata, fail, no_instance, tcp, tkp, ttp, 0, 0);
+	SDT_PROBE(tesla, automata, fail, no_instance, tcp, keybuf, ttp, 0, 0);
 }
 
 static void

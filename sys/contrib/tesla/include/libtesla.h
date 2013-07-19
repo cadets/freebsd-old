@@ -168,6 +168,9 @@ struct tesla_transitions {
 
 	/** Possible transitions: exactly one must be taken. */
 	struct tesla_transition	*transitions;
+
+	/** A human-readable description for debugging purposes. */
+	const char		*description;
 };
 
 #define	TESLA_KEY_SIZE		4
