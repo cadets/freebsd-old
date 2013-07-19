@@ -46,8 +46,8 @@ SDT_PROBE_DEFINE3(tesla, automata, event, transition, state-transition,
 SDT_PROBE_DEFINE4(tesla, automata, instance, clone, clone,
     "struct tesla_class *", "struct tesla_instance *",
     "struct tesla_instance *", "struct tesla_transition *");
-SDT_PROBE_DEFINE3(tesla, automata, fail, no_instance, no-instance-match,
-    "struct tesla_class *", "const char *",
+SDT_PROBE_DEFINE4(tesla, automata, fail, no_instance, no-instance-match,
+    "struct tesla_class *", "const char *", "const char *",
     "struct tesla_transitions *");
 SDT_PROBE_DEFINE3(tesla, automata, fail, bad_transition, bad-transition,
     "struct tesla_class *", "struct tesla_instance *",
@@ -87,10 +87,28 @@ static void
 no_instance(struct tesla_class *tcp, const struct tesla_key *tkp,
     const struct tesla_transitions *ttp)
 {
+	char instbuf[200];
+	char *c = instbuf;
+	const char *end = instbuf + sizeof(instbuf);
+
+	SAFE_SPRINTF(c, end, "%d/%d instances\n",
+		tcp->tc_limit - tcp->tc_free, tcp->tc_limit);
+
+	for (uint32_t i = 0; i < tcp->tc_limit; i++) {
+		const struct tesla_instance *inst = tcp->tc_instances + i;
+		if (!tesla_instance_active(inst))
+			continue;
+
+		SAFE_SPRINTF(c, end, "    %2u: state %d, ", i, inst->ti_state);
+		c = key_string(c, end, &inst->ti_key);
+		SAFE_SPRINTF(c, end, "\n");
+	}
+
 	char keybuf[20];
 	key_string(keybuf, keybuf + sizeof(keybuf), tkp);
 
-	SDT_PROBE(tesla, automata, fail, no_instance, tcp, keybuf, ttp, 0, 0);
+	SDT_PROBE(tesla, automata, fail, no_instance,
+		tcp, instbuf, keybuf, ttp, 0);
 }
 
 static void
