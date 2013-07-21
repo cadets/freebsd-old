@@ -92,7 +92,7 @@
 #define	optional(...)		__tesla_optional(TIGNORE, __VA_ARGS__)
 #define	ANY_REP	INT_MAX
 #define	REPEAT(m, n, ...)	__tesla_repeat(m, n, __VA_ARGS__)
-#define	UPTO(n, ...)		__tesla_repeat(0, n, __VA_ARGS__)
+#define	UPTO(n, ...)		__tesla_repeat(1, n, __VA_ARGS__)
 #define	ATLEAST(n, ...)		__tesla_repeat(n, ANY_REP, __VA_ARGS__)
 #define	ANY(int_type)		__tesla_any(int_type)
 
