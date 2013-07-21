@@ -438,12 +438,14 @@ ffs_read(ap)
 	int ioflag;
 
 	vp = ap->a_vp;
+#ifdef MAC
 	TESLA_SYSCALL(previously(mac_vnode_check_read(ANY(ptr), ANY(ptr), vp)
 	    == 0) ||
 	    previously(mac_vnode_check_readdir(ANY(ptr), vp) == 0));
 	TESLA_PAGE_FAULT(previously(mac_vnode_check_read(ANY(ptr), ANY(ptr),
 	    vp) == 0) ||
 	    previously(mac_vnode_check_readdir(ANY(ptr), vp) == 0));
+#endif
 
 	uio = ap->a_uio;
 	ioflag = ap->a_ioflag;
@@ -666,10 +668,12 @@ ffs_write(ap)
 	int blkoffset, error, flags, ioflag, size, xfersize;
 
 	vp = ap->a_vp;
+#ifdef MAC
 	TESLA_SYSCALL(previously(mac_vnode_check_write(ANY(ptr), ANY(ptr), vp)
 	    == 0));
 	TESLA_PAGE_FAULT(previously(mac_vnode_check_WRITE(ANY(ptr), ANY(ptr),
 	    vp) == 0));
+#endif
 
 	uio = ap->a_uio;
 	ioflag = ap->a_ioflag;
