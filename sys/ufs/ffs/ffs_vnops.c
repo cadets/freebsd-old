@@ -82,8 +82,6 @@ __FBSDID("$FreeBSD$");
 
 #include <security/mac/mac_framework.h>
 
-#include <tesla.h>
-#include <tesla-macros.h>
 #include <sys/tesla-kernel.h>
 
 #include <vm/vm.h>

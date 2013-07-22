@@ -71,8 +71,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/syscallsubr.h>
 #include <sys/sysctl.h>
 
-#include <tesla.h>
-#include <tesla-macros.h>
 #include <sys/tesla-kernel.h>
 
 #ifdef REGRESSION

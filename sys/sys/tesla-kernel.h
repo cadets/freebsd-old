@@ -31,6 +31,14 @@
 #ifndef _SYS_TESLA_KERNEL_H_
 #define	_SYS_TESLA_KERNEL_H_
 
+#ifndef TESLA
+/* Cause the include of tesla.h to have no effect */
+#define	TESLA_H
+#define	__tesla_inline_assertion(...)
+#endif
+
+#include <tesla-macros.h>
+
 /*
  * FreeBSD kernel-specific TESLA macros.
  */
