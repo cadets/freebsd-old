@@ -71,8 +71,6 @@ __FBSDID("$FreeBSD: head/sys/kern/kern_prot.c 243022 2012-11-14 10:33:12Z bapt $
 #include <sys/syscallsubr.h>
 #include <sys/sysctl.h>
 
-#include <tesla.h>
-#include <tesla-macros.h>
 #include <sys/tesla-kernel.h>
 
 #ifdef REGRESSION

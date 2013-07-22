@@ -75,9 +75,6 @@ __FBSDID("$FreeBSD: head/sys/kern/vfs_vnops.c 251184 2013-05-31 16:15:22Z jhb $"
 #include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
 
-#include <tesla-macros.h>
-#include <tesla.h>
-
 #include <vm/vm.h>
 #include <vm/vm_extern.h>
 #include <vm/pmap.h>
