@@ -35,6 +35,8 @@
  * FreeBSD kernel-specific TESLA macros.
  */
 
+#define	incallstack(fn)	TSEQUENCE(called(fn), TESLA_ASSERTION_SITE, returned(fn))
+
 /*
  * Convenient assertion wrappers for various scopes.
  */
@@ -47,6 +49,8 @@ extern void amd64_syscall(struct trapframe *, int);
 extern void syscall(void);
 #define	TESLA_SYSCALL(x)	TESLA_WITHIN(syscall, x)
 #endif
+#define	TESLA_SYSCALL_PREVIOUSLY(x)	TESLA_SYSCALL(previously(x))
+#define	TESLA_SYSCALL_EVENTUALLY(x)	TESLA_SYSCALL(eventually(x))
 
 /*
  * XXXRW: Not all architectures have a trap_pfault() function.  Can't use
