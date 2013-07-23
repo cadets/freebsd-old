@@ -48,7 +48,9 @@ procfs_doproctype(PFS_FILL_ARGS)
 {
 	static const char *none = "Not Available";
 
+#ifdef TESLA_PROC
 	TESLA_SYSCALL_PREVIOUSLY(p_cansee(ANY(ptr), p) == 0);
+#endif
 
 	if (p != NULL && p->p_sysent && p->p_sysent->sv_name)
 		sbuf_printf(sb, "%s", p->p_sysent->sv_name);

@@ -710,10 +710,12 @@ vn_read(fp, uio, active_cred, flags, td)
 	}
 	offset = uio->uio_offset;
 
+#ifdef TESLA_CAPSICUM
 	TESLA_WITHIN(kern_readv, previously(fget_unlocked(ANY(ptr), ANY(int),
 	    bitmask(CAP_READ), ANY(int), &fp, ANY(ptr)) == 0));
 	TESLA_WITHIN(kern_preadv, previously(fget_unlocked(ANY(ptr), ANY(int),
 	    bitmask(CAP_PREAD), ANY(int), &fp, ANY(ptr)) == 0));
+#endif
 #ifdef MAC
 	error = mac_vnode_check_read(active_cred, fp->f_cred, vp);
 	if (error == 0)
@@ -819,10 +821,12 @@ vn_write(fp, uio, active_cred, flags, td)
 	}
 	offset = uio->uio_offset;
 
+#ifdef TESLA_CAPSICUM
 	TESLA_WITHIN(kern_writev, previously(fget_unlocked(ANY(ptr), ANY(int),
 	    bitmask(CAP_WRITE), ANY(int), &fp, ANY(ptr)) == 0));
 	TESLA_WITHIN(kern_pwritev, previously(fget_unlocked(ANY(ptr), ANY(int),
 	    bitmask(CAP_PWRITE), ANY(int), &fp, ANY(ptr)) == 0));
+#endif
 #ifdef MAC
 	error = mac_vnode_check_write(active_cred, fp->f_cred, vp);
 	if (error == 0)
@@ -1211,8 +1215,10 @@ vn_truncate(struct file *fp, off_t length, struct ucred *active_cred,
 	if (error)
 		goto out;
 #endif
+#ifdef TESLA_CAPSICUM
 	TESLA_WITHIN(kern_ftruncate, previously(fget_unlocked(ANY(ptr),
 	    ANY(int), bitmask(CAP_FTRUNCATE), ANY(int), &fp, ANY(ptr)) == 0));
+#endif
 	error = vn_writechk(vp);
 	if (error == 0) {
 		VATTR_NULL(&vattr);

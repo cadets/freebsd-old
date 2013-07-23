@@ -296,8 +296,10 @@ sysctl_hostname(SYSCTL_HANDLER_ARGS)
 	error = sysctl_handle_string(oidp, tmpname, len, req);
 
 	if (req->newptr != NULL && error == 0) {
+#ifdef TESLA_PRIV
 		TESLA_SYSCALL_PREVIOUSLY(priv_check(req->td,
 		    PRIV_SYSCTL_WRITEJAIL) == 0);
+#endif
 
 		/*
 		 * Copy the locally set hostname to all jails that share
@@ -357,8 +359,10 @@ sysctl_kern_securelvl(SYSCTL_HANDLER_ARGS)
 	if (error || !req->newptr)
 		return (error);
 
+#ifdef TESLA_PRIV
 	TESLA_SYSCALL_PREVIOUSLY(priv_check(req->td, PRIV_SYSCTL_WRITEJAIL) ==
 	    0);
+#endif
 
 	/* Permit update only if the new securelevel exceeds the old. */
 	sx_slock(&allprison_lock);

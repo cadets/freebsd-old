@@ -67,7 +67,9 @@ procfs_doprocrlimit(PFS_FILL_ARGS)
 	struct plimit *limp;
 	int i;
 
+#ifdef TESLA_PROC
 	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), p) == 0);
+#endif
 
 	/*
 	 * Obtain a private reference to resource limits

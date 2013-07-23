@@ -74,7 +74,9 @@ procfs_doprocstatus(PFS_FILL_ARGS)
 	int pid, ppid, pgid, sid;
 	int i;
 
+#ifdef TESLA_PROC
 	TESLA_SYSCALL_PREVIOUSLY(p_cansee(ANY(ptr), p) == 0);
+#endif
 
 	pid = p->p_pid;
 	PROC_LOCK(p);

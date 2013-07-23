@@ -71,7 +71,9 @@ procfs_ioctl(PFS_IOCTL_ARGS)
 	int ival;
 #endif
 
+#ifdef TESLA_PROC
 	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), p) == 0);
+#endif
 
 	KASSERT(p != NULL,
 	    ("%s() called without a process", __func__));

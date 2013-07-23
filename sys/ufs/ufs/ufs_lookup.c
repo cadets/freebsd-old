@@ -213,8 +213,10 @@ ufs_lookup(ap)
 {
 
 #ifdef MAC
+#ifdef TESLA_MAC
 	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_lookup(ANY(ptr), ap->a_dvp,
 	    ap->a_cnp) == 0);
+#endif
 #endif
 
 	return (ufs_lookup_ino(ap->a_dvp, ap->a_vpp, ap->a_cnp, NULL));

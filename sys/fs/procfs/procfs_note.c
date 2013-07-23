@@ -51,7 +51,9 @@ int
 procfs_doprocnote(PFS_FILL_ARGS)
 {
 
+#ifdef TESLA_PROC
 	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), p) == 0);
+#endif
 
 	sbuf_trim(sb);
 	sbuf_finish(sb);

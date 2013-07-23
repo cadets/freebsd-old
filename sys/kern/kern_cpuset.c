@@ -539,7 +539,10 @@ cpuset_setproc(pid_t pid, struct cpuset *set, cpuset_t *mask)
 		}
 	}
 	PROC_LOCK_ASSERT(p, MA_OWNED);
+
+#ifdef TESLA_PROC
 	TESLA_SYSCALL_PREVIOUSLY(p_cansched(ANY(ptr), p) == 0);
+#endif
 
 	/*
 	 * Now that the appropriate locks are held and we have enough cpusets,
@@ -717,7 +720,9 @@ cpuset_setthread(lwpid_t id, cpuset_t *mask)
 	if (error)
 		goto out;
 
+#ifdef TESLA_PROC
 	TESLA_SYSCALL_PREVIOUSLY(p_cansched(ANY(ptr), p) == 0);
+#endif
 
 	set = NULL;
 	thread_lock(td);
