@@ -1497,7 +1497,7 @@ sosend(struct socket *so, struct sockaddr *addr, struct uio *uio,
 #ifdef MAC
 #ifdef TESLA_MAC
 	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_send(ANY(ptr), so) == 0);
-#ifdef TESLA_MAC
+#endif
 #endif
 
 	CURVNET_SET(so->so_vnet);
