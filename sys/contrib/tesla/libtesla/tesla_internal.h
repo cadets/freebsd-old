@@ -70,6 +70,11 @@
 /** Is @a x a subset of @a y? */
 #define	SUBSET(x,y) ((x & y) == x)
 
+#ifdef _KERNEL
+/** Emulate simple POSIX assertions. */
+#define assert(cond) KASSERT((cond), ("Assertion failed: '%s'", #cond))
+#endif
+
 /**
  * Call this if things go catastrophically, unrecoverably wrong.
  */
@@ -193,9 +198,6 @@ enum tesla_action_t	tesla_action(const struct tesla_instance*,
 
 /** Our @ref tesla_assert has the same signature as @ref KASSERT. */
 #define tesla_assert(...) KASSERT(__VA_ARGS__)
-
-/** Emulate simple POSIX assertions. */
-#define assert(cond) KASSERT((cond), ("Assertion failed: '%s'", #cond))
 
 #define tesla_malloc(len) malloc(len, M_TESLA, M_WAITOK | M_ZERO)
 #define tesla_free(x) free(x, M_TESLA)
