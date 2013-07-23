@@ -31,6 +31,7 @@
  */
 
 #include "tesla_internal.h"
+#include "tesla_key.h"
 
 #ifndef _KERNEL
 #include <stdbool.h>
@@ -72,14 +73,15 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 	PRINT("\n----\n");
 
 	struct tesla_store *store;
-	assert(tesla_store_get(tesla_context, TESLA_MAX_CLASSES,
-			TESLA_MAX_INSTANCES, &store) == TESLA_SUCCESS);
+	int ret = tesla_store_get(tesla_context, TESLA_MAX_CLASSES,
+			TESLA_MAX_INSTANCES, &store);
+	assert(ret == TESLA_SUCCESS);
 
 	PRINT("store: 0x%tx\n", (intptr_t) store);
 
 	struct tesla_class *class;
-	assert(tesla_class_get(store, class_id, &class, name, description)
-		== TESLA_SUCCESS);
+	ret = tesla_class_get(store, class_id, &class, name, description);
+	assert(ret == TESLA_SUCCESS);
 
 	print_class(class);
 
@@ -99,13 +101,15 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 
 	// Iterate over existing instances, figure out what to do with each.
 	int err = TESLA_SUCCESS;
-	for (uint32_t i = 0; i < class->tc_limit; i++) {
+	int expected = class->tc_limit - class->tc_free;
+	for (uint32_t i = 0; expected > 0 && (i < class->tc_limit); i++) {
 		assert(class->tc_instances != NULL);
 		tesla_instance *inst = class->tc_instances + i;
 
 		const tesla_transition *trigger = NULL;
 		enum tesla_action_t action =
 			tesla_action(inst, pattern, trans, &trigger);
+		expected -= action == IGNORE ? 0 : 1;
 
 		switch (action) {
 		case FAIL:
@@ -116,7 +120,8 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 			break;
 
 		case UPDATE:
-			ev_transition(class, inst, trigger);
+			if (have_transitions)
+				ev_transition(class, inst, trigger);
 			inst->ti_state = trigger->to;
 			matched_something = true;
 

@@ -61,6 +61,10 @@ SYSINIT(tesla_global_store, SI_SUB_TESLA, SI_ORDER_FIRST,
     tesla_global_store_sysinit, NULL);
 #endif
 
+#ifndef _KERNEL
+__thread tesla_store *cache = NULL;
+#endif
+
 int32_t
 tesla_store_get(enum tesla_context context, uint32_t classes,
 	uint32_t instances, tesla_store* *storep)
@@ -78,8 +82,12 @@ tesla_store_get(enum tesla_context context, uint32_t classes,
 #ifdef _KERNEL
 		store = curthread->td_tesla;
 #else
-		pthread_key_t key = pthread_key();
-		store = pthread_getspecific(key);
+		pthread_key_t key;
+		if (!cache) {
+			key = pthread_key();
+			cache = pthread_getspecific(key);
+		}
+		store = cache;
 #endif
 
 		// Create a new store if we don't already have one.
