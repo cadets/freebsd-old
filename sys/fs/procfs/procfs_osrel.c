@@ -34,6 +34,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/sbuf.h>
 #include <sys/uio.h>
+#include <sys/tesla-kernel.h>
 
 #include <fs/pseudofs/pseudofs.h>
 #include <fs/procfs/procfs.h>
@@ -43,6 +44,8 @@ procfs_doosrel(PFS_FILL_ARGS)
 {
 	const char *pp;
 	int ov, osrel, i;
+
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), p) == 0);
 
 	if (uio == NULL)
 		return (EOPNOTSUPP);

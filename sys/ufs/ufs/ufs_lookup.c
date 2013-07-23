@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mount.h>
 #include <sys/vnode.h>
 #include <sys/sysctl.h>
+#include <sys/tesla-kernel.h>
 
 #include <vm/vm.h>
 #include <vm/vm_extern.h>
@@ -210,6 +211,11 @@ ufs_lookup(ap)
 		struct componentname *a_cnp;
 	} */ *ap;
 {
+
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_lookup(ANY(ptr), ap->a_dvp,
+	    ap->a_cnp) == 0);
+#endif
 
 	return (ufs_lookup_ino(ap->a_dvp, ap->a_vpp, ap->a_cnp, NULL));
 }

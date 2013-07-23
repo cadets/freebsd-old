@@ -261,7 +261,6 @@ SUBDIR=	\
 	ppc \
 	ppi \
 	pps \
-	procfs \
 	pseudofs \
 	${_pst} \
 	pty  \
@@ -358,6 +357,10 @@ SUBDIR=	\
 	xl \
 	${_zfs} \
 	zlib \
+
+# XXXRW: Temporarily disable procfs build for TESLA, as the module contains
+# assertions which don't build as a module.
+#	procfs \
 
 .if ${MACHINE_CPUARCH} == "i386" || ${MACHINE_CPUARCH} == "amd64"
 _filemon=	filemon

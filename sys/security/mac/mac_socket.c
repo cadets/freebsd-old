@@ -64,6 +64,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/sysctl.h>
+#include <sys/tesla-kernel.h>
 
 #include <net/bpfdesc.h>
 #include <net/if.h>
@@ -76,6 +77,10 @@ __FBSDID("$FreeBSD$");
 #include <security/mac/mac_framework.h>
 #include <security/mac/mac_internal.h>
 #include <security/mac/mac_policy.h>
+
+/* Definition required for TESLA assertion. */
+static int	mac_socket_check_relabel(struct ucred *cred, struct socket *so,
+		    struct label *newlabel);
 
 /*
  * Currently, sockets hold two labels: the label of the socket itself, and a
@@ -252,6 +257,9 @@ static void
 mac_socket_relabel(struct ucred *cred, struct socket *so,
     struct label *newlabel)
 {
+
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_relabel(cred, so, newlabel)
+	    == 0);
 
 	SOCK_LOCK_ASSERT(so);
 

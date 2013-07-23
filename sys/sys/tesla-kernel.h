@@ -45,6 +45,11 @@
 
 #define	incallstack(fn)	TSEQUENCE(called(fn), TESLA_ASSERTION_SITE, returned(fn))
 
+#if 0
+/* XXXRW: This doesn't yet work. */
+struct timespec	__tesla_any_timespec();
+#endif
+
 /*
  * Convenient assertion wrappers for various scopes.
  */

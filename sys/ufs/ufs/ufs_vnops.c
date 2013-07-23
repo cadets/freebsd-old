@@ -61,10 +61,14 @@ __FBSDID("$FreeBSD$");
 #include <sys/lockf.h>
 #include <sys/conf.h>
 #include <sys/acl.h>
+#include <sys/tesla-kernel.h>
 
 #include <security/mac/mac_framework.h>
 
 #include <sys/file.h>		/* XXX */
+
+/* Required for TESLA assertion. */
+#include <sys/syscallsubr.h>
 
 #include <vm/vm.h>
 #include <vm/vm_extern.h>
@@ -268,6 +272,11 @@ ufs_open(struct vop_open_args *ap)
 {
 	struct vnode *vp = ap->a_vp;
 	struct inode *ip;
+
+#ifdef MAC
+	TESLA_SYSCALL(incallstack(kern_execve) ||
+	    mac_vnode_check_open(ANY(ptr), vp, ANY(int)) == 0);
+#endif
 
 	if (vp->v_type == VCHR || vp->v_type == VBLK)
 		return (EOPNOTSUPP);
@@ -528,6 +537,10 @@ ufs_setattr(ap)
 		return (EINVAL);
 	}
 	if (vap->va_flags != VNOVAL) {
+#ifdef MAC
+		TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_setflags(ANY(ptr),
+		    vp, ANY(int)) == 0);
+#endif
 		if ((vap->va_flags & ~(UF_NODUMP | UF_IMMUTABLE | UF_APPEND |
 		    UF_OPAQUE | UF_NOUNLINK | SF_ARCHIVED | SF_IMMUTABLE |
 		    SF_APPEND | SF_NOUNLINK | SF_SNAPSHOT)) != 0)
@@ -591,6 +604,11 @@ ufs_setattr(ap)
 			return (error);
 	}
 	if (vap->va_size != VNOVAL) {
+#ifdef MAC
+		TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_write(ANY(ptr),
+		    ANY(ptr), vp) == 0);
+#endif
+
 		/*
 		 * XXX most of the following special cases should be in
 		 * callers instead of in N filesystems.  The VDIR check
@@ -629,6 +647,17 @@ ufs_setattr(ap)
 	if (vap->va_atime.tv_sec != VNOVAL ||
 	    vap->va_mtime.tv_sec != VNOVAL ||
 	    vap->va_birthtime.tv_sec != VNOVAL) {
+#if 0
+#ifdef MAC
+		/*
+		 * XXXRW: TESLA can't currently instrument functions with
+		 * struct arguments.
+		 */
+		TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_setutimes(ANY(ptr),
+		    vp, ANY(timespec), ANY(timespec)) == 0);
+#endif
+#endif
+
 		if (vp->v_mount->mnt_flag & MNT_RDONLY)
 			return (EROFS);
 		if ((ip->i_flags & SF_SNAPSHOT) != 0)
@@ -762,6 +791,11 @@ ufs_chmod(vp, mode, cred, td)
 	struct inode *ip = VTOI(vp);
 	int error;
 
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_setmode(ANY(ptr), vp, mode)
+	    == 0);
+#endif
+
 	/*
 	 * To modify the permissions on a file, must possess VADMIN
 	 * for that file.
@@ -826,6 +860,11 @@ ufs_chown(vp, uid, gid, cred, td)
 #ifdef QUOTA
 	int i;
 	ufs2_daddr_t change;
+#endif
+
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_setowner(ANY(ptr), vp, uid,
+	    gid) == 0);
 #endif
 
 	if (uid == (uid_t)VNOVAL)
@@ -940,6 +979,11 @@ ufs_remove(ap)
 	int error;
 	struct thread *td;
 
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_unlink(ANY(ptr), dvp, vp,
+	    ap->a_cnp) == 0);
+#endif
+
 	td = curthread;
 	ip = VTOI(vp);
 	if ((ip->i_flags & (NOUNLINK | IMMUTABLE | APPEND)) ||
@@ -988,6 +1032,11 @@ ufs_link(ap)
 	struct inode *ip;
 	struct direct newdir;
 	int error;
+
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_link(ANY(ptr), tdvp, vp,
+	    cnp) == 0);
+#endif
 
 #ifdef INVARIANTS
 	if ((cnp->cn_flags & HASBUF) == 0)
@@ -1151,6 +1200,13 @@ ufs_rename(ap)
 	int error = 0;
 	struct mount *mp;
 	ino_t ino;
+
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_rename_from(ANY(ptr), fdvp,
+	    fvp, fcnp) == 0);
+	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_rename_to(ANY(ptr), tdvp,
+	    tvp, ANY(int), tcnp) == 0);
+#endif
 
 #ifdef INVARIANTS
 	if ((tcnp->cn_flags & HASBUF) == 0 ||
@@ -1807,6 +1863,11 @@ ufs_mkdir(ap)
 	int error, dmode;
 	long blkoff;
 
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_create(ANY(ptr), dvp, cnp,
+	    vap) == 0);
+#endif
+
 #ifdef INVARIANTS
 	if ((cnp->cn_flags & HASBUF) == 0)
 		panic("ufs_mkdir: no name");
@@ -2041,6 +2102,11 @@ ufs_rmdir(ap)
 	struct inode *ip, *dp;
 	int error;
 
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_unlink(ANY(ptr), dvp, vp,
+	    cnp) == 0);
+#endif
+
 	ip = VTOI(vp);
 	dp = VTOI(dvp);
 
@@ -2185,6 +2251,11 @@ ufs_readdir(ap)
 	size_t count, lost;
 	off_t off;
 
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_readdir(ANY(ptr), ap->a_vp)
+	    == 0);
+#endif
+
 	if (ap->a_ncookies != NULL)
 		/*
 		 * Ensure that the block is aligned.  The caller can use
@@ -2293,6 +2364,10 @@ ufs_readlink(ap)
 	struct vnode *vp = ap->a_vp;
 	struct inode *ip = VTOI(vp);
 	doff_t isize;
+
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_readlink(ANY(ptr), vp) == 0);
+#endif
 
 	isize = ip->i_size;
 	if ((isize < vp->v_mount->mnt_maxsymlinklen) ||
@@ -2590,6 +2665,11 @@ ufs_makeinode(mode, dvp, vpp, cnp)
 	struct direct newdir;
 	struct vnode *tvp;
 	int error;
+
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_create(ANY(ptr), dvp, cnp,
+	    ANY(ptr)) == 0);
+#endif
 
 	pdir = VTOI(dvp);
 #ifdef INVARIANTS

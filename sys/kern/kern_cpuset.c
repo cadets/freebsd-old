@@ -54,6 +54,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/limits.h>
 #include <sys/bus.h>
 #include <sys/interrupt.h>
+#include <sys/tesla-kernel.h>
 
 #include <vm/uma.h>
 
@@ -538,6 +539,8 @@ cpuset_setproc(pid_t pid, struct cpuset *set, cpuset_t *mask)
 		}
 	}
 	PROC_LOCK_ASSERT(p, MA_OWNED);
+	TESLA_SYSCALL_PREVIOUSLY(p_cansched(ANY(ptr), p) == 0);
+
 	/*
 	 * Now that the appropriate locks are held and we have enough cpusets,
 	 * make sure the operation will succeed before applying changes.  The
@@ -713,6 +716,9 @@ cpuset_setthread(lwpid_t id, cpuset_t *mask)
 	error = cpuset_which(CPU_WHICH_TID, id, &p, &td, &set);
 	if (error)
 		goto out;
+
+	TESLA_SYSCALL_PREVIOUSLY(p_cansched(ANY(ptr), p) == 0);
+
 	set = NULL;
 	thread_lock(td);
 	error = cpuset_shadow(td->td_cpuset, nset, mask);

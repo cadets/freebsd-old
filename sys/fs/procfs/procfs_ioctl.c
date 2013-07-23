@@ -38,6 +38,7 @@
 #include <sys/proc.h>
 #include <sys/signalvar.h>
 #include <sys/systm.h>
+#include <sys/tesla-kernel.h>
 
 #include <fs/pseudofs/pseudofs.h>
 #include <fs/procfs/procfs.h>
@@ -69,6 +70,8 @@ procfs_ioctl(PFS_IOCTL_ARGS)
 #ifdef COMPAT_FREEBSD6
 	int ival;
 #endif
+
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), p) == 0);
 
 	KASSERT(p != NULL,
 	    ("%s() called without a process", __func__));

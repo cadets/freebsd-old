@@ -65,6 +65,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/namei.h>
 #include <sys/sdt.h>
 #include <sys/sysctl.h>
+#include <sys/tesla-kernel.h>
 
 #include <vm/vm.h>
 #include <vm/pmap.h>
@@ -947,6 +948,9 @@ void
 mac_vnode_relabel(struct ucred *cred, struct vnode *vp,
     struct label *newlabel)
 {
+
+	TESLA_SYSCALL(previously(mac_vnode_check_relabel(cred, vp, newlabel)
+	    == 0));
 
 	MAC_POLICY_PERFORM(vnode_relabel, cred, vp, vp->v_label, newlabel);
 }

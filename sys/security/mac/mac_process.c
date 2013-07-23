@@ -65,6 +65,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/file.h>
 #include <sys/namei.h>
 #include <sys/sysctl.h>
+#include <sys/tesla-kernel.h>
 
 #include <vm/vm.h>
 #include <vm/pmap.h>
@@ -170,12 +171,18 @@ mac_execve_enter(struct image_params *imgp, struct mac *mac_p)
 		return (error);
 	}
 	imgp->execlabel = label;
+
+	TESLA_SYSCALL_EVENTUALLY(called(mac_execve_exit));
+
 	return (0);
 }
 
 void
 mac_execve_exit(struct image_params *imgp)
 {
+
+	TESLA_SYSCALL_PREVIOUSLY(called(mac_execve_enter(imgp, ANY(ptr))));
+
 	if (imgp->execlabel != NULL) {
 		mac_cred_label_free(imgp->execlabel);
 		imgp->execlabel = NULL;
@@ -192,14 +199,21 @@ mac_execve_interpreter_enter(struct vnode *interpvp,
 		mac_vnode_copy_label(interpvp->v_label, *interpvplabel);
 	} else
 		*interpvplabel = NULL;
+
+	TESLA_SYSCALL_EVENTUALLY(called(mac_execve_interpreter_exit));
 }
 
 void
 mac_execve_interpreter_exit(struct label *interpvplabel)
 {
 
-	if (interpvplabel != NULL)
+	if (interpvplabel != NULL) {
+		/* Awkwardly, _exit() may be called even if _enter() wasn't. */
+		TESLA_SYSCALL_PREVIOUSLY(called(
+		    mac_execve_interpreter_enter(ANY(ptr), ANY(ptr))));
+
 		mac_vnode_label_free(interpvplabel);
+	}
 }
 
 /*

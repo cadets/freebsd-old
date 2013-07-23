@@ -54,6 +54,8 @@
 #include <sys/systm.h>
 #include <sys/vnode.h>
 
+#include <sys/tesla-kernel.h>
+
 #include <vm/vm.h>
 #include <vm/pmap.h>
 #include <vm/vm_param.h>
@@ -71,6 +73,8 @@ procfs_doprocfile(PFS_FILL_ARGS)
 	char *freepath;
 	struct vnode *textvp;
 	int error;
+
+	TESLA_SYSCALL_PREVIOUSLY(p_cansee(ANY(ptr), p) == 0);
 
 	freepath = NULL;
 	PROC_LOCK(p);

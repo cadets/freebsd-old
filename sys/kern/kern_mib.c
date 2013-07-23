@@ -53,7 +53,11 @@ __FBSDID("$FreeBSD$");
 #include <sys/jail.h>
 #include <sys/smp.h>
 #include <sys/sx.h>
+#include <sys/tesla-kernel.h>
 #include <sys/unistd.h>
+
+/* Required for TESLA assertion. */
+#include <sys/priv.h>
 
 SYSCTL_NODE(, 0,	  sysctl, CTLFLAG_RW, 0,
 	"Sysctl internal magic");
@@ -292,6 +296,9 @@ sysctl_hostname(SYSCTL_HANDLER_ARGS)
 	error = sysctl_handle_string(oidp, tmpname, len, req);
 
 	if (req->newptr != NULL && error == 0) {
+		TESLA_SYSCALL_PREVIOUSLY(priv_check(req->td,
+		    PRIV_SYSCTL_WRITEJAIL) == 0);
+
 		/*
 		 * Copy the locally set hostname to all jails that share
 		 * this host info.
@@ -349,6 +356,10 @@ sysctl_kern_securelvl(SYSCTL_HANDLER_ARGS)
 	error = sysctl_handle_int(oidp, &level, 0, req);
 	if (error || !req->newptr)
 		return (error);
+
+	TESLA_SYSCALL_PREVIOUSLY(priv_check(req->td, PRIV_SYSCTL_WRITEJAIL) ==
+	    0);
+
 	/* Permit update only if the new securelevel exceeds the old. */
 	sx_slock(&allprison_lock);
 	mtx_lock(&pr->pr_mtx);

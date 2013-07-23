@@ -39,13 +39,20 @@
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/sbuf.h>
+#include <sys/tesla-kernel.h>
 
 #include <fs/pseudofs/pseudofs.h>
 #include <fs/procfs/procfs.h>
 
+/* Required for TESLA assertion. */
+#include <sys/proc.h>
+
 int
 procfs_doprocnote(PFS_FILL_ARGS)
 {
+
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), p) == 0);
+
 	sbuf_trim(sb);
 	sbuf_finish(sb);
 	/* send to process's notify function */

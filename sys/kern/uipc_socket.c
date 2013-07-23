@@ -136,6 +136,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/uio.h>
 #include <sys/jail.h>
 #include <sys/syslog.h>
+#include <sys/tesla-kernel.h>
+
 #include <netinet/in.h>
 
 #include <net/vnet.h>
@@ -422,6 +424,11 @@ socreate(int dom, struct socket **aso, int type, int proto,
 	struct socket *so;
 	int error;
 
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_create(cred, dom, type,
+	    proto) == 0);
+#endif
+
 	if (proto)
 		prp = pffindproto(dom, proto, type);
 	else
@@ -617,6 +624,11 @@ sobind(struct socket *so, struct sockaddr *nam, struct thread *td)
 {
 	int error;
 
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_bind(ANY(ptr), so, nam) ==
+	    0);
+#endif
+
 	CURVNET_SET(so->so_vnet);
 	error = (*so->so_proto->pr_usrreqs->pru_bind)(so, nam, td);
 	CURVNET_RESTORE();
@@ -627,6 +639,11 @@ int
 sobindat(int fd, struct socket *so, struct sockaddr *nam, struct thread *td)
 {
 	int error;
+
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_bind(ANY(ptr), so, nam) ==
+	    0);
+#endif
 
 	CURVNET_SET(so->so_vnet);
 	error = (*so->so_proto->pr_usrreqs->pru_bindat)(fd, so, nam, td);
@@ -650,6 +667,10 @@ int
 solisten(struct socket *so, int backlog, struct thread *td)
 {
 	int error;
+
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_listen(ANY(ptr), so) == 0);
+#endif
 
 	CURVNET_SET(so->so_vnet);
 	error = (*so->so_proto->pr_usrreqs->pru_listen)(so, backlog, td);
@@ -898,6 +919,12 @@ soaccept(struct socket *so, struct sockaddr **nam)
 {
 	int error;
 
+#ifdef MAC
+	/* Access-control check is on head rather than so. */
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_accept(ANY(ptr), ANY(ptr)) ==
+	    0);
+#endif
+
 	SOCK_LOCK(so);
 	KASSERT((so->so_state & SS_NOFDREF) != 0, ("soaccept: !NOFDREF"));
 	so->so_state &= ~SS_NOFDREF;
@@ -912,6 +939,11 @@ soaccept(struct socket *so, struct sockaddr **nam)
 int
 soconnect(struct socket *so, struct sockaddr *nam, struct thread *td)
 {
+
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_connect(td->td_ucred, so,
+	    nam) == 0);
+#endif
 
 	return (soconnectat(AT_FDCWD, so, nam, td));
 }
@@ -1449,6 +1481,10 @@ sosend(struct socket *so, struct sockaddr *addr, struct uio *uio,
     struct mbuf *top, struct mbuf *control, int flags, struct thread *td)
 {
 	int error;
+
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_send(ANY(ptr), so) == 0);
+#endif
 
 	CURVNET_SET(so->so_vnet);
 	error = so->so_proto->pr_usrreqs->pru_sosend(so, addr, uio, top,
@@ -2406,6 +2442,10 @@ soreceive(struct socket *so, struct sockaddr **psa, struct uio *uio,
 {
 	int error;
 
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_receive(ANY(ptr), so) == 0);
+#endif
+
 	CURVNET_SET(so->so_vnet);
 	error = (so->so_proto->pr_usrreqs->pru_soreceive(so, psa, uio, mp0,
 	    controlp, flagsp));
@@ -3079,6 +3119,14 @@ sopoll_generic(struct socket *so, int events, struct ucred *active_cred,
 {
 	int revents = 0;
 
+#ifdef MAC
+	/*
+	 * XXXRW: Should be active_cred but actually fp->f_cred is getting
+	 * passed down the stack, so the wrong cred here!
+	 */
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_poll(ANY(ptr), so) == 0);
+#endif
+
 	SOCKBUF_LOCK(&so->so_snd);
 	SOCKBUF_LOCK(&so->so_rcv);
 	if (events & (POLLIN | POLLRDNORM))
@@ -3123,6 +3171,10 @@ soo_kqfilter(struct file *fp, struct knote *kn)
 {
 	struct socket *so = kn->kn_fp->f_data;
 	struct sockbuf *sb;
+
+#ifdef MAC
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_poll(ANY(ptr), so) == 0);
+#endif
 
 	switch (kn->kn_filter) {
 	case EVFILT_READ:
