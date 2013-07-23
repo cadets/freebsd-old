@@ -11,7 +11,7 @@ CFLAGS+=	-DHAVE_CONFIG_H -I${.CURDIR}
 
 INCS=		tesla.h libtesla.h
 SRCS=		tesla_class.c tesla_class_global.c tesla_class_perthread.c \
-		tesla_debug.c tesla_dtrace.c tesla_key.c tesla_notification.c \
+		tesla_debug.c tesla_dtrace.c tesla_notification.c \
 		tesla_store.c tesla_update.c tesla_util.c
 
 .include <bsd.lib.mk>
