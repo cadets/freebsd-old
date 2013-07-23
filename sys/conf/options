@@ -672,6 +672,10 @@ KTR_BOOT_ENTRIES	opt_global.h
 KTR_ENTRIES		opt_global.h
 KTR_VERBOSE		opt_ktr.h
 TESLA			opt_global.h
+TESLA_CAPSICUM		opt_global.h
+TESLA_MAC		opt_global.h
+TESLA_PRIV		opt_global.h
+TESLA_PROC		opt_global.h
 WITNESS			opt_global.h
 WITNESS_KDB		opt_witness.h
 WITNESS_NO_VNODE	opt_witness.h

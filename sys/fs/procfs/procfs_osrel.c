@@ -45,7 +45,9 @@ procfs_doosrel(PFS_FILL_ARGS)
 	const char *pp;
 	int ov, osrel, i;
 
+#ifdef TESLA_PROC
 	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), p) == 0);
+#endif
 
 	if (uio == NULL)
 		return (EOPNOTSUPP);

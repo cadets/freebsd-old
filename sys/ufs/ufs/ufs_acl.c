@@ -364,8 +364,10 @@ ufs_getacl(ap)
 {
 
 #ifdef MAC
+#ifdef TESLA_MAC
 	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_getacl(ANY(ptr), ap->a_vp,
 	    ap->a_type) == 0);
+#endif
 #endif
 
 	if ((ap->a_vp->v_mount->mnt_flag & (MNT_ACLS | MNT_NFS4ACLS)) == 0)
@@ -620,12 +622,14 @@ ufs_setacl(ap)
 {
 
 #ifdef MAC
+#ifdef TESLA_MAC
 	if (ap->a_aclp == NULL)
 		TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_deleteacl(ANY(ptr),
 		    ap->a_vp, ap->a_type) == 0);
 	else
 		TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_setacl(ANY(ptr),
 		    ap->a_vp, ap->a_type, ap->a_aclp) == 0);
+#endif
 #endif
 
 	if ((ap->a_vp->v_mount->mnt_flag & (MNT_ACLS | MNT_NFS4ACLS)) == 0)

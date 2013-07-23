@@ -313,7 +313,9 @@ procfs_doprocctl(PFS_FILL_ARGS)
 	int error;
 	struct namemap *nm;
 
+#ifdef TESLA_PROC
 	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), p) == 0);
+#endif
 
 	if (uio == NULL || uio->uio_rw != UIO_WRITE)
 		return (EOPNOTSUPP);

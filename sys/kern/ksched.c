@@ -137,7 +137,9 @@ ksched_setparam(struct ksched *ksched,
 	int policy;
 	int e;
 
+#ifdef TESLA_PROC
 	TESLA_SYSCALL_PREVIOUSLY(p_cansched(ANY(ptr), td->td_proc) == 0);
+#endif
 
 	e = getscheduler(ksched, td, &policy);
 
@@ -155,7 +157,9 @@ ksched_getparam(struct ksched *ksched,
 {
 	struct rtprio rtp;
 
+#ifdef TESLA_PROC
 	TESLA_SYSCALL_PREVIOUSLY(p_cansee(ANY(ptr), td->td_proc) == 0);
+#endif
 
 	pri_to_rtp(td, &rtp);
 	if (RTP_PRIO_IS_REALTIME(rtp.type))
@@ -187,7 +191,9 @@ ksched_setscheduler(struct ksched *ksched,
 	int e = 0;
 	struct rtprio rtp;
 
+#ifdef TESLA_PROC
 	TESLA_SYSCALL_PREVIOUSLY(p_cansched(ANY(ptr), td->td_proc) == 0);
+#endif
 
 	switch(policy)
 	{
@@ -232,7 +238,9 @@ int
 ksched_getscheduler(struct ksched *ksched, struct thread *td, int *policy)
 {
 
+#ifdef TESLA_PROC
 	TESLA_SYSCALL_PREVIOUSLY(p_cansee(ANY(ptr), td->td_proc) == 0);
+#endif
 
 	return getscheduler(ksched, td, policy);
 }
@@ -297,7 +305,9 @@ ksched_rr_get_interval(struct ksched *ksched,
    struct thread *td, struct timespec *timespec)
 {
 
+#ifdef TESLA_PROC
 	TESLA_SYSCALL_PREVIOUSLY(p_cansee(ANY(ptr), td->td_proc) == 0);
+#endif
 
 	*timespec = ksched->rr_interval;
 

@@ -143,8 +143,10 @@ mac_pipe_relabel(struct ucred *cred, struct pipepair *pp,
     struct label *newlabel)
 {
 
+#ifdef TESLA_MAC
 	TESLA_SYSCALL_PREVIOUSLY(mac_pipe_check_relabel(cred, pp, newlabel)
 	    == 0);
+#endif
 
 	MAC_POLICY_PERFORM_NOSLEEP(pipe_relabel, cred, pp, pp->pp_label,
 	    newlabel);

@@ -74,7 +74,9 @@ procfs_doprocfile(PFS_FILL_ARGS)
 	struct vnode *textvp;
 	int error;
 
+#ifdef TESLA_PROC
 	TESLA_SYSCALL_PREVIOUSLY(p_cansee(ANY(ptr), p) == 0);
+#endif
 
 	freepath = NULL;
 	PROC_LOCK(p);
