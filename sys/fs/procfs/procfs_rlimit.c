@@ -55,6 +55,7 @@
 #include <sys/sbuf.h>
 #include <sys/types.h>
 #include <sys/malloc.h>
+#include <sys/tesla-kernel.h>
 
 #include <fs/pseudofs/pseudofs.h>
 #include <fs/procfs/procfs.h>
@@ -65,6 +66,8 @@ procfs_doprocrlimit(PFS_FILL_ARGS)
 {
 	struct plimit *limp;
 	int i;
+
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), p) == 0);
 
 	/*
 	 * Obtain a private reference to resource limits

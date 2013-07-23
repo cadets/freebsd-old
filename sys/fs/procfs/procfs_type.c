@@ -38,6 +38,7 @@
 #include <sys/proc.h>
 #include <sys/sbuf.h>
 #include <sys/sysent.h>
+#include <sys/tesla-kernel.h>
 
 #include <fs/pseudofs/pseudofs.h>
 #include <fs/procfs/procfs.h>
@@ -46,6 +47,8 @@ int
 procfs_doproctype(PFS_FILL_ARGS)
 {
 	static const char *none = "Not Available";
+
+	TESLA_SYSCALL_PREVIOUSLY(p_cansee(ANY(ptr), p) == 0);
 
 	if (p != NULL && p->p_sysent && p->p_sysent->sv_name)
 		sbuf_printf(sb, "%s", p->p_sysent->sv_name);
