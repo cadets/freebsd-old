@@ -73,7 +73,11 @@ __tesla_inline_assertion(const char *filename, int line, int count,
 #ifdef	__TESLA_ANALYSER__
 
 #include <sys/types.h>
+#ifdef _KERNEL
+#include <sys/limits.h>
+#else
 #include <limits.h>
+#endif
 
 /**
  * TESLA events can be serialised either with respect to the current thread
