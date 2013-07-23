@@ -62,7 +62,7 @@ SYSINIT(tesla_global_store, SI_SUB_TESLA, SI_ORDER_FIRST,
 #endif
 
 #ifndef _KERNEL
-__thread tesla_store *cache = NULL;
+static __thread tesla_store *cache = NULL;
 #endif
 
 int32_t
