@@ -113,7 +113,14 @@ int32_t	tesla_instance_new(struct tesla_class *tclass,
  *
  * @returns     1 if active, 0 if inactive
  */
-int32_t	tesla_instance_active(const struct tesla_instance *i);
+static inline int32_t
+tesla_instance_active(const struct tesla_instance *i)
+{
+	assert(i != NULL);
+
+	return ((i->ti_state != 0) || (i->ti_key.tk_mask != 0));
+}
+
 
 
 /** Clone an existing instance into a new instance. */
@@ -139,13 +146,6 @@ void	tesla_instance_clear(struct tesla_instance *tip);
 int32_t	tesla_match(struct tesla_class *tclass, const struct tesla_key *key,
 	    struct tesla_instance **array, uint32_t *size);
 
-/**
- * Check to see if a key matches a pattern.
- *
- * @returns  1 if @a k matches @a pattern, 0 otherwise
- */
-int32_t	tesla_key_matches(
-	    const struct tesla_key *pattern, const struct tesla_key *k);
 
 
 /** Actions that can be taken by @ref tesla_update_state. */
@@ -175,9 +175,6 @@ enum tesla_action_t {
 enum tesla_action_t	tesla_action(const struct tesla_instance*,
 	    const struct tesla_key*, const struct tesla_transitions*,
 	    const struct tesla_transition** trigger);
-
-/** Copy new entries from @a source into @a dest. */
-int32_t	tesla_key_union(struct tesla_key *dest, const struct tesla_key *source);
 
 
 #ifndef __unused
@@ -346,15 +343,16 @@ void	ev_ignored(const struct tesla_class *, const struct tesla_key *,
 #define error(...)	fprintf(stderr, __VA_ARGS__)
 #endif
 
-#ifndef NDEBUG
-
-#define __debug
-
 #ifdef _KERNEL
 #include <sys/systm.h>
 #else
 #include <stdio.h>
 #endif
+
+#ifndef NDEBUG
+
+#define __debug
+
 
 /** Are we in (verbose) debug mode? */
 int32_t	tesla_debugging(const char*);
@@ -369,7 +367,9 @@ int32_t	tesla_debugging(const char*);
 #define __debug __unused
 
 #define DEBUG(...)
-int32_t	tesla_debugging(const char*) { return 0; }
+#define tesla_debugging(...) 0
+#define print_key(...)
+#define print_class(...)
 
 #endif
 
@@ -407,6 +407,10 @@ void	print_transitions(const char *debug, const struct tesla_transitions *);
 char*	sprint_transitions(char *buffer, const char *end,
     const struct tesla_transitions *);
 
+/** Flag indicating whether ev_transition should be called. */
+extern int have_transitions;
+
 /** @} */
+
 
 #endif /* TESLA_INTERNAL_H */

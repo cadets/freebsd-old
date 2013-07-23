@@ -156,12 +156,23 @@ tesla_debugging(const char *name)
 	/*
 	 * Debugging paths could be more vulnerable to format string problems
 	 * than other code; don't allow when running setuid or setgid.
-	 */
-	if (issetugid())
+		*/
+	static int isnotme = -1;
+
+	if (isnotme == -1)
+		isnotme = issetugid();
+
+	if (isnotme)
 		return 0;
 #endif
 
-	const char *env = getenv("TESLA_DEBUG");
+	static const char *env = (char*)-1;
+	if (env == (char*)-1)
+	{
+		env = getenv("TESLA_DEBUG");
+		if (env != 0 && *env == '\0')
+			env = 0;
+	}
 
 	/* If TESLA_DEBUG is not set, we're definitely not debugging. */
 	if (env == NULL)
@@ -245,6 +256,12 @@ print_key(const char *debug_name, const struct tesla_key *key)
 
 	print("%s", buffer);
 }
+
+#else
+
+#undef tesla_debugging
+int32_t
+tesla_debugging(const char *name) { return 0; }
 
 #endif /* !NDEBUG */
 

@@ -90,17 +90,17 @@
 #define	tesla_done		return (__tesla_automaton_done())
 
 #define	optional(...)		__tesla_optional(TIGNORE, __VA_ARGS__)
-#define	ANY_REP	INT_MAX
+#define	ANY_REP			__TESLA_INFINITE_REPETITIONS
 #define	REPEAT(m, n, ...)	__tesla_repeat(m, n, __VA_ARGS__)
 #define	UPTO(n, ...)		__tesla_repeat(1, n, __VA_ARGS__)
 #define	ATLEAST(n, ...)		__tesla_repeat(n, ANY_REP, __VA_ARGS__)
 #define	ANY(int_type)		__tesla_any(int_type)
 
 /** A more programmer-friendly way to write assertions about the past. */
-#define previously(...)    TSEQUENCE(__VA_ARGS__, TESLA_ASSERTION_SITE)
+#define previously(...)		TSEQUENCE(__VA_ARGS__, TESLA_ASSERTION_SITE)
 
 /** A more programmer-friendly way to write assertions about the future. */
-#define eventually(...)    TSEQUENCE(TESLA_ASSERTION_SITE, __VA_ARGS__)
+#define eventually(...)		TSEQUENCE(TESLA_ASSERTION_SITE, __VA_ARGS__)
 
 /** @} */
 

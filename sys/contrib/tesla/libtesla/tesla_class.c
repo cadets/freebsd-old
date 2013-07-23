@@ -33,6 +33,7 @@
  */
 
 #include "tesla_internal.h"
+#include "tesla_key.h"
 
 #ifdef _KERNEL
 MALLOC_DEFINE(M_TESLA, "tesla", "TESLA internal state");
@@ -118,14 +119,6 @@ tesla_match(struct tesla_class *tclass, const struct tesla_key *pattern,
 	return (TESLA_SUCCESS);
 }
 
-
-int
-tesla_instance_active(const struct tesla_instance *i)
-{
-	assert(i != NULL);
-
-	return ((i->ti_state != 0) || (i->ti_key.tk_mask != 0));
-}
 
 
 int32_t
