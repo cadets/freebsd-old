@@ -57,13 +57,15 @@ typedef	int	__tesla_count;
  * Magic "function" representing a TESLA assertion.
  *
  * Its arguments are:
+ *  * an explicit programmer-supplied name (optional: can be set to "")
  *  * name of the file the assertion is located in (__FILE__)
  *  * the line the assertion is defined at (__LINE__)
  *  * a counter to ensure uniqueness (__COUNTER__)
  *  * the TESLA context (per-thread or global)
  */
 void
-__tesla_inline_assertion(const char *filename, int line, int count,
+__tesla_inline_assertion(const char *name,
+	const char *filename, int line, int count,
 	__tesla_locality *loc, ...);
 
 #define	__TESLA_INFINITE_REPETITIONS	INT_MAX
@@ -165,8 +167,8 @@ struct __tesla_automaton_usage;
 struct __tesla_automaton_description*	__tesla_automaton_done();
 
 inline struct __tesla_automaton_usage*
-__tesla_struct_uses_automaton(const char *automaton,
-	__tesla_locality *loc, ...)
+__tesla_struct_uses_automaton(__unused const char *automaton,
+	__unused __tesla_locality *loc, ...)
 {
 	return 0;
 }
@@ -183,7 +185,7 @@ __tesla_struct_uses_automaton(const char *automaton,
  */
 #define	__tesla_struct_usage(subject, automaton, loc, start, end) \
 	struct __tesla_automaton_usage*					\
-	__tesla_struct_automaton_usage_##struct_name##_##automaton(subject) { \
+	__tesla_struct_automaton_usage_##struct_name##_##automaton(__unused subject) { \
 		return __tesla_struct_uses_automaton(			\
 			#automaton, loc, start, end);	\
 	}
