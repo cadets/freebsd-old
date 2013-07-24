@@ -441,10 +441,14 @@ ffs_read(ap)
 	vp = ap->a_vp;
 #ifdef MAC
 #ifdef TESLA_MAC
-	TESLA_SYSCALL(incallstack(ufs_readdir) ||
+	TESLA_SYSCALL(
+	    incallstack(ufs_readdir) ||
+	    previously(called(vn_rdwr(ANY(int), vp, ANY(ptr), ANY(int),
+	    ANY(int), ANY(int), flags(IO_NOMACCHECK), ANY(ptr), ANY(ptr),
+	    ANY(ptr), ANY(ptr)))) ||
 	    previously(mac_vnode_check_read(ANY(ptr), ANY(ptr), vp) == 0));
-	TESLA_PAGE_FAULT(incallstack(ufs_readdir) ||
-	    previously(mac_vnode_check_read(ANY(ptr), ANY(ptr), vp) == 0));
+	TESLA_PAGE_FAULT(previously(mac_vnode_check_read(ANY(ptr), ANY(ptr),
+	    vp) == 0));
 #endif
 #endif
 
@@ -671,8 +675,11 @@ ffs_write(ap)
 	vp = ap->a_vp;
 #ifdef MAC
 #ifdef TESLA_MAC
-	TESLA_SYSCALL(previously(mac_vnode_check_write(ANY(ptr), ANY(ptr), vp)
-	    == 0));
+	TESLA_SYSCALL(
+	    previously(called(vn_rdwr(ANY(int), vp, ANY(ptr), ANY(int),
+	    ANY(int), ANY(int), flags(IO_NOMACCHECK), ANY(ptr), ANY(ptr),
+	    ANY(ptr), ANY(ptr)))) ||
+	    previously(mac_vnode_check_write(ANY(ptr), ANY(ptr), vp) == 0));
 	TESLA_PAGE_FAULT(previously(mac_vnode_check_write(ANY(ptr), ANY(ptr),
 	    vp) == 0));
 #endif
