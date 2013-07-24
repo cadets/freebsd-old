@@ -1720,8 +1720,8 @@ vop_setextattr {
 #ifdef MAC
 #ifdef TESLA_MAC
 	TESLA_SYSCALL(incallstack(ufs_setacl) ||
-	    mac_vnode_check_setextattr(ANY(ptr), ap->a_vp,
-	    ap->a_attrnamespace, ap->a_name) == 0);
+	    previously(mac_vnode_check_setextattr(ANY(ptr), ap->a_vp,
+	    ap->a_attrnamespace, ap->a_name) == 0));
 #endif
 #endif
 
