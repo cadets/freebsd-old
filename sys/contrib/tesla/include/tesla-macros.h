@@ -54,7 +54,7 @@
 /** An inline assertion. */
 #define	TESLA_ASSERT(locality, start, end, expression)			\
 	__tesla_inline_assertion(					\
-		__FILE__, __LINE__, __COUNTER__,			\
+		"", __FILE__, __LINE__, __COUNTER__,			\
 		locality, start, end, expression			\
 	)
 
