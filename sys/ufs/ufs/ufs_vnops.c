@@ -275,7 +275,9 @@ ufs_open(struct vop_open_args *ap)
 
 #ifdef MAC
 #ifdef TESLA_MAC
-	TESLA_SYSCALL(incallstack(kern_execve) ||
+	TESLA_SYSCALL(
+	    previously(mac_kld_check_load(ANY(ptr), vp) == 0) ||
+	    previously(mac_vnode_check_exec(ANY(ptr), vp, ANY(ptr)) == 0) ||
 	    previously(mac_vnode_check_open(ANY(ptr), vp, ANY(int)) == 0));
 #endif
 #endif
