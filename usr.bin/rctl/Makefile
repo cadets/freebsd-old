@@ -1,6 +1,6 @@
 # $FreeBSD$
 
-PROG=   rctl
+PROG=	rctl
 MAN=	rctl.8
 
 DPADD=	${LIBUTIL}

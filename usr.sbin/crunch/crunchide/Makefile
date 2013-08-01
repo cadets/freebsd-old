@@ -1,6 +1,6 @@
 # $FreeBSD$
 
-PROG=   crunchide
+PROG=	crunchide
 SRCS=	crunchide.c
 
 TARGET_ARCH?=	${MACHINE_ARCH}

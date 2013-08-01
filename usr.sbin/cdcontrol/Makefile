@@ -1,6 +1,6 @@
 # $FreeBSD$
 
-PROG= cdcontrol
+PROG=	cdcontrol
 
 DPADD=	${LIBEDIT} ${LIBTERMCAP}
 LDADD=	-ledit -ltermcap

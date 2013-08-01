@@ -1,5 +1,5 @@
 # $FreeBSD$
 
-PROG=   setchannel
+PROG=	setchannel
 
 .include <bsd.prog.mk>

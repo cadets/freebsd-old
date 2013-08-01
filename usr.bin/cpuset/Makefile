@@ -1,5 +1,5 @@
 # $FreeBSD$
 
-PROG=   cpuset
+PROG=	cpuset
 
 .include <bsd.prog.mk>
