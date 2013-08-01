@@ -1,6 +1,6 @@
 # $FreeBSD: head/usr.sbin/cdcontrol/Makefile 201724 2010-01-07 09:40:34Z dwmalone $
 
-PROG= cdcontrol
+PROG=	cdcontrol
 
 DPADD=	${LIBEDIT} ${LIBTERMCAP}
 LDADD=	-ledit -ltermcap

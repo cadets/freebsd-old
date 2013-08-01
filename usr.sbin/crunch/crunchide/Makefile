@@ -1,6 +1,6 @@
 # $FreeBSD: head/usr.sbin/crunch/crunchide/Makefile 232911 2012-03-13 05:21:14Z jmallett $
 
-PROG=   crunchide
+PROG=	crunchide
 SRCS=	crunchide.c
 
 TARGET_ARCH?=	${MACHINE_ARCH}
