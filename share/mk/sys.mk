@@ -233,12 +233,6 @@ YFLAGS		?=	-d
 	cp -fp ${.IMPSRC} ${.TARGET}
 	chmod a+x ${.TARGET}
 
-.c.obc:
-	${CC} ${CFLAGS:N-O*} -emit-llvm -c ${.IMPSRC} -o ${.TARGET}
-
-.c.oll:
-	${CC} ${CFLAGS:N-O*} -emit-llvm -S ${.IMPSRC} -o ${.TARGET}
-
 .c.ln:
 	${LINT} ${LINTOBJFLAGS} ${CFLAGS:M-[DIU]*} ${.IMPSRC} || \
 	    touch ${.TARGET}
@@ -255,6 +249,12 @@ YFLAGS		?=	-d
 	${CC} ${CFLAGS} -c ${.IMPSRC}
 	${CTFCONVERT_CMD}
 
+.c.obc:
+	${CC} ${CFLAGS:N-O*} -emit-llvm -c ${.IMPSRC} -o ${.TARGET}
+
+.c.oll:
+	${CC} ${CFLAGS:N-O*} -emit-llvm -S ${.IMPSRC} -o ${.TARGET}
+
 .c.tesla:
 	${TESLA} analyse ${.IMPSRC} -o ${.TARGET} -- ${CFLAGS} ${XFLAGS} -D TESLA
 
@@ -263,6 +263,12 @@ YFLAGS		?=	-d
 
 .cc.o .cpp.o .cxx.o .C.o:
 	${CXX} ${CXXFLAGS} -c ${.IMPSRC}
+
+.cc.obc .cpp.obc .cxx.obc .C.obc:
+	${CC} ${CXXFLAGS:N-O*} -emit-llvm -c ${.IMPSRC} -o ${.TARGET}
+
+.c.oll:
+	${CC} ${CXXFLAGS:N-O*} -emit-llvm -S ${.IMPSRC} -o ${.TARGET}
 
 .m.o:
 	${OBJC} ${OBJCFLAGS} -c ${.IMPSRC}

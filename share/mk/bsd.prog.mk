@@ -52,7 +52,27 @@ SRCS=	${PROG}.c
 .endif
 
 .if defined(SRCS) && !empty(SRCS)
+# XXX: currently tesla can't handle C++ so build C++ code normaly in the
+# WITH_TESLA case.
+.if defined(NO_LLVM_IR) || ${MK_LLVM_INSTRUMENTED} == "no" || \
+    (${MK_TESLA} != "no" && defined(PROG_CXX))
 OBJS+=  ${SRCS:N*.h:R:S/$/.o/g}
+.else
+# XXX: should blow up if other SRCS types are found
+OBJS+=		${SRCS:M*.bin:R:S/$/.o/g:N.o} ${SRCS:M*.[Ss]:R:S/$/.o/g:N.o}
+LLVM_CFILES=	${SRCS:M*.c} \
+		${SRCS:M*.cc} ${SRCS:M*.cpp} ${SRCS:M*.cxx} ${SRCS:M*.C} \
+		${SRCS:M*.l:R:S/$/.c/:N.c} ${SRCS:M*.y:R:S/$/.c/:N.c}
+OIRS=		${LLVM_CFILES:R:S/$/.o${LLVM_IR_TYPE}/}
+INSTR_IRS=	${LLVM_CFILES:R:S/$/.instr${LLVM_IR_TYPE}/}
+INSTR_OBJS=	${LLVM_CFILES:R:S/$/.instro/}
+OBJS+=		${INSTR_OBJS}
+CLEANFILES+=	${OIRS} ${INSTR_IRS} ${INSTR_OBJS}
+.if ${MK_TESLA} != "no"
+TESLA_FILES=	${LLVM_CFILES:R:S/$/.tesla/}
+CLEANFILES+=	${TESLA_FILES} tesla.manifest
+.endif
+.endif
 
 .if target(beforelinking)
 beforelinking: ${OBJS}
@@ -69,47 +89,15 @@ ${PROG}: ${OBJS}
 .endif
 .endif
 
-# XXX: forced assignment due to make not figuring out how to make things
-# from generated .c files (which are added to SRCS later).
-CSRC_OBJS:=	${SRCS:M*.c:R:S/$/.object/:N.object}
-CXXSRC_OBJS:=	${SRCS:M*.cc:R:S/$/.object/:N.object} \
-		${SRCS:M*.cpp:R:S/$/.object/:N.object} \
-		${SRCS:M*.cxx:R:S/$/.object/:N.object} \
-		${SRCS:M*.C:R:S/$/.object/:N.object}
-SRC_OBJS=	${CSRC_OBJS} ${CXX_OBJS}
-
-TESLA_FILES=	${CSRC_OBJS:.object=.tesla}
-OLLS=		${CSRC_OBJS:.object=.oll}
-INSTRLLS=	${CSRC_OBJS:.object=.instrll}
-INSTROBJS=	${CSRC_OBJS:.object=.instro}
-CLEANFILES+=	${TESLA_FILES} tesla.manifest ${OLLS} ${INSTRLLS} ${INSTROBJS} \
-		${PROG}.instrumented
-
+.if ${MK_TESLA} != "no"
 tesla.manifest: ${TESLA_FILES}
 	cat ${TESLA_FILES} > ${.TARGET}
 
-tesla: ${PROG}.instrumented
-
-${PROG}.instrumented: ${INSTROBJS}
-	${CC} ${CFLAGS} ${LDFLAGS} -o ${.TARGET} ${INSTROBJS} ${LDADD} -ltesla
-
-.if defined(LLVM_IR) && !defined(NO_LLVM_IR)
-LOBJS:=		${SRC_OBJS:.object=.obc}
-CLEANFILES+=	${PROG}.bc ${LOBJS}
-
-.if !empty(LOBJS)
-all: ${PROG}.bc
-${PROG}.bc: ${LOBJS}
-	${LLVM_LINK} -o ${.TARGET} ${LOBJS}
-
-all: ${PROG}.bc-opt
-${PROG}.bc-opt: ${PROG}.bc
-.if empty(OPT_PASSES)
-	cp ${PROG}.bc ${.TARGET}
+DPADD+=	${LIBTESLA}
+LDADD+= -ltesla
 .else
-	${OPT} -o ${.TARGET} ${OPT_PASSES} ${PROG}.bc
-.endif
-.endif
+tesla.manifest:
+	touch ${.TARGET}
 .endif
 
 .if	${MK_MAN} != "no" && !defined(MAN) && \
