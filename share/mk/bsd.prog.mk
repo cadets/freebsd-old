@@ -42,8 +42,16 @@ PROG=	${PROG_CXX}
 
 .if defined(PROG)
 PROGNAME?=	${PROG}
-.if defined(SRCS)
 
+.if !defined(SRCS) && !target(${PROG})
+.if defined(PROG_CXX)
+SRCS=	${PROG}.cc
+.else
+SRCS=	${PROG}.c
+.endif
+.endif
+
+.if defined(SRCS) && !empty(SRCS)
 OBJS+=  ${SRCS:N*.h:R:S/$/.o/g}
 
 .if target(beforelinking)
@@ -59,39 +67,7 @@ ${PROG}: ${OBJS}
 .if ${MK_CTF} != "no"
 	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${OBJS}
 .endif
-
-.else	# !defined(SRCS)
-
-.if !target(${PROG})
-.if defined(PROG_CXX)
-SRCS=	${PROG}.cc
-.else
-SRCS=	${PROG}.c
 .endif
-
-# Always make an intermediate object file because:
-# - it saves time rebuilding when only the library has changed
-# - the name of the object gets put into the executable symbol table instead of
-#   the name of a variable temporary object.
-# - it's useful to keep objects around for crunching.
-OBJS+=	${PROG}.o
-
-.if target(beforelinking)
-beforelinking: ${OBJS}
-${PROG}: beforelinking
-.endif
-${PROG}: ${OBJS}
-.if defined(PROG_CXX)
-	${CXX} ${CXXFLAGS} ${LDFLAGS} -o ${.TARGET} ${OBJS} ${LDADD}
-.else
-	${CC} ${CFLAGS} ${LDFLAGS} -o ${.TARGET} ${OBJS} ${LDADD}
-.endif
-.if ${MK_CTF} != "no"
-	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${OBJS}
-.endif
-.endif
-
-.endif # !defined(SRCS)
 
 # XXX: forced assignment due to make not figuring out how to make things
 # from generated .c files (which are added to SRCS later).
