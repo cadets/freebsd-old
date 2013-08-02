@@ -821,6 +821,23 @@ do_rules(FILE *f)
 				fprintf(f, "\t%s -S -emit-llvm -o ${.TARGET}\n",
 				    teslacompilewith);
 			fprintf(f, "\n");
+
+			if (ftp->f_depends)
+				fprintf(f, "%s%sobc: $S/%s%c %s\n",
+					ftp->f_objprefix, tail(np), np, och,
+					ftp->f_depends);
+			else
+				fprintf(f, "%s%sobc: $S/%s%c\n",
+					ftp->f_objprefix, tail(np), np, och);
+			if (strlen(ftp->f_objprefix))
+				fprintf(f,
+				    "\t%s $S/%s -emit-llvm -o ${.TARGET}\n",
+				    teslacompilewith, np);
+			else
+				fprintf(f, "\t%s -emit-llvm -o ${.TARGET}\n",
+				    teslacompilewith);
+			fprintf(f, "\n");
+
 			if (teslacompilewith != compilewith)
 				free(teslacompilewith);
 
