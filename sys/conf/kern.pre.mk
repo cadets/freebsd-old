@@ -176,9 +176,9 @@ SYSTEM_OBJS+= ${OBJS} ${SYSTEM_CFILES:.c=.o}
 # XXX: should probably include GEN_CFILES, but may be tricky
 LLVM_CFILES= ${CFILES} ${SYSTEM_CFILES}
 TESLA_FILES= ${LLVM_CFILES:T:.c=.tesla}
-OLLS= ${LLVM_CFILES:T:.c=.oll}
-INSTRLLS= ${LLVM_CFILES:T:.c=.instrll}
-INSTROBJS= ${LLVM_CFILES:T:.c=.instro}
+OIRS= ${LLVM_CFILES:T:.c=.o${LLVM_IR_TYPE}}
+INSTR_IRS= ${LLVM_CFILES:T:.c=.instr${LLVM_IR_TYPE}}
+INSTR_OBJS= ${LLVM_CFILES:T:.c=.instro}
 SYSTEM_OBJS+= ${LLVM_CFILES:T:.c=.instro} ${NOT_C_OBJS}
 .endif
 SYSTEM_OBJS+= hack.So

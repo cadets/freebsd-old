@@ -32,7 +32,7 @@ MACHINE_CPUARCH=${MACHINE_ARCH:C/mips(n32|64)?(el)?/mips/:C/arm(v6)?(eb)?/arm/:C
 .if defined(%POSIX)
 .SUFFIXES:	.o .c .y .l .a .sh .f
 .else
-.SUFFIXES:	.out .a .dot .instrll .instro .oll .ln .manifest .o .c .cc .cpp .cxx .C .m .F .f .e .r .tesla .y .l .S .asm .s .cl .p .h .sh
+.SUFFIXES:	.out .a .dot .instrbc .instrll .instro .obc .oll .ln .manifest .o .c .cc .cpp .cxx .C .m .F .f .e .r .tesla .y .l .S .asm .s .cl .p .h .sh
 .endif
 
 AR		?=	ar
@@ -127,6 +127,8 @@ LINTLIBFLAGS	?=	-cghapbxu -C ${LIB}
 
 LLC		?=	llc
 LLCFLAGS	?=	${CFLAGS:M-O*:S/^-O$/-O1/:S/-O/-O=/}
+
+LLVM_IR_TYPE	?=	bc
 
 LLVM_LINK	?=	llvm-link
 
@@ -231,6 +233,9 @@ YFLAGS		?=	-d
 	cp -fp ${.IMPSRC} ${.TARGET}
 	chmod a+x ${.TARGET}
 
+.c.obc:
+	${CC} ${CFLAGS:N-O*} -emit-llvm -c ${.IMPSRC} -o ${.TARGET}
+
 .c.oll:
 	${CC} ${CFLAGS:N-O*} -emit-llvm -S ${.IMPSRC} -o ${.TARGET}
 
@@ -274,12 +279,23 @@ YFLAGS		?=	-d
 .e.o .r.o .F.o .f.o:
 	${FC} ${RFLAGS} ${EFLAGS} ${FFLAGS} -c ${.IMPSRC}
 
+.if ${LLVM_IR_TYPE} == "bc"
+.instrbc.instro:
+	${LLC} -filetype=obj ${LLCFLAGS} ${.IMPSRC} -o ${.TARGET}
+	${CTFCONVERT_CMD}
+.elif ${LLVM_IR_TYPE} == "ll"
 .instrll.instro:
 	${LLC} -filetype=obj ${LLCFLAGS} ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
+.else
+.error Unknown LLVM IR type ${LLVM_IR_TYPE}
+.endif
 
 .manifest.dot:
 	${TESLA} graph ${.IMPSRC} -o ${.TARGET}
+
+.obc.instrbc: tesla.manifest
+	${LLVM_INSTR_COMMAND}
 
 .oll.instrll: tesla.manifest
 	${LLVM_INSTR_COMMAND}

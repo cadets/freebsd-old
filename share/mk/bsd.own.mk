@@ -646,8 +646,15 @@ MK_LLVM_INSTRUMENTED:=	no
 .endif
 .else
 LLVM_INSTR_DEP= tesla.manifest
+.if ${LLVM_IR_TYPE} == "bc"
+LLVM_INSTR_COMMAND= ${TESLA} instrument -verify-each -tesla-manifest \
+    tesla.manifest ${.IMPSRC} -o ${.TARGET}
+.elif ${LLVM_IR_TYPE} == "ll"
 LLVM_INSTR_COMMAND= ${TESLA} instrument -S -verify-each -tesla-manifest \
     tesla.manifest ${.IMPSRC} -o ${.TARGET}
+.else
+.error unknown LLVM IR type ${LLVM_IR_TYPE}
+.endif
 .if defined(WITHOUT_LLVM_INSTRUMENTED)
 .error WITHOUT_LLVM_INSTRUMENTED and WITH_TESLA can't both be set.
 .else
