@@ -157,7 +157,7 @@ kernel-clean:
 	    linterrs tags vers.c \
 	    vnode_if.c vnode_if.h vnode_if_newproto.h vnode_if_typedef.h \
 	    ${MFILES:T:S/.m$/.c/} ${MFILES:T:S/.m$/.h/} \
-	    ${TESLA_FILES} ${OLLS} ${INSTRLLS} ${INSTROBJS} \
+	    ${TESLA_FILES} ${OIRS} ${INSTR_IRS} ${INSTR_OBJS} \
 	    tesla.manifest \
 	    ${CLEAN}
 
