@@ -1,0 +1,7 @@
+include TESLA
+ident TESLA_NODEBUG
+
+nooptions INVARIANTS
+nooptions INVARIANT_SUPPORT
+nooptions WITNESS
+nooptions WITNESS_SKIPSPIN
