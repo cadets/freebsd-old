@@ -73,7 +73,7 @@ SUBDIR+=gnu include
 .if ${MK_KERBEROS} != "no"
 SUBDIR+=kerberos5
 .endif
-.if ${MK_RESCUE} != "no"
+.if ${MK_RESCUE} != "no" && ${MK_LLVM_INSTRUMENTED} == "no"
 SUBDIR+=rescue
 .endif
 SUBDIR+=sbin
@@ -237,7 +237,8 @@ BMAKE=		MAKEOBJDIRPREFIX=${WORLDTMP} \
 		DESTDIR= \
 		BOOTSTRAPPING=${OSRELDATE} \
 		SSP_CFLAGS= \
-		-DWITHOUT_HTML -DWITHOUT_INFO -DNO_LINT -DWITHOUT_MAN \
+		-DWITHOUT_HTML -DWITHOUT_INFO -DNO_LLVM_IR -DNO_LINT \
+		-DWITHOUT_MAN \
 		-DNO_PIC -DNO_PROFILE -DNO_SHARED \
 		-DNO_CPU_CFLAGS -DNO_WARNS -DNO_CTF -DEARLY_BUILD
 
@@ -1270,7 +1271,7 @@ _share=	share/syscons/scrnmaps
 _gcc_tools= gnu/usr.bin/cc/cc_tools
 .endif
 
-.if ${MK_RESCUE} != "no"
+.if ${MK_RESCUE} != "no" && ${MK_LLVM_INSTRUMENTED} == "no"
 _rescue= rescue/rescue
 .endif
 
