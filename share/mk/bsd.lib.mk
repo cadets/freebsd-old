@@ -60,12 +60,15 @@ PICFLAG=-fpic
 
 PO_FLAG=-pg
 
-.c.obc:
-	${CC} -c -g -emit-llvm ${CFLAGS} ${.IMPSRC} -o ${.TARGET}
-
 .c.o:
 	${CC} ${STATIC_CFLAGS} ${CFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
+
+.c.obc:
+	${CC} -emit-llvm ${STATIC_CFLAGS} ${CFLAGS:N-O*} -c ${.IMPSRC} -o ${.TARGET}
+
+.c.oll:
+	${CC} -emit-llvm ${STATIC_CFLAGS} ${CFLAGS:N-O*} -S ${.IMPSRC} -o ${.TARGET}
 
 .c.po:
 	${CC} ${PO_FLAG} ${STATIC_CFLAGS} ${PO_CFLAGS} -c ${.IMPSRC} -o ${.TARGET}
@@ -77,6 +80,12 @@ PO_FLAG=-pg
 
 .cc.o .C.o .cpp.o .cxx.o:
 	${CXX} ${STATIC_CXXFLAGS} ${CXXFLAGS} -c ${.IMPSRC} -o ${.TARGET}
+
+.cc.obc .cpp.obc .cxx.obc .C.obc:
+	${CXX} -emit-llvm ${STATIC_CXXFLAGS} ${CXXFLAGS:N-O*} -c ${.IMPSRC} -o ${.TARGET}
+
+.cc.oll .cpp.oll .cxx.oll .C.oll:
+	${CXX} -emit-llvm ${STATIC_CXXFLAGS} ${CXXFLAGS:N-O*} -S ${.IMPSRC} -o ${.TARGET}
 
 .cc.po .C.po .cpp.po .cxx.po:
 	${CXX} ${PO_FLAG} ${STATIC_CXXFLAGS} ${PO_CXXFLAGS} -c ${.IMPSRC} -o ${.TARGET}
@@ -150,25 +159,36 @@ lib${LIB}.a: ${OBJS} ${STATICOBJS}
 .endif
 	${RANLIB} ${.TARGET}
 
-.if defined(LLVM_IR) && !defined(NO_LLVM_IR)
-_LIBS+=	lib${LIB}.bc lib${LIB}.bc-opt
-# XXX: force expantion now to avoid picking up generated C code.
-# Ideally we do want it, but there is an undiagnosed dependency issue that
-# causes the .obc file to not be built.
-LOBJS:=		${SRCS:M*.[Cc]:R:S/$/.obc/:N.obc} \
-		${SRCS:M*.cc:R:S/$/.obc/:N.obc} \
-		${SRCS:M*.cpp:R:S/$/.obc/:N.obc} \
-		${SRCS:M*.cxx:R:S/$/.obc/:N.obc}
-LLVM_LINK?=	llvm-link
+.if !defined(NO_LLVM_IR) && ${MK_LLVM_INSTRUMENTED} != "no"
+_LIBS+=	lib${LIB}.${LLVM_IR_TYPE}-a lib${LIB}.native-a
+OIRS=	${SRCS:M*.[Ccly]:R:S/$/.o${LLVM_IR_TYPE}/:N.o${LLVM_IR_TYPE}} \
+	${SRCS:M*.cc:R:S/$/.o${LLVM_IR_TYPE}/:N.o${LLVM_IR_TYPE}} \
+	${SRCS:M*.cpp:R:S/$/.o${LLVM_IR_TYPE}/:N.o${LLVM_IR_TYPE}} \
+	${SRCS:M*.cxx:R:S/$/.o${LLVM_IR_TYPE}/:N.o${LLVM_IR_TYPE}}
+NOBJS=	${SRCS:M*.[Ss]:R:S/$/.o/:N.o}
+CLEANFILES+=	${OIRS} ${NOBJS} \
+		lib${LIB}.${LLVM_IR_TYPE}-a lib${LIB}.native-a
 
-lib${LIB}.bc: ${LOBJS}
-	${LLVM_LINK} -o ${.TARGET} ${LOBJS}
+lib${LIB}.${LLVM_IR_TYPE}-a: ${OIRS}
+	if [ -z "${OIRS}" ]; then \
+		touch ${.TARGET} ;\
+	else \
+		${LLVM_LINK} -o ${.TARGET} ${OIRS} ;\
+	fi
 
-lib${LIB}.bc-opt: lib${LIB}.bc
-.if empty(OPT_PASSES)
-	cp lib${LIB}.bc ${.TARGET}
+lib${LIB}.native-a: ${NOBJS}
+.if !defined(NM)
+	if [ -z "${NOBJS}" ]; then \
+		touch ${.TARGET} ;\
+	else \
+		${AR} ${ARFLAGS} ${.TARGET} `lorder ${OBJS} ${STATICOBJS} | tsort -q` ${ARADD} ;\
+	fi
 .else
-	${OPT} -o ${.TARGET} ${OPT_PASSES} lib${LIB}.bc
+	if [ -z "${NOBJS}" ]; then \
+		touch ${.TARGET} ;\
+	else \
+		${AR} ${ARFLAGS} ${.TARGET} `NM='${NM}' lorder ${OBJS} ${STATICOBJS} | tsort -q` ${ARADD} ;\
+	fi
 .endif
 
 .endif
@@ -304,6 +324,15 @@ _libinstall:
 	${INSTALL} -C -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
 	    ${_INSTALLFLAGS} lib${LIB}.a ${DESTDIR}${LIBDIR}
 .endif
+.if defined(LIB) && !empty(LIB) && ${MK_INSTALLLIB} != "no" && \
+    !defined(NO_LLVM_IR) && ${MK_LLVM_INSTRUMENTED} != "no"
+	test -n lib${LIB}.${LLVM_IR_TYPE}-a && \
+	${INSTALL} -C -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
+	    ${_INSTALLFLAGS} lib${LIB}.${LLVM_IR_TYPE}-a ${DESTDIR}${LIBDIR}
+	test -n lib${LIB}.native-a && \
+	${INSTALL} -C -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
+	    ${_INSTALLFLAGS} lib${LIB}.native-a ${DESTDIR}${LIBDIR}
+.endif
 .if ${MK_PROFILE} != "no" && defined(LIB) && !empty(LIB)
 	${INSTALL} -C -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
 	    ${_INSTALLFLAGS} lib${LIB}_p.a ${DESTDIR}${LIBDIR}
@@ -414,9 +443,6 @@ clean:
 .endif
 .if defined(LIB) && !empty(LIB)
 	rm -f a.out ${OBJS} ${OBJS:S/$/.tmp/} ${STATICOBJS}
-.if defined(LLVM_IR)
-	rm -f ${LOBJS}
-.endif
 .endif
 .if !defined(INTERNALLIB)
 .if ${MK_PROFILE} != "no" && defined(LIB) && !empty(LIB)
