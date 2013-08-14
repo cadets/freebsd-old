@@ -76,10 +76,10 @@ struct sendfile_test {
 	uint32_t	length;
 };
 
-int	file_fd;
-char	path[PATH_MAX];
-int	listen_socket;
-int	accept_socket;
+static int	file_fd;
+static char	path[PATH_MAX];
+static int	listen_socket;
+static int	accept_socket;
 
 static int test_th(struct test_header *th, uint32_t *header_length,
 		uint32_t *offset, uint32_t *length);
