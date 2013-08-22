@@ -33,6 +33,10 @@
 #ifndef TESLA_INTERNAL_H
 #define	TESLA_INTERNAL_H
 
+#include <sys/cdefs.h>
+
+__BEGIN_DECLS
+
 /**
  * @addtogroup libtesla
  * @{
@@ -181,6 +185,17 @@ enum tesla_action_t	tesla_action(const struct tesla_instance*,
 	    const struct tesla_key*, const struct tesla_transitions*,
 	    const struct tesla_transition** trigger);
 
+static __inline uint32_t
+fnv_hash32(uint32_t x)
+{
+	return x * ((uint32_t) 0x01000193UL);
+}
+
+static __inline uint64_t
+fnv_hash64(uint32_t x)
+{
+	return x * ((uint64_t) 0x100000001b3ULL);
+}
 
 #ifndef __unused
 #if __has_attribute(unused)
@@ -230,13 +245,15 @@ enum tesla_action_t	tesla_action(const struct tesla_instance*,
  * we need to.
  */
 struct tesla_class {
-	const char		*tc_name;	/* Name of the assertion. */
-	const char		*tc_description;/* Automaton representation. */
+	/**
+	 * Static automaton description.
+	 */
+	const struct tesla_automaton *tc_automaton;
 	enum tesla_context	 tc_context;	/* Global, thread... */
-	uint32_t		 tc_limit;	/* Maximum instances. */
 
+	uint32_t		 tc_limit;	/* Maximum instances. */
+	uint32_t		 tc_free;	/* Unused instances. */
 	struct tesla_instance	*tc_instances;	/* Instances of this class. */
-	uint32_t		tc_free;	/* Unused instances. */
 
 #ifdef _KERNEL
 	struct mtx		tc_lock;	/* Synchronise tc_table. */
@@ -260,8 +277,11 @@ typedef struct tesla_transitions	tesla_transitions;
  * or in a thread-local context.
  */
 struct tesla_store {
-	uint32_t		length;
-	struct tesla_class	*classes;
+	/** Number of slots to hold TESLA classes. */
+	uint32_t		 ts_length;
+
+	/** Actual slots that classes might be stored in. */
+	struct tesla_class	*ts_classes;
 };
 
 /**
@@ -314,17 +334,18 @@ extern const struct tesla_event_handlers dtrace_handlers;
 
 void	ev_new_instance(struct tesla_class *, struct tesla_instance *);
 void	ev_transition(struct tesla_class *, struct tesla_instance *,
-	    const struct tesla_transition*);
+	    const struct tesla_transition *);
 void	ev_clone(struct tesla_class *, struct tesla_instance *orig,
 	    struct tesla_instance *copy, const struct tesla_transition *);
-void	ev_no_instance(struct tesla_class *, const struct tesla_key *,
-	    const struct tesla_transitions *);
+void	ev_no_instance(struct tesla_class *, int32_t symbol,
+	    const struct tesla_key *);
 void	ev_bad_transition(struct tesla_class *, struct tesla_instance *,
-	    const struct tesla_transitions *);
-void	ev_err(struct tesla_class *tcp, int errno, const char *message);
+	    int32_t symbol);
+void	ev_err(const struct tesla_automaton *, int symbol, int errno,
+	    const char *);
 void	ev_accept(struct tesla_class *, struct tesla_instance *);
-void	ev_ignored(const struct tesla_class *, const struct tesla_key *,
-	    const struct tesla_transitions *);
+void	ev_ignored(const struct tesla_class *, int32_t symbol,
+	    const struct tesla_key *);
 
 /*
  * Debug helpers.
@@ -414,5 +435,6 @@ extern int have_transitions;
 
 /** @} */
 
+__END_DECLS
 
 #endif /* TESLA_INTERNAL_H */

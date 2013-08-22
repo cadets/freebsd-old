@@ -151,7 +151,7 @@ tesla_instance_new(struct tesla_class *tclass, const struct tesla_key *name,
 		return (TESLA_SUCCESS);
 	}
 
-	tesla_assert(*out != NULL, ("no free instances but tc_free was > 0"));
+	tesla_assert(0 && ("no free instances but tc_free was > 0"));
 	return (TESLA_ERROR_ENOMEM);
 }
 
@@ -189,7 +189,8 @@ void
 tesla_class_reset(struct tesla_class *c)
 {
 
-	DEBUG(libtesla.class.reset, "tesla_class_reset %s\n", c->tc_name);
+	DEBUG(libtesla.class.reset, "tesla_class_reset %s\n",
+	      c->tc_automaton->ta_name);
 
 	bzero(c->tc_instances, sizeof(c->tc_instances[0]) * c->tc_limit);
 	c->tc_free = c->tc_limit;

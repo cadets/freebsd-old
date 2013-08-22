@@ -217,7 +217,7 @@ print_class(const struct tesla_class *c)
 
 	print("----\n");
 	print("struct tesla_class @ 0x%tx {\n", (intptr_t) c);
-	print("  name:         '%s',\n", c->tc_name);
+	print("  name:         '%s',\n", c->tc_automaton->ta_name);
 	print("  description:  '[...]',\n");   // TL;DR
 	print("  scope:        ");
 	switch (c->tc_context) {

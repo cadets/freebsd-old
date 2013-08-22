@@ -31,8 +31,12 @@
  * $Id$
  */
 
-#ifndef _TESLA_STATE
-#define	_TESLA_STATE
+#ifndef	_LIBTESLA_H
+#define	_LIBTESLA_H
+
+#include <sys/cdefs.h>
+
+__BEGIN_DECLS
 
 /**
  * Support library for TESLA instrumentation.
@@ -64,6 +68,53 @@ enum tesla_err_t {
  * Provide string versions of TESLA errors.
  */
 const char	*tesla_strerror(int32_t error);
+
+
+
+/**
+ * An internal description of a TESLA automaton, which may be instantiated
+ * a number of times with different names and current states.
+ */
+struct tesla_class;
+
+struct tesla_transitions;
+
+/**
+ * A static description of a TESLA automaton.
+ */
+struct tesla_automaton {
+	/** A unique name, hopefully human-readable. */
+	const char			*ta_name;
+
+	/**
+	 * The number of symbols in the input alphabet (events that can
+	 * be observed).
+	 *
+	 * Input alphabet symbols are integers in the range [0,alphabet_size].
+	 */
+	const int32_t			 ta_alphabet_size;
+
+	/**
+	 * Transitions that will be taken in response to events.
+	 *
+	 * The transitions that can be taken in response to event 42 will
+	 * be found in transitions[42].
+	 */
+	const struct tesla_transitions	*ta_transitions;
+
+	/** Original source description of the automaton. */
+	const char			*ta_description;
+
+	/** Human-readable descriptions of input symbols (for debugging). */
+	const char*			*ta_symbol_names;
+};
+
+
+/**
+ * Register a @ref tesla_automaton (which must survive for the lifetime of
+ * libtesla), receiving a registered @ref tesla_class back.
+ */
+int	tesla_register(const struct tesla_automaton*, struct tesla_class**);
 
 
 /**
@@ -105,32 +156,21 @@ int32_t	tesla_store_get(enum tesla_context context,
 
 
 /**
- * A description of a TESLA automaton, which may be instantiated a number of
- * times with different names and current states.
- */
-struct tesla_class;
-
-/**
  * Retrieve (or create) a @ref tesla_class from a @ref tesla_store.
  *
  * Once the caller is done with the @ref tesla_class, @ref tesla_class_put
  * must be called.
  *
  * @param[in]   store    where the @ref tesla_class is expected to be stored
- * @param[in]   id       a client-generated handle (a small integer, used as
- *                       an index into an array)
+ * @param[in]   description   information about the automaton
  * @param[out]  tclass   the retrieved (or generated) @ref tesla_class;
  *                       only set if function returns TESLA_SUCCESS
- * @param[in]   name     a user-readable name (e.g. an automata filename)
- * @param[in]   description   a user-readable description (for error messages)
  *
  * @returns a TESLA error code (TESLA_SUCCESS, TESLA_ERROR_EINVAL, etc.)
  */
 int32_t	tesla_class_get(struct tesla_store *store,
-	                uint32_t id,
-	                struct tesla_class **tclass,
-	                const char *name,
-	                const char *description);
+	                const struct tesla_automaton *description,
+	                struct tesla_class **tclass);
 
 /** Release resources (e.g., locks) associated with a @ref tesla_class. */
 void	tesla_class_put(struct tesla_class*);
@@ -168,9 +208,6 @@ struct tesla_transitions {
 
 	/** Possible transitions: exactly one must be taken. */
 	struct tesla_transition	*transitions;
-
-	/** A human-readable description for debugging purposes. */
-	const char		*description;
 };
 
 #define	TESLA_KEY_SIZE		4
@@ -196,10 +233,15 @@ struct tesla_key {
 
 /**
  * Update all automata instances that match a given key to a new state.
+ *
+ * @param  context      where the automaton is stored
+ * @param  automaton    static description of the automaton
+ * @param  symbol       identifier of the input symbol (event) to be consumed
+ * @param  pattern      the name extracted from the event
  */
-void	tesla_update_state(enum tesla_context context, uint32_t class_id,
-	const struct tesla_key *key, const char *name, const char *description,
-	const struct tesla_transitions*);
+void	tesla_update_state(enum tesla_context context,
+	const struct tesla_automaton *automaton,
+	uint32_t symbol, const struct tesla_key *pattern);
 
 
 /** A single instance of an automaton: a name (@ref ti_key) and a state. */
@@ -227,14 +269,15 @@ typedef void	(*tesla_ev_clone)(struct tesla_class *,
 
 /** No @ref tesla_class instance was found to match a @ref tesla_key. */
 typedef void	(*tesla_ev_no_instance)(struct tesla_class *,
-	    const struct tesla_key *, const struct tesla_transitions *);
+	    int32_t symbol, const struct tesla_key *);
 
 /** A @ref tesla_instance is not in the right state to take a transition. */
 typedef void	(*tesla_ev_bad_transition)(struct tesla_class *,
-	    struct tesla_instance *, const struct tesla_transitions *);
+	    struct tesla_instance *, int32_t symbol);
 
 /** Generic error handler. */
-typedef void	(*tesla_ev_error)(struct tesla_class *, int32_t, const char *);
+typedef void	(*tesla_ev_error)(const struct tesla_automaton *,
+	    int32_t symbol, int32_t errno, const char *message);
 
 /** A @ref tesla_instance has accepted a sequence of events. */
 typedef void	(*tesla_ev_accept)(struct tesla_class *,
@@ -242,7 +285,7 @@ typedef void	(*tesla_ev_accept)(struct tesla_class *,
 
 /** An event is being ignored. */
 typedef void	(*tesla_ev_ignored)(const struct tesla_class *,
-	    const struct tesla_key *, const struct tesla_transitions *);
+	    int32_t symbol, const struct tesla_key *);
 
 /** A vector of event handlers. */
 struct tesla_event_handlers {
@@ -287,5 +330,7 @@ int	tesla_set_event_handlers(struct tesla_event_metahandler *);
 #endif
 
 /** @} */
+
+__END_DECLS
 
 #endif /* _TESLA_STATE */
