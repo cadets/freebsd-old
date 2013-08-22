@@ -43,7 +43,7 @@ pthread_key_t	pthread_key(void);
 void		tesla_pthread_destructor(void*);
 #endif
 
-static struct tesla_store global_store = { .length = 0 };
+static struct tesla_store global_store = { .ts_length = 0 };
 
 static void	tesla_class_acquire(tesla_class*);
 
@@ -107,13 +107,13 @@ tesla_store_get(enum tesla_context context, uint32_t classes,
 		return (TESLA_ERROR_EINVAL);
 	}
 
-	if (store->length == 0) {
+	if (store->ts_length == 0) {
 		int32_t error =
 			tesla_store_init(store, context, classes, instances);
 
 		if (error != TESLA_SUCCESS) return (error);
 
-		assert(store->classes != NULL);
+		assert(store->ts_classes != NULL);
 	}
 
 	*storep = store;
@@ -128,19 +128,21 @@ tesla_store_init(tesla_store *store, enum tesla_context context,
 	assert(classes > 0);
 	assert(instances > 0);
 
-	store->length = classes;
-	store->classes = tesla_malloc(classes * sizeof(tesla_class));
-	if (store->classes == NULL)
+	store->ts_length = classes;
+	store->ts_classes = tesla_malloc(classes * sizeof(tesla_class));
+	if (store->ts_classes == NULL)
 		return (TESLA_ERROR_ENOMEM);
 
 	int error = TESLA_SUCCESS;
 	for (uint32_t i = 0; i < classes; i++) {
-		error = tesla_class_init(store->classes + i, context, instances);
+		error = tesla_class_init(store->ts_classes + i,
+		                         context, instances);
+
 		assert(error == TESLA_SUCCESS);
 		if (error != TESLA_SUCCESS)
 			break;
 
-		assert(store->classes[i].tc_context >= 0);
+		assert(store->ts_classes[i].tc_context >= 0);
 	}
 
 	return (error);
@@ -152,8 +154,8 @@ tesla_store_free(tesla_store *store)
 {
 	DEBUG(libtesla.store.free, "tesla_store_free %tx\n", store);
 
-	for (uint32_t i = 0; i < store->length; i++)
-		tesla_class_destroy(store->classes + i);
+	for (uint32_t i = 0; i < store->ts_length; i++)
+		tesla_class_destroy(store->ts_classes + i);
 
 	tesla_free(store);
 }
@@ -164,29 +166,53 @@ tesla_store_reset(struct tesla_store *store)
 {
 	DEBUG(libtesla.store.reset, "tesla_store_reset %tx\n", store);
 
-	for (uint32_t i = 0; i < store->length; i++)
-		tesla_class_reset(store->classes + i);
+	for (uint32_t i = 0; i < store->ts_length; i++)
+		tesla_class_reset(store->ts_classes + i);
 }
 
 
 int32_t
-tesla_class_get(tesla_store *store, uint32_t id, tesla_class **tclassp,
-                const char *name, const char *description)
+tesla_class_get(struct tesla_store *store,
+                const struct tesla_automaton *description,
+                struct tesla_class **tclassp)
 {
 	assert(store != NULL);
+	assert(description != NULL);
 	assert(tclassp != NULL);
 
-	if (id >= store->length)
-		return (TESLA_ERROR_EINVAL);
+	uint32_t desc_hash = fnv_hash32((uint32_t) description);
+	const uint32_t len = store->ts_length;
 
-	tesla_class *tclass = &store->classes[id];
-	assert(tclass != NULL);
+	// Find the class: start at the bucket indicated by the hash but
+	// walk around the array if there is a collision.
+	tesla_class *tclass = NULL;
+	for (uint32_t i = 0; i < len; i++) {
+		tesla_class *t = store->ts_classes + ((desc_hash + i) % len);
+		assert(t != NULL);
+
+		// If the bucket is empty, the class doesn't exist in the
+		// hash table; take ownership of this bucket.
+		if (t->tc_automaton == NULL) {
+			t->tc_automaton = description;
+			tclass = t;
+			break;
+		}
+
+		// There is something there; is it the class we're looking for?
+		if (t->tc_automaton == description) {
+			tclass = t;
+			break;
+		}
+
+		// Otherwise, there is a collision... keep walking around
+		// the hash table, looking for the desired class.
+	}
+
+	if (tclass == NULL)
+		return (TESLA_ERROR_ENOENT);
+
 	assert(tclass->tc_instances != NULL);
 	assert(tclass->tc_context >= 0);
-
-	if (tclass->tc_name == NULL) tclass->tc_name = name;
-	if (tclass->tc_description == NULL)
-		tclass->tc_description = description;
 
 	tesla_class_acquire(tclass);
 

@@ -42,11 +42,12 @@
 #define PRINT(...) DEBUG(libtesla.state.update, __VA_ARGS__)
 
 void
-tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
-	const struct tesla_key *pattern,
-	const char *name, const char *description,
-	const struct tesla_transitions *trans)
+tesla_update_state(enum tesla_context tesla_context,
+	const struct tesla_automaton *autom, uint32_t symbol,
+	const struct tesla_key *pattern)
 {
+	const struct tesla_transitions *trans =
+		autom->ta_transitions + symbol;
 
 	if (tesla_debugging(DEBUG_NAME)) {
 		/* We should never see with multiple <<init>> transitions. */
@@ -63,7 +64,7 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 	            (tesla_context == TESLA_CONTEXT_GLOBAL
 		     ? "global"
 		     : "per-thread"));
-	PRINT("  class:        %d ('%s')\n", class_id, name);
+	PRINT("  class:        '%s'\n", autom->ta_name);
 
 	PRINT("  transitions:  ");
 	print_transitions(DEBUG_NAME, trans);
@@ -80,7 +81,7 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 	PRINT("store: 0x%tx\n", (intptr_t) store);
 
 	struct tesla_class *class;
-	ret = tesla_class_get(store, class_id, &class, name, description);
+	ret = tesla_class_get(store, autom, &class);
 	assert(ret == TESLA_SUCCESS);
 
 	print_class(class);
@@ -113,7 +114,7 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 
 		switch (action) {
 		case FAIL:
-			ev_bad_transition(class, inst, trans);
+			ev_bad_transition(class, inst, symbol);
 			break;
 
 		case IGNORE:
@@ -133,7 +134,7 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 		case FORK: {
 			if (cloned >= max_clones) {
 				err = TESLA_ERROR_ENOMEM;
-				ev_err(class, err, "too many clones");
+				ev_err(autom, symbol, err, "too many clones");
 				goto cleanup;
 			}
 
@@ -172,7 +173,7 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 		struct tesla_instance *clone;
 		err = tesla_instance_clone(class, c->old, &clone);
 		if (err != TESLA_SUCCESS) {
-			ev_err(class, err, "failed to clone instance");
+			ev_err(autom, symbol, err, "failed to clone instance");
 			goto cleanup;
 		}
 
@@ -180,7 +181,7 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 		new_name.tk_mask &= c->transition->to_mask;
 		err = tesla_key_union(&clone->ti_key, &new_name);
 		if (err != TESLA_SUCCESS) {
-			ev_err(class, err, "failed to union keys");
+			ev_err(autom, symbol, err, "failed to union keys");
 			goto cleanup;
 		}
 
@@ -200,7 +201,8 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 			struct tesla_instance *inst;
 			err = tesla_instance_new(class, pattern, t->to, &inst);
 			if (err != TESLA_SUCCESS) {
-				ev_err(class, err, "failed to create instance");
+				ev_err(autom, symbol, err,
+					"failed to init instance");
 				goto cleanup;
 			}
 
@@ -215,10 +217,10 @@ tesla_update_state(enum tesla_context tesla_context, uint32_t class_id,
 		// If the class hasn't received any <<init>> events yet,
 		// simply ignore the event: it is out of scope.
 		if (class->tc_free == class->tc_limit)
-			ev_ignored(class, pattern, trans);
+			ev_ignored(class, symbol, pattern);
 
 		// Otherwise, we ought to have matched something.
-		else ev_no_instance(class, pattern, trans);
+		else ev_no_instance(class, symbol, pattern);
 	}
 
 	// Does it cause class cleanup?
