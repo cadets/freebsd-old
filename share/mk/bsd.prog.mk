@@ -54,7 +54,8 @@ SRCS=	${PROG}.c
 .if defined(SRCS) && !empty(SRCS)
 # XXX: currently tesla can't handle C++ so build C++ code normaly in the
 # WITH_TESLA case.
-.if defined(NO_LLVM_IR) || ${MK_LLVM_INSTRUMENTED} == "no" || \
+.if defined(EARLY_BUILD) || defined(NO_LLVM_IR) || \
+    ${MK_LLVM_INSTRUMENTED} == "no" || \
     (${MK_TESLA} != "no" && defined(PROG_CXX))
 OBJS+=  ${SRCS:N*.h:R:S/$/.o/g}
 .else
@@ -89,7 +90,7 @@ ${PROG}: ${OBJS}
 .endif
 .endif
 
-.if ${MK_TESLA} != "no"
+.if ${MK_TESLA} != "no" && !defined(EARLY_BUILD)
 tesla.manifest: ${TESLA_FILES}
 	cat ${TESLA_FILES} > ${.TARGET}
 
