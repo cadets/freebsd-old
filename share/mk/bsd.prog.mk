@@ -68,7 +68,7 @@ OIRS=		${LLVM_CFILES:R:S/$/.o${LLVM_IR_TYPE}/}
 INSTR_IRS=	${LLVM_CFILES:R:S/$/.instr${LLVM_IR_TYPE}/}
 INSTR_OBJS=	${LLVM_CFILES:R:S/$/.instro/}
 OBJS+=		${INSTR_OBJS}
-CLEANFILES+=	${OIRS} ${INSTR_IRS} ${INSTR_OBJS}
+CLEANFILES+=	${OIRS} ${INSTR_IRS} ${INSTR_OBJS} ${PROG}.${LLVM_IR_TYPE}-a
 .if ${MK_TESLA} != "no"
 TESLA_FILES=	${LLVM_CFILES:R:S/$/.tesla/}
 CLEANFILES+=	${TESLA_FILES} tesla.manifest
@@ -79,6 +79,14 @@ CLEANFILES+=	${TESLA_FILES} tesla.manifest
 beforelinking: ${OBJS}
 ${PROG}: beforelinking
 .endif
+
+${PROG}.${LLVM_IR_TYPE}-a: ${OIRS}
+	if [ -z "${OIRS}" ]; then \
+		touch ${.TARGET} ;\
+	else \
+		${LLVM_LINK} -o ${.TARGET} ${OIRS} ;\
+	fi
+
 ${PROG}: ${OBJS}
 .if defined(PROG_CXX)
 	${CXX} ${CXXFLAGS} ${LDFLAGS} -o ${.TARGET} ${OBJS} ${LDADD}
@@ -110,7 +118,11 @@ MAN1=	${MAN}
 .endif
 .endif # defined(PROG)
 
+.if defined(WITH_LLVM_INSTRUMENTED)
+all: objwarn ${PROG} ${PROG}.${LLVM_IR_TYPE}-a ${SCRIPTS}
+.else
 all: objwarn ${PROG} ${SCRIPTS}
+.endif
 .if ${MK_MAN} != "no"
 all: _manpages
 .endif
