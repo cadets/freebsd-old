@@ -5,6 +5,7 @@
 
 .SUFFIXES: .out .o .c .cc .cpp .cxx .C .m .y .l .ln .s .S .asm
 
+
 # XXX The use of COPTS in modern makefiles is discouraged.
 .if defined(COPTS)
 CFLAGS+=${COPTS}
@@ -87,6 +88,10 @@ ${PROG}.${LLVM_IR_TYPE}-a: ${OIRS}
 		${LLVM_LINK} -o ${.TARGET} ${OIRS} ;\
 	fi
 
+.if ${MK_SOAAP} != "no"
+CFLAGS+= -I$(SOAAP_SOURCE_DIR)/include
+.endif
+.if ${MK_SOAAP} != "no"
 ${PROG}.soaap: ${PROG}.${LLVM_IR_TYPE}-a
 	${OPT} -load $(SOAAP_BUILD_DIR)/libsoaap.so -soaap ${SOAAP_FLAGS} -o /dev/null ${PROG}.${LLVM_IR_TYPE}-a
 
@@ -101,6 +106,7 @@ ${PROG}.soaap_perf: ${PROG}.${LLVM_IR_TYPE}-a
 	${CC} $(LDADD) -o ${.TARGET} ${PROG}.po
 
 CLEANFILES+= ${PROG}.po ${PROG}.pbc ${PROG}.soaap_perf ${PROG}.soaap_cg
+.endif 
 
 ${PROG}: ${OBJS}
 .if defined(PROG_CXX)
