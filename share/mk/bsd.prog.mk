@@ -89,9 +89,6 @@ ${PROG}.${LLVM_IR_TYPE}-a: ${OIRS}
 	fi
 
 .if ${MK_SOAAP} != "no"
-CFLAGS+= -I$(SOAAP_SOURCE_DIR)/include
-.endif
-.if ${MK_SOAAP} != "no"
 ${PROG}.soaap: ${PROG}.${LLVM_IR_TYPE}-a
 	${OPT} -load $(SOAAP_BUILD_DIR)/libsoaap.so -soaap ${SOAAP_FLAGS} -o /dev/null ${PROG}.${LLVM_IR_TYPE}-a
 

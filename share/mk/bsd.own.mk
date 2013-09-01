@@ -663,6 +663,10 @@ MK_LLVM_INSTRUMENTED:=	yes
 .endif
 .endif
 
+.if defined(WITH_LLVM_INSTRUMENTED) && defined(WITH_SOAAP)
+CFLAGS+= -I${SOAAP_SOURCE_DIR}/include
+.endif
+
 .if ${MK_CTF} != "no"
 CTFCONVERT_CMD=	${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
 .elif defined(.PARSEDIR) || (defined(MAKE_VERSION) && ${MAKE_VERSION} >= 5201111300)
