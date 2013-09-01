@@ -87,6 +87,21 @@ ${PROG}.${LLVM_IR_TYPE}-a: ${OIRS}
 		${LLVM_LINK} -o ${.TARGET} ${OIRS} ;\
 	fi
 
+${PROG}.soaap: ${PROG}.${LLVM_IR_TYPE}-a
+	${OPT} -load $(SOAAP_BUILD_DIR)/libsoaap.so -soaap ${SOAAP_FLAGS} -o /dev/null ${PROG}.${LLVM_IR_TYPE}-a
+
+${PROG}.soaap_cg: ${PROG}.${LLVM_IR_TYPE}-a
+	${OPT} -load $(SOAAP_BUILD_DIR)/libcep.so -insert-call-edge-profiling -o ${PROG}.pbc ${PROG}.${LLVM_IR_TYPE}-a
+	${LLC} -filetype=obj -o ${PROG}.po ${PROG}.pbc 
+	${CC} -L $(SOAAP_BUILD_DIR) -L $(LLVM_BUILD_DIR)/lib -lcep_rt -lprofile_rt $(LDADD) -o ${.TARGET} ${PROG}.po
+
+${PROG}.soaap_perf: ${PROG}.${LLVM_IR_TYPE}-a
+	${OPT} -load $(SOAAP_BUILD_DIR)/libsoaap.so -soaap -soaap-emulate-performance ${SOAAP_FLAGS} -o ${PROG}.pbc ${PROG}.${LLVM_IR_TYPE}-a
+	${LLC} -filetype=obj -o ${PROG}.po ${PROG}.pbc 
+	${CC} $(LDADD) -o ${.TARGET} ${PROG}.po
+
+CLEANFILES+= ${PROG}.po ${PROG}.pbc ${PROG}.soaap_perf ${PROG}.soaap_cg
+
 ${PROG}: ${OBJS}
 .if defined(PROG_CXX)
 	${CXX} ${CXXFLAGS} ${LDFLAGS} -o ${.TARGET} ${OBJS} ${LDADD}
