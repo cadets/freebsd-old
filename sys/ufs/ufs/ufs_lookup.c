@@ -53,6 +53,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/tesla-kernel.h>
 
+#ifdef TESLA_MAC
+#include <security/mac/mac_framework.h>
+#endif
+
 #include <vm/vm.h>
 #include <vm/vm_extern.h>
 
