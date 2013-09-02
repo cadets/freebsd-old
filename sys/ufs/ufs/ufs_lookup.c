@@ -53,6 +53,10 @@ __FBSDID("$FreeBSD: head/sys/ufs/ufs/ufs_lookup.c 248561 2013-03-20 17:57:00Z mc
 #include <sys/sysctl.h>
 #include <sys/tesla-kernel.h>
 
+#ifdef TESLA_MAC
+#include <security/mac/mac_framework.h>
+#endif
+
 #include <vm/vm.h>
 #include <vm/vm_extern.h>
 
