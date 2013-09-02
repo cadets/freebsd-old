@@ -182,6 +182,7 @@ ev_ignored(const struct tesla_class *tcp, int32_t symbol,
 }
 
 
+#ifndef NDEBUG
 /*
  * printf()-based event handlers:
  */
@@ -332,6 +333,7 @@ static const struct tesla_event_handlers printf_on_failure = {
 	.teh_accept		= 0,
 	.teh_ignored		= 0,
 };
+#endif
 
 /*
  * Wrappers that panic on failure:
@@ -385,8 +387,8 @@ static const struct tesla_event_handlers failstop_handlers = {
 const static struct tesla_event_handlers* const default_handlers[] = {
 #ifndef NDEBUG
 	&printf_handlers,
-#endif
 	&printf_on_failure,
+#endif
 #if defined(_KERNEL) && defined(KDTRACE_HOOKS)
 	&dtrace_handlers,
 #endif
@@ -398,7 +400,7 @@ static struct tesla_event_metahandler default_event_handlers = {
 #if defined(_KERNEL) && defined(KDTRACE_HOOKS)
 	.tem_mask = TESLA_KERN_DTRACE_EV,
 #else
-	.tem_mask = 0x5,
+	.tem_mask = 0xFF,
 #endif
 	.tem_handlers = default_handlers,
 };

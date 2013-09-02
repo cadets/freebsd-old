@@ -151,7 +151,7 @@ tesla_instance_new(struct tesla_class *tclass, const struct tesla_key *name,
 		return (TESLA_SUCCESS);
 	}
 
-	tesla_assert(0 && ("no free instances but tc_free was > 0"));
+	tesla_assert(0, ("no free instances but tc_free was > 0"));
 	return (TESLA_ERROR_ENOMEM);
 }
 

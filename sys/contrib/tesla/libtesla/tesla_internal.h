@@ -372,13 +372,13 @@ void	ev_ignored(const struct tesla_class *, int32_t symbol,
 #include <stdio.h>
 #endif
 
-#ifndef NDEBUG
-
-#define __debug
-
 
 /** Are we in (verbose) debug mode? */
 int32_t	tesla_debugging(const char*);
+
+#ifndef NDEBUG
+
+#define __debug
 
 /** Emit debugging information with a debug name (e.g., libtesla.event). */
 #define DEBUG(dclass, ...) \
@@ -390,9 +390,6 @@ int32_t	tesla_debugging(const char*);
 #define __debug __unused
 
 #define DEBUG(...)
-#define tesla_debugging(...) 0
-#define print_key(...)
-#define print_class(...)
 
 #endif
 

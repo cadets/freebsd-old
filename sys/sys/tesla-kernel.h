@@ -43,7 +43,8 @@
  * FreeBSD kernel-specific TESLA macros.
  */
 
-#define	incallstack(fn)	TSEQUENCE(called(fn), TESLA_ASSERTION_SITE, returned(fn))
+#define	incallstack(fn)	\
+	TSEQUENCE(called(fn), TESLA_ASSERTION_SITE, returnfrom(fn))
 
 #if 0
 /* XXXRW: This doesn't yet work. */
@@ -64,6 +65,11 @@ extern void syscall(void);
 #endif
 #define	TESLA_SYSCALL_PREVIOUSLY(x)	TESLA_SYSCALL(previously(x))
 #define	TESLA_SYSCALL_EVENTUALLY(x)	TESLA_SYSCALL(eventually(x))
+
+/*
+ * XXXJA: figure out which of call()/called() to keep
+ */
+#define	called(...)		__tesla_call(((void) __VA_ARGS__, TIGNORE))
 
 /*
  * XXXRW: Not all architectures have a trap_pfault() function.  Can't use
