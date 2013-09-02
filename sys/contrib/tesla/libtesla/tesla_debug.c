@@ -41,7 +41,7 @@
 #endif
 
 void
-print_transition(const char *debug, const struct tesla_transition *t)
+print_transition(__debug const char *debug, const struct tesla_transition *t)
 {
 	if (!tesla_debugging(debug))
 		return;
@@ -79,7 +79,8 @@ sprint_transition(char *buf, const char *end, const struct tesla_transition *t)
 }
 
 void
-print_transitions(const char *debug, const struct tesla_transitions *transp)
+print_transitions(__debug const char *debug,
+	const struct tesla_transitions *transp)
 {
 	if (!tesla_debugging(debug))
 		return;
@@ -126,11 +127,13 @@ key_string(char *buffer, const char *end, const struct tesla_key *key)
 	return c;
 }
 
-#ifndef NDEBUG
 
 int32_t
 tesla_debugging(const char *name)
 {
+#ifdef NDEBUG
+	return 0;
+#endif
 #ifdef _KERNEL
 	/*
 	 * In the kernel, only print 'libtesla.{event,instance}*' output.
@@ -188,6 +191,7 @@ tesla_debugging(const char *name)
 #endif
 }
 
+#ifndef NDEBUG
 void
 assert_instanceof(struct tesla_instance *instance, struct tesla_class *tclass)
 {
@@ -204,9 +208,11 @@ assert_instanceof(struct tesla_instance *instance, struct tesla_class *tclass)
 
 	tesla_assert(instance_belongs_to_class,
 		("tesla_instance %x not of class '%s'",
-		 instance, tclass->tc_name)
+		 instance, tclass->tc_automaton->ta_name)
 	       );
 }
+
+#endif
 
 void
 print_class(const struct tesla_class *c)
@@ -242,7 +248,7 @@ print_class(const struct tesla_class *c)
 }
 
 void
-print_key(const char *debug_name, const struct tesla_key *key)
+print_key(__debug const char *debug_name, const struct tesla_key *key)
 {
 	if (!tesla_debugging(debug_name))
 		return;
@@ -251,17 +257,8 @@ print_key(const char *debug_name, const struct tesla_key *key)
 	char buffer[LEN];
 	char *end = buffer + LEN;
 
-	char *e = key_string(buffer, end, key);
+	__unused char *e = key_string(buffer, end, key);
 	assert(e < end);
 
 	print("%s", buffer);
 }
-
-#else
-
-#undef tesla_debugging
-int32_t
-tesla_debugging(const char *name) { return 0; }
-
-#endif /* !NDEBUG */
-
