@@ -32,7 +32,7 @@ MACHINE_CPUARCH=${MACHINE_ARCH:C/mips(n32|64)?(el)?/mips/:C/arm(v6)?(eb)?/arm/:C
 .if defined(%POSIX)
 .SUFFIXES:	.o .c .y .l .a .sh .f
 .else
-.SUFFIXES:	.out .a .dot .instrbc .instrll .instro .obc .oll .ln .manifest .o .c .cc .cpp .cxx .C .m .F .f .e .r .tesla .y .l .S .asm .s .cl .p .h .sh
+.SUFFIXES:	.out .a .dot .bc-a .ll-a .instrbc .instrll .instro .obc .oll .ln .manifest .o .c .cc .cpp .cxx .C .m .F .f .e .r .soaap .soaap_cg .soaap_perf .tesla .y .l .S .asm .s .cl .p .h .sh
 .endif
 
 AR		?=	ar
@@ -295,6 +295,22 @@ YFLAGS		?=	-d
 	${CTFCONVERT_CMD}
 .else
 .error Unknown LLVM IR type ${LLVM_IR_TYPE}
+.endif
+
+.if defined(WITH_SOAAP)
+CLEANFILES+= *.${LLVM_IR_TYPE}-a *.po *.pbc *.soaap_cg *.soaap_perf
+.${LLVM_IR_TYPE}-a.soaap:
+	${OPT} -load $(SOAAP_BUILD_DIR)/libsoaap.so -soaap ${SOAAP_FLAGS} -o /dev/null ${.IMPSRC}
+
+.${LLVM_IR_TYPE}-a.soaap_cg:
+	${OPT} -load $(SOAAP_BUILD_DIR)/libcep.so -insert-call-edge-profiling -o ${.IMPSRC:R}.pbc ${.IMPSRC}
+	${LLC} -filetype=obj -o ${.IMPSRC:R}.po ${.IMPSRC:R}.pbc 
+	${CC} -L $(SOAAP_BUILD_DIR) -L $(LLVM_BUILD_DIR)/lib -lcep_rt -lprofile_rt $(LDADD) -o ${.TARGET} ${.IMPSRC:R}.po
+
+.${LLVM_IR_TYPE}-a.soaap_perf:
+	${OPT} -load $(SOAAP_BUILD_DIR)/libsoaap.so -soaap -soaap-emulate-performance ${SOAAP_FLAGS} -o ${.IMPSRC:R}.pbc ${.IMPSRC}
+	${LLC} -filetype=obj -o ${.IMPSRC:R}.po ${.IMPSRC:R}.pbc 
+	${CC} $(LDADD) -o ${.TARGET} ${.IMPSRC:R}.po
 .endif
 
 .manifest.dot:
