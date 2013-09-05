@@ -5,7 +5,6 @@
 
 .SUFFIXES: .out .o .c .cc .cpp .cxx .C .m .y .l .ln .s .S .asm
 
-
 # XXX The use of COPTS in modern makefiles is discouraged.
 .if defined(COPTS)
 CFLAGS+=${COPTS}
@@ -69,7 +68,7 @@ OIRS=		${LLVM_CFILES:R:S/$/.o${LLVM_IR_TYPE}/}
 INSTR_IRS=	${LLVM_CFILES:R:S/$/.instr${LLVM_IR_TYPE}/}
 INSTR_OBJS=	${LLVM_CFILES:R:S/$/.instro/}
 OBJS+=		${INSTR_OBJS}
-CLEANFILES+=	${OIRS} ${INSTR_IRS} ${INSTR_OBJS} ${PROG}.${LLVM_IR_TYPE}-a
+CLEANFILES+=	${OIRS} ${INSTR_IRS} ${INSTR_OBJS}
 .if ${MK_TESLA} != "no"
 TESLA_FILES=	${LLVM_CFILES:R:S/$/.tesla/}
 CLEANFILES+=	${TESLA_FILES} tesla.manifest
@@ -119,17 +118,18 @@ MAN1=	${MAN}
 .endif
 .endif # defined(PROG)
 
-.if defined(WITH_LLVM_INSTRUMENTED)
-all: objwarn ${PROG} ${PROG}.${LLVM_IR_TYPE}-a ${SCRIPTS}
-.else
 all: objwarn ${PROG} ${SCRIPTS}
-.endif
 .if ${MK_MAN} != "no"
 all: _manpages
 .endif
 
 .if defined(PROG)
 CLEANFILES+= ${PROG}
+.if ${MK_SOAAP} != "no"
+CLEANFILES+=	${PROG}.${LLVM_IR_TYPE}-a \
+		${PROG}.bc_cep ${PROG}.po_cep ${PROG}.soaap_cg \
+		${PROG}.bc_soaap_perf ${PROG}.po_soaap_perf ${PROG}.soaap_pef
+.endif
 .endif
 
 .if defined(OBJS)
