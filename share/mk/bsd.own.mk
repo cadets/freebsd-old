@@ -628,8 +628,8 @@ MK_${var}:=	no
 # Some targets require a different build process in order to allow LLVM
 # instrumentation passes to be applied.
 #
-# XXX: The current construction allow an empty insturmentation path or
-# a tesla one.
+# XXX: The current construction allow an empty instrumentation path or
+# a TESLA one.
 #
 .if defined(WITH_LLVM_INSTRUMENTED) && defined(WITHOUT_LLVM_INSTRUMENTED)
 .error WITH_LLVM_INSTRUMENTED and WITHOUT_LLVM_INSTRUMENTED can't both be set.
@@ -637,14 +637,27 @@ MK_${var}:=	no
 .if defined(MK_LLVM_INSTRUMENTED)
 .error MK_LLVM_INSTRUMENTED can't be set by a user.
 .endif
-.if ${MK_TESLA} == "no"
-LLVM_INSTR_DEP?=
-LLVM_INSTR_COMMAND?= cp ${.IMPSRC} ${.TARGET}
+
+.if ${MK_TESLA} == "no" && ${MK_SOAAP} == "no"
 .if defined(WITH_LLVM_INSTRUMENTED)
 MK_LLVM_INSTRUMENTED:=	yes
 .else
 MK_LLVM_INSTRUMENTED:=	no
 .endif
+.endif
+
+.if ${MK_SOAAP} != "no"
+CFLAGS+= -I${SOAAP_SOURCE_DIR}/include
+.if defined(WITHOUT_LLVM_INSTRUMENTED)
+.error WITHOUT_LLVM_INSTRUMENTED and WITH_SOAAP can't both be set.
+.else
+MK_LLVM_INSTRUMENTED:=	yes
+.endif
+.endif
+
+.if ${MK_TESLA} == "no"
+LLVM_INSTR_DEP?=
+LLVM_INSTR_COMMAND?= cp ${.IMPSRC} ${.TARGET}
 .else
 LLVM_INSTR_DEP= tesla.manifest
 .if ${LLVM_IR_TYPE} == "bc"
@@ -661,10 +674,6 @@ LLVM_INSTR_COMMAND= ${TESLA} instrument -S -verify-each -tesla-manifest \
 .else
 MK_LLVM_INSTRUMENTED:=	yes
 .endif
-.endif
-
-.if defined(WITH_LLVM_INSTRUMENTED) && defined(WITH_SOAAP)
-CFLAGS+= -I${SOAAP_SOURCE_DIR}/include
 .endif
 
 .if ${MK_CTF} != "no"
