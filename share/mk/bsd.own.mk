@@ -647,7 +647,7 @@ MK_LLVM_INSTRUMENTED:=	no
 .endif
 
 .if ${MK_SOAAP} != "no"
-CFLAGS+= -I${SOAAP_SOURCE_DIR}/include
+CFLAGS+= -D SOAAP -I${SOAAP_SOURCE_DIR}/include
 .if defined(WITHOUT_LLVM_INSTRUMENTED)
 .error WITHOUT_LLVM_INSTRUMENTED and WITH_SOAAP can't both be set.
 .else
