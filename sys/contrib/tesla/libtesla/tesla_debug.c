@@ -208,7 +208,7 @@ assert_instanceof(struct tesla_instance *instance, struct tesla_class *tclass)
 
 	tesla_assert(instance_belongs_to_class,
 		("tesla_instance %x not of class '%s'",
-		 instance, tclass->tc_automaton->ta_name)
+		 instance, tclass->tc_name)
 	       );
 }
 

@@ -159,11 +159,11 @@ ev_bad_transition(struct tesla_class *tcp, struct tesla_instance *tip,
 }
 
 void
-ev_err(const struct tesla_automaton *a, int symbol, int errno,
+ev_err(const struct tesla_automaton *a, int symbol, int errnum,
 	const char *message)
 {
 
-	FOREACH_ERROR_HANDLER(teh_err, a, symbol, errno, message);
+	FOREACH_ERROR_HANDLER(teh_err, a, symbol, errnum, message);
 }
 
 void
@@ -204,8 +204,9 @@ static void
 print_new_instance(struct tesla_class *tcp, struct tesla_instance *tip)
 {
 
-	DEBUG(libtesla.instance.new, "new    %td: %d\n",
-		tip - tcp->tc_instances, tip->ti_state);
+	DEBUG(libtesla.instance.new, "new    %td: %d:0x%x ('%s')\n",
+		tip - tcp->tc_instances, tip->ti_state, tip->ti_key.tk_mask,
+		tcp->tc_automaton->ta_name);
 }
 
 static void
@@ -213,8 +214,10 @@ print_transition_taken(struct tesla_class *tcp,
     struct tesla_instance *tip, const struct tesla_transition *transp)
 {
 
-	DEBUG(libtesla.state.transition, "update %td: %d->%d\n",
-		tip - tcp->tc_instances, transp->from, transp->to);
+	DEBUG(libtesla.state.transition, "update %td: %d:0x%x->%d:0x%x\n",
+		tip - tcp->tc_instances,
+		transp->from, transp->from_mask,
+		transp->to, transp->to_mask);
 }
 
 static void
@@ -223,9 +226,11 @@ print_clone(struct tesla_class *tcp,
     const struct tesla_transition *transp)
 {
 
-	DEBUG(libtesla.instance.clone, "clone  %td:%d -> %td:%d\n",
-		old_instance - tcp->tc_instances, transp->from,
-		new_instance - tcp->tc_instances, transp->to);
+	DEBUG(libtesla.instance.clone, "clone  %td:%d:0x%x -> %td:%d:0x%x\n",
+		old_instance - tcp->tc_instances,
+		transp->from, transp->from_mask,
+		new_instance - tcp->tc_instances,
+		transp->to, transp->to_mask);
 }
 
 static void
@@ -262,8 +267,8 @@ print_bad_transition(struct tesla_class *tcp, struct tesla_instance *tip,
 	assert(tcp != NULL);
 	assert(tip != NULL);
 
-	const tesla_transitions *transp
-		= tcp->tc_automaton->ta_transitions + symbol;
+	const tesla_automaton *autom = tcp->tc_automaton;
+	const tesla_transitions *transp = autom->ta_transitions + symbol;
 
 	print_failure_header(tcp);
 
@@ -273,24 +278,29 @@ print_bad_transition(struct tesla_class *tcp, struct tesla_instance *tip,
 
 	SAFE_SPRINTF(next, end,
 		"Instance %td is in state %d\n"
-		"but required to take a transition in ",
-		(tip - tcp->tc_instances), tip->ti_state);
+		"but received event '%s'\n"
+		"(causes transition in: ",
+		(tip - tcp->tc_instances), tip->ti_state,
+		autom->ta_symbol_names[symbol]);
 	assert(next > buffer);
 
 	next = sprint_transitions(next, end, transp);
+	assert(next > buffer);
+
+	SAFE_SPRINTF(next, end, ")\n");
 	assert(next > buffer);
 
 	error("%s", buffer);
 }
 
 static void
-print_error(const struct tesla_automaton *a, int symbol, int errno,
+print_error(const struct tesla_automaton *a, int symbol, int errnum,
 	const char *message)
 {
 
 	DEBUG(libtesla.event, "%s in '%s' %s: %s\n",
 		message, a->ta_name, a->ta_symbol_names[symbol],
-		tesla_strerror(errno));
+		tesla_strerror(errnum));
 }
 
 static void
@@ -359,13 +369,13 @@ panic_bad_transition(struct tesla_class *tcp,
 }
 
 static void
-panic_error(const struct tesla_automaton *a, int symbol, int errno,
+panic_error(const struct tesla_automaton *a, int symbol, int errnum,
 	const char *message)
 {
 
 	tesla_panic("TESLA: %s in '%s' %s: %s", message,
 		a->ta_name, a->ta_symbol_names[symbol],
-		tesla_strerror(errno));
+		tesla_strerror(errnum));
 }
 
 static const struct tesla_event_handlers failstop_handlers = {
