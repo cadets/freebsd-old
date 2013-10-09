@@ -111,8 +111,11 @@ struct tesla_automaton {
 
 
 /**
- * Register a @ref tesla_automaton (which must survive for the lifetime of
- * libtesla), receiving a registered @ref tesla_class back.
+ * Register a @ref tesla_automaton, receiving a @ref tesla_class back.
+ *
+ * The @ref tesla_automaton must exist for the lifetime of the TESLA context
+ * (until thread destruction in the per-thread case, indefinitely in the
+ * global case).
  */
 int	tesla_register(const struct tesla_automaton*, struct tesla_class**);
 
@@ -277,7 +280,7 @@ typedef void	(*tesla_ev_bad_transition)(struct tesla_class *,
 
 /** Generic error handler. */
 typedef void	(*tesla_ev_error)(const struct tesla_automaton *,
-	    int32_t symbol, int32_t errno, const char *message);
+	    int32_t symbol, int32_t errnum, const char *message);
 
 /** A @ref tesla_instance has accepted a sequence of events. */
 typedef void	(*tesla_ev_accept)(struct tesla_class *,
@@ -321,6 +324,12 @@ int	tesla_set_event_handler(struct tesla_event_handlers *);
 
 /** Register a set of event handling vectors. */
 int	tesla_set_event_handlers(struct tesla_event_metahandler *);
+
+/** The type for printf handler functions */
+typedef uint32_t(*printf_type)(const char *, ...);
+
+/** The function that will be called to log messages. */
+extern printf_type __tesla_printf;
 
 #ifdef _KERNEL
 #define	TESLA_KERN_PRINTF_EV	0x1

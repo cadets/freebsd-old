@@ -38,8 +38,6 @@
 #include <inttypes.h>
 #endif
 
-#define	DEBUG_NAME	"libtesla.state.update"
-#define PRINT(...) DEBUG(libtesla.state.update, __VA_ARGS__)
 
 void
 tesla_update_state(enum tesla_context tesla_context,
@@ -49,42 +47,24 @@ tesla_update_state(enum tesla_context tesla_context,
 	const struct tesla_transitions *trans =
 		autom->ta_transitions + symbol;
 
-	if (tesla_debugging(DEBUG_NAME)) {
-		/* We should never see with multiple <<init>> transitions. */
-		int init_count = 0;
-		for (uint32_t i = 0; i < trans->length; i++)
-			if (trans->transitions[i].flags & TESLA_TRANS_INIT)
-				init_count++;
+#ifndef NDEBUG
+	/* We should never see with multiple <<init>> transitions. */
+	int init_count = 0;
+	for (uint32_t i = 0; i < trans->length; i++)
+		if (trans->transitions[i].flags & TESLA_TRANS_INIT)
+			init_count++;
 
-		assert(init_count < 2);
-	}
-
-	PRINT("\n====\n%s()\n", __func__);
-	PRINT("  context:      %s\n",
-	            (tesla_context == TESLA_CONTEXT_GLOBAL
-		     ? "global"
-		     : "per-thread"));
-	PRINT("  class:        '%s'\n", autom->ta_name);
-
-	PRINT("  transitions:  ");
-	print_transitions(DEBUG_NAME, trans);
-	PRINT("\n");
-	PRINT("  key:          ");
-	print_key(DEBUG_NAME, pattern);
-	PRINT("\n----\n");
+	assert(init_count < 2);
+#endif
 
 	struct tesla_store *store;
 	int ret = tesla_store_get(tesla_context, TESLA_MAX_CLASSES,
 			TESLA_MAX_INSTANCES, &store);
 	assert(ret == TESLA_SUCCESS);
 
-	PRINT("store: 0x%tx\n", (intptr_t) store);
-
 	struct tesla_class *class;
 	ret = tesla_class_get(store, autom, &class);
 	assert(ret == TESLA_SUCCESS);
-
-	print_class(class);
 
 	// Did we match any instances?
 	bool matched_something = false;
@@ -227,9 +207,6 @@ tesla_update_state(enum tesla_context tesla_context,
 	if (cleanup_required)
 		tesla_class_reset(class);
 
-	print_class(class);
-	PRINT("\n====\n\n");
-
 cleanup:
 	tesla_class_put(class);
 }
@@ -332,3 +309,5 @@ tesla_action(const tesla_instance *inst, const tesla_key *event_data,
 	else
 		return FAIL;
 }
+
+printf_type __tesla_printf = (printf_type)printf;
