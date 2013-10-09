@@ -661,10 +661,10 @@ LLVM_INSTR_COMMAND?= cp ${.IMPSRC} ${.TARGET}
 .else
 LLVM_INSTR_DEP= tesla.manifest
 .if ${LLVM_IR_TYPE} == "bc"
-LLVM_INSTR_COMMAND= ${TESLA} instrument -verify-each -tesla-manifest \
+LLVM_INSTR_COMMAND= ${TESLA} instrument -tesla-manifest \
     tesla.manifest ${.IMPSRC} -o ${.TARGET}
 .elif ${LLVM_IR_TYPE} == "ll"
-LLVM_INSTR_COMMAND= ${TESLA} instrument -S -verify-each -tesla-manifest \
+LLVM_INSTR_COMMAND= ${TESLA} instrument -S -tesla-manifest \
     tesla.manifest ${.IMPSRC} -o ${.TARGET}
 .else
 .error unknown LLVM IR type ${LLVM_IR_TYPE}
