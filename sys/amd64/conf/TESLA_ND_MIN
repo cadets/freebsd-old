@@ -1,0 +1,4 @@
+include GENERIC_NODEBUG
+ident TESLA_ND_MIN
+
+options TESLA
