@@ -81,7 +81,8 @@ ${PROG}: beforelinking
 .endif
 
 ${PROG}.${LLVM_IR_TYPE}-a: ${OIRS}
-	if [ -z "${OIRS}" ]; then \
+	@echo linking ${.TARGET}
+	@if [ -z "${OIRS}" ]; then \
 		touch ${.TARGET} ;\
 	else \
 		${LLVM_LINK} -o ${.TARGET} ${OIRS} ;\
