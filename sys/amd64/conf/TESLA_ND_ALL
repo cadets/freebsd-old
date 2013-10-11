@@ -6,3 +6,4 @@ options TESLA_CAPSICUM
 options TESLA_MAC
 options TESLA_PRIV
 options TESLA_PROC
+options TESLA_TEST
