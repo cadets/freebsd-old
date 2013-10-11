@@ -676,6 +676,7 @@ TESLA_CAPSICUM		opt_global.h
 TESLA_MAC		opt_global.h
 TESLA_PRIV		opt_global.h
 TESLA_PROC		opt_global.h
+TESLA_TEST		opt_global.h
 WITNESS			opt_global.h
 WITNESS_KDB		opt_witness.h
 WITNESS_NO_VNODE	opt_witness.h
