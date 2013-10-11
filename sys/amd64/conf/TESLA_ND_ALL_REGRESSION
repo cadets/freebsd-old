@@ -1,0 +1,8 @@
+include GENERIC_NODEBUG
+ident TESLA_ND_ALL
+
+options TESLA
+options TESLA_CAPSICUM
+options TESLA_MAC
+options TESLA_PRIV
+options TESLA_PROC
