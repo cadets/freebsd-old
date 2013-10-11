@@ -65,6 +65,7 @@ __BEGIN_DECLS
 #include <assert.h>
 #include <err.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #endif
@@ -78,6 +79,27 @@ __BEGIN_DECLS
 /** Emulate simple POSIX assertions. */
 #define assert(cond) KASSERT((cond), ("Assertion failed: '%s'", #cond))
 #endif
+
+
+/**
+ * The current runtime state of a TESLA lifetime.
+ */
+struct tesla_lifetime_state {
+	struct tesla_lifetime_event	 tls_begin;
+	struct tesla_lifetime_event	 tls_end;
+
+	/** A place to register a few classes that share this lifetime. */
+	struct tesla_class*		 tls_classes[4];
+
+	/** A place to register more classes that share this lifetime. */
+	struct tesla_class*		*tls_dyn_classes;
+
+	/** The number of values @ref tls_dyn_classes can hold. */
+	uint32_t			 tls_dyn_capacity;
+
+	/** The number of values currently in @ref tls_dyn_classes. */
+	uint32_t			 tls_dyn_count;
+};
 
 /**
  * Call this if things go catastrophically, unrecoverably wrong.
@@ -130,6 +152,44 @@ tesla_instance_active(const struct tesla_instance *i)
 	return ((i->ti_state != 0) || (i->ti_key.tk_mask != 0));
 }
 
+static inline bool
+same_lifetime(const struct tesla_lifetime *x, const struct tesla_lifetime *y)
+{
+	assert(x != NULL);
+	assert(y != NULL);
+
+	return (x->tl_begin.tle_length == y->tl_begin.tle_length)
+		&& (x->tl_end.tle_length == y->tl_end.tle_length)
+		&& (x->tl_begin.tle_hash == y->tl_begin.tle_hash)
+		&& (x->tl_end.tle_hash == y->tl_end.tle_hash)
+		&& (strncmp(x->tl_begin.tle_repr, y->tl_begin.tle_repr,
+		            x->tl_begin.tle_length) == 0)
+		&& (strncmp(x->tl_end.tle_repr, y->tl_end.tle_repr,
+		            x->tl_end.tle_length) == 0)
+		;
+}
+
+/**
+ * Compare the static parts of a @ref tesla_lifetime_state with a
+ * @ref tesla_lifetime.
+ */
+static inline bool
+same_static_lifetime(const struct tesla_lifetime *x,
+	const struct tesla_lifetime_state *y)
+{
+	assert(x != NULL);
+	assert(y != NULL);
+
+	return (x->tl_begin.tle_length == y->tls_begin.tle_length)
+		&& (x->tl_end.tle_length == y->tls_end.tle_length)
+		&& (x->tl_begin.tle_hash == y->tls_begin.tle_hash)
+		&& (x->tl_end.tle_hash == y->tls_end.tle_hash)
+		&& (strncmp(x->tl_begin.tle_repr, y->tls_begin.tle_repr,
+		            x->tl_begin.tle_length) == 0)
+		&& (strncmp(x->tl_end.tle_repr, y->tls_end.tle_repr,
+		            x->tl_end.tle_length) == 0)
+		;
+}
 
 
 /** Clone an existing instance into a new instance. */
@@ -262,10 +322,13 @@ struct tesla_class {
 #endif
 };
 
+
 typedef struct tesla_automaton		tesla_automaton;
 typedef struct tesla_class		tesla_class;
 typedef struct tesla_instance		tesla_instance;
 typedef struct tesla_key		tesla_key;
+typedef struct tesla_lifetime_event	tesla_lifetime_event;
+typedef struct tesla_lifetime_state	tesla_lifetime_state;
 typedef struct tesla_store		tesla_store;
 typedef struct tesla_transition		tesla_transition;
 typedef struct tesla_transitions	tesla_transitions;
@@ -283,6 +346,19 @@ struct tesla_store {
 
 	/** Actual slots that classes might be stored in. */
 	struct tesla_class	*ts_classes;
+
+	/**
+	 * Information about live/dead automata classes; may be shared among
+	 * automata.
+	 *
+	 * For instance, the lifetime [enter syscall, exit syscall] is shared
+	 * by many automata we've written for the FreeBSD kernel. Each
+	 * @ref tesla_store should only record these events once.
+	 */
+	struct tesla_lifetime_state *ts_lifetimes;
+
+	/** The number of lifetimes that we currently know about. */
+	uint32_t		ts_lifetime_count;
 };
 
 /**
@@ -333,6 +409,8 @@ void	tesla_class_perthread_destroy(struct tesla_class*);
 extern const struct tesla_event_handlers dtrace_handlers;
 #endif
 
+void	ev_sunrise(enum tesla_context, const struct tesla_lifetime *);
+void	ev_sunset(enum tesla_context, const struct tesla_lifetime *);
 void	ev_new_instance(struct tesla_class *, struct tesla_instance *);
 void	ev_transition(struct tesla_class *, struct tesla_instance *,
 	    const struct tesla_transition *);

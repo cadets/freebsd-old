@@ -51,7 +51,8 @@ static int
 check_event_handler(const struct tesla_event_handlers *tehp)
 {
 
-	if (!tehp || !tehp->teh_init || !tehp->teh_transition
+	if (!tehp || !tehp->teh_sunrise || !tehp->teh_sunset
+	    || !tehp->teh_init || !tehp->teh_transition
 	    || !tehp->teh_clone || !tehp->teh_fail_no_instance
 	    || !tehp->teh_bad_transition || !tehp->teh_err
 	    || !tehp->teh_accept || !tehp->teh_ignored)
@@ -117,6 +118,21 @@ tesla_set_event_handlers(struct tesla_event_metahandler *temp)
 		if (event_handlers->tem_mask & (1 << i)) \
 			if (event_handlers->tem_handlers[i]->x) \
 				event_handlers->tem_handlers[i]->x(__VA_ARGS__)
+
+void
+ev_sunrise(enum tesla_context c, const struct tesla_lifetime *tl)
+{
+
+	FOREACH_ERROR_HANDLER(teh_sunrise, c, tl);
+}
+
+
+void
+ev_sunset(enum tesla_context c, const struct tesla_lifetime *tl)
+{
+
+	FOREACH_ERROR_HANDLER(teh_sunset, c, tl);
+}
 
 
 void
@@ -198,6 +214,22 @@ print_failure_header(const struct tesla_class *tcp)
 	error("In automaton '%s':\n%s\n",
 	      tcp->tc_automaton->ta_name,
 	      tcp->tc_automaton->ta_description);
+}
+
+static void
+print_sunrise(enum tesla_context c, const struct tesla_lifetime *tl)
+{
+
+    DEBUG(libtesla.sunrise, "sunrise  %s %s\n",
+	    (c == TESLA_CONTEXT_GLOBAL) ? "global" : "per-thread", tl->tl_repr);
+}
+
+static void
+print_sunset(enum tesla_context c, const struct tesla_lifetime *tl)
+{
+
+    DEBUG(libtesla.sunset, "sunset   %s %s\n",
+	    (c == TESLA_CONTEXT_GLOBAL) ? "global" : "per-thread", tl->tl_repr);
 }
 
 static void
@@ -318,11 +350,13 @@ print_ignored(const struct tesla_class *tcp, int32_t symbol,
 {
 	const struct tesla_automaton *a = tcp->tc_automaton;
 
-	DEBUG(libtesla.event, "ignore '%s': %s", a->ta_name,
+	DEBUG(libtesla.event, "ignore '%s': %s\n", a->ta_name,
 		a->ta_symbol_names[symbol]);
 }
 
 static const struct tesla_event_handlers printf_handlers = {
+	.teh_sunrise		= print_sunrise,
+	.teh_sunset		= print_sunset,
 	.teh_init		= print_new_instance,
 	.teh_transition		= print_transition_taken,
 	.teh_clone		= print_clone,
@@ -334,6 +368,8 @@ static const struct tesla_event_handlers printf_handlers = {
 };
 
 static const struct tesla_event_handlers printf_on_failure = {
+	.teh_sunrise		= 0,
+	.teh_sunset		= 0,
 	.teh_init		= 0,
 	.teh_transition		= 0,
 	.teh_clone		= 0,

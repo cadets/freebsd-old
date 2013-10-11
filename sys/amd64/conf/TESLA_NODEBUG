@@ -1,6 +1,7 @@
 include TESLA
 ident TESLA_NODEBUG
 
+options TESLA
 nooptions INVARIANTS
 nooptions INVARIANT_SUPPORT
 nooptions WITNESS

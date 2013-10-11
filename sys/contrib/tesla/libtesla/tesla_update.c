@@ -39,24 +39,104 @@
 #endif
 
 
+static void tesla_update_class_state(struct tesla_class *, struct tesla_store *,
+	uint32_t symbol, const struct tesla_key *);
+
+
+void
+tesla_sunrise(enum tesla_context context, const struct tesla_lifetime *l)
+{
+	__unused int ret;
+	assert(l != NULL);
+
+	struct tesla_store *store;
+	ret = tesla_store_get(context, TESLA_MAX_CLASSES,
+			TESLA_MAX_INSTANCES, &store);
+	assert(ret == TESLA_SUCCESS);
+	assert(store->ts_lifetime_count < store->ts_length);
+
+	tesla_lifetime_state *ls = NULL;
+
+	// TODO: lock global store
+
+	const uint32_t lifetimes = store->ts_lifetime_count;
+	for (uint32_t i = 0; i < lifetimes; i++) {
+	    if (same_static_lifetime(l, store->ts_lifetimes + i)) {
+		    ls = store->ts_lifetimes + i;
+		    break;
+	    }
+	}
+
+	if (ls == NULL) {
+		ls = store->ts_lifetimes + lifetimes;
+		store->ts_lifetime_count++;
+
+		ls->tls_begin = l->tl_begin;
+		ls->tls_end = l->tl_end;
+	}
+
+	ev_sunrise(context, l);
+}
+
+
+void
+tesla_sunset(enum tesla_context context, const struct tesla_lifetime *l)
+{
+	__unused int ret;
+	assert(l != NULL);
+
+	ev_sunset(context, l);
+
+	struct tesla_store *store;
+	ret = tesla_store_get(context, TESLA_MAX_CLASSES,
+			TESLA_MAX_INSTANCES, &store);
+	assert(ret == TESLA_SUCCESS);
+	assert(store->ts_lifetime_count < store->ts_length);
+
+	tesla_lifetime_state *ls = NULL;
+
+	const uint32_t lifetimes = store->ts_lifetime_count;
+	for (uint32_t i = 0; i < lifetimes; i++) {
+		if (same_static_lifetime(l, store->ts_lifetimes + i)) {
+			ls = store->ts_lifetimes + i;
+			break;
+		}
+	}
+
+	assert(ls != NULL && "tesla_sunset() without corresponding sunrise");
+
+	tesla_key empty_key;
+	empty_key.tk_mask = 0;
+
+	const size_t static_classes =
+		sizeof(ls->tls_classes) / sizeof(ls->tls_classes[0]);
+
+	for (size_t i = 0; i < static_classes; i++) {
+		tesla_class *class = ls->tls_classes[i];
+		if (class == NULL)
+			break;
+
+		tesla_update_class_state(class, store,
+			class->tc_automaton->ta_cleanup_symbol, &empty_key);
+	}
+
+	const size_t dynamic_classes = ls->tls_dyn_count;
+	for (size_t i = 0; i < dynamic_classes; i++) {
+		tesla_class *class = ls->tls_dyn_classes[i];
+		if (class == NULL)
+			break;
+
+		tesla_update_class_state(class, store,
+			class->tc_automaton->ta_cleanup_symbol, &empty_key);
+	}
+}
+
+
 void
 tesla_update_state(enum tesla_context tesla_context,
 	const struct tesla_automaton *autom, uint32_t symbol,
 	const struct tesla_key *pattern)
 {
-	const struct tesla_transitions *trans =
-		autom->ta_transitions + symbol;
-
-#ifndef NDEBUG
-	/* We should never see with multiple <<init>> transitions. */
-	int init_count = 0;
-	for (uint32_t i = 0; i < trans->length; i++)
-		if (trans->transitions[i].flags & TESLA_TRANS_INIT)
-			init_count++;
-
-	assert(init_count < 2);
-#endif
-
 	struct tesla_store *store;
 	int ret = tesla_store_get(tesla_context, TESLA_MAX_CLASSES,
 			TESLA_MAX_INSTANCES, &store);
@@ -66,11 +146,18 @@ tesla_update_state(enum tesla_context tesla_context,
 	ret = tesla_class_get(store, autom, &class);
 	assert(ret == TESLA_SUCCESS);
 
-	// Did we match any instances?
-	bool matched_something = false;
+	tesla_update_class_state(class, store, symbol, pattern);
 
-	// When we're done, do we need to clean up the class?
-	bool cleanup_required = false;
+	tesla_class_put(class);
+}
+
+
+static void
+tesla_update_class_state(struct tesla_class *class, struct tesla_store *store,
+	uint32_t symbol, const struct tesla_key *pattern)
+{
+	int err;
+	const struct tesla_automaton *autom = class->tc_automaton;
 
 	// Make space for cloning existing instances.
 	size_t cloned = 0;
@@ -80,8 +167,131 @@ tesla_update_state(enum tesla_context tesla_context,
 		const tesla_transition *transition;
 	} clones[max_clones];
 
+	// Has this class been initialised?
+	bool initialised = false;
+	tesla_lifetime_state *lifetime = NULL;
+	const uint32_t lifetimes = store->ts_lifetime_count;
+	for (uint32_t i = 0; i < lifetimes; i++) {
+		if (!same_static_lifetime(autom->ta_lifetime,
+			    store->ts_lifetimes + i))
+			continue;
+
+		initialised = true;
+		lifetime = store->ts_lifetimes + i;
+		break;
+	}
+
+	if (!initialised) {
+		 ev_ignored(class, symbol, pattern);
+		 return;
+
+	} else if (class->tc_limit == class->tc_free) {
+		// Late initialisation: find the init transition and pretend
+		// it has already been taken.
+		struct tesla_instance *inst = NULL;
+
+		for (uint32_t i = 0; i < autom->ta_alphabet_size; i++) {
+			const tesla_transitions *trans =
+				autom->ta_transitions + i;
+
+			for (uint32_t j = 0; i < trans->length; i++) {
+				const tesla_transition *t =
+					trans->transitions + j;
+
+				if (!(t->flags & TESLA_TRANS_INIT))
+					continue;
+
+				static const tesla_key empty = { .tk_mask = 0 };
+
+				err = tesla_instance_new(class, &empty,
+				                         t->to, &inst);
+
+				if (err != TESLA_SUCCESS) {
+
+					ev_err(autom, symbol, err,
+					       "failed to initialise instance");
+					return;
+				}
+
+				break;
+			}
+		}
+
+		if (inst == NULL) {
+			// The automaton does not have an init transition!
+			err = TESLA_ERROR_EINVAL;
+			ev_err(autom, symbol, err,
+			       "automaton has no init transition");
+			return;
+		}
+
+		assert(tesla_instance_active(inst));
+		ev_new_instance(class, inst);
+
+		// Register this class for eventual cleanup.
+		tesla_lifetime_state *ls = lifetime;
+		const size_t static_classes =
+			sizeof(ls->tls_classes) / sizeof(ls->tls_classes[0]);
+
+		size_t i;
+		for (i = 0; i < static_classes; i++) {
+			if (ls->tls_classes[i] != NULL)
+				continue;
+
+			ls->tls_classes[i] = class;
+			break;
+		}
+
+		if (i == static_classes) {
+#ifdef _KERNEL
+			/*
+			 * TODO(JA): we should also do the dynamic thing,
+			 *           but we might have to do it by noting
+			 *           that we don't have enough space and
+			 *           leaving the allocation for a later time
+			 *           when we know it's safe.
+			 */
+			ev_err(autom, symbol, TESLA_ERROR_ENOMEM,
+			       "out of dynamic registration space in lifetime");
+#else
+			static size_t unit_size =
+				sizeof(ls->tls_dyn_classes[0]);
+
+			tesla_class ***dyn_classes = &ls->tls_dyn_classes;
+
+			if (ls->tls_dyn_capacity == 0) {
+				// Need to create a fresh allocation.
+				size_t count = 8;
+				*dyn_classes = calloc(count, unit_size);
+				ls->tls_dyn_capacity = count;
+			} else {
+				size_t count = 2 * ls->tls_dyn_capacity;
+				*dyn_classes = realloc(*dyn_classes,
+						       count * unit_size);
+				ls->tls_dyn_capacity = count;
+			}
+
+			assert(ls->tls_dyn_count < ls->tls_dyn_capacity);
+			ls->tls_dyn_classes[ls->tls_dyn_count++] = class;
+#endif
+		}
+	}
+
+
+	// Did we match any instances?
+	bool matched_something = false;
+
+	// When we're done, do we need to clean up the class?
+	bool cleanup_required = false;
+
+
+	// What transitions can we take?
+	const tesla_transitions *trans = autom->ta_transitions + symbol;
+	assert(trans->length > 0);
+	assert(trans->length < 10000);
+
 	// Iterate over existing instances, figure out what to do with each.
-	int err = TESLA_SUCCESS;
+	err = TESLA_SUCCESS;
 	int expected = class->tc_limit - class->tc_free;
 	for (uint32_t i = 0; expected > 0 && (i < class->tc_limit); i++) {
 		assert(class->tc_instances != NULL);
@@ -98,6 +308,7 @@ tesla_update_state(enum tesla_context tesla_context,
 			break;
 
 		case IGNORE:
+			// TODO(JA): this should become unreachable
 			break;
 
 		case UPDATE:
@@ -115,7 +326,7 @@ tesla_update_state(enum tesla_context tesla_context,
 			if (cloned >= max_clones) {
 				err = TESLA_ERROR_ENOMEM;
 				ev_err(autom, symbol, err, "too many clones");
-				goto cleanup;
+				return;
 			}
 
 			struct clone_info *clone = clones + cloned++;
@@ -154,7 +365,7 @@ tesla_update_state(enum tesla_context tesla_context,
 		err = tesla_instance_clone(class, c->old, &clone);
 		if (err != TESLA_SUCCESS) {
 			ev_err(autom, symbol, err, "failed to clone instance");
-			goto cleanup;
+			return;
 		}
 
 		tesla_key new_name = *pattern;
@@ -162,7 +373,7 @@ tesla_update_state(enum tesla_context tesla_context,
 		err = tesla_key_union(&clone->ti_key, &new_name);
 		if (err != TESLA_SUCCESS) {
 			ev_err(autom, symbol, err, "failed to union keys");
-			goto cleanup;
+			return;
 		}
 
 		clone->ti_state = c->transition->to;
@@ -173,42 +384,12 @@ tesla_update_state(enum tesla_context tesla_context,
 			ev_accept(class, clone);
 	}
 
-
-	// Does this transition cause class instance initialisation?
-	for (uint32_t i = 0; i < trans->length; i++) {
-		const tesla_transition *t = trans->transitions + i;
-		if (t->flags & TESLA_TRANS_INIT) {
-			struct tesla_instance *inst;
-			err = tesla_instance_new(class, pattern, t->to, &inst);
-			if (err != TESLA_SUCCESS) {
-				ev_err(autom, symbol, err,
-					"failed to init instance");
-				goto cleanup;
-			}
-
-			assert(tesla_instance_active(inst));
-
-			matched_something = true;
-			ev_new_instance(class, inst);
-		}
-	}
-
-	if (!matched_something) {
-		// If the class hasn't received any <<init>> events yet,
-		// simply ignore the event: it is out of scope.
-		if (class->tc_free == class->tc_limit)
-			ev_ignored(class, symbol, pattern);
-
-		// Otherwise, we ought to have matched something.
-		else ev_no_instance(class, symbol, pattern);
-	}
+	if (!matched_something)
+		ev_no_instance(class, symbol, pattern);
 
 	// Does it cause class cleanup?
 	if (cleanup_required)
 		tesla_class_reset(class);
-
-cleanup:
-	tesla_class_put(class);
 }
 
 enum tesla_action_t
