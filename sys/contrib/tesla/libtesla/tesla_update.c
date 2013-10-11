@@ -120,6 +120,8 @@ tesla_sunset(enum tesla_context context, const struct tesla_lifetime *l)
 			class->tc_automaton->ta_cleanup_symbol, &empty_key);
 	}
 
+	bzero(ls->tls_classes, sizeof(ls->tls_classes));
+
 	const size_t dynamic_classes = ls->tls_dyn_count;
 	for (size_t i = 0; i < dynamic_classes; i++) {
 		tesla_class *class = ls->tls_dyn_classes[i];
@@ -129,6 +131,8 @@ tesla_sunset(enum tesla_context context, const struct tesla_lifetime *l)
 		tesla_update_class_state(class, store,
 			class->tc_automaton->ta_cleanup_symbol, &empty_key);
 	}
+
+	//bzero(ls->tls_dyn_classes, ls->tls_dyn_count * sizeof(ls->tls_classes[0]));
 }
 
 
@@ -252,7 +256,7 @@ tesla_update_class_state(struct tesla_class *class, struct tesla_store *store,
 			 *           when we know it's safe.
 			 */
 			ev_err(autom, symbol, TESLA_ERROR_ENOMEM,
-			       "out of dynamic registration space in lifetime");
+			       "out of static registration space in lifetime");
 #else
 			static size_t unit_size =
 				sizeof(ls->tls_dyn_classes[0]);

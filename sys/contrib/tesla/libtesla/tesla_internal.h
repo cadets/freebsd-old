@@ -89,7 +89,7 @@ struct tesla_lifetime_state {
 	struct tesla_lifetime_event	 tls_end;
 
 	/** A place to register a few classes that share this lifetime. */
-	struct tesla_class*		 tls_classes[4];
+	struct tesla_class*		 tls_classes[32];
 
 	/** A place to register more classes that share this lifetime. */
 	struct tesla_class*		*tls_dyn_classes;
