@@ -38,6 +38,10 @@
 
 SDT_PROVIDER_DEFINE(tesla);
 
+SDT_PROBE_DEFINE2(tesla, automata, lifetime, sunrise, sunrise,
+    "enum tesla_context context", "struct tesla_lifetime *");
+SDT_PROBE_DEFINE2(tesla, automata, lifetime, sunset, sunset,
+    "enum tesla_context context", "struct tesla_lifetime *");
 SDT_PROBE_DEFINE2(tesla, automata, instance, create, create,
     "struct tesla_class *", "struct tesla_instance *");
 SDT_PROBE_DEFINE3(tesla, automata, event, transition, state-transition,
@@ -58,6 +62,20 @@ SDT_PROBE_DEFINE2(tesla, automata, success, accept, accept,
     "struct tesla_class *", "struct tesla_instance *");
 SDT_PROBE_DEFINE3(tesla, automata, event, ignored, ignored-event,
     "struct tesla_class *", "int32_t", "struct tesla_key *");
+
+static void
+sunrise(enum tesla_context c, const struct tesla_lifetime *tl)
+{
+
+	SDT_PROBE(tesla, automata, lifetime, sunrise, c, tl, 0, 0, 0);
+}
+
+static void
+sunset(enum tesla_context c, const struct tesla_lifetime *tl)
+{
+
+	SDT_PROBE(tesla, automata, lifetime, sunset, c, tl, 0, 0, 0);
+}
 
 static void
 new_instance(struct tesla_class *tcp, struct tesla_instance *tip)
@@ -144,6 +162,8 @@ ignored(const struct tesla_class *tcp, int32_t symbol,
 }
 
 const struct tesla_event_handlers dtrace_handlers = {
+	.teh_sunrise			= sunrise,
+	.teh_sunset			= sunset,
 	.teh_init			= new_instance,
 	.teh_transition			= transition,
 	.teh_clone			= clone,

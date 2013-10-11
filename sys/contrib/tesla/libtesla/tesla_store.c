@@ -145,6 +145,18 @@ tesla_store_init(tesla_store *store, enum tesla_context context,
 		assert(store->ts_classes[i].tc_context >= 0);
 	}
 
+	/*
+	 * For now, allocate as many lifetime storage slots as there are
+	 * classes. In practice, many automata will share lifetime information.
+	 *
+	 * TODO(JA): perhaps allocate fewer of these?
+	 */
+	const size_t lifetime_size = classes * sizeof(store->ts_lifetimes[0]);
+	store->ts_lifetimes = tesla_malloc(lifetime_size);
+	bzero(store->ts_lifetimes, lifetime_size);
+
+	store->ts_lifetime_count = 0;
+
 	return (error);
 }
 
@@ -157,6 +169,7 @@ tesla_store_free(tesla_store *store)
 	for (uint32_t i = 0; i < store->ts_length; i++)
 		tesla_class_destroy(store->ts_classes + i);
 
+	tesla_free(store->ts_lifetimes);
 	tesla_free(store);
 }
 

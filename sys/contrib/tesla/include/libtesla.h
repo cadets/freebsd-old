@@ -76,7 +76,7 @@ const char	*tesla_strerror(int32_t error);
  * a number of times with different names and current states.
  */
 struct tesla_class;
-
+struct tesla_lifetime_event;
 struct tesla_transitions;
 
 /**
@@ -94,6 +94,11 @@ struct tesla_automaton {
 	 */
 	const int32_t			 ta_alphabet_size;
 
+        /**
+         * The symbol number used to signal cleanup.
+         */
+        const int32_t                    ta_cleanup_symbol;
+
 	/**
 	 * Transitions that will be taken in response to events.
 	 *
@@ -107,6 +112,54 @@ struct tesla_automaton {
 
 	/** Human-readable descriptions of input symbols (for debugging). */
 	const char*			*ta_symbol_names;
+
+	/** The automaton's lifetime. */
+	const struct tesla_lifetime	*ta_lifetime;
+};
+
+
+/**
+ * A short, unique, deterministic representation of a lifetime entry/exit event,
+ * a pair of which defines an automaton's lifetime.
+ */
+struct tesla_lifetime_event {
+	/**
+	 * An opaque representation of the automaton's initialisation event.
+	 *
+	 * This description should be short and deterministic,
+	 * i.e., multiple automata that share the same init event should
+	 * have exactly the same ta_init description string.
+	 *
+	 * This can be written by hand if needed (e.g. for testing),
+	 * but in practice we generate it from protocol buffers.
+	 */
+	const char			*tle_repr;
+
+	/** The length of @ref #tle_repr. */
+	const int32_t			 tle_length;
+
+	/**
+	 * A precomputed hash of @ref #tle_repr.
+	 *
+	 * libtesla doesn't care what hash algorithm is used; in test code or
+	 * statically-compiled clients, incrementing integers works well.
+	 *
+	 * All clients should be consistent, however; the TESLA instrumenter
+	 * uses SuperFastHash.
+	 */
+	const int32_t			 tle_hash;
+};
+
+
+/**
+ * The description of a TESLA lifetime.
+ */
+struct tesla_lifetime {
+	struct tesla_lifetime_event	tl_begin;
+	struct tesla_lifetime_event	tl_end;
+
+	/** A human-readable string for debugging. */
+	const char			*tl_repr;
 };
 
 
@@ -246,6 +299,19 @@ void	tesla_update_state(enum tesla_context context,
 	const struct tesla_automaton *automaton,
 	uint32_t symbol, const struct tesla_key *pattern);
 
+/**
+ * We have encountered an entry bound for some automata.
+ *
+ * @param  context      Where the automaton is stored.
+ * @param  l            Static description of the lifetime (begin, end events).
+ */
+void	tesla_sunrise(enum tesla_context context,
+	const struct tesla_lifetime *l);
+
+/** We have encountered an exit bound for some automata. */
+void	tesla_sunset(enum tesla_context context,
+	const struct tesla_lifetime*);
+
 
 /** A single instance of an automaton: a name (@ref ti_key) and a state. */
 struct tesla_instance {
@@ -257,6 +323,14 @@ struct tesla_instance {
 /*
  * Event notification:
  */
+/** An initialisation event has occurred; entering an automaton lifetime. */
+typedef void	(*tesla_ev_sunrise)(enum tesla_context,
+	    const struct tesla_lifetime *);
+
+/** A cleanup event has occurred; exiting an automaton lifetime. */
+typedef void	(*tesla_ev_sunset)(enum tesla_context,
+	    const struct tesla_lifetime *);
+
 /** A new @ref tesla_instance has been created. */
 typedef void	(*tesla_ev_new_instance)(struct tesla_class *,
 	    struct tesla_instance *);
@@ -292,6 +366,8 @@ typedef void	(*tesla_ev_ignored)(const struct tesla_class *,
 
 /** A vector of event handlers. */
 struct tesla_event_handlers {
+	tesla_ev_sunrise	teh_sunrise;
+	tesla_ev_sunset		teh_sunset;
 	tesla_ev_new_instance	teh_init;
 	tesla_ev_transition	teh_transition;
 	tesla_ev_clone		teh_clone;
