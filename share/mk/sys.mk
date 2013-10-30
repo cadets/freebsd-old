@@ -298,22 +298,22 @@ YFLAGS		?=	-d
 .endif
 
 .${LLVM_IR_TYPE}-a.soaap:
-	${OPT} -load ${SOAAP_BUILD_DIR}/libsoaap.so -soaap ${SOAAP_FLAGS} \
+	${OPT} -load ${SOAAP_LIB_DIR}/libsoaap.so -soaap ${SOAAP_FLAGS} \
 	    -o /dev/null ${.IMPSRC}
 
 .${LLVM_IR_TYPE}-a.bc_cep:
-	${OPT} -load ${SOAAP_BUILD_DIR}/libcep.so -insert-call-edge-profiling \
+	${OPT} -load ${SOAAP_LIB_DIR}/libcep.so -insert-call-edge-profiling \
 	    -o ${.TARGET} ${.IMPSRC}
 
 .bc_cep.po_cep:
 	${LLC} -filetype=obj ${LLCFLAGS} -o ${.TARGET} ${.IMPSRC}
 
 .po_cep.soaap_cg:
-	${CC} ${.IMPSRC} -L${SOAAP_BUILD_DIR} -L${LLVM_BUILD_DIR}/lib \
+	${CC} ${.IMPSRC} -L${SOAAP_LIB_DIR} -L${LLVM_BUILD_DIR}/lib \
 	    -lcep_rt -lprofile_rt ${LDADD} -o ${.TARGET}
 
 .${LLVM_IR_TYPE}-a.bc_soaap_perf:
-	${OPT} -load ${SOAAP_BUILD_DIR}/libsoaap.so -soaap \
+	${OPT} -load ${SOAAP_LIB_DIR}/libsoaap.so -soaap \
 	    -soaap-emulate-performance ${SOAAP_FLAGS} -o ${.TARGET} ${.IMPSRC}
 
 .bc_soaap_perf.po_soaap_perf:
