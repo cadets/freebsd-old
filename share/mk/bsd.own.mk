@@ -647,7 +647,23 @@ MK_LLVM_INSTRUMENTED:=	no
 .endif
 
 .if ${MK_SOAAP} != "no"
-CFLAGS+= -DSOAAP -I${SOAAP_SOURCE_DIR}/include
+.if !defined(SOAAP_INCLUDE_DIR)
+.if !defined(SOAAP_SOURCE_DIR)
+.error Must set one of SOAAP_INCLUDE_DIR or SOAAP_SOURCE_DIR with WITH_SOAAP
+.else
+.warning SOAAP_SOURCE_DIR is deprecated, use SOAAP_INCLUDE_DIR
+SOAAP_INCLUDE_DIR=${SOAAP_SOURCE_DIR}/include
+.endif
+.endif
+.if !defined(SOAAP_LIB_DIR)
+.if !defined(SOAAP_BUILD_DIR)
+.error Must set one of SOAAP_LIB_DIR or SOAAP_BUILD_DIR with WITH_SOAAP
+.else
+.warning SOAAP_BUILD_DIR is deprecated, use SOAAP_LIB_DIR
+SOAAP_LIB_DIR=${SOAAP_BUILD_DIR}
+.endif
+.endif
+CFLAGS+= -DSOAAP -I${SOAAP_INCLUDE_DIR}
 .if defined(WITHOUT_LLVM_INSTRUMENTED)
 .error WITHOUT_LLVM_INSTRUMENTED and WITH_SOAAP can't both be set.
 .else
