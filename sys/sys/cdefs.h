@@ -511,10 +511,11 @@
 #ifdef __clang__
 #define	__weak_reference(sym,alias)	\
 	extern __typeof (sym) alias __attribute__ ((weak, __alias__ (#sym)))
-#endif /* __clang__ */
+#else
 #define	__weak_reference(sym,alias)	\
 	__asm__(".weak " #alias);	\
 	__asm__(".equ "  #alias ", " #sym)
+#endif /* __clang__ */
 #define	__warn_references(sym,msg)	\
 	__asm__(".section .gnu.warning." #sym);	\
 	__asm__(".asciz \"" msg "\"");	\
