@@ -673,7 +673,7 @@ KTR_ENTRIES		opt_global.h
 KTR_VERBOSE		opt_ktr.h
 TESLA			opt_global.h
 TESLA_CAPSICUM		opt_global.h
-TESLA_MAC		opt_global.h
+TESLA_MAC_ALL		opt_global.h
 TESLA_PRIV		opt_global.h
 TESLA_PROC		opt_global.h
 TESLA_TEST		opt_global.h

@@ -143,7 +143,7 @@ mac_pipe_relabel(struct ucred *cred, struct pipepair *pp,
     struct label *newlabel)
 {
 
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL_PREVIOUSLY(mac_pipe_check_relabel(cred, pp, newlabel)
 	    == 0);
 #endif

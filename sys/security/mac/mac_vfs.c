@@ -949,7 +949,7 @@ mac_vnode_relabel(struct ucred *cred, struct vnode *vp,
     struct label *newlabel)
 {
 
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL(previously(mac_vnode_check_relabel(cred, vp, newlabel)
 	    == 0));
 #endif

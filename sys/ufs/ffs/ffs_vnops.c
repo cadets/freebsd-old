@@ -440,7 +440,7 @@ ffs_read(ap)
 
 	vp = ap->a_vp;
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL(
 	    incallstack(ufs_readdir) ||
 	    previously(called(vn_rdwr(ANY(int), vp, ANY(ptr), ANY(int),
@@ -674,7 +674,7 @@ ffs_write(ap)
 
 	vp = ap->a_vp;
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL(
 	    previously(called(vn_rdwr(ANY(int), vp, ANY(ptr), ANY(int),
 	    ANY(int), ANY(int), flags(IO_NOMACCHECK), ANY(ptr), ANY(ptr),
@@ -1495,7 +1495,7 @@ vop_deleteextattr {
 	u_char *eae, *p;
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL(incallstack(ufs_setacl) ||
 	    previously(mac_vnode_check_deleteextattr(ANY(ptr), ap->a_vp,
 	    ap->a_attrnamespace, ap->a_name) == 0));
@@ -1590,7 +1590,7 @@ vop_getextattr {
 	int error, ealen;
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL(incallstack(ufs_getacl) ||
 	    previously(mac_vnode_check_getextattr(ANY(ptr), ap->a_vp,
 	    ap->a_attrnamespace, ap->a_name) == 0));
@@ -1654,7 +1654,7 @@ vop_listextattr {
 	int error, ealen;
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_listextattr(ANY(ptr),
 	    ap->a_vp, ap->a_attrnamespace) == 0);
 #endif
@@ -1725,7 +1725,7 @@ vop_setextattr {
 	u_char *eae, *p;
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL(incallstack(ufs_setacl) ||
 	    previously(mac_vnode_check_setextattr(ANY(ptr), ap->a_vp,
 	    ap->a_attrnamespace, ap->a_name) == 0));

@@ -4,6 +4,6 @@ ident TESLA_ND_ALL
 options REGRESSION
 options TESLA
 options TESLA_CAPSICUM
-options TESLA_MAC
+options TESLA_MAC_ALL
 options TESLA_PRIV
 options TESLA_PROC

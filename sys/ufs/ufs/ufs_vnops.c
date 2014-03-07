@@ -274,7 +274,7 @@ ufs_open(struct vop_open_args *ap)
 	struct inode *ip;
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL(
 	    previously(mac_kld_check_load(ANY(ptr), vp) == 0) ||
 	    previously(mac_vnode_check_exec(ANY(ptr), vp, ANY(ptr)) == 0) ||
@@ -542,7 +542,7 @@ ufs_setattr(ap)
 	}
 	if (vap->va_flags != VNOVAL) {
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 		TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_setflags(ANY(ptr),
 		    vp, ANY(int)) == 0);
 #endif
@@ -611,7 +611,7 @@ ufs_setattr(ap)
 	}
 	if (vap->va_size != VNOVAL) {
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 		TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_write(ANY(ptr),
 		    ANY(ptr), vp) == 0);
 #endif
@@ -661,7 +661,7 @@ ufs_setattr(ap)
 		 * XXXRW: TESLA can't currently instrument functions with
 		 * struct arguments.
 		 */
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 		TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_setutimes(ANY(ptr),
 		    vp, ANY(timespec), ANY(timespec)) == 0);
 #endif
@@ -802,7 +802,7 @@ ufs_chmod(vp, mode, cred, td)
 	int error;
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_setmode(ANY(ptr), vp, mode)
 	    == 0);
 #endif
@@ -875,7 +875,7 @@ ufs_chown(vp, uid, gid, cred, td)
 #endif
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_setowner(ANY(ptr), vp, uid,
 	    gid) == 0);
 #endif
@@ -994,7 +994,7 @@ ufs_remove(ap)
 	struct thread *td;
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_unlink(ANY(ptr), dvp, vp,
 	    ap->a_cnp) == 0);
 #endif
@@ -1050,7 +1050,7 @@ ufs_link(ap)
 	int error;
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_link(ANY(ptr), tdvp, vp,
 	    cnp) == 0);
 #endif
@@ -1220,7 +1220,7 @@ ufs_rename(ap)
 	ino_t ino;
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_rename_from(ANY(ptr), fdvp,
 	    fvp, fcnp) == 0);
 	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_rename_to(ANY(ptr), tdvp,
@@ -1884,7 +1884,7 @@ ufs_mkdir(ap)
 	long blkoff;
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_create(ANY(ptr), dvp, cnp,
 	    vap) == 0);
 #endif
@@ -2125,7 +2125,7 @@ ufs_rmdir(ap)
 	int error;
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_unlink(ANY(ptr), dvp, vp,
 	    cnp) == 0);
 #endif
@@ -2276,7 +2276,7 @@ ufs_readdir(ap)
 	off_t off;
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_readdir(ANY(ptr), ap->a_vp)
 	    == 0);
 #endif
@@ -2392,7 +2392,7 @@ ufs_readlink(ap)
 	doff_t isize;
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_readlink(ANY(ptr), vp) == 0);
 #endif
 #endif
@@ -2695,7 +2695,7 @@ ufs_makeinode(mode, dvp, vpp, cnp)
 	int error;
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_create(ANY(ptr), dvp, cnp,
 	    ANY(ptr)) == 0);
 #endif
