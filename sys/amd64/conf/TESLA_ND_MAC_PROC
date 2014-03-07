@@ -2,5 +2,5 @@ include GENERIC_NODEBUG
 ident TESLA_ND_MAC_PROC
 
 options TESLA
-options TESLA_MAC
+options TESLA_MAC_ALL
 options TESLA_PROC

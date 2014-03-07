@@ -2149,7 +2149,7 @@ change_euid(struct ucred *newcred, struct uidinfo *euip)
 
 	euid = euip->ui_uid;
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	/* XXXRW: In the exec() case, really want imgp->attr.uid. */
 	TESLA_SYSCALL(
 	    previously(mac_cred_check_setuid(ANY(ptr), euid) == 0) ||
@@ -2183,7 +2183,7 @@ change_egid(struct ucred *newcred, gid_t egid)
 {
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	/* XXXRW: In the exec() case, really want imgp->attr.gid. */
 	TESLA_SYSCALL(
 	    previously(mac_cred_check_setegid(ANY(ptr), egid) == 0) ||
@@ -2217,7 +2217,7 @@ change_ruid(struct ucred *newcred, struct uidinfo *ruip)
 
 	uid_t ruid = ruip->ui_uid;
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	/* XXXRW: In the exec() case, really want imgp->attr.uid. */
 	TESLA_SYSCALL(
 	    previously(mac_cred_check_setuid(ANY(ptr), ruid) == 0) ||
@@ -2253,7 +2253,7 @@ change_rgid(struct ucred *newcred, gid_t rgid)
 {
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	/* XXXRW: In the exec() case, really want imgp->attr.gid. */
 	TESLA_SYSCALL(
 	    previously(mac_cred_check_setgid(ANY(ptr), rgid) == 0) ||
@@ -2284,7 +2284,7 @@ change_svuid(struct ucred *newcred, uid_t svuid)
 {
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	/* XXXRW: In the exec() case, really want imgp->attr.uid. */
 	TESLA_SYSCALL(
 	    previously(mac_cred_check_setuid(ANY(ptr), ANY(int)) == 0) ||
@@ -2315,7 +2315,7 @@ change_svgid(struct ucred *newcred, gid_t svgid)
 {
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	/* XXXRW: In the exec() case, really want imgp->attr.gid. */
 	TESLA_SYSCALL(
 	    previously(mac_cred_check_setgid(ANY(ptr), ANY(int)) == 0) ||

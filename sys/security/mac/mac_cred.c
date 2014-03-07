@@ -196,7 +196,7 @@ void
 mac_cred_relabel(struct ucred *cred, struct label *newlabel)
 {
 
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL(previously(mac_cred_check_relabel(cred, newlabel) ==
 	    0));
 #endif

@@ -53,7 +53,7 @@ __FBSDID("$FreeBSD: head/sys/ufs/ufs/ufs_lookup.c 248561 2013-03-20 17:57:00Z mc
 #include <sys/sysctl.h>
 #include <sys/tesla-kernel.h>
 
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 #include <security/mac/mac_framework.h>
 #endif
 
@@ -217,7 +217,7 @@ ufs_lookup(ap)
 {
 
 #ifdef MAC
-#ifdef TESLA_MAC
+#ifdef TESLA_MAC_ALL
 	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_lookup(ANY(ptr), ap->a_dvp,
 	    ap->a_cnp) == 0);
 #endif
