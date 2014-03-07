@@ -194,7 +194,7 @@ tesla_update_class_state(struct tesla_class *class, struct tesla_store *store,
 		// it has already been taken.
 		struct tesla_instance *inst = NULL;
 
-		for (uint32_t i = 0; i < autom->ta_alphabet_size; i++) {
+		for (uint32_t i = 0; i < (uint32_t)autom->ta_alphabet_size; i++) {
 			const tesla_transitions *trans =
 				autom->ta_transitions + i;
 
