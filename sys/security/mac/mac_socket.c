@@ -258,7 +258,7 @@ mac_socket_relabel(struct ucred *cred, struct socket *so,
     struct label *newlabel)
 {
 
-#ifdef TESLA_MAC_ALL
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
 	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_relabel(cred, so, newlabel)
 	    == 0);
 #endif

@@ -425,7 +425,7 @@ socreate(int dom, struct socket **aso, int type, int proto,
 	int error;
 
 #ifdef MAC
-#ifdef TESLA_MAC_ALL
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
 	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_create(cred, dom, type,
 	    proto) == 0);
 #endif
@@ -627,7 +627,7 @@ sobind(struct socket *so, struct sockaddr *nam, struct thread *td)
 	int error;
 
 #ifdef MAC
-#ifdef TESLA_MAC_ALL
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
 	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_bind(ANY(ptr), so, nam) ==
 	    0);
 #endif
@@ -645,7 +645,7 @@ sobindat(int fd, struct socket *so, struct sockaddr *nam, struct thread *td)
 	int error;
 
 #ifdef MAC
-#ifdef TESLA_MAC_ALL
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
 	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_bind(ANY(ptr), so, nam) ==
 	    0);
 #endif
@@ -675,7 +675,7 @@ solisten(struct socket *so, int backlog, struct thread *td)
 	int error;
 
 #ifdef MAC
-#ifdef TESLA_MAC_ALL
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
 	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_listen(ANY(ptr), so) == 0);
 #endif
 #endif
@@ -929,7 +929,7 @@ soaccept(struct socket *so, struct sockaddr **nam)
 
 #ifdef MAC
 	/* Access-control check is on head rather than so. */
-#ifdef TESLA_MAC_ALL
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
 	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_accept(ANY(ptr), ANY(ptr)) ==
 	    0);
 #endif
@@ -951,7 +951,7 @@ soconnect(struct socket *so, struct sockaddr *nam, struct thread *td)
 {
 
 #ifdef MAC
-#ifdef TESLA_MAC_ALL
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
 	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_connect(td->td_ucred, so,
 	    nam) == 0);
 #endif
@@ -1495,7 +1495,7 @@ sosend(struct socket *so, struct sockaddr *addr, struct uio *uio,
 	int error;
 
 #ifdef MAC
-#ifdef TESLA_MAC_ALL
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
 	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_send(ANY(ptr), so) == 0);
 #endif
 #endif
@@ -2457,7 +2457,7 @@ soreceive(struct socket *so, struct sockaddr **psa, struct uio *uio,
 	int error;
 
 #ifdef MAC
-#ifdef TESLA_MAC_ALL
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
 	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_receive(ANY(ptr), so) == 0);
 #endif
 #endif
@@ -3140,7 +3140,7 @@ sopoll_generic(struct socket *so, int events, struct ucred *active_cred,
 	 * XXXRW: Should be active_cred but actually fp->f_cred is getting
 	 * passed down the stack, so the wrong cred here!
 	 */
-#ifdef TESLA_MAC_ALL
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
 	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_poll(ANY(ptr), so) == 0);
 #endif
 #endif
@@ -3191,7 +3191,7 @@ soo_kqfilter(struct file *fp, struct knote *kn)
 	struct sockbuf *sb;
 
 #ifdef MAC
-#ifdef TESLA_MAC_ALL
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
 	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_poll(ANY(ptr), so) == 0);
 #endif
 #endif
