@@ -172,7 +172,7 @@ mac_execve_enter(struct image_params *imgp, struct mac *mac_p)
 	}
 	imgp->execlabel = label;
 
-#ifdef TESLA_MAC_ALL
+#if defined(TESLA_MAC_PROC) || defined(TESLA_MAC_ALL)
 	TESLA_SYSCALL_EVENTUALLY(called(mac_execve_exit));
 #endif
 
@@ -183,7 +183,7 @@ void
 mac_execve_exit(struct image_params *imgp)
 {
 
-#ifdef TESLA_MAC_ALL
+#if defined(TESLA_MAC_PROC) || defined(TESLA_MAC_ALL)
 	TESLA_SYSCALL_PREVIOUSLY(called(mac_execve_enter(imgp, ANY(ptr))));
 #endif
 
@@ -204,7 +204,7 @@ mac_execve_interpreter_enter(struct vnode *interpvp,
 	} else
 		*interpvplabel = NULL;
 
-#ifdef TESLA_MAC_ALL
+#if defined(TESLA_MAC_PROC) || defined(TESLA_MAC_ALL)
 	TESLA_SYSCALL_EVENTUALLY(called(mac_execve_interpreter_exit));
 #endif
 }
@@ -215,7 +215,7 @@ mac_execve_interpreter_exit(struct label *interpvplabel)
 
 	if (interpvplabel != NULL) {
 		/* Awkwardly, _exit() may be called even if _enter() wasn't. */
-#ifdef TESLA_MAC_ALL
+#if defined(TESLA_MAC_PROC) || defined(TESLA_MAC_ALL)
 		TESLA_SYSCALL_PREVIOUSLY(called(
 		    mac_execve_interpreter_enter(ANY(ptr), ANY(ptr))));
 #endif

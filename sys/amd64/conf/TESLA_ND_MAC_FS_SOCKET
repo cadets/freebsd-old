@@ -1,0 +1,6 @@
+include GENERIC_NODEBUG
+ident TESLA_ND_MAC_FS_SOCKET
+
+options TESLA
+options TESLA_MAC_FS
+options TESLA_MAC_SOCKET

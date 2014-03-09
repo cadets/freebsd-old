@@ -674,6 +674,10 @@ KTR_VERBOSE		opt_ktr.h
 TESLA			opt_global.h
 TESLA_CAPSICUM		opt_global.h
 TESLA_MAC_ALL		opt_global.h
+TESLA_MAC_FS		opt_global.h
+TESLA_MAC_MISC		opt_global.h
+TESLA_MAC_PROC		opt_global.h
+TESLA_MAC_SOCKET	opt_global.h
 TESLA_PRIV		opt_global.h
 TESLA_PROC		opt_global.h
 TESLA_TEST		opt_global.h
