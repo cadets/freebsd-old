@@ -1,0 +1,9 @@
+include GENERIC
+ident TESLA_ALL
+
+options TESLA
+options TESLA_CAPSICUM
+options TESLA_MAC_ALL
+options TESLA_PRIV
+options TESLA_PROC
+options TESLA_TEST
