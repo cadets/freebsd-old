@@ -2,6 +2,8 @@
 
 .include "../Makefile.inc0"
 
+MK_LLVM_INSTRUMENTED=no
+
 .PATH: ${SRCDIR}/bfd ${SRCDIR}/opcodes
 
 LIB=	bfd

@@ -6,6 +6,8 @@
 # tests are to be built.  All other *.test.mk files are internal and not
 # to be included directly.
 
+MK_LLVM_INSTRUMENTED=no
+
 .include <bsd.init.mk>
 
 __<bsd.test.mk>__:

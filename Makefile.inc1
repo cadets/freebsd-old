@@ -71,7 +71,7 @@ SUBDIR+=gnu include
 .if ${MK_KERBEROS} != "no"
 SUBDIR+=kerberos5
 .endif
-.if ${MK_RESCUE} != "no"
+.if ${MK_RESCUE} != "no" && ${MK_LLVM_INSTRUMENTED} == "no"
 SUBDIR+=rescue
 .endif
 SUBDIR+=sbin
@@ -257,7 +257,7 @@ BMAKE=		MAKEOBJDIRPREFIX=${WORLDTMP} \
 		DESTDIR= \
 		BOOTSTRAPPING=${OSRELDATE} \
 		SSP_CFLAGS= \
-		MK_HTML=no NO_LINT=yes MK_MAN=no \
+		MK_HTML=no NO_LINT=yes NO_LLVM_IR=yes MK_MAN=no \
 		-DNO_PIC MK_PROFILE=no -DNO_SHARED \
 		-DNO_CPU_CFLAGS MK_WARNS=no MK_CTF=no \
 		MK_CLANG_EXTRAS=no MK_CLANG_FULL=no \
@@ -334,7 +334,7 @@ CROSS_BINUTILS_PREFIX=/usr/local/${TARGET_ARCH}-freebsd/bin/
 .endif
 .endif
 
-XCOMPILERS=	CC CXX CPP
+XCOMPILERS=	CC CXX CPP LLC LLVM_LINK
 .for COMPILER in ${XCOMPILERS}
 .if defined(CROSS_COMPILER_PREFIX)
 X${COMPILER}?=	${CROSS_COMPILER_PREFIX}${${COMPILER}}
@@ -354,6 +354,7 @@ X${BINUTIL}?=	${${BINUTIL}}
 WMAKEENV+=	CC="${XCC} ${XCFLAGS}" CXX="${XCXX} ${XCFLAGS} ${XCXXFLAGS}" \
 		DEPFLAGS="${DEPFLAGS}" \
 		CPP="${XCPP} ${XCFLAGS}" \
+		LLC="${XLLC}" LLVM_LINK="${XLLVM_LINK}" \
 		AS="${XAS}" AR="${XAR}" LD="${XLD}" NM=${XNM} \
 		OBJDUMP=${XOBJDUMP} OBJCOPY="${XOBJCOPY}" \
 		RANLIB=${XRANLIB} STRINGS=${XSTRINGS} \
@@ -429,6 +430,7 @@ LIB32WMAKEFLAGS=	\
 .endif
 
 
+# XXXBD: --sysroot=${WORLDTMP} added in teslabsd
 LIB32FLAGS=	-m32 ${LIB32CPUFLAGS} -DCOMPAT_32BIT \
 		-isystem ${LIB32TMP}/usr/include/ \
 		-L${LIB32TMP}/usr/lib32 \
@@ -673,7 +675,7 @@ build32:
 	cd ${.CURDIR}/libexec/rtld-elf; PROG=ld-elf32.so.1 ${LIB32WMAKE} \
 	    DIRPRFX=libexec/rtld-elf/ ${_t}
 	cd ${.CURDIR}/usr.bin/ldd; PROG=ldd32 ${LIB32WMAKE} \
-	    DIRPRFX=usr.bin/ldd ${_t}
+	    -DNO_LLVM_ID DIRPRFX=usr.bin/ldd ${_t}
 .endfor
 
 distribute32 install32:
@@ -1026,6 +1028,10 @@ KERNCONF?=	GENERIC64
 KERNCONF?=	GENERIC
 .endif
 INSTKERNNAME?=	kernel
+
+.if ${MK_LLVM_INSTRUMENTED} != "no"
+CONFIGARGS+=	-t
+.endif
 
 KERNSRCDIR?=	${.CURDIR}/sys
 KRNLCONFDIR=	${KERNSRCDIR}/${TARGET}/conf
@@ -1428,7 +1434,7 @@ _share=	share/syscons/scrnmaps
 _gcc_tools= gnu/usr.bin/cc/cc_tools
 .endif
 
-.if ${MK_RESCUE} != "no"
+.if ${MK_RESCUE} != "no" && ${MK_LLVM_INSTRUMENTED} == "no"
 _rescue= rescue/rescue
 .endif
 
@@ -1867,9 +1873,9 @@ ${_lib}__PL: .PHONY .MAKE
 		${MAKE} MK_TESTS=no DIRPRFX=${_lib}/ obj && \
 		${MAKE} MK_TESTS=no DIRPRFX=${_lib}/ depend && \
 		${MAKE} MK_TESTS=no MK_PROFILE=no -DNO_PIC \
-		    DIRPRFX=${_lib}/ all && \
+		    -DNO_LLVM_IR DIRPRFX=${_lib}/ all && \
 		${MAKE} MK_TESTS=no MK_PROFILE=no -DNO_PIC \
-		    DIRPRFX=${_lib}/ install
+		    -DNO_LLVM_IR DIRPRFX=${_lib}/ install
 .endif
 .endfor
 
@@ -1880,8 +1886,8 @@ ${_lib}__L: .PHONY .MAKE
 		cd ${.CURDIR}/${_lib} && \
 		${MAKE} MK_TESTS=no DIRPRFX=${_lib}/ obj && \
 		${MAKE} MK_TESTS=no DIRPRFX=${_lib}/ depend && \
-		${MAKE} MK_TESTS=no DIRPRFX=${_lib}/ all && \
-		${MAKE} MK_TESTS=no DIRPRFX=${_lib}/ install
+		${MAKE} MK_TESTS=no DIRPRFX=${_lib}/ -DNO_LLVM_IR all && \
+		${MAKE} MK_TESTS=no DIRPRFX=${_lib}/ -DNO_LLVM_IR install
 .endif
 .endfor
 
@@ -1894,9 +1900,9 @@ lib/libpam__L: .PHONY .MAKE
 		${MAKE} MK_TESTS=no DIRPRFX=lib/libpam/ obj && \
 		${MAKE} MK_TESTS=no DIRPRFX=lib/libpam/ depend && \
 		${MAKE} MK_TESTS=no DIRPRFX=lib/libpam/ \
-		    -D_NO_LIBPAM_SO_YET all && \
+		    -D_NO_LIBPAM_SO_YET -DNO_LLVM_IR all && \
 		${MAKE} MK_TESTS=no DIRPRFX=lib/libpam/ \
-		    -D_NO_LIBPAM_SO_YET install
+		    -D_NO_LIBPAM_SO_YET -DNO_LLVM_IR install
 
 _prereq_libs: ${_prereq_libs:S/$/__PL/}
 _startup_libs: ${_startup_libs:S/$/__L/}

@@ -12,4 +12,9 @@ SUBDIR+=	pxeldr
 SUBDIR+=	zfsboot gptzfsboot zfsloader
 .endif
 
+.if ${MK_LLVM_INSTRUMENTED} == "yes"
+# External clang currently breaks in boot2
+SUBDIR:=	${SUBDIR:Nboot2}
+.endif
+
 .include <bsd.subdir.mk>

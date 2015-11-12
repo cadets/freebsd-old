@@ -72,44 +72,47 @@ PROG_FULL=	${PROG}
 .if defined(PROG)
 PROGNAME?=	${PROG}
 
-.if defined(SRCS)
-
-OBJS+=  ${SRCS:N*.h:R:S/$/.o/g}
-
-.if target(beforelinking)
-beforelinking: ${OBJS}
-${PROG_FULL}: beforelinking
-.endif
-${PROG_FULL}: ${OBJS}
-.if defined(PROG_CXX)
-	${CXX} ${CXXFLAGS} ${LDFLAGS} -o ${.TARGET} ${OBJS} ${LDADD}
-.else
-	${CC} ${CFLAGS} ${LDFLAGS} -o ${.TARGET} ${OBJS} ${LDADD}
-.endif
-.if ${MK_CTF} != "no"
-	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${OBJS}
-.endif
-
-.else	# !defined(SRCS)
-
-.if !target(${PROG})
+.if !defined(SRCS) && !target(${PROG})
 .if defined(PROG_CXX)
 SRCS=	${PROG}.cc
 .else
 SRCS=	${PROG}.c
 .endif
+.endif
 
-# Always make an intermediate object file because:
-# - it saves time rebuilding when only the library has changed
-# - the name of the object gets put into the executable symbol table instead of
-#   the name of a variable temporary object.
-# - it's useful to keep objects around for crunching.
-OBJS+=	${PROG}.o
+.if defined(SRCS) && !empty(SRCS)
+# XXX: currently tesla can't handle C++ so build C++ code normaly in the
+# WITH_TESLA case.
+.if defined(EARLY_BUILD) || defined(NO_LLVM_IR) || \
+    ${MK_LLVM_INSTRUMENTED} == "no" || defined(BOOTSTRAPPING)
+OBJS+=	${SRCS:N*.h:R:S/$/.o/g}
+.else
+# XXX: should blow up if other SRCS types are found
+OBJS+=		${SRCS:M*.bin:R:S/$/.o/g:N.o} ${SRCS:M*.[Ss]:R:S/$/.o/g:N.o}
+LLVM_CFILES=	${SRCS:M*.c} \
+		${SRCS:M*.cc} ${SRCS:M*.cpp} ${SRCS:M*.cxx} ${SRCS:M*.C} \
+		${SRCS:M*.l:R:S/$/.c/:N.c} ${SRCS:M*.y:R:S/$/.c/:N.c}
+OIRS=		${LLVM_CFILES:R:S/$/.o${LLVM_IR_TYPE}/}
+INSTR_IRS=	${LLVM_CFILES:R:S/$/.instr${LLVM_IR_TYPE}/}
+INSTR_OBJS=	${LLVM_CFILES:R:S/$/.instro/}
+OBJS+=		${INSTR_OBJS}
+CLEANFILES+=	${OIRS} ${INSTR_IRS} ${INSTR_OBJS}
+.endif
+.endif
 
 .if target(beforelinking)
 beforelinking: ${OBJS}
 ${PROG_FULL}: beforelinking
 .endif
+
+${PROG_FULL}.${LLVM_IR_TYPE}-a: ${OIRS} ${LLVM_LINK_ADD}
+	@echo linking ${.TARGET}
+	@if [ -z "${OIRS}" ]; then \
+		touch ${.TARGET} ;\
+	else \
+		${LLVM_LINK} -o ${.TARGET} ${OIRS} ${LLVM_LINK_ADD} ;\
+	fi
+
 ${PROG_FULL}: ${OBJS}
 .if defined(PROG_CXX)
 	${CXX} ${CXXFLAGS} ${LDFLAGS} -o ${.TARGET} ${OBJS} ${LDADD}
@@ -119,9 +122,6 @@ ${PROG_FULL}: ${OBJS}
 .if ${MK_CTF} != "no"
 	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${OBJS}
 .endif
-.endif # !target(${PROG})
-
-.endif # !defined(SRCS)
 
 .if ${MK_DEBUG_FILES} != "no"
 ${PROG}: ${PROG_FULL} ${PROGNAME}.debug
@@ -139,7 +139,7 @@ ${PROGNAME}.debug: ${PROG_FULL}
 MAN=	${PROG}.1
 MAN1=	${MAN}
 .endif
-.endif # defined(PROG)
+.endif #!defined(PROG)
 
 all: beforebuild .WAIT ${PROG} ${SCRIPTS}
 beforebuild: objwarn

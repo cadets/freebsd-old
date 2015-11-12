@@ -63,7 +63,7 @@ CTFFLAGS+= -g
 # prefer .s to a .c, add .po, remove stuff not used in the BSD libraries
 # .So used for PIC object files
 .SUFFIXES:
-.SUFFIXES: .out .o .po .So .S .asm .s .c .cc .cpp .cxx .C .f .y .l .ln
+.SUFFIXES: .out .o .po .obc .oll .So .S .asm .s .c .cc .cpp .cxx .C .f .y .l .ln
 
 .if !defined(PICFLAG)
 .if ${MACHINE_CPUARCH} == "sparc64"
@@ -79,6 +79,14 @@ PO_FLAG=-pg
 	${CC} ${STATIC_CFLAGS} ${CFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
 
+.c.obc:
+	${CC} -emit-llvm ${STATIC_CFLAGS} ${CFLAGS:N-O*} -c ${.IMPSRC} \
+	    -o ${.TARGET}
+
+.c.oll:
+	${CC} -emit-llvm ${STATIC_CFLAGS} ${CFLAGS:N-O*} -S ${.IMPSRC} \
+	    -o ${.TARGET}
+
 .c.po:
 	${CC} ${PO_FLAG} ${STATIC_CFLAGS} ${PO_CFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
@@ -89,6 +97,12 @@ PO_FLAG=-pg
 
 .cc.o .C.o .cpp.o .cxx.o:
 	${CXX} ${STATIC_CXXFLAGS} ${CXXFLAGS} -c ${.IMPSRC} -o ${.TARGET}
+
+.cc.obc .cpp.obc .cxx.obc .C.obc:
+	${CXX} -emit-llvm ${STATIC_CXXFLAGS} ${CXXFLAGS:N-O*} -c ${.IMPSRC} -o ${.TARGET}
+
+.cc.oll .cpp.oll .cxx.oll .C.oll:
+	${CXX} -emit-llvm ${STATIC_CXXFLAGS} ${CXXFLAGS:N-O*} -S ${.IMPSRC} -o ${.TARGET}
 
 .cc.po .C.po .cpp.po .cxx.po:
 	${CXX} ${PO_FLAG} ${STATIC_CXXFLAGS} ${PO_CXXFLAGS} -c ${.IMPSRC} -o ${.TARGET}
@@ -171,6 +185,41 @@ lib${LIB_PRIVATE}${LIB}.a: ${OBJS} ${STATICOBJS}
 	@rm -f ${.TARGET}
 	${AR} ${ARFLAGS} ${.TARGET} `NM='${NM}' lorder ${OBJS} ${STATICOBJS} | tsort -q` ${ARADD}
 	${RANLIB} ${RANLIBFLAGS} ${.TARGET}
+
+.if !defined(NO_LLVM_IR) && ${MK_LLVM_INSTRUMENTED} != "no"
+_LIBS+=	lib${LIB_PRIVATE}${LIB}.${LLVM_IR_TYPE}-a \
+	lib${LIB_PRIVATE}${LIB}.native-a
+OIRS=	${SRCS:M*.[Ccly]:R:S/$/.o${LLVM_IR_TYPE}/:N.o${LLVM_IR_TYPE}} \
+	${SRCS:M*.cc:R:S/$/.o${LLVM_IR_TYPE}/:N.o${LLVM_IR_TYPE}} \
+	${SRCS:M*.cpp:R:S/$/.o${LLVM_IR_TYPE}/:N.o${LLVM_IR_TYPE}} \
+	${SRCS:M*.cxx:R:S/$/.o${LLVM_IR_TYPE}/:N.o${LLVM_IR_TYPE}}
+NOBJS=	${SRCS:M*.[Ss]:R:S/$/.o/:N.o}
+CLEANFILES+=	${OIRS} ${NOBJS} \
+		lib${LIB_PRIVATE}${LIB}.${LLVM_IR_TYPE}-a lib${LIB_PRIVATE}${LIB}.native-a
+
+lib${LIB_PRIVATE}${LIB}.${LLVM_IR_TYPE}-a: ${OIRS}
+	if [ -z "${OIRS}" ]; then \
+		touch ${.TARGET} ;\
+	else \
+		${LLVM_LINK} -o ${.TARGET} ${OIRS} ;\
+	fi
+
+lib${LIB_PRIVATE}${LIB}.native-a: ${NOBJS}
+.if !defined(NM)
+	if [ -z "${NOBJS}" ]; then \
+		touch ${.TARGET} ;\
+	else \
+		${AR} ${ARFLAGS} ${.TARGET} `lorder ${OBJS} ${STATICOBJS} | tsort -q` ${ARADD} ;\
+	fi
+.else
+	if [ -z "${NOBJS}" ]; then \
+		touch ${.TARGET} ;\
+	else \
+		${AR} ${ARFLAGS} ${.TARGET} `NM='${NM}' lorder ${OBJS} ${STATICOBJS} | tsort -q` ${ARADD} ;\
+	fi
+.endif
+
+.endif
 .endif
 
 .if !defined(INTERNALLIB)
@@ -300,6 +349,17 @@ _libinstall:
 .if defined(LIB) && !empty(LIB) && ${MK_INSTALLLIB} != "no"
 	${INSTALL} -C -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
 	    ${_INSTALLFLAGS} lib${LIB_PRIVATE}${LIB}.a ${DESTDIR}${_LIBDIR}
+.endif
+.if defined(LIB) && !empty(LIB) && ${MK_INSTALLLIB} != "no" && \
+    !defined(NO_LLVM_IR) && ${MK_LLVM_INSTRUMENTED} != "no"
+	test -n lib${LIB_PRIVATE}${LIB}.${LLVM_IR_TYPE}-a && \
+	${INSTALL} -C -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
+	    ${_INSTALLFLAGS} lib${LIB_PRIVATE}${LIB}.${LLVM_IR_TYPE}-a \
+	    ${DESTDIR}${LIBDIR}
+	test -n lib${LIB_PRIVATE}${LIB}.native-a && \
+	${INSTALL} -C -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
+	    ${_INSTALLFLAGS} lib${LIB_PRIVATE}${LIB}.native-a \
+	    ${DESTDIR}${LIBDIR}
 .endif
 .if ${MK_PROFILE} != "no" && defined(LIB) && !empty(LIB)
 	${INSTALL} -C -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \

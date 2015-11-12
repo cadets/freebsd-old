@@ -29,6 +29,7 @@ MACHINE_CPUARCH=${MACHINE_ARCH:C/mips(n32|64)?(el)?/mips/:C/arm(v6)?(eb|hf)?/arm
 .SUFFIXES:	.o .c .y .l .a .sh .f
 .else
 .SUFFIXES:	.out .a .ln .o .c .cc .cpp .cxx .C .m .F .f .e .r .y .l .S .asm .s .cl .p .h .sh
+.SUFFIXES:	.ao .bc-a .ll-a .instrbc .instrll .instro .llvmlinked .obc .oll
 .endif
 
 AR		?=	ar
@@ -134,6 +135,15 @@ LINTOBJFLAGS	?=	-cghapbxu -i
 LINTOBJKERNFLAGS?=	${LINTOBJFLAGS}
 LINTLIBFLAGS	?=	-cghapbxu -C ${LIB}
 
+LLC		?=	llc
+LLCFLAGS	?=	${CFLAGS:M-O*:S/^-O$/-O1/:S/-O/-O=/}
+
+LLVM_INSTR_COMMAND	?=	cp ${.IMPSRC} ${.TARGET}
+
+LLVM_IR_TYPE	?=	bc
+
+LLVM_LINK	?=	llvm-link
+
 MAKE		?=	make
 
 .if !defined(%POSIX)
@@ -145,6 +155,8 @@ OBJCFLAGS	?=	${OBJCINCLUDES} ${CFLAGS} -Wno-import
 OBJCOPY		?=	objcopy
 
 OBJDUMP		?=	objdump
+
+OPT		?=	opt
 
 PC		?=	pc
 PFLAGS		?=
@@ -247,11 +259,23 @@ YFLAGS		?=	-d
 	${CC} ${CFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
 
+.c.obc:
+	${CC} ${CFLAGS:N-O*} -O1 -emit-llvm -c ${.IMPSRC} -o ${.TARGET}
+
+.c.oll:
+	${CC} ${CFLAGS:N-O*} -emit-llvm -S ${.IMPSRC} -o ${.TARGET}
+
 .cc .cpp .cxx .C:
 	${CXX} ${CXXFLAGS} ${LDFLAGS} ${.IMPSRC} ${LDLIBS} -o ${.TARGET}
 
 .cc.o .cpp.o .cxx.o .C.o:
 	${CXX} ${CXXFLAGS} -c ${.IMPSRC} -o ${.TARGET}
+
+.cc.obc .cpp.obc .cxx.obc .C.obc:
+	${CC} ${CXXFLAGS:N-O*} -emit-llvm -c ${.IMPSRC} -o ${.TARGET}
+
+.cc.oll .cpp.oll .cxx.oll .C.oll:
+	${CC} ${CXXFLAGS:N-O*} -emit-llvm -S ${.IMPSRC} -o ${.TARGET}
 
 .m.o:
 	${OBJC} ${OBJCFLAGS} -c ${.IMPSRC} -o ${.TARGET}
@@ -267,6 +291,31 @@ YFLAGS		?=	-d
 
 .e.o .r.o .F.o .f.o:
 	${FC} ${RFLAGS} ${EFLAGS} ${FFLAGS} -c ${.IMPSRC} -o ${.TARGET}
+
+.if ${LLVM_IR_TYPE} == "bc"
+.instrbc.instro:
+	${LLC} -filetype=obj ${LLCFLAGS} ${.IMPSRC} -o ${.TARGET}
+	${CTFCONVERT_CMD}
+.elif ${LLVM_IR_TYPE} == "ll"
+.instrll.instro:
+	${LLC} -filetype=obj ${LLCFLAGS} ${.IMPSRC} -o ${.TARGET}
+	${CTFCONVERT_CMD}
+.else
+.error Unknown LLVM IR type ${LLVM_IR_TYPE}
+.endif
+
+.${LLVM_IR_TYPE}-a.ao:
+	${LLC} -filetype=obj -o ${.TARGET} ${.IMPSRC}
+
+# XXX: missing non-c objects
+.ao.llvmlinked:
+	${CC} ${.IMPSRC} ${LDADD} -o ${.TARGET}
+
+.obc.instrbc:
+	${LLVM_INSTR_COMMAND}
+
+.oll.instrll:
+	${LLVM_INSTR_COMMAND}
 
 .S.o:
 	${CC} ${CFLAGS} ${ACFLAGS} -c ${.IMPSRC} -o ${.TARGET}

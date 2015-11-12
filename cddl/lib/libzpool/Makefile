@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+MK_LLVM_INSTRUMENTED=	no
+
 .include "${.CURDIR}/../../../sys/cddl/contrib/opensolaris/uts/common/Makefile.files"
 
 # ZFS_COMMON_SRCS

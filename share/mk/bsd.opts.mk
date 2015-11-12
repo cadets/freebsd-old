@@ -68,6 +68,7 @@ __DEFAULT_YES_OPTIONS = \
 __DEFAULT_NO_OPTIONS = \
     CTF \
     DEBUG_FILES \
+    LLVM_INSTRUMENTED \
     INSTALL_AS_USER
 
 .include <bsd.mkopt.mk>
