@@ -51,6 +51,10 @@
 #include <libproc.h>
 #endif
 
+#ifdef LIBXO
+#include <libxo/xo.h>
+#endif /* LIBXO */
+
 typedef struct dtrace_cmd {
 	void (*dc_func)(struct dtrace_cmd *);	/* function to compile arg */
 	dtrace_probespec_t dc_spec;		/* probe specifier context */
@@ -72,8 +76,14 @@ typedef struct dtrace_cmd {
 #define	E_ERROR		1
 #define	E_USAGE		2
 
+#ifdef LIBXO
+static const char DTRACE_OPTSTR[] =
+	"3:6:aAb:Bc:CD:ef:FGhHi:I:lJL:Mm:n:o:p:P:qs:SU:vVwx:X:Z";
+static int g_mr = 0;
+#else
 static const char DTRACE_OPTSTR[] =
 	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:n:o:p:P:qs:SU:vVwx:X:Z";
+#endif /* LIBXO */
 
 static char **g_argv;
 static int g_argc;
@@ -154,8 +164,14 @@ usage(FILE *fp)
 	    "\t-H  print included files when invoking preprocessor\n"
 	    "\t-i  enable or list probes matching the specified probe id\n"
 	    "\t-I  add include directory to preprocessor search path\n"
+#ifdef LIBXO
+	    "\t-J  output in JSON format\n"
+#endif /* LIBXO */
 	    "\t-l  list probes matching specified criteria\n"
 	    "\t-L  add library directory to library search path\n"
+#ifdef LIBXO
+	    "\t-M  output in XML format\n"
+#endif /* LIBXO */
 	    "\t-m  enable or list probes matching the specified module name\n"
 	    "\t-n  enable or list probes matching the specified probe name\n"
 	    "\t-o  set output file\n"
@@ -1085,12 +1101,23 @@ chew(const dtrace_probedata_t *data, void *arg)
 
 	if (!g_flowindent) {
 		if (!g_quiet) {
-			char name[DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 2];
+#ifdef LIBXO
+			if (g_mr) 
+				xo_emit("{:timestamp/%lu} {:cpu/%d} {:id/%d} {:func/%s} {:name/%s}\n",
+				    data->dtpda_timestamp, cpu,
+				    pd->dtpd_id, pd->dtpd_func,
+				    pd->dtpd_name);
+			else {
+#endif /* LIBXO */
+				char name[DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 2];
 
-			(void) snprintf(name, sizeof (name), "%s:%s",
-			    pd->dtpd_func, pd->dtpd_name);
+				(void) snprintf(name, sizeof (name), "%s:%s",
+				    pd->dtpd_func, pd->dtpd_name);
 
-			oprintf("%3d %6d %32s ", cpu, pd->dtpd_id, name);
+				oprintf("%3d %6d %32s ", cpu, pd->dtpd_id, name);
+#ifdef LIBXO
+			}
+#endif /* LIBXO */
 		}
 	} else {
 		int indent = data->dtpda_indent;
@@ -1277,6 +1304,15 @@ main(int argc, char *argv[])
 
 	bzero(status, sizeof (status));
 	bzero(&buf, sizeof (buf));
+
+#ifdef LIBXO
+	argc = xo_parse_args(argc, argv);
+
+	if (argc < 0) {
+		fprintf(stderr, "Failed xo_parse_args.\n");
+		return (usage(stderr));
+	}
+#endif /* LIBXO */
 
 	/*
 	 * Make an initial pass through argv[] processing any arguments that
@@ -1529,6 +1565,18 @@ main(int argc, char *argv[])
 				if (dtrace_setopt(g_dtp, "incdir", optarg) != 0)
 					dfatal("failed to set -I %s", optarg);
 				break;
+
+#ifdef LIBXO
+			case 'J':
+				xo_set_style(NULL, XO_STYLE_JSON);
+				g_mr = 1;
+				break;
+
+			case 'M':
+				xo_set_style(NULL, XO_STYLE_XML);
+				g_mr = 1;
+				break;
+#endif /* LIBXO */
 
 			case 'L':
 				if (dtrace_setopt(g_dtp, "libdir", optarg) != 0)

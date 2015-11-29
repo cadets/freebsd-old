@@ -71,6 +71,8 @@ CFLAGS+=	-I${.OBJDIR} -I${.CURDIR} \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libdtrace/common \
 		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common
 
+CFLAGS+=	-DLIBXO -g
+
 #CFLAGS+=	-DYYDEBUG
 
 .if ${MACHINE_CPUARCH} == "aarch64"
@@ -112,7 +114,7 @@ LFLAGS+=-l
 
 YFLAGS+=-d
 
-LIBADD=	ctf elf proc pthread rtld_db
+LIBADD=	ctf elf proc pthread rtld_db xo
 
 CLEANFILES=	dt_errtags.c dt_names.c
 
