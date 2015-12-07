@@ -107,3 +107,15 @@ inline int O_TRUNC = 0x0400;
 #pragma D binding "1.1" O_TRUNC
 
 
+typedef struct fileinfo {
+	int fi_type;
+	int fi_flag;
+} fileinfo_t;
+
+#pragma D binding "1.1" translator
+translator fileinfo_t < struct file *F > {
+	fi_type = F->f_type;
+	fi_flag = F->f_flag;
+};
+
+inline fileinfo_t fds[int fd] = xlate <fileinfo_t> (getf(fd));
