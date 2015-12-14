@@ -2441,7 +2441,8 @@ dt_consume_cpu(dtrace_hdl_t *dtp, FILE *fp, int cpu,
 
 		epd = data.dtpda_edesc;
 		data.dtpda_data = buf->dtbd_data + offs;
-		data.dtpda_timestamp = buf->dtbd_timestamp;
+		data.dtpda_timestamp = DTRACE_RECORD_LOAD_TIMESTAMP(
+			(struct dtrace_rechdr *)data.dtpda_data);
 
 		if (data.dtpda_edesc->dtepd_uarg != DT_ECB_DEFAULT) {
 			rval = dt_handle(dtp, &data);

@@ -1103,7 +1103,7 @@ chew(const dtrace_probedata_t *data, void *arg)
 		if (!g_quiet) {
 #ifdef LIBXO
 			if (g_mr) 
-				xo_emit("{:timestamp/%lu} {:cpu/%d} {:id/%d} {:func/%s} {:name/%s}\n",
+				xo_emit("{:timestamp/%U} {:cpu/%d} {:id/%d} {:func/%s} {:name/%s}\n",
 				    data->dtpda_timestamp, cpu,
 				    pd->dtpd_id, pd->dtpd_func,
 				    pd->dtpd_name);
