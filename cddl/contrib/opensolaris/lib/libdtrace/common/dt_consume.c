@@ -44,6 +44,10 @@
 #include <libproc_compat.h>
 #endif
 
+#ifdef LIBXO
+#include <libxo/xo.h>
+#endif /* LIBXO */
+
 #define	DT_MASK_LO 0x00000000FFFFFFFFULL
 
 /*
@@ -1252,10 +1256,13 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 {
 	dtrace_syminfo_t dts;
 	GElf_Sym sym;
-	int i, indent;
+	int i, indent, oformat = 0;
 	char c[PATH_MAX * 2];
 	uint64_t pc;
 
+	if (dtp->dt_options[DTRACEOPT_OFORMAT] != DTRACEOPT_UNSET)
+		oformat = (int)dtp->dt_options[DTRACEOPT_OFORMAT];
+	
 	if (dt_printf(dtp, fp, "\n") < 0)
 		return (-1);
 
@@ -1293,12 +1300,21 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 
 		if (dtrace_lookup_by_addr(dtp, pc, &sym, &dts) == 0) {
 			if (pc > sym.st_value) {
-				(void) snprintf(c, sizeof (c), "%s`%s+0x%llx",
-				    dts.dts_object, dts.dts_name,
-				    (u_longlong_t)(pc - sym.st_value));
+				if (oformat)
+					xo_emit("{:module/%s} {:function/%s} {:addr/0x%llx}\n",
+						dts.dts_object, dts.dts_name,
+						(u_longlong_t)(pc - sym.st_value));
+				else
+					(void) snprintf(c, sizeof (c), "%s`%s+0x%llx",
+							dts.dts_object, dts.dts_name,
+							(u_longlong_t)(pc - sym.st_value));
 			} else {
-				(void) snprintf(c, sizeof (c), "%s`%s",
-				    dts.dts_object, dts.dts_name);
+				if (oformat)
+					xo_emit("{:module/%s} {:function/%s}\n",
+						dts.dts_object, dts.dts_name);
+				else
+					(void) snprintf(c, sizeof (c), "%s`%s",
+						dts.dts_object, dts.dts_name);
 			}
 		} else {
 			/*
@@ -1307,11 +1323,19 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 			 * interested in the containing module.
 			 */
 			if (dtrace_lookup_by_addr(dtp, pc, NULL, &dts) == 0) {
-				(void) snprintf(c, sizeof (c), "%s`0x%llx",
-				    dts.dts_object, (u_longlong_t)pc);
+				if (oformat)
+					xo_emit("{:module/%s} {:addr/0x%llx}\n",
+						dts.dts_object, (u_longlong_t)pc);
+				else
+					(void) snprintf(c, sizeof (c), "%s`0x%llx",
+							dts.dts_object, (u_longlong_t)pc);
 			} else {
-				(void) snprintf(c, sizeof (c), "0x%llx",
-				    (u_longlong_t)pc);
+				if (oformat)
+					xo_emit("{:addr/0x%llx}\n",
+						(u_longlong_t)pc);
+				else
+					(void) snprintf(c, sizeof (c), "0x%llx",
+							(u_longlong_t)pc);
 			}
 		}
 
@@ -1340,11 +1364,14 @@ dt_print_ustack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	char name[PATH_MAX], objname[PATH_MAX], c[PATH_MAX * 2];
 	struct ps_prochandle *P;
 	GElf_Sym sym;
-	int i, indent;
+	int i, indent, oformat = 0;
 	pid_t pid;
 
 	if (depth == 0)
 		return (0);
+
+	if (dtp->dt_options[DTRACEOPT_OFORMAT] != DTRACEOPT_UNSET)
+		oformat = (int)dtp->dt_options[DTRACEOPT_OFORMAT];
 
 	pid = (pid_t)*pc++;
 
@@ -1383,9 +1410,17 @@ dt_print_ustack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 			(void) Pobjname(P, pc[i], objname, sizeof (objname));
 
 			if (pc[i] > sym.st_value) {
-				(void) snprintf(c, sizeof (c),
-				    "%s`%s+0x%llx", dt_basename(objname), name,
-				    (u_longlong_t)(pc[i] - sym.st_value));
+				if (oformat)
+					xo_emit("{:module/%s} {:function/%s} {:addr/0x%llx}\n",
+							dt_basename(objname),
+							name,
+							(u_longlong_t)(pc[i] - sym.st_value));
+				else 
+					(void) snprintf(c, sizeof (c),
+							"%s`%s+0x%llx",
+							dt_basename(objname),
+							name,
+							(u_longlong_t)(pc[i] - sym.st_value));
 			} else {
 				(void) snprintf(c, sizeof (c),
 				    "%s`%s", dt_basename(objname), name);
@@ -1410,11 +1445,23 @@ dt_print_ustack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 		} else {
 			if (P != NULL && Pobjname(P, pc[i], objname,
 			    sizeof (objname)) != 0) {
-				(void) snprintf(c, sizeof (c), "%s`0x%llx",
-				    dt_basename(objname), (u_longlong_t)pc[i]);
+				if (oformat)
+					xo_emit("{:module/%s} {:addr/0x%llx}\n",
+							dt_basename(objname),
+							(u_longlong_t)pc[i]);
+				else
+					(void) snprintf(c, sizeof (c),
+							"%s`0x%llx",
+							dt_basename(objname),
+							(u_longlong_t)pc[i]);
 			} else {
-				(void) snprintf(c, sizeof (c), "0x%llx",
-				    (u_longlong_t)pc[i]);
+				if (oformat)
+					xo_emit("{:addr/0x%llx}\n",
+						(u_longlong_t)pc[i]);
+				else
+					(void) snprintf(c, sizeof (c),
+							"0x%llx",
+							(u_longlong_t)pc[i]);
 			}
 		}
 
