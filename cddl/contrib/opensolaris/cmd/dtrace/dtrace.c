@@ -76,10 +76,14 @@ typedef struct dtrace_cmd {
 #define	E_ERROR		1
 #define	E_USAGE		2
 
+#define OMODE_NONE	0
+#define OMODE_JSON	1
+#define OMODE_XML	2
+
 #ifdef LIBXO
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:ef:FGhHi:I:lJL:Mm:n:o:p:P:qs:SU:vVwx:X:Z";
-static int g_mr = 0;
+	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:n:O:o:p:P:qs:SU:vVwx:X:Z";
+static int g_oformat = OMODE_NONE;
 #else
 static const char DTRACE_OPTSTR[] =
 	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:n:o:p:P:qs:SU:vVwx:X:Z";
@@ -108,6 +112,7 @@ static int g_exec = 1;
 static int g_mode = DMODE_EXEC;
 static int g_status = E_SUCCESS;
 static int g_grabanon = 0;
+
 static const char *g_ofile = NULL;
 static FILE *g_ofp;
 static dtrace_hdl_t *g_dtp;
@@ -127,6 +132,10 @@ static const char *g_etc[] =  {
 "*",
 NULL };
 #endif
+
+#if !defined(illumos) && defined(NEED_ERRLOC)
+void dt_get_errloc(dtrace_hdl_t *, char **, int *);
+#endif /* !illumos && NEED_ERRLOC */
 
 static int
 usage(FILE *fp)
@@ -164,16 +173,13 @@ usage(FILE *fp)
 	    "\t-H  print included files when invoking preprocessor\n"
 	    "\t-i  enable or list probes matching the specified probe id\n"
 	    "\t-I  add include directory to preprocessor search path\n"
-#ifdef LIBXO
-	    "\t-J  output in JSON format\n"
-#endif /* LIBXO */
 	    "\t-l  list probes matching specified criteria\n"
 	    "\t-L  add library directory to library search path\n"
-#ifdef LIBXO
-	    "\t-M  output in XML format\n"
-#endif /* LIBXO */
 	    "\t-m  enable or list probes matching the specified module name\n"
 	    "\t-n  enable or list probes matching the specified probe name\n"
+#ifdef LIBXO
+	    "\t-O  output format json|xml\n"
+#endif /* LIBXO */
 	    "\t-o  set output file\n"
 	    "\t-p  grab specified process-ID and cache its symbol tables\n"
 	    "\t-P  enable or list probes matching the specified provider name\n"
@@ -1102,7 +1108,7 @@ chew(const dtrace_probedata_t *data, void *arg)
 	if (!g_flowindent) {
 		if (!g_quiet) {
 #ifdef LIBXO
-			if (g_mr) 
+			if (g_oformat) 
 				xo_emit("{:timestamp/%U} {:cpu/%d} {:id/%d} {:func/%s} {:name/%s}\n",
 				    data->dtpda_timestamp, cpu,
 				    pd->dtpd_id, pd->dtpd_func,
@@ -1567,14 +1573,9 @@ main(int argc, char *argv[])
 				break;
 
 #ifdef LIBXO
-			case 'J':
-				xo_set_style(NULL, XO_STYLE_JSON);
-				g_mr = 1;
-				break;
-
-			case 'M':
-				xo_set_style(NULL, XO_STYLE_XML);
-				g_mr = 1;
+			case 'O':
+				if (dtrace_setopt(g_dtp, "oformat", optarg) != 0)
+					dfatal("failed to set oformat");
 				break;
 #endif /* LIBXO */
 
@@ -1745,6 +1746,21 @@ main(int argc, char *argv[])
 	(void) dtrace_getopt(g_dtp, "quiet", &opt);
 	g_quiet = opt != DTRACEOPT_UNSET;
 
+	(void) dtrace_getopt(g_dtp, "oformat", &opt);
+	if (opt != DTRACEOPT_UNSET) {
+		g_oformat = opt;
+		switch (g_oformat) {
+		case OMODE_JSON:
+			xo_set_style(NULL, XO_STYLE_JSON);
+			break;
+		case OMODE_XML:
+			xo_set_style(NULL, XO_STYLE_XML);
+			break;
+		default:
+			break;
+		}
+	}
+	
 	/*
 	 * Now make a fifth and final pass over the options that have been
 	 * turned into programs and saved in g_cmdv[], performing any mode-

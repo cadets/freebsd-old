@@ -878,6 +878,25 @@ dt_opt_bufresize(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
 	return (0);
 }
 
+/*ARGSUSED*/
+static int
+dt_opt_oformat(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
+{
+	if (arg == NULL)
+		return (dt_set_errno(dtp, EDT_BADOPTVAL));
+
+	if (strcmp(arg, "json") == 0) {
+		dtp->dt_oformat = DT_OFORMAT_JSON;
+		dtp->dt_options[DTRACEOPT_OFORMAT] = DT_OFORMAT_JSON;
+	} else if (strcmp(arg, "xml") == 0) {
+		dtp->dt_oformat = DT_OFORMAT_XML;
+		dtp->dt_options[DTRACEOPT_OFORMAT] = DT_OFORMAT_XML;
+	} else
+		return (dt_set_errno(dtp, EDT_BADOPTVAL));
+
+	return (0);
+}
+
 int
 dt_options_load(dtrace_hdl_t *dtp)
 {
@@ -1041,6 +1060,7 @@ static const dt_option_t _dtrace_drtoptions[] = {
 	{ "aggsortrev", dt_opt_runtime, DTRACEOPT_AGGSORTREV },
 	{ "aggzoom", dt_opt_runtime, DTRACEOPT_AGGZOOM },
 	{ "flowindent", dt_opt_runtime, DTRACEOPT_FLOWINDENT },
+	{ "oformat", dt_opt_oformat, DTRACEOPT_OFORMAT },
 	{ "quiet", dt_opt_runtime, DTRACEOPT_QUIET },
 	{ "rawbytes", dt_opt_runtime, DTRACEOPT_RAWBYTES },
 	{ "stackindent", dt_opt_runtime, DTRACEOPT_STACKINDENT },
