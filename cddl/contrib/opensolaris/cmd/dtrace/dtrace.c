@@ -77,6 +77,7 @@ typedef struct dtrace_cmd {
 #define OMODE_NONE	0
 #define OMODE_JSON	1
 #define OMODE_XML	2
+#define OMODE_HTML	3
 
 static const char DTRACE_OPTSTR[] =
 	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:n:O:o:p:P:qs:SU:vVwx:X:Z";
@@ -1747,6 +1748,9 @@ main(int argc, char *argv[])
 			break;
 		case OMODE_XML:
 			xo_set_style(NULL, XO_STYLE_XML);
+			break;
+		case OMODE_HTML:
+			xo_set_style(NULL, XO_STYLE_HTML);
 			break;
 		default:
 			break;

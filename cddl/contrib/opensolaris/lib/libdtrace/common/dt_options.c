@@ -891,6 +891,9 @@ dt_opt_oformat(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
 	} else if (strcmp(arg, "xml") == 0) {
 		dtp->dt_oformat = DT_OFORMAT_XML;
 		dtp->dt_options[DTRACEOPT_OFORMAT] = DT_OFORMAT_XML;
+	} else if (strcmp(arg, "html") == 0) {
+		dtp->dt_oformat = DT_OFORMAT_HTML;
+		dtp->dt_options[DTRACEOPT_OFORMAT] = DT_OFORMAT_HTML;
 	} else
 		return (dt_set_errno(dtp, EDT_BADOPTVAL));
 

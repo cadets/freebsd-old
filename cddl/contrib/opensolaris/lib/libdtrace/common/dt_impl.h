@@ -418,6 +418,7 @@ struct dtrace_hdl {
 #define DT_OFORMAT_NONE	0
 #define DT_OFORMAT_JSON	1
 #define DT_OFORMAT_XML	2
+#define DT_OFORMAT_HTML	3
 
 /*
  * Macro to test whether a given pass bit is set in the dt_treedump bit-vector.
