@@ -1263,8 +1263,9 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	if (dtp->dt_options[DTRACEOPT_OFORMAT] != DTRACEOPT_UNSET)
 		oformat = (int)dtp->dt_options[DTRACEOPT_OFORMAT];
 	
-	if (dt_printf(dtp, fp, "\n") < 0)
-		return (-1);
+	if (!oformat)
+		if (dt_printf(dtp, fp, "\n") < 0)
+			return (-1);
 
 	if (format == NULL)
 		format = "%s";
@@ -1274,6 +1275,11 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	else
 		indent = _dtrace_stkindent;
 
+	if (oformat) {
+		indent = 0;
+		xo_open_container("stack");
+	}
+	
 	for (i = 0; i < depth; i++) {
 		switch (size) {
 		case sizeof (uint32_t):
@@ -1287,6 +1293,7 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 			break;
 
 		default:
+			xo_close_container("stack");
 			return (dt_set_errno(dtp, EDT_BADSTACKPC));
 		}
 
@@ -1295,13 +1302,14 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 
 		addr += size;
 
-		if (dt_printf(dtp, fp, "%*s", indent, "") < 0)
-			return (-1);
+		if (!oformat)
+			if (dt_printf(dtp, fp, "%*s", indent, "") < 0)
+				goto errout;
 
 		if (dtrace_lookup_by_addr(dtp, pc, &sym, &dts) == 0) {
 			if (pc > sym.st_value) {
 				if (oformat)
-					xo_emit("{:module/%s} {:function/%s} {:addr/0x%llx}\n",
+					xo_emit("{:module/%s} {:function/%s} {:addr/0x%llx}",
 						dts.dts_object, dts.dts_name,
 						(u_longlong_t)(pc - sym.st_value));
 				else
@@ -1310,7 +1318,7 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 							(u_longlong_t)(pc - sym.st_value));
 			} else {
 				if (oformat)
-					xo_emit("{:module/%s} {:function/%s}\n",
+					xo_emit("{:module/%s} {:function/%s}",
 						dts.dts_object, dts.dts_name);
 				else
 					(void) snprintf(c, sizeof (c), "%s`%s",
@@ -1324,14 +1332,14 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 			 */
 			if (dtrace_lookup_by_addr(dtp, pc, NULL, &dts) == 0) {
 				if (oformat)
-					xo_emit("{:module/%s} {:addr/0x%llx}\n",
+					xo_emit("{:module/%s} {:addr/0x%llx}",
 						dts.dts_object, (u_longlong_t)pc);
 				else
 					(void) snprintf(c, sizeof (c), "%s`0x%llx",
 							dts.dts_object, (u_longlong_t)pc);
 			} else {
 				if (oformat)
-					xo_emit("{:addr/0x%llx}\n",
+					xo_emit("{:addr/0x%llx}",
 						(u_longlong_t)pc);
 				else
 					(void) snprintf(c, sizeof (c), "0x%llx",
@@ -1339,14 +1347,25 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 			}
 		}
 
-		if (dt_printf(dtp, fp, format, c) < 0)
-			return (-1);
+		if (!oformat)
+			if (dt_printf(dtp, fp, format, c) < 0)
+				goto errout;
 
-		if (dt_printf(dtp, fp, "\n") < 0)
-			return (-1);
+		if (!oformat)
+			if (dt_printf(dtp, fp, "\n") < 0)
+				goto errout;
 	}
 
+	if (oformat)
+		xo_close_container("stack");
+
 	return (0);
+
+errout:
+	if (oformat)
+		xo_close_container("stack");
+	return (-1);
+	
 }
 
 int
@@ -1375,8 +1394,9 @@ dt_print_ustack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 
 	pid = (pid_t)*pc++;
 
-	if (dt_printf(dtp, fp, "\n") < 0)
-		return (-1);
+	if (!oformat)
+		if (dt_printf(dtp, fp, "\n") < 0)
+			return (-1);
 
 	if (format == NULL)
 		format = "%s";
@@ -1386,6 +1406,10 @@ dt_print_ustack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	else
 		indent = _dtrace_stkindent;
 
+	if (oformat) {
+		indent = 0;
+		xo_open_container("ustack");
+	}
 	/*
 	 * Ultimately, we need to add an entry point in the library vector for
 	 * determining <symbol, offset> from <pid, address>.  For now, if
@@ -1411,7 +1435,7 @@ dt_print_ustack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 
 			if (pc[i] > sym.st_value) {
 				if (oformat)
-					xo_emit("{:module/%s} {:function/%s} {:addr/0x%llx}\n",
+					xo_emit("{:module/%s} {:function/%s} {:addr/0x%llx}",
 							dt_basename(objname),
 							name,
 							(u_longlong_t)(pc[i] - sym.st_value));
@@ -1422,8 +1446,14 @@ dt_print_ustack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 							name,
 							(u_longlong_t)(pc[i] - sym.st_value));
 			} else {
-				(void) snprintf(c, sizeof (c),
-				    "%s`%s", dt_basename(objname), name);
+				if (oformat)
+					xo_emit("{:module/%s} {:function/%s}",
+						dt_basename(objname),
+						name);
+				else
+					(void) snprintf(c, sizeof (c),
+					    "%s`%s", dt_basename(objname),
+					    name);
 			}
 		} else if (str != NULL && str[0] != '\0' && str[0] != '@' &&
 		    (P != NULL && ((map = Paddr_to_map(P, pc[i])) == NULL ||
@@ -1446,7 +1476,7 @@ dt_print_ustack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 			if (P != NULL && Pobjname(P, pc[i], objname,
 			    sizeof (objname)) != 0) {
 				if (oformat)
-					xo_emit("{:module/%s} {:addr/0x%llx}\n",
+					xo_emit("{:module/%s} {:addr/0x%llx}",
 							dt_basename(objname),
 							(u_longlong_t)pc[i]);
 				else
@@ -1456,7 +1486,7 @@ dt_print_ustack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 							(u_longlong_t)pc[i]);
 			} else {
 				if (oformat)
-					xo_emit("{:addr/0x%llx}\n",
+					xo_emit("{:addr/0x%llx}",
 						(u_longlong_t)pc[i]);
 				else
 					(void) snprintf(c, sizeof (c),
@@ -1465,11 +1495,13 @@ dt_print_ustack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 			}
 		}
 
-		if ((err = dt_printf(dtp, fp, format, c)) < 0)
-			break;
+		if (!oformat)
+			if ((err = dt_printf(dtp, fp, format, c)) < 0)
+				break;
 
-		if ((err = dt_printf(dtp, fp, "\n")) < 0)
-			break;
+		if (!oformat)
+			if ((err = dt_printf(dtp, fp, "\n")) < 0)
+				break;
 
 		if (str != NULL && str[0] == '@') {
 			/*
@@ -1478,16 +1510,19 @@ dt_print_ustack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 			 * and it is printed out beneath the frame and offset
 			 * with brackets.
 			 */
-			if ((err = dt_printf(dtp, fp, "%*s", indent, "")) < 0)
-				break;
+			if (!oformat)
+				if ((err = dt_printf(dtp, fp, "%*s", indent, "")) < 0)
+					break;
 
 			(void) snprintf(c, sizeof (c), "  [ %s ]", &str[1]);
 
-			if ((err = dt_printf(dtp, fp, format, c)) < 0)
-				break;
+			if (!oformat)
+				if ((err = dt_printf(dtp, fp, format, c)) < 0)
+					break;
 
-			if ((err = dt_printf(dtp, fp, "\n")) < 0)
-				break;
+			if (!oformat)
+				if ((err = dt_printf(dtp, fp, "\n")) < 0)
+					break;
 		}
 
 		if (str != NULL) {
@@ -1501,6 +1536,9 @@ dt_print_ustack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 		dt_proc_unlock(dtp, P);
 		dt_proc_release(dtp, P);
 	}
+
+	if (oformat)
+		xo_close_container("ustack");
 
 	return (err);
 }

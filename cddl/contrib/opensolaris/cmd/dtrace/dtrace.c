@@ -226,6 +226,11 @@ fatal(const char *fmt, ...)
 	if (g_dtp)
 		dtrace_close(g_dtp);
 
+#ifdef LIBXO
+	if (g_oformat)
+		xo_finish();
+#endif /* LIBXO */
+
 	exit(E_ERROR);
 }
 
@@ -265,6 +270,11 @@ dfatal(const char *fmt, ...)
 	 * correctly restored and continued.
 	 */
 	dtrace_close(g_dtp);
+
+#ifdef LIBXO
+	if (g_oformat)
+		xo_finish();
+#endif /* LIBXO */
 
 	exit(E_ERROR);
 }
@@ -1063,7 +1073,7 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 		 * We have processed the final record; output the newline if
 		 * we're not in quiet mode.
 		 */
-		if (!g_quiet)
+		if (!g_quiet && !g_oformat)
 			oprintf("\n");
 
 		return (DTRACE_CONSUME_NEXT);
@@ -1108,12 +1118,14 @@ chew(const dtrace_probedata_t *data, void *arg)
 	if (!g_flowindent) {
 		if (!g_quiet) {
 #ifdef LIBXO
-			if (g_oformat) 
-				xo_emit("{:timestamp/%U} {:cpu/%d} {:id/%d} {:func/%s} {:name/%s}\n",
+			if (g_oformat) {
+				xo_open_container("probe");
+				xo_emit("{:timestamp/%U} {:cpu/%d} {:id/%d} {:func/%s} {:name/%s}",
 				    data->dtpda_timestamp, cpu,
 				    pd->dtpd_id, pd->dtpd_func,
 				    pd->dtpd_name);
-			else {
+				xo_close_container("probe");
+			} else {
 #endif /* LIBXO */
 				char name[DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 2];
 
@@ -1749,6 +1761,7 @@ main(int argc, char *argv[])
 	(void) dtrace_getopt(g_dtp, "oformat", &opt);
 	if (opt != DTRACEOPT_UNSET) {
 		g_oformat = opt;
+		xo_set_flags(NULL, XOF_PRETTY|XOF_FLUSH);
 		switch (g_oformat) {
 		case OMODE_JSON:
 			xo_set_style(NULL, XO_STYLE_JSON);
@@ -1998,6 +2011,7 @@ main(int argc, char *argv[])
 
 		if (g_ofp != NULL && fflush(g_ofp) == EOF)
 			clearerr(g_ofp);
+
 	} while (!done);
 
 	oprintf("\n");
@@ -2009,5 +2023,11 @@ main(int argc, char *argv[])
 	}
 
 	dtrace_close(g_dtp);
+
+#ifdef LIBXO
+	if (g_oformat)
+		xo_finish();
+#endif /* LIBXO */
+
 	return (g_status);
 }
