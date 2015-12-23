@@ -71,7 +71,7 @@ CFLAGS+=	-I${.OBJDIR} -I${.CURDIR} \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libdtrace/common \
 		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common
 
-CFLAGS+=	-DLIBXO -g
+CFLAGS+=	-g
 
 #CFLAGS+=	-DYYDEBUG
 

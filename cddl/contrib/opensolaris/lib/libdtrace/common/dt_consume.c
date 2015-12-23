@@ -44,9 +44,7 @@
 #include <libproc_compat.h>
 #endif
 
-#ifdef LIBXO
 #include <libxo/xo.h>
-#endif /* LIBXO */
 
 #define	DT_MASK_LO 0x00000000FFFFFFFFULL
 

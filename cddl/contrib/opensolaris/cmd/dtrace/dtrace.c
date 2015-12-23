@@ -51,9 +51,7 @@
 #include <libproc.h>
 #endif
 
-#ifdef LIBXO
 #include <libxo/xo.h>
-#endif /* LIBXO */
 
 typedef struct dtrace_cmd {
 	void (*dc_func)(struct dtrace_cmd *);	/* function to compile arg */
@@ -80,14 +78,9 @@ typedef struct dtrace_cmd {
 #define OMODE_JSON	1
 #define OMODE_XML	2
 
-#ifdef LIBXO
 static const char DTRACE_OPTSTR[] =
 	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:n:O:o:p:P:qs:SU:vVwx:X:Z";
 static int g_oformat = OMODE_NONE;
-#else
-static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:n:o:p:P:qs:SU:vVwx:X:Z";
-#endif /* LIBXO */
 
 static char **g_argv;
 static int g_argc;
@@ -177,9 +170,7 @@ usage(FILE *fp)
 	    "\t-L  add library directory to library search path\n"
 	    "\t-m  enable or list probes matching the specified module name\n"
 	    "\t-n  enable or list probes matching the specified probe name\n"
-#ifdef LIBXO
 	    "\t-O  output format json|xml\n"
-#endif /* LIBXO */
 	    "\t-o  set output file\n"
 	    "\t-p  grab specified process-ID and cache its symbol tables\n"
 	    "\t-P  enable or list probes matching the specified provider name\n"
@@ -226,10 +217,8 @@ fatal(const char *fmt, ...)
 	if (g_dtp)
 		dtrace_close(g_dtp);
 
-#ifdef LIBXO
 	if (g_oformat)
 		xo_finish();
-#endif /* LIBXO */
 
 	exit(E_ERROR);
 }
@@ -271,10 +260,8 @@ dfatal(const char *fmt, ...)
 	 */
 	dtrace_close(g_dtp);
 
-#ifdef LIBXO
 	if (g_oformat)
 		xo_finish();
-#endif /* LIBXO */
 
 	exit(E_ERROR);
 }
@@ -1117,7 +1104,6 @@ chew(const dtrace_probedata_t *data, void *arg)
 
 	if (!g_flowindent) {
 		if (!g_quiet) {
-#ifdef LIBXO
 			if (g_oformat) {
 				xo_open_container("probe");
 				xo_emit("{:timestamp/%U} {:cpu/%d} {:id/%d} {:func/%s} {:name/%s}",
@@ -1126,16 +1112,13 @@ chew(const dtrace_probedata_t *data, void *arg)
 				    pd->dtpd_name);
 				xo_close_container("probe");
 			} else {
-#endif /* LIBXO */
 				char name[DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 2];
 
 				(void) snprintf(name, sizeof (name), "%s:%s",
 				    pd->dtpd_func, pd->dtpd_name);
 
 				oprintf("%3d %6d %32s ", cpu, pd->dtpd_id, name);
-#ifdef LIBXO
 			}
-#endif /* LIBXO */
 		}
 	} else {
 		int indent = data->dtpda_indent;
@@ -1323,14 +1306,12 @@ main(int argc, char *argv[])
 	bzero(status, sizeof (status));
 	bzero(&buf, sizeof (buf));
 
-#ifdef LIBXO
 	argc = xo_parse_args(argc, argv);
 
 	if (argc < 0) {
 		fprintf(stderr, "Failed xo_parse_args.\n");
 		return (usage(stderr));
 	}
-#endif /* LIBXO */
 
 	/*
 	 * Make an initial pass through argv[] processing any arguments that
@@ -1584,12 +1565,10 @@ main(int argc, char *argv[])
 					dfatal("failed to set -I %s", optarg);
 				break;
 
-#ifdef LIBXO
 			case 'O':
 				if (dtrace_setopt(g_dtp, "oformat", optarg) != 0)
 					dfatal("failed to set oformat");
 				break;
-#endif /* LIBXO */
 
 			case 'L':
 				if (dtrace_setopt(g_dtp, "libdir", optarg) != 0)
@@ -2024,10 +2003,8 @@ main(int argc, char *argv[])
 
 	dtrace_close(g_dtp);
 
-#ifdef LIBXO
 	if (g_oformat)
 		xo_finish();
-#endif /* LIBXO */
 
 	return (g_status);
 }
