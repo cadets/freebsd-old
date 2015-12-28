@@ -73,19 +73,20 @@ __FBSDID("$FreeBSD$");
 #include <sys/wait.h>
 #include <sys/un.h>
 
-#include <ctype.h>
+#include <cctype>
+#include <cerrno>
+#include <cstdlib>
+#include <cstdio>
+#include <csignal>
+#include <cstring>
+
 #include <dirent.h>
-#include <errno.h>
 #include <err.h>
 #include <fcntl.h>
 #include <libutil.h>
 #include <paths.h>
 #include <poll.h>
 #include <regex.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -116,7 +117,7 @@ static struct pidfh *pfh;
 int Dflag;
 int dflag;
 int nflag;
-int romeo_must_die = 0;
+static volatile sig_atomic_t romeo_must_die = 0;
 
 static const char *configfile = CF;
 
@@ -319,7 +320,7 @@ media::do_match(config &c)
 	// the name of interest, first try device-name and fall back
 	// to subsystem if none exists.
 	value = c.get_variable("device-name");
-	if (value.length() == 0)
+	if (value.empty())
 		value = c.get_variable("subsystem");
 	if (Dflag)
 		fprintf(stderr, "Testing media type of %s against 0x%x\n",
@@ -460,7 +461,7 @@ config::open_pidfile()
 {
 	pid_t otherpid;
 	
-	if (_pidfile == "")
+	if (_pidfile.empty())
 		return;
 	pfh = pidfile_open(_pidfile.c_str(), 0600, &otherpid);
 	if (pfh == NULL) {
@@ -528,7 +529,7 @@ config::add_notify(int prio, event_proc *p)
 void
 config::set_pidfile(const char *fn)
 {
-	_pidfile = string(fn);
+	_pidfile = fn;
 }
 
 void
@@ -585,7 +586,7 @@ config::expand_one(const char *&src, string &dst)
 	src++;
 	// $$ -> $
 	if (*src == '$') {
-		dst.append(src++, 1);
+		dst += *src++;
 		return;
 	}
 		
@@ -593,7 +594,7 @@ config::expand_one(const char *&src, string &dst)
 	// Not sure if I want to support this or not, so for now we just pass
 	// it through.
 	if (*src == '(') {
-		dst.append("$");
+		dst += '$';
 		count = 1;
 		/* If the string ends before ) is matched , return. */
 		while (count > 0 && *src) {
@@ -601,23 +602,23 @@ config::expand_one(const char *&src, string &dst)
 				count--;
 			else if (*src == '(')
 				count++;
-			dst.append(src++, 1);
+			dst += *src++;
 		}
 		return;
 	}
 	
-	// ${^A-Za-z] -> $\1
+	// $[^A-Za-z] -> $\1
 	if (!isalpha(*src)) {
-		dst.append("$");
-		dst.append(src++, 1);
+		dst += '$';
+		dst += *src++;
 		return;
 	}
 
 	// $var -> replace with value
 	do {
-		buffer.append(src++, 1);
+		buffer += *src++;
 	} while (is_id_char(*src));
-	dst.append(get_variable(buffer.c_str()));
+	dst.append(get_variable(buffer));
 }
 
 const string
@@ -653,7 +654,7 @@ config::expand_string(const char *src, const char *prepend, const char *append)
 }
 
 bool
-config::chop_var(char *&buffer, char *&lhs, char *&rhs)
+config::chop_var(char *&buffer, char *&lhs, char *&rhs) const
 {
 	char *walker;
 	
@@ -912,9 +913,7 @@ event_loop(void)
 	server_fd = create_socket(PIPE);
 	accepting = 1;
 	max_fd = max(fd, server_fd) + 1;
-	while (1) {
-		if (romeo_must_die)
-			break;
+	while (!romeo_must_die) {
 		if (!once && !dflag && !nflag) {
 			// Check to see if we have any events pending.
 			tv.tv_sec = 0;
@@ -1076,8 +1075,7 @@ set_variable(const char *var, const char *val)
 static void
 gensighand(int)
 {
-	romeo_must_die++;
-	_exit(0);
+	romeo_must_die = 1;
 }
 
 static void

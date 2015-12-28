@@ -1,6 +1,6 @@
 #!/bin/sh
 #-
-# Copyright (c) 2012 Devin Teske
+# Copyright (c) 2012-2013 Devin Teske
 # All Rights Reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -49,11 +49,8 @@ ipgm=$( f_index_menusel_keyword $BSDCFG_LIBE/$APP_DIR/INDEX "$pgm" )
 #
 dialog_menu_main()
 {
-	local menu_list size
-	local hline="$hline_choose_a_screen_saver"
 	local prompt="$msg_saver_menu_text"
-
-	menu_list="
+	local menu_list="
 		'1 $msg_blank'   '$msg_blank_desc'
 		'2 $msg_beastie' '$msg_beastie_desc'
 		'3 $msg_daemon'  '$msg_daemon_desc'
@@ -69,27 +66,48 @@ dialog_menu_main()
 		'd $msg_none'    '$msg_none_saver_desc'
 		'$msg_timeout'   '$msg_timeout_desc'
 	" # END-QUOTE
+	local defaultitem= # Calculated below
+	local hline="$hline_choose_a_screen_saver"
 
-	size=$( eval f_dialog_menu_size \
-	        	\"\$DIALOG_TITLE\"     \
-	        	\"\$DIALOG_BACKTITLE\" \
-	                \"\$prompt\"           \
-	        	\"\$hline\"            \
-	        	$menu_list             )
+	local height width rows
+	eval f_dialog_menu_size height width rows \
+	                        \"\$DIALOG_TITLE\"     \
+	                        \"\$DIALOG_BACKTITLE\" \
+	                        \"\$prompt\"           \
+	                        \"\$hline\"            \
+	                        $menu_list
 
-	local dialog_menu
-	dialog_menu=$( eval $DIALOG \
-		--clear --title \"\$DIALOG_TITLE\" \
+	case "$( f_sysrc_get saver )" in
+	blank)       defaultitem="1 $msg_blank"  ;;
+	beastie)     defaultitem="2 $msg_beastie";;
+	daemon)      defaultitem="3 $msg_daemon" ;;
+	dragon)      defaultitem="4 $msg_dragon" ;;
+	fade)        defaultitem="5 $msg_fade"   ;;
+	fire)        defaultitem="6 $msg_fire"   ;;
+	green)       defaultitem="7 $msg_green"  ;;
+	logo)        defaultitem="8 $msg_logo"   ;;
+	rain)        defaultitem="9 $msg_rain"   ;;
+	snake)       defaultitem="a $msg_snake"  ;;
+	star)        defaultitem="b $msg_star"   ;;
+	warp)        defaultitem="c $msg_warp"   ;;
+	[Nn][Oo]|'') defaultitem="d $msg_none"   ;;
+	esac
+
+	local menu_choice
+	menu_choice=$( eval $DIALOG \
+		--title \"\$DIALOG_TITLE\"         \
 		--backtitle \"\$DIALOG_BACKTITLE\" \
 		--hline \"\$hline\"                \
 		--ok-label \"\$msg_ok\"            \
 		--cancel-label \"\$msg_cancel\"    \
-		--menu \"\$prompt\" $size          \
+		--default-item \"\$defaultitem\"   \
+		--menu \"\$prompt\"                \
+		$height $width $rows               \
 		$menu_list                         \
 		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
 	)
 	local retval=$?
-	setvar DIALOG_MENU_$$ "$dialog_menu"
+	f_dialog_menutag_store -s "$menu_choice"
 	return $retval
 }
 
@@ -101,7 +119,7 @@ dialog_menu_main()
 #
 # Process command-line arguments
 #
-while getopts hSX flag; do
+while getopts h$GETOPTS_STDARGS flag; do
 	case "$flag" in
 	h|\?) f_usage $BSDCFG_LIBE/$APP_DIR/USAGE "PROGRAM_NAME" "$pgm";;
 	esac
@@ -119,11 +137,8 @@ f_mustberoot_init
 # Launch application main menu
 #
 while :; do
-	dialog_menu_main
-	retval=$?
-	mtag=$( f_dialog_menutag )
-
-	[ $retval -eq 0 ] || f_die
+	dialog_menu_main || f_die
+	f_dialog_menutag_fetch mtag
 
 	case "$mtag" in
 	"1 $msg_blank") # Simply blank the screen
@@ -167,9 +182,9 @@ while :; do
 		break ;;
 	"$msg_timeout") # Set the screen saver timeout interval
 		f_dialog_title "$msg_value_required"
-		blanktime=$( f_dialog_input "$msg_enter_timeout_period" \
-		                            "$( f_sysrc_get blanktime )"
-		           ) && f_sysrc_set blanktime "$blanktime"
+		f_dialog_input blanktime "$msg_enter_timeout_period" \
+		               "$( f_sysrc_get blanktime )" &&
+			f_sysrc_set blanktime "$blanktime"
 		f_dialog_title_restore
 		;;
 	esac

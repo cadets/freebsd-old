@@ -156,15 +156,15 @@ SRCF+=	divsi3 \
 	umodsi3
 .endif
 
-# FreeBSD-specific atomic intrinsics. Clang provides them as a builtin.
-.if (${MACHINE_CPUARCH} == "arm" && ${COMPILER_TYPE} != "clang") || \
-    ${MACHINE_CPUARCH} == "mips"
+# FreeBSD-specific atomic intrinsics.
+.if ${MACHINE_CPUARCH} == "arm" || ${MACHINE_CPUARCH} == "mips"
 SRCF+=	__sync_fetch_and_add_4 \
 	__sync_fetch_and_and_4 \
 	__sync_fetch_and_or_4 \
 	__sync_fetch_and_sub_4 \
 	__sync_fetch_and_xor_4 \
 	__sync_lock_test_and_set_4 \
+	__sync_synchronize \
 	__sync_val_compare_and_swap_4
 .endif
 .if ${MACHINE_ARCH:Mmips64*} != ""
@@ -196,13 +196,11 @@ SRCS+=	aeabi_idivmod.S \
 	aeabi_uldivmod.S
 .endif
 
-.if ${MACHINE_CPUARCH} != "mips"
-. if ${MK_INSTALLLIB} != "no"
+.if ${MK_INSTALLLIB} != "no"
 SYMLINKS+=libcompiler_rt.a ${LIBDIR}/libgcc.a
-. endif
-. if ${MK_PROFILE} != "no"
+.endif
+.if ${MK_PROFILE} != "no"
 SYMLINKS+=libcompiler_rt_p.a ${LIBDIR}/libgcc_p.a
-. endif
 .endif
 
 .if ${MACHINE_CPUARCH} == "amd64" || ${MACHINE_CPUARCH} == "i386" || \

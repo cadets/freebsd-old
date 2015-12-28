@@ -78,7 +78,7 @@ struct hio {
 	 * kernel. Each component has to decrease this counter by one
 	 * even on failure.
 	 */
-	unsigned int		 hio_countdown;
+	refcnt_t		 hio_countdown;
 	/*
 	 * Each component has a place to store its own error.
 	 * Once the request is handled by all components we can decide if the
@@ -303,6 +303,7 @@ hast_activemap_flush(struct hast_resource *res)
 	if (pwrite(res->hr_localfd, buf, size, METADATA_SIZE) !=
 	    (ssize_t)size) {
 		pjdlog_errno(LOG_ERR, "Unable to flush activemap to disk");
+		res->hr_stat_activemap_write_error++;
 		return (-1);
 	}
 	if (res->hr_metaflush == 1 && g_flush(res->hr_localfd) == -1) {
@@ -313,6 +314,7 @@ hast_activemap_flush(struct hast_resource *res)
 		} else {
 			pjdlog_errno(LOG_ERR,
 			    "Unable to flush disk cache on activemap update");
+			res->hr_stat_activemap_flush_error++;
 			return (-1);
 		}
 	}
@@ -413,7 +415,7 @@ init_environment(struct hast_resource *res __unused)
 			    "Unable to allocate %zu bytes of memory for hio request.",
 			    sizeof(*hio));
 		}
-		hio->hio_countdown = 0;
+		refcnt_init(&hio->hio_countdown, 0);
 		hio->hio_errors = malloc(sizeof(hio->hio_errors[0]) * ncomps);
 		if (hio->hio_errors == NULL) {
 			primary_exitx(EX_TEMPFAIL,
@@ -1298,11 +1300,12 @@ ggate_recv_thread(void *arg)
 		}
 		pjdlog_debug(2,
 		    "ggate_recv: (%p) Moving request to the send queues.", hio);
-		hio->hio_countdown = ncomps;
 		if (hio->hio_replication == HAST_REPLICATION_MEMSYNC &&
 		    ggio->gctl_cmd == BIO_WRITE) {
 			/* Each remote request needs two responses in memsync. */
-			hio->hio_countdown++;
+			refcnt_init(&hio->hio_countdown, ncomps + 1);
+		} else {
+			refcnt_init(&hio->hio_countdown, ncomps);
 		}
 		for (ii = ncomp; ii < ncomps; ii++)
 			QUEUE_INSERT1(hio, send, ii);
@@ -1936,6 +1939,22 @@ ggate_send_thread(void *arg)
 				    "G_GATE_CMD_DONE failed");
 			}
 		}
+		if (hio->hio_errors[0]) {
+			switch (ggio->gctl_cmd) {
+			case BIO_READ:
+				res->hr_stat_read_error++;
+				break;
+			case BIO_WRITE:
+				res->hr_stat_write_error++;
+				break;
+			case BIO_DELETE:
+				res->hr_stat_delete_error++;
+				break;
+			case BIO_FLUSH:
+				res->hr_stat_flush_error++;
+				break;
+			}
+		}
 		pjdlog_debug(2,
 		    "ggate_send: (%p) Moving request to the free queue.", hio);
 		QUEUE_INSERT2(hio, free);
@@ -2121,7 +2140,7 @@ sync_thread(void *arg __unused)
 			ncomp = 1;
 		}
 		mtx_unlock(&metadata_lock);
-		hio->hio_countdown = 1;
+		refcnt_init(&hio->hio_countdown, 1);
 		QUEUE_INSERT1(hio, send, ncomp);
 
 		/*
@@ -2171,7 +2190,7 @@ sync_thread(void *arg __unused)
 
 		pjdlog_debug(2, "sync: (%p) Moving request to the send queue.",
 		    hio);
-		hio->hio_countdown = 1;
+		refcnt_init(&hio->hio_countdown, 1);
 		QUEUE_INSERT1(hio, send, ncomp);
 
 		/*

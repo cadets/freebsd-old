@@ -120,6 +120,7 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	${_libvmmapi} \
 	libwrap \
 	liby \
+	libyaml \
 	libz \
 	${_atf} \
 	${_bind} \
@@ -250,6 +251,11 @@ _libtelnet=	libtelnet
 .if ${MK_USB} != "no"
 _libusbhid=	libusbhid
 _libusb=	libusb
+.endif
+
+.if !defined(LIBRARIES_ONLY)
+afterinstall:
+	${INSTALL_SYMLINK} ../include ${DESTDIR}/usr/lib/include
 .endif
 
 .include <bsd.subdir.mk>
