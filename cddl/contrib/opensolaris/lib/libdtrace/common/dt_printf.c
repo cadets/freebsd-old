@@ -50,6 +50,8 @@
 #include <dt_string.h>
 #include <dt_impl.h>
 
+#include <libxo/xo.h>
+
 /*ARGSUSED*/
 static int
 pfcheck_addr(dt_pfargv_t *pfv, dt_pfargd_t *pfd, dt_node_t *dnp)
@@ -236,28 +238,74 @@ pfcheck_type(dt_pfargv_t *pfv, dt_pfargd_t *pfd, dt_node_t *dnp)
 
 /*ARGSUSED*/
 static int
+pfcheck_mr(dt_pfargv_t *pfv, dt_pfargd_t *pfd, dt_node_t *dnp)
+{
+	int oformat = 0;
+	dtrace_hdl_t *dtp = pfv->pfv_dtp;
+
+	if (dtp->dt_options[DTRACEOPT_OFORMAT] != DTRACEOPT_UNSET)
+		oformat = (int)dtp->dt_options[DTRACEOPT_OFORMAT];
+
+	if (oformat)
+		return (1);
+
+	return(0);
+}
+
+/*ARGSUSED*/
+static int
 pfprint_sint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
     const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t unormal)
 {
+	int oformat = 0;
 	int64_t normal = (int64_t)unormal;
 	int32_t n = (int32_t)normal;
 
+	if (dtp->dt_options[DTRACEOPT_OFORMAT] != DTRACEOPT_UNSET)
+		oformat = (int)dtp->dt_options[DTRACEOPT_OFORMAT];
+
 	switch (size) {
-	case sizeof (int8_t):
+ 	case sizeof (int8_t):
+		if (oformat) {
+			xo_emit("{:int8_t/%d}",
+			    (int32_t)*((int8_t *)addr) / n);
+			goto closetag;
+		}
 		return (dt_printf(dtp, fp, format,
-		    (int32_t)*((int8_t *)addr) / n));
+			(int32_t)*((int8_t *)addr) / n));
 	case sizeof (int16_t):
+		if (oformat) {
+			xo_emit("{:int16_t/%d}",
+			    (int32_t)*((int16_t *)addr) / n);
+			goto closetag;
+		}
 		return (dt_printf(dtp, fp, format,
 		    (int32_t)*((int16_t *)addr) / n));
 	case sizeof (int32_t):
+		if (oformat) {
+			xo_emit("{:int32_t/%d}",
+			    *((int32_t *)addr) / n);
+			goto closetag;
+		}
 		return (dt_printf(dtp, fp, format,
 		    *((int32_t *)addr) / n));
 	case sizeof (int64_t):
+		if (oformat) {
+			xo_emit("{:int64_t/%ld}",
+			    *((int64_t *)addr) / normal);
+			goto closetag;
+		}
 		return (dt_printf(dtp, fp, format,
 		    *((int64_t *)addr) / normal));
 	default:
 		return (dt_set_errno(dtp, EDT_DMISMATCH));
 	}
+
+closetag:
+	if (dtp->dt_instance != NULL) {
+		xo_close_instance(dtp->dt_instance);
+	}
+	return (0);
 }
 
 /*ARGSUSED*/
@@ -265,24 +313,53 @@ static int
 pfprint_uint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
     const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
 {
+	int oformat = 0;
 	uint32_t n = (uint32_t)normal;
+
+	if (dtp->dt_options[DTRACEOPT_OFORMAT] != DTRACEOPT_UNSET)
+		oformat = (int)dtp->dt_options[DTRACEOPT_OFORMAT];
 
 	switch (size) {
 	case sizeof (uint8_t):
+		if (oformat) {
+			xo_emit("{:uint8_t/%d}",
+			    (uint32_t)*((uint8_t *)addr) / n);
+			goto closetag;
+		}
 		return (dt_printf(dtp, fp, format,
 		    (uint32_t)*((uint8_t *)addr) / n));
 	case sizeof (uint16_t):
+		if (oformat) {
+			xo_emit("{:uint16_t/%d}",
+			    (uint32_t)*((uint16_t *)addr) / n);
+			goto closetag;
+		}
 		return (dt_printf(dtp, fp, format,
 		    (uint32_t)*((uint16_t *)addr) / n));
 	case sizeof (uint32_t):
+		if (oformat) {
+			xo_emit("{:uint32_t/%d}",
+			    *((uint32_t *)addr) / n);
+			goto closetag;
+		}
 		return (dt_printf(dtp, fp, format,
 		    *((uint32_t *)addr) / n));
 	case sizeof (uint64_t):
+		if (oformat) {
+			xo_emit("{:uint64_t/%ld}",
+			    *((uint64_t *)addr) / normal);
+			goto closetag;
+		}
 		return (dt_printf(dtp, fp, format,
 		    *((uint64_t *)addr) / normal));
 	default:
 		return (dt_set_errno(dtp, EDT_DMISMATCH));
 	}
+closetag:
+	if (dtp->dt_instance != NULL) {
+		xo_close_instance(dtp->dt_instance);
+	}
+	return (0);
 }
 
 static int
@@ -566,10 +643,22 @@ static int
 pfprint_cstr(dtrace_hdl_t *dtp, FILE *fp, const char *format,
     const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
 {
+	int oformat = 0;
 	char *s = alloca(size + 1);
 
 	bcopy(addr, s, size);
 	s[size] = '\0';
+	
+	char c[PATH_MAX * 2];
+	uint64_t pc;
+
+	if (dtp->dt_options[DTRACEOPT_OFORMAT] != DTRACEOPT_UNSET)
+		oformat = (int)dtp->dt_options[DTRACEOPT_OFORMAT];
+	
+	if (oformat) {
+		xo_emit("{:string/%s}", s);
+		return (0);
+	}
 	return (dt_printf(dtp, fp, format, s));
 }
 
@@ -632,6 +721,25 @@ pfprint_pct(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	return (dt_printf(dtp, fp, "%%"));
 }
 
+/*ARGSUSED*/
+int
+pfprint_mr(dtrace_hdl_t *dtp, FILE *fp, const char *format,
+    const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
+{
+	if (dtp->dt_instance != NULL)
+		free(dtp->dt_instance);
+
+	dtp->dt_instance = malloc(size + 1);
+
+	bcopy(addr, dtp->dt_instance, size);
+	dtp->dt_instance[size] = '\0';
+	
+	xo_open_instance(dtp->dt_instance);
+
+	return (0);
+}
+
+
 static const char pfproto_xint[] = "char, short, int, long, or long long";
 static const char pfproto_csi[] = "char, short, or int";
 static const char pfproto_fp[] = "float, double, or long double";
@@ -687,6 +795,7 @@ static const dt_pfconv_t _dtrace_conversions[] = {
 { "Lf",	"f", "long double", pfcheck_type, pfprint_fp },
 { "Lg",	"g", "long double", pfcheck_type, pfprint_fp },
 { "LG",	"G", "long double", pfcheck_type, pfprint_fp },
+{ "m", "m", "machine readable", pfcheck_mr, pfprint_mr },
 { "o", "o", pfproto_xint, pfcheck_xint, pfprint_uint },
 { "p", "x", pfproto_addr, pfcheck_addr, pfprint_uint },
 { "P", "s", "uint16_t", pfcheck_type, pfprint_port },

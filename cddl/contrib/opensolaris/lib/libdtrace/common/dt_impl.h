@@ -363,6 +363,7 @@ struct dtrace_hdl {
 	dtrace_epid_t dt_last_epid;	/* most recently consumed EPID */
 	uint64_t dt_last_timestamp;	/* most recently consumed timestamp */
 	u_int dt_oformat;	/* output format, plain, XML, JSON */
+	char *dt_instance;	/* Current instance name or NULL */
 };
 
 /*

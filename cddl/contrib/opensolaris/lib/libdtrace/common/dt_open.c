@@ -1196,6 +1196,7 @@ alloc:
 	dtp->dt_provmod = provmod;
 	dtp->dt_vector = vector;
 	dtp->dt_varg = arg;
+	dtp->dt_instance = NULL;
 	dt_dof_init(dtp);
 	(void) uname(&dtp->dt_uts);
 
