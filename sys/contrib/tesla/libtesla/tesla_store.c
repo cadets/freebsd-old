@@ -267,8 +267,11 @@ pthread_key()
 	assert(error == 0 && "failed to lock pthread key mutex");
 
 	// Now that we're in the critical section, check again to make sure we
-	// initialise the key twice.
-	if (key_initialised) return key;
+	// don't initialise the key twice.
+	if (key_initialised) {
+		pthread_mutex_unlock(&lock);
+		return key;
+	}
 
 	error = pthread_key_create(&key, tesla_pthread_destructor);
 	assert(error == 0 && "failed to create pthread_key_t");
