@@ -131,6 +131,9 @@ xo_create (xo_style_t style, xo_xof_flags_t flags);
 xo_handle_t *
 xo_create_to_file (FILE *fp, xo_style_t style, xo_xof_flags_t flags);
 
+int
+xo_set_file (FILE *fp);
+
 void
 xo_destroy (xo_handle_t *xop);
 
