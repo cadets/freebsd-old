@@ -1738,25 +1738,6 @@ main(int argc, char *argv[])
 	(void) dtrace_getopt(g_dtp, "quiet", &opt);
 	g_quiet = opt != DTRACEOPT_UNSET;
 
-	(void) dtrace_getopt(g_dtp, "oformat", &opt);
-	if (opt != DTRACEOPT_UNSET) {
-		g_oformat = opt;
-		xo_set_flags(NULL, XOF_PRETTY|XOF_FLUSH);
-		switch (g_oformat) {
-		case OMODE_JSON:
-			xo_set_style(NULL, XO_STYLE_JSON);
-			break;
-		case OMODE_XML:
-			xo_set_style(NULL, XO_STYLE_XML);
-			break;
-		case OMODE_HTML:
-			xo_set_style(NULL, XO_STYLE_HTML);
-			break;
-		default:
-			break;
-		}
-	}
-	
 	/*
 	 * Now make a fifth and final pass over the options that have been
 	 * turned into programs and saved in g_cmdv[], performing any mode-
@@ -1922,6 +1903,28 @@ main(int argc, char *argv[])
 		dtrace_close(g_dtp);
 		return (g_status);
 	}
+
+	(void) dtrace_getopt(g_dtp, "oformat", &opt);
+	if (opt != DTRACEOPT_UNSET) {
+		g_oformat = opt;
+		xo_set_flags(NULL, XOF_PRETTY|XOF_FLUSH);
+		switch (g_oformat) {
+		case OMODE_JSON:
+			xo_set_style(NULL, XO_STYLE_JSON);
+			break;
+		case OMODE_XML:
+			xo_set_style(NULL, XO_STYLE_XML);
+			break;
+		case OMODE_HTML:
+			xo_set_style(NULL, XO_STYLE_HTML);
+			break;
+		default:
+			break;
+		}
+		if (g_ofp != NULL)
+			xo_set_file(g_ofp);
+	}
+	
 
 	/*
 	 * If -a and -Z were not specified and no probes have been matched, no
