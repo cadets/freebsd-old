@@ -234,7 +234,9 @@ tesla_class_get(struct tesla_store *store,
 }
 
 void
-tesla_class_acquire(tesla_class *class) {
+tesla_class_acquire(tesla_class *class)
+	__no_lock_analysis	/* locking behaviour is type-specific */
+{
 	switch (class->tc_context) {
 	case TESLA_CONTEXT_GLOBAL:
 		return tesla_class_global_acquire(class);

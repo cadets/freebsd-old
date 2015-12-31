@@ -393,8 +393,10 @@ MALLOC_DECLARE(M_TESLA);
  * Context-specific automata management:
  */
 int32_t	tesla_class_global_postinit(struct tesla_class*);
-void	tesla_class_global_acquire(struct tesla_class*);
-void	tesla_class_global_release(struct tesla_class*);
+void	tesla_class_global_acquire(struct tesla_class *tcp)
+	__locks_exclusive(tcp->tc_lock);
+void	tesla_class_global_release(struct tesla_class *tcp)
+	__unlocks(tcp->tc_lock);
 void	tesla_class_global_destroy(struct tesla_class*);
 
 int32_t	tesla_class_perthread_postinit(struct tesla_class*);

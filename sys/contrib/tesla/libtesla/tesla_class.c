@@ -172,6 +172,7 @@ tesla_instance_clear(struct tesla_instance *tip)
 
 void
 tesla_class_put(struct tesla_class *tsp)
+	__no_lock_analysis	/* locking behaviour is type-specific */
 {
 	switch (tsp->tc_context) {
 	case TESLA_CONTEXT_GLOBAL:
