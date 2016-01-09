@@ -62,6 +62,7 @@ syscall::*write:entry
 syscall::open:entry
 /pid != $pid && execname != "sshd"/
 {
-	printf("%m %d %m %s", "uid", uid, "program", execname);
+	printf("%m %d %m %s %m %s", "uid", uid, "program", execname, 
+		"file", copyinstr(arg0));
 }
 '
