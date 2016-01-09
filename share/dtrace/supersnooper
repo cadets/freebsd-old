@@ -48,13 +48,20 @@ DTRACE="/mnt/minion/exported/github/CADETS/freebsd/cddl/usr.sbin/dtrace/dtrace"
 $DTRACE -n '
 #pragma D option oformat=xml
 syscall::execve:return
+/pid != $pid && execname != "sshd"/
 {
+	printf("%m %d %m %s", "uid", uid, "program", execname);
 }
 syscall::*read:entry,
 syscall::*write:entry
+/pid != $pid && execname != "sshd"/
 {
+	printf("%m %d %m %s %m %d %m %d", "uid", uid, "program", execname,
+	       "fd", arg0, "len", arg2);
 }
 syscall::open:entry
+/pid != $pid && execname != "sshd"/
 {
+	printf("%m %d %m %s", "uid", uid, "program", execname);
 }
 '
