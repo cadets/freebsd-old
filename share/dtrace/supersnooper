@@ -41,11 +41,8 @@
 
 # Command line and argument passing
 
-DTRACE="/mnt/minion/exported/github/CADETS/freebsd/cddl/usr.sbin/dtrace/dtrace"
-
 # The DTrace Bits
-# /usr/sbin/dtrace -n '
-$DTRACE -n '
+/usr/sbin/dtrace -n '
 #pragma D option oformat=xml
 syscall::execve:return
 /pid != $pid && execname != "sshd"/
