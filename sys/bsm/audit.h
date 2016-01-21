@@ -149,10 +149,10 @@
  * Default audit queue control parameters.
  */
 #define	AQ_HIWATER	100
-#define	AQ_MAXHIGH	10000
+#define	AQ_MAXHIGH	1000000
 #define	AQ_LOWATER	10
 #define	AQ_BUFSZ	MAXAUDITDATA
-#define	AQ_MAXBUFSZ	1048576
+#define	AQ_MAXBUFSZ	16777216
 
 /*
  * Default minimum percentage free space on file system.

@@ -792,6 +792,32 @@ auditd_set_fsize(void)
 	return (ADE_NOERR);
 }
 
+/*
+ * Set trail rotation size.  Return:
+ *	ADE_NOERR	on success,
+ *	ADE_PARSE	error parsing audit_control(5),
+ *	ADE_AUDITON	error setting queue size using auditon(2).
+ */
+int
+auditd_set_qsize(void)
+{
+	size_t qsz;
+	au_qctrl_t au_qctrl;
+
+	/*
+	 * Set trail rotation size.
+	 */
+	if (getacqsize(&qsz) != 0)
+		return (ADE_PARSE);
+
+	bzero(&au_qctrl, sizeof(au_qctrl));
+	au_qctrl.aq_hiwater = qsz;
+	if (audit_set_qctrl(&au_qctrl, sizeof(au_qctrl)) != 0)
+		return (ADE_AUDITON);
+
+	return (ADE_NOERR);
+}
+
 static void
 inject_dist(const char *fromname, char *toname, size_t tonamesize)
 {

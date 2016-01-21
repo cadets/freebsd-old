@@ -79,7 +79,7 @@ audump_control(void)
 {
 	char string[PATH_MAX], string2[PATH_MAX];
 	int ret, val;
-	long policy;
+	int policy;
 	time_t age;
 	size_t size;
 
@@ -137,6 +137,13 @@ audump_control(void)
 
 	printf("filesz:%ldB\n", size);
 
+	ret = getacqsize(&size);
+	if (ret == -2)
+		err(-1, "getacqsize");
+	if (ret != 0)
+		err(-1, "getacqzize: %d", ret);
+
+	printf("qsize:%ld\n", size);
 
 	ret = getachost(string, PATH_MAX);
 	if (ret == -2)
