@@ -105,7 +105,7 @@
 #define HAVE_OPENAT 1
 
 /* Define to 1 if you have the <printf.h> header file. */
-/* #undef HAVE_PRINTF_H */
+#define HAVE_PRINTF_H 1
 
 /* Define to 1 if you have the `pthread_condattr_setclock' function. */
 #define HAVE_PTHREAD_CONDATTR_SETCLOCK 1
