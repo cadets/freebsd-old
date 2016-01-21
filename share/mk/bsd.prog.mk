@@ -161,7 +161,7 @@ CLEANFILES+=	${TESLA_FILES} tesla.manifest
 
 .if ${MK_TESLA} != "no" && !defined(EARLY_BUILD)
 tesla.manifest: ${TESLA_FILES}
-	cat ${TESLA_FILES} > ${.TARGET}
+	${TESLA} cat -o ${.TARGET} ${TESLA_FILES}
 
 DPADD+=	${LIBTESLA}
 LDADD+= -ltesla
