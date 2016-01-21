@@ -314,7 +314,9 @@ YFLAGS		?=	-d
 	${CC} ${CFLAGS:N-O*} -emit-llvm -S ${.IMPSRC} -o ${.TARGET}
 
 .c.tesla:
-	${TESLA} analyse ${.IMPSRC} -o ${.TARGET} -- ${CFLAGS} ${XFLAGS} -D TESLA
+	${TESLA} analyse ${.IMPSRC} -o ${.TARGET} \
+		-- ${CFLAGS} ${XFLAGS} -D TESLA \
+		|| rm -f ${.TARGET}
 
 .cc .cpp .cxx .C:
 	${CXX} ${CXXFLAGS} ${LDFLAGS} ${.IMPSRC} ${LDLIBS} -o ${.TARGET}
