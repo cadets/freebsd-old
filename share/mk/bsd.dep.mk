@@ -48,12 +48,15 @@ CTAGSFLAGS?=
 GTAGSFLAGS?=	-o
 HTAGSFLAGS?=
 
-.if ${CC} != "cc"
-MKDEPCMD?=	CC='${CC}' mkdep
-.else
-MKDEPCMD?=	mkdep
+_MKDEPCC:=	${CC:N${CCACHE_BIN}}
+# XXX: DEPFLAGS can come out once Makefile.inc1 properly passes down
+# CXXFLAGS.
+.if !empty(DEPFLAGS)
+_MKDEPCC+=	${DEPFLAGS}
 .endif
+MKDEPCMD?=	CC='${_MKDEPCC}' mkdep
 DEPENDFILE?=	.depend
+DEPENDFILES=	${DEPENDFILE}
 
 # Keep `tags' here, before SRCS are mangled below for `depend'.
 .if !target(tags) && defined(SRCS) && !defined(NO_TAGS)
@@ -72,17 +75,18 @@ tags: ${SRCS}
 .if defined(SRCS)
 CLEANFILES?=
 
-.if !exists(${.OBJDIR}/${DEPENDFILE})
-.for _S in ${SRCS:N*.[hly]}
+.if ${MK_FAST_DEPEND} == "yes" || !exists(${.OBJDIR}/${DEPENDFILE})
+.for _S in ${SRCS:N*.[dhly]}
 ${_S:R}.o: ${_S}
 .endfor
 .endif
 
+# Lexical analyzers
 .for _LSRC in ${SRCS:M*.l:N*/*}
 .for _LC in ${_LSRC:R}.c
 ${_LC}: ${_LSRC}
-	${LEX} -t ${LFLAGS} ${.ALLSRC} > ${.TARGET}
-.if !exists(${.OBJDIR}/${DEPENDFILE})
+	${LEX} ${LFLAGS} -o${.TARGET} ${.ALLSRC}
+.if ${MK_FAST_DEPEND} == "yes" || !exists(${.OBJDIR}/${DEPENDFILE})
 ${_LC:R}.o: ${_LC}
 .endif
 SRCS:=	${SRCS:S/${_LSRC}/${_LC}/}
@@ -90,6 +94,7 @@ CLEANFILES+= ${_LC}
 .endfor
 .endfor
 
+# Yacc grammars
 .for _YSRC in ${SRCS:M*.y:N*/*}
 .for _YC in ${_YSRC:R}.c
 SRCS:=	${SRCS:S/${_YSRC}/${_YC}/}
@@ -112,11 +117,75 @@ CLEANFILES+= ${_YH}
 ${_YC}: ${_YSRC}
 	${YACC} ${YFLAGS} -o ${_YC} ${.ALLSRC}
 .endif
-.if !exists(${.OBJDIR}/${DEPENDFILE})
+.if ${MK_FAST_DEPEND} == "yes" || !exists(${.OBJDIR}/${DEPENDFILE})
 ${_YC:R}.o: ${_YC}
 .endif
 .endfor
 .endfor
+
+# DTrace probe definitions
+.if ${SRCS:M*.d}
+CFLAGS+=	-I${.OBJDIR}
+.endif
+.for _DSRC in ${SRCS:M*.d:N*/*}
+.for _D in ${_DSRC:R}
+DHDRS+=	${_D}.h
+${_D}.h: ${_DSRC}
+	${DTRACE} ${DTRACEFLAGS} -h -s ${.ALLSRC}
+SRCS:=	${SRCS:S/^${_DSRC}$//}
+OBJS+=	${_D}.o
+CLEANFILES+= ${_D}.h ${_D}.o
+${_D}.o: ${_DSRC} ${OBJS:S/^${_D}.o$//}
+	${DTRACE} ${DTRACEFLAGS} -G -o ${.TARGET} -s ${.ALLSRC}
+.if defined(LIB)
+CLEANFILES+= ${_D}.So ${_D}.po
+${_D}.So: ${_DSRC} ${SOBJS:S/^${_D}.So$//}
+	${DTRACE} ${DTRACEFLAGS} -G -o ${.TARGET} -s ${.ALLSRC}
+${_D}.po: ${_DSRC} ${POBJS:S/^${_D}.po$//}
+	${DTRACE} ${DTRACEFLAGS} -G -o ${.TARGET} -s ${.ALLSRC}
+.endif
+.endfor
+.endfor
+beforedepend: ${DHDRS}
+beforebuild: ${DHDRS}
+
+
+.if ${MK_FAST_DEPEND} == "yes" && ${.MAKE.MODE:Unormal:Mmeta*} == ""
+DEPENDFILES+=	${DEPENDFILE}.*
+DEPEND_MP?=	-MP
+# Handle OBJS=../somefile.o hacks.  Just replace '/' rather than use :T to
+# avoid collisions.
+DEPEND_FILTER=	C,/,_,g
+DEPEND_CFLAGS+=	-MD ${DEPEND_MP} -MF${DEPENDFILE}.${.TARGET:${DEPEND_FILTER}}
+DEPEND_CFLAGS+=	-MT${.TARGET}
+.if defined(.PARSEDIR)
+# Only add in DEPEND_CFLAGS for CFLAGS on files we expect from DEPENDOBJS
+# as those are the only ones we will include.
+DEPEND_CFLAGS_CONDITION= !empty(DEPENDOBJS:M${.TARGET:${DEPEND_FILTER}})
+CFLAGS+=	${${DEPEND_CFLAGS_CONDITION}:?${DEPEND_CFLAGS}:}
+.else
+CFLAGS+=	${DEPEND_CFLAGS}
+.endif
+DEPENDSRCS=	${SRCS:M*.[cSC]} ${SRCS:M*.cxx} ${SRCS:M*.cpp} ${SRCS:M*.cc}
+.if !empty(DEPENDSRCS)
+DEPENDOBJS+=	${DEPENDSRCS:R:S,$,.o,}
+.endif
+.for __obj in ${DEPENDOBJS:O:u}
+.if ${.MAKEFLAGS:M-V} == ""
+.sinclude "${DEPENDFILE}.${__obj:${DEPEND_FILTER}}"
+.endif
+DEPENDFILES_OBJS+=	${DEPENDFILE}.${__obj:${DEPEND_FILTER}}
+.endfor
+.endif	# ${MK_FAST_DEPEND} == "yes"
+.endif	# defined(SRCS)
+
+.if ${MK_DIRDEPS_BUILD} == "yes"
+.include <meta.autodep.mk>
+# this depend: bypasses that below
+# the dependency helps when bootstrapping
+depend: beforedepend ${DPSRCS} ${SRCS} afterdepend
+beforedepend:
+afterdepend: beforedepend
 .endif
 
 .if !target(depend)
@@ -124,7 +193,7 @@ ${_YC:R}.o: ${_YC}
 depend: beforedepend ${DEPENDFILE} afterdepend
 
 # Tell bmake not to look for generated files via .PATH
-.NOPATH: ${DEPENDFILE}
+.NOPATH: ${DEPENDFILE} ${DEPENDFILES_OBJS}
 
 # Different types of sources are compiled with slightly different flags.
 # Split up the sources, and filter out headers and non-applicable flags.
@@ -135,6 +204,7 @@ MKDEP_CXXFLAGS=	${CXXFLAGS:M-nostdinc*} ${CXXFLAGS:M-[BIDU]*} \
 
 DPSRCS+= ${SRCS}
 ${DEPENDFILE}: ${DPSRCS}
+.if ${MK_FAST_DEPEND} == "no"
 	rm -f ${DEPENDFILE}
 .if !empty(DPSRCS:M*.[cS])
 	${MKDEPCMD} -f ${DEPENDFILE} -a ${MKDEP} \
@@ -145,7 +215,11 @@ ${DEPENDFILE}: ${DPSRCS}
 	${MKDEPCMD} -f ${DEPENDFILE} -a ${MKDEP} \
 	    ${MKDEP_CXXFLAGS} \
 	    ${.ALLSRC:M*.cc} ${.ALLSRC:M*.C} ${.ALLSRC:M*.cpp} ${.ALLSRC:M*.cxx}
+.else
 .endif
+.else
+	: > ${.TARGET}
+.endif	# ${MK_FAST_DEPEND} == "no"
 .if target(_EXTRADEPEND)
 _EXTRADEPEND: .USE
 ${DEPENDFILE}: _EXTRADEPEND
@@ -170,19 +244,21 @@ afterdepend:
 cleandepend:
 .if defined(SRCS)
 .if ${CTAGS:T} == "gtags"
-	rm -f ${DEPENDFILE} GPATH GRTAGS GSYMS GTAGS
+	rm -f ${DEPENDFILES} GPATH GRTAGS GSYMS GTAGS
 .if defined(HTML)
 	rm -rf HTML
 .endif
 .else
-	rm -f ${DEPENDFILE} tags
+	rm -f ${DEPENDFILES} tags
 .endif
 .endif
 .endif
 
 .if !target(checkdpadd) && (defined(DPADD) || defined(LDADD))
-_LDADD_FROM_DPADD=	${DPADD:C;^/usr/lib/lib(.*)\.a$;-l\1;}
-_LDADD_CANONICALIZED=	${LDADD:S/$//}
+_LDADD_FROM_DPADD=	${DPADD:R:T:C;^lib(.*)$;-l\1;g}
+# Ignore -Wl,--start-group/-Wl,--end-group as it might be required in the
+# LDADD list due to unresolved symbols
+_LDADD_CANONICALIZED=	${LDADD:N:R:T:C;^lib(.*)$;-l\1;g:N-Wl,--[es]*-group}
 checkdpadd:
 .if ${_LDADD_FROM_DPADD} != ${_LDADD_CANONICALIZED}
 	@echo ${.CURDIR}

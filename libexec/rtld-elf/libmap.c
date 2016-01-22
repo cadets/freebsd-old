@@ -16,15 +16,7 @@
 #include "debug.h"
 #include "rtld.h"
 #include "libmap.h"
-
-#ifndef _PATH_LIBMAP_CONF
-#define	_PATH_LIBMAP_CONF	"/etc/libmap.conf"
-#endif
-
-#ifdef COMPAT_32BIT
-#undef _PATH_LIBMAP_CONF
-#define	_PATH_LIBMAP_CONF	"/etc/libmap32.conf"
-#endif
+#include "paths.h"
 
 TAILQ_HEAD(lm_list, lm);
 struct lm {
@@ -76,11 +68,11 @@ lm_init(char *libmap_override)
 	dbg("lm_init(\"%s\")", libmap_override);
 	TAILQ_INIT(&lmp_head);
 
-	lmc_parse_file(_PATH_LIBMAP_CONF);
+	lmc_parse_file(ld_path_libmap_conf);
 
 	if (libmap_override) {
 		/*
-		 * Do some character replacement to make $LIBMAP look
+		 * Do some character replacement to make $LDLIBMAP look
 		 * like a text file, then parse it.
 		 */
 		libmap_override = xstrdup(libmap_override);
@@ -94,8 +86,8 @@ lm_init(char *libmap_override)
 				break;
 			}
 		}
-		lmc_parse(p, strlen(p));
-		free(p);
+		lmc_parse(libmap_override, p - libmap_override);
+		free(libmap_override);
 	}
 
 	return (lm_count == 0);
@@ -216,14 +208,14 @@ lmc_parse(char *lm_p, size_t lm_len)
 	p = NULL;
 	while (cnt < lm_len) {
 		i = 0;
-		while (lm_p[cnt] != '\n' && cnt < lm_len &&
+		while (cnt < lm_len && lm_p[cnt] != '\n' &&
 		    i < sizeof(line) - 1) {
 			line[i] = lm_p[cnt];
 			cnt++;
 			i++;
 		}
 		line[i] = '\0';
-		while (lm_p[cnt] != '\n' && cnt < lm_len)
+		while (cnt < lm_len && lm_p[cnt] != '\n')
 			cnt++;
 		/* skip over nl */
 		cnt++;
@@ -396,7 +388,6 @@ lm_find (const char *p, const char *f)
 
 /* Given a libmap translation list and a library name, return the
    replacement library, or NULL */
-#ifdef COMPAT_32BIT
 char *
 lm_findn (const char *p, const char *f, const int n)
 {
@@ -413,7 +404,6 @@ lm_findn (const char *p, const char *f, const int n)
 		free(s);
 	return (t);
 }
-#endif
 
 static char *
 lml_find (struct lm_list *lmh, const char *f)

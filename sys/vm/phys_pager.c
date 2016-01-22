@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 
 #include <vm/vm.h>
+#include <vm/vm_param.h>
 #include <vm/vm_object.h>
 #include <vm/vm_page.h>
 #include <vm/vm_pager.h>
@@ -130,13 +131,16 @@ phys_pager_dealloc(vm_object_t object)
 		mtx_unlock(&phys_pager_mtx);
 		VM_OBJECT_WLOCK(object);
 	}
+	object->handle = NULL;
+	object->type = OBJT_DEAD;
 }
 
 /*
  * Fill as many pages as vm_fault has allocated for us.
  */
 static int
-phys_pager_getpages(vm_object_t object, vm_page_t *m, int count, int reqpage)
+phys_pager_getpages(vm_object_t object, vm_page_t *m, int count, int *rbehind,
+    int *rahead)
 {
 	int i;
 
@@ -151,12 +155,11 @@ phys_pager_getpages(vm_object_t object, vm_page_t *m, int count, int reqpage)
 		    ("phys_pager_getpages: partially valid page %p", m[i]));
 		KASSERT(m[i]->dirty == 0,
 		    ("phys_pager_getpages: dirty page %p", m[i]));
-		/* The requested page must remain busy, the others not. */
-		if (i == reqpage)
-			vm_page_flash(m[i]);
-		else
-			vm_page_wakeup(m[i]);
 	}
+	if (rbehind)
+		*rbehind = 0;
+	if (rahead)
+		*rahead = 0;
 	return (VM_PAGER_OK);
 }
 

@@ -140,7 +140,7 @@ ata_pccard_attach(device_t dev)
         ch-> flags |= ATA_NO_SLAVE;
     ata_generic_hw(dev);
     err = ata_probe(dev);
-    if (err)
+    if (err > 0)
 	return (err);
     return (ata_attach(dev));
 }
@@ -183,3 +183,4 @@ static driver_t ata_pccard_driver = {
 
 DRIVER_MODULE(ata, pccard, ata_pccard_driver, ata_devclass, NULL, NULL);
 MODULE_DEPEND(ata, ata, 1, 1, 1);
+PCCARD_PNP_INFO(ata_pccard_products);

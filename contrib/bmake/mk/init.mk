@@ -1,4 +1,4 @@
-# $Id: init.mk,v 1.8 2012/11/11 22:37:02 sjg Exp $
+# $Id: init.mk,v 1.10 2015/12/07 04:28:31 sjg Exp $
 #
 #	@(#) Copyright (c) 2002, Simon J. Gerraty
 #
@@ -36,9 +36,19 @@ COPTS += ${COPTS.${.IMPSRC:T}}
 CPPFLAGS += ${CPPFLAGS.${.IMPSRC:T}}
 CPUFLAGS += ${CPUFLAGS.${.IMPSRC:T}}
 
+CC_PG?= -pg
+CXX_PG?= ${CC_PG}
+CC_PIC?= -DPIC
+CXX_PIC?= ${CC_PIC}
+PROFFLAGS?= -DGPROF -DPROF
+
 .if ${.MAKE.LEVEL:U1} == 0 && ${BUILD_AT_LEVEL0:Uyes:tl} == "no"
 # this tells lib.mk and prog.mk to not actually build anything
 _SKIP_BUILD = not building at level 0
 .endif
 
+.if !empty(_SKIP_BUILD)
+all: .PHONY
+.warning ${_SKIP_BUILD}
+.endif
 .endif

@@ -4,7 +4,7 @@
 # the DTraceToolkit.
 #
 
-.include <bsd.own.mk>
+.include <src.opts.mk>
 
 SUBDIR= ${_toolkit}
 
@@ -12,10 +12,18 @@ SUBDIR= ${_toolkit}
 _toolkit=	toolkit
 .endif
 
-SCRIPTS=	nfsclienttime hotopen
+SCRIPTS=	blocking \
+		disklatency \
+		disklatencycmd \
+		hotopen \
+		nfsattrstats \
+		nfsclienttime \
+		siftr \
+		tcpconn \
+		tcpstate \
+		tcptrack \
+		udptrack
 
 SCRIPTSDIR= ${SHAREDIR}/dtrace
-
-NO_OBJ=
 
 .include <bsd.prog.mk>

@@ -45,6 +45,19 @@ for IF in `ifconfig -l`; do
 	test "$IF" = "lo0" && continue
 	(ifconfig -g wlan | egrep -wq $IF) && continue
 	INTERFACES="$INTERFACES $IF"
+done
+
+INTERFACES="$INTERFACES $(sysctl -in net.wlan.devices)"
+is_wireless_if() {
+	for IF in $(sysctl -in net.wlan.devices); do
+		if [ $IF = $1 ]; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+for IF in $INTERFACES; do
 	DESC=`sysctl -n dev.$(echo $IF | sed -E 's/([[:alpha:]]*)([[:digit:]]*)/\1.\2/g').%desc`
 	DIALOG_TAGS="$DIALOG_TAGS $IF \"$DESC\""
 done
@@ -63,10 +76,8 @@ exec 3>&-
 
 : > $BSDINSTALL_TMPETC/._rc.conf.net
 
-# Do a dirty check to see if this a wireless interface -- there should be a
-# better way
 IFCONFIG_PREFIX=""
-if ifconfig $INTERFACE | grep -q 'media: IEEE 802.11 Wireless'; then
+if is_wireless_if $INTERFACE; then
 	NEXT_WLAN_IFACE=wlan0	# XXX
 	echo wlans_$INTERFACE=\"$NEXT_WLAN_IFACE\" >> $BSDINSTALL_TMPETC/._rc.conf.net
 	IFCONFIG_PREFIX="WPA "

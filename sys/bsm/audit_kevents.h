@@ -26,7 +26,6 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * P4: //depot/projects/trustedbsd/openbsm/sys/bsm/audit_kevents.h#7
  * $FreeBSD$
  */
 
@@ -34,7 +33,7 @@
 #define	_BSM_AUDIT_KEVENTS_H_
 
 /*
- * The reserved event numbers for kernel events are 1...2047 and 43001..44900.
+ * The reserved event numbers for kernel events are 1...2047 and 43001..44999.
  */
 #define	AUE_IS_A_KEVENT(e)	(((e) > 0 && (e) < 2048) ||	\
 				 ((e) > 43000 && (e) < 45000))
@@ -589,6 +588,7 @@
 #define	AUE_POSIX_OPENPT	43185	/* FreeBSD. */
 #define	AUE_CAP_NEW		43186	/* TrustedBSD. */
 #define	AUE_CAP_RIGHTS_GET	43187	/* TrustedBSD. */
+#define	AUE_CAP_GETRIGHTS	AUE_CAP_RIGHTS_GET
 #define	AUE_CAP_ENTER		43188	/* TrustedBSD. */
 #define	AUE_CAP_GETMODE		43189	/* TrustedBSD. */
 #define	AUE_POSIX_SPAWN		43190	/* Darwin. */

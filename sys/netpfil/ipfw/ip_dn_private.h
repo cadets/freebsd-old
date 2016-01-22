@@ -83,6 +83,7 @@ SLIST_HEAD(dn_alg_head, dn_alg);
 
 struct mq {	/* a basic queue of packets*/
         struct mbuf *head, *tail;
+	int count;
 };
 
 static inline void
@@ -91,7 +92,7 @@ set_oid(struct dn_id *o, int type, int len)
         o->type = type;
         o->len = len;
         o->subtype = 0;
-};
+}
 
 /*
  * configuration and global data for a dummynet instance

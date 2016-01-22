@@ -20,6 +20,7 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015 by Delphix. All rights reserved.
  */
 
 #include <sys/types.h>
@@ -216,9 +217,8 @@ zfs_log_fuid_domains(zfs_fuid_info_t *fuidp, void *start)
 }
 
 /*
- * zfs_log_create() is used to handle TX_CREATE, TX_CREATE_ATTR, TX_MKDIR,
- * TX_MKDIR_ATTR and TX_MKXATTR
- * transactions.
+ * Handles TX_CREATE, TX_CREATE_ATTR, TX_MKDIR, TX_MKDIR_ATTR and
+ * TK_MKXATTR transactions.
  *
  * TX_CREATE and TX_MKDIR are standard creates, but they may have FUID
  * domain information appended prior to the name.  In this case the
@@ -345,11 +345,11 @@ zfs_log_create(zilog_t *zilog, dmu_tx_t *tx, uint64_t txtype,
 }
 
 /*
- * zfs_log_remove() handles both TX_REMOVE and TX_RMDIR transactions.
+ * Handles both TX_REMOVE and TX_RMDIR transactions.
  */
 void
 zfs_log_remove(zilog_t *zilog, dmu_tx_t *tx, uint64_t txtype,
-	znode_t *dzp, char *name, uint64_t foid)
+    znode_t *dzp, char *name, uint64_t foid)
 {
 	itx_t *itx;
 	lr_remove_t *lr;
@@ -369,11 +369,11 @@ zfs_log_remove(zilog_t *zilog, dmu_tx_t *tx, uint64_t txtype,
 }
 
 /*
- * zfs_log_link() handles TX_LINK transactions.
+ * Handles TX_LINK transactions.
  */
 void
 zfs_log_link(zilog_t *zilog, dmu_tx_t *tx, uint64_t txtype,
-	znode_t *dzp, znode_t *zp, char *name)
+    znode_t *dzp, znode_t *zp, char *name)
 {
 	itx_t *itx;
 	lr_link_t *lr;
@@ -392,7 +392,7 @@ zfs_log_link(zilog_t *zilog, dmu_tx_t *tx, uint64_t txtype,
 }
 
 /*
- * zfs_log_symlink() handles TX_SYMLINK transactions.
+ * Handles TX_SYMLINK transactions.
  */
 void
 zfs_log_symlink(zilog_t *zilog, dmu_tx_t *tx, uint64_t txtype,
@@ -424,11 +424,11 @@ zfs_log_symlink(zilog_t *zilog, dmu_tx_t *tx, uint64_t txtype,
 }
 
 /*
- * zfs_log_rename() handles TX_RENAME transactions.
+ * Handles TX_RENAME transactions.
  */
 void
 zfs_log_rename(zilog_t *zilog, dmu_tx_t *tx, uint64_t txtype,
-	znode_t *sdzp, char *sname, znode_t *tdzp, char *dname, znode_t *szp)
+    znode_t *sdzp, char *sname, znode_t *tdzp, char *dname, znode_t *szp)
 {
 	itx_t *itx;
 	lr_rename_t *lr;
@@ -450,13 +450,13 @@ zfs_log_rename(zilog_t *zilog, dmu_tx_t *tx, uint64_t txtype,
 }
 
 /*
- * zfs_log_write() handles TX_WRITE transactions.
+ * Handles TX_WRITE transactions.
  */
 ssize_t zfs_immediate_write_sz = 32768;
 
 void
 zfs_log_write(zilog_t *zilog, dmu_tx_t *tx, int txtype,
-	znode_t *zp, offset_t off, ssize_t resid, int ioflag)
+    znode_t *zp, offset_t off, ssize_t resid, int ioflag)
 {
 	itx_wr_state_t write_state;
 	boolean_t slogging;
@@ -491,7 +491,7 @@ zfs_log_write(zilog_t *zilog, dmu_tx_t *tx, int txtype,
 		 * If the write would overflow the largest block then split it.
 		 */
 		if (write_state != WR_INDIRECT && resid > ZIL_MAX_LOG_DATA)
-			len = SPA_MAXBLOCKSIZE >> 1;
+			len = SPA_OLD_MAXBLOCKSIZE >> 1;
 		else
 			len = resid;
 
@@ -529,11 +529,11 @@ zfs_log_write(zilog_t *zilog, dmu_tx_t *tx, int txtype,
 }
 
 /*
- * zfs_log_truncate() handles TX_TRUNCATE transactions.
+ * Handles TX_TRUNCATE transactions.
  */
 void
 zfs_log_truncate(zilog_t *zilog, dmu_tx_t *tx, int txtype,
-	znode_t *zp, uint64_t off, uint64_t len)
+    znode_t *zp, uint64_t off, uint64_t len)
 {
 	itx_t *itx;
 	lr_truncate_t *lr;
@@ -552,11 +552,11 @@ zfs_log_truncate(zilog_t *zilog, dmu_tx_t *tx, int txtype,
 }
 
 /*
- * zfs_log_setattr() handles TX_SETATTR transactions.
+ * Handles TX_SETATTR transactions.
  */
 void
 zfs_log_setattr(zilog_t *zilog, dmu_tx_t *tx, int txtype,
-	znode_t *zp, vattr_t *vap, uint_t mask_applied, zfs_fuid_info_t *fuidp)
+    znode_t *zp, vattr_t *vap, uint_t mask_applied, zfs_fuid_info_t *fuidp)
 {
 	itx_t		*itx;
 	lr_setattr_t	*lr;
@@ -614,7 +614,7 @@ zfs_log_setattr(zilog_t *zilog, dmu_tx_t *tx, int txtype,
 }
 
 /*
- * zfs_log_acl() handles TX_ACL transactions.
+ * Handles TX_ACL transactions.
  */
 void
 zfs_log_acl(zilog_t *zilog, dmu_tx_t *tx, znode_t *zp,

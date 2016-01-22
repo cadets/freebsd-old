@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CODEGEN_SPLITKIT_H
-#define LLVM_CODEGEN_SPLITKIT_H
+#ifndef LLVM_LIB_CODEGEN_SPLITKIT_H
+#define LLVM_LIB_CODEGEN_SPLITKIT_H
 
 #include "LiveRangeCalc.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -27,6 +27,7 @@ class ConnectedVNInfoEqClasses;
 class LiveInterval;
 class LiveIntervals;
 class LiveRangeEdit;
+class MachineBlockFrequencyInfo;
 class MachineInstr;
 class MachineLoopInfo;
 class MachineRegisterInfo;
@@ -38,7 +39,7 @@ class raw_ostream;
 
 /// SplitAnalysis - Analyze a LiveInterval, looking for live range splitting
 /// opportunities.
-class SplitAnalysis {
+class LLVM_LIBRARY_VISIBILITY SplitAnalysis {
 public:
   const MachineFunction &MF;
   const VirtRegMap &VRM;
@@ -207,7 +208,7 @@ public:
 /// - Finish the current interval with closeIntv and repeat from 2.
 /// - Rewrite instructions with finish().
 ///
-class SplitEditor {
+class LLVM_LIBRARY_VISIBILITY SplitEditor {
   SplitAnalysis &SA;
   LiveIntervals &LIS;
   VirtRegMap &VRM;
@@ -215,6 +216,7 @@ class SplitEditor {
   MachineDominatorTree &MDT;
   const TargetInstrInfo &TII;
   const TargetRegisterInfo &TRI;
+  const MachineBlockFrequencyInfo &MBFI;
 
 public:
 
@@ -349,7 +351,7 @@ public:
   /// Create a new SplitEditor for editing the LiveInterval analyzed by SA.
   /// Newly created intervals will be appended to newIntervals.
   SplitEditor(SplitAnalysis &SA, LiveIntervals&, VirtRegMap&,
-              MachineDominatorTree&);
+              MachineDominatorTree&, MachineBlockFrequencyInfo &);
 
   /// reset - Prepare for a new split.
   void reset(LiveRangeEdit&, ComplementSpillMode = SM_Partition);
@@ -375,7 +377,7 @@ public:
   SlotIndex enterIntvAfter(SlotIndex Idx);
 
   /// enterIntvAtEnd - Enter the open interval at the end of MBB.
-  /// Use the open interval from he inserted copy to the MBB end.
+  /// Use the open interval from the inserted copy to the MBB end.
   /// Return the beginning of the new live range.
   SlotIndex enterIntvAtEnd(MachineBasicBlock &MBB);
 
@@ -415,9 +417,9 @@ public:
   /// @param LRMap When not null, this vector will map each live range in Edit
   ///              back to the indices returned by openIntv.
   ///              There may be extra indices created by dead code elimination.
-  void finish(SmallVectorImpl<unsigned> *LRMap = 0);
+  void finish(SmallVectorImpl<unsigned> *LRMap = nullptr);
 
-  /// dump - print the current interval maping to dbgs().
+  /// dump - print the current interval mapping to dbgs().
   void dump() const;
 
   // ===--- High level methods ---===

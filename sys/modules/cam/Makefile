@@ -11,10 +11,13 @@ SRCS=	opt_cam.h
 SRCS+=	opt_ada.h
 SRCS+=	opt_scsi.h
 SRCS+=	opt_cd.h
+SRCS+=	opt_kdtrace.h
 SRCS+=	opt_pt.h
 SRCS+=	opt_sa.h
+SRCS+=	opt_ses.h
 SRCS+=	device_if.h bus_if.h vnode_if.h
 SRCS+=	cam.c
+SRCS+=	cam_compat.c
 .if exists($S/${MACHINE}/${MACHINE}/cam_machdep.c)
 SRCS+=	cam_machdep.c
 .endif
@@ -40,10 +43,5 @@ SRCS+=	ata_machdep.c
 SRCS+=	ata_pmp.c
 
 EXPORT_SYMS=	YES	# XXX evaluate
-
-.if !defined(KERNBUILDDIR)
-opt_scsi.h:
-	echo "#define SCSI_DELAY 15000" > ${.TARGET}
-.endif
 
 .include <bsd.kmod.mk>

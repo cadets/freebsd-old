@@ -38,6 +38,7 @@
 #define CPUID_0000_0007 (0x7)
 #define	CPUID_0000_000A	(0xA)
 #define	CPUID_0000_000B	(0xB)
+#define	CPUID_0000_000D	(0xD)
 #define CPUID_8000_0000	(0x80000000)
 #define CPUID_8000_0001	(0x80000001)
 #define CPUID_8000_0002	(0x80000002)
@@ -61,4 +62,17 @@
 int x86_emulate_cpuid(struct vm *vm, int vcpu_id, uint32_t *eax, uint32_t *ebx,
 		      uint32_t *ecx, uint32_t *edx);
 
+enum vm_cpuid_capability {
+	VCC_NONE,
+	VCC_NO_EXECUTE,
+	VCC_FFXSR,
+	VCC_TCE,
+	VCC_LAST
+};
+
+/*
+ * Return 'true' if the capability 'cap' is enabled in this virtual cpu
+ * and 'false' otherwise.
+ */
+bool vm_cpuid_capability(struct vm *vm, int vcpuid, enum vm_cpuid_capability);
 #endif

@@ -40,6 +40,7 @@ __FBSDID("$FreeBSD$");
  
 #include <net/ethernet.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_llc.h>
 #include <net/if_media.h>
 #include <net/if_vlan_var.h>
@@ -85,9 +86,21 @@ int
 ieee80211_input_mimo(struct ieee80211_node *ni, struct mbuf *m,
     struct ieee80211_rx_stats *rx)
 {
+	struct ieee80211_rx_stats rxs;
+
+	if (rx) {
+		memcpy(&rxs, rx, sizeof(*rx));
+	} else {
+		/* try to read from mbuf */
+		bzero(&rxs, sizeof(rxs));
+		ieee80211_get_rx_params(m, &rxs);
+	}
+
 	/* XXX should assert IEEE80211_R_NF and IEEE80211_R_RSSI are set */
-	ieee80211_process_mimo(ni, rx);
-	return ieee80211_input(ni, m, rx->rssi, rx->nf);
+	ieee80211_process_mimo(ni, &rxs);
+
+	//return ieee80211_input(ni, m, rx->rssi, rx->nf);
+	return ni->ni_vap->iv_input(ni, m, &rxs, rxs.rssi, rxs.nf);
 }
 
 int
@@ -105,10 +118,19 @@ int
 ieee80211_input_mimo_all(struct ieee80211com *ic, struct mbuf *m,
     struct ieee80211_rx_stats *rx)
 {
+	struct ieee80211_rx_stats rxs;
 	struct ieee80211vap *vap;
 	int type = -1;
 
 	m->m_flags |= M_BCAST;		/* NB: mark for bpf tap'ing */
+
+	if (rx) {
+		memcpy(&rxs, rx, sizeof(*rx));
+	} else {
+		/* try to read from mbuf */
+		bzero(&rxs, sizeof(rxs));
+		ieee80211_get_rx_params(m, &rxs);
+	}
 
 	/* XXX locking */
 	TAILQ_FOREACH(vap, &ic->ic_vaps, iv_next) {
@@ -141,7 +163,7 @@ ieee80211_input_mimo_all(struct ieee80211com *ic, struct mbuf *m,
 			m = NULL;
 		}
 		ni = ieee80211_ref_node(vap->iv_bss);
-		type = ieee80211_input_mimo(ni, mcopy, rx);
+		type = ieee80211_input_mimo(ni, mcopy, &rxs);
 		ieee80211_free_node(ni);
 	}
 	if (m != NULL)			/* no vaps, reclaim mbuf */
@@ -250,14 +272,15 @@ ieee80211_deliver_data(struct ieee80211vap *vap,
 	struct ifnet *ifp = vap->iv_ifp;
 
 	/* clear driver/net80211 flags before passing up */
-	m->m_flags &= ~(M_80211_RX | M_MCAST | M_BCAST);
+	m->m_flags &= ~(M_MCAST | M_BCAST);
+	m_clrprotoflags(m);
 
 	/* NB: see hostap_deliver_data, this path doesn't handle hostap */
 	KASSERT(vap->iv_opmode != IEEE80211_M_HOSTAP, ("gack, hostap"));
 	/*
 	 * Do accounting.
 	 */
-	ifp->if_ipackets++;
+	if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
 	IEEE80211_NODE_STAT(ni, rx_data);
 	IEEE80211_NODE_STAT_ADD(ni, rx_bytes, m->m_pkthdr.len);
 	if (ETHER_IS_MULTICAST(eh->ether_dhost)) {
@@ -444,8 +467,9 @@ int
 ieee80211_alloc_challenge(struct ieee80211_node *ni)
 {
 	if (ni->ni_challenge == NULL)
-		ni->ni_challenge = (uint32_t *) malloc(IEEE80211_CHALLENGE_LEN,
-		    M_80211_NODE, M_NOWAIT);
+		ni->ni_challenge = (uint32_t *)
+		    IEEE80211_MALLOC(IEEE80211_CHALLENGE_LEN,
+		      M_80211_NODE, IEEE80211_M_NOWAIT);
 	if (ni->ni_challenge == NULL) {
 		IEEE80211_NOTE(ni->ni_vap,
 		    IEEE80211_MSG_DEBUG | IEEE80211_MSG_AUTH, ni,
@@ -464,7 +488,7 @@ ieee80211_alloc_challenge(struct ieee80211_node *ni)
  */
 int
 ieee80211_parse_beacon(struct ieee80211_node *ni, struct mbuf *m,
-	struct ieee80211_scanparams *scan)
+	struct ieee80211_channel *rxchan, struct ieee80211_scanparams *scan)
 {
 	struct ieee80211vap *vap = ni->ni_vap;
 	struct ieee80211com *ic = ni->ni_ic;
@@ -501,7 +525,7 @@ ieee80211_parse_beacon(struct ieee80211_node *ni, struct mbuf *m,
 	scan->tstamp  = frm;				frm += 8;
 	scan->bintval = le16toh(*(uint16_t *)frm);	frm += 2;
 	scan->capinfo = le16toh(*(uint16_t *)frm);	frm += 2;
-	scan->bchan = ieee80211_chan2ieee(ic, ic->ic_curchan);
+	scan->bchan = ieee80211_chan2ieee(ic, rxchan);
 	scan->chan = scan->bchan;
 	scan->ies = frm;
 	scan->ies_len = efrm - frm;
@@ -644,7 +668,8 @@ ieee80211_parse_beacon(struct ieee80211_node *ni, struct mbuf *m,
 		 */
 		IEEE80211_DISCARD(vap,
 		    IEEE80211_MSG_ELEMID | IEEE80211_MSG_INPUT,
-		    wh, NULL, "for off-channel %u", scan->chan);
+		    wh, NULL, "for off-channel %u (bchan=%u)",
+		    scan->chan, scan->bchan);
 		vap->iv_stats.is_rx_chanmismatch++;
 		scan->status |= IEEE80211_BPARSE_OFFCHAN;
 	}

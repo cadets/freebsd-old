@@ -43,6 +43,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_media.h>
 #include <net/ethernet.h>
 
@@ -154,7 +155,7 @@ SYSCTL_PROC(_net_wlan, OID_AUTO, addba_backoff, CTLTYPE_INT | CTLFLAG_RW,
 	&ieee80211_addba_backoff, 0, ieee80211_sysctl_msecs_ticks, "I",
 	"ADDBA request backoff (ms)");
 static	int ieee80211_addba_maxtries = 3;/* max ADDBA requests before backoff */
-SYSCTL_INT(_net_wlan, OID_AUTO, addba_maxtries, CTLTYPE_INT | CTLFLAG_RW,
+SYSCTL_INT(_net_wlan, OID_AUTO, addba_maxtries, CTLFLAG_RW,
 	&ieee80211_addba_maxtries, 0, "max ADDBA requests sent before backoff");
 
 static	int ieee80211_bar_timeout = -1;	/* timeout waiting for BAR response */
@@ -353,7 +354,6 @@ static struct printranges {
 static void
 ht_rateprint(struct ieee80211com *ic, enum ieee80211_phymode mode, int ratetype)
 {
-	struct ifnet *ifp = ic->ic_ifp;
 	int minrate, maxrate;
 	struct printranges *range;
 
@@ -368,12 +368,12 @@ ht_rateprint(struct ieee80211com *ic, enum ieee80211_phymode mode, int ratetype)
 		minrate = ht_getrate(ic, range->minmcs, mode, ratetype);
 		maxrate = ht_getrate(ic, range->maxmcs, mode, ratetype);
 		if (range->maxmcs) {
-			if_printf(ifp, "MCS %d-%d: %d%sMbps - %d%sMbps\n",
+			ic_printf(ic, "MCS %d-%d: %d%sMbps - %d%sMbps\n",
 			    range->minmcs, range->maxmcs,
 			    minrate/2, ((minrate & 0x1) != 0 ? ".5" : ""),
 			    maxrate/2, ((maxrate & 0x1) != 0 ? ".5" : ""));
 		} else {
-			if_printf(ifp, "MCS %d: %d%sMbps\n", range->minmcs,
+			ic_printf(ic, "MCS %d: %d%sMbps\n", range->minmcs,
 			    minrate/2, ((minrate & 0x1) != 0 ? ".5" : ""));
 		}
 	}
@@ -382,22 +382,21 @@ ht_rateprint(struct ieee80211com *ic, enum ieee80211_phymode mode, int ratetype)
 static void
 ht_announce(struct ieee80211com *ic, enum ieee80211_phymode mode)
 {
-	struct ifnet *ifp = ic->ic_ifp;
 	const char *modestr = ieee80211_phymode_name[mode];
 
-	if_printf(ifp, "%s MCS 20MHz\n", modestr);
+	ic_printf(ic, "%s MCS 20MHz\n", modestr);
 	ht_rateprint(ic, mode, 0);
 	if (ic->ic_htcaps & IEEE80211_HTCAP_SHORTGI20) {
-		if_printf(ifp, "%s MCS 20MHz SGI\n", modestr);
+		ic_printf(ic, "%s MCS 20MHz SGI\n", modestr);
 		ht_rateprint(ic, mode, 1);
 	}
 	if (ic->ic_htcaps & IEEE80211_HTCAP_CHWIDTH40) {
-		if_printf(ifp, "%s MCS 40MHz:\n", modestr);
+		ic_printf(ic, "%s MCS 40MHz:\n", modestr);
 		ht_rateprint(ic, mode, 2);
 	}
 	if ((ic->ic_htcaps & IEEE80211_HTCAP_CHWIDTH40) &&
 	    (ic->ic_htcaps & IEEE80211_HTCAP_SHORTGI40)) {
-		if_printf(ifp, "%s MCS 40MHz SGI:\n", modestr);
+		ic_printf(ic, "%s MCS 40MHz SGI:\n", modestr);
 		ht_rateprint(ic, mode, 3);
 	}
 }
@@ -405,11 +404,10 @@ ht_announce(struct ieee80211com *ic, enum ieee80211_phymode mode)
 void
 ieee80211_ht_announce(struct ieee80211com *ic)
 {
-	struct ifnet *ifp = ic->ic_ifp;
 
 	if (isset(ic->ic_modecaps, IEEE80211_MODE_11NA) ||
 	    isset(ic->ic_modecaps, IEEE80211_MODE_11NG))
-		if_printf(ifp, "%dT%dR\n", ic->ic_txstream, ic->ic_rxstream);
+		ic_printf(ic, "%dT%dR\n", ic->ic_txstream, ic->ic_rxstream);
 	if (isset(ic->ic_modecaps, IEEE80211_MODE_11NA))
 		ht_announce(ic, IEEE80211_MODE_11NA);
 	if (isset(ic->ic_modecaps, IEEE80211_MODE_11NG))
@@ -555,6 +553,43 @@ ampdu_rx_start(struct ieee80211_node *ni, struct ieee80211_rx_ampdu *rap,
 	    IEEE80211_AGGR_BAWMAX : min(bufsiz, IEEE80211_AGGR_BAWMAX);
 	rap->rxa_start = MS(baseqctl, IEEE80211_BASEQ_START);
 	rap->rxa_flags |=  IEEE80211_AGGR_RUNNING | IEEE80211_AGGR_XCHGPEND;
+
+	return 0;
+}
+
+/*
+ * Public function; manually setup the RX ampdu state.
+ */
+int
+ieee80211_ampdu_rx_start_ext(struct ieee80211_node *ni, int tid, int seq, int baw)
+{
+	struct ieee80211_rx_ampdu *rap;
+
+	/* XXX TODO: sanity check tid, seq, baw */
+
+	rap = &ni->ni_rx_ampdu[tid];
+
+	if (rap->rxa_flags & IEEE80211_AGGR_RUNNING) {
+		/*
+		 * AMPDU previously setup and not terminated with a DELBA,
+		 * flush the reorder q's in case anything remains.
+		 */
+		ampdu_rx_purge(rap);
+	}
+
+	memset(rap, 0, sizeof(*rap));
+	rap->rxa_wnd = (baw== 0) ?
+	    IEEE80211_AGGR_BAWMAX : min(baw, IEEE80211_AGGR_BAWMAX);
+	rap->rxa_start = seq;
+	rap->rxa_flags |=  IEEE80211_AGGR_RUNNING | IEEE80211_AGGR_XCHGPEND;
+
+	IEEE80211_NOTE(ni->ni_vap, IEEE80211_MSG_11N, ni,
+	    "%s: tid=%d, start=%d, wnd=%d, flags=0x%08x\n",
+	    __func__,
+	    tid,
+	    seq,
+	    rap->rxa_wnd,
+	    rap->rxa_flags);
 
 	return 0;
 }
@@ -1046,6 +1081,7 @@ ieee80211_ht_node_init(struct ieee80211_node *ni)
 		tap = &ni->ni_tx_ampdu[tid];
 		tap->txa_tid = tid;
 		tap->txa_ni = ni;
+		ieee80211_txampdu_init_pps(tap);
 		/* NB: further initialization deferred */
 	}
 	ni->ni_flags |= IEEE80211_NODE_HT | IEEE80211_NODE_AMPDU;
@@ -1215,6 +1251,7 @@ ieee80211_ht_wds_init(struct ieee80211_node *ni)
 	for (tid = 0; tid < WME_NUM_TID; tid++) {
 		tap = &ni->ni_tx_ampdu[tid];
 		tap->txa_tid = tid;
+		ieee80211_txampdu_init_pps(tap);
 	}
 	/* NB: AMPDU tx/rx governed by IEEE80211_FHT_AMPDU_{TX,RX} */
 	ni->ni_flags |= IEEE80211_NODE_HT | IEEE80211_NODE_AMPDU;
@@ -1377,12 +1414,6 @@ ieee80211_ht_timeout(struct ieee80211com *ic)
 		htinfo_update(ic);
 	}
 }
-
-/* unalligned little endian access */     
-#define LE_READ_2(p)					\
-	((uint16_t)					\
-	 ((((const uint8_t *)(p))[0]      ) |		\
-	  (((const uint8_t *)(p))[1] <<  8)))
 
 /*
  * Process an 802.11n HT capabilities ie.
@@ -1688,8 +1719,9 @@ ieee80211_setup_basic_htrates(struct ieee80211_node *ni, const uint8_t *ie)
 static void
 ampdu_tx_setup(struct ieee80211_tx_ampdu *tap)
 {
-	callout_init(&tap->txa_timer, CALLOUT_MPSAFE);
+	callout_init(&tap->txa_timer, 1);
 	tap->txa_flags |= IEEE80211_AGGR_SETUP;
+	tap->txa_lastsample = ticks;
 }
 
 static void
@@ -1717,8 +1749,11 @@ ampdu_tx_stop(struct ieee80211_tx_ampdu *tap)
 	 */
 	bar_stop_timer(tap);
 
-	tap->txa_lastsample = 0;
-	tap->txa_avgpps = 0;
+	/*
+	 * Reset packet estimate.
+	 */
+	ieee80211_txampdu_init_pps(tap);
+
 	/* NB: clearing NAK means we may re-send ADDBA */ 
 	tap->txa_flags &= ~(IEEE80211_AGGR_SETUP | IEEE80211_AGGR_NAK);
 }
@@ -1788,6 +1823,55 @@ ieee80211_addba_request(struct ieee80211_node *ni,
 	    IEEE80211_AGGR_BAWMAX : min(bufsiz, IEEE80211_AGGR_BAWMAX);
 	addba_start_timeout(tap);
 	return 1;
+}
+
+/*
+ * Called by drivers that wish to request an ADDBA session be
+ * setup.  This brings it up and starts the request timer.
+ */
+int
+ieee80211_ampdu_tx_request_ext(struct ieee80211_node *ni, int tid)
+{
+	struct ieee80211_tx_ampdu *tap;
+
+	if (tid < 0 || tid > 15)
+		return (0);
+	tap = &ni->ni_tx_ampdu[tid];
+
+	/* XXX locking */
+	if ((tap->txa_flags & IEEE80211_AGGR_SETUP) == 0) {
+		/* do deferred setup of state */
+		ampdu_tx_setup(tap);
+	}
+	/* XXX hack for not doing proper locking */
+	tap->txa_flags &= ~IEEE80211_AGGR_NAK;
+	addba_start_timeout(tap);
+	return (1);
+}
+
+/*
+ * Called by drivers that have marked a session as active.
+ */
+int
+ieee80211_ampdu_tx_request_active_ext(struct ieee80211_node *ni, int tid,
+    int status)
+{
+	struct ieee80211_tx_ampdu *tap;
+
+	if (tid < 0 || tid > 15)
+		return (0);
+	tap = &ni->ni_tx_ampdu[tid];
+
+	/* XXX locking */
+	addba_stop_timeout(tap);
+	if (status == 1) {
+		tap->txa_flags |= IEEE80211_AGGR_RUNNING;
+		tap->txa_attempts = 0;
+	} else {
+		/* mark tid so we don't try again */
+		tap->txa_flags |= IEEE80211_AGGR_NAK;
+	}
+	return (1);
 }
 
 /*
@@ -2090,9 +2174,9 @@ ieee80211_ampdu_enable(struct ieee80211_node *ni,
 		return 0;
 	}
 	IEEE80211_NOTE(vap, IEEE80211_MSG_11N, ni,
-	    "enable AMPDU on tid %d (%s), avgpps %d pkts %d",
+	    "enable AMPDU on tid %d (%s), avgpps %d pkts %d attempt %d",
 	    tap->txa_tid, ieee80211_wme_acnames[TID_TO_WME_AC(tap->txa_tid)],
-	    tap->txa_avgpps, tap->txa_pkts);
+	    tap->txa_avgpps, tap->txa_pkts, tap->txa_attempts);
 	return 1;
 }
 
@@ -2654,9 +2738,23 @@ ieee80211_add_htcap_body(uint8_t *frm, struct ieee80211_node *ni)
 			caps |= IEEE80211_HTCAP_CHWIDTH40;
 		else
 			caps &= ~IEEE80211_HTCAP_CHWIDTH40;
-		/* use advertised setting (XXX locally constraint) */
+
+		/* Start by using the advertised settings */
 		rxmax = MS(ni->ni_htparam, IEEE80211_HTCAP_MAXRXAMPDU);
 		density = MS(ni->ni_htparam, IEEE80211_HTCAP_MPDUDENSITY);
+
+		/* Cap at VAP rxmax */
+		if (rxmax > vap->iv_ampdu_rxmax)
+			rxmax = vap->iv_ampdu_rxmax;
+
+		/*
+		 * If the VAP ampdu density value greater, use that.
+		 *
+		 * (Larger density value == larger minimum gap between A-MPDU
+		 * subframes.)
+		 */
+		if (vap->iv_ampdu_density > density)
+			density = vap->iv_ampdu_density;
 
 		/*
 		 * NB: Hardware might support HT40 on some but not all
@@ -2674,9 +2772,12 @@ ieee80211_add_htcap_body(uint8_t *frm, struct ieee80211_node *ni)
 			caps |= IEEE80211_HTCAP_CHWIDTH40;
 		else
 			caps &= ~IEEE80211_HTCAP_CHWIDTH40;
+
+		/* XXX TODO should it start by using advertised settings? */
 		rxmax = vap->iv_ampdu_rxmax;
 		density = vap->iv_ampdu_density;
 	}
+
 	/* adjust short GI based on channel and config */
 	if ((vap->iv_flags_ht & IEEE80211_FHT_SHORTGI20) == 0)
 		caps &= ~IEEE80211_HTCAP_SHORTGI20;

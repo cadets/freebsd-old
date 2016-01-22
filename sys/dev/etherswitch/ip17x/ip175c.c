@@ -63,7 +63,7 @@ ip175c_reset(struct ip17x_softc *sc)
 	if (ip17x_writephy(sc->sc_dev, IP175C_RESET_PHY, IP175C_RESET_REG,
 	    0x175c))
 		return (-1);
-	DELAY(2);
+	DELAY(2000);
 
 	/* Force IP175C mode. */
 	data = ip17x_readphy(sc->sc_dev, IP175C_MODE_PHY, IP175C_MODE_REG);
@@ -147,9 +147,9 @@ ip175c_dot1q_vlan_setup(struct ip17x_softc *sc)
 	memset(vlans, 0, sizeof(vlans));
 	for (i = 0; i < IP17X_MAX_VLANS; i++) {
 		v = &sc->vlan[i];
-		if (v->vlanid == 0)
+		if ((v->vlanid & ETHERSWITCH_VID_VALID) == 0)
 			continue;
-		vlans[v->vlanid] = v->ports;
+		vlans[v->vlanid & ETHERSWITCH_VID_MASK] = v->ports;
 	}
 
 	for (j = 0, i = 1; i <= IP17X_MAX_VLANS / 2; i++) {

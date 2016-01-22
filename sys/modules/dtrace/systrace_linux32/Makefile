@@ -1,18 +1,18 @@
 # $FreeBSD$
 
-.PATH: ${.CURDIR}/../../../cddl/dev/systrace
+SYSDIR?=	${.CURDIR}/../../..
 
-.if ${MACHINE} == "amd64"
+.PATH:		${SYSDIR}/cddl/dev/systrace
+
 KMOD=		systrace_linux32
-.else
-KMOD=		systrace_linux
-.endif
 
 SRCS=		systrace.c
 SRCS+=		vnode_if.h
 
-CFLAGS+=	-I${.CURDIR}/../../../cddl/compat/opensolaris \
-		-I${.CURDIR}/../../../cddl/contrib/opensolaris/uts/common \
-		-I${.CURDIR}/../../.. -DLINUX_SYSTRACE
+CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris \
+		-I${SYSDIR}/cddl/contrib/opensolaris/uts/common \
+		-I${SYSDIR} -DLINUX32_SYSTRACE
 
 .include <bsd.kmod.mk>
+
+CFLAGS+=	-include ${SYSDIR}/cddl/compat/opensolaris/sys/debug_compat.h

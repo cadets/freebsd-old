@@ -51,18 +51,15 @@ __FBSDID("$FreeBSD$");
 #include <machine/vmparam.h>
 #include <sys/bus_dma.h>
 
-#include <machine/_inttypes.h>
-#include <machine/xen/xen-os.h>
-#include <machine/xen/xenvar.h>
-#include <machine/xen/xenfunc.h>
-
+#include <xen/xen-os.h>
 #include <xen/hypervisor.h>
 #include <xen/xen_intr.h>
-#include <xen/evtchn.h>
 #include <xen/gnttab.h>
 #include <xen/interface/grant_table.h>
 #include <xen/interface/io/protocols.h>
 #include <xen/xenbus/xenbusvar.h>
+
+#include <machine/_inttypes.h>
 
 #include <geom/geom_disk.h>
 
@@ -83,14 +80,59 @@ static void xbd_startio(struct xbd_softc *sc);
 
 #define XBD_SECTOR_SHFT		9
 
-#define XBD_STATE_DISCONNECTED 0
-#define XBD_STATE_CONNECTED    1
-#define XBD_STATE_SUSPENDED    2
-
 /*---------------------------- Global Static Data ----------------------------*/
 static MALLOC_DEFINE(M_XENBLOCKFRONT, "xbd", "Xen Block Front driver data");
 
+static int xbd_enable_indirect = 1;
+SYSCTL_NODE(_hw, OID_AUTO, xbd, CTLFLAG_RD, 0, "xbd driver parameters");
+SYSCTL_INT(_hw_xbd, OID_AUTO, xbd_enable_indirect, CTLFLAG_RDTUN,
+    &xbd_enable_indirect, 0, "Enable xbd indirect segments");
+
 /*---------------------------- Command Processing ----------------------------*/
+static void
+xbd_freeze(struct xbd_softc *sc, xbd_flag_t xbd_flag)
+{
+	if (xbd_flag != XBDF_NONE && (sc->xbd_flags & xbd_flag) != 0)
+		return;
+
+	sc->xbd_flags |= xbd_flag;
+	sc->xbd_qfrozen_cnt++;
+}
+
+static void
+xbd_thaw(struct xbd_softc *sc, xbd_flag_t xbd_flag)
+{
+	if (xbd_flag != XBDF_NONE && (sc->xbd_flags & xbd_flag) == 0)
+		return;
+
+	if (sc->xbd_qfrozen_cnt == 0)
+		panic("%s: Thaw with flag 0x%x while not frozen.",
+		    __func__, xbd_flag);
+
+	sc->xbd_flags &= ~xbd_flag;
+	sc->xbd_qfrozen_cnt--;
+}
+
+static void
+xbd_cm_freeze(struct xbd_softc *sc, struct xbd_command *cm, xbdc_flag_t cm_flag)
+{
+	if ((cm->cm_flags & XBDCF_FROZEN) != 0)
+		return;
+
+	cm->cm_flags |= XBDCF_FROZEN|cm_flag;
+	xbd_freeze(sc, XBDF_NONE);
+}
+
+static void
+xbd_cm_thaw(struct xbd_softc *sc, struct xbd_command *cm)
+{
+	if ((cm->cm_flags & XBDCF_FROZEN) == 0)
+		return;
+
+	cm->cm_flags &= ~XBDCF_FROZEN;
+	xbd_thaw(sc, XBDF_NONE);
+}
+
 static inline void 
 xbd_flush_requests(struct xbd_softc *sc)
 {
@@ -99,20 +141,67 @@ xbd_flush_requests(struct xbd_softc *sc)
 	RING_PUSH_REQUESTS_AND_CHECK_NOTIFY(&sc->xbd_ring, notify);
 
 	if (notify)
-		notify_remote_via_irq(sc->xbd_irq);
+		xen_intr_signal(sc->xen_intr_handle);
 }
 
 static void
 xbd_free_command(struct xbd_command *cm)
 {
 
-	KASSERT((cm->cm_flags & XBD_ON_XBDQ_MASK) == 0,
-	    ("Freeing command that is still on a queue\n"));
+	KASSERT((cm->cm_flags & XBDCF_Q_MASK) == XBD_Q_NONE,
+	    ("Freeing command that is still on queue %d.",
+	    cm->cm_flags & XBDCF_Q_MASK));
 
-	cm->cm_flags = 0;
+	cm->cm_flags = XBDCF_INITIALIZER;
 	cm->cm_bp = NULL;
 	cm->cm_complete = NULL;
-	xbd_enqueue_free(cm);
+	xbd_enqueue_cm(cm, XBD_Q_FREE);
+	xbd_thaw(cm->cm_sc, XBDF_CM_SHORTAGE);
+}
+
+static void
+xbd_mksegarray(bus_dma_segment_t *segs, int nsegs,
+    grant_ref_t * gref_head, int otherend_id, int readonly,
+    grant_ref_t * sg_ref, struct blkif_request_segment *sg)
+{
+	struct blkif_request_segment *last_block_sg = sg + nsegs;
+	vm_paddr_t buffer_ma;
+	uint64_t fsect, lsect;
+	int ref;
+
+	while (sg < last_block_sg) {
+		buffer_ma = segs->ds_addr;
+		fsect = (buffer_ma & PAGE_MASK) >> XBD_SECTOR_SHFT;
+		lsect = fsect + (segs->ds_len  >> XBD_SECTOR_SHFT) - 1;
+
+		KASSERT(lsect <= 7, ("XEN disk driver data cannot "
+		    "cross a page boundary"));
+
+		/* install a grant reference. */
+		ref = gnttab_claim_grant_reference(gref_head);
+
+		/*
+		 * GNTTAB_LIST_END == 0xffffffff, but it is private
+		 * to gnttab.c.
+		 */
+		KASSERT(ref != ~0, ("grant_reference failed"));
+
+		gnttab_grant_foreign_access_ref(
+		    ref,
+		    otherend_id,
+		    buffer_ma >> PAGE_SHIFT,
+		    readonly);
+
+		*sg_ref = ref;
+		*sg = (struct blkif_request_segment) {
+			.gref       = ref,
+			.first_sect = fsect, 
+			.last_sect  = lsect
+		};
+		sg++;
+		sg_ref++;
+		segs++;
+	}
 }
 
 static void
@@ -120,86 +209,58 @@ xbd_queue_cb(void *arg, bus_dma_segment_t *segs, int nsegs, int error)
 {
 	struct xbd_softc *sc;
 	struct xbd_command *cm;
-	blkif_request_t	*ring_req;
-	struct blkif_request_segment *sg;
-	struct blkif_request_segment *last_block_sg;
-	grant_ref_t *sg_ref;
-	vm_paddr_t buffer_ma;
-	uint64_t fsect, lsect;
-	int ref;
 	int op;
-	int block_segs;
 
 	cm = arg;
 	sc = cm->cm_sc;
 
 	if (error) {
-		printf("error %d in xbd_queue_cb\n", error);
 		cm->cm_bp->bio_error = EIO;
 		biodone(cm->cm_bp);
 		xbd_free_command(cm);
 		return;
 	}
 
-	/* Fill out a communications ring structure. */
-	ring_req = RING_GET_REQUEST(&sc->xbd_ring, sc->xbd_ring.req_prod_pvt);
-	sc->xbd_ring.req_prod_pvt++;
-	ring_req->id = cm->cm_id;
-	ring_req->operation = cm->cm_operation;
-	ring_req->sector_number = cm->cm_sector_number;
-	ring_req->handle = (blkif_vdev_t)(uintptr_t)sc->xbd_disk;
-	ring_req->nr_segments = nsegs;
-	cm->cm_nseg = nsegs;
+	KASSERT(nsegs <= sc->xbd_max_request_segments,
+	    ("Too many segments in a blkfront I/O"));
 
-	block_segs    = MIN(nsegs, BLKIF_MAX_SEGMENTS_PER_HEADER_BLOCK);
-	sg            = ring_req->seg;
-	last_block_sg = sg + block_segs;
-	sg_ref        = cm->cm_sg_refs;
+	if (nsegs <= BLKIF_MAX_SEGMENTS_PER_REQUEST) {
+		blkif_request_t	*ring_req;
 
-	while (1) {
-
-		while (sg < last_block_sg) {
-			buffer_ma = segs->ds_addr;
-			fsect = (buffer_ma & PAGE_MASK) >> XBD_SECTOR_SHFT;
-			lsect = fsect + (segs->ds_len  >> XBD_SECTOR_SHFT) - 1;
-
-			KASSERT(lsect <= 7, ("XEN disk driver data cannot "
-			    "cross a page boundary"));
-
-			/* install a grant reference. */
-			ref = gnttab_claim_grant_reference(&cm->cm_gref_head);
-
-			/*
-			 * GNTTAB_LIST_END == 0xffffffff, but it is private
-			 * to gnttab.c.
-			 */
-			KASSERT(ref != ~0, ("grant_reference failed"));
-
-			gnttab_grant_foreign_access_ref(
-			    ref,
-			    xenbus_get_otherend_id(sc->xbd_dev),
-			    buffer_ma >> PAGE_SHIFT,
-			    ring_req->operation == BLKIF_OP_WRITE);
-
-			*sg_ref = ref;
-			*sg = (struct blkif_request_segment) {
-				.gref       = ref,
-				.first_sect = fsect, 
-				.last_sect  = lsect
-			};
-			sg++;
-			sg_ref++;
-			segs++;
-			nsegs--;
-		}
-		block_segs = MIN(nsegs, BLKIF_MAX_SEGMENTS_PER_SEGMENT_BLOCK);
-		if (block_segs == 0)
-			break;
-
-		sg = BLKRING_GET_SEG_BLOCK(&sc->xbd_ring,
-		    sc->xbd_ring.req_prod_pvt);
+		/* Fill out a blkif_request_t structure. */
+		ring_req = (blkif_request_t *)
+		    RING_GET_REQUEST(&sc->xbd_ring, sc->xbd_ring.req_prod_pvt);
 		sc->xbd_ring.req_prod_pvt++;
-		last_block_sg = sg + block_segs;
+		ring_req->id = cm->cm_id;
+		ring_req->operation = cm->cm_operation;
+		ring_req->sector_number = cm->cm_sector_number;
+		ring_req->handle = (blkif_vdev_t)(uintptr_t)sc->xbd_disk;
+		ring_req->nr_segments = nsegs;
+		cm->cm_nseg = nsegs;
+		xbd_mksegarray(segs, nsegs, &cm->cm_gref_head,
+		    xenbus_get_otherend_id(sc->xbd_dev),
+		    cm->cm_operation == BLKIF_OP_WRITE,
+		    cm->cm_sg_refs, ring_req->seg);
+	} else {
+		blkif_request_indirect_t *ring_req;
+
+		/* Fill out a blkif_request_indirect_t structure. */
+		ring_req = (blkif_request_indirect_t *)
+		    RING_GET_REQUEST(&sc->xbd_ring, sc->xbd_ring.req_prod_pvt);
+		sc->xbd_ring.req_prod_pvt++;
+		ring_req->id = cm->cm_id;
+		ring_req->operation = BLKIF_OP_INDIRECT;
+		ring_req->indirect_op = cm->cm_operation;
+		ring_req->sector_number = cm->cm_sector_number;
+		ring_req->handle = (blkif_vdev_t)(uintptr_t)sc->xbd_disk;
+		ring_req->nr_segments = nsegs;
+		cm->cm_nseg = nsegs;
+		xbd_mksegarray(segs, nsegs, &cm->cm_gref_head,
+		    xenbus_get_otherend_id(sc->xbd_dev),
+		    cm->cm_operation == BLKIF_OP_WRITE,
+		    cm->cm_sg_refs, cm->cm_indirectionpages);
+		memcpy(ring_req->indirect_grefs, &cm->cm_indirectionrefs,
+		    sizeof(grant_ref_t) * sc->xbd_max_request_indirectpages);
 	}
 
 	if (cm->cm_operation == BLKIF_OP_READ)
@@ -212,13 +273,16 @@ xbd_queue_cb(void *arg, bus_dma_segment_t *segs, int nsegs, int error)
 
 	gnttab_free_grant_references(cm->cm_gref_head);
 
-	xbd_enqueue_busy(cm);
+	xbd_enqueue_cm(cm, XBD_Q_BUSY);
 
 	/*
-	 * This flag means that we're probably executing in the busdma swi
-	 * instead of in the startio context, so an explicit flush is needed.
+	 * If bus dma had to asynchronously call us back to dispatch
+	 * this command, we are no longer executing in the context of 
+	 * xbd_startio().  Thus we cannot rely on xbd_startio()'s call to
+	 * xbd_flush_requests() to publish this command to the backend
+	 * along with any other commands that it could batch.
 	 */
-	if (cm->cm_flags & XBD_CMD_FROZEN)
+	if ((cm->cm_flags & XBDCF_ASYNC_MAPPING) != 0)
 		xbd_flush_requests(sc);
 
 	return;
@@ -229,12 +293,20 @@ xbd_queue_request(struct xbd_softc *sc, struct xbd_command *cm)
 {
 	int error;
 
-	error = bus_dmamap_load(sc->xbd_io_dmat, cm->cm_map, cm->cm_data,
-	    cm->cm_datalen, xbd_queue_cb, cm, 0);
+	if (cm->cm_bp != NULL)
+		error = bus_dmamap_load_bio(sc->xbd_io_dmat, cm->cm_map,
+		    cm->cm_bp, xbd_queue_cb, cm, 0);
+	else
+		error = bus_dmamap_load(sc->xbd_io_dmat, cm->cm_map,
+		    cm->cm_data, cm->cm_datalen, xbd_queue_cb, cm, 0);
 	if (error == EINPROGRESS) {
-		printf("EINPROGRESS\n");
-		sc->xbd_flags |= XBD_FROZEN;
-		cm->cm_flags |= XBD_CMD_FROZEN;
+		/*
+		 * Maintain queuing order by freezing the queue.  The next
+		 * command may not require as many resources as the command
+		 * we just attempted to map, so we can't rely on bus dma
+		 * blocking for it too.
+		 */
+		xbd_cm_freeze(sc, cm, XBDCF_ASYNC_MAPPING);
 		return (0);
 	}
 
@@ -248,6 +320,8 @@ xbd_restart_queue_callback(void *arg)
 
 	mtx_lock(&sc->xbd_io_lock);
 
+	xbd_thaw(sc, XBDF_GNT_SHORTAGE);
+
 	xbd_startio(sc);
 
 	mtx_unlock(&sc->xbd_io_lock);
@@ -259,14 +333,15 @@ xbd_bio_command(struct xbd_softc *sc)
 	struct xbd_command *cm;
 	struct bio *bp;
 
-	if (unlikely(sc->xbd_connected != XBD_STATE_CONNECTED))
+	if (__predict_false(sc->xbd_state != XBD_STATE_CONNECTED))
 		return (NULL);
 
 	bp = xbd_dequeue_bio(sc);
 	if (bp == NULL)
 		return (NULL);
 
-	if ((cm = xbd_dequeue_free(sc)) == NULL) {
+	if ((cm = xbd_dequeue_cm(sc, XBD_Q_FREE)) == NULL) {
+		xbd_freeze(sc, XBDF_CM_SHORTAGE);
 		xbd_requeue_bio(sc, bp);
 		return (NULL);
 	}
@@ -276,18 +351,52 @@ xbd_bio_command(struct xbd_softc *sc)
 		gnttab_request_free_callback(&sc->xbd_callback,
 		    xbd_restart_queue_callback, sc,
 		    sc->xbd_max_request_segments);
+		xbd_freeze(sc, XBDF_GNT_SHORTAGE);
 		xbd_requeue_bio(sc, bp);
-		xbd_enqueue_free(cm);
-		sc->xbd_flags |= XBD_FROZEN;
+		xbd_enqueue_cm(cm, XBD_Q_FREE);
 		return (NULL);
 	}
 
 	cm->cm_bp = bp;
-	cm->cm_data = bp->bio_data;
-	cm->cm_datalen = bp->bio_bcount;
-	cm->cm_operation = (bp->bio_cmd == BIO_READ) ?
-	    BLKIF_OP_READ : BLKIF_OP_WRITE;
 	cm->cm_sector_number = (blkif_sector_t)bp->bio_pblkno;
+
+	switch (bp->bio_cmd) {
+	case BIO_READ:
+		cm->cm_operation = BLKIF_OP_READ;
+		break;
+	case BIO_WRITE:
+		cm->cm_operation = BLKIF_OP_WRITE;
+		if ((bp->bio_flags & BIO_ORDERED) != 0) {
+			if ((sc->xbd_flags & XBDF_BARRIER) != 0) {
+				cm->cm_operation = BLKIF_OP_WRITE_BARRIER;
+			} else {
+				/*
+				 * Single step this command.
+				 */
+				cm->cm_flags |= XBDCF_Q_FREEZE;
+				if (xbd_queue_length(sc, XBD_Q_BUSY) != 0) {
+					/*
+					 * Wait for in-flight requests to
+					 * finish.
+					 */
+					xbd_freeze(sc, XBDF_WAIT_IDLE);
+					xbd_requeue_cm(cm, XBD_Q_READY);
+					return (NULL);
+				}
+			}
+		}
+		break;
+	case BIO_FLUSH:
+		if ((sc->xbd_flags & XBDF_FLUSH) != 0)
+			cm->cm_operation = BLKIF_OP_FLUSH_DISKCACHE;
+		else if ((sc->xbd_flags & XBDF_BARRIER) != 0)
+			cm->cm_operation = BLKIF_OP_WRITE_BARRIER;
+		else
+			panic("flush request, but no flush support available");
+		break;
+	default:
+		panic("unknown bio command %d", bp->bio_cmd);
+	}
 
 	return (cm);
 }
@@ -307,21 +416,29 @@ xbd_startio(struct xbd_softc *sc)
 
 	mtx_assert(&sc->xbd_io_lock, MA_OWNED);
 
-	if (sc->xbd_connected != XBD_STATE_CONNECTED)
+	if (sc->xbd_state != XBD_STATE_CONNECTED)
 		return;
 
-	while (RING_FREE_REQUESTS(&sc->xbd_ring) >=
-	    sc->xbd_max_request_blocks) {
-		if (sc->xbd_flags & XBD_FROZEN)
+	while (!RING_FULL(&sc->xbd_ring)) {
+
+		if (sc->xbd_qfrozen_cnt != 0)
 			break;
 
-		cm = xbd_dequeue_ready(sc);
+		cm = xbd_dequeue_cm(sc, XBD_Q_READY);
 
 		if (cm == NULL)
 		    cm = xbd_bio_command(sc);
 
 		if (cm == NULL)
 			break;
+
+		if ((cm->cm_flags & XBDCF_Q_FREEZE) != 0) {
+			/*
+			 * Single step command.  Future work is
+			 * held off until this command completes.
+			 */
+			xbd_cm_freeze(sc, cm, XBDCF_Q_FREEZE);
+		}
 
 		if ((error = xbd_queue_request(sc, cm)) != 0) {
 			printf("xbd_queue_request returned %d\n", error);
@@ -341,7 +458,7 @@ xbd_bio_complete(struct xbd_softc *sc, struct xbd_command *cm)
 
 	bp = cm->cm_bp;
 
-	if (unlikely(cm->cm_status != BLKIF_RSP_OKAY)) {
+	if (__predict_false(cm->cm_status != BLKIF_RSP_OKAY)) {
 		disk_err(bp, "disk error" , -1, 0);
 		printf(" status: %x\n", cm->cm_status);
 		bp->bio_flags |= BIO_ERROR;
@@ -356,13 +473,6 @@ xbd_bio_complete(struct xbd_softc *sc, struct xbd_command *cm)
 	biodone(bp);
 }
 
-static int
-xbd_completion(struct xbd_command *cm)
-{
-	gnttab_end_foreign_access_references(cm->cm_nseg, cm->cm_sg_refs);
-	return (BLKIF_SEGS_TO_BLOCKS(cm->cm_nseg));
-}
-
 static void
 xbd_int(void *xsc)
 {
@@ -374,7 +484,7 @@ xbd_int(void *xsc)
 
 	mtx_lock(&sc->xbd_io_lock);
 
-	if (unlikely(sc->xbd_connected == XBD_STATE_DISCONNECTED)) {
+	if (__predict_false(sc->xbd_state == XBD_STATE_DISCONNECTED)) {
 		mtx_unlock(&sc->xbd_io_lock);
 		return;
 	}
@@ -387,12 +497,15 @@ xbd_int(void *xsc)
 		bret = RING_GET_RESPONSE(&sc->xbd_ring, i);
 		cm   = &sc->xbd_shadow[bret->id];
 
-		xbd_remove_busy(cm);
-		i += xbd_completion(cm);
+		xbd_remove_cm(cm, XBD_Q_BUSY);
+		gnttab_end_foreign_access_references(cm->cm_nseg,
+		    cm->cm_sg_refs);
+		i++;
 
 		if (cm->cm_operation == BLKIF_OP_READ)
 			op = BUS_DMASYNC_POSTREAD;
-		else if (cm->cm_operation == BLKIF_OP_WRITE)
+		else if (cm->cm_operation == BLKIF_OP_WRITE ||
+		    cm->cm_operation == BLKIF_OP_WRITE_BARRIER)
 			op = BUS_DMASYNC_POSTWRITE;
 		else
 			op = 0;
@@ -400,11 +513,10 @@ xbd_int(void *xsc)
 		bus_dmamap_unload(sc->xbd_io_dmat, cm->cm_map);
 
 		/*
-		 * If commands are completing then resources are probably
-		 * being freed as well.  It's a cheap assumption even when
-		 * wrong.
+		 * Release any hold this command has on future command
+		 * dispatch. 
 		 */
-		sc->xbd_flags &= ~XBD_FROZEN;
+		xbd_cm_thaw(sc, cm);
 
 		/*
 		 * Directly call the i/o complete routine to save an
@@ -430,10 +542,13 @@ xbd_int(void *xsc)
 		sc->xbd_ring.sring->rsp_event = i + 1;
 	}
 
+	if (xbd_queue_length(sc, XBD_Q_BUSY) == 0)
+		xbd_thaw(sc, XBDF_WAIT_IDLE);
+
 	xbd_startio(sc);
 
-	if (unlikely(sc->xbd_connected == XBD_STATE_SUSPENDED))
-		wakeup(&sc->xbd_cm_busy);
+	if (__predict_false(sc->xbd_state == XBD_STATE_SUSPENDED))
+		wakeup(&sc->xbd_cm_q[XBD_Q_BUSY]);
 
 	mtx_unlock(&sc->xbd_io_lock);
 }
@@ -448,13 +563,13 @@ xbd_quiesce(struct xbd_softc *sc)
 	int mtd;
 
 	// While there are outstanding requests
-	while (!TAILQ_EMPTY(&sc->xbd_cm_busy)) {
+	while (xbd_queue_length(sc, XBD_Q_BUSY) != 0) {
 		RING_FINAL_CHECK_FOR_RESPONSES(&sc->xbd_ring, mtd);
 		if (mtd) {
 			/* Recieved request completions, update queue. */
 			xbd_int(sc);
 		}
-		if (!TAILQ_EMPTY(&sc->xbd_cm_busy)) {
+		if (xbd_queue_length(sc, XBD_Q_BUSY) != 0) {
 			/*
 			 * Still pending requests, wait for the disk i/o
 			 * to complete.
@@ -469,7 +584,7 @@ static void
 xbd_dump_complete(struct xbd_command *cm)
 {
 
-	xbd_enqueue_complete(cm);
+	xbd_enqueue_cm(cm, XBD_Q_COMPLETE);
 }
 
 static int
@@ -496,7 +611,7 @@ xbd_dump(void *arg, void *virtual, vm_offset_t physical, off_t offset,
 
 	/* Split the 64KB block as needed */
 	for (sbp=0; length > 0; sbp++) {
-		cm = xbd_dequeue_free(sc);
+		cm = xbd_dequeue_cm(sc, XBD_Q_FREE);
 		if (cm == NULL) {
 			mtx_unlock(&sc->xbd_io_lock);
 			device_printf(sc->xbd_dev, "dump: no more commands?\n");
@@ -519,7 +634,7 @@ xbd_dump(void *arg, void *virtual, vm_offset_t physical, off_t offset,
 		cm->cm_sector_number = offset / dp->d_sectorsize;
 		cm->cm_complete = xbd_dump_complete;
 
-		xbd_enqueue_ready(cm);
+		xbd_enqueue_cm(cm, XBD_Q_READY);
 
 		length -= chunk;
 		offset += chunk;
@@ -534,7 +649,7 @@ xbd_dump(void *arg, void *virtual, vm_offset_t physical, off_t offset,
 	xbd_quiesce(sc);	/* All quite on the eastern front */
 
 	/* If there were any errors, bail out... */
-	while ((cm = xbd_dequeue_complete(sc)) != NULL) {
+	while ((cm = xbd_dequeue_cm(sc, XBD_Q_COMPLETE)) != NULL) {
 		if (cm->cm_status != BLKIF_RSP_OKAY) {
 			device_printf(sc->xbd_dev,
 			    "Dump I/O failed at sector %jd\n",
@@ -558,7 +673,7 @@ xbd_open(struct disk *dp)
 		return (ENXIO);
 	}
 
-	sc->xbd_flags |= XBD_OPEN;
+	sc->xbd_flags |= XBDF_OPEN;
 	sc->xbd_users++;
 	return (0);
 }
@@ -570,7 +685,7 @@ xbd_close(struct disk *dp)
 
 	if (sc == NULL)
 		return (ENXIO);
-	sc->xbd_flags &= ~XBD_OPEN;
+	sc->xbd_flags &= ~XBDF_OPEN;
 	if (--(sc->xbd_users) == 0) {
 		/*
 		 * Check whether we have been instructed to close.  We will
@@ -648,7 +763,7 @@ xbd_alloc_ring(struct xbd_softc *sc)
 	     i++, sring_page_addr += PAGE_SIZE) {
 
 		error = xenbus_grant_ring(sc->xbd_dev,
-		    (vtomach(sring_page_addr) >> PAGE_SHIFT),
+		    (vtophys(sring_page_addr) >> PAGE_SHIFT),
 		    &sc->xbd_ring_ref[i]);
 		if (error) {
 			xenbus_dev_fatal(sc->xbd_dev, error,
@@ -683,13 +798,12 @@ xbd_alloc_ring(struct xbd_softc *sc)
 		}
 	}
 
-	error = bind_listening_port_to_irqhandler(
-	    xenbus_get_otherend_id(sc->xbd_dev),
-	    "xbd", (driver_intr_t *)xbd_int, sc,
-	    INTR_TYPE_BIO | INTR_MPSAFE, &sc->xbd_irq);
+	error = xen_intr_alloc_and_bind_local_port(sc->xbd_dev,
+	    xenbus_get_otherend_id(sc->xbd_dev), NULL, xbd_int, sc,
+	    INTR_TYPE_BIO | INTR_MPSAFE, &sc->xen_intr_handle);
 	if (error) {
 		xenbus_dev_fatal(sc->xbd_dev, error,
-		    "bind_evtchn_to_irqhandler failed");
+		    "xen_intr_alloc_and_bind_local_port failed");
 		return (error);
 	}
 
@@ -715,11 +829,55 @@ xbd_free_ring(struct xbd_softc *sc)
 }
 
 /*-------------------------- Initialization/Teardown -------------------------*/
+static int
+xbd_feature_string(struct xbd_softc *sc, char *features, size_t len)
+{
+	struct sbuf sb;
+	int feature_cnt;
+
+	sbuf_new(&sb, features, len, SBUF_FIXEDLEN);
+
+	feature_cnt = 0;
+	if ((sc->xbd_flags & XBDF_FLUSH) != 0) {
+		sbuf_printf(&sb, "flush");
+		feature_cnt++;
+	}
+
+	if ((sc->xbd_flags & XBDF_BARRIER) != 0) {
+		if (feature_cnt != 0)
+			sbuf_printf(&sb, ", ");
+		sbuf_printf(&sb, "write_barrier");
+		feature_cnt++;
+	}
+
+	(void) sbuf_finish(&sb);
+	return (sbuf_len(&sb));
+}
+
+static int
+xbd_sysctl_features(SYSCTL_HANDLER_ARGS)
+{
+	char features[80];
+	struct xbd_softc *sc = arg1;
+	int error;
+	int len;
+
+	error = sysctl_wire_old_buffer(req, 0);
+	if (error != 0)
+		return (error);
+
+	len = xbd_feature_string(sc, features, sizeof(features));
+
+	/* len is -1 on error, which will make the SYSCTL_OUT a no-op. */
+	return (SYSCTL_OUT(req, features, len + 1/*NUL*/));
+}
+
 static void
 xbd_setup_sysctl(struct xbd_softc *xbd)
 {
 	struct sysctl_ctx_list *sysctl_ctx = NULL;
 	struct sysctl_oid *sysctl_tree = NULL;
+	struct sysctl_oid_list *children;
 	
 	sysctl_ctx = device_get_sysctl_ctx(xbd->xbd_dev);
 	if (sysctl_ctx == NULL)
@@ -729,22 +887,27 @@ xbd_setup_sysctl(struct xbd_softc *xbd)
 	if (sysctl_tree == NULL)
 		return;
 
-	SYSCTL_ADD_UINT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree), OID_AUTO,
+	children = SYSCTL_CHILDREN(sysctl_tree);
+	SYSCTL_ADD_UINT(sysctl_ctx, children, OID_AUTO,
 	    "max_requests", CTLFLAG_RD, &xbd->xbd_max_requests, -1,
 	    "maximum outstanding requests (negotiated)");
 
-	SYSCTL_ADD_UINT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree), OID_AUTO,
+	SYSCTL_ADD_UINT(sysctl_ctx, children, OID_AUTO,
 	    "max_request_segments", CTLFLAG_RD,
 	    &xbd->xbd_max_request_segments, 0,
 	    "maximum number of pages per requests (negotiated)");
 
-	SYSCTL_ADD_UINT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree), OID_AUTO,
+	SYSCTL_ADD_UINT(sysctl_ctx, children, OID_AUTO,
 	    "max_request_size", CTLFLAG_RD, &xbd->xbd_max_request_size, 0,
 	    "maximum size in bytes of a request (negotiated)");
 
-	SYSCTL_ADD_UINT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree), OID_AUTO,
+	SYSCTL_ADD_UINT(sysctl_ctx, children, OID_AUTO,
 	    "ring_pages", CTLFLAG_RD, &xbd->xbd_ring_pages, 0,
 	    "communication channel pages (negotiated)");
+
+	SYSCTL_ADD_PROC(sysctl_ctx, children, OID_AUTO,
+	    "features", CTLTYPE_STRING|CTLFLAG_RD, xbd, 0,
+	    xbd_sysctl_features, "A", "protocol features (negotiated)");
 }
 
 /*
@@ -819,6 +982,7 @@ int
 xbd_instance_create(struct xbd_softc *sc, blkif_sector_t sectors,
     int vdevice, uint16_t vdisk_info, unsigned long sector_size)
 {
+	char features[80];
 	int unit, error = 0;
 	const char *name;
 
@@ -826,8 +990,13 @@ xbd_instance_create(struct xbd_softc *sc, blkif_sector_t sectors,
 
 	sc->xbd_unit = unit;
 
-	if (strcmp(name, "xbd"))
+	if (strcmp(name, "xbd") != 0)
 		device_printf(sc->xbd_dev, "attaching as %s%d\n", name, unit);
+
+	if (xbd_feature_string(sc, features, sizeof(features)) > 0) {
+		device_printf(sc->xbd_dev, "features: %s\n",
+		    features);
+	}
 
 	sc->xbd_disk = disk_alloc();
 	sc->xbd_disk->d_unit = sc->xbd_unit;
@@ -842,7 +1011,12 @@ xbd_instance_create(struct xbd_softc *sc, blkif_sector_t sectors,
 
 	sc->xbd_disk->d_mediasize = sectors * sector_size;
 	sc->xbd_disk->d_maxsize = sc->xbd_max_request_size;
-	sc->xbd_disk->d_flags = 0;
+	sc->xbd_disk->d_flags = DISKFLAG_UNMAPPED_BIO;
+	if ((sc->xbd_flags & (XBDF_FLUSH|XBDF_BARRIER)) != 0) {
+		sc->xbd_disk->d_flags |= DISKFLAG_CANFLUSHCACHE;
+		device_printf(sc->xbd_dev,
+		    "synchronize cache commands enabled.\n");
+	}
 	disk_create(sc->xbd_disk, DISK_VERSION);
 
 	return error;
@@ -855,7 +1029,7 @@ xbd_free(struct xbd_softc *sc)
 	
 	/* Prevent new requests being issued until we fix things up. */
 	mtx_lock(&sc->xbd_io_lock);
-	sc->xbd_connected = XBD_STATE_DISCONNECTED; 
+	sc->xbd_state = XBD_STATE_DISCONNECTED; 
 	mtx_unlock(&sc->xbd_io_lock);
 
 	/* Free resources associated with old device channel. */
@@ -871,6 +1045,16 @@ xbd_free(struct xbd_softc *sc)
 				cm->cm_sg_refs = NULL;
 			}
 
+			if (cm->cm_indirectionpages != NULL) {
+				gnttab_end_foreign_access_references(
+				    sc->xbd_max_request_indirectpages,
+				    &cm->cm_indirectionrefs[0]);
+				contigfree(cm->cm_indirectionpages, PAGE_SIZE *
+				    sc->xbd_max_request_indirectpages,
+				    M_XENBLOCKFRONT);
+				cm->cm_indirectionpages = NULL;
+			}
+
 			bus_dmamap_destroy(sc->xbd_io_dmat, cm->cm_map);
 		}
 		free(sc->xbd_shadow, M_XENBLOCKFRONT);
@@ -878,15 +1062,13 @@ xbd_free(struct xbd_softc *sc)
 
 		bus_dma_tag_destroy(sc->xbd_io_dmat);
 		
-		xbd_initq_free(sc);
-		xbd_initq_ready(sc);
-		xbd_initq_complete(sc);
+		xbd_initq_cm(sc, XBD_Q_FREE);
+		xbd_initq_cm(sc, XBD_Q_READY);
+		xbd_initq_cm(sc, XBD_Q_COMPLETE);
 	}
 		
-	if (sc->xbd_irq) {
-		unbind_from_irqhandler(sc->xbd_irq);
-		sc->xbd_irq = 0;
-	}
+	xen_intr_unbind(&sc->xen_intr_handle);
+
 }
 
 /*--------------------------- State Change Handlers --------------------------*/
@@ -897,7 +1079,6 @@ xbd_initialize(struct xbd_softc *sc)
 	const char *node_path;
 	uint32_t max_ring_page_order;
 	int error;
-	int i;
 
 	if (xenbus_get_state(sc->xbd_dev) != XenbusStateInitialising) {
 		/* Initialization has already been performed. */
@@ -910,11 +1091,6 @@ xbd_initialize(struct xbd_softc *sc)
 	 */
 	max_ring_page_order = 0;
 	sc->xbd_ring_pages = 1;
-	sc->xbd_max_request_segments = BLKIF_MAX_SEGMENTS_PER_HEADER_BLOCK;
-	sc->xbd_max_request_size =
-	    XBD_SEGS_TO_SIZE(sc->xbd_max_request_segments);
-	sc->xbd_max_request_blocks =
-	    BLKIF_SEGS_TO_BLOCKS(sc->xbd_max_request_segments);
 
 	/*
 	 * Protocol negotiation.
@@ -941,24 +1117,10 @@ xbd_initialize(struct xbd_softc *sc)
 	if (sc->xbd_ring_pages < 1)
 		sc->xbd_ring_pages = 1;
 
-	sc->xbd_max_requests =
-	    BLKIF_MAX_RING_REQUESTS(sc->xbd_ring_pages * PAGE_SIZE);
-	(void)xs_scanf(XST_NIL, otherend_path,
-	    "max-requests", NULL, "%" PRIu32,
-	    &sc->xbd_max_requests);
-
-	(void)xs_scanf(XST_NIL, otherend_path,
-	    "max-request-segments", NULL, "%" PRIu32,
-	    &sc->xbd_max_request_segments);
-
-	(void)xs_scanf(XST_NIL, otherend_path,
-	    "max-request-size", NULL, "%" PRIu32,
-	    &sc->xbd_max_request_size);
-
 	if (sc->xbd_ring_pages > XBD_MAX_RING_PAGES) {
 		device_printf(sc->xbd_dev,
 		    "Back-end specified ring-pages of %u "
-		    "limited to front-end limit of %zu.\n",
+		    "limited to front-end limit of %u.\n",
 		    sc->xbd_ring_pages, XBD_MAX_RING_PAGES);
 		sc->xbd_ring_pages = XBD_MAX_RING_PAGES;
 	}
@@ -974,90 +1136,14 @@ xbd_initialize(struct xbd_softc *sc)
 		sc->xbd_ring_pages = new_page_limit;
 	}
 
+	sc->xbd_max_requests =
+	    BLKIF_MAX_RING_REQUESTS(sc->xbd_ring_pages * PAGE_SIZE);
 	if (sc->xbd_max_requests > XBD_MAX_REQUESTS) {
 		device_printf(sc->xbd_dev,
 		    "Back-end specified max_requests of %u "
-		    "limited to front-end limit of %u.\n",
+		    "limited to front-end limit of %zu.\n",
 		    sc->xbd_max_requests, XBD_MAX_REQUESTS);
 		sc->xbd_max_requests = XBD_MAX_REQUESTS;
-	}
-
-	if (sc->xbd_max_request_segments > XBD_MAX_SEGMENTS_PER_REQUEST) {
-		device_printf(sc->xbd_dev,
-		    "Back-end specified max_request_segments of %u "
-		    "limited to front-end limit of %u.\n",
-		    sc->xbd_max_request_segments,
-		    XBD_MAX_SEGMENTS_PER_REQUEST);
-		sc->xbd_max_request_segments = XBD_MAX_SEGMENTS_PER_REQUEST;
-	}
-
-	if (sc->xbd_max_request_size > XBD_MAX_REQUEST_SIZE) {
-		device_printf(sc->xbd_dev,
-		    "Back-end specified max_request_size of %u "
-		    "limited to front-end limit of %u.\n",
-		    sc->xbd_max_request_size,
-		    XBD_MAX_REQUEST_SIZE);
-		sc->xbd_max_request_size = XBD_MAX_REQUEST_SIZE;
-	}
- 
- 	if (sc->xbd_max_request_size >
-	    XBD_SEGS_TO_SIZE(sc->xbd_max_request_segments)) {
- 		device_printf(sc->xbd_dev,
-		    "Back-end specified max_request_size of %u "
-		    "limited to front-end limit of %u.  (Too few segments.)\n",
-		    sc->xbd_max_request_size,
-		    XBD_SEGS_TO_SIZE(sc->xbd_max_request_segments));
- 		sc->xbd_max_request_size =
- 		    XBD_SEGS_TO_SIZE(sc->xbd_max_request_segments);
- 	}
-
-	sc->xbd_max_request_blocks =
-	    BLKIF_SEGS_TO_BLOCKS(sc->xbd_max_request_segments);
-
-	/* Allocate datastructures based on negotiated values. */
-	error = bus_dma_tag_create(
-	    bus_get_dma_tag(sc->xbd_dev),	/* parent */
-	    512, PAGE_SIZE,			/* algnmnt, boundary */
-	    BUS_SPACE_MAXADDR,			/* lowaddr */
-	    BUS_SPACE_MAXADDR,			/* highaddr */
-	    NULL, NULL,				/* filter, filterarg */
-	    sc->xbd_max_request_size,
-	    sc->xbd_max_request_segments,
-	    PAGE_SIZE,				/* maxsegsize */
-	    BUS_DMA_ALLOCNOW,			/* flags */
-	    busdma_lock_mutex,			/* lockfunc */
-	    &sc->xbd_io_lock,			/* lockarg */
-	    &sc->xbd_io_dmat);
-	if (error != 0) {
-		xenbus_dev_fatal(sc->xbd_dev, error,
-		    "Cannot allocate parent DMA tag\n");
-		return;
-	}
-
-	/* Per-transaction data allocation. */
-	sc->xbd_shadow = malloc(sizeof(*sc->xbd_shadow) * sc->xbd_max_requests,
-	    M_XENBLOCKFRONT, M_NOWAIT|M_ZERO);
-	if (sc->xbd_shadow == NULL) {
-		bus_dma_tag_destroy(sc->xbd_io_dmat);
-		xenbus_dev_fatal(sc->xbd_dev, error,
-		    "Cannot allocate request structures\n");
-		return;
-	}
-
-	for (i = 0; i < sc->xbd_max_requests; i++) {
-		struct xbd_command *cm;
-
-		cm = &sc->xbd_shadow[i];
-		cm->cm_sg_refs = malloc(
-		    sizeof(grant_ref_t) * sc->xbd_max_request_segments,
-		    M_XENBLOCKFRONT, M_NOWAIT);
-		if (cm->cm_sg_refs == NULL)
-			break;
-		cm->cm_id = i;
-		cm->cm_sc = sc;
-		if (bus_dmamap_create(sc->xbd_io_dmat, 0, &cm->cm_map) != 0)
-			break;
-		xbd_free_command(cm);
 	}
 
 	if (xbd_alloc_ring(sc) != 0)
@@ -1086,38 +1172,8 @@ xbd_initialize(struct xbd_softc *sc)
 		}
 	}
 
-	error = xs_printf(XST_NIL, node_path,
-	    "max-requests","%u",
-	    sc->xbd_max_requests);
-	if (error) {
-		xenbus_dev_fatal(sc->xbd_dev, error,
-		    "writing %s/max-requests",
-		    node_path);
-		return;
-	}
-
-	error = xs_printf(XST_NIL, node_path,
-	    "max-request-segments","%u",
-	    sc->xbd_max_request_segments);
-	if (error) {
-		xenbus_dev_fatal(sc->xbd_dev, error,
-		    "writing %s/max-request-segments",
-		    node_path);
-		return;
-	}
-
-	error = xs_printf(XST_NIL, node_path,
-	    "max-request-size","%u",
-	    sc->xbd_max_request_size);
-	if (error) {
-		xenbus_dev_fatal(sc->xbd_dev, error,
-		    "writing %s/max-request-size",
-		    node_path);
-		return;
-	}
-
 	error = xs_printf(XST_NIL, node_path, "event-channel",
-	    "%u", irq_to_evtchn_port(sc->xbd_irq));
+	    "%u", xen_intr_port(sc->xen_intr_handle));
 	if (error) {
 		xenbus_dev_fatal(sc->xbd_dev, error,
 		    "writing %s/event-channel",
@@ -1147,10 +1203,11 @@ xbd_connect(struct xbd_softc *sc)
 	device_t dev = sc->xbd_dev;
 	unsigned long sectors, sector_size;
 	unsigned int binfo;
-	int err, feature_barrier;
+	int err, feature_barrier, feature_flush;
+	int i, j;
 
-	if ((sc->xbd_connected == XBD_STATE_CONNECTED) || 
-	    (sc->xbd_connected == XBD_STATE_SUSPENDED))
+	if (sc->xbd_state == XBD_STATE_CONNECTED || 
+	    sc->xbd_state == XBD_STATE_SUSPENDED)
 		return;
 
 	DPRINTK("blkfront.c:connect:%s.\n", xenbus_get_otherend_path(dev));
@@ -1169,8 +1226,96 @@ xbd_connect(struct xbd_softc *sc)
 	err = xs_gather(XST_NIL, xenbus_get_otherend_path(dev),
 	     "feature-barrier", "%lu", &feature_barrier,
 	     NULL);
-	if (!err || feature_barrier)
-		sc->xbd_flags |= XBD_BARRIER;
+	if (err == 0 && feature_barrier != 0)
+		sc->xbd_flags |= XBDF_BARRIER;
+
+	err = xs_gather(XST_NIL, xenbus_get_otherend_path(dev),
+	     "feature-flush-cache", "%lu", &feature_flush,
+	     NULL);
+	if (err == 0 && feature_flush != 0)
+		sc->xbd_flags |= XBDF_FLUSH;
+
+	err = xs_gather(XST_NIL, xenbus_get_otherend_path(dev),
+	    "feature-max-indirect-segments", "%" PRIu32,
+	    &sc->xbd_max_request_segments, NULL);
+	if ((err != 0) || (xbd_enable_indirect == 0))
+		sc->xbd_max_request_segments = 0;
+	if (sc->xbd_max_request_segments > XBD_MAX_INDIRECT_SEGMENTS)
+		sc->xbd_max_request_segments = XBD_MAX_INDIRECT_SEGMENTS;
+	if (sc->xbd_max_request_segments > XBD_SIZE_TO_SEGS(MAXPHYS))
+		sc->xbd_max_request_segments = XBD_SIZE_TO_SEGS(MAXPHYS);
+	sc->xbd_max_request_indirectpages =
+	    XBD_INDIRECT_SEGS_TO_PAGES(sc->xbd_max_request_segments);
+	if (sc->xbd_max_request_segments < BLKIF_MAX_SEGMENTS_PER_REQUEST)
+		sc->xbd_max_request_segments = BLKIF_MAX_SEGMENTS_PER_REQUEST;
+	sc->xbd_max_request_size =
+	    XBD_SEGS_TO_SIZE(sc->xbd_max_request_segments);
+
+	/* Allocate datastructures based on negotiated values. */
+	err = bus_dma_tag_create(
+	    bus_get_dma_tag(sc->xbd_dev),	/* parent */
+	    512, PAGE_SIZE,			/* algnmnt, boundary */
+	    BUS_SPACE_MAXADDR,			/* lowaddr */
+	    BUS_SPACE_MAXADDR,			/* highaddr */
+	    NULL, NULL,				/* filter, filterarg */
+	    sc->xbd_max_request_size,
+	    sc->xbd_max_request_segments,
+	    PAGE_SIZE,				/* maxsegsize */
+	    BUS_DMA_ALLOCNOW,			/* flags */
+	    busdma_lock_mutex,			/* lockfunc */
+	    &sc->xbd_io_lock,			/* lockarg */
+	    &sc->xbd_io_dmat);
+	if (err != 0) {
+		xenbus_dev_fatal(sc->xbd_dev, err,
+		    "Cannot allocate parent DMA tag\n");
+		return;
+	}
+
+	/* Per-transaction data allocation. */
+	sc->xbd_shadow = malloc(sizeof(*sc->xbd_shadow) * sc->xbd_max_requests,
+	    M_XENBLOCKFRONT, M_NOWAIT|M_ZERO);
+	if (sc->xbd_shadow == NULL) {
+		bus_dma_tag_destroy(sc->xbd_io_dmat);
+		xenbus_dev_fatal(sc->xbd_dev, ENOMEM,
+		    "Cannot allocate request structures\n");
+		return;
+	}
+
+	for (i = 0; i < sc->xbd_max_requests; i++) {
+		struct xbd_command *cm;
+		void * indirectpages;
+
+		cm = &sc->xbd_shadow[i];
+		cm->cm_sg_refs = malloc(
+		    sizeof(grant_ref_t) * sc->xbd_max_request_segments,
+		    M_XENBLOCKFRONT, M_NOWAIT);
+		if (cm->cm_sg_refs == NULL)
+			break;
+		cm->cm_id = i;
+		cm->cm_flags = XBDCF_INITIALIZER;
+		cm->cm_sc = sc;
+		if (bus_dmamap_create(sc->xbd_io_dmat, 0, &cm->cm_map) != 0)
+			break;
+		if (sc->xbd_max_request_indirectpages > 0) {
+			indirectpages = contigmalloc(
+			    PAGE_SIZE * sc->xbd_max_request_indirectpages,
+			    M_XENBLOCKFRONT, M_ZERO, 0, ~0, PAGE_SIZE, 0);
+		} else {
+			indirectpages = NULL;
+		}
+		for (j = 0; j < sc->xbd_max_request_indirectpages; j++) {
+			if (gnttab_grant_foreign_access(
+			    xenbus_get_otherend_id(sc->xbd_dev),
+			    (vtophys(indirectpages) >> PAGE_SHIFT) + j,
+			    1 /* grant read-only access */,
+			    &cm->cm_indirectionrefs[j]))
+				break;
+		}
+		if (j < sc->xbd_max_request_indirectpages)
+			break;
+		cm->cm_indirectionpages = indirectpages;
+		xbd_free_command(cm);
+	}
 
 	if (sc->xbd_disk == NULL) {
 		device_printf(dev, "%juMB <%s> at %s",
@@ -1187,9 +1332,9 @@ xbd_connect(struct xbd_softc *sc)
 
 	/* Kick pending requests. */
 	mtx_lock(&sc->xbd_io_lock);
-	sc->xbd_connected = XBD_STATE_CONNECTED;
+	sc->xbd_state = XBD_STATE_CONNECTED;
 	xbd_startio(sc);
-	sc->xbd_flags |= XBD_READY;
+	sc->xbd_flags |= XBDF_READY;
 	mtx_unlock(&sc->xbd_io_lock);
 }
 
@@ -1220,14 +1365,45 @@ xbd_closing(device_t dev)
 static int
 xbd_probe(device_t dev)
 {
+	if (strcmp(xenbus_get_type(dev), "vbd") != 0)
+		return (ENXIO);
 
-	if (!strcmp(xenbus_get_type(dev), "vbd")) {
-		device_set_desc(dev, "Virtual Block Device");
-		device_quiet(dev);
-		return (0);
+	if (xen_hvm_domain() && xen_disable_pv_disks != 0)
+		return (ENXIO);
+
+	if (xen_hvm_domain()) {
+		int error;
+		char *type;
+
+		/*
+		 * When running in an HVM domain, IDE disk emulation is
+		 * disabled early in boot so that native drivers will
+		 * not see emulated hardware.  However, CDROM device
+		 * emulation cannot be disabled.
+		 *
+		 * Through use of FreeBSD's vm_guest and xen_hvm_domain()
+		 * APIs, we could modify the native CDROM driver to fail its
+		 * probe when running under Xen.  Unfortunatlely, the PV
+		 * CDROM support in XenServer (up through at least version
+		 * 6.2) isn't functional, so we instead rely on the emulated
+		 * CDROM instance, and fail to attach the PV one here in
+		 * the blkfront driver.
+		 */
+		error = xs_read(XST_NIL, xenbus_get_node(dev),
+		    "device-type", NULL, (void **) &type);
+		if (error)
+			return (ENXIO);
+
+		if (strncmp(type, "cdrom", 5) == 0) {
+			free(type, M_XENSTORE);
+			return (ENXIO);
+		}
+		free(type, M_XENSTORE);
 	}
 
-	return (ENXIO);
+	device_set_desc(dev, "Virtual Block Device");
+	device_quiet(dev);
+	return (0);
 }
 
 /*
@@ -1248,6 +1424,9 @@ xbd_attach(device_t dev)
 	/* FIXME: Use dynamic device id if this is not set. */
 	error = xs_scanf(XST_NIL, xenbus_get_node(dev),
 	    "virtual-device", NULL, "%" PRIu32, &vdevice);
+	if (error)
+		error = xs_scanf(XST_NIL, xenbus_get_node(dev),
+		    "virtual-device-ext", NULL, "%" PRIu32, &vdevice);
 	if (error) {
 		xenbus_dev_fatal(dev, error, "reading virtual-device");
 		device_printf(dev, "Couldn't determine virtual device.\n");
@@ -1260,17 +1439,13 @@ xbd_attach(device_t dev)
 
 	sc = device_get_softc(dev);
 	mtx_init(&sc->xbd_io_lock, "blkfront i/o lock", NULL, MTX_DEF);
-	xbd_initq_free(sc);
-	xbd_initq_busy(sc);
-	xbd_initq_ready(sc);
-	xbd_initq_complete(sc);
-	xbd_initq_bio(sc);
+	xbd_initqs(sc);
 	for (i = 0; i < XBD_MAX_RING_PAGES; i++)
 		sc->xbd_ring_ref[i] = GRANT_REF_INVALID;
 
 	sc->xbd_dev = dev;
 	sc->xbd_vdevice = vdevice;
-	sc->xbd_connected = XBD_STATE_DISCONNECTED;
+	sc->xbd_state = XBD_STATE_DISCONNECTED;
 
 	xbd_setup_sysctl(sc);
 
@@ -1285,7 +1460,7 @@ xbd_detach(device_t dev)
 {
 	struct xbd_softc *sc = device_get_softc(dev);
 
-	DPRINTK("xbd_remove: %s removed\n", xenbus_get_node(dev));
+	DPRINTK("%s: %s removed\n", __func__, xenbus_get_node(dev));
 
 	xbd_free(sc);
 	mtx_destroy(&sc->xbd_io_lock);
@@ -1302,13 +1477,13 @@ xbd_suspend(device_t dev)
 
 	/* Prevent new requests being issued until we fix things up. */
 	mtx_lock(&sc->xbd_io_lock);
-	saved_state = sc->xbd_connected;
-	sc->xbd_connected = XBD_STATE_SUSPENDED;
+	saved_state = sc->xbd_state;
+	sc->xbd_state = XBD_STATE_SUSPENDED;
 
 	/* Wait for outstanding I/O to drain. */
 	retval = 0;
-	while (TAILQ_EMPTY(&sc->xbd_cm_busy) == 0) {
-		if (msleep(&sc->xbd_cm_busy, &sc->xbd_io_lock,
+	while (xbd_queue_length(sc, XBD_Q_BUSY) != 0) {
+		if (msleep(&sc->xbd_cm_q[XBD_Q_BUSY], &sc->xbd_io_lock,
 		    PRIBIO, "blkf_susp", 30 * hz) == EWOULDBLOCK) {
 			retval = EBUSY;
 			break;
@@ -1317,7 +1492,7 @@ xbd_suspend(device_t dev)
 	mtx_unlock(&sc->xbd_io_lock);
 
 	if (retval != 0)
-		sc->xbd_connected = saved_state;
+		sc->xbd_state = saved_state;
 
 	return (retval);
 }

@@ -560,7 +560,6 @@ ng_bt3c_rcvdata(hook_p hook, item_p item)
 		NG_BT3C_ERR(sc->dev,
 "Outgoing queue is full. Dropping mbuf, len=%d\n", m->m_pkthdr.len);
 
-		_IF_DROP(&sc->outq);
 		NG_BT3C_STAT_OERROR(sc->stat);
 
 		NG_FREE_M(m);
@@ -585,14 +584,14 @@ out:
  * PC Card (PCMCIA) probe routine
  */
 
+static struct pccard_product const	bt3c_pccard_products[] = {
+	PCMCIA_CARD(3COM, 3CRWB609),
+	{ NULL, }
+};
+
 static int
 bt3c_pccard_probe(device_t dev)
 {
-	static struct pccard_product const	bt3c_pccard_products[] = {
-		PCMCIA_CARD(3COM, 3CRWB609),
-		{ NULL, }
-	};
-
 	struct pccard_product const	*pp = NULL;
 
 	pp = pccard_product_lookup(dev, bt3c_pccard_products,
@@ -815,8 +814,7 @@ bt3c_receive(bt3c_softc_p sc)
 				break; /* XXX lost of sync */
 			}
 
-			MCLGET(sc->m, M_NOWAIT);
-			if (!(sc->m->m_flags & M_EXT)) {
+			if (!(MCLGET(sc->m, M_NOWAIT))) {
 				NG_FREE_M(sc->m);
 
 				NG_BT3C_ERR(sc->dev, "Could not get cluster\n");
@@ -939,7 +937,6 @@ bt3c_receive(bt3c_softc_p sc)
 				NG_BT3C_ERR(sc->dev,
 "Incoming queue is full. Dropping mbuf, len=%d\n", sc->m->m_pkthdr.len);
 
-				_IF_DROP(&sc->inq);
 				NG_BT3C_STAT_IERROR(sc->stat);
 
 				NG_FREE_M(sc->m);
@@ -1225,4 +1222,4 @@ bt3c_modevent(module_t mod, int event, void *data)
 DRIVER_MODULE(bt3c, pccard, bt3c_pccard_driver, bt3c_devclass, bt3c_modevent,0);
 MODULE_VERSION(ng_bt3c, NG_BLUETOOTH_VERSION);
 MODULE_DEPEND(ng_bt3c, netgraph, NG_ABI_VERSION, NG_ABI_VERSION,NG_ABI_VERSION);
-
+PCCARD_PNP_INFO(bt3c_pccard_products);

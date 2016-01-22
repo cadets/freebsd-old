@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/module.h>
+#include <sys/mutex.h>
 #include <sys/priv.h>
 #include <sys/proc.h>
 #include <sys/rwlock.h>
@@ -74,6 +75,7 @@ struct schk_new_arg {
 
 /*---- callout hooks. ----*/
 static struct callout dn_timeout;
+static int dn_gone;
 static struct task	dn_task;
 static struct taskqueue	*dn_tq = NULL;
 
@@ -82,13 +84,17 @@ dummynet(void *arg)
 {
 
 	(void)arg;	/* UNUSED */
-	taskqueue_enqueue(dn_tq, &dn_task);
+	taskqueue_enqueue_fast(dn_tq, &dn_task);
 }
 
 void
 dn_reschedule(void)
 {
-	callout_reset(&dn_timeout, 1, dummynet, NULL);
+
+	if (dn_gone != 0)
+		return;
+	callout_reset_sbt(&dn_timeout, tick_sbt, 0, dummynet, NULL,
+	    C_HARDCLOCK | C_DIRECT_EXEC);
 }
 /*----- end of callout hooks -----*/
 
@@ -1068,7 +1074,10 @@ config_red(struct dn_fsk *fs)
 	fs->min_th = SCALE(fs->fs.min_th);
 	fs->max_th = SCALE(fs->fs.max_th);
 
-	fs->c_1 = fs->max_p / (fs->fs.max_th - fs->fs.min_th);
+	if (fs->fs.max_th == fs->fs.min_th)
+		fs->c_1 = fs->max_p;
+	else
+		fs->c_1 = SCALE((int64_t)(fs->max_p)) / (fs->fs.max_th - fs->fs.min_th);
 	fs->c_2 = SCALE_MUL(fs->c_1, SCALE(fs->fs.min_th));
 
 	if (fs->fs.flags & DN_IS_GENTLE_RED) {
@@ -2159,12 +2168,12 @@ ip_dn_init(void)
 	DN_LOCK_INIT();
 
 	TASK_INIT(&dn_task, 0, dummynet_task, curvnet);
-	dn_tq = taskqueue_create("dummynet", M_WAITOK,
+	dn_tq = taskqueue_create_fast("dummynet", M_WAITOK,
 	    taskqueue_thread_enqueue, &dn_tq);
 	taskqueue_start_threads(&dn_tq, 1, PI_NET, "dummynet");
 
-	callout_init(&dn_timeout, CALLOUT_MPSAFE);
-	callout_reset(&dn_timeout, 1, dummynet, NULL);
+	callout_init(&dn_timeout, 1);
+	dn_reschedule();
 
 	/* Initialize curr_time adjustment mechanics. */
 	getmicrouptime(&dn_cfg.prev_t);
@@ -2173,9 +2182,11 @@ ip_dn_init(void)
 static void
 ip_dn_destroy(int last)
 {
-	callout_drain(&dn_timeout);
-
 	DN_BH_WLOCK();
+	/* ensure no more callouts are started */
+	dn_gone = 1;
+
+	/* check for last */
 	if (last) {
 		ND("removing last instance\n");
 		ip_dn_ctl_ptr = NULL;
@@ -2184,6 +2195,8 @@ ip_dn_destroy(int last)
 
 	dummynet_flush();
 	DN_BH_WUNLOCK();
+
+	callout_drain(&dn_timeout);
 	taskqueue_drain(dn_tq, &dn_task);
 	taskqueue_free(dn_tq);
 
@@ -2288,7 +2301,7 @@ static moduledata_t dummynet_mod = {
 #define	DN_SI_SUB	SI_SUB_PROTO_IFATTACHDOMAIN
 #define	DN_MODEV_ORD	(SI_ORDER_ANY - 128) /* after ipfw */
 DECLARE_MODULE(dummynet, dummynet_mod, DN_SI_SUB, DN_MODEV_ORD);
-MODULE_DEPEND(dummynet, ipfw, 2, 2, 2);
+MODULE_DEPEND(dummynet, ipfw, 3, 3, 3);
 MODULE_VERSION(dummynet, 3);
 
 /*

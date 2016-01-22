@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/acl.h>
 #include <sys/event.h>
 #include <sys/extattr.h>
+#include <sys/proc.h>
 #include <sys/tesla-kernel.h>
 
 /* Required for TESLA assertion. */

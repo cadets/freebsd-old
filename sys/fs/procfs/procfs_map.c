@@ -132,7 +132,7 @@ procfs_doprocmap(PFS_FILL_ARGS)
 		privateresident = 0;
 		obj = entry->object.vm_object;
 		if (obj != NULL) {
-			VM_OBJECT_WLOCK(obj);
+			VM_OBJECT_RLOCK(obj);
 			if (obj->shadow_count == 1)
 				privateresident = obj->resident_page_count;
 		}
@@ -148,9 +148,9 @@ procfs_doprocmap(PFS_FILL_ARGS)
 
 		for (lobj = tobj = obj; tobj; tobj = tobj->backing_object) {
 			if (tobj != obj)
-				VM_OBJECT_WLOCK(tobj);
+				VM_OBJECT_RLOCK(tobj);
 			if (lobj != obj)
-				VM_OBJECT_WUNLOCK(lobj);
+				VM_OBJECT_RUNLOCK(lobj);
 			lobj = tobj;
 		}
 		last_timestamp = map->timestamp;
@@ -159,11 +159,11 @@ procfs_doprocmap(PFS_FILL_ARGS)
 		freepath = NULL;
 		fullpath = "-";
 		if (lobj) {
+			vp = NULL;
 			switch (lobj->type) {
 			default:
 			case OBJT_DEFAULT:
 				type = "default";
-				vp = NULL;
 				break;
 			case OBJT_VNODE:
 				type = "vnode";
@@ -171,22 +171,28 @@ procfs_doprocmap(PFS_FILL_ARGS)
 				vref(vp);
 				break;
 			case OBJT_SWAP:
-				type = "swap";
-				vp = NULL;
+				if ((lobj->flags & OBJ_TMPFS_NODE) != 0) {
+					type = "vnode";
+					if ((lobj->flags & OBJ_TMPFS) != 0) {
+						vp = lobj->un_pager.swp.swp_tmpfs;
+						vref(vp);
+					}
+				} else {
+					type = "swap";
+				}
 				break;
 			case OBJT_SG:
 			case OBJT_DEVICE:
 				type = "device";
-				vp = NULL;
 				break;
 			}
 			if (lobj != obj)
-				VM_OBJECT_WUNLOCK(lobj);
+				VM_OBJECT_RUNLOCK(lobj);
 
 			flags = obj->flags;
 			ref_count = obj->ref_count;
 			shadow_count = obj->shadow_count;
-			VM_OBJECT_WUNLOCK(obj);
+			VM_OBJECT_RUNLOCK(obj);
 			if (vp != NULL) {
 				vn_fullpath(td, vp, &fullpath, &freepath);
 				vrele(vp);

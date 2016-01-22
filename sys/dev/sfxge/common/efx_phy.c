@@ -1,26 +1,31 @@
 /*-
- * Copyright 2007-2009 Solarflare Communications Inc.  All rights reserved.
+ * Copyright (c) 2007-2015 Solarflare Communications Inc.
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
+ * modification, are permitted provided that the following conditions are met:
  *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * The views and conclusions contained in the software and documentation are
+ * those of the authors and should not be interpreted as representing official
+ * policies, either expressed or implied, of the FreeBSD Project.
  */
 
 #include <sys/cdefs.h>
@@ -68,7 +73,7 @@ __FBSDID("$FreeBSD$");
 #endif
 
 #if EFSYS_OPT_PHY_NULL
-static efx_phy_ops_t	__cs __efx_phy_null_ops = {
+static efx_phy_ops_t	__efx_phy_null_ops = {
 	NULL,				/* epo_power */
 	nullphy_reset,			/* epo_reset */
 	nullphy_reconfigure,		/* epo_reconfigure */
@@ -86,16 +91,17 @@ static efx_phy_ops_t	__cs __efx_phy_null_ops = {
 	nullphy_prop_get,		/* epo_prop_get */
 	nullphy_prop_set,		/* epo_prop_set */
 #endif	/* EFSYS_OPT_PHY_PROPS */
-#if EFSYS_OPT_PHY_BIST
+#if EFSYS_OPT_BIST
+	NULL,				/* epo_bist_enable_offline */
 	NULL,				/* epo_bist_start */
 	NULL,				/* epo_bist_poll */
 	NULL,				/* epo_bist_stop */
-#endif	/* EFSYS_OPT_PHY_BIST */
+#endif	/* EFSYS_OPT_BIST */
 };
 #endif	/* EFSYS_OPT_PHY_NULL */
 
 #if EFSYS_OPT_PHY_QT2022C2
-static efx_phy_ops_t	__cs __efx_phy_qt2022c2_ops = {
+static efx_phy_ops_t	__efx_phy_qt2022c2_ops = {
 	NULL,				/* epo_power */
 	qt2022c2_reset,			/* epo_reset */
 	qt2022c2_reconfigure,		/* epo_reconfigure */
@@ -113,16 +119,17 @@ static efx_phy_ops_t	__cs __efx_phy_qt2022c2_ops = {
 	qt2022c2_prop_get,		/* epo_prop_get */
 	qt2022c2_prop_set,		/* epo_prop_set */
 #endif	/* EFSYS_OPT_PHY_PROPS */
-#if EFSYS_OPT_PHY_BIST
+#if EFSYS_OPT_BIST
+	NULL,				/* epo_bist_enable_offline */
 	NULL,				/* epo_bist_start */
 	NULL,				/* epo_bist_poll */
 	NULL,				/* epo_bist_stop */
-#endif	/* EFSYS_OPT_PHY_BIST */
+#endif	/* EFSYS_OPT_BIST */
 };
 #endif	/* EFSYS_OPT_PHY_QT2022C2 */
 
 #if EFSYS_OPT_PHY_SFX7101
-static efx_phy_ops_t	__cs __efx_phy_sfx7101_ops = {
+static efx_phy_ops_t	__efx_phy_sfx7101_ops = {
 	sfx7101_power,			/* epo_power */
 	sfx7101_reset,			/* epo_reset */
 	sfx7101_reconfigure,		/* epo_reconfigure */
@@ -140,16 +147,17 @@ static efx_phy_ops_t	__cs __efx_phy_sfx7101_ops = {
 	sfx7101_prop_get,		/* epo_prop_get */
 	sfx7101_prop_set,		/* epo_prop_set */
 #endif	/* EFSYS_OPT_PHY_PROPS */
-#if EFSYS_OPT_PHY_BIST
+#if EFSYS_OPT_BIST
+	NULL,				/* epo_bist_enable_offline */
 	NULL,				/* epo_bist_start */
 	NULL,				/* epo_bist_poll */
 	NULL,				/* epo_bist_stop */
-#endif	/* EFSYS_OPT_PHY_BIST */
+#endif	/* EFSYS_OPT_BIST */
 };
 #endif	/* EFSYS_OPT_PHY_SFX7101 */
 
 #if EFSYS_OPT_PHY_TXC43128
-static efx_phy_ops_t	__cs __efx_phy_txc43128_ops = {
+static efx_phy_ops_t	__efx_phy_txc43128_ops = {
 	NULL,				/* epo_power */
 	txc43128_reset,			/* epo_reset */
 	txc43128_reconfigure,		/* epo_reconfigure */
@@ -167,16 +175,17 @@ static efx_phy_ops_t	__cs __efx_phy_txc43128_ops = {
 	txc43128_prop_get,		/* epo_prop_get */
 	txc43128_prop_set,		/* epo_prop_set */
 #endif	/* EFSYS_OPT_PHY_PROPS */
-#if EFSYS_OPT_PHY_BIST
+#if EFSYS_OPT_BIST
+	NULL,				/* epo_bist_enable_offline */
 	NULL,				/* epo_bist_start */
 	NULL,				/* epo_bist_poll */
 	NULL,				/* epo_bist_stop */
-#endif	/* EFSYS_OPT_PHY_BIST */
+#endif	/* EFSYS_OPT_BIST */
 };
 #endif	/* EFSYS_OPT_PHY_TXC43128 */
 
 #if EFSYS_OPT_PHY_SFT9001
-static efx_phy_ops_t	__cs __efx_phy_sft9001_ops = {
+static efx_phy_ops_t	__efx_phy_sft9001_ops = {
 	NULL,				/* epo_power */
 	sft9001_reset,			/* epo_reset */
 	sft9001_reconfigure,		/* epo_reconfigure */
@@ -194,16 +203,17 @@ static efx_phy_ops_t	__cs __efx_phy_sft9001_ops = {
 	sft9001_prop_get,		/* epo_prop_get */
 	sft9001_prop_set,		/* epo_prop_set */
 #endif	/* EFSYS_OPT_PHY_PROPS */
-#if EFSYS_OPT_PHY_BIST
+#if EFSYS_OPT_BIST
+	NULL,				/* epo_bist_enable_offline */
 	sft9001_bist_start,		/* epo_bist_start */
 	sft9001_bist_poll,		/* epo_bist_poll */
 	sft9001_bist_stop,		/* epo_bist_stop */
-#endif	/* EFSYS_OPT_PHY_BIST */
+#endif	/* EFSYS_OPT_BIST */
 };
 #endif	/* EFSYS_OPT_PHY_SFT9001 */
 
 #if EFSYS_OPT_PHY_QT2025C
-static efx_phy_ops_t	__cs __efx_phy_qt2025c_ops = {
+static efx_phy_ops_t	__efx_phy_qt2025c_ops = {
 	NULL,				/* epo_power */
 	qt2025c_reset,			/* epo_reset */
 	qt2025c_reconfigure,		/* epo_reconfigure */
@@ -221,16 +231,17 @@ static efx_phy_ops_t	__cs __efx_phy_qt2025c_ops = {
 	qt2025c_prop_get,		/* epo_prop_get */
 	qt2025c_prop_set,		/* epo_prop_set */
 #endif	/* EFSYS_OPT_PHY_PROPS */
-#if EFSYS_OPT_PHY_BIST
+#if EFSYS_OPT_BIST
+	NULL,				/* epo_bist_enable_offline */
 	NULL,				/* epo_bist_start */
 	NULL,				/* epo_bist_poll */
 	NULL,				/* epo_bist_stop */
-#endif	/* EFSYS_OPT_PHY_BIST */
+#endif	/* EFSYS_OPT_BIST */
 };
 #endif	/* EFSYS_OPT_PHY_QT2025C */
 
 #if EFSYS_OPT_SIENA
-static efx_phy_ops_t	__cs __efx_phy_siena_ops = {
+static efx_phy_ops_t	__efx_phy_siena_ops = {
 	siena_phy_power,		/* epo_power */
 	NULL,				/* epo_reset */
 	siena_phy_reconfigure,		/* epo_reconfigure */
@@ -248,22 +259,51 @@ static efx_phy_ops_t	__cs __efx_phy_siena_ops = {
 	siena_phy_prop_get,		/* epo_prop_get */
 	siena_phy_prop_set,		/* epo_prop_set */
 #endif	/* EFSYS_OPT_PHY_PROPS */
-#if EFSYS_OPT_PHY_BIST
+#if EFSYS_OPT_BIST
+	NULL,				/* epo_bist_enable_offline */
 	siena_phy_bist_start, 		/* epo_bist_start */
 	siena_phy_bist_poll,		/* epo_bist_poll */
 	siena_phy_bist_stop,		/* epo_bist_stop */
-#endif	/* EFSYS_OPT_PHY_BIST */
+#endif	/* EFSYS_OPT_BIST */
 };
 #endif	/* EFSYS_OPT_SIENA */
 
-	__checkReturn	int
+#if EFSYS_OPT_HUNTINGTON
+static efx_phy_ops_t	__efx_phy_hunt_ops = {
+	hunt_phy_power,			/* epo_power */
+	NULL,				/* epo_reset */
+	hunt_phy_reconfigure,		/* epo_reconfigure */
+	hunt_phy_verify,		/* epo_verify */
+	NULL,				/* epo_uplink_check */
+	NULL,				/* epo_downlink_check */
+	hunt_phy_oui_get,		/* epo_oui_get */
+#if EFSYS_OPT_PHY_STATS
+	hunt_phy_stats_update,		/* epo_stats_update */
+#endif	/* EFSYS_OPT_PHY_STATS */
+#if EFSYS_OPT_PHY_PROPS
+#if EFSYS_OPT_NAMES
+	hunt_phy_prop_name,		/* epo_prop_name */
+#endif
+	hunt_phy_prop_get,		/* epo_prop_get */
+	hunt_phy_prop_set,		/* epo_prop_set */
+#endif	/* EFSYS_OPT_PHY_PROPS */
+#if EFSYS_OPT_BIST
+	hunt_bist_enable_offline,	/* epo_bist_enable_offline */
+	hunt_bist_start,		/* epo_bist_start */
+	hunt_bist_poll,			/* epo_bist_poll */
+	hunt_bist_stop,			/* epo_bist_stop */
+#endif	/* EFSYS_OPT_BIST */
+};
+#endif	/* EFSYS_OPT_HUNTINGTON */
+
+	__checkReturn	efx_rc_t
 efx_phy_probe(
 	__in		efx_nic_t *enp)
 {
 	efx_port_t *epp = &(enp->en_port);
 	efx_nic_cfg_t *encp = &(enp->en_nic_cfg);
 	efx_phy_ops_t *epop;
-	int rc;
+	efx_rc_t rc;
 
 	EFSYS_ASSERT3U(enp->en_magic, ==, EFX_NIC_MAGIC);
 
@@ -317,6 +357,11 @@ efx_phy_probe(
 		epop = (efx_phy_ops_t *)&__efx_phy_siena_ops;
 		break;
 #endif	/* EFSYS_OPT_SIENA */
+#if EFSYS_OPT_HUNTINGTON
+	case EFX_FAMILY_HUNTINGTON:
+		epop = (efx_phy_ops_t *)&__efx_phy_hunt_ops;
+		break;
+#endif	/* EFSYS_OPT_HUNTINGTON */
 	default:
 		rc = ENOTSUP;
 		goto fail1;
@@ -327,7 +372,7 @@ efx_phy_probe(
 	return (0);
 
 fail1:
-	EFSYS_PROBE1(fail1, int, rc);
+	EFSYS_PROBE1(fail1, efx_rc_t, rc);
 
 	epp->ep_port = 0;
 	epp->ep_phy_type = 0;
@@ -335,7 +380,7 @@ fail1:
 	return (rc);
 }
 
-	__checkReturn	int
+	__checkReturn	efx_rc_t
 efx_phy_verify(
 	__in		efx_nic_t *enp)
 {
@@ -350,7 +395,7 @@ efx_phy_verify(
 
 #if EFSYS_OPT_PHY_LED_CONTROL
 
-	__checkReturn	int
+	__checkReturn	efx_rc_t
 efx_phy_led_set(
 	__in		efx_nic_t *enp,
 	__in		efx_phy_led_mode_t mode)
@@ -359,7 +404,7 @@ efx_phy_led_set(
 	efx_port_t *epp = &(enp->en_port);
 	efx_phy_ops_t *epop = epp->ep_epop;
 	uint32_t mask;
-	int rc;
+	efx_rc_t rc;
 
 	EFSYS_ASSERT3U(enp->en_magic, ==, EFX_NIC_MAGIC);
 	EFSYS_ASSERT3U(enp->en_mod_flags, &, EFX_MOD_PORT);
@@ -387,7 +432,7 @@ done:
 fail2:
 	EFSYS_PROBE(fail2);
 fail1:
-	EFSYS_PROBE1(fail1, int, rc);
+	EFSYS_PROBE1(fail1, efx_rc_t, rc);
 
 	return (rc);
 }
@@ -420,14 +465,15 @@ efx_phy_adv_cap_get(
 	}
 }
 
-	__checkReturn	int
+	__checkReturn	efx_rc_t
 efx_phy_adv_cap_set(
 	__in		efx_nic_t *enp,
 	__in		uint32_t mask)
 {
 	efx_port_t *epp = &(enp->en_port);
 	efx_phy_ops_t *epop = epp->ep_epop;
-	int rc;
+	uint32_t old_mask;
+	efx_rc_t rc;
 
 	EFSYS_ASSERT3U(enp->en_magic, ==, EFX_NIC_MAGIC);
 	EFSYS_ASSERT3U(enp->en_mod_flags, &, EFX_MOD_PORT);
@@ -440,6 +486,7 @@ efx_phy_adv_cap_set(
 	if (epp->ep_adv_cap_mask == mask)
 		goto done;
 
+	old_mask = epp->ep_adv_cap_mask;
 	epp->ep_adv_cap_mask = mask;
 
 	if ((rc = epop->epo_reconfigure(enp)) != 0)
@@ -450,8 +497,19 @@ done:
 
 fail2:
 	EFSYS_PROBE(fail2);
+
+	epp->ep_adv_cap_mask = old_mask;
+	/* Reconfigure for robustness */
+	if (epop->epo_reconfigure(enp) != 0) {
+		/*
+		 * We may have an inconsistent view of our advertised speed
+		 * capabilities.
+		 */
+		EFSYS_ASSERT(0);
+	}
+
 fail1:
-	EFSYS_PROBE1(fail1, int, rc);
+	EFSYS_PROBE1(fail1, efx_rc_t, rc);
 
 	return (rc);
 }
@@ -469,7 +527,7 @@ efx_phy_lp_cap_get(
 	*maskp = epp->ep_lp_cap_mask;
 }
 
-	__checkReturn	int
+	__checkReturn	efx_rc_t
 efx_phy_oui_get(
 	__in		efx_nic_t *enp,
 	__out		uint32_t *ouip)
@@ -503,8 +561,8 @@ efx_phy_media_type_get(
 
 #if EFSYS_OPT_NAMES
 
-/* START MKCONFIG GENERATED PhyStatNamesBlock 271268f3da0e804f */
-static const char 	__cs * __cs __efx_phy_stat_name[] = {
+/* START MKCONFIG GENERATED PhyStatNamesBlock d5f79b4bc2c050fe */
+static const char 	*__efx_phy_stat_name[] = {
 	"oui",
 	"pma_pmd_link_up",
 	"pma_pmd_rx_fault",
@@ -555,7 +613,7 @@ static const char 	__cs * __cs __efx_phy_stat_name[] = {
 
 /* END MKCONFIG GENERATED PhyStatNamesBlock */
 
-					const char __cs *
+					const char *
 efx_phy_stat_name(
 	__in				efx_nic_t *enp,
 	__in				efx_phy_stat_t type)
@@ -569,11 +627,11 @@ efx_phy_stat_name(
 
 #endif	/* EFSYS_OPT_NAMES */
 
-	__checkReturn			int
+	__checkReturn			efx_rc_t
 efx_phy_stats_update(
 	__in				efx_nic_t *enp,
 	__in				efsys_mem_t *esmp,
-	__out_ecount(EFX_PHY_NSTATS)	uint32_t *stat)
+	__inout_ecount(EFX_PHY_NSTATS)	uint32_t *stat)
 {
 	efx_port_t *epp = &(enp->en_port);
 	efx_phy_ops_t *epop = epp->ep_epop;
@@ -589,7 +647,7 @@ efx_phy_stats_update(
 #if EFSYS_OPT_PHY_PROPS
 
 #if EFSYS_OPT_NAMES
-		const char __cs *
+		const char *
 efx_phy_prop_name(
 	__in	efx_nic_t *enp,
 	__in	unsigned int id)
@@ -604,7 +662,7 @@ efx_phy_prop_name(
 }
 #endif	/* EFSYS_OPT_NAMES */
 
-	__checkReturn	int
+	__checkReturn	efx_rc_t
 efx_phy_prop_get(
 	__in		efx_nic_t *enp,
 	__in		unsigned int id,
@@ -620,7 +678,7 @@ efx_phy_prop_get(
 	return (epop->epo_prop_get(enp, id, flags, valp));
 }
 
-	__checkReturn	int
+	__checkReturn	efx_rc_t
 efx_phy_prop_set(
 	__in		efx_nic_t *enp,
 	__in		unsigned int id,
@@ -636,23 +694,51 @@ efx_phy_prop_set(
 }
 #endif	/* EFSYS_OPT_PHY_STATS */
 
-#if EFSYS_OPT_PHY_BIST
+#if EFSYS_OPT_BIST
 
-	__checkReturn		int
-efx_phy_bist_start(
-	__in			efx_nic_t *enp,
-	__in			efx_phy_bist_type_t type)
+	__checkReturn		efx_rc_t
+efx_bist_enable_offline(
+	__in			efx_nic_t *enp)
 {
 	efx_port_t *epp = &(enp->en_port);
 	efx_phy_ops_t *epop = epp->ep_epop;
-	int rc;
+	efx_rc_t rc;
 
 	EFSYS_ASSERT3U(enp->en_magic, ==, EFX_NIC_MAGIC);
-	EFSYS_ASSERT3U(enp->en_mod_flags, &, EFX_MOD_PORT);
 
-	EFSYS_ASSERT3U(type, !=, EFX_PHY_BIST_TYPE_UNKNOWN);
-	EFSYS_ASSERT3U(type, <, EFX_PHY_BIST_TYPE_NTYPES);
-	EFSYS_ASSERT3U(epp->ep_current_bist, ==, EFX_PHY_BIST_TYPE_UNKNOWN);
+	if (epop->epo_bist_enable_offline == NULL) {
+		rc = ENOTSUP;
+		goto fail1;
+	}
+
+	if ((rc = epop->epo_bist_enable_offline(enp)) != 0)
+		goto fail2;
+
+	return (0);
+
+fail2:
+	EFSYS_PROBE(fail2);
+fail1:
+	EFSYS_PROBE1(fail1, efx_rc_t, rc);
+
+	return (rc);
+
+}
+
+	__checkReturn		efx_rc_t
+efx_bist_start(
+	__in			efx_nic_t *enp,
+	__in			efx_bist_type_t type)
+{
+	efx_port_t *epp = &(enp->en_port);
+	efx_phy_ops_t *epop = epp->ep_epop;
+	efx_rc_t rc;
+
+	EFSYS_ASSERT3U(enp->en_magic, ==, EFX_NIC_MAGIC);
+
+	EFSYS_ASSERT3U(type, !=, EFX_BIST_TYPE_UNKNOWN);
+	EFSYS_ASSERT3U(type, <, EFX_BIST_TYPE_NTYPES);
+	EFSYS_ASSERT3U(epp->ep_current_bist, ==, EFX_BIST_TYPE_UNKNOWN);
 
 	if (epop->epo_bist_start == NULL) {
 		rc = ENOTSUP;
@@ -669,29 +755,28 @@ efx_phy_bist_start(
 fail2:
 	EFSYS_PROBE(fail2);
 fail1:
-	EFSYS_PROBE1(fail1, int, rc);
+	EFSYS_PROBE1(fail1, efx_rc_t, rc);
 
 	return (rc);
 }
 
-	__checkReturn		int
-efx_phy_bist_poll(
+	__checkReturn		efx_rc_t
+efx_bist_poll(
 	__in			efx_nic_t *enp,
-	__in			efx_phy_bist_type_t type,
-	__out			efx_phy_bist_result_t *resultp,
+	__in			efx_bist_type_t type,
+	__out			efx_bist_result_t *resultp,
 	__out_opt		uint32_t *value_maskp,
 	__out_ecount_opt(count)	unsigned long *valuesp,
 	__in			size_t count)
 {
 	efx_port_t *epp = &(enp->en_port);
 	efx_phy_ops_t *epop = epp->ep_epop;
-	int rc;
+	efx_rc_t rc;
 
 	EFSYS_ASSERT3U(enp->en_magic, ==, EFX_NIC_MAGIC);
-	EFSYS_ASSERT3U(enp->en_mod_flags, &, EFX_MOD_PORT);
 
-	EFSYS_ASSERT3U(type, !=, EFX_PHY_BIST_TYPE_UNKNOWN);
-	EFSYS_ASSERT3U(type, <, EFX_PHY_BIST_TYPE_NTYPES);
+	EFSYS_ASSERT3U(type, !=, EFX_BIST_TYPE_UNKNOWN);
+	EFSYS_ASSERT3U(type, <, EFX_BIST_TYPE_NTYPES);
 	EFSYS_ASSERT3U(epp->ep_current_bist, ==, type);
 
 	EFSYS_ASSERT(epop->epo_bist_poll != NULL);
@@ -709,24 +794,23 @@ efx_phy_bist_poll(
 fail2:
 	EFSYS_PROBE(fail2);
 fail1:
-	EFSYS_PROBE1(fail1, int, rc);
+	EFSYS_PROBE1(fail1, efx_rc_t, rc);
 
 	return (rc);
 }
 
 			void
-efx_phy_bist_stop(
+efx_bist_stop(
 	__in		efx_nic_t *enp,
-	__in		efx_phy_bist_type_t type)
+	__in		efx_bist_type_t type)
 {
 	efx_port_t *epp = &(enp->en_port);
 	efx_phy_ops_t *epop = epp->ep_epop;
 
 	EFSYS_ASSERT3U(enp->en_magic, ==, EFX_NIC_MAGIC);
-	EFSYS_ASSERT3U(enp->en_mod_flags, &, EFX_MOD_PORT);
 
-	EFSYS_ASSERT3U(type, !=, EFX_PHY_BIST_TYPE_UNKNOWN);
-	EFSYS_ASSERT3U(type, <, EFX_PHY_BIST_TYPE_NTYPES);
+	EFSYS_ASSERT3U(type, !=, EFX_BIST_TYPE_UNKNOWN);
+	EFSYS_ASSERT3U(type, <, EFX_BIST_TYPE_NTYPES);
 	EFSYS_ASSERT3U(epp->ep_current_bist, ==, type);
 
 	EFSYS_ASSERT(epop->epo_bist_stop != NULL);
@@ -734,10 +818,10 @@ efx_phy_bist_stop(
 	if (epop->epo_bist_stop != NULL)
 		epop->epo_bist_stop(enp, type);
 
-	epp->ep_current_bist = EFX_PHY_BIST_TYPE_UNKNOWN;
+	epp->ep_current_bist = EFX_BIST_TYPE_UNKNOWN;
 }
 
-#endif	/* EFSYS_OPT_PHY_BIST */
+#endif	/* EFSYS_OPT_BIST */
 			void
 efx_phy_unprobe(
 	__in	efx_nic_t *enp)

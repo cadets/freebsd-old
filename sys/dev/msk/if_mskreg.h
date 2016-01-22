@@ -156,7 +156,7 @@
 #define DEVICEID_DLINK_DGE560SX	0x4002
 #define DEVICEID_DLINK_DGE560T	0x4b00
 
-#define BIT_31		(1 << 31)
+#define BIT_31		(1U << 31)
 #define BIT_30		(1 << 30)
 #define BIT_29		(1 << 29)
 #define BIT_28		(1 << 28)
@@ -2175,13 +2175,8 @@
 #define MSK_ADDR_LO(x)	((uint64_t) (x) & 0xffffffffUL)
 #define MSK_ADDR_HI(x)	((uint64_t) (x) >> 32)
 
-/*
- * At first I guessed 8 bytes, the size of a single descriptor, would be
- * required alignment constraints. But, it seems that Yukon II have 4096
- * bytes boundary alignment constraints.
- */
-#define MSK_RING_ALIGN	4096
-#define	MSK_STAT_ALIGN	4096
+#define	MSK_RING_ALIGN	32768
+#define	MSK_STAT_ALIGN	32768
 
 /* Rx descriptor data structure */
 struct msk_rx_desc {
@@ -2338,7 +2333,7 @@ struct msk_stat_desc {
 #endif
 #define	MSK_RX_BUF_ALIGN	8
 #define MSK_JUMBO_RX_RING_CNT	MSK_RX_RING_CNT
-#define MSK_MAXTXSEGS		32
+#define MSK_MAXTXSEGS		35
 #define	MSK_TSO_MAXSGSIZE	4096
 #define	MSK_TSO_MAXSIZE		(65535 + sizeof(struct ether_vlan_header))
 

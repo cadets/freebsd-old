@@ -36,6 +36,7 @@
 #include <sys/queue.h>
 #include <sys/_task.h>
 #include <sys/_callout.h>
+#include <sys/_cpuset.h>
 
 struct taskqueue;
 struct thread;
@@ -71,6 +72,8 @@ struct taskqueue *taskqueue_create(const char *name, int mflags,
 				    void *context);
 int	taskqueue_start_threads(struct taskqueue **tqp, int count, int pri,
 				const char *name, ...) __printflike(4, 5);
+int	taskqueue_start_threads_cpuset(struct taskqueue **tqp, int count,
+	    int pri, cpuset_t *mask, const char *name, ...) __printflike(5, 6);
 int	taskqueue_enqueue(struct taskqueue *queue, struct task *task);
 int	taskqueue_enqueue_timeout(struct taskqueue *queue,
 	    struct timeout_task *timeout_task, int ticks);
@@ -81,6 +84,7 @@ int	taskqueue_cancel_timeout(struct taskqueue *queue,
 void	taskqueue_drain(struct taskqueue *queue, struct task *task);
 void	taskqueue_drain_timeout(struct taskqueue *queue,
 	    struct timeout_task *timeout_task);
+void	taskqueue_drain_all(struct taskqueue *queue);
 void	taskqueue_free(struct taskqueue *queue);
 void	taskqueue_run(struct taskqueue *queue);
 void	taskqueue_block(struct taskqueue *queue);

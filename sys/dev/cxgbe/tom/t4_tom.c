@@ -36,13 +36,17 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/ktr.h>
+#include <sys/lock.h>
+#include <sys/limits.h>
 #include <sys/module.h>
 #include <sys/protosw.h>
 #include <sys/domain.h>
+#include <sys/rmlock.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/taskqueue.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <netinet/in.h>
 #include <netinet/in_pcb.h>
 #include <netinet/in_var.h>
@@ -58,6 +62,8 @@ __FBSDID("$FreeBSD$");
 #include "common/common.h"
 #include "common/t4_msg.h"
 #include "common/t4_regs.h"
+#include "common/t4_regs_values.h"
+#include "common/t4_tcb.h"
 #include "tom/t4_tom_l2t.h"
 #include "tom/t4_tom.h"
 
@@ -95,14 +101,16 @@ static void t4_clip_task(void *, int);
 static void update_clip_table(struct adapter *, struct tom_data *);
 static void destroy_clip_table(struct adapter *, struct tom_data *);
 static void free_tom_data(struct adapter *, struct tom_data *);
+static void reclaim_wr_resources(void *, int);
 
 static int in6_ifaddr_gen;
 static eventhandler_tag ifaddr_evhandler;
 static struct timeout_task clip_task;
 
 struct toepcb *
-alloc_toepcb(struct port_info *pi, int txqid, int rxqid, int flags)
+alloc_toepcb(struct vi_info *vi, int txqid, int rxqid, int flags)
 {
+	struct port_info *pi = vi->pi;
 	struct adapter *sc = pi->adapter;
 	struct toepcb *toep;
 	int tx_credits, txsd_total, len;
@@ -124,18 +132,18 @@ alloc_toepcb(struct port_info *pi, int txqid, int rxqid, int flags)
 	    howmany((sizeof(struct fw_ofld_tx_data_wr) + 1), 16);
 
 	if (txqid < 0)
-		txqid = (arc4random() % pi->nofldtxq) + pi->first_ofld_txq;
-	KASSERT(txqid >= pi->first_ofld_txq &&
-	    txqid < pi->first_ofld_txq + pi->nofldtxq,
-	    ("%s: txqid %d for port %p (first %d, n %d)", __func__, txqid, pi,
-		pi->first_ofld_txq, pi->nofldtxq));
+		txqid = (arc4random() % vi->nofldtxq) + vi->first_ofld_txq;
+	KASSERT(txqid >= vi->first_ofld_txq &&
+	    txqid < vi->first_ofld_txq + vi->nofldtxq,
+	    ("%s: txqid %d for vi %p (first %d, n %d)", __func__, txqid, vi,
+		vi->first_ofld_txq, vi->nofldtxq));
 
 	if (rxqid < 0)
-		rxqid = (arc4random() % pi->nofldrxq) + pi->first_ofld_rxq;
-	KASSERT(rxqid >= pi->first_ofld_rxq &&
-	    rxqid < pi->first_ofld_rxq + pi->nofldrxq,
-	    ("%s: rxqid %d for port %p (first %d, n %d)", __func__, rxqid, pi,
-		pi->first_ofld_rxq, pi->nofldrxq));
+		rxqid = (arc4random() % vi->nofldrxq) + vi->first_ofld_rxq;
+	KASSERT(rxqid >= vi->first_ofld_rxq &&
+	    rxqid < vi->first_ofld_rxq + vi->nofldrxq,
+	    ("%s: rxqid %d for vi %p (first %d, n %d)", __func__, rxqid, vi,
+		vi->first_ofld_rxq, vi->nofldrxq));
 
 	len = offsetof(struct toepcb, txsd) +
 	    txsd_total * sizeof(struct ofld_tx_sdesc);
@@ -145,11 +153,14 @@ alloc_toepcb(struct port_info *pi, int txqid, int rxqid, int flags)
 		return (NULL);
 
 	toep->td = sc->tom_softc;
-	toep->port = pi;
+	toep->vi = vi;
+	toep->tx_total = tx_credits;
 	toep->tx_credits = tx_credits;
 	toep->ofld_txq = &sc->sge.ofld_txq[txqid];
 	toep->ofld_rxq = &sc->sge.ofld_rxq[rxqid];
 	toep->ctrlq = &sc->sge.ctrlq[pi->port_id];
+	mbufq_init(&toep->ulp_pduq, INT_MAX);
+	mbufq_init(&toep->ulp_pdu_reclaimq, INT_MAX);
 	toep->txsd_total = txsd_total;
 	toep->txsd_avail = txsd_total;
 	toep->txsd_pidx = 0;
@@ -265,6 +276,14 @@ release_offload_resources(struct toepcb *toep)
 	CTR5(KTR_CXGBE, "%s: toep %p (tid %d, l2te %p, ce %p)",
 	    __func__, toep, tid, toep->l2te, toep->ce);
 
+	/*
+	 * These queues should have been emptied at approximately the same time
+	 * that a normal connection's socket's so_snd would have been purged or
+	 * drained.  Do _not_ clean up here.
+	 */
+	MPASS(mbufq_len(&toep->ulp_pduq) == 0);
+	MPASS(mbufq_len(&toep->ulp_pdu_reclaimq) == 0);
+
 	if (toep->ulp_mode == ULP_MODE_TCPDDP)
 		release_ddp_resources(toep);
 
@@ -330,6 +349,30 @@ t4_pcb_detach(struct toedev *tod __unused, struct tcpcb *tp)
 }
 
 /*
+ * setsockopt handler.
+ */
+static void
+t4_ctloutput(struct toedev *tod, struct tcpcb *tp, int dir, int name)
+{
+	struct adapter *sc = tod->tod_softc;
+	struct toepcb *toep = tp->t_toe;
+
+	if (dir == SOPT_GET)
+		return;
+
+	CTR4(KTR_CXGBE, "%s: tp %p, dir %u, name %u", __func__, tp, dir, name);
+
+	switch (name) {
+	case TCP_NODELAY:
+		t4_set_tcb_field(sc, toep, 1, W_TCB_T_FLAGS, V_TF_NAGLE(1),
+		    V_TF_NAGLE(tp->t_flags & TF_NODELAY ? 0 : 1));
+		break;
+	default:
+		break;
+	}
+}
+
+/*
  * The TOE driver will not receive any more CPLs for the tid associated with the
  * toepcb; release the hold on the inpcb.
  */
@@ -348,6 +391,7 @@ final_cpl_received(struct toepcb *toep)
 
 	toep->inp = NULL;
 	toep->flags &= ~TPF_CPL_PENDING;
+	mbufq_drain(&toep->ulp_pdu_reclaimq);
 
 	if (!(toep->flags & TPF_ATTACHED))
 		release_offload_resources(toep);
@@ -481,7 +525,7 @@ extern int always_keepalive;
  * socket so could be a listening socket too.
  */
 uint64_t
-calc_opt0(struct socket *so, struct port_info *pi, struct l2t_entry *e,
+calc_opt0(struct socket *so, struct vi_info *vi, struct l2t_entry *e,
     int mtu_idx, int rscale, int rx_credits, int ulp_mode)
 {
 	uint64_t opt0;
@@ -505,46 +549,46 @@ calc_opt0(struct socket *so, struct port_info *pi, struct l2t_entry *e,
 	if (e != NULL)
 		opt0 |= V_L2T_IDX(e->idx);
 
-	if (pi != NULL) {
-		opt0 |= V_SMAC_SEL(VIID_SMACIDX(pi->viid));
-		opt0 |= V_TX_CHAN(pi->tx_chan);
+	if (vi != NULL) {
+		opt0 |= V_SMAC_SEL(VIID_SMACIDX(vi->viid));
+		opt0 |= V_TX_CHAN(vi->pi->tx_chan);
 	}
 
 	return htobe64(opt0);
 }
 
-#define FILTER_SEL_WIDTH_P_FC (3 + 1)
-#define FILTER_SEL_WIDTH_VIN_P_FC (6 + 7 + FILTER_SEL_WIDTH_P_FC)
-#define FILTER_SEL_WIDTH_TAG_P_FC (3 + FILTER_SEL_WIDTH_VIN_P_FC)
-#define FILTER_SEL_WIDTH_VLD_TAG_P_FC (1 + FILTER_SEL_WIDTH_TAG_P_FC)
-#define VLAN_NONE 0xfff
-#define FILTER_SEL_VLAN_NONE 0xffff
-
 uint64_t
-select_ntuple(struct port_info *pi, struct l2t_entry *e, uint32_t filter_mode)
+select_ntuple(struct vi_info *vi, struct l2t_entry *e)
 {
-	uint16_t viid = pi->viid;
-	uint32_t ntuple = 0;
+	struct adapter *sc = vi->pi->adapter;
+	struct tp_params *tp = &sc->params.tp;
+	uint16_t viid = vi->viid;
+	uint64_t ntuple = 0;
 
-	if (filter_mode == HW_TPL_FR_MT_PR_IV_P_FC) {
-                if (e->vlan == VLAN_NONE)
-			ntuple |= FILTER_SEL_VLAN_NONE << FILTER_SEL_WIDTH_P_FC;
-                else {
-                        ntuple |= e->vlan << FILTER_SEL_WIDTH_P_FC;
-                        ntuple |= 1 << FILTER_SEL_WIDTH_VLD_TAG_P_FC;
-                }
-                ntuple |= e->lport << S_PORT;
-		ntuple |= IPPROTO_TCP << FILTER_SEL_WIDTH_VLD_TAG_P_FC;
-	} else if (filter_mode == HW_TPL_FR_MT_PR_OV_P_FC) {
-                ntuple |= G_FW_VIID_VIN(viid) << FILTER_SEL_WIDTH_P_FC;
-                ntuple |= G_FW_VIID_PFN(viid) << FILTER_SEL_WIDTH_VIN_P_FC;
-                ntuple |= G_FW_VIID_VIVLD(viid) << FILTER_SEL_WIDTH_TAG_P_FC;
-                ntuple |= e->lport << S_PORT;
-		ntuple |= IPPROTO_TCP << FILTER_SEL_WIDTH_VLD_TAG_P_FC;
-        }
+	/*
+	 * Initialize each of the fields which we care about which are present
+	 * in the Compressed Filter Tuple.
+	 */
+	if (tp->vlan_shift >= 0 && e->vlan != CPL_L2T_VLAN_NONE)
+		ntuple |= (uint64_t)(F_FT_VLAN_VLD | e->vlan) << tp->vlan_shift;
 
-	if (is_t4(pi->adapter))
-		return (htobe32(ntuple));
+	if (tp->port_shift >= 0)
+		ntuple |= (uint64_t)e->lport << tp->port_shift;
+
+	if (tp->protocol_shift >= 0)
+		ntuple |= (uint64_t)IPPROTO_TCP << tp->protocol_shift;
+
+	if (tp->vnic_shift >= 0) {
+		uint32_t vf = G_FW_VIID_VIN(viid);
+		uint32_t pf = G_FW_VIID_PFN(viid);
+		uint32_t vld = G_FW_VIID_VIVLD(viid);
+
+		ntuple |= (uint64_t)(V_FT_VNID_ID_VF(vf) | V_FT_VNID_ID_PF(pf) |
+		    V_FT_VNID_ID_VLD(vld)) << tp->vnic_shift;
+	}
+
+	if (is_t4(sc))
+		return (htobe32((uint32_t)ntuple));
 	else
 		return (htobe64(V_FILTER_TUPLE(ntuple)));
 }
@@ -717,7 +761,7 @@ update_clip(struct adapter *sc, void *arg __unused)
 	if (begin_synchronized_op(sc, NULL, HOLD_LOCK, "t4tomuc"))
 		return;
 
-	if (sc->flags & TOM_INIT_DONE)
+	if (uld_active(sc, ULD_TOM))
 		update_clip_table(sc, sc->tom_softc);
 
 	end_synchronized_op(sc, LOCK_HELD);
@@ -733,6 +777,7 @@ t4_clip_task(void *arg, int count)
 static void
 update_clip_table(struct adapter *sc, struct tom_data *td)
 {
+	struct rm_priotracker in6_ifa_tracker;
 	struct in6_ifaddr *ia;
 	struct in6_addr *lip, tlip;
 	struct clip_head stale;
@@ -741,7 +786,7 @@ update_clip_table(struct adapter *sc, struct tom_data *td)
 
 	ASSERT_SYNCHRONIZED_OP(sc);
 
-	IN6_IFADDR_RLOCK();
+	IN6_IFADDR_RLOCK(&in6_ifa_tracker);
 	mtx_lock(&td->clip_table_lock);
 
 	if (gen == td->clip_gen)
@@ -833,7 +878,7 @@ next:
 	td->clip_gen = gen;
 done:
 	mtx_unlock(&td->clip_table_lock);
-	IN6_IFADDR_RUNLOCK();
+	IN6_IFADDR_RUNLOCK(&in6_ifa_tracker);
 }
 
 static void
@@ -875,6 +920,8 @@ free_tom_data(struct adapter *sc, struct tom_data *td)
 	if (td->listen_mask != 0)
 		hashdestroy(td->listen_hash, M_CXGBE, td->listen_mask);
 
+	if (mtx_initialized(&td->unsent_wr_lock))
+		mtx_destroy(&td->unsent_wr_lock);
 	if (mtx_initialized(&td->lctx_hash_lock))
 		mtx_destroy(&td->lctx_hash_lock);
 	if (mtx_initialized(&td->toep_list_lock))
@@ -882,6 +929,44 @@ free_tom_data(struct adapter *sc, struct tom_data *td)
 
 	free_tid_tabs(&sc->tids);
 	free(td, M_CXGBE);
+}
+
+static void
+reclaim_wr_resources(void *arg, int count)
+{
+	struct tom_data *td = arg;
+	STAILQ_HEAD(, wrqe) twr_list = STAILQ_HEAD_INITIALIZER(twr_list);
+	struct cpl_act_open_req *cpl;
+	u_int opcode, atid;
+	struct wrqe *wr;
+	struct adapter *sc;
+
+	mtx_lock(&td->unsent_wr_lock);
+	STAILQ_SWAP(&td->unsent_wr_list, &twr_list, wrqe);
+	mtx_unlock(&td->unsent_wr_lock);
+
+	while ((wr = STAILQ_FIRST(&twr_list)) != NULL) {
+		STAILQ_REMOVE_HEAD(&twr_list, link);
+
+		cpl = wrtod(wr);
+		opcode = GET_OPCODE(cpl);
+
+		switch (opcode) {
+		case CPL_ACT_OPEN_REQ:
+		case CPL_ACT_OPEN_REQ6:
+			atid = G_TID_TID(be32toh(OPCODE_TID(cpl)));
+			sc = td_adapter(td);
+
+			CTR2(KTR_CXGBE, "%s: atid %u ", __func__, atid);
+			act_open_failure_cleanup(sc, atid, EHOSTUNREACH);
+			free(wr, M_CXGBE);
+			break;
+		default:
+			log(LOG_ERR, "%s: leaked work request %p, wr_len %d, "
+			    "opcode %x\n", __func__, wr, wr->wr_len, opcode);
+			/* WR not freed here; go look at it with a debugger.  */
+		}
+	}
 }
 
 /*
@@ -893,7 +978,8 @@ t4_tom_activate(struct adapter *sc)
 {
 	struct tom_data *td;
 	struct toedev *tod;
-	int i, rc;
+	struct vi_info *vi;
+	int i, rc, v;
 
 	ASSERT_SYNCHRONIZED_OP(sc);
 
@@ -910,6 +996,11 @@ t4_tom_activate(struct adapter *sc)
 	mtx_init(&td->lctx_hash_lock, "lctx hash lock", NULL, MTX_DEF);
 	td->listen_hash = hashinit_flags(LISTEN_HASH_SIZE, M_CXGBE,
 	    &td->listen_mask, HASH_NOWAIT);
+
+	/* List of WRs for which L2 resolution failed */
+	mtx_init(&td->unsent_wr_lock, "Unsent WR list lock", NULL, MTX_DEF);
+	STAILQ_INIT(&td->unsent_wr_list);
+	TASK_INIT(&td->reclaim_wr_resources, 0, reclaim_wr_resources, td);
 
 	/* TID tables */
 	rc = alloc_tid_tabs(&sc->tids);
@@ -945,12 +1036,15 @@ t4_tom_activate(struct adapter *sc)
 	tod->tod_syncache_removed = t4_syncache_removed;
 	tod->tod_syncache_respond = t4_syncache_respond;
 	tod->tod_offload_socket = t4_offload_socket;
+	tod->tod_ctloutput = t4_ctloutput;
 
-	for_each_port(sc, i)
-		TOEDEV(sc->port[i]->ifp) = &td->tod;
+	for_each_port(sc, i) {
+		for_each_vi(sc->port[i], v, vi) {
+			TOEDEV(vi->ifp) = &td->tod;
+		}
+	}
 
 	sc->tom_softc = td;
-	sc->flags |= TOM_INIT_DONE;
 	register_toedev(sc->tom_softc);
 
 done:
@@ -973,6 +1067,9 @@ t4_tom_deactivate(struct adapter *sc)
 	if (sc->offload_map != 0)
 		return (EBUSY);	/* at least one port has IFCAP_TOE enabled */
 
+	if (uld_active(sc, ULD_IWARP) || uld_active(sc, ULD_ISCSI))
+		return (EBUSY);	/* both iWARP and iSCSI rely on the TOE. */
+
 	mtx_lock(&td->toep_list_lock);
 	if (!TAILQ_EMPTY(&td->toep_list))
 		rc = EBUSY;
@@ -983,11 +1080,16 @@ t4_tom_deactivate(struct adapter *sc)
 		rc = EBUSY;
 	mtx_unlock(&td->lctx_hash_lock);
 
+	taskqueue_drain(taskqueue_thread, &td->reclaim_wr_resources);
+	mtx_lock(&td->unsent_wr_lock);
+	if (!STAILQ_EMPTY(&td->unsent_wr_list))
+		rc = EBUSY;
+	mtx_unlock(&td->unsent_wr_lock);
+
 	if (rc == 0) {
 		unregister_toedev(sc->tom_softc);
 		free_tom_data(sc, td);
 		sc->tom_softc = NULL;
-		sc->flags &= ~TOM_INIT_DONE;
 	}
 
 	return (rc);
@@ -1037,14 +1139,14 @@ t4_tom_mod_load(void)
 static void
 tom_uninit(struct adapter *sc, void *arg __unused)
 {
-	if (begin_synchronized_op(sc, NULL, HOLD_LOCK, "t4tomun"))
+	if (begin_synchronized_op(sc, NULL, SLEEP_OK | INTR_OK, "t4tomun"))
 		return;
 
 	/* Try to free resources (works only if no port has IFCAP_TOE) */
-	if (sc->flags & TOM_INIT_DONE)
+	if (uld_active(sc, ULD_TOM))
 		t4_deactivate_uld(sc, ULD_TOM);
 
-	end_synchronized_op(sc, LOCK_HELD);
+	end_synchronized_op(sc, 0);
 }
 
 static int

@@ -37,6 +37,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/errno.h>
 #include <sys/libkern.h>
 
+#include <machine/resource.h>
+
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
 #include <dev/ofw/openfirm.h>
@@ -55,6 +57,7 @@ ofw_bus_gen_setup_devinfo(struct ofw_bus_devinfo *obd, phandle_t node)
 	OF_getprop_alloc(node, "compatible", 1, (void **)&obd->obd_compat);
 	OF_getprop_alloc(node, "device_type", 1, (void **)&obd->obd_type);
 	OF_getprop_alloc(node, "model", 1, (void **)&obd->obd_model);
+	OF_getprop_alloc(node, "status", 1, (void **)&obd->obd_status);
 	obd->obd_node = node;
 	return (0);
 }
@@ -73,6 +76,8 @@ ofw_bus_gen_destroy_devinfo(struct ofw_bus_devinfo *obd)
 		free(obd->obd_name, M_OFWPROP);
 	if (obd->obd_type != NULL)
 		free(obd->obd_type, M_OFWPROP);
+	if (obd->obd_status != NULL)
+		free(obd->obd_status, M_OFWPROP);
 }
 
 int
@@ -147,12 +152,62 @@ ofw_bus_gen_get_type(device_t bus, device_t dev)
 	return (obd->obd_type);
 }
 
+const char *
+ofw_bus_get_status(device_t dev)
+{
+	const struct ofw_bus_devinfo *obd;
+
+	obd = OFW_BUS_GET_DEVINFO(device_get_parent(dev), dev);
+	if (obd == NULL)
+		return (NULL);
+
+	return (obd->obd_status);
+}
+
+int
+ofw_bus_status_okay(device_t dev)
+{
+	const char *status;
+
+	status = ofw_bus_get_status(dev);
+	if (status == NULL || strcmp(status, "okay") == 0 ||
+	    strcmp(status, "ok") == 0)
+		return (1);
+	
+	return (0);
+}
+
+static int
+ofw_bus_node_is_compatible(const char *compat, int len, const char *onecompat)
+{
+	int onelen, l, ret;
+
+	onelen = strlen(onecompat);
+
+	ret = 0;
+	while (len > 0) {
+		if (strlen(compat) == onelen &&
+		    strncasecmp(compat, onecompat, onelen) == 0) {
+			/* Found it. */
+			ret = 1;
+			break;
+		}
+
+		/* Slide to the next sub-string. */
+		l = strlen(compat) + 1;
+		compat += l;
+		len -= l;
+	}
+
+	return (ret);
+}
+
 int
 ofw_bus_is_compatible(device_t dev, const char *onecompat)
 {
 	phandle_t node;
 	const char *compat;
-	int len, onelen, l;
+	int len;
 
 	if ((compat = ofw_bus_get_compat(dev)) == NULL)
 		return (0);
@@ -164,20 +219,7 @@ ofw_bus_is_compatible(device_t dev, const char *onecompat)
 	if ((len = OF_getproplen(node, "compatible")) <= 0)
 		return (0);
 
-	onelen = strlen(onecompat);
-
-	while (len > 0) {
-		if (strlen(compat) == onelen &&
-		    strncasecmp(compat, onecompat, onelen) == 0)
-			/* Found it. */
-			return (1);
-
-		/* Slide to the next sub-string. */
-		l = strlen(compat) + 1;
-		compat += l;
-		len -= l;
-	}
-	return (0);
+	return (ofw_bus_node_is_compatible(compat, len, onecompat));
 }
 
 int
@@ -197,6 +239,21 @@ ofw_bus_is_compatible_strict(device_t dev, const char *compatible)
 	return (0);
 }
 
+const struct ofw_compat_data *
+ofw_bus_search_compatible(device_t dev, const struct ofw_compat_data *compat)
+{
+
+	if (compat == NULL)
+		return NULL;
+
+	for (; compat->ocd_str != NULL; ++compat) {
+		if (ofw_bus_is_compatible(dev, compat->ocd_str))
+			break;
+	}
+
+	return (compat);
+}
+
 int
 ofw_bus_has_prop(device_t dev, const char *propname)
 {
@@ -208,21 +265,20 @@ ofw_bus_has_prop(device_t dev, const char *propname)
 	return (OF_hasprop(node, propname));
 }
 
-#ifndef FDT
 void
 ofw_bus_setup_iinfo(phandle_t node, struct ofw_bus_iinfo *ii, int intrsz)
 {
 	pcell_t addrc;
 	int msksz;
 
-	if (OF_getprop(node, "#address-cells", &addrc, sizeof(addrc)) == -1)
+	if (OF_getencprop(node, "#address-cells", &addrc, sizeof(addrc)) == -1)
 		addrc = 2;
 	ii->opi_addrc = addrc * sizeof(pcell_t);
 
-	ii->opi_imapsz = OF_getprop_alloc(node, "interrupt-map", 1,
+	ii->opi_imapsz = OF_getencprop_alloc(node, "interrupt-map", 1,
 	    (void **)&ii->opi_imap);
 	if (ii->opi_imapsz > 0) {
-		msksz = OF_getprop_alloc(node, "interrupt-map-mask", 1,
+		msksz = OF_getencprop_alloc(node, "interrupt-map-mask", 1,
 		    (void **)&ii->opi_imapmsk);
 		/*
 		 * Failure to get the mask is ignored; a full mask is used
@@ -237,8 +293,9 @@ ofw_bus_setup_iinfo(phandle_t node, struct ofw_bus_iinfo *ii, int intrsz)
 int
 ofw_bus_lookup_imap(phandle_t node, struct ofw_bus_iinfo *ii, void *reg,
     int regsz, void *pintr, int pintrsz, void *mintr, int mintrsz,
-    phandle_t *iparent, void *maskbuf)
+    phandle_t *iparent)
 {
+	uint8_t maskbuf[regsz + pintrsz];
 	int rv;
 
 	if (ii->opi_imapsz <= 0)
@@ -246,9 +303,11 @@ ofw_bus_lookup_imap(phandle_t node, struct ofw_bus_iinfo *ii, void *reg,
 	KASSERT(regsz >= ii->opi_addrc,
 	    ("ofw_bus_lookup_imap: register size too small: %d < %d",
 		regsz, ii->opi_addrc));
-	rv = OF_getprop(node, "reg", reg, regsz);
-	if (rv < regsz)
-		panic("ofw_bus_lookup_imap: could not get reg property");
+	if (node != -1) {
+		rv = OF_getencprop(node, "reg", reg, regsz);
+		if (rv < regsz)
+			panic("ofw_bus_lookup_imap: cannot get reg property");
+	}
 	return (ofw_bus_search_intrmap(pintr, pintrsz, reg, ii->opi_addrc,
 	    ii->opi_imap, ii->opi_imapsz, ii->opi_imapmsk, maskbuf, mintr,
 	    mintrsz, iparent));
@@ -269,7 +328,7 @@ ofw_bus_lookup_imap(phandle_t node, struct ofw_bus_iinfo *ii, void *reg,
  * maskbuf must point to a buffer of length physsz + intrsz.
  * The interrupt is returned in result, which must point to a buffer of length
  * rintrsz (which gives the expected size of the mapped interrupt).
- * Returns 1 if a mapping was found, 0 otherwise.
+ * Returns number of cells in the interrupt if a mapping was found, 0 otherwise.
  */
 int
 ofw_bus_search_intrmap(void *intr, int intrsz, void *regs, int physsz,
@@ -282,6 +341,7 @@ ofw_bus_search_intrmap(void *intr, int intrsz, void *regs, int physsz,
 	uint8_t *uiregs = regs;
 	uint8_t *uiimapmsk = imapmsk;
 	uint8_t *mptr;
+	pcell_t paddrsz;
 	pcell_t pintrsz;
 	int i, rsz, tsz;
 
@@ -298,34 +358,396 @@ ofw_bus_search_intrmap(void *intr, int intrsz, void *regs, int physsz,
 
 	mptr = imap;
 	i = imapsz;
+	paddrsz = 0;
 	while (i > 0) {
 		bcopy(mptr + physsz + intrsz, &parent, sizeof(parent));
-		if (OF_searchprop(parent, "#interrupt-cells",
-		    &pintrsz, sizeof(pintrsz)) == -1)
+#ifdef OFW_EPAPR
+		/*
+		 * Find if we need to read the parent address data. Sparc64
+		 * uses a different encoding that doesn't include this data.
+		 */
+		if (OF_getencprop(OF_node_from_xref(parent),
+		    "#address-cells", &paddrsz, sizeof(paddrsz)) == -1)
+			paddrsz = 0;	/* default */
+		paddrsz *= sizeof(pcell_t);
+#endif
+
+		if (OF_searchencprop(OF_node_from_xref(parent),
+		    "#interrupt-cells", &pintrsz, sizeof(pintrsz)) == -1)
 			pintrsz = 1;	/* default */
 		pintrsz *= sizeof(pcell_t);
 
 		/* Compute the map stride size. */
-		tsz = physsz + intrsz + sizeof(phandle_t) + pintrsz;
+		tsz = physsz + intrsz + sizeof(phandle_t) + paddrsz + pintrsz;
 		KASSERT(i >= tsz, ("ofw_bus_search_intrmap: truncated map"));
 
-		/*
-		 * XXX: Apple hardware uses a second cell to set information
-		 * on the interrupt trigger type.  This information should
-		 * be used somewhere to program the PIC.
-		 */
-
 		if (bcmp(ref, mptr, physsz + intrsz) == 0) {
-			bcopy(mptr + physsz + intrsz + sizeof(parent),
-			    result, rintrsz);
+			bcopy(mptr + physsz + intrsz + sizeof(parent) + paddrsz,
+			    result, MIN(rintrsz, pintrsz));
 
 			if (iparent != NULL)
 				*iparent = parent;
-			return (1);
+			return (pintrsz/sizeof(pcell_t));
 		}
 		mptr += tsz;
 		i -= tsz;
 	}
 	return (0);
 }
-#endif /* !FDT */
+
+int
+ofw_bus_reg_to_rl(device_t dev, phandle_t node, pcell_t acells, pcell_t scells,
+    struct resource_list *rl)
+{
+	uint64_t phys, size;
+	ssize_t i, j, rid, nreg, ret;
+	uint32_t *reg;
+	char *name;
+
+	/*
+	 * This may be just redundant when having ofw_bus_devinfo
+	 * but makes this routine independent of it.
+	 */
+	ret = OF_getprop_alloc(node, "name", sizeof(*name), (void **)&name);
+	if (ret == -1)
+		name = NULL;
+
+	ret = OF_getencprop_alloc(node, "reg", sizeof(*reg), (void **)&reg);
+	nreg = (ret == -1) ? 0 : ret;
+
+	if (nreg % (acells + scells) != 0) {
+		if (bootverbose)
+			device_printf(dev, "Malformed reg property on <%s>\n",
+			    (name == NULL) ? "unknown" : name);
+		nreg = 0;
+	}
+
+	for (i = 0, rid = 0; i < nreg; i += acells + scells, rid++) {
+		phys = size = 0;
+		for (j = 0; j < acells; j++) {
+			phys <<= 32;
+			phys |= reg[i + j];
+		}
+		for (j = 0; j < scells; j++) {
+			size <<= 32;
+			size |= reg[i + acells + j];
+		}
+		/* Skip the dummy reg property of glue devices like ssm(4). */
+		if (size != 0)
+			resource_list_add(rl, SYS_RES_MEMORY, rid,
+			    phys, phys + size - 1, size);
+	}
+	free(name, M_OFWPROP);
+	free(reg, M_OFWPROP);
+
+	return (0);
+}
+
+/*
+ * Get interrupt parent for given node.
+ * Returns 0 if interrupt parent doesn't exist.
+ */
+phandle_t
+ofw_bus_find_iparent(phandle_t node)
+{
+	phandle_t iparent;
+
+	if (OF_searchencprop(node, "interrupt-parent", &iparent,
+		    sizeof(iparent)) == -1) {
+		for (iparent = node; iparent != 0;
+		    iparent = OF_parent(iparent)) {
+			if (OF_hasprop(iparent, "interrupt-controller"))
+				break;
+		}
+		iparent = OF_xref_from_node(iparent);
+	}
+	return (iparent);
+}
+
+int
+ofw_bus_intr_to_rl(device_t dev, phandle_t node,
+    struct resource_list *rl, int *rlen)
+{
+	phandle_t iparent;
+	uint32_t icells, *intr;
+	int err, i, irqnum, nintr, rid;
+	boolean_t extended;
+
+	nintr = OF_getencprop_alloc(node, "interrupts",  sizeof(*intr),
+	    (void **)&intr);
+	if (nintr > 0) {
+		iparent = ofw_bus_find_iparent(node);
+		if (iparent == 0) {
+			device_printf(dev, "No interrupt-parent found, "
+			    "assuming direct parent\n");
+			iparent = OF_parent(node);
+			iparent = OF_xref_from_node(iparent);
+		}
+		if (OF_searchencprop(OF_node_from_xref(iparent), 
+		    "#interrupt-cells", &icells, sizeof(icells)) == -1) {
+			device_printf(dev, "Missing #interrupt-cells "
+			    "property, assuming <1>\n");
+			icells = 1;
+		}
+		if (icells < 1 || icells > nintr) {
+			device_printf(dev, "Invalid #interrupt-cells property "
+			    "value <%d>, assuming <1>\n", icells);
+			icells = 1;
+		}
+		extended = false;
+	} else {
+		nintr = OF_getencprop_alloc(node, "interrupts-extended",
+		    sizeof(*intr), (void **)&intr);
+		if (nintr <= 0)
+			return (0);
+		extended = true;
+	}
+	err = 0;
+	rid = 0;
+	for (i = 0; i < nintr; i += icells) {
+		if (extended) {
+			iparent = intr[i++];
+			if (OF_searchencprop(OF_node_from_xref(iparent), 
+			    "#interrupt-cells", &icells, sizeof(icells)) == -1) {
+				device_printf(dev, "Missing #interrupt-cells "
+				    "property\n");
+				err = ENOENT;
+				break;
+			}
+			if (icells < 1 || (i + icells) > nintr) {
+				device_printf(dev, "Invalid #interrupt-cells "
+				    "property value <%d>\n", icells);
+				err = ERANGE;
+				break;
+			}
+		}
+		irqnum = ofw_bus_map_intr(dev, iparent, icells, &intr[i]);
+		resource_list_add(rl, SYS_RES_IRQ, rid++, irqnum, irqnum, 1);
+	}
+	if (rlen != NULL)
+		*rlen = rid;
+	free(intr, M_OFWPROP);
+	return (err);
+}
+
+phandle_t
+ofw_bus_find_child(phandle_t start, const char *child_name)
+{
+	char *name;
+	int ret;
+	phandle_t child;
+
+	for (child = OF_child(start); child != 0; child = OF_peer(child)) {
+		ret = OF_getprop_alloc(child, "name", sizeof(*name), (void **)&name);
+		if (ret == -1)
+			continue;
+		if (strcmp(name, child_name) == 0) {
+			free(name, M_OFWPROP);
+			return (child);
+		}
+
+		free(name, M_OFWPROP);
+	}
+
+	return (0);
+}
+
+phandle_t
+ofw_bus_find_compatible(phandle_t node, const char *onecompat)
+{
+	phandle_t child, ret;
+	void *compat;
+	int len;
+
+	/*
+	 * Traverse all children of 'start' node, and find first with
+	 * matching 'compatible' property.
+	 */
+	for (child = OF_child(node); child != 0; child = OF_peer(child)) {
+		len = OF_getprop_alloc(child, "compatible", 1, &compat);
+		if (len >= 0) {
+			ret = ofw_bus_node_is_compatible(compat, len,
+			    onecompat);
+			free(compat, M_OFWPROP);
+			if (ret != 0)
+				return (child);
+		}
+
+		ret = ofw_bus_find_compatible(child, onecompat);
+		if (ret != 0)
+			return (ret);
+	}
+	return (0);
+}
+
+/**
+ * @brief Return child of bus whose phandle is node
+ *
+ * A direct child of @p will be returned if it its phandle in the
+ * OFW tree is @p node. Otherwise, NULL is returned.
+ *
+ * @param bus		The bus to examine
+ * @param node		The phandle_t to look for.
+ */
+device_t
+ofw_bus_find_child_device_by_phandle(device_t bus, phandle_t node)
+{
+	device_t *children, retval, child;
+	int nkid, i;
+
+	/*
+	 * Nothing can match the flag value for no node.
+	 */
+	if (node == -1)
+		return (NULL);
+
+	/*
+	 * Search the children for a match. We microoptimize
+	 * a bit by not using ofw_bus_get since we already know
+	 * the parent. We do not recurse.
+	 */
+	if (device_get_children(bus, &children, &nkid) != 0)
+		return (NULL);
+	retval = NULL;
+	for (i = 0; i < nkid; i++) {
+		child = children[i];
+		if (OFW_BUS_GET_NODE(bus, child) == node) {
+			retval = child;
+			break;
+		}
+	}
+	free(children, M_TEMP);
+
+	return (retval);
+}
+
+/*
+ * Parse property that contain list of xrefs and values
+ * (like standard "clocks" and "resets" properties)
+ * Input arguments:
+ *  node - consumers device node
+ *  list_name  - name of parsed list - "clocks"
+ *  cells_name - name of size property - "#clock-cells"
+ * Output arguments:
+ *  producer - handle of producer
+ *  ncells   - number of cells in result
+ *  cells    - array of decoded cells
+ */
+int
+ofw_bus_parse_xref_list_alloc(phandle_t node, const char *list_name,
+    const char *cells_name, int idx, phandle_t *producer, int *ncells,
+    pcell_t **cells)
+{
+	phandle_t pnode;
+	phandle_t *elems;
+	uint32_t  pcells;
+	int rv, i, j, nelems, cnt;
+
+	elems = NULL;
+	nelems = OF_getencprop_alloc(node, list_name,  sizeof(*elems),
+	    (void **)&elems);
+	if (nelems <= 0)
+		return (ENOENT);
+	rv = ENOENT;
+	for (i = 0, cnt = 0; i < nelems; i += pcells, cnt++) {
+		pnode = elems[i++];
+		if (OF_getencprop(OF_node_from_xref(pnode),
+		    cells_name, &pcells, sizeof(pcells)) == -1) {
+			printf("Missing %s property\n", cells_name);
+			rv = ENOENT;
+			break;
+		}
+
+		if ((i + pcells) > nelems) {
+			printf("Invalid %s property value <%d>\n", cells_name,
+			    pcells);
+			rv = ERANGE;
+			break;
+		}
+		if (cnt == idx) {
+			*cells= malloc(pcells * sizeof(**cells), M_OFWPROP,
+			    M_WAITOK);
+			*producer = pnode;
+			*ncells = pcells;
+			for (j = 0; j < pcells; j++)
+				(*cells)[j] = elems[i + j];
+			rv = 0;
+			break;
+		}
+	}
+	if (elems != NULL)
+		free(elems, M_OFWPROP);
+	return (rv);
+}
+
+/*
+ * Find index of string in string list property (case sensitive).
+ */
+int
+ofw_bus_find_string_index(phandle_t node, const char *list_name,
+    const char *name, int *idx)
+{
+	char *elems;
+	int rv, i, cnt, nelems;
+
+	elems = NULL;
+	nelems = OF_getprop_alloc(node, list_name, 1, (void **)&elems);
+	if (nelems <= 0)
+		return (ENOENT);
+
+	rv = ENOENT;
+	for (i = 0, cnt = 0; i < nelems; cnt++) {
+		if (strcmp(elems + i, name) == 0) {
+			*idx = cnt;
+			rv = 0;
+			break;
+		}
+		i += strlen(elems + i) + 1;
+	}
+
+	if (elems != NULL)
+		free(elems, M_OFWPROP);
+	return (rv);
+}
+
+/*
+ * Create zero terminated array of strings from string list property.
+ */
+int
+ofw_bus_string_list_to_array(phandle_t node, const char *list_name,
+   const char ***array)
+{
+	char *elems, *tptr;
+	int i, cnt, nelems, len;
+
+	elems = NULL;
+	nelems = OF_getprop_alloc(node, list_name, 1, (void **)&elems);
+	if (nelems <= 0)
+		return (nelems);
+
+	/* Count number of strings. */
+	for (i = 0, cnt = 0; i < nelems; cnt++)
+		i += strlen(elems + i) + 1;
+
+	/* Allocate space for arrays and all strings. */
+	*array = malloc((cnt + 1) * sizeof(char *) + nelems, M_OFWPROP,
+	    M_WAITOK);
+
+	/* Get address of first string. */
+	tptr = (char *)(*array + cnt);
+
+	/* Copy strings. */
+	memcpy(tptr, elems, nelems);
+	free(elems, M_OFWPROP);
+
+	/* Fill string pointers. */
+	for (i = 0, cnt = 0; i < nelems; cnt++) {
+		len = strlen(tptr + i) + 1;
+		*array[cnt] = tptr;
+		i += len;
+		tptr += len;
+	}
+	*array[cnt] = 0;
+
+	return (cnt);
+}

@@ -32,6 +32,7 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+#include <sys/capsicum.h>
 #include <sys/fcntl.h>
 #include <sys/filedesc.h>
 #include <sys/libkern.h>
@@ -273,7 +274,6 @@ audit_ctlname_to_sysctlevent(int name[], uint64_t valid_arg)
 	case KERN_USRSTACK:
 	case KERN_LOGSIGEXIT:
 	case KERN_IOV_MAX:
-	case KERN_MAXID:
 		return ((valid_arg & ARG_VALUE) ?
 		    AUE_SYSCTL : AUE_SYSCTL_NONADMIN);
 
@@ -468,6 +468,7 @@ audit_canon_path(struct thread *td, int dirfd, char *path, char *cpath)
 	char *rbuf, *fbuf, *copy;
 	struct filedesc *fdp;
 	struct sbuf sbf;
+	cap_rights_t rights;
 	int error, needslash;
 
 	WITNESS_WARN(WARN_GIANTOK | WARN_SLEEPOK, NULL, "%s: at %s:%d",
@@ -496,8 +497,9 @@ audit_canon_path(struct thread *td, int dirfd, char *path, char *cpath)
 			vhold(cvnp);
 		} else {
 			/* XXX: fgetvp() that vhold()s vnode instead of vref()ing it would be better */
-			error = fgetvp(td, dirfd, 0, &cvnp);
+			error = fgetvp(td, dirfd, cap_rights_init(&rights), &cvnp);
 			if (error) {
+				FILEDESC_SUNLOCK(fdp);
 				cpath[0] = '\0';
 				if (rvnp != NULL)
 					vdrop(rvnp);

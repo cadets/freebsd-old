@@ -32,6 +32,8 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_rss.h"
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/malloc.h>
@@ -45,6 +47,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/syslog.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
+#include <net/netisr.h>
 #include <net/route.h>
 #include <net/vnet.h>
 
@@ -57,13 +61,6 @@ __FBSDID("$FreeBSD$");
 #include <netinet/ip.h>		/* for ECN definitions */
 
 #include <security/mac/mac_framework.h>
-
-/*
- * Define it to get a correct behavior on per-interface statistics.
- * You will need to perform an extra routing table lookup, per fragment,
- * to do it.  This may, or may not be, a performance hit.
- */
-#define IN6_IFSTAT_STRICT
 
 static void frag6_enq(struct ip6asfrag *, struct ip6asfrag *);
 static void frag6_deq(struct ip6asfrag *);
@@ -159,14 +156,17 @@ frag6_input(struct mbuf **mp, int *offp, int proto)
 	struct ip6_frag *ip6f;
 	struct ip6q *q6;
 	struct ip6asfrag *af6, *ip6af, *af6dwn;
-#ifdef IN6_IFSTAT_STRICT
 	struct in6_ifaddr *ia;
-#endif
 	int offset = *offp, nxt, i, next;
 	int first_frag = 0;
 	int fragoff, frgpartlen;	/* must be larger than u_int16_t */
 	struct ifnet *dstifp;
 	u_int8_t ecn, ecn0;
+#ifdef RSS
+	struct m_tag *mtag;
+	struct ip6_direct_ctx *ip6dc;
+#endif
+
 #if 0
 	char ip6buf[INET6_ADDRSTRLEN];
 #endif
@@ -182,18 +182,12 @@ frag6_input(struct mbuf **mp, int *offp, int proto)
 #endif
 
 	dstifp = NULL;
-#ifdef IN6_IFSTAT_STRICT
 	/* find the destination interface of the packet. */
-	if ((ia = ip6_getdstifaddr(m)) != NULL) {
+	ia = in6ifa_ifwithaddr(&ip6->ip6_dst, 0 /* XXX */);
+	if (ia != NULL) {
 		dstifp = ia->ia_ifp;
 		ifa_free(&ia->ia_ifa);
 	}
-#else
-	/* we are violating the spec, this is not the destination interface */
-	if ((m->m_flags & M_PKTHDR) != 0)
-		dstifp = m->m_pkthdr.rcvif;
-#endif
-
 	/* jumbo payload can't contain a fragment header */
 	if (ip6->ip6_plen == 0) {
 		icmp6_error(m, ICMP6_PARAM_PROB, ICMP6_PARAMPROB_HEADER, offset);
@@ -222,9 +216,8 @@ frag6_input(struct mbuf **mp, int *offp, int proto)
 	offset += sizeof(struct ip6_frag);
 
 	/*
-	 * XXX-BZ RFC XXXX (draft-gont-6man-ipv6-atomic-fragments)
-	 * Handle "atomic" fragments (offset and m bit set to 0) upfront,
-	 * unrelated to any reassembly.  Just skip the fragment header.
+	 * RFC 6946: Handle "atomic" fragments (offset and m bit set to 0)
+	 * upfront, unrelated to any reassembly.  Just skip the fragment header.
 	 */
 	if ((ip6f->ip6f_offlg & ~IP6F_RESERVED_MASK) == 0) {
 		/* XXX-BZ we want dedicated counters for this. */
@@ -538,8 +531,8 @@ insert:
 		frag6_deq(af6);
 		while (t->m_next)
 			t = t->m_next;
-		t->m_next = IP6_REASS_MBUF(af6);
-		m_adj(t->m_next, af6->ip6af_offset);
+		m_adj(IP6_REASS_MBUF(af6), af6->ip6af_offset);
+		m_cat(t, IP6_REASS_MBUF(af6));
 		free(af6, M_FTABLE);
 		af6 = af6dwn;
 	}
@@ -556,27 +549,16 @@ insert:
 	*q6->ip6q_nxtp = (u_char)(nxt & 0xff);
 #endif
 
-	/* Delete frag6 header */
-	if (m->m_len >= offset + sizeof(struct ip6_frag)) {
-		/* This is the only possible case with !PULLDOWN_TEST */
-		ovbcopy((caddr_t)ip6, (caddr_t)ip6 + sizeof(struct ip6_frag),
-		    offset);
-		m->m_data += sizeof(struct ip6_frag);
-		m->m_len -= sizeof(struct ip6_frag);
-	} else {
-		/* this comes with no copy if the boundary is on cluster */
-		if ((t = m_split(m, offset, M_NOWAIT)) == NULL) {
-			frag6_remque(q6);
-			V_frag6_nfrags -= q6->ip6q_nfrag;
+	if (ip6_deletefraghdr(m, offset, M_NOWAIT) != 0) {
+		frag6_remque(q6);
+		V_frag6_nfrags -= q6->ip6q_nfrag;
 #ifdef MAC
-			mac_ip6q_destroy(q6);
+		mac_ip6q_destroy(q6);
 #endif
-			free(q6, M_FTABLE);
-			V_frag6_nfragpackets--;
-			goto dropfrag;
-		}
-		m_adj(t, sizeof(struct ip6_frag));
-		m_cat(m, t);
+		free(q6, M_FTABLE);
+		V_frag6_nfragpackets--;
+
+		goto dropfrag;
 	}
 
 	/*
@@ -603,8 +585,30 @@ insert:
 		m->m_pkthdr.len = plen;
 	}
 
+#ifdef RSS
+	mtag = m_tag_alloc(MTAG_ABI_IPV6, IPV6_TAG_DIRECT, sizeof(*ip6dc),
+	    M_NOWAIT);
+	if (mtag == NULL)
+		goto dropfrag;
+
+	ip6dc = (struct ip6_direct_ctx *)(mtag + 1);
+	ip6dc->ip6dc_nxt = nxt;
+	ip6dc->ip6dc_off = offset;
+
+	m_tag_prepend(m, mtag);
+#endif
+
+	IP6Q_UNLOCK();
 	IP6STAT_INC(ip6s_reassembled);
 	in6_ifstat_inc(dstifp, ifs6_reass_ok);
+
+#ifdef RSS
+	/*
+	 * Queue/dispatch for reprocessing.
+	 */
+	netisr_dispatch(NETISR_IPV6_DIRECT, m);
+	return IPPROTO_DONE;
+#endif
 
 	/*
 	 * Tell launch routine the next header
@@ -613,7 +617,6 @@ insert:
 	*mp = m;
 	*offp = offset;
 
-	IP6Q_UNLOCK();
 	return nxt;
 
  dropfrag:
@@ -789,4 +792,28 @@ frag6_drain(void)
 	}
 	IP6Q_UNLOCK();
 	VNET_LIST_RUNLOCK_NOSLEEP();
+}
+
+int
+ip6_deletefraghdr(struct mbuf *m, int offset, int wait)
+{
+	struct ip6_hdr *ip6 = mtod(m, struct ip6_hdr *);
+	struct mbuf *t;
+
+	/* Delete frag6 header. */
+	if (m->m_len >= offset + sizeof(struct ip6_frag)) {
+		/* This is the only possible case with !PULLDOWN_TEST. */
+		bcopy(ip6, (char *)ip6 + sizeof(struct ip6_frag),
+		    offset);
+		m->m_data += sizeof(struct ip6_frag);
+		m->m_len -= sizeof(struct ip6_frag);
+	} else {
+		/* This comes with no copy if the boundary is on cluster. */
+		if ((t = m_split(m, offset, wait)) == NULL)
+			return (ENOMEM);
+		m_adj(t, sizeof(struct ip6_frag));
+		m_cat(m, t);
+	}
+
+	return (0);
 }

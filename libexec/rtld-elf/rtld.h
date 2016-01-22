@@ -41,22 +41,6 @@
 #include "rtld_lock.h"
 #include "rtld_machdep.h"
 
-#ifdef COMPAT_32BIT
-#undef STANDARD_LIBRARY_PATH
-#undef _PATH_ELF_HINTS
-#define	_PATH_ELF_HINTS		"/var/run/ld-elf32.so.hints"
-/* For running 32 bit binaries  */
-#define	STANDARD_LIBRARY_PATH	"/lib32:/usr/lib32"
-#define LD_ "LD_32_"
-#endif
-
-#ifndef STANDARD_LIBRARY_PATH
-#define STANDARD_LIBRARY_PATH	"/lib:/usr/lib"
-#endif
-#ifndef LD_
-#define LD_ "LD_"
-#endif
-
 #define NEW(type)	((type *) xmalloc(sizeof(type)))
 #define CNEW(type)	((type *) xcalloc(1, sizeof(type)))
 
@@ -70,6 +54,9 @@ extern size_t tls_last_size;
 extern size_t tls_static_space;
 extern int tls_dtv_generation;
 extern int tls_max_index;
+
+extern int npagesizes;
+extern size_t *pagesizes;
 
 extern int main_argc;
 extern char **main_argv;
@@ -200,6 +187,9 @@ typedef struct Struct_Obj_Entry {
     Elf_Word symtabno;		/* Number of dynamic symbols */
     Elf_Word gotsym;		/* First dynamic symbol in GOT */
 #endif
+#ifdef __powerpc64__
+    Elf_Addr glink;		/* GLINK PLT call stub section */
+#endif
 
     const Elf_Verneed *verneed; /* Required versions. */
     Elf_Word verneednum;	/* Number of entries in verneed table */
@@ -259,7 +249,9 @@ typedef struct Struct_Obj_Entry {
     bool z_nodelete : 1;	/* Do not unload the object and dependencies */
     bool z_noopen : 1;		/* Do not load on dlopen */
     bool z_loadfltr : 1;	/* Immediately load filtees */
+    bool z_interpose : 1;	/* Interpose all objects but main */
     bool z_nodeflib : 1;	/* Don't search default library path */
+    bool z_global : 1;		/* Make the object global */
     bool ref_nodel : 1;		/* Refcount increased to prevent dlclose */
     bool init_scanned: 1;	/* Object is already on init list. */
     bool on_fini_list: 1;	/* Object is already on fini list. */
@@ -267,9 +259,11 @@ typedef struct Struct_Obj_Entry {
     bool filtees_loaded : 1;	/* Filtees loaded */
     bool irelative : 1;		/* Object has R_MACHDEP_IRELATIVE relocs */
     bool gnu_ifunc : 1;		/* Object has references to STT_GNU_IFUNC */
+    bool non_plt_gnu_ifunc : 1;	/* Object has non-plt IFUNC references */
     bool crt_no_init : 1;	/* Object' crt does not call _init/_fini */
     bool valid_hash_sysv : 1;	/* A valid System V hash hash tag is available */
     bool valid_hash_gnu : 1;	/* A valid GNU hash tag is available */
+    bool dlopened : 1;		/* dlopen()-ed (vs. load statically) */
 
     struct link_map linkmap;	/* For GDB and dlinfo() */
     Objlist dldags;		/* Object belongs to these dlopened DAGs (%) */
@@ -289,6 +283,8 @@ typedef struct Struct_Obj_Entry {
 #define SYMLOOK_DLSYM	0x02	/* Return newest versioned symbol. Used by
 				   dlsym. */
 #define	SYMLOOK_EARLY	0x04	/* Symlook is done during initialization. */
+#define	SYMLOOK_IFUNC	0x08	/* Allow IFUNC processing in
+				   reloc_non_plt(). */
 
 /* Flags for load_object(). */
 #define	RTLD_LO_NOLOAD	0x01	/* dlopen() specified RTLD_NOLOAD. */
@@ -345,12 +341,15 @@ typedef struct Struct_SymLook {
     struct Struct_RtldLockState *lockstate;
 } SymLook;
 
-void _rtld_error(const char *, ...) __printflike(1, 2);
+void _rtld_error(const char *, ...) __printflike(1, 2) __exported;
+void rtld_die(void) __dead2;
 const char *rtld_strerror(int);
 Obj_Entry *map_object(int, const char *, const struct stat *);
 void *xcalloc(size_t, size_t);
 void *xmalloc(size_t);
 char *xstrdup(const char *);
+void *malloc_aligned(size_t size, size_t align);
+void free_aligned(void *ptr);
 extern Elf_Addr _GLOBAL_OFFSET_TABLE_[];
 extern Elf_Sym sym_zero;	/* For resolving undefined weak refs. */
 

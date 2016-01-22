@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_GR_VALUESTATE_H
-#define LLVM_CLANG_GR_VALUESTATE_H
+#ifndef LLVM_CLANG_STATICANALYZER_CORE_PATHSENSITIVE_PROGRAMSTATE_H
+#define LLVM_CLANG_STATICANALYZER_CORE_PATHSENSITIVE_PROGRAMSTATE_H
 
 #include "clang/Basic/LLVM.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ConstraintManager.h"
@@ -25,10 +25,10 @@
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/ImmutableMap.h"
 #include "llvm/ADT/PointerIntPair.h"
+#include "llvm/Support/Allocator.h"
 
 namespace llvm {
 class APSInt;
-class BumpPtrAllocator;
 }
 
 namespace clang {
@@ -39,9 +39,10 @@ namespace ento {
 class CallEvent;
 class CallEventManager;
 
-typedef ConstraintManager* (*ConstraintManagerCreator)(ProgramStateManager&,
-                                                       SubEngine*);
-typedef StoreManager* (*StoreManagerCreator)(ProgramStateManager&);
+typedef std::unique_ptr<ConstraintManager>(*ConstraintManagerCreator)(
+    ProgramStateManager &, SubEngine *);
+typedef std::unique_ptr<StoreManager>(*StoreManagerCreator)(
+    ProgramStateManager &);
 
 //===----------------------------------------------------------------------===//
 // ProgramStateTrait - Traits used by the Generic Data Map of a ProgramState.
@@ -75,7 +76,7 @@ public:
   typedef llvm::ImmutableMap<void*, void*>                 GenericDataMap;
 
 private:
-  void operator=(const ProgramState& R) LLVM_DELETED_FUNCTION;
+  void operator=(const ProgramState& R) = delete;
 
   friend class ProgramStateManager;
   friend class ExplodedGraph;
@@ -201,14 +202,6 @@ public:
   // Binding and retrieving values to/from the environment and symbolic store.
   //==---------------------------------------------------------------------==//
 
-  /// \brief Create a new state with the specified CompoundLiteral binding.
-  /// \param CL the compound literal expression (the binding key)
-  /// \param LC the LocationContext of the binding
-  /// \param V the value to bind.
-  ProgramStateRef bindCompoundLiteral(const CompoundLiteralExpr *CL,
-                                      const LocationContext *LC,
-                                      SVal V) const;
-
   /// Create a new state by binding the value 'V' to the statement 'S' in the
   /// state's environment.
   ProgramStateRef BindExpr(const Stmt *S, const LocationContext *LCtx,
@@ -240,22 +233,21 @@ public:
   /// \param IS the set of invalidated symbols.
   /// \param Call if non-null, the invalidated regions represent parameters to
   ///        the call and should be considered directly invalidated.
-  /// \param ConstRegions the set of regions whose contents are accessible,
-  ///        even though the regions themselves should not be invalidated.
+  /// \param ITraits information about special handling for a particular 
+  ///        region/symbol.
   ProgramStateRef
   invalidateRegions(ArrayRef<const MemRegion *> Regions, const Expr *E,
                     unsigned BlockCount, const LocationContext *LCtx,
-                    bool CausesPointerEscape, InvalidatedSymbols *IS = 0,
-                    const CallEvent *Call = 0,
-                    ArrayRef<const MemRegion *> ConstRegions =
-                      ArrayRef<const MemRegion *>()) const;
+                    bool CausesPointerEscape, InvalidatedSymbols *IS = nullptr,
+                    const CallEvent *Call = nullptr,
+                    RegionAndSymbolInvalidationTraits *ITraits = nullptr) const;
 
   ProgramStateRef
   invalidateRegions(ArrayRef<SVal> Regions, const Expr *E,
                     unsigned BlockCount, const LocationContext *LCtx,
-                    bool CausesPointerEscape, InvalidatedSymbols *IS = 0,
-                    const CallEvent *Call = 0,
-                    ArrayRef<SVal> ConstRegions = ArrayRef<SVal>()) const;
+                    bool CausesPointerEscape, InvalidatedSymbols *IS = nullptr,
+                    const CallEvent *Call = nullptr,
+                    RegionAndSymbolInvalidationTraits *ITraits = nullptr) const;
 
   /// enterStackFrame - Returns the state for entry to the given stack frame,
   ///  preserving the current state.
@@ -433,9 +425,9 @@ private:
                         const Expr *E, unsigned BlockCount,
                         const LocationContext *LCtx,
                         bool ResultsInSymbolEscape,
-                        InvalidatedSymbols &IS,
-                        const CallEvent *Call,
-                        ArrayRef<SVal> ConstValues) const;
+                        InvalidatedSymbols *IS,
+                        RegionAndSymbolInvalidationTraits *HTraits,
+                        const CallEvent *Call) const;
 };
 
 //===----------------------------------------------------------------------===//
@@ -450,8 +442,8 @@ private:
   SubEngine *Eng; /* Can be null. */
 
   EnvironmentManager                   EnvMgr;
-  OwningPtr<StoreManager>              StoreMgr;
-  OwningPtr<ConstraintManager>         ConstraintMgr;
+  std::unique_ptr<StoreManager>        StoreMgr;
+  std::unique_ptr<ConstraintManager>   ConstraintMgr;
 
   ProgramState::GenericDataMap::Factory     GDMFactory;
 
@@ -463,10 +455,10 @@ private:
   llvm::FoldingSet<ProgramState> StateSet;
 
   /// Object that manages the data for all created SVals.
-  OwningPtr<SValBuilder> svalBuilder;
+  std::unique_ptr<SValBuilder> svalBuilder;
 
   /// Manages memory for created CallEvents.
-  OwningPtr<CallEventManager> CallEventMgr;
+  std::unique_ptr<CallEventManager> CallEventMgr;
 
   /// A BumpPtrAllocator to allocate states.
   llvm::BumpPtrAllocator &Alloc;
@@ -524,8 +516,8 @@ public:
 
 public:
 
-  SVal ArrayToPointer(Loc Array) {
-    return StoreMgr->ArrayToPointer(Array);
+  SVal ArrayToPointer(Loc Array, QualType ElementTy) {
+    return StoreMgr->ArrayToPointer(Array, ElementTy);
   }
 
   // Methods that manipulate the GDM.
@@ -685,10 +677,8 @@ inline SVal ProgramState::getLValue(const FieldDecl *D, SVal Base) const {
 inline SVal ProgramState::getLValue(const IndirectFieldDecl *D,
                                     SVal Base) const {
   StoreManager &SM = *getStateManager().StoreMgr;
-  for (IndirectFieldDecl::chain_iterator I = D->chain_begin(),
-                                         E = D->chain_end();
-       I != E; ++I) {
-    Base = SM.getLValueField(cast<FieldDecl>(*I), Base);
+  for (const auto *I : D->chain()) {
+    Base = SM.getLValueField(cast<FieldDecl>(I), Base);
   }
 
   return Base;
@@ -711,7 +701,8 @@ ProgramState::getSValAsScalarOrLoc(const Stmt *S,
                                    const LocationContext *LCtx) const {
   if (const Expr *Ex = dyn_cast<Expr>(S)) {
     QualType T = Ex->getType();
-    if (Ex->isGLValue() || Loc::isLocType(T) || T->isIntegerType())
+    if (Ex->isGLValue() || Loc::isLocType(T) ||
+        T->isIntegralOrEnumerationType())
       return getSVal(S, LCtx);
   }
 
@@ -805,7 +796,7 @@ CB ProgramState::scanReachableSymbols(const MemRegion * const *beg,
 /// A Utility class that allows to visit the reachable symbols using a custom
 /// SymbolVisitor.
 class ScanReachableSymbols {
-  typedef llvm::DenseMap<const void*, unsigned> VisitedItems;
+  typedef llvm::DenseSet<const void*> VisitedItems;
 
   VisitedItems visited;
   ProgramStateRef state;
@@ -815,6 +806,7 @@ public:
   ScanReachableSymbols(ProgramStateRef st, SymbolVisitor& v)
     : state(st), visitor(v) {}
 
+  bool scan(nonloc::LazyCompoundVal val);
   bool scan(nonloc::CompoundVal val);
   bool scan(SVal val);
   bool scan(const MemRegion *R);

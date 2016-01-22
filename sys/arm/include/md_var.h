@@ -33,6 +33,7 @@
 #ifndef	_MACHINE_MD_VAR_H_
 #define	_MACHINE_MD_VAR_H_
 
+extern long Maxmem;
 extern char sigcode[];
 extern int szsigcode;
 extern uint32_t *vm_page_dump;
@@ -44,26 +45,24 @@ extern int (*_arm_bzero)(void *, int, int);
 extern int _min_memcpy_size;
 extern int _min_bzero_size;
 
+struct vdso_timehands;
+struct timecounter;
+extern uint32_t (*arm_cpu_fill_vdso_timehands)(struct vdso_timehands *,
+    struct timecounter *);
+
 #define DST_IS_USER	0x1
 #define SRC_IS_USER	0x2
 #define IS_PHYSICAL	0x4
 
 enum cpu_class {
 	CPU_CLASS_NONE,
-	CPU_CLASS_ARM2,
-	CPU_CLASS_ARM2AS,
-	CPU_CLASS_ARM3,
-	CPU_CLASS_ARM6,
-	CPU_CLASS_ARM7,
-	CPU_CLASS_ARM7TDMI,
-	CPU_CLASS_ARM8,
 	CPU_CLASS_ARM9TDMI,
 	CPU_CLASS_ARM9ES,
 	CPU_CLASS_ARM9EJS,
 	CPU_CLASS_ARM10E,
 	CPU_CLASS_ARM10EJ,
 	CPU_CLASS_CORTEXA,
-	CPU_CLASS_SA1,
+	CPU_CLASS_KRAIT,
 	CPU_CLASS_XSCALE,
 	CPU_CLASS_ARM11J,
 	CPU_CLASS_MARVELL
@@ -75,6 +74,8 @@ extern int busdma_swi_pending;
 void busdma_swi(void);
 void dump_add_page(vm_paddr_t);
 void dump_drop_page(vm_paddr_t);
-void minidumpsys(struct dumperinfo *);
+int minidumpsys(struct dumperinfo *);
+
+extern uint32_t initial_fpscr;
 
 #endif /* !_MACHINE_MD_VAR_H_ */

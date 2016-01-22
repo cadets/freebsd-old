@@ -32,11 +32,14 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/malloc.h>
+#include <sys/types.h>
 #include <sys/systm.h>
 #include <sys/mbuf.h>
 #include <sys/domain.h>
 #include <sys/eventhandler.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
 #include <sys/protosw.h>
 #include <sys/smp.h>
 #include <sys/sysctl.h>
@@ -102,7 +105,11 @@ int nmbclusters;		/* limits number of mbuf clusters */
 int nmbjumbop;			/* limits number of page size jumbo clusters */
 int nmbjumbo9;			/* limits number of 9k jumbo clusters */
 int nmbjumbo16;			/* limits number of 16k jumbo clusters */
-struct mbstat mbstat;
+
+static quad_t maxmbufmem;	/* overall real memory limit for all mbufs */
+
+SYSCTL_QUAD(_kern_ipc, OID_AUTO, maxmbufmem, CTLFLAG_RDTUN | CTLFLAG_NOFETCH, &maxmbufmem, 0,
+    "Maximum real memory allocatable to various mbuf types");
 
 /*
  * tunable_mbinit() has to be run before any mbuf allocations are done.
@@ -110,17 +117,16 @@ struct mbstat mbstat;
 static void
 tunable_mbinit(void *dummy)
 {
-	quad_t realmem, maxmbufmem;
+	quad_t realmem;
 
 	/*
 	 * The default limit for all mbuf related memory is 1/2 of all
 	 * available kernel memory (physical or kmem).
 	 * At most it can be 3/4 of available kernel memory.
 	 */
-	realmem = qmin((quad_t)physmem * PAGE_SIZE,
-	    vm_map_max(kmem_map) - vm_map_min(kmem_map));
+	realmem = qmin((quad_t)physmem * PAGE_SIZE, vm_kmem_size);
 	maxmbufmem = realmem / 2;
-	TUNABLE_QUAD_FETCH("kern.maxmbufmem", &maxmbufmem);
+	TUNABLE_QUAD_FETCH("kern.ipc.maxmbufmem", &maxmbufmem);
 	if (maxmbufmem > realmem / 4 * 3)
 		maxmbufmem = realmem / 4 * 3;
 
@@ -158,12 +164,11 @@ sysctl_nmbclusters(SYSCTL_HANDLER_ARGS)
 
 	newnmbclusters = nmbclusters;
 	error = sysctl_handle_int(oidp, &newnmbclusters, 0, req);
-	if (error == 0 && req->newptr) {
+	if (error == 0 && req->newptr && newnmbclusters != nmbclusters) {
 		if (newnmbclusters > nmbclusters &&
 		    nmbufs >= nmbclusters + nmbjumbop + nmbjumbo9 + nmbjumbo16) {
 			nmbclusters = newnmbclusters;
-			uma_zone_set_max(zone_clust, nmbclusters);
-			nmbclusters = uma_zone_get_max(zone_clust);
+			nmbclusters = uma_zone_set_max(zone_clust, nmbclusters);
 			EVENTHANDLER_INVOKE(nmbclusters_change);
 		} else
 			error = EINVAL;
@@ -181,12 +186,11 @@ sysctl_nmbjumbop(SYSCTL_HANDLER_ARGS)
 
 	newnmbjumbop = nmbjumbop;
 	error = sysctl_handle_int(oidp, &newnmbjumbop, 0, req);
-	if (error == 0 && req->newptr) {
+	if (error == 0 && req->newptr && newnmbjumbop != nmbjumbop) {
 		if (newnmbjumbop > nmbjumbop &&
 		    nmbufs >= nmbclusters + nmbjumbop + nmbjumbo9 + nmbjumbo16) {
 			nmbjumbop = newnmbjumbop;
-			uma_zone_set_max(zone_jumbop, nmbjumbop);
-			nmbjumbop = uma_zone_get_max(zone_jumbop);
+			nmbjumbop = uma_zone_set_max(zone_jumbop, nmbjumbop);
 		} else
 			error = EINVAL;
 	}
@@ -203,12 +207,11 @@ sysctl_nmbjumbo9(SYSCTL_HANDLER_ARGS)
 
 	newnmbjumbo9 = nmbjumbo9;
 	error = sysctl_handle_int(oidp, &newnmbjumbo9, 0, req);
-	if (error == 0 && req->newptr) {
-		if (newnmbjumbo9 > nmbjumbo9&&
+	if (error == 0 && req->newptr && newnmbjumbo9 != nmbjumbo9) {
+		if (newnmbjumbo9 > nmbjumbo9 &&
 		    nmbufs >= nmbclusters + nmbjumbop + nmbjumbo9 + nmbjumbo16) {
 			nmbjumbo9 = newnmbjumbo9;
-			uma_zone_set_max(zone_jumbo9, nmbjumbo9);
-			nmbjumbo9 = uma_zone_get_max(zone_jumbo9);
+			nmbjumbo9 = uma_zone_set_max(zone_jumbo9, nmbjumbo9);
 		} else
 			error = EINVAL;
 	}
@@ -225,12 +228,11 @@ sysctl_nmbjumbo16(SYSCTL_HANDLER_ARGS)
 
 	newnmbjumbo16 = nmbjumbo16;
 	error = sysctl_handle_int(oidp, &newnmbjumbo16, 0, req);
-	if (error == 0 && req->newptr) {
+	if (error == 0 && req->newptr && newnmbjumbo16 != nmbjumbo16) {
 		if (newnmbjumbo16 > nmbjumbo16 &&
 		    nmbufs >= nmbclusters + nmbjumbop + nmbjumbo9 + nmbjumbo16) {
 			nmbjumbo16 = newnmbjumbo16;
-			uma_zone_set_max(zone_jumbo16, nmbjumbo16);
-			nmbjumbo16 = uma_zone_get_max(zone_jumbo16);
+			nmbjumbo16 = uma_zone_set_max(zone_jumbo16, nmbjumbo16);
 		} else
 			error = EINVAL;
 	}
@@ -247,23 +249,19 @@ sysctl_nmbufs(SYSCTL_HANDLER_ARGS)
 
 	newnmbufs = nmbufs;
 	error = sysctl_handle_int(oidp, &newnmbufs, 0, req);
-	if (error == 0 && req->newptr) {
+	if (error == 0 && req->newptr && newnmbufs != nmbufs) {
 		if (newnmbufs > nmbufs) {
 			nmbufs = newnmbufs;
-			uma_zone_set_max(zone_mbuf, nmbufs);
-			nmbufs = uma_zone_get_max(zone_mbuf);
+			nmbufs = uma_zone_set_max(zone_mbuf, nmbufs);
 			EVENTHANDLER_INVOKE(nmbufs_change);
 		} else
 			error = EINVAL;
 	}
 	return (error);
 }
-SYSCTL_PROC(_kern_ipc, OID_AUTO, nmbuf, CTLTYPE_INT|CTLFLAG_RW,
+SYSCTL_PROC(_kern_ipc, OID_AUTO, nmbufs, CTLTYPE_INT|CTLFLAG_RW,
 &nmbufs, 0, sysctl_nmbufs, "IU",
     "Maximum number of mbufs allowed");
-
-SYSCTL_STRUCT(_kern_ipc, OID_AUTO, mbstat, CTLFLAG_RD, &mbstat, mbstat,
-    "Mbuf general information and statistics");
 
 /*
  * Zones from which we allocate.
@@ -275,6 +273,12 @@ uma_zone_t	zone_jumbop;
 uma_zone_t	zone_jumbo9;
 uma_zone_t	zone_jumbo16;
 uma_zone_t	zone_ext_refcnt;
+
+/*
+ * Callout to assist us in freeing mbufs.
+ */
+static struct callout	mb_reclaim_callout;
+static struct mtx	mb_reclaim_callout_mtx;
 
 /*
  * Local prototypes.
@@ -289,7 +293,8 @@ static int	mb_zinit_pack(void *, int, int);
 static void	mb_zfini_pack(void *, int);
 
 static void	mb_reclaim(void *);
-static void    *mbuf_jumbo_alloc(uma_zone_t, int, uint8_t *, int);
+static void    *mbuf_jumbo_alloc(uma_zone_t, vm_size_t, uint8_t *, int);
+static void	mb_maxaction(uma_zone_t);
 
 /* Ensure that MSIZE is a power of 2. */
 CTASSERT((((MSIZE - 1) ^ MSIZE) + 1) >> 1 == MSIZE);
@@ -315,6 +320,7 @@ mbuf_init(void *dummy)
 	if (nmbufs > 0)
 		nmbufs = uma_zone_set_max(zone_mbuf, nmbufs);
 	uma_zone_set_warning(zone_mbuf, "kern.ipc.nmbufs limit reached");
+	uma_zone_set_maxaction(zone_mbuf, mb_maxaction);
 
 	zone_clust = uma_zcreate(MBUF_CLUSTER_MEM_NAME, MCLBYTES,
 	    mb_ctor_clust, mb_dtor_clust,
@@ -327,6 +333,7 @@ mbuf_init(void *dummy)
 	if (nmbclusters > 0)
 		nmbclusters = uma_zone_set_max(zone_clust, nmbclusters);
 	uma_zone_set_warning(zone_clust, "kern.ipc.nmbclusters limit reached");
+	uma_zone_set_maxaction(zone_clust, mb_maxaction);
 
 	zone_pack = uma_zsecond_create(MBUF_PACKET_MEM_NAME, mb_ctor_pack,
 	    mb_dtor_pack, mb_zinit_pack, mb_zfini_pack, zone_mbuf);
@@ -343,6 +350,7 @@ mbuf_init(void *dummy)
 	if (nmbjumbop > 0)
 		nmbjumbop = uma_zone_set_max(zone_jumbop, nmbjumbop);
 	uma_zone_set_warning(zone_jumbop, "kern.ipc.nmbjumbop limit reached");
+	uma_zone_set_maxaction(zone_jumbop, mb_maxaction);
 
 	zone_jumbo9 = uma_zcreate(MBUF_JUMBO9_MEM_NAME, MJUM9BYTES,
 	    mb_ctor_clust, mb_dtor_clust,
@@ -356,6 +364,7 @@ mbuf_init(void *dummy)
 	if (nmbjumbo9 > 0)
 		nmbjumbo9 = uma_zone_set_max(zone_jumbo9, nmbjumbo9);
 	uma_zone_set_warning(zone_jumbo9, "kern.ipc.nmbjumbo9 limit reached");
+	uma_zone_set_maxaction(zone_jumbo9, mb_maxaction);
 
 	zone_jumbo16 = uma_zcreate(MBUF_JUMBO16_MEM_NAME, MJUM16BYTES,
 	    mb_ctor_clust, mb_dtor_clust,
@@ -369,6 +378,7 @@ mbuf_init(void *dummy)
 	if (nmbjumbo16 > 0)
 		nmbjumbo16 = uma_zone_set_max(zone_jumbo16, nmbjumbo16);
 	uma_zone_set_warning(zone_jumbo16, "kern.ipc.nmbjumbo16 limit reached");
+	uma_zone_set_maxaction(zone_jumbo16, mb_maxaction);
 
 	zone_ext_refcnt = uma_zcreate(MBUF_EXTREFCNT_MEM_NAME, sizeof(u_int),
 	    NULL, NULL,
@@ -377,6 +387,11 @@ mbuf_init(void *dummy)
 
 	/* uma_prealloc() goes here... */
 
+	/* Initialize the mb_reclaim() callout. */
+	mtx_init(&mb_reclaim_callout_mtx, "mb_reclaim_callout_mtx", NULL,
+	    MTX_DEF);
+	callout_init(&mb_reclaim_callout, 1);
+
 	/*
 	 * Hook event handler for low-memory situation, used to
 	 * drain protocols and push data back to the caches (UMA
@@ -384,25 +399,6 @@ mbuf_init(void *dummy)
 	 */
 	EVENTHANDLER_REGISTER(vm_lowmem, mb_reclaim, NULL,
 	    EVENTHANDLER_PRI_FIRST);
-
-	/*
-	 * [Re]set counters and local statistics knobs.
-	 * XXX Some of these should go and be replaced, but UMA stat
-	 * gathering needs to be revised.
-	 */
-	mbstat.m_mbufs = 0;
-	mbstat.m_mclusts = 0;
-	mbstat.m_drain = 0;
-	mbstat.m_msize = MSIZE;
-	mbstat.m_mclbytes = MCLBYTES;
-	mbstat.m_minclsize = MINCLSIZE;
-	mbstat.m_mlen = MLEN;
-	mbstat.m_mhlen = MHLEN;
-	mbstat.m_numtypes = MT_NTYPES;
-
-	mbstat.m_mcfail = mbstat.m_mpfail = 0;
-	mbstat.sf_iocnt = 0;
-	mbstat.sf_allocwait = mbstat.sf_allocfail = 0;
 }
 SYSINIT(mbuf, SI_SUB_MBUF, SI_ORDER_FIRST, mbuf_init, NULL);
 
@@ -413,12 +409,12 @@ SYSINIT(mbuf, SI_SUB_MBUF, SI_ORDER_FIRST, mbuf_init, NULL);
  * pages.
  */
 static void *
-mbuf_jumbo_alloc(uma_zone_t zone, int bytes, uint8_t *flags, int wait)
+mbuf_jumbo_alloc(uma_zone_t zone, vm_size_t bytes, uint8_t *flags, int wait)
 {
 
 	/* Inform UMA that this allocator uses kernel_map/object. */
 	*flags = UMA_SLAB_KERNEL;
-	return ((void *)kmem_alloc_contig(kernel_map, bytes, wait,
+	return ((void *)kmem_alloc_contig(kernel_arena, bytes, wait,
 	    (vm_paddr_t)0, ~(vm_paddr_t)0, 1, 0, VM_MEMATTR_DEFAULT));
 }
 
@@ -434,18 +430,14 @@ mb_ctor_mbuf(void *mem, int size, void *arg, int how)
 {
 	struct mbuf *m;
 	struct mb_args *args;
-#ifdef MAC
 	int error;
-#endif
 	int flags;
 	short type;
 
 #ifdef INVARIANTS
 	trash_ctor(mem, size, arg, how);
 #endif
-	m = (struct mbuf *)mem;
 	args = (struct mb_args *)arg;
-	flags = args->flags;
 	type = args->type;
 
 	/*
@@ -455,32 +447,12 @@ mb_ctor_mbuf(void *mem, int size, void *arg, int how)
 	if (type == MT_NOINIT)
 		return (0);
 
-	m->m_next = NULL;
-	m->m_nextpkt = NULL;
-	m->m_len = 0;
-	m->m_flags = flags;
-	m->m_type = type;
-	if (flags & M_PKTHDR) {
-		m->m_data = m->m_pktdat;
-		m->m_pkthdr.rcvif = NULL;
-		m->m_pkthdr.header = NULL;
-		m->m_pkthdr.len = 0;
-		m->m_pkthdr.csum_flags = 0;
-		m->m_pkthdr.csum_data = 0;
-		m->m_pkthdr.tso_segsz = 0;
-		m->m_pkthdr.ether_vtag = 0;
-		m->m_pkthdr.flowid = 0;
-		m->m_pkthdr.fibnum = 0;
-		SLIST_INIT(&m->m_pkthdr.tags);
-#ifdef MAC
-		/* If the label init fails, fail the alloc */
-		error = mac_mbuf_init(m, how);
-		if (error)
-			return (error);
-#endif
-	} else
-		m->m_data = m->m_dat;
-	return (0);
+	m = (struct mbuf *)mem;
+	flags = args->flags;
+
+	error = m_init(m, NULL, size, how, type, flags);
+
+	return (error);
 }
 
 /*
@@ -495,10 +467,9 @@ mb_dtor_mbuf(void *mem, int size, void *arg)
 	m = (struct mbuf *)mem;
 	flags = (unsigned long)arg;
 
-	if ((flags & MB_NOTAGS) == 0 && (m->m_flags & M_PKTHDR) != 0)
-		m_tag_delete_chain(m, NULL);
-	KASSERT((m->m_flags & M_EXT) == 0, ("%s: M_EXT set", __func__));
 	KASSERT((m->m_flags & M_NOFREE) == 0, ("%s: M_NOFREE set", __func__));
+	if ((m->m_flags & M_PKTHDR) && !SLIST_EMPTY(&m->m_pkthdr.tags))
+		m_tag_delete_chain(m, NULL);
 #ifdef INVARIANTS
 	trash_dtor(mem, size, arg);
 #endif
@@ -524,7 +495,7 @@ mb_dtor_pack(void *mem, int size, void *arg)
 	KASSERT(m->m_ext.ext_arg2 == NULL, ("%s: ext_arg2 != NULL", __func__));
 	KASSERT(m->m_ext.ext_size == MCLBYTES, ("%s: ext_size != MCLBYTES", __func__));
 	KASSERT(m->m_ext.ext_type == EXT_PACKET, ("%s: ext_type != EXT_PACKET", __func__));
-	KASSERT(*m->m_ext.ref_cnt == 1, ("%s: ref_cnt != 1", __func__));
+	KASSERT(*m->m_ext.ext_cnt == 1, ("%s: ext_cnt != 1", __func__));
 #ifdef INVARIANTS
 	trash_dtor(m->m_ext.ext_buf, MCLBYTES, arg);
 #endif
@@ -595,7 +566,8 @@ mb_ctor_clust(void *mem, int size, void *arg, int how)
 		m->m_ext.ext_arg2 = NULL;
 		m->m_ext.ext_size = size;
 		m->m_ext.ext_type = type;
-		m->m_ext.ref_cnt = refcnt;
+		m->m_ext.ext_flags = 0;
+		m->m_ext.ext_cnt = refcnt;
 	}
 
 	return (0);
@@ -666,10 +638,7 @@ mb_ctor_pack(void *mem, int size, void *arg, int how)
 {
 	struct mbuf *m;
 	struct mb_args *args;
-#ifdef MAC
-	int error;
-#endif
-	int flags;
+	int error, flags;
 	short type;
 
 	m = (struct mbuf *)mem;
@@ -680,34 +649,14 @@ mb_ctor_pack(void *mem, int size, void *arg, int how)
 #ifdef INVARIANTS
 	trash_ctor(m->m_ext.ext_buf, MCLBYTES, arg, how);
 #endif
-	m->m_next = NULL;
-	m->m_nextpkt = NULL;
-	m->m_data = m->m_ext.ext_buf;
-	m->m_len = 0;
-	m->m_flags = (flags | M_EXT);
-	m->m_type = type;
 
-	if (flags & M_PKTHDR) {
-		m->m_pkthdr.rcvif = NULL;
-		m->m_pkthdr.len = 0;
-		m->m_pkthdr.header = NULL;
-		m->m_pkthdr.csum_flags = 0;
-		m->m_pkthdr.csum_data = 0;
-		m->m_pkthdr.tso_segsz = 0;
-		m->m_pkthdr.ether_vtag = 0;
-		m->m_pkthdr.flowid = 0;
-		m->m_pkthdr.fibnum = 0;
-		SLIST_INIT(&m->m_pkthdr.tags);
-#ifdef MAC
-		/* If the label init fails, fail the alloc */
-		error = mac_mbuf_init(m, how);
-		if (error)
-			return (error);
-#endif
-	}
+	error = m_init(m, NULL, size, how, type, flags);
+
 	/* m_ext is already initialized. */
+	m->m_data = m->m_ext.ext_buf;
+ 	m->m_flags = (flags | M_EXT);
 
-	return (0);
+	return (error);
 }
 
 int
@@ -717,16 +666,7 @@ m_pkthdr_init(struct mbuf *m, int how)
 	int error;
 #endif
 	m->m_data = m->m_pktdat;
-	SLIST_INIT(&m->m_pkthdr.tags);
-	m->m_pkthdr.rcvif = NULL;
-	m->m_pkthdr.header = NULL;
-	m->m_pkthdr.len = 0;
-	m->m_pkthdr.flowid = 0;
-	m->m_pkthdr.fibnum = 0;
-	m->m_pkthdr.csum_flags = 0;
-	m->m_pkthdr.csum_data = 0;
-	m->m_pkthdr.tso_segsz = 0;
-	m->m_pkthdr.ether_vtag = 0;
+	bzero(&m->m_pkthdr, sizeof(m->m_pkthdr));
 #ifdef MAC
 	/* If the label init fails, fail the alloc */
 	error = mac_mbuf_init(m, how);
@@ -757,4 +697,62 @@ mb_reclaim(void *junk)
 		for (pr = dp->dom_protosw; pr < dp->dom_protoswNPROTOSW; pr++)
 			if (pr->pr_drain != NULL)
 				(*pr->pr_drain)();
+}
+
+/*
+ * This is the function called by the mb_reclaim_callout, which is
+ * used when we hit the maximum for a zone.
+ *
+ * (See mb_maxaction() below.)
+ */
+static void
+mb_reclaim_timer(void *junk __unused)
+{
+
+	mtx_lock(&mb_reclaim_callout_mtx);
+
+	/*
+	 * Avoid running this function extra times by skipping this invocation
+	 * if the callout has already been rescheduled.
+	 */
+	if (callout_pending(&mb_reclaim_callout) ||
+	    !callout_active(&mb_reclaim_callout)) {
+		mtx_unlock(&mb_reclaim_callout_mtx);
+		return;
+	}
+	mtx_unlock(&mb_reclaim_callout_mtx);
+
+	mb_reclaim(NULL);
+
+	mtx_lock(&mb_reclaim_callout_mtx);
+	callout_deactivate(&mb_reclaim_callout);
+	mtx_unlock(&mb_reclaim_callout_mtx);
+}
+
+/*
+ * This function is called when we hit the maximum for a zone.
+ *
+ * At that point, we want to call the protocol drain routine to free up some
+ * mbufs. However, we will use the callout routines to schedule this to
+ * occur in another thread. (The thread calling this function holds the
+ * zone lock.)
+ */
+static void
+mb_maxaction(uma_zone_t zone __unused)
+{
+
+	/*
+	 * If we can't immediately obtain the lock, either the callout
+	 * is currently running, or another thread is scheduling the
+	 * callout.
+	 */
+	if (!mtx_trylock(&mb_reclaim_callout_mtx))
+		return;
+
+	/* If not already scheduled/running, schedule the callout. */
+	if (!callout_active(&mb_reclaim_callout)) {
+		callout_reset(&mb_reclaim_callout, 1, mb_reclaim_timer, NULL);
+	}
+
+	mtx_unlock(&mb_reclaim_callout_mtx);
 }

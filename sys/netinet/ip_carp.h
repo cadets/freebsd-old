@@ -117,11 +117,6 @@ struct carpstats {
 	uint64_t	carps_preempt;		/* if enabled, preemptions */
 };
 
-#ifdef _KERNEL
-#define	CARPSTATS_ADD(name, val)	carpstats.name += (val)
-#define	CARPSTATS_INC(name)		CARPSTATS_ADD(name, 1)
-#endif
-
 /*
  * Configuration structure for SIOCSVH SIOCGVH
  */
@@ -145,7 +140,7 @@ int		carp_ioctl(struct ifreq *, u_long, struct thread *);
 int		carp_attach(struct ifaddr *, int);
 void		carp_detach(struct ifaddr *);
 void		carp_carpdev_state(struct ifnet *);
-void		carp_input (struct mbuf *, int);
+int		carp_input(struct mbuf **, int *, int);
 int		carp6_input (struct mbuf **, int *, int);
 int		carp_output (struct ifnet *, struct mbuf *,
 		    const struct sockaddr *);

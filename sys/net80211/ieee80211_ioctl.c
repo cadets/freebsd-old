@@ -32,7 +32,6 @@ __FBSDID("$FreeBSD$");
  */
 
 #include "opt_inet.h"
-#include "opt_ipx.h"
 #include "opt_wlan.h"
 
 #include <sys/endian.h>
@@ -44,6 +43,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
  
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_dl.h>
 #include <net/if_media.h>
 #include <net/ethernet.h>
@@ -51,11 +51,6 @@ __FBSDID("$FreeBSD$");
 #ifdef INET
 #include <netinet/in.h>
 #include <netinet/if_ether.h>
-#endif
-
-#ifdef IPX
-#include <netipx/ipx.h>
-#include <netipx/ipx_if.h>
 #endif
 
 #include <net80211/ieee80211_var.h>
@@ -328,14 +323,15 @@ ieee80211_ioctl_getscanresults(struct ieee80211vap *vap,
 
 		space = req.space;
 		/* XXX M_WAITOK after driver lock released */
-		p = malloc(space, M_TEMP, M_NOWAIT | M_ZERO);
+		p = IEEE80211_MALLOC(space, M_TEMP,
+		    IEEE80211_M_NOWAIT | IEEE80211_M_ZERO);
 		if (p == NULL)
 			return ENOMEM;
 		req.sr = p;
 		ieee80211_scan_iterate(vap, get_scan_result, &req);
 		ireq->i_len = space - req.space;
 		error = copyout(p, ireq->i_data, ireq->i_len);
-		free(p, M_TEMP);
+		IEEE80211_FREE(p, M_TEMP);
 	} else
 		ireq->i_len = 0;
 
@@ -478,7 +474,8 @@ getstainfo_common(struct ieee80211vap *vap, struct ieee80211req *ireq,
 	if (req.space > 0) {
 		space = req.space;
 		/* XXX M_WAITOK after driver lock released */
-		p = malloc(space, M_TEMP, M_NOWAIT | M_ZERO);
+		p = IEEE80211_MALLOC(space, M_TEMP,
+		    IEEE80211_M_NOWAIT | IEEE80211_M_ZERO);
 		if (p == NULL) {
 			error = ENOMEM;
 			goto bad;
@@ -490,7 +487,7 @@ getstainfo_common(struct ieee80211vap *vap, struct ieee80211req *ireq,
 			get_sta_info(&req, ni);
 		ireq->i_len = space - req.space;
 		error = copyout(p, (uint8_t *) ireq->i_data+off, ireq->i_len);
-		free(p, M_TEMP);
+		IEEE80211_FREE(p, M_TEMP);
 	} else
 		ireq->i_len = 0;
 bad:
@@ -607,7 +604,7 @@ ieee80211_ioctl_getcurchan(struct ieee80211vap *vap, struct ieee80211req *ireq)
 	 * in use.  When in RUN state report the vap-specific channel.
 	 * Otherwise return curchan.
 	 */
-	if (vap->iv_state == IEEE80211_S_RUN)
+	if (vap->iv_state == IEEE80211_S_RUN || vap->iv_state == IEEE80211_S_SLEEP)
 		c = vap->iv_bss->ni_chan;
 	else
 		c = ic->ic_curchan;
@@ -702,7 +699,8 @@ ieee80211_ioctl_getdevcaps(struct ieee80211com *ic,
 	if (maxchans > 2048)
 		maxchans = 2048;
 	dc = (struct ieee80211_devcaps_req *)
-	    malloc(IEEE80211_DEVCAPS_SIZE(maxchans), M_TEMP, M_NOWAIT | M_ZERO);
+	    IEEE80211_MALLOC(IEEE80211_DEVCAPS_SIZE(maxchans), M_TEMP,
+	    IEEE80211_M_NOWAIT | IEEE80211_M_ZERO);
 	if (dc == NULL)
 		return ENOMEM;
 	dc->dc_drivercaps = ic->ic_caps;
@@ -714,7 +712,7 @@ ieee80211_ioctl_getdevcaps(struct ieee80211com *ic,
 	    ("nchans %d maxchans %d", ci->ic_nchans, maxchans));
 	ieee80211_sort_channels(ci->ic_chans, ci->ic_nchans);
 	error = copyout(dc, ireq->i_data, IEEE80211_DEVCAPS_SPACE(dc));
-	free(dc, M_TEMP);
+	IEEE80211_FREE(dc, M_TEMP);
 	return error;
 }
 
@@ -925,7 +923,7 @@ ieee80211_ioctl_get80211(struct ieee80211vap *vap, u_long cmd,
 	case IEEE80211_IOC_BSSID:
 		if (ireq->i_len != IEEE80211_ADDR_LEN)
 			return EINVAL;
-		if (vap->iv_state == IEEE80211_S_RUN) {
+		if (vap->iv_state == IEEE80211_S_RUN || vap->iv_state == IEEE80211_S_SLEEP) {
 			error = copyout(vap->iv_opmode == IEEE80211_M_WDS ?
 			    vap->iv_bss->ni_macaddr : vap->iv_bss->ni_bssid,
 			    ireq->i_data, ireq->i_len);
@@ -959,7 +957,7 @@ ieee80211_ioctl_get80211(struct ieee80211vap *vap, u_long cmd,
 	case IEEE80211_IOC_WME_AIFS:		/* WME: AIFS */
 	case IEEE80211_IOC_WME_TXOPLIMIT:	/* WME: txops limit */
 	case IEEE80211_IOC_WME_ACM:		/* WME: ACM (bss only) */
-	case IEEE80211_IOC_WME_ACKPOLICY:	/* WME: ACK policy (bss only) */
+	case IEEE80211_IOC_WME_ACKPOLICY:	/* WME: ACK policy (!bss only) */
 		error = ieee80211_ioctl_getwmeparam(vap, ireq);
 		break;
 	case IEEE80211_IOC_DTIM_PERIOD:
@@ -1031,7 +1029,7 @@ ieee80211_ioctl_get80211(struct ieee80211vap *vap, u_long cmd,
 	case IEEE80211_IOC_AMPDU_LIMIT:
 		if (vap->iv_opmode == IEEE80211_M_HOSTAP)
 			ireq->i_val = vap->iv_ampdu_rxmax;
-		else if (vap->iv_state == IEEE80211_S_RUN)
+		else if (vap->iv_state == IEEE80211_S_RUN || vap->iv_state == IEEE80211_S_SLEEP)
 			ireq->i_val = MS(vap->iv_bss->ni_htparam,
 			    IEEE80211_HTCAP_MAXRXAMPDU);
 		else
@@ -1039,7 +1037,7 @@ ieee80211_ioctl_get80211(struct ieee80211vap *vap, u_long cmd,
 		break;
 	case IEEE80211_IOC_AMPDU_DENSITY:
 		if (vap->iv_opmode == IEEE80211_M_STA &&
-		    vap->iv_state == IEEE80211_S_RUN)
+		    (vap->iv_state == IEEE80211_S_RUN || vap->iv_state == IEEE80211_S_SLEEP))
 			ireq->i_val = MS(vap->iv_bss->ni_htparam,
 			    IEEE80211_HTCAP_MPDUDENSITY);
 		else
@@ -1113,7 +1111,7 @@ ieee80211_ioctl_get80211(struct ieee80211vap *vap, u_long cmd,
 		break;
 	case IEEE80211_IOC_SMPS:
 		if (vap->iv_opmode == IEEE80211_M_STA &&
-		    vap->iv_state == IEEE80211_S_RUN) {
+		    (vap->iv_state == IEEE80211_S_RUN || vap->iv_state == IEEE80211_S_SLEEP)) {
 			if (vap->iv_bss->ni_flags & IEEE80211_NODE_MIMO_RTS)
 				ireq->i_val = IEEE80211_HTCAP_SMPS_DYNAMIC;
 			else if (vap->iv_bss->ni_flags & IEEE80211_NODE_MIMO_PS)
@@ -1125,7 +1123,7 @@ ieee80211_ioctl_get80211(struct ieee80211vap *vap, u_long cmd,
 		break;
 	case IEEE80211_IOC_RIFS:
 		if (vap->iv_opmode == IEEE80211_M_STA &&
-		    vap->iv_state == IEEE80211_S_RUN)
+		    (vap->iv_state == IEEE80211_S_RUN || vap->iv_state == IEEE80211_S_SLEEP))
 			ireq->i_val =
 			    (vap->iv_bss->ni_flags & IEEE80211_NODE_RIFS) != 0;
 		else
@@ -1331,21 +1329,25 @@ static int
 setmlme_dropsta(struct ieee80211vap *vap,
 	const uint8_t mac[IEEE80211_ADDR_LEN], struct mlmeop *mlmeop)
 {
-	struct ieee80211com *ic = vap->iv_ic;
-	struct ieee80211_node_table *nt = &ic->ic_sta;
+	struct ieee80211_node_table *nt = &vap->iv_ic->ic_sta;
 	struct ieee80211_node *ni;
 	int error = 0;
 
 	/* NB: the broadcast address means do 'em all */
-	if (!IEEE80211_ADDR_EQ(mac, ic->ic_ifp->if_broadcastaddr)) {
+	if (!IEEE80211_ADDR_EQ(mac, vap->iv_ifp->if_broadcastaddr)) {
 		IEEE80211_NODE_LOCK(nt);
 		ni = ieee80211_find_node_locked(nt, mac);
+		IEEE80211_NODE_UNLOCK(nt);
+		/*
+		 * Don't do the node update inside the node
+		 * table lock.  This unfortunately causes LORs
+		 * with drivers and their TX paths.
+		 */
 		if (ni != NULL) {
 			domlme(mlmeop, ni);
 			ieee80211_free_node(ni);
 		} else
 			error = ENOENT;
-		IEEE80211_NODE_UNLOCK(nt);
 	} else {
 		ieee80211_iterate_nodes(nt, domlme, mlmeop);
 	}
@@ -1400,13 +1402,18 @@ setmlme_common(struct ieee80211vap *vap, int op,
 		case IEEE80211_M_MBSS:
 			IEEE80211_NODE_LOCK(nt);
 			ni = ieee80211_find_node_locked(nt, mac);
+			/*
+			 * Don't do the node update inside the node
+			 * table lock.  This unfortunately causes LORs
+			 * with drivers and their TX paths.
+			 */
+			IEEE80211_NODE_UNLOCK(nt);
 			if (ni != NULL) {
 				ieee80211_node_leave(ni);
 				ieee80211_free_node(ni);
 			} else {
 				error = ENOENT;
 			}
-			IEEE80211_NODE_UNLOCK(nt);
 			break;
 		default:
 			error = EINVAL;
@@ -1422,6 +1429,12 @@ setmlme_common(struct ieee80211vap *vap, int op,
 		}
 		IEEE80211_NODE_LOCK(nt);
 		ni = ieee80211_find_vap_node_locked(nt, vap, mac);
+		/*
+		 * Don't do the node update inside the node
+		 * table lock.  This unfortunately causes LORs
+		 * with drivers and their TX paths.
+		 */
+		IEEE80211_NODE_UNLOCK(nt);
 		if (ni != NULL) {
 			mlmedebug(vap, mac, op, reason);
 			if (op == IEEE80211_MLME_AUTHORIZE)
@@ -1431,7 +1444,6 @@ setmlme_common(struct ieee80211vap *vap, int op,
 			ieee80211_free_node(ni);
 		} else
 			error = ENOENT;
-		IEEE80211_NODE_UNLOCK(nt);
 		break;
 	case IEEE80211_MLME_AUTH:
 		if (vap->iv_opmode != IEEE80211_M_HOSTAP) {
@@ -1440,6 +1452,12 @@ setmlme_common(struct ieee80211vap *vap, int op,
 		}
 		IEEE80211_NODE_LOCK(nt);
 		ni = ieee80211_find_vap_node_locked(nt, vap, mac);
+		/*
+		 * Don't do the node update inside the node
+		 * table lock.  This unfortunately causes LORs
+		 * with drivers and their TX paths.
+		 */
+		IEEE80211_NODE_UNLOCK(nt);
 		if (ni != NULL) {
 			mlmedebug(vap, mac, op, reason);
 			if (reason == IEEE80211_STATUS_SUCCESS) {
@@ -1463,7 +1481,6 @@ setmlme_common(struct ieee80211vap *vap, int op,
 			ieee80211_free_node(ni);
 		} else
 			error = ENOENT;
-		IEEE80211_NODE_UNLOCK(nt);
 		break;
 	default:
 		error = EINVAL;
@@ -1569,7 +1586,9 @@ ieee80211_ioctl_setmlme(struct ieee80211vap *vap, struct ieee80211req *ireq)
 	    mlme.im_op == IEEE80211_MLME_ASSOC)
 		return setmlme_assoc_sta(vap, mlme.im_macaddr,
 		    vap->iv_des_ssid[0].len, vap->iv_des_ssid[0].ssid);
-	else if (mlme.im_op == IEEE80211_MLME_ASSOC)
+	else if ((vap->iv_opmode == IEEE80211_M_IBSS || 
+	    vap->iv_opmode == IEEE80211_M_AHDEMO) && 
+	    mlme.im_op == IEEE80211_MLME_ASSOC)
 		return setmlme_assoc_adhoc(vap, mlme.im_macaddr,
 		    mlme.im_ssid_len, mlme.im_ssid);
 	else
@@ -1649,13 +1668,13 @@ ieee80211_ioctl_setchanlist(struct ieee80211vap *vap, struct ieee80211req *ireq)
 
 	if (ireq->i_len > sizeof(ic->ic_chan_active))
 		ireq->i_len = sizeof(ic->ic_chan_active);
-	list = malloc(ireq->i_len + IEEE80211_CHAN_BYTES, M_TEMP,
-	    M_NOWAIT | M_ZERO);
+	list = IEEE80211_MALLOC(ireq->i_len + IEEE80211_CHAN_BYTES, M_TEMP,
+	    IEEE80211_M_NOWAIT | IEEE80211_M_ZERO);
 	if (list == NULL)
 		return ENOMEM;
 	error = copyin(ireq->i_data, list, ireq->i_len);
 	if (error) {
-		free(list, M_TEMP);
+		IEEE80211_FREE(list, M_TEMP);
 		return error;
 	}
 	nchan = 0;
@@ -1674,7 +1693,7 @@ ieee80211_ioctl_setchanlist(struct ieee80211vap *vap, struct ieee80211req *ireq)
 		}
 	}
 	if (nchan == 0) {
-		free(list, M_TEMP);
+		IEEE80211_FREE(list, M_TEMP);
 		return EINVAL;
 	}
 	if (ic->ic_bsschan != IEEE80211_CHAN_ANYC &&	/* XXX */
@@ -1682,7 +1701,7 @@ ieee80211_ioctl_setchanlist(struct ieee80211vap *vap, struct ieee80211req *ireq)
 		ic->ic_bsschan = IEEE80211_CHAN_ANYC;
 	memcpy(ic->ic_chan_active, chanlist, IEEE80211_CHAN_BYTES);
 	ieee80211_scan_flush(vap);
-	free(list, M_TEMP);
+	IEEE80211_FREE(list, M_TEMP);
 	return ENETRESET;
 }
 
@@ -1738,13 +1757,14 @@ ieee80211_ioctl_setwmeparam(struct ieee80211vap *vap, struct ieee80211req *ireq)
 	struct ieee80211com *ic = vap->iv_ic;
 	struct ieee80211_wme_state *wme = &ic->ic_wme;
 	struct wmeParams *wmep, *chanp;
-	int isbss, ac;
+	int isbss, ac, aggrmode;
 
 	if ((ic->ic_caps & IEEE80211_C_WME) == 0)
 		return EOPNOTSUPP;
 
 	isbss = (ireq->i_len & IEEE80211_WMEPARAM_BSS);
 	ac = (ireq->i_len & IEEE80211_WMEPARAM_VAL);
+	aggrmode = (wme->wme_flags & WME_F_AGGRMODE);
 	if (ac >= WME_NUM_AC)
 		ac = WME_AC_BE;
 	if (isbss) {
@@ -1756,47 +1776,28 @@ ieee80211_ioctl_setwmeparam(struct ieee80211vap *vap, struct ieee80211req *ireq)
 	}
 	switch (ireq->i_type) {
 	case IEEE80211_IOC_WME_CWMIN:		/* WME: CWmin */
-		if (isbss) {
-			wmep->wmep_logcwmin = ireq->i_val;
-			if ((wme->wme_flags & WME_F_AGGRMODE) == 0)
-				chanp->wmep_logcwmin = ireq->i_val;
-		} else {
-			wmep->wmep_logcwmin = chanp->wmep_logcwmin =
-				ireq->i_val;
-		}
+		wmep->wmep_logcwmin = ireq->i_val;
+		if (!isbss || !aggrmode)
+			chanp->wmep_logcwmin = ireq->i_val;
 		break;
 	case IEEE80211_IOC_WME_CWMAX:		/* WME: CWmax */
-		if (isbss) {
-			wmep->wmep_logcwmax = ireq->i_val;
-			if ((wme->wme_flags & WME_F_AGGRMODE) == 0)
-				chanp->wmep_logcwmax = ireq->i_val;
-		} else {
-			wmep->wmep_logcwmax = chanp->wmep_logcwmax =
-				ireq->i_val;
-		}
+		wmep->wmep_logcwmax = ireq->i_val;
+		if (!isbss || !aggrmode)
+			chanp->wmep_logcwmax = ireq->i_val;
 		break;
 	case IEEE80211_IOC_WME_AIFS:		/* WME: AIFS */
-		if (isbss) {
-			wmep->wmep_aifsn = ireq->i_val;
-			if ((wme->wme_flags & WME_F_AGGRMODE) == 0)
-				chanp->wmep_aifsn = ireq->i_val;
-		} else {
-			wmep->wmep_aifsn = chanp->wmep_aifsn = ireq->i_val;
-		}
+		wmep->wmep_aifsn = ireq->i_val;
+		if (!isbss || !aggrmode)
+			chanp->wmep_aifsn = ireq->i_val;
 		break;
 	case IEEE80211_IOC_WME_TXOPLIMIT:	/* WME: txops limit */
-		if (isbss) {
-			wmep->wmep_txopLimit = ireq->i_val;
-			if ((wme->wme_flags & WME_F_AGGRMODE) == 0)
-				chanp->wmep_txopLimit = ireq->i_val;
-		} else {
-			wmep->wmep_txopLimit = chanp->wmep_txopLimit =
-				ireq->i_val;
-		}
+		wmep->wmep_txopLimit = ireq->i_val;
+		if (!isbss || !aggrmode)
+			chanp->wmep_txopLimit = ireq->i_val;
 		break;
 	case IEEE80211_IOC_WME_ACM:		/* WME: ACM (bss only) */
 		wmep->wmep_acm = ireq->i_val;
-		if ((wme->wme_flags & WME_F_AGGRMODE) == 0)
+		if (!aggrmode)
 			chanp->wmep_acm = ireq->i_val;
 		break;
 	case IEEE80211_IOC_WME_ACKPOLICY:	/* WME: ACK policy (!bss only)*/
@@ -1932,7 +1933,7 @@ setcurchan(struct ieee80211vap *vap, struct ieee80211_channel *c)
 			if (IEEE80211_IS_CHAN_NOADHOC(c))
 				return EINVAL;
 		}
-		if (vap->iv_state == IEEE80211_S_RUN &&
+		if ((vap->iv_state == IEEE80211_S_RUN || vap->iv_state == IEEE80211_S_SLEEP) &&
 		    vap->iv_bss->ni_chan == c)
 			return 0;	/* NB: nothing to do */
 	}
@@ -2095,7 +2096,8 @@ ieee80211_ioctl_setregdomain(struct ieee80211vap *vap,
 		return EINVAL;
 	}
 	reg = (struct ieee80211_regdomain_req *)
-	    malloc(IEEE80211_REGDOMAIN_SIZE(nchans), M_TEMP, M_NOWAIT);
+	    IEEE80211_MALLOC(IEEE80211_REGDOMAIN_SIZE(nchans), M_TEMP,
+	      IEEE80211_M_NOWAIT | IEEE80211_M_ZERO);
 	if (reg == NULL) {
 		IEEE80211_DPRINTF(vap, IEEE80211_MSG_IOCTL,
 		    "%s: no memory, nchans %d\n", __func__, nchans);
@@ -2112,7 +2114,7 @@ ieee80211_ioctl_setregdomain(struct ieee80211vap *vap,
 		} else
 			error = ieee80211_setregdomain(vap, reg);
 	}
-	free(reg, M_TEMP);
+	IEEE80211_FREE(reg, M_TEMP);
 
 	return (error == 0 ? ENETRESET : error);
 }
@@ -2229,7 +2231,7 @@ setappie(struct ieee80211_appie **aie, const struct ieee80211req *ireq)
 	if (ireq->i_len == 0) {		/* delete any existing ie */
 		if (app != NULL) {
 			*aie = NULL;	/* XXX racey */
-			free(app, M_80211_NODE_IE);
+			IEEE80211_FREE(app, M_80211_NODE_IE);
 		}
 		return 0;
 	}
@@ -2243,20 +2245,21 @@ setappie(struct ieee80211_appie **aie, const struct ieee80211req *ireq)
 	 *
 	 * XXX bad bad bad
 	 */
-	napp = (struct ieee80211_appie *) malloc(
-	    sizeof(struct ieee80211_appie) + ireq->i_len, M_80211_NODE_IE, M_NOWAIT);
+	napp = (struct ieee80211_appie *) IEEE80211_MALLOC(
+	    sizeof(struct ieee80211_appie) + ireq->i_len, M_80211_NODE_IE,
+	    IEEE80211_M_NOWAIT);
 	if (napp == NULL)
 		return ENOMEM;
 	/* XXX holding ic lock */
 	error = copyin(ireq->i_data, napp->ie_data, ireq->i_len);
 	if (error) {
-		free(napp, M_80211_NODE_IE);
+		IEEE80211_FREE(napp, M_80211_NODE_IE);
 		return error;
 	}
 	napp->ie_len = ireq->i_len;
 	*aie = napp;
 	if (app != NULL)
-		free(app, M_80211_NODE_IE);
+		IEEE80211_FREE(app, M_80211_NODE_IE);
 	return 0;
 }
 
@@ -2507,13 +2510,8 @@ ieee80211_scanreq(struct ieee80211vap *vap, struct ieee80211_scan_req *sr)
 static __noinline int
 ieee80211_ioctl_scanreq(struct ieee80211vap *vap, struct ieee80211req *ireq)
 {
-	struct ieee80211com *ic = vap->iv_ic;
 	struct ieee80211_scan_req sr;		/* XXX off stack? */
 	int error;
-
-	/* NB: parent must be running */
-	if ((ic->ic_ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
-		return ENXIO;
 
 	if (ireq->i_len != sizeof(sr))
 		return EINVAL;
@@ -2809,6 +2807,9 @@ ieee80211_ioctl_set80211(struct ieee80211vap *vap, u_long cmd, struct ieee80211r
 		/* XXX verify ciphers available */
 		flags = vap->iv_flags & ~IEEE80211_F_WPA;
 		switch (ireq->i_val) {
+		case 0:
+			/* wpa_supplicant calls this to clear the WPA config */
+			break;
 		case 1:
 			if (!(vap->iv_caps & IEEE80211_C_WPA1))
 				return EOPNOTSUPP;
@@ -2929,7 +2930,7 @@ ieee80211_ioctl_set80211(struct ieee80211vap *vap, u_long cmd, struct ieee80211r
 	case IEEE80211_IOC_WME_AIFS:		/* WME: AIFS */
 	case IEEE80211_IOC_WME_TXOPLIMIT:	/* WME: txops limit */
 	case IEEE80211_IOC_WME_ACM:		/* WME: ACM (bss only) */
-	case IEEE80211_IOC_WME_ACKPOLICY:	/* WME: ACK policy (bss only) */
+	case IEEE80211_IOC_WME_ACKPOLICY:	/* WME: ACK policy (!bss only) */
 		error = ieee80211_ioctl_setwmeparam(vap, ireq);
 		break;
 	case IEEE80211_IOC_DTIM_PERIOD:
@@ -3278,41 +3279,6 @@ ieee80211_ioctl_set80211(struct ieee80211vap *vap, u_long cmd, struct ieee80211r
 	return error;
 }
 
-/*
- * Rebuild the parent's multicast address list after an add/del
- * of a multicast address for a vap.  We have no way to tell
- * what happened above to optimize the work so we purge the entire
- * list and rebuild from scratch.  This is way expensive.
- * Note also the half-baked workaround for if_addmulti calling
- * back to the parent device; there's no way to insert mcast
- * entries quietly and/or cheaply.
- */
-static void
-ieee80211_ioctl_updatemulti(struct ieee80211com *ic)
-{
-	struct ifnet *parent = ic->ic_ifp;
-	struct ieee80211vap *vap;
-	void *ioctl;
-
-	IEEE80211_LOCK(ic);
-	if_delallmulti(parent);
-	ioctl = parent->if_ioctl;	/* XXX WAR if_allmulti */
-	parent->if_ioctl = NULL;
-	TAILQ_FOREACH(vap, &ic->ic_vaps, iv_next) {
-		struct ifnet *ifp = vap->iv_ifp;
-		struct ifmultiaddr *ifma;
-
-		TAILQ_FOREACH(ifma, &ifp->if_multiaddrs, ifma_link) {
-			if (ifma->ifma_addr->sa_family != AF_LINK)
-				continue;
-			(void) if_addmulti(parent, ifma->ifma_addr, NULL);
-		}
-	}
-	parent->if_ioctl = ioctl;
-	ieee80211_runtask(ic, &ic->ic_mcast_task);
-	IEEE80211_UNLOCK(ic);
-}
-
 int
 ieee80211_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 {
@@ -3325,8 +3291,11 @@ ieee80211_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	switch (cmd) {
 	case SIOCSIFFLAGS:
 		IEEE80211_LOCK(ic);
-		ieee80211_syncifflag_locked(ic, IFF_PROMISC);
-		ieee80211_syncifflag_locked(ic, IFF_ALLMULTI);
+		if ((ifp->if_flags ^ vap->iv_ifflags) & IFF_PROMISC)
+			ieee80211_promisc(vap, ifp->if_flags & IFF_PROMISC);
+		if ((ifp->if_flags ^ vap->iv_ifflags) & IFF_ALLMULTI)
+			ieee80211_allmulti(vap, ifp->if_flags & IFF_ALLMULTI);
+		vap->iv_ifflags = ifp->if_flags;
 		if (ifp->if_flags & IFF_UP) {
 			/*
 			 * Bring ourself up unless we're already operational.
@@ -3349,7 +3318,7 @@ ieee80211_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:
-		ieee80211_ioctl_updatemulti(ic);
+		ieee80211_runtask(ic, &ic->ic_mcast_task);
 		break;
 	case SIOCSIFMEDIA:
 	case SIOCGIFMEDIA:
@@ -3397,24 +3366,6 @@ ieee80211_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 			arp_ifinit(ifp, ifa);
 			break;
 #endif
-#ifdef IPX
-		/*
-		 * XXX - This code is probably wrong,
-		 *	 but has been copied many times.
-		 */
-		case AF_IPX: {
-			struct ipx_addr *ina = &(IA_SIPX(ifa)->sipx_addr);
-
-			if (ipx_nullhost(*ina))
-				ina->x_host = *(union ipx_host *)
-				    IF_LLADDR(ifp);
-			else
-				bcopy((caddr_t) ina->x_host.c_host,
-				      (caddr_t) IF_LLADDR(ifp),
-				      ETHER_ADDR_LEN);
-			/* fall thru... */
-		}
-#endif
 		default:
 			if ((ifp->if_flags & IFF_UP) == 0) {
 				ifp->if_flags |= IFF_UP;
@@ -3423,17 +3374,16 @@ ieee80211_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 			break;
 		}
 		break;
-	/* Pass NDIS ioctls up to the driver */
-	case SIOCGDRVSPEC:
-	case SIOCSDRVSPEC:
-	case SIOCGPRIVATE_0: {
-		struct ifnet *parent = vap->iv_ic->ic_ifp;
-		error = parent->if_ioctl(parent, cmd, data);
-		break;
-	}
 	default:
+		/*
+		 * Pass unknown ioctls first to the driver, and if it
+		 * returns ENOTTY, then to the generic Ethernet handler.
+		 */
+		if (ic->ic_ioctl != NULL &&
+		    (error = ic->ic_ioctl(ic, cmd, data)) != ENOTTY)
+			break;
 		error = ether_ioctl(ifp, cmd, data);
 		break;
 	}
-	return error;
+	return (error);
 }

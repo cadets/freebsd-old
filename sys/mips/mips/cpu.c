@@ -73,6 +73,9 @@ mips_get_identity(struct mips_cpuinfo *cpuinfo)
 	u_int32_t prid;
 	u_int32_t cfg0;
 	u_int32_t cfg1;
+#ifndef CPU_CNMIPS
+	u_int32_t cfg2;
+#endif
 #if defined(CPU_CNMIPS)
 	u_int32_t cfg4;
 #endif
@@ -99,23 +102,38 @@ mips_get_identity(struct mips_cpuinfo *cpuinfo)
 
 	/* Learn TLB size and L1 cache geometry. */
 	cfg1 = mips_rd_config1();
-#ifndef CPU_NLM
-	cpuinfo->tlb_nentries = 
-	    ((cfg1 & MIPS_CONFIG1_TLBSZ_MASK) >> MIPS_CONFIG1_TLBSZ_SHIFT) + 1;
-#else
+
+#if defined(CPU_NLM)
 	/* Account for Extended TLB entries in XLP */
 	tmp = mips_rd_config6();
 	cpuinfo->tlb_nentries = ((tmp >> 16) & 0xffff) + 1;
+#elif defined(BERI_LARGE_TLB)
+	/* Check if we support extended TLB entries and if so activate. */
+	tmp = mips_rd_config5();
+#define	BERI_CP5_LTLB_SUPPORTED	0x1
+	if (tmp & BERI_CP5_LTLB_SUPPORTED) {
+		/* See how many extra TLB entries we have. */
+		tmp = mips_rd_config6();
+		cpuinfo->tlb_nentries = (tmp >> 16) + 1;
+		/* Activate the extended entries. */
+		mips_wr_config6(tmp|0x4);
+	} else
 #endif
-
-	/* Add extended TLB size information from config4.  */
+#if !defined(CPU_NLM)
+	cpuinfo->tlb_nentries = 
+	    ((cfg1 & MIPS_CONFIG1_TLBSZ_MASK) >> MIPS_CONFIG1_TLBSZ_SHIFT) + 1;
+#endif
 #if defined(CPU_CNMIPS)
+	/* Add extended TLB size information from config4.  */
 	cfg4 = mips_rd_config4();
 	if ((cfg4 & MIPS_CONFIG4_MMUEXTDEF) == MIPS_CONFIG4_MMUEXTDEF_MMUSIZEEXT)
 		cpuinfo->tlb_nentries += (cfg4 & MIPS_CONFIG4_MMUSIZEEXT) * 0x40;
 #endif
 
 	/* L1 instruction cache. */
+#ifdef MIPS_DISABLE_L1_CACHE
+	cpuinfo->l1.ic_linesize = 0;
+#else
 	tmp = (cfg1 & MIPS_CONFIG1_IL_MASK) >> MIPS_CONFIG1_IL_SHIFT;
 	if (tmp != 0) {
 		cpuinfo->l1.ic_linesize = 1 << (tmp + 1);
@@ -123,9 +141,13 @@ mips_get_identity(struct mips_cpuinfo *cpuinfo)
 		cpuinfo->l1.ic_nsets = 
 	    		1 << (((cfg1 & MIPS_CONFIG1_IS_MASK) >> MIPS_CONFIG1_IS_SHIFT) + 6);
 	}
+#endif
 
-#ifndef CPU_CNMIPS
 	/* L1 data cache. */
+#ifdef MIPS_DISABLE_L1_CACHE
+	cpuinfo->l1.dc_linesize = 0;
+#else
+#ifndef CPU_CNMIPS
 	tmp = (cfg1 & MIPS_CONFIG1_DL_MASK) >> MIPS_CONFIG1_DL_SHIFT;
 	if (tmp != 0) {
 		cpuinfo->l1.dc_linesize = 1 << (tmp + 1);
@@ -161,11 +183,45 @@ mips_get_identity(struct mips_cpuinfo *cpuinfo)
 	/* All Octeon models use 128 byte line size.  */
 	cpuinfo->l1.dc_linesize = 128;
 #endif
+#endif
 
 	cpuinfo->l1.ic_size = cpuinfo->l1.ic_linesize
 	    * cpuinfo->l1.ic_nsets * cpuinfo->l1.ic_nways;
 	cpuinfo->l1.dc_size = cpuinfo->l1.dc_linesize 
 	    * cpuinfo->l1.dc_nsets * cpuinfo->l1.dc_nways;
+
+	/*
+	 * Probe PageMask register to see what sizes of pages are supported
+	 * by writing all one's and then reading it back.
+	 */
+	mips_wr_pagemask(~0);
+	cpuinfo->tlb_pgmask = mips_rd_pagemask();
+	mips_wr_pagemask(MIPS3_PGMASK_4K);
+
+#ifndef CPU_CNMIPS
+	/* L2 cache */
+	if (!(cfg1 & MIPS_CONFIG_CM)) {
+		/* We don't have valid cfg2 register */
+		return;
+	}
+
+	cfg2 = mips_rd_config2();
+
+	tmp = (cfg2 >> MIPS_CONFIG2_SL_SHIFT) & MIPS_CONFIG2_SL_MASK;
+	if (0 < tmp && tmp <= 7)
+		cpuinfo->l2.dc_linesize = 2 << tmp;
+
+	tmp = (cfg2 >> MIPS_CONFIG2_SS_SHIFT) & MIPS_CONFIG2_SS_MASK;
+	if (0 <= tmp && tmp <= 7)
+		cpuinfo->l2.dc_nsets = 64 << tmp;
+
+	tmp = (cfg2 >> MIPS_CONFIG2_SA_SHIFT) & MIPS_CONFIG2_SA_MASK;
+	if (0 <= tmp && tmp <= 7)
+		cpuinfo->l2.dc_nways = tmp + 1;
+
+	cpuinfo->l2.dc_size = cpuinfo->l2.dc_linesize
+	    * cpuinfo->l2.dc_nsets * cpuinfo->l2.dc_nways;
+#endif
 }
 
 void
@@ -241,8 +297,31 @@ cpu_identify(void)
 		} else if (cpuinfo.tlb_type == MIPS_MMU_FIXED) {
 			printf("Fixed mapping");
 		}
-		printf(", %d entries\n", cpuinfo.tlb_nentries);
+		printf(", %d entries ", cpuinfo.tlb_nentries);
 	}
+
+	if (cpuinfo.tlb_pgmask) {
+		printf("(");
+		if (cpuinfo.tlb_pgmask & MIPS3_PGMASK_MASKX)
+			printf("1K ");
+		printf("4K ");
+		if (cpuinfo.tlb_pgmask & MIPS3_PGMASK_16K)
+			printf("16K ");
+		if (cpuinfo.tlb_pgmask & MIPS3_PGMASK_64K)
+			printf("64K ");
+		if (cpuinfo.tlb_pgmask & MIPS3_PGMASK_256K)
+			printf("256K ");
+		if (cpuinfo.tlb_pgmask & MIPS3_PGMASK_1M)
+			printf("1M ");
+		if (cpuinfo.tlb_pgmask & MIPS3_PGMASK_16M)
+			printf("16M ");
+		if (cpuinfo.tlb_pgmask & MIPS3_PGMASK_64M)
+			printf("64M ");
+		if (cpuinfo.tlb_pgmask & MIPS3_PGMASK_256M)
+			printf("256M ");
+		printf("pg sizes)");
+	}
+	printf("\n");
 
 	printf("  L1 i-cache: ");
 	if (cpuinfo.l1.ic_linesize == 0) {
@@ -270,6 +349,18 @@ cpu_identify(void)
 		    cpuinfo.l1.dc_nsets, cpuinfo.l1.dc_linesize);
 	}
 
+	printf("  L2 cache: ");
+	if (cpuinfo.l2.dc_linesize == 0) {
+		printf("disabled\n");
+	} else {
+		printf("%d ways of %d sets, %d bytes per line, "
+		    "%d KiB total size\n",
+		    cpuinfo.l2.dc_nways,
+		    cpuinfo.l2.dc_nsets,
+		    cpuinfo.l2.dc_linesize,
+		    cpuinfo.l2.dc_size / 1024);
+	}
+
 	cfg0 = mips_rd_config();
 	/* If config register selection 1 does not exist, exit. */
 	if (!(cfg0 & MIPS_CONFIG_CM))
@@ -287,6 +378,7 @@ cpu_identify(void)
 	 * Config2 contains no useful information other then Config3 
 	 * existence flag
 	 */
+	printf("  Config2=0x%08x\n", cfg2);
 
 	/* If config register selection 3 does not exist, exit. */
 	if (!(cfg2 & MIPS_CONFIG_CM))
@@ -335,6 +427,7 @@ static driver_t cpu_driver = {
 static int
 cpu_probe(device_t dev)
 {
+
 	return (0);
 }
 

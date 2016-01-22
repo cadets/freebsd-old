@@ -99,10 +99,10 @@ __FBSDID("$FreeBSD$");
  */
 
 static const u_int32_t	CH_TIMEOUT_MODE_SENSE                = 6000;
-static const u_int32_t	CH_TIMEOUT_MOVE_MEDIUM               = 100000;
-static const u_int32_t	CH_TIMEOUT_EXCHANGE_MEDIUM           = 100000;
-static const u_int32_t	CH_TIMEOUT_POSITION_TO_ELEMENT       = 100000;
-static const u_int32_t	CH_TIMEOUT_READ_ELEMENT_STATUS       = 10000;
+static const u_int32_t	CH_TIMEOUT_MOVE_MEDIUM               = 15 * 60 * 1000;
+static const u_int32_t	CH_TIMEOUT_EXCHANGE_MEDIUM           = 15 * 60 * 1000;
+static const u_int32_t	CH_TIMEOUT_POSITION_TO_ELEMENT       = 15 * 60 * 1000;
+static const u_int32_t	CH_TIMEOUT_READ_ELEMENT_STATUS       = 5 * 60 * 1000;
 static const u_int32_t	CH_TIMEOUT_SEND_VOLTAG		     = 10000;
 static const u_int32_t	CH_TIMEOUT_INITIALIZE_ELEMENT_STATUS = 500000;
 
@@ -116,18 +116,19 @@ typedef enum {
 } ch_state;
 
 typedef enum {
-	CH_CCB_PROBE,
-	CH_CCB_WAITING
+	CH_CCB_PROBE
 } ch_ccb_types;
 
 typedef enum {
 	CH_Q_NONE	= 0x00,
-	CH_Q_NO_DBD	= 0x01
+	CH_Q_NO_DBD	= 0x01,
+	CH_Q_NO_DVCID	= 0x02
 } ch_quirks;
 
 #define CH_Q_BIT_STRING	\
 	"\020"		\
-	"\001NO_DBD"
+	"\001NO_DBD"	\
+	"\002NO_DVCID"
 
 #define ccb_state	ppriv_field0
 #define ccb_bp		ppriv_ptr1
@@ -246,19 +247,18 @@ chinit(void)
 static void
 chdevgonecb(void *arg)
 {
-	struct cam_sim	  *sim;
 	struct ch_softc   *softc;
 	struct cam_periph *periph;
+	struct mtx *mtx;
 	int i;
 
 	periph = (struct cam_periph *)arg;
-	sim = periph->sim;
-	softc = (struct ch_softc *)periph->softc;
+	mtx = cam_periph_mtx(periph);
+	mtx_lock(mtx);
 
+	softc = (struct ch_softc *)periph->softc;
 	KASSERT(softc->open_count >= 0, ("Negative open count %d",
 		softc->open_count));
-
-	mtx_lock(sim->mtx);
 
 	/*
 	 * When we get this callback, we will get no more close calls from
@@ -276,13 +276,13 @@ chdevgonecb(void *arg)
 	cam_periph_release_locked(periph);
 
 	/*
-	 * We reference the SIM lock directly here, instead of using
+	 * We reference the lock directly here, instead of using
 	 * cam_periph_unlock().  The reason is that the final call to
 	 * cam_periph_release_locked() above could result in the periph
 	 * getting freed.  If that is the case, dereferencing the periph
 	 * with a cam_periph_unlock() call would cause a page fault.
 	 */
-	mtx_unlock(sim->mtx);
+	mtx_unlock(mtx);
 }
 
 static void
@@ -304,9 +304,6 @@ choninvalidate(struct cam_periph *periph)
 	 * when it has cleaned up its state.
 	 */
 	destroy_dev_sched_cb(softc->dev, chdevgonecb, periph);
-
-	xpt_print(periph->path, "lost device\n");
-
 }
 
 static void
@@ -315,8 +312,6 @@ chcleanup(struct cam_periph *periph)
 	struct ch_softc *softc;
 
 	softc = (struct ch_softc *)periph->softc;
-
-	xpt_print(periph->path, "removing device entry\n");
 
 	devstat_remove_entry(softc->device_stats);
 
@@ -342,7 +337,8 @@ chasync(void *callback_arg, u_int32_t code, struct cam_path *path, void *arg)
 
 		if (cgd->protocol != PROTO_SCSI)
 			break;
-
+		if (SID_QUAL(&cgd->inq_data) != SID_QUAL_LU_CONNECTED)
+			break;
 		if (SID_TYPE(&cgd->inq_data)!= T_CHANGER)
 			break;
 
@@ -353,7 +349,7 @@ chasync(void *callback_arg, u_int32_t code, struct cam_path *path, void *arg)
 		 */
 		status = cam_periph_alloc(chregister, choninvalidate,
 					  chcleanup, chstart, "ch",
-					  CAM_PERIPH_BIO, cgd->ccb_h.path,
+					  CAM_PERIPH_BIO, path,
 					  chasync, AC_FOUND_DEVICE, cgd);
 
 		if (status != CAM_REQ_CMP
@@ -395,6 +391,14 @@ chregister(struct cam_periph *periph, void *arg)
 	softc->state = CH_STATE_PROBE;
 	periph->softc = softc;
 	softc->quirks = CH_Q_NONE;
+
+	/*
+	 * The DVCID and CURDATA bits were not introduced until the SMC
+	 * spec.  If this device claims SCSI-2 or earlier support, then it
+	 * very likely does not support these bits.
+	 */
+	if (cgd->inq_data.version <= SCSI_REV_2)
+		softc->quirks |= CH_Q_NO_DVCID;
 
 	bzero(&cpi, sizeof(cpi));
 	xpt_setup_ccb(&cpi.ccb_h, periph->path, CAM_PRIORITY_NORMAL);
@@ -498,25 +502,23 @@ chopen(struct cdev *dev, int flags, int fmt, struct thread *td)
 static int
 chclose(struct cdev *dev, int flag, int fmt, struct thread *td)
 {
-	struct	cam_sim *sim;
 	struct	cam_periph *periph;
 	struct  ch_softc *softc;
+	struct mtx *mtx;
 
 	periph = (struct cam_periph *)dev->si_drv1;
 	if (periph == NULL)
 		return(ENXIO);
+	mtx = cam_periph_mtx(periph);
+	mtx_lock(mtx);
 
-	sim = periph->sim;
 	softc = (struct ch_softc *)periph->softc;
-
-	mtx_lock(sim->mtx);
-
 	softc->open_count--;
 
 	cam_periph_release_locked(periph);
 
 	/*
-	 * We reference the SIM lock directly here, instead of using
+	 * We reference the lock directly here, instead of using
 	 * cam_periph_unlock().  The reason is that the call to
 	 * cam_periph_release_locked() above could result in the periph
 	 * getting freed.  If that is the case, dereferencing the periph
@@ -527,7 +529,7 @@ chclose(struct cdev *dev, int flag, int fmt, struct thread *td)
 	 * protect the open count and avoid another lock acquisition and
 	 * release.
 	 */
-	mtx_unlock(sim->mtx);
+	mtx_unlock(mtx);
 
 	return(0);
 }
@@ -542,14 +544,7 @@ chstart(struct cam_periph *periph, union ccb *start_ccb)
 	switch (softc->state) {
 	case CH_STATE_NORMAL:
 	{
-		if (periph->immediate_priority <= periph->pinfo.priority){
-			start_ccb->ccb_h.ccb_state = CH_CCB_WAITING;
-
-			SLIST_INSERT_HEAD(&periph->ccb_list, &start_ccb->ccb_h,
-					  periph_links.sle);
-			periph->immediate_priority = CAM_PRIORITY_NONE;
-			wakeup(&periph->ccb_list);
-		}
+		xpt_release_ccb(start_ccb);
 		break;
 	}
 	case CH_STATE_PROBE:
@@ -660,11 +655,13 @@ chdone(struct cam_periph *periph, union ccb *done_ccb)
 				 */
 				return;
 			} else if (error != 0) {
-				int retry_scheduled;
 				struct scsi_mode_sense_6 *sms;
+				int frozen, retry_scheduled;
 
 				sms = (struct scsi_mode_sense_6 *)
 					done_ccb->csio.cdb_io.cdb_bytes;
+				frozen = (done_ccb->ccb_h.status &
+				    CAM_DEV_QFRZN) != 0;
 
 				/*
 				 * Check to see if block descriptors were
@@ -675,7 +672,8 @@ chdone(struct cam_periph *periph, union ccb *done_ccb)
 				 * block descriptors were disabled, enable
 				 * them and re-send the command.
 				 */
-				if (sms->byte2 & SMS_DBD) {
+				if ((sms->byte2 & SMS_DBD) != 0 &&
+				    (periph->flags & CAM_PERIPH_INVALID) == 0) {
 					sms->byte2 &= ~SMS_DBD;
 					xpt_action(done_ccb);
 					softc->quirks |= CH_Q_NO_DBD;
@@ -684,7 +682,7 @@ chdone(struct cam_periph *periph, union ccb *done_ccb)
 					retry_scheduled = 0;
 
 				/* Don't wedge this device's queue */
-				if ((done_ccb->ccb_h.status & CAM_DEV_QFRZN) != 0)
+				if (frozen)
 					cam_release_devq(done_ccb->ccb_h.path,
 						 /*relsim_flags*/0,
 						 /*reduction*/0,
@@ -727,12 +725,6 @@ chdone(struct cam_periph *periph, union ccb *done_ccb)
 		 */
 		xpt_release_ccb(done_ccb);
 		cam_periph_unhold(periph);
-		return;
-	}
-	case CH_CCB_WAITING:
-	{
-		/* Caller will release the CCB */
-		wakeup(&done_ccb->ccb_h.cbfcnp);
 		return;
 	}
 	default:
@@ -1208,6 +1200,8 @@ chgetelemstatus(struct cam_periph *periph, int scsi_version, u_long cmd,
 	caddr_t data = NULL;
 	size_t size, desclen;
 	int avail, i, error = 0;
+	int curdata, dvcid, sense_flags;
+	int try_no_dvcid = 0;
 	struct changer_element_status *user_data = NULL;
 	struct ch_softc *softc;
 	union ccb *ccb;
@@ -1239,14 +1233,31 @@ chgetelemstatus(struct cam_periph *periph, int scsi_version, u_long cmd,
 	cam_periph_lock(periph);
 	ccb = cam_periph_getccb(periph, CAM_PRIORITY_NORMAL);
 
+	sense_flags = SF_RETRY_UA;
+	if (softc->quirks & CH_Q_NO_DVCID) {
+		dvcid = 0;
+		curdata = 0;
+	} else {
+		dvcid = 1;
+		curdata = 1;
+		/*
+		 * Don't print anything for an Illegal Request, because
+		 * these flags can cause some changers to complain.  We'll
+		 * retry without them if we get an error.
+		 */
+		sense_flags |= SF_QUIET_IR;
+	}
+
+retry_einval:
+
 	scsi_read_element_status(&ccb->csio,
 				 /* retries */ 1,
 				 /* cbfcnp */ chdone,
 				 /* tag_action */ MSG_SIMPLE_Q_TAG,
 				 /* voltag */ want_voltags,
 				 /* sea */ softc->sc_firsts[chet],
-				 /* dvcid */ 1,
-				 /* curdata */ 1,
+				 /* curdata */ curdata,
+				 /* dvcid */ dvcid,
 				 /* count */ 1,
 				 /* data_ptr */ data,
 				 /* dxfer_len */ 1024,
@@ -1254,8 +1265,37 @@ chgetelemstatus(struct cam_periph *periph, int scsi_version, u_long cmd,
 				 /* timeout */ CH_TIMEOUT_READ_ELEMENT_STATUS);
 
 	error = cam_periph_runccb(ccb, cherror, /*cam_flags*/ CAM_RETRY_SELTO,
-				  /*sense_flags*/ SF_RETRY_UA,
+				  /*sense_flags*/ sense_flags,
 				  softc->device_stats);
+
+	/*
+	 * An Illegal Request sense key (only used if there is no asc/ascq)
+	 * or 0x24,0x00 for an ASC/ASCQ both map to EINVAL.  If dvcid or
+	 * curdata are set (we set both or neither), try turning them off
+	 * and see if the command is successful.
+	 */
+	if ((error == EINVAL)
+	 && (dvcid || curdata))  {
+		dvcid = 0;
+		curdata = 0;
+		error = 0;
+		/* At this point we want to report any Illegal Request */
+		sense_flags &= ~SF_QUIET_IR;
+		try_no_dvcid = 1;
+		goto retry_einval;
+	}
+
+	/*
+	 * In this case, we tried a read element status with dvcid and
+	 * curdata set, and it failed.  We retried without those bits, and
+	 * it succeeded.  Suggest to the user that he set a quirk, so we
+	 * don't go through the retry process the first time in the future.
+	 * This should only happen on changers that claim SCSI-3 or higher,
+	 * but don't support these bits.
+	 */
+	if ((try_no_dvcid != 0)
+	 && (error == 0))
+		softc->quirks |= CH_Q_NO_DVCID;
 
 	if (error)
 		goto done;
@@ -1284,8 +1324,8 @@ chgetelemstatus(struct cam_periph *periph, int scsi_version, u_long cmd,
 				 /* voltag */ want_voltags,
 				 /* sea */ softc->sc_firsts[chet]
 				 + cesr->cesr_element_base,
-				 /* dvcid */ 1,
-				 /* curdata */ 1,
+				 /* curdata */ curdata,
+				 /* dvcid */ dvcid,
 				 /* count */ cesr->cesr_element_count,
 				 /* data_ptr */ data,
 				 /* dxfer_len */ size,
@@ -1671,10 +1711,8 @@ chscsiversion(struct cam_periph *periph)
 	struct scsi_inquiry_data *inq_data;
 	struct ccb_getdev *cgd;
 	int dev_scsi_version;
-	struct cam_sim *sim;
 
-	sim = xpt_path_sim(periph->path);
-	mtx_assert(sim->mtx, MA_OWNED);
+	cam_periph_assert(periph, MA_OWNED);
 	if ((cgd = (struct ccb_getdev *)xpt_alloc_ccb_nowait()) == NULL)
 		return (-1);
 	/*

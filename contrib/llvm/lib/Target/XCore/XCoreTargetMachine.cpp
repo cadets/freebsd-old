@@ -11,29 +11,31 @@
 //===----------------------------------------------------------------------===//
 
 #include "XCoreTargetMachine.h"
+#include "XCoreTargetObjectFile.h"
+#include "XCoreTargetTransformInfo.h"
 #include "XCore.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/IR/Module.h"
-#include "llvm/PassManager.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
 /// XCoreTargetMachine ctor - Create an ILP32 architecture model
 ///
-XCoreTargetMachine::XCoreTargetMachine(const Target &T, StringRef TT,
+XCoreTargetMachine::XCoreTargetMachine(const Target &T, const Triple &TT,
                                        StringRef CPU, StringRef FS,
                                        const TargetOptions &Options,
                                        Reloc::Model RM, CodeModel::Model CM,
                                        CodeGenOpt::Level OL)
-  : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
-    Subtarget(TT, CPU, FS),
-    DL("e-p:32:32:32-a0:0:32-f32:32:32-f64:32:32-i1:8:32-i8:8:32-"
-               "i16:16:32-i32:32:32-i64:32:32-n32"),
-    InstrInfo(),
-    FrameLowering(Subtarget),
-    TLInfo(*this),
-    TSInfo(*this) {
+    : LLVMTargetMachine(
+          T, "e-m:e-p:32:32-i1:8:32-i8:8:32-i16:16:32-i64:32-f64:32-a:0:32-n32",
+          TT, CPU, FS, Options, RM, CM, OL),
+      TLOF(make_unique<XCoreTargetObjectFile>()),
+      Subtarget(TT, CPU, FS, *this) {
+  initAsmInfo();
 }
+
+XCoreTargetMachine::~XCoreTargetMachine() {}
 
 namespace {
 /// XCore Code Generator Pass Configuration Options.
@@ -46,7 +48,10 @@ public:
     return getTM<XCoreTargetMachine>();
   }
 
-  virtual bool addInstSelector();
+  void addIRPasses() override;
+  bool addPreISel() override;
+  bool addInstSelector() override;
+  void addPreEmitPass() override;
 };
 } // namespace
 
@@ -54,12 +59,33 @@ TargetPassConfig *XCoreTargetMachine::createPassConfig(PassManagerBase &PM) {
   return new XCorePassConfig(this, PM);
 }
 
+void XCorePassConfig::addIRPasses() {
+  addPass(createAtomicExpandPass(&getXCoreTargetMachine()));
+
+  TargetPassConfig::addIRPasses();
+}
+
+bool XCorePassConfig::addPreISel() {
+  addPass(createXCoreLowerThreadLocalPass());
+  return false;
+}
+
 bool XCorePassConfig::addInstSelector() {
   addPass(createXCoreISelDag(getXCoreTargetMachine(), getOptLevel()));
   return false;
 }
 
+void XCorePassConfig::addPreEmitPass() {
+  addPass(createXCoreFrameToArgsOffsetEliminationPass(), false);
+}
+
 // Force static initialization.
 extern "C" void LLVMInitializeXCoreTarget() {
   RegisterTargetMachine<XCoreTargetMachine> X(TheXCoreTarget);
+}
+
+TargetIRAnalysis XCoreTargetMachine::getTargetIRAnalysis() {
+  return TargetIRAnalysis([this](Function &F) {
+    return TargetTransformInfo(XCoreTTIImpl(this, F));
+  });
 }

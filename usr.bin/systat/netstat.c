@@ -85,7 +85,7 @@ static char *inetname(struct sockaddr *);
 static void inetprint(struct sockaddr *, const char *);
 
 #define	streq(a,b)	(strcmp(a,b)==0)
-#define	YMAX(w)		((w)->_maxy-1)
+#define	YMAX(w)		(getmaxy(w)-2)
 
 WINDOW *
 opennetstat(void)
@@ -333,8 +333,8 @@ enter_kvm(struct inpcb *inp, struct socket *so, int state, const char *proto)
 	struct netinfo *p;
 
 	if ((p = enter(inp, state, proto)) != NULL) {
-		p->ni_rcvcc = so->so_rcv.sb_cc;
-		p->ni_sndcc = so->so_snd.sb_cc;
+		p->ni_rcvcc = so->so_rcv.sb_ccc;
+		p->ni_sndcc = so->so_snd.sb_ccc;
 	}
 }
 

@@ -71,6 +71,9 @@ if [ -n "$RESTART" ]; then
 		if grep -q ^rcvar $file; then
 			eval `grep ^name= $file`
 			eval `grep ^rcvar $file`
+			if [ -n "$rcvar" ]; then
+				load_rc_config_var ${name} ${rcvar}
+			fi
 			checkyesno $rcvar 2>/dev/null && run_rc_script ${file} stop
 		fi
 	done
@@ -100,6 +103,9 @@ if [ -n "$ENABLED" ]; then
 		if grep -q ^rcvar $file; then
 			eval `grep ^name= $file`
 			eval `grep ^rcvar $file`
+			if [ -n "$rcvar" ]; then
+				load_rc_config_var ${name} ${rcvar}
+			fi
 			checkyesno $rcvar 2>/dev/null && echo $file
 		fi
 	done
@@ -109,7 +115,7 @@ fi
 if [ -n "$LIST" ]; then
 	for dir in /etc/rc.d $local_startup; do
 		[ -n "$VERBOSE" ] && echo "From ${dir}:"
-		cd $dir && for file in *; do echo $file; done
+		[ -d ${dir} ] && /bin/ls -1 ${dir}
 	done
 	exit 0
 fi
@@ -145,5 +151,5 @@ done
 
 # If the script was not found
 echo "$script does not exist in /etc/rc.d or the local startup"
-echo "directories (${local_startup})"
+echo "directories (${local_startup}), or is not executable"
 exit 1

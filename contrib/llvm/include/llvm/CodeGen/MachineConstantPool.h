@@ -17,6 +17,7 @@
 #define LLVM_CODEGEN_MACHINECONSTANTPOOL_H
 
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/MC/SectionKind.h"
 #include <cassert>
 #include <climits>
 #include <vector>
@@ -119,6 +120,8 @@ public:
   ///     them.
   ///  2: This entry may have arbitrary relocations. 
   unsigned getRelocationInfo() const;
+
+  SectionKind getSectionKind(const DataLayout *DL) const;
 };
   
 /// The MachineConstantPool class keeps track of constants referenced by a
@@ -132,15 +135,18 @@ public:
 /// address of the function constant pool values.
 /// @brief The machine constant pool.
 class MachineConstantPool {
-  const DataLayout *TD;   ///< The machine's DataLayout.
-  unsigned PoolAlignment; ///< The alignment for the pool.
+  unsigned PoolAlignment;       ///< The alignment for the pool.
   std::vector<MachineConstantPoolEntry> Constants; ///< The pool of constants.
   /// MachineConstantPoolValues that use an existing MachineConstantPoolEntry.
   DenseSet<MachineConstantPoolValue*> MachineCPVsSharingEntries;
+  const DataLayout &DL;
+
+  const DataLayout &getDataLayout() const { return DL; }
+
 public:
   /// @brief The only constructor.
-  explicit MachineConstantPool(const DataLayout *td)
-    : TD(td), PoolAlignment(1) {}
+  explicit MachineConstantPool(const DataLayout &DL)
+      : PoolAlignment(1), DL(DL) {}
   ~MachineConstantPool();
     
   /// getConstantPoolAlignment - Return the alignment required by

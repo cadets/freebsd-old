@@ -21,16 +21,16 @@
  * specific prior written permission.
  * 
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
- * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+ * TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
 
@@ -53,6 +53,7 @@
 #include "services/listen_dnsport.h"
 #include "services/cache/rrset.h"
 #include "services/cache/infra.h"
+#include "util/fptr_wlist.h"
 #include "util/data/msgreply.h"
 #include "util/module.h"
 #include "util/net_help.h"
@@ -66,9 +67,12 @@
 #include <grp.h>
 #endif
 
+#ifndef S_SPLINT_S
+/* splint chokes on this system header file */
 #ifdef HAVE_SYS_RESOURCE_H
 #include <sys/resource.h>
 #endif
+#endif /* S_SPLINT_S */
 #ifdef HAVE_LOGIN_CAP_H
 #include <login_cap.h>
 #endif
@@ -80,7 +84,13 @@
 #    include "util/mini_event.h"
 #  endif
 #else
-#  include <event.h>
+#  ifdef HAVE_EVENT_H
+#    include <event.h>
+#  else
+#    include "event2/event.h"
+#    include "event2/event_struct.h"
+#    include "event2/event_compat.h"
+#  endif
 #endif
 
 #ifdef UB_ON_WINDOWS
@@ -92,8 +102,10 @@
 #  include "nss.h"
 #endif
 
+#ifdef HAVE_SBRK
 /** global debug value to keep track of heap memory allocation */
 void* unbound_start_brk = 0;
+#endif
 
 #if !defined(HAVE_EVENT_BASE_GET_METHOD) && (defined(HAVE_EV_LOOP) || defined(HAVE_EV_DEFAULT_LOOP))
 static const char* ev_backend2str(int b)
@@ -162,20 +174,20 @@ static void usage()
 #endif
 	printf("Version %s\n", PACKAGE_VERSION);
 	get_event_sys(&evnm, &evsys, &evmethod);
-	printf("linked libs: %s %s (it uses %s), ldns %s, %s\n", 
-		evnm, evsys, evmethod, ldns_version(), 
+	printf("linked libs: %s %s (it uses %s), %s\n", 
+		evnm, evsys, evmethod,
 #ifdef HAVE_SSL
 		SSLeay_version(SSLEAY_VERSION)
 #elif defined(HAVE_NSS)
 		NSS_GetVersion()
+#elif defined(HAVE_NETTLE)
+		"nettle"
 #endif
 		);
 	printf("linked modules:");
 	for(m = module_list_avail(); *m; m++)
 		printf(" %s", *m);
 	printf("\n");
-	printf("configured for %s on %s with options:%s\n",
-		CONFIGURE_TARGET, CONFIGURE_DATE, CONFIGURE_BUILD_WITH);
 	printf("BSD licensed, see LICENSE in source package for details.\n");
 	printf("Report bugs to %s\n", PACKAGE_BUGREPORT);
 }
@@ -192,6 +204,7 @@ int replay_var_compare(const void* ATTR_UNUSED(a), const void* ATTR_UNUSED(b))
 static void
 checkrlimits(struct config_file* cfg)
 {
+#ifndef S_SPLINT_S
 #ifdef HAVE_GETRLIMIT
 	/* list has number of ports to listen to, ifs number addresses */
 	int list = ((cfg->do_udp?1:0) + (cfg->do_tcp?1 + 
@@ -258,8 +271,6 @@ checkrlimits(struct config_file* cfg)
 #ifdef HAVE_SETRLIMIT
 		if(setrlimit(RLIMIT_NOFILE, &rlim) < 0) {
 			log_warn("setrlimit: %s", strerror(errno));
-#else
-		if(1) {
 #endif
 			log_warn("cannot increase max open fds from %u to %u",
 				(unsigned)avail, (unsigned)total+10);
@@ -275,22 +286,29 @@ checkrlimits(struct config_file* cfg)
 			log_warn("increase ulimit or decrease threads, "
 				"ports in config to remove this warning");
 			return;
+#ifdef HAVE_SETRLIMIT
 		}
-		log_warn("increased limit(open files) from %u to %u",
+#endif
+		verbose(VERB_ALGO, "increased limit(open files) from %u to %u",
 			(unsigned)avail, (unsigned)total+10);
 	}
 #else	
 	(void)cfg;
 #endif /* HAVE_GETRLIMIT */
+#endif /* S_SPLINT_S */
 }
 
 /** set verbosity, check rlimits, cache settings */
 static void
 apply_settings(struct daemon* daemon, struct config_file* cfg, 
-	int cmdline_verbose)
+	int cmdline_verbose, int debug_mode)
 {
 	/* apply if they have changed */
 	verbosity = cmdline_verbose + cfg->verbosity;
+	if (debug_mode > 1) {
+		cfg->use_syslog = 0;
+		cfg->logfile = NULL;
+	}
 	daemon_apply_cfg(daemon, cfg);
 	checkrlimits(cfg);
 }
@@ -427,20 +445,15 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 {
 #ifdef HAVE_GETPWNAM
 	struct passwd *pwd = NULL;
-	uid_t uid;
-	gid_t gid;
-	/* initialize, but not to 0 (root) */
-	memset(&uid, 112, sizeof(uid));
-	memset(&gid, 112, sizeof(gid));
-	log_assert(cfg);
 
 	if(cfg->username && cfg->username[0]) {
 		if((pwd = getpwnam(cfg->username)) == NULL)
 			fatal_exit("user '%s' does not exist.", cfg->username);
-		uid = pwd->pw_uid;
-		gid = pwd->pw_gid;
 		/* endpwent below, in case we need pwd for setusercontext */
 	}
+#endif
+#ifdef UB_ON_WINDOWS
+	w_config_adjust_directory(cfg);
 #endif
 
 	/* init syslog (as root) if needed, before daemonize, otherwise
@@ -495,33 +508,28 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 #ifdef HAVE_KILL
 	if(cfg->pidfile && cfg->pidfile[0]) {
 		writepid(daemon->pidfile, getpid());
-		if(!(cfg->chrootdir && cfg->chrootdir[0]) || 
-			(cfg->chrootdir && cfg->chrootdir[0] && 
-			strncmp(daemon->pidfile, cfg->chrootdir, 
-			strlen(cfg->chrootdir))==0)) {
-			/* delete of pidfile could potentially work,
-			 * chown to get permissions */
-			if(cfg->username && cfg->username[0]) {
-			  if(chown(daemon->pidfile, uid, gid) == -1) {
+		if(cfg->username && cfg->username[0] && cfg_uid != (uid_t)-1) {
+#  ifdef HAVE_CHOWN
+			if(chown(daemon->pidfile, cfg_uid, cfg_gid) == -1) {
 				log_err("cannot chown %u.%u %s: %s",
-					(unsigned)uid, (unsigned)gid,
+					(unsigned)cfg_uid, (unsigned)cfg_gid,
 					daemon->pidfile, strerror(errno));
-			  }
 			}
+#  endif /* HAVE_CHOWN */
 		}
 	}
 #else
 	(void)daemon;
-#endif
+#endif /* HAVE_KILL */
 
 	/* Set user context */
 #ifdef HAVE_GETPWNAM
-	if(cfg->username && cfg->username[0]) {
+	if(cfg->username && cfg->username[0] && cfg_uid != (uid_t)-1) {
 #ifdef HAVE_SETUSERCONTEXT
 		/* setusercontext does initgroups, setuid, setgid, and
 		 * also resource limits from login config, but we
 		 * still call setresuid, setresgid to be sure to set all uid*/
-		if(setusercontext(NULL, pwd, uid,
+		if(setusercontext(NULL, pwd, cfg_uid, (unsigned)
 			LOGIN_SETALL & ~LOGIN_SETUSER & ~LOGIN_SETGROUP) != 0)
 			log_warn("unable to setusercontext %s: %s",
 				cfg->username, strerror(errno));
@@ -583,29 +591,29 @@ perform_setup(struct daemon* daemon, struct config_file* cfg, int debug_mode,
 
 	/* drop permissions after chroot, getpwnam, pidfile, syslog done*/
 #ifdef HAVE_GETPWNAM
-	if(cfg->username && cfg->username[0]) {
+	if(cfg->username && cfg->username[0] && cfg_uid != (uid_t)-1) {
 #  ifdef HAVE_INITGROUPS
-		if(initgroups(cfg->username, gid) != 0)
+		if(initgroups(cfg->username, cfg_gid) != 0)
 			log_warn("unable to initgroups %s: %s",
 				cfg->username, strerror(errno));
 #  endif /* HAVE_INITGROUPS */
 		endpwent();
 
 #ifdef HAVE_SETRESGID
-		if(setresgid(gid,gid,gid) != 0)
+		if(setresgid(cfg_gid,cfg_gid,cfg_gid) != 0)
 #elif defined(HAVE_SETREGID) && !defined(DARWIN_BROKEN_SETREUID)
-		if(setregid(gid,gid) != 0)
+		if(setregid(cfg_gid,cfg_gid) != 0)
 #else /* use setgid */
-		if(setgid(gid) != 0)
+		if(setgid(cfg_gid) != 0)
 #endif /* HAVE_SETRESGID */
 			fatal_exit("unable to set group id of %s: %s", 
 				cfg->username, strerror(errno));
 #ifdef HAVE_SETRESUID
-		if(setresuid(uid,uid,uid) != 0)
+		if(setresuid(cfg_uid,cfg_uid,cfg_uid) != 0)
 #elif defined(HAVE_SETREUID) && !defined(DARWIN_BROKEN_SETREUID)
-		if(setreuid(uid,uid) != 0)
+		if(setreuid(cfg_uid,cfg_uid) != 0)
 #else /* use setuid */
-		if(setuid(uid) != 0)
+		if(setuid(cfg_uid) != 0)
 #endif /* HAVE_SETRESUID */
 			fatal_exit("unable to set user id of %s: %s", 
 				cfg->username, strerror(errno));
@@ -649,7 +657,9 @@ run_daemon(const char* cfgfile, int cmdline_verbose, int debug_mode)
 					cfgfile);
 			log_warn("Continuing with default config settings");
 		}
-		apply_settings(daemon, cfg, cmdline_verbose);
+		apply_settings(daemon, cfg, cmdline_verbose, debug_mode);
+		if(!done_setup)
+			config_lookup_uid(cfg);
 	
 		/* prepare */
 		if(!daemon_open_shared_ports(daemon))
@@ -714,6 +724,7 @@ main(int argc, char* argv[])
 #endif
 
 	log_init(NULL, 0, NULL);
+	log_ident_set(strrchr(argv[0],'/')?strrchr(argv[0],'/')+1:argv[0]);
 	/* parse the options */
 	while( (c=getopt(argc, argv, "c:dhvw:")) != -1) {
 		switch(c) {
@@ -728,7 +739,7 @@ main(int argc, char* argv[])
 			verbosity++;
 			break;
 		case 'd':
-			debug_mode = 1;
+			debug_mode++;
 			break;
 		case 'w':
 			winopt = optarg;

@@ -21,16 +21,16 @@
  * specific prior written permission.
  * 
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
- * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+ * TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 /**
@@ -364,11 +364,18 @@ void *unbound_stat_malloc(size_t size)
 #ifdef calloc
 #undef calloc
 #endif
+#ifndef INT_MAX
+#define INT_MAX (((int)-1)>>1)
+#endif
 /** calloc with stats */
 void *unbound_stat_calloc(size_t nmemb, size_t size)
 {
-	size_t s = (nmemb*size==0)?(size_t)1:nmemb*size;
-	void* res = calloc(1, s+16);
+	size_t s;
+	void* res;
+	if(nmemb != 0 && INT_MAX/nmemb < size)
+		return NULL; /* integer overflow check */
+	s = (nmemb*size==0)?(size_t)1:nmemb*size;
+	res = calloc(1, s+16);
 	if(!res) return NULL;
 	log_info("stat %p=calloc(%u, %u)", res+16, (unsigned)nmemb, (unsigned)size);
 	unbound_mem_alloc += s;
@@ -503,8 +510,12 @@ void *unbound_stat_malloc_lite(size_t size, const char* file, int line,
 void *unbound_stat_calloc_lite(size_t nmemb, size_t size, const char* file,
         int line, const char* func)
 {
-	size_t req = nmemb * size;
-	void* res = malloc(req+lite_pad*2+sizeof(size_t));
+	size_t req;
+	void* res;
+	if(nmemb != 0 && INT_MAX/nmemb < size)
+		return NULL; /* integer overflow check */
+	req = nmemb * size;
+	res = malloc(req+lite_pad*2+sizeof(size_t));
 	if(!res) return NULL;
 	memmove(res, lite_pre, lite_pad);
 	memmove(res+lite_pad, &req, sizeof(size_t));
@@ -601,13 +612,13 @@ char* unbound_lite_wrapstr(char* s)
 	return n;
 }
 
-#undef ldns_pkt2wire
-ldns_status unbound_lite_pkt2wire(uint8_t **dest, const ldns_pkt *p, 
+#undef sldns_pkt2wire
+sldns_status unbound_lite_pkt2wire(uint8_t **dest, const sldns_pkt *p, 
 	size_t *size)
 {
 	uint8_t* md = NULL;
 	size_t ms = 0;
-	ldns_status s = ldns_pkt2wire(&md, p, &ms);
+	sldns_status s = sldns_pkt2wire(&md, p, &ms);
 	if(md) {
 		*dest = unbound_stat_malloc_lite(ms, __FILE__, __LINE__, 
 			__func__);

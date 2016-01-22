@@ -1,11 +1,12 @@
 # $FreeBSD$
 
-.include <bsd.own.mk>
+.include <src.opts.mk>
 
 LIB=	clangstaticanalyzercheckers
 
 SRCDIR=	tools/clang/lib/StaticAnalyzer/Checkers
-SRCS=	AnalyzerStatsChecker.cpp \
+SRCS=	AllocationDiagnostics.cpp \
+	AnalyzerStatsChecker.cpp \
 	ArrayBoundChecker.cpp \
 	ArrayBoundCheckerV2.cpp \
 	BasicObjCFoundationChecks.cpp \
@@ -20,10 +21,8 @@ SRCS=	AnalyzerStatsChecker.cpp \
 	CheckObjCInstMethSignature.cpp \
 	CheckSecuritySyntaxOnly.cpp \
 	CheckSizeofPointer.cpp \
-	CheckerDocumentation.cpp \
 	ChrootChecker.cpp \
 	ClangCheckers.cpp \
-	CommonBugCategories.cpp \
 	DeadStoresChecker.cpp \
 	DebugCheckers.cpp \
 	DereferenceChecker.cpp \
@@ -33,7 +32,7 @@ SRCS=	AnalyzerStatsChecker.cpp \
 	ExprInspectionChecker.cpp \
 	FixedAddressChecker.cpp \
 	GenericTaintChecker.cpp \
-	IdempotentOperationChecker.cpp \
+	IdenticalExprChecker.cpp \
 	IvarInvalidationChecker.cpp \
 	LLVMConventionsChecker.cpp \
 	MacOSKeychainAPIChecker.cpp \
@@ -43,8 +42,8 @@ SRCS=	AnalyzerStatsChecker.cpp \
 	MallocSizeofChecker.cpp \
 	NSAutoreleasePoolChecker.cpp \
 	NSErrorChecker.cpp \
-	NonNullParamChecker.cpp \
 	NoReturnFunctionChecker.cpp \
+	NonNullParamChecker.cpp \
 	ObjCAtSyncChecker.cpp \
 	ObjCContainersASTChecker.cpp \
 	ObjCContainersChecker.cpp \
@@ -61,6 +60,7 @@ SRCS=	AnalyzerStatsChecker.cpp \
 	StackAddrEscapeChecker.cpp \
 	StreamChecker.cpp \
 	TaintTesterChecker.cpp \
+	TestAfterDivZeroChecker.cpp \
 	TraversalChecker.cpp \
 	UndefBranchChecker.cpp \
 	UndefCapturedBlockVarChecker.cpp \
@@ -72,7 +72,12 @@ SRCS=	AnalyzerStatsChecker.cpp \
 	VLASizeChecker.cpp \
 	VirtualCallChecker.cpp
 
+.if ${MK_CLANG_EXTRAS} != "no"
+SRCS+=	CheckerDocumentation.cpp
+.endif
+
 TGHDRS=	AttrList \
+	AttrVisitor \
 	Attrs \
 	Checkers \
 	CommentCommandList \

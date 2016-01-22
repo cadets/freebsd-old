@@ -21,16 +21,16 @@
  * specific prior written permission.
  * 
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
- * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+ * TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 /**
@@ -295,6 +295,13 @@ void val_fill_reply(struct reply_info* chase, struct reply_info* orig,
 	size_t cname_skip, uint8_t* name, size_t len, uint8_t* signer);
 
 /**
+ * Remove rrset with index from reply, from the authority section.
+ * @param rep: reply to remove it from.
+ * @param index: rrset to remove, must be in the authority section.
+ */
+void val_reply_remove_auth(struct reply_info* rep, size_t index);
+
+/**
  * Remove all unsigned or non-secure status rrsets from NS and AR sections.
  * So that unsigned data does not get let through to clients, when we have
  * found the data to be secure.
@@ -384,7 +391,7 @@ int val_favorite_ds_algo(struct ub_packed_rrset_key* ds_rrset);
  * Find DS denial message in cache.  Saves new qstate allocation and allows
  * the validator to use partial content which is not enough to construct a
  * message for network (or user) consumption.  Without SOA for example,
- * which is a common occurence in the unbound code since the referrals contain
+ * which is a common occurrence in the unbound code since the referrals contain
  * NSEC/NSEC3 rrs without the SOA element, thus do not allow synthesis of a
  * full negative reply, but do allow synthesis of sufficient proof.
  * @param env: query env with caches and time.

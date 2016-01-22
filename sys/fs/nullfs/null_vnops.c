@@ -361,9 +361,11 @@ null_lookup(struct vop_lookup_args *ap)
 	struct vnode *dvp = ap->a_dvp;
 	int flags = cnp->cn_flags;
 	struct vnode *vp, *ldvp, *lvp;
+	struct mount *mp;
 	int error;
 
-	if ((flags & ISLASTCN) && (dvp->v_mount->mnt_flag & MNT_RDONLY) &&
+	mp = dvp->v_mount;
+	if ((flags & ISLASTCN) != 0 && (mp->mnt_flag & MNT_RDONLY) != 0 &&
 	    (cnp->cn_nameiop == DELETE || cnp->cn_nameiop == RENAME))
 		return (EROFS);
 	/*
@@ -372,9 +374,47 @@ null_lookup(struct vop_lookup_args *ap)
 	 */
 	ldvp = NULLVPTOLOWERVP(dvp);
 	vp = lvp = NULL;
+	KASSERT((ldvp->v_vflag & VV_ROOT) == 0 ||
+	    ((dvp->v_vflag & VV_ROOT) != 0 && (flags & ISDOTDOT) == 0),
+	    ("ldvp %p fl %#x dvp %p fl %#x flags %#x", ldvp, ldvp->v_vflag,
+	     dvp, dvp->v_vflag, flags));
+
+	/*
+	 * Hold ldvp.  The reference on it, owned by dvp, is lost in
+	 * case of dvp reclamation, and we need ldvp to move our lock
+	 * from ldvp to dvp.
+	 */
+	vhold(ldvp);
+
 	error = VOP_LOOKUP(ldvp, &lvp, cnp);
-	if (error == EJUSTRETURN && (flags & ISLASTCN) &&
-	    (dvp->v_mount->mnt_flag & MNT_RDONLY) &&
+
+	/*
+	 * VOP_LOOKUP() on lower vnode may unlock ldvp, which allows
+	 * dvp to be reclaimed due to shared v_vnlock.  Check for the
+	 * doomed state and return error.
+	 */
+	if ((error == 0 || error == EJUSTRETURN) &&
+	    (dvp->v_iflag & VI_DOOMED) != 0) {
+		error = ENOENT;
+		if (lvp != NULL)
+			vput(lvp);
+
+		/*
+		 * If vgone() did reclaimed dvp before curthread
+		 * relocked ldvp, the locks of dvp and ldpv are no
+		 * longer shared.  In this case, relock of ldvp in
+		 * lower fs VOP_LOOKUP() does not restore the locking
+		 * state of dvp.  Compensate for this by unlocking
+		 * ldvp and locking dvp, which is also correct if the
+		 * locks are still shared.
+		 */
+		VOP_UNLOCK(ldvp, 0);
+		vn_lock(dvp, LK_EXCLUSIVE | LK_RETRY);
+	}
+	vdrop(ldvp);
+
+	if (error == EJUSTRETURN && (flags & ISLASTCN) != 0 &&
+	    (mp->mnt_flag & MNT_RDONLY) != 0 &&
 	    (cnp->cn_nameiop == CREATE || cnp->cn_nameiop == RENAME))
 		error = EROFS;
 
@@ -384,7 +424,7 @@ null_lookup(struct vop_lookup_args *ap)
 			VREF(dvp);
 			vrele(lvp);
 		} else {
-			error = null_nodeget(dvp->v_mount, lvp, &vp);
+			error = null_nodeget(mp, lvp, &vp);
 			if (error == 0)
 				*ap->a_vpp = vp;
 		}
@@ -554,6 +594,7 @@ null_rename(struct vop_rename_args *ap)
 	struct vnode *fvp = ap->a_fvp;
 	struct vnode *fdvp = ap->a_fdvp;
 	struct vnode *tvp = ap->a_tvp;
+	struct null_node *tnn;
 
 	/* Check for cross-device rename. */
 	if ((fvp->v_mount != tdvp->v_mount) ||
@@ -568,7 +609,11 @@ null_rename(struct vop_rename_args *ap)
 		vrele(fvp);
 		return (EXDEV);
 	}
-	
+
+	if (tvp != NULL) {
+		tnn = VTONULL(tvp);
+		tnn->null_flags |= NULLV_DROP;
+	}
 	return (null_bypass((struct vop_generic_args *)ap));
 }
 
@@ -733,7 +778,7 @@ null_reclaim(struct vop_reclaim_args *ap)
 	lowervp = xp->null_lowervp;
 
 	KASSERT(lowervp != NULL && vp->v_vnlock != &vp->v_lock,
-	    ("Reclaiming inclomplete null vnode %p", vp));
+	    ("Reclaiming incomplete null vnode %p", vp));
 
 	null_hashrem(xp);
 	/*

@@ -66,6 +66,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/tty.h>
 #include <sys/file.h>
 #include <sys/conf.h>
+#define	_WANT_KW_EXITCODE
+#include <sys/wait.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -267,7 +269,7 @@ kvm_proclist(kvm_t *kd, int what, int arg, struct proc *p,
 				return (-1);
 			}
 			kp->ki_ppid = pproc.p_pid;
-		} else 
+		} else
 			kp->ki_ppid = 0;
 		if (proc.p_pgrp == NULL)
 			goto nopgrp;
@@ -343,7 +345,7 @@ nopgrp:
 		 * this field.
 		 */
 #define		pmap_resident_count(pm) ((pm)->pm_stats.resident_count)
-		kp->ki_rssize = pmap_resident_count(&vmspace.vm_pmap); 
+		kp->ki_rssize = pmap_resident_count(&vmspace.vm_pmap);
 		kp->ki_swrss = vmspace.vm_swrss;
 		kp->ki_tsize = vmspace.vm_tsize;
 		kp->ki_dsize = vmspace.vm_dsize;
@@ -389,7 +391,7 @@ nopgrp:
 		kp->ki_siglist = proc.p_siglist;
 		SIGSETOR(kp->ki_siglist, mtd.td_siglist);
 		kp->ki_sigmask = mtd.td_sigmask;
-		kp->ki_xstat = proc.p_xstat;
+		kp->ki_xstat = KW_EXITCODE(proc.p_xexit, proc.p_xsig);
 		kp->ki_acflag = proc.p_acflag;
 		kp->ki_lock = proc.p_lock;
 		if (proc.p_state != PRS_ZOMBIE) {
@@ -398,12 +400,12 @@ nopgrp:
 			kp->ki_sflag = 0;
 			kp->ki_nice = proc.p_nice;
 			kp->ki_traceflag = proc.p_traceflag;
-			if (proc.p_state == PRS_NORMAL) { 
+			if (proc.p_state == PRS_NORMAL) {
 				if (TD_ON_RUNQ(&mtd) ||
 				    TD_CAN_RUN(&mtd) ||
 				    TD_IS_RUNNING(&mtd)) {
 					kp->ki_stat = SRUN;
-				} else if (mtd.td_state == 
+				} else if (mtd.td_state ==
 				    TDS_INHIBITED) {
 					if (P_SHOULDSTOP(&proc)) {
 						kp->ki_stat = SSTOP;
@@ -431,6 +433,24 @@ nopgrp:
 				strlcpy(kp->ki_tdname, mtd.td_name, sizeof(kp->ki_tdname));
 			kp->ki_pctcpu = 0;
 			kp->ki_rqindex = 0;
+
+			/*
+			 * Note: legacy fields; wraps at NO_CPU_OLD or the
+			 * old max CPU value as appropriate
+			 */
+			if (mtd.td_lastcpu == NOCPU)
+				kp->ki_lastcpu_old = NOCPU_OLD;
+			else if (mtd.td_lastcpu > MAXCPU_OLD)
+				kp->ki_lastcpu_old = MAXCPU_OLD;
+			else
+				kp->ki_lastcpu_old = mtd.td_lastcpu;
+
+			if (mtd.td_oncpu == NOCPU)
+				kp->ki_oncpu_old = NOCPU_OLD;
+			else if (mtd.td_oncpu > MAXCPU_OLD)
+				kp->ki_oncpu_old = MAXCPU_OLD;
+			else
+				kp->ki_oncpu_old = mtd.td_oncpu;
 		} else {
 			kp->ki_stat = SZOMB;
 		}
@@ -561,6 +581,12 @@ liveout:
 		nl[4].n_name = "_hz";
 		nl[5].n_name = "_cpu_tick_frequency";
 		nl[6].n_name = 0;
+
+		if (!kd->arch->ka_native(kd)) {
+			_kvm_err(kd, kd->program,
+			    "cannot read procs from non-native core");
+			return (0);
+		}
 
 		if (kvm_nlist(kd, nl) != 0) {
 			for (p = nl; p->n_type != 0; ++p)

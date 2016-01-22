@@ -26,6 +26,9 @@
 
 marker task-menusets.4th
 
+vocabulary menusets-infrastructure
+only forth also menusets-infrastructure definitions
+
 variable menuset_use_name
 
 create menuset_affixbuf	255 allot
@@ -366,6 +369,7 @@ create menuset_y        1   allot
 	\ 	menuset1_command[x]		-> menu_command[x]
 	\ 	menuset1_init			-> ``evaluated''
 	\ 	menuset1_init[x]		-> menu_init[x]
+	\ 	menuset1_kernel			-> menu_kernel
 	\ 	menuset1_keycode[x]		-> menu_keycode[x]
 	\ 	menuset1_options		-> menu_options
 	\ 	menuset1_optionstext		-> menu_optionstext
@@ -382,6 +386,7 @@ create menuset_y        1   allot
 	\ 	{name}menu_command[x]		-> menu_command[x]
 	\ 	{name}menu_init			-> ``evaluated''
 	\ 	{name}menu_init[x]		-> menu_init[x]
+	\ 	{name}menu_kernel		-> menu_kernel
 	\ 	{name}menu_keycode[x]		-> menu_keycode[x]
 	\ 	{name}menu_options		-> menu_options
 	\ 	{name}menu_optionstext		-> menu_optionstext
@@ -434,6 +439,8 @@ create menuset_y        1   allot
 	s" y"     unsetenv
 	s" affix" unsetenv
 ;
+
+only forth definitions also menusets-infrastructure
 
 : menuset-loadsetnum ( N -- )
 
@@ -520,6 +527,10 @@ create menuset_y        1   allot
 	s" set var=acpi" evaluate
 	menuset-loadmenuvar
 
+	\ ... menu_kernel ...
+	s" set var=kernel" evaluate
+	menuset-loadmenuvar
+
 	\ ... menu_options ...
 	s" set var=options" evaluate
 	menuset-loadmenuvar
@@ -529,16 +540,6 @@ create menuset_y        1   allot
 	menuset-loadmenuvar
 
 	menuset-cleanup
-;
-
-: menuset-loadinitial ( -- )
-	s" menuset_initial" getenv dup -1 <> if
-		?number 0<> if
-			menuset-loadsetnum
-		then
-	else
-		drop \ cruft
-	then
 ;
 
 : menusets-unset ( -- )
@@ -597,6 +598,7 @@ create menuset_y        1   allot
 
 		s" set var=acpi"        evaluate menuset-unloadmenuvar
 		s" set var=init"        evaluate menuset-unloadmenuvar
+		s" set var=kernel"      evaluate menuset-unloadmenuvar
 		s" set var=options"     evaluate menuset-unloadmenuvar
 		s" set var=optionstext" evaluate menuset-unloadmenuvar
 		s" set var=reboot"      evaluate menuset-unloadmenuvar
@@ -607,4 +609,16 @@ create menuset_y        1   allot
 
 	s" buf" unsetenv
 	menuset-cleanup
+;
+
+only forth definitions
+
+: menuset-loadinitial ( -- )
+	s" menuset_initial" getenv dup -1 <> if
+		?number 0<> if
+			menuset-loadsetnum
+		then
+	else
+		drop \ cruft
+	then
 ;

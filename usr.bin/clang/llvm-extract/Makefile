@@ -10,18 +10,18 @@ SRCS=	llvm-extract.cpp
 LIBDEPS=llvmirreader \
 	llvmasmparser \
 	llvmbitwriter \
-	llvmbitreader \
 	llvmipo \
-	llvmobjcarcopts \
 	llvmvectorize \
 	llvmscalaropts \
+	llvmprofiledata \
+	llvmobject \
+	llvmmcparser \
+	llvmmc \
+	llvmbitreader \
 	llvminstcombine \
 	llvmtransformutils \
 	llvmipa \
 	llvmanalysis \
-	llvmtarget \
-	llvmmc \
-	llvmobject \
 	llvmcore \
 	llvmsupport
 

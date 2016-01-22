@@ -242,8 +242,13 @@ MIPS_RW32_COP0_SEL(config3, MIPS_COP_0_CONFIG, 3);
 #ifdef CPU_CNMIPS
 MIPS_RW32_COP0_SEL(config4, MIPS_COP_0_CONFIG, 4);
 #endif
-#ifdef CPU_NLM
+#ifdef BERI_LARGE_TLB
+MIPS_RW32_COP0_SEL(config5, MIPS_COP_0_CONFIG, 5);
+#endif
+#if defined(CPU_NLM) || defined(BERI_LARGE_TLB)
 MIPS_RW32_COP0_SEL(config6, MIPS_COP_0_CONFIG, 6);
+#endif
+#if defined(CPU_NLM) || defined(CPU_MIPS1004KC)
 MIPS_RW32_COP0_SEL(config7, MIPS_COP_0_CONFIG, 7);
 #endif
 MIPS_RW32_COP0(count, MIPS_COP_0_COUNT);
@@ -254,6 +259,7 @@ MIPS_RW32_COP0(cause, MIPS_COP_0_CAUSE);
 MIPS_RW32_COP0(excpc, MIPS_COP_0_EXC_PC);
 #endif
 MIPS_RW32_COP0(status, MIPS_COP_0_STATUS);
+MIPS_RW32_COP0_SEL(cmgcrbase, 15, 3);
 
 /* XXX: Some of these registers are specific to MIPS32. */
 #if !defined(__mips_n64)

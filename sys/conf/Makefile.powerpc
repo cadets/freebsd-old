@@ -17,7 +17,7 @@
 #
 
 # Which version of config(8) is required.
-%VERSREQ=	600010
+%VERSREQ=	600012
 
 STD8X16FONT?=	iso
 
@@ -33,9 +33,13 @@ LDSCRIPT_NAME?= ldscript.${MACHINE_ARCH}
 
 .include "$S/conf/kern.pre.mk"
 
-INCLUDES+= -I$S/contrib/libfdt
+INCLUDES+= -I$S/contrib/libfdt -I$S/contrib/tesla/include
 
 CFLAGS+= -msoft-float -Wa,-many
+
+# Build position-independent kernel
+CFLAGS+= -fPIC
+LDFLAGS+= -pie
 
 .if !empty(DDB_ENABLED)
 CFLAGS+=	-fno-omit-frame-pointer

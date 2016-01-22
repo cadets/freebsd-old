@@ -15,6 +15,7 @@ class Command<string name> {
   bit IsReturnsCommand = 0;
   bit IsParamCommand = 0;
   bit IsTParamCommand = 0;
+  bit IsThrowsCommand = 0;
   bit IsDeprecatedCommand = 0;
   bit IsHeaderfileCommand = 0;
 
@@ -67,14 +68,12 @@ class DeclarationVerbatimLineCommand<string name> :
 }
 
 class FunctionDeclarationVerbatimLineCommand<string name> :
-      VerbatimLineCommand<name> {
-  let IsDeclarationCommand = 1;
+      DeclarationVerbatimLineCommand<name> {
   let IsFunctionDeclarationCommand = 1;
 }
 
 class RecordLikeDeclarationVerbatimLineCommand<string name> :
-      VerbatimLineCommand<name> {
-  let IsDeclarationCommand = 1;
+      DeclarationVerbatimLineCommand<name> {
   let IsRecordLikeDeclarationCommand = 1;
 }
 
@@ -111,6 +110,10 @@ def Tparam : BlockCommand<"tparam"> { let IsTParamCommand = 1; }
 // HeaderDoc command for template parameter documentation.
 def Templatefield : BlockCommand<"templatefield"> { let IsTParamCommand = 1; }
 
+def Throws    : BlockCommand<"throws"> { let IsThrowsCommand = 1; }
+def Throw     : BlockCommand<"throw"> { let IsThrowsCommand = 1; }
+def Exception : BlockCommand<"exception"> { let IsThrowsCommand = 1; }
+
 def Deprecated : BlockCommand<"deprecated"> {
   let IsEmptyParagraphAllowed = 1;
   let IsDeprecatedCommand = 1;
@@ -121,6 +124,7 @@ def Headerfile : BlockCommand<"headerfile"> { let IsHeaderfileCommand = 1; }
 // We don't do any additional semantic analysis for the following
 // BlockCommands.  It might be a good idea to do something extra for them, but
 // for now we model them as plain BlockCommands.
+def Arg        : BlockCommand<"arg">;
 def Attention  : BlockCommand<"attention">;
 def Author     : BlockCommand<"author">;
 def Authors    : BlockCommand<"authors">;
@@ -128,7 +132,9 @@ def Bug        : BlockCommand<"bug">;
 def Copyright  : BlockCommand<"copyright">;
 def Date       : BlockCommand<"date">;
 def Invariant  : BlockCommand<"invariant">;
+def Li         : BlockCommand<"li">;
 def Note       : BlockCommand<"note">;
+def Par        : BlockCommand<"par">;
 def Post       : BlockCommand<"post">;
 def Pre        : BlockCommand<"pre">;
 def Remark     : BlockCommand<"remark">;
@@ -140,9 +146,11 @@ def Todo       : BlockCommand<"todo">;
 def Version    : BlockCommand<"version">;
 def Warning    : BlockCommand<"warning">;
 // HeaderDoc commands
+def Abstract      : BlockCommand<"abstract"> { let IsBriefCommand = 1; }
 def ClassDesign   : RecordLikeDetailCommand<"classdesign">;
 def CoClass       : RecordLikeDetailCommand<"coclass">;
 def Dependency    : RecordLikeDetailCommand<"dependency">;
+def Discussion    : BlockCommand<"discussion">;
 def Helper        : RecordLikeDetailCommand<"helper">;
 def HelperClass   : RecordLikeDetailCommand<"helperclass">;
 def Helps         : RecordLikeDetailCommand<"helps">;
@@ -150,6 +158,7 @@ def InstanceSize  : RecordLikeDetailCommand<"instancesize">;
 def Ownership     : RecordLikeDetailCommand<"ownership">;
 def Performance   : RecordLikeDetailCommand<"performance">;
 def Security      : RecordLikeDetailCommand<"security">;
+def SeeAlso       : BlockCommand<"seealso">;
 def SuperClass    : RecordLikeDetailCommand<"superclass">;
 
 //===----------------------------------------------------------------------===//
@@ -173,6 +182,10 @@ def  FDollar  : VerbatimBlockCommand<"f$">; // Inline LaTeX formula
 defm FBracket : VerbatimBlockCommand<"f[", "f]">; // Displayed LaTeX formula
 defm FBrace   : VerbatimBlockCommand<"f{", "f}">; // LaTeX environment
 
+// HeaderDoc commands
+defm Textblock    : VerbatimBlockCommand<"textblock", "/textblock">;
+defm Link         : VerbatimBlockCommand<"link", "/link">;
+
 //===----------------------------------------------------------------------===//
 // VerbatimLineCommand
 //===----------------------------------------------------------------------===//
@@ -192,11 +205,17 @@ def Mainpage : VerbatimLineCommand<"mainpage">;
 def Subpage  : VerbatimLineCommand<"subpage">;
 def Ref      : VerbatimLineCommand<"ref">;
 
+def Relates     : VerbatimLineCommand<"relates">;
+def Related     : VerbatimLineCommand<"related">;
+def RelatesAlso : VerbatimLineCommand<"relatesalso">;
+def RelatedAlso : VerbatimLineCommand<"relatedalso">;
+
 //===----------------------------------------------------------------------===//
 // DeclarationVerbatimLineCommand
 //===----------------------------------------------------------------------===//
 
 // Doxygen commands.
+def Def       : DeclarationVerbatimLineCommand<"def">;
 def Fn        : DeclarationVerbatimLineCommand<"fn">;
 def Namespace : DeclarationVerbatimLineCommand<"namespace">;
 def Overload  : DeclarationVerbatimLineCommand<"overload">;

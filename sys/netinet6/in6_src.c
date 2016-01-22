@@ -82,9 +82,11 @@ __FBSDID("$FreeBSD$");
 #include <sys/time.h>
 #include <sys/jail.h>
 #include <sys/kernel.h>
+#include <sys/rmlock.h>
 #include <sys/sx.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_dl.h>
 #include <net/route.h>
 #include <net/if_llatbl.h>
@@ -103,6 +105,7 @@ __FBSDID("$FreeBSD$");
 
 #include <netinet6/in6_var.h>
 #include <netinet/ip6.h>
+#include <netinet6/in6_fib.h>
 #include <netinet6/in6_pcb.h>
 #include <netinet6/ip6_var.h>
 #include <netinet6/scope6_var.h>
@@ -177,6 +180,7 @@ in6_selectsrc(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
     struct inpcb *inp, struct route_in6 *ro, struct ucred *cred,
     struct ifnet **ifpp, struct in6_addr *srcp)
 {
+	struct rm_priotracker in6_ifa_tracker;
 	struct in6_addr dst, tmp;
 	struct ifnet *ifp = NULL, *oifp = NULL;
 	struct in6_ifaddr *ia = NULL, *ia_best = NULL;
@@ -302,7 +306,7 @@ in6_selectsrc(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 		return (error);
 
 	rule = 0;
-	IN6_IFADDR_RLOCK();
+	IN6_IFADDR_RLOCK(&in6_ifa_tracker);
 	TAILQ_FOREACH(ia, &V_in6_ifaddrhead, ia_link) {
 		int new_scope = -1, new_matchlen = -1;
 		struct in6_addrpolicy *new_policy = NULL;
@@ -443,6 +447,24 @@ in6_selectsrc(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 			REPLACE(8);
 
 		/*
+		 * Rule 9: prefer address with better virtual status.
+		 */
+		if (ifa_preferred(&ia_best->ia_ifa, &ia->ia_ifa))
+			REPLACE(9);
+		if (ifa_preferred(&ia->ia_ifa, &ia_best->ia_ifa))
+			NEXT(9);
+
+		/*
+		 * Rule 10: prefer address with `prefer_source' flag.
+		 */
+		if ((ia_best->ia6_flags & IN6_IFF_PREFER_SOURCE) == 0 &&
+		    (ia->ia6_flags & IN6_IFF_PREFER_SOURCE) != 0)
+			REPLACE(10);
+		if ((ia_best->ia6_flags & IN6_IFF_PREFER_SOURCE) != 0 &&
+		    (ia->ia6_flags & IN6_IFF_PREFER_SOURCE) == 0)
+			NEXT(10);
+
+		/*
 		 * Rule 14: Use longest matching prefix.
 		 * Note: in the address selection draft, this rule is
 		 * documented as "Rule 8".  However, since it is also
@@ -482,7 +504,7 @@ in6_selectsrc(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 	}
 
 	if ((ia = ia_best) == NULL) {
-		IN6_IFADDR_RUNLOCK();
+		IN6_IFADDR_RUNLOCK(&in6_ifa_tracker);
 		IP6STAT_INC(ip6s_sources_none);
 		return (EADDRNOTAVAIL);
 	}
@@ -499,7 +521,7 @@ in6_selectsrc(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 	tmp = ia->ia_addr.sin6_addr;
 	if (cred != NULL && prison_local_ip6(cred, &tmp, (inp != NULL &&
 	    (inp->inp_flags & IN6P_IPV6_V6ONLY) != 0)) != 0) {
-		IN6_IFADDR_RUNLOCK();
+		IN6_IFADDR_RUNLOCK(&in6_ifa_tracker);
 		IP6STAT_INC(ip6s_sources_none);
 		return (EADDRNOTAVAIL);
 	}
@@ -518,7 +540,7 @@ in6_selectsrc(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 		IP6STAT_INC(ip6s_sources_otherscope[best_scope]);
 	if (IFA6_IS_DEPRECATED(ia))
 		IP6STAT_INC(ip6s_sources_deprecated[best_scope]);
-	IN6_IFADDR_RUNLOCK();
+	IN6_IFADDR_RUNLOCK(&in6_ifa_tracker);
 	return (0);
 }
 
@@ -536,6 +558,7 @@ selectroute(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 	struct sockaddr_in6 *sin6_next;
 	struct in6_pktinfo *pi = NULL;
 	struct in6_addr *dst = &dstsock->sin6_addr;
+	uint32_t zoneid;
 #if 0
 	char ip6buf[INET6_ADDRSTRLEN];
 
@@ -566,7 +589,6 @@ selectroute(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 		} else
 			goto getroute;
 	}
-
 	/*
 	 * If the destination address is a multicast address and the outgoing
 	 * interface for the address is specified by the caller, use it.
@@ -574,6 +596,18 @@ selectroute(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 	if (IN6_IS_ADDR_MULTICAST(dst) &&
 	    mopts != NULL && (ifp = mopts->im6o_multicast_ifp) != NULL) {
 		goto done; /* we do not need a route for multicast. */
+	}
+	/*
+	 * If destination address is LLA or link- or node-local multicast,
+	 * use it's embedded scope zone id to determine outgoing interface.
+	 */
+	if (IN6_IS_ADDR_MC_LINKLOCAL(dst) ||
+	    IN6_IS_ADDR_MC_NODELOCAL(dst)) {
+		zoneid = ntohs(in6_getscope(dst));
+		if (zoneid > 0) {
+			ifp = in6_getlinkifnet(zoneid);
+			goto done;
+		}
 	}
 
   getroute:
@@ -583,82 +617,38 @@ selectroute(struct sockaddr_in6 *dstsock, struct ip6_pktopts *opts,
 	 */
 	if (opts && opts->ip6po_nexthop) {
 		struct route_in6 *ron;
-		struct llentry *la;
-	    
+
 		sin6_next = satosin6(opts->ip6po_nexthop);
-		
-		/* at this moment, we only support AF_INET6 next hops */
-		if (sin6_next->sin6_family != AF_INET6) {
-			error = EAFNOSUPPORT; /* or should we proceed? */
-			goto done;
+		if (IN6_IS_ADDR_LINKLOCAL(&sin6_next->sin6_addr)) {
+			/*
+			 * Next hop is LLA, thus it should be neighbor.
+			 * Determine outgoing interface by zone index.
+			 */
+			zoneid = ntohs(in6_getscope(&sin6_next->sin6_addr));
+			if (zoneid > 0) {
+				ifp = in6_getlinkifnet(zoneid);
+				goto done;
+			}
 		}
-
-		/*
-		 * If the next hop is an IPv6 address, then the node identified
-		 * by that address must be a neighbor of the sending host.
-		 */
 		ron = &opts->ip6po_nextroute;
-		/*
-		 * XXX what do we do here?
-		 * PLZ to be fixing
-		 */
-
-
+		/* Use a cached route if it exists and is valid. */
+		if (ron->ro_rt != NULL && (
+		    (ron->ro_rt->rt_flags & RTF_UP) == 0 ||
+		    ron->ro_dst.sin6_family != AF_INET6 ||
+		    !IN6_ARE_ADDR_EQUAL(&ron->ro_dst.sin6_addr,
+			&sin6_next->sin6_addr)))
+			RO_RTFREE(ron);
 		if (ron->ro_rt == NULL) {
+			ron->ro_dst = *sin6_next;
 			in6_rtalloc(ron, fibnum); /* multi path case? */
-			if (ron->ro_rt == NULL) {
-				/* XXX-BZ WT.? */
-				if (ron->ro_rt) {
-					RTFREE(ron->ro_rt);
-					ron->ro_rt = NULL;
-				}
-				error = EHOSTUNREACH;
-				goto done;
-			} 
 		}
-
-		rt = ron->ro_rt;
-		ifp = rt->rt_ifp;
-		IF_AFDATA_RLOCK(ifp);
-		la = lla_lookup(LLTABLE6(ifp), 0, (struct sockaddr *)&sin6_next->sin6_addr);
-		IF_AFDATA_RUNLOCK(ifp);
-		if (la != NULL) 
-			LLE_RUNLOCK(la);
-		else {
+		/*
+		 * The node identified by that address must be a
+		 * neighbor of the sending host.
+		 */
+		if (ron->ro_rt == NULL ||
+		    (ron->ro_rt->rt_flags & RTF_GATEWAY) != 0)
 			error = EHOSTUNREACH;
-			goto done;
-		}
-#if 0
-		if ((ron->ro_rt &&
-		     (ron->ro_rt->rt_flags & (RTF_UP | RTF_LLINFO)) !=
-		     (RTF_UP | RTF_LLINFO)) ||
-		    !IN6_ARE_ADDR_EQUAL(&satosin6(&ron->ro_dst)->sin6_addr,
-		    &sin6_next->sin6_addr)) {
-			if (ron->ro_rt) {
-				RTFREE(ron->ro_rt);
-				ron->ro_rt = NULL;
-			}
-			*satosin6(&ron->ro_dst) = *sin6_next;
-		}
-		if (ron->ro_rt == NULL) {
-			in6_rtalloc(ron, fibnum); /* multi path case? */
-			if (ron->ro_rt == NULL ||
-			    !(ron->ro_rt->rt_flags & RTF_LLINFO)) {
-				if (ron->ro_rt) {
-					RTFREE(ron->ro_rt);
-					ron->ro_rt = NULL;
-				}
-				error = EHOSTUNREACH;
-				goto done;
-			}
-		}
-#endif
-
-		/*
-		 * When cloning is required, try to allocate a route to the
-		 * destination so that the caller can store path MTU
-		 * information.
-		 */
 		goto done;
 	}
 
@@ -871,19 +861,16 @@ in6_selecthlim(struct inpcb *in6p, struct ifnet *ifp)
 	else if (ifp)
 		return (ND_IFINFO(ifp)->chlim);
 	else if (in6p && !IN6_IS_ADDR_UNSPECIFIED(&in6p->in6p_faddr)) {
-		struct route_in6 ro6;
-		struct ifnet *lifp;
+		struct nhop6_basic nh6;
+		struct in6_addr dst;
+		uint32_t fibnum, scopeid;
+		int hlim;
 
-		bzero(&ro6, sizeof(ro6));
-		ro6.ro_dst.sin6_family = AF_INET6;
-		ro6.ro_dst.sin6_len = sizeof(struct sockaddr_in6);
-		ro6.ro_dst.sin6_addr = in6p->in6p_faddr;
-		in6_rtalloc(&ro6, in6p->inp_inc.inc_fibnum);
-		if (ro6.ro_rt) {
-			lifp = ro6.ro_rt->rt_ifp;
-			RTFREE(ro6.ro_rt);
-			if (lifp)
-				return (ND_IFINFO(lifp)->chlim);
+		fibnum = in6p->inp_inc.inc_fibnum;
+		in6_splitscope(&in6p->in6p_faddr, &dst, &scopeid);
+		if (fib6_lookup_nh_basic(fibnum, &dst, scopeid, 0, 0, &nh6)==0){
+			hlim = ND_IFINFO(nh6.nh_ifp)->chlim;
+			return (hlim);
 		}
 	}
 	return (V_ip6_defhlim);
@@ -994,7 +981,6 @@ in6_src_sysctl(SYSCTL_HANDLER_ARGS)
 int
 in6_src_ioctl(u_long cmd, caddr_t data)
 {
-	int i;
 	struct in6_addrpolicy ent0;
 
 	if (cmd != SIOCAADDRCTL_POLICY && cmd != SIOCDADDRCTL_POLICY)
@@ -1008,10 +994,7 @@ in6_src_ioctl(u_long cmd, caddr_t data)
 	if (in6_mask2len(&ent0.addrmask.sin6_addr, NULL) < 0)
 		return (EINVAL);
 	/* clear trailing garbages (if any) of the prefix address. */
-	for (i = 0; i < 4; i++) {
-		ent0.addr.sin6_addr.s6_addr32[i] &=
-			ent0.addrmask.sin6_addr.s6_addr32[i];
-	}
+	IN6_MASK_ADDR(&ent0.addr.sin6_addr, &ent0.addrmask.sin6_addr);
 	ent0.use = 0;
 
 	switch (cmd) {

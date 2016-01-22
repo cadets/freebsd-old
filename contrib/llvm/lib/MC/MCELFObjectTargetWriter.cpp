@@ -24,28 +24,28 @@ MCELFObjectTargetWriter::MCELFObjectTargetWriter(bool Is64Bit_,
     IsN64(IsN64_){
 }
 
-const MCSymbol *MCELFObjectTargetWriter::ExplicitRelSym(const MCAssembler &Asm,
-                                                        const MCValue &Target,
-                                                        const MCFragment &F,
-                                                        const MCFixup &Fixup,
-                                                        bool IsPCRel) const {
-  return NULL;
+bool MCELFObjectTargetWriter::needsRelocateWithSymbol(const MCSymbol &Sym,
+                                                      unsigned Type) const {
+  return false;
 }
 
-const MCSymbol *MCELFObjectTargetWriter::undefinedExplicitRelSym(const MCValue &Target,
-                                                                 const MCFixup &Fixup,
-                                                                 bool IsPCRel) const {
-  const MCSymbol &Symbol = Target.getSymA()->getSymbol();
-  return &Symbol.AliasedSymbol();
+// ELF doesn't require relocations to be in any order. We sort by the Offset,
+// just to match gnu as for easier comparison. The use type is an arbitrary way
+// of making the sort deterministic.
+static int cmpRel(const ELFRelocationEntry *AP, const ELFRelocationEntry *BP) {
+  const ELFRelocationEntry &A = *AP;
+  const ELFRelocationEntry &B = *BP;
+  if (A.Offset != B.Offset)
+    return B.Offset - A.Offset;
+  if (B.Type != A.Type)
+    return A.Type - B.Type;
+  //llvm_unreachable("ELFRelocs might be unstable!");
+  return 0;
 }
 
-void MCELFObjectTargetWriter::adjustFixupOffset(const MCFixup &Fixup,
-                                                uint64_t &RelocOffset) {
-}
 
 void
 MCELFObjectTargetWriter::sortRelocs(const MCAssembler &Asm,
                                     std::vector<ELFRelocationEntry> &Relocs) {
-  // Sort by the r_offset, just like gnu as does.
-  array_pod_sort(Relocs.begin(), Relocs.end());
+  array_pod_sort(Relocs.begin(), Relocs.end(), cmpRel);
 }

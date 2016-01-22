@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2013, Intel Corp.
+ * Copyright (C) 2000 - 2015, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,8 +41,6 @@
  * POSSIBILITY OF SUCH DAMAGES.
  */
 
-#define __NSDUMP_C__
-
 #include <contrib/dev/acpica/include/acpi.h>
 #include <contrib/dev/acpica/include/accommon.h>
 #include <contrib/dev/acpica/include/acnamesp.h>
@@ -69,6 +67,22 @@ AcpiNsDumpOneDevice (
 
 
 #if defined(ACPI_DEBUG_OUTPUT) || defined(ACPI_DEBUGGER)
+
+static ACPI_STATUS
+AcpiNsDumpOneObjectPath (
+    ACPI_HANDLE             ObjHandle,
+    UINT32                  Level,
+    void                    *Context,
+    void                    **ReturnValue);
+
+static ACPI_STATUS
+AcpiNsGetMaxDepth (
+    ACPI_HANDLE             ObjHandle,
+    UINT32                  Level,
+    void                    *Context,
+    void                    **ReturnValue);
+
+
 /*******************************************************************************
  *
  * FUNCTION:    AcpiNsPrintPathname
@@ -108,7 +122,7 @@ AcpiNsPrintPathname (
     {
         for (i = 0; i < 4; i++)
         {
-            ACPI_IS_PRINT (Pathname[i]) ?
+            isprint ((int) Pathname[i]) ?
                 AcpiOsPrintf ("%c", Pathname[i]) :
                 AcpiOsPrintf ("?");
         }
@@ -299,9 +313,9 @@ AcpiNsDumpOneObject (
         {
         case ACPI_TYPE_PROCESSOR:
 
-            AcpiOsPrintf ("ID %02X Len %02X Addr %p\n",
+            AcpiOsPrintf ("ID %02X Len %02X Addr %8.8X%8.8X\n",
                 ObjDesc->Processor.ProcId, ObjDesc->Processor.Length,
-                ACPI_CAST_PTR (void, ObjDesc->Processor.Address));
+                ACPI_FORMAT_UINT64 (ObjDesc->Processor.Address));
             break;
 
         case ACPI_TYPE_DEVICE:
@@ -374,7 +388,7 @@ AcpiNsDumpOneObject (
             if (ObjDesc->Region.Flags & AOPOBJ_DATA_VALID)
             {
                 AcpiOsPrintf (" Addr %8.8X%8.8X Len %.4X\n",
-                    ACPI_FORMAT_NATIVE_UINT (ObjDesc->Region.Address),
+                    ACPI_FORMAT_UINT64 (ObjDesc->Region.Address),
                     ObjDesc->Region.Length);
             }
             else
@@ -618,7 +632,7 @@ AcpiNsDumpOneObject (
             break;
 
         case ACPI_TYPE_LOCAL_INDEX_FIELD:
-            
+
             ObjDesc = (void *) ObjDesc->IndexField.IndexObj;
             break;
 
@@ -690,6 +704,149 @@ AcpiNsDumpObjects (
     (void) AcpiNsWalkNamespace (Type, StartHandle, MaxDepth,
                 ACPI_NS_WALK_NO_UNLOCK | ACPI_NS_WALK_TEMP_NODES,
                 AcpiNsDumpOneObject, NULL, (void *) &Info, NULL);
+
+    (void) AcpiUtReleaseMutex (ACPI_MTX_NAMESPACE);
+}
+
+
+/*******************************************************************************
+ *
+ * FUNCTION:    AcpiNsDumpOneObjectPath, AcpiNsGetMaxDepth
+ *
+ * PARAMETERS:  ObjHandle           - Node to be dumped
+ *              Level               - Nesting level of the handle
+ *              Context             - Passed into WalkNamespace
+ *              ReturnValue         - Not used
+ *
+ * RETURN:      Status
+ *
+ * DESCRIPTION: Dump the full pathname to a namespace object. AcpNsGetMaxDepth
+ *              computes the maximum nesting depth in the namespace tree, in
+ *              order to simplify formatting in AcpiNsDumpOneObjectPath.
+ *              These procedures are UserFunctions called by AcpiNsWalkNamespace.
+ *
+ ******************************************************************************/
+
+static ACPI_STATUS
+AcpiNsDumpOneObjectPath (
+    ACPI_HANDLE             ObjHandle,
+    UINT32                  Level,
+    void                    *Context,
+    void                    **ReturnValue)
+{
+    UINT32                  MaxLevel = *((UINT32 *) Context);
+    char                    *Pathname;
+    ACPI_NAMESPACE_NODE     *Node;
+    int                     PathIndent;
+
+
+    if (!ObjHandle)
+    {
+        return (AE_OK);
+    }
+
+    Node = AcpiNsValidateHandle (ObjHandle);
+    if (!Node)
+    {
+        /* Ignore bad node during namespace walk */
+
+        return (AE_OK);
+    }
+
+    Pathname = AcpiNsGetExternalPathname (Node);
+
+    PathIndent = 1;
+    if (Level <= MaxLevel)
+    {
+        PathIndent = MaxLevel - Level + 1;
+    }
+
+    AcpiOsPrintf ("%2d%*s%-12s%*s",
+        Level, Level, " ", AcpiUtGetTypeName (Node->Type),
+        PathIndent, " ");
+
+    AcpiOsPrintf ("%s\n", &Pathname[1]);
+    ACPI_FREE (Pathname);
+    return (AE_OK);
+}
+
+
+static ACPI_STATUS
+AcpiNsGetMaxDepth (
+    ACPI_HANDLE             ObjHandle,
+    UINT32                  Level,
+    void                    *Context,
+    void                    **ReturnValue)
+{
+    UINT32                  *MaxLevel = (UINT32 *) Context;
+
+
+    if (Level > *MaxLevel)
+    {
+        *MaxLevel = Level;
+    }
+    return (AE_OK);
+}
+
+
+/*******************************************************************************
+ *
+ * FUNCTION:    AcpiNsDumpObjectPaths
+ *
+ * PARAMETERS:  Type                - Object type to be dumped
+ *              DisplayType         - 0 or ACPI_DISPLAY_SUMMARY
+ *              MaxDepth            - Maximum depth of dump. Use ACPI_UINT32_MAX
+ *                                    for an effectively unlimited depth.
+ *              OwnerId             - Dump only objects owned by this ID. Use
+ *                                    ACPI_UINT32_MAX to match all owners.
+ *              StartHandle         - Where in namespace to start/end search
+ *
+ * RETURN:      None
+ *
+ * DESCRIPTION: Dump full object pathnames within the loaded namespace. Uses
+ *              AcpiNsWalkNamespace in conjunction with AcpiNsDumpOneObjectPath.
+ *
+ ******************************************************************************/
+
+void
+AcpiNsDumpObjectPaths (
+    ACPI_OBJECT_TYPE        Type,
+    UINT8                   DisplayType,
+    UINT32                  MaxDepth,
+    ACPI_OWNER_ID           OwnerId,
+    ACPI_HANDLE             StartHandle)
+{
+    ACPI_STATUS             Status;
+    UINT32                  MaxLevel = 0;
+
+
+    ACPI_FUNCTION_ENTRY ();
+
+
+    /*
+     * Just lock the entire namespace for the duration of the dump.
+     * We don't want any changes to the namespace during this time,
+     * especially the temporary nodes since we are going to display
+     * them also.
+     */
+    Status = AcpiUtAcquireMutex (ACPI_MTX_NAMESPACE);
+    if (ACPI_FAILURE (Status))
+    {
+        AcpiOsPrintf ("Could not acquire namespace mutex\n");
+        return;
+    }
+
+    /* Get the max depth of the namespace tree, for formatting later */
+
+    (void) AcpiNsWalkNamespace (Type, StartHandle, MaxDepth,
+                ACPI_NS_WALK_NO_UNLOCK | ACPI_NS_WALK_TEMP_NODES,
+                AcpiNsGetMaxDepth, NULL, (void *) &MaxLevel, NULL);
+
+    /* Now dump the entire namespace */
+
+    (void) AcpiNsWalkNamespace (Type, StartHandle, MaxDepth,
+                ACPI_NS_WALK_NO_UNLOCK | ACPI_NS_WALK_TEMP_NODES,
+                AcpiNsDumpOneObjectPath, NULL, (void *) &MaxLevel, NULL);
 
     (void) AcpiUtReleaseMutex (ACPI_MTX_NAMESPACE);
 }

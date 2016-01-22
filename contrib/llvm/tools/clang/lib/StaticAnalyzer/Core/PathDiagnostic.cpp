@@ -16,6 +16,7 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/Expr.h"
+#include "clang/AST/ExprCXX.h"
 #include "clang/AST/ParentMap.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/Basic/SourceManager.h"
@@ -48,10 +49,11 @@ static StringRef StripTrailingDots(StringRef s) {
 
 PathDiagnosticPiece::PathDiagnosticPiece(StringRef s,
                                          Kind k, DisplayHint hint)
-  : str(StripTrailingDots(s)), kind(k), Hint(hint) {}
+  : str(StripTrailingDots(s)), kind(k), Hint(hint),
+    LastInMainSourceFile(false) {}
 
 PathDiagnosticPiece::PathDiagnosticPiece(Kind k, DisplayHint hint)
-  : kind(k), Hint(hint) {}
+  : kind(k), Hint(hint), LastInMainSourceFile(false) {}
 
 PathDiagnosticPiece::~PathDiagnosticPiece() {}
 PathDiagnosticEventPiece::~PathDiagnosticEventPiece() {}
@@ -65,7 +67,7 @@ PathPieces::~PathPieces() {}
 void PathPieces::flattenTo(PathPieces &Primary, PathPieces &Current,
                            bool ShouldFlattenMacros) const {
   for (PathPieces::const_iterator I = begin(), E = end(); I != E; ++I) {
-    PathDiagnosticPiece *Piece = I->getPtr();
+    PathDiagnosticPiece *Piece = I->get();
 
     switch (Piece->getKind()) {
     case PathDiagnosticPiece::Call: {
@@ -105,12 +107,13 @@ void PathPieces::flattenTo(PathPieces &Primary, PathPieces &Current,
 
 PathDiagnostic::~PathDiagnostic() {}
 
-PathDiagnostic::PathDiagnostic(const Decl *declWithIssue,
+PathDiagnostic::PathDiagnostic(StringRef CheckName, const Decl *declWithIssue,
                                StringRef bugtype, StringRef verboseDesc,
                                StringRef shortDesc, StringRef category,
                                PathDiagnosticLocation LocationToUnique,
                                const Decl *DeclToUnique)
-  : DeclWithIssue(declWithIssue),
+  : CheckName(CheckName),
+    DeclWithIssue(declWithIssue),
     BugType(StripTrailingDots(bugtype)),
     VerboseDesc(StripTrailingDots(verboseDesc)),
     ShortDesc(StripTrailingDots(shortDesc)),
@@ -118,6 +121,71 @@ PathDiagnostic::PathDiagnostic(const Decl *declWithIssue,
     UniqueingLoc(LocationToUnique),
     UniqueingDecl(DeclToUnique),
     path(pathImpl) {}
+
+static PathDiagnosticCallPiece *
+getFirstStackedCallToHeaderFile(PathDiagnosticCallPiece *CP,
+                                const SourceManager &SMgr) {
+  SourceLocation CallLoc = CP->callEnter.asLocation();
+
+  // If the call is within a macro, don't do anything (for now).
+  if (CallLoc.isMacroID())
+    return nullptr;
+
+  assert(SMgr.isInMainFile(CallLoc) &&
+         "The call piece should be in the main file.");
+
+  // Check if CP represents a path through a function outside of the main file.
+  if (!SMgr.isInMainFile(CP->callEnterWithin.asLocation()))
+    return CP;
+
+  const PathPieces &Path = CP->path;
+  if (Path.empty())
+    return nullptr;
+
+  // Check if the last piece in the callee path is a call to a function outside
+  // of the main file.
+  if (PathDiagnosticCallPiece *CPInner =
+      dyn_cast<PathDiagnosticCallPiece>(Path.back())) {
+    return getFirstStackedCallToHeaderFile(CPInner, SMgr);
+  }
+
+  // Otherwise, the last piece is in the main file.
+  return nullptr;
+}
+
+void PathDiagnostic::resetDiagnosticLocationToMainFile() {
+  if (path.empty())
+    return;
+
+  PathDiagnosticPiece *LastP = path.back().get();
+  assert(LastP);
+  const SourceManager &SMgr = LastP->getLocation().getManager();
+
+  // We only need to check if the report ends inside headers, if the last piece
+  // is a call piece.
+  if (PathDiagnosticCallPiece *CP = dyn_cast<PathDiagnosticCallPiece>(LastP)) {
+    CP = getFirstStackedCallToHeaderFile(CP, SMgr);
+    if (CP) {
+      // Mark the piece.
+       CP->setAsLastInMainSourceFile();
+
+      // Update the path diagnostic message.
+      const NamedDecl *ND = dyn_cast<NamedDecl>(CP->getCallee());
+      if (ND) {
+        SmallString<200> buf;
+        llvm::raw_svector_ostream os(buf);
+        os << " (within a call to '" << ND->getDeclName() << "')";
+        appendToDesc(os.str());
+      }
+
+      // Reset the report containing declaration and location.
+      DeclWithIssue = CP->getCaller();
+      Loc = CP->getLocation();
+      
+      return;
+    }
+  }
+}
 
 void PathDiagnosticConsumer::anchor() { }
 
@@ -129,9 +197,8 @@ PathDiagnosticConsumer::~PathDiagnosticConsumer() {
   }
 }
 
-void PathDiagnosticConsumer::HandlePathDiagnostic(PathDiagnostic *D) {
-  OwningPtr<PathDiagnostic> OwningD(D);
-  
+void PathDiagnosticConsumer::HandlePathDiagnostic(
+    std::unique_ptr<PathDiagnostic> D) {
   if (!D || D->path.empty())
     return;
   
@@ -145,17 +212,16 @@ void PathDiagnosticConsumer::HandlePathDiagnostic(PathDiagnostic *D) {
   if (!supportsCrossFileDiagnostics()) {
     // Verify that the entire path is from the same FileID.
     FileID FID;
-    const SourceManager &SMgr = (*D->path.begin())->getLocation().getManager();
+    const SourceManager &SMgr = D->path.front()->getLocation().getManager();
     SmallVector<const PathPieces *, 5> WorkList;
     WorkList.push_back(&D->path);
 
     while (!WorkList.empty()) {
-      const PathPieces &path = *WorkList.back();
-      WorkList.pop_back();
+      const PathPieces &path = *WorkList.pop_back_val();
 
-      for (PathPieces::const_iterator I = path.begin(), E = path.end();
-           I != E; ++I) {
-        const PathDiagnosticPiece *piece = I->getPtr();
+      for (PathPieces::const_iterator I = path.begin(), E = path.end(); I != E;
+           ++I) {
+        const PathDiagnosticPiece *piece = I->get();
         FullSourceLoc L = piece->getLocation().asLocation().getExpansionLoc();
       
         if (FID.isInvalid()) {
@@ -193,7 +259,7 @@ void PathDiagnosticConsumer::HandlePathDiagnostic(PathDiagnostic *D) {
   // Profile the node to see if we already have something matching it
   llvm::FoldingSetNodeID profile;
   D->Profile(profile);
-  void *InsertPos = 0;
+  void *InsertPos = nullptr;
 
   if (PathDiagnostic *orig = Diags.FindNodeOrInsertPos(profile, InsertPos)) {
     // Keep the PathDiagnostic with the shorter path.
@@ -205,12 +271,12 @@ void PathDiagnosticConsumer::HandlePathDiagnostic(PathDiagnostic *D) {
     if (orig_size <= new_size)
       return;
 
-    assert(orig != D);
+    assert(orig != D.get());
     Diags.RemoveNode(orig);
     delete orig;
   }
-  
-  Diags.InsertNode(OwningD.take());
+
+  Diags.InsertNode(D.release());
 }
 
 static Optional<bool> comparePath(const PathPieces &X, const PathPieces &Y);
@@ -297,11 +363,16 @@ static Optional<bool> comparePiece(const PathDiagnosticPiece &X,
 static Optional<bool> comparePath(const PathPieces &X, const PathPieces &Y) {
   if (X.size() != Y.size())
     return X.size() < Y.size();
-  for (unsigned i = 0, n = X.size(); i != n; ++i) {
-    Optional<bool> b = comparePiece(*X[i], *Y[i]);
+
+  PathPieces::const_iterator X_I = X.begin(), X_end = X.end();
+  PathPieces::const_iterator Y_I = Y.begin(), Y_end = Y.end();
+
+  for ( ; X_I != X_end && Y_I != Y_end; ++X_I, ++Y_I) {
+    Optional<bool> b = comparePiece(**X_I, **Y_I);
     if (b.hasValue())
       return b.getValue();
   }
+
   return None;
 }
 
@@ -345,17 +416,6 @@ static bool compare(const PathDiagnostic &X, const PathDiagnostic &Y) {
   return b.getValue();
 }
 
-namespace {
-struct CompareDiagnostics {
-  // Compare if 'X' is "<" than 'Y'.
-  bool operator()(const PathDiagnostic *X, const PathDiagnostic *Y) const {
-    if (X == Y)
-      return false;
-    return compare(*X, *Y);
-  }
-};
-}
-
 void PathDiagnosticConsumer::FlushDiagnostics(
                                      PathDiagnosticConsumer::FilesMade *Files) {
   if (flushed)
@@ -372,9 +432,16 @@ void PathDiagnosticConsumer::FlushDiagnostics(
 
   // Sort the diagnostics so that they are always emitted in a deterministic
   // order.
-  if (!BatchDiags.empty())
-    std::sort(BatchDiags.begin(), BatchDiags.end(), CompareDiagnostics());
-  
+  int (*Comp)(const PathDiagnostic *const *, const PathDiagnostic *const *) =
+      [](const PathDiagnostic *const *X, const PathDiagnostic *const *Y) {
+        assert(*X != *Y && "PathDiagnostics not uniqued!");
+        if (compare(**X, **Y))
+          return -1;
+        assert(compare(**Y, **X) && "Not a total order!");
+        return 1;
+      };
+  array_pod_sort(BatchDiags.begin(), BatchDiags.end(), Comp);
+
   FlushDiagnosticsImpl(BatchDiags, Files);
 
   // Delete the flushed diagnostics.
@@ -388,17 +455,22 @@ void PathDiagnosticConsumer::FlushDiagnostics(
   Diags.clear();
 }
 
+PathDiagnosticConsumer::FilesMade::~FilesMade() {
+  for (PDFileEntry &Entry : Set)
+    Entry.~PDFileEntry();
+}
+
 void PathDiagnosticConsumer::FilesMade::addDiagnostic(const PathDiagnostic &PD,
                                                       StringRef ConsumerName,
                                                       StringRef FileName) {
   llvm::FoldingSetNodeID NodeID;
   NodeID.Add(PD);
   void *InsertPos;
-  PDFileEntry *Entry = FindNodeOrInsertPos(NodeID, InsertPos);
+  PDFileEntry *Entry = Set.FindNodeOrInsertPos(NodeID, InsertPos);
   if (!Entry) {
     Entry = Alloc.Allocate<PDFileEntry>();
     Entry = new (Entry) PDFileEntry(NodeID);
-    InsertNode(Entry, InsertPos);
+    Set.InsertNode(Entry, InsertPos);
   }
   
   // Allocate persistent storage for the file name.
@@ -415,9 +487,9 @@ PathDiagnosticConsumer::FilesMade::getFiles(const PathDiagnostic &PD) {
   llvm::FoldingSetNodeID NodeID;
   NodeID.Add(PD);
   void *InsertPos;
-  PDFileEntry *Entry = FindNodeOrInsertPos(NodeID, InsertPos);
+  PDFileEntry *Entry = Set.FindNodeOrInsertPos(NodeID, InsertPos);
   if (!Entry)
-    return 0;
+    return nullptr;
   return &Entry->files;
 }
 
@@ -489,6 +561,10 @@ getLocationForCaller(const StackFrameContext *SFC,
     return PathDiagnosticLocation::createEnd(Dtor.getTriggerStmt(),
                                              SM, CallerCtx);
   }
+  case CFGElement::DeleteDtor: {
+    const CFGDeleteDtor &Dtor = Source.castAs<CFGDeleteDtor>();
+    return PathDiagnosticLocation(Dtor.getDeleteExpr(), SM, CallerCtx);
+  }
   case CFGElement::BaseDtor:
   case CFGElement::MemberDtor: {
     const AnalysisDeclContext *CallerInfo = CallerCtx->getAnalysisDeclContext();
@@ -497,6 +573,7 @@ getLocationForCaller(const StackFrameContext *SFC,
     return PathDiagnosticLocation::create(CallerInfo->getDecl(), SM);
   }
   case CFGElement::TemporaryDtor:
+  case CFGElement::NewAllocator:
     llvm_unreachable("not yet implemented!");
   }
 
@@ -534,6 +611,14 @@ PathDiagnosticLocation
                                             const SourceManager &SM) {
   return PathDiagnosticLocation(BO->getOperatorLoc(), SM, SingleLocK);
 }
+
+PathDiagnosticLocation
+  PathDiagnosticLocation::createConditionalColonLoc(
+                                            const ConditionalOperator *CO,
+                                            const SourceManager &SM) {
+  return PathDiagnosticLocation(CO->getColonLoc(), SM, SingleLocK);
+}
+
 
 PathDiagnosticLocation
   PathDiagnosticLocation::createMemberLoc(const MemberExpr *ME,
@@ -580,7 +665,7 @@ PathDiagnosticLocation
   PathDiagnosticLocation::create(const ProgramPoint& P,
                                  const SourceManager &SMng) {
 
-  const Stmt* S = 0;
+  const Stmt* S = nullptr;
   if (Optional<BlockEdge> BE = P.getAs<BlockEdge>()) {
     const CFGBlock *BSrc = BE->getSrc();
     S = BSrc->getTerminatorCondition();
@@ -608,31 +693,77 @@ PathDiagnosticLocation
   return PathDiagnosticLocation(S, SMng, P.getLocationContext());
 }
 
+const Stmt *PathDiagnosticLocation::getStmt(const ExplodedNode *N) {
+  ProgramPoint P = N->getLocation();
+  if (Optional<StmtPoint> SP = P.getAs<StmtPoint>())
+    return SP->getStmt();
+  if (Optional<BlockEdge> BE = P.getAs<BlockEdge>())
+    return BE->getSrc()->getTerminator();
+  if (Optional<CallEnter> CE = P.getAs<CallEnter>())
+    return CE->getCallExpr();
+  if (Optional<CallExitEnd> CEE = P.getAs<CallExitEnd>())
+    return CEE->getCalleeContext()->getCallSite();
+  if (Optional<PostInitializer> PIPP = P.getAs<PostInitializer>())
+    return PIPP->getInitializer()->getInit();
+
+  return nullptr;
+}
+
+const Stmt *PathDiagnosticLocation::getNextStmt(const ExplodedNode *N) {
+  for (N = N->getFirstSucc(); N; N = N->getFirstSucc()) {
+    if (const Stmt *S = getStmt(N)) {
+      // Check if the statement is '?' or '&&'/'||'.  These are "merges",
+      // not actual statement points.
+      switch (S->getStmtClass()) {
+        case Stmt::ChooseExprClass:
+        case Stmt::BinaryConditionalOperatorClass:
+        case Stmt::ConditionalOperatorClass:
+          continue;
+        case Stmt::BinaryOperatorClass: {
+          BinaryOperatorKind Op = cast<BinaryOperator>(S)->getOpcode();
+          if (Op == BO_LAnd || Op == BO_LOr)
+            continue;
+          break;
+        }
+        default:
+          break;
+      }
+      // We found the statement, so return it.
+      return S;
+    }
+  }
+
+  return nullptr;
+}
+
 PathDiagnosticLocation
-  PathDiagnosticLocation::createEndOfPath(const ExplodedNode* N,
+  PathDiagnosticLocation::createEndOfPath(const ExplodedNode *N,
                                           const SourceManager &SM) {
   assert(N && "Cannot create a location with a null node.");
+  const Stmt *S = getStmt(N);
 
-  const ExplodedNode *NI = N;
-  const Stmt *S = 0;
-
-  while (NI) {
-    ProgramPoint P = NI->getLocation();
-    if (Optional<StmtPoint> PS = P.getAs<StmtPoint>()) {
-      S = PS->getStmt();
-      if (P.getAs<PostStmtPurgeDeadSymbols>())
-        return PathDiagnosticLocation::createEnd(S, SM,
-                                                 NI->getLocationContext());
-      break;
-    } else if (Optional<BlockEdge> BE = P.getAs<BlockEdge>()) {
-      S = BE->getSrc()->getTerminator();
-      break;
-    }
-    NI = NI->succ_empty() ? 0 : *(NI->succ_begin());
+  if (!S) {
+    // If this is an implicit call, return the implicit call point location.
+    if (Optional<PreImplicitCall> PIE = N->getLocationAs<PreImplicitCall>())
+      return PathDiagnosticLocation(PIE->getLocation(), SM);
+    S = getNextStmt(N);
   }
 
   if (S) {
-    const LocationContext *LC = NI->getLocationContext();
+    ProgramPoint P = N->getLocation();
+    const LocationContext *LC = N->getLocationContext();
+
+    // For member expressions, return the location of the '.' or '->'.
+    if (const MemberExpr *ME = dyn_cast<MemberExpr>(S))
+      return PathDiagnosticLocation::createMemberLoc(ME, SM);
+
+    // For binary operators, return the location of the operator.
+    if (const BinaryOperator *B = dyn_cast<BinaryOperator>(S))
+      return PathDiagnosticLocation::createOperatorLoc(B, SM);
+
+    if (P.getAs<PostStmtPurgeDeadSymbols>())
+      return PathDiagnosticLocation::createEnd(S, SM, LC);
+
     if (S->getLocStart().isValid())
       return PathDiagnosticLocation(S, SM, LC);
     return PathDiagnosticLocation(getValidSourceLocation(S, LC), SM);
@@ -737,13 +868,13 @@ PathDiagnosticRange
 void PathDiagnosticLocation::flatten() {
   if (K == StmtK) {
     K = RangeK;
-    S = 0;
-    D = 0;
+    S = nullptr;
+    D = nullptr;
   }
   else if (K == DeclK) {
     K = SingleLocK;
-    S = 0;
-    D = 0;
+    S = nullptr;
+    D = nullptr;
   }
 }
 
@@ -853,7 +984,7 @@ static bool describeCodeDecl(raw_ostream &Out, const Decl *D,
 IntrusiveRefCntPtr<PathDiagnosticEventPiece>
 PathDiagnosticCallPiece::getCallEnterEvent() const {
   if (!Callee)
-    return 0;  
+    return nullptr;
 
   SmallString<256> buf;
   llvm::raw_svector_ostream Out(buf);
@@ -868,12 +999,12 @@ PathDiagnosticCallPiece::getCallEnterEvent() const {
 IntrusiveRefCntPtr<PathDiagnosticEventPiece>
 PathDiagnosticCallPiece::getCallEnterWithinCallerEvent() const {
   if (!callEnterWithin.asLocation().isValid())
-    return 0;
-  if (Callee->isImplicit())
-    return 0;
+    return nullptr;
+  if (Callee->isImplicit() || !Callee->hasBody())
+    return nullptr;
   if (const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(Callee))
     if (MD->isDefaulted())
-      return 0;
+      return nullptr;
 
   SmallString<256> buf;
   llvm::raw_svector_ostream Out(buf);
@@ -887,7 +1018,7 @@ PathDiagnosticCallPiece::getCallEnterWithinCallerEvent() const {
 IntrusiveRefCntPtr<PathDiagnosticEventPiece>
 PathDiagnosticCallPiece::getCallExitEvent() const {
   if (NoExit)
-    return 0;
+    return nullptr;
 
   SmallString<256> buf;
   llvm::raw_svector_ostream Out(buf);
@@ -909,7 +1040,7 @@ PathDiagnosticCallPiece::getCallExitEvent() const {
 static void compute_path_size(const PathPieces &pieces, unsigned &size) {
   for (PathPieces::const_iterator it = pieces.begin(),
                                   et = pieces.end(); it != et; ++it) {
-    const PathDiagnosticPiece *piece = it->getPtr();
+    const PathDiagnosticPiece *piece = it->get();
     if (const PathDiagnosticCallPiece *cp = 
         dyn_cast<PathDiagnosticCallPiece>(piece)) {
       compute_path_size(cp->path, size);

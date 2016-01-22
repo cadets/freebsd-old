@@ -15,11 +15,11 @@ INCS+=		libusb20_desc.h
 MAN=		libusb.3 libusb20.3
 MKLINT=		no
 NOGCCERROR=
+PTHREAD_LIBS?=	-lpthread
 
 WARNS?=		2
 
-DPADD=		${LIBPTHREAD}
-LDADD=		-lpthread
+LIBADD=		pthread
 
 MLINKS+=	libusb.3 usb.3
 
@@ -37,20 +37,31 @@ SRCS+=		libusb10_io.c
 CFLAGS+=	-DCOMPAT_32BIT
 .endif
 
+FILES=		libusb-0.1.pc libusb-1.0.pc libusb-2.0.pc
+FILESDIR=	${LIBDATADIR}/pkgconfig
+
 #
 # Cross platform support
 #
 # Examples:
 # make LIBUSB_GLOBAL_INCLUDE_FILE=libusb_global_linux.h
-# make COMPAT_32BIT=YES LIBUSB_GLOBAL_INCLUDE_FILE=libusb_global_linux.h
+# make COMPAT_32BIT=YES \
+#   LIBUSB_GLOBAL_INCLUDE_FILE=libusb_global_linux.h \
+#   DEBUG_FLAGS="-g"
+#
+# From Ubuntu 10.04:
+# freebsd-make LIBUSB_GLOBAL_INCLUDE_FILE=libusb_global_linux.h \
+#    PTHREAD_LIBS="-lpthread -lrt"
+# freebsd-make COMPAT32_BIT=YES \
+#    LIBUSB_GLOBAL_INCLUDE_FILE=libusb_global_linux.h \
+#    PTHREAD_LIBS="-lpthread -lrt"
+#
 #
 .if defined(LIBUSB_GLOBAL_INCLUDE_FILE)
 CFLAGS+=	-DLIBUSB_GLOBAL_INCLUDE_FILE=\"${LIBUSB_GLOBAL_INCLUDE_FILE}\"
 CFLAGS+=	-DUSB_GLOBAL_INCLUDE_FILE=\"${LIBUSB_GLOBAL_INCLUDE_FILE}\"
 CFLAGS+=	-I ../../sys
 .endif
-
-.include <bsd.lib.mk>
 
 # LibUSB v1.0
 MLINKS += libusb.3 libusb_init.3
@@ -111,6 +122,8 @@ MLINKS += libusb.3 libusb_event_handler_active.3
 MLINKS += libusb.3 libusb_lock_event_waiters.3
 MLINKS += libusb.3 libusb_unlock_event_waiters.3
 MLINKS += libusb.3 libusb_wait_for_event.3
+MLINKS += libusb.3 libusb_handle_events_timeout_completed.3
+MLINKS += libusb.3 libusb_handle_events_completed.3
 MLINKS += libusb.3 libusb_handle_events_timeout.3
 MLINKS += libusb.3 libusb_handle_events.3
 MLINKS += libusb.3 libusb_handle_events_locked.3
@@ -237,3 +250,5 @@ MLINKS += libusb20.3 libusb20_me_decode.3
 MLINKS += libusb20.3 libusb20_desc_foreach.3
 MLINKS += libusb20.3 libusb20_strerror.3
 MLINKS += libusb20.3 libusb20_error_name.3
+
+.include <bsd.lib.mk>

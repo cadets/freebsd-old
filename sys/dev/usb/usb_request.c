@@ -51,7 +51,6 @@
 #include <dev/usb/usb.h>
 #include <dev/usb/usbdi.h>
 #include <dev/usb/usbdi_util.h>
-#include <dev/usb/usb_ioctl.h>
 #include <dev/usb/usbhid.h>
 
 #define	USB_DEBUG_VAR usb_debug
@@ -73,12 +72,12 @@
 
 static int usb_no_cs_fail;
 
-SYSCTL_INT(_hw_usb, OID_AUTO, no_cs_fail, CTLFLAG_RW,
+SYSCTL_INT(_hw_usb, OID_AUTO, no_cs_fail, CTLFLAG_RWTUN,
     &usb_no_cs_fail, 0, "USB clear stall failures are ignored, if set");
 
 static int usb_full_ddesc;
 
-SYSCTL_INT(_hw_usb, OID_AUTO, full_ddesc, CTLFLAG_RW,
+SYSCTL_INT(_hw_usb, OID_AUTO, full_ddesc, CTLFLAG_RWTUN,
     &usb_full_ddesc, 0, "USB always read complete device descriptor, if set");
 
 #ifdef USB_DEBUG
@@ -112,21 +111,21 @@ static struct usb_ctrl_debug usb_ctrl_debug = {
 	.bRequest_value = -1,
 };
 
-SYSCTL_INT(_hw_usb, OID_AUTO, ctrl_bus_fail, CTLFLAG_RW,
+SYSCTL_INT(_hw_usb, OID_AUTO, ctrl_bus_fail, CTLFLAG_RWTUN,
     &usb_ctrl_debug.bus_index, 0, "USB controller index to fail");
-SYSCTL_INT(_hw_usb, OID_AUTO, ctrl_dev_fail, CTLFLAG_RW,
+SYSCTL_INT(_hw_usb, OID_AUTO, ctrl_dev_fail, CTLFLAG_RWTUN,
     &usb_ctrl_debug.dev_index, 0, "USB device address to fail");
-SYSCTL_INT(_hw_usb, OID_AUTO, ctrl_ds_fail, CTLFLAG_RW,
+SYSCTL_INT(_hw_usb, OID_AUTO, ctrl_ds_fail, CTLFLAG_RWTUN,
     &usb_ctrl_debug.ds_fail, 0, "USB fail data stage");
-SYSCTL_INT(_hw_usb, OID_AUTO, ctrl_ss_fail, CTLFLAG_RW,
+SYSCTL_INT(_hw_usb, OID_AUTO, ctrl_ss_fail, CTLFLAG_RWTUN,
     &usb_ctrl_debug.ss_fail, 0, "USB fail status stage");
-SYSCTL_INT(_hw_usb, OID_AUTO, ctrl_ds_delay, CTLFLAG_RW,
+SYSCTL_INT(_hw_usb, OID_AUTO, ctrl_ds_delay, CTLFLAG_RWTUN,
     &usb_ctrl_debug.ds_delay, 0, "USB data stage delay in ms");
-SYSCTL_INT(_hw_usb, OID_AUTO, ctrl_ss_delay, CTLFLAG_RW,
+SYSCTL_INT(_hw_usb, OID_AUTO, ctrl_ss_delay, CTLFLAG_RWTUN,
     &usb_ctrl_debug.ss_delay, 0, "USB status stage delay in ms");
-SYSCTL_INT(_hw_usb, OID_AUTO, ctrl_rt_fail, CTLFLAG_RW,
+SYSCTL_INT(_hw_usb, OID_AUTO, ctrl_rt_fail, CTLFLAG_RWTUN,
     &usb_ctrl_debug.bmRequestType_value, 0, "USB bmRequestType to fail");
-SYSCTL_INT(_hw_usb, OID_AUTO, ctrl_rv_fail, CTLFLAG_RW,
+SYSCTL_INT(_hw_usb, OID_AUTO, ctrl_rv_fail, CTLFLAG_RWTUN,
     &usb_ctrl_debug.bRequest_value, 0, "USB bRequest to fail");
 
 /*------------------------------------------------------------------------*
@@ -722,6 +721,17 @@ done:
 	if ((mtx != NULL) && (mtx != &Giant))
 		mtx_lock(mtx);
 
+	switch (err) {
+	case USB_ERR_NORMAL_COMPLETION:
+	case USB_ERR_SHORT_XFER:
+	case USB_ERR_STALLED:
+	case USB_ERR_CANCELLED:
+		break;
+	default:
+		DPRINTF("I/O error - waiting a bit for TT cleanup\n");
+		usb_pause_mtx(mtx, hz / 16);
+		break;
+	}
 	return ((usb_error_t)err);
 }
 
@@ -2011,6 +2021,7 @@ usbd_req_re_enumerate(struct usb_device *udev, struct mtx *mtx)
 		return (USB_ERR_INVAL);
 	}
 retry:
+#if USB_HAVE_TT_SUPPORT
 	/*
 	 * Try to reset the High Speed parent HUB of a LOW- or FULL-
 	 * speed device, if any.
@@ -2018,15 +2029,24 @@ retry:
 	if (udev->parent_hs_hub != NULL &&
 	    udev->speed != USB_SPEED_HIGH) {
 		DPRINTF("Trying to reset parent High Speed TT.\n");
-		err = usbd_req_reset_tt(udev->parent_hs_hub, NULL,
-		    udev->hs_port_no);
+		if (udev->parent_hs_hub == parent_hub &&
+		    (uhub_count_active_host_ports(parent_hub, USB_SPEED_LOW) +
+		     uhub_count_active_host_ports(parent_hub, USB_SPEED_FULL)) == 1) {
+			/* we can reset the whole TT */
+			err = usbd_req_reset_tt(parent_hub, NULL,
+			    udev->hs_port_no);
+		} else {
+			/* only reset a particular device and endpoint */
+			err = usbd_req_clear_tt_buffer(udev->parent_hs_hub, NULL,
+			    udev->hs_port_no, old_addr, UE_CONTROL, 0);
+		}
 		if (err) {
 			DPRINTF("Resetting parent High "
 			    "Speed TT failed (%s).\n",
 			    usbd_errstr(err));
 		}
 	}
-
+#endif
 	/* Try to warm reset first */
 	if (parent_hub->speed == USB_SPEED_SUPER)
 		usbd_req_warm_reset_port(parent_hub, mtx, udev->port_no);

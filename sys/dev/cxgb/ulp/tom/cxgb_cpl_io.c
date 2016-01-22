@@ -52,6 +52,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/taskqueue.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/ethernet.h>
 #include <net/route.h>
 
@@ -444,8 +445,8 @@ t3_push_frames(struct socket *so, int req_completion)
 	 * Autosize the send buffer.
 	 */
 	if (snd->sb_flags & SB_AUTOSIZE && VNET(tcp_do_autosndbuf)) {
-		if (snd->sb_cc >= (snd->sb_hiwat / 8 * 7) &&
-		    snd->sb_cc < VNET(tcp_autosndbuf_max)) {
+		if (sbused(snd) >= (snd->sb_hiwat / 8 * 7) &&
+		    sbused(snd) < VNET(tcp_autosndbuf_max)) {
 			if (!sbreserve_locked(snd, min(snd->sb_hiwat +
 			    VNET(tcp_autosndbuf_inc), VNET(tcp_autosndbuf_max)),
 			    so, curthread))
@@ -596,10 +597,10 @@ t3_rcvd(struct toedev *tod, struct tcpcb *tp)
 	INP_WLOCK_ASSERT(inp);
 
 	SOCKBUF_LOCK(so_rcv);
-	KASSERT(toep->tp_enqueued >= so_rcv->sb_cc,
-	    ("%s: so_rcv->sb_cc > enqueued", __func__));
-	toep->tp_rx_credits += toep->tp_enqueued - so_rcv->sb_cc;
-	toep->tp_enqueued = so_rcv->sb_cc;
+	KASSERT(toep->tp_enqueued >= sbused(so_rcv),
+	    ("%s: sbused(so_rcv) > enqueued", __func__));
+	toep->tp_rx_credits += toep->tp_enqueued - sbused(so_rcv);
+	toep->tp_enqueued = sbused(so_rcv);
 	SOCKBUF_UNLOCK(so_rcv);
 
 	must_send = toep->tp_rx_credits + 16384 >= tp->rcv_wnd;
@@ -638,7 +639,7 @@ t3_send_fin(struct toedev *tod, struct tcpcb *tp)
 	unsigned int tid = toep->tp_tid;
 #endif
 
-	INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+	INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 	INP_WLOCK_ASSERT(inp);
 
 	CTR4(KTR_CXGB, "%s: tid %d, toep %p, flags %x", __func__, tid, toep,
@@ -924,12 +925,12 @@ do_act_open_rpl(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 
 	rc = act_open_rpl_status_to_errno(s);
 	if (rc != EAGAIN)
-		INP_INFO_WLOCK(&V_tcbinfo);
+		INP_INFO_RLOCK(&V_tcbinfo);
 	INP_WLOCK(inp);
 	toe_connect_failed(tod, inp, rc);
 	toepcb_release(toep);	/* unlocks inp */
 	if (rc != EAGAIN)
-		INP_INFO_WUNLOCK(&V_tcbinfo);
+		INP_INFO_RUNLOCK(&V_tcbinfo);
 
 	m_freem(m);
 	return (0);
@@ -1060,7 +1061,7 @@ send_reset(struct toepcb *toep)
 	struct adapter *sc = tod->tod_softc;
 	struct mbuf *m;
 
-	INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+	INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 	INP_WLOCK_ASSERT(inp);
 
 	CTR4(KTR_CXGB, "%s: tid %d, toep %p (%x)", __func__, tid, toep,
@@ -1087,7 +1088,7 @@ send_reset(struct toepcb *toep)
 	req->cmd = CPL_ABORT_SEND_RST;
 
 	if (tp->t_state == TCPS_SYN_SENT)
-		mbufq_tail(&toep->out_of_order_queue, m); /* defer */
+		(void )mbufq_enqueue(&toep->out_of_order_queue, m); /* defer */
 	else
 		l2t_send(sc, m, toep->tp_l2t);
 }
@@ -1171,12 +1172,12 @@ do_rx_data(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 		SOCKBUF_UNLOCK(so_rcv);
 		INP_WUNLOCK(inp);
 
-		INP_INFO_WLOCK(&V_tcbinfo);
+		INP_INFO_RLOCK(&V_tcbinfo);
 		INP_WLOCK(inp);
 		tp = tcp_drop(tp, ECONNRESET);
 		if (tp)
 			INP_WUNLOCK(inp);
-		INP_INFO_WUNLOCK(&V_tcbinfo);
+		INP_INFO_RUNLOCK(&V_tcbinfo);
 
 		m_freem(m);
 		return (0);
@@ -1198,7 +1199,7 @@ do_rx_data(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 	}
 
 	toep->tp_enqueued += m->m_pkthdr.len;
-	sbappendstream_locked(so_rcv, m);
+	sbappendstream_locked(so_rcv, m, 0);
 	sorwakeup_locked(so);
 	SOCKBUF_UNLOCK_ASSERT(so_rcv);
 
@@ -1221,7 +1222,7 @@ do_peer_close(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 	struct tcpcb *tp;
 	struct socket *so;
 
-	INP_INFO_WLOCK(&V_tcbinfo);
+	INP_INFO_RLOCK(&V_tcbinfo);
 	INP_WLOCK(inp);
 	tp = intotcpcb(inp);
 
@@ -1249,7 +1250,7 @@ do_peer_close(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 	case TCPS_FIN_WAIT_2:
 		tcp_twstart(tp);
 		INP_UNLOCK_ASSERT(inp);	/* safe, we have a ref on the  inp */
-		INP_INFO_WUNLOCK(&V_tcbinfo);
+		INP_INFO_RUNLOCK(&V_tcbinfo);
 
 		INP_WLOCK(inp);
 		toepcb_release(toep);	/* no more CPLs expected */
@@ -1263,7 +1264,7 @@ do_peer_close(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 
 done:
 	INP_WUNLOCK(inp);
-	INP_INFO_WUNLOCK(&V_tcbinfo);
+	INP_INFO_RUNLOCK(&V_tcbinfo);
 
 	m_freem(m);
 	return (0);
@@ -1284,7 +1285,7 @@ do_close_con_rpl(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 	struct tcpcb *tp;
 	struct socket *so;
 
-	INP_INFO_WLOCK(&V_tcbinfo);
+	INP_INFO_RLOCK(&V_tcbinfo);
 	INP_WLOCK(inp);
 	tp = intotcpcb(inp);
 
@@ -1302,7 +1303,7 @@ do_close_con_rpl(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 		tcp_twstart(tp);
 release:
 		INP_UNLOCK_ASSERT(inp);	/* safe, we have a ref on the  inp */
-		INP_INFO_WUNLOCK(&V_tcbinfo);
+		INP_INFO_RUNLOCK(&V_tcbinfo);
 
 		INP_WLOCK(inp);
 		toepcb_release(toep);	/* no more CPLs expected */
@@ -1327,7 +1328,7 @@ release:
 
 done:
 	INP_WUNLOCK(inp);
-	INP_INFO_WUNLOCK(&V_tcbinfo);
+	INP_INFO_RUNLOCK(&V_tcbinfo);
 
 	m_freem(m);
 	return (0);
@@ -1488,7 +1489,7 @@ do_abort_req(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 		return (do_abort_req_synqe(qs, r, m));
 
 	inp = toep->tp_inp;
-	INP_INFO_WLOCK(&V_tcbinfo);	/* for tcp_close */
+	INP_INFO_RLOCK(&V_tcbinfo);	/* for tcp_close */
 	INP_WLOCK(inp);
 
 	tp = intotcpcb(inp);
@@ -1502,7 +1503,7 @@ do_abort_req(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 		toep->tp_flags |= TP_ABORT_REQ_RCVD;
 		toep->tp_flags |= TP_ABORT_SHUTDOWN;
 		INP_WUNLOCK(inp);
-		INP_INFO_WUNLOCK(&V_tcbinfo);
+		INP_INFO_RUNLOCK(&V_tcbinfo);
 		m_freem(m);
 		return (0);
 	}
@@ -1522,7 +1523,7 @@ do_abort_req(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 			INP_WLOCK(inp);	/* re-acquire */
 		toepcb_release(toep);	/* no more CPLs expected */
 	}
-	INP_INFO_WUNLOCK(&V_tcbinfo);
+	INP_INFO_RUNLOCK(&V_tcbinfo);
 
 	send_abort_rpl(tod, tid, qset);
 	m_freem(m);
@@ -1767,7 +1768,7 @@ wr_ack(struct toepcb *toep, struct mbuf *m)
 		so_sowwakeup_locked(so);
 	}
 
-	if (snd->sb_sndptroff < snd->sb_cc)
+	if (snd->sb_sndptroff < sbused(snd))
 		t3_push_frames(so, 0);
 
 out_free:
@@ -1792,53 +1793,6 @@ do_wr_ack(struct sge_qset *qs, struct rsp_desc *r, struct mbuf *m)
 		wr_ack(toep, m);
 
 	return (0);
-}
-
-/*
- * Build a CPL_BARRIER message as payload of a ULP_TX_PKT command.
- */
-static inline void
-mk_cpl_barrier_ulp(struct cpl_barrier *b)
-{
-	struct ulp_txpkt *txpkt = (struct ulp_txpkt *)b;
-
-	txpkt->cmd_dest = htonl(V_ULPTX_CMD(ULP_TXPKT));
-	txpkt->len = htonl(V_ULPTX_NFLITS(sizeof(*b) / 8));
-	b->opcode = CPL_BARRIER;
-}
-
-/*
- * Build a CPL_GET_TCB message as payload of a ULP_TX_PKT command.
- */
-static inline void
-mk_get_tcb_ulp(struct cpl_get_tcb *req, unsigned int tid, unsigned int cpuno)
-{
-	struct ulp_txpkt *txpkt = (struct ulp_txpkt *)req;
-
-	txpkt = (struct ulp_txpkt *)req;
-	txpkt->cmd_dest = htonl(V_ULPTX_CMD(ULP_TXPKT));
-	txpkt->len = htonl(V_ULPTX_NFLITS(sizeof(*req) / 8));
-	OPCODE_TID(req) = htonl(MK_OPCODE_TID(CPL_GET_TCB, tid));
-	req->cpuno = htons(cpuno);
-}
-
-/*
- * Build a CPL_SET_TCB_FIELD message as payload of a ULP_TX_PKT command.
- */
-static inline void
-mk_set_tcb_field_ulp(struct cpl_set_tcb_field *req, unsigned int tid,
-                     unsigned int word, uint64_t mask, uint64_t val)
-{
-	struct ulp_txpkt *txpkt = (struct ulp_txpkt *)req;
-
-	txpkt->cmd_dest = htonl(V_ULPTX_CMD(ULP_TXPKT));
-	txpkt->len = htonl(V_ULPTX_NFLITS(sizeof(*req) / 8));
-	OPCODE_TID(req) = htonl(MK_OPCODE_TID(CPL_SET_TCB_FIELD, tid));
-	req->reply = V_NO_REPLY(1);
-	req->cpu_idx = 0;
-	req->word = htons(word);
-	req->mask = htobe64(mask);
-	req->val = htobe64(val);
 }
 
 void

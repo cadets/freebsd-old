@@ -246,7 +246,7 @@ editentry_set(char *name, char *newvalue, int editonly)
  *     currently workaround it (even for int64's), so we have to kludge it.
  */
 #define	RESOLUTION_MAX(size) ((resolution * (size) == 32)? 		\
-	(int)0xffffffff: (1 << (resolution * (size))) - 1)
+	INT_MAX: (1 << (resolution * (size))) - 1)
 
 	assert(newvalue != NULL);
 	if (*newvalue == '\0')
@@ -886,12 +886,12 @@ mode_list(struct cam_device *device, int page_control, int dbd,
 	    timeout, data, sizeof(data));
 
 	mh = (struct scsi_mode_header_6 *)data;
-	len = mh->blk_desc_len;		/* Skip block descriptors. */
+	len = sizeof(*mh) + mh->blk_desc_len;	/* Skip block descriptors. */
 	/* Iterate through the pages in the reply. */
 	while (len < mh->data_length) {
 		/* Locate the next mode page header. */
 		mph = (struct scsi_mode_page_header *)
-		    ((intptr_t)mh + sizeof(*mh) + len);
+		    ((intptr_t)mh + len);
 
 		mph->page_code &= SMS_PAGE_CODE;
 		nameentry = nameentry_lookup(mph->page_code);

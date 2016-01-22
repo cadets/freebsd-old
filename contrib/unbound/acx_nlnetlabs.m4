@@ -2,7 +2,16 @@
 # Copyright 2009, Wouter Wijngaards, NLnet Labs.   
 # BSD licensed.
 #
-# Version 21
+# Version 30
+# 2015-11-18 spelling check fix.
+# 2015-11-05 ACX_SSL_CHECKS no longer adds -ldl needlessly.
+# 2015-08-28 ACX_CHECK_PIE and ACX_CHECK_RELRO_NOW added.
+# 2015-03-17 AHX_CONFIG_REALLOCARRAY added
+# 2013-09-19 FLTO help text improved.
+# 2013-07-18 Enable ACX_CHECK_COMPILER_FLAG to test for -Wstrict-prototypes
+# 2013-06-25 FLTO has --disable-flto option.
+# 2013-05-03 Update W32_SLEEP for newer mingw that links but not defines it.
+# 2013-03-22 Fix ACX_RSRC_VERSION for long version numbers.
 # 2012-02-09 Fix AHX_MEMCMP_BROKEN with undef in compat/memcmp.h.
 # 2012-01-20 Fix COMPILER_FLAGS_UNBOUND for gcc 4.6.2 assigned-not-used-warns.
 # 2011-12-05 Fix getaddrinfowithincludes on windows with fedora16 mingw32-gcc.
@@ -17,7 +26,7 @@
 # 2010-07-02 Add check for ss_family (for minix).
 # 2010-04-26 Fix to use CPPFLAGS for CHECK_COMPILER_FLAGS.
 # 2010-03-01 Fix RPATH using CONFIG_COMMANDS to run at the very end.
-# 2010-02-18 WITH_SSL outputs the LIBSSL_LDFLAGS, LIBS, CPPFLAGS seperate, -ldl
+# 2010-02-18 WITH_SSL outputs the LIBSSL_LDFLAGS, LIBS, CPPFLAGS separate, -ldl
 # 2010-02-01 added ACX_CHECK_MEMCMP_SIGNED, AHX_MEMCMP_BROKEN
 # 2010-01-20 added AHX_COONFIG_STRLCAT
 # 2009-07-14 U_CHAR detection improved for windows crosscompile.
@@ -88,6 +97,8 @@
 # ACX_CHECK_MEMCMP_SIGNED	- check if memcmp uses signed characters.
 # AHX_MEMCMP_BROKEN		- replace memcmp func for CHECK_MEMCMP_SIGNED.
 # ACX_CHECK_SS_FAMILY           - check for sockaddr_storage.ss_family
+# ACX_CHECK_PIE			- add --enable-pie option and check if works
+# ACX_CHECK_RELRO_NOW		- add --enable-relro-now option and check it
 #
 
 dnl Escape backslashes as \\, for C:\ paths, for the C preprocessor defines.
@@ -101,7 +112,7 @@ dnl Calculate comma separated windows-resource numbers from package version.
 dnl Picks the first three(,0) or four numbers out of the name.
 dnl $1: variable for the result
 AC_DEFUN([ACX_RSRC_VERSION], 
-[$1=[`echo $PACKAGE_VERSION | sed -e 's/^[^0-9]*\([0-9]\)[^0-9]*\([0-9]\)[^0-9]*\([0-9]\)[^0-9]*\([0-9]\).*$/\1,\2,\3,\4/' -e 's/^[^0-9]*\([0-9]\)[^0-9]*\([0-9]\)[^0-9]*\([0-9]\)[^0-9]*$/\1,\2,\3,0/' `]
+[$1=[`echo $PACKAGE_VERSION | sed -e 's/^[^0-9]*\([0-9][0-9]*\)[^0-9][^0-9]*\([0-9][0-9]*\)[^0-9][^0-9]*\([0-9][0-9]*\)[^0-9][^0-9]*\([0-9][0-9]*\).*$/\1,\2,\3,\4/' -e 's/^[^0-9]*\([0-9][0-9]*\)[^0-9][^0-9]*\([0-9][0-9]*\)[^0-9][^0-9]*\([0-9][0-9]*\)[^0-9]*$/\1,\2,\3,0/' `]
 ])
 
 dnl Routine to help check for compiler flags.
@@ -116,7 +127,7 @@ AC_MSG_CHECKING(whether $CC supports -$1)
 cache=`echo $1 | sed 'y%.=/+-%___p_%'`
 AC_CACHE_VAL(cv_prog_cc_flag_$cache,
 [
-echo 'void f(){}' >conftest.c
+echo 'void f(void){}' >conftest.c
 if test -z "`$CC $CPPFLAGS $CFLAGS -$1 -c conftest.c 2>&1`"; then
 eval "cv_prog_cc_flag_$cache=yes"
 else
@@ -405,19 +416,22 @@ int test() {
 dnl Check if CC supports -flto.
 dnl in a way that supports clang and suncc (that flag does something else,
 dnl but fails to link).  It sets it in CFLAGS if it works.
-AC_DEFUN([ACX_CHECK_FLTO],
-[AC_MSG_CHECKING([if $CC supports -flto])
-BAKCFLAGS="$CFLAGS"
-CFLAGS="$CFLAGS -flto"
-AC_LINK_IFELSE([AC_LANG_PROGRAM([], [])], [
-    if $CC $CFLAGS -o conftest conftest.c 2>&1 | grep "warning: no debug symbols in executable" >/dev/null; then
-	CFLAGS="$BAKCFLAGS"
-	AC_MSG_RESULT(no)
-    else
-	AC_MSG_RESULT(yes)
-    fi
-    rm -f conftest conftest.c conftest.o
-], [CFLAGS="$BAKCFLAGS" ; AC_MSG_RESULT(no)])
+AC_DEFUN([ACX_CHECK_FLTO], [
+    AC_ARG_ENABLE([flto], AS_HELP_STRING([--disable-flto], [Disable link-time optimization (gcc specific option)]))
+    AS_IF([test "x$enable_flto" != "xno"], [
+        AC_MSG_CHECKING([if $CC supports -flto])
+        BAKCFLAGS="$CFLAGS"
+        CFLAGS="$CFLAGS -flto"
+        AC_LINK_IFELSE([AC_LANG_PROGRAM([], [])], [
+            if $CC $CFLAGS -o conftest conftest.c 2>&1 | grep "warning: no debug symbols in executable" >/dev/null; then
+                CFLAGS="$BAKCFLAGS"
+                AC_MSG_RESULT(no)
+            else
+                AC_MSG_RESULT(yes)
+            fi
+            rm -f conftest conftest.c conftest.o
+        ], [CFLAGS="$BAKCFLAGS" ; AC_MSG_RESULT(no)])
+    ])
 ])
 
 dnl Check the printf-format attribute (if any)
@@ -703,12 +717,6 @@ AC_DEFUN([ACX_SSL_CHECKS], [
         fi
         AC_SUBST(HAVE_SSL)
         AC_SUBST(RUNTIME_PATH)
-	# openssl engine functionality needs dlopen().
-	BAKLIBS="$LIBS"
-	AC_SEARCH_LIBS([dlopen], [dl])
-	if test "$LIBS" != "$BAKLIBS"; then
-		LIBSSL_LIBS="$LIBSSL_LIBS -ldl"
-	fi
     fi
 AC_CHECK_HEADERS([openssl/ssl.h],,, [AC_INCLUDES_DEFAULT])
 AC_CHECK_HEADERS([openssl/err.h],,, [AC_INCLUDES_DEFAULT])
@@ -1205,10 +1213,20 @@ struct tm *gmtime_r(const time_t *timep, struct tm *result);
 #endif
 ])
 
+dnl provide reallocarray compat prototype.
+dnl $1: unique name for compat code
+AC_DEFUN([AHX_CONFIG_REALLOCARRAY],
+[
+#ifndef HAVE_REALLOCARRAY
+#define reallocarray reallocarray$1
+void* reallocarray(void *ptr, size_t nmemb, size_t size);
+#endif
+])
+
 dnl provide w32 compat definition for sleep
 AC_DEFUN([AHX_CONFIG_W32_SLEEP],
 [
-#ifndef HAVE_SLEEP
+#if !defined(HAVE_SLEEP) || defined(HAVE_WINDOWS_H)
 #define sleep(x) Sleep((x)*1000) /* on win32 */
 #endif /* HAVE_SLEEP */
 ])
@@ -1366,5 +1384,47 @@ AC_DEFUN([ACX_CHECK_SS_FAMILY],
 #include <arpa/inet.h>
 #endif
 ]) ])
+
+dnl Check if CC and linker support -fPIE and -pie.
+dnl If so, sets them in CFLAGS / LDFLAGS.
+AC_DEFUN([ACX_CHECK_PIE], [
+    AC_ARG_ENABLE([pie], AS_HELP_STRING([--enable-pie], [Enable Position-Independent Executable (eg. to fully benefit from ASLR, small performance penalty)]))
+    AS_IF([test "x$enable_pie" = "xyes"], [
+	AC_MSG_CHECKING([if $CC supports PIE])
+	BAKLDFLAGS="$LDFLAGS"
+	BAKCFLAGS="$CFLAGS"
+	LDFLAGS="$LDFLAGS -pie"
+	CFLAGS="$CFLAGS -fPIE"
+	AC_LINK_IFELSE([AC_LANG_PROGRAM([], [])], [
+	    if $CC $CFLAGS $LDFLAGS -o conftest conftest.c 2>&1 | grep "warning: no debug symbols in executable" >/dev/null; then
+		LDFLAGS="$BAKLDFLAGS"
+		AC_MSG_RESULT(no)
+	    else
+		AC_MSG_RESULT(yes)
+	    fi
+	    rm -f conftest conftest.c conftest.o
+	], [LDFLAGS="$BAKLDFLAGS" ; CFLAGS="$BAKCFLAGS" ; AC_MSG_RESULT(no)])
+    ])
+])
+
+dnl Check if linker supports -Wl,-z,relro,-z,now.
+dnl If so, adds it to LDFLAGS.
+AC_DEFUN([ACX_CHECK_RELRO_NOW], [
+    AC_ARG_ENABLE([relro_now], AS_HELP_STRING([--enable-relro-now], [Enable full relocation binding at load-time (RELRO NOW, to protect GOT and .dtor areas)]))
+    AS_IF([test "x$enable_relro_now" = "xyes"], [
+	AC_MSG_CHECKING([if $CC supports -Wl,-z,relro,-z,now])
+	BAKLDFLAGS="$LDFLAGS"
+	LDFLAGS="$LDFLAGS -Wl,-z,relro,-z,now"
+	AC_LINK_IFELSE([AC_LANG_PROGRAM([], [])], [
+	    if $CC $CFLAGS $LDFLAGS -o conftest conftest.c 2>&1 | grep "warning: no debug symbols in executable" >/dev/null; then
+		LDFLAGS="$BAKLDFLAGS"
+		AC_MSG_RESULT(no)
+	    else
+		AC_MSG_RESULT(yes)
+	    fi
+	    rm -f conftest conftest.c conftest.o
+	], [LDFLAGS="$BAKLDFLAGS" ; AC_MSG_RESULT(no)])
+    ])
+])
 
 dnl End of file

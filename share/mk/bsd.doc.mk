@@ -19,7 +19,7 @@
 #
 # MACROS	Macro packages used to build the document.  [not set]
 #
-# NO_DOCCOMPRESS If you do not want formatted troff documents to be
+# WITHOUT_DOCCOMPRESS If you do not want formatted troff documents to be
 #		compressed when they are installed.  [not set]
 #
 # PRINTERDEVICE	Indicates which output formats will be generated
@@ -75,7 +75,7 @@ TRFLAGS+=	-p
 TRFLAGS+=	-R
 .endif
 .if defined(USE_SOELIM)
-TRFLAGS+=	-I${SRCDIR}
+TRFLAGS+=	-I${.CURDIR}
 .endif
 .if defined(USE_TBL)
 TRFLAGS+=	-t
@@ -87,7 +87,7 @@ DCOMPRESS_CMD?=	${COMPRESS_CMD}
 DFILE.html=	${DOC}.html
 .endfor
 .for _dev in ${PRINTERDEVICE:Nhtml}
-.if defined(NO_DOCCOMPRESS)
+.if ${MK_DOCCOMPRESS} == "no"
 DFILE.${_dev}=	${DOC}.${_dev}
 .else
 DFILE.${_dev}=	${DOC}.${_dev}${DCOMPRESS_EXT}
@@ -117,7 +117,7 @@ print: ${DFILE.${_dev}}
 .endfor
 print:
 .for _dev in ${PRINTERDEVICE}
-.if defined(NO_DOCCOMPRESS)
+.if ${MK_DOCCOMPRESS} == "no"
 	${LPR} ${DFILE.${_dev}}
 .else
 	${DCOMPRESS_CMD} -d ${DFILE.${_dev}} | ${LPR}
@@ -133,14 +133,14 @@ CLEANFILES+=	${DOC}.ascii ${DOC}.ascii${DCOMPRESS_EXT} \
 		${DOC}.html ${DOC}-*.html
 
 realinstall:
-.for _dev in ${PRINTERDEVICE:Mhtml}
+.if ${PRINTERDEVICE:Mhtml}
 	cd ${SRCDIR}; \
 	    ${INSTALL} -o ${BINOWN} -g ${BINGRP} -m ${BINMODE} \
-	    ${DOC}*.html ${DESTDIR}${BINDIR}/${VOLUME}
-.endfor
+	    ${DOC}*.html ${DESTDIR}${BINDIR}/${VOLUME}/
+.endif
 .for _dev in ${PRINTERDEVICE:Nhtml}
 	${INSTALL} -o ${BINOWN} -g ${BINGRP} -m ${BINMODE} \
-	    ${DFILE.${_dev}} ${DESTDIR}${BINDIR}/${VOLUME}
+	    ${DFILE.${_dev}} ${DESTDIR}${BINDIR}/${VOLUME}/
 .endfor
 
 spell: ${SRCS}
@@ -164,7 +164,7 @@ CLEANFILES+=	_stamp.extra
 ${DFILE.${_dev}}: _stamp.extra
 .endif
 ${DFILE.${_dev}}: ${SRCS}
-.if defined(NO_DOCCOMPRESS)
+.if ${MK_DOCCOMPRESS} == "no"
 	${ROFF.${_dev}} ${.ALLSRC:N_stamp.extra} > ${.TARGET}
 .else
 	${ROFF.${_dev}} ${.ALLSRC:N_stamp.extra} | ${DCOMPRESS_CMD} > ${.TARGET}
@@ -184,7 +184,6 @@ ${DFILE.html}: ${SRCS}
 .else # unroff(1) requires a macro package as an argument
 	cd ${SRCDIR}; ${UNROFF} -ms ${UNROFFFLAGS} \
 	    document=${DOC} ${SRCS}
-.else
 .endif
 .endif
 .endfor

@@ -2,13 +2,13 @@
 # $FreeBSD$
 
 # locale sources
-.PATH: ${.CURDIR}/${LIBC_ARCH}/locale ${.CURDIR}/locale
+.PATH: ${LIBC_SRCTOP}/${LIBC_ARCH}/locale ${LIBC_SRCTOP}/locale
 
-SRCS+=	ascii.c big5.c btowc.c c16rtomb.c c32rtomb.c collate.c collcmp.c euc.c \
-	fix_grouping.c gb18030.c gb2312.c gbk.c ctype.c isctype.c iswctype.c \
+SRCS+=	ascii.c big5.c btowc.c collate.c collcmp.c euc.c fix_grouping.c \
+	gb18030.c gb2312.c gbk.c ctype.c isctype.c iswctype.c \
 	ldpart.c lmessages.c lmonetary.c lnumeric.c localeconv.c mblen.c \
 	mbrlen.c \
-	mbrtoc16.c mbrtoc32.c mbrtowc.c mbsinit.c mbsnrtowcs.c \
+	mbrtowc.c mbsinit.c mbsnrtowcs.c \
 	mbsrtowcs.c mbtowc.c mbstowcs.c \
 	mskanji.c nextwctype.c nl_langinfo.c nomacros.c none.c rpmatch.c \
 	rune.c \
@@ -23,7 +23,13 @@ SRCS+=	ascii.c big5.c btowc.c c16rtomb.c c32rtomb.c collate.c collcmp.c euc.c \
 	wcwidth.c\
 	xlocale.c
 
-SYM_MAPS+=${.CURDIR}/locale/Symbol.map
+.if ${MK_ICONV} != "no"
+SRCS+=	c16rtomb_iconv.c c32rtomb_iconv.c mbrtoc16_iconv.c mbrtoc32_iconv.c
+.else
+SRCS+=	c16rtomb.c c32rtomb.c mbrtoc16.c mbrtoc32.c
+.endif
+
+SYM_MAPS+=${LIBC_SRCTOP}/locale/Symbol.map
 
 MAN+=	btowc.3 \
 	ctype_l.3 \
@@ -72,6 +78,7 @@ MLINKS+=iswalnum_l.3 iswalpha_l.3 iswalnum_l.3 iswcntrl_l.3 \
 	iswalnum_l.3 iswspecial_l.3 iswalnum_l.3 nextwctype_l.3 \
 	iswalnum_l.3 towctrans_l.3 iswalnum_l.3 wctrans_l.3
 MLINKS+=isxdigit.3 ishexnumber.3
+MLINKS+=localeconv.3 localeconv_l.3
 MLINKS+=mbrtowc.3 mbrtoc16.3 mbrtowc.3 mbrtoc32.3
 MLINKS+=mbsrtowcs.3 mbsnrtowcs.3
 MLINKS+=wcrtomb.3 c16rtomb.3 wcrtomb.3 c32rtomb.3

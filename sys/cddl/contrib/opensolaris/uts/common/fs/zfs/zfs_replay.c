@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2013 by Delphix. All rights reserved.
+ * Copyright (c) 2013, 2015 by Delphix. All rights reserved.
  */
 
 #include <sys/types.h>
@@ -54,7 +54,7 @@
 
 static void
 zfs_init_vattr(vattr_t *vap, uint64_t mask, uint64_t mode,
-	uint64_t uid, uint64_t gid, uint64_t rdev, uint64_t nodeid)
+    uint64_t uid, uint64_t gid, uint64_t rdev, uint64_t nodeid)
 {
 	VATTR_NULL(vap);
 	vap->va_mask = (uint_t)mask;
@@ -820,7 +820,7 @@ top:
 static int
 zfs_replay_truncate(zfsvfs_t *zfsvfs, lr_truncate_t *lr, boolean_t byteswap)
 {
-#ifdef sun
+#ifdef illumos
 	znode_t *zp;
 	flock64_t fl;
 	int error;
@@ -843,10 +843,10 @@ zfs_replay_truncate(zfsvfs_t *zfsvfs, lr_truncate_t *lr, boolean_t byteswap)
 	VN_RELE(ZTOV(zp));
 
 	return (error);
-#else	/* !sun */
+#else
 	ZFS_LOG(0, "Unexpected code path, report to pjd@FreeBSD.org");
 	return (EOPNOTSUPP);
-#endif	/* !sun */
+#endif
 }
 
 static int

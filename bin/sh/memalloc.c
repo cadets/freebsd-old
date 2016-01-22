@@ -98,9 +98,11 @@ char *
 savestr(const char *s)
 {
 	char *p;
+	size_t len;
 
-	p = ckmalloc(strlen(s) + 1);
-	scopy(s, p);
+	len = strlen(s);
+	p = ckmalloc(len + 1);
+	memcpy(p, s, len + 1);
 	return p;
 }
 
@@ -177,6 +179,18 @@ stunalloc(pointer p)
 	stacknxt = p;
 }
 
+
+char *
+stsavestr(const char *s)
+{
+	char *p;
+	size_t len;
+
+	len = strlen(s);
+	p = stalloc(len + 1);
+	memcpy(p, s, len + 1);
+	return p;
+}
 
 
 void

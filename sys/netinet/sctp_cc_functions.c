@@ -53,6 +53,19 @@ __FBSDID("$FreeBSD$");
 #define SHIFT_MPTCP_MULTI 8
 
 static void
+sctp_enforce_cwnd_limit(struct sctp_association *assoc, struct sctp_nets *net)
+{
+	if ((assoc->max_cwnd > 0) &&
+	    (net->cwnd > assoc->max_cwnd) &&
+	    (net->cwnd > (net->mtu - sizeof(struct sctphdr)))) {
+		net->cwnd = assoc->max_cwnd;
+		if (net->cwnd < (net->mtu - sizeof(struct sctphdr))) {
+			net->cwnd = net->mtu - sizeof(struct sctphdr);
+		}
+	}
+}
+
+static void
 sctp_set_initial_cc_param(struct sctp_tcb *stcb, struct sctp_nets *net)
 {
 	struct sctp_association *assoc;
@@ -80,8 +93,9 @@ sctp_set_initial_cc_param(struct sctp_tcb *stcb, struct sctp_nets *net)
 			net->cwnd = net->mtu - sizeof(struct sctphdr);
 		}
 	}
+	sctp_enforce_cwnd_limit(assoc, net);
 	net->ssthresh = assoc->peers_rwnd;
-	SDT_PROBE(sctp, cwnd, net, init,
+	SDT_PROBE5(sctp, cwnd, net, init,
 	    stcb->asoc.my_vtag, ((stcb->sctp_ep->sctp_lport << 16) | (stcb->rport)), net,
 	    0, net->cwnd);
 	if (SCTP_BASE_SYSCTL(sctp_logging_level) &
@@ -178,7 +192,8 @@ sctp_cwnd_update_after_fr(struct sctp_tcb *stcb,
 					}
 				}
 				net->cwnd = net->ssthresh;
-				SDT_PROBE(sctp, cwnd, net, fr,
+				sctp_enforce_cwnd_limit(asoc, net);
+				SDT_PROBE5(sctp, cwnd, net, fr,
 				    stcb->asoc.my_vtag, ((stcb->sctp_ep->sctp_lport << 16) | (stcb->rport)), net,
 				    old_cwnd, net->cwnd);
 				if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_CWND_MONITOR_ENABLE) {
@@ -211,7 +226,8 @@ sctp_cwnd_update_after_fr(struct sctp_tcb *stcb,
 				}
 
 				sctp_timer_stop(SCTP_TIMER_TYPE_SEND,
-				    stcb->sctp_ep, stcb, net, SCTP_FROM_SCTP_INDATA + SCTP_LOC_32);
+				    stcb->sctp_ep, stcb, net,
+				    SCTP_FROM_SCTP_CC_FUNCTIONS + SCTP_LOC_1);
 				sctp_timer_start(SCTP_TIMER_TYPE_SEND,
 				    stcb->sctp_ep, stcb, net);
 			}
@@ -245,7 +261,7 @@ cc_bw_same(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw,
 		 */
 		/* Probe point 5 */
 		probepoint |= ((5 << 16) | 1);
-		SDT_PROBE(sctp, cwnd, net, rttvar,
+		SDT_PROBE5(sctp, cwnd, net, rttvar,
 		    vtag,
 		    ((net->cc_mod.rtcc.lbw << 32) | nbw),
 		    ((net->cc_mod.rtcc.lbw_rtt << 32) | net->rtt),
@@ -266,7 +282,7 @@ cc_bw_same(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw,
 				oth |= net->cc_mod.rtcc.step_cnt;
 				oth <<= 16;
 				oth |= net->cc_mod.rtcc.last_step_state;
-				SDT_PROBE(sctp, cwnd, net, rttstep,
+				SDT_PROBE5(sctp, cwnd, net, rttstep,
 				    vtag,
 				    ((net->cc_mod.rtcc.lbw << 32) | nbw),
 				    ((net->cc_mod.rtcc.lbw_rtt << 32) | net->rtt),
@@ -290,7 +306,7 @@ cc_bw_same(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw,
 		 */
 		/* Probe point 6 */
 		probepoint |= ((6 << 16) | 0);
-		SDT_PROBE(sctp, cwnd, net, rttvar,
+		SDT_PROBE5(sctp, cwnd, net, rttvar,
 		    vtag,
 		    ((net->cc_mod.rtcc.lbw << 32) | nbw),
 		    ((net->cc_mod.rtcc.lbw_rtt << 32) | net->rtt),
@@ -302,7 +318,7 @@ cc_bw_same(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw,
 			oth |= net->cc_mod.rtcc.step_cnt;
 			oth <<= 16;
 			oth |= net->cc_mod.rtcc.last_step_state;
-			SDT_PROBE(sctp, cwnd, net, rttstep,
+			SDT_PROBE5(sctp, cwnd, net, rttstep,
 			    vtag,
 			    ((net->cc_mod.rtcc.lbw << 32) | nbw),
 			    ((net->cc_mod.rtcc.lbw_rtt << 32) | net->rtt),
@@ -333,7 +349,7 @@ cc_bw_same(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw,
 	 */
 	/* Probe point 7 */
 	probepoint |= ((7 << 16) | net->cc_mod.rtcc.ret_from_eq);
-	SDT_PROBE(sctp, cwnd, net, rttvar,
+	SDT_PROBE5(sctp, cwnd, net, rttvar,
 	    vtag,
 	    ((net->cc_mod.rtcc.lbw << 32) | nbw),
 	    ((net->cc_mod.rtcc.lbw_rtt << 32) | net->rtt),
@@ -382,7 +398,7 @@ cc_bw_decrease(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw, uint6
 			/* We caused it maybe.. back off? */
 			/* PROBE POINT 1 */
 			probepoint |= ((1 << 16) | 1);
-			SDT_PROBE(sctp, cwnd, net, rttvar,
+			SDT_PROBE5(sctp, cwnd, net, rttvar,
 			    vtag,
 			    ((net->cc_mod.rtcc.lbw << 32) | nbw),
 			    ((net->cc_mod.rtcc.lbw_rtt << 32) | net->rtt),
@@ -400,7 +416,7 @@ cc_bw_decrease(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw, uint6
 		}
 		/* Probe point 2 */
 		probepoint |= ((2 << 16) | 0);
-		SDT_PROBE(sctp, cwnd, net, rttvar,
+		SDT_PROBE5(sctp, cwnd, net, rttvar,
 		    vtag,
 		    ((net->cc_mod.rtcc.lbw << 32) | nbw),
 		    ((net->cc_mod.rtcc.lbw_rtt << 32) | net->rtt),
@@ -413,7 +429,7 @@ cc_bw_decrease(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw, uint6
 			oth |= net->cc_mod.rtcc.step_cnt;
 			oth <<= 16;
 			oth |= net->cc_mod.rtcc.last_step_state;
-			SDT_PROBE(sctp, cwnd, net, rttstep,
+			SDT_PROBE5(sctp, cwnd, net, rttstep,
 			    vtag,
 			    ((net->cc_mod.rtcc.lbw << 32) | nbw),
 			    ((net->cc_mod.rtcc.lbw_rtt << 32) | net->rtt),
@@ -426,6 +442,7 @@ cc_bw_decrease(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw, uint6
 			if ((net->cc_mod.rtcc.vol_reduce) &&
 			    (inst_ind != SCTP_INST_GAINING)) {
 				net->cwnd += net->mtu;
+				sctp_enforce_cwnd_limit(&stcb->asoc, net);
 				net->cc_mod.rtcc.vol_reduce--;
 			}
 			net->cc_mod.rtcc.last_step_state = 2;
@@ -436,7 +453,7 @@ cc_bw_decrease(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw, uint6
 		/* bw & rtt decreased */
 		/* Probe point 3 */
 		probepoint |= ((3 << 16) | 0);
-		SDT_PROBE(sctp, cwnd, net, rttvar,
+		SDT_PROBE5(sctp, cwnd, net, rttvar,
 		    vtag,
 		    ((net->cc_mod.rtcc.lbw << 32) | nbw),
 		    ((net->cc_mod.rtcc.lbw_rtt << 32) | net->rtt),
@@ -448,7 +465,7 @@ cc_bw_decrease(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw, uint6
 			oth |= net->cc_mod.rtcc.step_cnt;
 			oth <<= 16;
 			oth |= net->cc_mod.rtcc.last_step_state;
-			SDT_PROBE(sctp, cwnd, net, rttstep,
+			SDT_PROBE5(sctp, cwnd, net, rttstep,
 			    vtag,
 			    ((net->cc_mod.rtcc.lbw << 32) | nbw),
 			    ((net->cc_mod.rtcc.lbw_rtt << 32) | net->rtt),
@@ -457,6 +474,7 @@ cc_bw_decrease(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw, uint6
 			if ((net->cc_mod.rtcc.vol_reduce) &&
 			    (inst_ind != SCTP_INST_GAINING)) {
 				net->cwnd += net->mtu;
+				sctp_enforce_cwnd_limit(&stcb->asoc, net);
 				net->cc_mod.rtcc.vol_reduce--;
 			}
 			net->cc_mod.rtcc.last_step_state = 3;
@@ -467,7 +485,7 @@ cc_bw_decrease(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw, uint6
 	/* The bw decreased but rtt stayed the same */
 	/* Probe point 4 */
 	probepoint |= ((4 << 16) | 0);
-	SDT_PROBE(sctp, cwnd, net, rttvar,
+	SDT_PROBE5(sctp, cwnd, net, rttvar,
 	    vtag,
 	    ((net->cc_mod.rtcc.lbw << 32) | nbw),
 	    ((net->cc_mod.rtcc.lbw_rtt << 32) | net->rtt),
@@ -479,7 +497,7 @@ cc_bw_decrease(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw, uint6
 		oth |= net->cc_mod.rtcc.step_cnt;
 		oth <<= 16;
 		oth |= net->cc_mod.rtcc.last_step_state;
-		SDT_PROBE(sctp, cwnd, net, rttstep,
+		SDT_PROBE5(sctp, cwnd, net, rttstep,
 		    vtag,
 		    ((net->cc_mod.rtcc.lbw << 32) | nbw),
 		    ((net->cc_mod.rtcc.lbw_rtt << 32) | net->rtt),
@@ -488,6 +506,7 @@ cc_bw_decrease(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw, uint6
 		if ((net->cc_mod.rtcc.vol_reduce) &&
 		    (inst_ind != SCTP_INST_GAINING)) {
 			net->cwnd += net->mtu;
+			sctp_enforce_cwnd_limit(&stcb->asoc, net);
 			net->cc_mod.rtcc.vol_reduce--;
 		}
 		net->cc_mod.rtcc.last_step_state = 4;
@@ -516,7 +535,7 @@ cc_bw_increase(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw, uint6
 	 */
 	/* PROBE POINT 0 */
 	probepoint = (((uint64_t) net->cwnd) << 32);
-	SDT_PROBE(sctp, cwnd, net, rttvar,
+	SDT_PROBE5(sctp, cwnd, net, rttvar,
 	    vtag,
 	    ((net->cc_mod.rtcc.lbw << 32) | nbw),
 	    ((net->cc_mod.rtcc.lbw_rtt << 32) | net->rtt),
@@ -528,7 +547,7 @@ cc_bw_increase(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw, uint6
 		oth |= net->cc_mod.rtcc.step_cnt;
 		oth <<= 16;
 		oth |= net->cc_mod.rtcc.last_step_state;
-		SDT_PROBE(sctp, cwnd, net, rttstep,
+		SDT_PROBE5(sctp, cwnd, net, rttstep,
 		    vtag,
 		    ((net->cc_mod.rtcc.lbw << 32) | nbw),
 		    ((net->cc_mod.rtcc.lbw_rtt << 32) | net->rtt),
@@ -628,7 +647,7 @@ cc_bw_limit(struct sctp_tcb *stcb, struct sctp_nets *net, uint64_t nbw)
 			/* Can't determine do not change */
 			probepoint |= ((0xd << 16) | inst_ind);
 		}
-		SDT_PROBE(sctp, cwnd, net, rttvar,
+		SDT_PROBE5(sctp, cwnd, net, rttvar,
 		    vtag,
 		    ((nbw << 32) | inst_bw),
 		    ((net->cc_mod.rtcc.lbw_rtt << 32) | rtt),
@@ -788,7 +807,7 @@ sctp_cwnd_update_after_sack_common(struct sctp_tcb *stcb,
 				    (((uint32_t) (stcb->sctp_ep->sctp_lport)) << 16) |
 				    (stcb->rport);
 
-				SDT_PROBE(sctp, cwnd, net, rttvar,
+				SDT_PROBE5(sctp, cwnd, net, rttvar,
 				    vtag,
 				    nbw,
 				    ((net->cc_mod.rtcc.lbw_rtt << 32) | net->rtt),
@@ -882,11 +901,12 @@ sctp_cwnd_update_after_sack_common(struct sctp_tcb *stcb,
 						break;
 					}
 					net->cwnd += incr;
+					sctp_enforce_cwnd_limit(asoc, net);
 					if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_CWND_MONITOR_ENABLE) {
 						sctp_log_cwnd(stcb, net, incr,
 						    SCTP_CWND_LOG_FROM_SS);
 					}
-					SDT_PROBE(sctp, cwnd, net, ack,
+					SDT_PROBE5(sctp, cwnd, net, ack,
 					    stcb->asoc.my_vtag,
 					    ((stcb->sctp_ep->sctp_lport << 16) | (stcb->rport)),
 					    net,
@@ -948,7 +968,8 @@ sctp_cwnd_update_after_sack_common(struct sctp_tcb *stcb,
 						break;
 					}
 					net->cwnd += incr;
-					SDT_PROBE(sctp, cwnd, net, ack,
+					sctp_enforce_cwnd_limit(asoc, net);
+					SDT_PROBE5(sctp, cwnd, net, ack,
 					    stcb->asoc.my_vtag,
 					    ((stcb->sctp_ep->sctp_lport << 16) | (stcb->rport)),
 					    net,
@@ -980,7 +1001,7 @@ sctp_cwnd_update_exit_pf_common(struct sctp_tcb *stcb, struct sctp_nets *net)
 
 	old_cwnd = net->cwnd;
 	net->cwnd = net->mtu;
-	SDT_PROBE(sctp, cwnd, net, ack,
+	SDT_PROBE5(sctp, cwnd, net, ack,
 	    stcb->asoc.my_vtag, ((stcb->sctp_ep->sctp_lport << 16) | (stcb->rport)), net,
 	    old_cwnd, net->cwnd);
 	SCTPDBG(SCTP_DEBUG_INDATA1, "Destination %p moved from PF to reachable with cwnd %d.\n",
@@ -1051,7 +1072,7 @@ sctp_cwnd_update_after_timeout(struct sctp_tcb *stcb, struct sctp_nets *net)
 	}
 	net->cwnd = net->mtu;
 	net->partial_bytes_acked = 0;
-	SDT_PROBE(sctp, cwnd, net, to,
+	SDT_PROBE5(sctp, cwnd, net, to,
 	    stcb->asoc.my_vtag,
 	    ((stcb->sctp_ep->sctp_lport << 16) | (stcb->rport)),
 	    net,
@@ -1111,7 +1132,7 @@ sctp_cwnd_update_after_ecn_echo_common(struct sctp_tcb *stcb, struct sctp_nets *
 				net->RTO <<= 1;
 			}
 			net->cwnd = net->ssthresh;
-			SDT_PROBE(sctp, cwnd, net, ecn,
+			SDT_PROBE5(sctp, cwnd, net, ecn,
 			    stcb->asoc.my_vtag,
 			    ((stcb->sctp_ep->sctp_lport << 16) | (stcb->rport)),
 			    net,
@@ -1130,12 +1151,9 @@ sctp_cwnd_update_after_packet_dropped(struct sctp_tcb *stcb,
     uint32_t * bottle_bw, uint32_t * on_queue)
 {
 	uint32_t bw_avail;
-	int rtt;
 	unsigned int incr;
 	int old_cwnd = net->cwnd;
 
-	/* need real RTT in msd for this calc */
-	rtt = net->rtt / 1000;
 	/* get bottle neck bw */
 	*bottle_bw = ntohl(cp->bottle_bw);
 	/* and whats on queue */
@@ -1144,10 +1162,11 @@ sctp_cwnd_update_after_packet_dropped(struct sctp_tcb *stcb,
 	 * adjust the on-queue if our flight is more it could be that the
 	 * router has not yet gotten data "in-flight" to it
 	 */
-	if (*on_queue < net->flight_size)
+	if (*on_queue < net->flight_size) {
 		*on_queue = net->flight_size;
-	/* calculate the available space */
-	bw_avail = (*bottle_bw * rtt) / 1000;
+	}
+	/* rtt is measured in micro seconds, bottle_bw in bytes per second */
+	bw_avail = (uint32_t) (((uint64_t) (*bottle_bw) * net->rtt) / (uint64_t) 1000000);
 	if (bw_avail > *bottle_bw) {
 		/*
 		 * Cap the growth to no more than the bottle neck. This can
@@ -1167,7 +1186,6 @@ sctp_cwnd_update_after_packet_dropped(struct sctp_tcb *stcb,
 		int seg_inflight, seg_onqueue, my_portion;
 
 		net->partial_bytes_acked = 0;
-
 		/* how much are we over queue size? */
 		incr = *on_queue - bw_avail;
 		if (stcb->asoc.seen_a_sack_this_pkt) {
@@ -1230,9 +1248,10 @@ sctp_cwnd_update_after_packet_dropped(struct sctp_tcb *stcb,
 		/* We always have 1 MTU */
 		net->cwnd = net->mtu;
 	}
+	sctp_enforce_cwnd_limit(&stcb->asoc, net);
 	if (net->cwnd - old_cwnd != 0) {
 		/* log only changes */
-		SDT_PROBE(sctp, cwnd, net, pd,
+		SDT_PROBE5(sctp, cwnd, net, pd,
 		    stcb->asoc.my_vtag,
 		    ((stcb->sctp_ep->sctp_lport << 16) | (stcb->rport)),
 		    net,
@@ -1254,7 +1273,8 @@ sctp_cwnd_update_after_output(struct sctp_tcb *stcb,
 		net->ssthresh = net->cwnd;
 	if (burst_limit) {
 		net->cwnd = (net->flight_size + (burst_limit * net->mtu));
-		SDT_PROBE(sctp, cwnd, net, bl,
+		sctp_enforce_cwnd_limit(&stcb->asoc, net);
+		SDT_PROBE5(sctp, cwnd, net, bl,
 		    stcb->asoc.my_vtag,
 		    ((stcb->sctp_ep->sctp_lport << 16) | (stcb->rport)),
 		    net,
@@ -1330,7 +1350,7 @@ sctp_cwnd_new_rtcc_transmission_begins(struct sctp_tcb *stcb,
 		probepoint = (((uint64_t) net->cwnd) << 32);
 		/* Probe point 8 */
 		probepoint |= ((8 << 16) | 0);
-		SDT_PROBE(sctp, cwnd, net, rttvar,
+		SDT_PROBE5(sctp, cwnd, net, rttvar,
 		    vtag,
 		    ((net->cc_mod.rtcc.lbw << 32) | 0),
 		    ((net->cc_mod.rtcc.lbw_rtt << 32) | net->rtt),
@@ -1393,7 +1413,7 @@ sctp_set_rtcc_initial_cc_param(struct sctp_tcb *stcb,
 	vtag = (net->rtt << 32) |
 	    (((uint32_t) (stcb->sctp_ep->sctp_lport)) << 16) |
 	    (stcb->rport);
-	SDT_PROBE(sctp, cwnd, net, rttvar,
+	SDT_PROBE5(sctp, cwnd, net, rttvar,
 	    vtag,
 	    0,
 	    0,
@@ -1592,6 +1612,7 @@ static void
 sctp_hs_cwnd_increase(struct sctp_tcb *stcb, struct sctp_nets *net)
 {
 	int cur_val, i, indx, incr;
+	int old_cwnd = net->cwnd;
 
 	cur_val = net->cwnd >> 10;
 	indx = SCTP_HS_TABLE_SIZE - 1;
@@ -1600,14 +1621,8 @@ sctp_hs_cwnd_increase(struct sctp_tcb *stcb, struct sctp_nets *net)
 		/* normal mode */
 		if (net->net_ack > net->mtu) {
 			net->cwnd += net->mtu;
-			if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_CWND_MONITOR_ENABLE) {
-				sctp_log_cwnd(stcb, net, net->mtu, SCTP_CWND_LOG_FROM_SS);
-			}
 		} else {
 			net->cwnd += net->net_ack;
-			if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_CWND_MONITOR_ENABLE) {
-				sctp_log_cwnd(stcb, net, net->net_ack, SCTP_CWND_LOG_FROM_SS);
-			}
 		}
 	} else {
 		for (i = net->last_hs_used; i < SCTP_HS_TABLE_SIZE; i++) {
@@ -1619,9 +1634,10 @@ sctp_hs_cwnd_increase(struct sctp_tcb *stcb, struct sctp_nets *net)
 		net->last_hs_used = indx;
 		incr = ((sctp_cwnd_adjust[indx].increase) << 10);
 		net->cwnd += incr;
-		if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_CWND_MONITOR_ENABLE) {
-			sctp_log_cwnd(stcb, net, incr, SCTP_CWND_LOG_FROM_SS);
-		}
+	}
+	sctp_enforce_cwnd_limit(&stcb->asoc, net);
+	if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_CWND_MONITOR_ENABLE) {
+		sctp_log_cwnd(stcb, net, (net->cwnd - old_cwnd), SCTP_CWND_LOG_FROM_SS);
 	}
 }
 
@@ -1660,6 +1676,7 @@ sctp_hs_cwnd_decrease(struct sctp_tcb *stcb, struct sctp_nets *net)
 			net->last_hs_used = indx;
 		}
 	}
+	sctp_enforce_cwnd_limit(&stcb->asoc, net);
 	if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_CWND_MONITOR_ENABLE) {
 		sctp_log_cwnd(stcb, net, (net->cwnd - old_cwnd), SCTP_CWND_LOG_FROM_FR);
 	}
@@ -1716,7 +1733,8 @@ sctp_hs_cwnd_update_after_fr(struct sctp_tcb *stcb,
 				}
 
 				sctp_timer_stop(SCTP_TIMER_TYPE_SEND,
-				    stcb->sctp_ep, stcb, net, SCTP_FROM_SCTP_INDATA + SCTP_LOC_32);
+				    stcb->sctp_ep, stcb, net,
+				    SCTP_FROM_SCTP_CC_FUNCTIONS + SCTP_LOC_2);
 				sctp_timer_start(SCTP_TIMER_TYPE_SEND,
 				    stcb->sctp_ep, stcb, net);
 			}
@@ -1791,9 +1809,7 @@ sctp_hs_cwnd_update_after_sack(struct sctp_tcb *stcb,
 			if (net->cwnd <= net->ssthresh) {
 				/* We are in slow start */
 				if (net->flight_size + net->net_ack >= net->cwnd) {
-
 					sctp_hs_cwnd_increase(stcb, net);
-
 				} else {
 					if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_CWND_LOGGING_ENABLE) {
 						sctp_log_cwnd(stcb, net, net->net_ack,
@@ -1807,6 +1823,7 @@ sctp_hs_cwnd_update_after_sack(struct sctp_tcb *stcb,
 				    (net->partial_bytes_acked >= net->cwnd)) {
 					net->partial_bytes_acked -= net->cwnd;
 					net->cwnd += net->mtu;
+					sctp_enforce_cwnd_limit(asoc, net);
 					if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_CWND_MONITOR_ENABLE) {
 						sctp_log_cwnd(stcb, net, net->mtu,
 						    SCTP_CWND_LOG_FROM_CA);
@@ -2045,6 +2062,7 @@ htcp_cong_avoid(struct sctp_tcb *stcb, struct sctp_nets *net)
 					    SCTP_CWND_LOG_FROM_SS);
 				}
 			}
+			sctp_enforce_cwnd_limit(&stcb->asoc, net);
 		} else {
 			if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_CWND_LOGGING_ENABLE) {
 				sctp_log_cwnd(stcb, net, net->net_ack,
@@ -2066,6 +2084,7 @@ htcp_cong_avoid(struct sctp_tcb *stcb, struct sctp_nets *net)
 			 */
 			net->cwnd += net->mtu;
 			net->partial_bytes_acked = 0;
+			sctp_enforce_cwnd_limit(&stcb->asoc, net);
 			htcp_alpha_update(&net->cc_mod.htcp_ca);
 			if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_CWND_MONITOR_ENABLE) {
 				sctp_log_cwnd(stcb, net, net->mtu,
@@ -2112,6 +2131,7 @@ sctp_htcp_set_initial_cc_param(struct sctp_tcb *stcb, struct sctp_nets *net)
 	 */
 	net->cwnd = min((net->mtu * 4), max((2 * net->mtu), SCTP_INITIAL_CWND));
 	net->ssthresh = stcb->asoc.peers_rwnd;
+	sctp_enforce_cwnd_limit(&stcb->asoc, net);
 	htcp_init(net);
 
 	if (SCTP_BASE_SYSCTL(sctp_logging_level) & (SCTP_CWND_MONITOR_ENABLE | SCTP_CWND_LOGGING_ENABLE)) {
@@ -2215,6 +2235,7 @@ sctp_htcp_cwnd_update_after_fr(struct sctp_tcb *stcb,
 				htcp_reset(&net->cc_mod.htcp_ca);
 				net->ssthresh = htcp_recalc_ssthresh(net);
 				net->cwnd = net->ssthresh;
+				sctp_enforce_cwnd_limit(asoc, net);
 				if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_CWND_MONITOR_ENABLE) {
 					sctp_log_cwnd(stcb, net, (net->cwnd - old_cwnd),
 					    SCTP_CWND_LOG_FROM_FR);
@@ -2245,7 +2266,8 @@ sctp_htcp_cwnd_update_after_fr(struct sctp_tcb *stcb,
 				}
 
 				sctp_timer_stop(SCTP_TIMER_TYPE_SEND,
-				    stcb->sctp_ep, stcb, net, SCTP_FROM_SCTP_INDATA + SCTP_LOC_32);
+				    stcb->sctp_ep, stcb, net,
+				    SCTP_FROM_SCTP_CC_FUNCTIONS + SCTP_LOC_3);
 				sctp_timer_start(SCTP_TIMER_TYPE_SEND,
 				    stcb->sctp_ep, stcb, net);
 			}
@@ -2294,6 +2316,7 @@ sctp_htcp_cwnd_update_after_ecn_echo(struct sctp_tcb *stcb,
 			net->RTO <<= 1;
 		}
 		net->cwnd = net->ssthresh;
+		sctp_enforce_cwnd_limit(&stcb->asoc, net);
 		if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_CWND_MONITOR_ENABLE) {
 			sctp_log_cwnd(stcb, net, (net->cwnd - old_cwnd), SCTP_CWND_LOG_FROM_SAT);
 		}

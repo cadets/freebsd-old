@@ -31,6 +31,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/smp.h>
 
+#include <vm/vm.h>
+#include <vm/pmap.h>
+
 #include <machine/smp.h>
 #include <machine/fdt.h>
 #include <machine/intr.h>
@@ -38,27 +41,24 @@ __FBSDID("$FreeBSD$");
 #include <arm/ti/ti_smc.h>
 #include <arm/ti/omap4/omap4_smc.h>
 
-void mpentry(void);
-void mptramp(void);
-
 void
 platform_mp_init_secondary(void)
 {
-	gic_init_secondary();
+	intr_pic_init_secondary();
 }
 
 void
 platform_mp_setmaxid(void)
 {
 
-        mp_maxid = 1;
+	mp_maxid = 1;
+	mp_ncpus = 2;
 }
 
 int
 platform_mp_probe(void)
 {
 
-	mp_ncpus = 2;
 	return (1);
 }
 

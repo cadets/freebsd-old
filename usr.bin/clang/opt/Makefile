@@ -6,12 +6,23 @@ PROG_CXX=opt
 
 SRCDIR=	tools/opt
 SRCS=	AnalysisWrappers.cpp \
+	BreakpointPrinter.cpp \
 	GraphPrinters.cpp \
+	NewPMDriver.cpp \
+	PassPrinters.cpp \
 	PrintSCC.cpp \
 	opt.cpp
 
 TGHDRS=	Intrinsics
-LIBDEPS=llvmarmdisassembler \
+LIBDEPS=llvmpasses \
+	llvmaarch64disassembler \
+	llvmaarch64codegen \
+	llvmaarch64asmparser \
+	llvmaarch64desc \
+	llvmaarch64info \
+	llvmaarch64instprinter \
+	llvmaarch64utils \
+	llvmarmdisassembler \
 	llvmarmcodegen \
 	llvmarmasmparser \
 	llvmarmdesc \
@@ -23,18 +34,27 @@ LIBDEPS=llvmarmdisassembler \
 	llvmmipsdesc \
 	llvmmipsinfo \
 	llvmmipsinstprinter \
+	llvmpowerpcdisassembler \
 	llvmpowerpccodegen \
+	llvmpowerpcasmparser \
 	llvmpowerpcdesc \
 	llvmpowerpcinfo \
 	llvmpowerpcinstprinter \
+	llvmsparcdisassembler \
+	llvmsparccodegen \
+	llvmsparcasmparser \
+	llvmsparcdesc \
+	llvmsparcinfo \
+	llvmsparcinstprinter \
 	llvmx86disassembler \
 	llvmx86asmparser \
 	llvmx86codegen \
 	llvmselectiondag \
 	llvmasmprinter \
-	llvmmcparser \
 	llvmcodegen \
+	llvmtarget \
 	llvmx86desc \
+	llvmmcdisassembler \
 	llvmx86info \
 	llvmx86instprinter \
 	llvmx86utils \
@@ -42,19 +62,22 @@ LIBDEPS=llvmarmdisassembler \
 	llvmvectorize \
 	llvmobjcarcopts \
 	llvmscalaropts \
+	llvmprofiledata \
+	llvmobject \
+	llvmmcparser \
 	llvminstcombine \
 	llvminstrumentation \
 	llvmtransformutils \
 	llvmipa \
-	llvmanalysis \
-	llvmtarget \
 	llvmmc \
-	llvmobject \
+	llvmanalysis \
 	llvmirreader \
 	llvmasmparser \
 	llvmbitwriter \
 	llvmbitreader \
 	llvmcore \
 	llvmsupport
+
+LIBADD=	z
 
 .include "../clang.prog.mk"

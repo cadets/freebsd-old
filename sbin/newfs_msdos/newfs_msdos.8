@@ -25,7 +25,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd July 25, 2010
+.Dd April 9, 2015
 .Dt NEWFS_MSDOS 8
 .Os
 .Sh NAME
@@ -112,7 +112,7 @@ only those characters permitted in regular DOS (8+3) filenames.
 .It Fl O Ar OEM
 OEM string (up to 8 characters).
 The default is
-.Qq Li "BSD  4.4" .
+.Qq Li "BSD4.4  " .
 .It Fl S Ar sector-size
 Number of bytes per sector.
 Acceptable values are powers of 2
@@ -209,9 +209,9 @@ The maximum file size is 4GB, even if the file system itself is bigger.
 Exit status is 0 on success and 1 on error.
 .Sh EXAMPLES
 Create a file system, using default parameters, on
-.Pa /dev/ad0s1 :
+.Pa /dev/ada0s1 :
 .Bd -literal -offset indent
-newfs_msdos /dev/ad0s1
+newfs_msdos /dev/ada0s1
 .Ed
 .Pp
 Create a standard 1.44M file system, with volume label
@@ -228,9 +228,7 @@ Create a 30MB image file, with the FAT partition starting
 newfs_msdos -C 30M -@63s ./somefile
 .Ed
 .Sh SEE ALSO
-.Xr disktab 5 ,
-.Xr disklabel 8 ,
-.Xr fdisk 8 ,
+.Xr gpart 8 ,
 .Xr newfs 8
 .Sh HISTORY
 The
@@ -238,4 +236,4 @@ The
 utility first appeared in
 .Fx 3.0 .
 .Sh AUTHORS
-.An Robert Nordier Aq rnordier@FreeBSD.org .
+.An Robert Nordier Aq Mt rnordier@FreeBSD.org

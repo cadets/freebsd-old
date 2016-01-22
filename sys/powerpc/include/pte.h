@@ -96,8 +96,9 @@ struct lpteg {
 #define LPTE_VSID_SHIFT		12
 #define LPTE_AVPN_MASK		0xFFFFFFFFFFFFFF80ULL
 #define LPTE_API		0x0000000000000F80ULL
-#define LPTE_LOCKED		0x0000000000000040ULL
-#define LPTE_WIRED		0x0000000000000008ULL
+#define LPTE_SWBITS		0x0000000000000078ULL
+#define LPTE_WIRED		0x0000000000000010ULL
+#define LPTE_LOCKED		0x0000000000000008ULL
 #define LPTE_BIG		0x0000000000000004ULL	/* 4kb/16Mb page */
 #define LPTE_HID		0x0000000000000002ULL
 #define LPTE_VALID		0x0000000000000001ULL
@@ -157,12 +158,6 @@ typedef	struct lpte lpte_t;
 #define	ISSRR1_PROTECT	0x08000000
 #define	ISSRR1_SEGMENT	0x00200000
 
-#ifdef	_KERNEL
-#ifndef	LOCORE
-extern u_int dsisr(void);
-#endif	/* _KERNEL */
-#endif	/* LOCORE */
-
 #else /* BOOKE */
 
 #include <machine/tlb.h>
@@ -212,6 +207,9 @@ extern u_int dsisr(void);
 
 /*
  * Page Table Entry definitions and macros.
+ *
+ * RPN need only be 32-bit because Book-E has 36-bit addresses, and the smallest
+ * page size is 4k (12-bit mask), so RPN can really fit into 24 bits.
  */
 #ifndef	LOCORE
 struct pte {
@@ -271,12 +269,14 @@ typedef struct pte pte_t;
 #define PTE_REFERENCED	0x04000000	/* Referenced */
 
 /* Macro argument must of pte_t type. */
-#define PTE_PA(pte)		((pte)->rpn & ~PTE_PA_MASK)
+#define PTE_PA_SHIFT		12
+#define PTE_RPN_FROM_PA(pa)	((pa) >> PTE_PA_SHIFT)
+#define PTE_PA(pte)		((vm_paddr_t)((pte)->rpn) << PTE_PA_SHIFT)
 #define PTE_ISVALID(pte)	((pte)->flags & PTE_VALID)
 #define PTE_ISWIRED(pte)	((pte)->flags & PTE_WIRED)
 #define PTE_ISMANAGED(pte)	((pte)->flags & PTE_MANAGED)
 #define PTE_ISMODIFIED(pte)	((pte)->flags & PTE_MODIFIED)
 #define PTE_ISREFERENCED(pte)	((pte)->flags & PTE_REFERENCED)
 
-#endif /* BOOKE_PPC4XX */
+#endif /* BOOKE */
 #endif /* _MACHINE_PTE_H_ */

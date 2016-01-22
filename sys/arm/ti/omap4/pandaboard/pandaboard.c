@@ -39,11 +39,9 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bus.h>
 #include <machine/pte.h>
-#include <machine/pmap.h>
 #include <machine/vmparam.h>
 #include <machine/fdt.h>
 
-#include <arm/ti/omap4/omap4var.h>
 #include <arm/ti/omap4/omap4_reg.h>
 
 /* Registers in the SCRM that control the AUX clocks */

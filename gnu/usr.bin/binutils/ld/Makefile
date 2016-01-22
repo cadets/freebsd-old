@@ -1,13 +1,10 @@
 # $FreeBSD$
 
+ELF_SCR_EXT=	x xbn xc xd xdc xdw xn xr xs xsc xsw xu xw
 .include "../Makefile.inc0"
-.include <bsd.own.mk>
+.include <src.opts.mk>
 
 .PATH: ${SRCDIR}/ld
-
-.if ${TARGET_ARCH} == "ia64"
-CFLAGS+= -O1
-.endif
 
 PROG=	ld
 SCRIPTDIR= /usr/libdata/ldscripts
@@ -31,7 +28,12 @@ CFLAGS+= -DTARGET=\"${TARGET_TUPLE}\"
 CFLAGS+= -DDEFAULT_EMULATION=\"${NATIVE_EMULATION}\"
 CFLAGS+= -DSCRIPTDIR=\"${TOOLS_PREFIX}/usr/libdata\"
 CFLAGS+= -DBFD_VERSION_STRING=\"${VERSION}\"
-CFLAGS+= -DBINDIR=\"${BINDIR}\" -DTARGET_SYSTEM_ROOT=\"${TOOLS_PREFIX}\"
+CFLAGS+= -DBINDIR=\"${BINDIR}\"
+.if defined(TOOLS_PREFIX)
+CFLAGS+= -DTARGET_SYSTEM_ROOT=\"${TOOLS_PREFIX}\"
+.else
+CFLAGS+= -DTARGET_SYSTEM_ROOT=\"/\"
+.endif
 CFLAGS+= -DTOOLBINDIR=\"${TOOLS_PREFIX}/${BINDIR}/libexec\"
 CFLAGS+= -D_GNU_SOURCE
 CFLAGS+= -I${SRCDIR}/ld -I${SRCDIR}/bfd
@@ -44,11 +46,15 @@ LDADD=	${DPADD}
 CLEANDIRS+=	ldscripts
 CLEANFILES+=	ldemul-list.h stringify.sed
 
+FILES=		${LDSCRIPTS:S|^|ldscripts/|}
+FILESDIR=	${SCRIPTDIR}
+LINKS=		${BINDIR}/ld ${BINDIR}/ld.bfd
+
 HOST=		${TARGET_TUPLE}
-LIBSEARCHPATH=	\"${TOOLS_PREFIX}/lib\":\"${TOOLS_PREFIX}/usr/lib\"
-ELF_SCR_EXT=	x xbn xc xd xdc xdw xn xr xs xsc xsw xu xw
+LIBSEARCHPATH=	\"=/lib\":\"=/usr/lib\"
 .for ext in ${ELF_SCR_EXT}
 LDSCRIPTS+=	${NATIVE_EMULATION}.${ext}
+ldscripts/${NATIVE_EMULATION}.${ext}: e${NATIVE_EMULATION}.c
 .endfor
 
 EMXFR=
@@ -62,11 +68,9 @@ ldemul-list.h:
 	echo "${EMXFR}" > ${.TARGET}
 	echo "#define EMULATION_LIST ${EMLST} 0" >> ${.TARGET}
 
-stringify.sed:
-	ln -sf ${SRCDIR}/ld/emultempl/astring.sed ${.TARGET}
+stringify.sed: ${SRCDIR}/ld/emultempl/astring.sed .NOMETA
+	ln -sf ${.ALLSRC} ${.TARGET}
 
-afterinstall:
-	${INSTALL} -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
-	    ${LDSCRIPTS:S|^|ldscripts/|} ${DESTDIR}${SCRIPTDIR}
+GENDIRDEPS_FILTER.host+= Nusr.bin/yacc
 
 .include <bsd.prog.mk>

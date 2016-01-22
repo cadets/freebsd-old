@@ -46,32 +46,34 @@ struct mount;
 struct vfsconf;
 struct vnode;
 
-int	ext2_alloc(struct inode *,
-	    int32_t, int32_t, int, struct ucred *, int32_t *);
+int	ext2_alloc(struct inode *, daddr_t, e4fs_daddr_t, int,
+	    struct ucred *, e4fs_daddr_t *);
 int	ext2_balloc(struct inode *,
-	    int32_t, int, struct ucred *, struct buf **, int);
+	    e2fs_lbn_t, int, struct ucred *, struct buf **, int);
 int	ext2_blkatoff(struct vnode *, off_t, char **, struct buf **);
-void	ext2_blkfree(struct inode *, int32_t, long);
-int32_t	ext2_blkpref(struct inode *, int32_t, int, int32_t *, int32_t);
+void	ext2_blkfree(struct inode *,  e4fs_daddr_t, long);
+e4fs_daddr_t	ext2_blkpref(struct inode *, e2fs_lbn_t, int, e2fs_daddr_t *,
+	    e2fs_daddr_t);
 int	ext2_bmap(struct vop_bmap_args *);
-int	ext2_bmaparray(struct vnode *, int32_t, int32_t *, int *, int *);
+int	ext2_bmaparray(struct vnode *, daddr_t, daddr_t *, int *, int *);
 void	ext2_clusteracct(struct m_ext2fs *, char *, int, daddr_t, int);
 void	ext2_dirbad(struct inode *ip, doff_t offset, char *how);
 void	ext2_ei2i(struct ext2fs_dinode *, struct inode *);
-int	ext2_getlbns(struct vnode *, int32_t, struct indir *, int *);
+int	ext2_getlbns(struct vnode *, daddr_t, struct indir *, int *);
 void	ext2_i2ei(struct inode *, struct ext2fs_dinode *);
-int     ext2_reallocblks(struct vop_reallocblks_args *);
 void	ext2_itimes(struct vnode *vp);
+int	ext2_reallocblks(struct vop_reallocblks_args *);
 int	ext2_reclaim(struct vop_reclaim_args *);
-void	ext2_setblock(struct m_ext2fs *, u_char *, int32_t);
 int	ext2_truncate(struct vnode *, off_t, int, struct ucred *, struct thread *);
 int	ext2_update(struct vnode *, int);
 int	ext2_valloc(struct vnode *, int, struct ucred *, struct vnode **);
 int	ext2_vfree(struct vnode *, ino_t, int);
 int	ext2_vinit(struct mount *, struct vop_vector *, struct vnode **vpp);
-int 	ext2_lookup(struct vop_cachedlookup_args *);
-int 	ext2_readdir(struct vop_readdir_args *);
+int	ext2_lookup(struct vop_cachedlookup_args *);
+int	ext2_readdir(struct vop_readdir_args *);
+#ifdef EXT2FS_DEBUG
 void	ext2_print_inode(struct inode *);
+#endif
 int	ext2_direnter(struct inode *, 
 		struct vnode *, struct componentname *);
 int	ext2_dirremove(struct vnode *, struct componentname *);

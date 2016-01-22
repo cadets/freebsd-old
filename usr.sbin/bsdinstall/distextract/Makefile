@@ -1,11 +1,10 @@
 # $FreeBSD$
 
-BINDIR= /usr/libexec/bsdinstall
+BINDIR= ${LIBEXECDIR}/bsdinstall
 PROG=	distextract
-DPADD=	${LIBARCHIVE} ${LIBNCURSESW} ${LIBDIALOG} ${LIBM}
-LDADD=	-larchive -lncursesw -ldialog -lm
+LIBADD=	archive dpv figpar ncursesw dialog m
 
 WARNS?=	6
-NO_MAN=	true
+MAN=
 
 .include <bsd.prog.mk>

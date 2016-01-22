@@ -38,11 +38,12 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/socket.h>
  
-#include <net/bpf.h>
-#include <net/ethernet.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_llc.h>
 #include <net/if_media.h>
+#include <net/bpf.h>
+#include <net/ethernet.h>
 
 #include <net80211/ieee80211_var.h>
 #include <net80211/ieee80211_input.h>
@@ -86,7 +87,7 @@ __FBSDID("$FreeBSD$");
 	memcpy(dst, src, sizeof(struct ether_header))
 
 static	int ieee80211_ffppsmin = 2;	/* pps threshold for ff aggregation */
-SYSCTL_INT(_net_wlan, OID_AUTO, ffppsmin, CTLTYPE_INT | CTLFLAG_RW,
+SYSCTL_INT(_net_wlan, OID_AUTO, ffppsmin, CTLFLAG_RW,
 	&ieee80211_ffppsmin, 0, "min packet rate before fast-frame staging");
 static	int ieee80211_ffagemax = -1;	/* max time frames held on stage q */
 SYSCTL_PROC(_net_wlan, OID_AUTO, ffagemax, CTLTYPE_INT | CTLFLAG_RW,
@@ -99,9 +100,9 @@ ieee80211_superg_attach(struct ieee80211com *ic)
 	struct ieee80211_superg *sg;
 
 	if (ic->ic_caps & IEEE80211_C_FF) {
-		sg = (struct ieee80211_superg *) malloc(
+		sg = (struct ieee80211_superg *) IEEE80211_MALLOC(
 		     sizeof(struct ieee80211_superg), M_80211_VAP,
-		     M_NOWAIT | M_ZERO);
+		     IEEE80211_M_NOWAIT | IEEE80211_M_ZERO);
 		if (sg == NULL) {
 			printf("%s: cannot allocate SuperG state block\n",
 			    __func__);
@@ -116,7 +117,7 @@ void
 ieee80211_superg_detach(struct ieee80211com *ic)
 {
 	if (ic->ic_superg != NULL) {
-		free(ic->ic_superg, M_80211_VAP);
+		IEEE80211_FREE(ic->ic_superg, M_80211_VAP);
 		ic->ic_superg = NULL;
 	}
 }
@@ -330,43 +331,6 @@ ieee80211_ff_decap(struct ieee80211_node *ni, struct mbuf *m)
 }
 
 /*
- * Do Ethernet-LLC encapsulation for each payload in a fast frame
- * tunnel encapsulation.  The frame is assumed to have an Ethernet
- * header at the front that must be stripped before prepending the
- * LLC followed by the Ethernet header passed in (with an Ethernet
- * type that specifies the payload size).
- */
-static struct mbuf *
-ff_encap1(struct ieee80211vap *vap, struct mbuf *m,
-	const struct ether_header *eh)
-{
-	struct llc *llc;
-	uint16_t payload;
-
-	/* XXX optimize by combining m_adj+M_PREPEND */
-	m_adj(m, sizeof(struct ether_header) - sizeof(struct llc));
-	llc = mtod(m, struct llc *);
-	llc->llc_dsap = llc->llc_ssap = LLC_SNAP_LSAP;
-	llc->llc_control = LLC_UI;
-	llc->llc_snap.org_code[0] = 0;
-	llc->llc_snap.org_code[1] = 0;
-	llc->llc_snap.org_code[2] = 0;
-	llc->llc_snap.ether_type = eh->ether_type;
-	payload = m->m_pkthdr.len;		/* NB: w/o Ethernet header */
-
-	M_PREPEND(m, sizeof(struct ether_header), M_NOWAIT);
-	if (m == NULL) {		/* XXX cannot happen */
-		IEEE80211_DPRINTF(vap, IEEE80211_MSG_SUPERG,
-			"%s: no space for ether_header\n", __func__);
-		vap->iv_stats.is_tx_nobuf++;
-		return NULL;
-	}
-	ETHER_HEADER_COPY(mtod(m, void *), eh);
-	mtod(m, struct ether_header *)->ether_type = htons(payload);
-	return m;
-}
-
-/*
  * Fast frame encapsulation.  There must be two packets
  * chained with m_nextpkt.  We do header adjustment for
  * each, add the tunnel encapsulation, and then concatenate
@@ -424,10 +388,10 @@ ieee80211_ff_encap(struct ieee80211vap *vap, struct mbuf *m1, int hdrspace,
 	 * Now do tunnel encapsulation.  First, each
 	 * frame gets a standard encapsulation.
 	 */
-	m1 = ff_encap1(vap, m1, &eh1);
+	m1 = ieee80211_ff_encap1(vap, m1, &eh1);
 	if (m1 == NULL)
 		goto bad;
-	m2 = ff_encap1(vap, m2, &eh2);
+	m2 = ieee80211_ff_encap1(vap, m2, &eh2);
 	if (m2 == NULL)
 		goto bad;
 
@@ -511,13 +475,9 @@ ff_transmit(struct ieee80211_node *ni, struct mbuf *m)
 	if (m != NULL) {
 		struct ifnet *ifp = vap->iv_ifp;
 
-		error = ieee80211_parent_transmit(ic, m);;
-		if (error != 0) {
-			/* NB: IFQ_HANDOFF reclaims mbuf */
-			ieee80211_free_node(ni);
-		} else {
-			ifp->if_opackets++;
-		}
+		error = ieee80211_parent_xmitpkt(ic, m);
+		if (!error)
+			if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
 	} else
 		ieee80211_free_node(ni);
 }
@@ -566,7 +526,6 @@ ieee80211_ff_age(struct ieee80211com *ic, struct ieee80211_stageq *sq,
 {
 	struct mbuf *m, *head;
 	struct ieee80211_node *ni;
-	struct ieee80211_tx_ampdu *tap;
 
 #if 0
 	KASSERT(sq->head != NULL, ("stageq empty"));
@@ -577,11 +536,10 @@ ieee80211_ff_age(struct ieee80211com *ic, struct ieee80211_stageq *sq,
 	while ((m = sq->head) != NULL && M_AGE_GET(m) < quanta) {
 		int tid = WME_AC_TO_TID(M_WME_GETAC(m));
 
-		/* clear tap ref to frame */
+		/* clear staging ref to frame */
 		ni = (struct ieee80211_node *) m->m_pkthdr.rcvif;
-		tap = &ni->ni_tx_ampdu[tid];
-		KASSERT(tap->txa_private == m, ("staging queue empty"));
-		tap->txa_private = NULL;
+		KASSERT(ni->ni_tx_superg[tid] == m, ("staging queue empty"));
+		ni->ni_tx_superg[tid] = NULL;
 
 		sq->head = m->m_nextpkt;
 		sq->depth--;
@@ -694,7 +652,12 @@ ieee80211_ff_check(struct ieee80211_node *ni, struct mbuf *m)
 	 */
 	IEEE80211_LOCK(ic);
 	tap = &ni->ni_tx_ampdu[WME_AC_TO_TID(pri)];
-	mstaged = tap->txa_private;		/* NB: we reuse AMPDU state */
+	mstaged = ni->ni_tx_superg[WME_AC_TO_TID(pri)];
+	/* XXX NOTE: reusing packet counter state from A-MPDU */
+	/*
+	 * XXX NOTE: this means we're double-counting; it should just
+	 * be done in ieee80211_output.c once for both superg and A-MPDU.
+	 */
 	ieee80211_txampdu_count_packet(tap);
 
 	/*
@@ -734,7 +697,7 @@ ieee80211_ff_check(struct ieee80211_node *ni, struct mbuf *m)
 		    "%s: txtime %u exceeds txop limit %u\n",
 		    __func__, txtime, limit);
 
-		tap->txa_private = NULL;
+		ni->ni_tx_superg[WME_AC_TO_TID(pri)] = NULL;
 		if (mstaged != NULL)
 			stageq_remove(ic, sq, mstaged);
 		IEEE80211_UNLOCK(ic);
@@ -757,7 +720,7 @@ ieee80211_ff_check(struct ieee80211_node *ni, struct mbuf *m)
 	 * hold their node reference.
 	 */
 	if (mstaged != NULL) {
-		tap->txa_private = NULL;
+		ni->ni_tx_superg[WME_AC_TO_TID(pri)] = NULL;
 		stageq_remove(ic, sq, mstaged);
 		IEEE80211_UNLOCK(ic);
 
@@ -775,9 +738,10 @@ ieee80211_ff_check(struct ieee80211_node *ni, struct mbuf *m)
 		mstaged->m_nextpkt = m;
 		mstaged->m_flags |= M_FF; /* NB: mark for encap work */
 	} else {
-		KASSERT(tap->txa_private == NULL,
-		    ("txa_private %p", tap->txa_private));
-		tap->txa_private = m;
+		KASSERT(ni->ni_tx_superg[WME_AC_TO_TID(pri)]== NULL,
+		    ("ni_tx_superg[]: %p",
+		    ni->ni_tx_superg[WME_AC_TO_TID(pri)]));
+		ni->ni_tx_superg[WME_AC_TO_TID(pri)] = m;
 
 		stageq_add(ic, sq, m);
 		IEEE80211_UNLOCK(ic);
@@ -805,7 +769,6 @@ ieee80211_ff_node_cleanup(struct ieee80211_node *ni)
 {
 	struct ieee80211com *ic = ni->ni_ic;
 	struct ieee80211_superg *sg = ic->ic_superg;
-	struct ieee80211_tx_ampdu *tap;
 	struct mbuf *m, *next_m, *head;
 	int tid;
 
@@ -813,11 +776,16 @@ ieee80211_ff_node_cleanup(struct ieee80211_node *ni)
 	head = NULL;
 	for (tid = 0; tid < WME_NUM_TID; tid++) {
 		int ac = TID_TO_WME_AC(tid);
-
-		tap = &ni->ni_tx_ampdu[tid];
-		m = tap->txa_private;
+		/*
+		 * XXX Initialise the packet counter.
+		 *
+		 * This may be double-work for 11n stations;
+		 * but without it we never setup things.
+		 */
+		ieee80211_txampdu_init_pps(&ni->ni_tx_ampdu[tid]);
+		m = ni->ni_tx_superg[tid];
 		if (m != NULL) {
-			tap->txa_private = NULL;
+			ni->ni_tx_superg[tid] = NULL;
 			stageq_remove(ic, &sg->ff_stageq[ac], m);
 			m->m_nextpkt = head;
 			head = m;

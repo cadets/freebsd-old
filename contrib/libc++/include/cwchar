@@ -106,9 +106,9 @@ size_t wcsrtombs(char* restrict dst, const wchar_t** restrict src, size_t len,
 #include <__config>
 #include <cwctype>
 #include <wchar.h>
-#ifdef _WIN32
+#if defined(_LIBCPP_MSVCRT) || defined(__MINGW32__)
 #include <support/win32/support.h> // pull in *swprintf defines
-#endif // _WIN32
+#endif // _LIBCPP_MSVCRT
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
 #pragma GCC system_header
@@ -126,30 +126,24 @@ using ::fwscanf;
 using ::swprintf;
 using ::vfwprintf;
 using ::vswprintf;
-using ::vwprintf;
-#ifndef _MSC_VER
+#ifndef _LIBCPP_MSVCRT
 using ::swscanf;
 using ::vfwscanf;
 using ::vswscanf;
-using ::vwscanf;
-#endif // _MSC_VER
-using ::wprintf;
-using ::wscanf;
+#endif // _LIBCPP_MSVCRT
 using ::fgetwc;
 using ::fgetws;
 using ::fputwc;
 using ::fputws;
 using ::fwide;
 using ::getwc;
-using ::getwchar;
 using ::putwc;
-using ::putwchar;
 using ::ungetwc;
 using ::wcstod;
-#ifndef _MSC_VER
+#ifndef _LIBCPP_MSVCRT
 using ::wcstof;
 using ::wcstold;
-#endif // _MSC_VER
+#endif // _LIBCPP_MSVCRT
 using ::wcstol;
 #ifndef _LIBCPP_HAS_NO_LONG_LONG
 using ::wcstoll;
@@ -211,6 +205,20 @@ using ::mbrtowc;
 using ::wcrtomb;
 using ::mbsrtowcs;
 using ::wcsrtombs;
+
+#ifndef _LIBCPP_HAS_NO_STDIN
+using ::getwchar;
+#ifndef _LIBCPP_MSVCRT
+using ::vwscanf;
+#endif // _LIBCPP_MSVCRT
+using ::wscanf;
+#endif
+
+#ifndef _LIBCPP_HAS_NO_STDOUT
+using ::putwchar;
+using ::vwprintf;
+using ::wprintf;
+#endif
 
 _LIBCPP_END_NAMESPACE_STD
 

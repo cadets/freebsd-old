@@ -21,16 +21,16 @@
  * specific prior written permission.
  * 
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
- * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+ * TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 /**
@@ -89,6 +89,8 @@ struct daemon_remote {
 	struct worker* worker;
 	/** commpoints for accepting remote control connections */
 	struct listen_list* accept_list;
+	/* if certificates are used */
+	int use_cert;
 	/** number of active commpoints that are handling remote control */
 	int active;
 	/** max active commpoints */
@@ -157,12 +159,6 @@ void daemon_remote_start_accept(struct daemon_remote* rc);
  */
 void daemon_remote_exec(struct worker* worker);
 
-/** handle remote control accept callbacks */
-int remote_accept_callback(struct comm_point*, void*, int, struct comm_reply*);
-
-/** handle remote control data callbacks */
-int remote_control_callback(struct comm_point*, void*, int, struct comm_reply*);
-
 #ifdef HAVE_SSL
 /** 
  * Print fixed line of text over ssl connection in blocking mode
@@ -191,8 +187,5 @@ int ssl_printf(SSL* ssl, const char* format, ...)
  */
 int ssl_read_line(SSL* ssl, char* buf, size_t max);
 #endif /* HAVE_SSL */
-
-/** routine to printout option values over SSL */
-void remote_get_opt_ssl(char* line, void* arg);
 
 #endif /* DAEMON_REMOTE_H */

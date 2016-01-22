@@ -68,11 +68,10 @@ static int	s_scale;
 
 void	moncontrol(int);
 static int hertz(void);
+void	_mcleanup(void);
 
 void
-monstartup(lowpc, highpc)
-	u_long lowpc;
-	u_long highpc;
+monstartup(u_long lowpc, u_long highpc)
 {
 	int o;
 	char *cp;
@@ -163,13 +162,13 @@ _mcleanup(void)
 	else
 		snprintf(outname, sizeof(outname), "%s.gmon", _getprogname());
 
-	fd = _open(outname, O_CREAT|O_TRUNC|O_WRONLY, 0666);
+	fd = _open(outname, O_CREAT|O_TRUNC|O_WRONLY|O_CLOEXEC, 0666);
 	if (fd < 0) {
 		_warn("_mcleanup: %s", outname);
 		return;
 	}
 #ifdef DEBUG
-	log = _open("gmon.log", O_CREAT|O_TRUNC|O_WRONLY, 0664);
+	log = _open("gmon.log", O_CREAT|O_TRUNC|O_WRONLY|O_CLOEXEC, 0664);
 	if (log < 0) {
 		_warn("_mcleanup: gmon.log");
 		return;
@@ -218,8 +217,7 @@ _mcleanup(void)
  *	all the data structures are ready.
  */
 void
-moncontrol(mode)
-	int mode;
+moncontrol(int mode)
 {
 	struct gmonparam *p = &_gmonparam;
 
@@ -239,7 +237,7 @@ moncontrol(mode)
  * if something goes wrong, we return 0, an impossible hertz.
  */
 static int
-hertz()
+hertz(void)
 {
 	struct itimerval tim;
 

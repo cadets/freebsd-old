@@ -11,27 +11,46 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Target/TargetSubtargetInfo.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 using namespace llvm;
 
 //---------------------------------------------------------------------------
 // TargetSubtargetInfo Class
 //
-TargetSubtargetInfo::TargetSubtargetInfo() {}
+TargetSubtargetInfo::TargetSubtargetInfo(
+    const Triple &TT, StringRef CPU, StringRef FS,
+    ArrayRef<SubtargetFeatureKV> PF, ArrayRef<SubtargetFeatureKV> PD,
+    const SubtargetInfoKV *ProcSched, const MCWriteProcResEntry *WPR,
+    const MCWriteLatencyEntry *WL, const MCReadAdvanceEntry *RA,
+    const InstrStage *IS, const unsigned *OC, const unsigned *FP)
+    : MCSubtargetInfo(TT, CPU, FS, PF, PD, ProcSched, WPR, WL, RA, IS, OC, FP) {
+}
 
 TargetSubtargetInfo::~TargetSubtargetInfo() {}
+
+bool TargetSubtargetInfo::enableAtomicExpand() const {
+  return true;
+}
 
 bool TargetSubtargetInfo::enableMachineScheduler() const {
   return false;
 }
 
-bool TargetSubtargetInfo::enablePostRAScheduler(
-          CodeGenOpt::Level OptLevel,
-          AntiDepBreakMode& Mode,
-          RegClassVector& CriticalPathRCs) const {
-  Mode = ANTIDEP_NONE;
-  CriticalPathRCs.clear();
-  return false;
+bool TargetSubtargetInfo::enableJoinGlobalCopies() const {
+  return enableMachineScheduler();
 }
 
+bool TargetSubtargetInfo::enableRALocalReassignment(
+    CodeGenOpt::Level OptLevel) const {
+  return true;
+}
+
+bool TargetSubtargetInfo::enablePostRAScheduler() const {
+  return getSchedModel().PostRAScheduler;
+}
+
+bool TargetSubtargetInfo::useAA() const {
+  return false;
+}

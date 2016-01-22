@@ -10,22 +10,23 @@
 . /etc/rc.subr
 
 name="rctl"
+rcvar="rctl_enable"
 start_cmd="rctl_start"
 stop_cmd="rctl_stop"
 
 rctl_start()
 {
-	if [ -f /etc/rctl.conf ]; then
+	if [ -f ${rctl_rules} ]; then
 		while read var comments
 		do
 			case ${var} in
 			\#*|'')
 				;;
 			*)
-				rctl -a "${var}"
+				echo "${var}"
 				;;
 			esac
-		done < /etc/rctl.conf
+		done < ${rctl_rules} | xargs rctl -a
 	fi
 }
 

@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <stdlib.h>
 #include <string.h>
 #include <sysexits.h>
+#include <unistd.h>
 
 #include "ar.h"
 
@@ -61,6 +62,7 @@ static void	create_symtab_entry(struct bsdar *bsdar, void *maddr,
 static void	free_obj(struct bsdar *bsdar, struct ar_obj *obj);
 static void	insert_obj(struct bsdar *bsdar, struct ar_obj *obj,
 		    struct ar_obj *pos);
+static void	prefault_buffer(const char *buf, size_t s);
 static void	read_objs(struct bsdar *bsdar, const char *archive,
 		    int checkargv);
 static void	write_archive(struct bsdar *bsdar, char mode);
@@ -551,11 +553,35 @@ write_cleanup(struct bsdar *bsdar)
 }
 
 /*
+ * Fault in the buffer prior to writing as a workaround for poor performance
+ * due to interaction with kernel fs deadlock avoidance code. See the comment
+ * above vn_io_fault_doio() in sys/kern/vfs_vnops.c for details of the issue.
+ */
+static void
+prefault_buffer(const char *buf, size_t s)
+{
+	volatile const char *p;
+	size_t page_size;
+
+	if (s == 0)
+		return;
+	page_size = sysconf(_SC_PAGESIZE);
+	for (p = buf; p < buf + s; p += page_size)
+		*p;
+	/*
+	 * Ensure we touch the last page as well, in case the buffer is not
+	 * page-aligned.
+	 */
+	*(volatile const char *)(buf + s - 1);
+}
+
+/*
  * Wrapper for archive_write_data().
  */
 static void
 write_data(struct bsdar *bsdar, struct archive *a, const void *buf, size_t s)
 {
+	prefault_buffer(buf, s);
 	if (archive_write_data(a, buf, s) != (ssize_t)s)
 		bsdar_errc(bsdar, EX_SOFTWARE, 0, "%s",
 		    archive_error_string(a));
@@ -638,6 +664,9 @@ write_objs(struct bsdar *bsdar)
 	if ((bsdar->s_cnt != 0 && !(bsdar->options & AR_SS)) ||
 	    bsdar->options & AR_S) {
 		entry = archive_entry_new();
+		if (entry == NULL)
+			bsdar_errc(bsdar, EX_SOFTWARE, 0,
+			    "archive_entry_new failed");
 		archive_entry_copy_pathname(entry, "/");
 		if ((bsdar->options & AR_D) == 0)
 			archive_entry_set_mtime(entry, time(NULL), 0);
@@ -655,6 +684,9 @@ write_objs(struct bsdar *bsdar)
 	/* write the archive string table, if any. */
 	if (bsdar->as != NULL) {
 		entry = archive_entry_new();
+		if (entry == NULL)
+			bsdar_errc(bsdar, EX_SOFTWARE, 0,
+			    "archive_entry_new failed");
 		archive_entry_copy_pathname(entry, "//");
 		archive_entry_set_size(entry, bsdar->as_sz);
 		AC(archive_write_header(a, entry));
@@ -665,6 +697,9 @@ write_objs(struct bsdar *bsdar)
 	/* write normal members. */
 	TAILQ_FOREACH(obj, &bsdar->v_obj, objs) {
 		entry = archive_entry_new();
+		if (entry == NULL)
+			bsdar_errc(bsdar, EX_SOFTWARE, 0,
+			    "archive_entry_new failed");
 		archive_entry_copy_pathname(entry, obj->name);
 		archive_entry_set_uid(entry, obj->uid);
 		archive_entry_set_gid(entry, obj->gid);

@@ -68,6 +68,7 @@ map_object(int fd, const char *path, const struct stat *sb)
     Elf_Addr base_vaddr;
     Elf_Addr base_vlimit;
     caddr_t base_addr;
+    int base_flags;
     Elf_Off data_offset;
     Elf_Addr data_vaddr;
     Elf_Addr data_vlimit;
@@ -87,6 +88,8 @@ map_object(int fd, const char *path, const struct stat *sb)
     size_t relro_size;
     Elf_Addr note_start;
     Elf_Addr note_end;
+    char *note_map;
+    size_t note_map_len;
 
     hdr = get_elf_header(fd, path);
     if (hdr == NULL)
@@ -107,6 +110,7 @@ map_object(int fd, const char *path, const struct stat *sb)
     relro_size = 0;
     note_start = 0;
     note_end = 0;
+    note_map = NULL;
     segs = alloca(sizeof(segs[0]) * hdr->e_phnum);
     stack_flags = RTLD_DEFAULT_STACK_PF_EXEC | PF_R | PF_W;
     while (phdr < phlimit) {
@@ -149,9 +153,20 @@ map_object(int fd, const char *path, const struct stat *sb)
 
 	case PT_NOTE:
 	    if (phdr->p_offset > PAGE_SIZE ||
-	      phdr->p_offset + phdr->p_filesz > PAGE_SIZE)
-		break;
-	    note_start = (Elf_Addr)(char *)hdr + phdr->p_offset;
+	      phdr->p_offset + phdr->p_filesz > PAGE_SIZE) {
+		note_map_len = round_page(phdr->p_offset +
+		  phdr->p_filesz) - trunc_page(phdr->p_offset);
+		note_map = mmap(NULL, note_map_len, PROT_READ,
+		  MAP_PRIVATE, fd, trunc_page(phdr->p_offset));
+		if (note_map == MAP_FAILED) {
+		    _rtld_error("%s: error mapping PT_NOTE (%d)", path, errno);
+		    goto error;
+		}
+		note_start = (Elf_Addr)(note_map + phdr->p_offset -
+		  trunc_page(phdr->p_offset));
+	    } else {
+		note_start = (Elf_Addr)(char *)hdr + phdr->p_offset;
+	    }
 	    note_end = note_start + phdr->p_filesz;
 	    break;
 	}
@@ -176,9 +191,11 @@ map_object(int fd, const char *path, const struct stat *sb)
     base_vlimit = round_page(segs[nsegs]->p_vaddr + segs[nsegs]->p_memsz);
     mapsize = base_vlimit - base_vaddr;
     base_addr = (caddr_t) base_vaddr;
+    base_flags = MAP_PRIVATE | MAP_ANON | MAP_NOCORE;
+    if (npagesizes > 1 && round_page(segs[0]->p_filesz) >= pagesizes[1])
+	base_flags |= MAP_ALIGNED_SUPER;
 
-    mapbase = mmap(base_addr, mapsize, PROT_NONE, MAP_ANON | MAP_PRIVATE |
-      MAP_NOCORE, -1, 0);
+    mapbase = mmap(base_addr, mapsize, PROT_NONE, base_flags, -1, 0);
     if (mapbase == (caddr_t) -1) {
 	_rtld_error("%s: mmap of entire address space failed: %s",
 	  path, rtld_strerror(errno));
@@ -292,12 +309,16 @@ map_object(int fd, const char *path, const struct stat *sb)
     obj->relro_size = round_page(relro_size);
     if (note_start < note_end)
 	digest_notes(obj, note_start, note_end);
+    if (note_map != NULL)
+	munmap(note_map, note_map_len);
     munmap(hdr, PAGE_SIZE);
     return (obj);
 
 error1:
     munmap(mapbase, mapsize);
 error:
+    if (note_map != NULL && note_map != MAP_FAILED)
+	munmap(note_map, note_map_len);
     munmap(hdr, PAGE_SIZE);
     return (NULL);
 }

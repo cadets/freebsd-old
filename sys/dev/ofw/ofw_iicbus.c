@@ -35,7 +35,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/mutex.h>
 
-#include <dev/fdt/fdt_common.h>
 #include <dev/iicbus/iicbus.h>
 #include <dev/iicbus/iiconf.h>
 #include <dev/ofw/ofw_bus.h>
@@ -73,7 +72,7 @@ static device_method_t ofw_iicbus_methods[] = {
 };
 
 struct ofw_iicbus_devinfo {
-	struct iicbus_ivar	opd_dinfo;
+	struct iicbus_ivar	opd_dinfo;	/* Must be the first. */
 	struct ofw_bus_devinfo	opd_obdinfo;
 };
 
@@ -81,6 +80,7 @@ static devclass_t ofwiicbus_devclass;
 
 DEFINE_CLASS_1(iicbus, ofw_iicbus_driver, ofw_iicbus_methods,
     sizeof(struct iicbus_softc), iicbus_driver);
+DRIVER_MODULE(ofw_iicbus, iicbb, ofw_iicbus_driver, ofwiicbus_devclass, 0, 0);
 DRIVER_MODULE(ofw_iicbus, iichb, ofw_iicbus_driver, ofwiicbus_devclass, 0, 0);
 MODULE_VERSION(ofw_iicbus, 1);
 MODULE_DEPEND(ofw_iicbus, iicbus, 1, 1, 1);
@@ -101,33 +101,63 @@ ofw_iicbus_attach(device_t dev)
 {
 	struct iicbus_softc *sc = IICBUS_SOFTC(dev);
 	struct ofw_iicbus_devinfo *dinfo;
-	phandle_t child;
-	pcell_t paddr;
+	phandle_t child, node, root;
+	pcell_t freq, paddr;
 	device_t childdev;
-	uint32_t addr;
+	ssize_t compatlen;
+	char compat[255];
+	char *curstr;
+	u_int iic_addr_8bit = 0;
 
 	sc->dev = dev;
 	mtx_init(&sc->lock, "iicbus", NULL, MTX_DEF);
+
+	/*
+	 * If there is a clock-frequency property for the device node, use it as
+	 * the starting value for the bus frequency.  Then call the common
+	 * routine that handles the tunable/sysctl which allows the FDT value to
+	 * be overridden by the user.
+	 */
+	node = ofw_bus_get_node(dev);
+	freq = 0;
+	OF_getencprop(node, "clock-frequency", &freq, sizeof(freq));
+	iicbus_init_frequency(dev, freq);
+	
 	iicbus_reset(dev, IIC_FASTEST, 0, NULL);
 
 	bus_generic_probe(dev);
 	bus_enumerate_hinted_children(dev);
 
 	/*
+	 * Check if we're running on a PowerMac, needed for the I2C
+	 * address below.
+	 */
+	root = OF_peer(0);
+	compatlen = OF_getprop(root, "compatible", compat,
+				sizeof(compat));
+	if (compatlen != -1) {
+	    for (curstr = compat; curstr < compat + compatlen;
+		curstr += strlen(curstr) + 1) {
+		if (strncmp(curstr, "MacRISC", 7) == 0)
+		    iic_addr_8bit = 1;
+	    }
+	}
+
+	/*
 	 * Attach those children represented in the device tree.
 	 */
-	for (child = OF_child(ofw_bus_get_node(dev)); child != 0;
-	    child = OF_peer(child)) {
+	for (child = OF_child(node); child != 0; child = OF_peer(child)) {
 		/*
 		 * Try to get the I2C address first from the i2c-address
 		 * property, then try the reg property.  It moves around
 		 * on different systems.
 		 */
-		if (OF_getprop(child, "i2c-address", &paddr, sizeof(paddr)) == -1)
-			if (OF_getprop(child, "reg", &paddr, sizeof(paddr)) == -1)
+		if (OF_getencprop(child, "i2c-address", &paddr,
+		    sizeof(paddr)) == -1)
+			if (OF_getencprop(child, "reg", &paddr,
+			    sizeof(paddr)) == -1)
 				continue;
 
-		addr = fdt32_to_cpu(paddr);
 		/*
 		 * Now set up the I2C and OFW bus layer devinfo and add it
 		 * to the bus.
@@ -136,16 +166,32 @@ ofw_iicbus_attach(device_t dev)
 		    M_NOWAIT | M_ZERO);
 		if (dinfo == NULL)
 			continue;
-		dinfo->opd_dinfo.addr = addr;
+		/*
+		 * FreeBSD drivers expect I2C addresses to be expressed as
+		 * 8-bit values.  Apple OFW data contains 8-bit values, but
+		 * Linux FDT data contains 7-bit values, so shift them up to
+		 * 8-bit format.
+		 */
+		if (iic_addr_8bit)
+		    dinfo->opd_dinfo.addr = paddr;
+		else
+		    dinfo->opd_dinfo.addr = paddr << 1;
+
 		if (ofw_bus_gen_setup_devinfo(&dinfo->opd_obdinfo, child) !=
 		    0) {
 			free(dinfo, M_DEVBUF);
 			continue;
 		}
+
 		childdev = device_add_child(dev, NULL, -1);
+		resource_list_init(&dinfo->opd_dinfo.rl);
+		ofw_bus_intr_to_rl(childdev, child,
+					&dinfo->opd_dinfo.rl, NULL);
 		device_set_ivars(childdev, dinfo);
 	}
 
+	/* Register bus */
+	OF_device_register_xref(OF_xref_from_node(node), dev);
 	return (bus_generic_attach(dev));
 }
 

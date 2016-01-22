@@ -62,11 +62,9 @@ SYSCTL_DECL(_kern_geom);
 static SYSCTL_NODE(_kern_geom, OID_AUTO, gate, CTLFLAG_RW, 0,
     "GEOM_GATE configuration");
 static int g_gate_debug = 0;
-TUNABLE_INT("kern.geom.gate.debug", &g_gate_debug);
-SYSCTL_INT(_kern_geom_gate, OID_AUTO, debug, CTLFLAG_RW, &g_gate_debug, 0,
+SYSCTL_INT(_kern_geom_gate, OID_AUTO, debug, CTLFLAG_RWTUN, &g_gate_debug, 0,
     "Debug level");
 static u_int g_gate_maxunits = 256;
-TUNABLE_INT("kern.geom.gate.maxunits", &g_gate_maxunits);
 SYSCTL_UINT(_kern_geom_gate, OID_AUTO, maxunits, CTLFLAG_RDTUN,
     &g_gate_maxunits, 0, "Maximum number of ggate devices");
 
@@ -91,6 +89,7 @@ static struct mtx g_gate_units_lock;
 static int
 g_gate_destroy(struct g_gate_softc *sc, boolean_t force)
 {
+	struct bio_queue_head queue;
 	struct g_provider *pp;
 	struct g_consumer *cp;
 	struct g_geom *gp;
@@ -113,21 +112,22 @@ g_gate_destroy(struct g_gate_softc *sc, boolean_t force)
 	pp->flags |= G_PF_WITHER;
 	g_orphan_provider(pp, ENXIO);
 	callout_drain(&sc->sc_callout);
+	bioq_init(&queue);
 	mtx_lock(&sc->sc_queue_mtx);
-	while ((bp = bioq_first(&sc->sc_inqueue)) != NULL) {
-		bioq_remove(&sc->sc_inqueue, bp);
+	while ((bp = bioq_takefirst(&sc->sc_inqueue)) != NULL) {
 		sc->sc_queue_count--;
-		G_GATE_LOGREQ(1, bp, "Request canceled.");
-		g_io_deliver(bp, ENXIO);
+		bioq_insert_tail(&queue, bp);
 	}
-	while ((bp = bioq_first(&sc->sc_outqueue)) != NULL) {
-		bioq_remove(&sc->sc_outqueue, bp);
+	while ((bp = bioq_takefirst(&sc->sc_outqueue)) != NULL) {
 		sc->sc_queue_count--;
-		G_GATE_LOGREQ(1, bp, "Request canceled.");
-		g_io_deliver(bp, ENXIO);
+		bioq_insert_tail(&queue, bp);
 	}
 	mtx_unlock(&sc->sc_queue_mtx);
 	g_topology_unlock();
+	while ((bp = bioq_takefirst(&queue)) != NULL) {
+		G_GATE_LOGREQ(1, bp, "Request canceled.");
+		g_io_deliver(bp, ENXIO);
+	}
 	mtx_lock(&g_gate_units_lock);
 	/* One reference is ours. */
 	sc->sc_ref--;
@@ -334,6 +334,7 @@ g_gate_getunit(int unit, int *errorp)
 static void
 g_gate_guard(void *arg)
 {
+	struct bio_queue_head queue;
 	struct g_gate_softc *sc;
 	struct bintime curtime;
 	struct bio *bp, *bp2;
@@ -341,24 +342,27 @@ g_gate_guard(void *arg)
 	sc = arg;
 	binuptime(&curtime);
 	g_gate_hold(sc->sc_unit, NULL);
+	bioq_init(&queue);
 	mtx_lock(&sc->sc_queue_mtx);
 	TAILQ_FOREACH_SAFE(bp, &sc->sc_inqueue.queue, bio_queue, bp2) {
 		if (curtime.sec - bp->bio_t0.sec < 5)
 			continue;
 		bioq_remove(&sc->sc_inqueue, bp);
 		sc->sc_queue_count--;
-		G_GATE_LOGREQ(1, bp, "Request timeout.");
-		g_io_deliver(bp, EIO);
+		bioq_insert_tail(&queue, bp);
 	}
 	TAILQ_FOREACH_SAFE(bp, &sc->sc_outqueue.queue, bio_queue, bp2) {
 		if (curtime.sec - bp->bio_t0.sec < 5)
 			continue;
 		bioq_remove(&sc->sc_outqueue, bp);
 		sc->sc_queue_count--;
+		bioq_insert_tail(&queue, bp);
+	}
+	mtx_unlock(&sc->sc_queue_mtx);
+	while ((bp = bioq_takefirst(&queue)) != NULL) {
 		G_GATE_LOGREQ(1, bp, "Request timeout.");
 		g_io_deliver(bp, EIO);
 	}
-	mtx_unlock(&sc->sc_queue_mtx);
 	if ((sc->sc_flags & G_GATE_FLAG_DESTROY) == 0) {
 		callout_reset(&sc->sc_callout, sc->sc_timeout * hz,
 		    g_gate_guard, sc);
@@ -482,7 +486,7 @@ g_gate_create(struct g_gate_ctl_create *ggio)
 	if (sc->sc_queue_size > G_GATE_MAX_QUEUE_SIZE)
 		sc->sc_queue_size = G_GATE_MAX_QUEUE_SIZE;
 	sc->sc_timeout = ggio->gctl_timeout;
-	callout_init(&sc->sc_callout, CALLOUT_MPSAFE);
+	callout_init(&sc->sc_callout, 1);
 
 	mtx_lock(&g_gate_units_lock);
 	sc->sc_unit = g_gate_getunit(ggio->gctl_unit, &error);
@@ -542,6 +546,7 @@ g_gate_create(struct g_gate_ctl_create *ggio)
 
 	if (ropp != NULL) {
 		cp = g_new_consumer(gp);
+		cp->flags |= G_CF_DIRECT_SEND | G_CF_DIRECT_RECEIVE;
 		error = g_attach(cp, ropp);
 		if (error != 0) {
 			G_GATE_DEBUG(1, "Unable to attach to %s.", ropp->name);
@@ -560,6 +565,7 @@ g_gate_create(struct g_gate_ctl_create *ggio)
 	ggio->gctl_unit = sc->sc_unit;
 
 	pp = g_new_providerf(gp, "%s", name);
+	pp->flags |= G_PF_DIRECT_SEND | G_PF_DIRECT_RECEIVE;
 	pp->mediasize = ggio->gctl_mediasize;
 	pp->sectorsize = ggio->gctl_sectorsize;
 	sc->sc_provider = pp;
@@ -636,6 +642,7 @@ g_gate_modify(struct g_gate_softc *sc, struct g_gate_ctl_modify *ggio)
 				return (EINVAL);
 			}
 			cp = g_new_consumer(sc->sc_provider->geom);
+			cp->flags |= G_CF_DIRECT_SEND | G_CF_DIRECT_RECEIVE;
 			error = g_attach(cp, pp);
 			if (error != 0) {
 				G_GATE_DEBUG(1, "Unable to attach to %s.",

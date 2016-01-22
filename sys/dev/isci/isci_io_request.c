@@ -153,11 +153,16 @@ isci_io_request_complete(SCI_CONTROLLER_HANDLE_T scif_controller,
 
 	case SCI_IO_FAILURE_REMOTE_DEVICE_RESET_REQUIRED:
 		isci_remote_device_reset(isci_remote_device, NULL);
+		ccb->ccb_h.status |= CAM_REQ_TERMIO;
+		isci_log_message(0, "ISCI",
+		    "isci: bus=%x target=%x lun=%x cdb[0]=%x remote device reset required\n",
+		    ccb->ccb_h.path_id, ccb->ccb_h.target_id,
+		    ccb->ccb_h.target_lun, ccb->csio.cdb_io.cdb_bytes[0]);
+		break;
 
-		/* drop through */
 	case SCI_IO_FAILURE_TERMINATED:
 		ccb->ccb_h.status |= CAM_REQ_TERMIO;
-		isci_log_message(1, "ISCI",
+		isci_log_message(0, "ISCI",
 		    "isci: bus=%x target=%x lun=%x cdb[0]=%x terminated\n",
 		    ccb->ccb_h.path_id, ccb->ccb_h.target_id,
 		    ccb->ccb_h.target_lun, ccb->csio.cdb_io.cdb_bytes[0]);
@@ -675,7 +680,7 @@ isci_request_construct(struct ISCI_REQUEST *request,
 	request->dma_tag = io_buffer_dma_tag;
 	request->physical_address = physical_address;
 	bus_dmamap_create(request->dma_tag, 0, &request->dma_map);
-	callout_init(&request->timer, CALLOUT_MPSAFE);
+	callout_init(&request->timer, 1);
 }
 
 static void
@@ -726,8 +731,9 @@ isci_io_request_construct(void *arg, bus_dma_segment_t *seg, int nseg,
 	}
 
 	if (ccb->ccb_h.timeout != CAM_TIME_INFINITY)
-		callout_reset(&io_request->parent.timer, ccb->ccb_h.timeout,
-		    isci_io_request_timeout, io_request);
+		callout_reset_sbt(&io_request->parent.timer,
+		    SBT_1MS * ccb->ccb_h.timeout, 0, isci_io_request_timeout,
+		    io_request, 0);
 }
 
 void
@@ -978,7 +984,8 @@ isci_io_request_execute_smp_io(union ccb *ccb,
 	}
 
 	if (ccb->ccb_h.timeout != CAM_TIME_INFINITY)
-		callout_reset(&io_request->parent.timer, ccb->ccb_h.timeout,
-		    isci_io_request_timeout, request);
+		callout_reset_sbt(&io_request->parent.timer,
+		    SBT_1MS *  ccb->ccb_h.timeout, 0, isci_io_request_timeout,
+		    request, 0);
 }
 #endif

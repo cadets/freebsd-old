@@ -28,9 +28,9 @@
  * Use is subject to license terms.
  */
 
-#if defined(sun)
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-#endif
+/*
+ * Copyright (c) 2015, Joyent, Inc. All rights reserved.
+ */
 
 #include <sys/atomic.h>
 #include <sys/errno.h>
@@ -38,13 +38,13 @@
 #include <sys/modctl.h>
 #include <sys/conf.h>
 #include <sys/systm.h>
-#if defined(sun)
+#ifdef illumos
 #include <sys/ddi.h>
 #endif
 #include <sys/sunddi.h>
 #include <sys/cpuvar.h>
 #include <sys/kmem.h>
-#if defined(sun)
+#ifdef illumos
 #include <sys/strsubr.h>
 #endif
 #include <sys/fasttrap.h>
@@ -55,14 +55,21 @@
 #include <sys/sysmacros.h>
 #include <sys/proc.h>
 #include <sys/policy.h>
-#if defined(sun)
+#ifdef illumos
 #include <util/qsort.h>
 #endif
 #include <sys/mutex.h>
 #include <sys/kernel.h>
-#if !defined(sun)
-#include <sys/user.h>
+#ifndef illumos
 #include <sys/dtrace_bsd.h>
+#include <sys/eventhandler.h>
+#include <sys/sysctl.h>
+#include <sys/u8_textprep.h>
+#include <sys/user.h>
+#include <vm/vm.h>
+#include <vm/pmap.h>
+#include <vm/vm_map.h>
+#include <vm/vm_param.h>
 #include <cddl/dev/dtrace/dtrace_cddl.h>
 #endif
 
@@ -166,13 +173,14 @@ static volatile uint64_t fasttrap_mod_gen;
 
 /*
  * When the fasttrap provider is loaded, fasttrap_max is set to either
- * FASTTRAP_MAX_DEFAULT or the value for fasttrap-max-probes in the
- * fasttrap.conf file. Each time a probe is created, fasttrap_total is
- * incremented by the number of tracepoints that may be associated with that
- * probe; fasttrap_total is capped at fasttrap_max.
+ * FASTTRAP_MAX_DEFAULT, or the value for fasttrap-max-probes in the
+ * fasttrap.conf file (Illumos), or the value provied in the loader.conf (FreeBSD).
+ * Each time a probe is created, fasttrap_total is incremented by the number
+ * of tracepoints that may be associated with that probe; fasttrap_total is capped
+ * at fasttrap_max.
  */
 #define	FASTTRAP_MAX_DEFAULT		250000
-static uint32_t fasttrap_max;
+static uint32_t fasttrap_max = FASTTRAP_MAX_DEFAULT;
 static uint32_t fasttrap_total;
 
 /*
@@ -206,13 +214,29 @@ static void fasttrap_provider_free(fasttrap_provider_t *);
 static fasttrap_proc_t *fasttrap_proc_lookup(pid_t);
 static void fasttrap_proc_release(fasttrap_proc_t *);
 
+#ifndef illumos
+static void fasttrap_thread_dtor(void *, struct thread *);
+#endif
+
 #define	FASTTRAP_PROVS_INDEX(pid, name) \
 	((fasttrap_hash_str(name) + (pid)) & fasttrap_provs.fth_mask)
 
 #define	FASTTRAP_PROCS_INDEX(pid) ((pid) & fasttrap_procs.fth_mask)
 
-#if !defined(sun)
+#ifndef illumos
 static kmutex_t fasttrap_cpuc_pid_lock[MAXCPU];
+static eventhandler_tag fasttrap_thread_dtor_tag;
+#endif
+
+static unsigned long tpoints_hash_size = FASTTRAP_TPOINTS_DEFAULT_SIZE;
+
+#ifdef __FreeBSD__
+SYSCTL_DECL(_kern_dtrace);
+SYSCTL_NODE(_kern_dtrace, OID_AUTO, fasttrap, CTLFLAG_RD, 0, "DTrace fasttrap parameters");
+SYSCTL_UINT(_kern_dtrace_fasttrap, OID_AUTO, max_probes, CTLFLAG_RWTUN, &fasttrap_max,
+    FASTTRAP_MAX_DEFAULT, "Maximum number of fasttrap probes");
+SYSCTL_ULONG(_kern_dtrace_fasttrap, OID_AUTO, tpoints_hash_size, CTLFLAG_RDTUN, &tpoints_hash_size,
+    FASTTRAP_TPOINTS_DEFAULT_SIZE, "Size of the tracepoint hash table");
 #endif
 
 static int
@@ -263,7 +287,7 @@ fasttrap_hash_str(const char *p)
 void
 fasttrap_sigtrap(proc_t *p, kthread_t *t, uintptr_t pc)
 {
-#if defined(sun)
+#ifdef illumos
 	sigqueue_t *sqp = kmem_zalloc(sizeof (sigqueue_t), KM_SLEEP);
 
 	sqp->sq_info.si_signo = SIGTRAP;
@@ -284,10 +308,122 @@ fasttrap_sigtrap(proc_t *p, kthread_t *t, uintptr_t pc)
 	ksi->ksi_code = TRAP_DTRACE;
 	ksi->ksi_addr = (caddr_t)pc;
 	PROC_LOCK(p);
-	(void) tdksignal(t, SIGTRAP, ksi);
+	(void) tdsendsignal(p, t, SIGTRAP, ksi);
 	PROC_UNLOCK(p);
 #endif
 }
+
+#ifndef illumos
+/*
+ * Obtain a chunk of scratch space in the address space of the target process.
+ */
+fasttrap_scrspace_t *
+fasttrap_scraddr(struct thread *td, fasttrap_proc_t *fprc)
+{
+	fasttrap_scrblock_t *scrblk;
+	fasttrap_scrspace_t *scrspc;
+	struct proc *p;
+	vm_offset_t addr;
+	int error, i;
+
+	scrspc = NULL;
+	if (td->t_dtrace_sscr != NULL) {
+		/* If the thread already has scratch space, we're done. */
+		scrspc = (fasttrap_scrspace_t *)td->t_dtrace_sscr;
+		return (scrspc);
+	}
+
+	p = td->td_proc;
+
+	mutex_enter(&fprc->ftpc_mtx);
+	if (LIST_EMPTY(&fprc->ftpc_fscr)) {
+		/*
+		 * No scratch space is available, so we'll map a new scratch
+		 * space block into the traced process' address space.
+		 */
+		addr = 0;
+		error = vm_map_find(&p->p_vmspace->vm_map, NULL, 0, &addr,
+		    FASTTRAP_SCRBLOCK_SIZE, 0, VMFS_ANY_SPACE, VM_PROT_ALL,
+		    VM_PROT_ALL, 0);
+		if (error != KERN_SUCCESS)
+			goto done;
+
+		scrblk = malloc(sizeof(*scrblk), M_SOLARIS, M_WAITOK);
+		scrblk->ftsb_addr = addr;
+		LIST_INSERT_HEAD(&fprc->ftpc_scrblks, scrblk, ftsb_next);
+
+		/*
+		 * Carve the block up into chunks and put them on the free list.
+		 */
+		for (i = 0;
+		    i < FASTTRAP_SCRBLOCK_SIZE / FASTTRAP_SCRSPACE_SIZE; i++) {
+			scrspc = malloc(sizeof(*scrspc), M_SOLARIS, M_WAITOK);
+			scrspc->ftss_addr = addr +
+			    i * FASTTRAP_SCRSPACE_SIZE;
+			LIST_INSERT_HEAD(&fprc->ftpc_fscr, scrspc,
+			    ftss_next);
+		}
+	}
+
+	/*
+	 * Take the first scratch chunk off the free list, put it on the
+	 * allocated list, and return its address.
+	 */
+	scrspc = LIST_FIRST(&fprc->ftpc_fscr);
+	LIST_REMOVE(scrspc, ftss_next);
+	LIST_INSERT_HEAD(&fprc->ftpc_ascr, scrspc, ftss_next);
+
+	/*
+	 * This scratch space is reserved for use by td until the thread exits.
+	 */
+	td->t_dtrace_sscr = scrspc;
+
+done:
+	mutex_exit(&fprc->ftpc_mtx);
+
+	return (scrspc);
+}
+
+/*
+ * Return any allocated per-thread scratch space chunks back to the process'
+ * free list.
+ */
+static void
+fasttrap_thread_dtor(void *arg __unused, struct thread *td)
+{
+	fasttrap_bucket_t *bucket;
+	fasttrap_proc_t *fprc;
+	fasttrap_scrspace_t *scrspc;
+	pid_t pid;
+
+	if (td->t_dtrace_sscr == NULL)
+		return;
+
+	pid = td->td_proc->p_pid;
+	bucket = &fasttrap_procs.fth_table[FASTTRAP_PROCS_INDEX(pid)];
+	fprc = NULL;
+
+	/* Look up the fasttrap process handle for this process. */
+	mutex_enter(&bucket->ftb_mtx);
+	for (fprc = bucket->ftb_data; fprc != NULL; fprc = fprc->ftpc_next) {
+		if (fprc->ftpc_pid == pid) {
+			mutex_enter(&fprc->ftpc_mtx);
+			mutex_exit(&bucket->ftb_mtx);
+			break;
+		}
+	}
+	if (fprc == NULL) {
+		mutex_exit(&bucket->ftb_mtx);
+		return;
+	}
+
+	scrspc = (fasttrap_scrspace_t *)td->t_dtrace_sscr;
+	LIST_REMOVE(scrspc, ftss_next);
+	LIST_INSERT_HEAD(&fprc->ftpc_fscr, scrspc, ftss_next);
+
+	mutex_exit(&fprc->ftpc_mtx);
+}
+#endif
 
 /*
  * This function ensures that no threads are actively using the memory
@@ -449,16 +585,20 @@ fasttrap_pid_cleanup(void)
 static void
 fasttrap_fork(proc_t *p, proc_t *cp)
 {
+#ifndef illumos
+	fasttrap_scrblock_t *scrblk;
+	fasttrap_proc_t *fprc = NULL;
+#endif
 	pid_t ppid = p->p_pid;
 	int i;
 
-#if defined(sun)
+#ifdef illumos
 	ASSERT(curproc == p);
 	ASSERT(p->p_proc_flag & P_PR_LOCK);
 #else
 	PROC_LOCK_ASSERT(p, MA_OWNED);
 #endif
-#if defined(sun)
+#ifdef illumos
 	ASSERT(p->p_dtrace_count > 0);
 #else
 	if (p->p_dtrace_helpers) {
@@ -497,12 +637,18 @@ fasttrap_fork(proc_t *p, proc_t *cp)
 	 * We don't have to worry about the child process disappearing
 	 * because we're in fork().
 	 */
-#if defined(sun)
+#ifdef illumos
 	mtx_lock_spin(&cp->p_slock);
 	sprlock_proc(cp);
 	mtx_unlock_spin(&cp->p_slock);
 #else
+	/*
+	 * fasttrap_tracepoint_remove() expects the child process to be
+	 * unlocked and the VM then expects curproc to be unlocked.
+	 */
 	_PHOLD(cp);
+	PROC_UNLOCK(cp);
+	PROC_UNLOCK(p);
 #endif
 
 	/*
@@ -528,15 +674,36 @@ fasttrap_fork(proc_t *p, proc_t *cp)
 				 * mid-fork.
 				 */
 				ASSERT(tp->ftt_proc->ftpc_acount != 0);
+#ifndef illumos
+				fprc = tp->ftt_proc;
+#endif
 			}
 		}
 		mutex_exit(&bucket->ftb_mtx);
+
+#ifndef illumos
+		/*
+		 * Unmap any scratch space inherited from the parent's address
+		 * space.
+		 */
+		if (fprc != NULL) {
+			mutex_enter(&fprc->ftpc_mtx);
+			LIST_FOREACH(scrblk, &fprc->ftpc_scrblks, ftsb_next) {
+				vm_map_remove(&cp->p_vmspace->vm_map,
+				    scrblk->ftsb_addr,
+				    scrblk->ftsb_addr + FASTTRAP_SCRBLOCK_SIZE);
+			}
+			mutex_exit(&fprc->ftpc_mtx);
+		}
+#endif
 	}
 
-#if defined(sun)
+#ifdef illumos
 	mutex_enter(&cp->p_lock);
 	sprunlock(cp);
 #else
+	PROC_LOCK(p);
+	PROC_LOCK(cp);
 	_PRELE(cp);
 #endif
 }
@@ -549,24 +716,36 @@ fasttrap_fork(proc_t *p, proc_t *cp)
 static void
 fasttrap_exec_exit(proc_t *p)
 {
-#if defined(sun)
-	ASSERT(p == curproc);
+#ifndef illumos
+	struct thread *td;
 #endif
+
+#ifdef illumos
+	ASSERT(p == curproc);
+#else
 	PROC_LOCK_ASSERT(p, MA_OWNED);
 	_PHOLD(p);
+	/*
+	 * Since struct threads may be recycled, we cannot rely on t_dtrace_sscr
+	 * fields to be zeroed by kdtrace_thread_ctor. Thus we must zero it
+	 * ourselves when a process exits.
+	 */
+	FOREACH_THREAD_IN_PROC(p, td)
+		td->t_dtrace_sscr = NULL;
 	PROC_UNLOCK(p);
+#endif
 
 	/*
 	 * We clean up the pid provider for this process here; user-land
 	 * static probes are handled by the meta-provider remove entry point.
 	 */
 	fasttrap_provider_retire(p->p_pid, FASTTRAP_PID_NAME, 0);
-#if !defined(sun)
+#ifndef illumos
 	if (p->p_dtrace_helpers)
 		dtrace_helpers_destroy(p);
-#endif
 	PROC_LOCK(p);
 	_PRELE(p);
+#endif
 }
 
 
@@ -596,7 +775,7 @@ fasttrap_tracepoint_enable(proc_t *p, fasttrap_probe_t *probe, uint_t index)
 
 	ASSERT(probe->ftp_tps[index].fit_tp->ftt_pid == pid);
 
-#if defined(sun)
+#ifdef illumos
 	ASSERT(!(p->p_flag & SVFORK));
 #endif
 
@@ -704,7 +883,7 @@ again:
 		 * Increment the count of the number of tracepoints active in
 		 * the victim process.
 		 */
-#if defined(sun)
+#ifdef illumos
 		ASSERT(p->p_proc_flag & P_PR_LOCK);
 #endif
 		p->p_dtrace_count++;
@@ -896,7 +1075,7 @@ fasttrap_tracepoint_disable(proc_t *p, fasttrap_probe_t *probe, uint_t index)
 		 * Decrement the count of the number of tracepoints active
 		 * in the victim process.
 		 */
-#if defined(sun)
+#ifdef illumos
 		ASSERT(p->p_proc_flag & P_PR_LOCK);
 #endif
 		p->p_dtrace_count--;
@@ -949,7 +1128,7 @@ fasttrap_enable_callbacks(void)
 static void
 fasttrap_disable_callbacks(void)
 {
-#if defined(sun)
+#ifdef illumos
 	ASSERT(MUTEX_HELD(&cpu_lock));
 #endif
 
@@ -958,7 +1137,7 @@ fasttrap_disable_callbacks(void)
 	ASSERT(fasttrap_pid_count > 0);
 	fasttrap_pid_count--;
 	if (fasttrap_pid_count == 0) {
-#if defined(sun)
+#ifdef illumos
 		cpu_t *cur, *cpu = CPU;
 
 		for (cur = cpu->cpu_next_onln; cur != cpu;
@@ -968,7 +1147,7 @@ fasttrap_disable_callbacks(void)
 #endif
 		dtrace_pid_probe_ptr = NULL;
 		dtrace_return_probe_ptr = NULL;
-#if defined(sun)
+#ifdef illumos
 		for (cur = cpu->cpu_next_onln; cur != cpu;
 		    cur = cur->cpu_next_onln) {
 			rw_exit(&cur->cpu_ft_lock);
@@ -989,7 +1168,7 @@ fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg)
 	ASSERT(probe != NULL);
 	ASSERT(!probe->ftp_enabled);
 	ASSERT(id == probe->ftp_id);
-#if defined(sun)
+#ifdef illumos
 	ASSERT(MUTEX_HELD(&cpu_lock));
 #endif
 
@@ -1016,7 +1195,7 @@ fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg)
 	 * a fork in which the traced process is being born and we're copying
 	 * USDT probes. Otherwise, the process is gone so bail.
 	 */
-#if defined(sun)
+#ifdef illumos
 	if ((p = sprlock(probe->ftp_pid)) == NULL) {
 		if ((curproc->p_flag & SFORKING) == 0)
 			return;
@@ -1024,11 +1203,21 @@ fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg)
 		mutex_enter(&pidlock);
 		p = prfind(probe->ftp_pid);
 
+		if (p == NULL) {
+			/*
+			 * So it's not that the target process is being born,
+			 * it's that it isn't there at all (and we simply
+			 * happen to be forking).  Anyway, we know that the
+			 * target is definitely gone, so bail out.
+			 */
+			mutex_exit(&pidlock);
+			return (0);
+		}
+
 		/*
 		 * Confirm that curproc is indeed forking the process in which
 		 * we're trying to enable probes.
 		 */
-		ASSERT(p != NULL);
 		ASSERT(p->p_parent == curproc);
 		ASSERT(p->p_stat == SIDL);
 
@@ -1084,7 +1273,7 @@ fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg)
 				i--;
 			}
 
-#if defined(sun)
+#ifdef illumos
 			mutex_enter(&p->p_lock);
 			sprunlock(p);
 #else
@@ -1099,7 +1288,7 @@ fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg)
 			return;
 		}
 	}
-#if defined(sun)
+#ifdef illumos
 	mutex_enter(&p->p_lock);
 	sprunlock(p);
 #else
@@ -1130,8 +1319,13 @@ fasttrap_pid_disable(void *arg, dtrace_id_t id, void *parg)
 	 */
 	if ((p = pfind(probe->ftp_pid)) != NULL) {
 #ifdef __FreeBSD__
-		_PHOLD(p);
-		PROC_UNLOCK(p);
+		if (p->p_flag & P_WEXIT) {
+			PROC_UNLOCK(p);
+			p = NULL;
+		} else {
+			_PHOLD(p);
+			PROC_UNLOCK(p);
+		}
 #endif
 	}
 
@@ -1178,7 +1372,7 @@ fasttrap_pid_disable(void *arg, dtrace_id_t id, void *parg)
 
 	probe->ftp_enabled = 0;
 
-#if defined(sun)
+#ifdef illumos
 	ASSERT(MUTEX_HELD(&cpu_lock));
 #endif
 	fasttrap_disable_callbacks();
@@ -1301,7 +1495,7 @@ fasttrap_proc_lookup(pid_t pid)
 			mutex_enter(&fprc->ftpc_mtx);
 			mutex_exit(&bucket->ftb_mtx);
 			fprc->ftpc_rcount++;
-			atomic_add_64(&fprc->ftpc_acount, 1);
+			atomic_inc_64(&fprc->ftpc_acount);
 			ASSERT(fprc->ftpc_acount <= fprc->ftpc_rcount);
 			mutex_exit(&fprc->ftpc_mtx);
 
@@ -1319,7 +1513,7 @@ fasttrap_proc_lookup(pid_t pid)
 	new_fprc->ftpc_pid = pid;
 	new_fprc->ftpc_rcount = 1;
 	new_fprc->ftpc_acount = 1;
-#if !defined(sun)
+#ifndef illumos
 	mutex_init(&new_fprc->ftpc_mtx, "fasttrap proc mtx", MUTEX_DEFAULT,
 	    NULL);
 #endif
@@ -1335,7 +1529,7 @@ fasttrap_proc_lookup(pid_t pid)
 			mutex_enter(&fprc->ftpc_mtx);
 			mutex_exit(&bucket->ftb_mtx);
 			fprc->ftpc_rcount++;
-			atomic_add_64(&fprc->ftpc_acount, 1);
+			atomic_inc_64(&fprc->ftpc_acount);
 			ASSERT(fprc->ftpc_acount <= fprc->ftpc_rcount);
 			mutex_exit(&fprc->ftpc_mtx);
 
@@ -1359,6 +1553,12 @@ fasttrap_proc_release(fasttrap_proc_t *proc)
 	fasttrap_bucket_t *bucket;
 	fasttrap_proc_t *fprc, **fprcp;
 	pid_t pid = proc->ftpc_pid;
+#ifndef illumos
+	fasttrap_scrblock_t *scrblk, *scrblktmp;
+	fasttrap_scrspace_t *scrspc, *scrspctmp;
+	struct proc *p;
+	struct thread *td;
+#endif
 
 	mutex_enter(&proc->ftpc_mtx);
 
@@ -1369,6 +1569,31 @@ fasttrap_proc_release(fasttrap_proc_t *proc)
 		mutex_exit(&proc->ftpc_mtx);
 		return;
 	}
+
+#ifndef illumos
+	/*
+	 * Free all structures used to manage per-thread scratch space.
+	 */
+	LIST_FOREACH_SAFE(scrblk, &proc->ftpc_scrblks, ftsb_next,
+	    scrblktmp) {
+		LIST_REMOVE(scrblk, ftsb_next);
+		free(scrblk, M_SOLARIS);
+	}
+	LIST_FOREACH_SAFE(scrspc, &proc->ftpc_fscr, ftss_next, scrspctmp) {
+		LIST_REMOVE(scrspc, ftss_next);
+		free(scrspc, M_SOLARIS);
+	}
+	LIST_FOREACH_SAFE(scrspc, &proc->ftpc_ascr, ftss_next, scrspctmp) {
+		LIST_REMOVE(scrspc, ftss_next);
+		free(scrspc, M_SOLARIS);
+	}
+
+	if ((p = pfind(pid)) != NULL) {
+		FOREACH_THREAD_IN_PROC(p, td)
+			td->t_dtrace_sscr = NULL;
+		PROC_UNLOCK(p);
+	}
+#endif
 
 	mutex_exit(&proc->ftpc_mtx);
 
@@ -1467,7 +1692,7 @@ fasttrap_provider_lookup(pid_t pid, const char *name,
 	new_fp = kmem_zalloc(sizeof (fasttrap_provider_t), KM_SLEEP);
 	new_fp->ftp_pid = pid;
 	new_fp->ftp_proc = fasttrap_proc_lookup(pid);
-#if !defined(sun)
+#ifndef illumos
 	mutex_init(&new_fp->ftp_mtx, "provider mtx", MUTEX_DEFAULT, NULL);
 	mutex_init(&new_fp->ftp_cmtx, "lock on creating", MUTEX_DEFAULT, NULL);
 #endif
@@ -1541,14 +1766,14 @@ fasttrap_provider_free(fasttrap_provider_t *provider)
 	 * count of active providers on the associated process structure.
 	 */
 	if (!provider->ftp_retired) {
-		atomic_add_64(&provider->ftp_proc->ftpc_acount, -1);
+		atomic_dec_64(&provider->ftp_proc->ftpc_acount);
 		ASSERT(provider->ftp_proc->ftpc_acount <
 		    provider->ftp_proc->ftpc_rcount);
 	}
 
 	fasttrap_proc_release(provider->ftp_proc);
 
-#if !defined(sun)
+#ifndef illumos
 	mutex_destroy(&provider->ftp_mtx);
 	mutex_destroy(&provider->ftp_cmtx);
 #endif
@@ -1566,7 +1791,7 @@ fasttrap_provider_free(fasttrap_provider_t *provider)
 	}
 
 	p->p_dtrace_probes--;
-#if !defined(sun)
+#ifndef illumos
 	PROC_UNLOCK(p);
 #endif
 }
@@ -1617,7 +1842,7 @@ fasttrap_provider_retire(pid_t pid, const char *name, int mprov)
 	 * bucket lock therefore protects the integrity of the provider hash
 	 * table.
 	 */
-	atomic_add_64(&fp->ftp_proc->ftpc_acount, -1);
+	atomic_dec_64(&fp->ftp_proc->ftpc_acount);
 	ASSERT(fp->ftp_proc->ftpc_acount < fp->ftp_proc->ftpc_rcount);
 
 	fp->ftp_retired = 1;
@@ -1713,10 +1938,10 @@ fasttrap_add_probe(fasttrap_probe_spec_t *pdata)
 			    pdata->ftps_mod, pdata->ftps_func, name_str) != 0)
 				continue;
 
-			atomic_add_32(&fasttrap_total, 1);
+			atomic_inc_32(&fasttrap_total);
 
 			if (fasttrap_total > fasttrap_max) {
-				atomic_add_32(&fasttrap_total, -1);
+				atomic_dec_32(&fasttrap_total);
 				goto no_mem;
 			}
 
@@ -1892,6 +2117,18 @@ fasttrap_meta_provide(void *arg, dtrace_helper_provdesc_t *dhpv, pid_t pid)
 	return (provider);
 }
 
+/*
+ * We know a few things about our context here:  we know that the probe being
+ * created doesn't already exist (DTrace won't load DOF at the same address
+ * twice, even if explicitly told to do so) and we know that we are
+ * single-threaded with respect to the meta provider machinery. Knowing that
+ * this is a new probe and that there is no way for us to race with another
+ * operation on this provider allows us an important optimization: we need not
+ * lookup a probe before adding it.  Saving this lookup is important because
+ * this code is in the fork path for processes with USDT probes, and lookups
+ * here are potentially very expensive because of long hash conflicts on
+ * module, function and name (DTrace doesn't hash on provider name).
+ */
 /*ARGSUSED*/
 static void
 fasttrap_meta_create_probe(void *arg, void *parg,
@@ -1928,19 +2165,6 @@ fasttrap_meta_create_probe(void *arg, void *parg,
 			return;
 	}
 
-	/*
-	 * Grab the creation lock to ensure consistency between calls to
-	 * dtrace_probe_lookup() and dtrace_probe_create() in the face of
-	 * other threads creating probes.
-	 */
-	mutex_enter(&provider->ftp_cmtx);
-
-	if (dtrace_probe_lookup(provider->ftp_provid, dhpb->dthpb_mod,
-	    dhpb->dthpb_func, dhpb->dthpb_name) != 0) {
-		mutex_exit(&provider->ftp_cmtx);
-		return;
-	}
-
 	ntps = dhpb->dthpb_noffs + dhpb->dthpb_nenoffs;
 	ASSERT(ntps > 0);
 
@@ -1948,7 +2172,6 @@ fasttrap_meta_create_probe(void *arg, void *parg,
 
 	if (fasttrap_total > fasttrap_max) {
 		atomic_add_32(&fasttrap_total, -ntps);
-		mutex_exit(&provider->ftp_cmtx);
 		return;
 	}
 
@@ -2012,8 +2235,6 @@ fasttrap_meta_create_probe(void *arg, void *parg,
 	 */
 	pp->ftp_id = dtrace_probe_create(provider->ftp_provid, dhpb->dthpb_mod,
 	    dhpb->dthpb_func, dhpb->dthpb_name, FASTTRAP_OFFSET_AFRAMES, pp);
-
-	mutex_exit(&provider->ftp_cmtx);
 }
 
 /*ARGSUSED*/
@@ -2056,20 +2277,15 @@ fasttrap_ioctl(struct cdev *dev, u_long cmd, caddr_t arg, int fflag,
 		return (EAGAIN);
 
 	if (cmd == FASTTRAPIOC_MAKEPROBE) {
-		fasttrap_probe_spec_t *uprobe = (void *)arg;
+		fasttrap_probe_spec_t *uprobe = *(fasttrap_probe_spec_t **)arg;
 		fasttrap_probe_spec_t *probe;
 		uint64_t noffs;
 		size_t size;
-		int ret;
-		char *c;
+		int ret, err;
 
-#if defined(sun)
 		if (copyin(&uprobe->ftps_noffs, &noffs,
 		    sizeof (uprobe->ftps_noffs)))
 			return (EFAULT);
-#else
-		noffs = uprobe->ftps_noffs;
-#endif
 
 		/*
 		 * Probes must have at least one tracepoint.
@@ -2085,36 +2301,26 @@ fasttrap_ioctl(struct cdev *dev, u_long cmd, caddr_t arg, int fflag,
 
 		probe = kmem_alloc(size, KM_SLEEP);
 
-#if defined(sun)
-		if (copyin(uprobe, probe, size) != 0) {
+		if (copyin(uprobe, probe, size) != 0 ||
+		    probe->ftps_noffs != noffs) {
 			kmem_free(probe, size);
 			return (EFAULT);
 		}
-#else
-		memcpy(probe, uprobe, sizeof(*probe));
-		if (noffs > 1 && copyin(uprobe + 1, probe + 1, size) != 0) {
-			kmem_free(probe, size);
-			return (EFAULT);
-		}
-#endif
-
 
 		/*
 		 * Verify that the function and module strings contain no
 		 * funny characters.
 		 */
-		for (c = &probe->ftps_func[0]; *c != '\0'; c++) {
-			if (*c < 0x20 || 0x7f <= *c) {
-				ret = EINVAL;
-				goto err;
-			}
+		if (u8_validate(probe->ftps_func, strlen(probe->ftps_func),
+		    NULL, U8_VALIDATE_ENTIRE, &err) < 0) {
+			ret = EINVAL;
+			goto err;
 		}
 
-		for (c = &probe->ftps_mod[0]; *c != '\0'; c++) {
-			if (*c < 0x20 || 0x7f <= *c) {
-				ret = EINVAL;
-				goto err;
-			}
+		if (u8_validate(probe->ftps_mod, strlen(probe->ftps_mod),
+		    NULL, U8_VALIDATE_ENTIRE, &err) < 0) {
+			ret = EINVAL;
+			goto err;
 		}
 
 #ifdef notyet
@@ -2122,23 +2328,25 @@ fasttrap_ioctl(struct cdev *dev, u_long cmd, caddr_t arg, int fflag,
 			proc_t *p;
 			pid_t pid = probe->ftps_pid;
 
-#if defined(sun)
+#ifdef illumos
 			mutex_enter(&pidlock);
 #endif
 			/*
 			 * Report an error if the process doesn't exist
 			 * or is actively being birthed.
 			 */
+			sx_slock(&proctree_lock);
 			p = pfind(pid);
 			if (p)
 				fill_kinfo_proc(p, &kp);
+			sx_sunlock(&proctree_lock);
 			if (p == NULL || kp.ki_stat == SIDL) {
-#if defined(sun)
+#ifdef illumos
 				mutex_exit(&pidlock);
 #endif
 				return (ESRCH);
 			}
-#if defined(sun)
+#ifdef illumos
 			mutex_enter(&p->p_lock);
 			mutex_exit(&pidlock);
 #else
@@ -2148,7 +2356,7 @@ fasttrap_ioctl(struct cdev *dev, u_long cmd, caddr_t arg, int fflag,
 #ifdef notyet
 			if ((ret = priv_proc_cred_perm(cr, p, NULL,
 			    VREAD | VWRITE)) != 0) {
-#if defined(sun)
+#ifdef illumos
 				mutex_exit(&p->p_lock);
 #else
 				PROC_UNLOCK(p);
@@ -2156,7 +2364,7 @@ fasttrap_ioctl(struct cdev *dev, u_long cmd, caddr_t arg, int fflag,
 				return (ret);
 			}
 #endif /* notyet */
-#if defined(sun)
+#ifdef illumos
 			mutex_exit(&p->p_lock);
 #else
 			PROC_UNLOCK(p);
@@ -2174,11 +2382,11 @@ err:
 		fasttrap_instr_query_t instr;
 		fasttrap_tracepoint_t *tp;
 		uint_t index;
-#if defined(sun)
+#ifdef illumos
 		int ret;
 #endif
 
-#if defined(sun)
+#ifdef illumos
 		if (copyin((void *)arg, &instr, sizeof (instr)) != 0)
 			return (EFAULT);
 #endif
@@ -2188,23 +2396,25 @@ err:
 			proc_t *p;
 			pid_t pid = instr.ftiq_pid;
 
-#if defined(sun)
+#ifdef illumos
 			mutex_enter(&pidlock);
 #endif
 			/*
 			 * Report an error if the process doesn't exist
 			 * or is actively being birthed.
 			 */
+			sx_slock(&proctree_lock);
 			p = pfind(pid);
 			if (p)
 				fill_kinfo_proc(p, &kp);
+			sx_sunlock(&proctree_lock);
 			if (p == NULL || kp.ki_stat == SIDL) {
-#if defined(sun)
+#ifdef illumos
 				mutex_exit(&pidlock);
 #endif
 				return (ESRCH);
 			}
-#if defined(sun)
+#ifdef illumos
 			mutex_enter(&p->p_lock);
 			mutex_exit(&pidlock);
 #else
@@ -2214,7 +2424,7 @@ err:
 #ifdef notyet
 			if ((ret = priv_proc_cred_perm(cr, p, NULL,
 			    VREAD)) != 0) {
-#if defined(sun)
+#ifdef illumos
 				mutex_exit(&p->p_lock);
 #else
 				PROC_UNLOCK(p);
@@ -2223,7 +2433,7 @@ err:
 			}
 #endif /* notyet */
 
-#if defined(sun)
+#ifdef illumos
 			mutex_exit(&p->p_lock);
 #else
 			PROC_UNLOCK(p);
@@ -2276,42 +2486,28 @@ fasttrap_load(void)
 	mutex_init(&fasttrap_count_mtx, "fasttrap count mtx", MUTEX_DEFAULT,
 	    NULL);
 
-	ret = kproc_create(fasttrap_pid_cleanup_cb, NULL,
-	    &fasttrap_cleanup_proc, 0, 0, "ftcleanup");
-	if (ret != 0) {
-		destroy_dev(fasttrap_cdev);
-		return (ret);
-	}
-
-	/*
-	 * Install our hooks into fork(2), exec(2), and exit(2).
-	 */
-	dtrace_fasttrap_fork = &fasttrap_fork;
-	dtrace_fasttrap_exit = &fasttrap_exec_exit;
-	dtrace_fasttrap_exec = &fasttrap_exec_exit;
-
-#if defined(sun)
+#ifdef illumos
 	fasttrap_max = ddi_getprop(DDI_DEV_T_ANY, devi, DDI_PROP_DONTPASS,
 	    "fasttrap-max-probes", FASTTRAP_MAX_DEFAULT);
-#else
-	fasttrap_max = FASTTRAP_MAX_DEFAULT;
 #endif
 	fasttrap_total = 0;
 
 	/*
 	 * Conjure up the tracepoints hashtable...
 	 */
-#if defined(sun)
+#ifdef illumos
 	nent = ddi_getprop(DDI_DEV_T_ANY, devi, DDI_PROP_DONTPASS,
 	    "fasttrap-hash-size", FASTTRAP_TPOINTS_DEFAULT_SIZE);
 #else
-	nent = FASTTRAP_TPOINTS_DEFAULT_SIZE;
+	nent = tpoints_hash_size;
 #endif
 
 	if (nent == 0 || nent > 0x1000000)
 		nent = FASTTRAP_TPOINTS_DEFAULT_SIZE;
 
-	if ((nent & (nent - 1)) == 0)
+	tpoints_hash_size = nent;
+
+	if (ISP2(nent))
 		fasttrap_tpoints.fth_nent = nent;
 	else
 		fasttrap_tpoints.fth_nent = 1 << fasttrap_highbit(nent);
@@ -2319,7 +2515,7 @@ fasttrap_load(void)
 	fasttrap_tpoints.fth_mask = fasttrap_tpoints.fth_nent - 1;
 	fasttrap_tpoints.fth_table = kmem_zalloc(fasttrap_tpoints.fth_nent *
 	    sizeof (fasttrap_bucket_t), KM_SLEEP);
-#if !defined(sun)
+#ifndef illumos
 	for (i = 0; i < fasttrap_tpoints.fth_nent; i++)
 		mutex_init(&fasttrap_tpoints.fth_table[i].ftb_mtx,
 		    "tracepoints bucket mtx", MUTEX_DEFAULT, NULL);
@@ -2329,7 +2525,7 @@ fasttrap_load(void)
 	 * ... and the providers hash table...
 	 */
 	nent = FASTTRAP_PROVIDERS_DEFAULT_SIZE;
-	if ((nent & (nent - 1)) == 0)
+	if (ISP2(nent))
 		fasttrap_provs.fth_nent = nent;
 	else
 		fasttrap_provs.fth_nent = 1 << fasttrap_highbit(nent);
@@ -2337,17 +2533,35 @@ fasttrap_load(void)
 	fasttrap_provs.fth_mask = fasttrap_provs.fth_nent - 1;
 	fasttrap_provs.fth_table = kmem_zalloc(fasttrap_provs.fth_nent *
 	    sizeof (fasttrap_bucket_t), KM_SLEEP);
-#if !defined(sun)
+#ifndef illumos
 	for (i = 0; i < fasttrap_provs.fth_nent; i++)
 		mutex_init(&fasttrap_provs.fth_table[i].ftb_mtx, 
 		    "providers bucket mtx", MUTEX_DEFAULT, NULL);
 #endif
 
+	ret = kproc_create(fasttrap_pid_cleanup_cb, NULL,
+	    &fasttrap_cleanup_proc, 0, 0, "ftcleanup");
+	if (ret != 0) {
+		destroy_dev(fasttrap_cdev);
+#ifndef illumos
+		for (i = 0; i < fasttrap_provs.fth_nent; i++)
+			mutex_destroy(&fasttrap_provs.fth_table[i].ftb_mtx);
+		for (i = 0; i < fasttrap_tpoints.fth_nent; i++)
+			mutex_destroy(&fasttrap_tpoints.fth_table[i].ftb_mtx);
+#endif
+		kmem_free(fasttrap_provs.fth_table, fasttrap_provs.fth_nent *
+		    sizeof (fasttrap_bucket_t));
+		mtx_destroy(&fasttrap_cleanup_mtx);
+		mutex_destroy(&fasttrap_count_mtx);
+		return (ret);
+	}
+
+
 	/*
 	 * ... and the procs hash table.
 	 */
 	nent = FASTTRAP_PROCS_DEFAULT_SIZE;
-	if ((nent & (nent - 1)) == 0)
+	if (ISP2(nent))
 		fasttrap_procs.fth_nent = nent;
 	else
 		fasttrap_procs.fth_nent = 1 << fasttrap_highbit(nent);
@@ -2355,7 +2569,7 @@ fasttrap_load(void)
 	fasttrap_procs.fth_mask = fasttrap_procs.fth_nent - 1;
 	fasttrap_procs.fth_table = kmem_zalloc(fasttrap_procs.fth_nent *
 	    sizeof (fasttrap_bucket_t), KM_SLEEP);
-#if !defined(sun)
+#ifndef illumos
 	for (i = 0; i < fasttrap_procs.fth_nent; i++)
 		mutex_init(&fasttrap_procs.fth_table[i].ftb_mtx,
 		    "processes bucket mtx", MUTEX_DEFAULT, NULL);
@@ -2364,7 +2578,21 @@ fasttrap_load(void)
 		mutex_init(&fasttrap_cpuc_pid_lock[i], "fasttrap barrier",
 		    MUTEX_DEFAULT, NULL);
 	}
+
+	/*
+	 * This event handler must run before kdtrace_thread_dtor() since it
+	 * accesses the thread's struct kdtrace_thread.
+	 */
+	fasttrap_thread_dtor_tag = EVENTHANDLER_REGISTER(thread_dtor,
+	    fasttrap_thread_dtor, NULL, EVENTHANDLER_PRI_FIRST);
 #endif
+
+	/*
+	 * Install our hooks into fork(2), exec(2), and exit(2).
+	 */
+	dtrace_fasttrap_fork = &fasttrap_fork;
+	dtrace_fasttrap_exit = &fasttrap_exec_exit;
+	dtrace_fasttrap_exec = &fasttrap_exec_exit;
 
 	(void) dtrace_meta_register("fasttrap", &fasttrap_mops, NULL,
 	    &fasttrap_meta_id);
@@ -2428,6 +2656,20 @@ fasttrap_unload(void)
 		return (-1);
 	}
 
+	/*
+	 * Stop new processes from entering these hooks now, before the
+	 * fasttrap_cleanup thread runs.  That way all processes will hopefully
+	 * be out of these hooks before we free fasttrap_provs.fth_table
+	 */
+	ASSERT(dtrace_fasttrap_fork == &fasttrap_fork);
+	dtrace_fasttrap_fork = NULL;
+
+	ASSERT(dtrace_fasttrap_exec == &fasttrap_exec_exit);
+	dtrace_fasttrap_exec = NULL;
+
+	ASSERT(dtrace_fasttrap_exit == &fasttrap_exec_exit);
+	dtrace_fasttrap_exit = NULL;
+
 	mtx_lock(&fasttrap_cleanup_mtx);
 	fasttrap_cleanup_drain = 1;
 	/* Wait for the cleanup thread to finish up and signal us. */
@@ -2435,6 +2677,7 @@ fasttrap_unload(void)
 	mtx_sleep(&fasttrap_cleanup_drain, &fasttrap_cleanup_mtx, 0, "ftcld",
 	    0);
 	fasttrap_cleanup_proc = NULL;
+	mtx_destroy(&fasttrap_cleanup_mtx);
 
 #ifdef DEBUG
 	mutex_enter(&fasttrap_count_mtx);
@@ -2442,6 +2685,16 @@ fasttrap_unload(void)
 	mutex_exit(&fasttrap_count_mtx);
 #endif
 
+#ifndef illumos
+	EVENTHANDLER_DEREGISTER(thread_dtor, fasttrap_thread_dtor_tag);
+
+	for (i = 0; i < fasttrap_tpoints.fth_nent; i++)
+		mutex_destroy(&fasttrap_tpoints.fth_table[i].ftb_mtx);
+	for (i = 0; i < fasttrap_provs.fth_nent; i++)
+		mutex_destroy(&fasttrap_provs.fth_table[i].ftb_mtx);
+	for (i = 0; i < fasttrap_procs.fth_nent; i++)
+		mutex_destroy(&fasttrap_procs.fth_table[i].ftb_mtx);
+#endif
 	kmem_free(fasttrap_tpoints.fth_table,
 	    fasttrap_tpoints.fth_nent * sizeof (fasttrap_bucket_t));
 	fasttrap_tpoints.fth_nent = 0;
@@ -2454,23 +2707,7 @@ fasttrap_unload(void)
 	    fasttrap_procs.fth_nent * sizeof (fasttrap_bucket_t));
 	fasttrap_procs.fth_nent = 0;
 
-	/*
-	 * We know there are no tracepoints in any process anywhere in
-	 * the system so there is no process which has its p_dtrace_count
-	 * greater than zero, therefore we know that no thread can actively
-	 * be executing code in fasttrap_fork(). Similarly for p_dtrace_probes
-	 * and fasttrap_exec() and fasttrap_exit().
-	 */
-	ASSERT(dtrace_fasttrap_fork == &fasttrap_fork);
-	dtrace_fasttrap_fork = NULL;
-
-	ASSERT(dtrace_fasttrap_exec == &fasttrap_exec_exit);
-	dtrace_fasttrap_exec = NULL;
-
-	ASSERT(dtrace_fasttrap_exit == &fasttrap_exec_exit);
-	dtrace_fasttrap_exit = NULL;
-
-#if !defined(sun)
+#ifndef illumos
 	destroy_dev(fasttrap_cdev);
 	mutex_destroy(&fasttrap_count_mtx);
 	CPU_FOREACH(i) {

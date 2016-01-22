@@ -60,7 +60,6 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_ddb.h"
-#include "opt_kdtrace.h"
 #include "opt_turnstile_profiling.h"
 #include "opt_sched.h"
 
@@ -170,8 +169,8 @@ static int	turnstile_init(void *mem, int size, int flags);
 static void	turnstile_fini(void *mem, int size);
 
 SDT_PROVIDER_DECLARE(sched);
-SDT_PROBE_DEFINE(sched, , , sleep, sleep);
-SDT_PROBE_DEFINE2(sched, , , wakeup, wakeup, "struct thread *", 
+SDT_PROBE_DEFINE(sched, , , sleep);
+SDT_PROBE_DEFINE2(sched, , , wakeup, "struct thread *", 
     "struct proc *");
 
 /*
@@ -1152,7 +1151,7 @@ DB_SHOW_COMMAND(lockchain, db_show_lockchain)
 
 	/* Figure out which thread to start with. */
 	if (have_addr)
-		td = db_lookup_thread(addr, TRUE);
+		td = db_lookup_thread(addr, true);
 	else
 		td = kdb_thread;
 
@@ -1237,7 +1236,7 @@ DB_SHOW_COMMAND(sleepchain, db_show_sleepchain)
 
 	/* Figure out which thread to start with. */
 	if (have_addr)
-		td = db_lookup_thread(addr, TRUE);
+		td = db_lookup_thread(addr, true);
 	else
 		td = kdb_thread;
 

@@ -8,17 +8,15 @@ CFLAGS+=	-I${KRB5DIR}/lib/kadm5 \
 		-I${KRB5DIR}/lib/roken \
 		-I${KRB5DIR}/lib/sl \
 		-I.
-DPADD=	${LIBKADM5SRV} ${LIBHDB} ${LIBKRB5} ${LIBASN1} ${LIBCRYPTO} \
-	${LIBCRYPT} ${LIBSL} ${LIBROKEN} ${LIBVERS} ${LIBEDIT}
-LDADD=	-lkadm5srv -lhdb -lkrb5 -lasn1 -lcrypto -lcrypt ${LIBSL} -lroken \
-	${LIBVERS} -ledit
+LIBADD=	kadm5srv hdb krb5 roken edit sl vers
+LDFLAGS=${LDAPLDFLAGS}
+
+CLEANFILES=	iprop-commands.h iprop-commands.c
 
 iprop-commands.h: iprop-commands.in
 	${SLC} ${.ALLSRC:M*.in}
 
-.for ext in c o
-iprop-commands.${ext}: iprop-commands.h
-.endfor
+iprop-commands.c: iprop-commands.h
 
 .include <bsd.prog.mk>
 

@@ -10,9 +10,6 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. Neither the name of the author nor the names of any co-contributors
- *    may be used to endorse or promote products derived from this software
- *    without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -62,6 +59,9 @@ cpuset_t logical_cpus_mask;
 
 void (*cpustop_restartfunc)(void);
 #endif
+
+static int sysctl_kern_smp_active(SYSCTL_HANDLER_ARGS);
+
 /* This is used in modules that need to work in both SMP and UP. */
 cpuset_t all_cpus;
 
@@ -81,23 +81,20 @@ SYSCTL_INT(_kern_smp, OID_AUTO, maxid, CTLFLAG_RD|CTLFLAG_CAPRD, &mp_maxid, 0,
 SYSCTL_INT(_kern_smp, OID_AUTO, maxcpus, CTLFLAG_RD|CTLFLAG_CAPRD, &mp_maxcpus,
     0, "Max number of CPUs that the system was compiled for.");
 
-int smp_active = 0;	/* are the APs allowed to run? */
-SYSCTL_INT(_kern_smp, OID_AUTO, active, CTLFLAG_RW, &smp_active, 0,
-    "Number of Auxillary Processors (APs) that were successfully started");
+SYSCTL_PROC(_kern_smp, OID_AUTO, active, CTLFLAG_RD | CTLTYPE_INT, NULL, 0,
+    sysctl_kern_smp_active, "I", "Indicates system is running in SMP mode");
 
 int smp_disabled = 0;	/* has smp been disabled? */
 SYSCTL_INT(_kern_smp, OID_AUTO, disabled, CTLFLAG_RDTUN|CTLFLAG_CAPRD,
     &smp_disabled, 0, "SMP has been disabled from the loader");
-TUNABLE_INT("kern.smp.disabled", &smp_disabled);
 
 int smp_cpus = 1;	/* how many cpu's running */
 SYSCTL_INT(_kern_smp, OID_AUTO, cpus, CTLFLAG_RD|CTLFLAG_CAPRD, &smp_cpus, 0,
     "Number of CPUs online");
 
 int smp_topology = 0;	/* Which topology we're using. */
-SYSCTL_INT(_kern_smp, OID_AUTO, topology, CTLFLAG_RD, &smp_topology, 0,
+SYSCTL_INT(_kern_smp, OID_AUTO, topology, CTLFLAG_RDTUN, &smp_topology, 0,
     "Topology override setting; 0 is default provided by hardware.");
-TUNABLE_INT("kern.smp.topology", &smp_topology);
 
 #ifdef SMP
 /* Enable forwarding of a signal to a process running on a different CPU */
@@ -128,7 +125,15 @@ struct mtx smp_ipi_mtx;
 static void
 mp_setmaxid(void *dummy)
 {
+
 	cpu_mp_setmaxid();
+
+	KASSERT(mp_ncpus >= 1, ("%s: CPU count < 1", __func__));
+	KASSERT(mp_ncpus > 1 || mp_maxid == 0,
+	    ("%s: one CPU but mp_maxid is not zero", __func__));
+	KASSERT(mp_maxid >= mp_ncpus - 1,
+	    ("%s: counters out of sync: max %d, count %d", __func__,
+		mp_maxid, mp_ncpus));
 }
 SYSINIT(cpu_mp_setmaxid, SI_SUB_TUNABLES, SI_ORDER_FIRST, mp_setmaxid, NULL);
 
@@ -225,6 +230,18 @@ generic_stop_cpus(cpuset_t map, u_int type)
 	CTR2(KTR_SMP, "stop_cpus(%s) with %u type",
 	    cpusetobj_strprint(cpusetbuf, &map), type);
 
+#if defined(__amd64__) || defined(__i386__)
+	/*
+	 * When suspending, ensure there are are no IPIs in progress.
+	 * IPIs that have been issued, but not yet delivered (e.g.
+	 * not pending on a vCPU when running under virtualization)
+	 * will be lost, violating FreeBSD's assumption of reliable
+	 * IPI delivery.
+	 */
+	if (type == IPI_SUSPEND)
+		mtx_lock_spin(&smp_ipi_mtx);
+#endif
+
 	if (stopping_cpu != PCPU_GET(cpuid))
 		while (atomic_cmpset_int(&stopping_cpu, NOCPU,
 		    PCPU_GET(cpuid)) == 0)
@@ -251,6 +268,11 @@ generic_stop_cpus(cpuset_t map, u_int type)
 			break;
 		}
 	}
+
+#if defined(__amd64__) || defined(__i386__)
+	if (type == IPI_SUSPEND)
+		mtx_unlock_spin(&smp_ipi_mtx);
+#endif
 
 	stopping_cpu = NOCPU;
 	return (1);
@@ -292,27 +314,59 @@ suspend_cpus(cpuset_t map)
  *   0: NA
  *   1: ok
  */
-int
-restart_cpus(cpuset_t map)
+static int
+generic_restart_cpus(cpuset_t map, u_int type)
 {
 #ifdef KTR
 	char cpusetbuf[CPUSETBUFSIZ];
 #endif
+	volatile cpuset_t *cpus;
+
+	KASSERT(
+#if defined(__amd64__) || defined(__i386__)
+	    type == IPI_STOP || type == IPI_STOP_HARD || type == IPI_SUSPEND,
+#else
+	    type == IPI_STOP || type == IPI_STOP_HARD,
+#endif
+	    ("%s: invalid stop type", __func__));
 
 	if (!smp_started)
 		return 0;
 
 	CTR1(KTR_SMP, "restart_cpus(%s)", cpusetobj_strprint(cpusetbuf, &map));
 
+#if defined(__amd64__) || defined(__i386__)
+	if (type == IPI_SUSPEND)
+		cpus = &suspended_cpus;
+	else
+#endif
+		cpus = &stopped_cpus;
+
 	/* signal other cpus to restart */
 	CPU_COPY_STORE_REL(&map, &started_cpus);
 
 	/* wait for each to clear its bit */
-	while (CPU_OVERLAP(&stopped_cpus, &map))
+	while (CPU_OVERLAP(cpus, &map))
 		cpu_spinwait();
 
 	return 1;
 }
+
+int
+restart_cpus(cpuset_t map)
+{
+
+	return (generic_restart_cpus(map, IPI_STOP));
+}
+
+#if defined(__amd64__) || defined(__i386__)
+int
+resume_cpus(cpuset_t map)
+{
+
+	return (generic_restart_cpus(map, IPI_SUSPEND));
+}
+#endif
 
 /*
  * All-CPU rendezvous.  CPUs are signalled, all execute the setup function 
@@ -409,8 +463,13 @@ smp_rendezvous_action(void)
 	 * This means that no member of smp_rv_* pseudo-structure will be
 	 * accessed by this target CPU after this point; in particular,
 	 * memory pointed by smp_rv_func_arg.
+	 *
+	 * The release semantic ensures that all accesses performed by
+	 * the current CPU are visible when smp_rendezvous_cpus()
+	 * returns, by synchronizing with the
+	 * atomic_load_acq_int(&smp_rv_waiters[3]).
 	 */
-	atomic_add_int(&smp_rv_waiters[3], 1);
+	atomic_add_rel_int(&smp_rv_waiters[3], 1);
 
 	td->td_critnest--;
 	KASSERT(owepreempt == td->td_owepreempt,
@@ -476,6 +535,11 @@ smp_rendezvous_cpus(cpuset_t map,
 	 * CPUs to finish the rendezvous, so that smp_rv_*
 	 * pseudo-structure and the arg are guaranteed to not
 	 * be in use.
+	 *
+	 * Load acquire synchronizes with the release add in
+	 * smp_rendezvous_action(), which ensures that our caller sees
+	 * all memory actions done by the called functions on other
+	 * CPUs.
 	 */
 	while (atomic_load_acq_int(&smp_rv_waiters[3]) < ncpus)
 		cpu_spinwait();
@@ -785,3 +849,15 @@ quiesce_all_cpus(const char *wmesg, int prio)
 
 	return quiesce_cpus(all_cpus, wmesg, prio);
 }
+
+/* Extra care is taken with this sysctl because the data type is volatile */
+static int
+sysctl_kern_smp_active(SYSCTL_HANDLER_ARGS)
+{
+	int error, active;
+
+	active = smp_started;
+	error = SYSCTL_OUT(req, &active, sizeof(active));
+	return (error);
+}
+

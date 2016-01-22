@@ -34,10 +34,8 @@
 #include <sys/param.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
-#include <sys/time.h>
 
 #include <net/if.h>
-#include <net/if_var.h>
 #include <net/route.h>
 #include <net/if_dl.h>
 
@@ -58,6 +56,7 @@
 #include <string.h>
 #include <search.h>
 #include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
 #include <ifaddrs.h>
 
@@ -77,10 +76,10 @@ static time_t prefix_timo = (60 * 120);	/* 2 hours.
 
 static struct rtadvd_timer *prefix_timeout(void *);
 static void makeentry(char *, size_t, int, const char *);
-static size_t dname_labelenc(char *, const char *);
+static ssize_t dname_labelenc(char *, const char *);
 
 /* Encode domain name label encoding in RFC 1035 Section 3.1 */
-static size_t
+static ssize_t
 dname_labelenc(char *dst, const char *src)
 {
 	char *dst_origin;
@@ -90,6 +89,8 @@ dname_labelenc(char *dst, const char *src)
 	dst_origin = dst;
 	len = strlen(src);
 
+	if (len + len / 64 + 1 + 1 > DNAME_LABELENC_MAXLEN)
+		return (-1);
 	/* Length fields per 63 octets + '\0' (<= DNAME_LABELENC_MAXLEN) */
 	memset(dst, 0, len + len / 64 + 1 + 1);
 
@@ -98,9 +99,13 @@ dname_labelenc(char *dst, const char *src)
 		/* Put a length field with 63 octet limitation first. */
 		p = strchr(src, '.');
 		if (p == NULL)
-			*dst++ = len = MIN(63, len);
+			*dst = len = MIN(63, len);
 		else
-			*dst++ = len = MIN(63, p - src);
+			*dst = len = MIN(63, p - src);
+		if (dst + 1 + len < dst_origin + DNAME_LABELENC_MAXLEN)
+			dst++;
+		else
+			return (-1);
 		/* Copy 63 octets at most. */
 		memcpy(dst, src, len);
 		dst += len;
@@ -296,10 +301,8 @@ rm_rainfo(struct rainfo *rai)
 	if (rai->rai_ra_data != NULL)
 		free(rai->rai_ra_data);
 
-	while ((pfx = TAILQ_FIRST(&rai->rai_prefix)) != NULL) {
-		TAILQ_REMOVE(&rai->rai_prefix, pfx, pfx_next);
-		free(pfx);
-	}
+	while ((pfx = TAILQ_FIRST(&rai->rai_prefix)) != NULL)
+		delete_prefix(pfx);
 	while ((sol = TAILQ_FIRST(&rai->rai_soliciter)) != NULL) {
 		TAILQ_REMOVE(&rai->rai_soliciter, sol, sol_next);
 		free(sol);
@@ -563,8 +566,9 @@ getconfig(struct ifinfo *ifi)
 
 		makeentry(entbuf, sizeof(entbuf), i, "vltimedecr");
 		if (agetflag(entbuf)) {
-			struct timeval now;
-			gettimeofday(&now, 0);
+			struct timespec now;
+
+			clock_gettime(CLOCK_MONOTONIC_FAST, &now);
 			pfx->pfx_vltimeexpire =
 				now.tv_sec + pfx->pfx_validlifetime;
 		}
@@ -583,8 +587,9 @@ getconfig(struct ifinfo *ifi)
 
 		makeentry(entbuf, sizeof(entbuf), i, "pltimedecr");
 		if (agetflag(entbuf)) {
-			struct timeval now;
-			gettimeofday(&now, 0);
+			struct timespec now;
+
+			clock_gettime(CLOCK_MONOTONIC_FAST, &now);
 			pfx->pfx_pltimeexpire =
 			    now.tv_sec + pfx->pfx_preflifetime;
 		}
@@ -803,7 +808,7 @@ getconfig_free_rti:
 		makeentry(entbuf, sizeof(entbuf), i, "rdnss");
 		addr = (char *)agetstr(entbuf, &bp);
 		if (addr == NULL)
-			break;
+			continue;
 		ELM_MALLOC(rdn, exit(1));
 
 		TAILQ_INIT(&rdn->rd_list);
@@ -854,7 +859,7 @@ getconfig_free_rdn:
 		makeentry(entbuf, sizeof(entbuf), i, "dnssl");
 		addr = (char *)agetstr(entbuf, &bp);
 		if (addr == NULL)
-			break;
+			continue;
 
 		ELM_MALLOC(dns, exit(1));
 
@@ -866,6 +871,11 @@ getconfig_free_rdn:
 			abuf[c] = '\0';
 			ELM_MALLOC(dnsa, goto getconfig_free_dns);
 			dnsa->da_len = dname_labelenc(dnsa->da_dom, abuf);
+			if (dnsa->da_len < 0) {
+				syslog(LOG_ERR, "Invalid dnssl entry: %s",
+				    abuf);
+				goto getconfig_free_dns;
+			}
 			syslog(LOG_DEBUG, "<%s>: dnsa->da_len = %d", __func__,
 			    dnsa->da_len);
 			TAILQ_INSERT_TAIL(&dns->dn_list, dnsa, da_next);
@@ -1123,9 +1133,9 @@ add_prefix(struct rainfo *rai, struct in6_prefixreq *ipr)
 	pfx->pfx_onlinkflg = ipr->ipr_raf_onlink;
 	pfx->pfx_autoconfflg = ipr->ipr_raf_auto;
 	pfx->pfx_origin = PREFIX_FROM_DYNAMIC;
+	pfx->pfx_rainfo = rai;
 
 	TAILQ_INSERT_TAIL(&rai->rai_prefix, pfx, pfx_next);
-	pfx->pfx_rainfo = rai;
 
 	syslog(LOG_DEBUG, "<%s> new prefix %s/%d was added on %s",
 	    __func__,
@@ -1164,7 +1174,7 @@ delete_prefix(struct prefix *pfx)
 void
 invalidate_prefix(struct prefix *pfx)
 {
-	struct timeval timo;
+	struct timespec timo;
 	struct rainfo *rai;
 	struct ifinfo *ifi;
 	char ntopbuf[INET6_ADDRSTRLEN];
@@ -1191,7 +1201,7 @@ invalidate_prefix(struct prefix *pfx)
 		delete_prefix(pfx);
 	}
 	timo.tv_sec = prefix_timo;
-	timo.tv_usec = 0;
+	timo.tv_nsec = 0;
 	rtadvd_set_timer(&timo, pfx->pfx_timer);
 }
 
@@ -1286,7 +1296,7 @@ make_prefix(struct rainfo *rai, int ifindex, struct in6_addr *addr, int plen)
 
 	memset(&ipr, 0, sizeof(ipr));
 	if (if_indextoname(ifindex, ipr.ipr_name) == NULL) {
-		syslog(LOG_ERR, "<%s> Prefix added interface No.%d doesn't"
+		syslog(LOG_ERR, "<%s> Prefix added interface No.%d doesn't "
 		    "exist. This should not happen! %s", __func__,
 		    ifindex, strerror(errno));
 		exit(1);
@@ -1415,7 +1425,7 @@ make_packet(struct rainfo *rai)
 
 	TAILQ_FOREACH(pfx, &rai->rai_prefix, pfx_next) {
 		uint32_t vltime, pltime;
-		struct timeval now;
+		struct timespec now;
 
 		ndopt_pi = (struct nd_opt_prefix_info *)buf;
 		ndopt_pi->nd_opt_pi_type = ND_OPT_PREFIX_INFORMATION;
@@ -1432,7 +1442,7 @@ make_packet(struct rainfo *rai)
 			vltime = 0;
 		else {
 			if (pfx->pfx_vltimeexpire || pfx->pfx_pltimeexpire)
-				gettimeofday(&now, NULL);
+				clock_gettime(CLOCK_MONOTONIC_FAST, &now);
 			if (pfx->pfx_vltimeexpire == 0)
 				vltime = pfx->pfx_validlifetime;
 			else
@@ -1518,6 +1528,7 @@ make_packet(struct rainfo *rai)
 		/* Padding to next 8 octets boundary */
 		len = buf - (char *)ndopt_dnssl;
 		len += (len % 8) ? 8 - len % 8 : 0;
+		buf = (char *)ndopt_dnssl + len;
 
 		/* Length field must be in 8 octets */
 		ndopt_dnssl->nd_opt_dnssl_len = len / 8;

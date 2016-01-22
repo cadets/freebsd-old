@@ -59,11 +59,9 @@ static void dev_pager_init(void);
 static vm_object_t dev_pager_alloc(void *, vm_ooffset_t, vm_prot_t,
     vm_ooffset_t, struct ucred *);
 static void dev_pager_dealloc(vm_object_t);
-static int dev_pager_getpages(vm_object_t, vm_page_t *, int, int);
-static void dev_pager_putpages(vm_object_t, vm_page_t *, int, 
-		boolean_t, int *);
-static boolean_t dev_pager_haspage(vm_object_t, vm_pindex_t, int *,
-		int *);
+static int dev_pager_getpages(vm_object_t, vm_page_t *, int, int *, int *);
+static void dev_pager_putpages(vm_object_t, vm_page_t *, int, int, int *);
+static boolean_t dev_pager_haspage(vm_object_t, vm_pindex_t, int *, int *);
 static void dev_pager_free_page(vm_object_t object, vm_page_t m);
 
 /* list of device pager objects */
@@ -101,8 +99,9 @@ static struct cdev_pager_ops old_dev_pager_ops = {
 };
 
 static void
-dev_pager_init()
+dev_pager_init(void)
 {
+
 	TAILQ_INIT(&dev_pager_object_list);
 	mtx_init(&dev_pager_mtx, "dev_pager list", NULL, MTX_DEF);
 }
@@ -169,18 +168,20 @@ cdev_pager_allocate(void *handle, enum obj_type tp, struct cdev_pager_ops *ops,
 			 */
 			if (pindex > object->size)
 				object->size = pindex;
+			KASSERT(object->type == tp,
+		    ("Inconsistent device pager type %p %d", object, tp));
 		} else {
 			object = object1;
 			object1 = NULL;
 			object->handle = handle;
 			TAILQ_INSERT_TAIL(&dev_pager_object_list, object,
 			    pager_object_list);
-			KASSERT(object->type == tp,
-		("Inconsistent device pager type %p %d", object, tp));
 		}
 	} else {
 		if (pindex > object->size)
 			object->size = pindex;
+		KASSERT(object->type == tp,
+		    ("Inconsistent device pager type %p %d", object, tp));
 	}
 	mtx_unlock(&dev_pager_mtx);
 	if (object1 != NULL) {
@@ -226,13 +227,12 @@ dev_pager_free_page(vm_object_t object, vm_page_t m)
 	KASSERT((object->type == OBJT_DEVICE &&
 	    (m->oflags & VPO_UNMANAGED) != 0),
 	    ("Managed device or page obj %p m %p", object, m));
-	TAILQ_REMOVE(&object->un_pager.devp.devp_pglist, m, pageq);
+	TAILQ_REMOVE(&object->un_pager.devp.devp_pglist, m, plinks.q);
 	vm_page_putfake(m);
 }
 
 static void
-dev_pager_dealloc(object)
-	vm_object_t object;
+dev_pager_dealloc(vm_object_t object)
 {
 	vm_page_t m;
 
@@ -252,37 +252,38 @@ dev_pager_dealloc(object)
 		    != NULL)
 			dev_pager_free_page(object, m);
 	}
+	object->handle = NULL;
+	object->type = OBJT_DEAD;
 }
 
 static int
-dev_pager_getpages(vm_object_t object, vm_page_t *ma, int count, int reqpage)
+dev_pager_getpages(vm_object_t object, vm_page_t *ma, int count, int *rbehind,
+    int *rahead)
 {
-	int error, i;
+	int error;
 
+	/* Since our haspage reports zero after/before, the count is 1. */
+	KASSERT(count == 1, ("%s: count %d", __func__, count));
 	VM_OBJECT_ASSERT_WLOCKED(object);
 	error = object->un_pager.devp.ops->cdev_pg_fault(object,
-	    IDX_TO_OFF(ma[reqpage]->pindex), PROT_READ, &ma[reqpage]);
+	    IDX_TO_OFF(ma[0]->pindex), PROT_READ, &ma[0]);
 
 	VM_OBJECT_ASSERT_WLOCKED(object);
-
-	for (i = 0; i < count; i++) {
-		if (i != reqpage) {
-			vm_page_lock(ma[i]);
-			vm_page_free(ma[i]);
-			vm_page_unlock(ma[i]);
-		}
-	}
 
 	if (error == VM_PAGER_OK) {
 		KASSERT((object->type == OBJT_DEVICE &&
-		     (ma[reqpage]->oflags & VPO_UNMANAGED) != 0) ||
+		     (ma[0]->oflags & VPO_UNMANAGED) != 0) ||
 		    (object->type == OBJT_MGTDEVICE &&
-		     (ma[reqpage]->oflags & VPO_UNMANAGED) == 0),
-		    ("Wrong page type %p %p", ma[reqpage], object));
+		     (ma[0]->oflags & VPO_UNMANAGED) == 0),
+		    ("Wrong page type %p %p", ma[0], object));
 		if (object->type == OBJT_DEVICE) {
 			TAILQ_INSERT_TAIL(&object->un_pager.devp.devp_pglist,
-			    ma[reqpage], pageq);
+			    ma[0], plinks.q);
 		}
+		if (rbehind)
+			*rbehind = 0;
+		if (rahead)
+			*rahead = 0;
 	}
 
 	return (error);
@@ -292,7 +293,6 @@ static int
 old_dev_pager_fault(vm_object_t object, vm_ooffset_t offset, int prot,
     vm_page_t *mres)
 {
-	vm_pindex_t pidx;
 	vm_paddr_t paddr;
 	vm_page_t m_paddr, page;
 	struct cdev *dev;
@@ -302,7 +302,6 @@ old_dev_pager_fault(vm_object_t object, vm_ooffset_t offset, int prot,
 	vm_memattr_t memattr;
 	int ref, ret;
 
-	pidx = OFF_TO_IDX(offset);
 	memattr = object->memattr;
 
 	VM_OBJECT_WUNLOCK(object);
@@ -348,35 +347,29 @@ old_dev_pager_fault(vm_object_t object, vm_ooffset_t offset, int prot,
 		 */
 		page = vm_page_getfake(paddr, memattr);
 		VM_OBJECT_WLOCK(object);
+		vm_page_replace_checked(page, object, (*mres)->pindex, *mres);
 		vm_page_lock(*mres);
 		vm_page_free(*mres);
 		vm_page_unlock(*mres);
 		*mres = page;
-		vm_page_insert(page, object, pidx);
 	}
 	page->valid = VM_PAGE_BITS_ALL;
 	return (VM_PAGER_OK);
 }
 
 static void
-dev_pager_putpages(object, m, count, sync, rtvals)
-	vm_object_t object;
-	vm_page_t *m;
-	int count;
-	boolean_t sync;
-	int *rtvals;
+dev_pager_putpages(vm_object_t object, vm_page_t *m, int count, int flags,
+    int *rtvals)
 {
 
 	panic("dev_pager_putpage called");
 }
 
 static boolean_t
-dev_pager_haspage(object, pindex, before, after)
-	vm_object_t object;
-	vm_pindex_t pindex;
-	int *before;
-	int *after;
+dev_pager_haspage(vm_object_t object, vm_pindex_t pindex, int *before,
+    int *after)
 {
+
 	if (before != NULL)
 		*before = 0;
 	if (after != NULL)
@@ -411,6 +404,7 @@ old_dev_pager_ctor(void *handle, vm_ooffset_t size, vm_prot_t prot,
 	 * XXX assumes VM_PROT_* == PROT_*
 	 */
 	npages = OFF_TO_IDX(size);
+	paddr = 0; /* Make paddr initialized for the case of size == 0. */
 	for (off = foff; npages--; off += PAGE_SIZE) {
 		if (csw->d_mmap(dev, off, &paddr, (int)prot, &dummy) != 0) {
 			dev_relthread(dev, ref);

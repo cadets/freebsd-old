@@ -40,6 +40,7 @@ void EmitClangCommentCommandInfo(RecordKeeper &Records, raw_ostream &OS) {
        << Tag.getValueAsBit("IsReturnsCommand") << ", "
        << Tag.getValueAsBit("IsParamCommand") << ", "
        << Tag.getValueAsBit("IsTParamCommand") << ", "
+       << Tag.getValueAsBit("IsThrowsCommand") << ", "
        << Tag.getValueAsBit("IsDeprecatedCommand") << ", "
        << Tag.getValueAsBit("IsHeaderfileCommand") << ", "
        << Tag.getValueAsBit("IsEmptyParagraphAllowed") << ", "
@@ -65,7 +66,7 @@ void EmitClangCommentCommandInfo(RecordKeeper &Records, raw_ostream &OS) {
     std::string Name = Tag.getValueAsString("Name");
     std::string Return;
     raw_string_ostream(Return) << "return &Commands[" << i << "];";
-    Matches.push_back(StringMatcher::StringPair(Name, Return));
+    Matches.emplace_back(std::move(Name), std::move(Return));
   }
 
   OS << "const CommandInfo *CommandTraits::getBuiltinCommandInfo(\n"
@@ -96,6 +97,9 @@ static std::string MangleName(StringRef Str) {
       break;
     case '$':
       Mangled += "dollar";
+      break;
+    case '/':
+      Mangled += "slash";
       break;
     }
   }

@@ -111,12 +111,10 @@ static struct aac_ident *
 aac_find_ident(device_t dev)
 {
 	struct aac_ident *m;
-	u_int16_t vendid, devid, sub_vendid, sub_devid;
+	u_int16_t vendid, devid;
 
 	vendid = pci_get_vendor(dev);
 	devid = pci_get_device(dev);
-	sub_vendid = pci_get_subvendor(dev);
-	sub_devid = pci_get_subdevice(dev);
 
 	for (m = aacraid_family_identifiers; m->vendor != 0; m++) {
 		if ((m->vendor == vendid) && (m->device == devid))
@@ -169,16 +167,10 @@ aacraid_pci_attach(device_t dev)
 	/* 
 	 * Verify that the adapter is correctly set up in PCI space.
 	 */
-	command = pci_read_config(sc->aac_dev, PCIR_COMMAND, 2);
-	command |= PCIM_CMD_BUSMASTEREN;
-	pci_write_config(dev, PCIR_COMMAND, command, 2);
+	pci_enable_busmaster(dev);
 	command = pci_read_config(sc->aac_dev, PCIR_COMMAND, 2);
 	if (!(command & PCIM_CMD_BUSMASTEREN)) {
 		device_printf(sc->aac_dev, "can't enable bus-master feature\n");
-		goto out;
-	}
-	if ((command & PCIM_CMD_MEMEN) == 0) {
-		device_printf(sc->aac_dev, "memory window not available\n");
 		goto out;
 	}
 

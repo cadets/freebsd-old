@@ -95,7 +95,7 @@ prt_attach_devices(ACPI_PCI_ROUTING_TABLE *entry, void *arg)
     int error;
 
     /* We only care about entries that reference a link device. */
-    if (entry->Source == NULL || entry->Source[0] == '\0')
+    if (entry->Source[0] == '\0')
 	return;
 
     /*
@@ -135,15 +135,6 @@ acpi_pcib_attach(device_t dev, ACPI_BUFFER *prt, int busno)
     ACPI_FUNCTION_TRACE((char *)(uintptr_t)__func__);
 
     /*
-     * Don't attach if we're not really there.
-     *
-     * XXX: This isn't entirely correct since we may be a PCI bus
-     * on a hot-plug docking station, etc.
-     */
-    if (!acpi_DeviceIsPresent(dev))
-	return_VALUE(ENXIO);
-
-    /*
      * Get the PCI interrupt routing table for this bus.  If we can't
      * get it, this is not an error but may reduce functionality.  There
      * are several valid bridges in the field that do not have a _PRT, so
@@ -159,7 +150,7 @@ acpi_pcib_attach(device_t dev, ACPI_BUFFER *prt, int busno)
     /*
      * Attach the PCI bus proper.
      */
-    if (device_add_child(dev, "pci", busno) == NULL) {
+    if (device_add_child(dev, "pci", -1) == NULL) {
 	device_printf(device_get_parent(dev), "couldn't attach pci bus\n");
 	return_VALUE(ENXIO);
     }
@@ -231,7 +222,7 @@ acpi_pcib_route_interrupt(device_t pcib, device_t dev, int pin,
     if (bootverbose) {
 	device_printf(pcib, "matched entry for %d.%d.INT%c",
 	    pci_get_bus(dev), pci_get_slot(dev), 'A' + pin);
-	if (prt->Source != NULL && prt->Source[0] != '\0')
+	if (prt->Source[0] != '\0')
 		printf(" (src %s:%u)", prt->Source, prt->SourceIndex);
 	printf("\n");
     }
@@ -243,8 +234,7 @@ acpi_pcib_route_interrupt(device_t pcib, device_t dev, int pin,
      * XXX: If the source index is non-zero, ignore the source device and
      * assume that this is a hard-wired entry.
      */
-    if (prt->Source == NULL || prt->Source[0] == '\0' ||
-	prt->SourceIndex != 0) {
+    if (prt->Source[0] == '\0' || prt->SourceIndex != 0) {
 	if (bootverbose)
 	    device_printf(pcib, "slot %d INT%c hardwired to IRQ %d\n",
 		pci_get_slot(dev), 'A' + pin, prt->SourceIndex);

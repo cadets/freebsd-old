@@ -79,7 +79,7 @@ __FBSDID("$FreeBSD$");
 #ifdef PC98
 #include <pc98/cbus/cbus.h>
 #else
-#include <x86/isa/isa.h>
+#include <isa/isareg.h>
 #endif
 #endif
 #include <sys/rtprio.h>
@@ -368,12 +368,13 @@ nexus_alloc_resource(device_t bus, device_t child, int type, int *rid,
 	int needactivate = flags & RF_ACTIVE;
 
 	/*
-	 * If this is an allocation of the "default" range for a given RID, and
-	 * we know what the resources for this device are (ie. they aren't maintained
-	 * by a child bus), then work out the start/end values.
+	 * If this is an allocation of the "default" range for a given
+	 * RID, and we know what the resources for this device are
+	 * (ie. they aren't maintained by a child bus), then work out
+	 * the start/end values.
 	 */
 	if ((start == 0UL) && (end == ~0UL) && (count == 1)) {
-		if (ndev == NULL)
+		if (device_get_parent(child) != bus || ndev == NULL)
 			return(NULL);
 		rle = resource_list_find(&ndev->nx_resources, type, *rid);
 		if (rle == NULL)
@@ -492,6 +493,7 @@ static int
 nexus_release_resource(device_t bus, device_t child, int type, int rid,
 		       struct resource *r)
 {
+
 	if (rman_get_flags(r) & RF_ACTIVE) {
 		int error = bus_deactivate_resource(child, type, rid, r);
 		if (error)
@@ -688,11 +690,8 @@ ram_attach(device_t dev)
 	kmdp = preload_search_by_type("elf kernel");
 	if (kmdp == NULL)
 		kmdp = preload_search_by_type(ELF_KERN_STR);  
-	if (kmdp != NULL)
-		smapbase = (struct bios_smap *)preload_search_info(kmdp,
-		    MODINFO_METADATA | MODINFOMD_SMAP);
-	else
-		smapbase = NULL;
+	smapbase = (struct bios_smap *)preload_search_info(kmdp,
+	    MODINFO_METADATA | MODINFOMD_SMAP);
 	if (smapbase != NULL) {
 		smapsize = *((u_int32_t *)smapbase - 1);
 		smapend = (struct bios_smap *)((uintptr_t)smapbase + smapsize);

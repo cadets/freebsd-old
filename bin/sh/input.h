@@ -47,12 +47,12 @@ extern const char *parsenextc;	/* next character in input buffer */
 struct alias;
 struct parsefile;
 
-char *pfgets(char *, int);
+void resetinput(void);
 int pgetc(void);
 int preadbuffer(void);
 int preadateof(void);
 void pungetc(void);
-void pushstring(char *, int, struct alias *);
+void pushstring(const char *, int, struct alias *);
 void setinputfile(const char *, int);
 void setinputfd(int, int);
 void setinputstring(const char *, int);

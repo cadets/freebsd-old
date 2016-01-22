@@ -990,12 +990,7 @@ print_rule(struct pf_rule *r, const char *anchor_call, int verbose, int numeric)
 		if (r->rule_flag & PFRULE_REASSEMBLE_TCP)
 			printf(" reassemble tcp");
 
-		if (r->rule_flag & PFRULE_FRAGDROP)
-			printf(" fragment drop-ovl");
-		else if (r->rule_flag & PFRULE_FRAGCROP)
-			printf(" fragment crop");
-		else
-			printf(" fragment reassemble");
+		printf(" fragment reassemble");
 	}
 	if (r->label[0])
 		printf(" label \"%s\"", r->label);
@@ -1231,6 +1226,26 @@ ifa_load(void)
 	freeifaddrs(ifap);
 }
 
+int
+get_socket_domain(void)
+{
+	int sdom;
+
+	sdom = AF_UNSPEC;
+#ifdef WITH_INET6
+	if (sdom == AF_UNSPEC && feature_present("inet6"))
+		sdom = AF_INET6;
+#endif
+#ifdef WITH_INET
+	if (sdom == AF_UNSPEC && feature_present("inet"))
+		sdom = AF_INET;
+#endif
+	if (sdom == AF_UNSPEC)
+		sdom = AF_LINK;
+
+	return (sdom);
+}
+
 struct node_host *
 ifa_exists(const char *ifa_name)
 {
@@ -1242,7 +1257,7 @@ ifa_exists(const char *ifa_name)
 		ifa_load();
 
 	/* check wether this is a group */
-	if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+	if ((s = socket(get_socket_domain(), SOCK_DGRAM, 0)) == -1)
 		err(1, "socket");
 	bzero(&ifgr, sizeof(ifgr));
 	strlcpy(ifgr.ifgr_name, ifa_name, sizeof(ifgr.ifgr_name));
@@ -1273,7 +1288,7 @@ ifa_grouplookup(const char *ifa_name, int flags)
 	int			 s, len;
 	struct node_host	*n, *h = NULL;
 
-	if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+	if ((s = socket(get_socket_domain(), SOCK_DGRAM, 0)) == -1)
 		err(1, "socket");
 	bzero(&ifgr, sizeof(ifgr));
 	strlcpy(ifgr.ifgr_name, ifa_name, sizeof(ifgr.ifgr_name));

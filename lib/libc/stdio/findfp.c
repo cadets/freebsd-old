@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 
 #include <spinlock.h>
@@ -96,11 +97,22 @@ moreglue(int n)
 	struct glue *g;
 	static FILE empty = { ._fl_mutex = PTHREAD_MUTEX_INITIALIZER };
 	FILE *p;
+	size_t align;
 
-	g = (struct glue *)malloc(sizeof(*g) + ALIGNBYTES + n * sizeof(FILE));
+	/*
+	 * FILE has a mbstate_t variable. This variable tries to be int64_t
+	 * aligned through its definition. int64_t may be larger than void *,
+	 * which is the size traditionally used for ALIGNBYTES.  So, use our own
+	 * rounding instead of the MI ALIGN macros. If for some reason
+	 * ALIGNBYTES is larger than int64_t, respect that too. There appears to
+	 * be no portable way to ask for FILE's alignment requirements other
+	 * than just knowing here.
+	 */
+	align = MAX(ALIGNBYTES, sizeof(int64_t));
+	g = (struct glue *)malloc(sizeof(*g) + align + n * sizeof(FILE));
 	if (g == NULL)
 		return (NULL);
-	p = (FILE *)ALIGN(g + 1);
+	p = (FILE *)roundup((uintptr_t)(g + 1), align);
 	g->next = NULL;
 	g->niobs = n;
 	g->iobs = p;
@@ -113,7 +125,7 @@ moreglue(int n)
  * Find a free FILE for fopen et al.
  */
 FILE *
-__sfp()
+__sfp(void)
 {
 	FILE	*fp;
 	int	n;
@@ -155,6 +167,7 @@ found:
 /*	fp->_fl_mutex = NULL; */ /* once set always set (reused) */
 	fp->_orientation = 0;
 	memset(&fp->_mbstate, 0, sizeof(mbstate_t));
+	fp->_flags2 = 0;
 	return (fp);
 }
 
@@ -164,6 +177,7 @@ found:
  */
 __warn_references(f_prealloc, 
 	"warning: this program uses f_prealloc(), which is not recommended.");
+void f_prealloc(void);
 
 void
 f_prealloc(void)
@@ -195,7 +209,7 @@ f_prealloc(void)
  * The name `_cleanup' is, alas, fairly well known outside stdio.
  */
 void
-_cleanup()
+_cleanup(void)
 {
 	/* (void) _fwalk(fclose); */
 	(void) _fwalk(__sflush);		/* `cheating' */
@@ -205,7 +219,7 @@ _cleanup()
  * __sinit() is called whenever stdio's internal variables must be set up.
  */
 void
-__sinit()
+__sinit(void)
 {
 
 	/* Make sure we clean up on exit. */

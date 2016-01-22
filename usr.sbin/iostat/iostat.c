@@ -110,6 +110,7 @@
 #include <limits.h>
 #include <math.h>
 #include <nlist.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -117,10 +118,10 @@
 #include <unistd.h>
 
 struct nlist namelist[] = {
-#define X_TK_NIN	0
-	{ "_tk_nin" },
-#define X_TK_NOUT	1
-	{ "_tk_nout" },
+#define X_TTY_NIN	0
+	{ "_tty_nin" },
+#define X_TTY_NOUT	1
+	{ "_tty_nout" },
 #define X_BOOTTIME	2
 	{ "_boottime" },
 #define X_END		2
@@ -135,6 +136,8 @@ struct device_selection *dev_select;
 int maxshowdevs;
 volatile sig_atomic_t headercount;
 volatile sig_atomic_t wresized;		/* Tty resized, when non-zero. */
+volatile sig_atomic_t alarm_rang;
+volatile sig_atomic_t return_requested;
 unsigned short wrows;			/* Current number of tty rows. */
 int dflag = 0, Iflag = 0, Cflag = 0, Tflag = 0, oflag = 0, Kflag = 0;
 int xflag = 0, zflag = 0;
@@ -143,6 +146,8 @@ int xflag = 0, zflag = 0;
 static void usage(void);
 static void needhdr(int signo);
 static void needresize(int signo);
+static void needreturn(int signo);
+static void alarm_clock(int signo);
 static void doresize(void);
 static void phdr(void);
 static void devstats(int perf_select, long double etime, int havelast);
@@ -172,6 +177,7 @@ main(int argc, char **argv)
 	int count = 0, waittime = 0;
 	char *memf = NULL, *nlistf = NULL;
 	struct devstat_match *matches;
+	struct itimerval alarmspec;
 	int num_matches = 0;
 	char errbuf[_POSIX2_LINE_MAX];
 	kvm_t *kd = NULL;
@@ -442,15 +448,33 @@ main(int argc, char **argv)
 		wrows = IOSTAT_DEFAULT_ROWS;
 	}
 
+	/*
+	 * Register a SIGINT handler so that we can print out final statistics
+	 * when we get that signal
+	 */
+	(void)signal(SIGINT, needreturn);
+
+	/*
+	 * Register a SIGALRM handler to implement sleeps if the user uses the
+	 * -c or -w options
+	 */
+	(void)signal(SIGALRM, alarm_clock);
+	alarmspec.it_interval.tv_sec = waittime / 1000;
+	alarmspec.it_interval.tv_usec = 1000 * (waittime % 1000);
+	alarmspec.it_value.tv_sec = waittime / 1000;
+	alarmspec.it_value.tv_usec = 1000 * (waittime % 1000);
+	setitimer(ITIMER_REAL, &alarmspec, NULL);
+
 	for (headercount = 1;;) {
 		struct devinfo *tmp_dinfo;
 		long tmp;
 		long double etime;
+		sigset_t sigmask, oldsigmask;
 
 		if (Tflag > 0) {
-			if ((readvar(kd, "kern.tty_nin", X_TK_NIN, &cur.tk_nin,
+			if ((readvar(kd, "kern.tty_nin", X_TTY_NIN, &cur.tk_nin,
 			     sizeof(cur.tk_nin)) != 0)
-			 || (readvar(kd, "kern.tty_nout", X_TK_NOUT,
+			 || (readvar(kd, "kern.tty_nout", X_TTY_NOUT,
 			     &cur.tk_nout, sizeof(cur.tk_nout))!= 0)) {
 				Tflag = 0;
 				warnx("disabling TTY statistics");
@@ -599,10 +623,23 @@ main(int argc, char **argv)
 		}
 		fflush(stdout);
 
-		if (count >= 0 && --count <= 0)
+		if ((count >= 0 && --count <= 0) || return_requested)
 			break;
 
-		usleep(waittime * 1000);
+		/*
+		 * Use sigsuspend to safely sleep until either signal is
+		 * received
+		 */
+		alarm_rang = 0;
+		sigemptyset(&sigmask);
+		sigaddset(&sigmask, SIGINT);
+		sigaddset(&sigmask, SIGALRM);
+		sigprocmask(SIG_BLOCK, &sigmask, &oldsigmask);
+		while (! (alarm_rang || return_requested) ) {
+			sigsuspend(&oldsigmask);
+		}
+		sigprocmask(SIG_UNBLOCK, &sigmask, NULL);
+
 		havelast = 1;
 	}
 
@@ -630,6 +667,24 @@ needresize(int signo)
 
 	wresized = 1;
 	headercount = 1;
+}
+
+/*
+ * Record the alarm so the main loop can break its sleep
+ */
+void
+alarm_clock(int signo)
+{
+	alarm_rang = 1;
+}
+
+/*
+ * Request that the main loop exit soon
+ */
+void
+needreturn(int signo)
+{
+	return_requested = 1;
 }
 
 /*
@@ -726,15 +781,17 @@ static void
 devstats(int perf_select, long double etime, int havelast)
 {
 	int dn;
-	long double transfers_per_second, transfers_per_second_read, transfers_per_second_write;
-	long double kb_per_transfer, mb_per_second, mb_per_second_read, mb_per_second_write;
+	long double transfers_per_second, transfers_per_second_read;
+	long double transfers_per_second_write;
+	long double kb_per_transfer, mb_per_second, mb_per_second_read;
+	long double mb_per_second_write;
 	u_int64_t total_bytes, total_transfers, total_blocks;
 	u_int64_t total_bytes_read, total_transfers_read;
 	u_int64_t total_bytes_write, total_transfers_write;
 	long double busy_pct, busy_time;
 	u_int64_t queue_len;
-	long double total_mb;
-	long double blocks_per_second, ms_per_transaction, total_duration;
+	long double total_mb, blocks_per_second, total_duration;
+	long double ms_per_other, ms_per_read, ms_per_write, ms_per_transaction;
 	int firstline = 1;
 	char *devname;
 
@@ -746,8 +803,8 @@ devstats(int perf_select, long double etime, int havelast)
 			printf("           cpu ");
 		printf("\n");
 		if (Iflag == 0) {
-			printf("device     r/s   w/s    kr/s    kw/s qlen "
-			    "svc_t  %%b  ");
+			printf("device     r/s   w/s     kr/s     kw/s "
+			    " ms/r  ms/w  ms/o  ms/t qlen  %%b  ");
 		} else {
 			printf("device           r/i         w/i         kr/i"
 			    "         kw/i qlen   tsvc_t/i      sb/i  ");
@@ -786,6 +843,9 @@ devstats(int perf_select, long double etime, int havelast)
 		    DSM_MB_PER_SECOND_WRITE, &mb_per_second_write,
 		    DSM_BLOCKS_PER_SECOND, &blocks_per_second,
 		    DSM_MS_PER_TRANSACTION, &ms_per_transaction,
+		    DSM_MS_PER_TRANSACTION_READ, &ms_per_read,
+		    DSM_MS_PER_TRANSACTION_WRITE, &ms_per_write,
+		    DSM_MS_PER_TRANSACTION_OTHER, &ms_per_other,
 		    DSM_BUSY_PCT, &busy_pct,
 		    DSM_QUEUE_LENGTH, &queue_len,
 		    DSM_TOTAL_DURATION, &total_duration,
@@ -820,13 +880,18 @@ devstats(int perf_select, long double etime, int havelast)
 			    mb_per_second_write > ((long double).0005)/1024 ||
 			    busy_pct > 0.5) {
 				if (Iflag == 0)
-					printf("%-8.8s %5.1Lf %5.1Lf %7.1Lf %7.1Lf %4" PRIu64 " %5.1Lf %3.0Lf ",
-					    devname, transfers_per_second_read,
-					    transfers_per_second_write,
+					printf("%-8.8s %5d %5d %8.1Lf "
+					    "%8.1Lf %5d %5d %5d %5d "
+					    "%4" PRIu64 " %3.0Lf ",
+					    devname,
+					    (int)transfers_per_second_read,
+					    (int)transfers_per_second_write,
 					    mb_per_second_read * 1024,
 					    mb_per_second_write * 1024,
-					    queue_len,
-					    ms_per_transaction, busy_pct);
+					    (int)ms_per_read, (int)ms_per_write,
+					    (int)ms_per_other,
+					    (int)ms_per_transaction,
+					    queue_len, busy_pct);
 				else
 					printf("%-8.8s %11.1Lf %11.1Lf "
 					    "%12.1Lf %12.1Lf %4" PRIu64

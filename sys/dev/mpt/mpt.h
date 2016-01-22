@@ -220,9 +220,6 @@ int mpt_modevent(module_t, int, void *);
 #define bus_dmamap_sync_range(dma_tag, dmamap, offset, len, op)	\
 	bus_dmamap_sync(dma_tag, dmamap, op)
 
-#if __FreeBSD_version < 600000
-#define	bus_get_dma_tag(x)	NULL
-#endif
 #define mpt_dma_tag_create(mpt, parent_tag, alignment, boundary,	\
 			   lowaddr, highaddr, filter, filterarg,	\
 			   maxsize, nsegments, maxsegsz, flags,		\
@@ -239,34 +236,6 @@ struct mpt_map_info {
 };
 
 void mpt_map_rquest(void *, bus_dma_segment_t *, int, int);
-/* **************************** NewBUS interrupt Crock ************************/
-#if __FreeBSD_version < 700031
-#define	mpt_setup_intr(d, i, f, U, if, ifa, hp)	\
-	bus_setup_intr(d, i, f, if, ifa, hp)
-#else
-#define	mpt_setup_intr	bus_setup_intr
-#endif
-
-/* **************************** NewBUS CAM Support ****************************/
-#if __FreeBSD_version < 700049
-#define mpt_xpt_bus_register(sim, parent, bus)	\
-	xpt_bus_register(sim, bus)
-#else
-#define mpt_xpt_bus_register	xpt_bus_register
-#endif
-
-/**************************** Kernel Thread Support ***************************/
-#if __FreeBSD_version > 800001
-#define mpt_kthread_create(func, farg, proc_ptr, flags, stackpgs, fmtstr, arg) \
-	kproc_create(func, farg, proc_ptr, flags, stackpgs, fmtstr, arg)
-#define	mpt_kthread_exit(status)	\
-	kproc_exit(status)
-#else
-#define mpt_kthread_create(func, farg, proc_ptr, flags, stackpgs, fmtstr, arg) \
-	kthread_create(func, farg, proc_ptr, flags, stackpgs, fmtstr, arg)
-#define	mpt_kthread_exit(status)	\
-	kthread_exit(status)
-#endif
 
 /********************************** Endianess *********************************/
 #define	MPT_2_HOST64(ptr, tag)	ptr->tag = le64toh(ptr->tag)
@@ -360,7 +329,6 @@ typedef struct mpt_config_params {
 } cfgparms_t;
 
 /**************************** MPI Target State Info ***************************/
-
 typedef struct {
 	uint32_t reply_desc;	/* current reply descriptor */
 	uint32_t resid;		/* current data residual */
@@ -671,7 +639,6 @@ struct mpt_softc {
 	/*
 	 * PCI Hardware info
 	 */
-	int			pci_msi_count;
 	struct resource *	pci_irq;	/* Interrupt map for chip */
 	void *			ih;		/* Interrupt handle */
 #if 0
@@ -754,9 +721,10 @@ struct mpt_softc {
 	uint16_t		sequence;	/* Sequence Number */
 	uint16_t		pad3;
 
-
+#if 0
 	/* Paired port in some dual adapters configurations */
 	struct mpt_softc *	mpt2;
+#endif
 
 	/* FW Image management */
 	uint32_t		fw_image_size;
@@ -802,10 +770,10 @@ mpt_assign_serno(struct mpt_softc *mpt, request_t *req)
 #define	MPT_UNLOCK(mpt)		mtx_unlock(&(mpt)->mpt_lock)
 #define	MPT_OWNED(mpt)		mtx_owned(&(mpt)->mpt_lock)
 #define	MPT_LOCK_ASSERT(mpt)	mtx_assert(&(mpt)->mpt_lock, MA_OWNED)
-#define mpt_sleep(mpt, ident, priority, wmesg, timo) \
-	msleep(ident, &(mpt)->mpt_lock, priority, wmesg, timo)
-#define mpt_req_timeout(req, ticks, func, arg) \
-	callout_reset(&(req)->callout, (ticks), (func), (arg))
+#define mpt_sleep(mpt, ident, priority, wmesg, sbt) \
+    msleep_sbt(ident, &(mpt)->mpt_lock, priority, wmesg, sbt, 0, 0)
+#define mpt_req_timeout(req, sbt, func, arg) \
+    callout_reset_sbt(&(req)->callout, (sbt), 0, (func), (arg), 0)
 #define mpt_req_untimeout(req, func, arg) \
 	callout_stop(&(req)->callout)
 #define mpt_callout_init(mpt, c) \
@@ -815,6 +783,7 @@ mpt_assign_serno(struct mpt_softc *mpt, request_t *req)
 
 /******************************* Register Access ******************************/
 static __inline void mpt_write(struct mpt_softc *, size_t, uint32_t);
+static __inline void mpt_write_stream(struct mpt_softc *, size_t, uint32_t);
 static __inline uint32_t mpt_read(struct mpt_softc *, int);
 static __inline void mpt_pio_write(struct mpt_softc *, size_t, uint32_t);
 static __inline uint32_t mpt_pio_read(struct mpt_softc *, int);
@@ -823,6 +792,12 @@ static __inline void
 mpt_write(struct mpt_softc *mpt, size_t offset, uint32_t val)
 {
 	bus_space_write_4(mpt->pci_st, mpt->pci_sh, offset, val);
+}
+
+static __inline void
+mpt_write_stream(struct mpt_softc *mpt, size_t offset, uint32_t val)
+{
+	bus_space_write_stream_4(mpt->pci_st, mpt->pci_sh, offset, val);
 }
 
 static __inline uint32_t
@@ -849,6 +824,7 @@ mpt_pio_read(struct mpt_softc *mpt, int offset)
 	KASSERT(mpt->pci_pio_reg != NULL, ("no PIO resource"));
 	return (bus_space_read_4(mpt->pci_pio_st, mpt->pci_pio_sh, offset));
 }
+
 /*********************** Reply Frame/Request Management ***********************/
 /* Max MPT Reply we are willing to accept (must be power of 2) */
 #define MPT_REPLY_SIZE   	256
@@ -989,6 +965,7 @@ mpt_cdblen(uint8_t cdb0, int maxlen)
 		return (16);
 	}
 }
+
 #ifdef	INVARIANTS
 static __inline request_t * mpt_tag_2_req(struct mpt_softc *, uint32_t);
 static __inline request_t *
@@ -1167,6 +1144,7 @@ mpt_write_cur_cfg_page(struct mpt_softc *mpt, uint32_t PageAddress,
 				   PageAddress, hdr, len, sleep_ok,
 				   timeout_ms));
 }
+
 /* mpt_debug.c functions */
 void mpt_print_reply(void *vmsg);
 void mpt_print_db(uint32_t mb);
@@ -1176,4 +1154,5 @@ void mpt_req_state(mpt_req_state_t state);
 void mpt_print_config_request(void *vmsg);
 void mpt_print_request(void *vmsg);
 void mpt_dump_sgl(SGE_IO_UNION *se, int offset);
+
 #endif /* _MPT_H_ */

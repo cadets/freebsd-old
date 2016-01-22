@@ -104,6 +104,8 @@ static char *rifname;
 static time_t	expire_time;
 static int	flags, doing_proxy;
 
+struct if_nameindex *ifnameindex;
+
 /* which function we're supposed to do */
 #define F_GET		1
 #define F_SET		2
@@ -187,8 +189,11 @@ main(int argc, char *argv[])
 			if (argc != 0)
 				usage();
 			search(0, nuke_entry);
-		} else
+		} else {
+			if (argc != 1)
+				usage();
 			rtn = delete(argv[0]);
+		}
 		break;
 	case F_FILESET:
 		if (argc != 1)
@@ -196,6 +201,9 @@ main(int argc, char *argv[])
 		rtn = file(argv[0]);
 		break;
 	}
+
+	if (ifnameindex != NULL)
+		if_freenameindex(ifnameindex);
 
 	return (rtn);
 }
@@ -274,6 +282,7 @@ valid_type(int type)
 	switch (type) {
 	case IFT_ETHER:
 	case IFT_FDDI:
+	case IFT_INFINIBAND:
 	case IFT_ISO88023:
 	case IFT_ISO88024:
 	case IFT_ISO88025:
@@ -555,8 +564,6 @@ search(u_long addr, action_fn *action)
 /*
  * Display an arp entry
  */
-static char lifname[IF_NAMESIZE];
-static int64_t lifindex = -1;
 
 static void
 print_entry(struct sockaddr_dl *sdl,
@@ -565,7 +572,12 @@ print_entry(struct sockaddr_dl *sdl,
 	const char *host;
 	struct hostent *hp;
 	struct iso88025_sockaddr_dl_data *trld;
+	struct if_nameindex *p;
 	int seg;
+
+	if (ifnameindex == NULL) 
+		if ((ifnameindex = if_nameindex()) == NULL)
+			err(1, "cannot retrieve interface names");
 
 	if (nflag == 0)
 		hp = gethostbyaddr((caddr_t)&(addr->sin_addr),
@@ -593,12 +605,15 @@ print_entry(struct sockaddr_dl *sdl,
 		}
 	} else
 		printf("(incomplete)");
-	if (sdl->sdl_index != lifindex &&
-	    if_indextoname(sdl->sdl_index, lifname) != NULL) {
-        	lifindex = sdl->sdl_index;
-		printf(" on %s", lifname);
-        } else if (sdl->sdl_index == lifindex)
-		printf(" on %s", lifname);
+
+	for (p = ifnameindex; p && ifnameindex->if_index &&
+		 ifnameindex->if_name; p++) {
+		if (p->if_index == sdl->sdl_index) {
+			printf(" on %s", p->if_name);
+			break;
+		}
+	}
+
 	if (rtm->rtm_rmx.rmx_expire == 0)
 		printf(" permanent");
 	else {
@@ -642,6 +657,9 @@ print_entry(struct sockaddr_dl *sdl,
 	case IFT_BRIDGE:
 		printf(" [bridge]");
 		break;
+	case IFT_INFINIBAND:
+		printf(" [infiniband]");
+		break;
 	default:
 		break;
         }
@@ -655,9 +673,12 @@ print_entry(struct sockaddr_dl *sdl,
  */
 static void
 nuke_entry(struct sockaddr_dl *sdl __unused,
-	struct sockaddr_in *addr, struct rt_msghdr *rtm __unused)
+	struct sockaddr_in *addr, struct rt_msghdr *rtm)
 {
 	char ip[20];
+
+	if (rtm->rtm_flags & RTF_PINNED)
+		return;
 
 	snprintf(ip, sizeof(ip), "%s", inet_ntoa(addr->sin_addr));
 	delete(ip);

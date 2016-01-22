@@ -31,16 +31,19 @@
 # $FreeBSD$
 
 TYPE="FreeBSD"
-REVISION="10.0"
+REVISION="11.0"
 BRANCH="CURRENT"
-if [ "X${BRANCH_OVERRIDE}" != "X" ]; then
+if [ -n "${BRANCH_OVERRIDE}" ]; then
 	BRANCH=${BRANCH_OVERRIDE}
 fi
 RELEASE="${REVISION}-${BRANCH}"
 VERSION="${TYPE} ${RELEASE}"
-SYSDIR=$(dirname $0)/..
 
-if [ "X${PARAMFILE}" != "X" ]; then
+if [ -z "${SYSDIR}" ]; then
+    SYSDIR=$(dirname $0)/..
+fi
+
+if [ -n "${PARAMFILE}" ]; then
 	RELDATE=$(awk '/__FreeBSD_version.*propagated to newvers/ {print $3}' \
 		${PARAMFILE})
 else
@@ -49,7 +52,11 @@ else
 fi
 
 b=share/examples/etc/bsd-style-copyright
-year=`date '+%Y'`
+if [ -r "${SYSDIR}/../COPYRIGHT" ]; then
+	year=$(sed -Ee '/^Copyright .* The FreeBSD Project/!d;s/^.*1992-([0-9]*) .*$/\1/g' ${SYSDIR}/../COPYRIGHT)
+else
+	year=$(date +%Y)
+fi
 # look for copyright template
 for bsd_copyright in ../$b ../../$b ../../../$b /usr/src/$b /usr/$b
 do
@@ -65,7 +72,7 @@ do
 done
 
 # no copyright found, use a dummy
-if [ X"$COPYRIGHT" = X ]; then
+if [ -z "$COPYRIGHT" ]; then
 	COPYRIGHT="/*-
  * Copyright (c) 1992-$year The FreeBSD Project.
  * All rights reserved.
@@ -77,6 +84,12 @@ fi
 COPYRIGHT="$COPYRIGHT
 "
 
+# VARS_ONLY means no files should be generated, this is just being
+# included.
+if [ -n "$VARS_ONLY" ]; then
+	return 0
+fi
+
 LC_ALL=C; export LC_ALL
 if [ ! -r version ]
 then
@@ -84,20 +97,50 @@ then
 fi
 
 touch version
-v=`cat version` u=${USER:-root} d=`pwd` h=${HOSTNAME:-`hostname`} t=`date`
-i=`${MAKE:-make} -V KERN_IDENT`
-compiler_v=$($(${MAKE:-make} -V CC) -v 2>&1 | grep 'version')
-
-for dir in /bin /usr/bin /usr/local/bin; do
-	if [ -x "${dir}/svnversion" ] && [ -z ${svnversion} ] ; then
-		svnversion=${dir}/svnversion
+v=`cat version` u=${USER:-root} d=`pwd` h=${HOSTNAME:-`hostname`}
+if [ -n "$SOURCE_DATE_EPOCH" ]; then
+	if ! t=`date -r $SOURCE_DATE_EPOCH 2>/dev/null`; then
+		echo "Invalid SOURCE_DATE_EPOCH" >&2
+		exit 1
 	fi
+else
+	t=`date`
+fi
+i=`${MAKE:-make} -V KERN_IDENT`
+compiler_v=$($(${MAKE:-make} -V CC) -v 2>&1 | grep -w 'version')
+
+for dir in /usr/bin /usr/local/bin; do
+	if [ ! -z "${svnversion}" ] ; then
+		break
+	fi
+	if [ -x "${dir}/svnversion" ] && [ -z ${svnversion} ] ; then
+		# Run svnversion from ${dir} on this script; if return code
+		# is not zero, the checkout might not be compatible with the
+		# svnversion being used.
+		${dir}/svnversion $(realpath ${0}) >/dev/null 2>&1
+		if [ $? -eq 0 ]; then
+			svnversion=${dir}/svnversion
+			break
+		fi
+	fi
+done
+
+if [ -z "${svnversion}" ] && [ -x /usr/bin/svnliteversion ] ; then
+	/usr/bin/svnliteversion $(realpath ${0}) >/dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		svnversion=/usr/bin/svnliteversion
+	else
+		svnversion=
+	fi
+fi
+
+for dir in /usr/bin /usr/local/bin; do
 	if [ -x "${dir}/p4" ] && [ -z ${p4_cmd} ] ; then
 		p4_cmd=${dir}/p4
 	fi
 done
 if [ -d "${SYSDIR}/../.git" ] ; then
-	for dir in /bin /usr/bin /usr/local/bin; do
+	for dir in /usr/bin /usr/local/bin; do
 		if [ -x "${dir}/git" ] ; then
 			git_cmd="${dir}/git --git-dir=${SYSDIR}/../.git"
 			break
@@ -105,8 +148,17 @@ if [ -d "${SYSDIR}/../.git" ] ; then
 	done
 fi
 
+if [ -d "${SYSDIR}/../.hg" ] ; then
+	for dir in /usr/bin /usr/local/bin; do
+		if [ -x "${dir}/hg" ] ; then
+			hg_cmd="${dir}/hg -R ${SYSDIR}/.."
+			break
+		fi
+	done
+fi
+
 if [ -n "$svnversion" ] ; then
-	svn=`cd ${SYSDIR} && $svnversion`
+	svn=`cd ${SYSDIR} && $svnversion 2>/dev/null`
 	case "$svn" in
 	[0-9]*)	svn=" r${svn}" ;;
 	*)	unset svn ;;
@@ -122,12 +174,21 @@ if [ -n "$git_cmd" ] ; then
 	else
 		svn=`$git_cmd log | fgrep 'git-svn-id:' | head -1 | \
 		     sed -n 's/^.*@\([0-9][0-9]*\).*$/\1/p'`
-		if [ -n $svn ] ; then
+		if [ -z "$svn" ] ; then
+			svn=`$git_cmd log --format='format:%N' | \
+			     grep '^svn ' | head -1 | \
+			     sed -n 's/^.*revision=\([0-9][0-9]*\).*$/\1/p'`
+		fi
+		if [ -n "$svn" ] ; then
 			svn=" r${svn}"
 			git="+${git}"
 		else
 			git=" ${git}"
 		fi
+	fi
+	git_b=`$git_cmd rev-parse --abbrev-ref HEAD`
+	if [ -n "$git_b" ] ; then
+		git="${git}(${git_b})"
 	fi
 	if $git_cmd --work-tree=${SYSDIR}/.. diff-index \
 	    --name-only HEAD | read dummy; then
@@ -150,12 +211,23 @@ if [ -n "$p4_cmd" ] ; then
 	*)	unset p4version ;;
 	esac
 fi
-	
+
+if [ -n "$hg_cmd" ] ; then
+	hg=`$hg_cmd id 2>/dev/null`
+	svn=`$hg_cmd svn info 2>/dev/null | \
+		awk -F': ' '/Revision/ { print $2 }'`
+	if [ -n "$svn" ] ; then
+		svn=" r${svn}"
+	fi
+	if [ -n "$hg" ] ; then
+		hg=" ${hg}"
+	fi
+fi
 
 cat << EOF > vers.c
 $COPYRIGHT
-#define SCCSSTR "@(#)${VERSION} #${v}${svn}${git}${p4version}: ${t}"
-#define VERSTR "${VERSION} #${v}${svn}${git}${p4version}: ${t}\\n    ${u}@${h}:${d}\\n"
+#define SCCSSTR "@(#)${VERSION} #${v}${svn}${git}${hg}${p4version}: ${t}"
+#define VERSTR "${VERSION} #${v}${svn}${git}${hg}${p4version}: ${t}\\n    ${u}@${h}:${d}\\n"
 #define RELSTR "${RELEASE}"
 
 char sccs[sizeof(SCCSSTR) > 128 ? sizeof(SCCSSTR) : 128] = SCCSSTR;

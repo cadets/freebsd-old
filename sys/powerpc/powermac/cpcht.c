@@ -44,6 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/intr_machdep.h>
 #include <machine/md_var.h>
+#include <machine/openpicreg.h>
 #include <machine/openpicvar.h>
 #include <machine/pio.h>
 #include <machine/resource.h>
@@ -134,7 +135,7 @@ struct cpcht_softc {
 static devclass_t	cpcht_devclass;
 DEFINE_CLASS_1(pcib, cpcht_driver, cpcht_methods, sizeof(struct cpcht_softc),
     ofw_pci_driver);
-DRIVER_MODULE(cpcht, nexus, cpcht_driver, cpcht_devclass, 0, 0);
+DRIVER_MODULE(cpcht, ofwbus, cpcht_driver, cpcht_devclass, 0, 0);
 
 #define CPCHT_IOPORT_BASE	0xf4000000UL /* Hardwired */
 #define CPCHT_IOPORT_SIZE	0x00400000UL
@@ -175,7 +176,7 @@ cpcht_attach(device_t dev)
 	node = ofw_bus_get_node(dev);
 	sc = device_get_softc(dev);
 
-	if (OF_getprop(node, "reg", reg, sizeof(reg)) < 12)
+	if (OF_getencprop(node, "reg", reg, sizeof(reg)) < 12)
 		return (ENXIO);
 
 	if (OF_getproplen(node, "ranges") <= 0)
@@ -218,7 +219,7 @@ cpcht_configure_htbridge(device_t dev, phandle_t child)
 	u_int b, f, s;
 
 	sc = device_get_softc(dev);
-	if (OF_getprop(child, "reg", &pcir, sizeof(pcir)) == -1)
+	if (OF_getencprop(child, "reg", (pcell_t *)&pcir, sizeof(pcir)) == -1)
 		return;
 
 	b = OFW_PCI_PHYS_HI_BUS(pcir.phys_hi);

@@ -1,5 +1,6 @@
 /*-
  * Copyright (c) 2003 Silicon Graphics International Corp.
+ * Copyright (c) 2014-2015 Alexander Motin <mav@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -49,14 +50,11 @@
  * particular LUN ID in the req_lun_id field.  If we cannot allocate that
  * LUN ID, the ctl_add_lun() call will fail.
  *
- * The POWERED_OFF flag tells us that the LUN should default to the powered
+ * The STOPPED flag tells us that the LUN should default to the powered
  * off state.  It will return 0x04,0x02 until it is powered up.  ("Logical
  * unit not ready, initializing command required.")
  *
- * The INOPERABLE flag tells us that this LUN is not operable for whatever
- * reason.  This means that user data may have been (or has been?) lost.
- * We will return 0x31,0x00 ("Medium format corrupted") until the host
- * issues a FORMAT UNIT command to clear the error.
+ * The NO_MEDIA flag tells us that the LUN has no media inserted.
  *
  * The PRIMARY flag tells us that this LUN is registered as a Primary LUN
  * which is accessible via the Master shelf controller in an HA. This flag
@@ -71,16 +69,31 @@
  * valid for use in SCSI INQUIRY VPD page 0x83.
  *
  * The DEV_TYPE flag tells us that the device_type field is filled in.
+ *
+ * The EJECTED flag tells us that the removable LUN has tray open.
+ *
+ * The UNMAP flag tells us that this LUN supports UNMAP.
+ *
+ * The OFFLINE flag tells us that this LUN can not access backing store.
  */
 typedef enum {
 	CTL_LUN_FLAG_ID_REQ		= 0x01,
-	CTL_LUN_FLAG_POWERED_OFF	= 0x02,
-	CTL_LUN_FLAG_INOPERABLE		= 0x04,
+	CTL_LUN_FLAG_STOPPED		= 0x02,
+	CTL_LUN_FLAG_NO_MEDIA		= 0x04,
 	CTL_LUN_FLAG_PRIMARY		= 0x08,
 	CTL_LUN_FLAG_SERIAL_NUM		= 0x10,
 	CTL_LUN_FLAG_DEVID		= 0x20,
-	CTL_LUN_FLAG_DEV_TYPE		= 0x40
+	CTL_LUN_FLAG_DEV_TYPE		= 0x40,
+	CTL_LUN_FLAG_UNMAP		= 0x80,
+	CTL_LUN_FLAG_EJECTED		= 0x100,
+	CTL_LUN_FLAG_READONLY		= 0x200
 } ctl_backend_lun_flags;
+
+typedef enum {
+	CTL_LUN_SERSEQ_OFF,
+	CTL_LUN_SERSEQ_READ,
+	CTL_LUN_SERSEQ_ON
+} ctl_lun_serseq;
 
 #ifdef _KERNEL
 
@@ -137,6 +150,18 @@ typedef void (*be_lun_config_t)(void *be_lun,
  * this should be 512.  In theory CTL should be able to handle other block
  * sizes.  Host application software may not deal with it very well, though.
  *
+ * pblockexp is the log2() of number of LBAs on the LUN per physical sector.
+ *
+ * pblockoff is the lowest LBA on the LUN aligned to physical sector.
+ *
+ * ublockexp is the log2() of number of LBAs on the LUN per UNMAP block.
+ *
+ * ublockoff is the lowest LBA on the LUN aligned to UNMAP block.
+ *
+ * atomicblock is the number of blocks that can be written atomically.
+ *
+ * opttxferlen is the number of blocks that can be written in one operation.
+ *
  * req_lun_id is the requested LUN ID.  CTL only pays attention to this
  * field if the CTL_LUN_FLAG_ID_REQ flag is set.  If the requested LUN ID is
  * not available, the LUN addition will fail.  If a particular LUN ID isn't
@@ -176,9 +201,16 @@ typedef void (*be_lun_config_t)(void *be_lun,
 struct ctl_be_lun {
 	uint8_t			lun_type;	/* passed to CTL */
 	ctl_backend_lun_flags	flags;		/* passed to CTL */
+	ctl_lun_serseq		serseq;		/* passed to CTL */
 	void			*be_lun;	/* passed to CTL */
 	uint64_t		maxlba;		/* passed to CTL */
 	uint32_t		blocksize;	/* passed to CTL */
+	uint16_t		pblockexp;	/* passed to CTL */
+	uint16_t		pblockoff;	/* passed to CTL */
+	uint16_t		ublockexp;	/* passed to CTL */
+	uint16_t		ublockoff;	/* passed to CTL */
+	uint32_t		atomicblock;	/* passed to CTL */
+	uint32_t		opttxferlen;	/* passed to CTL */
 	uint32_t		req_lun_id;	/* passed to CTL */
 	uint32_t		lun_id;		/* returned from CTL */
 	uint8_t			serial_num[CTL_SN_LEN];	 /* passed to CTL */
@@ -187,6 +219,7 @@ struct ctl_be_lun {
 	be_lun_config_t		lun_config_status; /* passed to CTL */
 	struct ctl_backend_driver *be;		/* passed to CTL */
 	void			*ctl_lun;	/* used by CTL */
+	ctl_options_t		options;	/* passed to CTL */
 	STAILQ_ENTRY(ctl_be_lun) links;		/* used by CTL */
 };
 
@@ -202,6 +235,7 @@ typedef void (*be_vfunc_t)(union ctl_io *io);
 typedef int (*be_ioctl_t)(struct cdev *dev, u_long cmd, caddr_t addr, int flag,
 			  struct thread *td);
 typedef int (*be_luninfo_t)(void *be_lun, struct sbuf *sb);
+typedef uint64_t (*be_lunattr_t)(void *be_lun, const char *attrname);
 
 struct ctl_backend_driver {
 	char		  name[CTL_BE_NAME_LEN]; /* passed to CTL */
@@ -213,6 +247,7 @@ struct ctl_backend_driver {
 	be_func_t	  config_write;		 /* passed to CTL */
 	be_ioctl_t	  ioctl;		 /* passed to CTL */
 	be_luninfo_t	  lun_info;		 /* passed to CTL */
+	be_lunattr_t	  lun_attr;		 /* passed to CTL */
 #ifdef CS_BE_CONFIG_MOVE_DONE_IS_NOT_USED
 	be_func_t	  config_move_done;	 /* passed to backend */
 #endif
@@ -254,34 +289,20 @@ int ctl_start_lun(struct ctl_be_lun *be_lun);
 int ctl_stop_lun(struct ctl_be_lun *be_lun);
 
 /*
- * If a LUN is inoperable, call ctl_lun_inoperable().  Generally the LUN
- * will become operable once again when the user issues the SCSI FORMAT UNIT
- * command.  (CTL will automatically clear the inoperable flag.)  If we
- * need to re-enable the LUN, we can call ctl_lun_operable() to enable it
- * without a SCSI command.
+ * Methods to notify about media and tray status changes.
  */
-int ctl_lun_inoperable(struct ctl_be_lun *be_lun);
-int ctl_lun_operable(struct ctl_be_lun *be_lun);
+int ctl_lun_no_media(struct ctl_be_lun *be_lun);
+int ctl_lun_has_media(struct ctl_be_lun *be_lun);
+int ctl_lun_ejected(struct ctl_be_lun *be_lun);
 
 /*
- * If a LUN is locked on or unlocked from a power/APS standpoint, call
- * ctl_lun_power_lock() to update the current status in CTL's APS subpage.
- * Set the lock flag to 1 to lock the LUN, set it to 0 to unlock the LUN.
+ * Called on LUN HA role change.
  */
-int ctl_lun_power_lock(struct ctl_be_lun *be_lun, struct ctl_nexus *nexus,
-		       int lock);
+int ctl_lun_primary(struct ctl_be_lun *be_lun);
+int ctl_lun_secondary(struct ctl_be_lun *be_lun);
 
 /*
- * To take a LUN offline, call ctl_lun_offline().  Generally the LUN will
- * be online again once the user sends a SCSI START STOP UNIT command with
- * the start and on/offline bits set.  The backend can bring the LUN back
- * online via the ctl_lun_online() function, if necessary.
- */
-int ctl_lun_offline(struct ctl_be_lun *be_lun);
-int ctl_lun_online(struct ctl_be_lun *be_lun);
-
-/*
- * Let the backend notify the initiator about changed capacity.
+ * Let the backend notify the initiators about changes.
  */
 void ctl_lun_capacity_changed(struct ctl_be_lun *be_lun);
 

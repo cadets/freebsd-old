@@ -229,8 +229,6 @@ ald_shutdown(void *arg, int howto)
 {
 	struct alq *alq;
 
-	EVENTHANDLER_DEREGISTER(shutdown_pre_sync, alq_eventhandler_tag);
-
 	ALD_LOCK();
 
 	/* Ensure no new queues can be created. */
@@ -490,10 +488,12 @@ alq_open(struct alq **alqp, const char *file, struct ucred *cred, int cmode,
 	KASSERT((count >= 0), ("%s: count < 0", __func__));
 
 	if (count > 0) {
-		ret = alq_open_flags(alqp, file, cred, cmode, size*count, 0);
-		(*alqp)->aq_flags |= AQ_LEGACY;
-		(*alqp)->aq_entmax = count;
-		(*alqp)->aq_entlen = size;
+		if ((ret = alq_open_flags(alqp, file, cred, cmode,
+		    size*count, 0)) == 0) {
+			(*alqp)->aq_flags |= AQ_LEGACY;
+			(*alqp)->aq_entmax = count;
+			(*alqp)->aq_entlen = size;
+		}
 	} else
 		ret = alq_open_flags(alqp, file, cred, cmode, size, 0);
 
@@ -938,6 +938,8 @@ alq_load_handler(module_t mod, int what, void *arg)
 		if (LIST_FIRST(&ald_queues) == NULL) {
 			ald_shutingdown = 1;
 			ALD_UNLOCK();
+			EVENTHANDLER_DEREGISTER(shutdown_pre_sync,
+			    alq_eventhandler_tag);
 			ald_shutdown(NULL, 0);
 			mtx_destroy(&ald_mtx);
 		} else {

@@ -29,8 +29,6 @@
  * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
  * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
- *
- * P4: //depot/projects/trustedbsd/openbsm/libbsm/bsm_token.c#99
  */
 
 #include <sys/cdefs.h>
@@ -833,6 +831,22 @@ au_to_process_ex(au_id_t auid, uid_t euid, gid_t egid, uid_t ruid,
 
 	return (au_to_process32_ex(auid, euid, egid, ruid, rgid, pid, sid,
 	    tid));
+}
+
+token_t *
+au_to_rights(cap_rights_t *rightsp)
+{
+	token_t *t;
+	u_char *dptr;
+	int i;
+
+	GET_TOKEN_AREA(t, dptr, sizeof(u_char) + sizeof(*rightsp));
+
+	ADD_U_CHAR(dptr, AUT_RIGHTS);
+	for (i = 0; i < nitems(rightsp->cr_rights); i++)
+		ADD_U_INT64(dptr, rightsp->cr_rights[i]);
+
+	return (t);
 }
 
 /*

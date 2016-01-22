@@ -44,7 +44,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/cpufunc.h>
 #include <machine/machdep.h>
-#include <machine/fdt.h>
 
 #include <arm/allwinner/a10_wdog.h>
 
@@ -92,6 +91,9 @@ static void a10wd_watchdog_fn(void *private, u_int cmd, int *error);
 static int
 a10wd_probe(device_t dev)
 {
+
+	if (!ofw_bus_status_okay(dev))
+		return (ENXIO);
 
 	if (ofw_bus_is_compatible(dev, "allwinner,sun4i-wdt")) {
 		device_set_desc(dev, "Allwinner A10 Watchdog");
@@ -150,6 +152,18 @@ a10wd_watchdog_fn(void *private, u_int cmd, int *error)
 			    (wd_intervals[i].value << WDOG_MODE_INTVL_SHIFT) |
 			    WDOG_MODE_EN | WDOG_MODE_RST_EN);
 			WRITE(sc, WDOG_CTRL, WDOG_CTRL_RESTART);
+			*error = 0;
+		}
+		else {
+			/* 
+			 * Can't arm
+			 * disable watchdog as watchdog(9) requires
+			 */
+			device_printf(sc->dev,
+			    "Can't arm, timeout is more than 16 sec\n");
+			mtx_unlock(&sc->mtx);
+			WRITE(sc, WDOG_MODE, 0);
+			return;
 		}
 	}
 	else

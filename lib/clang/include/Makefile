@@ -1,39 +1,70 @@
 # $FreeBSD$
 
-.PATH: ${.CURDIR}/../../../contrib/llvm/tools/clang/lib/Headers
+.include <bsd.own.mk>
 
-INCSDIR=${INCLUDEDIR}/clang/3.3
+LLVM_SRCS= ${.CURDIR}/../../../contrib/llvm
 
-INCS=	__wmmintrin_aes.h \
+.include "../clang.build.mk"
+
+.PATH: ${LLVM_SRCS}/tools/clang/lib/Headers
+
+INCSDIR=${LIBDIR}/clang/3.7.1/include
+
+INCS=	__stddef_max_align_t.h \
+	__wmmintrin_aes.h \
 	__wmmintrin_pclmul.h \
+	adxintrin.h \
 	altivec.h \
 	ammintrin.h \
+	arm_acle.h \
 	avx2intrin.h \
+	avx512bwintrin.h \
+	avx512cdintrin.h \
+	avx512dqintrin.h \
+	avx512erintrin.h \
+	avx512fintrin.h \
+	avx512vlbwintrin.h \
+	avx512vldqintrin.h \
+	avx512vlintrin.h \
 	avxintrin.h \
 	bmi2intrin.h \
 	bmiintrin.h \
 	cpuid.h \
+	cuda_builtin_vars.h \
 	emmintrin.h \
 	f16cintrin.h \
 	fma4intrin.h \
 	fmaintrin.h \
+	fxsrintrin.h \
+	htmintrin.h \
+	htmxlintrin.h \
+	ia32intrin.h \
 	immintrin.h \
 	lzcntintrin.h \
 	mm3dnow.h \
 	mm_malloc.h \
 	mmintrin.h \
-	module.map \
+	module.modulemap \
 	nmmintrin.h \
 	pmmintrin.h \
 	popcntintrin.h \
 	prfchwintrin.h \
 	rdseedintrin.h \
 	rtmintrin.h \
+	s390intrin.h \
+	shaintrin.h \
 	smmintrin.h \
+	tbmintrin.h \
 	tmmintrin.h \
+	vadefs.h \
+	vecintrin.h \
 	wmmintrin.h \
 	x86intrin.h \
 	xmmintrin.h \
-	xopintrin.h
+	xopintrin.h \
+	xtestintrin.h \
+	${GENINCS}
+GENINCS= arm_neon.h
+CLEANFILES= ${GENINCS} ${GENINCS:C/\.h$/.d/}
 
 .include <bsd.prog.mk>

@@ -7,11 +7,11 @@
 .PATH: ${.CURDIR}/../../../cddl/contrib/opensolaris/lib/libzfs/common
 
 LIB=	zfs_core
-DPADD=	${LIBNVPAIR}
-LDADD=	-lnvpair
+LIBADD=	nvpair
 
 SRCS=	libzfs_core.c \
-	libzfs_core_compat.c
+	libzfs_core_compat.c \
+	zfs_ioctl_compat.c
 
 SRCS+=	libzfs_compat.c
 

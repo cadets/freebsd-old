@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/filedesc.h>
+#include <sys/capsicum.h>
 #include <sys/ipc.h>
 #include <sys/mount.h>
 #include <sys/proc.h>
@@ -861,7 +862,7 @@ audit_arg_envv(char *envv, int envc, int length)
 }
 
 void
-audit_arg_rights(cap_rights_t rights)
+audit_arg_rights(cap_rights_t *rightsp)
 {
 	struct kaudit_record *ar;
 
@@ -869,7 +870,7 @@ audit_arg_rights(cap_rights_t rights)
 	if (ar == NULL)
 		return;
 
-	ar->k_ar.ar_arg_rights = rights;
+	ar->k_ar.ar_arg_rights = *rightsp;
 	ARG_SET_VALID(ar, ARG_RIGHTS);
 }
 
@@ -894,6 +895,7 @@ audit_arg_fcntl_rights(uint32_t fcntlrights)
 void
 audit_sysclose(struct thread *td, int fd)
 {
+	cap_rights_t rights;
 	struct kaudit_record *ar;
 	struct vnode *vp;
 	struct file *fp;
@@ -906,7 +908,7 @@ audit_sysclose(struct thread *td, int fd)
 
 	audit_arg_fd(fd);
 
-	if (getvnode(td->td_proc->p_fd, fd, 0, &fp) != 0)
+	if (getvnode(td, fd, cap_rights_init(&rights), &fp) != 0)
 		return;
 
 	vp = fp->f_vnode;

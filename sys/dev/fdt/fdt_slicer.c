@@ -35,9 +35,6 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/fdt/fdt_common.h>
 
-#define DEBUG
-#undef DEBUG
-
 #ifdef DEBUG
 #define debugf(fmt, args...) do { printf("%s(): ", __func__);	\
     printf(fmt,##args); } while (0)
@@ -46,7 +43,7 @@ __FBSDID("$FreeBSD$");
 #endif
 
 int
-flash_fill_slices(device_t dev, struct flash_slice *slices, int *slices_num)
+fdt_flash_fill_slices(device_t dev, struct flash_slice *slices, int *slices_num)
 {
 	char *slice_name;
 	phandle_t dt_node, dt_child;

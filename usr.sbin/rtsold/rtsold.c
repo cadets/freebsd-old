@@ -33,13 +33,11 @@
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
-#include <sys/time.h>
 #include <sys/socket.h>
 #include <sys/param.h>
 
 #include <net/if.h>
 #include <net/if_dl.h>
-#include <net/if_var.h>
 
 #include <netinet/in.h>
 #include <netinet/icmp6.h>
@@ -54,21 +52,19 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
 #include <errno.h>
 #include <err.h>
 #include <stdarg.h>
 #include <ifaddrs.h>
-#ifdef HAVE_POLL_H
 #include <poll.h>
-#endif
 
 #include "rtsold.h"
 
 #define RTSOL_DUMPFILE	"/var/run/rtsold.dump";
 #define RTSOL_PIDFILE	"/var/run/rtsold.pid";
 
-struct ifinfo *iflist;
-struct timeval tm_max =	{0x7fffffff, 0x7fffffff};
+struct timespec tm_max;
 static int log_upto = 999;
 static int fflag = 0;
 
@@ -105,7 +101,7 @@ static int ifreconfig(char *);
 #endif
 
 static int make_packet(struct ifinfo *);
-static struct timeval *rtsol_check_timer(void);
+static struct timespec *rtsol_check_timer(void);
 
 #ifndef SMALL
 static void rtsold_set_dump_file(int);
@@ -116,15 +112,9 @@ int
 main(int argc, char **argv)
 {
 	int s, ch, once = 0;
-	struct timeval *timeout;
+	struct timespec *timeout;
 	const char *opts;
-#ifdef HAVE_POLL_H
 	struct pollfd set[2];
-#else
-	fd_set *fdsetp, *selectfdp;
-	int fdmasks;
-	int maxfd;
-#endif
 	int rtsock;
 	char *argv0;
 
@@ -187,6 +177,10 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
+	/* Generate maximum time in timespec. */
+	tm_max.tv_sec = (-1) & ~((time_t)1 << ((sizeof(tm_max.tv_sec) * 8) - 1));
+	tm_max.tv_nsec = (-1) & ~((long)1 << ((sizeof(tm_max.tv_nsec) * 8) - 1));
+
 	/* set log level */
 	if (dflag > 1)
 		log_upto = LOG_DEBUG;
@@ -220,10 +214,6 @@ main(int argc, char **argv)
 		errx(1, "pid filename (%s) must be an absolute path",
 		    pidfilename);
 	}
-#ifndef HAVE_ARC4RANDOM
-	/* random value initialization */
-	srandom((u_long)time(NULL));
-#endif
 
 #if (__FreeBSD_version < 900000)
 	if (Fflag) {
@@ -252,40 +242,16 @@ main(int argc, char **argv)
 		warnmsg(LOG_ERR, __func__, "failed to open a socket");
 		exit(1);
 	}
-#ifdef HAVE_POLL_H
 	set[0].fd = s;
 	set[0].events = POLLIN;
-#else
-	maxfd = s;
-#endif
-
-#ifdef HAVE_POLL_H
 	set[1].fd = -1;
-#endif
 
 	if ((rtsock = rtsock_open()) < 0) {
 		warnmsg(LOG_ERR, __func__, "failed to open a socket");
 		exit(1);
 	}
-#ifdef HAVE_POLL_H
 	set[1].fd = rtsock;
 	set[1].events = POLLIN;
-#else
-	if (rtsock > maxfd)
-		maxfd = rtsock;
-#endif
-
-#ifndef HAVE_POLL_H
-	fdmasks = howmany(maxfd + 1, NFDBITS) * sizeof(fd_mask);
-	if ((fdsetp = malloc(fdmasks)) == NULL) {
-		warnmsg(LOG_ERR, __func__, "malloc");
-		exit(1);
-	}
-	if ((selectfdp = malloc(fdmasks)) == NULL) {
-		warnmsg(LOG_ERR, __func__, "malloc");
-		exit(1);
-	}
-#endif
 
 	/* configuration per interface */
 	if (ifinit()) {
@@ -326,18 +292,8 @@ main(int argc, char **argv)
 			fclose(fp);
 		}
 	}
-#ifndef HAVE_POLL_H
-	memset(fdsetp, 0, fdmasks);
-	FD_SET(s, fdsetp);
-	FD_SET(rtsock, fdsetp);
-#endif
 	while (1) {		/* main loop */
 		int e;
-
-#ifndef HAVE_POLL_H
-		memcpy(selectfdp, fdsetp, fdmasks);
-#endif
-
 #ifndef SMALL
 		if (do_dump) {	/* SIGUSR1 */
 			do_dump = 0;
@@ -362,11 +318,7 @@ main(int argc, char **argv)
 			if (ifi == NULL)
 				break;
 		}
-#ifdef HAVE_POLL_H
-		e = poll(set, 2, timeout ? (timeout->tv_sec * 1000 + timeout->tv_usec / 1000) : INFTIM);
-#else
-		e = select(maxfd + 1, selectfdp, NULL, NULL, timeout);
-#endif
+		e = poll(set, 2, timeout ? (timeout->tv_sec * 1000 + timeout->tv_nsec / 1000 / 1000) : INFTIM);
 		if (e < 1) {
 			if (e < 0 && errno != EINTR) {
 				warnmsg(LOG_ERR, __func__, "select: %s",
@@ -376,17 +328,9 @@ main(int argc, char **argv)
 		}
 
 		/* packet reception */
-#ifdef HAVE_POLL_H
 		if (set[1].revents & POLLIN)
-#else
-		if (FD_ISSET(rtsock, selectfdp))
-#endif
 			rtsock_input(rtsock);
-#ifdef HAVE_POLL_H
 		if (set[0].revents & POLLIN)
-#else
-		if (FD_ISSET(s, selectfdp))
-#endif
 			rtsol_input(s);
 	}
 	/* NOTREACHED */
@@ -603,22 +547,22 @@ make_packet(struct ifinfo *ifi)
 	return (0);
 }
 
-static struct timeval *
+static struct timespec *
 rtsol_check_timer(void)
 {
-	static struct timeval returnval;
-	struct timeval now, rtsol_timer;
+	static struct timespec returnval;
+	struct timespec now, rtsol_timer;
 	struct ifinfo *ifi;
 	struct rainfo *rai;
 	struct ra_opt *rao;
 	int flags;
 
-	gettimeofday(&now, NULL);
+	clock_gettime(CLOCK_MONOTONIC_FAST, &now);
 
 	rtsol_timer = tm_max;
 
 	TAILQ_FOREACH(ifi, &ifinfo_head, ifi_next) {
-		if (timercmp(&ifi->expire, &now, <=)) {
+		if (TS_CMP(&ifi->expire, &now, <=)) {
 			warnmsg(LOG_DEBUG, __func__, "timer expiration on %s, "
 			    "state = %d", ifi->ifname, ifi->state);
 
@@ -711,7 +655,7 @@ rtsol_check_timer(void)
 					    "type=%d, msg=%s, expire=%s",
 					    rao->rao_type, (char *)rao->rao_msg,
 						sec2str(&rao->rao_expire));
-					if (timercmp(&now, &rao->rao_expire,
+					if (TS_CMP(&now, &rao->rao_expire,
 					    >=)) {
 						warnmsg(LOG_DEBUG, __func__,
 						    "RA expiration timer: "
@@ -728,21 +672,21 @@ rtsol_check_timer(void)
 			if (expire)
 				ra_opt_handler(ifi);
 		}
-		if (timercmp(&ifi->expire, &rtsol_timer, <))
+		if (TS_CMP(&ifi->expire, &rtsol_timer, <))
 			rtsol_timer = ifi->expire;
 	}
 
-	if (timercmp(&rtsol_timer, &tm_max, ==)) {
+	if (TS_CMP(&rtsol_timer, &tm_max, ==)) {
 		warnmsg(LOG_DEBUG, __func__, "there is no timer");
 		return (NULL);
-	} else if (timercmp(&rtsol_timer, &now, <))
+	} else if (TS_CMP(&rtsol_timer, &now, <))
 		/* this may occur when the interval is too small */
-		returnval.tv_sec = returnval.tv_usec = 0;
+		returnval.tv_sec = returnval.tv_nsec = 0;
 	else
-		timersub(&rtsol_timer, &now, &returnval);
+		TS_SUB(&rtsol_timer, &now, &returnval);
 
 	now.tv_sec += returnval.tv_sec;
-	now.tv_usec += returnval.tv_usec;
+	now.tv_nsec += returnval.tv_nsec;
 	warnmsg(LOG_DEBUG, __func__, "New timer is %s",
 	    sec2str(&now));
 
@@ -755,7 +699,7 @@ rtsol_timer_update(struct ifinfo *ifi)
 #define MILLION 1000000
 #define DADRETRY 10		/* XXX: adhoc */
 	long interval;
-	struct timeval now;
+	struct timespec now;
 
 	bzero(&ifi->timer, sizeof(ifi->timer));
 
@@ -777,13 +721,9 @@ rtsol_timer_update(struct ifinfo *ifi)
 			ifi->timer = tm_max;	/* stop timer(valid?) */
 		break;
 	case IFS_DELAY:
-#ifndef HAVE_ARC4RANDOM
-		interval = random() % (MAX_RTR_SOLICITATION_DELAY * MILLION);
-#else
 		interval = arc4random_uniform(MAX_RTR_SOLICITATION_DELAY * MILLION);
-#endif
 		ifi->timer.tv_sec = interval / MILLION;
-		ifi->timer.tv_usec = interval % MILLION;
+		ifi->timer.tv_nsec = (interval % MILLION) * 1000;
 		break;
 	case IFS_PROBE:
 		if (ifi->probes < MAX_RTR_SOLICITATIONS)
@@ -807,16 +747,16 @@ rtsol_timer_update(struct ifinfo *ifi)
 	}
 
 	/* reset the timer */
-	if (timercmp(&ifi->timer, &tm_max, ==)) {
+	if (TS_CMP(&ifi->timer, &tm_max, ==)) {
 		ifi->expire = tm_max;
 		warnmsg(LOG_DEBUG, __func__,
 		    "stop timer for %s", ifi->ifname);
 	} else {
-		gettimeofday(&now, NULL);
-		timeradd(&now, &ifi->timer, &ifi->expire);
+		clock_gettime(CLOCK_MONOTONIC_FAST, &now);
+		TS_ADD(&now, &ifi->timer, &ifi->expire);
 
 		now.tv_sec += ifi->timer.tv_sec;
-		now.tv_usec += ifi->timer.tv_usec;
+		now.tv_nsec += ifi->timer.tv_nsec;
 		warnmsg(LOG_DEBUG, __func__, "set timer for %s to %s",
 		    ifi->ifname, sec2str(&now));
 	}
@@ -839,15 +779,15 @@ static void
 usage(void)
 {
 #ifndef SMALL
-	fprintf(stderr, "usage: rtsold [-adDfFm1] [-O script-name] "
-	    "[-P pidfile] [-R script-name] interfaces...\n");
 	fprintf(stderr, "usage: rtsold [-dDfFm1] [-O script-name] "
-	    "[-P pidfile] [-R script-name] -a\n");
+	    "[-p pidfile] [-R script-name] interface ...\n");
+	fprintf(stderr, "usage: rtsold [-dDfFm1] [-O script-name] "
+	    "[-p pidfile] [-R script-name] -a\n");
 #else
 	fprintf(stderr, "usage: rtsol [-dDF] [-O script-name] "
-	    "[-P pidfile] [-R script-name] interfaces...\n");
+	    "[-p pidfile] [-R script-name] interface ...\n");
 	fprintf(stderr, "usage: rtsol [-dDF] [-O script-name] "
-	    "[-P pidfile] [-R script-name] -a\n");
+	    "[-p pidfile] [-R script-name] -a\n");
 #endif
 }
 

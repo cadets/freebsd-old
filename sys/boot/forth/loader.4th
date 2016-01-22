@@ -1,4 +1,5 @@
-\ Copyright (c) 1999 Daniel C. Sobral <dcs@freebsd.org>
+\ Copyright (c) 1999 Daniel C. Sobral <dcs@FreeBSD.org>
+\ Copyright (c) 2011-2015 Devin Teske <dteske@FreeBSD.org>
 \ All rights reserved.
 \
 \ Redistribution and use in source and binary forms, with or without
@@ -24,6 +25,8 @@
 \
 \ $FreeBSD$
 
+only forth definitions
+
 s" arch-i386" environment? [if] [if]
 	s" loader_version" environment?  [if]
 		11 < [if]
@@ -41,8 +44,18 @@ s" arch-i386" environment? [if] [if]
 
 include /boot/support.4th
 include /boot/color.4th
+include /boot/delay.4th
+include /boot/check-password.4th
 
-only forth also support-functions also builtins definitions
+only forth definitions
+
+: bootmsg ( -- )
+  loader_color? dup ( -- bool bool )
+  if 7 fg 4 bg then
+  ." Booting..."
+  if me then
+  cr
+;
 
 : try-menu-unset
   \ menu-unset may not be present
@@ -68,14 +81,10 @@ only forth also support-functions also builtins definitions
   then
 ;
 
+only forth also support-functions also builtins definitions
+
 : boot
   0= if ( interpreted ) get_arguments then
-
-  loader_color? if
-    ." [37;44mBooting...[0m" cr
-  else
-    ." Booting..." cr
-  then
 
   \ Unload only if a path was passed
   dup if
@@ -85,25 +94,25 @@ only forth also support-functions also builtins definitions
     else
       s" kernelname" getenv? if ( a kernel has been loaded )
         try-menu-unset
-        1 boot exit
+        bootmsg 1 boot exit
       then
       load_kernel_and_modules
       ?dup if exit then
       try-menu-unset
-      0 1 boot exit
+      bootmsg 0 1 boot exit
     then
   else
     s" kernelname" getenv? if ( a kernel has been loaded )
       try-menu-unset
-      1 boot exit
+      bootmsg 1 boot exit
     then
     load_kernel_and_modules
     ?dup if exit then
     try-menu-unset
-    0 1 boot exit
+    bootmsg 0 1 boot exit
   then
   load_kernel_and_modules
-  ?dup 0= if 0 1 boot then
+  ?dup 0= if bootmsg 0 1 boot then
 ;
 
 \ ***** boot-conf
@@ -117,20 +126,18 @@ only forth also support-functions also builtins definitions
   ?dup 0= if 0 1 autoboot then
 ;
 
-also forth definitions also builtins
+also forth definitions previous
 
 builtin: boot
 builtin: boot-conf
 
 only forth definitions also support-functions
 
-include /boot/check-password.4th
-
 \ ***** start
 \
 \       Initializes support.4th global variables, sets loader_conf_files,
-\       process conf files, and, if any one such file was succesfully
-\       read to the end, load kernel and modules.
+\       processes conf files, and, if any one such file was succesfully
+\       read to the end, loads kernel and modules.
 
 : start  ( -- ) ( throws: abort & user-defined )
   s" /boot/defaults/loader.conf" initialize
@@ -139,8 +146,18 @@ include /boot/check-password.4th
   \ Will *NOT* try to load kernel and modules if no configuration file
   \ was succesfully loaded!
   any_conf_read? if
-    load_kernel
-    load_modules
+    s" loader_delay" getenv -1 = if
+      load_xen_throw
+      load_kernel
+      load_modules
+    else
+      drop
+      ." Loading Kernel and Modules (Ctrl-C to Abort)" cr
+      s" also support-functions" evaluate
+      s" set delay_command='load_xen_throw load_kernel load_modules'" evaluate
+      s" set delay_showdots" evaluate
+      delay_execute
+    then
   then
 ;
 
@@ -221,7 +238,15 @@ include /boot/check-password.4th
   s" disable-module" s" disable loading of a module" .?
   s" toggle-module" s" toggle loading of a module" .?
   s" show-module" s" show module load data" .?
+  s" try-include" s" try to load/interpret files" .?
 ;
 
-only forth also
+: try-include ( -- ) \ see loader.4th(8)
+  ['] include ( -- xt ) \ get the execution token of `include'
+  catch ( xt -- exception# | 0 ) if \ failed
+    LF parse ( c -- s-addr/u ) 2drop \ advance >in to EOL (drop data)
+    \ ... prevents words unused by `include' from being interpreted
+  then
+; immediate \ interpret immediately for access to `source' (aka tib)
 
+only forth definitions

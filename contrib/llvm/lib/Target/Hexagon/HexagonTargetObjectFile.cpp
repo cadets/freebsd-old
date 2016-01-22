@@ -25,27 +25,29 @@
 using namespace llvm;
 
 static cl::opt<int> SmallDataThreshold("hexagon-small-data-threshold",
-                                cl::init(8), cl::Hidden);
+                                cl::init(8), cl::Hidden,
+                cl::desc("The maximum size of an object in the sdata section"));
 
 void HexagonTargetObjectFile::Initialize(MCContext &Ctx,
                                          const TargetMachine &TM) {
   TargetLoweringObjectFileELF::Initialize(Ctx, TM);
+  InitializeELF(TM.Options.UseInitArray);
 
-
-  SmallDataSection =
-    getContext().getELFSection(".sdata", ELF::SHT_PROGBITS,
-                               ELF::SHF_WRITE | ELF::SHF_ALLOC,
-                               SectionKind::getDataRel());
-  SmallBSSSection =
-    getContext().getELFSection(".sbss", ELF::SHT_NOBITS,
-                               ELF::SHF_WRITE | ELF::SHF_ALLOC,
-                               SectionKind::getBSS());
+  SmallDataSection = getContext().getELFSection(
+      ".sdata", ELF::SHT_PROGBITS, ELF::SHF_WRITE | ELF::SHF_ALLOC);
+  SmallBSSSection = getContext().getELFSection(".sbss", ELF::SHT_NOBITS,
+                                               ELF::SHF_WRITE | ELF::SHF_ALLOC);
 }
 
 // sdata/sbss support taken largely from the MIPS Backend.
 static bool IsInSmallSection(uint64_t Size) {
   return Size > 0 && Size <= (uint64_t)SmallDataThreshold;
 }
+
+bool HexagonTargetObjectFile::IsSmallDataEnabled () const {
+  return SmallDataThreshold > 0;
+}
+
 /// IsGlobalInSmallSection - Return true if this global value should be
 /// placed into small data/bss section.
 bool HexagonTargetObjectFile::IsGlobalInSmallSection(const GlobalValue *GV,
@@ -79,9 +81,10 @@ IsGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM,
   return false;
 }
 
-const MCSection *HexagonTargetObjectFile::
-SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
-                       Mangler *Mang, const TargetMachine &TM) const {
+MCSection *
+HexagonTargetObjectFile::SelectSectionForGlobal(const GlobalValue *GV,
+                                                SectionKind Kind, Mangler &Mang,
+                                                const TargetMachine &TM) const {
 
   // Handle Small Section classification here.
   if (Kind.isBSS() && IsGlobalInSmallSection(GV, TM, Kind))

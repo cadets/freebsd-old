@@ -44,55 +44,6 @@
  * other processors"
  */
 
-#if defined(XEN) || defined(XENHVM)
-#ifndef NR_VIRQS
-#define	NR_VIRQS	24
-#endif
-#ifndef NR_IPIS
-#define	NR_IPIS		2
-#endif
-#endif
-
-#if defined(XEN)
-
-/* These are peridically updated in shared_info, and then copied here. */
-struct shadow_time_info {
-	uint64_t tsc_timestamp;     /* TSC at last update of time vals.  */
-	uint64_t system_timestamp;  /* Time, in nanosecs, since boot.    */
-	uint32_t tsc_to_nsec_mul;
-	uint32_t tsc_to_usec_mul;
-	int tsc_shift;
-	uint32_t version;
-};
-
-#define	PCPU_XEN_FIELDS							\
-	;								\
-	u_int	pc_cr3;		/* track cr3 for R1/R3*/		\
-	vm_paddr_t *pc_pdir_shadow;					\
-	uint64_t pc_processed_system_time;				\
-	struct shadow_time_info pc_shadow_time;				\
-	int	pc_resched_irq;						\
-	int	pc_callfunc_irq;					\
-	int	pc_virq_to_irq[NR_VIRQS];				\
-	int	pc_ipi_to_irq[NR_IPIS];					\
-	char	__pad[77]
-
-#elif defined(XENHVM)
-
-#define	PCPU_XEN_FIELDS							\
-	;								\
-	unsigned int pc_last_processed_l1i;				\
-	unsigned int pc_last_processed_l2i;				\
-	char	__pad[229]
-
-#else /* !XEN && !XENHVM */
-
-#define PCPU_XEN_FIELDS							\
-	;								\
-	char	__pad[237]
-
-#endif
-
 #define	PCPU_MD_FIELDS							\
 	char	pc_monitorbuf[128] __aligned(128); /* cache line */	\
 	struct	pcpu *pc_prvspace;	/* Self-reference */		\
@@ -105,8 +56,10 @@ struct shadow_time_info {
 	u_int   pc_acpi_id;		/* ACPI CPU id */		\
 	u_int	pc_apic_id;						\
 	int	pc_private_tss;		/* Flag indicating private tss*/\
-	u_int	pc_cmci_mask		/* MCx banks for CMCI */	\
-	PCPU_XEN_FIELDS
+	u_int	pc_cmci_mask;		/* MCx banks for CMCI */	\
+	u_int	pc_vcpu_id;		/* Xen vCPU ID */		\
+	vm_offset_t pc_qmap_addr;	/* KVA for temporary mappings */\
+	char	__pad[229]
 
 #ifdef _KERNEL
 

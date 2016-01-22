@@ -66,9 +66,12 @@ typedef struct {
 } fstype_t;
 
 static fstype_t fstypes[] = {
-	{ "ffs", ffs_prep_opts,	ffs_parse_opts,	ffs_cleanup_opts, ffs_makefs },
-	{ "cd9660", cd9660_prep_opts, cd9660_parse_opts, cd9660_cleanup_opts,
-	  cd9660_makefs},
+#define ENTRY(name) { \
+	# name, name ## _prep_opts, name ## _parse_opts, \
+	name ## _cleanup_opts, name ## _makefs  \
+}
+	ENTRY(ffs),
+	ENTRY(cd9660),
 	{ .type = NULL	},
 };
 
@@ -113,7 +116,7 @@ main(int argc, char *argv[])
 	start_time.tv_sec = start.tv_sec;
 	start_time.tv_nsec = start.tv_usec * 1000;
 
-	while ((ch = getopt(argc, argv, "B:b:Dd:f:F:M:m:N:o:ps:S:t:x")) != -1) {
+	while ((ch = getopt(argc, argv, "B:b:Dd:f:F:M:m:N:o:pr:s:S:t:xZ")) != -1) {
 		switch (ch) {
 
 		case 'B':
@@ -205,7 +208,14 @@ main(int argc, char *argv[])
 			break;
 		}
 		case 'p':
+			/* Deprecated in favor of 'Z' */
 			fsoptions.sparse = 1;
+			break;
+
+		case 'R':
+			/* Round image size up to specified block size */
+			fsoptions.roundup =
+			    strsuftoll("roundup-size", optarg, 0, LLONG_MAX);
 			break;
 
 		case 's':
@@ -231,6 +241,11 @@ main(int argc, char *argv[])
 
 		case 'x':
 			fsoptions.onlyspec = 1;
+			break;
+
+		case 'Z':
+			/* Superscedes 'p' for compatibility with NetBSD makefs(8) */
+			fsoptions.sparse = 1;
 			break;
 
 		case '?':
@@ -353,9 +368,9 @@ usage(void)
 	prog = getprogname();
 	fprintf(stderr,
 "usage: %s [-t fs-type] [-o fs-options] [-d debug-mask] [-B endian]\n"
-"\t[-S sector-size] [-M minimum-size] [-m maximum-size] [-s image-size]\n"
-"\t[-b free-blocks] [-f free-files] [-F mtree-specfile] [-px]\n"
-"\t[-N userdb-dir] image-file directory | manifest [extra-directory ...]\n",
+"\t[-S sector-size] [-M minimum-size] [-m maximum-size] [-R roundup-size]\n"
+"\t[-s image-size] [-b free-blocks] [-f free-files] [-F mtree-specfile]\n"
+"\t[-xZ] [-N userdb-dir] image-file directory | manifest [extra-directory ...]\n",
 	    prog);
 	exit(1);
 }

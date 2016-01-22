@@ -40,7 +40,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/watchdog.h>
 #include <machine/bus.h>
 #include <machine/cpu.h>
-#include <machine/frame.h>
 #include <machine/intr.h>
 
 #include <dev/fdt/fdt_common.h>
@@ -49,11 +48,11 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/ofw_bus_subr.h>
 
 #include <machine/bus.h>
-#include <machine/fdt.h>
 
 #define	BCM2835_NUM_TIMERS	4
 
 #define	DEFAULT_TIMER		3
+#define	DEFAULT_TIMER_NAME	"BCM2835-3"
 #define	DEFAULT_FREQUENCY	1000000
 #define	MIN_PERIOD		5LLU
 
@@ -103,7 +102,7 @@ static struct bcm_systimer_softc *bcm_systimer_sc = NULL;
 static unsigned bcm_systimer_tc_get_timecount(struct timecounter *);
 
 static struct timecounter bcm_systimer_tc = {
-	.tc_name           = "BCM2835 Timecounter",
+	.tc_name           = DEFAULT_TIMER_NAME,
 	.tc_get_timecount  = bcm_systimer_tc_get_timecount,
 	.tc_poll_pps       = NULL,
 	.tc_counter_mask   = ~0u,
@@ -187,6 +186,9 @@ static int
 bcm_systimer_probe(device_t dev)
 {
 
+	if (!ofw_bus_status_okay(dev))
+		return (ENXIO);
+
 	if (ofw_bus_is_compatible(dev, "broadcom,bcm2835-system-timer")) {
 		device_set_desc(dev, "BCM2835 System Timer");
 		return (BUS_PROBE_DEFAULT);
@@ -237,8 +239,7 @@ bcm_systimer_attach(device_t dev)
 
 	sc->st[DEFAULT_TIMER].index = DEFAULT_TIMER;
 	sc->st[DEFAULT_TIMER].enabled = 0;
-	sc->st[DEFAULT_TIMER].et.et_name = malloc(64, M_DEVBUF, M_NOWAIT | M_ZERO);
-	sprintf(sc->st[DEFAULT_TIMER].et.et_name, "BCM2835 Event Timer %d", DEFAULT_TIMER);
+	sc->st[DEFAULT_TIMER].et.et_name = DEFAULT_TIMER_NAME;
 	sc->st[DEFAULT_TIMER].et.et_flags = ET_FLAGS_ONESHOT;
 	sc->st[DEFAULT_TIMER].et.et_quality = 1000;
 	sc->st[DEFAULT_TIMER].et.et_frequency = sc->sysclk_freq;
@@ -276,12 +277,6 @@ static devclass_t bcm_systimer_devclass;
 DRIVER_MODULE(bcm_systimer, simplebus, bcm_systimer_driver, bcm_systimer_devclass, 0, 0);
 
 void
-cpu_initclocks(void)
-{
-	cpu_initclocks_bsp();
-}
-
-void
 DELAY(int usec)
 {
 	int32_t counts;
@@ -296,7 +291,7 @@ DELAY(int usec)
 	}
 
 	/* Get the number of times to count */
-	counts = usec * ((bcm_systimer_tc.tc_frequency / 1000000) + 1);
+	counts = usec * (bcm_systimer_tc.tc_frequency / 1000000) + 1;
 
 	first = bcm_systimer_tc_read_4(SYSTIMER_CLO);
 

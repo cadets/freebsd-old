@@ -41,7 +41,6 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm.h>
 #include <vm/pmap.h>
 #include <vm/vm_extern.h>
-#include <machine/pmap.h>
 
 #include <arm/xscale/i8134x/i81342reg.h>
 #include <arm/xscale/i8134x/i81342var.h>
@@ -210,7 +209,7 @@ i81342_pci_attach(device_t dev)
 	}
 	bus_space_write_4(sc->sc_st, sc->sc_atu_sh, ATU_ISR,
 	    bus_space_read_4(sc->sc_st, sc->sc_atu_sh, ATU_ISR) & ATUX_ISR_ERRMSK);
-	device_add_child(dev, "pci", busno);
+	device_add_child(dev, "pci", -1);
 	return (bus_generic_attach(dev));
 }
 

@@ -2,15 +2,23 @@
 # Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.56)
 sinclude(acx_nlnetlabs.m4)
-sinclude(acx_pthread.m4)
+sinclude(ax_pthread.m4)
 sinclude(acx_python.m4)
 sinclude(ac_pkg_swig.m4)
+sinclude(dnstap/dnstap.m4)
 
-AC_INIT(unbound, 1.4.20, unbound-bugs@nlnetlabs.nl, unbound)
+# must be numbers. ac_defun because of later processing
+m4_define([VERSION_MAJOR],[1])
+m4_define([VERSION_MINOR],[5])
+m4_define([VERSION_MICRO],[7])
+AC_INIT(unbound, m4_defn([VERSION_MAJOR]).m4_defn([VERSION_MINOR]).m4_defn([VERSION_MICRO]), unbound-bugs@nlnetlabs.nl, unbound)
+AC_SUBST(UNBOUND_VERSION_MAJOR, [VERSION_MAJOR])
+AC_SUBST(UNBOUND_VERSION_MINOR, [VERSION_MINOR])
+AC_SUBST(UNBOUND_VERSION_MICRO, [VERSION_MICRO])
 
-LIBUNBOUND_CURRENT=3
-LIBUNBOUND_REVISION=5
-LIBUNBOUND_AGE=1
+LIBUNBOUND_CURRENT=5
+LIBUNBOUND_REVISION=10
+LIBUNBOUND_AGE=3
 # 1.0.0 had 0:12:0
 # 1.0.1 had 0:13:0
 # 1.0.2 had 0:14:0
@@ -45,7 +53,17 @@ LIBUNBOUND_AGE=1
 # 1.4.17 had 3:2:1
 # 1.4.18 had 3:3:1
 # 1.4.19 had 3:4:1
-# 1.4.20 had 4:0:2 # adds libunbound.ttl
+# 1.4.20 had 4:0:2 # adds libunbound.ttl # but shipped 3:5:1
+# 1.4.21 had 4:1:2
+# 1.4.22 had 4:1:2
+# 1.5.0 had 5:3:3 # adds ub_ctx_add_ta_autr
+# 1.5.1 had 5:3:3
+# 1.5.2 had 5:5:3
+# 1.5.3 had 5:6:3
+# 1.5.4 had 5:7:3
+# 1.5.5 had 5:8:3
+# 1.5.6 had 5:9:3
+# 1.5.7 had 5:10:3
 
 #   Current  -- the number of the binary API that we're implementing
 #   Revision -- which iteration of the implementation of the binary
@@ -69,21 +87,11 @@ AC_SUBST(LIBUNBOUND_CURRENT)
 AC_SUBST(LIBUNBOUND_REVISION)
 AC_SUBST(LIBUNBOUND_AGE)
 
-pretty_cmdline() {
-	cmdline=""
-	while test -n "$1"; do
-		cmdline="$cmdline '"`echo $1 | sed -e 's/\\\\/\\\\\\\\/g' | sed -e 's/"/\\\\"/g' `"'"
-		shift
-	done
-}
-pretty_cmdline $@
-AC_DEFINE_UNQUOTED(CONFIGURE_BUILD_WITH, ["$cmdline"], [configure flags])
-AC_CANONICAL_TARGET
-AC_DEFINE_UNQUOTED(CONFIGURE_TARGET, ["$target"], [configure target system])
-AC_DEFINE_UNQUOTED(CONFIGURE_DATE, ["`date`"], [configure date])
-
 CFLAGS="$CFLAGS"
 AC_AIX
+if test "$ac_cv_header_minix_config_h" = "yes"; then
+	AC_DEFINE(_NETBSD_SOURCE,1, [Enable for compile on Minix])
+fi
 
 dnl
 dnl By default set prefix to /usr/local
@@ -116,6 +124,8 @@ AC_ARG_WITH([conf_file],
 AC_SUBST(ub_conf_file)
 ACX_ESCAPE_BACKSLASH($ub_conf_file, hdr_config)
 AC_DEFINE_UNQUOTED(CONFIGFILE, ["$hdr_config"], [Pathname to the Unbound configuration file])
+ub_conf_dir=`AS_DIRNAME(["$ub_conf_file"])`
+AC_SUBST(ub_conf_dir)
 
 # Determine run, chroot directory and pidfile locations
 AC_ARG_WITH(run-dir, 
@@ -239,6 +249,8 @@ case "$debug_enabled" in
 		;;
 esac
 ACX_CHECK_FLTO
+ACX_CHECK_PIE
+ACX_CHECK_RELRO_NOW
 
 AC_C_INLINE
 ACX_CHECK_FORMAT_ATTRIBUTE
@@ -264,7 +276,7 @@ AC_CHECK_TOOL(STRIP, strip)
 ACX_LIBTOOL_C_ONLY
 
 # Checks for header files.
-AC_CHECK_HEADERS([stdarg.h stdbool.h netinet/in.h sys/param.h sys/socket.h sys/uio.h sys/resource.h arpa/inet.h syslog.h netdb.h sys/wait.h pwd.h glob.h grp.h login_cap.h winsock2.h ws2tcpip.h],,, [AC_INCLUDES_DEFAULT])
+AC_CHECK_HEADERS([stdarg.h stdbool.h netinet/in.h sys/param.h sys/socket.h sys/un.h sys/uio.h sys/resource.h arpa/inet.h syslog.h netdb.h sys/wait.h pwd.h glob.h grp.h login_cap.h winsock2.h ws2tcpip.h endian.h],,, [AC_INCLUDES_DEFAULT])
 
 # check for types.  
 # Using own tests for int64* because autoconf builtin only give 32bit.
@@ -288,6 +300,20 @@ ACX_TYPE_IN_ADDR_T
 ACX_TYPE_IN_PORT_T
 ACX_CHECK_MEMCMP_SIGNED
 
+AC_CHECK_SIZEOF(time_t,,[
+AC_INCLUDES_DEFAULT
+#ifdef TIME_WITH_SYS_TIME
+# include <sys/time.h>
+# include <time.h>
+#else
+# ifdef HAVE_SYS_TIME_H
+#  include <sys/time.h>
+# else
+#  include <time.h>
+# endif
+#endif
+])
+
 # add option to disable the evil rpath
 ACX_ARG_RPATH
 AC_SUBST(RUNTIME_PATH)
@@ -302,7 +328,7 @@ AC_DEFUN([AC_CHECK_STRPTIME_WORKS],
 AC_MSG_CHECKING(whether strptime works)
 if test c${cross_compiling} = cno; then
 AC_RUN_IFELSE([AC_LANG_SOURCE([[
-#define _XOPEN_SOURCE
+#define _XOPEN_SOURCE 600
 #include <time.h>
 int main(void) { struct tm tm; char *res;
 res = strptime("2010-07-15T00:00:00+00:00", "%t%Y%t-%t%m%t-%t%d%tT%t%H%t:%t%M%t:%t%S%t", &tm);
@@ -384,7 +410,7 @@ AC_ARG_WITH(pthreads, AC_HELP_STRING([--with-pthreads],
  [ ],[ withval="yes" ])
 ub_have_pthreads=no
 if test x_$withval != x_no; then
-	ACX_PTHREAD([
+	AX_PTHREAD([
 		AC_DEFINE(HAVE_PTHREAD,1,[Define if you have POSIX threads libraries and header files.])
 		LIBS="$PTHREAD_LIBS $LIBS"
 		CFLAGS="$CFLAGS $PTHREAD_CFLAGS"
@@ -450,10 +476,12 @@ if test x_$ub_test_python != x_no; then
    ac_save_LIBS="$LIBS" dnl otherwise AC_PYTHON_DEVEL thrashes $LIBS
    AC_PYTHON_DEVEL
    if test ! -z "$PYTHON_VERSION"; then
-	if test `$PYTHON -c "print '$PYTHON_VERSION' >= '2.4.0'"` = "False"; then
+	if test `$PYTHON -c "print('$PYTHON_VERSION' >= '2.4.0')"` = "False"; then
 		AC_ERROR([Python version >= 2.4.0 is required])
 	fi
 
+      [PY_MAJOR_VERSION="`$PYTHON -c \"import sys; print(sys.version_info[0])\"`"]
+      AC_SUBST(PY_MAJOR_VERSION)
       # Have Python
       AC_DEFINE(HAVE_PYTHON,1,[Define if you have Python libraries and header files.])
       LIBS="$PYTHON_LDFLAGS $LIBS"
@@ -535,17 +563,48 @@ AC_ARG_WITH([nss], AC_HELP_STRING([--with-nss=path],
 		CPPFLAGS="-I/usr/include/nspr4 $CPPFLAGS"
 	fi
         LIBS="$LIBS -lnss3 -lnspr4"
+	SSLLIB=""
+	]
+)
+
+# libnettle
+USE_NETTLE="no"
+AC_ARG_WITH([nettle], AC_HELP_STRING([--with-nettle=path],
+	[use libnettle as crypto library, installed at path.]),
+	[
+	USE_NETTLE="yes"
+	AC_DEFINE(HAVE_NETTLE, 1, [Use libnettle for crypto])
+	if test "$withval" != "" -a "$withval" != "yes"; then
+		CPPFLAGS="$CPPFLAGS -I$withval/include/nettle"
+		LDFLAGS="$LDFLAGS -L$withval/lib"
+		ACX_RUNTIME_PATH_ADD([$withval/lib])
+	else
+		CPPFLAGS="$CPPFLAGS -I/usr/include/nettle"
+	fi
+        LIBS="$LIBS -lhogweed -lnettle -lgmp"
+	SSLLIB=""
 	]
 )
 
 # openssl
-if test $USE_NSS = "no"; then
+if test $USE_NSS = "no" -a $USE_NETTLE = "no"; then
 ACX_WITH_SSL
 ACX_LIB_SSL
+SSLLIB="-lssl"
+AC_MSG_CHECKING([for LibreSSL])
+if grep VERSION_TEXT $ssldir/include/openssl/opensslv.h | grep "LibreSSL" >/dev/null; then
+	AC_MSG_RESULT([yes])
+	AC_DEFINE([HAVE_LIBRESSL], [1], [Define if we have LibreSSL])
+	# libressl provides these compat functions, but they may also be
+	# declared by the OS in libc.  See if they have been declared.
+	AC_CHECK_DECLS([strlcpy,strlcat,arc4random,arc4random_uniform,reallocarray])
+else
+	AC_MSG_RESULT([no])
+fi
 AC_CHECK_HEADERS([openssl/conf.h],,, [AC_INCLUDES_DEFAULT])
 AC_CHECK_HEADERS([openssl/engine.h],,, [AC_INCLUDES_DEFAULT])
 AC_CHECK_FUNCS([OPENSSL_config EVP_sha1 EVP_sha256 EVP_sha512 FIPS_mode])
-AC_CHECK_DECLS([SSL_COMP_get_compression_methods,sk_SSL_COMP_pop_free], [], [], [
+AC_CHECK_DECLS([SSL_COMP_get_compression_methods,sk_SSL_COMP_pop_free,SSL_CTX_set_ecdh_auto], [], [], [
 AC_INCLUDES_DEFAULT
 #ifdef HAVE_OPENSSL_ERR_H
 #include <openssl/err.h>
@@ -566,6 +625,7 @@ AC_INCLUDES_DEFAULT
 #include <openssl/evp.h>
 ])
 fi
+AC_SUBST(SSLLIB)
 
 
 AC_ARG_ENABLE(sha2, AC_HELP_STRING([--disable-sha2], [Disable SHA256 and SHA512 RRSIG support]))
@@ -592,7 +652,7 @@ AC_RUN_IFELSE([AC_LANG_SOURCE([[
 #include <openssl/evp.h>
 #include <openssl/engine.h>
 #include <openssl/conf.h>
-/* routine to load gost from ldns */
+/* routine to load gost (from sldns) */
 int load_gost_id(void)
 {
 	static int gost_id = 0;
@@ -677,7 +737,7 @@ AC_MSG_RESULT($ac_cv_c_gost_works)
 
 AC_ARG_ENABLE(gost, AC_HELP_STRING([--disable-gost], [Disable GOST support]))
 use_gost="no"
-if test $USE_NSS = "no"; then
+if test $USE_NSS = "no" -a $USE_NETTLE = "no"; then
 case "$enable_gost" in
 	no)
 	;;
@@ -691,7 +751,7 @@ case "$enable_gost" in
 	fi
 	;;
 esac
-fi dnl !USE_NSS
+fi dnl !USE_NSS && !USE_NETTLE
 
 AC_ARG_ENABLE(ecdsa, AC_HELP_STRING([--disable-ecdsa], [Disable ECDSA support]))
 use_ecdsa="no"
@@ -699,7 +759,7 @@ case "$enable_ecdsa" in
     no)
       ;;
     *)
-      if test $USE_NSS = "no"; then
+      if test $USE_NSS = "no" -a $USE_NETTLE = "no"; then
 	      AC_CHECK_FUNC(ECDSA_sign, [], [AC_MSG_ERROR([OpenSSL does not support ECDSA: please upgrade or rerun with --disable-ecdsa])])
 	      AC_CHECK_FUNC(SHA384_Init, [], [AC_MSG_ERROR([OpenSSL does not support SHA384: please upgrade or rerun with --disable-ecdsa])])
 	      AC_CHECK_DECLS([NID_X9_62_prime256v1, NID_secp384r1], [], [AC_MSG_ERROR([OpenSSL does not support the ECDSA curves: please upgrade or rerun with --disable-ecdsa])], [AC_INCLUDES_DEFAULT
@@ -707,16 +767,31 @@ case "$enable_ecdsa" in
 	      ])
 	      # see if OPENSSL 1.0.0 or later (has EVP MD and Verify independency)
 	      AC_MSG_CHECKING([if openssl supports SHA2 and ECDSA with EVP])
-	      if grep OPENSSL_VERSION_NUMBER $ssldir/include/openssl/opensslv.h | grep 0x0 >/dev/null; then
-		AC_MSG_RESULT([no])
-		AC_DEFINE_UNQUOTED([USE_ECDSA_EVP_WORKAROUND], [1], [Define this to enable an EVP workaround for older openssl])
+	      if grep OPENSSL_VERSION_TEXT $ssldir/include/openssl/opensslv.h | grep "OpenSSL" >/dev/null; then
+		if grep OPENSSL_VERSION_NUMBER $ssldir/include/openssl/opensslv.h | grep 0x0 >/dev/null; then
+		  AC_MSG_RESULT([no])
+		  AC_DEFINE_UNQUOTED([USE_ECDSA_EVP_WORKAROUND], [1], [Define this to enable an EVP workaround for older openssl])
+		else
+		  AC_MSG_RESULT([yes])
+		fi
 	      else
+		# not OpenSSL, thus likely LibreSSL, which supports it
 		AC_MSG_RESULT([yes])
 	      fi
       fi
       # we now know we have ECDSA and the required curves.
       AC_DEFINE_UNQUOTED([USE_ECDSA], [1], [Define this to enable ECDSA support.])
       use_ecdsa="yes"
+      ;;
+esac
+
+AC_ARG_ENABLE(event-api, AC_HELP_STRING([--enable-event-api], [Enable (experimental) libevent-based libunbound API installed to unbound-event.h]))
+use_unbound_event="no"
+case "$enable_event_api" in
+    yes)
+      use_unbound_event="yes"
+      ;;
+    *)
       ;;
 esac
 
@@ -731,7 +806,7 @@ if test x_$withval = x_yes -o x_$withval != x_no; then
         fi
         for dir in $withval; do
             thedir="$dir"
-            if test -f "$dir/include/event.h"; then
+            if test -f "$dir/include/event.h" -o -f "$dir/include/event2/event.h"; then
                 found_libevent="yes"
 		dnl assume /usr is in default path.
 		if test "$thedir" != "/usr"; then
@@ -767,10 +842,16 @@ large outgoing port ranges.  ])
 		fi
         else
             AC_MSG_RESULT(found in $thedir)
-	    dnl assume /usr is in default path, do not add "".
-	    if test "$thedir" != "/usr" -a "$thedir" != ""; then
-                LDFLAGS="$LDFLAGS -L$thedir/lib"
-		ACX_RUNTIME_PATH_ADD([$thedir/lib])
+	    dnl if event2 exists and no event lib in dir itself, use subdir
+	    if test ! -f $thedir/lib/libevent.a -a ! -f $thedir/lib/libevent.so -a -d "$thedir/lib/event2"; then
+		    LDFLAGS="$LDFLAGS -L$thedir/lib/event2"
+		    ACX_RUNTIME_PATH_ADD([$thedir/lib/event2])
+	    else
+		    dnl assume /usr is in default path, do not add "".
+		    if test "$thedir" != "/usr" -a "$thedir" != ""; then
+			LDFLAGS="$LDFLAGS -L$thedir/lib"
+			ACX_RUNTIME_PATH_ADD([$thedir/lib])
+		    fi
 	    fi
         fi
 	# check for library used by libevent after 1.3c
@@ -793,6 +874,10 @@ large outgoing port ranges.  ])
 	AC_CHECK_FUNCS([ev_default_loop]) # only in libev. (tested on 4.00)
 	if test -n "$BAK_LDFLAGS_SET"; then
 		LDFLAGS="$BAK_LDFLAGS"
+	fi
+        if test "$use_unbound_event" = "yes"; then
+		AC_SUBST(UNBOUND_EVENT_INSTALL, [unbound-event-install])
+		AC_SUBST(UNBOUND_EVENT_UNINSTALL, [unbound-event-uninstall])
 	fi
 else
 	AC_DEFINE(USE_MINI_EVENT, 1, [Define if you want to use internal select based events])
@@ -820,12 +905,15 @@ if test x_$found_libexpat != x_yes; then
 	AC_ERROR([Could not find libexpat, expat.h])
 fi
 AC_CHECK_HEADERS([expat.h],,, [AC_INCLUDES_DEFAULT])
+AC_CHECK_DECLS([XML_StopParser], [], [], [AC_INCLUDES_DEFAULT
+#include <expat.h>
+])
 
 # set static linking if requested
 AC_SUBST(staticexe)
 staticexe=""
 AC_ARG_ENABLE(static-exe, AC_HELP_STRING([--enable-static-exe],
-	[ enable to compile executables statically against event, ldns libs, for debug purposes ]), 
+	[ enable to compile executables statically against (event) libs, for debug purposes ]), 
 	, )
 if test x_$enable_static_exe = x_yes; then
 	staticexe="-static"
@@ -887,6 +975,12 @@ if test $ac_cv_func_daemon = yes; then
 ])
 fi
 
+AC_CHECK_MEMBERS([struct sockaddr_un.sun_len],,,[
+AC_INCLUDES_DEFAULT
+#ifdef HAVE_SYS_UN_H
+#include <sys/un.h>
+#endif
+])
 AC_CHECK_MEMBERS([struct in_pktinfo.ipi_spec_dst],,,[
 AC_INCLUDES_DEFAULT
 #if HAVE_SYS_PARAM_H
@@ -918,7 +1012,7 @@ AC_INCLUDES_DEFAULT
 #endif
 ])
 AC_SEARCH_LIBS([setusercontext], [util])
-AC_CHECK_FUNCS([tzset sigprocmask fcntl getpwnam getrlimit setrlimit setsid sbrk chroot kill sleep usleep random srandom recvmsg sendmsg writev socketpair glob initgroups strftime localtime_r setusercontext _beginthreadex])
+AC_CHECK_FUNCS([tzset sigprocmask fcntl getpwnam getrlimit setrlimit setsid sbrk chroot kill chown sleep usleep random srandom recvmsg sendmsg writev socketpair glob initgroups strftime localtime_r setusercontext _beginthreadex endservent endprotoent fsync])
 AC_CHECK_FUNCS([setresuid],,[AC_CHECK_FUNCS([setreuid])])
 AC_CHECK_FUNCS([setresgid],,[AC_CHECK_FUNCS([setregid])])
 
@@ -930,9 +1024,71 @@ AC_REPLACE_FUNCS(inet_aton)
 AC_REPLACE_FUNCS(inet_pton)
 AC_REPLACE_FUNCS(inet_ntop)
 AC_REPLACE_FUNCS(snprintf)
+# test if snprintf return the proper length
+if test "x$ac_cv_func_snprintf" = xyes; then
+    if test c${cross_compiling} = cno; then
+	AC_MSG_CHECKING([for correct snprintf return value])
+	AC_RUN_IFELSE([AC_LANG_SOURCE(AC_INCLUDES_DEFAULT
+[[
+int main(void) { return !(snprintf(NULL, 0, "test") == 4); }
+]])], [AC_MSG_RESULT(yes)], [
+		AC_MSG_RESULT(no)
+		AC_DEFINE([SNPRINTF_RET_BROKEN], [], [define if (v)snprintf does not return length needed, (but length used)])
+		AC_LIBOBJ(snprintf)
+	  ])
+    fi
+fi
+AC_REPLACE_FUNCS(strlcat)
 AC_REPLACE_FUNCS(strlcpy)
 AC_REPLACE_FUNCS(memmove)
 AC_REPLACE_FUNCS(gmtime_r)
+AC_REPLACE_FUNCS(isblank)
+dnl without CTIME, ARC4-functions and without reallocarray.
+LIBOBJ_WITHOUT_CTIMEARC4="$LIBOBJS"
+AC_SUBST(LIBOBJ_WITHOUT_CTIMEARC4)
+AC_REPLACE_FUNCS(reallocarray)
+if test "$USE_NSS" = "no"; then
+	AC_REPLACE_FUNCS(arc4random)
+	AC_REPLACE_FUNCS(arc4random_uniform)
+	if test "$ac_cv_func_arc4random" = "no"; then
+		AC_LIBOBJ(explicit_bzero)
+		AC_LIBOBJ(arc4_lock)
+		AC_CHECK_FUNCS([getentropy],,[
+		    if test "$USE_WINSOCK" = 1; then
+			AC_LIBOBJ(getentropy_win)
+		    else
+			case `uname` in
+			Darwin)
+				AC_LIBOBJ(getentropy_osx)
+			;;
+			SunOS)
+				AC_LIBOBJ(getentropy_solaris)
+				AC_CHECK_HEADERS([sys/sha2.h],, [
+					AC_CHECK_FUNCS([SHA512_Update],,[
+						AC_LIBOBJ(sha512)
+					])
+				], [AC_INCLUDES_DEFAULT])
+				if test "$ac_cv_header_sys_sha2_h" = "yes"; then
+					# this lib needed for sha2 on solaris
+					LIBS="$LIBS -lmd"
+				fi
+				AC_SEARCH_LIBS([clock_gettime], [rt])
+			;;
+			Linux|*)
+				AC_LIBOBJ(getentropy_linux)
+				AC_CHECK_FUNCS([SHA512_Update],,[
+					AC_DEFINE([COMPAT_SHA512], [1], [Do sha512 definitions in config.h])
+					AC_LIBOBJ(sha512)
+				])
+				AC_CHECK_HEADERS([sys/sysctl.h],,, [AC_INCLUDES_DEFAULT])
+				AC_CHECK_FUNCS([getauxval])
+				AC_SEARCH_LIBS([clock_gettime], [rt])
+			;;
+			esac
+		    fi
+		])
+	fi
+fi
 LIBOBJ_WITHOUT_CTIME="$LIBOBJS"
 AC_SUBST(LIBOBJ_WITHOUT_CTIME)
 AC_REPLACE_FUNCS(ctime_r)
@@ -968,6 +1124,25 @@ if test x_$enable_lock_checks = x_yes; then
 	echo checklock_thrcreate >> clubsyms.def
 	echo checklock_thrjoin >> clubsyms.def
 fi
+
+# check for dnstap if requested
+dt_DNSTAP([$UNBOUND_RUN_DIR/dnstap.sock],
+    [
+        AC_DEFINE([USE_DNSTAP], [1], [Define to 1 to enable dnstap support])
+        AC_SUBST([ENABLE_DNSTAP], [1])
+
+        AC_SUBST([opt_dnstap_socket_path])
+        ACX_ESCAPE_BACKSLASH($opt_dnstap_socket_path, hdr_dnstap_socket_path)
+        AC_DEFINE_UNQUOTED(DNSTAP_SOCKET_PATH,
+            ["$hdr_dnstap_socket_path"], [default dnstap socket path])
+
+        AC_SUBST([DNSTAP_SRC], ["dnstap/dnstap.c dnstap/dnstap.pb-c.c"])
+        AC_SUBST([DNSTAP_OBJ], ["dnstap.lo dnstap.pb-c.lo"])
+    ],
+    [
+        AC_SUBST([ENABLE_DNSTAP], [0])
+    ]
+)
 
 AC_MSG_CHECKING([if ${MAKE:-make} supports $< with implicit rule in scope])
 # on openBSD, the implicit rule make $< work.
@@ -1006,100 +1181,17 @@ AC_SUBST(SOURCEFILE)
 
 # see if we want to build the library or everything
 ALLTARGET="alltargets"
+INSTALLTARGET="install-all"
 AC_ARG_WITH(libunbound-only, AC_HELP_STRING([--with-libunbound-only],
 	[do not build daemon and tool programs]),
 	[
 	if test "$withval" = "yes"; then
 		ALLTARGET="lib"
+		INSTALLTARGET="install-lib"
 	fi
 ])
 AC_SUBST(ALLTARGET)
-
-# check this after all other compilation checks, since the linking of the lib
-# may break checks after this.
-AC_ARG_WITH(ldns, AC_HELP_STRING([--with-ldns=PATH], 
-	[specify prefix of path of ldns library to use]), 
-	[
-	if test "$withval" != "yes"; then
-		if test "$withval" != "/usr" -a "$withval" != ""; then
-			CPPFLAGS="-I$withval/include $CPPFLAGS"
-			LDFLAGS="-L$withval/lib $LDFLAGS"
-			ACX_RUNTIME_PATH_ADD([$withval/lib])
-		fi
-		ldnsdir="$withval"
-		AC_SUBST(ldnsdir)
-	fi
-])
-
-# check if ldns is good enough
-AC_CHECK_LIB(ldns, ldns_rr_new,,[
-	AC_MSG_ERROR([No ldns library found, install the ldns library into system lib dir or use --with-ldns=path to other location.  The --with-ldns can point to the make-dir of ldns.  Install the package ldns or download source http://www.nlnetlabs.nl/projects/ldns])
-])
-AC_CHECK_FUNC(ldns_buffer_copy)
-if test $USE_NSS = "no"; then
-    AC_CHECK_FUNC(ldns_key_buf2rsa_raw)
-else
-    dnl ignore test
-    ac_cv_func_ldns_key_buf2rsa_raw="yes"
-fi
-AC_CHECK_FUNC(ldns_get_random)
-AC_CHECK_FUNC(ldns_b32_ntop_extended_hex)
-if test x$use_gost = xyes -a x$USE_NSS = xno; then
-    AC_CHECK_FUNC(ldns_key_EVP_load_gost_id)
-    AC_CHECK_FUNCS([ldns_key_EVP_unload_gost])
-else
-    dnl ignore test
-    ac_cv_func_ldns_key_EVP_load_gost_id="yes"
-fi
-if test x$use_ecdsa = xyes; then
-    AC_CHECK_DECL([LDNS_ECDSAP384SHA384], [], [], [
-AC_INCLUDES_DEFAULT
-#ifdef HAVE_SYS_SOCKET_H
-#  include <sys/socket.h>
-#endif
-#ifdef HAVE_WS2TCPIP_H
-#  include <ws2tcpip.h>
-#endif
-#include <ldns/ldns.h>
-    ])
-else
-    ac_cv_have_decl_LDNS_ECDSAP384SHA384="yes"
-fi
-AC_CHECK_HEADERS([ldns/ldns.h],,[
-	AC_MSG_ERROR([No ldns include file found, install the ldns library development files.  Install package ldns-dev or ldns-devel or download source http://www.nlnetlabs.nl/projects/ldns])
-	], [AC_INCLUDES_DEFAULT
-#ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
-#endif
-
-#ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
-#endif
-
-#ifdef HAVE_ARPA_INET_H
-#include <arpa/inet.h>
-#endif
-
-#ifdef HAVE_WINSOCK2_H
-#include <winsock2.h>
-#endif
-
-#ifdef HAVE_WS2TCPIP_H
-#include <ws2tcpip.h>
-#endif
-])
-if test $ac_cv_func_ldns_buffer_copy = yes \
-    -a $ac_cv_func_ldns_key_buf2rsa_raw = yes \
-    -a $ac_cv_func_ldns_get_random = yes \
-    -a $ac_cv_header_ldns_ldns_h = yes \
-    -a $ac_cv_func_ldns_b32_ntop_extended_hex = yes \
-    -a $ac_cv_func_ldns_key_EVP_load_gost_id = yes \
-    -a $ac_cv_have_decl_LDNS_ECDSAP384SHA384 = yes; then
-    dnl ldns was found
-    :
-else
-    AC_MSG_ERROR([ldns library is not recent, update the ldns library, install it into system lib dir or use --with-ldns=path to other location.  The --with-ldns can point to the make-dir of ldns.  Package libldns or download source http://www.nlnetlabs.nl/projects/ldns])
-fi
+AC_SUBST(INSTALLTARGET)
 
 ACX_STRIP_EXT_FLAGS
 LDFLAGS="$LATE_LDFLAGS $LDFLAGS"
@@ -1116,6 +1208,12 @@ dnl includes
 #  define NDEBUG
 #endif
 
+/** Use small-ldns codebase */
+#define USE_SLDNS 1
+#ifdef HAVE_SSL
+#  define LDNS_BUILD_CONFIG_HAVE_SSL 1
+#endif
+
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -1124,6 +1222,10 @@ dnl includes
 #if STDC_HEADERS
 #include <stdlib.h>
 #include <stddef.h>
+#endif
+
+#ifdef HAVE_STDARG_H
+#include <stdarg.h>
 #endif
 
 #ifdef HAVE_STDINT_H
@@ -1159,19 +1261,37 @@ dnl includes
 #ifdef HAVE_WS2TCPIP_H
 #include <ws2tcpip.h>
 #endif
+
+#ifndef USE_WINSOCK
+#define ARG_LL "%ll"
+#else
+#define ARG_LL "%I64"
+#endif
+
+#ifndef AF_LOCAL
+#define AF_LOCAL AF_UNIX
+#endif
 ]
 
 AHX_CONFIG_FORMAT_ATTRIBUTE
 AHX_CONFIG_UNUSED_ATTRIBUTE
 AHX_CONFIG_FSEEKO
 AHX_CONFIG_MAXHOSTNAMELEN
-AHX_CONFIG_SNPRINTF(unbound)
+#if !defined(HAVE_SNPRINTF) || defined(SNPRINTF_RET_BROKEN)
+#define snprintf snprintf_unbound
+#define vsnprintf vsnprintf_unbound
+#include <stdarg.h>
+int snprintf (char *str, size_t count, const char *fmt, ...);
+int vsnprintf (char *str, size_t count, const char *fmt, va_list arg);
+#endif /* HAVE_SNPRINTF or SNPRINTF_RET_BROKEN */
 AHX_CONFIG_INET_PTON(unbound)
 AHX_CONFIG_INET_NTOP(unbound)
 AHX_CONFIG_INET_ATON(unbound)
 AHX_CONFIG_MEMMOVE(unbound)
+AHX_CONFIG_STRLCAT(unbound)
 AHX_CONFIG_STRLCPY(unbound)
 AHX_CONFIG_GMTIME_R(unbound)
+AHX_CONFIG_REALLOCARRAY(unbound)
 AHX_CONFIG_W32_SLEEP
 AHX_CONFIG_W32_USLEEP
 AHX_CONFIG_W32_RANDOM
@@ -1186,11 +1306,63 @@ AHX_MEMCMP_BROKEN(unbound)
 char *ctime_r(const time_t *timep, char *buf);
 #endif
 
+#ifndef HAVE_ISBLANK
+#define isblank unbound_isblank
+int isblank(int c);
+#endif
+
 #if !defined(HAVE_STRPTIME) || !defined(STRPTIME_WORKS)
 #define strptime unbound_strptime
 struct tm;
 char *strptime(const char *s, const char *format, struct tm *tm);
 #endif
+
+#ifdef HAVE_LIBRESSL
+#  if !HAVE_DECL_STRLCPY
+size_t strlcpy(char *dst, const char *src, size_t siz);
+#  endif
+#  if !HAVE_DECL_STRLCAT
+size_t strlcat(char *dst, const char *src, size_t siz);
+#  endif
+#  if !HAVE_DECL_ARC4RANDOM && defined(HAVE_ARC4RANDOM)
+uint32_t arc4random(void);
+#  endif
+#  if !HAVE_DECL_ARC4RANDOM_UNIFORM && defined(HAVE_ARC4RANDOM_UNIFORM)
+uint32_t arc4random_uniform(uint32_t upper_bound);
+#  endif
+#  if !HAVE_DECL_REALLOCARRAY
+void *reallocarray(void *ptr, size_t nmemb, size_t size);
+#  endif
+#endif /* HAVE_LIBRESSL */
+#ifndef HAVE_ARC4RANDOM
+void explicit_bzero(void* buf, size_t len);
+int getentropy(void* buf, size_t len);
+uint32_t arc4random(void);
+void arc4random_buf(void* buf, size_t n);
+void _ARC4_LOCK(void);
+void _ARC4_UNLOCK(void);
+#endif
+#ifndef HAVE_ARC4RANDOM_UNIFORM
+uint32_t arc4random_uniform(uint32_t upper_bound);
+#endif
+#ifdef COMPAT_SHA512
+#ifndef SHA512_DIGEST_LENGTH
+#define SHA512_BLOCK_LENGTH		128
+#define SHA512_DIGEST_LENGTH		64
+#define SHA512_DIGEST_STRING_LENGTH	(SHA512_DIGEST_LENGTH * 2 + 1)
+typedef struct _SHA512_CTX {
+	uint64_t	state[8];
+	uint64_t	bitcount[2];
+	uint8_t	buffer[SHA512_BLOCK_LENGTH];
+} SHA512_CTX;
+#endif /* SHA512_DIGEST_LENGTH */
+void SHA512_Init(SHA512_CTX*);
+void SHA512_Update(SHA512_CTX*, void*, size_t);
+void SHA512_Final(uint8_t[SHA512_DIGEST_LENGTH], SHA512_CTX*);
+unsigned char *SHA512(void* data, unsigned int data_len, unsigned char *digest);
+#endif /* COMPAT_SHA512 */
+
+
 
 #if defined(HAVE_EVENT_H) && !defined(HAVE_EVENT_BASE_ONCE) && !(defined(HAVE_EV_LOOP) || defined(HAVE_EV_DEFAULT_LOOP)) && (defined(HAVE_PTHREAD) || defined(HAVE_SOLARIS_THREADS))
    /* using version of libevent that is not threadsafe. */
@@ -1206,8 +1378,6 @@ char *strptime(const char *s, const char *format, struct tm *tm);
 #  endif
 #endif /* CHECKED_INET6 */
 
-/* maximum nesting of included files */
-#define MAXINCLUDES 10
 #ifndef HAVE_GETADDRINFO
 struct sockaddr_storage;
 #include "compat/fake-rfc2553.h"
@@ -1244,6 +1414,11 @@ void *unbound_stat_realloc_log(void *ptr, size_t size, const char* file,
 
 ])
 
-AC_CONFIG_FILES([Makefile doc/example.conf doc/libunbound.3 doc/unbound.8 doc/unbound-anchor.8 doc/unbound-checkconf.8 doc/unbound.conf.5 doc/unbound-control.8])
+dnl if we build from source tree, the man pages need @date@ and @version@
+dnl if this is a distro tarball, that was already done by makedist.sh
+AC_SUBST(version, [VERSION_MAJOR.VERSION_MINOR.VERSION_MICRO])
+AC_SUBST(date, [`date +'%b %e, %Y'`])
+
+AC_CONFIG_FILES([Makefile doc/example.conf doc/libunbound.3 doc/unbound.8 doc/unbound-anchor.8 doc/unbound-checkconf.8 doc/unbound.conf.5 doc/unbound-control.8 doc/unbound-host.1 smallapp/unbound-control-setup.sh dnstap/dnstap_config.h])
 AC_CONFIG_HEADER([config.h])
 AC_OUTPUT

@@ -1,9 +1,8 @@
 # $FreeBSD$
 
-PROG=	rctl
+PROG=   rctl
 MAN=	rctl.8
 
-DPADD=	${LIBUTIL}
-LDADD=	-lutil
+LIBADD=	util
 
 .include <bsd.prog.mk>

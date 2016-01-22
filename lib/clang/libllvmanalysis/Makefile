@@ -1,6 +1,6 @@
 # $FreeBSD$
 
-.include <bsd.own.mk>
+.include <src.opts.mk>
 
 LIB=	llvmanalysis
 
@@ -10,15 +10,21 @@ SRCS=	AliasAnalysis.cpp \
 	AliasAnalysisEvaluator.cpp \
 	AliasDebugger.cpp \
 	AliasSetTracker.cpp \
-	Analysis.cpp \
+	AssumptionCache.cpp \
 	BasicAliasAnalysis.cpp \
+	BlockFrequencyInfo.cpp \
+	BlockFrequencyInfoImpl.cpp \
 	BranchProbabilityInfo.cpp \
+	CFG.cpp \
 	CFGPrinter.cpp \
+	CFLAliasAnalysis.cpp \
 	CaptureTracking.cpp \
 	CodeMetrics.cpp \
 	ConstantFolding.cpp \
 	CostModel.cpp \
+	Delinearization.cpp \
 	DependenceAnalysis.cpp \
+	DivergenceAnalysis.cpp \
 	DomPrinter.cpp \
 	DominanceFrontier.cpp \
 	IVUsers.cpp \
@@ -26,30 +32,25 @@ SRCS=	AliasAnalysis.cpp \
 	InstructionSimplify.cpp \
 	Interval.cpp \
 	IntervalPartition.cpp \
+	IteratedDominanceFrontier.cpp \
+	LazyCallGraph.cpp \
 	LazyValueInfo.cpp \
 	LibCallAliasAnalysis.cpp \
 	LibCallSemantics.cpp \
 	Lint.cpp \
 	Loads.cpp \
+	LoopAccessAnalysis.cpp \
 	LoopInfo.cpp \
 	LoopPass.cpp \
 	MemDepPrinter.cpp \
+	MemDerefPrinter.cpp \
 	MemoryBuiltins.cpp \
 	MemoryDependenceAnalysis.cpp \
+	MemoryLocation.cpp \
 	ModuleDebugInfoPrinter.cpp \
 	NoAliasAnalysis.cpp \
 	PHITransAddr.cpp \
-	PathNumbering.cpp \
-	PathProfileInfo.cpp \
-	PathProfileVerifier.cpp \
 	PostDominators.cpp \
-	ProfileDataLoader.cpp \
-	ProfileDataLoaderPass.cpp \
-	ProfileEstimatorPass.cpp \
-	ProfileInfo.cpp \
-	ProfileInfoLoader.cpp \
-	ProfileInfoLoaderPass.cpp \
-	ProfileVerifierPass.cpp \
 	PtrUseVisitor.cpp \
 	RegionInfo.cpp \
 	RegionPass.cpp \
@@ -58,16 +59,20 @@ SRCS=	AliasAnalysis.cpp \
 	ScalarEvolutionAliasAnalysis.cpp \
 	ScalarEvolutionExpander.cpp \
 	ScalarEvolutionNormalization.cpp \
+	ScopedNoAliasAA.cpp \
 	SparsePropagation.cpp \
+	TargetLibraryInfo.cpp \
 	TargetTransformInfo.cpp \
-	Trace.cpp \
 	TypeBasedAliasAnalysis.cpp \
-	ValueTracking.cpp
+	ValueTracking.cpp \
+	VectorUtils.cpp
 
 .if ${MK_CLANG_EXTRAS} != "no"
-SRCS+=	BlockFrequencyInfo.cpp
+SRCS+=	Analysis.cpp \
+	CGSCCPassManager.cpp \
+	Trace.cpp
 .endif
-
+	
 TGHDRS=	Intrinsics
 
 .include "../clang.lib.mk"

@@ -248,7 +248,7 @@ ffs_balloc_ufs1(struct vnode *vp, off_t startoffset, int size,
 		UFS_LOCK(ump);
 		pref = ffs_blkpref_ufs1(ip, lbn, -indirs[0].in_off - 1,
 		    (ufs1_daddr_t *)0);
-	        if ((error = ffs_alloc(ip, lbn, pref, (int)fs->fs_bsize,
+		if ((error = ffs_alloc(ip, lbn, pref, (int)fs->fs_bsize,
 		    flags, cred, &newb)) != 0) {
 			curthread_pflags_restore(saved_inbdflush);
 			return (error);
@@ -299,6 +299,10 @@ retry:
 			continue;
 		}
 		UFS_LOCK(ump);
+		/*
+		 * If parent indirect has just been allocated, try to cluster
+		 * immediately following it.
+		 */
 		if (pref == 0)
 			pref = ffs_blkpref_ufs1(ip, lbn, i - num - 1,
 			    (ufs1_daddr_t *)0);
@@ -368,7 +372,14 @@ retry:
 	 */
 	if (nb == 0) {
 		UFS_LOCK(ump);
-		if (pref == 0)
+		/*
+		 * If allocating metadata at the front of the cylinder
+		 * group and parent indirect block has just been allocated,
+		 * then cluster next to it if it is the first indirect in
+		 * the file. Otherwise it has been allocated in the metadata
+		 * area, so we want to find our own place out in the data area.
+		 */
+		if (pref == 0 || (lbn > NDADDR && fs->fs_metaspace != 0))
 			pref = ffs_blkpref_ufs1(ip, lbn, indirs[i].in_off,
 			    &bap[0]);
 		error = ffs_alloc(ip, lbn, pref, (int)fs->fs_bsize,
@@ -418,7 +429,9 @@ retry:
 	brelse(bp);
 	if (flags & BA_CLRBUF) {
 		int seqcount = (flags & BA_SEQMASK) >> BA_SEQSHIFT;
-		if (seqcount && (vp->v_mount->mnt_flag & MNT_NOCLUSTERR) == 0) {
+		if (seqcount != 0 &&
+		    (vp->v_mount->mnt_flag & MNT_NOCLUSTERR) == 0 &&
+		    !(vm_page_count_severe() || buf_dirty_count_severe())) {
 			error = cluster_read(vp, ip->i_size, lbn,
 			    (int)fs->fs_bsize, NOCRED,
 			    MAXBSIZE, seqcount, gbflags, &nbp);
@@ -798,7 +811,7 @@ ffs_balloc_ufs2(struct vnode *vp, off_t startoffset, int size,
 		UFS_LOCK(ump);
 		pref = ffs_blkpref_ufs2(ip, lbn, -indirs[0].in_off - 1,
 		    (ufs2_daddr_t *)0);
-	        if ((error = ffs_alloc(ip, lbn, pref, (int)fs->fs_bsize,
+		if ((error = ffs_alloc(ip, lbn, pref, (int)fs->fs_bsize,
 		    flags, cred, &newb)) != 0) {
 			curthread_pflags_restore(saved_inbdflush);
 			return (error);
@@ -850,6 +863,10 @@ retry:
 			continue;
 		}
 		UFS_LOCK(ump);
+		/*
+		 * If parent indirect has just been allocated, try to cluster
+		 * immediately following it.
+		 */
 		if (pref == 0)
 			pref = ffs_blkpref_ufs2(ip, lbn, i - num - 1,
 			    (ufs2_daddr_t *)0);
@@ -920,7 +937,14 @@ retry:
 	 */
 	if (nb == 0) {
 		UFS_LOCK(ump);
-		if (pref == 0)
+		/*
+		 * If allocating metadata at the front of the cylinder
+		 * group and parent indirect block has just been allocated,
+		 * then cluster next to it if it is the first indirect in
+		 * the file. Otherwise it has been allocated in the metadata
+		 * area, so we want to find our own place out in the data area.
+		 */
+		if (pref == 0 || (lbn > NDADDR && fs->fs_metaspace != 0))
 			pref = ffs_blkpref_ufs2(ip, lbn, indirs[i].in_off,
 			    &bap[0]);
 		error = ffs_alloc(ip, lbn, pref, (int)fs->fs_bsize,
@@ -976,7 +1000,9 @@ retry:
 	 */
 	if (flags & BA_CLRBUF) {
 		int seqcount = (flags & BA_SEQMASK) >> BA_SEQSHIFT;
-		if (seqcount && (vp->v_mount->mnt_flag & MNT_NOCLUSTERR) == 0) {
+		if (seqcount != 0 &&
+		    (vp->v_mount->mnt_flag & MNT_NOCLUSTERR) == 0 &&
+		    !(vm_page_count_severe() || buf_dirty_count_severe())) {
 			error = cluster_read(vp, ip->i_size, lbn,
 			    (int)fs->fs_bsize, NOCRED,
 			    MAXBSIZE, seqcount, gbflags, &nbp);

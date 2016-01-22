@@ -11,7 +11,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -62,6 +62,7 @@ __FBSDID("$FreeBSD$");
 #include <sha.h>
 #include <sha256.h>
 #include <sha512.h>
+#include <spawn.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -71,11 +72,6 @@ __FBSDID("$FreeBSD$");
 #include <vis.h>
 
 #include "mtree.h"
-
-/* Bootstrap aid - this doesn't exist in most older releases */
-#ifndef MAP_FAILED
-#define MAP_FAILED ((void *)-1)	/* from <sys/mman.h> */
-#endif
 
 #define MAX_CMP_SIZE	(16 * 1024 * 1024)
 
@@ -107,6 +103,8 @@ static enum {
 	DIGEST_SHA512,
 } digesttype = DIGEST_NONE;
 
+extern char **environ;
+
 static gid_t gid;
 static uid_t uid;
 static int dobackup, docompare, dodir, dolink, dopreserve, dostrip, dounpriv,
@@ -126,7 +124,7 @@ static int	create_tempfile(const char *, char *, size_t);
 static char	*quiet_mktemp(char *template);
 static char	*digest_file(const char *);
 static void	digest_init(DIGEST_CTX *);
-static void	digest_update(DIGEST_CTX *, const unsigned char *, size_t);
+static void	digest_update(DIGEST_CTX *, const char *, size_t);
 static char	*digest_end(DIGEST_CTX *, char *);
 static int	do_link(const char *, const char *, const struct stat *);
 static void	do_symlink(const char *, const char *, const struct stat *);
@@ -431,7 +429,7 @@ digest_init(DIGEST_CTX *c)
 }
 
 static void
-digest_update(DIGEST_CTX *c, const unsigned char *data, size_t len)
+digest_update(DIGEST_CTX *c, const char *data, size_t len)
 {
 
 	switch (digesttype) {
@@ -660,6 +658,14 @@ makelink(const char *from_name, const char *to_name,
 	if (dolink & LN_RELATIVE) {
 		char *cp, *d, *s;
 
+		if (*from_name != '/') {
+			/* this is already a relative link */
+			do_symlink(from_name, to_name, target_sb);
+			/* XXX: from_name may point outside of destdir. */
+			metadata_log(to_name, "link", NULL, from_name, NULL, 0);
+			return;
+		}
+
 		/* Resolve pathnames. */
 		if (realpath(from_name, src) == NULL)
 			err(EX_OSERR, "%s: realpath", from_name);
@@ -748,10 +754,7 @@ install(const char *from_name, const char *to_name, u_long fset, u_int flags)
 		devnull = 1;
 	}
 
-	if (!dolink)
-		target = (stat(to_name, &to_sb) == 0);
-	else
-		target = (lstat(to_name, &to_sb) == 0);
+	target = (lstat(to_name, &to_sb) == 0);
 
 	if (dolink) {
 		if (target && !safecopy) {
@@ -766,8 +769,7 @@ install(const char *from_name, const char *to_name, u_long fset, u_int flags)
 		return;
 	}
 
-	/* Only install to regular files. */
-	if (target && !S_ISREG(to_sb.st_mode)) {
+	if (target && !S_ISREG(to_sb.st_mode) && !S_ISLNK(to_sb.st_mode)) {
 		errno = EFTYPE;
 		warn("%s", to_name);
 		return;
@@ -780,7 +782,7 @@ install(const char *from_name, const char *to_name, u_long fset, u_int flags)
 		err(EX_OSERR, "%s", from_name);
 
 	/* If we don't strip, we can compare first. */
-	if (docompare && !dostrip && target) {
+	if (docompare && !dostrip && target && S_ISREG(to_sb.st_mode)) {
 		if ((to_fd = open(to_name, O_RDONLY, 0)) < 0)
 			err(EX_OSERR, "%s", to_name);
 		if (devnull)
@@ -832,7 +834,7 @@ install(const char *from_name, const char *to_name, u_long fset, u_int flags)
 	/*
 	 * Compare the stripped temp file with the target.
 	 */
-	if (docompare && dostrip && target) {
+	if (docompare && dostrip && target && S_ISREG(to_sb.st_mode)) {
 		temp_fd = to_fd;
 
 		/* Re-open to_fd using the real target name. */
@@ -866,9 +868,7 @@ install(const char *from_name, const char *to_name, u_long fset, u_int flags)
 			}
 			(void) close(temp_fd);
 		}
-	}
-
-	if (dostrip && (!docompare || !target))
+	} else if (dostrip)
 		digestresult = digest_file(tempfile);
 
 	/*
@@ -1018,11 +1018,11 @@ compare(int from_fd, const char *from_name __unused, size_t from_len,
 		if (trymmap(from_fd) && trymmap(to_fd)) {
 			p = mmap(NULL, from_len, PROT_READ, MAP_SHARED,
 			    from_fd, (off_t)0);
-			if (p == (char *)MAP_FAILED)
+			if (p == MAP_FAILED)
 				goto out;
 			q = mmap(NULL, from_len, PROT_READ, MAP_SHARED,
 			    to_fd, (off_t)0);
-			if (q == (char *)MAP_FAILED) {
+			if (q == MAP_FAILED) {
 				munmap(p, from_len);
 				goto out;
 			}
@@ -1146,7 +1146,8 @@ copy(int from_fd, const char *from_name, int to_fd, const char *to_name,
 {
 	int nr, nw;
 	int serrno;
-	char *p, buf[MAXBSIZE];
+	char *p;
+	char buf[MAXBSIZE];
 	int done_copy;
 	DIGEST_CTX ctx;
 
@@ -1166,7 +1167,7 @@ copy(int from_fd, const char *from_name, int to_fd, const char *to_name,
 	done_copy = 0;
 	if (size <= 8 * 1048576 && trymmap(from_fd) &&
 	    (p = mmap(NULL, (size_t)size, PROT_READ, MAP_SHARED,
-		    from_fd, (off_t)0)) != (char *)MAP_FAILED) {
+		    from_fd, (off_t)0)) != MAP_FAILED) {
 		nw = write(to_fd, p, size);
 		if (nw != size) {
 			serrno = errno;
@@ -1219,27 +1220,33 @@ static void
 strip(const char *to_name)
 {
 	const char *stripbin;
-	int serrno, status;
+	const char *args[3];
+	pid_t pid;
+	int error, status;
 
-	switch (fork()) {
-	case -1:
-		serrno = errno;
+	stripbin = getenv("STRIPBIN");
+	if (stripbin == NULL)
+		stripbin = "strip";
+	args[0] = stripbin;
+	args[1] = to_name;
+	args[2] = NULL;
+	error = posix_spawnp(&pid, stripbin, NULL, NULL,
+	    __DECONST(char **, args), environ);
+	if (error != 0) {
 		(void)unlink(to_name);
-		errno = serrno;
-		err(EX_TEMPFAIL, "fork");
-	case 0:
-		stripbin = getenv("STRIPBIN");
-		if (stripbin == NULL)
-			stripbin = "strip";
-		execlp(stripbin, stripbin, to_name, (char *)NULL);
-		err(EX_OSERR, "exec(%s)", stripbin);
-	default:
-		if (wait(&status) == -1 || status) {
-			serrno = errno;
-			(void)unlink(to_name);
-			errc(EX_SOFTWARE, serrno, "wait");
-			/* NOTREACHED */
-		}
+		errc(error == EAGAIN || error == EPROCLIM || error == ENOMEM ?
+		    EX_TEMPFAIL : EX_OSERR, error, "spawn %s", stripbin);
+	}
+	if (waitpid(pid, &status, 0) == -1) {
+		error = errno;
+		(void)unlink(to_name);
+		errc(EX_SOFTWARE, error, "wait");
+		/* NOTREACHED */
+	}
+	if (status != 0) {
+		(void)unlink(to_name);
+		errx(EX_SOFTWARE, "strip command %s failed on %s",
+		    stripbin, to_name);
 	}
 }
 
@@ -1258,13 +1265,18 @@ install_dir(char *path)
 		if (!*p || (p != path && *p  == '/')) {
 			ch = *p;
 			*p = '\0';
-			if (stat(path, &sb)) {
-				if (errno != ENOENT || mkdir(path, 0755) < 0) {
+again:
+			if (stat(path, &sb) < 0) {
+				if (errno != ENOENT)
+					err(EX_OSERR, "stat %s", path);
+				if (mkdir(path, 0755) < 0) {
+					if (errno == EEXIST)
+						goto again;
 					err(EX_OSERR, "mkdir %s", path);
-					/* NOTREACHED */
-				} else if (verbose)
+				}
+				if (verbose)
 					(void)printf("install: mkdir %s\n",
-						     path);
+					    path);
 			} else if (!S_ISDIR(sb.st_mode))
 				errx(EX_OSERR, "%s exists but is not a directory", path);
 			if (!(*p = ch))

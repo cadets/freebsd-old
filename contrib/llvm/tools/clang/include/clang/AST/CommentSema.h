@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_AST_COMMENT_SEMA_H
-#define LLVM_CLANG_AST_COMMENT_SEMA_H
+#ifndef LLVM_CLANG_AST_COMMENTSEMA_H
+#define LLVM_CLANG_AST_COMMENTSEMA_H
 
 #include "clang/AST/Comment.h"
 #include "clang/Basic/Diagnostic.h"
@@ -31,8 +31,8 @@ namespace comments {
 class CommandTraits;
 
 class Sema {
-  Sema(const Sema &) LLVM_DELETED_FUNCTION;
-  void operator=(const Sema &) LLVM_DELETED_FUNCTION;
+  Sema(const Sema &) = delete;
+  void operator=(const Sema &) = delete;
 
   /// Allocator for AST nodes.
   llvm::BumpPtrAllocator &Allocator;
@@ -58,9 +58,6 @@ class Sema {
   /// AST node for the \\brief command and its aliases.
   const BlockCommandComment *BriefCommand;
 
-  /// AST node for the \\returns command and its aliases.
-  const BlockCommandComment *ReturnsCommand;
-  
   /// AST node for the \\headerfile command.
   const BlockCommandComment *HeaderfileCommand;
 
@@ -87,8 +84,8 @@ public:
       T *Mem = Allocator.Allocate<T>(Size);
       std::uninitialized_copy(Source.begin(), Source.end(), Mem);
       return llvm::makeArrayRef(Mem, Size);
-    } else
-      return llvm::makeArrayRef(static_cast<T *>(NULL), 0);
+    }
+    return None;
   }
 
   ParagraphComment *actOnParagraphComment(
@@ -211,7 +208,11 @@ public:
 
   bool isFunctionDecl();
   bool isAnyFunctionDecl();
+
+  /// \returns \c true if declaration that this comment is attached to declares
+  /// a function pointer.
   bool isFunctionPointerVarDecl();
+  bool isFunctionOrMethodVariadic();
   bool isObjCMethodDecl();
   bool isObjCPropertyDecl();
   bool isTemplateOrSpecialization();
@@ -220,6 +221,8 @@ public:
   bool isUnionDecl();
   bool isObjCInterfaceDecl();
   bool isObjCProtocolDecl();
+  bool isClassTemplateDecl();
+  bool isFunctionTemplateDecl();
 
   ArrayRef<const ParmVarDecl *> getParamVars();
 

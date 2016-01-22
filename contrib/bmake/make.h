@@ -1,4 +1,4 @@
-/*	$NetBSD: make.h,v 1.90 2013/02/25 01:57:14 dholland Exp $	*/
+/*	$NetBSD: make.h,v 1.96 2015/09/21 21:50:16 pooka Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990, 1993
@@ -289,6 +289,7 @@ typedef struct GNode {
 #define OP_NOMETA	0x00080000  /* .NOMETA do not create a .meta file */
 #define OP_META		0x00100000  /* .META we _do_ want a .meta file */
 #define OP_NOMETA_CMP	0x00200000  /* Do not compare commands in .meta file */
+#define OP_SUBMAKE	0x00400000  /* Possibly a submake node */
 /* Attributes applied by PMake */
 #define OP_TRANSFORM	0x80000000  /* The node is a transformation rule */
 #define OP_MEMBER 	0x40000000  /* Target is a member of an archive */
@@ -404,6 +405,10 @@ extern Boolean	varNoExportEnv;	/* TRUE if we should not export variables
 
 extern GNode    *DEFAULT;    	/* .DEFAULT rule */
 
+extern GNode	*VAR_INTERNAL;	/* Variables defined internally by make
+				 * which should not override those set by
+				 * makefiles.
+				 */
 extern GNode    *VAR_GLOBAL;   	/* Variables defined in a global context, e.g
 				 * in the Makefile itself */
 extern GNode    *VAR_CMD;    	/* Variables defined on the command line */
@@ -442,9 +447,8 @@ extern pid_t	myPid;
 #define MAKEFILE_PREFERENCE ".MAKE.MAKEFILE_PREFERENCE"
 #define MAKE_DEPENDFILE	".MAKE.DEPENDFILE" /* .depend */
 #define MAKE_MODE	".MAKE.MODE"
-
-#ifdef NEED_MAKE_LEVEL_SAFE
-# define MAKE_LEVEL_SAFE "_MAKE_LEVEL"	/* some shells will not pass .MAKE. */
+#ifndef MAKE_LEVEL_ENV
+# define MAKE_LEVEL_ENV	"MAKELEVEL"
 #endif
 
 /*
@@ -513,6 +517,17 @@ int str2Lst_Append(Lst, char *, const char *);
 #endif
 #ifndef MAX
 #define MAX(a, b) ((a > b) ? a : b)
+#endif
+
+/* At least GNU/Hurd systems lack hardcoded MAXPATHLEN/PATH_MAX */
+#ifdef HAVE_LIMITS_H
+#include <limits.h>
+#endif
+#ifndef MAXPATHLEN
+#define MAXPATHLEN	BMAKE_PATH_MAX
+#endif
+#ifndef PATH_MAX
+#define PATH_MAX	MAXPATHLEN
 #endif
 
 #endif /* _MAKE_H_ */

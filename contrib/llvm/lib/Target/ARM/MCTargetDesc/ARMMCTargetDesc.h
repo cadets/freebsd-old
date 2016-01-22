@@ -11,53 +11,98 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ARMMCTARGETDESC_H
-#define ARMMCTARGETDESC_H
+#ifndef LLVM_LIB_TARGET_ARM_MCTARGETDESC_ARMMCTARGETDESC_H
+#define LLVM_LIB_TARGET_ARM_MCTARGETDESC_ARMMCTARGETDESC_H
 
 #include "llvm/Support/DataTypes.h"
 #include <string>
 
 namespace llvm {
+class formatted_raw_ostream;
 class MCAsmBackend;
 class MCCodeEmitter;
 class MCContext;
 class MCInstrInfo;
+class MCInstPrinter;
 class MCObjectWriter;
 class MCRegisterInfo;
 class MCSubtargetInfo;
+class MCStreamer;
+class MCRelocationInfo;
+class MCTargetStreamer;
 class StringRef;
 class Target;
+class Triple;
 class raw_ostream;
+class raw_pwrite_stream;
 
-extern Target TheARMTarget, TheThumbTarget;
+extern Target TheARMLETarget, TheThumbLETarget;
+extern Target TheARMBETarget, TheThumbBETarget;
 
 namespace ARM_MC {
-  std::string ParseARMTriple(StringRef TT, StringRef CPU);
+std::string ParseARMTriple(const Triple &TT, StringRef CPU);
 
-  /// createARMMCSubtargetInfo - Create a ARM MCSubtargetInfo instance.
-  /// This is exposed so Asm parser, etc. do not need to go through
-  /// TargetRegistry.
-  MCSubtargetInfo *createARMMCSubtargetInfo(StringRef TT, StringRef CPU,
-                                            StringRef FS);
+/// Create a ARM MCSubtargetInfo instance. This is exposed so Asm parser, etc.
+/// do not need to go through TargetRegistry.
+MCSubtargetInfo *createARMMCSubtargetInfo(const Triple &TT, StringRef CPU,
+                                          StringRef FS);
 }
 
-MCCodeEmitter *createARMMCCodeEmitter(const MCInstrInfo &MCII,
+MCTargetStreamer *createARMNullTargetStreamer(MCStreamer &S);
+MCTargetStreamer *createARMTargetAsmStreamer(MCStreamer &S,
+                                             formatted_raw_ostream &OS,
+                                             MCInstPrinter *InstPrint,
+                                             bool isVerboseAsm);
+MCTargetStreamer *createARMObjectTargetStreamer(MCStreamer &S,
+                                                const MCSubtargetInfo &STI);
+
+MCCodeEmitter *createARMLEMCCodeEmitter(const MCInstrInfo &MCII,
+                                        const MCRegisterInfo &MRI,
+                                        MCContext &Ctx);
+
+MCCodeEmitter *createARMBEMCCodeEmitter(const MCInstrInfo &MCII,
+                                        const MCRegisterInfo &MRI,
+                                        MCContext &Ctx);
+
+MCAsmBackend *createARMAsmBackend(const Target &T, const MCRegisterInfo &MRI,
+                                  const Triple &TT, StringRef CPU,
+                                  bool IsLittleEndian);
+
+MCAsmBackend *createARMLEAsmBackend(const Target &T, const MCRegisterInfo &MRI,
+                                    const Triple &TT, StringRef CPU);
+
+MCAsmBackend *createARMBEAsmBackend(const Target &T, const MCRegisterInfo &MRI,
+                                    const Triple &TT, StringRef CPU);
+
+MCAsmBackend *createThumbLEAsmBackend(const Target &T,
                                       const MCRegisterInfo &MRI,
-                                      const MCSubtargetInfo &STI,
-                                      MCContext &Ctx);
+                                      const Triple &TT, StringRef CPU);
 
-MCAsmBackend *createARMAsmBackend(const Target &T, StringRef TT, StringRef CPU);
+MCAsmBackend *createThumbBEAsmBackend(const Target &T,
+                                      const MCRegisterInfo &MRI,
+                                      const Triple &TT, StringRef CPU);
 
-/// createARMELFObjectWriter - Construct an ELF Mach-O object writer.
-MCObjectWriter *createARMELFObjectWriter(raw_ostream &OS,
-                                         uint8_t OSABI);
+// Construct a PE/COFF machine code streamer which will generate a PE/COFF
+// object file.
+MCStreamer *createARMWinCOFFStreamer(MCContext &Context, MCAsmBackend &MAB,
+                                     raw_pwrite_stream &OS,
+                                     MCCodeEmitter *Emitter, bool RelaxAll);
 
-/// createARMMachObjectWriter - Construct an ARM Mach-O object writer.
-MCObjectWriter *createARMMachObjectWriter(raw_ostream &OS,
-                                          bool Is64Bit,
+/// Construct an ELF Mach-O object writer.
+MCObjectWriter *createARMELFObjectWriter(raw_pwrite_stream &OS, uint8_t OSABI,
+                                         bool IsLittleEndian);
+
+/// Construct an ARM Mach-O object writer.
+MCObjectWriter *createARMMachObjectWriter(raw_pwrite_stream &OS, bool Is64Bit,
                                           uint32_t CPUType,
                                           uint32_t CPUSubtype);
 
+/// Construct an ARM PE/COFF object writer.
+MCObjectWriter *createARMWinCOFFObjectWriter(raw_pwrite_stream &OS,
+                                             bool Is64Bit);
+
+/// Construct ARM Mach-O relocation info.
+MCRelocationInfo *createARMMachORelocationInfo(MCContext &Ctx);
 } // End llvm namespace
 
 // Defines symbolic names for ARM registers.  This defines a mapping from

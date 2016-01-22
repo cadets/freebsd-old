@@ -15,23 +15,27 @@
 #define LLVM_SUPPORT_HOST_H
 
 #include "llvm/ADT/StringMap.h"
+
+#if defined(__linux__) || defined(__GNU__)
+#include <endian.h>
+#else
+#if !defined(BYTE_ORDER) && !defined(LLVM_ON_WIN32)
+#include <machine/endian.h>
+#endif
+#endif
+
 #include <string>
 
 namespace llvm {
 namespace sys {
 
-  inline bool isLittleEndianHost() {
-    union {
-      int i;
-      char c;
-    };
-    i = 1;
-    return c;
-  }
+#if defined(BYTE_ORDER) && defined(BIG_ENDIAN) && BYTE_ORDER == BIG_ENDIAN
+  static const bool IsBigEndianHost = true;
+#else
+  static const bool IsBigEndianHost = false;
+#endif
 
-  inline bool isBigEndianHost() {
-    return !isLittleEndianHost();
-  }
+  static const bool IsLittleEndianHost = !IsBigEndianHost;
 
   /// getDefaultTargetTriple() - Return the default target triple the compiler
   /// has been configured to produce code for.
@@ -51,7 +55,7 @@ namespace sys {
   /// target which matches the host.
   ///
   /// \return - The host CPU name, or empty if the CPU could not be determined.
-  std::string getHostCPUName();
+  StringRef getHostCPUName();
 
   /// getHostCPUFeatures - Get the LLVM names for the host CPU features.
   /// The particular format of the names are target dependent, and suitable for

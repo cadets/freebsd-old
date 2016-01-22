@@ -37,12 +37,45 @@
 #define	__CLANG_ATOMICS
 #elif __GNUC_PREREQ__(4, 7)
 #define	__GNUC_ATOMICS
-#elif !defined(__GNUC__)
+#elif defined(__GNUC__)
+#define	__SYNC_ATOMICS
+#else
 #error "stdatomic.h does not support your compiler"
 #endif
 
-#if !defined(__CLANG_ATOMICS)
-#define	_Atomic(T)			struct { volatile T __val; }
+/*
+ * 7.17.1 Atomic lock-free macros.
+ */
+
+#ifdef __GCC_ATOMIC_BOOL_LOCK_FREE
+#define	ATOMIC_BOOL_LOCK_FREE		__GCC_ATOMIC_BOOL_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_CHAR_LOCK_FREE
+#define	ATOMIC_CHAR_LOCK_FREE		__GCC_ATOMIC_CHAR_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_CHAR16_T_LOCK_FREE
+#define	ATOMIC_CHAR16_T_LOCK_FREE	__GCC_ATOMIC_CHAR16_T_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_CHAR32_T_LOCK_FREE
+#define	ATOMIC_CHAR32_T_LOCK_FREE	__GCC_ATOMIC_CHAR32_T_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_WCHAR_T_LOCK_FREE
+#define	ATOMIC_WCHAR_T_LOCK_FREE	__GCC_ATOMIC_WCHAR_T_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_SHORT_LOCK_FREE
+#define	ATOMIC_SHORT_LOCK_FREE		__GCC_ATOMIC_SHORT_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_INT_LOCK_FREE
+#define	ATOMIC_INT_LOCK_FREE		__GCC_ATOMIC_INT_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_LONG_LOCK_FREE
+#define	ATOMIC_LONG_LOCK_FREE		__GCC_ATOMIC_LONG_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_LLONG_LOCK_FREE
+#define	ATOMIC_LLONG_LOCK_FREE		__GCC_ATOMIC_LLONG_LOCK_FREE
+#endif
+#ifdef __GCC_ATOMIC_POINTER_LOCK_FREE
+#define	ATOMIC_POINTER_LOCK_FREE	__GCC_ATOMIC_POINTER_LOCK_FREE
 #endif
 
 /*
@@ -89,39 +122,57 @@
  * atomic operations.
  */
 
-enum memory_order {
+typedef enum {
 	memory_order_relaxed = __ATOMIC_RELAXED,
 	memory_order_consume = __ATOMIC_CONSUME,
 	memory_order_acquire = __ATOMIC_ACQUIRE,
 	memory_order_release = __ATOMIC_RELEASE,
 	memory_order_acq_rel = __ATOMIC_ACQ_REL,
 	memory_order_seq_cst = __ATOMIC_SEQ_CST
-};
+} memory_order;
 
 /*
  * 7.17.4 Fences.
  */
 
+static __inline void
+atomic_thread_fence(memory_order __order __unused)
+{
+
 #ifdef __CLANG_ATOMICS
-#define	atomic_thread_fence(order)	__c11_atomic_thread_fence(order)
-#define	atomic_signal_fence(order)	__c11_atomic_signal_fence(order)
+	__c11_atomic_thread_fence(__order);
 #elif defined(__GNUC_ATOMICS)
-#define	atomic_thread_fence(order)	__atomic_thread_fence(order)
-#define	atomic_signal_fence(order)	__atomic_signal_fence(order)
+	__atomic_thread_fence(__order);
 #else
-#define	atomic_thread_fence(order)	((void)(order), __sync_synchronize())
-#define	atomic_signal_fence(order)	__extension__ ({		\
-	(void)(order);							\
-	__asm volatile ("" ::: "memory");				\
-	(void)0;							\
-})
+	__sync_synchronize();
 #endif
+}
+
+static __inline void
+atomic_signal_fence(memory_order __order __unused)
+{
+
+#ifdef __CLANG_ATOMICS
+	__c11_atomic_signal_fence(__order);
+#elif defined(__GNUC_ATOMICS)
+	__atomic_signal_fence(__order);
+#else
+	__asm volatile ("" ::: "memory");
+#endif
+}
 
 /*
  * 7.17.5 Lock-free property.
  */
 
-#if defined(__CLANG_ATOMICS) || defined(__GNUC_ATOMICS)
+#if defined(_KERNEL)
+/* Atomics in kernelspace are always lock-free. */
+#define	atomic_is_lock_free(obj) \
+	((void)(obj), (_Bool)1)
+#elif defined(__CLANG_ATOMICS)
+#define	atomic_is_lock_free(obj) \
+	__atomic_is_lock_free(sizeof(*(obj)), obj)
+#elif defined(__GNUC_ATOMICS)
 #define	atomic_is_lock_free(obj) \
 	__atomic_is_lock_free(sizeof((obj)->__val), &(obj)->__val)
 #else
@@ -147,7 +198,7 @@ typedef _Atomic(long long)		atomic_llong;
 typedef _Atomic(unsigned long long)	atomic_ullong;
 typedef _Atomic(__char16_t)		atomic_char16_t;
 typedef _Atomic(__char32_t)		atomic_char32_t;
-typedef _Atomic(__wchar_t)		atomic_wchar_t;
+typedef _Atomic(___wchar_t)		atomic_wchar_t;
 typedef _Atomic(__int_least8_t)		atomic_int_least8_t;
 typedef _Atomic(__uint_least8_t)	atomic_uint_least8_t;
 typedef _Atomic(__int_least16_t)	atomic_int_least16_t;
@@ -230,13 +281,15 @@ typedef _Atomic(__uintmax_t)		atomic_uintmax_t;
 #define	atomic_store_explicit(object, desired, order)			\
 	__atomic_store_n(&(object)->__val, desired, order)
 #else
+#define	__atomic_apply_stride(object, operand) \
+	(((__typeof__((object)->__val))0) + (operand))
 #define	atomic_compare_exchange_strong_explicit(object, expected,	\
     desired, success, failure)	__extension__ ({			\
 	__typeof__(expected) __ep = (expected);				\
 	__typeof__(*__ep) __e = *__ep;					\
 	(void)(success); (void)(failure);				\
-	(*__ep = __sync_val_compare_and_swap(&(object)->__val,		\
-	    __e, desired)) == __e;					\
+	(_Bool)((*__ep = __sync_val_compare_and_swap(&(object)->__val,	\
+	    __e, desired)) == __e);					\
 })
 #define	atomic_compare_exchange_weak_explicit(object, expected,		\
     desired, success, failure)						\
@@ -262,13 +315,15 @@ __extension__ ({							\
 })
 #endif
 #define	atomic_fetch_add_explicit(object, operand, order)		\
-	((void)(order), __sync_fetch_and_add(&(object)->__val, operand))
+	((void)(order), __sync_fetch_and_add(&(object)->__val,		\
+	    __atomic_apply_stride(object, operand)))
 #define	atomic_fetch_and_explicit(object, operand, order)		\
 	((void)(order), __sync_fetch_and_and(&(object)->__val, operand))
 #define	atomic_fetch_or_explicit(object, operand, order)		\
 	((void)(order), __sync_fetch_and_or(&(object)->__val, operand))
 #define	atomic_fetch_sub_explicit(object, operand, order)		\
-	((void)(order), __sync_fetch_and_sub(&(object)->__val, operand))
+	((void)(order), __sync_fetch_and_sub(&(object)->__val,		\
+	    __atomic_apply_stride(object, operand)))
 #define	atomic_fetch_xor_explicit(object, operand, order)		\
 	((void)(order), __sync_fetch_and_xor(&(object)->__val, operand))
 #define	atomic_load_explicit(object, order)				\
@@ -279,8 +334,12 @@ __extension__ ({							\
 
 /*
  * Convenience functions.
+ *
+ * Don't provide these in kernel space. In kernel space, we should be
+ * disciplined enough to always provide explicit barriers.
  */
 
+#ifndef _KERNEL
 #define	atomic_compare_exchange_strong(object, expected, desired)	\
 	atomic_compare_exchange_strong_explicit(object, expected,	\
 	    desired, memory_order_seq_cst, memory_order_seq_cst)
@@ -303,23 +362,50 @@ __extension__ ({							\
 	atomic_load_explicit(object, memory_order_seq_cst)
 #define	atomic_store(object, desired)					\
 	atomic_store_explicit(object, desired, memory_order_seq_cst)
+#endif /* !_KERNEL */
 
 /*
  * 7.17.8 Atomic flag type and operations.
+ *
+ * XXX: Assume atomic_bool can be used as an atomic_flag. Is there some
+ * kind of compiler built-in type we could use?
  */
 
-typedef atomic_bool			atomic_flag;
+typedef struct {
+	atomic_bool	__flag;
+} atomic_flag;
 
-#define	ATOMIC_FLAG_INIT		ATOMIC_VAR_INIT(0)
+#define	ATOMIC_FLAG_INIT		{ ATOMIC_VAR_INIT(0) }
 
-#define	atomic_flag_clear_explicit(object, order)			\
-	atomic_store_explicit(object, 0, order)
-#define	atomic_flag_test_and_set_explicit(object, order)		\
-	atomic_compare_exchange_strong_explicit(object, 0, 1, order, order)
+static __inline _Bool
+atomic_flag_test_and_set_explicit(volatile atomic_flag *__object,
+    memory_order __order)
+{
+	return (atomic_exchange_explicit(&__object->__flag, 1, __order));
+}
 
-#define	atomic_flag_clear(object)					\
-	atomic_flag_clear_explicit(object, memory_order_seq_cst)
-#define	atomic_flag_test_and_set(object)				\
-	atomic_flag_test_and_set_explicit(object, memory_order_seq_cst)
+static __inline void
+atomic_flag_clear_explicit(volatile atomic_flag *__object, memory_order __order)
+{
+
+	atomic_store_explicit(&__object->__flag, 0, __order);
+}
+
+#ifndef _KERNEL
+static __inline _Bool
+atomic_flag_test_and_set(volatile atomic_flag *__object)
+{
+
+	return (atomic_flag_test_and_set_explicit(__object,
+	    memory_order_seq_cst));
+}
+
+static __inline void
+atomic_flag_clear(volatile atomic_flag *__object)
+{
+
+	atomic_flag_clear_explicit(__object, memory_order_seq_cst);
+}
+#endif /* !_KERNEL */
 
 #endif /* !_STDATOMIC_H_ */

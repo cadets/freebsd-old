@@ -795,7 +795,7 @@ calldaemon:
 	         * caching...)
 	         */
 #if 0
-		if ((cnp->cn_flags & MAKEENTRY) && nameiop != CREATE) {
+		if ((cnp->cn_flags & MAKEENTRY) != 0) {
 			FS_DEBUG("inserting NULL into cache\n");
 			cache_enter(dvp, NULL, cnp);
 		}
@@ -1173,6 +1173,11 @@ fuse_vnop_read(struct vop_read_args *ap)
 	if (fuse_isdeadfs(vp)) {
 		return ENXIO;
 	}
+
+	if (VTOFUD(vp)->flag & FN_DIRECTIO) {
+		ioflag |= IO_DIRECT;
+	}
+
 	return fuse_io_dispatch(vp, uio, ioflag, cred);
 }
 
@@ -1712,6 +1717,10 @@ fuse_vnop_write(struct vop_write_args *ap)
 	}
 	fuse_vnode_refreshsize(vp, cred);
 
+	if (VTOFUD(vp)->flag & FN_DIRECTIO) {
+		ioflag |= IO_DIRECT;
+	}
+
 	return fuse_io_dispatch(vp, uio, ioflag, cred);
 }
 
@@ -1721,7 +1730,6 @@ fuse_vnop_write(struct vop_write_args *ap)
         vm_page_t *a_m;
         int a_count;
         int a_reqpage;
-        vm_ooffset_t a_offset;
     };
 */
 static int
@@ -1744,35 +1752,24 @@ fuse_vnop_getpages(struct vop_getpages_args *ap)
 	td = curthread;			/* XXX */
 	cred = curthread->td_ucred;	/* XXX */
 	pages = ap->a_m;
-	count = ap->a_count;
+	npages = ap->a_count;
 
 	if (!fsess_opt_mmap(vnode_mount(vp))) {
 		FS_DEBUG("called on non-cacheable vnode??\n");
 		return (VM_PAGER_ERROR);
 	}
-	npages = btoc(count);
 
 	/*
-	 * If the requested page is partially valid, just return it and
-	 * allow the pager to zero-out the blanks.  Partially valid pages
-	 * can only occur at the file EOF.
+	 * If the last page is partially valid, just return it and allow
+	 * the pager to zero-out the blanks.  Partially valid pages can
+	 * only occur at the file EOF.
+	 *
+	 * XXXGL: is that true for FUSE, which is a local filesystem,
+	 * but still somewhat disconnected from the kernel?
 	 */
-
 	VM_OBJECT_WLOCK(vp->v_object);
-	fuse_vm_page_lock_queues();
-	if (pages[ap->a_reqpage]->valid != 0) {
-		for (i = 0; i < npages; ++i) {
-			if (i != ap->a_reqpage) {
-				fuse_vm_page_lock(pages[i]);
-				vm_page_free(pages[i]);
-				fuse_vm_page_unlock(pages[i]);
-			}
-		}
-		fuse_vm_page_unlock_queues();
-		VM_OBJECT_WUNLOCK(vp->v_object);
-		return 0;
-	}
-	fuse_vm_page_unlock_queues();
+	if (pages[npages - 1]->valid != 0 && --npages == 0)
+		goto out;
 	VM_OBJECT_WUNLOCK(vp->v_object);
 
 	/*
@@ -1786,6 +1783,7 @@ fuse_vnop_getpages(struct vop_getpages_args *ap)
 	PCPU_INC(cnt.v_vnodein);
 	PCPU_ADD(cnt.v_vnodepgsin, npages);
 
+	count = npages << PAGE_SHIFT;
 	iov.iov_base = (caddr_t)kva;
 	iov.iov_len = count;
 	uio.uio_iov = &iov;
@@ -1803,17 +1801,6 @@ fuse_vnop_getpages(struct vop_getpages_args *ap)
 
 	if (error && (uio.uio_resid == count)) {
 		FS_DEBUG("error %d\n", error);
-		VM_OBJECT_WLOCK(vp->v_object);
-		fuse_vm_page_lock_queues();
-		for (i = 0; i < npages; ++i) {
-			if (i != ap->a_reqpage) {
-				fuse_vm_page_lock(pages[i]);
-				vm_page_free(pages[i]);
-				fuse_vm_page_unlock(pages[i]);
-			}
-		}
-		fuse_vm_page_unlock_queues();
-		VM_OBJECT_WUNLOCK(vp->v_object);
 		return VM_PAGER_ERROR;
 	}
 	/*
@@ -1854,40 +1841,15 @@ fuse_vnop_getpages(struct vop_getpages_args *ap)
 			 */
 			;
 		}
-		if (i != ap->a_reqpage) {
-			/*
-			 * Whether or not to leave the page activated is up in
-			 * the air, but we should put the page on a page queue
-			 * somewhere (it already is in the object).  Result:
-			 * It appears that emperical results show that
-			 * deactivating pages is best.
-			 */
-
-			/*
-			 * Just in case someone was asking for this page we
-			 * now tell them that it is ok to use.
-			 */
-			if (!error) {
-				if (m->oflags & VPO_WANTED) {
-					fuse_vm_page_lock(m);
-					vm_page_activate(m);
-					fuse_vm_page_unlock(m);
-				} else {
-					fuse_vm_page_lock(m);
-					vm_page_deactivate(m);
-					fuse_vm_page_unlock(m);
-				}
-				vm_page_wakeup(m);
-			} else {
-				fuse_vm_page_lock(m);
-				vm_page_free(m);
-				fuse_vm_page_unlock(m);
-			}
-		}
 	}
 	fuse_vm_page_unlock_queues();
+out:
 	VM_OBJECT_WUNLOCK(vp->v_object);
-	return 0;
+	if (ap->a_rbehind)
+		*ap->a_rbehind = 0;
+	if (ap->a_rahead)
+		*ap->a_rahead = 0;
+	return (VM_PAGER_OK);
 }
 
 /*

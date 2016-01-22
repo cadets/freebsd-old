@@ -92,11 +92,12 @@ freopen(const char * __restrict file, const char * __restrict mode,
 			errno = sverrno;
 			return (NULL);
 		}
-		if ((dflags & O_ACCMODE) != O_RDWR && (dflags & O_ACCMODE) !=
-		    (oflags & O_ACCMODE)) {
+		/* Work around incorrect O_ACCMODE. */
+		if ((dflags & O_ACCMODE) != O_RDWR &&
+		    (dflags & (O_ACCMODE | O_EXEC)) != (oflags & O_ACCMODE)) {
 			fclose(fp);
 			FUNLOCKFILE(fp);
-			errno = EINVAL;
+			errno = EBADF;
 			return (NULL);
 		}
 		if (fp->_flags & __SWR)
@@ -150,6 +151,14 @@ freopen(const char * __restrict file, const char * __restrict mode,
 
 	/* Get a new descriptor to refer to the new file. */
 	f = _open(file, oflags, DEFFILEMODE);
+	/* If out of fd's close the old one and try again. */
+	if (f < 0 && isopen && wantfd > STDERR_FILENO &&
+	    (errno == ENFILE || errno == EMFILE)) {
+		(void) (*fp->_close)(fp->_cookie);
+		isopen = 0;
+		wantfd = -1;
+		f = _open(file, oflags, DEFFILEMODE);
+	}
 	sverrno = errno;
 
 finish:
@@ -178,6 +187,7 @@ finish:
 	fp->_lb._size = 0;
 	fp->_orientation = 0;
 	memset(&fp->_mbstate, 0, sizeof(mbstate_t));
+	fp->_flags2 = 0;
 
 	if (f < 0) {			/* did not get it after all */
 		if (isopen)
@@ -231,8 +241,10 @@ finish:
 	 * we can do about this.  (We could set __SAPP and check in
 	 * fseek and ftell.)
 	 */
-	if (oflags & O_APPEND)
+	if (oflags & O_APPEND) {
+		fp->_flags2 |= __S2OAP;
 		(void) _sseek(fp, (fpos_t)0, SEEK_END);
+	}
 	FUNLOCKFILE(fp);
 	return (fp);
 }

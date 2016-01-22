@@ -970,7 +970,7 @@
 
 #define	ZYD_TX_RATEDIV							\
 {									\
-	0x1, 0x2, 0xb, 0xb, 0x0, 0x0, 0x0, 0x0, 0x30, 0x18, 0xc, 0x6,	\
+	0x1, 0x2, 0xb, 0xb, 0x1, 0x1, 0x1, 0x1, 0x30, 0x18, 0xc, 0x6,	\
 	0x36, 0x24, 0x12, 0x9						\
 }
 
@@ -1007,7 +1007,7 @@
 #define ZYD_FILTER_CTS		(1 << 28)
 #define ZYD_FILTER_ACK		(1 << 29)
 #define ZYD_FILTER_CFE		(1 << 30)
-#define ZYD_FILTER_CFE_A	(1 << 31)
+#define ZYD_FILTER_CFE_A	(1U << 31)
 
 /* helpers for register ZYD_MAC_RXFILTER */
 #define ZYD_FILTER_MONITOR	0xffffffff
@@ -1185,7 +1185,7 @@ struct zyd_rx_radiotap_header {
 	uint16_t		wr_chan_flags;
 	int8_t			wr_antsignal;
 	int8_t			wr_antnoise;
-} __packed;
+} __packed __aligned(8);
 
 #define ZYD_RX_RADIOTAP_PRESENT						\
 	((1 << IEEE80211_RADIOTAP_FLAGS) |				\
@@ -1200,7 +1200,7 @@ struct zyd_tx_radiotap_header {
 	uint8_t			wt_rate;
 	uint16_t		wt_chan_freq;
 	uint16_t		wt_chan_flags;
-} __packed;
+} __packed __aligned(8);
 
 #define ZYD_TX_RADIOTAP_PRESENT						\
 	((1 << IEEE80211_RADIOTAP_FLAGS) |				\
@@ -1249,7 +1249,8 @@ enum {
 };
 
 struct zyd_softc {
-	struct ifnet		*sc_ifp;
+	struct ieee80211com	sc_ic;
+	struct mbufq		sc_snd;
 	device_t		sc_dev;
 	struct usb_device	*sc_udev;
 
@@ -1260,13 +1261,13 @@ struct zyd_softc {
 #define	ZYD_FLAG_INITONCE		(1 << 1)
 #define	ZYD_FLAG_INITDONE		(1 << 2)
 #define	ZYD_FLAG_DETACHED		(1 << 3)
+#define	ZYD_FLAG_RUNNING		(1 << 4)
 
 	struct zyd_rf		sc_rf;
 
 	STAILQ_HEAD(, zyd_rq)	sc_rtx;
 	STAILQ_HEAD(, zyd_rq)	sc_rqh;
 
-	uint8_t			sc_bssid[IEEE80211_ADDR_LEN];
 	uint16_t		sc_fwbase;
 	uint8_t			sc_regdomain;
 	uint8_t			sc_macrev;
@@ -1303,9 +1304,7 @@ struct zyd_softc {
 	struct zyd_cmd		sc_ibuf;
 
 	struct zyd_rx_radiotap_header	sc_rxtap;
-	int			sc_rxtap_len;
 	struct zyd_tx_radiotap_header	sc_txtap;
-	int			sc_txtap_len;
 };
 
 #define	ZYD_LOCK(sc)		mtx_lock(&(sc)->sc_mtx)

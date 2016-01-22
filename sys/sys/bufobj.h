@@ -63,7 +63,7 @@ extern struct buf_ops buf_ops_bio;
 
 TAILQ_HEAD(buflists, buf);
 
-/* A Buffer splay list */
+/* A Buffer list & trie */
 struct bufv {
 	struct buflists	bv_hd;		/* Sorted blocklist */
 	struct pctrie	bv_root;	/* Buf trie */
@@ -112,6 +112,7 @@ struct bufobj {
  */
 #define	BO_ONWORKLST	(1 << 0)	/* On syncer work-list */
 #define	BO_WWAIT	(1 << 1)	/* Wait for output to complete */
+#define	BO_DEAD		(1 << 2)	/* Dead; only with INVARIANTS */
 
 #define	BO_LOCKPTR(bo)		(&(bo)->bo_lock)
 #define	BO_LOCK(bo)		rw_wlock(BO_LOCKPTR((bo)))

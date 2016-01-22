@@ -83,7 +83,7 @@ struct open_disk {
 #define BD_OPTICAL		0x0020
     struct disklabel		od_disklabel;
     int				od_nslices;	/* slice count */
-    struct pc98_partition	od_slicetab[NDOSPART];
+    struct pc98_partition	od_slicetab[PC98_NPARTS];
 };
 
 /*
@@ -528,9 +528,9 @@ bd_open_pc98(struct open_disk *od, struct i386_devdesc *dev)
     /*
      * copy the partition table, then pick up any extended partitions.
      */
-    bcopy(buf + DOSPARTOFF, &od->od_slicetab,
-      sizeof(struct pc98_partition) * NDOSPART);
-    od->od_nslices = NDOSPART;		/* extended slices start here */
+    bcopy(buf + PC98_PARTOFF, &od->od_slicetab,
+      sizeof(struct pc98_partition) * PC98_NPARTS);
+    od->od_nslices = PC98_NPARTS;	/* extended slices start here */
     od->od_flags |= BD_PARTTABOK;
     dptr = &od->od_slicetab[0];
 
@@ -647,7 +647,7 @@ bd_open_pc98(struct open_disk *od, struct i386_devdesc *dev)
 #define PREF_NONE	7
 
 /*
- * slicelimit is in the range 0 .. NDOSPART
+ * slicelimit is in the range 0 .. PC98_NPARTS
  */
 static int
 bd_bestslice(struct open_disk *od)
@@ -824,7 +824,7 @@ bd_chs_io(struct open_disk *od, daddr_t dblk, int blks, caddr_t dest, int write)
     v86.es = VTOPSEG(dest);
     v86.ebp = VTOPOFF(dest);
     v86int();
-    return (v86.efl & 0x1);
+    return (V86_CY(v86.efl));
 }
 
 static int
@@ -959,7 +959,7 @@ bd_getgeom(struct open_disk *od)
 	od->od_cyl = v86.ecx;
 	od->od_hds = (v86.edx >> 8) & 0xff;
 	od->od_sec = v86.edx & 0xff;
-	if (v86.efl & 0x1)
+	if (V86_CY(v86.efl))
 	    return(1);
     }
 
@@ -1010,7 +1010,7 @@ bd_getbigeom(int bunit)
     v86.addr = 0x1b;
     v86.eax = 0x8400 | unit;
     v86int();
-    if (v86.efl & 0x1)
+    if (V86_CY(v86.efl))
 	return 0x4F020F;	/* 1200KB FD C:80 H:2 S:15 */
     return ((v86.ecx & 0xffff) << 16) | (v86.edx & 0xffff);
 }

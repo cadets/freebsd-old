@@ -30,12 +30,16 @@ mips/mips/minidump_machdep.c		standard
 mips/mips/mp_machdep.c			optional	smp
 mips/mips/mpboot.S			optional	smp
 mips/mips/nexus.c			standard
+mips/mips/ofw_machdep.c			optional	fdt
 mips/mips/pm_machdep.c			standard
 mips/mips/pmap.c			standard
 mips/mips/ptrace_machdep.c		standard
 mips/mips/sc_machdep.c			standard
 mips/mips/stack_machdep.c		optional	ddb | stack
+mips/mips/stdatomic.c			standard \
+	compile-with "${NORMAL_C:N-Wmissing-prototypes}"
 mips/mips/support.S			standard
+mips/mips/bcopy.S			standard
 mips/mips/swtch.S			standard
 mips/mips/sys_machdep.c			standard
 mips/mips/tlb.c				standard
@@ -47,14 +51,21 @@ mips/mips/vm_machdep.c			standard
 # misc opt-in bits
 kern/kern_clocksource.c			standard
 kern/link_elf_obj.c			standard
+kern/subr_busdma_bufalloc.c		standard
 kern/subr_dummy_vdso_tc.c		standard
+kern/subr_sfbuf.c			optional	mips | mipsel | mipsn32
 
 # gcc/clang runtime
 libkern/ffsl.c				standard
+libkern/ffsll.c				standard
 libkern/fls.c				standard
 libkern/flsl.c				standard
+libkern/flsll.c				standard
 libkern/memmove.c			standard
+libkern/cmpdi2.c			optional	mips | mipsel
 libkern/ucmpdi2.c			optional	mips | mipsel
+libkern/ashldi3.c			standard
+libkern/ashrdi3.c			standard
 
 # cfe support
 dev/cfe/cfe_api.c			optional	cfe
@@ -63,7 +74,6 @@ dev/cfe/cfe_env.c			optional	cfe_env
 
 # syscons support
 dev/fb/fb.c				optional	sc
-dev/kbd/kbd.c				optional	sc
 dev/syscons/scgfbrndr.c			optional	sc
 dev/syscons/scterm-teken.c		optional	sc
 dev/syscons/scvtb.c			optional	sc
@@ -75,7 +85,7 @@ dev/uart/uart_cpu_fdt.c			optional	uart fdt
 
 # crypto support -- use generic
 crypto/blowfish/bf_enc.c		optional	crypto | ipsec 
-crypto/des/des_enc.c			optional	crypto | ipsec
+crypto/des/des_enc.c			optional	crypto | ipsec | netsmb
 
 # AP common nvram interface MIPS specific, but maybe should be more generic
 dev/nvram2env/nvram2env.c		optional	nvram2env
@@ -83,3 +93,4 @@ dev/nvram2env/nvram2env.c		optional	nvram2env
 # hwpmc support
 dev/hwpmc/hwpmc_mips.c			optional	hwpmc
 dev/hwpmc/hwpmc_mips24k.c		optional	hwpmc_mips24k
+dev/hwpmc/hwpmc_mips74k.c		optional	hwpmc_mips74k

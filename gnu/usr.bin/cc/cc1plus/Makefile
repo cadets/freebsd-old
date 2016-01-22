@@ -1,7 +1,7 @@
 # $FreeBSD$
 
-NO_MAN=
-.include <bsd.own.mk>
+MAN=
+.include <src.opts.mk>
 
 .include "../Makefile.inc"
 
@@ -15,7 +15,7 @@ SRCS+=	main.c cp-lang.c c-opts.c call.c class.c cvt.c cxx-pretty-print.c \
 	search.c semantics.c tree.c typeck.c typeck2.c optimize.c \
 	cp-objcp-common.c cp-gimplify.c tree-mudflap.c
 
-BINDIR=	/usr/libexec
+BINDIR=	${LIBEXECDIR}
 .if ${MK_SHARED_TOOLCHAIN} == "no"
 NO_SHARED?=yes
 .endif
@@ -30,7 +30,7 @@ LDADD=	${LIBBACKEND} ${LIBCPP} ${LIBDECNUMBER} ${LIBIBERTY}
 # C++ parser
 cfns.h: cfns.gperf
 	gperf -o -C -E -k '1-6,$$' -j1 -D -N 'libc_name_p' -L ANSI-C \
-	    ${.ALLSRC} > ${.TARGET}
+	    ${.ALLSRC} > ${.TARGET} || (rm -f ${.TARGET}; false)
 CLEANFILES= cfns.h
 
 DOBJS+=	${SRCS:N*.h:R:S/$/.o/g}

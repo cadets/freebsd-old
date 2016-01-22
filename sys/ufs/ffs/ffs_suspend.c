@@ -34,6 +34,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/buf.h>
 #include <sys/ioccom.h>
 #include <sys/mount.h>
 #include <sys/vnode.h>
@@ -176,7 +177,6 @@ out:
 static int
 ffs_susp_suspend(struct mount *mp)
 {
-	struct fs *fs;
 	struct ufsmount *ump;
 	int error;
 
@@ -188,7 +188,6 @@ ffs_susp_suspend(struct mount *mp)
 		return (EBUSY);
 
 	ump = VFSTOUFS(mp);
-	fs = ump->um_fs;
 
 	/*
 	 * Make sure the calling thread is permitted to access the mounted
@@ -206,7 +205,7 @@ ffs_susp_suspend(struct mount *mp)
 		return (EPERM);
 #endif
 
-	if ((error = vfs_write_suspend(mp)) != 0)
+	if ((error = vfs_write_suspend(mp, VS_SKIP_UNMOUNT)) != 0)
 		return (error);
 
 	ump->um_writesuspended = 1;

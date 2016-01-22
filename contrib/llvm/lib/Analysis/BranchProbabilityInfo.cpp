@@ -14,19 +14,22 @@
 #include "llvm/Analysis/BranchProbabilityInfo.h"
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/Analysis/LoopInfo.h"
+#include "llvm/IR/CFG.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
-#include "llvm/Support/CFG.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 
+#define DEBUG_TYPE "branch-prob"
+
 INITIALIZE_PASS_BEGIN(BranchProbabilityInfo, "branch-prob",
                       "Branch Probability Analysis", false, true)
-INITIALIZE_PASS_DEPENDENCY(LoopInfo)
+INITIALIZE_PASS_DEPENDENCY(LoopInfoWrapperPass)
 INITIALIZE_PASS_END(BranchProbabilityInfo, "branch-prob",
                     "Branch Probability Analysis", false, true)
 
@@ -69,6 +72,20 @@ static const uint32_t UR_TAKEN_WEIGHT = 1;
 /// easily subsume it.
 static const uint32_t UR_NONTAKEN_WEIGHT = 1024*1024 - 1;
 
+/// \brief Weight for a branch taken going into a cold block.
+///
+/// This is the weight for a branch taken toward a block marked
+/// cold.  A block is marked cold if it's postdominated by a
+/// block containing a call to a cold function.  Cold functions
+/// are those marked with attribute 'cold'.
+static const uint32_t CC_TAKEN_WEIGHT = 4;
+
+/// \brief Weight for a branch not-taken into a cold block.
+///
+/// This is the weight for a branch not taken toward a block marked
+/// cold.
+static const uint32_t CC_NONTAKEN_WEIGHT = 64;
+
 static const uint32_t PH_TAKEN_WEIGHT = 20;
 static const uint32_t PH_NONTAKEN_WEIGHT = 12;
 
@@ -97,11 +114,6 @@ static const uint32_t NORMAL_WEIGHT = 16;
 
 // Minimum weight of an edge. Please note, that weight is NEVER 0.
 static const uint32_t MIN_WEIGHT = 1;
-
-static uint32_t getMaxWeightFor(BasicBlock *BB) {
-  return UINT32_MAX / BB->getTerminator()->getNumSuccessors();
-}
-
 
 /// \brief Calculate edge weights for successors lead to unreachable.
 ///
@@ -137,8 +149,8 @@ bool BranchProbabilityInfo::calcUnreachableHeuristics(BasicBlock *BB) {
 
   uint32_t UnreachableWeight =
     std::max(UR_TAKEN_WEIGHT / (unsigned)UnreachableEdges.size(), MIN_WEIGHT);
-  for (SmallVector<unsigned, 4>::iterator I = UnreachableEdges.begin(),
-                                          E = UnreachableEdges.end();
+  for (SmallVectorImpl<unsigned>::iterator I = UnreachableEdges.begin(),
+                                           E = UnreachableEdges.end();
        I != E; ++I)
     setEdgeWeight(BB, *I, UnreachableWeight);
 
@@ -147,8 +159,8 @@ bool BranchProbabilityInfo::calcUnreachableHeuristics(BasicBlock *BB) {
   uint32_t ReachableWeight =
     std::max(UR_NONTAKEN_WEIGHT / (unsigned)ReachableEdges.size(),
              NORMAL_WEIGHT);
-  for (SmallVector<unsigned, 4>::iterator I = ReachableEdges.begin(),
-                                          E = ReachableEdges.end();
+  for (SmallVectorImpl<unsigned>::iterator I = ReachableEdges.begin(),
+                                           E = ReachableEdges.end();
        I != E; ++I)
     setEdgeWeight(BB, *I, ReachableWeight);
 
@@ -168,27 +180,106 @@ bool BranchProbabilityInfo::calcMetadataWeights(BasicBlock *BB) {
   if (!WeightsNode)
     return false;
 
+  // Check that the number of successors is manageable.
+  assert(TI->getNumSuccessors() < UINT32_MAX && "Too many successors");
+
   // Ensure there are weights for all of the successors. Note that the first
   // operand to the metadata node is a name, not a weight.
   if (WeightsNode->getNumOperands() != TI->getNumSuccessors() + 1)
     return false;
 
-  // Build up the final weights that will be used in a temporary buffer, but
-  // don't add them until all weihts are present. Each weight value is clamped
-  // to [1, getMaxWeightFor(BB)].
-  uint32_t WeightLimit = getMaxWeightFor(BB);
+  // Build up the final weights that will be used in a temporary buffer.
+  // Compute the sum of all weights to later decide whether they need to
+  // be scaled to fit in 32 bits.
+  uint64_t WeightSum = 0;
   SmallVector<uint32_t, 2> Weights;
   Weights.reserve(TI->getNumSuccessors());
   for (unsigned i = 1, e = WeightsNode->getNumOperands(); i != e; ++i) {
-    ConstantInt *Weight = dyn_cast<ConstantInt>(WeightsNode->getOperand(i));
+    ConstantInt *Weight =
+        mdconst::dyn_extract<ConstantInt>(WeightsNode->getOperand(i));
     if (!Weight)
       return false;
-    Weights.push_back(
-      std::max<uint32_t>(1, Weight->getLimitedValue(WeightLimit)));
+    assert(Weight->getValue().getActiveBits() <= 32 &&
+           "Too many bits for uint32_t");
+    Weights.push_back(Weight->getZExtValue());
+    WeightSum += Weights.back();
   }
   assert(Weights.size() == TI->getNumSuccessors() && "Checked above");
-  for (unsigned i = 0, e = TI->getNumSuccessors(); i != e; ++i)
-    setEdgeWeight(BB, i, Weights[i]);
+
+  // If the sum of weights does not fit in 32 bits, scale every weight down
+  // accordingly.
+  uint64_t ScalingFactor =
+      (WeightSum > UINT32_MAX) ? WeightSum / UINT32_MAX + 1 : 1;
+
+  WeightSum = 0;
+  for (unsigned i = 0, e = TI->getNumSuccessors(); i != e; ++i) {
+    uint32_t W = Weights[i] / ScalingFactor;
+    WeightSum += W;
+    setEdgeWeight(BB, i, W);
+  }
+  assert(WeightSum <= UINT32_MAX &&
+         "Expected weights to scale down to 32 bits");
+
+  return true;
+}
+
+/// \brief Calculate edge weights for edges leading to cold blocks.
+///
+/// A cold block is one post-dominated by  a block with a call to a
+/// cold function.  Those edges are unlikely to be taken, so we give
+/// them relatively low weight.
+///
+/// Return true if we could compute the weights for cold edges.
+/// Return false, otherwise.
+bool BranchProbabilityInfo::calcColdCallHeuristics(BasicBlock *BB) {
+  TerminatorInst *TI = BB->getTerminator();
+  if (TI->getNumSuccessors() == 0)
+    return false;
+
+  // Determine which successors are post-dominated by a cold block.
+  SmallVector<unsigned, 4> ColdEdges;
+  SmallVector<unsigned, 4> NormalEdges;
+  for (succ_iterator I = succ_begin(BB), E = succ_end(BB); I != E; ++I)
+    if (PostDominatedByColdCall.count(*I))
+      ColdEdges.push_back(I.getSuccessorIndex());
+    else
+      NormalEdges.push_back(I.getSuccessorIndex());
+
+  // If all successors are in the set of blocks post-dominated by cold calls,
+  // this block is in the set post-dominated by cold calls.
+  if (ColdEdges.size() == TI->getNumSuccessors())
+    PostDominatedByColdCall.insert(BB);
+  else {
+    // Otherwise, if the block itself contains a cold function, add it to the
+    // set of blocks postdominated by a cold call.
+    assert(!PostDominatedByColdCall.count(BB));
+    for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ++I)
+      if (CallInst *CI = dyn_cast<CallInst>(I))
+        if (CI->hasFnAttr(Attribute::Cold)) {
+          PostDominatedByColdCall.insert(BB);
+          break;
+        }
+  }
+
+  // Skip probabilities if this block has a single successor.
+  if (TI->getNumSuccessors() == 1 || ColdEdges.empty())
+    return false;
+
+  uint32_t ColdWeight =
+      std::max(CC_TAKEN_WEIGHT / (unsigned) ColdEdges.size(), MIN_WEIGHT);
+  for (SmallVectorImpl<unsigned>::iterator I = ColdEdges.begin(),
+                                           E = ColdEdges.end();
+       I != E; ++I)
+    setEdgeWeight(BB, *I, ColdWeight);
+
+  if (NormalEdges.empty())
+    return true;
+  uint32_t NormalWeight = std::max(
+      CC_NONTAKEN_WEIGHT / (unsigned) NormalEdges.size(), NORMAL_WEIGHT);
+  for (SmallVectorImpl<unsigned>::iterator I = NormalEdges.begin(),
+                                           E = NormalEdges.end();
+       I != E; ++I)
+    setEdgeWeight(BB, *I, NormalWeight);
 
   return true;
 }
@@ -246,12 +337,15 @@ bool BranchProbabilityInfo::calcLoopBranchHeuristics(BasicBlock *BB) {
       InEdges.push_back(I.getSuccessorIndex());
   }
 
+  if (BackEdges.empty() && ExitingEdges.empty())
+    return false;
+
   if (uint32_t numBackEdges = BackEdges.size()) {
     uint32_t backWeight = LBH_TAKEN_WEIGHT / numBackEdges;
     if (backWeight < NORMAL_WEIGHT)
       backWeight = NORMAL_WEIGHT;
 
-    for (SmallVector<unsigned, 8>::iterator EI = BackEdges.begin(),
+    for (SmallVectorImpl<unsigned>::iterator EI = BackEdges.begin(),
          EE = BackEdges.end(); EI != EE; ++EI) {
       setEdgeWeight(BB, *EI, backWeight);
     }
@@ -262,7 +356,7 @@ bool BranchProbabilityInfo::calcLoopBranchHeuristics(BasicBlock *BB) {
     if (inWeight < NORMAL_WEIGHT)
       inWeight = NORMAL_WEIGHT;
 
-    for (SmallVector<unsigned, 8>::iterator EI = InEdges.begin(),
+    for (SmallVectorImpl<unsigned>::iterator EI = InEdges.begin(),
          EE = InEdges.end(); EI != EE; ++EI) {
       setEdgeWeight(BB, *EI, inWeight);
     }
@@ -273,7 +367,7 @@ bool BranchProbabilityInfo::calcLoopBranchHeuristics(BasicBlock *BB) {
     if (exitWeight < MIN_WEIGHT)
       exitWeight = MIN_WEIGHT;
 
-    for (SmallVector<unsigned, 8>::iterator EI = ExitingEdges.begin(),
+    for (SmallVectorImpl<unsigned>::iterator EI = ExitingEdges.begin(),
          EE = ExitingEdges.end(); EI != EE; ++EI) {
       setEdgeWeight(BB, *EI, exitWeight);
     }
@@ -296,6 +390,14 @@ bool BranchProbabilityInfo::calcZeroHeuristics(BasicBlock *BB) {
   ConstantInt *CV = dyn_cast<ConstantInt>(RHS);
   if (!CV)
     return false;
+
+  // If the LHS is the result of AND'ing a value with a single bit bitmask,
+  // we don't have information about probabilities.
+  if (Instruction *LHS = dyn_cast<Instruction>(CI->getOperand(0)))
+    if (LHS->getOpcode() == Instruction::And)
+      if (ConstantInt *AndRHS = dyn_cast<ConstantInt>(LHS->getOperand(1)))
+        if (AndRHS->getUniqueInteger().isPowerOf2())
+          return false;
 
   bool isProb;
   if (CV->isZero()) {
@@ -323,10 +425,24 @@ bool BranchProbabilityInfo::calcZeroHeuristics(BasicBlock *BB) {
     // InstCombine canonicalizes X <= 0 into X < 1.
     // X <= 0   ->  Unlikely
     isProb = false;
-  } else if (CV->isAllOnesValue() && CI->getPredicate() == CmpInst::ICMP_SGT) {
-    // InstCombine canonicalizes X >= 0 into X > -1.
-    // X >= 0   ->  Likely
-    isProb = true;
+  } else if (CV->isAllOnesValue()) {
+    switch (CI->getPredicate()) {
+    case CmpInst::ICMP_EQ:
+      // X == -1  ->  Unlikely
+      isProb = false;
+      break;
+    case CmpInst::ICMP_NE:
+      // X != -1  ->  Likely
+      isProb = true;
+      break;
+    case CmpInst::ICMP_SGT:
+      // InstCombine canonicalizes X >= 0 into X > -1.
+      // X >= 0   ->  Likely
+      isProb = true;
+      break;
+    default:
+      return false;
+    }
   } else {
     return false;
   }
@@ -389,38 +505,46 @@ bool BranchProbabilityInfo::calcInvokeHeuristics(BasicBlock *BB) {
 }
 
 void BranchProbabilityInfo::getAnalysisUsage(AnalysisUsage &AU) const {
-  AU.addRequired<LoopInfo>();
+  AU.addRequired<LoopInfoWrapperPass>();
   AU.setPreservesAll();
 }
 
 bool BranchProbabilityInfo::runOnFunction(Function &F) {
+  DEBUG(dbgs() << "---- Branch Probability Info : " << F.getName()
+               << " ----\n\n");
   LastF = &F; // Store the last function we ran on for printing.
-  LI = &getAnalysis<LoopInfo>();
+  LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
   assert(PostDominatedByUnreachable.empty());
+  assert(PostDominatedByColdCall.empty());
 
   // Walk the basic blocks in post-order so that we can build up state about
   // the successors of a block iteratively.
-  for (po_iterator<BasicBlock *> I = po_begin(&F.getEntryBlock()),
-                                 E = po_end(&F.getEntryBlock());
-       I != E; ++I) {
-    DEBUG(dbgs() << "Computing probabilities for " << I->getName() << "\n");
-    if (calcUnreachableHeuristics(*I))
+  for (auto BB : post_order(&F.getEntryBlock())) {
+    DEBUG(dbgs() << "Computing probabilities for " << BB->getName() << "\n");
+    if (calcUnreachableHeuristics(BB))
       continue;
-    if (calcMetadataWeights(*I))
+    if (calcMetadataWeights(BB))
       continue;
-    if (calcLoopBranchHeuristics(*I))
+    if (calcColdCallHeuristics(BB))
       continue;
-    if (calcPointerHeuristics(*I))
+    if (calcLoopBranchHeuristics(BB))
       continue;
-    if (calcZeroHeuristics(*I))
+    if (calcPointerHeuristics(BB))
       continue;
-    if (calcFloatingPointHeuristics(*I))
+    if (calcZeroHeuristics(BB))
       continue;
-    calcInvokeHeuristics(*I);
+    if (calcFloatingPointHeuristics(BB))
+      continue;
+    calcInvokeHeuristics(BB);
   }
 
   PostDominatedByUnreachable.clear();
+  PostDominatedByColdCall.clear();
   return false;
+}
+
+void BranchProbabilityInfo::releaseMemory() {
+  Weights.clear();
 }
 
 void BranchProbabilityInfo::print(raw_ostream &OS, const Module *) const {
@@ -445,7 +569,7 @@ uint32_t BranchProbabilityInfo::getSumForBlock(const BasicBlock *BB) const {
     uint32_t PrevSum = Sum;
 
     Sum += Weight;
-    assert(Sum > PrevSum); (void) PrevSum;
+    assert(Sum >= PrevSum); (void) PrevSum;
   }
 
   return Sum;
@@ -461,7 +585,7 @@ isEdgeHot(const BasicBlock *Src, const BasicBlock *Dst) const {
 BasicBlock *BranchProbabilityInfo::getHotSucc(BasicBlock *BB) const {
   uint32_t Sum = 0;
   uint32_t MaxWeight = 0;
-  BasicBlock *MaxSucc = 0;
+  BasicBlock *MaxSucc = nullptr;
 
   for (succ_iterator I = succ_begin(BB), E = succ_end(BB); I != E; ++I) {
     BasicBlock *Succ = *I;
@@ -481,7 +605,7 @@ BasicBlock *BranchProbabilityInfo::getHotSucc(BasicBlock *BB) const {
   if (BranchProbability(MaxWeight, Sum) > BranchProbability(4, 5))
     return MaxSucc;
 
-  return 0;
+  return nullptr;
 }
 
 /// Get the raw edge weight for the edge. If can't find it, return
@@ -498,19 +622,27 @@ getEdgeWeight(const BasicBlock *Src, unsigned IndexInSuccessors) const {
   return DEFAULT_WEIGHT;
 }
 
+uint32_t BranchProbabilityInfo::getEdgeWeight(const BasicBlock *Src,
+                                              succ_const_iterator Dst) const {
+  return getEdgeWeight(Src, Dst.getSuccessorIndex());
+}
+
 /// Get the raw edge weight calculated for the block pair. This returns the sum
 /// of all raw edge weights from Src to Dst.
 uint32_t BranchProbabilityInfo::
 getEdgeWeight(const BasicBlock *Src, const BasicBlock *Dst) const {
   uint32_t Weight = 0;
+  bool FoundWeight = false;
   DenseMap<Edge, uint32_t>::const_iterator MapI;
   for (succ_const_iterator I = succ_begin(Src), E = succ_end(Src); I != E; ++I)
     if (*I == Dst) {
       MapI = Weights.find(std::make_pair(Src, I.getSuccessorIndex()));
-      if (MapI != Weights.end())
+      if (MapI != Weights.end()) {
+        FoundWeight = true;
         Weight += MapI->second;
+      }
     }
-  return (Weight == 0) ? DEFAULT_WEIGHT : Weight;
+  return (!FoundWeight) ? DEFAULT_WEIGHT : Weight;
 }
 
 /// Set the edge weight for a given edge specified by PredBlock and an index

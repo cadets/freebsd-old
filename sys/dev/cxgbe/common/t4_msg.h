@@ -273,6 +273,7 @@ union opcode_tid {
 
 /* extract the TID from a CPL command */
 #define GET_TID(cmd) (G_TID(ntohl(OPCODE_TID(cmd))))
+#define GET_OPCODE(cmd) ((cmd)->ot.opcode)
 
 /* partitioning of TID fields that also carry a queue id */
 #define S_TID_TID    0
@@ -678,6 +679,15 @@ struct cpl_pass_accept_rpl {
 	__be64 opt0;
 };
 
+struct cpl_t5_pass_accept_rpl {
+	WR_HDR;
+	union opcode_tid ot;
+	__be32 opt2;
+	__be64 opt0;
+	__be32 iss;
+	__be32 rsvd;
+};
+
 struct cpl_act_open_req {
 	WR_HDR;
 	union opcode_tid ot;
@@ -702,7 +712,7 @@ struct cpl_t5_act_open_req {
 	__be32 local_ip;
 	__be32 peer_ip;
 	__be64 opt0;
-	__be32 rsvd;
+	__be32 iss;
 	__be32 opt2;
 	__be64 params;
 };
@@ -731,7 +741,7 @@ struct cpl_t5_act_open_req6 {
 	__be64 peer_ip_hi;
 	__be64 peer_ip_lo;
 	__be64 opt0;
-	__be32 rsvd;
+	__be32 iss;
 	__be32 opt2;
 	__be64 params;
 };

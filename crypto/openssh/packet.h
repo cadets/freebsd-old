@@ -1,5 +1,4 @@
-/* $OpenBSD: packet.h,v 1.57 2012/01/25 19:40:09 markus Exp $ */
-/* $FreeBSD$ */
+/* $OpenBSD: packet.h,v 1.59 2013/07/12 00:19:59 djm Exp $ */
 
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
@@ -39,9 +38,6 @@ void     packet_set_interactive(int, int, int);
 int      packet_is_interactive(void);
 void     packet_set_server(void);
 void     packet_set_authenticated(void);
-#ifdef	NONE_CIPHER_ENABLED
-int      packet_get_authentication_state(void);
-#endif
 
 void     packet_start(u_char);
 void     packet_put_char(int ch);
@@ -75,7 +71,7 @@ void	*packet_get_raw(u_int *length_ptr);
 void	*packet_get_string(u_int *length_ptr);
 char	*packet_get_cstring(u_int *length_ptr);
 void	*packet_get_string_ptr(u_int *length_ptr);
-void     packet_disconnect(const char *fmt,...) __attribute__((format(printf, 1, 2)));
+void     packet_disconnect(const char *fmt,...) __attribute__((noreturn)) __attribute__((format(printf, 1, 2)));
 void     packet_send_debug(const char *fmt,...) __attribute__((format(printf, 1, 2)));
 
 void	 set_newkeys(int mode);
@@ -119,10 +115,8 @@ do { \
 } while (0)
 
 int	 packet_need_rekeying(void);
-#ifdef	NONE_CIPHER_ENABLED
-void	 packet_request_rekeying(void);
-#endif
-void	 packet_set_rekey_limit(u_int32_t);
+void	 packet_set_rekey_limits(u_int32_t, time_t);
+time_t	 packet_get_rekey_timeout(void);
 
 void	 packet_backup_state(void);
 void	 packet_restore_state(void);

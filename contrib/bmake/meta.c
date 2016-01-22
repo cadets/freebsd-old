@@ -1,4 +1,4 @@
-/*      $NetBSD: meta.c,v 1.30 2013/05/16 21:56:56 sjg Exp $ */
+/*      $NetBSD: meta.c,v 1.41 2015/11/30 23:37:56 sjg Exp $ */
 
 /*
  * Implement 'meta' mode.
@@ -38,7 +38,11 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
+#ifdef HAVE_LIBGEN_H
 #include <libgen.h>
+#elif !defined(HAVE_DIRNAME)
+char * dirname(char *);
+#endif
 #include <errno.h>
 #if !defined(HAVE_CONFIG_H) || defined(HAVE_ERR_H)
 #include <err.h>
@@ -55,7 +59,12 @@
 #endif
 
 static BuildMon Mybm;			/* for compat */
-static Lst metaBailiwick;			/* our scope of control */
+static Lst metaBailiwick;		/* our scope of control */
+static Lst metaIgnorePaths;		/* paths we deliberately ignore */
+
+#ifndef MAKE_META_IGNORE_PATHS
+#define MAKE_META_IGNORE_PATHS ".MAKE.META.IGNORE_PATHS"
+#endif
 
 Boolean useMeta = FALSE;
 static Boolean useFilemon = FALSE;
@@ -150,8 +159,8 @@ filemon_open(BuildMon *pbm)
 static void
 filemon_read(FILE *mfp, int fd)
 {
-    FILE *fp;
     char buf[BUFSIZ];
+    int n;
 
     /* Check if we're not writing to a meta data file.*/
     if (mfp == NULL) {
@@ -161,17 +170,14 @@ filemon_read(FILE *mfp, int fd)
     }
     /* rewind */
     (void)lseek(fd, (off_t)0, SEEK_SET);
-    if ((fp = fdopen(fd, "r")) == NULL)
-	err(1, "Could not read build monitor file '%d'", fd);
 
-    fprintf(mfp, "-- filemon acquired metadata --\n");
+    fprintf(mfp, "\n-- filemon acquired metadata --\n");
 
-    while (fgets(buf, sizeof(buf), fp)) {
-	fprintf(mfp, "%s", buf);
+    while ((n = read(fd, buf, sizeof(buf))) > 0) {
+	fwrite(buf, 1, n, mfp);
     }
     fflush(mfp);
-    clearerr(fp);
-    fclose(fp);
+    close(fd);
 }
 #endif
 
@@ -322,7 +328,7 @@ is_submake(void *cmdp, void *gnp)
     }
     cp = strchr(cmd, '$');
     if ((cp)) {
-	mp = Var_Subst(NULL, cmd, gn, FALSE);
+	mp = Var_Subst(NULL, cmd, gn, FALSE, TRUE);
 	cmd = mp;
     }
     cp2 = strstr(cmd, p_make);
@@ -365,7 +371,7 @@ printCMD(void *cmdp, void *mfpp)
     char *cp = NULL;
 
     if (strchr(cmd, '$')) {
-	cmd = cp = Var_Subst(NULL, cmd, mfp->gn, FALSE);
+	cmd = cp = Var_Subst(NULL, cmd, mfp->gn, FALSE, TRUE);
     }
     fprintf(mfp->fp, "CMD %s\n", cmd);
     if (cp)
@@ -460,7 +466,7 @@ meta_create(BuildMon *pbm, GNode *gn)
 	char *mp;
 
 	/* Describe the target we are building */
-	mp = Var_Subst(NULL, "${" MAKE_META_PREFIX "}", gn, 0);
+	mp = Var_Subst(NULL, "${" MAKE_META_PREFIX "}", gn, FALSE, TRUE);
 	if (*mp)
 	    fprintf(stdout, "%s\n", mp);
 	free(mp);
@@ -603,9 +609,22 @@ meta_mode_init(const char *make_mode)
      * We consider ourselves master of all within ${.MAKE.META.BAILIWICK}
      */
     metaBailiwick = Lst_Init(FALSE);
-    cp = Var_Subst(NULL, "${.MAKE.META.BAILIWICK:O:u:tA}", VAR_GLOBAL, 0);
+    cp = Var_Subst(NULL, "${.MAKE.META.BAILIWICK:O:u:tA}", VAR_GLOBAL,
+		   FALSE, TRUE);
     if (cp) {
 	str2Lst_Append(metaBailiwick, cp, NULL);
+    }
+    /*
+     * We ignore any paths that start with ${.MAKE.META.IGNORE_PATHS}
+     */
+    metaIgnorePaths = Lst_Init(FALSE);
+    Var_Append(MAKE_META_IGNORE_PATHS,
+	       "/dev /etc /proc /tmp /var/run /var/tmp ${TMPDIR}", VAR_GLOBAL);
+    cp = Var_Subst(NULL,
+		   "${" MAKE_META_IGNORE_PATHS ":O:u:tA}", VAR_GLOBAL,
+		   FALSE, TRUE);
+    if (cp) {
+	str2Lst_Append(metaIgnorePaths, cp, NULL);
     }
 }
 
@@ -646,17 +665,21 @@ meta_job_child(Job *job)
 {
 #ifdef USE_FILEMON
     BuildMon *pbm;
-    pid_t pid;
 
     if (job != NULL) {
 	pbm = &job->bm;
     } else {
 	pbm = &Mybm;
     }
-    pid = getpid();
-    if (pbm->mfp != NULL && useFilemon) {
-	if (ioctl(pbm->filemon_fd, FILEMON_SET_PID, &pid) < 0) {
-	    err(1, "Could not set filemon pid!");
+    if (pbm->mfp != NULL) {
+	close(fileno(pbm->mfp));
+	if (useFilemon) {
+	    pid_t pid;
+
+	    pid = getpid();
+	    if (ioctl(pbm->filemon_fd, FILEMON_SET_PID, &pid) < 0) {
+		err(1, "Could not set filemon pid!");
+	    }
 	}
     }
 #endif
@@ -710,7 +733,8 @@ meta_job_output(Job *job, char *cp, const char *nl)
 	    if (!meta_prefix) {
 		char *cp2;
 
-		meta_prefix = Var_Subst(NULL, "${" MAKE_META_PREFIX "}", VAR_GLOBAL, 0);
+		meta_prefix = Var_Subst(NULL, "${" MAKE_META_PREFIX "}",
+					VAR_GLOBAL, FALSE, TRUE);
 		if ((cp2 = strchr(meta_prefix, '$')))
 		    meta_prefix_len = cp2 - meta_prefix;
 		else
@@ -828,9 +852,10 @@ string_match(const void *p, const void *q)
 
 /*
  * When running with 'meta' functionality, a target can be out-of-date
- * if any of the references in it's meta data file is more recent.
+ * if any of the references in its meta data file is more recent.
  * We have to track the latestdir on a per-process basis.
  */
+#define LCWD_VNAME_FMT ".meta.%d.lcwd"
 #define LDIR_VNAME_FMT ".meta.%d.ldir"
 
 /*
@@ -844,18 +869,30 @@ string_match(const void *p, const void *q)
     continue; \
     }
 
+#define DEQUOTE(p) if (*p == '\'') {	\
+    char *ep; \
+    p++; \
+    if ((ep = strchr(p, '\''))) \
+	*ep = '\0'; \
+    }
+
 Boolean
 meta_oodate(GNode *gn, Boolean oodate)
 {
     static char *tmpdir = NULL;
     static char cwd[MAXPATHLEN];
+    char lcwd_vname[64];
     char ldir_vname[64];
+    char lcwd[MAXPATHLEN];
     char latestdir[MAXPATHLEN];
     char fname[MAXPATHLEN];
     char fname1[MAXPATHLEN];
     char fname2[MAXPATHLEN];
+    char fname3[MAXPATHLEN];
     char *p;
     char *cp;
+    char *link_src;
+    char *move_target;
     static size_t cwdlen = 0;
     static size_t tmplen = 0;
     FILE *fp;
@@ -903,6 +940,8 @@ meta_oodate(GNode *gn, Boolean oodate)
 		err(1, "Could not get current working directory");
 	    cwdlen = strlen(cwd);
 	}
+	strlcpy(lcwd, cwd, sizeof(lcwd));
+	strlcpy(latestdir, cwd, sizeof(latestdir));
 
 	if (!tmpdir) {
 	    tmpdir = getTmpdir();
@@ -922,6 +961,8 @@ meta_oodate(GNode *gn, Boolean oodate)
 		oodate = TRUE;
 		break;
 	    }
+	    link_src = NULL;
+	    move_target = NULL;
 	    /* Find the start of the build monitor section. */
 	    if (!f) {
 		if (strncmp(buf, "-- filemon", 10) == 0) {
@@ -984,9 +1025,11 @@ meta_oodate(GNode *gn, Boolean oodate)
 			char *tp;
 		    
 			if (lastpid > 0) {
-			    /* We need to remember this. */
+			    /* We need to remember these. */
+			    Var_Set(lcwd_vname, lcwd, VAR_GLOBAL, 0);
 			    Var_Set(ldir_vname, latestdir, VAR_GLOBAL, 0);
 			}
+			snprintf(lcwd_vname, sizeof(lcwd_vname), LCWD_VNAME_FMT, pid);
 			snprintf(ldir_vname, sizeof(ldir_vname), LDIR_VNAME_FMT, pid);
 			lastpid = pid;
 			ldir = Var_Value(ldir_vname, VAR_GLOBAL, &tp);
@@ -994,15 +1037,22 @@ meta_oodate(GNode *gn, Boolean oodate)
 			    strlcpy(latestdir, ldir, sizeof(latestdir));
 			    if (tp)
 				free(tp);
-			} else 
-			    strlcpy(latestdir, cwd, sizeof(latestdir));
+			}
+			ldir = Var_Value(lcwd_vname, VAR_GLOBAL, &tp);
+			if (ldir) {
+			    strlcpy(lcwd, ldir, sizeof(lcwd));
+			    if (tp)
+				free(tp);
+			}
 		    }
 		    /* Skip past the pid. */
 		    if (strsep(&p, " ") == NULL)
 			continue;
 #ifdef DEBUG_META_MODE
 		    if (DEBUG(META))
-			fprintf(debug_file, "%s: %d: cwd=%s ldir=%s\n", fname, lineno, cwd, latestdir);
+			    fprintf(debug_file, "%s: %d: %d: %c: cwd=%s lcwd=%s ldir=%s\n",
+				    fname, lineno,
+				    pid, buf[0], cwd, lcwd, latestdir);
 #endif
 		    break;
 		}
@@ -1012,6 +1062,7 @@ meta_oodate(GNode *gn, Boolean oodate)
 		/* Process according to record type. */
 		switch (buf[0]) {
 		case 'X':		/* eXit */
+		    Var_Delete(lcwd_vname, VAR_GLOBAL);
 		    Var_Delete(ldir_vname, VAR_GLOBAL);
 		    lastpid = 0;	/* no need to save ldir_vname */
 		    break;
@@ -1023,28 +1074,48 @@ meta_oodate(GNode *gn, Boolean oodate)
 
 			child = atoi(p);
 			if (child > 0) {
+			    snprintf(cldir, sizeof(cldir), LCWD_VNAME_FMT, child);
+			    Var_Set(cldir, lcwd, VAR_GLOBAL, 0);
 			    snprintf(cldir, sizeof(cldir), LDIR_VNAME_FMT, child);
 			    Var_Set(cldir, latestdir, VAR_GLOBAL, 0);
+#ifdef DEBUG_META_MODE
+			    if (DEBUG(META))
+				    fprintf(debug_file, "%s: %d: %d: cwd=%s lcwd=%s ldir=%s\n",
+					    fname, lineno,
+					    child, cwd, lcwd, latestdir);
+#endif
 			}
 		    }
 		    break;
 
 		case 'C':		/* Chdir */
-		    /* Update the latest directory. */
-		    strlcpy(latestdir, p, sizeof(latestdir));
+		    /* Update lcwd and latest directory. */
+		    strlcpy(latestdir, p, sizeof(latestdir));	
+		    strlcpy(lcwd, p, sizeof(lcwd));
+		    Var_Set(lcwd_vname, lcwd, VAR_GLOBAL, 0);
+		    Var_Set(ldir_vname, lcwd, VAR_GLOBAL, 0);
+#ifdef DEBUG_META_MODE
+		    if (DEBUG(META))
+			fprintf(debug_file, "%s: %d: cwd=%s ldir=%s\n", fname, lineno, cwd, lcwd);
+#endif
 		    break;
 
 		case 'M':		/* renaMe */
-		    if (Lst_IsEmpty(missingFiles))
-			break;
+		    /*
+		     * For 'M'oves we want to check
+		     * the src as for 'R'ead
+		     * and the target as for 'W'rite.
+		     */
+		    cp = p;		/* save this for a second */
+		    /* now get target */
+		    if (strsep(&p, " ") == NULL)
+			continue;
+		    CHECK_VALID_META(p);
+		    move_target = p;
+		    p = cp;
 		    /* 'L' and 'M' put single quotes around the args */
-		    if (*p == '\'') {
-			char *ep;
-
-			p++;
-			if ((ep = strchr(p, '\'')))
-			    *ep = '\0';
-		    }
+		    DEQUOTE(p);
+		    DEQUOTE(move_target);
 		    /* FALLTHROUGH */
 		case 'D':		/* unlink */
 		    if (*p == '/' && !Lst_IsEmpty(missingFiles)) {
@@ -1056,22 +1127,39 @@ meta_oodate(GNode *gn, Boolean oodate)
 			    ln = NULL;	/* we're done with it */
 			}
 		    }
+		    if (buf[0] == 'M') {
+			/* the target of the mv is a file 'W'ritten */
+#ifdef DEBUG_META_MODE
+			if (DEBUG(META))
+			    fprintf(debug_file, "meta_oodate: M %s -> %s\n",
+				    p, move_target);
+#endif
+			p = move_target;
+			goto check_write;
+		    }
 		    break;
 		case 'L':		/* Link */
-		    /* we want the target */
+		    /*
+		     * For 'L'inks check
+		     * the src as for 'R'ead
+		     * and the target as for 'W'rite.
+		     */
+		    link_src = p;
+		    /* now get target */
 		    if (strsep(&p, " ") == NULL)
 			continue;
 		    CHECK_VALID_META(p);
 		    /* 'L' and 'M' put single quotes around the args */
-		    if (*p == '\'') {
-			char *ep;
-
-			p++;
-			if ((ep = strchr(p, '\'')))
-			    *ep = '\0';
-		    }
+		    DEQUOTE(p);
+		    DEQUOTE(link_src);
+#ifdef DEBUG_META_MODE
+		    if (DEBUG(META))
+			fprintf(debug_file, "meta_oodate: L %s -> %s\n",
+				link_src, p);
+#endif
 		    /* FALLTHROUGH */
 		case 'W':		/* Write */
+		check_write:
 		    /*
 		     * If a file we generated within our bailiwick
 		     * but outside of .OBJDIR is missing,
@@ -1099,10 +1187,19 @@ meta_oodate(GNode *gn, Boolean oodate)
 		    if ((strstr("tmp", p)))
 			break;
 
-		    if (stat(p, &fs) < 0) {
+		    if ((link_src != NULL && lstat(p, &fs) < 0) ||
+			(link_src == NULL && stat(p, &fs) < 0)) {
 			Lst_AtEnd(missingFiles, bmake_strdup(p));
 		    }
 		    break;
+		check_link_src:
+		    p = link_src;
+		    link_src = NULL;
+#ifdef DEBUG_META_MODE
+		    if (DEBUG(META))
+			fprintf(debug_file, "meta_oodate: L src %s\n", p);
+#endif
+		    /* FALLTHROUGH */
 		case 'R':		/* Read */
 		case 'E':		/* Exec */
 		    /*
@@ -1110,29 +1207,14 @@ meta_oodate(GNode *gn, Boolean oodate)
 		     * be part of the dependencies because
 		     * they are _expected_ to change.
 		     */
-		    if (strncmp(p, "/tmp/", 5) == 0 ||
-			(tmplen > 0 && strncmp(p, tmpdir, tmplen) == 0))
+		    if (*p == '/' &&
+			Lst_ForEach(metaIgnorePaths, prefix_match, p)) {
+#ifdef DEBUG_META_MODE
+			if (DEBUG(META))
+			    fprintf(debug_file, "meta_oodate: ignoring: %s\n",
+				    p);
+#endif
 			break;
-
-		    if (strncmp(p, "/var/", 5) == 0)
-			break;
-
-		    /* Ignore device files. */
-		    if (strncmp(p, "/dev/", 5) == 0)
-			break;
-
-		    /* Ignore /etc/ files. */
-		    if (strncmp(p, "/etc/", 5) == 0)
-			break;
-
-		    if ((cp = strrchr(p, '/'))) {
-			cp++;
-			/*
-			 * We don't normally expect to see this,
-			 * but we do expect it to change.
-			 */
-			if (strcmp(cp, makeDependfile) == 0)
-			    break;
 		    }
 
 		    /*
@@ -1155,10 +1237,15 @@ meta_oodate(GNode *gn, Boolean oodate)
 			    snprintf(fname1, sizeof(fname1), "%s/%s", latestdir, p);
 			    sdirs[sdx++] = fname1;
 
-			    if (strcmp(latestdir, cwd) != 0) {
-				/* Check vs cwd */
-				snprintf(fname2, sizeof(fname2), "%s/%s", cwd, p);
+			    if (strcmp(latestdir, lcwd) != 0) {
+				/* Check vs lcwd */
+				snprintf(fname2, sizeof(fname2), "%s/%s", lcwd, p);
 				sdirs[sdx++] = fname2;
+			    }
+			    if (strcmp(lcwd, cwd) != 0) {
+				/* Check vs cwd */
+				snprintf(fname3, sizeof(fname3), "%s/%s", cwd, p);
+				sdirs[sdx++] = fname3;
 			    }
 			}
 			sdirs[sdx++] = NULL;
@@ -1198,10 +1285,16 @@ meta_oodate(GNode *gn, Boolean oodate)
 			    oodate = TRUE;
 			}
 		    }
+		    if (buf[0] == 'E') {
+			/* previous latestdir is no longer relevant */
+			strlcpy(latestdir, lcwd, sizeof(latestdir));
+		    }
 		    break;
 		default:
 		    break;
 		}
+		if (!oodate && buf[0] == 'L' && link_src != NULL)
+		    goto check_link_src;
 	    } else if (strcmp(buf, "CMD") == 0) {
 		/*
 		 * Compare the current command with the one in the
@@ -1227,7 +1320,7 @@ meta_oodate(GNode *gn, Boolean oodate)
 			if (DEBUG(META))
 			    fprintf(debug_file, "%s: %d: cannot compare command using .OODATE\n", fname, lineno);
 		    }
-		    cmd = Var_Subst(NULL, cmd, gn, TRUE);
+		    cmd = Var_Subst(NULL, cmd, gn, TRUE, TRUE);
 
 		    if ((cp = strchr(cmd, '\n'))) {
 			int n;

@@ -101,10 +101,10 @@ sctp_connectx(int sd, const struct sockaddr *addrs, int addrcnt,
     sctp_assoc_t * id)
 {
 	char *buf;
-	int i, ret, cnt, *aa;
+	int i, ret, *aa;
 	char *cpto;
 	const struct sockaddr *at;
-	size_t len = sizeof(int);
+	size_t len;
 
 	/* validate the address count and list */
 	if ((addrs == NULL) || (addrcnt <= 0)) {
@@ -115,8 +115,8 @@ sctp_connectx(int sd, const struct sockaddr *addrs, int addrcnt,
 		errno = E2BIG;
 		return (-1);
 	}
+	len = sizeof(int);
 	at = addrs;
-	cnt = 0;
 	cpto = buf + sizeof(int);
 	/* validate all the addresses and get the size */
 	for (i = 0; i < addrcnt; i++) {
@@ -161,6 +161,7 @@ sctp_connectx(int sd, const struct sockaddr *addrs, int addrcnt,
 	if ((ret == 0) && (id != NULL)) {
 		*id = *(sctp_assoc_t *) buf;
 	}
+	free(buf);
 	return (ret);
 }
 
@@ -232,18 +233,10 @@ sctp_bindx(int sd, struct sockaddr *addrs, int addrcnt, int flags)
 			break;
 		default:
 			/* Invalid address family specified. */
-			errno = EINVAL;
+			errno = EAFNOSUPPORT;
 			return (-1);
 		}
 		sa = (struct sockaddr *)((caddr_t)sa + sa->sa_len);
-	}
-	/*
-	 * Now if there was a port mentioned, assure that the first address
-	 * has that port to make sure it fails or succeeds correctly.
-	 */
-	if (sport) {
-		sin = (struct sockaddr_in *)sa;
-		sin->sin_port = sport;
 	}
 	argsz = sizeof(struct sctp_getaddresses) +
 	    sizeof(struct sockaddr_storage);
@@ -256,6 +249,23 @@ sctp_bindx(int sd, struct sockaddr *addrs, int addrcnt, int flags)
 		memset(gaddrs, 0, argsz);
 		gaddrs->sget_assoc_id = 0;
 		memcpy(gaddrs->addr, sa, sa->sa_len);
+		/*
+		 * Now, if there was a port mentioned, assure that the first
+		 * address has that port to make sure it fails or succeeds
+		 * correctly.
+		 */
+		if ((i == 0) && (sport != 0)) {
+			switch (gaddrs->addr->sa_family) {
+			case AF_INET:
+				sin = (struct sockaddr_in *)gaddrs->addr;
+				sin->sin_port = sport;
+				break;
+			case AF_INET6:
+				sin6 = (struct sockaddr_in6 *)gaddrs->addr;
+				sin6->sin6_port = sport;
+				break;
+			}
+		}
 		if (setsockopt(sd, IPPROTO_SCTP, flags, gaddrs,
 		    (socklen_t) argsz) != 0) {
 			free(gaddrs);
@@ -271,6 +281,11 @@ int
 sctp_opt_info(int sd, sctp_assoc_t id, int opt, void *arg, socklen_t * size)
 {
 	if (arg == NULL) {
+		errno = EINVAL;
+		return (-1);
+	}
+	if ((id == SCTP_CURRENT_ASSOC) ||
+	    (id == SCTP_ALL_ASSOC)) {
 		errno = EINVAL;
 		return (-1);
 	}
@@ -335,7 +350,40 @@ sctp_opt_info(int sd, sctp_assoc_t id, int opt, void *arg, socklen_t * size)
 	case SCTP_REMOTE_UDP_ENCAPS_PORT:
 		((struct sctp_udpencaps *)arg)->sue_assoc_id = id;
 		break;
+	case SCTP_ECN_SUPPORTED:
+		((struct sctp_assoc_value *)arg)->assoc_id = id;
+		break;
+	case SCTP_PR_SUPPORTED:
+		((struct sctp_assoc_value *)arg)->assoc_id = id;
+		break;
+	case SCTP_AUTH_SUPPORTED:
+		((struct sctp_assoc_value *)arg)->assoc_id = id;
+		break;
+	case SCTP_ASCONF_SUPPORTED:
+		((struct sctp_assoc_value *)arg)->assoc_id = id;
+		break;
+	case SCTP_RECONFIG_SUPPORTED:
+		((struct sctp_assoc_value *)arg)->assoc_id = id;
+		break;
+	case SCTP_NRSACK_SUPPORTED:
+		((struct sctp_assoc_value *)arg)->assoc_id = id;
+		break;
+	case SCTP_PKTDROP_SUPPORTED:
+		((struct sctp_assoc_value *)arg)->assoc_id = id;
+		break;
 	case SCTP_MAX_BURST:
+		((struct sctp_assoc_value *)arg)->assoc_id = id;
+		break;
+	case SCTP_ENABLE_STREAM_RESET:
+		((struct sctp_assoc_value *)arg)->assoc_id = id;
+		break;
+	case SCTP_PR_STREAM_STATUS:
+		((struct sctp_prstatus *)arg)->sprstat_assoc_id = id;
+		break;
+	case SCTP_PR_ASSOC_STATUS:
+		((struct sctp_prstatus *)arg)->sprstat_assoc_id = id;
+		break;
+	case SCTP_MAX_CWND:
 		((struct sctp_assoc_value *)arg)->assoc_id = id;
 		break;
 	default:
@@ -552,11 +600,13 @@ sctp_sendmsg(int s,
 	msg.msg_iovlen = 1;
 	msg.msg_control = cmsgbuf;
 	msg.msg_controllen = CMSG_SPACE(sizeof(struct sctp_sndrcvinfo));
+	msg.msg_flags = 0;
 	cmsg = (struct cmsghdr *)cmsgbuf;
 	cmsg->cmsg_level = IPPROTO_SCTP;
 	cmsg->cmsg_type = SCTP_SNDRCV;
 	cmsg->cmsg_len = CMSG_LEN(sizeof(struct sctp_sndrcvinfo));
 	sinfo = (struct sctp_sndrcvinfo *)CMSG_DATA(cmsg);
+	memset(sinfo, 0, sizeof(struct sctp_sndrcvinfo));
 	sinfo->sinfo_stream = stream_no;
 	sinfo->sinfo_ssn = 0;
 	sinfo->sinfo_flags = flags;
@@ -617,6 +667,7 @@ sctp_send(int sd, const void *data, size_t len,
 	msg.msg_iovlen = 1;
 	msg.msg_control = cmsgbuf;
 	msg.msg_controllen = CMSG_SPACE(sizeof(struct sctp_sndrcvinfo));
+	msg.msg_flags = 0;
 	cmsg = (struct cmsghdr *)cmsgbuf;
 	cmsg->cmsg_level = IPPROTO_SCTP;
 	cmsg->cmsg_type = SCTP_SNDRCV;
@@ -774,7 +825,6 @@ sctp_recvmsg(int s,
 		errno = EINVAL;
 		return (-1);
 	}
-	msg.msg_flags = 0;
 	iov.iov_base = dbuf;
 	iov.iov_len = len;
 	msg.msg_name = (caddr_t)from;
@@ -786,6 +836,7 @@ sctp_recvmsg(int s,
 	msg.msg_iovlen = 1;
 	msg.msg_control = cmsgbuf;
 	msg.msg_controllen = sizeof(cmsgbuf);
+	msg.msg_flags = 0;
 	sz = recvmsg(s, &msg, *msg_flags);
 	*msg_flags = msg.msg_flags;
 	if (sz <= 0) {
@@ -840,7 +891,7 @@ sctp_recvv(int sd,
 	struct sctp_rcvinfo *rcvinfo;
 	struct sctp_nxtinfo *nxtinfo;
 
-	if (((info != NULL) && (infolen == NULL)) |
+	if (((info != NULL) && (infolen == NULL)) ||
 	    ((info == NULL) && (infolen != NULL) && (*infolen != 0)) ||
 	    ((info != NULL) && (infotype == NULL))) {
 		errno = EINVAL;
@@ -859,6 +910,7 @@ sctp_recvv(int sd,
 	msg.msg_iovlen = iovlen;
 	msg.msg_control = cmsgbuf;
 	msg.msg_controllen = sizeof(cmsgbuf);
+	msg.msg_flags = 0;
 	ret = recvmsg(sd, &msg, *flags);
 	*flags = msg.msg_flags;
 	if ((ret > 0) &&

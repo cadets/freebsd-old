@@ -3,8 +3,8 @@
  */
 
 /*
- * It'd be nice to have this automatically generated, but we don't
- * know to what version they will eventually belong, so for now
+ * It'd be nice to automatically generate the syscall symbols, but we
+ * don't know to what version they will eventually belong to, so for now
  * it has to be manual.
  */
 FBSD_1.0 {
@@ -56,7 +56,6 @@ FBSD_1.0 {
 	bind;
 	chdir;
 	chflags;
-	__chk_fail;
 	chmod;
 	chown;
 	chroot;
@@ -245,7 +244,6 @@ FBSD_1.0 {
 	setaudit;
 	setaudit_addr;
 	setauid;
-	setcontext;
 	setegid;
 	seteuid;
 	setgid;
@@ -282,11 +280,8 @@ FBSD_1.0 {
 	sigwaitinfo;
 	socket;
 	socketpair;
-	__stack_chk_fail;
-	__stack_chk_guard;
 	stat;
 	statfs;
-	swapcontext;
 	swapoff;
 	swapon;
 	symlink;
@@ -351,7 +346,6 @@ FBSD_1.1 {
 	mkfifoat;
 	mknodat;
 	msgctl;
-	openat;
 	readlinkat;
 	renameat;
 	setfib;
@@ -363,7 +357,6 @@ FBSD_1.1 {
 FBSD_1.2 {
 	cap_enter;
 	cap_getmode;
-	cap_new;
 	getloginclass;
 	pdfork;
 	pdgetpid;
@@ -379,12 +372,13 @@ FBSD_1.2 {
 
 FBSD_1.3 {
 	accept4;
+	aio_mlock;
 	bindat;
 	cap_fcntls_get;
 	cap_fcntls_limit;
 	cap_ioctls_get;
 	cap_ioctls_limit;
-	cap_rights_get;
+	__cap_rights_get;
 	cap_rights_limit;
 	cap_sandboxed;
 	chflagsat;
@@ -395,7 +389,16 @@ FBSD_1.3 {
 	ffclock_setestimate;
 	pipe2;
 	posix_fadvise;
+	procctl;
 	wait6;
+};
+
+FBSD_1.4 {
+	futimens;
+	ppoll;
+	utimensat;
+	numa_setaffinity;
+	numa_getaffinity;
 };
 
 FBSDprivate_1.0 {
@@ -820,8 +823,12 @@ FBSDprivate_1.0 {
 	__sys_pipe;
 	_poll;
 	__sys_poll;
+	_ppoll;
+	__sys_ppoll;
 	_preadv;
 	__sys_preadv;
+	_procctl;
+	__sys_procctl;
 	_profil;
 	__sys_profil;
 	_pselect;
@@ -1039,7 +1046,9 @@ FBSDprivate_1.0 {
 	__sys_write;
 	_writev;
 	__sys_writev;
-	__error_unthreaded;
+	__set_error_selector;
 	nlm_syscall;
 	gssd_syscall;
+	__libc_interposing_slot;
+	__libc_sigwait;
 };

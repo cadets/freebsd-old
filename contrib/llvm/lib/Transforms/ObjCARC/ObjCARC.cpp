@@ -30,6 +30,7 @@ using namespace llvm::objcarc;
 bool llvm::objcarc::EnableARCOpts;
 static cl::opt<bool, true>
 EnableARCOptimizations("enable-objc-arc-opts",
+                       cl::desc("enable/disable all ARC Optimizations"),
                        cl::location(EnableARCOpts),
                        cl::init(true));
 
@@ -41,6 +42,7 @@ void llvm::initializeObjCARCOpts(PassRegistry &Registry) {
   initializeObjCARCExpandPass(Registry);
   initializeObjCARCContractPass(Registry);
   initializeObjCARCOptPass(Registry);
+  initializePAEvalPass(Registry);
 }
 
 void LLVMInitializeObjCARCOpts(LLVMPassRegistryRef R) {

@@ -56,19 +56,30 @@ typedef	pt_entry_t *pd_entry_t;
 #define	TLBMASK_MASK	((PAGE_MASK >> TLBMASK_SHIFT) << TLBMASK_SHIFT)
 
 /*
- * PFN for EntryLo register.  Upper bits are 0, which is to say that
- * bit 28 is the last hardware bit;  Bits 29 and upwards (EntryLo is
- * 64 bit though it can be referred to in 32-bits providing 3 software
- * bits safely.  We use it as 64 bits to get many software bits, and
- * god knows what else.) are unacknowledged by hardware.  They may be
- * written as anything, but otherwise they have as much meaning as
- * other 0 fields.
+ * FreeBSD/mips page-table entries take a near-identical format to MIPS TLB
+ * entries, each consisting of two 32-bit or 64-bit values ("EntryHi" and
+ * "EntryLo").  MIPS4k and MIPS64 both define certain bits in TLB entries as
+ * reserved, and these must be zero-filled by software.  We overload these
+ * bits in PTE entries to hold  PTE_ flags such as RO, W, and MANAGED.
+ * However, we must mask these out when writing to TLB entries to ensure that
+ * they do not become visible to hardware -- especially on MIPS64r2 which has
+ * an extended physical memory space.
+ *
+ * When using n64 and n32, shift software-defined bits into the MIPS64r2
+ * reserved range, which runs from bit 55 ... 63.  In other configurations
+ * (32-bit MIPS4k and compatible), shift them out to bits 29 ... 31.
+ *
+ * NOTE: This means that for 32-bit use of CP0, we aren't able to set the top
+ * bit of PFN to a non-zero value, as software is using it!  This physical
+ * memory size limit may not be sufficiently enforced elsewhere.
  */
 #if defined(__mips_n64) || defined(__mips_n32) /*  PHYSADDR_64_BIT */
-#define	TLBLO_SWBITS_SHIFT	(34)
+#define	TLBLO_SWBITS_SHIFT	(55)
+#define	TLBLO_SWBITS_CLEAR_SHIFT	(9)
 #define	TLBLO_PFN_MASK		0x3FFFFFFC0ULL
 #else
 #define	TLBLO_SWBITS_SHIFT	(29)
+#define	TLBLO_SWBITS_CLEAR_SHIFT	(3)
 #define	TLBLO_PFN_MASK		(0x1FFFFFC0)
 #endif
 #define	TLBLO_PFN_SHIFT		(6)
@@ -133,6 +144,9 @@ typedef	pt_entry_t *pd_entry_t;
  * 		listen to requests to write to it.
  * 	W:	Wired.  ???
  *	MANAGED:Managed.  This PTE maps a managed page.
+ *
+ * These bits should not be written into the TLB, so must first be masked out
+ * explicitly in C, or using CLEAR_PTE_SWBITS() in assembly.
  */
 #define	PTE_RO			((pt_entry_t)0x01 << TLBLO_SWBITS_SHIFT)
 #define	PTE_W			((pt_entry_t)0x02 << TLBLO_SWBITS_SHIFT)
@@ -162,7 +176,7 @@ typedef	pt_entry_t *pd_entry_t;
 #define	PTESIZE			4
 #define	PTE_L			lw
 #define	PTE_MTC0		mtc0
-#define	CLEAR_PTE_SWBITS(r)	sll r, 3; srl r, 3 /* remove 3 high bits */
+#define	CLEAR_PTE_SWBITS(r)	LONG_SLL r, TLBLO_SWBITS_CLEAR_SHIFT; LONG_SRL r, TLBLO_SWBITS_CLEAR_SHIFT /* remove swbits */
 #endif /* defined(__mips_n64) || defined(__mips_n32) */
 
 #if defined(__mips_n64)
@@ -174,4 +188,17 @@ typedef	pt_entry_t *pd_entry_t;
 #endif
 
 #endif /* LOCORE */
+
+/* PageMask Register (CP0 Register 5, Select 0) Values */
+#define	MIPS3_PGMASK_MASKX	0x00001800
+#define	MIPS3_PGMASK_4K		0x00000000
+#define	MIPS3_PGMASK_16K	0x00006000
+#define	MIPS3_PGMASK_64K	0x0001e000
+#define	MIPS3_PGMASK_256K	0x0007e000
+#define	MIPS3_PGMASK_1M		0x001fe000
+#define	MIPS3_PGMASK_4M		0x007fe000
+#define	MIPS3_PGMASK_16M	0x01ffe000
+#define	MIPS3_PGMASK_64M	0x07ffe000
+#define	MIPS3_PGMASK_256M	0x1fffe000
+
 #endif /* !_MACHINE_PTE_H_ */

@@ -210,7 +210,7 @@ NVLIST_PRTFUNC(int32, int32_t, int32_t, "%d")
 NVLIST_PRTFUNC(uint32, uint32_t, uint32_t, "0x%x")
 NVLIST_PRTFUNC(int64, int64_t, longlong_t, "%lld")
 NVLIST_PRTFUNC(uint64, uint64_t, u_longlong_t, "0x%llx")
-NVLIST_PRTFUNC(double, double, double, "0x%llf")
+NVLIST_PRTFUNC(double, double, double, "0x%f")
 NVLIST_PRTFUNC(string, char *, char *, "%s")
 NVLIST_PRTFUNC(hrtime, hrtime_t, hrtime_t, "0x%llx")
 
@@ -793,6 +793,7 @@ dump_nvlist(nvlist_t *list, int indent)
 {
 	nvpair_t	*elem = NULL;
 	boolean_t	bool_value;
+	boolean_t	*bool_array_value;
 	nvlist_t	*nvlist_value;
 	nvlist_t	**nvlist_array_value;
 	uint_t		i, count;
@@ -851,6 +852,16 @@ dump_nvlist(nvlist_t *list, int indent)
 
 		case DATA_TYPE_STRING:
 			NVP(elem, string, char *, char *, "'%s'");
+			break;
+
+		case DATA_TYPE_BOOLEAN_ARRAY:
+			(void) nvpair_value_boolean_array(elem,
+			    &bool_array_value, &count);
+			for (i = 0; i < count; i++) {
+				(void) printf("%*s%s[%d]: %s\n", indent, "",
+				    nvpair_name(elem), i,
+				    bool_array_value[i] ? "true" : "false");
+			}
 			break;
 
 		case DATA_TYPE_BYTE_ARRAY:

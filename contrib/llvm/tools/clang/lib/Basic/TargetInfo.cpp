@@ -24,8 +24,7 @@ using namespace clang;
 static const LangAS::Map DefaultAddrSpaceMap = { 0 };
 
 // TargetInfo Constructor.
-TargetInfo::TargetInfo(const std::string &T) : TargetOpts(), Triple(T)
-{
+TargetInfo::TargetInfo(const llvm::Triple &T) : TargetOpts(), Triple(T) {
   // Set defaults.  Defaults are set for a 32-bit RISC platform, like PPC or
   // SPARC.  These should be overridden by concrete targets as needed.
   BigEndian = true;
@@ -37,6 +36,8 @@ TargetInfo::TargetInfo(const std::string &T) : TargetOpts(), Triple(T)
   LongWidth = LongAlign = 32;
   LongLongWidth = LongLongAlign = 64;
   SuitableAlign = 64;
+  DefaultAlignForAttributeAligned = 128;
+  MinGlobalAlign = 0;
   HalfWidth = 16;
   HalfAlign = 16;
   FloatWidth = 32;
@@ -49,10 +50,11 @@ TargetInfo::TargetInfo(const std::string &T) : TargetOpts(), Triple(T)
   LargeArrayAlign = 0;
   MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 0;
   MaxVectorAlign = 0;
+  MaxTLSAlign = 0;
+  SimdDefaultAlign = 0;
   SizeType = UnsignedLong;
   PtrDiffType = SignedLong;
   IntMaxType = SignedLongLong;
-  UIntMaxType = UnsignedLongLong;
   IntPtrType = SignedLong;
   WCharType = SignedInt;
   WIntType = SignedInt;
@@ -69,8 +71,7 @@ TargetInfo::TargetInfo(const std::string &T) : TargetOpts(), Triple(T)
   FloatFormat = &llvm::APFloat::IEEEsingle;
   DoubleFormat = &llvm::APFloat::IEEEdouble;
   LongDoubleFormat = &llvm::APFloat::IEEEdouble;
-  DescriptionString = "E-p:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-"
-                      "i64:64:64-f32:32:32-f64:64:64-n32";
+  DescriptionString = nullptr;
   UserLabelPrefix = "_";
   MCountName = "mcount";
   RegParmMax = 0;
@@ -83,11 +84,14 @@ TargetInfo::TargetInfo(const std::string &T) : TargetOpts(), Triple(T)
   // Default to not using fp2ret for __Complex long double
   ComplexLongDoubleUsesFP2Ret = false;
 
-  // Default to using the Itanium ABI.
-  TheCXXABI.set(TargetCXXABI::GenericItanium);
+  // Set the C++ ABI based on the triple.
+  TheCXXABI.set(Triple.isKnownWindowsMSVCEnvironment()
+                    ? TargetCXXABI::Microsoft
+                    : TargetCXXABI::GenericItanium);
 
   // Default to an empty address space map.
   AddrSpaceMap = &DefaultAddrSpaceMap;
+  UseAddrSpaceMapMangling = false;
 
   // Default to an unknown platform name.
   PlatformName = "unknown";
@@ -102,6 +106,8 @@ TargetInfo::~TargetInfo() {}
 const char *TargetInfo::getTypeName(IntType T) {
   switch (T) {
   default: llvm_unreachable("not an integer!");
+  case SignedChar:       return "signed char";
+  case UnsignedChar:     return "unsigned char";
   case SignedShort:      return "short";
   case UnsignedShort:    return "unsigned short";
   case SignedInt:        return "int";
@@ -115,17 +121,42 @@ const char *TargetInfo::getTypeName(IntType T) {
 
 /// getTypeConstantSuffix - Return the constant suffix for the specified
 /// integer type enum. For example, SignedLong -> "L".
-const char *TargetInfo::getTypeConstantSuffix(IntType T) {
+const char *TargetInfo::getTypeConstantSuffix(IntType T) const {
   switch (T) {
   default: llvm_unreachable("not an integer!");
+  case SignedChar:
   case SignedShort:
   case SignedInt:        return "";
   case SignedLong:       return "L";
   case SignedLongLong:   return "LL";
+  case UnsignedChar:
+    if (getCharWidth() < getIntWidth())
+      return "";
   case UnsignedShort:
+    if (getShortWidth() < getIntWidth())
+      return "";
   case UnsignedInt:      return "U";
   case UnsignedLong:     return "UL";
   case UnsignedLongLong: return "ULL";
+  }
+}
+
+/// getTypeFormatModifier - Return the printf format modifier for the
+/// specified integer type enum. For example, SignedLong -> "l".
+
+const char *TargetInfo::getTypeFormatModifier(IntType T) {
+  switch (T) {
+  default: llvm_unreachable("not an integer!");
+  case SignedChar:
+  case UnsignedChar:     return "hh";
+  case SignedShort:
+  case UnsignedShort:    return "h";
+  case SignedInt:
+  case UnsignedInt:      return "";
+  case SignedLong:
+  case UnsignedLong:     return "l";
+  case SignedLongLong:
+  case UnsignedLongLong: return "ll";
   }
 }
 
@@ -134,6 +165,8 @@ const char *TargetInfo::getTypeConstantSuffix(IntType T) {
 unsigned TargetInfo::getTypeWidth(IntType T) const {
   switch (T) {
   default: llvm_unreachable("not an integer!");
+  case SignedChar:
+  case UnsignedChar:     return getCharWidth();
   case SignedShort:
   case UnsignedShort:    return getShortWidth();
   case SignedInt:
@@ -145,11 +178,64 @@ unsigned TargetInfo::getTypeWidth(IntType T) const {
   };
 }
 
+TargetInfo::IntType TargetInfo::getIntTypeByWidth(
+    unsigned BitWidth, bool IsSigned) const {
+  if (getCharWidth() == BitWidth)
+    return IsSigned ? SignedChar : UnsignedChar;
+  if (getShortWidth() == BitWidth)
+    return IsSigned ? SignedShort : UnsignedShort;
+  if (getIntWidth() == BitWidth)
+    return IsSigned ? SignedInt : UnsignedInt;
+  if (getLongWidth() == BitWidth)
+    return IsSigned ? SignedLong : UnsignedLong;
+  if (getLongLongWidth() == BitWidth)
+    return IsSigned ? SignedLongLong : UnsignedLongLong;
+  return NoInt;
+}
+
+TargetInfo::IntType TargetInfo::getLeastIntTypeByWidth(unsigned BitWidth,
+                                                       bool IsSigned) const {
+  if (getCharWidth() >= BitWidth)
+    return IsSigned ? SignedChar : UnsignedChar;
+  if (getShortWidth() >= BitWidth)
+    return IsSigned ? SignedShort : UnsignedShort;
+  if (getIntWidth() >= BitWidth)
+    return IsSigned ? SignedInt : UnsignedInt;
+  if (getLongWidth() >= BitWidth)
+    return IsSigned ? SignedLong : UnsignedLong;
+  if (getLongLongWidth() >= BitWidth)
+    return IsSigned ? SignedLongLong : UnsignedLongLong;
+  return NoInt;
+}
+
+TargetInfo::RealType TargetInfo::getRealTypeByWidth(unsigned BitWidth) const {
+  if (getFloatWidth() == BitWidth)
+    return Float;
+  if (getDoubleWidth() == BitWidth)
+    return Double;
+
+  switch (BitWidth) {
+  case 96:
+    if (&getLongDoubleFormat() == &llvm::APFloat::x87DoubleExtended)
+      return LongDouble;
+    break;
+  case 128:
+    if (&getLongDoubleFormat() == &llvm::APFloat::PPCDoubleDouble ||
+        &getLongDoubleFormat() == &llvm::APFloat::IEEEquad)
+      return LongDouble;
+    break;
+  }
+
+  return NoFloat;
+}
+
 /// getTypeAlign - Return the alignment (in bits) of the specified integer type
 /// enum. For example, SignedInt -> getIntAlign().
 unsigned TargetInfo::getTypeAlign(IntType T) const {
   switch (T) {
   default: llvm_unreachable("not an integer!");
+  case SignedChar:
+  case UnsignedChar:     return getCharAlign();
   case SignedShort:
   case UnsignedShort:    return getShortAlign();
   case SignedInt:
@@ -166,11 +252,13 @@ unsigned TargetInfo::getTypeAlign(IntType T) const {
 bool TargetInfo::isTypeSigned(IntType T) {
   switch (T) {
   default: llvm_unreachable("not an integer!");
+  case SignedChar:
   case SignedShort:
   case SignedInt:
   case SignedLong:
   case SignedLongLong:
     return true;
+  case UnsignedChar:
   case UnsignedShort:
   case UnsignedInt:
   case UnsignedLong:
@@ -179,14 +267,48 @@ bool TargetInfo::isTypeSigned(IntType T) {
   };
 }
 
-/// setForcedLangOptions - Set forced language options.
+/// adjust - Set forced language options.
 /// Apply changes to the target information with respect to certain
 /// language options which change the target configuration.
-void TargetInfo::setForcedLangOptions(LangOptions &Opts) {
+void TargetInfo::adjust(const LangOptions &Opts) {
   if (Opts.NoBitFieldTypeAlign)
     UseBitFieldTypeAlignment = false;
   if (Opts.ShortWChar)
     WCharType = UnsignedShort;
+
+  if (Opts.OpenCL) {
+    // OpenCL C requires specific widths for types, irrespective of
+    // what these normally are for the target.
+    // We also define long long and long double here, although the
+    // OpenCL standard only mentions these as "reserved".
+    IntWidth = IntAlign = 32;
+    LongWidth = LongAlign = 64;
+    LongLongWidth = LongLongAlign = 128;
+    HalfWidth = HalfAlign = 16;
+    FloatWidth = FloatAlign = 32;
+    
+    // Embedded 32-bit targets (OpenCL EP) might have double C type 
+    // defined as float. Let's not override this as it might lead 
+    // to generating illegal code that uses 64bit doubles.
+    if (DoubleWidth != FloatWidth) {
+      DoubleWidth = DoubleAlign = 64;
+      DoubleFormat = &llvm::APFloat::IEEEdouble;
+    }
+    LongDoubleWidth = LongDoubleAlign = 128;
+
+    assert(PointerWidth == 32 || PointerWidth == 64);
+    bool Is32BitArch = PointerWidth == 32;
+    SizeType = Is32BitArch ? UnsignedInt : UnsignedLong;
+    PtrDiffType = Is32BitArch ? SignedInt : SignedLong;
+    IntPtrType = Is32BitArch ? SignedInt : SignedLong;
+
+    IntMaxType = SignedLongLong;
+    Int64Type = SignedLong;
+
+    HalfFormat = &llvm::APFloat::IEEEhalf;
+    FloatFormat = &llvm::APFloat::IEEEsingle;
+    LongDoubleFormat = &llvm::APFloat::IEEEquad;
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -219,6 +341,8 @@ bool TargetInfo::isValidGCCRegisterName(StringRef Name) const {
 
   // Get rid of any register prefix.
   Name = removeGCCRegisterPrefix(Name);
+  if (Name.empty())
+      return false;
 
   getGCCRegNames(Names, NumNames);
 
@@ -338,7 +462,9 @@ bool TargetInfo::validateOutputConstraint(ConstraintInfo &Info) const {
         // Eventually, an unknown constraint should just be treated as 'g'.
         return false;
       }
+      break;
     case '&': // early clobber.
+      Info.setEarlyClobber();
       break;
     case '%': // commutative.
       // FIXME: Check that there is a another register after this one.
@@ -363,9 +489,12 @@ bool TargetInfo::validateOutputConstraint(ConstraintInfo &Info) const {
       if (Name[1] == '=' || Name[1] == '+')
         Name++;
       break;
+    case '#': // Ignore as constraint.
+      while (Name[1] && Name[1] != ',')
+        Name++;
+      break;
     case '?': // Disparage slightly code.
     case '!': // Disparage severely.
-    case '#': // Ignore as constraint.
     case '*': // Ignore for choosing register preferences.
       break;  // Pass them.
     }
@@ -373,7 +502,14 @@ bool TargetInfo::validateOutputConstraint(ConstraintInfo &Info) const {
     Name++;
   }
 
-  return true;
+  // Early clobber with a read-write constraint which doesn't permit registers
+  // is invalid.
+  if (Info.earlyClobber() && Info.isReadWrite() && !Info.allowsRegister())
+    return false;
+
+  // If a constraint allows neither memory nor register operands it contains
+  // only modifiers. Reject it.
+  return Info.allowsMemory() || Info.allowsRegister();
 }
 
 bool TargetInfo::resolveSymbolicName(const char *&Name,
@@ -405,16 +541,25 @@ bool TargetInfo::validateInputConstraint(ConstraintInfo *OutputConstraints,
                                          ConstraintInfo &Info) const {
   const char *Name = Info.ConstraintStr.c_str();
 
+  if (!*Name)
+    return false;
+
   while (*Name) {
     switch (*Name) {
     default:
       // Check if we have a matching constraint
       if (*Name >= '0' && *Name <= '9') {
-        unsigned i = *Name - '0';
+        const char *DigitStart = Name;
+        while (Name[1] >= '0' && Name[1] <= '9')
+          Name++;
+        const char *DigitEnd = Name;
+        unsigned i;
+        if (StringRef(DigitStart, DigitEnd - DigitStart + 1)
+                .getAsInteger(10, i))
+          return false;
 
         // Check if matching constraint is out of bounds.
-        if (i >= NumOutputs)
-          return false;
+        if (i >= NumOutputs) return false;
 
         // A number must refer to an output only operand.
         if (OutputConstraints[i].isReadWrite())
@@ -445,6 +590,10 @@ bool TargetInfo::validateInputConstraint(ConstraintInfo *OutputConstraints,
       if (Info.hasTiedOperand() && Info.getTiedOperand() != Index)
         return false;
 
+      // A number must refer to an output only operand.
+      if (OutputConstraints[Index].isReadWrite())
+        return false;
+
       Info.setTiedOperand(Index, OutputConstraints[Index]);
       break;
     }
@@ -462,6 +611,8 @@ bool TargetInfo::validateInputConstraint(ConstraintInfo *OutputConstraints,
     case 'N':
     case 'O':
     case 'P':
+      if (!validateAsmConstraint(Name, Info))
+        return false;
       break;
     case 'r': // general register.
       Info.setAllowsRegister();
@@ -484,9 +635,12 @@ bool TargetInfo::validateInputConstraint(ConstraintInfo *OutputConstraints,
       break;
     case ',': // multiple alternative constraint.  Ignore comma.
       break;
+    case '#': // Ignore as constraint.
+      while (Name[1] && Name[1] != ',')
+        Name++;
+      break;
     case '?': // Disparage slightly code.
     case '!': // Disparage severely.
-    case '#': // Ignore as constraint.
     case '*': // Ignore for choosing register preferences.
       break;  // Pass them.
     }
@@ -504,6 +658,7 @@ bool TargetCXXABI::tryParse(llvm::StringRef name) {
     .Case("ios", iOS)
     .Case("itanium", GenericItanium)
     .Case("microsoft", Microsoft)
+    .Case("mips", GenericMIPS)
     .Default(unknown);
   if (kind == unknown) return false;
 

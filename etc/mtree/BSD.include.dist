@@ -5,8 +5,6 @@
 
 /set type=dir uname=root gname=wheel mode=0755
 .
-    altq
-    ..
     arpa
     ..
     atf-c
@@ -81,7 +79,11 @@
             ..
         ..
         v1
+            experimental
+            ..
             ext
+            ..
+            tr1
             ..
         ..
     ..
@@ -89,10 +91,6 @@
         ata
         ..
         scsi
-        ..
-    ..
-    clang
-        3.3
         ..
     ..
     crypto
@@ -115,8 +113,6 @@
         hwpmc
         ..
         ic
-        ..
-        ieee488
         ..
         iicbus
         ..
@@ -162,6 +158,8 @@
         ..
     ..
     fs
+        cuse
+        ..
         devfs
         ..
         fdescfs
@@ -175,6 +173,8 @@
         nullfs
         ..
         procfs
+        ..
+        smbfs
         ..
         udf
         ..
@@ -221,8 +221,6 @@
         posix
         ..
     ..
-    gpib
-    ..
     gssapi
     ..
     infiniband
@@ -243,9 +241,11 @@
     ..
     krb5
     ..
+    lib80211
+    ..
     libmilter
     ..
-    lwres
+    libxo
     ..
     lzma
     ..
@@ -254,10 +254,10 @@
         ..
     ..
     net
+        altq
+        ..
     ..
     net80211
-    ..
-    netatalk
     ..
     netgraph
         atm
@@ -275,8 +275,6 @@
     ..
     netipsec
     ..
-    netipx
-    ..
     netnatm
         api
         ..
@@ -285,6 +283,10 @@
         saal
         ..
         sig
+        ..
+    ..
+    netpfil
+        pf
         ..
     ..
     netsmb
@@ -302,8 +304,6 @@
     protocols
     ..
     rdma
-    ..
-    readline
     ..
     rpc
     ..
@@ -326,6 +326,8 @@
     ssp
     ..
     sys
+    ..
+    teken
     ..
     ufs
         ffs

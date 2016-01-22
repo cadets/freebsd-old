@@ -310,12 +310,11 @@ static struct buf *
 cluster_rbuild(struct vnode *vp, u_quad_t filesize, daddr_t lbn,
     daddr_t blkno, long size, int run, int gbflags, struct buf *fbp)
 {
-	struct bufobj *bo;
 	struct buf *bp, *tbp;
 	daddr_t bn;
 	off_t off;
 	long tinc, tsize;
-	int i, inc, j, toff;
+	int i, inc, j, k, toff;
 
 	KASSERT(size == vp->v_mount->mnt_stat.f_iosize,
 	    ("cluster_rbuild: size %ld != f_iosize %jd\n",
@@ -355,7 +354,6 @@ cluster_rbuild(struct vnode *vp, u_quad_t filesize, daddr_t lbn,
 	 */
 	bp->b_flags = B_ASYNC | B_CLUSTER | B_VMIO;
 	if ((gbflags & GB_UNMAPPED) != 0) {
-		bp->b_flags |= B_UNMAPPED;
 		bp->b_data = unmapped_buf;
 	} else {
 		bp->b_data = (char *)((vm_offset_t)bp->b_data |
@@ -376,9 +374,16 @@ cluster_rbuild(struct vnode *vp, u_quad_t filesize, daddr_t lbn,
 	bp->b_npages = 0;
 
 	inc = btodb(size);
-	bo = &vp->v_bufobj;
 	for (bn = blkno, i = 0; i < run; ++i, bn += inc) {
-		if (i != 0) {
+		if (i == 0) {
+			VM_OBJECT_WLOCK(tbp->b_bufobj->bo_object);
+			vfs_drain_busy_pages(tbp);
+			vm_object_pip_add(tbp->b_bufobj->bo_object,
+			    tbp->b_npages);
+			for (k = 0; k < tbp->b_npages; k++)
+				vm_page_sbusy(tbp->b_pages[k]);
+			VM_OBJECT_WUNLOCK(tbp->b_bufobj->bo_object);
+		} else {
 			if ((bp->b_npages * PAGE_SIZE) +
 			    round_page(size) > vp->v_mount->mnt_iosize_max) {
 				break;
@@ -424,14 +429,23 @@ cluster_rbuild(struct vnode *vp, u_quad_t filesize, daddr_t lbn,
 				if ((tbp->b_pages[j]->valid &
 				    vm_page_bits(toff, tinc)) != 0)
 					break;
+				if (vm_page_xbusied(tbp->b_pages[j]))
+					break;
+				vm_object_pip_add(tbp->b_bufobj->bo_object, 1);
+				vm_page_sbusy(tbp->b_pages[j]);
 				off += tinc;
 				tsize -= tinc;
 			}
-			VM_OBJECT_WUNLOCK(tbp->b_bufobj->bo_object);
 			if (tsize > 0) {
+clean_sbusy:
+				vm_object_pip_add(tbp->b_bufobj->bo_object, -j);
+				for (k = 0; k < j; k++)
+					vm_page_sunbusy(tbp->b_pages[k]);
+				VM_OBJECT_WUNLOCK(tbp->b_bufobj->bo_object);
 				bqrelse(tbp);
 				break;
 			}
+			VM_OBJECT_WUNLOCK(tbp->b_bufobj->bo_object);
 
 			/*
 			 * Set a read-ahead mark as appropriate
@@ -451,8 +465,8 @@ cluster_rbuild(struct vnode *vp, u_quad_t filesize, daddr_t lbn,
 			if (tbp->b_blkno == tbp->b_lblkno) {
 				tbp->b_blkno = bn;
 			} else if (tbp->b_blkno != bn) {
-				brelse(tbp);
-				break;
+				VM_OBJECT_WLOCK(tbp->b_bufobj->bo_object);
+				goto clean_sbusy;
 			}
 		}
 		/*
@@ -466,10 +480,8 @@ cluster_rbuild(struct vnode *vp, u_quad_t filesize, daddr_t lbn,
 		for (j = 0; j < tbp->b_npages; j += 1) {
 			vm_page_t m;
 			m = tbp->b_pages[j];
-			vm_page_io_start(m);
-			vm_object_pip_add(m->object, 1);
 			if ((bp->b_npages == 0) ||
-				(bp->b_pages[bp->b_npages-1] != m)) {
+			    (bp->b_pages[bp->b_npages-1] != m)) {
 				bp->b_pages[bp->b_npages] = m;
 				bp->b_npages++;
 			}
@@ -504,9 +516,8 @@ cluster_rbuild(struct vnode *vp, u_quad_t filesize, daddr_t lbn,
 	if (bp->b_bufsize > bp->b_kvasize)
 		panic("cluster_rbuild: b_bufsize(%ld) > b_kvasize(%d)\n",
 		    bp->b_bufsize, bp->b_kvasize);
-	bp->b_kvasize = bp->b_bufsize;
 
-	if ((bp->b_flags & B_UNMAPPED) == 0) {
+	if (buf_mapped(bp)) {
 		pmap_qenter(trunc_page((vm_offset_t) bp->b_data),
 		    (vm_page_t *)bp->b_pages, bp->b_npages);
 	}
@@ -532,7 +543,7 @@ cluster_callback(bp)
 	if (bp->b_ioflags & BIO_ERROR)
 		error = bp->b_error;
 
-	if ((bp->b_flags & B_UNMAPPED) == 0) {
+	if (buf_mapped(bp)) {
 		pmap_qremove(trunc_page((vm_offset_t) bp->b_data),
 		    bp->b_npages);
 	}
@@ -822,7 +833,9 @@ cluster_wbuild(struct vnode *vp, long size, daddr_t start_lbn, int len,
 		  (tbp->b_bcount != tbp->b_bufsize) ||
 		  (tbp->b_bcount != size) ||
 		  (len == 1) ||
-		  ((bp = getpbuf(&cluster_pbuf_freecnt)) == NULL)) {
+		  ((bp = (vp->v_vflag & VV_MD) != 0 ?
+		  trypbuf(&cluster_pbuf_freecnt) :
+		  getpbuf(&cluster_pbuf_freecnt)) == NULL)) {
 			totalwritten += tbp->b_bufsize;
 			bawrite(tbp);
 			++start_lbn;
@@ -856,7 +869,6 @@ cluster_wbuild(struct vnode *vp, long size, daddr_t start_lbn, int len,
 			bp->b_data = (char *)((vm_offset_t)bp->b_data |
 			    ((vm_offset_t)tbp->b_data & PAGE_MASK));
 		} else {
-			bp->b_flags |= B_UNMAPPED;
 			bp->b_data = unmapped_buf;
 		}
 		bp->b_flags |= B_CLUSTER | (tbp->b_flags & (B_VMIO |
@@ -944,10 +956,12 @@ cluster_wbuild(struct vnode *vp, long size, daddr_t start_lbn, int len,
 				vm_page_t m;
 
 				VM_OBJECT_WLOCK(tbp->b_bufobj->bo_object);
-				if (i != 0) { /* if not first buffer */
+				if (i == 0) {
+					vfs_drain_busy_pages(tbp);
+				} else { /* if not first buffer */
 					for (j = 0; j < tbp->b_npages; j += 1) {
 						m = tbp->b_pages[j];
-						if (m->oflags & VPO_BUSY) {
+						if (vm_page_xbusied(m)) {
 							VM_OBJECT_WUNLOCK(
 							    tbp->b_object);
 							bqrelse(tbp);
@@ -957,7 +971,7 @@ cluster_wbuild(struct vnode *vp, long size, daddr_t start_lbn, int len,
 				}
 				for (j = 0; j < tbp->b_npages; j += 1) {
 					m = tbp->b_pages[j];
-					vm_page_io_start(m);
+					vm_page_sbusy(m);
 					vm_object_pip_add(m->object, 1);
 					if ((bp->b_npages == 0) ||
 					  (bp->b_pages[bp->b_npages - 1] != m)) {
@@ -987,7 +1001,7 @@ cluster_wbuild(struct vnode *vp, long size, daddr_t start_lbn, int len,
 				tbp, b_cluster.cluster_entry);
 		}
 	finishcluster:
-		if ((bp->b_flags & B_UNMAPPED) == 0) {
+		if (buf_mapped(bp)) {
 			pmap_qenter(trunc_page((vm_offset_t) bp->b_data),
 			    (vm_page_t *)bp->b_pages, bp->b_npages);
 		}
@@ -995,7 +1009,6 @@ cluster_wbuild(struct vnode *vp, long size, daddr_t start_lbn, int len,
 			panic(
 			    "cluster_wbuild: b_bufsize(%ld) > b_kvasize(%d)\n",
 			    bp->b_bufsize, bp->b_kvasize);
-		bp->b_kvasize = bp->b_bufsize;
 		totalwritten += bp->b_bufsize;
 		bp->b_dirtyoff = 0;
 		bp->b_dirtyend = bp->b_bufsize;

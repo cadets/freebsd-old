@@ -1,5 +1,6 @@
 # $FreeBSD$
 
-PROG=	stdbuf
+PROG=   stdbuf
+SRCS=   stdbuf.c
 
 .include <bsd.prog.mk>

@@ -223,9 +223,9 @@ sctp_build_ctl_nchunk(struct sctp_inpcb *inp, struct sctp_sndrcvinfo *sinfo)
 	}
 	seinfo = (struct sctp_extrcvinfo *)sinfo;
 	if (sctp_is_feature_on(inp, SCTP_PCB_FLAGS_RECVNXTINFO) &&
-	    (seinfo->sreinfo_next_flags & SCTP_NEXT_MSG_AVAIL)) {
+	    (seinfo->serinfo_next_flags & SCTP_NEXT_MSG_AVAIL)) {
 		provide_nxt = 1;
-		len += CMSG_SPACE(sizeof(struct sctp_rcvinfo));
+		len += CMSG_SPACE(sizeof(struct sctp_nxtinfo));
 	} else {
 		provide_nxt = 0;
 	}
@@ -250,6 +250,11 @@ sctp_build_ctl_nchunk(struct sctp_inpcb *inp, struct sctp_sndrcvinfo *sinfo)
 
 	/* We need a CMSG header followed by the struct */
 	cmh = mtod(ret, struct cmsghdr *);
+	/*
+	 * Make sure that there is no un-initialized padding between the
+	 * cmsg header and cmsg data and after the cmsg data.
+	 */
+	memset(cmh, 0, len);
 	if (sctp_is_feature_on(inp, SCTP_PCB_FLAGS_RECVRCVINFO)) {
 		cmh->cmsg_level = IPPROTO_SCTP;
 		cmh->cmsg_len = CMSG_LEN(sizeof(struct sctp_rcvinfo));
@@ -271,20 +276,20 @@ sctp_build_ctl_nchunk(struct sctp_inpcb *inp, struct sctp_sndrcvinfo *sinfo)
 		cmh->cmsg_len = CMSG_LEN(sizeof(struct sctp_nxtinfo));
 		cmh->cmsg_type = SCTP_NXTINFO;
 		nxtinfo = (struct sctp_nxtinfo *)CMSG_DATA(cmh);
-		nxtinfo->nxt_sid = seinfo->sreinfo_next_stream;
+		nxtinfo->nxt_sid = seinfo->serinfo_next_stream;
 		nxtinfo->nxt_flags = 0;
-		if (seinfo->sreinfo_next_flags & SCTP_NEXT_MSG_IS_UNORDERED) {
+		if (seinfo->serinfo_next_flags & SCTP_NEXT_MSG_IS_UNORDERED) {
 			nxtinfo->nxt_flags |= SCTP_UNORDERED;
 		}
-		if (seinfo->sreinfo_next_flags & SCTP_NEXT_MSG_IS_NOTIFICATION) {
+		if (seinfo->serinfo_next_flags & SCTP_NEXT_MSG_IS_NOTIFICATION) {
 			nxtinfo->nxt_flags |= SCTP_NOTIFICATION;
 		}
-		if (seinfo->sreinfo_next_flags & SCTP_NEXT_MSG_ISCOMPLETE) {
+		if (seinfo->serinfo_next_flags & SCTP_NEXT_MSG_ISCOMPLETE) {
 			nxtinfo->nxt_flags |= SCTP_COMPLETE;
 		}
-		nxtinfo->nxt_ppid = seinfo->sreinfo_next_ppid;
-		nxtinfo->nxt_length = seinfo->sreinfo_next_length;
-		nxtinfo->nxt_assoc_id = seinfo->sreinfo_next_aid;
+		nxtinfo->nxt_ppid = seinfo->serinfo_next_ppid;
+		nxtinfo->nxt_length = seinfo->serinfo_next_length;
+		nxtinfo->nxt_assoc_id = seinfo->serinfo_next_aid;
 		cmh = (struct cmsghdr *)((caddr_t)cmh + CMSG_SPACE(sizeof(struct sctp_nxtinfo)));
 		SCTP_BUF_LEN(ret) += CMSG_SPACE(sizeof(struct sctp_nxtinfo));
 	}
@@ -561,7 +566,8 @@ sctp_queue_data_to_stream(struct sctp_tcb *stcb, struct sctp_association *asoc,
 	struct sctp_queued_to_read *at;
 	int queue_needed;
 	uint16_t nxt_todel;
-	struct mbuf *oper;
+	struct mbuf *op_err;
+	char msg[SCTP_DIAG_INFO_LEN];
 
 	queue_needed = 1;
 	asoc->size_on_all_streams += control->length;
@@ -572,13 +578,13 @@ sctp_queue_data_to_stream(struct sctp_tcb *stcb, struct sctp_association *asoc,
 		sctp_log_strm_del(control, NULL, SCTP_STR_LOG_FROM_INTO_STRD);
 	}
 	SCTPDBG(SCTP_DEBUG_INDATA1,
-	    "queue to stream called for ssn:%u lastdel:%u nxt:%u\n",
-	    (uint32_t) control->sinfo_stream,
-	    (uint32_t) strm->last_sequence_delivered,
-	    (uint32_t) nxt_todel);
+	    "queue to stream called for sid:%u ssn:%u tsn:%u lastdel:%u nxt:%u\n",
+	    (uint32_t) control->sinfo_stream, (uint32_t) control->sinfo_ssn,
+	    (uint32_t) control->sinfo_tsn,
+	    (uint32_t) strm->last_sequence_delivered, (uint32_t) nxt_todel);
 	if (SCTP_SSN_GE(strm->last_sequence_delivered, control->sinfo_ssn)) {
 		/* The incoming sseq is behind where we last delivered? */
-		SCTPDBG(SCTP_DEBUG_INDATA1, "Duplicate S-SEQ:%d delivered:%d from peer, Abort  association\n",
+		SCTPDBG(SCTP_DEBUG_INDATA1, "Duplicate S-SEQ:%d delivered:%d from peer, Abort association\n",
 		    control->sinfo_ssn, strm->last_sequence_delivered);
 protocol_error:
 		/*
@@ -586,30 +592,30 @@ protocol_error:
 		 * association destruction
 		 */
 		TAILQ_INSERT_HEAD(&strm->inqueue, control, next);
-		oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-		    0, M_NOWAIT, 1, MT_DATA);
-		if (oper) {
-			struct sctp_paramhdr *ph;
-			uint32_t *ippp;
-
-			SCTP_BUF_LEN(oper) = sizeof(struct sctp_paramhdr) +
-			    (sizeof(uint32_t) * 3);
-			ph = mtod(oper, struct sctp_paramhdr *);
-			ph->param_type = htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-			ph->param_length = htons(SCTP_BUF_LEN(oper));
-			ippp = (uint32_t *) (ph + 1);
-			*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_1);
-			ippp++;
-			*ippp = control->sinfo_tsn;
-			ippp++;
-			*ippp = ((control->sinfo_stream << 16) | control->sinfo_ssn);
-		}
+		snprintf(msg, sizeof(msg), "Delivered SSN=%4.4x, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+		    strm->last_sequence_delivered, control->sinfo_tsn,
+		    control->sinfo_stream, control->sinfo_ssn);
+		op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
 		stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_1;
-		sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+		sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 		*abort_flag = 1;
 		return;
 
 	}
+#if defined(__APPLE__) || defined(SCTP_SO_LOCK_TESTING)
+	struct socket *so;
+
+	so = SCTP_INP_SO(stcb->sctp_ep);
+	atomic_add_int(&stcb->asoc.refcnt, 1);
+	SCTP_TCB_UNLOCK(stcb);
+	SCTP_SOCKET_LOCK(so, 1);
+	SCTP_TCB_LOCK(stcb);
+	atomic_subtract_int(&stcb->asoc.refcnt, 1);
+	if (stcb->sctp_ep->sctp_flags & SCTP_PCB_FLAGS_SOCKET_GONE) {
+		SCTP_SOCKET_UNLOCK(so, 1);
+		return;
+	}
+#endif
 	if (nxt_todel == control->sinfo_ssn) {
 		/* can be delivered right away? */
 		if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_STR_LOGGING_ENABLE) {
@@ -625,7 +631,7 @@ protocol_error:
 		sctp_add_to_readq(stcb->sctp_ep, stcb,
 		    control,
 		    &stcb->sctp_socket->so_rcv, 1,
-		    SCTP_READ_LOCK_NOT_HELD, SCTP_SO_NOT_LOCKED);
+		    SCTP_READ_LOCK_NOT_HELD, SCTP_SO_LOCKED);
 		TAILQ_FOREACH_SAFE(control, &strm->inqueue, next, at) {
 			/* all delivered */
 			nxt_todel = strm->last_sequence_delivered + 1;
@@ -649,7 +655,7 @@ protocol_error:
 				    control,
 				    &stcb->sctp_socket->so_rcv, 1,
 				    SCTP_READ_LOCK_NOT_HELD,
-				    SCTP_SO_NOT_LOCKED);
+				    SCTP_SO_LOCKED);
 				continue;
 			}
 			break;
@@ -661,6 +667,9 @@ protocol_error:
 		 * to put it on the queue.
 		 */
 		if (SCTP_TSN_GE(asoc->cumulative_tsn, control->sinfo_tsn)) {
+#if defined(__APPLE__) || defined(SCTP_SO_LOCK_TESTING)
+			SCTP_SOCKET_UNLOCK(so, 1);
+#endif
 			goto protocol_error;
 		}
 		if (TAILQ_EMPTY(&strm->inqueue)) {
@@ -707,6 +716,9 @@ protocol_error:
 						control->whoFrom = NULL;
 					}
 					sctp_free_a_readq(stcb, control);
+#if defined(__APPLE__) || defined(SCTP_SO_LOCK_TESTING)
+					SCTP_SOCKET_UNLOCK(so, 1);
+#endif
 					return;
 				} else {
 					if (TAILQ_NEXT(at, next) == NULL) {
@@ -726,6 +738,9 @@ protocol_error:
 			}
 		}
 	}
+#if defined(__APPLE__) || defined(SCTP_SO_LOCK_TESTING)
+	SCTP_SOCKET_UNLOCK(so, 1);
+#endif
 }
 
 /*
@@ -789,13 +804,12 @@ doit_again:
 			 * but should we?
 			 */
 			if (stcb->sctp_socket) {
-				pd_point = min(SCTP_SB_LIMIT_RCV(stcb->sctp_socket),
+				pd_point = min(SCTP_SB_LIMIT_RCV(stcb->sctp_socket) >> SCTP_PARTIAL_DELIVERY_SHIFT,
 				    stcb->sctp_ep->partial_delivery_point);
 			} else {
 				pd_point = stcb->sctp_ep->partial_delivery_point;
 			}
 			if (sctp_is_all_msg_on_reasm(asoc, &tsize) || (tsize >= pd_point)) {
-
 				/*
 				 * Yes, we setup to start reception, by
 				 * backing down the TSN just in case we
@@ -840,7 +854,8 @@ static void
 sctp_queue_data_for_reasm(struct sctp_tcb *stcb, struct sctp_association *asoc,
     struct sctp_tmit_chunk *chk, int *abort_flag)
 {
-	struct mbuf *oper;
+	struct mbuf *op_err;
+	char msg[SCTP_DIAG_INFO_LEN];
 	uint32_t cum_ackp1, prev_tsn, post_tsn;
 	struct sctp_tmit_chunk *at, *prev, *next;
 
@@ -865,30 +880,14 @@ sctp_queue_data_for_reasm(struct sctp_tcb *stcb, struct sctp_association *asoc,
 				 * a FIRST fragment mark.
 				 */
 				SCTPDBG(SCTP_DEBUG_INDATA1, "Gak, Evil plot, its not first, no fragmented delivery in progress\n");
-				oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-				    0, M_NOWAIT, 1, MT_DATA);
-
-				if (oper) {
-					struct sctp_paramhdr *ph;
-					uint32_t *ippp;
-
-					SCTP_BUF_LEN(oper) =
-					    sizeof(struct sctp_paramhdr) +
-					    (sizeof(uint32_t) * 3);
-					ph = mtod(oper, struct sctp_paramhdr *);
-					ph->param_type =
-					    htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-					ph->param_length = htons(SCTP_BUF_LEN(oper));
-					ippp = (uint32_t *) (ph + 1);
-					*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_2);
-					ippp++;
-					*ippp = chk->rec.data.TSN_seq;
-					ippp++;
-					*ippp = ((chk->rec.data.stream_number << 16) | chk->rec.data.stream_seq);
-
-				}
+				snprintf(msg, sizeof(msg),
+				    "Expected B-bit for TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+				    chk->rec.data.TSN_seq,
+				    chk->rec.data.stream_number,
+				    chk->rec.data.stream_seq);
+				op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
 				stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_2;
-				sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+				sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 				*abort_flag = 1;
 			} else if (asoc->fragmented_delivery_inprogress &&
 			    (chk->rec.data.rcv_flags & SCTP_DATA_FIRST_FRAG) == SCTP_DATA_FIRST_FRAG) {
@@ -898,28 +897,14 @@ sctp_queue_data_for_reasm(struct sctp_tcb *stcb, struct sctp_association *asoc,
 				 * MIDDLE fragment NOT a FIRST
 				 */
 				SCTPDBG(SCTP_DEBUG_INDATA1, "Gak, Evil plot, it IS a first and fragmented delivery in progress\n");
-				oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-				    0, M_NOWAIT, 1, MT_DATA);
-				if (oper) {
-					struct sctp_paramhdr *ph;
-					uint32_t *ippp;
-
-					SCTP_BUF_LEN(oper) =
-					    sizeof(struct sctp_paramhdr) +
-					    (3 * sizeof(uint32_t));
-					ph = mtod(oper, struct sctp_paramhdr *);
-					ph->param_type =
-					    htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-					ph->param_length = htons(SCTP_BUF_LEN(oper));
-					ippp = (uint32_t *) (ph + 1);
-					*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_3);
-					ippp++;
-					*ippp = chk->rec.data.TSN_seq;
-					ippp++;
-					*ippp = ((chk->rec.data.stream_number << 16) | chk->rec.data.stream_seq);
-				}
+				snprintf(msg, sizeof(msg),
+				    "Didn't expect B-bit for TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+				    chk->rec.data.TSN_seq,
+				    chk->rec.data.stream_number,
+				    chk->rec.data.stream_seq);
+				op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
 				stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_3;
-				sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+				sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 				*abort_flag = 1;
 			} else if (asoc->fragmented_delivery_inprogress) {
 				/*
@@ -932,30 +917,15 @@ sctp_queue_data_for_reasm(struct sctp_tcb *stcb, struct sctp_association *asoc,
 					SCTPDBG(SCTP_DEBUG_INDATA1, "Gak, Evil plot, it IS not same stream number %d vs %d\n",
 					    chk->rec.data.stream_number,
 					    asoc->str_of_pdapi);
-					oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-					    0, M_NOWAIT, 1, MT_DATA);
-					if (oper) {
-						struct sctp_paramhdr *ph;
-						uint32_t *ippp;
-
-						SCTP_BUF_LEN(oper) =
-						    sizeof(struct sctp_paramhdr) +
-						    (sizeof(uint32_t) * 3);
-						ph = mtod(oper,
-						    struct sctp_paramhdr *);
-						ph->param_type =
-						    htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-						ph->param_length =
-						    htons(SCTP_BUF_LEN(oper));
-						ippp = (uint32_t *) (ph + 1);
-						*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_4);
-						ippp++;
-						*ippp = chk->rec.data.TSN_seq;
-						ippp++;
-						*ippp = ((chk->rec.data.stream_number << 16) | chk->rec.data.stream_seq);
-					}
+					snprintf(msg, sizeof(msg),
+					    "Expected SID=%4.4x, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+					    asoc->str_of_pdapi,
+					    chk->rec.data.TSN_seq,
+					    chk->rec.data.stream_number,
+					    chk->rec.data.stream_seq);
+					op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
 					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_4;
-					sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+					sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 					*abort_flag = 1;
 				} else if ((asoc->fragment_flags & SCTP_DATA_UNORDERED) !=
 					    SCTP_DATA_UNORDERED &&
@@ -964,31 +934,15 @@ sctp_queue_data_for_reasm(struct sctp_tcb *stcb, struct sctp_association *asoc,
 					SCTPDBG(SCTP_DEBUG_INDATA1, "Gak, Evil plot, it IS not same stream seq %d vs %d\n",
 					    chk->rec.data.stream_seq,
 					    asoc->ssn_of_pdapi);
-					oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-					    0, M_NOWAIT, 1, MT_DATA);
-					if (oper) {
-						struct sctp_paramhdr *ph;
-						uint32_t *ippp;
-
-						SCTP_BUF_LEN(oper) =
-						    sizeof(struct sctp_paramhdr) +
-						    (3 * sizeof(uint32_t));
-						ph = mtod(oper,
-						    struct sctp_paramhdr *);
-						ph->param_type =
-						    htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-						ph->param_length =
-						    htons(SCTP_BUF_LEN(oper));
-						ippp = (uint32_t *) (ph + 1);
-						*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_5);
-						ippp++;
-						*ippp = chk->rec.data.TSN_seq;
-						ippp++;
-						*ippp = ((chk->rec.data.stream_number << 16) | chk->rec.data.stream_seq);
-
-					}
+					snprintf(msg, sizeof(msg),
+					    "Expected SSN=%4.4x, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+					    asoc->ssn_of_pdapi,
+					    chk->rec.data.TSN_seq,
+					    chk->rec.data.stream_number,
+					    chk->rec.data.stream_seq);
+					op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
 					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_5;
-					sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+					sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 					*abort_flag = 1;
 				}
 			}
@@ -1058,31 +1012,14 @@ sctp_queue_data_for_reasm(struct sctp_tcb *stcb, struct sctp_association *asoc,
 				    SCTP_DATA_FIRST_FRAG) {
 					SCTPDBG(SCTP_DEBUG_INDATA1, "Prev check - It can be a midlle or last but not a first\n");
 					SCTPDBG(SCTP_DEBUG_INDATA1, "Gak, Evil plot, it's a FIRST!\n");
-					oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-					    0, M_NOWAIT, 1, MT_DATA);
-					if (oper) {
-						struct sctp_paramhdr *ph;
-						uint32_t *ippp;
-
-						SCTP_BUF_LEN(oper) =
-						    sizeof(struct sctp_paramhdr) +
-						    (3 * sizeof(uint32_t));
-						ph = mtod(oper,
-						    struct sctp_paramhdr *);
-						ph->param_type =
-						    htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-						ph->param_length =
-						    htons(SCTP_BUF_LEN(oper));
-						ippp = (uint32_t *) (ph + 1);
-						*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_6);
-						ippp++;
-						*ippp = chk->rec.data.TSN_seq;
-						ippp++;
-						*ippp = ((chk->rec.data.stream_number << 16) | chk->rec.data.stream_seq);
-
-					}
+					snprintf(msg, sizeof(msg),
+					    "Can't handle B-bit, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+					    chk->rec.data.TSN_seq,
+					    chk->rec.data.stream_number,
+					    chk->rec.data.stream_seq);
+					op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
 					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_6;
-					sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+					sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 					*abort_flag = 1;
 					return;
 				}
@@ -1092,33 +1029,36 @@ sctp_queue_data_for_reasm(struct sctp_tcb *stcb, struct sctp_association *asoc,
 					 * Huh, need the correct STR here,
 					 * they must be the same.
 					 */
-					SCTP_PRINTF("Prev check - Gak, Evil plot, ssn:%d not the same as at:%d\n",
+					SCTPDBG(SCTP_DEBUG_INDATA1, "Prev check - Gak, Evil plot, sid:%d not the same as at:%d\n",
 					    chk->rec.data.stream_number,
 					    prev->rec.data.stream_number);
-					oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-					    0, M_NOWAIT, 1, MT_DATA);
-					if (oper) {
-						struct sctp_paramhdr *ph;
-						uint32_t *ippp;
-
-						SCTP_BUF_LEN(oper) =
-						    sizeof(struct sctp_paramhdr) +
-						    (3 * sizeof(uint32_t));
-						ph = mtod(oper,
-						    struct sctp_paramhdr *);
-						ph->param_type =
-						    htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-						ph->param_length =
-						    htons(SCTP_BUF_LEN(oper));
-						ippp = (uint32_t *) (ph + 1);
-						*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_7);
-						ippp++;
-						*ippp = chk->rec.data.TSN_seq;
-						ippp++;
-						*ippp = ((chk->rec.data.stream_number << 16) | chk->rec.data.stream_seq);
-					}
+					snprintf(msg, sizeof(msg),
+					    "Expect SID=%4.4x, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+					    prev->rec.data.stream_number,
+					    chk->rec.data.TSN_seq,
+					    chk->rec.data.stream_number,
+					    chk->rec.data.stream_seq);
+					op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
 					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_7;
-					sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+					sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
+					*abort_flag = 1;
+					return;
+				}
+				if ((chk->rec.data.rcv_flags & SCTP_DATA_UNORDERED) !=
+				    (prev->rec.data.rcv_flags & SCTP_DATA_UNORDERED)) {
+					/*
+					 * Huh, need the same ordering here,
+					 * they must be the same.
+					 */
+					SCTPDBG(SCTP_DEBUG_INDATA1, "Prev check - Gak, Evil plot, U-bit not constant\n");
+					snprintf(msg, sizeof(msg),
+					    "Expect U-bit=%d for TSN=%8.8x, got U-bit=%d",
+					    (prev->rec.data.rcv_flags & SCTP_DATA_UNORDERED) ? 1 : 0,
+					    chk->rec.data.TSN_seq,
+					    (chk->rec.data.rcv_flags & SCTP_DATA_UNORDERED) ? 1 : 0);
+					op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_8;
+					sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 					*abort_flag = 1;
 					return;
 				}
@@ -1132,30 +1072,15 @@ sctp_queue_data_for_reasm(struct sctp_tcb *stcb, struct sctp_association *asoc,
 					SCTPDBG(SCTP_DEBUG_INDATA1, "Prev check - Gak, Evil plot, sseq:%d not the same as at:%d\n",
 					    chk->rec.data.stream_seq,
 					    prev->rec.data.stream_seq);
-					oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-					    0, M_NOWAIT, 1, MT_DATA);
-					if (oper) {
-						struct sctp_paramhdr *ph;
-						uint32_t *ippp;
-
-						SCTP_BUF_LEN(oper) =
-						    sizeof(struct sctp_paramhdr) +
-						    (3 * sizeof(uint32_t));
-						ph = mtod(oper,
-						    struct sctp_paramhdr *);
-						ph->param_type =
-						    htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-						ph->param_length =
-						    htons(SCTP_BUF_LEN(oper));
-						ippp = (uint32_t *) (ph + 1);
-						*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_8);
-						ippp++;
-						*ippp = chk->rec.data.TSN_seq;
-						ippp++;
-						*ippp = ((chk->rec.data.stream_number << 16) | chk->rec.data.stream_seq);
-					}
-					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_8;
-					sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+					snprintf(msg, sizeof(msg),
+					    "Expect SSN=%4.4x, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+					    prev->rec.data.stream_seq,
+					    chk->rec.data.TSN_seq,
+					    chk->rec.data.stream_number,
+					    chk->rec.data.stream_seq);
+					op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_9;
+					sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 					*abort_flag = 1;
 					return;
 				}
@@ -1165,31 +1090,14 @@ sctp_queue_data_for_reasm(struct sctp_tcb *stcb, struct sctp_association *asoc,
 				if ((chk->rec.data.rcv_flags & SCTP_DATA_FRAG_MASK) !=
 				    SCTP_DATA_FIRST_FRAG) {
 					SCTPDBG(SCTP_DEBUG_INDATA1, "Prev check - Gak, evil plot, its not FIRST and it must be!\n");
-					oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-					    0, M_NOWAIT, 1, MT_DATA);
-					if (oper) {
-						struct sctp_paramhdr *ph;
-						uint32_t *ippp;
-
-						SCTP_BUF_LEN(oper) =
-						    sizeof(struct sctp_paramhdr) +
-						    (3 * sizeof(uint32_t));
-						ph = mtod(oper,
-						    struct sctp_paramhdr *);
-						ph->param_type =
-						    htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-						ph->param_length =
-						    htons(SCTP_BUF_LEN(oper));
-						ippp = (uint32_t *) (ph + 1);
-						*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_9);
-						ippp++;
-						*ippp = chk->rec.data.TSN_seq;
-						ippp++;
-						*ippp = ((chk->rec.data.stream_number << 16) | chk->rec.data.stream_seq);
-
-					}
-					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_9;
-					sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+					snprintf(msg, sizeof(msg),
+					    "Expect B-bit, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+					    chk->rec.data.TSN_seq,
+					    chk->rec.data.stream_number,
+					    chk->rec.data.stream_seq);
+					op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_10;
+					sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 					*abort_flag = 1;
 					return;
 				}
@@ -1209,30 +1117,14 @@ sctp_queue_data_for_reasm(struct sctp_tcb *stcb, struct sctp_association *asoc,
 				    != SCTP_DATA_LAST_FRAG) {
 					SCTPDBG(SCTP_DEBUG_INDATA1, "Next chk - Next is FIRST, we must be LAST\n");
 					SCTPDBG(SCTP_DEBUG_INDATA1, "Gak, Evil plot, its not a last!\n");
-					oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-					    0, M_NOWAIT, 1, MT_DATA);
-					if (oper) {
-						struct sctp_paramhdr *ph;
-						uint32_t *ippp;
-
-						SCTP_BUF_LEN(oper) =
-						    sizeof(struct sctp_paramhdr) +
-						    (3 * sizeof(uint32_t));
-						ph = mtod(oper,
-						    struct sctp_paramhdr *);
-						ph->param_type =
-						    htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-						ph->param_length =
-						    htons(SCTP_BUF_LEN(oper));
-						ippp = (uint32_t *) (ph + 1);
-						*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_10);
-						ippp++;
-						*ippp = chk->rec.data.TSN_seq;
-						ippp++;
-						*ippp = ((chk->rec.data.stream_number << 16) | chk->rec.data.stream_seq);
-					}
-					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_10;
-					sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+					snprintf(msg, sizeof(msg),
+					    "Expect only E-bit, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+					    chk->rec.data.TSN_seq,
+					    chk->rec.data.stream_number,
+					    chk->rec.data.stream_seq);
+					op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_11;
+					sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 					*abort_flag = 1;
 					return;
 				}
@@ -1248,31 +1140,14 @@ sctp_queue_data_for_reasm(struct sctp_tcb *stcb, struct sctp_association *asoc,
 				    SCTP_DATA_LAST_FRAG) {
 					SCTPDBG(SCTP_DEBUG_INDATA1, "Next chk - Next is a MIDDLE/LAST\n");
 					SCTPDBG(SCTP_DEBUG_INDATA1, "Gak, Evil plot, new prev chunk is a LAST\n");
-					oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-					    0, M_NOWAIT, 1, MT_DATA);
-					if (oper) {
-						struct sctp_paramhdr *ph;
-						uint32_t *ippp;
-
-						SCTP_BUF_LEN(oper) =
-						    sizeof(struct sctp_paramhdr) +
-						    (3 * sizeof(uint32_t));
-						ph = mtod(oper,
-						    struct sctp_paramhdr *);
-						ph->param_type =
-						    htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-						ph->param_length =
-						    htons(SCTP_BUF_LEN(oper));
-						ippp = (uint32_t *) (ph + 1);
-						*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_11);
-						ippp++;
-						*ippp = chk->rec.data.TSN_seq;
-						ippp++;
-						*ippp = ((chk->rec.data.stream_number << 16) | chk->rec.data.stream_seq);
-
-					}
-					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_11;
-					sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+					snprintf(msg, sizeof(msg),
+					    "Didn't expect E-bit, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+					    chk->rec.data.TSN_seq,
+					    chk->rec.data.stream_number,
+					    chk->rec.data.stream_seq);
+					op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_12;
+					sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 					*abort_flag = 1;
 					return;
 				}
@@ -1285,31 +1160,33 @@ sctp_queue_data_for_reasm(struct sctp_tcb *stcb, struct sctp_association *asoc,
 					SCTPDBG(SCTP_DEBUG_INDATA1, "Next chk - Gak, Evil plot, ssn:%d not the same as at:%d\n",
 					    chk->rec.data.stream_number,
 					    next->rec.data.stream_number);
-					oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-					    0, M_NOWAIT, 1, MT_DATA);
-					if (oper) {
-						struct sctp_paramhdr *ph;
-						uint32_t *ippp;
-
-						SCTP_BUF_LEN(oper) =
-						    sizeof(struct sctp_paramhdr) +
-						    (3 * sizeof(uint32_t));
-						ph = mtod(oper,
-						    struct sctp_paramhdr *);
-						ph->param_type =
-						    htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-						ph->param_length =
-						    htons(SCTP_BUF_LEN(oper));
-						ippp = (uint32_t *) (ph + 1);
-						*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_12);
-						ippp++;
-						*ippp = chk->rec.data.TSN_seq;
-						ippp++;
-						*ippp = ((chk->rec.data.stream_number << 16) | chk->rec.data.stream_seq);
-
-					}
-					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_12;
-					sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+					snprintf(msg, sizeof(msg),
+					    "Required SID %4.4x, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+					    next->rec.data.stream_number,
+					    chk->rec.data.TSN_seq,
+					    chk->rec.data.stream_number,
+					    chk->rec.data.stream_seq);
+					op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_13;
+					sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
+					*abort_flag = 1;
+					return;
+				}
+				if ((chk->rec.data.rcv_flags & SCTP_DATA_UNORDERED) !=
+				    (next->rec.data.rcv_flags & SCTP_DATA_UNORDERED)) {
+					/*
+					 * Huh, need the same ordering here,
+					 * they must be the same.
+					 */
+					SCTPDBG(SCTP_DEBUG_INDATA1, "Next check - Gak, Evil plot, U-bit not constant\n");
+					snprintf(msg, sizeof(msg),
+					    "Expect U-bit=%d for TSN=%8.8x, got U-bit=%d",
+					    (next->rec.data.rcv_flags & SCTP_DATA_UNORDERED) ? 1 : 0,
+					    chk->rec.data.TSN_seq,
+					    (chk->rec.data.rcv_flags & SCTP_DATA_UNORDERED) ? 1 : 0);
+					op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_14;
+					sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 					*abort_flag = 1;
 					return;
 				}
@@ -1323,30 +1200,15 @@ sctp_queue_data_for_reasm(struct sctp_tcb *stcb, struct sctp_association *asoc,
 					SCTPDBG(SCTP_DEBUG_INDATA1, "Next chk - Gak, Evil plot, sseq:%d not the same as at:%d\n",
 					    chk->rec.data.stream_seq,
 					    next->rec.data.stream_seq);
-					oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-					    0, M_NOWAIT, 1, MT_DATA);
-					if (oper) {
-						struct sctp_paramhdr *ph;
-						uint32_t *ippp;
-
-						SCTP_BUF_LEN(oper) =
-						    sizeof(struct sctp_paramhdr) +
-						    (3 * sizeof(uint32_t));
-						ph = mtod(oper,
-						    struct sctp_paramhdr *);
-						ph->param_type =
-						    htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-						ph->param_length =
-						    htons(SCTP_BUF_LEN(oper));
-						ippp = (uint32_t *) (ph + 1);
-						*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_13);
-						ippp++;
-						*ippp = chk->rec.data.TSN_seq;
-						ippp++;
-						*ippp = ((chk->rec.data.stream_number << 16) | chk->rec.data.stream_seq);
-					}
-					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_13;
-					sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+					snprintf(msg, sizeof(msg),
+					    "Required SSN %4.4x, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+					    next->rec.data.stream_seq,
+					    chk->rec.data.TSN_seq,
+					    chk->rec.data.stream_number,
+					    chk->rec.data.stream_seq);
+					op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_15;
+					sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 					*abort_flag = 1;
 					return;
 				}
@@ -1417,7 +1279,6 @@ sctp_does_tsn_belong_to_reasm(struct sctp_association *asoc,
 	return (0);
 }
 
-
 static int
 sctp_process_a_data_chunk(struct sctp_tcb *stcb, struct sctp_association *asoc,
     struct mbuf **m, int offset, struct sctp_data_chunk *ch, int chk_length,
@@ -1432,7 +1293,8 @@ sctp_process_a_data_chunk(struct sctp_tcb *stcb, struct sctp_association *asoc,
 	int the_len;
 	int need_reasm_check = 0;
 	uint16_t strmno, strmseq;
-	struct mbuf *oper;
+	struct mbuf *op_err;
+	char msg[SCTP_DIAG_INFO_LEN];
 	struct sctp_queued_to_read *control;
 	int ordered;
 	uint32_t protocol_id;
@@ -1499,15 +1361,12 @@ sctp_process_a_data_chunk(struct sctp_tcb *stcb, struct sctp_association *asoc,
 	 */
 	if (((stcb->sctp_ep->sctp_flags & SCTP_PCB_FLAGS_SOCKET_GONE) ||
 	    (stcb->sctp_ep->sctp_flags & SCTP_PCB_FLAGS_SOCKET_ALLGONE) ||
-	    (stcb->asoc.state & SCTP_STATE_CLOSED_SOCKET))
-	    ) {
+	    (stcb->asoc.state & SCTP_STATE_CLOSED_SOCKET))) {
 		/*
 		 * wait a minute, this guy is gone, there is no longer a
 		 * receiver. Send peer an ABORT!
 		 */
-		struct mbuf *op_err;
-
-		op_err = sctp_generate_invmanparam(SCTP_CAUSE_OUT_OF_RESC);
+		op_err = sctp_generate_cause(SCTP_CAUSE_OUT_OF_RESC, "");
 		sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 		*abort_flag = 1;
 		return (0);
@@ -1567,30 +1426,25 @@ sctp_process_a_data_chunk(struct sctp_tcb *stcb, struct sctp_association *asoc,
 	}
 	strmno = ntohs(ch->dp.stream_id);
 	if (strmno >= asoc->streamincnt) {
-		struct sctp_paramhdr *phdr;
-		struct mbuf *mb;
+		struct sctp_error_invalid_stream *cause;
 
-		mb = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) * 2),
+		op_err = sctp_get_mbuf_for_msg(sizeof(struct sctp_error_invalid_stream),
 		    0, M_NOWAIT, 1, MT_DATA);
-		if (mb != NULL) {
+		if (op_err != NULL) {
 			/* add some space up front so prepend will work well */
-			SCTP_BUF_RESV_UF(mb, sizeof(struct sctp_chunkhdr));
-			phdr = mtod(mb, struct sctp_paramhdr *);
+			SCTP_BUF_RESV_UF(op_err, sizeof(struct sctp_chunkhdr));
+			cause = mtod(op_err, struct sctp_error_invalid_stream *);
 			/*
 			 * Error causes are just param's and this one has
 			 * two back to back phdr, one with the error type
 			 * and size, the other with the streamid and a rsvd
 			 */
-			SCTP_BUF_LEN(mb) = (sizeof(struct sctp_paramhdr) * 2);
-			phdr->param_type = htons(SCTP_CAUSE_INVALID_STREAM);
-			phdr->param_length =
-			    htons(sizeof(struct sctp_paramhdr) * 2);
-			phdr++;
-			/* We insert the stream in the type field */
-			phdr->param_type = ch->dp.stream_id;
-			/* And set the length to 0 for the rsvd field */
-			phdr->param_length = 0;
-			sctp_queue_op_err(stcb, mb);
+			SCTP_BUF_LEN(op_err) = sizeof(struct sctp_error_invalid_stream);
+			cause->cause.code = htons(SCTP_CAUSE_INVALID_STREAM);
+			cause->cause.length = htons(sizeof(struct sctp_error_invalid_stream));
+			cause->stream_id = ch->dp.stream_id;
+			cause->reserved = htons(0);
+			sctp_queue_op_err(stcb, op_err);
 		}
 		SCTP_STAT_INCR(sctps_badsid);
 		SCTP_TCB_LOCK_ASSERT(stcb);
@@ -1635,27 +1489,13 @@ sctp_process_a_data_chunk(struct sctp_tcb *stcb, struct sctp_association *asoc,
 		/* The incoming sseq is behind where we last delivered? */
 		SCTPDBG(SCTP_DEBUG_INDATA1, "EVIL/Broken-Dup S-SEQ:%d delivered:%d from peer, Abort!\n",
 		    strmseq, asoc->strmin[strmno].last_sequence_delivered);
-		oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-		    0, M_NOWAIT, 1, MT_DATA);
-		if (oper) {
-			struct sctp_paramhdr *ph;
-			uint32_t *ippp;
 
-			SCTP_BUF_LEN(oper) = sizeof(struct sctp_paramhdr) +
-			    (3 * sizeof(uint32_t));
-			ph = mtod(oper, struct sctp_paramhdr *);
-			ph->param_type = htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-			ph->param_length = htons(SCTP_BUF_LEN(oper));
-			ippp = (uint32_t *) (ph + 1);
-			*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_14);
-			ippp++;
-			*ippp = tsn;
-			ippp++;
-			*ippp = ((strmno << 16) | strmseq);
-
-		}
-		stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_14;
-		sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+		snprintf(msg, sizeof(msg), "Delivered SSN=%4.4x, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+		    asoc->strmin[strmno].last_sequence_delivered,
+		    tsn, strmno, strmseq);
+		op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+		stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_16;
+		sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 		*abort_flag = 1;
 		return (0);
 	}
@@ -1671,13 +1511,7 @@ sctp_process_a_data_chunk(struct sctp_tcb *stcb, struct sctp_association *asoc,
 		    the_len, M_NOWAIT);
 #ifdef SCTP_MBUF_LOGGING
 		if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_MBUF_LOGGING_ENABLE) {
-			struct mbuf *mat;
-
-			for (mat = dmbuf; mat; mat = SCTP_BUF_NEXT(mat)) {
-				if (SCTP_BUF_IS_EXTENDED(mat)) {
-					sctp_log_mb(mat, SCTP_MBUF_ICOPY);
-				}
-			}
+			sctp_log_mbc(dmbuf, SCTP_MBUF_ICOPY);
 		}
 #endif
 	} else {
@@ -1729,7 +1563,6 @@ sctp_process_a_data_chunk(struct sctp_tcb *stcb, struct sctp_association *asoc,
 		sctp_alloc_a_readq(stcb, control);
 		sctp_build_readq_entry_mac(control, stcb, asoc->context, net, tsn,
 		    protocol_id,
-		    stcb->asoc.context,
 		    strmno, strmseq,
 		    chunk_flags,
 		    dmbuf);
@@ -1790,7 +1623,6 @@ failed_express_del:
 				asoc->highest_tsn_inside_nr_map = tsn;
 			}
 			SCTP_STAT_INCR(sctps_recvexpressm);
-			control->sinfo_tsn = tsn;
 			asoc->tsn_last_delivered = tsn;
 			asoc->fragment_flags = chunk_flags;
 			asoc->tsn_of_pdapi_last_delivered = tsn;
@@ -1857,7 +1689,6 @@ failed_pdapi_express_del:
 		sctp_alloc_a_readq(stcb, control);
 		sctp_build_readq_entry_mac(control, stcb, asoc->context, net, tsn,
 		    protocol_id,
-		    stcb->asoc.context,
 		    strmno, strmseq,
 		    chunk_flags,
 		    dmbuf);
@@ -1897,29 +1728,15 @@ failed_pdapi_express_del:
 					control->whoFrom = NULL;
 				}
 				sctp_free_a_readq(stcb, control);
-				oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-				    0, M_NOWAIT, 1, MT_DATA);
-				if (oper) {
-					struct sctp_paramhdr *ph;
-					uint32_t *ippp;
-
-					SCTP_BUF_LEN(oper) =
-					    sizeof(struct sctp_paramhdr) +
-					    (3 * sizeof(uint32_t));
-					ph = mtod(oper, struct sctp_paramhdr *);
-					ph->param_type =
-					    htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-					ph->param_length = htons(SCTP_BUF_LEN(oper));
-					ippp = (uint32_t *) (ph + 1);
-					*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_15);
-					ippp++;
-					*ippp = tsn;
-					ippp++;
-					*ippp = ((strmno << 16) | strmseq);
-				}
-				stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_15;
-				sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+				snprintf(msg, sizeof(msg), "Reas. queue emtpy, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+				    tsn, strmno, strmseq);
+				op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+				stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_17;
+				sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 				*abort_flag = 1;
+				if (last_chunk) {
+					*m = NULL;
+				}
 				return (0);
 			} else {
 				if (sctp_does_tsn_belong_to_reasm(asoc, control->sinfo_tsn)) {
@@ -1930,32 +1747,15 @@ failed_pdapi_express_del:
 						control->whoFrom = NULL;
 					}
 					sctp_free_a_readq(stcb, control);
-
-					oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-					    0, M_NOWAIT, 1, MT_DATA);
-					if (oper) {
-						struct sctp_paramhdr *ph;
-						uint32_t *ippp;
-
-						SCTP_BUF_LEN(oper) =
-						    sizeof(struct sctp_paramhdr) +
-						    (3 * sizeof(uint32_t));
-						ph = mtod(oper,
-						    struct sctp_paramhdr *);
-						ph->param_type =
-						    htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-						ph->param_length =
-						    htons(SCTP_BUF_LEN(oper));
-						ippp = (uint32_t *) (ph + 1);
-						*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_16);
-						ippp++;
-						*ippp = tsn;
-						ippp++;
-						*ippp = ((strmno << 16) | strmseq);
-					}
-					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_16;
-					sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+					snprintf(msg, sizeof(msg), "PD ongoing, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+					    tsn, strmno, strmseq);
+					op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_18;
+					sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 					*abort_flag = 1;
+					if (last_chunk) {
+						*m = NULL;
+					}
 					return (0);
 				}
 			}
@@ -1976,31 +1776,15 @@ failed_pdapi_express_del:
 						control->whoFrom = NULL;
 					}
 					sctp_free_a_readq(stcb, control);
-					oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-					    0, M_NOWAIT, 1, MT_DATA);
-					if (oper) {
-						struct sctp_paramhdr *ph;
-						uint32_t *ippp;
-
-						SCTP_BUF_LEN(oper) =
-						    sizeof(struct sctp_paramhdr) +
-						    (3 * sizeof(uint32_t));
-						ph = mtod(oper,
-						    struct sctp_paramhdr *);
-						ph->param_type =
-						    htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-						ph->param_length =
-						    htons(SCTP_BUF_LEN(oper));
-						ippp = (uint32_t *) (ph + 1);
-						*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_17);
-						ippp++;
-						*ippp = tsn;
-						ippp++;
-						*ippp = ((strmno << 16) | strmseq);
-					}
-					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_17;
-					sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+					snprintf(msg, sizeof(msg), "No PD ongoing, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
+					    tsn, strmno, strmseq);
+					op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+					stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_19;
+					sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 					*abort_flag = 1;
+					if (last_chunk) {
+						*m = NULL;
+					}
 					return (0);
 				}
 			}
@@ -2064,6 +1848,9 @@ failed_pdapi_express_del:
 			} else {
 				sctp_queue_data_to_stream(stcb, asoc, control, abort_flag);
 				if (*abort_flag) {
+					if (last_chunk) {
+						*m = NULL;
+					}
 					return (0);
 				}
 			}
@@ -2076,7 +1863,9 @@ failed_pdapi_express_del:
 			 * the assoc is now gone and chk was put onto the
 			 * reasm queue, which has all been freed.
 			 */
-			*m = NULL;
+			if (last_chunk) {
+				*m = NULL;
+			}
 			return (0);
 		}
 	}
@@ -2115,6 +1904,7 @@ finish_express_del:
 
 		sctp_reset_in_stream(stcb, liste->number_entries, liste->list_of_streams);
 		TAILQ_REMOVE(&asoc->resetHead, liste, next_resp);
+		sctp_send_deferred_reset_response(stcb, liste, SCTP_STREAM_RESET_RESULT_PERFORMED);
 		SCTP_FREE(liste, SCTP_M_STRESET);
 		/* sa_ignore FREED_MEMORY */
 		liste = TAILQ_FIRST(&asoc->resetHead);
@@ -2388,7 +2178,8 @@ sctp_sack_check(struct sctp_tcb *stcb, int was_a_gap)
 		 */
 		if (SCTP_OS_TIMER_PENDING(&stcb->asoc.dack_timer.timer)) {
 			sctp_timer_stop(SCTP_TIMER_TYPE_RECV,
-			    stcb->sctp_ep, stcb, NULL, SCTP_FROM_SCTP_INDATA + SCTP_LOC_18);
+			    stcb->sctp_ep, stcb, NULL,
+			    SCTP_FROM_SCTP_INDATA + SCTP_LOC_20);
 		}
 		sctp_send_shutdown(stcb,
 		    ((stcb->asoc.alternate) ? stcb->asoc.alternate : stcb->asoc.primary_destination));
@@ -2494,7 +2285,7 @@ doit_again:
 		 * delivery queue and something can be delivered.
 		 */
 		if (stcb->sctp_socket) {
-			pd_point = min(SCTP_SB_LIMIT_RCV(stcb->sctp_socket),
+			pd_point = min(SCTP_SB_LIMIT_RCV(stcb->sctp_socket) >> SCTP_PARTIAL_DELIVERY_SHIFT,
 			    stcb->sctp_ep->partial_delivery_point);
 		} else {
 			pd_point = stcb->sctp_ep->partial_delivery_point;
@@ -2516,11 +2307,8 @@ doit_again:
 
 int
 sctp_process_data(struct mbuf **mm, int iphlen, int *offset, int length,
-    struct sockaddr *src, struct sockaddr *dst,
-    struct sctphdr *sh, struct sctp_inpcb *inp,
-    struct sctp_tcb *stcb, struct sctp_nets *net, uint32_t * high_tsn,
-    uint8_t use_mflowid, uint32_t mflowid,
-    uint32_t vrf_id, uint16_t port)
+    struct sctp_inpcb *inp, struct sctp_tcb *stcb,
+    struct sctp_nets *net, uint32_t * high_tsn)
 {
 	struct sctp_data_chunk *ch, chunk_buf;
 	struct sctp_association *asoc;
@@ -2600,37 +2388,31 @@ sctp_process_data(struct mbuf **mm, int iphlen, int *offset, int length,
 			continue;
 		}
 		if (ch->ch.chunk_type == SCTP_DATA) {
-			if ((size_t)chk_length < sizeof(struct sctp_data_chunk) + 1) {
+			if ((size_t)chk_length < sizeof(struct sctp_data_chunk)) {
 				/*
 				 * Need to send an abort since we had a
 				 * invalid data chunk.
 				 */
 				struct mbuf *op_err;
+				char msg[SCTP_DIAG_INFO_LEN];
 
-				op_err = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 2 * sizeof(uint32_t)),
-				    0, M_NOWAIT, 1, MT_DATA);
+				snprintf(msg, sizeof(msg), "DATA chunk of length %d",
+				    chk_length);
+				op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+				stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_21;
+				sctp_abort_an_association(inp, stcb, op_err, SCTP_SO_NOT_LOCKED);
+				return (2);
+			}
+			if ((size_t)chk_length == sizeof(struct sctp_data_chunk)) {
+				/*
+				 * Need to send an abort since we had an
+				 * empty data chunk.
+				 */
+				struct mbuf *op_err;
 
-				if (op_err) {
-					struct sctp_paramhdr *ph;
-					uint32_t *ippp;
-
-					SCTP_BUF_LEN(op_err) = sizeof(struct sctp_paramhdr) +
-					    (2 * sizeof(uint32_t));
-					ph = mtod(op_err, struct sctp_paramhdr *);
-					ph->param_type =
-					    htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-					ph->param_length = htons(SCTP_BUF_LEN(op_err));
-					ippp = (uint32_t *) (ph + 1);
-					*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_19);
-					ippp++;
-					*ippp = asoc->cumulative_tsn;
-
-				}
-				stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_19;
-				sctp_abort_association(inp, stcb, m, iphlen,
-				    src, dst, sh, op_err,
-				    use_mflowid, mflowid,
-				    vrf_id, port);
+				op_err = sctp_generate_no_user_data_cause(ch->dp.tsn);
+				stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_22;
+				sctp_abort_an_association(inp, stcb, op_err, SCTP_SO_NOT_LOCKED);
 				return (2);
 			}
 #ifdef SCTP_AUDITING_ENABLED
@@ -2692,14 +2474,12 @@ sctp_process_data(struct mbuf **mm, int iphlen, int *offset, int length,
 				 */
 				if (SCTP_BASE_SYSCTL(sctp_strict_data_order)) {
 					struct mbuf *op_err;
+					char msg[SCTP_DIAG_INFO_LEN];
 
-					op_err = sctp_generate_invmanparam(SCTP_CAUSE_PROTOCOL_VIOLATION);
-					sctp_abort_association(inp, stcb,
-					    m, iphlen,
-					    src, dst,
-					    sh, op_err,
-					    use_mflowid, mflowid,
-					    vrf_id, port);
+					snprintf(msg, sizeof(msg), "DATA chunk followed by chunk of type %2.2x",
+					    ch->ch.chunk_type);
+					op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+					sctp_abort_an_association(inp, stcb, op_err, SCTP_SO_NOT_LOCKED);
 					return (2);
 				}
 				break;
@@ -2707,34 +2487,21 @@ sctp_process_data(struct mbuf **mm, int iphlen, int *offset, int length,
 				/* unknown chunk type, use bit rules */
 				if (ch->ch.chunk_type & 0x40) {
 					/* Add a error report to the queue */
-					struct mbuf *merr;
-					struct sctp_paramhdr *phd;
+					struct mbuf *op_err;
+					struct sctp_gen_error_cause *cause;
 
-					merr = sctp_get_mbuf_for_msg(sizeof(*phd), 0, M_NOWAIT, 1, MT_DATA);
-					if (merr) {
-						phd = mtod(merr, struct sctp_paramhdr *);
-						/*
-						 * We cheat and use param
-						 * type since we did not
-						 * bother to define a error
-						 * cause struct. They are
-						 * the same basic format
-						 * with different names.
-						 */
-						phd->param_type =
-						    htons(SCTP_CAUSE_UNRECOG_CHUNK);
-						phd->param_length =
-						    htons(chk_length + sizeof(*phd));
-						SCTP_BUF_LEN(merr) = sizeof(*phd);
-						SCTP_BUF_NEXT(merr) = SCTP_M_COPYM(m, *offset, chk_length, M_NOWAIT);
-						if (SCTP_BUF_NEXT(merr)) {
-							if (sctp_pad_lastmbuf(SCTP_BUF_NEXT(merr), SCTP_SIZE32(chk_length) - chk_length, NULL)) {
-								sctp_m_freem(merr);
-							} else {
-								sctp_queue_op_err(stcb, merr);
-							}
+					op_err = sctp_get_mbuf_for_msg(sizeof(struct sctp_gen_error_cause),
+					    0, M_NOWAIT, 1, MT_DATA);
+					if (op_err != NULL) {
+						cause = mtod(op_err, struct sctp_gen_error_cause *);
+						cause->code = htons(SCTP_CAUSE_UNRECOG_CHUNK);
+						cause->length = htons(chk_length + sizeof(struct sctp_gen_error_cause));
+						SCTP_BUF_LEN(op_err) = sizeof(struct sctp_gen_error_cause);
+						SCTP_BUF_NEXT(op_err) = SCTP_M_COPYM(m, *offset, chk_length, M_NOWAIT);
+						if (SCTP_BUF_NEXT(op_err) != NULL) {
+							sctp_queue_op_err(stcb, op_err);
 						} else {
-							sctp_m_freem(merr);
+							sctp_m_freem(op_err);
 						}
 					}
 				}
@@ -2826,12 +2593,14 @@ sctp_process_segment_range(struct sctp_tcb *stcb, struct sctp_tmit_chunk **p_tp1
 			 * cumack trackers for first transmissions,
 			 * and retransmissions.
 			 */
-			if ((tp1->whoTo->find_pseudo_cumack == 1) && (tp1->sent < SCTP_DATAGRAM_RESEND) &&
+			if ((tp1->sent < SCTP_DATAGRAM_RESEND) &&
+			    (tp1->whoTo->find_pseudo_cumack == 1) &&
 			    (tp1->snd_count == 1)) {
 				tp1->whoTo->pseudo_cumack = tp1->rec.data.TSN_seq;
 				tp1->whoTo->find_pseudo_cumack = 0;
 			}
-			if ((tp1->whoTo->find_rtx_pseudo_cumack == 1) && (tp1->sent < SCTP_DATAGRAM_RESEND) &&
+			if ((tp1->sent < SCTP_DATAGRAM_RESEND) &&
+			    (tp1->whoTo->find_rtx_pseudo_cumack == 1) &&
 			    (tp1->snd_count > 1)) {
 				tp1->whoTo->rtx_pseudo_cumack = tp1->rec.data.TSN_seq;
 				tp1->whoTo->find_rtx_pseudo_cumack = 0;
@@ -2993,6 +2762,11 @@ sctp_process_segment_range(struct sctp_tcb *stcb, struct sctp_tmit_chunk **p_tp1
 						} else {
 							panic("No chunks on the queues for sid %u.", tp1->rec.data.stream_number);
 #endif
+						}
+						if ((stcb->asoc.strmout[tp1->rec.data.stream_number].chunks_on_queues == 0) &&
+						    (stcb->asoc.strmout[tp1->rec.data.stream_number].state == SCTP_STREAM_RESET_PENDING) &&
+						    TAILQ_EMPTY(&stcb->asoc.strmout[tp1->rec.data.stream_number].outqueue)) {
+							stcb->asoc.trigger_reset = 1;
 						}
 						tp1->sent = SCTP_DATAGRAM_NR_ACKED;
 						if (tp1->data) {
@@ -3183,7 +2957,7 @@ sctp_strike_gap_ack_chunks(struct sctp_tcb *stcb, struct sctp_association *asoc,
 				num_dests_sacked++;
 		}
 	}
-	if (stcb->asoc.peer_supports_prsctp) {
+	if (stcb->asoc.prsctp_supported) {
 		(void)SCTP_GETTIME_TIMEVAL(&now);
 	}
 	TAILQ_FOREACH(tp1, &asoc->sent_queue, sctp_next) {
@@ -3204,7 +2978,7 @@ sctp_strike_gap_ack_chunks(struct sctp_tcb *stcb, struct sctp_association *asoc,
 			/* done */
 			break;
 		}
-		if (stcb->asoc.peer_supports_prsctp) {
+		if (stcb->asoc.prsctp_supported) {
 			if ((PR_SCTP_TTL_ENABLED(tp1->flags)) && tp1->sent < SCTP_DATAGRAM_ACKED) {
 				/* Is it expired? */
 				if (timevalcmp(&now, &tp1->rec.data.timetodrop, >)) {
@@ -3458,7 +3232,7 @@ sctp_strike_gap_ack_chunks(struct sctp_tcb *stcb, struct sctp_association *asoc,
 			/* remove from the total flight */
 			sctp_total_flight_decrease(stcb, tp1);
 
-			if ((stcb->asoc.peer_supports_prsctp) &&
+			if ((stcb->asoc.prsctp_supported) &&
 			    (PR_SCTP_RTX_ENABLED(tp1->flags))) {
 				/*
 				 * Has it been retransmitted tv_sec times? -
@@ -3603,7 +3377,7 @@ sctp_try_advance_peer_ack_point(struct sctp_tcb *stcb,
 	struct timeval now;
 	int now_filled = 0;
 
-	if (asoc->peer_supports_prsctp == 0) {
+	if (asoc->prsctp_supported == 0) {
 		return (NULL);
 	}
 	TAILQ_FOREACH_SAFE(tp1, &asoc->sent_queue, sctp_next, tp2) {
@@ -3689,12 +3463,18 @@ sctp_fs_audit(struct sctp_association *asoc)
 {
 	struct sctp_tmit_chunk *chk;
 	int inflight = 0, resend = 0, inbetween = 0, acked = 0, above = 0;
-	int entry_flight, entry_cnt, ret;
+	int ret;
 
+#ifndef INVARIANTS
+	int entry_flight, entry_cnt;
+
+#endif
+
+	ret = 0;
+#ifndef INVARIANTS
 	entry_flight = asoc->total_flight;
 	entry_cnt = asoc->total_flight_count;
-	ret = 0;
-
+#endif
 	if (asoc->pr_sctp_cnt >= asoc->sent_queue_cnt)
 		return (0);
 
@@ -3741,7 +3521,7 @@ sctp_window_probe_recovery(struct sctp_tcb *stcb,
 	if ((tp1->sent >= SCTP_DATAGRAM_ACKED) || (tp1->data == NULL)) {
 		/* TSN's skipped we do NOT move back. */
 		sctp_misc_ints(SCTP_FLIGHT_LOG_DWN_WP_FWD,
-		    tp1->whoTo->flight_size,
+		    tp1->whoTo ? tp1->whoTo->flight_size : 0,
 		    tp1->book_size,
 		    (uintptr_t) tp1->whoTo,
 		    tp1->rec.data.TSN_seq);
@@ -3841,34 +3621,17 @@ sctp_express_handle_sack(struct sctp_tcb *stcb, uint32_t cumack,
 			send_s = asoc->sending_seq;
 		}
 		if (SCTP_TSN_GE(cumack, send_s)) {
-#ifndef INVARIANTS
-			struct mbuf *oper;
-
-#endif
-#ifdef INVARIANTS
-			panic("Impossible sack 1");
-#else
+			struct mbuf *op_err;
+			char msg[SCTP_DIAG_INFO_LEN];
 
 			*abort_now = 1;
 			/* XXX */
-			oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + sizeof(uint32_t)),
-			    0, M_NOWAIT, 1, MT_DATA);
-			if (oper) {
-				struct sctp_paramhdr *ph;
-				uint32_t *ippp;
-
-				SCTP_BUF_LEN(oper) = sizeof(struct sctp_paramhdr) +
-				    sizeof(uint32_t);
-				ph = mtod(oper, struct sctp_paramhdr *);
-				ph->param_type = htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-				ph->param_length = htons(SCTP_BUF_LEN(oper));
-				ippp = (uint32_t *) (ph + 1);
-				*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_25);
-			}
-			stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_25;
-			sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+			snprintf(msg, sizeof(msg), "Cum ack %8.8x greater or equal than TSN %8.8x",
+			    cumack, send_s);
+			op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+			stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_23;
+			sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 			return;
-#endif
 		}
 	}
 	asoc->this_sack_highest_gap = cumack;
@@ -3978,6 +3741,11 @@ sctp_express_handle_sack(struct sctp_tcb *stcb, uint32_t cumack,
 #endif
 					}
 				}
+				if ((asoc->strmout[tp1->rec.data.stream_number].chunks_on_queues == 0) &&
+				    (asoc->strmout[tp1->rec.data.stream_number].state == SCTP_STREAM_RESET_PENDING) &&
+				    TAILQ_EMPTY(&asoc->strmout[tp1->rec.data.stream_number].outqueue)) {
+					asoc->trigger_reset = 1;
+				}
 				TAILQ_REMOVE(&asoc->sent_queue, tp1, sctp_next);
 				if (tp1->data) {
 					/* sa_ignore NO_NULL_CHK */
@@ -4062,7 +3830,9 @@ sctp_express_handle_sack(struct sctp_tcb *stcb, uint32_t cumack,
 				}
 				if (net->dest_state & SCTP_ADDR_PF) {
 					net->dest_state &= ~SCTP_ADDR_PF;
-					sctp_timer_stop(SCTP_TIMER_TYPE_HEARTBEAT, stcb->sctp_ep, stcb, net, SCTP_FROM_SCTP_INPUT + SCTP_LOC_3);
+					sctp_timer_stop(SCTP_TIMER_TYPE_HEARTBEAT,
+					    stcb->sctp_ep, stcb, net,
+					    SCTP_FROM_SCTP_INDATA + SCTP_LOC_24);
 					sctp_timer_start(SCTP_TIMER_TYPE_HEARTBEAT, stcb->sctp_ep, stcb, net);
 					asoc->cc_functions.sctp_cwnd_update_exit_pf(stcb, net);
 					/* Done with this net */
@@ -4148,7 +3918,7 @@ again:
 			} else if (SCTP_OS_TIMER_PENDING(&net->rxt_timer.timer)) {
 				sctp_timer_stop(SCTP_TIMER_TYPE_SEND, stcb->sctp_ep,
 				    stcb, net,
-				    SCTP_FROM_SCTP_INDATA + SCTP_LOC_22);
+				    SCTP_FROM_SCTP_INDATA + SCTP_LOC_25);
 			}
 		}
 	}
@@ -4216,23 +3986,15 @@ again:
 		    (asoc->stream_queue_cnt == 0)) {
 			if (asoc->state & SCTP_STATE_PARTIAL_MSG_LEFT) {
 				/* Need to abort here */
-				struct mbuf *oper;
+				struct mbuf *op_err;
 
 		abort_out_now:
 				*abort_now = 1;
 				/* XXX */
-				oper = sctp_get_mbuf_for_msg(sizeof(struct sctp_paramhdr),
-				    0, M_NOWAIT, 1, MT_DATA);
-				if (oper) {
-					struct sctp_paramhdr *ph;
-
-					SCTP_BUF_LEN(oper) = sizeof(struct sctp_paramhdr);
-					ph = mtod(oper, struct sctp_paramhdr *);
-					ph->param_type = htons(SCTP_CAUSE_USER_INITIATED_ABT);
-					ph->param_length = htons(SCTP_BUF_LEN(oper));
-				}
-				stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_24;
-				sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+				op_err = sctp_generate_cause(SCTP_CAUSE_USER_INITIATED_ABT, "");
+				stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_26;
+				sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
+				return;
 			} else {
 				struct sctp_nets *netp;
 
@@ -4284,7 +4046,7 @@ again:
 		asoc->advanced_peer_ack_point = cumack;
 	}
 	/* PR-Sctp issues need to be addressed too */
-	if ((asoc->peer_supports_prsctp) && (asoc->pr_sctp_cnt > 0)) {
+	if ((asoc->prsctp_supported) && (asoc->pr_sctp_cnt > 0)) {
 		struct sctp_tmit_chunk *lchk;
 		uint32_t old_adv_peer_ack_point;
 
@@ -4425,7 +4187,8 @@ sctp_handle_sack(struct mbuf *m, int offset_seg, int offset_dup,
 			send_s = asoc->sending_seq;
 		}
 		if (SCTP_TSN_GE(cum_ack, send_s)) {
-			struct mbuf *oper;
+			struct mbuf *op_err;
+			char msg[SCTP_DIAG_INFO_LEN];
 
 			/*
 			 * no way, we have not even sent this TSN out yet.
@@ -4440,22 +4203,11 @@ sctp_handle_sack(struct mbuf *m, int offset_seg, int offset_dup,
 	hopeless_peer:
 			*abort_now = 1;
 			/* XXX */
-			oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + sizeof(uint32_t)),
-			    0, M_NOWAIT, 1, MT_DATA);
-			if (oper) {
-				struct sctp_paramhdr *ph;
-				uint32_t *ippp;
-
-				SCTP_BUF_LEN(oper) = sizeof(struct sctp_paramhdr) +
-				    sizeof(uint32_t);
-				ph = mtod(oper, struct sctp_paramhdr *);
-				ph->param_type = htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-				ph->param_length = htons(SCTP_BUF_LEN(oper));
-				ippp = (uint32_t *) (ph + 1);
-				*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_25);
-			}
-			stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_25;
-			sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+			snprintf(msg, sizeof(msg), "Cum ack %8.8x greater or equal than TSN %8.8x",
+			    cum_ack, send_s);
+			op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+			stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_27;
+			sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 			return;
 		}
 	}
@@ -4486,7 +4238,7 @@ sctp_handle_sack(struct mbuf *m, int offset_seg, int offset_dup,
 		/* stop any timers */
 		TAILQ_FOREACH(net, &asoc->nets, sctp_next) {
 			sctp_timer_stop(SCTP_TIMER_TYPE_SEND, stcb->sctp_ep,
-			    stcb, net, SCTP_FROM_SCTP_INDATA + SCTP_LOC_26);
+			    stcb, net, SCTP_FROM_SCTP_INDATA + SCTP_LOC_28);
 			net->partial_bytes_acked = 0;
 			net->flight_size = 0;
 		}
@@ -4691,14 +4443,14 @@ sctp_handle_sack(struct mbuf *m, int offset_seg, int offset_dup,
 			if (net->new_pseudo_cumack)
 				sctp_timer_stop(SCTP_TIMER_TYPE_SEND, stcb->sctp_ep,
 				    stcb, net,
-				    SCTP_FROM_SCTP_INDATA + SCTP_LOC_27);
+				    SCTP_FROM_SCTP_INDATA + SCTP_LOC_29);
 
 		}
 	} else {
 		if (accum_moved) {
 			TAILQ_FOREACH(net, &asoc->nets, sctp_next) {
 				sctp_timer_stop(SCTP_TIMER_TYPE_SEND, stcb->sctp_ep,
-				    stcb, net, SCTP_FROM_SCTP_INDATA + SCTP_LOC_28);
+				    stcb, net, SCTP_FROM_SCTP_INDATA + SCTP_LOC_30);
 			}
 		}
 	}
@@ -4720,8 +4472,13 @@ sctp_handle_sack(struct mbuf *m, int offset_seg, int offset_dup,
 #endif
 			}
 		}
+		if ((asoc->strmout[tp1->rec.data.stream_number].chunks_on_queues == 0) &&
+		    (asoc->strmout[tp1->rec.data.stream_number].state == SCTP_STREAM_RESET_PENDING) &&
+		    TAILQ_EMPTY(&asoc->strmout[tp1->rec.data.stream_number].outqueue)) {
+			asoc->trigger_reset = 1;
+		}
 		TAILQ_REMOVE(&asoc->sent_queue, tp1, sctp_next);
-		if (tp1->pr_sctp_on) {
+		if (PR_SCTP_ENABLED(tp1->flags)) {
 			if (asoc->pr_sctp_cnt != 0)
 				asoc->pr_sctp_cnt--;
 		}
@@ -4731,7 +4488,7 @@ sctp_handle_sack(struct mbuf *m, int offset_seg, int offset_dup,
 			sctp_free_bufspace(stcb, asoc, tp1, 1);
 			sctp_m_freem(tp1->data);
 			tp1->data = NULL;
-			if (asoc->peer_supports_prsctp && PR_SCTP_BUF_ENABLED(tp1->flags)) {
+			if (asoc->prsctp_supported && PR_SCTP_BUF_ENABLED(tp1->flags)) {
 				asoc->sent_queue_cnt_removeable--;
 			}
 		}
@@ -4871,7 +4628,9 @@ sctp_handle_sack(struct mbuf *m, int offset_seg, int offset_dup,
 				}
 				if (net->dest_state & SCTP_ADDR_PF) {
 					net->dest_state &= ~SCTP_ADDR_PF;
-					sctp_timer_stop(SCTP_TIMER_TYPE_HEARTBEAT, stcb->sctp_ep, stcb, net, SCTP_FROM_SCTP_INPUT + SCTP_LOC_3);
+					sctp_timer_stop(SCTP_TIMER_TYPE_HEARTBEAT,
+					    stcb->sctp_ep, stcb, net,
+					    SCTP_FROM_SCTP_INDATA + SCTP_LOC_31);
 					sctp_timer_start(SCTP_TIMER_TYPE_HEARTBEAT, stcb->sctp_ep, stcb, net);
 					asoc->cc_functions.sctp_cwnd_update_exit_pf(stcb, net);
 					/* Done with this net */
@@ -4894,7 +4653,8 @@ sctp_handle_sack(struct mbuf *m, int offset_seg, int offset_dup,
 		TAILQ_FOREACH(net, &asoc->nets, sctp_next) {
 			/* stop all timers */
 			sctp_timer_stop(SCTP_TIMER_TYPE_SEND, stcb->sctp_ep,
-			    stcb, net, SCTP_FROM_SCTP_INDATA + SCTP_LOC_30);
+			    stcb, net,
+			    SCTP_FROM_SCTP_INDATA + SCTP_LOC_32);
 			net->flight_size = 0;
 			net->partial_bytes_acked = 0;
 		}
@@ -4944,23 +4704,14 @@ sctp_handle_sack(struct mbuf *m, int offset_seg, int offset_dup,
 		    (asoc->stream_queue_cnt == 0)) {
 			if (asoc->state & SCTP_STATE_PARTIAL_MSG_LEFT) {
 				/* Need to abort here */
-				struct mbuf *oper;
+				struct mbuf *op_err;
 
 		abort_out_now:
 				*abort_now = 1;
 				/* XXX */
-				oper = sctp_get_mbuf_for_msg(sizeof(struct sctp_paramhdr),
-				    0, M_NOWAIT, 1, MT_DATA);
-				if (oper) {
-					struct sctp_paramhdr *ph;
-
-					SCTP_BUF_LEN(oper) = sizeof(struct sctp_paramhdr);
-					ph = mtod(oper, struct sctp_paramhdr *);
-					ph->param_type = htons(SCTP_CAUSE_USER_INITIATED_ABT);
-					ph->param_length = htons(SCTP_BUF_LEN(oper));
-				}
-				stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_31;
-				sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+				op_err = sctp_generate_cause(SCTP_CAUSE_USER_INITIATED_ABT, "");
+				stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_33;
+				sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 				return;
 			} else {
 				struct sctp_nets *netp;
@@ -5111,7 +4862,7 @@ again:
 			} else if (SCTP_OS_TIMER_PENDING(&net->rxt_timer.timer)) {
 				sctp_timer_stop(SCTP_TIMER_TYPE_SEND, stcb->sctp_ep,
 				    stcb, net,
-				    SCTP_FROM_SCTP_INDATA + SCTP_LOC_22);
+				    SCTP_FROM_SCTP_INDATA + SCTP_LOC_34);
 			}
 		}
 	}
@@ -5152,7 +4903,7 @@ again:
 		asoc->advanced_peer_ack_point = cum_ack;
 	}
 	/* C2. try to further move advancedPeerAckPoint ahead */
-	if ((asoc->peer_supports_prsctp) && (asoc->pr_sctp_cnt > 0)) {
+	if ((asoc->prsctp_supported) && (asoc->pr_sctp_cnt > 0)) {
 		struct sctp_tmit_chunk *lchk;
 		uint32_t old_adv_peer_ack_point;
 
@@ -5389,33 +5140,20 @@ sctp_handle_forward_tsn(struct sctp_tcb *stcb,
 	asoc->cumulative_tsn = new_cum_tsn;
 	if (gap >= m_size) {
 		if ((long)gap > sctp_sbspace(&stcb->asoc, &stcb->sctp_socket->so_rcv)) {
-			struct mbuf *oper;
+			struct mbuf *op_err;
+			char msg[SCTP_DIAG_INFO_LEN];
 
 			/*
 			 * out of range (of single byte chunks in the rwnd I
 			 * give out). This must be an attacker.
 			 */
 			*abort_flag = 1;
-			oper = sctp_get_mbuf_for_msg((sizeof(struct sctp_paramhdr) + 3 * sizeof(uint32_t)),
-			    0, M_NOWAIT, 1, MT_DATA);
-			if (oper) {
-				struct sctp_paramhdr *ph;
-				uint32_t *ippp;
-
-				SCTP_BUF_LEN(oper) = sizeof(struct sctp_paramhdr) +
-				    (sizeof(uint32_t) * 3);
-				ph = mtod(oper, struct sctp_paramhdr *);
-				ph->param_type = htons(SCTP_CAUSE_PROTOCOL_VIOLATION);
-				ph->param_length = htons(SCTP_BUF_LEN(oper));
-				ippp = (uint32_t *) (ph + 1);
-				*ippp = htonl(SCTP_FROM_SCTP_INDATA + SCTP_LOC_33);
-				ippp++;
-				*ippp = asoc->highest_tsn_inside_map;
-				ippp++;
-				*ippp = new_cum_tsn;
-			}
-			stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_33;
-			sctp_abort_an_association(stcb->sctp_ep, stcb, oper, SCTP_SO_NOT_LOCKED);
+			snprintf(msg, sizeof(msg),
+			    "New cum ack %8.8x too high, highest TSN %8.8x",
+			    new_cum_tsn, asoc->highest_tsn_inside_map);
+			op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
+			stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_35;
+			sctp_abort_an_association(stcb->sctp_ep, stcb, op_err, SCTP_SO_NOT_LOCKED);
 			return;
 		}
 		SCTP_STAT_INCR(sctps_fwdtsn_map_over);

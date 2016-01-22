@@ -43,12 +43,12 @@
  * BSD disklabel partition within an MBR slice:
  *
  * 	d_slice = MBR slice number (typically 1..4)
- * 	d_partition = disklabel partition (typically 0..7)
+ * 	d_partition = disklabel partition (typically 0..19)
  *
  * BSD disklabel partition on the true dedicated disk:
  *
  * 	d_slice = -1
- * 	d_partition = disklabel partition (typically 0..7)
+ * 	d_partition = disklabel partition (typically 0..19)
  *
  * GPT partition:
  *
@@ -71,7 +71,7 @@
  * if there are multiple slices/partitions of a given type, the first one
  * is chosen.
  *
- * The low-level disk device will typically call slice_open() from its open
+ * The low-level disk device will typically call disk_open() from its open
  * method to interpret the disk partition tables according to the rules above.
  * This will initialize d_offset to the block offset of the start of the
  * selected partition - this offset should be added to the offset passed to
@@ -89,6 +89,11 @@ struct disk_devdesc
 	off_t		d_offset;
 };
 
+enum disk_ioctl {
+	IOCTL_GET_BLOCKS,
+	IOCTL_GET_BLOCK_SIZE
+};
+
 /*
  * Parse disk metadata and initialise dev->d_offset.
  */
@@ -97,6 +102,11 @@ extern int disk_open(struct disk_devdesc *dev, off_t mediasize,
 #define	DISK_F_NOCACHE	0x0001		/* Do not use metadata caching */
 extern int disk_close(struct disk_devdesc *dev);
 extern void disk_cleanup(const struct devsw *d_dev);
+extern int disk_ioctl(struct disk_devdesc *dev, u_long cmd, void *buf);
+extern int disk_read(struct disk_devdesc *dev, void *buf, off_t offset,
+    u_int blocks);
+extern int disk_write(struct disk_devdesc *dev, void *buf, off_t offset,
+    u_int blocks);
 
 /*
  * Print information about slices on a disk.

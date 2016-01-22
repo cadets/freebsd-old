@@ -335,7 +335,7 @@ files_servent(void *retval, void *mdata, va_list ap)
 	if (st->fp == NULL)
 		st->compat_mode_active = 0;
 
-	if (st->fp == NULL && (st->fp = fopen(_PATH_SERVICES, "r")) == NULL) {
+	if (st->fp == NULL && (st->fp = fopen(_PATH_SERVICES, "re")) == NULL) {
 		*errnop = errno;
 		return (NS_UNAVAIL);
 	}
@@ -449,7 +449,7 @@ files_setservent(void *retval, void *mdata, va_list ap)
 	case SETSERVENT:
 		f = va_arg(ap,int);
 		if (st->fp == NULL)
-			st->fp = fopen(_PATH_SERVICES, "r");
+			st->fp = fopen(_PATH_SERVICES, "re");
 		else
 			rewind(st->fp);
 		st->stayopen |= f;
@@ -1241,7 +1241,7 @@ setservent(int stayopen)
 }
 
 void
-endservent()
+endservent(void)
 {
 #ifdef NS_CACHING
 	static const nss_cache_info cache_info = NS_MP_CACHE_INFO_INITIALIZER(
@@ -1362,7 +1362,7 @@ getservbyport(int port, const char *proto)
 }
 
 struct servent *
-getservent()
+getservent(void)
 {
 	struct key key;
 

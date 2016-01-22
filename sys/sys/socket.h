@@ -84,6 +84,16 @@ typedef	__uid_t		uid_t;
 #endif
 #endif
 
+#ifndef _UINT32_T_DECLARED
+typedef	__uint32_t	uint32_t;
+#define	_UINT32_T_DECLARED
+#endif
+
+#ifndef _UINTPTR_T_DECLARED
+typedef	__uintptr_t	uintptr_t;
+#define	_UINTPTR_T_DECLARED
+#endif
+
 /*
  * Types
  */
@@ -230,7 +240,9 @@ struct accept_filter_arg {
 #define	AF_ARP		35
 #define	AF_BLUETOOTH	36		/* Bluetooth sockets */
 #define	AF_IEEE80211	37		/* IEEE 802.11 protocol */
-#define	AF_MAX		38
+#define	AF_INET_SDP	40		/* OFED Socket Direct Protocol ipv4 */
+#define	AF_INET6_SDP	42		/* OFED Socket Direct Protocol ipv6 */
+#define	AF_MAX		42
 /*
  * When allocating a new AF_ constant, please only allocate
  * even numbered constants for FreeBSD until 134 as odd numbered AF_
@@ -352,6 +364,9 @@ struct sockproto {
 #define PF_SCLUSTER	AF_SCLUSTER
 #define	PF_ARP		AF_ARP
 #define	PF_BLUETOOTH	AF_BLUETOOTH
+#define	PF_IEEE80211	AF_IEEE80211
+#define	PF_INET_SDP	AF_INET_SDP
+#define	PF_INET6_SDP	AF_INET6_SDP
 
 #define	PF_MAX		AF_MAX
 
@@ -361,47 +376,8 @@ struct sockproto {
  * Second level is protocol family.
  * Third level is protocol number.
  *
- * Further levels are defined by the individual families below.
+ * Further levels are defined by the individual families.
  */
-#define NET_MAXID	AF_MAX
-
-#define CTL_NET_NAMES { \
-	{ 0, 0 }, \
-	{ "unix", CTLTYPE_NODE }, \
-	{ "inet", CTLTYPE_NODE }, \
-	{ "implink", CTLTYPE_NODE }, \
-	{ "pup", CTLTYPE_NODE }, \
-	{ "chaos", CTLTYPE_NODE }, \
-	{ "xerox_ns", CTLTYPE_NODE }, \
-	{ "iso", CTLTYPE_NODE }, \
-	{ "emca", CTLTYPE_NODE }, \
-	{ "datakit", CTLTYPE_NODE }, \
-	{ "ccitt", CTLTYPE_NODE }, \
-	{ "ibm_sna", CTLTYPE_NODE }, \
-	{ "decnet", CTLTYPE_NODE }, \
-	{ "dec_dli", CTLTYPE_NODE }, \
-	{ "lat", CTLTYPE_NODE }, \
-	{ "hylink", CTLTYPE_NODE }, \
-	{ "appletalk", CTLTYPE_NODE }, \
-	{ "route", CTLTYPE_NODE }, \
-	{ "link_layer", CTLTYPE_NODE }, \
-	{ "xtp", CTLTYPE_NODE }, \
-	{ "coip", CTLTYPE_NODE }, \
-	{ "cnt", CTLTYPE_NODE }, \
-	{ "rtip", CTLTYPE_NODE }, \
-	{ "ipx", CTLTYPE_NODE }, \
-	{ "sip", CTLTYPE_NODE }, \
-	{ "pip", CTLTYPE_NODE }, \
-	{ "isdn", CTLTYPE_NODE }, \
-	{ "key", CTLTYPE_NODE }, \
-	{ "inet6", CTLTYPE_NODE }, \
-	{ "natm", CTLTYPE_NODE }, \
-	{ "atm", CTLTYPE_NODE }, \
-	{ "hdrcomplete", CTLTYPE_NODE }, \
-	{ "netgraph", CTLTYPE_NODE }, \
-	{ "snp", CTLTYPE_NODE }, \
-	{ "scp", CTLTYPE_NODE }, \
-}
 
 /*
  * PF_ROUTE - Routing table
@@ -417,16 +393,6 @@ struct sockproto {
 #define	NET_RT_IFMALIST	4		/* return multicast address list */
 #define	NET_RT_IFLISTL	5		/* Survey interface list, using 'l'en
 					 * versions of msghdr structs. */
-#define	NET_RT_MAXID	6
-
-#define CTL_NET_RT_NAMES { \
-	{ 0, 0 }, \
-	{ "dump", CTLTYPE_STRUCT }, \
-	{ "flags", CTLTYPE_STRUCT }, \
-	{ "iflist", CTLTYPE_STRUCT }, \
-	{ "ifmalist", CTLTYPE_STRUCT }, \
-	{ "iflistl", CTLTYPE_STRUCT }, \
-}
 #endif /* __BSD_VISIBLE */
 
 /*
@@ -623,7 +589,11 @@ struct sf_hdtr {
 #define	SF_NODISKIO     0x00000001
 #define	SF_MNOWAIT	0x00000002
 #define	SF_SYNC		0x00000004
-#endif
+
+#ifdef _KERNEL
+#define	SFK_COMPAT	0x00000001
+#endif /* _KERNEL */
+#endif /* __BSD_VISIBLE */
 
 #ifndef	_KERNEL
 

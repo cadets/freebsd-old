@@ -50,7 +50,11 @@ __FBSDID("$FreeBSD$");
 CORE_ADDR
 kgdb_trgt_core_pcb(u_int cpuid)
 {
+#ifndef CROSS_DEBUGGER
 	return (kgdb_trgt_stop_pcb(cpuid, sizeof(struct pcb)));
+#else
+	return -1;
+#endif
 }
 
 void
@@ -59,7 +63,7 @@ kgdb_trgt_fetch_registers(int regno __unused)
 #ifndef CROSS_DEBUGGER
 	struct kthr *kt;
 	struct pcb pcb;
-	int i, reg;
+	int i;
 
 	kt = kgdb_thr_lookup_tid(ptid_get_pid(inferior_ptid));
 	if (kt == NULL)
@@ -68,24 +72,12 @@ kgdb_trgt_fetch_registers(int regno __unused)
 		warnx("kvm_read: %s", kvm_geterr(kvm));
 		memset(&pcb, 0, sizeof(pcb));
 	}
-	for (i = ARM_A1_REGNUM + 8; i <= ARM_SP_REGNUM; i++) {
-		supply_register(i, (char *)&pcb.un_32.pcb32_r8 +
-		    (i - (ARM_A1_REGNUM + 8 )) * 4);
+	for (i = ARM_A1_REGNUM + 4; i <= ARM_SP_REGNUM; i++) {
+		supply_register(i, (char *)&pcb.pcb_regs.sf_r4 +
+		    (i - (ARM_A1_REGNUM + 4 )) * 4);
 	}
-	if (pcb.un_32.pcb32_sp != 0) {
-		for (i = 0; i < 4; i++) {
-			if (kvm_read(kvm, pcb.un_32.pcb32_sp + (i) * 4,
-			    &reg, 4) != 4) {
-				warnx("kvm_read: %s", kvm_geterr(kvm));
-				break;
-			}
-			supply_register(ARM_A1_REGNUM + 4 + i, (char *)&reg);
-		}
-		if (kvm_read(kvm, pcb.un_32.pcb32_sp + 4 * 4, &reg, 4) != 4)
-			warnx("kvm_read :%s", kvm_geterr(kvm));
-		else
-			supply_register(ARM_PC_REGNUM, (char *)&reg);
-	}
+	supply_register(ARM_PC_REGNUM, (char *)&pcb.pcb_regs.sf_pc);
+	supply_register(ARM_LR_REGNUM, (char *)&pcb.pcb_regs.sf_lr);
 #endif
 }
 

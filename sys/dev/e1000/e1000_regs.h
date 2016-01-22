@@ -1,6 +1,6 @@
 /******************************************************************************
 
-  Copyright (c) 2001-2013, Intel Corporation 
+  Copyright (c) 2001-2015, Intel Corporation 
   All rights reserved.
   
   Redistribution and use in source and binary forms, with or without 
@@ -50,11 +50,16 @@
 #define E1000_BARCTRL			0x5BBC /* BAR ctrl reg */
 #define E1000_BARCTRL_FLSIZE		0x0700 /* BAR ctrl Flsize */
 #define E1000_BARCTRL_CSRSIZE		0x2000 /* BAR ctrl CSR size */
+#define E1000_MPHY_ADDR_CTRL	0x0024 /* GbE MPHY Address Control */
+#define E1000_MPHY_DATA		0x0E10 /* GBE MPHY Data */
+#define E1000_MPHY_STAT		0x0E0C /* GBE MPHY Statistics */
+#define E1000_PPHY_CTRL		0x5b48 /* PCIe PHY Control */
 #define E1000_I350_BARCTRL		0x5BFC /* BAR ctrl reg */
 #define E1000_I350_DTXMXPKTSZ		0x355C /* Maximum sent packet size reg*/
 #define E1000_SCTL	0x00024  /* SerDes Control - RW */
 #define E1000_FCAL	0x00028  /* Flow Control Address Low - RW */
 #define E1000_FCAH	0x0002C  /* Flow Control Address High -RW */
+#define E1000_FEXT	0x0002C  /* Future Extended - RW */
 #define E1000_FEXTNVM	0x00028  /* Future Extended NVM - RW */
 #define E1000_FEXTNVM3	0x0003C  /* Future Extended NVM 3 - RW */
 #define E1000_FEXTNVM4	0x00024  /* Future Extended NVM 4 - RW */
@@ -94,6 +99,7 @@
 #define E1000_TBT	0x00448  /* Tx Burst Timer - RW */
 #define E1000_AIT	0x00458  /* Adaptive Interframe Spacing Throttle - RW */
 #define E1000_LEDCTL	0x00E00  /* LED Control - RW */
+#define E1000_LEDMUX	0x08130  /* LED MUX Control */
 #define E1000_EXTCNF_CTRL	0x00F00  /* Extended Configuration Control */
 #define E1000_EXTCNF_SIZE	0x00F08  /* Extended Configuration Size */
 #define E1000_PHY_CTRL	0x00F10  /* PHY Control Register in CSR */
@@ -103,6 +109,7 @@
 #define E1000_PBECCSTS	0x0100C  /* Packet Buffer ECC Status - RW */
 #define E1000_EEMNGCTL	0x01010  /* MNG EEprom Control */
 #define E1000_EEARBC	0x01024  /* EEPROM Auto Read Bus Control */
+#define E1000_EEARBC_I210	0x12024 /* EEPROM Auto Read Bus Control */
 #define E1000_FLASHT	0x01028  /* FLASH Timer Register */
 #define E1000_EEWR	0x0102C  /* EEPROM Write Register - RW */
 #define E1000_FLSWCTL	0x01030  /* FLASH control register */
@@ -152,6 +159,8 @@
 #define E1000_PBRWAC	0x024E8 /* Rx packet buffer wrap around counter - RO */
 #define E1000_RDTR	0x02820  /* Rx Delay Timer - RW */
 #define E1000_RADV	0x0282C  /* Rx Interrupt Absolute Delay Timer - RW */
+#define E1000_EMIADD	0x10     /* Extended Memory Indirect Address */
+#define E1000_EMIDATA	0x11     /* Extended Memory Indirect Data */
 #define E1000_SRWR		0x12018  /* Shadow Ram Write Register - RW */
 #define E1000_I210_FLMNGCTL	0x12038
 #define E1000_I210_FLMNGDATA	0x1203C
@@ -193,7 +202,7 @@
 /* Queues fetch arbitration priority control register */
 #define E1000_I210_TQAVARBCTRL			0x3574
 /* Queues priority masks where _n and _p can be 0-3. */
-#define E1000_TQAVARBCTRL_QUEUE_PRI(_n, _p)	((_p) << (2 * _n))
+#define E1000_TQAVARBCTRL_QUEUE_PRI(_n, _p)	((_p) << (2 * (_n)))
 /* QAV Tx mode control registers where _n can be 0 or 1. */
 #define E1000_I210_TQAVCC(_n)			(0x3004 + 0x40 * (_n))
 
@@ -206,7 +215,10 @@
 #define E1000_PQGPTC(_n)		(0x010014 + (0x100 * (_n)))
 
 /* Queues packet buffer size masks where _n can be 0-3 and _s 0-63 [kB] */
-#define E1000_I210_TXPBS_SIZE(_n, _s)	((_s) << (6 * _n))
+#define E1000_I210_TXPBS_SIZE(_n, _s)	((_s) << (6 * (_n)))
+
+#define E1000_MMDAC			13 /* MMD Access Control */
+#define E1000_MMDAAD			14 /* MMD Access Address/Data */
 
 /* Convenience macros
  *
@@ -484,8 +496,6 @@
 #define E1000_PBACL	0x05B68  /* MSIx PBA Clear - Read/Write 1's to clear */
 #define E1000_FFLT	0x05F00  /* Flexible Filter Length Table - RW Array */
 #define E1000_HOST_IF	0x08800  /* Host Interface */
-#define E1000_FFMT	0x09000  /* Flexible Filter Mask Table - RW Array */
-#define E1000_FFVT	0x09800  /* Flexible Filter Value Table - RW Array */
 #define E1000_HIBBA	0x8F40   /* Host Interface Buffer Base Address */
 /* Flexible Host Filter Table */
 #define E1000_FHFT(_n)	(0x09000 + ((_n) * 0x100))
@@ -542,7 +552,7 @@
 #define E1000_WVBR	0x03554 /* VM Wrong Behavior - RWS */
 #define E1000_RPLOLR	0x05AF0 /* Replication Offload - RW */
 #define E1000_UTA	0x0A000 /* Unicast Table Array - RW */
-#define E1000_IOVTCL	0x05BBC /* IOV Control Register */
+#define E1000_IOVCTL	0x05BBC /* IOV Control Register */
 #define E1000_VMRCTL	0X05D80 /* Virtual Mirror Rule Control */
 #define E1000_VMRVLAN	0x05D90 /* Virtual Mirror Rule VLAN */
 #define E1000_VMRVM	0x05DA0 /* Virtual Mirror Rule VM */

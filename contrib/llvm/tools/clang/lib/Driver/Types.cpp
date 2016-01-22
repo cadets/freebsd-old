@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Driver/Types.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include <cassert>
 #include <string.h>
@@ -28,7 +29,7 @@ static const TypeInfo TypeInfos[] = {
 #include "clang/Driver/Types.def"
 #undef TYPE
 };
-static const unsigned numTypes = sizeof(TypeInfos) / sizeof(TypeInfos[0]);
+static const unsigned numTypes = llvm::array_lengthof(TypeInfos);
 
 static const TypeInfo &getInfo(unsigned id) {
   assert(id > 0 && id - 1 < numTypes && "Invalid Type ID.");
@@ -43,7 +44,13 @@ types::ID types::getPreprocessedType(ID Id) {
   return getInfo(Id).PreprocessedType;
 }
 
-const char *types::getTypeTempSuffix(ID Id) {
+const char *types::getTypeTempSuffix(ID Id, bool CLMode) {
+  if (Id == TY_Object && CLMode)
+    return "obj";
+  if (Id == TY_Image && CLMode)
+    return "exe";
+  if (Id == TY_PP_Asm && CLMode)
+    return "asm";
   return getInfo(Id).TempSuffix;
 }
 
@@ -78,7 +85,8 @@ bool types::isAcceptedByClang(ID Id) {
   case TY_Asm:
   case TY_C: case TY_PP_C:
   case TY_CL:
-  case TY_CUDA:
+  case TY_CUDA: case TY_PP_CUDA:
+  case TY_CUDA_DEVICE:
   case TY_ObjC: case TY_PP_ObjC: case TY_PP_ObjC_Alias:
   case TY_CXX: case TY_PP_CXX:
   case TY_ObjCXX: case TY_PP_ObjCXX: case TY_PP_ObjCXX_Alias:
@@ -115,7 +123,19 @@ bool types::isCXX(ID Id) {
   case TY_ObjCXX: case TY_PP_ObjCXX: case TY_PP_ObjCXX_Alias:
   case TY_CXXHeader: case TY_PP_CXXHeader:
   case TY_ObjCXXHeader: case TY_PP_ObjCXXHeader:
+  case TY_CUDA: case TY_PP_CUDA: case TY_CUDA_DEVICE:
+    return true;
+  }
+}
+
+bool types::isCuda(ID Id) {
+  switch (Id) {
+  default:
+    return false;
+
   case TY_CUDA:
+  case TY_PP_CUDA:
+  case TY_CUDA_DEVICE:
     return true;
   }
 }
@@ -132,8 +152,11 @@ types::ID types::lookupTypeForExtension(const char *Ext) {
            .Case("f", TY_PP_Fortran)
            .Case("F", TY_Fortran)
            .Case("s", TY_PP_Asm)
+           .Case("asm", TY_PP_Asm)
            .Case("S", TY_Asm)
            .Case("o", TY_Object)
+           .Case("obj", TY_Object)
+           .Case("lib", TY_Object)
            .Case("ii", TY_PP_CXX)
            .Case("mi", TY_PP_ObjC)
            .Case("mm", TY_ObjCXX)
@@ -143,6 +166,7 @@ types::ID types::lookupTypeForExtension(const char *Ext) {
            .Case("cl", TY_CL)
            .Case("cp", TY_CXX)
            .Case("cu", TY_CUDA)
+           .Case("cui", TY_PP_CUDA)
            .Case("hh", TY_CXXHeader)
            .Case("ll", TY_LLVM_IR)
            .Case("hpp", TY_CXXHeader)
@@ -165,6 +189,8 @@ types::ID types::lookupTypeForExtension(const char *Ext) {
            .Case("F95", TY_Fortran)
            .Case("mii", TY_PP_ObjCXX)
            .Case("pcm", TY_ModuleFile)
+           .Case("pch", TY_PCH)
+           .Case("gch", TY_PCH)
            .Default(TY_INVALID);
 }
 
@@ -180,9 +206,7 @@ types::ID types::lookupTypeForTypeSpecifier(const char *Name) {
 }
 
 // FIXME: Why don't we just put this list in the defs file, eh.
-void types::getCompilationPhases(
-  ID Id,
-  llvm::SmallVector<phases::ID, phases::MaxNumberOfPhases> &P) {
+void types::getCompilationPhases(ID Id, llvm::SmallVectorImpl<phases::ID> &P) {
   if (Id != TY_Object) {
     if (getPreprocessedType(Id) != TY_INVALID) {
       P.push_back(phases::Preprocess);
@@ -193,11 +217,14 @@ void types::getCompilationPhases(
     } else {
       if (!onlyAssembleType(Id)) {
         P.push_back(phases::Compile);
+        P.push_back(phases::Backend);
       }
-      P.push_back(phases::Assemble);
+      if (Id != TY_CUDA_DEVICE)
+        P.push_back(phases::Assemble);
     }
   }
-  if (!onlyPrecompileType(Id)) {
+
+  if (!onlyPrecompileType(Id) && Id != TY_CUDA_DEVICE) {
     P.push_back(phases::Link);
   }
   assert(0 < P.size() && "Not enough phases in list");

@@ -14,8 +14,8 @@
 // respective lists.
 //
 //===----------------------------------------------------------------------===//
-#ifndef LLVM_CLANG_FRONTEND_PCHBITCODES_H
-#define LLVM_CLANG_FRONTEND_PCHBITCODES_H
+#ifndef LLVM_CLANG_SERIALIZATION_ASTBITCODES_H
+#define LLVM_CLANG_SERIALIZATION_ASTBITCODES_H
 
 #include "clang/AST/Type.h"
 #include "llvm/ADT/DenseMap.h"
@@ -35,7 +35,7 @@ namespace clang {
     /// Version 4 of AST files also requires that the version control branch and
     /// revision match exactly, since there is no backward compatibility of
     /// AST files at this time.
-    const unsigned VERSION_MAJOR = 5;
+    const unsigned VERSION_MAJOR = 6;
 
     /// \brief AST file minor version number supported by this version of
     /// Clang.
@@ -149,7 +149,11 @@ namespace clang {
     /// \brief An ID number that refers to a set of CXXBaseSpecifiers in an 
     /// AST file.
     typedef uint32_t CXXBaseSpecifiersID;
-    
+
+    /// \brief An ID number that refers to a list of CXXCtorInitializers in an
+    /// AST file.
+    typedef uint32_t CXXCtorInitializersID;
+
     /// \brief An ID number that refers to an entity in the detailed
     /// preprocessing record.
     typedef uint32_t PreprocessedEntityID;
@@ -213,9 +217,6 @@ namespace clang {
       /// types and decls used within the AST file.
       DECLTYPES_BLOCK_ID,
 
-      /// \brief The block containing DECL_UPDATES records.
-      DECL_UPDATES_BLOCK_ID,
-      
       /// \brief The block containing the detailed preprocessing record.
       PREPROCESSOR_DETAIL_BLOCK_ID,
       
@@ -284,7 +285,24 @@ namespace clang {
       HEADER_SEARCH_OPTIONS = 11,
 
       /// \brief Record code for the preprocessor options table.
-      PREPROCESSOR_OPTIONS = 12
+      PREPROCESSOR_OPTIONS = 12,
+
+      /// \brief Record code for the module name.
+      MODULE_NAME = 13,
+
+      /// \brief Record code for the module map file that was used to build this
+      /// AST file.
+      MODULE_MAP_FILE = 14,
+
+      /// \brief Record code for the signature that identifiers this AST file.
+      SIGNATURE = 15,
+
+      /// \brief Record code for the module build directory.
+      MODULE_DIRECTORY = 16,
+
+      /// \brief Record code for the list of other AST files made available by
+      /// this AST file but not actually used by it.
+      KNOWN_MODULE_FILES = 17,
     };
 
     /// \brief Record types that occur within the input-files block
@@ -349,15 +367,15 @@ namespace clang {
       /// IDs).
       IDENTIFIER_TABLE = 5,
 
-      /// \brief Record code for the array of external definitions.
+      /// \brief Record code for the array of eagerly deserialized decls.
       ///
-      /// The AST file contains a list of all of the unnamed external
-      /// definitions present within the parsed headers, stored as an
-      /// array of declaration IDs. These external definitions will be
+      /// The AST file contains a list of all of the declarations that should be
+      /// eagerly deserialized present within the parsed headers, stored as an
+      /// array of declaration IDs. These declarations will be
       /// reported to the AST consumer after the AST file has been
       /// read, since their presence can affect the semantics of the
       /// program (e.g., for code generation).
-      EXTERNAL_DEFINITIONS = 6,
+      EAGERLY_DESERIALIZED_DECLS = 6,
 
       /// \brief Record code for the set of non-builtin, special
       /// types.
@@ -375,9 +393,7 @@ namespace clang {
       /// \brief Record code for the array of tentative definitions.
       TENTATIVE_DEFINITIONS = 9,
 
-      /// \brief Record code for the array of locally-scoped extern "C"
-      /// declarations.
-      LOCALLY_SCOPED_EXTERN_C_DECLS = 10,
+      // ID 10 used to be for a list of extern "C" declarations.
 
       /// \brief Record code for the table of offsets into the
       /// Objective-C method pool.
@@ -415,8 +431,7 @@ namespace clang {
       /// \brief Record code for the array of VTable uses.
       VTABLE_USES = 19,
 
-      /// \brief Record code for the array of dynamic classes.
-      DYNAMIC_CLASSES = 20,
+      // ID 20 used to be for a list of dynamic classes.
 
       /// \brief Record code for referenced selector pool.
       REFERENCED_SELECTOR_POOL = 21,
@@ -506,8 +521,7 @@ namespace clang {
       /// imported by the AST file.
       IMPORTED_MODULES = 43,
       
-      /// \brief Record code for the set of merged declarations in an AST file.
-      MERGED_DECLARATIONS = 44,
+      // ID 40 used to be a table of merged canonical declarations.
       
       /// \brief Record code for the array of redeclaration chains.
       ///
@@ -529,13 +543,27 @@ namespace clang {
       /// macro definition.
       MACRO_OFFSET = 47,
 
-      /// \brief Mapping table from the identifier ID to the offset of the
-      /// macro directive history for the identifier.
-      MACRO_TABLE = 48,
+      // ID 48 used to be a table of macros.
 
       /// \brief Record code for undefined but used functions and variables that
       /// need a definition in this TU.
-      UNDEFINED_BUT_USED = 49
+      UNDEFINED_BUT_USED = 49,
+
+      /// \brief Record code for late parsed template functions.
+      LATE_PARSED_TEMPLATE = 50,
+
+      /// \brief Record code for \#pragma optimize options.
+      OPTIMIZE_PRAGMA_OPTIONS = 51,
+
+      /// \brief Record code for potentially unused local typedef names.
+      UNUSED_LOCAL_TYPEDEF_NAME_CANDIDATES = 52,
+
+      /// \brief Record code for the table of offsets to CXXCtorInitializers
+      /// lists.
+      CXX_CTOR_INITIALIZERS_OFFSETS = 53,
+
+      /// \brief Delete expressions that will be analyzed later.
+      DELETE_EXPRS_TO_ANALYZE = 54
     };
 
     /// \brief Record types used within a source manager block.
@@ -575,7 +603,11 @@ namespace clang {
       PP_TOKEN = 3,
 
       /// \brief The macro directives history for a particular identifier.
-      PP_MACRO_DIRECTIVE_HISTORY = 4
+      PP_MACRO_DIRECTIVE_HISTORY = 4,
+
+      /// \brief A macro directive exported by a module.
+      /// [PP_MODULE_MACRO, SubmoduleID, MacroID, (Overridden SubmoduleID)*]
+      PP_MODULE_MACRO = 5,
     };
 
     /// \brief Record types used within a preprocessor detail block.
@@ -623,7 +655,15 @@ namespace clang {
       /// \brief Specifies a configuration macro for this module.
       SUBMODULE_CONFIG_MACRO = 11,
       /// \brief Specifies a conflict with another module.
-      SUBMODULE_CONFLICT = 12
+      SUBMODULE_CONFLICT = 12,
+      /// \brief Specifies a header that is private to this submodule.
+      SUBMODULE_PRIVATE_HEADER = 13,
+      /// \brief Specifies a header that is part of the module but must be
+      /// textually included.
+      SUBMODULE_TEXTUAL_HEADER = 14,
+      /// \brief Specifies a header that is private to this submodule but
+      /// must be textually included.
+      SUBMODULE_PRIVATE_TEXTUAL_HEADER = 15,
     };
 
     /// \brief Record types used within a comments block.
@@ -747,9 +787,6 @@ namespace clang {
     /// NUM_PREDEF_TYPE_IDs.
     const unsigned NUM_PREDEF_TYPE_IDS = 100;
 
-    /// \brief The number of allowed abbreviations in bits
-    const unsigned NUM_ALLOWED_ABBREVS_SIZE = 4;
-
     /// \brief Record codes for each kind of type.
     ///
     /// These constants describe the type records that can occur within a
@@ -834,7 +871,11 @@ namespace clang {
       /// \brief A UnaryTransformType record.
       TYPE_UNARY_TRANSFORM       = 39,
       /// \brief An AtomicType record.
-      TYPE_ATOMIC                = 40
+      TYPE_ATOMIC                = 40,
+      /// \brief A DecayedType record.
+      TYPE_DECAYED               = 41,
+      /// \brief An AdjustedType record.
+      TYPE_ADJUSTED              = 42
     };
 
     /// \brief The type IDs for special types constructed by semantic
@@ -899,14 +940,17 @@ namespace clang {
       PREDEF_DECL_OBJC_INSTANCETYPE_ID = 8,
 
       /// \brief The internal '__builtin_va_list' typedef.
-      PREDEF_DECL_BUILTIN_VA_LIST_ID = 9
+      PREDEF_DECL_BUILTIN_VA_LIST_ID = 9,
+
+      /// \brief The extern "C" context.
+      PREDEF_DECL_EXTERN_C_CONTEXT_ID = 10,
     };
 
     /// \brief The number of declaration IDs that are predefined.
     ///
     /// For more information about predefined declarations, see the
     /// \c PredefinedDeclIDs type and the PREDEF_DECL_*_ID constants.
-    const unsigned int NUM_PREDEF_DECL_IDS = 10;
+    const unsigned int NUM_PREDEF_DECL_IDS = 11;
     
     /// \brief Record codes for each kind of declaration.
     ///
@@ -951,6 +995,8 @@ namespace clang {
       DECL_OBJC_PROPERTY_IMPL,
       /// \brief A FieldDecl record.
       DECL_FIELD,
+      /// \brief A MSPropertyDecl record.
+      DECL_MS_PROPERTY,
       /// \brief A VarDecl record.
       DECL_VAR,
       /// \brief An ImplicitParamDecl record.
@@ -961,6 +1007,8 @@ namespace clang {
       DECL_FILE_SCOPE_ASM,
       /// \brief A BlockDecl record.
       DECL_BLOCK,
+      /// \brief A CapturedDecl record.
+      DECL_CAPTURED,
       /// \brief A record that stores the set of declarations that are
       /// lexically stored within a given DeclContext.
       ///
@@ -1019,6 +1067,12 @@ namespace clang {
       DECL_CLASS_TEMPLATE_SPECIALIZATION,
       /// \brief A ClassTemplatePartialSpecializationDecl record.
       DECL_CLASS_TEMPLATE_PARTIAL_SPECIALIZATION,
+      /// \brief A VarTemplateDecl record.
+      DECL_VAR_TEMPLATE,
+      /// \brief A VarTemplateSpecializationDecl record.
+      DECL_VAR_TEMPLATE_SPECIALIZATION,
+      /// \brief A VarTemplatePartialSpecializationDecl record.
+      DECL_VAR_TEMPLATE_PARTIAL_SPECIALIZATION,
       /// \brief A FunctionTemplateDecl record.
       DECL_FUNCTION_TEMPLATE,
       /// \brief A TemplateTypeParmDecl record.
@@ -1033,6 +1087,8 @@ namespace clang {
       DECL_STATIC_ASSERT,
       /// \brief A record containing CXXBaseSpecifiers.
       DECL_CXX_BASE_SPECIFIERS,
+      /// \brief A record containing CXXCtorInitializers.
+      DECL_CXX_CTOR_INITIALIZERS,
       /// \brief A IndirectFieldDecl record.
       DECL_INDIRECTFIELD,
       /// \brief A NonTypeTemplateParmDecl record that stores an expanded
@@ -1046,23 +1102,25 @@ namespace clang {
       DECL_CLASS_SCOPE_FUNCTION_SPECIALIZATION,
       /// \brief An ImportDecl recording a module import.
       DECL_IMPORT,
-      /// \brief A OMPThreadPrivateDecl record.
+      /// \brief An OMPThreadPrivateDecl record.
       DECL_OMP_THREADPRIVATE,
       /// \brief An EmptyDecl record.
-      DECL_EMPTY
+      DECL_EMPTY,
+      /// \brief An ObjCTypeParamDecl record.
+      DECL_OBJC_TYPE_PARAM,
     };
 
     /// \brief Record codes for each kind of statement or expression.
     ///
     /// These constants describe the records that describe statements
     /// or expressions. These records  occur within type and declarations
-    /// block, so they begin with record values of 100.  Each constant 
+    /// block, so they begin with record values of 128.  Each constant 
     /// describes a record for a specific statement or expression class in the
     /// AST.
     enum StmtCode {
       /// \brief A marker record that indicates that we are at the end
       /// of an expression.
-      STMT_STOP = 100,
+      STMT_STOP = 128,
       /// \brief A NULL expression.
       STMT_NULL_PTR,
       /// \brief A reference to a previously [de]serialized Stmt record.
@@ -1101,6 +1159,8 @@ namespace clang {
       STMT_RETURN,
       /// \brief A DeclStmt record.
       STMT_DECL,
+      /// \brief A CapturedStmt record.
+      STMT_CAPTURED,
       /// \brief A GCC-style AsmStmt record.
       STMT_GCCASM,
       /// \brief A MS-style AsmStmt record.
@@ -1153,8 +1213,12 @@ namespace clang {
       EXPR_INIT_LIST,
       /// \brief A DesignatedInitExpr record.
       EXPR_DESIGNATED_INIT,
+      /// \brief A DesignatedInitUpdateExpr record.
+      EXPR_DESIGNATED_INIT_UPDATE,
       /// \brief An ImplicitValueInitExpr record.
       EXPR_IMPLICIT_VALUE_INIT,
+      /// \brief An NoInitExpr record.
+      EXPR_NO_INIT,
       /// \brief A VAArgExpr record.
       EXPR_VA_ARG,
       /// \brief An AddrLabelExpr record.
@@ -1167,6 +1231,8 @@ namespace clang {
       EXPR_GNU_NULL,
       /// \brief A ShuffleVectorExpr record.
       EXPR_SHUFFLE_VECTOR,
+      /// \brief A ConvertVectorExpr record.
+      EXPR_CONVERT_VECTOR,
       /// \brief BlockExpr
       EXPR_BLOCK,
       /// \brief A GenericSelectionExpr record.
@@ -1253,6 +1319,8 @@ namespace clang {
       EXPR_CXX_FUNCTIONAL_CAST,
       /// \brief A UserDefinedLiteral record.
       EXPR_USER_DEFINED_LITERAL,
+      /// \brief A CXXStdInitializerListExpr record.
+      EXPR_CXX_STD_INITIALIZER_LIST,
       /// \brief A CXXBoolLiteralExpr record.
       EXPR_CXX_BOOL_LITERAL,
       EXPR_CXX_NULL_PTR_LITERAL,  // CXXNullPtrLiteralExpr
@@ -1261,6 +1329,7 @@ namespace clang {
       EXPR_CXX_THIS,              // CXXThisExpr
       EXPR_CXX_THROW,             // CXXThrowExpr
       EXPR_CXX_DEFAULT_ARG,       // CXXDefaultArgExpr
+      EXPR_CXX_DEFAULT_INIT,      // CXXDefaultInitExpr
       EXPR_CXX_BIND_TEMPORARY,    // CXXBindTemporaryExpr
 
       EXPR_CXX_SCALAR_VALUE_INIT, // CXXScalarValueInitExpr
@@ -1276,13 +1345,11 @@ namespace clang {
       EXPR_CXX_UNRESOLVED_MEMBER,        // UnresolvedMemberExpr
       EXPR_CXX_UNRESOLVED_LOOKUP,        // UnresolvedLookupExpr
 
-      EXPR_CXX_UNARY_TYPE_TRAIT,  // UnaryTypeTraitExpr
       EXPR_CXX_EXPRESSION_TRAIT,  // ExpressionTraitExpr
       EXPR_CXX_NOEXCEPT,          // CXXNoexceptExpr
 
       EXPR_OPAQUE_VALUE,          // OpaqueValueExpr
       EXPR_BINARY_CONDITIONAL_OPERATOR,  // BinaryConditionalOperator
-      EXPR_BINARY_TYPE_TRAIT,     // BinaryTypeTraitExpr
       EXPR_TYPE_TRAIT,            // TypeTraitExpr
       EXPR_ARRAY_TYPE_TRAIT,      // ArrayTypeTraitIntExpr
       
@@ -1292,7 +1359,8 @@ namespace clang {
       EXPR_SUBST_NON_TYPE_TEMPLATE_PARM_PACK,// SubstNonTypeTemplateParmPackExpr
       EXPR_FUNCTION_PARM_PACK,    // FunctionParmPackExpr
       EXPR_MATERIALIZE_TEMPORARY, // MaterializeTemporaryExpr
-      
+      EXPR_CXX_FOLD,              // CXXFoldExpr
+
       // CUDA
       EXPR_CUDA_KERNEL_CALL,       // CUDAKernelCallExpr      
 
@@ -1300,12 +1368,40 @@ namespace clang {
       EXPR_ASTYPE,                 // AsTypeExpr
 
       // Microsoft
+      EXPR_CXX_PROPERTY_REF_EXPR, // MSPropertyRefExpr
       EXPR_CXX_UUIDOF_EXPR,       // CXXUuidofExpr (of expr).
       EXPR_CXX_UUIDOF_TYPE,       // CXXUuidofExpr (of type).
+      STMT_SEH_LEAVE,             // SEHLeaveStmt
       STMT_SEH_EXCEPT,            // SEHExceptStmt
       STMT_SEH_FINALLY,           // SEHFinallyStmt
       STMT_SEH_TRY,               // SEHTryStmt
-      
+
+      // OpenMP directives
+      STMT_OMP_PARALLEL_DIRECTIVE,
+      STMT_OMP_SIMD_DIRECTIVE,
+      STMT_OMP_FOR_DIRECTIVE,
+      STMT_OMP_FOR_SIMD_DIRECTIVE,
+      STMT_OMP_SECTIONS_DIRECTIVE,
+      STMT_OMP_SECTION_DIRECTIVE,
+      STMT_OMP_SINGLE_DIRECTIVE,
+      STMT_OMP_MASTER_DIRECTIVE,
+      STMT_OMP_CRITICAL_DIRECTIVE,
+      STMT_OMP_PARALLEL_FOR_DIRECTIVE,
+      STMT_OMP_PARALLEL_FOR_SIMD_DIRECTIVE,
+      STMT_OMP_PARALLEL_SECTIONS_DIRECTIVE,
+      STMT_OMP_TASK_DIRECTIVE,
+      STMT_OMP_TASKYIELD_DIRECTIVE,
+      STMT_OMP_BARRIER_DIRECTIVE,
+      STMT_OMP_TASKWAIT_DIRECTIVE,
+      STMT_OMP_FLUSH_DIRECTIVE,
+      STMT_OMP_ORDERED_DIRECTIVE,
+      STMT_OMP_ATOMIC_DIRECTIVE,
+      STMT_OMP_TARGET_DIRECTIVE,
+      STMT_OMP_TEAMS_DIRECTIVE,
+      STMT_OMP_TASKGROUP_DIRECTIVE,
+      STMT_OMP_CANCELLATION_POINT_DIRECTIVE,
+      STMT_OMP_CANCEL_DIRECTIVE,
+
       // ARC
       EXPR_OBJC_BRIDGED_CAST,     // ObjCBridgedCastExpr
       

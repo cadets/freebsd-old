@@ -158,6 +158,12 @@ FBSD_1.3 {
 	fmemopen;
 	open_memstream;
 	open_wmemstream;
+	mkostemp;
+	mkostemps;
+};
+
+FBSD_1.4 {
+	fdclose;
 };
 
 FBSDprivate_1.0 {

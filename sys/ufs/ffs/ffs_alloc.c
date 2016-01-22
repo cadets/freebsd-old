@@ -65,7 +65,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_quota.h"
 
 #include <sys/param.h>
-#include <sys/capability.h>
+#include <sys/capsicum.h>
 #include <sys/systm.h>
 #include <sys/bio.h>
 #include <sys/buf.h>
@@ -112,8 +112,7 @@ static void	ffs_blkfree_trim_task(void *ctx, int pending __unused);
 #ifdef INVARIANTS
 static int	ffs_checkblk(struct inode *, ufs2_daddr_t, long);
 #endif
-static ufs2_daddr_t ffs_clusteralloc(struct inode *, u_int, ufs2_daddr_t, int,
-		    int);
+static ufs2_daddr_t ffs_clusteralloc(struct inode *, u_int, ufs2_daddr_t, int);
 static ino_t	ffs_dirpref(struct inode *);
 static ufs2_daddr_t ffs_fragextend(struct inode *, u_int, ufs2_daddr_t,
 		    int, int);
@@ -460,10 +459,16 @@ nospace:
 SYSCTL_NODE(_vfs, OID_AUTO, ffs, CTLFLAG_RW, 0, "FFS filesystem");
 
 static int doasyncfree = 1;
-SYSCTL_INT(_vfs_ffs, OID_AUTO, doasyncfree, CTLFLAG_RW, &doasyncfree, 0, "");
+SYSCTL_INT(_vfs_ffs, OID_AUTO, doasyncfree, CTLFLAG_RW, &doasyncfree, 0,
+"do not force synchronous writes when blocks are reallocated");
 
 static int doreallocblks = 1;
-SYSCTL_INT(_vfs_ffs, OID_AUTO, doreallocblks, CTLFLAG_RW, &doreallocblks, 0, "");
+SYSCTL_INT(_vfs_ffs, OID_AUTO, doreallocblks, CTLFLAG_RW, &doreallocblks, 0,
+"enable block reallocation");
+
+static int maxclustersearch = 10;
+SYSCTL_INT(_vfs_ffs, OID_AUTO, maxclustersearch, CTLFLAG_RW, &maxclustersearch,
+0, "max number of cylinder group to search for contigous blocks");
 
 #ifdef DEBUG
 static volatile int prtrealloc = 0;
@@ -476,9 +481,19 @@ ffs_reallocblks(ap)
 		struct cluster_save *a_buflist;
 	} */ *ap;
 {
+	struct ufsmount *ump;
 
-	if (doreallocblks == 0)
+	/*
+	 * If the underlying device can do deletes, then skip reallocating
+	 * the blocks of this file into contiguous sequences. Devices that
+	 * benefit from BIO_DELETE also benefit from not moving the data.
+	 * These devices are flash and therefore work less well with this
+	 * optimization. Also skip if reallocblks has been disabled globally.
+	 */
+	ump = VTOI(ap->a_vp)->i_ump;
+	if (ump->um_candelete || doreallocblks == 0)
 		return (ENOSPC);
+
 	/*
 	 * We can't wait in softdep prealloc as it may fsync and recurse
 	 * here.  Instead we simply fail to reallocate blocks if this
@@ -487,7 +502,7 @@ ffs_reallocblks(ap)
 	if (DOINGSOFTDEP(ap->a_vp))
 		if (softdep_prealloc(ap->a_vp, MNT_NOWAIT) != 0)
 			return (ENOSPC);
-	if (VTOI(ap->a_vp)->i_ump->um_fstype == UFS1)
+	if (ump->um_fstype == UFS1)
 		return (ffs_reallocblks_ufs1(ap));
 	return (ffs_reallocblks_ufs2(ap));
 }
@@ -510,13 +525,19 @@ ffs_reallocblks_ufs1(ap)
 	ufs1_daddr_t soff, newblk, blkno;
 	ufs2_daddr_t pref;
 	struct indir start_ap[NIADDR + 1], end_ap[NIADDR + 1], *idp;
-	int i, len, start_lvl, end_lvl, ssize;
+	int i, cg, len, start_lvl, end_lvl, ssize;
 
 	vp = ap->a_vp;
 	ip = VTOI(vp);
 	fs = ip->i_fs;
 	ump = ip->i_ump;
-	if (fs->fs_contigsumsize <= 0)
+	/*
+	 * If we are not tracking block clusters or if we have less than 4%
+	 * free blocks left, then do not attempt to cluster. Running with
+	 * less than 5% free block reserve is not recommended and those that
+	 * choose to do so do not expect to have good file layout.
+	 */
+	if (fs->fs_contigsumsize <= 0 || freespace(fs, 4) < 0)
 		return (ENOSPC);
 	buflist = ap->a_buflist;
 	len = buflist->bs_nchildren;
@@ -591,18 +612,39 @@ ffs_reallocblks_ufs1(ap)
 		ebap = (ufs1_daddr_t *)ebp->b_data;
 	}
 	/*
-	 * Find the preferred location for the cluster.
+	 * Find the preferred location for the cluster. If we have not
+	 * previously failed at this endeavor, then follow our standard
+	 * preference calculation. If we have failed at it, then pick up
+	 * where we last ended our search.
 	 */
 	UFS_LOCK(ump);
-	pref = ffs_blkpref_ufs1(ip, start_lbn, soff, sbap);
+	if (ip->i_nextclustercg == -1)
+		pref = ffs_blkpref_ufs1(ip, start_lbn, soff, sbap);
+	else
+		pref = cgdata(fs, ip->i_nextclustercg);
 	/*
 	 * Search the block map looking for an allocation of the desired size.
+	 * To avoid wasting too much time, we limit the number of cylinder
+	 * groups that we will search.
 	 */
-	if ((newblk = ffs_hashalloc(ip, dtog(fs, pref), pref,
-	    len, len, ffs_clusteralloc)) == 0) {
+	cg = dtog(fs, pref);
+	for (i = min(maxclustersearch, fs->fs_ncg); i > 0; i--) {
+		if ((newblk = ffs_clusteralloc(ip, cg, pref, len)) != 0)
+			break;
+		cg += 1;
+		if (cg >= fs->fs_ncg)
+			cg = 0;
+	}
+	/*
+	 * If we have failed in our search, record where we gave up for
+	 * next time. Otherwise, fall back to our usual search citerion.
+	 */
+	if (newblk == 0) {
+		ip->i_nextclustercg = cg;
 		UFS_UNLOCK(ump);
 		goto fail;
 	}
+	ip->i_nextclustercg = -1;
 	/*
 	 * We have found a new contiguous block.
 	 *
@@ -731,13 +773,19 @@ ffs_reallocblks_ufs2(ap)
 	ufs_lbn_t start_lbn, end_lbn;
 	ufs2_daddr_t soff, newblk, blkno, pref;
 	struct indir start_ap[NIADDR + 1], end_ap[NIADDR + 1], *idp;
-	int i, len, start_lvl, end_lvl, ssize;
+	int i, cg, len, start_lvl, end_lvl, ssize;
 
 	vp = ap->a_vp;
 	ip = VTOI(vp);
 	fs = ip->i_fs;
 	ump = ip->i_ump;
-	if (fs->fs_contigsumsize <= 0)
+	/*
+	 * If we are not tracking block clusters or if we have less than 4%
+	 * free blocks left, then do not attempt to cluster. Running with
+	 * less than 5% free block reserve is not recommended and those that
+	 * choose to do so do not expect to have good file layout.
+	 */
+	if (fs->fs_contigsumsize <= 0 || freespace(fs, 4) < 0)
 		return (ENOSPC);
 	buflist = ap->a_buflist;
 	len = buflist->bs_nchildren;
@@ -812,18 +860,39 @@ ffs_reallocblks_ufs2(ap)
 		ebap = (ufs2_daddr_t *)ebp->b_data;
 	}
 	/*
-	 * Find the preferred location for the cluster.
+	 * Find the preferred location for the cluster. If we have not
+	 * previously failed at this endeavor, then follow our standard
+	 * preference calculation. If we have failed at it, then pick up
+	 * where we last ended our search.
 	 */
 	UFS_LOCK(ump);
-	pref = ffs_blkpref_ufs2(ip, start_lbn, soff, sbap);
+	if (ip->i_nextclustercg == -1)
+		pref = ffs_blkpref_ufs2(ip, start_lbn, soff, sbap);
+	else
+		pref = cgdata(fs, ip->i_nextclustercg);
 	/*
 	 * Search the block map looking for an allocation of the desired size.
+	 * To avoid wasting too much time, we limit the number of cylinder
+	 * groups that we will search.
 	 */
-	if ((newblk = ffs_hashalloc(ip, dtog(fs, pref), pref,
-	    len, len, ffs_clusteralloc)) == 0) {
+	cg = dtog(fs, pref);
+	for (i = min(maxclustersearch, fs->fs_ncg); i > 0; i--) {
+		if ((newblk = ffs_clusteralloc(ip, cg, pref, len)) != 0)
+			break;
+		cg += 1;
+		if (cg >= fs->fs_ncg)
+			cg = 0;
+	}
+	/*
+	 * If we have failed in our search, record where we gave up for
+	 * next time. Otherwise, fall back to our usual search citerion.
+	 */
+	if (newblk == 0) {
+		ip->i_nextclustercg = cg;
 		UFS_UNLOCK(ump);
 		goto fail;
 	}
+	ip->i_nextclustercg = -1;
 	/*
 	 * We have found a new contiguous block.
 	 *
@@ -833,7 +902,7 @@ ffs_reallocblks_ufs2(ap)
 	 */
 #ifdef DEBUG
 	if (prtrealloc)
-		printf("realloc: ino %d, lbns %jd-%jd\n\told:", ip->i_number,
+		printf("realloc: ino %ju, lbns %jd-%jd\n\told:", (uintmax_t)ip->i_number,
 		    (intmax_t)start_lbn, (intmax_t)end_lbn);
 #endif
 	blkno = newblk;
@@ -1017,8 +1086,8 @@ retry:
 	ip = VTOI(*vpp);
 	if (ip->i_mode) {
 dup_alloc:
-		printf("mode = 0%o, inum = %lu, fs = %s\n",
-		    ip->i_mode, (u_long)ip->i_number, fs->fs_fsmnt);
+		printf("mode = 0%o, inum = %ju, fs = %s\n",
+		    ip->i_mode, (uintmax_t)ip->i_number, fs->fs_fsmnt);
 		panic("ffs_valloc: dup alloc");
 	}
 	if (DIP(ip, i_blocks) && (fs->fs_flags & FS_UNCLEAN) == 0) {  /* XXX */
@@ -1155,29 +1224,30 @@ ffs_dirpref(pip)
 	 * We scan from our preferred cylinder group forward looking
 	 * for a cylinder group that meets our criterion. If we get
 	 * to the final cylinder group and do not find anything,
-	 * we start scanning backwards from our preferred cylinder
-	 * group. The ideal would be to alternate looking forward
-	 * and backward, but that is just too complex to code for
-	 * the gain it would get. The most likely place where the
-	 * backward scan would take effect is when we start near
-	 * the end of the filesystem and do not find anything from
-	 * where we are to the end. In that case, scanning backward
-	 * will likely find us a suitable cylinder group much closer
-	 * to our desired location than if we were to start scanning
-	 * forward from the beginning of the filesystem.
+	 * we start scanning forwards from the beginning of the
+	 * filesystem. While it might seem sensible to start scanning
+	 * backwards or even to alternate looking forward and backward,
+	 * this approach fails badly when the filesystem is nearly full.
+	 * Specifically, we first search all the areas that have no space
+	 * and finally try the one preceeding that. We repeat this on
+	 * every request and in the case of the final block end up
+	 * searching the entire filesystem. By jumping to the front
+	 * of the filesystem, our future forward searches always look
+	 * in new cylinder groups so finds every possible block after
+	 * one pass over the filesystem.
 	 */
 	prefcg = ino_to_cg(fs, pip->i_number);
 	for (cg = prefcg; cg < fs->fs_ncg; cg++)
 		if (fs->fs_cs(fs, cg).cs_ndir < maxndir &&
 		    fs->fs_cs(fs, cg).cs_nifree >= minifree &&
-	    	    fs->fs_cs(fs, cg).cs_nbfree >= minbfree) {
+		    fs->fs_cs(fs, cg).cs_nbfree >= minbfree) {
 			if (fs->fs_contigdirs[cg] < maxcontigdirs)
 				return ((ino_t)(fs->fs_ipg * cg));
 		}
-	for (cg = prefcg - 1; cg >= 0; cg--)
+	for (cg = 0; cg < prefcg; cg++)
 		if (fs->fs_cs(fs, cg).cs_ndir < maxndir &&
 		    fs->fs_cs(fs, cg).cs_nifree >= minifree &&
-	    	    fs->fs_cs(fs, cg).cs_nbfree >= minbfree) {
+		    fs->fs_cs(fs, cg).cs_nbfree >= minbfree) {
 			if (fs->fs_contigdirs[cg] < maxcontigdirs)
 				return ((ino_t)(fs->fs_ipg * cg));
 		}
@@ -1187,7 +1257,7 @@ ffs_dirpref(pip)
 	for (cg = prefcg; cg < fs->fs_ncg; cg++)
 		if (fs->fs_cs(fs, cg).cs_nifree >= avgifree)
 			return ((ino_t)(fs->fs_ipg * cg));
-	for (cg = prefcg - 1; cg >= 0; cg--)
+	for (cg = 0; cg < prefcg; cg++)
 		if (fs->fs_cs(fs, cg).cs_nifree >= avgifree)
 			break;
 	return ((ino_t)(fs->fs_ipg * cg));
@@ -1196,7 +1266,8 @@ ffs_dirpref(pip)
 /*
  * Select the desired position for the next block in a file.  The file is
  * logically divided into sections. The first section is composed of the
- * direct blocks. Each additional section contains fs_maxbpg blocks.
+ * direct blocks and the next fs_maxbpg blocks. Each additional section
+ * contains fs_maxbpg blocks.
  *
  * If no blocks have been allocated in the first section, the policy is to
  * request a block in the same cylinder group as the inode that describes
@@ -1214,14 +1285,12 @@ ffs_dirpref(pip)
  * cylinder group from which the previous allocation was made. The sweep
  * continues until a cylinder group with greater than the average number
  * of free blocks is found. If the allocation is for the first block in an
- * indirect block, the information on the previous allocation is unavailable;
- * here a best guess is made based upon the logical block number being
- * allocated.
+ * indirect block or the previous block is a hole, then the information on
+ * the previous allocation is unavailable; here a best guess is made based
+ * on the logical block number being allocated.
  *
  * If a section is already partially allocated, the policy is to
- * contiguously allocate fs_maxcontig blocks. The end of one of these
- * contiguous blocks and the beginning of the next is laid out
- * contiguously if possible.
+ * allocate blocks contiguously within the section if possible.
  */
 ufs2_daddr_t
 ffs_blkpref_ufs1(ip, lbn, indx, bap)
@@ -1710,7 +1779,7 @@ ffs_alloccgblk(ip, bp, bpref, size)
 	cgp = (struct cg *)bp->b_data;
 	blksfree = cg_blksfree(cgp);
 	if (bpref == 0) {
-		bpref = cgp->cg_rotor;
+		bpref = cgbase(fs, cgp->cg_cgx) + cgp->cg_rotor + fs->fs_frag;
 	} else if ((cgbpref = dtog(fs, bpref)) != cgp->cg_cgx) {
 		/* map bpref to correct zone in this cg */
 		if (bpref < cgdata(fs, cgbpref))
@@ -1774,12 +1843,11 @@ gotit:
  * take the first one that we find following bpref.
  */
 static ufs2_daddr_t
-ffs_clusteralloc(ip, cg, bpref, len, unused)
+ffs_clusteralloc(ip, cg, bpref, len)
 	struct inode *ip;
 	u_int cg;
 	ufs2_daddr_t bpref;
 	int len;
-	int unused;
 {
 	struct fs *fs;
 	struct cg *cgp;
@@ -2690,14 +2758,14 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 	struct thread *td = curthread;
 	struct fsck_cmd cmd;
 	struct ufsmount *ump;
-	struct vnode *vp, *vpold, *dvp, *fdvp;
+	struct vnode *vp, *dvp, *fdvp;
 	struct inode *ip, *dp;
 	struct mount *mp;
 	struct fs *fs;
 	ufs2_daddr_t blkno;
 	long blkcnt, blksize;
-	struct filedesc *fdp;
 	struct file *fp, *vfp;
+	cap_rights_t rights;
 	int filetype, error;
 	static struct fileops *origops, bufferedops;
 
@@ -2707,8 +2775,8 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 		return (error);
 	if (cmd.version != FFS_CMD_VERSION)
 		return (ERPCMISMATCH);
-	if ((error = getvnode(td->td_proc->p_fd, cmd.handle, CAP_FSCK,
-	     &fp)) != 0)
+	if ((error = getvnode(td, cmd.handle,
+	    cap_rights_init(&rights, CAP_FSCK), &fp)) != 0)
 		return (error);
 	vp = fp->f_data;
 	if (vp->v_type != VREG && vp->v_type != VDIR) {
@@ -2909,12 +2977,7 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 			break;
 		}
 		VOP_UNLOCK(vp, 0);
-		fdp = td->td_proc->p_fd;
-		FILEDESC_XLOCK(fdp);
-		vpold = fdp->fd_cdir;
-		fdp->fd_cdir = vp;
-		FILEDESC_XUNLOCK(fdp);
-		vrele(vpold);
+		pwd_chdir(td, vp);
 		break;
 
 	case FFS_SET_DOTDOT:
@@ -3021,8 +3084,8 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 			    (intmax_t)cmd.value);
 		}
 #endif /* DEBUG */
-		if ((error = getvnode(td->td_proc->p_fd, cmd.value,
-		    CAP_FSCK, &vfp)) != 0)
+		if ((error = getvnode(td, cmd.value,
+		    cap_rights_init(&rights, CAP_FSCK), &vfp)) != 0)
 			break;
 		if (vfp->f_vnode->v_type != VCHR) {
 			fdrop(vfp, td);

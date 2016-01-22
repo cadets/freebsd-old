@@ -36,6 +36,10 @@
 /* is 802.11 address multicast/broadcast? */
 #define	IEEE80211_IS_MULTICAST(_a)	(*(_a) & 0x01)
 
+#ifdef _KERNEL
+extern const uint8_t ieee80211broadcastaddr[];
+#endif
+
 typedef uint16_t ieee80211_seq;
 
 /* IEEE 802.11 PLCP header */
@@ -166,9 +170,14 @@ struct ieee80211_qosframe_addr4 {
 #define	IEEE80211_FC1_RETRY			0x08
 #define	IEEE80211_FC1_PWR_MGT			0x10
 #define	IEEE80211_FC1_MORE_DATA			0x20
-#define	IEEE80211_FC1_WEP			0x40
+#define	IEEE80211_FC1_PROTECTED			0x40
 #define	IEEE80211_FC1_ORDER			0x80
 
+#define IEEE80211_HAS_SEQ(type, subtype) \
+	((type) != IEEE80211_FC0_TYPE_CTL && \
+	!((type) == IEEE80211_FC0_TYPE_DATA && \
+	 ((subtype) & IEEE80211_FC0_SUBTYPE_QOS_NULL) == \
+		      IEEE80211_FC0_SUBTYPE_QOS_NULL))
 #define	IEEE80211_SEQ_FRAG_MASK			0x000f
 #define	IEEE80211_SEQ_FRAG_SHIFT		0
 #define	IEEE80211_SEQ_SEQ_MASK			0xfff0
@@ -711,6 +720,7 @@ enum {
 	IEEE80211_ELEMID_IBSSDFS	= 41,
 	IEEE80211_ELEMID_ERP		= 42,
 	IEEE80211_ELEMID_HTCAP		= 45,
+	IEEE80211_ELEMID_QOS		= 46,
 	IEEE80211_ELEMID_RSN		= 48,
 	IEEE80211_ELEMID_XRATES		= 50,
 	IEEE80211_ELEMID_HTINFO		= 61,
@@ -805,8 +815,9 @@ struct ieee80211_csa_ie {
 /* rate set entries are in .5 Mb/s units, and potentially marked as basic */
 #define	IEEE80211_RATE_BASIC		0x80
 #define	IEEE80211_RATE_VAL		0x7f
+#define	IEEE80211_RV(v)			((v) & IEEE80211_RATE_VAL)
 
-/* EPR information element flags */
+/* ERP information element flags */
 #define	IEEE80211_ERP_NON_ERP_PRESENT	0x01
 #define	IEEE80211_ERP_USE_PROTECTION	0x02
 #define	IEEE80211_ERP_LONG_PREAMBLE	0x04

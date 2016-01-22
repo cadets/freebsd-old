@@ -39,6 +39,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/queue.h>
 #include <sys/reboot.h>
+#include <sys/sysctl.h>
 #include <machine/bus.h>
 #include <sys/rman.h>
 #include <machine/resource.h>
@@ -51,7 +52,7 @@ __FBSDID("$FreeBSD$");
 #include "uart_if.h"
 
 devclass_t uart_devclass;
-char uart_driver_name[] = "uart";
+const char uart_driver_name[] = "uart";
 
 SLIST_HEAD(uart_devinfo_list, uart_devinfo) uart_sysdevs =
     SLIST_HEAD_INITIALIZER(uart_sysdevs);
@@ -62,7 +63,114 @@ static MALLOC_DEFINE(M_UART, "UART", "UART driver");
 #define	UART_POLL_FREQ		50
 #endif
 static int uart_poll_freq = UART_POLL_FREQ;
-TUNABLE_INT("debug.uart_poll_freq", &uart_poll_freq);
+SYSCTL_INT(_debug, OID_AUTO, uart_poll_freq, CTLFLAG_RDTUN, &uart_poll_freq,
+    0, "UART poll frequency");
+
+static int uart_force_poll;
+SYSCTL_INT(_debug, OID_AUTO, uart_force_poll, CTLFLAG_RDTUN, &uart_force_poll,
+    0, "Force UART polling");
+
+#define	PPS_MODE_DISABLED	0
+#define	PPS_MODE_CTS		1
+#define	PPS_MODE_DCD		2
+
+static inline int
+uart_pps_signal(int pps_mode)
+{
+
+	switch(pps_mode) {
+	case PPS_MODE_CTS:
+		return (SER_CTS);
+	case PPS_MODE_DCD:
+		return (SER_DCD);
+	}
+	return (0);
+}
+static inline int
+uart_pps_mode_valid(int pps_mode)
+{
+
+	switch(pps_mode) {
+	case PPS_MODE_DISABLED:
+	case PPS_MODE_CTS:
+	case PPS_MODE_DCD:
+		return (true);
+	}
+	return (false);
+}
+
+static const char *
+uart_pps_mode_name(int pps_mode)
+{
+	switch(pps_mode) {
+	case PPS_MODE_DISABLED:
+		return ("disabled");
+	case PPS_MODE_CTS:
+		return ("CTS");
+	case PPS_MODE_DCD:
+		return ("DCD");
+	}
+	return ("invalid");
+}
+
+static int
+uart_pps_mode_sysctl(SYSCTL_HANDLER_ARGS)
+{
+	struct uart_softc *sc;
+	int err, tmp;
+
+	sc = arg1;
+	tmp = sc->sc_pps_mode;
+	err = sysctl_handle_int(oidp, &tmp, 0, req);
+	if (err != 0 || req->newptr == NULL)
+		return (err);
+	if (!uart_pps_mode_valid(tmp))
+		return (EINVAL);
+	sc->sc_pps_mode = tmp;
+	return(0);
+}
+
+static void
+uart_pps_init(struct uart_softc *sc)
+{
+	struct sysctl_ctx_list *ctx;
+	struct sysctl_oid *tree;
+
+	ctx = device_get_sysctl_ctx(sc->sc_dev);
+	tree = device_get_sysctl_tree(sc->sc_dev);
+
+	/*
+	 * The historical default for pps capture mode is either DCD or CTS,
+	 * depending on the UART_PPS_ON_CTS kernel option.  Start with that,
+	 * then try to fetch the tunable that overrides the mode for all uart
+	 * devices, then try to fetch the sysctl-tunable that overrides the mode
+	 * for one specific device.
+	 */
+#ifdef UART_PPS_ON_CTS
+	sc->sc_pps_mode = PPS_MODE_CTS;
+#else
+	sc->sc_pps_mode = PPS_MODE_DCD;
+#endif
+	TUNABLE_INT_FETCH("hw.uart.pps_mode", &sc->sc_pps_mode);
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO, "pps_mode",
+	    CTLTYPE_INT | CTLFLAG_RWTUN, sc, 0, uart_pps_mode_sysctl, "I",
+	    "pulse capturing mode - 0/1/2 - disabled/CTS/DCD");
+
+	if (!uart_pps_mode_valid(sc->sc_pps_mode)) {
+		device_printf(sc->sc_dev, 
+		    "Invalid pps_mode %d configured; disabling PPS capture\n",
+		    sc->sc_pps_mode);
+		sc->sc_pps_mode = PPS_MODE_DISABLED;
+	} else if (bootverbose) {
+		device_printf(sc->sc_dev, "PPS capture mode %d (%s)\n",
+		    sc->sc_pps_mode, uart_pps_mode_name(sc->sc_pps_mode));
+	}
+
+	sc->sc_pps.ppscap = PPS_CAPTUREBOTH;
+	sc->sc_pps.driver_mtx = uart_tty_getlock(sc);
+	sc->sc_pps.driver_abi = PPS_ABI_VERSION;
+	pps_init_abi(&sc->sc_pps);
+}
 
 void
 uart_add_sysdev(struct uart_devinfo *di)
@@ -86,6 +194,12 @@ int
 uart_getrange(struct uart_class *uc)
 {
 	return ((uc != NULL) ? uc->uc_range : 0);
+}
+
+u_int
+uart_getregshift(struct uart_class *uc)
+{
+	return ((uc != NULL) ? uc->uc_rshift : 0);
 }
 
 /*
@@ -199,15 +313,22 @@ static __inline int
 uart_intr_sigchg(void *arg)
 {
 	struct uart_softc *sc = arg;
-	int new, old, sig;
+	int new, old, pps_sig, sig;
 
 	sig = UART_GETSIG(sc);
 
+	/*
+	 * Time pulse counting support. Note that both CTS and DCD are
+	 * active-low signals. The status bit is high to indicate that
+	 * the signal on the line is low, which corresponds to a PPS
+	 * clear event.
+	 */
 	if (sc->sc_pps.ppsparam.mode & PPS_CAPTUREBOTH) {
-		if (sig & UART_SIG_DPPS) {
+		pps_sig = uart_pps_signal(sc->sc_pps_mode);
+		if (sig & SER_DELTA(pps_sig)) {
 			pps_capture(&sc->sc_pps);
-			pps_event(&sc->sc_pps, (sig & UART_SIG_PPS) ?
-			    PPS_CAPTUREASSERT : PPS_CAPTURECLEAR);
+			pps_event(&sc->sc_pps, (sig & pps_sig) ?
+			    PPS_CAPTURECLEAR : PPS_CAPTUREASSERT);
 		}
 	}
 
@@ -248,10 +369,15 @@ static int
 uart_intr(void *arg)
 {
 	struct uart_softc *sc = arg;
-	int flag = 0, ipend;
+	int cnt, ipend, testintr;
 
-	while (!sc->sc_leaving && (ipend = UART_IPEND(sc)) != 0) {
-		flag = 1;
+	if (sc->sc_leaving)
+		return (FILTER_STRAY);
+
+	cnt = 0;
+	testintr = sc->sc_testintr;
+	while ((!testintr || cnt < 20) && (ipend = UART_IPEND(sc)) != 0) {
+		cnt++;
 		if (ipend & SER_INT_OVERRUN)
 			uart_intr_overrun(sc);
 		if (ipend & SER_INT_BREAK)
@@ -261,7 +387,7 @@ uart_intr(void *arg)
 		if (ipend & SER_INT_SIGCHG)
 			uart_intr_sigchg(sc);
 		if (ipend & SER_INT_TXIDLE)
-			uart_intr_txidle(sc);		
+			uart_intr_txidle(sc);
 	}
 
 	if (sc->sc_polled) {
@@ -269,7 +395,9 @@ uart_intr(void *arg)
 		    (timeout_t *)uart_intr, sc);
 	}
 
-	return((flag)?FILTER_HANDLED:FILTER_STRAY);
+	return ((cnt == 0) ? FILTER_STRAY :
+	    ((testintr && cnt == 20) ? FILTER_SCHEDULE_THREAD :
+	    FILTER_HANDLED));
 }
 
 serdev_intr_t *
@@ -346,14 +474,13 @@ uart_bus_probe(device_t dev, int regshft, int rclk, int rid, int chan)
 	 */
 	sc->sc_rrid = rid;
 	sc->sc_rtype = SYS_RES_IOPORT;
-	sc->sc_rres = bus_alloc_resource(dev, sc->sc_rtype, &sc->sc_rrid,
-	    0, ~0, uart_getrange(sc->sc_class), RF_ACTIVE);
+	sc->sc_rres = bus_alloc_resource_any(dev, sc->sc_rtype, &sc->sc_rrid,
+	    RF_ACTIVE);
 	if (sc->sc_rres == NULL) {
 		sc->sc_rrid = rid;
 		sc->sc_rtype = SYS_RES_MEMORY;
-		sc->sc_rres = bus_alloc_resource(dev, sc->sc_rtype,
-		    &sc->sc_rrid, 0, ~0, uart_getrange(sc->sc_class),
-		    RF_ACTIVE);
+		sc->sc_rres = bus_alloc_resource_any(dev, sc->sc_rtype,
+		    &sc->sc_rrid, RF_ACTIVE);
 		if (sc->sc_rres == NULL)
 			return (ENXIO);
 	}
@@ -390,7 +517,7 @@ uart_bus_attach(device_t dev)
 {
 	struct uart_softc *sc, *sc0;
 	const char *sep;
-	int error;
+	int error, filt;
 
 	/*
 	 * The sc_class field defines the type of UART we're going to work
@@ -407,9 +534,16 @@ uart_bus_attach(device_t dev)
 		sc = sc0;
 
 	/*
+	 * Now that we know the softc for this device, connect the back
+	 * pointer from the sysdev for this device, if any
+	 */
+	if (sc->sc_sysdev != NULL)
+		sc->sc_sysdev->sc = sc;
+
+	/*
 	 * Protect ourselves against interrupts while we're not completely
 	 * finished attaching and initializing. We don't expect interrupts
-	 * until after UART_ATTACH() though.
+	 * until after UART_ATTACH(), though.
 	 */
 	sc->sc_leaving = 1;
 
@@ -421,41 +555,14 @@ uart_bus_attach(device_t dev)
 	 * Re-allocate. We expect that the softc contains the information
 	 * collected by uart_bus_probe() intact.
 	 */
-	sc->sc_rres = bus_alloc_resource(dev, sc->sc_rtype, &sc->sc_rrid,
-	    0, ~0, uart_getrange(sc->sc_class), RF_ACTIVE);
+	sc->sc_rres = bus_alloc_resource_any(dev, sc->sc_rtype, &sc->sc_rrid,
+	    RF_ACTIVE);
 	if (sc->sc_rres == NULL) {
 		mtx_destroy(&sc->sc_hwmtx_s);
 		return (ENXIO);
 	}
 	sc->sc_bas.bsh = rman_get_bushandle(sc->sc_rres);
 	sc->sc_bas.bst = rman_get_bustag(sc->sc_rres);
-
-	sc->sc_irid = 0;
-	sc->sc_ires = bus_alloc_resource_any(dev, SYS_RES_IRQ, &sc->sc_irid,
-	    RF_ACTIVE | RF_SHAREABLE);
-	if (sc->sc_ires != NULL) {
-		error = bus_setup_intr(dev,
-		    sc->sc_ires, INTR_TYPE_TTY, 
-		    uart_intr, NULL, sc, &sc->sc_icookie);		    
-		if (error)
-			error = bus_setup_intr(dev,
-			    sc->sc_ires, INTR_TYPE_TTY | INTR_MPSAFE,
-			    NULL, (driver_intr_t *)uart_intr, sc, &sc->sc_icookie);
-		else
-			sc->sc_fastintr = 1;
-
-		if (error) {
-			device_printf(dev, "could not activate interrupt\n");
-			bus_release_resource(dev, SYS_RES_IRQ, sc->sc_irid,
-			    sc->sc_ires);
-			sc->sc_ires = NULL;
-		}
-	}
-	if (sc->sc_ires == NULL) {
-		/* No interrupt resource. Force polled mode. */
-		sc->sc_polled = 1;
-		callout_init(&sc->sc_timer, 1);
-	}
 
 	/*
 	 * Ensure there is room for at least three full FIFOs of data in the
@@ -487,20 +594,6 @@ uart_bus_attach(device_t dev)
 		printf("\n");
 	}
 
-	if (bootverbose && (sc->sc_fastintr || sc->sc_polled)) {
-		sep = "";
-		device_print_prettyname(dev);
-		if (sc->sc_fastintr) {
-			printf("%sfast interrupt", sep);
-			sep = ", ";
-		}
-		if (sc->sc_polled) {
-			printf("%spolled mode", sep);
-			sep = ", ";
-		}
-		printf("\n");
-	}
-
 	if (sc->sc_sysdev != NULL) {
 		if (sc->sc_sysdev->baudrate == 0) {
 			if (UART_IOCTL(sc, UART_IOCTL_BAUD,
@@ -526,19 +619,72 @@ uart_bus_attach(device_t dev)
 		    sc->sc_sysdev->stopbits);
 	}
 
-	sc->sc_pps.ppscap = PPS_CAPTUREBOTH;
-	pps_init(&sc->sc_pps);
+	sc->sc_leaving = 0;
+	sc->sc_testintr = 1;
+	filt = uart_intr(sc);
+	sc->sc_testintr = 0;
 
-	error = (sc->sc_sysdev != NULL && sc->sc_sysdev->attach != NULL)
-	    ? (*sc->sc_sysdev->attach)(sc) : uart_tty_attach(sc);
-	if (error)
-		goto fail;
+	/*
+	 * Don't use interrupts if we couldn't clear any pending interrupt
+	 * conditions. We may have broken H/W and polling is probably the
+	 * safest thing to do.
+	 */
+	if (filt != FILTER_SCHEDULE_THREAD && !uart_force_poll) {
+		sc->sc_irid = 0;
+		sc->sc_ires = bus_alloc_resource_any(dev, SYS_RES_IRQ,
+		    &sc->sc_irid, RF_ACTIVE | RF_SHAREABLE);
+	}
+	if (sc->sc_ires != NULL) {
+		error = bus_setup_intr(dev, sc->sc_ires, INTR_TYPE_TTY,
+		    uart_intr, NULL, sc, &sc->sc_icookie);
+		sc->sc_fastintr = (error == 0) ? 1 : 0;
+
+		if (!sc->sc_fastintr)
+			error = bus_setup_intr(dev, sc->sc_ires,
+			    INTR_TYPE_TTY | INTR_MPSAFE, NULL,
+			    (driver_intr_t *)uart_intr, sc, &sc->sc_icookie);
+
+		if (error) {
+			device_printf(dev, "could not activate interrupt\n");
+			bus_release_resource(dev, SYS_RES_IRQ, sc->sc_irid,
+			    sc->sc_ires);
+			sc->sc_ires = NULL;
+		}
+	}
+	if (sc->sc_ires == NULL) {
+		/* No interrupt resource. Force polled mode. */
+		sc->sc_polled = 1;
+		callout_init(&sc->sc_timer, 1);
+		callout_reset(&sc->sc_timer, hz / uart_poll_freq,
+		    (timeout_t *)uart_intr, sc);
+	}
+
+	if (bootverbose && (sc->sc_fastintr || sc->sc_polled)) {
+		sep = "";
+		device_print_prettyname(dev);
+		if (sc->sc_fastintr) {
+			printf("%sfast interrupt", sep);
+			sep = ", ";
+		}
+		if (sc->sc_polled) {
+			printf("%spolled mode (%dHz)", sep, uart_poll_freq);
+			sep = ", ";
+		}
+		printf("\n");
+	}
+
+	if (sc->sc_sysdev != NULL && sc->sc_sysdev->attach != NULL) {
+		if ((error = sc->sc_sysdev->attach(sc)) != 0)
+			goto fail;
+	} else {
+		if ((error = uart_tty_attach(sc)) != 0)
+			goto fail;
+		uart_pps_init(sc);
+	}
 
 	if (sc->sc_sysdev != NULL)
 		sc->sc_sysdev->hwmtx = sc->sc_hwmtx;
 
-	sc->sc_leaving = 0;
-	uart_intr(sc);
 	return (0);
 
  fail:
@@ -604,4 +750,20 @@ uart_bus_resume(device_t dev)
 
 	sc = device_get_softc(dev);
 	return (UART_ATTACH(sc));
+}
+
+void
+uart_grab(struct uart_devinfo *di)
+{
+
+	if (di->sc)
+		UART_GRAB(di->sc);
+}
+
+void
+uart_ungrab(struct uart_devinfo *di)
+{
+
+	if (di->sc)
+		UART_UNGRAB(di->sc);
 }

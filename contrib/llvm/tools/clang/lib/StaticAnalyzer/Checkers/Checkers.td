@@ -100,6 +100,10 @@ def CastToStructChecker : Checker<"CastToStruct">,
   HelpText<"Check for cast from non-struct pointer to struct pointer">,
   DescFile<"CastToStructChecker.cpp">;
 
+def IdenticalExprChecker : Checker<"IdenticalExpr">,
+  HelpText<"Warn about unintended use of identical expressions in operators">,
+  DescFile<"IdenticalExprChecker.cpp">;
+
 def FixedAddressChecker : Checker<"FixedAddr">,
   HelpText<"Check for assignment of a fixed address to a pointer">,
   DescFile<"FixedAddressChecker.cpp">;
@@ -115,6 +119,14 @@ def PointerSubChecker : Checker<"PointerSub">,
 def SizeofPointerChecker : Checker<"SizeofPtr">,
   HelpText<"Warn about unintended use of sizeof() on pointer expressions">,
   DescFile<"CheckSizeofPointer.cpp">;
+
+def CallAndMessageUnInitRefArg : Checker<"CallAndMessageUnInitRefArg">,
+  HelpText<"Check for logical errors for function calls and Objective-C message expressions (e.g., uninitialized arguments, null function pointers, and pointer to undefined variables)">,
+  DescFile<"CallAndMessageChecker.cpp">;
+
+def TestAfterDivZeroChecker : Checker<"TestAfterDivZero">,
+  HelpText<"Check for division by variable that is later compared against 0. Either the comparison is useless or there is division by zero.">,
+  DescFile<"TestAfterDivZeroChecker.cpp">;
 
 } // end "alpha.core"
 
@@ -167,6 +179,15 @@ def ReturnUndefChecker : Checker<"UndefReturn">,
 //===----------------------------------------------------------------------===//
 
 let ParentPackage = Cplusplus in {
+
+def NewDeleteChecker : Checker<"NewDelete">,
+  HelpText<"Check for double-free and use-after-free problems. Traces memory managed by new/delete.">, 
+  DescFile<"MallocChecker.cpp">;
+
+def NewDeleteLeaksChecker : Checker<"NewDeleteLeaks">,
+  HelpText<"Check for memory leaks. Traces memory managed by new/delete.">, 
+  DescFile<"MallocChecker.cpp">;
+
 } // end: "cplusplus"
 
 let ParentPackage = CplusplusAlpha in {
@@ -174,10 +195,6 @@ let ParentPackage = CplusplusAlpha in {
 def VirtualCallChecker : Checker<"VirtualCall">,
   HelpText<"Check virtual function calls during construction or destruction">, 
   DescFile<"VirtualCallChecker.cpp">;
-
-def NewDeleteChecker : Checker<"NewDelete">,
-  HelpText<"Check for memory leaks, double free, and use-after-free problems. Traces memory managed by new/delete.">, 
-  DescFile<"MallocChecker.cpp">;
 
 } // end: "alpha.cplusplus"
 
@@ -193,10 +210,6 @@ def DeadStoresChecker : Checker<"DeadStores">,
 } // end DeadCode
 
 let ParentPackage = DeadCodeAlpha in {
-
-def IdempotentOperationChecker : Checker<"IdempotentOperations">,
-  HelpText<"Warn about idempotent operations">,
-  DescFile<"IdempotentOperationChecker.cpp">;
 
 def UnreachableCodeChecker : Checker<"UnreachableCode">,
   HelpText<"Check unreachable code">,
@@ -282,7 +295,7 @@ def UnixAPIChecker : Checker<"API">,
   HelpText<"Check calls to various UNIX/Posix functions">,
   DescFile<"UnixAPIChecker.cpp">;
 
-def MallocPessimistic : Checker<"Malloc">,
+def MallocChecker: Checker<"Malloc">,
   HelpText<"Check for memory leaks, double free, and use-after-free problems. Traces memory managed by malloc()/free().">,
   DescFile<"MallocChecker.cpp">;
   
@@ -301,10 +314,6 @@ let ParentPackage = UnixAlpha in {
 def ChrootChecker : Checker<"Chroot">,
   HelpText<"Check improper use of chroot">,
   DescFile<"ChrootChecker.cpp">;
-
-def MallocOptimistic : Checker<"MallocWithAnnotations">,
-  HelpText<"Check for memory leaks, double free, and use-after-free problems. Traces memory managed by malloc()/free(). Assumes that all user-defined functions which might free a pointer are annotated.">,
-  DescFile<"MallocChecker.cpp">;
 
 def PthreadLockChecker : Checker<"PthreadLock">,
   HelpText<"Simple lock -> unlock checker">,
@@ -407,6 +416,10 @@ def ObjCNonNilReturnValueChecker : Checker<"NonNilReturnValue">,
   HelpText<"Model the APIs that are guaranteed to return a non-nil value">,
   DescFile<"BasicObjCFoundationChecks.cpp">;
 
+def ObjCSuperCallChecker : Checker<"MissingSuperCall">,
+  HelpText<"Warn about Objective-C methods that lack a necessary call to super">,
+  DescFile<"ObjCMissingSuperCallChecker.cpp">;
+
 def NSErrorChecker : Checker<"NSError">,
   HelpText<"Check usage of NSError** parameters">,
   DescFile<"NSErrorChecker.cpp">;
@@ -438,10 +451,6 @@ def DirectIvarAssignment : Checker<"DirectIvarAssignment">,
 def DirectIvarAssignmentForAnnotatedFunctions : Checker<"DirectIvarAssignmentForAnnotatedFunctions">,
   HelpText<"Check for direct assignments to instance variables in the methods annotated with objc_no_direct_instance_variable_assignment">,
   DescFile<"DirectIvarAssignment.cpp">;
-
-def ObjCSuperCallChecker : Checker<"MissingSuperCall">,
-  HelpText<"Warn about Objective-C methods that lack a necessary call to super">,
-  DescFile<"ObjCMissingSuperCallChecker.cpp">;
 
 } // end "alpha.osx.cocoa"
 
@@ -532,5 +541,9 @@ def TaintTesterChecker : Checker<"TaintTest">,
 def ExprInspectionChecker : Checker<"ExprInspection">,
   HelpText<"Check the analyzer's understanding of expressions">,
   DescFile<"ExprInspectionChecker.cpp">;
+
+def ExplodedGraphViewer : Checker<"ViewExplodedGraph">,
+  HelpText<"View Exploded Graphs using GraphViz">,
+  DescFile<"DebugCheckers.cpp">;
 
 } // end "debug"

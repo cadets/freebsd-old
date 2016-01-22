@@ -1,7 +1,7 @@
 if [ ! "$_STARTUP_RCCONF_SUBR" ]; then _STARTUP_RCCONF_SUBR=1
 #
 # Copyright (c) 2006-2013 Devin Teske
-# All Rights Reserved.
+# All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -13,11 +13,11 @@ if [ ! "$_STARTUP_RCCONF_SUBR" ]; then _STARTUP_RCCONF_SUBR=1
 #    documentation and/or other materials provided with the distribution.
 #
 # THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
-# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING BUT NOT LIMITED TO, THE
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 # ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
 # FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-# DAMAGES (INLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
 # OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
 # HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
 # LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
@@ -106,6 +106,7 @@ f_startup_rcconf_list()
 #
 f_startup_rcconf_map()
 {
+	local __funcname=f_startup_rcconf_map
 	local __var_to_set="$1"
 
 	# If the in-memory cached value is available, return it immediately
@@ -119,7 +120,7 @@ f_startup_rcconf_map()
 	fi
 
 	#
-	# create the in-memory cache (potentially from validated on-disk cache)
+	# Create the in-memory cache (potentially from validated on-disk cache)
 	#
 
 	#
@@ -128,7 +129,7 @@ f_startup_rcconf_map()
 	# can be used to quickly populate the cache value for immediate return.
 	#
 	local __rc_defaults_digest
-	__rc_defaults_digest=$( md5 < "$RC_DEFAULTS" )
+	__rc_defaults_digest=$( exec 2> /dev/null; md5 < "$RC_DEFAULTS" )
 
 	#
 	# Check to see if the global persistant cache file exists
@@ -136,11 +137,11 @@ f_startup_rcconf_map()
 	if [ -f "$STARTUP_RCCONF_MAP_CACHEFILE" ]; then
 		#
 		# Attempt to populate the in-memory cache with the (soon to be)
-		# be validated on-disk cache. If validation fails, fall-back to
+		# validated on-disk cache. If validation fails, fall-back to
 		# the current value and provide error exit status.
 		#
 		STARTUP_RCCONF_MAP=$(
-			(	# Get digest as the first word on the first line
+			(	# Get digest as the first word on first line
 				read digest rest_ignored
 
 				#
@@ -207,15 +208,20 @@ f_startup_rcconf_map()
 	)
 	export STARTUP_RCCONF_MAP
 	export _STARTUP_RCCONF_MAP=1
-	echo "$STARTUP_RCCONF_MAP"
+	if [ "$__var_to_set" ]; then
+		setvar "$__var_to_set" "$STARTUP_RCCONF_MAP"
+	else
+		echo "$STARTUP_RCCONF_MAP"
+	fi
 
 	#
 	# Attempt to create the persistant global cache
 	#
 
 	# Create a new temporary file to write to
-	local __tmpfile="$( mktemp -t "$pgm" )"
-	[ "$__tmpfile" ] || return $FAILURE
+	local __tmpfile
+	f_eval_catch -dk __tmpfile $__funcname mktemp \
+		'mktemp -t "%s"' "$pgm" || return $FAILURE
 
 	# Write the temporary file contents
 	echo "$__rc_defaults_digest" > "$__tmpfile"
@@ -223,9 +229,11 @@ f_startup_rcconf_map()
 
 	# Finally, move the temporary file into place
 	case "$STARTUP_RCCONF_MAP_CACHEFILE" in
-	*/*) f_quietly mkdir -p "${STARTUP_RCCONF_MAP_CACHEFILE%/*}"
+	*/*) f_eval_catch -d $__funcname mkdir \
+		'mkdir -p "%s"' "${STARTUP_RCCONF_MAP_CACHEFILE%/*}"
 	esac
-	mv "$__tmpfile" "$STARTUP_RCCONF_MAP_CACHEFILE"
+	f_eval_catch -d $__funcname mv \
+		'mv "%s" "%s"' "$__tmpfile" "$STARTUP_RCCONF_MAP_CACHEFILE"
 }
 
 # f_startup_rcconf_map_expand $var_to_get
@@ -239,7 +247,7 @@ f_startup_rcconf_map()
 f_startup_rcconf_map_expand()
 {
 	local var_to_get="$1"
-	eval "$( f_getvar "$var_to_get" | awk '
+	eval "$( debug= f_getvar "$var_to_get" | awk '
 	BEGIN {
 		rword = "^[[:space:]]*[^[:space:]]*[[:space:]]*"
 	}
@@ -332,7 +340,7 @@ f_dialog_input_view_details()
 
 	f_dialog_title_restore
 
-	[ $retval -eq 0 ] || return $FAILURE
+	[ $retval -eq $DIALOG_OK ] || return $DIALOG_CANCEL
 
 	case "$mtag" in
 	"R $msg_reset")
@@ -361,19 +369,20 @@ f_dialog_input_view_details()
 	esac
 }
 
-# f_dialog_input_rclist
+# f_dialog_input_rclist [$default]
 #
 # Presents a menu of rc.conf(5) defaults (with, or without descriptions). This
 # function should be treated like a call to dialog(1) (the exit status should
 # be captured and f_dialog_menutag_fetch() should be used to get the user's
-# response).
+# response). Optionally if present and non-null, highlight $default rcvar.
 #
 f_dialog_input_rclist()
 {
 	local prompt="$msg_please_select_an_rcconf_directive"
 	local menu_list="
-		'X $msg_exit' '' ${SHOW_DESC:+'$msg_exit_help'}
+		'X $msg_exit' '' ${SHOW_DESC:+'$msg_exit_this_menu'}
 	" # END-QUOTE
+	local defaultitem="$1"
 	local hline="$hline_arrows_tab_enter"
 
 	if [ ! "$_RCCONF_MAP" ]; then
@@ -430,10 +439,12 @@ f_dialog_input_rclist()
 		--title \"\$DIALOG_TITLE\"         \
 		--backtitle \"\$DIALOG_BACKTITLE\" \
 		--hline \"\$hline\"                \
+		--default-item \"\$defaultitem\"   \
 		--ok-label \"\$msg_ok\"            \
 		--cancel-label \"\$msg_cancel\"    \
 		${SHOW_DESC:+--item-help}          \
-		--menu \"\$prompt\" $size          \
+		--menu \"\$prompt\"                \
+		$height $width $rows               \
 		$menu_list                         \
 		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
 	)
@@ -458,18 +469,18 @@ f_dialog_input_rcvar()
 
 		# Return if user either pressed ESC or chosen Cancel/No
 		f_dialog_input _input "$msg_please_enter_rcvar_name" \
-		               "$_input" "$hline_alnum_tab_enter" || return
+		               "$_input" "$hline_alnum_tab_enter" || return $?
 
 		# Check for invalid entry (1of2)
 		if ! echo "$_input" | grep -q "^[[:alpha:]_]"; then
-			f_dialog_msgbox "$msg_rcvar_must_start_with"
+			f_show_msg "$msg_rcvar_must_start_with"
 			continue
 		fi
 
 		# Check for invalid entry (2of2)
 		if ! echo "$_input" | grep -q "^[[:alpha:]_][[:alnum:]_]*$"
 		then
-			f_dialog_msgbox "$msg_rcvar_contains_invalid_chars"
+			f_show_msg "$msg_rcvar_contains_invalid_chars"
 			continue
 		fi
 
@@ -479,7 +490,7 @@ f_dialog_input_rcvar()
 
 	f_dprintf "f_dialog_input_rcvar: rcvar->[%s]" "$rcvar"
 
-	return $SUCCESS
+	return $DIALOG_OK
 }
 
 ############################################################ MAIN

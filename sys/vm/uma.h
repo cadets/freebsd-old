@@ -33,8 +33,8 @@
  *
 */
 
-#ifndef VM_UMA_H
-#define VM_UMA_H
+#ifndef _VM_UMA_H_
+#define _VM_UMA_H_
 
 #include <sys/param.h>		/* For NULL */
 #include <sys/malloc.h>		/* For M_* */
@@ -122,6 +122,16 @@ typedef int (*uma_init)(void *mem, int size, int flags);
  *	system for other uses.  It is the counter-part to the init function.
  */
 typedef void (*uma_fini)(void *mem, int size);
+
+/*
+ * Import new memory into a cache zone.
+ */
+typedef int (*uma_import)(void *arg, void **store, int count, int flags);
+
+/*
+ * Free memory from a cache zone.
+ */
+typedef void (*uma_release)(void *arg, void **store, int count);
 
 /*
  * What's the difference between initializing and constructing?
@@ -214,6 +224,19 @@ uma_zone_t uma_zsecond_create(char *name, uma_ctor ctor, uma_dtor dtor,
  *	Error on failure, 0 on success.
  */
 int uma_zsecond_add(uma_zone_t zone, uma_zone_t master);
+
+/*
+ * Create cache-only zones.
+ *
+ * This allows uma's per-cpu cache facilities to handle arbitrary
+ * pointers.  Consumers must specify the import and release functions to
+ * fill and destroy caches.  UMA does not allocate any memory for these
+ * zones.  The 'arg' parameter is passed to import/release and is caller
+ * specific.
+ */
+uma_zone_t uma_zcache_create(char *name, int size, uma_ctor ctor, uma_dtor dtor,
+		    uma_init zinit, uma_fini zfini, uma_import zimport,
+		    uma_release zrelease, void *arg, int flags);
 
 /*
  * Definitions for uma_zcreate flags
@@ -359,7 +382,8 @@ uma_zfree(uma_zone_t zone, void *item)
  *	A pointer to the allocated memory or NULL on failure.
  */
 
-typedef void *(*uma_alloc)(uma_zone_t zone, int size, uint8_t *pflag, int wait);
+typedef void *(*uma_alloc)(uma_zone_t zone, vm_size_t size, uint8_t *pflag,
+    int wait);
 
 /*
  * Backend page free routines
@@ -372,7 +396,7 @@ typedef void *(*uma_alloc)(uma_zone_t zone, int size, uint8_t *pflag, int wait);
  * Returns:
  *	None
  */
-typedef void (*uma_free)(void *item, int size, uint8_t pflag);
+typedef void (*uma_free)(void *item, vm_size_t size, uint8_t pflag);
 
 
 
@@ -436,6 +460,12 @@ void uma_reclaim(void);
 void uma_set_align(int align);
 
 /*
+ * Set a reserved number of items to hold for M_USE_RESERVE allocations.  All
+ * other requests must allocate new backing pages.
+ */
+void uma_zone_reserve(uma_zone_t zone, int nitems);
+
+/*
  * Reserves the maximum KVA space required by the zone and configures the zone
  * to use a VM_ALLOC_NOOBJ-based backend allocator.
  *
@@ -489,6 +519,19 @@ int uma_zone_get_max(uma_zone_t zone);
  *	Nothing
  */
 void uma_zone_set_warning(uma_zone_t zone, const char *warning);
+
+/*
+ * Sets a function to run when limit is reached
+ *
+ * Arguments:
+ *	zone  The zone to which this applies
+ *	fx  The function ro run
+ *
+ * Returns:
+ *	Nothing
+ */
+typedef void (*uma_maxaction_t)(uma_zone_t);
+void uma_zone_set_maxaction(uma_zone_t zone, uma_maxaction_t);
 
 /*
  * Obtains the approximate current number of items allocated from a zone
@@ -607,6 +650,12 @@ int uma_zone_exhausted(uma_zone_t zone);
 int uma_zone_exhausted_nolock(uma_zone_t zone);
 
 /*
+ * Common UMA_ZONE_PCPU zones.
+ */
+extern uma_zone_t pcpu_zone_64;
+extern uma_zone_t pcpu_zone_ptr;
+
+/*
  * Exported statistics structures to be used by user space monitoring tools.
  * Statistics stream consists of a uma_stream_header, followed by a series of
  * alternative uma_type_header and uma_type_stat structures.
@@ -654,4 +703,7 @@ struct uma_percpu_stat {
 	uint64_t	_ups_reserved[5];	/* Reserved. */
 };
 
-#endif
+void uma_reclaim_wakeup(void);
+void uma_reclaim_worker(void *);
+
+#endif	/* _VM_UMA_H_ */

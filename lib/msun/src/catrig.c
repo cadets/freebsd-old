@@ -151,13 +151,13 @@ f(double a, double b, double hypot_a_b)
  */
 static inline void
 do_hard_work(double x, double y, double *rx, int *B_is_usable, double *B,
-	     double *sqrt_A2my2, double *new_y)
+    double *sqrt_A2my2, double *new_y)
 {
 	double R, S, A; /* A, B, R, and S are as in Hull et al. */
 	double Am1, Amy; /* A-1, A-y. */
 
-	R = hypot(x, y + 1); /* |z+I| */
-	S = hypot(x, y - 1); /* |z-I| */
+	R = hypot(x, y + 1);		/* |z+I| */
+	S = hypot(x, y - 1);		/* |z-I| */
 
 	/* A = (|z+I| + |z-I|) / 2 */
 	A = (R + S) / 2;
@@ -174,7 +174,7 @@ do_hard_work(double x, double y, double *rx, int *B_is_usable, double *B,
 		 * Am1 = fp + fm, where fp = f(x, 1+y), and fm = f(x, 1-y).
 		 * rx = log1p(Am1 + sqrt(Am1*(A+1)))
 		 */
-		if (y == 1 && x < DBL_EPSILON*DBL_EPSILON / 128) {
+		if (y == 1 && x < DBL_EPSILON * DBL_EPSILON / 128) {
 			/*
 			 * fp is of order x^2, and fm = x/2.
 			 * A = 1 (inexactly).
@@ -193,7 +193,7 @@ do_hard_work(double x, double y, double *rx, int *B_is_usable, double *B,
 			 * A = 1 (inexactly).
 			 */
 			*rx = x / sqrt((1 - y) * (1 + y));
-		} else /* if (y > 1) */ {
+		} else {		/* if (y > 1) */
 			/*
 			 * A-1 = y-1 (inexactly).
 			 */
@@ -251,9 +251,9 @@ do_hard_work(double x, double y, double *rx, int *B_is_usable, double *B,
 			 * scaling should avoid any underflow problems.
 			 */
 			*sqrt_A2my2 = x * (4 / DBL_EPSILON / DBL_EPSILON) * y /
-				sqrt((y + 1) * (y - 1));
+			    sqrt((y + 1) * (y - 1));
 			*new_y = y * (4 / DBL_EPSILON / DBL_EPSILON);
-		} else /* if (y < 1) */ {
+		} else {		/* if (y < 1) */
 			/*
 			 * fm = 1-y >= DBL_EPSILON, fp is of order x^2, and
 			 * A = 1 (inexactly).
@@ -286,20 +286,19 @@ casinh(double complex z)
 	if (isnan(x) || isnan(y)) {
 		/* casinh(+-Inf + I*NaN) = +-Inf + I*NaN */
 		if (isinf(x))
-			return (cpack(x, y + y));
+			return (CMPLX(x, y + y));
 		/* casinh(NaN + I*+-Inf) = opt(+-)Inf + I*NaN */
 		if (isinf(y))
-			return (cpack(y, x + x));
+			return (CMPLX(y, x + x));
 		/* casinh(NaN + I*0) = NaN + I*0 */
 		if (y == 0)
-			return (cpack(x + x, y));
+			return (CMPLX(x + x, y));
 		/*
 		 * All other cases involving NaN return NaN + I*NaN.
 		 * C99 leaves it optional whether to raise invalid if one of
 		 * the arguments is not NaN, so we opt not to raise it.
 		 */
-		/* Bruce Evans tells me this is the way to do this: */
-		return (cpack(x + 0.0L + (y + 0), x + 0.0L + (y + 0)));
+		return (CMPLX(x + 0.0L + (y + 0), x + 0.0L + (y + 0)));
 	}
 
 	if (ax > RECIP_EPSILON || ay > RECIP_EPSILON) {
@@ -308,7 +307,7 @@ casinh(double complex z)
 			w = clog_for_large_values(z) + m_ln2;
 		else
 			w = clog_for_large_values(-z) + m_ln2;
-		return (cpack(copysign(creal(w), x), copysign(cimag(w), y)));
+		return (CMPLX(copysign(creal(w), x), copysign(cimag(w), y)));
 	}
 
 	/* Avoid spuriously raising inexact for z = 0. */
@@ -326,7 +325,7 @@ casinh(double complex z)
 		ry = asin(B);
 	else
 		ry = atan2(new_y, sqrt_A2my2);
-	return (cpack(copysign(rx, x), copysign(ry, y)));
+	return (CMPLX(copysign(rx, x), copysign(ry, y)));
 }
 
 /*
@@ -336,8 +335,9 @@ casinh(double complex z)
 double complex
 casin(double complex z)
 {
-	double complex w = casinh(cpack(cimag(z), creal(z)));
-	return (cpack(cimag(w), creal(w)));
+	double complex w = casinh(CMPLX(cimag(z), creal(z)));
+
+	return (CMPLX(cimag(w), creal(w)));
 }
 
 /*
@@ -370,19 +370,19 @@ cacos(double complex z)
 	if (isnan(x) || isnan(y)) {
 		/* cacos(+-Inf + I*NaN) = NaN + I*opt(-)Inf */
 		if (isinf(x))
-			return (cpack(y + y, -INFINITY));
+			return (CMPLX(y + y, -INFINITY));
 		/* cacos(NaN + I*+-Inf) = NaN + I*-+Inf */
 		if (isinf(y))
-			return (cpack(x + x, -y));
+			return (CMPLX(x + x, -y));
 		/* cacos(0 + I*NaN) = PI/2 + I*NaN with inexact */
 		if (x == 0)
-			return (cpack(pio2_hi + pio2_lo, y + y));
+			return (CMPLX(pio2_hi + pio2_lo, y + y));
 		/*
 		 * All other cases involving NaN return NaN + I*NaN.
 		 * C99 leaves it optional whether to raise invalid if one of
 		 * the arguments is not NaN, so we opt not to raise it.
 		 */
-		return (cpack(x + 0.0L + (y + 0), x + 0.0L + (y + 0)));
+		return (CMPLX(x + 0.0L + (y + 0), x + 0.0L + (y + 0)));
 	}
 
 	if (ax > RECIP_EPSILON || ay > RECIP_EPSILON) {
@@ -392,34 +392,34 @@ cacos(double complex z)
 		ry = creal(w) + m_ln2;
 		if (sy == 0)
 			ry = -ry;
-		return (cpack(rx, ry));
+		return (CMPLX(rx, ry));
 	}
 
 	/* Avoid spuriously raising inexact for z = 1. */
 	if (x == 1 && y == 0)
-		return (cpack(0, -y));
+		return (CMPLX(0, -y));
 
 	/* All remaining cases are inexact. */
 	raise_inexact();
 
-	if (ax < SQRT_6_EPSILON / 4 && ay < SQRT_6_EPSILON/4)
-		return (cpack(pio2_hi - (x - pio2_lo), -y));
+	if (ax < SQRT_6_EPSILON / 4 && ay < SQRT_6_EPSILON / 4)
+		return (CMPLX(pio2_hi - (x - pio2_lo), -y));
 
 	do_hard_work(ay, ax, &ry, &B_is_usable, &B, &sqrt_A2mx2, &new_x);
 	if (B_is_usable) {
-		if (sx==0)
+		if (sx == 0)
 			rx = acos(B);
 		else
 			rx = acos(-B);
 	} else {
-		if (sx==0)
+		if (sx == 0)
 			rx = atan2(sqrt_A2mx2, new_x);
 		else
 			rx = atan2(sqrt_A2mx2, -new_x);
 	}
 	if (sy == 0)
 		ry = -ry;
-	return (cpack(rx, ry));
+	return (CMPLX(rx, ry));
 }
 
 /*
@@ -437,15 +437,15 @@ cacosh(double complex z)
 	ry = cimag(w);
 	/* cacosh(NaN + I*NaN) = NaN + I*NaN */
 	if (isnan(rx) && isnan(ry))
-		return (cpack(ry, rx));
+		return (CMPLX(ry, rx));
 	/* cacosh(NaN + I*+-Inf) = +Inf + I*NaN */
 	/* cacosh(+-Inf + I*NaN) = +Inf + I*NaN */
 	if (isnan(rx))
-		return (cpack(fabs(ry), rx));
+		return (CMPLX(fabs(ry), rx));
 	/* cacosh(0 + I*NaN) = NaN + I*NaN */
 	if (isnan(ry))
-		return (cpack(ry, ry));
-	return (cpack(fabs(ry), copysign(rx, cimag(z))));
+		return (CMPLX(ry, ry));
+	return (CMPLX(fabs(ry), copysign(rx, cimag(z))));
 }
 
 /*
@@ -475,21 +475,17 @@ clog_for_large_values(double complex z)
 	 * this method is still poor since it is uneccessarily slow.
 	 */
 	if (ax > DBL_MAX / 2)
-		return (cpack(log(hypot(x / m_e, y / m_e)) + 1, atan2(y, x)));
+		return (CMPLX(log(hypot(x / m_e, y / m_e)) + 1, atan2(y, x)));
 
 	/*
 	 * Avoid overflow when x or y is large.  Avoid underflow when x or
 	 * y is small.
 	 */
 	if (ax > QUARTER_SQRT_MAX || ay < SQRT_MIN)
-		return (cpack(log(hypot(x, y)), atan2(y, x)));
+		return (CMPLX(log(hypot(x, y)), atan2(y, x)));
 
-	return (cpack(log(ax * ax + ay * ay) / 2, atan2(y, x)));
+	return (CMPLX(log(ax * ax + ay * ay) / 2, atan2(y, x)));
 }
-
-/*
- *=============================================================================
- */
 
 /*
  *				=================
@@ -511,6 +507,7 @@ sum_squares(double x, double y)
 	/* Avoid underflow when y is small. */
 	if (y < SQRT_MIN)
 		return (x * x);
+
 	return (x * x + y * y);
 }
 
@@ -578,33 +575,31 @@ catanh(double complex z)
 
 	/* This helps handle many cases. */
 	if (y == 0 && ax <= 1)
-		return (cpack(atanh(x), y)); 
+		return (CMPLX(atanh(x), y));
 
 	/* To ensure the same accuracy as atan(), and to filter out z = 0. */
 	if (x == 0)
-		return (cpack(x, atan(y)));
+		return (CMPLX(x, atan(y)));
 
 	if (isnan(x) || isnan(y)) {
 		/* catanh(+-Inf + I*NaN) = +-0 + I*NaN */
 		if (isinf(x))
-			return (cpack(copysign(0, x), y + y));
+			return (CMPLX(copysign(0, x), y + y));
 		/* catanh(NaN + I*+-Inf) = sign(NaN)0 + I*+-PI/2 */
-		if (isinf(y)) {
-			return (cpack(copysign(0, x),
-				      copysign(pio2_hi + pio2_lo, y)));
-		}
+		if (isinf(y))
+			return (CMPLX(copysign(0, x),
+			    copysign(pio2_hi + pio2_lo, y)));
 		/*
 		 * All other cases involving NaN return NaN + I*NaN.
 		 * C99 leaves it optional whether to raise invalid if one of
 		 * the arguments is not NaN, so we opt not to raise it.
 		 */
-		return (cpack(x + 0.0L + (y + 0), x + 0.0L + (y + 0)));
+		return (CMPLX(x + 0.0L + (y + 0), x + 0.0L + (y + 0)));
 	}
 
-	if (ax > RECIP_EPSILON || ay > RECIP_EPSILON) {
-		return (cpack(real_part_reciprocal(x, y),
-			      copysign(pio2_hi + pio2_lo, y)));
-	}
+	if (ax > RECIP_EPSILON || ay > RECIP_EPSILON)
+		return (CMPLX(real_part_reciprocal(x, y),
+		    copysign(pio2_hi + pio2_lo, y)));
 
 	if (ax < SQRT_3_EPSILON / 2 && ay < SQRT_3_EPSILON / 2) {
 		/*
@@ -617,7 +612,7 @@ catanh(double complex z)
 	}
 
 	if (ax == 1 && ay < DBL_EPSILON)
-		rx = (log(ay) - m_ln2) / -2;
+		rx = (m_ln2 - log(ay)) / 2;
 	else
 		rx = log1p(4 * ax / sum_squares(ax - 1, ay)) / 4;
 
@@ -628,7 +623,7 @@ catanh(double complex z)
 	else
 		ry = atan2(2 * ay, (1 - ax) * (1 + ax) - ay * ay) / 2;
 
-	return (cpack(copysign(rx, x), copysign(ry, y)));
+	return (CMPLX(copysign(rx, x), copysign(ry, y)));
 }
 
 /*
@@ -638,6 +633,7 @@ catanh(double complex z)
 double complex
 catan(double complex z)
 {
-	double complex w = catanh(cpack(cimag(z), creal(z)));
-	return (cpack(cimag(w), creal(w)));
+	double complex w = catanh(CMPLX(cimag(z), creal(z)));
+
+	return (CMPLX(cimag(w), creal(w)));
 }

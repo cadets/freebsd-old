@@ -54,7 +54,8 @@ static const Stmt *ignoreTransparentExprs(const Stmt *S) {
 EnvironmentEntry::EnvironmentEntry(const Stmt *S, const LocationContext *L)
   : std::pair<const Stmt *,
               const StackFrameContext *>(ignoreTransparentExprs(S),
-                                         L ? L->getCurrentStackFrame() : 0) {}
+                                         L ? L->getCurrentStackFrame()
+                                           : nullptr) {}
 
 SVal Environment::lookupExpr(const EnvironmentEntry &E) const {
   const SVal* X = ExprBindings.lookup(E);
@@ -80,43 +81,17 @@ SVal Environment::getSVal(const EnvironmentEntry &Entry,
     llvm_unreachable("Should have been handled by ignoreTransparentExprs");
 
   case Stmt::AddrLabelExprClass:
-    return svalBuilder.makeLoc(cast<AddrLabelExpr>(S));
-
-  case Stmt::CharacterLiteralClass: {
-    const CharacterLiteral *C = cast<CharacterLiteral>(S);
-    return svalBuilder.makeIntVal(C->getValue(), C->getType());
-  }
-
+  case Stmt::CharacterLiteralClass:
   case Stmt::CXXBoolLiteralExprClass:
-    return svalBuilder.makeBoolVal(cast<CXXBoolLiteralExpr>(S));
-
   case Stmt::CXXScalarValueInitExprClass:
-  case Stmt::ImplicitValueInitExprClass: {
-    QualType Ty = cast<Expr>(S)->getType();
-    return svalBuilder.makeZeroVal(Ty);
-  }
-
+  case Stmt::ImplicitValueInitExprClass:
   case Stmt::IntegerLiteralClass:
-    return svalBuilder.makeIntVal(cast<IntegerLiteral>(S));
-
   case Stmt::ObjCBoolLiteralExprClass:
-    return svalBuilder.makeBoolVal(cast<ObjCBoolLiteralExpr>(S));
-
-  // For special C0xx nullptr case, make a null pointer SVal.
   case Stmt::CXXNullPtrLiteralExprClass:
-    return svalBuilder.makeNull();
-
-  case Stmt::ObjCStringLiteralClass: {
-    MemRegionManager &MRMgr = svalBuilder.getRegionManager();
-    const ObjCStringLiteral *SL = cast<ObjCStringLiteral>(S);
-    return svalBuilder.makeLoc(MRMgr.getObjCStringRegion(SL));
-  }
-
-  case Stmt::StringLiteralClass: {
-    MemRegionManager &MRMgr = svalBuilder.getRegionManager();
-    const StringLiteral *SL = cast<StringLiteral>(S);
-    return svalBuilder.makeLoc(MRMgr.getStringRegion(SL));
-  }
+  case Stmt::ObjCStringLiteralClass:
+  case Stmt::StringLiteralClass:
+    // Known constants; defer to SValBuilder.
+    return svalBuilder.getConstantVal(cast<Expr>(S)).getValue();
 
   case Stmt::ReturnStmtClass: {
     const ReturnStmt *RS = cast<ReturnStmt>(S);
@@ -127,10 +102,8 @@ SVal Environment::getSVal(const EnvironmentEntry &Entry,
     
   // Handle all other Stmt* using a lookup.
   default:
-    break;
+    return lookupExpr(EnvironmentEntry(S, LCtx));
   }
-  
-  return lookupExpr(EnvironmentEntry(S, LCtx));
 }
 
 Environment EnvironmentManager::bindExpr(Environment Env,
@@ -151,11 +124,11 @@ class MarkLiveCallback : public SymbolVisitor {
   SymbolReaper &SymReaper;
 public:
   MarkLiveCallback(SymbolReaper &symreaper) : SymReaper(symreaper) {}
-  bool VisitSymbol(SymbolRef sym) {
+  bool VisitSymbol(SymbolRef sym) override {
     SymReaper.markLive(sym);
     return true;
   }
-  bool VisitMemRegion(const MemRegion *R) {
+  bool VisitMemRegion(const MemRegion *R) override {
     SymReaper.markLive(R);
     return true;
   }
@@ -232,11 +205,12 @@ void Environment::print(raw_ostream &Out, const char *NL,
     }
     
     const Stmt *S = En.getStmt();
-    
+    assert(S != nullptr && "Expected non-null Stmt");
+
     Out << " (" << (const void*) En.getLocationContext() << ','
       << (const void*) S << ") ";
     LangOptions LO; // FIXME.
-    S->printPretty(Out, 0, PrintingPolicy(LO));
+    S->printPretty(Out, nullptr, PrintingPolicy(LO));
     Out << " : " << I.getData();
   }
 }

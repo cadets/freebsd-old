@@ -90,7 +90,7 @@ disk_lookup(struct disk_devdesc *dev)
 		    entry->d_partition == dev->d_partition) {
 			dev->d_offset = entry->d_offset;
 			DEBUG("%s offset %lld", disk_fmtdev(dev),
-			    dev->d_offset);
+			    (long long)dev->d_offset);
 #ifdef DISK_DEBUG
 			entry->count++;
 #endif
@@ -233,6 +233,42 @@ disk_print(struct disk_devdesc *dev, char *prefix, int verbose)
 }
 
 int
+disk_read(struct disk_devdesc *dev, void *buf, off_t offset, u_int blocks)
+{
+	struct open_disk *od;
+	int ret;
+
+	od = (struct open_disk *)dev->d_opendata;
+	ret = dev->d_dev->dv_strategy(dev, F_READ, dev->d_offset + offset,
+	    blocks * od->sectorsize, buf, NULL);
+
+	return (ret);
+}
+
+int
+disk_write(struct disk_devdesc *dev, void *buf, off_t offset, u_int blocks)
+{
+	struct open_disk *od;
+	int ret;
+
+	od = (struct open_disk *)dev->d_opendata;
+	ret = dev->d_dev->dv_strategy(dev, F_WRITE, dev->d_offset + offset,
+	    blocks * od->sectorsize, buf, NULL);
+
+	return (ret);
+}
+
+int
+disk_ioctl(struct disk_devdesc *dev, u_long cmd, void *buf)
+{
+
+	if (dev->d_dev->dv_ioctl)
+		return ((*dev->d_dev->dv_ioctl)(dev->d_opendata, cmd, buf));
+
+	return (ENXIO);
+}
+
+int
 disk_open(struct disk_devdesc *dev, off_t mediasize, u_int sectorsize,
     u_int flags)
 {
@@ -367,7 +403,7 @@ out:
 		dev->d_slice = slice;
 		dev->d_partition = partition;
 		DEBUG("%s offset %lld => %p", disk_fmtdev(dev),
-		    dev->d_offset, od);
+		    (long long)dev->d_offset, od);
 	}
 	return (rc);
 }

@@ -8,25 +8,33 @@ SRCDIR=	lib/Target/PowerPC
 SRCS=	PPCAsmPrinter.cpp \
 	PPCBranchSelector.cpp \
 	PPCCTRLoops.cpp \
-	PPCCodeEmitter.cpp \
+	PPCEarlyReturn.cpp \
+ 	PPCFastISel.cpp \
 	PPCFrameLowering.cpp \
 	PPCHazardRecognizers.cpp \
 	PPCISelDAGToDAG.cpp \
 	PPCISelLowering.cpp \
 	PPCInstrInfo.cpp \
-	PPCJITInfo.cpp \
+	PPCLoopDataPrefetch.cpp \
+	PPCLoopPreIncPrep.cpp \
 	PPCMCInstLower.cpp \
 	PPCMachineFunctionInfo.cpp \
 	PPCRegisterInfo.cpp \
-	PPCSelectionDAGInfo.cpp \
 	PPCSubtarget.cpp \
+	PPCTLSDynamicCall.cpp \
+	PPCTOCRegDeps.cpp \
 	PPCTargetMachine.cpp \
-	PPCTargetTransformInfo.cpp
+	PPCTargetObjectFile.cpp \
+	PPCTargetTransformInfo.cpp \
+	PPCVSXCopy.cpp \
+	PPCVSXFMAMutate.cpp \
+	PPCVSXSwapRemoval.cpp
 
 TGHDRS=	Intrinsics \
 	PPCGenCallingConv \
 	PPCGenCodeEmitter \
 	PPCGenDAGISel \
+	PPCGenFastISel \
 	PPCGenInstrInfo \
 	PPCGenMCCodeEmitter \
 	PPCGenRegisterInfo \

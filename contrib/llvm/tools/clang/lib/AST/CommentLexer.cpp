@@ -1,5 +1,6 @@
 #include "clang/AST/CommentLexer.h"
 #include "clang/AST/CommentCommandTraits.h"
+#include "clang/AST/CommentDiagnostic.h"
 #include "clang/Basic/CharInfo.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -156,7 +157,7 @@ const char *skipDecimalCharacterReference(const char *BufferPtr,
 }
 
 const char *skipHexCharacterReference(const char *BufferPtr,
-                                          const char *BufferEnd) {
+                                      const char *BufferEnd) {
   for ( ; BufferPtr != BufferEnd; ++BufferPtr) {
     if (!isHTMLHexCharacterReferenceCharacter(*BufferPtr))
       return BufferPtr;
@@ -264,7 +265,21 @@ const char *findCCommentEnd(const char *BufferPtr, const char *BufferEnd) {
   }
   llvm_unreachable("buffer end hit before '*/' was seen");
 }
+    
 } // unnamed namespace
+
+void Lexer::formTokenWithChars(Token &Result, const char *TokEnd,
+                               tok::TokenKind Kind) {
+  const unsigned TokLen = TokEnd - BufferPtr;
+  Result.setLocation(getSourceLocation(BufferPtr));
+  Result.setKind(Kind);
+  Result.setLength(TokLen);
+#ifndef NDEBUG
+  Result.TextPtr = "<UNSET>";
+  Result.IntVal = 7;
+#endif
+  BufferPtr = TokEnd;
+}
 
 void Lexer::lexCommentText(Token &T) {
   assert(CommentState == LCS_InsideBCPLComment ||
@@ -347,13 +362,24 @@ void Lexer::lexCommentText(Token &T) {
           }
         }
 
-        const StringRef CommandName(BufferPtr + 1, Length);
+        StringRef CommandName(BufferPtr + 1, Length);
 
         const CommandInfo *Info = Traits.getCommandInfoOrNULL(CommandName);
         if (!Info) {
-          formTokenWithChars(T, TokenPtr, tok::unknown_command);
-          T.setUnknownCommandName(CommandName);
-          return;
+          if ((Info = Traits.getTypoCorrectCommandInfo(CommandName))) {
+            StringRef CorrectedName = Info->Name;
+            SourceLocation Loc = getSourceLocation(BufferPtr);
+            SourceRange CommandRange(Loc.getLocWithOffset(1),
+                                     getSourceLocation(TokenPtr));
+            Diag(Loc, diag::warn_correct_comment_command_name)
+              << CommandName << CorrectedName
+              << FixItHint::CreateReplacement(CommandRange, CorrectedName);
+          } else {
+            formTokenWithChars(T, TokenPtr, tok::unknown_command);
+            T.setUnknownCommandName(CommandName);
+            Diag(T.getLocation(), diag::warn_unknown_comment_command_name);
+            return;
+          }
         }
         if (Info->IsVerbatimBlockCommand) {
           setupAndLexVerbatimBlock(T, TokenPtr, *BufferPtr, Info);
@@ -488,6 +514,12 @@ void Lexer::lexVerbatimBlockBody(Token &T) {
   if (CommentState == LCS_InsideCComment)
     skipLineStartingDecorations();
 
+  if (BufferPtr == CommentEnd) {
+    formTokenWithChars(T, BufferPtr, tok::verbatim_block_line);
+    T.setVerbatimBlockText("");
+    return;
+  }
+
   lexVerbatimBlockFirstLine(T);
 }
 
@@ -505,7 +537,7 @@ void Lexer::lexVerbatimLineText(Token &T) {
 
   // Extract current line.
   const char *Newline = findNewline(BufferPtr, CommentEnd);
-  const StringRef Text(BufferPtr, Newline - BufferPtr);
+  StringRef Text(BufferPtr, Newline - BufferPtr);
   formTokenWithChars(T, Newline, tok::verbatim_line_text);
   T.setVerbatimLineText(Text);
 
@@ -685,10 +717,11 @@ void Lexer::lexHTMLEndTag(Token &T) {
   State = LS_Normal;
 }
 
-Lexer::Lexer(llvm::BumpPtrAllocator &Allocator, const CommandTraits &Traits,
+Lexer::Lexer(llvm::BumpPtrAllocator &Allocator, DiagnosticsEngine &Diags,
+             const CommandTraits &Traits,
              SourceLocation FileLoc,
              const char *BufferStart, const char *BufferEnd):
-    Allocator(Allocator), Traits(Traits),
+    Allocator(Allocator), Diags(Diags), Traits(Traits),
     BufferStart(BufferStart), BufferEnd(BufferEnd),
     FileLoc(FileLoc), BufferPtr(BufferStart),
     CommentState(LCS_BeforeComment), State(LS_Normal) {

@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ASTCommon.h"
+#include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Serialization/ASTDeserializationListener.h"
@@ -93,23 +94,24 @@ serialization::getDefinitiveDeclContext(const DeclContext *DC) {
   switch (DC->getDeclKind()) {
   // These entities may have multiple definitions.
   case Decl::TranslationUnit:
+  case Decl::ExternCContext:
   case Decl::Namespace:
   case Decl::LinkageSpec:
-    return 0;
+    return nullptr;
 
   // C/C++ tag types can only be defined in one place.
   case Decl::Enum:
   case Decl::Record:
     if (const TagDecl *Def = cast<TagDecl>(DC)->getDefinition())
       return Def;
-    return 0;
+    return nullptr;
 
   // FIXME: These can be defined in one place... except special member
   // functions and out-of-line definitions.
   case Decl::CXXRecord:
   case Decl::ClassTemplateSpecialization:
   case Decl::ClassTemplatePartialSpecialization:
-    return 0;
+    return nullptr;
 
   // Each function, method, and block declaration is its own DeclContext.
   case Decl::Function:
@@ -119,6 +121,7 @@ serialization::getDefinitiveDeclContext(const DeclContext *DC) {
   case Decl::CXXConversion:
   case Decl::ObjCMethod:
   case Decl::Block:
+  case Decl::Captured:
     // Objective C categories, category implementations, and class
     // implementations can only be defined in one place.
   case Decl::ObjCCategory:
@@ -130,14 +133,14 @@ serialization::getDefinitiveDeclContext(const DeclContext *DC) {
     if (const ObjCProtocolDecl *Def
           = cast<ObjCProtocolDecl>(DC)->getDefinition())
       return Def;
-    return 0;
+    return nullptr;
 
   // FIXME: These are defined in one place, but properties in class extensions
   // end up being back-patched into the main interface. See
   // Sema::HandlePropertyInClassExtension for the offending code.
   case Decl::ObjCInterface:
-    return 0;
-    
+    return nullptr;
+
   default:
     llvm_unreachable("Unhandled DeclContext in AST reader");
   }
@@ -147,9 +150,13 @@ serialization::getDefinitiveDeclContext(const DeclContext *DC) {
 
 bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   switch (static_cast<Decl::Kind>(Kind)) {
-  case Decl::TranslationUnit: // Special case of a "merged" declaration.
+  case Decl::TranslationUnit:
+  case Decl::ExternCContext:
+    // Special case of a "merged" declaration.
+    return true;
+
   case Decl::Namespace:
-  case Decl::NamespaceAlias: // FIXME: Not yet redeclarable, but will be.
+  case Decl::NamespaceAlias:
   case Decl::Typedef:
   case Decl::TypeAlias:
   case Decl::Enum:
@@ -157,14 +164,18 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   case Decl::CXXRecord:
   case Decl::ClassTemplateSpecialization:
   case Decl::ClassTemplatePartialSpecialization:
+  case Decl::VarTemplateSpecialization:
+  case Decl::VarTemplatePartialSpecialization:
   case Decl::Function:
   case Decl::CXXMethod:
   case Decl::CXXConstructor:
   case Decl::CXXDestructor:
   case Decl::CXXConversion:
+  case Decl::UsingShadow:
   case Decl::Var:
   case Decl::FunctionTemplate:
   case Decl::ClassTemplate:
+  case Decl::VarTemplate:
   case Decl::TypeAliasTemplate:
   case Decl::ObjCProtocol:
   case Decl::ObjCInterface:
@@ -180,14 +191,12 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   case Decl::UnresolvedUsingValue:
   case Decl::IndirectField:
   case Decl::Field:
+  case Decl::MSProperty:
   case Decl::ObjCIvar:
   case Decl::ObjCAtDefsField:
-  case Decl::ImplicitParam:
-  case Decl::ParmVar:
   case Decl::NonTypeTemplateParm:
   case Decl::TemplateTemplateParm:
   case Decl::Using:
-  case Decl::UsingShadow:
   case Decl::ObjCMethod:
   case Decl::ObjCCategory:
   case Decl::ObjCCategoryImpl:
@@ -202,11 +211,44 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   case Decl::FriendTemplate:
   case Decl::StaticAssert:
   case Decl::Block:
+  case Decl::Captured:
   case Decl::ClassScopeFunctionSpecialization:
   case Decl::Import:
   case Decl::OMPThreadPrivate:
+    return false;
+
+  // These indirectly derive from Redeclarable<T> but are not actually
+  // redeclarable.
+  case Decl::ImplicitParam:
+  case Decl::ParmVar:
+  case Decl::ObjCTypeParam:
     return false;
   }
 
   llvm_unreachable("Unhandled declaration kind");
 }
+
+bool serialization::needsAnonymousDeclarationNumber(const NamedDecl *D) {
+  // Friend declarations in dependent contexts aren't anonymous in the usual
+  // sense, but they cannot be found by name lookup in their semantic context
+  // (or indeed in any context), so we treat them as anonymous.
+  //
+  // This doesn't apply to friend tag decls; Sema makes those available to name
+  // lookup in the surrounding context.
+  if (D->getFriendObjectKind() &&
+      D->getLexicalDeclContext()->isDependentContext() && !isa<TagDecl>(D)) {
+    // For function templates and class templates, the template is numbered and
+    // not its pattern.
+    if (auto *FD = dyn_cast<FunctionDecl>(D))
+      return !FD->getDescribedFunctionTemplate();
+    if (auto *RD = dyn_cast<CXXRecordDecl>(D))
+      return !RD->getDescribedClassTemplate();
+    return true;
+  }
+
+  // Otherwise, we only care about anonymous class members.
+  if (D->getDeclName() || !isa<CXXRecordDecl>(D->getLexicalDeclContext()))
+    return false;
+  return isa<TagDecl>(D) || isa<FieldDecl>(D);
+}
+

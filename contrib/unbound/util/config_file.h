@@ -21,16 +21,16 @@
  * specific prior written permission.
  * 
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
- * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+ * TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 /**
@@ -119,6 +119,10 @@ struct config_file {
 	size_t infra_cache_slabs;
 	/** max number of hosts in the infra cache */
 	size_t infra_cache_numhosts;
+	/** min value for infra cache rtt */
+	int infra_cache_min_rtt;
+	/** delay close of udp-timeouted ports, if 0 no delayclose. in msec */
+	int delay_close;
 
 	/** the target fetch policy for the iterator */
 	char* target_fetch_policy;
@@ -130,6 +134,10 @@ struct config_file {
 	size_t so_rcvbuf;
 	/** SO_SNDBUF size to set on port 53 UDP socket */
 	size_t so_sndbuf;
+	/** SO_REUSEPORT requested on port 53 sockets */
+	int so_reuseport;
+	/** IP_TRANSPARENT socket option requested on port 53 sockets */
+	int ip_transparent;
 
 	/** number of interfaces to open. If 0 default all interfaces. */
 	int num_ifs;
@@ -167,8 +175,12 @@ struct config_file {
 	int harden_below_nxdomain;
 	/** harden the referral path, query for NS,A,AAAA and validate */
 	int harden_referral_path;
+	/** harden against algorithm downgrade */
+	int harden_algo_downgrade;
 	/** use 0x20 bits in query as random ID bits */
 	int use_caps_bits_for_id;
+	/** 0x20 whitelist, domains that do not use capsforid */
+	struct config_strlist* caps_whitelist;
 	/** strip away these private addrs from answers, no DNS Rebinding */
 	struct config_strlist* private_address;
 	/** allow domain (and subdomains) to use private address space */
@@ -179,6 +191,8 @@ struct config_file {
 	int max_ttl;
 	/** the number of seconds minimum TTL used for RRsets and messages */
 	int min_ttl;
+	/** the number of seconds maximal negative TTL for SOA in auth */
+	int max_negative_ttl;
 	/** if prefetching of messages should be performed. */
 	int prefetch;
 	/** if prefetching of DNSKEYs should be performed. */
@@ -255,6 +269,8 @@ struct config_file {
 	unsigned int del_holddown;
 	/** autotrust keep_missing time, in seconds. 0 is forever. */
 	unsigned int keep_missing;
+	/** permit small holddown values, allowing 5011 rollover very fast */
+	int permit_small_holddown;
 
 	/** size of the key cache */
 	size_t key_cache_size;
@@ -267,8 +283,10 @@ struct config_file {
 	struct config_str2list* local_zones;
 	/** local zones nodefault list */
 	struct config_strlist* local_zones_nodefault;
-	/** local data RRs configged */
+	/** local data RRs configured */
 	struct config_strlist* local_data;
+	/** unblock lan zones (reverse lookups for 10/8 and so on) */
+	int unblock_lan_zones;
 
 	/** remote control section. enable toggle. */
 	int remote_control_enable;
@@ -276,6 +294,8 @@ struct config_file {
 	struct config_strlist* control_ifs;
 	/** port number for the control port */
 	int control_port;
+	/** use certificates for remote control */
+	int remote_control_use_cert;
 	/** private key file for server */
 	char* server_key_file;
 	/** certificate file for server */
@@ -296,7 +316,64 @@ struct config_file {
 
 	/* RRSet roundrobin */
 	int rrset_roundrobin;
+
+	/* maximum UDP response size */
+	size_t max_udp_size;
+
+	/* DNS64 prefix */
+	char* dns64_prefix;
+
+	/* Synthetize all AAAA record despite the presence of an authoritative one */
+	int dns64_synthall;
+
+	/** true to enable dnstap support */
+	int dnstap;
+	/** dnstap socket path */
+	char* dnstap_socket_path;
+	/** true to send "identity" via dnstap */
+	int dnstap_send_identity;
+	/** true to send "version" via dnstap */
+	int dnstap_send_version;
+	/** dnstap "identity", hostname is used if "". */
+	char* dnstap_identity;
+	/** dnstap "version", package version is used if "". */
+	char* dnstap_version;
+
+	/** true to log dnstap RESOLVER_QUERY message events */
+	int dnstap_log_resolver_query_messages;
+	/** true to log dnstap RESOLVER_RESPONSE message events */
+	int dnstap_log_resolver_response_messages;
+	/** true to log dnstap CLIENT_QUERY message events */
+	int dnstap_log_client_query_messages;
+	/** true to log dnstap CLIENT_RESPONSE message events */
+	int dnstap_log_client_response_messages;
+	/** true to log dnstap FORWARDER_QUERY message events */
+	int dnstap_log_forwarder_query_messages;
+	/** true to log dnstap FORWARDER_RESPONSE message events */
+	int dnstap_log_forwarder_response_messages;
+
+	/** ratelimit 0 is off, otherwise qps (unless overridden) */
+	int ratelimit;
+	/** number of slabs for ratelimit cache */
+	size_t ratelimit_slabs;
+	/** memory size in bytes for ratelimit cache */
+	size_t ratelimit_size;
+	/** ratelimits for domain (exact match) */
+	struct config_str2list* ratelimit_for_domain;
+	/** ratelimits below domain */
+	struct config_str2list* ratelimit_below_domain;
+	/** ratelimit factor, 0 blocks all, 10 allows 1/10 of traffic */
+	int ratelimit_factor;
+	/** minimise outgoing QNAME and hide original QTYPE if possible */
+	int qname_minimisation;
 };
+
+/** from cfg username, after daemonise setup performed */
+extern uid_t cfg_uid;
+/** from cfg username, after daemonise setup performed */
+extern gid_t cfg_gid;
+/** debug and enable small timeouts */
+extern int autr_permit_small_holddown;
 
 /**
  * Stub config options
@@ -380,6 +457,12 @@ void config_delete(struct config_file* config);
  * @param config: to apply. Side effect: global constants change.
  */
 void config_apply(struct config_file* config);
+
+/**
+ * Find username, sets cfg_uid and cfg_gid.
+ * @param config: the config structure.
+ */
+void config_lookup_uid(struct config_file* config);
 
 /**
  * Set the given keyword to the given value.
@@ -493,7 +576,7 @@ void config_delstubs(struct config_stub* list);
  * @param str: string of 14 digits
  * @return time value or 0 for error.
  */
-uint32_t cfg_convert_timeval(const char* str);
+time_t cfg_convert_timeval(const char* str);
 
 /**
  * Count number of values in the string.
@@ -632,6 +715,18 @@ struct config_parser_state {
 
 /** global config parser object used during config parsing */
 extern struct config_parser_state* cfg_parser;
+/** init lex state */
+void init_cfg_parse(void);
+/** lex in file */
+extern FILE* ub_c_in;
+/** lex out file */
+extern FILE* ub_c_out;
+/** the yacc lex generated parse function */
+int ub_c_parse(void);
+/** the lexer function */
+int ub_c_lex(void);
+/** wrap function */
+int ub_c_wrap(void);
 /** parsing helpers: print error with file and line numbers */
 void ub_c_error(const char* msg);
 /** parsing helpers: print error with file and line numbers */
@@ -646,6 +741,9 @@ void ub_c_error_msg(const char* fmt, ...) ATTR_FORMAT(printf, 1, 2);
  * 	exist on an error (logged with log_err) was encountered.
  */
 char* w_lookup_reg_str(const char* key, const char* name);
+
+/** Modify directory in options for module file name */
+void w_config_adjust_directory(struct config_file* cfg);
 #endif /* UB_ON_WINDOWS */
 
 #endif /* UTIL_CONFIG_FILE_H */

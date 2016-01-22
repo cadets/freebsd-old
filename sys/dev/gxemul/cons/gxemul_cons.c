@@ -99,18 +99,16 @@ static void		gxemul_cons_timeout(void *);
  * XXXRW: Should be using FreeBSD's bus routines here, but they are not
  * available until later in the boot.
  */
-typedef	uint64_t	paddr_t;
-typedef	uint64_t	vaddr_t;
 
-static inline vaddr_t
-mips_phys_to_uncached(paddr_t phys)            
+static inline vm_offset_t
+mips_phys_to_uncached(vm_paddr_t phys)            
 {
 
 	return (MIPS_PHYS_TO_DIRECT_UNCACHED(phys));
 }
 
 static inline uint8_t
-mips_ioread_uint8(vaddr_t vaddr)
+mips_ioread_uint8(vm_offset_t vaddr)
 {
 	uint8_t v;
 
@@ -119,7 +117,7 @@ mips_ioread_uint8(vaddr_t vaddr)
 }
 
 static inline void
-mips_iowrite_uint8(vaddr_t vaddr, uint8_t v)
+mips_iowrite_uint8(vm_offset_t vaddr, uint8_t v)
 {
 
 	__asm__ __volatile__ ("sb %0, 0(%1)" : : "r" (v), "r" (vaddr));
@@ -281,7 +279,7 @@ gxemul_cons_ttyinit(void *unused)
 	tp = tty_alloc(&gxemul_cons_ttydevsw, NULL);
 	tty_init_console(tp, 0);
 	tty_makedev(tp, NULL, "%s", "ttyu0");
-	callout_init(&gxemul_cons_callout, CALLOUT_MPSAFE);
+	callout_init(&gxemul_cons_callout, 1);
 	callout_reset(&gxemul_cons_callout, gxemul_cons_polltime,
 	    gxemul_cons_timeout, tp);
 

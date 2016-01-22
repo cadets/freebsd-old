@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2013, Intel Corp.
+ * Copyright (C) 2000 - 2015, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -67,6 +67,7 @@
 #define ACPI_NS_PREFIX_IS_SCOPE     0x10
 #define ACPI_NS_EXTERNAL            0x20
 #define ACPI_NS_TEMPORARY           0x40
+#define ACPI_NS_OVERRIDE_IF_FOUND   0x80
 
 /* Flags for AcpiNsWalkNamespace */
 
@@ -117,8 +118,8 @@ AcpiNsWalkNamespace (
     ACPI_HANDLE             StartObject,
     UINT32                  MaxDepth,
     UINT32                  Flags,
-    ACPI_WALK_CALLBACK      PreOrderVisit,
-    ACPI_WALK_CALLBACK      PostOrderVisit,
+    ACPI_WALK_CALLBACK      DescendingCallback,
+    ACPI_WALK_CALLBACK      AscendingCallback,
     void                    *Context,
     void                    **ReturnValue);
 
@@ -272,6 +273,14 @@ AcpiNsDumpObjects (
     ACPI_OWNER_ID           OwnerId,
     ACPI_HANDLE             StartHandle);
 
+void
+AcpiNsDumpObjectPaths (
+    ACPI_OBJECT_TYPE        Type,
+    UINT8                   DisplayType,
+    UINT32                  MaxDepth,
+    ACPI_OWNER_ID           OwnerId,
+    ACPI_HANDLE             StartHandle);
+
 
 /*
  * nseval - Namespace evaluation functions
@@ -341,15 +350,21 @@ UINT32
 AcpiNsOpensScope (
     ACPI_OBJECT_TYPE        Type);
 
-ACPI_STATUS
-AcpiNsBuildExternalPath (
-    ACPI_NAMESPACE_NODE     *Node,
-    ACPI_SIZE               Size,
-    char                    *NameBuffer);
-
 char *
 AcpiNsGetExternalPathname (
     ACPI_NAMESPACE_NODE     *Node);
+
+UINT32
+AcpiNsBuildNormalizedPath (
+    ACPI_NAMESPACE_NODE     *Node,
+    char                    *FullPath,
+    UINT32                  PathSize,
+    BOOLEAN                 NoTrailing);
+
+char *
+AcpiNsGetNormalizedPathname (
+    ACPI_NAMESPACE_NODE     *Node,
+    BOOLEAN                 NoTrailing);
 
 char *
 AcpiNsNameOfCurrentScope (
@@ -358,7 +373,8 @@ AcpiNsNameOfCurrentScope (
 ACPI_STATUS
 AcpiNsHandleToPathname (
     ACPI_HANDLE             TargetHandle,
-    ACPI_BUFFER             *Buffer);
+    ACPI_BUFFER             *Buffer,
+    BOOLEAN                 NoTrailing);
 
 BOOLEAN
 AcpiNsPatternMatch (

@@ -30,7 +30,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd October 25, 2011
+.Dd November 24, 2015
 .Dt AXE 4
 .Os
 .Sh NAME
@@ -46,6 +46,7 @@ kernel configuration file:
 .Cd "device ohci"
 .Cd "device usb"
 .Cd "device miibus"
+.Cd "device uether"
 .Cd "device axe"
 .Ed
 .Pp
@@ -215,6 +216,8 @@ AX88772B:
 .Bl -bullet -compact
 .It
 ASIX AX88772B
+.It
+Lenovo USB 2.0 Ethernet
 .El
 .Pp
 AX88760:
@@ -253,4 +256,4 @@ device driver first appeared in
 The
 .Nm
 driver was written by
-.An Bill Paul Aq wpaul@windriver.com .
+.An Bill Paul Aq Mt wpaul@windriver.com .

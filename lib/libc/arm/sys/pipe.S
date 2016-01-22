@@ -48,3 +48,6 @@ ENTRY(_pipe)
 	str	r1, [r2, #0x0004]
 	mov	r0, #0x00000000
 	RET
+END(_pipe)
+
+	.section .note.GNU-stack,"",%progbits

@@ -79,6 +79,7 @@
 #include <sys/kthread.h>
 #include <sys/syscallsubr.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/radix.h>
 #include <net/route.h>
 #include <net/if_dl.h>
@@ -603,11 +604,6 @@ void nfsrvd_rcv(struct socket *, void *, int);
 #define	NFSREQSPINLOCK		extern struct mtx nfs_req_mutex
 #define	NFSLOCKREQ()		mtx_lock(&nfs_req_mutex)
 #define	NFSUNLOCKREQ()		mtx_unlock(&nfs_req_mutex)
-#define	NFSCACHEMUTEX		extern struct mtx nfs_cache_mutex
-#define	NFSCACHEMUTEXPTR	(&nfs_cache_mutex)
-#define	NFSLOCKCACHE()		mtx_lock(&nfs_cache_mutex)
-#define	NFSUNLOCKCACHE()	mtx_unlock(&nfs_cache_mutex)
-#define	NFSCACHELOCKREQUIRED()	mtx_assert(&nfs_cache_mutex, MA_OWNED)
 #define	NFSSOCKMUTEX		extern struct mtx nfs_slock_mutex
 #define	NFSSOCKMUTEXPTR		(&nfs_slock_mutex)
 #define	NFSLOCKSOCK()		mtx_lock(&nfs_slock_mutex)
@@ -642,6 +638,9 @@ void nfsrvd_rcv(struct socket *, void *, int);
 #define	NFSUNLOCKSOCKREQ(r)	mtx_unlock(&((r)->nr_mtx))
 #define	NFSLOCKDS(d)		mtx_lock(&((d)->nfsclds_mtx))
 #define	NFSUNLOCKDS(d)		mtx_unlock(&((d)->nfsclds_mtx))
+#define	NFSSESSIONMUTEXPTR(s)	(&((s)->mtx))
+#define	NFSLOCKSESSION(s)	mtx_lock(&((s)->mtx))
+#define	NFSUNLOCKSESSION(s)	mtx_unlock(&((s)->mtx))
 
 /*
  * Use these macros to initialize/free a mutex.
@@ -737,6 +736,7 @@ MALLOC_DECLARE(M_NEWNFSDEVINFO);
 MALLOC_DECLARE(M_NEWNFSSOCKREQ);
 MALLOC_DECLARE(M_NEWNFSCLDS);
 MALLOC_DECLARE(M_NEWNFSLAYRECALL);
+MALLOC_DECLARE(M_NEWNFSDSESSION);
 #define	M_NFSRVCACHE	M_NEWNFSRVCACHE
 #define	M_NFSDCLIENT	M_NEWNFSDCLIENT
 #define	M_NFSDSTATE	M_NEWNFSDSTATE
@@ -762,6 +762,7 @@ MALLOC_DECLARE(M_NEWNFSLAYRECALL);
 #define	M_NFSSOCKREQ	M_NEWNFSSOCKREQ
 #define	M_NFSCLDS	M_NEWNFSCLDS
 #define	M_NFSLAYRECALL	M_NEWNFSLAYRECALL
+#define	M_NFSDSESSION	M_NEWNFSDSESSION
 
 #define	NFSINT_SIGMASK(set) 						\
 	(SIGISMEMBER(set, SIGINT) || SIGISMEMBER(set, SIGTERM) ||	\
@@ -929,24 +930,6 @@ void nfsd_mntinit(void);
 
 int newnfs_iosize(struct nfsmount *);
 
-#ifdef NFS_DEBUG
-
-extern int nfs_debug;
-#define	NFS_DEBUG_ASYNCIO	1 /* asynchronous i/o */
-#define	NFS_DEBUG_WG		2 /* server write gathering */
-#define	NFS_DEBUG_RC		4 /* server request caching */
-
-#define	NFS_DPF(cat, args)					\
-	do {							\
-		if (nfs_debug & NFS_DEBUG_##cat) printf args;	\
-	} while (0)
-
-#else
-
-#define	NFS_DPF(cat, args)
-
-#endif
-
 int newnfs_vncmpf(struct vnode *, void *);
 
 #ifndef NFS_MINDIRATTRTIMO
@@ -967,7 +950,7 @@ struct nfsreq {
 };
 
 #ifndef NFS_MAXBSIZE
-#define	NFS_MAXBSIZE	MAXBSIZE
+#define	NFS_MAXBSIZE	MAXBCACHEBUF
 #endif
 
 /*
@@ -980,6 +963,13 @@ struct nfsreq {
 #else
 #define	NFSVNO_DELEGOK(v)	(1)
 #endif
+
+/*
+ * Name used by getnewvnode() to describe filesystem, "nfs".
+ * For perfomance reasons it is useful to have the same string
+ * used in both places that call getnewvnode().
+ */
+extern const char nfs_vnode_tag[];
 
 #endif	/* _KERNEL */
 

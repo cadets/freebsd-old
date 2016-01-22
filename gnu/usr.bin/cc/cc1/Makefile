@@ -1,7 +1,7 @@
 # $FreeBSD$
 
-NO_MAN=
-.include <bsd.own.mk>
+MAN=
+.include <src.opts.mk>
 
 .include "../Makefile.inc"
 
@@ -9,7 +9,7 @@ NO_MAN=
 
 PROG=	cc1
 SRCS=	main.c c-parser.c c-lang.c
-BINDIR=	/usr/libexec
+BINDIR=	${LIBEXECDIR}
 .if ${MK_SHARED_TOOLCHAIN} == "no"
 NO_SHARED?=yes
 .endif

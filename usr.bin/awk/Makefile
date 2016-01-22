@@ -10,15 +10,14 @@ CFLAGS+= -DHAS_ISBLANK -I. -I${AWKSRC} -DFOPEN_MAX=64
 
 WARNS?=	1
 
-DPADD=	${LIBM}
-LDADD=	-lm
+LIBADD=	m
 
 LINKS=	${BINDIR}/awk ${BINDIR}/nawk
 MLINKS=	awk.1 nawk.1
 
 CLEANFILES= maketab proctab.c ytab.h
 
-ytab.h: awkgram.h
+ytab.h: awkgram.h .NOMETA
 	ln -sf ${.ALLSRC} ${.TARGET}
 
 proctab.c: maketab

@@ -66,7 +66,6 @@
  * src/sys/security/mac_*.
  */
 
-#include "opt_kdtrace.h"
 #include "opt_mac.h"
 
 #include <sys/cdefs.h>
@@ -94,11 +93,11 @@ __FBSDID("$FreeBSD$");
 SDT_PROVIDER_DEFINE(mac);
 SDT_PROVIDER_DEFINE(mac_framework);
 
-SDT_PROBE_DEFINE2(mac, kernel, policy, modevent, modevent, "int",
-    "struct mac_policy_conf *mpc");
-SDT_PROBE_DEFINE1(mac, kernel, policy, register, register,
+SDT_PROBE_DEFINE2(mac, , policy, modevent, "int",
     "struct mac_policy_conf *");
-SDT_PROBE_DEFINE1(mac, kernel, policy, unregister, unregister,
+SDT_PROBE_DEFINE1(mac, , policy, register,
+    "struct mac_policy_conf *");
+SDT_PROBE_DEFINE1(mac, , policy, unregister,
     "struct mac_policy_conf *");
 
 /*
@@ -292,7 +291,8 @@ mac_init(void)
 	mac_labelzone_init();
 
 #ifndef MAC_STATIC
-	rm_init_flags(&mac_policy_rm, "mac_policy_rm", RM_NOWITNESS);
+	rm_init_flags(&mac_policy_rm, "mac_policy_rm", RM_NOWITNESS |
+	    RM_RECURSE);
 	sx_init_flags(&mac_policy_sx, "mac_policy_sx", SX_NOWITNESS);
 #endif
 }
@@ -444,7 +444,7 @@ mac_policy_register(struct mac_policy_conf *mpc)
 		(*(mpc->mpc_ops->mpo_init))(mpc);
 	mac_policy_update();
 
-	SDT_PROBE(mac, kernel, policy, register, mpc, 0, 0, 0, 0);
+	SDT_PROBE1(mac, , policy, register, mpc);
 	printf("Security policy loaded: %s (%s)\n", mpc->mpc_fullname,
 	    mpc->mpc_name);
 
@@ -491,7 +491,7 @@ mac_policy_unregister(struct mac_policy_conf *mpc)
 	mac_policy_update();
 	mac_policy_xunlock();
 
-	SDT_PROBE(mac, kernel, policy, unregister, mpc, 0, 0, 0, 0);
+	SDT_PROBE1(mac, , policy, unregister, mpc);
 	printf("Security policy unload: %s (%s)\n", mpc->mpc_fullname,
 	    mpc->mpc_name);
 
@@ -517,7 +517,7 @@ mac_policy_modevent(module_t mod, int type, void *data)
 	}
 #endif
 
-	SDT_PROBE(mac, kernel, policy, modevent, type, mpc, 0, 0, 0);
+	SDT_PROBE2(mac, , policy, modevent, type, mpc);
 	switch (type) {
 	case MOD_LOAD:
 		if (mpc->mpc_loadtime_flags & MPC_LOADTIME_FLAG_NOTLATE &&
@@ -586,8 +586,7 @@ int
 mac_check_structmac_consistent(struct mac *mac)
 {
 
-	if (mac->m_buflen < 0 ||
-	    mac->m_buflen > MAC_MAX_LABEL_BUF_LEN)
+	if (mac->m_buflen > MAC_MAX_LABEL_BUF_LEN)
 		return (EINVAL);
 
 	return (0);

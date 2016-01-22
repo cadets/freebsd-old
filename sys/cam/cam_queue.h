@@ -33,6 +33,8 @@
 
 #ifdef _KERNEL
 
+#include <sys/lock.h>
+#include <sys/mutex.h>
 #include <sys/queue.h>
 #include <cam/cam.h>
 
@@ -57,19 +59,21 @@ SLIST_HEAD(ccb_hdr_slist, ccb_hdr);
 
 struct cam_ccbq {
 	struct	camq queue;
-	int	devq_openings;
-	int	devq_allocating;
+	struct ccb_hdr_tailq	queue_extra_head;
+	int	queue_extra_entries;
+	int	total_openings;
+	int	allocated;
 	int	dev_openings;
 	int	dev_active;
-	int	held;
 };
 
 struct cam_ed;
 
 struct cam_devq {
-	struct	camq send_queue;
-	int	send_openings;
-	int	send_active;
+	struct mtx	 send_mtx;
+	struct camq	 send_queue;
+	int		 send_openings;
+	int		 send_active;
 };
 
 
@@ -177,27 +181,72 @@ cam_ccbq_release_opening(struct cam_ccbq *ccbq);
 static __inline int
 cam_ccbq_pending_ccb_count(struct cam_ccbq *ccbq)
 {
-	return (ccbq->queue.entries);
+	return (ccbq->queue.entries + ccbq->queue_extra_entries);
 }
 
 static __inline void
 cam_ccbq_take_opening(struct cam_ccbq *ccbq)
 {
-	ccbq->devq_openings--;
-	ccbq->held++;
+
+	ccbq->allocated++;
 }
 
 static __inline void
 cam_ccbq_insert_ccb(struct cam_ccbq *ccbq, union ccb *new_ccb)
 {
-	ccbq->held--;
-	camq_insert(&ccbq->queue, &new_ccb->ccb_h.pinfo);
+	struct ccb_hdr *old_ccb;
+	struct camq *queue = &ccbq->queue;
+
+	/*
+	 * If queue is already full, try to resize.
+	 * If resize fail, push CCB with lowest priority out to the TAILQ.
+	 */
+	if (queue->entries == queue->array_size &&
+	    camq_resize(&ccbq->queue, queue->array_size * 2) != CAM_REQ_CMP) {
+		old_ccb = (struct ccb_hdr *)camq_remove(queue, queue->entries);
+		TAILQ_INSERT_HEAD(&ccbq->queue_extra_head, old_ccb,
+		    xpt_links.tqe);
+		old_ccb->pinfo.index = CAM_EXTRAQ_INDEX;
+		ccbq->queue_extra_entries++;
+	}
+
+	camq_insert(queue, &new_ccb->ccb_h.pinfo);
 }
 
 static __inline void
 cam_ccbq_remove_ccb(struct cam_ccbq *ccbq, union ccb *ccb)
 {
-	camq_remove(&ccbq->queue, ccb->ccb_h.pinfo.index);
+	struct ccb_hdr *cccb, *bccb;
+	struct camq *queue = &ccbq->queue;
+
+	/* If the CCB is on the TAILQ, remove it from there. */
+	if (ccb->ccb_h.pinfo.index == CAM_EXTRAQ_INDEX) {
+		TAILQ_REMOVE(&ccbq->queue_extra_head, &ccb->ccb_h,
+		    xpt_links.tqe);
+		ccb->ccb_h.pinfo.index = CAM_UNQUEUED_INDEX;
+		ccbq->queue_extra_entries--;
+		return;
+	}
+
+	camq_remove(queue, ccb->ccb_h.pinfo.index);
+
+	/*
+	 * If there are some CCBs on TAILQ, find the best one and move it
+	 * to the emptied space in the queue.
+	 */
+	bccb = TAILQ_FIRST(&ccbq->queue_extra_head);
+	if (bccb == NULL)
+		return;
+	TAILQ_FOREACH(cccb, &ccbq->queue_extra_head, xpt_links.tqe) {
+		if (bccb->pinfo.priority > cccb->pinfo.priority ||
+		    (bccb->pinfo.priority == cccb->pinfo.priority &&
+		     GENERATIONCMP(bccb->pinfo.generation, >,
+		      cccb->pinfo.generation)))
+		        bccb = cccb;
+	}
+	TAILQ_REMOVE(&ccbq->queue_extra_head, bccb, xpt_links.tqe);
+	ccbq->queue_extra_entries--;
+	camq_insert(queue, &bccb->pinfo);
 }
 
 static __inline union ccb *
@@ -212,7 +261,7 @@ cam_ccbq_send_ccb(struct cam_ccbq *ccbq, union ccb *send_ccb)
 
 	send_ccb->ccb_h.pinfo.index = CAM_ACTIVE_INDEX;
 	ccbq->dev_active++;
-	ccbq->dev_openings--;		
+	ccbq->dev_openings--;
 }
 
 static __inline void
@@ -220,15 +269,14 @@ cam_ccbq_ccb_done(struct cam_ccbq *ccbq, union ccb *done_ccb)
 {
 
 	ccbq->dev_active--;
-	ccbq->dev_openings++;	
-	ccbq->held++;
+	ccbq->dev_openings++;
 }
 
 static __inline void
 cam_ccbq_release_opening(struct cam_ccbq *ccbq)
 {
-	ccbq->held--;
-	ccbq->devq_openings++;
+
+	ccbq->allocated--;
 }
 
 #endif /* _KERNEL */

@@ -85,6 +85,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
 #include <sys/protosw.h>
+#include <sys/sdt.h>
 #include <sys/socket.h>
 #include <sys/sysctl.h>
 
@@ -97,6 +98,7 @@ __FBSDID("$FreeBSD$");
 #include <net/vnet.h>
 
 #include <netinet/in.h>
+#include <netinet/in_kdtrace.h>
 #include <netinet/in_systm.h>
 #include <netinet/in_var.h>
 #include <netinet/ip.h>
@@ -105,12 +107,6 @@ __FBSDID("$FreeBSD$");
 #include <netinet/ip_options.h>
 
 #include <machine/in_cksum.h>
-
-static VNET_DEFINE(int, ipfastforward_active);
-#define	V_ipfastforward_active		VNET(ipfastforward_active)
-
-SYSCTL_VNET_INT(_net_inet_ip, OID_AUTO, fastforwarding, CTLFLAG_RW,
-    &VNET_NAME(ipfastforward_active), 0, "Enable fast IP forwarding");
 
 static struct sockaddr_in *
 ip_findroute(struct route *ro, struct in_addr dest, struct mbuf *m)
@@ -156,7 +152,7 @@ ip_findroute(struct route *ro, struct in_addr dest, struct mbuf *m)
  * to ip_input for full processing.
  */
 struct mbuf *
-ip_fastforward(struct mbuf *m)
+ip_tryforward(struct mbuf *m)
 {
 	struct ip *ip;
 	struct mbuf *m0 = NULL;
@@ -164,119 +160,20 @@ ip_fastforward(struct mbuf *m)
 	struct sockaddr_in *dst = NULL;
 	struct ifnet *ifp;
 	struct in_addr odest, dest;
-	uint16_t sum, ip_len, ip_off;
+	uint16_t ip_len, ip_off;
 	int error = 0;
-	int hlen, mtu;
+	int mtu;
 	struct m_tag *fwd_tag = NULL;
 
 	/*
 	 * Are we active and forwarding packets?
 	 */
-	if (!V_ipfastforward_active || !V_ipforwarding)
-		return m;
 
 	M_ASSERTVALID(m);
 	M_ASSERTPKTHDR(m);
 
 	bzero(&ro, sizeof(ro));
 
-	/*
-	 * Step 1: check for packet drop conditions (and sanity checks)
-	 */
-
-	/*
-	 * Is entire packet big enough?
-	 */
-	if (m->m_pkthdr.len < sizeof(struct ip)) {
-		IPSTAT_INC(ips_tooshort);
-		goto drop;
-	}
-
-	/*
-	 * Is first mbuf large enough for ip header and is header present?
-	 */
-	if (m->m_len < sizeof (struct ip) &&
-	   (m = m_pullup(m, sizeof (struct ip))) == NULL) {
-		IPSTAT_INC(ips_toosmall);
-		return NULL;	/* mbuf already free'd */
-	}
-
-	ip = mtod(m, struct ip *);
-
-	/*
-	 * Is it IPv4?
-	 */
-	if (ip->ip_v != IPVERSION) {
-		IPSTAT_INC(ips_badvers);
-		goto drop;
-	}
-
-	/*
-	 * Is IP header length correct and is it in first mbuf?
-	 */
-	hlen = ip->ip_hl << 2;
-	if (hlen < sizeof(struct ip)) {	/* minimum header length */
-		IPSTAT_INC(ips_badhlen);
-		goto drop;
-	}
-	if (hlen > m->m_len) {
-		if ((m = m_pullup(m, hlen)) == NULL) {
-			IPSTAT_INC(ips_badhlen);
-			return NULL;	/* mbuf already free'd */
-		}
-		ip = mtod(m, struct ip *);
-	}
-
-	/*
-	 * Checksum correct?
-	 */
-	if (m->m_pkthdr.csum_flags & CSUM_IP_CHECKED)
-		sum = !(m->m_pkthdr.csum_flags & CSUM_IP_VALID);
-	else {
-		if (hlen == sizeof(struct ip))
-			sum = in_cksum_hdr(ip);
-		else
-			sum = in_cksum(m, hlen);
-	}
-	if (sum) {
-		IPSTAT_INC(ips_badsum);
-		goto drop;
-	}
-
-	/*
-	 * Remember that we have checked the IP header and found it valid.
-	 */
-	m->m_pkthdr.csum_flags |= (CSUM_IP_CHECKED | CSUM_IP_VALID);
-
-	ip_len = ntohs(ip->ip_len);
-
-	/*
-	 * Is IP length longer than packet we have got?
-	 */
-	if (m->m_pkthdr.len < ip_len) {
-		IPSTAT_INC(ips_tooshort);
-		goto drop;
-	}
-
-	/*
-	 * Is packet longer than IP header tells us? If yes, truncate packet.
-	 */
-	if (m->m_pkthdr.len > ip_len) {
-		if (m->m_len == m->m_pkthdr.len) {
-			m->m_len = ip_len;
-			m->m_pkthdr.len = ip_len;
-		} else
-			m_adj(m, ip_len - m->m_pkthdr.len);
-	}
-
-	/*
-	 * Is packet from or to 127/8?
-	 */
-	if ((ntohl(ip->ip_dst.s_addr) >> IN_CLASSA_NSHIFT) == IN_LOOPBACKNET ||
-	    (ntohl(ip->ip_src.s_addr) >> IN_CLASSA_NSHIFT) == IN_LOOPBACKNET) {
-		IPSTAT_INC(ips_badaddr);
-		goto drop;
-	}
 
 #ifdef ALTQ
 	/*
@@ -287,16 +184,14 @@ ip_fastforward(struct mbuf *m)
 #endif
 
 	/*
-	 * Step 2: fallback conditions to normal ip_input path processing
-	 */
-
-	/*
 	 * Only IP packets without options
 	 */
+	ip = mtod(m, struct ip *);
+
 	if (ip->ip_hl != (sizeof(struct ip) >> 2)) {
-		if (ip_doopts == 1)
+		if (V_ip_doopts == 1)
 			return m;
-		else if (ip_doopts == 2) {
+		else if (V_ip_doopts == 2) {
 			icmp_error(m, ICMP_UNREACH, ICMP_UNREACH_FILTER_PROHIB,
 				0, 0);
 			return NULL;	/* mbuf already free'd */
@@ -488,23 +383,10 @@ passout:
 	 * Check if route is dampned (when ARP is unable to resolve)
 	 */
 	if ((ro.ro_rt->rt_flags & RTF_REJECT) &&
-	    (ro.ro_rt->rt_rmx.rmx_expire == 0 ||
-	    time_uptime < ro.ro_rt->rt_rmx.rmx_expire)) {
+	    (ro.ro_rt->rt_expire == 0 || time_uptime < ro.ro_rt->rt_expire)) {
 		icmp_error(m, ICMP_UNREACH, ICMP_UNREACH_HOST, 0, 0);
 		goto consumed;
 	}
-
-#ifndef ALTQ
-	/*
-	 * Check if there is enough space in the interface queue
-	 */
-	if ((ifp->if_snd.ifq_len + ip_len / ifp->if_mtu + 1) >=
-	    ifp->if_snd.ifq_maxlen) {
-		IPSTAT_INC(ips_odropped);
-		/* would send source quench here but that is depreciated */
-		goto drop;
-	}
-#endif
 
 	/*
 	 * Check if media link state of interface is not down
@@ -517,16 +399,20 @@ passout:
 	/*
 	 * Check if packet fits MTU or if hardware will fragment for us
 	 */
-	if (ro.ro_rt->rt_rmx.rmx_mtu)
-		mtu = min(ro.ro_rt->rt_rmx.rmx_mtu, ifp->if_mtu);
+	if (ro.ro_rt->rt_mtu)
+		mtu = min(ro.ro_rt->rt_mtu, ifp->if_mtu);
 	else
 		mtu = ifp->if_mtu;
 
-	if (ip_len <= mtu ||
-	    (ifp->if_hwassist & CSUM_FRAGMENT && (ip_off & IP_DF) == 0)) {
+	if (ip_len <= mtu) {
+		/*
+		 * Avoid confusing lower layers.
+		 */
+		m_clrprotoflags(m);
 		/*
 		 * Send off the packet via outgoing interface
 		 */
+		IP_PROBE(send, NULL, NULL, ip, ifp, ip, NULL);
 		error = (*ifp->if_output)(ifp, m,
 				(struct sockaddr *)dst, &ro);
 	} else {
@@ -553,7 +439,12 @@ passout:
 			do {
 				m0 = m->m_nextpkt;
 				m->m_nextpkt = NULL;
+				/*
+				 * Avoid confusing lower layers.
+				 */
+				m_clrprotoflags(m);
 
+				IP_PROBE(send, NULL, NULL, ip, ifp, ip, NULL);
 				error = (*ifp->if_output)(ifp, m,
 					(struct sockaddr *)dst, &ro);
 				if (error)
@@ -573,7 +464,7 @@ passout:
 	if (error != 0)
 		IPSTAT_INC(ips_odropped);
 	else {
-		ro.ro_rt->rt_rmx.rmx_pksent++;
+		counter_u64_add(ro.ro_rt->rt_pksent, 1);
 		IPSTAT_INC(ips_forward);
 		IPSTAT_INC(ips_fastforward);
 	}

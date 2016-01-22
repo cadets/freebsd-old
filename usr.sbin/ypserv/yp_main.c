@@ -72,13 +72,11 @@ __FBSDID("$FreeBSD$");
 
 #define	_RPCSVC_CLOSEDOWN 120
 int _rpcpmstart;		/* Started by a port monitor ? */
-static int _rpcfdtype;
-		 /* Whether Stream or Datagram ? */
+static int _rpcfdtype;  /* Whether Stream or Datagram? */
 static int _rpcaf;
 static int _rpcfd;
 
-	/* States a server can be in wrt request */
-
+/* States a server can be in wrt request */
 #define	_IDLE 0
 #define	_SERVED 1
 #define	_SERVING 2
@@ -329,9 +327,8 @@ create_service(const int sock, const struct netconfig *nconf,
 					return -1;
 				}
 				memset(slep, 0, sizeof(*slep));
-				memcpy(&slep->sle_ss,
-				    (struct sockaddr *)(res->ai_addr),
-				    sizeof(res->ai_addr));
+				memcpy(&slep->sle_ss, res->ai_addr,
+				    res->ai_addrlen);
 				slep->sle_sock = s;
 				SLIST_INSERT_HEAD(&sle_head, slep, sle_next);
 

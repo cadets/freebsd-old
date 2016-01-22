@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "hexagon_cfg"
 #include "Hexagon.h"
 #include "HexagonMachineFunctionInfo.h"
 #include "HexagonSubtarget.h"
@@ -26,75 +25,80 @@
 
 using namespace llvm;
 
+#define DEBUG_TYPE "hexagon_cfg"
+
+namespace llvm {
+  FunctionPass *createHexagonCFGOptimizer();
+  void initializeHexagonCFGOptimizerPass(PassRegistry&);
+}
+
+
 namespace {
 
 class HexagonCFGOptimizer : public MachineFunctionPass {
 
 private:
-  HexagonTargetMachine& QTM;
-  const HexagonSubtarget &QST;
-
   void InvertAndChangeJumpTarget(MachineInstr*, MachineBasicBlock*);
 
  public:
   static char ID;
-  HexagonCFGOptimizer(HexagonTargetMachine& TM) : MachineFunctionPass(ID),
-                                                  QTM(TM),
-                                                  QST(*TM.getSubtargetImpl()) {}
+  HexagonCFGOptimizer() : MachineFunctionPass(ID) {
+    initializeHexagonCFGOptimizerPass(*PassRegistry::getPassRegistry());
+  }
 
-  const char *getPassName() const {
+  const char *getPassName() const override {
     return "Hexagon CFG Optimizer";
   }
-  bool runOnMachineFunction(MachineFunction &Fn);
+  bool runOnMachineFunction(MachineFunction &Fn) override;
 };
 
 
 char HexagonCFGOptimizer::ID = 0;
 
 static bool IsConditionalBranch(int Opc) {
-  return (Opc == Hexagon::JMP_c) || (Opc == Hexagon::JMP_cNot)
-    || (Opc == Hexagon::JMP_cdnPt) || (Opc == Hexagon::JMP_cdnNotPt);
+  return (Opc == Hexagon::J2_jumpt) || (Opc == Hexagon::J2_jumpf)
+    || (Opc == Hexagon::J2_jumptnewpt) || (Opc == Hexagon::J2_jumpfnewpt);
 }
 
 
 static bool IsUnconditionalJump(int Opc) {
-  return (Opc == Hexagon::JMP);
+  return (Opc == Hexagon::J2_jump);
 }
 
 
 void
 HexagonCFGOptimizer::InvertAndChangeJumpTarget(MachineInstr* MI,
                                                MachineBasicBlock* NewTarget) {
-  const HexagonInstrInfo *QII = QTM.getInstrInfo();
+  const TargetInstrInfo *TII =
+      MI->getParent()->getParent()->getSubtarget().getInstrInfo();
   int NewOpcode = 0;
   switch(MI->getOpcode()) {
-  case Hexagon::JMP_c:
-    NewOpcode = Hexagon::JMP_cNot;
+  case Hexagon::J2_jumpt:
+    NewOpcode = Hexagon::J2_jumpf;
     break;
 
-  case Hexagon::JMP_cNot:
-    NewOpcode = Hexagon::JMP_c;
+  case Hexagon::J2_jumpf:
+    NewOpcode = Hexagon::J2_jumpt;
     break;
 
-  case Hexagon::JMP_cdnPt:
-    NewOpcode = Hexagon::JMP_cdnNotPt;
+  case Hexagon::J2_jumptnewpt:
+    NewOpcode = Hexagon::J2_jumpfnewpt;
     break;
 
-  case Hexagon::JMP_cdnNotPt:
-    NewOpcode = Hexagon::JMP_cdnPt;
+  case Hexagon::J2_jumpfnewpt:
+    NewOpcode = Hexagon::J2_jumptnewpt;
     break;
 
   default:
     llvm_unreachable("Cannot handle this case");
   }
 
-  MI->setDesc(QII->get(NewOpcode));
+  MI->setDesc(TII->get(NewOpcode));
   MI->getOperand(1).setMBB(NewTarget);
 }
 
 
 bool HexagonCFGOptimizer::runOnMachineFunction(MachineFunction &Fn) {
-
   // Loop over all of the basic blocks.
   for (MachineFunction::iterator MBBb = Fn.begin(), MBBe = Fn.end();
        MBBb != MBBe; ++MBBb) {
@@ -140,8 +144,8 @@ bool HexagonCFGOptimizer::runOnMachineFunction(MachineFunction &Fn) {
         MachineBasicBlock::succ_iterator SI = MBB->succ_begin();
         MachineBasicBlock* FirstSucc = *SI;
         MachineBasicBlock* SecondSucc = *(++SI);
-        MachineBasicBlock* LayoutSucc = NULL;
-        MachineBasicBlock* JumpAroundTarget = NULL;
+        MachineBasicBlock* LayoutSucc = nullptr;
+        MachineBasicBlock* JumpAroundTarget = nullptr;
 
         if (MBB->isLayoutSuccessor(FirstSucc)) {
           LayoutSucc = FirstSucc;
@@ -155,9 +159,9 @@ bool HexagonCFGOptimizer::runOnMachineFunction(MachineFunction &Fn) {
 
         // The target of the unconditional branch must be JumpAroundTarget.
         // TODO: If not, we should not invert the unconditional branch.
-        MachineBasicBlock* CondBranchTarget = NULL;
-        if ((MI->getOpcode() == Hexagon::JMP_c) ||
-            (MI->getOpcode() == Hexagon::JMP_cNot)) {
+        MachineBasicBlock* CondBranchTarget = nullptr;
+        if ((MI->getOpcode() == Hexagon::J2_jumpt) ||
+            (MI->getOpcode() == Hexagon::J2_jumpf)) {
           CondBranchTarget = MI->getOperand(1).getMBB();
         }
 
@@ -231,6 +235,16 @@ bool HexagonCFGOptimizer::runOnMachineFunction(MachineFunction &Fn) {
 //                         Public Constructor Functions
 //===----------------------------------------------------------------------===//
 
-FunctionPass *llvm::createHexagonCFGOptimizer(HexagonTargetMachine &TM) {
-  return new HexagonCFGOptimizer(TM);
+static void initializePassOnce(PassRegistry &Registry) {
+  PassInfo *PI = new PassInfo("Hexagon CFG Optimizer", "hexagon-cfg",
+                              &HexagonCFGOptimizer::ID, nullptr, false, false);
+  Registry.registerPass(*PI, true);
+}
+
+void llvm::initializeHexagonCFGOptimizerPass(PassRegistry &Registry) {
+  CALL_ONCE_INITIALIZATION(initializePassOnce)
+}
+
+FunctionPass *llvm::createHexagonCFGOptimizer() {
+  return new HexagonCFGOptimizer();
 }

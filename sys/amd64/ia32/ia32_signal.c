@@ -118,7 +118,7 @@ ia32_get_fpcontext(struct thread *td, struct ia32_mcontext *mcp,
 }
 
 static int
-ia32_set_fpcontext(struct thread *td, const struct ia32_mcontext *mcp,
+ia32_set_fpcontext(struct thread *td, struct ia32_mcontext *mcp,
     char *xfpustate, size_t xfpustate_len)
 {
 	int error;
@@ -197,7 +197,7 @@ ia32_get_mcontext(struct thread *td, struct ia32_mcontext *mcp, int flags)
  * touch the cs selector.
  */
 static int
-ia32_set_mcontext(struct thread *td, const struct ia32_mcontext *mcp)
+ia32_set_mcontext(struct thread *td, struct ia32_mcontext *mcp)
 {
 	struct trapframe *tp;
 	char *xfpustate;
@@ -360,10 +360,6 @@ ia32_osendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	} else
 		fp = (struct ia32_sigframe3 *)regs->tf_rsp - 1;
 
-	/* Translate the signal if appropriate. */
-	if (p->p_sysent->sv_sigtbl && sig <= p->p_sysent->sv_sigsize)
-		sig = p->p_sysent->sv_sigtbl[_SIG_IDX(sig)];
-
 	/* Build the argument list for the signal handler. */
 	sf.sf_signum = sig;
 	sf.sf_scp = (register_t)&fp->sf_siginfo.si_sc;
@@ -497,10 +493,6 @@ freebsd4_ia32_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	} else
 		sfp = (struct ia32_sigframe4 *)regs->tf_rsp - 1;
 	PROC_UNLOCK(p);
-
-	/* Translate the signal if appropriate. */
-	if (p->p_sysent->sv_sigtbl && sig <= p->p_sysent->sv_sigsize)
-		sig = p->p_sysent->sv_sigtbl[_SIG_IDX(sig)];
 
 	/* Build the argument list for the signal handler. */
 	sf.sf_signum = sig;
@@ -643,10 +635,6 @@ ia32_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	sfp = (struct ia32_sigframe *)((uintptr_t)sp & ~0xF);
 	PROC_UNLOCK(p);
 
-	/* Translate the signal if appropriate. */
-	if (p->p_sysent->sv_sigtbl && sig <= p->p_sysent->sv_sigsize)
-		sig = p->p_sysent->sv_sigtbl[_SIG_IDX(sig)];
-
 	/* Build the argument list for the signal handler. */
 	sf.sf_signum = sig;
 	sf.sf_ucontext = (register_t)&sfp->sf_uc;
@@ -719,7 +707,7 @@ ofreebsd32_sigreturn(struct thread *td, struct ofreebsd32_sigreturn_args *uap)
 		return (error);
 	scp = &sc;
 	eflags = scp->sc_eflags;
-	if (!EFL_SECURE(eflags & ~PSL_RF, regs->tf_rflags & ~PSL_RF)) {
+	if (!EFL_SECURE(eflags, regs->tf_rflags)) {
 		return (EINVAL);
 	}
 	if (!CS_SECURE(scp->sc_cs)) {
@@ -787,17 +775,7 @@ freebsd4_freebsd32_sigreturn(td, uap)
 	/*
 	 * Don't allow users to change privileged or reserved flags.
 	 */
-	/*
-	 * XXX do allow users to change the privileged flag PSL_RF.
-	 * The cpu sets PSL_RF in tf_eflags for faults.  Debuggers
-	 * should sometimes set it there too.  tf_eflags is kept in
-	 * the signal context during signal handling and there is no
-	 * other place to remember it, so the PSL_RF bit may be
-	 * corrupted by the signal handler without us knowing.
-	 * Corruption of the PSL_RF bit at worst causes one more or
-	 * one less debugger trap, so allowing it is fairly harmless.
-	 */
-	if (!EFL_SECURE(eflags & ~PSL_RF, regs->tf_rflags & ~PSL_RF)) {
+	if (!EFL_SECURE(eflags, regs->tf_rflags)) {
 		uprintf("pid %d (%s): freebsd4_freebsd32_sigreturn eflags = 0x%x\n",
 		    td->td_proc->p_pid, td->td_name, eflags);
 		return (EINVAL);
@@ -873,17 +851,7 @@ freebsd32_sigreturn(td, uap)
 	/*
 	 * Don't allow users to change privileged or reserved flags.
 	 */
-	/*
-	 * XXX do allow users to change the privileged flag PSL_RF.
-	 * The cpu sets PSL_RF in tf_eflags for faults.  Debuggers
-	 * should sometimes set it there too.  tf_eflags is kept in
-	 * the signal context during signal handling and there is no
-	 * other place to remember it, so the PSL_RF bit may be
-	 * corrupted by the signal handler without us knowing.
-	 * Corruption of the PSL_RF bit at worst causes one more or
-	 * one less debugger trap, so allowing it is fairly harmless.
-	 */
-	if (!EFL_SECURE(eflags & ~PSL_RF, regs->tf_rflags & ~PSL_RF)) {
+	if (!EFL_SECURE(eflags, regs->tf_rflags)) {
 		uprintf("pid %d (%s): freebsd32_sigreturn eflags = 0x%x\n",
 		    td->td_proc->p_pid, td->td_name, eflags);
 		return (EINVAL);

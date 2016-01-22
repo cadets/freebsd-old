@@ -150,12 +150,28 @@ struct node_hfsc_opts {
 	int			flags;
 };
 
+struct node_fairq_sc {
+	struct node_queue_bw	m1;	/* slope of 1st segment; bps */
+	u_int			d;	/* x-projection of m1; msec */
+	struct node_queue_bw	m2;	/* slope of 2nd segment; bps */
+	u_int8_t		used;
+};
+
+struct node_fairq_opts {
+	struct node_fairq_sc	linkshare;
+	struct node_queue_bw	hogs_bw;
+	u_int			nbuckets;
+	int			flags;
+};
+
 struct node_queue_opt {
 	int			 qtype;
 	union {
 		struct cbq_opts		cbq_opts;
+		struct codel_opts	codel_opts;
 		struct priq_opts	priq_opts;
 		struct node_hfsc_opts	hfsc_opts;
+		struct node_fairq_opts	fairq_opts;
 	}			 data;
 };
 
@@ -294,6 +310,7 @@ void			 set_ipmask(struct node_host *, u_int8_t);
 int			 check_netmask(struct node_host *, sa_family_t);
 int			 unmask(struct pf_addr *, sa_family_t);
 void			 ifa_load(void);
+int			 get_socket_domain(void);
 struct node_host	*ifa_exists(const char *);
 struct node_host	*ifa_lookup(const char *, int);
 struct node_host	*host(const char *);

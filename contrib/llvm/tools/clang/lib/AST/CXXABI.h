@@ -12,15 +12,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_AST_CXXABI_H
-#define LLVM_CLANG_AST_CXXABI_H
+#ifndef LLVM_CLANG_LIB_AST_CXXABI_H
+#define LLVM_CLANG_LIB_AST_CXXABI_H
 
 #include "clang/AST/Type.h"
 
 namespace clang {
 
 class ASTContext;
+class CXXConstructorDecl;
+class Expr;
 class MemberPointerType;
+class MangleNumberingContext;
 
 /// Implements C++ ABI-specific semantic analysis functions.
 class CXXABI {
@@ -34,13 +37,29 @@ public:
   /// Returns the default calling convention for C++ methods.
   virtual CallingConv getDefaultMethodCallConv(bool isVariadic) const = 0;
 
-  // Returns whether the given class is nearly empty, with just virtual pointers
-  // and no data except possibly virtual bases.
+  /// Returns whether the given class is nearly empty, with just virtual
+  /// pointers and no data except possibly virtual bases.
   virtual bool isNearlyEmpty(const CXXRecordDecl *RD) const = 0;
+
+  /// Returns a new mangling number context for this C++ ABI.
+  virtual MangleNumberingContext *createMangleNumberingContext() const = 0;
+
+  /// Adds a mapping from class to copy constructor for this C++ ABI.
+  virtual void addCopyConstructorForExceptionObject(CXXRecordDecl *,
+                                                    CXXConstructorDecl *) = 0;
+
+  /// Retrieves the mapping from class to copy constructor for this C++ ABI.
+  virtual const CXXConstructorDecl *
+  getCopyConstructorForExceptionObject(CXXRecordDecl *) = 0;
+
+  virtual void addDefaultArgExprForConstructor(const CXXConstructorDecl *CD,
+                                               unsigned ParmIdx, Expr *DAE) = 0;
+
+  virtual Expr *getDefaultArgExprForConstructor(const CXXConstructorDecl *CD,
+                                                unsigned ParmIdx) = 0;
 };
 
 /// Creates an instance of a C++ ABI class.
-CXXABI *CreateARMCXXABI(ASTContext &Ctx);
 CXXABI *CreateItaniumCXXABI(ASTContext &Ctx);
 CXXABI *CreateMicrosoftCXXABI(ASTContext &Ctx);
 }

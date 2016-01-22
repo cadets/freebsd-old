@@ -22,21 +22,21 @@
 # specific prior written permission.
 # 
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
-# TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-# PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+# TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+# PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+# LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+# NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # settings:
 
 # directory for files
-DESTDIR=/usr/local/etc/unbound
+DESTDIR=/var/unbound
 
 # issuer and subject name for certificates
 SERVERNAME=unbound
@@ -46,7 +46,7 @@ CLIENTNAME=unbound-control
 DAYS=7200
 
 # size of keys in bits
-BITS=1536
+BITS=3072
 
 # hash algorithm
 HASH=sha256
@@ -57,8 +57,8 @@ SVR_BASE=unbound_server
 # base name for unbound-control keys
 CTL_BASE=unbound_control
 
-# we want -rw-r--- access (say you run this as root: grp=yes (server), all=no).
-umask 0026
+# we want -rw-r----- access (say you run this as root: grp=yes (server), all=no).
+umask 0027
 
 # end of options
 
@@ -107,16 +107,15 @@ else
 fi
 
 # create self-signed cert for server
-cat >request.cfg <<EOF
-[req]
-default_bits=$BITS
-default_md=$HASH
-prompt=no
-distinguished_name=req_distinguished_name
+echo "[req]\n" > request.cfg
+echo "default_bits=$BITS\n" >> request.cfg
+echo "default_md=$HASH\n" >> request.cfg
+echo "prompt=no\n" >> request.cfg
+echo "distinguished_name=req_distinguished_name\n" >> request.cfg
+echo "\n" >> request.cfg
+echo "[req_distinguished_name]\n" >> request.cfg
+echo "commonName=$SERVERNAME\n" >> request.cfg
 
-[req_distinguished_name]
-commonName=$SERVERNAME
-EOF
 test -f request.cfg || error "could not create request.cfg"
 
 echo "create $SVR_BASE.pem (self signed certificate)"
@@ -125,16 +124,15 @@ openssl req -key $SVR_BASE.key -config request.cfg  -new -x509 -days $DAYS -out 
 openssl x509 -in $SVR_BASE.pem -addtrust serverAuth -out $SVR_BASE"_trust.pem"
 
 # create client request and sign it, piped
-cat >request.cfg <<EOF
-[req]
-default_bits=$BITS
-default_md=$HASH
-prompt=no
-distinguished_name=req_distinguished_name
+echo "[req]\n" > request.cfg
+echo "default_bits=$BITS\n" >> request.cfg
+echo "default_md=$HASH\n" >> request.cfg
+echo "prompt=no\n" >> request.cfg
+echo "distinguished_name=req_distinguished_name\n" >> request.cfg
+echo "\n" >> request.cfg
+echo "[req_distinguished_name]\n" >> request.cfg
+echo "commonName=$CLIENTNAME" >> request.cfg
 
-[req_distinguished_name]
-commonName=$CLIENTNAME
-EOF
 test -f request.cfg || error "could not create request.cfg"
 
 echo "create $CTL_BASE.pem (signed client certificate)"

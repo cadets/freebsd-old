@@ -38,7 +38,6 @@
 #include <sys/queue.h>
 
 #include <net/if.h>
-#include <net/if_var.h>
 #include <net/if_types.h>
 #include <net/route.h>
 #include <net/if_dl.h>
@@ -61,7 +60,6 @@
 #include <ifaddrs.h>
 #include "rtsold.h"
 
-extern int rssock;
 static int ifsock;
 
 static int get_llflag(const char *);
@@ -249,9 +247,7 @@ lladdropt_length(struct sockaddr_dl *sdl)
 {
 	switch (sdl->sdl_type) {
 	case IFT_ETHER:
-#ifdef IFT_IEEE80211
 	case IFT_IEEE80211:
-#endif
 		return (ROUNDUP8(ETHER_ADDR_LEN + 2));
 	default:
 		return (0);
@@ -267,9 +263,7 @@ lladdropt_fill(struct sockaddr_dl *sdl, struct nd_opt_hdr *ndopt)
 
 	switch (sdl->sdl_type) {
 	case IFT_ETHER:
-#ifdef IFT_IEEE80211
 	case IFT_IEEE80211:
-#endif
 		ndopt->nd_opt_len = (ROUNDUP8(ETHER_ADDR_LEN + 2)) >> 3;
 		addr = (char *)(ndopt + 1);
 		memcpy(addr, LLADDR(sdl), ETHER_ADDR_LEN);
@@ -286,31 +280,31 @@ lladdropt_fill(struct sockaddr_dl *sdl, struct nd_opt_hdr *ndopt)
 struct sockaddr_dl *
 if_nametosdl(char *name)
 {
-	int mib[6] = {CTL_NET, AF_ROUTE, 0, 0, NET_RT_IFLIST, 0};
+	int mib[] = {CTL_NET, AF_ROUTE, 0, 0, NET_RT_IFLIST, 0};
 	char *buf, *next, *lim;
 	size_t len;
 	struct if_msghdr *ifm;
 	struct sockaddr *sa, *rti_info[RTAX_MAX];
 	struct sockaddr_dl *sdl = NULL, *ret_sdl;
 
-	if (sysctl(mib, 6, NULL, &len, NULL, 0) < 0)
+	if (sysctl(mib, nitems(mib), NULL, &len, NULL, 0) < 0)
 		return(NULL);
 	if ((buf = malloc(len)) == NULL)
 		return(NULL);
-	if (sysctl(mib, 6, buf, &len, NULL, 0) < 0) {
+	if (sysctl(mib, nitems(mib), buf, &len, NULL, 0) < 0) {
 		free(buf);
 		return (NULL);
 	}
 
 	lim = buf + len;
 	for (next = buf; next < lim; next += ifm->ifm_msglen) {
-		ifm = (struct if_msghdr *)next;
+		ifm = (struct if_msghdr *)(void *)next;
 		if (ifm->ifm_type == RTM_IFINFO) {
 			sa = (struct sockaddr *)(ifm + 1);
 			get_rtaddrs(ifm->ifm_addrs, sa, rti_info);
 			if ((sa = rti_info[RTAX_IFP]) != NULL) {
 				if (sa->sa_family == AF_LINK) {
-					sdl = (struct sockaddr_dl *)sa;
+					sdl = (struct sockaddr_dl *)(void *)sa;
 					if (strlen(name) != sdl->sdl_nlen)
 						continue; /* not same len */
 					if (strncmp(&sdl->sdl_data[0],
@@ -347,7 +341,7 @@ getinet6sysctl(int code)
 
 	mib[3] = code;
 	size = sizeof(value);
-	if (sysctl(mib, sizeof(mib)/sizeof(mib[0]), &value, &size, NULL, 0) < 0)
+	if (sysctl(mib, nitems(mib), &value, &size, NULL, 0) < 0)
 		return (-1);
 	else
 		return (value);
@@ -362,7 +356,7 @@ setinet6sysctl(int code, int newval)
 
 	mib[3] = code;
 	size = sizeof(value);
-	if (sysctl(mib, sizeof(mib)/sizeof(mib[0]), &value, &size,
+	if (sysctl(mib, nitems(mib), &value, &size,
 	    &newval, sizeof(newval)) < 0)
 		return (-1);
 	else
@@ -397,7 +391,7 @@ get_llflag(const char *name)
 			continue;
 		if (ifa->ifa_addr->sa_family != AF_INET6)
 			continue;
-		sin6 = (struct sockaddr_in6 *)ifa->ifa_addr;
+		sin6 = (struct sockaddr_in6 *)(void *)ifa->ifa_addr;
 		if (!IN6_IS_ADDR_LINKLOCAL(&sin6->sin6_addr))
 			continue;
 

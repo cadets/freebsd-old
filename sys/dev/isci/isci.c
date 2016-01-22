@@ -84,6 +84,7 @@ static driver_t isci_pci_driver = {
 };
 
 DRIVER_MODULE(isci, pci, isci_pci_driver, isci_devclass, 0, 0);
+MODULE_DEPEND(isci, cam, 1, 1, 1);
 
 static struct _pcsid
 {
@@ -162,6 +163,7 @@ isci_attach(device_t device)
 
 	g_isci = isci;
 	isci->device = device;
+	pci_enable_busmaster(device);
 
 	isci_allocate_pci_memory(isci);
 
@@ -271,6 +273,7 @@ isci_detach(device_t device)
 
 		pci_release_msi(device);
 	}
+	pci_disable_busmaster(device);
 
 	return (0);
 }

@@ -1,4 +1,4 @@
-/*	$NetBSD: compat.c,v 1.91 2013/01/25 02:01:10 sjg Exp $	*/
+/*	$NetBSD: compat.c,v 1.101 2015/10/11 04:51:24 sjg Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990 The Regents of the University of California.
@@ -70,14 +70,14 @@
  */
 
 #ifndef MAKE_NATIVE
-static char rcsid[] = "$NetBSD: compat.c,v 1.91 2013/01/25 02:01:10 sjg Exp $";
+static char rcsid[] = "$NetBSD: compat.c,v 1.101 2015/10/11 04:51:24 sjg Exp $";
 #else
 #include <sys/cdefs.h>
 #ifndef lint
 #if 0
 static char sccsid[] = "@(#)compat.c	8.2 (Berkeley) 3/19/94";
 #else
-__RCSID("$NetBSD: compat.c,v 1.91 2013/01/25 02:01:10 sjg Exp $");
+__RCSID("$NetBSD: compat.c,v 1.101 2015/10/11 04:51:24 sjg Exp $");
 #endif
 #endif /* not lint */
 #endif
@@ -111,36 +111,13 @@ __RCSID("$NetBSD: compat.c,v 1.91 2013/01/25 02:01:10 sjg Exp $");
 #include    "hash.h"
 #include    "dir.h"
 #include    "job.h"
+#include    "metachar.h"
 #include    "pathnames.h"
 
-/*
- * The following array is used to make a fast determination of which
- * characters are interpreted specially by the shell.  If a command
- * contains any of these characters, it is executed by the shell, not
- * directly by us.
- */
-
-static char 	    meta[256];
 
 static GNode	    *curTarg = NULL;
 static GNode	    *ENDNode;
 static void CompatInterrupt(int);
-
-static void
-Compat_Init(void)
-{
-    const char *cp;
-
-    Shell_Init();		/* setup default shell */
-    
-    for (cp = "#=|^(){};&<>*?[]:$`\\\n"; *cp != '\0'; cp++) {
-	meta[(unsigned char) *cp] = 1;
-    }
-    /*
-     * The null character serves as a sentinel in the string.
-     */
-    meta[0] = 1;
-}
 
 /*-
  *-----------------------------------------------------------------------
@@ -236,7 +213,7 @@ CompatRunCommand(void *cmdp, void *gnp)
     doIt = FALSE;
     
     cmdNode = Lst_Member(gn->commands, cmd);
-    cmdStart = Var_Subst(NULL, cmd, gn, FALSE);
+    cmdStart = Var_Subst(NULL, cmd, gn, FALSE, TRUE);
 
     /*
      * brk_string will return an argv with a NULL in av[0], thus causing
@@ -271,8 +248,8 @@ CompatRunCommand(void *cmdp, void *gnp)
 	    break;
 	case '+':
 	    doIt = TRUE;
-	    if (!meta[0])		/* we came here from jobs */
-		Compat_Init();
+	    if (!shellName)		/* we came here from jobs */
+		Shell_Init();
 	    break;
 	}
 	cmd++;
@@ -300,11 +277,13 @@ CompatRunCommand(void *cmdp, void *gnp)
      * Search for meta characters in the command. If there are no meta
      * characters, there's no need to execute a shell to execute the
      * command.
+     *
+     * Additionally variable assignments and empty commands
+     * go to the shell. Therefore treat '=' and ':' like shell
+     * meta characters as documented in make(1).
      */
-    for (cp = cmd; !meta[(unsigned char)*cp]; cp++) {
-	continue;
-    }
-    useShell = (*cp != '\0');
+    
+    useShell = needshell(cmd, FALSE);
 #endif
 
     /*
@@ -332,18 +311,23 @@ again:
 	 * We need to pass the command off to the shell, typically
 	 * because the command contains a "meta" character.
 	 */
-	static const char *shargv[4];
+	static const char *shargv[5];
+	int shargc;
 
-	shargv[0] = shellPath;
+	shargc = 0;
+	shargv[shargc++] = shellPath;
 	/*
 	 * The following work for any of the builtin shell specs.
 	 */
+	if (errCheck && shellErrFlag) {
+	    shargv[shargc++] = shellErrFlag;
+	}
 	if (DEBUG(SHELL))
-		shargv[1] = "-xc";
+		shargv[shargc++] = "-xc";
 	else
-		shargv[1] = "-c";
-	shargv[2] = cmd;
-	shargv[3] = NULL;
+		shargv[shargc++] = "-c";
+	shargv[shargc++] = cmd;
+	shargv[shargc++] = NULL;
 	av = shargv;
 	argc = 0;
 	bp = NULL;
@@ -507,8 +491,8 @@ Compat_Make(void *gnp, void *pgnp)
     GNode *gn = (GNode *)gnp;
     GNode *pgn = (GNode *)pgnp;
 
-    if (!meta[0])		/* we came here from jobs */
-	Compat_Init();
+    if (!shellName)		/* we came here from jobs */
+	Shell_Init();
     if (gn->made == UNMADE && (gn == pgn || (pgn->type & OP_MADE) == 0)) {
 	/*
 	 * First mark ourselves to be made, then apply whatever transformations
@@ -688,7 +672,8 @@ Compat_Run(Lst targs)
     GNode   	  *gn = NULL;/* Current root target */
     int	    	  errors;   /* Number of targets not remade due to errors */
 
-    Compat_Init();
+    if (!shellName)
+	Shell_Init();
 
     if (bmake_signal(SIGINT, SIG_IGN) != SIG_IGN) {
 	bmake_signal(SIGINT, CompatInterrupt);

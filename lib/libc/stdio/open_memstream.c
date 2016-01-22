@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2013 Advanced Computing Technologies LLC
+ * Copyright (c) 2013 Hudson River Trading LLC
  * Written by: John H. Baldwin <jhb@FreeBSD.org>
  * All rights reserved.
  *
@@ -32,6 +32,9 @@ __FBSDID("$FreeBSD$");
 #include <assert.h>
 #include <errno.h>
 #include <limits.h>
+#ifdef DEBUG
+#include <stdint.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

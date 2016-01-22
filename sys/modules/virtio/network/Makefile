@@ -29,8 +29,6 @@ KMOD=	if_vtnet
 SRCS=	if_vtnet.c
 SRCS+=	virtio_bus_if.h virtio_if.h
 SRCS+=	bus_if.h device_if.h 
-
-MFILES=	kern/bus_if.m kern/device_if.m \
-	dev/virtio/virtio_bus_if.m dev/virtio/virtio_if.m
+SRCS+=	opt_inet.h opt_inet6.h
 
 .include <bsd.kmod.mk>

@@ -124,7 +124,7 @@ static device_method_t	ofw_pci_methods[] = {
 DEFINE_CLASS_0(ofw_pci, ofw_pci_driver, ofw_pci_methods, 0);
 
 int
-ofw_pci_attach(device_t dev)
+ofw_pci_init(device_t dev)
 {
 	struct		ofw_pci_softc *sc;
 	phandle_t	node;
@@ -134,11 +134,13 @@ ofw_pci_attach(device_t dev)
 
 	node = ofw_bus_get_node(dev);
 	sc = device_get_softc(dev);
+	sc->sc_initialized = 1;
 
-	if (OF_getprop(node, "reg", &sc->sc_pcir, sizeof(sc->sc_pcir)) == -1)
+	if (OF_getencprop(node, "reg", (pcell_t *)&sc->sc_pcir,
+	    sizeof(sc->sc_pcir)) == -1)
 		return (ENXIO);
 
-	if (OF_getprop(node, "bus-range", busrange, sizeof(busrange)) != 8)
+	if (OF_getencprop(node, "bus-range", busrange, sizeof(busrange)) != 8)
 		busrange[0] = 0;
 
 	sc->sc_dev = dev;
@@ -217,14 +219,29 @@ ofw_pci_attach(device_t dev)
 			    "error = %d\n", rp->pci_hi &
 			    OFW_PCI_PHYS_HI_SPACEMASK, rp->pci,
 			    rp->pci + rp->size - 1, error);
-			panic("AHOY");
 			return (error);
 		}
 	}
 
 	ofw_bus_setup_iinfo(node, &sc->sc_pci_iinfo, sizeof(cell_t));
 
-	device_add_child(dev, "pci", device_get_unit(dev));
+	return (error);
+}
+
+int
+ofw_pci_attach(device_t dev)
+{
+	struct ofw_pci_softc *sc;
+	int error;
+
+	sc = device_get_softc(dev);
+	if (!sc->sc_initialized) {
+		error = ofw_pci_init(dev);
+		if (error)
+			return (error);
+	}
+
+	device_add_child(dev, "pci", -1);
 	return (bus_generic_attach(dev));
 }
 
@@ -240,16 +257,26 @@ ofw_pci_route_interrupt(device_t bus, device_t dev, int pin)
 {
 	struct ofw_pci_softc *sc;
 	struct ofw_pci_register reg;
-	uint32_t pintr, mintr;
+	uint32_t pintr, mintr[2];
+	int intrcells;
 	phandle_t iparent;
-	uint8_t maskbuf[sizeof(reg) + sizeof(pintr)];
 
 	sc = device_get_softc(bus);
 	pintr = pin;
-	if (ofw_bus_lookup_imap(ofw_bus_get_node(dev), &sc->sc_pci_iinfo, &reg,
-	    sizeof(reg), &pintr, sizeof(pintr), &mintr, sizeof(mintr),
-	    &iparent, maskbuf))
-		return (MAP_IRQ(iparent, mintr));
+
+	/* Fabricate imap information in case this isn't an OFW device */
+	bzero(&reg, sizeof(reg));
+	reg.phys_hi = (pci_get_bus(dev) << OFW_PCI_PHYS_HI_BUSSHIFT) |
+	    (pci_get_slot(dev) << OFW_PCI_PHYS_HI_DEVICESHIFT) |
+	    (pci_get_function(dev) << OFW_PCI_PHYS_HI_FUNCTIONSHIFT);
+
+	intrcells = ofw_bus_lookup_imap(ofw_bus_get_node(dev),
+	    &sc->sc_pci_iinfo, &reg, sizeof(reg), &pintr, sizeof(pintr),
+	    mintr, sizeof(mintr), &iparent);
+	if (intrcells) {
+		pintr = ofw_bus_map_intr(dev, iparent, intrcells, mintr);
+		return (pintr);
+	}
 
 	/* Maybe it's a real interrupt, not an intpin */
 	if (pin > 4)
@@ -472,11 +499,11 @@ ofw_pci_nranges(phandle_t node)
 	int host_address_cells = 1, pci_address_cells = 3, size_cells = 2;
 	ssize_t nbase_ranges;
 
-	OF_getprop(OF_parent(node), "#address-cells", &host_address_cells,
+	OF_getencprop(OF_parent(node), "#address-cells", &host_address_cells,
 	    sizeof(host_address_cells));
-	OF_getprop(node, "#address-cells", &pci_address_cells,
+	OF_getencprop(node, "#address-cells", &pci_address_cells,
 	    sizeof(pci_address_cells));
-	OF_getprop(node, "#size-cells", &size_cells, sizeof(size_cells));
+	OF_getencprop(node, "#size-cells", &size_cells, sizeof(size_cells));
 
 	nbase_ranges = OF_getproplen(node, "ranges");
 	if (nbase_ranges <= 0)
@@ -495,11 +522,11 @@ ofw_pci_fill_ranges(phandle_t node, struct ofw_pci_range *ranges)
 	int nranges;
 	int i, j, k;
 
-	OF_getprop(OF_parent(node), "#address-cells", &host_address_cells,
+	OF_getencprop(OF_parent(node), "#address-cells", &host_address_cells,
 	    sizeof(host_address_cells));
-	OF_getprop(node, "#address-cells", &pci_address_cells,
+	OF_getencprop(node, "#address-cells", &pci_address_cells,
 	    sizeof(pci_address_cells));
-	OF_getprop(node, "#size-cells", &size_cells, sizeof(size_cells));
+	OF_getencprop(node, "#size-cells", &size_cells, sizeof(size_cells));
 
 	nbase_ranges = OF_getproplen(node, "ranges");
 	if (nbase_ranges <= 0)
@@ -508,7 +535,7 @@ ofw_pci_fill_ranges(phandle_t node, struct ofw_pci_range *ranges)
 	    (pci_address_cells + host_address_cells + size_cells);
 
 	base_ranges = malloc(nbase_ranges, M_DEVBUF, M_WAITOK);
-	OF_getprop(node, "ranges", base_ranges, nbase_ranges);
+	OF_getencprop(node, "ranges", base_ranges, nbase_ranges);
 
 	for (i = 0, j = 0; i < nranges; i++) {
 		ranges[i].pci_hi = base_ranges[j++];

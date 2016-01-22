@@ -44,20 +44,16 @@
  * do not have atomic operations defined for them, but generally shouldn't
  * need atomic operations.
  */
+#ifndef __MIPS_PLATFORM_SYNC_NOPS
+#define __MIPS_PLATFORM_SYNC_NOPS ""
+#endif
 
 static __inline  void
 mips_sync(void)
 {
-	__asm __volatile (".set noreorder\n\t"
-			"sync\n\t"
-			"nop\n\t"
-			"nop\n\t"
-			"nop\n\t"
-			"nop\n\t"
-			"nop\n\t"
-			"nop\n\t"
-			"nop\n\t"
-			"nop\n\t"
+	__asm __volatile (".set noreorder\n"
+			"\tsync\n"
+			__MIPS_PLATFORM_SYNC_NOPS
 			".set reorder\n"
 			: : : "memory");
 }
@@ -499,6 +495,34 @@ atomic_fetchadd_64(__volatile uint64_t *p, uint64_t v)
 	return (value);
 }
 #endif
+
+static __inline void
+atomic_thread_fence_acq(void)
+{
+
+	mips_sync();
+}
+
+static __inline void
+atomic_thread_fence_rel(void)
+{
+
+	mips_sync();
+}
+
+static __inline void
+atomic_thread_fence_acq_rel(void)
+{
+
+	mips_sync();
+}
+
+static __inline void
+atomic_thread_fence_seq_cst(void)
+{
+
+	mips_sync();
+}
 
 /* Operations on chars. */
 #define	atomic_set_char		atomic_set_8

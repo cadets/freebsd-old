@@ -64,6 +64,8 @@ struct fifoinfo {
 	struct pipe *fi_pipe;
 	long	fi_readers;
 	long	fi_writers;
+	u_int	fi_rgen;
+	u_int	fi_wgen;
 };
 
 static vop_print_t	fifo_print;
@@ -137,18 +139,17 @@ fifo_open(ap)
 	struct thread *td;
 	struct fifoinfo *fip;
 	struct pipe *fpipe;
-	int error;
+	u_int gen;
+	int error, stops_deferred;
 
 	vp = ap->a_vp;
 	fp = ap->a_fp;
 	td = ap->a_td;
 	ASSERT_VOP_ELOCKED(vp, "fifo_open");
-	if (fp == NULL)
+	if (fp == NULL || (ap->a_mode & FEXEC) != 0)
 		return (EINVAL);
 	if ((fip = vp->v_fifoinfo) == NULL) {
-		error = pipe_named_ctor(&fpipe, td);
-		if (error != 0)
-			return (error);
+		pipe_named_ctor(&fpipe, td);
 		fip = malloc(sizeof(*fip), M_VNODE, M_WAITOK);
 		fip->fi_pipe = fpipe;
 		fpipe->pipe_wgen = fip->fi_readers = fip->fi_writers = 0;
@@ -166,6 +167,7 @@ fifo_open(ap)
 	PIPE_LOCK(fpipe);
 	if (ap->a_mode & FREAD) {
 		fip->fi_readers++;
+		fip->fi_rgen++;
 		if (fip->fi_readers == 1) {
 			fpipe->pipe_state &= ~PIPE_EOF;
 			if (fip->fi_writers > 0)
@@ -181,6 +183,7 @@ fifo_open(ap)
 			return (ENXIO);
 		}
 		fip->fi_writers++;
+		fip->fi_wgen++;
 		if (fip->fi_writers == 1) {
 			fpipe->pipe_state &= ~PIPE_EOF;
 			if (fip->fi_readers > 0)
@@ -189,11 +192,15 @@ fifo_open(ap)
 	}
 	if ((ap->a_mode & O_NONBLOCK) == 0) {
 		if ((ap->a_mode & FREAD) && fip->fi_writers == 0) {
+			gen = fip->fi_wgen;
 			VOP_UNLOCK(vp, 0);
+			stops_deferred = sigallowstop();
 			error = msleep(&fip->fi_readers, PIPE_MTX(fpipe),
 			    PDROP | PCATCH | PSOCK, "fifoor", 0);
+			if (stops_deferred)
+				sigdeferstop();
 			vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
-			if (error) {
+			if (error != 0 && gen == fip->fi_wgen) {
 				fip->fi_readers--;
 				if (fip->fi_readers == 0) {
 					PIPE_LOCK(fpipe);
@@ -213,11 +220,15 @@ fifo_open(ap)
 			 */
 		}
 		if ((ap->a_mode & FWRITE) && fip->fi_readers == 0) {
+			gen = fip->fi_rgen;
 			VOP_UNLOCK(vp, 0);
+			stops_deferred = sigallowstop();
 			error = msleep(&fip->fi_writers, PIPE_MTX(fpipe),
 			    PDROP | PCATCH | PSOCK, "fifoow", 0);
+			if (stops_deferred)
+				sigdeferstop();
 			vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
-			if (error) {
+			if (error != 0 && gen == fip->fi_rgen) {
 				fip->fi_writers--;
 				if (fip->fi_writers == 0) {
 					PIPE_LOCK(fpipe);

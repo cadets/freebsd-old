@@ -76,6 +76,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysproto.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_arp.h>
 #include <net/ethernet.h>
 #include <net/if_dl.h>
@@ -2816,10 +2817,7 @@ NdisOpenFile(status, filehandle, filelength, filename, highestaddr)
 
 	/* Some threads don't have a current working directory. */
 
-	if (td->td_proc->p_fd->fd_rdir == NULL)
-		td->td_proc->p_fd->fd_rdir = rootvnode;
-	if (td->td_proc->p_fd->fd_cdir == NULL)
-		td->td_proc->p_fd->fd_cdir = rootvnode;
+	pwd_ensure_dirs();
 
 	NDINIT(&nd, LOOKUP, FOLLOW, UIO_SYSSPACE, path, td);
 

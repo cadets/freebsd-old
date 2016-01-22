@@ -12,8 +12,8 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_COMMENTOPTIONS_H
-#define LLVM_CLANG_COMMENTOPTIONS_H
+#ifndef LLVM_CLANG_BASIC_COMMENTOPTIONS_H
+#define LLVM_CLANG_BASIC_COMMENTOPTIONS_H
 
 #include <string>
 #include <vector>
@@ -27,6 +27,11 @@ struct CommentOptions {
   /// \brief Command names to treat as block commands in comments.
   /// Should not include the leading backslash.
   BlockCommandNamesTy BlockCommandNames;
+
+  /// \brief Treat ordinary comments as documentation comments.
+  bool ParseAllComments;
+
+  CommentOptions() : ParseAllComments(false) { }
 };
 
 }  // end namespace clang

@@ -454,9 +454,10 @@ static struct tesla_event_metahandler default_event_handlers = {
 #ifdef _KERNEL
 #include <sys/sysctl.h>
 
-SYSCTL_NODE(, OID_AUTO, tesla, CTLFLAG_RW, 0, "TESLA");
-SYSCTL_NODE(_tesla, OID_AUTO, events, CTLFLAG_RW, 0, "control of TESLA events");
-SYSCTL_UINT(_tesla_events, OID_AUTO, handlers, CTLFLAG_RW,
+SYSCTL_NODE(_kern, OID_AUTO, tesla, CTLFLAG_RW, 0, "TESLA");
+SYSCTL_NODE(_kern_tesla, OID_AUTO, events, CTLFLAG_RW, 0,
+	    "control of TESLA events");
+SYSCTL_UINT(_kern_tesla_events, OID_AUTO, handlers, CTLFLAG_RW,
 	   &default_event_handlers.tem_mask, 0,
 	   "Mask of currently-enabled TESLA event handlers");
 #endif

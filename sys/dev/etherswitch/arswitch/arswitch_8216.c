@@ -50,7 +50,7 @@
 #include <dev/iicbus/iicbus.h>
 #include <dev/mii/mii.h>
 #include <dev/mii/miivar.h>
-#include <dev/etherswitch/mdio.h>
+#include <dev/mdio/mdio.h>
 
 #include <dev/etherswitch/etherswitch.h>
 
@@ -89,4 +89,6 @@ ar8216_attach(struct arswitch_softc *sc)
 
 	sc->hal.arswitch_hw_setup = ar8216_hw_setup;
 	sc->hal.arswitch_hw_global_setup = ar8216_hw_global_setup;
+
+	sc->info.es_nvlangroups = 0;
 }

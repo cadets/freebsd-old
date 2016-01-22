@@ -30,13 +30,21 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_platform.h"
+
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/kernel.h>
 #include <sys/module.h>
+#include <sys/systm.h>
+
+#include <vm/vm.h>
+#include <vm/pmap.h>
 
 #include <machine/bus.h>
+#ifndef __aarch64__
 #include <machine/fdt.h>
+#endif
 
 #include <dev/fdt/fdt_common.h>
 #include <dev/ofw/ofw_bus.h>
@@ -44,6 +52,11 @@ __FBSDID("$FreeBSD$");
 #include <dev/uart/uart.h>
 #include <dev/uart/uart_bus.h>
 #include <dev/uart/uart_cpu.h>
+#include <dev/uart/uart_cpu_fdt.h>
+
+#ifdef __aarch64__
+extern bus_space_tag_t fdtbus_bs_tag;
+#endif
 
 /*
  * UART console routines.
@@ -51,58 +64,83 @@ __FBSDID("$FreeBSD$");
 bus_space_tag_t uart_bus_space_io;
 bus_space_tag_t uart_bus_space_mem;
 
-static int
-uart_fdt_get_clock(phandle_t node, pcell_t *cell)
-{
-	pcell_t clock;
-
-	if ((OF_getprop(node, "clock-frequency", &clock,
-	    sizeof(clock))) <= 0)
-		return (ENXIO);
-
-	if (clock == 0)
-		/* Try to retrieve parent 'bus-frequency' */
-		/* XXX this should go to simple-bus fixup or so */
-		if ((OF_getprop(OF_parent(node), "bus-frequency", &clock,
-		    sizeof(clock))) <= 0)
-			clock = 0;
-
-	*cell = fdt32_to_cpu(clock);
-	return (0);
-}
-
-static int
-uart_fdt_get_shift(phandle_t node, pcell_t *cell)
-{
-	pcell_t shift;
-
-	if ((OF_getprop(node, "reg-shift", &shift, sizeof(shift))) <= 0)
-		shift = 0;
-	*cell = fdt32_to_cpu(shift);
-	return (0);
-}
-
 int
 uart_cpu_eqres(struct uart_bas *b1, struct uart_bas *b2)
 {
 
-	return ((b1->bsh == b2->bsh && b1->bst == b2->bst) ? 1 : 0);
+	if (b1->bst != b2->bst)
+		return (0);
+	if (pmap_kextract(b1->bsh) == 0)
+		return (0);
+	if (pmap_kextract(b2->bsh) == 0)
+		return (0);
+	return ((pmap_kextract(b1->bsh) == pmap_kextract(b2->bsh)) ? 1 : 0);
+}
+
+static int
+phandle_chosen_propdev(phandle_t chosen, const char *name, phandle_t *node)
+{
+	char buf[64];
+
+	if (OF_getprop(chosen, name, buf, sizeof(buf)) <= 0)
+		return (ENXIO);
+	if ((*node = OF_finddevice(buf)) == -1)
+		return (ENXIO);
+	
+	return (0);
+}
+
+static const struct ofw_compat_data *
+uart_fdt_find_compatible(phandle_t node, const struct ofw_compat_data *cd)
+{
+	const struct ofw_compat_data *ocd;
+
+	for (ocd = cd; ocd->ocd_str != NULL; ocd++) {
+		if (fdt_is_compatible(node, ocd->ocd_str))
+			return (ocd);
+	}
+	return (NULL);
+}
+
+static uintptr_t
+uart_fdt_find_by_node(phandle_t node, int class_list)
+{
+	struct ofw_compat_data **cd;
+	const struct ofw_compat_data *ocd;
+
+	if (class_list) {
+		SET_FOREACH(cd, uart_fdt_class_set) {
+			ocd = uart_fdt_find_compatible(node, *cd);
+			if ((ocd != NULL) && (ocd->ocd_data != 0))
+				return (ocd->ocd_data);
+		}
+	} else {
+		SET_FOREACH(cd, uart_fdt_class_and_device_set) {
+			ocd = uart_fdt_find_compatible(node, *cd);
+			if ((ocd != NULL) && (ocd->ocd_data != 0))
+				return (ocd->ocd_data);
+		}
+	}
+	return (0);
 }
 
 int
 uart_cpu_getdev(int devtype, struct uart_devinfo *di)
 {
-	char buf[64];
+	const char *propnames[] = {"stdout-path", "linux,stdout-path", "stdout",
+	    "stdin-path", "stdin", NULL};
+	const char **name;
 	struct uart_class *class;
 	phandle_t node, chosen;
 	pcell_t shift, br, rclk;
 	u_long start, size, pbase, psize;
+	char *cp;
 	int err;
 
 	uart_bus_space_mem = fdtbus_bs_tag;
 	uart_bus_space_io = NULL;
 
-	/* Allow overriding the FDT uning the environment. */
+	/* Allow overriding the FDT using the environment. */
 	class = &uart_ns8250_class;
 	err = uart_getenv(devtype, di, class);
 	if (!err)
@@ -111,47 +149,61 @@ uart_cpu_getdev(int devtype, struct uart_devinfo *di)
 	if (devtype != UART_DEV_CONSOLE)
 		return (ENXIO);
 
+	/* Has the user forced a specific device node? */
+	cp = kern_getenv("hw.fdt.console");
+	if (cp == NULL) {
+		/*
+		 * Retrieve /chosen/std{in,out}.
+		 */
+		node = -1;
+		if ((chosen = OF_finddevice("/chosen")) != -1) {
+			for (name = propnames; *name != NULL; name++) {
+				if (phandle_chosen_propdev(chosen, *name,
+				    &node) == 0)
+					break;
+			}
+		}
+		if (chosen == -1 || *name == NULL)
+			node = OF_finddevice("serial0"); /* Last ditch */
+	} else {
+		node = OF_finddevice(cp);
+	}
+
+	if (node == -1) /* Can't find anything */
+		return (ENXIO);
+
 	/*
-	 * Retrieve /chosen/std{in,out}.
+	 * Check old style of UART definition first. Unfortunately, the common
+	 * FDT processing is not possible if we have clock, power domains and
+	 * pinmux stuff.
 	 */
-	if ((chosen = OF_finddevice("/chosen")) == -1)
-		return (ENXIO);
-	if (OF_getprop(chosen, "stdin", buf, sizeof(buf)) <= 0)
-		return (ENXIO);
-	if ((node = OF_finddevice(buf)) == -1)
-		return (ENXIO);
-	if (OF_getprop(chosen, "stdout", buf, sizeof(buf)) <= 0)
-		return (ENXIO);
-	if (OF_finddevice(buf) != node)
-		/* Only stdin == stdout is supported. */
-		return (ENXIO);
+	class = (struct uart_class *)uart_fdt_find_by_node(node, 0);
+	if (class != NULL) {
+		if ((err = uart_fdt_get_clock(node, &rclk)) != 0)
+			return (err);
+	} else {
+		/* Check class only linker set */
+		class =
+		    (struct uart_class *)uart_fdt_find_by_node(node, 1);
+		if (class == NULL)
+			return (ENXIO);
+		rclk = 0;
+	}
+
 	/*
 	 * Retrieve serial attributes.
 	 */
-	uart_fdt_get_shift(node, &shift);
+	if (uart_fdt_get_shift(node, &shift) != 0)
+		shift = uart_getregshift(class);
 
 	if (OF_getprop(node, "current-speed", &br, sizeof(br)) <= 0)
 		br = 0;
-	br = fdt32_to_cpu(br);
+	else
+		br = fdt32_to_cpu(br);
 
-	if ((err = uart_fdt_get_clock(node, &rclk)) != 0)
-		return (err);
 	/*
 	 * Finalize configuration.
 	 */
-	if (fdt_is_compatible(node, "fsl,imx-uart"))
-		class = &uart_imx_class;
-	if (fdt_is_compatible(node, "quicc"))
-		class = &uart_quicc_class;
-	if (fdt_is_compatible(node, "lpc"))
-		class = &uart_lpc_class;
-	if (fdt_is_compatible(node, "ns16550"))
-		class = &uart_ns8250_class;
-	if (fdt_is_compatible(node, "arm,pl011"))
-		class = &uart_pl011_class;
-	if (fdt_is_compatible(node, "cadence,uart"))
-		class = &uart_cdnc_class;
-
 	di->bas.chan = 0;
 	di->bas.regshft = (u_int)shift;
 	di->baudrate = br;

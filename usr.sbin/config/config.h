@@ -50,7 +50,7 @@ struct file_list {
 	int     f_type;                 /* type */
 	u_char	f_flags;		/* see below */
 	char	*f_compilewith;		/* special make rule if present */
-	char	*f_depends;		/* additional dependancies */
+	char	*f_depends;		/* additional dependencies */
 	char	*f_clean;		/* File list to add to clean rule */
 	char	*f_warn;		/* warning message */
 	const char *f_objprefix;	/* prefix string for object name */
@@ -143,6 +143,13 @@ struct hint {
 };
 
 STAILQ_HEAD(hint_head, hint) hints;
+
+struct includepath {
+	char	*path;
+	SLIST_ENTRY(includepath) path_next;
+};
+
+SLIST_HEAD(, includepath) includepath;
 
 /*
  * Tag present in the kernelconf.tmlp template file. It's mandatory for those

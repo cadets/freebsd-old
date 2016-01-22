@@ -223,6 +223,29 @@ clang::analyze_format_string::ParseLengthModifier(FormatSpecifier &FS,
         break;
       }
       return false;
+    // printf: AsInt64, AsInt32, AsInt3264
+    // scanf:  AsInt64
+    case 'I':
+      if (I + 1 != E && I + 2 != E) {
+        if (I[1] == '6' && I[2] == '4') {
+          I += 3;
+          lmKind = LengthModifier::AsInt64;
+          break;
+        }
+        if (IsScanf)
+          return false;
+
+        if (I[1] == '3' && I[2] == '2') {
+          I += 3;
+          lmKind = LengthModifier::AsInt32;
+          break;
+        }
+      }
+      ++I;
+      lmKind = LengthModifier::AsInt3264;
+      break;
+    case 'w':
+      lmKind = LengthModifier::AsWide; ++I; break;
   }
   LengthModifier lm(lmPosition, lmKind);
   FS.setLengthModifier(lm);
@@ -233,16 +256,17 @@ clang::analyze_format_string::ParseLengthModifier(FormatSpecifier &FS,
 // Methods on ArgType.
 //===----------------------------------------------------------------------===//
 
-bool ArgType::matchesType(ASTContext &C, QualType argTy) const {
+clang::analyze_format_string::ArgType::MatchKind
+ArgType::matchesType(ASTContext &C, QualType argTy) const {
   if (Ptr) {
     // It has to be a pointer.
     const PointerType *PT = argTy->getAs<PointerType>();
     if (!PT)
-      return false;
+      return NoMatch;
 
     // We cannot write through a const qualified pointer.
     if (PT->getPointeeType().isConstQualified())
-      return false;
+      return NoMatch;
 
     argTy = PT->getPointeeType();
   }
@@ -252,8 +276,8 @@ bool ArgType::matchesType(ASTContext &C, QualType argTy) const {
       llvm_unreachable("ArgType must be valid");
 
     case UnknownTy:
-      return true;
-      
+      return Match;
+
     case AnyCharTy: {
       if (const EnumType *ETy = argTy->getAs<EnumType>())
         argTy = ETy->getDecl()->getIntegerType();
@@ -266,18 +290,18 @@ bool ArgType::matchesType(ASTContext &C, QualType argTy) const {
           case BuiltinType::SChar:
           case BuiltinType::UChar:
           case BuiltinType::Char_U:
-            return true;            
+            return Match;
         }
-      return false;
+      return NoMatch;
     }
-      
+
     case SpecificTy: {
       if (const EnumType *ETy = argTy->getAs<EnumType>())
         argTy = ETy->getDecl()->getIntegerType();
       argTy = C.getCanonicalType(argTy).getUnqualifiedType();
 
       if (T == argTy)
-        return true;
+        return Match;
       // Check for "compatible types".
       if (const BuiltinType *BT = argTy->getAs<BuiltinType>())
         switch (BT->getKind()) {
@@ -286,32 +310,33 @@ bool ArgType::matchesType(ASTContext &C, QualType argTy) const {
           case BuiltinType::Char_S:
           case BuiltinType::SChar:
           case BuiltinType::Char_U:
-          case BuiltinType::UChar:                    
-            return T == C.UnsignedCharTy || T == C.SignedCharTy;
+          case BuiltinType::UChar:
+            return T == C.UnsignedCharTy || T == C.SignedCharTy ? Match
+                                                                : NoMatch;
           case BuiltinType::Short:
-            return T == C.UnsignedShortTy;
+            return T == C.UnsignedShortTy ? Match : NoMatch;
           case BuiltinType::UShort:
-            return T == C.ShortTy;
+            return T == C.ShortTy ? Match : NoMatch;
           case BuiltinType::Int:
-            return T == C.UnsignedIntTy;
+            return T == C.UnsignedIntTy ? Match : NoMatch;
           case BuiltinType::UInt:
-            return T == C.IntTy;
+            return T == C.IntTy ? Match : NoMatch;
           case BuiltinType::Long:
-            return T == C.UnsignedLongTy;
+            return T == C.UnsignedLongTy ? Match : NoMatch;
           case BuiltinType::ULong:
-            return T == C.LongTy;
+            return T == C.LongTy ? Match : NoMatch;
           case BuiltinType::LongLong:
-            return T == C.UnsignedLongLongTy;
+            return T == C.UnsignedLongLongTy ? Match : NoMatch;
           case BuiltinType::ULongLong:
-            return T == C.LongLongTy;
+            return T == C.LongLongTy ? Match : NoMatch;
         }
-      return false;
+      return NoMatch;
     }
 
     case CStrTy: {
       const PointerType *PT = argTy->getAs<PointerType>();
       if (!PT)
-        return false;
+        return NoMatch;
       QualType pointeeTy = PT->getPointeeType();
       if (const BuiltinType *BT = pointeeTy->getAs<BuiltinType>())
         switch (BT->getKind()) {
@@ -320,50 +345,56 @@ bool ArgType::matchesType(ASTContext &C, QualType argTy) const {
           case BuiltinType::UChar:
           case BuiltinType::Char_S:
           case BuiltinType::SChar:
-            return true;
+            return Match;
           default:
             break;
         }
 
-      return false;
+      return NoMatch;
     }
 
     case WCStrTy: {
       const PointerType *PT = argTy->getAs<PointerType>();
       if (!PT)
-        return false;
+        return NoMatch;
       QualType pointeeTy =
         C.getCanonicalType(PT->getPointeeType()).getUnqualifiedType();
-      return pointeeTy == C.getWCharType();
+      return pointeeTy == C.getWideCharType() ? Match : NoMatch;
     }
-    
+
     case WIntTy: {
-      
+
       QualType PromoArg = 
         argTy->isPromotableIntegerType()
           ? C.getPromotedIntegerType(argTy) : argTy;
-      
+
       QualType WInt = C.getCanonicalType(C.getWIntType()).getUnqualifiedType();
       PromoArg = C.getCanonicalType(PromoArg).getUnqualifiedType();
-      
+
       // If the promoted argument is the corresponding signed type of the
       // wint_t type, then it should match.
       if (PromoArg->hasSignedIntegerRepresentation() &&
           C.getCorrespondingUnsignedType(PromoArg) == WInt)
-        return true;
+        return Match;
 
-      return WInt == PromoArg;
+      return WInt == PromoArg ? Match : NoMatch;
     }
 
     case CPointerTy:
-      return argTy->isPointerType() || argTy->isObjCObjectPointerType() ||
-             argTy->isBlockPointerType() || argTy->isNullPtrType();
+      if (argTy->isVoidPointerType()) {
+        return Match;
+      } if (argTy->isPointerType() || argTy->isObjCObjectPointerType() ||
+            argTy->isBlockPointerType() || argTy->isNullPtrType()) {
+        return NoMatchPedantic;
+      } else {
+        return NoMatch;
+      }
 
     case ObjCPointerTy: {
       if (argTy->getAs<ObjCObjectPointerType>() ||
           argTy->getAs<BlockPointerType>())
-        return true;
-      
+        return Match;
+
       // Handle implicit toll-free bridging.
       if (const PointerType *PT = argTy->getAs<PointerType>()) {
         // Things such as CFTypeRef are really just opaque pointers
@@ -372,9 +403,9 @@ bool ArgType::matchesType(ASTContext &C, QualType argTy) const {
         // structs can be toll-free bridged, we just accept them all.
         QualType pointee = PT->getPointeeType();
         if (pointee->getAsStructureType() || pointee->isVoidType())
-          return true;
+          return Match;
       }
-      return false;      
+      return NoMatch;
     }
   }
 
@@ -398,7 +429,7 @@ QualType ArgType::getRepresentativeType(ASTContext &C) const {
       Res = C.getPointerType(C.CharTy);
       break;
     case WCStrTy:
-      Res = C.getPointerType(C.getWCharType());
+      Res = C.getPointerType(C.getWideCharType());
       break;
     case ObjCPointerTy:
       Res = C.ObjCBuiltinIdTy;
@@ -471,16 +502,24 @@ analyze_format_string::LengthModifier::toString() const {
     return "z";
   case AsPtrDiff:
     return "t";
+  case AsInt32:
+    return "I32";
+  case AsInt3264:
+    return "I";
+  case AsInt64:
+    return "I64";
   case AsLongDouble:
     return "L";
   case AsAllocate:
     return "a";
   case AsMAllocate:
     return "m";
+  case AsWide:
+    return "w";
   case None:
     return "";
   }
-  return NULL;
+  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//
@@ -512,24 +551,28 @@ const char *ConversionSpecifier::toString() const {
   case nArg: return "n";
   case PercentArg:  return "%";
   case ScanListArg: return "[";
-  case InvalidSpecifier: return NULL;
+  case InvalidSpecifier: return nullptr;
 
-  // MacOS X unicode extensions.
+  // POSIX unicode extensions.
   case CArg: return "C";
   case SArg: return "S";
 
   // Objective-C specific specifiers.
   case ObjCObjArg: return "@";
 
-  // FreeBSD specific specifiers.
+  // FreeBSD kernel specific specifiers.
   case FreeBSDbArg: return "b";
   case FreeBSDDArg: return "D";
   case FreeBSDrArg: return "r";
+  case FreeBSDyArg: return "y";
 
   // GlibC specific specifiers.
   case PrintErrno: return "m";
+
+  // MS specific specifiers.
+  case ZArg: return "Z";
   }
-  return NULL;
+  return nullptr;
 }
 
 Optional<ConversionSpecifier>
@@ -586,8 +629,21 @@ bool FormatSpecifier::hasValidLengthModifier(const TargetInfo &Target) const {
       return true;
       
     // Handle most integer flags
-    case LengthModifier::AsChar:
     case LengthModifier::AsShort:
+      if (Target.getTriple().isOSMSVCRT()) {
+        switch (CS.getKind()) {
+          case ConversionSpecifier::cArg:
+          case ConversionSpecifier::CArg:
+          case ConversionSpecifier::sArg:
+          case ConversionSpecifier::SArg:
+          case ConversionSpecifier::ZArg:
+            return true;
+          default:
+            break;
+        }
+      }
+      // Fall through.
+    case LengthModifier::AsChar:
     case LengthModifier::AsLongLong:
     case LengthModifier::AsQuad:
     case LengthModifier::AsIntMax:
@@ -604,14 +660,16 @@ bool FormatSpecifier::hasValidLengthModifier(const TargetInfo &Target) const {
         case ConversionSpecifier::xArg:
         case ConversionSpecifier::XArg:
         case ConversionSpecifier::nArg:
-        case ConversionSpecifier::FreeBSDrArg:
           return true;
+        case ConversionSpecifier::FreeBSDrArg:
+        case ConversionSpecifier::FreeBSDyArg:
+          return Target.getTriple().isOSFreeBSD();
         default:
           return false;
       }
       
     // Handle 'l' flag
-    case LengthModifier::AsLong:
+    case LengthModifier::AsLong: // or AsWideChar
       switch (CS.getKind()) {
         case ConversionSpecifier::dArg:
         case ConversionSpecifier::DArg:
@@ -633,9 +691,12 @@ bool FormatSpecifier::hasValidLengthModifier(const TargetInfo &Target) const {
         case ConversionSpecifier::nArg:
         case ConversionSpecifier::cArg:
         case ConversionSpecifier::sArg:
-        case ConversionSpecifier::FreeBSDrArg:
         case ConversionSpecifier::ScanListArg:
+        case ConversionSpecifier::ZArg:
           return true;
+        case ConversionSpecifier::FreeBSDrArg:
+        case ConversionSpecifier::FreeBSDyArg:
+          return Target.getTriple().isOSFreeBSD();
         default:
           return false;
       }
@@ -685,6 +746,31 @@ bool FormatSpecifier::hasValidLengthModifier(const TargetInfo &Target) const {
         default:
           return false;
       }
+    case LengthModifier::AsInt32:
+    case LengthModifier::AsInt3264:
+    case LengthModifier::AsInt64:
+      switch (CS.getKind()) {
+        case ConversionSpecifier::dArg:
+        case ConversionSpecifier::iArg:
+        case ConversionSpecifier::oArg:
+        case ConversionSpecifier::uArg:
+        case ConversionSpecifier::xArg:
+        case ConversionSpecifier::XArg:
+          return Target.getTriple().isOSMSVCRT();
+        default:
+          return false;
+      }
+    case LengthModifier::AsWide:
+      switch (CS.getKind()) {
+        case ConversionSpecifier::cArg:
+        case ConversionSpecifier::CArg:
+        case ConversionSpecifier::sArg:
+        case ConversionSpecifier::SArg:
+        case ConversionSpecifier::ZArg:
+          return Target.getTriple().isOSMSVCRT();
+        default:
+          return false;
+      }
   }
   llvm_unreachable("Invalid LengthModifier Kind!");
 }
@@ -704,12 +790,17 @@ bool FormatSpecifier::hasStandardLengthModifier() const {
     case LengthModifier::AsAllocate:
     case LengthModifier::AsMAllocate:
     case LengthModifier::AsQuad:
+    case LengthModifier::AsInt32:
+    case LengthModifier::AsInt3264:
+    case LengthModifier::AsInt64:
+    case LengthModifier::AsWide:
       return false;
   }
   llvm_unreachable("Invalid LengthModifier Kind!");
 }
 
-bool FormatSpecifier::hasStandardConversionSpecifier(const LangOptions &LangOpt) const {
+bool FormatSpecifier::hasStandardConversionSpecifier(
+    const LangOptions &LangOpt) const {
   switch (CS.getKind()) {
     case ConversionSpecifier::cArg:
     case ConversionSpecifier::dArg:
@@ -740,10 +831,12 @@ bool FormatSpecifier::hasStandardConversionSpecifier(const LangOptions &LangOpt)
     case ConversionSpecifier::FreeBSDbArg:
     case ConversionSpecifier::FreeBSDDArg:
     case ConversionSpecifier::FreeBSDrArg:
+    case ConversionSpecifier::FreeBSDyArg:
     case ConversionSpecifier::PrintErrno:
     case ConversionSpecifier::DArg:
     case ConversionSpecifier::OArg:
     case ConversionSpecifier::UArg:
+    case ConversionSpecifier::ZArg:
       return false;
   }
   llvm_unreachable("Invalid ConversionSpecifier Kind!");

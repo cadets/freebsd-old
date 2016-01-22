@@ -37,6 +37,9 @@
 extern "C" {
 #endif
 
+struct dsl_pool;
+struct dsl_dataset;
+
 /*
  * Intent log format:
  *
@@ -90,7 +93,6 @@ typedef struct zil_chain {
 } zil_chain_t;
 
 #define	ZIL_MIN_BLKSZ	4096ULL
-#define	ZIL_MAX_BLKSZ	SPA_MAXBLOCKSIZE
 
 /*
  * The words of a log block checksum.
@@ -242,6 +244,12 @@ typedef struct {
  * information needed for replaying the create.  If the
  * file doesn't have any actual ACEs then the lr_aclcnt
  * would be zero.
+ *
+ * After lr_acl_flags, there are a lr_acl_bytes number of variable sized ace's.
+ * If create is also setting xvattr's, then acl data follows xvattr.
+ * If ACE FUIDs are needed then they will follow the xvattr_t.  Following
+ * the FUIDs will be the domain table information.  The FUIDs for the owner
+ * and group will be in lr_create.  Name follows ACL data.
  */
 typedef struct {
 	lr_create_t	lr_create;	/* common create portion */
@@ -250,13 +258,6 @@ typedef struct {
 	uint64_t	lr_fuidcnt;	/* number of real fuids */
 	uint64_t	lr_acl_bytes;	/* number of bytes in ACL */
 	uint64_t	lr_acl_flags;	/* ACL flags */
-	/* lr_acl_bytes number of variable sized ace's follows */
-	/* if create is also setting xvattr's, then acl data follows xvattr */
-	/* if ACE FUIDs are needed then they will follow the xvattr_t */
-	/* Following the FUIDs will be the domain table information. */
-	/* The FUIDs for the owner and group will be in the lr_create */
-	/* portion of the record. */
-	/* name follows ACL data */
 } lr_acl_create_t;
 
 typedef struct {
@@ -406,8 +407,10 @@ extern void	zil_itx_assign(zilog_t *zilog, itx_t *itx, dmu_tx_t *tx);
 extern void	zil_commit(zilog_t *zilog, uint64_t oid);
 
 extern int	zil_vdev_offline(const char *osname, void *txarg);
-extern int	zil_claim(const char *osname, void *txarg);
-extern int	zil_check_log_chain(const char *osname, void *txarg);
+extern int	zil_claim(struct dsl_pool *dp,
+    struct dsl_dataset *ds, void *txarg);
+extern int 	zil_check_log_chain(struct dsl_pool *dp,
+    struct dsl_dataset *ds, void *tx);
 extern void	zil_sync(zilog_t *zilog, dmu_tx_t *tx);
 extern void	zil_clean(zilog_t *zilog, uint64_t synced_txg);
 

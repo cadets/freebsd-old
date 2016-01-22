@@ -30,13 +30,14 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_platform.h"
+
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/kernel.h>
 #include <sys/module.h>
 
 #include <machine/bus.h>
-#include <machine/fdt.h>
 
 #include <dev/fdt/fdt_common.h>
 #include <dev/ofw/ofw_bus.h>
@@ -44,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/uart/uart.h>
 #include <dev/uart/uart_bus.h>
 #include <dev/uart/uart_cpu.h>
+#include <dev/uart/uart_cpu_fdt.h>
 
 static int uart_fdt_probe(device_t);
 
@@ -61,34 +63,43 @@ static driver_t uart_fdt_driver = {
 	sizeof(struct uart_softc),
 };
 
-static int
+int
 uart_fdt_get_clock(phandle_t node, pcell_t *cell)
 {
-	pcell_t clock;
 
-	if ((OF_getprop(node, "clock-frequency", &clock,
-	    sizeof(clock))) <= 0)
-		return (ENXIO);
-
-	if (clock == 0)
+	/* clock-frequency is a FreeBSD-only extention. */
+	if ((OF_getencprop(node, "clock-frequency", cell,
+	    sizeof(*cell))) <= 0) {
 		/* Try to retrieve parent 'bus-frequency' */
 		/* XXX this should go to simple-bus fixup or so */
-		if ((OF_getprop(OF_parent(node), "bus-frequency", &clock,
-		    sizeof(clock))) <= 0)
-			clock = 0;
+		if ((OF_getencprop(OF_parent(node), "bus-frequency", cell,
+		    sizeof(*cell))) <= 0)
+			*cell = 0;
+	}
 
-	*cell = fdt32_to_cpu(clock);
 	return (0);
 }
 
-static int
+int
 uart_fdt_get_shift(phandle_t node, pcell_t *cell)
 {
-	pcell_t shift;
 
-	if ((OF_getprop(node, "reg-shift", &shift, sizeof(shift))) <= 0)
-		shift = 0;
-	*cell = fdt32_to_cpu(shift);
+	if ((OF_getencprop(node, "reg-shift", cell, sizeof(*cell))) <= 0)
+		return (-1);
+	return (0);
+}
+
+static uintptr_t
+uart_fdt_find_device(device_t dev)
+{
+	struct ofw_compat_data **cd;
+	const struct ofw_compat_data *ocd;
+
+	SET_FOREACH(cd, uart_fdt_class_and_device_set) {
+		ocd = ofw_bus_search_compatible(dev, *cd);
+		if (ocd->ocd_data != 0)
+			return (ocd->ocd_data);
+	}
 	return (0);
 }
 
@@ -101,26 +112,23 @@ uart_fdt_probe(device_t dev)
 	int err;
 
 	sc = device_get_softc(dev);
-	if (ofw_bus_is_compatible(dev, "ns16550"))
-		sc->sc_class = &uart_ns8250_class;
-	else if (ofw_bus_is_compatible(dev, "lpc,uart"))
-		sc->sc_class = &uart_lpc_class;
-	else if (ofw_bus_is_compatible(dev, "fsl,imx-uart"))
-		sc->sc_class = &uart_imx_class;
-	else if (ofw_bus_is_compatible(dev, "arm,pl011"))
-		sc->sc_class = &uart_pl011_class;
-	else if (ofw_bus_is_compatible(dev, "cadence,uart"))
-		sc->sc_class = &uart_cdnc_class;
-	else
+
+	if (!ofw_bus_status_okay(dev))
+		return (ENXIO);
+
+	sc->sc_class = (struct uart_class *)uart_fdt_find_device(dev);
+	if (sc->sc_class == NULL)
 		return (ENXIO);
 
 	node = ofw_bus_get_node(dev);
 
 	if ((err = uart_fdt_get_clock(node, &clock)) != 0)
 		return (err);
-	uart_fdt_get_shift(node, &shift);
+	if (uart_fdt_get_shift(node, &shift) != 0)
+		shift = uart_getregshift(sc->sc_class);
 
 	return (uart_bus_probe(dev, (int)shift, (int)clock, 0, 0));
 }
 
 DRIVER_MODULE(uart, simplebus, uart_fdt_driver, uart_devclass, 0, 0);
+DRIVER_MODULE(uart, ofwbus, uart_fdt_driver, uart_devclass, 0, 0);

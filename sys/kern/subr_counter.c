@@ -29,34 +29,30 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
-#include <sys/counter.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
+#include <sys/proc.h>
+#include <sys/sched.h>
 #include <sys/smp.h>
 #include <sys/sysctl.h>
 #include <vm/uma.h>
- 
-static uma_zone_t uint64_pcpu_zone;
 
+#define IN_SUBR_COUNTER_C
+#include <sys/counter.h>
+ 
 void
 counter_u64_zero(counter_u64_t c)
 {
-	int i;
 
-	for (i = 0; i < mp_ncpus; i++)
-		*(uint64_t *)((char *)c + sizeof(struct pcpu) * i) = 0;
+	counter_u64_zero_inline(c);
 }
 
 uint64_t
 counter_u64_fetch(counter_u64_t c)
 {
-	uint64_t r;
-	int i;
 
-	r = 0;
-	for (i = 0; i < mp_ncpus; i++)
-		r += *(uint64_t *)((char *)c + sizeof(struct pcpu) * i);
-
-	return (r);
+	return (counter_u64_fetch_inline(c));
 }
 
 counter_u64_t
@@ -64,7 +60,7 @@ counter_u64_alloc(int flags)
 {
 	counter_u64_t r;
 
-	r = uma_zalloc(uint64_pcpu_zone, flags);
+	r = uma_zalloc(pcpu_zone_64, flags);
 	if (r != NULL)
 		counter_u64_zero(r);
 
@@ -75,7 +71,7 @@ void
 counter_u64_free(counter_u64_t c)
 {
 
-	uma_zfree(uint64_pcpu_zone, c);
+	uma_zfree(pcpu_zone_64, c);
 }
 
 int
@@ -98,12 +94,3 @@ sysctl_handle_counter_u64(SYSCTL_HANDLER_ARGS)
 
 	return (0);
 }
-
-static void
-counter_startup(void)
-{
-
-	uint64_pcpu_zone = uma_zcreate("uint64 pcpu", sizeof(uint64_t),
-	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_PCPU);
-}
-SYSINIT(counter, SI_SUB_CPU, SI_ORDER_FOURTH, counter_startup, NULL);
