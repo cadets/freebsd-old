@@ -142,6 +142,7 @@ SUBDIR=	\
 	if_bridge \
 	if_disc \
 	if_edsc \
+	${_if_enc} \
 	if_epair \
 	${_if_gif} \
 	${_if_gre} \
@@ -219,6 +220,7 @@ SUBDIR=	\
 	malo \
 	mcd \
 	md \
+	mdio \
 	mem \
 	mfi \
 	mii \
@@ -226,6 +228,8 @@ SUBDIR=	\
 	${_mlx4} \
 	${_mlx4ib} \
 	${_mlxen} \
+	${_mlx5} \
+	${_mlx5en} \
 	${_mly} \
 	mmc \
 	mmcsd \
@@ -307,6 +311,8 @@ SUBDIR=	\
 	re \
 	reiserfs \
 	rl \
+	rtwn \
+	${_rtwnfw} \
 	${_s3} \
 	${_safe} \
 	${_sbni} \
@@ -343,6 +349,7 @@ SUBDIR=	\
 	${_syscons} \
 	sysvipc \
 	${_ti} \
+	tcp/fastpath \
 	tests/framework \
 	tests/callout_test \
 	tl \
@@ -401,7 +408,8 @@ _autofs=	autofs
 .endif
 
 .if ${MK_CDDL} != "no" || defined(ALL_MODULES)
-.if ${MACHINE_CPUARCH} != "arm" && ${MACHINE_CPUARCH} != "mips" && \
+.if (${MACHINE_CPUARCH} != "arm" || ${MACHINE_ARCH:Marmv6*} != "") && \
+	${MACHINE_CPUARCH} != "mips" && \
 	${MACHINE_CPUARCH} != "sparc64"
 SUBDIR+=	dtrace
 .endif
@@ -426,6 +434,7 @@ SUBDIR+=	cuse
 	defined(ALL_MODULES)
 _carp=		carp
 _toecore=	toecore
+_if_enc=	if_enc
 _if_gif=	if_gif
 _if_gre=	if_gre
 .endif
@@ -475,6 +484,7 @@ _fxp=		fxp
 _ispfw=		ispfw
 _mwlfw=		mwlfw
 _ralfw=		ralfw
+_rtwnfw=	rtwnfw
 _sf=		sf
 _ti=		ti
 _txp=		txp
@@ -608,6 +618,11 @@ _mlx4=		mlx4
 _mlx4ib=	mlx4ib
 _mlxen=		mlxen
 .endif
+_mlx5=		mlx5
+.if (${MK_INET_SUPPORT} != "no" && ${MK_INET6_SUPPORT} != "no") || \
+	defined(ALL_MODULES)
+_mlx5en=	mlx5en
+.endif
 _mly=		mly
 .if ${MK_OFED} != "no" || defined(ALL_MODULES)
 _mthca=		mthca
@@ -672,7 +687,7 @@ _cp=		cp
 _elink=		elink
 _glxiic=	glxiic
 _glxsb=		glxsb
-_ibcs2=		ibcs2
+#_ibcs2=		ibcs2
 _ie=		ie
 _mse=		mse
 _ncr=		ncr
@@ -760,6 +775,12 @@ afterinstall:
 .endif
 
 .include "${SYSDIR}/conf/config.mk"
+
+# Use sys/conf/kmod.mk's MPATH to avoid redundantly running in every subdir.
+.if !defined(__MPATH)
+__MPATH!=find ${SYSDIR:tA}/ -name \*_if.m
+.export __MPATH
+.endif
 
 SUBDIR:= ${SUBDIR:u:O}
 

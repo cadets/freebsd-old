@@ -32,11 +32,14 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/malloc.h>
+#include <sys/types.h>
 #include <sys/systm.h>
 #include <sys/mbuf.h>
 #include <sys/domain.h>
 #include <sys/eventhandler.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
 #include <sys/protosw.h>
 #include <sys/smp.h>
 #include <sys/sysctl.h>
@@ -49,7 +52,6 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_page.h>
 #include <vm/vm_map.h>
 #include <vm/uma.h>
-#include <vm/uma_int.h>
 #include <vm/uma_dbg.h>
 
 /*
@@ -283,7 +285,7 @@ static void	mb_dtor_pack(void *, int, void *);
 static int	mb_zinit_pack(void *, int, int);
 static void	mb_zfini_pack(void *, int);
 
-static void	mb_reclaim(void *);
+static void	mb_reclaim(uma_zone_t, int);
 static void    *mbuf_jumbo_alloc(uma_zone_t, vm_size_t, uint8_t *, int);
 
 /* Ensure that MSIZE is a power of 2. */
@@ -310,6 +312,7 @@ mbuf_init(void *dummy)
 	if (nmbufs > 0)
 		nmbufs = uma_zone_set_max(zone_mbuf, nmbufs);
 	uma_zone_set_warning(zone_mbuf, "kern.ipc.nmbufs limit reached");
+	uma_zone_set_maxaction(zone_mbuf, mb_reclaim);
 
 	zone_clust = uma_zcreate(MBUF_CLUSTER_MEM_NAME, MCLBYTES,
 	    mb_ctor_clust, mb_dtor_clust,
@@ -322,6 +325,7 @@ mbuf_init(void *dummy)
 	if (nmbclusters > 0)
 		nmbclusters = uma_zone_set_max(zone_clust, nmbclusters);
 	uma_zone_set_warning(zone_clust, "kern.ipc.nmbclusters limit reached");
+	uma_zone_set_maxaction(zone_clust, mb_reclaim);
 
 	zone_pack = uma_zsecond_create(MBUF_PACKET_MEM_NAME, mb_ctor_pack,
 	    mb_dtor_pack, mb_zinit_pack, mb_zfini_pack, zone_mbuf);
@@ -338,6 +342,7 @@ mbuf_init(void *dummy)
 	if (nmbjumbop > 0)
 		nmbjumbop = uma_zone_set_max(zone_jumbop, nmbjumbop);
 	uma_zone_set_warning(zone_jumbop, "kern.ipc.nmbjumbop limit reached");
+	uma_zone_set_maxaction(zone_jumbop, mb_reclaim);
 
 	zone_jumbo9 = uma_zcreate(MBUF_JUMBO9_MEM_NAME, MJUM9BYTES,
 	    mb_ctor_clust, mb_dtor_clust,
@@ -351,6 +356,7 @@ mbuf_init(void *dummy)
 	if (nmbjumbo9 > 0)
 		nmbjumbo9 = uma_zone_set_max(zone_jumbo9, nmbjumbo9);
 	uma_zone_set_warning(zone_jumbo9, "kern.ipc.nmbjumbo9 limit reached");
+	uma_zone_set_maxaction(zone_jumbo9, mb_reclaim);
 
 	zone_jumbo16 = uma_zcreate(MBUF_JUMBO16_MEM_NAME, MJUM16BYTES,
 	    mb_ctor_clust, mb_dtor_clust,
@@ -364,13 +370,12 @@ mbuf_init(void *dummy)
 	if (nmbjumbo16 > 0)
 		nmbjumbo16 = uma_zone_set_max(zone_jumbo16, nmbjumbo16);
 	uma_zone_set_warning(zone_jumbo16, "kern.ipc.nmbjumbo16 limit reached");
+	uma_zone_set_maxaction(zone_jumbo16, mb_reclaim);
 
 	zone_ext_refcnt = uma_zcreate(MBUF_EXTREFCNT_MEM_NAME, sizeof(u_int),
 	    NULL, NULL,
 	    NULL, NULL,
 	    UMA_ALIGN_PTR, UMA_ZONE_ZINIT);
-
-	/* uma_prealloc() goes here... */
 
 	/*
 	 * Hook event handler for low-memory situation, used to
@@ -658,20 +663,20 @@ m_pkthdr_init(struct mbuf *m, int how)
 }
 
 /*
- * This is the protocol drain routine.
+ * This is the protocol drain routine.  Called by UMA whenever any of the
+ * mbuf zones is closed to its limit.
  *
  * No locks should be held when this is called.  The drain routines have to
  * presently acquire some locks which raises the possibility of lock order
  * reversal.
  */
 static void
-mb_reclaim(void *junk)
+mb_reclaim(uma_zone_t zone __unused, int pending __unused)
 {
 	struct domain *dp;
 	struct protosw *pr;
 
-	WITNESS_WARN(WARN_GIANTOK | WARN_SLEEPOK | WARN_PANIC, NULL,
-	    "mb_reclaim()");
+	WITNESS_WARN(WARN_GIANTOK | WARN_SLEEPOK | WARN_PANIC, NULL, __func__);
 
 	for (dp = domains; dp != NULL; dp = dp->dom_next)
 		for (pr = dp->dom_protosw; pr < dp->dom_protoswNPROTOSW; pr++)

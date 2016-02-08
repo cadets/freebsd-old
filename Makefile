@@ -21,6 +21,7 @@
 # kernel-toolchains   - Build kernel-toolchain for all universe targets.
 # doxygen             - Build API documentation of the kernel, needs doxygen.
 # update              - Convenient way to update your source tree(s).
+# checkworld          - Run test suite on installed world.
 # check-old           - List obsolete directories/files/libraries.
 # check-old-dirs      - List obsolete directories.
 # check-old-files     - List obsolete files.
@@ -57,8 +58,8 @@
 # Makefile.inc1.  The exceptions are universe, tinderbox and targets.
 #
 # If you want to build your system from source be sure that /usr/obj has
-# at least 1GB of diskspace available.  A complete 'universe' build requires
-# about 15GB of space.
+# at least 6GB of diskspace available.  A complete 'universe' build requires
+# about 100GB of space.
 #
 # For individuals wanting to build from the sources currently on their
 # system, the simple instructions are:
@@ -106,14 +107,14 @@
 
 # Note: we use this awkward construct to be compatible with FreeBSD's
 # old make used in 10.0 and 9.2 and earlier.
-.if defined(MK_META_MODE) && ${MK_META_MODE} == "yes" && !make(showconfig)
+.if defined(MK_DIRDEPS_BUILD) && ${MK_DIRDEPS_BUILD} == "yes" && !make(showconfig)
 # targets/Makefile plays the role of top-level
 .include "targets/Makefile"
 .else
 
 TGTS=	all all-man buildenv buildenvvars buildkernel buildworld \
-	check-old check-old-dirs check-old-files check-old-libs \
-	checkdpadd clean cleandepend cleandir cleanworld \
+	check check-old check-old-dirs check-old-files check-old-libs \
+	checkdpadd checkworld clean cleandepend cleandir cleanworld \
 	delete-old delete-old-dirs delete-old-files delete-old-libs \
 	depend distribute distributekernel distributekernel.debug \
 	distributeworld distrib-dirs distribution doxygen \
@@ -121,7 +122,7 @@ TGTS=	all all-man buildenv buildenvvars buildkernel buildworld \
 	installkernel.debug packagekernel packageworld \
 	reinstallkernel reinstallkernel.debug \
 	installworld kernel-toolchain libraries lint maninstall \
-	obj objlink regress rerelease showconfig tags toolchain update \
+	obj objlink rerelease showconfig tags toolchain update \
 	_worldtmp _legacy _bootstrap-tools _cleanobj _obj \
 	_build-tools _cross-tools _includes _libraries _depend \
 	build32 builddtb distribute32 install32 xdev xdev-build xdev-install \
@@ -136,6 +137,7 @@ TGTS+=	${BITGTS}
 .ORDER: buildworld installworld
 .ORDER: buildworld distributeworld
 .ORDER: buildworld buildkernel
+.ORDER: installworld distribution
 .ORDER: buildkernel installkernel
 .ORDER: buildkernel installkernel.debug
 .ORDER: buildkernel reinstallkernel
@@ -180,7 +182,7 @@ _MAKE=	PATH=${PATH} ${SUB_MAKE} -f Makefile.inc1 TARGET=${_TARGET} TARGET_ARCH=$
 _TARGET_ARCH=	${TARGET:S/pc98/i386/:S/arm64/aarch64/}
 .elif !defined(TARGET) && defined(TARGET_ARCH) && \
     ${TARGET_ARCH} != ${MACHINE_ARCH}
-_TARGET=		${TARGET_ARCH:C/mips(n32|64)?(el)?/mips/:C/arm(v6)?(eb|hf)?/arm/:C/aarch64/arm64/:C/powerpc64/powerpc/}
+_TARGET=		${TARGET_ARCH:C/mips(n32|64)?(el)?/mips/:C/arm(v6)?(eb|hf)?/arm/:C/aarch64/arm64/:C/powerpc64/powerpc/:C/riscv64/riscv/}
 .endif
 .if defined(TARGET) && !defined(_TARGET)
 _TARGET=${TARGET}
@@ -205,7 +207,7 @@ _TARGET_ARCH?=	${MACHINE_ARCH}
 # The user can define ALWAYS_CHECK_MAKE to have this check performed
 # for all targets.
 #
-.if defined(ALWAYS_CHECK_MAKE)
+.if defined(ALWAYS_CHECK_MAKE) || !defined(.PARSEDIR)
 ${TGTS}: upgrade_checks
 .else
 buildworld: upgrade_checks
@@ -323,21 +325,31 @@ bmake: .PHONY
 	@echo ">>> Building an up-to-date ${.TARGET}(1)"
 	@echo "--------------------------------------------------------------"
 	${_+_}@cd ${.CURDIR}/usr.bin/${.TARGET}; \
-		${MMAKE} obj && \
-		${MMAKE} depend && \
-		${MMAKE} all && \
+		${MMAKE} obj; \
+		${MMAKE} depend; \
+		${MMAKE} all; \
 		${MMAKE} install DESTDIR=${MYMAKE:H} BINDIR=
 
-tinderbox toolchains kernel-toolchains: upgrade_checks
+regress: .PHONY
+	@echo "'make regress' has been renamed 'make check'" | /usr/bin/fmt
+	@false
+
+tinderbox toolchains kernel-toolchains kernels worlds: upgrade_checks
 
 tinderbox:
-	@cd ${.CURDIR} && ${SUB_MAKE} DOING_TINDERBOX=YES universe
+	@cd ${.CURDIR}; ${SUB_MAKE} DOING_TINDERBOX=YES universe
 
 toolchains:
-	@cd ${.CURDIR} && ${SUB_MAKE} UNIVERSE_TARGET=toolchain universe
+	@cd ${.CURDIR}; ${SUB_MAKE} UNIVERSE_TARGET=toolchain universe
 
 kernel-toolchains:
-	@cd ${.CURDIR} && ${SUB_MAKE} UNIVERSE_TARGET=kernel-toolchain universe
+	@cd ${.CURDIR}; ${SUB_MAKE} UNIVERSE_TARGET=kernel-toolchain universe
+
+kernels:
+	@cd ${.CURDIR}; ${SUB_MAKE} UNIVERSE_TARGET=buildkernel universe
+
+worlds:
+	@cd ${.CURDIR}; ${SUB_MAKE} UNIVERSE_TARGET=buildworld universe
 
 #
 # universe
@@ -435,7 +447,7 @@ universe_${target}_kernels: universe_${target}_prologue .MAKE
 	    (echo "${target} 'make LINT' failed," \
 	    "check _.${target}.makeLINT for details"| ${MAKEFAIL}))
 .endif
-	@cd ${.CURDIR} && ${SUB_MAKE} ${.MAKEFLAGS} TARGET=${target} \
+	@cd ${.CURDIR}; ${SUB_MAKE} ${.MAKEFLAGS} TARGET=${target} \
 	    universe_kernels
 .endif # !MAKE_JUST_WORLDS
 
@@ -498,15 +510,15 @@ buildLINT:
 # This makefile does not run in meta mode
 .MAKE.MODE= normal
 # Normally the things we run from here don't either.
-# Using -DWITH_META_FILES
+# Using -DWITH_META_MODE
 # we can buildworld with meta files created which are useful 
 # for debugging, but without any of the rest of a meta mode build.
-MK_META_MODE= no
+MK_DIRDEPS_BUILD= no
 MK_STAGING= no
 # tell meta.autodep.mk to not even think about updating anything.
 UPDATE_DEPENDFILE= NO
 .if !make(showconfig)
-.export MK_META_MODE MK_STAGING UPDATE_DEPENDFILE
+.export MK_DIRDEPS_BUILD MK_STAGING UPDATE_DEPENDFILE
 .endif
 
 .if make(universe)
@@ -516,4 +528,4 @@ MAKE_JOB_ERROR_TOKEN= no
 .endif
 .endif # bmake
 
-.endif				# META_MODE
+.endif				# DIRDEPS_BUILD

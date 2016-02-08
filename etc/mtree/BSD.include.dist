@@ -241,6 +241,8 @@
     ..
     krb5
     ..
+    lib80211
+    ..
     libmilter
     ..
     libxo
@@ -268,6 +270,8 @@
         ..
     ..
     netinet
+        cc
+        ..
     ..
     netinet6
     ..

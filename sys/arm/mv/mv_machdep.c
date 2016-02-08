@@ -66,6 +66,11 @@ static int platform_mpp_init(void);
 void armadaxp_init_coher_fabric(void);
 void armadaxp_l2_init(void);
 #endif
+#if defined(SOC_MV_ARMADA38X)
+int armada38x_win_set_iosync_barrier(void);
+int armada38x_scu_enable(void);
+int armada38x_open_bootrom_win(void);
+#endif
 
 #define MPP_PIN_MAX		68
 #define MPP_PIN_CELLS		2
@@ -249,6 +254,19 @@ platform_late_init(void)
 #endif
 	armadaxp_l2_init();
 #endif
+
+#if defined(SOC_MV_ARMADA38X)
+	/* Set IO Sync Barrier bit for all Mbus devices */
+	if (armada38x_win_set_iosync_barrier() != 0)
+		printf("WARNING: could not map CPU Subsystem registers\n");
+	if (armada38x_scu_enable() != 0)
+		printf("WARNING: could not enable SCU\n");
+#ifdef SMP
+	/* Open window to bootROM memory - needed for SMP */
+	if (armada38x_open_bootrom_win() != 0)
+		printf("WARNING: could not open window to bootROM\n");
+#endif
+#endif
 }
 
 #define FDT_DEVMAP_MAX	(MV_WIN_CPU_MAX + 2)
@@ -319,7 +337,7 @@ __weak_reference(mv_default_fdt_pci_devmap, mv_pci_devmap);
  */
 
 /*
- * Construct pmap_devmap[] with DT-derived config data.
+ * Construct devmap table with DT-derived config data.
  */
 int
 platform_devmap_init(void)

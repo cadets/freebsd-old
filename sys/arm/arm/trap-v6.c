@@ -55,7 +55,6 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/acle-compat.h>
 #include <machine/cpu.h>
-#include <machine/cpu-v6.h>
 #include <machine/frame.h>
 #include <machine/machdep.h>
 #include <machine/pcb.h>
@@ -66,7 +65,10 @@ __FBSDID("$FreeBSD$");
 #include <machine/db_machdep.h>
 #endif
 
-extern char fusubailout[];
+#ifdef KDTRACE_HOOKS
+#include <sys/dtrace_bsd.h>
+#endif
+
 extern char cachebailout[];
 
 #ifdef DEBUG
@@ -255,7 +257,7 @@ abort_debug(struct trapframe *tf, u_int fsr, u_int prefetch, bool usermode,
 		userret(td, tf);
 	} else {
 #ifdef KDB
-		kdb_trap(T_BREAKPOINT, 0, tf);
+		kdb_trap((prefetch) ? T_BREAKPOINT : T_WATCHPOINT, 0, tf);
 #else
 		printf("No debugger in kernel.\n");
 #endif
@@ -289,7 +291,10 @@ abort_handler(struct trapframe *tf, int prefetch)
 #ifdef INVARIANTS
 	void *onfault;
 #endif
+
+	PCPU_INC(cnt.v_trap);
 	td = curthread;
+
 	fsr = (prefetch) ? cp15_ifsr_get(): cp15_dfsr_get();
 #if __ARM_ARCH >= 7
 	far = (prefetch) ? cp15_ifar_get() : cp15_dfar_get();
@@ -302,8 +307,8 @@ abort_handler(struct trapframe *tf, int prefetch)
 	if (usermode)
 		td->td_frame = tf;
 
-	CTR4(KTR_TRAP, "abort_handler: fsr %#x (idx %u) far %#x prefetch %u",
-	fsr, idx, far, prefetch);
+	CTR6(KTR_TRAP, "%s: fsr %#x (idx %u) far %#x prefetch %u usermode %d",
+	    __func__, fsr, idx, far, prefetch, usermode);
 
 	/*
 	 * Firstly, handle aborts that are not directly related to mapping.
@@ -330,30 +335,23 @@ abort_handler(struct trapframe *tf, int prefetch)
 	 * they are not from KVA space. Thus, no action is needed here.
 	 */
 
-#ifdef ARM_NEW_PMAP
-	rv = pmap_fault(PCPU_GET(curpmap), far, fsr, idx, usermode);
-	if (rv == 0) {
-		return;
-	} else if (rv == EFAULT) {
-
-		call_trapsignal(td, SIGSEGV, SEGV_MAPERR, far);
-		userret(td, tf);
-		return;
-	}
-#endif
 	/*
-	 * Now, when we handled imprecise and debug aborts, the rest of
-	 * aborts should be really related to mapping.
+	 * (1) Handle access and R/W hardware emulation aborts.
+	 * (2) Check that abort is not on pmap essential address ranges.
+	 *     There is no way how to fix it, so we don't even try.
 	 */
-
-	PCPU_INC(cnt.v_trap);
-
+	rv = pmap_fault(PCPU_GET(curpmap), far, fsr, idx, usermode);
+	if (rv == KERN_SUCCESS)
+		return;
 #ifdef KDB
 	if (kdb_active) {
 		kdb_reenter();
 		goto out;
 	}
 #endif
+	if (rv == KERN_INVALID_ADDRESS)
+		goto nogo;
+
 	if (__predict_false((td->td_pflags & TDP_NOFAULTING) != 0)) {
 		/*
 		 * Due to both processor errata and lazy TLB invalidation when
@@ -420,6 +418,14 @@ abort_handler(struct trapframe *tf, int prefetch)
 	}
 
 	/*
+	 * At this point, we're dealing with one of the following aborts:
+	 *
+	 *  FAULT_ICACHE   - I-cache maintenance
+	 *  FAULT_TRAN_xx  - Translation
+	 *  FAULT_PERM_xx  - Permission
+	 */
+
+	/*
 	 * Don't pass faulting cache operation to vm_fault(). We don't want
 	 * to handle all vm stuff at this moment.
 	 */
@@ -435,24 +441,6 @@ abort_handler(struct trapframe *tf, int prefetch)
 		if (abort_icache(tf, idx, fsr, far, prefetch, td, &ksig))
 			goto do_trapsignal;
 		goto out;
-	}
-
-	/*
-	 * At this point, we're dealing with one of the following aborts:
-	 *
-	 *  FAULT_TRAN_xx  - Translation
-	 *  FAULT_PERM_xx  - Permission
-	 *
-	 * These are the main virtual memory-related faults signalled by
-	 * the MMU.
-	 */
-
-	/* fusubailout is used by [fs]uswintr to avoid page faulting. */
-	pcb = td->td_pcb;
-	if (__predict_false(pcb->pcb_onfault == fusubailout)) {
-		tf->tf_r0 = EFAULT;
-		tf->tf_pc = (register_t)pcb->pcb_onfault;
-		return;
 	}
 
 	va = trunc_page(far);
@@ -487,13 +475,6 @@ abort_handler(struct trapframe *tf, int prefetch)
 
 #ifdef DEBUG
 	last_fault_code = fsr;
-#endif
-
-#ifndef ARM_NEW_PMAP
-	if (pmap_fault_fixup(vmspace_pmap(td->td_proc->p_vmspace), va, ftype,
-	    usermode)) {
-		goto out;
-	}
 #endif
 
 #ifdef INVARIANTS
@@ -561,6 +542,13 @@ abort_fatal(struct trapframe *tf, u_int idx, u_int fsr, u_int far,
 	const char *rw_mode;
 
 	usermode = TRAPF_USERMODE(tf);
+#ifdef KDTRACE_HOOKS
+	if (!usermode) {
+		if (dtrace_trap_func != NULL && (*dtrace_trap_func)(tf, far))
+			return (0);
+	}
+#endif
+
 	mode = usermode ? "user" : "kernel";
 	rw_mode  = fsr & FSR_WNR ? "write" : "read";
 	disable_interrupts(PSR_I|PSR_F);

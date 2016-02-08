@@ -20,7 +20,6 @@
 #define _BSD_MISC_H
 
 #include "includes.h"
-__RCSID("$FreeBSD$");
 
 char *ssh_get_progname(char *);
 
@@ -112,7 +111,7 @@ pid_t getpgid(pid_t);
 #endif
 
 #ifndef HAVE_ENDGRENT
-# define endgrent() do { } while (0)
+# define endgrent() do { } while(0)
 #endif
 
 #ifndef HAVE_KRB5_GET_ERROR_MESSAGE

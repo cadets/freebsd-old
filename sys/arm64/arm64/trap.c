@@ -138,7 +138,6 @@ svc_handler(struct trapframe *frame)
 	int error;
 
 	td = curthread;
-	td->td_frame = frame;
 
 	error = syscallenter(td, &sa);
 	syscallret(td, error, &sa);
@@ -186,6 +185,8 @@ data_abort(struct trapframe *frame, uint64_t esr, uint64_t far, int lower)
 	if (td->td_critnest != 0 || WITNESS_CHECK(WARN_SLEEPOK |
 	    WARN_GIANTOK, NULL, "Kernel page fault") != 0) {
 		print_registers(frame);
+		printf(" far: %16lx\n", far);
+		printf(" esr:         %.8lx\n", esr);
 		panic("data abort in critical section or under mutex");
 	}
 
@@ -220,6 +221,12 @@ data_abort(struct trapframe *frame, uint64_t esr, uint64_t far, int lower)
 				frame->tf_elr = pcb->pcb_onfault;
 				return;
 			}
+
+			printf("Fatal data abort:\n");
+			print_registers(frame);
+			printf(" far: %16lx\n", far);
+			printf(" esr:         %.8lx\n", esr);
+
 #ifdef KDB
 			if (debugger_on_panic || kdb_active)
 				if (kdb_trap(ESR_ELx_EXCEPTION(esr), 0, frame))
@@ -271,6 +278,7 @@ do_el1h_sync(struct trapframe *frame)
 	case EXCP_FP_SIMD:
 	case EXCP_TRAP_FP:
 		print_registers(frame);
+		printf(" esr:         %.8lx\n", esr);
 		panic("VFP exception in the kernel");
 	case EXCP_DATA_ABORT:
 		far = READ_SPECIALREG(far_el1);
@@ -329,6 +337,9 @@ do_el0_sync(struct trapframe *frame)
 	    ("Invalid pcpu address from userland: %p (tpidr %lx)",
 	     get_pcpu(), READ_SPECIALREG(tpidr_el1)));
 
+	td = curthread;
+	td->td_frame = frame;
+
 	esr = READ_SPECIALREG(esr_el1);
 	exception = ESR_ELx_EXCEPTION(esr);
 	switch (exception) {
@@ -363,14 +374,25 @@ do_el0_sync(struct trapframe *frame)
 	case EXCP_UNKNOWN:
 		el0_excp_unknown(frame);
 		break;
+	case EXCP_SP_ALIGN:
+		call_trapsignal(td, SIGBUS, BUS_ADRALN, (void *)frame->tf_sp);
+		userret(td, frame);
+		break;
 	case EXCP_PC_ALIGN:
-		td = curthread;
 		call_trapsignal(td, SIGBUS, BUS_ADRALN, (void *)frame->tf_elr);
 		userret(td, frame);
 		break;
 	case EXCP_BRK:
-		td = curthread;
 		call_trapsignal(td, SIGTRAP, TRAP_BRKPT, (void *)frame->tf_elr);
+		userret(td, frame);
+		break;
+	case EXCP_SOFTSTP_EL0:
+		td->td_frame->tf_spsr &= ~PSR_SS;
+		td->td_pcb->pcb_flags &= ~PCB_SINGLE_STEP;
+		WRITE_SPECIALREG(MDSCR_EL1,
+		    READ_SPECIALREG(MDSCR_EL1) & ~DBG_MDSCR_SS);
+		call_trapsignal(td, SIGTRAP, TRAP_TRACE,
+		    (void *)frame->tf_elr);
 		userret(td, frame);
 		break;
 	default:

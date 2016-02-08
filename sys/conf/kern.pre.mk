@@ -64,7 +64,7 @@ NOSTDINC= -nostdinc
 
 INCLUDES= ${NOSTDINC} ${INCLMAGIC} -I. -I$S
 
-.if make(depend) || make(kernel-depend)
+.if ${MK_FAST_DEPEND} == "no" && (make(depend) || make(kernel-depend))
 
 # This hack lets us use the ipfilter code without spamming a new
 # include path into contrib'ed source files.
@@ -157,15 +157,15 @@ DTRACE_CFLAGS+=	-I$S/cddl/contrib/opensolaris/uts/intel -I$S/cddl/dev/dtrace/x86
 .endif
 DTRACE_CFLAGS+=	-I$S/cddl/contrib/opensolaris/common/util -I$S -DDIS_MEM -DSMP
 DTRACE_ASM_CFLAGS=	-x assembler-with-cpp -DLOCORE ${DTRACE_CFLAGS}
-DTRACE_C=	${CC} -c ${DTRACE_CFLAGS} ${CDDL_CFLAGS}	${WERROR} ${PROF} ${.IMPSRC}
-DTRACE_S=	${CC} -c ${DTRACE_ASM_CFLAGS} ${CDDL_CFLAGS}	${WERROR} ${.IMPSRC}
+DTRACE_C=	${CC} -c ${DTRACE_CFLAGS}	${WERROR} ${PROF} ${.IMPSRC}
+DTRACE_S=	${CC} -c ${DTRACE_ASM_CFLAGS}	${WERROR} ${.IMPSRC}
 
 # Special flags for managing the compat compiles for DTrace/FBT
 FBT_CFLAGS=	-DBUILDING_DTRACE -nostdinc -I$S/cddl/dev/fbt/${MACHINE_CPUARCH} -I$S/cddl/dev/fbt -I$S/cddl/compat/opensolaris -I$S/cddl/contrib/opensolaris/uts/common -I$S ${CDDL_CFLAGS}
 .if ${MACHINE_CPUARCH} == "amd64" || ${MACHINE_CPUARCH} == "i386"
 FBT_CFLAGS+=	-I$S/cddl/dev/fbt/x86
 .endif
-FBT_C=		${CC} -c ${FBT_CFLAGS} ${CDDL_CFLAGS}		${WERROR} ${PROF} ${.IMPSRC}
+FBT_C=		${CC} -c ${FBT_CFLAGS}		${WERROR} ${PROF} ${.IMPSRC}
 
 .if ${MK_CTF} != "no"
 NORMAL_CTFCONVERT=	${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
@@ -195,8 +195,12 @@ SYSTEM_DEP= Makefile ${SYSTEM_OBJS}
 SYSTEM_OBJS= locore.o ${MDOBJS} ${OBJS}
 SYSTEM_OBJS+= ${SYSTEM_CFILES:.c=.o}
 SYSTEM_OBJS+= hack.So
+
+MD_ROOT_SIZE_CONFIGURED!=	grep MD_ROOT_SIZE opt_md.h || true ; echo
 .if ${MFS_IMAGE:Uno} != "no"
+.if empty(MD_ROOT_SIZE_CONFIGURED)
 SYSTEM_OBJS+= embedfs_${MFS_IMAGE:T:R}.o
+.endif
 .endif
 SYSTEM_LD= @${LD} -Bdynamic -T ${LDSCRIPT} ${_LDFLAGS} --no-warn-mismatch \
 	--warn-common --export-dynamic --dynamic-linker /red/herring \
@@ -206,9 +210,8 @@ SYSTEM_LD_TAIL= @${OBJCOPY} --strip-symbol gcc2_compiled. ${.TARGET} ; \
 SYSTEM_DEP+= ${LDSCRIPT}
 
 # Calculate path for .m files early, if needed.
-.if !defined(_MPATH)
+.if !defined(__MPATH)
 __MPATH!=find ${S:tA}/ -name \*_if.m
-_MPATH=${__MPATH:H:O:u}
 .endif
 
 # MKMODULESENV is set here so that port makefiles can augment
@@ -227,12 +230,13 @@ MKMODULESENV+=	MODULES_OVERRIDE="${MODULES_OVERRIDE}"
 .if defined(DEBUG)
 MKMODULESENV+=	DEBUG_FLAGS="${DEBUG}"
 .endif
-MKMODULESENV+=	_MPATH="${_MPATH}"
+MKMODULESENV+=	__MPATH="${__MPATH}"
 
 # Architecture and output format arguments for objdump to convert image to
 # object file
-.if ${MFS_IMAGE:Uno} != "no"
 
+.if ${MFS_IMAGE:Uno} != "no"
+.if empty(MD_ROOT_SIZE_CONFIGURED)
 .if !defined(EMBEDFS_FORMAT.${MACHINE_ARCH})
 EMBEDFS_FORMAT.${MACHINE_ARCH}!= awk -F'"' '/OUTPUT_FORMAT/ {print $$2}' ${LDSCRIPT}
 .if empty(EMBEDFS_FORMAT.${MACHINE_ARCH})
@@ -253,6 +257,8 @@ EMBEDFS_FORMAT.mips?=		elf32-tradbigmips
 EMBEDFS_FORMAT.mipsel?=		elf32-tradlittlemips
 EMBEDFS_FORMAT.mips64?=		elf64-tradbigmips
 EMBEDFS_FORMAT.mips64el?=	elf64-tradlittlemips
+EMBEDFS_FORMAT.riscv?=		elf64-littleriscv
+.endif
 .endif
 
 # Detect kernel config options that force stack frames to be turned on.

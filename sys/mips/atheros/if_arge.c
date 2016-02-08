@@ -78,7 +78,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_arge.h"
 
 #if defined(ARGE_MDIO)
-#include <dev/etherswitch/mdio.h>
+#include <dev/mdio/mdio.h>
 #include <dev/etherswitch/miiproxy.h>
 #include "mdio_if.h"
 #endif
@@ -94,6 +94,7 @@ MODULE_VERSION(arge, 1);
 
 #include <mips/atheros/ar71xxreg.h>
 #include <mips/atheros/ar934xreg.h>	/* XXX tsk! */
+#include <mips/atheros/qca953xreg.h>	/* XXX tsk! */
 #include <mips/atheros/qca955xreg.h>	/* XXX tsk! */
 #include <mips/atheros/if_argevar.h>
 #include <mips/atheros/ar71xx_setup.h>
@@ -399,6 +400,16 @@ arge_reset_mac(struct arge_softc *sc)
 			reset_reg |= QCA955X_RESET_GE1_MDIO;
 		}
 	}
+
+	if (ar71xx_soc == AR71XX_SOC_QCA9533 ||
+	   ar71xx_soc == AR71XX_SOC_QCA9533_V2) {
+		if (sc->arge_mac_unit == 0) {
+			reset_reg |= QCA953X_RESET_GE0_MDIO;
+		} else {
+			reset_reg |= QCA953X_RESET_GE1_MDIO;
+		}
+	}
+
 	ar71xx_device_stop(reset_reg);
 	DELAY(100);
 	ar71xx_device_start(reset_reg);
@@ -470,6 +481,8 @@ arge_mdio_get_divider(struct arge_softc *sc, unsigned long mdio_clock)
 	case AR71XX_SOC_AR9341:
 	case AR71XX_SOC_AR9342:
 	case AR71XX_SOC_AR9344:
+	case AR71XX_SOC_QCA9533:
+	case AR71XX_SOC_QCA9533_V2:
 	case AR71XX_SOC_QCA9556:
 	case AR71XX_SOC_QCA9558:
 		table = ar933x_mdio_div_table;
@@ -561,6 +574,8 @@ arge_fetch_mdiobus_clock_rate(struct arge_softc *sc)
 	case AR71XX_SOC_AR9341:
 	case AR71XX_SOC_AR9342:
 	case AR71XX_SOC_AR9344:
+	case AR71XX_SOC_QCA9533:
+	case AR71XX_SOC_QCA9533_V2:
 	case AR71XX_SOC_QCA9556:
 	case AR71XX_SOC_QCA9558:
 		return (MAC_MII_CFG_CLOCK_DIV_58);
@@ -681,6 +696,8 @@ arge_attach(device_t dev)
 	case AR71XX_SOC_AR9341:
 	case AR71XX_SOC_AR9342:
 	case AR71XX_SOC_AR9344:
+	case AR71XX_SOC_QCA9533:
+	case AR71XX_SOC_QCA9533_V2:
 	case AR71XX_SOC_QCA9556:
 	case AR71XX_SOC_QCA9558:
 		/* Arbitrary alignment */
@@ -868,6 +885,11 @@ arge_attach(device_t dev)
 	/*
 	 * Don't do this for the MDIO bus case - it's already done
 	 * as part of the MDIO bus attachment.
+	 *
+	 * XXX TODO: if we don't do this, we don't ever release the MAC
+	 * from reset and we can't use the port.  Now, if we define ARGE_MDIO
+	 * but we /don't/ define two MDIO busses, then we can't actually
+	 * use both MACs.
 	 */
 #if !defined(ARGE_MDIO)
 	/* Initialize the MAC block */
@@ -904,6 +926,8 @@ arge_attach(device_t dev)
 		case AR71XX_SOC_AR9341:
 		case AR71XX_SOC_AR9342:
 		case AR71XX_SOC_AR9344:
+		case AR71XX_SOC_QCA9533:
+		case AR71XX_SOC_QCA9533_V2:
 		case AR71XX_SOC_QCA9556:
 		case AR71XX_SOC_QCA9558:
 			ARGE_WRITE(sc, AR71XX_MAC_FIFO_CFG1, 0x0010ffff);
@@ -1278,6 +1302,8 @@ arge_set_pll(struct arge_softc *sc, int media, int duplex)
 		case AR71XX_SOC_AR9341:
 		case AR71XX_SOC_AR9342:
 		case AR71XX_SOC_AR9344:
+		case AR71XX_SOC_QCA9533:
+		case AR71XX_SOC_QCA9533_V2:
 		case AR71XX_SOC_QCA9556:
 		case AR71XX_SOC_QCA9558:
 			fifo_tx = 0x01f00140;

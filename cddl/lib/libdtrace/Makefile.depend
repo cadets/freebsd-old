@@ -16,7 +16,6 @@ DIRDEPS = \
 	lib/librtld_db \
 	lib/libthr \
 	lib/libxo \
-	usr.bin/xinstall.host \
 	usr.bin/yacc.host \
 
 

@@ -217,47 +217,40 @@ arm_register_msi_pic(device_t dev)
 }
 
 int
-arm_alloc_msi(device_t pci_dev, int count, int *irqs)
+arm_alloc_msi(device_t pci, device_t child, int count, int maxcount, int *irqs)
 {
 
-	return PIC_ALLOC_MSI(msi_pic, pci_dev, count, irqs);
+	return (PIC_ALLOC_MSI(msi_pic, child, count, irqs));
 }
 
 int
-arm_release_msi(device_t pci_dev, int count, int *irqs)
+arm_release_msi(device_t pci, device_t child, int count, int *irqs)
 {
 
-	return PIC_RELEASE_MSI(msi_pic, pci_dev, count, irqs);
+	return (PIC_RELEASE_MSI(msi_pic, child, count, irqs));
 }
 
 int
-arm_map_msi(device_t pci_dev, int irq, uint64_t *addr, uint32_t *data)
+arm_map_msi(device_t pci, device_t child, int irq, uint64_t *addr, uint32_t *data)
 {
 
-	return PIC_MAP_MSI(msi_pic, pci_dev, irq, addr, data);
+	return (PIC_MAP_MSI(msi_pic, child, irq, addr, data));
 }
 
 int
-arm_alloc_msix(device_t pci_dev, int *irq)
+arm_alloc_msix(device_t pci, device_t child, int *irq)
 {
 
-	return PIC_ALLOC_MSIX(msi_pic, pci_dev, irq);
+	return (PIC_ALLOC_MSIX(msi_pic, child, irq));
 }
 
 int
-arm_release_msix(device_t pci_dev, int irq)
+arm_release_msix(device_t pci, device_t child, int irq)
 {
 
-	return PIC_RELEASE_MSIX(msi_pic, pci_dev, irq);
+	return (PIC_RELEASE_MSIX(msi_pic, child, irq));
 }
 
-
-int
-arm_map_msix(device_t pci_dev, int irq, uint64_t *addr, uint32_t *data)
-{
-
-	return PIC_MAP_MSIX(msi_pic, pci_dev, irq, addr, data);
-}
 
 /*
  * Finalize interrupts bring-up (should be called from configure_final()).
@@ -478,9 +471,6 @@ ipi_all_but_self(u_int ipi)
 
 	other_cpus = all_cpus;
 	CPU_CLR(PCPU_GET(cpuid), &other_cpus);
-
-	/* ARM64TODO: This will be fixed with arm_intrng */
-	ipi += 16;
 
 	CTR2(KTR_SMP, "%s: ipi: %x", __func__, ipi);
 	PIC_IPI_SEND(root_pic, other_cpus, ipi);

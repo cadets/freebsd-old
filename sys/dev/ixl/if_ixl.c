@@ -674,9 +674,9 @@ ixl_attach(device_t dev)
 	}
 
 	/* Limit phy interrupts to link and modules failure */
-	error = i40e_aq_set_phy_int_mask(hw,
-	    I40E_AQ_EVENT_LINK_UPDOWN | I40E_AQ_EVENT_MODULE_QUAL_FAIL, NULL);
-        if (error)
+	error = i40e_aq_set_phy_int_mask(hw, ~(I40E_AQ_EVENT_LINK_UPDOWN |
+		I40E_AQ_EVENT_MODULE_QUAL_FAIL), NULL);
+	if (error)
 		device_printf(dev, "set phy mask failed: %d\n", error);
 
 	/* Get the bus configuration and set the shared code */
@@ -6606,7 +6606,11 @@ ixl_iov_uninit(device_t dev)
 		pf->veb_seid = 0;
 	}
 
+#if __FreeBSD_version > 1100022
 	if ((if_getdrvflags(ifp) & IFF_DRV_RUNNING) == 0)
+#else
+	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
+#endif
 		ixl_disable_intr(vsi);
 
 	vfs = pf->vfs;

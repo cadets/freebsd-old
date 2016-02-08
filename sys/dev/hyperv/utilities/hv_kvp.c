@@ -44,6 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/reboot.h>
 #include <sys/lock.h>
 #include <sys/taskqueue.h>
+#include <sys/selinfo.h>
 #include <sys/sysctl.h>
 #include <sys/poll.h>
 #include <sys/proc.h>
@@ -97,7 +98,7 @@ static d_poll_t		hv_kvp_dev_daemon_poll;
 static int	hv_kvp_req_in_progress(void);
 static void	hv_kvp_transaction_init(uint32_t, hv_vmbus_channel *, uint64_t, uint8_t *);
 static void	hv_kvp_send_msg_to_daemon(void);
-static void	hv_kvp_process_request(void *context);
+static void	hv_kvp_process_request(void *context, int pending);
 
 /* hv_kvp character device structure */
 static struct cdevsw hv_kvp_cdevsw =
@@ -114,14 +115,13 @@ static struct cdev *hv_kvp_dev;
 static struct hv_kvp_msg *hv_kvp_dev_buf;
 struct proc *daemon_task;
 
+static struct selinfo hv_kvp_selinfo;
+
 /*
  * Global state to track and synchronize multiple
  * KVP transaction requests from the host.
  */
 static struct {
-
-	/* Pre-allocated work item for queue */
-	hv_work_item		work_item;	
 
 	/* Unless specified the pending mutex should be 
 	 * used to alter the values of the following paramters:
@@ -628,6 +628,9 @@ hv_kvp_send_msg_to_daemon(void)
 
 	/* Send the msg to user via function deamon_read - setting sema */
 	sema_post(&kvp_globals.dev_sema);
+
+	/* We should wake up the daemon, in case it's doing poll() */
+	selwakeup(&hv_kvp_selinfo);
 }
 
 
@@ -636,7 +639,7 @@ hv_kvp_send_msg_to_daemon(void)
  * and interact with daemon
  */
 static void
-hv_kvp_process_request(void *context)
+hv_kvp_process_request(void *context, int pending)
 {
 	uint8_t *kvp_buf;
 	hv_vmbus_channel *channel = context;
@@ -750,23 +753,18 @@ hv_kvp_callback(void *context)
 	uint64_t pending_cnt = 0;
 
 	if (kvp_globals.register_done == false) {
-		
 		kvp_globals.channelp = context;
+		TASK_INIT(&service_table[HV_KVP].task, 0, hv_kvp_process_request, context);
 	} else {
-		
 		mtx_lock(&kvp_globals.pending_mutex);
 		kvp_globals.pending_reqs = kvp_globals.pending_reqs + 1;
 		pending_cnt = kvp_globals.pending_reqs;
 		mtx_unlock(&kvp_globals.pending_mutex);
 		if (pending_cnt == 1) {
 			hv_kvp_log_info("%s: Queuing work item\n", __func__);
-			hv_queue_work_item(
-					service_table[HV_KVP].work_queue,
-					hv_kvp_process_request,
-					context
-					);
+			taskqueue_enqueue(taskqueue_thread, &service_table[HV_KVP].task);
 		}
-	}	
+	}
 }
 
 
@@ -940,7 +938,7 @@ hv_kvp_dev_daemon_write(struct cdev *dev __unused, struct uio *uio, int ioflag _
  * for daemon to read.
  */
 static int
-hv_kvp_dev_daemon_poll(struct cdev *dev __unused, int events, struct thread *td  __unused)
+hv_kvp_dev_daemon_poll(struct cdev *dev __unused, int events, struct thread *td)
 {
 	int revents = 0;
 
@@ -953,6 +951,9 @@ hv_kvp_dev_daemon_poll(struct cdev *dev __unused, int events, struct thread *td 
 	 */
 	if (kvp_globals.daemon_busy == true)
 		revents = POLLIN;
+	else
+		selrecord(td, &hv_kvp_selinfo);
+
 	mtx_unlock(&kvp_globals.pending_mutex);
 
 	return (revents);
@@ -968,26 +969,13 @@ int
 hv_kvp_init(hv_vmbus_service *srv)
 {
 	int error = 0;
-	hv_work_queue *work_queue = NULL;
-	
-	memset(&kvp_globals, 0, sizeof(kvp_globals));
 
-	work_queue = hv_work_queue_create("KVP Service");
-	if (work_queue == NULL) {
-		hv_kvp_log_info("%s: Work queue alloc failed\n", __func__);
-		error = ENOMEM;
-		hv_kvp_log_error("%s: ENOMEM\n", __func__);
-		goto Finish;
-	}
-	srv->work_queue = work_queue;
+	memset(&kvp_globals, 0, sizeof(kvp_globals));
 
 	error = hv_kvp_dev_init();
 	mtx_init(&kvp_globals.pending_mutex, "hv-kvp pending mutex",
-		       	NULL, MTX_DEF);	
-	kvp_globals.pending_reqs = 0;
+		NULL, MTX_DEF);
 
-
-Finish:
 	return (error);
 }
 

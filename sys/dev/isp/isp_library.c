@@ -247,28 +247,26 @@ copy_and_sync:
 	return (CMD_QUEUED);
 }
 
-int
-isp_allocate_xs(ispsoftc_t *isp, XS_T *xs, uint32_t *handlep)
+uint32_t
+isp_allocate_handle(ispsoftc_t *isp, void *xs, int type)
 {
 	isp_hdl_t *hdp;
 
 	hdp = isp->isp_xffree;
-	if (hdp == NULL) {
-		return (-1);
-	}
+	if (hdp == NULL)
+		return (ISP_HANDLE_FREE);
 	isp->isp_xffree = hdp->cmd;
 	hdp->cmd = xs;
 	hdp->handle = (hdp - isp->isp_xflist);
-	hdp->handle |= (ISP_HANDLE_INITIATOR << ISP_HANDLE_USAGE_SHIFT);
+	hdp->handle |= (type << ISP_HANDLE_USAGE_SHIFT);
 	hdp->handle |= (isp->isp_seqno++ << ISP_HANDLE_SEQ_SHIFT);
-	*handlep = hdp->handle;
-	return (0);
+	return (hdp->handle);
 }
 
-XS_T *
+void *
 isp_find_xs(ispsoftc_t *isp, uint32_t handle)
 {
-	if (!ISP_VALID_INI_HANDLE(isp, handle)) {
+	if (!ISP_VALID_HANDLE(isp, handle)) {
 		isp_prt(isp, ISP_LOGERR, "%s: bad handle 0x%x", __func__, handle);
 		return (NULL);
 	}
@@ -276,7 +274,7 @@ isp_find_xs(ispsoftc_t *isp, uint32_t handle)
 }
 
 uint32_t
-isp_find_handle(ispsoftc_t *isp, XS_T *xs)
+isp_find_handle(ispsoftc_t *isp, void *xs)
 {
 	uint32_t i, foundhdl = ISP_HANDLE_FREE;
 
@@ -292,21 +290,10 @@ isp_find_handle(ispsoftc_t *isp, XS_T *xs)
 	return (foundhdl);
 }
 
-uint32_t
-isp_handle_index(ispsoftc_t *isp, uint32_t handle)
-{
-	if (!ISP_VALID_HANDLE(isp, handle)) {
-		isp_prt(isp, ISP_LOGERR, "%s: bad handle 0x%x", __func__, handle);
-		return (ISP_BAD_HANDLE_INDEX);
-	} else {
-		return (handle & ISP_HANDLE_CMD_MASK);
-	}
-}
-
 void
 isp_destroy_handle(ispsoftc_t *isp, uint32_t handle)
 {
-	if (!ISP_VALID_INI_HANDLE(isp, handle)) {
+	if (!ISP_VALID_HANDLE(isp, handle)) {
 		isp_prt(isp, ISP_LOGERR, "%s: bad handle 0x%x", __func__, handle);
 	} else {
 		isp->isp_xflist[(handle & ISP_HANDLE_CMD_MASK)].handle = ISP_HANDLE_FREE;
@@ -394,40 +381,31 @@ isp_print_bytes(ispsoftc_t *isp, const char *msg, int amt, void *arg)
 int
 isp_fc_runstate(ispsoftc_t *isp, int chan, int tval)
 {
-	fcparam *fcp;
+	fcparam *fcp = FCPARAM(isp, chan);
+	int res;
 
-	fcp = FCPARAM(isp, chan);
-        if (fcp->role == ISP_ROLE_NONE) {
-		return (0);
-	}
-	if (fcp->isp_fwstate < FW_READY || fcp->isp_loopstate < LOOP_PDB_RCVD) {
-		if (isp_control(isp, ISPCTL_FCLINK_TEST, chan, tval) != 0) {
-			isp_prt(isp, ISP_LOG_SANCFG, "isp_fc_runstate: linktest failed for channel %d", chan);
-			return (-1);
-		}
-		if (fcp->isp_fwstate != FW_READY || fcp->isp_loopstate < LOOP_PDB_RCVD) {
-			isp_prt(isp, ISP_LOG_SANCFG, "isp_fc_runstate: f/w not ready for channel %d", chan);
-			return (-1);
-		}
-	}
-
-	if (isp_control(isp, ISPCTL_SCAN_LOOP, chan) != 0) {
-		isp_prt(isp, ISP_LOG_SANCFG, "isp_fc_runstate: scan loop fails on channel %d", chan);
-		return (LOOP_PDB_RCVD);
-	}
-	if (isp_control(isp, ISPCTL_SCAN_FABRIC, chan) != 0) {
-		isp_prt(isp, ISP_LOG_SANCFG, "isp_fc_runstate: scan fabric fails on channel %d", chan);
-		return (LOOP_LSCAN_DONE);
-	}
-	if (isp_control(isp, ISPCTL_PDB_SYNC, chan) != 0) {
-		isp_prt(isp, ISP_LOG_SANCFG, "isp_fc_runstate: pdb_sync fails on channel %d", chan);
-		return (LOOP_FSCAN_DONE);
-	}
-	if (fcp->isp_fwstate != FW_READY || fcp->isp_loopstate != LOOP_READY) {
-		isp_prt(isp, ISP_LOG_SANCFG, "isp_fc_runstate: f/w not ready again on channel %d", chan);
+again:
+	if (fcp->role == ISP_ROLE_NONE)
 		return (-1);
-	}
-	return (0);
+	res = isp_control(isp, ISPCTL_FCLINK_TEST, chan, tval);
+	if (res > 0)
+		goto again;
+	if (res < 0)
+		return (fcp->isp_loopstate);
+	res = isp_control(isp, ISPCTL_SCAN_LOOP, chan);
+	if (res > 0)
+		goto again;
+	if (res < 0)
+		return (fcp->isp_loopstate);
+	res = isp_control(isp, ISPCTL_SCAN_FABRIC, chan);
+	if (res > 0)
+		goto again;
+	if (res < 0)
+		return (fcp->isp_loopstate);
+	res = isp_control(isp, ISPCTL_PDB_SYNC, chan);
+	if (res > 0)
+		goto again;
+	return (fcp->isp_loopstate);
 }
 
 /*
@@ -536,7 +514,7 @@ isp_fc_fw_statename(int state)
 {
 	switch (state) {
 	case FW_CONFIG_WAIT:	return "Config Wait";
-	case FW_WAIT_AL_PA:	return "Waiting for AL_PA";
+	case FW_WAIT_LINK:	return "Wait Link";
 	case FW_WAIT_LOGIN:	return "Wait Login";
 	case FW_READY:		return "Ready";
 	case FW_LOSS_OF_SYNC:	return "Loss Of Sync";
@@ -552,9 +530,10 @@ isp_fc_loop_statename(int state)
 {
 	switch (state) {
 	case LOOP_NIL:                  return "NIL";
-	case LOOP_LIP_RCVD:             return "LIP Received";
-	case LOOP_PDB_RCVD:             return "PDB Received";
-	case LOOP_SCANNING_LOOP:        return "Scanning";
+	case LOOP_HAVE_LINK:            return "Have Link";
+	case LOOP_TESTING_LINK:         return "Testing Link";
+	case LOOP_LTEST_DONE:           return "Link Test Done";
+	case LOOP_SCANNING_LOOP:        return "Scanning Loop";
 	case LOOP_LSCAN_DONE:           return "Loop Scan Done";
 	case LOOP_SCANNING_FABRIC:      return "Scanning Fabric";
 	case LOOP_FSCAN_DONE:           return "Fabric Scan Done";
@@ -568,178 +547,17 @@ const char *
 isp_fc_toponame(fcparam *fcp)
 {
 
-	if (fcp->isp_fwstate != FW_READY) {
+	if (fcp->isp_loopstate < LOOP_LTEST_DONE) {
 		return "Unavailable";
 	}
 	switch (fcp->isp_topo) {
-	case TOPO_NL_PORT:      return "Private Loop";
-	case TOPO_FL_PORT:      return "FL Port";
-	case TOPO_N_PORT:       return "N-Port to N-Port";
-	case TOPO_F_PORT:       return "F Port";
-	case TOPO_PTP_STUB:     return "F Port (no FLOGI_ACC response)";
+	case TOPO_NL_PORT:      return "Private Loop (NL_Port)";
+	case TOPO_FL_PORT:      return "Public Loop (FL_Port)";
+	case TOPO_N_PORT:       return "Point-to-Point (N_Port)";
+	case TOPO_F_PORT:       return "Fabric (F_Port)";
+	case TOPO_PTP_STUB:     return "Point-to-Point (no response)";
 	default:                return "?????";
 	}
-}
-
-static int
-isp_fc_enable_vp(ispsoftc_t *isp, int chan)
-{
-	fcparam *fcp = FCPARAM(isp, chan);
-	mbreg_t mbs;
-	vp_modify_t *vp;
-	uint8_t qe[QENTRY_LEN], *scp;
-
-	ISP_MEMZERO(qe, QENTRY_LEN);
-	if (FC_SCRATCH_ACQUIRE(isp, chan)) {
-		return (EBUSY);
-	}
-	scp = fcp->isp_scratch;
-
-	/*
-	 * Build a VP MODIFY command in memory
-	 */
-	vp = (vp_modify_t *) qe;
-	vp->vp_mod_hdr.rqs_entry_type = RQSTYPE_VP_MODIFY;
-	vp->vp_mod_hdr.rqs_entry_count = 1;
-	vp->vp_mod_cnt = 1;
-	vp->vp_mod_idx0 = chan;
-	vp->vp_mod_cmd = VP_MODIFY_ENA;
-	vp->vp_mod_ports[0].options = ICB2400_VPOPT_ENABLED;
-	if (fcp->role & ISP_ROLE_INITIATOR) {
-		vp->vp_mod_ports[0].options |= ICB2400_VPOPT_INI_ENABLE;
-	}
-	if ((fcp->role & ISP_ROLE_TARGET) == 0) {
-		vp->vp_mod_ports[0].options |= ICB2400_VPOPT_TGT_DISABLE;
-	}
-	if (fcp->isp_loopid < LOCAL_LOOP_LIM) {
-		vp->vp_mod_ports[0].loopid = fcp->isp_loopid;
-		if (isp->isp_confopts & ISP_CFG_OWNLOOPID)
-			vp->vp_mod_ports[0].options |=
-			    ICB2400_VPOPT_HARD_ADDRESS;
-		else
-			vp->vp_mod_ports[0].options |=
-			    ICB2400_VPOPT_PREV_ADDRESS;
-	}
-	MAKE_NODE_NAME_FROM_WWN(vp->vp_mod_ports[0].wwpn, fcp->isp_wwpn);
-	MAKE_NODE_NAME_FROM_WWN(vp->vp_mod_ports[0].wwnn, fcp->isp_wwnn);
-	isp_put_vp_modify(isp, vp, (vp_modify_t *) scp);
-
-	/*
-	 * Build a EXEC IOCB A64 command that points to the VP MODIFY command
-	 */
-	MBSINIT(&mbs, MBOX_EXEC_COMMAND_IOCB_A64, MBLOGALL, 0);
-	mbs.param[1] = QENTRY_LEN;
-	mbs.param[2] = DMA_WD1(fcp->isp_scdma);
-	mbs.param[3] = DMA_WD0(fcp->isp_scdma);
-	mbs.param[6] = DMA_WD3(fcp->isp_scdma);
-	mbs.param[7] = DMA_WD2(fcp->isp_scdma);
-	MEMORYBARRIER(isp, SYNC_SFORDEV, 0, 2 * QENTRY_LEN, chan);
-	isp_control(isp, ISPCTL_RUN_MBOXCMD, &mbs);
-	if (mbs.param[0] != MBOX_COMMAND_COMPLETE) {
-		FC_SCRATCH_RELEASE(isp, chan);
-		return (EIO);
-	}
-	MEMORYBARRIER(isp, SYNC_SFORCPU, QENTRY_LEN, QENTRY_LEN, chan);
-	isp_get_vp_modify(isp, (vp_modify_t *)&scp[QENTRY_LEN], vp);
-
-	FC_SCRATCH_RELEASE(isp, chan);
-
-	if (vp->vp_mod_status != VP_STS_OK) {
-		isp_prt(isp, ISP_LOGERR, "%s: VP_MODIFY of Chan %d failed with status %d", __func__, chan, vp->vp_mod_status);
-		return (EIO);
-	}
-	return (0);
-}
-
-static int
-isp_fc_disable_vp(ispsoftc_t *isp, int chan)
-{
-	fcparam *fcp = FCPARAM(isp, chan);
-	mbreg_t mbs;
-	vp_ctrl_info_t *vp;
-	uint8_t qe[QENTRY_LEN], *scp;
-
-	ISP_MEMZERO(qe, QENTRY_LEN);
-	if (FC_SCRATCH_ACQUIRE(isp, chan)) {
-		return (EBUSY);
-	}
-	scp = fcp->isp_scratch;
-
-	/*
-	 * Build a VP CTRL command in memory
-	 */
-	vp = (vp_ctrl_info_t *) qe;
-	vp->vp_ctrl_hdr.rqs_entry_type = RQSTYPE_VP_CTRL;
-	vp->vp_ctrl_hdr.rqs_entry_count = 1;
-	if (ISP_CAP_VP0(isp)) {
-		vp->vp_ctrl_status = 1;
-	} else {
-		vp->vp_ctrl_status = 0;
-		chan--;	/* VP0 can not be controlled in this case. */
-	}
-	vp->vp_ctrl_command = VP_CTRL_CMD_DISABLE_VP_LOGO_ALL;
-	vp->vp_ctrl_vp_count = 1;
-	vp->vp_ctrl_idmap[chan / 16] |= (1 << chan % 16);
-	isp_put_vp_ctrl_info(isp, vp, (vp_ctrl_info_t *) scp);
-
-	/*
-	 * Build a EXEC IOCB A64 command that points to the VP CTRL command
-	 */
-	MBSINIT(&mbs, MBOX_EXEC_COMMAND_IOCB_A64, MBLOGALL, 0);
-	mbs.param[1] = QENTRY_LEN;
-	mbs.param[2] = DMA_WD1(fcp->isp_scdma);
-	mbs.param[3] = DMA_WD0(fcp->isp_scdma);
-	mbs.param[6] = DMA_WD3(fcp->isp_scdma);
-	mbs.param[7] = DMA_WD2(fcp->isp_scdma);
-	MEMORYBARRIER(isp, SYNC_SFORDEV, 0, 2 * QENTRY_LEN, chan);
-	isp_control(isp, ISPCTL_RUN_MBOXCMD, &mbs);
-	if (mbs.param[0] != MBOX_COMMAND_COMPLETE) {
-		FC_SCRATCH_RELEASE(isp, chan);
-		return (EIO);
-	}
-	MEMORYBARRIER(isp, SYNC_SFORCPU, QENTRY_LEN, QENTRY_LEN, chan);
-	isp_get_vp_ctrl_info(isp, (vp_ctrl_info_t *)&scp[QENTRY_LEN], vp);
-
-	FC_SCRATCH_RELEASE(isp, chan);
-
-	if (vp->vp_ctrl_status != 0) {
-		isp_prt(isp, ISP_LOGERR,
-		    "%s: VP_CTRL of Chan %d failed with status %d %d",
-		    __func__, chan, vp->vp_ctrl_status, vp->vp_ctrl_index_fail);
-		return (EIO);
-	}
-	return (0);
-}
-
-/*
- * Change Roles
- */
-int
-isp_fc_change_role(ispsoftc_t *isp, int chan, int new_role)
-{
-	fcparam *fcp = FCPARAM(isp, chan);
-	int i, was, res = 0;
-
-	if (chan >= isp->isp_nchan) {
-		isp_prt(isp, ISP_LOGWARN, "%s: bad channel %d", __func__, chan);
-		return (ENXIO);
-	}
-	if (fcp->role == new_role)
-		return (0);
-	for (was = 0, i = 0; i < isp->isp_nchan; i++) {
-		if (FCPARAM(isp, i)->role != ISP_ROLE_NONE)
-			was++;
-	}
-	if (was == 0 || (was == 1 && fcp->role != ISP_ROLE_NONE)) {
-		fcp->role = new_role;
-		return (isp_reinit(isp, 0));
-	}
-	if (fcp->role != ISP_ROLE_NONE)
-		res = isp_fc_disable_vp(isp, chan);
-	fcp->role = new_role;
-	if (fcp->role != ISP_ROLE_NONE)
-		res = isp_fc_enable_vp(isp, chan);
-	return (res);
 }
 
 void
@@ -752,51 +570,49 @@ isp_clear_commands(ispsoftc_t *isp)
 #endif
 
 	for (tmp = 0; isp->isp_xflist && tmp < isp->isp_maxcmds; tmp++) {
-		XS_T *xs;
 
 		hdp = &isp->isp_xflist[tmp];
-		if (hdp->handle == ISP_HANDLE_FREE) {
-			continue;
+		switch (ISP_H2HT(hdp->handle)) {
+		case ISP_HANDLE_INITIATOR: {
+			XS_T *xs = hdp->cmd;
+			if (XS_XFRLEN(xs)) {
+				ISP_DMAFREE(isp, xs, hdp->handle);
+				XS_SET_RESID(xs, XS_XFRLEN(xs));
+			} else {
+				XS_SET_RESID(xs, 0);
+			}
+			isp_destroy_handle(isp, hdp->handle);
+			XS_SETERR(xs, HBA_BUSRESET);
+			isp_done(xs);
+			break;
 		}
-		xs = hdp->cmd;
-		if (XS_XFRLEN(xs)) {
-			ISP_DMAFREE(isp, xs, hdp->handle);
-			XS_SET_RESID(xs, XS_XFRLEN(xs));
-		} else {
-			XS_SET_RESID(xs, 0);
+#ifdef	ISP_TARGET_MODE
+		case ISP_HANDLE_TARGET: {
+			uint8_t local[QENTRY_LEN];
+			ISP_DMAFREE(isp, hdp->cmd, hdp->handle);
+			ISP_MEMZERO(local, QENTRY_LEN);
+			if (IS_24XX(isp)) {
+				ct7_entry_t *ctio = (ct7_entry_t *) local;
+				ctio->ct_syshandle = hdp->handle;
+				ctio->ct_nphdl = CT_HBA_RESET;
+				ctio->ct_header.rqs_entry_type = RQSTYPE_CTIO7;
+			} else {
+				ct2_entry_t *ctio = (ct2_entry_t *) local;
+				ctio->ct_syshandle = hdp->handle;
+				ctio->ct_status = CT_HBA_RESET;
+				ctio->ct_header.rqs_entry_type = RQSTYPE_CTIO2;
+			}
+			isp_async(isp, ISPASYNC_TARGET_ACTION, local);
+			break;
 		}
-		hdp->handle = 0;
-		hdp->cmd = NULL;
-		XS_SETERR(xs, HBA_BUSRESET);
-		isp_done(xs);
+#endif
+		case ISP_HANDLE_CTRL:
+			wakeup(hdp->cmd);
+			isp_destroy_handle(isp, hdp->handle);
+			break;
+		}
 	}
 #ifdef	ISP_TARGET_MODE
-	for (tmp = 0; isp->isp_tgtlist && tmp < isp->isp_maxcmds; tmp++) {
-		uint8_t local[QENTRY_LEN];
-		hdp = &isp->isp_tgtlist[tmp];
-		if (hdp->handle == ISP_HANDLE_FREE) {
-			continue;
-		}
-		ISP_DMAFREE(isp, hdp->cmd, hdp->handle);
-		ISP_MEMZERO(local, QENTRY_LEN);
-		if (IS_24XX(isp)) {
-			ct7_entry_t *ctio = (ct7_entry_t *) local;
-			ctio->ct_syshandle = hdp->handle;
-			ctio->ct_nphdl = CT_HBA_RESET;
-			ctio->ct_header.rqs_entry_type = RQSTYPE_CTIO7;
-		} else if (IS_FC(isp)) {
-			ct2_entry_t *ctio = (ct2_entry_t *) local;
-			ctio->ct_syshandle = hdp->handle;
-			ctio->ct_status = CT_HBA_RESET;
-			ctio->ct_header.rqs_entry_type = RQSTYPE_CTIO2;
-		} else {
-			ct_entry_t *ctio = (ct_entry_t *) local;
-			ctio->ct_syshandle = hdp->handle;
-			ctio->ct_status = CT_HBA_RESET & 0xff;
-			ctio->ct_header.rqs_entry_type = RQSTYPE_CTIO;
-		}
-		isp_async(isp, ISPASYNC_TARGET_ACTION, local);
-	}
 	for (tmp = 0; tmp < isp->isp_nchan; tmp++) {
 		ISP_MEMZERO(&notify, sizeof (isp_notify_t));
 		notify.nt_ncode = NT_HBA_RESET;
@@ -974,7 +790,8 @@ isp_put_request_t2(ispsoftc_t *isp, ispreqt2_t *src, ispreqt2_t *dst)
 	ISP_IOXPUT_8(isp, src->req_target, &dst->req_target);
 	ISP_IOXPUT_16(isp, src->req_scclun, &dst->req_scclun);
 	ISP_IOXPUT_16(isp, src->req_flags,  &dst->req_flags);
-	ISP_IOXPUT_16(isp, src->req_reserved, &dst->req_reserved);
+	ISP_IOXPUT_8(isp, src->req_crn, &dst->req_crn);
+	ISP_IOXPUT_8(isp, src->req_reserved, &dst->req_reserved);
 	ISP_IOXPUT_16(isp, src->req_time, &dst->req_time);
 	ISP_IOXPUT_16(isp, src->req_seg_count, &dst->req_seg_count);
 	for (i = 0; i < ASIZE(src->req_cdb); i++) {
@@ -996,7 +813,8 @@ isp_put_request_t2e(ispsoftc_t *isp, ispreqt2e_t *src, ispreqt2e_t *dst)
 	ISP_IOXPUT_16(isp, src->req_target, &dst->req_target);
 	ISP_IOXPUT_16(isp, src->req_scclun, &dst->req_scclun);
 	ISP_IOXPUT_16(isp, src->req_flags,  &dst->req_flags);
-	ISP_IOXPUT_16(isp, src->req_reserved, &dst->req_reserved);
+	ISP_IOXPUT_8(isp, src->req_crn, &dst->req_crn);
+	ISP_IOXPUT_8(isp, src->req_reserved, &dst->req_reserved);
 	ISP_IOXPUT_16(isp, src->req_time, &dst->req_time);
 	ISP_IOXPUT_16(isp, src->req_seg_count, &dst->req_seg_count);
 	for (i = 0; i < ASIZE(src->req_cdb); i++) {
@@ -1412,7 +1230,9 @@ isp_put_icb_2400(ispsoftc_t *isp, isp_icb_2400_t *src, isp_icb_2400_t *dst)
 	for (i = 0; i < 4; i++) {
 		ISP_IOXPUT_16(isp, src->icb_priaddr[i], &dst->icb_priaddr[i]);
 	}
-	for (i = 0; i < 4; i++) {
+	ISP_IOXPUT_16(isp, src->icb_msixresp, &dst->icb_msixresp);
+	ISP_IOXPUT_16(isp, src->icb_msixatio, &dst->icb_msixatio);
+	for (i = 0; i < 2; i++) {
 		ISP_IOXPUT_16(isp, src->icb_reserved1[i], &dst->icb_reserved1[i]);
 	}
 	ISP_IOXPUT_16(isp, src->icb_atio_in, &dst->icb_atio_in);
@@ -1425,9 +1245,14 @@ isp_put_icb_2400(ispsoftc_t *isp, isp_icb_2400_t *src, isp_icb_2400_t *dst)
 	ISP_IOXPUT_32(isp, src->icb_fwoptions1, &dst->icb_fwoptions1);
 	ISP_IOXPUT_32(isp, src->icb_fwoptions2, &dst->icb_fwoptions2);
 	ISP_IOXPUT_32(isp, src->icb_fwoptions3, &dst->icb_fwoptions3);
-	for (i = 0; i < 12; i++) {
+	ISP_IOXPUT_16(isp, src->icb_qos, &dst->icb_qos);
+	for (i = 0; i < 3; i++)
 		ISP_IOXPUT_16(isp, src->icb_reserved2[i], &dst->icb_reserved2[i]);
-	}
+	for (i = 0; i < 3; i++)
+		ISP_IOXPUT_16(isp, src->icb_enodemac[i], &dst->icb_enodemac[i]);
+	ISP_IOXPUT_16(isp, src->icb_disctime, &dst->icb_disctime);
+	for (i = 0; i < 4; i++)
+		ISP_IOXPUT_16(isp, src->icb_reserved3[i], &dst->icb_reserved3[i]);
 }
 
 void
@@ -1733,6 +1558,10 @@ isp_get_ridacq(ispsoftc_t *isp, isp_ridacq_t *src, isp_ridacq_t *dst)
 	int i;
 	isp_get_hdr(isp, &src->ridacq_hdr, &dst->ridacq_hdr);
 	ISP_IOXGET_32(isp, &src->ridacq_handle, dst->ridacq_handle);
+	ISP_IOXGET_8(isp, &src->ridacq_vp_acquired, dst->ridacq_vp_acquired);
+	ISP_IOXGET_8(isp, &src->ridacq_vp_setup, dst->ridacq_vp_setup);
+	ISP_IOXGET_8(isp, &src->ridacq_vp_index, dst->ridacq_vp_index);
+	ISP_IOXGET_8(isp, &src->ridacq_vp_status, dst->ridacq_vp_status);
 	ISP_IOXGET_16(isp, &src->ridacq_vp_port_lo, dst->ridacq_vp_port_lo);
 	ISP_IOXGET_8(isp, &src->ridacq_vp_port_hi, dst->ridacq_vp_port_hi);
 	ISP_IOXGET_8(isp, &src->ridacq_format, dst->ridacq_format);
@@ -1741,17 +1570,6 @@ isp_get_ridacq(ispsoftc_t *isp, isp_ridacq_t *src, isp_ridacq_t *dst)
 	}
 	for (i = 0; i < sizeof (src->ridacq_reserved1) / sizeof (src->ridacq_reserved1[0]); i++) {
 		ISP_IOXGET_16(isp, &src->ridacq_reserved1[i], dst->ridacq_reserved1[i]);
-	}
-	if (dst->ridacq_format == 0) {
-		ISP_IOXGET_8(isp, &src->un.type0.ridacq_vp_acquired, dst->un.type0.ridacq_vp_acquired);
-		ISP_IOXGET_8(isp, &src->un.type0.ridacq_vp_setup, dst->un.type0.ridacq_vp_setup);
-		ISP_IOXGET_16(isp, &src->un.type0.ridacq_reserved0, dst->un.type0.ridacq_reserved0);
-	} else if (dst->ridacq_format == 1) {
-		ISP_IOXGET_16(isp, &src->un.type1.ridacq_vp_count, dst->un.type1.ridacq_vp_count);
-		ISP_IOXGET_8(isp, &src->un.type1.ridacq_vp_index, dst->un.type1.ridacq_vp_index);
-		ISP_IOXGET_8(isp, &src->un.type1.ridacq_vp_status, dst->un.type1.ridacq_vp_status);
-	} else {
-		ISP_MEMZERO(&dst->un, sizeof (dst->un));
 	}
 }
 
@@ -2170,6 +1988,20 @@ isp_put_rft_id(ispsoftc_t *isp, rft_id_t *src, rft_id_t *dst)
 }
 
 void
+isp_put_rff_id(ispsoftc_t *isp, rff_id_t *src, rff_id_t *dst)
+{
+	int i;
+
+	isp_put_ct_hdr(isp, &src->rffid_hdr, &dst->rffid_hdr);
+	ISP_IOZPUT_8(isp, src->rffid_reserved, &dst->rffid_reserved);
+	for (i = 0; i < 3; i++)
+		ISP_IOZPUT_8(isp, src->rffid_portid[i], &dst->rffid_portid[i]);
+	ISP_IOZPUT_16(isp, src->rffid_reserved2, &dst->rffid_reserved2);
+	ISP_IOZPUT_8(isp, src->rffid_fc4features, &dst->rffid_fc4features);
+	ISP_IOZPUT_8(isp, src->rffid_fc4type, &dst->rffid_fc4type);
+}
+
+void
 isp_get_ct_hdr(ispsoftc_t *isp, ct_hdr_t *src, ct_hdr_t *dst)
 {
 	ISP_IOZGET_8(isp, &src->ct_revision, dst->ct_revision);
@@ -2263,10 +2095,6 @@ isp_send_tgt_cmd(ispsoftc_t *isp, void *fqe, void *segp, uint32_t nsegs, uint32_
 		 * First, figure out how many pieces of data to transfer and what kind and how many we can put into the first queue entry.
 		 */
 		switch (type) {
-		case RQSTYPE_CTIO:
-			dsp = ((ct_entry_t *)fqe)->ct_dataseg;
-			seglim = ISP_RQDSEG;
-			break;
 		case RQSTYPE_CTIO2:
 			dsp = ((ct2_entry_t *)fqe)->rsp.m0.u.ct_dataseg;
 			seglim = ISP_RQDSEG_T2;
@@ -2354,10 +2182,6 @@ isp_send_tgt_cmd(ispsoftc_t *isp, void *fqe, void *segp, uint32_t nsegs, uint32_
 	 */
 	((isphdr_t *)fqe)->rqs_entry_count = nqe;
 	switch (type) {
-	case RQSTYPE_CTIO:
-		((ct_entry_t *)fqe)->ct_seg_count = nsegs;
-		isp_put_ctio(isp, fqe, qe0);
-		break;
 	case RQSTYPE_CTIO2:
 	case RQSTYPE_CTIO3:
 		if (((ct2_entry_t *)fqe)->ct_flags & CT2_FLAG_MODE2) {
@@ -2389,89 +2213,21 @@ isp_send_tgt_cmd(ispsoftc_t *isp, void *fqe, void *segp, uint32_t nsegs, uint32_
 	return (CMD_QUEUED);
 }
 
-int
-isp_allocate_xs_tgt(ispsoftc_t *isp, void *xs, uint32_t *handlep)
-{
-	isp_hdl_t *hdp;
-
-	hdp = isp->isp_tgtfree;
-	if (hdp == NULL) {
-		return (-1);
-	}
-	isp->isp_tgtfree = hdp->cmd;
-	hdp->cmd = xs;
-	hdp->handle = (hdp - isp->isp_tgtlist);
-	hdp->handle |= (ISP_HANDLE_TARGET << ISP_HANDLE_USAGE_SHIFT);
-	/*
-	 * Target handles for SCSI cards are only 16 bits, so
-	 * sequence number protection will be ommitted.
-	 */
-	if (IS_FC(isp)) {
-		hdp->handle |= (isp->isp_seqno++ << ISP_HANDLE_SEQ_SHIFT);
-	}
-	*handlep = hdp->handle;
-	return (0);
-}
-
-void *
-isp_find_xs_tgt(ispsoftc_t *isp, uint32_t handle)
-{
-	if (!ISP_VALID_TGT_HANDLE(isp, handle)) {
-		isp_prt(isp, ISP_LOGERR, "%s: bad handle 0x%x", __func__, handle);
-		return (NULL);
-	}
-	return (isp->isp_tgtlist[(handle & ISP_HANDLE_CMD_MASK)].cmd);
-}
-
-uint32_t
-isp_find_tgt_handle(ispsoftc_t *isp, void *xs)
-{
-	uint32_t i, foundhdl = ISP_HANDLE_FREE;
-
-	if (xs != NULL) {
-		for (i = 0; i < isp->isp_maxcmds; i++) {
-			if (isp->isp_tgtlist[i].cmd != xs) {
-				continue;
-			}
-			foundhdl = isp->isp_tgtlist[i].handle;
-			break;
-		}
-	}
-	return (foundhdl);
-}
-
-void
-isp_destroy_tgt_handle(ispsoftc_t *isp, uint32_t handle)
-{
-	if (!ISP_VALID_TGT_HANDLE(isp, handle)) {
-		isp_prt(isp, ISP_LOGERR, "%s: bad handle 0x%x", __func__, handle);
-	} else {
-		isp->isp_tgtlist[(handle & ISP_HANDLE_CMD_MASK)].handle = ISP_HANDLE_FREE;
-		isp->isp_tgtlist[(handle & ISP_HANDLE_CMD_MASK)].cmd = isp->isp_tgtfree;
-		isp->isp_tgtfree = &isp->isp_tgtlist[(handle & ISP_HANDLE_CMD_MASK)];
-	}
-}
-
 #endif
 
 /*
  * Find port database entries
  */
 int
-isp_find_pdb_by_wwn(ispsoftc_t *isp, int chan, uint64_t wwn, fcportdb_t **lptr)
+isp_find_pdb_empty(ispsoftc_t *isp, int chan, fcportdb_t **lptr)
 {
-	fcparam *fcp;
+	fcparam *fcp = FCPARAM(isp, chan);
 	int i;
 
-	if (chan >= isp->isp_nchan)
-		return (0);
-	fcp = FCPARAM(isp, chan);
 	for (i = 0; i < MAX_FC_TARG; i++) {
 		fcportdb_t *lp = &fcp->portdb[i];
 
-		if (lp->state == FC_PORTDB_STATE_NIL)
-			continue;
-		if (lp->port_wwn == wwn) {
+		if (lp->state == FC_PORTDB_STATE_NIL) {
 			*lptr = lp;
 			return (1);
 		}
@@ -2479,17 +2235,32 @@ isp_find_pdb_by_wwn(ispsoftc_t *isp, int chan, uint64_t wwn, fcportdb_t **lptr)
 	return (0);
 }
 
-#ifdef	ISP_TARGET_MODE
-
 int
-isp_find_pdb_by_handle(ispsoftc_t *isp, int chan, uint32_t handle, fcportdb_t **lptr)
+isp_find_pdb_by_wwpn(ispsoftc_t *isp, int chan, uint64_t wwpn, fcportdb_t **lptr)
 {
-	fcparam *fcp;
+	fcparam *fcp = FCPARAM(isp, chan);
 	int i;
 
-	if (chan >= isp->isp_nchan)
-		return (0);
-	fcp = FCPARAM(isp, chan);
+	for (i = 0; i < MAX_FC_TARG; i++) {
+		fcportdb_t *lp = &fcp->portdb[i];
+
+		if (lp->state == FC_PORTDB_STATE_NIL)
+			continue;
+		if (lp->port_wwn == wwpn) {
+			*lptr = lp;
+			return (1);
+		}
+	}
+	return (0);
+}
+
+int
+isp_find_pdb_by_handle(ispsoftc_t *isp, int chan, uint16_t handle,
+    fcportdb_t **lptr)
+{
+	fcparam *fcp = FCPARAM(isp, chan);
+	int i;
+
 	for (i = 0; i < MAX_FC_TARG; i++) {
 		fcportdb_t *lp = &fcp->portdb[i];
 
@@ -2504,20 +2275,18 @@ isp_find_pdb_by_handle(ispsoftc_t *isp, int chan, uint32_t handle, fcportdb_t **
 }
 
 int
-isp_find_pdb_by_sid(ispsoftc_t *isp, int chan, uint32_t sid, fcportdb_t **lptr)
+isp_find_pdb_by_portid(ispsoftc_t *isp, int chan, uint32_t portid,
+    fcportdb_t **lptr)
 {
-	fcparam *fcp;
+	fcparam *fcp = FCPARAM(isp, chan);
 	int i;
 
-	if (chan >= isp->isp_nchan)
-		return (0);
-	fcp = FCPARAM(isp, chan);
 	for (i = 0; i < MAX_FC_TARG; i++) {
 		fcportdb_t *lp = &fcp->portdb[i];
 
 		if (lp->state == FC_PORTDB_STATE_NIL)
 			continue;
-		if (lp->portid == sid) {
+		if (lp->portid == portid) {
 			*lptr = lp;
 			return (1);
 		}
@@ -2525,6 +2294,7 @@ isp_find_pdb_by_sid(ispsoftc_t *isp, int chan, uint32_t sid, fcportdb_t **lptr)
 	return (0);
 }
 
+#ifdef	ISP_TARGET_MODE
 void
 isp_find_chan_by_did(ispsoftc_t *isp, uint32_t did, uint16_t *cp)
 {
@@ -2533,7 +2303,8 @@ isp_find_chan_by_did(ispsoftc_t *isp, uint32_t did, uint16_t *cp)
 	*cp = ISP_NOCHAN;
 	for (chan = 0; chan < isp->isp_nchan; chan++) {
 		fcparam *fcp = FCPARAM(isp, chan);
-		if ((fcp->role & ISP_ROLE_TARGET) == 0 || fcp->isp_fwstate != FW_READY || fcp->isp_loopstate < LOOP_PDB_RCVD) {
+		if ((fcp->role & ISP_ROLE_TARGET) == 0 ||
+		    fcp->isp_loopstate < LOOP_LTEST_DONE) {
 			continue;
 		}
 		if (fcp->isp_portid == did) {
@@ -2568,13 +2339,13 @@ isp_add_wwn_entry(ispsoftc_t *isp, int chan, uint64_t wwpn, uint64_t wwnn,
 	 * with new parameters.  Some cases of update can be suspicious,
 	 * so log them verbosely and dump the whole port database.
 	 */
-	if ((VALID_INI(wwpn) && isp_find_pdb_by_wwn(isp, chan, wwpn, &lp)) ||
-	    (s_id != PORT_NONE && isp_find_pdb_by_sid(isp, chan, s_id, &lp))) {
+	if ((VALID_INI(wwpn) && isp_find_pdb_by_wwpn(isp, chan, wwpn, &lp)) ||
+	    (VALID_PORT(s_id) && isp_find_pdb_by_portid(isp, chan, s_id, &lp))) {
 		change = 0;
 		lp->new_portid = lp->portid;
 		lp->new_prli_word3 = lp->prli_word3;
-		if (s_id != PORT_NONE && lp->portid != s_id) {
-			if (lp->portid == PORT_NONE) {
+		if (VALID_PORT(s_id) && lp->portid != s_id) {
+			if (!VALID_PORT(lp->portid)) {
 				isp_prt(isp, ISP_LOGTINFO,
 				    "Chan %d WWPN 0x%016llx handle 0x%x "
 				    "gets PortID 0x%06x",
@@ -2654,8 +2425,6 @@ isp_add_wwn_entry(ispsoftc_t *isp, int chan, uint64_t wwpn, uint64_t wwnn,
 			isp_async(isp, ISPASYNC_DEV_CHANGED, chan, lp);
 			lp->portid = lp->new_portid;
 			lp->prli_word3 = lp->new_prli_word3;
-			lp->new_prli_word3 = 0;
-			lp->new_portid = 0;
 		} else {
 			isp_prt(isp, ISP_LOGTINFO,
 			    "Chan %d WWPN 0x%016llx PortID 0x%06x "
@@ -2795,90 +2564,20 @@ isp_del_wwn_entries(ispsoftc_t *isp, isp_notify_t *mp)
 			return;
 		}
 	}
-	if (mp->nt_wwn != INI_ANY) {
-		if (isp_find_pdb_by_wwn(isp, mp->nt_channel, mp->nt_wwn, &lp)) {
+	if (VALID_INI(mp->nt_wwn)) {
+		if (isp_find_pdb_by_wwpn(isp, mp->nt_channel, mp->nt_wwn, &lp)) {
 			isp_del_wwn_entry(isp, mp->nt_channel, lp->port_wwn, lp->handle, lp->portid);
 			return;
 		}
 	}
-	if (mp->nt_sid != PORT_ANY && mp->nt_sid != PORT_NONE) {
-		if (isp_find_pdb_by_sid(isp, mp->nt_channel, mp->nt_sid, &lp)) {
+	if (VALID_PORT(mp->nt_sid)) {
+		if (isp_find_pdb_by_portid(isp, mp->nt_channel, mp->nt_sid, &lp)) {
 			isp_del_wwn_entry(isp, mp->nt_channel, lp->port_wwn, lp->handle, lp->portid);
 			return;
 		}
 	}
 	isp_prt(isp, ISP_LOGWARN, "Chan %d unable to find entry to delete WWPN 0x%016jx PortID 0x%06x handle 0x%x",
 	    mp->nt_channel, mp->nt_wwn, mp->nt_sid, mp->nt_nphdl);
-}
-
-void
-isp_put_atio(ispsoftc_t *isp, at_entry_t *src, at_entry_t *dst)
-{
-	int i;
-	isp_put_hdr(isp, &src->at_header, &dst->at_header);
-	ISP_IOXPUT_16(isp, src->at_reserved, &dst->at_reserved);
-	ISP_IOXPUT_16(isp, src->at_handle, &dst->at_handle);
-	if (ISP_IS_SBUS(isp)) {
-		ISP_IOXPUT_8(isp, src->at_lun, &dst->at_iid);
-		ISP_IOXPUT_8(isp, src->at_iid, &dst->at_lun);
-		ISP_IOXPUT_8(isp, src->at_cdblen, &dst->at_tgt);
-		ISP_IOXPUT_8(isp, src->at_tgt, &dst->at_cdblen);
-		ISP_IOXPUT_8(isp, src->at_status, &dst->at_scsi_status);
-		ISP_IOXPUT_8(isp, src->at_scsi_status, &dst->at_status);
-		ISP_IOXPUT_8(isp, src->at_tag_val, &dst->at_tag_type);
-		ISP_IOXPUT_8(isp, src->at_tag_type, &dst->at_tag_val);
-	} else {
-		ISP_IOXPUT_8(isp, src->at_lun, &dst->at_lun);
-		ISP_IOXPUT_8(isp, src->at_iid, &dst->at_iid);
-		ISP_IOXPUT_8(isp, src->at_cdblen, &dst->at_cdblen);
-		ISP_IOXPUT_8(isp, src->at_tgt, &dst->at_tgt);
-		ISP_IOXPUT_8(isp, src->at_status, &dst->at_status);
-		ISP_IOXPUT_8(isp, src->at_scsi_status, &dst->at_scsi_status);
-		ISP_IOXPUT_8(isp, src->at_tag_val, &dst->at_tag_val);
-		ISP_IOXPUT_8(isp, src->at_tag_type, &dst->at_tag_type);
-	}
-	ISP_IOXPUT_32(isp, src->at_flags, &dst->at_flags);
-	for (i = 0; i < ATIO_CDBLEN; i++) {
-		ISP_IOXPUT_8(isp, src->at_cdb[i], &dst->at_cdb[i]);
-	}
-	for (i = 0; i < QLTM_SENSELEN; i++) {
-		ISP_IOXPUT_8(isp, src->at_sense[i], &dst->at_sense[i]);
-	}
-}
-
-void
-isp_get_atio(ispsoftc_t *isp, at_entry_t *src, at_entry_t *dst)
-{
-	int i;
-	isp_get_hdr(isp, &src->at_header, &dst->at_header);
-	ISP_IOXGET_16(isp, &src->at_reserved, dst->at_reserved);
-	ISP_IOXGET_16(isp, &src->at_handle, dst->at_handle);
-	if (ISP_IS_SBUS(isp)) {
-		ISP_IOXGET_8(isp, &src->at_lun, dst->at_iid);
-		ISP_IOXGET_8(isp, &src->at_iid, dst->at_lun);
-		ISP_IOXGET_8(isp, &src->at_cdblen, dst->at_tgt);
-		ISP_IOXGET_8(isp, &src->at_tgt, dst->at_cdblen);
-		ISP_IOXGET_8(isp, &src->at_status, dst->at_scsi_status);
-		ISP_IOXGET_8(isp, &src->at_scsi_status, dst->at_status);
-		ISP_IOXGET_8(isp, &src->at_tag_val, dst->at_tag_type);
-		ISP_IOXGET_8(isp, &src->at_tag_type, dst->at_tag_val);
-	} else {
-		ISP_IOXGET_8(isp, &src->at_lun, dst->at_lun);
-		ISP_IOXGET_8(isp, &src->at_iid, dst->at_iid);
-		ISP_IOXGET_8(isp, &src->at_cdblen, dst->at_cdblen);
-		ISP_IOXGET_8(isp, &src->at_tgt, dst->at_tgt);
-		ISP_IOXGET_8(isp, &src->at_status, dst->at_status);
-		ISP_IOXGET_8(isp, &src->at_scsi_status, dst->at_scsi_status);
-		ISP_IOXGET_8(isp, &src->at_tag_val, dst->at_tag_val);
-		ISP_IOXGET_8(isp, &src->at_tag_type, dst->at_tag_type);
-	}
-	ISP_IOXGET_32(isp, &src->at_flags, dst->at_flags);
-	for (i = 0; i < ATIO_CDBLEN; i++) {
-		ISP_IOXGET_8(isp, &src->at_cdb[i], dst->at_cdb[i]);
-	}
-	for (i = 0; i < QLTM_SENSELEN; i++) {
-		ISP_IOXGET_8(isp, &src->at_sense[i], dst->at_sense[i]);
-	}
 }
 
 void
@@ -3004,81 +2703,6 @@ isp_get_atio7(ispsoftc_t *isp, at7_entry_t *src, at7_entry_t *dst)
 	ISP_IOXGET_32(isp, &src->at_rxid, dst->at_rxid);
 	isp_get_fc_hdr(isp, &src->at_hdr, &dst->at_hdr);
 	isp_get_fcp_cmnd_iu(isp, &src->at_cmnd, &dst->at_cmnd);
-}
-
-void
-isp_put_ctio(ispsoftc_t *isp, ct_entry_t *src, ct_entry_t *dst)
-{
-	int i;
-	isp_put_hdr(isp, &src->ct_header, &dst->ct_header);
-	ISP_IOXPUT_16(isp, src->ct_syshandle, &dst->ct_syshandle);
-	ISP_IOXPUT_16(isp, src->ct_fwhandle, &dst->ct_fwhandle);
-	if (ISP_IS_SBUS(isp)) {
-		ISP_IOXPUT_8(isp, src->ct_iid, &dst->ct_lun);
-		ISP_IOXPUT_8(isp, src->ct_lun, &dst->ct_iid);
-		ISP_IOXPUT_8(isp, src->ct_tgt, &dst->ct_reserved2);
-		ISP_IOXPUT_8(isp, src->ct_reserved2, &dst->ct_tgt);
-		ISP_IOXPUT_8(isp, src->ct_status, &dst->ct_scsi_status);
-		ISP_IOXPUT_8(isp, src->ct_scsi_status, &dst->ct_status);
-		ISP_IOXPUT_8(isp, src->ct_tag_type, &dst->ct_tag_val);
-		ISP_IOXPUT_8(isp, src->ct_tag_val, &dst->ct_tag_type);
-	} else {
-		ISP_IOXPUT_8(isp, src->ct_iid, &dst->ct_iid);
-		ISP_IOXPUT_8(isp, src->ct_lun, &dst->ct_lun);
-		ISP_IOXPUT_8(isp, src->ct_tgt, &dst->ct_tgt);
-		ISP_IOXPUT_8(isp, src->ct_reserved2, &dst->ct_reserved2);
-		ISP_IOXPUT_8(isp, src->ct_scsi_status,
-		    &dst->ct_scsi_status);
-		ISP_IOXPUT_8(isp, src->ct_status, &dst->ct_status);
-		ISP_IOXPUT_8(isp, src->ct_tag_type, &dst->ct_tag_type);
-		ISP_IOXPUT_8(isp, src->ct_tag_val, &dst->ct_tag_val);
-	}
-	ISP_IOXPUT_32(isp, src->ct_flags, &dst->ct_flags);
-	ISP_IOXPUT_32(isp, src->ct_xfrlen, &dst->ct_xfrlen);
-	ISP_IOXPUT_32(isp, src->ct_resid, &dst->ct_resid);
-	ISP_IOXPUT_16(isp, src->ct_timeout, &dst->ct_timeout);
-	ISP_IOXPUT_16(isp, src->ct_seg_count, &dst->ct_seg_count);
-	for (i = 0; i < ISP_RQDSEG; i++) {
-		ISP_IOXPUT_32(isp, src->ct_dataseg[i].ds_base, &dst->ct_dataseg[i].ds_base);
-		ISP_IOXPUT_32(isp, src->ct_dataseg[i].ds_count, &dst->ct_dataseg[i].ds_count);
-	}
-}
-
-void
-isp_get_ctio(ispsoftc_t *isp, ct_entry_t *src, ct_entry_t *dst)
-{
-	int i;
-	isp_get_hdr(isp, &src->ct_header, &dst->ct_header);
-	ISP_IOXGET_16(isp, &src->ct_syshandle, dst->ct_syshandle);
-	ISP_IOXGET_16(isp, &src->ct_fwhandle, dst->ct_fwhandle);
-	if (ISP_IS_SBUS(isp)) {
-		ISP_IOXGET_8(isp, &src->ct_lun, dst->ct_iid);
-		ISP_IOXGET_8(isp, &src->ct_iid, dst->ct_lun);
-		ISP_IOXGET_8(isp, &src->ct_reserved2, dst->ct_tgt);
-		ISP_IOXGET_8(isp, &src->ct_tgt, dst->ct_reserved2);
-		ISP_IOXGET_8(isp, &src->ct_status, dst->ct_scsi_status);
-		ISP_IOXGET_8(isp, &src->ct_scsi_status, dst->ct_status);
-		ISP_IOXGET_8(isp, &src->ct_tag_val, dst->ct_tag_type);
-		ISP_IOXGET_8(isp, &src->ct_tag_type, dst->ct_tag_val);
-	} else {
-		ISP_IOXGET_8(isp, &src->ct_lun, dst->ct_lun);
-		ISP_IOXGET_8(isp, &src->ct_iid, dst->ct_iid);
-		ISP_IOXGET_8(isp, &src->ct_reserved2, dst->ct_reserved2);
-		ISP_IOXGET_8(isp, &src->ct_tgt, dst->ct_tgt);
-		ISP_IOXGET_8(isp, &src->ct_status, dst->ct_status);
-		ISP_IOXGET_8(isp, &src->ct_scsi_status, dst->ct_scsi_status);
-		ISP_IOXGET_8(isp, &src->ct_tag_val, dst->ct_tag_val);
-		ISP_IOXGET_8(isp, &src->ct_tag_type, dst->ct_tag_type);
-	}
-	ISP_IOXGET_32(isp, &src->ct_flags, dst->ct_flags);
-	ISP_IOXGET_32(isp, &src->ct_xfrlen, dst->ct_xfrlen);
-	ISP_IOXGET_32(isp, &src->ct_resid, dst->ct_resid);
-	ISP_IOXGET_16(isp, &src->ct_timeout, dst->ct_timeout);
-	ISP_IOXGET_16(isp, &src->ct_seg_count, dst->ct_seg_count);
-	for (i = 0; i < ISP_RQDSEG; i++) {
-		ISP_IOXGET_32(isp, &src->ct_dataseg[i].ds_base, dst->ct_dataseg[i].ds_base);
-		ISP_IOXGET_32(isp, &src->ct_dataseg[i].ds_count, dst->ct_dataseg[i].ds_count);
-	}
 }
 
 void
@@ -3499,82 +3123,6 @@ isp_get_enable_lun(ispsoftc_t *isp, lun_entry_t *lesrc, lun_entry_t *ledst)
 }
 
 void
-isp_put_notify(ispsoftc_t *isp, in_entry_t *src, in_entry_t *dst)
-{
-	int i;
-	isp_put_hdr(isp, &src->in_header, &dst->in_header);
-	ISP_IOXPUT_32(isp, src->in_reserved, &dst->in_reserved);
-	if (ISP_IS_SBUS(isp)) {
-		ISP_IOXPUT_8(isp, src->in_lun, &dst->in_iid);
-		ISP_IOXPUT_8(isp, src->in_iid, &dst->in_lun);
-		ISP_IOXPUT_8(isp, src->in_reserved2, &dst->in_tgt);
-		ISP_IOXPUT_8(isp, src->in_tgt, &dst->in_reserved2);
-		ISP_IOXPUT_8(isp, src->in_status, &dst->in_rsvd2);
-		ISP_IOXPUT_8(isp, src->in_rsvd2, &dst->in_status);
-		ISP_IOXPUT_8(isp, src->in_tag_val, &dst->in_tag_type);
-		ISP_IOXPUT_8(isp, src->in_tag_type, &dst->in_tag_val);
-	} else {
-		ISP_IOXPUT_8(isp, src->in_lun, &dst->in_lun);
-		ISP_IOXPUT_8(isp, src->in_iid, &dst->in_iid);
-		ISP_IOXPUT_8(isp, src->in_reserved2, &dst->in_reserved2);
-		ISP_IOXPUT_8(isp, src->in_tgt, &dst->in_tgt);
-		ISP_IOXPUT_8(isp, src->in_status, &dst->in_status);
-		ISP_IOXPUT_8(isp, src->in_rsvd2, &dst->in_rsvd2);
-		ISP_IOXPUT_8(isp, src->in_tag_val, &dst->in_tag_val);
-		ISP_IOXPUT_8(isp, src->in_tag_type, &dst->in_tag_type);
-	}
-	ISP_IOXPUT_32(isp, src->in_flags, &dst->in_flags);
-	ISP_IOXPUT_16(isp, src->in_seqid, &dst->in_seqid);
-	for (i = 0; i < IN_MSGLEN; i++) {
-		ISP_IOXPUT_8(isp, src->in_msg[i], &dst->in_msg[i]);
-	}
-	for (i = 0; i < IN_RSVDLEN; i++) {
-		ISP_IOXPUT_8(isp, src->in_reserved3[i], &dst->in_reserved3[i]);
-	}
-	for (i = 0; i < QLTM_SENSELEN; i++) {
-		ISP_IOXPUT_8(isp, src->in_sense[i], &dst->in_sense[i]);
-	}
-}
-
-void
-isp_get_notify(ispsoftc_t *isp, in_entry_t *src, in_entry_t *dst)
-{
-	int i;
-	isp_get_hdr(isp, &src->in_header, &dst->in_header);
-	ISP_IOXGET_32(isp, &src->in_reserved, dst->in_reserved);
-	if (ISP_IS_SBUS(isp)) {
-		ISP_IOXGET_8(isp, &src->in_lun, dst->in_iid);
-		ISP_IOXGET_8(isp, &src->in_iid, dst->in_lun);
-		ISP_IOXGET_8(isp, &src->in_reserved2, dst->in_tgt);
-		ISP_IOXGET_8(isp, &src->in_tgt, dst->in_reserved2);
-		ISP_IOXGET_8(isp, &src->in_status, dst->in_rsvd2);
-		ISP_IOXGET_8(isp, &src->in_rsvd2, dst->in_status);
-		ISP_IOXGET_8(isp, &src->in_tag_val, dst->in_tag_type);
-		ISP_IOXGET_8(isp, &src->in_tag_type, dst->in_tag_val);
-	} else {
-		ISP_IOXGET_8(isp, &src->in_lun, dst->in_lun);
-		ISP_IOXGET_8(isp, &src->in_iid, dst->in_iid);
-		ISP_IOXGET_8(isp, &src->in_reserved2, dst->in_reserved2);
-		ISP_IOXGET_8(isp, &src->in_tgt, dst->in_tgt);
-		ISP_IOXGET_8(isp, &src->in_status, dst->in_status);
-		ISP_IOXGET_8(isp, &src->in_rsvd2, dst->in_rsvd2);
-		ISP_IOXGET_8(isp, &src->in_tag_val, dst->in_tag_val);
-		ISP_IOXGET_8(isp, &src->in_tag_type, dst->in_tag_type);
-	}
-	ISP_IOXGET_32(isp, &src->in_flags, dst->in_flags);
-	ISP_IOXGET_16(isp, &src->in_seqid, dst->in_seqid);
-	for (i = 0; i < IN_MSGLEN; i++) {
-		ISP_IOXGET_8(isp, &src->in_msg[i], dst->in_msg[i]);
-	}
-	for (i = 0; i < IN_RSVDLEN; i++) {
-		ISP_IOXGET_8(isp, &src->in_reserved3[i], dst->in_reserved3[i]);
-	}
-	for (i = 0; i < QLTM_SENSELEN; i++) {
-		ISP_IOXGET_8(isp, &src->in_sense[i], dst->in_sense[i]);
-	}
-}
-
-void
 isp_put_notify_fc(ispsoftc_t *isp, in_fcentry_t *src, in_fcentry_t *dst)
 {
 	isp_put_hdr(isp, &src->in_header, &dst->in_header);
@@ -3698,52 +3246,6 @@ isp_get_notify_24xx(ispsoftc_t *isp, in_fcentry_24xx_t *src, in_fcentry_24xx_t *
 	ISP_IOXGET_8(isp, &src->in_reserved7, dst->in_reserved7);
 	ISP_IOXGET_16(isp, &src->in_reserved8, dst->in_reserved8);
 	ISP_IOXGET_16(isp, &src->in_oxid, dst->in_oxid);
-}
-
-void
-isp_put_notify_ack(ispsoftc_t *isp, na_entry_t *src,  na_entry_t *dst)
-{
-	int i;
-	isp_put_hdr(isp, &src->na_header, &dst->na_header);
-	ISP_IOXPUT_32(isp, src->na_reserved, &dst->na_reserved);
-	if (ISP_IS_SBUS(isp)) {
-		ISP_IOXPUT_8(isp, src->na_lun, &dst->na_iid);
-		ISP_IOXPUT_8(isp, src->na_iid, &dst->na_lun);
-		ISP_IOXPUT_8(isp, src->na_status, &dst->na_event);
-		ISP_IOXPUT_8(isp, src->na_event, &dst->na_status);
-	} else {
-		ISP_IOXPUT_8(isp, src->na_lun, &dst->na_lun);
-		ISP_IOXPUT_8(isp, src->na_iid, &dst->na_iid);
-		ISP_IOXPUT_8(isp, src->na_status, &dst->na_status);
-		ISP_IOXPUT_8(isp, src->na_event, &dst->na_event);
-	}
-	ISP_IOXPUT_32(isp, src->na_flags, &dst->na_flags);
-	for (i = 0; i < NA_RSVDLEN; i++) {
-		ISP_IOXPUT_16(isp, src->na_reserved3[i], &dst->na_reserved3[i]);
-	}
-}
-
-void
-isp_get_notify_ack(ispsoftc_t *isp, na_entry_t *src, na_entry_t *dst)
-{
-	int i;
-	isp_get_hdr(isp, &src->na_header, &dst->na_header);
-	ISP_IOXGET_32(isp, &src->na_reserved, dst->na_reserved);
-	if (ISP_IS_SBUS(isp)) {
-		ISP_IOXGET_8(isp, &src->na_lun, dst->na_iid);
-		ISP_IOXGET_8(isp, &src->na_iid, dst->na_lun);
-		ISP_IOXGET_8(isp, &src->na_status, dst->na_event);
-		ISP_IOXGET_8(isp, &src->na_event, dst->na_status);
-	} else {
-		ISP_IOXGET_8(isp, &src->na_lun, dst->na_lun);
-		ISP_IOXGET_8(isp, &src->na_iid, dst->na_iid);
-		ISP_IOXGET_8(isp, &src->na_status, dst->na_status);
-		ISP_IOXGET_8(isp, &src->na_event, dst->na_event);
-	}
-	ISP_IOXGET_32(isp, &src->na_flags, dst->na_flags);
-	for (i = 0; i < NA_RSVDLEN; i++) {
-		ISP_IOXGET_16(isp, &src->na_reserved3[i], dst->na_reserved3[i]);
-	}
 }
 
 void

@@ -24,7 +24,7 @@ CFLAGS+=	-g
 #CFLAGS+=	-DNEED_ERRLOC
 #YFLAGS+=	-d
 
-LIBADD=	dtrace xo
+LIBADD=	dtrace ctf elf proc xo
 
 .if ${MK_DTRACE_TESTS} != "no"
 SUBDIR+=	tests

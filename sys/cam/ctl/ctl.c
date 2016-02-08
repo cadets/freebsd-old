@@ -1778,6 +1778,7 @@ ctl_ha_role_sysctl(SYSCTL_HANDLER_ARGS)
 static int
 ctl_init(void)
 {
+	struct make_dev_args args;
 	struct ctl_softc *softc;
 	void *other_pool;
 	int i, error;
@@ -1785,9 +1786,17 @@ ctl_init(void)
 	softc = control_softc = malloc(sizeof(*control_softc), M_DEVBUF,
 			       M_WAITOK | M_ZERO);
 
-	softc->dev = make_dev(&ctl_cdevsw, 0, UID_ROOT, GID_OPERATOR, 0600,
-			      "cam/ctl");
-	softc->dev->si_drv1 = softc;
+	make_dev_args_init(&args);
+	args.mda_devsw = &ctl_cdevsw;
+	args.mda_uid = UID_ROOT;
+	args.mda_gid = GID_OPERATOR;
+	args.mda_mode = 0600;
+	args.mda_si_drv1 = softc;
+	error = make_dev_s(&args, &softc->dev, "cam/ctl");
+	if (error != 0) {
+		free(control_softc, M_DEVBUF);
+		return (error);
+	}
 
 	sysctl_ctx_init(&softc->sysctl_ctx);
 	softc->sysctl_tree = SYSCTL_ADD_NODE(&softc->sysctl_ctx,
@@ -6868,6 +6877,8 @@ ctl_log_sense(struct ctl_scsiio *ctsio)
 
 	header = (struct scsi_log_header *)ctsio->kern_data_ptr;
 	header->page = page_index->page_code;
+	if (page_index->page_code == SLS_LOGICAL_BLOCK_PROVISIONING)
+		header->page |= SL_DS;
 	if (page_index->subpage) {
 		header->page |= SL_SPF;
 		header->subpage = page_index->subpage;
@@ -9760,7 +9771,8 @@ ctl_inquiry_evpd_devid(struct ctl_scsiio *ctsio, int alloc_len)
 	desc->id_type = SVPD_ID_PIV | SVPD_ID_ASSOC_PORT |
 	    SVPD_ID_TYPE_TPORTGRP;
 	desc->length = 4;
-	if (softc->is_single || port->status & CTL_PORT_STATUS_HA_SHARED)
+	if (softc->is_single ||
+	    (port && port->status & CTL_PORT_STATUS_HA_SHARED))
 		g = 1;
 	else
 		g = 2 + ctsio->io_hdr.nexus.targ_port / softc->port_cnt;
@@ -11090,6 +11102,8 @@ ctl_check_for_blockage(struct ctl_lun *lun, union ctl_io *pending_io,
 	     __func__, pending_entry->seridx, pending_io->scsiio.cdb[0],
 	     pending_io->scsiio.cdb[1], pending_io));
 	ooa_entry = ctl_get_cmd_entry(&ooa_io->scsiio, NULL);
+	if (ooa_entry->seridx == CTL_SERIDX_INVLD)
+		return (CTL_ACTION_PASS); /* Unsupported command in OOA queue */
 	KASSERT(ooa_entry->seridx < CTL_SERIDX_COUNT,
 	    ("%s: Invalid seridx %d for ooa CDB %02x %02x @ %p",
 	     __func__, ooa_entry->seridx, ooa_io->scsiio.cdb[0],

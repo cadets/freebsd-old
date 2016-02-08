@@ -56,6 +56,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysent.h>
 #include <sys/sysproto.h>
 #include <sys/ucontext.h>
+#include <sys/vdso.h>
 
 #include <vm/vm.h>
 #include <vm/vm_kern.h>
@@ -72,6 +73,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/devmap.h>
 #include <machine/machdep.h>
 #include <machine/metadata.h>
+#include <machine/md_var.h>
 #include <machine/pcb.h>
 #include <machine/reg.h>
 #include <machine/vmparam.h>
@@ -81,7 +83,6 @@ __FBSDID("$FreeBSD$");
 #endif
 
 #ifdef FDT
-#include <dev/fdt/fdt_common.h>
 #include <dev/ofw/openfirm.h>
 #endif
 
@@ -232,7 +233,8 @@ int
 ptrace_single_step(struct thread *td)
 {
 
-	/* TODO; */
+	td->td_frame->tf_spsr |= PSR_SS;
+	td->td_pcb->pcb_flags |= PCB_SINGLE_STEP;
 	return (0);
 }
 
@@ -240,7 +242,8 @@ int
 ptrace_clear_single_step(struct thread *td)
 {
 
-	/* TODO; */
+	td->td_frame->tf_spsr &= ~PSR_SS;
+	td->td_pcb->pcb_flags &= ~PCB_SINGLE_STEP;
 	return (0);
 }
 
@@ -505,6 +508,7 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	struct trapframe *tf;
 	struct sigframe *fp, frame;
 	struct sigacts *psp;
+	struct sysentvec *sysent;
 	int code, onstack, sig;
 
 	td = curthread;
@@ -525,7 +529,7 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	/* Allocate and validate space for the signal handler context. */
 	if ((td->td_pflags & TDP_ALTSTACK) != 0 && !onstack &&
 	    SIGISMEMBER(psp->ps_sigonstack, sig)) {
-		fp = (struct sigframe *)(td->td_sigstk.ss_sp +
+		fp = (struct sigframe *)((uintptr_t)td->td_sigstk.ss_sp +
 		    td->td_sigstk.ss_size);
 #if defined(COMPAT_43)
 		td->td_sigstk.ss_flags |= SS_ONSTACK;
@@ -563,7 +567,12 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 
 	tf->tf_elr = (register_t)catcher;
 	tf->tf_sp = (register_t)fp;
-	tf->tf_lr = (register_t)(PS_STRINGS - *(p->p_sysent->sv_szsigcode));
+	sysent = p->p_sysent;
+	if (sysent->sv_sigcode_base != 0)
+		tf->tf_lr = (register_t)sysent->sv_sigcode_base;
+	else
+		tf->tf_lr = (register_t)(sysent->sv_psstrings -
+		    *(sysent->sv_szsigcode));
 
 	CTR3(KTR_SIG, "sendsig: return td=%p pc=%#x sp=%#x", td, tf->tf_elr,
 	    tf->tf_sp);
@@ -812,7 +821,7 @@ initarm(struct arm64_bootparams *abp)
 		kmdp = preload_search_by_type("elf64 kernel");
 
 	boothowto = MD_FETCH(kmdp, MODINFOMD_HOWTO, int);
-	kern_envp = MD_FETCH(kmdp, MODINFOMD_ENVP, char *);
+	init_static_kenv(MD_FETCH(kmdp, MODINFOMD_ENVP, char *), 0);
 
 #ifdef FDT
 	try_load_dtb(kmdp);
@@ -873,6 +882,17 @@ initarm(struct arm64_bootparams *abp)
 	kdb_init();
 
 	early_boot = 0;
+}
+
+uint32_t (*arm_cpu_fill_vdso_timehands)(struct vdso_timehands *,
+    struct timecounter *);
+
+uint32_t
+cpu_fill_vdso_timehands(struct vdso_timehands *vdso_th, struct timecounter *tc)
+{
+
+	return (arm_cpu_fill_vdso_timehands != NULL ?
+	    arm_cpu_fill_vdso_timehands(vdso_th, tc) : 0);
 }
 
 #ifdef DDB

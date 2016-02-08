@@ -36,6 +36,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm.h>
 #include <vm/pmap.h>
 
+#include <machine/cpu.h>
 #include <machine/smp.h>
 #include <machine/fdt.h>
 #include <machine/intr.h>
@@ -82,7 +83,7 @@ void
 platform_mp_init_secondary(void)
 {
 
-	arm_pic_init_secondary();
+	intr_pic_init_secondary();
 }
 
 void
@@ -171,8 +172,7 @@ platform_mp_start_ap(void)
 	bus_space_write_region_4(fdtbus_bs_tag, imem, 0,
 	    (uint32_t *)&rk30xx_boot2, 8);
 
-	cpu_idcache_wbinv_all();
-	cpu_l2cache_wbinv_all();
+	dcache_wbinv_poc_all();
 
 	/* Start all cores */
 	val = bus_space_read_4(fdtbus_bs_tag, pmu, PMU_PWRDN_CON);

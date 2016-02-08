@@ -36,8 +36,9 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
-#include <sys/module.h>
 #include <sys/kernel.h>
+#include <sys/malloc.h>
+#include <sys/module.h>
 #include <sys/endian.h>
 #include <sys/errno.h>
 #include <sys/firmware.h>
@@ -2721,8 +2722,7 @@ bwn_updateslot(struct ieee80211com *ic)
 	BWN_LOCK(sc);
 	if (sc->sc_flags & BWN_FLAG_RUNNING) {
 		mac = (struct bwn_mac *)sc->sc_curmac;
-		bwn_set_slot_time(mac,
-		    (ic->ic_flags & IEEE80211_F_SHSLOT) ? 9 : 20);
+		bwn_set_slot_time(mac, IEEE80211_GET_SLOTTIME(ic));
 	}
 	BWN_UNLOCK(sc);
 }

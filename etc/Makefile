@@ -82,10 +82,6 @@ BIN1+= apmd.conf
 BIN1+= auto_master
 .endif
 
-.if ${MK_BSNMP} != "no"
-BIN1+= snmpd.config
-.endif
-
 .if ${MK_FREEBSD_UPDATE} != "no"
 BIN1+= freebsd-update.conf
 .endif
@@ -154,6 +150,9 @@ MTREE=	BSD.debug.dist BSD.include.dist BSD.root.dist BSD.usr.dist BSD.var.dist
 .if ${MK_LIB32} != "no"
 MTREE+=	BSD.lib32.dist
 .endif
+.if ${MK_LIBSOFT} != "no"
+MTREE+=	BSD.libsoft.dist
+.endif
 .if ${MK_TESTS} != "no"
 MTREE+=	BSD.tests.dist
 .endif
@@ -216,6 +215,11 @@ distribution:
 		${BIN2} ${DESTDIR}/etc; \
 	    ${INSTALL} -o ${BINOWN} -g ${BINGRP} -m 600 \
 		master.passwd nsmb.conf opieaccess ${DESTDIR}/etc;
+.if ${MK_BSNMP} != "no"
+	cd ${.CURDIR}; \
+	    ${INSTALL} -o ${BINOWN} -g ${BINGRP} -m 600 \
+		snmpd.config ${DESTDIR}/etc;
+.endif
 .if ${MK_AT} == "no"
 	sed -i "" -e 's;.*/usr/libexec/atrun;#&;' ${DESTDIR}/etc/crontab
 .endif
@@ -337,6 +341,9 @@ MTREE_FILTER= sed -e 's,\([gu]\)name=,\1id=,g' \
 	-e 's,\(gid=\)[^ ]*$$,\1${_gid},' 
 .else
 MTREE_FILTER= cat
+.if !defined(NO_FSCHG)
+MTREE_FSCHG=	-i
+.endif
 .endif
 
 MTREES=		mtree/BSD.root.dist		/		\
@@ -351,6 +358,10 @@ MTREES+=	mtree/BSD.groff.dist		/usr
 MTREES+=	mtree/BSD.lib32.dist		/usr
 MTREES+=	mtree/BSD.lib32.dist		/usr/lib/debug/usr
 .endif
+.if ${MK_LIBSOFT} != "no"
+MTREES+=	mtree/BSD.libsoft.dist		/usr
+MTREES+=	mtree/BSD.libsoft.dist		/usr/lib/debug/usr
+.endif
 .if ${MK_TESTS} != "no"
 MTREES+=	mtree/BSD.tests.dist		${TESTSBASE}
 MTREES+=	mtree/BSD.tests.dist		/usr/lib/debug/${TESTSBASE}
@@ -362,7 +373,19 @@ MTREES+=	mtree/BSD.sendmail.dist		/
 MTREES+=	../${mtree}			/
 .endfor
 
-distrib-dirs: ${MTREES:N/*}
+# Clean up some directories that where mistakenly created as files that
+# should not have been as part of the nvi update in r281994.
+# This should be removed after 11.0-RELEASE.
+DISTRIB_CLEANUP_SHARE_FILES=	${SHAREDIR}/doc/usd/10.exref ${SHAREDIR}/doc/usd/11.edit
+DISTRIB_CLEANUP_SHARE_FILES+=	${SHAREDIR}/doc/usd/12.vi ${SHAREDIR}/doc/usd/13.viref
+distrib-cleanup: .PHONY
+	for file in ${DISTRIB_CLEANUP_SHARE_FILES}; do \
+		if [ -f ${DESTDIR}/$${file} ]; then \
+			rm -f ${DESTDIR}/$${file}; \
+		fi; \
+	done
+
+distrib-dirs: ${MTREES:N/*} distrib-cleanup .PHONY
 	@set ${MTREES}; \
 	while test $$# -ge 2; do \
 		m=${.CURDIR}/$$1; \
@@ -370,10 +393,11 @@ distrib-dirs: ${MTREES:N/*}
 		d=${DESTDIR}$$1; \
 		shift; \
 		test -d $$d || mkdir -p $$d; \
-		${ECHO} ${MTREE_CMD} -deiU ${MTREE_FOLLOWS_SYMLINKS} \
-		    -f $$m -p $$d; \
+		${ECHO} ${MTREE_CMD} -deU ${MTREE_FSCHG} \
+		    ${MTREE_FOLLOWS_SYMLINKS} -f $$m -p $$d; \
 		${MTREE_FILTER} $$m | \
-		${MTREE_CMD} -deiU ${MTREE_FOLLOWS_SYMLINKS} -p $$d; \
+		${MTREE_CMD} -deU ${MTREE_FSCHG} ${MTREE_FOLLOWS_SYMLINKS} \
+		    -p $$d; \
 	done; true
 .if defined(NO_ROOT)
 	@set ${MTREES}; \

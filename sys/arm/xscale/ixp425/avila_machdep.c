@@ -225,8 +225,8 @@ initarm(struct arm_boot_params *abp)
 	pcpu_init(pcpup, 0, sizeof(struct pcpu));
 	PCPU_SET(curthread, &thread0);
 
-	if (envmode == 1)
-		kern_envp = static_env;
+	init_static_kenv(NULL, 0);
+
 	/* Do basic tuning, hz etc */
       	init_param1();
 		
@@ -353,7 +353,7 @@ initarm(struct arm_boot_params *abp)
 	xscale_cache_clean_addr = 0xff000000U;
 
 	cpu_domains((DOMAIN_CLIENT << (PMAP_DOMAIN_KERNEL*2)) | DOMAIN_CLIENT);
-	setttb(kernel_l1pt.pv_pa);
+	cpu_setttb(kernel_l1pt.pv_pa);
 	cpu_tlb_flushID();
 	cpu_domains(DOMAIN_CLIENT << (PMAP_DOMAIN_KERNEL*2));
 
@@ -370,7 +370,7 @@ initarm(struct arm_boot_params *abp)
 	/*
 	 * We must now clean the cache again....
 	 * Cleaning may be done by reading new data to displace any
-	 * dirty data in the cache. This will have happened in setttb()
+	 * dirty data in the cache. This will have happened in cpu_setttb()
 	 * but since we are boot strapping the addresses used for the read
 	 * may have just been remapped and thus the cache could be out
 	 * of sync. A re-clean after the switch will cure this.
@@ -415,9 +415,9 @@ initarm(struct arm_boot_params *abp)
 	 * Prepare the list of physical memory available to the vm subsystem.
 	 */
 	arm_physmem_hardware_region(PHYSADDR, memsize);
-	arm_physmem_exclude_region(freemem_pt, KERNPHYSADDR -
+	arm_physmem_exclude_region(freemem_pt, abp->abp_physaddr -
 	    freemem_pt, EXFLAG_NOALLOC);
-	arm_physmem_exclude_region(freemempos, KERNPHYSADDR - 0x100000 -
+	arm_physmem_exclude_region(freemempos, abp->abp_physaddr - 0x100000 -
 	    freemempos, EXFLAG_NOALLOC);
 	arm_physmem_exclude_region(abp->abp_physaddr, 
 	    virtual_avail - KERNVIRTADDR, EXFLAG_NOALLOC);
@@ -425,10 +425,6 @@ initarm(struct arm_boot_params *abp)
 
 	init_param2(physmem);
 	kdb_init();
-
-	/* use static kernel environment if so configured */
-	if (envmode == 1)
-		kern_envp = static_env;
 
 	return ((void *)(kernelstack.pv_va + USPACE_SVC_STACK_TOP -
 	    sizeof(struct pcb)));

@@ -113,7 +113,6 @@ ATF_TC_BODY(getline_basic, tc)
 ATF_TC_WITHOUT_HEAD(stream_error);
 ATF_TC_BODY(stream_error, tc)
 {
-	FILE *fp;
 	char *line;
 	size_t linecap;
 
@@ -178,6 +177,7 @@ ATF_TC_BODY(nul, tc)
 	char *line;
 	size_t linecap, n;
 
+	errno = 0;
 	line = NULL;
 	linecap = 0;
 	/* Make sure a NUL delimiter works. */
@@ -207,7 +207,6 @@ ATF_TC_BODY(empty_NULL_buffer, tc)
 
 	/* Make sure NULL *linep and zero *linecapp are handled. */
 	fp = mkfilebuf();
-	free(line);
 	line = NULL;
 	linecap = 42;
 	ATF_REQUIRE(getline(&line, &linecap, fp) == sizeof(apothegm) - 1);

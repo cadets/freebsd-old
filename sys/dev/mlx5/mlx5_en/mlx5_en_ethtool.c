@@ -58,39 +58,75 @@ mlx5e_ethtool_handler(SYSCTL_HANDLER_ARGS)
 
 	PRIV_LOCK(priv);
 	value = priv->params_ethtool.arg[arg2];
-	error = sysctl_handle_64(oidp, &value, 0, req);
-	if (error || req->newptr == NULL ||
-	    value == priv->params_ethtool.arg[arg2])
-		goto done;
+	if (req != NULL) {
+		error = sysctl_handle_64(oidp, &value, 0, req);
+		if (error || req->newptr == NULL ||
+		    value == priv->params_ethtool.arg[arg2])
+			goto done;
 
-	/* assign new value */
-	priv->params_ethtool.arg[arg2] = value;
-
+		/* assign new value */
+		priv->params_ethtool.arg[arg2] = value;
+	} else {
+		error = 0;
+	}
 	/* check if device is gone */
 	if (priv->gone) {
 		error = ENXIO;
 		goto done;
 	}
-
-	if (&priv->params_ethtool.arg[arg2] == &priv->params_ethtool.rx_pauseframe_control ||
-	    &priv->params_ethtool.arg[arg2] == &priv->params_ethtool.tx_pauseframe_control) {
-		/* range check parameters */
-		priv->params_ethtool.rx_pauseframe_control =
-		    priv->params_ethtool.rx_pauseframe_control ? 1 : 0;
-		priv->params_ethtool.tx_pauseframe_control =
-		    priv->params_ethtool.tx_pauseframe_control ? 1 : 0;
-
-		/* update firmware */
-		error = -mlx5_set_port_pause(priv->mdev, 1,
-		    priv->params_ethtool.rx_pauseframe_control,
-		    priv->params_ethtool.tx_pauseframe_control);
-		goto done;
+	/* import RX coal time */
+	if (priv->params_ethtool.rx_coalesce_usecs < 1)
+		priv->params_ethtool.rx_coalesce_usecs = 0;
+	else if (priv->params_ethtool.rx_coalesce_usecs >
+	    MLX5E_FLD_MAX(cqc, cq_period)) {
+		priv->params_ethtool.rx_coalesce_usecs =
+		    MLX5E_FLD_MAX(cqc, cq_period);
 	}
+	priv->params.rx_cq_moderation_usec = priv->params_ethtool.rx_coalesce_usecs;
+
+	/* import RX coal pkts */
+	if (priv->params_ethtool.rx_coalesce_pkts < 1)
+		priv->params_ethtool.rx_coalesce_pkts = 0;
+	else if (priv->params_ethtool.rx_coalesce_pkts >
+	    MLX5E_FLD_MAX(cqc, cq_max_count)) {
+		priv->params_ethtool.rx_coalesce_pkts =
+		    MLX5E_FLD_MAX(cqc, cq_max_count);
+	}
+	priv->params.rx_cq_moderation_pkts = priv->params_ethtool.rx_coalesce_pkts;
+
+	/* import TX coal time */
+	if (priv->params_ethtool.tx_coalesce_usecs < 1)
+		priv->params_ethtool.tx_coalesce_usecs = 0;
+	else if (priv->params_ethtool.tx_coalesce_usecs >
+	    MLX5E_FLD_MAX(cqc, cq_period)) {
+		priv->params_ethtool.tx_coalesce_usecs =
+		    MLX5E_FLD_MAX(cqc, cq_period);
+	}
+	priv->params.tx_cq_moderation_usec = priv->params_ethtool.tx_coalesce_usecs;
+
+	/* import TX coal pkts */
+	if (priv->params_ethtool.tx_coalesce_pkts < 1)
+		priv->params_ethtool.tx_coalesce_pkts = 0;
+	else if (priv->params_ethtool.tx_coalesce_pkts >
+	    MLX5E_FLD_MAX(cqc, cq_max_count)) {
+		priv->params_ethtool.tx_coalesce_pkts = MLX5E_FLD_MAX(cqc, cq_max_count);
+	}
+	priv->params.tx_cq_moderation_pkts = priv->params_ethtool.tx_coalesce_pkts;
 
 	was_opened = test_bit(MLX5E_STATE_OPENED, &priv->state);
-	if (was_opened)
-		mlx5e_close_locked(priv->ifp);
+	if (was_opened) {
+		u64 *xarg = priv->params_ethtool.arg + arg2;
 
+		if (xarg == &priv->params_ethtool.tx_coalesce_pkts ||
+		    xarg == &priv->params_ethtool.rx_coalesce_pkts ||
+		    xarg == &priv->params_ethtool.tx_coalesce_usecs ||
+		    xarg == &priv->params_ethtool.rx_coalesce_usecs) {
+			/* avoid downing and upping the network interface */
+			error = mlx5e_refresh_channel_params(priv);
+			goto done;
+		}
+		mlx5e_close_locked(priv->ifp);
+	}
 	/* import TX queue size */
 	if (priv->params_ethtool.tx_queue_size <
 	    (1 << MLX5E_PARAMS_MINIMUM_LOG_SQ_SIZE)) {
@@ -136,59 +172,40 @@ mlx5e_ethtool_handler(SYSCTL_HANDLER_ARGS)
 		priv->params_ethtool.rx_coalesce_mode = 1;
 	priv->params.rx_cq_moderation_mode = priv->params_ethtool.rx_coalesce_mode;
 
-	/* import RX coal time */
-	if (priv->params_ethtool.rx_coalesce_usecs < 1)
-		priv->params_ethtool.rx_coalesce_usecs = 0;
-	else if (priv->params_ethtool.rx_coalesce_usecs >
-	    MLX5E_FLD_MAX(cqc, cq_period)) {
-		priv->params_ethtool.rx_coalesce_usecs =
-		    MLX5E_FLD_MAX(cqc, cq_period);
-	}
-	priv->params.rx_cq_moderation_usec = priv->params_ethtool.rx_coalesce_usecs;
-
-	/* import RX coal pkts */
-	if (priv->params_ethtool.rx_coalesce_pkts < 1)
-		priv->params_ethtool.rx_coalesce_pkts = 0;
-	else if (priv->params_ethtool.rx_coalesce_pkts >
-	    MLX5E_FLD_MAX(cqc, cq_max_count)) {
-		priv->params_ethtool.rx_coalesce_pkts =
-		    MLX5E_FLD_MAX(cqc, cq_max_count);
-	}
-	priv->params.rx_cq_moderation_pkts = priv->params_ethtool.rx_coalesce_pkts;
-
-	/* import TX coal time */
-	if (priv->params_ethtool.tx_coalesce_usecs < 1)
-		priv->params_ethtool.tx_coalesce_usecs = 0;
-	else if (priv->params_ethtool.tx_coalesce_usecs >
-	    MLX5E_FLD_MAX(cqc, cq_period)) {
-		priv->params_ethtool.tx_coalesce_usecs =
-		    MLX5E_FLD_MAX(cqc, cq_period);
-	}
-	priv->params.tx_cq_moderation_usec = priv->params_ethtool.tx_coalesce_usecs;
-
-	/* import TX coal pkts */
-	if (priv->params_ethtool.tx_coalesce_pkts < 1)
-		priv->params_ethtool.tx_coalesce_pkts = 0;
-	else if (priv->params_ethtool.tx_coalesce_pkts >
-	    MLX5E_FLD_MAX(cqc, cq_max_count)) {
-		priv->params_ethtool.tx_coalesce_pkts = MLX5E_FLD_MAX(cqc, cq_max_count);
-	}
-	priv->params.tx_cq_moderation_pkts = priv->params_ethtool.tx_coalesce_pkts;
+	/* import TX mode */
+	if (priv->params_ethtool.tx_coalesce_mode != 0)
+		priv->params_ethtool.tx_coalesce_mode = 1;
+	priv->params.tx_cq_moderation_mode = priv->params_ethtool.tx_coalesce_mode;
 
 	/* we always agree to turn off HW LRO - but not always to turn on */
-	if (priv->params_ethtool.hw_lro) {
-		if (priv->params_ethtool.hw_lro != 1) {
-			priv->params_ethtool.hw_lro = priv->params.hw_lro_en;
+	if (priv->params_ethtool.hw_lro != 0) {
+		if ((priv->ifp->if_capenable & IFCAP_LRO) &&
+		    MLX5_CAP_ETH(priv->mdev, lro_cap)) {
+			priv->params.hw_lro_en = 1;
+			priv->params_ethtool.hw_lro = 1;
+		} else {
+			priv->params.hw_lro_en = 0;
+			priv->params_ethtool.hw_lro = 0;
 			error = EINVAL;
-			goto done;
+
+			if_printf(priv->ifp, "Can't enable HW LRO: "
+			    "The HW or SW LRO feature is disabled");
 		}
-		if (priv->ifp->if_capenable & IFCAP_LRO)
-			priv->params.hw_lro_en = !!MLX5_CAP_ETH(priv->mdev, lro_cap);
-	}
-	else {
-		priv->params.hw_lro_en = false;
+	} else {
+		priv->params.hw_lro_en = 0;
 	}
 
+	if (&priv->params_ethtool.arg[arg2] ==
+	    &priv->params_ethtool.cqe_zipping) {
+		if (priv->params_ethtool.cqe_zipping &&
+		    MLX5_CAP_GEN(priv->mdev, cqe_compression)) {
+			priv->params.cqe_zipping_en = true;
+			priv->params_ethtool.cqe_zipping = 1;
+		} else {
+			priv->params.cqe_zipping_en = false;
+			priv->params_ethtool.cqe_zipping = 0;
+		}
+	}
 	if (was_opened)
 		mlx5e_open_locked(priv->ifp);
 done:
@@ -236,7 +253,7 @@ mlx5e_get_eeprom_info(struct mlx5e_priv *priv, struct mlx5e_eeprom *eeprom)
 	case SFF_8024_ID_QSFPPLUS:
 	case SFF_8024_ID_QSFP28:
 		if ((data & MLX5_EEPROM_IDENTIFIER_BYTE_MASK) == SFF_8024_ID_QSFP28 ||
-		   ((data & MLX5_EEPROM_REVISION_ID_BYTE_MASK) >> 8) >= 0x3) {
+		    ((data & MLX5_EEPROM_REVISION_ID_BYTE_MASK) >> 8) >= 0x3) {
 			eeprom->type = MLX5E_ETH_MODULE_SFF_8636;
 			eeprom->len = MLX5E_ETH_MODULE_SFF_8636_LEN;
 		} else {
@@ -251,8 +268,9 @@ mlx5e_get_eeprom_info(struct mlx5e_priv *priv, struct mlx5e_eeprom *eeprom)
 		eeprom->len = MLX5E_ETH_MODULE_SFF_8472_LEN;
 		break;
 	default:
-		if_printf(priv->ifp, "%s:%d: Not recognized cable type = 0x%x\n",
-		    __func__, __LINE__, data & MLX5_EEPROM_IDENTIFIER_BYTE_MASK);
+		if_printf(priv->ifp, "%s:%d: Not recognized cable type = 0x%x(%s)\n",
+		    __func__, __LINE__, data & MLX5_EEPROM_IDENTIFIER_BYTE_MASK,
+		    sff_8024_id[data & MLX5_EEPROM_IDENTIFIER_BYTE_MASK]);
 		return (EINVAL);
 	}
 	return (0);
@@ -273,7 +291,7 @@ mlx5e_get_eeprom(struct mlx5e_priv *priv, struct mlx5e_eeprom *ee)
 	while (ee->device_addr < ee->len) {
 		ret = mlx5_query_eeprom(dev, ee->i2c_addr, ee->page_num, ee->device_addr,
 		    ee->len - ee->device_addr, ee->module_num,
-		    ee->data + (ee->device_addr/4), &size_read);
+		    ee->data + (ee->device_addr / 4), &size_read);
 		if (ret) {
 			if_printf(priv->ifp, "%s:%d: Failed reading eeprom, "
 			    "error = 0x%02x\n", __func__, __LINE__, ret);
@@ -290,8 +308,8 @@ mlx5e_get_eeprom(struct mlx5e_priv *priv, struct mlx5e_eeprom *ee)
 		while (ee->device_addr < MLX5E_EEPROM_PAGE_LENGTH) {
 			ret = mlx5_query_eeprom(dev, ee->i2c_addr, ee->page_num,
 			    ee->device_addr, MLX5E_EEPROM_PAGE_LENGTH - ee->device_addr,
-			    ee->module_num, ee->data + (ee->len/4) +
-			    ((ee->device_addr - MLX5E_EEPROM_HIGH_PAGE_OFFSET)/4),
+			    ee->module_num, ee->data + (ee->len / 4) +
+			    ((ee->device_addr - MLX5E_EEPROM_HIGH_PAGE_OFFSET) / 4),
 			    &size_read);
 			if (ret) {
 				if_printf(priv->ifp, "%s:%d: Failed reading eeprom, "
@@ -307,34 +325,33 @@ mlx5e_get_eeprom(struct mlx5e_priv *priv, struct mlx5e_eeprom *ee)
 static void
 mlx5e_print_eeprom(struct mlx5e_eeprom *eeprom)
 {
-	int i, j = 0;
-	int row = 0;
+	int row;
+	int index_in_row;
+	int byte_to_write = 0;
+	int line_length = 16;
 
 	printf("\nOffset\t\tValues\n");
-	printf("------\t\t------\n");
-	while (row < eeprom->len) {
-		printf("0x%04x\t\t",row);
-		for (i = 0; i < 16; i++) {
-			printf("%02x ", ((u8*)eeprom->data)[j]);
-			j++;
-			row++;
+	printf("------\t\t------");
+	while (byte_to_write < eeprom->len) {
+		printf("\n0x%04X\t\t", byte_to_write);
+		for (index_in_row = 0; index_in_row < line_length; index_in_row++) {
+			printf("%02X ", ((u8 *)eeprom->data)[byte_to_write]);
+			byte_to_write++;
 		}
-		printf("\n");
 	}
 
 	if (eeprom->page_valid) {
 		row = MLX5E_EEPROM_HIGH_PAGE_OFFSET;
-		printf("\nUpper Page 0x03\n");
+		printf("\n\nUpper Page 0x03\n");
 		printf("\nOffset\t\tValues\n");
-		printf("------\t\t------\n");
+		printf("------\t\t------");
 		while (row < MLX5E_EEPROM_PAGE_LENGTH) {
-			printf("0x%04x\t\t",row);
-			for (i = 0; i < 16; i++) {
-				printf("%02x ", ((u8*)eeprom->data)[j]);
-				j++;
+			printf("\n0x%04X\t\t", row);
+			for (index_in_row = 0; index_in_row < line_length; index_in_row++) {
+				printf("%02X ", ((u8 *)eeprom->data)[byte_to_write]);
+				byte_to_write++;
 				row++;
 			}
-			printf("\n");
 		}
 	}
 }
@@ -377,8 +394,10 @@ mlx5e_read_eeprom(SYSCTL_HANDLER_ARGS)
 			error = 0;
 			goto done;
 		}
-
-		/* Allocate needed length buffer and additional space for the 3rd */
+		/*
+		 * Allocate needed length buffer and additional space for
+		 * page 0x03
+		 */
 		eeprom.data = malloc(eeprom.len + MLX5E_EEPROM_PAGE_LENGTH,
 		    M_MLX5EN, M_WAITOK | M_ZERO);
 
@@ -388,9 +407,11 @@ mlx5e_read_eeprom(SYSCTL_HANDLER_ARGS)
 			if_printf(priv->ifp, "%s:%d: Failed reading eeprom\n",
 			    __func__, __LINE__);
 			error = 0;
-			/* Continue printing partial information in case of an error */
+			/*
+			 * Continue printing partial information in case of
+			 * an error
+			 */
 		}
-
 		mlx5e_print_eeprom(&eeprom);
 		free(eeprom.data, M_MLX5EN);
 	}
@@ -449,9 +470,11 @@ mlx5e_create_ethtool(struct mlx5e_priv *priv)
 	priv->params_ethtool.rx_coalesce_mode = priv->params.rx_cq_moderation_mode;
 	priv->params_ethtool.rx_coalesce_usecs = priv->params.rx_cq_moderation_usec;
 	priv->params_ethtool.rx_coalesce_pkts = priv->params.rx_cq_moderation_pkts;
+	priv->params_ethtool.tx_coalesce_mode = priv->params.tx_cq_moderation_mode;
 	priv->params_ethtool.tx_coalesce_usecs = priv->params.tx_cq_moderation_usec;
 	priv->params_ethtool.tx_coalesce_pkts = priv->params.tx_cq_moderation_pkts;
 	priv->params_ethtool.hw_lro = priv->params.hw_lro_en;
+	priv->params_ethtool.cqe_zipping = priv->params.cqe_zipping_en;
 
 	/* create root node */
 	node = SYSCTL_ADD_NODE(&priv->sysctl_ctx,
@@ -467,10 +490,30 @@ mlx5e_create_ethtool(struct mlx5e_priv *priv)
 			    CTLFLAG_MPSAFE, priv, x, &mlx5e_ethtool_handler, "QU",
 			    mlx5e_params_desc[2 * x + 1]);
 		} else {
+#if (__FreeBSD_version < 1100000)
+			char path[64];
+#endif
+			/*
+			 * NOTE: In FreeBSD-11 and newer the
+			 * CTLFLAG_RWTUN flag will take care of
+			 * loading default sysctl value from the
+			 * kernel environment, if any:
+			 */
 			SYSCTL_ADD_PROC(&priv->sysctl_ctx, SYSCTL_CHILDREN(node), OID_AUTO,
 			    mlx5e_params_desc[2 * x], CTLTYPE_U64 | CTLFLAG_RWTUN |
 			    CTLFLAG_MPSAFE, priv, x, &mlx5e_ethtool_handler, "QU",
 			    mlx5e_params_desc[2 * x + 1]);
+
+#if (__FreeBSD_version < 1100000)
+			/* compute path for sysctl */
+			snprintf(path, sizeof(path), "dev.mce.%d.conf.%s",
+			    device_get_unit(priv->mdev->pdev->dev.bsddev),
+			    mlx5e_params_desc[2 * x]);
+
+			/* try to fetch tunable, if any */
+			if (TUNABLE_QUAD_FETCH(path, &priv->params_ethtool.arg[x]))
+				mlx5e_ethtool_handler(NULL, priv, x, NULL);
+#endif
 		}
 	}
 
@@ -490,4 +533,3 @@ mlx5e_create_ethtool(struct mlx5e_priv *priv)
 	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, priv, 0,
 	    mlx5e_read_eeprom, "I", "EEPROM information");
 }
-
