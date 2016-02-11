@@ -155,7 +155,8 @@ void exit(int);
 static void load(void);
 static int parse(void);
 static int dskread(void *, unsigned, unsigned);
-static void printf(const char *,...);
+//static void printf(const char *,...);
+#define printf(...)
 static void putchar(int);
 static int drvread(void *, unsigned, unsigned);
 static int keyhit(unsigned);
@@ -562,6 +563,7 @@ error:
     return -1;
 }
 
+#if 0
 static void
 printf(const char *fmt,...)
 {
@@ -599,6 +601,7 @@ printf(const char *fmt,...)
     va_end(ap);
     return;
 }
+#endif
 
 static void
 putchar(int c)
