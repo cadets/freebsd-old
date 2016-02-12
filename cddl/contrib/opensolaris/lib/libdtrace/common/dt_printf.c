@@ -742,6 +742,24 @@ pfprint_mr(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	return (0);
 }
 
+/*ARGSUSED*/
+int
+pfprint_mrc(dtrace_hdl_t *dtp, FILE *fp, const char *format,
+    const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
+{
+	if (dtp->dt_instance != NULL)
+		free(dtp->dt_instance);
+
+	dtp->dt_instance = malloc(size + 1);
+
+	bcopy(addr, dtp->dt_instance, size);
+	dtp->dt_instance[size] = '\0';
+	
+	xo_close_container(dtp->dt_instance);
+
+	return (0);
+}
+
 
 static const char pfproto_xint[] = "char, short, int, long, or long long";
 static const char pfproto_csi[] = "char, short, or int";
@@ -798,6 +816,7 @@ static const dt_pfconv_t _dtrace_conversions[] = {
 { "Lf",	"f", "long double", pfcheck_type, pfprint_fp },
 { "Lg",	"g", "long double", pfcheck_type, pfprint_fp },
 { "LG",	"G", "long double", pfcheck_type, pfprint_fp },
+{ "M", "M", "machine readable close", pfcheck_mr, pfprint_mrc },
 { "m", "m", "machine readable", pfcheck_mr, pfprint_mr },
 { "o", "o", pfproto_xint, pfcheck_xint, pfprint_uint },
 { "p", "x", pfproto_addr, pfcheck_addr, pfprint_uint },
