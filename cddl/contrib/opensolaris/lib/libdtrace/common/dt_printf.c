@@ -303,7 +303,7 @@ pfprint_sint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 
 closetag:
 	if (dtp->dt_instance != NULL) {
-		xo_close_container(dtp->dt_instance);
+		xo_close_container_d();
 	}
 	return (0);
 }
@@ -357,7 +357,7 @@ pfprint_uint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	}
 closetag:
 	if (dtp->dt_instance != NULL) {
-		xo_close_container(dtp->dt_instance);
+		xo_close_container_d();
 	}
 	return (0);
 }
@@ -658,7 +658,7 @@ pfprint_cstr(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	if (oformat) {
 		xo_emit("{:string/%s}", s);
 		if (dtp->dt_instance != NULL) {
-			xo_close_container(dtp->dt_instance);
+			xo_close_container_d();
 		}
 		return (0);
 	}
@@ -755,7 +755,7 @@ pfprint_mrc(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	bcopy(addr, dtp->dt_instance, size);
 	dtp->dt_instance[size] = '\0';
 	
-	xo_close_container(dtp->dt_instance);
+	xo_close_container_d();
 
 	return (0);
 }
@@ -842,6 +842,7 @@ static const dt_pfconv_t _dtrace_conversions[] = {
 int
 dt_pfdict_create(dtrace_hdl_t *dtp)
 {
+	xo_set_flags(NULL, XOF_DTRT);
 	uint_t n = _dtrace_strbuckets;
 	const dt_pfconv_t *pfd;
 	dt_pfdict_t *pdi;
