@@ -304,6 +304,7 @@ pfprint_sint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 closetag:
 	if (dtp->dt_instance != NULL) {
 		xo_close_container_d();
+		xo_flush();
 	}
 	return (0);
 }
@@ -358,6 +359,7 @@ pfprint_uint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 closetag:
 	if (dtp->dt_instance != NULL) {
 		xo_close_container_d();
+		xo_flush();
 	}
 	return (0);
 }
@@ -659,6 +661,7 @@ pfprint_cstr(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 		xo_emit("{:string/%s}", s);
 		if (dtp->dt_instance != NULL) {
 			xo_close_container_d();
+			xo_flush();
 		}
 		return (0);
 	}
@@ -756,6 +759,7 @@ pfprint_mrc(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	dtp->dt_instance[size] = '\0';
 	
 	xo_close_container_d();
+	xo_flush();
 
 	return (0);
 }
