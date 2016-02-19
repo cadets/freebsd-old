@@ -1112,6 +1112,7 @@ chew(const dtrace_probedata_t *data, void *arg)
 				    pd->dtpd_id, pd->dtpd_func,
 				    pd->dtpd_name);
 				xo_close_container("probe");
+				xo_flush();
 			} else {
 				char name[DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 2];
 
