@@ -36,7 +36,9 @@
 #pragma D option quiet
 tcp:kernel::accept-established
 {
-	printf("Accept connection from %s:%d\tto %s:%d\n",
+	self->pcb = (struct tcpcb *)args[3]->tcps_addr;
+	printf("Accept connection for UID %d from %s:%d\tto %s:%d\n",
+	               self->pcb->t_inpcb->inp_socket->so_cred->cr_uid,
 		       args[2]->ip_saddr,
 		       args[4]->tcp_sport,
 		       args[2]->ip_daddr,
@@ -56,7 +58,9 @@ tcp:kernel::accept-refused
 
 tcp:kernel::connect-established
 {
-	printf("Connection established to %s:%d from %s:%d\n",
+	self->pcb = (struct tcpcb *)args[3]->tcps_addr;
+	printf("Connection established by UID %d to %s:%d from %s:%d\n",
+	               self->pcb->t_inpcb->inp_socket->so_cred->cr_uid,
 		       args[2]->ip_saddr,
 		       args[4]->tcp_sport,
 		       args[2]->ip_daddr,
