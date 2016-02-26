@@ -26,6 +26,7 @@ CFLAGS=	-fomit-frame-pointer \
 	-mrtd \
 	-mregparm=3 \
 	-DUSE_XREAD \
+	-DTIGHT_SQUEEZE \
 	-D${BOOT2_UFS} \
 	-DFLAGS=${BOOT_BOOT1_FLAGS} \
 	-DSIOPRT=${BOOT_COMCONSOLE_PORT} \
