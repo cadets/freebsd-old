@@ -191,6 +191,7 @@ cat <<_EOF_
 #include <sys/capsicum.h>
 #include <vm/vm.h>
 #include <vm/vm_param.h>
+#include <libxo/xo.h>
 
 #include "kdump_subr.h"
 
@@ -215,11 +216,11 @@ void
 atfdname(int fd, int decimal)
 {
 	if (fd == AT_FDCWD)
-		printf("AT_FDCWD");
+		xo_emit("{:atfdname/AT_FDCWD}");
 	else if (decimal)
-		printf("%d", fd);
+		xo_emit("{:atfdname/%d}", fd);
 	else
-		printf("%#x", fd);
+		xo_emit("{:atfdname/%#d}", fd);
 }
 
 /* MANUAL */
@@ -228,9 +229,9 @@ void
 signame(int sig)
 {
 	if (sig > 0 && sig < NSIG)
-		printf("SIG%s",signames[sig]);
+		xo_emit("{:signame/SIG%s}", signames[sig]);
 	else
-		printf("SIG %d", sig);
+		xo_emit("{:signame/SIG %d}", sig);
 }
 
 /* MANUAL */
@@ -239,37 +240,37 @@ semctlname(int cmd)
 {
 	switch (cmd) {
 	case GETNCNT:
-		printf("GETNCNT");
+		xo_emit("{:semctlname/GETNCNT}}");
 		break;
 	case GETPID:
-		printf("GETPID");
+		xo_emit("{:semctlname/GETPID}");
 		break;
 	case GETVAL:
-		printf("GETVAL");
+		xo_emit("{:semctlname/GETVAL}");
 		break;
 	case GETALL:
-		printf("GETALL");
+		xo_emit("{:semctlname/GETALL}");
 		break;
 	case GETZCNT:
-		printf("GETZCNT");
+		xo_emit("{:semctlname/GETZCNT}");
 		break;
 	case SETVAL:
-		printf("SETVAL");
+		xo_emit("{:semctlname/SETVAL}");
 		break;
 	case SETALL:
-		printf("SETALL");
+		xo_emit("{:semctlname/SETALL}");
 		break;
 	case IPC_RMID:
-		printf("IPC_RMID");
+		xo_emit("{:semctlname/IPC_RMID}");
 		break;
 	case IPC_SET:
-		printf("IPC_SET");
+		xo_emit("{:semctlname/IPC_SET}");
 		break;
 	case IPC_STAT:
-		printf("IPC_STAT");
+		xo_emit("{:semctlname/IPC_STAT}");
 		break;
 	default: /* Should not reach */
-		printf("<invalid=%d>", cmd);
+		xo_emit("{:semctlname/<invalid=%d>}", cmd);
 	}
 }
 
@@ -279,16 +280,16 @@ shmctlname(int cmd)
 {
 	switch (cmd) {
 	case IPC_RMID:
-		printf("IPC_RMID");
+		xo_emit("{:shmctlname/IPC_RMID}");
 		break;
 	case IPC_SET:
-		printf("IPC_SET");
+		xo_emit("{:shmctlname/IPC_SET}");
 		break;
 	case IPC_STAT:
-		printf("IPC_STAT");
+		xo_emit("{:shmctlname/IPC_STAT}");
 		break;
 	default: /* Should not reach */
-		printf("<invalid=%d>", cmd);
+		xo_emit("{:shmctlname/<invalid=%d>}", cmd);
 	}
 }
 
@@ -335,58 +336,58 @@ idtypename(idtype_t idtype, int decimal)
 {
 	switch(idtype) {
 	case P_PID:
-		printf("P_PID");
+		xo_emit("P_PID");
 		break;
 	case P_PPID:
-		printf("P_PPID");
+		xo_emit("P_PPID");
 		break;
 	case P_PGID:
-		printf("P_PGID");
+		xo_emit("P_PGID");
 		break;
 	case P_SID:
-		printf("P_SID");
+		xo_emit("P_SID");
 		break;
 	case P_CID:
-		printf("P_CID");
+		xo_emit("P_CID");
 		break;
 	case P_UID:
-		printf("P_UID");
+		xo_emit("P_UID");
 		break;
 	case P_GID:
-		printf("P_GID");
+		xo_emit("P_GID");
 		break;
 	case P_ALL:
-		printf("P_ALL");
+		xo_emit("P_ALL");
 		break;
 	case P_LWPID:
-		printf("P_LWPID");
+		xo_emit("P_LWPID");
 		break;
 	case P_TASKID:
-		printf("P_TASKID");
+		xo_emit("P_TASKID");
 		break;
 	case P_PROJID:
-		printf("P_PROJID");
+		xo_emit("P_PROJID");
 		break;
 	case P_POOLID:
-		printf("P_POOLID");
+		xo_emit("P_POOLID");
 		break;
 	case P_JAILID:
-		printf("P_JAILID");
+		xo_emit("P_JAILID");
 		break;
 	case P_CTID:
-		printf("P_CTID");
+		xo_emit("P_CTID");
 		break;
 	case P_CPUID:
-		printf("P_CPUID");
+		xo_emit("P_CPUID");
 		break;
 	case P_PSETID:
-		printf("P_PSETID");
+		xo_emit("P_PSETID");
 		break;
 	default:
 		if (decimal) {
-			printf("%d", idtype);
+			xo_emit("%d", idtype);
 		} else {
-			printf("%#x", idtype);
+			xo_emit("%#x", idtype);
 		}
 	}
 }
@@ -402,12 +403,12 @@ void
 sockoptlevelname(int level, int decimal)
 {
 	if (level == SOL_SOCKET) {
-		printf("SOL_SOCKET");
+		xo_emit("SOL_SOCKET");
 	} else {
 		if (decimal) {
-			printf("%d", level);
+			xo_emit("%d", level);
 		} else {
-			printf("%#x", (unsigned int)level);
+			xo_emit("%#x", (unsigned int)level);
 		}
 	}
 }
@@ -424,7 +425,7 @@ vmprotname (int type)
 	int	or = 0;
 
 	if (type == VM_PROT_NONE) {
-		(void)printf("VM_PROT_NONE");
+		(void)xo_emit("VM_PROT_NONE");
 		return;
 	}
 	if_print_or(type, VM_PROT_READ, or);
@@ -440,9 +441,9 @@ void
 socktypenamewithflags(int type)
 {
 	if (type & SOCK_CLOEXEC)
-		printf("SOCK_CLOEXEC|"), type &= ~SOCK_CLOEXEC;
+		xo_emit("SOCK_CLOEXEC|"), type &= ~SOCK_CLOEXEC;
 	if (type & SOCK_NONBLOCK)
-		printf("SOCK_NONBLOCK|"), type &= ~SOCK_NONBLOCK;
+		xo_emit("SOCK_NONBLOCK|"), type &= ~SOCK_NONBLOCK;
 	socktypename(type);
 }
 _EOF_
