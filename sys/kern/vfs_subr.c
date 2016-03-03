@@ -2840,6 +2840,10 @@ _vdrop(struct vnode *vp, bool locked)
 	vp->v_iflag = 0;
 	vp->v_vflag = 0;
 	bo->bo_flag = 0;
+	if (vp->v_path != NULL) {
+		free(vp->v_path, M_TEMP);
+		vp->v_path = NULL;
+	}
 	uma_zfree(vnode_zone, vp);
 }
 
