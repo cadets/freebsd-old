@@ -68,8 +68,8 @@ translator bufinfo_t < struct bio *B > {
            b_blkno = 0;
            b_lblkno = 0;
            b_resid = B->bio_resid;
-           b_bufsize = 0; /* XXX gnn */
            b_error = B->bio_error;
+           b_bufsize = 0; /* XXX gnn */
 };
 
 /*
@@ -108,12 +108,14 @@ inline int O_TRUNC = 0x0400;
 
 
 typedef struct fileinfo {
+	string fi_name;
 	int fi_type;
 	int fi_flag;
 } fileinfo_t;
 
 #pragma D binding "1.1" translator
 translator fileinfo_t < struct file *F > {
+	fi_name = F->f_vnode->v_path == NULL ? "none" : F->f_vnode->v_path;
 	fi_type = F->f_type;
 	fi_flag = F->f_flag;
 };
