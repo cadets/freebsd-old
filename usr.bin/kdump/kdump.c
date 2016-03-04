@@ -88,6 +88,8 @@ extern int errno;
 #include <time.h>
 #include <unistd.h>
 #include <vis.h>
+#include <libxo/xo.h>
+
 #include "ktrace.h"
 #include "kdump_subr.h"
 
@@ -124,8 +126,8 @@ void usage(void);
 
 extern const char *signames[];
 
-static int timestamp, decimal, fancy = 1, suppressdata, tail, threads, maxdata,
-    resolv = 0, abiflag = 0, syscallno = 0;
+static int timestamp, decimal, fancy = 1, suppressdata, tail, threads,
+	maxdata, resolv = 0, abiflag = 0, syscallno = 0, xoflag = 0;
 static const char *tracefile = DEF_TRACEFILE;
 static struct ktr_header ktr_header;
 
@@ -260,7 +262,7 @@ main(int argc, char *argv[])
 
 	timestamp = TIMESTAMP_NONE;
 
-	while ((ch = getopt(argc,argv,"f:dElm:np:AHRrSsTt:")) != -1)
+	while ((ch = getopt(argc,argv,"f:dElm:nO:p:AHRrSsTt:")) != -1)
 		switch (ch) {
 		case 'A':
 			abiflag = 1;
@@ -279,6 +281,15 @@ main(int argc, char *argv[])
 			break;
 		case 'n':
 			fancy = 0;
+			break;
+		case 'O':
+			xoflag = 1;
+			if (strcmp(optarg, "xml") == 0)
+				xo_set_style(NULL, XO_STYLE_XML);
+			else if (strcmp(optarg, "json") == 0)
+				xo_set_style(NULL, XO_STYLE_JSON);
+			else
+				errx(1, "unknown output style");
 			break;
 		case 'p':
 			pid = atoi(optarg);
@@ -637,7 +648,7 @@ dumpheader(struct ktr_header *kth)
 		    kth->ktr_comm);
         if (timestamp) {
 		if (timestamp & TIMESTAMP_ABSOLUTE) {
-			printf("%jd.%06ld ", (intmax_t)kth->ktr_time.tv_sec,
+			xo_emit("{:tsabs/%jd.%06ld} ", (intmax_t)kth->ktr_time.tv_sec,
 			    kth->ktr_time.tv_usec);
 		}
 		if (timestamp & TIMESTAMP_ELAPSED) {
@@ -661,12 +672,15 @@ dumpheader(struct ktr_header *kth)
 			} else {
 				prevtime = temp;
 				sign = "";
+
 			}
 			printf("%s%jd.%06ld ", sign, (intmax_t)kth->ktr_time.tv_sec,
 			    kth->ktr_time.tv_usec);
 		}
 	}
-	printf("%s  ", type);
+	xo_emit("{:type/%s}  ", type);
+//	if (!xoflag)
+//		xo_emit("  ");
 }
 
 #include <sys/syscall.h>
@@ -678,11 +692,11 @@ ioctlname(unsigned long val)
 
 	str = sysdecode_ioctlname(val);
 	if (str != NULL)
-		printf("%s", str);
+		xo_emit("{:name/%s}", str);
 	else if (decimal)
-		printf("%lu", val);
+		printf("{:number/%lu]", val);
 	else
-		printf("%#lx", val);
+		printf("{:number/#%lx}", val);
 }
 
 static enum sysdecode_abi
@@ -714,11 +728,11 @@ syscallname(u_int code, u_int sv_flags)
 
 	name = sysdecode_syscallname(syscallabi(sv_flags), code);
 	if (name == NULL)
-		printf("[%d]", code);
+		xo_emit("{:code/[%d]}", code);
 	else {
-		printf("%s", name);
+		xo_emit("{:name/%s} ", name);
 		if (syscallno)
-			printf("[%d]", code);
+			xo_emit("{:number/[%d]}", code);
 	}
 }
 
@@ -729,6 +743,7 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 	register_t *ip;
 	intmax_t arg;
 
+	xo_open_container("syscall");
 	syscallname(ktr->ktr_code, sv_flags);
 	ip = &ktr->ktr_args[0];
 	if (narg) {
@@ -1139,7 +1154,7 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 				print_number(ip, narg, c);
 				putchar(',');
 				flagsname(ip[0]);
-				printf(",0%o", (unsigned int)ip[1]);
+				xo_emit(",0%o", (unsigned int)ip[1]);
 				ip += 3;
 				narg -= 3;
 				break;
@@ -1339,6 +1354,8 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 		putchar(')');
 	}
 	putchar('\n');
+	xo_close_container("syscall");
+	xo_flush();
 }
 
 void
@@ -1352,23 +1369,23 @@ ktrsysret(struct ktr_sysret *ktr, u_int sv_flags)
 
 	if (error == 0) {
 		if (fancy) {
-			printf("%ld", (long)ret);
+			xo_emit("{%ld}", (long)ret);
 			if (ret < 0 || ret > 9)
-				printf("/%#lx", (unsigned long)ret);
+				xo_emit("/%#lx", (unsigned long)ret);
 		} else {
 			if (decimal)
-				printf("%ld", (long)ret);
+				xo_emit("%ld", (long)ret);
 			else
-				printf("%#lx", (unsigned long)ret);
+				xo_emit("%#lx", (unsigned long)ret);
 		}
 	} else if (error == ERESTART)
-		printf("RESTART");
+		xo_emit("RESTART");
 	else if (error == EJUSTRETURN)
-		printf("JUSTRETURN");
+		xo_emit("JUSTRETURN");
 	else {
-		printf("-1 errno %d", ktr->ktr_error);
+		xo_emit("-1 errno %d", ktr->ktr_error);
 		if (fancy)
-			printf(" %s", strerror(ktr->ktr_error));
+			xo_emit(" %s", strerror(ktr->ktr_error));
 	}
 	putchar('\n');
 }
@@ -1376,7 +1393,7 @@ ktrsysret(struct ktr_sysret *ktr, u_int sv_flags)
 void
 ktrnamei(char *cp, int len)
 {
-	printf("\"%.*s\"\n", len, cp);
+	xo_emit("\"%.*s\"\n", len, cp);
 }
 
 void
@@ -1479,7 +1496,7 @@ ktrgenio(struct ktr_genio *ktr, int len)
 	static int screenwidth = 0;
 	int i, binary;
 
-	printf("fd %d %s %d byte%s\n", ktr->ktr_fd,
+	xo_emit("fd %d %s %d byte%s\n", ktr->ktr_fd,
 		ktr->ktr_rw == UIO_READ ? "read" : "wrote", datalen,
 		datalen == 1 ? "" : "s");
 	if (suppressdata)
@@ -1522,15 +1539,15 @@ void
 ktrpsig(struct ktr_psig *psig)
 {
 	if (psig->signo > 0 && psig->signo < NSIG)
-		printf("SIG%s ", signames[psig->signo]);
+		xo_emit("{:signal SIG/%s}", signames[psig->signo]);
 	else
-		printf("SIG %d ", psig->signo);
+		xo_emit("SIG %d ", psig->signo);
 	if (psig->action == SIG_DFL) {
-		printf("SIG_DFL code=");
+		xo_emit("SIG_DFL code=");
 		sigcodename(psig->signo, psig->code);
 		putchar('\n');
 	} else {
-		printf("caught handler=0x%lx mask=0x%x code=",
+		xo_emit("caught handler=0x%lx mask=0x%x code=",
 		    (u_long)psig->action, psig->mask.__bits[0]);
 		sigcodename(psig->signo, psig->code);
 		putchar('\n');
@@ -1540,14 +1557,14 @@ ktrpsig(struct ktr_psig *psig)
 void
 ktrcsw_old(struct ktr_csw_old *cs)
 {
-	printf("%s %s\n", cs->out ? "stop" : "resume",
+	xo_emit("%s %s\n", cs->out ? "stop" : "resume",
 		cs->user ? "user" : "kernel");
 }
 
 void
 ktrcsw(struct ktr_csw *cs)
 {
-	printf("%s %s \"%s\"\n", cs->out ? "stop" : "resume",
+	xo_emit("%s %s \"%s\"\n", cs->out ? "stop" : "resume",
 	    cs->user ? "user" : "kernel", cs->wmesg);
 }
 
@@ -1561,13 +1578,13 @@ ktruser(int len, void *p)
 		return;
 	}
 
-	printf("%d ", len);
+	xo_emit("%d ", len);
 	cp = p;
 	while (len--)
 		if (decimal)
-			printf(" %d", *cp++);
+			xo_emit(" %d", *cp++);
 		else
-			printf(" %02x", *cp++);
+			xo_emit(" %02x", *cp++);
 	printf("\n");
 }
 
@@ -1575,9 +1592,9 @@ void
 ktrcaprights(cap_rights_t *rightsp)
 {
 
-	printf("cap_rights_t ");
+	xo_emit("cap_rights_t ");
 	capname(rightsp);
-	printf("\n");
+	xo_emit("\n");
 }
 
 void
@@ -1597,13 +1614,13 @@ ktrsockaddr(struct sockaddr *sa)
 	 * buffer at least sizeof(struct sockaddr) bytes long and exactly
 	 * sa->sa_len bytes long.
 	 */
-	printf("struct sockaddr { ");
+	xo_emit("struct sockaddr { ");
 	sockfamilyname(sa->sa_family);
-	printf(", ");
+	xo_emit(", ");
 
 #define check_sockaddr_len(n)					\
 	if (sa_##n.s##n##_len < sizeof(struct sockaddr_##n)) {	\
-		printf("invalid");				\
+		xo_emit("invalid");				\
 		break;						\
 	}
 
@@ -1615,7 +1632,7 @@ ktrsockaddr(struct sockaddr *sa)
 		memcpy(&sa_in, sa, sa->sa_len);
 		check_sockaddr_len(in);
 		inet_ntop(AF_INET, &sa_in.sin_addr, addr, sizeof addr);
-		printf("%s:%u", addr, ntohs(sa_in.sin_port));
+		xo_emit("%s:%u", addr, ntohs(sa_in.sin_port));
 		break;
 	}
 	case AF_INET6: {
@@ -1626,7 +1643,7 @@ ktrsockaddr(struct sockaddr *sa)
 		check_sockaddr_len(in6);
 		getnameinfo((struct sockaddr *)&sa_in6, sizeof(sa_in6),
 		    addr, sizeof(addr), NULL, 0, NI_NUMERICHOST);
-		printf("[%s]:%u", addr, htons(sa_in6.sin6_port));
+		xo_emit("[%s]:%u", addr, htons(sa_in6.sin6_port));
 		break;
 	}
 	case AF_UNIX: {
@@ -1634,13 +1651,13 @@ ktrsockaddr(struct sockaddr *sa)
 
 		memset(&sa_un, 0, sizeof(sa_un));
 		memcpy(&sa_un, sa, sa->sa_len);
-		printf("%.*s", (int)sizeof(sa_un.sun_path), sa_un.sun_path);
+		xo_emit("%.*s", (int)sizeof(sa_un.sun_path), sa_un.sun_path);
 		break;
 	}
 	default:
-		printf("unknown address family");
+		xo_emit("unknown address family");
 	}
-	printf(" }\n");
+	xo_emit(" }\n");
 }
 
 void
@@ -1655,16 +1672,16 @@ ktrstat(struct stat *statp)
 	 * note: ktrstruct() has already verified that statp points to a
 	 * buffer exactly sizeof(struct stat) bytes long.
 	 */
-	printf("struct stat {");
-	printf("dev=%ju, ino=%ju, ",
+	xo_emit("struct stat {");
+	xo_emit("dev=%ju, ino=%ju, ",
 		(uintmax_t)statp->st_dev, (uintmax_t)statp->st_ino);
 	if (resolv == 0)
-		printf("mode=0%jo, ", (uintmax_t)statp->st_mode);
+		xo_emit("mode=0%jo, ", (uintmax_t)statp->st_mode);
 	else {
 		strmode(statp->st_mode, mode);
-		printf("mode=%s, ", mode);
+		xo_emit("mode=%s, ", mode);
 	}
-	printf("nlink=%ju, ", (uintmax_t)statp->st_nlink);
+	xo_emit("nlink=%ju, ", (uintmax_t)statp->st_nlink);
 	if (resolv == 0) {
 		pwd = NULL;
 	} else {
@@ -1676,9 +1693,9 @@ ktrstat(struct stat *statp)
 			pwd = getpwuid(statp->st_uid);
 	}
 	if (pwd == NULL)
-		printf("uid=%ju, ", (uintmax_t)statp->st_uid);
+		xo_emit("uid=%ju, ", (uintmax_t)statp->st_uid);
 	else
-		printf("uid=\"%s\", ", pwd->pw_name);
+		xo_emit("uid=\"%s\", ", pwd->pw_name);
 	if (resolv == 0) {
 		grp = NULL;
 	} else {
@@ -1690,62 +1707,62 @@ ktrstat(struct stat *statp)
 			grp = getgrgid(statp->st_gid);
 	}
 	if (grp == NULL)
-		printf("gid=%ju, ", (uintmax_t)statp->st_gid);
+		xo_emit("gid=%ju, ", (uintmax_t)statp->st_gid);
 	else
-		printf("gid=\"%s\", ", grp->gr_name);
-	printf("rdev=%ju, ", (uintmax_t)statp->st_rdev);
-	printf("atime=");
+		xo_emit("gid=\"%s\", ", grp->gr_name);
+	xo_emit("rdev=%ju, ", (uintmax_t)statp->st_rdev);
+	xo_emit("atime=");
 	if (resolv == 0)
-		printf("%jd", (intmax_t)statp->st_atim.tv_sec);
+		xo_emit("%jd", (intmax_t)statp->st_atim.tv_sec);
 	else {
 		tm = localtime(&statp->st_atim.tv_sec);
 		strftime(timestr, sizeof(timestr), TIME_FORMAT, tm);
-		printf("\"%s\"", timestr);
+		xo_emit("\"%s\"", timestr);
 	}
 	if (statp->st_atim.tv_nsec != 0)
-		printf(".%09ld, ", statp->st_atim.tv_nsec);
+		xo_emit(".%09ld, ", statp->st_atim.tv_nsec);
 	else
-		printf(", ");
-	printf("stime=");
+		xo_emit(", ");
+	xo_emit("stime=");
 	if (resolv == 0)
-		printf("%jd", (intmax_t)statp->st_mtim.tv_sec);
+		xo_emit("%jd", (intmax_t)statp->st_mtim.tv_sec);
 	else {
 		tm = localtime(&statp->st_mtim.tv_sec);
 		strftime(timestr, sizeof(timestr), TIME_FORMAT, tm);
-		printf("\"%s\"", timestr);
+		xo_emit("\"%s\"", timestr);
 	}
 	if (statp->st_mtim.tv_nsec != 0)
-		printf(".%09ld, ", statp->st_mtim.tv_nsec);
+		xo_emit(".%09ld, ", statp->st_mtim.tv_nsec);
 	else
-		printf(", ");
-	printf("ctime=");
+		xo_emit(", ");
+	xo_emit("ctime=");
 	if (resolv == 0)
-		printf("%jd", (intmax_t)statp->st_ctim.tv_sec);
+		xo_emit("%jd", (intmax_t)statp->st_ctim.tv_sec);
 	else {
 		tm = localtime(&statp->st_ctim.tv_sec);
 		strftime(timestr, sizeof(timestr), TIME_FORMAT, tm);
-		printf("\"%s\"", timestr);
+		xo_emit("\"%s\"", timestr);
 	}
 	if (statp->st_ctim.tv_nsec != 0)
-		printf(".%09ld, ", statp->st_ctim.tv_nsec);
+		xo_emit(".%09ld, ", statp->st_ctim.tv_nsec);
 	else
-		printf(", ");
-	printf("birthtime=");
+		xo_emit(", ");
+	xo_emit("birthtime=");
 	if (resolv == 0)
-		printf("%jd", (intmax_t)statp->st_birthtim.tv_sec);
+		xo_emit("%jd", (intmax_t)statp->st_birthtim.tv_sec);
 	else {
 		tm = localtime(&statp->st_birthtim.tv_sec);
 		strftime(timestr, sizeof(timestr), TIME_FORMAT, tm);
-		printf("\"%s\"", timestr);
+		xo_emit("\"%s\"", timestr);
 	}
 	if (statp->st_birthtim.tv_nsec != 0)
-		printf(".%09ld, ", statp->st_birthtim.tv_nsec);
+		xo_emit(".%09ld, ", statp->st_birthtim.tv_nsec);
 	else
-		printf(", ");
-	printf("size=%jd, blksize=%ju, blocks=%jd, flags=0x%x",
+		xo_emit(", ");
+	xo_emit("size=%jd, blksize=%ju, blocks=%jd, flags=0x%x",
 		(uintmax_t)statp->st_size, (uintmax_t)statp->st_blksize,
 		(intmax_t)statp->st_blocks, statp->st_flags);
-	printf(" }\n");
+	xo_emit(" }\n");
 }
 
 void
@@ -1792,11 +1809,11 @@ ktrstruct(char *buf, size_t buflen)
 			goto invalid;
 		ktrsockaddr((struct sockaddr *)&ss);
 	} else {
-		printf("unknown structure\n");
+		xo_emit("unknown structure\n");
 	}
 	return;
 invalid:
-	printf("invalid record\n");
+	xo_emit("invalid record\n");
 }
 
 void
@@ -1805,43 +1822,43 @@ ktrcapfail(struct ktr_cap_fail *ktr)
 	switch (ktr->cap_type) {
 	case CAPFAIL_NOTCAPABLE:
 		/* operation on fd with insufficient capabilities */
-		printf("operation requires ");
+		xo_emit("operation requires ");
 		capname(&ktr->cap_needed);
-		printf(", descriptor holds ");
+		xo_emit(", descriptor holds ");
 		capname(&ktr->cap_held);
 		break;
 	case CAPFAIL_INCREASE:
 		/* requested more capabilities than fd already has */
-		printf("attempt to increase capabilities from ");
+		xo_emit("attempt to increase capabilities from ");
 		capname(&ktr->cap_held);
-		printf(" to ");
+		xo_emit(" to ");
 		capname(&ktr->cap_needed);
 		break;
 	case CAPFAIL_SYSCALL:
 		/* called restricted syscall */
-		printf("disallowed system call");
+		xo_emit("disallowed system call");
 		break;
 	case CAPFAIL_LOOKUP:
 		/* used ".." in strict-relative mode */
-		printf("restricted VFS lookup");
+		xo_emit("restricted VFS lookup");
 		break;
 	default:
-		printf("unknown capability failure: ");
+		xo_emit("unknown capability failure: ");
 		capname(&ktr->cap_needed);
-		printf(" ");
+		xo_emit(" ");
 		capname(&ktr->cap_held);
 		break;
 	}
-	printf("\n");
+	xo_emit("\n");
 }
 
 void
 ktrfault(struct ktr_fault *ktr)
 {
 
-	printf("0x%jx ", (uintmax_t)ktr->vaddr);
+	xo_emit("0x%jx ", (uintmax_t)ktr->vaddr);
 	vmprotname(ktr->type);
-	printf("\n");
+	xo_emit("\n");
 }
 
 void
@@ -1849,7 +1866,7 @@ ktrfaultend(struct ktr_faultend *ktr)
 {
 
 	vmresultname(ktr->result);
-	printf("\n");
+	xo_emit("\n");
 }
 
 #if defined(__amd64__) || defined(__i386__)
@@ -1860,31 +1877,31 @@ linux_ktrsysret(struct ktr_sysret *ktr, u_int sv_flags)
 	int error = ktr->ktr_error;
 
 	syscallname(ktr->ktr_code, sv_flags);
-	printf(" ");
+	xo_emit(" ");
 
 	if (error == 0) {
 		if (fancy) {
-			printf("%ld", (long)ret);
+			xo_emit("%ld", (long)ret);
 			if (ret < 0 || ret > 9)
-				printf("/%#lx", (unsigned long)ret);
+				xo_emit("/%#lx", (unsigned long)ret);
 		} else {
 			if (decimal)
-				printf("%ld", (long)ret);
+				xo_emit("%ld", (long)ret);
 			else
-				printf("%#lx", (unsigned long)ret);
+				xo_emit("%#lx", (unsigned long)ret);
 		}
 	} else if (error == ERESTART)
-		printf("RESTART");
+		xo_emit("RESTART");
 	else if (error == EJUSTRETURN)
-		printf("JUSTRETURN");
+		xo_emit("JUSTRETURN");
 	else {
 		if (ktr->ktr_error <= ELAST + 1)
 			error = abs(bsd_to_linux_errno[ktr->ktr_error]);
 		else
 			error = 999;
-		printf("-1 errno %d", error);
+		xo_emit("-1 errno %d", error);
 		if (fancy)
-			printf(" %s", strerror(ktr->ktr_error));
+			xo_emit(" %s", strerror(ktr->ktr_error));
 	}
 	putchar('\n');
 }
@@ -1894,6 +1911,6 @@ void
 usage(void)
 {
 	fprintf(stderr, "usage: kdump [-dEnlHRrSsTA] [-f trfile] "
-	    "[-m maxdata] [-p pid] [-t trstr]\n");
+	    "[-m maxdata] [-p pid] [-t trstr] [-O xml|json]\n");
 	exit(1);
 }
