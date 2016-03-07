@@ -1680,6 +1680,32 @@ xo_create_to_file (FILE *fp, xo_style_t style, xo_xof_flags_t flags)
 }
 
 /**
+ * Set the default handler to output to a file.
+ * @fp FILE pointer to use
+ */
+int
+xo_set_file (FILE *fp)
+{
+
+    xo_handle_t *xop = xo_default(NULL);
+
+    if (fp == NULL) {
+	    xo_failure(xop, "xo_set_file: NULL fp");
+	    return -1;
+    }
+
+    if (xop) {
+	xop->xo_opaque = fp;
+	xop->xo_write = xo_write_to_file;
+	xop->xo_close = xo_close_file;
+	xop->xo_flush = xo_flush_file;
+    }
+
+    return 0;
+
+}
+
+/**
  * Release any resources held by the handle.
  * @xop XO handle to alter (or NULL for default handle)
  */

@@ -37,6 +37,7 @@
 # The intended user-driven targets are:
 # buildworld  - rebuild *everything*, including glue to help do upgrades
 # installworld- install everything built by "buildworld"
+# checkworld  - run test suite on installed world
 # doxygen     - build API documentation of the kernel
 # update      - convenient way to update your source tree (eg: svn/svnup)
 #
@@ -72,7 +73,7 @@ SRCDIR?=	${.CURDIR}
 SUBDIR=	${SUBDIR_OVERRIDE}
 .else
 SUBDIR=	lib libexec
-.if make(install*)
+.if !defined(NO_ROOT) && (make(installworld) || make(install))
 # Ensure libraries are installed before progressing.
 SUBDIR+=.WAIT
 .endif
@@ -127,7 +128,7 @@ SUBDIR+=	${_DIR}
 # by calling 'makedb' in share/man.  This is only relevant for
 # install/distribute so they build the whatis file after every manpage is
 # installed.
-.if make(install*)
+.if make(installworld) || make(install)
 SUBDIR+=.WAIT
 .endif
 SUBDIR+=etc
@@ -1083,16 +1084,14 @@ redistribute: .MAKE .PHONY
 	    DISTRIBUTION=lib32
 .endif
 
-distrib-dirs: .MAKE .PHONY
+distrib-dirs distribution: .MAKE .PHONY
 	${_+_}cd ${.CURDIR}/etc; ${CROSSENV} PATH=${TMPPATH} ${MAKE} \
 	    ${IMAKE_INSTALL} ${IMAKE_MTREE} METALOG=${METALOG} ${.TARGET}
-
-distribution: .MAKE .PHONY
-	${_+_}cd ${.CURDIR}/etc; ${CROSSENV} PATH=${TMPPATH} ${MAKE} \
-	    ${IMAKE_INSTALL} ${IMAKE_MTREE} METALOG=${METALOG} ${.TARGET}
+.if make(distribution)
 	${_+_}cd ${.CURDIR}; ${CROSSENV} PATH=${TMPPATH} \
 		${MAKE} -f Makefile.inc1 ${IMAKE_INSTALL} \
 		METALOG=${METALOG} installconfig
+.endif
 
 #
 # buildkernel and installkernel
@@ -1324,6 +1323,20 @@ packagekernel:
 .endif
 .endif
 
+#
+#
+# checkworld
+#
+# Run test suite on installed world.
+#
+checkworld: .PHONY
+	@if [ ! -x ${LOCALBASE}/bin/kyua ]; then \
+		echo "You need kyua (devel/kyua) to run the test suite." | /usr/bin/fmt; \
+		exit 1; \
+	fi
+	${_+_}${LOCALBASE}/bin/kyua test -k ${TESTSBASE}/Kyuafile
+
+#
 #
 # doxygen
 #
@@ -1852,6 +1865,7 @@ _prebuild_libs=	${_kerberos5_lib_libasn1} \
 		${_cddl_lib_libzfs_core} \
 		${_cddl_lib_libctf} \
 		lib/libutil lib/libpjdlog ${_lib_libypclnt} lib/libz lib/msun \
+		lib/libxo \
 		${_secure_lib_libcrypto} ${_lib_libldns} \
 		${_secure_lib_libssh} ${_secure_lib_libssl} \
 		gnu/lib/libdialog
@@ -1905,9 +1919,11 @@ _cddl_lib_libuutil= cddl/lib/libuutil
 _cddl_lib_libzfs_core= cddl/lib/libzfs_core
 _cddl_lib_libctf= cddl/lib/libctf
 _cddl_lib= cddl/lib
+lib/libxo__L: lib/libutil__L
 cddl/lib/libzfs_core__L: cddl/lib/libnvpair__L
 cddl/lib/libzfs__L: lib/libgeom__L
 cddl/lib/libctf__L: lib/libz__L
+cddl/lib/libdtrace__L: lib/libxo__L
 .endif
 # cddl/lib/libdtrace requires lib/libproc and lib/librtld_db; it's only built
 # on select architectures though (see cddl/lib/Makefile)

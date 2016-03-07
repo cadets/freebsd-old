@@ -706,3 +706,59 @@ getacexpire(int *andflg, time_t *age, size_t *size)
 #endif
 	return (0);
 }
+/*
+ * Return the desired queue size from the audit control file.
+ */
+int
+getacqsize(size_t *qsz_val)
+{
+	char *str;
+	size_t val;
+	int nparsed;
+
+#ifdef HAVE_PTHREAD_MUTEX_LOCK
+	pthread_mutex_lock(&mutex);
+#endif
+	setac_locked();
+	if (getstrfromtype_locked(QSZ_CONTROL_ENTRY, &str) < 0) {
+#ifdef HAVE_PTHREAD_MUTEX_LOCK
+		pthread_mutex_unlock(&mutex);
+#endif
+		return (-2);
+	}
+	if (str == NULL) {
+#ifdef HAVE_PTHREAD_MUTEX_LOCK
+		pthread_mutex_unlock(&mutex);
+#endif
+		errno = EINVAL;
+		return (-1);
+	}
+
+	/* Trim off any leading white space. */
+	while (*str == ' ' || *str == '\t')
+		str++;
+
+	nparsed = sscanf(str, "%ju", (uintmax_t *)qsz_val);
+
+	if (nparsed != 1) {
+		errno = EINVAL;
+#ifdef HAVE_PTHREAD_MUTEX_LOCK
+		pthread_mutex_unlock(&mutex);
+#endif
+		return (-1);
+	}
+
+	/* The queue size must either be 0 or < AQ_MAXHIGH */
+	if (*qsz_val < 0 || *qsz_val > AQ_MAXHIGH) {
+#ifdef HAVE_PTHREAD_MUTEX_LOCK
+		pthread_mutex_unlock(&mutex);
+#endif
+		qsz_val = 0L;
+		errno = EINVAL;
+		return (-1);
+	}
+#ifdef HAVE_PTHREAD_MUTEX_LOCK
+	pthread_mutex_unlock(&mutex);
+#endif
+	return (0);
+}
