@@ -213,15 +213,15 @@ fatal(const char *fmt, ...)
 	verror(fmt, ap);
 	va_end(ap);
 
+	if (g_oformat)
+		xo_finish_h(g_dtp->dt_xo_hdl);
+
 	/*
 	 * Close the DTrace handle to ensure that any controlled processes are
 	 * correctly restored and continued.
 	 */
 	if (g_dtp)
 		dtrace_close(g_dtp);
-
-	if (g_oformat)
-		xo_finish_h(g_dtp->dt_xo_hdl);
 
 	exit(E_ERROR);
 }
@@ -257,14 +257,14 @@ dfatal(const char *fmt, ...)
 		printf("File '%s', line %d\n", p_errfile, errline);
 #endif
 
+	if (g_oformat)
+		xo_finish_h(g_dtp->dt_xo_hdl);
+
 	/*
 	 * Close the DTrace handle to ensure that any controlled processes are
 	 * correctly restored and continued.
 	 */
 	dtrace_close(g_dtp);
-
-	if (g_oformat)
-		xo_finish_h(g_dtp->dt_xo_hdl);
 
 	exit(E_ERROR);
 }
