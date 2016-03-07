@@ -2012,10 +2012,10 @@ main(int argc, char *argv[])
 			dfatal("failed to print aggregations");
 	}
 
-	dtrace_close(g_dtp);
-
 	if (g_oformat)
 		xo_finish_h(g_dtp->dt_xo_hdl);
+	
+	dtrace_close(g_dtp);
 
 	return (g_status);
 }
