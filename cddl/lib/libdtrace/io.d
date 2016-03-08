@@ -109,13 +109,21 @@ inline int O_TRUNC = 0x0400;
 
 typedef struct fileinfo {
 	string fi_name;
+	string fi_dirname;
+	string fi_pathname;
+	off_t fi_offset;
 	int fi_type;
 	int fi_flag;
 } fileinfo_t;
 
 #pragma D binding "1.1" translator
 translator fileinfo_t < struct file *F > {
-	fi_name = F->f_vnode->v_path == NULL ? "none" : F->f_vnode->v_path;
+	fi_name = F->f_vnode->v_path == NULL ? "<unknown>" : 
+		basename(cleanpath(F->f_vnode->v_path));
+	fi_dirname = F->f_vnode->v_path == NULL ? "<unknown>" : 
+		dirname(cleanpath(F->f_vnode->v_path));
+	fi_pathname = F->f_vnode->v_path == NULL ? "none" : F->f_vnode->v_path;
+	fi_offset = F->f_offset;
 	fi_type = F->f_type;
 	fi_flag = F->f_flag;
 };
