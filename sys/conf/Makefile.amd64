@@ -31,7 +31,7 @@ S=	../../..
 .endif
 .include "$S/conf/kern.pre.mk"
 
-INCLUDES+= -I$S/contrib/libfdt
+INCLUDES+= -I$S/contrib/libfdt -I$S/contrib/tesla/include
 
 .if !empty(DDB_ENABLED) || !empty(DTR_ENABLED) || !empty(HWPMC_ENABLED)
 CFLAGS+=	-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer
@@ -43,6 +43,8 @@ ASM_CFLAGS.mpboot.S=		${CLANG_NO_IAS34}
 %BEFORE_DEPEND
 
 %OBJS
+
+%TESLA
 
 %FILES.c
 

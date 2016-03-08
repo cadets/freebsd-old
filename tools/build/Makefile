@@ -2,6 +2,8 @@
 
 .PATH: ${.CURDIR}/../../include
 
+NO_LLVM_IR=	yes
+
 LIB=		egacy
 SRC=
 INCSGROUPS=	INCS

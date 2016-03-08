@@ -544,6 +544,16 @@ contrib/ngatm/netnatm/sig/sig_unimsgcpy.c optional ngatm_uni \
 	compile-with "${NORMAL_C} -I$S/contrib/ngatm"
 contrib/ngatm/netnatm/sig/sig_verify.c optional ngatm_uni \
 	compile-with "${NORMAL_C} -I$S/contrib/ngatm"
+contrib/tesla/libtesla/tesla_class.c		optional tesla
+contrib/tesla/libtesla/tesla_class_global.c	optional tesla
+contrib/tesla/libtesla/tesla_class_perthread.c	optional tesla
+contrib/tesla/libtesla/tesla_debug.c		optional tesla
+contrib/tesla/libtesla/tesla_dtrace.c		optional tesla kdtrace_hooks
+contrib/tesla/libtesla/tesla_notification.c	optional tesla
+contrib/tesla/libtesla/tesla_store.c		optional tesla
+contrib/tesla/libtesla/tesla_update.c		optional tesla
+contrib/tesla/libtesla/tesla_util.c		optional tesla
+contrib/tesla/test/tesla_test.c			optional tesla tesla_test
 crypto/blowfish/bf_ecb.c	optional ipsec
 crypto/blowfish/bf_skey.c	optional crypto | ipsec
 crypto/camellia/camellia.c	optional crypto | ipsec

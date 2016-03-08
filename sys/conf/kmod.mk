@@ -105,6 +105,9 @@ CFLAGS+=	-DHAVE_KERNEL_OPTION_HEADERS -include ${KERNBUILDDIR}/opt_global.h
 # set because there are no standard paths for non-headers.
 CFLAGS+=	-I. -I${SYSDIR}
 
+# Add -I path for TESLA headers as they may be included from anywhere.
+CFLAGS+=	-I${SYSDIR}/contrib/tesla/include
+
 CFLAGS.gcc+=	-finline-limit=${INLINE_LIMIT}
 CFLAGS.gcc+=	-fms-extensions
 CFLAGS.gcc+= --param inline-unit-growth=100

@@ -46,6 +46,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/event.h>
 #include <sys/extattr.h>
 #include <sys/proc.h>
+#include <sys/tesla-kernel.h>
+
+/* Required for TESLA assertion. */
+#include <security/mac/mac_framework.h>
 
 #include <ufs/ufs/quota.h>
 #include <ufs/ufs/inode.h>
@@ -360,6 +364,13 @@ ufs_getacl(ap)
 	} */ *ap;
 {
 
+#ifdef MAC
+#if defined(TESLA_MAC_FS) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_getacl(ANY(ptr), ap->a_vp,
+	    ap->a_type) == 0);
+#endif
+#endif
+
 	if ((ap->a_vp->v_mount->mnt_flag & (MNT_ACLS | MNT_NFS4ACLS)) == 0)
 		return (EOPNOTSUPP);
 
@@ -610,6 +621,18 @@ ufs_setacl(ap)
 		struct thread *td;
 	} */ *ap;
 {
+
+#ifdef MAC
+#if defined(TESLA_MAC_FS) || defined(TESLA_MAC_ALL)
+	if (ap->a_aclp == NULL)
+		TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_deleteacl(ANY(ptr),
+		    ap->a_vp, ap->a_type) == 0);
+	else
+		TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_setacl(ANY(ptr),
+		    ap->a_vp, ap->a_type, ap->a_aclp) == 0);
+#endif
+#endif
+
 	if ((ap->a_vp->v_mount->mnt_flag & (MNT_ACLS | MNT_NFS4ACLS)) == 0)
 		return (EOPNOTSUPP);
 

@@ -2,7 +2,9 @@
 
 MK_PROFILE=	no
 MK_SSP=		no
+NO_LLVM_IR=No SRCS
 
+.include <bsd.own.mk>
 .include <src.opts.mk>
 .include "${.CURDIR}/../../usr.bin/cc/Makefile.tgt"
 

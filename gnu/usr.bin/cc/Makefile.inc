@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+NO_LLVM_IR=version.c fails
+
 .include <src.opts.mk>
 .include "../Makefile.inc"
 

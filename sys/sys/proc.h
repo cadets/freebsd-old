@@ -176,6 +176,7 @@ struct sbuf;
 struct sleepqueue;
 struct syscall_args;
 struct td_sched;
+struct tesla_store;
 struct thread;
 struct trapframe;
 struct turnstile;
@@ -335,6 +336,7 @@ struct thread {
 	void		*td_emuldata;	/* Emulator state data */
 	int		td_lastcpu;	/* (t) Last cpu we were on. */
 	int		td_oncpu;	/* (t) Which cpu we are on. */
+	struct tesla_store	*td_tesla;	/* (k) TESLA per-thread state */
 };
 
 struct mtx *thread_lock_block(struct thread *);

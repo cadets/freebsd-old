@@ -68,6 +68,10 @@ __FBSDID("$FreeBSD$");
 #endif
 #include <libxo/xo.h>
 
+#ifdef TESLA
+#include "tesla-macros.h"
+#endif
+
 #include "ls.h"
 #include "extern.h"
 
@@ -597,6 +601,11 @@ traverse(int argc, char *argv[], int options)
 static void
 display(const FTSENT *p, FTSENT *list, int options)
 {
+#ifdef	TESLA
+	TESLA_GLOBAL(since(called(main), called(traverse)));
+	TESLA_GLOBAL(before(returned(main), returned(display)));
+#endif
+
 	struct stat *sp;
 	DISPLAY d;
 	FTSENT *cur;

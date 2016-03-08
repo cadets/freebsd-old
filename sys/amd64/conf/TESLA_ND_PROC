@@ -1,0 +1,5 @@
+include GENERIC_NODEBUG
+ident TESLA_ND_PROC
+
+options TESLA
+options TESLA_PROC

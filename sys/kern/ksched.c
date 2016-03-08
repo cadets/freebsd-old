@@ -47,6 +47,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/posix4.h>
 #include <sys/resource.h>
 #include <sys/sched.h>
+#include <sys/tesla-kernel.h>
 
 FEATURE(kposix_priority_scheduling, "POSIX P1003.1B realtime extensions");
 
@@ -130,6 +131,10 @@ ksched_setparam(struct ksched *ksched,
 {
 	int e, policy;
 
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_cansched(ANY(ptr), td->td_proc) == 0);
+#endif
+
 	e = getscheduler(ksched, td, &policy);
 	if (e == 0)
 		e = ksched_setscheduler(ksched, td, policy, param);
@@ -141,6 +146,10 @@ ksched_getparam(struct ksched *ksched, struct thread *td,
     struct sched_param *param)
 {
 	struct rtprio rtp;
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_cansee(ANY(ptr), td->td_proc) == 0);
+#endif
 
 	pri_to_rtp(td, &rtp);
 	if (RTP_PRIO_IS_REALTIME(rtp.type))
@@ -172,6 +181,10 @@ ksched_setscheduler(struct ksched *ksched, struct thread *td, int policy,
 {
 	struct rtprio rtp;
 	int e;
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_cansched(ANY(ptr), td->td_proc) == 0);
+#endif
 
 	e = 0;
 	switch(policy) {
@@ -207,6 +220,10 @@ ksched_setscheduler(struct ksched *ksched, struct thread *td, int policy,
 int
 ksched_getscheduler(struct ksched *ksched, struct thread *td, int *policy)
 {
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_cansee(ANY(ptr), td->td_proc) == 0);
+#endif
 
 	return (getscheduler(ksched, td, policy));
 }
@@ -266,6 +283,10 @@ int
 ksched_rr_get_interval(struct ksched *ksched, struct thread *td,
     struct timespec *timespec)
 {
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_cansee(ANY(ptr), td->td_proc) == 0);
+#endif
 
 	*timespec = ksched->rr_interval;
 	return (0);

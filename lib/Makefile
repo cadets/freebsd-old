@@ -101,6 +101,7 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	libsysdecode \
 	libtacplus \
 	${_libtelnet} \
+	libtesla \
 	${_libthr} \
 	libthread_db \
 	libucl \

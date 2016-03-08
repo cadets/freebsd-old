@@ -51,6 +51,7 @@
 #include <sys/resourcevar.h>
 #include <sys/sbuf.h>
 #include <sys/sysent.h>
+#include <sys/tesla-kernel.h>
 #include <sys/tty.h>
 
 #include <vm/vm.h>
@@ -72,6 +73,10 @@ procfs_doprocstatus(PFS_FILL_ARGS)
 	char *sep;
 	int pid, ppid, pgid, sid;
 	int i;
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_cansee(ANY(ptr), p) == 0);
+#endif
 
 	pid = p->p_pid;
 	PROC_LOCK(p);

@@ -163,11 +163,21 @@ kernel-clean:
 	    linterrs tags vers.c \
 	    vnode_if.c vnode_if.h vnode_if_newproto.h vnode_if_typedef.h \
 	    ${MFILES:T:S/.m$/.c/} ${MFILES:T:S/.m$/.h/} \
+	    ${TESLA_FILES} ${OIRS} ${INSTR_IRS} ${INSTR_OBJS} \
+	    tesla.manifest \
 	    ${CLEAN}
 
 lint: ${LNFILES}
 	${LINT} ${LINTKERNFLAGS} ${CFLAGS:M-[DILU]*} ${.ALLSRC} 2>&1 | \
 	    tee -a linterrs
+
+.if ${MK_TESLA} != "no"
+tesla.manifest: ${TESLA_FILES}
+	${TESLA} cat -o ${.TARGET} ${TESLA_FILES}
+.else
+tesla.manifest:
+	touch ${.TARGET}
+.endif
 
 # This is a hack.  BFD "optimizes" away dynamic mode if there are no
 # dynamic references.  We could probably do a '-Bforcedynamic' mode like

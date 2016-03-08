@@ -71,7 +71,9 @@ __DEFAULT_NO_OPTIONS = \
     FAST_DEPEND \
     CTF \
     INSTALL_AS_USER \
-    STALE_STAGED
+    SOAAP \
+    STALE_STAGED \
+    TESLA
 
 # meta mode related
 __DEFAULT_DEPENDENT_OPTIONS = \
