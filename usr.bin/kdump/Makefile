@@ -9,7 +9,7 @@ PROG=		kdump
 SRCS=		kdump_subr.c kdump_subr.h kdump.c subr.c
 CFLAGS+=	-I${.CURDIR}/../ktrace -I${.CURDIR} -I${.CURDIR}/../.. -I.
 
-LIBADD=		sysdecode
+LIBADD=		sysdecode xo
 .if ${MK_CASPER} != "no"
 LIBADD+=	capsicum
 CFLAGS+=-DHAVE_LIBCAPSICUM

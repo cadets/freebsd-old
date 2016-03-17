@@ -154,7 +154,7 @@ struct vnode {
 	struct label *v_label;			/* MAC label for vnode */
 	struct lockf *v_lockf;		/* Byte-level advisory lock list */
 	struct rangelock v_rl;			/* Byte-range lock */
-
+	char *v_path;				/* Pointer to path from open */
 	/*
 	 * clustering stuff
 	 */
