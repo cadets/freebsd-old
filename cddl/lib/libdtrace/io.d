@@ -118,11 +118,11 @@ typedef struct fileinfo {
 
 #pragma D binding "1.1" translator
 translator fileinfo_t < struct file *F > {
-	fi_name = F->f_vnode->v_path == NULL ? "<unknown>" : 
+	fi_name = F->f_vnode == NULL ? "<unknown>" : 
 		basename(cleanpath(F->f_vnode->v_path));
-	fi_dirname = F->f_vnode->v_path == NULL ? "<unknown>" : 
+	fi_dirname = F->f_vnode == NULL ? "<unknown>" : 
 		dirname(cleanpath(F->f_vnode->v_path));
-	fi_pathname = F->f_vnode->v_path == NULL ? "none" : F->f_vnode->v_path;
+	fi_pathname = F->f_vnode == NULL ? "<unknown>" : F->f_vnode->v_path;
 	fi_offset = F->f_offset;
 	fi_type = F->f_type;
 	fi_flag = F->f_flag;
