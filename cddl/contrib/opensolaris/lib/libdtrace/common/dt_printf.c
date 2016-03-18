@@ -726,6 +726,74 @@ pfprint_pct(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 
 /*ARGSUSED*/
 int
+pfprint_open_list_item(dtrace_hdl_t *dtp, FILE *fp, const char *format,
+    const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
+{
+	if (dtp->dt_instance != NULL)
+		free(dtp->dt_instance);
+
+	dtp->dt_instance = malloc(size + 1);
+
+	bcopy(addr, dtp->dt_instance, size);
+	dtp->dt_instance[size] = '\0';
+
+	xo_open_instance(dtp->dt_instance);
+
+	return (0);
+}
+/*ARGSUSED*/
+int
+pfprint_close_list_item(dtrace_hdl_t *dtp, FILE *fp, const char *format,
+    const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
+{
+	if (dtp->dt_instance != NULL)
+		free(dtp->dt_instance);
+
+	dtp->dt_instance = malloc(size + 1);
+
+	bcopy(addr, dtp->dt_instance, size);
+	dtp->dt_instance[size] = '\0';
+
+	xo_close_instance(dtp->dt_instance);
+
+	return (0);
+}
+/*ARGSUSED*/
+int
+pfprint_open_list(dtrace_hdl_t *dtp, FILE *fp, const char *format,
+    const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
+{
+	if (dtp->dt_instance != NULL)
+		free(dtp->dt_instance);
+
+	dtp->dt_instance = malloc(size + 1);
+
+	bcopy(addr, dtp->dt_instance, size);
+	dtp->dt_instance[size] = '\0';
+
+	xo_open_list(dtp->dt_instance);
+
+	return (0);
+}
+/*ARGSUSED*/
+int
+pfprint_close_list(dtrace_hdl_t *dtp, FILE *fp, const char *format,
+    const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
+{
+	if (dtp->dt_instance != NULL)
+		free(dtp->dt_instance);
+
+	dtp->dt_instance = malloc(size + 1);
+
+	bcopy(addr, dtp->dt_instance, size);
+	dtp->dt_instance[size] = '\0';
+
+	xo_close_list(dtp->dt_instance);
+
+	return (0);
+}
+/*ARGSUSED*/
+int
 pfprint_mr(dtrace_hdl_t *dtp, FILE *fp, const char *format,
     const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
 {
@@ -821,6 +889,8 @@ static const dt_pfconv_t _dtrace_conversions[] = {
 { "o", "o", pfproto_xint, pfcheck_xint, pfprint_uint },
 { "p", "x", pfproto_addr, pfcheck_addr, pfprint_uint },
 { "P", "s", "uint16_t", pfcheck_type, pfprint_port },
+{ "q", "q", "machine readable list", pfcheck_mr, pfprint_open_list_item },
+{ "Q", "Q", "machine readable close list", pfcheck_mr, pfprint_close_list_item },
 { "s", "s", "char [] or string (or use stringof)", pfcheck_str, pfprint_cstr },
 { "S", "s", pfproto_cstr, pfcheck_str, pfprint_estr },
 { "T", "s", "int64_t", pfcheck_time, pfprint_time822 },
@@ -835,6 +905,8 @@ static const dt_pfconv_t _dtrace_conversions[] = {
 { "x", "x", pfproto_xint, pfcheck_xint, pfprint_uint },
 { "X", "X", pfproto_xint, pfcheck_xint, pfprint_uint },
 { "Y", "s", "int64_t", pfcheck_time, pfprint_time },
+{ "z", "z", "machine readable list", pfcheck_mr, pfprint_open_list },
+{ "Z", "Z", "machine readable close list", pfcheck_mr, pfprint_close_list },
 { "%", "%", "void", pfcheck_type, pfprint_pct },
 { NULL, NULL, NULL, NULL, NULL }
 };
