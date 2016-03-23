@@ -47,16 +47,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/domain.h>
 #include <sys/protosw.h>
 #include <sys/uio.h>
-#include <sys/sdt.h>
-
-SDT_PROVIDER_DEFINE(mbuf);
-
-SDT_PROBE_DEFINE(mbuf, , , m__gethdr);
-SDT_PROBE_DEFINE(mbuf, , , m__get);
-SDT_PROBE_DEFINE(mbuf, , , m__getcl);
-SDT_PROBE_DEFINE(mbuf, , , m__clget);
-SDT_PROBE_DEFINE(mbuf, , , m__free);
-SDT_PROBE_DEFINE(mbuf, , , m__freem);
 
 int	max_linkhdr;
 int	max_protohdr;
@@ -275,7 +265,6 @@ m_getm2(struct mbuf *m, int len, int how, short type, int flags)
 void
 m_freem(struct mbuf *mb)
 {
-	MBUF_PROBE1(m__freem, mb);
 
 	while (mb != NULL)
 		mb = m_free(mb);

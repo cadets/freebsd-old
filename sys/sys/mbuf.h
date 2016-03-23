@@ -44,25 +44,6 @@
 #endif
 #endif
 
-#ifdef _KERNEL
-#include <sys/sdt.h>
-
-#define	MBUF_PROBE1(probe, arg0)					\
-	SDT_PROBE1(mbuf, , , probe, arg0)
-#define	MBUF_PROBE2(probe, arg0, arg1)					\
-	SDT_PROBE2(mbuf, , , probe, arg0, arg1)
-
-SDT_PROVIDER_DECLARE(mbuf);
-
-SDT_PROBE_DECLARE(mbuf, , , m__gethdr);
-SDT_PROBE_DECLARE(mbuf, , , m__get);
-SDT_PROBE_DECLARE(mbuf, , , m__getcl);
-SDT_PROBE_DECLARE(mbuf, , , m__clget);
-SDT_PROBE_DECLARE(mbuf, , , m__free);
-SDT_PROBE_DECLARE(mbuf, , , m__freem);
-
-#endif /* _KERNEL */
-
 /*
  * Mbufs are of a single size, MSIZE (sys/param.h), which includes overhead.
  * An mbuf may add a single "mbuf cluster" of size MCLBYTES (also in
@@ -661,7 +642,6 @@ m_get(int how, short type)
 {
 	struct mb_args args;
 
-	MBUF_PROBE2(m__get, how, type);
 	args.flags = 0;
 	args.type = type;
 	return (uma_zalloc_arg(zone_mbuf, &args, how));
@@ -689,7 +669,6 @@ m_gethdr(int how, short type)
 {
 	struct mb_args args;
 
-	MBUF_PROBE2(m__gethdr, how, type);
 	args.flags = M_PKTHDR;
 	args.type = type;
 	return (uma_zalloc_arg(zone_mbuf, &args, how));
@@ -700,7 +679,6 @@ m_getcl(int how, short type, int flags)
 {
 	struct mb_args args;
 
-	MBUF_PROBE2(m__getcl, how, type);
 	args.flags = flags;
 	args.type = type;
 	return (uma_zalloc_arg(zone_pack, &args, how));
@@ -712,8 +690,6 @@ m_clget(struct mbuf *m, int how)
 
 	KASSERT((m->m_flags & M_EXT) == 0, ("%s: mbuf %p has M_EXT",
 	    __func__, m));
-	MBUF_PROBE2(m__clget, m, how);
-
 	m->m_ext.ext_buf = (char *)NULL;
 	uma_zalloc_arg(zone_clust, m, how);
 	/*
@@ -1196,7 +1172,6 @@ m_free(struct mbuf *m)
 {
 	struct mbuf *n = m->m_next;
 
-	MBUF_PROBE1(m__free, m);
 	if ((m->m_flags & (M_PKTHDR|M_NOFREE)) == (M_PKTHDR|M_NOFREE))
 		m_tag_delete_chain(m, NULL);
 	if (m->m_flags & M_EXT)
