@@ -178,6 +178,12 @@ DB_SHOW_COMMAND(vtop, db_show_vtop)
 #define	debugf(fmt, args...)
 #endif
 
+#if defined(COMPAT_FREEBSD4) || defined(COMPAT_FREEBSD5) || \
+    defined(COMPAT_FREEBSD6) || defined(COMPAT_FREEBSD7) || \
+    defined(COMPAT_FREEBSD9)
+#error FreeBSD/arm doesn't provide compatibility with releases prior to 10
+#endif
+
 struct pcpu __pcpu[MAXCPU];
 struct pcpu *pcpup = &__pcpu[0];
 
@@ -1305,7 +1311,7 @@ set_stackptrs(int cpu)
 
 static void
 add_efi_map_entries(struct efi_map_header *efihdr, struct mem_region *mr,
-    int *mrcnt, uint32_t *memsize)
+    int *mrcnt)
 {
 	struct efi_md *map, *p;
 	const char *type;
@@ -1330,7 +1336,6 @@ add_efi_map_entries(struct efi_map_header *efihdr, struct mem_region *mr,
 	};
 
 	*mrcnt = 0;
-	*memsize = 0;
 
 	/*
 	 * Memory map data provided by UEFI via the GetMemoryMap
@@ -1402,7 +1407,6 @@ add_efi_map_entries(struct efi_map_header *efihdr, struct mem_region *mr,
 	}
 
 	*mrcnt = j;
-	*memsize = memory_size;
 }
 #endif /* EFI */
 
@@ -1445,7 +1449,8 @@ initarm(struct arm_boot_params *abp)
 	struct pv_addr kernel_l1pt;
 	struct pv_addr dpcpu;
 	vm_offset_t dtbp, freemempos, l2_start, lastaddr;
-	uint32_t memsize, l2size;
+	uint64_t memsize;
+	uint32_t l2size;
 	char *env;
 	void *kmdp;
 	u_int l1pagetable;
@@ -1714,7 +1719,6 @@ initarm(struct arm_boot_params *abp)
 	struct mem_region mem_regions[FDT_MEM_REGIONS];
 	vm_paddr_t lastaddr;
 	vm_offset_t dtbp, kernelstack, dpcpu;
-	uint32_t memsize;
 	char *env;
 	void *kmdp;
 	int err_devmap, mem_regions_sz;
@@ -1726,7 +1730,6 @@ initarm(struct arm_boot_params *abp)
 	arm_physmem_kernaddr = abp->abp_physaddr;
 	lastaddr = parse_boot_param(abp) - KERNVIRTADDR + arm_physmem_kernaddr;
 
-	memsize = 0;
 	set_cpufuncs();
 	cpuinfo_init();
 
@@ -1754,14 +1757,12 @@ initarm(struct arm_boot_params *abp)
 	efihdr = (struct efi_map_header *)preload_search_info(kmdp,
 	    MODINFO_METADATA | MODINFOMD_EFI_MAP);
 	if (efihdr != NULL) {
-		add_efi_map_entries(efihdr, mem_regions, &mem_regions_sz,
-		   &memsize);
+		add_efi_map_entries(efihdr, mem_regions, &mem_regions_sz);
 	} else
 #endif
 	{
 		/* Grab physical memory regions information from device tree. */
-		if (fdt_get_mem_regions(mem_regions, &mem_regions_sz,
-		    &memsize) != 0)
+		if (fdt_get_mem_regions(mem_regions, &mem_regions_sz,NULL) != 0)
 			panic("Cannot get physical memory regions");
 	}
 	arm_physmem_hardware_regions(mem_regions, mem_regions_sz);

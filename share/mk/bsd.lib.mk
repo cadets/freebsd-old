@@ -128,11 +128,6 @@ PO_FLAG=-pg
 	    -c ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
 
-.if !defined(_SKIP_BUILD)
-all: beforebuild .WAIT
-beforebuild: objwarn
-.endif
-
 _LIBDIR:=${LIBDIR}
 _SHLIBDIR:=${SHLIBDIR}
 
@@ -146,6 +141,8 @@ SHLIB_NAME_FULL=${SHLIB_NAME}.full
 DEBUGFILEDIR=${DEBUGDIR}${_SHLIBDIR}
 .else
 DEBUGFILEDIR=${_SHLIBDIR}/.debug
+.endif
+.if !exists(${DESTDIR}${DEBUGFILEDIR})
 DEBUGMKDIR=
 .endif
 .else
@@ -202,7 +199,7 @@ CLEANFILES+=	${SOBJS}
 .if defined(SHLIB_NAME)
 _LIBS+=		${SHLIB_NAME}
 
-SOLINKOPTS=	-shared -Wl,-x
+SOLINKOPTS+=	-shared -Wl,-x
 .if !defined(ALLOW_SHARED_TEXTREL)
 .if defined(LD_FATAL_WARNINGS) && ${LD_FATAL_WARNINGS} == "no"
 SOLINKOPTS+=	-Wl,--no-fatal-warnings
@@ -238,7 +235,6 @@ ${SHLIB_NAME_FULL}: beforelinking
 ${SHLIB_LINK:R}.ld: ${.CURDIR}/${SHLIB_LDSCRIPT}
 	sed -e 's,@@SHLIB@@,${_LDSCRIPTROOT}${_SHLIBDIR}/${SHLIB_NAME},g' \
 	    -e 's,@@LIBDIR@@,${_LDSCRIPTROOT}${_LIBDIR},g' \
-	    -e 's,/[^ ]*/,,g' \
 	    ${.ALLSRC} > ${.TARGET}
 
 ${SHLIB_NAME_FULL}: ${SHLIB_LINK:R}.ld
@@ -304,7 +300,7 @@ CLEANFILES+=	${_LIBS}
 .endif
 
 .if ${MK_MAN} != "no" && !defined(LIBRARIES_ONLY)
-all: _manpages
+all: all-man
 .endif
 .endif
 
@@ -342,6 +338,9 @@ _SHLINSTALLFLAGS:=	${_SHLINSTALLFLAGS${ie}}
 .if !defined(INTERNALLIB)
 realinstall: _libinstall
 .ORDER: beforeinstall _libinstall
+.if target(${SHLIB_LINK:R}.ld)
+_libinstall: ${SHLIB_LINK:R}.ld
+.endif
 _libinstall:
 .if defined(LIB) && !empty(LIB) && ${MK_INSTALLLIB} != "no"
 	${INSTALL} -C -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
@@ -368,6 +367,7 @@ _libinstall:
 	${INSTALL} -S -C -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
 	    ${_INSTALLFLAGS} ${SHLIB_LINK:R}.ld \
 	    ${DESTDIR}${_LIBDIR}/${SHLIB_LINK}
+	rm -f ${SHLIB_LINK:R}.ld
 .for _SHLIB_LINK_LINK in ${SHLIB_LDSCRIPT_LINKS}
 	${INSTALL_SYMLINK} ${SHLIB_LINK} ${DESTDIR}${_LIBDIR}/${_SHLIB_LINK_LINK}
 .endfor
@@ -405,8 +405,8 @@ _libinstall:
 .include <bsd.links.mk>
 
 .if ${MK_MAN} != "no" && !defined(LIBRARIES_ONLY)
-realinstall: _maninstall
-.ORDER: beforeinstall _maninstall
+realinstall: maninstall
+.ORDER: beforeinstall maninstall
 .endif
 
 .endif
@@ -420,28 +420,37 @@ lint: ${SRCS:M*.c}
 .include <bsd.man.mk>
 .endif
 
-.include <bsd.dep.mk>
-
-.if ${MK_FAST_DEPEND} == "yes" || !exists(${.OBJDIR}/${DEPENDFILE})
 .if defined(LIB) && !empty(LIB)
-.if !exists(${.OBJDIR}/${DEPENDFILE})
-${OBJS} ${STATICOBJS} ${POBJS}: ${SRCS:M*.h}
-.endif
+OBJS_DEPEND_GUESS+= ${SRCS:M*.h}
 .for _S in ${SRCS:N*.[hly]}
-${_S:R}.po: ${_S}
+OBJS_DEPEND_GUESS.${_S:R}.po=	${_S}
 .endfor
 .endif
 .if defined(SHLIB_NAME) || \
     defined(INSTALL_PIC_ARCHIVE) && defined(LIB) && !empty(LIB)
-.if !exists(${.OBJDIR}/${DEPENDFILE})
-${SOBJS}: ${SRCS:M*.h}
-.endif
 .for _S in ${SRCS:N*.[hly]}
-${_S:R}.So: ${_S}
+OBJS_DEPEND_GUESS.${_S:R}.So=	${_S}
+.endfor
+.endif
+
+.include <bsd.dep.mk>
+
+.if ${MK_FAST_DEPEND} == "no" && !exists(${.OBJDIR}/${DEPENDFILE})
+.if defined(LIB) && !empty(LIB)
+${OBJS} ${STATICOBJS} ${POBJS}: ${OBJS_DEPEND_GUESS}
+.for _S in ${SRCS:N*.[hly]}
+${_S:R}.po: ${OBJS_DEPEND_GUESS.${_S:R}.po}
+.endfor
+.endif
+.if defined(SHLIB_NAME) || \
+    defined(INSTALL_PIC_ARCHIVE) && defined(LIB) && !empty(LIB)
+${SOBJS}: ${OBJS_DEPEND_GUESS}
+.for _S in ${SRCS:N*.[hly]}
+${_S:R}.So: ${OBJS_DEPEND_GUESS.${_S:R}.So}
 .endfor
 .endif
 .endif
 
+.include <bsd.clang-analyze.mk>
 .include <bsd.obj.mk>
-
 .include <bsd.sys.mk>

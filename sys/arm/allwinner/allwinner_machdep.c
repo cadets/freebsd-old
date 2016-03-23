@@ -50,7 +50,8 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/fdt/fdt_common.h>
 
-#include <arm/allwinner/a10_wdog.h>
+#include <arm/allwinner/aw_mp.h>
+#include <arm/allwinner/aw_wdog.h>
 #include <arm/allwinner/allwinner_machdep.h>
 
 #include "platform_if.h"
@@ -75,6 +76,23 @@ a20_attach(platform_t plat)
 	return (0);
 }
 
+static int
+a31_attach(platform_t plat)
+{
+	soc_type = ALLWINNERSOC_A31;
+	soc_family = ALLWINNERSOC_SUN6I;
+
+	return (0);
+}
+
+static int
+a31s_attach(platform_t plat)
+{
+	soc_type = ALLWINNERSOC_A31S;
+	soc_family = ALLWINNERSOC_SUN6I;
+
+	return (0);
+}
 
 static vm_offset_t
 allwinner_lastaddr(platform_t plat)
@@ -117,7 +135,7 @@ bus_dma_get_range_nb(void)
 void
 cpu_reset()
 {
-	a10wd_watchdog_reset();
+	aw_wdog_watchdog_reset();
 	printf("Reset failed!\n");
 	while (1);
 }
@@ -135,6 +153,34 @@ static platform_method_t a20_methods[] = {
 	PLATFORMMETHOD(platform_lastaddr,       allwinner_lastaddr),
 	PLATFORMMETHOD(platform_devmap_init,    allwinner_devmap_init),
 
+#ifdef SMP
+	PLATFORMMETHOD(platform_mp_start_ap,	a20_mp_start_ap),
+	PLATFORMMETHOD(platform_mp_setmaxid,	aw_mp_setmaxid),
+#endif
+	PLATFORMMETHOD_END,
+};
+
+static platform_method_t a31_methods[] = {
+	PLATFORMMETHOD(platform_attach,         a31_attach),
+	PLATFORMMETHOD(platform_lastaddr,       allwinner_lastaddr),
+	PLATFORMMETHOD(platform_devmap_init,    allwinner_devmap_init),
+
+#ifdef SMP
+	PLATFORMMETHOD(platform_mp_start_ap,	a31_mp_start_ap),
+	PLATFORMMETHOD(platform_mp_setmaxid,	aw_mp_setmaxid),
+#endif
+	PLATFORMMETHOD_END,
+};
+
+static platform_method_t a31s_methods[] = {
+	PLATFORMMETHOD(platform_attach,         a31s_attach),
+	PLATFORMMETHOD(platform_lastaddr,       allwinner_lastaddr),
+	PLATFORMMETHOD(platform_devmap_init,    allwinner_devmap_init),
+
+#ifdef SMP
+	PLATFORMMETHOD(platform_mp_start_ap,	a31_mp_start_ap),
+	PLATFORMMETHOD(platform_mp_setmaxid,	aw_mp_setmaxid),
+#endif
 	PLATFORMMETHOD_END,
 };
 
@@ -152,3 +198,5 @@ allwinner_soc_family(void)
 
 FDT_PLATFORM_DEF(a10, "a10", 0, "allwinner,sun4i-a10");
 FDT_PLATFORM_DEF(a20, "a20", 0, "allwinner,sun7i-a20");
+FDT_PLATFORM_DEF(a31, "a31", 0, "allwinner,sun6i-a31");
+FDT_PLATFORM_DEF(a31s, "a31s", 0, "allwinner,sun6i-a31s");
