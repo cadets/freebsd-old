@@ -51,20 +51,13 @@
 	SDT_PROBE1(mbuf, , , probe, arg0)
 #define	MBUF_PROBE2(probe, arg0, arg1)					\
 	SDT_PROBE2(mbuf, , , probe, arg0, arg1)
-#define	MBUF_PROBE3(probe, arg0, arg1, arg2)			\
-	SDT_PROBE3(mbuf, , , probe, arg0, arg1, arg2)
-#define	MBUF_PROBE4(probe, arg0, arg1, arg2, arg3)				\
-	SDT_PROBE4(mbuf, , , probe, arg0, arg1, arg2, arg3)
 
 SDT_PROVIDER_DECLARE(mbuf);
 
-SDT_PROBE_DECLARE(mbuf, , , m__init);
 SDT_PROBE_DECLARE(mbuf, , , m__gethdr);
 SDT_PROBE_DECLARE(mbuf, , , m__get);
 SDT_PROBE_DECLARE(mbuf, , , m__getcl);
 SDT_PROBE_DECLARE(mbuf, , , m__clget);
-SDT_PROBE_DECLARE(mbuf, , , m__cljget);
-SDT_PROBE_DECLARE(mbuf, , , m__cljset);
 SDT_PROBE_DECLARE(mbuf, , , m__free);
 SDT_PROBE_DECLARE(mbuf, , , m__freem);
 
@@ -649,7 +642,6 @@ m_init(struct mbuf *m, uma_zone_t zone __unused, int size __unused, int how,
 {
 	int error;
 
-	MBUF_PROBE4(m__init, m, how, type, flags);
 	m->m_next = NULL;
 	m->m_nextpkt = NULL;
 	m->m_data = m->m_dat;
@@ -667,14 +659,12 @@ m_init(struct mbuf *m, uma_zone_t zone __unused, int size __unused, int how,
 static __inline struct mbuf *
 m_get(int how, short type)
 {
-	struct mbuf *m;
 	struct mb_args args;
 
+	MBUF_PROBE2(m__get, how, type);
 	args.flags = 0;
 	args.type = type;
-	m = uma_zalloc_arg(zone_mbuf, &args, how);
-	MBUF_PROBE3(m__get, how, type, m);
-	return (m);
+	return (uma_zalloc_arg(zone_mbuf, &args, how));
 }
 
 /*
@@ -697,27 +687,23 @@ m_getclr(int how, short type)
 static __inline struct mbuf *
 m_gethdr(int how, short type)
 {
-	struct mbuf *m;
 	struct mb_args args;
 
+	MBUF_PROBE2(m__gethdr, how, type);
 	args.flags = M_PKTHDR;
 	args.type = type;
-	m = uma_zalloc_arg(zone_mbuf, &args, how);
-	MBUF_PROBE3(m__gethdr, how, type, m);
-	return (m);
+	return (uma_zalloc_arg(zone_mbuf, &args, how));
 }
 
 static __inline struct mbuf *
 m_getcl(int how, short type, int flags)
 {
-	struct mbuf *m;
 	struct mb_args args;
 
+	MBUF_PROBE2(m__getcl, how, type);
 	args.flags = flags;
 	args.type = type;
-	m = uma_zalloc_arg(zone_pack, &args, how);
-	MBUF_PROBE3(m__getcl, how, type, m);
-	return (m);
+	return (uma_zalloc_arg(zone_pack, &args, how));
 }
 
 static __inline int
@@ -726,6 +712,7 @@ m_clget(struct mbuf *m, int how)
 
 	KASSERT((m->m_flags & M_EXT) == 0, ("%s: mbuf %p has M_EXT",
 	    __func__, m));
+	MBUF_PROBE2(m__clget, m, how);
 
 	m->m_ext.ext_buf = (char *)NULL;
 	uma_zalloc_arg(zone_clust, m, how);
@@ -737,7 +724,6 @@ m_clget(struct mbuf *m, int how)
 		zone_drain(zone_pack);
 		uma_zalloc_arg(zone_clust, m, how);
 	}
-	MBUF_PROBE2(m__clget, m, how);
 	return (m->m_flags & M_EXT);
 }
 
@@ -752,8 +738,6 @@ static __inline void *
 m_cljget(struct mbuf *m, int how, int size)
 {
 	uma_zone_t zone;
-	
-	MBUF_PROBE3(m__cljget, m, how, size);
 
 	if (m != NULL) {
 		KASSERT((m->m_flags & M_EXT) == 0, ("%s: mbuf %p has M_EXT",
@@ -771,7 +755,6 @@ m_cljset(struct mbuf *m, void *cl, int type)
 	uma_zone_t zone;
 	int size;
 
-	MBUF_PROBE3(m__cljset, m, cl, type);
 	switch (type) {
 	case EXT_CLUSTER:
 		size = MCLBYTES;

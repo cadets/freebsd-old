@@ -51,13 +51,10 @@ __FBSDID("$FreeBSD$");
 
 SDT_PROVIDER_DEFINE(mbuf);
 
-SDT_PROBE_DEFINE(mbuf, , , m__init);
 SDT_PROBE_DEFINE(mbuf, , , m__gethdr);
 SDT_PROBE_DEFINE(mbuf, , , m__get);
 SDT_PROBE_DEFINE(mbuf, , , m__getcl);
 SDT_PROBE_DEFINE(mbuf, , , m__clget);
-SDT_PROBE_DEFINE(mbuf, , , m__cljget);
-SDT_PROBE_DEFINE(mbuf, , , m__cljset);
 SDT_PROBE_DEFINE(mbuf, , , m__free);
 SDT_PROBE_DEFINE(mbuf, , , m__freem);
 
