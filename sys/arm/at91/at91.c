@@ -147,7 +147,7 @@ at91_attach(device_t dev)
 
 static struct resource *
 at91_alloc_resource(device_t dev, device_t child, int type, int *rid,
-    u_long start, u_long end, u_long count, u_int flags)
+    rman_res_t start, rman_res_t end, rman_res_t count, u_int flags)
 {
 	struct at91_softc *sc = device_get_softc(dev);
 	struct resource_list_entry *rle;
@@ -164,7 +164,7 @@ at91_alloc_resource(device_t dev, device_t child, int type, int *rid,
 		return (NULL);
 	if (rle->res)
 		panic("Resource rid %d type %d already in use", *rid, type);
-	if (start == 0UL && end == ~0UL) {
+	if (RMAN_IS_DEFAULT_RANGE(start, end)) {
 		start = rle->start;
 		count = ulmax(count, rle->count);
 		end = ulmax(rle->end, start + count - 1);
@@ -255,7 +255,7 @@ at91_activate_resource(device_t bus, device_t child, int type, int rid,
     struct resource *r)
 {
 #if 0
-	u_long p;
+	rman_res_t p;
 	int error;
 	
 	if (type == SYS_RES_MEMORY) {
@@ -281,9 +281,9 @@ at91_print_child(device_t dev, device_t child)
 
 	retval += bus_print_child_header(dev, child);
 
-	retval += resource_list_print_type(rl, "port", SYS_RES_IOPORT, "%#lx");
-	retval += resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#lx");
-	retval += resource_list_print_type(rl, "irq", SYS_RES_IRQ, "%ld");
+	retval += resource_list_print_type(rl, "port", SYS_RES_IOPORT, "%#jx");
+	retval += resource_list_print_type(rl, "mem", SYS_RES_MEMORY, "%#jx");
+	retval += resource_list_print_type(rl, "irq", SYS_RES_IRQ, "%jd");
 	if (device_get_flags(dev))
 		retval += printf(" flags %#x", device_get_flags(dev));
 

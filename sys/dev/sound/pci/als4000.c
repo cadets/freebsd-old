@@ -760,8 +760,8 @@ static int
 als_resource_grab(device_t dev, struct sc_info *sc)
 {
 	sc->regid = PCIR_BAR(0);
-	sc->reg = bus_alloc_resource(dev, SYS_RES_IOPORT, &sc->regid, 0, ~0,
-				     ALS_CONFIG_SPACE_BYTES, RF_ACTIVE);
+	sc->reg = bus_alloc_resource_any(dev, SYS_RES_IOPORT, &sc->regid,
+					 RF_ACTIVE);
 	if (sc->reg == 0) {
 		device_printf(dev, "unable to allocate register space\n");
 		goto bad;
@@ -848,7 +848,7 @@ als_pci_attach(device_t dev)
 	pcm_addchan(dev, PCMDIR_PLAY, &alspchan_class, sc);
 	pcm_addchan(dev, PCMDIR_REC,  &alsrchan_class, sc);
 
-	snprintf(status, SND_STATUSLEN, "at io 0x%lx irq %ld %s",
+	snprintf(status, SND_STATUSLEN, "at io 0x%jx irq %jd %s",
 		 rman_get_start(sc->reg), rman_get_start(sc->irq),PCM_KLDSTRING(snd_als4000));
 	pcm_setstatus(dev, status);
 	return 0;

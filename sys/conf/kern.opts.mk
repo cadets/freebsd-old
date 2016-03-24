@@ -30,6 +30,7 @@ __DEFAULT_YES_OPTIONS = \
     CDDL \
     CRYPT \
     CUSE \
+    FAST_DEPEND \
     FORMAT_EXTENSIONS \
     INET \
     INET6 \
@@ -45,9 +46,14 @@ __DEFAULT_YES_OPTIONS = \
 
 __DEFAULT_NO_OPTIONS = \
     EISA \
-    FAST_DEPEND \
     NAND \
     OFED
+
+# Enable FAST_DEPEND by default for the meta build.
+.if !empty(.MAKE.MODE:Unormal:Mmeta)
+__DEFAULT_YES_OPTIONS+=	FAST_DEPEND
+__DEFAULT_NO_OPTIONS:=	${__DEFAULT_NO_OPTIONS:NFAST_DEPEND}
+.endif
 
 # Some options are totally broken on some architectures. We disable
 # them. If you need to enable them on an experimental basis, you
@@ -59,9 +65,8 @@ __DEFAULT_NO_OPTIONS = \
 
 # Things that don't work based on the CPU
 .if ${MACHINE_CPUARCH} == "arm"
-BROKEN_OPTIONS+= ZFS
 . if ${MACHINE_ARCH:Marmv6*} == ""
-BROKEN_OPTIONS+= CDDL
+BROKEN_OPTIONS+= CDDL ZFS
 . endif
 .endif
 
@@ -138,7 +143,10 @@ MK_${var}:=	no
 MK_${var}_SUPPORT:= no
 .else
 .if defined(KERNBUILDDIR)	# See if there's an opt_foo.h
+.if !defined(OPT_${var})
 OPT_${var}!= cat ${KERNBUILDDIR}/opt_${var:tl}.h; echo
+.export OPT_${var}
+.endif
 .if ${OPT_${var}} == ""		# nothing -> no
 MK_${var}_SUPPORT:= no
 .else

@@ -33,7 +33,7 @@ CFLAGS+=	-DIN_GCC -DIN_LIBGCC2 -D__GCC_FLOAT_NOT_NEEDED \
 LDFLAGS+=	-nodefaultlibs
 LIBADD+=	c
 
-OBJS=		# added to below in various ways depending on TARGET_CPUARCH
+SOBJS=		# added to below in various ways depending on TARGET_CPUARCH
 
 #---------------------------------------------------------------------------
 #
@@ -58,8 +58,10 @@ LIB2FUNCS+= _fixuns${mode}si
 .endfor
 
 # Likewise double-word routines.
-.if ${TARGET_CPUARCH} != "aarch64" && ${TARGET_CPUARCH} != "arm"
-# These are implemented in an ARM specific file but will not be filtered out
+.if ${TARGET_CPUARCH} != "aarch64" && ${TARGET_CPUARCH} != "arm" && \
+    ${TARGET_CPUARCH} != "riscv64"
+# These are implemented in an ARM specific file but will not be filtered out.
+# RISCVTODO: can't compile
 .for mode in sf df xf tf
 LIB2FUNCS+= _fix${mode}di _fixuns${mode}di
 LIB2FUNCS+= _floatdi${mode} _floatundi${mode}
@@ -209,7 +211,7 @@ COMMONHDRS+=	unwind.h
 HIDE =  -fvisibility=hidden -DHIDE_EXPORTS
 CC_T =	${CC} -c ${CFLAGS} ${HIDE} -fPIC
 CC_P =	${CC} -c ${CFLAGS} ${HIDE} -p -fPIC
-CC_S =	${CC} -c ${CFLAGS} ${PICFLAG} -DSHARED
+CC_S =	${CC} -c ${CFLAGS} ${SHARED_CFLAGS} ${PICFLAG} -DSHARED
 
 #-----------------------------------------------------------------------
 #
@@ -250,7 +252,7 @@ OBJ_GRPS +=	FPBIT DPBIT
 ${T}_OBJS_T =	${${T}_FUNCS:S/$/.o/}
 ${T}_OBJS_P =	${${T}_FUNCS:S/$/.po/}
 ${T}_OBJS_S =	${${T}_FUNCS:S/$/.So/}
-OBJS +=		${${T}_FUNCS:S/$/.o/}
+SOBJS +=	${${T}_FUNCS:S/$/.So/}
 
 ${${T}_OBJS_T}: ${${T}_CFILE} ${COMMONHDRS}
 	${CC_T} ${${T}_CFLAGS} -DL${.PREFIX} -o ${.TARGET} ${.ALLSRC:M*.c}
@@ -265,9 +267,7 @@ ${${T}_OBJS_S}: ${${T}_CFILE} ${COMMONHDRS}
 # Extra objects coming from separate files
 #
 .if !empty(LIB2ADD)
-OBJS  +=	${LIB2ADD:R:S/$/.o/}
 SOBJS +=	${LIB2ADD:R:S/$/.So/}
-POBJS +=	${LIB2ADD:R:S/$/.po/}
 .endif
 
 #-----------------------------------------------------------------------
@@ -293,7 +293,7 @@ ASM_T =		${LIB1ASMFUNCS:S/$/.o/}
 ASM_P =		${LIB1ASMFUNCS:S/$/.po/}
 ASM_S =		${LIB1ASMFUNCS:S/$/.So/}
 ASM_V =		${LIB1ASMFUNCS:S/$/.vis/}
-OBJS +=		${LIB1ASMFUNCS:S/$/.o/}
+SOBJS +=	${LIB1ASMFUNCS:S/$/.So/}
 
 ${ASM_T}: ${LIB1ASMSRC} ${.PREFIX}.vis
 	${CC} -x assembler-with-cpp -c ${CFLAGS} -DL${.PREFIX} \
@@ -322,7 +322,10 @@ EH_OBJS_T = ${LIB2ADDEHSTATIC:R:S/$/.o/}
 EH_OBJS_P = ${LIB2ADDEHSTATIC:R:S/$/.po/}
 EH_OBJS_S = ${LIB2ADDEHSHARED:R:S/$/.So/}
 EH_CFLAGS = -fexceptions -D__GLIBC__=3 -DElfW=__ElfN
+.if ${TARGET_CPUARCH} != "riscv64"
+# RISCVTODO: unwinding support
 SOBJS    += ${EH_OBJS_S}
+.endif
 
 .for _src in ${LIB2ADDEHSTATIC:M*.c}
 ${_src:R:S/$/.o/}: ${_src} ${COMMONHDRS}
@@ -358,7 +361,7 @@ SHLIB_MAPFILES  += ${GCCDIR}/config/arm/libgcc-bpabi.ver
 .endif
 VERSION_MAP      = libgcc.map
 
-libgcc.map: ${SHLIB_MKMAP} ${SHLIB_MAPFILES} ${SOBJS} ${OBJS:R:S/$/.So/}
+libgcc.map: ${SHLIB_MKMAP} ${SHLIB_MAPFILES} ${SOBJS}
 	(  ${NM} -pg ${SOBJS};echo %% ; \
 	  cat ${SHLIB_MAPFILES} \
 	    | sed -e '/^[   ]*#/d' \
@@ -375,7 +378,7 @@ CLEANFILES +=	libgcc.map
 libgcc_eh.a:	${EH_OBJS_T}
 	@${ECHO} building static gcc_eh library
 	@rm -f ${.TARGET}
-	@${AR} ${ARFLAGS} ${.TARGET} `lorder ${EH_OBJS_T} | tsort -q`
+	${AR} ${ARFLAGS} ${.TARGET} `lorder ${EH_OBJS_T} | tsort -q`
 	${RANLIB} ${RANLIBFLAGS} ${.TARGET}
 
 _LIBS+= libgcc_eh.a
@@ -384,7 +387,7 @@ _LIBS+= libgcc_eh.a
 libgcc_eh_p.a:	${EH_OBJS_P}
 	@${ECHO} building profiled gcc_eh library
 	@rm -f ${.TARGET}
-	@${AR} ${ARFLAGS} ${.TARGET} `lorder ${EH_OBJS_P} | tsort -q`
+	${AR} ${ARFLAGS} ${.TARGET} `lorder ${EH_OBJS_P} | tsort -q`
 	${RANLIB} ${RANLIBFLAGS} ${.TARGET}
 
 _LIBS+= libgcc_eh_p.a

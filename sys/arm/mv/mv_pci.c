@@ -61,8 +61,8 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/fdt/fdt_common.h>
 #include <dev/ofw/ofw_bus.h>
-#include <dev/ofw/ofw_pci.h>
 #include <dev/ofw/ofw_bus_subr.h>
+#include <dev/ofw/ofw_pci.h>
 #include <dev/pci/pcivar.h>
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcib_private.h>
@@ -233,15 +233,11 @@ mv_pci_devmap(phandle_t node, struct arm_devmap_entry *devmap, vm_offset_t io_va
 	devmap->pd_va = (io_va ? io_va : io_space.base_parent);
 	devmap->pd_pa = io_space.base_parent;
 	devmap->pd_size = io_space.len;
-	devmap->pd_prot = VM_PROT_READ | VM_PROT_WRITE;
-	devmap->pd_cache = PTE_DEVICE;
 	devmap++;
 
 	devmap->pd_va = (mem_va ? mem_va : mem_space.base_parent);
 	devmap->pd_pa = mem_space.base_parent;
 	devmap->pd_size = mem_space.len;
-	devmap->pd_prot = VM_PROT_READ | VM_PROT_WRITE;
-	devmap->pd_cache = PTE_DEVICE;
 	return (0);
 }
 
@@ -332,7 +328,7 @@ static int mv_pcib_probe(device_t);
 static int mv_pcib_attach(device_t);
 
 static struct resource *mv_pcib_alloc_resource(device_t, device_t, int, int *,
-    u_long, u_long, u_long, u_int);
+    rman_res_t, rman_res_t, rman_res_t, u_int);
 static int mv_pcib_release_resource(device_t, device_t, int, int,
     struct resource *);
 static int mv_pcib_read_ivar(device_t, device_t, int, uintptr_t *);
@@ -830,7 +826,7 @@ mv_pcib_init_all_bars(struct mv_pcib_softc *sc, int bus, int slot,
 
 static struct resource *
 mv_pcib_alloc_resource(device_t dev, device_t child, int type, int *rid,
-    u_long start, u_long end, u_long count, u_int flags)
+    rman_res_t start, rman_res_t end, rman_res_t count, u_int flags)
 {
 	struct mv_pcib_softc *sc = device_get_softc(dev);
 	struct rman *rm = NULL;
@@ -848,7 +844,7 @@ mv_pcib_alloc_resource(device_t dev, device_t child, int type, int *rid,
 		    type, rid, start, end, count, flags));
 	};
 
-	if ((start == 0UL) && (end == ~0UL)) {
+	if (RMAN_IS_DEFAULT_RANGE(start, end)) {
 		start = sc->sc_mem_base;
 		end = sc->sc_mem_base + sc->sc_mem_size - 1;
 		count = sc->sc_mem_size;

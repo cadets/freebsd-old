@@ -49,6 +49,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/endian.h>
 #include <sys/jail.h>
 #include <sys/kernel.h>
 #include <sys/sockio.h>
@@ -65,6 +66,9 @@ __FBSDID("$FreeBSD$");
 #include <net/if.h>
 #include <net/if_var.h>
 #include <net/route.h>
+#ifdef BOOTP_DEBUG
+#include <net/route_var.h>
+#endif
 
 #include <netinet/in.h>
 #include <netinet/in_var.h>
@@ -155,6 +159,7 @@ struct bootpc_ifcontext {
 	int dhcpquerytype;		/* dhcp type sent */
 	struct in_addr dhcpserver;
 	int gotdhcpserver;
+	uint16_t mtu;
 };
 
 #define TAG_MAXLEN 1024
@@ -196,6 +201,7 @@ struct bootpc_globalcontext {
 #define TAG_ROUTERS	  3  /* Routers (in order of preference) */
 #define TAG_HOSTNAME	 12  /* Client host name */
 #define TAG_ROOT	 17  /* Root path */
+#define TAG_INTF_MTU	 26  /* Interface MTU Size (RFC2132) */
 
 /* DHCP specific tags */
 #define TAG_OVERLOAD	 52  /* Option Overload */
@@ -369,15 +375,15 @@ bootpboot_p_tree(struct radix_node *rn)
 void
 bootpboot_p_rtlist(void)
 {
-	struct radix_node_head *rnh;
+	struct rib_head *rnh;
 
 	printf("Routing table:\n");
 	rnh = rt_tables_get_rnh(0, AF_INET);
 	if (rnh == NULL)
 		return;
-	RADIX_NODE_HEAD_RLOCK(rnh);	/* could sleep XXX */
+	RIB_RLOCK(rnh);	/* could sleep XXX */
 	bootpboot_p_tree(rnh->rnh_treetop);
-	RADIX_NODE_HEAD_RUNLOCK(rnh);
+	RIB_RUNLOCK(rnh);
 }
 
 void
@@ -1031,7 +1037,19 @@ bootpc_adjust_interface(struct bootpc_ifcontext *ifctx,
 		return (0);
 	}
 
-	printf("Adjusted interface %s\n", ifctx->ireq.ifr_name);
+	printf("Adjusted interface %s", ifctx->ireq.ifr_name);
+
+	/* Do BOOTP interface options */
+	if (ifctx->mtu != 0) {
+		printf(" (MTU=%d%s)", ifctx->mtu, 
+		    (ifctx->mtu > 1514) ? "/JUMBO" : "");
+		ifr->ifr_mtu = ifctx->mtu;
+		error = ifioctl(bootp_so, SIOCSIFMTU, (caddr_t) ifr, td);
+		if (error != 0)
+			panic("%s: SIOCSIFMTU, error=%d", __func__, error);
+	}
+	printf("\n");
+
 	/*
 	 * Do enough of ifconfig(8) so that the chosen interface
 	 * can talk to the servers.  (just set the address)
@@ -1519,6 +1537,11 @@ bootpc_decode_reply(struct nfsv3_diskless *nd, struct bootpc_ifcontext *ifctx,
 		p[i] = '\0';
 	}
 
+	p = bootpc_tag(&gctx->tag, &ifctx->reply, ifctx->replylen,
+		       TAG_INTF_MTU);
+	if (p != NULL) {
+		ifctx->mtu = be16dec(p);
+	}
 
 	printf("\n");
 

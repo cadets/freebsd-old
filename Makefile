@@ -21,6 +21,7 @@
 # kernel-toolchains   - Build kernel-toolchain for all universe targets.
 # doxygen             - Build API documentation of the kernel, needs doxygen.
 # update              - Convenient way to update your source tree(s).
+# checkworld          - Run test suite on installed world.
 # check-old           - List obsolete directories/files/libraries.
 # check-old-dirs      - List obsolete directories.
 # check-old-files     - List obsolete files.
@@ -112,8 +113,8 @@
 .else
 
 TGTS=	all all-man buildenv buildenvvars buildkernel buildworld \
-	check-old check-old-dirs check-old-files check-old-libs \
-	checkdpadd clean cleandepend cleandir cleanworld \
+	check check-old check-old-dirs check-old-files check-old-libs \
+	checkdpadd checkworld clean cleandepend cleandir cleanworld \
 	delete-old delete-old-dirs delete-old-files delete-old-libs \
 	depend distribute distributekernel distributekernel.debug \
 	distributeworld distrib-dirs distribution doxygen \
@@ -121,10 +122,11 @@ TGTS=	all all-man buildenv buildenvvars buildkernel buildworld \
 	installkernel.debug packagekernel packageworld \
 	reinstallkernel reinstallkernel.debug \
 	installworld kernel-toolchain libraries lint maninstall \
-	obj objlink regress rerelease showconfig tags toolchain update \
+	obj objlink rerelease showconfig tags toolchain update \
 	_worldtmp _legacy _bootstrap-tools _cleanobj _obj \
 	_build-tools _cross-tools _includes _libraries _depend \
-	build32 builddtb distribute32 install32 xdev xdev-build xdev-install \
+	build32 distribute32 install32 build32 distribute32 install32 \
+	builddtb xdev xdev-build xdev-install \
 	xdev-links native-xtools installconfig \
 
 TGTS+=	${SUBDIR_TARGETS}
@@ -136,6 +138,8 @@ TGTS+=	${BITGTS}
 .ORDER: buildworld installworld
 .ORDER: buildworld distributeworld
 .ORDER: buildworld buildkernel
+.ORDER: installworld distribution
+.ORDER: installworld installkernel
 .ORDER: buildkernel installkernel
 .ORDER: buildkernel installkernel.debug
 .ORDER: buildkernel reinstallkernel
@@ -143,7 +147,7 @@ TGTS+=	${BITGTS}
 
 PATH=	/sbin:/bin:/usr/sbin:/usr/bin
 MAKEOBJDIRPREFIX?=	/usr/obj
-_MAKEOBJDIRPREFIX!= /usr/bin/env -i PATH=${PATH} ${MAKE} \
+_MAKEOBJDIRPREFIX!= /usr/bin/env -i PATH=${PATH} MK_AUTO_OBJ=no ${MAKE} \
     ${.MAKEFLAGS:MMAKEOBJDIRPREFIX=*} __MAKE_CONF=${__MAKE_CONF} \
     -f /dev/null -V MAKEOBJDIRPREFIX dummy
 .if !empty(_MAKEOBJDIRPREFIX)
@@ -156,6 +160,8 @@ _MAKEOBJDIRPREFIX!= /usr/bin/env -i PATH=${PATH} ${MAKE} \
 # We cannot blindly use a make which may not be the one we want
 # so be exlicit - until all choice is removed.
 WANT_MAKE=	bmake
+# 20160220 - support .dinclude for FAST_DEPEND.
+WANT_MAKE_VERSION= 20160220
 MYMAKE=		${MAKEOBJDIRPREFIX}${.CURDIR}/make.${MACHINE}/${WANT_MAKE}
 .if defined(.PARSEDIR)
 HAVE_MAKE=	bmake
@@ -295,12 +301,10 @@ kernel: buildkernel installkernel
 # Perform a few tests to determine if the installed tools are adequate
 # for building the world.
 #
-# Note: if we ever need to care about the version of bmake, simply testing
-# MAKE_VERSION against a required version should suffice.
-#
 upgrade_checks:
-.if ${HAVE_MAKE} != ${WANT_MAKE}
-	@(cd ${.CURDIR} && ${MAKE} ${WANT_MAKE:S,^f,,})
+.if ${HAVE_MAKE} != ${WANT_MAKE} || \
+    (defined(WANT_MAKE_VERSION) && ${MAKE_VERSION} < ${WANT_MAKE_VERSION})
+	@${_+_}(cd ${.CURDIR} && ${MAKE} ${WANT_MAKE:S,^f,,})
 .endif
 
 #
@@ -312,9 +316,9 @@ MMAKEENV=	MAKEOBJDIRPREFIX=${MYMAKE:H} \
 		DESTDIR= \
 		INSTALL="sh ${.CURDIR}/tools/install.sh"
 MMAKE=		${MMAKEENV} ${MAKE} \
-		-DNO_MAN -DNO_SHARED \
+		MAN= -DNO_SHARED \
 		-DNO_CPU_CFLAGS -DNO_WERROR \
-		MK_TESTS=no \
+		-DNO_SUBDIR \
 		DESTDIR= PROGNAME=${MYMAKE:T}
 
 bmake: .PHONY
@@ -328,7 +332,11 @@ bmake: .PHONY
 		${MMAKE} all; \
 		${MMAKE} install DESTDIR=${MYMAKE:H} BINDIR=
 
-tinderbox toolchains kernel-toolchains: upgrade_checks
+regress: .PHONY
+	@echo "'make regress' has been renamed 'make check'" | /usr/bin/fmt
+	@false
+
+tinderbox toolchains kernel-toolchains kernels worlds: upgrade_checks
 
 tinderbox:
 	@cd ${.CURDIR}; ${SUB_MAKE} DOING_TINDERBOX=YES universe
@@ -338,6 +346,12 @@ toolchains:
 
 kernel-toolchains:
 	@cd ${.CURDIR}; ${SUB_MAKE} UNIVERSE_TARGET=kernel-toolchain universe
+
+kernels:
+	@cd ${.CURDIR}; ${SUB_MAKE} UNIVERSE_TARGET=buildkernel universe
+
+worlds:
+	@cd ${.CURDIR}; ${SUB_MAKE} UNIVERSE_TARGET=buildworld universe
 
 #
 # universe
@@ -454,7 +468,8 @@ _THINNER=cat
 _THINNER=xargs grep -L "^.NO_UNIVERSE" || true
 .endif
 KERNCONFS!=	cd ${KERNSRCDIR}/${TARGET}/conf && \
-		find [A-Z0-9]*[A-Z0-9] -type f -maxdepth 0 \
+		find [[:upper:][:digit:]]*[[:upper:][:digit:]] \
+		-type f -maxdepth 0 \
 		! -name DEFAULTS ! -name NOTES | \
 		${_THINNER}
 universe_kernconfs:

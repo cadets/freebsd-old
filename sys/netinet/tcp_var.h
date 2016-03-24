@@ -34,6 +34,7 @@
 #define _NETINET_TCP_VAR_H_
 
 #include <netinet/tcp.h>
+#include <netinet/tcp_fsm.h>
 
 #ifdef _KERNEL
 #include <net/vnet.h>
@@ -363,7 +364,7 @@ struct tcpcb {
  * options in tcp_addoptions.
  */
 struct tcpopt {
-	u_int64_t	to_flags;	/* which options are present */
+	u_int32_t	to_flags;	/* which options are present */
 #define	TOF_MSS		0x0001		/* maximum segment size */
 #define	TOF_SCALE	0x0002		/* window scaling */
 #define	TOF_SACKPERM	0x0004		/* SACK permitted */
@@ -614,6 +615,13 @@ void	kmod_tcpstat_inc(int statnum);
     kmod_tcpstat_inc(offsetof(struct tcpstat, name) / sizeof(uint64_t))
 
 /*
+ * Running TCP connection count by state.
+ */
+VNET_DECLARE(counter_u64_t, tcps_states[TCP_NSTATES]);
+#define	TCPSTATES_INC(state)	counter_u64_add(VNET(tcps_states)[state], 1)
+#define	TCPSTATES_DEC(state)	counter_u64_add(VNET(tcps_states)[state], -1)
+
+/*
  * TCP specific helper hook point identifiers.
  */
 #define	HHOOK_TCP_EST_IN		0
@@ -659,7 +667,7 @@ struct	xtcpcb {
  */
 #define	TCPCTL_DO_RFC1323	1	/* use RFC-1323 extensions */
 #define	TCPCTL_MSSDFLT		3	/* MSS default */
-#define TCPCTL_STATS		4	/* statistics (read-only) */
+#define TCPCTL_STATS		4	/* statistics */
 #define	TCPCTL_RTTDFLT		5	/* default RTT estimate */
 #define	TCPCTL_KEEPIDLE		6	/* keepalive idle timer */
 #define	TCPCTL_KEEPINTVL	7	/* interval to send keepalives */
@@ -671,6 +679,7 @@ struct	xtcpcb {
 #define	TCPCTL_V6MSSDFLT	13	/* MSS default for IPv6 */
 #define	TCPCTL_SACK		14	/* Selective Acknowledgement,rfc 2018 */
 #define	TCPCTL_DROP		15	/* drop tcp connection */
+#define	TCPCTL_STATES		16	/* connection counts by TCP state */
 
 #ifdef _KERNEL
 #ifdef SYSCTL_DECL

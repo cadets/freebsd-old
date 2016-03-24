@@ -389,13 +389,14 @@ mvs_intr(void *data)
 
 static struct resource *
 mvs_alloc_resource(device_t dev, device_t child, int type, int *rid,
-		       u_long start, u_long end, u_long count, u_int flags)
+		       rman_res_t start, rman_res_t end, rman_res_t count,
+		       u_int flags)
 {
 	struct mvs_controller *ctlr = device_get_softc(dev);
 	int unit = ((struct mvs_channel *)device_get_softc(child))->unit;
 	struct resource *res = NULL;
 	int offset = HC_BASE(unit >> 2) + PORT_BASE(unit & 0x03);
-	long st;
+	rman_res_t st;
 
 	switch (type) {
 	case SYS_RES_MEMORY:

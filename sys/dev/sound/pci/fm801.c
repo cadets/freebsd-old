@@ -639,7 +639,7 @@ fm801_pci_attach(device_t dev)
 		goto oops;
 	}
 
-	snprintf(status, 64, "at %s 0x%lx irq %ld %s",
+	snprintf(status, 64, "at %s 0x%jx irq %jd %s",
 		(fm801->regtype == SYS_RES_IOPORT)? "io" : "memory",
 		rman_get_start(fm801->reg), rman_get_start(fm801->irq),PCM_KLDSTRING(snd_fm801));
 
@@ -716,7 +716,8 @@ fm801_pci_probe( device_t dev )
 
 static struct resource *
 fm801_alloc_resource(device_t bus, device_t child, int type, int *rid,
-		     u_long start, u_long end, u_long count, u_int flags)
+		     rman_res_t start, rman_res_t end, rman_res_t count,
+		     u_int flags)
 {
 	struct fm801_info *fm801;
 

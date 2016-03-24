@@ -36,7 +36,6 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	libbz2 \
 	libcalendar \
 	libcam \
-	${_libcapsicum} \
 	${_libcasper} \
 	${_libcom_err} \
 	libcompat \
@@ -80,6 +79,7 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	libopie \
 	libpam \
 	libpcap \
+	${_libpe} \
 	libpjdlog \
 	${_libpmc} \
 	${_libproc} \
@@ -135,8 +135,7 @@ SUBDIR_DEPEND_libbsnmp= ${_libnetgraph}
 SUBDIR_DEPEND_libc++:= libcxxrt
 SUBDIR_DEPEND_libc= libcompiler_rt
 SUBDIR_DEPEND_libcam= libsbuf
-SUBDIR_DEPEND_libcapsicum= libnv
-SUBDIR_DEPEND_libcasper= libcapsicum libnv libpjdlog
+SUBDIR_DEPEND_libcasper= libnv
 SUBDIR_DEPEND_libdevstat= libkvm
 SUBDIR_DEPEND_libdpv= libfigpar ncurses libutil
 SUBDIR_DEPEND_libedit= ncurses
@@ -171,11 +170,10 @@ _libbsnmp=	libbsnmp
 .endif
 
 .if ${MK_CASPER} != "no"
-_libcapsicum=	libcapsicum
 _libcasper=	libcasper
 .endif
 
-.if ${MK_CLANG} != "no" && !defined(COMPAT_32BIT)
+.if ${MK_CLANG} != "no" && !defined(COMPAT_32BIT) && !defined(COMPAT_SOFTFP)
 _clang=		clang
 .endif
 
@@ -185,6 +183,7 @@ _cuse=		libcuse
 
 .if ${MK_TOOLCHAIN} != "no"
 _libelftc=	libelftc
+_libpe=		libpe
 .endif
 
 .if ${MK_FILE} != "no"
@@ -265,7 +264,8 @@ _libproc=	libproc
 _librtld_db=	librtld_db
 .endif
 
-.if ${MACHINE_CPUARCH} == "aarch64" || ${MACHINE_CPUARCH} == "arm"
+.if ${MACHINE_CPUARCH} == "aarch64" || ${MACHINE_CPUARCH} == "arm" || \
+    ${MACHINE_CPUARCH} == "riscv"
 _libproc=	libproc
 _librtld_db=	librtld_db
 .endif

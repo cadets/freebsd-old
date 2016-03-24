@@ -112,6 +112,8 @@ FILES+=		local2.0
 FILES+=		local3.0
 FILES+=		local4.0
 FILES+=		local5.0
+FILES+=		local6.0
+FILES+=		local7.0
 .if ${MK_NLS} != "no"
 FILES+=		locale1.0
 .endif
@@ -138,6 +140,7 @@ FILES+=		return7.4
 FILES+=		return8.0
 FILES+=		set1.0
 FILES+=		set2.0
+FILES+=		set3.0
 FILES+=		trap1.0
 FILES+=		trap10.0
 FILES+=		trap11.0

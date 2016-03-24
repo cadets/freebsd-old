@@ -47,7 +47,7 @@
 /*********************************************************************
  *  Driver version:
  *********************************************************************/
-char igb_driver_version[] = "2.5.2";
+char igb_driver_version[] = "2.5.3-k";
 
 
 /*********************************************************************
@@ -551,9 +551,9 @@ igb_attach(device_t dev)
 		    "Disable Energy Efficient Ethernet");
 		if (adapter->hw.phy.media_type == e1000_media_type_copper) {
 			if (adapter->hw.mac.type == e1000_i354)
-				e1000_set_eee_i354(&adapter->hw);
+				e1000_set_eee_i354(&adapter->hw, TRUE, TRUE);
 			else
-				e1000_set_eee_i350(&adapter->hw);
+				e1000_set_eee_i350(&adapter->hw, TRUE, TRUE);
 		}
 	}
 
@@ -1184,10 +1184,27 @@ igb_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 			}
 		}
 #endif
+#if __FreeBSD_version >= 1000000
+		/* HW cannot turn these on/off separately */
+		if (mask & (IFCAP_RXCSUM | IFCAP_RXCSUM_IPV6)) {
+			ifp->if_capenable ^= IFCAP_RXCSUM;
+			ifp->if_capenable ^= IFCAP_RXCSUM_IPV6;
+			reinit = 1;
+		}
+		if (mask & IFCAP_TXCSUM) {
+			ifp->if_capenable ^= IFCAP_TXCSUM;
+			reinit = 1;
+		}
+		if (mask & IFCAP_TXCSUM_IPV6) {
+			ifp->if_capenable ^= IFCAP_TXCSUM_IPV6;
+			reinit = 1;
+		}
+#else
 		if (mask & IFCAP_HWCSUM) {
 			ifp->if_capenable ^= IFCAP_HWCSUM;
 			reinit = 1;
 		}
+#endif
 		if (mask & IFCAP_TSO4) {
 			ifp->if_capenable ^= IFCAP_TSO4;
 			reinit = 1;
@@ -1266,16 +1283,31 @@ igb_init_locked(struct adapter *adapter)
 	/* Set hardware offload abilities */
 	ifp->if_hwassist = 0;
 	if (ifp->if_capenable & IFCAP_TXCSUM) {
+#if __FreeBSD_version >= 1000000
+		ifp->if_hwassist |= (CSUM_IP_TCP | CSUM_IP_UDP);
+		if (adapter->hw.mac.type != e1000_82575)
+			ifp->if_hwassist |= CSUM_IP_SCTP;
+#else
 		ifp->if_hwassist |= (CSUM_TCP | CSUM_UDP);
 #if __FreeBSD_version >= 800000
-		if ((adapter->hw.mac.type == e1000_82576) ||
-		    (adapter->hw.mac.type == e1000_82580))
+		if (adapter->hw.mac.type != e1000_82575)
 			ifp->if_hwassist |= CSUM_SCTP;
+#endif
 #endif
 	}
 
+#if __FreeBSD_version >= 1000000
+	if (ifp->if_capenable & IFCAP_TXCSUM_IPV6) {
+		ifp->if_hwassist |= (CSUM_IP6_TCP | CSUM_IP6_UDP);
+		if (adapter->hw.mac.type != e1000_82575)
+			ifp->if_hwassist |= CSUM_IP6_SCTP;
+	}
+#endif
 	if (ifp->if_capenable & IFCAP_TSO)
 		ifp->if_hwassist |= CSUM_TSO;
+
+	/* Clear bad data from Rx FIFOs */
+	e1000_rx_fifo_flush_82575(&adapter->hw);
 
 	/* Configure for OS presence */
 	igb_init_manageability(adapter);
@@ -1304,7 +1336,6 @@ igb_init_locked(struct adapter *adapter)
 		return;
 	}
 	igb_initialize_receive_units(adapter);
-	e1000_rx_fifo_flush_82575(&adapter->hw);
 
         /* Enable VLAN support */
 	if (ifp->if_capenable & IFCAP_VLAN_HWTAGGING)
@@ -1341,9 +1372,9 @@ igb_init_locked(struct adapter *adapter)
 	/* Set Energy Efficient Ethernet */
 	if (adapter->hw.phy.media_type == e1000_media_type_copper) {
 		if (adapter->hw.mac.type == e1000_i354)
-			e1000_set_eee_i354(&adapter->hw);
+			e1000_set_eee_i354(&adapter->hw, TRUE, TRUE);
 		else
-			e1000_set_eee_i350(&adapter->hw);
+			e1000_set_eee_i350(&adapter->hw, TRUE, TRUE);
 	}
 }
 
@@ -3137,6 +3168,12 @@ igb_setup_interface(device_t dev, struct adapter *adapter)
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	ifp->if_ioctl = igb_ioctl;
 	ifp->if_get_counter = igb_get_counter;
+
+	/* TSO parameters */
+	ifp->if_hw_tsomax = IP_MAXPACKET;
+	ifp->if_hw_tsomaxsegcount = IGB_MAX_SCATTER;
+	ifp->if_hw_tsomaxsegsize = IGB_TSO_SEG_SIZE;
+
 #ifndef IGB_LEGACY_TX
 	ifp->if_transmit = igb_mq_start;
 	ifp->if_qflush = igb_qflush;
@@ -3152,6 +3189,9 @@ igb_setup_interface(device_t dev, struct adapter *adapter)
 	ifp->if_capabilities = ifp->if_capenable = 0;
 
 	ifp->if_capabilities = IFCAP_HWCSUM | IFCAP_VLAN_HWCSUM;
+#if __FreeBSD_version >= 1000000
+	ifp->if_capabilities |= IFCAP_HWCSUM_IPV6;
+#endif
 	ifp->if_capabilities |= IFCAP_TSO;
 	ifp->if_capabilities |= IFCAP_JUMBO_MTU;
 	ifp->if_capenable = ifp->if_capabilities;
@@ -3925,17 +3965,29 @@ igb_tx_ctx_setup(struct tx_ring *txr, struct mbuf *mp,
 
 	switch (ipproto) {
 		case IPPROTO_TCP:
+#if __FreeBSD_version >= 1000000
+			if (mp->m_pkthdr.csum_flags & (CSUM_IP_TCP | CSUM_IP6_TCP))
+#else
 			if (mp->m_pkthdr.csum_flags & CSUM_TCP)
+#endif
 				type_tucmd_mlhl |= E1000_ADVTXD_TUCMD_L4T_TCP;
 			break;
 		case IPPROTO_UDP:
+#if __FreeBSD_version >= 1000000
+			if (mp->m_pkthdr.csum_flags & (CSUM_IP_UDP | CSUM_IP6_UDP))
+#else
 			if (mp->m_pkthdr.csum_flags & CSUM_UDP)
+#endif
 				type_tucmd_mlhl |= E1000_ADVTXD_TUCMD_L4T_UDP;
 			break;
 
 #if __FreeBSD_version >= 800000
 		case IPPROTO_SCTP:
+#if __FreeBSD_version >= 1000000
+			if (mp->m_pkthdr.csum_flags & (CSUM_IP_SCTP | CSUM_IP6_SCTP))
+#else
 			if (mp->m_pkthdr.csum_flags & CSUM_SCTP)
+#endif
 				type_tucmd_mlhl |= E1000_ADVTXD_TUCMD_L4T_SCTP;
 			break;
 #endif
@@ -4693,8 +4745,7 @@ igb_initialize_receive_units(struct adapter *adapter)
 		rxcsum |= E1000_RXCSUM_PCSD;
 #if __FreeBSD_version >= 800000
 		/* For SCTP Offload */
-		if (((hw->mac.type == e1000_82576) ||
-		     (hw->mac.type == e1000_82580)) &&
+		if ((hw->mac.type != e1000_82575) &&
 		    (ifp->if_capenable & IFCAP_RXCSUM))
 			rxcsum |= E1000_RXCSUM_CRCOFL;
 #endif
@@ -4703,8 +4754,7 @@ igb_initialize_receive_units(struct adapter *adapter)
 		if (ifp->if_capenable & IFCAP_RXCSUM) {
 			rxcsum |= E1000_RXCSUM_IPPCSE;
 #if __FreeBSD_version >= 800000
-			if ((adapter->hw.mac.type == e1000_82576) ||
-			    (adapter->hw.mac.type == e1000_82580))
+			if (adapter->hw.mac.type != e1000_82575)
 				rxcsum |= E1000_RXCSUM_CRCOFL;
 #endif
 		} else
