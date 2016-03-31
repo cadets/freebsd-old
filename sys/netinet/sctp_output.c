@@ -67,7 +67,7 @@ struct sack_track {
 	struct sctp_gap_ack_block gaps[SCTP_MAX_GAPS_INARRAY];
 };
 
-struct sack_track sack_array[256] = {
+const struct sack_track sack_array[256] = {
 	{0, 0, 0, 0,		/* 0x00 */
 		{{0, 0},
 		{0, 0},
@@ -3222,12 +3222,14 @@ plan_d:
 		}
 	}
 #ifdef INET
-	if ((retried == 0) && (stcb->asoc.scope.ipv4_local_scope == 0)) {
-		stcb->asoc.scope.ipv4_local_scope = 1;
-		retried = 1;
-		goto again_with_private_addresses_allowed;
-	} else if (retried == 1) {
-		stcb->asoc.scope.ipv4_local_scope = 0;
+	if (stcb) {
+		if ((retried == 0) && (stcb->asoc.scope.ipv4_local_scope == 0)) {
+			stcb->asoc.scope.ipv4_local_scope = 1;
+			retried = 1;
+			goto again_with_private_addresses_allowed;
+		} else if (retried == 1) {
+			stcb->asoc.scope.ipv4_local_scope = 0;
+		}
 	}
 #endif
 out:
@@ -10412,7 +10414,7 @@ sctp_send_sack(struct sctp_tcb *stcb, int so_locked
 	struct sctp_sack_chunk *sack;
 	struct sctp_nr_sack_chunk *nr_sack;
 	struct sctp_gap_ack_block *gap_descriptor;
-	struct sack_track *selector;
+	const struct sack_track *selector;
 	int mergeable = 0;
 	int offset;
 	caddr_t limit;
@@ -10613,7 +10615,7 @@ sctp_send_sack(struct sctp_tcb *stcb, int so_locked
 				 * Clear all bits corresponding to TSNs
 				 * smaller or equal to the cumulative TSN.
 				 */
-				tsn_map &= (~0 << (1 - offset));
+				tsn_map &= (~0U << (1 - offset));
 			}
 			selector = &sack_array[tsn_map];
 			if (mergeable && selector->right_edge) {
@@ -10688,7 +10690,7 @@ sctp_send_sack(struct sctp_tcb *stcb, int so_locked
 					 * TSNs smaller or equal to the
 					 * cumulative TSN.
 					 */
-					tsn_map &= (~0 << (1 - offset));
+					tsn_map &= (~0U << (1 - offset));
 				}
 				selector = &sack_array[tsn_map];
 				if (mergeable && selector->right_edge) {

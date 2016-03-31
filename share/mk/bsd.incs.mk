@@ -8,16 +8,20 @@
 
 INCSGROUPS?=	INCS
 
+_INCSGROUPS=	${INCSGROUPS:C,[/*],_,g}
+
 .if !target(buildincludes)
-.for group in ${INCSGROUPS}
+.for group in ${_INCSGROUPS}
 buildincludes: ${${group}}
 .endfor
 .endif
 
+.if !defined(_SKIP_BUILD)
 all: buildincludes
+.endif
 
 .if !target(installincludes)
-.for group in ${INCSGROUPS}
+.for group in ${_INCSGROUPS}
 .if defined(${group}) && !empty(${group})
 
 ${group}OWN?=	${BINOWN}
