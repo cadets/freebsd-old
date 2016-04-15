@@ -1275,7 +1275,7 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 
 	if (oformat) {
 		indent = 0;
-		xo_open_container("stack");
+		xo_open_container_h(dtp->dt_xo_hdl, "stack");
 	}
 	
 	for (i = 0; i < depth; i++) {
@@ -1291,7 +1291,7 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 			break;
 
 		default:
-			xo_close_container("stack");
+			xo_close_container_hd(dtp->dt_xo_hdl);
 			return (dt_set_errno(dtp, EDT_BADSTACKPC));
 		}
 
@@ -1307,7 +1307,8 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 		if (dtrace_lookup_by_addr(dtp, pc, &sym, &dts) == 0) {
 			if (pc > sym.st_value) {
 				if (oformat)
-					xo_emit("{:module/%s} {:function/%s} {:addr/0x%llx}",
+					xo_emit_h(dtp->dt_xo_hdl,
+						"{:module/%s} {:function/%s} {:addr/0x%llx}",
 						dts.dts_object, dts.dts_name,
 						(u_longlong_t)(pc - sym.st_value));
 				else
@@ -1316,7 +1317,8 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 							(u_longlong_t)(pc - sym.st_value));
 			} else {
 				if (oformat)
-					xo_emit("{:module/%s} {:function/%s}",
+					xo_emit_h(dtp->dt_xo_hdl,
+						"{:module/%s} {:function/%s}",
 						dts.dts_object, dts.dts_name);
 				else
 					(void) snprintf(c, sizeof (c), "%s`%s",
@@ -1355,13 +1357,13 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	}
 
 	if (oformat)
-		xo_close_container("stack");
+		xo_close_container_hd(dtp->dt_xo_hdl);
 
 	return (0);
 
 errout:
 	if (oformat)
-		xo_close_container("stack");
+		xo_close_container_hd(dtp->dt_xo_hdl);
 	return (-1);
 	
 }
