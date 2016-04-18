@@ -284,6 +284,7 @@ restart:
 	error = vn_open_vnode(vp, fmode, cred, td, fp);
 	if (error)
 		goto bad;
+	vp->v_path = strdup(ndp->ni_dirp, M_TEMP);
 	*flagp = fmode;
 	return (0);
 bad:
