@@ -136,6 +136,10 @@
 #include "dtrace_debug.c"
 #endif
 
+#include <sys/random.h>
+
+#include "dtrace_arc4.h"
+
 /*
  * DTrace Tunable Variables
  *
@@ -4094,6 +4098,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 	volatile uint16_t *flags = &cpu_core[curcpu].cpuc_dtrace_flags;
 	volatile uintptr_t *illval = &cpu_core[curcpu].cpuc_dtrace_illval;
 	dtrace_vstate_t *vstate = &state->dts_vstate;
+	uint8_t key[DTRACE_ARC4_KEYBYTES];
 
 #ifdef illumos
 	union {
@@ -5929,6 +5934,22 @@ inetout:	regs[rd] = (uintptr_t)end + 1;
 		mstate->dtms_scratch_ptr += scratch_size;
 		break;
 	}
+	case DIF_SUBR_RANDOM:
+		/*
+		 * Check whether reseeding of the randomness source is
+		 * required.
+		 */
+		if (state->dts_rstate[curcpu].numruns >
+			DTRACE_ARC4_RESEED_BYTES ||
+			dtrace_gethrtime() >= state->dts_rstate->reseed) {
+			mtx_lock_spin(&state->dts_rstate_lock);
+			(void) read_random(key, DTRACE_ARC4_KEYBYTES);
+			mtx_unlock_spin(&state->dts_rstate_lock);
+			dtrace_arc4_init(&state->dts_rstate[curcpu], key);
+		}
+
+		regs[rd] = dtrace_arc4random(&state->dts_rstate[curcpu]);
+		break;
 	}
 }
 
@@ -14400,6 +14421,8 @@ dtrace_state_create(struct cdev *dev, struct ucred *cred __unused)
 	dtrace_state_t *state;
 	dtrace_optval_t *opt;
 	int bufsize = NCPU * sizeof (dtrace_buffer_t), i;
+	int cpu_it;
+	uint8_t key[DTRACE_ARC4_KEYBYTES];
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(MUTEX_HELD(&cpu_lock));
@@ -14454,6 +14477,20 @@ dtrace_state_create(struct cdev *dev, struct ucred *cred __unused)
 	 */
 	state->dts_buffer = kmem_zalloc(bufsize, KM_SLEEP);
 	state->dts_aggbuffer = kmem_zalloc(bufsize, KM_SLEEP);
+
+	/*
+         * Allocate and initialise the per-process per-CPU random state.
+         */
+	state->dts_rstate = kmem_zalloc(NCPU * sizeof(dtrace_arc4_state_t),
+	    KM_SLEEP);
+	for (cpu_it = 0; cpu_it < NCPU; cpu_it++) {
+		/*
+		 * Note: That the system entropy at this point may be zero!
+		 */
+		(void) read_random(key, DTRACE_ARC4_KEYBYTES);
+		dtrace_arc4_init(&state->dts_rstate[cpu_it], key);
+	}
+	mtx_init(&state->dts_rstate_lock, "dts rstate", "dtrace", MTX_SPIN);
 
 #ifdef illumos
 	state->dts_cleaner = CYCLIC_NONE;
@@ -15261,7 +15298,7 @@ dtrace_state_destroy(dtrace_state_t *state)
 
 	dtrace_buffer_free(state->dts_buffer);
 	dtrace_buffer_free(state->dts_aggbuffer);
-
+	
 	for (i = 0; i < nspec; i++)
 		dtrace_buffer_free(spec[i].dtsp_buffer);
 
@@ -15295,6 +15332,9 @@ dtrace_state_destroy(dtrace_state_t *state)
 
 	kmem_free(state->dts_buffer, bufsize);
 	kmem_free(state->dts_aggbuffer, bufsize);
+	
+	kmem_free(state->dts_rstate, NCPU * sizeof(dtrace_arc4_state_t));
+	mtx_destroy(&state->dts_rstate_lock);
 
 	for (i = 0; i < nspec; i++)
 		kmem_free(spec[i].dtsp_buffer, bufsize);

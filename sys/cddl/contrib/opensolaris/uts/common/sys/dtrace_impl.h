@@ -50,6 +50,12 @@ extern "C" {
  */
 
 #include <sys/dtrace.h>
+#include <sys/param.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
+
+#include "dtrace_arc4.h"
+
 #ifndef illumos
 #ifdef __sparcv9
 typedef uint32_t		pc_t;
@@ -1168,6 +1174,8 @@ struct dtrace_state {
 	dtrace_cred_t dts_cred;			/* credentials */
 	size_t dts_nretained;			/* number of retained enabs */
 	int dts_getf;				/* number of getf() calls */
+	dtrace_arc4_state_t * dts_rstate;	/* per-CPU random state */
+	struct mtx dts_rstate_lock;		/* random state reseed lock */
 };
 
 struct dtrace_provider {
