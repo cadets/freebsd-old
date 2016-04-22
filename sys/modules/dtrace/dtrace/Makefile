@@ -12,7 +12,7 @@ ARCHDIR=	${MACHINE_CPUARCH}
 
 KMOD=		dtrace
 SRCS=		dtrace.c \
-		dtrace_arc4.c \
+		dtrace_xoroshiro128_plus.c \
 		dtrace_asm.S \
 		dtrace_subr.c
 
