@@ -1174,8 +1174,7 @@ struct dtrace_state {
 	dtrace_cred_t dts_cred;			/* credentials */
 	size_t dts_nretained;			/* number of retained enabs */
 	int dts_getf;				/* number of getf() calls */
-	dtrace_arc4_state_t * dts_rstate;	/* per-CPU random state */
-	struct mtx dts_rstate_lock;		/* random state reseed lock */
+	uint64_t dts_rstate[MAXCPU][2];		/* per-CPU random state */
 };
 
 struct dtrace_provider {

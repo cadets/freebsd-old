@@ -138,7 +138,7 @@
 
 #include <sys/random.h>
 
-#include "dtrace_arc4.h"
+#include "dtrace_xoroshiro128_plus.h"
 
 /*
  * DTrace Tunable Variables
@@ -592,6 +592,40 @@ dtrace_dynvar_t *dtrace_dynvar(dtrace_dstate_t *, uint_t, dtrace_key_t *,
 uintptr_t dtrace_dif_varstr(uintptr_t, dtrace_state_t *, dtrace_mstate_t *);
 static int dtrace_priv_proc(dtrace_state_t *);
 static void dtrace_getf_barrier(void);
+
+static __inline uint64_t
+rotl(const uint64_t x, int k)
+{
+	return (x << k) | (x >> (64 - k));
+}
+
+/*
+ * This is the jump function for the generator. It is equivalent to 2^64 calls
+ * to next(); it can be used to generate 2^64 non-overlapping subsequences for
+ * parallel computations.
+ */
+/*
+void
+jump(uint64_t * s, uint64_t * s_jump)
+{
+	static const uint64_t JUMP[] = { 0xbeac0467eba5facb,
+		0xd86b048b86aa9922 };
+
+	uint64_t s0 = 0;
+	uint64_t s1 = 0;
+	for(int i = 0; i < sizeof JUMP / sizeof *JUMP; i++)
+		for(int b = 0; b < 64; b++) {
+			if (JUMP[i] & 1ULL << b) {
+				s0 ^= s[0];
+				s1 ^= s[1];
+			}
+			next();
+		}
+
+	s_jump[0] = s0;
+	s_jump[1] = s1;
+}
+*/
 
 /*
  * DTrace Probe Context Functions
@@ -4098,7 +4132,6 @@ dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 	volatile uint16_t *flags = &cpu_core[curcpu].cpuc_dtrace_flags;
 	volatile uintptr_t *illval = &cpu_core[curcpu].cpuc_dtrace_illval;
 	dtrace_vstate_t *vstate = &state->dts_vstate;
-	uint8_t key[DTRACE_ARC4_KEYBYTES];
 
 #ifdef illumos
 	union {
@@ -5934,22 +5967,11 @@ inetout:	regs[rd] = (uintptr_t)end + 1;
 		mstate->dtms_scratch_ptr += scratch_size;
 		break;
 	}
-	case DIF_SUBR_RANDOM:
-		/*
-		 * Check whether reseeding of the randomness source is
-		 * required.
-		 */
-		if (state->dts_rstate[curcpu].numruns >
-			DTRACE_ARC4_RESEED_BYTES ||
-			dtrace_gethrtime() >= state->dts_rstate->reseed) {
-			mtx_lock_spin(&state->dts_rstate_lock);
-			(void) read_random(key, DTRACE_ARC4_KEYBYTES);
-			mtx_unlock_spin(&state->dts_rstate_lock);
-			dtrace_arc4_init(&state->dts_rstate[curcpu], key);
-		}
-
-		regs[rd] = dtrace_arc4random(&state->dts_rstate[curcpu]);
+	case DIF_SUBR_RANDOM: {
+		regs[rd] = dtrace_xoroshiro128_plus_next(
+		    state->dts_rstate[curcpu]);
 		break;
+	}
 	}
 }
 
@@ -14480,17 +14502,18 @@ dtrace_state_create(struct cdev *dev, struct ucred *cred __unused)
 
 	/*
          * Allocate and initialise the per-process per-CPU random state.
-         */
-	state->dts_rstate = kmem_zalloc(NCPU * sizeof(dtrace_arc4_state_t),
-	    KM_SLEEP);
-	for (cpu_it = 0; cpu_it < NCPU; cpu_it++) {
+	 * SI_SUB_RANDOM < SI_SUB_DTRACE_ANON therefore entropy device is
+         * assumed to be seeded at this point (if from Fortuna seed file).
+	 */
+	(void) read_random(&state->dts_rstate[0], 2 * sizeof(uint64_t));
+	for (cpu_it = 1; cpu_it < NCPU; cpu_it++) {
 		/*
-		 * Note: That the system entropy at this point may be zero!
+		 * Each CPU is assigned a 2^64 period, non-overlapping
+		 * subsequence.
 		 */
-		(void) read_random(key, DTRACE_ARC4_KEYBYTES);
-		dtrace_arc4_init(&state->dts_rstate[cpu_it], key);
+		dtrace_xoroshiro128_plus_jump(state->dts_rstate[cpu_it-1],
+		    state->dts_rstate[cpu_it]); 
 	}
-	mtx_init(&state->dts_rstate_lock, "dts rstate", "dtrace", MTX_SPIN);
 
 #ifdef illumos
 	state->dts_cleaner = CYCLIC_NONE;
@@ -15332,9 +15355,6 @@ dtrace_state_destroy(dtrace_state_t *state)
 
 	kmem_free(state->dts_buffer, bufsize);
 	kmem_free(state->dts_aggbuffer, bufsize);
-	
-	kmem_free(state->dts_rstate, NCPU * sizeof(dtrace_arc4_state_t));
-	mtx_destroy(&state->dts_rstate_lock);
 
 	for (i = 0; i < nspec; i++)
 		kmem_free(spec[i].dtsp_buffer, bufsize);

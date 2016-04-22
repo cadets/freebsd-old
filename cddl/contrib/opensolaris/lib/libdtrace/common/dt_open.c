@@ -411,7 +411,7 @@ static const dt_ident_t _dtrace_globals[] = {
 { "rand", DT_IDENT_FUNC, 0, DIF_SUBR_RAND, DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_func, "int()" },
 { "random", DT_IDENT_FUNC, 0, DIF_SUBR_RANDOM, DT_ATTR_STABCMN, DT_VERS_1_0,
-	&dt_idops_func, "long()" },
+	&dt_idops_func, "uint64_t()" },
 { "rindex", DT_IDENT_FUNC, 0, DIF_SUBR_RINDEX, DT_ATTR_STABCMN, DT_VERS_1_1,
 	&dt_idops_func, "int(const char *, const char *, [int])" },
 #ifdef illumos
