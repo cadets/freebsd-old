@@ -14321,7 +14321,6 @@ dtrace_state_create(struct cdev *dev)
 	dtrace_optval_t *opt;
 	int bufsize = NCPU * sizeof (dtrace_buffer_t), i;
 	int cpu_it;
-	uint8_t key[DTRACE_ARC4_KEYBYTES];
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(MUTEX_HELD(&cpu_lock));
