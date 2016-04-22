@@ -54,8 +54,6 @@ extern "C" {
 #include <sys/lock.h>
 #include <sys/mutex.h>
 
-#include "dtrace_arc4.h"
-
 #ifndef illumos
 #ifdef __sparcv9
 typedef uint32_t		pc_t;
