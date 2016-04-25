@@ -50,9 +50,6 @@ extern "C" {
  */
 
 #include <sys/dtrace.h>
-#include <sys/param.h>
-#include <sys/lock.h>
-#include <sys/mutex.h>
 
 #ifndef illumos
 #ifdef __sparcv9
