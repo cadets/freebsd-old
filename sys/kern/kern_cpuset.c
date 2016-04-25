@@ -842,7 +842,7 @@ struct cpuset *
 cpuset_thread0(void)
 {
 	struct cpuset *set;
-	int error;
+	int error, i;
 
 	cpuset_zone = uma_zcreate("cpuset", sizeof(struct cpuset), NULL, NULL,
 	    NULL, NULL, UMA_ALIGN_PTR, 0);
@@ -874,9 +874,15 @@ cpuset_thread0(void)
 	 */
 	cpuset_unr = new_unrhdr(2, INT_MAX, NULL);
 
-	/* MD Code is responsible for initializing sets if vm_ndomains > 1. */
-	if (vm_ndomains == 1)
-		CPU_COPY(&all_cpus, &cpuset_domain[0]);
+	/*
+	 * If MD code has not initialized per-domain cpusets, place all
+	 * CPUs in domain 0.
+	 */
+	for (i = 0; i < MAXMEMDOM; i++)
+		if (!CPU_EMPTY(&cpuset_domain[i]))
+			goto domains_set;
+	CPU_COPY(&all_cpus, &cpuset_domain[0]);
+domains_set:
 
 	return (set);
 }
@@ -1129,7 +1135,7 @@ sys_cpuset_getaffinity(struct thread *td, struct cpuset_getaffinity_args *uap)
 			error = intr_getaffinity(uap->id, mask);
 			break;
 		case CPU_WHICH_DOMAIN:
-			if (uap->id < 0 || uap->id >= vm_ndomains)
+			if (uap->id < 0 || uap->id >= MAXMEMDOM)
 				error = ESRCH;
 			else
 				CPU_COPY(&cpuset_domain[uap->id], mask);
