@@ -69,7 +69,10 @@ dtrace_xoroshiro128_plus_jump(uint64_t * const state,
 
 /*
  * xoroshiro128+ - XOR/rotate/shift/rotate
+<<<<<<< HEAD
  * xorshift.di.unimi.it
+=======
+>>>>>>> 1791e986f2b6d301c5d748a5b0aab9179008bc65
  */
 uint64_t
 dtrace_xoroshiro128_plus_next(uint64_t * const state)
