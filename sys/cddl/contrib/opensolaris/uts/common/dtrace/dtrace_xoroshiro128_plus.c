@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016 (holder)
+ * Copyright (c) 2016 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -69,6 +69,7 @@ dtrace_xoroshiro128_plus_jump(uint64_t * const state,
 
 /*
  * xoroshiro128+ - XOR/rotate/shift/rotate
+ * xorshift.di.unimi.it
  */
 uint64_t
 dtrace_xoroshiro128_plus_next(uint64_t * const state)

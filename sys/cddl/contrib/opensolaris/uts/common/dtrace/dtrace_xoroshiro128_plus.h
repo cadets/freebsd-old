@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016 (holder)
+ * Copyright (c) 2016 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
