@@ -441,7 +441,7 @@ rst_seekdir(RST_DIR *dirp, long loc, long base)
 	loc -= base;
 	if (loc < 0)
 		fprintf(stderr, "bad seek pointer to rst_seekdir %ld\n", loc);
-	(void) lseek(dirp->dd_fd, base + (loc & ~(DIRBLKSIZ - 1)), SEEK_SET);
+	(void) lseek(dirp->dd_fd, base + rounddown2(loc, DIRBLKSIZ), SEEK_SET);
 	dirp->dd_loc = loc & (DIRBLKSIZ - 1);
 	if (dirp->dd_loc != 0)
 		dirp->dd_size = read(dirp->dd_fd, dirp->dd_buf, DIRBLKSIZ);
@@ -690,7 +690,7 @@ genliteraldir(char *name, ino_t ino)
 	rst_seekdir(dirp, itp->t_seekpt, itp->t_seekpt);
 	dp = dup(dirp->dd_fd);
 	for (i = itp->t_size; i > 0; i -= BUFSIZ) {
-		size = i < BUFSIZ ? i : BUFSIZ;
+		size = MIN(i, BUFSIZ);
 		if (read(dp, buf, (int) size) == -1) {
 			fprintf(stderr,
 			    "write error extracting inode %ju, name %s\n",
