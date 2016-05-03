@@ -50,6 +50,7 @@ extern "C" {
  */
 
 #include <sys/dtrace.h>
+
 #ifndef illumos
 #ifdef __sparcv9
 typedef uint32_t		pc_t;
@@ -1168,6 +1169,7 @@ struct dtrace_state {
 	dtrace_cred_t dts_cred;			/* credentials */
 	size_t dts_nretained;			/* number of retained enabs */
 	int dts_getf;				/* number of getf() calls */
+	uint64_t dts_rstate[MAXCPU][2];		/* per-CPU random state */
 };
 
 struct dtrace_provider {
