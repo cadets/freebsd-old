@@ -45,12 +45,19 @@ __ENV_ONLY_OPTIONS:= \
 .if ${MK_DIRDEPS_BUILD} == "yes"
 .sinclude <meta.sys.mk>
 .elif ${MK_META_MODE} == "yes" && defined(.MAKEFLAGS) && ${.MAKEFLAGS:M-B} == ""
-.MAKE.MODE= meta verbose
+# verbose will show .MAKE.META.PREFIX for each target.
+META_MODE=	meta verbose
+# silent will hide command output if a .meta file is created.
+.if !defined(NO_SILENT)
+META_MODE+=	silent=yes
+.endif
 .if !exists(/dev/filemon)
-.MAKE.MODE+= nofilemon
+META_MODE+= nofilemon
 .endif
 .endif
-.MAKE.MODE?= normal
+META_MODE?= normal
+.export META_MODE
+.MAKE.MODE?= ${META_MODE}
 
 .if ${MK_AUTO_OBJ} == "yes"
 # This needs to be done early - before .PATH is computed
@@ -80,7 +87,7 @@ __ENV_ONLY_OPTIONS:= \
 .if defined(%POSIX)
 .SUFFIXES:	.o .c .y .l .a .sh .f
 .else
-.SUFFIXES:	.out .a .ln .o .c .cc .cpp .cxx .C .m .F .f .e .r .y .l .S .asm .s .cl .p .h .sh
+.SUFFIXES:	.out .a .ao .dot .bc-a .bc_cep .bc_soaap_perf .ll-a .instrbc .instrll .instro .llvmlinked .obc .oll .po_cep .po_soaap_perf .ln .manifest .o .c .cc .cpp .cxx .C .m .F .f .e .r .soaap .soaap_cg .soaap_perf .tesla .y .l .S .asm .s .cl .p .h .sh
 .endif
 
 AR		?=	ar
@@ -185,6 +192,13 @@ LINTOBJFLAGS	?=	-cghapbxu -i
 LINTOBJKERNFLAGS?=	${LINTOBJFLAGS}
 LINTLIBFLAGS	?=	-cghapbxu -C ${LIB}
 
+LLC		?=	llc
+LLCFLAGS	?=	${CFLAGS:M-O*:S/^-O$/-O1/:S/-O/-O=/}
+
+LLVM_IR_TYPE	?=	bc
+
+LLVM_LINK	?=	llvm-link
+
 MAKE		?=	make
 
 .if !defined(%POSIX)
@@ -198,6 +212,8 @@ OBJCOPY		?=	objcopy
 
 OBJDUMP		?=	objdump
 
+OPT		?=	opt
+
 PC		?=	pc
 PFLAGS		?=
 
@@ -210,6 +226,8 @@ SHELL		?=	sh
 .if !defined(%POSIX)
 SIZE		?=	size
 .endif
+
+TESLA		?=	tesla
 
 YACC		?=	yacc
 .if defined(%POSIX)
@@ -279,8 +297,8 @@ YFLAGS		?=	-d
 
 # non-Posix rule set
 
-.sh: .NOMETA
-	cp -fp ${.IMPSRC} ${.TARGET}
+.sh:
+	cp -f ${.IMPSRC} ${.TARGET}
 	chmod a+x ${.TARGET}
 
 .c.ln:
@@ -299,11 +317,28 @@ YFLAGS		?=	-d
 	${CC} ${CFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
 
+.c.obc:
+	${CC} ${CFLAGS:N-O*} -emit-llvm -c ${.IMPSRC} -o ${.TARGET}
+
+.c.oll:
+	${CC} ${CFLAGS:N-O*} -emit-llvm -S ${.IMPSRC} -o ${.TARGET}
+
+.c.tesla:
+	${TESLA} analyse ${.IMPSRC} -o ${.TARGET} \
+		-- ${CFLAGS} ${XFLAGS} -D TESLA \
+		|| rm -f ${.TARGET}
+
 .cc .cpp .cxx .C:
 	${CXX} ${CXXFLAGS} ${LDFLAGS} ${.IMPSRC} ${LDLIBS} -o ${.TARGET}
 
 .cc.o .cpp.o .cxx.o .C.o:
 	${CXX} ${CXXFLAGS} -c ${.IMPSRC} -o ${.TARGET}
+
+.cc.obc .cpp.obc .cxx.obc .C.obc:
+	${CC} ${CXXFLAGS:N-O*} -emit-llvm -c ${.IMPSRC} -o ${.TARGET}
+
+.c.oll:
+	${CC} ${CXXFLAGS:N-O*} -emit-llvm -S ${.IMPSRC} -o ${.TARGET}
 
 .m.o:
 	${OBJC} ${OBJCFLAGS} -c ${.IMPSRC} -o ${.TARGET}
@@ -319,6 +354,59 @@ YFLAGS		?=	-d
 
 .e.o .r.o .F.o .f.o:
 	${FC} ${RFLAGS} ${EFLAGS} ${FFLAGS} -c ${.IMPSRC} -o ${.TARGET}
+
+.if ${LLVM_IR_TYPE} == "bc"
+.instrbc.instro:
+	${LLC} -filetype=obj ${LLCFLAGS} ${.IMPSRC} -o ${.TARGET}
+	${CTFCONVERT_CMD}
+.elif ${LLVM_IR_TYPE} == "ll"
+.instrll.instro:
+	${LLC} -filetype=obj ${LLCFLAGS} ${.IMPSRC} -o ${.TARGET}
+	${CTFCONVERT_CMD}
+.else
+.error Unknown LLVM IR type ${LLVM_IR_TYPE}
+.endif
+
+.${LLVM_IR_TYPE}-a.soaap:
+	${OPT} -load ${SOAAP_LIB_DIR}/libsoaap.so -soaap ${SOAAP_FLAGS} \
+	    -o /dev/null ${.IMPSRC}
+
+.${LLVM_IR_TYPE}-a.bc_cep:
+	${OPT} -load ${SOAAP_LIB_DIR}/libcep.so -insert-call-edge-profiling \
+	    -o ${.TARGET} ${.IMPSRC}
+
+.bc_cep.po_cep:
+	${LLC} -filetype=obj ${LLCFLAGS} -o ${.TARGET} ${.IMPSRC}
+
+.po_cep.soaap_cg:
+	${CC} ${.IMPSRC} -L${SOAAP_LIB_DIR} -L${LLVM_BUILD_DIR}/lib \
+	    -lcep_rt -lprofile_rt ${LDADD} -o ${.TARGET}
+
+.${LLVM_IR_TYPE}-a.bc_soaap_perf:
+	${OPT} -load ${SOAAP_LIB_DIR}/libsoaap.so -soaap \
+	    -soaap-emulate-performance ${SOAAP_FLAGS} -o ${.TARGET} ${.IMPSRC}
+
+.bc_soaap_perf.po_soaap_perf:
+	${LLC} -filetype=obj -o ${.TARGET} ${.IMPSRC}
+
+.po_soaap_perf.soaap_perf:
+	${CC} ${.IMPSRC} ${LDADD} -o ${.TARGET}
+
+.${LLVM_IR_TYPE}-a.ao:
+	${LLC} -filetype=obj -o ${.TARGET} ${.IMPSRC}
+
+# XXX: missing non-c objects
+.ao.llvmlinked:
+	${CC} ${.IMPSRC} ${LDADD} -o ${.TARGET}
+
+.manifest.dot:
+	${TESLA} graph ${.IMPSRC} -o ${.TARGET}
+
+.obc.instrbc: tesla.manifest
+	${LLVM_INSTR_COMMAND}
+
+.oll.instrll: tesla.manifest
+	${LLVM_INSTR_COMMAND}
 
 .S.o:
 	${CC:N${CCACHE_BIN}} ${CFLAGS} ${ACFLAGS} -c ${.IMPSRC} -o ${.TARGET}

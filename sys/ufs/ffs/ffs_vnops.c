@@ -77,8 +77,11 @@ __FBSDID("$FreeBSD$");
 #include <sys/priv.h>
 #include <sys/rwlock.h>
 #include <sys/stat.h>
+#include <sys/tesla-kernel.h>
 #include <sys/vmmeter.h>
 #include <sys/vnode.h>
+
+#include <security/mac/mac_framework.h>
 
 #include <vm/vm.h>
 #include <vm/vm_param.h>
@@ -87,6 +90,10 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_page.h>
 #include <vm/vm_pager.h>
 #include <vm/vnode_pager.h>
+
+/* Required for TESLA assertion. */
+struct inode;
+#include <ufs/ufs/acl.h>
 
 #include <ufs/ufs/extattr.h>
 #include <ufs/ufs/quota.h>
@@ -441,6 +448,19 @@ ffs_read(ap)
 	int ioflag;
 
 	vp = ap->a_vp;
+#ifdef MAC
+#if defined(TESLA_MAC_FS) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL(
+	    incallstack(ufs_readdir) ||
+	    previously(called(vn_rdwr(ANY(int), vp, ANY(ptr), ANY(int),
+	    ANY(int), ANY(int), flags(IO_NOMACCHECK), ANY(ptr), ANY(ptr),
+	    ANY(ptr), ANY(ptr)))) ||
+	    previously(mac_vnode_check_read(ANY(ptr), ANY(ptr), vp) == 0));
+	TESLA_PAGE_FAULT(previously(mac_vnode_check_read(ANY(ptr), ANY(ptr),
+	    vp) == 0));
+#endif
+#endif
+
 	uio = ap->a_uio;
 	ioflag = ap->a_ioflag;
 	if (ap->a_ioflag & IO_EXT)
@@ -662,6 +682,18 @@ ffs_write(ap)
 	int blkoffset, error, flags, ioflag, size, xfersize;
 
 	vp = ap->a_vp;
+#ifdef MAC
+#if defined(TESLA_MAC_FS) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL(
+	    previously(called(vn_rdwr(ANY(int), vp, ANY(ptr), ANY(int),
+	    ANY(int), ANY(int), flags(IO_NOMACCHECK), ANY(ptr), ANY(ptr),
+	    ANY(ptr), ANY(ptr)))) ||
+	    previously(mac_vnode_check_write(ANY(ptr), ANY(ptr), vp) == 0));
+	TESLA_PAGE_FAULT(previously(mac_vnode_check_write(ANY(ptr), ANY(ptr),
+	    vp) == 0));
+#endif
+#endif
+
 	uio = ap->a_uio;
 	ioflag = ap->a_ioflag;
 	if (ap->a_ioflag & IO_EXT)
@@ -1420,6 +1452,14 @@ vop_deleteextattr {
 	int ealen, olen, eapad1, eapad2, error, i, easize;
 	u_char *eae, *p;
 
+#ifdef MAC
+#if defined(TESLA_MAC_FS) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL(incallstack(ufs_setacl) ||
+	    previously(mac_vnode_check_deleteextattr(ANY(ptr), ap->a_vp,
+	    ap->a_attrnamespace, ap->a_name) == 0));
+#endif
+#endif
+
 	ip = VTOI(ap->a_vp);
 	fs = ip->i_fs;
 
@@ -1506,6 +1546,14 @@ vop_getextattr {
 	unsigned easize;
 	int error, ealen;
 
+#ifdef MAC
+#if defined(TESLA_MAC_FS) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL(incallstack(ufs_getacl) ||
+	    previously(mac_vnode_check_getextattr(ANY(ptr), ap->a_vp,
+	    ap->a_attrnamespace, ap->a_name) == 0));
+#endif
+#endif
+
 	ip = VTOI(ap->a_vp);
 
 	if (ap->a_vp->v_type == VCHR || ap->a_vp->v_type == VBLK)
@@ -1559,6 +1607,13 @@ vop_listextattr {
 	unsigned easize;
 	uint32_t ul;
 	int error, ealen;
+
+#ifdef MAC
+#if defined(TESLA_MAC_FS) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_listextattr(ANY(ptr),
+	    ap->a_vp, ap->a_attrnamespace) == 0);
+#endif
+#endif
 
 	ip = VTOI(ap->a_vp);
 
@@ -1622,6 +1677,14 @@ vop_setextattr {
 	ssize_t ealen;
 	int olen, eapad1, eapad2, error, i, easize;
 	u_char *eae, *p;
+
+#ifdef MAC
+#if defined(TESLA_MAC_FS) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL(incallstack(ufs_setacl) ||
+	    previously(mac_vnode_check_setextattr(ANY(ptr), ap->a_vp,
+	    ap->a_attrnamespace, ap->a_name) == 0));
+#endif
+#endif
 
 	ip = VTOI(ap->a_vp);
 	fs = ip->i_fs;

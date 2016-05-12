@@ -33,7 +33,7 @@ LDSCRIPT_NAME?= ldscript.${MACHINE_ARCH}
 
 .include "$S/conf/kern.pre.mk"
 
-INCLUDES+= -I$S/contrib/libfdt
+INCLUDES+= -I$S/contrib/libfdt -I$S/contrib/tesla/include
 
 CFLAGS+= -msoft-float -Wa,-many
 

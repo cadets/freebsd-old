@@ -1663,9 +1663,9 @@ aac_check_firmware(struct aac_softc *sc)
 		bus_release_resource(
 			sc->aac_dev, SYS_RES_MEMORY,
 			sc->aac_regs_rid0, sc->aac_regs_res0);
-		sc->aac_regs_res0 = bus_alloc_resource(
+		sc->aac_regs_res0 = bus_alloc_resource_anywhere(
 			sc->aac_dev, SYS_RES_MEMORY, &sc->aac_regs_rid0,
-			0ul, ~0ul, atu_size, RF_ACTIVE);
+			atu_size, RF_ACTIVE);
 		if (sc->aac_regs_res0 == NULL) {
 			sc->aac_regs_res0 = bus_alloc_resource_any(
 				sc->aac_dev, SYS_RES_MEMORY,
@@ -3550,7 +3550,7 @@ aac_container_bus(struct aac_softc *sc)
 		device_printf(sc->aac_dev,
 	    	"No memory to add container bus\n");
 		panic("Out of memory?!");
-	};
+	}
 	child = device_add_child(sc->aac_dev, "aacraidp", -1);
 	if (child == NULL) {
 		device_printf(sc->aac_dev,
@@ -3662,7 +3662,7 @@ aac_get_bus_info(struct aac_softc *sc)
 			device_printf(sc->aac_dev,
 			    "No memory to add passthrough bus %d\n", i);
 			break;
-		};
+		}
 
 		child = device_add_child(sc->aac_dev, "aacraidp", -1);
 		if (child == NULL) {

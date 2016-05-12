@@ -2,6 +2,9 @@
 
 .include <bsd.own.mk>
 
+PACKAGE=	tests
+FILESGROUPS=	TESTS
+TESTSPACKAGE=	${PACKAGE}
 TESTSDIR= ${TESTSBASE}/sys
 
 TESTS_SUBDIRS+=		acl
@@ -21,7 +24,5 @@ TESTS_SUBDIRS+=		vm
 
 # Items not integrated into kyua runs by default
 SUBDIR+=		pjdfstest
-
-SUBDIR_PARALLEL=
 
 .include <bsd.test.mk>

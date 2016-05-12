@@ -65,6 +65,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/file.h>
 #include <sys/namei.h>
 #include <sys/sysctl.h>
+#include <sys/tesla-kernel.h>
 
 #include <vm/vm.h>
 #include <vm/pmap.h>
@@ -193,6 +194,11 @@ mac_cred_copy(struct ucred *src, struct ucred *dest)
 void
 mac_cred_relabel(struct ucred *cred, struct label *newlabel)
 {
+
+#if defined(TESLA_MAC_MISC) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL(previously(mac_cred_check_relabel(cred, newlabel) ==
+	    0));
+#endif
 
 	MAC_POLICY_PERFORM_NOSLEEP(cred_relabel, cred, newlabel);
 }

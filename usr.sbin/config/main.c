@@ -78,6 +78,7 @@ int	debugging;
 int	profiling;
 int	found_defaults;
 int	incignore;
+int	tesla;
 
 /*
  * Preserve old behaviour in INCLUDE_CONFIG_FILE handling (files are included
@@ -116,7 +117,7 @@ main(int argc, char **argv)
 	printmachine = 0;
 	kernfile = NULL;
 	SLIST_INIT(&includepath);
-	while ((ch = getopt(argc, argv, "CI:d:gmpsVx:")) != -1)
+	while ((ch = getopt(argc, argv, "CI:d:gmpstVx:")) != -1)
 		switch (ch) {
 		case 'C':
 			filebased = 1;
@@ -149,6 +150,9 @@ main(int argc, char **argv)
 				strlcpy(srcdir, optarg, sizeof(srcdir));
 			else
 				errx(EXIT_FAILURE, "src directory already set");
+			break;
+		case 't':
+			tesla++;
 			break;
 		case 'V':
 			printf("%d\n", CONFIGVERS);

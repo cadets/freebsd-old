@@ -93,6 +93,12 @@ options 	MALLOC_DEBUG_MAXZONES=8	# Separate malloc(9) zones
 
 # Make an SMP-capable kernel by default
 options 	SMP			# Symmetric MultiProcessor Kernel
+options 	DEVICE_NUMA		# I/O Device Affinity
+
+# Disable a couple of devices that don't build/install nicely with the
+# TESLA toolchain (for now):
+nodevice	rtwn
+nodevice	urtwn
 
 # CPU frequency control
 device		cpufreq
@@ -151,10 +157,10 @@ device		amr			# AMI MegaRAID
 device		arcmsr			# Areca SATA II RAID
 device		ciss			# Compaq Smart RAID 5*
 device		dpt			# DPT Smartcache III, IV - See NOTES for options
-device		hptmv			# Highpoint RocketRAID 182x
-device		hptnr			# Highpoint DC7280, R750
-device		hptrr			# Highpoint RocketRAID 17xx, 22xx, 23xx, 25xx
-device		hpt27xx			# Highpoint RocketRAID 27xx
+#device		hptmv			# Highpoint RocketRAID 182x
+#device		hptnr			# Highpoint DC7280, R750
+#device		hptrr			# Highpoint RocketRAID 17xx, 22xx, 23xx, 25xx
+#device		hpt27xx			# Highpoint RocketRAID 27xx
 device		iir			# Intel Integrated RAID
 device		ips			# IBM (Adaptec) ServeRAID
 device		mly			# Mylex AcceleRAID/eXtremeRAID
@@ -280,13 +286,13 @@ device		wlan_ccmp		# 802.11 CCMP support
 device		wlan_tkip		# 802.11 TKIP support
 device		wlan_amrr		# AMRR transmit rate control algorithm
 device		an			# Aironet 4500/4800 802.11 wireless NICs.
-device		ath			# Atheros NICs
-device		ath_pci			# Atheros pci/cardbus glue
-device		ath_hal			# pci/cardbus chip support
-options 	AH_SUPPORT_AR5416	# enable AR5416 tx/rx descriptors
-options 	AH_AR5416_INTERRUPT_MITIGATION # AR5416 interrupt mitigation
-options 	ATH_ENABLE_11N		# Enable 802.11n support for AR5416 and later
-device		ath_rate_sample		# SampleRate tx rate control for ath
+#device		ath			# Atheros NICs
+#device		ath_pci			# Atheros pci/cardbus glue
+#device		ath_hal			# pci/cardbus chip support
+#options 	AH_SUPPORT_AR5416	# enable AR5416 tx/rx descriptors
+#options 	AH_AR5416_INTERRUPT_MITIGATION # AR5416 interrupt mitigation
+#options 	ATH_ENABLE_11N		# Enable 802.11n support for AR5416 and later
+#device		ath_rate_sample		# SampleRate tx rate control for ath
 #device		bwi			# Broadcom BCM430x/BCM431x wireless NICs.
 #device		bwn			# Broadcom BCM43xx wireless NICs.
 device		ipw			# Intel 2100 wireless NICs.
@@ -349,8 +355,6 @@ device		virtio_scsi		# VirtIO SCSI device
 device		virtio_balloon		# VirtIO Memory Balloon device
 
 # HyperV drivers and enchancement support
-# NOTE: HYPERV depends on hyperv.  They must be added or removed together.
-options 	HYPERV			# Hyper-V kernel infrastructure
 device		hyperv			# HyperV drivers 
 
 # Xen HVM Guest Optimizations

@@ -68,16 +68,18 @@ __DEFAULT_YES_OPTIONS = \
 
 __DEFAULT_NO_OPTIONS = \
     CCACHE_BUILD \
-    FAST_DEPEND \
     CTF \
     INSTALL_AS_USER \
-    STALE_STAGED
+    SOAAP \
+    STALE_STAGED \
+    TESLA
 
 # meta mode related
 __DEFAULT_DEPENDENT_OPTIONS = \
     STAGING_MAN/STAGING \
     STAGING_PROG/STAGING \
-    
+
+
 .include <bsd.mkopt.mk>
 
 #
@@ -94,8 +96,7 @@ __DEFAULT_DEPENDENT_OPTIONS = \
     PROFILE \
     WARNS
 .if defined(NO_${var})
-# This warning may be premature...
-#.warning "NO_${var} is defined, but deprecated. Please use MK_${var}=no instead."
+.warning "NO_${var} is defined, but deprecated. Please use MK_${var}=no instead."
 MK_${var}:=no
 .endif
 .endfor

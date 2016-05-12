@@ -54,6 +54,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/limits.h>
 #include <sys/bus.h>
 #include <sys/interrupt.h>
+#include <sys/tesla-kernel.h>
 
 #include <vm/uma.h>
 #include <vm/vm.h>
@@ -547,6 +548,11 @@ cpuset_setproc(pid_t pid, struct cpuset *set, cpuset_t *mask)
 		}
 	}
 	PROC_LOCK_ASSERT(p, MA_OWNED);
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_cansched(ANY(ptr), p) == 0);
+#endif
+
 	/*
 	 * Now that the appropriate locks are held and we have enough cpusets,
 	 * make sure the operation will succeed before applying changes.  The
@@ -702,6 +708,11 @@ cpuset_setthread(lwpid_t id, cpuset_t *mask)
 	error = cpuset_which(CPU_WHICH_TID, id, &p, &td, &set);
 	if (error)
 		goto out;
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_cansched(ANY(ptr), p) == 0);
+#endif
+
 	set = NULL;
 	thread_lock(td);
 	error = cpuset_shadow(td->td_cpuset, nset, mask);
@@ -831,7 +842,7 @@ struct cpuset *
 cpuset_thread0(void)
 {
 	struct cpuset *set;
-	int error;
+	int error, i;
 
 	cpuset_zone = uma_zcreate("cpuset", sizeof(struct cpuset), NULL, NULL,
 	    NULL, NULL, UMA_ALIGN_PTR, 0);
@@ -863,9 +874,15 @@ cpuset_thread0(void)
 	 */
 	cpuset_unr = new_unrhdr(2, INT_MAX, NULL);
 
-	/* MD Code is responsible for initializing sets if vm_ndomains > 1. */
-	if (vm_ndomains == 1)
-		CPU_COPY(&all_cpus, &cpuset_domain[0]);
+	/*
+	 * If MD code has not initialized per-domain cpusets, place all
+	 * CPUs in domain 0.
+	 */
+	for (i = 0; i < MAXMEMDOM; i++)
+		if (!CPU_EMPTY(&cpuset_domain[i]))
+			goto domains_set;
+	CPU_COPY(&all_cpus, &cpuset_domain[0]);
+domains_set:
 
 	return (set);
 }
@@ -1118,7 +1135,7 @@ sys_cpuset_getaffinity(struct thread *td, struct cpuset_getaffinity_args *uap)
 			error = intr_getaffinity(uap->id, mask);
 			break;
 		case CPU_WHICH_DOMAIN:
-			if (uap->id < 0 || uap->id >= vm_ndomains)
+			if (uap->id < 0 || uap->id >= MAXMEMDOM)
 				error = ESRCH;
 			else
 				CPU_COPY(&cpuset_domain[uap->id], mask);

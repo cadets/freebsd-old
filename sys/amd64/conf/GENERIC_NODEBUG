@@ -1,0 +1,8 @@
+include GENERIC
+ident GENERIC_NODEBUG
+
+nooptions INVARIANTS
+nooptions INVARIANT_SUPPORT
+nooptions WITNESS
+nooptions WITNESS_SKIPSPIN
+nooptions MALLOC_DEBUG_MAXZONES

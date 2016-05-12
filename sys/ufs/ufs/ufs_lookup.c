@@ -51,6 +51,11 @@ __FBSDID("$FreeBSD$");
 #include <sys/mount.h>
 #include <sys/vnode.h>
 #include <sys/sysctl.h>
+#include <sys/tesla-kernel.h>
+
+#if defined(TESLA_MAC_FS) || defined(TESLA_MAC_ALL)
+#include <security/mac/mac_framework.h>
+#endif
 
 #include <vm/vm.h>
 #include <vm/vm_extern.h>
@@ -210,6 +215,13 @@ ufs_lookup(ap)
 		struct componentname *a_cnp;
 	} */ *ap;
 {
+
+#ifdef MAC
+#if defined(TESLA_MAC_FS) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL_PREVIOUSLY(mac_vnode_check_lookup(ANY(ptr), ap->a_dvp,
+	    ap->a_cnp) == 0);
+#endif
+#endif
 
 	return (ufs_lookup_ino(ap->a_dvp, ap->a_vpp, ap->a_cnp, NULL));
 }
@@ -1256,7 +1268,8 @@ out:
 	 * drop its snapshot reference so that it will be reclaimed
 	 * when last open reference goes away.
 	 */
-	if (ip != 0 && (ip->i_flags & SF_SNAPSHOT) != 0 && ip->i_effnlink == 0)
+	if (ip != NULL && (ip->i_flags & SF_SNAPSHOT) != 0 &&
+	    ip->i_effnlink == 0)
 		UFS_SNAPGONE(ip);
 	return (error);
 }

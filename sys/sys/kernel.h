@@ -97,6 +97,7 @@ enum sysinit_sub_id {
 	SI_SUB_MTX_POOL_DYNAMIC	= 0x1AC0000,	/* dynamic mutex pool */
 	SI_SUB_LOCK		= 0x1B00000,	/* various locks */
 	SI_SUB_EVENTHANDLER	= 0x1C00000,	/* eventhandler init */
+	SI_SUB_TESLA		= 0x1C80000,	/* TESLA debugging */
 	SI_SUB_VNET_PRELINK	= 0x1E00000,	/* vnet init before modules */
 	SI_SUB_KLD		= 0x2000000,	/* KLD and module setup */
 	SI_SUB_CPU		= 0x2100000,	/* CPU resource(s)*/
@@ -315,6 +316,44 @@ struct tunable_ulong {
 	    &__CONCAT(__tunable_ulong_, __LINE__))
 
 #define	TUNABLE_ULONG_FETCH(path, var)	getenv_ulong((path), (var))
+
+/*
+ * int64_t
+ */
+extern void tunable_int64_init(void *);
+struct tunable_int64 {
+	const char *path;
+	int64_t *var;
+};
+#define	TUNABLE_INT64(path, var)				\
+	static struct tunable_int64 __CONCAT(__tunable_int64_, __LINE__) = { \
+		(path),						\
+		(var),						\
+	};							\
+	SYSINIT(__CONCAT(__Tunable_init_, __LINE__),		\
+	    SI_SUB_TUNABLES, SI_ORDER_MIDDLE, tunable_int64_init, \
+	    &__CONCAT(__tunable_int64_, __LINE__))
+
+#define	TUNABLE_INT64_FETCH(path, var)	getenv_int64((path), (var))
+
+/*
+ * uint64_t
+ */
+extern void tunable_uint64_init(void *);
+struct tunable_uint64 {
+	const char *path;
+	uint64_t *var;
+};
+#define	TUNABLE_UINT64(path, var)				\
+	static struct tunable_ulong __CONCAT(__tunable_uint64_, __LINE__) = { \
+		(path),						\
+		(var),						\
+	};							\
+	SYSINIT(__CONCAT(__Tunable_init_, __LINE__),		\
+	    SI_SUB_TUNABLES, SI_ORDER_MIDDLE, tunable_uint64_init, \
+	    &__CONCAT(__tunable_uint64_, __LINE__))
+
+#define	TUNABLE_UINT64_FETCH(path, var)	getenv_uint64((path), (var))
 
 /*
  * quad

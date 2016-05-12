@@ -397,7 +397,7 @@ struct uart_class uart_ns8250_class = {
 #ifdef FDT
 static struct ofw_compat_data compat_data[] = {
 	{"ns16550",		(uintptr_t)&uart_ns8250_class},
-	{"snps,dw-apb-uart",	(uintptr_t)&uart_ns8250_class},
+	{"ns16550a",		(uintptr_t)&uart_ns8250_class},
 	{NULL,			(uintptr_t)NULL},
 };
 UART_FDT_CLASS_AND_DEVICE(compat_data);
@@ -450,19 +450,9 @@ ns8250_bus_attach(struct uart_softc *sc)
 	pcell_t cell;
 #endif
 
-	ns8250->busy_detect = 0;
-
 #ifdef FDT
-	/* 
-	 * Check whether uart requires to read USR reg when IIR_BUSY and 
-	 * has broken txfifo. 
-	 */
-	ns8250->busy_detect = ofw_bus_is_compatible(sc->sc_dev, "snps,dw-apb-uart");
+	/* Check whether uart has a broken txfifo. */
 	node = ofw_bus_get_node(sc->sc_dev);
-	/* XXX: This is kept for a short time for compatibility with older device trees */
-	if ((OF_getencprop(node, "busy-detect", &cell, sizeof(cell))) > 0
-	    && cell != 0)
-		ns8250->busy_detect = 1;
 	if ((OF_getencprop(node, "broken-txfifo", &cell, sizeof(cell))) > 0)
 		broken_txfifo =  cell ? 1 : 0;
 #endif
@@ -708,6 +698,7 @@ ns8250_bus_ipend(struct uart_softc *sc)
 		if (iir & IIR_TXRDY) {
 			ipend |= SER_INT_TXIDLE;
 			uart_setreg(bas, REG_IER, ns8250->ier);
+			uart_barrier(bas);
 		} else
 			ipend |= SER_INT_SIGCHG;
 	}
@@ -979,12 +970,12 @@ ns8250_bus_transmit(struct uart_softc *sc)
 	uart_lock(sc->sc_hwmtx);
 	while ((uart_getreg(bas, REG_LSR) & LSR_THRE) == 0)
 		;
-	uart_setreg(bas, REG_IER, ns8250->ier | IER_ETXRDY);
-	uart_barrier(bas);
 	for (i = 0; i < sc->sc_txdatasz; i++) {
 		uart_setreg(bas, REG_DATA, sc->sc_txbuf[i]);
 		uart_barrier(bas);
 	}
+	uart_setreg(bas, REG_IER, ns8250->ier | IER_ETXRDY);
+	uart_barrier(bas);
 	if (broken_txfifo)
 		ns8250_drain(bas, UART_DRAIN_TRANSMITTER);
 	else

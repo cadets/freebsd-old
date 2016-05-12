@@ -29,9 +29,6 @@ SUBDIR=	\
 	aha \
 	${_ahb} \
 	ahci \
-	${_aic} \
-	aic7xxx \
-	aio \
 	alc \
 	ale \
 	alq \
@@ -45,8 +42,6 @@ SUBDIR=	\
 	${_arcnet} \
 	${_asmc} \
 	ata \
-	ath \
-	ath_pci \
 	${_autofs} \
 	${_auxio} \
 	${_bce} \
@@ -93,7 +88,6 @@ SUBDIR=	\
 	dc \
 	dcons \
 	dcons_crom \
-	de \
 	${_dpms} \
 	${_dpt} \
 	${_drm} \
@@ -251,6 +245,7 @@ SUBDIR=	\
 	${_nandfs} \
 	${_nandsim} \
 	${_ncr} \
+	${_nctgpio} \
 	${_ncv} \
 	${_ndis} \
 	netfpga10g \
@@ -368,6 +363,8 @@ SUBDIR=	\
 	udf_iconv \
 	ufs \
 	unionfs \
+	urtwn \
+	${_urtwnfw} \
 	usb \
 	utopia \
 	${_vesa} \
@@ -402,6 +399,10 @@ SUBDIR=	\
 	${_xe} \
 	xl \
 	zlib
+
+# XXXRW: Temporarily disable procfs build for TESLA, as the module contains
+# assertions which don't build as a module.
+#	procfs \
 
 .if ${MK_AUTOFS} != "no" || defined(ALL_MODULES)
 _autofs=	autofs
@@ -485,6 +486,7 @@ _ispfw=		ispfw
 _mwlfw=		mwlfw
 _ralfw=		ralfw
 _rtwnfw=	rtwnfw
+_urtwnfw=	urtwnfw
 _sf=		sf
 _ti=		ti
 _txp=		txp
@@ -556,6 +558,7 @@ _ixv=		ixv
 _linprocfs=	linprocfs
 _linsysfs=	linsysfs
 _linux=		linux
+_nctgpio=	nctgpio
 _ndis=		ndis
 _pccard=	pccard
 .if ${MK_OFED} != "no" || defined(ALL_MODULES)
@@ -775,12 +778,6 @@ afterinstall:
 .endif
 
 .include "${SYSDIR}/conf/config.mk"
-
-# Use sys/conf/kmod.mk's MPATH to avoid redundantly running in every subdir.
-.if !defined(__MPATH)
-__MPATH!=find ${SYSDIR:tA}/ -name \*_if.m
-.export __MPATH
-.endif
 
 SUBDIR:= ${SUBDIR:u:O}
 

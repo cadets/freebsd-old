@@ -61,7 +61,7 @@ extern int errno;
 #include <sys/un.h>
 #include <sys/queue.h>
 #include <sys/wait.h>
-#ifdef HAVE_LIBCAPSICUM
+#ifdef HAVE_LIBCASPER
 #include <sys/nv.h>
 #endif
 #include <arpa/inet.h>
@@ -70,12 +70,6 @@ extern int errno;
 #include <err.h>
 #include <grp.h>
 #include <inttypes.h>
-#ifdef HAVE_LIBCAPSICUM
-#include <libcapsicum.h>
-#include <libcapsicum_grp.h>
-#include <libcapsicum_pwd.h>
-#include <libcapsicum_service.h>
-#endif
 #include <locale.h>
 #include <netdb.h>
 #include <nl_types.h>
@@ -92,6 +86,13 @@ extern int errno;
 
 #include "ktrace.h"
 #include "kdump_subr.h"
+
+#ifdef HAVE_LIBCASPER
+#include <libcasper.h>
+
+#include <casper/cap_grp.h>
+#include <casper/cap_pwd.h>
+#endif
 
 u_int abidump(struct ktr_header *);
 int fetchprocinfo(struct ktr_header *, u_int *);
@@ -144,28 +145,6 @@ static struct ktr_header ktr_header;
 	c = ',';							\
 } while (0)
 
-#if defined(__amd64__) || defined(__i386__)
-
-void linux_ktrsysret(struct ktr_sysret *, u_int);
-
-/*
- * from linux.h
- * Linux syscalls return negative errno's, we do positive and map them
- */
-static int bsd_to_linux_errno[ELAST + 1] = {
-	-0,  -1,  -2,  -3,  -4,  -5,  -6,  -7,  -8,  -9,
-	-10, -35, -12, -13, -14, -15, -16, -17, -18, -19,
-	-20, -21, -22, -23, -24, -25, -26, -27, -28, -29,
-	-30, -31, -32, -33, -34, -11,-115,-114, -88, -89,
-	-90, -91, -92, -93, -94, -95, -96, -97, -98, -99,
-	-100,-101,-102,-103,-104,-105,-106,-107,-108,-109,
-	-110,-111, -40, -36,-112,-113, -39, -11, -87,-122,
-	-116, -66,  -6,  -6,  -6,  -6,  -6, -37, -38,  -9,
-	-6,  -6, -43, -42, -75,-125, -84, -95, -16, -74,
-	-72, -67, -71
-};
-#endif
-
 struct proc_info
 {
 	TAILQ_ENTRY(proc_info)	info;
@@ -175,7 +154,7 @@ struct proc_info
 
 static TAILQ_HEAD(trace_procs, proc_info) trace_procs;
 
-#ifdef HAVE_LIBCAPSICUM
+#ifdef HAVE_LIBCASPER
 static cap_channel_t *cappwd, *capgrp;
 #endif
 
@@ -204,7 +183,7 @@ localtime_init(void)
 	(void)localtime(&ltime);
 }
 
-#ifdef HAVE_LIBCAPSICUM
+#ifdef HAVE_LIBCASPER
 static int
 cappwdgrp_setup(cap_channel_t **cappwdp, cap_channel_t **capgrpp)
 {
@@ -213,8 +192,8 @@ cappwdgrp_setup(cap_channel_t **cappwdp, cap_channel_t **capgrpp)
 
 	capcas = cap_init();
 	if (capcas == NULL) {
-		warn("unable to contact casperd");
-		return (-1);
+		err(1, "unable to create casper process");
+		exit(1);
 	}
 	cappwdloc = cap_service_open(capcas, "system.pwd");
 	capgrploc = cap_service_open(capcas, "system.grp");
@@ -246,7 +225,7 @@ cappwdgrp_setup(cap_channel_t **cappwdp, cap_channel_t **capgrpp)
 	*capgrpp = capgrploc;
 	return (0);
 }
-#endif	/* HAVE_LIBCAPSICUM */
+#endif	/* HAVE_LIBCASPER */
 
 int
 main(int argc, char *argv[])
@@ -335,7 +314,7 @@ main(int argc, char *argv[])
 
 	strerror_init();
 	localtime_init();
-#ifdef HAVE_LIBCAPSICUM
+#ifdef HAVE_LIBCASPER
 	if (resolv != 0) {
 		if (cappwdgrp_setup(&cappwd, &capgrp) < 0) {
 			cappwd = NULL;
@@ -404,13 +383,7 @@ main(int argc, char *argv[])
 			ktrsyscall((struct ktr_syscall *)m, sv_flags);
 			break;
 		case KTR_SYSRET:
-#if defined(__amd64__) || defined(__i386__)
-			if ((sv_flags & SV_ABI_MASK) == SV_ABI_LINUX)
-				linux_ktrsysret((struct ktr_sysret *)m, 
-				    sv_flags);
-			else
-#endif
-				ktrsysret((struct ktr_sysret *)m, sv_flags);
+			ktrsysret((struct ktr_sysret *)m, sv_flags);
 			break;
 		case KTR_NAMEI:
 		case KTR_SYSCTL:
@@ -559,17 +532,19 @@ abidump(struct ktr_header *kth)
 	case SV_ABI_FREEBSD:
 		abi = "F";
 		break;
+	case SV_ABI_CLOUDABI:
+		abi = "C";
+		break;
 	default:
 		abi = "U";
 		break;
 	}
 
-	if (flags != 0) {
-		if (flags & SV_LP64)
-			arch = "64";
-		else
-			arch = "32";
-	} else
+	if (flags & SV_LP64)
+		arch = "64";
+	else if (flags & SV_ILP32)
+		arch = "32";
+	else
 		arch = "00";
 
 	printf("%s%s  ", abi, arch);
@@ -715,6 +690,10 @@ syscallabi(u_int sv_flags)
 			return (SYSDECODE_ABI_LINUX32);
 #endif
 		return (SYSDECODE_ABI_LINUX);
+#endif
+#if defined(__aarch64__) || defined(__amd64__)
+	case SV_ABI_CLOUDABI:
+		return (SYSDECODE_ABI_CLOUDABI64);
 #endif
 	default:
 		return (SYSDECODE_ABI_UNKNOWN);
@@ -1383,7 +1362,8 @@ ktrsysret(struct ktr_sysret *ktr, u_int sv_flags)
 	else if (error == EJUSTRETURN)
 		xo_emit("JUSTRETURN");
 	else {
-		xo_emit("-1 errno %d", ktr->ktr_error);
+		xo_emit("-1 errno %d", sysdecode_freebsd_to_abi_errno(
+		    syscallabi(sv_flags), error));
 		if (fancy)
 			xo_emit(" %s", strerror(ktr->ktr_error));
 	}
@@ -1685,7 +1665,7 @@ ktrstat(struct stat *statp)
 	if (resolv == 0) {
 		pwd = NULL;
 	} else {
-#ifdef HAVE_LIBCAPSICUM
+#ifdef HAVE_LIBCASPER
 		if (cappwd != NULL)
 			pwd = cap_getpwuid(cappwd, statp->st_uid);
 		else
@@ -1699,7 +1679,7 @@ ktrstat(struct stat *statp)
 	if (resolv == 0) {
 		grp = NULL;
 	} else {
-#ifdef HAVE_LIBCAPSICUM
+#ifdef HAVE_LIBCASPER
 		if (capgrp != NULL)
 			grp = cap_getgrgid(capgrp, statp->st_gid);
 		else
@@ -1868,44 +1848,6 @@ ktrfaultend(struct ktr_faultend *ktr)
 	vmresultname(ktr->result);
 	xo_emit("\n");
 }
-
-#if defined(__amd64__) || defined(__i386__)
-void
-linux_ktrsysret(struct ktr_sysret *ktr, u_int sv_flags)
-{
-	register_t ret = ktr->ktr_retval;
-	int error = ktr->ktr_error;
-
-	syscallname(ktr->ktr_code, sv_flags);
-	xo_emit(" ");
-
-	if (error == 0) {
-		if (fancy) {
-			xo_emit("%ld", (long)ret);
-			if (ret < 0 || ret > 9)
-				xo_emit("/%#lx", (unsigned long)ret);
-		} else {
-			if (decimal)
-				xo_emit("%ld", (long)ret);
-			else
-				xo_emit("%#lx", (unsigned long)ret);
-		}
-	} else if (error == ERESTART)
-		xo_emit("RESTART");
-	else if (error == EJUSTRETURN)
-		xo_emit("JUSTRETURN");
-	else {
-		if (ktr->ktr_error <= ELAST + 1)
-			error = abs(bsd_to_linux_errno[ktr->ktr_error]);
-		else
-			error = 999;
-		xo_emit("-1 errno %d", error);
-		if (fancy)
-			xo_emit(" %s", strerror(ktr->ktr_error));
-	}
-	putchar('\n');
-}
-#endif
 
 void
 usage(void)

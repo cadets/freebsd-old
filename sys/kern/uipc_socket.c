@@ -134,9 +134,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/stat.h>
 #include <sys/sx.h>
 #include <sys/sysctl.h>
+#include <sys/taskqueue.h>
 #include <sys/uio.h>
 #include <sys/jail.h>
 #include <sys/syslog.h>
+#include <sys/tesla-kernel.h>
+
 #include <netinet/in.h>
 
 #include <net/vnet.h>
@@ -357,7 +360,7 @@ sysctl_maxsockets(SYSCTL_HANDLER_ARGS)
 }
 SYSCTL_PROC(_kern_ipc, OID_AUTO, maxsockets, CTLTYPE_INT|CTLFLAG_RW,
     &maxsockets, 0, sysctl_maxsockets, "IU",
-    "Maximum number of sockets avaliable");
+    "Maximum number of sockets available");
 
 /*
  * Socket operation routines.  These routines are called by the routines in
@@ -396,7 +399,10 @@ soalloc(struct vnet *vnet)
 	SOCKBUF_LOCK_INIT(&so->so_rcv, "so_rcv");
 	sx_init(&so->so_snd.sb_sx, "so_snd_sx");
 	sx_init(&so->so_rcv.sb_sx, "so_rcv_sx");
-	TAILQ_INIT(&so->so_aiojobq);
+	TAILQ_INIT(&so->so_snd.sb_aiojobq);
+	TAILQ_INIT(&so->so_rcv.sb_aiojobq);
+	TASK_INIT(&so->so_snd.sb_aiotask, 0, soaio_snd, so);
+	TASK_INIT(&so->so_rcv.sb_aiotask, 0, soaio_rcv, so);
 #ifdef VIMAGE
 	VNET_ASSERT(vnet != NULL, ("%s:%d vnet is NULL, so=%p",
 	    __func__, __LINE__, so));
@@ -474,6 +480,13 @@ socreate(int dom, struct socket **aso, int type, int proto,
 	struct protosw *prp;
 	struct socket *so;
 	int error;
+
+#ifdef MAC
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_create(cred, dom, type,
+	    proto) == 0);
+#endif
+#endif
 
 	if (proto)
 		prp = pffindproto(dom, proto, type);
@@ -682,6 +695,13 @@ sobind(struct socket *so, struct sockaddr *nam, struct thread *td)
 {
 	int error;
 
+#ifdef MAC
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_bind(ANY(ptr), so, nam) ==
+	    0);
+#endif
+#endif
+
 	CURVNET_SET(so->so_vnet);
 	error = (*so->so_proto->pr_usrreqs->pru_bind)(so, nam, td);
 	CURVNET_RESTORE();
@@ -692,6 +712,13 @@ int
 sobindat(int fd, struct socket *so, struct sockaddr *nam, struct thread *td)
 {
 	int error;
+
+#ifdef MAC
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_bind(ANY(ptr), so, nam) ==
+	    0);
+#endif
+#endif
 
 	CURVNET_SET(so->so_vnet);
 	error = (*so->so_proto->pr_usrreqs->pru_bindat)(fd, so, nam, td);
@@ -715,6 +742,12 @@ int
 solisten(struct socket *so, int backlog, struct thread *td)
 {
 	int error;
+
+#ifdef MAC
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_listen(ANY(ptr), so) == 0);
+#endif
+#endif
 
 	CURVNET_SET(so->so_vnet);
 	error = (*so->so_proto->pr_usrreqs->pru_listen)(so, backlog, td);
@@ -963,6 +996,14 @@ soaccept(struct socket *so, struct sockaddr **nam)
 {
 	int error;
 
+#ifdef MAC
+	/* Access-control check is on head rather than so. */
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_accept(ANY(ptr), ANY(ptr)) ==
+	    0);
+#endif
+#endif
+
 	SOCK_LOCK(so);
 	KASSERT((so->so_state & SS_NOFDREF) != 0, ("soaccept: !NOFDREF"));
 	so->so_state &= ~SS_NOFDREF;
@@ -977,6 +1018,13 @@ soaccept(struct socket *so, struct sockaddr **nam)
 int
 soconnect(struct socket *so, struct sockaddr *nam, struct thread *td)
 {
+
+#ifdef MAC
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_connect(td->td_ucred, so,
+	    nam) == 0);
+#endif
+#endif
 
 	return (soconnectat(AT_FDCWD, so, nam, td));
 }
@@ -1394,6 +1442,12 @@ sosend(struct socket *so, struct sockaddr *addr, struct uio *uio,
     struct mbuf *top, struct mbuf *control, int flags, struct thread *td)
 {
 	int error;
+
+#ifdef MAC
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_send(ANY(ptr), so) == 0);
+#endif
+#endif
 
 	CURVNET_SET(so->so_vnet);
 	error = so->so_proto->pr_usrreqs->pru_sosend(so, addr, uio, top,
@@ -2325,6 +2379,12 @@ soreceive(struct socket *so, struct sockaddr **psa, struct uio *uio,
 {
 	int error;
 
+#ifdef MAC
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_receive(ANY(ptr), so) == 0);
+#endif
+#endif
+
 	CURVNET_SET(so->so_vnet);
 	error = (so->so_proto->pr_usrreqs->pru_soreceive(so, psa, uio, mp0,
 	    controlp, flagsp));
@@ -3019,6 +3079,16 @@ sopoll_generic(struct socket *so, int events, struct ucred *active_cred,
 {
 	int revents = 0;
 
+#ifdef MAC
+	/*
+	 * XXXRW: Should be active_cred but actually fp->f_cred is getting
+	 * passed down the stack, so the wrong cred here!
+	 */
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_poll(ANY(ptr), so) == 0);
+#endif
+#endif
+
 	SOCKBUF_LOCK(&so->so_snd);
 	SOCKBUF_LOCK(&so->so_rcv);
 	if (events & (POLLIN | POLLRDNORM))
@@ -3063,6 +3133,12 @@ soo_kqfilter(struct file *fp, struct knote *kn)
 {
 	struct socket *so = kn->kn_fp->f_data;
 	struct sockbuf *sb;
+
+#ifdef MAC
+#if defined(TESLA_MAC_SOCKET) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL_PREVIOUSLY(mac_socket_check_poll(ANY(ptr), so) == 0);
+#endif
+#endif
 
 	switch (kn->kn_filter) {
 	case EVFILT_READ:

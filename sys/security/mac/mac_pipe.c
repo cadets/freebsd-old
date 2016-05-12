@@ -54,10 +54,15 @@ __FBSDID("$FreeBSD$");
 #include <sys/vnode.h>
 #include <sys/pipe.h>
 #include <sys/sysctl.h>
+#include <sys/tesla-kernel.h>
 
 #include <security/mac/mac_framework.h>
 #include <security/mac/mac_internal.h>
 #include <security/mac/mac_policy.h>
+
+/* Forward declaration for TESLA. */
+static int	mac_pipe_check_relabel(struct ucred *cred, struct pipepair *pp,
+		    struct label *newlabel);
 
 struct label *
 mac_pipe_label_alloc(void)
@@ -136,6 +141,11 @@ static void
 mac_pipe_relabel(struct ucred *cred, struct pipepair *pp,
     struct label *newlabel)
 {
+
+#if defined(TESLA_MAC_MISC) || defined(TESLA_MAC_ALL)
+	TESLA_SYSCALL_PREVIOUSLY(mac_pipe_check_relabel(cred, pp, newlabel)
+	    == 0);
+#endif
 
 	MAC_POLICY_PERFORM_NOSLEEP(pipe_relabel, cred, pp, pp->pp_label,
 	    newlabel);

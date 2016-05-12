@@ -54,7 +54,11 @@ __FBSDID("$FreeBSD$");
 #include <sys/sx.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
+#include <sys/tesla-kernel.h>
 #include <sys/unistd.h>
+
+/* Required for TESLA assertion. */
+#include <sys/priv.h>
 
 SYSCTL_ROOT_NODE(0,	  sysctl, CTLFLAG_RW, 0,
 	"Sysctl internal magic");
@@ -295,6 +299,11 @@ sysctl_hostname(SYSCTL_HANDLER_ARGS)
 	error = sysctl_handle_string(oidp, tmpname, len, req);
 
 	if (req->newptr != NULL && error == 0) {
+#ifdef TESLA_PRIV
+		TESLA_SYSCALL_PREVIOUSLY(priv_check(req->td,
+		    PRIV_SYSCTL_WRITEJAIL) == 0);
+#endif
+
 		/*
 		 * Copy the locally set hostname to all jails that share
 		 * this host info.
@@ -352,6 +361,12 @@ sysctl_kern_securelvl(SYSCTL_HANDLER_ARGS)
 	error = sysctl_handle_int(oidp, &level, 0, req);
 	if (error || !req->newptr)
 		return (error);
+
+#ifdef TESLA_PRIV
+	TESLA_SYSCALL_PREVIOUSLY(priv_check(req->td, PRIV_SYSCTL_WRITEJAIL) ==
+	    0);
+#endif
+
 	/* Permit update only if the new securelevel exceeds the old. */
 	sx_slock(&allprison_lock);
 	mtx_lock(&pr->pr_mtx);
@@ -422,7 +437,7 @@ sysctl_hostid(SYSCTL_HANDLER_ARGS)
 }
 
 SYSCTL_PROC(_kern, KERN_HOSTID, hostid,
-    CTLTYPE_ULONG | CTLFLAG_RW | CTLFLAG_PRISON | CTLFLAG_MPSAFE,
+    CTLTYPE_ULONG | CTLFLAG_RW | CTLFLAG_PRISON | CTLFLAG_MPSAFE | CTLFLAG_CAPRD,
     NULL, 0, sysctl_hostid, "LU", "Host ID");
 
 /*

@@ -64,29 +64,6 @@ NOSTDINC= -nostdinc
 
 INCLUDES= ${NOSTDINC} ${INCLMAGIC} -I. -I$S
 
-.if ${MK_FAST_DEPEND} == "no" && (make(depend) || make(kernel-depend))
-
-# This hack lets us use the ipfilter code without spamming a new
-# include path into contrib'ed source files.
-INCLUDES+= -I$S/contrib/ipfilter
-
-# ... and the same for ath
-INCLUDES+= -I$S/dev/ath -I$S/dev/ath/ath_hal -I$S/contrib/dev/ath/ath_hal
-
-# ... and the same for the NgATM stuff
-INCLUDES+= -I$S/contrib/ngatm
-
-# ... and the same for vchiq
-INCLUDES+= -I$S/contrib/vchiq
-
-# ... and the same for twa
-INCLUDES+= -I$S/dev/twa
-
-# ... and the same for cxgb and cxgbe
-INCLUDES+= -I$S/dev/cxgb -I$S/dev/cxgbe
-
-.endif
-
 CFLAGS=	${COPTFLAGS} ${DEBUG}
 CFLAGS+= ${INCLUDES} -D_KERNEL -DHAVE_KERNEL_OPTION_HEADERS -include opt_global.h
 CFLAGS_PARAM_INLINE_UNIT_GROWTH?=100
@@ -101,6 +78,8 @@ CFLAGS.gcc+= --param large-function-growth=${CFLAGS_PARAM_LARGE_FUNCTION_GROWTH}
 CFLAGS.gcc+=${CFLAGS_ARCH_PARAMS}
 .endif
 WERROR?= -Werror
+
+LLCFLAGS+=	-code-model=kernel
 
 # XXX LOCORE means "don't declare C stuff" not "for locore.s".
 ASM_CFLAGS= -x assembler-with-cpp -DLOCORE ${CFLAGS} ${ASM_CFLAGS.${.IMPSRC:T}} 
@@ -192,8 +171,18 @@ OFED_C=		${OFED_C_NOIMP} ${.IMPSRC}
 GEN_CFILES= $S/$M/$M/genassym.c ${MFILES:T:S/.m$/.c/}
 SYSTEM_CFILES= config.c env.c hints.c vnode_if.c
 SYSTEM_DEP= Makefile ${SYSTEM_OBJS}
-SYSTEM_OBJS= locore.o ${MDOBJS} ${OBJS}
-SYSTEM_OBJS+= ${SYSTEM_CFILES:.c=.o}
+SYSTEM_OBJS= locore.o ${MDOBJS}
+.if ${MK_LLVM_INSTRUMENTED} == "no"
+SYSTEM_OBJS+= ${OBJS} ${SYSTEM_CFILES:.c=.o}
+.else
+# XXX: should probably include GEN_CFILES, but may be tricky
+LLVM_CFILES= ${CFILES} ${SYSTEM_CFILES}
+TESLA_FILES= ${LLVM_CFILES:T:.c=.tesla}
+OIRS= ${LLVM_CFILES:T:.c=.o${LLVM_IR_TYPE}}
+INSTR_IRS= ${LLVM_CFILES:T:.c=.instr${LLVM_IR_TYPE}}
+INSTR_OBJS= ${LLVM_CFILES:T:.c=.instro}
+SYSTEM_OBJS+= ${LLVM_CFILES:T:.c=.instro} ${NOT_C_OBJS}
+.endif
 SYSTEM_OBJS+= hack.So
 
 MD_ROOT_SIZE_CONFIGURED!=	grep MD_ROOT_SIZE opt_md.h || true ; echo

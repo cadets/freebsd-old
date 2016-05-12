@@ -257,10 +257,80 @@ XZ_CMD?=	xz
 # overriden by Makefiles, but the user may choose to set this in src.conf(5).
 TESTSBASE?= /usr/tests
 
+DEPENDFILE?=	.depend
+
 # Compat for the moment -- old bsd.own.mk only included this when _WITHOUT_SRCCONF
 # wasn't defined. bsd.ports.mk and friends depend on this behavior. Remove in 12.
 .if !defined(_WITHOUT_SRCCONF)
 .include <bsd.compiler.mk>
+
+#
+# Some targets require a different build process in order to allow LLVM
+# instrumentation passes to be applied.
+#
+# XXX: The current construction allow an empty instrumentation path or
+# a TESLA one.
+#
+.if defined(WITH_LLVM_INSTRUMENTED) && defined(WITHOUT_LLVM_INSTRUMENTED)
+.error WITH_LLVM_INSTRUMENTED and WITHOUT_LLVM_INSTRUMENTED can't both be set.
+.endif
+.if defined(MK_LLVM_INSTRUMENTED)
+.error MK_LLVM_INSTRUMENTED can't be set by a user.
+.endif
+
+.if ${MK_TESLA} == "no" && ${MK_SOAAP} == "no"
+.if defined(WITH_LLVM_INSTRUMENTED)
+MK_LLVM_INSTRUMENTED:=	yes
+.else
+MK_LLVM_INSTRUMENTED:=	no
+.endif
+.endif
+
+.if ${MK_SOAAP} != "no"
+.if !defined(SOAAP_INCLUDE_DIR)
+.if !defined(SOAAP_SOURCE_DIR)
+.error Must set one of SOAAP_INCLUDE_DIR or SOAAP_SOURCE_DIR with WITH_SOAAP
+.else
+.warning SOAAP_SOURCE_DIR is deprecated, use SOAAP_INCLUDE_DIR
+SOAAP_INCLUDE_DIR=${SOAAP_SOURCE_DIR}/include
+.endif
+.endif
+.if !defined(SOAAP_LIB_DIR)
+.if !defined(SOAAP_BUILD_DIR)
+.error Must set one of SOAAP_LIB_DIR or SOAAP_BUILD_DIR with WITH_SOAAP
+.else
+.warning SOAAP_BUILD_DIR is deprecated, use SOAAP_LIB_DIR
+SOAAP_LIB_DIR=${SOAAP_BUILD_DIR}
+.endif
+.endif
+CFLAGS+= -DSOAAP -I${SOAAP_INCLUDE_DIR}
+.if defined(WITHOUT_LLVM_INSTRUMENTED)
+.error WITHOUT_LLVM_INSTRUMENTED and WITH_SOAAP can't both be set.
+.else
+MK_LLVM_INSTRUMENTED:=	yes
+.endif
+.endif
+
+.if ${MK_TESLA} == "no"
+LLVM_INSTR_DEP?=
+LLVM_INSTR_COMMAND?= cp ${.IMPSRC} ${.TARGET}
+.else
+LLVM_INSTR_DEP= tesla.manifest
+.if ${LLVM_IR_TYPE} == "bc"
+LLVM_INSTR_COMMAND= ${TESLA} instrument -tesla-manifest \
+    tesla.manifest ${.IMPSRC} -o ${.TARGET}
+.elif ${LLVM_IR_TYPE} == "ll"
+LLVM_INSTR_COMMAND= ${TESLA} instrument -S -tesla-manifest \
+    tesla.manifest ${.IMPSRC} -o ${.TARGET}
+.else
+.error unknown LLVM IR type ${LLVM_IR_TYPE}
+.endif
+.if defined(WITHOUT_LLVM_INSTRUMENTED)
+.error WITHOUT_LLVM_INSTRUMENTED and WITH_TESLA can't both be set.
+.else
+MK_LLVM_INSTRUMENTED:=	yes
+.endif
+.endif
 .endif # !_WITHOUT_SRCCONF
 
 .endif	# !target(__<bsd.own.mk>__)

@@ -8,6 +8,7 @@
 
 # XXX The use of COPTS in modern makefiles is discouraged.
 .if defined(COPTS)
+.warning ${.CURDIR}: COPTS should be CFLAGS.
 CFLAGS+=${COPTS}
 .endif
 
@@ -47,6 +48,13 @@ CTFFLAGS+= -g
 STRIP?=	-s
 .endif
 
+.if defined(NO_ROOT)
+.if !defined(TAGS) || ! ${TAGS:Mpackage=*}
+TAGS+=		package=${PACKAGE:Uruntime}
+.endif
+TAG_ARGS=	-T ${TAGS:[*]:S/ /,/g}
+.endif
+
 .if defined(NO_SHARED) && (${NO_SHARED} != "no" && ${NO_SHARED} != "NO")
 LDFLAGS+= -static
 .endif
@@ -63,6 +71,8 @@ PROG_FULL=${PROG}.full
 DEBUGFILEDIR=	${DEBUGDIR}${BINDIR}
 .else
 DEBUGFILEDIR?=	${BINDIR}/.debug
+.endif
+.if !exists(${DESTDIR}${DEBUGFILEDIR})
 DEBUGMKDIR=
 .endif
 .else
@@ -112,6 +122,15 @@ OBJS+=	${PROG}.o
 beforelinking: ${OBJS}
 ${PROG_FULL}: beforelinking
 .endif
+
+${PROG}.${LLVM_IR_TYPE}-a: ${OIRS}
+	@echo linking ${.TARGET}
+	@if [ -z "${OIRS}" ]; then \
+		touch ${.TARGET} ;\
+	else \
+		${LLVM_LINK} -o ${.TARGET} ${OIRS} ;\
+	fi
+
 ${PROG_FULL}: ${OBJS}
 .if defined(PROG_CXX)
 	${CXX:N${CCACHE_BIN}} ${CXXFLAGS:N-M*} ${LDFLAGS} -o ${.TARGET} \
@@ -126,6 +145,40 @@ ${PROG_FULL}: ${OBJS}
 .endif # !target(${PROG})
 
 .endif # !defined(SRCS)
+
+# XXX: currently tesla can't handle C++ so build C++ code normaly in the
+# WITH_TESLA case.
+.if defined(EARLY_BUILD) || defined(NO_LLVM_IR) || \
+    ${MK_LLVM_INSTRUMENTED} == "no" || \
+    (${MK_TESLA} != "no" && defined(PROG_CXX))
+#OBJS+=  ${SRCS:N*.h:R:S/$/.o/g}
+.else
+# XXX: should blow up if other SRCS types are found
+OBJS+=		${SRCS:M*.bin:R:S/$/.o/g:N.o} ${SRCS:M*.[Ss]:R:S/$/.o/g:N.o}
+LLVM_CFILES=	${SRCS:M*.c} \
+		${SRCS:M*.cc} ${SRCS:M*.cpp} ${SRCS:M*.cxx} ${SRCS:M*.C} \
+		${SRCS:M*.l:R:S/$/.c/:N.c} ${SRCS:M*.y:R:S/$/.c/:N.c}
+OIRS=		${LLVM_CFILES:R:S/$/.o${LLVM_IR_TYPE}/}
+INSTR_IRS=	${LLVM_CFILES:R:S/$/.instr${LLVM_IR_TYPE}/}
+INSTR_OBJS=	${LLVM_CFILES:R:S/$/.instro/}
+OBJS+=		${INSTR_OBJS}
+CLEANFILES+=	${OIRS} ${INSTR_IRS} ${INSTR_OBJS}
+.endif
+.if ${MK_TESLA} != "no"
+TESLA_FILES=	${LLVM_CFILES:R:S/$/.tesla/}
+CLEANFILES+=	${TESLA_FILES} tesla.manifest
+.endif
+
+.if ${MK_TESLA} != "no" && !defined(EARLY_BUILD)
+tesla.manifest: ${TESLA_FILES}
+	${TESLA} cat -o ${.TARGET} ${TESLA_FILES}
+
+DPADD+=	${LIBTESLA}
+LDADD+= -ltesla
+.else
+tesla.manifest:
+	touch ${.TARGET}
+.endif
 
 .if ${MK_DEBUG_FILES} != "no"
 ${PROG}: ${PROG_FULL} ${PROGNAME}.debug
@@ -148,15 +201,19 @@ MAN1=	${MAN}
 .if defined(_SKIP_BUILD)
 all:
 .else
-all: beforebuild .WAIT ${PROG} ${SCRIPTS}
-beforebuild: objwarn
+all: ${PROG} ${SCRIPTS}
 .if ${MK_MAN} != "no"
-all: _manpages
+all: all-man
 .endif
 .endif
 
 .if defined(PROG)
 CLEANFILES+= ${PROG}
+.if ${MK_SOAAP} != "no"
+CLEANFILES+=	${PROG}.${LLVM_IR_TYPE}-a \
+		${PROG}.bc_cep ${PROG}.po_cep ${PROG}.soaap_cg \
+		${PROG}.bc_soaap_perf ${PROG}.po_soaap_perf ${PROG}.soaap_pef
+.endif
 .if ${MK_DEBUG_FILES} != "no"
 CLEANFILES+=	${PROG_FULL} ${PROGNAME}.debug
 .endif
@@ -205,13 +262,13 @@ realinstall: _proginstall
 .ORDER: beforeinstall _proginstall
 _proginstall:
 .if defined(PROG)
-	${INSTALL} ${STRIP} -o ${BINOWN} -g ${BINGRP} -m ${BINMODE} \
+	${INSTALL} ${TAG_ARGS} ${STRIP} -o ${BINOWN} -g ${BINGRP} -m ${BINMODE} \
 	    ${_INSTALLFLAGS} ${PROG} ${DESTDIR}${BINDIR}/${PROGNAME}
 .if ${MK_DEBUG_FILES} != "no"
 .if defined(DEBUGMKDIR)
-	${INSTALL} -T debug -d ${DESTDIR}${DEBUGFILEDIR}/
+	${INSTALL} ${TAG_ARGS:D${TAG_ARGS},debug} -d ${DESTDIR}${DEBUGFILEDIR}/
 .endif
-	${INSTALL} -T debug -o ${BINOWN} -g ${BINGRP} -m ${DEBUGMODE} \
+	${INSTALL} ${TAG_ARGS:D${TAG_ARGS},debug} -o ${BINOWN} -g ${BINGRP} -m ${DEBUGMODE} \
 	    ${PROGNAME}.debug ${DESTDIR}${DEBUGFILEDIR}/${PROGNAME}.debug
 .endif
 .endif
@@ -243,7 +300,7 @@ SCRIPTSMODE_${script:T}?=	${SCRIPTSMODE}
 STAGE_AS_${script:T}=		${SCRIPTSDIR_${script:T}}/${SCRIPTSNAME_${script:T}}
 _scriptsinstall: _SCRIPTSINS_${script:T}
 _SCRIPTSINS_${script:T}: ${script}
-	${INSTALL} -o ${SCRIPTSOWN_${.ALLSRC:T}} \
+	${INSTALL} ${TAG_ARGS} -o ${SCRIPTSOWN_${.ALLSRC:T}} \
 	    -g ${SCRIPTSGRP_${.ALLSRC:T}} -m ${SCRIPTSMODE_${.ALLSRC:T}} \
 	    ${.ALLSRC} \
 	    ${DESTDIR}${SCRIPTSDIR_${.ALLSRC:T}}/${SCRIPTSNAME_${.ALLSRC:T}}
@@ -259,8 +316,8 @@ NLSNAME?=	${PROG}
 .include <bsd.links.mk>
 
 .if ${MK_MAN} != "no"
-realinstall: _maninstall
-.ORDER: beforeinstall _maninstall
+realinstall: maninstall
+.ORDER: beforeinstall maninstall
 .endif
 
 .endif	# !target(install)
@@ -276,12 +333,11 @@ lint: ${SRCS:M*.c}
 .include <bsd.man.mk>
 .endif
 
-.include <bsd.dep.mk>
-
-.if defined(PROG) && !exists(${.OBJDIR}/${DEPENDFILE})
-${OBJS}: ${SRCS:M*.h}
+.if defined(PROG)
+OBJS_DEPEND_GUESS+= ${SRCS:M*.h}
 .endif
 
+.include <bsd.dep.mk>
+.include <bsd.clang-analyze.mk>
 .include <bsd.obj.mk>
-
 .include <bsd.sys.mk>

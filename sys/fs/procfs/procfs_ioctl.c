@@ -38,6 +38,7 @@
 #include <sys/proc.h>
 #include <sys/signalvar.h>
 #include <sys/systm.h>
+#include <sys/tesla-kernel.h>
 
 #include <fs/pseudofs/pseudofs.h>
 #include <fs/procfs/procfs.h>
@@ -68,6 +69,10 @@ procfs_ioctl(PFS_IOCTL_ARGS)
 	int error, flags, sig;
 #ifdef COMPAT_FREEBSD6
 	int ival;
+#endif
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), p) == 0);
 #endif
 
 	KASSERT(p != NULL,

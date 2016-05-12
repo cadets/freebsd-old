@@ -906,11 +906,9 @@ setup_txqs(device_t dev, struct netfront_info *info,
 fail_bind_port:
 	taskqueue_drain_all(txq->tq);
 fail_start_thread:
-	gnttab_free_grant_references(txq->gref_head);
-	free(txq->ring.sring, M_DEVBUF);
-	gnttab_end_foreign_access_ref(txq->ring_ref);
 	buf_ring_free(txq->br, M_DEVBUF);
 	taskqueue_free(txq->tq);
+	gnttab_end_foreign_access_ref(txq->ring_ref);
 fail_grant_ring:
 	gnttab_free_grant_references(txq->gref_head);
 	free(txq->ring.sring, M_DEVBUF);
@@ -1204,7 +1202,6 @@ xn_rxeof(struct netfront_rxq *rxq)
 	struct netfront_info *np = rxq->info;
 #if (defined(INET) || defined(INET6))
 	struct lro_ctrl *lro = &rxq->lro;
-	struct lro_entry *queued;
 #endif
 	struct netfront_rx_info rinfo;
 	struct netif_rx_response *rx = &rinfo.rx;
@@ -1298,11 +1295,7 @@ xn_rxeof(struct netfront_rxq *rxq)
 		/*
 		 * Flush any outstanding LRO work
 		 */
-		while (!SLIST_EMPTY(&lro->lro_active)) {
-			queued = SLIST_FIRST(&lro->lro_active);
-			SLIST_REMOVE_HEAD(&lro->lro_active, next);
-			tcp_lro_flush(lro, queued);
-		}
+		tcp_lro_flush_all(lro);
 #endif
 
 		xn_alloc_rx_buffers(rxq);
@@ -1402,7 +1395,7 @@ xn_rxq_intr(void *xrxq)
 {
 	struct netfront_rxq *rxq = xrxq;
 
-	taskqueue_enqueue_fast(rxq->tq, &rxq->intrtask);
+	taskqueue_enqueue(rxq->tq, &rxq->intrtask);
 }
 
 static void
@@ -1410,7 +1403,7 @@ xn_txq_intr(void *xtxq)
 {
 	struct netfront_txq *txq = xtxq;
 
-	taskqueue_enqueue_fast(txq->tq, &txq->intrtask);
+	taskqueue_enqueue(txq->tq, &txq->intrtask);
 }
 
 static int
@@ -1863,7 +1856,6 @@ xn_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		}
 		sc->xn_if_flags = ifp->if_flags;
 		XN_UNLOCK(sc);
-		error = 0;
 		break;
 	case SIOCSIFCAP:
 		mask = ifr->ifr_reqcap ^ ifp->if_capenable;
@@ -1898,7 +1890,6 @@ xn_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 			ifp->if_capenable ^= IFCAP_LRO;
 
 		}
-		error = 0;
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:
@@ -2284,11 +2275,9 @@ netif_free(struct netfront_info *np)
 	netif_disconnect_backend(np);
 	free(np->rxq, M_DEVBUF);
 	free(np->txq, M_DEVBUF);
-	if (np->xn_ifp != NULL) {
-		ether_ifdetach(np->xn_ifp);
-		if_free(np->xn_ifp);
-		np->xn_ifp = NULL;
-	}
+	ether_ifdetach(np->xn_ifp);
+	if_free(np->xn_ifp);
+	np->xn_ifp = NULL;
 	ifmedia_removeall(&np->sc_media);
 }
 

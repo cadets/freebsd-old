@@ -50,6 +50,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sx.h>
 #include <sys/malloc.h>
 #include <sys/signalvar.h>
+#include <sys/tesla-kernel.h>
 
 #include <machine/reg.h>
 
@@ -144,12 +145,20 @@ int
 proc_read_regs(struct thread *td, struct reg *regs)
 {
 
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), td->td_proc) == 0);
+#endif
+
 	PROC_ACTION(fill_regs(td, regs));
 }
 
 int
 proc_write_regs(struct thread *td, struct reg *regs)
 {
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), td->td_proc) == 0);
+#endif
 
 	PROC_ACTION(set_regs(td, regs));
 }
@@ -158,12 +167,20 @@ int
 proc_read_dbregs(struct thread *td, struct dbreg *dbregs)
 {
 
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), td->td_proc) == 0);
+#endif
+
 	PROC_ACTION(fill_dbregs(td, dbregs));
 }
 
 int
 proc_write_dbregs(struct thread *td, struct dbreg *dbregs)
 {
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), td->td_proc) == 0);
+#endif
 
 	PROC_ACTION(set_dbregs(td, dbregs));
 }
@@ -176,12 +193,20 @@ int
 proc_read_fpregs(struct thread *td, struct fpreg *fpregs)
 {
 
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), td->td_proc) == 0);
+#endif
+
 	PROC_ACTION(fill_fpregs(td, fpregs));
 }
 
 int
 proc_write_fpregs(struct thread *td, struct fpreg *fpregs)
 {
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), td->td_proc) == 0);
+#endif
 
 	PROC_ACTION(set_fpregs(td, fpregs));
 }
@@ -192,12 +217,20 @@ int
 proc_read_regs32(struct thread *td, struct reg32 *regs32)
 {
 
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), td->td_proc) == 0);
+#endif
+
 	PROC_ACTION(fill_regs32(td, regs32));
 }
 
 int
 proc_write_regs32(struct thread *td, struct reg32 *regs32)
 {
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), td->td_proc) == 0);
+#endif
 
 	PROC_ACTION(set_regs32(td, regs32));
 }
@@ -206,12 +239,20 @@ int
 proc_read_dbregs32(struct thread *td, struct dbreg32 *dbregs32)
 {
 
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), td->td_proc) == 0);
+#endif
+
 	PROC_ACTION(fill_dbregs32(td, dbregs32));
 }
 
 int
 proc_write_dbregs32(struct thread *td, struct dbreg32 *dbregs32)
 {
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), td->td_proc) == 0);
+#endif
 
 	PROC_ACTION(set_dbregs32(td, dbregs32));
 }
@@ -220,12 +261,20 @@ int
 proc_read_fpregs32(struct thread *td, struct fpreg32 *fpregs32)
 {
 
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), td->td_proc) == 0);
+#endif
+
 	PROC_ACTION(fill_fpregs32(td, fpregs32));
 }
 
 int
 proc_write_fpregs32(struct thread *td, struct fpreg32 *fpregs32)
 {
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), td->td_proc) == 0);
+#endif
 
 	PROC_ACTION(set_fpregs32(td, fpregs32));
 }
@@ -234,6 +283,10 @@ proc_write_fpregs32(struct thread *td, struct fpreg32 *fpregs32)
 int
 proc_sstep(struct thread *td)
 {
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), td->td_proc) == 0);
+#endif
 
 	PROC_ACTION(ptrace_single_step(td));
 }
@@ -245,6 +298,10 @@ proc_rwmem(struct proc *p, struct uio *uio)
 	vm_offset_t pageno;		/* page number */
 	vm_prot_t reqprot;
 	int error, fault_flags, page_offset, writing;
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), p) == 0);
+#endif
 
 	/*
 	 * Assert that someone has locked this vmspace.  (Should be
@@ -384,6 +441,10 @@ ptrace_vm_entry(struct thread *td, struct proc *p, struct ptrace_vm_entry *pve)
 	u_int pathlen;
 	int error, index;
 
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), p) == 0);
+#endif
+
 	error = 0;
 	obj = NULL;
 
@@ -492,6 +553,10 @@ ptrace_vm_entry32(struct thread *td, struct proc *p,
 {
 	struct ptrace_vm_entry pve;
 	int error;
+
+#ifdef TESLA_PROC
+	TESLA_SYSCALL_PREVIOUSLY(p_candebug(ANY(ptr), p) == 0);
+#endif
 
 	pve.pve_entry = pve32->pve_entry;
 	pve.pve_pathlen = pve32->pve_pathlen;

@@ -64,7 +64,6 @@ struct socket;
  * (a) constant after allocation, no locking required.
  * (b) locked by SOCK_LOCK(so).
  * (c) locked by SOCKBUF_LOCK(&so->so_rcv).
- * (d) locked by SOCKBUF_LOCK(&so->so_snd).
  * (e) locked by ACCEPT_LOCK().
  * (f) not locked since integer reads/writes are atomic.
  * (g) used only as a sleep/wakeup address, no value.
@@ -104,7 +103,6 @@ struct socket {
 	struct	sigio *so_sigio;	/* [sg] information for async I/O or
 					   out of band data (SIGURG) */
 	u_long	so_oobmark;		/* (c) chars to oob mark */
-	TAILQ_HEAD(, kaiocb) so_aiojobq; /* AIO ops waiting on socket */
 
 	struct sockbuf so_rcv, so_snd;
 
@@ -343,6 +341,8 @@ int	getsock_cap(struct thread *td, int fd, cap_rights_t *rightsp,
 	    struct file **fpp, u_int *fflagp);
 void	soabort(struct socket *so);
 int	soaccept(struct socket *so, struct sockaddr **nam);
+void	soaio_rcv(void *context, int pending);
+void	soaio_snd(void *context, int pending);
 int	socheckuid(struct socket *so, uid_t uid);
 int	sobind(struct socket *so, struct sockaddr *nam, struct thread *td);
 int	sobindat(int fd, struct socket *so, struct sockaddr *nam,
@@ -397,6 +397,7 @@ void	soupcall_clear(struct socket *so, int which);
 void	soupcall_set(struct socket *so, int which,
 	    int (*func)(struct socket *, void *, int), void *arg);
 void	sowakeup(struct socket *so, struct sockbuf *sb);
+void	sowakeup_aio(struct socket *so, struct sockbuf *sb);
 int	selsocket(struct socket *so, int events, struct timeval *tv,
 	    struct thread *td);
 
