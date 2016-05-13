@@ -1769,6 +1769,11 @@ daasync(void *callback_arg, u_int32_t code,
 			ccbh->ccb_state |= DA_CCB_RETRY_UA;
 		break;
 	}
+	case AC_INQ_CHANGED:
+		softc = (struct da_softc *)periph->softc;
+		softc->flags &= ~DA_FLAG_PROBED;
+		dareprobe(periph);
+		break;
 	default:
 		break;
 	}
@@ -2329,8 +2334,8 @@ daregister(struct cam_periph *periph, void *arg)
 	 * would be to not attach the device on failure.
 	 */
 	xpt_register_async(AC_SENT_BDR | AC_BUS_RESET | AC_LOST_DEVICE |
-	    AC_ADVINFO_CHANGED | AC_SCSI_AEN | AC_UNIT_ATTENTION,
-	    daasync, periph, periph->path);
+	    AC_ADVINFO_CHANGED | AC_SCSI_AEN | AC_UNIT_ATTENTION |
+	    AC_INQ_CHANGED, daasync, periph, periph->path);
 
 	/*
 	 * Emit an attribute changed notification just in case 
@@ -2966,7 +2971,7 @@ cmd6workaround(union ccb *ccb)
 		 *
 		 * While we will attempt to choose an alternative delete method
 		 * this may result in short deletes if the existing delete
-		 * requests from geom are big for the new method choosen.
+		 * requests from geom are big for the new method chosen.
 		 *
 		 * This method assumes that the error which triggered this
 		 * will not retry the io otherwise a panic will occur
@@ -3421,7 +3426,7 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 			 * Based on older SBC-3 spec revisions
 			 * any of the UNMAP methods "may" be
 			 * available via LBP given this flag so
-			 * we flag all of them as availble and
+			 * we flag all of them as available and
 			 * then remove those which further
 			 * probes confirm aren't available
 			 * later.

@@ -460,6 +460,8 @@
         ..
         posixshm
         ..
+        sys
+        ..
         vfs
         ..
         vm
@@ -568,6 +570,8 @@
                 ..
             ..
         ..
+	bsdcat
+	..
         calendar
         ..
         cmp
@@ -608,6 +612,8 @@
         ..
         printf
         ..
+        sdiff
+        ..
         sed
             regress.multitest.out
             ..
@@ -629,6 +635,8 @@
         uuencode
         ..
         xargs
+        ..
+        xinstall
         ..
         xo
         ..
