@@ -136,6 +136,10 @@
 #include "dtrace_debug.c"
 #endif
 
+#include <sys/random.h>
+
+#include "dtrace_xoroshiro128_plus.h"
+
 /*
  * DTrace Tunable Variables
  *
@@ -588,6 +592,40 @@ dtrace_dynvar_t *dtrace_dynvar(dtrace_dstate_t *, uint_t, dtrace_key_t *,
 uintptr_t dtrace_dif_varstr(uintptr_t, dtrace_state_t *, dtrace_mstate_t *);
 static int dtrace_priv_proc(dtrace_state_t *);
 static void dtrace_getf_barrier(void);
+
+static __inline uint64_t
+rotl(const uint64_t x, int k)
+{
+	return (x << k) | (x >> (64 - k));
+}
+
+/*
+ * This is the jump function for the generator. It is equivalent to 2^64 calls
+ * to next(); it can be used to generate 2^64 non-overlapping subsequences for
+ * parallel computations.
+ */
+/*
+void
+jump(uint64_t * s, uint64_t * s_jump)
+{
+	static const uint64_t JUMP[] = { 0xbeac0467eba5facb,
+		0xd86b048b86aa9922 };
+
+	uint64_t s0 = 0;
+	uint64_t s1 = 0;
+	for(int i = 0; i < sizeof JUMP / sizeof *JUMP; i++)
+		for(int b = 0; b < 64; b++) {
+			if (JUMP[i] & 1ULL << b) {
+				s0 ^= s[0];
+				s1 ^= s[1];
+			}
+			next();
+		}
+
+	s_jump[0] = s0;
+	s_jump[1] = s1;
+}
+*/
 
 /*
  * DTrace Probe Context Functions
@@ -5929,6 +5967,11 @@ inetout:	regs[rd] = (uintptr_t)end + 1;
 		mstate->dtms_scratch_ptr += scratch_size;
 		break;
 	}
+	case DIF_SUBR_RANDOM: {
+		regs[rd] = dtrace_xoroshiro128_plus_next(
+		    state->dts_rstate[curcpu]);
+		break;
+	}
 	}
 }
 
@@ -9354,6 +9397,10 @@ dtrace_helper_provide_one(dof_helper_t *dhp, dof_sec_t *sec, pid_t pid)
 	for (i = 0; i < nprobes; i++) {
 		probe = (dof_probe_t *)(uintptr_t)(daddr +
 		    prb_sec->dofs_offset + i * prb_sec->dofs_entsize);
+
+		/* See the check in dtrace_helper_provider_validate(). */
+		if (strlen(strtab + probe->dofpr_func) >= DTRACE_FUNCNAMELEN)
+			continue;
 
 		dhpb.dthpb_mod = dhp->dofhp_mod;
 		dhpb.dthpb_func = strtab + probe->dofpr_func;
@@ -14400,6 +14447,7 @@ dtrace_state_create(struct cdev *dev, struct ucred *cred __unused)
 	dtrace_state_t *state;
 	dtrace_optval_t *opt;
 	int bufsize = NCPU * sizeof (dtrace_buffer_t), i;
+	int cpu_it;
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(MUTEX_HELD(&cpu_lock));
@@ -14454,6 +14502,21 @@ dtrace_state_create(struct cdev *dev, struct ucred *cred __unused)
 	 */
 	state->dts_buffer = kmem_zalloc(bufsize, KM_SLEEP);
 	state->dts_aggbuffer = kmem_zalloc(bufsize, KM_SLEEP);
+
+	/*
+         * Allocate and initialise the per-process per-CPU random state.
+	 * SI_SUB_RANDOM < SI_SUB_DTRACE_ANON therefore entropy device is
+         * assumed to be seeded at this point (if from Fortuna seed file).
+	 */
+	(void) read_random(&state->dts_rstate[0], 2 * sizeof(uint64_t));
+	for (cpu_it = 1; cpu_it < NCPU; cpu_it++) {
+		/*
+		 * Each CPU is assigned a 2^64 period, non-overlapping
+		 * subsequence.
+		 */
+		dtrace_xoroshiro128_plus_jump(state->dts_rstate[cpu_it-1],
+		    state->dts_rstate[cpu_it]); 
+	}
 
 #ifdef illumos
 	state->dts_cleaner = CYCLIC_NONE;
@@ -15261,7 +15324,7 @@ dtrace_state_destroy(dtrace_state_t *state)
 
 	dtrace_buffer_free(state->dts_buffer);
 	dtrace_buffer_free(state->dts_aggbuffer);
-
+	
 	for (i = 0; i < nspec; i++)
 		dtrace_buffer_free(spec[i].dtsp_buffer);
 
@@ -16042,7 +16105,13 @@ dtrace_helper_provider_validate(dof_hdr_t *dof, dof_sec_t *sec)
 
 		if (strlen(strtab + probe->dofpr_func) >= DTRACE_FUNCNAMELEN) {
 			dtrace_dof_error(dof, "function name too long");
-			return (-1);
+			/*
+			 * Keep going if the function name is too long.
+			 * Unlike provider and probe names, we cannot reasonably
+			 * impose restrictions on function names, since they're
+			 * a property of the code being instrumented. We will
+			 * skip this probe in dtrace_helper_provide_one().
+			 */
 		}
 
 		if (probe->dofpr_name >= str_sec->dofs_size ||

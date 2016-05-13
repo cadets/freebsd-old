@@ -2236,7 +2236,10 @@ create_objects_compat(struct ip_fw_chain *ch, ipfw_insn *cmd,
 		KASSERT(rw != NULL, ("Unable to find handler for op %d",
 		    (cmd + p->off)->opcode));
 
-		error = rw->create_object(ch, ti, &kidx);
+		if (rw->create_object == NULL)
+			error = EOPNOTSUPP;
+		else
+			error = rw->create_object(ch, ti, &kidx);
 		if (error == 0) {
 			p->kidx = kidx;
 			continue;
@@ -2464,7 +2467,7 @@ ref_rule_objects(struct ip_fw_chain *ch, struct ip_fw *rule,
 		if (error != 0)
 			break;
 		/*
-		 * Compability stuff for old clients:
+		 * Compatibility stuff for old clients:
 		 * prepare to automaitcally create non-existing objects.
 		 */
 		if (unresolved != 0) {
@@ -2576,7 +2579,7 @@ free:
  * Rules in reply are modified to store their actual ruleset number.
  *
  * (*1) TLVs inside IPFW_TLV_TBL_LIST needs to be sorted ascending
- * accoring to their idx field and there has to be no duplicates.
+ * according to their idx field and there has to be no duplicates.
  * (*2) Numbered rules inside IPFW_TLV_RULE_LIST needs to be sorted ascending.
  * (*3) Each ip_fw structure needs to be aligned to u64 boundary.
  *
@@ -2748,7 +2751,7 @@ add_rules(struct ip_fw_chain *chain, ip_fw3_opheader *op3,
 	if ((error = commit_rules(chain, cbuf, rtlv->count)) != 0) {
 		/* Free allocate krules */
 		for (i = 0, ci = cbuf; i < rtlv->count; i++, ci++)
-			free(ci->krule, M_IPFW);
+			free_rule(ci->krule);
 	}
 
 	if (cbuf != NULL && cbuf != &rci)
@@ -3006,7 +3009,7 @@ ipfw_del_obj_rewriter(struct opcode_obj_rewrite *rw, size_t count)
 	return (0);
 }
 
-static void
+static int
 export_objhash_ntlv_internal(struct namedobj_instance *ni,
     struct named_object *no, void *arg)
 {
@@ -3016,8 +3019,9 @@ export_objhash_ntlv_internal(struct namedobj_instance *ni,
 	sd = (struct sockopt_data *)arg;
 	ntlv = (ipfw_obj_ntlv *)ipfw_get_sopt_space(sd, sizeof(*ntlv));
 	if (ntlv == NULL)
-		return;
+		return (ENOMEM);
 	ipfw_export_obj_ntlv(no, ntlv);
+	return (0);
 }
 
 /*
@@ -3276,7 +3280,7 @@ ipfw_flush_sopt_data(struct sockopt_data *sd)
 }
 
 /*
- * Ensures that @sd buffer has contigious @neeeded number of
+ * Ensures that @sd buffer has contiguous @neeeded number of
  * bytes.
  *
  * Returns pointer to requested space or NULL.
@@ -3304,7 +3308,7 @@ ipfw_get_sopt_space(struct sockopt_data *sd, size_t needed)
 }
 
 /*
- * Requests @needed contigious bytes from @sd buffer.
+ * Requests @needed contiguous bytes from @sd buffer.
  * Function is used to notify subsystem that we are
  * interesed in first @needed bytes (request header)
  * and the rest buffer can be safely zeroed.
@@ -3393,7 +3397,7 @@ ipfw_ctl3(struct sockopt *sopt)
 		/*
 		 * Determine opcode type/buffer size:
 		 * allocate sliding-window buf for data export or
-		 * contigious buffer for special ops.
+		 * contiguous buffer for special ops.
 		 */
 		if ((h.dir & HDIR_SET) != 0) {
 			/* Set request. Allocate contigous buffer. */
@@ -3570,7 +3574,9 @@ ipfw_ctl(struct sockopt *sopt)
 			ci.krule = krule;
 			import_rule0(&ci);
 			error = commit_rules(chain, &ci, 1);
-			if (!error && sopt->sopt_dir == SOPT_GET) {
+			if (error != 0)
+				free_rule(ci.krule);
+			else if (sopt->sopt_dir == SOPT_GET) {
 				if (is7) {
 					error = convert_rule_to_7(rule);
 					size = RULESIZE7(rule);
@@ -4086,8 +4092,8 @@ ipfw_objhash_lookup_name(struct namedobj_instance *ni, uint32_t set, char *name)
  *
  * Returns pointer to found TLV or NULL.
  */
-static ipfw_obj_ntlv *
-find_name_tlv_type(void *tlvs, int len, uint16_t uidx, uint32_t etlv)
+ipfw_obj_ntlv *
+ipfw_find_name_tlv_type(void *tlvs, int len, uint16_t uidx, uint32_t etlv)
 {
 	ipfw_obj_ntlv *ntlv;
 	uintptr_t pa, pe;
@@ -4142,7 +4148,7 @@ ipfw_objhash_find_type(struct namedobj_instance *ni, struct tid_info *ti,
 	if (ti->tlvs == NULL)
 		return (EINVAL);
 
-	ntlv = find_name_tlv_type(ti->tlvs, ti->tlen, ti->uidx, etlv);
+	ntlv = ipfw_find_name_tlv_type(ti->tlvs, ti->tlen, ti->uidx, etlv);
 	if (ntlv == NULL)
 		return (EINVAL);
 	name = ntlv->name;
@@ -4246,16 +4252,20 @@ ipfw_objhash_count(struct namedobj_instance *ni)
  * Runs @func for each found named object.
  * It is safe to delete objects from callback
  */
-void
+int
 ipfw_objhash_foreach(struct namedobj_instance *ni, objhash_cb_t *f, void *arg)
 {
 	struct named_object *no, *no_tmp;
-	int i;
+	int i, ret;
 
 	for (i = 0; i < ni->nn_size; i++) {
-		TAILQ_FOREACH_SAFE(no, &ni->names[i], nn_next, no_tmp)
-			f(ni, no, arg);
+		TAILQ_FOREACH_SAFE(no, &ni->names[i], nn_next, no_tmp) {
+			ret = f(ni, no, arg);
+			if (ret != 0)
+				return (ret);
+		}
 	}
+	return (0);
 }
 
 /*
