@@ -87,7 +87,7 @@ typedef int model_t;
 
 #define	DTRACE_PROVNAMELEN	64
 #define	DTRACE_MODNAMELEN	64
-#define	DTRACE_FUNCNAMELEN	128
+#define	DTRACE_FUNCNAMELEN	192
 #define	DTRACE_NAMELEN		64
 #define	DTRACE_FULLNAMELEN	(DTRACE_PROVNAMELEN + DTRACE_MODNAMELEN + \
 				DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 4)
@@ -316,7 +316,8 @@ typedef enum dtrace_probespec {
 #define	DIF_SUBR_GETF			52
 #define	DIF_SUBR_JSON			53
 #define	DIF_SUBR_STRTOLL		54
-#define	DIF_SUBR_MAX			54	/* max subroutine value */
+#define	DIF_SUBR_RANDOM			55
+#define	DIF_SUBR_MAX			55	/* max subroutine value */
 
 typedef uint32_t dif_instr_t;
 
@@ -2484,6 +2485,18 @@ extern void dtrace_helpers_destroy(proc_t *);
 #define	DTRACE_INVOP_RET	2
 #define	DTRACE_INVOP_B		3
 
+#elif defined(__mips__)
+
+#define	INSN_SIZE		4
+
+/* Load/Store double RA to/from SP */
+#define	LDSD_RA_SP_MASK		0xffff0000
+#define	LDSD_DATA_MASK		0x0000ffff
+#define	SD_RA_SP		0xffbf0000
+#define	LD_RA_SP		0xdfbf0000
+
+#define	DTRACE_INVOP_SD		1
+#define	DTRACE_INVOP_LD		2
 #endif
 
 #ifdef	__cplusplus
