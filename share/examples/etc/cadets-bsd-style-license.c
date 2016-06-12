@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015 (holder)
+ * Copyright (c) 2016 (holder)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of
@@ -28,5 +28,4 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * [id for your version control system, if any]
  */
