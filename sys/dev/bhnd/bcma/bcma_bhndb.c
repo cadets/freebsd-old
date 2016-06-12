@@ -178,8 +178,8 @@ static device_method_t bcma_bhndb_methods[] = {
 	DEVMETHOD_END
 };
 
-DEFINE_CLASS_1(bhnd, bcma_bhndb_driver, bcma_bhndb_methods,
-    sizeof(struct bcma_softc), bcma_driver);
+DEFINE_CLASS_2(bhnd, bcma_bhndb_driver, bcma_bhndb_methods,
+    sizeof(struct bcma_softc), bhnd_bhndb_driver, bcma_driver);
 
 DRIVER_MODULE(bcma_bhndb, bhndb, bcma_bhndb_driver, bhnd_devclass, NULL, NULL);
  

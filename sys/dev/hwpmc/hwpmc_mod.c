@@ -334,7 +334,11 @@ static moduledata_t pmc_mod = {
 	&pmc_syscall_mod
 };
 
+#ifdef EARLY_AP_STARTUP
+DECLARE_MODULE(pmc, pmc_mod, SI_SUB_SYSCALLS, SI_ORDER_ANY);
+#else
 DECLARE_MODULE(pmc, pmc_mod, SI_SUB_SMP, SI_ORDER_ANY);
+#endif
 MODULE_VERSION(pmc, PMC_VERSION);
 
 #ifdef	HWPMC_DEBUG
@@ -4195,6 +4199,7 @@ pmc_capture_user_callchain(int cpu, int ring, struct trapframe *tf)
 	struct pmc_samplebuffer *psb;
 #ifdef	INVARIANTS
 	int ncallchains;
+	int nfree;
 #endif
 
 	psb = pmc_pcpu[cpu]->pc_sb[ring];
@@ -4206,6 +4211,7 @@ pmc_capture_user_callchain(int cpu, int ring, struct trapframe *tf)
 
 #ifdef	INVARIANTS
 	ncallchains = 0;
+	nfree = 0;
 #endif
 
 	/*
@@ -4217,6 +4223,10 @@ pmc_capture_user_callchain(int cpu, int ring, struct trapframe *tf)
 	ps = psb->ps_read;
 	ps_end = psb->ps_write;
 	do {
+#ifdef	INVARIANTS
+		if (ps->ps_pmc->pm_state != PMC_STATE_RUNNING)
+			nfree++;
+#endif
 		if (ps->ps_nsamples != PMC_SAMPLE_INUSE)
 			goto next;
 		if (ps->ps_td != td)
@@ -4252,7 +4262,7 @@ next:
 			ps = psb->ps_samples;
 	} while (ps != ps_end);
 
-	KASSERT(ncallchains > 0,
+	KASSERT(ncallchains > 0 || nfree > 0,
 	    ("[pmc,%d] cpu %d didn't find a sample to collect", __LINE__,
 		cpu));
 

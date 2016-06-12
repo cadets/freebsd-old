@@ -25,6 +25,10 @@
 # SUCH DAMAGE.
 #
 
-SUBDIR = gpiobus gpioiic gpioled gpiokeys
+SUBDIR = gpiobus gpioiic gpioled gpiospi
+
+.if !empty(OPT_FDT)
+SUBDIR += gpiokeys gpiopps
+.endif
 
 .include <bsd.subdir.mk>

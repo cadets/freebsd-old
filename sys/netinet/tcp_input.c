@@ -50,7 +50,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include "opt_ipfw.h"		/* for ipfw_fwd	*/
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
@@ -185,7 +184,7 @@ SYSCTL_INT(_net_inet_tcp, OID_AUTO, abc_l_var, CTLFLAG_VNET | CTLFLAG_RW,
 
 static SYSCTL_NODE(_net_inet_tcp, OID_AUTO, ecn, CTLFLAG_RW, 0, "TCP ECN");
 
-VNET_DEFINE(int, tcp_do_ecn) = 0;
+VNET_DEFINE(int, tcp_do_ecn) = 2;
 SYSCTL_INT(_net_inet_tcp_ecn, OID_AUTO, enable, CTLFLAG_VNET | CTLFLAG_RW,
     &VNET_NAME(tcp_do_ecn), 0,
     "TCP ECN support");
@@ -250,7 +249,7 @@ static void
 tcp_vnet_init(const void *unused)
 {
 
-	COUNTER_ARRAY_ALLOC(VNET(tcps_states), TCP_NSTATES, M_WAITOK);
+	COUNTER_ARRAY_ALLOC(V_tcps_states, TCP_NSTATES, M_WAITOK);
 	VNET_PCPUSTAT_ALLOC(tcpstat, M_WAITOK);
 }
 VNET_SYSINIT(tcp_vnet_init, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_ANY,
@@ -261,7 +260,7 @@ static void
 tcp_vnet_uninit(const void *unused)
 {
 
-	COUNTER_ARRAY_FREE(VNET(tcps_states), TCP_NSTATES);
+	COUNTER_ARRAY_FREE(V_tcps_states, TCP_NSTATES);
 	VNET_PCPUSTAT_FREE(tcpstat);
 }
 VNET_SYSUNINIT(tcp_vnet_uninit, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_ANY,

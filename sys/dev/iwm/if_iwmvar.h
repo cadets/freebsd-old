@@ -412,6 +412,7 @@ struct iwm_softc {
 
 	struct intr_config_hook sc_preinit_hook;
 	struct callout		sc_watchdog_to;
+	struct callout		sc_led_blink_to;
 
 	struct task		init_task;
 
@@ -484,8 +485,6 @@ struct iwm_softc {
 	size_t			sc_scan_cmd_len;
 	int			sc_scan_last_antenna;
 	int			sc_scanband;
-
-	int			sc_auth_prot;
 
 	int			sc_fixed_ridx;
 

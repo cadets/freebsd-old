@@ -121,6 +121,9 @@ ieee80211_vap_pkt_send_dest(struct ieee80211vap *vap, struct mbuf *m,
 {
 	struct ieee80211com *ic = vap->iv_ic;
 	struct ifnet *ifp = vap->iv_ifp;
+#ifdef IEEE80211_SUPPORT_SUPERG
+	int mcast;
+#endif
 
 	if ((ni->ni_flags & IEEE80211_NODE_PWR_MGT) &&
 	    (m->m_flags & M_PWR_SAV) == 0) {
@@ -160,6 +163,9 @@ ieee80211_vap_pkt_send_dest(struct ieee80211vap *vap, struct mbuf *m,
 	 * interface it (might have been) received on.
 	 */
 	m->m_pkthdr.rcvif = (void *)ni;
+#ifdef IEEE80211_SUPPORT_SUPERG
+	mcast = (m->m_flags & (M_MCAST | M_BCAST)) ? 1: 0;
+#endif
 
 	BPF_MTAP(ifp, m);		/* 802.3 tx */
 
@@ -602,6 +608,8 @@ ieee80211_output(struct ifnet *ifp, struct mbuf *m,
 	if ((wh->i_fc[0] & IEEE80211_FC0_VERSION_MASK) !=
 	    IEEE80211_FC0_VERSION_0)
 		senderr(EIO);	/* XXX */
+	if (m->m_pkthdr.len < ieee80211_anyhdrsize(wh))
+		senderr(EIO);	/* XXX */
 
 	/* locate destination node */
 	switch (wh->i_fc[1] & IEEE80211_FC1_DIR_MASK) {
@@ -611,8 +619,6 @@ ieee80211_output(struct ifnet *ifp, struct mbuf *m,
 		break;
 	case IEEE80211_FC1_DIR_TODS:
 	case IEEE80211_FC1_DIR_DSTODS:
-		if (m->m_pkthdr.len < sizeof(struct ieee80211_frame))
-			senderr(EIO);	/* XXX */
 		ni = ieee80211_find_txnode(vap, wh->i_addr3);
 		break;
 	default:
@@ -641,7 +647,6 @@ ieee80211_output(struct ifnet *ifp, struct mbuf *m,
 	if (ieee80211_classify(ni, m))
 		senderr(EIO);		/* XXX */
 
-	if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
 	IEEE80211_NODE_STAT(ni, tx_data);
 	if (IEEE80211_IS_MULTICAST(wh->i_addr1)) {
 		IEEE80211_NODE_STAT(ni, tx_mcast);
@@ -1673,16 +1678,8 @@ ieee80211_fragment(struct ieee80211vap *vap, struct mbuf *m0,
 	remainder = m0->m_pkthdr.len - off;
 	prev = m0;
 	do {
-		fragsize = totalhdrsize + remainder;
-		if (fragsize > mtu)
-			fragsize = mtu;
-		/* XXX fragsize can be >2048! */
-		KASSERT(fragsize < MCLBYTES,
-			("fragment size %u too big!", fragsize));
-		if (fragsize > MHLEN)
-			m = m_getcl(M_NOWAIT, MT_DATA, M_PKTHDR);
-		else
-			m = m_gethdr(M_NOWAIT, MT_DATA);
+		fragsize = MIN(totalhdrsize + remainder, mtu);
+		m = m_get2(fragsize, M_NOWAIT, MT_DATA, M_PKTHDR);
 		if (m == NULL)
 			goto bad;
 		/* leave room to prepend any cipher header */

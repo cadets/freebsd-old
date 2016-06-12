@@ -57,7 +57,7 @@ SDT_PROBE_DEFINE3(tesla, automata, fail, bad__transition,
     "struct tesla_class *", "struct tesla_instance *",
     "int32_t");
 SDT_PROBE_DEFINE4(tesla, automata, fail, other__error,
-    "struct tesla_class *", "int32_t", "int", "const char *");
+    "struct tesla_automaton *", "int32_t", "int", "const char *");
 SDT_PROBE_DEFINE2(tesla, automata, success, accept,
     "struct tesla_class *", "struct tesla_instance *");
 SDT_PROBE_DEFINE3(tesla, automata, event, ignored,
