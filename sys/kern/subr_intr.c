@@ -37,6 +37,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_acpi.h"
 #include "opt_ddb.h"
+#include "opt_hwpmc_hooks.h"
 #include "opt_platform.h"
 
 #include <sys/param.h>
@@ -53,23 +54,22 @@ __FBSDID("$FreeBSD$");
 #include <sys/rman.h>
 #include <sys/sched.h>
 #include <sys/smp.h>
+#ifdef HWPMC_HOOKS
+#include <sys/pmckern.h>
+#endif
+
 #include <machine/atomic.h>
 #include <machine/intr.h>
 #include <machine/cpu.h>
 #include <machine/smp.h>
 #include <machine/stdarg.h>
 
-#ifdef FDT
-#include <dev/ofw/openfirm.h>
-#include <dev/ofw/ofw_bus.h>
-#include <dev/ofw/ofw_bus_subr.h>
-#endif
-
 #ifdef DDB
 #include <ddb/ddb.h>
 #endif
 
 #include "pic_if.h"
+#include "msi_if.h"
 
 #define	INTRNAME_LEN	(2*MAXCOMLEN + 1)
 
@@ -92,11 +92,25 @@ static intr_irq_filter_t *irq_root_filter;
 static void *irq_root_arg;
 static u_int irq_root_ipicount;
 
+struct intr_pic_child {
+	SLIST_ENTRY(intr_pic_child)	 pc_next;
+	struct intr_pic			*pc_pic;
+	intr_child_irq_filter_t		*pc_filter;
+	void				*pc_filter_arg;
+	uintptr_t			 pc_start;
+	uintptr_t			 pc_length;
+};
+
 /* Interrupt controller definition. */
 struct intr_pic {
 	SLIST_ENTRY(intr_pic)	pic_next;
 	intptr_t		pic_xref;	/* hardware identification */
 	device_t		pic_dev;
+#define	FLAG_PIC	(1 << 0)
+#define	FLAG_MSI	(1 << 1)
+	u_int			pic_flags;
+	struct mtx		pic_child_lock;
+	SLIST_HEAD(, intr_pic_child) pic_children;
 };
 
 static struct mtx pic_list_lock;
@@ -168,6 +182,7 @@ intr_irq_init(void *dummy __unused)
 
 	SLIST_INIT(&pic_list);
 	mtx_init(&pic_list_lock, "intr pic list", NULL, MTX_DEF);
+
 	mtx_init(&isrc_table_lock, "intr isrc table", NULL, MTX_DEF);
 }
 SYSINIT(intr_irq_init, SI_SUB_INTR, SI_ORDER_FIRST, intr_irq_init, NULL);
@@ -306,6 +321,34 @@ intr_irq_handler(struct trapframe *tf)
 	irq_root_filter(irq_root_arg);
 	td->td_intr_frame = oldframe;
 	critical_exit();
+#ifdef HWPMC_HOOKS
+	if (pmc_hook && TRAPF_USERMODE(tf) &&
+	    (PCPU_GET(curthread)->td_pflags & TDP_CALLCHAIN))
+		pmc_hook(PCPU_GET(curthread), PMC_FN_USER_CALLCHAIN, tf);
+#endif
+}
+
+int
+intr_child_irq_handler(struct intr_pic *parent, uintptr_t irq)
+{
+	struct intr_pic_child *child;
+	bool found;
+
+	found = false;
+	mtx_lock_spin(&parent->pic_child_lock);
+	SLIST_FOREACH(child, &parent->pic_children, pc_next) {
+		if (child->pc_start <= irq &&
+		    irq < (child->pc_start + child->pc_length)) {
+			found = true;
+			break;
+		}
+	}
+	mtx_unlock_spin(&parent->pic_child_lock);
+
+	if (found)
+		return (child->pc_filter(child->pc_filter_arg, irq));
+
+	return (FILTER_STRAY);
 }
 
 /*
@@ -511,7 +554,6 @@ intr_ddata_alloc(u_int extsize)
 	mtx_unlock(&isrc_table_lock);
 
 	ddata->idd_data = (struct intr_map_data *)((uintptr_t)ddata + size);
-	ddata->idd_data->size = extsize;
 	return (ddata);
 }
 
@@ -574,33 +616,6 @@ intr_acpi_map_irq(device_t dev, u_int irq, enum intr_polarity pol,
 	daa->pol = pol;
 	daa->trig = trig;
 
-	return (ddata->idd_irq);
-}
-#endif
-#ifdef FDT
-/*
- *  Map interrupt source according to FDT data into framework. If such mapping
- *  does not exist, create it. Return unique interrupt number (resource handle)
- *  associated with mapped interrupt source.
- */
-u_int
-intr_fdt_map_irq(phandle_t node, pcell_t *cells, u_int ncells)
-{
-	size_t cellsize;
-	struct intr_dev_data *ddata;
-	struct intr_map_data_fdt *daf;
-
-	cellsize = ncells * sizeof(*cells);
-	ddata = intr_ddata_alloc(sizeof(struct intr_map_data_fdt) + cellsize);
-	if (ddata == NULL)
-		return (INTR_IRQ_INVALID);	/* no space left */
-
-	ddata->idd_xref = (intptr_t)node;
-	ddata->idd_data->type = INTR_MAP_DATA_FDT;
-
-	daf = (struct intr_map_data_fdt *)ddata->idd_data;
-	daf->ncells = ncells;
-	memcpy(daf->cells, cells, cellsize);
 	return (ddata->idd_irq);
 }
 #endif
@@ -877,6 +892,7 @@ pic_create(device_t dev, intptr_t xref)
 	}
 	pic->pic_xref = xref;
 	pic->pic_dev = dev;
+	mtx_init(&pic->pic_child_lock, "pic child lock", NULL, MTX_SPIN);
 	SLIST_INSERT_HEAD(&pic_list, pic, pic_next);
 	mtx_unlock(&pic_list_lock);
 
@@ -906,20 +922,22 @@ pic_destroy(device_t dev, intptr_t xref)
 /*
  *  Register interrupt controller.
  */
-int
+struct intr_pic *
 intr_pic_register(device_t dev, intptr_t xref)
 {
 	struct intr_pic *pic;
 
 	if (dev == NULL)
-		return (EINVAL);
+		return (NULL);
 	pic = pic_create(dev, xref);
 	if (pic == NULL)
-		return (ENOMEM);
+		return (NULL);
+
+	pic->pic_flags |= FLAG_PIC;
 
 	debugf("PIC %p registered for %s <dev %p, xref %x>\n", pic,
 	    device_get_nameunit(dev), dev, xref);
-	return (0);
+	return (pic);
 }
 
 /*
@@ -948,11 +966,18 @@ int
 intr_pic_claim_root(device_t dev, intptr_t xref, intr_irq_filter_t *filter,
     void *arg, u_int ipicount)
 {
+	struct intr_pic *pic;
 
-	if (pic_lookup(dev, xref) == NULL) {
+	pic = pic_lookup(dev, xref);
+	if (pic == NULL) {
 		device_printf(dev, "not registered\n");
 		return (EINVAL);
 	}
+
+	KASSERT((pic->pic_flags & FLAG_PIC) != 0,
+	    ("%s: Found a non-PIC controller: %s", __func__,
+	     device_get_name(pic->pic_dev)));
+
 	if (filter == NULL) {
 		device_printf(dev, "filter missing\n");
 		return (EINVAL);
@@ -977,6 +1002,44 @@ intr_pic_claim_root(device_t dev, intptr_t xref, intr_irq_filter_t *filter,
 	return (0);
 }
 
+/*
+ * Add a handler to manage a sub range of a parents interrupts.
+ */
+struct intr_pic *
+intr_pic_add_handler(device_t parent, struct intr_pic *pic,
+    intr_child_irq_filter_t *filter, void *arg, uintptr_t start,
+    uintptr_t length)
+{
+	struct intr_pic *parent_pic;
+	struct intr_pic_child *newchild;
+#ifdef INVARIANTS
+	struct intr_pic_child *child;
+#endif
+
+	parent_pic = pic_lookup(parent, 0);
+	if (parent_pic == NULL)
+		return (NULL);
+
+	newchild = malloc(sizeof(*newchild), M_INTRNG, M_WAITOK | M_ZERO);
+	newchild->pc_pic = pic;
+	newchild->pc_filter = filter;
+	newchild->pc_filter_arg = arg;
+	newchild->pc_start = start;
+	newchild->pc_length = length;
+
+	mtx_lock_spin(&parent_pic->pic_child_lock);
+#ifdef INVARIANTS
+	SLIST_FOREACH(child, &parent_pic->pic_children, pc_next) {
+		KASSERT(child->pc_pic != pic, ("%s: Adding a child PIC twice",
+		    __func__));
+	}
+#endif
+	SLIST_INSERT_HEAD(&parent_pic->pic_children, newchild, pc_next);
+	mtx_unlock_spin(&parent_pic->pic_child_lock);
+
+	return (pic);
+}
+
 int
 intr_map_irq(device_t dev, intptr_t xref, struct intr_map_data *data,
     u_int *irqp)
@@ -991,6 +1054,10 @@ intr_map_irq(device_t dev, intptr_t xref, struct intr_map_data *data,
 	pic = pic_lookup(dev, xref);
 	if (pic == NULL)
 		return (ESRCH);
+
+	KASSERT((pic->pic_flags & FLAG_PIC) != 0,
+	    ("%s: Found a non-PIC controller: %s", __func__,
+	     device_get_name(pic->pic_dev)));
 
 	error = PIC_MAP_INTR(pic->pic_dev, data, &isrc);
 	if (error == 0)
@@ -1007,7 +1074,11 @@ intr_alloc_irq(device_t dev, struct resource *res)
 	KASSERT(rman_get_start(res) == rman_get_end(res),
 	    ("%s: more interrupts in resource", __func__));
 
-	isrc = intr_ddata_lookup(rman_get_start(res), &data);
+	data = rman_get_virtual(res);
+	if (data == NULL)
+		isrc = intr_ddata_lookup(rman_get_start(res), &data);
+	else
+		isrc = isrc_lookup(rman_get_start(res));
 	if (isrc == NULL)
 		return (EINVAL);
 
@@ -1023,7 +1094,11 @@ intr_release_irq(device_t dev, struct resource *res)
 	KASSERT(rman_get_start(res) == rman_get_end(res),
 	    ("%s: more interrupts in resource", __func__));
 
-	isrc = intr_ddata_lookup(rman_get_start(res), &data);
+	data = rman_get_virtual(res);
+	if (data == NULL)
+		isrc = intr_ddata_lookup(rman_get_start(res), &data);
+	else
+		isrc = isrc_lookup(rman_get_start(res));
 	if (isrc == NULL)
 		return (EINVAL);
 
@@ -1042,7 +1117,11 @@ intr_setup_irq(device_t dev, struct resource *res, driver_filter_t filt,
 	KASSERT(rman_get_start(res) == rman_get_end(res),
 	    ("%s: more interrupts in resource", __func__));
 
-	isrc = intr_ddata_lookup(rman_get_start(res), &data);
+	data = rman_get_virtual(res);
+	if (data == NULL)
+		isrc = intr_ddata_lookup(rman_get_start(res), &data);
+	else
+		isrc = isrc_lookup(rman_get_start(res));
 	if (isrc == NULL)
 		return (EINVAL);
 
@@ -1102,7 +1181,11 @@ intr_teardown_irq(device_t dev, struct resource *res, void *cookie)
 	KASSERT(rman_get_start(res) == rman_get_end(res),
 	    ("%s: more interrupts in resource", __func__));
 
-	isrc = intr_ddata_lookup(rman_get_start(res), &data);
+	data = rman_get_virtual(res);
+	if (data == NULL)
+		isrc = intr_ddata_lookup(rman_get_start(res), &data);
+	else
+		isrc = isrc_lookup(rman_get_start(res));
 	if (isrc == NULL || isrc->isrc_handlers == 0)
 		return (EINVAL);
 
@@ -1258,6 +1341,160 @@ intr_irq_next_cpu(u_int current_cpu, cpuset_t *cpumask)
 	return (PCPU_GET(cpuid));
 }
 #endif
+
+/*
+ *  Register a MSI/MSI-X interrupt controller
+ */
+int
+intr_msi_register(device_t dev, intptr_t xref)
+{
+	struct intr_pic *pic;
+
+	if (dev == NULL)
+		return (EINVAL);
+	pic = pic_create(dev, xref);
+	if (pic == NULL)
+		return (ENOMEM);
+
+	pic->pic_flags |= FLAG_MSI;
+
+	debugf("PIC %p registered for %s <dev %p, xref %jx>\n", pic,
+	    device_get_nameunit(dev), dev, (uintmax_t)xref);
+	return (0);
+}
+
+int
+intr_alloc_msi(device_t pci, device_t child, intptr_t xref, int count,
+    int maxcount, int *irqs)
+{
+	struct intr_irqsrc **isrc;
+	struct intr_pic *pic;
+	device_t pdev;
+	int err, i;
+
+	pic = pic_lookup(NULL, xref);
+	if (pic == NULL)
+		return (ESRCH);
+
+	KASSERT((pic->pic_flags & FLAG_MSI) != 0,
+	    ("%s: Found a non-MSI controller: %s", __func__,
+	     device_get_name(pic->pic_dev)));
+
+	isrc = malloc(sizeof(*isrc) * count, M_INTRNG, M_WAITOK);
+	err = MSI_ALLOC_MSI(pic->pic_dev, child, count, maxcount, &pdev, isrc);
+	if (err == 0) {
+		for (i = 0; i < count; i++) {
+			irqs[i] = isrc[i]->isrc_irq;
+		}
+	}
+
+	free(isrc, M_INTRNG);
+
+	return (err);
+}
+
+int
+intr_release_msi(device_t pci, device_t child, intptr_t xref, int count,
+    int *irqs)
+{
+	struct intr_irqsrc **isrc;
+	struct intr_pic *pic;
+	int i, err;
+
+	pic = pic_lookup(NULL, xref);
+	if (pic == NULL)
+		return (ESRCH);
+
+	KASSERT((pic->pic_flags & FLAG_MSI) != 0,
+	    ("%s: Found a non-MSI controller: %s", __func__,
+	     device_get_name(pic->pic_dev)));
+
+	isrc = malloc(sizeof(*isrc) * count, M_INTRNG, M_WAITOK);
+
+	for (i = 0; i < count; i++) {
+		isrc[i] = isrc_lookup(irqs[i]);
+		if (isrc == NULL) {
+			free(isrc, M_INTRNG);
+			return (EINVAL);
+		}
+	}
+
+	err = MSI_RELEASE_MSI(pic->pic_dev, child, count, isrc);
+	free(isrc, M_INTRNG);
+	return (err);
+}
+
+int
+intr_alloc_msix(device_t pci, device_t child, intptr_t xref, int *irq)
+{
+	struct intr_irqsrc *isrc;
+	struct intr_pic *pic;
+	device_t pdev;
+	int err;
+
+	pic = pic_lookup(NULL, xref);
+	if (pic == NULL)
+		return (ESRCH);
+
+	KASSERT((pic->pic_flags & FLAG_MSI) != 0,
+	    ("%s: Found a non-MSI controller: %s", __func__,
+	     device_get_name(pic->pic_dev)));
+
+	err = MSI_ALLOC_MSIX(pic->pic_dev, child, &pdev, &isrc);
+	if (err != 0)
+		return (err);
+
+	*irq = isrc->isrc_irq;
+	return (0);
+}
+
+int
+intr_release_msix(device_t pci, device_t child, intptr_t xref, int irq)
+{
+	struct intr_irqsrc *isrc;
+	struct intr_pic *pic;
+	int err;
+
+	pic = pic_lookup(NULL, xref);
+	if (pic == NULL)
+		return (ESRCH);
+
+	KASSERT((pic->pic_flags & FLAG_MSI) != 0,
+	    ("%s: Found a non-MSI controller: %s", __func__,
+	     device_get_name(pic->pic_dev)));
+
+	isrc = isrc_lookup(irq);
+	if (isrc == NULL)
+		return (EINVAL);
+
+	err = MSI_RELEASE_MSIX(pic->pic_dev, child, isrc);
+	return (err);
+}
+
+int
+intr_map_msi(device_t pci, device_t child, intptr_t xref, int irq,
+    uint64_t *addr, uint32_t *data)
+{
+	struct intr_irqsrc *isrc;
+	struct intr_pic *pic;
+	int err;
+
+	pic = pic_lookup(NULL, xref);
+	if (pic == NULL)
+		return (ESRCH);
+
+	KASSERT((pic->pic_flags & FLAG_MSI) != 0,
+	    ("%s: Found a non-MSI controller: %s", __func__,
+	     device_get_name(pic->pic_dev)));
+
+	isrc = isrc_lookup(irq);
+	if (isrc == NULL)
+		return (EINVAL);
+
+	err = MSI_MAP_MSI(pic->pic_dev, child, isrc, addr, data);
+	return (err);
+}
+
 
 void dosoftints(void);
 void

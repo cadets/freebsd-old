@@ -215,6 +215,8 @@
                     ..
                 ..
             ..
+            zfsd
+            ..
         ..
     ..
     etc
@@ -261,6 +263,8 @@
                 data
                 ..
             ..
+            iconv
+            ..
             inet
             ..
             locale
@@ -305,6 +309,8 @@
             ..
         ..
         libcrypt
+        ..
+        libdevdctl
         ..
         libmp
         ..

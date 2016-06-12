@@ -52,6 +52,8 @@
 #include <linux/log2.h> 
 #include <asm/byteorder.h>
 
+#include <machine/stdarg.h>
+
 #define KERN_CONT       ""
 #define	KERN_EMERG	"<0>"
 #define	KERN_ALERT	"<1>"
@@ -124,7 +126,37 @@
 #define	DIV_ROUND_UP_ULL(x, n)	DIV_ROUND_UP((unsigned long long)(x), (n))
 #define	FIELD_SIZEOF(t, f)	sizeof(((t *)0)->f)
 
-#define	printk(X...)		printf(X)
+#define	printk(...)		printf(__VA_ARGS__)
+#define	vprintk(f, a)		vprintf(f, a)
+
+struct va_format {
+	const char *fmt;
+	va_list *va;
+};
+
+static inline int
+vscnprintf(char *buf, size_t size, const char *fmt, va_list args)
+{
+	ssize_t ssize = size;
+	int i;
+
+	i = vsnprintf(buf, size, fmt, args);
+
+	return ((i >= ssize) ? (ssize - 1) : i);
+}
+
+static inline int
+scnprintf(char *buf, size_t size, const char *fmt, ...)
+{
+	va_list args;
+	int i;
+
+	va_start(args, fmt);
+	i = vscnprintf(buf, size, fmt, args);
+	va_end(args);
+
+	return (i);
+}
 
 /*
  * The "pr_debug()" and "pr_devel()" macros should produce zero code
@@ -258,7 +290,11 @@
 #define	smp_processor_id()	PCPU_GET(cpuid)
 #define	num_possible_cpus()	mp_ncpus
 #define	num_online_cpus()	mp_ncpus
-#define	cpu_has_clflush		(1)
+
+#if defined(__i386__) || defined(__amd64__)
+extern bool linux_cpu_has_clflush;
+#define	cpu_has_clflush		linux_cpu_has_clflush
+#endif
 
 typedef struct pm_message {
         int event;

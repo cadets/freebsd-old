@@ -5686,7 +5686,7 @@ do_a_abort:
 			{
 				stc.addr_type = SCTP_IPV6_ADDRESS;
 				memcpy(&stc.address, &src6->sin6_addr, sizeof(struct in6_addr));
-				stc.scope_id = in6_getscope(&src6->sin6_addr);
+				stc.scope_id = ntohs(in6_getscope(&src6->sin6_addr));
 				if (sctp_is_address_on_local_host(src, vrf_id)) {
 					stc.loopback_scope = 1;
 					stc.local_scope = 0;
@@ -5828,7 +5828,7 @@ do_a_abort:
 	/* Now lets put the SCTP header in place */
 	initack = mtod(m, struct sctp_init_ack_chunk *);
 	/* Save it off for quick ref */
-	stc.peers_vtag = init_chk->init.initiate_tag;
+	stc.peers_vtag = ntohl(init_chk->init.initiate_tag);
 	/* who are we */
 	memcpy(stc.identification, SCTP_VERSION_STRING,
 	    min(strlen(SCTP_VERSION_STRING), sizeof(stc.identification)));
