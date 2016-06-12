@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2012-2015 Solarflare Communications Inc.
+ * Copyright (c) 2012-2016 Solarflare Communications Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -362,7 +362,7 @@ tlv_last_segment_end(
 	 * is no end tag then the previous segment was the last valid one,
 	 * so return the pointer to its end tag.
 	 */
-	while (1) {
+	for (;;) {
 		if (tlv_init_cursor(&segment_cursor, segment_start,
 		    cursor->limit, segment_start) != 0)
 			break;
@@ -901,6 +901,9 @@ ef10_nvram_buffer_find_end(
 	// Read to end of partition
 	tlv_cursor_t cursor;
 	efx_rc_t rc;
+	uint32_t *segment_used;
+
+	_NOTE(ARGUNUSED(offset))
 
 	if ((rc = tlv_init_cursor_from_size(&cursor, (uint8_t *)bufferp,
 			buffer_size)) != 0) {
@@ -908,10 +911,31 @@ ef10_nvram_buffer_find_end(
 		goto fail1;
 	}
 
-	if ((rc = tlv_require_end(&cursor)) != 0)
-		goto fail2;
+	segment_used = cursor.block;
 
-	*endp = byte_offset(tlv_last_segment_end(&cursor)+1, cursor.block);
+	/*
+	 * Go through each segment and check that it has an end tag. If there
+	 * is no end tag then the previous segment was the last valid one,
+	 * so return the used space including that end tag.
+	 */
+	while (tlv_tag(&cursor) == TLV_TAG_PARTITION_HEADER) {
+		if (tlv_require_end(&cursor) != 0) {
+			if (segment_used == cursor.block) {
+				/*
+				 * First segment is corrupt, so there is
+				 * no valid data in partition.
+				 */
+				rc = EINVAL;
+				goto fail2;
+			}
+			break;
+		}
+		segment_used = cursor.end + 1;
+
+		cursor.current = segment_used;
+	}
+	/* Return space used (including the END tag) */
+	*endp = (segment_used - cursor.block) * sizeof (uint32_t);
 
 	return (0);
 
@@ -1025,7 +1049,7 @@ ef10_nvram_buffer_insert_item(
 		goto fail1;
 	}
 
-	rc = tlv_insert(&cursor, TLV_TAG_LICENSE, keyp, length);
+	rc = tlv_insert(&cursor, TLV_TAG_LICENSE, (uint8_t *)keyp, length);
 
 	if (rc != 0) {
 		goto fail2;
@@ -1055,6 +1079,8 @@ ef10_nvram_buffer_delete_item(
 {
 	efx_rc_t rc;
 	tlv_cursor_t cursor;
+
+	_NOTE(ARGUNUSED(length, end))
 
 	if ((rc = tlv_init_cursor_at_offset(&cursor, (uint8_t *)bufferp,
 			buffer_size, offset)) != 0) {
@@ -1632,7 +1658,7 @@ ef10_nvram_partn_write_tlv(
  * Read a segment from nvram at the given offset into a buffer (segment_data)
  * and optionally write a new tag to it.
  */
-	static	__checkReturn	efx_rc_t
+static	__checkReturn		efx_rc_t
 ef10_nvram_segment_write_tlv(
 	__in			efx_nic_t *enp,
 	__in			uint32_t partn,
@@ -1658,20 +1684,25 @@ ef10_nvram_segment_write_tlv(
 	 */
 	status = ef10_nvram_read_tlv_segment(enp, partn, *partn_offsetp,
 	    *seg_datap, *src_remain_lenp);
-	if (status != 0)
-		return (EINVAL);
+	if (status != 0) {
+		rc = EINVAL;
+		goto fail1;
+	}
 
 	status = ef10_nvram_buf_segment_size(*seg_datap,
 	    *src_remain_lenp, &original_segment_size);
-	if (status != 0)
-		return (EINVAL);
+	if (status != 0) {
+		rc = EINVAL;
+		goto fail2;
+	}
 
 	if (write) {
 		/* Update the contents of the segment in the buffer */
 		if ((rc = ef10_nvram_buf_write_tlv(*seg_datap,
 			*dest_remain_lenp, tag, data, size,
-			&modified_segment_size)) != 0)
-			goto fail1;
+			&modified_segment_size)) != 0) {
+			goto fail3;
+		}
 		*dest_remain_lenp -= modified_segment_size;
 		*seg_datap += modified_segment_size;
 	} else {
@@ -1688,6 +1719,10 @@ ef10_nvram_segment_write_tlv(
 
 	return (0);
 
+fail3:
+	EFSYS_PROBE(fail3);
+fail2:
+	EFSYS_PROBE(fail2);
 fail1:
 	EFSYS_PROBE1(fail1, efx_rc_t, rc);
 
