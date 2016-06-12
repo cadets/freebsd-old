@@ -55,15 +55,13 @@ int
 siba_attach(device_t dev)
 {
 	struct siba_devinfo	*dinfo;
+	struct siba_softc	*sc;
 	device_t		*devs;
 	int			 ndevs;
 	int			 error;
-
-	// TODO: We need to set the initiator timeout for the
-	// core that will be issuing requests to non-memory locations.
-	//
-	// In the case of a bridged device, this is the hostb core.
-	// On a non-bridged device, this will be the CPU.
+	
+	sc = device_get_softc(dev);
+	sc->dev = dev;
 
 	/* Fetch references to the siba SIBA_CFG* blocks for all
 	 * registered devices */
@@ -116,7 +114,7 @@ siba_attach(device_t dev)
 
 			/* Allocate the config resource */
 			dinfo->cfg_rid[cfgidx] = 0;
-			dinfo->cfg[cfgidx] = bhnd_alloc_resource(dev,
+			dinfo->cfg[cfgidx] = BHND_BUS_ALLOC_RESOURCE(dev, dev,
 			    SYS_RES_MEMORY, &dinfo->cfg_rid[cfgidx], r_start,
 			    r_end, r_count, RF_ACTIVE);
 	
@@ -142,6 +140,18 @@ int
 siba_detach(device_t dev)
 {
 	return (bhnd_generic_detach(dev));
+}
+
+int
+siba_resume(device_t dev)
+{
+	return (bhnd_generic_resume(dev));
+}
+
+int
+siba_suspend(device_t dev)
+{
+	return (bhnd_generic_suspend(dev));
 }
 
 static int
@@ -399,7 +409,7 @@ siba_get_region_addr(device_t dev, device_t child, bhnd_port_type port_type,
 			continue;
 
 		*addr = addrspace->sa_base;
-		*size = addrspace->sa_size;
+		*size = addrspace->sa_size - addrspace->sa_bus_reserved;
 		return (0);
 	}
 
@@ -448,10 +458,6 @@ siba_register_addrspaces(device_t dev, struct siba_devinfo *di,
 		/* Fetch the address match register value */
 		adm = bus_read_4(r, adm_offset);
 
-		/* Skip disabled entries */
-		if (adm & SIBA_AM_ADEN)
-			continue;
-			
 		/* Parse the value */
 		if ((error = siba_parse_admatch(adm, &addr, &size))) {
 			device_printf(dev, "failed to decode address "
@@ -541,7 +547,7 @@ siba_add_children(device_t dev, const struct bhnd_chipid *chipid)
 		ccid = bhnd_parse_chipid(ccreg, SIBA_ENUM_ADDR);
 
 		if (!CHIPC_NCORES_MIN_HWREV(ccrev)) {
-			switch (device) {
+			switch (ccid.chip_id) {
 			case BHND_CHIPID_BCM4306:
 				ccid.ncores = 6;
 				break;
@@ -663,6 +669,8 @@ static device_method_t siba_methods[] = {
 	DEVMETHOD(device_probe,			siba_probe),
 	DEVMETHOD(device_attach,		siba_attach),
 	DEVMETHOD(device_detach,		siba_detach),
+	DEVMETHOD(device_resume,		siba_resume),
+	DEVMETHOD(device_suspend,		siba_suspend),
 	
 	/* Bus interface */
 	DEVMETHOD(bus_child_deleted,		siba_child_deleted),

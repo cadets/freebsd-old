@@ -138,6 +138,8 @@ typedef	u_int32_t u32;
 #define MEMORY_BARRIER()	dmb()
 #elif	defined	__aarch64__
 #define MEMORY_BARRIER()	dmb(sy)
+#elif	defined __riscv__
+#define MEMORY_BARRIER()	fence()
 #else
 #error	"Not supported platform"
 #endif
@@ -8902,7 +8904,7 @@ static int sym_cam_attach(hcb_p np)
 	/*
 	 *  Establish our async notification handler.
 	 */
-	if (xpt_register_async(AC_LOST_DEVICE, sym_async, sim, path) !=
+	if (xpt_register_async(AC_LOST_DEVICE, sym_async, np->sim, path) !=
 	    CAM_REQ_CMP)
 		goto fail;
 

@@ -12,7 +12,7 @@
 .if defined(DESTDIR)
 MKMODULESENV+=	DESTDIR="${DESTDIR}"
 .endif
-SYSDIR?= ${S:C;^[^/];${.CURDIR}/&;}
+SYSDIR?= ${S:C;^[^/];${.CURDIR}/&;:tA}
 MKMODULESENV+=	KERNBUILDDIR="${.CURDIR}" SYSDIR="${SYSDIR}"
 
 .if defined(CONF_CFLAGS)
@@ -21,6 +21,10 @@ MKMODULESENV+=	CONF_CFLAGS="${CONF_CFLAGS}"
 
 .if defined(WITH_CTF)
 MKMODULESENV+=	WITH_CTF="${WITH_CTF}"
+.endif
+
+.if defined(WITH_EXTRA_TCP_STACKS)
+MKMODULESENV+=	WITH_EXTRA_TCP_STACKS="${WITH_EXTRA_TCP_STACKS}"
 .endif
 
 # Allow overriding the kernel debug directory, so kernel and user debug may be
@@ -247,6 +251,14 @@ beforebuild: kernel-depend
 ${__obj}: ${OBJS_DEPEND_GUESS}
 .endif
 ${__obj}: ${OBJS_DEPEND_GUESS.${__obj}}
+.elif defined(_meta_filemon)
+# For meta mode we still need to know which file to depend on to avoid
+# ambiguous suffix transformation rules from .PATH.  Meta mode does not
+# use .depend files.  We really only need source files, not headers.
+.if ${SYSTEM_OBJS:M${__obj}}
+${__obj}: ${OBJS_DEPEND_GUESS:N*.h}
+.endif
+${__obj}: ${OBJS_DEPEND_GUESS.${__obj}:N*.h}
 .endif
 .endfor
 
@@ -277,7 +289,7 @@ ${_ILINKS}:
 		path=${S}/${.TARGET}/include ;; \
 	esac ; \
 	${ECHO} ${.TARGET} "->" $$path ; \
-	ln -s $$path ${.TARGET}
+	ln -fhs $$path ${.TARGET}
 
 # .depend needs include links so we remove them only together.
 kernel-cleandepend: .PHONY
@@ -287,7 +299,7 @@ kernel-tags:
 	@[ -f .depend ] || { echo "you must make depend first"; exit 1; }
 	sh $S/conf/systags.sh
 
-kernel-install:
+kernel-install: .PHONY
 	@if [ ! -f ${KERNEL_KO} ] ; then \
 		echo "You must build a kernel first." ; \
 		exit 1 ; \

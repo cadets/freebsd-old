@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2012-2015 Solarflare Communications Inc.
+ * Copyright (c) 2012-2016 Solarflare Communications Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -88,7 +88,8 @@ fail1:
 	__checkReturn	efx_rc_t
 efx_mcdi_get_port_modes(
 	__in		efx_nic_t *enp,
-	__out		uint32_t *modesp)
+	__out		uint32_t *modesp,
+	__out_opt	uint32_t *current_modep)
 {
 	efx_mcdi_req_t req;
 	uint8_t payload[MAX(MC_CMD_GET_PORT_MODES_IN_LEN,
@@ -113,19 +114,31 @@ efx_mcdi_get_port_modes(
 	}
 
 	/*
-	 * Require only Modes and DefaultMode fields.
-	 * (CurrentMode field was added for Medford)
+	 * Require only Modes and DefaultMode fields, unless the current mode
+	 * was requested (CurrentMode field was added for Medford).
 	 */
 	if (req.emr_out_length_used <
 	    MC_CMD_GET_PORT_MODES_OUT_CURRENT_MODE_OFST) {
 		rc = EMSGSIZE;
 		goto fail2;
 	}
+	if ((current_modep != NULL) && (req.emr_out_length_used <
+	    MC_CMD_GET_PORT_MODES_OUT_CURRENT_MODE_OFST + 4)) {
+		rc = EMSGSIZE;
+		goto fail3;
+	}
 
 	*modesp = MCDI_OUT_DWORD(req, GET_PORT_MODES_OUT_MODES);
 
+	if (current_modep != NULL) {
+		*current_modep = MCDI_OUT_DWORD(req,
+					    GET_PORT_MODES_OUT_CURRENT_MODE);
+	}
+
 	return (0);
 
+fail3:
+	EFSYS_PROBE(fail3);
 fail2:
 	EFSYS_PROBE(fail2);
 fail1:
@@ -134,6 +147,50 @@ fail1:
 	return (rc);
 }
 
+	__checkReturn	efx_rc_t
+ef10_nic_get_port_mode_bandwidth(
+	__in		uint32_t port_mode,
+	__out		uint32_t *bandwidth_mbpsp)
+{
+	uint32_t bandwidth;
+	efx_rc_t rc;
+
+	switch (port_mode) {
+	case TLV_PORT_MODE_10G:
+		bandwidth = 10000;
+		break;
+	case TLV_PORT_MODE_10G_10G:
+		bandwidth = 10000 * 2;
+		break;
+	case TLV_PORT_MODE_10G_10G_10G_10G:
+	case TLV_PORT_MODE_10G_10G_10G_10G_Q:
+	case TLV_PORT_MODE_10G_10G_10G_10G_Q2:
+		bandwidth = 10000 * 4;
+		break;
+	case TLV_PORT_MODE_40G:
+		bandwidth = 40000;
+		break;
+	case TLV_PORT_MODE_40G_40G:
+		bandwidth = 40000 * 2;
+		break;
+	case TLV_PORT_MODE_40G_10G_10G:
+	case TLV_PORT_MODE_10G_10G_40G:
+		bandwidth = 40000 + (10000 * 2);
+		break;
+	default:
+		rc = EINVAL;
+		goto fail1;
+	}
+
+	*bandwidth_mbpsp = bandwidth;
+
+	return (0);
+
+fail1:
+	EFSYS_PROBE1(fail1, efx_rc_t, rc);
+
+	return (rc);
+}
 
 static	__checkReturn		efx_rc_t
 efx_mcdi_vadaptor_alloc(
@@ -332,7 +389,8 @@ fail1:
 	__checkReturn	efx_rc_t
 efx_mcdi_get_clock(
 	__in		efx_nic_t *enp,
-	__out		uint32_t *sys_freqp)
+	__out		uint32_t *sys_freqp,
+	__out		uint32_t *dpcpu_freqp)
 {
 	efx_mcdi_req_t req;
 	uint8_t payload[MAX(MC_CMD_GET_CLOCK_IN_LEN,
@@ -366,9 +424,16 @@ efx_mcdi_get_clock(
 		rc = EINVAL;
 		goto fail3;
 	}
+	*dpcpu_freqp = MCDI_OUT_DWORD(req, GET_CLOCK_OUT_DPCPU_FREQ);
+	if (*dpcpu_freqp == 0) {
+		rc = EINVAL;
+		goto fail4;
+	}
 
 	return (0);
 
+fail4:
+	EFSYS_PROBE(fail4);
 fail3:
 	EFSYS_PROBE(fail3);
 fail2:
@@ -708,7 +773,7 @@ efx_mcdi_unlink_piobuf(
 
 	MCDI_IN_SET_DWORD(req, UNLINK_PIOBUF_IN_TXQ_INSTANCE, vi_index);
 
-	efx_mcdi_execute(enp, &req);
+	efx_mcdi_execute_quiet(enp, &req);
 
 	if (req.emr_rc != 0) {
 		rc = req.emr_rc;
@@ -730,7 +795,6 @@ ef10_nic_alloc_piobufs(
 {
 	efx_piobuf_handle_t *handlep;
 	unsigned int i;
-	efx_rc_t rc;
 
 	EFSYS_ASSERT3U(max_piobuf_count, <=,
 	    EFX_ARRAY_SIZE(enp->en_arch.ef10.ena_piobuf_handle));
@@ -740,7 +804,7 @@ ef10_nic_alloc_piobufs(
 	for (i = 0; i < max_piobuf_count; i++) {
 		handlep = &enp->en_arch.ef10.ena_piobuf_handle[i];
 
-		if ((rc = efx_mcdi_alloc_piobuf(enp, handlep)) != 0)
+		if (efx_mcdi_alloc_piobuf(enp, handlep) != 0)
 			goto fail1;
 
 		enp->en_arch.ef10.ena_pio_alloc_map[i] = 0;
@@ -939,8 +1003,11 @@ ef10_get_datapath_caps(
 	encp->enc_rx_batching_enabled =
 	    CAP_FLAG(flags, RX_BATCHING) ? B_TRUE : B_FALSE;
 
-	if (encp->enc_rx_batching_enabled)
-		encp->enc_rx_batch_max = 16;
+	/*
+	 * Even if batching isn't reported as supported, we may still get
+	 * batched events.
+	 */
+	encp->enc_rx_batch_max = 16;
 
 	/* Check if the firmware supports disabling scatter on RXQs */
 	encp->enc_rx_disable_scatter_supported =
@@ -958,6 +1025,13 @@ ef10_get_datapath_caps(
 	encp->enc_enhanced_set_mac_supported =
 		CAP_FLAG(flags, SET_MAC_ENHANCED) ? B_TRUE : B_FALSE;
 
+	/*
+	 * Check if firmware supports version 2 of MC_CMD_INIT_EVQ, which allows
+	 * us to let the firmware choose the settings to use on an EVQ.
+	 */
+	encp->enc_init_evq_v2_supported =
+		CAP_FLAG2(flags2, INIT_EVQ_V2) ? B_TRUE : B_FALSE;
+
 #undef CAP_FLAG
 #undef CAP_FLAG2
 
@@ -970,6 +1044,22 @@ fail1:
 
 	return (rc);
 }
+
+
+#define	EF10_LEGACY_PF_PRIVILEGE_MASK					\
+	(MC_CMD_PRIVILEGE_MASK_IN_GRP_ADMIN			|	\
+	MC_CMD_PRIVILEGE_MASK_IN_GRP_LINK			|	\
+	MC_CMD_PRIVILEGE_MASK_IN_GRP_ONLOAD			|	\
+	MC_CMD_PRIVILEGE_MASK_IN_GRP_PTP			|	\
+	MC_CMD_PRIVILEGE_MASK_IN_GRP_INSECURE_FILTERS		|	\
+	MC_CMD_PRIVILEGE_MASK_IN_GRP_MAC_SPOOFING		|	\
+	MC_CMD_PRIVILEGE_MASK_IN_GRP_UNICAST			|	\
+	MC_CMD_PRIVILEGE_MASK_IN_GRP_MULTICAST			|	\
+	MC_CMD_PRIVILEGE_MASK_IN_GRP_BROADCAST			|	\
+	MC_CMD_PRIVILEGE_MASK_IN_GRP_ALL_MULTICAST		|	\
+	MC_CMD_PRIVILEGE_MASK_IN_GRP_PROMISCUOUS)
+
+#define	EF10_LEGACY_VF_PRIVILEGE_MASK	0
 
 
 	__checkReturn		efx_rc_t
@@ -1074,7 +1164,7 @@ ef10_external_port_mapping(
 	uint32_t matches;
 	uint32_t stride = 1; /* default 1-1 mapping */
 
-	if ((rc = efx_mcdi_get_port_modes(enp, &port_modes)) != 0) {
+	if ((rc = efx_mcdi_get_port_modes(enp, &port_modes, NULL)) != 0) {
 		/* No port mode information available - use default mapping */
 		goto out;
 	}
@@ -1596,6 +1686,7 @@ ef10_nic_register_test(
 
 	/* FIXME */
 	_NOTE(ARGUNUSED(enp))
+	_NOTE(CONSTANTCONDITION)
 	if (B_FALSE) {
 		rc = ENOTSUP;
 		goto fail1;
