@@ -6,8 +6,10 @@ NO_LLVM_IR=	yes
 
 LIB=		egacy
 SRC=
-INCSGROUPS=	INCS
+INCSGROUPS=	INCS SYSINCS
 INCS=
+
+SYSINCSDIR=	${INCLUDEDIR}/sys
 
 BOOTSTRAPPING?=	0
 
@@ -33,6 +35,12 @@ _WITH_REALLOCARRAY!= grep -c reallocarray /usr/include/stdlib.h || true
 INCS+=		stdlib.h
 SRCS+=		reallocarray.c
 CFLAGS+=	-I${.CURDIR}/../../lib/libc/include
+.endif
+
+_WITH_UTIMENS!= grep -c utimensat /usr/include/sys/stat.h || true
+.if ${_WITH_UTIMENS} == 0
+SYSINCS+=	stat.h
+SRCS+=		futimens.c utimensat.c
 .endif
 
 .if empty(SRCS)
