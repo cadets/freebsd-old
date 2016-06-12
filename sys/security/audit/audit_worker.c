@@ -348,6 +348,8 @@ audit_worker_process_record(struct kaudit_record *ar)
 	/*
 	 * First, handle the user record, if any: commit to the system trail
 	 * and audit pipes as selected.
+	 *
+	 * XXXRW: Do we want to expose these to DTrace as well?
 	 */
 	if ((ar->k_ar_commit & AR_COMMIT_USER) &&
 	    (ar->k_ar_commit & AR_PRESELECT_USER_TRAIL)) {
@@ -362,7 +364,8 @@ audit_worker_process_record(struct kaudit_record *ar)
 
 	if (!(ar->k_ar_commit & AR_COMMIT_KERNEL) ||
 	    ((ar->k_ar_commit & AR_PRESELECT_PIPE) == 0 &&
-	    (ar->k_ar_commit & AR_PRESELECT_TRAIL) == 0))
+	    (ar->k_ar_commit & AR_PRESELECT_TRAIL) == 0 &&
+	    (ar->k_ar_commit & AR_PRESELECT_DTRACE) == 0))
 		goto out;
 
 	auid = ar->k_ar.ar_subj_auid;
@@ -398,6 +401,14 @@ audit_worker_process_record(struct kaudit_record *ar)
 		audit_pipe_submit(auid, event, class, sorf,
 		    ar->k_ar_commit & AR_PRESELECT_TRAIL, bsm->data,
 		    bsm->len);
+
+#ifdef KDTRACE_HOOKS
+	if (ar->k_ar_commit & AR_PRESELECT_DTRACE) {
+		if (dtaudit_hook_commit != NULL)
+			dtaudit_hook_commit(auid, event, class, sorf, ar,
+			    bsm->data, bsm->len);
+	}
+#endif
 
 	kau_free(bsm);
 out:

@@ -67,6 +67,7 @@ kau_init(void)
 {
 
 	au_evclassmap_init();
+	au_evnamemap_init();
 }
 
 /*

@@ -125,6 +125,8 @@
 #define	A_SETQCTRL	36
 #define	A_GETCOND	37
 #define	A_SETCOND	38
+#define	A_GETEVENT	39	/* Get audit event-to-name mapping. */
+#define	A_SETEVENT	40	/* Set audit event-to-name mapping. */
 
 /*
  * Audit policy controls.
@@ -299,6 +301,16 @@ struct au_evclass_map {
 	au_class_t	ec_class;
 };
 typedef	struct au_evclass_map	au_evclass_map_t;
+
+/*
+ * Event-to-name mapping.
+ */
+#define	EVNAMEMAP_NAME_SIZE	64
+struct au_evname_map {
+	au_event_t	en_number;
+	char		en_name[EVNAMEMAP_NAME_SIZE];
+};
+typedef struct au_evname_map	au_evname_map_t;
 
 /*
  * Audit system calls.

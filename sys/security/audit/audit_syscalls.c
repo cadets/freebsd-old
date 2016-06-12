@@ -195,10 +195,12 @@ sys_auditon(struct thread *td, struct auditon_args *uap)
 	case A_SETCOND:
 	case A_OLDSETCOND:
 	case A_SETCLASS:
+	case A_SETEVENT:
 	case A_SETPMASK:
 	case A_SETFSIZE:
 	case A_SETKAUDIT:
 	case A_GETCLASS:
+	case A_GETEVENT:
 	case A_GETPINFO:
 	case A_GETPINFO_ADDR:
 	case A_SENDTRIGGER:
@@ -404,11 +406,31 @@ sys_auditon(struct thread *td, struct auditon_args *uap)
 		    udata.au_evclass.ec_number);
 		break;
 
+	case A_GETEVENT:
+		if (uap->length != sizeof(udata.au_evname))
+			return (EINVAL);
+		error = au_event_name(udata.au_evname.en_number,
+		    udata.au_evname.en_name);
+		if (error != 0)
+			return (error);
+		break;
+
 	case A_SETCLASS:
 		if (uap->length != sizeof(udata.au_evclass))
 			return (EINVAL);
 		au_evclassmap_insert(udata.au_evclass.ec_number,
 		    udata.au_evclass.ec_class);
+		break;
+
+	case A_SETEVENT:
+		if (uap->length != sizeof(udata.au_evname))
+			return (EINVAL);
+
+		/* Ensure nul termination from userspace. */
+		udata.au_evname.en_name[sizeof(udata.au_evname.en_name) - 1]
+		    = 0;
+		au_evnamemap_insert(udata.au_evname.en_number,
+		    udata.au_evname.en_name);
 		break;
 
 	case A_GETPINFO:

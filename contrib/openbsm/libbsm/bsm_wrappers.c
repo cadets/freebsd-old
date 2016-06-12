@@ -689,6 +689,30 @@ audit_set_class(au_evclass_map_t *evc_map, size_t sz)
 }
 
 int
+audit_get_event(au_evname_map_t *evn_map, size_t sz)
+{
+
+	if (sizeof(*evn_map) != sz) {
+		errno = EINVAL;
+		return (-1);
+	}
+
+	return (auditon(A_GETEVENT, evn_map, sz));
+}
+
+int
+audit_set_event(au_evname_map_t *evn_map, size_t sz)
+{
+
+	if (sizeof(*evn_map) != sz) {
+		errno = EINVAL;
+		return (-1);
+	}
+
+	return (auditon(A_SETEVENT, evn_map, sz));
+}
+
+int
 audit_get_kmask(au_mask_t *kmask, size_t sz)
 {
 	if (sizeof(*kmask) != sz) {

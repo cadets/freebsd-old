@@ -1,7 +1,12 @@
 /*-
  * Copyright (c) 1999-2005 Apple Inc.
- * Copyright (c) 2006-2007 Robert N. M. Watson
+ * Copyright (c) 2006-2007, 2016 Robert N. M. Watson
  * All rights reserved.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -160,6 +165,19 @@ struct cv		audit_watermark_cv;
  * again.
  */
 static struct cv	audit_fail_cv;
+
+/*
+ * Optional DTrace audit provider support: function pointers for preselection
+ * and commit events.
+ */
+#ifdef KDTRACE_HOOKS
+int	(*dtaudit_hook_preselect)(au_id_t auid, au_event_t event,
+	    au_class_t class, int sorf);
+
+void	(*dtaudit_hook_commit)(au_id_t auid, au_event_t event,
+	    au_class_t class, int sorf, struct kaudit_record *ar,
+	    void *bsm_data, size_t bsm_len);
+#endif
 
 /*
  * Kernel audit information.  This will store the current audit address
@@ -461,8 +479,22 @@ audit_commit(struct kaudit_record *ar, int error, int retval)
 	if (audit_pipe_preselect(auid, event, class, sorf,
 	    ar->k_ar_commit & AR_PRESELECT_TRAIL) != 0)
 		ar->k_ar_commit |= AR_PRESELECT_PIPE;
+
+#ifdef KDTRACE_HOOKS
+	/*
+	 * The DTrace audit provider can request that records be generated if
+	 * suitable probes are in use.
+	 *
+	 * XXXRW: Do we also want to pass in a flag regarding whether a user
+	 * record is attached...?
+	 */
+	if ((dtaudit_hook_preselect != NULL) &&
+	    (dtaudit_hook_preselect(auid, event, class, sorf) != 0))
+		ar->k_ar_commit |= AR_PRESELECT_DTRACE;
+#endif
 	if ((ar->k_ar_commit & (AR_PRESELECT_TRAIL | AR_PRESELECT_PIPE |
-	    AR_PRESELECT_USER_TRAIL | AR_PRESELECT_USER_PIPE)) == 0) {
+	    AR_PRESELECT_USER_TRAIL | AR_PRESELECT_USER_PIPE |
+	    AR_PRESELECT_DTRACE)) == 0) {
 		mtx_lock(&audit_mtx);
 		audit_pre_q_len--;
 		mtx_unlock(&audit_mtx);
@@ -573,7 +605,16 @@ audit_syscall_enter(unsigned short code, struct thread *td)
 		td->td_ar = audit_new(event, td);
 		if (td->td_ar != NULL)
 			td->td_pflags |= TDP_AUDITREC;
-	} else
+	}
+#ifdef KDTRACE_HOOKS
+        else if ((dtaudit_hook_preselect != NULL) &&
+	    (dtaudit_hook_preselect(auid, event, class, AU_PRS_BOTH) != 0)) {
+		td->td_ar = audit_new(event, td);
+		if (td->td_ar != NULL)
+			td->td_pflags |= TDP_AUDITREC;
+	}
+#endif
+	else
 		td->td_ar = NULL;
 }
 
