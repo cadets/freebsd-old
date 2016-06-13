@@ -83,10 +83,13 @@ __FBSDID("$FreeBSD$");
  *   looking it up again?  We believe evname_elem entries are stable after
  *   allocation, so this would in principle be safe.
  *
- * Note that the evname lock preceeds any DTrace-related locks, as we need to
- * hold the lock as we register/etc DTrace probes.  Is that OK?  (If not, that
- * is a bit awkward, because we need the lock to protect during preselection
- * and commit, and would prefer a non-sleepable lock...?)
+ * - Should we add an additional set of audit:class::commit probes that use
+ *   event class names to match broader categories of events as specified in
+ *   /etc/security/event_class?
+ *
+ * - If we pursue that last point, we will want to pass the name of the event
+ *   into the probe explicitly (e.g., as arg0), since it would no longer be
+ *   available as the probe function name.
  */
 
 static int	dtaudit_unload(void);
@@ -108,8 +111,9 @@ static dtrace_pattr_t dtaudit_attr = {
 };
 
 /*
- * Strings for the "module" and "function name" portions of the probe.  All
- * dtaudit probes currently take the form audit:event:<event name>:commit.
+ * Strings for the "module" and "name" portions of the probe.  The name of the
+ * audit event will be the "function" portion of the probe.  All dtaudit
+ * probes therefore take the form audit:event:<event name>:commit.
  */
 static char	*dtaudit_event_module = "event";
 static char	*dtaudit_event_name = "commit";
@@ -132,7 +136,7 @@ static dtrace_provider_id_t	dtaudit_id;
 /*
  * Because looking up entries in the event-to-name mapping is quite expensive,
  * maintain a global flag tracking whether any dtaudit probes are enabled.  If
- * not, don't bother doing all the work whenever potential queries about
+ * not, don't bother doing all that work whenever potential queries about
  * events turn up during preselection or commit.
  */
 static uint_t		dtaudit_probes_enabled;
@@ -144,11 +148,18 @@ static uint_t		dtaudit_probes_enabled;
  * on the individual event, but also a global flag indicating that at least
  * one probe is enabled, before acquiring locks, searching lists, etc.
  *
+ * Currently, we take an interest only in the 'event' argument, but in the
+ * future might want to support other types of record selection tied to
+ * additional probe types (e.g., event clases).
+ *
  * XXXRW: Should we have a catch-all probe here for events without registered
  * names?
  *
- * XXXRW: Should we be caching the evname_elem pointer in the kaudit_record
- * to avoid a second lookup here?
+ * XXXRW: dtaudit_preselect() will be called twice for each event generating a
+ * record: once at system-call entry to decide if one should be allocated, and
+ * a second time at system-call exit to decide if it should be committed.
+ * Should we be caching the evname_elem pointer in the kaudit_record to avoid
+ * a second lookup?
  */
 static int
 dtaudit_preselect(au_id_t auid, au_event_t event, au_class_t class, int sorf)
@@ -261,6 +272,9 @@ dtaudit_au_evnamemap_callback(struct evname_elem *ene)
 	 * Does this event name already have a probe?  This is the papering
 	 * over bit.  As nothing in the kernel interface (or config file)
 	 * ensures that there are not duplicate names, we just ignore for now.
+	 *
+	 * XXXRW: There is an argument that if multiple numeric events match a
+	 * single name, they should all be exposed to the same named probe.
 	 */
 	if (dtrace_probe_lookup(dtaudit_id, dtaudit_event_module,
 	    ene->ene_name, dtaudit_event_name) != 0)
@@ -332,12 +346,6 @@ dtaudit_load(void *dummy)
 		return;
 	dtaudit_hook_preselect = dtaudit_preselect;
 	dtaudit_hook_commit = dtaudit_commit;
-
-#if 0
-	/* XXXRW: Is this needed? */
-	/* Trigger an initial walk of the audit event list. */
-	au_evnamemap_foreach(dtaudit_au_evnamemap_callback);
-#endif
 }
 
 static int
