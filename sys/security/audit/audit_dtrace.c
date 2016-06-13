@@ -34,6 +34,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/conf.h>
+#include <sys/ctype.h>
 #include <sys/kernel.h>
 #include <sys/malloc.h>
 #include <sys/module.h>
@@ -263,10 +264,26 @@ dtaudit_getargdesc(void *arg, dtrace_id_t id, void *parg,
 static void
 dtaudit_au_evnamemap_callback(struct evname_elem *ene)
 {
+	char ene_name_lower[EVNAMEMAP_NAME_SIZE];
+	int i;
 
 	/* Does this event number already have a probe? */
 	if (ene->ene_probe_id != 0)
 		return;
+
+	/*
+	 * DTrace, by convention, has lower-case probe names.  However, the
+	 * in-kernel event-to-name mapping table must maintain event-name case
+	 * as submitted by userspace.  Create a temporary lower-case version
+	 * here, away from the fast path, to use when exposing the event name
+	 * to DTrace as part of the name of a probe.
+	 *
+	 * NB: Convert the entire array, including the terminating nul,
+	 * because these strings are short and it's more work not to.  If they
+	 * become long, we might feel more guilty about this sloppiness!
+	 */
+	for (i = 0; i < sizeof(ene_name_lower); i++)
+		ene_name_lower[i] = tolower(ene->ene_name[i]);
 
 	/*
 	 * Does this event name already have a probe?  This is the papering
@@ -277,7 +294,7 @@ dtaudit_au_evnamemap_callback(struct evname_elem *ene)
 	 * single name, they should all be exposed to the same named probe.
 	 */
 	if (dtrace_probe_lookup(dtaudit_id, dtaudit_event_module,
-	    ene->ene_name, dtaudit_event_name) != 0)
+	    ene_name_lower, dtaudit_event_name) != 0)
 		return;
 
 	/*
@@ -292,7 +309,7 @@ dtaudit_au_evnamemap_callback(struct evname_elem *ene)
 	 * interface.
 	 */
 	ene->ene_probe_id = dtrace_probe_create(dtaudit_id,
-	    dtaudit_event_module, ene->ene_name, dtaudit_event_name, 0, ene);
+	    dtaudit_event_module, ene_name_lower, dtaudit_event_name, 0, ene);
 }
 
 static void
