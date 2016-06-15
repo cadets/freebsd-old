@@ -142,13 +142,13 @@ void print_token(tokenstr_t* t)
 //     case AUT_SOCKET:
 //     case AUT_SOCKET_EX:
 //     case AUT_SOCKINET128:
-    case AUT_SOCKINET32:
-        ipaddr.s_addr = t->tt.sockinet_ex32.addr[0];
-        printf(", \"address\": \"%s\", \"port\": %d", inet_ntoa(ipaddr), t->tt.sockinet_ex32.port);
-	break;
-//     case AUT_SOCKUNIX:
-//         printf(", \"address\": %d", t->tt.sockunix.path);
-// 	break;
+	case AUT_SOCKINET32:
+		ipaddr.s_addr = t->tt.sockinet_ex32.addr[0];
+		printf(", \"address\": \"%s\", \"port\": %d", inet_ntoa(ipaddr), t->tt.sockinet_ex32.port);
+		break;
+// 	case AUT_SOCKUNIX:
+// 		printf(", \"address\": %d", t->tt.sockunix.path);
+// 		break;
     case AUT_SUBJECT32:
         printf(", \"uid\": %d, \"pid\": %d, \"tid\": %u", t->tt.subj32.ruid, t->tt.subj32.pid, t->tt.subj32.tid.port); // which uid should I use? real, effective, etc - what tid should I use?
         break;
