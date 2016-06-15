@@ -33,6 +33,7 @@
 #include<arpa/inet.h>
 
 void print_token(tokenstr_t*);
+void print_string(char*);
 
 int main(int argc, char** argv)
 {
@@ -86,26 +87,28 @@ void print_token(tokenstr_t* t)
 //     case AUT_ATTR64:
 //     case AUT_DATA:
     case AUT_EXEC_ARGS:
-        printf(", \"args\":\"");
-        for(u_int32_t i = 0; i < t->tt.execarg.count; i++) {
-            if(i >= 0) printf(" ");
-            printf("%s", t->tt.execarg.text[i]);
+        printf(", \"args\": \"");
+        for(u_int32_t i = 1; i < t->tt.execarg.count; i++) {
+            if(i > 1) printf(" ");
+            print_string( t->tt.execarg.text[i]);
         }
         printf("\"");
         break;
 //     case AUT_EXEC_ENV:
 //     case AUT_EXIT:
     case AUT_HEADER32:
-        printf("{\"event\":\"audit::%s:\", \"time\": %d%03d000000", getauevnum(t->tt.hdr32.e_type)->ae_name, t->tt.hdr32.s, t->tt.hdr32.ms);
+		// ae_name is ugly, but does not seem to have spaces
+		// ae_desc is more human-readable, but doesn't have a specific format
+        printf("{\"event\":\"audit::%s:\", \"time\": %d%03d000000", getauevnum(t->tt.hdr32.e_type)->ae_desc, t->tt.hdr32.s, t->tt.hdr32.ms);
         break;
     case AUT_HEADER32_EX:
-        printf("{\"event\":\"audit::%s:\", \"time\": %d%03d000000", getauevnum(t->tt.hdr32_ex.e_type)->ae_name, t->tt.hdr32_ex.s, t->tt.hdr32.ms);
+        printf("{\"event\":\"audit::%s:\", \"time\": %d%03d000000", getauevnum(t->tt.hdr32_ex.e_type)->ae_desc, t->tt.hdr32_ex.s, t->tt.hdr32.ms);
         break;
     case AUT_HEADER64:
-        printf("{\"event\":\"audit::%s:\", \"time\": %ld%03d000000", getauevnum(t->tt.hdr64.e_type)->ae_name, t->tt.hdr64.s, t->tt.hdr32.ms);
+        printf("{\"event\":\"audit::%s:\", \"time\": %ld%03d000000", getauevnum(t->tt.hdr64.e_type)->ae_desc, t->tt.hdr64.s, t->tt.hdr32.ms);
         break;
     case AUT_HEADER64_EX:
-        printf("{\"event\":\"audit::%s:\", \"time\": %ld%03d000000", getauevnum(t->tt.hdr64_ex.e_type)->ae_name, t->tt.hdr64_ex.s,t->tt.hdr32.ms);
+        printf("{\"event\":\"audit::%s:\", \"time\": %ld%03d000000", getauevnum(t->tt.hdr64_ex.e_type)->ae_desc, t->tt.hdr64_ex.s,t->tt.hdr32.ms);
         break;
     case AUT_IN_ADDR: ;
         struct in_addr ipaddr;
@@ -164,4 +167,21 @@ void print_token(tokenstr_t* t)
         break;
 //         au_print_flags_tok(stdout, t, ",", 0);
     }
+}
+
+void print_string(char* str)
+{
+	while(*str != 0)
+	{
+		switch(*str)
+		{
+			case '\"':
+				printf("\\\"");
+				break;
+			default:
+				printf("%c", *str);
+
+		}
+		str++;
+	}
 }
