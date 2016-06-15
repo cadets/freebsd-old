@@ -99,7 +99,7 @@ void mi_startup(void);				/* Should be elsewhere */
 static struct session session0;
 static struct pgrp pgrp0;
 struct	proc proc0;
-struct	thread thread0 __aligned(16);
+struct thread0_storage thread0_st __aligned(16);
 struct	vmspace vmspace0;
 struct	proc *initproc;
 
@@ -479,7 +479,7 @@ proc0_init(void *dummy __unused)
 	session0.s_leader = p;
 
 	p->p_sysent = &null_sysvec;
-	p->p_flag = P_SYSTEM | P_INMEM;
+	p->p_flag = P_SYSTEM | P_INMEM | P_KPROC;
 	p->p_flag2 = 0;
 	p->p_state = PRS_NORMAL;
 	knlist_init_mtx(&p->p_klist, &p->p_mtx);
@@ -787,7 +787,7 @@ start_init(void *dummy)
 		/*
 		 * Move out the arg pointers.
 		 */
-		uap = (char **)((intptr_t)ucp & ~(sizeof(intptr_t)-1));
+		uap = (char **)rounddown2((intptr_t)ucp, sizeof(intptr_t));
 		(void)suword((caddr_t)--uap, (long)0);	/* terminator */
 		(void)suword((caddr_t)--uap, (long)(intptr_t)arg1);
 		(void)suword((caddr_t)--uap, (long)(intptr_t)arg0);

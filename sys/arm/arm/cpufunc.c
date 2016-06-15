@@ -559,7 +559,9 @@ struct cpu_functions cortexa_cpufuncs = {
 
 struct cpu_functions cpufuncs;
 u_int cputype;
-u_int cpu_reset_needs_v4_MMU_disable;	/* flag used in locore.s */
+#if __ARM_ARCH <= 5
+u_int cpu_reset_needs_v4_MMU_disable;	/* flag used in locore-v4.s */
+#endif
 
 #if defined(CPU_ARM9) ||	\
   defined (CPU_ARM9E) ||	\
@@ -754,32 +756,24 @@ set_cpufuncs()
 #if defined(CPU_ARM1176)
 	if (cputype == CPU_ID_ARM1176JZS) {
 		cpufuncs = arm1176_cpufuncs;
-		cpu_reset_needs_v4_MMU_disable = 1;     /* V4 or higher */
 		get_cachetype_cp15();
 		goto out;
 	}
 #endif /* CPU_ARM1176 */
 #if defined(CPU_CORTEXA) || defined(CPU_KRAIT)
-	if (cputype == CPU_ID_CORTEXA5 ||
-	    cputype == CPU_ID_CORTEXA7 ||
-	    cputype == CPU_ID_CORTEXA8R1 ||
-	    cputype == CPU_ID_CORTEXA8R2 ||
-	    cputype == CPU_ID_CORTEXA8R3 ||
-	    cputype == CPU_ID_CORTEXA9R1 ||
-	    cputype == CPU_ID_CORTEXA9R2 ||
-	    cputype == CPU_ID_CORTEXA9R3 ||
-	    cputype == CPU_ID_CORTEXA9R4 ||
-	    cputype == CPU_ID_CORTEXA12R0 ||
-	    cputype == CPU_ID_CORTEXA15R0 ||
-	    cputype == CPU_ID_CORTEXA15R1 ||
-	    cputype == CPU_ID_CORTEXA15R2 ||
-	    cputype == CPU_ID_CORTEXA15R3 ||
-	    cputype == CPU_ID_KRAIT300R0 ||
-	    cputype == CPU_ID_KRAIT300R1 ) {
+	switch(cputype & CPU_ID_SCHEME_MASK) {
+	case CPU_ID_CORTEXA5:
+	case CPU_ID_CORTEXA7:
+	case CPU_ID_CORTEXA8:
+	case CPU_ID_CORTEXA9:
+	case CPU_ID_CORTEXA12:
+	case CPU_ID_CORTEXA15:
+	case CPU_ID_KRAIT300:
 		cpufuncs = cortexa_cpufuncs;
-		cpu_reset_needs_v4_MMU_disable = 1;     /* V4 or higher */
 		get_cachetype_cp15();
 		goto out;
+	default:
+		break;
 	}
 #endif /* CPU_CORTEXA */
 
@@ -885,7 +879,7 @@ arm9_setup(void)
 	/* Clear out the cache */
 	cpu_idcache_wbinv_all();
 
-	/* Set the control register */
+	/* Set the control register (SCTLR)   */
 	cpu_control(cpuctrlmask, cpuctrl);
 
 }

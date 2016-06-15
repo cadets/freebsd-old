@@ -59,7 +59,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/sbuf.h>
 #include <sys/sysctl.h>
-#include <sys/taskqueue.h>
 #include <sys/time.h>
 #include <sys/vmem.h>
 
@@ -110,9 +109,6 @@ dtrace_malloc_probe_func_t	dtrace_malloc_probe;
 MALLOC_DEFINE(M_CACHE, "cache", "Various Dynamically allocated caches");
 MALLOC_DEFINE(M_DEVBUF, "devbuf", "device driver memory");
 MALLOC_DEFINE(M_TEMP, "temp", "misc temporary data buffers");
-
-MALLOC_DEFINE(M_IP6OPT, "ip6opt", "IPv6 options");
-MALLOC_DEFINE(M_IP6NDP, "ip6ndp", "IPv6 Neighbor Discovery");
 
 static struct malloc_type *kmemstatistics;
 static int kmemcount;

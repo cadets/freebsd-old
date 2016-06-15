@@ -582,7 +582,7 @@ em_attach(device_t dev)
 	}
 	/*
 	** In the new SPT device flash is not  a
-	** seperate BAR, rather it is also in BAR0,
+	** separate BAR, rather it is also in BAR0,
 	** so use the same tag and an offset handle for the
 	** FLASH read/write macros in the shared code.
 	*/
@@ -1929,7 +1929,7 @@ em_xmit(struct tx_ring *txr, struct mbuf **m_headp)
 	 * so we firstly get a writable mbuf chain then coalesce ethernet/
 	 * IP/TCP header into a single buffer to meet the requirement of
 	 * controller. This also simplifies IP/TCP/UDP checksum offloading
-	 * which also has similiar restrictions.
+	 * which also has similar restrictions.
 	 */
 	if (do_tso || m_head->m_pkthdr.csum_flags & CSUM_OFFLOAD) {
 		if (do_tso || (m_head->m_next != NULL && 
@@ -2092,7 +2092,7 @@ retry:
 		txr->tx_tso = FALSE;
 	}
 
-        if (nsegs > (txr->tx_avail - EM_MAX_SCATTER)) {
+        if (txr->tx_avail < (nsegs + EM_MAX_SCATTER)) {
                 txr->no_desc_avail++;
 		bus_dmamap_unload(txr->txtag, map);
 		return (ENOBUFS);
@@ -2595,7 +2595,7 @@ em_allocate_legacy(struct adapter *adapter)
  *
  *  Setup the MSIX Interrupt handlers
  *   This is not really Multiqueue, rather
- *   its just seperate interrupt vectors
+ *   its just separate interrupt vectors
  *   for TX, RX, and Link.
  *
  **********************************************************************/
@@ -3083,7 +3083,7 @@ em_reset(struct adapter *adapter)
 	 *   received after sending an XOFF.
 	 * - Low water mark works best when it is very near the high water mark.
 	 *   This allows the receiver to restart by sending XON when it has
-	 *   drained a bit. Here we use an arbitary value of 1500 which will
+	 *   drained a bit. Here we use an arbitrary value of 1500 which will
 	 *   restart after one full frame is pulled from the buffer. There
 	 *   could be several smaller frames in the buffer and if so they will
 	 *   not trigger the XON until their total number reduces the buffer
@@ -3193,9 +3193,11 @@ em_setup_interface(device_t dev, struct adapter *adapter)
 	if_setflags(ifp, IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST);
 	if_setioctlfn(ifp, em_ioctl);
 	if_setgetcounterfn(ifp, em_get_counter);
+
 	/* TSO parameters */
 	ifp->if_hw_tsomax = IP_MAXPACKET;
-	ifp->if_hw_tsomaxsegcount = EM_MAX_SCATTER;
+	/* Take m_pullup(9)'s in em_xmit() w/ TSO into acount. */
+	ifp->if_hw_tsomaxsegcount = EM_MAX_SCATTER - 5;
 	ifp->if_hw_tsomaxsegsize = EM_TSO_SEG_SIZE;
 
 #ifdef EM_MULTIQUEUE

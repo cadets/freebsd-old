@@ -58,7 +58,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/unistd.h>
 #include <sys/vmmeter.h>
-#include <sys/taskqueue.h>
 
 #include <dev/ofw/openfirm.h>
 
@@ -168,13 +167,7 @@ cpu_set_syscall_retval(struct thread *td, int error)
 		break;
 
 	default:
-		if (td->td_proc->p_sysent->sv_errsize) {
-			if (error >= td->td_proc->p_sysent->sv_errsize)
-				error = -1;	/* XXX */
-			else
-				error = td->td_proc->p_sysent->sv_errtbl[error];
-		}
-		td->td_frame->tf_out[0] = error;
+		td->td_frame->tf_out[0] = SV_ABI_ERRNO(td->td_proc, error);
 		td->td_frame->tf_tstate |= TSTATE_XCC_C;
 		break;
 	}

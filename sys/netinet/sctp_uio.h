@@ -318,12 +318,13 @@ struct sctp_assoc_change {
 #define SCTP_CANT_STR_ASSOC     0x0005
 
 /* sac_info values */
-#define SCTP_ASSOC_SUPPORTS_PR        0x01
-#define SCTP_ASSOC_SUPPORTS_AUTH      0x02
-#define SCTP_ASSOC_SUPPORTS_ASCONF    0x03
-#define SCTP_ASSOC_SUPPORTS_MULTIBUF  0x04
-#define SCTP_ASSOC_SUPPORTS_RE_CONFIG 0x05
-#define SCTP_ASSOC_SUPPORTS_MAX       0x05
+#define SCTP_ASSOC_SUPPORTS_PR			0x01
+#define SCTP_ASSOC_SUPPORTS_AUTH		0x02
+#define SCTP_ASSOC_SUPPORTS_ASCONF		0x03
+#define SCTP_ASSOC_SUPPORTS_MULTIBUF		0x04
+#define SCTP_ASSOC_SUPPORTS_RE_CONFIG		0x05
+#define SCTP_ASSOC_SUPPORTS_INTERLEAVING	0x06
+#define SCTP_ASSOC_SUPPORTS_MAX			0x06
 /*
  * Address event
  */
@@ -589,6 +590,7 @@ struct sctp_paddrthlds {
 	sctp_assoc_t spt_assoc_id;
 	uint16_t spt_pathmaxrxt;
 	uint16_t spt_pathpfthld;
+	uint16_t spt_pathcpthld;
 };
 
 struct sctp_paddrinfo {
