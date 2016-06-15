@@ -96,16 +96,16 @@ void print_token(tokenstr_t* t)
 //     case AUT_EXEC_ENV:
 //     case AUT_EXIT:
     case AUT_HEADER32:
-        printf("{\"event\":\"audit::%d:\", \"time\": %d%03d000000", t->tt.hdr32.e_type, t->tt.hdr32.s, t->tt.hdr32.ms);
+        printf("{\"event\":\"audit::%s:\", \"time\": %d%03d000000", getauevnum(t->tt.hdr32.e_type)->ae_name, t->tt.hdr32.s, t->tt.hdr32.ms);
         break;
     case AUT_HEADER32_EX:
-        printf("{\"event\":\"audit::%d:\", \"time\": %d%03d000000", t->tt.hdr32_ex.e_type, t->tt.hdr32_ex.s, t->tt.hdr32.ms);
+        printf("{\"event\":\"audit::%s:\", \"time\": %d%03d000000", getauevnum(t->tt.hdr32_ex.e_type)->ae_name, t->tt.hdr32_ex.s, t->tt.hdr32.ms);
         break;
     case AUT_HEADER64:
-        printf("{\"event\":\"audit::%d:\", \"time\": %ld%03d000000", t->tt.hdr64.e_type, t->tt.hdr64.s, t->tt.hdr32.ms);
+        printf("{\"event\":\"audit::%s:\", \"time\": %ld%03d000000", getauevnum(t->tt.hdr64.e_type)->ae_name, t->tt.hdr64.s, t->tt.hdr32.ms);
         break;
     case AUT_HEADER64_EX:
-        printf("{\"event\":\"audit::%d:\", \"time\": %ld%03d000000", t->tt.hdr64_ex.e_type, t->tt.hdr64_ex.s,t->tt.hdr32.ms);
+        printf("{\"event\":\"audit::%s:\", \"time\": %ld%03d000000", getauevnum(t->tt.hdr64_ex.e_type)->ae_name, t->tt.hdr64_ex.s,t->tt.hdr32.ms);
         break;
     case AUT_IN_ADDR: ;
         struct in_addr ipaddr;
