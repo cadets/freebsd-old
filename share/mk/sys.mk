@@ -127,12 +127,6 @@ NO_META_IGNORE_HOST_HEADERS=	1
 # before reading any other files, and consequently has no opportunity to
 # set the %POSIX macro before we read this point.
 
-.if defined(%POSIX)
-.SUFFIXES:	.o .c .y .l .a .sh .f
-.else
-.SUFFIXES:	.out .a .ln .o .bco .llo .c .cc .cpp .cxx .C .m .F .f .e .r .y .l .S .asm .s .cl .p .h .sh
-.endif
-
 AR		?=	ar
 .if defined(%POSIX)
 ARFLAGS		?=	-rv
