@@ -6,6 +6,8 @@
 # $@, $< and $* have been replaced by ${.TARGET}, ${.IMPSRC}, and
 # ${.PREFIX}, resp.
 
+.SUFFIXES:	.o .c .y .l .a .sh .f
+
 # SINGLE SUFFIX RULES
 .c:
 	${CC} ${CFLAGS} ${LDFLAGS} -o ${.TARGET} ${.IMPSRC}
