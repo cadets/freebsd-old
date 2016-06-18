@@ -223,6 +223,8 @@ LINTLIBFLAGS	?=	-cghapbxu -C ${LIB}
 MAKE		?=	make
 
 .if !defined(%POSIX)
+LLVM_LINK	?=	llvm-link
+
 NM		?=	nm
 NMFLAGS		?=
 
@@ -232,6 +234,8 @@ OBJCFLAGS	?=	${OBJCINCLUDES} ${CFLAGS} -Wno-import
 OBJCOPY		?=	objcopy
 
 OBJDUMP		?=	objdump
+
+OPT		?=	opt
 
 PC		?=	pc
 PFLAGS		?=
