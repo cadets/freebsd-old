@@ -314,7 +314,7 @@ struct audit_record {
 	(kar)->k_ar.ar_valid_arg &= ~(arg);				\
 } while (0)
 
-/*
+/*-
  * In-kernel version of audit record; the basic record plus queue meta-data.
  * This record can also have a pointer set to some opaque data that will be
  * passed through to the audit writing mechanism.
@@ -387,21 +387,27 @@ extern int			audit_in_failure;
  * instances passed back in the au_evname_foreach() callbacks.  Safe access to
  * its fields rquires holding ene_lock (after it is visible in the global
  * table).
+ *
+ * Locking:
+ * (c) - Constant after inserted in the global table
+ * (l) - Protected by ene_lock
+ * (m) - Protected by evnamemap_lock (audit_bsm_klib.c)
+ * (M) - Writes protected by evnamemap_lock; reads unprotected.
  */
 struct evname_elem {
-	au_event_t			ene_event;
-	char				ene_name[EVNAMEMAP_NAME_SIZE];
-	LIST_ENTRY(evname_elem)		ene_entry;
-	struct mtx			ene_lock;
+	au_event_t		ene_event;			/* (c) */
+	char			ene_name[EVNAMEMAP_NAME_SIZE];	/* (l) */
+	LIST_ENTRY(evname_elem)	ene_entry;			/* (m) */
+	struct mtx		ene_lock;
 
 #ifdef KDTRACE_HOOKS
 	/* DTrace probe IDs; 0 if not yet registered. */
-	uint32_t			ene_commit_probe_id;
-	uint32_t			ene_bsm_probe_id;
+	uint32_t		ene_commit_probe_id;		/* (M) */
+	uint32_t		ene_bsm_probe_id;		/* (M) */
 
 	/* Flags indicating if the probes enabled or not. */
-	int				ene_commit_probe_enabled;
-	int				ene_bsm_probe_enabled;
+	int			ene_commit_probe_enabled;	/* (M) */
+	int			ene_bsm_probe_enabled;		/* (M) */
 #endif
 };
 

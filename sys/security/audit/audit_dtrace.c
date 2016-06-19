@@ -193,8 +193,8 @@ dtaudit_preselect(au_id_t auid, au_event_t event, au_class_t class)
 	 * NB: Lock also not acquired here -- but perhaps it wouldn't matter
 	 * given that we've already used the list lock above?
 	 *
-	 * XXXRW: Alternatively, au_event_probe() could return these values
-	 * while holding the list lock...?
+	 * XXXRW: Alternatively, au_evnamemap_lookup() could return these
+	 * values while holding the list lock...?
 	 */
 	probe_enabled = ene->ene_commit_probe_enabled ||
 	    ene->ene_bsm_probe_enabled;

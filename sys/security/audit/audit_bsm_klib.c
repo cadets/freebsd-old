@@ -368,9 +368,8 @@ au_evnamemap_foreach(au_evnamemap_callback_t callback)
  * lock held -- but the caller will need to lock the element mutex before
  * accessing element fields.
  *
- * NB: the event identifier in elements is stable.
- *
- * XXXRW: Update this comment.
+ * NB: the event identifier in elements is stable and can be read without
+ * holding the evname_elem lock.
  */
 struct evname_elem *
 au_evnamemap_lookup(au_event_t event)
