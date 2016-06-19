@@ -171,12 +171,13 @@ static struct cv	audit_fail_cv;
  * and commit events.
  */
 #ifdef KDTRACE_HOOKS
-int	(*dtaudit_hook_preselect)(au_id_t auid, au_event_t event,
-	    au_class_t class, int sorf);
-
-void	(*dtaudit_hook_commit)(au_id_t auid, au_event_t event,
-	    au_class_t class, int sorf, struct kaudit_record *ar,
-	    void *bsm_data, size_t bsm_len);
+void	*(*dtaudit_hook_preselect)(au_id_t auid, au_event_t event,
+	    au_class_t class);
+int	(*dtaudit_hook_commit)(struct kaudit_record *kar, au_id_t auid,
+	    au_event_t event, au_class_t class, int sorf);
+void	(*dtaudit_hook_bsm)(struct kaudit_record *kar, au_id_t auid,
+	    au_event_t event, au_class_t class, int sorf,
+	    void *bsm_data, size_t bsm_lenlen);
 #endif
 
 /*
@@ -479,19 +480,18 @@ audit_commit(struct kaudit_record *ar, int error, int retval)
 	if (audit_pipe_preselect(auid, event, class, sorf,
 	    ar->k_ar_commit & AR_PRESELECT_TRAIL) != 0)
 		ar->k_ar_commit |= AR_PRESELECT_PIPE;
-
 #ifdef KDTRACE_HOOKS
 	/*
-	 * The DTrace audit provider can request that records be generated if
-	 * suitable probes are in use.
-	 *
-	 * XXXRW: Do we also want to pass in a flag regarding whether a user
-	 * record is attached...?
+	 * Expose the audit record to DTrace, both to allow the "commit" probe
+	 * to fire if it's desirable, and also to allow a decision to be made
+	 * about later firing with BSM in the audit worker.
 	 */
-	if ((dtaudit_hook_preselect != NULL) &&
-	    (dtaudit_hook_preselect(auid, event, class, sorf) != 0))
-		ar->k_ar_commit |= AR_PRESELECT_DTRACE;
+	if (dtaudit_hook_commit != NULL) {
+		if (dtaudit_hook_commit(ar, auid, event, class, sorf) != 0)
+			ar->k_ar_commit |= AR_PRESELECT_DTRACE;
+	}
 #endif
+
 	if ((ar->k_ar_commit & (AR_PRESELECT_TRAIL | AR_PRESELECT_PIPE |
 	    AR_PRESELECT_USER_TRAIL | AR_PRESELECT_USER_PIPE |
 	    AR_PRESELECT_DTRACE)) == 0) {
@@ -542,9 +542,13 @@ void
 audit_syscall_enter(unsigned short code, struct thread *td)
 {
 	struct au_mask *aumask;
+#ifdef KDTRACE_HOOKS
+	void *dtaudit_state;
+#endif
 	au_class_t class;
 	au_event_t event;
 	au_id_t auid;
+	int record_needed;
 
 	KASSERT(td->td_ar == NULL, ("audit_syscall_enter: td->td_ar != NULL"));
 	KASSERT((td->td_pflags & TDP_AUDITREC) == 0,
@@ -576,8 +580,8 @@ audit_syscall_enter(unsigned short code, struct thread *td)
 		aumask = &td->td_ucred->cr_audit.ai_mask;
 
 	/*
-	 * Allocate an audit record, if preselection allows it, and store in
-	 * the thread for later use.
+	 * Determine whether trail or pipe preselection would like an audit
+	 * record allocated for this system call.
 	 */
 	class = au_event_class(event);
 	if (au_preselect(event, class, aumask, AU_PRS_BOTH)) {
@@ -598,23 +602,51 @@ audit_syscall_enter(unsigned short code, struct thread *td)
 			cv_wait(&audit_fail_cv, &audit_mtx);
 			panic("audit_failing_stop: thread continued");
 		}
-		td->td_ar = audit_new(event, td);
-		if (td->td_ar != NULL)
-			td->td_pflags |= TDP_AUDITREC;
+		record_needed = 1;
 	} else if (audit_pipe_preselect(auid, event, class, AU_PRS_BOTH, 0)) {
-		td->td_ar = audit_new(event, td);
-		if (td->td_ar != NULL)
-			td->td_pflags |= TDP_AUDITREC;
+		record_needed = 1;
+	} else {
+		record_needed = 0;
 	}
+
+	/*
+	 * After audit trails and pipes have made their policy choices, DTrace
+	 * may request that records be generated as well.  This is a slightly
+	 * complex affair, as the DTrace audit provider needs the audit
+	 * framework to maintain some state on the audit record, which has not
+	 * been allocated at the point where the decision has to be made.
+	 * This hook must run even if we are not changing the decision, as
+	 * DTrace may want to stick event state onto a record we were going to
+	 * produce due to the trail or pipes.  The event state returned by the
+	 * DTrace provider must be safe without locks held between here and
+	 * below -- i.e., ene must be stable in memory.
+	 */
 #ifdef KDTRACE_HOOKS
-        else if ((dtaudit_hook_preselect != NULL) &&
-	    (dtaudit_hook_preselect(auid, event, class, AU_PRS_BOTH) != 0)) {
-		td->td_ar = audit_new(event, td);
-		if (td->td_ar != NULL)
-			td->td_pflags |= TDP_AUDITREC;
+	dtaudit_state = NULL;
+        if (dtaudit_hook_preselect != NULL) {
+		dtaudit_state = dtaudit_hook_preselect(auid, event, class);
+		if (dtaudit_state != NULL)
+			record_needed = 1;
 	}
 #endif
-	else
+
+	/*
+	 * If a record is required, allocated it and attach it to the thread
+	 * for use throughout the system call.  Also attach DTrace state if
+	 * required.
+	 *
+	 * XXXRW: If we decided to reference count 'ene', we'd need a free
+	 * case here if no record is allocated or allocateable.
+	 */
+	if (record_needed) {
+		td->td_ar = audit_new(event, td);
+		if (td->td_ar != NULL) {
+			td->td_pflags |= TDP_AUDITREC;
+#ifdef KDTRACE_HOOKS
+			td->td_ar->k_dtaudit_state = dtaudit_state;
+#endif
+		}
+	} else
 		td->td_ar = NULL;
 }
 

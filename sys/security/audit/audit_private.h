@@ -319,12 +319,16 @@ struct audit_record {
  * This record can also have a pointer set to some opaque data that will be
  * passed through to the audit writing mechanism.
  */
+struct evname_elem;
 struct kaudit_record {
 	struct audit_record		 k_ar;
 	u_int32_t			 k_ar_commit;
 	void				*k_udata;	/* User data. */
 	u_int				 k_ulen;	/* User data length. */
 	struct uthread			*k_uthread;	/* Audited thread. */
+#ifdef KDTRACE_HOOKS
+	void				*k_dtaudit_state;
+#endif
 	TAILQ_ENTRY(kaudit_record)	 k_q;
 };
 TAILQ_HEAD(kaudit_queue, kaudit_record);
@@ -380,26 +384,49 @@ extern int			audit_in_failure;
 /*
  * Audit event-to-name mapping structure, maintained in audit_bsm_klib.c.  It
  * appears in this header so that the DTrace audit provider can dereference
- * instances passed back in the au_evname_foreach() callbacks.
+ * instances passed back in the au_evname_foreach() callbacks.  Safe access to
+ * its fields rquires holding ene_lock (after it is visible in the global
+ * table).
  */
 struct evname_elem {
 	au_event_t			ene_event;
 	char				ene_name[EVNAMEMAP_NAME_SIZE];
 	LIST_ENTRY(evname_elem)		ene_entry;
+	struct mtx			ene_lock;
 
 #ifdef KDTRACE_HOOKS
-	/* DTrace probe ID; 0 if not yet registered. */
-	uint32_t			ene_probe_id;
+	/* DTrace probe IDs; 0 if not yet registered. */
+	uint32_t			ene_commit_probe_id;
+	uint32_t			ene_bsm_probe_id;
 
-	/* Flag indicating if the probe is enabled or not. */
-	int				ene_probe_enabled;
+	/* Flags indicating if the probes enabled or not. */
+	int				ene_commit_probe_enabled;
+	int				ene_bsm_probe_enabled;
 #endif
 };
+
+#define	EVNAME_LOCK(ene)	mtx_lock(&(ene)->ene_lock)
+#define	EVNAME_UNLOCK(ene)	mtx_unlock(&(ene)->ene_lock)
 
 /*
  * Callback function typedef for the same.
  */
 typedef	void	(*au_evnamemap_callback_t)(struct evname_elem *ene);
+
+/*
+ * DTrace audit provider (dtaudit) hooks -- to be set non-NULL when the audit
+ * provider is loaded and ready to be called into.
+ */
+#ifdef KDTRACE_HOOKS
+extern void	*(*dtaudit_hook_preselect)(au_id_t auid, au_event_t event,
+		    au_class_t class);
+extern int	(*dtaudit_hook_commit)(struct kaudit_record *kar,
+		    au_id_t auid, au_event_t event, au_class_t class,
+		    int sorf);
+extern void	(*dtaudit_hook_bsm)(struct kaudit_record *kar, au_id_t auid,
+		    au_event_t event, au_class_t class, int sorf,
+		    void *bsm_data, size_t bsm_len);
+#endif /* !KDTRACE_HOOKS */
 
 #include <sys/fcntl.h>
 #include <sys/kernel.h>
@@ -423,11 +450,10 @@ au_class_t	 au_event_class(au_event_t event);
 void		 au_evnamemap_init(void);
 void		 au_evnamemap_insert(au_event_t event, const char *name);
 void		 au_evnamemap_foreach(au_evnamemap_callback_t callback);
-int		 au_event_name(au_event_t event, char *name);
 #ifdef KDTRACE_HOOKS
-int		 au_event_probe(au_event_t event, uint32_t *ene_probe_idp,
-		    int *ene_probe_enabledp);
+struct evname_elem	*au_evnamemap_lookup(au_event_t event);
 #endif
+int		 au_event_name(au_event_t event, char *name);
 au_event_t	 audit_ctlname_to_sysctlevent(int name[], uint64_t valid_arg);
 au_event_t	 audit_flags_and_error_to_openevent(int oflags, int error);
 au_event_t	 audit_flags_and_error_to_openatevent(int oflags, int error);
@@ -436,17 +462,6 @@ au_event_t	 audit_semctl_to_event(int cmr);
 void		 audit_canon_path(struct thread *td, int dirfd, char *path,
 		    char *cpath);
 au_event_t	 auditon_command_event(int cmd);
-
-/*
- * DTrace audit provider hooks.
- */
-#ifdef KDTRACE_HOOKS
-extern int	(*dtaudit_hook_preselect)(au_id_t auid, au_event_t event,
-		    au_class_t class, int sorf);
-extern void	(*dtaudit_hook_commit)(au_id_t auid, au_event_t event,
-		    au_class_t class, int sorf, struct kaudit_record *ar,
-		    void *bsm_data, size_t bsm_len);
-#endif
 
 /*
  * Audit trigger events notify user space of kernel audit conditions

@@ -96,14 +96,14 @@ struct evname_list {
 };
 
 static MALLOC_DEFINE(M_AUDITEVNAME, "audit_evname", "Audit event name");
-static struct rwlock		evname_lock;
-static struct evname_list	evname_hash[EVNAMEMAP_HASH_TABLE_SIZE];
+static struct rwlock		evnamemap_lock;
+static struct evname_list	evnamemap_hash[EVNAMEMAP_HASH_TABLE_SIZE];
 
-#define	EVNAME_LOCK_INIT()	rw_init(&evname_lock, "evname_lock");
-#define	EVNAME_RLOCK()		rw_rlock(&evname_lock)
-#define	EVNAME_RUNLOCK()	rw_runlock(&evname_lock)
-#define	EVNAME_WLOCK()		rw_wlock(&evname_lock)
-#define	EVNAME_WUNLOCK()	rw_wunlock(&evname_lock)
+#define	EVNAMEMAP_LOCK_INIT()	rw_init(&evnamemap_lock, "evnamemap_lock");
+#define	EVNAMEMAP_RLOCK()	rw_rlock(&evnamemap_lock)
+#define	EVNAMEMAP_RUNLOCK()	rw_runlock(&evnamemap_lock)
+#define	EVNAMEMAP_WLOCK()	rw_wlock(&evnamemap_lock)
+#define	EVNAMEMAP_WUNLOCK()	rw_wunlock(&evnamemap_lock)
 
 struct aue_open_event {
 	int		aoe_flags;
@@ -261,8 +261,8 @@ au_event_name(au_event_t event, char *name)
 	int error;
 
 	error = ENOENT;
-	EVNAME_RLOCK();
-	enl = &evname_hash[event % EVNAMEMAP_HASH_TABLE_SIZE];
+	EVNAMEMAP_RLOCK();
+	enl = &evnamemap_hash[event % EVNAMEMAP_HASH_TABLE_SIZE];
 	LIST_FOREACH(ene, &enl->enl_head, ene_entry) {
 		if (ene->ene_event == event) {
 			strlcpy(name, ene->ene_name, EVNAMEMAP_NAME_SIZE);
@@ -271,44 +271,9 @@ au_event_name(au_event_t event, char *name)
 		}
 	}
 out:
-	EVNAME_RUNLOCK();
+	EVNAMEMAP_RUNLOCK();
 	return (error);
 }
-
-#ifdef KDTRACE_HOOKS
-/*
- * Look up the DTrace probe ID, and probe enabled status, of an audit event in
- * the event-to-name mapping table.
- *
- * XXXRW: It might be better to cache a pointer to the evname_elem structure
- * for an event in the kaudit_record, rather than look it up twice?
- */
-int
-au_event_probe(au_event_t event, uint32_t *ene_probe_idp,
-    int *ene_probe_enabledp)
-{
-	struct evname_list *enl;
-	struct evname_elem *ene;
-	int error;
-
-	error = ENOENT;
-	EVNAME_RLOCK();
-	enl = &evname_hash[event % EVNAMEMAP_HASH_TABLE_SIZE];
-	LIST_FOREACH(ene, &enl->enl_head, ene_entry) {
-		if (ene->ene_event == event) {
-			if (ene_probe_idp != NULL)
-				*ene_probe_idp = ene->ene_probe_id;
-			if (ene_probe_enabledp != NULL)
-				*ene_probe_enabledp = ene->ene_probe_enabled;
-			error = 0;
-			goto out;
-		}
-	}
-out:
-	EVNAME_RUNLOCK();
-	return (error);
-}
-#endif /* !KDTRACE_HOOKS */
 
 /*
  * Insert a event-to-name mapping.  If the event already exists in the
@@ -336,25 +301,25 @@ au_evnamemap_insert(au_event_t event, const char *name)
 	 * Free if there is already a mapping for this event.
 	 */
 	ene_new = malloc(sizeof(*ene_new), M_AUDITEVNAME, M_WAITOK | M_ZERO);
-	EVNAME_WLOCK();
-	enl = &evname_hash[event % EVNAMEMAP_HASH_TABLE_SIZE];
+	EVNAMEMAP_WLOCK();
+	enl = &evnamemap_hash[event % EVNAMEMAP_HASH_TABLE_SIZE];
 	LIST_FOREACH(ene, &enl->enl_head, ene_entry) {
 		if (ene->ene_event == event) {
-			/*
-			 * XXXRW: Do we need to take any further action here?
-			 */
+			EVNAME_LOCK(ene);
 			(void)strlcpy(ene->ene_name, name,
 			    sizeof(ene->ene_name));
-			EVNAME_WUNLOCK();
+			EVNAME_UNLOCK(ene);
+			EVNAMEMAP_WUNLOCK();
 			free(ene_new, M_AUDITEVNAME);
 			return;
 		}
 	}
 	ene = ene_new;
+	mtx_init(&ene->ene_lock, "au_evnamemap", NULL, MTX_DEF);
 	ene->ene_event = event;
 	(void)strlcpy(ene->ene_name, name, sizeof(ene->ene_name));
 	LIST_INSERT_HEAD(&enl->enl_head, ene, ene_entry);
-	EVNAME_WUNLOCK();
+	EVNAMEMAP_WUNLOCK();
 }
 
 void
@@ -362,9 +327,9 @@ au_evnamemap_init(void)
 {
 	int i;
 
-	EVNAME_LOCK_INIT();
+	EVNAMEMAP_LOCK_INIT();
 	for (i = 0; i < EVNAMEMAP_HASH_TABLE_SIZE; i++)
-		LIST_INIT(&evname_hash[i].enl_head);
+		LIST_INIT(&evnamemap_hash[i].enl_head);
 
 	/*
 	 * XXXRW: Unlike the event-to-class mapping, we don't attempt to
@@ -387,14 +352,44 @@ au_evnamemap_foreach(au_evnamemap_callback_t callback)
 	struct evname_elem *ene;
 	int i;
 
-	EVNAME_WLOCK();
+	EVNAMEMAP_WLOCK();
 	for (i = 0; i < EVNAMEMAP_HASH_TABLE_SIZE; i++) {
-		enl = &evname_hash[i];
+		enl = &evnamemap_hash[i];
 		LIST_FOREACH(ene, &enl->enl_head, ene_entry)
 			callback(ene);
 	}
-	EVNAME_WUNLOCK();
+	EVNAMEMAP_WUNLOCK();
 }
+
+#ifdef KDTRACE_HOOKS
+/*
+ * Look up an event-to-name mapping table entry by event number.  As evname
+ * elements are stable in memory, we can return the pointer without the table
+ * lock held -- but the caller will need to lock the element mutex before
+ * accessing element fields.
+ *
+ * NB: the event identifier in elements is stable.
+ *
+ * XXXRW: Update this comment.
+ */
+struct evname_elem *
+au_evnamemap_lookup(au_event_t event)
+{
+	struct evname_list *enl;
+	struct evname_elem *ene;
+
+	EVNAMEMAP_RLOCK();
+	enl = &evnamemap_hash[event % EVNAMEMAP_HASH_TABLE_SIZE];
+	LIST_FOREACH(ene, &enl->enl_head, ene_entry) {
+		if (ene->ene_event == event)
+			goto out;
+	}
+	ene = NULL;
+out:
+	EVNAMEMAP_RUNLOCK();
+	return (ene);
+}
+#endif /* !KDTRACE_HOOKS */
 
 /*
  * Convert sysctl names and present arguments to events.

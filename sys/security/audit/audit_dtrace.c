@@ -52,37 +52,46 @@ __FBSDID("$FreeBSD$");
 #include <security/audit/audit.h>
 #include <security/audit/audit_private.h>
 
-/*
+/*-
  * Audit DTrace provider: allow DTrace to request that audit records be
- * generated for various audit events, and then exposed to probes.  The model
- * is that each event type has its own probe, using the event's name to create
- * the probe.  Userspace will push the contents of /etc/security/audit_event
- * into the kernel during audit setup, much as it does
- * /etc/security/audit_class.  We then create a probe for each of those
- * mappings.  If the probe is enabled, then we cause the record to be
- * generated (as both normal audit preselection and audit pipes do), and catch
- * it on the way out during commit by firing the probe with both the in-kernel
- * and BSM representations as arguments.  As such, we hook registration of new
- * names (and renames) so that we can update the probe list, and provide
- * suitable hooking functions in both preselection and commit phases.
+ * generated for various audit events, and then expose those records (in
+ * various forms) to probes.  The model is that each event type has two
+ * probes, which use the event's name to create the probe:
+ *
+ * - "commit" passes the kernel-internal (unserialised) kaudit_record
+ *   synchronously (from the originating thread) of the record as we prepare
+ *   to "commit" the record to the audit queue.
+ *
+ * - "bsm" also passes generated BSM, and executes asynchronously in the audit
+ *   worker thread, once it has been extracted from the audit queue.  This is
+ *   the point at which an audit record would be enqueued to the trail on
+ *   disk, or to pipes.
+ *
+ * These probes support very different goals.  The former executes in the
+ * thread originating the record, making it easier to correlate other DTrace
+ * probe activity with the event described in the record.  The latter gives
+ * access to BSM-formatted events (at a cost) allowing DTrace to extract BSM
+ * directly an alternative mechanism to the formal audit trail and audit
+ * pipes.
+ *
+ * To generate names for numeric event IDs, userspace will push the contents
+ * of /etc/security/audit_event into the kernel during audit setup, much as it
+ * does /etc/security/audit_class.  We then create the probes for each of
+ * those mappings.  If one (or both) of the probes are enabled, then we cause
+ * a record to be generated (as both normal audit preselection and audit pipes
+ * do), and catch it on the way out during commit.  There are suitable hook
+ * functions in the audit code that this provider can register to catch
+ * various events in the audit-record life cycle.
  *
  * Further ponderings:
  *
  * - How do we want to handle events for which there are not names -- perhaps
  *   a catch-all probe for those events without mappings?
  *
- * - Do we want to have pre- and post-BSM probs, so that we don't need to
- *   generate BSM if DTrace doesn't want it?  It's not clear that the commit
- *   point is easily set up to do that.
- *
- * - Should the evname code be present even if DTrace isn't loaded...?  Right
- *   now, we arrange that it is so that userspace can usefully maintain the
- *   list in case DTrace is later loaded (and to prevent userspace confusion).
- *
- * - Should we be caching a pointer to the evname_elem structure that caused
- *   a record to be generated, so that we can later find it easily rather than
- *   looking it up again?  We believe evname_elem entries are stable after
- *   allocation, so this would in principle be safe.
+ * - Should the evname code really be present even if DTrace isn't loaded...?
+ *   Right now, we arrange that it is so that userspace can usefully maintain
+ *   the list in case DTrace is later loaded (and to prevent userspace
+ *   confusion).
  *
  * - Should we add an additional set of audit:class::commit probes that use
  *   event class names to match broader categories of events as specified in
@@ -116,8 +125,9 @@ static dtrace_pattr_t dtaudit_attr = {
  * audit event will be the "function" portion of the probe.  All dtaudit
  * probes therefore take the form audit:event:<event name>:commit.
  */
-static char	*dtaudit_event_module = "event";
-static char	*dtaudit_event_name = "commit";
+static char	*dtaudit_module_str = "event";
+static char	*dtaudit_name_commit_str = "commit";
+static char	*dtaudit_name_bsm_str = "bsm";
 
 static dtrace_pops_t dtaudit_pops = {
 	/* dtps_provide */		dtaudit_provide,
@@ -149,72 +159,122 @@ static uint_t		dtaudit_probes_enabled;
  * on the individual event, but also a global flag indicating that at least
  * one probe is enabled, before acquiring locks, searching lists, etc.
  *
+ * If the event is selected, return an evname_elem reference to be stored in
+ * the audit record, which we can use later to avoid further lookups.  The
+ * contents of the evname_elem must be sufficiently stable so as to not risk
+ * race conditions here.
+ *
  * Currently, we take an interest only in the 'event' argument, but in the
  * future might want to support other types of record selection tied to
  * additional probe types (e.g., event clases).
  *
  * XXXRW: Should we have a catch-all probe here for events without registered
  * names?
- *
- * XXXRW: dtaudit_preselect() will be called twice for each event generating a
- * record: once at system-call entry to decide if one should be allocated, and
- * a second time at system-call exit to decide if it should be committed.
- * Should we be caching the evname_elem pointer in the kaudit_record to avoid
- * a second lookup?
  */
-static int
-dtaudit_preselect(au_id_t auid, au_event_t event, au_class_t class, int sorf)
+static void *
+dtaudit_preselect(au_id_t auid, au_event_t event, au_class_t class)
 {
+	struct evname_elem *ene;
 	int probe_enabled;
 
 	/*
-	 * NB: Lockless read here may return a slightly stale value; this is
+	 * NB: Lockless reads here may return a slightly stale value; this is
 	 * considered better than acquiring a lock, however.
 	 */
 	if (!dtaudit_probes_enabled)
-		return (0);
-	if (au_event_probe(event, NULL, &probe_enabled) != 0)
-		return (0);
-	return (probe_enabled);
+		return (NULL);
+	ene = au_evnamemap_lookup(event);
+	if (ene == NULL)
+		return (NULL);
+
+	/*
+	 * See if either of the two probes for the audit event are enabled.
+	 *
+	 * NB: Lock also not acquired here -- but perhaps it wouldn't matter
+	 * given that we've already used the list lock above?
+	 *
+	 * XXXRW: Alternatively, au_event_probe() could return these values
+	 * while holding the list lock...?
+	 */
+	probe_enabled = ene->ene_commit_probe_enabled ||
+	    ene->ene_bsm_probe_enabled;
+	if (!probe_enabled)
+		return (NULL);
+	return ((void *)ene);
 }
 
 /*
- * An audit record flagged for DTrace consumption has been committed -- expose
- * it to suitable probes.  In principle, we might expose it to multiple probes
- * here if we add additional matching policies -- e.g., to fire on all commits
- * to the trail or a pipe, not just based on event-name probes.
+ * Commit probe pre-BSM.  Fires the probe but also checks to see if we should
+ * ask the audit framework to call us again with BSM arguments in the audit
+ * worker thread.
+ *
+ * XXXRW: Should we have a catch-all probe here for events without registered
+ * names?
+ */
+static int
+dtaudit_commit(struct kaudit_record *kar, au_id_t auid, au_event_t event,
+    au_class_t class, int sorf)
+{
+	struct evname_elem *ene;
+
+	ene = (struct evname_elem *)kar->k_dtaudit_state;
+	if (ene == NULL)
+		return (0);
+
+	/*
+	 * Process a possibly registered commit probe.
+	 */
+	if (ene->ene_commit_probe_enabled) {
+		/*
+		 * XXXRW: Lock ene to provide stability to the name string.  A
+		 * bit undesirable!  We may want another locking strategy
+		 * here.
+		 *
+		 * XXXRW: We provide the struct audit_record pointer -- but
+		 * perhaps should provide the kaudit_record pointer?
+		 */
+		EVNAME_LOCK(ene);
+		dtrace_probe(ene->ene_commit_probe_id,
+		    (uintptr_t)ene->ene_name, (uintptr_t)&kar->k_ar, 0, 0, 0);
+		EVNAME_UNLOCK(ene);
+	}
+
+	/*
+	 * Return the state of the BSM probe to the caller.
+	 */
+	return (ene->ene_bsm_probe_enabled);
+}
+
+/*
+ * Commit probe post-BSM.
  *
  * XXXRW: Should we have a catch-all probe here for events without registered
  * names?
  */
 static void
-dtaudit_commit(au_id_t auid, au_event_t event, au_class_t class, int sorf,
-    struct kaudit_record *ar, void *bsm_data, size_t bsm_len)
+dtaudit_bsm(struct kaudit_record *kar, au_id_t auid, au_event_t event,
+    au_class_t class, int sorf, void *bsm_data, size_t bsm_len)
 {
-	dtrace_id_t probe_id;
-	int probe_enabled;
+	struct evname_elem *ene;
 
-	/*
-	 * NB: Lockless read here may return a slightly stale value; this is
-	 * considered better than acquiring a lock, however.
-	 */
-	if (!dtaudit_probes_enabled)
+	ene = (struct evname_elem *)kar->k_dtaudit_state;
+	if (ene == NULL)
+		return;
+	if (!(ene->ene_bsm_probe_enabled))
 		return;
 
 	/*
-	 * XXXRW: Should this be an assertion failure instead?
-	 *
-	 * XXXRW: Should we just cache the evname_elem pointer in the
-	 * kaudit_record to save another lookup?
+	 * XXXRW: Lock ene to provide stability to the name string.  A bit
+	 * undesirable!  We may want another locking strategy here.
 	 *
 	 * XXXRW: We provide the struct audit_record pointer -- but perhaps
 	 * should provide the kaudit_record pointer?
 	 */
-	if (au_event_probe(event, &probe_id, &probe_enabled) != 0)
-		return;
-	if (probe_enabled)
-		dtrace_probe(probe_id, (uintptr_t)&ar->k_ar,
-		    (uintptr_t)bsm_data, (uintptr_t)bsm_len, 0, 0);
+	EVNAME_LOCK(ene);
+	dtrace_probe(ene->ene_bsm_probe_id, (uintptr_t)ene->ene_name,
+	    (uintptr_t)&kar->k_ar, (uintptr_t)bsm_data, (uintptr_t)bsm_len,
+	    0);
+	EVNAME_UNLOCK(ene);
 }
 
 /*
@@ -225,19 +285,36 @@ static void
 dtaudit_getargdesc(void *arg, dtrace_id_t id, void *parg,
     dtrace_argdesc_t *desc)
 {
-	const char *p = NULL;
+	struct evname_elem *ene;
+	const char *p;
 
+	ene = (struct evname_elem *)parg;
+	p = NULL;
 	switch (desc->dtargd_ndx) {
 	case 0:
-		p = "struct audit_record *";
+		/* Audit even name. */
+		p = "char *";
 		break;
 
 	case 1:
-		p = "const void *";
+		/* In-kernel audit record. */
+		p = "struct audit_record *";
 		break;
 
 	case 2:
-		p = "size_t";
+		/* BSM data, if present. */
+		if (id == ene->ene_bsm_probe_id)
+			p = "const void *";
+		else
+			desc->dtargd_ndx = DTRACE_ARGNONE;
+		break;
+
+	case 3:
+		/* BSM length, if present. */
+		if (id == ene->ene_bsm_probe_id)
+			p = "size_t";
+		else
+			desc->dtargd_ndx = DTRACE_ARGNONE;
 		break;
 
 	default:
@@ -267,10 +344,6 @@ dtaudit_au_evnamemap_callback(struct evname_elem *ene)
 	char ene_name_lower[EVNAMEMAP_NAME_SIZE];
 	int i;
 
-	/* Does this event number already have a probe? */
-	if (ene->ene_probe_id != 0)
-		return;
-
 	/*
 	 * DTrace, by convention, has lower-case probe names.  However, the
 	 * in-kernel event-to-name mapping table must maintain event-name case
@@ -286,30 +359,64 @@ dtaudit_au_evnamemap_callback(struct evname_elem *ene)
 		ene_name_lower[i] = tolower(ene->ene_name[i]);
 
 	/*
-	 * Does this event name already have a probe?  This is the papering
-	 * over bit.  As nothing in the kernel interface (or config file)
-	 * ensures that there are not duplicate names, we just ignore for now.
+	 * Don't register a new probe if this event number already has an
+	 * associated commit probe -- or if another event has already
+	 * registered this name.
 	 *
-	 * XXXRW: There is an argument that if multiple numeric events match a
-	 * single name, they should all be exposed to the same named probe.
+	 * XXXRW: There is an argument that if multiple numeric events match
+	 * a single name, they should all be exposed to the same named probe.
+	 * In particular, we should perhaps use a probe ID returned by this
+	 * lookup and just stick that in the saved probe ID?
 	 */
-	if (dtrace_probe_lookup(dtaudit_id, dtaudit_event_module,
-	    ene_name_lower, dtaudit_event_name) != 0)
-		return;
+	if ((ene->ene_commit_probe_id == 0) &&
+	    (dtrace_probe_lookup(dtaudit_id, dtaudit_module_str,
+	    ene_name_lower, dtaudit_name_commit_str) == 0)) {
+
+		/*
+		 * Create the commit probe.
+		 *
+		 * NB: We don't declare any extra stack frames because stack()
+		 * will just return the path to the audit commit code, which
+		 * is not really interesting anyway.
+		 *
+		 * We pass in the pointer to the evnam_elem entry so that we
+		 * can easily change its enabled flag in the probe
+		 * enable/disable interface.
+		 */
+		ene->ene_commit_probe_id = dtrace_probe_create(dtaudit_id,
+		    dtaudit_module_str, ene_name_lower,
+		    dtaudit_name_commit_str, 0, ene);
+	}
 
 	/*
-	 * Create the missing probe.
+	 * Don't register a new probe if this event number already has an
+	 * associated bsm probe -- or if another event has already
+	 * registered this name.
 	 *
-	 * NB: We don't declare any extra stack frames because stack() will
-	 * just return the path to the audit commit code, which is not really
-	 * interesting anyway.
-	 *
-	 * We pass in the pointer to the evnam_elem entry so that we can
-	 * easily change its enabled flag in the probe enable/disable
-	 * interface.
+	 * XXXRW: There is an argument that if multiple numeric events match
+	 * a single name, they should all be exposed to the same named probe.
+	 * In particular, we should perhaps use a probe ID returned by this
+	 * lookup and just stick that in the saved probe ID?
 	 */
-	ene->ene_probe_id = dtrace_probe_create(dtaudit_id,
-	    dtaudit_event_module, ene_name_lower, dtaudit_event_name, 0, ene);
+	if ((ene->ene_bsm_probe_id == 0) &&
+	    (dtrace_probe_lookup(dtaudit_id, dtaudit_module_str,
+	    ene_name_lower, dtaudit_name_bsm_str) == 0)) {
+
+		/*
+		 * Create the bsm probe.
+		 *
+		 * NB: We don't declare any extra stack frames because stack()
+		 * will just return the path to the audit commit code, which
+		 * is not really interesting anyway.
+		 *
+		 * We pass in the pointer to the evnam_elem entry so that we
+		 * can easily change its enabled flag in the probe
+		 * enable/disable interface.
+		 */
+		ene->ene_bsm_probe_id = dtrace_probe_create(dtaudit_id,
+		    dtaudit_module_str, ene_name_lower, dtaudit_name_bsm_str,
+		    0, ene);
+	}
 }
 
 static void
@@ -334,10 +441,14 @@ dtaudit_enable(void *arg, dtrace_id_t id, void *parg)
 	struct evname_elem *ene;
 
 	ene = parg;
-	KASSERT(ene->ene_probe_id == id, ("%s: pobe ID mismatch (%u, %u)",
-	    __func__, ene->ene_probe_id, id));
+	KASSERT(ene->ene_commit_probe_id == id || ene->ene_bsm_probe_id == id,
+	    ("%s: probe ID mismatch (%u, %u != %u)", __func__,
+	    ene->ene_commit_probe_id, ene->ene_bsm_probe_id, id));
 
-	ene->ene_probe_enabled = 1;
+	if (id == ene->ene_commit_probe_id)
+		ene->ene_commit_probe_enabled = 1;
+	else
+		ene->ene_bsm_probe_enabled = 1;
 	refcount_acquire(&dtaudit_probes_enabled);
 }
 
@@ -347,10 +458,14 @@ dtaudit_disable(void *arg, dtrace_id_t id, void *parg)
 	struct evname_elem *ene;
 
 	ene = parg;
-	KASSERT(ene->ene_probe_id == id, ("%s: probe ID mismatch (%u, %u)",
-	    __func__, ene->ene_probe_id, id));
+	KASSERT(ene->ene_commit_probe_id == id || ene->ene_bsm_probe_id == id,
+	    ("%s: probe ID mismatch (%u, %u != %u)", __func__,
+	    ene->ene_commit_probe_id, ene->ene_bsm_probe_id, id));
 
-	ene->ene_probe_enabled = 0;
+	if (id == ene->ene_commit_probe_id)
+		ene->ene_commit_probe_enabled = 0;
+	else
+		ene->ene_bsm_probe_enabled = 0;
 	(void)refcount_release(&dtaudit_probes_enabled);
 }
 
@@ -363,6 +478,7 @@ dtaudit_load(void *dummy)
 		return;
 	dtaudit_hook_preselect = dtaudit_preselect;
 	dtaudit_hook_commit = dtaudit_commit;
+	dtaudit_hook_bsm = dtaudit_bsm;
 }
 
 static int
@@ -371,6 +487,7 @@ dtaudit_unload(void)
 
 	dtaudit_hook_preselect = NULL;
 	dtaudit_hook_commit = NULL;
+	dtaudit_hook_bsm = NULL;
 	return (0);
 }
 
