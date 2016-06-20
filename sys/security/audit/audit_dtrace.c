@@ -215,7 +215,9 @@ static int
 dtaudit_commit(struct kaudit_record *kar, au_id_t auid, au_event_t event,
     au_class_t class, int sorf)
 {
+	char ene_name_lower[EVNAMEMAP_NAME_SIZE];
 	struct evname_elem *ene;
+	int i;
 
 	ene = (struct evname_elem *)kar->k_dtaudit_state;
 	if (ene == NULL)
@@ -228,15 +230,18 @@ dtaudit_commit(struct kaudit_record *kar, au_id_t auid, au_event_t event,
 		/*
 		 * XXXRW: Lock ene to provide stability to the name string.  A
 		 * bit undesirable!  We may want another locking strategy
-		 * here.
+		 * here.  At least we don't run the DTrace probe under the
+		 * lock.
 		 *
 		 * XXXRW: We provide the struct audit_record pointer -- but
 		 * perhaps should provide the kaudit_record pointer?
 		 */
 		EVNAME_LOCK(ene);
-		dtrace_probe(ene->ene_commit_probe_id,
-		    (uintptr_t)ene->ene_name, (uintptr_t)&kar->k_ar, 0, 0, 0);
+		for (i = 0; i < sizeof(ene_name_lower); i++)
+			ene_name_lower[i] = tolower(ene->ene_name[i]);
 		EVNAME_UNLOCK(ene);
+		dtrace_probe(ene->ene_commit_probe_id,
+		    (uintptr_t)ene_name_lower, (uintptr_t)&kar->k_ar, 0, 0, 0);
 	}
 
 	/*
@@ -255,7 +260,9 @@ static void
 dtaudit_bsm(struct kaudit_record *kar, au_id_t auid, au_event_t event,
     au_class_t class, int sorf, void *bsm_data, size_t bsm_len)
 {
+	char ene_name_lower[EVNAMEMAP_NAME_SIZE];
 	struct evname_elem *ene;
+	int i;
 
 	ene = (struct evname_elem *)kar->k_dtaudit_state;
 	if (ene == NULL)
@@ -265,16 +272,19 @@ dtaudit_bsm(struct kaudit_record *kar, au_id_t auid, au_event_t event,
 
 	/*
 	 * XXXRW: Lock ene to provide stability to the name string.  A bit
-	 * undesirable!  We may want another locking strategy here.
+	 * undesirable!  We may want another locking strategy here.  At least
+	 * we don't run the DTrace probe under the lock.
 	 *
 	 * XXXRW: We provide the struct audit_record pointer -- but perhaps
 	 * should provide the kaudit_record pointer?
 	 */
 	EVNAME_LOCK(ene);
-	dtrace_probe(ene->ene_bsm_probe_id, (uintptr_t)ene->ene_name,
+	for (i = 0; i < sizeof(ene_name_lower); i++)
+		ene_name_lower[i] = tolower(ene->ene_name[i]);
+	EVNAME_UNLOCK(ene);
+	dtrace_probe(ene->ene_bsm_probe_id, (uintptr_t)ene_name_lower,
 	    (uintptr_t)&kar->k_ar, (uintptr_t)bsm_data, (uintptr_t)bsm_len,
 	    0);
-	EVNAME_UNLOCK(ene);
 }
 
 /*
