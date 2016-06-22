@@ -37,44 +37,48 @@ void print_string(char*);
 
 int main(int argc, char** argv)
 {
-    if (argc <= 1) {
-        printf("usage: %s [files]\n", argv[0]);
-        return 1;
-    }
+	if (argc <= 1) {
+		printf("usage: %s [files]\n", argv[0]);
+		return 1;
+	}
 
-    u_char** buffer = (u_char**) malloc(sizeof(u_char*));
-    tokenstr_t* token = (tokenstr_t*) malloc(sizeof(tokenstr_t));
-    for(int i=1; i<argc; i++)
-    {
-        FILE* file = fopen(argv[i], "r");
-        int record_length;
+	u_char** buffer = (u_char**) malloc(sizeof(u_char*));
+	tokenstr_t* token = (tokenstr_t*) malloc(sizeof(tokenstr_t));
+	for(int i=1; i<argc; i++)
+	{
+		fprintf(stderr, "\rHandling file %d of %d: %s", i, argc, argv[i]);
+		fflush(stderr);
+		FILE* file = fopen(argv[i], "r");
+		int record_length;
 
-        if(buffer == NULL) {
-            printf("Null buffer.\n");
-            return -1;
-        }
-        if(file == NULL) {
-            printf("Null file.\n");
-            return -1;
-        }
-        while((record_length = au_read_rec(file, buffer)) > 0)
-        {
-            int bytes_read = 0;
-            while(bytes_read < record_length)
-            {
-                if((au_fetch_tok(token, (*buffer)+bytes_read, record_length - bytes_read)) == -1)
-                {
-                    break;
-                }
-                print_token(token);
-                bytes_read += token->len;
-            }
+		if(buffer == NULL) {
+			fprintf(stderr, "  Null buffer.\n");
+			return -1;
+		}
+		if(file == NULL) {
+			fprintf(stderr, "  Null file.\n");
+			return -1;
+		}
+		while((record_length = au_read_rec(file, buffer)) > 0)
+		{
+			int bytes_read = 0;
+			while(bytes_read < record_length)
+			{
+				if((au_fetch_tok(token, (*buffer)+bytes_read, record_length - bytes_read)) == -1)
+				{
+					break;
+				}
+				print_token(token);
+				bytes_read += token->len;
+			}
 
-            free(*buffer);
-        }
-    }
+			free(*buffer);
+		}
+		fclose(file);
+	}
+	fprintf(stderr, "\n");
 
-    return 0;
+	return 0;
 }
 
 void print_token(tokenstr_t* t)
