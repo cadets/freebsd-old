@@ -154,16 +154,16 @@ void print_token(tokenstr_t* t)
 // 		printf(", \"address\": %d", t->tt.sockunix.path);
 // 		break;
     case AUT_SUBJECT32:
-        printf(", \"uid\": %d, \"pid\": %d, \"tid\": %u", t->tt.subj32.ruid, t->tt.subj32.pid, t->tt.subj32.tid.port); // which uid should I use? real, effective, etc - what tid should I use?
+        printf(", \"uid\": %d, \"pid\": %d", t->tt.subj32.ruid, t->tt.subj32.pid); // which uid should I use? real, effective, etc
         break;
     case AUT_SUBJECT32_EX:
-        printf(", \"uid\": %d, \"pid\": %d, \"tid\": %u", t->tt.subj32_ex.ruid, t->tt.subj32_ex.pid, t->tt.subj32_ex.tid.port); // which uid should I use? real, effective, etc
+        printf(", \"uid\": %d, \"pid\": %d", t->tt.subj32_ex.ruid, t->tt.subj32_ex.pid); // which uid should I use? real, effective, etc
         break;
     case AUT_SUBJECT64:
-        printf(", \"uid\": %d, \"pid\": %d, \"tid\": %lu", t->tt.subj64.ruid, t->tt.subj64.pid, t->tt.subj64.tid.port); // which uid should I use? real, effective, etc
+        printf(", \"uid\": %d, \"pid\": %d", t->tt.subj64.ruid, t->tt.subj64.pid); // which uid should I use? real, effective, etc
         break;
     case AUT_SUBJECT64_EX:
-        printf(", \"uid\": %d, \"pid\": %d, \"tid\": %lu", t->tt.subj64_ex.ruid, t->tt.subj64_ex.pid, t->tt.subj64_ex.tid.port); // which uid should I use? real, effective, etc
+        printf(", \"uid\": %d, \"pid\": %d", t->tt.subj64_ex.ruid, t->tt.subj64_ex.pid); // which uid should I use? real, effective, etc
         break;
 //     case AUT_TEXT:
     case AUT_TRAILER:
