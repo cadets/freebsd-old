@@ -314,7 +314,7 @@ struct audit_record {
 	(kar)->k_ar.ar_valid_arg &= ~(arg);				\
 } while (0)
 
-/*-
+/*
  * In-kernel version of audit record; the basic record plus queue meta-data.
  * This record can also have a pointer set to some opaque data that will be
  * passed through to the audit writing mechanism.

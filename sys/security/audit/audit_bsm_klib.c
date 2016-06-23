@@ -298,7 +298,7 @@ au_evnamemap_insert(au_event_t event, const char *name)
 	struct evname_elem *ene, *ene_new;
 
 	/*
-	 * Pessimistically, always allocate storage before acquiring mutex.
+	 * Pessimistically, always allocate storage before acquiring lock.
 	 * Free if there is already a mapping for this event.
 	 */
 	ene_new = malloc(sizeof(*ene_new), M_AUDITEVNAME, M_WAITOK | M_ZERO);
