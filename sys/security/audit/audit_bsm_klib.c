@@ -47,6 +47,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/rwlock.h>
 #include <sys/sem.h>
 #include <sys/sbuf.h>
+#include <sys/sx.h>
 #include <sys/syscall.h>
 #include <sys/sysctl.h>
 #include <sys/sysent.h>
@@ -96,14 +97,14 @@ struct evname_list {
 };
 
 static MALLOC_DEFINE(M_AUDITEVNAME, "audit_evname", "Audit event name");
-static struct rwlock		evnamemap_lock;
+static struct sx		evnamemap_lock;
 static struct evname_list	evnamemap_hash[EVNAMEMAP_HASH_TABLE_SIZE];
 
-#define	EVNAMEMAP_LOCK_INIT()	rw_init(&evnamemap_lock, "evnamemap_lock");
-#define	EVNAMEMAP_RLOCK()	rw_rlock(&evnamemap_lock)
-#define	EVNAMEMAP_RUNLOCK()	rw_runlock(&evnamemap_lock)
-#define	EVNAMEMAP_WLOCK()	rw_wlock(&evnamemap_lock)
-#define	EVNAMEMAP_WUNLOCK()	rw_wunlock(&evnamemap_lock)
+#define	EVNAMEMAP_LOCK_INIT()	sx_init(&evnamemap_lock, "evnamemap_lock");
+#define	EVNAMEMAP_RLOCK()	sx_slock(&evnamemap_lock)
+#define	EVNAMEMAP_RUNLOCK()	sx_sunlock(&evnamemap_lock)
+#define	EVNAMEMAP_WLOCK()	sx_xlock(&evnamemap_lock)
+#define	EVNAMEMAP_WUNLOCK()	sx_xunlock(&evnamemap_lock)
 
 struct aue_open_event {
 	int		aoe_flags;
