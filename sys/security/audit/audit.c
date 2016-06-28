@@ -265,6 +265,20 @@ audit_record_ctor(void *mem, int size, void *arg, int flags)
 		    sizeof(ar->k_ar.ar_jailname));
 	} else
 		ar->k_ar.ar_jailname[0] = '\0';
+
+	/*
+	 * p_comm can change during execve(), but as the current thread is
+	 * generating the record, and execve() is single-threaded when it
+	 * changes p_comm, we know that the contents are safe to access
+	 * without the expense of acquiring the process lock on every system
+	 * call.
+	 *
+	 * XXXRW: Hopefully?
+	 */
+#ifdef KDTRACE_HOOKS
+	bcopy(td->td_proc->p_comm, ar->k_ar.ar_subj_comm,
+	    sizeof(ar->k_ar.ar_subj_comm));
+#endif
 	return (0);
 }
 

@@ -189,6 +189,9 @@ struct audit_record {
 	struct au_tid		ar_subj_term;
 	struct au_tid_addr	ar_subj_term_addr;
 	struct au_mask		ar_subj_amask;
+#ifdef KDTRACE_HOOKS
+	char			ar_subj_comm[MAXCOMLEN + 1];
+#endif
 
 	/* Operation arguments. */
 	uid_t			ar_arg_euid;
