@@ -4,6 +4,12 @@
 	cp -f ${.IMPSRC} ${.TARGET}
 	chmod a+x ${.TARGET}
 
+.bco.bcinstro: ${LLVM_INSTR_DEPS}
+	${OPT} ${LLVM_INSTR_FLAGS} ${.IMPSRC} -o ${.TARGET}
+
+.llo.llinstro: ${LLVM_INSTR_DEPS}
+	${OPT} -S ${LLVM_INSTR_FLAGS} ${.IMPSRC} -o ${.TARGET}
+
 .c.ln:
 	${LINT} ${LINTOBJFLAGS} ${CFLAGS:M-[DIU]*} ${.IMPSRC} || \
 	    touch ${.TARGET}

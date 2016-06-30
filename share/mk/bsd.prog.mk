@@ -4,7 +4,7 @@
 .include <bsd.init.mk>
 .include <bsd.compiler.mk>
 
-.SUFFIXES: .out .o .bc .c .cc .cpp .cxx .C .m .y .l .ll .ln .s .S .asm
+.SUFFIXES: .out .o .bc .bco .bcinstro .c .cc .cpp .cxx .C .m .y .l .ll .llo .llinstro .ln .s .S .asm
 
 # XXX The use of COPTS in modern makefiles is discouraged.
 .if defined(COPTS)
