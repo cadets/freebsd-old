@@ -200,8 +200,8 @@ lib${LIB_PRIVATE}${LIB}_p.a: ${POBJS}
 .endif
 
 .if defined(LLVM_LINK)
-BCOBJS=		${OBJS:.o=.bco} ${STATICOBJS:.o=.bco}
-LLOBJS=		${OBJS:.o=.llo} ${STATICOBJS:.o=.llo}
+BCOBJS=		${SRCS:N*.h:N*.S:R:S/$/.bco/} ${STATICOBJS:.o=.bco}
+LLOBJS=		${SRCS:N*.h:N*.S:R:S/$/.llo/} ${STATICOBJS:.o=.llo}
 CLEANFILES+=	${BCOBJS} ${LLOBJS}
 
 lib${LIB_PRIVATE}${LIB}.bc: ${BCOBJS}

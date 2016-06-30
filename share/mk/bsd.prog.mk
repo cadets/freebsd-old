@@ -157,7 +157,6 @@ ${PROG_FULL}.bc: ${BCOBJS}
 
 ${PROG_FULL}.ll: ${LLOBJS}
 	${LLVM_LINK} -S -o ${.TARGET} ${LLOBJS}
-
 .endif # defined(LLVM_LINK)
 
 .if	${MK_MAN} != "no" && !defined(MAN) && \
