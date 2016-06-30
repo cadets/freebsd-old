@@ -4,7 +4,7 @@
 .include <bsd.init.mk>
 .include <bsd.compiler.mk>
 
-.SUFFIXES: .out .o .c .cc .cpp .cxx .C .m .y .l .ln .s .S .asm
+.SUFFIXES: .out .o .bc .c .cc .cpp .cxx .C .m .y .l .ll .ln .s .S .asm
 
 # XXX The use of COPTS in modern makefiles is discouraged.
 .if defined(COPTS)
@@ -86,6 +86,8 @@ PROGNAME?=	${PROG}
 .if defined(SRCS)
 
 OBJS+=  ${SRCS:N*.h:R:S/$/.o/g}
+BCOBJS=	${OBJS:.o=.bco}
+LLOBJS=	${OBJS:.o=.llo}
 
 .if target(beforelinking)
 beforelinking: ${OBJS}
@@ -147,6 +149,26 @@ ${PROGNAME}.debug: ${PROG_FULL}
 	${OBJCOPY} --only-keep-debug ${PROG_FULL} ${.TARGET}
 .endif
 
+.if defined(LLVM_LINK)
+# LLVM bitcode / textual IR representations of the program
+BCOBJS=	${OBJS:.o=.bco}
+LLOBJS=	${OBJS:.o=.llo}
+
+${PROG_FULL}.bc: ${BCOBJS}
+.if defined(PROG_CXX)
+	${LLVM_LINK} -o ${.TARGET} ${BCOBJS}
+.else
+	${LLVM_LINK} -o ${.TARGET} ${BCOBJS}
+.endif
+
+${PROG_FULL}.ll: ${LLOBJS}
+.if defined(PROG_CXX)
+	${LLVM_LINK} -S -o ${.TARGET} ${LLOBJS}
+.else
+	${LLVM_LINK} -S -o ${.TARGET} ${LLOBJS}
+.endif
+.endif # defined(LLVM_LINK)
+
 .if	${MK_MAN} != "no" && !defined(MAN) && \
 	!defined(MAN1) && !defined(MAN2) && !defined(MAN3) && \
 	!defined(MAN4) && !defined(MAN5) && !defined(MAN6) && \
@@ -166,14 +188,14 @@ all: all-man
 .endif
 
 .if defined(PROG)
-CLEANFILES+= ${PROG}
+CLEANFILES+= ${PROG} ${PROG}.bc ${PROG}.ll
 .if ${MK_DEBUG_FILES} != "no"
-CLEANFILES+=	${PROG_FULL} ${PROGNAME}.debug
+CLEANFILES+=	${PROG_FULL} ${PROG_FULL}.bc ${PROGNAME}.debug ${PROG_FULL}.ll
 .endif
 .endif
 
 .if defined(OBJS)
-CLEANFILES+= ${OBJS}
+CLEANFILES+= ${OBJS} ${BCOBJS} ${LLOBJS}
 .endif
 
 .include <bsd.libnames.mk>
