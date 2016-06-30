@@ -222,6 +222,8 @@ LINTOBJFLAGS	?=	-cghapbxu -i
 LINTOBJKERNFLAGS?=	${LINTOBJFLAGS}
 LINTLIBFLAGS	?=	-cghapbxu -C ${LIB}
 
+LLVM_INSTR_FLAGS?=
+
 MAKE		?=	make
 
 .if !defined(%POSIX)
