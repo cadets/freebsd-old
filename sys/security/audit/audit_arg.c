@@ -1,6 +1,12 @@
 /*-
  * Copyright (c) 1999-2005 Apple Inc.
+ * Copyright (c) 2016 Robert N. M. Watson
  * All rights reserved.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -358,6 +364,36 @@ audit_arg_value(long value)
 	ar->k_ar.ar_arg_value = value;
 	ARG_SET_VALID(ar, ARG_VALUE);
 }
+
+#ifdef KDTRACE_HOOKS
+void
+audit_arg_objuuid1(struct uuid *uuid)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	bcopy(uuid, &ar->k_ar.ar_arg_objuuid1,
+	    sizeof(ar->k_ar.ar_arg_objuuid1));
+	ARG_SET_VALID(ar, ARG_OBJUUID1);
+}
+
+void
+audit_arg_objuuid2(struct uuid *uuid)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	bcopy(uuid, &ar->k_ar.ar_arg_objuuid2,
+	    sizeof(ar->k_ar.ar_arg_objuuid2));
+	ARG_SET_VALID(ar, ARG_OBJUUID2);
+}
+#endif
 
 void
 audit_arg_owner(uid_t uid, gid_t gid)

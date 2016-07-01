@@ -220,6 +220,10 @@ struct audit_record {
 	int			ar_arg_atfd2;
 	int			ar_arg_fflags;
 	mode_t			ar_arg_mode;
+#ifdef KDTRACE_HOOKS
+	struct uuid		ar_arg_objuuid1;
+	struct uuid		ar_arg_objuuid2;
+#endif
 	int			ar_arg_dev;
 	long			ar_arg_value;
 	void			*ar_arg_addr;
@@ -314,6 +318,8 @@ struct audit_record {
 #define	ARG_RIGHTS		0x0010000000000000ULL
 #define	ARG_FCNTL_RIGHTS	0x0020000000000000ULL
 #define	ARG_PROCUUID		0x0040000000000000ULL
+#define	ARG_OBJUUID1		0x0080000000000000ULL
+#define	ARG_OBJUUID2		0x0100000000000000ULL
 #define	ARG_NONE		0x0000000000000000ULL
 #define	ARG_ALL			0xFFFFFFFFFFFFFFFFULL
 
