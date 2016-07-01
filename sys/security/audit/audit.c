@@ -254,6 +254,7 @@ audit_record_ctor(void *mem, int size, void *arg, int flags)
 	ar->k_ar.ar_subj_pid = td->td_proc->p_pid;
 	ar->k_ar.ar_subj_amask = cred->cr_audit.ai_mask;
 	ar->k_ar.ar_subj_term_addr = cred->cr_audit.ai_termid;
+
 	/*
 	 * If this process is jailed, make sure we capture the name of the
 	 * jail so we can use it to generate a zonename token when we covert
@@ -279,6 +280,11 @@ audit_record_ctor(void *mem, int size, void *arg, int flags)
 	bcopy(td->td_proc->p_comm, ar->k_ar.ar_subj_comm,
 	    sizeof(ar->k_ar.ar_subj_comm));
 #endif
+	 * Also preserve the process's UUID -- no lock required as unmodified
+	 * after fork().
+	 */
+	bcopy(&td->td_proc->p_uuid, &ar->k_ar.ar_subj_uuid,
+	    sizeof(ar->k_ar.ar_subj_uuid));
 	return (0);
 }
 

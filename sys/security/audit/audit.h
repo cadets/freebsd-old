@@ -1,6 +1,12 @@
 /*-
  * Copyright (c) 1999-2005 Apple Inc.
+ * Copyright (c) 2016 Robert N. M. Watson
  * All rights reserved.
+ *
+ * This software was developed by BAE Systems, the University of Cambridge
+ * Computer Laboratory, and Memorial University under DARPA/AFRL contract
+ * FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent Computing
+ * (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -93,6 +99,7 @@ void	 audit_arg_value(long value);
 void	 audit_arg_owner(uid_t uid, gid_t gid);
 void	 audit_arg_pid(pid_t pid);
 void	 audit_arg_process(struct proc *p);
+void	 audit_arg_procuuid(struct proc *p);
 void	 audit_arg_signum(u_int signum);
 void	 audit_arg_socket(int sodomain, int sotype, int soprotocol);
 void	 audit_arg_sockaddr(struct thread *td, int dirfd, struct sockaddr *sa);
@@ -232,6 +239,11 @@ void	 audit_thread_free(struct thread *td);
 		audit_arg_process((p));					\
 } while (0)
 
+#define	AUDIT_ARG_PROCUUID(p) do {					\
+	if (AUDITING_TD(curthread))					\
+		audit_arg_procuuid((p));				\
+} while (0)
+
 #define	AUDIT_ARG_RGID(rgid) do {					\
 	if (AUDITING_TD(curthread))					\
 		audit_arg_rgid((rgid));					\
@@ -358,6 +370,7 @@ void	 audit_thread_free(struct thread *td);
 #define	AUDIT_ARG_OWNER(uid, gid)
 #define	AUDIT_ARG_PID(pid)
 #define	AUDIT_ARG_PROCESS(p)
+#define	AUDIT_ARG_PROCUUID(p)
 #define	AUDIT_ARG_RGID(rgid)
 #define	AUDIT_ARG_RIGHTS(rights)
 #define	AUDIT_ARG_FCNTL_RIGHTS(fcntlrights)

@@ -414,6 +414,24 @@ audit_arg_process(struct proc *p)
 }
 
 void
+audit_arg_procuuid(struct proc *p)
+{
+	struct kaudit_record *ar;
+
+	KASSERT(uuid != NULL, ("audit_arg_procuuid: uuid == NULL"));
+	/* XXXRW: Assertion that UUID is initialised? */
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	/* Process lock not needed as static after creation. */
+	bcopy(&p->p_uuid, &ar->k_ar.ar_arg_procuuid,
+	    sizeof(ar->k_ar.ar_arg_procuuid));
+	ARG_SET_VALID(ar, ARG_PROCUUID);
+}
+
+void
 audit_arg_signum(u_int signum)
 {
 	struct kaudit_record *ar;

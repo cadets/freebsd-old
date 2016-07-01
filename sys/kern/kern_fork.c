@@ -68,6 +68,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/ktr.h>
 #include <sys/ktrace.h>
 #include <sys/unistd.h>	
+#include <sys/uuid.h>
 #include <sys/sdt.h>
 #include <sys/sx.h>
 #include <sys/sysent.h>
@@ -397,6 +398,16 @@ do_fork(struct thread *td, struct fork_req *fr, struct proc *p2, struct thread *
 	p2->p_state = PRS_NEW;		/* protect against others */
 	p2->p_pid = trypid;
 	AUDIT_ARG_PID(p2->p_pid);
+
+	/*
+	 * Initialize UUID before exposing via any global lists/hash tables.
+	 *
+	 * XXXRW: We may want to use a different kind of UUID here in the
+	 * future.
+	 */
+	(void)kern_uuidgen(&p2->p_uuid, 1);
+	AUDIT_ARG_PROCUUID(p2);
+
 	LIST_INSERT_HEAD(&allproc, p2, p_list);
 	allproc_gen++;
 	LIST_INSERT_HEAD(PIDHASH(p2->p_pid), p2, p_hash);
