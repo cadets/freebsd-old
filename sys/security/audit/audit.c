@@ -279,11 +279,11 @@ audit_record_ctor(void *mem, int size, void *arg, int flags)
 #ifdef KDTRACE_HOOKS
 	bcopy(td->td_proc->p_comm, ar->k_ar.ar_subj_comm,
 	    sizeof(ar->k_ar.ar_subj_comm));
-#endif
+
+	/*
 	 * Also preserve the process's UUID -- no lock required as unmodified
 	 * after fork().
 	 */
-#ifdef KDTRACE_HOOKS
 	bcopy(&td->td_proc->p_uuid, &ar->k_ar.ar_subj_uuid,
 	    sizeof(ar->k_ar.ar_subj_uuid));
 #endif
