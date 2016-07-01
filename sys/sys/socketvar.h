@@ -46,6 +46,7 @@
 #include <sys/caprights.h>
 #include <sys/sockopt.h>
 #endif
+#include <sys/uuid.h>
 
 struct vnet;
 
@@ -126,6 +127,7 @@ struct socket {
 	 */
 	int so_fibnum;		/* routing domain for this socket */
 	uint32_t so_user_cookie;
+	struct uuid	so_uuid;	/* (a) Per-socket UUID. */
 
 	void *so_pspare[2];	/* packet pacing / general use */
 	int so_ispare[2];	/* packet pacing / general use */

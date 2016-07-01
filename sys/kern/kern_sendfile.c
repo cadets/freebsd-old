@@ -545,6 +545,10 @@ vn_sendfile(struct file *fp, int sockfd, struct uio *hdr_uio,
 	if (error != 0)
 		goto out;
 
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID2(&so->so_uuid);
+#endif
+
 #ifdef MAC
 	error = mac_socket_check_send(td->td_ucred, so);
 	if (error != 0)

@@ -68,6 +68,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/in.h>
 #include <netinet/in_pcb.h>
 
+#include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
 
 #include <vm/vm.h>
@@ -122,6 +123,9 @@ soo_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
 	struct socket *so = fp->f_data;
 	int error;
 
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
 #ifdef MAC
 	error = mac_socket_check_receive(active_cred, so);
 	if (error)
@@ -138,6 +142,9 @@ soo_write(struct file *fp, struct uio *uio, struct ucred *active_cred,
 	struct socket *so = fp->f_data;
 	int error;
 
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
 #ifdef MAC
 	error = mac_socket_check_send(active_cred, so);
 	if (error)
@@ -268,7 +275,12 @@ soo_poll(struct file *fp, int events, struct ucred *active_cred,
 	struct socket *so = fp->f_data;
 #ifdef MAC
 	int error;
+#endif
 
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
+#ifdef MAC
 	error = mac_socket_check_poll(active_cred, so);
 	if (error)
 		return (error);
@@ -288,6 +300,9 @@ soo_stat(struct file *fp, struct stat *ub, struct ucred *active_cred,
 
 	bzero((caddr_t)ub, sizeof (*ub));
 	ub->st_mode = S_IFSOCK;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
 #ifdef MAC
 	error = mac_socket_check_stat(active_cred, so);
 	if (error)

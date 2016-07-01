@@ -136,12 +136,14 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/taskqueue.h>
 #include <sys/uio.h>
+#include <sys/uuid.h>
 #include <sys/jail.h>
 #include <sys/syslog.h>
 #include <netinet/in.h>
 
 #include <net/vnet.h>
 
+#include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
 
 #include <vm/uma.h>
@@ -392,6 +394,9 @@ soalloc(struct vnet *vnet)
 		uma_zfree(socket_zone, so);
 		return (NULL);
 	}
+
+	/* Initialise per-socket UUID. */
+	(void)kern_uuidgen(&so->so_uuid, 1);
 
 	SOCKBUF_LOCK_INIT(&so->so_snd, "so_snd");
 	SOCKBUF_LOCK_INIT(&so->so_rcv, "so_rcv");
@@ -857,6 +862,9 @@ soclose(struct socket *so)
 
 	KASSERT(!(so->so_state & SS_NOFDREF), ("soclose: SS_NOFDREF on enter"));
 
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
 	CURVNET_SET(so->so_vnet);
 	funsetown(&so->so_sigio);
 	if (so->so_state & SS_ISCONNECTED) {
