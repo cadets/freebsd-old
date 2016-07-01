@@ -239,10 +239,12 @@ void	 audit_thread_free(struct thread *td);
 		audit_arg_process((p));					\
 } while (0)
 
+#ifdef KDTRACE_HOOKS
 #define	AUDIT_ARG_PROCUUID(p) do {					\
 	if (AUDITING_TD(curthread))					\
 		audit_arg_procuuid((p));				\
 } while (0)
+#endif
 
 #define	AUDIT_ARG_RGID(rgid) do {					\
 	if (AUDITING_TD(curthread))					\
@@ -370,7 +372,9 @@ void	 audit_thread_free(struct thread *td);
 #define	AUDIT_ARG_OWNER(uid, gid)
 #define	AUDIT_ARG_PID(pid)
 #define	AUDIT_ARG_PROCESS(p)
+#ifdef KDTRACE_HOOKS
 #define	AUDIT_ARG_PROCUUID(p)
+#endif
 #define	AUDIT_ARG_RGID(rgid)
 #define	AUDIT_ARG_RIGHTS(rights)
 #define	AUDIT_ARG_FCNTL_RIGHTS(fcntlrights)

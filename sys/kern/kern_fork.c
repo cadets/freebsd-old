@@ -406,7 +406,9 @@ do_fork(struct thread *td, struct fork_req *fr, struct proc *p2, struct thread *
 	 * future.
 	 */
 	(void)kern_uuidgen(&p2->p_uuid, 1);
+#ifdef KDTRACE_HOOKS
 	AUDIT_ARG_PROCUUID(p2);
+#endif
 
 	LIST_INSERT_HEAD(&allproc, p2, p_list);
 	allproc_gen++;

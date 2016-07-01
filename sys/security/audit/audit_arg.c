@@ -413,6 +413,7 @@ audit_arg_process(struct proc *p)
 	    ARG_RGID | ARG_ASID | ARG_TERMID_ADDR | ARG_PID | ARG_PROCESS);
 }
 
+#ifdef KDTRACE_HOOKS
 void
 audit_arg_procuuid(struct proc *p)
 {
@@ -430,6 +431,7 @@ audit_arg_procuuid(struct proc *p)
 	    sizeof(ar->k_ar.ar_arg_procuuid));
 	ARG_SET_VALID(ar, ARG_PROCUUID);
 }
+#endif
 
 void
 audit_arg_signum(u_int signum)
