@@ -820,7 +820,8 @@ audit_arg_upath2(struct thread *td, int dirfd, char *upath)
  * XXXAUDIT: Possibly KASSERT the path pointer is NULL?
  */
 static int
-audit_arg_vnode(struct vnode *vp, struct vnode_au_info *vnp)
+audit_arg_vnode(struct vnode *vp, struct vnode_au_info *vnp,
+    struct uuid *uuid)
 {
 	struct vattr vattr;
 	int error;
@@ -840,6 +841,7 @@ audit_arg_vnode(struct vnode *vp, struct vnode_au_info *vnp)
 	vnp->vn_fsid = vattr.va_fsid;
 	vnp->vn_fileid = vattr.va_fileid;
 	vnp->vn_gen = vattr.va_gen;
+	*uuid = vp->v_uuid;
 	return (0);
 }
 
@@ -854,9 +856,12 @@ audit_arg_vnode1(struct vnode *vp)
 		return;
 
 	ARG_CLEAR_VALID(ar, ARG_VNODE1);
-	error = audit_arg_vnode(vp, &ar->k_ar.ar_arg_vnode1);
-	if (error == 0)
+	error = audit_arg_vnode(vp, &ar->k_ar.ar_arg_vnode1,
+	    &ar->k_ar.ar_arg_objuuid1);
+	if (error == 0) {
 		ARG_SET_VALID(ar, ARG_VNODE1);
+		ARG_SET_VALID(ar, ARG_OBJUUID1);
+	}
 }
 
 void
@@ -870,9 +875,12 @@ audit_arg_vnode2(struct vnode *vp)
 		return;
 
 	ARG_CLEAR_VALID(ar, ARG_VNODE2);
-	error = audit_arg_vnode(vp, &ar->k_ar.ar_arg_vnode2);
-	if (error == 0)
+	error = audit_arg_vnode(vp, &ar->k_ar.ar_arg_vnode2,
+	    &ar->k_ar.ar_arg_objuuid2);
+	if (error == 0) {
 		ARG_SET_VALID(ar, ARG_VNODE2);
+		ARG_SET_VALID(ar, ARG_OBJUUID2);
+	}
 }
 
 /*
