@@ -70,8 +70,9 @@ int uuid_ether_del(const uint8_t *);
 /*
  * Generate various canonical and versioned UUIDs.
  */
-void uuid_nil(struct uuid *);
-void uuid_version5(struct uuid *, struct uuid *, void *, size_t);
+void uuid_generate_nil(struct uuid *);
+void uuid_generate_version5(struct uuid *, const struct uuid *, const void *,
+    size_t);
 
 int snprintf_uuid(char *, size_t, struct uuid *);
 int printf_uuid(struct uuid *);

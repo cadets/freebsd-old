@@ -138,7 +138,7 @@ uuid_time(void)
 }
 
 void
-uuid_nil(struct uuid *store)
+uuid_generate_nil(struct uuid *store)
 {
 
 	bzero(store, sizeof(*store));
@@ -149,8 +149,8 @@ uuid_nil(struct uuid *store)
  * and canonical name within that namespace.
  */
 void
-uuid_version5(struct uuid *store, struct uuid *namespace, void *name,
-    size_t name_len)
+uuid_generate_version5(struct uuid *store, const struct uuid *namespace,
+    const void *name, size_t name_len)
 {
 	struct uuid uuid, uuid_namespace;
 	struct sha1_ctxt sha1_ctxt;
@@ -178,8 +178,9 @@ uuid_version5(struct uuid *store, struct uuid *namespace, void *name,
 	 * name.
 	 */
 	SHA1Init(&sha1_ctxt);
-	SHA1Update(&sha1_ctxt, (uint8_t *)namespace, sizeof(*namespace));
-	SHA1Update(&sha1_ctxt, (uint8_t *)name, name_len);
+	SHA1Update(&sha1_ctxt, (const uint8_t *)namespace,
+	    sizeof(*namespace));
+	SHA1Update(&sha1_ctxt, (const uint8_t *)name, name_len);
 	SHA1Final((uint8_t *)&md, &sha1_ctxt);
 
 	/*
