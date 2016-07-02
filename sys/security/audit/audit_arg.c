@@ -455,7 +455,7 @@ audit_arg_procuuid(struct proc *p)
 {
 	struct kaudit_record *ar;
 
-	KASSERT(uuid != NULL, ("audit_arg_procuuid: uuid == NULL"));
+	KASSERT(p != NULL, ("audit_arg_procuuid: p == NULL"));
 	/* XXXRW: Assertion that UUID is initialised? */
 
 	ar = currecord();
