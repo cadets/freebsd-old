@@ -581,6 +581,7 @@ int
 dt_printf(dtrace_hdl_t *dtp, FILE *fp, const char *format, ...)
 {
 	va_list ap;
+	va_list ap2;
 	int n;
 
 #ifndef illumos
@@ -640,11 +641,14 @@ dt_printf(dtrace_hdl_t *dtp, FILE *fp, const char *format, ...)
 			dtp->dt_buffered_buf[0] = '\0';
 		}
 
-		if ((needed = vsnprintf(NULL, 0, format, ap)) < 0) {
+		va_copy(ap2, ap);
+		if ((needed = vsnprintf(NULL, 0, format, ap2)) < 0) {
 			rval = dt_set_errno(dtp, errno);
+			va_end(ap2);
 			va_end(ap);
 			return (rval);
 		}
+		va_end(ap2);
 
 		if (needed == 0) {
 			va_end(ap);

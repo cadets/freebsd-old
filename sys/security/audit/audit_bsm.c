@@ -67,6 +67,7 @@ kau_init(void)
 {
 
 	au_evclassmap_init();
+	au_evnamemap_init();
 }
 
 /*
@@ -952,6 +953,8 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 	case AUE_GETDIRENTRIESATTR:
 	case AUE_LSEEK:
 	case AUE_POLL:
+	case AUE_PREAD:
+	case AUE_PWRITE:
 	case AUE_READ:
 	case AUE_READV:
 	case AUE_WRITE:
