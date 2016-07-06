@@ -443,6 +443,10 @@ audit_commit(struct kaudit_record *ar, int error, int retval)
 	if (ar == NULL)
 		return;
 
+	ar->k_ar.ar_errno = error;
+	ar->k_ar.ar_retval = retval;
+	nanotime(&ar->k_ar.ar_endtime);
+
 	/*
 	 * Decide whether to commit the audit record by checking the error
 	 * value from the system call and using the appropriate audit mask.
@@ -515,10 +519,6 @@ audit_commit(struct kaudit_record *ar, int error, int retval)
 		audit_free(ar);
 		return;
 	}
-
-	ar->k_ar.ar_errno = error;
-	ar->k_ar.ar_retval = retval;
-	nanotime(&ar->k_ar.ar_endtime);
 
 	/*
 	 * Note: it could be that some records initiated while audit was
