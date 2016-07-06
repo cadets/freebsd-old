@@ -1,6 +1,12 @@
 /*-
  * Copyright (c) 1999-2005 Apple Inc.
+ * Copyright (c) 2016 Robert N. M. Watson
  * All rights reserved.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -359,6 +365,36 @@ audit_arg_value(long value)
 	ARG_SET_VALID(ar, ARG_VALUE);
 }
 
+#ifdef KDTRACE_HOOKS
+void
+audit_arg_objuuid1(struct uuid *uuid)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	bcopy(uuid, &ar->k_ar.ar_arg_objuuid1,
+	    sizeof(ar->k_ar.ar_arg_objuuid1));
+	ARG_SET_VALID(ar, ARG_OBJUUID1);
+}
+
+void
+audit_arg_objuuid2(struct uuid *uuid)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	bcopy(uuid, &ar->k_ar.ar_arg_objuuid2,
+	    sizeof(ar->k_ar.ar_arg_objuuid2));
+	ARG_SET_VALID(ar, ARG_OBJUUID2);
+}
+#endif
+
 void
 audit_arg_owner(uid_t uid, gid_t gid)
 {
@@ -412,6 +448,26 @@ audit_arg_process(struct proc *p)
 	ARG_SET_VALID(ar, ARG_AUID | ARG_EUID | ARG_EGID | ARG_RUID |
 	    ARG_RGID | ARG_ASID | ARG_TERMID_ADDR | ARG_PID | ARG_PROCESS);
 }
+
+#ifdef KDTRACE_HOOKS
+void
+audit_arg_procuuid(struct proc *p)
+{
+	struct kaudit_record *ar;
+
+	KASSERT(p != NULL, ("audit_arg_procuuid: p == NULL"));
+	/* XXXRW: Assertion that UUID is initialised? */
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	/* Process lock not needed as static after creation. */
+	bcopy(&p->p_uuid, &ar->k_ar.ar_arg_procuuid,
+	    sizeof(ar->k_ar.ar_arg_procuuid));
+	ARG_SET_VALID(ar, ARG_PROCUUID);
+}
+#endif
 
 void
 audit_arg_signum(u_int signum)
@@ -764,7 +820,8 @@ audit_arg_upath2(struct thread *td, int dirfd, char *upath)
  * XXXAUDIT: Possibly KASSERT the path pointer is NULL?
  */
 static int
-audit_arg_vnode(struct vnode *vp, struct vnode_au_info *vnp)
+audit_arg_vnode(struct vnode *vp, struct vnode_au_info *vnp,
+    struct uuid *uuid)
 {
 	struct vattr vattr;
 	int error;
@@ -784,6 +841,7 @@ audit_arg_vnode(struct vnode *vp, struct vnode_au_info *vnp)
 	vnp->vn_fsid = vattr.va_fsid;
 	vnp->vn_fileid = vattr.va_fileid;
 	vnp->vn_gen = vattr.va_gen;
+	*uuid = vp->v_uuid;
 	return (0);
 }
 
@@ -798,9 +856,12 @@ audit_arg_vnode1(struct vnode *vp)
 		return;
 
 	ARG_CLEAR_VALID(ar, ARG_VNODE1);
-	error = audit_arg_vnode(vp, &ar->k_ar.ar_arg_vnode1);
-	if (error == 0)
+	error = audit_arg_vnode(vp, &ar->k_ar.ar_arg_vnode1,
+	    &ar->k_ar.ar_arg_objuuid1);
+	if (error == 0) {
 		ARG_SET_VALID(ar, ARG_VNODE1);
+		ARG_SET_VALID(ar, ARG_OBJUUID1);
+	}
 }
 
 void
@@ -814,9 +875,12 @@ audit_arg_vnode2(struct vnode *vp)
 		return;
 
 	ARG_CLEAR_VALID(ar, ARG_VNODE2);
-	error = audit_arg_vnode(vp, &ar->k_ar.ar_arg_vnode2);
-	if (error == 0)
+	error = audit_arg_vnode(vp, &ar->k_ar.ar_arg_vnode2,
+	    &ar->k_ar.ar_arg_objuuid2);
+	if (error == 0) {
 		ARG_SET_VALID(ar, ARG_VNODE2);
+		ARG_SET_VALID(ar, ARG_OBJUUID2);
+	}
 }
 
 /*

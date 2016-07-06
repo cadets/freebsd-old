@@ -160,6 +160,9 @@ sys_socket(td, uap)
 	if (error != 0) {
 		fdclose(td, fp, fd);
 	} else {
+#ifdef KDTRACE_HOOKS
+		AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
 		finit(fp, FREAD | FWRITE | fflag, DTYPE_SOCKET, so, &socketops);
 		if ((fflag & FNONBLOCK) != 0)
 			(void) fo_ioctl(fp, FIONBIO, &fflag, td->td_ucred, td);
@@ -208,6 +211,9 @@ kern_bindat(struct thread *td, int dirfd, int fd, struct sockaddr *sa)
 #ifdef KTRACE
 	if (KTRPOINT(td, KTR_STRUCT))
 		ktrsockaddr(sa);
+#endif
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&so->so_uuid);
 #endif
 #ifdef MAC
 	error = mac_socket_check_bind(td->td_ucred, so, sa);
@@ -265,6 +271,9 @@ sys_listen(td, uap)
 	    &fp, NULL);
 	if (error == 0) {
 		so = fp->f_data;
+#ifdef KDTRACE_HOOKS
+		AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
 #ifdef MAC
 		error = mac_socket_check_listen(td->td_ucred, so);
 		if (error == 0)
@@ -349,6 +358,9 @@ kern_accept4(struct thread *td, int s, struct sockaddr **name,
 	if (error != 0)
 		return (error);
 	head = headfp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&head->so_uuid);
+#endif
 	if ((head->so_options & SO_ACCEPTCONN) == 0) {
 		error = EINVAL;
 		goto done;
@@ -435,6 +447,9 @@ kern_accept4(struct thread *td, int s, struct sockaddr **name,
 	error = soaccept(so, &sa);
 	if (error != 0)
 		goto noconnection;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID2(&so->so_uuid);
+#endif
 	if (sa == NULL) {
 		if (name)
 			*namelen = 0;
@@ -557,6 +572,9 @@ kern_connectat(struct thread *td, int dirfd, int fd, struct sockaddr *sa)
 	if (KTRPOINT(td, KTR_STRUCT))
 		ktrsockaddr(sa);
 #endif
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
 #ifdef MAC
 	error = mac_socket_check_connect(td->td_ucred, so, sa);
 	if (error != 0)
@@ -652,6 +670,11 @@ kern_socketpair(struct thread *td, int domain, int type, int protocol,
 	error = socreate(domain, &so2, type, protocol, td->td_ucred, td);
 	if (error != 0)
 		goto free1;
+
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&so1->so_uuid);
+	AUDIT_ARG_OBJUUID2(&so2->so_uuid);
+#endif
 	/* On success extra reference to `fp1' and 'fp2' is set by falloc. */
 	error = falloc(td, &fp1, &fd, oflag);
 	if (error != 0)
@@ -813,6 +836,9 @@ kern_sendit(td, s, mp, flags, control, segflg)
 #ifdef KTRACE
 	if (mp->msg_name != NULL && KTRPOINT(td, KTR_STRUCT))
 		ktrsockaddr(mp->msg_name);
+#endif
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&so->so_uuid);
 #endif
 #ifdef MAC
 	if (mp->msg_name != NULL) {
@@ -1011,6 +1037,9 @@ kern_recvit(td, s, mp, fromseg, controlp)
 		return (error);
 	so = fp->f_data;
 
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
 #ifdef MAC
 	error = mac_socket_check_receive(td->td_ucred, so);
 	if (error != 0) {
@@ -1324,6 +1353,9 @@ sys_shutdown(td, uap)
 	    &fp, NULL);
 	if (error == 0) {
 		so = fp->f_data;
+#ifdef KDTRACE_HOOKS
+		AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
 		error = soshutdown(so, uap->how);
 		/*
 		 * Previous versions did not return ENOTCONN, but 0 in
@@ -1398,6 +1430,9 @@ kern_setsockopt(td, s, level, name, val, valseg, valsize)
 	    &fp, NULL);
 	if (error == 0) {
 		so = fp->f_data;
+#ifdef KDTRACE_HOOKS
+		AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
 		error = sosetopt(so, &sopt);
 		fdrop(fp, td);
 	}
@@ -1479,6 +1514,9 @@ kern_getsockopt(td, s, level, name, val, valseg, valsize)
 	    &fp, NULL);
 	if (error == 0) {
 		so = fp->f_data;
+#ifdef KDTRACE_HOOKS
+		AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
 		error = sogetopt(so, &sopt);
 		*valsize = sopt.sopt_valsize;
 		fdrop(fp, td);
@@ -1541,6 +1579,9 @@ kern_getsockname(struct thread *td, int fd, struct sockaddr **sa,
 	if (error != 0)
 		return (error);
 	so = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
 	*sa = NULL;
 	CURVNET_SET(so->so_vnet);
 	error = (*so->so_proto->pr_usrreqs->pru_sockaddr)(so, sa);
@@ -1640,6 +1681,9 @@ kern_getpeername(struct thread *td, int fd, struct sockaddr **sa,
 	if (error != 0)
 		return (error);
 	so = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
 	if ((so->so_state & (SS_ISCONNECTED|SS_ISCONFIRMING)) == 0) {
 		error = ENOTCONN;
 		goto done;

@@ -63,6 +63,7 @@
 #endif
 #include <sys/ucontext.h>
 #include <sys/ucred.h>
+#include <sys/uuid.h>
 #include <sys/_vm_domain.h>
 #include <machine/proc.h>		/* Machine-dependent proc substruct. */
 
@@ -551,6 +552,7 @@ struct proc {
 	struct ksiginfo *p_ksi;	/* Locked by parent proc lock */
 	sigqueue_t	p_sigqueue;	/* (c) Sigs not delivered to a td. */
 #define p_siglist	p_sigqueue.sq_signals
+	struct uuid	p_uuid;		/* (b) Globally unique UUID. */
 
 /* The following fields are all zeroed upon creation in fork. */
 #define	p_startzero	p_oppid

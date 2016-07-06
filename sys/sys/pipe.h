@@ -28,6 +28,8 @@
 #error "no user-servicable parts inside"
 #endif
 
+#include <sys/uuid.h>
+
 /*
  * Pipe buffer size, keep moderate in value, pipes take kva space.
  */
@@ -133,6 +135,7 @@ struct pipepair {
 	struct pipe	pp_rpipe;
 	struct pipe	pp_wpipe;
 	struct mtx	pp_mtx;
+	struct uuid	pp_uuid;
 	struct label	*pp_label;
 };
 
