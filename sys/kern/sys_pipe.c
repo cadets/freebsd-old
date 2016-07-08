@@ -366,10 +366,12 @@ pipe_paircreate(struct thread *td, struct pipepair **p_pp)
 	knlist_init_mtx(&rpipe->pipe_sel.si_note, PIPE_MTX(rpipe));
 	knlist_init_mtx(&wpipe->pipe_sel.si_note, PIPE_MTX(wpipe));
 
-	/* Generate a per-pipe UUID; currently used only by audit. */
-	(void)kern_uuidgen(&pp->pp_uuid, 1);
+	/* Generate per-pipe endpoint UUIDs; currently used only by audit. */
+	(void)kern_uuidgen(&rpipe->pipe_uuid, 1);
+	(void)kern_uuidgen(&wpipe->pipe_uuid, 1);
 #ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&pp->pp_uuid);
+	AUDIT_ARG_OBJUUID1(&rpipe->pipe_uuid);
+	AUDIT_ARG_OBJUUID2(&wpipe->pipe_uuid);
 #endif
 
 	/* Only the forward direction pipe is backed by default */
@@ -685,7 +687,7 @@ pipe_read(fp, uio, active_cred, flags, td)
 	PIPE_LOCK(rpipe);
 	++rpipe->pipe_busy;
 #ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&rpipe->pipe_pair->pp_uuid);
+	AUDIT_ARG_OBJUUID1(&rpipe->pipe_uuid);
 #endif
 	error = pipelock(rpipe, 1);
 	if (error)
@@ -1069,7 +1071,7 @@ pipe_write(fp, uio, active_cred, flags, td)
 	wpipe = PIPE_PEER(rpipe);
 	PIPE_LOCK(rpipe);
 #ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&rpipe->pipe_pair->pp_uuid);
+	AUDIT_ARG_OBJUUID1(&wpipe->pipe_uuid);
 #endif
 	error = pipelock(wpipe, 1);
 	if (error) {
@@ -1350,7 +1352,7 @@ pipe_truncate(fp, length, active_cred, td)
 
 	cpipe = fp->f_data;
 #ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&cpipe->pipe_pair->pp_uuid);
+	AUDIT_ARG_OBJUUID1(&cpipe->pipe_uuid);
 #endif
 	if (cpipe->pipe_state & PIPE_NAMED)
 		error = vnops.fo_truncate(fp, length, active_cred, td);
@@ -1375,7 +1377,7 @@ pipe_ioctl(fp, cmd, data, active_cred, td)
 
 	PIPE_LOCK(mpipe);
 #ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&mpipe->pipe_pair->pp_uuid);
+	AUDIT_ARG_OBJUUID1(&mpipe->pipe_uuid);
 #endif
 
 #ifdef MAC
@@ -1460,7 +1462,7 @@ pipe_poll(fp, events, active_cred, td)
 	wpipe = PIPE_PEER(rpipe);
 	PIPE_LOCK(rpipe);
 #ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&rpipe->pipe_pair->pp_uuid);
+	AUDIT_ARG_OBJUUID1(&rpipe->pipe_uuid);
 #endif
 #ifdef MAC
 	error = mac_pipe_check_poll(active_cred, rpipe->pipe_pair);
@@ -1536,7 +1538,7 @@ pipe_stat(fp, ub, active_cred, td)
 	pipe = fp->f_data;
 	PIPE_LOCK(pipe);
 #ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&pipe->pipe_pair->pp_uuid);
+	AUDIT_ARG_OBJUUID1(&pipe->pipe_uuid);
 #endif
 #ifdef MAC
 	error = mac_pipe_check_stat(active_cred, pipe->pipe_pair);
@@ -1615,7 +1617,7 @@ pipe_chmod(struct file *fp, mode_t mode, struct ucred *active_cred, struct threa
 
 	cpipe = fp->f_data;
 #ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&cpipe->pipe_pair->pp_uuid);
+	AUDIT_ARG_OBJUUID1(&cpipe->pipe_uuid);
 #endif
 	if (cpipe->pipe_state & PIPE_NAMED)
 		error = vn_chmod(fp, mode, active_cred, td);
@@ -1637,7 +1639,7 @@ pipe_chown(fp, uid, gid, active_cred, td)
 
 	cpipe = fp->f_data;
 #ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&cpipe->pipe_pair->pp_uuid);
+	AUDIT_ARG_OBJUUID1(&cpipe->pipe_uuid);
 #endif
 	if (cpipe->pipe_state & PIPE_NAMED)
 		error = vn_chown(fp, uid, gid, active_cred, td);
@@ -1701,7 +1703,7 @@ pipeclose(cpipe)
 	pipelock(cpipe, 0);
 	pp = cpipe->pipe_pair;
 #ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&pp->pp_uuid);
+	AUDIT_ARG_OBJUUID1(&cpipe->pipe_uuid);
 #endif
 
 	pipeselwakeup(cpipe);
