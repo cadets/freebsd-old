@@ -447,6 +447,16 @@ audit_arg_process(struct proc *p)
 	ar->k_ar.ar_arg_pid = p->p_pid;
 	ARG_SET_VALID(ar, ARG_AUID | ARG_EUID | ARG_EGID | ARG_RUID |
 	    ARG_RGID | ARG_ASID | ARG_TERMID_ADDR | ARG_PID | ARG_PROCESS);
+
+	/*
+	 * If we are auditing a process argument, we almost certainly want its
+	 * UUID as well as PID/etc.
+	 */
+#ifdef KDTRACE_HOOKS
+	bcopy(&p->p_uuid, &ar->k_ar.ar_arg_procuuid,
+	    sizeof(ar->k_ar.ar_arg_procuuid));
+	ARG_SET_VALID(ar, ARG_PROCUUID);
+#endif
 }
 
 #ifdef KDTRACE_HOOKS
