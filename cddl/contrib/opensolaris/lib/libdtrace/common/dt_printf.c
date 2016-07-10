@@ -45,6 +45,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
+#include <sys/endian.h>
+#include <sys/uuid.h>
 
 #include <dt_printf.h>
 #include <dt_string.h>
@@ -250,6 +252,16 @@ pfcheck_mr(dt_pfargv_t *pfv, dt_pfargd_t *pfd, dt_node_t *dnp)
 		return (1);
 
 	return(0);
+}
+
+/*
+ * XXX-AT: Implement pfcheck_uuid
+ */
+/*ARGSUSED*/
+static int
+pfcheck_uuid(dt_pfargv_t *pfv, dt_pfargd_t *pfd, dt_node_t *dnp)
+{
+	return (1);
 }
 
 /*ARGSUSED*/
@@ -829,6 +841,49 @@ pfprint_mrc(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	return (0);
 }
 
+/*
+ * XXX-AT: snprintf_uuid is copied from kern_uuid.c. It should be moved to a
+ * library.
+ */
+#define	UUID_NODE_LEN	_UUID_NODE_LEN
+/* We use an alternative, more convenient representation in the generator. */
+struct uuid_private {
+	union {
+		uint64_t	ll;		/* internal. */
+		struct {
+			uint32_t	low;
+			uint16_t	mid;
+			uint16_t	hi;
+		} x;
+	} time;
+	uint16_t	seq;			/* Big-endian. */
+	uint16_t	node[UUID_NODE_LEN>>1];
+};
+
+int
+snprintf_uuid(char *buf, size_t sz, struct uuid *uuid)
+{
+	struct uuid_private *id;
+	int cnt;
+
+	id = (struct uuid_private *)uuid;
+	cnt = snprintf(buf, sz, "%08x-%04x-%04x-%04x-%04x%04x%04x",
+	    id->time.x.low, id->time.x.mid, id->time.x.hi, be16toh(id->seq),
+	    be16toh(id->node[0]), be16toh(id->node[1]), be16toh(id->node[2]));
+	return (cnt);
+}
+
+/*ARGSUSED*/
+int
+pfprint_uuid(dtrace_hdl_t *dtp, FILE *fp, const char *format,
+    const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
+{
+	char buf[38];
+
+	snprintf_uuid(buf, sizeof(buf), (struct uuid *)addr);
+	return (dt_printf(dtp, fp, "%s", buf));
+}
+
 
 static const char pfproto_xint[] = "char, short, int, long, or long long";
 static const char pfproto_csi[] = "char, short, or int";
@@ -896,6 +951,7 @@ static const dt_pfconv_t _dtrace_conversions[] = {
 { "S", "s", pfproto_cstr, pfcheck_str, pfprint_estr },
 { "T", "s", "int64_t", pfcheck_time, pfprint_time822 },
 { "u", "u", pfproto_xint, pfcheck_xint, pfprint_uint },
+{ "U", "U", "uuid", pfcheck_uuid, pfprint_uuid },
 #ifdef illumos
 { "wc",	"wc", "int", pfcheck_type, pfprint_sint }, /* a.k.a. wchar_t */
 { "ws", "ws", pfproto_wstr, pfcheck_wstr, pfprint_wstr },

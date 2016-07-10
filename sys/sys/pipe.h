@@ -118,6 +118,7 @@ struct pipe {
 	int	pipe_present;		/* still present? */
 	int	pipe_wgen;		/* writer generation for named pipe */
 	ino_t	pipe_ino;		/* fake inode for stat(2) */
+	struct uuid	pipe_uuid;	/* per-endpoint UUID */
 };
 
 /*
@@ -135,7 +136,6 @@ struct pipepair {
 	struct pipe	pp_rpipe;
 	struct pipe	pp_wpipe;
 	struct mtx	pp_mtx;
-	struct uuid	pp_uuid;
 	struct label	*pp_label;
 };
 
