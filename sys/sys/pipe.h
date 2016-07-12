@@ -28,6 +28,8 @@
 #error "no user-servicable parts inside"
 #endif
 
+#include <sys/uuid.h>
+
 /*
  * Pipe buffer size, keep moderate in value, pipes take kva space.
  */
@@ -116,6 +118,7 @@ struct pipe {
 	int	pipe_present;		/* still present? */
 	int	pipe_wgen;		/* writer generation for named pipe */
 	ino_t	pipe_ino;		/* fake inode for stat(2) */
+	struct uuid	pipe_uuid;	/* per-endpoint UUID */
 };
 
 /*

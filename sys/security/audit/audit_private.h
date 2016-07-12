@@ -51,6 +51,9 @@
 #include <sys/ipc.h>
 #include <sys/socket.h>
 #include <sys/ucred.h>
+#ifdef KDTRACE_HOOKS
+#include <sys/uuid.h>
+#endif
 
 #ifdef MALLOC_DECLARE
 MALLOC_DECLARE(M_AUDITBSM);
@@ -191,6 +194,7 @@ struct audit_record {
 	struct au_mask		ar_subj_amask;
 #ifdef KDTRACE_HOOKS
 	char			ar_subj_comm[MAXCOMLEN + 1];
+	struct uuid		ar_subj_uuid;
 #endif
 
 	/* Operation arguments. */
@@ -201,6 +205,9 @@ struct audit_record {
 	gid_t			ar_arg_rgid;
 	gid_t			ar_arg_sgid;
 	pid_t			ar_arg_pid;
+#ifdef KDTRACE_HOOKS
+	struct uuid		ar_arg_procuuid;
+#endif
 	pid_t			ar_arg_asid;
 	struct au_tid		ar_arg_termid;
 	struct au_tid_addr	ar_arg_termid_addr;
@@ -213,6 +220,10 @@ struct audit_record {
 	int			ar_arg_atfd2;
 	int			ar_arg_fflags;
 	mode_t			ar_arg_mode;
+#ifdef KDTRACE_HOOKS
+	struct uuid		ar_arg_objuuid1;
+	struct uuid		ar_arg_objuuid2;
+#endif
 	int			ar_arg_dev;
 	long			ar_arg_value;
 	void			*ar_arg_addr;
@@ -306,6 +317,9 @@ struct audit_record {
 #define	ARG_ATFD2		0x0008000000000000ULL
 #define	ARG_RIGHTS		0x0010000000000000ULL
 #define	ARG_FCNTL_RIGHTS	0x0020000000000000ULL
+#define	ARG_PROCUUID		0x0040000000000000ULL
+#define	ARG_OBJUUID1		0x0080000000000000ULL
+#define	ARG_OBJUUID2		0x0100000000000000ULL
 #define	ARG_NONE		0x0000000000000000ULL
 #define	ARG_ALL			0xFFFFFFFFFFFFFFFFULL
 

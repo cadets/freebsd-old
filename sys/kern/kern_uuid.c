@@ -1,6 +1,12 @@
 /*-
  * Copyright (c) 2002 Marcel Moolenaar
+ * Copyright (c) 2016 Robert N. M. Watson
  * All rights reserved.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,6 +44,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/jail.h>
 #include <sys/uuid.h>
+
+#include <crypto/sha1.h>
 
 #include <net/if.h>
 #include <net/if_dl.h>
@@ -87,6 +95,9 @@ static struct uuid_macaddr uuid_ether[UUID_NETHER];
 static struct mtx uuid_mutex;
 MTX_SYSINIT(uuid_lock, &uuid_mutex, "UUID generator mutex lock", MTX_DEF);
 
+/* Allow code to be shared with userspace, with a different SHA1 library. */
+#define	SHA_DIGEST_LENGTH	SHA1_RESULTLEN
+
 /*
  * Return the first MAC address added in the array. If it's empty, then
  * construct a sufficiently random multicast MAC address first. Any
@@ -124,6 +135,115 @@ uuid_time(void)
 	time += (uint64_t)bt.sec * 10000000LL;
 	time += (10000000LL * (uint32_t)(bt.frac >> 32)) >> 32;
 	return (time & ((1LL << 60) - 1LL));
+}
+
+void
+uuid_generate_nil(struct uuid *store)
+{
+
+	bzero(store, sizeof(*store));
+}
+
+/*
+ * Compute a SHA-1-based namespace UUID.  Inputs are the UUID of the namespace
+ * and canonical name within that namespace.
+ */
+void
+uuid_generate_version5(struct uuid *store, const struct uuid *namespace,
+    const void *name, size_t name_len)
+{
+	struct uuid uuid, uuid_namespace;
+	struct sha1_ctxt sha1_ctxt;
+	union {
+		uint8_t		uint8[SHA_DIGEST_LENGTH];
+		uint16_t	uint16[SHA_DIGEST_LENGTH / 2];
+		uint32_t	uint32[SHA_DIGEST_LENGTH / 4];
+	} md;
+
+	/*
+	 * RFC: Convert the name to a canonical sequence of octets (as defined
+	 * by the standards or conventions of its name space); put the name
+	 * space ID in network byte order.
+	 *
+	 * NB: We assume caller places name in suitable byte order.
+	 */
+	uuid_namespace = *namespace;
+	uuid_namespace.time_low = be32toh(uuid_namespace.time_low);
+	uuid_namespace.time_mid = be16toh(uuid_namespace.time_mid);
+	uuid_namespace.time_hi_and_version =
+	    be16toh(uuid_namespace.time_hi_and_version);
+
+	/*
+	 * RFC: Compute the hash of the name space ID concatenated with the
+	 * name.
+	 */
+	SHA1Init(&sha1_ctxt);
+	SHA1Update(&sha1_ctxt, (const uint8_t *)namespace,
+	    sizeof(*namespace));
+	SHA1Update(&sha1_ctxt, (const uint8_t *)name, name_len);
+	SHA1Final((uint8_t *)&md, &sha1_ctxt);
+
+	/*
+	 * RFC: Set octets zero through 3 of the time_low field to octets zero
+	 * through 3 of the hash.
+	 *
+	 * XXXRW: Do I have byte order right here?
+	 */
+	uuid.time_low = be32toh(md.uint32[0]);
+
+	/*
+	 * RFC: Set octets zero and one of the time_mid field to octets 4 and
+	 * 5 of the hash.
+	 *
+	 * XXXRW: Do I have byte order right here?
+	 */
+	uuid.time_mid = be16toh(md.uint16[4]);
+
+	/*
+	 * RFC: Set octets zero and one of the time_hi_and_version field to
+	 * octets 6 and 7 of the hash.
+	 *
+	 * XXXRW: Do I have byte order right here?
+	 */
+	uuid.time_hi_and_version = be16toh(md.uint16[6]) & 0xfff;
+
+	/*
+	 * RFC: Set the four most significant bits (bits 12 through 15) of the
+	 * time_hi_and_version field to the appropriate 4-bit version number
+	 * from Section 4.1.3.
+	 */
+	uuid.time_hi_and_version |= (5 << 12);
+
+	/*
+	 * RFC: Set the clock_seq_hi_and_reserved field to octet 8 of the
+	 * hash.
+	 */
+	uuid.clock_seq_hi_and_reserved = md.uint8[8] & 0x3f;
+
+	/*
+	 * RFC: Set the two most significant bits (bits 6 and 7) of the
+	 * clock_seq_hi_and_reserved to zero and one, respectively.
+	 */
+	uuid.clock_seq_hi_and_reserved |= (1 << 7);
+
+	/*
+	 * RFC: Set the clock_seq_low field to octet 9 of the hash.
+	 */
+	uuid.clock_seq_low = md.uint8[9];
+
+	/*
+	 * RFC: Set octets zero through five of the node field to octets 10
+	 * through 15 of the hash.
+	 */
+	bcopy(&md.uint8[10], &uuid.node, 6);
+
+	/*
+	 * RFC: Convert the resulting UUID to local byte order.
+	 */
+	uuid.time_low = htobe32(uuid.time_low);
+	uuid.time_mid = htobe16(uuid.time_mid);
+	uuid.time_hi_and_version = htobe16(uuid.time_hi_and_version);
+	*store = uuid;
 }
 
 struct uuid *

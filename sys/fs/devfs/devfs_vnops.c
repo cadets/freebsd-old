@@ -520,6 +520,15 @@ loop:
 		vput(vp);
 		return (ENOENT);
 	}
+
+	/*
+	 * Initialise UUID for devfs vnode.
+	 *
+	 * XXXRW: Do we have a way to get the path of a devfs vnode when it is
+	 * not associated with a device...?
+	 */
+	if (dev != NULL)
+		vn_uuid_from_data(vp, devtoname(dev), strlen(devtoname(dev)));
 #ifdef MAC
 	mac_devfs_vnode_associate(mp, de, vp);
 #endif

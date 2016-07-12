@@ -254,6 +254,7 @@ audit_record_ctor(void *mem, int size, void *arg, int flags)
 	ar->k_ar.ar_subj_pid = td->td_proc->p_pid;
 	ar->k_ar.ar_subj_amask = cred->cr_audit.ai_mask;
 	ar->k_ar.ar_subj_term_addr = cred->cr_audit.ai_termid;
+
 	/*
 	 * If this process is jailed, make sure we capture the name of the
 	 * jail so we can use it to generate a zonename token when we covert
@@ -278,6 +279,13 @@ audit_record_ctor(void *mem, int size, void *arg, int flags)
 #ifdef KDTRACE_HOOKS
 	bcopy(td->td_proc->p_comm, ar->k_ar.ar_subj_comm,
 	    sizeof(ar->k_ar.ar_subj_comm));
+
+	/*
+	 * Also preserve the process's UUID -- no lock required as unmodified
+	 * after fork().
+	 */
+	bcopy(&td->td_proc->p_uuid, &ar->k_ar.ar_subj_uuid,
+	    sizeof(ar->k_ar.ar_subj_uuid));
 #endif
 	return (0);
 }
@@ -443,6 +451,10 @@ audit_commit(struct kaudit_record *ar, int error, int retval)
 	if (ar == NULL)
 		return;
 
+	ar->k_ar.ar_errno = error;
+	ar->k_ar.ar_retval = retval;
+	nanotime(&ar->k_ar.ar_endtime);
+
 	/*
 	 * Decide whether to commit the audit record by checking the error
 	 * value from the system call and using the appropriate audit mask.
@@ -515,10 +527,6 @@ audit_commit(struct kaudit_record *ar, int error, int retval)
 		audit_free(ar);
 		return;
 	}
-
-	ar->k_ar.ar_errno = error;
-	ar->k_ar.ar_retval = retval;
-	nanotime(&ar->k_ar.ar_endtime);
 
 	/*
 	 * Note: it could be that some records initiated while audit was
