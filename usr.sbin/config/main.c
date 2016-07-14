@@ -75,6 +75,8 @@ char 	destdir[MAXPATHLEN];
 char 	srcdir[MAXPATHLEN];
 
 int	debugging;
+int	instrumenting;
+int	llvm_ir;
 int	profiling;
 int	found_defaults;
 int	incignore;
@@ -116,7 +118,7 @@ main(int argc, char **argv)
 	printmachine = 0;
 	kernfile = NULL;
 	SLIST_INIT(&includepath);
-	while ((ch = getopt(argc, argv, "CI:d:gmpsVx:")) != -1)
+	while ((ch = getopt(argc, argv, "CI:d:gilmpsVx:")) != -1)
 		switch (ch) {
 		case 'C':
 			filebased = 1;
@@ -140,6 +142,12 @@ main(int argc, char **argv)
 			break;
 		case 'g':
 			debugging++;
+			break;
+		case 'i':
+			instrumenting++;
+			break;
+		case 'l':
+			llvm_ir++;
 			break;
 		case 'p':
 			profiling++;
@@ -283,7 +291,7 @@ usage(void)
 {
 
 	fprintf(stderr,
-	    "usage: config [-CgmpV] [-d destdir] [-s srcdir] sysname\n");
+	    "usage: config [-CgimpV] [-d destdir] [-s srcdir] sysname\n");
 	fprintf(stderr, "       config -x kernel\n");
 	exit(EX_USAGE);
 }

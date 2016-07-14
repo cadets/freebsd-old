@@ -123,6 +123,10 @@ LINTFLAGS=	${LINTOBJKERNFLAGS}
 
 NORMAL_C= ${CC} -c ${CFLAGS} ${WERROR} ${PROF} ${.IMPSRC}
 NORMAL_S= ${CC:N${CCACHE_BIN}} -c ${ASM_CFLAGS} ${WERROR} ${.IMPSRC}
+LLVM_C= ${CC} -emit-llvm ${CFLAGS:N-O*} -c ${.IMPSRC} -o ${.TARGET}
+LLVM_S= ${NORMAL_S}
+LLVM_IR=${LLC} -code-model=kernel -filetype=obj \
+	${CFLAGS:M-O} ${.IMPSRC} -o ${.TARGET}
 PROFILE_C= ${CC} -c ${CFLAGS} ${WERROR} ${.IMPSRC}
 NORMAL_C_NOWERROR= ${CC} -c ${CFLAGS} ${PROF} ${.IMPSRC}
 
@@ -132,6 +136,8 @@ NORMAL_M= ${AWK} -f $S/tools/makeobjops.awk ${.IMPSRC} -c ; \
 NORMAL_FW= uudecode -o ${.TARGET} ${.ALLSRC}
 NORMAL_FWO= ${LD} -b binary --no-warn-mismatch -d -warn-common -r \
 	-m ${LD_EMULATION} -o ${.TARGET} ${.ALLSRC:M*.fw}
+
+LLVM_INSTRUMENT= ${OPT} ${LLVM_INSTR_FLAGS} ${.IMPSRC} -o ${.TARGET}
 
 # Common for dtrace / zfs
 CDDL_CFLAGS=	-DFREEBSD_NAMECACHE -nostdinc -I$S/cddl/compat/opensolaris -I$S/cddl/contrib/opensolaris/uts/common -I$S -I$S/cddl/contrib/opensolaris/common ${CFLAGS} -Wno-unknown-pragmas -Wno-missing-prototypes -Wno-undef -Wno-strict-prototypes -Wno-cast-qual -Wno-parentheses -Wno-redundant-decls -Wno-missing-braces -Wno-uninitialized -Wno-unused -Wno-inline -Wno-switch -Wno-pointer-arith -Wno-unknown-pragmas

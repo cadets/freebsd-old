@@ -198,9 +198,13 @@ extern STAILQ_HEAD(file_list_head, file_list) ftab;
 
 extern STAILQ_HEAD(files_name_head, files_name) fntab;
 
+extern int	llvm_ir;
+extern int	instrumenting;
 extern int	profiling;
 extern int	debugging;
 extern int	found_defaults;
+extern int	instrumenting;
+extern int	llvm_ir;
 
 extern int	maxusers;
 
