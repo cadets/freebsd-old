@@ -523,25 +523,12 @@ loop:
 	}
 
 	/*
-	 * Initialise UUID for devfs vnode from the cdev's UUID.
-	 *
-	 * XXXRW: There are cases where a devfs vnode will neither be a
-	 * device, nor have an implied cdev (e.g., because it is a symlink
-	 * created by a device driver).  For example: directories created by
-	 * implication from device names in subdirectories, and symlinks
-	 * created by via symlink(2).  In this cases, we will need to
-	 * synthesise a UUID, likely by adding it to the devfs_dirent on
-	 * creation.  There is therefore an argument that there should be a
-	 * UUID on every devfs_dirent, with a simple propagation from the
-	 * devfs_dirent to the vnode here, rather than from the device, with
-	 * device UUID propagation occurring when the corresponding
-	 * devfs_dirent is created.  In the mean time, these non-device
-	 * vnodes have nil UUIDs.
+	 * Initialise UUID for devfs vnode from the devfs_dirent's UUID, which
+	 * for devices will originate in the cdev, and for devfs-local
+	 * subdirectories will be derived from the directory's name, and for
+	 * user-created symlinks, randomly derived.
 	 */
-	if (dev != NULL)
-		vp->v_uuid = dev->si_uuid;
-	else if (de->de_cdp != NULL)
-		vp->v_uuid = de->de_cdp->cdp_c.si_uuid;
+	vp->v_uuid = de->de_uuid;
 #ifdef MAC
 	mac_devfs_vnode_associate(mp, de, vp);
 #endif
@@ -1723,6 +1710,11 @@ devfs_symlink(struct vop_symlink_args *ap)
 	i = strlen(ap->a_target) + 1;
 	de->de_symlink = malloc(i, M_DEVFS, M_WAITOK);
 	bcopy(ap->a_target, de->de_symlink, i);
+
+	/*
+	 * Use a random UUID for user-generated symlink.
+	 */
+	(void)kern_uuidgen(&de->de_uuid, 1);
 #ifdef MAC
 	mac_devfs_create_symlink(ap->a_cnp->cn_cred, dmp->dm_mount, dd, de);
 #endif
