@@ -1,9 +1,15 @@
 /*-
  * Copyright (c) 2008 Ed Schouten <ed@FreeBSD.org>
+ * Copyright (c) 2016 Robert N. M. Watson
  * All rights reserved.
  *
  * Portions of this software were developed under sponsorship from Snow
  * B.V., the Netherlands.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -66,6 +72,8 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/stdarg.h>
 
+#include <security/audit/audit.h>
+
 /*
  * Our utmp(5) format is limited to 8-byte TTY line names.  This means
  * we can at most allocate 1000 pseudo-terminals ("pts/999").  Allow
@@ -100,6 +108,7 @@ struct pts_softc {
 #endif /* PTS_EXTERNAL */
 
 	struct ucred	*pts_cred;	/* (c) Resource limit. */
+	struct uuid	pts_uuid;	/* (c) Per-pts UUID. */
 };
 
 /*
@@ -114,6 +123,8 @@ ptsdev_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
 	struct pts_softc *psc = tty_softc(tp);
 	int error = 0;
 	char pkt;
+
+	AUDIT_ARG_OBJUUID1(&psc->pts_uuid);
 
 	if (uio->uio_resid == 0)
 		return (0);
@@ -190,6 +201,8 @@ ptsdev_write(struct file *fp, struct uio *uio, struct ucred *active_cred,
 	size_t iblen, rintlen;
 	int error = 0;
 
+	AUDIT_ARG_OBJUUID1(&psc->pts_uuid);
+
 	if (uio->uio_resid == 0)
 		return (0);
 
@@ -260,6 +273,8 @@ ptsdev_ioctl(struct file *fp, u_long cmd, void *data,
 	struct tty *tp = fp->f_data;
 	struct pts_softc *psc = tty_softc(tp);
 	int error = 0, sig;
+
+	AUDIT_ARG_OBJUUID1(&psc->pts_uuid);
 
 	switch (cmd) {
 	case FIODTYPE:
@@ -506,6 +521,8 @@ ptsdev_kqfilter(struct file *fp, struct knote *kn)
 	struct pts_softc *psc = tty_softc(tp);
 	int error = 0;
 
+	AUDIT_ARG_OBJUUID1(&psc->pts_uuid);
+
 	tty_lock(tp);
 
 	switch (kn->kn_filter) {
@@ -531,9 +548,9 @@ ptsdev_stat(struct file *fp, struct stat *sb, struct ucred *active_cred,
     struct thread *td)
 {
 	struct tty *tp = fp->f_data;
-#ifdef PTS_EXTERNAL
+#if defined(PTS_EXTERNAL) || defined(AUDIT)
 	struct pts_softc *psc = tty_softc(tp);
-#endif /* PTS_EXTERNAL */
+#endif /* PTS_EXTERNAL || AUDIT */
 	struct cdev *dev = tp->t_dev;
 
 	/*
@@ -544,6 +561,7 @@ ptsdev_stat(struct file *fp, struct stat *sb, struct ucred *active_cred,
 	 *
 	 * XXX: POSIX also mentions we must fill in st_dev, but how?
 	 */
+	AUDIT_ARG_OBJUUID1(&psc->pts_uuid);
 
 	bzero(sb, sizeof *sb);
 #ifdef PTS_EXTERNAL
@@ -567,6 +585,11 @@ static int
 ptsdev_close(struct file *fp, struct thread *td)
 {
 	struct tty *tp = fp->f_data;
+#ifdef AUDIT
+	struct pts_softc *psc = tty_softc(tp);
+#endif
+
+	AUDIT_ARG_OBJUUID1(&psc->pts_uuid);
 
 	/* Deallocate TTY device. */
 	tty_lock(tp);
@@ -772,6 +795,13 @@ pts_alloc(int fflags, struct thread *td, struct file *fp)
 	/* Expose the slave device as well. */
 	tty_makedev(tp, td->td_ucred, "pts/%u", psc->pts_unit);
 
+	/*
+	 * XXXRW: Slightly worried about races here: could a pts method be
+	 * invoked before we get to this...?  Or only once we've installed the
+	 * file descriptor?
+	 */
+	psc->pts_uuid = tp->t_dev->si_uuid;
+
 	finit(fp, fflags, DTYPE_PTS, tp, &ptsdev_ops);
 
 	return (0);
@@ -818,6 +848,13 @@ pts_alloc_external(int fflags, struct thread *td, struct file *fp,
 
 	/* Expose the slave device as well. */
 	tty_makedev(tp, td->td_ucred, "%s", name);
+
+	/*
+	 * XXXRW: Slightly worried about races here: could a pts method be
+	 * invoked before we get to this...?  Or only once we've installed the
+	 * file descriptor?
+	 */
+	psc->pts_uuid = tp->t_dev->si_uuid;
 
 	finit(fp, fflags, DTYPE_PTS, tp, &ptsdev_ops);
 
