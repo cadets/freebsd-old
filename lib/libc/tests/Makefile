@@ -34,7 +34,7 @@ TESTS_SUBDIRS+=	locale
 .endif
 
 .if ${MK_SSP} != "no"
-#TESTS_SUBDIRS+=	ssp
+TESTS_SUBDIRS+=	ssp
 .endif
 
 .include <bsd.test.mk>
