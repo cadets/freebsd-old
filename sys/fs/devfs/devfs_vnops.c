@@ -522,13 +522,25 @@ loop:
 	}
 
 	/*
-	 * Initialise UUID for devfs vnode.
+	 * Initialise UUID for devfs vnode from the cdev's UUID.
 	 *
-	 * XXXRW: Do we have a way to get the path of a devfs vnode when it is
-	 * not associated with a device...?
+	 * XXXRW: There are cases where a devfs vnode will neither be a
+	 * device, nor have an implied cdev (e.g., because it is a symlink
+	 * created by a device driver).  For example: directories created by
+	 * implication from device names in subdirectories, and symlinks
+	 * created by via symlink(2).  In this cases, we will need to
+	 * synthesise a UUID, likely by adding it to the devfs_dirent on
+	 * creation.  There is therefore an argument that there should be a
+	 * UUID on every devfs_dirent, with a simple propagation from the
+	 * devfs_dirent to the vnode here, rather than from the device, with
+	 * device UUID propagation occurring when the corresponding
+	 * devfs_dirent is created.  In the mean time, these non-device
+	 * vnodes have nil UUIDs.
 	 */
 	if (dev != NULL)
-		vn_uuid_from_data(vp, devtoname(dev), strlen(devtoname(dev)));
+		vp->v_uuid = dev->si_uuid;
+	else if (de->de_cdp != NULL)
+		vp->v_uuid = de->de_cdp->cdp_c.si_uuid;
 #ifdef MAC
 	mac_devfs_vnode_associate(mp, de, vp);
 #endif
