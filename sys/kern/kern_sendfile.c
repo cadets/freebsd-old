@@ -546,6 +546,7 @@ vn_sendfile(struct file *fp, int sockfd, struct uio *hdr_uio,
 		goto out;
 
 #ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&vp->v_uuid);
 	AUDIT_ARG_OBJUUID2(&so->so_uuid);
 #endif
 

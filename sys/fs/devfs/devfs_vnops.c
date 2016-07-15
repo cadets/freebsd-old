@@ -71,6 +71,7 @@ static struct fileops devfs_ops_f;
 #include <fs/devfs/devfs.h>
 #include <fs/devfs/devfs_int.h>
 
+#include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
 
 #include <vm/vm.h>
@@ -522,13 +523,25 @@ loop:
 	}
 
 	/*
-	 * Initialise UUID for devfs vnode.
+	 * Initialise UUID for devfs vnode from the cdev's UUID.
 	 *
-	 * XXXRW: Do we have a way to get the path of a devfs vnode when it is
-	 * not associated with a device...?
+	 * XXXRW: There are cases where a devfs vnode will neither be a
+	 * device, nor have an implied cdev (e.g., because it is a symlink
+	 * created by a device driver).  For example: directories created by
+	 * implication from device names in subdirectories, and symlinks
+	 * created by via symlink(2).  In this cases, we will need to
+	 * synthesise a UUID, likely by adding it to the devfs_dirent on
+	 * creation.  There is therefore an argument that there should be a
+	 * UUID on every devfs_dirent, with a simple propagation from the
+	 * devfs_dirent to the vnode here, rather than from the device, with
+	 * device UUID propagation occurring when the corresponding
+	 * devfs_dirent is created.  In the mean time, these non-device
+	 * vnodes have nil UUIDs.
 	 */
 	if (dev != NULL)
-		vn_uuid_from_data(vp, devtoname(dev), strlen(devtoname(dev)));
+		vp->v_uuid = dev->si_uuid;
+	else if (de->de_cdp != NULL)
+		vp->v_uuid = de->de_cdp->cdp_c.si_uuid;
 #ifdef MAC
 	mac_devfs_vnode_associate(mp, de, vp);
 #endif
@@ -800,10 +813,12 @@ devfs_ioctl_f(struct file *fp, u_long com, void *data, struct ucred *cred, struc
 	fpop = td->td_fpop;
 	error = devfs_fp_check(fp, &dev, &dsw, &ref);
 	if (error != 0) {
+		/* UUID audited in vnode operation layer. */
 		error = vnops.fo_ioctl(fp, com, data, cred, td);
 		return (error);
 	}
 
+	AUDIT_ARG_OBJUUID1(&dev->si_uuid);
 	if (com == FIODTYPE) {
 		*(int *)data = dsw->d_flags & D_TYPEMASK;
 		td->td_fpop = fpop;
@@ -1261,9 +1276,11 @@ devfs_read_f(struct file *fp, struct uio *uio, struct ucred *cred,
 	fpop = td->td_fpop;
 	error = devfs_fp_check(fp, &dev, &dsw, &ref);
 	if (error != 0) {
+		/* UUID audited in vnode operation layer. */
 		error = vnops.fo_read(fp, uio, cred, flags, td);
 		return (error);
 	}
+	AUDIT_ARG_OBJUUID1(&dev->si_uuid);
 	resid = uio->uio_resid;
 	ioflag = fp->f_flag & (O_NONBLOCK | O_DIRECT);
 	if (ioflag & O_DIRECT)
@@ -1675,6 +1692,7 @@ static int
 devfs_stat_f(struct file *fp, struct stat *sb, struct ucred *cred, struct thread *td)
 {
 
+	/* UUID audited in vnode operation layer. */
 	return (vnops.fo_stat(fp, sb, cred, td));
 }
 
@@ -1734,6 +1752,7 @@ static int
 devfs_truncate_f(struct file *fp, off_t length, struct ucred *cred, struct thread *td)
 {
 
+	/* UUID audited in vnode operation layer. */
 	return (vnops.fo_truncate(fp, length, cred, td));
 }
 
@@ -1752,9 +1771,11 @@ devfs_write_f(struct file *fp, struct uio *uio, struct ucred *cred,
 	fpop = td->td_fpop;
 	error = devfs_fp_check(fp, &dev, &dsw, &ref);
 	if (error != 0) {
+		/* UUID audited in vnode operation layer. */
 		error = vnops.fo_write(fp, uio, cred, flags, td);
 		return (error);
 	}
+	AUDIT_ARG_OBJUUID1(&dev->si_uuid);
 	KASSERT(uio->uio_td == td, ("uio_td %p is not td %p", uio->uio_td, td));
 	ioflag = fp->f_flag & (O_NONBLOCK | O_DIRECT | O_FSYNC);
 	if (ioflag & O_DIRECT)
@@ -1831,6 +1852,7 @@ devfs_mmap_f(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
 	if (error != 0)
 		return (error);
 
+	AUDIT_ARG_OBJUUID1(&dev->si_uuid);
 	error = vm_mmap_cdev(td, size, prot, &maxprot, &flags, dev, dsw, &foff,
 	    &object);
 	td->td_fpop = fpop;
