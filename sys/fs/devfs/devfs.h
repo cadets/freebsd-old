@@ -151,6 +151,7 @@ struct devfs_dirent {
 	struct timespec 	de_ctime;
 	struct vnode 		*de_vnode;
 	char 			*de_symlink;
+	struct uuid		de_uuid;
 };
 
 struct devfs_mount {

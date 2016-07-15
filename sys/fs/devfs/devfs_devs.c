@@ -250,6 +250,7 @@ devfs_vmkdir(struct devfs_mount *dmp, char *name, int namelen, struct devfs_dire
 {
 	struct devfs_dirent *dd;
 	struct devfs_dirent *de;
+	struct uuid uuid_nil;
 
 	/* Create the new directory */
 	dd = devfs_newdirent(name, namelen);
@@ -264,6 +265,12 @@ devfs_vmkdir(struct devfs_mount *dmp, char *name, int namelen, struct devfs_dire
 		dd->de_inode = alloc_unr(devfs_inos);
 
 	/*
+	 * Derive directory UUID from the directory's name.
+	 */
+	uuid_generate_nil(&uuid_nil);
+	uuid_generate_version5(&dd->de_uuid, &uuid_nil, name, namelen);
+
+	/*
 	 * "." and ".." are always the two first entries in the
 	 * de_dlist list.
 	 *
@@ -274,6 +281,7 @@ devfs_vmkdir(struct devfs_mount *dmp, char *name, int namelen, struct devfs_dire
 	de->de_flags |= DE_DOT;
 	TAILQ_INSERT_TAIL(&dd->de_dlist, de, de_list);
 	de->de_dir = dd;
+	de->de_uuid = dd->de_uuid;
 
 	/* Create the ".." entry in the new directory. */
 	de = devfs_newdirent("..", 2);
@@ -288,6 +296,7 @@ devfs_vmkdir(struct devfs_mount *dmp, char *name, int namelen, struct devfs_dire
 		TAILQ_INSERT_TAIL(&dotdot->de_dlist, dd, de_list);
 		dotdot->de_links++;
 		devfs_rules_apply(dmp, dd);
+		de->de_uuid = dotdot->de_uuid;
 	}
 
 #ifdef MAC
@@ -621,6 +630,7 @@ devfs_populate_loop(struct devfs_mount *dm, int cleanup)
 		de->de_flags |= de_flags;
 		de->de_inode = cdp->cdp_inode;
 		de->de_cdp = cdp;
+		de->de_uuid = cdp->cdp_c.si_uuid;
 #ifdef MAC
 		mac_devfs_create_device(cdp->cdp_c.si_cred, dm->dm_mount,
 		    &cdp->cdp_c, de);

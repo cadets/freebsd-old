@@ -2931,7 +2931,7 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_rctl_get_limits	AUE_NULL
 #define	SYS_AUE_rctl_add_rule	AUE_NULL
 #define	SYS_AUE_rctl_remove_rule	AUE_NULL
-#define	SYS_AUE_posix_fallocate	AUE_NULL
+#define	SYS_AUE_posix_fallocate	AUE_POSIX_FALLOCATE
 #define	SYS_AUE_posix_fadvise	AUE_NULL
 #define	SYS_AUE_wait6	AUE_WAIT6
 #define	SYS_AUE_cap_rights_limit	AUE_CAP_RIGHTS_LIMIT
