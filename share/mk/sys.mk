@@ -245,6 +245,7 @@ LLVM_INSTR_FLAGS?=
 MAKE		?=	make
 
 .if !defined(%POSIX)
+LLC		?=	llc
 LLVM_LINK	?=	llvm-link
 
 LORDER		?=	lorder
