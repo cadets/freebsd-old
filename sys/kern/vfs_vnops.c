@@ -1145,6 +1145,11 @@ vn_io_fault(struct file *fp, struct uio *uio, struct ucred *active_cred,
 
 	doio = uio->uio_rw == UIO_READ ? vn_read : vn_write;
 	vp = fp->f_vnode;
+	/*
+	 * XXXRW: Audit only UUID rather than full vnode details as we don't
+	 * hold a vnode lock here.
+	 */
+	AUDIT_ARG_OBJUUID1(&vp->v_uuid);
 	foffset_lock_uio(fp, uio, flags);
 	if (do_vn_io_fault(vp, uio)) {
 		args.kind = VN_IO_FAULT_FOP;
@@ -1303,6 +1308,7 @@ vn_truncate(struct file *fp, off_t length, struct ucred *active_cred,
 	if (error)
 		goto out1;
 	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+	AUDIT_ARG_VNODE1(vp);
 	if (vp->v_type == VDIR) {
 		error = EISDIR;
 		goto out;
