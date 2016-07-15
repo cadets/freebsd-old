@@ -1004,7 +1004,7 @@
 				    size_t inbuflen, void *outbufp, \
 				    size_t outbuflen); }
 #ifdef PAD64_REQUIRED
-530	AUE_NULL	STD	{ int freebsd32_posix_fallocate(int fd, \
+530	AUE_POSIX_ALLOCATE	STD	{ int freebsd32_posix_fallocate(int fd, \
 				    int pad, \
 				    uint32_t offset1, uint32_t offset2,\
 				    uint32_t len1, uint32_t len2); }
