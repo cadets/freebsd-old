@@ -1056,7 +1056,7 @@
 				    __socklen_t * __restrict anamelen, \
 				    int flags); }
 542	AUE_PIPE	NOPROTO	{ int pipe2(int *fildes, int flags); }
-543	AUE_NULL	STD	{ int freebsd32_aio_mlock( \
+543	AUE_AIO_MLOCK	STD	{ int freebsd32_aio_mlock( \
 				    struct aiocb32 *aiocbp); }
 #ifdef PAD64_REQUIRED
 544	AUE_NULL	STD	{ int freebsd32_procctl(int idtype, int pad, \

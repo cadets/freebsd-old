@@ -615,7 +615,7 @@ struct sysent freebsd32_sysent[] = {
 	{ AS(chflagsat_args), (sy_call_t *)sys_chflagsat, AUE_CHFLAGSAT, NULL, 0, 0, 0, SY_THR_STATIC },	/* 540 = chflagsat */
 	{ AS(accept4_args), (sy_call_t *)sys_accept4, AUE_ACCEPT, NULL, 0, 0, 0, SY_THR_STATIC },	/* 541 = accept4 */
 	{ AS(pipe2_args), (sy_call_t *)sys_pipe2, AUE_PIPE, NULL, 0, 0, 0, SY_THR_STATIC },	/* 542 = pipe2 */
-	{ AS(freebsd32_aio_mlock_args), (sy_call_t *)freebsd32_aio_mlock, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 543 = freebsd32_aio_mlock */
+	{ AS(freebsd32_aio_mlock_args), (sy_call_t *)freebsd32_aio_mlock, AUE_AIO_MLOCK, NULL, 0, 0, 0, SY_THR_STATIC },	/* 543 = freebsd32_aio_mlock */
 #ifdef PAD64_REQUIRED
 	{ AS(freebsd32_procctl_args), (sy_call_t *)freebsd32_procctl, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 544 = freebsd32_procctl */
 #else

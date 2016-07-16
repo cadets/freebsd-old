@@ -2944,7 +2944,7 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_chflagsat	AUE_CHFLAGSAT
 #define	SYS_AUE_accept4	AUE_ACCEPT
 #define	SYS_AUE_pipe2	AUE_PIPE
-#define	SYS_AUE_aio_mlock	AUE_NULL
+#define	SYS_AUE_aio_mlock	AUE_AIO_MLOCK
 #define	SYS_AUE_procctl	AUE_NULL
 #define	SYS_AUE_ppoll	AUE_POLL
 #define	SYS_AUE_futimens	AUE_FUTIMES
