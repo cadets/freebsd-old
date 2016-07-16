@@ -43,6 +43,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysproto.h>
 #include <sys/wait.h>
 
+#include <security/audit/audit.h>
+
 static int
 protect_setchild(struct thread *td, struct proc *p, int flags)
 {
@@ -415,6 +417,9 @@ kern_procctl_single(struct thread *td, struct proc *p, int com, void *data)
 {
 
 	PROC_LOCK_ASSERT(p, MA_OWNED);
+
+	AUDIT_ARG_PROCESS(p);
+
 	switch (com) {
 	case PROC_SPROTECT:
 		return (protect_set(td, p, *(int *)data));
@@ -444,6 +449,10 @@ kern_procctl(struct thread *td, idtype_t idtype, id_t id, int com, void *data)
 	struct proc *p;
 	int error, first_error, ok;
 	bool tree_locked;
+
+	AUDIT_ARG_VALUE(idtype);
+	AUDIT_ARG_PID(id);
+	AUDIT_ARG_CMD(com);
 
 	switch (com) {
 	case PROC_REAP_ACQUIRE:

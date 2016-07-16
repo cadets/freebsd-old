@@ -1243,6 +1243,18 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		UPATH1_VNODE1_TOKENS;
 		break;
 
+	case AUE_PROCCTL:
+		if (ARG_IS_VALID(kar, ARG_VALUE)) {
+			tok = au_to_arg32(1, "idtype", ar->ar_arg_value);
+			kau_write(rec, tok);
+		}
+		if (ARG_IS_VALID(kar, ARG_CMD)) {
+			tok = au_to_arg32(2, "com", ar->ar_arg_cmd);
+			kau_write(rec, tok);
+		}
+		PROCESS_PID_TOKENS(3);
+		break;
+
 	case AUE_PTRACE:
 		if (ARG_IS_VALID(kar, ARG_CMD)) {
 			tok = au_to_arg32(1, "request", ar->ar_arg_cmd);
