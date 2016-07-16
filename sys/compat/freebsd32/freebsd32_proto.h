@@ -1269,8 +1269,8 @@ int	freebsd10_freebsd32_pipe(struct thread *, struct freebsd10_freebsd32_pipe_ar
 #define	FREEBSD32_SYS_AUE_freebsd32_cap_ioctls_limit	AUE_CAP_IOCTLS_LIMIT
 #define	FREEBSD32_SYS_AUE_freebsd32_cap_ioctls_get	AUE_CAP_IOCTLS_GET
 #define	FREEBSD32_SYS_AUE_freebsd32_aio_mlock	AUE_AIO_MLOCK
-#define	FREEBSD32_SYS_AUE_freebsd32_procctl	AUE_NULL
-#define	FREEBSD32_SYS_AUE_freebsd32_procctl	AUE_NULL
+#define	FREEBSD32_SYS_AUE_freebsd32_procctl	AUE_PROCCTL
+#define	FREEBSD32_SYS_AUE_freebsd32_procctl	AUE_PROCCTL
 #define	FREEBSD32_SYS_AUE_freebsd32_ppoll	AUE_POLL
 #define	FREEBSD32_SYS_AUE_freebsd32_futimens	AUE_FUTIMES
 #define	FREEBSD32_SYS_AUE_freebsd32_utimensat	AUE_FUTIMESAT

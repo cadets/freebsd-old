@@ -617,9 +617,9 @@ struct sysent freebsd32_sysent[] = {
 	{ AS(pipe2_args), (sy_call_t *)sys_pipe2, AUE_PIPE, NULL, 0, 0, 0, SY_THR_STATIC },	/* 542 = pipe2 */
 	{ AS(freebsd32_aio_mlock_args), (sy_call_t *)freebsd32_aio_mlock, AUE_AIO_MLOCK, NULL, 0, 0, 0, SY_THR_STATIC },	/* 543 = freebsd32_aio_mlock */
 #ifdef PAD64_REQUIRED
-	{ AS(freebsd32_procctl_args), (sy_call_t *)freebsd32_procctl, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 544 = freebsd32_procctl */
+	{ AS(freebsd32_procctl_args), (sy_call_t *)freebsd32_procctl, AUE_PROCCTL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 544 = freebsd32_procctl */
 #else
-	{ AS(freebsd32_procctl_args), (sy_call_t *)freebsd32_procctl, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 544 = freebsd32_procctl */
+	{ AS(freebsd32_procctl_args), (sy_call_t *)freebsd32_procctl, AUE_PROCCTL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 544 = freebsd32_procctl */
 #endif
 	{ AS(freebsd32_ppoll_args), (sy_call_t *)freebsd32_ppoll, AUE_POLL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 545 = freebsd32_ppoll */
 	{ AS(freebsd32_futimens_args), (sy_call_t *)freebsd32_futimens, AUE_FUTIMES, NULL, 0, 0, 0, SY_THR_STATIC },	/* 546 = freebsd32_futimens */

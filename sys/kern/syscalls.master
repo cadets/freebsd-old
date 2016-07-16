@@ -979,7 +979,7 @@
 				    int flags); }
 542	AUE_PIPE	STD	{ int pipe2(int *fildes, int flags); }
 543	AUE_AIO_MLOCK	STD	{ int aio_mlock(struct aiocb *aiocbp); }
-544	AUE_NULL	STD	{ int procctl(idtype_t idtype, id_t id, \
+544	AUE_PROCCTL	STD	{ int procctl(idtype_t idtype, id_t id, \
 				    int com, void *data); }
 545	AUE_POLL	STD	{ int ppoll(struct pollfd *fds, u_int nfds, \
 				    const struct timespec *ts, \
