@@ -489,6 +489,8 @@ tmpfs_alloc_vp(struct mount *mp, struct tmpfs_node *node, int lkflag,
 {
 	struct vnode *vp;
 	vm_object_t object;
+	fhandle_t fh;
+	struct tmpfs_fid *tfhp;
 	int error;
 
 	error = 0;
@@ -610,6 +612,19 @@ loop1:
 	}
 	if (vp->v_type != VFIFO)
 		VN_LOCK_ASHARE(vp);
+
+	/*
+	 * Generate a UUID for the vnode using the file's NFS file handle.
+	 * The UUID must never change after this point as it will be exposed
+	 * for outside consumers to use without locking.
+	 */
+	bzero(&fh, sizeof(fh));
+	fh.fh_fsid = mp->mnt_stat.f_fsid;
+	tfhp = (struct tmpfs_fid *)&fh;
+	tfhp->tf_len = sizeof(struct tmpfs_fid);
+	tfhp->tf_id = node->tn_id;
+	tfhp->tf_gen = node->tn_gen;
+	vn_uuid_from_data(vp, &fh, sizeof(fh));
 
 	error = insmntque1(vp, mp, tmpfs_insmntque_dtr, NULL);
 	if (error)
