@@ -2716,8 +2716,8 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_openbsd_poll	AUE_POLL
 #define	SYS_AUE_issetugid	AUE_ISSETUGID
 #define	SYS_AUE_lchown	AUE_LCHOWN
-#define	SYS_AUE_aio_read	AUE_NULL
-#define	SYS_AUE_aio_write	AUE_NULL
+#define	SYS_AUE_aio_read	AUE_READ
+#define	SYS_AUE_aio_write	AUE_WRITE
 #define	SYS_AUE_lio_listio	AUE_NULL
 #define	SYS_AUE_getdents	AUE_O_GETDENTS
 #define	SYS_AUE_lchmod	AUE_LCHMOD
@@ -2743,12 +2743,12 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_getsid	AUE_GETSID
 #define	SYS_AUE_setresuid	AUE_SETRESUID
 #define	SYS_AUE_setresgid	AUE_SETRESGID
-#define	SYS_AUE_aio_return	AUE_NULL
-#define	SYS_AUE_aio_suspend	AUE_NULL
-#define	SYS_AUE_aio_cancel	AUE_NULL
-#define	SYS_AUE_aio_error	AUE_NULL
-#define	SYS_AUE_freebsd6_aio_read	AUE_NULL
-#define	SYS_AUE_freebsd6_aio_write	AUE_NULL
+#define	SYS_AUE_aio_return	AUE_AIO_RETURN
+#define	SYS_AUE_aio_suspend	AUE_AIO_SUSPEND
+#define	SYS_AUE_aio_cancel	AUE_AIO_CANCEL
+#define	SYS_AUE_aio_error	AUE_AIO_ERROR
+#define	SYS_AUE_freebsd6_aio_read	AUE_AIO_READ
+#define	SYS_AUE_freebsd6_aio_write	AUE_AIO_WRITE
 #define	SYS_AUE_freebsd6_lio_listio	AUE_NULL
 #define	SYS_AUE_yield	AUE_NULL
 #define	SYS_AUE_mlockall	AUE_MLOCKALL
@@ -2786,7 +2786,7 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_extattr_set_file	AUE_EXTATTR_SET_FILE
 #define	SYS_AUE_extattr_get_file	AUE_EXTATTR_GET_FILE
 #define	SYS_AUE_extattr_delete_file	AUE_EXTATTR_DELETE_FILE
-#define	SYS_AUE_aio_waitcomplete	AUE_NULL
+#define	SYS_AUE_aio_waitcomplete	AUE_AIO_WAITCOMPLETE
 #define	SYS_AUE_getresuid	AUE_GETRESUID
 #define	SYS_AUE_getresgid	AUE_GETRESGID
 #define	SYS_AUE_kqueue	AUE_KQUEUE
@@ -2872,7 +2872,7 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_kmq_unlink	AUE_NULL
 #define	SYS_AUE_abort2	AUE_NULL
 #define	SYS_AUE_thr_set_name	AUE_NULL
-#define	SYS_AUE_aio_fsync	AUE_NULL
+#define	SYS_AUE_aio_fsync	AUE_AIO_FSYNC
 #define	SYS_AUE_rtprio_thread	AUE_RTPRIO
 #define	SYS_AUE_sctp_peeloff	AUE_NULL
 #define	SYS_AUE_sctp_generic_sendmsg	AUE_NULL
