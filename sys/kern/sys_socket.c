@@ -787,6 +787,9 @@ soo_aio_queue(struct file *fp, struct kaiocb *job)
 	int error;
 
 	so = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
 	error = (*so->so_proto->pr_usrreqs->pru_aio_queue)(so, job);
 	if (error == 0)
 		return (0);
