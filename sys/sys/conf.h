@@ -45,6 +45,7 @@
 #else
 #include <sys/queue.h>
 #endif
+#include <sys/uuid.h>
 
 struct snapdata;
 struct devfs_dirent;
@@ -87,6 +88,7 @@ struct cdev {
 		struct snapdata *__sid_snapdata;
 	} __si_u;
 	char		si_name[SPECNAMELEN + 1];
+	struct uuid	si_uuid;
 };
 
 #define	si_snapdata	__si_u.__sid_snapdata

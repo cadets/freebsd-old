@@ -4455,7 +4455,11 @@ kern_posix_fallocate(struct thread *td, int fd, off_t offset, off_t len)
 	cap_rights_t rights;
 	off_t olen, ooffset;
 	int error;
+#ifdef AUDIT
+	int audited_vnode1 = 0;
+#endif
 
+	AUDIT_ARG_FD(fd);
 	if (offset < 0 || len <= 0)
 		return (EINVAL);
 	/* Check for wrap. */
@@ -4497,6 +4501,12 @@ kern_posix_fallocate(struct thread *td, int fd, off_t offset, off_t len)
 			vn_finished_write(mp);
 			break;
 		}
+#ifdef AUDIT
+		if (!audited_vnode1) {
+			AUDIT_ARG_VNODE1(vp);
+			audited_vnode1 = 1;
+		}
+#endif
 #ifdef MAC
 		error = mac_vnode_check_write(td->td_ucred, fp->f_cred, vp);
 		if (error == 0)

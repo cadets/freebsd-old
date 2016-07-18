@@ -71,6 +71,7 @@ static struct fileops devfs_ops_f;
 #include <fs/devfs/devfs.h>
 #include <fs/devfs/devfs_int.h>
 
+#include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
 
 #include <vm/vm.h>
@@ -522,13 +523,12 @@ loop:
 	}
 
 	/*
-	 * Initialise UUID for devfs vnode.
-	 *
-	 * XXXRW: Do we have a way to get the path of a devfs vnode when it is
-	 * not associated with a device...?
+	 * Initialise UUID for devfs vnode from the devfs_dirent's UUID, which
+	 * for devices will originate in the cdev, and for devfs-local
+	 * subdirectories will be derived from the directory's name, and for
+	 * user-created symlinks, randomly derived.
 	 */
-	if (dev != NULL)
-		vn_uuid_from_data(vp, devtoname(dev), strlen(devtoname(dev)));
+	vp->v_uuid = de->de_uuid;
 #ifdef MAC
 	mac_devfs_vnode_associate(mp, de, vp);
 #endif
@@ -800,10 +800,12 @@ devfs_ioctl_f(struct file *fp, u_long com, void *data, struct ucred *cred, struc
 	fpop = td->td_fpop;
 	error = devfs_fp_check(fp, &dev, &dsw, &ref);
 	if (error != 0) {
+		/* UUID audited in vnode operation layer. */
 		error = vnops.fo_ioctl(fp, com, data, cred, td);
 		return (error);
 	}
 
+	AUDIT_ARG_OBJUUID1(&dev->si_uuid);
 	if (com == FIODTYPE) {
 		*(int *)data = dsw->d_flags & D_TYPEMASK;
 		td->td_fpop = fpop;
@@ -1261,9 +1263,11 @@ devfs_read_f(struct file *fp, struct uio *uio, struct ucred *cred,
 	fpop = td->td_fpop;
 	error = devfs_fp_check(fp, &dev, &dsw, &ref);
 	if (error != 0) {
+		/* UUID audited in vnode operation layer. */
 		error = vnops.fo_read(fp, uio, cred, flags, td);
 		return (error);
 	}
+	AUDIT_ARG_OBJUUID1(&dev->si_uuid);
 	resid = uio->uio_resid;
 	ioflag = fp->f_flag & (O_NONBLOCK | O_DIRECT);
 	if (ioflag & O_DIRECT)
@@ -1675,6 +1679,7 @@ static int
 devfs_stat_f(struct file *fp, struct stat *sb, struct ucred *cred, struct thread *td)
 {
 
+	/* UUID audited in vnode operation layer. */
 	return (vnops.fo_stat(fp, sb, cred, td));
 }
 
@@ -1705,6 +1710,11 @@ devfs_symlink(struct vop_symlink_args *ap)
 	i = strlen(ap->a_target) + 1;
 	de->de_symlink = malloc(i, M_DEVFS, M_WAITOK);
 	bcopy(ap->a_target, de->de_symlink, i);
+
+	/*
+	 * Use a random UUID for user-generated symlink.
+	 */
+	(void)kern_uuidgen(&de->de_uuid, 1);
 #ifdef MAC
 	mac_devfs_create_symlink(ap->a_cnp->cn_cred, dmp->dm_mount, dd, de);
 #endif
@@ -1734,6 +1744,7 @@ static int
 devfs_truncate_f(struct file *fp, off_t length, struct ucred *cred, struct thread *td)
 {
 
+	/* UUID audited in vnode operation layer. */
 	return (vnops.fo_truncate(fp, length, cred, td));
 }
 
@@ -1752,9 +1763,11 @@ devfs_write_f(struct file *fp, struct uio *uio, struct ucred *cred,
 	fpop = td->td_fpop;
 	error = devfs_fp_check(fp, &dev, &dsw, &ref);
 	if (error != 0) {
+		/* UUID audited in vnode operation layer. */
 		error = vnops.fo_write(fp, uio, cred, flags, td);
 		return (error);
 	}
+	AUDIT_ARG_OBJUUID1(&dev->si_uuid);
 	KASSERT(uio->uio_td == td, ("uio_td %p is not td %p", uio->uio_td, td));
 	ioflag = fp->f_flag & (O_NONBLOCK | O_DIRECT | O_FSYNC);
 	if (ioflag & O_DIRECT)
@@ -1831,6 +1844,7 @@ devfs_mmap_f(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
 	if (error != 0)
 		return (error);
 
+	AUDIT_ARG_OBJUUID1(&dev->si_uuid);
 	error = vm_mmap_cdev(td, size, prot, &maxprot, &flags, dev, dsw, &foff,
 	    &object);
 	td->td_fpop = fpop;

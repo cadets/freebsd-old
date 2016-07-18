@@ -44,6 +44,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/ctype.h>
 #include <sys/ucred.h>
 #include <sys/taskqueue.h>
+#include <sys/uuid.h>
+
 #include <machine/stdarg.h>
 
 #include <fs/devfs/devfs_int.h>
@@ -755,6 +757,7 @@ make_dev_sv(struct make_dev_args *args1, struct cdev **dres,
 {
 	struct cdev *dev, *dev_new;
 	struct make_dev_args args;
+	struct uuid uuid_nil;
 	int res;
 
 	bzero(&args, sizeof(args));
@@ -816,6 +819,10 @@ make_dev_sv(struct make_dev_args *args1, struct cdev **dres,
 	dev->si_uid = args.mda_uid;
 	dev->si_gid = args.mda_gid;
 	dev->si_mode = args.mda_mode;
+
+	uuid_generate_nil(&uuid_nil);
+	uuid_generate_version5(&dev->si_uuid, &uuid_nil, dev->si_name,
+	    strlen(dev->si_name));
 
 	devfs_create(dev);
 	clean_unrhdrl(devfs_inos);
@@ -953,6 +960,7 @@ make_dev_alias_v(int flags, struct cdev **cdev, struct cdev *pdev,
     const char *fmt, va_list ap)
 {
 	struct cdev *dev;
+	struct uuid uuid_nil;
 	int error;
 
 	KASSERT(pdev != NULL, ("make_dev_alias_v: pdev is NULL"));
@@ -978,6 +986,11 @@ make_dev_alias_v(int flags, struct cdev **cdev, struct cdev *pdev,
 		return (error);
 	}
 	dev->si_flags |= SI_NAMED;
+
+	uuid_generate_nil(&uuid_nil);
+	uuid_generate_version5(&dev->si_uuid, &uuid_nil, dev->si_name,
+	    strlen(dev->si_name));
+
 	devfs_create(dev);
 	dev_dependsl(pdev, dev);
 	clean_unrhdrl(devfs_inos);
@@ -1296,6 +1309,7 @@ clone_create(struct clonedevs **cdp, struct cdevsw *csw, int *up,
 	struct clonedevs *cd;
 	struct cdev *dev, *ndev, *dl, *de;
 	struct make_dev_args args;
+	struct uuid uuid_nil;
 	int unit, low, u;
 
 	KASSERT(*cdp != NULL,
@@ -1369,6 +1383,11 @@ clone_create(struct clonedevs **cdp, struct cdevsw *csw, int *up,
 		LIST_INSERT_HEAD(&cd->head, dev, si_clone);
 	dev->si_flags |= SI_CLONELIST;
 	*up = unit;
+
+	uuid_generate_nil(&uuid_nil);
+	uuid_generate_version5(&dev->si_uuid, &uuid_nil, dev->si_name,
+	    strlen(dev->si_name));
+
 	dev_unlock_and_free();
 	return (1);
 }

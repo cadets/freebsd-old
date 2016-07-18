@@ -953,6 +953,7 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 	case AUE_GETDIRENTRIESATTR:
 	case AUE_LSEEK:
 	case AUE_POLL:
+	case AUE_POSIX_FALLOCATE:
 	case AUE_PREAD:
 	case AUE_PWRITE:
 	case AUE_READ:
@@ -1240,6 +1241,18 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		}
 		ATFD1_TOKENS(1);
 		UPATH1_VNODE1_TOKENS;
+		break;
+
+	case AUE_PROCCTL:
+		if (ARG_IS_VALID(kar, ARG_VALUE)) {
+			tok = au_to_arg32(1, "idtype", ar->ar_arg_value);
+			kau_write(rec, tok);
+		}
+		if (ARG_IS_VALID(kar, ARG_CMD)) {
+			tok = au_to_arg32(2, "com", ar->ar_arg_cmd);
+			kau_write(rec, tok);
+		}
+		PROCESS_PID_TOKENS(3);
 		break;
 
 	case AUE_PTRACE:
