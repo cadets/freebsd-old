@@ -102,7 +102,6 @@ void	 audit_arg_objuuid2(struct uuid *uuid);
 void	 audit_arg_owner(uid_t uid, gid_t gid);
 void	 audit_arg_pid(pid_t pid);
 void	 audit_arg_process(struct proc *p);
-void	 audit_arg_procuuid(struct proc *p);
 void	 audit_arg_signum(u_int signum);
 void	 audit_arg_socket(int sodomain, int sotype, int soprotocol);
 void	 audit_arg_sockaddr(struct thread *td, int dirfd, struct sockaddr *sa);
@@ -135,6 +134,11 @@ void	 audit_cred_proc1(struct ucred *cred);
 void	 audit_proc_coredump(struct thread *td, char *path, int errcode);
 void	 audit_thread_alloc(struct thread *td);
 void	 audit_thread_free(struct thread *td);
+
+#ifdef KDTRACE_HOOKS
+void	 audit_ret_objuuid1(struct uuid *uuid);
+void	 audit_ret_objuuid2(struct uuid *uuid);
+#endif
 
 /*
  * Define macros to wrap the audit_arg_* calls by checking the global
@@ -255,9 +259,14 @@ void	 audit_thread_free(struct thread *td);
 } while (0)
 
 #ifdef KDTRACE_HOOKS
-#define	AUDIT_ARG_PROCUUID(p) do {					\
+#define	AUDIT_RET_OBJUUID1(p) do {					\
 	if (AUDITING_TD(curthread))					\
-		audit_arg_procuuid((p));				\
+		audit_ret_objuuid1((p));				\
+} while (0)
+
+#define	AUDIT_RET_OBJUUID2(p) do {					\
+	if (AUDITING_TD(curthread))					\
+		audit_ret_objuuid2((p));				\
 } while (0)
 #endif
 
@@ -390,8 +399,10 @@ void	 audit_thread_free(struct thread *td);
 #define	AUDIT_ARG_PID(pid)
 #define	AUDIT_ARG_PROCESS(p)
 #ifdef KDTRACE_HOOKS
-#define	AUDIT_ARG_PROCUUID(p)
+#define	AUDIT_RET_OBJUUID1(p)
+#define	AUDIT_RET_OBJUUID2(p)
 #endif
+
 #define	AUDIT_ARG_RGID(rgid)
 #define	AUDIT_ARG_RIGHTS(rights)
 #define	AUDIT_ARG_FCNTL_RIGHTS(fcntlrights)

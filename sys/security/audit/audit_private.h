@@ -180,6 +180,7 @@ struct audit_record {
 	struct timespec		ar_starttime;
 	struct timespec		ar_endtime;
 	u_int64_t		ar_valid_arg;  /* Bitmask of valid arguments */
+	u_int64_t		ar_valid_ret;/* Bitmask of valid return vals. */
 
 	/* Audit subject information. */
 	struct xucred		ar_subj_cred;
@@ -205,9 +206,6 @@ struct audit_record {
 	gid_t			ar_arg_rgid;
 	gid_t			ar_arg_sgid;
 	pid_t			ar_arg_pid;
-#ifdef KDTRACE_HOOKS
-	struct uuid		ar_arg_procuuid;
-#endif
 	pid_t			ar_arg_asid;
 	struct au_tid		ar_arg_termid;
 	struct au_tid_addr	ar_arg_termid_addr;
@@ -256,6 +254,11 @@ struct audit_record {
 	cap_rights_t		ar_arg_rights;
 	uint32_t		ar_arg_fcntl_rights;
 	char			ar_jailname[MAXHOSTNAMELEN];
+
+#ifdef KDTRACE_HOOKS
+	struct uuid		ar_ret_objuuid1;
+	struct uuid		ar_ret_objuuid2;
+#endif
 };
 
 /*
@@ -317,11 +320,14 @@ struct audit_record {
 #define	ARG_ATFD2		0x0008000000000000ULL
 #define	ARG_RIGHTS		0x0010000000000000ULL
 #define	ARG_FCNTL_RIGHTS	0x0020000000000000ULL
-#define	ARG_PROCUUID		0x0040000000000000ULL
+/* Gap:				0x0040000000000000ULL */
 #define	ARG_OBJUUID1		0x0080000000000000ULL
 #define	ARG_OBJUUID2		0x0100000000000000ULL
 #define	ARG_NONE		0x0000000000000000ULL
 #define	ARG_ALL			0xFFFFFFFFFFFFFFFFULL
+
+#define	RET_OBJUUID1		0x0000000000000001ULL
+#define	RET_OBJUUID2		0x0000000000000002ULL
 
 #define	ARG_IS_VALID(kar, arg)	((kar)->k_ar.ar_valid_arg & (arg))
 #define	ARG_SET_VALID(kar, arg) do {					\
@@ -329,6 +335,14 @@ struct audit_record {
 } while (0)
 #define	ARG_CLEAR_VALID(kar, arg) do {					\
 	(kar)->k_ar.ar_valid_arg &= ~(arg);				\
+} while (0)
+
+#define	RET_IS_VALID(kar, ret)	((kar)->k_ar.ar_valid_ret & (reg))
+#define	RET_SET_VALID(kar, ret) do {					\
+	(kar)->k_ar.ar_valid_ret |= (ret);				\
+} while (0)
+#define	RET_CLEAR_VALID(kar, ret) do {					\
+	(kar)->k_ar.ar_valid_ret &= ~(ret);				\
 } while (0)
 
 /*
