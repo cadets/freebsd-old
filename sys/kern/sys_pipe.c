@@ -370,8 +370,8 @@ pipe_paircreate(struct thread *td, struct pipepair **p_pp)
 	(void)kern_uuidgen(&rpipe->pipe_uuid, 1);
 	(void)kern_uuidgen(&wpipe->pipe_uuid, 1);
 #ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&rpipe->pipe_uuid);
-	AUDIT_ARG_OBJUUID2(&wpipe->pipe_uuid);
+	AUDIT_RET_OBJUUID1(&rpipe->pipe_uuid);
+	AUDIT_RET_OBJUUID2(&wpipe->pipe_uuid);
 #endif
 
 	/* Only the forward direction pipe is backed by default */

@@ -350,6 +350,10 @@ vn_open_vnode(struct vnode *vp, int fmode, struct ucred *cred,
 	if ((error = VOP_OPEN(vp, fmode, cred, td, fp)) != 0)
 		return (error);
 
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_OBJUUID1(&vp->v_uuid);
+#endif
+
 	if (fmode & (O_EXLOCK | O_SHLOCK)) {
 		KASSERT(fp != NULL, ("open with flock requires fp"));
 		lock_flags = VOP_ISLOCKED(vp);
