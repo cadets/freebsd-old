@@ -337,7 +337,7 @@ struct audit_record {
 	(kar)->k_ar.ar_valid_arg &= ~(arg);				\
 } while (0)
 
-#define	RET_IS_VALID(kar, ret)	((kar)->k_ar.ar_valid_ret & (reg))
+#define	RET_IS_VALID(kar, ret)	((kar)->k_ar.ar_valid_ret & (ret))
 #define	RET_SET_VALID(kar, ret) do {					\
 	(kar)->k_ar.ar_valid_ret |= (ret);				\
 } while (0)
