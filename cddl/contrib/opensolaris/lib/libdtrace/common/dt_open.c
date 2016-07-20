@@ -528,6 +528,8 @@ static const dt_ident_t _dtrace_globals[] = {
 	&dt_idops_type, "uint32_t" },
 { "usym", DT_IDENT_ACTFUNC, 0, DT_ACT_USYM, DT_ATTR_STABCMN,
 	DT_VERS_1_2, &dt_idops_func, "_usymaddr(uintptr_t)" },
+{ "uuidtostr", DT_IDENT_FUNC, 0, DIF_SUBR_UUIDTOSTR, DT_ATTR_STABCMN, DT_VERS_1_12_2,
+	&dt_idops_func, "string(uintptr_t)" },
 { "vtimestamp", DT_IDENT_SCALAR, 0, DIF_VAR_VTIMESTAMP,
 	DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_type, "uint64_t" },

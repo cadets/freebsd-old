@@ -451,33 +451,14 @@ audit_arg_process(struct proc *p)
 	/*
 	 * If we are auditing a process argument, we almost certainly want its
 	 * UUID as well as PID/etc.
+	 *
+	 * XXXRW: Assume for now that it will be object UUID 1 -- but we might
+	 * need to change that in the future.
 	 */
 #ifdef KDTRACE_HOOKS
-	bcopy(&p->p_uuid, &ar->k_ar.ar_arg_procuuid,
-	    sizeof(ar->k_ar.ar_arg_procuuid));
-	ARG_SET_VALID(ar, ARG_PROCUUID);
+	audit_arg_objuuid1(&p->p_uuid);
 #endif
 }
-
-#ifdef KDTRACE_HOOKS
-void
-audit_arg_procuuid(struct proc *p)
-{
-	struct kaudit_record *ar;
-
-	KASSERT(p != NULL, ("audit_arg_procuuid: p == NULL"));
-	/* XXXRW: Assertion that UUID is initialised? */
-
-	ar = currecord();
-	if (ar == NULL)
-		return;
-
-	/* Process lock not needed as static after creation. */
-	bcopy(&p->p_uuid, &ar->k_ar.ar_arg_procuuid,
-	    sizeof(ar->k_ar.ar_arg_procuuid));
-	ARG_SET_VALID(ar, ARG_PROCUUID);
-}
-#endif
 
 void
 audit_arg_signum(u_int signum)
@@ -991,3 +972,39 @@ audit_sysclose(struct thread *td, int fd)
 	VOP_UNLOCK(vp, 0);
 	fdrop(fp, td);
 }
+
+#ifdef KDTRACE_HOOKS
+void
+audit_ret_objuuid1(struct uuid *uuid)
+{
+	struct kaudit_record *ar;
+
+	KASSERT(uuid != NULL, ("%s: uuid == NULL", __func__));
+	/* XXXRW: Assertion that UUID is initialised? */
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	bcopy(uuid, &ar->k_ar.ar_ret_objuuid1,
+	    sizeof(ar->k_ar.ar_ret_objuuid1));
+	RET_SET_VALID(ar, RET_OBJUUID1);
+}
+
+void
+audit_ret_objuuid2(struct uuid *uuid)
+{
+	struct kaudit_record *ar;
+
+	KASSERT(uuid != NULL, ("%s: uuid == NULL", __func__));
+	/* XXXRW: Assertion that UUID is initialised? */
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	bcopy(uuid, &ar->k_ar.ar_ret_objuuid2,
+	    sizeof(ar->k_ar.ar_ret_objuuid2));
+	RET_SET_VALID(ar, RET_OBJUUID2);
+}
+#endif

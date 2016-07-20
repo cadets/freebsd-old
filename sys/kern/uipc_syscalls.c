@@ -161,7 +161,7 @@ sys_socket(td, uap)
 		fdclose(td, fp, fd);
 	} else {
 #ifdef KDTRACE_HOOKS
-		AUDIT_ARG_OBJUUID1(&so->so_uuid);
+		AUDIT_RET_OBJUUID1(&so->so_uuid);
 #endif
 		finit(fp, FREAD | FWRITE | fflag, DTYPE_SOCKET, so, &socketops);
 		if ((fflag & FNONBLOCK) != 0)
@@ -672,8 +672,8 @@ kern_socketpair(struct thread *td, int domain, int type, int protocol,
 		goto free1;
 
 #ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&so1->so_uuid);
-	AUDIT_ARG_OBJUUID2(&so2->so_uuid);
+	AUDIT_RET_OBJUUID1(&so1->so_uuid);
+	AUDIT_RET_OBJUUID2(&so2->so_uuid);
 #endif
 	/* On success extra reference to `fp1' and 'fp2' is set by falloc. */
 	error = falloc(td, &fp1, &fd, oflag);
