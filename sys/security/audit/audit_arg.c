@@ -979,7 +979,7 @@ audit_ret_objuuid1(struct uuid *uuid)
 {
 	struct kaudit_record *ar;
 
-	KASSERT(p != NULL, ("%s: uuid == NULL", __func__));
+	KASSERT(uuid != NULL, ("%s: uuid == NULL", __func__));
 	/* XXXRW: Assertion that UUID is initialised? */
 
 	ar = currecord();
@@ -996,7 +996,7 @@ audit_ret_objuuid2(struct uuid *uuid)
 {
 	struct kaudit_record *ar;
 
-	KASSERT(p != NULL, ("%s: uuid == NULL", __func__));
+	KASSERT(uuid != NULL, ("%s: uuid == NULL", __func__));
 	/* XXXRW: Assertion that UUID is initialised? */
 
 	ar = currecord();
