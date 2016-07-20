@@ -139,6 +139,7 @@
 #include <sys/random.h>
 
 #include "dtrace_xoroshiro128_plus.h"
+#include "dtrace_uuid.h"
 
 /*
  * DTrace Tunable Variables
@@ -5353,6 +5354,40 @@ dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 		break;
 	}
 
+	case DIF_SUBR_UUIDTOSTR: {
+		uintptr_t src = tupregs[0].dttk_value;
+		char *dest = (char *)mstate->dtms_scratch_ptr;
+		char uuid[16];
+		int len = sizeof(uuid);
+		char buf[38];
+		uint64_t size = sizeof(buf);
+		struct uuid_private *id;
+		int i;
+
+		if (!dtrace_canload(src, len, mstate, vstate)) {
+			regs[rd] = 0;
+			break;
+		}
+
+		for (i = 0; i < len; i++)
+			uuid[i] = dtrace_load8(src + i);
+
+		if (!DTRACE_INSCRATCH(mstate, size)) {
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
+			regs[rd] = 0;
+			break;
+		}
+
+		/* XXX-AT: Probably shouldn't use snprintf. */
+		id = (struct uuid_private *)&uuid;
+		snprintf(dest, size, "%08x-%04x-%04x-%04x-%04x%04x%04x",
+		    id->time.x.low, id->time.x.mid, id->time.x.hi, be16toh(id->seq),
+		    be16toh(id->node[0]), be16toh(id->node[1]), be16toh(id->node[2]));
+		regs[rd] = (uintptr_t)dest;
+		mstate->dtms_scratch_ptr += size;
+		break;
+	}
+
 	case DIF_SUBR_HTONS:
 	case DIF_SUBR_NTOHS:
 #if BYTE_ORDER == BIG_ENDIAN
@@ -10229,6 +10264,7 @@ dtrace_difo_validate_helper(dtrace_difo_t *dp)
 			    subr == DIF_SUBR_JSON ||
 			    subr == DIF_SUBR_LLTOSTR ||
 			    subr == DIF_SUBR_STRTOLL ||
+			    subr == DIF_SUBR_UUIDTOSTR ||
 			    subr == DIF_SUBR_RINDEX ||
 			    subr == DIF_SUBR_STRCHR ||
 			    subr == DIF_SUBR_STRJOIN ||
