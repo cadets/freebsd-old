@@ -46,3 +46,9 @@ options 	COMPAT_FREEBSD10	# Compatible with FreeBSD10
 options 	KDTRACE_HOOKS		# Kernel DTrace hooks
 options 	DDB_CTF			# all architectures - kernel ELF linker loads CTF data
 makeoptions	WITH_CTF=1
+
+# Debugging support.  Always need this:
+makeoptions	DEBUG=-g		# Build kernel with gdb(1) debug symbols
+options 	KDB			# Enable kernel debugger support.
+options 	KDB_TRACE		# Print a stack trace for a panic.
+
