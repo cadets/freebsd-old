@@ -221,9 +221,11 @@ CLEANFILES+=	${SOBJS}
 .if defined(SHLIB_NAME)
 _LIBS+=		${SHLIB_NAME}
 
+LD_NO_FATAL_WARNS?=-Wl,--no-fatal-warnings
+
 SOLINKOPTS+=	-shared -Wl,-x
 .if defined(LD_FATAL_WARNINGS) && ${LD_FATAL_WARNINGS} == "no"
-SOLINKOPTS+=	-Wl,--no-fatal-warnings
+SOLINKOPTS+=	${LD_NO_FATAL_WARNS}
 .else
 SOLINKOPTS+=	-Wl,--fatal-warnings
 .endif
