@@ -226,6 +226,11 @@ void	 audit_ret_objuuid2(struct uuid *uuid);
 		audit_arg_groupset((gidset), (gidset_size));		\
 } while (0)
 
+#define	AUDIT_ARG_LOGIN(login) do {					\
+	if (AUDITING_TD(curthread))					\
+		audit_arg_login((login));				\
+} while (0)
+
 #define	AUDIT_ARG_MODE(mode) do {					\
 	if (AUDITING_TD(curthread))					\
 		audit_arg_mode((mode));					\
@@ -392,6 +397,7 @@ void	 audit_ret_objuuid2(struct uuid *uuid);
 #define	AUDIT_ARG_FFLAGS(fflags)
 #define	AUDIT_ARG_GID(gid)
 #define	AUDIT_ARG_GROUPSET(gidset, gidset_size)
+#define	AUDIT_ARG_LOGIN(login)
 #define	AUDIT_ARG_MODE(mode)
 #define	AUDIT_ARG_OBJUUID1(uuid)
 #define	AUDIT_ARG_OBJUUID2(uuid)
