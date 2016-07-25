@@ -198,7 +198,7 @@ SYSTEM_LD_TAIL= @${OBJCOPY} --strip-symbol gcc2_compiled. ${.TARGET} ; \
 SYSTEM_DEP+= ${LDSCRIPT}
 
 # Calculate path for .m files early, if needed.
-.if !defined(__MPATH)
+.if !defined(NO_MODULES) && !defined(__MPATH)
 __MPATH!=find ${S:tA}/ -name \*_if.m
 .endif
 
@@ -218,7 +218,9 @@ MKMODULESENV+=	MODULES_OVERRIDE="${MODULES_OVERRIDE}"
 .if defined(DEBUG)
 MKMODULESENV+=	DEBUG_FLAGS="${DEBUG}"
 .endif
+.if !defined(NO_MODULES)
 MKMODULESENV+=	__MPATH="${__MPATH}"
+.endif
 
 # Architecture and output format arguments for objdump to convert image to
 # object file
