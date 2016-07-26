@@ -769,11 +769,11 @@
 				    acl_type_t type, struct acl *aclp); }
 429	AUE_SIGWAIT	STD	{ int sigwait(const sigset_t *set, \
 				    int *sig); }
-430	AUE_NULL	STD	{ int thr_create(ucontext_t *ctx, long *id, \
+430	AUE_THR_CREATE	STD	{ int thr_create(ucontext_t *ctx, long *id, \
 				    int flags); }
-431	AUE_NULL	STD	{ void thr_exit(long *state); }
+431	AUE_THR_EXIT	STD	{ void thr_exit(long *state); }
 432	AUE_NULL	STD	{ int thr_self(long *id); }
-433	AUE_NULL	STD	{ int thr_kill(long id, int sig); }
+433	AUE_THR_KILL	STD	{ int thr_kill(long id, int sig); }
 434	AUE_NULL	UNIMPL	nosys
 435	AUE_NULL	UNIMPL	nosys
 436	AUE_NULL	STD	{ int jail_attach(int jid); }
@@ -810,7 +810,7 @@
 453	AUE_AUDITCTL	STD	{ int auditctl(char *path); }
 454	AUE_NULL	STD	{ int _umtx_op(void *obj, int op, \
 				    u_long val, void *uaddr1, void *uaddr2); }
-455	AUE_NULL	STD	{ int thr_new(struct thr_param *param, \
+455	AUE_THR_NEW	STD	{ int thr_new(struct thr_param *param, \
 				    int param_size); }
 456	AUE_NULL	STD	{ int sigqueue(pid_t pid, int signum, void *value); }
 457	AUE_NULL	NOSTD	{ int kmq_open(const char *path, int flags, \
@@ -858,7 +858,7 @@
 				    int whence); }
 479	AUE_TRUNCATE	STD	{ int truncate(char *path, off_t length); }
 480	AUE_FTRUNCATE	STD	{ int ftruncate(int fd, off_t length); }
-481	AUE_KILL	STD	{ int thr_kill2(pid_t pid, long id, int sig); }
+481	AUE_THR_KILL2	STD	{ int thr_kill2(pid_t pid, long id, int sig); }
 482	AUE_SHMOPEN	STD	{ int shm_open(const char *path, int flags, \
 				    mode_t mode); }
 483	AUE_SHMUNLINK	STD	{ int shm_unlink(const char *path); }

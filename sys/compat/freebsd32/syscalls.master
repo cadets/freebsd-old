@@ -773,10 +773,10 @@
 				    acl_type_t type, struct acl *aclp); }
 429	AUE_SIGWAIT	NOPROTO	{ int sigwait(const sigset_t *set, \
 				    int *sig); }
-430	AUE_NULL	UNIMPL	thr_create;
-431	AUE_NULL	NOPROTO	{ void thr_exit(long *state); }
+430	AUE_THR_CREATE	UNIMPL	thr_create;
+431	AUE_THR_EXIT	NOPROTO	{ void thr_exit(long *state); }
 432	AUE_NULL	NOPROTO	{ int thr_self(long *id); }
-433	AUE_NULL	NOPROTO	{ int thr_kill(long id, int sig); }
+433	AUE_THR_KILL	NOPROTO	{ int thr_kill(long id, int sig); }
 434	AUE_NULL	UNIMPL	nosys
 435	AUE_NULL	UNIMPL	nosys
 436	AUE_NULL	NOPROTO	{ int jail_attach(int jid); }
@@ -814,7 +814,7 @@
 454	AUE_NULL	STD	{ int freebsd32_umtx_op(void *obj, int op,\
 				    u_long val, void *uaddr, \
 				    void *uaddr2); }
-455	AUE_NULL	STD	{ int freebsd32_thr_new(	\
+455	AUE_THR_NEW	STD	{ int freebsd32_thr_new(	\
 				    struct thr_param32 *param,	\
 				    int param_size); }
 456	AUE_NULL	NOPROTO	{ int sigqueue(pid_t pid, int signum, \
@@ -897,7 +897,7 @@
 480	AUE_FTRUNCATE	STD	{ int freebsd32_ftruncate(int fd, \
 				    uint32_t length1, uint32_t length2); }
 #endif
-481	AUE_KILL	NOPROTO	{ int thr_kill2(pid_t pid, long id, int sig); }
+481	AUE_THR_KILL2	NOPROTO	{ int thr_kill2(pid_t pid, long id, int sig); }
 482	AUE_SHMOPEN	NOPROTO	{ int shm_open(const char *path, int flags, \
 				    mode_t mode); }
 483	AUE_SHMUNLINK	NOPROTO	{ int shm_unlink(const char *path); }

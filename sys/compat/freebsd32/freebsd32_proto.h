@@ -1226,7 +1226,7 @@ int	freebsd10_freebsd32_pipe(struct thread *, struct freebsd10_freebsd32_pipe_ar
 #define	FREEBSD32_SYS_AUE_freebsd32_ksem_timedwait	AUE_NULL
 #define	FREEBSD32_SYS_AUE_freebsd32_thr_suspend	AUE_NULL
 #define	FREEBSD32_SYS_AUE_freebsd32_umtx_op	AUE_NULL
-#define	FREEBSD32_SYS_AUE_freebsd32_thr_new	AUE_NULL
+#define	FREEBSD32_SYS_AUE_freebsd32_thr_new	AUE_THR_NEW
 #define	FREEBSD32_SYS_AUE_freebsd32_kmq_open	AUE_NULL
 #define	FREEBSD32_SYS_AUE_freebsd32_kmq_setattr	AUE_NULL
 #define	FREEBSD32_SYS_AUE_freebsd32_kmq_timedreceive	AUE_NULL

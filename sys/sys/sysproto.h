@@ -2840,10 +2840,10 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE___acl_delete_link	AUE_NULL
 #define	SYS_AUE___acl_aclcheck_link	AUE_NULL
 #define	SYS_AUE_sigwait	AUE_SIGWAIT
-#define	SYS_AUE_thr_create	AUE_NULL
-#define	SYS_AUE_thr_exit	AUE_NULL
+#define	SYS_AUE_thr_create	AUE_THR_CREATE
+#define	SYS_AUE_thr_exit	AUE_THR_EXIT
 #define	SYS_AUE_thr_self	AUE_NULL
-#define	SYS_AUE_thr_kill	AUE_NULL
+#define	SYS_AUE_thr_kill	AUE_THR_KILL
 #define	SYS_AUE_jail_attach	AUE_NULL
 #define	SYS_AUE_extattr_list_fd	AUE_EXTATTR_LIST_FD
 #define	SYS_AUE_extattr_list_file	AUE_EXTATTR_LIST_FILE
@@ -2862,7 +2862,7 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_setaudit_addr	AUE_SETAUDIT_ADDR
 #define	SYS_AUE_auditctl	AUE_AUDITCTL
 #define	SYS_AUE__umtx_op	AUE_NULL
-#define	SYS_AUE_thr_new	AUE_NULL
+#define	SYS_AUE_thr_new	AUE_THR_NEW
 #define	SYS_AUE_sigqueue	AUE_NULL
 #define	SYS_AUE_kmq_open	AUE_NULL
 #define	SYS_AUE_kmq_setattr	AUE_NULL
@@ -2884,7 +2884,7 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_lseek	AUE_LSEEK
 #define	SYS_AUE_truncate	AUE_TRUNCATE
 #define	SYS_AUE_ftruncate	AUE_FTRUNCATE
-#define	SYS_AUE_thr_kill2	AUE_KILL
+#define	SYS_AUE_thr_kill2	AUE_THR_KILL2
 #define	SYS_AUE_shm_open	AUE_SHMOPEN
 #define	SYS_AUE_shm_unlink	AUE_SHMUNLINK
 #define	SYS_AUE_cpuset	AUE_NULL
