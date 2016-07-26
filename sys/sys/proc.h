@@ -227,6 +227,7 @@ struct thread {
 	sigqueue_t	td_sigqueue;	/* (c) Sigs arrived, not delivered. */
 #define	td_siglist	td_sigqueue.sq_signals
 	u_char		td_lend_user_pri; /* (t) Lend user pri. */
+	struct uuid	td_uuid;	/* (b) Per-thread UUID. */
 
 /* Cleared during fork1() */
 #define	td_startzero td_flags

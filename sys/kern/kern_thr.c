@@ -278,6 +278,9 @@ thread_create(struct thread *td, struct rtprio *rtp,
 	TD_SET_CAN_RUN(newtd);
 	sched_add(newtd, SRQ_BORING);
 	thread_unlock(newtd);
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_OBJUUID1(&newtd->td_uuid);
+#endif
 
 	return (0);
 
