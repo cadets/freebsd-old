@@ -255,8 +255,6 @@ OBJCFLAGS	?=	${OBJCINCLUDES} ${CFLAGS} -Wno-import
 
 OBJCOPY		?=	objcopy
 
-OBJDUMP		?=	objdump
-
 OPT		?=	opt
 
 PC		?=	pc
