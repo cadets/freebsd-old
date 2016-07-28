@@ -195,7 +195,8 @@ struct audit_record {
 	struct au_mask		ar_subj_amask;
 #ifdef KDTRACE_HOOKS
 	char			ar_subj_comm[MAXCOMLEN + 1];
-	struct uuid		ar_subj_uuid;
+	struct uuid		ar_subj_proc_uuid;
+	struct uuid		ar_subj_thr_uuid;
 #endif
 
 	/* Operation arguments. */

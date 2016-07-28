@@ -68,6 +68,8 @@
 #include <netinet/in.h>
 #include <netinet/ip_mroute.h>
 
+#include <security/audit/audit.h>
+
 #include <vm/uma.h>
 
 #define	RT_MAXFIBS	UINT16_MAX
@@ -397,6 +399,8 @@ struct setfib_args {
 int
 sys_setfib(struct thread *td, struct setfib_args *uap)
 {
+
+	AUDIT_ARG_VALUE(uap->fibnum);
 	if (uap->fibnum < 0 || uap->fibnum >= rt_numfibs)
 		return EINVAL;
 	td->td_proc->p_fibnum = uap->fibnum;

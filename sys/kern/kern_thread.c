@@ -143,6 +143,11 @@ thread_ctor(void *mem, int size, void *arg, int flags)
 	td->td_tid = tid_alloc();
 
 	/*
+	 * Assign unique per-thread UUID on alloation.
+	 */
+	(void)kern_uuidgen(&td->td_uuid, 1);
+
+	/*
 	 * Note that td_critnest begins life as 1 because the thread is not
 	 * running and is thereby implicitly waiting to be on the receiving
 	 * end of a context switch.
