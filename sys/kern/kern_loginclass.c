@@ -61,6 +61,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysproto.h>
 #include <sys/systm.h>
 
+#include <security/audit/audit.h>
+
 static MALLOC_DEFINE(M_LOGINCLASS, "loginclass", "loginclass structures");
 
 LIST_HEAD(, loginclass)	loginclasses;
@@ -212,6 +214,7 @@ sys_setloginclass(struct thread *td, struct setloginclass_args *uap)
 	error = copyinstr(uap->namebuf, lcname, sizeof(lcname), NULL);
 	if (error != 0)
 		return (error);
+	AUDIT_ARG_TEXT(lcname);
 
 	newlc = loginclass_find(lcname);
 	if (newlc == NULL)
