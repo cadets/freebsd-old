@@ -70,6 +70,7 @@ __FBSDID("$FreeBSD$");
 #include <ddb/ddb.h>
 #endif /* DDB */
 
+#include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
 
 #define	DEFAULT_HOSTUUID	"00000000-0000-0000-0000-000000000000"
@@ -575,6 +576,7 @@ kern_jail_set(struct thread *td, struct uio *optuio, int flags)
 	unsigned tallow;
 	char numbuf[12];
 
+	AUDIT_ARG_VALUE(flags);
 	error = priv_check(td, PRIV_JAIL_SET);
 	if (!error && (flags & JAIL_ATTACH))
 		error = priv_check(td, PRIV_JAIL_ATTACH);
@@ -978,8 +980,8 @@ kern_jail_set(struct thread *td, struct uio *optuio, int flags)
 			error = EINVAL;
 			goto done_free;
 		}
-		NDINIT(&nd, LOOKUP, FOLLOW | LOCKLEAF, UIO_SYSSPACE,
-		    path, td);
+		NDINIT(&nd, LOOKUP, FOLLOW | LOCKLEAF | AUDITVNODE1,
+		    UIO_SYSSPACE, path, td);
 		error = namei(&nd);
 		if (error)
 			goto done_free;
@@ -1739,8 +1741,10 @@ kern_jail_set(struct thread *td, struct uio *optuio, int flags)
 		}
 	} else if (host != NULL || domain != NULL || uuid != NULL || gothid) {
 		/* Set this prison, and any descendants without PR_HOST. */
-		if (host != NULL)
+		if (host != NULL) {
 			strlcpy(pr->pr_hostname, host, sizeof(pr->pr_hostname));
+			AUDIT_ARG_TEXT(pr->pr_hostname);
+		}
 		if (domain != NULL)
 			strlcpy(pr->pr_domainname, domain, 
 			    sizeof(pr->pr_domainname));
