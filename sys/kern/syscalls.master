@@ -776,7 +776,7 @@
 433	AUE_THR_KILL	STD	{ int thr_kill(long id, int sig); }
 434	AUE_NULL	UNIMPL	nosys
 435	AUE_NULL	UNIMPL	nosys
-436	AUE_NULL	STD	{ int jail_attach(int jid); }
+436	AUE_JAIL_ATTACH	STD	{ int jail_attach(int jid); }
 437	AUE_EXTATTR_LIST_FD	STD	{ ssize_t extattr_list_fd(int fd, \
 				    int attrnamespace, void *data, \
 				    size_t nbytes); }

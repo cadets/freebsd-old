@@ -2844,7 +2844,7 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_thr_exit	AUE_THR_EXIT
 #define	SYS_AUE_thr_self	AUE_NULL
 #define	SYS_AUE_thr_kill	AUE_THR_KILL
-#define	SYS_AUE_jail_attach	AUE_NULL
+#define	SYS_AUE_jail_attach	AUE_JAIL_ATTACH
 #define	SYS_AUE_extattr_list_fd	AUE_EXTATTR_LIST_FD
 #define	SYS_AUE_extattr_list_file	AUE_EXTATTR_LIST_FILE
 #define	SYS_AUE_extattr_list_link	AUE_EXTATTR_LIST_LINK
@@ -2876,7 +2876,7 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_rtprio_thread	AUE_RTPRIO
 #define	SYS_AUE_sctp_peeloff	AUE_SCTP_PEELOFF
 #define	SYS_AUE_sctp_generic_sendmsg	AUE_SCTP_GENERIC_SENDMSG
-#define	SYS_AUE_sctp_generic_sendmsg_iov	AUE_NULL
+#define	SYS_AUE_sctp_generic_sendmsg_iov	AUE_SCTP_GENERIC_SENDMSG_IOV
 #define	SYS_AUE_sctp_generic_recvmsg	AUE_SCTP_GENERIC_RECVMSG
 #define	SYS_AUE_pread	AUE_PREAD
 #define	SYS_AUE_pwrite	AUE_PWRITE
