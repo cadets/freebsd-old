@@ -842,7 +842,7 @@
 472     AUE_SCTP_GENERIC_SENDMSG        NOSTD	{ int sctp_generic_sendmsg(int sd, caddr_t msg, int mlen, \
 	                            caddr_t to, __socklen_t tolen, \
 				    struct sctp_sndrcvinfo *sinfo, int flags); }
-473     AUE_NULL        NOSTD	{ int sctp_generic_sendmsg_iov(int sd, struct iovec *iov, int iovlen, \
+473     AUE_SCTP_GENERIC_SENDMSG_IOV        NOSTD	{ int sctp_generic_sendmsg_iov(int sd, struct iovec *iov, int iovlen, \
 	                            caddr_t to, __socklen_t tolen, \
 				    struct sctp_sndrcvinfo *sinfo, int flags); }
 474     AUE_SCTP_GENERIC_RECVMSG        NOSTD	{ int sctp_generic_recvmsg(int sd, struct iovec *iov, int iovlen, \
