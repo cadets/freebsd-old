@@ -1243,6 +1243,7 @@ sys___setugid(struct thread *td, struct __setugid_args *uap)
 	struct proc *p;
 
 	p = td->td_proc;
+	AUDIT_ARG_VALUE(uap->flag);
 	switch (uap->flag) {
 	case 0:
 		PROC_LOCK(p);
