@@ -197,6 +197,7 @@ struct audit_record {
 	char			ar_subj_comm[MAXCOMLEN + 1];
 	struct uuid		ar_subj_proc_uuid;
 	struct uuid		ar_subj_thr_uuid;
+	struct uuid		ar_subj_jail_uuid;
 #endif
 
 	/* Operation arguments. */
