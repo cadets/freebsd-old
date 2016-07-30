@@ -59,6 +59,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 #include <sys/syscallsubr.h>
 #include <sys/sysctl.h>
+#include <sys/uuid.h>
 #include <sys/vnode.h>
 
 #include <net/if.h>
@@ -1276,6 +1277,11 @@ kern_jail_set(struct thread *td, struct uio *optuio, int flags)
 			root = mypr->pr_root;
 			vref(root);
 		}
+
+		/* Provide a time-based UUID for each jail. */
+		(void)kern_uuidgen(&pr->pr_uuid, 1);
+
+		/* Vs. user-provided host UUID. */
 		strlcpy(pr->pr_hostuuid, DEFAULT_HOSTUUID, HOSTUUIDLEN);
 		pr->pr_flags |= PR_HOST;
 #if defined(INET) || defined(INET6)
@@ -1354,8 +1360,14 @@ kern_jail_set(struct thread *td, struct uio *optuio, int flags)
 		 * want others to see the incomplete prison once the
 		 * allprison_lock is downgraded.
 		 */
+#ifdef KDTRACE_HOOKS
+		AUDIT_RET_OBJUUID1(&pr->pr_uuid);
+#endif
 	} else {
 		created = 0;
+#ifdef KDTRACE_HOOKS
+		AUDIT_ARG_OBJUUID1(&pr->pr_uuid);
+#endif
 		/*
 		 * Grab a reference for existing prisons, to ensure they
 		 * continue to exist for the duration of the call.
@@ -1998,6 +2010,7 @@ kern_jail_get(struct thread *td, struct uio *optuio, int flags)
 	char *errmsg, *name;
 	int error, errmsg_len, errmsg_pos, fi, i, jid, len, locked, pos;
 
+	AUDIT_ARG_VALUE(flags);
 	if (flags & ~JAIL_GET_MASK)
 		return (EINVAL);
 
@@ -2080,6 +2093,10 @@ kern_jail_get(struct thread *td, struct uio *optuio, int flags)
 	goto done_unlock_list;
 
  found_prison:
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&pr->pr_uuid);
+#endif
+
 	/* Get the parameters of the prison. */
 	pr->pr_ref++;
 	locked = PD_LOCKED;
@@ -2293,6 +2310,10 @@ sys_jail_remove(struct thread *td, struct jail_remove_args *uap)
 		return (EINVAL);
 	}
 
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&pr->pr_uuid);
+#endif
+
 	/* Remove all descendants of this prison, then remove this prison. */
 	pr->pr_ref++;
 	if (!LIST_EMPTY(&pr->pr_children)) {
@@ -2399,6 +2420,10 @@ sys_jail_attach(struct thread *td, struct jail_attach_args *uap)
 		sx_sunlock(&allprison_lock);
 		return (EINVAL);
 	}
+
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&pr->pr_uuid);
+#endif
 
 	/*
 	 * Do not allow a process to attach to a prison that is not

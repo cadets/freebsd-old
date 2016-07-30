@@ -121,6 +121,7 @@ int jail_remove(int);
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/_task.h>
+#include <sys/uuid.h>
 
 #define JAIL_MAX	999999
 
@@ -186,6 +187,7 @@ struct prison {
 	char		 pr_domainname[MAXHOSTNAMELEN];	/* (p) jail domainname */
 	char		 pr_hostuuid[HOSTUUIDLEN];	/* (p) jail hostuuid */
 	char		 pr_osrelease[OSRELEASELEN];	/* (c) kern.osrelease value */
+	struct uuid	 pr_uuid;			/* (c) jail UUID */
 };
 
 struct prison_racct {
