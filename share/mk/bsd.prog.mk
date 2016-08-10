@@ -86,8 +86,6 @@ PROGNAME?=	${PROG}
 .if defined(SRCS)
 
 OBJS+=  ${SRCS:N*.h:R:S/$/.o/g}
-BCOBJS=	${OBJS:.o=.bco}
-LLOBJS=	${OBJS:.o=.llo}
 
 .if target(beforelinking)
 beforelinking: ${OBJS}
@@ -195,6 +193,8 @@ CLEANFILES+=	${PROG_FULL} ${PROG_FULL}.bc ${PROGNAME}.debug ${PROG_FULL}.ll
 .endif
 
 .if defined(OBJS)
+BCOBJS?= ${OBJS:.o=.bco} ${OBJS:.o=.bcinstro}
+LLOBJS?= ${OBJS:.o=.llo} ${OBJS:.o=.llinstro}
 CLEANFILES+= ${OBJS} ${BCOBJS} ${LLOBJS}
 .endif
 
