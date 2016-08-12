@@ -348,7 +348,7 @@
 174	AUE_PWRITE	COMPAT6	{ ssize_t pwrite(int fd, \
 				    const void *buf, \
 				    size_t nbyte, int pad, off_t offset); }
-175	AUE_NULL	STD	{ int setfib(int fibnum); }
+175	AUE_SETFIB	STD	{ int setfib(int fibnum); }
 176	AUE_NTP_ADJTIME	STD	{ int ntp_adjtime(struct timex *tp); }
 177	AUE_NULL	UNIMPL	sfork (BSD/OS 2.x)
 178	AUE_NULL	UNIMPL	getdescriptor (BSD/OS 2.x)
@@ -478,7 +478,7 @@
 254	AUE_LCHOWN	STD	{ int lchown(char *path, int uid, int gid); }
 255	AUE_READ	STD	{ int aio_read(struct aiocb *aiocbp); }
 256	AUE_WRITE	STD	{ int aio_write(struct aiocb *aiocbp); }
-257	AUE_NULL	STD	{ int lio_listio(int mode, \
+257	AUE_LIO_LISTIO	STD	{ int lio_listio(int mode, \
 				    struct aiocb * const *acb_list, \
 				    int nent, struct sigevent *sig); }
 258	AUE_NULL	UNIMPL	nosys
@@ -672,7 +672,7 @@
 373	AUE_EXTATTR_DELETE_FD	STD	{ int extattr_delete_fd(int fd, \
 				    int attrnamespace, \
 				    const char *attrname); }
-374	AUE_NULL	STD	{ int __setugid(int flag); }
+374	AUE_SETUGID	STD	{ int __setugid(int flag); }
 375	AUE_NULL	UNIMPL	nfsclnt
 376	AUE_EACCESS	STD	{ int eaccess(char *path, int amode); }
 377	AUE_NULL	NOSTD|NOTSTATIC	{ int afs3_syscall(long syscall, \
@@ -769,11 +769,11 @@
 				    acl_type_t type, struct acl *aclp); }
 429	AUE_SIGWAIT	STD	{ int sigwait(const sigset_t *set, \
 				    int *sig); }
-430	AUE_NULL	STD	{ int thr_create(ucontext_t *ctx, long *id, \
+430	AUE_THR_CREATE	STD	{ int thr_create(ucontext_t *ctx, long *id, \
 				    int flags); }
-431	AUE_NULL	STD	{ void thr_exit(long *state); }
+431	AUE_THR_EXIT	STD	{ void thr_exit(long *state); }
 432	AUE_NULL	STD	{ int thr_self(long *id); }
-433	AUE_NULL	STD	{ int thr_kill(long id, int sig); }
+433	AUE_THR_KILL	STD	{ int thr_kill(long id, int sig); }
 434	AUE_NULL	UNIMPL	nosys
 435	AUE_NULL	UNIMPL	nosys
 436	AUE_NULL	STD	{ int jail_attach(int jid); }
@@ -810,7 +810,7 @@
 453	AUE_AUDITCTL	STD	{ int auditctl(char *path); }
 454	AUE_NULL	STD	{ int _umtx_op(void *obj, int op, \
 				    u_long val, void *uaddr1, void *uaddr2); }
-455	AUE_NULL	STD	{ int thr_new(struct thr_param *param, \
+455	AUE_THR_NEW	STD	{ int thr_new(struct thr_param *param, \
 				    int param_size); }
 456	AUE_NULL	STD	{ int sigqueue(pid_t pid, int signum, void *value); }
 457	AUE_NULL	NOSTD	{ int kmq_open(const char *path, int flags, \
@@ -838,14 +838,14 @@
 468	AUE_NULL	UNIMPL	nosys
 469	AUE_NULL	UNIMPL	__getpath_fromfd
 470	AUE_NULL	UNIMPL	__getpath_fromaddr
-471	AUE_NULL	NOSTD	{ int sctp_peeloff(int sd, uint32_t name); }
-472     AUE_NULL        NOSTD	{ int sctp_generic_sendmsg(int sd, caddr_t msg, int mlen, \
+471	AUE_SCTP_PEELOFF	NOSTD	{ int sctp_peeloff(int sd, uint32_t name); }
+472     AUE_SCTP_GENERIC_SENDMSG        NOSTD	{ int sctp_generic_sendmsg(int sd, caddr_t msg, int mlen, \
 	                            caddr_t to, __socklen_t tolen, \
 				    struct sctp_sndrcvinfo *sinfo, int flags); }
 473     AUE_NULL        NOSTD	{ int sctp_generic_sendmsg_iov(int sd, struct iovec *iov, int iovlen, \
 	                            caddr_t to, __socklen_t tolen, \
 				    struct sctp_sndrcvinfo *sinfo, int flags); }
-474     AUE_NULL        NOSTD	{ int sctp_generic_recvmsg(int sd, struct iovec *iov, int iovlen, \
+474     AUE_SCTP_GENERIC_RECVMSG        NOSTD	{ int sctp_generic_recvmsg(int sd, struct iovec *iov, int iovlen, \
 				    struct sockaddr * from, __socklen_t *fromlenaddr, \
 				    struct sctp_sndrcvinfo *sinfo, int *msg_flags); }
 475	AUE_PREAD	STD	{ ssize_t pread(int fd, void *buf, \
@@ -858,7 +858,7 @@
 				    int whence); }
 479	AUE_TRUNCATE	STD	{ int truncate(char *path, off_t length); }
 480	AUE_FTRUNCATE	STD	{ int ftruncate(int fd, off_t length); }
-481	AUE_KILL	STD	{ int thr_kill2(pid_t pid, long id, int sig); }
+481	AUE_THR_KILL2	STD	{ int thr_kill2(pid_t pid, long id, int sig); }
 482	AUE_SHMOPEN	STD	{ int shm_open(const char *path, int flags, \
 				    mode_t mode); }
 483	AUE_SHMUNLINK	STD	{ int shm_unlink(const char *path); }
@@ -905,11 +905,11 @@
 504	AUE_POSIX_OPENPT	STD	{ int posix_openpt(int flags); }
 ; 505 is initialised by the kgssapi code, if present.
 505	AUE_NULL	NOSTD	{ int gssd_syscall(char *path); }
-506	AUE_NULL	STD	{ int jail_get(struct iovec *iovp, \
+506	AUE_JAIL_GET	STD	{ int jail_get(struct iovec *iovp, \
 				    unsigned int iovcnt, int flags); }
-507	AUE_NULL	STD	{ int jail_set(struct iovec *iovp, \
+507	AUE_JAIL_SET	STD	{ int jail_set(struct iovec *iovp, \
 				    unsigned int iovcnt, int flags); }
-508	AUE_NULL	STD	{ int jail_remove(int jid); }
+508	AUE_JAIL_REMOVE	STD	{ int jail_remove(int jid); }
 509	AUE_CLOSEFROM	STD	{ int closefrom(int lowfd); }
 510	AUE_SEMCTL	NOSTD	{ int __semctl(int semid, int semnum, \
 				    int cmd, union semun *arg); }
@@ -931,9 +931,9 @@
 				    fd_set *ou, fd_set *ex, \
 				    const struct timespec *ts, \
 				    const sigset_t *sm); }
-523	AUE_NULL	STD	{ int getloginclass(char *namebuf, \
+523	AUE_GETLOGINCLASS	STD	{ int getloginclass(char *namebuf, \
 				    size_t namelen); }
-524	AUE_NULL	STD	{ int setloginclass(const char *namebuf); }
+524	AUE_SETLOGINCLASS	STD	{ int setloginclass(const char *namebuf); }
 525	AUE_NULL	STD	{ int rctl_get_racct(const void *inbufp, \
 				    size_t inbuflen, void *outbufp, \
 				    size_t outbuflen); }
@@ -951,7 +951,7 @@
 				    size_t outbuflen); }
 530	AUE_POSIX_FALLOCATE	STD	{ int posix_fallocate(int fd, \
 				    off_t offset, off_t len); }
-531	AUE_NULL	STD	{ int posix_fadvise(int fd, off_t offset, \
+531	AUE_POSIX_FADVISE	STD	{ int posix_fadvise(int fd, off_t offset, \
 				    off_t len, int advice); }
 532	AUE_WAIT6	STD	{ int wait6(idtype_t idtype, id_t id, \
 				    int *status, int options, \

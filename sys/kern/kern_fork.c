@@ -408,6 +408,7 @@ do_fork(struct thread *td, struct fork_req *fr, struct proc *p2, struct thread *
 	(void)kern_uuidgen(&p2->p_uuid, 1);
 #ifdef KDTRACE_HOOKS
 	AUDIT_RET_OBJUUID1(&p2->p_uuid);
+	AUDIT_RET_OBJUUID2(&td2->td_uuid);
 #endif
 
 	LIST_INSERT_HEAD(&allproc, p2, p_list);
