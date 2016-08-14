@@ -837,7 +837,8 @@ auditd_set_qsize(void)
 	if (getacqsize(&qsz) != 0)
 		return (ADE_PARSE);
 
-	bzero(&au_qctrl, sizeof(au_qctrl));
+	if (audit_get_qctrl(&au_qctrl, sizeof(au_qctrl)) != 0)
+		return (ADE_AUDITON);
 	au_qctrl.aq_hiwater = qsz;
 	if (audit_set_qctrl(&au_qctrl, sizeof(au_qctrl)) != 0)
 		return (ADE_AUDITON);
