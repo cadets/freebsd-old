@@ -78,8 +78,7 @@ CTFFLAGS+= -g
 
 # prefer .s to a .c, add .po, remove stuff not used in the BSD libraries
 # .So used for PIC object files
-.SUFFIXES:
-.SUFFIXES: .out .o .po .So .S .asm .s .c .cc .cpp .cxx .C .f .y .l .ln
+.SUFFIXES: .out .o .bc .ll .po .So .S .asm .s .c .cc .cpp .cxx .C .f .y .l .ln
 
 .if !defined(PICFLAG)
 .if ${MACHINE_CPUARCH} == "sparc64"
@@ -91,10 +90,6 @@ PICFLAG=-fpic
 
 PO_FLAG=-pg
 
-.c.o:
-	${CC} ${STATIC_CFLAGS} ${CFLAGS} -c ${.IMPSRC} -o ${.TARGET}
-	${CTFCONVERT_CMD}
-
 .c.po:
 	${CC} ${PO_FLAG} ${STATIC_CFLAGS} ${PO_CFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
@@ -102,9 +97,6 @@ PO_FLAG=-pg
 .c.So:
 	${CC} ${PICFLAG} -DPIC ${SHARED_CFLAGS} ${CFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
-
-.cc.o .C.o .cpp.o .cxx.o:
-	${CXX} ${STATIC_CXXFLAGS} ${CXXFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 
 .cc.po .C.po .cpp.po .cxx.po:
 	${CXX} ${PO_FLAG} ${STATIC_CXXFLAGS} ${PO_CXXFLAGS} -c ${.IMPSRC} -o ${.TARGET}
@@ -177,6 +169,8 @@ LDFLAGS+=	-Wl,--version-script=${VERSION_MAP}
 
 .if defined(LIB) && !empty(LIB) || defined(SHLIB_NAME)
 OBJS+=		${SRCS:N*.h:R:S/$/.o/}
+BCOBJS=		${OBJS:.o=.bco} ${STATICOBJS:.o=.bco}
+LLOBJS=		${OBJS:.o=.llo} ${STATICOBJS:.o=.llo}
 CLEANFILES+=	${OBJS} ${STATICOBJS}
 .endif
 
@@ -188,6 +182,12 @@ lib${LIB_PRIVATE}${LIB}.a: ${OBJS} ${STATICOBJS}
 	@rm -f ${.TARGET}
 	${AR} ${ARFLAGS} ${.TARGET} `NM='${NM}' NMFLAGS='${NMFLAGS}' lorder ${OBJS} ${STATICOBJS} | tsort -q` ${ARADD}
 	${RANLIB} ${RANLIBFLAGS} ${.TARGET}
+
+lib${LIB_PRIVATE}${LIB}.bc: ${BCOBJS}
+	${LLVM_LINK} -o ${.TARGET} ${BCOBJS}
+
+lib${LIB_PRIVATE}${LIB}.ll: ${LLOBJS}
+	${LLVM_LINK} -S -o ${.TARGET} ${LLOBJS}
 .endif
 
 .if !defined(INTERNALLIB)
@@ -215,9 +215,11 @@ CLEANFILES+=	${SOBJS}
 .if defined(SHLIB_NAME)
 _LIBS+=		${SHLIB_NAME}
 
+LD_NO_FATAL_WARNS?=-Wl,--no-fatal-warnings
+
 SOLINKOPTS+=	-shared -Wl,-x
 .if defined(LD_FATAL_WARNINGS) && ${LD_FATAL_WARNINGS} == "no"
-SOLINKOPTS+=	-Wl,--no-fatal-warnings
+SOLINKOPTS+=	${LD_NO_FATAL_WARNS}
 .else
 SOLINKOPTS+=	-Wl,--fatal-warnings
 .endif
