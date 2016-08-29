@@ -310,6 +310,7 @@ sys_auditon(struct thread *td, struct auditon_args *uap)
 			if ((udata.au_qctrl64.aq64_hiwater > AQ_MAXHIGH) ||
 			    (udata.au_qctrl64.aq64_lowater >=
 			    udata.au_qctrl.aq_hiwater) ||
+			    (udata.au_qctrl64.aq64_bufsz == 0) ||
 			    (udata.au_qctrl64.aq64_bufsz > AQ_MAXBUFSZ) ||
 			    (udata.au_qctrl64.aq64_minfree > 100) ||
 			    (udata.au_qctrl64.aq64_minfree < 0))

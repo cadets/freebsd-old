@@ -513,6 +513,11 @@ do {									\
 #define	TD_SET_RUNQ(td)		(td)->td_state = TDS_RUNQ
 #define	TD_SET_CAN_RUN(td)	(td)->td_state = TDS_CAN_RUN
 
+#define	TD_SBDRY_INTR(td) \
+    (((td)->td_flags & (TDF_SEINTR | TDF_SERESTART)) != 0)
+#define	TD_SBDRY_ERRNO(td) \
+    (((td)->td_flags & TDF_SEINTR) != 0 ? EINTR : ERESTART)
+
 /*
  * Process structure.
  */
@@ -600,7 +605,7 @@ struct proc {
 	u_int		p_magic;	/* (b) Magic number. */
 	int		p_osrel;	/* (x) osreldate for the
 					       binary (from ELF note, if any) */
-	char		p_comm[MAXCOMLEN + 1];	/* (b) Process name. */
+	char		p_comm[MAXCOMLEN + 1];	/* (x) Process name. */
 	struct sysentvec *p_sysent;	/* (b) Syscall dispatch info. */
 	struct pargs	*p_args;	/* (c) Process arguments. */
 	rlim_t		p_cpulimit;	/* (c) Current CPU limit in seconds. */
@@ -737,7 +742,7 @@ struct proc {
 #define	SW_TYPE_MASK		0xff	/* First 8 bits are switch type */
 #define	SWT_NONE		0	/* Unspecified switch. */
 #define	SWT_PREEMPT		1	/* Switching due to preemption. */
-#define	SWT_OWEPREEMPT		2	/* Switching due to opepreempt. */
+#define	SWT_OWEPREEMPT		2	/* Switching due to owepreempt. */
 #define	SWT_TURNSTILE		3	/* Turnstile contention. */
 #define	SWT_SLEEPQ		4	/* Sleepq wait. */
 #define	SWT_SLEEPQTIMO		5	/* Sleepq timeout wait. */

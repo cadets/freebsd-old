@@ -784,7 +784,15 @@ next:
 	done += 8;
 	if (elen == 0) {
 		if (done >= len) {
-			ahci_write_fis_d2h(p, slot, cfis, ATA_S_READY | ATA_S_DSC);
+			if (ncq) {
+				if (first)
+					ahci_write_fis_d2h_ncq(p, slot);
+				ahci_write_fis_sdb(p, slot, cfis,
+				    ATA_S_READY | ATA_S_DSC);
+			} else {
+				ahci_write_fis_d2h(p, slot, cfis,
+				    ATA_S_READY | ATA_S_DSC);
+			}
 			p->pending &= ~(1 << slot);
 			ahci_check_stopped(p);
 			if (!first)
@@ -1665,7 +1673,7 @@ ahci_handle_cmd(struct ahci_port *p, int slot, uint8_t *cfis)
 	case ATA_SEND_FPDMA_QUEUED:
 		if ((cfis[13] & 0x1f) == ATA_SFPDMA_DSM &&
 		    cfis[17] == 0 && cfis[16] == ATA_DSM_TRIM &&
-		    cfis[11] == 0 && cfis[13] == 1) {
+		    cfis[11] == 0 && cfis[3] == 1) {
 			ahci_handle_dsm_trim(p, slot, cfis, 0);
 			break;
 		}
@@ -1717,19 +1725,25 @@ static void
 ahci_handle_slot(struct ahci_port *p, int slot)
 {
 	struct ahci_cmd_hdr *hdr;
+#ifdef AHCI_DEBUG
 	struct ahci_prdt_entry *prdt;
+#endif
 	struct pci_ahci_softc *sc;
 	uint8_t *cfis;
+#ifdef AHCI_DEBUG
 	int cfl;
+#endif
 
 	sc = p->pr_sc;
 	hdr = (struct ahci_cmd_hdr *)(p->cmd_lst + slot * AHCI_CL_SIZE);
+#ifdef AHCI_DEBUG
 	cfl = (hdr->flags & 0x1f) * 4;
+#endif
 	cfis = paddr_guest2host(ahci_ctx(sc), hdr->ctba,
 			0x80 + hdr->prdtl * sizeof(struct ahci_prdt_entry));
+#ifdef AHCI_DEBUG
 	prdt = (struct ahci_prdt_entry *)(cfis + 0x80);
 
-#ifdef AHCI_DEBUG
 	DPRINTF("\ncfis:");
 	for (i = 0; i < cfl; i++) {
 		if (i % 10 == 0)

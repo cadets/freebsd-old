@@ -4,3 +4,8 @@
 
 options 	COMPAT_FREEBSD10	# Compatible with FreeBSD10
 
+# Debugging support.  Always need this:
+makeoptions	DEBUG=-g		# Build kernel with gdb(1) debug symbols
+options 	KDB			# Enable kernel debugger support.
+options 	KDB_TRACE		# Print a stack trace for a panic.
+

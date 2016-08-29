@@ -1057,7 +1057,8 @@ done:
 	 * Release the route if using our private route, or if
 	 * (with flowtable) we don't have our own reference.
 	 */
-	if (ro == &ip6route || ro->ro_flags & RT_NORTREF)
+	if (ro == &ip6route ||
+	    (ro != NULL && ro->ro_flags & RT_NORTREF))
 		RO_RTFREE(ro);
 	return (error);
 
@@ -2659,8 +2660,8 @@ ip6_setpktopt(int optname, u_char *buf, int len, struct ip6_pktopts *opt,
 			if (ifp == NULL)
 				return (ENXIO);
 		}
-		if (ifp != NULL && (
-		    ND_IFINFO(ifp)->flags & ND6_IFF_IFDISABLED))
+		if (ifp != NULL && (ifp->if_afdata[AF_INET6] == NULL ||
+		    (ND_IFINFO(ifp)->flags & ND6_IFF_IFDISABLED) != 0))
 			return (ENETDOWN);
 
 		if (ifp != NULL &&
