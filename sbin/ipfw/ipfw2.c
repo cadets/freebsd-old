@@ -1575,15 +1575,18 @@ show_static_rule(struct cmdline_opts *co, struct format_opts *fo,
 			break;
 
 		case O_NAT:
-			if (cmd->arg1 != 0)
+			if (cmd->arg1 != IP_FW_NAT44_GLOBAL)
 				bprint_uint_arg(bp, "nat ", cmd->arg1);
 			else
 				bprintf(bp, "nat global");
 			break;
 
 		case O_SETFIB:
-			bprint_uint_arg(bp, "setfib ", cmd->arg1 & 0x7FFF);
- 			break;
+			if (cmd->arg1 == IP_FW_TARG)
+				bprint_uint_arg(bp, "setfib ", cmd->arg1);
+			else
+				bprintf(bp, "setfib %u", cmd->arg1 & 0x7FFF);
+			break;
 
 		case O_EXTERNAL_ACTION: {
 			const char *ename;
@@ -3730,7 +3733,7 @@ compile_rule(char *av[], uint32_t *rbuf, int *rbufsize, struct tidx *tstate)
 		action->len = F_INSN_SIZE(ipfw_insn_nat);
 		CHECK_ACTLEN;
 		if (*av != NULL && _substrcmp(*av, "global") == 0) {
-			action->arg1 = 0;
+			action->arg1 = IP_FW_NAT44_GLOBAL;
 			av++;
 			break;
 		} else
@@ -3914,15 +3917,19 @@ chkarg:
 		NEED1("missing DSCP code");
 		if (_substrcmp(*av, "tablearg") == 0) {
 			action->arg1 = IP_FW_TARG;
-		} else if (isalpha(*av[0])) {
-			if ((code = match_token(f_ipdscp, *av)) == -1)
-				errx(EX_DATAERR, "Unknown DSCP code");
-			action->arg1 = code;
-		} else
-		        action->arg1 = strtoul(*av, NULL, 10);
-		/* Add high-order bit to DSCP to make room for tablearg */
-		if (action->arg1 != IP_FW_TARG)
+		} else {
+			if (isalpha(*av[0])) {
+				if ((code = match_token(f_ipdscp, *av)) == -1)
+					errx(EX_DATAERR, "Unknown DSCP code");
+				action->arg1 = code;
+			} else
+			        action->arg1 = strtoul(*av, NULL, 10);
+			/*
+			 * Add high-order bit to DSCP to make room
+			 * for tablearg
+			 */
 			action->arg1 |= 0x8000;
+		}
 		av++;
 		break;
 	    }
