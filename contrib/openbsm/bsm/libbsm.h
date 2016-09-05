@@ -83,7 +83,7 @@
 #define	NA_CONTROL_ENTRY		"naflags"
 #define	POLICY_CONTROL_ENTRY		"policy"
 #define	EXPIRE_AFTER_CONTROL_ENTRY	"expire-after"
-#define QSZ_CONTROL_ENTRY		"qsize"
+#define	QSZ_CONTROL_ENTRY		"qsize"
 
 #define	AU_CLASS_NAME_MAX	8
 #define	AU_CLASS_DESC_MAX	72
