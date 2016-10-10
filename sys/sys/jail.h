@@ -121,7 +121,6 @@ int jail_remove(int);
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/_task.h>
-#include <sys/uuid.h>
 
 #define JAIL_MAX	999999
 
@@ -133,6 +132,7 @@ MALLOC_DECLARE(M_PRISON);
 #if defined(_KERNEL) || defined(_WANT_PRISON)
 
 #include <sys/osd.h>
+#include <sys/uuid.h>
 
 #define	HOSTUUIDLEN	64
 #define	OSRELEASELEN	32
