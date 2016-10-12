@@ -165,6 +165,13 @@ ${PROG_FULL}.ll: ${LLOBJS}
 .else
 	${LLVM_LINK} -S -o ${.TARGET} ${LLOBJS}
 .endif
+
+${PROG_FULL}.instr.bc: ${PROG_FULL}.bc
+	${OPT} ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${PROG_FULL}.bc
+
+${PROG_FULL}.instr.ll: ${PROG_FULL}.ll
+	${OPT} -S ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${PROG_FULL}.ll
+
 .endif # defined(LLVM_LINK)
 
 .if	${MK_MAN} != "no" && !defined(MAN) && \
