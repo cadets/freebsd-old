@@ -80,6 +80,8 @@ DEBUGMKDIR=
 PROG_FULL=	${PROG}
 .endif
 
+PROG_INSTR=${PROG_FULL}.instrumented
+
 .if defined(PROG)
 PROGNAME?=	${PROG}
 
@@ -158,10 +160,10 @@ ${PROG_FULL}.bc: ${BCOBJS}
 ${PROG_FULL}.ll: ${LLOBJS}
 	${LLVM_LINK} -S -o ${.TARGET} ${LLOBJS}
 
-${PROG_FULL}.instr.bc: ${PROG_FULL}.bc
+${PROG_INSTR}.bc: ${PROG_FULL}.bc
 	${OPT} ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${PROG_FULL}.bc
 
-${PROG_FULL}.instr.ll: ${PROG_FULL}.ll
+${PROG_INSTR}.ll: ${PROG_FULL}.ll
 	${OPT} -S ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${PROG_FULL}.ll
 
 .endif # defined(LLVM_LINK)
