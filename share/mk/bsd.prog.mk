@@ -81,6 +81,7 @@ PROG_FULL=	${PROG}
 .endif
 
 PROG_INSTR=${PROG_FULL}.instrumented
+PROG_INSTR_IR=${PROG_INSTR}.${LLVM_IR_TYPE}
 
 .if defined(PROG)
 PROGNAME?=	${PROG}
@@ -165,6 +166,15 @@ ${PROG_INSTR}.bc: ${PROG_FULL}.bc
 
 ${PROG_INSTR}.ll: ${PROG_FULL}.ll
 	${OPT} -S ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${PROG_FULL}.ll
+
+${PROG_INSTR}: ${PROG_INSTR_IR}
+.if defined(PROG_CXX)
+	${CXX:N${CCACHE_BIN}} ${OPT_CXXFLAGS} ${LDFLAGS} -o ${.TARGET} \
+	    ${PROG_INSTR_IR} ${LDADD} ${LLVM_INSTR_LDADD}
+.else
+	${CC:N${CCACHE_BIN}} ${OPT_CFLAGS} ${LDFLAGS} -o ${.TARGET} \
+	    ${PROG_INSTR_IR} ${LDADD} ${LLVM_INSTR_LDADD}
+.endif
 
 .endif # defined(LLVM_LINK)
 
