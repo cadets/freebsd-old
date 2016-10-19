@@ -225,6 +225,7 @@ LINTOBJKERNFLAGS?=	${LINTOBJFLAGS}
 LINTLIBFLAGS	?=	-cghapbxu -C ${LIB}
 
 LLVM_INSTR_FLAGS?=
+LLVM_IR_TYPE	?=	bc			# use bitcode by default
 
 MAKE		?=	make
 
