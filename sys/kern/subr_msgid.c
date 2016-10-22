@@ -81,13 +81,14 @@ CTASSERT((MSGID_MINYEARS * MSGID_SECSPERYEAR) <
 
 /*
  * Per-CPU state: the next message ID value to be allocated by the CPU.
- * Initialised to 0 as BSS.  The upper MSGID_CPUBITS bits of ms_next will be
- * ignored.
+ * Initialise explicitly to a non-zero value so that uninitialised messsage
+ * IDs can be more easily recognised.  The upper D_CPUBITS bits of ms_next
+ * will be ignored.
  */
 struct msgid_state {
 	msgid_t		ms_next;
 };
-DPCPU_DEFINE(struct msgid_state, msgid_state);
+DPCPU_DEFINE(struct msgid_state, msgid_state) = { 1 };
 
 void
 msgid_generate(msgid_t *msgidp)
