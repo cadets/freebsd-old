@@ -89,8 +89,8 @@ struct msgid_state {
 };
 DPCPU_DEFINE(struct msgid_state, msgid_state);
 
-msgid_t
-msgid_generate(void)
+void
+msgid_generate(msgid_t *msgidp)
 {
 	msgid_t id;
 
@@ -106,5 +106,5 @@ msgid_generate(void)
 	KASSERT(id < (1 << MSGID_COUNTERBITS),
 	    ("%s: message ID overflow CPU %u", __func__, curcpu));
 	MSGID_SETCPU(id, (uint64_t)curcpu);
-	return (id);
+	*msgidp = id;
 }

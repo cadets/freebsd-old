@@ -63,7 +63,7 @@ typedef uint64_t	msgid_t;
 } while (0)
 
 __BEGIN_DECLS
-msgid_t	msgid_generate(void);
+void	msgid_generate(msgid_t *);
 __END_DECLS
 
 #endif /* _SYS_MSGID_H_ */
