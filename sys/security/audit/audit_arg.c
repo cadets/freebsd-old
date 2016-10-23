@@ -982,6 +982,8 @@ audit_ret_msgid(msgid_t *msgidp)
 	ar = currecord();
 	if (ar == NULL)
 		return;
+	if (!msgid_isvalid(msgidp))
+		return;
 	ar->k_ar.ar_ret_msgid = *msgidp;
 	RET_SET_VALID(ar, RET_MSGID);
 }

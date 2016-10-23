@@ -64,6 +64,7 @@ typedef uint64_t	msgid_t;
 
 __BEGIN_DECLS
 void	msgid_generate(msgid_t *);
+int	msgid_isvalid(msgid_t *msgidp);
 __END_DECLS
 
 #endif /* _SYS_MSGID_H_ */

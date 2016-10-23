@@ -109,3 +109,16 @@ msgid_generate(msgid_t *msgidp)
 	MSGID_SETCPU(id, (uint64_t)curcpu);
 	*msgidp = id;
 }
+
+/*
+ * Check whether a message ID is valid.  This is simply a check for a zero
+ * value, which should never be seen as all of the per-CPU counters start at
+ * 1.  Consumers should therefore not assume that this differentiates garbage
+ * from a valid message ID, just zero from a valid message ID.
+ */
+int
+msgid_isvalid(msgid_t *msgidp)
+{
+
+	return (*msgidp != 0);
+}
