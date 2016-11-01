@@ -416,7 +416,8 @@ ahci_setup_interrupt(device_t dev)
 		else if (ctlr->numirqs == 1 || i >= ctlr->channels ||
 		    (ctlr->ccc && i == ctlr->cccv))
 			ctlr->irqs[i].mode = AHCI_IRQ_MODE_ALL;
-		else if (i == ctlr->numirqs - 1)
+		else if (ctlr->channels > ctlr->numirqs &&
+		    i == ctlr->numirqs - 1)
 			ctlr->irqs[i].mode = AHCI_IRQ_MODE_AFTER;
 		else
 			ctlr->irqs[i].mode = AHCI_IRQ_MODE_ONE;
@@ -465,6 +466,7 @@ ahci_intr(void *data)
 	} else {	/* AHCI_IRQ_MODE_AFTER */
 		unit = irq->r_irq_rid - 1;
 		is = ATA_INL(ctlr->r_mem, AHCI_IS);
+		is &= (0xffffffff << unit);
 	}
 	/* CCC interrupt is edge triggered. */
 	if (ctlr->ccc)
@@ -713,6 +715,21 @@ ahci_ch_attach(device_t dev)
 	if (!(ch->r_mem = bus_alloc_resource_any(dev, SYS_RES_MEMORY,
 	    &rid, RF_ACTIVE)))
 		return (ENXIO);
+	ch->chcaps = ATA_INL(ch->r_mem, AHCI_P_CMD);
+	version = ATA_INL(ctlr->r_mem, AHCI_VS);
+	if (version < 0x00010200 && (ctlr->caps & AHCI_CAP_FBSS))
+		ch->chcaps |= AHCI_P_CMD_FBSCP;
+	if (ch->caps2 & AHCI_CAP2_SDS)
+		ch->chscaps = ATA_INL(ch->r_mem, AHCI_P_DEVSLP);
+	if (bootverbose) {
+		device_printf(dev, "Caps:%s%s%s%s%s%s\n",
+		    (ch->chcaps & AHCI_P_CMD_HPCP) ? " HPCP":"",
+		    (ch->chcaps & AHCI_P_CMD_MPSP) ? " MPSP":"",
+		    (ch->chcaps & AHCI_P_CMD_CPD) ? " CPD":"",
+		    (ch->chcaps & AHCI_P_CMD_ESP) ? " ESP":"",
+		    (ch->chcaps & AHCI_P_CMD_FBSCP) ? " FBSCP":"",
+		    (ch->chscaps & AHCI_P_DEVSLP_DSP) ? " DSP":"");
+	}
 	ahci_dmainit(dev);
 	ahci_slotsalloc(dev);
 	mtx_lock(&ch->mtx);
@@ -730,21 +747,6 @@ ahci_ch_attach(device_t dev)
 		device_printf(dev, "Unable to setup interrupt\n");
 		error = ENXIO;
 		goto err1;
-	}
-	ch->chcaps = ATA_INL(ch->r_mem, AHCI_P_CMD);
-	version = ATA_INL(ctlr->r_mem, AHCI_VS);
-	if (version < 0x00010200 && (ctlr->caps & AHCI_CAP_FBSS))
-		ch->chcaps |= AHCI_P_CMD_FBSCP;
-	if (ch->caps2 & AHCI_CAP2_SDS)
-		ch->chscaps = ATA_INL(ch->r_mem, AHCI_P_DEVSLP);
-	if (bootverbose) {
-		device_printf(dev, "Caps:%s%s%s%s%s%s\n",
-		    (ch->chcaps & AHCI_P_CMD_HPCP) ? " HPCP":"",
-		    (ch->chcaps & AHCI_P_CMD_MPSP) ? " MPSP":"",
-		    (ch->chcaps & AHCI_P_CMD_CPD) ? " CPD":"",
-		    (ch->chcaps & AHCI_P_CMD_ESP) ? " ESP":"",
-		    (ch->chcaps & AHCI_P_CMD_FBSCP) ? " FBSCP":"",
-		    (ch->chscaps & AHCI_P_DEVSLP_DSP) ? " DSP":"");
 	}
 	/* Create the device queue for our SIM. */
 	devq = cam_simq_alloc(ch->numslots);

@@ -117,6 +117,7 @@ struct devreq {
 #define	DEV_SUSPEND	_IOW('D', 5, struct devreq)
 #define	DEV_RESUME	_IOW('D', 6, struct devreq)
 #define	DEV_SET_DRIVER	_IOW('D', 7, struct devreq)
+#define	DEV_CLEAR_DRIVER _IOW('D', 8, struct devreq)
 #define	DEV_RESCAN	_IOW('D', 9, struct devreq)
 #define	DEV_DELETE	_IOW('D', 10, struct devreq)
 
@@ -125,6 +126,9 @@ struct devreq {
 
 /* Flags for DEV_SET_DRIVER. */
 #define	DEVF_SET_DRIVER_DETACH	0x0000001	/* Detach existing driver. */
+
+/* Flags for DEV_CLEAR_DRIVER. */
+#define	DEVF_CLEAR_DRIVER_DETACH 0x0000001	/* Detach existing driver. */
 
 /* Flags for DEV_DELETE. */
 #define	DEVF_FORCE_DELETE	0x0000001
@@ -534,7 +538,7 @@ int	bus_setup_intr(device_t dev, struct resource *r, int flags,
 int	bus_teardown_intr(device_t dev, struct resource *r, void *cookie);
 int	bus_bind_intr(device_t dev, struct resource *r, int cpu);
 int	bus_describe_intr(device_t dev, struct resource *irq, void *cookie,
-			  const char *fmt, ...);
+			  const char *fmt, ...) __printflike(4, 5);
 int	bus_set_resource(device_t dev, int type, int rid,
 			 rman_res_t start, rman_res_t count);
 int	bus_get_resource(device_t dev, int type, int rid,

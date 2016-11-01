@@ -338,6 +338,7 @@ exit1(struct thread *td, int rval, int signo)
 	PROC_LOCK(p);
 	stopprofclock(p);
 	p->p_flag &= ~(P_TRACED | P_PPWAIT | P_PPTRACE);
+	p->p_ptevents = 0;
 
 	/*
 	 * Stop the real interval timer.  If the handler is currently
@@ -475,8 +476,12 @@ exit1(struct thread *td, int rval, int signo)
 			 */
 			clear_orphan(q);
 			q->p_flag &= ~(P_TRACED | P_STOPPED_TRACE);
-			FOREACH_THREAD_IN_PROC(q, tdt)
-				tdt->td_dbgflags &= ~TDB_SUSPEND;
+			q->p_flag2 &= ~P2_PTRACE_FSTP;
+			q->p_ptevents = 0;
+			FOREACH_THREAD_IN_PROC(q, tdt) {
+				tdt->td_dbgflags &= ~(TDB_SUSPEND | TDB_XSIG |
+				    TDB_FSTP);
+			}
 			kern_psignal(q, SIGKILL);
 		}
 		PROC_UNLOCK(q);
@@ -718,9 +723,9 @@ sys_wait4(struct thread *td, struct wait4_args *uap)
 	else
 		rup = NULL;
 	error = kern_wait(td, uap->pid, &status, uap->options, rup);
-	if (uap->status != NULL && error == 0)
+	if (uap->status != NULL && error == 0 && td->td_retval[0] != 0)
 		error = copyout(&status, uap->status, sizeof(status));
-	if (uap->rusage != NULL && error == 0)
+	if (uap->rusage != NULL && error == 0 && td->td_retval[0] != 0)
 		error = copyout(&ru, uap->rusage, sizeof(struct rusage));
 	return (error);
 }
@@ -754,9 +759,9 @@ sys_wait6(struct thread *td, struct wait6_args *uap)
 	 */
 	error = kern_wait6(td, idtype, id, &status, uap->options, wrup, sip);
 
-	if (uap->status != NULL && error == 0)
+	if (uap->status != NULL && error == 0 && td->td_retval[0] != 0)
 		error = copyout(&status, uap->status, sizeof(status));
-	if (uap->wrusage != NULL && error == 0)
+	if (uap->wrusage != NULL && error == 0 && td->td_retval[0] != 0)
 		error = copyout(&wru, uap->wrusage, sizeof(wru));
 	if (uap->info != NULL && error == 0)
 		error = copyout(&si, uap->info, sizeof(si));

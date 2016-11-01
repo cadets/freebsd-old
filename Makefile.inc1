@@ -1011,7 +1011,7 @@ distributeworld installworld stageworld: _installcheck_world .PHONY
 	    ${IMAKEENV} rm -rf ${INSTALLTMP}
 .if make(distributeworld)
 .for dist in ${EXTRA_DISTRIBUTIONS}
-	find ${DESTDIR}/${DISTDIR}/${dist} -mindepth 1 -empty -delete
+	find ${DESTDIR}/${DISTDIR}/${dist} -mindepth 1 -type d -empty -delete
 .endfor
 .if defined(NO_ROOT)
 .for dist in base ${EXTRA_DISTRIBUTIONS}
@@ -1570,7 +1570,7 @@ _strfile=	usr.bin/fortune/strfile
 _gperf=		gnu/usr.bin/gperf
 .endif
 
-.if ${MK_GROFF} != "no"
+.if ${MK_SHAREDOCS} != "no" && ${MK_GROFF} != "no"
 _groff=		gnu/usr.bin/groff \
 		usr.bin/soelim
 .endif
