@@ -35,6 +35,7 @@
 #define	_SYS_MBUF_H_
 
 /* XXX: These includes suck. Sorry! */
+#include <sys/msgid.h>
 #include <sys/queue.h>
 #ifdef _KERNEL
 #include <sys/systm.h>
@@ -131,8 +132,8 @@ struct m_tag {
 
 /*
  * Record/packet header in first mbuf of chain; valid only if M_PKTHDR is set.
- * Size ILP32: 48
- *	 LP64: 56
+ * Size ILP32: 48 + 8
+ *	 LP64: 56 + 8
  * Compile-time assertions in uipc_mbuf.c test these values to ensure that
  * they are correct.
  */
@@ -159,6 +160,8 @@ struct pkthdr {
 		uintptr_t unintptr[1];
 		void	*ptr;
 	} PH_per;
+
+	msgid_t		 msgid;		/* unique chain message ID */
 
 	/* Layer specific non-persistent local storage for reassembly, etc. */
 	union {

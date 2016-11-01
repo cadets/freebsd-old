@@ -1,6 +1,12 @@
 /*
  * Copyright (c) 1999-2009 Apple Inc.
+ * Copyright (c) 2016 Robert N. M. Watson
  * All rights reserved.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -743,6 +749,33 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		 */
 		break;
 
+	case AUE_ACL_DELETE_FD:
+	case AUE_ACL_DELETE_FILE:
+	case AUE_ACL_CHECK_FD:
+	case AUE_ACL_CHECK_FILE:
+	case AUE_ACL_CHECK_LINK:
+	case AUE_ACL_DELETE_LINK:
+	case AUE_ACL_GET_FD:
+	case AUE_ACL_GET_FILE:
+	case AUE_ACL_GET_LINK:
+	case AUE_ACL_SET_FD:
+	case AUE_ACL_SET_FILE:
+	case AUE_ACL_SET_LINK:
+		/*
+		 * XXXRW: Several of these events would ideally also audit the
+		 * ACL being checked or added to a vnode.
+		 *
+		 * XXXRW: We would ideally map from internal ACL_TYPE
+		 * constants to OpenBSM constants.
+		 */
+		if (ARG_IS_VALID(kar, ARG_VALUE)) {
+			tok = au_to_arg32(1, "type", ar->ar_arg_value);
+			kau_write(rec, tok);
+		}
+		ATFD1_TOKENS(1);
+		UPATH1_VNODE1_TOKENS;
+		break;
+
 	case AUE_CHDIR:
 	case AUE_CHROOT:
 	case AUE_FSTATAT:
@@ -981,10 +1014,7 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 			    au_fcntl_cmd_to_bsm(ar->ar_arg_cmd));
 			kau_write(rec, tok);
 		}
-		if (ar->ar_arg_cmd == F_GETLK || ar->ar_arg_cmd == F_SETLK ||
-		    ar->ar_arg_cmd == F_SETLKW) {
-			FD_VNODE1_TOKENS;
-		}
+		FD_VNODE1_TOKENS;
 		break;
 
 	case AUE_FCHFLAGS:

@@ -132,6 +132,7 @@ MALLOC_DECLARE(M_PRISON);
 #if defined(_KERNEL) || defined(_WANT_PRISON)
 
 #include <sys/osd.h>
+#include <sys/uuid.h>
 
 #define	HOSTUUIDLEN	64
 #define	OSRELEASELEN	32
@@ -186,6 +187,7 @@ struct prison {
 	char		 pr_domainname[MAXHOSTNAMELEN];	/* (p) jail domainname */
 	char		 pr_hostuuid[HOSTUUIDLEN];	/* (p) jail hostuuid */
 	char		 pr_osrelease[OSRELEASELEN];	/* (c) kern.osrelease value */
+	struct uuid	 pr_uuid;			/* (c) jail UUID */
 };
 
 struct prison_racct {

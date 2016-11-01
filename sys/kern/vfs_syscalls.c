@@ -4480,9 +4480,11 @@ kern_posix_fallocate(struct thread *td, int fd, off_t offset, off_t len)
 	/* Check for wrap. */
 	if (offset > OFF_MAX - len)
 		return (EFBIG);
+	AUDIT_ARG_FD(fd);
 	error = fget(td, fd, cap_rights_init(&rights, CAP_WRITE), &fp);
 	if (error != 0)
 		return (error);
+	AUDIT_ARG_FILE(td->td_proc, fp);
 	if ((fp->f_ops->fo_flags & DFLAG_SEEKABLE) == 0) {
 		error = ESPIPE;
 		goto out;
@@ -4572,6 +4574,7 @@ kern_posix_fadvise(struct thread *td, int fd, off_t offset, off_t len,
 
 	if (offset < 0 || len < 0 || offset > OFF_MAX - len)
 		return (EINVAL);
+	AUDIT_ARG_VALUE(advice);
 	switch (advice) {
 	case POSIX_FADV_SEQUENTIAL:
 	case POSIX_FADV_RANDOM:
@@ -4587,9 +4590,11 @@ kern_posix_fadvise(struct thread *td, int fd, off_t offset, off_t len,
 		return (EINVAL);
 	}
 	/* XXX: CAP_POSIX_FADVISE? */
+	AUDIT_ARG_FD(fd);
 	error = fget(td, fd, cap_rights_init(&rights), &fp);
 	if (error != 0)
 		goto out;
+	AUDIT_ARG_FILE(td->td_proc, fp);
 	if ((fp->f_ops->fo_flags & DFLAG_SEEKABLE) == 0) {
 		error = ESPIPE;
 		goto out;

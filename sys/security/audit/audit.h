@@ -51,6 +51,7 @@
 
 #include <sys/file.h>
 #include <sys/sysctl.h>
+#include <sys/msgid.h>
 
 /*
  * Audit subsystem condition flags.  The audit_enabled flag is set and
@@ -136,6 +137,7 @@ void	 audit_thread_alloc(struct thread *td);
 void	 audit_thread_free(struct thread *td);
 
 #ifdef KDTRACE_HOOKS
+void	 audit_ret_msgid(msgid_t *msgidp);
 void	 audit_ret_objuuid1(struct uuid *uuid);
 void	 audit_ret_objuuid2(struct uuid *uuid);
 #endif
@@ -264,6 +266,11 @@ void	 audit_ret_objuuid2(struct uuid *uuid);
 } while (0)
 
 #ifdef KDTRACE_HOOKS
+#define	AUDIT_RET_MSGID(msgidp) do {					\
+	if (AUDITING_TD(curthread))					\
+		audit_ret_msgid((msgidp));				\
+} while (0)
+
 #define	AUDIT_RET_OBJUUID1(p) do {					\
 	if (AUDITING_TD(curthread))					\
 		audit_ret_objuuid1((p));				\
@@ -404,11 +411,6 @@ void	 audit_ret_objuuid2(struct uuid *uuid);
 #define	AUDIT_ARG_OWNER(uid, gid)
 #define	AUDIT_ARG_PID(pid)
 #define	AUDIT_ARG_PROCESS(p)
-#ifdef KDTRACE_HOOKS
-#define	AUDIT_RET_OBJUUID1(p)
-#define	AUDIT_RET_OBJUUID2(p)
-#endif
-
 #define	AUDIT_ARG_RGID(rgid)
 #define	AUDIT_ARG_RIGHTS(rights)
 #define	AUDIT_ARG_FCNTL_RIGHTS(fcntlrights)
@@ -425,6 +427,12 @@ void	 audit_ret_objuuid2(struct uuid *uuid);
 #define	AUDIT_ARG_VALUE(value)
 #define	AUDIT_ARG_VNODE1(vp)
 #define	AUDIT_ARG_VNODE2(vp)
+
+#ifdef KDTRACE_HOOKS
+#define	AUDIT_RET_MSGID(msgidp)
+#define	AUDIT_RET_OBJUUID1(p)
+#define	AUDIT_RET_OBJUUID2(p)
+#endif
 
 #define	AUDIT_SYSCALL_ENTER(code, td)
 #define	AUDIT_SYSCALL_EXIT(error, td)
