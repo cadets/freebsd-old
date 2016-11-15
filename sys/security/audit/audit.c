@@ -281,13 +281,14 @@ audit_record_ctor(void *mem, int size, void *arg, int flags)
 	    sizeof(ar->k_ar.ar_subj_comm));
 
 	/*
-	 * Also preserve the process/thread UUID -- no lock required these are
-	 * unmodified after fork() / thread create.
+	 * Also preserve the process/thread/jail UUIDs -- no lock required.
 	 */
 	bcopy(&td->td_proc->p_uuid, &ar->k_ar.ar_subj_proc_uuid,
 	    sizeof(ar->k_ar.ar_subj_proc_uuid));
 	bcopy(&td->td_uuid, &ar->k_ar.ar_subj_thr_uuid,
 	    sizeof(ar->k_ar.ar_subj_thr_uuid));
+	bcopy(&td->td_ucred->cr_prison->pr_uuid, &ar->k_ar.ar_subj_jail_uuid,
+	    sizeof(&ar->k_ar.ar_subj_jail_uuid));
 #endif
 	return (0);
 }

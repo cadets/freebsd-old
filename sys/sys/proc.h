@@ -342,6 +342,7 @@ struct thread {
 	int		td_lastcpu;	/* (t) Last cpu we were on. */
 	int		td_oncpu;	/* (t) Which cpu we are on. */
 	struct tesla_store	*td_tesla;	/* (k) TESLA per-thread state */
+	sbintime_t	td_sleeptimo;	/* (t) Sleep timeout. */
 };
 
 struct thread0_storage {
@@ -392,7 +393,7 @@ do {									\
 #define	TDF_ALLPROCSUSP	0x00000200 /* suspended by SINGLE_ALLPROC */
 #define	TDF_BOUNDARY	0x00000400 /* Thread suspended at user boundary */
 #define	TDF_ASTPENDING	0x00000800 /* Thread has some asynchronous events. */
-#define	TDF_TIMOFAIL	0x00001000 /* Timeout from sleep after we were awake. */
+#define	TDF_UNUSED12	0x00001000 /* --available-- */
 #define	TDF_SBDRY	0x00002000 /* Stop only on usermode boundary. */
 #define	TDF_UPIBLOCKED	0x00004000 /* Thread blocked on user PI mutex. */
 #define	TDF_NEEDSUSPCHK	0x00008000 /* Thread may need to suspend. */
@@ -426,6 +427,8 @@ do {									\
 #define	TDB_CHILD	0x00000100 /* New child indicator for ptrace() */
 #define	TDB_BORN	0x00000200 /* New LWP indicator for ptrace() */
 #define	TDB_EXIT	0x00000400 /* Exiting LWP indicator for ptrace() */
+#define	TDB_VFORK	0x00000800 /* vfork indicator for ptrace() */
+#define	TDB_FSTP	0x00001000 /* The thread is PT_ATTACH leader */
 
 /*
  * "Private" flags kept in td_pflags:
@@ -648,6 +651,7 @@ struct proc {
 	 */
 	LIST_ENTRY(proc) p_orphan;	/* (e) List of orphan processes. */
 	LIST_HEAD(, proc) p_orphans;	/* (e) Pointer to list of orphans. */
+	u_int		p_ptevents;	/* (c) ptrace() event mask. */
 };
 
 #define	p_session	p_pgrp->pg_session
@@ -677,7 +681,7 @@ struct proc {
 #define	P_ADVLOCK	0x00001	/* Process may hold a POSIX advisory lock. */
 #define	P_CONTROLT	0x00002	/* Has a controlling terminal. */
 #define	P_KPROC		0x00004	/* Kernel process. */
-#define	P_FOLLOWFORK	0x00008	/* Attach parent debugger to children. */
+#define	P_UNUSED3	0x00008	/* --available-- */
 #define	P_PPWAIT	0x00010	/* Parent is waiting for child to exec/exit. */
 #define	P_PROFIL	0x00020	/* Has started profiling. */
 #define	P_STOPPROF	0x00040	/* Has thread requesting to stop profiling. */
@@ -716,7 +720,8 @@ struct proc {
 #define	P2_NOTRACE	0x00000002	/* No ptrace(2) attach or coredumps. */
 #define	P2_NOTRACE_EXEC 0x00000004	/* Keep P2_NOPTRACE on exec(2). */
 #define	P2_AST_SU	0x00000008	/* Handles SU ast for kthreads. */
-#define	P2_LWP_EVENTS	0x00000010	/* Report LWP events via ptrace(2). */
+#define	P2_PTRACE_FSTP	0x00000010 /* SIGSTOP from PT_ATTACH not yet handled. */
+#define	P2_TRAPCAP	0x00000020	/* SIGTRAP on ENOTCAPABLE */
 
 /* Flags protected by proctree_lock, kept in p_treeflags. */
 #define	P_TREE_ORPHANED		0x00000001	/* Reparented, on orphan list */
@@ -1007,6 +1012,7 @@ void	proc_linkup(struct proc *p, struct thread *td);
 struct proc *proc_realparent(struct proc *child);
 void	proc_reap(struct thread *td, struct proc *p, int *status, int options);
 void	proc_reparent(struct proc *child, struct proc *newparent);
+void	proc_set_traced(struct proc *p, bool stop);
 struct	pstats *pstats_alloc(void);
 void	pstats_fork(struct pstats *src, struct pstats *dst);
 void	pstats_free(struct pstats *ps);

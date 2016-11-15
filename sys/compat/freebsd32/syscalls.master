@@ -624,21 +624,21 @@
 				    const struct timespec *timeout); }
 346	AUE_NULL	STD	{ int freebsd32_sigwaitinfo(const sigset_t *set, \
 				    siginfo_t *info); }
-347	AUE_NULL	NOPROTO	{ int __acl_get_file(const char *path, \
+347	AUE_ACL_GET_FILE	NOPROTO	{ int __acl_get_file(const char *path, \
 				    acl_type_t type, struct acl *aclp); }
-348	AUE_NULL	NOPROTO	{ int __acl_set_file(const char *path, \
+348	AUE_ACL_SET_FILE	NOPROTO	{ int __acl_set_file(const char *path, \
 				    acl_type_t type, struct acl *aclp); }
-349	AUE_NULL	NOPROTO	{ int __acl_get_fd(int filedes, \
+349	AUE_ACL_GET_FD	NOPROTO	{ int __acl_get_fd(int filedes, \
 				    acl_type_t type, struct acl *aclp); }
-350	AUE_NULL	NOPROTO	{ int __acl_set_fd(int filedes, \
+350	AUE_ACL_SET_FD	NOPROTO	{ int __acl_set_fd(int filedes, \
 				    acl_type_t type, struct acl *aclp); }
-351	AUE_NULL	NOPROTO	{ int __acl_delete_file(const char *path, \
+351	AUE_ACL_DELETE_FILE	NOPROTO	{ int __acl_delete_file(const char *path, \
 				    acl_type_t type); }
-352	AUE_NULL	NOPROTO	{ int __acl_delete_fd(int filedes, \
+352	AUE_ACL_DELETE_FD	NOPROTO	{ int __acl_delete_fd(int filedes, \
 				    acl_type_t type); }
-353	AUE_NULL	NOPROTO	{ int __acl_aclcheck_file(const char *path, \
+353	AUE_ACL_CHECK_FILE	NOPROTO	{ int __acl_aclcheck_file(const char *path, \
 				    acl_type_t type, struct acl *aclp); }
-354	AUE_NULL	NOPROTO	{ int __acl_aclcheck_fd(int filedes, \
+354	AUE_ACL_CHECK_FD	NOPROTO	{ int __acl_aclcheck_fd(int filedes, \
 				    acl_type_t type, struct acl *aclp); }
 355	AUE_EXTATTRCTL	NOPROTO	{ int extattrctl(const char *path, int cmd, \
 				    const char *filename, int attrnamespace, \
@@ -763,13 +763,13 @@
 				    struct freebsd32_ucontext *oucp, \
 				    const struct freebsd32_ucontext *ucp); }
 424	AUE_SWAPOFF	UNIMPL	swapoff
-425	AUE_NULL	NOPROTO	{ int __acl_get_link(const char *path, \
+425	AUE_ACL_GET_LINK	NOPROTO	{ int __acl_get_link(const char *path, \
 				    acl_type_t type, struct acl *aclp); }
-426	AUE_NULL	NOPROTO	{ int __acl_set_link(const char *path, \
+426	AUE_ACL_SET_LINK	NOPROTO	{ int __acl_set_link(const char *path, \
 				    acl_type_t type, struct acl *aclp); }
-427	AUE_NULL	NOPROTO	{ int __acl_delete_link(const char *path, \
+427	AUE_ACL_DELETE_LINK	NOPROTO	{ int __acl_delete_link(const char *path, \
 				    acl_type_t type); }
-428	AUE_NULL	NOPROTO	{ int __acl_aclcheck_link(const char *path, \
+428	AUE_ACL_CHECK_LINK	NOPROTO	{ int __acl_aclcheck_link(const char *path, \
 				    acl_type_t type, struct acl *aclp); }
 429	AUE_SIGWAIT	NOPROTO	{ int sigwait(const sigset_t *set, \
 				    int *sig); }
@@ -779,7 +779,7 @@
 433	AUE_THR_KILL	NOPROTO	{ int thr_kill(long id, int sig); }
 434	AUE_NULL	UNIMPL	nosys
 435	AUE_NULL	UNIMPL	nosys
-436	AUE_NULL	NOPROTO	{ int jail_attach(int jid); }
+436	AUE_JAIL_ATTACH	NOPROTO	{ int jail_attach(int jid); }
 437	AUE_EXTATTR_LIST_FD	NOPROTO	{ ssize_t extattr_list_fd(int fd, \
 				    int attrnamespace, void *data, \
 				    size_t nbytes); }
@@ -975,7 +975,7 @@
 514	AUE_NULL	OBSOL	cap_new
 515	AUE_CAP_RIGHTS_GET	NOPROTO	{ int __cap_rights_get(int version, \
 				    int fd, cap_rights_t *rightsp); }
-516	AUE_CAP_ENTER	STD	{ int freebsd32_cap_enter(void); }
+516	AUE_CAP_ENTER	NOPROTO	{ int cap_enter(void); }
 517	AUE_CAP_GETMODE	NOPROTO	{ int cap_getmode(u_int *modep); }
 518	AUE_PDFORK	NOPROTO	{ int pdfork(int *fdp, int flags); }
 519	AUE_PDKILL	NOPROTO	{ int pdkill(int fd, int signum); }
@@ -1081,3 +1081,4 @@
 549	AUE_NULL	NOPROTO	{ int numa_setaffinity(cpuwhich_t which, \
 				    id_t id, \
 				    const struct vm_domain_policy *policy); }
+550	AUE_FSYNC	NOPROTO	{ int fdatasync(int fd); }

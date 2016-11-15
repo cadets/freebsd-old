@@ -112,6 +112,7 @@ static const struct aw_ehci_conf a31_ehci_conf = {
 
 static struct ofw_compat_data compat_data[] = {
 	{ "allwinner,sun4i-a10-ehci",	(uintptr_t)&a10_ehci_conf },
+	{ "allwinner,sun5i-a13-ehci",	(uintptr_t)&a10_ehci_conf },
 	{ "allwinner,sun6i-a31-ehci",	(uintptr_t)&a31_ehci_conf },
 	{ "allwinner,sun7i-a20-ehci",	(uintptr_t)&a10_ehci_conf },
 	{ "allwinner,sun8i-a83t-ehci",	(uintptr_t)&a31_ehci_conf },
@@ -360,7 +361,7 @@ static device_method_t ehci_methods[] = {
 static driver_t ehci_driver = {
 	.name = "ehci",
 	.methods = ehci_methods,
-	.size = sizeof(ehci_softc_t),
+	.size = sizeof(struct aw_ehci_softc),
 };
 
 static devclass_t ehci_devclass;

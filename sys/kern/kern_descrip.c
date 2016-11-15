@@ -495,6 +495,8 @@ kern_fcntl(struct thread *td, int fd, int cmd, intptr_t arg)
 	p = td->td_proc;
 	fdp = p->p_fd;
 
+	AUDIT_ARG_FD(cmd);
+	AUDIT_ARG_CMD(cmd);
 	switch (cmd) {
 	case F_DUPFD:
 		tmp = arg;
@@ -3178,7 +3180,7 @@ sysctl_kern_proc_nfds(SYSCTL_HANDLER_ARGS)
 }
 
 static SYSCTL_NODE(_kern_proc, KERN_PROC_NFDS, nfds,
-    CTLFLAG_RD|CTLFLAG_MPSAFE, sysctl_kern_proc_nfds,
+    CTLFLAG_RD|CTLFLAG_CAPRD|CTLFLAG_MPSAFE, sysctl_kern_proc_nfds,
     "Number of open file descriptors");
 
 /*

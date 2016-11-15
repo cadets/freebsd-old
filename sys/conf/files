@@ -127,6 +127,7 @@ cddl/compat/opensolaris/kern/opensolaris.c		optional zfs | dtrace compile-with "
 cddl/compat/opensolaris/kern/opensolaris_cmn_err.c	optional zfs | dtrace compile-with "${CDDL_C}"
 cddl/compat/opensolaris/kern/opensolaris_kmem.c		optional zfs | dtrace compile-with "${CDDL_C}"
 cddl/compat/opensolaris/kern/opensolaris_misc.c		optional zfs | dtrace compile-with "${CDDL_C}"
+cddl/compat/opensolaris/kern/opensolaris_proc.c		optional zfs | dtrace compile-with "${CDDL_C}"
 cddl/compat/opensolaris/kern/opensolaris_sunddi.c	optional zfs | dtrace compile-with "${CDDL_C}"
 cddl/compat/opensolaris/kern/opensolaris_taskq.c	optional zfs | dtrace compile-with "${CDDL_C}"
 # zfs specific
@@ -274,16 +275,24 @@ cddl/dev/fbt/fbt.c			optional dtrace_fbt      | dtraceall compile-with "${FBT_C}
 cddl/dev/systrace/systrace.c		optional dtrace_systrace | dtraceall compile-with "${CDDL_C}"
 cddl/dev/prototype.c			optional dtrace_prototype | dtraceall compile-with "${CDDL_C}"
 fs/nfsclient/nfs_clkdtrace.c		optional dtnfscl nfscl   | dtraceall nfscl compile-with "${CDDL_C}"
-compat/cloudabi/cloudabi_clock.c	optional compat_cloudabi64
-compat/cloudabi/cloudabi_errno.c	optional compat_cloudabi64
-compat/cloudabi/cloudabi_fd.c		optional compat_cloudabi64
-compat/cloudabi/cloudabi_file.c		optional compat_cloudabi64
-compat/cloudabi/cloudabi_futex.c	optional compat_cloudabi64
-compat/cloudabi/cloudabi_mem.c		optional compat_cloudabi64
-compat/cloudabi/cloudabi_proc.c		optional compat_cloudabi64
-compat/cloudabi/cloudabi_random.c	optional compat_cloudabi64
-compat/cloudabi/cloudabi_sock.c		optional compat_cloudabi64
-compat/cloudabi/cloudabi_thread.c	optional compat_cloudabi64
+compat/cloudabi/cloudabi_clock.c	optional compat_cloudabi32 | compat_cloudabi64
+compat/cloudabi/cloudabi_errno.c	optional compat_cloudabi32 | compat_cloudabi64
+compat/cloudabi/cloudabi_fd.c		optional compat_cloudabi32 | compat_cloudabi64
+compat/cloudabi/cloudabi_file.c		optional compat_cloudabi32 | compat_cloudabi64
+compat/cloudabi/cloudabi_futex.c	optional compat_cloudabi32 | compat_cloudabi64
+compat/cloudabi/cloudabi_mem.c		optional compat_cloudabi32 | compat_cloudabi64
+compat/cloudabi/cloudabi_proc.c		optional compat_cloudabi32 | compat_cloudabi64
+compat/cloudabi/cloudabi_random.c	optional compat_cloudabi32 | compat_cloudabi64
+compat/cloudabi/cloudabi_sock.c		optional compat_cloudabi32 | compat_cloudabi64
+compat/cloudabi/cloudabi_thread.c	optional compat_cloudabi32 | compat_cloudabi64
+compat/cloudabi/cloudabi_vdso.c		optional compat_cloudabi32 | compat_cloudabi64
+compat/cloudabi32/cloudabi32_fd.c	optional compat_cloudabi32
+compat/cloudabi32/cloudabi32_module.c	optional compat_cloudabi32
+compat/cloudabi32/cloudabi32_poll.c	optional compat_cloudabi32
+compat/cloudabi32/cloudabi32_sock.c	optional compat_cloudabi32
+compat/cloudabi32/cloudabi32_syscalls.c	optional compat_cloudabi32
+compat/cloudabi32/cloudabi32_sysent.c	optional compat_cloudabi32
+compat/cloudabi32/cloudabi32_thread.c	optional compat_cloudabi32
 compat/cloudabi64/cloudabi64_fd.c	optional compat_cloudabi64
 compat/cloudabi64/cloudabi64_module.c	optional compat_cloudabi64
 compat/cloudabi64/cloudabi64_poll.c	optional compat_cloudabi64
@@ -1253,6 +1262,9 @@ dev/cxgb/sys/uipc_mvec.c	optional cxgb pci \
 	compile-with "${NORMAL_C} -I$S/dev/cxgb"
 dev/cxgb/cxgb_t3fw.c		optional cxgb cxgb_t3fw \
 	compile-with "${NORMAL_C} -I$S/dev/cxgb"
+dev/cxgbe/t4_if.m		optional cxgbe pci
+dev/cxgbe/t4_iov.c		optional cxgbe pci \
+	compile-with "${NORMAL_C} -I$S/dev/cxgbe"
 dev/cxgbe/t4_mp_ring.c		optional cxgbe pci \
 	compile-with "${NORMAL_C} -I$S/dev/cxgbe"
 dev/cxgbe/t4_main.c		optional cxgbe pci \
@@ -1265,7 +1277,11 @@ dev/cxgbe/t4_l2t.c		optional cxgbe pci \
 	compile-with "${NORMAL_C} -I$S/dev/cxgbe"
 dev/cxgbe/t4_tracer.c		optional cxgbe pci \
 	compile-with "${NORMAL_C} -I$S/dev/cxgbe"
+dev/cxgbe/t4_vf.c		optional cxgbev pci \
+	compile-with "${NORMAL_C} -I$S/dev/cxgbe"
 dev/cxgbe/common/t4_hw.c	optional cxgbe pci \
+	compile-with "${NORMAL_C} -I$S/dev/cxgbe"
+dev/cxgbe/common/t4vf_hw.c	optional cxgbev pci \
 	compile-with "${NORMAL_C} -I$S/dev/cxgbe"
 t4fw_cfg.c		optional cxgbe					\
 	compile-with	"${AWK} -f $S/tools/fw_stub.awk t4fw_cfg.fw:t4fw_cfg t4fw_cfg_uwire.fw:t4fw_cfg_uwire t4fw.fw:t4fw -mt4fw_cfg -c${.TARGET}" \
@@ -1491,6 +1507,11 @@ dev/etherswitch/ip17x/ip17x_vlans.c	optional ip17x
 dev/etherswitch/miiproxy.c		optional miiproxy
 dev/etherswitch/rtl8366/rtl8366rb.c	optional rtl8366rb
 dev/etherswitch/ukswitch/ukswitch.c	optional ukswitch
+dev/evdev/cdev.c			optional evdev
+dev/evdev/evdev.c			optional evdev
+dev/evdev/evdev_mt.c			optional evdev
+dev/evdev/evdev_utils.c			optional evdev
+dev/evdev/uinput.c			optional evdev uinput
 dev/ex/if_ex.c			optional ex
 dev/ex/if_ex_isa.c		optional ex isa
 dev/ex/if_ex_pccard.c		optional ex pccard
@@ -3354,6 +3375,7 @@ kern/subr_disk.c		standard
 kern/subr_eventhandler.c	standard
 kern/subr_fattime.c		standard
 kern/subr_firmware.c		optional firmware
+kern/subr_gtaskqueue.c		standard
 kern/subr_hash.c		standard
 kern/subr_hints.c		standard
 kern/subr_kdb.c			standard
@@ -3364,6 +3386,7 @@ kern/subr_mbpool.c		optional libmbpool
 kern/subr_mchain.c		optional libmchain
 kern/subr_module.c		standard
 kern/subr_msgbuf.c		standard
+kern/subr_msgid.c		standard
 kern/subr_param.c		standard
 kern/subr_pcpu.c		standard
 kern/subr_pctrie.c		standard

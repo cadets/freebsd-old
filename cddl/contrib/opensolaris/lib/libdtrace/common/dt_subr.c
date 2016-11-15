@@ -606,11 +606,13 @@ dt_printf(dtrace_hdl_t *dtp, FILE *fp, const char *format, ...)
 		len = dtp->dt_sprintf_buflen - len;
 		assert(len >= 0);
 
-		if ((n = vsnprintf(buf, len, format, ap)) < 0)
+		va_copy(ap2, ap);
+		if ((n = vsnprintf(buf, len, format, ap2)) < 0)
 			n = dt_set_errno(dtp, errno);
 
+		va_end(ap2);
 		va_end(ap);
-
+		
 		return (n);
 	}
 
@@ -674,12 +676,15 @@ dt_printf(dtrace_hdl_t *dtp, FILE *fp, const char *format, ...)
 			dtp->dt_buffered_size <<= 1;
 		}
 
+		va_copy(ap2, ap);
 		if (vsnprintf(&dtp->dt_buffered_buf[dtp->dt_buffered_offs],
-		    avail, format, ap) < 0) {
+		    avail, format, ap2) < 0) {
 			rval = dt_set_errno(dtp, errno);
+			va_end(ap2);
 			va_end(ap);
 			return (rval);
 		}
+		va_end(ap2);
 
 		dtp->dt_buffered_offs += needed;
 		assert(dtp->dt_buffered_buf[dtp->dt_buffered_offs] == '\0');
@@ -687,8 +692,10 @@ dt_printf(dtrace_hdl_t *dtp, FILE *fp, const char *format, ...)
 		return (0);
 	}
 
-	n = vfprintf(fp, format, ap);
+	va_copy(ap2, ap);
+	n = vfprintf(fp, format, ap2);
 	fflush(fp);
+	va_end(ap2);
 	va_end(ap);
 
 	if (n < 0) {

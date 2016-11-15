@@ -149,6 +149,7 @@ TESTS_SRCS= \
 	test_read_format_lha_bugfix_0.c		\
 	test_read_format_lha_filename.c		\
 	test_read_format_mtree.c		\
+	test_read_format_mtree_crash747.c	\
 	test_read_format_pax_bz2.c		\
 	test_read_format_rar.c			\
 	test_read_format_rar_encryption_data.c	\
@@ -175,6 +176,7 @@ TESTS_SRCS= \
 	test_read_format_zip_encryption_header.c	\
 	test_read_format_zip_encryption_partially.c	\
 	test_read_format_zip_filename.c		\
+	test_read_format_zip_high_compression.c	\
 	test_read_format_zip_mac_metadata.c	\
 	test_read_format_zip_malformed.c	\
 	test_read_format_zip_msdos.c		\
@@ -209,6 +211,9 @@ TESTS_SRCS= \
 	test_write_disk_no_hfs_compression.c	\
 	test_write_disk_perms.c			\
 	test_write_disk_secure.c		\
+	test_write_disk_secure744.c		\
+	test_write_disk_secure745.c		\
+	test_write_disk_secure746.c		\
 	test_write_disk_sparse.c		\
 	test_write_disk_symlink.c		\
 	test_write_disk_times.c			\
@@ -460,6 +465,7 @@ ${PACKAGE}FILES+=	test_read_format_lha_lh6.lzh.uu
 ${PACKAGE}FILES+=	test_read_format_lha_lh7.lzh.uu
 ${PACKAGE}FILES+=	test_read_format_lha_withjunk.lzh.uu
 ${PACKAGE}FILES+=	test_read_format_mtree.mtree.uu
+${PACKAGE}FILES+=	test_read_format_mtree_crash747.mtree.bz2.uu
 ${PACKAGE}FILES+=	test_read_format_mtree_nomagic.mtree.uu
 ${PACKAGE}FILES+=	test_read_format_mtree_nomagic2.mtree.uu
 ${PACKAGE}FILES+=	test_read_format_mtree_nomagic3.mtree.uu
@@ -504,6 +510,7 @@ ${PACKAGE}FILES+=	test_read_format_zip_filename_koi8r.zip.uu
 ${PACKAGE}FILES+=	test_read_format_zip_filename_utf8_jp.zip.uu
 ${PACKAGE}FILES+=	test_read_format_zip_filename_utf8_ru.zip.uu
 ${PACKAGE}FILES+=	test_read_format_zip_filename_utf8_ru2.zip.uu
+${PACKAGE}FILES+=	test_read_format_zip_high_compression.zip.uu
 ${PACKAGE}FILES+=	test_read_format_zip_length_at_end.zip.uu
 ${PACKAGE}FILES+=	test_read_format_zip_mac_metadata.zip.uu
 ${PACKAGE}FILES+=	test_read_format_zip_malformed1.zip.uu

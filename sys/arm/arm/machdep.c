@@ -1398,9 +1398,6 @@ set_stackptrs(int cpu)
 #endif
 
 #ifdef EFI
-#define efi_next_descriptor(ptr, size) \
-	((struct efi_md *)(((uint8_t *) ptr) + size))
-
 static void
 add_efi_map_entries(struct efi_map_header *efihdr, struct mem_region *mr,
     int *mrcnt)
@@ -1996,14 +1993,3 @@ initarm(struct arm_boot_params *abp)
 
 #endif /* __ARM_ARCH < 6 */
 #endif /* FDT */
-
-uint32_t (*arm_cpu_fill_vdso_timehands)(struct vdso_timehands *,
-    struct timecounter *);
-
-uint32_t
-cpu_fill_vdso_timehands(struct vdso_timehands *vdso_th, struct timecounter *tc)
-{
-
-	return (arm_cpu_fill_vdso_timehands != NULL ?
-	    arm_cpu_fill_vdso_timehands(vdso_th, tc) : 0);
-}

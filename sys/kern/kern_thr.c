@@ -36,6 +36,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/priv.h>
 #include <sys/proc.h>
 #include <sys/posix4.h>
+#include <sys/ptrace.h>
 #include <sys/racct.h>
 #include <sys/resourcevar.h>
 #include <sys/rwlock.h>
@@ -231,6 +232,7 @@ thread_create(struct thread *td, struct rtprio *rtp,
 
 	bzero(&newtd->td_startzero,
 	    __rangeof(struct thread, td_startzero, td_endzero));
+	newtd->td_sleeptimo = 0;
 	bcopy(&td->td_startcopy, &newtd->td_startcopy,
 	    __rangeof(struct thread, td_startcopy, td_endcopy));
 	newtd->td_proc = td->td_proc;
@@ -254,7 +256,7 @@ thread_create(struct thread *td, struct rtprio *rtp,
 	thread_unlock(td);
 	if (P_SHOULDSTOP(p))
 		newtd->td_flags |= TDF_ASTPENDING | TDF_NEEDSUSPCHK;
-	if (p->p_flag2 & P2_LWP_EVENTS)
+	if (p->p_ptevents & PTRACE_LWP)
 		newtd->td_dbgflags |= TDB_BORN;
 
 	/*
@@ -357,7 +359,7 @@ kern_thr_exit(struct thread *td)
 
 	p->p_pendingexits++;
 	td->td_dbgflags |= TDB_EXIT;
-	if (p->p_flag & P_TRACED && p->p_flag2 & P2_LWP_EVENTS)
+	if (p->p_ptevents & PTRACE_LWP)
 		ptracestop(td, SIGTRAP);
 	PROC_UNLOCK(p);
 	tidhash_remove(td);

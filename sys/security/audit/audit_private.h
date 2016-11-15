@@ -49,6 +49,7 @@
 
 #include <sys/caprights.h>
 #include <sys/ipc.h>
+#include <sys/msgid.h>
 #include <sys/socket.h>
 #include <sys/ucred.h>
 #ifdef KDTRACE_HOOKS
@@ -197,6 +198,7 @@ struct audit_record {
 	char			ar_subj_comm[MAXCOMLEN + 1];
 	struct uuid		ar_subj_proc_uuid;
 	struct uuid		ar_subj_thr_uuid;
+	struct uuid		ar_subj_jail_uuid;
 #endif
 
 	/* Operation arguments. */
@@ -259,6 +261,7 @@ struct audit_record {
 #ifdef KDTRACE_HOOKS
 	struct uuid		ar_ret_objuuid1;
 	struct uuid		ar_ret_objuuid2;
+	msgid_t			ar_ret_msgid;
 #endif
 };
 
@@ -329,6 +332,7 @@ struct audit_record {
 
 #define	RET_OBJUUID1		0x0000000000000001ULL
 #define	RET_OBJUUID2		0x0000000000000002ULL
+#define	RET_MSGID		0x0000000000000004ULL
 
 #define	ARG_IS_VALID(kar, arg)	((kar)->k_ar.ar_valid_arg & (arg))
 #define	ARG_SET_VALID(kar, arg) do {					\

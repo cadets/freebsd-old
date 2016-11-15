@@ -614,21 +614,21 @@
 				    const struct timespec *timeout); }
 346	AUE_NULL	STD	{ int sigwaitinfo(const sigset_t *set, \
 				    siginfo_t *info); }
-347	AUE_NULL	STD	{ int __acl_get_file(const char *path, \
+347	AUE_ACL_GET_FILE	STD	{ int __acl_get_file(const char *path, \
 				    acl_type_t type, struct acl *aclp); }
-348	AUE_NULL	STD	{ int __acl_set_file(const char *path, \
+348	AUE_ACL_SET_FILE	STD	{ int __acl_set_file(const char *path, \
 				    acl_type_t type, struct acl *aclp); }
-349	AUE_NULL	STD	{ int __acl_get_fd(int filedes, \
+349	AUE_ACL_GET_FD	STD	{ int __acl_get_fd(int filedes, \
 				    acl_type_t type, struct acl *aclp); }
-350	AUE_NULL	STD	{ int __acl_set_fd(int filedes, \
+350	AUE_ACL_SET_FD	STD	{ int __acl_set_fd(int filedes, \
 				    acl_type_t type, struct acl *aclp); }
-351	AUE_NULL	STD	{ int __acl_delete_file(const char *path, \
+351	AUE_ACL_DELETE_FILE	STD	{ int __acl_delete_file(const char *path, \
 				    acl_type_t type); }
-352	AUE_NULL	STD	{ int __acl_delete_fd(int filedes, \
+352	AUE_ACL_DELETE_FD	STD	{ int __acl_delete_fd(int filedes, \
 				    acl_type_t type); }
-353	AUE_NULL	STD	{ int __acl_aclcheck_file(const char *path, \
+353	AUE_ACL_CHECK_FILE	STD	{ int __acl_aclcheck_file(const char *path, \
 				    acl_type_t type, struct acl *aclp); }
-354	AUE_NULL	STD	{ int __acl_aclcheck_fd(int filedes, \
+354	AUE_ACL_CHECK_FD	STD	{ int __acl_aclcheck_fd(int filedes, \
 				    acl_type_t type, struct acl *aclp); }
 355	AUE_EXTATTRCTL	STD	{ int extattrctl(const char *path, int cmd, \
 				    const char *filename, int attrnamespace, \
@@ -759,13 +759,13 @@
 423	AUE_NULL	STD	{ int swapcontext(struct __ucontext *oucp, \
 				    const struct __ucontext *ucp); }
 424	AUE_SWAPOFF	STD	{ int swapoff(const char *name); }
-425	AUE_NULL	STD	{ int __acl_get_link(const char *path, \
+425	AUE_ACL_GET_LINK	STD	{ int __acl_get_link(const char *path, \
 				    acl_type_t type, struct acl *aclp); }
-426	AUE_NULL	STD	{ int __acl_set_link(const char *path, \
+426	AUE_ACL_SET_LINK	STD	{ int __acl_set_link(const char *path, \
 				    acl_type_t type, struct acl *aclp); }
-427	AUE_NULL	STD	{ int __acl_delete_link(const char *path, \
+427	AUE_ACL_DELETE_LINK	STD	{ int __acl_delete_link(const char *path, \
 				    acl_type_t type); }
-428	AUE_NULL	STD	{ int __acl_aclcheck_link(const char *path, \
+428	AUE_ACL_CHECK_LINK	STD	{ int __acl_aclcheck_link(const char *path, \
 				    acl_type_t type, struct acl *aclp); }
 429	AUE_SIGWAIT	STD	{ int sigwait(const sigset_t *set, \
 				    int *sig); }
@@ -776,7 +776,7 @@
 433	AUE_THR_KILL	STD	{ int thr_kill(long id, int sig); }
 434	AUE_NULL	UNIMPL	nosys
 435	AUE_NULL	UNIMPL	nosys
-436	AUE_NULL	STD	{ int jail_attach(int jid); }
+436	AUE_JAIL_ATTACH	STD	{ int jail_attach(int jid); }
 437	AUE_EXTATTR_LIST_FD	STD	{ ssize_t extattr_list_fd(int fd, \
 				    int attrnamespace, void *data, \
 				    size_t nbytes); }
@@ -842,7 +842,7 @@
 472     AUE_SCTP_GENERIC_SENDMSG        NOSTD	{ int sctp_generic_sendmsg(int sd, caddr_t msg, int mlen, \
 	                            caddr_t to, __socklen_t tolen, \
 				    struct sctp_sndrcvinfo *sinfo, int flags); }
-473     AUE_NULL        NOSTD	{ int sctp_generic_sendmsg_iov(int sd, struct iovec *iov, int iovlen, \
+473     AUE_SCTP_GENERIC_SENDMSG_IOV        NOSTD	{ int sctp_generic_sendmsg_iov(int sd, struct iovec *iov, int iovlen, \
 	                            caddr_t to, __socklen_t tolen, \
 				    struct sctp_sndrcvinfo *sinfo, int flags); }
 474     AUE_SCTP_GENERIC_RECVMSG        NOSTD	{ int sctp_generic_recvmsg(int sd, struct iovec *iov, int iovlen, \
@@ -993,8 +993,9 @@
 				    id_t id, \
 				    struct vm_domain_policy_entry *policy); }
 549	AUE_NULL	STD	{ int numa_setaffinity(cpuwhich_t which, \
-				    id_t id, \
-				    const struct vm_domain_policy_entry *policy); }
+				    id_t id, const struct \
+				    vm_domain_policy_entry *policy); }
+550	AUE_FSYNC	STD	{ int fdatasync(int fd); }
 
 ; Please copy any additions and changes to the following compatability tables:
 ; sys/compat/freebsd32/syscalls.master
