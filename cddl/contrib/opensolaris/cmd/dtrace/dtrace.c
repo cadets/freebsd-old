@@ -614,6 +614,43 @@ print_probe_info(const dtrace_probeinfo_t *p)
 	oprintf("\n");
 }
 
+static void
+format_probe_info(const dtrace_probeinfo_t *p)
+{
+	char buf[BUFSIZ];
+	char *user;
+	int i;
+
+	xo_open_container("probe-desc-attrs");
+	xo_emit("{:id-names/%s} {:semantics/%s} {:dependency-class/%s}",
+	    dtrace_stability_name(p->dtp_attr.dtat_name), 
+	    dtrace_stability_name(p->dtp_attr.dtat_data), 
+	    dtrace_class_name(p->dtp_attr.dtat_class));
+	xo_close_container("probe-desc-attrs");
+	
+	xo_open_container("argattrs");
+	xo_emit("{:id-names/%s} {:semantics/%s} {:dependency-class/%s}",
+	    dtrace_stability_name(p->dtp_arga.dtat_name),
+	    dtrace_stability_name(p->dtp_arga.dtat_data),
+	    dtrace_class_name(p->dtp_arga.dtat_class));
+	xo_close_container("argattrs");
+
+	xo_open_container("arg-types");
+	for (i = 0; i < p->dtp_argc; i++) {
+		if (p->dtp_argv[i].dtt_flags & DTT_FL_USER)
+			user = "userland ";
+		else
+			user = "";
+		if (ctf_type_name(p->dtp_argv[i].dtt_ctfp,
+		    p->dtp_argv[i].dtt_type, buf, sizeof (buf)) == NULL)
+			(void) strlcpy(buf, "(unknown)", sizeof (buf));
+		xo_emit("{:arg/%d} {:user/%s } {:type/%s}", i, user, buf);
+	}
+	xo_close_container("arg-types");
+	    
+	xo_flush();
+}
+
 /*ARGSUSED*/
 static int
 info_stmt(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
@@ -763,12 +800,26 @@ static int
 list_probe(dtrace_hdl_t *dtp, const dtrace_probedesc_t *pdp, void *arg)
 {
 	dtrace_probeinfo_t p;
+	int opt;
+	
+	if (g_oformat == OMODE_NONE)
+		oprintf("%5d %10s %17s %33s %s\n", pdp->dtpd_id,
+		    pdp->dtpd_provider, pdp->dtpd_mod, pdp->dtpd_func, pdp->dtpd_name);
+	else {
+		xo_open_container("probe");
+		xo_emit("{:id/%d} {:provider/%s} {:module/%s} {:function/%s} {:name/%s}",
+		    pdp->dtpd_id, pdp->dtpd_provider, pdp->dtpd_mod,
+		    pdp->dtpd_func, pdp->dtpd_name);
+	}
 
-	oprintf("%5d %10s %17s %33s %s\n", pdp->dtpd_id,
-	    pdp->dtpd_provider, pdp->dtpd_mod, pdp->dtpd_func, pdp->dtpd_name);
-
-	if (g_verbose && dtrace_probe_info(dtp, pdp, &p) == 0)
-		print_probe_info(&p);
+	if (g_verbose && dtrace_probe_info(dtp, pdp, &p) == 0) {
+		if (g_oformat == OMODE_NONE)
+			print_probe_info(&p);
+		else {
+			format_probe_info(&p);
+			xo_close_container("probe");
+		}
+	}
 
 	if (g_intr != 0)
 		return (1);
@@ -1793,6 +1844,27 @@ main(int argc, char *argv[])
 	(void) dtrace_getopt(g_dtp, "quiet", &opt);
 	g_quiet = opt != DTRACEOPT_UNSET;
 
+	(void) dtrace_getopt(g_dtp, "oformat", &opt);
+	if (opt != DTRACEOPT_UNSET) {
+		g_oformat = opt;
+		xo_set_flags(NULL, XOF_PRETTY|XOF_FLUSH);
+		switch (g_oformat) {
+		case OMODE_JSON:
+			xo_set_style(NULL, XO_STYLE_JSON);
+			break;
+		case OMODE_XML:
+			xo_set_style(NULL, XO_STYLE_XML);
+			break;
+		case OMODE_HTML:
+			xo_set_style(NULL, XO_STYLE_HTML);
+			break;
+		default:
+			break;
+		}
+		if (g_ofp != NULL)
+			xo_set_file(g_ofp);
+	}
+	
 	/*
 	 * Now make a fifth and final pass over the options that have been
 	 * turned into programs and saved in g_cmdv[], performing any mode-
@@ -1960,28 +2032,6 @@ main(int argc, char *argv[])
 		dtrace_close(g_dtp);
 		return (g_status);
 	}
-
-	(void) dtrace_getopt(g_dtp, "oformat", &opt);
-	if (opt != DTRACEOPT_UNSET) {
-		g_oformat = opt;
-		xo_set_flags(NULL, XOF_PRETTY|XOF_FLUSH);
-		switch (g_oformat) {
-		case OMODE_JSON:
-			xo_set_style(NULL, XO_STYLE_JSON);
-			break;
-		case OMODE_XML:
-			xo_set_style(NULL, XO_STYLE_XML);
-			break;
-		case OMODE_HTML:
-			xo_set_style(NULL, XO_STYLE_HTML);
-			break;
-		default:
-			break;
-		}
-		if (g_ofp != NULL)
-			xo_set_file(g_ofp);
-	}
-	
 
 	/*
 	 * If -a and -Z were not specified and no probes have been matched, no
