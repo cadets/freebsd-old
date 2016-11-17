@@ -11,7 +11,7 @@ WARNS?=	2
 
 CFLAGS.h_raw+=	-fstack-protector-all -Wstack-protector
 .if ${COMPILER_TYPE} == "clang"
-CFLAGS.h_raw+=	-fsanitize=bounds
+#CFLAGS.h_raw+=	-fsanitize=bounds
 .elif ${COMPILER_TYPE} == "gcc"
 CFLAGS.h_raw+=	--param ssp-buffer-size=1
 LDADD+=	-lssp
