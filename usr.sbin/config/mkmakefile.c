@@ -42,6 +42,7 @@ static const char rcsid[] =
  */
 
 #include <ctype.h>
+#include <assert.h>
 #include <err.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -69,6 +70,10 @@ static void errout(const char *fmt, ...)
 	va_end(ap);
 	exit(1);
 }
+
+#define	IR_WARN(out, fmt, filename, ...) \
+	fprintf(out, "# WARNING: can't compile %s to IR: " fmt "\n", \
+		filename, __VA_ARGS__)
 
 /*
  * Lookup a file, by name.
@@ -658,6 +663,88 @@ tail(char *fn)
 	return (cp+1);
 }
 
+#define	CONCAT_INTO(target, s1, s2) \
+	do { \
+		strlcpy(target, s1, sizeof(target)); \
+		strlcat(target, s2, sizeof(target)); \
+	} while (0)
+
+/*
+ * Output the rules for a single source-to-object translation
+ * (which may include lint rules, LLVM IR rules, instrumentation, etc.).
+ */
+static void
+emit_obj_rules(FILE *f, char *name, const char *prefix, char suffix,
+	const char *command, int flags, const char *depends)
+{
+	char source[128];
+	char target[128];
+	int build_llvm_ir = 0;
+	int explicit_source = strlen(prefix) > 0;
+
+	if (instrumenting || llvm_ir) {
+		if (suffix != 'c') {
+			IR_WARN(f, "'%c' file", name, suffix);
+		} else if (strcmp(command, "${NORMAL_C}") != 0) {
+			IR_WARN(f, "custom compile command ('%s')",
+				name, command);
+		} else {
+			build_llvm_ir = 1;
+		}
+	}
+
+	CONCAT_INTO(source, "$S/", name);
+
+	assert(command);
+	assert(strlen(command));
+
+	if (flags & NO_IMPLCT_RULE) {
+		fprintf(f, "%s%s: %s\n", prefix, name, depends);
+	}
+	else {
+		CONCAT_INTO(target, prefix, tail(source));
+		target[strlen(target) - 2] = '\0';
+
+		/* we already have an object file - just copy it */
+		if (suffix == 'o') {
+			fprintf(f, "%s:\n\t-cp $S/%s .\n\n", target, source);
+			return;
+		}
+
+		/* lint rule */
+		fprintf(f, "%s.ln: %s %s\n", target, source, depends);
+		fprintf(f, "\t${NORMAL_LINT}\n\n");
+
+		/* LLVM intermediate representation and instrumentation */
+		if (build_llvm_ir) {
+			fprintf(f, "%s.bco: %s %s\n"
+				"\t${LLVM_%c}\n\n",
+				target, source, depends, toupper(suffix));
+
+			CONCAT_INTO(source, target, ".bco");
+
+			if (instrumenting) {
+				fprintf(f, "%s.bcinstro: %s.bco %s\n"
+					"\t${LLVM_INSTRUMENT}\n\n",
+					target, target, depends);
+
+				CONCAT_INTO(source, target, ".bcinstro");
+			}
+
+			command = "${LLVM_IR}";
+			explicit_source = 1;
+		}
+
+		/* the final object rule depends on any IR created above */
+		fprintf(f, "%s.o: %s %s\n", target, source, depends);
+	}
+
+	/* output the make script for the final rule */
+	fprintf(f, "\t%s %s\n" "%s\n", command,
+		(explicit_source ? source : ""),
+		(flags & NO_OBJ) ? "" : "\t${NORMAL_CTFCONVERT}\n");
+}
+
 /*
  * Create the makerules for each file
  * which is part of the system.
@@ -665,7 +752,7 @@ tail(char *fn)
 static void
 do_rules(FILE *f)
 {
-	char *cp, *np, och;
+	char *np, och;
 	struct file_list *ftp;
 	char *compilewith;
 	char cmd[128];
@@ -673,39 +760,10 @@ do_rules(FILE *f)
 	STAILQ_FOREACH(ftp, &ftab, f_next) {
 		if (ftp->f_warn)
 			fprintf(stderr, "WARNING: %s\n", ftp->f_warn);
-		cp = (np = ftp->f_fn) + strlen(ftp->f_fn) - 1;
-		och = *cp;
-		if (ftp->f_flags & NO_IMPLCT_RULE) {
-			if (ftp->f_depends)
-				fprintf(f, "%s%s: %s\n",
-					ftp->f_objprefix, np, ftp->f_depends);
-			else
-				fprintf(f, "%s%s: \n", ftp->f_objprefix, np);
-		}
-		else {
-			*cp = '\0';
-			if (och == 'o') {
-				fprintf(f, "%s%so:\n\t-cp $S/%so .\n\n",
-					ftp->f_objprefix, tail(np), np);
-				continue;
-			}
-			if (ftp->f_depends) {
-				fprintf(f, "%s%sln: $S/%s%c %s\n",
-					ftp->f_objprefix, tail(np), np, och,
-					ftp->f_depends);
-				fprintf(f, "\t${NORMAL_LINT}\n\n");
-				fprintf(f, "%s%so: $S/%s%c %s\n",
-					ftp->f_objprefix, tail(np), np, och,
-					ftp->f_depends);
-			}
-			else {
-				fprintf(f, "%s%sln: $S/%s%c\n",
-					ftp->f_objprefix, tail(np), np, och);
-				fprintf(f, "\t${NORMAL_LINT}\n\n");
-				fprintf(f, "%s%so: $S/%s%c\n",
-					ftp->f_objprefix, tail(np), np, och);
-			}
-		}
+
+		np = ftp->f_fn;
+		och = np[strlen(np) - 1];
+
 		compilewith = ftp->f_compilewith;
 		if (compilewith == NULL) {
 			const char *ftype = NULL;
@@ -730,16 +788,10 @@ do_rules(FILE *f)
 			    ftp->f_flags & NOWERROR ? "_NOWERROR" : "");
 			compilewith = cmd;
 		}
-		*cp = och;
-		if (strlen(ftp->f_objprefix))
-			fprintf(f, "\t%s $S/%s\n", compilewith, np);
-		else
-			fprintf(f, "\t%s\n", compilewith);
 
-		if (!(ftp->f_flags & NO_OBJ))
-			fprintf(f, "\t${NORMAL_CTFCONVERT}\n\n");
-		else
-			fprintf(f, "\n");
+		emit_obj_rules(f, np, ftp->f_objprefix, och,
+			compilewith, ftp->f_flags,
+			ftp->f_depends ? ftp->f_depends : "");
 	}
 }
 
