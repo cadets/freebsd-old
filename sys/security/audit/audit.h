@@ -141,6 +141,7 @@ void	 audit_ret_msgid(msgid_t *msgidp);
 void	 audit_ret_objuuid1(struct uuid *uuid);
 void	 audit_ret_objuuid2(struct uuid *uuid);
 #endif
+void	 audit_ret_svipc_id(int id);
 
 /*
  * Define macros to wrap the audit_arg_* calls by checking the global
@@ -260,6 +261,11 @@ void	 audit_ret_objuuid2(struct uuid *uuid);
 		audit_arg_pid((pid));					\
 } while (0)
 
+#define	AUDIT_ARG_POSIX_IPC_PERM(uid, gid, mode) do {			\
+	if (AUDITING_TD(curthread))					\
+		audit_arg_posix_ipc_perm((uid), (gid), (mod));		\
+} while (0)
+
 #define	AUDIT_ARG_PROCESS(p) do {					\
 	if (AUDITING_TD(curthread))					\
 		audit_arg_process((p));					\
@@ -327,6 +333,26 @@ void	 audit_ret_objuuid2(struct uuid *uuid);
 		audit_arg_suid((suid));					\
 } while (0)
 
+#define	AUDIT_ARG_SVIPC_CMD(cmd) do {					\
+	if (AUDITING_TD(curthread))					\
+		audit_arg_svipc_cmd((cmd));				\
+} while (0)
+
+#define	AUDIT_ARG_SVIPC_PERM(perm) do {					\
+	if (AUDITING_TD(curthread))					\
+		audit_arg_svipc_perm((perm));				\
+} while (0)
+
+#define	AUDIT_ARG_SVIPC_ID(id) do {					\
+	if (AUDITING_TD(curthread))					\
+		audit_arg_svipc_id((id));				\
+} while (0)
+
+#define	AUDIT_ARG_SVIPC_ADDR(addr) do {					\
+	if (AUDITING_TD(curthread))					\
+		audit_arg_svipc_addr((addr));				\
+} while (0)
+
 #define	AUDIT_ARG_TEXT(text) do {					\
 	if (AUDITING_TD(curthread))					\
 		audit_arg_text((text));					\
@@ -360,6 +386,11 @@ void	 audit_ret_objuuid2(struct uuid *uuid);
 #define	AUDIT_ARG_VNODE2(vp) do {					\
 	if (AUDITING_TD(curthread))					\
 		audit_arg_vnode2((vp));					\
+} while (0)
+
+#define	AUDIT_RET_SVIPC_ID(id) do {					\
+	if (AUDITING_TD(curthread))					\
+		audit_ret_svipc_id((id));				\
 } while (0)
 
 #define	AUDIT_SYSCALL_ENTER(code, td)	do {				\
@@ -410,6 +441,7 @@ void	 audit_ret_objuuid2(struct uuid *uuid);
 #define	AUDIT_ARG_OBJUUID2(uuid)
 #define	AUDIT_ARG_OWNER(uid, gid)
 #define	AUDIT_ARG_PID(pid)
+#define	AUDIT_ARG_POSIX_IPC_PERM(uid, gid, mode)
 #define	AUDIT_ARG_PROCESS(p)
 #define	AUDIT_ARG_RGID(rgid)
 #define	AUDIT_ARG_RIGHTS(rights)
@@ -420,6 +452,10 @@ void	 audit_ret_objuuid2(struct uuid *uuid);
 #define	AUDIT_ARG_SOCKET(sodomain, sotype, soprotocol)
 #define	AUDIT_ARG_SOCKADDR(td, dirfd, sa)
 #define	AUDIT_ARG_SUID(suid)
+#define	AUDIT_ARG_SVIPC_CMD(cmd)
+#define	AUDIT_ARG_SVIPC_PERM(perm)
+#define	AUDIT_ARG_SVIPC_ID(id)
+#define	AUDIT_ARG_SVIPC_ADDR(addr)
 #define	AUDIT_ARG_TEXT(text)
 #define	AUDIT_ARG_UID(uid)
 #define	AUDIT_ARG_UPATH1(td, dirfd, upath)
@@ -433,6 +469,7 @@ void	 audit_ret_objuuid2(struct uuid *uuid);
 #define	AUDIT_RET_OBJUUID1(p)
 #define	AUDIT_RET_OBJUUID2(p)
 #endif
+#define	AUDIT_RET_SVIPC_ID(id)
 
 #define	AUDIT_SYSCALL_ENTER(code, td)
 #define	AUDIT_SYSCALL_EXIT(error, td)

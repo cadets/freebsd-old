@@ -1022,3 +1022,16 @@ audit_ret_objuuid2(struct uuid *uuid)
 	RET_SET_VALID(ar, RET_OBJUUID2);
 }
 #endif
+
+void
+audit_ret_svipc_id(int id)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	ar->k_ar.ar_ret_svipc_id = id;
+	RET_SET_VALID(ar, RET_SVIPC_ID);
+}

@@ -263,6 +263,7 @@ struct audit_record {
 	struct uuid		ar_ret_objuuid2;
 	msgid_t			ar_ret_msgid;
 #endif
+	int			ar_ret_svipc_id;
 };
 
 /*
@@ -333,6 +334,7 @@ struct audit_record {
 #define	RET_OBJUUID1		0x0000000000000001ULL
 #define	RET_OBJUUID2		0x0000000000000002ULL
 #define	RET_MSGID		0x0000000000000004ULL
+#define	RET_SVIPC_ID		0x0000000000000008ULL
 
 #define	ARG_IS_VALID(kar, arg)	((kar)->k_ar.ar_valid_arg & (arg))
 #define	ARG_SET_VALID(kar, arg) do {					\
