@@ -730,7 +730,6 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 	case AUE_KQUEUE:
 	case AUE_MODLOAD:
 	case AUE_MODUNLOAD:
-	case AUE_MSGSYS:
 	case AUE_NTP_ADJTIME:
 	case AUE_PIPE:
 	case AUE_POSIX_OPENPT:
@@ -1193,27 +1192,39 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		}
 		break;
 
+	case AUE_MSGSYS:	/* XXXRW: map into individual operations ...? */
 	case AUE_MSGCTL:
 		ar->ar_event = audit_msgctl_to_event(ar->ar_arg_svipc_cmd);
+		if (ARG_IS_VALID(kar, ARG_SVIPC_PERM)) {
+			tok = au_to_ipc_perm(&ar->ar_arg_svipc_perm);
+			kau_write(rec, tok);
+		}
 		/* Fall through */
 
 	case AUE_MSGRCV:
 	case AUE_MSGSND:
-		tok = au_to_arg32(1, "msg ID", ar->ar_arg_svipc_id);
-		kau_write(rec, tok);
-		if (ar->ar_errno != EINVAL) {
-			tok = au_to_ipc(AT_IPC_MSG, ar->ar_arg_svipc_id);
+		if (ARG_IS_VALID(kar, ARG_SVIPC_ID)) {
+			tok = au_to_arg32(1, "msq ID", ar->ar_arg_svipc_id);
 			kau_write(rec, tok);
+			if (ar->ar_errno != EINVAL) {
+				tok = au_to_ipc(AT_IPC_MSG,
+				    ar->ar_arg_svipc_id);
+				kau_write(rec, tok);
+			}
 		}
 		break;
 
 	case AUE_MSGGET:
 		if (ar->ar_errno == 0) {
-			if (ARG_IS_VALID(kar, ARG_SVIPC_ID)) {
+			if (RET_IS_VALID(kar, RET_SVIPC_ID)) {
 				tok = au_to_ipc(AT_IPC_MSG,
-				    ar->ar_arg_svipc_id);
+				    ar->ar_ret_svipc_id);
 				kau_write(rec, tok);
 			}
+		}
+		if (ARG_IS_VALID(kar, ARG_SVIPC_PERM)) {
+			tok = au_to_ipc_perm(&ar->ar_arg_svipc_perm);
+			kau_write(rec, tok);
 		}
 		break;
 
