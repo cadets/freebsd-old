@@ -191,6 +191,9 @@ struct audit_record {
 	uid_t			ar_subj_auid; /* Audit user ID */
 	pid_t			ar_subj_asid; /* Audit session ID */
 	pid_t			ar_subj_pid;
+#ifdef KDTRACE_HOOKS
+	lwpid_t			ar_subj_tid;
+#endif
 	struct au_tid		ar_subj_term;
 	struct au_tid_addr	ar_subj_term_addr;
 	struct au_mask		ar_subj_amask;
