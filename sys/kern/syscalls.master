@@ -476,8 +476,8 @@
 				    u_int nfds, int timeout); }
 253	AUE_ISSETUGID	STD	{ int issetugid(void); }
 254	AUE_LCHOWN	STD	{ int lchown(char *path, int uid, int gid); }
-255	AUE_READ	STD	{ int aio_read(struct aiocb *aiocbp); }
-256	AUE_WRITE	STD	{ int aio_write(struct aiocb *aiocbp); }
+255	AUE_AIO_READ	STD	{ int aio_read(struct aiocb *aiocbp); }
+256	AUE_AIO_WRITE	STD	{ int aio_write(struct aiocb *aiocbp); }
 257	AUE_LIO_LISTIO	STD	{ int lio_listio(int mode, \
 				    struct aiocb * const *acb_list, \
 				    int nent, struct sigevent *sig); }
