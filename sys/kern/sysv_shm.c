@@ -1315,6 +1315,7 @@ int
 sys_shmsys(struct thread *td, struct shmsys_args *uap)
 {
 
+	AUDIT_ARG_SVIPC_WHICH(uap->which);
 	if (uap->which < 0 || uap->which >= nitems(shmcalls))
 		return (EINVAL);
 	return ((*shmcalls[uap->which])(td, &uap->a2));
@@ -1330,6 +1331,7 @@ freebsd32_shmsys(struct thread *td, struct freebsd32_shmsys_args *uap)
 
 #if defined(COMPAT_FREEBSD4) || defined(COMPAT_FREEBSD5) || \
     defined(COMPAT_FREEBSD6) || defined(COMPAT_FREEBSD7)
+	AUDIT_ARG_SVIPC_WHICH(uap->which);
 	switch (uap->which) {
 	case 0:	{	/* shmat */
 		struct shmat_args ap;

@@ -663,6 +663,19 @@ audit_arg_svipc_addr(void * addr)
 }
 
 void
+audit_arg_svipc_which(int which)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	ar->k_ar.ar_arg_svipc_which = which;
+	ARG_SET_VALID(ar, ARG_SVIPC_WHICH);
+}
+
+void
 audit_arg_posix_ipc_perm(uid_t uid, gid_t gid, mode_t mode)
 {
 	struct kaudit_record *ar;

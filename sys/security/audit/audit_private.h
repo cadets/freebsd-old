@@ -244,6 +244,7 @@ struct audit_record {
 	struct vnode_au_info	ar_arg_vnode1;
 	struct vnode_au_info	ar_arg_vnode2;
 	int			ar_arg_cmd;
+	int			ar_arg_svipc_which;
 	int			ar_arg_svipc_cmd;
 	struct ipc_perm		ar_arg_svipc_perm;
 	int			ar_arg_svipc_id;
@@ -331,6 +332,7 @@ struct audit_record {
 /* Gap:				0x0040000000000000ULL */
 #define	ARG_OBJUUID1		0x0080000000000000ULL
 #define	ARG_OBJUUID2		0x0100000000000000ULL
+#define	ARG_SVIPC_WHICH		0x0200000000000000ULL
 #define	ARG_NONE		0x0000000000000000ULL
 #define	ARG_ALL			0xFFFFFFFFFFFFFFFFULL
 
@@ -505,7 +507,10 @@ au_event_t	 audit_ctlname_to_sysctlevent(int name[], uint64_t valid_arg);
 au_event_t	 audit_flags_and_error_to_openevent(int oflags, int error);
 au_event_t	 audit_flags_and_error_to_openatevent(int oflags, int error);
 au_event_t	 audit_msgctl_to_event(int cmd);
-au_event_t	 audit_semctl_to_event(int cmr);
+au_event_t	 audit_msgsys_to_event(int which);
+au_event_t	 audit_semctl_to_event(int cmd);
+au_event_t	 audit_semsys_to_event(int which);
+au_event_t	 audit_shmsys_to_event(int which);
 void		 audit_canon_path(struct thread *td, int dirfd, char *path,
 		    char *cpath);
 au_event_t	 auditon_command_event(int cmd);

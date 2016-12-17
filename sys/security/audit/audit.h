@@ -119,6 +119,7 @@ void	 audit_arg_svipc_cmd(int cmd);
 void	 audit_arg_svipc_perm(struct ipc_perm *perm);
 void	 audit_arg_svipc_id(int id);
 void	 audit_arg_svipc_addr(void *addr);
+void	 audit_arg_svipc_which(int which);
 void	 audit_arg_posix_ipc_perm(uid_t uid, gid_t gid, mode_t mode);
 void	 audit_arg_auditon(union auditon_udata *udata);
 void	 audit_arg_file(struct proc *p, struct file *fp);
@@ -336,6 +337,11 @@ void	 audit_ret_svipc_id(int id);
 		audit_arg_svipc_addr((addr));				\
 } while (0)
 
+#define	AUDIT_ARG_SVIPC_WHICH(which) do {				\
+	if (AUDITING_TD(curthread))					\
+		audit_arg_svipc_which((which));				\
+} while (0)
+
 #define	AUDIT_ARG_TEXT(text) do {					\
 	if (AUDITING_TD(curthread))					\
 		audit_arg_text((text));					\
@@ -456,6 +462,7 @@ void	 audit_ret_svipc_id(int id);
 #define	AUDIT_ARG_SVIPC_PERM(perm)
 #define	AUDIT_ARG_SVIPC_ID(id)
 #define	AUDIT_ARG_SVIPC_ADDR(addr)
+#define	AUDIT_ARG_SVIPC_WHICH(which)
 #define	AUDIT_ARG_TEXT(text)
 #define	AUDIT_ARG_UID(uid)
 #define	AUDIT_ARG_UPATH1(td, dirfd, upath)
