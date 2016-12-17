@@ -271,23 +271,6 @@ void	 audit_ret_svipc_id(int id);
 		audit_arg_process((p));					\
 } while (0)
 
-#ifdef KDTRACE_HOOKS
-#define	AUDIT_RET_MSGID(msgidp) do {					\
-	if (AUDITING_TD(curthread))					\
-		audit_ret_msgid((msgidp));				\
-} while (0)
-
-#define	AUDIT_RET_OBJUUID1(p) do {					\
-	if (AUDITING_TD(curthread))					\
-		audit_ret_objuuid1((p));				\
-} while (0)
-
-#define	AUDIT_RET_OBJUUID2(p) do {					\
-	if (AUDITING_TD(curthread))					\
-		audit_ret_objuuid2((p));				\
-} while (0)
-#endif
-
 #define	AUDIT_ARG_RGID(rgid) do {					\
 	if (AUDITING_TD(curthread))					\
 		audit_arg_rgid((rgid));					\
@@ -387,6 +370,23 @@ void	 audit_ret_svipc_id(int id);
 	if (AUDITING_TD(curthread))					\
 		audit_arg_vnode2((vp));					\
 } while (0)
+
+#ifdef KDTRACE_HOOKS
+#define	AUDIT_RET_MSGID(msgidp) do {					\
+	if (AUDITING_TD(curthread))					\
+		audit_ret_msgid((msgidp));				\
+} while (0)
+
+#define	AUDIT_RET_OBJUUID1(p) do {					\
+	if (AUDITING_TD(curthread))					\
+		audit_ret_objuuid1((p));				\
+} while (0)
+
+#define	AUDIT_RET_OBJUUID2(p) do {					\
+	if (AUDITING_TD(curthread))					\
+		audit_ret_objuuid2((p));				\
+} while (0)
+#endif
 
 #define	AUDIT_RET_SVIPC_ID(id) do {					\
 	if (AUDITING_TD(curthread))					\
