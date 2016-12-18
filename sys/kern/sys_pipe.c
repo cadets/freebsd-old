@@ -459,6 +459,10 @@ kern_pipe(struct thread *td, int fildes[2], int flags, struct filecaps *fcaps1,
 	fdrop(wf, td);
 	fildes[1] = fd;
 	fdrop(rf, td);
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_FD1(fildes[0]);
+	AUDIT_RET_FD2(fildes[1]);
+#endif
 
 	return (0);
 }

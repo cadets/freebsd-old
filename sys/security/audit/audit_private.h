@@ -263,6 +263,8 @@ struct audit_record {
 	char			ar_jailname[MAXHOSTNAMELEN];
 
 #ifdef KDTRACE_HOOKS
+	int			ar_ret_fd1;
+	int			ar_ret_fd2;
 	struct uuid		ar_ret_objuuid1;
 	struct uuid		ar_ret_objuuid2;
 	msgid_t			ar_ret_msgid;
@@ -336,10 +338,13 @@ struct audit_record {
 #define	ARG_NONE		0x0000000000000000ULL
 #define	ARG_ALL			0xFFFFFFFFFFFFFFFFULL
 
+/* XXXRW: Re-order before upstreaming. */
 #define	RET_OBJUUID1		0x0000000000000001ULL
 #define	RET_OBJUUID2		0x0000000000000002ULL
 #define	RET_MSGID		0x0000000000000004ULL
 #define	RET_SVIPC_ID		0x0000000000000008ULL
+#define	RET_FD1			0x0000000000000010ULL
+#define	RET_FD2			0x0000000000000020ULL
 
 #define	ARG_IS_VALID(kar, arg)	((kar)->k_ar.ar_valid_arg & (arg))
 #define	ARG_SET_VALID(kar, arg) do {					\

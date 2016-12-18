@@ -920,6 +920,9 @@ kern_dup(struct thread *td, u_int mode, int flags, int old, int new)
 	seq_write_end(&newfde->fde_seq);
 #endif
 	td->td_retval[0] = new;
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_FD1(new);
+#endif
 
 	error = 0;
 

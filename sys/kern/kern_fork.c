@@ -137,6 +137,9 @@ sys_pdfork(struct thread *td, struct pdfork_args *uap)
 	if (error == 0) {
 		td->td_retval[0] = pid;
 		td->td_retval[1] = 0;
+#ifdef KDTRACE_HOOKS
+		AUDIT_RET_FD1(fd);
+#endif
 		error = copyout(&fd, uap->fdp, sizeof(fd));
 	}
 	return (error);

@@ -138,6 +138,8 @@ void	 audit_thread_alloc(struct thread *td);
 void	 audit_thread_free(struct thread *td);
 
 #ifdef KDTRACE_HOOKS
+void	 audit_ret_fd1(int fd);
+void	 audit_ret_fd2(int fd);
 void	 audit_ret_msgid(msgid_t *msgidp);
 void	 audit_ret_objuuid1(struct uuid *uuid);
 void	 audit_ret_objuuid2(struct uuid *uuid);
@@ -378,6 +380,16 @@ void	 audit_ret_svipc_id(int id);
 } while (0)
 
 #ifdef KDTRACE_HOOKS
+#define	AUDIT_RET_FD1(fd) do {						\
+	if (AUDITING_TD(curthread))					\
+		audit_ret_fd1((fd));					\
+} while (0)
+
+#define	AUDIT_RET_FD2(fd) do {						\
+	if (AUDITING_TD(curthread))					\
+		audit_ret_fd2((fd));					\
+} while (0)
+
 #define	AUDIT_RET_MSGID(msgidp) do {					\
 	if (AUDITING_TD(curthread))					\
 		audit_ret_msgid((msgidp));				\
@@ -392,7 +404,7 @@ void	 audit_ret_svipc_id(int id);
 	if (AUDITING_TD(curthread))					\
 		audit_ret_objuuid2((p));				\
 } while (0)
-#endif
+#endif /* !KDTRACE_HOOKS */
 
 #define	AUDIT_RET_SVIPC_ID(id) do {					\
 	if (AUDITING_TD(curthread))					\
@@ -472,10 +484,12 @@ void	 audit_ret_svipc_id(int id);
 #define	AUDIT_ARG_VNODE2(vp)
 
 #ifdef KDTRACE_HOOKS
+#define	AUDIT_RET_FD1(fd)
+#define	AUDIT_RET_FD2(fd)
 #define	AUDIT_RET_MSGID(msgidp)
 #define	AUDIT_RET_OBJUUID1(p)
 #define	AUDIT_RET_OBJUUID2(p)
-#endif
+#endif /* KDTRACE_HOOKS */
 #define	AUDIT_RET_SVIPC_ID(id)
 
 #define	AUDIT_SYSCALL_ENTER(code, td)

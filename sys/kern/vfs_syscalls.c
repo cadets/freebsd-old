@@ -1079,6 +1079,9 @@ success:
 	 */
 	fdrop(fp, td);
 	td->td_retval[0] = indx;
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_FD1(indx);
+#endif
 	return (0);
 bad:
 	KASSERT(indx == -1, ("indx=%d, should be -1", indx));

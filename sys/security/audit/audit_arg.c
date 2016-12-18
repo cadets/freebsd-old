@@ -988,6 +988,30 @@ audit_sysclose(struct thread *td, int fd)
 
 #ifdef KDTRACE_HOOKS
 void
+audit_ret_fd1(int fd)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+	ar->k_ar.ar_ret_fd1 = fd;
+	RET_SET_VALID(ar, RET_FD1);
+}
+
+void
+audit_ret_fd2(int fd)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+	ar->k_ar.ar_ret_fd2 = fd;
+	RET_SET_VALID(ar, RET_FD2);
+}
+
+void
 audit_ret_msgid(msgid_t *msgidp)
 {
 	struct kaudit_record *ar;

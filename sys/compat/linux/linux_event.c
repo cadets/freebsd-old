@@ -52,6 +52,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/syscallsubr.h>
 #include <sys/timespec.h>
 
+#include <security/audit/audit.h>
+
 #ifdef COMPAT_LINUX32
 #include <machine/../linux32/linux.h>
 #include <machine/../linux32/linux32_proto.h>
@@ -639,6 +641,9 @@ eventfd_create(struct thread *td, uint32_t initval, int flags)
 	finit(fp, fflags, DTYPE_LINUXEFD, efd, &eventfdops);
 	fdrop(fp, td);
 
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_FD1(fd);
+#endif
 	td->td_retval[0] = fd;
 	return (error);
 }

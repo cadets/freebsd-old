@@ -166,6 +166,9 @@ sys_socket(td, uap)
 		finit(fp, FREAD | FWRITE | fflag, DTYPE_SOCKET, so, &socketops);
 		if ((fflag & FNONBLOCK) != 0)
 			(void) fo_ioctl(fp, FIONBIO, &fflag, td->td_ucred, td);
+#ifdef KDTRACE_HOOKS
+		AUDIT_RET_FD1(fd);
+#endif
 		td->td_retval[0] = fd;
 	}
 	fdrop(fp, td);
@@ -422,6 +425,9 @@ kern_accept4(struct thread *td, int s, struct sockaddr **name,
 	ACCEPT_UNLOCK();
 
 	/* An extra reference on `nfp' has been held for us by falloc(). */
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_FD1(fd);
+#endif
 	td->td_retval[0] = fd;
 
 	/* connection has been removed from the listen queue */
@@ -686,6 +692,10 @@ kern_socketpair(struct thread *td, int domain, int type, int protocol,
 		goto free3;
 	fp2->f_data = so2;	/* so2 already has ref count */
 	rsv[1] = fd;
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_FD1(rsv[0]);
+	AUDIT_RET_FD2(rsv[1]);
+#endif
 	error = soconnect2(so1, so2);
 	if (error != 0)
 		goto free4;
