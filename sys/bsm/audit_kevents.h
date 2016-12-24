@@ -642,6 +642,9 @@
 #define	AUE_SETLOGINCLASS	43238	/* FreeBSD-specific. */
 #define	AUE_POSIX_FADVISE	43239	/* FreeBSD-specific. */
 #define	AUE_SCTP_GENERIC_SENDMSG_IOV	43240	/* FreeBSD-specific. */
+#define	AUE_FGETUUID		43241	/* CADETS. */
+#define	AUE_GETUUID		43242	/* CADETS. */
+#define	AUE_LGETUUID		43243	/* CADETS. */
 
 /*
  * Darwin BSM uses a number of AUE_O_* definitions, which are aliased to the

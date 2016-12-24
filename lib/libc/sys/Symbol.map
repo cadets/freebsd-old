@@ -391,7 +391,10 @@ FBSD_1.3 {
 };
 
 FBSD_1.4 {
+	fgetuuid;
 	futimens;
+	getuuid;
+	lgetuuid;
 	ppoll;
 	utimensat;
 	numa_setaffinity;

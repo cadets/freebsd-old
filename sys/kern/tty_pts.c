@@ -619,6 +619,17 @@ ptsdev_fill_kinfo(struct file *fp, struct kinfo_file *kif, struct filedesc *fdp)
 	return (0);
 }
 
+static int
+ptsdev_getuuid(struct file *fp, struct uuid *uuidp)
+{
+	struct tty *tp = fp->f_data;
+	struct pts_softc *psc = tty_softc(tp);
+
+	AUDIT_ARG_OBJUUID1(&psc->pts_uuid);
+	*uuidp = psc->pts_uuid;
+	return (0);
+}
+
 static struct fileops ptsdev_ops = {
 	.fo_read	= ptsdev_read,
 	.fo_write	= ptsdev_write,
@@ -632,6 +643,7 @@ static struct fileops ptsdev_ops = {
 	.fo_chown	= invfo_chown,
 	.fo_sendfile	= invfo_sendfile,
 	.fo_fill_kinfo	= ptsdev_fill_kinfo,
+	.fo_getuuid	= ptsdev_getuuid,
 	.fo_flags	= DFLAG_PASSABLE,
 };
 

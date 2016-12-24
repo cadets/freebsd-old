@@ -7,6 +7,14 @@
  * Co. or Unix System Laboratories, Inc. and are reproduced herein with
  * the permission of UNIX System Laboratories, Inc.
  *
+ * Copyright (c) 2016 Robert N. M. Watson
+ * All rights reserved.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -1948,4 +1956,28 @@ kern_posix_error(struct thread *td, int error)
 	td->td_pflags |= TDP_NERRNO;
 	td->td_retval[0] = error;
 	return (0);
+}
+
+/*
+ * XXXRW: Do we want a MAC check for this?
+ * XXXRW: Do we want to auit the returned UUID?
+ */
+int
+sys_fgetuuid(struct thread *td, struct fgetuuid_args *uap)
+{
+	struct uuid uuid;
+	cap_rights_t rights;
+	struct file *fp;
+	int error;
+
+	AUDIT_ARG_FD(uap->fd);
+	error = fget(td, uap->fd, cap_rights_init(&rights, CAP_FSTAT), &fp);
+	if (error != 0)
+		return (error);
+	AUDIT_ARG_FILE(td->td_proc, fp);
+	error = fo_getuuid(fp, &uuid);
+	fdrop(fp, td);
+	if (error == 0)
+		error = copyout(&uuid, uap->uuidp, sizeof(uuid));
+	return (error);
 }

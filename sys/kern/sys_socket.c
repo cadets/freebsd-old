@@ -2,6 +2,14 @@
  * Copyright (c) 1982, 1986, 1990, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
+ * Copyright (c) 2016 Robert N. M. Watson
+ * All rights reserved.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -96,6 +104,7 @@ static fo_stat_t soo_stat;
 static fo_close_t soo_close;
 static fo_fill_kinfo_t soo_fill_kinfo;
 static fo_aio_queue_t soo_aio_queue;
+static fo_getuuid_t soo_getuuid;
 
 static void	soo_aio_cancel(struct kaiocb *job);
 
@@ -113,6 +122,7 @@ struct fileops	socketops = {
 	.fo_sendfile = invfo_sendfile,
 	.fo_fill_kinfo = soo_fill_kinfo,
 	.fo_aio_queue = soo_aio_queue,
+	.fo_getuuid = soo_getuuid,
 	.fo_flags = DFLAG_PASSABLE
 };
 
@@ -816,5 +826,18 @@ soo_aio_queue(struct file *fp, struct kaiocb *job)
 			sb->sb_flags |= SB_AIO;
 	}
 	SOCKBUF_UNLOCK(sb);
+	return (0);
+}
+
+static int
+soo_getuuid(struct file *fp, struct uuid *uuidp)
+{
+	struct socket *so;
+
+	so = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
+	*uuidp = so->so_uuid;
 	return (0);
 }

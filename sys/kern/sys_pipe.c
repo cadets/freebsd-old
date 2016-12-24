@@ -164,6 +164,7 @@ static fo_close_t	pipe_close;
 static fo_chmod_t	pipe_chmod;
 static fo_chown_t	pipe_chown;
 static fo_fill_kinfo_t	pipe_fill_kinfo;
+static fo_getuuid_t	pipe_getuuid;
 
 struct fileops pipeops = {
 	.fo_read = pipe_read,
@@ -178,6 +179,7 @@ struct fileops pipeops = {
 	.fo_chown = pipe_chown,
 	.fo_sendfile = invfo_sendfile,
 	.fo_fill_kinfo = pipe_fill_kinfo,
+	.fo_getuuid = pipe_getuuid,
 	.fo_flags = DFLAG_PASSABLE
 };
 
@@ -1664,6 +1666,19 @@ pipe_fill_kinfo(struct file *fp, struct kinfo_file *kif, struct filedesc *fdp)
 	kif->kf_un.kf_pipe.kf_pipe_addr = (uintptr_t)pi;
 	kif->kf_un.kf_pipe.kf_pipe_peer = (uintptr_t)pi->pipe_peer;
 	kif->kf_un.kf_pipe.kf_pipe_buffer_cnt = pi->pipe_buffer.cnt;
+	return (0);
+}
+
+static int
+pipe_getuuid(struct file *fp, struct uuid *uuidp)
+{
+	struct pipe *pipe;
+
+	pipe = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&pipe->pipe_uuid);
+#endif
+	*uuidp = pipe->pipe_uuid;
 	return (0);
 }
 

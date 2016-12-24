@@ -1788,6 +1788,18 @@ struct numa_setaffinity_args {
 	char id_l_[PADL_(id_t)]; id_t id; char id_r_[PADR_(id_t)];
 	char policy_l_[PADL_(const struct vm_domain_policy_entry *)]; const struct vm_domain_policy_entry * policy; char policy_r_[PADR_(const struct vm_domain_policy_entry *)];
 };
+struct fgetuuid_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char uuidp_l_[PADL_(struct uuid *)]; struct uuid * uuidp; char uuidp_r_[PADR_(struct uuid *)];
+};
+struct getuuid_args {
+	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
+	char uuidp_l_[PADL_(struct uuid *)]; struct uuid * uuidp; char uuidp_r_[PADR_(struct uuid *)];
+};
+struct lgetuuid_args {
+	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
+	char uuidp_l_[PADL_(struct uuid *)]; struct uuid * uuidp; char uuidp_r_[PADR_(struct uuid *)];
+};
 int	nosys(struct thread *, struct nosys_args *);
 void	sys_sys_exit(struct thread *, struct sys_exit_args *);
 int	sys_fork(struct thread *, struct fork_args *);
@@ -2174,6 +2186,9 @@ int	sys_futimens(struct thread *, struct futimens_args *);
 int	sys_utimensat(struct thread *, struct utimensat_args *);
 int	sys_numa_getaffinity(struct thread *, struct numa_getaffinity_args *);
 int	sys_numa_setaffinity(struct thread *, struct numa_setaffinity_args *);
+int	sys_fgetuuid(struct thread *, struct fgetuuid_args *);
+int	sys_getuuid(struct thread *, struct getuuid_args *);
+int	sys_lgetuuid(struct thread *, struct lgetuuid_args *);
 
 #ifdef COMPAT_43
 
@@ -2951,6 +2966,9 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_utimensat	AUE_FUTIMESAT
 #define	SYS_AUE_numa_getaffinity	AUE_NULL
 #define	SYS_AUE_numa_setaffinity	AUE_NULL
+#define	SYS_AUE_fgetuuid	AUE_FGETUUID
+#define	SYS_AUE_getuuid	AUE_GETUUID
+#define	SYS_AUE_lgetuuid	AUE_LGETUUID
 
 #undef PAD_
 #undef PADL_

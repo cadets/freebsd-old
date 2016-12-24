@@ -184,6 +184,7 @@ MAN+=	abort2.2 \
 	getsockopt.2 \
 	gettimeofday.2 \
 	getuid.2 \
+	getuuid.2 \
 	intro.2 \
 	ioctl.2 \
 	issetugid.2 \

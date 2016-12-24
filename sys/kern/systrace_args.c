@@ -3326,6 +3326,30 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 3;
 		break;
 	}
+	/* fgetuuid */
+	case 574: {
+		struct fgetuuid_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->uuidp; /* struct uuid * */
+		*n_args = 2;
+		break;
+	}
+	/* getuuid */
+	case 575: {
+		struct getuuid_args *p = params;
+		uarg[0] = (intptr_t) p->path; /* const char * */
+		uarg[1] = (intptr_t) p->uuidp; /* struct uuid * */
+		*n_args = 2;
+		break;
+	}
+	/* lgetuuid */
+	case 576: {
+		struct lgetuuid_args *p = params;
+		uarg[0] = (intptr_t) p->path; /* const char * */
+		uarg[1] = (intptr_t) p->uuidp; /* struct uuid * */
+		*n_args = 2;
+		break;
+	}
 	default:
 		*n_args = 0;
 		break;
@@ -8862,6 +8886,45 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
+	/* fgetuuid */
+	case 574:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "struct uuid *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* getuuid */
+	case 575:
+		switch(ndx) {
+		case 0:
+			p = "const char *";
+			break;
+		case 1:
+			p = "struct uuid *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* lgetuuid */
+	case 576:
+		switch(ndx) {
+		case 0:
+			p = "const char *";
+			break;
+		case 1:
+			p = "struct uuid *";
+			break;
+		default:
+			break;
+		};
+		break;
 	default:
 		break;
 	};
@@ -10775,6 +10838,21 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		break;
 	/* numa_setaffinity */
 	case 549:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* fgetuuid */
+	case 574:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* getuuid */
+	case 575:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* lgetuuid */
+	case 576:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;

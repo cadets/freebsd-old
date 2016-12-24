@@ -76,6 +76,7 @@ struct filecaps;
 struct kaiocb;
 struct kinfo_file;
 struct ucred;
+struct uuid;
 
 #define	FOF_OFFSET	0x01	/* Use the offset in uio argument */
 #define	FOF_NOLOCK	0x02	/* Do not take FOFFSET_LOCK */
@@ -121,6 +122,7 @@ typedef int fo_mmap_t(struct file *fp, vm_map_t map, vm_offset_t *addr,
 		    vm_size_t size, vm_prot_t prot, vm_prot_t cap_maxprot,
 		    int flags, vm_ooffset_t foff, struct thread *td);
 typedef int fo_aio_queue_t(struct file *fp, struct kaiocb *job);
+typedef int fo_getuuid_t(struct file *fp, struct uuid *uuidp);
 typedef	int fo_flags_t;
 
 struct fileops {
@@ -139,6 +141,7 @@ struct fileops {
 	fo_fill_kinfo_t	*fo_fill_kinfo;
 	fo_mmap_t	*fo_mmap;
 	fo_aio_queue_t	*fo_aio_queue;
+	fo_getuuid_t	*fo_getuuid;
 	fo_flags_t	fo_flags;	/* DFLAG_* below */
 };
 
@@ -414,6 +417,19 @@ fo_aio_queue(struct file *fp, struct kaiocb *job)
 {
 
 	return ((*fp->f_ops->fo_aio_queue)(fp, job));
+}
+
+static __inline int
+fo_getuuid(struct file *fp, struct uuid *uuidp)
+{
+
+	/*
+	 * XXXRW: Do we want to allow fo_getuuid to be NULL..?  Better safe
+	 * than sorry, for now.
+	 */
+	if (fp->f_ops->fo_getuuid == NULL)
+		return (EOPNOTSUPP);
+	return ((*fp->f_ops->fo_getuuid)(fp, uuidp));
 }
 
 #endif /* _KERNEL */

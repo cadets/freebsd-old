@@ -395,4 +395,7 @@ MIASM =  \
 	futimens.o \
 	utimensat.o \
 	numa_getaffinity.o \
-	numa_setaffinity.o
+	numa_setaffinity.o \
+	fgetuuid.o \
+	getuuid.o \
+	lgetuuid.o

@@ -4683,3 +4683,49 @@ sys_posix_fadvise(struct thread *td, struct posix_fadvise_args *uap)
 	    uap->advice);
 	return (kern_posix_error(td, error));
 }
+
+/*
+ * XXXRW: Do we want a MAC check for this?
+ * XXXRW: Do we want a getuuidat(2) variant?
+ * XXXRW: Do we want to audit the returned UUID?
+ */
+int
+sys_getuuid(struct thread *td, struct getuuid_args *uap)
+{
+	struct nameidata nd;
+	int error;
+
+	NDINIT(&nd, LOOKUP, FOLLOW | AUDITVNODE1, UIO_USERSPACE, uap->path,
+	    td);
+	error = namei(&nd);
+	if (error != 0)
+		return (error);
+	NDFREE(&nd, NDF_ONLY_PNBUF);
+	error = copyout(&nd.ni_vp->v_uuid, uap->uuidp,
+	    sizeof(nd.ni_vp->v_uuid));
+	vrele(nd.ni_vp);
+	return (error);
+}
+
+/*
+ * XXXRW: Do we want a MAC check for this?
+ * XXXRW: Do we want a lgetuuidat(2) variant?
+ * XXXRW: Do we want to audit the returned UUID?
+ */
+int
+sys_lgetuuid(struct thread *td, struct lgetuuid_args *uap)
+{
+	struct nameidata nd;
+	int error;
+
+	NDINIT(&nd, LOOKUP, NOFOLLOW | AUDITVNODE1, UIO_USERSPACE, uap->path,
+	    td);
+	error = namei(&nd);
+	if (error != 0)
+		return (error);
+	NDFREE(&nd, NDF_ONLY_PNBUF);
+	error = copyout(&nd.ni_vp->v_uuid, uap->uuidp,
+	    sizeof(nd.ni_vp->v_uuid));
+	vrele(nd.ni_vp);
+	return (error);
+}

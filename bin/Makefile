@@ -17,6 +17,7 @@ SUBDIR= cat \
 	expr \
 	freebsd-version \
 	getfacl \
+	getuuid \
 	hostname \
 	kenv \
 	kill \

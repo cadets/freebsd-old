@@ -998,3 +998,39 @@
 
 ; Please copy any additions and changes to the following compatability tables:
 ; sys/compat/freebsd32/syscalls.master
+
+; Placeholders for future FreeBSD system calls during CADETS development.
+550	AUE_NULL	UNIMPL	placeholder
+551	AUE_NULL	UNIMPL	placeholder
+552	AUE_NULL	UNIMPL	placeholder
+553	AUE_NULL	UNIMPL	placeholder
+554	AUE_NULL	UNIMPL	placeholder
+555	AUE_NULL	UNIMPL	placeholder
+556	AUE_NULL	UNIMPL	placeholder
+557	AUE_NULL	UNIMPL	placeholder
+558	AUE_NULL	UNIMPL	placeholder
+559	AUE_NULL	UNIMPL	placeholder
+560	AUE_NULL	UNIMPL	placeholder
+561	AUE_NULL	UNIMPL	placeholder
+562	AUE_NULL	UNIMPL	placeholder
+563	AUE_NULL	UNIMPL	placeholder
+564	AUE_NULL	UNIMPL	placeholder
+565	AUE_NULL	UNIMPL	placeholder
+566	AUE_NULL	UNIMPL	placeholder
+567	AUE_NULL	UNIMPL	placeholder
+568	AUE_NULL	UNIMPL	placeholder
+569	AUE_NULL	UNIMPL	placeholder
+570	AUE_NULL	UNIMPL	placeholder
+571	AUE_NULL	UNIMPL	placeholder
+572	AUE_NULL	UNIMPL	placeholder
+573	AUE_NULL	UNIMPL	placeholder
+
+;
+; Experimental CADETS system calls -- not part of the supported system-call
+; ABI.  Also not (currently) available in 32-bit compat.
+;
+574	AUE_FGETUUID	STD	{ int fgetuuid(int fd, struct uuid *uuidp); }
+575	AUE_GETUUID	STD	{ int getuuid(const char *path, \
+				    struct uuid *uuidp); }
+576	AUE_LGETUUID	STD	{ int lgetuuid(const char *path, \
+				    struct uuid *uuidp); }

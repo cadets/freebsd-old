@@ -100,6 +100,7 @@ static fo_kqfilter_t	vn_kqfilter;
 static fo_stat_t	vn_statfile;
 static fo_close_t	vn_closefile;
 static fo_mmap_t	vn_mmap;
+static fo_getuuid_t	vn_getuuid;
 
 struct 	fileops vnops = {
 	.fo_read = vn_io_fault,
@@ -116,6 +117,7 @@ struct 	fileops vnops = {
 	.fo_seek = vn_seek,
 	.fo_fill_kinfo = vn_fill_kinfo,
 	.fo_mmap = vn_mmap,
+	.fo_getuuid = vn_getuuid,
 	.fo_flags = DFLAG_PASSABLE | DFLAG_SEEKABLE
 };
 
@@ -2480,4 +2482,17 @@ vn_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
 	}
 #endif
 	return (error);
+}
+
+static int
+vn_getuuid(struct file *fp, struct uuid *uuidp)
+{
+	struct vnode *vp;
+
+	vp = fp->f_vnode;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&vp->v_uuid);
+#endif
+	*uuidp = vp->v_uuid;
+	return (0);
 }
