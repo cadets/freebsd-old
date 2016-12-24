@@ -3,9 +3,15 @@
  *	Poul-Henning Kamp.  All rights reserved.
  * Copyright (c) 1989, 1992-1993, 1995
  *	The Regents of the University of California.  All rights reserved.
+ * Copyright (c) 2016 Robert N. M. Watson.  All rights reserved.
  *
  * This code is derived from software donated to Berkeley by
  * Jan-Simon Pendry.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -1868,6 +1874,22 @@ devfs_mmap_f(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
 	return (error);
 }
 
+static int
+devfs_getuuid_f(struct file *fp, struct uuid *uuidp)
+{
+	struct cdev *dev;
+	struct cdevsw *dsw;
+	int error, ref;
+
+	error = devfs_fp_check(fp, &dev, &dsw, &ref);
+	if (error)
+		return (error);
+	AUDIT_ARG_OBJUUID1(&dev->si_uuid);
+	*uuidp = dev->si_uuid;
+	dev_relthread(dev, ref);
+	return (0);
+}
+
 dev_t
 dev2udev(struct cdev *x)
 {
@@ -1891,6 +1913,7 @@ static struct fileops devfs_ops_f = {
 	.fo_seek =	vn_seek,
 	.fo_fill_kinfo = vn_fill_kinfo,
 	.fo_mmap =	devfs_mmap_f,
+	.fo_getuuid =	devfs_getuuid_f,
 	.fo_flags =	DFLAG_PASSABLE | DFLAG_SEEKABLE
 };
 
