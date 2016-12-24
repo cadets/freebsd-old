@@ -3326,6 +3326,39 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 3;
 		break;
 	}
+	/* metaio_read */
+	case 571: {
+		struct metaio_read_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->buf; /* void * */
+		uarg[2] = p->nbyte; /* size_t */
+		uarg[3] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 4;
+		break;
+	}
+	/* metaio_write */
+	case 572: {
+		struct metaio_write_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->buf; /* void * */
+		uarg[2] = p->nbyte; /* size_t */
+		uarg[3] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 4;
+		break;
+	}
+	/* metaio_mmap */
+	case 573: {
+		struct metaio_mmap_args *p = params;
+		uarg[0] = (intptr_t) p->addr; /* caddr_t */
+		uarg[1] = p->len; /* size_t */
+		iarg[2] = p->prot; /* int */
+		iarg[3] = p->flags; /* int */
+		iarg[4] = p->fd; /* int */
+		iarg[5] = p->pos; /* off_t */
+		uarg[6] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 7;
+		break;
+	}
 	/* fgetuuid */
 	case 574: {
 		struct fgetuuid_args *p = params;
@@ -8886,6 +8919,72 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
+	/* metaio_read */
+	case 571:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "void *";
+			break;
+		case 2:
+			p = "size_t";
+			break;
+		case 3:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_write */
+	case 572:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "void *";
+			break;
+		case 2:
+			p = "size_t";
+			break;
+		case 3:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_mmap */
+	case 573:
+		switch(ndx) {
+		case 0:
+			p = "caddr_t";
+			break;
+		case 1:
+			p = "size_t";
+			break;
+		case 2:
+			p = "int";
+			break;
+		case 3:
+			p = "int";
+			break;
+		case 4:
+			p = "int";
+			break;
+		case 5:
+			p = "off_t";
+			break;
+		case 6:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
 	/* fgetuuid */
 	case 574:
 		switch(ndx) {
@@ -10840,6 +10939,21 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 	case 549:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
+		break;
+	/* metaio_read */
+	case 571:
+		if (ndx == 0 || ndx == 1)
+			p = "ssize_t";
+		break;
+	/* metaio_write */
+	case 572:
+		if (ndx == 0 || ndx == 1)
+			p = "ssize_t";
+		break;
+	/* metaio_mmap */
+	case 573:
+		if (ndx == 0 || ndx == 1)
+			p = "caddr_t";
 		break;
 	/* fgetuuid */
 	case 574:

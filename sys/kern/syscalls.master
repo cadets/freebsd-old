@@ -1021,14 +1021,17 @@
 568	AUE_NULL	UNIMPL	placeholder
 569	AUE_NULL	UNIMPL	placeholder
 570	AUE_NULL	UNIMPL	placeholder
-571	AUE_NULL	UNIMPL	placeholder
-572	AUE_NULL	UNIMPL	placeholder
-573	AUE_NULL	UNIMPL	placeholder
-
 ;
 ; Experimental CADETS system calls -- not part of the supported system-call
 ; ABI.  Also not (currently) available in 32-bit compat.
 ;
+571	AUE_READ	STD	{ ssize_t metaio_read(int fd, void *buf, \
+                                    size_t nbyte, struct metaio *miop); }
+572	AUE_WRITE	STD	{ ssize_t metaio_write(int fd, void *buf, \
+				    size_t nbyte, struct metaio *miop); }
+573	AUE_MMAP	STD	{ caddr_t metaio_mmap(caddr_t addr, \
+				    size_t len, int prot, int flags, int fd, \
+				    off_t pos, struct metaio *miop); }
 574	AUE_FGETUUID	STD	{ int fgetuuid(int fd, struct uuid *uuidp); }
 575	AUE_GETUUID	STD	{ int getuuid(const char *path, \
 				    struct uuid *uuidp); }

@@ -395,6 +395,9 @@ FBSD_1.4 {
 	futimens;
 	getuuid;
 	lgetuuid;
+	metaio_mmap;
+	metaio_read;
+	metaio_write;
 	ppoll;
 	utimensat;
 	numa_setaffinity;

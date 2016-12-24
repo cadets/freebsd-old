@@ -49,6 +49,7 @@
 
 #include <sys/caprights.h>
 #include <sys/ipc.h>
+#include <sys/metaio.h>
 #include <sys/msgid.h>
 #include <sys/socket.h>
 #include <sys/ucred.h>
@@ -223,6 +224,7 @@ struct audit_record {
 	int			ar_arg_atfd1;
 	int			ar_arg_atfd2;
 	int			ar_arg_fflags;
+	struct metaio		ar_arg_metaio;
 	mode_t			ar_arg_mode;
 #ifdef KDTRACE_HOOKS
 	struct uuid		ar_arg_objuuid1;
@@ -335,6 +337,7 @@ struct audit_record {
 #define	ARG_OBJUUID1		0x0080000000000000ULL
 #define	ARG_OBJUUID2		0x0100000000000000ULL
 #define	ARG_SVIPC_WHICH		0x0200000000000000ULL
+#define	ARG_METAIO		0x0400000000000000ULL
 #define	ARG_NONE		0x0000000000000000ULL
 #define	ARG_ALL			0xFFFFFFFFFFFFFFFFULL
 

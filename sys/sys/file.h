@@ -45,6 +45,7 @@
 #include <vm/vm.h>
 
 struct filedesc;
+struct metaio;
 struct stat;
 struct thread;
 struct uio;
@@ -97,6 +98,12 @@ foffset_get(struct file *fp)
 typedef int fo_rdwr_t(struct file *fp, struct uio *uio,
 		    struct ucred *active_cred, int flags,
 		    struct thread *td);
+typedef int fo_read_t(struct file *fp, struct uio *uio,
+		    struct ucred *active_cred, int flags,
+		    struct thread *td, struct metaio *miop);
+typedef int fo_write_t(struct file *fp, struct uio *uio,
+		    struct ucred *active_cred, int flags,
+		    struct thread *td);
 typedef	int fo_truncate_t(struct file *fp, off_t length,
 		    struct ucred *active_cred, struct thread *td);
 typedef	int fo_ioctl_t(struct file *fp, u_long com, void *data,
@@ -120,14 +127,15 @@ typedef int fo_fill_kinfo_t(struct file *fp, struct kinfo_file *kif,
 		    struct filedesc *fdp);
 typedef int fo_mmap_t(struct file *fp, vm_map_t map, vm_offset_t *addr,
 		    vm_size_t size, vm_prot_t prot, vm_prot_t cap_maxprot,
-		    int flags, vm_ooffset_t foff, struct thread *td);
+		    int flags, vm_ooffset_t foff, struct thread *td,
+		    struct metaio *miop);
 typedef int fo_aio_queue_t(struct file *fp, struct kaiocb *job);
 typedef int fo_getuuid_t(struct file *fp, struct uuid *uuidp);
 typedef	int fo_flags_t;
 
 struct fileops {
-	fo_rdwr_t	*fo_read;
-	fo_rdwr_t	*fo_write;
+	fo_read_t	*fo_read;
+	fo_write_t	*fo_write;
 	fo_truncate_t	*fo_truncate;
 	fo_ioctl_t	*fo_ioctl;
 	fo_poll_t	*fo_poll;
@@ -244,7 +252,8 @@ int fget_fcntl(struct thread *td, int fd, cap_rights_t *rightsp,
     int needfcntl, struct file **fpp);
 int _fdrop(struct file *fp, struct thread *td);
 
-fo_rdwr_t	invfo_rdwr;
+fo_read_t	invfo_read;
+fo_write_t	invfo_write;
 fo_truncate_t	invfo_truncate;
 fo_ioctl_t	invfo_ioctl;
 fo_poll_t	invfo_poll;
@@ -286,8 +295,8 @@ _fnoop(void)
 #define	fdrop(fp, td)							\
 	(refcount_release(&(fp)->f_count) ? _fdrop((fp), (td)) : _fnoop())
 
-static __inline fo_rdwr_t	fo_read;
-static __inline fo_rdwr_t	fo_write;
+static __inline fo_read_t	fo_read;
+static __inline fo_write_t	fo_write;
 static __inline fo_truncate_t	fo_truncate;
 static __inline fo_ioctl_t	fo_ioctl;
 static __inline fo_poll_t	fo_poll;
@@ -300,10 +309,11 @@ static __inline fo_sendfile_t	fo_sendfile;
 
 static __inline int
 fo_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
-    int flags, struct thread *td)
+    int flags, struct thread *td, struct metaio *miop)
 {
 
-	return ((*fp->f_ops->fo_read)(fp, uio, active_cred, flags, td));
+	return ((*fp->f_ops->fo_read)(fp, uio, active_cred, flags, td,
+	    miop));
 }
 
 static __inline int
@@ -403,13 +413,13 @@ fo_fill_kinfo(struct file *fp, struct kinfo_file *kif, struct filedesc *fdp)
 static __inline int
 fo_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
     vm_prot_t prot, vm_prot_t cap_maxprot, int flags, vm_ooffset_t foff,
-    struct thread *td)
+    struct thread *td, struct metaio *miop)
 {
 
 	if (fp->f_ops->fo_mmap == NULL)
 		return (ENODEV);
 	return ((*fp->f_ops->fo_mmap)(fp, map, addr, size, prot, cap_maxprot,
-	    flags, foff, td));
+	    flags, foff, td, miop));
 }
 
 static __inline int

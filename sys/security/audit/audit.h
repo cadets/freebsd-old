@@ -73,6 +73,7 @@ void	 audit_syscall_exit(int error, struct thread *td);
  */
 #ifdef AUDIT
 struct ipc_perm;
+struct metaio;
 struct sockaddr;
 struct uuid;
 union auditon_udata;
@@ -95,6 +96,9 @@ void	 audit_arg_groupset(gid_t *gidset, u_int gidset_size);
 void	 audit_arg_login(char *login);
 void	 audit_arg_ctlname(int *name, int namelen);
 void	 audit_arg_mask(int mask);
+#ifdef METAIO
+void	 audit_arg_metaio(struct metaio *miop);
+#endif
 void	 audit_arg_mode(mode_t mode);
 void	 audit_arg_dev(int dev);
 void	 audit_arg_value(long value);
@@ -236,6 +240,13 @@ void	 audit_ret_svipc_id(int id);
 	if (AUDITING_TD(curthread))					\
 		audit_arg_login((login));				\
 } while (0)
+
+#ifdef METAIO
+#define	AUDIT_ARG_METAIO(miop) do {					\
+	if (AUDITING_TD(curthread))					\
+		audit_arg_metaio((miop));				\
+} while (0)
+#endif /* METAIO */
 
 #define	AUDIT_ARG_MODE(mode) do {					\
 	if (AUDITING_TD(curthread))					\
@@ -454,6 +465,9 @@ void	 audit_ret_svipc_id(int id);
 #define	AUDIT_ARG_GID(gid)
 #define	AUDIT_ARG_GROUPSET(gidset, gidset_size)
 #define	AUDIT_ARG_LOGIN(login)
+#ifdef METAIO
+#define	AUDIT_ARG_METAIO(miop)
+#endif
 #define	AUDIT_ARG_MODE(mode)
 #define	AUDIT_ARG_OBJUUID1(uuid)
 #define	AUDIT_ARG_OBJUUID2(uuid)

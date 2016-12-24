@@ -121,8 +121,8 @@ static void	shm_insert(char *path, Fnv32_t fnv, struct shmfd *shmfd);
 static struct shmfd *shm_lookup(char *path, Fnv32_t fnv);
 static int	shm_remove(char *path, Fnv32_t fnv, struct ucred *ucred);
 
-static fo_rdwr_t	shm_read;
-static fo_rdwr_t	shm_write;
+static fo_read_t	shm_read;
+static fo_write_t	shm_write;
 static fo_truncate_t	shm_truncate;
 static fo_stat_t	shm_stat;
 static fo_close_t	shm_close;
@@ -294,13 +294,16 @@ shm_seek(struct file *fp, off_t offset, int whence, struct thread *td)
 
 static int
 shm_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
-    int flags, struct thread *td)
+    int flags, struct thread *td, struct metaio *miop)
 {
 	struct shmfd *shmfd;
 	void *rl_cookie;
 	int error;
 
 	shmfd = fp->f_data;
+
+	/* XXXRW: AUDIT UUID */
+	/* XXXRW: METAIO UUID */
 #ifdef MAC
 	error = mac_posixshm_check_read(active_cred, fp->f_cred, shmfd);
 	if (error)
@@ -872,7 +875,7 @@ sys_shm_unlink(struct thread *td, struct shm_unlink_args *uap)
 int
 shm_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t objsize,
     vm_prot_t prot, vm_prot_t cap_maxprot, int flags,
-    vm_ooffset_t foff, struct thread *td)
+    vm_ooffset_t foff, struct thread *td, struct metaio *miop)
 {
 	struct shmfd *shmfd;
 	vm_prot_t maxprot;
@@ -880,6 +883,9 @@ shm_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t objsize,
 
 	shmfd = fp->f_data;
 	maxprot = VM_PROT_NONE;
+
+	/* XXXRW: AUDIT UUID */
+	/* XXXRW: METAIO UUID */
 
 	/* FREAD should always be set. */
 	if ((fp->f_flag & FREAD) != 0)

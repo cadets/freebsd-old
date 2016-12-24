@@ -142,8 +142,8 @@ static fo_fill_kinfo_t	ksem_fill_kinfo;
 
 /* File descriptor operations. */
 static struct fileops ksem_ops = {
-	.fo_read = invfo_rdwr,
-	.fo_write = invfo_rdwr,
+	.fo_read = invfo_read,
+	.fo_write = invfo_write,
 	.fo_truncate = invfo_truncate,
 	.fo_ioctl = invfo_ioctl,
 	.fo_poll = invfo_poll,

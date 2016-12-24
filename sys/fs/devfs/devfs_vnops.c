@@ -39,6 +39,8 @@
  *	mkdir: want it ?
  */
 
+#include "opt_metaio.h"
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/conf.h>
@@ -51,6 +53,7 @@
 #include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
+#include <sys/metaio.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/namei.h>
@@ -1250,7 +1253,7 @@ devfs_print(struct vop_print_args *ap)
 
 static int
 devfs_read_f(struct file *fp, struct uio *uio, struct ucred *cred,
-    int flags, struct thread *td)
+    int flags, struct thread *td, struct metaio *miop)
 {
 	struct cdev *dev;
 	int ioflag, error, ref;
@@ -1264,10 +1267,13 @@ devfs_read_f(struct file *fp, struct uio *uio, struct ucred *cred,
 	error = devfs_fp_check(fp, &dev, &dsw, &ref);
 	if (error != 0) {
 		/* UUID audited in vnode operation layer. */
-		error = vnops.fo_read(fp, uio, cred, flags, td);
+		error = vnops.fo_read(fp, uio, cred, flags, td, miop);
 		return (error);
 	}
 	AUDIT_ARG_OBJUUID1(&dev->si_uuid);
+#ifdef METAIO
+	metaio_from_uuid(&dev->si_uuid, miop);
+#endif
 	resid = uio->uio_resid;
 	ioflag = fp->f_flag & (O_NONBLOCK | O_DIRECT);
 	if (ioflag & O_DIRECT)
@@ -1791,7 +1797,7 @@ devfs_write_f(struct file *fp, struct uio *uio, struct ucred *cred,
 static int
 devfs_mmap_f(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
     vm_prot_t prot, vm_prot_t cap_maxprot, int flags, vm_ooffset_t foff,
-    struct thread *td)
+    struct thread *td, struct metaio *miop)
 {
 	struct cdev *dev;
 	struct cdevsw *dsw;
@@ -1845,6 +1851,9 @@ devfs_mmap_f(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
 		return (error);
 
 	AUDIT_ARG_OBJUUID1(&dev->si_uuid);
+#ifdef METAIO
+	metaio_from_uuid(&dev->si_uuid, miop);
+#endif
 	error = vm_mmap_cdev(td, size, prot, &maxprot, &flags, dev, dsw, &foff,
 	    &object);
 	td->td_fpop = fpop;

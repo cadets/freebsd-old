@@ -153,8 +153,8 @@ __FBSDID("$FreeBSD$");
 /*
  * interfaces to the outside world
  */
-static fo_rdwr_t	pipe_read;
-static fo_rdwr_t	pipe_write;
+static fo_read_t	pipe_read;
+static fo_write_t	pipe_write;
 static fo_truncate_t	pipe_truncate;
 static fo_ioctl_t	pipe_ioctl;
 static fo_poll_t	pipe_poll;
@@ -677,12 +677,13 @@ pipe_create(pipe, backing)
 
 /* ARGSUSED */
 static int
-pipe_read(fp, uio, active_cred, flags, td)
+pipe_read(fp, uio, active_cred, flags, td, miop)
 	struct file *fp;
 	struct uio *uio;
 	struct ucred *active_cred;
 	struct thread *td;
 	int flags;
+	struct metaio *miop;
 {
 	struct pipe *rpipe;
 	int error;
@@ -694,6 +695,9 @@ pipe_read(fp, uio, active_cred, flags, td)
 	++rpipe->pipe_busy;
 #ifdef KDTRACE_HOOKS
 	AUDIT_ARG_OBJUUID1(&rpipe->pipe_uuid);
+#endif
+#ifdef METAIO
+	metaio_from_uuid(&rpipe->pipe_uuid, miop);
 #endif
 	error = pipelock(rpipe, 1);
 	if (error)

@@ -123,8 +123,8 @@ struct epoll_copyout_args {
 /* eventfd */
 typedef uint64_t	eventfd_t;
 
-static fo_rdwr_t	eventfd_read;
-static fo_rdwr_t	eventfd_write;
+static fo_read_t	eventfd_read;
+static fo_write_t	eventfd_write;
 static fo_truncate_t	eventfd_truncate;
 static fo_ioctl_t	eventfd_ioctl;
 static fo_poll_t	eventfd_poll;
@@ -686,7 +686,7 @@ eventfd_close(struct file *fp, struct thread *td)
 
 static int
 eventfd_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
-	int flags, struct thread *td)
+	int flags, struct thread *td, struct metaio *miop)
 {
 	struct eventfd *efd;
 	eventfd_t count;

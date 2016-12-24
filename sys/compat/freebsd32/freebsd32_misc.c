@@ -772,7 +772,7 @@ freebsd32_readv(struct thread *td, struct freebsd32_readv_args *uap)
 	error = freebsd32_copyinuio(uap->iovp, uap->iovcnt, &auio);
 	if (error)
 		return (error);
-	error = kern_readv(td, uap->fd, auio);
+	error = kern_readv(td, uap->fd, auio, NULL);
 	free(auio, M_IOV);
 	return (error);
 }
@@ -800,7 +800,8 @@ freebsd32_preadv(struct thread *td, struct freebsd32_preadv_args *uap)
 	error = freebsd32_copyinuio(uap->iovp, uap->iovcnt, &auio);
 	if (error)
 		return (error);
-	error = kern_preadv(td, uap->fd, auio, PAIR32TO64(off_t,uap->offset));
+	error = kern_preadv(td, uap->fd, auio, PAIR32TO64(off_t,uap->offset),
+	    NULL);
 	free(auio, M_IOV);
 	return (error);
 }

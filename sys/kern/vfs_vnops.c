@@ -44,6 +44,7 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_hwpmc_hooks.h"
+#include "opt_metaio.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -57,6 +58,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/limits.h>
 #include <sys/lock.h>
+#include <sys/metaio.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/mutex.h>
@@ -93,6 +95,8 @@ __FBSDID("$FreeBSD$");
 static fo_rdwr_t	vn_read;
 static fo_rdwr_t	vn_write;
 static fo_rdwr_t	vn_io_fault;
+static fo_read_t	vn_io_fault_read;
+static fo_write_t	vn_io_fault_write;
 static fo_truncate_t	vn_truncate;
 static fo_ioctl_t	vn_ioctl;
 static fo_poll_t	vn_poll;
@@ -103,8 +107,8 @@ static fo_mmap_t	vn_mmap;
 static fo_getuuid_t	vn_getuuid;
 
 struct 	fileops vnops = {
-	.fo_read = vn_io_fault,
-	.fo_write = vn_io_fault,
+	.fo_read = vn_io_fault_read,
+	.fo_write = vn_io_fault_write,
 	.fo_truncate = vn_truncate,
 	.fo_ioctl = vn_ioctl,
 	.fo_poll = vn_poll,
@@ -1181,6 +1185,25 @@ vn_io_fault(struct file *fp, struct uio *uio, struct ucred *active_cred,
 	}
 	foffset_unlock_uio(fp, uio, flags);
 	return (error);
+}
+
+int
+vn_io_fault_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
+    int flags, struct thread *td, struct metaio *miop)
+{
+
+#ifdef METAIO
+	metaio_from_uuid(&fp->f_vnode->v_uuid, miop);
+#endif
+	return (vn_io_fault(fp, uio, active_cred, flags, td));
+}
+
+int
+vn_io_fault_write(struct file *fp, struct uio *uio, struct ucred *active_cred,
+    int flags, struct thread *td)
+{
+
+	return (vn_io_fault(fp, uio, active_cred, flags, td));
 }
 
 /*
@@ -2395,7 +2418,7 @@ vn_fill_kinfo_vnode(struct vnode *vp, struct kinfo_file *kif)
 int
 vn_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
     vm_prot_t prot, vm_prot_t cap_maxprot, int flags, vm_ooffset_t foff,
-    struct thread *td)
+    struct thread *td, struct metaio *miop)
 {
 #ifdef HWPMC_HOOKS
 	struct pmckern_map_in pkm;
@@ -2421,6 +2444,11 @@ vn_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
 		flags |= MAP_NOSYNC;
 #endif
 	vp = fp->f_vnode;
+
+	AUDIT_ARG_OBJUUID1(&vp->v_uuid);
+#ifdef METAIO
+	metaio_from_uuid(&vp->v_uuid, miop);
+#endif
 
 	/*
 	 * Ensure that file and memory protections are

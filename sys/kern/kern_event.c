@@ -122,8 +122,8 @@ static fo_close_t	kqueue_close;
 static fo_fill_kinfo_t	kqueue_fill_kinfo;
 
 static struct fileops kqueueops = {
-	.fo_read = invfo_rdwr,
-	.fo_write = invfo_rdwr,
+	.fo_read = invfo_read,
+	.fo_write = invfo_write,
 	.fo_truncate = invfo_truncate,
 	.fo_ioctl = kqueue_ioctl,
 	.fo_poll = kqueue_poll,

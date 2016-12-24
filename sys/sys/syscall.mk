@@ -396,6 +396,9 @@ MIASM =  \
 	utimensat.o \
 	numa_getaffinity.o \
 	numa_setaffinity.o \
+	metaio_read.o \
+	metaio_write.o \
+	metaio_mmap.o \
 	fgetuuid.o \
 	getuuid.o \
 	lgetuuid.o

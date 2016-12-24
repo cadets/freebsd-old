@@ -2641,8 +2641,8 @@ mqf_fill_kinfo(struct file *fp, struct kinfo_file *kif, struct filedesc *fdp)
 }
 
 static struct fileops mqueueops = {
-	.fo_read		= invfo_rdwr,
-	.fo_write		= invfo_rdwr,
+	.fo_read		= invfo_read,
+	.fo_write		= invfo_write,
 	.fo_truncate		= invfo_truncate,
 	.fo_ioctl		= invfo_ioctl,
 	.fo_poll		= mqf_poll,

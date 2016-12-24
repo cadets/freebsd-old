@@ -1788,6 +1788,27 @@ struct numa_setaffinity_args {
 	char id_l_[PADL_(id_t)]; id_t id; char id_r_[PADR_(id_t)];
 	char policy_l_[PADL_(const struct vm_domain_policy_entry *)]; const struct vm_domain_policy_entry * policy; char policy_r_[PADR_(const struct vm_domain_policy_entry *)];
 };
+struct metaio_read_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char buf_l_[PADL_(void *)]; void * buf; char buf_r_[PADR_(void *)];
+	char nbyte_l_[PADL_(size_t)]; size_t nbyte; char nbyte_r_[PADR_(size_t)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_write_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char buf_l_[PADL_(void *)]; void * buf; char buf_r_[PADR_(void *)];
+	char nbyte_l_[PADL_(size_t)]; size_t nbyte; char nbyte_r_[PADR_(size_t)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_mmap_args {
+	char addr_l_[PADL_(caddr_t)]; caddr_t addr; char addr_r_[PADR_(caddr_t)];
+	char len_l_[PADL_(size_t)]; size_t len; char len_r_[PADR_(size_t)];
+	char prot_l_[PADL_(int)]; int prot; char prot_r_[PADR_(int)];
+	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char pos_l_[PADL_(off_t)]; off_t pos; char pos_r_[PADR_(off_t)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
 struct fgetuuid_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
 	char uuidp_l_[PADL_(struct uuid *)]; struct uuid * uuidp; char uuidp_r_[PADR_(struct uuid *)];
@@ -2186,6 +2207,9 @@ int	sys_futimens(struct thread *, struct futimens_args *);
 int	sys_utimensat(struct thread *, struct utimensat_args *);
 int	sys_numa_getaffinity(struct thread *, struct numa_getaffinity_args *);
 int	sys_numa_setaffinity(struct thread *, struct numa_setaffinity_args *);
+int	sys_metaio_read(struct thread *, struct metaio_read_args *);
+int	sys_metaio_write(struct thread *, struct metaio_write_args *);
+int	sys_metaio_mmap(struct thread *, struct metaio_mmap_args *);
 int	sys_fgetuuid(struct thread *, struct fgetuuid_args *);
 int	sys_getuuid(struct thread *, struct getuuid_args *);
 int	sys_lgetuuid(struct thread *, struct lgetuuid_args *);
@@ -2966,6 +2990,9 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_utimensat	AUE_FUTIMESAT
 #define	SYS_AUE_numa_getaffinity	AUE_NULL
 #define	SYS_AUE_numa_setaffinity	AUE_NULL
+#define	SYS_AUE_metaio_read	AUE_READ
+#define	SYS_AUE_metaio_write	AUE_WRITE
+#define	SYS_AUE_metaio_mmap	AUE_MMAP
 #define	SYS_AUE_fgetuuid	AUE_FGETUUID
 #define	SYS_AUE_getuuid	AUE_GETUUID
 #define	SYS_AUE_lgetuuid	AUE_LGETUUID

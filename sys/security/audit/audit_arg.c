@@ -36,6 +36,8 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_metaio.h"
+
 #include <sys/param.h>
 #include <sys/filedesc.h>
 #include <sys/capsicum.h>
@@ -325,6 +327,21 @@ audit_arg_mask(int mask)
 	ar->k_ar.ar_arg_mask = mask;
 	ARG_SET_VALID(ar, ARG_MASK);
 }
+
+#ifdef METAIO
+void
+audit_arg_metaio(struct metaio *miop)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	ar->k_ar.ar_arg_metaio = *miop;
+	ARG_SET_VALID(ar, ARG_METAIO);
+}
+#endif /* METAIO */
 
 void
 audit_arg_mode(mode_t mode)

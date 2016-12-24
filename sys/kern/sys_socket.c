@@ -40,6 +40,8 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_metaio.h"
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/aio.h>
@@ -49,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/kthread.h>
 #include <sys/malloc.h>
+#include <sys/metaio.h>
 #include <sys/proc.h>
 #include <sys/protosw.h>
 #include <sys/sigio.h>
@@ -95,8 +98,8 @@ static int empty_retries;
 SYSCTL_INT(_kern_ipc_aio, OID_AUTO, empty_retries, CTLFLAG_RD, &empty_retries,
     0, "socket operation retries");
 
-static fo_rdwr_t soo_read;
-static fo_rdwr_t soo_write;
+static fo_read_t soo_read;
+static fo_write_t soo_write;
 static fo_ioctl_t soo_ioctl;
 static fo_poll_t soo_poll;
 extern fo_kqfilter_t soo_kqfilter;
@@ -128,13 +131,16 @@ struct fileops	socketops = {
 
 static int
 soo_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
-    int flags, struct thread *td)
+    int flags, struct thread *td, struct metaio *miop)
 {
 	struct socket *so = fp->f_data;
 	int error;
 
 #ifdef KDTRACE_HOOKS
 	AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
+#ifdef METAIO
+	metaio_from_uuid(&so->so_uuid, miop);
 #endif
 #ifdef MAC
 	error = mac_socket_check_receive(active_cred, so);

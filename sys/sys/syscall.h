@@ -467,6 +467,9 @@
 #define	SYS_utimensat	547
 #define	SYS_numa_getaffinity	548
 #define	SYS_numa_setaffinity	549
+#define	SYS_metaio_read	571
+#define	SYS_metaio_write	572
+#define	SYS_metaio_mmap	573
 #define	SYS_fgetuuid	574
 #define	SYS_getuuid	575
 #define	SYS_lgetuuid	576

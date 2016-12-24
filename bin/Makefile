@@ -8,6 +8,7 @@ SUBDIR= cat \
 	chio \
 	chmod \
 	cp \
+	cp_metaio \
 	date \
 	dd \
 	df \
