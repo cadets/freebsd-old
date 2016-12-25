@@ -623,4 +623,10 @@ struct sysent sysent[] = {
 	{ AS(fgetuuid_args), (sy_call_t *)sys_fgetuuid, AUE_FGETUUID, NULL, 0, 0, 0, SY_THR_STATIC },	/* 574 = fgetuuid */
 	{ AS(getuuid_args), (sy_call_t *)sys_getuuid, AUE_GETUUID, NULL, 0, 0, 0, SY_THR_STATIC },	/* 575 = getuuid */
 	{ AS(lgetuuid_args), (sy_call_t *)sys_lgetuuid, AUE_LGETUUID, NULL, 0, 0, 0, SY_THR_STATIC },	/* 576 = lgetuuid */
+	{ AS(metaio_readv_args), (sy_call_t *)sys_metaio_readv, AUE_READV, NULL, 0, 0, 0, SY_THR_STATIC },	/* 577 = metaio_readv */
+	{ AS(metaio_writev_args), (sy_call_t *)sys_metaio_writev, AUE_WRITEV, NULL, 0, 0, 0, SY_THR_STATIC },	/* 578 = metaio_writev */
+	{ AS(metaio_pread_args), (sy_call_t *)sys_metaio_pread, AUE_PREAD, NULL, 0, 0, 0, SY_THR_STATIC },	/* 579 = metaio_pread */
+	{ AS(metaio_pwrite_args), (sy_call_t *)sys_metaio_pwrite, AUE_PWRITE, NULL, 0, 0, 0, SY_THR_STATIC },	/* 580 = metaio_pwrite */
+	{ AS(metaio_preadv_args), (sy_call_t *)sys_metaio_preadv, AUE_PREADV, NULL, 0, 0, 0, SY_THR_STATIC },	/* 581 = metaio_preadv */
+	{ AS(metaio_pwritev_args), (sy_call_t *)sys_metaio_pwritev, AUE_PWRITEV, NULL, 0, 0, 0, SY_THR_STATIC },	/* 582 = metaio_pwritev */
 };

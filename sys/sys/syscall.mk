@@ -401,4 +401,10 @@ MIASM =  \
 	metaio_mmap.o \
 	fgetuuid.o \
 	getuuid.o \
-	lgetuuid.o
+	lgetuuid.o \
+	metaio_readv.o \
+	metaio_writev.o \
+	metaio_pread.o \
+	metaio_pwrite.o \
+	metaio_preadv.o \
+	metaio_pwritev.o

@@ -473,4 +473,10 @@
 #define	SYS_fgetuuid	574
 #define	SYS_getuuid	575
 #define	SYS_lgetuuid	576
-#define	SYS_MAXSYSCALL	577
+#define	SYS_metaio_readv	577
+#define	SYS_metaio_writev	578
+#define	SYS_metaio_pread	579
+#define	SYS_metaio_pwrite	580
+#define	SYS_metaio_preadv	581
+#define	SYS_metaio_pwritev	582
+#define	SYS_MAXSYSCALL	583

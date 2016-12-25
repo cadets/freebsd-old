@@ -584,4 +584,10 @@ const char *syscallnames[] = {
 	"fgetuuid",			/* 574 = fgetuuid */
 	"getuuid",			/* 575 = getuuid */
 	"lgetuuid",			/* 576 = lgetuuid */
+	"metaio_readv",			/* 577 = metaio_readv */
+	"metaio_writev",			/* 578 = metaio_writev */
+	"metaio_pread",			/* 579 = metaio_pread */
+	"metaio_pwrite",			/* 580 = metaio_pwrite */
+	"metaio_preadv",			/* 581 = metaio_preadv */
+	"metaio_pwritev",			/* 582 = metaio_pwritev */
 };

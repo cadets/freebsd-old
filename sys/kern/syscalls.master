@@ -1037,3 +1037,21 @@
 				    struct uuid *uuidp); }
 576	AUE_LGETUUID	STD	{ int lgetuuid(const char *path, \
 				    struct uuid *uuidp); }
+577	AUE_READV	STD	{ int metaio_readv(int fd, \
+				    struct iovec *iovp, u_int iovcnt, \
+				    struct metaio *miop); }
+578	AUE_WRITEV	STD	{ int metaio_writev(int fd, \
+				    struct iovec *iovp, u_int iovcnt, \
+				    struct metaio *miop); }
+579	AUE_PREAD	STD	{ ssize_t metaio_pread(int fd, void *buf, \
+				    size_t nbyte, off_t offset, \
+				    struct metaio *miop); }
+580	AUE_PWRITE	STD	{ ssize_t metaio_pwrite(int fd, \
+				    const void *buf, size_t nbyte, \
+				    off_t offset, struct metaio *miop); }
+581	AUE_PREADV	STD	{ ssize_t metaio_preadv(int fd, \
+				    struct iovec *iovp, u_int iovcnt, \
+				    off_t offset, struct metaio *miop); }
+582	AUE_PWRITEV	STD	{ ssize_t metaio_pwritev(int fd, \
+				    struct iovec *iovp, u_int iovcnt, \
+				    off_t offset, struct metaio *miop); }

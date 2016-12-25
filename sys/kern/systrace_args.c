@@ -3383,6 +3383,70 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 2;
 		break;
 	}
+	/* metaio_readv */
+	case 577: {
+		struct metaio_readv_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->iovp; /* struct iovec * */
+		uarg[2] = p->iovcnt; /* u_int */
+		uarg[3] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 4;
+		break;
+	}
+	/* metaio_writev */
+	case 578: {
+		struct metaio_writev_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->iovp; /* struct iovec * */
+		uarg[2] = p->iovcnt; /* u_int */
+		uarg[3] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 4;
+		break;
+	}
+	/* metaio_pread */
+	case 579: {
+		struct metaio_pread_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->buf; /* void * */
+		uarg[2] = p->nbyte; /* size_t */
+		iarg[3] = p->offset; /* off_t */
+		uarg[4] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 5;
+		break;
+	}
+	/* metaio_pwrite */
+	case 580: {
+		struct metaio_pwrite_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->buf; /* const void * */
+		uarg[2] = p->nbyte; /* size_t */
+		iarg[3] = p->offset; /* off_t */
+		uarg[4] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 5;
+		break;
+	}
+	/* metaio_preadv */
+	case 581: {
+		struct metaio_preadv_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->iovp; /* struct iovec * */
+		uarg[2] = p->iovcnt; /* u_int */
+		iarg[3] = p->offset; /* off_t */
+		uarg[4] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 5;
+		break;
+	}
+	/* metaio_pwritev */
+	case 582: {
+		struct metaio_pwritev_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->iovp; /* struct iovec * */
+		uarg[2] = p->iovcnt; /* u_int */
+		iarg[3] = p->offset; /* off_t */
+		uarg[4] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 5;
+		break;
+	}
 	default:
 		*n_args = 0;
 		break;
@@ -9024,6 +9088,132 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
+	/* metaio_readv */
+	case 577:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "struct iovec *";
+			break;
+		case 2:
+			p = "u_int";
+			break;
+		case 3:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_writev */
+	case 578:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "struct iovec *";
+			break;
+		case 2:
+			p = "u_int";
+			break;
+		case 3:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_pread */
+	case 579:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "void *";
+			break;
+		case 2:
+			p = "size_t";
+			break;
+		case 3:
+			p = "off_t";
+			break;
+		case 4:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_pwrite */
+	case 580:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "const void *";
+			break;
+		case 2:
+			p = "size_t";
+			break;
+		case 3:
+			p = "off_t";
+			break;
+		case 4:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_preadv */
+	case 581:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "struct iovec *";
+			break;
+		case 2:
+			p = "u_int";
+			break;
+		case 3:
+			p = "off_t";
+			break;
+		case 4:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_pwritev */
+	case 582:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "struct iovec *";
+			break;
+		case 2:
+			p = "u_int";
+			break;
+		case 3:
+			p = "off_t";
+			break;
+		case 4:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
 	default:
 		break;
 	};
@@ -10969,6 +11159,36 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 	case 576:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
+		break;
+	/* metaio_readv */
+	case 577:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* metaio_writev */
+	case 578:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* metaio_pread */
+	case 579:
+		if (ndx == 0 || ndx == 1)
+			p = "ssize_t";
+		break;
+	/* metaio_pwrite */
+	case 580:
+		if (ndx == 0 || ndx == 1)
+			p = "ssize_t";
+		break;
+	/* metaio_preadv */
+	case 581:
+		if (ndx == 0 || ndx == 1)
+			p = "ssize_t";
+		break;
+	/* metaio_pwritev */
+	case 582:
+		if (ndx == 0 || ndx == 1)
+			p = "ssize_t";
 		break;
 	default:
 		break;

@@ -1821,6 +1821,46 @@ struct lgetuuid_args {
 	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
 	char uuidp_l_[PADL_(struct uuid *)]; struct uuid * uuidp; char uuidp_r_[PADR_(struct uuid *)];
 };
+struct metaio_readv_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char iovp_l_[PADL_(struct iovec *)]; struct iovec * iovp; char iovp_r_[PADR_(struct iovec *)];
+	char iovcnt_l_[PADL_(u_int)]; u_int iovcnt; char iovcnt_r_[PADR_(u_int)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_writev_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char iovp_l_[PADL_(struct iovec *)]; struct iovec * iovp; char iovp_r_[PADR_(struct iovec *)];
+	char iovcnt_l_[PADL_(u_int)]; u_int iovcnt; char iovcnt_r_[PADR_(u_int)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_pread_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char buf_l_[PADL_(void *)]; void * buf; char buf_r_[PADR_(void *)];
+	char nbyte_l_[PADL_(size_t)]; size_t nbyte; char nbyte_r_[PADR_(size_t)];
+	char offset_l_[PADL_(off_t)]; off_t offset; char offset_r_[PADR_(off_t)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_pwrite_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char buf_l_[PADL_(const void *)]; const void * buf; char buf_r_[PADR_(const void *)];
+	char nbyte_l_[PADL_(size_t)]; size_t nbyte; char nbyte_r_[PADR_(size_t)];
+	char offset_l_[PADL_(off_t)]; off_t offset; char offset_r_[PADR_(off_t)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_preadv_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char iovp_l_[PADL_(struct iovec *)]; struct iovec * iovp; char iovp_r_[PADR_(struct iovec *)];
+	char iovcnt_l_[PADL_(u_int)]; u_int iovcnt; char iovcnt_r_[PADR_(u_int)];
+	char offset_l_[PADL_(off_t)]; off_t offset; char offset_r_[PADR_(off_t)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_pwritev_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char iovp_l_[PADL_(struct iovec *)]; struct iovec * iovp; char iovp_r_[PADR_(struct iovec *)];
+	char iovcnt_l_[PADL_(u_int)]; u_int iovcnt; char iovcnt_r_[PADR_(u_int)];
+	char offset_l_[PADL_(off_t)]; off_t offset; char offset_r_[PADR_(off_t)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
 int	nosys(struct thread *, struct nosys_args *);
 void	sys_sys_exit(struct thread *, struct sys_exit_args *);
 int	sys_fork(struct thread *, struct fork_args *);
@@ -2213,6 +2253,12 @@ int	sys_metaio_mmap(struct thread *, struct metaio_mmap_args *);
 int	sys_fgetuuid(struct thread *, struct fgetuuid_args *);
 int	sys_getuuid(struct thread *, struct getuuid_args *);
 int	sys_lgetuuid(struct thread *, struct lgetuuid_args *);
+int	sys_metaio_readv(struct thread *, struct metaio_readv_args *);
+int	sys_metaio_writev(struct thread *, struct metaio_writev_args *);
+int	sys_metaio_pread(struct thread *, struct metaio_pread_args *);
+int	sys_metaio_pwrite(struct thread *, struct metaio_pwrite_args *);
+int	sys_metaio_preadv(struct thread *, struct metaio_preadv_args *);
+int	sys_metaio_pwritev(struct thread *, struct metaio_pwritev_args *);
 
 #ifdef COMPAT_43
 
@@ -2996,6 +3042,12 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_fgetuuid	AUE_FGETUUID
 #define	SYS_AUE_getuuid	AUE_GETUUID
 #define	SYS_AUE_lgetuuid	AUE_LGETUUID
+#define	SYS_AUE_metaio_readv	AUE_READV
+#define	SYS_AUE_metaio_writev	AUE_WRITEV
+#define	SYS_AUE_metaio_pread	AUE_PREAD
+#define	SYS_AUE_metaio_pwrite	AUE_PWRITE
+#define	SYS_AUE_metaio_preadv	AUE_PREADV
+#define	SYS_AUE_metaio_pwritev	AUE_PWRITEV
 
 #undef PAD_
 #undef PADL_
