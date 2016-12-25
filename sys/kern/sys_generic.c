@@ -2020,7 +2020,7 @@ kern_posix_error(struct thread *td, int error)
 
 /*
  * XXXRW: Do we want a MAC check for this?
- * XXXRW: Do we want to auit the returned UUID?
+ * XXXRW: Do we want to audit the returned UUID?
  */
 int
 sys_fgetuuid(struct thread *td, struct fgetuuid_args *uap)
