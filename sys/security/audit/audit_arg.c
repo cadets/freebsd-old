@@ -43,6 +43,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/capsicum.h>
 #include <sys/ipc.h>
 #include <sys/mount.h>
+#include <sys/selinfo.h>
+#include <sys/pipe.h>
 #include <sys/proc.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
@@ -729,6 +731,9 @@ void
 audit_arg_file(struct proc *p, struct file *fp)
 {
 	struct kaudit_record *ar;
+#ifdef KDTRACE_HOOKS
+	struct pipe *pipe;
+#endif
 	struct socket *so;
 	struct inpcb *pcb;
 	struct vnode *vp;
@@ -773,6 +778,16 @@ audit_arg_file(struct proc *p, struct file *fp)
 			INP_RUNLOCK(pcb);
 			ARG_SET_VALID(ar, ARG_SOCKINFO);
 		}
+#ifdef KDTRACE_HOOKS
+		audit_arg_objuuid1(&so->so_uuid);
+#endif
+		break;
+
+	case DTYPE_PIPE:
+#ifdef KDTRACE_HOOKS
+		pipe = (struct pipe *)fp->f_data;
+		audit_arg_objuuid1(&pipe->pipe_uuid);
+#endif
 		break;
 
 	default:
