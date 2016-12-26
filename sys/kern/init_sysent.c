@@ -629,4 +629,9 @@ struct sysent sysent[] = {
 	{ AS(metaio_pwrite_args), (sy_call_t *)sys_metaio_pwrite, AUE_PWRITE, NULL, 0, 0, 0, SY_THR_STATIC },	/* 580 = metaio_pwrite */
 	{ AS(metaio_preadv_args), (sy_call_t *)sys_metaio_preadv, AUE_PREADV, NULL, 0, 0, 0, SY_THR_STATIC },	/* 581 = metaio_preadv */
 	{ AS(metaio_pwritev_args), (sy_call_t *)sys_metaio_pwritev, AUE_PWRITEV, NULL, 0, 0, 0, SY_THR_STATIC },	/* 582 = metaio_pwritev */
+	{ AS(metaio_sendto_args), (sy_call_t *)sys_metaio_sendto, AUE_SENDTO, NULL, 0, 0, 0, SY_THR_STATIC },	/* 583 = metaio_sendto */
+	{ AS(metaio_recvfrom_args), (sy_call_t *)sys_metaio_recvfrom, AUE_RECVFROM, NULL, 0, 0, 0, SY_THR_STATIC },	/* 584 = metaio_recvfrom */
+	{ AS(metaio_sendmsg_args), (sy_call_t *)sys_metaio_sendmsg, AUE_SENDMSG, NULL, 0, 0, 0, SY_THR_STATIC },	/* 585 = metaio_sendmsg */
+	{ AS(metaio_recvmsg_args), (sy_call_t *)sys_metaio_recvmsg, AUE_RECVMSG, NULL, 0, 0, 0, SY_THR_STATIC },	/* 586 = metaio_recvmsg */
+	{ AS(metaio_sendfile_args), (sy_call_t *)sys_metaio_sendfile, AUE_SENDFILE, NULL, 0, 0, 0, SY_THR_STATIC },	/* 587 = metaio_sendfile */
 };

@@ -479,4 +479,9 @@
 #define	SYS_metaio_pwrite	580
 #define	SYS_metaio_preadv	581
 #define	SYS_metaio_pwritev	582
-#define	SYS_MAXSYSCALL	583
+#define	SYS_metaio_sendto	583
+#define	SYS_metaio_recvfrom	584
+#define	SYS_metaio_sendmsg	585
+#define	SYS_metaio_recvmsg	586
+#define	SYS_metaio_sendfile	587
+#define	SYS_MAXSYSCALL	588

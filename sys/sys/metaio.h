@@ -32,6 +32,7 @@
 #ifndef _SYS_METAIO_H_
 #define	_SYS_METAIO_H_
 
+#include <sys/cdefs.h>
 #include <sys/types.h>
 #include <sys/msgid.h>
 #include <sys/uuid.h>
@@ -50,24 +51,55 @@ struct metaio {
 	struct uuid	mio_uuid;	/* UUID for data, if any. */
 };
 
+__BEGIN_DECLS
 /*
  * System calls returning metadata from the kernel on completion.
  */
-int	metaio_read(int fd, void *buf, size_t nbyte, struct metaio *miop);
+struct iovec;
+struct msghdr;
+struct sockaddr;
 caddr_t	metaio_mmap(caddr_t addr, size_t len, int prot, int flags, int fd,
 	    off_t pos, struct metaio *miop);
+ssize_t	metaio_pread(int fd, void *buf, size_t nbyte, off_t offset,
+	    struct metaio *miop);
+ssize_t	metaio_preadv(int fd, struct iovec *iovp, u_int iovcnt, off_t offset,
+	    struct metaio *miop);
+int	metaio_read(int fd, void *buf, size_t nbyte, struct metaio *miop);
+int	metaio_readv(int fd, struct iovec *iovp, u_int iovcnt,
+	    struct metaio *miop);
+int	metaio_recvfrom(int s, caddr_t buf, size_t len, int flags,
+	    struct sockaddr * __restrict from,
+	    __socklen_t * __restrict fromlenaddr, struct metaio *miop);
+int	metaio_recvmsg(int s, struct msghdr *msg, int flags,
+	    struct metaio *miop);
 
 /*
  * System calls accepting metadata for the kernel as an argument.
  */
+struct sf_hdtr;
+ssize_t	metaio_pwrite(int fd, const void *buf, size_t nbyte, off_t offset,
+	    struct metaio *miop);
+ssize_t	metaio_pwritev(int fd, struct iovec *iovp, u_int iovcnt, off_t offset,
+	    struct metaio *miop);
+int	metaio_sendfile(int fd, int s, off_t offset, size_t nbytes,
+	    struct sf_hdtr *hdtr, off_t *sbytes, int flags,
+	    struct metaio *miop);
+int	metaio_sendmsg(int s, struct msghdr *msg, int flags,
+	    struct metaio *miop);
+int	metaio_sendto(int s, caddr_t buf, size_t len, int flags, caddr_t to,
+	    int tolen, struct metaio *miop);
 int	metaio_write(int fd, void *buf, size_t nbyte, struct metaio *miop);
+int	metaio_writev(int fd, struct iovec *iovp, u_int iovcnt,
+	    struct metaio *miop);
 
 /*
  * UUID system calls -- probably belong in another header at some point.
+ * Perhaps <sys/uuid.h>?
  */
 int	fgetuuid(int fd, struct uuid *uuidp);
 int	getuuid(const char *path, struct uuid *uuidp);
 int	lgetuuid(const char *path, struct uuid *uuidp);
+__END_DECLS
 
 /*
  * In-kernel calls to manage and propagate I/O metadata.

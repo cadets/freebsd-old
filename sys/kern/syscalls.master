@@ -1055,3 +1055,21 @@
 582	AUE_PWRITEV	STD	{ ssize_t metaio_pwritev(int fd, \
 				    struct iovec *iovp, u_int iovcnt, \
 				    off_t offset, struct metaio *miop); }
+583	AUE_SENDTO	STD	{ int metaio_sendto(int s, caddr_t buf, \
+				    size_t len, int flags, caddr_t to, \
+				    int tolen, struct metaio *miop); }
+584	AUE_RECVFROM	STD	{ int metaio_recvfrom(int s, caddr_t buf, \
+				    size_t len, int flags, \
+				    struct sockaddr * __restrict from, \
+				    __socklen_t * __restrict fromlenaddr, \
+				    struct metaio *miop); }
+585	AUE_SENDMSG	STD	{ int metaio_sendmsg(int s, \
+				    struct msghdr *msg, int flags, \
+				    struct metaio *miop); }
+586	AUE_RECVMSG	STD	{ int metaio_recvmsg(int s, \
+				    struct msghdr *msg, int flags, \
+				    struct metaio *miop); }
+587	AUE_SENDFILE	STD	{ int metaio_sendfile(int fd, int s, \
+				    off_t offset, size_t nbytes, \
+				    struct sf_hdtr *hdtr, off_t *sbytes, \
+				    int flags, struct metaio *miop); }

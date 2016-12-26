@@ -1861,6 +1861,46 @@ struct metaio_pwritev_args {
 	char offset_l_[PADL_(off_t)]; off_t offset; char offset_r_[PADR_(off_t)];
 	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
 };
+struct metaio_sendto_args {
+	char s_l_[PADL_(int)]; int s; char s_r_[PADR_(int)];
+	char buf_l_[PADL_(caddr_t)]; caddr_t buf; char buf_r_[PADR_(caddr_t)];
+	char len_l_[PADL_(size_t)]; size_t len; char len_r_[PADR_(size_t)];
+	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+	char to_l_[PADL_(caddr_t)]; caddr_t to; char to_r_[PADR_(caddr_t)];
+	char tolen_l_[PADL_(int)]; int tolen; char tolen_r_[PADR_(int)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_recvfrom_args {
+	char s_l_[PADL_(int)]; int s; char s_r_[PADR_(int)];
+	char buf_l_[PADL_(caddr_t)]; caddr_t buf; char buf_r_[PADR_(caddr_t)];
+	char len_l_[PADL_(size_t)]; size_t len; char len_r_[PADR_(size_t)];
+	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+	char from_l_[PADL_(struct sockaddr *__restrict)]; struct sockaddr *__restrict from; char from_r_[PADR_(struct sockaddr *__restrict)];
+	char fromlenaddr_l_[PADL_(__socklen_t *__restrict)]; __socklen_t *__restrict fromlenaddr; char fromlenaddr_r_[PADR_(__socklen_t *__restrict)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_sendmsg_args {
+	char s_l_[PADL_(int)]; int s; char s_r_[PADR_(int)];
+	char msg_l_[PADL_(struct msghdr *)]; struct msghdr * msg; char msg_r_[PADR_(struct msghdr *)];
+	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_recvmsg_args {
+	char s_l_[PADL_(int)]; int s; char s_r_[PADR_(int)];
+	char msg_l_[PADL_(struct msghdr *)]; struct msghdr * msg; char msg_r_[PADR_(struct msghdr *)];
+	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_sendfile_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char s_l_[PADL_(int)]; int s; char s_r_[PADR_(int)];
+	char offset_l_[PADL_(off_t)]; off_t offset; char offset_r_[PADR_(off_t)];
+	char nbytes_l_[PADL_(size_t)]; size_t nbytes; char nbytes_r_[PADR_(size_t)];
+	char hdtr_l_[PADL_(struct sf_hdtr *)]; struct sf_hdtr * hdtr; char hdtr_r_[PADR_(struct sf_hdtr *)];
+	char sbytes_l_[PADL_(off_t *)]; off_t * sbytes; char sbytes_r_[PADR_(off_t *)];
+	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
 int	nosys(struct thread *, struct nosys_args *);
 void	sys_sys_exit(struct thread *, struct sys_exit_args *);
 int	sys_fork(struct thread *, struct fork_args *);
@@ -2259,6 +2299,11 @@ int	sys_metaio_pread(struct thread *, struct metaio_pread_args *);
 int	sys_metaio_pwrite(struct thread *, struct metaio_pwrite_args *);
 int	sys_metaio_preadv(struct thread *, struct metaio_preadv_args *);
 int	sys_metaio_pwritev(struct thread *, struct metaio_pwritev_args *);
+int	sys_metaio_sendto(struct thread *, struct metaio_sendto_args *);
+int	sys_metaio_recvfrom(struct thread *, struct metaio_recvfrom_args *);
+int	sys_metaio_sendmsg(struct thread *, struct metaio_sendmsg_args *);
+int	sys_metaio_recvmsg(struct thread *, struct metaio_recvmsg_args *);
+int	sys_metaio_sendfile(struct thread *, struct metaio_sendfile_args *);
 
 #ifdef COMPAT_43
 
@@ -3048,6 +3093,11 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_metaio_pwrite	AUE_PWRITE
 #define	SYS_AUE_metaio_preadv	AUE_PREADV
 #define	SYS_AUE_metaio_pwritev	AUE_PWRITEV
+#define	SYS_AUE_metaio_sendto	AUE_SENDTO
+#define	SYS_AUE_metaio_recvfrom	AUE_RECVFROM
+#define	SYS_AUE_metaio_sendmsg	AUE_SENDMSG
+#define	SYS_AUE_metaio_recvmsg	AUE_RECVMSG
+#define	SYS_AUE_metaio_sendfile	AUE_SENDFILE
 
 #undef PAD_
 #undef PADL_

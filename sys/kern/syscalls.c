@@ -590,4 +590,9 @@ const char *syscallnames[] = {
 	"metaio_pwrite",			/* 580 = metaio_pwrite */
 	"metaio_preadv",			/* 581 = metaio_preadv */
 	"metaio_pwritev",			/* 582 = metaio_pwritev */
+	"metaio_sendto",			/* 583 = metaio_sendto */
+	"metaio_recvfrom",			/* 584 = metaio_recvfrom */
+	"metaio_sendmsg",			/* 585 = metaio_sendmsg */
+	"metaio_recvmsg",			/* 586 = metaio_recvmsg */
+	"metaio_sendfile",			/* 587 = metaio_sendfile */
 };

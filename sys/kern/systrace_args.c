@@ -3447,6 +3447,66 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 5;
 		break;
 	}
+	/* metaio_sendto */
+	case 583: {
+		struct metaio_sendto_args *p = params;
+		iarg[0] = p->s; /* int */
+		uarg[1] = (intptr_t) p->buf; /* caddr_t */
+		uarg[2] = p->len; /* size_t */
+		iarg[3] = p->flags; /* int */
+		uarg[4] = (intptr_t) p->to; /* caddr_t */
+		iarg[5] = p->tolen; /* int */
+		uarg[6] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 7;
+		break;
+	}
+	/* metaio_recvfrom */
+	case 584: {
+		struct metaio_recvfrom_args *p = params;
+		iarg[0] = p->s; /* int */
+		uarg[1] = (intptr_t) p->buf; /* caddr_t */
+		uarg[2] = p->len; /* size_t */
+		iarg[3] = p->flags; /* int */
+		uarg[4] = (intptr_t) p->from; /* struct sockaddr * */
+		uarg[5] = (intptr_t) p->fromlenaddr; /* __socklen_t * */
+		uarg[6] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 7;
+		break;
+	}
+	/* metaio_sendmsg */
+	case 585: {
+		struct metaio_sendmsg_args *p = params;
+		iarg[0] = p->s; /* int */
+		uarg[1] = (intptr_t) p->msg; /* struct msghdr * */
+		iarg[2] = p->flags; /* int */
+		uarg[3] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 4;
+		break;
+	}
+	/* metaio_recvmsg */
+	case 586: {
+		struct metaio_recvmsg_args *p = params;
+		iarg[0] = p->s; /* int */
+		uarg[1] = (intptr_t) p->msg; /* struct msghdr * */
+		iarg[2] = p->flags; /* int */
+		uarg[3] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 4;
+		break;
+	}
+	/* metaio_sendfile */
+	case 587: {
+		struct metaio_sendfile_args *p = params;
+		iarg[0] = p->fd; /* int */
+		iarg[1] = p->s; /* int */
+		iarg[2] = p->offset; /* off_t */
+		uarg[3] = p->nbytes; /* size_t */
+		uarg[4] = (intptr_t) p->hdtr; /* struct sf_hdtr * */
+		uarg[5] = (intptr_t) p->sbytes; /* off_t * */
+		iarg[6] = p->flags; /* int */
+		uarg[7] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 8;
+		break;
+	}
 	default:
 		*n_args = 0;
 		break;
@@ -9214,6 +9274,131 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
+	/* metaio_sendto */
+	case 583:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "caddr_t";
+			break;
+		case 2:
+			p = "size_t";
+			break;
+		case 3:
+			p = "int";
+			break;
+		case 4:
+			p = "caddr_t";
+			break;
+		case 5:
+			p = "int";
+			break;
+		case 6:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_recvfrom */
+	case 584:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "caddr_t";
+			break;
+		case 2:
+			p = "size_t";
+			break;
+		case 3:
+			p = "int";
+			break;
+		case 4:
+			p = "struct sockaddr *";
+			break;
+		case 5:
+			p = "__socklen_t *";
+			break;
+		case 6:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_sendmsg */
+	case 585:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "struct msghdr *";
+			break;
+		case 2:
+			p = "int";
+			break;
+		case 3:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_recvmsg */
+	case 586:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "struct msghdr *";
+			break;
+		case 2:
+			p = "int";
+			break;
+		case 3:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_sendfile */
+	case 587:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "int";
+			break;
+		case 2:
+			p = "off_t";
+			break;
+		case 3:
+			p = "size_t";
+			break;
+		case 4:
+			p = "struct sf_hdtr *";
+			break;
+		case 5:
+			p = "off_t *";
+			break;
+		case 6:
+			p = "int";
+			break;
+		case 7:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
 	default:
 		break;
 	};
@@ -11189,6 +11374,31 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 	case 582:
 		if (ndx == 0 || ndx == 1)
 			p = "ssize_t";
+		break;
+	/* metaio_sendto */
+	case 583:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* metaio_recvfrom */
+	case 584:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* metaio_sendmsg */
+	case 585:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* metaio_recvmsg */
+	case 586:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* metaio_sendfile */
+	case 587:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
 		break;
 	default:
 		break;
