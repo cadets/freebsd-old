@@ -380,6 +380,8 @@ MLINKS+=getrlimit.2 setrlimit.2
 MLINKS+=getsockopt.2 setsockopt.2
 MLINKS+=gettimeofday.2 settimeofday.2
 MLINKS+=getuid.2 geteuid.2
+MLINKS+=getuuid.2 fgetuuid.2
+MLINKS+=getuuid.2 lgetuuid.2
 MLINKS+=intro.2 errno.2
 MLINKS+=jail.2 jail_attach.2 \
 	jail.2 jail_get.2 \

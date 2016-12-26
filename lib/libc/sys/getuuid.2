@@ -33,11 +33,14 @@
 .Dt GETUUID 2
 .Os
 .Sh NAME
-.Nm getuuid
+.Nm fgetuuid ,
+.Nm getuuid ,
+.Nm lgetuuid
 .Nd system calls to retrieve UUIDs of files and file descriptors
 .Sh LIBRARY
 .Lb libc
 .Sh SYNOPSIS
+.In sys/uuid.h
 .In sys/metaio.h
 .Ft int
 .Fn fgetuuid "int fd" "struct uuid *uuidp"
