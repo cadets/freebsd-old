@@ -1,0 +1,192 @@
+.\" Copyright (c) 2016 Robert N. M. Watson
+.\" All rights reserved.
+.\"
+.\" This software was developed by BAE Systems, the University of Cambridge
+.\" Computer Laboratory, and Memorial University under DARPA/AFRL contract
+.\" FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent Computing
+.\" (TC) research program.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd December 26, 2016
+.Dt METAIO 2
+.Os
+.Sh NAME
+.Nm metaio_mmap ,
+.Nm metaio_pread ,
+.Nm metaio_preadv ,
+.Nm metaio_pwrite ,
+.Nm metaio_pwritev ,
+.Nm metaio_read ,
+.Nm metaio_readv ,
+.Nm metaio_recvfrom ,
+.Nm metaio_recvmsg ,
+.Nm metaio_sendfile ,
+.Nm metaio_sendmsg ,
+.Nm metaio_sendto ,
+.Nm metaio_write ,
+.Nm metaio_writev
+.Nd I/O system calls that propagate kernel I/O metadata through userspace
+.Sh LIBRARY
+.Lb libc
+.Sh SYNOPSIS
+.In sys/metaio.h
+.In unistd.h
+.Ft ssize_t
+.Fn metaio_pread "int fd" "void *buf" "size_t nbyte" "off_t offset" "struct metaio *miop"
+.Ft ssize_t
+.Fn metaio_pwrite "int fd" "const void *buf" "size_t nbyte" "off_t offset" "struct metaio *miop"
+.Ft int
+.Fn metaio_read "int fd" "void *buf" "size_t nbyte" "struct metaio *miop"
+.Ft int
+.Fn metaio_write "int fd" "void *buf" "size_t nbyte" "struct metaio *miop"
+.In sys/metaio.h
+.In sys/uio.h
+.In unistd.h
+.Ft int
+.Fn metaio_readv "int fd" "struct iovec *iovp" "u_int iovcnt" "struct metaio *miop"
+.Ft ssize_t
+.Fn metaio_preadv "int fd" "struct iovec *iovp" "u_int iovcnt" "off_t offset" "struct metaio *miop"
+.Ft ssize_t
+.Fn metaio_pwritev "int fd" "struct iovec *iovp" "u_int iovcnt" "off_t offset" "struct metaio *miop"
+.Ft int
+.Fn metaio_writev "int fd" "struct iovec *iovp" "u_int iovcnt" "struct metaio *miop"
+.In sys/metaio.h
+.In sys/mman.h
+.Ft caddr_t
+.Fn metaio_mmap "caddr_t addr" "size_t len" "int prot" "int flags" "int fd" "off_t pos" "struct metaio *miop"
+.In sys/types.h
+.In sys/metaio.h
+.In sys/socket.h
+.Ft int
+.Fn metaio_recvfrom "int s" "caddr_t buf" "size_t len" "int flags" "struct sockaddr * __restrict from" "__socklen_t * __restrict fromlenaddr" "struct metaio *miop"
+.Ft int
+.Fn metaio_recvmsg "int s" "struct msghdr *msg" "int flags" "struct metaio *miop"
+.In sys/types.h
+.In sys/metaio.h
+.In sys/socket.h
+.In sys/uio.h
+.Ft int
+.Fn metaio_sendfile "int fd" "int s" "off_t offset" "size_t nbytes" "struct sf_hdtr *hdtr" "off_t *sbytes" "int flags" "struct metaio *miop"
+.Ft int
+.Fn metaio_sendmsg "int s" "struct msghdr *msg" "int flags" "struct metaio *miop"
+.Ft int
+.Fn metaio_sendto "int s" "caddr_t buf" "size_t len" "int flags" "caddr_t to" "int tolen" "struct metaio *miop"
+.Sh DESCRIPTION
+These system calls extend the normal POSIX and UNIX I/O APIs to allow
+userspace to propagate kernel I/O metadata from sources (such as
+file-descriptor read or receive) to sinks (such as file-descriptor write or
+send).
+I/O metadata is represented by
+.Fa "struct uuid" that contains at least the following fields:
+.Bd -literal
+struct metaio {
+        lwpid_t         mio_tid;        /* Unique thread ID. */
+        struct uuid     mio_uuid;       /* UUID for data, if any. */
+};
+.Ed
+These system calls otherwise behave identically to their non-metaio variants.
+.Pp
+Returned UUIDs can be processed and printed using the
+.Xr uuid 3
+library interfaces.
+UUIDs returned by I/O metadata are from the same UUID space as those returned
+by the
+.Xr getuuid 2
+family of system calls.
+.Ss Source system calls
+Source system calls, including
+.Fn metaio_mmap ,
+.Fn metaio_pread ,
+.Fn metaio_preadv ,
+.Fn metaio_read ,
+.Fn metaio_readv ,
+.Fn metaio_recvfrom ,
+and
+.Fn metaio_recvmsg ,
+accept an additional
+.Fa miop
+argument that will be pointed at a
+.Fa "struct metaio"
+allocated by the caller.
+The system call will fill the structure with I/O provenance information
+describing the origin of any data returned by the kernel, and that can be
+computed in in userspace, but also returned to the kernel via sink system
+calls.
+.Ss Sink system calls
+Sink system calls, including
+.Fn metaio_pwrite ,
+.Fn metaio_pwritev ,
+.Fn metaio_sendfile ,
+.Fn metaio_sendmsg ,
+.Fn metaio_sendto ,
+.Fn metaio_write ,
+and
+.Fn metaio_writev ,
+accept an additional
+.Fa miop
+argument that will be pointed at a
+.Fa "struct metaio"
+structure previous allocated by the caller, and filled using a source system
+call.
+.Sh ERRORS
+In addition to the error values documented for the non-metaio variants of
+these system call, the following errors can now also be returned:
+.Bl -tag -width Er
+.It Bq Er EFAULT
+The
+.Fa "struct metaio"
+pointed to by
+.Fa miop
+cannot be written to or read from.
+.El
+.Pp
+In the event that an error is returned, source system calls may not have been
+able to fill the
+.Fa "struct metaio"
+argument, and so its contents should not be relied on if an error is reported.
+.Sh SEE ALSO
+.Xr getuuid 2 ,
+.Xr mmap 2 ,
+.Xr pread 2 ,
+.Xr preadv 2 ,
+.Xr pwrite 2 ,
+.Xr pwritev 2 ,
+.Xr read 2 ,
+.Xr readv 2 ,
+.Xr recvfrom 2 ,
+.Xr recvmsg 2 ,
+.Xr sendfile 2 ,
+.Xr sendmsg 2 ,
+.Xr sendto 2 ,
+.Xr write 2 ,
+.Xr writev 2 ,
+.Xr uuid 3
+.Sh AUTHORS
+This software and this manual page were developed by BAE Systems, the
+University of Cambridge Computer Laboratory, and Memorial University under
+DARPA/AFRL contract
+.Pq FA8650-15-C-7558
+.Pq Do CADETS Dc ,
+as part of the DARPA Transparent Computing (TC) research program.
