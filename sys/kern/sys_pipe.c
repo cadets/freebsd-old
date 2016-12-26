@@ -96,6 +96,7 @@
  */
 
 #include "opt_compat.h"
+#include "opt_metaio.h"
 
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
