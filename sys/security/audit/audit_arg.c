@@ -340,6 +340,8 @@ audit_arg_metaio(struct metaio *miop)
 	if (ar == NULL)
 		return;
 
+	if (miop == NULL)
+		return;
 	ar->k_ar.ar_arg_metaio = *miop;
 	ARG_SET_VALID(ar, ARG_METAIO);
 }
