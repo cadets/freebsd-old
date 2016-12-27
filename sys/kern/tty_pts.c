@@ -908,6 +908,7 @@ sys_posix_openpt(struct thread *td, struct posix_openpt_args *uap)
 	/* Pass it back to userspace. */
 #ifdef KDTRACE_HOOKS
 	AUDIT_RET_FD1(fd);
+	AUDIT_RET_OBJUUID1(&((struct tty *)fp->f_data)->t_dev->si_uuid);
 #endif
 	td->td_retval[0] = fd;
 	fdrop(fp, td);
