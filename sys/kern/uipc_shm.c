@@ -775,6 +775,7 @@ kern_shm_open(struct thread *td, const char *userpath, int flags, mode_t mode,
 			return (error);
 		}
 
+		AUDIT_ARG_UPATH1_CANON(path);
 		fnv = fnv_32_str(path, FNV1_32_INIT);
 		sx_xlock(&shm_dict_lock);
 		shmfd = shm_lookup(path, fnv);
@@ -883,6 +884,7 @@ sys_shm_unlink(struct thread *td, struct shm_unlink_args *uap)
 	if (KTRPOINT(curthread, KTR_NAMEI))
 		ktrnamei(path);
 #endif
+	AUDIT_ARG_UPATH1_CANON(path);
 	fnv = fnv_32_str(path, FNV1_32_INIT);
 	sx_xlock(&shm_dict_lock);
 	error = shm_remove(path, fnv, td->td_ucred);

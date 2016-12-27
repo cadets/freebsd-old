@@ -82,7 +82,6 @@ FEATURE(p1003_1b_semaphores, "POSIX P1003.1B semaphores support");
  * - Resource limits?
  * - Replace global sem_lock with mtx_pool locks?
  * - Add a MAC check_create() hook for creating new named semaphores.
- * - AUDIT: audit semaphore names as paths.
  */
 
 #ifndef SEM_MAX
@@ -539,6 +538,7 @@ ksem_create(struct thread *td, const char *name, semid_t *semidp, mode_t mode,
 			return (error);
 		}
 
+		AUDIT_ARG_UPATH1_CANON(path);
 		fnv = fnv_32_str(path, FNV1_32_INIT);
 		sx_xlock(&ksem_dict_lock);
 		ks = ksem_lookup(path, fnv);
@@ -685,6 +685,7 @@ sys_ksem_unlink(struct thread *td, struct ksem_unlink_args *uap)
 		return (error);
 	}
 
+	AUDIT_ARG_UPATH1_CANON(path);
 	fnv = fnv_32_str(path, FNV1_32_INIT);
 	sx_xlock(&ksem_dict_lock);
 	error = ksem_remove(path, fnv, td->td_ucred);

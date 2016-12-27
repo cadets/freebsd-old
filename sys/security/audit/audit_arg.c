@@ -800,7 +800,8 @@ audit_arg_file(struct proc *p, struct file *fp)
  * Store a path as given by the user process for auditing into the audit
  * record stored on the user thread.  This function will allocate the memory
  * to store the path info if not already available.  This memory will be
- * freed when the audit record is freed.
+ * freed when the audit record is freed.  The path is canonlicalised with
+ * respect to the thread and directory descriptor passed.
  */
 static void
 audit_arg_upath(struct thread *td, int dirfd, char *upath, char **pathp)
@@ -834,6 +835,48 @@ audit_arg_upath2(struct thread *td, int dirfd, char *upath)
 		return;
 
 	audit_arg_upath(td, dirfd, upath, &ar->k_ar.ar_arg_upath2);
+	ARG_SET_VALID(ar, ARG_UPATH2);
+}
+
+/*
+ * Variants on path auditing that do not canonicalise the path passed in;
+ * these are for use with filesystem-like subsystems that employ string names,
+ * but do not support a hierarchical namespace -- for example, POSIX IPC
+ * objects.  The subsystem should have performed any necessary
+ * canonicalisation required to make the paths useful to audit analysis.
+ */
+static void
+audit_arg_upath_canon(char *upath, char **pathp)
+{
+
+	if (*pathp == NULL)
+		*pathp = malloc(MAXPATHLEN, M_AUDITPATH, M_WAITOK);
+	(void)snprintf(*pathp, MAXPATHLEN, "%s", upath);
+}
+
+void
+audit_arg_upath1_canon(char *upath)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	audit_arg_upath_canon(upath, &ar->k_ar.ar_arg_upath1);
+	ARG_SET_VALID(ar, ARG_UPATH1);
+}
+
+void
+audit_arg_upath2_canon(char *upath)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	audit_arg_upath_canon(upath, &ar->k_ar.ar_arg_upath2);
 	ARG_SET_VALID(ar, ARG_UPATH2);
 }
 
