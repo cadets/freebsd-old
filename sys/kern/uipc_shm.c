@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_capsicum.h"
 #include "opt_ktrace.h"
+#include "opt_metaio.h"
 
 #include <sys/param.h>
 #include <sys/capsicum.h>
@@ -66,6 +67,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/ktrace.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
+#include <sys/metaio.h>
 #include <sys/mman.h>
 #include <sys/mutex.h>
 #include <sys/priv.h>
@@ -83,6 +85,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/vnode.h>
 #include <sys/unistd.h>
 #include <sys/user.h>
+#include <sys/uuid.h>
 
 #include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
@@ -131,6 +134,7 @@ static fo_chown_t	shm_chown;
 static fo_seek_t	shm_seek;
 static fo_fill_kinfo_t	shm_fill_kinfo;
 static fo_mmap_t	shm_mmap;
+static fo_getuuid_t	shm_getuuid;
 
 /* File descriptor operations. */
 struct fileops shm_ops = {
@@ -148,6 +152,7 @@ struct fileops shm_ops = {
 	.fo_seek = shm_seek,
 	.fo_fill_kinfo = shm_fill_kinfo,
 	.fo_mmap = shm_mmap,
+	.fo_getuuid = shm_getuuid,
 	.fo_flags = DFLAG_PASSABLE | DFLAG_SEEKABLE
 };
 
@@ -259,6 +264,9 @@ shm_seek(struct file *fp, off_t offset, int whence, struct thread *td)
 	int error;
 
 	shmfd = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&shmfd->shm_uuid);
+#endif
 	foffset = foffset_lock(fp, 0);
 	error = 0;
 	switch (whence) {
@@ -301,9 +309,12 @@ shm_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
 	int error;
 
 	shmfd = fp->f_data;
-
-	/* XXXRW: AUDIT UUID */
-	/* XXXRW: METAIO UUID */
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&shmfd->shm_uuid);
+#endif
+#ifdef METAIO
+	metaio_from_uuid(&shmfd->shm_uuid, miop);
+#endif
 #ifdef MAC
 	error = mac_posixshm_check_read(active_cred, fp->f_cred, shmfd);
 	if (error)
@@ -327,6 +338,9 @@ shm_write(struct file *fp, struct uio *uio, struct ucred *active_cred,
 	int error;
 
 	shmfd = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&shmfd->shm_uuid);
+#endif
 #ifdef MAC
 	error = mac_posixshm_check_write(active_cred, fp->f_cred, shmfd);
 	if (error)
@@ -357,6 +371,9 @@ shm_truncate(struct file *fp, off_t length, struct ucred *active_cred,
 #endif
 
 	shmfd = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&shmfd->shm_uuid);
+#endif
 #ifdef MAC
 	error = mac_posixshm_check_truncate(active_cred, fp->f_cred, shmfd);
 	if (error)
@@ -375,7 +392,9 @@ shm_stat(struct file *fp, struct stat *sb, struct ucred *active_cred,
 #endif
 
 	shmfd = fp->f_data;
-
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&shmfd->shm_uuid);
+#endif
 #ifdef MAC
 	error = mac_posixshm_check_stat(active_cred, fp->f_cred, shmfd);
 	if (error)
@@ -560,7 +579,7 @@ shm_alloc(struct ucred *ucred, mode_t mode)
 	mac_posixshm_init(shmfd);
 	mac_posixshm_create(ucred, shmfd);
 #endif
-
+	(void)kern_uuidgen(&shmfd->shm_uuid, 1);
 	return (shmfd);
 }
 
@@ -825,6 +844,7 @@ kern_shm_open(struct thread *td, const char *userpath, int flags, mode_t mode,
 
 #ifdef KDTRACE_HOOKS
 	AUDIT_RET_FD1(fd);
+	AUDIT_RET_OBJUUID1(&shmfd->shm_uuid);
 #endif
 	td->td_retval[0] = fd;
 	fdrop(fp, td);
@@ -884,8 +904,12 @@ shm_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t objsize,
 	shmfd = fp->f_data;
 	maxprot = VM_PROT_NONE;
 
-	/* XXXRW: AUDIT UUID */
-	/* XXXRW: METAIO UUID */
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&shmfd->shm_uuid);
+#endif
+#ifdef METAIO
+	metaio_from_uuid(&shmfd->shm_uuid, miop);
+#endif
 
 	/* FREAD should always be set. */
 	if ((fp->f_flag & FREAD) != 0)
@@ -935,6 +959,9 @@ shm_chmod(struct file *fp, mode_t mode, struct ucred *active_cred,
 
 	error = 0;
 	shmfd = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&shmfd->shm_uuid);
+#endif
 	mtx_lock(&shm_timestamp_lock);
 	/*
 	 * SUSv4 says that x bits of permission need not be affected.
@@ -964,6 +991,9 @@ shm_chown(struct file *fp, uid_t uid, gid_t gid, struct ucred *active_cred,
 
 	error = 0;
 	shmfd = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&shmfd->shm_uuid);
+#endif
 	mtx_lock(&shm_timestamp_lock);
 #ifdef MAC
 	error = mac_posixshm_check_setowner(active_cred, shmfd, uid, gid);
@@ -1117,5 +1147,15 @@ shm_fill_kinfo(struct file *fp, struct kinfo_file *kif, struct filedesc *fdp)
 		}
 		sx_sunlock(&shm_dict_lock);
 	}
+	return (0);
+}
+
+static int
+shm_getuuid(struct file *fp, struct uuid *uuidp)
+{
+	struct shmfd *shmfd;
+
+	shmfd = fp->f_data;
+	*uuidp = shmfd->shm_uuid;
 	return (0);
 }
