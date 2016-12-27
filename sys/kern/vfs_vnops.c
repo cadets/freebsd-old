@@ -2254,6 +2254,9 @@ vn_seek(struct file *fp, off_t offset, int whence, struct thread *td)
 
 	cred = td->td_ucred;
 	vp = fp->f_vnode;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&vp->v_uuid);
+#endif
 	foffset = foffset_lock(fp, 0);
 	noneg = (vp->v_type != VCHR);
 	error = 0;
