@@ -69,6 +69,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/sx.h>
 #include <sys/user.h>
+#include <sys/uuid.h>
 #include <sys/vnode.h>
 
 #include <security/audit/audit.h>
@@ -81,6 +82,7 @@ FEATURE(p1003_1b_semaphores, "POSIX P1003.1B semaphores support");
  * - Resource limits?
  * - Replace global sem_lock with mtx_pool locks?
  * - Add a MAC check_create() hook for creating new named semaphores.
+ * - AUDIT: audit semaphore names as paths.
  */
 
 #ifndef SEM_MAX
@@ -169,7 +171,9 @@ ksem_stat(struct file *fp, struct stat *sb, struct ucred *active_cred,
 #endif
 
 	ks = fp->f_data;
-
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&ks->ks_uuid);
+#endif
 #ifdef MAC
 	error = mac_posixsem_check_stat(active_cred, fp->f_cred, ks);
 	if (error)
@@ -204,6 +208,9 @@ ksem_chmod(struct file *fp, mode_t mode, struct ucred *active_cred,
 
 	error = 0;
 	ks = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&ks->ks_uuid);
+#endif
 	mtx_lock(&sem_lock);
 #ifdef MAC
 	error = mac_posixsem_check_setmode(active_cred, ks, mode);
@@ -229,6 +236,9 @@ ksem_chown(struct file *fp, uid_t uid, gid_t gid, struct ucred *active_cred,
 
 	error = 0;
 	ks = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&ks->ks_uuid);
+#endif
 	mtx_lock(&sem_lock);
 #ifdef MAC
 	error = mac_posixsem_check_setowner(active_cred, ks, uid, gid);
@@ -323,6 +333,7 @@ ksem_alloc(struct ucred *ucred, mode_t mode, unsigned int value)
 	mac_posixsem_init(ks);
 	mac_posixsem_create(ucred, ks);
 #endif
+	(void)kern_uuidgen(&ks->ks_uuid, 1);
 
 	return (ks);
 }
@@ -473,6 +484,10 @@ ksem_create(struct thread *td, const char *name, semid_t *semidp, mode_t mode,
 	Fnv32_t fnv;
 	int error, fd;
 
+	AUDIT_ARG_FFLAGS(flags);
+	AUDIT_ARG_MODE(mode);
+	AUDIT_ARG_VALUE(value);
+
 	if (value > SEM_VALUE_MAX)
 		return (EINVAL);
 
@@ -484,9 +499,6 @@ ksem_create(struct thread *td, const char *name, semid_t *semidp, mode_t mode,
 			error = ENOSPC;
 		return (error);
 	}
-#ifdef KDTRACE_HOOKS
-	AUDIT_RET_FD1(fd);
-#endif
 
 	/*
 	 * Go ahead and copyout the file descriptor now.  This is a bit
@@ -579,7 +591,10 @@ ksem_create(struct thread *td, const char *name, semid_t *semidp, mode_t mode,
 	KASSERT(ks != NULL, ("ksem_create w/o a ksem"));
 
 	finit(fp, FREAD | FWRITE, DTYPE_SEM, ks, &ksem_ops);
-
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_FD1(fd);
+	AUDIT_RET_OBJUUID1(&ks->ks_uuid);
+#endif
 	fdrop(fp, td);
 
 	return (0);
@@ -724,7 +739,9 @@ sys_ksem_post(struct thread *td, struct ksem_post_args *uap)
 	if (error)
 		return (error);
 	ks = fp->f_data;
-
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&ks->ks_uuid);
+#endif
 	mtx_lock(&sem_lock);
 #ifdef MAC
 	error = mac_posixsem_check_post(td->td_ucred, fp->f_cred, ks);
@@ -815,6 +832,9 @@ kern_sem_wait(struct thread *td, semid_t id, int tryflag,
 	if (error)
 		return (error);
 	ks = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&ks->ks_uuid);
+#endif
 	mtx_lock(&sem_lock);
 	DP((">>> kern_sem_wait critical section entered! pid=%d\n",
 	    (int)td->td_proc->p_pid));
@@ -883,7 +903,9 @@ sys_ksem_getvalue(struct thread *td, struct ksem_getvalue_args *uap)
 	if (error)
 		return (error);
 	ks = fp->f_data;
-
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&ks->ks_uuid);
+#endif
 	mtx_lock(&sem_lock);
 #ifdef MAC
 	error = mac_posixsem_check_getvalue(td->td_ucred, fp->f_cred, ks);
@@ -919,6 +941,9 @@ sys_ksem_destroy(struct thread *td, struct ksem_destroy_args *uap)
 	if (error)
 		return (error);
 	ks = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&ks->ks_uuid);
+#endif
 	if (!(ks->ks_flags & KS_ANONYMOUS)) {
 		fdrop(fp, td);
 		return (EINVAL);
