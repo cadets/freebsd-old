@@ -687,6 +687,9 @@ shm_remove(char *path, Fnv32_t fnv, struct ucred *ucred)
 		if (map->sm_fnv != fnv)
 			continue;
 		if (strcmp(map->sm_path, path) == 0) {
+#ifdef KDTRACE_HOOKS
+			AUDIT_ARG_OBJUUID1(&map->sm_shmfd->shm_uuid);
+#endif
 #ifdef MAC
 			error = mac_posixshm_check_unlink(ucred, map->sm_shmfd);
 			if (error)
@@ -729,6 +732,9 @@ kern_shm_open(struct thread *td, const char *userpath, int flags, mode_t mode,
 	if (IN_CAPABILITY_MODE(td) && (userpath != SHM_ANON))
 		return (ECAPMODE);
 #endif
+
+	AUDIT_ARG_FFLAGS(flags);
+	AUDIT_ARG_MODE(mode);
 
 	if ((flags & O_ACCMODE) != O_RDONLY && (flags & O_ACCMODE) != O_RDWR)
 		return (EINVAL);
