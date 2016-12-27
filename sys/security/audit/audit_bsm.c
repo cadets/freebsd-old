@@ -1,6 +1,12 @@
 /*
  * Copyright (c) 1999-2009 Apple Inc.
+ * Copyright (c) 2016 Robert N. M. Watson
  * All rights reserved.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -67,6 +73,7 @@ kau_init(void)
 {
 
 	au_evclassmap_init();
+	au_evnamemap_init();
 }
 
 /*
@@ -723,7 +730,6 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 	case AUE_KQUEUE:
 	case AUE_MODLOAD:
 	case AUE_MODUNLOAD:
-	case AUE_MSGSYS:
 	case AUE_NTP_ADJTIME:
 	case AUE_PIPE:
 	case AUE_POSIX_OPENPT:
@@ -740,6 +746,33 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		/*
 		 * Header, subject, and return tokens added at end.
 		 */
+		break;
+
+	case AUE_ACL_DELETE_FD:
+	case AUE_ACL_DELETE_FILE:
+	case AUE_ACL_CHECK_FD:
+	case AUE_ACL_CHECK_FILE:
+	case AUE_ACL_CHECK_LINK:
+	case AUE_ACL_DELETE_LINK:
+	case AUE_ACL_GET_FD:
+	case AUE_ACL_GET_FILE:
+	case AUE_ACL_GET_LINK:
+	case AUE_ACL_SET_FD:
+	case AUE_ACL_SET_FILE:
+	case AUE_ACL_SET_LINK:
+		/*
+		 * XXXRW: Several of these events would ideally also audit the
+		 * ACL being checked or added to a vnode.
+		 *
+		 * XXXRW: We would ideally map from internal ACL_TYPE
+		 * constants to OpenBSM constants.
+		 */
+		if (ARG_IS_VALID(kar, ARG_VALUE)) {
+			tok = au_to_arg32(1, "type", ar->ar_arg_value);
+			kau_write(rec, tok);
+		}
+		ATFD1_TOKENS(1);
+		UPATH1_VNODE1_TOKENS;
 		break;
 
 	case AUE_CHDIR:
@@ -952,6 +985,7 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 	case AUE_GETDIRENTRIESATTR:
 	case AUE_LSEEK:
 	case AUE_POLL:
+	case AUE_POSIX_FALLOCATE:
 	case AUE_PREAD:
 	case AUE_PWRITE:
 	case AUE_READ:
@@ -979,10 +1013,7 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 			    au_fcntl_cmd_to_bsm(ar->ar_arg_cmd));
 			kau_write(rec, tok);
 		}
-		if (ar->ar_arg_cmd == F_GETLK || ar->ar_arg_cmd == F_SETLK ||
-		    ar->ar_arg_cmd == F_SETLKW) {
-			FD_VNODE1_TOKENS;
-		}
+		FD_VNODE1_TOKENS;
 		break;
 
 	case AUE_FCHFLAGS:
@@ -1161,27 +1192,39 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		}
 		break;
 
+	case AUE_MSGSYS:	/* XXXRW: map into individual operations ...? */
 	case AUE_MSGCTL:
 		ar->ar_event = audit_msgctl_to_event(ar->ar_arg_svipc_cmd);
+		if (ARG_IS_VALID(kar, ARG_SVIPC_PERM)) {
+			tok = au_to_ipc_perm(&ar->ar_arg_svipc_perm);
+			kau_write(rec, tok);
+		}
 		/* Fall through */
 
 	case AUE_MSGRCV:
 	case AUE_MSGSND:
-		tok = au_to_arg32(1, "msg ID", ar->ar_arg_svipc_id);
-		kau_write(rec, tok);
-		if (ar->ar_errno != EINVAL) {
-			tok = au_to_ipc(AT_IPC_MSG, ar->ar_arg_svipc_id);
+		if (ARG_IS_VALID(kar, ARG_SVIPC_ID)) {
+			tok = au_to_arg32(1, "msq ID", ar->ar_arg_svipc_id);
 			kau_write(rec, tok);
+			if (ar->ar_errno != EINVAL) {
+				tok = au_to_ipc(AT_IPC_MSG,
+				    ar->ar_arg_svipc_id);
+				kau_write(rec, tok);
+			}
 		}
 		break;
 
 	case AUE_MSGGET:
 		if (ar->ar_errno == 0) {
-			if (ARG_IS_VALID(kar, ARG_SVIPC_ID)) {
+			if (RET_IS_VALID(kar, RET_SVIPC_ID)) {
 				tok = au_to_ipc(AT_IPC_MSG,
-				    ar->ar_arg_svipc_id);
+				    ar->ar_ret_svipc_id);
 				kau_write(rec, tok);
 			}
+		}
+		if (ARG_IS_VALID(kar, ARG_SVIPC_PERM)) {
+			tok = au_to_ipc_perm(&ar->ar_arg_svipc_perm);
+			kau_write(rec, tok);
 		}
 		break;
 
@@ -1239,6 +1282,18 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		}
 		ATFD1_TOKENS(1);
 		UPATH1_VNODE1_TOKENS;
+		break;
+
+	case AUE_PROCCTL:
+		if (ARG_IS_VALID(kar, ARG_VALUE)) {
+			tok = au_to_arg32(1, "idtype", ar->ar_arg_value);
+			kau_write(rec, tok);
+		}
+		if (ARG_IS_VALID(kar, ARG_CMD)) {
+			tok = au_to_arg32(2, "com", ar->ar_arg_cmd);
+			kau_write(rec, tok);
+		}
+		PROCESS_PID_TOKENS(3);
 		break;
 
 	case AUE_PTRACE:
@@ -1394,8 +1449,8 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		break;
 
 	case AUE_SETLOGIN:
-		if (ARG_IS_VALID(kar, ARG_TEXT)) {
-			tok = au_to_text(ar->ar_arg_text);
+		if (ARG_IS_VALID(kar, ARG_LOGIN)) {
+			tok = au_to_text(ar->ar_arg_login);
 			kau_write(rec, tok);
 		}
 		break;
@@ -1606,6 +1661,7 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		break;
 
 	case AUE_WAIT4:
+	case AUE_WAIT6:
 		PROCESS_PID_TOKENS(1);
 		if (ARG_IS_VALID(kar, ARG_VALUE)) {
 			tok = au_to_arg32(3, "options", ar->ar_arg_value);

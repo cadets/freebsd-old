@@ -136,6 +136,11 @@
 #include "dtrace_debug.c"
 #endif
 
+#include <sys/random.h>
+
+#include "dtrace_xoroshiro128_plus.h"
+#include "dtrace_uuid.h"
+
 /*
  * DTrace Tunable Variables
  *
@@ -588,6 +593,40 @@ dtrace_dynvar_t *dtrace_dynvar(dtrace_dstate_t *, uint_t, dtrace_key_t *,
 uintptr_t dtrace_dif_varstr(uintptr_t, dtrace_state_t *, dtrace_mstate_t *);
 static int dtrace_priv_proc(dtrace_state_t *);
 static void dtrace_getf_barrier(void);
+
+static __inline uint64_t
+rotl(const uint64_t x, int k)
+{
+	return (x << k) | (x >> (64 - k));
+}
+
+/*
+ * This is the jump function for the generator. It is equivalent to 2^64 calls
+ * to next(); it can be used to generate 2^64 non-overlapping subsequences for
+ * parallel computations.
+ */
+/*
+void
+jump(uint64_t * s, uint64_t * s_jump)
+{
+	static const uint64_t JUMP[] = { 0xbeac0467eba5facb,
+		0xd86b048b86aa9922 };
+
+	uint64_t s0 = 0;
+	uint64_t s1 = 0;
+	for(int i = 0; i < sizeof JUMP / sizeof *JUMP; i++)
+		for(int b = 0; b < 64; b++) {
+			if (JUMP[i] & 1ULL << b) {
+				s0 ^= s[0];
+				s1 ^= s[1];
+			}
+			next();
+		}
+
+	s_jump[0] = s0;
+	s_jump[1] = s1;
+}
+*/
 
 /*
  * DTrace Probe Context Functions
@@ -5315,6 +5354,40 @@ dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 		break;
 	}
 
+	case DIF_SUBR_UUIDTOSTR: {
+		uintptr_t src = tupregs[0].dttk_value;
+		char *dest = (char *)mstate->dtms_scratch_ptr;
+		char uuid[16];
+		int len = sizeof(uuid);
+		char buf[38];
+		uint64_t size = sizeof(buf);
+		struct uuid_private *id;
+		int i;
+
+		if (!dtrace_canload(src, len, mstate, vstate)) {
+			regs[rd] = 0;
+			break;
+		}
+
+		for (i = 0; i < len; i++)
+			uuid[i] = dtrace_load8(src + i);
+
+		if (!DTRACE_INSCRATCH(mstate, size)) {
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
+			regs[rd] = 0;
+			break;
+		}
+
+		/* XXX-AT: Probably shouldn't use snprintf. */
+		id = (struct uuid_private *)&uuid;
+		snprintf(dest, size, "%08x-%04x-%04x-%04x-%04x%04x%04x",
+		    id->time.x.low, id->time.x.mid, id->time.x.hi, be16toh(id->seq),
+		    be16toh(id->node[0]), be16toh(id->node[1]), be16toh(id->node[2]));
+		regs[rd] = (uintptr_t)dest;
+		mstate->dtms_scratch_ptr += size;
+		break;
+	}
+
 	case DIF_SUBR_HTONS:
 	case DIF_SUBR_NTOHS:
 #if BYTE_ORDER == BIG_ENDIAN
@@ -5927,6 +6000,11 @@ inetout:	regs[rd] = (uintptr_t)end + 1;
 
 		regs[rd] = (uintptr_t) typeref;
 		mstate->dtms_scratch_ptr += scratch_size;
+		break;
+	}
+	case DIF_SUBR_RANDOM: {
+		regs[rd] = dtrace_xoroshiro128_plus_next(
+		    state->dts_rstate[curcpu]);
 		break;
 	}
 	}
@@ -10186,6 +10264,7 @@ dtrace_difo_validate_helper(dtrace_difo_t *dp)
 			    subr == DIF_SUBR_JSON ||
 			    subr == DIF_SUBR_LLTOSTR ||
 			    subr == DIF_SUBR_STRTOLL ||
+			    subr == DIF_SUBR_UUIDTOSTR ||
 			    subr == DIF_SUBR_RINDEX ||
 			    subr == DIF_SUBR_STRCHR ||
 			    subr == DIF_SUBR_STRJOIN ||
@@ -14404,6 +14483,7 @@ dtrace_state_create(struct cdev *dev, struct ucred *cred __unused)
 	dtrace_state_t *state;
 	dtrace_optval_t *opt;
 	int bufsize = NCPU * sizeof (dtrace_buffer_t), i;
+	int cpu_it;
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(MUTEX_HELD(&cpu_lock));
@@ -14458,6 +14538,21 @@ dtrace_state_create(struct cdev *dev, struct ucred *cred __unused)
 	 */
 	state->dts_buffer = kmem_zalloc(bufsize, KM_SLEEP);
 	state->dts_aggbuffer = kmem_zalloc(bufsize, KM_SLEEP);
+
+	/*
+         * Allocate and initialise the per-process per-CPU random state.
+	 * SI_SUB_RANDOM < SI_SUB_DTRACE_ANON therefore entropy device is
+         * assumed to be seeded at this point (if from Fortuna seed file).
+	 */
+	(void) read_random(&state->dts_rstate[0], 2 * sizeof(uint64_t));
+	for (cpu_it = 1; cpu_it < NCPU; cpu_it++) {
+		/*
+		 * Each CPU is assigned a 2^64 period, non-overlapping
+		 * subsequence.
+		 */
+		dtrace_xoroshiro128_plus_jump(state->dts_rstate[cpu_it-1],
+		    state->dts_rstate[cpu_it]); 
+	}
 
 #ifdef illumos
 	state->dts_cleaner = CYCLIC_NONE;
@@ -15265,7 +15360,7 @@ dtrace_state_destroy(dtrace_state_t *state)
 
 	dtrace_buffer_free(state->dts_buffer);
 	dtrace_buffer_free(state->dts_aggbuffer);
-
+	
 	for (i = 0; i < nspec; i++)
 		dtrace_buffer_free(spec[i].dtsp_buffer);
 

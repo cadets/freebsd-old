@@ -3,9 +3,15 @@
  *	Poul-Henning Kamp.  All rights reserved.
  * Copyright (c) 1989, 1992-1993, 1995
  *	The Regents of the University of California.  All rights reserved.
+ * Copyright (c) 2016 Robert N. M. Watson.  All rights reserved.
  *
  * This code is derived from software donated to Berkeley by
  * Jan-Simon Pendry.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,6 +45,8 @@
  *	mkdir: want it ?
  */
 
+#include "opt_metaio.h"
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/conf.h>
@@ -51,6 +59,7 @@
 #include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
+#include <sys/metaio.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/namei.h>
@@ -71,6 +80,7 @@ static struct fileops devfs_ops_f;
 #include <fs/devfs/devfs.h>
 #include <fs/devfs/devfs_int.h>
 
+#include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
 
 #include <vm/vm.h>
@@ -520,6 +530,14 @@ loop:
 		vput(vp);
 		return (ENOENT);
 	}
+
+	/*
+	 * Initialise UUID for devfs vnode from the devfs_dirent's UUID, which
+	 * for devices will originate in the cdev, and for devfs-local
+	 * subdirectories will be derived from the directory's name, and for
+	 * user-created symlinks, randomly derived.
+	 */
+	vp->v_uuid = de->de_uuid;
 #ifdef MAC
 	mac_devfs_vnode_associate(mp, de, vp);
 #endif
@@ -793,10 +811,12 @@ devfs_ioctl_f(struct file *fp, u_long com, void *data, struct ucred *cred, struc
 	fpop = td->td_fpop;
 	error = devfs_fp_check(fp, &dev, &dsw, &ref);
 	if (error != 0) {
+		/* UUID audited in vnode operation layer. */
 		error = vnops.fo_ioctl(fp, com, data, cred, td);
 		return (error);
 	}
 
+	AUDIT_ARG_OBJUUID1(&dev->si_uuid);
 	if (com == FIODTYPE) {
 		*(int *)data = dsw->d_flags & D_TYPEMASK;
 		td->td_fpop = fpop;
@@ -1241,7 +1261,7 @@ devfs_print(struct vop_print_args *ap)
 
 static int
 devfs_read_f(struct file *fp, struct uio *uio, struct ucred *cred,
-    int flags, struct thread *td)
+    int flags, struct thread *td, struct metaio *miop)
 {
 	struct cdev *dev;
 	int ioflag, error, ref;
@@ -1254,9 +1274,14 @@ devfs_read_f(struct file *fp, struct uio *uio, struct ucred *cred,
 	fpop = td->td_fpop;
 	error = devfs_fp_check(fp, &dev, &dsw, &ref);
 	if (error != 0) {
-		error = vnops.fo_read(fp, uio, cred, flags, td);
+		/* UUID audited in vnode operation layer. */
+		error = vnops.fo_read(fp, uio, cred, flags, td, miop);
 		return (error);
 	}
+	AUDIT_ARG_OBJUUID1(&dev->si_uuid);
+#ifdef METAIO
+	metaio_from_uuid(&dev->si_uuid, miop);
+#endif
 	resid = uio->uio_resid;
 	ioflag = fp->f_flag & (O_NONBLOCK | O_DIRECT);
 	if (ioflag & O_DIRECT)
@@ -1668,6 +1693,7 @@ static int
 devfs_stat_f(struct file *fp, struct stat *sb, struct ucred *cred, struct thread *td)
 {
 
+	/* UUID audited in vnode operation layer. */
 	return (vnops.fo_stat(fp, sb, cred, td));
 }
 
@@ -1698,6 +1724,11 @@ devfs_symlink(struct vop_symlink_args *ap)
 	i = strlen(ap->a_target) + 1;
 	de->de_symlink = malloc(i, M_DEVFS, M_WAITOK);
 	bcopy(ap->a_target, de->de_symlink, i);
+
+	/*
+	 * Use a random UUID for user-generated symlink.
+	 */
+	(void)kern_uuidgen(&de->de_uuid, 1);
 #ifdef MAC
 	mac_devfs_create_symlink(ap->a_cnp->cn_cred, dmp->dm_mount, dd, de);
 #endif
@@ -1727,6 +1758,7 @@ static int
 devfs_truncate_f(struct file *fp, off_t length, struct ucred *cred, struct thread *td)
 {
 
+	/* UUID audited in vnode operation layer. */
 	return (vnops.fo_truncate(fp, length, cred, td));
 }
 
@@ -1745,9 +1777,11 @@ devfs_write_f(struct file *fp, struct uio *uio, struct ucred *cred,
 	fpop = td->td_fpop;
 	error = devfs_fp_check(fp, &dev, &dsw, &ref);
 	if (error != 0) {
+		/* UUID audited in vnode operation layer. */
 		error = vnops.fo_write(fp, uio, cred, flags, td);
 		return (error);
 	}
+	AUDIT_ARG_OBJUUID1(&dev->si_uuid);
 	KASSERT(uio->uio_td == td, ("uio_td %p is not td %p", uio->uio_td, td));
 	ioflag = fp->f_flag & (O_NONBLOCK | O_DIRECT | O_FSYNC);
 	if (ioflag & O_DIRECT)
@@ -1771,7 +1805,7 @@ devfs_write_f(struct file *fp, struct uio *uio, struct ucred *cred,
 static int
 devfs_mmap_f(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
     vm_prot_t prot, vm_prot_t cap_maxprot, int flags, vm_ooffset_t foff,
-    struct thread *td)
+    struct thread *td, struct metaio *miop)
 {
 	struct cdev *dev;
 	struct cdevsw *dsw;
@@ -1824,6 +1858,10 @@ devfs_mmap_f(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
 	if (error != 0)
 		return (error);
 
+	AUDIT_ARG_OBJUUID1(&dev->si_uuid);
+#ifdef METAIO
+	metaio_from_uuid(&dev->si_uuid, miop);
+#endif
 	error = vm_mmap_cdev(td, size, prot, &maxprot, &flags, dev, dsw, &foff,
 	    &object);
 	td->td_fpop = fpop;
@@ -1836,6 +1874,22 @@ devfs_mmap_f(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
 	if (error != 0)
 		vm_object_deallocate(object);
 	return (error);
+}
+
+static int
+devfs_getuuid_f(struct file *fp, struct uuid *uuidp)
+{
+	struct cdev *dev;
+	struct cdevsw *dsw;
+	int error, ref;
+
+	error = devfs_fp_check(fp, &dev, &dsw, &ref);
+	if (error)
+		return (error);
+	AUDIT_ARG_OBJUUID1(&dev->si_uuid);
+	*uuidp = dev->si_uuid;
+	dev_relthread(dev, ref);
+	return (0);
 }
 
 dev_t
@@ -1861,6 +1915,7 @@ static struct fileops devfs_ops_f = {
 	.fo_seek =	vn_seek,
 	.fo_fill_kinfo = vn_fill_kinfo,
 	.fo_mmap =	devfs_mmap_f,
+	.fo_getuuid =	devfs_getuuid_f,
 	.fo_flags =	DFLAG_PASSABLE | DFLAG_SEEKABLE
 };
 

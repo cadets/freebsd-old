@@ -54,6 +54,8 @@
 #include <spawn.h>
 #endif
 
+#include <libxo/xo.h>
+
 typedef struct dtrace_cmd {
 	void (*dc_func)(struct dtrace_cmd *);	/* function to compile arg */
 	dtrace_probespec_t dc_spec;		/* probe specifier context */
@@ -75,8 +77,14 @@ typedef struct dtrace_cmd {
 #define	E_ERROR		1
 #define	E_USAGE		2
 
+#define OMODE_NONE	0
+#define OMODE_JSON	1
+#define OMODE_XML	2
+#define OMODE_HTML	3
+
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:n:o:p:P:qs:SU:vVwx:X:Z";
+	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:n:O:o:p:P:qs:SU:vVwx:X:Z";
+static int g_oformat = OMODE_NONE;
 
 static char **g_argv;
 static int g_argc;
@@ -101,6 +109,7 @@ static int g_exec = 1;
 static int g_mode = DMODE_EXEC;
 static int g_status = E_SUCCESS;
 static int g_grabanon = 0;
+
 static const char *g_ofile = NULL;
 static FILE *g_ofp;
 static dtrace_hdl_t *g_dtp;
@@ -120,6 +129,10 @@ static const char *g_etc[] =  {
 "*",
 NULL };
 #endif
+
+#if !defined(illumos) && defined(NEED_ERRLOC)
+void dt_get_errloc(dtrace_hdl_t *, char **, int *);
+#endif /* !illumos && NEED_ERRLOC */
 
 static int
 usage(FILE *fp)
@@ -161,6 +174,7 @@ usage(FILE *fp)
 	    "\t-L  add library directory to library search path\n"
 	    "\t-m  enable or list probes matching the specified module name\n"
 	    "\t-n  enable or list probes matching the specified probe name\n"
+	    "\t-O  output format json|xml\n"
 	    "\t-o  set output file\n"
 	    "\t-p  grab specified process-ID and cache its symbol tables\n"
 	    "\t-P  enable or list probes matching the specified provider name\n"
@@ -207,6 +221,9 @@ fatal(const char *fmt, ...)
 	if (g_dtp)
 		dtrace_close(g_dtp);
 
+	if (g_oformat)
+		xo_finish();
+
 	exit(E_ERROR);
 }
 
@@ -246,6 +263,9 @@ dfatal(const char *fmt, ...)
 	 * correctly restored and continued.
 	 */
 	dtrace_close(g_dtp);
+
+	if (g_oformat)
+		xo_finish();
 
 	exit(E_ERROR);
 }
@@ -1078,7 +1098,7 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 		 * We have processed the final record; output the newline if
 		 * we're not in quiet mode.
 		 */
-		if (!g_quiet)
+		if (!g_quiet && !g_oformat)
 			oprintf("\n");
 
 		return (DTRACE_CONSUME_NEXT);
@@ -1122,12 +1142,22 @@ chew(const dtrace_probedata_t *data, void *arg)
 
 	if (!g_flowindent) {
 		if (!g_quiet) {
-			char name[DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 2];
+			if (g_oformat) {
+				xo_open_container("probe");
+				xo_emit("{:timestamp/%U} {:cpu/%d} {:id/%d} {:func/%s} {:name/%s}",
+				    data->dtpda_timestamp, cpu,
+				    pd->dtpd_id, pd->dtpd_func,
+				    pd->dtpd_name);
+				xo_close_container("probe");
+				xo_flush();
+			} else {
+				char name[DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 2];
 
-			(void) snprintf(name, sizeof (name), "%s:%s",
-			    pd->dtpd_func, pd->dtpd_name);
+				(void) snprintf(name, sizeof (name), "%s:%s",
+				    pd->dtpd_func, pd->dtpd_name);
 
-			oprintf("%3d %6d %32s ", cpu, pd->dtpd_id, name);
+				oprintf("%3d %6d %32s ", cpu, pd->dtpd_id, name);
+			}
 		}
 	} else {
 		int indent = data->dtpda_indent;
@@ -1314,6 +1344,13 @@ main(int argc, char *argv[])
 
 	bzero(status, sizeof (status));
 	bzero(&buf, sizeof (buf));
+
+	argc = xo_parse_args(argc, argv);
+
+	if (argc < 0) {
+		fprintf(stderr, "Failed xo_parse_args.\n");
+		return (usage(stderr));
+	}
 
 	/*
 	 * Make an initial pass through argv[] processing any arguments that
@@ -1565,6 +1602,11 @@ main(int argc, char *argv[])
 			case 'I':
 				if (dtrace_setopt(g_dtp, "incdir", optarg) != 0)
 					dfatal("failed to set -I %s", optarg);
+				break;
+
+			case 'O':
+				if (dtrace_setopt(g_dtp, "oformat", optarg) != 0)
+					dfatal("failed to set oformat");
 				break;
 
 			case 'L':
@@ -1902,6 +1944,28 @@ main(int argc, char *argv[])
 		return (g_status);
 	}
 
+	(void) dtrace_getopt(g_dtp, "oformat", &opt);
+	if (opt != DTRACEOPT_UNSET) {
+		g_oformat = opt;
+		xo_set_flags(NULL, XOF_PRETTY|XOF_FLUSH);
+		switch (g_oformat) {
+		case OMODE_JSON:
+			xo_set_style(NULL, XO_STYLE_JSON);
+			break;
+		case OMODE_XML:
+			xo_set_style(NULL, XO_STYLE_XML);
+			break;
+		case OMODE_HTML:
+			xo_set_style(NULL, XO_STYLE_HTML);
+			break;
+		default:
+			break;
+		}
+		if (g_ofp != NULL)
+			xo_set_file(g_ofp);
+	}
+	
+
 	/*
 	 * If -a and -Z were not specified and no probes have been matched, no
 	 * probe criteria was specified on the command line and we abort.
@@ -1973,6 +2037,7 @@ main(int argc, char *argv[])
 
 		if (g_ofp != NULL && fflush(g_ofp) == EOF)
 			clearerr(g_ofp);
+
 	} while (!done);
 
 	oprintf("\n");
@@ -1984,5 +2049,9 @@ main(int argc, char *argv[])
 	}
 
 	dtrace_close(g_dtp);
+
+	if (g_oformat)
+		xo_finish();
+
 	return (g_status);
 }

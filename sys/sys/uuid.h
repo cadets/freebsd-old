@@ -1,6 +1,12 @@
 /*-
  * Copyright (c) 2002 Marcel Moolenaar
+ * Copyright (c) 2016 Robert N. M. Watson
  * All rights reserved.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -61,6 +67,13 @@ struct uuid *kern_uuidgen(struct uuid *, size_t);
 int uuid_ether_add(const uint8_t *);
 int uuid_ether_del(const uint8_t *);
 
+/*
+ * Generate various canonical and versioned UUIDs.
+ */
+void uuid_generate_nil(struct uuid *);
+void uuid_generate_version5(struct uuid *, const struct uuid *, const void *,
+    size_t);
+
 int snprintf_uuid(char *, size_t, struct uuid *);
 int printf_uuid(struct uuid *);
 int sbuf_printf_uuid(struct sbuf *, struct uuid *);
@@ -77,6 +90,9 @@ void le_uuid_enc(void *buf, struct uuid const *uuid);
 typedef struct uuid uuid_t;
 
 __BEGIN_DECLS
+int	fgetuuid(int, struct uuid *);
+int	getuuid(const char *, struct uuid *);
+int	lgetuuid(const char *, struct uuid *);
 int	uuidgen(struct uuid *, int);
 __END_DECLS
 

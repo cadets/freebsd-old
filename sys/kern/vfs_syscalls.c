@@ -942,6 +942,7 @@ int
 sys_openat(struct thread *td, struct openat_args *uap)
 {
 
+	AUDIT_ARG_FD(uap->fd);
 	return (kern_openat(td, uap->fd, uap->path, UIO_USERSPACE, uap->flag,
 	    uap->mode));
 }
@@ -962,7 +963,6 @@ kern_openat(struct thread *td, int fd, char *path, enum uio_seg pathseg,
 
 	AUDIT_ARG_FFLAGS(flags);
 	AUDIT_ARG_MODE(mode);
-	/* XXX: audit dirfd */
 	cap_rights_init(&rights, CAP_LOOKUP);
 	flags_to_rights(flags, &rights);
 	/*
@@ -1079,6 +1079,9 @@ success:
 	 */
 	fdrop(fp, td);
 	td->td_retval[0] = indx;
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_FD1(indx);
+#endif
 	return (0);
 bad:
 	KASSERT(indx == -1, ("indx=%d, should be -1", indx));
@@ -4470,15 +4473,21 @@ kern_posix_fallocate(struct thread *td, int fd, off_t offset, off_t len)
 	cap_rights_t rights;
 	off_t olen, ooffset;
 	int error;
+#ifdef AUDIT
+	int audited_vnode1 = 0;
+#endif
 
+	AUDIT_ARG_FD(fd);
 	if (offset < 0 || len <= 0)
 		return (EINVAL);
 	/* Check for wrap. */
 	if (offset > OFF_MAX - len)
 		return (EFBIG);
+	AUDIT_ARG_FD(fd);
 	error = fget(td, fd, cap_rights_init(&rights, CAP_WRITE), &fp);
 	if (error != 0)
 		return (error);
+	AUDIT_ARG_FILE(td->td_proc, fp);
 	if ((fp->f_ops->fo_flags & DFLAG_SEEKABLE) == 0) {
 		error = ESPIPE;
 		goto out;
@@ -4512,6 +4521,12 @@ kern_posix_fallocate(struct thread *td, int fd, off_t offset, off_t len)
 			vn_finished_write(mp);
 			break;
 		}
+#ifdef AUDIT
+		if (!audited_vnode1) {
+			AUDIT_ARG_VNODE1(vp);
+			audited_vnode1 = 1;
+		}
+#endif
 #ifdef MAC
 		error = mac_vnode_check_write(td->td_ucred, fp->f_cred, vp);
 		if (error == 0)
@@ -4562,6 +4577,7 @@ kern_posix_fadvise(struct thread *td, int fd, off_t offset, off_t len,
 
 	if (offset < 0 || len < 0 || offset > OFF_MAX - len)
 		return (EINVAL);
+	AUDIT_ARG_VALUE(advice);
 	switch (advice) {
 	case POSIX_FADV_SEQUENTIAL:
 	case POSIX_FADV_RANDOM:
@@ -4577,9 +4593,11 @@ kern_posix_fadvise(struct thread *td, int fd, off_t offset, off_t len,
 		return (EINVAL);
 	}
 	/* XXX: CAP_POSIX_FADVISE? */
+	AUDIT_ARG_FD(fd);
 	error = fget(td, fd, cap_rights_init(&rights), &fp);
 	if (error != 0)
 		goto out;
+	AUDIT_ARG_FILE(td->td_proc, fp);
 	if ((fp->f_ops->fo_flags & DFLAG_SEEKABLE) == 0) {
 		error = ESPIPE;
 		goto out;
@@ -4677,4 +4695,50 @@ sys_posix_fadvise(struct thread *td, struct posix_fadvise_args *uap)
 	error = kern_posix_fadvise(td, uap->fd, uap->offset, uap->len,
 	    uap->advice);
 	return (kern_posix_error(td, error));
+}
+
+/*
+ * XXXRW: Do we want a MAC check for this?
+ * XXXRW: Do we want a getuuidat(2) variant?
+ * XXXRW: Do we want to audit the returned UUID?
+ */
+int
+sys_getuuid(struct thread *td, struct getuuid_args *uap)
+{
+	struct nameidata nd;
+	int error;
+
+	NDINIT(&nd, LOOKUP, FOLLOW | AUDITVNODE1, UIO_USERSPACE, uap->path,
+	    td);
+	error = namei(&nd);
+	if (error != 0)
+		return (error);
+	NDFREE(&nd, NDF_ONLY_PNBUF);
+	error = copyout(&nd.ni_vp->v_uuid, uap->uuidp,
+	    sizeof(nd.ni_vp->v_uuid));
+	vrele(nd.ni_vp);
+	return (error);
+}
+
+/*
+ * XXXRW: Do we want a MAC check for this?
+ * XXXRW: Do we want a lgetuuidat(2) variant?
+ * XXXRW: Do we want to audit the returned UUID?
+ */
+int
+sys_lgetuuid(struct thread *td, struct lgetuuid_args *uap)
+{
+	struct nameidata nd;
+	int error;
+
+	NDINIT(&nd, LOOKUP, NOFOLLOW | AUDITVNODE1, UIO_USERSPACE, uap->path,
+	    td);
+	error = namei(&nd);
+	if (error != 0)
+		return (error);
+	NDFREE(&nd, NDF_ONLY_PNBUF);
+	error = copyout(&nd.ni_vp->v_uuid, uap->uuidp,
+	    sizeof(nd.ni_vp->v_uuid));
+	vrele(nd.ni_vp);
+	return (error);
 }

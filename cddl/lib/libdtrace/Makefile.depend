@@ -15,6 +15,7 @@ DIRDEPS = \
 	lib/libproc \
 	lib/librtld_db \
 	lib/libthr \
+	lib/libxo \
 	usr.bin/yacc.host \
 
 

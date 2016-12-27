@@ -76,6 +76,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/stat.h>
 #include <sys/sysctl.h>
 #include <sys/syslog.h>
+#include <sys/uuid.h>
 #include <sys/vmmeter.h>
 #include <sys/vnode.h>
 #include <sys/watchdog.h>
@@ -1413,6 +1414,13 @@ alloc:
 	vp->v_op = vops;
 	v_init_counters(vp);
 	vp->v_bufobj.bo_ops = &buf_ops_bio;
+
+	/*
+	 * Initialise vnode to have a nil UUID; supporting filesystems will
+	 * replace this with a unique per-file UUID as needed.
+	 */
+	uuid_generate_nil(&vp->v_uuid);
+
 #ifdef MAC
 	mac_vnode_init(vp);
 	if (mp != NULL && (mp->mnt_flag & MNT_MULTILABEL) == 0)
@@ -2884,6 +2892,10 @@ _vdrop(struct vnode *vp, bool locked)
 	vp->v_iflag = 0;
 	vp->v_vflag = 0;
 	bo->bo_flag = 0;
+	if (vp->v_path != NULL) {
+		free(vp->v_path, M_TEMP);
+		vp->v_path = NULL;
+	}
 	uma_zfree(vnode_zone, vp);
 }
 
@@ -5139,6 +5151,27 @@ vfs_unixify_accmode(accmode_t *accmode)
 	*accmode &= ~(VSTAT_PERMS | VSYNCHRONIZE);
 
 	return (0);
+}
+
+/*
+ * Generic function that can be used by filesystems to generate a UUID for a
+ * vnode.  Filesystems supporting NFS will generally pass in the NFS file
+ * handle for the file; others (eg., devfs) will need to provide some other
+ * unique identifier.  This call should only be used before a vnode is visible
+ * outside of the filesystem, as v_uuid needs to be constant to avoid the need
+ * for locking, once visible.
+ *
+ * XXXRW: Ideally the host of filesystem would contribute a namespace UUID,
+ * but we are not yet able to do that.  For now, use a nil UUID for that
+ * purpose.
+ */
+void
+vn_uuid_from_data(struct vnode *vp, const void *data, size_t data_len)
+{
+	struct uuid uuid_nil;
+
+	uuid_generate_nil(&uuid_nil);
+	uuid_generate_version5(&vp->v_uuid, &uuid_nil, data, data_len);
 }
 
 /*

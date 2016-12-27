@@ -130,8 +130,9 @@
 #define	DT_VERS_1_11	DT_VERSION_NUMBER(1, 11, 0)
 #define	DT_VERS_1_12	DT_VERSION_NUMBER(1, 12, 0)
 #define	DT_VERS_1_12_1	DT_VERSION_NUMBER(1, 12, 1)
-#define	DT_VERS_LATEST	DT_VERS_1_12_1
-#define	DT_VERS_STRING	"Sun D 1.12.1"
+#define	DT_VERS_1_12_2	DT_VERSION_NUMBER(1, 12, 2)
+#define	DT_VERS_LATEST	DT_VERS_1_12_2
+#define	DT_VERS_STRING	"Sun D 1.12.2"
 
 const dt_version_t _dtrace_versions[] = {
 	DT_VERS_1_0,	/* D API 1.0.0 (PSARC 2001/466) Solaris 10 FCS */
@@ -157,6 +158,7 @@ const dt_version_t _dtrace_versions[] = {
 	DT_VERS_1_11,	/* D API 1.11 */
 	DT_VERS_1_12,	/* D API 1.12 */
 	DT_VERS_1_12_1,	/* D API 1.12.1 */
+	DT_VERS_1_12_2,	/* D API 1.12.2 */
 	0
 };
 
@@ -410,6 +412,8 @@ static const dt_ident_t _dtrace_globals[] = {
 	&dt_idops_func, "void(int)" },
 { "rand", DT_IDENT_FUNC, 0, DIF_SUBR_RAND, DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_func, "int()" },
+{ "random", DT_IDENT_FUNC, 0, DIF_SUBR_RANDOM, DT_ATTR_STABCMN, DT_VERS_1_12_2,
+	&dt_idops_func, "uint64_t()" },
 { "rindex", DT_IDENT_FUNC, 0, DIF_SUBR_RINDEX, DT_ATTR_STABCMN, DT_VERS_1_1,
 	&dt_idops_func, "int(const char *, const char *, [int])" },
 #ifdef illumos
@@ -524,6 +528,8 @@ static const dt_ident_t _dtrace_globals[] = {
 	&dt_idops_type, "uint32_t" },
 { "usym", DT_IDENT_ACTFUNC, 0, DT_ACT_USYM, DT_ATTR_STABCMN,
 	DT_VERS_1_2, &dt_idops_func, "_usymaddr(uintptr_t)" },
+{ "uuidtostr", DT_IDENT_FUNC, 0, DIF_SUBR_UUIDTOSTR, DT_ATTR_STABCMN, DT_VERS_1_12_2,
+	&dt_idops_func, "string(uintptr_t)" },
 { "vtimestamp", DT_IDENT_SCALAR, 0, DIF_VAR_VTIMESTAMP,
 	DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_type, "uint64_t" },
@@ -1196,6 +1202,7 @@ alloc:
 	dtp->dt_provmod = provmod;
 	dtp->dt_vector = vector;
 	dtp->dt_varg = arg;
+	dtp->dt_instance = NULL;
 	dt_dof_init(dtp);
 	(void) uname(&dtp->dt_uts);
 

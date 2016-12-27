@@ -18,11 +18,13 @@ CFLAGS+=	-I${.CURDIR}/../../../sys/cddl/compat/opensolaris \
 		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common \
 		-I${OPENSOLARIS_SYS_DISTDIR}/compat
 
+CFLAGS+=	-g
+
 # Optional debugging stuff...
 #CFLAGS+=	-DNEED_ERRLOC
 #YFLAGS+=	-d
 
-LIBADD=	dtrace ctf elf proc
+LIBADD=	dtrace ctf elf proc xo
 
 .if ${MK_DTRACE_TESTS} != "no"
 SUBDIR+=	tests

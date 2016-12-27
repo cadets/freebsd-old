@@ -86,6 +86,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/vnode.h>
 #include <machine/atomic.h>
 
+#include <security/audit/audit.h>
+
 FEATURE(p1003_1b_mqueue, "POSIX P1003.1B message queues support");
 
 /*
@@ -2088,6 +2090,9 @@ kern_kmq_open(struct thread *td, const char *upath, int flags, mode_t mode,
 	finit(fp, flags & (FREAD | FWRITE | O_NONBLOCK), DTYPE_MQUEUE, pn,
 	    &mqueueops);
 
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_FD1(fd);
+#endif
 	td->td_retval[0] = fd;
 	fdrop(fp, td);
 	return (0);
@@ -2636,8 +2641,8 @@ mqf_fill_kinfo(struct file *fp, struct kinfo_file *kif, struct filedesc *fdp)
 }
 
 static struct fileops mqueueops = {
-	.fo_read		= invfo_rdwr,
-	.fo_write		= invfo_rdwr,
+	.fo_read		= invfo_read,
+	.fo_write		= invfo_write,
 	.fo_truncate		= invfo_truncate,
 	.fo_ioctl		= invfo_ioctl,
 	.fo_poll		= mqf_poll,

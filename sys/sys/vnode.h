@@ -41,6 +41,7 @@
 #include <sys/rangelock.h>
 #include <sys/selinfo.h>
 #include <sys/uio.h>
+#include <sys/uuid.h>
 #include <sys/acl.h>
 #include <sys/ktr.h>
 
@@ -154,7 +155,7 @@ struct vnode {
 	struct label *v_label;			/* MAC label for vnode */
 	struct lockf *v_lockf;		/* Byte-level advisory lock list */
 	struct rangelock v_rl;			/* Byte-range lock */
-
+	char *v_path;				/* Pointer to path from open */
 	/*
 	 * clustering stuff
 	 */
@@ -170,6 +171,7 @@ struct vnode {
 	int	v_writecount;			/* v ref count of writers */
 	u_int	v_hash;
 	enum	vtype v_type;			/* u vnode type */
+	struct uuid	v_uuid;			/* u per-vnode UUID */
 };
 
 #endif /* defined(_KERNEL) || defined(_KVM_VNODE) */
@@ -718,6 +720,8 @@ int	vn_vget_ino_gen(struct vnode *vp, vn_get_ino_t alloc,
 	    void *alloc_arg, int lkflags, struct vnode **rvp);
 int	vn_utimes_perm(struct vnode *vp, struct vattr *vap,
 	    struct ucred *cred, struct thread *td);
+void	vn_uuid_from_data(struct vnode *vp, const void *data,
+	    size_t data_len);
 
 int	vn_io_fault_uiomove(char *data, int xfersize, struct uio *uio);
 int	vn_io_fault_pgmove(vm_page_t ma[], vm_offset_t offset, int xfersize,

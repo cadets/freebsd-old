@@ -362,6 +362,8 @@ struct dtrace_hdl {
 	int dt_indent;		/* recommended flow indent */
 	dtrace_epid_t dt_last_epid;	/* most recently consumed EPID */
 	uint64_t dt_last_timestamp;	/* most recently consumed timestamp */
+	u_int dt_oformat;	/* output format, plain, XML, JSON */
+	char *dt_instance;	/* Current instance name or NULL */
 };
 
 /*
@@ -409,6 +411,15 @@ struct dtrace_hdl {
 #define	DT_ENCODING_UNSET	0
 #define	DT_ENCODING_ASCII	1
 #define	DT_ENCODING_UTF8	2
+
+/*
+ * Values for the dt_oformat properly, which is used to force 
+ * various machine readable outputs (XML, JSON, etc.)
+ */
+#define DT_OFORMAT_NONE	0
+#define DT_OFORMAT_JSON	1
+#define DT_OFORMAT_XML	2
+#define DT_OFORMAT_HTML	3
 
 /*
  * Macro to test whether a given pass bit is set in the dt_treedump bit-vector.

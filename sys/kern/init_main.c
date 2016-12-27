@@ -487,6 +487,13 @@ proc0_init(void *dummy __unused)
 	p->p_nice = NZERO;
 	/* pid_max cannot be greater than PID_MAX */
 	td->td_tid = PID_MAX + 1;
+
+	/*
+	 * XXXRW: Initial thread UUID -- will this be sufficiently unique so
+	 * early in the boot?  Or does it even work at all, so early?
+	 */
+	(void)kern_uuidgen(&td->td_uuid, 1);
+
 	LIST_INSERT_HEAD(TIDHASH(td->td_tid), td, td_hash);
 	td->td_state = TDS_RUNNING;
 	td->td_pri_class = PRI_TIMESHARE;

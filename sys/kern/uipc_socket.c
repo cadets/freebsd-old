@@ -123,6 +123,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/khelp.h>
 #include <sys/event.h>
 #include <sys/eventhandler.h>
+#include <sys/msgid.h>
 #include <sys/poll.h>
 #include <sys/proc.h>
 #include <sys/protosw.h>
@@ -136,12 +137,14 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/taskqueue.h>
 #include <sys/uio.h>
+#include <sys/uuid.h>
 #include <sys/jail.h>
 #include <sys/syslog.h>
 #include <netinet/in.h>
 
 #include <net/vnet.h>
 
+#include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
 
 #include <vm/uma.h>
@@ -392,6 +395,9 @@ soalloc(struct vnet *vnet)
 		uma_zfree(socket_zone, so);
 		return (NULL);
 	}
+
+	/* Initialise per-socket UUID. */
+	(void)kern_uuidgen(&so->so_uuid, 1);
 
 	SOCKBUF_LOCK_INIT(&so->so_snd, "so_snd");
 	SOCKBUF_LOCK_INIT(&so->so_rcv, "so_rcv");
@@ -857,6 +863,9 @@ soclose(struct socket *so)
 
 	KASSERT(!(so->so_state & SS_NOFDREF), ("soclose: SS_NOFDREF on enter"));
 
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
 	CURVNET_SET(so->so_vnet);
 	funsetown(&so->so_sigio);
 	if (so->so_state & SS_ISCONNECTED) {
@@ -1152,6 +1161,15 @@ sosend_dgram(struct socket *so, struct sockaddr *addr, struct uio *uio,
 		space -= resid - uio->uio_resid;
 		resid = uio->uio_resid;
 	}
+
+#ifdef KDTRACE_HOOKS
+	{
+		M_ASSERTPKTHDR(top);
+		msgid_generate(&top->m_pkthdr.msgid);
+		AUDIT_RET_MSGID(&top->m_pkthdr.msgid);
+	}
+#endif
+
 	KASSERT(resid == 0, ("sosend_dgram: resid != 0"));
 	/*
 	 * XXXRW: Frobbing SO_DONTROUTE here is even worse without sblock
@@ -1340,6 +1358,14 @@ restart:
 				space -= resid - uio->uio_resid;
 				resid = uio->uio_resid;
 			}
+
+#ifdef KDTRACE_HOOKS
+			if (so->so_type == SOCK_DGRAM) {
+				M_ASSERTPKTHDR(top);
+				msgid_generate(&top->m_pkthdr.msgid);
+				AUDIT_RET_MSGID(&top->m_pkthdr.msgid);
+			}
+#endif
 			if (dontroute) {
 				SOCK_LOCK(so);
 				so->so_options |= SO_DONTROUTE;
@@ -1740,6 +1766,14 @@ dontblock:
 			len = so->so_oobmark - offset;
 		if (len > m->m_len - moff)
 			len = m->m_len - moff;
+
+#ifdef KDTRACE_HOOKS
+		if (so->so_type == SOCK_DGRAM) {
+			M_ASSERTPKTHDR(m);
+			AUDIT_RET_MSGID(&m->m_pkthdr.msgid);
+		}
+#endif
+
 		/*
 		 * If mp is set, just pass back the mbufs.  Otherwise copy
 		 * them out via the uio, then free.  Sockbuf must be
@@ -2298,6 +2332,12 @@ soreceive_dgram(struct socket *so, struct sockaddr **psa, struct uio *uio,
 	}
 	KASSERT(m == NULL || m->m_type == MT_DATA,
 	    ("soreceive_dgram: !data"));
+
+	{
+		M_ASSERTPKTHDR(m);
+		AUDIT_RET_MSGID(&m->m_pkthdr.msgid);
+	}
+
 	while (m != NULL && uio->uio_resid > 0) {
 		len = uio->uio_resid;
 		if (len > m->m_len)

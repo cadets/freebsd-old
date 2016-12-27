@@ -64,6 +64,8 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/atomic.h>
 
+#include <security/audit/audit.h>
+
 #include <vm/vm.h>
 #include <vm/vm_page.h>
 #include <vm/vm_extern.h>
@@ -792,7 +794,8 @@ aio_process_rw(struct kaiocb *job)
 		if (auio.uio_resid == 0)
 			error = 0;
 		else
-			error = fo_read(fp, &auio, fp->f_cred, FOF_OFFSET, td);
+			error = fo_read(fp, &auio, fp->f_cred, FOF_OFFSET,
+			    td, NULL);
 	} else {
 		if (fp->f_type == DTYPE_VNODE)
 			bwillwrite();
@@ -1520,6 +1523,7 @@ aio_aqueue(struct thread *td, struct aiocb *ujob, struct aioliojob *lj,
 	 * should be.
 	 */
 	fd = job->uaiocb.aio_fildes;
+	AUDIT_ARG_FD(fd);
 	switch (opcode) {
 	case LIO_WRITE:
 		error = fget_write(td, fd,
@@ -1546,6 +1550,15 @@ aio_aqueue(struct thread *td, struct aiocb *ujob, struct aioliojob *lj,
 		ops->store_error(ujob, error);
 		return (error);
 	}
+
+	/*
+	 * Audit file argument -- if present (which it won't be for
+	 * aio_msync(2)).
+	 */
+#ifdef AUDIT
+	if (fp != NULL)
+		AUDIT_ARG_FILE(p, fp);
+#endif
 
 	if (opcode == LIO_SYNC && fp->f_vnode == NULL) {
 		error = EINVAL;

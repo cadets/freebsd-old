@@ -1,7 +1,13 @@
 /*-
  * Copyright (c) 1996 John S. Dyson
  * Copyright (c) 2012 Giovanni Trematerra
+ * Copyright (c) 2016 Robert N. M. Watson
  * All rights reserved.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -90,6 +96,7 @@
  */
 
 #include "opt_compat.h"
+#include "opt_metaio.h"
 
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
@@ -118,8 +125,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/vnode.h>
 #include <sys/uio.h>
 #include <sys/user.h>
+#include <sys/uuid.h>
 #include <sys/event.h>
 
+#include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
 
 #include <vm/vm.h>
@@ -145,8 +154,8 @@ __FBSDID("$FreeBSD$");
 /*
  * interfaces to the outside world
  */
-static fo_rdwr_t	pipe_read;
-static fo_rdwr_t	pipe_write;
+static fo_read_t	pipe_read;
+static fo_write_t	pipe_write;
 static fo_truncate_t	pipe_truncate;
 static fo_ioctl_t	pipe_ioctl;
 static fo_poll_t	pipe_poll;
@@ -156,6 +165,7 @@ static fo_close_t	pipe_close;
 static fo_chmod_t	pipe_chmod;
 static fo_chown_t	pipe_chown;
 static fo_fill_kinfo_t	pipe_fill_kinfo;
+static fo_getuuid_t	pipe_getuuid;
 
 struct fileops pipeops = {
 	.fo_read = pipe_read,
@@ -170,6 +180,7 @@ struct fileops pipeops = {
 	.fo_chown = pipe_chown,
 	.fo_sendfile = invfo_sendfile,
 	.fo_fill_kinfo = pipe_fill_kinfo,
+	.fo_getuuid = pipe_getuuid,
 	.fo_flags = DFLAG_PASSABLE
 };
 
@@ -358,6 +369,14 @@ pipe_paircreate(struct thread *td, struct pipepair **p_pp)
 	knlist_init_mtx(&rpipe->pipe_sel.si_note, PIPE_MTX(rpipe));
 	knlist_init_mtx(&wpipe->pipe_sel.si_note, PIPE_MTX(wpipe));
 
+	/* Generate per-pipe endpoint UUIDs; currently used only by audit. */
+	(void)kern_uuidgen(&rpipe->pipe_uuid, 1);
+	(void)kern_uuidgen(&wpipe->pipe_uuid, 1);
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_OBJUUID1(&rpipe->pipe_uuid);
+	AUDIT_RET_OBJUUID2(&wpipe->pipe_uuid);
+#endif
+
 	/* Only the forward direction pipe is backed by default */
 	pipe_create(rpipe, 1);
 	pipe_create(wpipe, 0);
@@ -443,6 +462,10 @@ kern_pipe(struct thread *td, int fildes[2], int flags, struct filecaps *fcaps1,
 	fdrop(wf, td);
 	fildes[1] = fd;
 	fdrop(rf, td);
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_FD1(fildes[0]);
+	AUDIT_RET_FD2(fildes[1]);
+#endif
 
 	return (0);
 }
@@ -655,12 +678,13 @@ pipe_create(pipe, backing)
 
 /* ARGSUSED */
 static int
-pipe_read(fp, uio, active_cred, flags, td)
+pipe_read(fp, uio, active_cred, flags, td, miop)
 	struct file *fp;
 	struct uio *uio;
 	struct ucred *active_cred;
 	struct thread *td;
 	int flags;
+	struct metaio *miop;
 {
 	struct pipe *rpipe;
 	int error;
@@ -670,6 +694,12 @@ pipe_read(fp, uio, active_cred, flags, td)
 	rpipe = fp->f_data;
 	PIPE_LOCK(rpipe);
 	++rpipe->pipe_busy;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&rpipe->pipe_uuid);
+#endif
+#ifdef METAIO
+	metaio_from_uuid(&rpipe->pipe_uuid, miop);
+#endif
 	error = pipelock(rpipe, 1);
 	if (error)
 		goto unlocked_error;
@@ -1051,6 +1081,9 @@ pipe_write(fp, uio, active_cred, flags, td)
 	rpipe = fp->f_data;
 	wpipe = PIPE_PEER(rpipe);
 	PIPE_LOCK(rpipe);
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&wpipe->pipe_uuid);
+#endif
 	error = pipelock(wpipe, 1);
 	if (error) {
 		PIPE_UNLOCK(rpipe);
@@ -1329,6 +1362,9 @@ pipe_truncate(fp, length, active_cred, td)
 	int error;
 
 	cpipe = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&cpipe->pipe_uuid);
+#endif
 	if (cpipe->pipe_state & PIPE_NAMED)
 		error = vnops.fo_truncate(fp, length, active_cred, td);
 	else
@@ -1351,6 +1387,9 @@ pipe_ioctl(fp, cmd, data, active_cred, td)
 	int error;
 
 	PIPE_LOCK(mpipe);
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&mpipe->pipe_uuid);
+#endif
 
 #ifdef MAC
 	error = mac_pipe_check_ioctl(active_cred, mpipe->pipe_pair, cmd, data);
@@ -1433,6 +1472,9 @@ pipe_poll(fp, events, active_cred, td)
 	rpipe = fp->f_data;
 	wpipe = PIPE_PEER(rpipe);
 	PIPE_LOCK(rpipe);
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&rpipe->pipe_uuid);
+#endif
 #ifdef MAC
 	error = mac_pipe_check_poll(active_cred, rpipe->pipe_pair);
 	if (error)
@@ -1506,6 +1548,9 @@ pipe_stat(fp, ub, active_cred, td)
 
 	pipe = fp->f_data;
 	PIPE_LOCK(pipe);
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&pipe->pipe_uuid);
+#endif
 #ifdef MAC
 	error = mac_pipe_check_stat(active_cred, pipe->pipe_pair);
 	if (error) {
@@ -1582,6 +1627,9 @@ pipe_chmod(struct file *fp, mode_t mode, struct ucred *active_cred, struct threa
 	int error;
 
 	cpipe = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&cpipe->pipe_uuid);
+#endif
 	if (cpipe->pipe_state & PIPE_NAMED)
 		error = vn_chmod(fp, mode, active_cred, td);
 	else
@@ -1601,6 +1649,9 @@ pipe_chown(fp, uid, gid, active_cred, td)
 	int error;
 
 	cpipe = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&cpipe->pipe_uuid);
+#endif
 	if (cpipe->pipe_state & PIPE_NAMED)
 		error = vn_chown(fp, uid, gid, active_cred, td);
 	else
@@ -1620,6 +1671,19 @@ pipe_fill_kinfo(struct file *fp, struct kinfo_file *kif, struct filedesc *fdp)
 	kif->kf_un.kf_pipe.kf_pipe_addr = (uintptr_t)pi;
 	kif->kf_un.kf_pipe.kf_pipe_peer = (uintptr_t)pi->pipe_peer;
 	kif->kf_un.kf_pipe.kf_pipe_buffer_cnt = pi->pipe_buffer.cnt;
+	return (0);
+}
+
+static int
+pipe_getuuid(struct file *fp, struct uuid *uuidp)
+{
+	struct pipe *pipe;
+
+	pipe = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&pipe->pipe_uuid);
+#endif
+	*uuidp = pipe->pipe_uuid;
 	return (0);
 }
 
@@ -1662,6 +1726,9 @@ pipeclose(cpipe)
 	PIPE_LOCK(cpipe);
 	pipelock(cpipe, 0);
 	pp = cpipe->pipe_pair;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&cpipe->pipe_uuid);
+#endif
 
 	pipeselwakeup(cpipe);
 

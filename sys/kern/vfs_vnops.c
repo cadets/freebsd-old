@@ -44,6 +44,7 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_hwpmc_hooks.h"
+#include "opt_metaio.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -57,6 +58,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/limits.h>
 #include <sys/lock.h>
+#include <sys/metaio.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/mutex.h>
@@ -93,6 +95,8 @@ __FBSDID("$FreeBSD$");
 static fo_rdwr_t	vn_read;
 static fo_rdwr_t	vn_write;
 static fo_rdwr_t	vn_io_fault;
+static fo_read_t	vn_io_fault_read;
+static fo_write_t	vn_io_fault_write;
 static fo_truncate_t	vn_truncate;
 static fo_ioctl_t	vn_ioctl;
 static fo_poll_t	vn_poll;
@@ -100,10 +104,11 @@ static fo_kqfilter_t	vn_kqfilter;
 static fo_stat_t	vn_statfile;
 static fo_close_t	vn_closefile;
 static fo_mmap_t	vn_mmap;
+static fo_getuuid_t	vn_getuuid;
 
 struct 	fileops vnops = {
-	.fo_read = vn_io_fault,
-	.fo_write = vn_io_fault,
+	.fo_read = vn_io_fault_read,
+	.fo_write = vn_io_fault_write,
 	.fo_truncate = vn_truncate,
 	.fo_ioctl = vn_ioctl,
 	.fo_poll = vn_poll,
@@ -116,6 +121,7 @@ struct 	fileops vnops = {
 	.fo_seek = vn_seek,
 	.fo_fill_kinfo = vn_fill_kinfo,
 	.fo_mmap = vn_mmap,
+	.fo_getuuid = vn_getuuid,
 	.fo_flags = DFLAG_PASSABLE | DFLAG_SEEKABLE
 };
 
@@ -281,6 +287,7 @@ restart:
 	error = vn_open_vnode(vp, fmode, cred, td, fp);
 	if (error)
 		goto bad;
+	vp->v_path = strdup(ndp->ni_dirp, M_TEMP);
 	*flagp = fmode;
 	return (0);
 bad:
@@ -348,6 +355,10 @@ vn_open_vnode(struct vnode *vp, int fmode, struct ucred *cred,
 		vn_lock(vp, LK_UPGRADE | LK_RETRY);
 	if ((error = VOP_OPEN(vp, fmode, cred, td, fp)) != 0)
 		return (error);
+
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_OBJUUID1(&vp->v_uuid);
+#endif
 
 	if (fmode & (O_EXLOCK | O_SHLOCK)) {
 		KASSERT(fp != NULL, ("open with flock requires fp"));
@@ -1144,6 +1155,11 @@ vn_io_fault(struct file *fp, struct uio *uio, struct ucred *active_cred,
 
 	doio = uio->uio_rw == UIO_READ ? vn_read : vn_write;
 	vp = fp->f_vnode;
+	/*
+	 * XXXRW: Audit only UUID rather than full vnode details as we don't
+	 * hold a vnode lock here.
+	 */
+	AUDIT_ARG_OBJUUID1(&vp->v_uuid);
 	foffset_lock_uio(fp, uio, flags);
 	if (do_vn_io_fault(vp, uio)) {
 		args.kind = VN_IO_FAULT_FOP;
@@ -1169,6 +1185,25 @@ vn_io_fault(struct file *fp, struct uio *uio, struct ucred *active_cred,
 	}
 	foffset_unlock_uio(fp, uio, flags);
 	return (error);
+}
+
+int
+vn_io_fault_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
+    int flags, struct thread *td, struct metaio *miop)
+{
+
+#ifdef METAIO
+	metaio_from_uuid(&fp->f_vnode->v_uuid, miop);
+#endif
+	return (vn_io_fault(fp, uio, active_cred, flags, td));
+}
+
+int
+vn_io_fault_write(struct file *fp, struct uio *uio, struct ucred *active_cred,
+    int flags, struct thread *td)
+{
+
+	return (vn_io_fault(fp, uio, active_cred, flags, td));
 }
 
 /*
@@ -1302,6 +1337,7 @@ vn_truncate(struct file *fp, off_t length, struct ucred *active_cred,
 	if (error)
 		goto out1;
 	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+	AUDIT_ARG_VNODE1(vp);
 	if (vp->v_type == VDIR) {
 		error = EISDIR;
 		goto out;
@@ -2218,6 +2254,9 @@ vn_seek(struct file *fp, off_t offset, int whence, struct thread *td)
 
 	cred = td->td_ucred;
 	vp = fp->f_vnode;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&vp->v_uuid);
+#endif
 	foffset = foffset_lock(fp, 0);
 	noneg = (vp->v_type != VCHR);
 	error = 0;
@@ -2382,7 +2421,7 @@ vn_fill_kinfo_vnode(struct vnode *vp, struct kinfo_file *kif)
 int
 vn_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
     vm_prot_t prot, vm_prot_t cap_maxprot, int flags, vm_ooffset_t foff,
-    struct thread *td)
+    struct thread *td, struct metaio *miop)
 {
 #ifdef HWPMC_HOOKS
 	struct pmckern_map_in pkm;
@@ -2408,6 +2447,11 @@ vn_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
 		flags |= MAP_NOSYNC;
 #endif
 	vp = fp->f_vnode;
+
+	AUDIT_ARG_OBJUUID1(&vp->v_uuid);
+#ifdef METAIO
+	metaio_from_uuid(&vp->v_uuid, miop);
+#endif
 
 	/*
 	 * Ensure that file and memory protections are
@@ -2469,4 +2513,17 @@ vn_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
 	}
 #endif
 	return (error);
+}
+
+static int
+vn_getuuid(struct file *fp, struct uuid *uuidp)
+{
+	struct vnode *vp;
+
+	vp = fp->f_vnode;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&vp->v_uuid);
+#endif
+	*uuidp = vp->v_uuid;
+	return (0);
 }

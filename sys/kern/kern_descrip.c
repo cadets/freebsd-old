@@ -495,6 +495,8 @@ kern_fcntl(struct thread *td, int fd, int cmd, intptr_t arg)
 	p = td->td_proc;
 	fdp = p->p_fd;
 
+	AUDIT_ARG_FD(cmd);
+	AUDIT_ARG_CMD(cmd);
 	switch (cmd) {
 	case F_DUPFD:
 		tmp = arg;
@@ -820,6 +822,9 @@ kern_dup(struct thread *td, u_int mode, int flags, int old, int new)
 	MPASS((flags & ~(FDDUP_FLAG_CLOEXEC)) == 0);
 	MPASS(mode < FDDUP_LASTMODE);
 
+	AUDIT_ARG_FD(old);
+	/* XXXRW: if (flags & FDDUP_FIXED) AUDIT_ARG_FD2(new); */
+
 	/*
 	 * Verify we have a valid descriptor to dup from and possibly to
 	 * dup to. Unlike dup() and dup2(), fcntl()'s F_DUPFD should
@@ -915,6 +920,9 @@ kern_dup(struct thread *td, u_int mode, int flags, int old, int new)
 	seq_write_end(&newfde->fde_seq);
 #endif
 	td->td_retval[0] = new;
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_FD1(new);
+#endif
 
 	error = 0;
 
@@ -3884,7 +3892,15 @@ SYSINIT(select, SI_SUB_LOCK, SI_ORDER_FIRST, filelistinit, NULL);
 /*-------------------------------------------------------------------*/
 
 static int
-badfo_readwrite(struct file *fp, struct uio *uio, struct ucred *active_cred,
+badfo_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
+    int flags, struct thread *td, struct metaio *miop)
+{
+
+	return (EBADF);
+}
+
+static int
+badfo_write(struct file *fp, struct uio *uio, struct ucred *active_cred,
     int flags, struct thread *td)
 {
 
@@ -3970,8 +3986,8 @@ badfo_fill_kinfo(struct file *fp, struct kinfo_file *kif, struct filedesc *fdp)
 }
 
 struct fileops badfileops = {
-	.fo_read = badfo_readwrite,
-	.fo_write = badfo_readwrite,
+	.fo_read = badfo_read,
+	.fo_write = badfo_write,
 	.fo_truncate = badfo_truncate,
 	.fo_ioctl = badfo_ioctl,
 	.fo_poll = badfo_poll,
@@ -3985,7 +4001,15 @@ struct fileops badfileops = {
 };
 
 int
-invfo_rdwr(struct file *fp, struct uio *uio, struct ucred *active_cred,
+invfo_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
+    int flags, struct thread *td, struct metaio *miop)
+{
+
+	return (EOPNOTSUPP);
+}
+
+int
+invfo_write(struct file *fp, struct uio *uio, struct ucred *active_cred,
     int flags, struct thread *td)
 {
 

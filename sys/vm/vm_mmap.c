@@ -7,6 +7,14 @@
  * the Systems Programming Group of the University of Utah Computer
  * Science Department.
  *
+ * Copyright (c) 2016 Robert N. M. Watson
+ * All rights reserved.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -45,6 +53,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_compat.h"
 #include "opt_hwpmc_hooks.h"
+#include "opt_metaio.h"
 #include "opt_vm.h"
 
 #include <sys/param.h>
@@ -66,6 +75,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/vnode.h>
 #include <sys/fcntl.h>
 #include <sys/file.h>
+#include <sys/metaio.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/conf.h>
@@ -74,6 +84,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysent.h>
 #include <sys/vmmeter.h>
 
+#include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
 
 #include <vm/vm.h>
@@ -99,6 +110,10 @@ SYSCTL_INT(_vm, OID_AUTO, old_mlock, CTLFLAG_RWTUN, &old_mlock, 0,
 #ifdef MAP_32BIT
 #define	MAP_32BIT_MAX_ADDR	((vm_offset_t)1 << 31)
 #endif
+
+static int	kern_mmap(vm_offset_t addr, vm_size_t size, int prot,
+		    int flags, int fd, off_t pos, struct thread *td,
+		    struct metaio *mio);
 
 #ifndef _SYS_SYSPROTO_H_
 struct sbrk_args {
@@ -190,22 +205,42 @@ sys_mmap(td, uap)
 	struct thread *td;
 	struct mmap_args *uap;
 {
+
+	return (kern_mmap((vm_offset_t)uap->addr, uap->len, uap->prot,
+	    uap->flags, uap->fd, uap->pos, td, NULL));
+}
+
+int
+sys_metaio_mmap(struct thread *td, struct metaio_mmap_args *uap)
+{
+#ifdef METAIO
+	struct metaio mio;
+	int error;
+
+	metaio_init(td, &mio);
+	error = kern_mmap((vm_offset_t)uap->addr, uap->len, uap->prot,
+	    uap->flags, uap->fd, uap->pos, td, &mio);
+	if (error == 0)
+		error = copyout(&mio, uap->miop, sizeof(mio));
+	return (error);
+#else /* !METAIO */
+	return (ENOSYS);
+#endif /* METAIO */
+}
+
+static int
+kern_mmap(vm_offset_t addr, vm_size_t size, int prot, int flags, int fd,
+    off_t pos, struct thread *td, struct metaio *miop)
+{
 	struct file *fp;
-	vm_offset_t addr;
-	vm_size_t size, pageoff;
+	vm_size_t pageoff;
 	vm_prot_t cap_maxprot;
-	int align, error, flags, prot;
-	off_t pos;
+	int align, error;
 	struct vmspace *vms = td->td_proc->p_vmspace;
 	cap_rights_t rights;
 
-	addr = (vm_offset_t) uap->addr;
-	size = uap->len;
-	prot = uap->prot;
-	flags = uap->flags;
-	pos = uap->pos;
-
 	fp = NULL;
+	AUDIT_ARG_FD(fd);
 
 	/*
 	 * Ignore old flags that used to be defined but did not do anything.
@@ -222,8 +257,8 @@ sys_mmap(td, uap)
 	 * pos.
 	 */
 	if (!SV_CURPROC_FLAG(SV_AOUT)) {
-		if ((uap->len == 0 && curproc->p_osrel >= P_OSREL_MAP_ANON) ||
-		    ((flags & MAP_ANON) != 0 && (uap->fd != -1 || pos != 0)))
+		if ((size == 0 && curproc->p_osrel >= P_OSREL_MAP_ANON) ||
+		    ((flags & MAP_ANON) != 0 && (fd != -1 || pos != 0)))
 			return (EINVAL);
 	} else {
 		if ((flags & MAP_ANON) != 0)
@@ -231,7 +266,7 @@ sys_mmap(td, uap)
 	}
 
 	if (flags & MAP_STACK) {
-		if ((uap->fd != -1) ||
+		if ((fd != -1) ||
 		    ((prot & (PROT_READ | PROT_WRITE)) != (PROT_READ | PROT_WRITE)))
 			return (EINVAL);
 		flags |= MAP_ANON;
@@ -351,7 +386,7 @@ sys_mmap(td, uap)
 		}
 		if (prot & PROT_EXEC)
 			cap_rights_set(&rights, CAP_MMAP_X);
-		error = fget_mmap(td, uap->fd, &rights, &cap_maxprot, &fp);
+		error = fget_mmap(td, fd, &rights, &cap_maxprot, &fp);
 		if (error != 0)
 			goto done;
 		if ((flags & (MAP_SHARED | MAP_PRIVATE)) == 0 &&
@@ -362,7 +397,7 @@ sys_mmap(td, uap)
 
 		/* This relies on VM_PROT_* matching PROT_*. */
 		error = fo_mmap(fp, &vms->vm_map, &addr, size, prot,
-		    cap_maxprot, flags, pos, td);
+		    cap_maxprot, flags, pos, td, miop);
 	}
 
 	if (error == 0)
@@ -1243,6 +1278,7 @@ vm_mmap_vnode(struct thread *td, vm_size_t objsize,
 		locktype = LK_SHARED;
 	if ((error = vget(vp, locktype, td)) != 0)
 		return (error);
+	AUDIT_ARG_VNODE1(vp);
 	foff = *foffp;
 	flags = *flagsp;
 	obj = vp->v_object;

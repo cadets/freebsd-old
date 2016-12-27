@@ -260,8 +260,8 @@ struct tmpfs_node {
 
 		/* Valid when tn_type = VFIFO */
 		struct tn_fifo {
-			fo_rdwr_t		*tn_fo_read;
-			fo_rdwr_t		*tn_fo_write;
+			fo_read_t		*tn_fo_read;
+			fo_write_t		*tn_fo_write;
 		}tn_fifo;
 	}tn_spec;
 };

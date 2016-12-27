@@ -34,6 +34,7 @@
 #endif
 
 #include <sys/condvar.h>
+#include <sys/uuid.h>
 
 struct ksem {
 	int		ks_ref;		/* number of references */
@@ -58,6 +59,7 @@ struct ksem {
 
 	struct label	*ks_label;	/* MAC label */
 	const char	*ks_path;
+	struct uuid	 ks_uuid;
 };
 
 #define	KS_ANONYMOUS	0x0001		/* Anonymous (unnamed) semaphore. */

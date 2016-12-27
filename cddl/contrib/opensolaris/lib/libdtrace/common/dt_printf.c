@@ -45,10 +45,14 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
+#include <sys/endian.h>
+#include <sys/uuid.h>
 
 #include <dt_printf.h>
 #include <dt_string.h>
 #include <dt_impl.h>
+
+#include <libxo/xo.h>
 
 /*ARGSUSED*/
 static int
@@ -236,28 +240,84 @@ pfcheck_type(dt_pfargv_t *pfv, dt_pfargd_t *pfd, dt_node_t *dnp)
 
 /*ARGSUSED*/
 static int
+pfcheck_mr(dt_pfargv_t *pfv, dt_pfargd_t *pfd, dt_node_t *dnp)
+{
+	int oformat = 0;
+	dtrace_hdl_t *dtp = pfv->pfv_dtp;
+
+	if (dtp->dt_options[DTRACEOPT_OFORMAT] != DTRACEOPT_UNSET)
+		oformat = (int)dtp->dt_options[DTRACEOPT_OFORMAT];
+
+	if (oformat)
+		return (1);
+
+	return(0);
+}
+
+/*
+ * XXX-AT: Implement pfcheck_uuid
+ */
+/*ARGSUSED*/
+static int
+pfcheck_uuid(dt_pfargv_t *pfv, dt_pfargd_t *pfd, dt_node_t *dnp)
+{
+	return (1);
+}
+
+/*ARGSUSED*/
+static int
 pfprint_sint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
     const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t unormal)
 {
+	int oformat = 0;
 	int64_t normal = (int64_t)unormal;
 	int32_t n = (int32_t)normal;
 
+	if (dtp->dt_options[DTRACEOPT_OFORMAT] != DTRACEOPT_UNSET)
+		oformat = (int)dtp->dt_options[DTRACEOPT_OFORMAT];
+
 	switch (size) {
-	case sizeof (int8_t):
+ 	case sizeof (int8_t):
+		if (oformat) {
+			xo_emit("{:int8_t/%d}",
+			    (int32_t)*((int8_t *)addr) / n);
+			goto closetag;
+		}
 		return (dt_printf(dtp, fp, format,
-		    (int32_t)*((int8_t *)addr) / n));
+			(int32_t)*((int8_t *)addr) / n));
 	case sizeof (int16_t):
+		if (oformat) {
+			xo_emit("{:int16_t/%d}",
+			    (int32_t)*((int16_t *)addr) / n);
+			goto closetag;
+		}
 		return (dt_printf(dtp, fp, format,
 		    (int32_t)*((int16_t *)addr) / n));
 	case sizeof (int32_t):
+		if (oformat) {
+			xo_emit("{:int32_t/%d}",
+			    *((int32_t *)addr) / n);
+			goto closetag;
+		}
 		return (dt_printf(dtp, fp, format,
 		    *((int32_t *)addr) / n));
 	case sizeof (int64_t):
+		if (oformat) {
+			xo_emit("{:int64_t/%ld}",
+			    *((int64_t *)addr) / normal);
+			goto closetag;
+		}
 		return (dt_printf(dtp, fp, format,
 		    *((int64_t *)addr) / normal));
 	default:
 		return (dt_set_errno(dtp, EDT_DMISMATCH));
 	}
+
+closetag:
+	if (dtp->dt_instance != NULL) {
+		xo_close_container_d();
+	}
+	return (0);
 }
 
 /*ARGSUSED*/
@@ -265,24 +325,53 @@ static int
 pfprint_uint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
     const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
 {
+	int oformat = 0;
 	uint32_t n = (uint32_t)normal;
+
+	if (dtp->dt_options[DTRACEOPT_OFORMAT] != DTRACEOPT_UNSET)
+		oformat = (int)dtp->dt_options[DTRACEOPT_OFORMAT];
 
 	switch (size) {
 	case sizeof (uint8_t):
+		if (oformat) {
+			xo_emit("{:uint8_t/%d}",
+			    (uint32_t)*((uint8_t *)addr) / n);
+			goto closetag;
+		}
 		return (dt_printf(dtp, fp, format,
 		    (uint32_t)*((uint8_t *)addr) / n));
 	case sizeof (uint16_t):
+		if (oformat) {
+			xo_emit("{:uint16_t/%d}",
+			    (uint32_t)*((uint16_t *)addr) / n);
+			goto closetag;
+		}
 		return (dt_printf(dtp, fp, format,
 		    (uint32_t)*((uint16_t *)addr) / n));
 	case sizeof (uint32_t):
+		if (oformat) {
+			xo_emit("{:uint32_t/%d}",
+			    *((uint32_t *)addr) / n);
+			goto closetag;
+		}
 		return (dt_printf(dtp, fp, format,
 		    *((uint32_t *)addr) / n));
 	case sizeof (uint64_t):
+		if (oformat) {
+			xo_emit("{:uint64_t/%ld}",
+			    *((uint64_t *)addr) / normal);
+			goto closetag;
+		}
 		return (dt_printf(dtp, fp, format,
 		    *((uint64_t *)addr) / normal));
 	default:
 		return (dt_set_errno(dtp, EDT_DMISMATCH));
 	}
+closetag:
+	if (dtp->dt_instance != NULL) {
+		xo_close_container_d();
+	}
+	return (0);
 }
 
 static int
@@ -567,10 +656,25 @@ static int
 pfprint_cstr(dtrace_hdl_t *dtp, FILE *fp, const char *format,
     const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
 {
+	int oformat = 0;
 	char *s = alloca(size + 1);
 
 	bcopy(addr, s, size);
 	s[size] = '\0';
+	
+	char c[PATH_MAX * 2];
+	uint64_t pc;
+
+	if (dtp->dt_options[DTRACEOPT_OFORMAT] != DTRACEOPT_UNSET)
+		oformat = (int)dtp->dt_options[DTRACEOPT_OFORMAT];
+	
+	if (oformat) {
+		xo_emit("{:string/%s}", s);
+		if (dtp->dt_instance != NULL) {
+			xo_close_container_d();
+		}
+		return (0);
+	}
 	return (dt_printf(dtp, fp, format, s));
 }
 
@@ -633,6 +737,154 @@ pfprint_pct(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	return (dt_printf(dtp, fp, "%%"));
 }
 
+/*ARGSUSED*/
+int
+pfprint_open_list_item(dtrace_hdl_t *dtp, FILE *fp, const char *format,
+    const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
+{
+	if (dtp->dt_instance != NULL)
+		free(dtp->dt_instance);
+
+	dtp->dt_instance = malloc(size + 1);
+
+	bcopy(addr, dtp->dt_instance, size);
+	dtp->dt_instance[size] = '\0';
+
+	xo_open_instance(dtp->dt_instance);
+
+	return (0);
+}
+/*ARGSUSED*/
+int
+pfprint_close_list_item(dtrace_hdl_t *dtp, FILE *fp, const char *format,
+    const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
+{
+	if (dtp->dt_instance != NULL)
+		free(dtp->dt_instance);
+
+	dtp->dt_instance = malloc(size + 1);
+
+	bcopy(addr, dtp->dt_instance, size);
+	dtp->dt_instance[size] = '\0';
+
+	xo_close_instance(dtp->dt_instance);
+
+	return (0);
+}
+/*ARGSUSED*/
+int
+pfprint_open_list(dtrace_hdl_t *dtp, FILE *fp, const char *format,
+    const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
+{
+	if (dtp->dt_instance != NULL)
+		free(dtp->dt_instance);
+
+	dtp->dt_instance = malloc(size + 1);
+
+	bcopy(addr, dtp->dt_instance, size);
+	dtp->dt_instance[size] = '\0';
+
+	xo_open_list(dtp->dt_instance);
+
+	return (0);
+}
+/*ARGSUSED*/
+int
+pfprint_close_list(dtrace_hdl_t *dtp, FILE *fp, const char *format,
+    const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
+{
+	if (dtp->dt_instance != NULL)
+		free(dtp->dt_instance);
+
+	dtp->dt_instance = malloc(size + 1);
+
+	bcopy(addr, dtp->dt_instance, size);
+	dtp->dt_instance[size] = '\0';
+
+	xo_close_list(dtp->dt_instance);
+
+	return (0);
+}
+/*ARGSUSED*/
+int
+pfprint_mr(dtrace_hdl_t *dtp, FILE *fp, const char *format,
+    const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
+{
+	if (dtp->dt_instance != NULL)
+		free(dtp->dt_instance);
+
+	dtp->dt_instance = malloc(size + 1);
+
+	bcopy(addr, dtp->dt_instance, size);
+	dtp->dt_instance[size] = '\0';
+	
+	xo_open_container(dtp->dt_instance);
+
+	return (0);
+}
+
+/*ARGSUSED*/
+int
+pfprint_mrc(dtrace_hdl_t *dtp, FILE *fp, const char *format,
+    const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
+{
+	if (dtp->dt_instance != NULL)
+		free(dtp->dt_instance);
+
+	dtp->dt_instance = malloc(size + 1);
+
+	bcopy(addr, dtp->dt_instance, size);
+	dtp->dt_instance[size] = '\0';
+	
+	xo_close_container_d();
+
+	return (0);
+}
+
+/*
+ * XXX-AT: snprintf_uuid is copied from kern_uuid.c. It should be moved to a
+ * library.
+ */
+#define	UUID_NODE_LEN	_UUID_NODE_LEN
+/* We use an alternative, more convenient representation in the generator. */
+struct uuid_private {
+	union {
+		uint64_t	ll;		/* internal. */
+		struct {
+			uint32_t	low;
+			uint16_t	mid;
+			uint16_t	hi;
+		} x;
+	} time;
+	uint16_t	seq;			/* Big-endian. */
+	uint16_t	node[UUID_NODE_LEN>>1];
+};
+
+int
+snprintf_uuid(char *buf, size_t sz, struct uuid *uuid)
+{
+	struct uuid_private *id;
+	int cnt;
+
+	id = (struct uuid_private *)uuid;
+	cnt = snprintf(buf, sz, "%08x-%04x-%04x-%04x-%04x%04x%04x",
+	    id->time.x.low, id->time.x.mid, id->time.x.hi, be16toh(id->seq),
+	    be16toh(id->node[0]), be16toh(id->node[1]), be16toh(id->node[2]));
+	return (cnt);
+}
+
+/*ARGSUSED*/
+int
+pfprint_uuid(dtrace_hdl_t *dtp, FILE *fp, const char *format,
+    const dt_pfargd_t *pfd, const void *addr, size_t size, uint64_t normal)
+{
+	char buf[38];
+
+	snprintf_uuid(buf, sizeof(buf), (struct uuid *)addr);
+	return (dt_printf(dtp, fp, "%s", buf));
+}
+
+
 static const char pfproto_xint[] = "char, short, int, long, or long long";
 static const char pfproto_csi[] = "char, short, or int";
 static const char pfproto_fp[] = "float, double, or long double";
@@ -688,13 +940,18 @@ static const dt_pfconv_t _dtrace_conversions[] = {
 { "Lf",	"f", "long double", pfcheck_type, pfprint_fp },
 { "Lg",	"g", "long double", pfcheck_type, pfprint_fp },
 { "LG",	"G", "long double", pfcheck_type, pfprint_fp },
+{ "M", "M", "machine readable close", pfcheck_mr, pfprint_mrc },
+{ "m", "m", "machine readable", pfcheck_mr, pfprint_mr },
 { "o", "o", pfproto_xint, pfcheck_xint, pfprint_uint },
 { "p", "x", pfproto_addr, pfcheck_addr, pfprint_uint },
 { "P", "s", "uint16_t", pfcheck_type, pfprint_port },
+{ "q", "q", "machine readable list", pfcheck_mr, pfprint_open_list_item },
+{ "Q", "Q", "machine readable close list", pfcheck_mr, pfprint_close_list_item },
 { "s", "s", "char [] or string (or use stringof)", pfcheck_str, pfprint_cstr },
 { "S", "s", pfproto_cstr, pfcheck_str, pfprint_estr },
 { "T", "s", "int64_t", pfcheck_time, pfprint_time822 },
 { "u", "u", pfproto_xint, pfcheck_xint, pfprint_uint },
+{ "U", "U", "uuid", pfcheck_uuid, pfprint_uuid },
 #ifdef illumos
 { "wc",	"wc", "int", pfcheck_type, pfprint_sint }, /* a.k.a. wchar_t */
 { "ws", "ws", pfproto_wstr, pfcheck_wstr, pfprint_wstr },
@@ -705,6 +962,8 @@ static const dt_pfconv_t _dtrace_conversions[] = {
 { "x", "x", pfproto_xint, pfcheck_xint, pfprint_uint },
 { "X", "X", pfproto_xint, pfcheck_xint, pfprint_uint },
 { "Y", "s", "int64_t", pfcheck_time, pfprint_time },
+{ "z", "z", "machine readable list", pfcheck_mr, pfprint_open_list },
+{ "Z", "Z", "machine readable close list", pfcheck_mr, pfprint_close_list },
 { "%", "%", "void", pfcheck_type, pfprint_pct },
 { NULL, NULL, NULL, NULL, NULL }
 };
@@ -712,6 +971,7 @@ static const dt_pfconv_t _dtrace_conversions[] = {
 int
 dt_pfdict_create(dtrace_hdl_t *dtp)
 {
+	xo_set_flags(NULL, XOF_DTRT);
 	uint_t n = _dtrace_strbuckets;
 	const dt_pfconv_t *pfd;
 	dt_pfdict_t *pdi;

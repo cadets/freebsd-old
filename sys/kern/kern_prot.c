@@ -1243,6 +1243,7 @@ sys___setugid(struct thread *td, struct __setugid_args *uap)
 	struct proc *p;
 
 	p = td->td_proc;
+	AUDIT_ARG_VALUE(uap->flag);
 	switch (uap->flag) {
 	case 0:
 		PROC_LOCK(p);
@@ -2138,6 +2139,7 @@ sys_setlogin(struct thread *td, struct setlogin_args *uap)
 			error = EINVAL;
 		return (error);
 	}
+	AUDIT_ARG_LOGIN(logintmp);
 	PROC_LOCK(p);
 	SESS_LOCK(p->p_session);
 	strcpy(p->p_session->s_login, logintmp);

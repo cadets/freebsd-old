@@ -316,7 +316,10 @@ typedef enum dtrace_probespec {
 #define	DIF_SUBR_GETF			52
 #define	DIF_SUBR_JSON			53
 #define	DIF_SUBR_STRTOLL		54
-#define	DIF_SUBR_MAX			54	/* max subroutine value */
+#define	DIF_SUBR_RANDOM			55
+#define	DIF_SUBR_UUIDTOSTR		56
+
+#define	DIF_SUBR_MAX			56	/* max subroutine value */
 
 typedef uint32_t dif_instr_t;
 
@@ -1053,7 +1056,8 @@ typedef struct dtrace_fmtdesc {
 #define	DTRACEOPT_AGGPACK	29	/* packed aggregation output */
 #define	DTRACEOPT_AGGZOOM	30	/* zoomed aggregation scaling */
 #define	DTRACEOPT_ZONE		31	/* zone in which to enable probes */
-#define	DTRACEOPT_MAX		32	/* number of options */
+#define DTRACEOPT_OFORMAT	32	/* output format (JSON, XML, etc.) */
+#define	DTRACEOPT_MAX		33	/* number of options */
 
 #define	DTRACEOPT_UNSET		(dtrace_optval_t)-2	/* unset option */
 

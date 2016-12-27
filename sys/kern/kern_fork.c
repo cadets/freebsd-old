@@ -68,6 +68,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/ktr.h>
 #include <sys/ktrace.h>
 #include <sys/unistd.h>	
+#include <sys/uuid.h>
 #include <sys/sdt.h>
 #include <sys/sx.h>
 #include <sys/sysent.h>
@@ -136,6 +137,9 @@ sys_pdfork(struct thread *td, struct pdfork_args *uap)
 	if (error == 0) {
 		td->td_retval[0] = pid;
 		td->td_retval[1] = 0;
+#ifdef KDTRACE_HOOKS
+		AUDIT_RET_FD1(fd);
+#endif
 		error = copyout(&fd, uap->fdp, sizeof(fd));
 	}
 	return (error);
@@ -397,6 +401,19 @@ do_fork(struct thread *td, struct fork_req *fr, struct proc *p2, struct thread *
 	p2->p_state = PRS_NEW;		/* protect against others */
 	p2->p_pid = trypid;
 	AUDIT_ARG_PID(p2->p_pid);
+
+	/*
+	 * Initialize UUID before exposing via any global lists/hash tables.
+	 *
+	 * XXXRW: We may want to use a different kind of UUID here in the
+	 * future.
+	 */
+	(void)kern_uuidgen(&p2->p_uuid, 1);
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_OBJUUID1(&p2->p_uuid);
+	AUDIT_RET_OBJUUID2(&td2->td_uuid);
+#endif
+
 	LIST_INSERT_HEAD(&allproc, p2, p_list);
 	allproc_gen++;
 	LIST_INSERT_HEAD(PIDHASH(p2->p_pid), p2, p_hash);

@@ -1791,6 +1791,119 @@ struct numa_setaffinity_args {
 struct fdatasync_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
 };
+struct metaio_read_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char buf_l_[PADL_(void *)]; void * buf; char buf_r_[PADR_(void *)];
+	char nbyte_l_[PADL_(size_t)]; size_t nbyte; char nbyte_r_[PADR_(size_t)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_write_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char buf_l_[PADL_(void *)]; void * buf; char buf_r_[PADR_(void *)];
+	char nbyte_l_[PADL_(size_t)]; size_t nbyte; char nbyte_r_[PADR_(size_t)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_mmap_args {
+	char addr_l_[PADL_(caddr_t)]; caddr_t addr; char addr_r_[PADR_(caddr_t)];
+	char len_l_[PADL_(size_t)]; size_t len; char len_r_[PADR_(size_t)];
+	char prot_l_[PADL_(int)]; int prot; char prot_r_[PADR_(int)];
+	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char pos_l_[PADL_(off_t)]; off_t pos; char pos_r_[PADR_(off_t)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct fgetuuid_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char uuidp_l_[PADL_(struct uuid *)]; struct uuid * uuidp; char uuidp_r_[PADR_(struct uuid *)];
+};
+struct getuuid_args {
+	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
+	char uuidp_l_[PADL_(struct uuid *)]; struct uuid * uuidp; char uuidp_r_[PADR_(struct uuid *)];
+};
+struct lgetuuid_args {
+	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
+	char uuidp_l_[PADL_(struct uuid *)]; struct uuid * uuidp; char uuidp_r_[PADR_(struct uuid *)];
+};
+struct metaio_readv_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char iovp_l_[PADL_(struct iovec *)]; struct iovec * iovp; char iovp_r_[PADR_(struct iovec *)];
+	char iovcnt_l_[PADL_(u_int)]; u_int iovcnt; char iovcnt_r_[PADR_(u_int)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_writev_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char iovp_l_[PADL_(struct iovec *)]; struct iovec * iovp; char iovp_r_[PADR_(struct iovec *)];
+	char iovcnt_l_[PADL_(u_int)]; u_int iovcnt; char iovcnt_r_[PADR_(u_int)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_pread_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char buf_l_[PADL_(void *)]; void * buf; char buf_r_[PADR_(void *)];
+	char nbyte_l_[PADL_(size_t)]; size_t nbyte; char nbyte_r_[PADR_(size_t)];
+	char offset_l_[PADL_(off_t)]; off_t offset; char offset_r_[PADR_(off_t)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_pwrite_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char buf_l_[PADL_(const void *)]; const void * buf; char buf_r_[PADR_(const void *)];
+	char nbyte_l_[PADL_(size_t)]; size_t nbyte; char nbyte_r_[PADR_(size_t)];
+	char offset_l_[PADL_(off_t)]; off_t offset; char offset_r_[PADR_(off_t)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_preadv_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char iovp_l_[PADL_(struct iovec *)]; struct iovec * iovp; char iovp_r_[PADR_(struct iovec *)];
+	char iovcnt_l_[PADL_(u_int)]; u_int iovcnt; char iovcnt_r_[PADR_(u_int)];
+	char offset_l_[PADL_(off_t)]; off_t offset; char offset_r_[PADR_(off_t)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_pwritev_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char iovp_l_[PADL_(struct iovec *)]; struct iovec * iovp; char iovp_r_[PADR_(struct iovec *)];
+	char iovcnt_l_[PADL_(u_int)]; u_int iovcnt; char iovcnt_r_[PADR_(u_int)];
+	char offset_l_[PADL_(off_t)]; off_t offset; char offset_r_[PADR_(off_t)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_sendto_args {
+	char s_l_[PADL_(int)]; int s; char s_r_[PADR_(int)];
+	char buf_l_[PADL_(caddr_t)]; caddr_t buf; char buf_r_[PADR_(caddr_t)];
+	char len_l_[PADL_(size_t)]; size_t len; char len_r_[PADR_(size_t)];
+	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+	char to_l_[PADL_(caddr_t)]; caddr_t to; char to_r_[PADR_(caddr_t)];
+	char tolen_l_[PADL_(int)]; int tolen; char tolen_r_[PADR_(int)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_recvfrom_args {
+	char s_l_[PADL_(int)]; int s; char s_r_[PADR_(int)];
+	char buf_l_[PADL_(caddr_t)]; caddr_t buf; char buf_r_[PADR_(caddr_t)];
+	char len_l_[PADL_(size_t)]; size_t len; char len_r_[PADR_(size_t)];
+	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+	char from_l_[PADL_(struct sockaddr *__restrict)]; struct sockaddr *__restrict from; char from_r_[PADR_(struct sockaddr *__restrict)];
+	char fromlenaddr_l_[PADL_(__socklen_t *__restrict)]; __socklen_t *__restrict fromlenaddr; char fromlenaddr_r_[PADR_(__socklen_t *__restrict)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_sendmsg_args {
+	char s_l_[PADL_(int)]; int s; char s_r_[PADR_(int)];
+	char msg_l_[PADL_(struct msghdr *)]; struct msghdr * msg; char msg_r_[PADR_(struct msghdr *)];
+	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_recvmsg_args {
+	char s_l_[PADL_(int)]; int s; char s_r_[PADR_(int)];
+	char msg_l_[PADL_(struct msghdr *)]; struct msghdr * msg; char msg_r_[PADR_(struct msghdr *)];
+	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
+struct metaio_sendfile_args {
+	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
+	char s_l_[PADL_(int)]; int s; char s_r_[PADR_(int)];
+	char offset_l_[PADL_(off_t)]; off_t offset; char offset_r_[PADR_(off_t)];
+	char nbytes_l_[PADL_(size_t)]; size_t nbytes; char nbytes_r_[PADR_(size_t)];
+	char hdtr_l_[PADL_(struct sf_hdtr *)]; struct sf_hdtr * hdtr; char hdtr_r_[PADR_(struct sf_hdtr *)];
+	char sbytes_l_[PADL_(off_t *)]; off_t * sbytes; char sbytes_r_[PADR_(off_t *)];
+	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
+};
 int	nosys(struct thread *, struct nosys_args *);
 void	sys_sys_exit(struct thread *, struct sys_exit_args *);
 int	sys_fork(struct thread *, struct fork_args *);
@@ -2178,6 +2291,23 @@ int	sys_utimensat(struct thread *, struct utimensat_args *);
 int	sys_numa_getaffinity(struct thread *, struct numa_getaffinity_args *);
 int	sys_numa_setaffinity(struct thread *, struct numa_setaffinity_args *);
 int	sys_fdatasync(struct thread *, struct fdatasync_args *);
+int	sys_metaio_read(struct thread *, struct metaio_read_args *);
+int	sys_metaio_write(struct thread *, struct metaio_write_args *);
+int	sys_metaio_mmap(struct thread *, struct metaio_mmap_args *);
+int	sys_fgetuuid(struct thread *, struct fgetuuid_args *);
+int	sys_getuuid(struct thread *, struct getuuid_args *);
+int	sys_lgetuuid(struct thread *, struct lgetuuid_args *);
+int	sys_metaio_readv(struct thread *, struct metaio_readv_args *);
+int	sys_metaio_writev(struct thread *, struct metaio_writev_args *);
+int	sys_metaio_pread(struct thread *, struct metaio_pread_args *);
+int	sys_metaio_pwrite(struct thread *, struct metaio_pwrite_args *);
+int	sys_metaio_preadv(struct thread *, struct metaio_preadv_args *);
+int	sys_metaio_pwritev(struct thread *, struct metaio_pwritev_args *);
+int	sys_metaio_sendto(struct thread *, struct metaio_sendto_args *);
+int	sys_metaio_recvfrom(struct thread *, struct metaio_recvfrom_args *);
+int	sys_metaio_sendmsg(struct thread *, struct metaio_sendmsg_args *);
+int	sys_metaio_recvmsg(struct thread *, struct metaio_recvmsg_args *);
+int	sys_metaio_sendfile(struct thread *, struct metaio_sendfile_args *);
 
 #ifdef COMPAT_43
 
@@ -2512,8 +2642,8 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_syscall	AUE_NULL
 #define	SYS_AUE_exit	AUE_EXIT
 #define	SYS_AUE_fork	AUE_FORK
-#define	SYS_AUE_read	AUE_NULL
-#define	SYS_AUE_write	AUE_NULL
+#define	SYS_AUE_read	AUE_READ
+#define	SYS_AUE_write	AUE_WRITE
 #define	SYS_AUE_open	AUE_OPEN_RWTC
 #define	SYS_AUE_close	AUE_CLOSE
 #define	SYS_AUE_wait4	AUE_WAIT4
@@ -2666,7 +2796,7 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_shmsys	AUE_SHMSYS
 #define	SYS_AUE_freebsd6_pread	AUE_PREAD
 #define	SYS_AUE_freebsd6_pwrite	AUE_PWRITE
-#define	SYS_AUE_setfib	AUE_NULL
+#define	SYS_AUE_setfib	AUE_SETFIB
 #define	SYS_AUE_ntp_adjtime	AUE_NTP_ADJTIME
 #define	SYS_AUE_setgid	AUE_SETGID
 #define	SYS_AUE_setegid	AUE_SETEGID
@@ -2720,9 +2850,9 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_openbsd_poll	AUE_POLL
 #define	SYS_AUE_issetugid	AUE_ISSETUGID
 #define	SYS_AUE_lchown	AUE_LCHOWN
-#define	SYS_AUE_aio_read	AUE_NULL
-#define	SYS_AUE_aio_write	AUE_NULL
-#define	SYS_AUE_lio_listio	AUE_NULL
+#define	SYS_AUE_aio_read	AUE_AIO_READ
+#define	SYS_AUE_aio_write	AUE_AIO_WRITE
+#define	SYS_AUE_lio_listio	AUE_LIO_LISTIO
 #define	SYS_AUE_getdents	AUE_O_GETDENTS
 #define	SYS_AUE_lchmod	AUE_LCHMOD
 #define	SYS_AUE_lutimes	AUE_LUTIMES
@@ -2747,12 +2877,12 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_getsid	AUE_GETSID
 #define	SYS_AUE_setresuid	AUE_SETRESUID
 #define	SYS_AUE_setresgid	AUE_SETRESGID
-#define	SYS_AUE_aio_return	AUE_NULL
-#define	SYS_AUE_aio_suspend	AUE_NULL
-#define	SYS_AUE_aio_cancel	AUE_NULL
-#define	SYS_AUE_aio_error	AUE_NULL
-#define	SYS_AUE_freebsd6_aio_read	AUE_NULL
-#define	SYS_AUE_freebsd6_aio_write	AUE_NULL
+#define	SYS_AUE_aio_return	AUE_AIO_RETURN
+#define	SYS_AUE_aio_suspend	AUE_AIO_SUSPEND
+#define	SYS_AUE_aio_cancel	AUE_AIO_CANCEL
+#define	SYS_AUE_aio_error	AUE_AIO_ERROR
+#define	SYS_AUE_freebsd6_aio_read	AUE_AIO_READ
+#define	SYS_AUE_freebsd6_aio_write	AUE_AIO_WRITE
 #define	SYS_AUE_freebsd6_lio_listio	AUE_NULL
 #define	SYS_AUE_yield	AUE_NULL
 #define	SYS_AUE_mlockall	AUE_MLOCKALL
@@ -2778,19 +2908,19 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_freebsd4_sigreturn	AUE_SIGRETURN
 #define	SYS_AUE_sigtimedwait	AUE_SIGWAIT
 #define	SYS_AUE_sigwaitinfo	AUE_NULL
-#define	SYS_AUE___acl_get_file	AUE_NULL
-#define	SYS_AUE___acl_set_file	AUE_NULL
-#define	SYS_AUE___acl_get_fd	AUE_NULL
-#define	SYS_AUE___acl_set_fd	AUE_NULL
-#define	SYS_AUE___acl_delete_file	AUE_NULL
-#define	SYS_AUE___acl_delete_fd	AUE_NULL
-#define	SYS_AUE___acl_aclcheck_file	AUE_NULL
-#define	SYS_AUE___acl_aclcheck_fd	AUE_NULL
+#define	SYS_AUE___acl_get_file	AUE_ACL_GET_FILE
+#define	SYS_AUE___acl_set_file	AUE_ACL_SET_FILE
+#define	SYS_AUE___acl_get_fd	AUE_ACL_GET_FD
+#define	SYS_AUE___acl_set_fd	AUE_ACL_SET_FD
+#define	SYS_AUE___acl_delete_file	AUE_ACL_DELETE_FILE
+#define	SYS_AUE___acl_delete_fd	AUE_ACL_DELETE_FD
+#define	SYS_AUE___acl_aclcheck_file	AUE_ACL_CHECK_FILE
+#define	SYS_AUE___acl_aclcheck_fd	AUE_ACL_CHECK_FD
 #define	SYS_AUE_extattrctl	AUE_EXTATTRCTL
 #define	SYS_AUE_extattr_set_file	AUE_EXTATTR_SET_FILE
 #define	SYS_AUE_extattr_get_file	AUE_EXTATTR_GET_FILE
 #define	SYS_AUE_extattr_delete_file	AUE_EXTATTR_DELETE_FILE
-#define	SYS_AUE_aio_waitcomplete	AUE_NULL
+#define	SYS_AUE_aio_waitcomplete	AUE_AIO_WAITCOMPLETE
 #define	SYS_AUE_getresuid	AUE_GETRESUID
 #define	SYS_AUE_getresgid	AUE_GETRESGID
 #define	SYS_AUE_kqueue	AUE_KQUEUE
@@ -2798,7 +2928,7 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_extattr_set_fd	AUE_EXTATTR_SET_FD
 #define	SYS_AUE_extattr_get_fd	AUE_EXTATTR_GET_FD
 #define	SYS_AUE_extattr_delete_fd	AUE_EXTATTR_DELETE_FD
-#define	SYS_AUE___setugid	AUE_NULL
+#define	SYS_AUE___setugid	AUE_SETUGID
 #define	SYS_AUE_eaccess	AUE_EACCESS
 #define	SYS_AUE_afs3_syscall	AUE_NULL
 #define	SYS_AUE_nmount	AUE_NMOUNT
@@ -2839,16 +2969,16 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_setcontext	AUE_NULL
 #define	SYS_AUE_swapcontext	AUE_NULL
 #define	SYS_AUE_swapoff	AUE_SWAPOFF
-#define	SYS_AUE___acl_get_link	AUE_NULL
-#define	SYS_AUE___acl_set_link	AUE_NULL
-#define	SYS_AUE___acl_delete_link	AUE_NULL
-#define	SYS_AUE___acl_aclcheck_link	AUE_NULL
+#define	SYS_AUE___acl_get_link	AUE_ACL_GET_LINK
+#define	SYS_AUE___acl_set_link	AUE_ACL_SET_LINK
+#define	SYS_AUE___acl_delete_link	AUE_ACL_DELETE_LINK
+#define	SYS_AUE___acl_aclcheck_link	AUE_ACL_CHECK_LINK
 #define	SYS_AUE_sigwait	AUE_SIGWAIT
-#define	SYS_AUE_thr_create	AUE_NULL
-#define	SYS_AUE_thr_exit	AUE_NULL
+#define	SYS_AUE_thr_create	AUE_THR_CREATE
+#define	SYS_AUE_thr_exit	AUE_THR_EXIT
 #define	SYS_AUE_thr_self	AUE_NULL
-#define	SYS_AUE_thr_kill	AUE_NULL
-#define	SYS_AUE_jail_attach	AUE_NULL
+#define	SYS_AUE_thr_kill	AUE_THR_KILL
+#define	SYS_AUE_jail_attach	AUE_JAIL_ATTACH
 #define	SYS_AUE_extattr_list_fd	AUE_EXTATTR_LIST_FD
 #define	SYS_AUE_extattr_list_file	AUE_EXTATTR_LIST_FILE
 #define	SYS_AUE_extattr_list_link	AUE_EXTATTR_LIST_LINK
@@ -2866,7 +2996,7 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_setaudit_addr	AUE_SETAUDIT_ADDR
 #define	SYS_AUE_auditctl	AUE_AUDITCTL
 #define	SYS_AUE__umtx_op	AUE_NULL
-#define	SYS_AUE_thr_new	AUE_NULL
+#define	SYS_AUE_thr_new	AUE_THR_NEW
 #define	SYS_AUE_sigqueue	AUE_NULL
 #define	SYS_AUE_kmq_open	AUE_NULL
 #define	SYS_AUE_kmq_setattr	AUE_NULL
@@ -2876,19 +3006,19 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_kmq_unlink	AUE_NULL
 #define	SYS_AUE_abort2	AUE_NULL
 #define	SYS_AUE_thr_set_name	AUE_NULL
-#define	SYS_AUE_aio_fsync	AUE_NULL
+#define	SYS_AUE_aio_fsync	AUE_AIO_FSYNC
 #define	SYS_AUE_rtprio_thread	AUE_RTPRIO
-#define	SYS_AUE_sctp_peeloff	AUE_NULL
-#define	SYS_AUE_sctp_generic_sendmsg	AUE_NULL
-#define	SYS_AUE_sctp_generic_sendmsg_iov	AUE_NULL
-#define	SYS_AUE_sctp_generic_recvmsg	AUE_NULL
+#define	SYS_AUE_sctp_peeloff	AUE_SCTP_PEELOFF
+#define	SYS_AUE_sctp_generic_sendmsg	AUE_SCTP_GENERIC_SENDMSG
+#define	SYS_AUE_sctp_generic_sendmsg_iov	AUE_SCTP_GENERIC_SENDMSG_IOV
+#define	SYS_AUE_sctp_generic_recvmsg	AUE_SCTP_GENERIC_RECVMSG
 #define	SYS_AUE_pread	AUE_PREAD
 #define	SYS_AUE_pwrite	AUE_PWRITE
 #define	SYS_AUE_mmap	AUE_MMAP
 #define	SYS_AUE_lseek	AUE_LSEEK
 #define	SYS_AUE_truncate	AUE_TRUNCATE
 #define	SYS_AUE_ftruncate	AUE_FTRUNCATE
-#define	SYS_AUE_thr_kill2	AUE_KILL
+#define	SYS_AUE_thr_kill2	AUE_THR_KILL2
 #define	SYS_AUE_shm_open	AUE_SHMOPEN
 #define	SYS_AUE_shm_unlink	AUE_SHMUNLINK
 #define	SYS_AUE_cpuset	AUE_NULL
@@ -2913,9 +3043,9 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_unlinkat	AUE_UNLINKAT
 #define	SYS_AUE_posix_openpt	AUE_POSIX_OPENPT
 #define	SYS_AUE_gssd_syscall	AUE_NULL
-#define	SYS_AUE_jail_get	AUE_NULL
-#define	SYS_AUE_jail_set	AUE_NULL
-#define	SYS_AUE_jail_remove	AUE_NULL
+#define	SYS_AUE_jail_get	AUE_JAIL_GET
+#define	SYS_AUE_jail_set	AUE_JAIL_SET
+#define	SYS_AUE_jail_remove	AUE_JAIL_REMOVE
 #define	SYS_AUE_closefrom	AUE_CLOSEFROM
 #define	SYS_AUE___semctl	AUE_SEMCTL
 #define	SYS_AUE_msgctl	AUE_MSGCTL
@@ -2928,15 +3058,15 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_pdkill	AUE_PDKILL
 #define	SYS_AUE_pdgetpid	AUE_PDGETPID
 #define	SYS_AUE_pselect	AUE_SELECT
-#define	SYS_AUE_getloginclass	AUE_NULL
-#define	SYS_AUE_setloginclass	AUE_NULL
+#define	SYS_AUE_getloginclass	AUE_GETLOGINCLASS
+#define	SYS_AUE_setloginclass	AUE_SETLOGINCLASS
 #define	SYS_AUE_rctl_get_racct	AUE_NULL
 #define	SYS_AUE_rctl_get_rules	AUE_NULL
 #define	SYS_AUE_rctl_get_limits	AUE_NULL
 #define	SYS_AUE_rctl_add_rule	AUE_NULL
 #define	SYS_AUE_rctl_remove_rule	AUE_NULL
-#define	SYS_AUE_posix_fallocate	AUE_NULL
-#define	SYS_AUE_posix_fadvise	AUE_NULL
+#define	SYS_AUE_posix_fallocate	AUE_POSIX_FALLOCATE
+#define	SYS_AUE_posix_fadvise	AUE_POSIX_FADVISE
 #define	SYS_AUE_wait6	AUE_WAIT6
 #define	SYS_AUE_cap_rights_limit	AUE_CAP_RIGHTS_LIMIT
 #define	SYS_AUE_cap_ioctls_limit	AUE_CAP_IOCTLS_LIMIT
@@ -2948,14 +3078,31 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_chflagsat	AUE_CHFLAGSAT
 #define	SYS_AUE_accept4	AUE_ACCEPT
 #define	SYS_AUE_pipe2	AUE_PIPE
-#define	SYS_AUE_aio_mlock	AUE_NULL
-#define	SYS_AUE_procctl	AUE_NULL
+#define	SYS_AUE_aio_mlock	AUE_AIO_MLOCK
+#define	SYS_AUE_procctl	AUE_PROCCTL
 #define	SYS_AUE_ppoll	AUE_POLL
 #define	SYS_AUE_futimens	AUE_FUTIMES
 #define	SYS_AUE_utimensat	AUE_FUTIMESAT
 #define	SYS_AUE_numa_getaffinity	AUE_NULL
 #define	SYS_AUE_numa_setaffinity	AUE_NULL
 #define	SYS_AUE_fdatasync	AUE_FSYNC
+#define	SYS_AUE_metaio_read	AUE_READ
+#define	SYS_AUE_metaio_write	AUE_WRITE
+#define	SYS_AUE_metaio_mmap	AUE_MMAP
+#define	SYS_AUE_fgetuuid	AUE_FGETUUID
+#define	SYS_AUE_getuuid	AUE_GETUUID
+#define	SYS_AUE_lgetuuid	AUE_LGETUUID
+#define	SYS_AUE_metaio_readv	AUE_READV
+#define	SYS_AUE_metaio_writev	AUE_WRITEV
+#define	SYS_AUE_metaio_pread	AUE_PREAD
+#define	SYS_AUE_metaio_pwrite	AUE_PWRITE
+#define	SYS_AUE_metaio_preadv	AUE_PREADV
+#define	SYS_AUE_metaio_pwritev	AUE_PWRITEV
+#define	SYS_AUE_metaio_sendto	AUE_SENDTO
+#define	SYS_AUE_metaio_recvfrom	AUE_RECVFROM
+#define	SYS_AUE_metaio_sendmsg	AUE_SENDMSG
+#define	SYS_AUE_metaio_recvmsg	AUE_RECVMSG
+#define	SYS_AUE_metaio_sendfile	AUE_SENDFILE
 
 #undef PAD_
 #undef PADL_

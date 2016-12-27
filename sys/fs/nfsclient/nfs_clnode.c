@@ -46,6 +46,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 #include <sys/sysctl.h>
 #include <sys/taskqueue.h>
+#include <sys/uuid.h>
 #include <sys/vnode.h>
 
 #include <vm/uma.h>
@@ -134,6 +135,15 @@ ncl_nget(struct mount *mntp, u_int8_t *fhp, int fhsize, struct nfsnode **npp,
 	vp->v_bufobj.bo_ops = &buf_ops_newnfs;
 	vp->v_data = np;
 	np->n_vnode = vp;
+
+	/*
+	 * Use the NFS file handle to generate an initial UUID.  This has the
+	 * interesting property that if the NFS server is generating its UUIDs
+	 * the same way, they will match.  However, no attempt is made to
+	 * ensure these are globally unique or consistent.
+	 */
+	vn_uuid_from_data(vp, fhp, fhsize);
+
 	/* 
 	 * Initialize the mutex even if the vnode is going to be a loser.
 	 * This simplifies the logic in reclaim, which can then unconditionally

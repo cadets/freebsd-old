@@ -70,6 +70,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/ktrace.h>
 #endif
 
+#include <security/audit/audit.h>
+
 #include <vm/uma.h>
 
 static MALLOC_DEFINE(M_KQUEUE, "kqueue", "memory for kqueue system");
@@ -120,8 +122,8 @@ static fo_close_t	kqueue_close;
 static fo_fill_kinfo_t	kqueue_fill_kinfo;
 
 static struct fileops kqueueops = {
-	.fo_read = invfo_rdwr,
-	.fo_write = invfo_rdwr,
+	.fo_read = invfo_read,
+	.fo_write = invfo_write,
 	.fo_truncate = invfo_truncate,
 	.fo_ioctl = kqueue_ioctl,
 	.fo_poll = kqueue_poll,
@@ -854,6 +856,9 @@ kern_kqueue(struct thread *td, int flags, struct filecaps *fcaps)
 	fdrop(fp, td);
 
 	td->td_retval[0] = fd;
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_FD1(fd);
+#endif
 	return (0);
 }
 

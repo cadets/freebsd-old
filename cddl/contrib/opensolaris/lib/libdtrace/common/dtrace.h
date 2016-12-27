@@ -198,6 +198,7 @@ typedef struct dtrace_probedata {
 	dtrace_flowkind_t dtpda_flow;		/* flow kind */
 	const char *dtpda_prefix;		/* recommended flow prefix */
 	int dtpda_indent;			/* recommended flow indent */
+	uint64_t dtpda_timestamp;		/* hrtime of snapshot */
 } dtrace_probedata_t;
 
 typedef int dtrace_consume_probe_f(const dtrace_probedata_t *, void *);

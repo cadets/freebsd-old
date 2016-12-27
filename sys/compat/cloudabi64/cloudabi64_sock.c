@@ -83,7 +83,7 @@ cloudabi64_sys_sock_recv(struct thread *td,
 		msghdr.msg_flags |= MSG_WAITALL;
 
 	/* TODO(ed): Add file descriptor passing. */
-	error = kern_recvit(td, uap->sock, &msghdr, UIO_SYSSPACE, NULL);
+	error = kern_recvit(td, uap->sock, &msghdr, UIO_SYSSPACE, NULL, NULL);
 	free(msghdr.msg_iov, M_SOCKET);
 	if (error != 0)
 		return (error);
@@ -133,7 +133,8 @@ cloudabi64_sys_sock_send(struct thread *td,
 		flags |= MSG_EOR;
 
 	/* TODO(ed): Add file descriptor passing. */
-	error = kern_sendit(td, uap->sock, &msghdr, flags, NULL, UIO_USERSPACE);
+	error = kern_sendit(td, uap->sock, &msghdr, flags, NULL,
+	    UIO_USERSPACE, NULL);
 	free(msghdr.msg_iov, M_SOCKET);
 	if (error != 0)
 		return (error);

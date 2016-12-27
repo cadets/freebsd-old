@@ -1645,6 +1645,7 @@ ffs_vgetf(mp, ino, flags, vpp, ffs_flags)
 	struct buf *bp;
 	struct vnode *vp;
 	struct cdev *dev;
+	fhandle_t fh;
 	int error;
 
 	error = vfs_hash_get(mp, ino, flags, curthread, vpp, NULL, NULL);
@@ -1775,6 +1776,25 @@ ffs_vgetf(mp, ino, flags, vpp, ffs_flags)
 			DIP_SET(ip, i_gen, ip->i_gen);
 		}
 	}
+
+	/*
+	 * Generate a UUID for the vnode.  Retrieving a file handle should
+	 * never fail on UFS since it is derived from inode properties.  (We
+	 * must do UUID initialisation this late because ip->i_gen has only
+	 * become stable just prior to this.)  The UUID must never change
+	 * after this point as it will be exposed for outside consumers to
+	 * use.
+	 */
+	bzero(&fh, sizeof(fh));
+	fh.fh_fsid = vp->v_mount->mnt_stat.f_fsid;
+	error = VOP_VPTOFH(vp, &fh.fh_fid);
+	if (error) {
+		vput(vp);
+		*vpp = NULL;
+		return (error);
+	}
+	vn_uuid_from_data(vp, &fh, sizeof(fh));
+
 #ifdef MAC
 	if ((mp->mnt_flag & MNT_MULTILABEL) && ip->i_mode) {
 		/*

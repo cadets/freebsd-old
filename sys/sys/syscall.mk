@@ -396,4 +396,21 @@ MIASM =  \
 	utimensat.o \
 	numa_getaffinity.o \
 	numa_setaffinity.o \
-	fdatasync.o
+	fdatasync.o \
+	metaio_read.o \
+	metaio_write.o \
+	metaio_mmap.o \
+	fgetuuid.o \
+	getuuid.o \
+	lgetuuid.o \
+	metaio_readv.o \
+	metaio_writev.o \
+	metaio_pread.o \
+	metaio_pwrite.o \
+	metaio_preadv.o \
+	metaio_pwritev.o \
+	metaio_sendto.o \
+	metaio_recvfrom.o \
+	metaio_sendmsg.o \
+	metaio_recvmsg.o \
+	metaio_sendfile.o
