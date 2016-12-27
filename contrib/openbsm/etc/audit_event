@@ -604,6 +604,12 @@
 43241:AUE_FGETUUID:fgetuuid(2):fa
 43242:AUE_GETUUID:getuuid(2):fa
 43243:AUE_LGETUUID:pgetuuid(2):fa
+43244:AUE_SEMDESTROY:sem_destroy(2):ip
+43245:AUE_SEMGETVALUE:sem_getvalue(2):ip
+43246:AUE_SEMINIT:sem_init(2):ip
+43247:AUE_SEMPOST:sem_post(2):ip
+43248:AUE_SEMTRYWAIT:sem_trywait(2):ip
+43249:AUE_SEMTIMEDWAIT:sem_timedwait(2):ip
 #
 # Solaris userspace events.
 #
