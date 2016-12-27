@@ -712,6 +712,7 @@ sys_ksem_close(struct thread *td, struct ksem_close_args *uap)
 	int error;
 
 	/* No capability rights required to close a semaphore. */
+	AUDIT_ARG_FD(uap->id);
 	error = ksem_get(td, uap->id, cap_rights_init(&rights), &fp);
 	if (error)
 		return (error);
@@ -738,6 +739,7 @@ sys_ksem_post(struct thread *td, struct ksem_post_args *uap)
 	struct ksem *ks;
 	int error;
 
+	AUDIT_ARG_FD(uap->id);
 	error = ksem_get(td, uap->id,
 	    cap_rights_init(&rights, CAP_SEM_POST), &fp);
 	if (error)
@@ -832,6 +834,7 @@ kern_sem_wait(struct thread *td, semid_t id, int tryflag,
 	int error;
 
 	DP((">>> kern_sem_wait entered! pid=%d\n", (int)td->td_proc->p_pid));
+	AUDIT_ARG_FD(id);
 	error = ksem_get(td, id, cap_rights_init(&rights, CAP_SEM_WAIT), &fp);
 	if (error)
 		return (error);
@@ -902,6 +905,7 @@ sys_ksem_getvalue(struct thread *td, struct ksem_getvalue_args *uap)
 	struct ksem *ks;
 	int error, val;
 
+	AUDIT_ARG_FD(uap->id);
 	error = ksem_get(td, uap->id,
 	    cap_rights_init(&rights, CAP_SEM_GETVALUE), &fp);
 	if (error)
@@ -941,6 +945,7 @@ sys_ksem_destroy(struct thread *td, struct ksem_destroy_args *uap)
 	int error;
 
 	/* No capability rights required to close a semaphore. */
+	AUDIT_ARG_FD(uap->id);
 	error = ksem_get(td, uap->id, cap_rights_init(&rights), &fp);
 	if (error)
 		return (error);

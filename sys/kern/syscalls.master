@@ -714,18 +714,18 @@
 398	AUE_FHSTATFS	STD	{ int fhstatfs(const struct fhandle *u_fhp, \
 				    struct statfs *buf); }
 399	AUE_NULL	UNIMPL	nosys
-400	AUE_NULL	NOSTD	{ int ksem_close(semid_t id); }
-401	AUE_NULL	NOSTD	{ int ksem_post(semid_t id); }
-402	AUE_NULL	NOSTD	{ int ksem_wait(semid_t id); }
-403	AUE_NULL	NOSTD	{ int ksem_trywait(semid_t id); }
-404	AUE_NULL	NOSTD	{ int ksem_init(semid_t *idp, \
+400	AUE_SEMCLOSE	NOSTD	{ int ksem_close(semid_t id); }
+401	AUE_SEMPOST	NOSTD	{ int ksem_post(semid_t id); }
+402	AUE_SEMWAIT	NOSTD	{ int ksem_wait(semid_t id); }
+403	AUE_SEMTRYWAIT	NOSTD	{ int ksem_trywait(semid_t id); }
+404	AUE_SEMINIT	NOSTD	{ int ksem_init(semid_t *idp, \
 				    unsigned int value); }
-405	AUE_NULL	NOSTD	{ int ksem_open(semid_t *idp, \
+405	AUE_SEMOPEN	NOSTD	{ int ksem_open(semid_t *idp, \
 				    const char *name, int oflag, \
 				    mode_t mode, unsigned int value); }
-406	AUE_NULL	NOSTD	{ int ksem_unlink(const char *name); }
-407	AUE_NULL	NOSTD	{ int ksem_getvalue(semid_t id, int *val); }
-408	AUE_NULL	NOSTD	{ int ksem_destroy(semid_t id); }
+406	AUE_SEMUNLINK	NOSTD	{ int ksem_unlink(const char *name); }
+407	AUE_SEMGETVALUE	NOSTD	{ int ksem_getvalue(semid_t id, int *val); }
+408	AUE_SEMDESTROY	NOSTD	{ int ksem_destroy(semid_t id); }
 409	AUE_NULL	STD	{ int __mac_get_pid(pid_t pid, \
 				    struct mac *mac_p); }
 410	AUE_NULL	STD	{ int __mac_get_link(const char *path_p, \
@@ -787,7 +787,7 @@
 				    const char *path, int attrnamespace, \
 				    void *data, size_t nbytes); }
 440	AUE_NULL	UNIMPL	kse_switchin
-441	AUE_NULL	NOSTD	{ int ksem_timedwait(semid_t id, \
+441	AUE_SEMTIMEDWAIT	NOSTD	{ int ksem_timedwait(semid_t id, \
 				    const struct timespec *abstime); }
 442	AUE_NULL	STD	{ int thr_suspend( \
 				    const struct timespec *timeout); }
