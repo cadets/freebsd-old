@@ -651,6 +651,7 @@
 #define	AUE_SEMPOST		43247	/* FreeBSD-specific. */
 #define	AUE_SEMTRYWAIT		43248	/* FreeBSD-specific. */
 #define	AUE_SEMTIMEDWAIT	43249	/* FreeBSD-specific. */
+#define	AUE_SEMWAIT		43250	/* FreeBSD-specific. */
 
 /*
  * Darwin BSM uses a number of AUE_O_* definitions, which are aliased to the
