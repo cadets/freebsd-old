@@ -420,6 +420,9 @@ ksem_remove(char *path, Fnv32_t fnv, struct ucred *ucred)
 		if (map->km_fnv != fnv)
 			continue;
 		if (strcmp(map->km_path, path) == 0) {
+#ifdef KDTRACE_HOOKS
+			AUDIT_ARG_OBJUUID1(&map->km_ksem->ks_uuid);
+#endif
 #ifdef MAC
 			error = mac_posixsem_check_unlink(ucred, map->km_ksem);
 			if (error)
