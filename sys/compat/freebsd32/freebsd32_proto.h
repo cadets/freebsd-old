@@ -1137,7 +1137,7 @@ int	freebsd10_freebsd32_pipe(struct thread *, struct freebsd10_freebsd32_pipe_ar
 #define	FREEBSD32_SYS_AUE_ofreebsd32_sigprocmask	AUE_SIGPROCMASK
 #define	FREEBSD32_SYS_AUE_ofreebsd32_sigpending	AUE_SIGPENDING
 #define	FREEBSD32_SYS_AUE_freebsd32_sigaltstack	AUE_SIGALTSTACK
-#define	FREEBSD32_SYS_AUE_freebsd32_ioctl	AUE_NULL
+#define	FREEBSD32_SYS_AUE_freebsd32_ioctl	AUE_IOCTL
 #define	FREEBSD32_SYS_AUE_freebsd32_execve	AUE_EXECVE
 #define	FREEBSD32_SYS_AUE_ofreebsd32_fstat	AUE_FSTAT
 #define	FREEBSD32_SYS_AUE_ofreebsd32_getpagesize	AUE_NULL
@@ -1146,7 +1146,7 @@ int	freebsd10_freebsd32_pipe(struct thread *, struct freebsd10_freebsd32_pipe_ar
 #define	FREEBSD32_SYS_AUE_freebsd32_getitimer	AUE_GETITIMER
 #define	FREEBSD32_SYS_AUE_freebsd32_fcntl	AUE_FCNTL
 #define	FREEBSD32_SYS_AUE_freebsd32_select	AUE_SELECT
-#define	FREEBSD32_SYS_AUE_ofreebsd32_sigreturn	AUE_NULL
+#define	FREEBSD32_SYS_AUE_ofreebsd32_sigreturn	AUE_SIGRETURN
 #define	FREEBSD32_SYS_AUE_ofreebsd32_sigvec	AUE_O_SIGVEC
 #define	FREEBSD32_SYS_AUE_ofreebsd32_sigblock	AUE_O_SIGBLOCK
 #define	FREEBSD32_SYS_AUE_ofreebsd32_sigsetmask	AUE_O_SIGSETMASK
