@@ -1192,6 +1192,31 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		}
 		break;
 
+	case AUE_MQ_OPEN:
+		if (ARG_IS_VALID(kar, ARG_MODE)) {
+			tok = au_to_arg32(3, "mode", ar->ar_arg_mode);
+			kau_write(rec, tok);
+		}
+		if (ARG_IS_VALID(kar, ARG_FFLAGS)) {
+			tok = au_to_arg32(2, "flags", ar->ar_arg_fflags);
+			kau_write(rec, tok);
+		}
+		/* FALLTHROUGH */
+
+	case AUE_MQ_UNLINK:
+		UPATH1_TOKENS;
+		break;
+
+	case AUE_MQ_NOTIFY:
+	case AUE_MQ_SETATTR:
+	case AUE_MQ_TIMEDRECEIVE:
+	case AUE_MQ_TIMEDSEND:
+		if (ARG_IS_VALID(kar, ARG_FD)) {
+			tok = au_to_arg32(1, "mqd", ar->ar_arg_fd);
+			kau_write(rec, tok);
+		}
+		break;
+
 	case AUE_MSGSYS:	/* XXXRW: map into individual operations ...? */
 	case AUE_MSGCTL:
 		ar->ar_event = audit_msgctl_to_event(ar->ar_arg_svipc_cmd);
