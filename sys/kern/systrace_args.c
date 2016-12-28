@@ -3333,6 +3333,187 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 1;
 		break;
 	}
+	/* metaio_read */
+	case 571: {
+		struct metaio_read_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->buf; /* void * */
+		uarg[2] = p->nbyte; /* size_t */
+		uarg[3] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 4;
+		break;
+	}
+	/* metaio_write */
+	case 572: {
+		struct metaio_write_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->buf; /* void * */
+		uarg[2] = p->nbyte; /* size_t */
+		uarg[3] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 4;
+		break;
+	}
+	/* metaio_mmap */
+	case 573: {
+		struct metaio_mmap_args *p = params;
+		uarg[0] = (intptr_t) p->addr; /* caddr_t */
+		uarg[1] = p->len; /* size_t */
+		iarg[2] = p->prot; /* int */
+		iarg[3] = p->flags; /* int */
+		iarg[4] = p->fd; /* int */
+		iarg[5] = p->pos; /* off_t */
+		uarg[6] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 7;
+		break;
+	}
+	/* fgetuuid */
+	case 574: {
+		struct fgetuuid_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->uuidp; /* struct uuid * */
+		*n_args = 2;
+		break;
+	}
+	/* getuuid */
+	case 575: {
+		struct getuuid_args *p = params;
+		uarg[0] = (intptr_t) p->path; /* const char * */
+		uarg[1] = (intptr_t) p->uuidp; /* struct uuid * */
+		*n_args = 2;
+		break;
+	}
+	/* lgetuuid */
+	case 576: {
+		struct lgetuuid_args *p = params;
+		uarg[0] = (intptr_t) p->path; /* const char * */
+		uarg[1] = (intptr_t) p->uuidp; /* struct uuid * */
+		*n_args = 2;
+		break;
+	}
+	/* metaio_readv */
+	case 577: {
+		struct metaio_readv_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->iovp; /* struct iovec * */
+		uarg[2] = p->iovcnt; /* u_int */
+		uarg[3] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 4;
+		break;
+	}
+	/* metaio_writev */
+	case 578: {
+		struct metaio_writev_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->iovp; /* struct iovec * */
+		uarg[2] = p->iovcnt; /* u_int */
+		uarg[3] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 4;
+		break;
+	}
+	/* metaio_pread */
+	case 579: {
+		struct metaio_pread_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->buf; /* void * */
+		uarg[2] = p->nbyte; /* size_t */
+		iarg[3] = p->offset; /* off_t */
+		uarg[4] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 5;
+		break;
+	}
+	/* metaio_pwrite */
+	case 580: {
+		struct metaio_pwrite_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->buf; /* const void * */
+		uarg[2] = p->nbyte; /* size_t */
+		iarg[3] = p->offset; /* off_t */
+		uarg[4] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 5;
+		break;
+	}
+	/* metaio_preadv */
+	case 581: {
+		struct metaio_preadv_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->iovp; /* struct iovec * */
+		uarg[2] = p->iovcnt; /* u_int */
+		iarg[3] = p->offset; /* off_t */
+		uarg[4] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 5;
+		break;
+	}
+	/* metaio_pwritev */
+	case 582: {
+		struct metaio_pwritev_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->iovp; /* struct iovec * */
+		uarg[2] = p->iovcnt; /* u_int */
+		iarg[3] = p->offset; /* off_t */
+		uarg[4] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 5;
+		break;
+	}
+	/* metaio_sendto */
+	case 583: {
+		struct metaio_sendto_args *p = params;
+		iarg[0] = p->s; /* int */
+		uarg[1] = (intptr_t) p->buf; /* caddr_t */
+		uarg[2] = p->len; /* size_t */
+		iarg[3] = p->flags; /* int */
+		uarg[4] = (intptr_t) p->to; /* caddr_t */
+		iarg[5] = p->tolen; /* int */
+		uarg[6] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 7;
+		break;
+	}
+	/* metaio_recvfrom */
+	case 584: {
+		struct metaio_recvfrom_args *p = params;
+		iarg[0] = p->s; /* int */
+		uarg[1] = (intptr_t) p->buf; /* caddr_t */
+		uarg[2] = p->len; /* size_t */
+		iarg[3] = p->flags; /* int */
+		uarg[4] = (intptr_t) p->from; /* struct sockaddr * */
+		uarg[5] = (intptr_t) p->fromlenaddr; /* __socklen_t * */
+		uarg[6] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 7;
+		break;
+	}
+	/* metaio_sendmsg */
+	case 585: {
+		struct metaio_sendmsg_args *p = params;
+		iarg[0] = p->s; /* int */
+		uarg[1] = (intptr_t) p->msg; /* struct msghdr * */
+		iarg[2] = p->flags; /* int */
+		uarg[3] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 4;
+		break;
+	}
+	/* metaio_recvmsg */
+	case 586: {
+		struct metaio_recvmsg_args *p = params;
+		iarg[0] = p->s; /* int */
+		uarg[1] = (intptr_t) p->msg; /* struct msghdr * */
+		iarg[2] = p->flags; /* int */
+		uarg[3] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 4;
+		break;
+	}
+	/* metaio_sendfile */
+	case 587: {
+		struct metaio_sendfile_args *p = params;
+		iarg[0] = p->fd; /* int */
+		iarg[1] = p->s; /* int */
+		iarg[2] = p->offset; /* off_t */
+		uarg[3] = p->nbytes; /* size_t */
+		uarg[4] = (intptr_t) p->hdtr; /* struct sf_hdtr * */
+		uarg[5] = (intptr_t) p->sbytes; /* off_t * */
+		iarg[6] = p->flags; /* int */
+		uarg[7] = (intptr_t) p->miop; /* struct metaio * */
+		*n_args = 8;
+		break;
+	}
 	default:
 		*n_args = 0;
 		break;
@@ -8879,6 +9060,362 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
+	/* metaio_read */
+	case 571:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "void *";
+			break;
+		case 2:
+			p = "size_t";
+			break;
+		case 3:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_write */
+	case 572:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "void *";
+			break;
+		case 2:
+			p = "size_t";
+			break;
+		case 3:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_mmap */
+	case 573:
+		switch(ndx) {
+		case 0:
+			p = "caddr_t";
+			break;
+		case 1:
+			p = "size_t";
+			break;
+		case 2:
+			p = "int";
+			break;
+		case 3:
+			p = "int";
+			break;
+		case 4:
+			p = "int";
+			break;
+		case 5:
+			p = "off_t";
+			break;
+		case 6:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* fgetuuid */
+	case 574:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "struct uuid *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* getuuid */
+	case 575:
+		switch(ndx) {
+		case 0:
+			p = "const char *";
+			break;
+		case 1:
+			p = "struct uuid *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* lgetuuid */
+	case 576:
+		switch(ndx) {
+		case 0:
+			p = "const char *";
+			break;
+		case 1:
+			p = "struct uuid *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_readv */
+	case 577:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "struct iovec *";
+			break;
+		case 2:
+			p = "u_int";
+			break;
+		case 3:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_writev */
+	case 578:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "struct iovec *";
+			break;
+		case 2:
+			p = "u_int";
+			break;
+		case 3:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_pread */
+	case 579:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "void *";
+			break;
+		case 2:
+			p = "size_t";
+			break;
+		case 3:
+			p = "off_t";
+			break;
+		case 4:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_pwrite */
+	case 580:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "const void *";
+			break;
+		case 2:
+			p = "size_t";
+			break;
+		case 3:
+			p = "off_t";
+			break;
+		case 4:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_preadv */
+	case 581:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "struct iovec *";
+			break;
+		case 2:
+			p = "u_int";
+			break;
+		case 3:
+			p = "off_t";
+			break;
+		case 4:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_pwritev */
+	case 582:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "struct iovec *";
+			break;
+		case 2:
+			p = "u_int";
+			break;
+		case 3:
+			p = "off_t";
+			break;
+		case 4:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_sendto */
+	case 583:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "caddr_t";
+			break;
+		case 2:
+			p = "size_t";
+			break;
+		case 3:
+			p = "int";
+			break;
+		case 4:
+			p = "caddr_t";
+			break;
+		case 5:
+			p = "int";
+			break;
+		case 6:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_recvfrom */
+	case 584:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "caddr_t";
+			break;
+		case 2:
+			p = "size_t";
+			break;
+		case 3:
+			p = "int";
+			break;
+		case 4:
+			p = "struct sockaddr *";
+			break;
+		case 5:
+			p = "__socklen_t *";
+			break;
+		case 6:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_sendmsg */
+	case 585:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "struct msghdr *";
+			break;
+		case 2:
+			p = "int";
+			break;
+		case 3:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_recvmsg */
+	case 586:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "struct msghdr *";
+			break;
+		case 2:
+			p = "int";
+			break;
+		case 3:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* metaio_sendfile */
+	case 587:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "int";
+			break;
+		case 2:
+			p = "off_t";
+			break;
+		case 3:
+			p = "size_t";
+			break;
+		case 4:
+			p = "struct sf_hdtr *";
+			break;
+		case 5:
+			p = "off_t *";
+			break;
+		case 6:
+			p = "int";
+			break;
+		case 7:
+			p = "struct metaio *";
+			break;
+		default:
+			break;
+		};
+		break;
 	default:
 		break;
 	};
@@ -10797,6 +11334,91 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		break;
 	/* fdatasync */
 	case 550:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* metaio_read */
+	case 571:
+		if (ndx == 0 || ndx == 1)
+			p = "ssize_t";
+		break;
+	/* metaio_write */
+	case 572:
+		if (ndx == 0 || ndx == 1)
+			p = "ssize_t";
+		break;
+	/* metaio_mmap */
+	case 573:
+		if (ndx == 0 || ndx == 1)
+			p = "caddr_t";
+		break;
+	/* fgetuuid */
+	case 574:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* getuuid */
+	case 575:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* lgetuuid */
+	case 576:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* metaio_readv */
+	case 577:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* metaio_writev */
+	case 578:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* metaio_pread */
+	case 579:
+		if (ndx == 0 || ndx == 1)
+			p = "ssize_t";
+		break;
+	/* metaio_pwrite */
+	case 580:
+		if (ndx == 0 || ndx == 1)
+			p = "ssize_t";
+		break;
+	/* metaio_preadv */
+	case 581:
+		if (ndx == 0 || ndx == 1)
+			p = "ssize_t";
+		break;
+	/* metaio_pwritev */
+	case 582:
+		if (ndx == 0 || ndx == 1)
+			p = "ssize_t";
+		break;
+	/* metaio_sendto */
+	case 583:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* metaio_recvfrom */
+	case 584:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* metaio_sendmsg */
+	case 585:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* metaio_recvmsg */
+	case 586:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* metaio_sendfile */
+	case 587:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;

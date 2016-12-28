@@ -1604,7 +1604,7 @@ svr4_do_putmsg(td, uap, fp)
 			aiov.iov_base = dat.buf;
 			aiov.iov_len = dat.len;
 			error = kern_sendit(td, uap->fd, &msg, uap->flags,
-			    NULL, UIO_USERSPACE);
+			    NULL, UIO_USERSPACE, NULL);
 			DPRINTF(("sendto_request error: %d\n", error));
 			*retval = 0;
 			return error;

@@ -254,6 +254,9 @@ audit_record_ctor(void *mem, int size, void *arg, int flags)
 	ar->k_ar.ar_subj_pid = td->td_proc->p_pid;
 	ar->k_ar.ar_subj_amask = cred->cr_audit.ai_mask;
 	ar->k_ar.ar_subj_term_addr = cred->cr_audit.ai_termid;
+#ifdef KDTRACE_HOOKS
+	ar->k_ar.ar_subj_tid = td->td_tid;
+#endif
 
 	/*
 	 * If this process is jailed, make sure we capture the name of the
@@ -496,6 +499,24 @@ audit_commit(struct kaudit_record *ar, int error, int retval)
 	case AUE_AUDITON:
 		/* Convert the auditon() command to an event. */
 		ar->k_ar.ar_event = auditon_command_event(ar->k_ar.ar_arg_cmd);
+		break;
+
+	case AUE_MSGSYS:
+		if (ARG_IS_VALID(ar, ARG_SVIPC_WHICH))
+			ar->k_ar.ar_event =
+			    audit_msgsys_to_event(ar->k_ar.ar_arg_svipc_which);
+		break;
+
+	case AUE_SEMSYS:
+		if (ARG_IS_VALID(ar, ARG_SVIPC_WHICH))
+			ar->k_ar.ar_event =
+			    audit_semsys_to_event(ar->k_ar.ar_arg_svipc_which);
+		break;
+
+	case AUE_SHMSYS:
+		if (ARG_IS_VALID(ar, ARG_SVIPC_WHICH))
+			ar->k_ar.ar_event =
+			    audit_shmsys_to_event(ar->k_ar.ar_arg_svipc_which);
 		break;
 	}
 

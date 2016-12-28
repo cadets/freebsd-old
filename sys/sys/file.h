@@ -45,6 +45,7 @@
 #include <vm/vm.h>
 
 struct filedesc;
+struct metaio;
 struct stat;
 struct thread;
 struct uio;
@@ -76,6 +77,7 @@ struct filecaps;
 struct kaiocb;
 struct kinfo_file;
 struct ucred;
+struct uuid;
 
 #define	FOF_OFFSET	0x01	/* Use the offset in uio argument */
 #define	FOF_NOLOCK	0x02	/* Do not take FOFFSET_LOCK */
@@ -94,6 +96,12 @@ foffset_get(struct file *fp)
 }
 
 typedef int fo_rdwr_t(struct file *fp, struct uio *uio,
+		    struct ucred *active_cred, int flags,
+		    struct thread *td);
+typedef int fo_read_t(struct file *fp, struct uio *uio,
+		    struct ucred *active_cred, int flags,
+		    struct thread *td, struct metaio *miop);
+typedef int fo_write_t(struct file *fp, struct uio *uio,
 		    struct ucred *active_cred, int flags,
 		    struct thread *td);
 typedef	int fo_truncate_t(struct file *fp, off_t length,
@@ -119,13 +127,15 @@ typedef int fo_fill_kinfo_t(struct file *fp, struct kinfo_file *kif,
 		    struct filedesc *fdp);
 typedef int fo_mmap_t(struct file *fp, vm_map_t map, vm_offset_t *addr,
 		    vm_size_t size, vm_prot_t prot, vm_prot_t cap_maxprot,
-		    int flags, vm_ooffset_t foff, struct thread *td);
+		    int flags, vm_ooffset_t foff, struct thread *td,
+		    struct metaio *miop);
 typedef int fo_aio_queue_t(struct file *fp, struct kaiocb *job);
+typedef int fo_getuuid_t(struct file *fp, struct uuid *uuidp);
 typedef	int fo_flags_t;
 
 struct fileops {
-	fo_rdwr_t	*fo_read;
-	fo_rdwr_t	*fo_write;
+	fo_read_t	*fo_read;
+	fo_write_t	*fo_write;
 	fo_truncate_t	*fo_truncate;
 	fo_ioctl_t	*fo_ioctl;
 	fo_poll_t	*fo_poll;
@@ -139,6 +149,7 @@ struct fileops {
 	fo_fill_kinfo_t	*fo_fill_kinfo;
 	fo_mmap_t	*fo_mmap;
 	fo_aio_queue_t	*fo_aio_queue;
+	fo_getuuid_t	*fo_getuuid;
 	fo_flags_t	fo_flags;	/* DFLAG_* below */
 };
 
@@ -241,7 +252,8 @@ int fget_fcntl(struct thread *td, int fd, cap_rights_t *rightsp,
     int needfcntl, struct file **fpp);
 int _fdrop(struct file *fp, struct thread *td);
 
-fo_rdwr_t	invfo_rdwr;
+fo_read_t	invfo_read;
+fo_write_t	invfo_write;
 fo_truncate_t	invfo_truncate;
 fo_ioctl_t	invfo_ioctl;
 fo_poll_t	invfo_poll;
@@ -283,8 +295,8 @@ _fnoop(void)
 #define	fdrop(fp, td)							\
 	(refcount_release(&(fp)->f_count) ? _fdrop((fp), (td)) : _fnoop())
 
-static __inline fo_rdwr_t	fo_read;
-static __inline fo_rdwr_t	fo_write;
+static __inline fo_read_t	fo_read;
+static __inline fo_write_t	fo_write;
 static __inline fo_truncate_t	fo_truncate;
 static __inline fo_ioctl_t	fo_ioctl;
 static __inline fo_poll_t	fo_poll;
@@ -297,10 +309,11 @@ static __inline fo_sendfile_t	fo_sendfile;
 
 static __inline int
 fo_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
-    int flags, struct thread *td)
+    int flags, struct thread *td, struct metaio *miop)
 {
 
-	return ((*fp->f_ops->fo_read)(fp, uio, active_cred, flags, td));
+	return ((*fp->f_ops->fo_read)(fp, uio, active_cred, flags, td,
+	    miop));
 }
 
 static __inline int
@@ -400,13 +413,13 @@ fo_fill_kinfo(struct file *fp, struct kinfo_file *kif, struct filedesc *fdp)
 static __inline int
 fo_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
     vm_prot_t prot, vm_prot_t cap_maxprot, int flags, vm_ooffset_t foff,
-    struct thread *td)
+    struct thread *td, struct metaio *miop)
 {
 
 	if (fp->f_ops->fo_mmap == NULL)
 		return (ENODEV);
 	return ((*fp->f_ops->fo_mmap)(fp, map, addr, size, prot, cap_maxprot,
-	    flags, foff, td));
+	    flags, foff, td, miop));
 }
 
 static __inline int
@@ -414,6 +427,19 @@ fo_aio_queue(struct file *fp, struct kaiocb *job)
 {
 
 	return ((*fp->f_ops->fo_aio_queue)(fp, job));
+}
+
+static __inline int
+fo_getuuid(struct file *fp, struct uuid *uuidp)
+{
+
+	/*
+	 * XXXRW: Do we want to allow fo_getuuid to be NULL..?  Better safe
+	 * than sorry, for now.
+	 */
+	if (fp->f_ops->fo_getuuid == NULL)
+		return (EOPNOTSUPP);
+	return ((*fp->f_ops->fo_getuuid)(fp, uuidp));
 }
 
 #endif /* _KERNEL */

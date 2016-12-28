@@ -620,7 +620,7 @@ linux_sendit(struct thread *td, int s, struct msghdr *mp, int flags,
 		to = NULL;
 
 	error = kern_sendit(td, s, mp, linux_to_bsd_msg_flags(flags), control,
-	    segflg);
+	    segflg, NULL);
 
 	if (to)
 		free(to, M_SONAME);
@@ -1075,7 +1075,7 @@ linux_recvfrom(struct thread *td, struct linux_recvfrom_args *args)
 	msg.msg_control = 0;
 	msg.msg_flags = linux_to_bsd_msg_flags(args->flags);
 
-	error = kern_recvit(td, args->s, &msg, UIO_USERSPACE, NULL);
+	error = kern_recvit(td, args->s, &msg, UIO_USERSPACE, NULL, NULL);
 	if (error != 0)
 		return (error);
 
@@ -1317,7 +1317,7 @@ linux_recvmsg_common(struct thread *td, l_int s, struct l_msghdr *msghdr,
 	uiov = msg->msg_iov;
 	msg->msg_iov = iov;
 	controlp = (msg->msg_control != NULL) ? &control : NULL;
-	error = kern_recvit(td, s, msg, UIO_USERSPACE, controlp);
+	error = kern_recvit(td, s, msg, UIO_USERSPACE, controlp, NULL);
 	msg->msg_iov = uiov;
 	if (error != 0)
 		goto bad;

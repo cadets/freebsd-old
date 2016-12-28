@@ -1547,10 +1547,8 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		}
 		break;
 
-	/* AUE_SHMOPEN, AUE_SHMUNLINK, AUE_SEMOPEN, AUE_SEMCLOSE
-	 * and AUE_SEMUNLINK are Posix IPC */
 	case AUE_SHMOPEN:
-		if (ARG_IS_VALID(kar, ARG_SVIPC_ADDR)) {
+		if (ARG_IS_VALID(kar, ARG_FFLAGS)) {
 			tok = au_to_arg32(2, "flags", ar->ar_arg_fflags);
 			kau_write(rec, tok);
 		}
@@ -1561,25 +1559,10 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		/* FALLTHROUGH */
 
 	case AUE_SHMUNLINK:
-		if (ARG_IS_VALID(kar, ARG_TEXT)) {
-			tok = au_to_text(ar->ar_arg_text);
-			kau_write(rec, tok);
-		}
-		if (ARG_IS_VALID(kar, ARG_POSIX_IPC_PERM)) {
-			struct ipc_perm perm;
-
-			perm.uid = ar->ar_arg_pipc_perm.pipc_uid;
-			perm.gid = ar->ar_arg_pipc_perm.pipc_gid;
-			perm.cuid = ar->ar_arg_pipc_perm.pipc_uid;
-			perm.cgid = ar->ar_arg_pipc_perm.pipc_gid;
-			perm.mode = ar->ar_arg_pipc_perm.pipc_mode;
-			perm.seq = 0;
-			perm.key = 0;
-			tok = au_to_ipc_perm(&perm);
-			kau_write(rec, tok);
-		}
+		UPATH1_TOKENS;
 		break;
 
+	case AUE_SEMINIT:
 	case AUE_SEMOPEN:
 		if (ARG_IS_VALID(kar, ARG_FFLAGS)) {
 			tok = au_to_arg32(2, "flags", ar->ar_arg_fflags);
@@ -1596,26 +1579,16 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		/* FALLTHROUGH */
 
 	case AUE_SEMUNLINK:
-		if (ARG_IS_VALID(kar, ARG_TEXT)) {
-			tok = au_to_text(ar->ar_arg_text);
-			kau_write(rec, tok);
-		}
-		if (ARG_IS_VALID(kar, ARG_POSIX_IPC_PERM)) {
-			struct ipc_perm perm;
-
-			perm.uid = ar->ar_arg_pipc_perm.pipc_uid;
-			perm.gid = ar->ar_arg_pipc_perm.pipc_gid;
-			perm.cuid = ar->ar_arg_pipc_perm.pipc_uid;
-			perm.cgid = ar->ar_arg_pipc_perm.pipc_gid;
-			perm.mode = ar->ar_arg_pipc_perm.pipc_mode;
-			perm.seq = 0;
-			perm.key = 0;
-			tok = au_to_ipc_perm(&perm);
-			kau_write(rec, tok);
-		}
+		UPATH1_TOKENS;
 		break;
 
 	case AUE_SEMCLOSE:
+	case AUE_SEMDESTROY:
+	case AUE_SEMGETVALUE:
+	case AUE_SEMPOST:
+	case AUE_SEMTRYWAIT:
+	case AUE_SEMWAIT:
+	case AUE_SEMTIMEDWAIT:
 		if (ARG_IS_VALID(kar, ARG_FD)) {
 			tok = au_to_arg32(1, "sem", ar->ar_arg_fd);
 			kau_write(rec, tok);

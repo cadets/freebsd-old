@@ -772,7 +772,7 @@ freebsd32_readv(struct thread *td, struct freebsd32_readv_args *uap)
 	error = freebsd32_copyinuio(uap->iovp, uap->iovcnt, &auio);
 	if (error)
 		return (error);
-	error = kern_readv(td, uap->fd, auio);
+	error = kern_readv(td, uap->fd, auio, NULL);
 	free(auio, M_IOV);
 	return (error);
 }
@@ -800,7 +800,8 @@ freebsd32_preadv(struct thread *td, struct freebsd32_preadv_args *uap)
 	error = freebsd32_copyinuio(uap->iovp, uap->iovcnt, &auio);
 	if (error)
 		return (error);
-	error = kern_preadv(td, uap->fd, auio, PAIR32TO64(off_t,uap->offset));
+	error = kern_preadv(td, uap->fd, auio, PAIR32TO64(off_t,uap->offset),
+	    NULL);
 	free(auio, M_IOV);
 	return (error);
 }
@@ -1014,7 +1015,7 @@ freebsd32_recvmsg(td, uap)
 	msg.msg_iov = iov;
 
 	controlp = (msg.msg_control != NULL) ?  &control : NULL;
-	error = kern_recvit(td, uap->s, &msg, UIO_USERSPACE, controlp);
+	error = kern_recvit(td, uap->s, &msg, UIO_USERSPACE, controlp, NULL);
 	if (error == 0) {
 		msg.msg_iov = uiov;
 		
@@ -1166,7 +1167,7 @@ freebsd32_sendmsg(struct thread *td,
 	}
 
 	error = kern_sendit(td, uap->s, &msg, uap->flags, control,
-	    UIO_USERSPACE);
+	    UIO_USERSPACE, NULL);
 
 out:
 	free(iov, M_IOV);
@@ -1199,7 +1200,7 @@ freebsd32_recvfrom(struct thread *td,
 	aiov.iov_len = uap->len;
 	msg.msg_control = NULL;
 	msg.msg_flags = uap->flags;
-	error = kern_recvit(td, uap->s, &msg, UIO_USERSPACE, NULL);
+	error = kern_recvit(td, uap->s, &msg, UIO_USERSPACE, NULL, NULL);
 	if (error == 0 && uap->fromlenaddr)
 		error = copyout(&msg.msg_namelen, PTRIN(uap->fromlenaddr),
 		    sizeof (msg.msg_namelen));

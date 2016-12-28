@@ -94,7 +94,7 @@ cloudabi64_sys_fd_pread(struct thread *td,
 	error = cloudabi64_copyinuio(uap->iov, uap->iovcnt, &uio);
 	if (error != 0)
 		return (error);
-	error = kern_preadv(td, uap->fd, uio, uap->offset);
+	error = kern_preadv(td, uap->fd, uio, uap->offset, NULL);
 	free(uio, M_IOV);
 	return (error);
 }
@@ -124,7 +124,7 @@ cloudabi64_sys_fd_read(struct thread *td,
 	error = cloudabi64_copyinuio(uap->iov, uap->iovcnt, &uio);
 	if (error != 0)
 		return (error);
-	error = kern_readv(td, uap->fd, uio);
+	error = kern_readv(td, uap->fd, uio, NULL);
 	free(uio, M_IOV);
 	return (error);
 }

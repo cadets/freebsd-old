@@ -478,9 +478,9 @@
 				    u_int nfds, int timeout); }
 253	AUE_ISSETUGID	NOPROTO	{ int issetugid(void); }
 254	AUE_LCHOWN	NOPROTO	{ int lchown(char *path, int uid, int gid); }
-255	AUE_READ	STD	{ int freebsd32_aio_read( \
+255	AUE_AIO_READ	STD	{ int freebsd32_aio_read( \
 				    struct aiocb32 *aiocbp); }
-256	AUE_WRITE	STD	{ int freebsd32_aio_write( \
+256	AUE_AIO_WRITE	STD	{ int freebsd32_aio_write( \
 				    struct aiocb32 *aiocbp); }
 257	AUE_LIO_LISTIO	STD	{ int freebsd32_lio_listio(int mode, \
 				    struct aiocb32 * const *acb_list, \
@@ -719,19 +719,19 @@
 398	AUE_FHSTATFS	NOPROTO	{ int fhstatfs(const struct fhandle *u_fhp, \
 				    struct statfs *buf); }
 399	AUE_NULL	UNIMPL	nosys
-400	AUE_NULL	NOSTD|NOPROTO	{ int ksem_close(semid_t id); }
-401	AUE_NULL	NOSTD|NOPROTO	{ int ksem_post(semid_t id); }
-402	AUE_NULL	NOSTD|NOPROTO	{ int ksem_wait(semid_t id); }
-403	AUE_NULL	NOSTD|NOPROTO	{ int ksem_trywait(semid_t id); }
-404	AUE_NULL	NOSTD	{ int freebsd32_ksem_init(semid_t *idp, \
+400	AUE_SEMCLOSE	NOSTD|NOPROTO	{ int ksem_close(semid_t id); }
+401	AUE_SEMPOST	NOSTD|NOPROTO	{ int ksem_post(semid_t id); }
+402	AUE_SEMWAIT	NOSTD|NOPROTO	{ int ksem_wait(semid_t id); }
+403	AUE_SEMTRYWAIT	NOSTD|NOPROTO	{ int ksem_trywait(semid_t id); }
+404	AUE_SEMINIT	NOSTD	{ int freebsd32_ksem_init(semid_t *idp, \
 				    unsigned int value); }
-405	AUE_NULL	NOSTD	{ int freebsd32_ksem_open(semid_t *idp, \
+405	AUE_SEMOPEN	NOSTD	{ int freebsd32_ksem_open(semid_t *idp, \
 				    const char *name, int oflag, \
 				    mode_t mode, unsigned int value); }
-406	AUE_NULL	NOSTD|NOPROTO	{ int ksem_unlink(const char *name); }
-407	AUE_NULL	NOSTD|NOPROTO	{ int ksem_getvalue(semid_t id, \
+406	AUE_SEMUNLINK	NOSTD|NOPROTO	{ int ksem_unlink(const char *name); }
+407	AUE_SEMGETVALUE	NOSTD|NOPROTO	{ int ksem_getvalue(semid_t id, \
 				    int *val); }
-408	AUE_NULL	NOSTD|NOPROTO	{ int ksem_destroy(semid_t id); }
+408	AUE_SEMDESTROY	NOSTD|NOPROTO	{ int ksem_destroy(semid_t id); }
 409	AUE_NULL	UNIMPL	__mac_get_pid
 410	AUE_NULL	UNIMPL	__mac_get_link
 411	AUE_NULL	UNIMPL	__mac_set_link
@@ -790,7 +790,7 @@
 				    const char *path, int attrnamespace, \
 				    void *data, size_t nbytes); }
 440	AUE_NULL	UNIMPL	kse_switchin
-441	AUE_NULL	NOSTD	{ int freebsd32_ksem_timedwait(semid_t id, \
+441	AUE_SEMTIMEDWAIT	NOSTD	{ int freebsd32_ksem_timedwait(semid_t id, \
 				    const struct timespec32 *abstime); }
 442	AUE_NULL	STD	{ int freebsd32_thr_suspend( \
 				    const struct timespec32 *timeout); }
@@ -838,7 +838,7 @@
 462	AUE_NULL	NOPROTO|NOSTD	{ int kmq_unlink(const char *path); }
 463	AUE_NULL	NOPROTO	{ int abort2(const char *why, int nargs, void **args); }
 464	AUE_NULL 	NOPROTO	{ int thr_set_name(long id, const char *name); }
-465	AUE_FSYNC	STD	{ int freebsd32_aio_fsync(int op, \
+465	AUE_AIO_FSYNC	STD	{ int freebsd32_aio_fsync(int op, \
 				    struct aiocb32 *aiocbp); }
 466	AUE_RTPRIO	NOPROTO	{ int rtprio_thread(int function, \
 				    lwpid_t lwpid, struct rtprio *rtp); }

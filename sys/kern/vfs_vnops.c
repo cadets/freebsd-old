@@ -44,6 +44,7 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_hwpmc_hooks.h"
+#include "opt_metaio.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -57,6 +58,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/limits.h>
 #include <sys/lock.h>
+#include <sys/metaio.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/mutex.h>
@@ -93,6 +95,8 @@ __FBSDID("$FreeBSD$");
 static fo_rdwr_t	vn_read;
 static fo_rdwr_t	vn_write;
 static fo_rdwr_t	vn_io_fault;
+static fo_read_t	vn_io_fault_read;
+static fo_write_t	vn_io_fault_write;
 static fo_truncate_t	vn_truncate;
 static fo_ioctl_t	vn_ioctl;
 static fo_poll_t	vn_poll;
@@ -100,10 +104,11 @@ static fo_kqfilter_t	vn_kqfilter;
 static fo_stat_t	vn_statfile;
 static fo_close_t	vn_closefile;
 static fo_mmap_t	vn_mmap;
+static fo_getuuid_t	vn_getuuid;
 
 struct 	fileops vnops = {
-	.fo_read = vn_io_fault,
-	.fo_write = vn_io_fault,
+	.fo_read = vn_io_fault_read,
+	.fo_write = vn_io_fault_write,
 	.fo_truncate = vn_truncate,
 	.fo_ioctl = vn_ioctl,
 	.fo_poll = vn_poll,
@@ -116,6 +121,7 @@ struct 	fileops vnops = {
 	.fo_seek = vn_seek,
 	.fo_fill_kinfo = vn_fill_kinfo,
 	.fo_mmap = vn_mmap,
+	.fo_getuuid = vn_getuuid,
 	.fo_flags = DFLAG_PASSABLE | DFLAG_SEEKABLE
 };
 
@@ -1181,6 +1187,25 @@ vn_io_fault(struct file *fp, struct uio *uio, struct ucred *active_cred,
 	return (error);
 }
 
+int
+vn_io_fault_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
+    int flags, struct thread *td, struct metaio *miop)
+{
+
+#ifdef METAIO
+	metaio_from_uuid(&fp->f_vnode->v_uuid, miop);
+#endif
+	return (vn_io_fault(fp, uio, active_cred, flags, td));
+}
+
+int
+vn_io_fault_write(struct file *fp, struct uio *uio, struct ucred *active_cred,
+    int flags, struct thread *td)
+{
+
+	return (vn_io_fault(fp, uio, active_cred, flags, td));
+}
+
 /*
  * Helper function to perform the requested uiomove operation using
  * the held pages for io->uio_iov[0].iov_base buffer instead of
@@ -2229,6 +2254,9 @@ vn_seek(struct file *fp, off_t offset, int whence, struct thread *td)
 
 	cred = td->td_ucred;
 	vp = fp->f_vnode;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&vp->v_uuid);
+#endif
 	foffset = foffset_lock(fp, 0);
 	noneg = (vp->v_type != VCHR);
 	error = 0;
@@ -2393,7 +2421,7 @@ vn_fill_kinfo_vnode(struct vnode *vp, struct kinfo_file *kif)
 int
 vn_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
     vm_prot_t prot, vm_prot_t cap_maxprot, int flags, vm_ooffset_t foff,
-    struct thread *td)
+    struct thread *td, struct metaio *miop)
 {
 #ifdef HWPMC_HOOKS
 	struct pmckern_map_in pkm;
@@ -2419,6 +2447,11 @@ vn_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
 		flags |= MAP_NOSYNC;
 #endif
 	vp = fp->f_vnode;
+
+	AUDIT_ARG_OBJUUID1(&vp->v_uuid);
+#ifdef METAIO
+	metaio_from_uuid(&vp->v_uuid, miop);
+#endif
 
 	/*
 	 * Ensure that file and memory protections are
@@ -2480,4 +2513,17 @@ vn_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
 	}
 #endif
 	return (error);
+}
+
+static int
+vn_getuuid(struct file *fp, struct uuid *uuidp)
+{
+	struct vnode *vp;
+
+	vp = fp->f_vnode;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&vp->v_uuid);
+#endif
+	*uuidp = vp->v_uuid;
+	return (0);
 }

@@ -7,6 +7,14 @@
  * Co. or Unix System Laboratories, Inc. and are reproduced herein with
  * the permission of UNIX System Laboratories, Inc.
  *
+ * Copyright (c) 2016 Robert N. M. Watson
+ * All rights reserved.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -40,6 +48,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_capsicum.h"
 #include "opt_compat.h"
 #include "opt_ktrace.h"
+#include "opt_metaio.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -50,6 +59,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/fcntl.h>
 #include <sys/file.h>
 #include <sys/lock.h>
+#include <sys/metaio.h>
 #include <sys/proc.h>
 #include <sys/signalvar.h>
 #include <sys/socketvar.h>
@@ -118,7 +128,7 @@ static int	selrescan(struct thread *, fd_mask **, fd_mask **);
 static void	selfdalloc(struct thread *, void *);
 static void	selfdfree(struct seltd *, struct selfd *);
 static int	dofileread(struct thread *, int, struct file *, struct uio *,
-		    off_t, int);
+		    off_t, int, struct metaio *);
 static int	dofilewrite(struct thread *, int, struct file *, struct uio *,
 		    off_t, int);
 static void	doselwakeup(struct selinfo *, int);
@@ -203,7 +213,7 @@ sys_read(td, uap)
 	auio.uio_iovcnt = 1;
 	auio.uio_resid = uap->nbyte;
 	auio.uio_segflg = UIO_USERSPACE;
-	error = kern_readv(td, uap->fd, &auio);
+	error = kern_readv(td, uap->fd, &auio, NULL);
 	return(error);
 }
 
@@ -236,7 +246,7 @@ sys_pread(td, uap)
 	auio.uio_iovcnt = 1;
 	auio.uio_resid = uap->nbyte;
 	auio.uio_segflg = UIO_USERSPACE;
-	error = kern_preadv(td, uap->fd, &auio, uap->offset);
+	error = kern_preadv(td, uap->fd, &auio, uap->offset, NULL);
 	return(error);
 }
 
@@ -275,13 +285,13 @@ sys_readv(struct thread *td, struct readv_args *uap)
 	error = copyinuio(uap->iovp, uap->iovcnt, &auio);
 	if (error)
 		return (error);
-	error = kern_readv(td, uap->fd, auio);
+	error = kern_readv(td, uap->fd, auio, NULL);
 	free(auio, M_IOV);
 	return (error);
 }
 
 int
-kern_readv(struct thread *td, int fd, struct uio *auio)
+kern_readv(struct thread *td, int fd, struct uio *auio, struct metaio *miop)
 {
 	struct file *fp;
 	cap_rights_t rights;
@@ -290,7 +300,7 @@ kern_readv(struct thread *td, int fd, struct uio *auio)
 	error = fget_read(td, fd, cap_rights_init(&rights, CAP_READ), &fp);
 	if (error)
 		return (error);
-	error = dofileread(td, fd, fp, auio, (off_t)-1, 0);
+	error = dofileread(td, fd, fp, auio, (off_t)-1, 0, miop);
 	fdrop(fp, td);
 	return (error);
 }
@@ -315,17 +325,18 @@ sys_preadv(struct thread *td, struct preadv_args *uap)
 	error = copyinuio(uap->iovp, uap->iovcnt, &auio);
 	if (error)
 		return (error);
-	error = kern_preadv(td, uap->fd, auio, uap->offset);
+	error = kern_preadv(td, uap->fd, auio, uap->offset, NULL);
 	free(auio, M_IOV);
 	return (error);
 }
 
 int
-kern_preadv(td, fd, auio, offset)
+kern_preadv(td, fd, auio, offset, miop)
 	struct thread *td;
 	int fd;
 	struct uio *auio;
 	off_t offset;
+	struct metaio *miop;
 {
 	struct file *fp;
 	cap_rights_t rights;
@@ -339,9 +350,108 @@ kern_preadv(td, fd, auio, offset)
 	else if (offset < 0 && fp->f_vnode->v_type != VCHR)
 		error = EINVAL;
 	else
-		error = dofileread(td, fd, fp, auio, offset, FOF_OFFSET);
+		error = dofileread(td, fd, fp, auio, offset, FOF_OFFSET,
+		    miop);
 	fdrop(fp, td);
 	return (error);
+}
+
+int
+sys_metaio_read(struct thread *td, struct metaio_read_args *uap)
+{
+#ifdef METAIO
+	struct metaio mio;
+	struct uio auio;
+	struct iovec aiov;
+	int error;
+
+	if (uap->nbyte > IOSIZE_MAX)
+		return (EINVAL);
+	aiov.iov_base = uap->buf;
+	aiov.iov_len = uap->nbyte;
+	auio.uio_iov = &aiov;
+	auio.uio_iovcnt = 1;
+	auio.uio_resid = uap->nbyte;
+	auio.uio_segflg = UIO_USERSPACE;
+	metaio_init(td, &mio);
+	error = kern_readv(td, uap->fd, &auio, &mio);
+	if (error == 0)
+		error = copyout(&mio, uap->miop, sizeof(mio));
+	return (error);
+#else /* !METAIO */
+	return (ENOSYS);
+#endif /* METAIO */
+}
+
+int
+sys_metaio_readv(struct thread *td, struct metaio_readv_args *uap)
+{
+#ifdef METAIO
+	struct metaio mio;
+	struct uio *auio;
+	int error;
+
+	error = copyinuio(uap->iovp, uap->iovcnt, &auio);
+	if (error)
+		return (error);
+	metaio_init(td, &mio);
+	error = kern_readv(td, uap->fd, auio, &mio);
+	if (error == 0)
+		error = copyout(&mio, uap->miop, sizeof(mio));
+	free(auio, M_IOV);
+	return (error);
+#else /* !METAIO */
+	return (ENOSYS);
+#endif /* METAIO */
+}
+
+int
+sys_metaio_pread(struct thread *td, struct metaio_pread_args *uap)
+{
+#ifdef METAIO
+	struct metaio mio;
+	struct uio auio;
+	struct iovec aiov;
+	int error;
+
+	if (uap->nbyte > IOSIZE_MAX)
+		return (EINVAL);
+	aiov.iov_base = uap->buf;
+	aiov.iov_len = uap->nbyte;
+	auio.uio_iov = &aiov;
+	auio.uio_iovcnt = 1;
+	auio.uio_resid = uap->nbyte;
+	auio.uio_segflg = UIO_USERSPACE;
+	metaio_init(td, &mio);
+	error = kern_preadv(td, uap->fd, &auio, uap->offset, &mio);
+	if (error == 0)
+		error = copyout(&mio, uap->miop, sizeof(mio));
+	return (error);
+#else /* !METAIO */
+	return (ENOSYS);
+#endif /* METAIO */
+}
+
+int
+sys_metaio_preadv(struct thread *td, struct metaio_preadv_args *uap)
+{
+#ifdef METAIO
+	struct metaio mio;
+	struct uio *auio;
+	int error;
+
+	error = copyinuio(uap->iovp, uap->iovcnt, &auio);
+	if (error)
+		return (error);
+	metaio_init(td, &mio);
+	error = kern_preadv(td, uap->fd, auio, uap->offset, &mio);
+	if (error == 0)
+		error = copyout(&mio, uap->miop, sizeof(mio));
+	free(auio, M_IOV);
+	return (error);
+#else /* !METAIO */
+	return (ENOSYS);
+#endif /* METAIO */
 }
 
 /*
@@ -349,13 +459,14 @@ kern_preadv(td, fd, auio, offset)
  * from a file using the passed in uio, offset, and flags.
  */
 static int
-dofileread(td, fd, fp, auio, offset, flags)
+dofileread(td, fd, fp, auio, offset, flags, miop)
 	struct thread *td;
 	int fd;
 	struct file *fp;
 	struct uio *auio;
 	off_t offset;
 	int flags;
+	struct metaio *miop;
 {
 	ssize_t cnt;
 	int error;
@@ -378,7 +489,7 @@ dofileread(td, fd, fp, auio, offset, flags)
 		ktruio = cloneuio(auio);
 #endif
 	cnt = auio->uio_resid;
-	if ((error = fo_read(fp, auio, td->td_ucred, flags, td))) {
+	if ((error = fo_read(fp, auio, td->td_ucred, flags, td, miop))) {
 		if (auio->uio_resid != cnt && (error == ERESTART ||
 		    error == EINTR || error == EWOULDBLOCK))
 			error = 0;
@@ -557,6 +668,108 @@ kern_pwritev(td, fd, auio, offset)
 		error = dofilewrite(td, fd, fp, auio, offset, FOF_OFFSET);
 	fdrop(fp, td);
 	return (error);
+}
+
+int
+sys_metaio_write(struct thread *td, struct metaio_write_args *uap)
+{
+#ifdef METAIO
+	struct metaio mio;
+	struct uio auio;
+	struct iovec aiov;
+	int error;
+
+	error = copyin(uap->miop, &mio, sizeof(mio));
+	if (error)
+		return (error);
+	AUDIT_ARG_METAIO(&mio);
+	if (uap->nbyte > IOSIZE_MAX)
+		return (EINVAL);
+	aiov.iov_base = (void *)(uintptr_t)uap->buf;
+	aiov.iov_len = uap->nbyte;
+	auio.uio_iov = &aiov;
+	auio.uio_iovcnt = 1;
+	auio.uio_resid = uap->nbyte;
+	auio.uio_segflg = UIO_USERSPACE;
+	error = kern_writev(td, uap->fd, &auio);
+	return (error);
+#else /* !METAIO */
+	return (ENOSYS);
+#endif /* METAIO */
+}
+
+int
+sys_metaio_writev(struct thread *td, struct metaio_writev_args *uap)
+{
+#ifdef METAIO
+	struct metaio mio;
+	struct uio *auio;
+	int error;
+
+	error = copyin(uap->miop, &mio, sizeof(mio));
+	if (error)
+		return (error);
+	AUDIT_ARG_METAIO(&mio);
+	error = copyinuio(uap->iovp, uap->iovcnt, &auio);
+	if (error)
+		return (error);
+	error = kern_writev(td, uap->fd, auio);
+	free(auio, M_IOV);
+	return (error);
+#else /* !METAIO */
+	return (ENOSYS);
+#endif /* METAIO */
+}
+
+int
+sys_metaio_pwrite(struct thread *td, struct metaio_pwrite_args *uap)
+{
+#ifdef METAIO
+	struct metaio mio;
+	struct uio auio;
+	struct iovec aiov;
+	int error;
+
+	error = copyin(uap->miop, &mio, sizeof(mio));
+	if (error)
+		return (error);
+	AUDIT_ARG_METAIO(&mio);
+	if (uap->nbyte > IOSIZE_MAX)
+		return (EINVAL);
+	aiov.iov_base = (void *)(uintptr_t)uap->buf;
+	aiov.iov_len = uap->nbyte;
+	auio.uio_iov = &aiov;
+	auio.uio_iovcnt = 1;
+	auio.uio_resid = uap->nbyte;
+	auio.uio_segflg = UIO_USERSPACE;
+	error = kern_pwritev(td, uap->fd, &auio, uap->offset);
+	return (error);
+#else /* !METAIO */
+	return (ENOSYS);
+#endif /* METAIO */
+}
+
+int
+sys_metaio_pwritev(struct thread *td, struct metaio_pwritev_args *uap)
+{
+#ifdef METAIO
+	struct metaio mio;
+	struct uio *auio;
+	int error;
+
+	error = copyin(uap->miop, &mio, sizeof(mio));
+	if (error)
+		return (error);
+	AUDIT_ARG_METAIO(&mio);
+	error = copyinuio(uap->iovp, uap->iovcnt, &auio);
+	if (error)
+		return (error);
+	error = kern_pwritev(td, uap->fd, auio, uap->offset);
+	free(auio, M_IOV);
+	return (error);
+#else /* !METAIO */
+	return (ENOSYS);
+#endif /* METAIO */
 }
 
 /*
@@ -1948,4 +2161,28 @@ kern_posix_error(struct thread *td, int error)
 	td->td_pflags |= TDP_NERRNO;
 	td->td_retval[0] = error;
 	return (0);
+}
+
+/*
+ * XXXRW: Do we want a MAC check for this?
+ * XXXRW: Do we want to audit the returned UUID?
+ */
+int
+sys_fgetuuid(struct thread *td, struct fgetuuid_args *uap)
+{
+	struct uuid uuid;
+	cap_rights_t rights;
+	struct file *fp;
+	int error;
+
+	AUDIT_ARG_FD(uap->fd);
+	error = fget(td, uap->fd, cap_rights_init(&rights, CAP_FSTAT), &fp);
+	if (error != 0)
+		return (error);
+	AUDIT_ARG_FILE(td->td_proc, fp);
+	error = fo_getuuid(fp, &uuid);
+	fdrop(fp, td);
+	if (error == 0)
+		error = copyout(&uuid, uap->uuidp, sizeof(uuid));
+	return (error);
 }

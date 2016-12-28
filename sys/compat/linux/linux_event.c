@@ -52,6 +52,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/syscallsubr.h>
 #include <sys/timespec.h>
 
+#include <security/audit/audit.h>
+
 #ifdef COMPAT_LINUX32
 #include <machine/../linux32/linux.h>
 #include <machine/../linux32/linux32_proto.h>
@@ -121,8 +123,8 @@ struct epoll_copyout_args {
 /* eventfd */
 typedef uint64_t	eventfd_t;
 
-static fo_rdwr_t	eventfd_read;
-static fo_rdwr_t	eventfd_write;
+static fo_read_t	eventfd_read;
+static fo_write_t	eventfd_write;
 static fo_truncate_t	eventfd_truncate;
 static fo_ioctl_t	eventfd_ioctl;
 static fo_poll_t	eventfd_poll;
@@ -639,6 +641,9 @@ eventfd_create(struct thread *td, uint32_t initval, int flags)
 	finit(fp, fflags, DTYPE_LINUXEFD, efd, &eventfdops);
 	fdrop(fp, td);
 
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_FD1(fd);
+#endif
 	td->td_retval[0] = fd;
 	return (error);
 }
@@ -681,7 +686,7 @@ eventfd_close(struct file *fp, struct thread *td)
 
 static int
 eventfd_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
-	int flags, struct thread *td)
+	int flags, struct thread *td, struct metaio *miop)
 {
 	struct eventfd *efd;
 	eventfd_t count;
