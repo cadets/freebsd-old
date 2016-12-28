@@ -1,4 +1,4 @@
- $FreeBSD$
+ FreeBSD
 ;	from: @(#)syscalls.master	8.2 (Berkeley) 1/13/94
 ;
 ; System call name/number master file.
@@ -1001,7 +1001,6 @@
 ; sys/compat/freebsd32/syscalls.master
 
 ; Placeholders for future FreeBSD system calls during CADETS development.
-550	AUE_NULL	UNIMPL	placeholder
 551	AUE_NULL	UNIMPL	placeholder
 552	AUE_NULL	UNIMPL	placeholder
 553	AUE_NULL	UNIMPL	placeholder
