@@ -2694,6 +2694,16 @@ mqf_fill_kinfo(struct file *fp, struct kinfo_file *kif, struct filedesc *fdp)
 	return (0);
 }
 
+static int
+mqf_getuuid(struct file *fp, struct uuid *uuidp)
+{
+	struct mqueue *mq;
+
+	mq = fp->f_data;
+	*uuidp = mq->mq_uuid;
+	return (0);
+}
+
 static struct fileops mqueueops = {
 	.fo_read		= invfo_read,
 	.fo_write		= invfo_write,
@@ -2707,6 +2717,7 @@ static struct fileops mqueueops = {
 	.fo_chown		= mqf_chown,
 	.fo_sendfile		= invfo_sendfile,
 	.fo_fill_kinfo		= mqf_fill_kinfo,
+	.fo_getuuid		= mqf_getuuid,
 };
 
 static struct vop_vector mqfs_vnodeops = {
