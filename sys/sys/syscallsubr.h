@@ -32,6 +32,7 @@
 #include <sys/uio.h>
 #include <sys/socket.h>
 #include <sys/mac.h>
+#include <sys/metaio.h>
 #include <sys/mount.h>
 
 struct file;
@@ -166,7 +167,8 @@ int	kern_posix_fallocate(struct thread *td, int fd, off_t offset,
 	    off_t len);
 int	kern_procctl(struct thread *td, enum idtype idtype, id_t id, int com,
 	    void *data);
-int	kern_preadv(struct thread *td, int fd, struct uio *auio, off_t offset);
+int	kern_preadv(struct thread *td, int fd, struct uio *auio, off_t offset,
+	    struct metaio *miop);
 int	kern_pselect(struct thread *td, int nd, fd_set *in, fd_set *ou,
 	    fd_set *ex, struct timeval *tvp, sigset_t *uset, int abi_nfdbits);
 int	kern_ptrace(struct thread *td, int req, pid_t pid, void *addr,
@@ -174,9 +176,10 @@ int	kern_ptrace(struct thread *td, int req, pid_t pid, void *addr,
 int	kern_pwritev(struct thread *td, int fd, struct uio *auio, off_t offset);
 int	kern_readlinkat(struct thread *td, int fd, char *path,
 	    enum uio_seg pathseg, char *buf, enum uio_seg bufseg, size_t count);
-int	kern_readv(struct thread *td, int fd, struct uio *auio);
+int	kern_readv(struct thread *td, int fd, struct uio *auio,
+	    struct metaio *miop);
 int	kern_recvit(struct thread *td, int s, struct msghdr *mp,
-	    enum uio_seg fromseg, struct mbuf **controlp);
+	    enum uio_seg fromseg, struct mbuf **controlp, struct metaio *miop);
 int	kern_renameat(struct thread *td, int oldfd, char *old, int newfd,
 	    char *new, enum uio_seg pathseg);
 int	kern_rmdirat(struct thread *td, int fd, char *path,
@@ -200,7 +203,7 @@ int	kern_select(struct thread *td, int nd, fd_set *fd_in, fd_set *fd_ou,
 int	kern_sendfile(struct thread *td, struct sendfile_args *uap,
 	    struct uio *hdr_uio, struct uio *trl_uio, int compat);
 int	kern_sendit(struct thread *td, int s, struct msghdr *mp, int flags,
-	    struct mbuf *control, enum uio_seg segflg);
+	    struct mbuf *control, enum uio_seg segflg, struct metaio *miop);
 int	kern_setgroups(struct thread *td, u_int ngrp, gid_t *groups);
 int	kern_setitimer(struct thread *, u_int, struct itimerval *,
 	    struct itimerval *);

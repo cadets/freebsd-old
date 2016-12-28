@@ -100,8 +100,8 @@ static fo_close_t	procdesc_close;
 static fo_fill_kinfo_t	procdesc_fill_kinfo;
 
 static struct fileops procdesc_ops = {
-	.fo_read = invfo_rdwr,
-	.fo_write = invfo_rdwr,
+	.fo_read = invfo_read,
+	.fo_write = invfo_write,
 	.fo_truncate = invfo_truncate,
 	.fo_ioctl = invfo_ioctl,
 	.fo_poll = procdesc_poll,

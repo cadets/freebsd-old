@@ -96,6 +96,7 @@
  */
 
 #include "opt_compat.h"
+#include "opt_metaio.h"
 
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
@@ -153,8 +154,8 @@ __FBSDID("$FreeBSD$");
 /*
  * interfaces to the outside world
  */
-static fo_rdwr_t	pipe_read;
-static fo_rdwr_t	pipe_write;
+static fo_read_t	pipe_read;
+static fo_write_t	pipe_write;
 static fo_truncate_t	pipe_truncate;
 static fo_ioctl_t	pipe_ioctl;
 static fo_poll_t	pipe_poll;
@@ -164,6 +165,7 @@ static fo_close_t	pipe_close;
 static fo_chmod_t	pipe_chmod;
 static fo_chown_t	pipe_chown;
 static fo_fill_kinfo_t	pipe_fill_kinfo;
+static fo_getuuid_t	pipe_getuuid;
 
 struct fileops pipeops = {
 	.fo_read = pipe_read,
@@ -178,6 +180,7 @@ struct fileops pipeops = {
 	.fo_chown = pipe_chown,
 	.fo_sendfile = invfo_sendfile,
 	.fo_fill_kinfo = pipe_fill_kinfo,
+	.fo_getuuid = pipe_getuuid,
 	.fo_flags = DFLAG_PASSABLE
 };
 
@@ -459,6 +462,10 @@ kern_pipe(struct thread *td, int fildes[2], int flags, struct filecaps *fcaps1,
 	fdrop(wf, td);
 	fildes[1] = fd;
 	fdrop(rf, td);
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_FD1(fildes[0]);
+	AUDIT_RET_FD2(fildes[1]);
+#endif
 
 	return (0);
 }
@@ -671,12 +678,13 @@ pipe_create(pipe, backing)
 
 /* ARGSUSED */
 static int
-pipe_read(fp, uio, active_cred, flags, td)
+pipe_read(fp, uio, active_cred, flags, td, miop)
 	struct file *fp;
 	struct uio *uio;
 	struct ucred *active_cred;
 	struct thread *td;
 	int flags;
+	struct metaio *miop;
 {
 	struct pipe *rpipe;
 	int error;
@@ -688,6 +696,9 @@ pipe_read(fp, uio, active_cred, flags, td)
 	++rpipe->pipe_busy;
 #ifdef KDTRACE_HOOKS
 	AUDIT_ARG_OBJUUID1(&rpipe->pipe_uuid);
+#endif
+#ifdef METAIO
+	metaio_from_uuid(&rpipe->pipe_uuid, miop);
 #endif
 	error = pipelock(rpipe, 1);
 	if (error)
@@ -1660,6 +1671,19 @@ pipe_fill_kinfo(struct file *fp, struct kinfo_file *kif, struct filedesc *fdp)
 	kif->kf_un.kf_pipe.kf_pipe_addr = (uintptr_t)pi;
 	kif->kf_un.kf_pipe.kf_pipe_peer = (uintptr_t)pi->pipe_peer;
 	kif->kf_un.kf_pipe.kf_pipe_buffer_cnt = pi->pipe_buffer.cnt;
+	return (0);
+}
+
+static int
+pipe_getuuid(struct file *fp, struct uuid *uuidp)
+{
+	struct pipe *pipe;
+
+	pipe = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&pipe->pipe_uuid);
+#endif
+	*uuidp = pipe->pipe_uuid;
 	return (0);
 }
 

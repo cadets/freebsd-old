@@ -302,8 +302,8 @@ static	int cryptof_fill_kinfo(struct file *, struct kinfo_file *,
 		    struct filedesc *);
 
 static struct fileops cryptofops = {
-    .fo_read = invfo_rdwr,
-    .fo_write = invfo_rdwr,
+    .fo_read = invfo_read,
+    .fo_write = invfo_write,
     .fo_truncate = invfo_truncate,
     .fo_ioctl = cryptof_ioctl,
     .fo_poll = invfo_poll,

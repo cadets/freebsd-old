@@ -186,6 +186,7 @@ MAN+=	abort2.2 \
 	getsockopt.2 \
 	gettimeofday.2 \
 	getuid.2 \
+	getuuid.2 \
 	intro.2 \
 	ioctl.2 \
 	issetugid.2 \
@@ -206,6 +207,7 @@ MAN+=	abort2.2 \
 	listen.2 \
 	lseek.2 \
 	madvise.2 \
+	metaio.2 \
 	mincore.2 \
 	minherit.2 \
 	mkdir.2 \
@@ -385,6 +387,8 @@ MLINKS+=getrlimit.2 setrlimit.2
 MLINKS+=getsockopt.2 setsockopt.2
 MLINKS+=gettimeofday.2 settimeofday.2
 MLINKS+=getuid.2 geteuid.2
+MLINKS+=getuuid.2 fgetuuid.2
+MLINKS+=getuuid.2 lgetuuid.2
 MLINKS+=intro.2 errno.2
 MLINKS+=jail.2 jail_attach.2 \
 	jail.2 jail_get.2 \
@@ -395,6 +399,20 @@ MLINKS+=kqueue.2 kevent.2 \
 	kqueue.2 EV_SET.3
 MLINKS+=link.2 linkat.2
 MLINKS+=madvise.2 posix_madvise.2
+MLINKS+=metaio.2 metaio_mmap.2
+MLINKS+=metaio.2 metaio_pread.2
+MLINKS+=metaio.2 metaio_preadv.2
+MLINKS+=metaio.2 metaio_pwrite.2
+MLINKS+=metaio.2 metaio_pwritev.2
+MLINKS+=metaio.2 metaio_read.2
+MLINKS+=metaio.2 metaio_readv.2
+MLINKS+=metaio.2 metaio_recvfrom.2
+MLINKS+=metaio.2 metaio_recvmsg.2
+MLINKS+=metaio.2 metaio_sendfdile.2
+MLINKS+=metaio.2 metaio_sendmsg.2
+MLINKS+=metaio.2 metaio_sendto.2
+MLINKS+=metaio.2 metaio_write.2
+MLINKS+=metaio.2 metaio_writev.2
 MLINKS+=mkdir.2 mkdirat.2
 MLINKS+=mkfifo.2 mkfifoat.2
 MLINKS+=mknod.2 mknodat.2

@@ -794,7 +794,8 @@ aio_process_rw(struct kaiocb *job)
 		if (auio.uio_resid == 0)
 			error = 0;
 		else
-			error = fo_read(fp, &auio, fp->f_cred, FOF_OFFSET, td);
+			error = fo_read(fp, &auio, fp->f_cred, FOF_OFFSET,
+			    td, NULL);
 	} else {
 		if (fp->f_type == DTYPE_VNODE)
 			bwillwrite();

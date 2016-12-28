@@ -1836,7 +1836,8 @@ restore_bytes(struct receive_arg *ra, void *buf, int len, off_t off, ssize_t *re
 	auio.uio_offset = off;
 	auio.uio_td = ra->td;
 #ifdef _KERNEL
-	error = fo_read(ra->fp, &auio, ra->td->td_ucred, FOF_OFFSET, ra->td);
+	error = fo_read(ra->fp, &auio, ra->td->td_ucred, FOF_OFFSET, ra->td,
+	    NULL);
 #else
 	fprintf(stderr, "%s: returning EOPNOTSUPP\n", __func__);
 	error = EOPNOTSUPP;

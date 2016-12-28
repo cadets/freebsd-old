@@ -49,6 +49,7 @@
 
 #include <sys/caprights.h>
 #include <sys/ipc.h>
+#include <sys/metaio.h>
 #include <sys/msgid.h>
 #include <sys/socket.h>
 #include <sys/ucred.h>
@@ -191,6 +192,9 @@ struct audit_record {
 	uid_t			ar_subj_auid; /* Audit user ID */
 	pid_t			ar_subj_asid; /* Audit session ID */
 	pid_t			ar_subj_pid;
+#ifdef KDTRACE_HOOKS
+	lwpid_t			ar_subj_tid;
+#endif
 	struct au_tid		ar_subj_term;
 	struct au_tid_addr	ar_subj_term_addr;
 	struct au_mask		ar_subj_amask;
@@ -220,6 +224,7 @@ struct audit_record {
 	int			ar_arg_atfd1;
 	int			ar_arg_atfd2;
 	int			ar_arg_fflags;
+	struct metaio		ar_arg_metaio;
 	mode_t			ar_arg_mode;
 #ifdef KDTRACE_HOOKS
 	struct uuid		ar_arg_objuuid1;
@@ -241,6 +246,7 @@ struct audit_record {
 	struct vnode_au_info	ar_arg_vnode1;
 	struct vnode_au_info	ar_arg_vnode2;
 	int			ar_arg_cmd;
+	int			ar_arg_svipc_which;
 	int			ar_arg_svipc_cmd;
 	struct ipc_perm		ar_arg_svipc_perm;
 	int			ar_arg_svipc_id;
@@ -259,6 +265,8 @@ struct audit_record {
 	char			ar_jailname[MAXHOSTNAMELEN];
 
 #ifdef KDTRACE_HOOKS
+	int			ar_ret_fd1;
+	int			ar_ret_fd2;
 	struct uuid		ar_ret_objuuid1;
 	struct uuid		ar_ret_objuuid2;
 	msgid_t			ar_ret_msgid;
@@ -328,13 +336,18 @@ struct audit_record {
 /* Gap:				0x0040000000000000ULL */
 #define	ARG_OBJUUID1		0x0080000000000000ULL
 #define	ARG_OBJUUID2		0x0100000000000000ULL
+#define	ARG_SVIPC_WHICH		0x0200000000000000ULL
+#define	ARG_METAIO		0x0400000000000000ULL
 #define	ARG_NONE		0x0000000000000000ULL
 #define	ARG_ALL			0xFFFFFFFFFFFFFFFFULL
 
+/* XXXRW: Re-order before upstreaming. */
 #define	RET_OBJUUID1		0x0000000000000001ULL
 #define	RET_OBJUUID2		0x0000000000000002ULL
 #define	RET_MSGID		0x0000000000000004ULL
 #define	RET_SVIPC_ID		0x0000000000000008ULL
+#define	RET_FD1			0x0000000000000010ULL
+#define	RET_FD2			0x0000000000000020ULL
 
 #define	ARG_IS_VALID(kar, arg)	((kar)->k_ar.ar_valid_arg & (arg))
 #define	ARG_SET_VALID(kar, arg) do {					\
@@ -502,7 +515,10 @@ au_event_t	 audit_ctlname_to_sysctlevent(int name[], uint64_t valid_arg);
 au_event_t	 audit_flags_and_error_to_openevent(int oflags, int error);
 au_event_t	 audit_flags_and_error_to_openatevent(int oflags, int error);
 au_event_t	 audit_msgctl_to_event(int cmd);
-au_event_t	 audit_semctl_to_event(int cmr);
+au_event_t	 audit_msgsys_to_event(int which);
+au_event_t	 audit_semctl_to_event(int cmd);
+au_event_t	 audit_semsys_to_event(int which);
+au_event_t	 audit_shmsys_to_event(int which);
 void		 audit_canon_path(struct thread *td, int dirfd, char *path,
 		    char *cpath);
 au_event_t	 auditon_command_event(int cmd);

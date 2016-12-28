@@ -148,6 +148,9 @@ sys_sctp_peeloff(td, uap)
 	error = falloc(td, &nfp, &fd, 0);
 	if (error != 0)
 		goto done;
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_FD1(fd);
+#endif
 	td->td_retval[0] = fd;
 
 	CURVNET_SET(head->so_vnet);

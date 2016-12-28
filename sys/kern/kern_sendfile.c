@@ -2,6 +2,14 @@
  * Copyright (c) 2013-2015 Gleb Smirnoff <glebius@FreeBSD.org>
  * Copyright (c) 1998, David Greenman. All rights reserved.
  *
+ * Copyright (c) 2016 Robert N. M. Watson.
+ * All rights reserved.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -31,6 +39,7 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_compat.h"
+#include "opt_metaio.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -40,6 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/sysproto.h>
 #include <sys/malloc.h>
+#include <sys/metaio.h>
 #include <sys/proc.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
@@ -1009,6 +1019,31 @@ sys_sendfile(struct thread *td, struct sendfile_args *uap)
 {
  
 	return (sendfile(td, uap, 0));
+}
+
+int
+sys_metaio_sendfile(struct thread *td, struct metaio_sendfile_args *uap)
+{
+#ifdef METAIO
+	struct sendfile_args sendfile_args;
+	struct metaio mio;
+	int error;
+
+	error = copyin(uap->miop, &mio, sizeof(mio));
+	if (error != 0)
+		return (error);
+	AUDIT_ARG_METAIO(&mio);
+	sendfile_args.fd = uap->fd;
+	sendfile_args.s = uap->s;
+	sendfile_args.offset = uap->offset;
+	sendfile_args.nbytes = uap->nbytes;
+	sendfile_args.hdtr = uap->hdtr;
+	sendfile_args.sbytes = uap->sbytes;
+	sendfile_args.flags = uap->flags;
+	return (sendfile(td, &sendfile_args, 0));
+#else /* !METAIO */
+	return (ENOSYS);
+#endif /* METAIO */
 }
 
 #ifdef COMPAT_FREEBSD4
