@@ -140,6 +140,7 @@ static fo_close_t	ksem_closef;
 static fo_chmod_t	ksem_chmod;
 static fo_chown_t	ksem_chown;
 static fo_fill_kinfo_t	ksem_fill_kinfo;
+static fo_getuuid_t	ksem_getuuid;
 
 /* File descriptor operations. */
 static struct fileops ksem_ops = {
@@ -155,6 +156,7 @@ static struct fileops ksem_ops = {
 	.fo_chown = ksem_chown,
 	.fo_sendfile = invfo_sendfile,
 	.fo_fill_kinfo = ksem_fill_kinfo,
+	.fo_getuuid = ksem_getuuid,
 	.fo_flags = DFLAG_PASSABLE
 };
 
@@ -300,6 +302,16 @@ ksem_fill_kinfo(struct file *fp, struct kinfo_file *kif, struct filedesc *fdp)
 		}
 		sx_sunlock(&ksem_dict_lock);
 	}
+	return (0);
+}
+
+static int
+ksem_getuuid(struct file *fp, struct uuid *uuidp)
+{
+	struct ksem *ks;
+
+	ks = fp->f_data;
+	*uuidp = ks->ks_uuid;
 	return (0);
 }
 
