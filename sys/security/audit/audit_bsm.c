@@ -1379,6 +1379,11 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 				    ar->ar_arg_svipc_id);
 				kau_write(rec, tok);
 			}
+			if (RET_IS_VALID(kar, RET_SVIPC_ID)) {
+				tok = au_to_ipc(AT_IPC_SEM,
+				    ar->ar_ret_svipc_id);
+				kau_write(rec, tok);
+			}
 		}
 		break;
 

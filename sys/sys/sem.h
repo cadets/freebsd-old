@@ -103,6 +103,8 @@ union semun {
 
 #ifdef _KERNEL
 
+#include <sys/uuid.h>
+
 /*
  * semaphore info struct
  */
@@ -126,6 +128,7 @@ struct semid_kernel {
 	struct	semid_ds u;
 	struct	label *label;	/* MAC framework label */
 	struct	ucred *cred;	/* creator's credentials */
+	struct	uuid   uuid;
 };
 
 /* internal "mode" bits */
