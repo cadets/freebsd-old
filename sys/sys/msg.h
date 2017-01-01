@@ -117,6 +117,8 @@ struct mymsg {
 
 #ifdef _KERNEL
 
+#include <sys/uuid.h>
+
 struct msg {
 	struct	msg *msg_next;  /* next msg in the chain */
 	long	msg_type; 	/* type of this message */
@@ -161,6 +163,7 @@ struct msqid_kernel {
 	 */
 	struct	label *label;	/* MAC label */
 	struct	ucred *cred;	/* creator's credentials */
+	struct	uuid uuid;
 };
 
 #endif /* _KERNEL */
