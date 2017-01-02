@@ -150,6 +150,9 @@ void	 audit_ret_msgid(msgid_t *msgidp);
 void	 audit_ret_objuuid1(struct uuid *uuid);
 void	 audit_ret_objuuid2(struct uuid *uuid);
 #endif
+#ifdef METAIO
+void	 audit_ret_metaio(struct metaio *miop);
+#endif
 void	 audit_ret_svipc_id(int id);
 
 /*
@@ -429,6 +432,13 @@ void	 audit_ret_svipc_id(int id);
 } while (0)
 #endif /* !KDTRACE_HOOKS */
 
+#ifdef METAIO
+#define	AUDIT_RET_METAIO(miop) do {					\
+	if (AUDITING_TD(curthread))					\
+		audit_ret_metaio((miop));				\
+} while (0)
+#endif /* METAIO */
+
 #define	AUDIT_RET_SVIPC_ID(id) do {					\
 	if (AUDITING_TD(curthread))					\
 		audit_ret_svipc_id((id));				\
@@ -518,6 +528,9 @@ void	 audit_ret_svipc_id(int id);
 #define	AUDIT_RET_OBJUUID1(p)
 #define	AUDIT_RET_OBJUUID2(p)
 #endif /* KDTRACE_HOOKS */
+#ifdef METAIO
+#define	AUDIT_RET_METAIO(miop)
+#endif
 #define	AUDIT_RET_SVIPC_ID(id)
 
 #define	AUDIT_SYSCALL_ENTER(code, td)

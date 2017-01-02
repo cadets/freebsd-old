@@ -73,5 +73,6 @@ metaio_from_uuid(struct uuid *uuidp, struct metaio *miop)
 
 	/* XXXRW: Should we also be propagating any other state here? */
 	miop->mio_uuid = *uuidp;
+	AUDIT_RET_METAIO(miop);
 }
 #endif /* METAIO */

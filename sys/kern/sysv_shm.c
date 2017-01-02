@@ -92,6 +92,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysent.h>
 #include <sys/sysproto.h>
 #include <sys/jail.h>
+#include <sys/uuid.h>
 
 #include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
@@ -330,8 +331,10 @@ kern_shmdt_locked(struct thread *td, const void *shmaddr)
 {
 	struct proc *p = td->td_proc;
 	struct shmmap_state *shmmap_s;
-#ifdef MAC
+#if defined(AUDIT) || defined(MAC)
 	struct shmid_kernel *shmsegptr;
+#endif
+#ifdef MAC
 	int error;
 #endif
 	int i;
@@ -351,8 +354,13 @@ kern_shmdt_locked(struct thread *td, const void *shmaddr)
 	}
 	if (i == shminfo.shmseg)
 		return (EINVAL);
-#ifdef MAC
+#if (defined(AUDIT) && defined(KDTRACE_HOOKS)) || defined(MAC)
 	shmsegptr = &shmsegs[IPCID_TO_IX(shmmap_s->shmid)];
+#endif
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&shmsegptr->uuid);
+#endif
+#ifdef MAC
 	error = mac_sysvshm_check_shmdt(td->td_ucred, shmsegptr);
 	if (error != 0)
 		return (error);
@@ -408,6 +416,9 @@ kern_shmat_locked(struct thread *td, int shmid, const void *shmaddr,
 	shmseg = shm_find_segment(rpr, shmid, true);
 	if (shmseg == NULL)
 		return (EINVAL);
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&shmseg->uuid);
+#endif
 	error = ipcperm(td, &shmseg->u.shm_perm,
 	    (shmflg & SHM_RDONLY) ? IPC_R : IPC_R|IPC_W);
 	if (error != 0)
@@ -539,6 +550,9 @@ kern_shmctl_locked(struct thread *td, int shmid, int cmd, void *buf,
 	shmseg = shm_find_segment(rpr, shmid, cmd != SHM_STAT);
 	if (shmseg == NULL)
 		return (EINVAL);
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&shmseg->uuid);
+#endif
 #ifdef MAC
 	error = mac_sysvshm_check_shmctl(td->td_ucred, shmseg, cmd);
 	if (error != 0)
@@ -674,6 +688,9 @@ shmget_existing(struct thread *td, struct shmget_args *uap, int mode,
 #endif
 	if (uap->size != 0 && uap->size > shmseg->u.shm_segsz)
 		return (EINVAL);
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_OBJUUID1(&shmseg->uuid);
+#endif
 	td->td_retval[0] = IXSEQ_TO_IPCID(segnum, shmseg->u.shm_perm);
 	return (0);
 }
@@ -765,8 +782,12 @@ shmget_allocate_segment(struct thread *td, struct shmget_args *uap, int mode)
 	mac_sysvshm_create(cred, shmseg);
 #endif
 	shmseg->u.shm_ctime = time_second;
+	(void)kern_uuidgen(&shmseg->uuid, 1);
 	shm_committed += btoc(size);
 	shm_nused++;
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_OBJUUID1(&shmseg->uuid);
+#endif
 	td->td_retval[0] = IXSEQ_TO_IPCID(segnum, shmseg->u.shm_perm);
 
 	return (0);
