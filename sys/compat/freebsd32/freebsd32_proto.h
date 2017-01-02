@@ -1133,7 +1133,7 @@ int	freebsd10_freebsd32_pipe(struct thread *, struct freebsd10_freebsd32_pipe_ar
 #define	FREEBSD32_SYS_AUE_ofreebsd32_sigprocmask	AUE_SIGPROCMASK
 #define	FREEBSD32_SYS_AUE_ofreebsd32_sigpending	AUE_SIGPENDING
 #define	FREEBSD32_SYS_AUE_freebsd32_sigaltstack	AUE_SIGALTSTACK
-#define	FREEBSD32_SYS_AUE_freebsd32_ioctl	AUE_NULL
+#define	FREEBSD32_SYS_AUE_freebsd32_ioctl	AUE_IOCTL
 #define	FREEBSD32_SYS_AUE_freebsd32_execve	AUE_EXECVE
 #define	FREEBSD32_SYS_AUE_ofreebsd32_fstat	AUE_FSTAT
 #define	FREEBSD32_SYS_AUE_ofreebsd32_getpagesize	AUE_NULL
@@ -1142,7 +1142,7 @@ int	freebsd10_freebsd32_pipe(struct thread *, struct freebsd10_freebsd32_pipe_ar
 #define	FREEBSD32_SYS_AUE_freebsd32_getitimer	AUE_GETITIMER
 #define	FREEBSD32_SYS_AUE_freebsd32_fcntl	AUE_FCNTL
 #define	FREEBSD32_SYS_AUE_freebsd32_select	AUE_SELECT
-#define	FREEBSD32_SYS_AUE_ofreebsd32_sigreturn	AUE_NULL
+#define	FREEBSD32_SYS_AUE_ofreebsd32_sigreturn	AUE_SIGRETURN
 #define	FREEBSD32_SYS_AUE_ofreebsd32_sigvec	AUE_O_SIGVEC
 #define	FREEBSD32_SYS_AUE_ofreebsd32_sigblock	AUE_O_SIGBLOCK
 #define	FREEBSD32_SYS_AUE_ofreebsd32_sigsetmask	AUE_O_SIGSETMASK
@@ -1223,11 +1223,11 @@ int	freebsd10_freebsd32_pipe(struct thread *, struct freebsd10_freebsd32_pipe_ar
 #define	FREEBSD32_SYS_AUE_freebsd32_thr_suspend	AUE_NULL
 #define	FREEBSD32_SYS_AUE_freebsd32_umtx_op	AUE_NULL
 #define	FREEBSD32_SYS_AUE_freebsd32_thr_new	AUE_THR_NEW
-#define	FREEBSD32_SYS_AUE_freebsd32_kmq_open	AUE_NULL
-#define	FREEBSD32_SYS_AUE_freebsd32_kmq_setattr	AUE_NULL
-#define	FREEBSD32_SYS_AUE_freebsd32_kmq_timedreceive	AUE_NULL
-#define	FREEBSD32_SYS_AUE_freebsd32_kmq_timedsend	AUE_NULL
-#define	FREEBSD32_SYS_AUE_freebsd32_kmq_notify	AUE_NULL
+#define	FREEBSD32_SYS_AUE_freebsd32_kmq_open	AUE_MQ_OPEN
+#define	FREEBSD32_SYS_AUE_freebsd32_kmq_setattr	AUE_MQ_SETATTR
+#define	FREEBSD32_SYS_AUE_freebsd32_kmq_timedreceive	AUE_MQ_TIMEDRECEIVE
+#define	FREEBSD32_SYS_AUE_freebsd32_kmq_timedsend	AUE_MQ_TIMEDSEND
+#define	FREEBSD32_SYS_AUE_freebsd32_kmq_notify	AUE_MQ_NOTIFY
 #define	FREEBSD32_SYS_AUE_freebsd32_aio_fsync	AUE_AIO_FSYNC
 #define	FREEBSD32_SYS_AUE_freebsd32_pread	AUE_PREAD
 #define	FREEBSD32_SYS_AUE_freebsd32_pwrite	AUE_PWRITE

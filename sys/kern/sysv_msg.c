@@ -18,7 +18,7 @@
  */
 /*-
  * Copyright (c) 2003-2005 McAfee, Inc.
- * Copyright (c) 2016 Robert N. M. Watson
+ * Copyright (c) 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * This software was developed for the FreeBSD Project in part by McAfee
@@ -78,6 +78,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/malloc.h>
 #include <sys/jail.h>
+#include <sys/uuid.h>
 
 #include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
@@ -527,6 +528,9 @@ kern_msgctl(td, msqid, cmd, msqbuf)
 	msqkptr = &msqids[msqix];
 
 	mtx_lock(&msq_mtx);
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&msqkptr->uuid);
+#endif
 	if (msqkptr->u.msg_qbytes == 0) {
 		DPRINTF(("no such msqid\n"));
 		error = EINVAL;
@@ -676,6 +680,11 @@ sys_msgget(td, uap)
 				error = EEXIST;
 				goto done2;
 			}
+			AUDIT_ARG_SVIPC_ID(IXSEQ_TO_IPCID(msqid,
+			    msqkptr->u.msg_perm));
+#ifdef KDTRACE_HOOKS
+			AUDIT_ARG_OBJUUID1(&msqkptr->uuid);
+#endif
 			if ((error = ipcperm(td, &msqkptr->u.msg_perm,
 			    msgflg & 0700))) {
 				DPRINTF(("requester doesn't have 0%o access\n",
@@ -744,6 +753,12 @@ sys_msgget(td, uap)
 #ifdef MAC
 		mac_sysvmsq_create(cred, msqkptr);
 #endif
+		(void)kern_uuidgen(&msqkptr->uuid, 1);
+		AUDIT_RET_SVIPC_ID(IXSEQ_TO_IPCID(msqid,
+		    msqkptr->u.msg_perm));
+#ifdef KDTRACE_HOOKS
+		AUDIT_RET_OBJUUID1(&msqkptr->uuid);
+#endif
 		/* XXXRW: Some argument for an AUDIT_RET_SVIPC_PERM(). */
 		AUDIT_ARG_SVIPC_PERM(&msqkptr->u.msg_perm);
 	} else {
@@ -755,7 +770,6 @@ sys_msgget(td, uap)
 found:
 	/* Construct the unique msqid */
 	td->td_retval[0] = IXSEQ_TO_IPCID(msqid, msqkptr->u.msg_perm);
-	AUDIT_RET_SVIPC_ID(td->td_retval[0]);
 done2:
 	mtx_unlock(&msq_mtx);
 	return (error);
@@ -804,6 +818,9 @@ kern_msgsnd(td, msqid, msgp, msgsz, msgflg, mtype)
 
 	msqkptr = &msqids[msqix];
 	AUDIT_ARG_SVIPC_PERM(&msqkptr->u.msg_perm);
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&msqkptr->uuid);
+#endif
 	if (msqkptr->u.msg_qbytes == 0) {
 		DPRINTF(("no such message queue id\n"));
 		error = EINVAL;
@@ -1178,6 +1195,9 @@ kern_msgrcv(td, msqid, msgp, msgsz, msgtyp, msgflg, mtype)
 	msqkptr = &msqids[msqix];
 	mtx_lock(&msq_mtx);
 	AUDIT_ARG_SVIPC_PERM(&msqkptr->u.msg_perm);
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&msqkptr->uuid);
+#endif
 	if (msqkptr->u.msg_qbytes == 0) {
 		DPRINTF(("no such message queue id\n"));
 		error = EINVAL;

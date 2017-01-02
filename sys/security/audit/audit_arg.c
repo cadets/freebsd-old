@@ -1137,6 +1137,23 @@ audit_ret_objuuid2(struct uuid *uuid)
 }
 #endif
 
+#ifdef METAIO
+void
+audit_ret_metaio(struct metaio *miop)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	if (miop == NULL)
+		return;
+	ar->k_ar.ar_ret_metaio = *miop;
+	RET_SET_VALID(ar, RET_METAIO);
+}
+#endif /* METAIO */
+
 void
 audit_ret_svipc_id(int id)
 {
