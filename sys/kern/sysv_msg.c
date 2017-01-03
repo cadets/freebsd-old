@@ -70,6 +70,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/mount.h>
 #include <sys/msg.h>
+#include <sys/msgid.h>
 #include <sys/racct.h>
 #include <sys/sx.h>
 #include <sys/syscall.h>
@@ -993,6 +994,8 @@ kern_msgsnd(td, msqid, msgp, msgsz, msgflg, mtype)
 	 */
 	mac_sysvmsg_create(td->td_ucred, msqkptr, msghdr);
 #endif
+	msgid_generate(&msghdr->msgid);
+	AUDIT_RET_MSGID(&msghdr->msgid);
 
 	/*
 	 * Allocate space for the message
@@ -1421,7 +1424,7 @@ kern_msgrcv(td, msqid, msgp, msgsz, msgtyp, msgflg, mtype)
 	/*
 	 * Done, return the actual number of bytes copied out.
 	 */
-
+	AUDIT_RET_MSGID(&msghdr->msgid);
 	msg_freehdr(msghdr);
 	wakeup(msqkptr);
 	td->td_retval[0] = msgsz;

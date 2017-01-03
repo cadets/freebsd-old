@@ -117,6 +117,7 @@ struct mymsg {
 
 #ifdef _KERNEL
 
+#include <sys/msgid.h>
 #include <sys/uuid.h>
 
 struct msg {
@@ -127,6 +128,7 @@ struct msg {
 	u_short	msg_ts;		/* size of this message */
 	short	msg_spot;	/* location of start of msg in buffer */
 	struct	label *label;	/* MAC Framework label */
+	msgid_t	msgid;		/* Audit message ID */
 };
 
 /*
