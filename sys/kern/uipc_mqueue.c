@@ -72,6 +72,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/mount.h>
 #include <sys/mqueue.h>
+#include <sys/msgid.h>
 #include <sys/mutex.h>
 #include <sys/namei.h>
 #include <sys/posix4.h>
@@ -198,6 +199,7 @@ struct mqueue_msg {
 	TAILQ_ENTRY(mqueue_msg)	msg_link;
 	unsigned int	msg_prio;
 	unsigned int	msg_size;
+	msgid_t		msg_msgid;
 	/* following real data... */
 };
 
@@ -1666,6 +1668,7 @@ mqueue_loadmsg(const char *msg_ptr, size_t msg_size, int msg_prio)
 	} else {
 		msg->msg_size = msg_size;
 		msg->msg_prio = msg_prio;
+		msgid_generate(&msg->msg_msgid);
 	}
 	return (msg);
 }
@@ -1758,6 +1761,7 @@ mqueue_send(struct mqueue *mq, const char *msg_ptr,
 		if (error != ETIMEDOUT)
 			break;
 	}
+	AUDIT_RET_MSGID(&msg->msg_msgid);
 	if (error == 0)
 		return (0);
 bad:
@@ -1919,6 +1923,7 @@ received:
 		curthread->td_retval[0] = msg->msg_size;
 		curthread->td_retval[1] = 0;
 	}
+	AUDIT_RET_MSGID(&msg->msg_msgid);
 	mqueue_freemsg(msg);
 	return (error);
 }
