@@ -50,7 +50,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include "opt_ipfw.h"		/* for ipfw_fwd	*/
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
@@ -185,7 +184,7 @@ SYSCTL_INT(_net_inet_tcp, OID_AUTO, abc_l_var, CTLFLAG_VNET | CTLFLAG_RW,
 
 static SYSCTL_NODE(_net_inet_tcp, OID_AUTO, ecn, CTLFLAG_RW, 0, "TCP ECN");
 
-VNET_DEFINE(int, tcp_do_ecn) = 0;
+VNET_DEFINE(int, tcp_do_ecn) = 2;
 SYSCTL_INT(_net_inet_tcp_ecn, OID_AUTO, enable, CTLFLAG_VNET | CTLFLAG_RW,
     &VNET_NAME(tcp_do_ecn), 0,
     "TCP ECN support");
@@ -250,7 +249,7 @@ static void
 tcp_vnet_init(const void *unused)
 {
 
-	COUNTER_ARRAY_ALLOC(VNET(tcps_states), TCP_NSTATES, M_WAITOK);
+	COUNTER_ARRAY_ALLOC(V_tcps_states, TCP_NSTATES, M_WAITOK);
 	VNET_PCPUSTAT_ALLOC(tcpstat, M_WAITOK);
 }
 VNET_SYSINIT(tcp_vnet_init, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_ANY,
@@ -261,7 +260,7 @@ static void
 tcp_vnet_uninit(const void *unused)
 {
 
-	COUNTER_ARRAY_FREE(VNET(tcps_states), TCP_NSTATES);
+	COUNTER_ARRAY_FREE(V_tcps_states, TCP_NSTATES);
 	VNET_PCPUSTAT_FREE(tcpstat);
 }
 VNET_SYSUNINIT(tcp_vnet_uninit, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_ANY,
@@ -365,7 +364,7 @@ cc_conn_init(struct tcpcb *tp)
 		/*
 		 * There's some sort of gateway or interface
 		 * buffer limit on the path.  Use this to set
-		 * the slow start threshhold, but set the
+		 * the slow start threshold, but set the
 		 * threshold to no less than 2*mss.
 		 */
 		tp->snd_ssthresh = max(2 * maxseg, metrics.rmx_ssthresh);
@@ -2533,7 +2532,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 				 * change and FIN isn't set),
 				 * the ack is the biggest we've
 				 * seen and we've seen exactly our rexmt
-				 * threshhold of them, assume a packet
+				 * threshold of them, assume a packet
 				 * has been dropped and retransmit it.
 				 * Kludge snd_nxt & the congestion
 				 * window so we send only this one
@@ -2754,6 +2753,9 @@ process_ACK:
 		INP_WLOCK_ASSERT(tp->t_inpcb);
 
 		acked = BYTES_THIS_ACK(tp, th);
+		KASSERT(acked >= 0, ("%s: acked unexepectedly negative "
+		    "(tp->snd_una=%u, th->th_ack=%u, tp=%p, m=%p)", __func__,
+		    tp->snd_una, th->th_ack, tp, m));
 		TCPSTAT_INC(tcps_rcvackpack);
 		TCPSTAT_ADD(tcps_rcvackbyte, acked);
 
@@ -2823,13 +2825,19 @@ process_ACK:
 
 		SOCKBUF_LOCK(&so->so_snd);
 		if (acked > sbavail(&so->so_snd)) {
-			tp->snd_wnd -= sbavail(&so->so_snd);
+			if (tp->snd_wnd >= sbavail(&so->so_snd))
+				tp->snd_wnd -= sbavail(&so->so_snd);
+			else
+				tp->snd_wnd = 0;
 			mfree = sbcut_locked(&so->so_snd,
 			    (int)sbavail(&so->so_snd));
 			ourfinisacked = 1;
 		} else {
 			mfree = sbcut_locked(&so->so_snd, acked);
-			tp->snd_wnd -= acked;
+			if (tp->snd_wnd >= (u_long) acked)
+				tp->snd_wnd -= acked;
+			else
+				tp->snd_wnd = 0;
 			ourfinisacked = 0;
 		}
 		/* NB: sowwakeup_locked() does an implicit unlock. */

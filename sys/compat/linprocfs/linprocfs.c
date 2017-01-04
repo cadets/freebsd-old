@@ -490,7 +490,6 @@ linprocfs_doswaps(PFS_FILL_ARGS)
 	char devname[SPECNAMELEN + 1];
 
 	sbuf_printf(sb, "Filename\t\t\t\tType\t\tSize\tUsed\tPriority\n");
-	mtx_lock(&Giant);
 	for (n = 0; ; n++) {
 		if (swap_dev_info(n, &xsw, devname, sizeof(devname)) != 0)
 			break;
@@ -504,7 +503,6 @@ linprocfs_doswaps(PFS_FILL_ARGS)
 		sbuf_printf(sb, "/dev/%-34s unknown\t\t%jd\t%jd\t-1\n",
 		    devname, total, used);
 	}
-	mtx_unlock(&Giant);
 	return (0);
 }
 
@@ -1326,13 +1324,13 @@ linprocfs_dofilesystems(PFS_FILL_ARGS)
 {
 	struct vfsconf *vfsp;
 
-	mtx_lock(&Giant);
+	vfsconf_slock();
 	TAILQ_FOREACH(vfsp, &vfsconf, vfc_list) {
 		if (vfsp->vfc_flags & VFCF_SYNTHETIC)
 			sbuf_printf(sb, "nodev");
 		sbuf_printf(sb, "\t%s\n", vfsp->vfc_name);
 	}
-	mtx_unlock(&Giant);
+	vfsconf_sunlock();
 	return(0);
 }
 
@@ -1403,6 +1401,8 @@ linprocfs_doproclimits(PFS_FILL_ARGS)
 	ssize_t size;
 	int res, error;
 
+	error = 0;
+
 	PROC_LOCK(p);
 	limp = lim_hold(p->p_limit);
 	PROC_UNLOCK(p);
@@ -1422,7 +1422,7 @@ linprocfs_doproclimits(PFS_FILL_ARGS)
 			    "kern.sigqueue.max_pending_per_proc",
 			    &res, &size, 0, 0, 0, 0);
 			if (error != 0)
-				break;
+				goto out;
 			rl.rlim_cur = res;
 			rl.rlim_max = res;
 			break;
@@ -1430,7 +1430,7 @@ linprocfs_doproclimits(PFS_FILL_ARGS)
 			error = kernel_sysctlbyname(td,
 			    "kern.ipc.msgmnb", &res, &size, 0, 0, 0, 0);
 			if (error != 0)
-				break;
+				goto out;
 			rl.rlim_cur = res;
 			rl.rlim_max = res;
 			break;
@@ -1452,6 +1452,7 @@ linprocfs_doproclimits(PFS_FILL_ARGS)
 			    li->desc, (unsigned long long)rl.rlim_cur,
 			    (unsigned long long)rl.rlim_max, li->unit);
 	}
+out:
 	lim_free(limp);
 	return (error);
 }

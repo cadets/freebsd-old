@@ -124,11 +124,15 @@ struct mx25l_flash_ident flash_devices[] = {
 
 	/* Winbond -- w25x "blocks" are 64K, "sectors" are 4KiB */
 	{ "w25x32",	0xef, 0x3016, 64 * 1024, 64, FL_ERASE_4K },
+	{ "w25x64",	0xef, 0x3017, 64 * 1024, 128, FL_ERASE_4K },
 	{ "w25q32",	0xef, 0x4016, 64 * 1024, 64, FL_ERASE_4K },
 	{ "w25q64",	0xef, 0x4017, 64 * 1024, 128, FL_ERASE_4K },
 	{ "w25q64bv",	0xef, 0x4017, 64 * 1024, 128, FL_ERASE_4K },
 	{ "w25q128",	0xef, 0x4018, 64 * 1024, 256, FL_ERASE_4K },
 	{ "w25q256",	0xef, 0x4019, 64 * 1024, 512, FL_ERASE_4K },
+
+	 /* Atmel */
+	{ "at25df641",  0x1f, 0x4800, 64 * 1024, 128, FL_ERASE_4K },
 };
 
 static uint8_t
@@ -189,7 +193,7 @@ mx25l_get_device_ident(struct mx25l_softc *sc)
 	dev_id = (rxBuf[2] << 8) | (rxBuf[3]);
 
 	for (i = 0; 
-	    i < sizeof(flash_devices)/sizeof(struct mx25l_flash_ident); i++) {
+	    i < nitems(flash_devices); i++) {
 		if ((flash_devices[i].manufacturer_id == manufacturer_id) &&
 		    (flash_devices[i].device_id == dev_id))
 			return &flash_devices[i];
@@ -443,12 +447,26 @@ static struct ofw_compat_data compat_data[] = {
 static int
 mx25l_probe(device_t dev)
 {
-
 #ifdef FDT
+	int i;
+
 	if (!ofw_bus_status_okay(dev))
 		return (ENXIO);
-	if (ofw_bus_search_compatible(dev, compat_data)->ocd_data == 0)
-		return (ENXIO);
+
+	/* First try to match the compatible property to the compat_data */
+	if (ofw_bus_search_compatible(dev, compat_data)->ocd_data == 1)
+		goto found;
+
+	/*
+	 * Next, try to find a compatible device using the names in the
+	 * flash_devices structure
+	 */
+	for (i = 0; i < nitems(flash_devices); i++)
+		if (ofw_bus_is_compatible(dev, flash_devices[i].name))
+			goto found;
+
+	return (ENXIO);
+found:
 #endif
 	device_set_desc(dev, "M25Pxx Flash Family");
 

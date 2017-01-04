@@ -201,13 +201,10 @@ mtk_pci_ranges(phandle_t node, struct mtk_pci_range *io_space,
 }
 
 static struct ofw_compat_data compat_data[] = {
-	{ "ralink,rt3662-pcie",		MTK_SOC_RT3883 },
-	{ "ralink,rt3883-pcie",		MTK_SOC_RT3883 },
-	{ "ralink,mt7620a-pcie",	MTK_SOC_MT7620A },
-	{ "ralink,mt7621-pcie",		MTK_SOC_MT7621 },
+	{ "ralink,rt3883-pci",		MTK_SOC_RT3883 },
+	{ "mediatek,mt7620-pci",	MTK_SOC_MT7620A },
+	{ "mediatek,mt7628-pci",	MTK_SOC_MT7628 },
 	{ "mediatek,mt7621-pci",	MTK_SOC_MT7621 },
-	{ "ralink,mt7628-pcie",		MTK_SOC_MT7628 },
-	{ "ralink,mt7688-pcie",		MTK_SOC_MT7628 },
 	{ NULL,				MTK_SOC_UNKNOWN }
 };
 
@@ -322,7 +319,7 @@ mtk_pci_attach(device_t dev)
 	}
 
 	/* Register ourselves as an interrupt controller */
-	if (intr_pic_register(dev, xref) != 0) {
+	if (intr_pic_register(dev, xref) == NULL) {
 		device_printf(dev, "could not register PIC\n");
 		goto cleanup_rman;
 	}

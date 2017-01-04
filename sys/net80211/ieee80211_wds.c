@@ -344,7 +344,6 @@ static int
 wds_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 {
 	struct ieee80211com *ic = vap->iv_ic;
-	struct ieee80211_node *ni;
 	enum ieee80211_state ostate;
 	int error;
 
@@ -357,7 +356,6 @@ wds_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 	callout_stop(&vap->iv_mgtsend);		/* XXX callout_drain */
 	if (ostate != IEEE80211_S_SCAN)
 		ieee80211_cancel_scan(vap);	/* background scan */
-	ni = vap->iv_bss;			/* NB: no reference held */
 	error = 0;
 	switch (nstate) {
 	case IEEE80211_S_INIT:
@@ -693,8 +691,7 @@ wds_input(struct ieee80211_node *ni, struct mbuf *m,
 #ifdef IEEE80211_DEBUG
 		if (ieee80211_msg_debug(vap) || ieee80211_msg_dumppkts(vap)) {
 			if_printf(ifp, "received %s from %s rssi %d\n",
-			    ieee80211_mgt_subtype_name[subtype >>
-				IEEE80211_FC0_SUBTYPE_SHIFT],
+			    ieee80211_mgt_subtype_name(subtype),
 			    ether_sprintf(wh->i_addr2), rssi);
 		}
 #endif

@@ -154,7 +154,6 @@ sta_beacon_miss(struct ieee80211vap *vap)
 	vap->iv_stats.is_beacon_miss++;
 	if (vap->iv_roaming == IEEE80211_ROAMING_AUTO) {
 #ifdef IEEE80211_SUPPORT_SUPERG
-		struct ieee80211com *ic = vap->iv_ic;
 
 		/*
 		 * If we receive a beacon miss interrupt when using
@@ -880,8 +879,7 @@ sta_input(struct ieee80211_node *ni, struct mbuf *m,
 		if ((ieee80211_msg_debug(vap) && doprint(vap, subtype)) ||
 		    ieee80211_msg_dumppkts(vap)) {
 			if_printf(ifp, "received %s from %s rssi %d\n",
-			    ieee80211_mgt_subtype_name[subtype >>
-				IEEE80211_FC0_SUBTYPE_SHIFT],
+			    ieee80211_mgt_subtype_name(subtype),
 			    ether_sprintf(wh->i_addr2), rssi);
 		}
 #endif
@@ -892,8 +890,7 @@ sta_input(struct ieee80211_node *ni, struct mbuf *m,
 				 * should be encrypted, discard all others.
 				 */
 				IEEE80211_DISCARD(vap, IEEE80211_MSG_INPUT,
-				    wh, ieee80211_mgt_subtype_name[subtype >>
-					IEEE80211_FC0_SUBTYPE_SHIFT],
+				    wh, ieee80211_mgt_subtype_name(subtype),
 				    "%s", "WEP set but not permitted");
 				vap->iv_stats.is_rx_mgtdiscard++; /* XXX */
 				goto out;
@@ -978,7 +975,6 @@ sta_auth_shared(struct ieee80211_node *ni, struct ieee80211_frame *wh,
 {
 	struct ieee80211vap *vap = ni->ni_vap;
 	uint8_t *challenge;
-	int estatus;
 
 	/*
 	 * NB: this can happen as we allow pre-shared key
@@ -992,7 +988,6 @@ sta_auth_shared(struct ieee80211_node *ni, struct ieee80211_frame *wh,
 		IEEE80211_DISCARD_MAC(vap, IEEE80211_MSG_AUTH,
 		    ni->ni_macaddr, "shared key auth",
 		    "%s", " PRIVACY is disabled");
-		estatus = IEEE80211_STATUS_ALG;
 		goto bad;
 	}
 	/*
@@ -1006,7 +1001,6 @@ sta_auth_shared(struct ieee80211_node *ni, struct ieee80211_frame *wh,
 		    ni->ni_macaddr, "shared key auth",
 		    "bad sta auth mode %u", ni->ni_authmode);
 		vap->iv_stats.is_rx_bad_auth++;	/* XXX maybe a unique error? */
-		estatus = IEEE80211_STATUS_ALG;
 		goto bad;
 	}
 
@@ -1018,7 +1012,6 @@ sta_auth_shared(struct ieee80211_node *ni, struct ieee80211_frame *wh,
 			    "ie %d/%d too long",
 			    frm[0], (frm[1] + 2) - (efrm - frm));
 			vap->iv_stats.is_rx_bad_auth++;
-			estatus = IEEE80211_STATUS_CHALLENGE;
 			goto bad;
 		}
 		if (*frm == IEEE80211_ELEMID_CHALLENGE)
@@ -1033,7 +1026,6 @@ sta_auth_shared(struct ieee80211_node *ni, struct ieee80211_frame *wh,
 			    ni->ni_macaddr, "shared key auth",
 			    "%s", "no challenge");
 			vap->iv_stats.is_rx_bad_auth++;
-			estatus = IEEE80211_STATUS_CHALLENGE;
 			goto bad;
 		}
 		if (challenge[1] != IEEE80211_CHALLENGE_LEN) {
@@ -1041,7 +1033,6 @@ sta_auth_shared(struct ieee80211_node *ni, struct ieee80211_frame *wh,
 			    ni->ni_macaddr, "shared key auth",
 			    "bad challenge len %d", challenge[1]);
 			vap->iv_stats.is_rx_bad_auth++;
-			estatus = IEEE80211_STATUS_CHALLENGE;
 			goto bad;
 		}
 	default:
@@ -1120,7 +1111,7 @@ ieee80211_parse_wmeparams(struct ieee80211vap *vap, uint8_t *frm,
 		wmep->wmep_aifsn = MS(frm[0], WME_PARAM_AIFSN);
 		wmep->wmep_logcwmin = MS(frm[1], WME_PARAM_LOGCWMIN);
 		wmep->wmep_logcwmax = MS(frm[1], WME_PARAM_LOGCWMAX);
-		wmep->wmep_txopLimit = LE_READ_2(frm+2);
+		wmep->wmep_txopLimit = le16dec(frm+2);
 		frm += 4;
 	}
 	wme->wme_wmeChanParams.cap_info = qosinfo;
@@ -1283,7 +1274,6 @@ sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0, int subtype,
     const struct ieee80211_rx_stats *rxs,
     int rssi, int nf)
 {
-#define	ISPROBE(_st)	((_st) == IEEE80211_FC0_SUBTYPE_PROBE_RESP)
 #define	ISREASSOC(_st)	((_st) == IEEE80211_FC0_SUBTYPE_REASSOC_RESP)
 	struct ieee80211vap *vap = ni->ni_vap;
 	struct ieee80211com *ic = ni->ni_ic;
@@ -1788,7 +1778,8 @@ sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0, int subtype,
 		IEEE80211_NODE_STAT(ni, rx_deauth);
 
 		IEEE80211_NOTE(vap, IEEE80211_MSG_AUTH, ni,
-		    "recv deauthenticate (reason %d)", reason);
+		    "recv deauthenticate (reason: %d (%s))", reason,
+		    ieee80211_reason_to_string(reason));
 		ieee80211_new_state(vap, IEEE80211_S_AUTH,
 		    (reason << 8) | IEEE80211_FC0_SUBTYPE_DEAUTH);
 		break;
@@ -1821,7 +1812,8 @@ sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0, int subtype,
 		IEEE80211_NODE_STAT(ni, rx_disassoc);
 
 		IEEE80211_NOTE(vap, IEEE80211_MSG_ASSOC, ni,
-		    "recv disassociate (reason %d)", reason);
+		    "recv disassociate (reason: %d (%s))", reason,
+		    ieee80211_reason_to_string(reason));
 		ieee80211_new_state(vap, IEEE80211_S_ASSOC, 0);
 		break;
 	}
@@ -1861,7 +1853,6 @@ sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0, int subtype,
 		break;
 	}
 #undef ISREASSOC
-#undef ISPROBE
 }
 
 static void
