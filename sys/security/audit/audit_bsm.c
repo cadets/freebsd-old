@@ -730,7 +730,6 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 	case AUE_KQUEUE:
 	case AUE_MODLOAD:
 	case AUE_MODUNLOAD:
-	case AUE_MSGSYS:
 	case AUE_NTP_ADJTIME:
 	case AUE_PIPE:
 	case AUE_POSIX_OPENPT:
@@ -1193,27 +1192,64 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		}
 		break;
 
+	case AUE_MQ_OPEN:
+		if (ARG_IS_VALID(kar, ARG_MODE)) {
+			tok = au_to_arg32(3, "mode", ar->ar_arg_mode);
+			kau_write(rec, tok);
+		}
+		if (ARG_IS_VALID(kar, ARG_FFLAGS)) {
+			tok = au_to_arg32(2, "flags", ar->ar_arg_fflags);
+			kau_write(rec, tok);
+		}
+		/* FALLTHROUGH */
+
+	case AUE_MQ_UNLINK:
+		UPATH1_TOKENS;
+		break;
+
+	case AUE_MQ_NOTIFY:
+	case AUE_MQ_SETATTR:
+	case AUE_MQ_TIMEDRECEIVE:
+	case AUE_MQ_TIMEDSEND:
+		if (ARG_IS_VALID(kar, ARG_FD)) {
+			tok = au_to_arg32(1, "mqd", ar->ar_arg_fd);
+			kau_write(rec, tok);
+		}
+		break;
+
+	case AUE_MSGSYS:	/* XXXRW: map into individual operations ...? */
 	case AUE_MSGCTL:
 		ar->ar_event = audit_msgctl_to_event(ar->ar_arg_svipc_cmd);
+		if (ARG_IS_VALID(kar, ARG_SVIPC_PERM)) {
+			tok = au_to_ipc_perm(&ar->ar_arg_svipc_perm);
+			kau_write(rec, tok);
+		}
 		/* Fall through */
 
 	case AUE_MSGRCV:
 	case AUE_MSGSND:
-		tok = au_to_arg32(1, "msg ID", ar->ar_arg_svipc_id);
-		kau_write(rec, tok);
-		if (ar->ar_errno != EINVAL) {
-			tok = au_to_ipc(AT_IPC_MSG, ar->ar_arg_svipc_id);
+		if (ARG_IS_VALID(kar, ARG_SVIPC_ID)) {
+			tok = au_to_arg32(1, "msq ID", ar->ar_arg_svipc_id);
 			kau_write(rec, tok);
+			if (ar->ar_errno != EINVAL) {
+				tok = au_to_ipc(AT_IPC_MSG,
+				    ar->ar_arg_svipc_id);
+				kau_write(rec, tok);
+			}
 		}
 		break;
 
 	case AUE_MSGGET:
 		if (ar->ar_errno == 0) {
-			if (ARG_IS_VALID(kar, ARG_SVIPC_ID)) {
+			if (RET_IS_VALID(kar, RET_SVIPC_ID)) {
 				tok = au_to_ipc(AT_IPC_MSG,
-				    ar->ar_arg_svipc_id);
+				    ar->ar_ret_svipc_id);
 				kau_write(rec, tok);
 			}
+		}
+		if (ARG_IS_VALID(kar, ARG_SVIPC_PERM)) {
+			tok = au_to_ipc_perm(&ar->ar_arg_svipc_perm);
+			kau_write(rec, tok);
 		}
 		break;
 
@@ -1341,6 +1377,11 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 			if (ARG_IS_VALID(kar, ARG_SVIPC_ID)) {
 				tok = au_to_ipc(AT_IPC_SEM,
 				    ar->ar_arg_svipc_id);
+				kau_write(rec, tok);
+			}
+			if (RET_IS_VALID(kar, RET_SVIPC_ID)) {
+				tok = au_to_ipc(AT_IPC_SEM,
+				    ar->ar_ret_svipc_id);
 				kau_write(rec, tok);
 			}
 		}
@@ -1536,10 +1577,8 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		}
 		break;
 
-	/* AUE_SHMOPEN, AUE_SHMUNLINK, AUE_SEMOPEN, AUE_SEMCLOSE
-	 * and AUE_SEMUNLINK are Posix IPC */
 	case AUE_SHMOPEN:
-		if (ARG_IS_VALID(kar, ARG_SVIPC_ADDR)) {
+		if (ARG_IS_VALID(kar, ARG_FFLAGS)) {
 			tok = au_to_arg32(2, "flags", ar->ar_arg_fflags);
 			kau_write(rec, tok);
 		}
@@ -1550,25 +1589,10 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		/* FALLTHROUGH */
 
 	case AUE_SHMUNLINK:
-		if (ARG_IS_VALID(kar, ARG_TEXT)) {
-			tok = au_to_text(ar->ar_arg_text);
-			kau_write(rec, tok);
-		}
-		if (ARG_IS_VALID(kar, ARG_POSIX_IPC_PERM)) {
-			struct ipc_perm perm;
-
-			perm.uid = ar->ar_arg_pipc_perm.pipc_uid;
-			perm.gid = ar->ar_arg_pipc_perm.pipc_gid;
-			perm.cuid = ar->ar_arg_pipc_perm.pipc_uid;
-			perm.cgid = ar->ar_arg_pipc_perm.pipc_gid;
-			perm.mode = ar->ar_arg_pipc_perm.pipc_mode;
-			perm.seq = 0;
-			perm.key = 0;
-			tok = au_to_ipc_perm(&perm);
-			kau_write(rec, tok);
-		}
+		UPATH1_TOKENS;
 		break;
 
+	case AUE_SEMINIT:
 	case AUE_SEMOPEN:
 		if (ARG_IS_VALID(kar, ARG_FFLAGS)) {
 			tok = au_to_arg32(2, "flags", ar->ar_arg_fflags);
@@ -1585,26 +1609,16 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		/* FALLTHROUGH */
 
 	case AUE_SEMUNLINK:
-		if (ARG_IS_VALID(kar, ARG_TEXT)) {
-			tok = au_to_text(ar->ar_arg_text);
-			kau_write(rec, tok);
-		}
-		if (ARG_IS_VALID(kar, ARG_POSIX_IPC_PERM)) {
-			struct ipc_perm perm;
-
-			perm.uid = ar->ar_arg_pipc_perm.pipc_uid;
-			perm.gid = ar->ar_arg_pipc_perm.pipc_gid;
-			perm.cuid = ar->ar_arg_pipc_perm.pipc_uid;
-			perm.cgid = ar->ar_arg_pipc_perm.pipc_gid;
-			perm.mode = ar->ar_arg_pipc_perm.pipc_mode;
-			perm.seq = 0;
-			perm.key = 0;
-			tok = au_to_ipc_perm(&perm);
-			kau_write(rec, tok);
-		}
+		UPATH1_TOKENS;
 		break;
 
 	case AUE_SEMCLOSE:
+	case AUE_SEMDESTROY:
+	case AUE_SEMGETVALUE:
+	case AUE_SEMPOST:
+	case AUE_SEMTRYWAIT:
+	case AUE_SEMWAIT:
+	case AUE_SEMTIMEDWAIT:
 		if (ARG_IS_VALID(kar, ARG_FD)) {
 			tok = au_to_arg32(1, "sem", ar->ar_arg_fd);
 			kau_write(rec, tok);

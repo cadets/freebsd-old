@@ -8,6 +8,7 @@ SUBDIR= cat \
 	chio \
 	chmod \
 	cp \
+	cp_metaio \
 	date \
 	dd \
 	df \
@@ -17,6 +18,7 @@ SUBDIR= cat \
 	expr \
 	freebsd-version \
 	getfacl \
+	getuuid \
 	hostname \
 	kenv \
 	kill \

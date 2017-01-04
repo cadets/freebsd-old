@@ -222,7 +222,7 @@ linux_readv(struct thread *td, struct linux_readv_args *uap)
 	error = linux32_copyinuio(uap->iovp, uap->iovcnt, &auio);
 	if (error)
 		return (error);
-	error = kern_readv(td, uap->fd, auio);
+	error = kern_readv(td, uap->fd, auio, NULL);
 	free(auio, M_IOV);
 	return (error);
 }

@@ -145,7 +145,7 @@
 53	AUE_SIGALTSTACK	STD	{ int freebsd32_sigaltstack( \
 				    struct sigaltstack32 *ss, \
 				    struct sigaltstack32 *oss); }
-54	AUE_NULL	STD	{ int freebsd32_ioctl(int fd, uint32_t com, \
+54	AUE_IOCTL	STD	{ int freebsd32_ioctl(int fd, uint32_t com, \
 				    struct md_ioctl32 *data); }
 55	AUE_REBOOT	NOPROTO	{ int reboot(int opt); }
 56	AUE_REVOKE	NOPROTO	{ int revoke(char *path); }
@@ -218,7 +218,7 @@
 100	AUE_GETPRIORITY	NOPROTO	{ int getpriority(int which, int who); }
 101	AUE_NULL	OBSOL	osend
 102	AUE_NULL	OBSOL	orecv
-103	AUE_NULL	COMPAT	{ int freebsd32_sigreturn( \
+103	AUE_SIGRETURN	COMPAT	{ int freebsd32_sigreturn( \
 				    struct ia32_sigcontext3 *sigcntxp); }
 104	AUE_BIND	NOPROTO	{ int bind(int s, caddr_t name, \
 				    int namelen); }
@@ -312,8 +312,8 @@
 160	AUE_LGETFH	UNIMPL	lgetfh
 161	AUE_NFS_GETFH	NOPROTO	{ int getfh(char *fname, \
 				    struct fhandle *fhp); }
-162	AUE_NULL	OBSOL	getdomainname
-163	AUE_NULL	OBSOL	setdomainname
+162	AUE_SYSCTL	OBSOL	getdomainname
+163	AUE_SYSCTL	OBSOL	setdomainname
 164	AUE_NULL	OBSOL	uname
 165	AUE_SYSARCH	STD	{ int freebsd32_sysarch(int op, char *parms); }
 166	AUE_RTPRIO	NOPROTO	{ int rtprio(int function, pid_t pid, \
@@ -478,9 +478,9 @@
 				    u_int nfds, int timeout); }
 253	AUE_ISSETUGID	NOPROTO	{ int issetugid(void); }
 254	AUE_LCHOWN	NOPROTO	{ int lchown(char *path, int uid, int gid); }
-255	AUE_READ	STD	{ int freebsd32_aio_read( \
+255	AUE_AIO_READ	STD	{ int freebsd32_aio_read( \
 				    struct aiocb32 *aiocbp); }
-256	AUE_WRITE	STD	{ int freebsd32_aio_write( \
+256	AUE_AIO_WRITE	STD	{ int freebsd32_aio_write( \
 				    struct aiocb32 *aiocbp); }
 257	AUE_LIO_LISTIO	STD	{ int freebsd32_lio_listio(int mode, \
 				    struct aiocb32 * const *acb_list, \
@@ -719,19 +719,19 @@
 398	AUE_FHSTATFS	NOPROTO	{ int fhstatfs(const struct fhandle *u_fhp, \
 				    struct statfs *buf); }
 399	AUE_NULL	UNIMPL	nosys
-400	AUE_NULL	NOSTD|NOPROTO	{ int ksem_close(semid_t id); }
-401	AUE_NULL	NOSTD|NOPROTO	{ int ksem_post(semid_t id); }
-402	AUE_NULL	NOSTD|NOPROTO	{ int ksem_wait(semid_t id); }
-403	AUE_NULL	NOSTD|NOPROTO	{ int ksem_trywait(semid_t id); }
-404	AUE_NULL	NOSTD	{ int freebsd32_ksem_init(semid_t *idp, \
+400	AUE_SEMCLOSE	NOSTD|NOPROTO	{ int ksem_close(semid_t id); }
+401	AUE_SEMPOST	NOSTD|NOPROTO	{ int ksem_post(semid_t id); }
+402	AUE_SEMWAIT	NOSTD|NOPROTO	{ int ksem_wait(semid_t id); }
+403	AUE_SEMTRYWAIT	NOSTD|NOPROTO	{ int ksem_trywait(semid_t id); }
+404	AUE_SEMINIT	NOSTD	{ int freebsd32_ksem_init(semid_t *idp, \
 				    unsigned int value); }
-405	AUE_NULL	NOSTD	{ int freebsd32_ksem_open(semid_t *idp, \
+405	AUE_SEMOPEN	NOSTD	{ int freebsd32_ksem_open(semid_t *idp, \
 				    const char *name, int oflag, \
 				    mode_t mode, unsigned int value); }
-406	AUE_NULL	NOSTD|NOPROTO	{ int ksem_unlink(const char *name); }
-407	AUE_NULL	NOSTD|NOPROTO	{ int ksem_getvalue(semid_t id, \
+406	AUE_SEMUNLINK	NOSTD|NOPROTO	{ int ksem_unlink(const char *name); }
+407	AUE_SEMGETVALUE	NOSTD|NOPROTO	{ int ksem_getvalue(semid_t id, \
 				    int *val); }
-408	AUE_NULL	NOSTD|NOPROTO	{ int ksem_destroy(semid_t id); }
+408	AUE_SEMDESTROY	NOSTD|NOPROTO	{ int ksem_destroy(semid_t id); }
 409	AUE_NULL	UNIMPL	__mac_get_pid
 410	AUE_NULL	UNIMPL	__mac_get_link
 411	AUE_NULL	UNIMPL	__mac_set_link
@@ -790,7 +790,7 @@
 				    const char *path, int attrnamespace, \
 				    void *data, size_t nbytes); }
 440	AUE_NULL	UNIMPL	kse_switchin
-441	AUE_NULL	NOSTD	{ int freebsd32_ksem_timedwait(semid_t id, \
+441	AUE_SEMTIMEDWAIT	NOSTD	{ int freebsd32_ksem_timedwait(semid_t id, \
 				    const struct timespec32 *abstime); }
 442	AUE_NULL	STD	{ int freebsd32_thr_suspend( \
 				    const struct timespec32 *timeout); }
@@ -819,26 +819,26 @@
 				    int param_size); }
 456	AUE_NULL	NOPROTO	{ int sigqueue(pid_t pid, int signum, \
 				    void *value); }
-457	AUE_NULL	NOSTD	{ int freebsd32_kmq_open( \
+457	AUE_MQ_OPEN	NOSTD	{ int freebsd32_kmq_open( \
 				    const char *path, int flags, mode_t mode, \
 				    const struct mq_attr32 *attr); }
-458	AUE_NULL	NOSTD	{ int freebsd32_kmq_setattr(int mqd, \
+458	AUE_MQ_SETATTR	NOSTD	{ int freebsd32_kmq_setattr(int mqd, \
 				    const struct mq_attr32 *attr,	\
 				    struct mq_attr32 *oattr); }
-459	AUE_NULL	NOSTD	{ int freebsd32_kmq_timedreceive(int mqd, \
+459	AUE_MQ_TIMEDRECEIVE	NOSTD	{ int freebsd32_kmq_timedreceive(int mqd, \
 				    char *msg_ptr, size_t msg_len,	\
 				    unsigned *msg_prio,			\
 				    const struct timespec32 *abs_timeout); }
-460	AUE_NULL	NOSTD	{ int freebsd32_kmq_timedsend(int mqd,	\
+460	AUE_MQ_TIMEDSEND	NOSTD	{ int freebsd32_kmq_timedsend(int mqd,	\
 				    const char *msg_ptr, size_t msg_len,\
 				    unsigned msg_prio,			\
 				    const struct timespec32 *abs_timeout);}
-461	AUE_NULL	NOSTD	{ int freebsd32_kmq_notify(int mqd,	\
+461	AUE_MQ_NOTIFY	NOSTD	{ int freebsd32_kmq_notify(int mqd,	\
 				    const struct sigevent32 *sigev); }
-462	AUE_NULL	NOPROTO|NOSTD	{ int kmq_unlink(const char *path); }
+462	AUE_MQ_UNLINK	NOPROTO|NOSTD	{ int kmq_unlink(const char *path); }
 463	AUE_NULL	NOPROTO	{ int abort2(const char *why, int nargs, void **args); }
 464	AUE_NULL 	NOPROTO	{ int thr_set_name(long id, const char *name); }
-465	AUE_FSYNC	STD	{ int freebsd32_aio_fsync(int op, \
+465	AUE_AIO_FSYNC	STD	{ int freebsd32_aio_fsync(int op, \
 				    struct aiocb32 *aiocbp); }
 466	AUE_RTPRIO	NOPROTO	{ int rtprio_thread(int function, \
 				    lwpid_t lwpid, struct rtprio *rtp); }
@@ -850,7 +850,7 @@
 472	AUE_SCTP_GENERIC_SENDMSG	NOPROTO|NOSTD	{ int sctp_generic_sendmsg(int sd, caddr_t msg, int mlen, \
 				    caddr_t to, __socklen_t tolen, \
 				    struct sctp_sndrcvinfo *sinfo, int flags); }
-473	AUE_NULL	NOPROTO|NOSTD	{ int sctp_generic_sendmsg_iov(int sd, struct iovec *iov, int iovlen, \
+473	AUE_SCTP_GENERIC_SENDMSG_IOV	NOPROTO|NOSTD	{ int sctp_generic_sendmsg_iov(int sd, struct iovec *iov, int iovlen, \
 				    caddr_t to, __socklen_t tolen, \
 				    struct sctp_sndrcvinfo *sinfo, int flags); }
 474	AUE_SCTP_GENERIC_RECVMSG	NOPROTO|NOSTD	{ int sctp_generic_recvmsg(int sd, struct iovec *iov, int iovlen, \

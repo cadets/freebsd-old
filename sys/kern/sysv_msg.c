@@ -18,12 +18,18 @@
  */
 /*-
  * Copyright (c) 2003-2005 McAfee, Inc.
+ * Copyright (c) 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * This software was developed for the FreeBSD Project in part by McAfee
  * Research, the Security Research Division of McAfee, Inc under DARPA/SPAWAR
  * contract N66001-01-C-8035 ("CBOSS"), as part of the DARPA CHATS research
  * program.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -64,6 +70,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/mount.h>
 #include <sys/msg.h>
+#include <sys/msgid.h>
 #include <sys/racct.h>
 #include <sys/sx.h>
 #include <sys/syscall.h>
@@ -72,7 +79,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/malloc.h>
 #include <sys/jail.h>
+#include <sys/uuid.h>
 
+#include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
 
 FEATURE(sysv_msg, "System V message queues support");
@@ -507,6 +516,8 @@ kern_msgctl(td, msqid, cmd, msqbuf)
 	if (rpr == NULL)
 		return (ENOSYS);
 
+	AUDIT_ARG_SVIPC_CMD(cmd);
+	AUDIT_ARG_SVIPC_ID(msqid);
 	msqix = IPCID_TO_IX(msqid);
 
 	if (msqix < 0 || msqix >= msginfo.msgmni) {
@@ -518,6 +529,9 @@ kern_msgctl(td, msqid, cmd, msqbuf)
 	msqkptr = &msqids[msqix];
 
 	mtx_lock(&msq_mtx);
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&msqkptr->uuid);
+#endif
 	if (msqkptr->u.msg_qbytes == 0) {
 		DPRINTF(("no such msqid\n"));
 		error = EINVAL;
@@ -578,6 +592,7 @@ kern_msgctl(td, msqid, cmd, msqbuf)
 		break;
 
 	case IPC_SET:
+		AUDIT_ARG_SVIPC_PERM(&msqbuf->msg_perm);
 		if ((error = ipcperm(td, &msqkptr->u.msg_perm, IPC_M)))
 			goto done2;
 		if (msqbuf->msg_qbytes > msqkptr->u.msg_qbytes) {
@@ -666,6 +681,11 @@ sys_msgget(td, uap)
 				error = EEXIST;
 				goto done2;
 			}
+			AUDIT_ARG_SVIPC_ID(IXSEQ_TO_IPCID(msqid,
+			    msqkptr->u.msg_perm));
+#ifdef KDTRACE_HOOKS
+			AUDIT_ARG_OBJUUID1(&msqkptr->uuid);
+#endif
 			if ((error = ipcperm(td, &msqkptr->u.msg_perm,
 			    msgflg & 0700))) {
 				DPRINTF(("requester doesn't have 0%o access\n",
@@ -734,6 +754,14 @@ sys_msgget(td, uap)
 #ifdef MAC
 		mac_sysvmsq_create(cred, msqkptr);
 #endif
+		(void)kern_uuidgen(&msqkptr->uuid, 1);
+		AUDIT_RET_SVIPC_ID(IXSEQ_TO_IPCID(msqid,
+		    msqkptr->u.msg_perm));
+#ifdef KDTRACE_HOOKS
+		AUDIT_RET_OBJUUID1(&msqkptr->uuid);
+#endif
+		/* XXXRW: Some argument for an AUDIT_RET_SVIPC_PERM(). */
+		AUDIT_ARG_SVIPC_PERM(&msqkptr->u.msg_perm);
 	} else {
 		DPRINTF(("didn't find it and wasn't asked to create it\n"));
 		error = ENOENT;
@@ -779,6 +807,7 @@ kern_msgsnd(td, msqid, msgp, msgsz, msgflg, mtype)
 		return (ENOSYS);
 
 	mtx_lock(&msq_mtx);
+	AUDIT_ARG_SVIPC_ID(msqid);
 	msqix = IPCID_TO_IX(msqid);
 
 	if (msqix < 0 || msqix >= msginfo.msgmni) {
@@ -789,6 +818,10 @@ kern_msgsnd(td, msqid, msgp, msgsz, msgflg, mtype)
 	}
 
 	msqkptr = &msqids[msqix];
+	AUDIT_ARG_SVIPC_PERM(&msqkptr->u.msg_perm);
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&msqkptr->uuid);
+#endif
 	if (msqkptr->u.msg_qbytes == 0) {
 		DPRINTF(("no such message queue id\n"));
 		error = EINVAL;
@@ -961,6 +994,8 @@ kern_msgsnd(td, msqid, msgp, msgsz, msgflg, mtype)
 	 */
 	mac_sysvmsg_create(td->td_ucred, msqkptr, msghdr);
 #endif
+	msgid_generate(&msghdr->msgid);
+	AUDIT_RET_MSGID(&msghdr->msgid);
 
 	/*
 	 * Allocate space for the message
@@ -1151,6 +1186,7 @@ kern_msgrcv(td, msqid, msgp, msgsz, msgtyp, msgflg, mtype)
 	if (rpr == NULL)
 		return (ENOSYS);
 
+	AUDIT_ARG_SVIPC_ID(msqid);
 	msqix = IPCID_TO_IX(msqid);
 
 	if (msqix < 0 || msqix >= msginfo.msgmni) {
@@ -1161,6 +1197,10 @@ kern_msgrcv(td, msqid, msgp, msgsz, msgtyp, msgflg, mtype)
 
 	msqkptr = &msqids[msqix];
 	mtx_lock(&msq_mtx);
+	AUDIT_ARG_SVIPC_PERM(&msqkptr->u.msg_perm);
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&msqkptr->uuid);
+#endif
 	if (msqkptr->u.msg_qbytes == 0) {
 		DPRINTF(("no such message queue id\n"));
 		error = EINVAL;
@@ -1384,7 +1424,7 @@ kern_msgrcv(td, msqid, msgp, msgsz, msgtyp, msgflg, mtype)
 	/*
 	 * Done, return the actual number of bytes copied out.
 	 */
-
+	AUDIT_RET_MSGID(&msghdr->msgid);
 	msg_freehdr(msghdr);
 	wakeup(msqkptr);
 	td->td_retval[0] = msgsz;
@@ -1639,6 +1679,7 @@ freebsd32_msgsys(struct thread *td, struct freebsd32_msgsys_args *uap)
 
 #if defined(COMPAT_FREEBSD4) || defined(COMPAT_FREEBSD5) || \
     defined(COMPAT_FREEBSD6) || defined(COMPAT_FREEBSD7)
+	AUDIT_ARG_SVIPC_WHICH(uap->which);
 	switch (uap->which) {
 	case 0:
 		return (freebsd7_freebsd32_msgctl(td,
@@ -1810,6 +1851,7 @@ sys_msgsys(td, uap)
 {
 	int error;
 
+	AUDIT_ARG_SVIPC_WHICH(uap->which);
 	if (uap->which < 0 || uap->which >= nitems(msgcalls))
 		return (EINVAL);
 	error = (*msgcalls[uap->which])(td, &uap->a2);

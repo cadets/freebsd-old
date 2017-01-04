@@ -753,7 +753,7 @@ struct cdevsw linuxcdevsw = {
 
 static int
 linux_file_read(struct file *file, struct uio *uio, struct ucred *active_cred,
-    int flags, struct thread *td)
+    int flags, struct thread *td, struct metaio *miop)
 {
 	struct linux_file *filp;
 	struct task_struct t;
@@ -878,7 +878,7 @@ linux_file_fill_kinfo(struct file *fp, struct kinfo_file *kif,
 
 struct fileops linuxfileops = {
 	.fo_read = linux_file_read,
-	.fo_write = invfo_rdwr,
+	.fo_write = invfo_write,
 	.fo_truncate = invfo_truncate,
 	.fo_kqfilter = invfo_kqfilter,
 	.fo_stat = linux_file_stat,

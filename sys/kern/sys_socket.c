@@ -2,6 +2,14 @@
  * Copyright (c) 1982, 1986, 1990, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
+ * Copyright (c) 2016 Robert N. M. Watson
+ * All rights reserved.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -32,6 +40,8 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_metaio.h"
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/aio.h>
@@ -41,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/kthread.h>
 #include <sys/malloc.h>
+#include <sys/metaio.h>
 #include <sys/proc.h>
 #include <sys/protosw.h>
 #include <sys/sigio.h>
@@ -87,8 +98,8 @@ static int empty_retries;
 SYSCTL_INT(_kern_ipc_aio, OID_AUTO, empty_retries, CTLFLAG_RD, &empty_retries,
     0, "socket operation retries");
 
-static fo_rdwr_t soo_read;
-static fo_rdwr_t soo_write;
+static fo_read_t soo_read;
+static fo_write_t soo_write;
 static fo_ioctl_t soo_ioctl;
 static fo_poll_t soo_poll;
 extern fo_kqfilter_t soo_kqfilter;
@@ -96,6 +107,7 @@ static fo_stat_t soo_stat;
 static fo_close_t soo_close;
 static fo_fill_kinfo_t soo_fill_kinfo;
 static fo_aio_queue_t soo_aio_queue;
+static fo_getuuid_t soo_getuuid;
 
 static void	soo_aio_cancel(struct kaiocb *job);
 
@@ -113,18 +125,22 @@ struct fileops	socketops = {
 	.fo_sendfile = invfo_sendfile,
 	.fo_fill_kinfo = soo_fill_kinfo,
 	.fo_aio_queue = soo_aio_queue,
+	.fo_getuuid = soo_getuuid,
 	.fo_flags = DFLAG_PASSABLE
 };
 
 static int
 soo_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
-    int flags, struct thread *td)
+    int flags, struct thread *td, struct metaio *miop)
 {
 	struct socket *so = fp->f_data;
 	int error;
 
 #ifdef KDTRACE_HOOKS
 	AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
+#ifdef METAIO
+	metaio_from_uuid(&so->so_uuid, miop);
 #endif
 #ifdef MAC
 	error = mac_socket_check_receive(active_cred, so);
@@ -816,5 +832,18 @@ soo_aio_queue(struct file *fp, struct kaiocb *job)
 			sb->sb_flags |= SB_AIO;
 	}
 	SOCKBUF_UNLOCK(sb);
+	return (0);
+}
+
+static int
+soo_getuuid(struct file *fp, struct uuid *uuidp)
+{
+	struct socket *so;
+
+	so = fp->f_data;
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&so->so_uuid);
+#endif
+	*uuidp = so->so_uuid;
 	return (0);
 }

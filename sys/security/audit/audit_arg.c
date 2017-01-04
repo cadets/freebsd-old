@@ -36,11 +36,15 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_metaio.h"
+
 #include <sys/param.h>
 #include <sys/filedesc.h>
 #include <sys/capsicum.h>
 #include <sys/ipc.h>
 #include <sys/mount.h>
+#include <sys/selinfo.h>
+#include <sys/pipe.h>
 #include <sys/proc.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
@@ -325,6 +329,23 @@ audit_arg_mask(int mask)
 	ar->k_ar.ar_arg_mask = mask;
 	ARG_SET_VALID(ar, ARG_MASK);
 }
+
+#ifdef METAIO
+void
+audit_arg_metaio(struct metaio *miop)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	if (miop == NULL)
+		return;
+	ar->k_ar.ar_arg_metaio = *miop;
+	ARG_SET_VALID(ar, ARG_METAIO);
+}
+#endif /* METAIO */
 
 void
 audit_arg_mode(mode_t mode)
@@ -663,6 +684,19 @@ audit_arg_svipc_addr(void * addr)
 }
 
 void
+audit_arg_svipc_which(int which)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	ar->k_ar.ar_arg_svipc_which = which;
+	ARG_SET_VALID(ar, ARG_SVIPC_WHICH);
+}
+
+void
 audit_arg_posix_ipc_perm(uid_t uid, gid_t gid, mode_t mode)
 {
 	struct kaudit_record *ar;
@@ -699,6 +733,9 @@ void
 audit_arg_file(struct proc *p, struct file *fp)
 {
 	struct kaudit_record *ar;
+#ifdef KDTRACE_HOOKS
+	struct pipe *pipe;
+#endif
 	struct socket *so;
 	struct inpcb *pcb;
 	struct vnode *vp;
@@ -743,6 +780,16 @@ audit_arg_file(struct proc *p, struct file *fp)
 			INP_RUNLOCK(pcb);
 			ARG_SET_VALID(ar, ARG_SOCKINFO);
 		}
+#ifdef KDTRACE_HOOKS
+		audit_arg_objuuid1(&so->so_uuid);
+#endif
+		break;
+
+	case DTYPE_PIPE:
+#ifdef KDTRACE_HOOKS
+		pipe = (struct pipe *)fp->f_data;
+		audit_arg_objuuid1(&pipe->pipe_uuid);
+#endif
 		break;
 
 	default:
@@ -755,7 +802,8 @@ audit_arg_file(struct proc *p, struct file *fp)
  * Store a path as given by the user process for auditing into the audit
  * record stored on the user thread.  This function will allocate the memory
  * to store the path info if not already available.  This memory will be
- * freed when the audit record is freed.
+ * freed when the audit record is freed.  The path is canonlicalised with
+ * respect to the thread and directory descriptor passed.
  */
 static void
 audit_arg_upath(struct thread *td, int dirfd, char *upath, char **pathp)
@@ -789,6 +837,48 @@ audit_arg_upath2(struct thread *td, int dirfd, char *upath)
 		return;
 
 	audit_arg_upath(td, dirfd, upath, &ar->k_ar.ar_arg_upath2);
+	ARG_SET_VALID(ar, ARG_UPATH2);
+}
+
+/*
+ * Variants on path auditing that do not canonicalise the path passed in;
+ * these are for use with filesystem-like subsystems that employ string names,
+ * but do not support a hierarchical namespace -- for example, POSIX IPC
+ * objects.  The subsystem should have performed any necessary
+ * canonicalisation required to make the paths useful to audit analysis.
+ */
+static void
+audit_arg_upath_canon(char *upath, char **pathp)
+{
+
+	if (*pathp == NULL)
+		*pathp = malloc(MAXPATHLEN, M_AUDITPATH, M_WAITOK);
+	(void)snprintf(*pathp, MAXPATHLEN, "%s", upath);
+}
+
+void
+audit_arg_upath1_canon(char *upath)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	audit_arg_upath_canon(upath, &ar->k_ar.ar_arg_upath1);
+	ARG_SET_VALID(ar, ARG_UPATH1);
+}
+
+void
+audit_arg_upath2_canon(char *upath)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	audit_arg_upath_canon(upath, &ar->k_ar.ar_arg_upath2);
 	ARG_SET_VALID(ar, ARG_UPATH2);
 }
 
@@ -975,6 +1065,30 @@ audit_sysclose(struct thread *td, int fd)
 
 #ifdef KDTRACE_HOOKS
 void
+audit_ret_fd1(int fd)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+	ar->k_ar.ar_ret_fd1 = fd;
+	RET_SET_VALID(ar, RET_FD1);
+}
+
+void
+audit_ret_fd2(int fd)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+	ar->k_ar.ar_ret_fd2 = fd;
+	RET_SET_VALID(ar, RET_FD2);
+}
+
+void
 audit_ret_msgid(msgid_t *msgidp)
 {
 	struct kaudit_record *ar;
@@ -1022,3 +1136,33 @@ audit_ret_objuuid2(struct uuid *uuid)
 	RET_SET_VALID(ar, RET_OBJUUID2);
 }
 #endif
+
+#ifdef METAIO
+void
+audit_ret_metaio(struct metaio *miop)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	if (miop == NULL)
+		return;
+	ar->k_ar.ar_ret_metaio = *miop;
+	RET_SET_VALID(ar, RET_METAIO);
+}
+#endif /* METAIO */
+
+void
+audit_ret_svipc_id(int id)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	ar->k_ar.ar_ret_svipc_id = id;
+	RET_SET_VALID(ar, RET_SVIPC_ID);
+}

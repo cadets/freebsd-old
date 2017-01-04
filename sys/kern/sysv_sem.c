@@ -7,12 +7,18 @@
  */
 /*-
  * Copyright (c) 2003-2005 McAfee, Inc.
+ * Copyright (c) 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * This software was developed for the FreeBSD Project in part by McAfee
  * Research, the Security Research Division of McAfee, Inc under DARPA/SPAWAR
  * contract N66001-01-C-8035 ("CBOSS"), as part of the DARPA CHATS research
  * program.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -59,9 +65,11 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysent.h>
 #include <sys/sysctl.h>
 #include <sys/uio.h>
+#include <sys/uuid.h>
 #include <sys/malloc.h>
 #include <sys/jail.h>
 
+#include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
 
 FEATURE(sysv_sem, "System V semaphores support");
@@ -690,6 +698,9 @@ kern_semctl(struct thread *td, int semid, int semnum, int cmd,
 	DPRINTF(("call to semctl(%d, %d, %d, 0x%p)\n",
 	    semid, semnum, cmd, arg));
 
+	AUDIT_ARG_SVIPC_CMD(cmd);
+	AUDIT_ARG_SVIPC_ID(semid);
+
 	rpr = sem_find_prison(td->td_ucred);
 	if (sem == NULL)
 		return (ENOSYS);
@@ -707,6 +718,9 @@ kern_semctl(struct thread *td, int semid, int semnum, int cmd,
 		semakptr = &sema[semid];
 		sema_mtxp = &sema_mtx[semid];
 		mtx_lock(sema_mtxp);
+#ifdef KDTRACE_HOOKS
+		AUDIT_ARG_OBJUUID1(&semakptr->uuid);
+#endif
 		if ((semakptr->u.sem_perm.mode & SEM_ALLOC) == 0) {
 			error = EINVAL;
 			goto done2;
@@ -724,6 +738,7 @@ kern_semctl(struct thread *td, int semid, int semnum, int cmd,
 		if (cred->cr_prison != semakptr->cred->cr_prison)
 			arg->buf->sem_perm.key = IPC_PRIVATE;
 		*rval = IXSEQ_TO_IPCID(semid, semakptr->u.sem_perm);
+		AUDIT_RET_SVIPC_ID(*rval);
 		mtx_unlock(sema_mtxp);
 		return (0);
 	}
@@ -737,7 +752,9 @@ kern_semctl(struct thread *td, int semid, int semnum, int cmd,
 	if (cmd == IPC_RMID)
 		mtx_lock(&sem_mtx);
 	mtx_lock(sema_mtxp);
-
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&semakptr->uuid);
+#endif
 #ifdef MAC
 	error = mac_sysvsem_check_semctl(cred, semakptr, cmd);
 	if (error != 0)
@@ -757,6 +774,7 @@ kern_semctl(struct thread *td, int semid, int semnum, int cmd,
 		break;
 
 	case IPC_SET:
+		AUDIT_ARG_SVIPC_PERM(&arg->buf->sem_perm);
 		if ((error = semvalid(semid, rpr, semakptr)) != 0)
 			goto done2;
 		if ((error = ipcperm(td, &semakptr->u.sem_perm, IPC_M)))
@@ -789,6 +807,7 @@ kern_semctl(struct thread *td, int semid, int semnum, int cmd,
 			goto done2;
 		}
 		*rval = semakptr->u.sem_base[semnum].semncnt;
+		AUDIT_RET_SVIPC_ID(*rval);
 		break;
 
 	case GETPID:
@@ -801,6 +820,7 @@ kern_semctl(struct thread *td, int semid, int semnum, int cmd,
 			goto done2;
 		}
 		*rval = semakptr->u.sem_base[semnum].sempid;
+		AUDIT_RET_SVIPC_ID(*rval);
 		break;
 
 	case GETVAL:
@@ -813,6 +833,7 @@ kern_semctl(struct thread *td, int semid, int semnum, int cmd,
 			goto done2;
 		}
 		*rval = semakptr->u.sem_base[semnum].semval;
+		AUDIT_RET_SVIPC_ID(*rval);
 		break;
 
 	case GETALL:
@@ -862,6 +883,7 @@ kern_semctl(struct thread *td, int semid, int semnum, int cmd,
 			goto done2;
 		}
 		*rval = semakptr->u.sem_base[semnum].semzcnt;
+		AUDIT_RET_SVIPC_ID(*rval);
 		break;
 
 	case SETVAL:
@@ -947,6 +969,8 @@ sys_semget(struct thread *td, struct semget_args *uap)
 
 	DPRINTF(("semget(0x%x, %d, 0%o)\n", key, nsems, semflg));
 
+	AUDIT_ARG_VALUE(semflg);
+
 	if (sem_find_prison(cred) == NULL)
 		return (ENOSYS);
 
@@ -960,6 +984,7 @@ sys_semget(struct thread *td, struct semget_args *uap)
 				break;
 		}
 		if (semid < seminfo.semmni) {
+			AUDIT_ARG_SVIPC_ID(semid);
 			DPRINTF(("found public key\n"));
 			if ((semflg & IPC_CREAT) && (semflg & IPC_EXCL)) {
 				DPRINTF(("not exclusive\n"));
@@ -975,6 +1000,9 @@ sys_semget(struct thread *td, struct semget_args *uap)
 				error = EINVAL;
 				goto done2;
 			}
+#ifdef KDTRACE_HOOKS
+			AUDIT_ARG_OBJUUID1(&sema[semid].uuid);
+#endif
 #ifdef MAC
 			error = mac_sysvsem_check_semget(cred, &sema[semid]);
 			if (error != 0)
@@ -1042,6 +1070,12 @@ sys_semget(struct thread *td, struct semget_args *uap)
 #ifdef MAC
 		mac_sysvsem_create(cred, &sema[semid]);
 #endif
+		(void)kern_uuidgen(&sema[semid].uuid, 1);
+#ifdef KDTRACE_HOOKS
+		AUDIT_RET_OBJUUID1(&sema[semid].uuid);
+#endif
+		AUDIT_RET_SVIPC_ID(IXSEQ_TO_IPCID(semid,
+		    sema[semid].u.sem_perm));
 		mtx_unlock(&sema_mtx[semid]);
 		DPRINTF(("sembase = %p, next = %p\n",
 		    sema[semid].u.sem_base, &sem[semtot]));
@@ -1089,6 +1123,8 @@ sys_semop(struct thread *td, struct semop_args *uap)
 #endif
 	DPRINTF(("call to semop(%d, %p, %u)\n", semid, sops, nsops));
 
+	AUDIT_ARG_SVIPC_ID(semid);
+
 	rpr = sem_find_prison(td->td_ucred);
 	if (sem == NULL)
 		return (ENOSYS);
@@ -1131,6 +1167,9 @@ sys_semop(struct thread *td, struct semop_args *uap)
 	semakptr = &sema[semid];
 	sema_mtxp = &sema_mtx[semid];
 	mtx_lock(sema_mtxp);
+#ifdef KDTRACE_HOOKS
+	AUDIT_ARG_OBJUUID1(&semakptr->uuid);
+#endif
 	if ((semakptr->u.sem_perm.mode & SEM_ALLOC) == 0) {
 		error = EINVAL;
 		goto done2;
@@ -1692,6 +1731,7 @@ sys_semsys(td, uap)
 {
 	int error;
 
+	AUDIT_ARG_SVIPC_WHICH(uap->which);
 	if (uap->which < 0 || uap->which >= nitems(semcalls))
 		return (EINVAL);
 	error = (*semcalls[uap->which])(td, &uap->a2);
@@ -1791,6 +1831,7 @@ freebsd32_semsys(struct thread *td, struct freebsd32_semsys_args *uap)
 
 #if defined(COMPAT_FREEBSD4) || defined(COMPAT_FREEBSD5) || \
     defined(COMPAT_FREEBSD6) || defined(COMPAT_FREEBSD7)
+	AUDIT_ARG_SVIPC_WHICH(uap->which);
 	switch (uap->which) {
 	case 0:
 		return (freebsd7_freebsd32_semctl(td,

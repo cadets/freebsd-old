@@ -36,6 +36,8 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_metaio.h"
+
 /* Add compatibility bits for FreeBSD. */
 #define PTS_COMPAT
 /* Add pty(4) compat bits. */
@@ -54,6 +56,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/limits.h>
 #include <sys/malloc.h>
+#include <sys/metaio.h>
 #include <sys/poll.h>
 #include <sys/proc.h>
 #include <sys/racct.h>
@@ -117,7 +120,7 @@ struct pts_softc {
 
 static int
 ptsdev_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
-    int flags, struct thread *td)
+    int flags, struct thread *td, struct metaio *miop)
 {
 	struct tty *tp = fp->f_data;
 	struct pts_softc *psc = tty_softc(tp);
@@ -125,6 +128,9 @@ ptsdev_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
 	char pkt;
 
 	AUDIT_ARG_OBJUUID1(&psc->pts_uuid);
+#ifdef METAIO
+	metaio_from_uuid(&psc->pts_uuid, miop);
+#endif
 
 	if (uio->uio_resid == 0)
 		return (0);
@@ -619,6 +625,17 @@ ptsdev_fill_kinfo(struct file *fp, struct kinfo_file *kif, struct filedesc *fdp)
 	return (0);
 }
 
+static int
+ptsdev_getuuid(struct file *fp, struct uuid *uuidp)
+{
+	struct tty *tp = fp->f_data;
+	struct pts_softc *psc = tty_softc(tp);
+
+	AUDIT_ARG_OBJUUID1(&psc->pts_uuid);
+	*uuidp = psc->pts_uuid;
+	return (0);
+}
+
 static struct fileops ptsdev_ops = {
 	.fo_read	= ptsdev_read,
 	.fo_write	= ptsdev_write,
@@ -632,6 +649,7 @@ static struct fileops ptsdev_ops = {
 	.fo_chown	= invfo_chown,
 	.fo_sendfile	= invfo_sendfile,
 	.fo_fill_kinfo	= ptsdev_fill_kinfo,
+	.fo_getuuid	= ptsdev_getuuid,
 	.fo_flags	= DFLAG_PASSABLE,
 };
 
@@ -888,6 +906,10 @@ sys_posix_openpt(struct thread *td, struct posix_openpt_args *uap)
 	}
 
 	/* Pass it back to userspace. */
+#ifdef KDTRACE_HOOKS
+	AUDIT_RET_FD1(fd);
+	AUDIT_RET_OBJUUID1(&((struct tty *)fp->f_data)->t_dev->si_uuid);
+#endif
 	td->td_retval[0] = fd;
 	fdrop(fp, td);
 

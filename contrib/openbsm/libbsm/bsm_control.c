@@ -1,7 +1,12 @@
 /*-
  * Copyright (c) 2004, 2009 Apple Inc.
- * Copyright (c) 2006 Robert N. M. Watson
+ * Copyright (c) 2006, 2016 Robert N. M. Watson
  * All rights reserved.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -132,11 +137,7 @@ getstrfromtype_locked(const char *name, char **str)
 		if ((type = strtok_r(tokptr, delim, &last)) != NULL) {
 			if (strcmp(name, type) == 0) {
 				/* Found matching name. */
-				*str = strtok_r(NULL, delim, &last);
-				if (*str == NULL) {
-					errno = EINVAL;
-					return (-1); /* Parse error in file */
-				}
+				*str = last;
 				return (0); /* Success */
 			}
 		}
@@ -549,19 +550,18 @@ getaccommon(const char *name, char *auditstr, int len)
 #endif
 		return (-2);
 	}
-	if (str == NULL) {
-#ifdef HAVE_PTHREAD_MUTEX_LOCK
-		pthread_mutex_unlock(&mutex);
-#endif
-		return (-1);
-	}
-	if (strlen(str) >= (size_t)len) {
+
+	/*
+	 * getstrfromtype_locked() can return NULL for an empty value -- make
+	 * sure to handle this by coercing the NULL back into an empty string.
+	 */
+	if (str != NULL && (strlen(str) >= (size_t)len)) {
 #ifdef HAVE_PTHREAD_MUTEX_LOCK
 		pthread_mutex_unlock(&mutex);
 #endif
 		return (-3);
 	}
-	strlcpy(auditstr, str, len);
+	strlcpy(auditstr, str != NULL ? str : "", len);
 #ifdef HAVE_PTHREAD_MUTEX_LOCK
 	pthread_mutex_unlock(&mutex);
 #endif

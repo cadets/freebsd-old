@@ -198,6 +198,7 @@ typedef	__size_t	size_t;
 #include <sys/mutex.h>
 #include <sys/queue.h>
 #include <sys/rangelock.h>
+#include <sys/uuid.h>
 #include <vm/vm.h>
 
 struct file;
@@ -223,6 +224,7 @@ struct shmfd {
 
 	struct label	*shm_label;		/* MAC label */
 	const char	*shm_path;
+	struct uuid	shm_uuid;
 
 	struct rangelock shm_rl;
 	struct mtx	shm_mtx;

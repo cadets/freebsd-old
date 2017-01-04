@@ -90,6 +90,9 @@ void le_uuid_enc(void *buf, struct uuid const *uuid);
 typedef struct uuid uuid_t;
 
 __BEGIN_DECLS
+int	fgetuuid(int, struct uuid *);
+int	getuuid(const char *, struct uuid *);
+int	lgetuuid(const char *, struct uuid *);
 int	uuidgen(struct uuid *, int);
 __END_DECLS
 

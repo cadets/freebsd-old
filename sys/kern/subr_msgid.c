@@ -104,7 +104,7 @@ msgid_generate(msgid_t *msgidp)
 	 * integer operations..?
 	 */
 	id = atomic_fetchadd_64(DPCPU_PTR(msgid_state.ms_next), 1);
-	KASSERT(id < (1 << MSGID_COUNTERBITS),
+	KASSERT(id < (1ULL << MSGID_COUNTERBITS),
 	    ("%s: message ID overflow CPU %u", __func__, curcpu));
 	MSGID_SETCPU(id, (uint64_t)curcpu);
 	*msgidp = id;

@@ -62,6 +62,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/eventhandler.h>
 #include <sys/umtx.h>
 
+#include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
 
 #include <vm/vm.h>
@@ -3895,6 +3896,9 @@ umtx_shm(struct thread *td, void *addr, u_int flags)
 			finit(fp, FFLAGS(O_RDWR), DTYPE_SHM, reg->ushm_obj,
 			    &shm_ops);
 			td->td_retval[0] = fd;
+#ifdef KDTRACE_HOOKS
+			AUDIT_RET_FD1(fd);
+#endif
 			fdrop(fp, td);
 		}
 	}

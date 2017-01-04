@@ -1,4 +1,4 @@
- $FreeBSD$
+ FreeBSD
 ;	from: @(#)syscalls.master	8.2 (Berkeley) 1/13/94
 ;
 ; System call name/number master file.
@@ -476,8 +476,8 @@
 				    u_int nfds, int timeout); }
 253	AUE_ISSETUGID	STD	{ int issetugid(void); }
 254	AUE_LCHOWN	STD	{ int lchown(char *path, int uid, int gid); }
-255	AUE_READ	STD	{ int aio_read(struct aiocb *aiocbp); }
-256	AUE_WRITE	STD	{ int aio_write(struct aiocb *aiocbp); }
+255	AUE_AIO_READ	STD	{ int aio_read(struct aiocb *aiocbp); }
+256	AUE_AIO_WRITE	STD	{ int aio_write(struct aiocb *aiocbp); }
 257	AUE_LIO_LISTIO	STD	{ int lio_listio(int mode, \
 				    struct aiocb * const *acb_list, \
 				    int nent, struct sigevent *sig); }
@@ -714,18 +714,18 @@
 398	AUE_FHSTATFS	STD	{ int fhstatfs(const struct fhandle *u_fhp, \
 				    struct statfs *buf); }
 399	AUE_NULL	UNIMPL	nosys
-400	AUE_NULL	NOSTD	{ int ksem_close(semid_t id); }
-401	AUE_NULL	NOSTD	{ int ksem_post(semid_t id); }
-402	AUE_NULL	NOSTD	{ int ksem_wait(semid_t id); }
-403	AUE_NULL	NOSTD	{ int ksem_trywait(semid_t id); }
-404	AUE_NULL	NOSTD	{ int ksem_init(semid_t *idp, \
+400	AUE_SEMCLOSE	NOSTD	{ int ksem_close(semid_t id); }
+401	AUE_SEMPOST	NOSTD	{ int ksem_post(semid_t id); }
+402	AUE_SEMWAIT	NOSTD	{ int ksem_wait(semid_t id); }
+403	AUE_SEMTRYWAIT	NOSTD	{ int ksem_trywait(semid_t id); }
+404	AUE_SEMINIT	NOSTD	{ int ksem_init(semid_t *idp, \
 				    unsigned int value); }
-405	AUE_NULL	NOSTD	{ int ksem_open(semid_t *idp, \
+405	AUE_SEMOPEN	NOSTD	{ int ksem_open(semid_t *idp, \
 				    const char *name, int oflag, \
 				    mode_t mode, unsigned int value); }
-406	AUE_NULL	NOSTD	{ int ksem_unlink(const char *name); }
-407	AUE_NULL	NOSTD	{ int ksem_getvalue(semid_t id, int *val); }
-408	AUE_NULL	NOSTD	{ int ksem_destroy(semid_t id); }
+406	AUE_SEMUNLINK	NOSTD	{ int ksem_unlink(const char *name); }
+407	AUE_SEMGETVALUE	NOSTD	{ int ksem_getvalue(semid_t id, int *val); }
+408	AUE_SEMDESTROY	NOSTD	{ int ksem_destroy(semid_t id); }
 409	AUE_NULL	STD	{ int __mac_get_pid(pid_t pid, \
 				    struct mac *mac_p); }
 410	AUE_NULL	STD	{ int __mac_get_link(const char *path_p, \
@@ -787,7 +787,7 @@
 				    const char *path, int attrnamespace, \
 				    void *data, size_t nbytes); }
 440	AUE_NULL	UNIMPL	kse_switchin
-441	AUE_NULL	NOSTD	{ int ksem_timedwait(semid_t id, \
+441	AUE_SEMTIMEDWAIT	NOSTD	{ int ksem_timedwait(semid_t id, \
 				    const struct timespec *abstime); }
 442	AUE_NULL	STD	{ int thr_suspend( \
 				    const struct timespec *timeout); }
@@ -813,22 +813,22 @@
 455	AUE_THR_NEW	STD	{ int thr_new(struct thr_param *param, \
 				    int param_size); }
 456	AUE_NULL	STD	{ int sigqueue(pid_t pid, int signum, void *value); }
-457	AUE_NULL	NOSTD	{ int kmq_open(const char *path, int flags, \
+457	AUE_MQ_OPEN	NOSTD	{ int kmq_open(const char *path, int flags, \
 				    mode_t mode, const struct mq_attr *attr); }
-458	AUE_NULL	NOSTD	{ int kmq_setattr(int mqd,		\
+458	AUE_MQ_SETATTR	NOSTD	{ int kmq_setattr(int mqd,		\
 				    const struct mq_attr *attr,		\
 				    struct mq_attr *oattr); }
-459	AUE_NULL	NOSTD	{ int kmq_timedreceive(int mqd,	\
+459	AUE_MQ_TIMEDRECEIVE	NOSTD	{ int kmq_timedreceive(int mqd,	\
 				    char *msg_ptr, size_t msg_len,	\
 				    unsigned *msg_prio,			\
 				    const struct timespec *abs_timeout); }
-460	AUE_NULL	NOSTD	{ int kmq_timedsend(int mqd,		\
+460	AUE_MQ_TIMEDSEND	NOSTD	{ int kmq_timedsend(int mqd,		\
 				    const char *msg_ptr, size_t msg_len,\
 				    unsigned msg_prio,			\
 				    const struct timespec *abs_timeout);}
-461	AUE_NULL	NOSTD	{ int kmq_notify(int mqd,		\
+461	AUE_MQ_NOTIFY	NOSTD	{ int kmq_notify(int mqd,		\
 				    const struct sigevent *sigev); }
-462	AUE_NULL	NOSTD	{ int kmq_unlink(const char *path); }
+462	AUE_MQ_UNLINK	NOSTD	{ int kmq_unlink(const char *path); }
 463	AUE_NULL	STD	{ int abort2(const char *why, int nargs, void **args); }
 464	AUE_NULL	STD	{ int thr_set_name(long id, const char *name); }
 465	AUE_AIO_FSYNC	STD	{ int aio_fsync(int op, struct aiocb *aiocbp); }
@@ -999,3 +999,77 @@
 
 ; Please copy any additions and changes to the following compatability tables:
 ; sys/compat/freebsd32/syscalls.master
+
+; Placeholders for future FreeBSD system calls during CADETS development.
+551	AUE_NULL	UNIMPL	placeholder
+552	AUE_NULL	UNIMPL	placeholder
+553	AUE_NULL	UNIMPL	placeholder
+554	AUE_NULL	UNIMPL	placeholder
+555	AUE_NULL	UNIMPL	placeholder
+556	AUE_NULL	UNIMPL	placeholder
+557	AUE_NULL	UNIMPL	placeholder
+558	AUE_NULL	UNIMPL	placeholder
+559	AUE_NULL	UNIMPL	placeholder
+560	AUE_NULL	UNIMPL	placeholder
+561	AUE_NULL	UNIMPL	placeholder
+562	AUE_NULL	UNIMPL	placeholder
+563	AUE_NULL	UNIMPL	placeholder
+564	AUE_NULL	UNIMPL	placeholder
+565	AUE_NULL	UNIMPL	placeholder
+566	AUE_NULL	UNIMPL	placeholder
+567	AUE_NULL	UNIMPL	placeholder
+568	AUE_NULL	UNIMPL	placeholder
+569	AUE_NULL	UNIMPL	placeholder
+570	AUE_NULL	UNIMPL	placeholder
+;
+; Experimental CADETS system calls -- not part of the supported system-call
+; ABI.  Also not (currently) available in 32-bit compat.
+;
+571	AUE_READ	STD	{ ssize_t metaio_read(int fd, void *buf, \
+                                    size_t nbyte, struct metaio *miop); }
+572	AUE_WRITE	STD	{ ssize_t metaio_write(int fd, void *buf, \
+				    size_t nbyte, struct metaio *miop); }
+573	AUE_MMAP	STD	{ caddr_t metaio_mmap(caddr_t addr, \
+				    size_t len, int prot, int flags, int fd, \
+				    off_t pos, struct metaio *miop); }
+574	AUE_FGETUUID	STD	{ int fgetuuid(int fd, struct uuid *uuidp); }
+575	AUE_GETUUID	STD	{ int getuuid(const char *path, \
+				    struct uuid *uuidp); }
+576	AUE_LGETUUID	STD	{ int lgetuuid(const char *path, \
+				    struct uuid *uuidp); }
+577	AUE_READV	STD	{ int metaio_readv(int fd, \
+				    struct iovec *iovp, u_int iovcnt, \
+				    struct metaio *miop); }
+578	AUE_WRITEV	STD	{ int metaio_writev(int fd, \
+				    struct iovec *iovp, u_int iovcnt, \
+				    struct metaio *miop); }
+579	AUE_PREAD	STD	{ ssize_t metaio_pread(int fd, void *buf, \
+				    size_t nbyte, off_t offset, \
+				    struct metaio *miop); }
+580	AUE_PWRITE	STD	{ ssize_t metaio_pwrite(int fd, \
+				    const void *buf, size_t nbyte, \
+				    off_t offset, struct metaio *miop); }
+581	AUE_PREADV	STD	{ ssize_t metaio_preadv(int fd, \
+				    struct iovec *iovp, u_int iovcnt, \
+				    off_t offset, struct metaio *miop); }
+582	AUE_PWRITEV	STD	{ ssize_t metaio_pwritev(int fd, \
+				    struct iovec *iovp, u_int iovcnt, \
+				    off_t offset, struct metaio *miop); }
+583	AUE_SENDTO	STD	{ int metaio_sendto(int s, caddr_t buf, \
+				    size_t len, int flags, caddr_t to, \
+				    int tolen, struct metaio *miop); }
+584	AUE_RECVFROM	STD	{ int metaio_recvfrom(int s, caddr_t buf, \
+				    size_t len, int flags, \
+				    struct sockaddr * __restrict from, \
+				    __socklen_t * __restrict fromlenaddr, \
+				    struct metaio *miop); }
+585	AUE_SENDMSG	STD	{ int metaio_sendmsg(int s, \
+				    struct msghdr *msg, int flags, \
+				    struct metaio *miop); }
+586	AUE_RECVMSG	STD	{ int metaio_recvmsg(int s, \
+				    struct msghdr *msg, int flags, \
+				    struct metaio *miop); }
+587	AUE_SENDFILE	STD	{ int metaio_sendfile(int fd, int s, \
+				    off_t offset, size_t nbytes, \
+				    struct sf_hdtr *hdtr, off_t *sbytes, \
+				    int flags, struct metaio *miop); }
