@@ -47,38 +47,37 @@ rotl(const uint64_t x, int k)
  */
 void
 dtrace_xoroshiro128_plus_jump(uint64_t * const state,
-    uint64_t * const jump_state)
+	uint64_t * const jump_state)
 {
 	static const uint64_t JUMP[] = { 0xbeac0467eba5facb,
 		0xd86b048b86aa9922 };
 
 	uint64_t s0 = 0;
 	uint64_t s1 = 0;
-	for(int i = 0; i < sizeof JUMP / sizeof *JUMP; i++)
-		for(int b = 0; b < 64; b++) {
+	int i = 0;
+	int b = 0;
+	for (i = 0; i < sizeof JUMP / sizeof *JUMP; i++) {
+		for (b = 0; b < 64; b++) {
 			if (JUMP[i] & 1ULL << b) {
 				s0 ^= state[0];
 				s1 ^= state[1];
 			}
 			dtrace_xoroshiro128_plus_next(state);
 		}
-
+	}
 	jump_state[0] = s0;
 	jump_state[1] = s1;
 }
 
 /*
  * xoroshiro128+ - XOR/rotate/shift/rotate
-<<<<<<< HEAD
  * xorshift.di.unimi.it
-=======
->>>>>>> 1791e986f2b6d301c5d748a5b0aab9179008bc65
  */
 uint64_t
 dtrace_xoroshiro128_plus_next(uint64_t * const state)
 {
 	const uint64_t s0 = state[0];
-	uint64_t s1 = state[1];;
+	uint64_t s1 = state[1];
 	uint64_t result;
 	result = s0 + s1;
 
@@ -88,4 +87,3 @@ dtrace_xoroshiro128_plus_next(uint64_t * const state)
 
 	return result;
 }
-	
