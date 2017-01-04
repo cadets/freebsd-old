@@ -4153,7 +4153,8 @@ dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 
 	switch (subr) {
 	case DIF_SUBR_RAND:
-		regs[rd] = (dtrace_gethrtime() * 2416 + 374441) % 1771875;
+		regs[rd] = dtrace_xoroshiro128_plus_next(
+		    state->dts_rstate[curcpu]);
 		break;
 
 #ifdef illumos
@@ -5965,11 +5966,6 @@ inetout:	regs[rd] = (uintptr_t)end + 1;
 
 		regs[rd] = (uintptr_t) typeref;
 		mstate->dtms_scratch_ptr += scratch_size;
-		break;
-	}
-	case DIF_SUBR_RANDOM: {
-		regs[rd] = dtrace_xoroshiro128_plus_next(
-		    state->dts_rstate[curcpu]);
 		break;
 	}
 	}
