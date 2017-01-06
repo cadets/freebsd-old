@@ -242,6 +242,8 @@ static const dt_ident_t _dtrace_globals[] = {
 { "copyoutstr", DT_IDENT_FUNC, 0, DIF_SUBR_COPYOUTSTR,
 	DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_func, "void(char *, uintptr_t, size_t)" },
+{ "copyoutmbuf", DT_IDENT_FUNC, 0, DIF_SUBR_COPYOUTMBUF, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void*(struct mbuf *, size_t)" },
 { "count", DT_IDENT_AGGFUNC, 0, DTRACEAGG_COUNT, DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_func, "void()" },
 { "curthread", DT_IDENT_SCALAR, 0, DIF_VAR_CURTHREAD,

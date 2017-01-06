@@ -121,6 +121,7 @@
 #include <sys/kdb.h>
 #include <sys/kernel.h>
 #include <sys/malloc.h>
+#include <sys/mbuf.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/ptrace.h>
@@ -593,6 +594,10 @@ dtrace_dynvar_t *dtrace_dynvar(dtrace_dstate_t *, uint_t, dtrace_key_t *,
 uintptr_t dtrace_dif_varstr(uintptr_t, dtrace_state_t *, dtrace_mstate_t *);
 static int dtrace_priv_proc(dtrace_state_t *);
 static void dtrace_getf_barrier(void);
+
+#ifdef __FreeBSD__
+void dtrace_mbuf_copydata(const struct mbuf *m, int off, int len, uintptr_t cp);
+#endif /* __FreeBSD__ */
 
 static __inline uint64_t
 rotl(const uint64_t x, int k)
@@ -1247,6 +1252,35 @@ dtrace_vcopy(void *src, void *dst, dtrace_diftype_t *type)
 		dtrace_bcopy(src, dst, type->dtdt_size);
 	}
 }
+
+/*
+ * DTrace private version of a functoin to Copy data from an mbuf
+ * chain starting "off" bytes from the beginning, continuing for "len"
+ * bytes, into the indicated buffer.
+ */
+#ifdef __FreeBSD__
+void
+dtrace_mbuf_copydata(const struct mbuf *m, int off, int len, uintptr_t cp)
+{
+	u_int count;
+	
+	
+	while (off > 0) {
+		if (off < m->m_len)
+			break;
+		off -= m->m_len;
+		m = m->m_next;
+	}
+	while (len > 0) {
+		count = min(m->m_len - off, len);
+		dtrace_bcopy(mtod(m, caddr_t) + off, (void *)cp, count);
+		len -= count;
+		cp += count;
+		off = 0;
+		m = m->m_next;
+	}
+}
+#endif /* __FreeBSD__ */
 
 /*
  * Compare s1 to s2 using safe memory accesses.  The s1 data is assumed to be
@@ -4433,6 +4467,38 @@ dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 		regs[rd] = dest;
 		break;
 	}
+
+#ifdef __FreeBSD__
+	case DIF_SUBR_COPYOUTMBUF: {
+		uintptr_t dest = mstate->dtms_scratch_ptr;
+		uint64_t size = tupregs[1].dttk_value;
+		size_t scratch_size = (dest - mstate->dtms_scratch_ptr) + size;
+		struct mbuf *m = (struct mbuf *)tupregs[0].dttk_value;
+
+		if (size > m_length(m, NULL))
+		    size = m_length(m, NULL);
+
+		/*
+		 * Rounding up the user allocation size could have overflowed
+		 * a large, bogus allocation (like -1ULL) to 0.
+		 */
+		if (scratch_size < size ||
+		    !DTRACE_INSCRATCH(mstate, scratch_size)) {
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
+			regs[rd] = 0;
+			break;
+		}
+
+		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
+		dtrace_mbuf_copydata(m, 0, size, dest);
+		DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
+
+		mstate->dtms_scratch_ptr += size;
+		regs[rd] = dest;
+		break;
+	}
+
+#endif /* __FreeBSD__ */
 
 #ifdef illumos
 	case DIF_SUBR_MSGSIZE:
