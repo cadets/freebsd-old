@@ -4471,12 +4471,22 @@ dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 #ifdef __FreeBSD__
 	case DIF_SUBR_COPYOUTMBUF: {
 		uintptr_t dest = mstate->dtms_scratch_ptr;
-		uint64_t size = tupregs[1].dttk_value;
-		size_t scratch_size = (dest - mstate->dtms_scratch_ptr) + size;
 		struct mbuf *m = (struct mbuf *)tupregs[0].dttk_value;
+		uint64_t size = m_length(m, NULL);
+		size_t scratch_size = (dest - mstate->dtms_scratch_ptr) + size;
 
-		if (size > m_length(m, NULL))
-		    size = m_length(m, NULL);
+		/*
+		 * The user can request the whole buffer with arg2 <=
+		 * 0 but if they request a size less than the size of
+		 * the full chain we will respet their request.  This
+		 * code also prevents the caller from asking for more
+		 * data than is present in the chain.
+		 */
+
+		if ((tupregs[1].dttk_value > 0) && (tupregs[1].dttk_value < size)) {
+			size = tupregs[1].dttk_value;
+			scratch_size = (dest - mstate->dtms_scratch_ptr) + size;
+		}
 
 		/*
 		 * Rounding up the user allocation size could have overflowed
