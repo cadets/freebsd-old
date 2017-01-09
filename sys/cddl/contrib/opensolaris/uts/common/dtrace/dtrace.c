@@ -4472,27 +4472,27 @@ dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 	case DIF_SUBR_COPYOUTMBUF: {
 		uintptr_t dest = mstate->dtms_scratch_ptr;
 		struct mbuf *m = (struct mbuf *)tupregs[0].dttk_value;
-		uint64_t size = m_length(m, NULL);
-		size_t scratch_size = (dest - mstate->dtms_scratch_ptr) + size;
+		uint64_t len = m_length(m, NULL);
+		size_t scratch_size = (dest - mstate->dtms_scratch_ptr) + len;
 
 		/*
 		 * The user can request the whole buffer with arg2 <=
-		 * 0 but if they request a size less than the size of
+		 * 0 but if they request a size less than the len of
 		 * the full chain we will respet their request.  This
 		 * code also prevents the caller from asking for more
 		 * data than is present in the chain.
 		 */
 
-		if ((tupregs[1].dttk_value > 0) && (tupregs[1].dttk_value < size)) {
-			size = tupregs[1].dttk_value;
-			scratch_size = (dest - mstate->dtms_scratch_ptr) + size;
+		if ((tupregs[1].dttk_value > 0) && (tupregs[1].dttk_value < len)) {
+			len = tupregs[1].dttk_value;
+			scratch_size = (dest - mstate->dtms_scratch_ptr) + len;
 		}
 
 		/*
 		 * Rounding up the user allocation size could have overflowed
 		 * a large, bogus allocation (like -1ULL) to 0.
 		 */
-		if (scratch_size < size ||
+		if (scratch_size < len ||
 		    !DTRACE_INSCRATCH(mstate, scratch_size)) {
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
 			regs[rd] = 0;
@@ -4500,10 +4500,62 @@ dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 		}
 
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
-		dtrace_mbuf_copydata(m, 0, size, dest);
+		dtrace_mbuf_copydata(m, 0, len, dest);
 		DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 
-		mstate->dtms_scratch_ptr += size;
+		mstate->dtms_scratch_ptr += len;
+		regs[rd] = dest;
+		break;
+	}
+
+	case DIF_SUBR_COPYOUTMBUFAT: {
+		uintptr_t dest = mstate->dtms_scratch_ptr;
+		struct mbuf *m = (struct mbuf *)tupregs[0].dttk_value;
+		uint64_t len = m_length(m, NULL);
+		size_t offset = tupregs[2].dttk_value;
+		size_t scratch_size = 0;
+		size_t req_size = tupregs[1].dttk_value;
+		
+		/* Be strict with the offset parameter */
+		if ((offset < 0) || (offset >= len) ||
+		    ((len - offset) > req_size)) {
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
+			regs[rd] = 0;
+			break;
+		}
+			
+		len -= offset;
+		scratch_size = (dest - mstate->dtms_scratch_ptr) + len;
+
+		/*
+		 * The user can request the whole buffer with arg2 <=
+		 * 0 but if they request a size less than the len of
+		 * the full chain we will respet their request.  This
+		 * code also prevents the caller from asking for more
+		 * data than is present in the chain.
+		 */
+
+		if ((req_size > 0) && (req_size < len)) {
+			len = req_size;
+			scratch_size = (dest - mstate->dtms_scratch_ptr) + len;
+		}
+
+		/*
+		 * Rounding up the user allocation size could have overflowed
+		 * a large, bogus allocation (like -1ULL) to 0.
+		 */
+		if (scratch_size < len ||
+		    !DTRACE_INSCRATCH(mstate, scratch_size)) {
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
+			regs[rd] = 0;
+			break;
+		}
+
+		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
+		dtrace_mbuf_copydata(m, offset, len, dest);
+		DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
+
+		mstate->dtms_scratch_ptr += len;
 		regs[rd] = dest;
 		break;
 	}
