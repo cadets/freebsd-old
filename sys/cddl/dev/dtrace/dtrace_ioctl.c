@@ -104,6 +104,9 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 	dtrace_state_t *state;
 	devfs_get_cdevpriv((void **) &state);
 
+	/* XXX: From macOS patch */
+	state = dtrace_state_get(minor);
+
 	int error = 0;
 	if (state == NULL)
 		return (EINVAL);
@@ -223,6 +226,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		dtrace_bufdesc_t **pdesc = (dtrace_bufdesc_t **) addr;
 		dtrace_bufdesc_t desc;
 		caddr_t cached;
+		boolean_t over_limit;
 		dtrace_buffer_t *buf;
 
 		dtrace_debug_output();
@@ -314,6 +318,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		}
 
 		cached = buf->dtb_tomax;
+		over_limit = buf->dtb_cur_limit == buf->dtb_size;
 		ASSERT(!(buf->dtb_flags & DTRACEBUF_NOSWITCH));
 
 		dtrace_xcall(desc.dtbd_cpu,
@@ -334,6 +339,22 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		}
 
 		ASSERT(cached == buf->dtb_xamot);
+		/*
+		 * At this point we know the buffer have switched, so we
+		 * can decrement the over limit count if the buffer was over
+		 * its limit. The new buffer might already be over its limit
+		 * yet, but we don't care since we're guaranteed not to be
+		 * checking the buffer over limit count  at this point.
+		 */
+		if (over_limit) {
+			uint32_t old = atomic_add_32(&state->dts_buf_over_limit, -1);
+			#pragma unused(old)
+
+			/*
+			 * Verify that we didn't underflow the value
+			 */
+			ASSERT(old != 0);
+		}
 
 		DTRACE_IOCTL_PRINTF("%s(%d): copyout the buffer snapshot\n",__func__,__LINE__);
 
@@ -850,6 +871,38 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_exit(&dtrace_lock);
 
 		return (rval);
+	}
+	case DTRACEIOC_SLEEP: {
+		int64_t time;
+		uint64_t abstime;
+		uint64_t rvalue = DTRACE_WAKE_TIMEOUT;
+
+		if (copyin(arg, &time, sizeof(time)) != 0)
+			return (EFAULT);
+
+		nanoseconds_to_absolutetime((uint64_t)time, &abstime);
+		clock_absolutetime_interval_to_deadline(abstime, &abstime);
+
+		if (assert_wait_deadline(state, THREAD_ABORTSAFE, abstime) == THREAD_WAITING) {
+			if (state->dts_buf_over_limit > 0) {
+				clear_wait(current_thread(), THREAD_INTERRUPTED);
+				rvalue = DTRACE_WAKE_BUF_LIMIT;
+			} else {
+				thread_block(THREAD_CONTINUE_NULL);
+				if (state->dts_buf_over_limit > 0) {
+					rvalue = DTRACE_WAKE_BUF_LIMIT;
+				}
+			}
+		}
+
+		if (copyout(&rvalue, arg, sizeof(rvalue)) != 0)
+			return (EFAULT);
+
+		return (0);
+	}
+	case DTRACEIOC_SIGNAL: {
+		wakeup(state);
+		return (0);
 	}
 	default:
 		error = ENOTTY;

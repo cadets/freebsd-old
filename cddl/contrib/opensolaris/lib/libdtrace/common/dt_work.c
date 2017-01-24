@@ -51,8 +51,8 @@ dtrace_sleep(dtrace_hdl_t *dtp)
 	dt_proc_notify_t *dprn;
 
 	hrtime_t earliest = INT64_MAX;
-	struct timespec tv;
 	hrtime_t now;
+	uint64_t ts;
 	int i;
 
 	for (i = 0; _dtrace_sleeptab[i].dtslt_option < DTRACEOPT_MAX; i++) {
@@ -73,12 +73,8 @@ dtrace_sleep(dtrace_hdl_t *dtp)
 			earliest = *((hrtime_t *)a) + interval;
 	}
 
-	(void) pthread_mutex_lock(&dph->dph_lock);
-
 	now = gethrtime();
-
 	if (earliest < now) {
-		(void) pthread_mutex_unlock(&dph->dph_lock);
 		return; /* sleep duration has already past */
 	}
 
@@ -93,23 +89,35 @@ dtrace_sleep(dtrace_hdl_t *dtp)
 	 */
 	(void) pthread_cond_reltimedwait_np(&dph->dph_cv, &dph->dph_lock, &tv);
 #else
-	earliest -= now;
-	clock_gettime(CLOCK_REALTIME,&tv);
-	tv.tv_sec += earliest / NANOSEC;
-	tv.tv_nsec += earliest % NANOSEC;
-	while (tv.tv_nsec > NANOSEC) {
-		tv.tv_sec += 1;
-		tv.tv_nsec -= NANOSEC;
+	ts = earliest - now;
+
+	/**
+	 * Do an IOC to wait in the kernel. We might get woken up
+	 * before our time is up either because one of our buffer
+	 * crossed its limit or because a process is in a
+	 * interesting state.
+	 */
+	if (dt_ioctl(dtp, DTRACEIOC_SLEEP, &ts) == -1) {
+		dt_set_errno(dtp, errno);
+		return;
 	}
 
-	/*
-	 * Wait for either 'tv' nanoseconds to pass or to receive notification
-	 * that a process is in an interesting state.  Regardless of why we
-	 * awaken, iterate over any pending notifications and process them.
+	/**
+	 * Check the reason why we woke up. If we woke up because one
+	 * of our buffers is over its limit, start aggregating / switching
+	 * now.
 	 */
-	(void) pthread_cond_timedwait(&dph->dph_cv, &dph->dph_lock, &tv);
+	if (ts == DTRACE_WAKE_BUF_LIMIT) {
+		dtp->dt_lastagg = 0;
+		dtp->dt_lastswitch = 0;
+	}
+
 #endif
 
+	/**
+	 * If we have any pending notifications, process them
+	 */
+	(void) pthread_mutex_lock(&dph->dph_lock);
 	while ((dprn = dph->dph_notify) != NULL) {
 		if (dtp->dt_prochdlr != NULL) {
 			char *err = dprn->dprn_errmsg;

@@ -1282,6 +1282,33 @@ go(void)
 	}
 }
 
+#define DTRACE_PRIORITY_FOREGROUND 47
+
+static void
+set_sched_policy() {
+	int policy, err;
+	struct sched_param param;
+
+	err = pthread_getschedparam(pthread_self(), &policy, &param);
+	if (err) {
+		notice("could not set thread priority: cannot retrieve thread scheduling parameters");
+		return;
+	}
+
+	param.sched_priority = DTRACE_PRIORITY_FOREGROUND;
+
+	err = pthread_setschedparam(pthread_self(), policy, &param);
+	if (err) {
+		notice("could not set thread priority to %d", param.sched_priority);
+	}
+
+	err = pthread_set_fixedpriority_self();
+	if (err) {
+		notice("could not set thread scheduling priority to fixed");
+	}
+
+}
+
 /*ARGSUSED*/
 static void
 intr(int signo)
@@ -1989,6 +2016,11 @@ main(int argc, char *argv[])
 	 */
 	if (g_total == 0 && !g_grabanon && !(g_cflags & DTRACE_C_ZDEFS))
 		dfatal("no probes %s\n", g_cmdc ? "matched" : "specified");
+
+	/**
+	 * Set our scheduling policy
+	 */
+	set_sched_policy();
 
 	/*
 	 * Start tracing.  Once we dtrace_go(), reload any options that affect

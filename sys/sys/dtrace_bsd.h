@@ -31,6 +31,8 @@
 #ifndef _SYS_DTRACE_BSD_H
 #define	_SYS_DTRACE_BSD_H
 
+#define DTRACE_NCLIENTS 32
+
 /* Forward definitions: */
 struct mbuf;
 struct trapframe;

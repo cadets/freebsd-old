@@ -428,6 +428,8 @@ typedef struct dtrace_aggregation {
 
 typedef struct dtrace_buffer {
 	uint64_t dtb_offset;			/* current offset in buffer */
+	uint64_t dtb_cur_limit;			/* current limit before signaling/dropping */
+	uint64_t dtb_limit;			/* limit before signaling */
 	uint64_t dtb_size;			/* size of buffer */
 	uint32_t dtb_flags;			/* flags */
 	uint32_t dtb_drops;			/* number of drops */
@@ -443,6 +445,7 @@ typedef struct dtrace_buffer {
 #endif
 	uint64_t dtb_switched;			/* time of last switch */
 	uint64_t dtb_interval;			/* observed switch interval */
+/* XXX-FreeBSD */
 	uint64_t dtb_pad2[6];			/* pad to avoid false sharing */
 } dtrace_buffer_t;
 
@@ -1069,6 +1072,7 @@ typedef struct dtrace_helptrace {
 	int dtht_fault;				/* type of fault (if any) */
 	int dtht_fltoffs;			/* DIF offset */
 	uint64_t dtht_illval;			/* faulting value */
+	uint32_t dts_buf_over_limit;		/* number of bufs over dtb_limit */
 	uint64_t dtht_locals[1];		/* local variables */
 } dtrace_helptrace_t;
 
@@ -1170,6 +1174,7 @@ struct dtrace_state {
 	size_t dts_nretained;			/* number of retained enabs */
 	int dts_getf;				/* number of getf() calls */
 	uint64_t dts_rstate[MAXCPU][2];		/* per-CPU random state */
+	uint32_t dts_buf_over_limit;		/* number of bufs over dtb_limit */
 };
 
 struct dtrace_provider {
@@ -1315,6 +1320,14 @@ extern uint_t dtrace_getfprs(void);
 extern void dtrace_copy(uintptr_t, uintptr_t, size_t);
 extern void dtrace_copystr(uintptr_t, uintptr_t, size_t, volatile uint16_t *);
 #endif
+
+ /*
+ * DTrace state handling
+ */
+extern minor_t dtrace_state_reserve(void);
+extern dtrace_state_t* dtrace_state_allocate(minor_t minor);
+extern dtrace_state_t* dtrace_state_get(minor_t minor);
+extern void dtrace_state_free(minor_t minor);
 
 /*
  * DTrace Assertions

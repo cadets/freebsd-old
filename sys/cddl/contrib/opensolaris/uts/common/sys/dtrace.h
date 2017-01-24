@@ -1057,7 +1057,8 @@ typedef struct dtrace_fmtdesc {
 #define	DTRACEOPT_AGGZOOM	30	/* zoomed aggregation scaling */
 #define	DTRACEOPT_ZONE		31	/* zone in which to enable probes */
 #define DTRACEOPT_OFORMAT	32	/* output format (JSON, XML, etc.) */
-#define	DTRACEOPT_MAX		33	/* number of options */
+#define DTRACEOPT_BUFLIMIT      33	/* buffer signaling limit in % of the size */
+#define DTRACEOPT_MAX           34      /* number of options */
 
 #define	DTRACEOPT_UNSET		(dtrace_optval_t)-2	/* unset option */
 
@@ -1336,7 +1337,19 @@ typedef struct {
 							/* get DOF */
 #define	DTRACEIOC_REPLICATE	_IOW('x',18,dtrace_repldesc_t)	
 							/* replicate enab */
+/* XXX-FreeBSD */
+#define DTRACEIOC_SLEEP 	(DTRACEIOC | 33)	/* APPLE ONLY, sleep */
+#define DTRACEIOC_SIGNAL	(DTRACEIOC | 34)	/* APPLE ONLY, signal sleeping process */
 #endif
+
+/**
+ * DTrace wake reasons.
+ * This is used in userspace to determine what's the reason why it woke up,
+ * to start aggregating / switching buffer right away if it is because a buffer
+ * got over its limit
+ */
+#define DTRACE_WAKE_TIMEOUT 0 /* dtrace client woke up because of a timeout */
+#define DTRACE_WAKE_BUF_LIMIT 1 /* dtrace client woke up because of a over limit buffer */
 
 /*
  * DTrace Helpers

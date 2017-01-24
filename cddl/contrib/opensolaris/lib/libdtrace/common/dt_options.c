@@ -809,6 +809,24 @@ dt_opt_strsize(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
 	return (0);
 }
 
+static int
+dt_opt_buflimit(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
+{
+	dtrace_optval_t val = DTRACEOPT_UNSET;
+
+	if (arg == NULL)
+		return (dt_set_errno(dtp, EDT_BADOPTVAL));
+
+	val = strtoull(arg, NULL, 0);
+
+	if (val <= 0 || val > 100)
+		return (dt_set_errno(dtp, EDT_BADOPTVAL));
+
+	dtp->dt_options[option] = val;
+
+	return (0);
+}
+
 static const struct {
 	const char *dtbp_name;
 	int dtbp_policy;
@@ -1063,6 +1081,7 @@ static const dt_option_t _dtrace_drtoptions[] = {
 	{ "aggsortrev", dt_opt_runtime, DTRACEOPT_AGGSORTREV },
 	{ "aggzoom", dt_opt_runtime, DTRACEOPT_AGGZOOM },
 	{ "flowindent", dt_opt_runtime, DTRACEOPT_FLOWINDENT },
+	{ "buflimit", dt_opt_buflimit, DTRACEOPT_BUFLIMIT },
 	{ "oformat", dt_opt_oformat, DTRACEOPT_OFORMAT },
 	{ "quiet", dt_opt_runtime, DTRACEOPT_QUIET },
 	{ "rawbytes", dt_opt_runtime, DTRACEOPT_RAWBYTES },

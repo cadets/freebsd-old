@@ -72,8 +72,8 @@
  * A simple notification mechanism is provided for libdtrace clients using
  * dtrace_handle_proc() for notification of PS_UNDEAD or PS_LOST events.  If
  * such an event occurs, the dt_proc_t itself is enqueued on a notification
- * list and the control thread broadcasts to dph_cv.  dtrace_sleep() will wake
- * up using this condition and will then call the client handler as necessary.
+ * list and the control thread signals the waiting thread. dtrace_sleep() will
+ * wake up and will then call the client handler as necessary.
  */
 
 #include <sys/wait.h>
@@ -219,6 +219,15 @@ dt_proc_bpdisable(dt_proc_t *dpr)
 	dt_dprintf("breakpoints disabled\n");
 }
 
+void
+dt_proc_signal(dtrace_hdl_t *dtp)
+{
+	if (dt_ioctl(dtp, DTRACEIOC_SIGNAL, NULL) == -1) {
+		dt_set_errno(dtp, errno);
+		return;
+	}
+}
+
 static void
 dt_proc_notify(dtrace_hdl_t *dtp, dt_proc_hash_t *dph, dt_proc_t *dpr,
     const char *msg)
@@ -241,7 +250,7 @@ dt_proc_notify(dtrace_hdl_t *dtp, dt_proc_hash_t *dph, dt_proc_t *dpr,
 		dprn->dprn_next = dph->dph_notify;
 		dph->dph_notify = dprn;
 
-		(void) pthread_cond_broadcast(&dph->dph_cv);
+		dt_proc_signal(dtp);
 		(void) pthread_mutex_unlock(&dph->dph_lock);
 	}
 }
@@ -1146,7 +1155,6 @@ dt_proc_hash_create(dtrace_hdl_t *dtp)
 	    sizeof (dt_proc_t *) * _dtrace_pidbuckets - 1)) != NULL) {
 
 		(void) pthread_mutex_init(&dtp->dt_procs->dph_lock, NULL);
-		(void) pthread_cond_init(&dtp->dt_procs->dph_cv, NULL);
 
 		dtp->dt_procs->dph_hashlen = _dtrace_pidbuckets;
 		dtp->dt_procs->dph_lrulim = _dtrace_pidlrulim;

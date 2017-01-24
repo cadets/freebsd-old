@@ -185,6 +185,9 @@ dtrace_optval_t dtrace_stackframes_default = 20;
 dtrace_optval_t dtrace_ustackframes_default = 20;
 dtrace_optval_t dtrace_jstackframes_default = 50;
 dtrace_optval_t dtrace_jstackstrsize_default = 512;
+dtrace_optval_t dtrace_buflimit_default = 75;
+dtrace_optval_t dtrace_buflimit_min = 1;
+dtrace_optval_t dtrace_buflimit_max = 99;
 int		dtrace_msgdsize_max = 128;
 hrtime_t	dtrace_chill_max = MSEC2NSEC(500);		/* 500 ms */
 hrtime_t	dtrace_chill_interval = NANOSEC;		/* 1000 ms */
@@ -255,6 +258,7 @@ MTX_SYSINIT(dtrace_unr_mtx, &dtrace_unr_mtx, "Unique resource identifier", MTX_D
 static eventhandler_tag	dtrace_kld_load_tag;
 static eventhandler_tag	dtrace_kld_unload_try_tag;
 #endif
+static uint32_t		dtrace_wake_clients;
 
 /*
  * DTrace Locking
@@ -11970,6 +11974,8 @@ dtrace_buffer_switch(dtrace_buffer_t *buf)
 	buf->dtb_flags &= ~(DTRACEBUF_ERROR | DTRACEBUF_DROPPED);
 	buf->dtb_interval = now - buf->dtb_switched;
 	buf->dtb_switched = now;
+	buf->dtb_cur_limit = buf->dtb_limit;
+
 	dtrace_interrupt_enable(cookie);
 }
 
@@ -12016,7 +12022,7 @@ dtrace_buffer_activate_cpu(dtrace_state_t *state, int cpu)
 #endif
 
 static int
-dtrace_buffer_alloc(dtrace_buffer_t *bufs, size_t size, int flags,
+dtrace_buffer_alloc(dtrace_buffer_t *bufs, size_t limit, size_t size, int flags,
     processorid_t cpu, int *factor)
 {
 #ifdef illumos
@@ -12138,6 +12144,10 @@ err:
 		    KM_NOSLEEP | KM_NORMALPRI)) == NULL)
 			goto err;
 
+		/* Unsure that limit is always lower than size */
+		limit = limit == size ? limit - 1 : limit;
+		buf->dtb_cur_limit = limit;
+		buf->dtb_limit = limit;
 		buf->dtb_size = size;
 		buf->dtb_flags = flags;
 		buf->dtb_offset = 0;
@@ -12237,9 +12247,27 @@ dtrace_buffer_reserve(dtrace_buffer_t *buf, size_t needed, size_t align,
 			offs += sizeof (uint32_t);
 		}
 
-		if ((soffs = offs + needed) > buf->dtb_size) {
-			dtrace_buffer_drop(buf);
-			return (-1);
+		if ((uint64_t)(soffs = offs + needed) > buf->dtb_cur_limit) {
+			if (buf->dtb_cur_limit == buf->dtb_limit) {
+				buf->dtb_cur_limit = buf->dtb_size;
+
+				atomic_add_32(&state->dts_buf_over_limit, 1);
+				/**
+				 * Set an AST on the current processor
+				 * so that we can wake up the process
+				 * outside of probe context, when we know
+				 * it is safe to do so
+				 */
+				minor_t minor = getminor(state->dts_dev);
+				ASSERT(minor < 32);
+
+				atomic_or_32(&dtrace_wake_clients, 1 << minor);
+				ast_dtrace_on();
+			}
+			if ((uint64_t)soffs > buf->dtb_size) {
+				dtrace_buffer_drop(buf);
+				return (-1);
+			}
 		}
 
 		if (mstate == NULL)
@@ -14506,6 +14534,15 @@ dtrace_state_create(struct cdev *dev, struct ucred *cred __unused)
 
 	/* Allocate memory for the state. */
 	state = kmem_zalloc(sizeof(dtrace_state_t), KM_SLEEP);
+
+	/* XXX: From macOS patch */
+	minor = getminor(*devp);
+
+	state = dtrace_state_allocate(minor);
+	if (NULL == state) {
+		printf("dtrace_open: couldn't acquire minor number %d. This usually means that too many DTrace clients are in use at the moment", minor);
+		return (ERESTART);	/* can't reacquire */
+	}
 #endif
 
 	state->dts_epid = DTRACE_EPIDNONE + 1;
@@ -14538,6 +14575,7 @@ dtrace_state_create(struct cdev *dev, struct ucred *cred __unused)
 	 */
 	state->dts_buffer = kmem_zalloc(bufsize, KM_SLEEP);
 	state->dts_aggbuffer = kmem_zalloc(bufsize, KM_SLEEP);
+	state->dts_buf_over_limit = 0;
 
 	/*
          * Allocate and initialise the per-process per-CPU random state.
@@ -14584,8 +14622,7 @@ dtrace_state_create(struct cdev *dev, struct ucred *cred __unused)
 	opt[DTRACEOPT_STATUSRATE] = dtrace_statusrate_default;
 	opt[DTRACEOPT_JSTACKFRAMES] = dtrace_jstackframes_default;
 	opt[DTRACEOPT_JSTACKSTRSIZE] = dtrace_jstackstrsize_default;
-
-	state->dts_activity = DTRACE_ACTIVITY_INACTIVE;
+	opt[DTRACEOPT_BUFLIMIT] = dtrace_buflimit_default;
 
 	/*
 	 * Depending on the user credentials, we set flag bits which alter probe
@@ -14725,6 +14762,7 @@ dtrace_state_buffer(dtrace_state_t *state, dtrace_buffer_t *buf, int which)
 {
 	dtrace_optval_t *opt = state->dts_options, size;
 	processorid_t cpu = 0;;
+	size_t limit = buf->dtb_size;
 	int flags = 0, rval, factor, divisor = 1;
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
@@ -14773,7 +14811,8 @@ dtrace_state_buffer(dtrace_state_t *state, dtrace_buffer_t *buf, int which)
 			return (E2BIG);
 		}
 
-		rval = dtrace_buffer_alloc(buf, size, flags, cpu, &factor);
+		limit = opt[DTRACEOPT_BUFLIMIT] * size / 100;
+		rval = dtrace_buffer_alloc(buf, limit, size, flags, cpu, &factor);
 
 		if (rval != ENOMEM) {
 			opt[which] = size;
@@ -15027,6 +15066,12 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 
 	if (opt[DTRACEOPT_CLEANRATE] > dtrace_cleanrate_max)
 		opt[DTRACEOPT_CLEANRATE] = dtrace_cleanrate_max;
+
+	if (opt[DTRACEOPT_BUFLIMIT] > dtrace_buflimit_max)
+		opt[DTRACEOPT_BUFLIMIT] = dtrace_buflimit_max;
+
+	if (opt[DTRACEOPT_BUFLIMIT] < dtrace_buflimit_min)
+		opt[DTRACEOPT_BUFLIMIT] = dtrace_buflimit_min;
 
 	state->dts_alive = state->dts_laststatus = dtrace_gethrtime();
 #ifdef illumos
@@ -15415,6 +15460,8 @@ dtrace_state_destroy(dtrace_state_t *state)
 	ddi_soft_state_free(dtrace_softstate, minor);
 	vmem_free(dtrace_minor, (void *)(uintptr_t)minor, 1);
 #endif
+	/* XXX: From macOS patch */
+	dtrace_state_free(minor);
 }
 
 /*
@@ -17213,6 +17260,9 @@ dtrace_dtr(void *data)
 	state = ddi_get_soft_state(dtrace_softstate, minor);
 #else
 	dtrace_state_t *state = data;
+
+	/* XXX: From macOS patch */
+	state = dtrace_state_get(minor);
 #endif
 
 	mutex_enter(&cpu_lock);
@@ -17345,7 +17395,8 @@ dtrace_ioctl(dev_t dev, int cmd, intptr_t arg, int md, cred_t *cr, int *rv)
 	if (minor == DTRACEMNRN_HELPER)
 		return (dtrace_ioctl_helper(cmd, arg, rv));
 
-	state = ddi_get_soft_state(dtrace_softstate, minor);
+	/* XXX: From macOS patch */
+	state = dtrace_state_get(minor);
 
 	if (state->dts_anon) {
 		ASSERT(dtrace_anon.dta_state == NULL);
@@ -17826,10 +17877,45 @@ dtrace_ioctl(dev_t dev, int cmd, intptr_t arg, int md, cred_t *cr, int *rv)
 		return (rval == 0 ? 0 : EFAULT);
 	}
 
+	case DTRACEIOC_SLEEP: {
+		int64_t time;
+		uint64_t abstime;
+		uint64_t rvalue = DTRACE_WAKE_TIMEOUT;
+
+		if (copyin(arg, &time, sizeof(time)) != 0)
+			return (EFAULT);
+
+		nanoseconds_to_absolutetime((uint64_t)time, &abstime);
+		clock_absolutetime_interval_to_deadline(abstime, &abstime);
+
+		if (assert_wait_deadline(state, THREAD_ABORTSAFE, abstime) == THREAD_WAITING) {
+			if (state->dts_buf_over_limit > 0) {
+				clear_wait(current_thread(), THREAD_INTERRUPTED);
+				rvalue = DTRACE_WAKE_BUF_LIMIT;
+			} else {
+				thread_block(THREAD_CONTINUE_NULL);
+				if (state->dts_buf_over_limit > 0) {
+					rvalue = DTRACE_WAKE_BUF_LIMIT;
+				}
+			}
+		}
+
+		if (copyout(&rvalue, arg, sizeof(rvalue)) != 0)
+			return (EFAULT);
+
+		return (0);
+	}
+
+	case DTRACEIOC_SIGNAL: {
+		wakeup(state);
+		return (0);
+	}
+
 	case DTRACEIOC_AGGSNAP:
 	case DTRACEIOC_BUFSNAP: {
 		dtrace_bufdesc_t desc;
 		caddr_t cached;
+		boolean_t over_limit;
 		dtrace_buffer_t *buf;
 
 		if (copyin((void *)arg, &desc, sizeof (desc)) != 0)
@@ -17911,6 +17997,8 @@ dtrace_ioctl(dev_t dev, int cmd, intptr_t arg, int md, cred_t *cr, int *rv)
 		}
 
 		cached = buf->dtb_tomax;
+		over_limit = buf->dtb_cur_limit == buf->dtb_size;
+
 		ASSERT(!(buf->dtb_flags & DTRACEBUF_NOSWITCH));
 
 		dtrace_xcall(desc.dtbd_cpu,
@@ -17931,6 +18019,22 @@ dtrace_ioctl(dev_t dev, int cmd, intptr_t arg, int md, cred_t *cr, int *rv)
 		}
 
 		ASSERT(cached == buf->dtb_xamot);
+		/*
+		 * At this point we know the buffer have switched, so we
+		 * can decrement the over limit count if the buffer was over
+		 * its limit. The new buffer might already be over its limit
+		 * yet, but we don't care since we're guaranteed not to be
+		 * checking the buffer over limit count  at this point.
+		 */
+		if (over_limit) {
+			uint32_t old = atomic_add_32(&state->dts_buf_over_limit, -1);
+			#pragma unused(old)
+
+			/*
+			 * Verify that we didn't underflow the value
+			 */
+			ASSERT(old != 0);
+		}
 
 		/*
 		 * We have our snapshot; now copy it out.
@@ -18238,6 +18342,33 @@ dtrace_info(dev_info_t *dip, ddi_info_cmd_t infocmd, void *arg, void **result)
 	return (error);
 }
 #endif
+
+void dtrace_ast(void);
+
+void
+dtrace_ast(void)
+{
+	int i;
+	uint32_t clients = atomic_and_32(&dtrace_wake_clients, 0);
+	if (clients == 0)
+		return;
+	/**
+	 * We disable preemption here to be sure that we won't get
+	 * interrupted by a wakeup to a thread that is higher
+	 * priority than us, so that we do issue all wakeups
+	 */
+	disable_preemption();
+	for (i = 0; i < DTRACE_NCLIENTS; i++) {
+		if (clients & (1 << i)) {
+			dtrace_state_t *state = dtrace_state_get(i);
+			if (state) {
+				wakeup(state);
+			}
+
+		}
+	}
+	enable_preemption();
+}
 
 #ifdef illumos
 static struct cb_ops dtrace_cb_ops = {
