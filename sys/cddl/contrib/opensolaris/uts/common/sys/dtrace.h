@@ -1337,9 +1337,10 @@ typedef struct {
 							/* get DOF */
 #define	DTRACEIOC_REPLICATE	_IOW('x',18,dtrace_repldesc_t)	
 							/* replicate enab */
-/* XXX-FreeBSD */
-#define DTRACEIOC_SLEEP 	(DTRACEIOC | 33)	/* APPLE ONLY, sleep */
-#define DTRACEIOC_SIGNAL	(DTRACEIOC | 34)	/* APPLE ONLY, signal sleeping process */
+#define	DTRACEIOC_SLEEP		_IOWR('x',19,uint64_t)
+							/* sleep */
+#define	DTRACEIOC_SIGNAL	_IO('x',20)
+							/* signal sleeping process*/
 #endif
 
 /**
