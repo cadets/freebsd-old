@@ -1283,7 +1283,7 @@ go(void)
 }
 
 #define DTRACE_PRIORITY_FOREGROUND 47
-
+#if 0 /* XXX */
 static void
 set_sched_policy() {
 	int policy, err;
@@ -1308,6 +1308,7 @@ set_sched_policy() {
 	}
 
 }
+#endif
 
 /*ARGSUSED*/
 static void
@@ -2017,10 +2018,12 @@ main(int argc, char *argv[])
 	if (g_total == 0 && !g_grabanon && !(g_cflags & DTRACE_C_ZDEFS))
 		dfatal("no probes %s\n", g_cmdc ? "matched" : "specified");
 
+#if 0 /* XXX */
 	/**
 	 * Set our scheduling policy
 	 */
 	set_sched_policy();
+#endif
 
 	/*
 	 * Start tracing.  Once we dtrace_go(), reload any options that affect
