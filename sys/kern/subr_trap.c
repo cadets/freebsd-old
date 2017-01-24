@@ -232,7 +232,7 @@ ast(struct trapframe *framep)
 	thread_lock(td);
 	flags = td->td_flags;
 	td->td_flags &= ~(TDF_ASTPENDING | TDF_NEEDSIGCHK | TDF_NEEDSUSPCHK |
-	    TDF_NEEDRESCHED | TDF_ALRMPEND | TDF_PROFPEND | TDF_MACPEND);
+	    TDF_NEEDRESCHED | TDF_ALRMPEND | TDF_PROFPEND | TDF_MACPEND | TDF_DTRPEND);
 	thread_unlock(td);
 	PCPU_INC(cnt.v_trap);
 
@@ -243,6 +243,11 @@ ast(struct trapframe *framep)
 		td->td_profil_ticks = 0;
 		td->td_pflags &= ~TDP_OWEUPC;
 	}
+#if CONFIG_DTRACE
+	if (flags & TDF_DTRPEND) {
+		dtrace_ast();
+	}
+#endif
 #ifdef HWPMC_HOOKS
 	/* Handle Software PMC callchain capture. */
 	if (PMC_IS_PENDING_CALLCHAIN(td))

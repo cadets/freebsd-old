@@ -410,6 +410,8 @@ do {									\
 #define	TDF_ALRMPEND	0x10000000 /* Pending SIGVTALRM needs to be posted. */
 #define	TDF_PROFPEND	0x20000000 /* Pending SIGPROF needs to be posted. */
 #define	TDF_MACPEND	0x40000000 /* AST-based MAC event pending. */
+#define	TDF_DTRPEND	0x80000000 /* AST-based DTrace event pending. */
+
 
 /* Userland debug flags */
 #define	TDB_SUSPEND	0x00000001 /* Thread is suspended by debugger */

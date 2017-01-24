@@ -12262,7 +12262,9 @@ dtrace_buffer_reserve(dtrace_buffer_t *buf, size_t needed, size_t align,
 				ASSERT(minor < 32);
 
 				atomic_or_32(&dtrace_wake_clients, 1 << minor);
-				ast_dtrace_on();
+				thread_lock(curthread);
+				curthread->td_flags |= TDF_ASTPENDING | TDF_DTRPEND;
+				thread_unlock(curthread);
 			}
 			if ((uint64_t)soffs > buf->dtb_size) {
 				dtrace_buffer_drop(buf);
