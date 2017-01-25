@@ -1,0 +1,613 @@
+diff --git a/cmd/dtrace_1.c b/cmd/dtrace_1.c
+index bdee7e4..8c6b91b 100644
+--- a/cmd/dtrace_1.c
++++ b/cmd/dtrace_1.c
+@@ -50,6 +50,9 @@
+ #include <sys/sysctl.h>
+ #include <pthread.h>
+ 
++#include <System/sys/csr.h>
++#include <TargetConditionals.h>
++
+ typedef struct dtrace_cmd {
+ 	void (*dc_func)(struct dtrace_cmd *);	/* function to compile arg */
+ 	dtrace_probespec_t dc_spec;		/* probe specifier context */
+@@ -1389,6 +1392,33 @@ go(void)
+ 	}
+ }
+ 
++#define DTRACE_PRIORITY_FOREGROUND 47
++
++static void
++set_sched_policy() {
++	int policy, err;
++	struct sched_param param;
++
++	err = pthread_getschedparam(pthread_self(), &policy, &param);
++	if (err) {
++		notice("could not set thread priority: cannot retrieve thread scheduling parameters");
++		return;
++	}
++
++	param.sched_priority = DTRACE_PRIORITY_FOREGROUND;
++
++	err = pthread_setschedparam(pthread_self(), policy, &param);
++	if (err) {
++		notice("could not set thread priority to %d", param.sched_priority);
++	}
++
++	err = pthread_set_fixedpriority_self();
++	if (err) {
++		notice("could not set thread scheduling priority to fixed");
++	}
++
++}
++
+ /*ARGSUSED*/
+ static void
+ intr(int signo)
+@@ -1549,6 +1579,22 @@ main(int argc, char *argv[])
+ 				}
+ 				/* NOTREACHED */
+ 
++			case 'x':
++				if ((p = strchr(optarg, '=')) != NULL)
++					*p++ = '\0';
++				/*
++				 * At that stage, only parse disallow_dsym
++				 * that we need to be set before dtrace_open
++				 */
++
++				if (strcmp(optarg, "disallow_dsym") == 0) {
++					_dtrace_disallow_dsym = 1;
++				}
++				// Restore the option string
++				if (p != NULL)
++					*(--p) = '=';
++
++				break;
+ 			default:
+ 				if (strchr(DTRACE_OPTSTR, c) == NULL)
+ 					return (usage(stderr));
+@@ -1575,6 +1621,12 @@ main(int argc, char *argv[])
+ 	if (g_mode == DMODE_VERS)
+ 		return (printf("%s: %s\n", g_pname, _dtrace_version) <= 0);
+ 
++#if !TARGET_OS_EMBEDDED
++	if (g_mode != DMODE_HEADER && csr_check(CSR_ALLOW_UNRESTRICTED_DTRACE) != 0) {
++		notice("system integrity protection is on, some features will not be available\n");
++	}
++#endif
++
+ 	/*
+ 	 * D compiler target_arch is current_kernel_arch() by default.
+ 	 * Can be set explicitly by "-arch".
+@@ -2049,6 +2101,11 @@ main(int argc, char *argv[])
+ 	if (g_total == 0 && !g_grabanon && !(g_cflags & DTRACE_C_ZDEFS))
+ 		dfatal("no probes %s\n", g_cmdc ? "matched" : "specified");
+ 
++	/**
++	 * Set our scheduling policy
++	 */
++	set_sched_policy();
++
+ 	/*
+ 	 * Start tracing.  Once we dtrace_go(), reload any options that affect
+ 	 * our globals in case consuming anonymous state has changed them.
+diff --git a/libdtrace/dt_as.c b/libdtrace/dt_as.c
+index 249ec11..0bf5de1 100644
+--- a/libdtrace/dt_as.c
++++ b/libdtrace/dt_as.c
+@@ -324,7 +324,9 @@ dt_as(dt_pcb_t *pcb)
+ 
+ 		if (op == DIF_OP_CALL) {
+ 			if (DIF_INSTR_SUBR(instr) == DIF_SUBR_COPYOUT ||
+-			    DIF_INSTR_SUBR(instr) == DIF_SUBR_COPYOUTSTR)
++			    DIF_INSTR_SUBR(instr) == DIF_SUBR_COPYOUTSTR ||
++			    DIF_INSTR_SUBR(instr) == DIF_SUBR_KDEBUG_TRACE ||
++			    DIF_INSTR_SUBR(instr) == DIF_SUBR_KDEBUG_TRACE_STRING)
+ 				dp->dtdo_destructive = 1;
+ 			continue;
+ 		}
+diff --git a/libdtrace/dt_consume.c b/libdtrace/dt_consume.c
+index 12251e0..486838b 100644
+--- a/libdtrace/dt_consume.c
++++ b/libdtrace/dt_consume.c
+@@ -3033,9 +3033,12 @@ dtrace_consume(dtrace_hdl_t *dtp, FILE *fp,
+ 		uint_t cookie = 0;
+ 		dtrace_bufdesc_t *buf;
+ 
+-        dtrace_probedata_t data[max_ncpus];
+-        bzero(data, sizeof(data));
+-
++		dtrace_probedata_t data[max_ncpus];
++		bzero(data, sizeof(data));
++		for (int i = 0; i < max_ncpus; i++) {
++			data[i].dtpda_cpu = i;
++			data[i].dtpda_handle = dtp;
++		}
+ 		bzero(drops, max_ncpus * sizeof (uint64_t));
+ 
+ 		/* Initialize the priority queue if it's not already there.  we need
+diff --git a/libdtrace/dt_handle.c b/libdtrace/dt_handle.c
+index b6fbf0a..5664032 100644
+--- a/libdtrace/dt_handle.c
++++ b/libdtrace/dt_handle.c
+@@ -225,7 +225,7 @@ dt_handle_err(dtrace_hdl_t *dtp, dtrace_probedata_t *data)
+ 	if (dtp->dt_errhdlr == NULL)
+ 		return (dt_set_errno(dtp, EDT_ERRABORT));
+ 
+-	if ((*dtp->dt_errhdlr)(&err, dtp->dt_errarg) == DTRACE_HANDLE_ABORT)
++	if (_dtrace_error && (*dtp->dt_errhdlr)(&err, dtp->dt_errarg) == DTRACE_HANDLE_ABORT)
+ 		return (dt_set_errno(dtp, EDT_ERRABORT));
+ 
+ 	return (0);
+diff --git a/libdtrace/dt_impl.h b/libdtrace/dt_impl.h
+index 65e7b21..80bc9df 100644
+--- a/libdtrace/dt_impl.h
++++ b/libdtrace/dt_impl.h
+@@ -728,6 +728,8 @@ extern uint_t _dtrace_stkindent;	/* default indent for stack/ustack */
+ extern uint_t _dtrace_pidbuckets;	/* number of hash buckets for pids */
+ extern uint_t _dtrace_pidlrulim;	/* number of proc handles to cache */
+ extern int _dtrace_debug;		/* debugging messages enabled */
++extern int _dtrace_disallow_dsym;	/* dsym symbols disabled */
++extern int _dtrace_error;		/* error messages enabled */
+ extern int _dtrace_mangled;		/* enabled mangled names for C++ fns */
+ extern size_t _dtrace_bufsize;		/* default dt_buf_create() size */
+ extern int _dtrace_argmax;		/* default maximum probe arguments */
+diff --git a/libdtrace/dt_isadep_arm.c b/libdtrace/dt_isadep_arm.c
+index 5d370ae..bffb582 100644
+--- a/libdtrace/dt_isadep_arm.c
++++ b/libdtrace/dt_isadep_arm.c
+@@ -88,7 +88,7 @@ dt_pid_create_return_probe32(struct ps_prochandle *P, dtrace_hdl_t *dtp,
+ 	 * This function best read with the ARM architecture reference handy.
+ 	 */
+ 
+-	uint8_t *text;
++	uint8_t *text, *allocated_text;
+ 
+ 	/*
+ 	 * When all the pc relative data is at the end of a function, there are no problems. But
+@@ -120,14 +120,14 @@ dt_pid_create_return_probe32(struct ps_prochandle *P, dtrace_hdl_t *dtp,
+ 	 * We allocate a few extra bytes at the end so we don't have to check
+ 	 * for overrunning the buffer.
+ 	 */
+-	if ((text = calloc(1, symp->st_size + 4)) == NULL) {
++	if ((text = allocated_text = calloc(1, symp->st_size + 4)) == NULL) {
+ 		dt_dprintf("mr sparkle: malloc() failed\n");
+ 		return (DT_PROC_ERR);
+ 	}
+ 
+ 	if ((constants = calloc(1, symp->st_size + 4)) == NULL) {
+ 		dt_dprintf("mr sparkle: malloc() failed\n");
+-		free(text);
++		free(allocated_text);
+ 		return (DT_PROC_ERR);
+ 	}
+ 
+@@ -142,7 +142,7 @@ dt_pid_create_return_probe32(struct ps_prochandle *P, dtrace_hdl_t *dtp,
+ 
+ 	if (Pread(P, text, symp->st_size, symp->st_value) != symp->st_size) {
+ 		dt_dprintf("mr sparkle: Pread() failed\n");
+-		free(text);
++		free(allocated_text);
+ 		free(constants);
+ 		return (DT_PROC_ERR);
+ 	}
+@@ -388,10 +388,7 @@ is_ret_thumb:
+ 		}
+ 	}
+ 
+-	/* Reset the buffer base (see above comments) */
+-	if ((ftp->ftps_arch_subinfo == 2) && (symp->st_value & 2))
+-		text = text - 2;
+-	free(text);
++	free(allocated_text);
+ 	free(constants);
+ 	if (ftp->ftps_noffs > 0) {
+ 		if (ioctl(dtp->dt_ftfd, FASTTRAPIOC_MAKEPROBE, ftp) != 0) {
+diff --git a/libdtrace/dt_lex.l b/libdtrace/dt_lex.l
+index 50793b2..3a97a12 100644
+--- a/libdtrace/dt_lex.l
++++ b/libdtrace/dt_lex.l
+@@ -68,11 +68,12 @@ static int id_or_type(const char *);
+  * We first define a set of labeled states for use in the D lexer and then a
+  * set of regular expressions to simplify things below.  The lexer states are:
+  *
+- * S0 - D program clause and expression lexing
+- * S1 - D comments (i.e. skip everything until end of comment)
+- * S2 - D program outer scope (probe specifiers and declarations)
+- * S3 - D control line parsing (i.e. after ^# is seen but before \n)
+- * S4 - D control line scan (locate control directives only and invoke S3)
++ * S0  - D program clause and expression lexing
++ * S1  - D comments (i.e. skip everything until end of comment)
++ * S1L - D one line comment (i.e. skip everything until end of line)
++ * S2  - D program outer scope (probe specifiers and declarations)
++ * S3  - D control line parsing (i.e. after ^# is seen but before \n)
++ * S4  - D control line scan (locate control directives only and invoke S3)
+  */
+ %}
+ 
+@@ -80,7 +81,7 @@ static int id_or_type(const char *);
+ %p 3700		/* maximum positions */
+ %n 600		/* maximum states */
+ 
+-%s S0 S1 S2 S3 S4
++%s S0 S1 S1L S2 S3 S4
+ 
+ RGX_AGG		"@"[a-zA-Z_][0-9a-zA-Z_]*
+ RGX_PSPEC	[-+$:a-zA-Z_.?*\\\[\]!][-+$:0-9a-zA-Z_.`?*\\\[\]!\(\)]*
+@@ -444,6 +445,11 @@ if (yypcb->pcb_token != 0) {
+ 			BEGIN(S1);
+ 		}
+ 
++<S0>"//"	|
++<S2>"//"	{
++			yypcb->pcb_cstate = (YYSTATE);
++			BEGIN(S1L);
++		}
+ <S0>{RGX_INTERP} |
+ <S2>{RGX_INTERP}	; /* discard any #! lines */
+ 
+@@ -583,6 +589,13 @@ if (yypcb->pcb_token != 0) {
+ <S1>"*/"	BEGIN(yypcb->pcb_cstate);
+ <S1>.|\n	; /* discard */
+ 
++<S1L>"/*"	yyerror("/* encountered inside a one-line comment\n");
++<S1L>"*/"	yyerror("*/ encountered inside a one-line comment\n");
++<S1L>"//"	yyerror("// encountered inside a one-line comment\n");
++<S1L>\n|\0	BEGIN(yypcb->pcb_cstate);
++<S1L>.		; /* discard */
++
++
+ <S2>{RGX_PSPEC}	{
+ 			/*
+ 			 * S2 has an ambiguity because RGX_PSPEC includes '*'
+diff --git a/libdtrace/dt_module_apple.c b/libdtrace/dt_module_apple.c
+index 7c99c1e..d0d4b49 100644
+--- a/libdtrace/dt_module_apple.c
++++ b/libdtrace/dt_module_apple.c
+@@ -70,6 +70,8 @@ CSSymbolicatorRef dtrace_kernel_symbolicator(bool with_slide) {
+ 			if (with_slide)
+ 				flags |= kCSSymbolicatorUseSlidKernelAddresses;
+ 
++			if (_dtrace_disallow_dsym)
++				flags |= kCSSymbolicatorDisallowDsymData ;
+ 			CSSymbolicatorRef temp = CSSymbolicatorCreateWithMachKernelFlagsAndNotification(flags, NULL);
+ 
+ 			OSMemoryBarrier();
+@@ -98,16 +100,21 @@ static void filter_module_symbols(CSSymbolOwnerRef owner, int provide_private_pr
+ {
+ 	// See note at callsites, we want to always use __TEXT __text for now.
+ 	if (TRUE || (CSSymbolOwnerIsObject(owner) && !(CSSymbolOwnerGetDataFlags(owner) & kCSSymbolOwnerDataFoundDsym))) {				
+-		// Find the TEXT text region
+-		CSRegionRef text_region = CSSymbolOwnerGetRegionWithName(owner, "__TEXT __text");
+-		CSRegionForeachSymbol(text_region, ^(CSSymbolRef symbol) {
++		void (^check_sym)(CSSymbolRef) = ^(CSSymbolRef symbol) {
+ 			// By default, the kernel team has requested minimal symbol info.
+ 			if ((CSSymbolIsUnnamed(symbol) == false) && (provide_private_probes || CSSymbolIsExternal(symbol))) {
+ 				if (CSSymbolGetRange(symbol).length > 0) {
+ 					valid_symbol(symbol);
+ 				}
+ 			}
+-		});
++		};
++
++		// Find the TEXT/TEXT_EXEC text regions
++		CSRegionRef text_region = CSSymbolOwnerGetRegionWithName(owner, "__TEXT __text");
++		CSRegionRef text_exec_region = CSSymbolOwnerGetRegionWithName(owner, "__TEXT_EXEC __text");
++		CSRegionForeachSymbol(text_region, check_sym);
++		CSRegionForeachSymbol(text_exec_region, check_sym);
++
+ 	} else {
+ 		CSSymbolOwnerForeachSymbol(owner, ^(CSSymbolRef symbol) {
+ 			if (CSSymbolIsFunction(symbol) && (CSSymbolGetRange(symbol).length > 0)) {
+diff --git a/libdtrace/dt_names.c b/libdtrace/dt_names.c
+index c45d868..a917a9d 100644
+--- a/libdtrace/dt_names.c
++++ b/libdtrace/dt_names.c
+@@ -56,7 +56,8 @@ dtrace_subrstr(dtrace_hdl_t *dtp, int subr)
+ 	case DIF_SUBR_INET_NTOP: return ("inet_ntop");
+ 	case DIF_SUBR_INET_NTOA: return ("inet_ntoa");
+ 	case DIF_SUBR_INET_NTOA6: return ("inet_ntoa6");
+-	case DIF_SUBR_COREPROFILE: return ("core_profile");
++	case DIF_SUBR_KDEBUG_TRACE: return ("kdebug_trace");
++	case DIF_SUBR_KDEBUG_TRACE_STRING: return ("kdebug_trace_string");
+ 	default: return ("unknown");
+ 	}
+ }
+diff --git a/libdtrace/dt_open.c b/libdtrace/dt_open.c
+index 53d1f21..a33df64 100644
+--- a/libdtrace/dt_open.c
++++ b/libdtrace/dt_open.c
+@@ -56,6 +56,8 @@
+ #include <dt_string.h>
+ #include <dt_provider.h>
+ 
++#include <TargetConditionals.h>
++
+ void dtrace_update_kernel_symbols(dtrace_hdl_t* dtp);
+ 
+ /*
+@@ -425,8 +427,10 @@ static const dt_ident_t _dtrace_globals[] = {
+ 	DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string" },
+ { "machtimestamp", DT_IDENT_SCALAR, 0, DIF_VAR_MACHTIMESTAMP,
+ 	DT_ATTR_STABCMN, DT_VERS_1_7, &dt_idops_type, "uint64_t" },
+-{ "core_profile", DT_IDENT_FUNC, 0, DIF_SUBR_COREPROFILE, DT_ATTR_EVOLCMN, DT_VERS_1_6_2,
+-	&dt_idops_func, "uint32_t(uint64_t, [uint64_t], [uint64_t], [uint64_t], [uint64_t], [uint64_t], [uint64_t])"},
++{ "kdebug_trace", DT_IDENT_FUNC, 0, DIF_SUBR_KDEBUG_TRACE, DT_ATTR_EVOLCMN, DT_VERS_1_6_2,
++	&dt_idops_func, "void(uint32_t, [uint64_t], [uint64_t], [uint64_t], [uint64_t])"},
++{ "kdebug_trace_string", DT_IDENT_FUNC, 0, DIF_SUBR_KDEBUG_TRACE_STRING, DT_ATTR_EVOLCMN, DT_VERS_1_6_2,
++	&dt_idops_func, "uint64_t(uint32_t, uint64_t, char*)"},
+ { "vm_kernel_addrperm", DT_IDENT_FUNC, 0, DIF_SUBR_VM_KERNEL_ADDRPERM,
+ 	DT_ATTR_STABCMN, DT_VERS_1_8,
+ 	&dt_idops_func, "void* (void*)" },
+@@ -698,6 +702,8 @@ int _dtrace_argmax = 32;	/* default maximum number of probe arguments */
+ 
+ int _dtrace_debug = 0;		/* debug messages enabled (off) */
+ int _dtrace_mangled = 0;	/* enabled mangled names for C++ fns (off) */
++int _dtrace_error = 1;		/* error messages enabled (on */
++int _dtrace_disallow_dsym = 0;		/* dsym disabled */
+ 
+ const char *const _dtrace_version = DT_VERS_STRING; /* API version string */
+ int _dtrace_rdvers = RD_VERSION; /* rtld_db feature version */
+@@ -975,14 +981,18 @@ alloc:
+ 	if (dt_cpp_add_arg(dtp, "-E") == NULL ||
+ 	    dt_cpp_add_arg(dtp, "-xc") == NULL ||
+ 	    dt_cpp_add_arg(dtp, "-U__GNUC__") == NULL ||
+-	    dt_cpp_add_arg(dtp, "-include") == NULL ||
+-	    dt_cpp_add_arg(dtp, "/usr/lib/dtrace/dt_cpp.h") == NULL ||
+ 	    dt_cpp_add_arg(dtp, "-D__APPLE__") == NULL ||
+ 	    dt_cpp_add_arg(dtp, "-D__SUNW_D=1") == NULL ||
+ 	    dt_cpp_add_arg(dtp, isadef) == NULL ||
+ 	    dt_cpp_add_arg(dtp, utsdef) == NULL)
+ 		return (set_open_errno(dtp, errp, EDT_NOMEM));
+ 
++#if TARGET_OS_MAC && !TARGET_OS_EMBEDDED
++	if (dt_cpp_add_arg(dtp, "-include") == NULL ||
++	    dt_cpp_add_arg(dtp, "/usr/lib/dtrace/dt_cpp.h") == NULL)
++		return (set_open_errno(dtp, errp, EDT_NOMEM));
++#endif
++
+ 	if (flags & DTRACE_O_NODEV)
+ 		bcopy(&_dtrace_conf, &dtp->dt_conf, sizeof (_dtrace_conf));
+ 	else if (dt_ioctl(dtp, DTRACEIOC_CONF, &dtp->dt_conf) != 0)
+diff --git a/libdtrace/dt_options.c b/libdtrace/dt_options.c
+index 503a10c..5146a17 100644
+--- a/libdtrace/dt_options.c
++++ b/libdtrace/dt_options.c
+@@ -258,6 +258,17 @@ dt_opt_debug(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
+ 	return (0);
+ }
+ 
++/*ARGSUSED*/
++static int
++dt_opt_disallow_dsym(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
++{
++	if (arg != NULL)
++		return (dt_set_errno(dtp, EDT_BADOPTVAL));
++
++	_dtrace_disallow_dsym = 1;
++	return (0);
++}
++
+ static int
+ dt_opt_nojtanalysis(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
+ {
+@@ -272,6 +283,18 @@ dt_opt_nojtanalysis(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
+ 
+ /*ARGSUSED*/
+ static int
++dt_opt_noerror(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
++{
++	if (arg != NULL)
++		return (dt_set_errno(dtp, EDT_BADOPTVAL));
++
++	_dtrace_error = 0;
++
++	return (0);
++}
++
++/*ARGSUSED*/
++static int
+ dt_opt_iregs(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
+ {
+ 	int n;
+@@ -777,6 +800,25 @@ dt_opt_strsize(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
+ 	return (0);
+ }
+ 
++
++static int
++dt_opt_buflimit(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
++{
++	dtrace_optval_t val = DTRACEOPT_UNSET;
++
++	if (arg == NULL)
++		return (dt_set_errno(dtp, EDT_BADOPTVAL));
++
++	val = strtoull(arg, NULL, 0);
++
++	if (val <= 0 || val > 100)
++		return (dt_set_errno(dtp, EDT_BADOPTVAL));
++
++	dtp->dt_options[option] = val;
++
++	return (0);
++}
++
+ static const struct {
+ 	const char *dtbp_name;
+ 	int dtbp_policy;
+@@ -950,6 +992,7 @@ static const dt_option_t _dtrace_ctoptions[] = {
+ 	{ "dtypes", dt_opt_dtypes },
+ 	{ "debug", dt_opt_debug },
+ 	{ "define", dt_opt_cpp_opts, (uintptr_t)"-D" },
++	{ "disallow_dsym", dt_opt_disallow_dsym },
+ 	{ "droptags", dt_opt_droptags },
+ 	{ "empty", dt_opt_cflags, DTRACE_C_EMPTY },
+ 	{ "encoding", dt_opt_encoding },
+@@ -968,6 +1011,7 @@ static const dt_option_t _dtrace_ctoptions[] = {
+ 	{ "mangled", dt_opt_mangled },
+ 	{ "nolibs", dt_opt_cflags, DTRACE_C_NOLIBS },
+ 	{ "nojtanalysis", dt_opt_nojtanalysis },
++	{ "noerror", dt_opt_noerror},
+ 	{ "pgmax", dt_opt_pgmax },
+ 	{ "preallocate", dt_opt_preallocate },
+ 	{ "pspec", dt_opt_cflags, DTRACE_C_PSPEC },
+@@ -1022,6 +1066,7 @@ static const dt_option_t _dtrace_drtoptions[] = {
+ 	{ "aggsortpos", dt_opt_runtime, DTRACEOPT_AGGSORTPOS },
+ 	{ "aggsortrev", dt_opt_runtime, DTRACEOPT_AGGSORTREV },
+ 	{ "aggzoom", dt_opt_runtime, DTRACEOPT_AGGZOOM },
++	{ "buflimit", dt_opt_buflimit, DTRACEOPT_BUFLIMIT },
+ 	{ "flowindent", dt_opt_runtime, DTRACEOPT_FLOWINDENT },
+ 	{ "quiet", dt_opt_runtime, DTRACEOPT_QUIET },
+ 	{ "rawbytes", dt_opt_runtime, DTRACEOPT_RAWBYTES },
+diff --git a/libdtrace/dt_proc.c b/libdtrace/dt_proc.c
+index 7b5e3ce..85611d9 100644
+--- a/libdtrace/dt_proc.c
++++ b/libdtrace/dt_proc.c
+@@ -74,8 +74,8 @@
+  * A simple notification mechanism is provided for libdtrace clients using
+  * dtrace_handle_proc() for notification of PS_UNDEAD or PS_LOST events.  If
+  * such an event occurs, the dt_proc_t itself is enqueued on a notification
+- * list and the control thread broadcasts to dph_cv.  dtrace_sleep() will wake
+- * up using this condition and will then call the client handler as necessary.
++ * list and the control thread signals the waiting thread. dtrace_sleep() will
++ * wake up and will then call the client handler as necessary.
+  */
+ 
+ #include <sys/time.h>
+@@ -92,6 +92,7 @@
+ 
+ extern void dt_proc_rdwatch(dt_proc_t *, rd_event_e, const char *);
+ extern void *dt_proc_control(void *arg);
++extern void dt_proc_signal(dtrace_hdl_t *dtp);
+ 
+ void Pcheckpoint_syms(struct ps_prochandle *P);
+ 
+@@ -177,7 +178,7 @@ dt_proc_notify(dtrace_hdl_t *dtp, dt_proc_hash_t *dph, dt_proc_t *dpr,
+ 		dprn->dprn_next = dph->dph_notify;
+ 		dph->dph_notify = dprn;
+ 
+-		(void) pthread_cond_broadcast(&dph->dph_cv);
++		dt_proc_signal(dtp);
+ 		(void) pthread_mutex_unlock(&dph->dph_lock);
+ 	}
+ }
+@@ -678,7 +679,6 @@ dt_proc_hash_create(dtrace_hdl_t *dtp)
+ 	    sizeof (dt_proc_t *) * _dtrace_pidbuckets - 1)) != NULL) {
+ 
+ 		(void) pthread_mutex_init(&dtp->dt_procs->dph_lock, NULL);
+-		(void) pthread_cond_init(&dtp->dt_procs->dph_cv, NULL);
+ 
+ 		dtp->dt_procs->dph_hashlen = _dtrace_pidbuckets;
+ 		dtp->dt_procs->dph_lrulim = _dtrace_pidlrulim;
+diff --git a/libdtrace/dt_proc.h b/libdtrace/dt_proc.h
+index 9cdd955..8c638fb 100644
+--- a/libdtrace/dt_proc.h
++++ b/libdtrace/dt_proc.h
+@@ -87,7 +87,6 @@ typedef struct dt_bkpt {
+ 
+ typedef struct dt_proc_hash {
+ 	pthread_mutex_t dph_lock;	/* lock protecting dph_notify list */
+-	pthread_cond_t dph_cv;		/* cond for waiting for dph_notify */
+ 	dt_proc_notify_t *dph_notify;	/* list of pending proc notifications */
+ 	dt_list_t dph_lrulist;		/* list of dt_proc_t's in lru order */
+ 	uint_t dph_lrulim;		/* limit on number of procs to hold */
+diff --git a/libdtrace/dt_proc_apple.c b/libdtrace/dt_proc_apple.c
+index 83220c4..cc2d8c3 100644
+--- a/libdtrace/dt_proc_apple.c
++++ b/libdtrace/dt_proc_apple.c
+@@ -53,6 +53,16 @@ extern Phandler_func_t dt_proc_control_activity_handler; // See libproc.m
+ 
+ extern psaddr_t rd_event_mock_addr(struct ps_prochandle *); // See libproc.m
+ 
++
++void
++dt_proc_signal(dtrace_hdl_t *dtp)
++{
++	if (dt_ioctl(dtp, DTRACEIOC_SIGNAL, NULL) == -1) {
++		dt_set_errno(dtp, errno);
++		return;
++	}
++}
++
+ static void
+ dt_proc_bpmatch(dtrace_hdl_t *dtp, dt_proc_t *dpr)
+ {
+diff --git a/libdtrace/dt_work.c b/libdtrace/dt_work.c
+index 9a562ba..226c3b2 100644
+--- a/libdtrace/dt_work.c
++++ b/libdtrace/dt_work.c
+@@ -56,8 +56,8 @@ dtrace_sleep(dtrace_hdl_t *dtp)
+ 	dt_proc_notify_t *dprn;
+ 
+ 	hrtime_t earliest = INT64_MAX;
+-	struct timespec tv;
+ 	hrtime_t now;
++	uint64_t ts;
+ 	int i;
+ 
+ 	for (i = 0; _dtrace_sleeptab[i].dtslt_option < DTRACEOPT_MAX; i++) {
+@@ -78,25 +78,37 @@ dtrace_sleep(dtrace_hdl_t *dtp)
+ 			earliest = *((hrtime_t *)a) + interval;
+ 	}
+ 
+-	(void) pthread_mutex_lock(&dph->dph_lock);
+-
+ 	now = gethrtime();
+-
+ 	if (earliest < now) {
+-		(void) pthread_mutex_unlock(&dph->dph_lock);
+ 		return; /* sleep duration has already past */
+ 	}
++	ts = earliest - now;
+ 
+-	tv.tv_sec = (earliest - now) / NANOSEC;
+-	tv.tv_nsec = (earliest - now) % NANOSEC;
++	/**
++	 * Do an IOC to wait in the kernel. We might get woken up
++	 * before our time is up either because one of our buffer
++	 * crossed its limit or because a process is in a
++	 * interesting state.
++	 */
++	if (dt_ioctl(dtp, DTRACEIOC_SLEEP, &ts) == -1) {
++		dt_set_errno(dtp, errno);
++		return;
++	}
+ 
+-	/*
+-	 * Wait for either 'tv' nanoseconds to pass or to receive notification
+-	 * that a process is in an interesting state.  Regardless of why we
+-	 * awaken, iterate over any pending notifications and process them.
++	/**
++	 * Check the reason why we woke up. If we woke up because one
++	 * of our buffers is over its limit, start aggregating / switching
++	 * now.
+ 	 */
+-	(void) pthread_cond_reltimedwait_np(&dph->dph_cv, &dph->dph_lock, &tv);
++	if (ts == DTRACE_WAKE_BUF_LIMIT) {
++		dtp->dt_lastagg = 0;
++		dtp->dt_lastswitch = 0;
++	}
+ 
++	/**
++	 * If we have any pending notifications, process them
++	 */
++	(void) pthread_mutex_lock(&dph->dph_lock);
+ 	while ((dprn = dph->dph_notify) != NULL) {
+ 		if (dtp->dt_prochdlr != NULL) {
+ 			char *err = dprn->dprn_errmsg;
+diff --git a/libdtrace/exports b/libdtrace/exports
+index 7fb308b..f60adf6 100644
+--- a/libdtrace/exports
++++ b/libdtrace/exports
+@@ -173,6 +173,7 @@ _dtrace_vopen
+ _dtrace_work
+ _dtrace_xstr2desc
+ __dtrace_version
++__dtrace_disallow_dsym
+ _Pstate
+ _Pstatus
+ _Pxlookup_by_addr
