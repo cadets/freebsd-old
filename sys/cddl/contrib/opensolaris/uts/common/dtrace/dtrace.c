@@ -14538,12 +14538,12 @@ dtrace_state_create(struct cdev *dev, struct ucred *cred __unused)
 	state = kmem_zalloc(sizeof(dtrace_state_t), KM_SLEEP);
 
 	/* XXX: From macOS patch */
-	minor = getminor(*devp);
+	minor_t minor = getminor(*dev);
 
 	state = dtrace_state_allocate(minor);
 	if (NULL == state) {
 		printf("dtrace_open: couldn't acquire minor number %d. This usually means that too many DTrace clients are in use at the moment", minor);
-		return (ERESTART);	/* can't reacquire */
+		return (NULL);	/* can't reacquire */
 	}
 #endif
 
@@ -18359,7 +18359,7 @@ dtrace_ast(void)
 	 * interrupted by a wakeup to a thread that is higher
 	 * priority than us, so that we do issue all wakeups
 	 */
-	disable_preemption();
+	critical_enter();
 	for (i = 0; i < DTRACE_NCLIENTS; i++) {
 		if (clients & (1 << i)) {
 			dtrace_state_t *state = dtrace_state_get(i);
@@ -18369,7 +18369,7 @@ dtrace_ast(void)
 
 		}
 	}
-	enable_preemption();
+	critical_exit();
 }
 
 #ifdef illumos

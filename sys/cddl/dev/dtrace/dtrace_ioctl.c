@@ -873,11 +873,12 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		return (rval);
 	}
 	case DTRACEIOC_SLEEP: {
+		int64_t **ptime = (int64_t **) addr;
 		int64_t time;
 		uint64_t abstime;
 		uint64_t rvalue = DTRACE_WAKE_TIMEOUT;
 
-		if (copyin(arg, &time, sizeof(time)) != 0)
+		if (copyin((void *)*ptime, &time, sizeof(time)) != 0)
 			return (EFAULT);
 
 		nanoseconds_to_absolutetime((uint64_t)time, &abstime);
@@ -895,7 +896,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 			}
 		}
 
-		if (copyout(&rvalue, arg, sizeof(rvalue)) != 0)
+		if (copyout(&rvalue, (void *) *ptime, sizeof(rvalue)) != 0)
 			return (EFAULT);
 
 		return (0);
