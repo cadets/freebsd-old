@@ -104,8 +104,10 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 	dtrace_state_t *state;
 	devfs_get_cdevpriv((void **) &state);
 
+#if 0
 	/* XXX: From macOS patch */
 	state = dtrace_state_get(minor);
+#endif
 
 	int error = 0;
 	if (state == NULL)
@@ -881,6 +883,15 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		if (copyin((void *)*ptime, &time, sizeof(time)) != 0)
 			return (EFAULT);
 
+		/* XXX: Second buf_over_limit check? use msleep/mtx_sleep? */
+		(void)tsleep(state, PUSER | PCATCH, "dtrslp",
+		    NSEC_TO_TICK(time));
+		if (state->dts_buf_over_limit > 0)
+			rvalue = DTRACE_WAKE_BUF_LIMIT;
+		else
+			rvalue = DTRACE_WAKE_TIMEOUT;
+
+#if 0 /* XXX: macOS */
 		nanoseconds_to_absolutetime((uint64_t)time, &abstime);
 		clock_absolutetime_interval_to_deadline(abstime, &abstime);
 
@@ -895,6 +906,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 				}
 			}
 		}
+#endif
 
 		if (copyout(&rvalue, (void *) *ptime, sizeof(rvalue)) != 0)
 			return (EFAULT);
