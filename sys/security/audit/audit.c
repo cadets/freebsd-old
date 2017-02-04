@@ -256,6 +256,7 @@ audit_record_ctor(void *mem, int size, void *arg, int flags)
 	ar->k_ar.ar_subj_term_addr = cred->cr_audit.ai_termid;
 #ifdef KDTRACE_HOOKS
 	ar->k_ar.ar_subj_tid = td->td_tid;
+	ar->k_ar.ar_subj_cpuid = curcpu;
 #endif
 
 	/*
