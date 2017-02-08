@@ -1247,8 +1247,12 @@ restart:
 		else {
 			error = VOP_MKNOD(nd.ni_dvp, &nd.ni_vp,
 						&nd.ni_cnd, &vattr);
-			if (error == 0)
+			if (error == 0) {
+#ifdef KDTRACE_HOOKS
+				AUDIT_RET_OBJUUID1(&vp->v_uuid);
+#endif
 				vput(nd.ni_vp);
+			}
 		}
 	}
 	NDFREE(&nd, NDF_ONLY_PNBUF);
@@ -1338,8 +1342,12 @@ restart:
 		goto out;
 #endif
 	error = VOP_MKNOD(nd.ni_dvp, &nd.ni_vp, &nd.ni_cnd, &vattr);
-	if (error == 0)
+	if (error == 0) {
+#ifdef KDTRACE_HOOKS
+		AUDIT_RET_OBJUUID1(&nd.ni_vp->v_uuid);
+#endif
 		vput(nd.ni_vp);
+	}
 #ifdef MAC
 out:
 #endif
@@ -1608,8 +1616,12 @@ restart:
 		goto out2;
 #endif
 	error = VOP_SYMLINK(nd.ni_dvp, &nd.ni_vp, &nd.ni_cnd, &vattr, syspath);
-	if (error == 0)
+	if (error == 0) {
+#ifdef KDTRACE_HOOKS
+		AUDIT_RET_OBJUUID1(&nd.ni_vp->v_uuid);
+#endif
 		vput(nd.ni_vp);
+	}
 #ifdef MAC
 out2:
 #endif
@@ -3672,8 +3684,12 @@ out:
 #endif
 	NDFREE(&nd, NDF_ONLY_PNBUF);
 	vput(nd.ni_dvp);
-	if (error == 0)
+	if (error == 0) {
+#ifdef KDTRACE_HOOKS
+		AUDIT_RET_OBJUUID1(&vp->v_uuid);
+#endif
 		vput(nd.ni_vp);
+	}
 	vn_finished_write(mp);
 	return (error);
 }
