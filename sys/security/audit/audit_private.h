@@ -51,6 +51,7 @@
 #include <sys/ipc.h>
 #include <sys/metaio.h>
 #include <sys/msgid.h>
+#include <sys/smp.h>
 #include <sys/socket.h>
 #include <sys/ucred.h>
 #ifdef KDTRACE_HOOKS
@@ -194,6 +195,7 @@ struct audit_record {
 	pid_t			ar_subj_pid;
 #ifdef KDTRACE_HOOKS
 	lwpid_t			ar_subj_tid;
+	cpuid_t			ar_subj_cpuid;
 #endif
 	struct au_tid		ar_subj_term;
 	struct au_tid_addr	ar_subj_term_addr;
