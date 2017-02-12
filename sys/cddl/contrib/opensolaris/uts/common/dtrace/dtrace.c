@@ -4472,11 +4472,19 @@ dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 	case DIF_SUBR_COPYOUTMBUF: {
 		uintptr_t dest = mstate->dtms_scratch_ptr;
 		struct mbuf *m = (struct mbuf *)tupregs[0].dttk_value;
-		uint64_t len = m_length(m, NULL);
+		uint64_t len = 0;
 		size_t scratch_size = 0;
 		size_t req_size = tupregs[1].dttk_value;
 		size_t offset = 0;
 		
+		if (m == NULL) {
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_BADADDR);
+			regs[rd] = 0;
+			break;
+		}
+
+		len = m_length(m, NULL);
+
 		/* Optional 3rd argument is an offset into the packet. */
 		if (nargs > 2) {
 			offset = tupregs[2].dttk_value;
@@ -10009,7 +10017,7 @@ dtrace_difo_validate(dtrace_difo_t *dp, dtrace_vstate_t *vstate, uint_t nregs,
 				err += efunc(pc, "invalid register %u\n", rd);
 			break;
 		case DIF_OP_CALL:
-			if (subr > DIF_SUBR_MAX)
+			if (!VALID_SUBR(subr))
 				err += efunc(pc, "invalid subr %u\n", subr);
 			if (rd >= nregs)
 				err += efunc(pc, "invalid register %u\n", rd);

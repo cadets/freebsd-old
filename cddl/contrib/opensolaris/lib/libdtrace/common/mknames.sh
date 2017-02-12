@@ -45,7 +45,7 @@ dtrace_subrstr(dtrace_hdl_t *dtp, int subr)\n\
 	switch (subr) {"
 
 nawk '
-/^#define[ 	]*DIF_SUBR_/ && $2 != "DIF_SUBR_MAX" {
+/^#define[ 	]*DIF_SUBR_/ && $2 != "DIF_SUBR_MAX" && $2 != "DIF_SUBR_FBSD_MIN" && $2 != "DIF_SUBR_FBSD_MAX"{
 	printf("\tcase %s: return (\"%s\");\n", $2, tolower(substr($2, 10)));
 }'
 
