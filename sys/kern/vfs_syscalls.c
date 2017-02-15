@@ -1249,7 +1249,7 @@ restart:
 						&nd.ni_cnd, &vattr);
 			if (error == 0) {
 #ifdef KDTRACE_HOOKS
-				AUDIT_RET_OBJUUID1(&vp->v_uuid);
+				AUDIT_RET_OBJUUID1(&nd.ni_vp->v_uuid);
 #endif
 				vput(nd.ni_vp);
 			}
@@ -3686,7 +3686,7 @@ out:
 	vput(nd.ni_dvp);
 	if (error == 0) {
 #ifdef KDTRACE_HOOKS
-		AUDIT_RET_OBJUUID1(&vp->v_uuid);
+		AUDIT_RET_OBJUUID1(&nd.ni_vp->v_uuid);
 #endif
 		vput(nd.ni_vp);
 	}
