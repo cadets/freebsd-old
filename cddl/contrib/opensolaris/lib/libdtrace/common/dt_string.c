@@ -142,6 +142,7 @@ strchr2esc(const char *s, size_t n)
 	for (p = s; p < s + n; p++) {
 		switch (c = *p) {
 		case '\0':
+			break;
 		case '\a':
 		case '\b':
 		case '\f':
@@ -167,8 +168,6 @@ strchr2esc(const char *s, size_t n)
 	for (p = s, q = s2; p < s + n; p++) {
 		switch (c = *p) {
 		case '\0':
-			*q++ = '\\';
-			*q++ = '0';
 			break;
 		case '\a':
 			*q++ = '\\';
