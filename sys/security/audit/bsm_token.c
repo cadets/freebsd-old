@@ -1,10 +1,16 @@
 /*-
  * Copyright (c) 2004-2009 Apple Inc.
  * Copyright (c) 2005 SPARTA, Inc.
+ * Copyright (c) 2017 Robert N. M. Watson
  * All rights reserved.
  *
  * This code was developed in part by Robert N. M. Watson, Senior Principal
  * Scientist, SPARTA, Inc.
+ *
+ * Portions of this software were developed by BAE Systems, the University of
+ * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
+ * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
+ * Computing (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -171,6 +177,40 @@ au_to_arg(char n, const char *text, u_int32_t v)
 {
 
 	return (au_to_arg32(n, text, v));
+}
+
+/*
+ * token ID                1 byte
+ * argument #              1 byte
+ * uuid                    16 bytes
+ * text length             2 bytes
+ * text                    N bytes + 1 terminating NULL byte
+ */
+token_t *
+au_to_arg_uuid(char n, const char *text, const void *u)
+{
+	struct uuid uuid_be;
+	const struct uuid *uuidp;
+	token_t *t;
+	u_char *dptr = NULL;
+	u_int16_t textlen;
+
+	uuidp = u;
+
+	textlen = strlen(text);
+	textlen += 1;
+
+	GET_TOKEN_AREA(t, dptr, 2 * sizeof(u_char) + sizeof(uuid_be) +
+	    sizeof(u_int16_t) + textlen);
+
+	ADD_U_CHAR(dptr, AUT_ARG_UUID);
+	ADD_U_CHAR(dptr, n);
+	be_uuid_enc(&uuid_be, uuidp);
+	ADD_MEM(dptr, &uuid_be, sizeof(uuid_be));
+	ADD_U_INT16(dptr, textlen);
+	ADD_STRING(dptr, text, textlen);
+
+	return (t);
 }
 
 #if defined(_KERNEL) || defined(KERNEL)
@@ -889,6 +929,42 @@ au_to_return(char status, u_int32_t ret)
 {
 
 	return (au_to_return32(status, ret));
+}
+
+/*
+ * token ID                1 byte
+ * return value #          1 byte
+ * uuid                    16 bytes
+ * text length             2 bytes
+ * text                    N bytes + 1 terminating NULL byte
+ */
+token_t *
+au_to_return_uuid(char n, const char *text, const void *u)
+{
+	struct uuid uuid_be;
+	const struct uuid *uuidp;
+	token_t *t;
+	u_char *dptr = NULL;
+	u_int16_t textlen;
+
+	uuidp = u;
+
+	textlen = strlen(text);
+	textlen += 1;
+
+	GET_TOKEN_AREA(t, dptr, 2 * sizeof(u_char) + sizeof(uuid_be) +
+	    sizeof(u_int16_t) + textlen);
+	if (t == NULL)
+		return (NULL);
+
+	ADD_U_CHAR(dptr, AUT_RETURN_UUID);
+	ADD_U_CHAR(dptr, n);
+	be_uuid_enc(&uuid_be, uuidp);
+	ADD_MEM(dptr, &uuid_be, sizeof(uuid_be));
+	ADD_U_INT16(dptr, textlen);
+	ADD_STRING(dptr, text, textlen);
+
+	return (t);
 }
 
 /*

@@ -450,6 +450,7 @@ sendfile_getobj(struct thread *td, struct file *fp, vm_object_t *obj_res,
 	if (fp->f_type == DTYPE_VNODE) {
 		vp = fp->f_vnode;
 		vn_lock(vp, LK_SHARED | LK_RETRY);
+		AUDIT_ARG_VNODE1(vp);
 		if (vp->v_type != VREG) {
 			error = EINVAL;
 			goto out;
@@ -556,7 +557,7 @@ vn_sendfile(struct file *fp, int sockfd, struct uio *hdr_uio,
 		goto out;
 
 #ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&vp->v_uuid);
+	/* vnode argument audited in sendfile_getobj() for locking reasons. */
 	AUDIT_ARG_OBJUUID2(&so->so_uuid);
 #endif
 

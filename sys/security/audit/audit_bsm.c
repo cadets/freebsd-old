@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 1999-2009 Apple Inc.
- * Copyright (c) 2016 Robert N. M. Watson
+ * Copyright (c) 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * Portions of this software were developed by BAE Systems, the University of
@@ -227,6 +227,11 @@ kau_free(struct au_record *rec)
 		tok = au_to_attr32(&ar->ar_arg_vnode1);			\
 		kau_write(rec, tok);					\
 	}								\
+	if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {				\
+		tok = au_to_arg_uuid(1, "vnode",			\
+		    &ar->ar_arg_objuuid1);				\
+		kau_write(rec, tok);					\
+	}								\
 } while (0)
 
 #define	UPATH1_VNODE1_TOKENS do {					\
@@ -235,11 +240,34 @@ kau_free(struct au_record *rec)
 		tok = au_to_attr32(&ar->ar_arg_vnode1);			\
 		kau_write(rec, tok);					\
 	}								\
+	if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {				\
+		tok = au_to_arg_uuid(1, "vnode",			\
+		    &ar->ar_arg_objuuid1);				\
+		kau_write(rec, tok);					\
+	}								\
 } while (0)
 
 #define	VNODE2_TOKENS do {						\
 	if (ARG_IS_VALID(kar, ARG_VNODE2)) {				\
 		tok = au_to_attr32(&ar->ar_arg_vnode2);			\
+		kau_write(rec, tok);					\
+	}								\
+	if (ARG_IS_VALID(kar, ARG_OBJUUID2)) {				\
+		tok = au_to_arg_uuid(2, "vnode2",			\
+		    &ar->ar_arg_objuuid2);				\
+		kau_write(rec, tok);					\
+	}								\
+} while (0)
+
+#define	UPATH2_VNODE2_TOKENS do {					\
+	UPATH2_TOKENS;							\
+	if (ARG_IS_VALID(kar, ARG_VNODE2)) {				\
+		tok = au_to_attr32(&ar->ar_arg_vnode2);			\
+		kau_write(rec, tok);					\
+	}								\
+	if (ARG_IS_VALID(kar, ARG_OBJUUID2)) {				\
+		tok = au_to_arg_uuid(2, "vnode",			\
+		    &ar->ar_arg_objuuid2);				\
 		kau_write(rec, tok);					\
 	}								\
 } while (0)
@@ -258,6 +286,11 @@ kau_free(struct au_record *rec)
 			    ar->ar_arg_fd);				\
 			kau_write(rec, tok);				\
 		}							\
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {			\
+			tok = au_to_arg_uuid(1, "object",		\
+			    &ar->ar_arg_objuuid1);			\
+			kau_write(rec, tok);				\
+		}							\
 	}								\
 } while (0)
 
@@ -272,6 +305,11 @@ kau_free(struct au_record *rec)
 		kau_write(rec, tok);					\
 	} else if (ARG_IS_VALID(kar, ARG_PID)) {			\
 		tok = au_to_arg32(argn, "process", ar->ar_arg_pid);	\
+		kau_write(rec, tok);					\
+	}								\
+	if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {				\
+		tok = au_to_arg_uuid(1, "process",			\
+		    &ar->ar_arg_objuuid1);				\
 		kau_write(rec, tok);					\
 	}								\
 } while (0)
@@ -537,7 +575,6 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 	case AUE_RECVFROM:
 	case AUE_RECVMSG:
 	case AUE_SEND:
-	case AUE_SENDFILE:
 	case AUE_SENDMSG:
 	case AUE_SENDTO:
 		/*
@@ -559,6 +596,32 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 			UPATH1_TOKENS;
 		}
 		/* XXX Need to handle ARG_SADDRINET6 */
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "socket",
+			    &ar->ar_arg_objuuid1);
+			kau_write(rec, tok);
+		}
+		break;
+
+	case AUE_SENDFILE:
+		FD_VNODE1_TOKENS;
+		if (ARG_IS_VALID(kar, ARG_SADDRINET)) {
+			tok = au_to_sock_inet((struct sockaddr_in *)
+			    &ar->ar_arg_sockaddr);
+			kau_write(rec, tok);
+		}
+		if (ARG_IS_VALID(kar, ARG_SADDRUNIX)) {
+			tok = au_to_sock_unix((struct sockaddr_un *)
+			    &ar->ar_arg_sockaddr);
+			kau_write(rec, tok);
+			UPATH1_TOKENS;
+		}
+		/* XXX Need to handle ARG_SADDRINET6 */
+		if (ARG_IS_VALID(kar, ARG_OBJUUID2)) {
+			tok = au_to_arg_uuid(2, "socket",
+			    &ar->ar_arg_objuuid1);
+			kau_write(rec, tok);
+		}
 		break;
 
 	case AUE_BINDAT:
@@ -573,6 +636,11 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 			    &ar->ar_arg_sockaddr);
 			kau_write(rec, tok);
 			UPATH1_TOKENS;
+		}
+		if (ARG_IS_VALID(kar, ARG_OBJUUID2)) {
+			tok = au_to_arg_uuid(2, "socket",
+			    &ar->ar_arg_objuuid2);
+			kau_write(rec, tok);
 		}
 		break;
 
@@ -589,12 +657,27 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 			    ar->ar_arg_sockinfo.so_protocol);
 			kau_write(rec, tok);
 		}
+		if (RET_IS_VALID(kar, RET_OBJUUID1)) {
+			tok = au_to_return_uuid(1, "socket",
+			    &ar->ar_ret_objuuid1);
+			kau_write(rec, tok);
+		}
+		if (RET_IS_VALID(kar, RET_OBJUUID2)) {
+			tok = au_to_return_uuid(2, "socket",
+			    &ar->ar_ret_objuuid2);
+			kau_write(rec, tok);
+		}
 		break;
 
 	case AUE_SETSOCKOPT:
 	case AUE_SHUTDOWN:
 		if (ARG_IS_VALID(kar, ARG_FD)) {
 			tok = au_to_arg32(1, "fd", ar->ar_arg_fd);
+			kau_write(rec, tok);
+		}
+		if (RET_IS_VALID(kar, RET_OBJUUID1)) {
+			tok = au_to_return_uuid(1, "socket",
+			    &ar->ar_ret_objuuid1);
 			kau_write(rec, tok);
 		}
 		break;
@@ -731,7 +814,6 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 	case AUE_MODLOAD:
 	case AUE_MODUNLOAD:
 	case AUE_NTP_ADJTIME:
-	case AUE_PIPE:
 	case AUE_POSIX_OPENPT:
 	case AUE_PROFILE:
 	case AUE_RTPRIO:
@@ -746,6 +828,19 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		/*
 		 * Header, subject, and return tokens added at end.
 		 */
+		break;
+
+	case AUE_PIPE:
+		if (RET_IS_VALID(kar, RET_OBJUUID1)) {
+			tok = au_to_return_uuid(1, "pipe",
+			    &ar->ar_ret_objuuid1);
+			kau_write(rec, tok);
+		}
+		if (RET_IS_VALID(kar, RET_OBJUUID2)) {
+			tok = au_to_return_uuid(2, "pipe",
+			    &ar->ar_ret_objuuid2);
+			kau_write(rec, tok);
+		}
 		break;
 
 	case AUE_ACL_DELETE_FD:
@@ -820,6 +915,11 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 	case AUE_FHOPEN:
 	case AUE_FHSTAT:
 		/* XXXRW: Need to audit vnode argument. */
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "vnode",
+			    &ar->ar_arg_objuuid1);
+			kau_write(rec, tok);
+		}
 		break;
 
 	case AUE_CHFLAGS:
@@ -887,7 +987,11 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 			tok = au_to_arg32(1, "fd", ar->ar_arg_fd);
 			kau_write(rec, tok);
 		}
-		UPATH1_VNODE1_TOKENS;
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "object",
+			    &ar->ar_arg_objuuid1);
+			kau_write(rec, tok);
+		}
 		break;
 
 	case AUE_CLOSEFROM:
@@ -959,7 +1063,8 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 			    ar->ar_arg_envc);
 			kau_write(rec, tok);
 		}
-		UPATH1_VNODE1_TOKENS;
+		UPATH1_VNODE1_TOKENS;	/* Binary. */
+		UPATH2_VNODE2_TOKENS;	/* Run-time linker. */
 		break;
 
 	case AUE_FCHMOD:
@@ -1045,6 +1150,11 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 			tok = au_to_arg32(0, "child PID", ar->ar_arg_pid);
 			kau_write(rec, tok);
 		}
+		if (ARG_IS_VALID(kar, RET_OBJUUID1)) {
+			tok = au_to_return_uuid(1, "process",
+			    &ar->ar_ret_objuuid1);
+			kau_write(rec, tok);
+		}
 		break;
 
 	case AUE_IOCTL:
@@ -1064,6 +1174,11 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 					    ar->ar_arg_fd);
 					kau_write(rec, tok);
 				}
+			}
+			if (RET_IS_VALID(kar, RET_OBJUUID1)) {
+				tok = au_to_return_uuid(1, "object",
+				    &ar->ar_ret_objuuid1);
+				kau_write(rec, tok);
 			}
 		}
 		break;
@@ -1201,10 +1316,22 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 			tok = au_to_arg32(2, "flags", ar->ar_arg_fflags);
 			kau_write(rec, tok);
 		}
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "mq", &ar->ar_arg_objuuid1);
+			kau_write(rec, tok);
+		} else if (RET_IS_VALID(kar, RET_OBJUUID1)) {
+			tok = au_to_return_uuid(1, "mq",
+			    &ar->ar_ret_objuuid1);
+			kau_write(rec, tok);
+		}
 		/* FALLTHROUGH */
 
 	case AUE_MQ_UNLINK:
 		UPATH1_TOKENS;
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "mq", &ar->ar_arg_objuuid1);
+			kau_write(rec, tok);
+		}
 		break;
 
 	case AUE_MQ_NOTIFY:
@@ -1213,6 +1340,10 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 	case AUE_MQ_TIMEDSEND:
 		if (ARG_IS_VALID(kar, ARG_FD)) {
 			tok = au_to_arg32(1, "mqd", ar->ar_arg_fd);
+			kau_write(rec, tok);
+		}
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "mq", &ar->ar_arg_objuuid1);
 			kau_write(rec, tok);
 		}
 		break;
@@ -1237,6 +1368,14 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 				kau_write(rec, tok);
 			}
 		}
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "msq", &ar->ar_arg_objuuid1);
+			kau_write(rec, tok);
+		} else if (RET_IS_VALID(kar, RET_OBJUUID1)) {
+			tok = au_to_return_uuid(1, "msq",
+			    &ar->ar_ret_objuuid1);
+			kau_write(rec, tok);
+		}
 		break;
 
 	case AUE_MSGGET:
@@ -1249,6 +1388,10 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		}
 		if (ARG_IS_VALID(kar, ARG_SVIPC_PERM)) {
 			tok = au_to_ipc_perm(&ar->ar_arg_svipc_perm);
+			kau_write(rec, tok);
+		}
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "msq", &ar->ar_arg_objuuid1);
 			kau_write(rec, tok);
 		}
 		break;
@@ -1370,6 +1513,13 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 				kau_write(rec, tok);
 			}
 		}
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "sem", &ar->ar_arg_objuuid1);
+			kau_write(rec, tok);
+		} else if (RET_IS_VALID(kar, RET_OBJUUID1)) {
+			tok = au_to_return_uuid(1, "sem", &ar->ar_ret_objuuid1);
+			kau_write(rec, tok);
+		}
 		break;
 
 	case AUE_SEMGET:
@@ -1384,6 +1534,10 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 				    ar->ar_ret_svipc_id);
 				kau_write(rec, tok);
 			}
+		}
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "sem", &ar->ar_arg_objuuid1);
+			kau_write(rec, tok);
 		}
 		break;
 
@@ -1526,6 +1680,10 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 			tok = au_to_ipc_perm(&ar->ar_arg_svipc_perm);
 			kau_write(rec, tok);
 		}
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "shm", &ar->ar_arg_objuuid1);
+			kau_write(rec, tok);
+		}
 		break;
 
 	case AUE_SHMCTL:
@@ -1553,12 +1711,23 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		default:
 			break;	/* We will audit a bad command */
 		}
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "shm", &ar->ar_arg_objuuid1);
+			kau_write(rec, tok);
+		} else if (RET_IS_VALID(kar, RET_OBJUUID1)) {
+			tok = au_to_return_uuid(1, "shm", &ar->ar_ret_objuuid1);
+			kau_write(rec, tok);
+		}
 		break;
 
 	case AUE_SHMDT:
 		if (ARG_IS_VALID(kar, ARG_SVIPC_ADDR)) {
 			tok = au_to_arg32(1, "shmaddr",
 			    (int)(uintptr_t)ar->ar_arg_svipc_addr);
+			kau_write(rec, tok);
+		}
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "shm", &ar->ar_arg_objuuid1);
 			kau_write(rec, tok);
 		}
 		break;
@@ -1573,6 +1742,13 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		}
 		if (ARG_IS_VALID(kar, ARG_SVIPC_PERM)) {
 			tok = au_to_ipc_perm(&ar->ar_arg_svipc_perm);
+			kau_write(rec, tok);
+		}
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "shm", &ar->ar_arg_objuuid1);
+			kau_write(rec, tok);
+		} else if (RET_IS_VALID(kar, RET_OBJUUID1)) {
+			tok = au_to_return_uuid(1, "shm", &ar->ar_ret_objuuid1);
 			kau_write(rec, tok);
 		}
 		break;
@@ -1590,6 +1766,13 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 
 	case AUE_SHMUNLINK:
 		UPATH1_TOKENS;
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "shm", &ar->ar_arg_objuuid1);
+			kau_write(rec, tok);
+		} else if (RET_IS_VALID(kar, RET_OBJUUID1)) {
+			tok = au_to_return_uuid(1, "shm", &ar->ar_ret_objuuid1);
+			kau_write(rec, tok);
+		}
 		break;
 
 	case AUE_SEMINIT:
@@ -1610,6 +1793,13 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 
 	case AUE_SEMUNLINK:
 		UPATH1_TOKENS;
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "sem", &ar->ar_arg_objuuid1);
+			kau_write(rec, tok);
+		} else if (RET_IS_VALID(kar, RET_OBJUUID1)) {
+			tok = au_to_return_uuid(1, "sem", &ar->ar_ret_objuuid1);
+			kau_write(rec, tok);
+		}
 		break;
 
 	case AUE_SEMCLOSE:
@@ -1621,6 +1811,10 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 	case AUE_SEMTIMEDWAIT:
 		if (ARG_IS_VALID(kar, ARG_FD)) {
 			tok = au_to_arg32(1, "sem", ar->ar_arg_fd);
+			kau_write(rec, tok);
+		}
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "sem", &ar->ar_arg_objuuid1);
 			kau_write(rec, tok);
 		}
 		break;
