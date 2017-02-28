@@ -1072,7 +1072,6 @@ typedef struct dtrace_helptrace {
 	int dtht_fault;				/* type of fault (if any) */
 	int dtht_fltoffs;			/* DIF offset */
 	uint64_t dtht_illval;			/* faulting value */
-	uint32_t dts_buf_over_limit;		/* number of bufs over dtb_limit */
 	uint64_t dtht_locals[1];		/* local variables */
 } dtrace_helptrace_t;
 
@@ -1320,14 +1319,6 @@ extern uint_t dtrace_getfprs(void);
 extern void dtrace_copy(uintptr_t, uintptr_t, size_t);
 extern void dtrace_copystr(uintptr_t, uintptr_t, size_t, volatile uint16_t *);
 #endif
-
- /*
- * DTrace state handling
- */
-extern minor_t dtrace_state_reserve(void);
-extern dtrace_state_t* dtrace_state_allocate(minor_t minor);
-extern dtrace_state_t* dtrace_state_get(minor_t minor);
-extern void dtrace_state_free(minor_t minor);
 
 /*
  * DTrace Assertions

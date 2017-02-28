@@ -1613,6 +1613,7 @@ alloc:
 dtrace_hdl_t *
 dtrace_open(int version, int flags, int *errp)
 {
+	printf("dtrace_open: flags: %d\n", flags);
 	return (dt_vopen(version, flags, errp, NULL, NULL));
 }
 
@@ -1638,6 +1639,7 @@ dtrace_close(dtrace_hdl_t *dtp)
 #endif
 	int i;
 
+	printf("dtrace_close: %p\n", dtp);
 	if (dtp->dt_procs != NULL)
 		dt_proc_hash_destroy(dtp);
 

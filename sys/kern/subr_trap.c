@@ -84,6 +84,31 @@ __FBSDID("$FreeBSD$");
 #include <sys/pmckern.h>
 #endif
 
+/* XXX: move this code to an appropriate place */
+#ifdef KDTRACE_HOOKS
+
+/* XXX */
+void *curr_dstate = NULL;
+
+void
+dtrace_ast(void);
+
+/* XXX: handle more than one client */
+void
+dtrace_ast(void)
+{
+	printf("dtrace_ast: %p\n", curr_dstate);
+	/**
+	 * We disable preemption here to be sure that we won't get
+	 * interrupted by a wakeup to a thread that is higher
+	 * priority than us, so that we do issue all wakeups
+	 */
+	critical_enter();
+	wakeup(curr_dstate);
+	critical_exit();
+}
+#endif
+
 #include <security/mac/mac_framework.h>
 
 void (*softdep_ast_cleanup)(void);
@@ -243,7 +268,7 @@ ast(struct trapframe *framep)
 		td->td_profil_ticks = 0;
 		td->td_pflags &= ~TDP_OWEUPC;
 	}
-#if CONFIG_DTRACE
+#ifdef KDTRACE_HOOKS
 	if (flags & TDF_DTRPEND) {
 		dtrace_ast();
 	}

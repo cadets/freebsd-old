@@ -59,12 +59,6 @@ atomic_or_8(volatile uint8_t *target, uint8_t value)
 {
 	atomic_set_8(target, value);
 }
-
-static __inline void
-atomic_or_32(volatile uint32_t *target, uint32_t value)
-{
-	atomic_set_32(target, value);
-}
 #endif
 
 static __inline uint32_t

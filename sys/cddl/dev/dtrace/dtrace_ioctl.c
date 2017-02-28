@@ -104,11 +104,6 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 	dtrace_state_t *state;
 	devfs_get_cdevpriv((void **) &state);
 
-#if 0
-	/* XXX: From macOS patch */
-	state = dtrace_state_get(minor);
-#endif
-
 	int error = 0;
 	if (state == NULL)
 		return (EINVAL);
@@ -349,13 +344,8 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		 * checking the buffer over limit count  at this point.
 		 */
 		if (over_limit) {
-			uint32_t old = atomic_add_32(&state->dts_buf_over_limit, -1);
-			#pragma unused(old)
-
-			/*
-			 * Verify that we didn't underflow the value
-			 */
-			ASSERT(old != 0);
+			/* XXX:  assertion to check for underflow */
+			atomic_add_32(&state->dts_buf_over_limit, -1);
 		}
 
 		DTRACE_IOCTL_PRINTF("%s(%d): copyout the buffer snapshot\n",__func__,__LINE__);
@@ -875,45 +865,31 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		return (rval);
 	}
 	case DTRACEIOC_SLEEP: {
-		int64_t **ptime = (int64_t **) addr;
-		int64_t time;
-		uint64_t abstime;
-		uint64_t rvalue = DTRACE_WAKE_TIMEOUT;
+		uint64_t time = *((uint64_t *)addr);
+		uint64_t *prval = (uint64_t *)addr;
+		*prval = DTRACE_WAKE_TIMEOUT;
 
-		if (copyin((void *)*ptime, &time, sizeof(time)) != 0)
-			return (EFAULT);
+		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_SLEEP\n",__func__,__LINE__);
+		printf("DTRACEIOC_SLEEP: before sleep: time: %lu, over_limit: %d\n", time, state->dts_buf_over_limit);
 
-		/* XXX: Second buf_over_limit check? use msleep/mtx_sleep? */
-		(void)tsleep(state, PUSER | PCATCH, "dtrslp",
-		    NSEC_TO_TICK(time));
-		if (state->dts_buf_over_limit > 0)
-			rvalue = DTRACE_WAKE_BUF_LIMIT;
-		else
-			rvalue = DTRACE_WAKE_TIMEOUT;
-
-#if 0 /* XXX: macOS */
-		nanoseconds_to_absolutetime((uint64_t)time, &abstime);
-		clock_absolutetime_interval_to_deadline(abstime, &abstime);
-
-		if (assert_wait_deadline(state, THREAD_ABORTSAFE, abstime) == THREAD_WAITING) {
-			if (state->dts_buf_over_limit > 0) {
-				clear_wait(current_thread(), THREAD_INTERRUPTED);
-				rvalue = DTRACE_WAKE_BUF_LIMIT;
-			} else {
-				thread_block(THREAD_CONTINUE_NULL);
-				if (state->dts_buf_over_limit > 0) {
-					rvalue = DTRACE_WAKE_BUF_LIMIT;
-				}
-			}
+		/* Don't sleep since a buffer is over the limit */
+		if (state->dts_buf_over_limit > 0) {
+			*prval = DTRACE_WAKE_BUF_LIMIT;
+			return (0);
 		}
-#endif
 
-		if (copyout(&rvalue, (void *) *ptime, sizeof(rvalue)) != 0)
-			return (EFAULT);
+		/* XXX: use mtx_sleep? */
+		(void)tsleep(state, PUSER | PCATCH, "dtrslp", NSEC_TO_TICK(time));
 
+		if (state->dts_buf_over_limit > 0)
+			*prval = DTRACE_WAKE_BUF_LIMIT;
+
+		printf("DTRACEIOC_SLEEP: after sleep: rval: %lu, over_limit: %d\n", *prval, state->dts_buf_over_limit);
 		return (0);
 	}
 	case DTRACEIOC_SIGNAL: {
+		printf("DTRACEIOC_SIGNAL\n");
+		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_SIGNAL\n",__func__,__LINE__);
 		wakeup(state);
 		return (0);
 	}
