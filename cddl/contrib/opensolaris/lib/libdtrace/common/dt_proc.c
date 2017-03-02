@@ -222,6 +222,7 @@ dt_proc_bpdisable(dt_proc_t *dpr)
 void
 dt_proc_signal(dtrace_hdl_t *dtp)
 {
+	printf("dt_proc_signal\n");
 	if (dt_ioctl(dtp, DTRACEIOC_SIGNAL, NULL) == -1) {
 		dt_set_errno(dtp, errno);
 		return;
