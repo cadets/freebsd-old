@@ -257,8 +257,6 @@ static struct mtx	dtrace_unr_mtx;
 MTX_SYSINIT(dtrace_unr_mtx, &dtrace_unr_mtx, "Unique resource identifier", MTX_DEF);
 static eventhandler_tag	dtrace_kld_load_tag;
 static eventhandler_tag	dtrace_kld_unload_try_tag;
-static struct mtx	dtrace_buflimit_mtx;
-MTX_SYSINIT(dtrace_buflimit_mtx, &dtrace_buflimit_mtx, "buflimit", MTX_DEF);
 #endif
 /* XXX */
 extern dtrace_state_t *curr_dstate;

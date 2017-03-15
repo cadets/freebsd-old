@@ -884,10 +884,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 			return (0);
 		}
 
-		mtx_lock(&dtrace_buflimit_mtx);
-		int r = mtx_sleep(state, &dtrace_buflimit_mtx, PUSER | PCATCH, "dtrslp", ticks);
-		mtx_unlock(&dtrace_buflimit_mtx);
-		printf("mtx_sleep return val: %d\n", r);
+		(void)tsleep(state, PUSER | PCATCH, "dtrslp", ticks);
 
 		if (state->dts_buf_over_limit > 0)
 			*prval = DTRACE_WAKE_BUF_LIMIT;
