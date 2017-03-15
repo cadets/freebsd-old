@@ -23,8 +23,8 @@ include GENERIC
 ident   CADETS
 options METAIO
 
-#nooptions       INVARIANTS
-#nooptions       INVARIANT_SUPPORT
-#nooptions       WITNESS
-#nooptions       WITNESS_SKIPSPIN
-#nooptions       DEADLKRES
+nooptions       INVARIANTS
+nooptions       INVARIANT_SUPPORT
+nooptions       WITNESS
+nooptions       WITNESS_SKIPSPIN
+nooptions       DEADLKRES
