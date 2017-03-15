@@ -97,7 +97,6 @@ dtrace_ast(void);
 void
 dtrace_ast(void)
 {
-	printf("dtrace_ast: %p\n", curr_dstate);
 	/**
 	 * We disable preemption here to be sure that we won't get
 	 * interrupted by a wakeup to a thread that is higher

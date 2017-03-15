@@ -90,7 +90,6 @@ dtrace_sleep(dtrace_hdl_t *dtp)
 	(void) pthread_cond_reltimedwait_np(&dph->dph_cv, &dph->dph_lock, &tv);
 #else
 	ts = earliest - now;
-	fprintf(stderr, "dtrace(1): ts %lu\n", (unsigned long)ts);
 
 	/**
 	 * Do an IOC to wait in the kernel. We might get woken up
@@ -99,12 +98,9 @@ dtrace_sleep(dtrace_hdl_t *dtp)
 	 * interesting state.
 	 */
 	if (dt_ioctl(dtp, DTRACEIOC_SLEEP, &ts) == -1) {
-		fprintf(stderr, "dtrace(1): sleep err(%d)\n", errno);
 		dt_set_errno(dtp, errno);
 		return;
 	}
-
-	fprintf(stderr, "dtrace(1): wakeup: ts: %lu\n", (unsigned long)ts);
 
 	/**
 	 * Check the reason why we woke up. If we woke up because one
@@ -112,7 +108,6 @@ dtrace_sleep(dtrace_hdl_t *dtp)
 	 * now.
 	 */
 	if (ts == DTRACE_WAKE_BUF_LIMIT) {
-		fprintf(stderr, "dtrace(1): buflimit\n");
 		dtp->dt_lastagg = 0;
 		dtp->dt_lastswitch = 0;
 	}

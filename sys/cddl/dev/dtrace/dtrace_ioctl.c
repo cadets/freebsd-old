@@ -871,7 +871,6 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		*prval = DTRACE_WAKE_TIMEOUT;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_SLEEP\n",__func__,__LINE__);
-		printf("DTRACEIOC_SLEEP: before sleep: time: %lu, ticks: %lu, over_limit: %d\n", time, NSEC_TO_TICK(time), state->dts_buf_over_limit);
 
 		if (ticks == 0) {
 			/* XXX */
@@ -889,11 +888,9 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		if (state->dts_buf_over_limit > 0)
 			*prval = DTRACE_WAKE_BUF_LIMIT;
 
-		printf("DTRACEIOC_SLEEP: after sleep: rval: %lu, over_limit: %d\n", *prval, state->dts_buf_over_limit);
 		return (0);
 	}
 	case DTRACEIOC_SIGNAL: {
-		printf("DTRACEIOC_SIGNAL\n");
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_SIGNAL\n",__func__,__LINE__);
 		wakeup(state);
 		return (0);

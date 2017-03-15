@@ -12254,7 +12254,6 @@ dtrace_buffer_reserve(dtrace_buffer_t *buf, size_t needed, size_t align,
 				buf->dtb_cur_limit = buf->dtb_size;
 
 				atomic_add_32(&state->dts_buf_over_limit, 1);
-				printf("dtrace_buffer_reserve: over limit\n");
 
 				/**
 				 * Set an AST on the current processor
@@ -14538,7 +14537,6 @@ dtrace_state_create(struct cdev *dev, struct ucred *cred __unused)
 	state = kmem_zalloc(sizeof(dtrace_state_t), KM_SLEEP);
 
 	curr_dstate = state;
-	printf("dtrace_state_create: curr_dstate: %p\n", curr_dstate);
 #endif
 
 	state->dts_epid = DTRACE_EPIDNONE + 1;
@@ -15559,7 +15557,6 @@ dtrace_anon_property(void)
 			 * that we created.
 			 */
 			ASSERT(dtrace_anon.dta_enabling == NULL);
-			printf("dtrace_anon_property\n");
 			dtrace_state_destroy(state);
 			dtrace_anon.dta_state = NULL;
 			break;
@@ -17148,7 +17145,6 @@ dtrace_open(struct cdev *dev, int oflags, int devtype, struct thread *td)
 	uid_t uid;
 	zoneid_t zoneid;
 
-	printf("dtrace_open: dev: %p oflags: %d devtype: %d thread: %p\n", dev, oflags, devtype, td);
 #ifdef illumos
 	if (getminor(*devp) == DTRACEMNRN_HELPER)
 		return (0);
@@ -17243,7 +17239,6 @@ static void
 dtrace_dtr(void *data)
 #endif
 {
-	printf("dtrace_dtr: %p\n", data);
 #ifdef illumos
 	minor_t minor = getminor(dev);
 	dtrace_state_t *state;
@@ -18185,7 +18180,6 @@ dtrace_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 		 * none.
 		 */
 		ASSERT(state->dts_necbs == 0);
-		printf("dtrace_detach\n");
 		dtrace_state_destroy(state);
 
 		/*

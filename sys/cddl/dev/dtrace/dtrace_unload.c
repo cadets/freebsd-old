@@ -62,7 +62,6 @@ dtrace_unload()
 		 * none.
 		 */
 		ASSERT(state->dts_necbs == 0);
-		printf("dtrace_unload\n");
 		dtrace_state_destroy(state);
 	}
 
