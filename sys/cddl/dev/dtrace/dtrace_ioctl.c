@@ -867,10 +867,16 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 	case DTRACEIOC_SLEEP: {
 		uint64_t time = *((uint64_t *)addr);
 		uint64_t *prval = (uint64_t *)addr;
+		uint64_t ticks = NSEC_TO_TICK(time);
 		*prval = DTRACE_WAKE_TIMEOUT;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_SLEEP\n",__func__,__LINE__);
-		printf("DTRACEIOC_SLEEP: before sleep: time: %lu, over_limit: %d\n", time, state->dts_buf_over_limit);
+		printf("DTRACEIOC_SLEEP: before sleep: time: %lu, ticks: %lu, over_limit: %d\n", time, NSEC_TO_TICK(time), state->dts_buf_over_limit);
+
+		if (ticks == 0) {
+			/* XXX */
+			ticks = 1;
+		}
 
 		/* Don't sleep since a buffer is over the limit */
 		if (state->dts_buf_over_limit > 0) {
@@ -879,7 +885,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		}
 
 		mtx_lock(&dtrace_buflimit_mtx);
-		int r = mtx_sleep(state, &dtrace_buflimit_mtx, PUSER | PCATCH, "dtrslp", NSEC_TO_TICK(time));
+		int r = mtx_sleep(state, &dtrace_buflimit_mtx, PUSER | PCATCH, "dtrslp", ticks);
 		mtx_unlock(&dtrace_buflimit_mtx);
 		printf("mtx_sleep return val: %d\n", r);
 
