@@ -35,8 +35,8 @@
 struct Struct_Obj_Entry;
 
 /* Return the address of the .dynamic section in the dynamic linker. */
-#define rtld_dynamic(obj) \
-    ((const Elf_Dyn *)((obj)->relocbase + (Elf_Addr)&_DYNAMIC))
+Elf_Dyn *rtld_dynamic_addr(void);
+#define	rtld_dynamic(obj)	rtld_dynamic_addr()
 
 /* Fixup the jump slot at "where" to transfer control to "target". */
 static inline Elf_Addr
@@ -60,6 +60,14 @@ reloc_jmpslot(Elf_Addr *where, Elf_Addr target,
 
 #define call_init_pointer(obj, target) \
 	(((InitArrFunc)(target))(main_argc, main_argv, environ))
+
+extern uint32_t cpu_feature;
+extern uint32_t cpu_feature2;
+extern uint32_t cpu_stdext_feature;
+extern uint32_t cpu_stdext_feature2;
+#define	call_ifunc_resolver(ptr) \
+	(((Elf_Addr (*)(uint32_t, uint32_t, uint32_t, uint32_t))ptr)( \
+	    cpu_feature, cpu_feature2, cpu_stdext_feature, cpu_stdext_feature2))
 
 #define round(size, align) \
 	(((size) + (align) - 1) & ~((align) - 1))

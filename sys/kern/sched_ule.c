@@ -1662,7 +1662,11 @@ sched_pctcpu_update(struct td_sched *ts, int run)
 {
 	int t = ticks;
 
-	if (t - ts->ts_ltick >= SCHED_TICK_TARG) {
+	/*
+	 * The signed difference may be negative if the thread hasn't run for
+	 * over half of the ticks rollover period.
+	 */
+	if ((u_int)(t - ts->ts_ltick) >= SCHED_TICK_TARG) {
 		ts->ts_ticks = 0;
 		ts->ts_ftick = t - SCHED_TICK_TARG;
 	} else if (t - ts->ts_ftick >= SCHED_TICK_MAX) {
@@ -1898,8 +1902,8 @@ sched_switch(struct thread *td, struct thread *newtd, int flags)
 	ts->ts_rltick = ticks;
 	td->td_lastcpu = td->td_oncpu;
 	td->td_oncpu = NOCPU;
-	preempted = !((td->td_flags & TDF_SLICEEND) ||
-	    (flags & SWT_RELINQUISH));
+	preempted = (td->td_flags & TDF_SLICEEND) == 0 &&
+	    (flags & SW_PREEMPT) != 0;
 	td->td_flags &= ~(TDF_NEEDRESCHED | TDF_SLICEEND);
 	td->td_owepreempt = 0;
 	if (!TD_IS_IDLETHREAD(td))
@@ -2752,6 +2756,10 @@ sched_fork_exit(struct thread *td)
 	TDQ_LOCK_ASSERT(tdq, MA_OWNED | MA_NOTRECURSED);
 	lock_profile_obtain_lock_success(
 	    &TDQ_LOCKPTR(tdq)->lock_object, 0, 0, __FILE__, __LINE__);
+
+	KTR_STATE1(KTR_SCHED, "thread", sched_tdname(td), "running",
+	    "prio:%d", td->td_priority);
+	SDT_PROBE0(sched, , , on__cpu);
 }
 
 /*

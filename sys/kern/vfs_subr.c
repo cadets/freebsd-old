@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/buf.h>
 #include <sys/condvar.h>
 #include <sys/conf.h>
+#include <sys/counter.h>
 #include <sys/dirent.h>
 #include <sys/event.h>
 #include <sys/eventhandler.h>
@@ -124,9 +125,9 @@ static unsigned long	numvnodes;
 SYSCTL_ULONG(_vfs, OID_AUTO, numvnodes, CTLFLAG_RD, &numvnodes, 0,
     "Number of vnodes in existence");
 
-static u_long vnodes_created;
-SYSCTL_ULONG(_vfs, OID_AUTO, vnodes_created, CTLFLAG_RD, &vnodes_created,
-    0, "Number of vnodes created by getnewvnode");
+static counter_u64_t vnodes_created;
+SYSCTL_COUNTER_U64(_vfs, OID_AUTO, vnodes_created, CTLFLAG_RD, &vnodes_created,
+    "Number of vnodes created by getnewvnode");
 
 /*
  * Conversion tables for conversion from vnode types to inode formats
@@ -176,8 +177,8 @@ static u_long freevnodes;
 SYSCTL_ULONG(_vfs, OID_AUTO, freevnodes, CTLFLAG_RD,
     &freevnodes, 0, "Number of \"free\" vnodes");
 
-static u_long recycles_count;
-SYSCTL_ULONG(_vfs, OID_AUTO, recycles, CTLFLAG_RD, &recycles_count, 0,
+static counter_u64_t recycles_count;
+SYSCTL_COUNTER_U64(_vfs, OID_AUTO, recycles, CTLFLAG_RD, &recycles_count,
     "Number of vnodes recycled to meet vnode cache targets");
 
 /*
@@ -189,8 +190,8 @@ static int reassignbufcalls;
 SYSCTL_INT(_vfs, OID_AUTO, reassignbufcalls, CTLFLAG_RW, &reassignbufcalls, 0,
     "Number of calls to reassignbuf");
 
-static u_long free_owe_inact;
-SYSCTL_ULONG(_vfs, OID_AUTO, free_owe_inact, CTLFLAG_RD, &free_owe_inact, 0,
+static counter_u64_t free_owe_inact;
+SYSCTL_COUNTER_U64(_vfs, OID_AUTO, free_owe_inact, CTLFLAG_RD, &free_owe_inact,
     "Number of times free vnodes kept on active list due to VFS "
     "owing inactivation");
 
@@ -473,6 +474,11 @@ vntblinit(void *dummy __unused)
 	    NULL, NULL, pctrie_zone_init, NULL, UMA_ALIGN_PTR, 
 	    UMA_ZONE_NOFREE | UMA_ZONE_VM);
 	uma_prealloc(buf_trie_zone, nbuf);
+
+	vnodes_created = counter_u64_alloc(M_WAITOK);
+	recycles_count = counter_u64_alloc(M_WAITOK);
+	free_owe_inact = counter_u64_alloc(M_WAITOK);
+
 	/*
 	 * Initialize the filesystem syncer.
 	 */
@@ -919,7 +925,7 @@ vlrureclaim(struct mount *mp, int reclaim_nc_src, int trigger)
 		}
 		KASSERT((vp->v_iflag & VI_DOOMED) == 0,
 		    ("VI_DOOMED unexpectedly detected in vlrureclaim()"));
-		atomic_add_long(&recycles_count, 1);
+		counter_u64_add(recycles_count, 1);
 		vgonel(vp);
 		VOP_UNLOCK(vp, 0);
 		vdropl(vp);
@@ -1218,7 +1224,7 @@ vtryrecycle(struct vnode *vp)
 		return (EBUSY);
 	}
 	if ((vp->v_iflag & VI_DOOMED) == 0) {
-		atomic_add_long(&recycles_count, 1);
+		counter_u64_add(recycles_count, 1);
 		vgonel(vp);
 	}
 	VOP_UNLOCK(vp, LK_INTERLOCK);
@@ -1377,7 +1383,7 @@ getnewvnode(const char *tag, struct mount *mp, struct vop_vector *vops,
 	atomic_add_long(&numvnodes, 1);
 	mtx_unlock(&vnode_free_list_mtx);
 alloc:
-	atomic_add_long(&vnodes_created, 1);
+	counter_u64_add(vnodes_created, 1);
 	vp = (struct vnode *) uma_zalloc(vnode_zone, M_WAITOK);
 	/*
 	 * Locks are given the generic name "vnode" when created.
@@ -1421,12 +1427,14 @@ alloc:
 	 */
 	uuid_generate_nil(&vp->v_uuid);
 
+#ifdef DIAGNOSTIC
+	if (mp == NULL && vops != &dead_vnodeops)
+		printf("NULL mp in getnewvnode(9), tag %s\n", tag);
+#endif
 #ifdef MAC
 	mac_vnode_init(vp);
 	if (mp != NULL && (mp->mnt_flag & MNT_MULTILABEL) == 0)
 		mac_vnode_associate_singlelabel(mp, vp);
-	else if (mp == NULL && vops != &dead_vnodeops)
-		printf("NULL mp in getnewvnode()\n");
 #endif
 	if (mp != NULL) {
 		vp->v_bufobj.bo_bsize = mp->mnt_stat.f_iosize;
@@ -2391,11 +2399,11 @@ vfs_refcount_acquire_if_not_zero(volatile u_int *count)
 {
 	u_int old;
 
+	old = *count;
 	for (;;) {
-		old = *count;
 		if (old == 0)
 			return (0);
-		if (atomic_cmpset_int(count, old, old + 1))
+		if (atomic_fcmpset_int(count, &old, old + 1))
 			return (1);
 	}
 }
@@ -2405,11 +2413,11 @@ vfs_refcount_release_if_not_last(volatile u_int *count)
 {
 	u_int old;
 
+	old = *count;
 	for (;;) {
-		old = *count;
 		if (old == 1)
 			return (0);
-		if (atomic_cmpset_int(count, old, old - 1))
+		if (atomic_fcmpset_int(count, &old, old - 1))
 			return (1);
 	}
 }
@@ -2579,9 +2587,32 @@ void
 vrefl(struct vnode *vp)
 {
 
+	ASSERT_VI_LOCKED(vp, __func__);
 	CTR2(KTR_VFS, "%s: vp %p", __func__, vp);
 	_vhold(vp, true);
 	v_incr_usecount_locked(vp);
+}
+
+void
+vrefact(struct vnode *vp)
+{
+
+	CTR2(KTR_VFS, "%s: vp %p", __func__, vp);
+	if (__predict_false(vp->v_type == VCHR)) {
+		VNASSERT(vp->v_holdcnt > 0 && vp->v_usecount > 0, vp,
+		    ("%s: wrong ref counts", __func__));
+		vref(vp);
+		return;
+	}
+#ifdef INVARIANTS
+	int old = atomic_fetchadd_int(&vp->v_holdcnt, 1);
+	VNASSERT(old > 0, vp, ("%s: wrong hold count", __func__));
+	old = atomic_fetchadd_int(&vp->v_usecount, 1);
+	VNASSERT(old > 0, vp, ("%s: wrong use count", __func__));
+#else
+	refcount_acquire(&vp->v_holdcnt);
+	refcount_acquire(&vp->v_usecount);
+#endif
 }
 
 /*
@@ -2840,7 +2871,7 @@ _vdrop(struct vnode *vp, bool locked)
 			vp->v_iflag |= VI_FREE;
 			mtx_unlock(&vnode_free_list_mtx);
 		} else {
-			atomic_add_long(&free_owe_inact, 1);
+			counter_u64_add(free_owe_inact, 1);
 		}
 		VI_UNLOCK(vp);
 		return;
@@ -2931,7 +2962,7 @@ vinactive(struct vnode *vp, struct thread *td)
 	obj = vp->v_object;
 	if (obj != NULL && (obj->flags & OBJ_MIGHTBEDIRTY) != 0) {
 		VM_OBJECT_WLOCK(obj);
-		vm_object_page_clean(obj, 0, 0, OBJPC_NOSYNC);
+		vm_object_page_clean(obj, 0, 0, 0);
 		VM_OBJECT_WUNLOCK(obj);
 	}
 	VOP_INACTIVE(vp, td);

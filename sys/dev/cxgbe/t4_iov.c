@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pci_iov.h>
 #endif
 
+#include "common/common.h"
 #include "t4_if.h"
 
 struct t4iov_softc {
@@ -90,6 +91,12 @@ struct {
 	{0x500f,  "Chelsio Amsterdam"},
 	{0x5013,  "Chelsio T580-CHR"},
 #endif
+}, t6iov_pciids[] = {
+	{0x6001, "Chelsio T6225-CR"},		/* 2 x 10/25G */
+	{0x6002, "Chelsio T6225-SO-CR"},	/* 2 x 10/25G, nomem */
+	{0x6007, "Chelsio T62100-LP-CR"},	/* 2 x 40/50/100G */
+	{0x6008, "Chelsio T62100-SO-CR"},	/* 2 x 40/50/100G, nomem */
+	{0x600d, "Chelsio T62100-CR"},		/* 2 x 40/50/100G */
 };
 
 static int	t4iov_attach_child(device_t dev);
@@ -99,6 +106,9 @@ t4iov_probe(device_t dev)
 {
 	uint16_t d;
 	size_t i;
+
+	if (pci_get_vendor(dev) != PCI_VENDOR_ID_CHELSIO)
+		return (ENXIO);
 
 	d = pci_get_device(dev);
 	for (i = 0; i < nitems(t4iov_pciids); i++) {
@@ -117,10 +127,33 @@ t5iov_probe(device_t dev)
 	uint16_t d;
 	size_t i;
 
+	if (pci_get_vendor(dev) != PCI_VENDOR_ID_CHELSIO)
+		return (ENXIO);
+
 	d = pci_get_device(dev);
 	for (i = 0; i < nitems(t5iov_pciids); i++) {
 		if (d == t5iov_pciids[i].device) {
 			device_set_desc(dev, t5iov_pciids[i].desc);
+			device_quiet(dev);
+			return (BUS_PROBE_DEFAULT);
+		}
+	}
+	return (ENXIO);
+}
+
+static int
+t6iov_probe(device_t dev)
+{
+	uint16_t d;
+	size_t i;
+
+	if (pci_get_vendor(dev) != PCI_VENDOR_ID_CHELSIO)
+		return (ENXIO);
+
+	d = pci_get_device(dev);
+	for (i = 0; i < nitems(t6iov_pciids); i++) {
+		if (d == t6iov_pciids[i].device) {
+			device_set_desc(dev, t6iov_pciids[i].desc);
 			device_quiet(dev);
 			return (BUS_PROBE_DEFAULT);
 		}
@@ -138,6 +171,8 @@ t4iov_attach(device_t dev)
 
 	sc->sc_main = pci_find_dbsf(pci_get_domain(dev), pci_get_bus(dev),
 	    pci_get_slot(dev), 4);
+	if (sc->sc_main == NULL)
+		return (ENXIO);
 	if (T4_IS_MAIN_READY(sc->sc_main) == 0)
 		return (t4iov_attach_child(dev));
 	return (0);
@@ -288,10 +323,36 @@ static driver_t t5iov_driver = {
 	sizeof(struct t4iov_softc)
 };
 
-static devclass_t t4iov_devclass, t5iov_devclass;
+static device_method_t t6iov_methods[] = {
+	DEVMETHOD(device_probe,		t6iov_probe),
+	DEVMETHOD(device_attach,	t4iov_attach),
+	DEVMETHOD(device_detach,	t4iov_detach),
+
+#ifdef PCI_IOV
+	DEVMETHOD(pci_iov_init,		t4iov_iov_init),
+	DEVMETHOD(pci_iov_uninit,	t4iov_iov_uninit),
+	DEVMETHOD(pci_iov_add_vf,	t4iov_add_vf),
+#endif
+
+	DEVMETHOD(t4_attach_child,	t4iov_attach_child),
+	DEVMETHOD(t4_detach_child,	t4iov_detach_child),
+
+	DEVMETHOD_END
+};
+
+static driver_t t6iov_driver = {
+	"t6iov",
+	t6iov_methods,
+	sizeof(struct t4iov_softc)
+};
+
+static devclass_t t4iov_devclass, t5iov_devclass, t6iov_devclass;
 
 DRIVER_MODULE(t4iov, pci, t4iov_driver, t4iov_devclass, 0, 0);
 MODULE_VERSION(t4iov, 1);
 
 DRIVER_MODULE(t5iov, pci, t5iov_driver, t5iov_devclass, 0, 0);
 MODULE_VERSION(t5iov, 1);
+
+DRIVER_MODULE(t6iov, pci, t6iov_driver, t6iov_devclass, 0, 0);
+MODULE_VERSION(t6iov, 1);

@@ -203,6 +203,7 @@ struct t4_cqe {
 			__be32 wrid_hi;
 			__be32 wrid_low;
 		} gen;
+		u64 drain_cookie;
 	} u;
 	__be64 reserved;
 	__be64 bits_type_ts;
@@ -261,6 +262,7 @@ struct t4_cqe {
 /* generic accessor macros */
 #define CQE_WRID_HI(x)		((x)->u.gen.wrid_hi)
 #define CQE_WRID_LOW(x)		((x)->u.gen.wrid_low)
+#define CQE_DRAIN_COOKIE(x)	(x)->u.drain_cookie;
 
 /* macros for flit 3 of the cqe */
 #define S_CQE_GENBIT	63
@@ -451,21 +453,6 @@ static inline int t4_wq_in_error(struct t4_wq *wq)
 static inline void t4_set_wq_in_error(struct t4_wq *wq)
 {
 	wq->rq.queue[wq->rq.size].status.qp_err = 1;
-}
-
-static inline void t4_disable_wq_db(struct t4_wq *wq)
-{
-	wq->rq.queue[wq->rq.size].status.db_off = 1;
-}
-
-static inline void t4_enable_wq_db(struct t4_wq *wq)
-{
-	wq->rq.queue[wq->rq.size].status.db_off = 0;
-}
-
-static inline int t4_wq_db_enabled(struct t4_wq *wq)
-{
-	return !wq->rq.queue[wq->rq.size].status.db_off;
 }
 
 struct t4_cq {

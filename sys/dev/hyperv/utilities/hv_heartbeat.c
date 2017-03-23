@@ -40,14 +40,6 @@ __FBSDID("$FreeBSD$");
 
 #include "vmbus_if.h"
 
-#define VMBUS_HEARTBEAT_FWVER_MAJOR	3
-#define VMBUS_HEARTBEAT_FWVER		\
-	VMBUS_IC_VERSION(VMBUS_HEARTBEAT_FWVER_MAJOR, 0)
-
-#define VMBUS_HEARTBEAT_MSGVER_MAJOR	3
-#define VMBUS_HEARTBEAT_MSGVER		\
-	VMBUS_IC_VERSION(VMBUS_HEARTBEAT_MSGVER_MAJOR, 0)
-
 static const struct vmbus_ic_desc vmbus_heartbeat_descs[] = {
 	{
 		.ic_guid = { .hv_guid = {
@@ -88,8 +80,7 @@ vmbus_heartbeat_cb(struct vmbus_channel *chan, void *xsc)
 	 */
 	switch (hdr->ic_type) {
 	case VMBUS_ICMSG_TYPE_NEGOTIATE:
-		error = vmbus_ic_negomsg(sc, data, &dlen,
-		    VMBUS_HEARTBEAT_FWVER, VMBUS_HEARTBEAT_MSGVER);
+		error = vmbus_ic_negomsg(sc, data, &dlen);
 		if (error)
 			return;
 		break;

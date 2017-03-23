@@ -64,9 +64,7 @@ struct cpl_set_tcb_rpl;
 #include "iw_cxgbe.h"
 #include "user.h"
 
-extern int db_delay_usecs;
-extern int db_fc_threshold;
-static void creds(struct toepcb *toep, size_t wrsize);
+static int creds(struct toepcb *toep, struct inpcb *inp, size_t wrsize);
 
 
 static void set_state(struct c4iw_qp *qhp, enum c4iw_qp_state state)
@@ -579,6 +577,66 @@ void c4iw_qp_rem_ref(struct ib_qp *qp)
 		wake_up(&(to_c4iw_qp(qp)->wait));
 }
 
+static void complete_sq_drain_wr(struct c4iw_qp *qhp, struct ib_send_wr *wr)
+{
+	struct t4_cqe cqe = {};
+	struct c4iw_cq *schp;
+	unsigned long flag;
+	struct t4_cq *cq;
+
+	schp = to_c4iw_cq(qhp->ibqp.send_cq);
+	cq = &schp->cq;
+
+	PDBG("%s drain sq id %u\n", __func__, qhp->wq.sq.qid);
+	cqe.u.drain_cookie = wr->wr_id;
+	cqe.header = cpu_to_be32(V_CQE_STATUS(T4_ERR_SWFLUSH) |
+				 V_CQE_OPCODE(C4IW_DRAIN_OPCODE) |
+				 V_CQE_TYPE(1) |
+				 V_CQE_SWCQE(1) |
+				 V_CQE_QPID(qhp->wq.sq.qid));
+
+	spin_lock_irqsave(&schp->lock, flag);
+	cqe.bits_type_ts = cpu_to_be64(V_CQE_GENBIT((u64)cq->gen));
+	cq->sw_queue[cq->sw_pidx] = cqe;
+	t4_swcq_produce(cq);
+	spin_unlock_irqrestore(&schp->lock, flag);
+
+	spin_lock_irqsave(&schp->comp_handler_lock, flag);
+	(*schp->ibcq.comp_handler)(&schp->ibcq,
+				   schp->ibcq.cq_context);
+	spin_unlock_irqrestore(&schp->comp_handler_lock, flag);
+}
+
+static void complete_rq_drain_wr(struct c4iw_qp *qhp, struct ib_recv_wr *wr)
+{
+	struct t4_cqe cqe = {};
+	struct c4iw_cq *rchp;
+	unsigned long flag;
+	struct t4_cq *cq;
+
+	rchp = to_c4iw_cq(qhp->ibqp.recv_cq);
+	cq = &rchp->cq;
+
+	PDBG("%s drain rq id %u\n", __func__, qhp->wq.sq.qid);
+	cqe.u.drain_cookie = wr->wr_id;
+	cqe.header = cpu_to_be32(V_CQE_STATUS(T4_ERR_SWFLUSH) |
+				 V_CQE_OPCODE(C4IW_DRAIN_OPCODE) |
+				 V_CQE_TYPE(0) |
+				 V_CQE_SWCQE(1) |
+				 V_CQE_QPID(qhp->wq.sq.qid));
+
+	spin_lock_irqsave(&rchp->lock, flag);
+	cqe.bits_type_ts = cpu_to_be64(V_CQE_GENBIT((u64)cq->gen));
+	cq->sw_queue[cq->sw_pidx] = cqe;
+	t4_swcq_produce(cq);
+	spin_unlock_irqrestore(&rchp->lock, flag);
+
+	spin_lock_irqsave(&rchp->comp_handler_lock, flag);
+	(*rchp->ibcq.comp_handler)(&rchp->ibcq,
+				   rchp->ibcq.cq_context);
+	spin_unlock_irqrestore(&rchp->comp_handler_lock, flag);
+}
+
 int c4iw_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 		   struct ib_send_wr **bad_wr)
 {
@@ -597,7 +655,8 @@ int c4iw_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 	spin_lock_irqsave(&qhp->lock, flag);
 	if (t4_wq_in_error(&qhp->wq)) {
 		spin_unlock_irqrestore(&qhp->lock, flag);
-		return -EINVAL;
+		complete_sq_drain_wr(qhp, wr);
+		return err;
 	}
 	num_wrs = t4_sq_avail(&qhp->wq);
 	if (num_wrs == 0) {
@@ -689,8 +748,8 @@ int c4iw_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 		t4_sq_produce(&qhp->wq, len16);
 		idx += DIV_ROUND_UP(len16*16, T4_EQ_ENTRY_SIZE);
 	}
-	if (t4_wq_db_enabled(&qhp->wq))
-		t4_ring_sq_db(&qhp->wq, idx);
+
+	t4_ring_sq_db(&qhp->wq, idx);
 	spin_unlock_irqrestore(&qhp->lock, flag);
 	return err;
 }
@@ -710,7 +769,8 @@ int c4iw_post_receive(struct ib_qp *ibqp, struct ib_recv_wr *wr,
 	spin_lock_irqsave(&qhp->lock, flag);
 	if (t4_wq_in_error(&qhp->wq)) {
 		spin_unlock_irqrestore(&qhp->lock, flag);
-		return -EINVAL;
+		complete_rq_drain_wr(qhp, wr);
+		return err;
 	}
 	num_wrs = t4_rq_avail(&qhp->wq);
 	if (num_wrs == 0) {
@@ -751,8 +811,8 @@ int c4iw_post_receive(struct ib_qp *ibqp, struct ib_recv_wr *wr,
 		wr = wr->next;
 		num_wrs--;
 	}
-	if (t4_wq_db_enabled(&qhp->wq))
-		t4_ring_rq_db(&qhp->wq, idx);
+
+	t4_ring_rq_db(&qhp->wq, idx);
 	spin_unlock_irqrestore(&qhp->lock, flag);
 	return err;
 }
@@ -901,6 +961,7 @@ static inline void build_term_codes(struct t4_cqe *err_cqe, u8 *layer_type,
 static void post_terminate(struct c4iw_qp *qhp, struct t4_cqe *err_cqe,
 			   gfp_t gfp)
 {
+	int ret;
 	struct fw_ri_wr *wqe;
 	struct terminate_message *term;
 	struct wrqe *wr;
@@ -931,7 +992,11 @@ static void post_terminate(struct c4iw_qp *qhp, struct t4_cqe *err_cqe,
 		term->ecode = qhp->attr.ecode;
 	} else
 		build_term_codes(err_cqe, &term->layer_etype, &term->ecode);
-        creds(toep, sizeof(*wqe));
+	ret = creds(toep, inp, sizeof(*wqe));
+	if (ret) {
+		free_wrqe(wr);
+		return;
+	}
 	t4_wrq_tx(qhp->rhp->rdev.adap, wr);
 }
 
@@ -1034,7 +1099,11 @@ rdma_fini(struct c4iw_dev *rhp, struct c4iw_qp *qhp, struct c4iw_ep *ep)
 
 	c4iw_init_wr_wait(&ep->com.wr_wait);
 
-        creds(toep, sizeof(*wqe));
+	ret = creds(toep, inp, sizeof(*wqe));
+	if (ret) {
+		free_wrqe(wr);
+		return ret;
+	}
 	t4_wrq_tx(sc, wr);
 
 	ret = c4iw_wait_for_reply(rdev, &ep->com.wr_wait, ep->hwtid,
@@ -1067,13 +1136,17 @@ static void build_rtr_msg(u8 p2p_type, struct fw_ri_init *init)
 	}
 }
 
-static void
-creds(struct toepcb *toep, size_t wrsize)
+static int
+creds(struct toepcb *toep, struct inpcb *inp, size_t wrsize)
 {
 	struct ofld_tx_sdesc *txsd;
 
 	CTR3(KTR_IW_CXGBE, "%s:creB  %p %u", __func__, toep , wrsize);
-	INP_WLOCK(toep->inp);
+	INP_WLOCK(inp);
+	if ((inp->inp_flags & (INP_DROPPED | INP_TIMEWAIT)) != 0) {
+		INP_WUNLOCK(inp);
+		return (EINVAL);
+	}
 	txsd = &toep->txsd[toep->txsd_pidx];
 	txsd->tx_credits = howmany(wrsize, 16);
 	txsd->plen = 0;
@@ -1083,9 +1156,10 @@ creds(struct toepcb *toep, size_t wrsize)
 	if (__predict_false(++toep->txsd_pidx == toep->txsd_total))
 		toep->txsd_pidx = 0;
 	toep->txsd_avail--;
-	INP_WUNLOCK(toep->inp);
+	INP_WUNLOCK(inp);
 	CTR5(KTR_IW_CXGBE, "%s:creE  %p %u %u %u", __func__, toep ,
 	    txsd->tx_credits, toep->tx_credits, toep->txsd_pidx);
+	return (0);
 }
 
 static int rdma_init(struct c4iw_dev *rhp, struct c4iw_qp *qhp)
@@ -1156,7 +1230,11 @@ static int rdma_init(struct c4iw_dev *rhp, struct c4iw_qp *qhp)
 
 	c4iw_init_wr_wait(&ep->com.wr_wait);
 
-	creds(toep, sizeof(*wqe));
+	ret = creds(toep, inp, sizeof(*wqe));
+	if (ret) {
+		free_wrqe(wr);
+		return ret;
+	}
 	t4_wrq_tx(sc, wr);
 
 	ret = c4iw_wait_for_reply(rdev, &ep->com.wr_wait, ep->hwtid,
@@ -1305,7 +1383,12 @@ int c4iw_modify_qp(struct c4iw_dev *rhp, struct c4iw_qp *qhp,
 		}
 		break;
 	case C4IW_QP_STATE_CLOSING:
-		if (!internal) {
+
+		/*
+		 * Allow kernel users to move to ERROR for qp draining.
+		 */
+		if (!internal && (qhp->ibqp.uobject || attrs->next_state !=
+				  C4IW_QP_STATE_ERROR)) {
 			ret = -EINVAL;
 			goto out;
 		}
@@ -1362,6 +1445,7 @@ err:
 	qhp->ep = NULL;
 	set_state(qhp, C4IW_QP_STATE_ERROR);
 	free = 1;
+	abort = 1;
 	BUG_ON(!ep);
 	flush_qp(qhp);
 	wake_up(&qhp->wait);
@@ -1392,14 +1476,6 @@ out:
 	return ret;
 }
 
-static int enable_qp_db(int id, void *p, void *data)
-{
-	struct c4iw_qp *qp = p;
-
-	t4_enable_wq_db(&qp->wq);
-	return 0;
-}
-
 int c4iw_destroy_qp(struct ib_qp *ib_qp)
 {
 	struct c4iw_dev *rhp;
@@ -1420,13 +1496,6 @@ int c4iw_destroy_qp(struct ib_qp *ib_qp)
 
 	spin_lock_irq(&rhp->lock);
 	remove_handle_nolock(rhp, &rhp->qpidr, qhp->wq.sq.qid);
-	rhp->qpcnt--;
-	BUG_ON(rhp->qpcnt < 0);
-	if (rhp->qpcnt <= db_fc_threshold && rhp->db_state == FLOW_CONTROL) {
-		rhp->rdev.stats.db_state_transitions++;
-		rhp->db_state = NORMAL;
-		idr_for_each(&rhp->qpidr, enable_qp_db, NULL);
-	}
 	spin_unlock_irq(&rhp->lock);
 	atomic_dec(&qhp->refcnt);
 	wait_event(qhp->wait, !atomic_read(&qhp->refcnt));
@@ -1439,14 +1508,6 @@ int c4iw_destroy_qp(struct ib_qp *ib_qp)
 	CTR3(KTR_IW_CXGBE, "%s ib_qp %p qpid 0x%0x", __func__, ib_qp,
 	    qhp->wq.sq.qid);
 	kfree(qhp);
-	return 0;
-}
-
-static int disable_qp_db(int id, void *p, void *data)
-{
-	struct c4iw_qp *qp = p;
-
-	t4_disable_wq_db(&qp->wq);
 	return 0;
 }
 
@@ -1539,13 +1600,6 @@ c4iw_create_qp(struct ib_pd *pd, struct ib_qp_init_attr *attrs,
 	atomic_set(&qhp->refcnt, 1);
 
 	spin_lock_irq(&rhp->lock);
-	if (rhp->db_state != NORMAL)
-		t4_disable_wq_db(&qhp->wq);
-	if (++rhp->qpcnt > db_fc_threshold && rhp->db_state == NORMAL) {
-		rhp->rdev.stats.db_state_transitions++;
-		rhp->db_state = FLOW_CONTROL;
-		idr_for_each(&rhp->qpidr, disable_qp_db, NULL);
-	}
 	ret = insert_handle_nolock(rhp, &rhp->qpidr, qhp, qhp->wq.sq.qid);
 	spin_unlock_irq(&rhp->lock);
 	if (ret)
@@ -1678,15 +1732,6 @@ int c4iw_ib_modify_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 			(C4IW_QP_ATTR_ENABLE_RDMA_READ |
 			 C4IW_QP_ATTR_ENABLE_RDMA_WRITE |
 			 C4IW_QP_ATTR_ENABLE_RDMA_BIND) : 0;
-
-	/*
-	 * Use SQ_PSN and RQ_PSN to pass in IDX_INC values for
-	 * ringing the queue db when we're in DB_FULL mode.
-	 */
-	attrs.sq_db_inc = attr->sq_psn;
-	attrs.rq_db_inc = attr->rq_psn;
-	mask |= (attr_mask & IB_QP_SQ_PSN) ? C4IW_QP_ATTR_SQ_DB : 0;
-	mask |= (attr_mask & IB_QP_RQ_PSN) ? C4IW_QP_ATTR_RQ_DB : 0;
 
 	return c4iw_modify_qp(rhp, qhp, mask, &attrs, 0);
 }

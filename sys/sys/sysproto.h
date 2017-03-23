@@ -1107,7 +1107,7 @@ struct mac_syscall_args {
 struct getfsstat_args {
 	char buf_l_[PADL_(struct statfs *)]; struct statfs * buf; char buf_r_[PADR_(struct statfs *)];
 	char bufsize_l_[PADL_(long)]; long bufsize; char bufsize_r_[PADR_(long)];
-	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+	char mode_l_[PADL_(int)]; int mode; char mode_r_[PADR_(int)];
 };
 struct statfs_args {
 	char path_l_[PADL_(char *)]; char * path; char path_r_[PADR_(char *)];
@@ -2486,7 +2486,7 @@ int	ogetdirentries(struct thread *, struct ogetdirentries_args *);
 struct freebsd4_getfsstat_args {
 	char buf_l_[PADL_(struct ostatfs *)]; struct ostatfs * buf; char buf_r_[PADR_(struct ostatfs *)];
 	char bufsize_l_[PADL_(long)]; long bufsize; char bufsize_r_[PADR_(long)];
-	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+	char mode_l_[PADL_(int)]; int mode; char mode_r_[PADR_(int)];
 };
 struct freebsd4_statfs_args {
 	char path_l_[PADL_(char *)]; char * path; char path_r_[PADR_(char *)];

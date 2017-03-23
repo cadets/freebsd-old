@@ -166,12 +166,15 @@ OLD_FILES+=usr/share/snmp/mibs/BEGEMOT-ATM.txt
 .if ${MK_AUDIT} == no
 OLD_FILES+=usr/sbin/audit
 OLD_FILES+=usr/sbin/auditd
+OLD_FILES+=usr/sbin/auditdistd
 OLD_FILES+=usr/sbin/auditreduce
 OLD_FILES+=usr/sbin/praudit
 OLD_FILES+=usr/share/man/man1/auditreduce.1.gz
 OLD_FILES+=usr/share/man/man1/praudit.1.gz
+OLD_FILES+=usr/share/man/man5/auditdistd.conf.5.gz
 OLD_FILES+=usr/share/man/man8/audit.8.gz
 OLD_FILES+=usr/share/man/man8/auditd.8.gz
+OLD_FILES+=usr/share/man/man8/auditdistd.8.gz
 .endif
 
 .if ${MK_AUTHPF} == no
@@ -650,6 +653,24 @@ OLD_FILES+=usr/share/man/man8/zfsboot.8.gz
 OLD_FILES+=usr/share/man/man8/zfsloader.8.gz
 .endif
 
+.if ${MK_BOOTPARAMD} == no
+OLD_FILES+=usr/sbin/bootparamd
+OLD_FILES+=usr/share/man/man5/bootparams.5.gz
+OLD_FILES+=usr/share/man/man8/bootparamd.8.gz
+OLD_FILES+=usr/sbin/callbootd
+.endif
+
+.if ${MK_BOOTPD} == no
+OLD_FILES+=usr/libexec/bootpd
+OLD_FILES+=usr/share/man/man5/bootptab.5.gz
+OLD_FILES+=usr/share/man/man8/bootpd.8.gz
+OLD_FILES+=usr/libexec/bootpgw
+OLD_FILES+=usr/sbin/bootpef
+OLD_FILES+=usr/share/man/man8/bootpef.8.gz
+OLD_FILES+=usr/sbin/bootptest
+OLD_FILES+=usr/share/man/man8/bootptest.8.gz
+.endif
+
 .if ${MK_BSD_CPIO} == no
 OLD_FILES+=usr/bin/bsdcpio
 OLD_FILES+=usr/bin/cpio
@@ -682,6 +703,7 @@ OLD_FILES+=usr/libexec/bsdinstall/distextract
 OLD_FILES+=usr/libexec/bsdinstall/distfetch
 OLD_FILES+=usr/libexec/bsdinstall/docsinstall
 OLD_FILES+=usr/libexec/bsdinstall/entropy
+OLD_FILES+=usr/libexec/bsdinstall/hardening
 OLD_FILES+=usr/libexec/bsdinstall/hostname
 OLD_FILES+=usr/libexec/bsdinstall/jail
 OLD_FILES+=usr/libexec/bsdinstall/keymap
@@ -764,22 +786,211 @@ OLD_FILES+=usr/share/man/man1/bsnmpget.1.gz
 OLD_FILES+=usr/share/man/man1/bsnmpset.1.gz
 OLD_FILES+=usr/share/man/man1/bsnmpwalk.1.gz
 OLD_FILES+=usr/share/man/man1/gensnmptree.1.gz
+# lib/libbsnmp/libbsnmp
+OLD_FILES+=usr/share/man/man3/TRUTH_GET.3.gz
+OLD_FILES+=usr/share/man/man3/TRUTH_MK.3.gz
+OLD_FILES+=usr/share/man/man3/TRUTH_OK.3.gz
+OLD_FILES+=usr/share/man/man3/asn1.3.gz
+OLD_FILES+=usr/share/man/man3/asn_append_oid.3.gz
+OLD_FILES+=usr/share/man/man3/asn_commit_header.3.gz
+OLD_FILES+=usr/share/man/man3/asn_compare_oid.3.gz
+OLD_FILES+=usr/share/man/man3/asn_get_counter64_raw.3.gz
+OLD_FILES+=usr/share/man/man3/asn_get_header.3.gz
+OLD_FILES+=usr/share/man/man3/asn_get_integer.3.gz
+OLD_FILES+=usr/share/man/man3/asn_get_integer_raw.3.gz
+OLD_FILES+=usr/share/man/man3/asn_get_ipaddress.3.gz
+OLD_FILES+=usr/share/man/man3/asn_get_ipaddress_raw.3.gz
+OLD_FILES+=usr/share/man/man3/asn_get_null.3.gz
+OLD_FILES+=usr/share/man/man3/asn_get_null_raw.3.gz
+OLD_FILES+=usr/share/man/man3/asn_get_objid.3.gz
+OLD_FILES+=usr/share/man/man3/asn_get_objid_raw.3.gz
+OLD_FILES+=usr/share/man/man3/asn_get_octetstring.3.gz
+OLD_FILES+=usr/share/man/man3/asn_get_octetstring_raw.3.gz
+OLD_FILES+=usr/share/man/man3/asn_get_sequence.3.gz
+OLD_FILES+=usr/share/man/man3/asn_get_timeticks.3.gz
+OLD_FILES+=usr/share/man/man3/asn_get_uint32_raw.3.gz
+OLD_FILES+=usr/share/man/man3/asn_is_suboid.3.gz
+OLD_FILES+=usr/share/man/man3/asn_oid2str.3.gz
+OLD_FILES+=usr/share/man/man3/asn_oid2str_r.3.gz
+OLD_FILES+=usr/share/man/man3/asn_put_counter64.3.gz
+OLD_FILES+=usr/share/man/man3/asn_put_exception.3.gz
+OLD_FILES+=usr/share/man/man3/asn_put_header.3.gz
+OLD_FILES+=usr/share/man/man3/asn_put_integer.3.gz
+OLD_FILES+=usr/share/man/man3/asn_put_ipaddress.3.gz
+OLD_FILES+=usr/share/man/man3/asn_put_null.3.gz
+OLD_FILES+=usr/share/man/man3/asn_put_objid.3.gz
+OLD_FILES+=usr/share/man/man3/asn_put_octetstring.3.gz
+OLD_FILES+=usr/share/man/man3/asn_put_temp_header.3.gz
+OLD_FILES+=usr/share/man/man3/asn_put_timeticks.3.gz
+OLD_FILES+=usr/share/man/man3/asn_put_uint32.3.gz
+OLD_FILES+=usr/share/man/man3/asn_skip.3.gz
+OLD_FILES+=usr/share/man/man3/asn_slice_oid.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_add_binding.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_calc_keychange.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_client.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_client_init.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_client_set_host.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_client_set_port.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_close.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_debug.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_dep_commit.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_dep_finish.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_dep_lookup.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_dep_rollback.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_depop_t.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_dialog.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_discover_engine.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_get.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_get_local_keys.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_getbulk.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_getnext.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_init_context.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_make_errresp.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_oid_append.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_op_t.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_open.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_parse_server.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_passwd_to_keys.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_pdu_check.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_pdu_create.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_pdu_decode.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_pdu_decode_header.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_pdu_decode_scoped.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_pdu_decode_secmode.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_pdu_dump.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_pdu_encode.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_pdu_free.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_pdu_init_secparams.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_pdu_send.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_receive.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_send_cb_f.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_set.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_table_cb_f.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_table_fetch.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_table_fetch_async.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_timeout_cb_f.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_timeout_start_f.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_timeout_stop_f.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_trace.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_value_copy.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_value_free.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_value_parse.3.gz
+OLD_FILES+=usr/share/man/man3/tree.3.gz
+OLD_FILES+=usr/share/man/man3/tree_size.3.gz
+# usr.sbin/bsnmpd/bsnmpd
+OLD_FILES+=usr/share/man/man3/FIND_OBJECT_INT.3.gz
+OLD_FILES+=usr/share/man/man3/FIND_OBJECT_INT_LINK.3.gz
+OLD_FILES+=usr/share/man/man3/FIND_OBJECT_INT_LINK_INDEX.3.gz
+OLD_FILES+=usr/share/man/man3/FIND_OBJECT_OID.3.gz
+OLD_FILES+=usr/share/man/man3/FIND_OBJECT_OID_LINK.3.gz
+OLD_FILES+=usr/share/man/man3/FIND_OBJECT_OID_LINK_INDEX.3.gz
+OLD_FILES+=usr/share/man/man3/INSERT_OBJECT_INT.3.gz
+OLD_FILES+=usr/share/man/man3/INSERT_OBJECT_INT_LINK.3.gz
+OLD_FILES+=usr/share/man/man3/INSERT_OBJECT_INT_LINK_INDEX.3.gz
+OLD_FILES+=usr/share/man/man3/INSERT_OBJECT_OID.3.gz
+OLD_FILES+=usr/share/man/man3/INSERT_OBJECT_OID_LINK.3.gz
+OLD_FILES+=usr/share/man/man3/INSERT_OBJECT_OID_LINK_INDEX.3.gz
+OLD_FILES+=usr/share/man/man3/NEXT_OBJECT_INT.3.gz
+OLD_FILES+=usr/share/man/man3/NEXT_OBJECT_INT_LINK.3.gz
+OLD_FILES+=usr/share/man/man3/NEXT_OBJECT_INT_LINK_INDEX.3.gz
+OLD_FILES+=usr/share/man/man3/NEXT_OBJECT_OID.3.gz
+OLD_FILES+=usr/share/man/man3/NEXT_OBJECT_OID_LINK.3.gz
+OLD_FILES+=usr/share/man/man3/NEXT_OBJECT_OID_LINK_INDEX.3.gz
 OLD_FILES+=usr/share/man/man3/asn1.3.gz
 OLD_FILES+=usr/share/man/man3/bsnmpagent.3.gz
 OLD_FILES+=usr/share/man/man3/bsnmpclient.3.gz
+OLD_FILES+=usr/share/man/man3/bsnmpd_get_target_stats.3.gz
+OLD_FILES+=usr/share/man/man3/bsnmpd_get_usm_stats.3.gz
+OLD_FILES+=usr/share/man/man3/bsnmpd_reset_usm_stats.3.gz
 OLD_FILES+=usr/share/man/man3/bsnmplib.3.gz
+OLD_FILES+=usr/share/man/man3/buf_alloc.3.gz
+OLD_FILES+=usr/share/man/man3/buf_size.3.gz
+OLD_FILES+=usr/share/man/man3/comm_define.3.gz
+OLD_FILES+=usr/share/man/man3/community.3.gz
+OLD_FILES+=usr/share/man/man3/fd_deselect.3.gz
+OLD_FILES+=usr/share/man/man3/fd_resume.3.gz
+OLD_FILES+=usr/share/man/man3/fd_select.3.gz
+OLD_FILES+=usr/share/man/man3/fd_suspend.3.gz
+OLD_FILES+=usr/share/man/man3/get_ticks.3.gz
+OLD_FILES+=usr/share/man/man3/index_append.3.gz
+OLD_FILES+=usr/share/man/man3/index_append_off.3.gz
+OLD_FILES+=usr/share/man/man3/index_compare.3.gz
+OLD_FILES+=usr/share/man/man3/index_compare_off.3.gz
+OLD_FILES+=usr/share/man/man3/index_decode.3.gz
+OLD_FILES+=usr/share/man/man3/ip_commit.3.gz
+OLD_FILES+=usr/share/man/man3/ip_get.3.gz
+OLD_FILES+=usr/share/man/man3/ip_rollback.3.gz
+OLD_FILES+=usr/share/man/man3/ip_save.3.gz
+OLD_FILES+=usr/share/man/man3/or_register.3.gz
+OLD_FILES+=usr/share/man/man3/or_unregister.3.gz
+OLD_FILES+=usr/share/man/man3/oid_commit.3.gz
+OLD_FILES+=usr/share/man/man3/oid_get.3.gz
+OLD_FILES+=usr/share/man/man3/oid_rollback.3.gz
+OLD_FILES+=usr/share/man/man3/oid_save.3.gz
+OLD_FILES+=usr/share/man/man3/oid_usmNotInTimeWindows.3.gz
+OLD_FILES+=usr/share/man/man3/oid_usmUnknownEngineIDs.3.gz
+OLD_FILES+=usr/share/man/man3/oid_zeroDotZero.3.gz
+OLD_FILES+=usr/share/man/man3/reqid_allocate.3.gz
+OLD_FILES+=usr/share/man/man3/reqid_base.3.gz
+OLD_FILES+=usr/share/man/man3/reqid_istype.3.gz
+OLD_FILES+=usr/share/man/man3/reqid_next.3.gz
+OLD_FILES+=usr/share/man/man3/reqid_type.3.gz
 OLD_FILES+=usr/share/man/man3/snmp_atm.3.gz
 OLD_FILES+=usr/share/man/man3/snmp_bridge.3.gz
 OLD_FILES+=usr/share/man/man3/snmp_hast.3.gz
 OLD_FILES+=usr/share/man/man3/snmp_hostres.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_input_finish.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_input_start.3.gz
 OLD_FILES+=usr/share/man/man3/snmp_lm75.3.gz
 OLD_FILES+=usr/share/man/man3/snmp_mibII.3.gz
 OLD_FILES+=usr/share/man/man3/snmp_netgraph.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_output.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_pdu_auth_access.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_send_port.3.gz
+OLD_FILES+=usr/share/man/man3/snmp_send_trap.3.gz
 OLD_FILES+=usr/share/man/man3/snmp_target.3.gz
 OLD_FILES+=usr/share/man/man3/snmp_usm.3.gz
 OLD_FILES+=usr/share/man/man3/snmp_vacm.3.gz
 OLD_FILES+=usr/share/man/man3/snmp_wlan.3.gz
+OLD_FILES+=usr/share/man/man3/snmpd_target_stat.3.gz
+OLD_FILES+=usr/share/man/man3/snmpd_usmstats.3.gz
 OLD_FILES+=usr/share/man/man3/snmpmod.3.gz
+OLD_FILES+=usr/share/man/man3/start_tick.3.gz
+OLD_FILES+=usr/share/man/man3/string_commit.3.gz
+OLD_FILES+=usr/share/man/man3/string_free.3.gz
+OLD_FILES+=usr/share/man/man3/string_get.3.gz
+OLD_FILES+=usr/share/man/man3/string_get_max.3.gz
+OLD_FILES+=usr/share/man/man3/string_rollback.3.gz
+OLD_FILES+=usr/share/man/man3/string_save.3.gz
+OLD_FILES+=usr/share/man/man3/systemg.3.gz
+OLD_FILES+=usr/share/man/man3/this_tick.3.gz
+OLD_FILES+=usr/share/man/man3/timer_start.3.gz
+OLD_FILES+=usr/share/man/man3/timer_start_repeat.3.gz
+OLD_FILES+=usr/share/man/man3/timer_stop.3.gz
+OLD_FILES+=usr/share/man/man3/target_activate_address.3.gz
+OLD_FILES+=usr/share/man/man3/target_address.3.gz
+OLD_FILES+=usr/share/man/man3/target_delete_address.3.gz
+OLD_FILES+=usr/share/man/man3/target_delete_notify.3.gz
+OLD_FILES+=usr/share/man/man3/target_delete_param.3.gz
+OLD_FILES+=usr/share/man/man3/target_first_address.3.gz
+OLD_FILES+=usr/share/man/man3/target_first_notify.3.gz
+OLD_FILES+=usr/share/man/man3/target_first_param.3.gz
+OLD_FILES+=usr/share/man/man3/target_flush_all.3.gz
+OLD_FILES+=usr/share/man/man3/target_next_address.3.gz
+OLD_FILES+=usr/share/man/man3/target_next_notify.3.gz
+OLD_FILES+=usr/share/man/man3/target_next_param.3.gz
+OLD_FILES+=usr/share/man/man3/target_new_address.3.gz
+OLD_FILES+=usr/share/man/man3/target_new_notify.3.gz
+OLD_FILES+=usr/share/man/man3/target_new_param.3.gz
+OLD_FILES+=usr/share/man/man3/target_notify.3.gz
+OLD_FILES+=usr/share/man/man3/target_param.3.gz
+OLD_FILES+=usr/share/man/man3/usm_delete_user.3.gz
+OLD_FILES+=usr/share/man/man3/usm_find_user.3.gz
+OLD_FILES+=usr/share/man/man3/usm_first_user.3.gz
+OLD_FILES+=usr/share/man/man3/usm_flush_users.3.gz
+OLD_FILES+=usr/share/man/man3/usm_next_user.3.gz
+OLD_FILES+=usr/share/man/man3/usm_new_user.3.gz
+OLD_FILES+=usr/share/man/man3/usm_user.3.gz
 OLD_FILES+=usr/share/snmp/defs/atm_freebsd.def
 OLD_FILES+=usr/share/snmp/defs/atm_tree.def
 OLD_FILES+=usr/share/snmp/defs/bridge_tree.def
@@ -990,6 +1201,7 @@ OLD_FILES+=usr/share/man/man8/casperd.8.gz
 
 .if ${MK_CCD} == no
 OLD_FILES+=etc/rc.d/ccd
+OLD_FILES+=rescue/ccdconfig
 OLD_FILES+=sbin/ccdconfig
 OLD_FILES+=usr/share/man/man4/ccd.4.gz
 OLD_FILES+=usr/share/man/man8/ccdconfig.8.gz
@@ -1103,6 +1315,7 @@ OLD_FILES+=etc/periodic/daily/800.scrub-zfs
 OLD_LIBS+=lib/libzfs.so.2
 OLD_LIBS+=lib/libzfs_core.so.2
 OLD_LIBS+=lib/libzpool.so.2
+OLD_FILES+=rescue/zdb
 OLD_FILES+=rescue/zfs
 OLD_FILES+=rescue/zpool
 OLD_FILES+=sbin/zfs
@@ -1142,88 +1355,115 @@ OLD_FILES+=usr/bin/clang++
 OLD_FILES+=usr/bin/clang-cpp
 OLD_FILES+=usr/bin/clang-tblgen
 OLD_FILES+=usr/bin/llvm-tblgen
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/allocator_interface.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/asan_interface.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/common_interface_defs.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/coverage_interface.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/dfsan_interface.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/linux_syscall_hooks.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/lsan_interface.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/msan_interface.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/sanitizer/tsan_interface_atomic.h
-OLD_DIRS+=usr/lib/clang/3.8.0/include/sanitizer
-OLD_FILES+=usr/lib/clang/3.8.0/include/__stddef_max_align_t.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/__wmmintrin_aes.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/__wmmintrin_pclmul.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/adxintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/altivec.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/ammintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/arm_acle.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/arm_neon.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx2intrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx512bwintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx512cdintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx512dqintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx512erintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx512fintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx512vlbwintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx512vldqintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avx512vlintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/avxintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/bmi2intrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/bmiintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/cpuid.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/cuda_builtin_vars.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/emmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/f16cintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/fma4intrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/fmaintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/fxsrintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/htmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/htmxlintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/ia32intrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/immintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/lzcntintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/mm3dnow.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/mm_malloc.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/mmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/module.modulemap
-OLD_FILES+=usr/lib/clang/3.8.0/include/nmmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/pkuintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/pmmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/popcntintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/prfchwintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/rdseedintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/rtmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/s390intrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/shaintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/smmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/tbmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/tmmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/vadefs.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/vecintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/wmmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/x86intrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/xmmintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/xopintrin.h
-OLD_FILES+=usr/lib/clang/3.8.0/include/xtestintrin.h
-OLD_DIRS+=usr/lib/clang/3.8.0/include
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.asan-i386.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.asan-x86_64.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.asan_cxx-i386.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.asan_cxx-x86_64.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.profile-arm.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.profile-i386.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.profile-x86_64.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.safestack-i386.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.safestack-x86_64.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.ubsan_standalone-i386.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.ubsan_standalone-x86_64.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.ubsan_standalone_cxx-i386.a
-OLD_FILES+=usr/lib/clang/3.8.0/lib/freebsd/libclang_rt.ubsan_standalone_cxx-x86_64.a
-OLD_DIRS+=usr/lib/clang/3.8.0/lib/freebsd
-OLD_DIRS+=usr/lib/clang/3.8.0/lib
-OLD_DIRS+=usr/lib/clang/3.8.0
+OLD_FILES+=usr/lib/clang/3.9.1/include/sanitizer/allocator_interface.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/sanitizer/asan_interface.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/sanitizer/common_interface_defs.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/sanitizer/coverage_interface.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/sanitizer/dfsan_interface.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/sanitizer/esan_interface.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/sanitizer/linux_syscall_hooks.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/sanitizer/lsan_interface.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/sanitizer/msan_interface.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/sanitizer/tsan_interface_atomic.h
+OLD_DIRS+=usr/lib/clang/3.9.1/include/sanitizer
+OLD_FILES+=usr/lib/clang/3.9.1/include/__clang_cuda_cmath.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/__clang_cuda_intrinsics.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/__clang_cuda_math_forward_declares.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/__clang_cuda_runtime_wrapper.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/__stddef_max_align_t.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/__wmmintrin_aes.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/__wmmintrin_pclmul.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/adxintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/altivec.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/ammintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/arm_acle.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/arm_neon.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/avx2intrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/avx512bwintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/avx512cdintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/avx512dqintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/avx512erintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/avx512fintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/avx512ifmaintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/avx512ifmavlintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/avx512pfintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/avx512vbmiintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/avx512vbmivlintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/avx512vlbwintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/avx512vlcdintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/avx512vldqintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/avx512vlintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/avxintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/bmi2intrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/bmiintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/clflushoptintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/cpuid.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/cuda_builtin_vars.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/emmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/f16cintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/fma4intrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/fmaintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/fxsrintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/htmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/htmxlintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/ia32intrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/immintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/lzcntintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/mm3dnow.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/mm_malloc.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/mmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/module.modulemap
+OLD_FILES+=usr/lib/clang/3.9.1/include/msa.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/mwaitxintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/nmmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/opencl-c.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/pkuintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/pmmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/popcntintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/prfchwintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/rdseedintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/rtmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/s390intrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/shaintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/smmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/tbmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/tmmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/vadefs.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/vecintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/wmmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/x86intrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/xmmintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/xopintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/xsavecintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/xsaveintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/xsaveoptintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/xsavesintrin.h
+OLD_FILES+=usr/lib/clang/3.9.1/include/xtestintrin.h
+OLD_DIRS+=usr/lib/clang/3.9.1/include
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.asan-i386.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.asan-i386.so
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.asan-preinit-i386.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.asan-preinit-x86_64.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.asan-x86_64.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.asan-x86_64.so
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.asan_cxx-i386.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.asan_cxx-x86_64.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.profile-arm.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.profile-i386.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.profile-x86_64.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.safestack-i386.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.safestack-x86_64.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.stats-i386.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.stats-x86_64.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.stats_client-i386.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.stats_client-x86_64.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.ubsan_standalone-i386.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.ubsan_standalone-x86_64.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.ubsan_standalone_cxx-i386.a
+OLD_FILES+=usr/lib/clang/3.9.1/lib/freebsd/libclang_rt.ubsan_standalone_cxx-x86_64.a
+OLD_DIRS+=usr/lib/clang/3.9.1/lib/freebsd
+OLD_DIRS+=usr/lib/clang/3.9.1/lib
+OLD_DIRS+=usr/lib/clang/3.9.1
 OLD_DIRS+=usr/lib/clang
 OLD_FILES+=usr/share/doc/llvm/clang/LICENSE.TXT
 OLD_DIRS+=usr/share/doc/llvm/clang
@@ -1255,9 +1495,9 @@ OLD_FILES+=usr/bin/llvm-mc
 OLD_FILES+=usr/bin/llvm-nm
 OLD_FILES+=usr/bin/llvm-objdump
 OLD_FILES+=usr/bin/llvm-pdbdump
+OLD_FILES+=usr/bin/llvm-ranlib
 OLD_FILES+=usr/bin/llvm-rtdyld
 OLD_FILES+=usr/bin/llvm-symbolizer
-OLD_FILES+=usr/bin/macho-dump
 OLD_FILES+=usr/bin/opt
 OLD_FILES+=usr/share/man/man1/bugpoint.1.gz
 OLD_FILES+=usr/share/man/man1/llc.1.gz
@@ -1279,10 +1519,6 @@ OLD_FILES+=usr/share/man/man1/opt.1.gz
 OLD_FILES+=usr/bin/cpp
 OLD_FILES+=usr/share/man/man1/cpp.1.gz
 .endif
-
-#.if ${MK_CRYPT} == no
-# to be filled in
-#.endif
 
 .if ${MK_CTM} == no
 OLD_FILES+=usr/sbin/ctm
@@ -1976,6 +2212,14 @@ OLD_FILES+=usr/share/nls/uk_UA.KOI8-U/ee.cat
 #.if ${MK_EXAMPLES} == no
 # to be filled in
 #.endif
+
+.if ${MK_FINGER} == no
+OLD_FILES+=usr/bin/finger
+OLD_FILES+=usr/share/man/man1/finger.1.gz
+OLD_FILES+=usr/share/man/man5/finger.conf.5.gz
+OLD_FILES+=usr/libexec/fingerd
+OLD_FILES+=usr/share/man/man8/fingerd.8.gz
+.endif
 
 .if ${MK_FLOPPY} == no
 OLD_FILES+=usr/sbin/fdcontrol
@@ -2803,6 +3047,12 @@ OLD_FILES+=usr/share/man/man5/hast.conf.5.gz
 OLD_FILES+=usr/share/man/man8/hastctl.8.gz
 OLD_FILES+=usr/share/man/man8/hastd.8.gz
 OLD_DIRS+=usr/share/examples/hast
+# bsnmp
+OLD_FILES+=usr/lib/snmp_hast.so
+OLD_LIBS+=usr/lib/snmp_hast.so.6
+OLD_FILES+=usr/share/man/man3/snmp_hast.3.gz
+OLD_FILES+=usr/share/snmp/defs/hast_tree.def
+OLD_FILES+=usr/share/snmp/mibs/BEGEMOT-HAST-MIB.txt
 .endif
 
 .if ${MK_HESIOD} == no
@@ -2937,6 +3187,7 @@ OLD_FILES+=usr/share/man/man8/traceroute6.8.gz
 
 .if ${MK_INET6_SUPPORT} == no
 OLD_FILES+=rescue/ping6
+OLD_FILES+=rescue/rtsol
 .endif
 
 .if ${MK_INETD} == no
@@ -3043,6 +3294,8 @@ OLD_FILES+=usr/share/man/man8/natd.8.gz
 .if ${MK_ISCSI} == no
 OLD_FILES+=etc/rc.d/iscsictl
 OLD_FILES+=etc/rc.d/iscsid
+OLD_FILES+=rescue/iscsictl
+OLD_FILES+=rescue/iscsid
 OLD_FILES+=sbin/iscontrol
 OLD_FILES+=usr/bin/iscsictl
 OLD_FILES+=usr/sbin/iscsid
@@ -4138,6 +4391,8 @@ OLD_FILES+=usr/lib/libcxxrt.a
 OLD_FILES+=usr/lib/libcxxrt.so
 OLD_FILES+=usr/lib/libcxxrt_p.a
 OLD_FILES+=usr/include/c++/v1/__bit_reference
+OLD_FILES+=usr/include/c++/v1/__bsd_locale_defaults.h
+OLD_FILES+=usr/include/c++/v1/__bsd_locale_fallbacks.h
 OLD_FILES+=usr/include/c++/v1/__config
 OLD_FILES+=usr/include/c++/v1/__debug
 OLD_FILES+=usr/include/c++/v1/__functional_03
@@ -4146,10 +4401,12 @@ OLD_FILES+=usr/include/c++/v1/__functional_base_03
 OLD_FILES+=usr/include/c++/v1/__hash_table
 OLD_FILES+=usr/include/c++/v1/__locale
 OLD_FILES+=usr/include/c++/v1/__mutex_base
+OLD_FILES+=usr/include/c++/v1/__nullptr
 OLD_FILES+=usr/include/c++/v1/__refstring
 OLD_FILES+=usr/include/c++/v1/__split_buffer
 OLD_FILES+=usr/include/c++/v1/__sso_allocator
 OLD_FILES+=usr/include/c++/v1/__std_stream
+OLD_FILES+=usr/include/c++/v1/__threading_support
 OLD_FILES+=usr/include/c++/v1/__tree
 OLD_FILES+=usr/include/c++/v1/__tuple
 OLD_FILES+=usr/include/c++/v1/__undef___deallocate
@@ -4185,30 +4442,51 @@ OLD_FILES+=usr/include/c++/v1/cstdlib
 OLD_FILES+=usr/include/c++/v1/cstring
 OLD_FILES+=usr/include/c++/v1/ctgmath
 OLD_FILES+=usr/include/c++/v1/ctime
+OLD_FILES+=usr/include/c++/v1/ctype.h
 OLD_FILES+=usr/include/c++/v1/cwchar
 OLD_FILES+=usr/include/c++/v1/cwctype
 OLD_FILES+=usr/include/c++/v1/cxxabi.h
 OLD_FILES+=usr/include/c++/v1/deque
+OLD_FILES+=usr/include/c++/v1/errno.h
 OLD_FILES+=usr/include/c++/v1/exception
 OLD_FILES+=usr/include/c++/v1/experimental/__config
+OLD_FILES+=usr/include/c++/v1/experimental/__memory
+OLD_FILES+=usr/include/c++/v1/experimental/algorithm
+OLD_FILES+=usr/include/c++/v1/experimental/any
 OLD_FILES+=usr/include/c++/v1/experimental/chrono
+OLD_FILES+=usr/include/c++/v1/experimental/deque
 OLD_FILES+=usr/include/c++/v1/experimental/dynarray
-OLD_FILES+=usr/include/c++/v1/experimental/dynarray
+OLD_FILES+=usr/include/c++/v1/experimental/filesystem
+OLD_FILES+=usr/include/c++/v1/experimental/forward_list
+OLD_FILES+=usr/include/c++/v1/experimental/functional
+OLD_FILES+=usr/include/c++/v1/experimental/iterator
+OLD_FILES+=usr/include/c++/v1/experimental/list
+OLD_FILES+=usr/include/c++/v1/experimental/map
+OLD_FILES+=usr/include/c++/v1/experimental/memory_resource
 OLD_FILES+=usr/include/c++/v1/experimental/optional
+OLD_FILES+=usr/include/c++/v1/experimental/propagate_const
 OLD_FILES+=usr/include/c++/v1/experimental/ratio
+OLD_FILES+=usr/include/c++/v1/experimental/regex
+OLD_FILES+=usr/include/c++/v1/experimental/set
+OLD_FILES+=usr/include/c++/v1/experimental/string
 OLD_FILES+=usr/include/c++/v1/experimental/string_view
 OLD_FILES+=usr/include/c++/v1/experimental/system_error
 OLD_FILES+=usr/include/c++/v1/experimental/tuple
 OLD_FILES+=usr/include/c++/v1/experimental/type_traits
+OLD_FILES+=usr/include/c++/v1/experimental/unordered_map
+OLD_FILES+=usr/include/c++/v1/experimental/unordered_set
 OLD_FILES+=usr/include/c++/v1/experimental/utility
+OLD_FILES+=usr/include/c++/v1/experimental/vector
 OLD_FILES+=usr/include/c++/v1/ext/__hash
 OLD_FILES+=usr/include/c++/v1/ext/hash_map
 OLD_FILES+=usr/include/c++/v1/ext/hash_set
+OLD_FILES+=usr/include/c++/v1/float.h
 OLD_FILES+=usr/include/c++/v1/forward_list
 OLD_FILES+=usr/include/c++/v1/fstream
 OLD_FILES+=usr/include/c++/v1/functional
 OLD_FILES+=usr/include/c++/v1/future
 OLD_FILES+=usr/include/c++/v1/initializer_list
+OLD_FILES+=usr/include/c++/v1/inttypes.h
 OLD_FILES+=usr/include/c++/v1/iomanip
 OLD_FILES+=usr/include/c++/v1/ios
 OLD_FILES+=usr/include/c++/v1/iosfwd
@@ -4219,6 +4497,7 @@ OLD_FILES+=usr/include/c++/v1/limits
 OLD_FILES+=usr/include/c++/v1/list
 OLD_FILES+=usr/include/c++/v1/locale
 OLD_FILES+=usr/include/c++/v1/map
+OLD_FILES+=usr/include/c++/v1/math.h
 OLD_FILES+=usr/include/c++/v1/memory
 OLD_FILES+=usr/include/c++/v1/mutex
 OLD_FILES+=usr/include/c++/v1/new
@@ -4230,17 +4509,25 @@ OLD_FILES+=usr/include/c++/v1/ratio
 OLD_FILES+=usr/include/c++/v1/regex
 OLD_FILES+=usr/include/c++/v1/scoped_allocator
 OLD_FILES+=usr/include/c++/v1/set
+OLD_FILES+=usr/include/c++/v1/setjmp.h
 OLD_FILES+=usr/include/c++/v1/shared_mutex
 OLD_FILES+=usr/include/c++/v1/sstream
 OLD_FILES+=usr/include/c++/v1/stack
+OLD_FILES+=usr/include/c++/v1/stdbool.h
+OLD_FILES+=usr/include/c++/v1/stddef.h
 OLD_FILES+=usr/include/c++/v1/stdexcept
+OLD_FILES+=usr/include/c++/v1/stdio.h
+OLD_FILES+=usr/include/c++/v1/stdlib.h
 OLD_FILES+=usr/include/c++/v1/streambuf
 OLD_FILES+=usr/include/c++/v1/string
+OLD_FILES+=usr/include/c++/v1/string.h
 OLD_FILES+=usr/include/c++/v1/strstream
 OLD_FILES+=usr/include/c++/v1/system_error
 OLD_FILES+=usr/include/c++/v1/tgmath.h
 OLD_FILES+=usr/include/c++/v1/thread
 OLD_FILES+=usr/include/c++/v1/tr1/__bit_reference
+OLD_FILES+=usr/include/c++/v1/tr1/__bsd_locale_defaults.h
+OLD_FILES+=usr/include/c++/v1/tr1/__bsd_locale_fallbacks.h
 OLD_FILES+=usr/include/c++/v1/tr1/__config
 OLD_FILES+=usr/include/c++/v1/tr1/__debug
 OLD_FILES+=usr/include/c++/v1/tr1/__functional_03
@@ -4249,13 +4536,15 @@ OLD_FILES+=usr/include/c++/v1/tr1/__functional_base_03
 OLD_FILES+=usr/include/c++/v1/tr1/__hash_table
 OLD_FILES+=usr/include/c++/v1/tr1/__locale
 OLD_FILES+=usr/include/c++/v1/tr1/__mutex_base
+OLD_FILES+=usr/include/c++/v1/tr1/__nullptr
 OLD_FILES+=usr/include/c++/v1/tr1/__refstring
 OLD_FILES+=usr/include/c++/v1/tr1/__split_buffer
 OLD_FILES+=usr/include/c++/v1/tr1/__sso_allocator
 OLD_FILES+=usr/include/c++/v1/tr1/__std_stream
+OLD_FILES+=usr/include/c++/v1/tr1/__threading_support
 OLD_FILES+=usr/include/c++/v1/tr1/__tree
 OLD_FILES+=usr/include/c++/v1/tr1/__tuple
-OLD_FILES+=usr/include/c++/v1/tr1/__tuple_03
+OLD_FILES+=usr/include/c++/v1/tr1/__undef___deallocate
 OLD_FILES+=usr/include/c++/v1/tr1/__undef_min_max
 OLD_FILES+=usr/include/c++/v1/tr1/algorithm
 OLD_FILES+=usr/include/c++/v1/tr1/array
@@ -4288,15 +4577,19 @@ OLD_FILES+=usr/include/c++/v1/tr1/cstdlib
 OLD_FILES+=usr/include/c++/v1/tr1/cstring
 OLD_FILES+=usr/include/c++/v1/tr1/ctgmath
 OLD_FILES+=usr/include/c++/v1/tr1/ctime
+OLD_FILES+=usr/include/c++/v1/tr1/ctype.h
 OLD_FILES+=usr/include/c++/v1/tr1/cwchar
 OLD_FILES+=usr/include/c++/v1/tr1/cwctype
 OLD_FILES+=usr/include/c++/v1/tr1/deque
+OLD_FILES+=usr/include/c++/v1/tr1/errno.h
 OLD_FILES+=usr/include/c++/v1/tr1/exception
+OLD_FILES+=usr/include/c++/v1/tr1/float.h
 OLD_FILES+=usr/include/c++/v1/tr1/forward_list
 OLD_FILES+=usr/include/c++/v1/tr1/fstream
 OLD_FILES+=usr/include/c++/v1/tr1/functional
 OLD_FILES+=usr/include/c++/v1/tr1/future
 OLD_FILES+=usr/include/c++/v1/tr1/initializer_list
+OLD_FILES+=usr/include/c++/v1/tr1/inttypes.h
 OLD_FILES+=usr/include/c++/v1/tr1/iomanip
 OLD_FILES+=usr/include/c++/v1/tr1/ios
 OLD_FILES+=usr/include/c++/v1/tr1/iosfwd
@@ -4307,6 +4600,7 @@ OLD_FILES+=usr/include/c++/v1/tr1/limits
 OLD_FILES+=usr/include/c++/v1/tr1/list
 OLD_FILES+=usr/include/c++/v1/tr1/locale
 OLD_FILES+=usr/include/c++/v1/tr1/map
+OLD_FILES+=usr/include/c++/v1/tr1/math.h
 OLD_FILES+=usr/include/c++/v1/tr1/memory
 OLD_FILES+=usr/include/c++/v1/tr1/mutex
 OLD_FILES+=usr/include/c++/v1/tr1/new
@@ -4318,12 +4612,18 @@ OLD_FILES+=usr/include/c++/v1/tr1/ratio
 OLD_FILES+=usr/include/c++/v1/tr1/regex
 OLD_FILES+=usr/include/c++/v1/tr1/scoped_allocator
 OLD_FILES+=usr/include/c++/v1/tr1/set
+OLD_FILES+=usr/include/c++/v1/tr1/setjmp.h
 OLD_FILES+=usr/include/c++/v1/tr1/shared_mutex
 OLD_FILES+=usr/include/c++/v1/tr1/sstream
 OLD_FILES+=usr/include/c++/v1/tr1/stack
+OLD_FILES+=usr/include/c++/v1/tr1/stdbool.h
+OLD_FILES+=usr/include/c++/v1/tr1/stddef.h
 OLD_FILES+=usr/include/c++/v1/tr1/stdexcept
+OLD_FILES+=usr/include/c++/v1/tr1/stdio.h
+OLD_FILES+=usr/include/c++/v1/tr1/stdlib.h
 OLD_FILES+=usr/include/c++/v1/tr1/streambuf
 OLD_FILES+=usr/include/c++/v1/tr1/string
+OLD_FILES+=usr/include/c++/v1/tr1/string.h
 OLD_FILES+=usr/include/c++/v1/tr1/strstream
 OLD_FILES+=usr/include/c++/v1/tr1/system_error
 OLD_FILES+=usr/include/c++/v1/tr1/tgmath.h
@@ -4337,6 +4637,8 @@ OLD_FILES+=usr/include/c++/v1/tr1/unordered_set
 OLD_FILES+=usr/include/c++/v1/tr1/utility
 OLD_FILES+=usr/include/c++/v1/tr1/valarray
 OLD_FILES+=usr/include/c++/v1/tr1/vector
+OLD_FILES+=usr/include/c++/v1/tr1/wchar.h
+OLD_FILES+=usr/include/c++/v1/tr1/wctype.h
 OLD_FILES+=usr/include/c++/v1/tuple
 OLD_FILES+=usr/include/c++/v1/type_traits
 OLD_FILES+=usr/include/c++/v1/typeindex
@@ -4349,6 +4651,8 @@ OLD_FILES+=usr/include/c++/v1/unwind.h
 OLD_FILES+=usr/include/c++/v1/utility
 OLD_FILES+=usr/include/c++/v1/valarray
 OLD_FILES+=usr/include/c++/v1/vector
+OLD_FILES+=usr/include/c++/v1/wchar.h
+OLD_FILES+=usr/include/c++/v1/wctype.h
 OLD_FILES+=usr/lib32/libc++.a
 OLD_FILES+=usr/lib32/libc++.so
 OLD_LIBS+=usr/lib32/libc++.so.1
@@ -4366,6 +4670,10 @@ OLD_DIRS+=usr/include/c++/v1
 #.if ${MK_LIBTHR} == no
 # to be filled in
 #.endif
+
+.if ${MK_LLD} == no
+OLD_FILES+=usr/bin/ld.lld
+.endif
 
 .if ${MK_LLDB} == no
 OLD_FILES+=usr/bin/lldb
@@ -6009,6 +6317,7 @@ OLD_FILES+=usr/share/misc/windrv_stub.c
 .endif
 
 .if ${MK_NETCAT} == no
+OLD_FILES+=rescue/nc
 OLD_FILES+=usr/bin/nc
 OLD_FILES+=usr/share/man/man1/nc.1.gz
 .endif
@@ -6358,10 +6667,6 @@ OLD_FILES+=usr/share/man/man8/ntpdc.8.gz
 OLD_FILES+=usr/share/man/man8/ntpq.8.gz
 OLD_FILES+=usr/share/man/man8/ntptime.8.gz
 .endif
-
-#.if ${MK_OBJC} == no
-# to be filled in
-#.endif
 
 .if ${MK_OPENSSH} == no
 OLD_FILES+=etc/rc.d/sshd
@@ -6776,6 +7081,11 @@ OLD_FILES+=usr/share/man/man8/quotaon.8.gz
 OLD_FILES+=usr/share/man/man8/repquota.8.gz
 .endif
 
+.if ${MK_RBOOTD} == no
+OLD_FILES+=usr/libexec/rbootd
+OLD_FILES+=usr/share/man/man8/rbootd.8.gz
+.endif
+
 .if ${MK_RCMDS} == no
 OLD_FILES+=bin/rcp
 OLD_FILES+=etc/rc.d/rwho
@@ -6821,11 +7131,18 @@ OLD_FILES+=usr/share/man/man1/rlog.1.gz
 OLD_FILES+=usr/share/man/man5/rcsfile.5.gz
 .endif
 
-#.if ${MK_RESCUE} == no
-# to be filled in or replaced with a special target
-#.endif
+.if ${MK_RESCUE} == no
+. if exists(${DESTDIR}${TESTSBASE})
+RESCUE_DIRS!=find ${DESTDIR}/rescue -type d 2>/dev/null | sed -e 's,^${DESTDIR}/,,'; echo
+OLD_DIRS+=${RESCUE_DIRS}
+RESCUE_FILES!=find ${DESTDIR}/rescue \! -type d 2>/dev/null | sed -e 's,^${DESTDIR}/,,'; echo
+OLD_FILES+=${RESCUE_FILES}
+. endif
+.endif
 
 .if ${MK_ROUTED} == no
+OLD_FILES+=rescue/routed
+OLD_FILES+=rescue/rtquery
 OLD_FILES+=sbin/routed
 OLD_FILES+=sbin/rtquery
 OLD_FILES+=usr/share/man/man8/routed.8.gz
@@ -7997,6 +8314,13 @@ OLD_FILES+=usr/share/man/man1/colcrt.1.gz
 OLD_FILES+=usr/share/man/man1/ul.1.gz
 .endif
 
+.if ${MK_TIMED} == no
+OLD_FILES+=usr/sbin/timed
+OLD_FILES+=usr/sbin/timedc
+OLD_FILES+=usr/share/man/man8/timed.8.gz
+OLD_FILES+=usr/share/man/man8/timedc.8.gz
+.endif
+
 .if ${MK_TOOLCHAIN} == no
 OLD_FILES+=usr/bin/addr2line
 OLD_FILES+=usr/bin/as
@@ -8024,6 +8348,65 @@ OLD_FILES+=usr/share/man/man1/strip.1.gz
 OLD_FILES+=usr/bin/objcopy
 OLD_FILES+=usr/share/man/man1/objcopy.1.gz
 .endif
+# lib/libelf
+OLD_FILES+=usr/share/man/man3/elf.3.gz
+OLD_FILES+=usr/share/man/man3/elf_begin.3.gz
+OLD_FILES+=usr/share/man/man3/elf_cntl.3.gz
+OLD_FILES+=usr/share/man/man3/elf_end.3.gz
+OLD_FILES+=usr/share/man/man3/elf_errmsg.3.gz
+OLD_FILES+=usr/share/man/man3/elf_fill.3.gz
+OLD_FILES+=usr/share/man/man3/elf_flagdata.3.gz
+OLD_FILES+=usr/share/man/man3/elf_getarhdr.3.gz
+OLD_FILES+=usr/share/man/man3/elf_getarsym.3.gz
+OLD_FILES+=usr/share/man/man3/elf_getbase.3.gz
+OLD_FILES+=usr/share/man/man3/elf_getdata.3.gz
+OLD_FILES+=usr/share/man/man3/elf_getident.3.gz
+OLD_FILES+=usr/share/man/man3/elf_getscn.3.gz
+OLD_FILES+=usr/share/man/man3/elf_getphdrnum.3.gz
+OLD_FILES+=usr/share/man/man3/elf_getphnum.3.gz
+OLD_FILES+=usr/share/man/man3/elf_getshdrnum.3.gz
+OLD_FILES+=usr/share/man/man3/elf_getshnum.3.gz
+OLD_FILES+=usr/share/man/man3/elf_getshdrstrndx.3.gz
+OLD_FILES+=usr/share/man/man3/elf_getshstrndx.3.gz
+OLD_FILES+=usr/share/man/man3/elf_hash.3.gz
+OLD_FILES+=usr/share/man/man3/elf_kind.3.gz
+OLD_FILES+=usr/share/man/man3/elf_memory.3.gz
+OLD_FILES+=usr/share/man/man3/elf_next.3.gz
+OLD_FILES+=usr/share/man/man3/elf_open.3.gz
+OLD_FILES+=usr/share/man/man3/elf_rawfile.3.gz
+OLD_FILES+=usr/share/man/man3/elf_rand.3.gz
+OLD_FILES+=usr/share/man/man3/elf_strptr.3.gz
+OLD_FILES+=usr/share/man/man3/elf_update.3.gz
+OLD_FILES+=usr/share/man/man3/elf_version.3.gz
+OLD_FILES+=usr/share/man/man3/gelf.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_checksum.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_fsize.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_getcap.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_getclass.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_getdyn.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_getehdr.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_getmove.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_getphdr.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_getrel.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_getrela.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_getshdr.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_getsym.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_getsyminfo.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_getsymshndx.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_newehdr.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_newphdr.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_update_ehdr.3.gz
+OLD_FILES+=usr/share/man/man3/gelf_xlatetof.3.gz
+# lib/libelftc
+OLD_FILES+=usr/share/man/man3/elftc.3.gz
+OLD_FILES+=usr/share/man/man3/elftc_bfd_find_target.3.gz
+OLD_FILES+=usr/share/man/man3/elftc_copyfile.3.gz
+OLD_FILES+=usr/share/man/man3/elftc_demangle.3.gz
+OLD_FILES+=usr/share/man/man3/elftc_reloc_type_str.3.gz
+OLD_FILES+=usr/share/man/man3/elftc_set_timestamps.3.gz
+OLD_FILES+=usr/share/man/man3/elftc_timestamp.3.gz
+OLD_FILES+=usr/share/man/man3/elftc_string_table_create.3.gz
+OLD_FILES+=usr/share/man/man3/elftc_version.3.gz
 OLD_FILES+=usr/tests/usr.bin/yacc/Kyuafile
 OLD_FILES+=usr/tests/usr.bin/yacc/btyacc_calc1.y
 OLD_FILES+=usr/tests/usr.bin/yacc/btyacc_demo.y
@@ -8774,12 +9157,20 @@ OLD_FILES+=usr/share/man/man8/wlandebug.8.gz
 OLD_FILES+=usr/share/man/man8/wpa_cli.8.gz
 OLD_FILES+=usr/share/man/man8/wpa_passphrase.8.gz
 OLD_FILES+=usr/share/man/man8/wpa_supplicant.8.gz
+OLD_FILES+=usr/lib/snmp_wlan.so
+OLD_LIBS+=usr/lib/snmp_wlan.so.6
+# bsnmp module
+OLD_FILES+=usr/share/man/man3/snmp_wlan.3.gz
+OLD_FILES+=usr/share/snmp/defs/wlan_tree.def
+OLD_FILES+=usr/share/snmp/mibs/BEGEMOT-WIRELESS-MIB.txt
 .endif
 
 .if ${MK_SVNLITE} == no || ${MK_SVN} == yes
 OLD_FILES+=usr/bin/svnlite
 OLD_FILES+=usr/bin/svnliteadmin
+OLD_FILES+=usr/bin/svnlitebench
 OLD_FILES+=usr/bin/svnlitedumpfilter
+OLD_FILES+=usr/bin/svnlitefsfs
 OLD_FILES+=usr/bin/svnlitelook
 OLD_FILES+=usr/bin/svnlitemucc
 OLD_FILES+=usr/bin/svnliterdump
@@ -8792,7 +9183,9 @@ OLD_FILES+=usr/share/man/man1/svnlite.1.gz
 .if ${MK_SVN} == no
 OLD_FILES+=usr/bin/svn
 OLD_FILES+=usr/bin/svnadmin
+OLD_FILES+=usr/bin/svnbench
 OLD_FILES+=usr/bin/svndumpfilter
+OLD_FILES+=usr/bin/svnfsfs
 OLD_FILES+=usr/bin/svnlook
 OLD_FILES+=usr/bin/svnmucc
 OLD_FILES+=usr/bin/svnrdump

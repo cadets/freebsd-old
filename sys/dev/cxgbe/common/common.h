@@ -62,6 +62,12 @@ enum {
 	PAUSE_AUTONEG = 1 << 2
 };
 
+enum {
+	FEC_RS        = 1 << 0,
+	FEC_BASER_RS  = 1 << 1,
+	FEC_RESERVED  = 1 << 2,
+};
+
 struct port_stats {
 	u64 tx_octets;            /* total # of octets in good frames */
 	u64 tx_frames;            /* all good frames */
@@ -227,7 +233,7 @@ struct tp_params {
 
 	uint32_t vlan_pri_map;
 	uint32_t ingress_config;
-	uint32_t rx_pkt_encap;
+	__be16 err_vec_mask;
 
 	int8_t fcoe_shift;
 	int8_t port_shift;
@@ -330,9 +336,12 @@ struct adapter_params {
 	unsigned int sf_size;             /* serial flash size in bytes */
 	unsigned int sf_nsec;             /* # of flash sectors */
 
-	unsigned int fw_vers;
-	unsigned int tp_vers;
-	unsigned int exprom_vers;
+	unsigned int fw_vers;		/* firmware version */
+	unsigned int bs_vers;		/* bootstrap version */
+	unsigned int tp_vers;		/* TP microcode version */
+	unsigned int er_vers;		/* expansion ROM version */
+	unsigned int scfg_vers;		/* Serial Configuration version */
+	unsigned int vpd_vers;		/* VPD version */
 
 	unsigned short mtus[NMTUS];
 	unsigned short a_wnd[NCCTRL_WIN];
@@ -389,12 +398,16 @@ struct trace_params {
 struct link_config {
 	unsigned short supported;        /* link capabilities */
 	unsigned short advertising;      /* advertised capabilities */
-	unsigned short requested_speed;  /* speed user has requested */
-	unsigned short speed;            /* actual link speed */
+	unsigned short lp_advertising;   /* peer advertised capabilities */
+	unsigned int   requested_speed;  /* speed user has requested */
+	unsigned int   speed;            /* actual link speed */
 	unsigned char  requested_fc;     /* flow control user has requested */
 	unsigned char  fc;               /* actual link flow control */
+	unsigned char  requested_fec;    /* FEC user has requested */
+	unsigned char  fec;              /* actual FEC */
 	unsigned char  autoneg;          /* autonegotiating? */
 	unsigned char  link_ok;          /* link up? */
+	unsigned char  link_down_rc;     /* link down reason */
 };
 
 #include "adapter.h"
@@ -548,8 +561,12 @@ int t4_flash_erase_sectors(struct adapter *adapter, int start, int end);
 int t4_flash_cfg_addr(struct adapter *adapter);
 int t4_load_cfg(struct adapter *adapter, const u8 *cfg_data, unsigned int size);
 int t4_get_fw_version(struct adapter *adapter, u32 *vers);
+int t4_get_bs_version(struct adapter *adapter, u32 *vers);
 int t4_get_tp_version(struct adapter *adapter, u32 *vers);
 int t4_get_exprom_version(struct adapter *adapter, u32 *vers);
+int t4_get_scfg_version(struct adapter *adapter, u32 *vers);
+int t4_get_vpd_version(struct adapter *adapter, u32 *vers);
+int t4_get_version_info(struct adapter *adapter);
 int t4_init_hw(struct adapter *adapter, u32 fw_params);
 const struct chip_params *t4_get_chip_params(int chipid);
 int t4_prep_adapter(struct adapter *adapter, u8 *buf);
@@ -571,7 +588,8 @@ int t4_config_rss_range(struct adapter *adapter, int mbox, unsigned int viid,
 int t4_config_glbl_rss(struct adapter *adapter, int mbox, unsigned int mode,
 		       unsigned int flags);
 int t4_config_vi_rss(struct adapter *adapter, int mbox, unsigned int viid,
-		     unsigned int flags, unsigned int defq);
+		     unsigned int flags, unsigned int defq, unsigned int skeyidx,
+		     unsigned int skey);
 int t4_read_rss(struct adapter *adapter, u16 *entries);
 void t4_fw_tp_pio_rw(struct adapter *adap, u32 *vals, unsigned int nregs,
 		  unsigned int start_index, unsigned int rw);

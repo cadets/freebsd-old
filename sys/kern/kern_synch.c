@@ -162,7 +162,7 @@ _sleep(void *ident, struct lock_object *lock, int priority,
 	else
 		class = NULL;
 
-	if (SCHEDULER_STOPPED()) {
+	if (SCHEDULER_STOPPED_TD(td)) {
 		if (lock != NULL && priority & PDROP)
 			class->lc_unlock(lock);
 		return (0);
@@ -250,7 +250,7 @@ msleep_spin_sbt(void *ident, struct mtx *mtx, const char *wmesg,
 	KASSERT(p != NULL, ("msleep1"));
 	KASSERT(ident != NULL && TD_IS_RUNNING(td), ("msleep"));
 
-	if (SCHEDULER_STOPPED())
+	if (SCHEDULER_STOPPED_TD(td))
 		return (0);
 
 	sleepq_lock(ident);
@@ -321,7 +321,8 @@ pause_sbt(const char *wmesg, sbintime_t sbt, sbintime_t pr, int flags)
 	if (sbt == 0)
 		sbt = tick_sbt;
 
-	if (cold || kdb_active || SCHEDULER_STOPPED()) {
+	if ((cold && curthread == &thread0) || kdb_active ||
+	    SCHEDULER_STOPPED()) {
 		/*
 		 * We delay one second at a time to avoid overflowing the
 		 * system specific DELAY() function(s):
@@ -410,7 +411,7 @@ mi_switch(int flags, struct thread *newtd)
 	 */
 	if (kdb_active)
 		kdb_switch();
-	if (SCHEDULER_STOPPED())
+	if (SCHEDULER_STOPPED_TD(td))
 		return;
 	if (flags & SW_VOL) {
 		td->td_ru.ru_nvcsw++;

@@ -69,10 +69,12 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/jail.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/malloc.h>
+#include <sys/proc.h>
 #include <sys/sbuf.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
@@ -619,9 +621,13 @@ sysctl_tcp_hc_list(SYSCTL_HANDLER_ARGS)
 	struct sbuf sb;
 	int i, error;
 	struct hc_metrics *hc_entry;
+	char ip4buf[INET_ADDRSTRLEN];
 #ifdef INET6
 	char ip6buf[INET6_ADDRSTRLEN];
 #endif
+
+	if (jailed_without_vnet(curthread->td_ucred) != 0)
+		return (EPERM);
 
 	sbuf_new(&sb, NULL, linesize * (V_tcp_hostcache.cache_count + 1),
 		SBUF_INCLUDENUL);
@@ -638,7 +644,8 @@ sysctl_tcp_hc_list(SYSCTL_HANDLER_ARGS)
 			sbuf_printf(&sb,
 			    "%-15s %5lu %8lu %6lums %6lums %8lu %8lu %8lu %4lu "
 			    "%4lu %4i\n",
-			    hc_entry->ip4.s_addr ? inet_ntoa(hc_entry->ip4) :
+			    hc_entry->ip4.s_addr ?
+			        inet_ntoa_r(hc_entry->ip4, ip4buf) :
 #ifdef INET6
 				ip6_sprintf(ip6buf, &hc_entry->ip6),
 #else

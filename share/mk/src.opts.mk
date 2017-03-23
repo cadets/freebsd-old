@@ -187,6 +187,7 @@ __DEFAULT_NO_OPTIONS = \
     NAND \
     OFED \
     OPENLDAP \
+    REPRODUCIBLE_BUILD \
     SHARED_TOOLCHAIN \
     SORT_THREADS \
     SVN \
@@ -245,9 +246,9 @@ BROKEN_OPTIONS+=TESTS   # "undefined reference to `_Unwind_Resume'"
 BROKEN_OPTIONS+=CXX     # "libcxxrt.so: undefined reference to `_Unwind_Resume_or_Rethrow'"
 .endif
 .if ${__T} == "aarch64" || ${__T} == "amd64"
-__DEFAULT_YES_OPTIONS+=LLDB
+__DEFAULT_YES_OPTIONS+=LLD LLDB
 .else
-__DEFAULT_NO_OPTIONS+=LLDB
+__DEFAULT_NO_OPTIONS+=LLD LLDB
 .endif
 # LLVM lacks support for FreeBSD 64-bit atomic operations for ARMv4/ARMv5
 .if ${__T} == "arm" || ${__T} == "armeb"
@@ -286,6 +287,10 @@ MK_${var}:=	no
 # Force some options off if their dependencies are off.
 # Order is somewhat important.
 #
+.if ${MK_CAPSICUM} == "no"
+MK_CASPER:=	no
+.endif
+
 .if ${MK_LIBPTHREAD} == "no"
 MK_LIBTHR:=	no
 .endif
@@ -371,6 +376,21 @@ MK_CLANG_FULL:= no
 .endif
 
 #
+# MK_* options whose default value depends on another option.
+#
+.for vv in \
+    GSSAPI/KERBEROS \
+    MAN_UTILS/MAN
+.if defined(WITH_${vv:H})
+MK_${vv:H}:=	yes
+.elif defined(WITHOUT_${vv:H})
+MK_${vv:H}:=	no
+.else
+MK_${vv:H}:=	${MK_${vv:T}}
+.endif
+.endfor
+
+#
 # Set defaults for the MK_*_SUPPORT variables.
 #
 
@@ -394,21 +414,6 @@ MK_CLANG_FULL:= no
 MK_${var}_SUPPORT:= no
 .else
 MK_${var}_SUPPORT:= yes
-.endif
-.endfor
-
-#
-# MK_* options whose default value depends on another option.
-#
-.for vv in \
-    GSSAPI/KERBEROS \
-    MAN_UTILS/MAN
-.if defined(WITH_${vv:H})
-MK_${vv:H}:=	yes
-.elif defined(WITHOUT_${vv:H})
-MK_${vv:H}:=	no
-.else
-MK_${vv:H}:=	${MK_${vv:T}}
 .endif
 .endfor
 

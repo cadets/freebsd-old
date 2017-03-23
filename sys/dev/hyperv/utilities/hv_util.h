@@ -42,8 +42,6 @@ typedef struct hv_util_sc {
 	device_t		ic_dev;
 	uint8_t			*receive_buffer;
 	int			ic_buflen;
-	uint32_t		ic_fwver;	/* framework version */
-	uint32_t		ic_msgver;	/* message version */
 } hv_util_sc;
 
 struct vmbus_ic_desc {
@@ -56,7 +54,6 @@ struct vmbus_ic_desc {
 int		hv_util_attach(device_t dev, vmbus_chan_callback_t cb);
 int		hv_util_detach(device_t dev);
 int		vmbus_ic_probe(device_t dev, const struct vmbus_ic_desc descs[]);
-int		vmbus_ic_negomsg(struct hv_util_sc *sc, void *data, int *dlen,
-		    uint32_t fw_ver, uint32_t msg_ver);
+int		vmbus_ic_negomsg(struct hv_util_sc *, void *data, int *dlen);
 
 #endif

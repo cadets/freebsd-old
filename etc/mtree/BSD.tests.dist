@@ -24,6 +24,8 @@
         ..
         pkill
         ..
+        pwait
+        ..
         sh
             builtins
             ..
@@ -308,6 +310,8 @@
             ttyio
             ..
         ..
+        libcam
+        ..
         libcrypt
         ..
         libdevdctl
@@ -384,6 +388,10 @@
         ..
         file
         ..
+        fs
+            tmpfs
+            ..
+        ..
         geom
             class
                 concat
@@ -419,6 +427,8 @@
             ..
         ..
         kqueue
+            libkqueue
+            ..
         ..
         mac
             bsdextended
@@ -576,8 +586,8 @@
                 ..
             ..
         ..
-	bsdcat
-	..
+        bsdcat
+        ..
         calendar
         ..
         cmp
@@ -626,6 +636,8 @@
         ..
         soelim
         ..
+        tail
+        ..
         tar
         ..
         timeout
@@ -639,6 +651,8 @@
         uudecode
         ..
         uuencode
+        ..
+        uniq
         ..
         xargs
         ..

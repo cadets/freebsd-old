@@ -4317,7 +4317,7 @@ isp_start(XS_T *xs)
 
 	if (XS_CDBLEN(xs) > (IS_FC(isp)? 16 : 44) || XS_CDBLEN(xs) == 0) {
 		isp_prt(isp, ISP_LOGERR, "unsupported cdb length (%d, CDB[0]=0x%x)", XS_CDBLEN(xs), XS_CDBP(xs)[0] & 0xff);
-		XS_SETERR(xs, HBA_BOTCH);
+		XS_SETERR(xs, HBA_REQINVAL);
 		return (CMD_COMPLETE);
 	}
 
@@ -4451,11 +4451,7 @@ isp_start(XS_T *xs)
 		if (XS_TAG_P(xs)) {
 			ttype = XS_TAG_TYPE(xs);
 		} else {
-			if (XS_CDBP(xs)[0] == 0x3) {
-				ttype = REQFLAG_HTAG;
-			} else {
-				ttype = REQFLAG_STAG;
-			}
+			ttype = REQFLAG_STAG;
 		}
 		if (ttype == REQFLAG_OTAG) {
 			ttype = FCP_CMND_TASK_ATTR_ORDERED;
@@ -4479,14 +4475,7 @@ isp_start(XS_T *xs)
 		if (XS_TAG_P(xs)) {
 			((ispreqt2_t *)reqp)->req_flags = XS_TAG_TYPE(xs);
 		} else {
-			/*
-			 * If we don't know what tag to use, use HEAD OF QUEUE
-			 * for Request Sense or Simple.
-			 */
-			if (XS_CDBP(xs)[0] == 0x3)	/* REQUEST SENSE */
-				((ispreqt2_t *)reqp)->req_flags = REQFLAG_HTAG;
-			else
-				((ispreqt2_t *)reqp)->req_flags = REQFLAG_STAG;
+			((ispreqt2_t *)reqp)->req_flags = REQFLAG_STAG;
 		}
 	} else {
 		sdparam *sdp = SDPARAM(isp, XS_CHANNEL(xs));
@@ -4505,7 +4494,7 @@ isp_start(XS_T *xs)
 	if (IS_SCSI(isp)) {
 		if (cdblen > sizeof (reqp->req_cdb)) {
 			isp_prt(isp, ISP_LOGERR, "Command Length %u too long for this chip", cdblen);
-			XS_SETERR(xs, HBA_BOTCH);
+			XS_SETERR(xs, HBA_REQINVAL);
 			return (CMD_COMPLETE);
 		}
 		reqp->req_target = target | (XS_CHANNEL(xs) << 7);
@@ -4517,7 +4506,7 @@ isp_start(XS_T *xs)
 
 		if (cdblen > sizeof (t7->req_cdb)) {
 			isp_prt(isp, ISP_LOGERR, "Command Length %u too long for this chip", cdblen);
-			XS_SETERR(xs, HBA_BOTCH);
+			XS_SETERR(xs, HBA_REQINVAL);
 			return (CMD_COMPLETE);
 		}
 
@@ -4550,7 +4539,7 @@ isp_start(XS_T *xs)
 
 		if (cdblen > sizeof t2->req_cdb) {
 			isp_prt(isp, ISP_LOGERR, "Command Length %u too long for this chip", cdblen);
-			XS_SETERR(xs, HBA_BOTCH);
+			XS_SETERR(xs, HBA_REQINVAL);
 			return (CMD_COMPLETE);
 		}
 		if (FCPARAM(isp, XS_CHANNEL(xs))->fctape_enabled && (lp->prli_word3 & PRLI_WD3_RETRY)) {
@@ -6578,6 +6567,7 @@ isp_parse_status(ispsoftc_t *isp, ispstatusreq_t *sp, XS_T *xs, long *rp)
 	case RQCS_PORT_BUSY:
 		isp_prt(isp, ISP_LOGWARN, "port busy for target %d", XS_TGT(xs));
 		if (XS_NOERR(xs)) {
+			*XS_STSP(xs) = SCSI_BUSY;
 			XS_SETERR(xs, HBA_TGTBSY);
 		}
 		return;
@@ -7143,7 +7133,7 @@ static const uint32_t mbpfc[] = {
 	ISP_FC_OPMAP(0x00, 0x00),	/* 0x3f: */
 	ISP_FC_OPMAP(0x03, 0x01),	/* 0x40: MBOX_LOOP_PORT_BYPASS */
 	ISP_FC_OPMAP(0x03, 0x01),	/* 0x41: MBOX_LOOP_PORT_ENABLE */
-	ISP_FC_OPMAP_HALF(0x0, 0x01, 0x3, 0xcf),	/* 0x42: MBOX_GET_RESOURCE_COUNT */
+	ISP_FC_OPMAP_HALF(0x0, 0x01, 0x1f, 0xcf),	/* 0x42: MBOX_GET_RESOURCE_COUNT */
 	ISP_FC_OPMAP(0x01, 0x01),	/* 0x43: MBOX_REQUEST_OFFLINE_MODE */
 	ISP_FC_OPMAP(0x00, 0x00),	/* 0x44: */
 	ISP_FC_OPMAP(0x00, 0x00),	/* 0x45: */

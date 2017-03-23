@@ -250,7 +250,9 @@ struct l_statfs64 {
         uint64_t        f_ffree; 
         l_fsid_t        f_fsid;
         l_int           f_namelen;
-        l_int           f_spare[6];
+        l_int           f_frsize;
+        l_int           f_flags;
+        l_int           f_spare[4];
 } __packed;
 
 /* sigaction flags */
@@ -663,6 +665,7 @@ struct l_user_desc {
 	(((desc)->b >> LINUX_ENTRY_B_USEABLE) & 1)
 
 struct iovec;
+struct uio;
 
 struct l_iovec32 {
 	uint32_t	iov_base;
@@ -671,6 +674,8 @@ struct l_iovec32 {
 
 int linux32_copyiniov(struct l_iovec32 *iovp32, l_ulong iovcnt,
 			    struct iovec **iovp, int error);
+int linux32_copyinuio(struct l_iovec32 *iovp, l_ulong iovcnt,
+			    struct uio **uiop);
 int linux_copyout_rusage(struct rusage *ru, void *uaddr);
 
 /* robust futexes */
