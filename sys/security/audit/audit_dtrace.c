@@ -302,7 +302,7 @@ dtaudit_getargdesc(void *arg, dtrace_id_t id, void *parg,
 	p = NULL;
 	switch (desc->dtargd_ndx) {
 	case 0:
-		/* Audit even name. */
+		/* Audit event name. */
 		p = "char *";
 		break;
 
