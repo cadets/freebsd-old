@@ -440,7 +440,7 @@ extern int			audit_in_failure;
  * Audit event-to-name mapping structure, maintained in audit_bsm_klib.c.  It
  * appears in this header so that the DTrace audit provider can dereference
  * instances passed back in the au_evname_foreach() callbacks.  Safe access to
- * its fields rquires holding ene_lock (after it is visible in the global
+ * its fields requires holding ene_lock (after it is visible in the global
  * table).
  *
  * Locking:

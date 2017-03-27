@@ -683,7 +683,7 @@ audit_syscall_enter(unsigned short code, struct thread *td)
 	 * required.
 	 *
 	 * XXXRW: If we decided to reference count 'ene', we'd need a free
-	 * case here if no record is allocated or allocateable.
+	 * case here if no record is allocated or allocatable.
 	 */
 	if (record_needed) {
 		td->td_ar = audit_new(event, td);
