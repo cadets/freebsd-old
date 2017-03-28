@@ -94,6 +94,10 @@ OBJS+=  ${SRCS:N*.h:R:S/$/.o/g}
 beforelinking: ${OBJS}
 ${PROG_FULL}: beforelinking
 .endif
+.if defined(INSTRUMENT_EVERYTHING) && !defined(BOOTSTRAPPING)
+${PROG_FULL}: ${PROG_INSTR}
+	${CP} ${PROG_INSTR} ${PROG_FULL}
+.else	# !defined(INSTRUMENT_EVERYTHING) || defined(BOOTSTRAPPING)
 ${PROG_FULL}: ${OBJS}
 .if defined(PROG_CXX)
 	${CXX:N${CCACHE_BIN}} ${CXXFLAGS:N-M*} ${LDFLAGS} -o ${.TARGET} \
@@ -101,6 +105,7 @@ ${PROG_FULL}: ${OBJS}
 .else
 	${CC:N${CCACHE_BIN}} ${CFLAGS:N-M*} ${LDFLAGS} -o ${.TARGET} ${OBJS} \
 	    ${LDADD}
+.endif
 .endif
 .if ${MK_CTF} != "no"
 	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${OBJS}
