@@ -59,6 +59,9 @@ TAG_ARGS=	-T ${TAGS:[*]:S/ /,/g}
 LDFLAGS+= -static
 .endif
 
+PROG_INSTR=${PROG}.instrumented
+PROG_INSTR_IR=${PROG_INSTR}.${LLVM_IR_TYPE}
+
 .if ${MK_DEBUG_FILES} != "no"
 PROG_FULL=${PROG}.full
 # Use ${DEBUGDIR} for base system debug files, else .debug subdirectory
@@ -79,9 +82,6 @@ DEBUGMKDIR=
 .else
 PROG_FULL=	${PROG}
 .endif
-
-PROG_INSTR=${PROG_FULL}.instrumented
-PROG_INSTR_IR=${PROG_INSTR}.${LLVM_IR_TYPE}
 
 .if defined(PROG)
 PROGNAME?=	${PROG}
