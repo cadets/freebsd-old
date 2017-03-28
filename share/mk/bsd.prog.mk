@@ -205,7 +205,7 @@ all: all-man
 .endif
 
 .if defined(PROG)
-CLEANFILES+= ${PROG} ${PROG}.bc ${PROG}.ll
+CLEANFILES+= ${PROG} ${PROG}.bc ${PROG}.ll ${PROG_INSTR} ${PROG_INSTR_IR}
 .if ${MK_DEBUG_FILES} != "no"
 CLEANFILES+=	${PROG_FULL} ${PROG_FULL}.bc ${PROGNAME}.debug ${PROG_FULL}.ll
 .endif
