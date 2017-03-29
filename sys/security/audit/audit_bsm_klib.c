@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 1999-2009 Apple Inc.
- * Copyright (c) 2005, 2016 Robert N. M. Watson
+ * Copyright (c) 2005, 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * Portions of this software were developed by BAE Systems, the University of
