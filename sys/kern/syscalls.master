@@ -564,7 +564,7 @@
 317	AUE_AIO_ERROR	STD	{ int aio_error(struct aiocb *aiocbp); }
 318	AUE_AIO_READ	COMPAT6	{ int aio_read(struct oaiocb *aiocbp); }
 319	AUE_AIO_WRITE	COMPAT6	{ int aio_write(struct oaiocb *aiocbp); }
-320	AUE_NULL	COMPAT6	{ int lio_listio(int mode, \
+320	AUE_LIO_LISTIO	COMPAT6	{ int lio_listio(int mode, \
 				    struct oaiocb * const *acb_list, \
 				    int nent, struct osigevent *sig); }
 321	AUE_NULL	STD	{ int yield(void); }
