@@ -374,7 +374,6 @@ struct audit_record {
  * This record can also have a pointer set to some opaque data that will be
  * passed through to the audit writing mechanism.
  */
-struct evname_elem;
 struct kaudit_record {
 	struct audit_record		 k_ar;
 	u_int32_t			 k_ar_commit;
