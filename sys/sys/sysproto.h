@@ -2920,7 +2920,7 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_getresuid	AUE_GETRESUID
 #define	SYS_AUE_getresgid	AUE_GETRESGID
 #define	SYS_AUE_kqueue	AUE_KQUEUE
-#define	SYS_AUE_kevent	AUE_NULL
+#define	SYS_AUE_kevent	AUE_KEVENT
 #define	SYS_AUE_extattr_set_fd	AUE_EXTATTR_SET_FD
 #define	SYS_AUE_extattr_get_fd	AUE_EXTATTR_GET_FD
 #define	SYS_AUE_extattr_delete_fd	AUE_EXTATTR_DELETE_FD

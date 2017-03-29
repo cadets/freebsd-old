@@ -1213,7 +1213,7 @@ int	freebsd10_freebsd32_pipe(struct thread *, struct freebsd10_freebsd32_pipe_ar
 #define	FREEBSD32_SYS_AUE_freebsd32_sigtimedwait	AUE_SIGWAIT
 #define	FREEBSD32_SYS_AUE_freebsd32_sigwaitinfo	AUE_NULL
 #define	FREEBSD32_SYS_AUE_freebsd32_aio_waitcomplete	AUE_AIO_WAITCOMPLETE
-#define	FREEBSD32_SYS_AUE_freebsd32_kevent	AUE_NULL
+#define	FREEBSD32_SYS_AUE_freebsd32_kevent	AUE_KEVENT
 #define	FREEBSD32_SYS_AUE_freebsd32_nmount	AUE_NMOUNT
 #define	FREEBSD32_SYS_AUE_freebsd32_sendfile	AUE_SENDFILE
 #define	FREEBSD32_SYS_AUE_freebsd32_ksem_init	AUE_SEMINIT

@@ -662,7 +662,7 @@
 361	AUE_GETRESGID	NOPROTO	{ int getresgid(gid_t *rgid, gid_t *egid, \
 				    gid_t *sgid); }
 362	AUE_KQUEUE	NOPROTO	{ int kqueue(void); }
-363	AUE_NULL	STD	{ int freebsd32_kevent(int fd, \
+363	AUE_KEVENT	STD	{ int freebsd32_kevent(int fd, \
 				    const struct kevent32 *changelist, \
 				    int nchanges, \
 				    struct kevent32 *eventlist, int nevents, \
