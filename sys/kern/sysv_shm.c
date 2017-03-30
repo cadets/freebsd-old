@@ -30,7 +30,7 @@
  */
 /*-
  * Copyright (c) 2003-2005 McAfee, Inc.
- * Copyright (c) 2016 Robert N. M. Watson
+ * Copyright (c) 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * This software was developed for the FreeBSD Project in part by McAfee
