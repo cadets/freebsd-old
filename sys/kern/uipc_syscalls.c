@@ -1,8 +1,7 @@
 /*-
  * Copyright (c) 1982, 1986, 1989, 1990, 1993
- *	The Regents of the University of California.  All rights reserved.
- *
- * Copyright (c) 2016 Robert N. M. Watson
+ *	The Regents of the University of California.
+ * Copyright (c) 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * Portions of this software were developed by BAE Systems, the University of
@@ -466,7 +465,7 @@ kern_accept4(struct thread *td, int s, struct sockaddr **name,
 	if (error != 0)
 		goto noconnection;
 #ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID2(&so->so_uuid);
+	AUDIT_RET_OBJUUID1(&so->so_uuid);
 #endif
 	if (sa == NULL) {
 		if (name)
