@@ -73,7 +73,7 @@ enum scan_mode {
  */
 struct cmc_state {
 	int	max_threshold;
-	int	last_intr;
+	time_t	last_intr;
 };
 #endif
 
@@ -247,7 +247,7 @@ mca_error_mmtype(uint16_t mca_error)
 	return ("???");
 }
 
-static int __nonnull(1)
+static int
 mca_mute(const struct mca_record *rec)
 {
 
@@ -276,7 +276,7 @@ mca_mute(const struct mca_record *rec)
 }
 
 /* Dump details about a single machine check. */
-static void __nonnull(1)
+static void
 mca_log(const struct mca_record *rec)
 {
 	uint16_t mca_error;
@@ -415,7 +415,7 @@ mca_log(const struct mca_record *rec)
 		printf("MCA: Misc 0x%llx\n", (long long)rec->mr_misc);
 }
 
-static int __nonnull(2)
+static int
 mca_check_status(int bank, struct mca_record *rec)
 {
 	uint64_t status;
@@ -482,7 +482,7 @@ mca_refill(void *context, int pending)
 	mca_fill_freelist();
 }
 
-static void __nonnull(2)
+static void
 mca_record_entry(enum scan_mode mode, const struct mca_record *record)
 {
 	struct mca_internal *rec;
@@ -508,7 +508,7 @@ mca_record_entry(enum scan_mode mode, const struct mca_record *record)
 	STAILQ_INSERT_TAIL(&mca_records, rec, link);
 	mca_count++;
 	mtx_unlock_spin(&mca_lock);
-	if (mode == CMCI)
+	if (mode == CMCI && !cold)
 		taskqueue_enqueue(mca_tq, &mca_refill_task);
 }
 
@@ -533,7 +533,7 @@ cmci_update(enum scan_mode mode, int bank, int valid, struct mca_record *rec)
 	cc = &cmc_state[PCPU_GET(cpuid)][bank];
 	ctl = rdmsr(MSR_MC_CTL2(bank));
 	count = (rec->mr_status & MC_STATUS_COR_COUNT) >> 38;
-	delta = (u_int)(ticks - cc->last_intr);
+	delta = (u_int)(time_uptime - cc->last_intr);
 
 	/*
 	 * If an interrupt was received less than cmc_throttle seconds
@@ -548,9 +548,9 @@ cmci_update(enum scan_mode mode, int bank, int valid, struct mca_record *rec)
 			limit = min(limit << 1, cc->max_threshold);
 			ctl &= ~MC_CTL2_THRESHOLD;
 			ctl |= limit;
-			wrmsr(MSR_MC_CTL2(bank), limit);
+			wrmsr(MSR_MC_CTL2(bank), ctl);
 		}
-		cc->last_intr = ticks;
+		cc->last_intr = time_uptime;
 		return;
 	}
 
@@ -581,7 +581,7 @@ cmci_update(enum scan_mode mode, int bank, int valid, struct mca_record *rec)
 	if ((ctl & MC_CTL2_THRESHOLD) != limit) {
 		ctl &= ~MC_CTL2_THRESHOLD;
 		ctl |= limit;
-		wrmsr(MSR_MC_CTL2(bank), limit);
+		wrmsr(MSR_MC_CTL2(bank), ctl);
 	}
 }
 #endif
@@ -714,6 +714,9 @@ mca_createtq(void *dummy)
 	mca_tq = taskqueue_create_fast("mca", M_WAITOK,
 	    taskqueue_thread_enqueue, &mca_tq);
 	taskqueue_start_threads(&mca_tq, 1, PI_SWI(SWI_TQ), "mca taskq");
+
+	/* CMCIs during boot may have claimed items from the freelist. */
+	mca_fill_freelist();
 }
 SYSINIT(mca_createtq, SI_SUB_CONFIGURE, SI_ORDER_ANY, mca_createtq, NULL);
 
@@ -854,7 +857,7 @@ cmci_resume(int i)
 		return;
 
 	cc = &cmc_state[PCPU_GET(cpuid)][i];
-	cc->last_intr = -ticks;
+	cc->last_intr = 0;
 	ctl = rdmsr(MSR_MC_CTL2(i));
 	ctl &= ~MC_CTL2_THRESHOLD;
 	ctl |= MC_CTL2_CMCI_EN | 1;

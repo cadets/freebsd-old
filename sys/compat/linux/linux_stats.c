@@ -339,7 +339,9 @@ struct l_statfs {
 	l_long		f_ffree;
 	l_fsid_t	f_fsid;
 	l_long		f_namelen;
-	l_long		f_spare[6];
+	l_long		f_frsize;
+	l_long		f_flags;
+	l_long		f_spare[4];
 };
 
 #define	LINUX_CODA_SUPER_MAGIC	0x73757245L
@@ -407,6 +409,9 @@ bsd_to_linux_statfs(struct statfs *bsd_statfs, struct l_statfs *linux_statfs)
 	linux_statfs->f_fsid.val[0] = bsd_statfs->f_fsid.val[0];
 	linux_statfs->f_fsid.val[1] = bsd_statfs->f_fsid.val[1];
 	linux_statfs->f_namelen = MAXNAMLEN;
+	linux_statfs->f_frsize = bsd_statfs->f_bsize;
+	linux_statfs->f_flags = 0;
+	memset(linux_statfs->f_spare, 0, sizeof(linux_statfs->f_spare));
 
 	return (0);
 }
@@ -415,7 +420,7 @@ int
 linux_statfs(struct thread *td, struct linux_statfs_args *args)
 {
 	struct l_statfs linux_statfs;
-	struct statfs bsd_statfs;
+	struct statfs *bsd_statfs;
 	char *path;
 	int error;
 
@@ -425,12 +430,13 @@ linux_statfs(struct thread *td, struct linux_statfs_args *args)
 	if (ldebug(statfs))
 		printf(ARGS(statfs, "%s, *"), path);
 #endif
-	error = kern_statfs(td, path, UIO_SYSSPACE, &bsd_statfs);
+	bsd_statfs = malloc(sizeof(struct statfs), M_STATFS, M_WAITOK);
+	error = kern_statfs(td, path, UIO_SYSSPACE, bsd_statfs);
 	LFREEPATH(path);
-	if (error)
-		return (error);
-	error = bsd_to_linux_statfs(&bsd_statfs, &linux_statfs);
-	if (error)
+	if (error == 0)
+		error = bsd_to_linux_statfs(bsd_statfs, &linux_statfs);
+	free(bsd_statfs, M_STATFS);
+	if (error != 0)
 		return (error);
 	return (copyout(&linux_statfs, args->buf, sizeof(linux_statfs)));
 }
@@ -450,13 +456,16 @@ bsd_to_linux_statfs64(struct statfs *bsd_statfs, struct l_statfs64 *linux_statfs
 	linux_statfs->f_fsid.val[0] = bsd_statfs->f_fsid.val[0];
 	linux_statfs->f_fsid.val[1] = bsd_statfs->f_fsid.val[1];
 	linux_statfs->f_namelen = MAXNAMLEN;
+	linux_statfs->f_frsize = bsd_statfs->f_bsize;
+	linux_statfs->f_flags = 0;
+	memset(linux_statfs->f_spare, 0, sizeof(linux_statfs->f_spare));
 }
 
 int
 linux_statfs64(struct thread *td, struct linux_statfs64_args *args)
 {
 	struct l_statfs64 linux_statfs;
-	struct statfs bsd_statfs;
+	struct statfs *bsd_statfs;
 	char *path;
 	int error;
 
@@ -469,11 +478,14 @@ linux_statfs64(struct thread *td, struct linux_statfs64_args *args)
 	if (ldebug(statfs64))
 		printf(ARGS(statfs64, "%s, *"), path);
 #endif
-	error = kern_statfs(td, path, UIO_SYSSPACE, &bsd_statfs);
+	bsd_statfs = malloc(sizeof(struct statfs), M_STATFS, M_WAITOK);
+	error = kern_statfs(td, path, UIO_SYSSPACE, bsd_statfs);
 	LFREEPATH(path);
-	if (error)
+	if (error == 0)
+		bsd_to_linux_statfs64(bsd_statfs, &linux_statfs);
+	free(bsd_statfs, M_STATFS);
+	if (error != 0)
 		return (error);
-	bsd_to_linux_statfs64(&bsd_statfs, &linux_statfs);
 	return (copyout(&linux_statfs, args->buf, sizeof(linux_statfs)));
 }
 
@@ -481,7 +493,7 @@ int
 linux_fstatfs64(struct thread *td, struct linux_fstatfs64_args *args)
 {
 	struct l_statfs64 linux_statfs;
-	struct statfs bsd_statfs;
+	struct statfs *bsd_statfs;
 	int error;
 
 #ifdef DEBUG
@@ -491,10 +503,13 @@ linux_fstatfs64(struct thread *td, struct linux_fstatfs64_args *args)
 	if (args->bufsize != sizeof(struct l_statfs64))
 		return (EINVAL);
 
-	error = kern_fstatfs(td, args->fd, &bsd_statfs);
-	if (error)
-		return error;
-	bsd_to_linux_statfs64(&bsd_statfs, &linux_statfs);
+	bsd_statfs = malloc(sizeof(struct statfs), M_STATFS, M_WAITOK);
+	error = kern_fstatfs(td, args->fd, bsd_statfs);
+	if (error == 0)
+		bsd_to_linux_statfs64(bsd_statfs, &linux_statfs);
+	free(bsd_statfs, M_STATFS);
+	if (error != 0)
+		return (error);
 	return (copyout(&linux_statfs, args->buf, sizeof(linux_statfs)));
 }
 #endif /* __i386__ || (__amd64__ && COMPAT_LINUX32) */
@@ -503,18 +518,19 @@ int
 linux_fstatfs(struct thread *td, struct linux_fstatfs_args *args)
 {
 	struct l_statfs linux_statfs;
-	struct statfs bsd_statfs;
+	struct statfs *bsd_statfs;
 	int error;
 
 #ifdef DEBUG
 	if (ldebug(fstatfs))
 		printf(ARGS(fstatfs, "%d, *"), args->fd);
 #endif
-	error = kern_fstatfs(td, args->fd, &bsd_statfs);
-	if (error)
-		return (error);
-	error = bsd_to_linux_statfs(&bsd_statfs, &linux_statfs);
-	if (error)
+	bsd_statfs = malloc(sizeof(struct statfs), M_STATFS, M_WAITOK);
+	error = kern_fstatfs(td, args->fd, bsd_statfs);
+	if (error == 0)
+		error = bsd_to_linux_statfs(bsd_statfs, &linux_statfs);
+	free(bsd_statfs, M_STATFS);
+	if (error != 0)
 		return (error);
 	return (copyout(&linux_statfs, args->buf, sizeof(linux_statfs)));
 }

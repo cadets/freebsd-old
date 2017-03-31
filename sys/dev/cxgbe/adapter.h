@@ -84,45 +84,6 @@ prefetch(void *x)
 #define SBUF_DRAIN 1
 #endif
 
-#ifdef __amd64__
-/* XXX: need systemwide bus_space_read_8/bus_space_write_8 */
-static __inline uint64_t
-t4_bus_space_read_8(bus_space_tag_t tag, bus_space_handle_t handle,
-    bus_size_t offset)
-{
-	KASSERT(tag == X86_BUS_SPACE_MEM,
-	    ("%s: can only handle mem space", __func__));
-
-	return (*(volatile uint64_t *)(handle + offset));
-}
-
-static __inline void
-t4_bus_space_write_8(bus_space_tag_t tag, bus_space_handle_t bsh,
-    bus_size_t offset, uint64_t value)
-{
-	KASSERT(tag == X86_BUS_SPACE_MEM,
-	    ("%s: can only handle mem space", __func__));
-
-	*(volatile uint64_t *)(bsh + offset) = value;
-}
-#else
-static __inline uint64_t
-t4_bus_space_read_8(bus_space_tag_t tag, bus_space_handle_t handle,
-    bus_size_t offset)
-{
-	return (uint64_t)bus_space_read_4(tag, handle, offset) +
-	    ((uint64_t)bus_space_read_4(tag, handle, offset + 4) << 32);
-}
-
-static __inline void
-t4_bus_space_write_8(bus_space_tag_t tag, bus_space_handle_t bsh,
-    bus_size_t offset, uint64_t value)
-{
-	bus_space_write_4(tag, bsh, offset, value);
-	bus_space_write_4(tag, bsh, offset + 4, value >> 32);
-}
-#endif
-
 struct adapter;
 typedef struct adapter adapter_t;
 
@@ -231,6 +192,7 @@ struct vi_info {
 	int if_flags;
 
 	uint16_t *rss, *nm_rss;
+	int smt_idx;		/* for convenience */
 	uint16_t viid;
 	int16_t  xact_addr_filt;/* index of exact MAC address filter */
 	uint16_t rss_size;	/* size of VI's RSS table slice */
@@ -303,7 +265,6 @@ struct port_info {
 	uint8_t  tx_chan;
 	uint8_t  rx_chan_map;	/* rx MPS channel bitmap */
 
-	int linkdnrc;
 	struct link_config link_cfg;
 
 	struct timeval last_refreshed;
@@ -752,10 +713,20 @@ struct sge {
 	struct hw_buf_info hw_buf_info[SGE_FLBUF_SIZES];
 };
 
+struct devnames {
+	const char *nexus_name;
+	const char *ifnet_name;
+	const char *vi_ifnet_name;
+	const char *pf03_drv_name;
+	const char *vf_nexus_name;
+	const char *vf_ifnet_name;
+};
+
 struct adapter {
 	SLIST_ENTRY(adapter) link;
 	device_t dev;
 	struct cdev *cdev;
+	const struct devnames *names;
 
 	/* PCIe register resources */
 	int regs_rid;
@@ -821,7 +792,8 @@ struct adapter {
 
 	char fw_version[16];
 	char tp_version[16];
-	char exprom_version[16];
+	char er_version[16];
+	char bs_version[16];
 	char cfg_file[32];
 	u_int cfcsum;
 	struct adapter_params params;
@@ -834,7 +806,7 @@ struct adapter {
 	uint16_t niccaps;
 	uint16_t toecaps;
 	uint16_t rdmacaps;
-	uint16_t tlscaps;
+	uint16_t cryptocaps;
 	uint16_t iscsicaps;
 	uint16_t fcoecaps;
 
@@ -965,14 +937,25 @@ static inline uint64_t
 t4_read_reg64(struct adapter *sc, uint32_t reg)
 {
 
-	return t4_bus_space_read_8(sc->bt, sc->bh, reg);
+#ifdef __LP64__
+	return bus_space_read_8(sc->bt, sc->bh, reg);
+#else
+	return (uint64_t)bus_space_read_4(sc->bt, sc->bh, reg) +
+	    ((uint64_t)bus_space_read_4(sc->bt, sc->bh, reg + 4) << 32);
+
+#endif
 }
 
 static inline void
 t4_write_reg64(struct adapter *sc, uint32_t reg, uint64_t val)
 {
 
-	t4_bus_space_write_8(sc->bt, sc->bh, reg, val);
+#ifdef __LP64__
+	bus_space_write_8(sc->bt, sc->bh, reg, val);
+#else
+	bus_space_write_4(sc->bt, sc->bh, reg, val);
+	bus_space_write_4(sc->bt, sc->bh, reg + 4, val>> 32);
+#endif
 }
 
 static inline void
@@ -1039,10 +1022,24 @@ is_10G_port(const struct port_info *pi)
 }
 
 static inline bool
+is_25G_port(const struct port_info *pi)
+{
+
+	return ((pi->link_cfg.supported & FW_PORT_CAP_SPEED_25G) != 0);
+}
+
+static inline bool
 is_40G_port(const struct port_info *pi)
 {
 
 	return ((pi->link_cfg.supported & FW_PORT_CAP_SPEED_40G) != 0);
+}
+
+static inline bool
+is_100G_port(const struct port_info *pi)
+{
+
+	return ((pi->link_cfg.supported & FW_PORT_CAP_SPEED_100G) != 0);
 }
 
 static inline int
@@ -1053,6 +1050,8 @@ port_top_speed(const struct port_info *pi)
 		return (100);
 	if (pi->link_cfg.supported & FW_PORT_CAP_SPEED_40G)
 		return (40);
+	if (pi->link_cfg.supported & FW_PORT_CAP_SPEED_25G)
+		return (25);
 	if (pi->link_cfg.supported & FW_PORT_CAP_SPEED_10G)
 		return (10);
 	if (pi->link_cfg.supported & FW_PORT_CAP_SPEED_1G)
@@ -1098,8 +1097,9 @@ int t4_os_find_pci_capability(struct adapter *, int);
 int t4_os_pci_save_state(struct adapter *);
 int t4_os_pci_restore_state(struct adapter *);
 void t4_os_portmod_changed(const struct adapter *, int);
-void t4_os_link_changed(struct adapter *, int, int, int);
+void t4_os_link_changed(struct adapter *, int, int);
 void t4_iterate(void (*)(struct adapter *, void *), void *);
+void t4_init_devnames(struct adapter *);
 void t4_add_adapter(struct adapter *);
 int t4_detach_common(device_t);
 int t4_filter_rpl(struct sge_iq *, const struct rss_header *, struct mbuf *);

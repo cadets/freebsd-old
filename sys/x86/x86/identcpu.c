@@ -67,10 +67,6 @@ __FBSDID("$FreeBSD$");
 #include <x86/vmware.h>
 
 #ifdef __i386__
-#if !defined(CPU_DISABLE_SSE) && defined(I686_CPU)
-#define CPU_ENABLE_SSE
-#endif
-
 #define	IDENTBLUE_CYRIX486	0
 #define	IDENTBLUE_IBMCPU	1
 #define	IDENTBLUE_CYRIXM2	2
@@ -105,10 +101,8 @@ u_int	cpu_procinfo;		/* HyperThreading Info / Brand Index / CLFUSH */
 u_int	cpu_procinfo2;		/* Multicore info */
 char	cpu_vendor[20];		/* CPU Origin code */
 u_int	cpu_vendor_id;		/* CPU vendor ID */
-#if defined(__amd64__) || defined(CPU_ENABLE_SSE)
 u_int	cpu_fxsr;		/* SSE enabled */
 u_int	cpu_mxcsr_mask;		/* Valid bits in mxcsr */
-#endif
 u_int	cpu_clflush_line_size = 32;
 u_int	cpu_stdext_feature;
 u_int	cpu_stdext_feature2;
@@ -148,15 +142,15 @@ sysctl_hw_machine(SYSCTL_HANDLER_ARGS)
 	return (error);
 
 }
-SYSCTL_PROC(_hw, HW_MACHINE, machine, CTLTYPE_STRING | CTLFLAG_RD,
-    NULL, 0, sysctl_hw_machine, "A", "Machine class");
+SYSCTL_PROC(_hw, HW_MACHINE, machine, CTLTYPE_STRING | CTLFLAG_RD |
+    CTLFLAG_MPSAFE, NULL, 0, sysctl_hw_machine, "A", "Machine class");
 #else
 SYSCTL_STRING(_hw, HW_MACHINE, machine, CTLFLAG_RD,
     machine, 0, "Machine class");
 #endif
 
 static char cpu_model[128];
-SYSCTL_STRING(_hw, HW_MODEL, model, CTLFLAG_RD,
+SYSCTL_STRING(_hw, HW_MODEL, model, CTLFLAG_RD | CTLFLAG_MPSAFE,
     cpu_model, 0, "Machine model");
 
 static int hw_clockrate;
@@ -165,8 +159,8 @@ SYSCTL_INT(_hw, OID_AUTO, clockrate, CTLFLAG_RD,
 
 u_int hv_high;
 char hv_vendor[16];
-SYSCTL_STRING(_hw, OID_AUTO, hv_vendor, CTLFLAG_RD, hv_vendor, 0,
-    "Hypervisor vendor");
+SYSCTL_STRING(_hw, OID_AUTO, hv_vendor, CTLFLAG_RD | CTLFLAG_MPSAFE, hv_vendor,
+    0, "Hypervisor vendor");
 
 static eventhandler_tag tsc_post_tag;
 

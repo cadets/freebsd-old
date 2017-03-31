@@ -520,10 +520,11 @@ vop_stdlock(ap)
 	} */ *ap;
 {
 	struct vnode *vp = ap->a_vp;
+	struct mtx *ilk;
 
-	return (_lockmgr_args(vp->v_vnlock, ap->a_flags, VI_MTX(vp),
-	    LK_WMESG_DEFAULT, LK_PRIO_DEFAULT, LK_TIMO_DEFAULT, ap->a_file,
-	    ap->a_line));
+	ilk = VI_MTX(vp);
+	return (lockmgr_lock_fast_path(vp->v_vnlock, ap->a_flags,
+	    (ilk != NULL) ? &ilk->lock_object : NULL, ap->a_file, ap->a_line));
 }
 
 /* See above. */
@@ -535,8 +536,11 @@ vop_stdunlock(ap)
 	} */ *ap;
 {
 	struct vnode *vp = ap->a_vp;
+	struct mtx *ilk;
 
-	return (lockmgr(vp->v_vnlock, ap->a_flags | LK_RELEASE, VI_MTX(vp)));
+	ilk = VI_MTX(vp);
+	return (lockmgr_unlock_fast_path(vp->v_vnlock, ap->a_flags,
+	    (ilk != NULL) ? &ilk->lock_object : NULL));
 }
 
 /* See above. */
@@ -931,7 +935,8 @@ int
 vop_stdallocate(struct vop_allocate_args *ap)
 {
 #ifdef __notyet__
-	struct statfs sfs;
+	struct statfs *sfs;
+	off_t maxfilesize = 0;
 #endif
 	struct iovec aiov;
 	struct vattr vattr, *vap;
@@ -967,12 +972,16 @@ vop_stdallocate(struct vop_allocate_args *ap)
 	 * Check if the filesystem sets f_maxfilesize; if not use
 	 * VOP_SETATTR to perform the check.
 	 */
-	error = VFS_STATFS(vp->v_mount, &sfs, td);
+	sfs = malloc(sizeof(struct statfs), M_STATFS, M_WAITOK);
+	error = VFS_STATFS(vp->v_mount, sfs, td);
+	if (error == 0)
+		maxfilesize = sfs->f_maxfilesize;
+	free(sfs, M_STATFS);
 	if (error != 0)
 		goto out;
-	if (sfs.f_maxfilesize) {
-		if (offset > sfs.f_maxfilesize || len > sfs.f_maxfilesize ||
-		    offset + len > sfs.f_maxfilesize) {
+	if (maxfilesize) {
+		if (offset > maxfilesize || len > maxfilesize ||
+		    offset + len > maxfilesize) {
 			error = EFBIG;
 			goto out;
 		}
@@ -1091,10 +1100,10 @@ vop_stdadvise(struct vop_advise_args *ap)
 		if (vp->v_object != NULL) {
 			start = trunc_page(ap->a_start);
 			end = round_page(ap->a_end);
-			VM_OBJECT_WLOCK(vp->v_object);
+			VM_OBJECT_RLOCK(vp->v_object);
 			vm_object_page_noreuse(vp->v_object, OFF_TO_IDX(start),
 			    OFF_TO_IDX(end));
-			VM_OBJECT_WUNLOCK(vp->v_object);
+			VM_OBJECT_RUNLOCK(vp->v_object);
 		}
 
 		bo = &vp->v_bufobj;

@@ -398,7 +398,7 @@ lvt_mode(struct lapic *la, u_int pin, uint32_t value)
 		if (!lvt->lvt_edgetrigger && bootverbose) {
 			printf("lapic%u: Forcing LINT%u to edge trigger\n",
 			    la->la_id, pin);
-			value |= APIC_LVT_TM;
+			value &= ~APIC_LVT_TM;
 		}
 		/* Use a vector of 0. */
 		break;
@@ -478,8 +478,9 @@ native_lapic_init(vm_paddr_t addr)
 		lapic_et.et_quality = 600;
 		if (!arat) {
 			lapic_et.et_flags |= ET_FLAGS_C3STOP;
-			lapic_et.et_quality -= 200;
-		} else if ((cpu_feature & CPUID_TSC) != 0 &&
+			lapic_et.et_quality = 100;
+		}
+		if ((cpu_feature & CPUID_TSC) != 0 &&
 		    (cpu_feature2 & CPUID2_TSCDLT) != 0 &&
 		    tsc_is_invariant && tsc_freq != 0) {
 			lapic_timer_tsc_deadline = 1;

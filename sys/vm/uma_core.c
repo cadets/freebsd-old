@@ -64,6 +64,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bitset.h>
+#include <sys/eventhandler.h>
 #include <sys/kernel.h>
 #include <sys/types.h>
 #include <sys/queue.h>
@@ -845,8 +846,7 @@ static void
 keg_drain(uma_keg_t keg)
 {
 	struct slabhead freeslabs = { 0 };
-	uma_slab_t slab;
-	uma_slab_t n;
+	uma_slab_t slab, tmp;
 
 	/*
 	 * We don't want to take pages from statically allocated kegs at this
@@ -862,15 +862,10 @@ keg_drain(uma_keg_t keg)
 	if (keg->uk_free == 0)
 		goto finished;
 
-	slab = LIST_FIRST(&keg->uk_free_slab);
-	while (slab) {
-		n = LIST_NEXT(slab, us_link);
-
-		/* We have no where to free these to */
-		if (slab->us_flags & UMA_SLAB_BOOT) {
-			slab = n;
+	LIST_FOREACH_SAFE(slab, &keg->uk_free_slab, us_link, tmp) {
+		/* We have nowhere to free these to. */
+		if (slab->us_flags & UMA_SLAB_BOOT)
 			continue;
-		}
 
 		LIST_REMOVE(slab, us_link);
 		keg->uk_pages -= keg->uk_ppera;
@@ -880,8 +875,6 @@ keg_drain(uma_keg_t keg)
 			UMA_HASH_REMOVE(&keg->uk_hash, slab, slab->us_data);
 
 		SLIST_INSERT_HEAD(&freeslabs, slab, us_hlink);
-
-		slab = n;
 	}
 finished:
 	KEG_UNLOCK(keg);
@@ -3207,6 +3200,9 @@ uma_reclaim_worker(void *arg __unused)
 		    "umarcl", 0);
 		if (uma_reclaim_needed) {
 			uma_reclaim_needed = 0;
+			sx_xunlock(&uma_drain_lock);
+			EVENTHANDLER_INVOKE(vm_lowmem, VM_LOW_KMEM);
+			sx_xlock(&uma_drain_lock);
 			uma_reclaim_locked(true);
 		}
 	}

@@ -50,17 +50,18 @@ SUBDIR=	\
 	${_auxio} \
 	${_bce} \
 	bfe \
-	bhnd \
 	bge \
 	bhnd \
 	${_bxe} \
 	${_bios} \
 	${_bktr} \
 	${_bm} \
+	bnxt \
 	bridgestp \
 	bwi \
 	bwn \
 	bwn_pci \
+	${_bytgpio} \
 	cam \
 	${_canbepm} \
 	${_canbus} \
@@ -73,6 +74,7 @@ SUBDIR=	\
 	cd9660_iconv \
 	${_ce} \
 	${_cfi} \
+	${_chromebook_platform} \
 	${_ciss} \
 	cloudabi \
 	${_cloudabi32} \
@@ -163,6 +165,7 @@ SUBDIR=	\
 	${_igb} \
 	${_iir} \
 	imgact_binmisc \
+	${_intelspi} \
 	${_io} \
 	${_ioat} \
         ${_ipoib} \
@@ -174,6 +177,7 @@ SUBDIR=	\
 	ip6_mroute_mod \
 	ip_mroute_mod \
 	${_ips} \
+	${_ipsec} \
 	${_ipw} \
 	${_ipwfw} \
 	${_isci} \
@@ -327,6 +331,7 @@ SUBDIR=	\
 	scd \
 	${_scsi_low} \
 	sdhci \
+	${_sdhci_acpi} \
 	sdhci_pci \
 	sem \
 	send \
@@ -357,6 +362,7 @@ SUBDIR=	\
 	sysvipc \
 	${_ti} \
 	${_tcp_fastpath} \
+	${_tcpmd5} \
 	tests/framework \
 	tests/callout_test \
 	tl \
@@ -451,6 +457,10 @@ _toecore=	toecore
 _if_enc=	if_enc
 _if_gif=	if_gif
 _if_gre=	if_gre
+.if ${MK_IPSEC_SUPPORT} != "no"
+_ipsec=		ipsec
+_tcpmd5=	tcp/tcpmd5
+.endif
 .endif
 
 .if (${MK_INET_SUPPORT} != "no" && ${MK_INET6_SUPPORT} != "no") || \
@@ -542,6 +552,7 @@ _igb=		igb
 _agp=		agp
 _an=		an
 _aout=		aout
+_bios=		bios
 _bktr=		bktr
 _bxe=		bxe
 _cardbus=	cardbus
@@ -601,7 +612,9 @@ _amdsbwd=	amdsbwd
 _amdtemp=	amdtemp
 _arcmsr=	arcmsr
 _asmc=		asmc
+_bytgpio=	bytgpio
 _ciss=		ciss
+_chromebook_platform=	chromebook_platform
 _cmx=		cmx
 _coretemp=	coretemp
 .if ${MK_SOURCELESS_HOST} != "no"
@@ -617,6 +630,7 @@ _hyperv=	hyperv
 _ichwd=		ichwd
 _ida=		ida
 _iir=		iir
+_intelspi=	intelspi
 _ipmi=		ipmi
 _ips=		ips
 _isci=		isci
@@ -656,6 +670,7 @@ _padlock_rng=	padlock_rng
 _rdrand_rng=	rdrand_rng
 .endif
 _s3=		s3
+_sdhci_acpi=	sdhci_acpi
 _tpm=		tpm
 _twa=		twa
 _vesa=		vesa
@@ -723,7 +738,6 @@ _wds=		wds
 .if ${MK_EISA} != "no"
 _ahb=		ahb
 .endif
-_bios=		bios
 _cm=		cm
 .if ${MK_SOURCELESS_UCODE} != "no"
 _ctau=		ctau

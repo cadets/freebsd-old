@@ -68,6 +68,8 @@ __FBSDID("$FreeBSD$");
  * Priority comparison code by Harlan Stenn.
  */
 
+/* Maximum number of characters in time of last occurrence */
+#define	MAXDATELEN	16
 #define	MAXLINE		1024		/* maximum line length */
 #define	MAXSVLINE	MAXLINE		/* maximum saved line length */
 #define	DEFUPRI		(LOG_USER|LOG_NOTICE)
@@ -79,15 +81,15 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <sys/socket.h>
 #include <sys/queue.h>
+#include <sys/resource.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/syslimits.h>
+#include <sys/time.h>
 #include <sys/uio.h>
 #include <sys/un.h>
-#include <sys/time.h>
-#include <sys/resource.h>
-#include <sys/syslimits.h>
+#include <sys/wait.h>
 #include <sys/types.h>
 
 #include <netinet/in.h>
@@ -197,7 +199,7 @@ struct filed {
 		} f_pipe;
 	} f_un;
 	char	f_prevline[MAXSVLINE];		/* last message logged */
-	char	f_lasttime[16];			/* time of last occurrence */
+	char	f_lasttime[MAXDATELEN];		/* time of last occurrence */
 	char	f_prevhost[MAXHOSTNAMELEN];	/* host from which recd. */
 	int	f_prevpri;			/* pri of f_prevline */
 	int	f_prevlen;			/* length of f_prevline */
@@ -974,7 +976,7 @@ logmsg(int pri, const char *msg, const char *from, int flags)
 	 * Check to see if msg looks non-standard.
 	 */
 	msglen = strlen(msg);
-	if (msglen < 16 || msg[3] != ' ' || msg[6] != ' ' ||
+	if (msglen < MAXDATELEN || msg[3] != ' ' || msg[6] != ' ' ||
 	    msg[9] != ':' || msg[12] != ':' || msg[15] != ' ')
 		flags |= ADDDATE;
 
@@ -983,8 +985,8 @@ logmsg(int pri, const char *msg, const char *from, int flags)
 		timestamp = ctime(&now) + 4;
 	} else {
 		timestamp = msg;
-		msg += 16;
-		msglen -= 16;
+		msg += MAXDATELEN;
+		msglen -= MAXDATELEN;
 	}
 
 	/* skip leading blanks */
@@ -2276,7 +2278,7 @@ markit(void)
 
 /*
  * fork off and become a daemon, but wait for the child to come online
- * before returing to the parent, or we get disk thrashing at boot etc.
+ * before returning to the parent, or we get disk thrashing at boot etc.
  * Set a timer so we don't hang forever if it wedges.
  */
 static int
