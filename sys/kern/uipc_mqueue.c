@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 2005 David Xu <davidxu@freebsd.org>
- * Copyright (c) 2016 Robert N. M. Watson
+ * Copyright (c) 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * Portions of this software were developed by BAE Systems, the University of
