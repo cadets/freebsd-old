@@ -568,6 +568,33 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 	 */
 	switch(ar->ar_event) {
 	case AUE_ACCEPT:
+		if (ARG_IS_VALID(kar, ARG_FD)) {
+			tok = au_to_arg32(1, "fd", ar->ar_arg_fd);
+			kau_write(rec, tok);
+		}
+		if (ARG_IS_VALID(kar, ARG_SADDRINET)) {
+			tok = au_to_sock_inet((struct sockaddr_in *)
+			    &ar->ar_arg_sockaddr);
+			kau_write(rec, tok);
+		}
+		if (ARG_IS_VALID(kar, ARG_SADDRUNIX)) {
+			tok = au_to_sock_unix((struct sockaddr_un *)
+			    &ar->ar_arg_sockaddr);
+			kau_write(rec, tok);
+			UPATH1_TOKENS;
+		}
+		if (ARG_IS_VALID(kar, ARG_OBJUUID1)) {
+			tok = au_to_arg_uuid(1, "listen_socket",
+			    &ar->ar_arg_objuuid1);
+			kau_write(rec, tok);
+		}
+		if (RET_IS_VALID(kar, RET_OBJUUID1)) {
+			tok = au_to_return_uuid(1, "accept_socket",
+			    &ar->ar_ret_objuuid1);
+			kau_write(rec, tok);
+		}
+		break;
+
 	case AUE_BIND:
 	case AUE_LISTEN:
 	case AUE_CONNECT:
@@ -603,6 +630,26 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		}
 		break;
 
+	case AUE_BINDAT:
+	case AUE_CONNECTAT:
+		ATFD1_TOKENS(1);
+		if (ARG_IS_VALID(kar, ARG_FD)) {
+			tok = au_to_arg32(2, "fd", ar->ar_arg_fd);
+			kau_write(rec, tok);
+		}
+		if (ARG_IS_VALID(kar, ARG_SADDRUNIX)) {
+			tok = au_to_sock_unix((struct sockaddr_un *)
+			    &ar->ar_arg_sockaddr);
+			kau_write(rec, tok);
+			UPATH1_TOKENS;
+		}
+		if (ARG_IS_VALID(kar, ARG_OBJUUID2)) {
+			tok = au_to_arg_uuid(2, "socket",
+			    &ar->ar_arg_objuuid2);
+			kau_write(rec, tok);
+		}
+		break;
+
 	case AUE_SENDFILE:
 		FD_VNODE1_TOKENS;
 		if (ARG_IS_VALID(kar, ARG_SADDRINET)) {
@@ -620,26 +667,6 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 		if (ARG_IS_VALID(kar, ARG_OBJUUID2)) {
 			tok = au_to_arg_uuid(2, "socket",
 			    &ar->ar_arg_objuuid1);
-			kau_write(rec, tok);
-		}
-		break;
-
-	case AUE_BINDAT:
-	case AUE_CONNECTAT:
-		ATFD1_TOKENS(1);
-		if (ARG_IS_VALID(kar, ARG_FD)) {
-			tok = au_to_arg32(2, "fd", ar->ar_arg_fd);
-			kau_write(rec, tok);
-		}
-		if (ARG_IS_VALID(kar, ARG_SADDRUNIX)) {
-			tok = au_to_sock_unix((struct sockaddr_un *)
-			    &ar->ar_arg_sockaddr);
-			kau_write(rec, tok);
-			UPATH1_TOKENS;
-		}
-		if (ARG_IS_VALID(kar, ARG_OBJUUID2)) {
-			tok = au_to_arg_uuid(2, "socket",
-			    &ar->ar_arg_objuuid2);
 			kau_write(rec, tok);
 		}
 		break;
