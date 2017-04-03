@@ -198,8 +198,8 @@ sys_metaio_mmap(struct thread *td, struct metaio_mmap_args *uap)
 	int error;
 
 	metaio_init(td, &mio);
-	error = kern_mmap((vm_offset_t)uap->addr, uap->len, uap->prot,
-	    uap->flags, uap->fd, uap->pos, td, &mio);
+	error = kern_mmap(td, (uintptr_t)uap->addr, uap->len, uap->prot,
+	    uap->flags, uap->fd, uap->pos, &mio);
 	if (error == 0)
 		error = copyout(&mio, uap->miop, sizeof(mio));
 	return (error);
