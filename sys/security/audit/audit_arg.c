@@ -937,6 +937,7 @@ audit_arg_vnode1(struct vnode *vp)
 		return;
 
 	ARG_CLEAR_VALID(ar, ARG_VNODE1);
+	ARG_CLEAR_VALID(ar, ARG_OBJUUID1);
 	error = audit_arg_vnode(vp, &ar->k_ar.ar_arg_vnode1,
 	    &ar->k_ar.ar_arg_objuuid1);
 	if (error == 0) {
@@ -956,6 +957,7 @@ audit_arg_vnode2(struct vnode *vp)
 		return;
 
 	ARG_CLEAR_VALID(ar, ARG_VNODE2);
+	ARG_CLEAR_VALID(ar, ARG_OBJUUID2);
 	error = audit_arg_vnode(vp, &ar->k_ar.ar_arg_vnode2,
 	    &ar->k_ar.ar_arg_objuuid2);
 	if (error == 0) {
