@@ -140,6 +140,10 @@ OBJS+=	${PROG}.o
 BCOBJS+=${PROG}.bco
 LLOBJS+=${PROG}.llo
 
+.if defined(INSTRUMENT_EVERYTHING) && !defined(BOOTSTRAPPING)
+${PROG_FULL}: ${PROG_INSTR}
+	${CP} ${PROG_INSTR} ${PROG_FULL}
+.else	# !defined(INSTRUMENT_EVERYTHING) || defined(BOOTSTRAPPING)
 .if target(beforelinking)
 beforelinking: ${OBJS}
 ${PROG_FULL}: beforelinking
@@ -155,6 +159,7 @@ ${PROG_FULL}: ${OBJS}
 .if ${MK_CTF} != "no"
 	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${OBJS}
 .endif
+.endif	# !defined(INSTRUMENT_EVERYTHING) || defined(BOOTSTRAPPING)
 .endif # !target(${PROG})
 
 .endif # !defined(SRCS)
