@@ -99,14 +99,28 @@ LLOBJS+=${SRCS:N*.[hsS]:N*.asm:${OBJS_SRCS_FILTER:ts:}:S/$/.llo/g}
 # empty string with '.o' tacked on the end, so explicitly filter out '.o'.
 NON_IR_OBJS=${SRCS:N*.c*:N*.h:R:S/$/.o/g:S/^.o$//}
 
+# LLVM bitcode / textual IR representations of the program
+BCOBJS+=${SRCS:N*.h:N*.s:N*.S:N*.asm:R:S/$/.bco/g}
+LLOBJS+=${SRCS:N*.h:N*.s:N*.S:N*.asm:R:S/$/.llo/g}
+
+# Object files that can't be built via LLVM IR, currently defined by
+# excluding .c* files from SRCS. This substitution can result in an
+# empty string with '.o' tacked on the end, so explicitly filter out '.o'.
+NON_IR_OBJS=${SRCS:N*.c*:N*.h:R:S/$/.o/g:S/^.o$//}
+
 .if target(beforelinking)
 beforelinking: ${OBJS}
 ${PROG_FULL}: beforelinking
 .endif
+
 .if defined(INSTRUMENT_EVERYTHING) && !defined(BOOTSTRAPPING)
 ${PROG_FULL}: ${PROG_INSTR}
 	${CP} ${PROG_INSTR} ${PROG_FULL}
 .else	# !defined(INSTRUMENT_EVERYTHING) || defined(BOOTSTRAPPING)
+.if target(beforelinking)
+beforelinking: ${OBJS}
+${PROG_FULL}: beforelinking
+.endif
 ${PROG_FULL}: ${OBJS}
 .if defined(PROG_CXX)
 	${CXX:N${CCACHE_BIN}} ${CXXFLAGS:N-M*} ${LDFLAGS} -o ${.TARGET} \
