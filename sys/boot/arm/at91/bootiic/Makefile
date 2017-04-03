@@ -1,5 +1,7 @@
 #  $FreeBSD$
 
+MK_INSTRUMENT_BINARIES=	no
+
 .PATH:	${.CURDIR}/../libat91
 
 P=bootiic

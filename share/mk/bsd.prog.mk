@@ -105,10 +105,10 @@ LLOBJS+=${SRCS:N*.h:N*.s:N*.S:N*.asm:R:S/$/.llo/g}
 # empty string with '.o' tacked on the end, so explicitly filter out '.o'.
 NON_IR_OBJS+=${SRCS:N*.c*:N*.h:R:S/$/.o/g:S/^.o$//}
 
-.if defined(INSTRUMENT_EVERYTHING) && !defined(BOOTSTRAPPING)
+.if ${MK_INSTRUMENT_BINARIES} == "yes" && !defined(BOOTSTRAPPING)
 ${PROG_FULL}: ${PROG_INSTR}
 	${CP} ${PROG_INSTR} ${PROG_FULL}
-.else	# !defined(INSTRUMENT_EVERYTHING) || defined(BOOTSTRAPPING)
+.else	# ${MK_INSTRUMENT_BINARIES} == "no" || defined(BOOTSTRAPPING)
 .if target(beforelinking)
 beforelinking: ${OBJS}
 ${PROG_FULL}: beforelinking
@@ -121,7 +121,7 @@ ${PROG_FULL}: ${OBJS}
 	${CC:N${CCACHE_BIN}} ${CFLAGS:N-M*} ${LDFLAGS} -o ${.TARGET} ${OBJS} \
 	    ${LDADD}
 .endif
-.endif
+.endif	# ${MK_INSTRUMENT_BINARIES} == "no" || defined(BOOTSTRAPPING)
 .if ${MK_CTF} != "no"
 	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${OBJS}
 .endif

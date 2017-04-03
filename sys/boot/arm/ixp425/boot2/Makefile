@@ -1,6 +1,7 @@
 #  $FreeBSD$
 
 .include <src.opts.mk>
+MK_INSTRUMENT_BINARIES=	no
 
 # We get a lot of the std lib functions from here.
 .PATH: ${.CURDIR}/../../at91/libat91

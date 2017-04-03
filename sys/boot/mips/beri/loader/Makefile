@@ -30,6 +30,7 @@
 # $FreeBSD$
 
 .include <src.opts.mk>
+MK_INSTRUMENT_BINARIES=	no
 MK_SSP=		no
 MAN=
 

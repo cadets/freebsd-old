@@ -2,6 +2,7 @@
 
 # Pick up ../Makefile.inc early.
 .include <bsd.init.mk>
+MK_INSTRUMENT_BINARIES=	no
 
 PROG=	${LDR}
 INTERNALPROG=

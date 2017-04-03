@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+MK_INSTRUMENT_BINARIES=	no
+
 MAN+=	beastie.4th.8 \
 	brand.4th.8 \
 	check-password.4th.8 \

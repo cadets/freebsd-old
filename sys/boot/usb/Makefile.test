@@ -29,6 +29,8 @@
 # USB test application
 #
 
+MK_INSTRUMENT_BINARIES=	no
+
 .PATH: ${.CURDIR}
 
 PROG=	usbloader

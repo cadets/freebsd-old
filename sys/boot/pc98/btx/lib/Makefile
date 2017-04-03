@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+MK_INSTRUMENT_BINARIES=	no
+
 PROG=	crt0.o
 INTERNALPROG=
 MAN=

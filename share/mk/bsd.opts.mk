@@ -70,6 +70,7 @@ __DEFAULT_NO_OPTIONS = \
     CCACHE_BUILD \
     CTF \
     INSTALL_AS_USER \
+    INSTRUMENT_BINARIES \
     STALE_STAGED
 
 # meta mode related

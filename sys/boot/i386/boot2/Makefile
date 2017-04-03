@@ -1,6 +1,7 @@
 # $FreeBSD$
 
 .include <bsd.own.mk>
+MK_INSTRUMENT_BINARIES=	no
 
 FILES=		boot boot1 boot2
 

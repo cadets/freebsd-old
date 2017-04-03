@@ -1,6 +1,7 @@
 #  $FreeBSD$
 
 .include <src.opts.mk>
+MK_INSTRUMENT_BINARIES=	no
 
 .PATH:	${.CURDIR}/../libat91
 

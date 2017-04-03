@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+MK_INSTRUMENT_BINARIES=	no
+
 FILES=	${BOOT}
 CLEANFILES= ${BOOT} ${BOOT}.part
 
