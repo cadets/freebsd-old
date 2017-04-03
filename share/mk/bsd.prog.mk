@@ -99,14 +99,14 @@ LLOBJS+=${SRCS:N*.h:N*.s:N*.S:N*.asm:R:S/$/.llo/g}
 # empty string with '.o' tacked on the end, so explicitly filter out '.o'.
 NON_IR_OBJS=${SRCS:N*.c*:N*.h:R:S/$/.o/g:S/^.o$//}
 
-.if target(beforelinking)
-beforelinking: ${OBJS}
-${PROG_FULL}: beforelinking
-.endif
 .if defined(INSTRUMENT_EVERYTHING) && !defined(BOOTSTRAPPING)
 ${PROG_FULL}: ${PROG_INSTR}
 	${CP} ${PROG_INSTR} ${PROG_FULL}
 .else	# !defined(INSTRUMENT_EVERYTHING) || defined(BOOTSTRAPPING)
+.if target(beforelinking)
+beforelinking: ${OBJS}
+${PROG_FULL}: beforelinking
+.endif
 ${PROG_FULL}: ${OBJS}
 .if defined(PROG_CXX)
 	${CXX:N${CCACHE_BIN}} ${CXXFLAGS:N-M*} ${LDFLAGS} -o ${.TARGET} \
