@@ -2,6 +2,8 @@
 # $FreeBSD$
 
 .include <src.opts.mk>
+# TODO: investigate why this fails to build (segfault in llvm-prov)
+MK_INSTRUMENT_BINARIES=	no
 
 PACKAGE=runtime
 PROG=	route
