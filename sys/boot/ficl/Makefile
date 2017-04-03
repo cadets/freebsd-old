@@ -1,6 +1,8 @@
 # $FreeBSD$
 #
 
+MK_INSTRUMENT_BINARIES=	no
+
 FICLDIR?=	${.CURDIR}
 
 .if defined(FICL32)

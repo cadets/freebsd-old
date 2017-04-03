@@ -4,6 +4,7 @@
 MAN=
 
 .include <bsd.own.mk>
+MK_INSTRUMENT_BINARIES=	no
 MK_SSP=		no
 
 PROG=		test

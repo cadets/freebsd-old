@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+MK_INSTRUMENT_BINARIES=	no
+
 .PATH:		${.CURDIR}/../boot2 ${.CURDIR}/../common ${.CURDIR}/../../common
 
 FILES=		zfsboot

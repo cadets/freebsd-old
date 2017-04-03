@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+MK_INSTRUMENT_BINARIES=	no
+
 SSP_CFLAGS=
 
 PROG=           boot1.elf

@@ -29,6 +29,8 @@
 #
 # $FreeBSD$
 
+MK_INSTRUMENT_BINARIES=	no
+
 BINDIR?=	/boot
 INSTALLFLAGS=	-b
 

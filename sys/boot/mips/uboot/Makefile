@@ -2,6 +2,8 @@
 
 .include <src.opts.mk>
 
+MK_INSTRUMENT_BINARIES=	no
+
 FILES=		ubldr
 
 NEWVERSWHAT=	"U-Boot loader" ${MACHINE_ARCH}
