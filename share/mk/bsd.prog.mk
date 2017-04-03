@@ -83,6 +83,12 @@ PROG_FULL=	${PROG}
 PROG_INSTR=${PROG_FULL}.instrumented
 PROG_INSTR_IR=${PROG_INSTR}.${LLVM_IR_TYPE}
 
+# Set EXPLICIT_OBJS to any OBJS that were set in the program's Makefile,
+# before anything derived from SRCS is added. Ensure that OBJS has been
+# defined to something to make the expansion reliable.
+OBJS?=
+EXPLICIT_OBJS:=${OBJS}
+
 .if defined(PROG)
 PROGNAME?=	${PROG}
 
@@ -106,7 +112,7 @@ LLOBJS+=${SRCS:N*.h:N*.s:N*.S:N*.asm:R:S/$/.llo/g}
 # Object files that can't be built via LLVM IR, currently defined by
 # excluding .c* files from SRCS. This substitution can result in an
 # empty string with '.o' tacked on the end, so explicitly filter out '.o'.
-NON_IR_OBJS=${SRCS:N*.c*:N*.h:R:S/$/.o/g:S/^.o$//}
+NON_IR_OBJS+=${SRCS:N*.c*:N*.h:R:S/$/.o/g:S/^.o$//}
 
 .if target(beforelinking)
 beforelinking: ${OBJS}
@@ -207,13 +213,13 @@ ${PROG_INSTR}.bc: ${PROG_FULL}.bc
 ${PROG_INSTR}.ll: ${PROG_FULL}.ll
 	${OPT} -S ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${PROG_FULL}.ll
 
-${PROG_INSTR}: ${PROG_INSTR_IR} ${NON_IR_OBJS}
+${PROG_INSTR}: ${PROG_INSTR_IR} ${EXPLICIT_OBJS} ${NON_IR_OBJS}
 .if defined(PROG_CXX)
 	${CXX:N${CCACHE_BIN}} ${OPT_CXXFLAGS} ${LDFLAGS} -o ${.TARGET} \
-	    ${PROG_INSTR_IR} ${NON_IR_OBJS} ${LDADD} ${LLVM_INSTR_LDADD}
+	    ${PROG_INSTR_IR} ${EXPLICIT_OBJS} ${NON_IR_OBJS} ${LDADD} ${LLVM_INSTR_LDADD}
 .else
 	${CC:N${CCACHE_BIN}} ${OPT_CFLAGS} ${LDFLAGS} -o ${.TARGET} \
-	    ${PROG_INSTR_IR} ${NON_IR_OBJS} ${LDADD} ${LLVM_INSTR_LDADD}
+	    ${PROG_INSTR_IR} ${EXPLICIT_OBJS} ${NON_IR_OBJS} ${LDADD} ${LLVM_INSTR_LDADD}
 .endif
 
 CLEANFILES+=	${PROG_FULL}.bc ${PROG_FULL}.ll \
