@@ -90,6 +90,15 @@ PROGNAME?=	${PROG}
 
 OBJS+=  ${SRCS:N*.h:R:S/$/.o/g}
 
+# LLVM bitcode / textual IR representations of the program
+BCOBJS+=${SRCS:N*.h:N*.s:N*.S:N*.asm:R:S/$/.bco/g}
+LLOBJS+=${SRCS:N*.h:N*.s:N*.S:N*.asm:R:S/$/.llo/g}
+
+# Object files that can't be built via LLVM IR, currently defined by
+# excluding .c* files from SRCS. This substitution can result in an
+# empty string with '.o' tacked on the end, so explicitly filter out '.o'.
+NON_IR_OBJS=${SRCS:N*.c*:N*.h:R:S/$/.o/g:S/^.o$//}
+
 .if target(beforelinking)
 beforelinking: ${OBJS}
 ${PROG_FULL}: beforelinking
@@ -122,6 +131,10 @@ SRCS=	${PROG}.c
 # - it's useful to keep objects around for crunching.
 OBJS+=	${PROG}.o
 
+# LLVM bitcode / textual IR representations of the program
+BCOBJS+=${PROG}.bco
+LLOBJS+=${PROG}.llo
+
 .if target(beforelinking)
 beforelinking: ${OBJS}
 ${PROG_FULL}: beforelinking
@@ -151,9 +164,6 @@ ${PROGNAME}.debug: ${PROG_FULL}
 .endif
 
 .if defined(LLVM_LINK)
-# LLVM bitcode / textual IR representations of the program
-BCOBJS=	${OBJS:.o=.bco}
-LLOBJS=	${OBJS:.o=.llo}
 
 ${PROG_FULL}.bc: ${BCOBJS}
 	${LLVM_LINK} -o ${.TARGET} ${BCOBJS}
@@ -167,13 +177,13 @@ ${PROG_INSTR}.bc: ${PROG_FULL}.bc
 ${PROG_INSTR}.ll: ${PROG_FULL}.ll
 	${OPT} -S ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${PROG_FULL}.ll
 
-${PROG_INSTR}: ${PROG_INSTR_IR}
+${PROG_INSTR}: ${PROG_INSTR_IR} ${NON_IR_OBJS}
 .if defined(PROG_CXX)
 	${CXX:N${CCACHE_BIN}} ${OPT_CXXFLAGS} ${LDFLAGS} -o ${.TARGET} \
-	    ${PROG_INSTR_IR} ${LDADD} ${LLVM_INSTR_LDADD}
+	    ${PROG_INSTR_IR} ${NON_IR_OBJS} ${LDADD} ${LLVM_INSTR_LDADD}
 .else
 	${CC:N${CCACHE_BIN}} ${OPT_CFLAGS} ${LDFLAGS} -o ${.TARGET} \
-	    ${PROG_INSTR_IR} ${LDADD} ${LLVM_INSTR_LDADD}
+	    ${PROG_INSTR_IR} ${NON_IR_OBJS} ${LDADD} ${LLVM_INSTR_LDADD}
 .endif
 
 .endif # defined(LLVM_LINK)
