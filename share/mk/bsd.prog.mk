@@ -171,18 +171,10 @@ ${PROGNAME}.debug: ${PROG_FULL}
 .if defined(LLVM_LINK)
 
 ${PROG_FULL}.bc: ${BCOBJS}
-.if defined(PROG_CXX)
 	${LLVM_LINK} -o ${.TARGET} ${BCOBJS}
-.else
-	${LLVM_LINK} -o ${.TARGET} ${BCOBJS}
-.endif
 
 ${PROG_FULL}.ll: ${LLOBJS}
-.if defined(PROG_CXX)
 	${LLVM_LINK} -S -o ${.TARGET} ${LLOBJS}
-.else
-	${LLVM_LINK} -S -o ${.TARGET} ${LLOBJS}
-.endif
 
 ${PROG_INSTR}.bc: ${PROG_FULL}.bc
 	${OPT} ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${PROG_FULL}.bc
