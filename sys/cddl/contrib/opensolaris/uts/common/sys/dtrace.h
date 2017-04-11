@@ -319,7 +319,24 @@ typedef enum dtrace_probespec {
 #define	DIF_SUBR_RANDOM			55
 #define	DIF_SUBR_UUIDTOSTR		56
 
-#define	DIF_SUBR_MAX			56	/* max subroutine value */
+#define	DIF_SUBR_MAX			56	/* max common subroutine value */
+
+/*
+ * DT_ACT (action) routines are placed directly after the base
+ * subroutines.  Leave space up to 200 for these.
+ */
+
+/* Leave space for Apple/xnu specific routines from 200-299 */
+
+/* FreeBSD specific subroutines */
+
+#define DIF_SUBR_FBSD_MIN		300
+#define DIF_SUBR_COPYOUTMBUF		300
+#define DIF_SUBR_FBSD_MAX		300
+
+#define VALID_SUBR(x) \
+	(((x >= 0) && (x <= DIF_SUBR_MAX)) || \
+	((x >= DIF_SUBR_FBSD_MIN) && (x <= DIF_SUBR_FBSD_MAX)))
 
 typedef uint32_t dif_instr_t;
 

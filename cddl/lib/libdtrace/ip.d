@@ -222,6 +222,23 @@ translator csinfo_t < struct inpcb *p > {
 };
 
 #pragma D binding "1.5" translator
+translator ipinfo_t < struct mbuf *p > {
+	ip_ver =	p == NULL ? 0 : ((struct ip *)p->m_data)->ip_v;
+	ip_plength =	p == NULL ? 0 :
+	    ((struct ip *)p)->ip_v == 4 ?
+	    ntohs(((struct ip *)p)->ip_len) - (((struct ip *)p)->ip_hl << 2):
+	    ntohs(((struct ip6_hdr *)p)->ip6_ctlun.ip6_un1.ip6_un1_plen);
+	ip_saddr =	p == NULL ? 0 :
+	    ((struct ip *)p)->ip_v == 4 ?
+	    inet_ntoa(&((struct ip *)p)->ip_src.s_addr) :
+	    inet_ntoa6(&((struct ip6_hdr *)p)->ip6_src);
+	ip_daddr =	p == NULL ? 0 :
+	    ((struct ip *)p)->ip_v == 4 ?
+	    inet_ntoa(&((struct ip *)p)->ip_dst.s_addr) :
+	    inet_ntoa6(&((struct ip6_hdr *)p)->ip6_dst);
+};
+
+#pragma D binding "1.5" translator
 translator ipinfo_t < uint8_t *p > {
 	ip_ver =	p == NULL ? 0 : ((struct ip *)p)->ip_v;
 	ip_plength =	p == NULL ? 0 :
