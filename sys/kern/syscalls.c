@@ -594,4 +594,5 @@ const char *syscallnames[] = {
 	"metaio_sendmsg",			/* 585 = metaio_sendmsg */
 	"metaio_recvmsg",			/* 586 = metaio_recvmsg */
 	"metaio_sendfile",			/* 587 = metaio_sendfile */
+	"dt_probe",			/* 588 = dt_probe */
 };

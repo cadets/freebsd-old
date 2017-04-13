@@ -83,7 +83,9 @@ __FBSDID("$FreeBSD$");
 #ifdef KTRACE
 #include <sys/ktrace.h>
 #endif
-
+#ifdef KDTRACE_HOOKS
+#include <sys/sdt.h>
+#endif /* KDTRACE_HOOKS */
 #include <security/audit/audit.h>
 
 /*
@@ -2107,3 +2109,21 @@ sys_fgetuuid(struct thread *td, struct fgetuuid_args *uap)
 		error = copyout(&uuid, uap->uuidp, sizeof(uuid));
 	return (error);
 }
+
+
+#ifdef KDTRACE_HOOKS
+SDT_PROBE_DEFINE6(sdt, , , dt__probe, "uintptr_t", "uintptr_t", "uintptr_t", "uintptr_t", \
+		    "uintptr_t", "uintptr_t");
+/*
+ * Call a known DTrace sdt:::probe from user space via a sytem call.
+ */
+int
+sys_dt_probe(struct thread* td, struct dt_probe_args *uap)
+{
+
+	SDT_PROBE6(sdt, , , dt__probe, uap->arg0, uap->arg1, uap->arg2, uap->arg3,
+	    uap->arg4, uap->arg5);
+
+	return(0);
+}
+#endif /* KDTRACE_HOOKS */

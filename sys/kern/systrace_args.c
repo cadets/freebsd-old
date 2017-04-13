@@ -3483,6 +3483,18 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 8;
 		break;
 	}
+	/* dt_probe */
+	case 588: {
+		struct dt_probe_args *p = params;
+		uarg[0] = p->arg0; /* uintptr_t */
+		uarg[1] = p->arg1; /* uintptr_t */
+		uarg[2] = p->arg2; /* uintptr_t */
+		uarg[3] = p->arg3; /* uintptr_t */
+		uarg[4] = p->arg4; /* uintptr_t */
+		uarg[5] = p->arg5; /* uintptr_t */
+		*n_args = 6;
+		break;
+	}
 	default:
 		*n_args = 0;
 		break;
@@ -9347,6 +9359,31 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
+	/* dt_probe */
+	case 588:
+		switch(ndx) {
+		case 0:
+			p = "uintptr_t";
+			break;
+		case 1:
+			p = "uintptr_t";
+			break;
+		case 2:
+			p = "uintptr_t";
+			break;
+		case 3:
+			p = "uintptr_t";
+			break;
+		case 4:
+			p = "uintptr_t";
+			break;
+		case 5:
+			p = "uintptr_t";
+			break;
+		default:
+			break;
+		};
+		break;
 	default:
 		break;
 	};
@@ -11327,6 +11364,11 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 	case 587:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
+		break;
+	/* dt_probe */
+	case 588:
+		if (ndx == 0 || ndx == 1)
+			p = "void";
 		break;
 	default:
 		break;

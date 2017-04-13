@@ -1903,6 +1903,14 @@ struct metaio_sendfile_args {
 	char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
 	char miop_l_[PADL_(struct metaio *)]; struct metaio * miop; char miop_r_[PADR_(struct metaio *)];
 };
+struct dt_probe_args {
+	char arg0_l_[PADL_(uintptr_t)]; uintptr_t arg0; char arg0_r_[PADR_(uintptr_t)];
+	char arg1_l_[PADL_(uintptr_t)]; uintptr_t arg1; char arg1_r_[PADR_(uintptr_t)];
+	char arg2_l_[PADL_(uintptr_t)]; uintptr_t arg2; char arg2_r_[PADR_(uintptr_t)];
+	char arg3_l_[PADL_(uintptr_t)]; uintptr_t arg3; char arg3_r_[PADR_(uintptr_t)];
+	char arg4_l_[PADL_(uintptr_t)]; uintptr_t arg4; char arg4_r_[PADR_(uintptr_t)];
+	char arg5_l_[PADL_(uintptr_t)]; uintptr_t arg5; char arg5_r_[PADR_(uintptr_t)];
+};
 int	nosys(struct thread *, struct nosys_args *);
 void	sys_sys_exit(struct thread *, struct sys_exit_args *);
 int	sys_fork(struct thread *, struct fork_args *);
@@ -2304,6 +2312,7 @@ int	sys_metaio_recvfrom(struct thread *, struct metaio_recvfrom_args *);
 int	sys_metaio_sendmsg(struct thread *, struct metaio_sendmsg_args *);
 int	sys_metaio_recvmsg(struct thread *, struct metaio_recvmsg_args *);
 int	sys_metaio_sendfile(struct thread *, struct metaio_sendfile_args *);
+int	sys_dt_probe(struct thread *, struct dt_probe_args *);
 
 #ifdef COMPAT_43
 
@@ -3227,6 +3236,7 @@ int	freebsd11_mknodat(struct thread *, struct freebsd11_mknodat_args *);
 #define	SYS_AUE_metaio_sendmsg	AUE_SENDMSG
 #define	SYS_AUE_metaio_recvmsg	AUE_RECVMSG
 #define	SYS_AUE_metaio_sendfile	AUE_SENDFILE
+#define	SYS_AUE_dt_probe	AUE_DTPROBE
 
 #undef PAD_
 #undef PADL_

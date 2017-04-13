@@ -520,4 +520,5 @@
 #define	SYS_metaio_sendmsg	585
 #define	SYS_metaio_recvmsg	586
 #define	SYS_metaio_sendfile	587
-#define	SYS_MAXSYSCALL	588
+#define	SYS_dt_probe	588
+#define	SYS_MAXSYSCALL	589

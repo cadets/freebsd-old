@@ -637,4 +637,5 @@ struct sysent sysent[] = {
 	{ AS(metaio_sendmsg_args), (sy_call_t *)sys_metaio_sendmsg, AUE_SENDMSG, NULL, 0, 0, SYF_CAPENABLED, SY_THR_STATIC },	/* 585 = metaio_sendmsg */
 	{ AS(metaio_recvmsg_args), (sy_call_t *)sys_metaio_recvmsg, AUE_RECVMSG, NULL, 0, 0, SYF_CAPENABLED, SY_THR_STATIC },	/* 586 = metaio_recvmsg */
 	{ AS(metaio_sendfile_args), (sy_call_t *)sys_metaio_sendfile, AUE_SENDFILE, NULL, 0, 0, SYF_CAPENABLED, SY_THR_STATIC },	/* 587 = metaio_sendfile */
+	{ AS(dt_probe_args), (sy_call_t *)sys_dt_probe, AUE_DTPROBE, NULL, 0, 0, 0, SY_THR_STATIC },	/* 588 = dt_probe */
 };
