@@ -391,6 +391,7 @@ FBSD_1.3 {
 FBSD_1.4 {
 	fgetuuid;
 	futimens;
+	dt_probe;
 	getuuid;
 	lgetuuid;
 	metaio_mmap;
