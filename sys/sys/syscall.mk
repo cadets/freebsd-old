@@ -413,4 +413,5 @@ MIASM =  \
 	metaio_recvfrom.o \
 	metaio_sendmsg.o \
 	metaio_recvmsg.o \
-	metaio_sendfile.o
+	metaio_sendfile.o \
+	dt_probe.o
