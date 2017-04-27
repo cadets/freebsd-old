@@ -225,7 +225,7 @@ systrace_probe(struct syscall_args *sa, enum systrace_probe_t type, int retval)
 	}
 
 	/* Process the probe using the converted argments. */
-	dtrace_probe(id, uargs[0], uargs[1], uargs[2], uargs[3], uargs[4]);
+	dtrace_probe_sleepable(id, uargs[0], uargs[1], uargs[2], uargs[3], uargs[4]);
 }
 #endif
 

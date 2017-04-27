@@ -1,3 +1,4 @@
+
 /*
  * CDDL HEADER START
  *
@@ -7174,12 +7175,41 @@ dtrace_store_by_ref(dtrace_difo_t *dp, caddr_t tomax, size_t size,
 }
 
 /*
+ * Return 1 if buffer has at least percentage_free capacity unused.
+*/
+static int
+dtrace_bufspace_suffic_free(dtrace_id_t id, uint64_t percentage_buffer_free)
+{
+	dtrace_ecb_t *ecb;
+	processorid_t cpuid = curcpu;
+	dtrace_probe_t *probe = dtrace_probes[id - 1];
+
+	for (ecb = probe->dtpr_ecb; ecb != NULL; ecb = ecb->dte_next) {
+		dtrace_state_t *state = ecb->dte_state;
+		dtrace_buffer_t *buf = &state->dts_buffer[cpuid];
+		uint64_t dtb_offset = buf->dtb_offset;
+		uint64_t dtb_size = buf->dtb_size;
+
+		uint64_t free_space_wanted = (dtb_size * percentage_buffer_free) / 100;
+		if ((dtb_size - dtb_offset) < free_space_wanted) {
+			return (0);
+		}
+	}
+
+	return (1);
+}
+
+/*
+ * Most of original dtrace_probe except for the first few checks
+ * and  interrupt disabling and enabling which have been moved 
+ * to dtrace_probe() and dtrace_probe_sleepable().
+ * 
  * If you're looking for the epicenter of DTrace, you just found it.  This
  * is the function called by the provider to fire a probe -- from which all
  * subsequent probe-context DTrace activity emanates.
  */
-void
-dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
+static void
+dtrace_probe_internal(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4)
 {
 	processorid_t cpuid;
@@ -7194,45 +7224,45 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	volatile uint16_t *flags;
 	hrtime_t now;
 
-	if (panicstr != NULL)
-		return;
+//	if (panicstr != NULL)
+//		return;
 
-#ifdef illumos
-	/*
-	 * Kick out immediately if this CPU is still being born (in which case
-	 * curthread will be set to -1) or the current thread can't allow
-	 * probes in its current context.
-	 */
-	if (((uintptr_t)curthread & 1) || (curthread->t_flag & T_DONTDTRACE))
-		return;
-#endif
+//#ifdef illumos
+	
+// 	 * Kick out immediately if this CPU is still being born (in which case
+// 	 * curthread will be set to -1) or the current thread can't allow
+// 	 * probes in its current context.
+	 
+//	if (((uintptr_t)curthread & 1) || (curthread->t_flag & T_DONTDTRACE))
+//		return;
+//#endif
 
-	cookie = dtrace_interrupt_disable();
+//	cookie = dtrace_interrupt_disable();
 	probe = dtrace_probes[id - 1];
 	cpuid = curcpu;
 	onintr = CPU_ON_INTR(CPU);
 
-	if (!onintr && probe->dtpr_predcache != DTRACE_CACHEIDNONE &&
-	    probe->dtpr_predcache == curthread->t_predcache) {
+//	if (!onintr && probe->dtpr_predcache != DTRACE_CACHEIDNONE &&
+//	    probe->dtpr_predcache == curthread->t_predcache) {
 		/*
 		 * We have hit in the predicate cache; we know that
 		 * this predicate would evaluate to be false.
 		 */
-		dtrace_interrupt_enable(cookie);
-		return;
-	}
+//		dtrace_interrupt_enable(cookie);
+//		return;
+//	}
 
-#ifdef illumos
-	if (panic_quiesce) {
-#else
-	if (panicstr != NULL) {
-#endif
+//#ifdef illumos
+//	if (panic_quiesce) {
+//#else
+//	if (panicstr != NULL) {
+//#endif
 		/*
 		 * We don't trace anything if we're panicking.
 		 */
-		dtrace_interrupt_enable(cookie);
-		return;
-	}
+//		dtrace_interrupt_enable(cookie);
+//		return;
+//	}
 
 	now = mstate.dtms_timestamp = dtrace_gethrtime();
 	mstate.dtms_present |= DTRACE_MSTATE_TIMESTAMP;
@@ -7916,8 +7946,133 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	if (vtime)
 		curthread->t_dtrace_start = dtrace_gethrtime();
 
-	dtrace_interrupt_enable(cookie);
+//	dtrace_interrupt_enable(cookie);
 }
+
+
+
+/*
+ * Used by providers guaranted safe to sleep and that don't cause 
+ * concern of excessive recursion in sleep logic.
+ * Does interrupt disable/re-enable.
+ * Performs wait for buffer space with timer tick.
+*/
+void dtrace_probe_sleepable(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
+    uintptr_t arg2, uintptr_t arg3, uintptr_t arg4) 
+{
+	dtrace_icookie_t cookie;
+	dtrace_probe_t *probe;
+	int onintr;
+
+	// first some checks originally done at beginning of dtrace_probe()
+	if (panicstr != NULL)
+		return;
+
+#ifdef illumos
+	/*
+	 * Kick out immediately if this CPU is still being born (in which case
+	 * curthread will be set to -1) or the current thread can't allow
+	 * probes in its current context.
+	 */
+	if (((uintptr_t)curthread & 1) || (curthread->t_flag & T_DONTDTRACE))
+		return;
+#endif
+
+	cookie = dtrace_interrupt_disable();	// Prevent race when checking free space vs. probe firing
+	probe = dtrace_probes[id - 1];
+	onintr = CPU_ON_INTR(CPU);
+
+	if (!onintr && probe->dtpr_predcache != DTRACE_CACHEIDNONE &&
+	    probe->dtpr_predcache == curthread->t_predcache) {
+		/*
+		 * We have hit in the predicate cache; we know that
+		 * this predicate would evaluate to be false.
+		 */
+		dtrace_interrupt_enable(cookie);
+		return;
+	}
+
+#ifdef illumos
+	if (panic_quiesce) {
+#else
+	if (panicstr != NULL) {
+#endif
+		/*
+		 * We don't trace anything if we're panicking.
+		 */
+		dtrace_interrupt_enable(cookie);
+		return;
+	}
+	
+	// perform wait for free space in buffer
+	while (!dtrace_bufspace_suffic_free(id, 25)) {
+			dtrace_interrupt_enable(cookie);			// Enable interrupts around sleep
+			tsleep(&cookie, 0, "bufslp", 1); // sleep for a timer tick?
+			cookie = dtrace_interrupt_disable();
+	}
+	
+	dtrace_probe_internal(id, arg0, arg1, arg2, arg3, arg4);
+
+    dtrace_interrupt_enable(cookie);	
+}
+
+
+/*
+ * Wrapper around dtrace_probe_internal() to serve providers not safe to sleep.
+ * Does interrupt disable/re-enable.
+*/
+void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
+    uintptr_t arg2, uintptr_t arg3, uintptr_t arg4)
+{
+	dtrace_icookie_t cookie;
+	dtrace_probe_t *probe;
+	int onintr;
+
+	// first some checks originally done at beginning of dtrace_probe()
+	if (panicstr != NULL)
+		return;
+
+#ifdef illumos
+	/*
+	 * Kick out immediately if this CPU is still being born (in which case
+	 * curthread will be set to -1) or the current thread can't allow
+	 * probes in its current context.
+	 */
+	if (((uintptr_t)curthread & 1) || (curthread->t_flag & T_DONTDTRACE))
+		return;
+#endif
+
+	cookie = dtrace_interrupt_disable();
+	probe = dtrace_probes[id - 1];
+	onintr = CPU_ON_INTR(CPU);
+
+	if (!onintr && probe->dtpr_predcache != DTRACE_CACHEIDNONE &&
+	    probe->dtpr_predcache == curthread->t_predcache) {
+		/*
+		 * We have hit in the predicate cache; we know that
+		 * this predicate would evaluate to be false.
+		 */
+		dtrace_interrupt_enable(cookie);
+		return;
+	}
+
+#ifdef illumos
+	if (panic_quiesce) {
+#else
+	if (panicstr != NULL) {
+#endif
+		/*
+		 * We don't trace anything if we're panicking.
+		 */
+		dtrace_interrupt_enable(cookie);
+		return;
+	}
+
+	dtrace_probe_internal(id, arg0, arg1, arg2, arg3, arg4);
+
+    dtrace_interrupt_enable(cookie);
+}
+
 
 /*
  * DTrace Probe Hashing Functions
@@ -18339,3 +18494,4 @@ DEV_MODULE(dtrace, dtrace_modevent, NULL);
 MODULE_VERSION(dtrace, 1);
 MODULE_DEPEND(dtrace, opensolaris, 1, 1, 1);
 #endif
+

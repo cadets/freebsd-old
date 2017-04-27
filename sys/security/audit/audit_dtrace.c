@@ -240,7 +240,7 @@ dtaudit_commit(struct kaudit_record *kar, au_id_t auid, au_event_t event,
 		for (i = 0; i < sizeof(ene_name_lower); i++)
 			ene_name_lower[i] = tolower(ene->ene_name[i]);
 		EVNAME_UNLOCK(ene);
-		dtrace_probe(ene->ene_commit_probe_id,
+		dtrace_probe_sleepable(ene->ene_commit_probe_id,
 		    (uintptr_t)ene_name_lower, (uintptr_t)&kar->k_ar, 0, 0, 0);
 	}
 
