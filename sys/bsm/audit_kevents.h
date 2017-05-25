@@ -642,16 +642,17 @@
 #define	AUE_SETLOGINCLASS	43238	/* FreeBSD-specific. */
 #define	AUE_POSIX_FADVISE	43239	/* FreeBSD-specific. */
 #define	AUE_SCTP_GENERIC_SENDMSG_IOV	43240	/* FreeBSD-specific. */
-#define	AUE_FGETUUID		43241	/* CADETS. */
-#define	AUE_GETUUID		43242	/* CADETS. */
-#define	AUE_LGETUUID		43243	/* CADETS. */
-#define	AUE_SEMDESTROY		43244	/* FreeBSD-specific. */
-#define	AUE_SEMGETVALUE		43245	/* FreeBSD-specific. */
-#define	AUE_SEMINIT		43246	/* FreeBSD-specific. */
-#define	AUE_SEMPOST		43247	/* FreeBSD-specific. */
-#define	AUE_SEMTRYWAIT		43248	/* FreeBSD-specific. */
-#define	AUE_SEMTIMEDWAIT	43249	/* FreeBSD-specific. */
-#define	AUE_SEMWAIT		43250	/* FreeBSD-specific. */
+#define	AUE_ABORT2		43241	/* FreeBSD-specific. */
+#define	AUE_SEMTIMEDWAIT	43242	/* FreeBSD-specific. */
+#define	AUE_SEMDESTROY		43243	/* FreeBSD-specific. */
+#define	AUE_SEMGETVALUE		43244	/* FreeBSD-specific. */
+#define	AUE_SEMINIT		43245	/* FreeBSD-specific. */
+#define	AUE_SEMPOST		43246	/* FreeBSD-specific. */
+#define	AUE_SEMTRYWAIT		43247	/* FreeBSD-specific. */
+#define	AUE_SEMWAIT		43258	/* FreeBSD-specific. */
+#define	AUE_FGETUUID		43259	/* CADETS. */
+#define	AUE_GETUUID		43260	/* CADETS. */
+#define	AUE_LGETUUID		43261	/* CADETS. */
 
 /*
  * Darwin BSM uses a number of AUE_O_* definitions, which are aliased to the

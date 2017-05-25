@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 1999-2009 Apple Inc.
- * Copyright (c) 2016 Robert N. M. Watson
+ * Copyright (c) 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * Portions of this software were developed by BAE Systems, the University of
@@ -374,7 +374,6 @@ struct audit_record {
  * This record can also have a pointer set to some opaque data that will be
  * passed through to the audit writing mechanism.
  */
-struct evname_elem;
 struct kaudit_record {
 	struct audit_record		 k_ar;
 	u_int32_t			 k_ar_commit;
@@ -440,7 +439,7 @@ extern int			audit_in_failure;
  * Audit event-to-name mapping structure, maintained in audit_bsm_klib.c.  It
  * appears in this header so that the DTrace audit provider can dereference
  * instances passed back in the au_evname_foreach() callbacks.  Safe access to
- * its fields rquires holding ene_lock (after it is visible in the global
+ * its fields requires holding ene_lock (after it is visible in the global
  * table).
  *
  * Locking:

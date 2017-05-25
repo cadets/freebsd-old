@@ -576,7 +576,7 @@
 				    struct oaiocb32 *aiocbp); }
 319	AUE_AIO_WRITE	COMPAT6	{ int freebsd32_aio_write( \
 				    struct oaiocb32 *aiocbp); }
-320	AUE_NULL	COMPAT6	{ int freebsd32_lio_listio(int mode, \
+320	AUE_LIO_LISTIO	COMPAT6	{ int freebsd32_lio_listio(int mode, \
 				    struct oaiocb32 * const *acb_list, \
 				    int nent, struct osigevent32 *sig); }
 321	AUE_NULL	NOPROTO	{ int yield(void); }
@@ -662,7 +662,7 @@
 361	AUE_GETRESGID	NOPROTO	{ int getresgid(gid_t *rgid, gid_t *egid, \
 				    gid_t *sgid); }
 362	AUE_KQUEUE	NOPROTO	{ int kqueue(void); }
-363	AUE_NULL	STD	{ int freebsd32_kevent(int fd, \
+363	AUE_KEVENT	STD	{ int freebsd32_kevent(int fd, \
 				    const struct kevent32 *changelist, \
 				    int nchanges, \
 				    struct kevent32 *eventlist, int nevents, \

@@ -2883,7 +2883,7 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_aio_error	AUE_AIO_ERROR
 #define	SYS_AUE_freebsd6_aio_read	AUE_AIO_READ
 #define	SYS_AUE_freebsd6_aio_write	AUE_AIO_WRITE
-#define	SYS_AUE_freebsd6_lio_listio	AUE_NULL
+#define	SYS_AUE_freebsd6_lio_listio	AUE_LIO_LISTIO
 #define	SYS_AUE_yield	AUE_NULL
 #define	SYS_AUE_mlockall	AUE_MLOCKALL
 #define	SYS_AUE_munlockall	AUE_MUNLOCKALL
@@ -2924,7 +2924,7 @@ int	freebsd10_pipe(struct thread *, struct freebsd10_pipe_args *);
 #define	SYS_AUE_getresuid	AUE_GETRESUID
 #define	SYS_AUE_getresgid	AUE_GETRESGID
 #define	SYS_AUE_kqueue	AUE_KQUEUE
-#define	SYS_AUE_kevent	AUE_NULL
+#define	SYS_AUE_kevent	AUE_KEVENT
 #define	SYS_AUE_extattr_set_fd	AUE_EXTATTR_SET_FD
 #define	SYS_AUE_extattr_get_fd	AUE_EXTATTR_GET_FD
 #define	SYS_AUE_extattr_delete_fd	AUE_EXTATTR_DELETE_FD

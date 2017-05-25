@@ -48,7 +48,6 @@ __FBSDID("$FreeBSD$");
 #include <bsm/audit_internal.h>
 #include <bsm/audit_kevents.h>
 
-
 #include <security/audit/audit.h>
 #include <security/audit/audit_private.h>
 
@@ -111,13 +110,12 @@ static void	dtaudit_enable(void *, dtrace_id_t, void *);
 static void	dtaudit_disable(void *, dtrace_id_t, void *);
 static void	dtaudit_load(void *);
 
-/* XXXRW: Are these correct?  Lifted from the NFS DTrace provider. */
 static dtrace_pattr_t dtaudit_attr = {
-{ DTRACE_STABILITY_STABLE, DTRACE_STABILITY_STABLE, DTRACE_CLASS_COMMON },
+{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_COMMON },
 { DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
 { DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
-{ DTRACE_STABILITY_STABLE, DTRACE_STABILITY_STABLE, DTRACE_CLASS_COMMON },
-{ DTRACE_STABILITY_STABLE, DTRACE_STABILITY_STABLE, DTRACE_CLASS_COMMON },
+{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_COMMON },
+{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_COMMON },
 };
 
 /*
@@ -130,16 +128,16 @@ static char	*dtaudit_name_commit_str = "commit";
 static char	*dtaudit_name_bsm_str = "bsm";
 
 static dtrace_pops_t dtaudit_pops = {
-	/* dtps_provide */		dtaudit_provide,
-	/* dtps_provide_module */	NULL,
-	/* dtps_enable */		dtaudit_enable,
-	/* dtps_disable */		dtaudit_disable,
-	/* dtps_suspend */		NULL,
-	/* dtps_resume */		NULL,
-	/* dtps_getargdesc */		dtaudit_getargdesc,
-	/* dtps_getargval */		NULL,
-	/* dtps_usermode */		NULL,
-	/* dtps_destroy */		dtaudit_destroy
+	.dtps_provide =		dtaudit_provide,
+	.dtps_provide_module =	NULL,
+	.dtps_enable =		dtaudit_enable,
+	.dtps_disable =		dtaudit_disable,
+	.dtps_suspend =		NULL,
+	.dtps_resume =		NULL,
+	.dtps_getargdesc =	dtaudit_getargdesc,
+	.dtps_getargval =	NULL,
+	.dtps_usermode =	NULL,
+	.dtps_destroy =		dtaudit_destroy
 };
 
 static dtrace_provider_id_t	dtaudit_id;
@@ -302,7 +300,7 @@ dtaudit_getargdesc(void *arg, dtrace_id_t id, void *parg,
 	p = NULL;
 	switch (desc->dtargd_ndx) {
 	case 0:
-		/* Audit even name. */
+		/* Audit event name. */
 		p = "char *";
 		break;
 
@@ -494,10 +492,13 @@ dtaudit_load(void *dummy)
 static int
 dtaudit_unload(void)
 {
+	int error;
 
 	dtaudit_hook_preselect = NULL;
 	dtaudit_hook_commit = NULL;
 	dtaudit_hook_bsm = NULL;
+	if ((error = dtrace_unregister(dtaudit_id)) != 0)
+		return (error);
 	return (0);
 }
 
@@ -527,5 +528,5 @@ SYSUNINIT(dtaudit_unload, SI_SUB_DTRACE_PROVIDER, SI_ORDER_ANY,
 
 DEV_MODULE(dtaudit, dtaudit_modevent, NULL);
 MODULE_VERSION(dtaudit, 1);
-MODULE_DEPEND(dtnfscl, dtrace, 1, 1, 1);
-MODULE_DEPEND(dtnfscl, opensolaris, 1, 1, 1);
+MODULE_DEPEND(dtaudit, dtrace, 1, 1, 1);
+MODULE_DEPEND(dtaudit, opensolaris, 1, 1, 1);

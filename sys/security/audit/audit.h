@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 1999-2005 Apple Inc.
- * Copyright (c) 2016 Robert N. M. Watson
+ * Copyright (c) 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -514,9 +514,9 @@ void	 audit_ret_svipc_id(int id);
 #define	AUDIT_ARG_TEXT(text)
 #define	AUDIT_ARG_UID(uid)
 #define	AUDIT_ARG_UPATH1(td, dirfd, upath)
-#define	AUDIT_ARG_UPATH1_NONCANON(td, upath)
+#define	AUDIT_ARG_UPATH1_CANON(upath)
 #define	AUDIT_ARG_UPATH2(td, dirfd, upath)
-#define	AUDIT_ARG_UPATH2_NONCANON(td, upath)
+#define	AUDIT_ARG_UPATH2_CANON(upath)
 #define	AUDIT_ARG_VALUE(value)
 #define	AUDIT_ARG_VNODE1(vp)
 #define	AUDIT_ARG_VNODE2(vp)

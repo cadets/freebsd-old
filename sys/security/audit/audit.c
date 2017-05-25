@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 1999-2005 Apple Inc.
- * Copyright (c) 2006-2007, 2016 Robert N. M. Watson
+ * Copyright (c) 2006-2007, 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * Portions of this software were developed by BAE Systems, the University of
@@ -666,7 +666,7 @@ audit_syscall_enter(unsigned short code, struct thread *td)
 	 * DTrace may want to stick event state onto a record we were going to
 	 * produce due to the trail or pipes.  The event state returned by the
 	 * DTrace provider must be safe without locks held between here and
-	 * below -- i.e., ene must be stable in memory.
+	 * below -- i.e., dtaudit_state must must refer to stable memory.
 	 */
 #ifdef KDTRACE_HOOKS
 	dtaudit_state = NULL;
@@ -678,12 +678,13 @@ audit_syscall_enter(unsigned short code, struct thread *td)
 #endif
 
 	/*
-	 * If a record is required, allocated it and attach it to the thread
+	 * If a record is required, allocate it and attach it to the thread
 	 * for use throughout the system call.  Also attach DTrace state if
 	 * required.
 	 *
-	 * XXXRW: If we decided to reference count 'ene', we'd need a free
-	 * case here if no record is allocated or allocateable.
+	 * XXXRW: If we decide to reference count the evname_elem underlying
+	 * dtaudit_state, we will need to free here if no record is allocated
+	 * or allocatable.
 	 */
 	if (record_needed) {
 		td->td_ar = audit_new(event, td);
