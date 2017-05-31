@@ -112,8 +112,8 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		ASSERT(dtrace_anon.dta_state == NULL);
 		state = state->dts_anon;
 	}
-
 	switch (cmd) {
+
 	case DTRACEIOC_AGGDESC: {
 		dtrace_aggdesc_t **paggdesc = (dtrace_aggdesc_t **) addr;
 		dtrace_aggdesc_t aggdesc;
@@ -401,6 +401,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		return (rval == 0 ? 0 : EFAULT);
 	}
 	case DTRACEIOC_ENABLE: {
+
 		dof_hdr_t *dof = NULL;
 		dtrace_enabling_t *enab = NULL;
 		dtrace_vstate_t *vstate;
@@ -409,6 +410,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		dtrace_enable_io_t *p = (dtrace_enable_io_t *) addr;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_ENABLE\n",__func__,__LINE__);
+
 
 		/*
 		 * If a NULL argument has been passed, we take this as our
@@ -419,7 +421,10 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 			return (0);
 		}
-
+		pid_t consumer_pid = p->pid;
+		struct proc *consumer_proc = pfind(consumer_pid);
+                consumer_proc->p_flag2 |= P2_DTRACE_CONSUMER;
+		PROC_UNLOCK(consumer_proc);
 		if ((dof = dtrace_dof_copyin((uintptr_t) p->dof, &rval)) == NULL)
 			return (EINVAL);
 

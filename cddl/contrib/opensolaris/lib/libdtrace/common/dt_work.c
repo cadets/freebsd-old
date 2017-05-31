@@ -32,6 +32,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <time.h>
+#include <unistd.h>
 
 static const struct {
 	int dtslt_option;
@@ -183,6 +184,8 @@ int
 dtrace_go(dtrace_hdl_t *dtp)
 {
 	dtrace_enable_io_t args;
+
+	processorid_t *cpuid_addr;
 	void *dof;
 	int error, r;
 
@@ -204,15 +207,21 @@ dtrace_go(dtrace_hdl_t *dtp)
 	if ((dof = dtrace_getopt_dof(dtp)) == NULL)
 		return (-1); /* dt_errno has been set for us */
 
+
+	
+	pid_t consumer_pid = getpid();
+
 	args.dof = dof;
 	args.n_matched = 0;
+	args.pid = consumer_pid;
+
 	r = dt_ioctl(dtp, DTRACEIOC_ENABLE, &args);
 	error = errno;
 	dtrace_dof_destroy(dtp, dof);
 
 	if (r == -1 && (error != ENOTTY || dtp->dt_vector == NULL))
 		return (dt_set_errno(dtp, error));
-
+	
 	if (dt_ioctl(dtp, DTRACEIOC_GO, &dtp->dt_beganon) == -1) {
 		if (errno == EACCES)
 			return (dt_set_errno(dtp, EDT_DESTRUCTIVE));

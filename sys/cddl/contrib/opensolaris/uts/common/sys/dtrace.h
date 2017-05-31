@@ -1309,6 +1309,7 @@ typedef struct dtrace_providerdesc {
 typedef struct {
 	void	*dof;		/* DOF userland address written to driver. */
 	int	n_matched;	/* # matches returned by driver. */
+	pid_t   pid;		/* DTrace consumer pid*/ 
 } dtrace_enable_io_t;
 #define	DTRACEIOC_ENABLE	_IOWR('x',6,dtrace_enable_io_t)
 							/* enable probes */
@@ -1334,6 +1335,7 @@ typedef struct {
 							/* get DOF */
 #define	DTRACEIOC_REPLICATE	_IOW('x',18,dtrace_repldesc_t)	
 							/* replicate enab */
+
 #endif
 
 /*

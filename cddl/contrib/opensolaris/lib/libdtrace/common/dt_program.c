@@ -162,8 +162,12 @@ dtrace_program_exec(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	if ((dof = dtrace_dof_create(dtp, pgp, DTRACE_D_STRIP)) == NULL)
 		return (-1);
 
-	args.dof = dof;
-	args.n_matched = 0;
+	pid_t consumer_pid = getpid();
+
+        args.dof = dof;
+        args.n_matched = 0;
+        args.pid = consumer_pid;
+
 	n = dt_ioctl(dtp, DTRACEIOC_ENABLE, &args);
 	dtrace_dof_destroy(dtp, dof);
 

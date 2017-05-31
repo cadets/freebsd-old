@@ -67,6 +67,8 @@
  * [Group] Functions", allowing one to find each block by searching forward
  * on capital-f functions.
  */
+#include <sys/proc.h>
+
 #include <sys/errno.h>
 #ifndef illumos
 #include <sys/time.h>
@@ -141,6 +143,7 @@
 
 #include "dtrace_xoroshiro128_plus.h"
 #include "dtrace_uuid.h"
+
 
 /*
  * DTrace Tunable Variables
@@ -7183,7 +7186,7 @@ dtrace_bufspace_suffic_free(dtrace_id_t id, uint64_t percentage_buffer_free)
 	dtrace_ecb_t *ecb;
 	processorid_t cpuid = curcpu;
 	dtrace_probe_t *probe = dtrace_probes[id - 1];
-
+	
 	for (ecb = probe->dtpr_ecb; ecb != NULL; ecb = ecb->dte_next) {
 		dtrace_state_t *state = ecb->dte_state;
 		dtrace_buffer_t *buf = &state->dts_buffer[cpuid];
@@ -7224,8 +7227,8 @@ dtrace_probe_internal(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	volatile uint16_t *flags;
 	hrtime_t now;
 
-//	if (panicstr != NULL)
-//		return;
+	if (panicstr != NULL)
+		return;
 
 //#ifdef illumos
 	
@@ -7252,17 +7255,17 @@ dtrace_probe_internal(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 //		return;
 //	}
 
-//#ifdef illumos
-//	if (panic_quiesce) {
-//#else
-//	if (panicstr != NULL) {
-//#endif
+#ifdef illumos
+	if (panic_quiesce) {
+#else
+	if (panicstr != NULL) {
+#endif
 		/*
 		 * We don't trace anything if we're panicking.
 		 */
-//		dtrace_interrupt_enable(cookie);
-//		return;
-//	}
+		dtrace_interrupt_enable(cookie);
+		return;
+	}
 
 	now = mstate.dtms_timestamp = dtrace_gethrtime();
 	mstate.dtms_present |= DTRACE_MSTATE_TIMESTAMP;
@@ -7949,8 +7952,6 @@ dtrace_probe_internal(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 //	dtrace_interrupt_enable(cookie);
 }
 
-
-
 /*
  * Used by providers guaranted safe to sleep and that don't cause 
  * concern of excessive recursion in sleep logic.
@@ -8004,18 +8005,25 @@ void dtrace_probe_sleepable(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		return;
 	}
 	
+
+	struct proc* current_proc = curthread->td_proc;
+	pid_t current_pid = current_proc->p_pid;
+
+	if (!(current_proc->p_flag2 & P2_DTRACE_CONSUMER)) {
+		
+
+	
 	// perform wait for free space in buffer
 	while (!dtrace_bufspace_suffic_free(id, 25)) {
 			dtrace_interrupt_enable(cookie);			// Enable interrupts around sleep
 			tsleep(&cookie, 0, "bufslp", 1); // sleep for a timer tick?
 			cookie = dtrace_interrupt_disable();
 	}
-	
+	}
 	dtrace_probe_internal(id, arg0, arg1, arg2, arg3, arg4);
 
     dtrace_interrupt_enable(cookie);	
 }
-
 
 /*
  * Wrapper around dtrace_probe_internal() to serve providers not safe to sleep.
@@ -12112,6 +12120,7 @@ dtrace_buffer_switch(dtrace_buffer_t *buf)
 	caddr_t xamot = buf->dtb_xamot;
 	dtrace_icookie_t cookie;
 	hrtime_t now;
+
 
 	ASSERT(!(buf->dtb_flags & DTRACEBUF_NOSWITCH));
 	ASSERT(!(buf->dtb_flags & DTRACEBUF_RING));
@@ -17710,6 +17719,7 @@ dtrace_ioctl(dev_t dev, int cmd, intptr_t arg, int md, cred_t *cr, int *rv)
 	}
 
 	case DTRACEIOC_ENABLE: {
+		printf("DTRACEIOC_ENABLE received \n");
 		dof_hdr_t *dof;
 		dtrace_enabling_t *enab = NULL;
 		dtrace_vstate_t *vstate;
@@ -17726,7 +17736,6 @@ dtrace_ioctl(dev_t dev, int cmd, intptr_t arg, int md, cred_t *cr, int *rv)
 
 			return (0);
 		}
-
 		if ((dof = dtrace_dof_copyin(arg, &rval)) == NULL)
 			return (rval);
 
