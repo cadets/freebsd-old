@@ -2021,6 +2021,8 @@ main(int argc, char *argv[])
 
 	g_pslive = g_psc; /* count for prochandler() */
 
+
+
 	do {
 		if (!g_intr && !done)
 			dtrace_sleep(g_dtp);

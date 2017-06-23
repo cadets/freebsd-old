@@ -3022,6 +3022,9 @@ dt_put_buf(dtrace_hdl_t *dtp, dtrace_bufdesc_t *buf)
 	dt_free(dtp, buf);
 }
 
+
+//static int get_buf_counter = 0;
+
 /*
  * Returns 0 on success, in which case *cbp will be filled in if we retrieved
  * data, or NULL if there is no data for this CPU.
@@ -3030,6 +3033,9 @@ dt_put_buf(dtrace_hdl_t *dtp, dtrace_bufdesc_t *buf)
 static int
 dt_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 {
+	//get_buf_counter++;
+	//printf(" %d  \n", get_buf_counter); 
+	
 	dtrace_optval_t size;
 	dtrace_bufdesc_t *buf = dt_zalloc(dtp, sizeof (*buf));
 	int error, rval;
@@ -3293,10 +3299,11 @@ dtrace_consume(dtrace_hdl_t *dtp, FILE *fp,
 	int i, rval;
 	dtrace_optval_t interval = dtp->dt_options[DTRACEOPT_SWITCHRATE];
 	hrtime_t now = gethrtime();
+	
 
 	if (dtp->dt_lastswitch != 0) {
-		if (now - dtp->dt_lastswitch < interval)
-			return (0);
+		//if (now - dtp->dt_lastswitch < interval)
+			//return (0);
 
 		dtp->dt_lastswitch += interval;
 	} else {
