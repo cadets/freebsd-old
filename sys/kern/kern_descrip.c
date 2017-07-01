@@ -820,7 +820,8 @@ kern_dup(struct thread *td, u_int mode, int flags, int old, int new)
 	MPASS(mode < FDDUP_LASTMODE);
 
 	AUDIT_ARG_FD(old);
-	/* XXXRW: if (flags & FDDUP_FIXED) AUDIT_ARG_FD2(new); */
+	if (flags & FDDUP_FIXED)
+		AUDIT_ARG_VALUE(new);
 
 	/*
 	 * Verify we have a valid descriptor to dup from and possibly to
