@@ -1082,7 +1082,7 @@ pipe_write(fp, uio, active_cred, flags, td)
 	wpipe = PIPE_PEER(rpipe);
 	PIPE_LOCK(rpipe);
 #ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&wpipe->pipe_uuid);
+	AUDIT_ARG_OBJUUID1(&rpipe->pipe_uuid);
 #endif
 	error = pipelock(wpipe, 1);
 	if (error) {
