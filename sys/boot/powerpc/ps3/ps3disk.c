@@ -61,7 +61,7 @@ static int ps3disk_strategy(void *devdata, int flag, daddr_t dblk,
 	size_t size, char *buf, size_t *rsize);
 static int ps3disk_open(struct open_file *f, ...);
 static int ps3disk_close(struct open_file *f);
-static void ps3disk_print(int verbose);
+static int ps3disk_print(int verbose);
 
 struct devsw ps3disk = {
 	"disk",
@@ -115,6 +115,7 @@ static int ps3disk_strategy(void *devdata, int flag, daddr_t dblk,
 	struct open_dev *od = (struct open_dev *) dev->d_disk.data;
 	int err;
 
+	flag &= F_MASK;
 	if (flag != F_READ) {
 		dev_printf(dev, "write operation is not supported!\n");
 		return EROFS;
@@ -186,8 +187,9 @@ static int ps3disk_close(struct open_file *f)
 	return 0;
 }
 
-static void ps3disk_print(int verbose)
+static int ps3disk_print(int verbose)
 {
+	return (0);
 }
 
 static int ps3disk_open_gpt(struct ps3_devdesc *dev, struct open_dev *od)

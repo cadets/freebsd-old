@@ -378,7 +378,6 @@ ip6_sa2str(const struct sockaddr_in6 *sa6, char *buf, size_t bufsiz, int flags)
 	ifindex = (unsigned int)sa6->sin6_scope_id;
 	a6 = &sa6->sin6_addr;
 
-#ifdef NI_NUMERICSCOPE
 	if ((flags & NI_NUMERICSCOPE) != 0) {
 		n = snprintf(buf, bufsiz, "%u", sa6->sin6_scope_id);
 		if (n < 0 || n >= bufsiz)
@@ -386,7 +385,6 @@ ip6_sa2str(const struct sockaddr_in6 *sa6, char *buf, size_t bufsiz, int flags)
 		else
 			return n;
 	}
-#endif
 
 	/* if_indextoname() does not take buffer size.  not a good api... */
 	if ((IN6_IS_ADDR_LINKLOCAL(a6) || IN6_IS_ADDR_MC_LINKLOCAL(a6) ||
@@ -457,7 +455,6 @@ getnameinfo_link(const struct afd *afd,
 		    host, hostlen);
 	/*
 	 * The following have zero-length addresses.
-	 * IFT_ATM	(net/if_atmsubr.c)
 	 * IFT_GIF	(net/if_gif.c)
 	 * IFT_LOOP	(net/if_loop.c)
 	 * IFT_PPP	(net/if_ppp.c, net/if_spppsubr.c)

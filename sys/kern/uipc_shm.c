@@ -446,6 +446,7 @@ shm_dotruncate(struct shmfd *shmfd, off_t length)
 	vm_ooffset_t delta;
 	int base, rv;
 
+	KASSERT(length >= 0, ("shm_dotruncate: length < 0"));
 	object = shmfd->shm_object;
 	VM_OBJECT_WLOCK(object);
 	if (length == shmfd->shm_size) {
@@ -483,15 +484,20 @@ retry:
 					VM_WAIT;
 					VM_OBJECT_WLOCK(object);
 					goto retry;
-				} else if (m->valid != VM_PAGE_BITS_ALL)
-					rv = vm_pager_get_pages(object, &m, 1,
-					    NULL, NULL);
-				else
-					/* A cached page was reactivated. */
-					rv = VM_PAGER_OK;
+				}
+				rv = vm_pager_get_pages(object, &m, 1, NULL,
+				    NULL);
 				vm_page_lock(m);
 				if (rv == VM_PAGER_OK) {
-					vm_page_deactivate(m);
+					/*
+					 * Since the page was not resident,
+					 * and therefore not recently
+					 * accessed, immediately enqueue it
+					 * for asynchronous laundering.  The
+					 * current operation is not regarded
+					 * as an access.
+					 */
+					vm_page_launder(m);
 					vm_page_unlock(m);
 					vm_page_xunbusy(m);
 				} else {
@@ -509,7 +515,7 @@ retry:
 				vm_pager_page_unswapped(m);
 			}
 		}
-		delta = ptoa(object->size - nobjsize);
+		delta = IDX_TO_OFF(object->size - nobjsize);
 
 		/* Toss in memory pages. */
 		if (nobjsize < object->size)
@@ -524,8 +530,8 @@ retry:
 		swap_release_by_cred(delta, object->cred);
 		object->charge -= delta;
 	} else {
-		/* Attempt to reserve the swap */
-		delta = ptoa(nobjsize - object->size);
+		/* Try to reserve additional swap space. */
+		delta = IDX_TO_OFF(nobjsize - object->size);
 		if (!swap_reserve_by_cred(delta, object->cred)) {
 			VM_OBJECT_WUNLOCK(object);
 			return (ENOMEM);
@@ -956,7 +962,7 @@ shm_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t objsize,
 	    shmfd->shm_object, foff, FALSE, td);
 	if (error != 0)
 		vm_object_deallocate(shmfd->shm_object);
-	return (0);
+	return (error);
 }
 
 static int

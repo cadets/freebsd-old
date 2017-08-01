@@ -13,7 +13,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -90,9 +90,6 @@ ASSYM(TDF_NEEDRESCHED, TDF_NEEDRESCHED);
 ASSYM(TDP_CALLCHAIN, TDP_CALLCHAIN);
 ASSYM(TDP_KTHREAD, TDP_KTHREAD);
 
-ASSYM(V_TRAP, offsetof(struct vmmeter, v_trap));
-ASSYM(V_SYSCALL, offsetof(struct vmmeter, v_syscall));
-ASSYM(V_INTR, offsetof(struct vmmeter, v_intr));
 ASSYM(PAGE_SIZE, PAGE_SIZE);
 ASSYM(NPTEPG, NPTEPG);
 ASSYM(NPDEPG, NPDEPG);

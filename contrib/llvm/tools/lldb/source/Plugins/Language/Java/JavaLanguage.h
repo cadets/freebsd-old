@@ -18,45 +18,33 @@
 #include "llvm/ADT/StringRef.h"
 
 // Project includes
-#include "lldb/Core/ConstString.h"
 #include "lldb/Target/Language.h"
+#include "lldb/Utility/ConstString.h"
 #include "lldb/lldb-private.h"
 
-namespace lldb_private
-{
+namespace lldb_private {
 
-class JavaLanguage : public Language
-{
+class JavaLanguage : public Language {
 public:
-    lldb::LanguageType
-    GetLanguageType() const override
-    {
-        return lldb::eLanguageTypeJava;
-    }
+  lldb::LanguageType GetLanguageType() const override {
+    return lldb::eLanguageTypeJava;
+  }
 
-    static void
-    Initialize();
+  static void Initialize();
 
-    static void
-    Terminate();
+  static void Terminate();
 
-    static lldb_private::Language *
-    CreateInstance(lldb::LanguageType language);
+  static lldb_private::Language *CreateInstance(lldb::LanguageType language);
 
-    static lldb_private::ConstString
-    GetPluginNameStatic();
+  static lldb_private::ConstString GetPluginNameStatic();
 
-    ConstString
-    GetPluginName() override;
+  ConstString GetPluginName() override;
 
-    uint32_t
-    GetPluginVersion() override;
+  uint32_t GetPluginVersion() override;
 
-    bool
-    IsNilReference(ValueObject &valobj) override;
+  bool IsNilReference(ValueObject &valobj) override;
 
-    lldb::TypeCategoryImplSP
-    GetFormatters() override;
+  lldb::TypeCategoryImplSP GetFormatters() override;
 };
 
 } // namespace lldb_private

@@ -12,7 +12,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -80,9 +80,6 @@ SYSCTL_INT(_vfs, OID_AUTO, read_max, CTLFLAG_RW, &read_max, 0,
 static int read_min = 1;
 SYSCTL_INT(_vfs, OID_AUTO, read_min, CTLFLAG_RW, &read_min, 0,
     "Cluster read min block count");
-
-/* Page expended to mark partially backed buffers */
-extern vm_page_t	bogus_page;
 
 /*
  * Read data to a buf, including read-ahead if we find this to be beneficial.
@@ -836,12 +833,6 @@ cluster_wbuild(struct vnode *vp, long size, daddr_t start_lbn, int len,
 			--len;
 			continue;
 		}
-		if (tbp->b_pin_count >  0) {
-			BUF_UNLOCK(tbp);
-			++start_lbn;
-			--len;
-			continue;
-		}
 		bremfree(tbp);
 		tbp->b_flags &= ~B_DONE;
 
@@ -954,14 +945,6 @@ cluster_wbuild(struct vnode *vp, long size, daddr_t start_lbn, int len,
 				}
 
 				/*
-				 * Do not pull in pinned buffers.
-				 */
-				if (tbp->b_pin_count > 0) {
-					BUF_UNLOCK(tbp);
-					break;
-				}
-
-				/*
 				 * Ok, it's passed all the tests,
 				 * so remove it from the free list
 				 * and mark it busy. We will use it.
@@ -1022,6 +1005,7 @@ cluster_wbuild(struct vnode *vp, long size, daddr_t start_lbn, int len,
 			reassignbuf(tbp);		/* put on clean list */
 			bufobj_wref(tbp->b_bufobj);
 			BUF_KERNPROC(tbp);
+			buf_track(tbp, __func__);
 			TAILQ_INSERT_TAIL(&bp->b_cluster.cluster_head,
 				tbp, b_cluster.cluster_entry);
 		}

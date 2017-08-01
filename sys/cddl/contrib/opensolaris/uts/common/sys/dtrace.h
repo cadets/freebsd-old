@@ -306,18 +306,16 @@ typedef enum dtrace_probespec {
 #define	DIF_SUBR_TOUPPER		44
 #define	DIF_SUBR_TOLOWER		45
 #define	DIF_SUBR_MEMREF			46
-#define	DIF_SUBR_TYPEREF		47
-#define	DIF_SUBR_SX_SHARED_HELD		48
-#define	DIF_SUBR_SX_EXCLUSIVE_HELD	49
-#define	DIF_SUBR_SX_ISEXCLUSIVE		50
-#define	DIF_SUBR_MEMSTR			51
-#define	DIF_SUBR_GETF			52
-#define	DIF_SUBR_JSON			53
-#define	DIF_SUBR_STRTOLL		54
-#define	DIF_SUBR_RANDOM			55
-#define	DIF_SUBR_UUIDTOSTR		56
-
-#define	DIF_SUBR_MAX			56	/* max subroutine value */
+#define	DIF_SUBR_SX_SHARED_HELD		47
+#define	DIF_SUBR_SX_EXCLUSIVE_HELD	48
+#define	DIF_SUBR_SX_ISEXCLUSIVE		49
+#define	DIF_SUBR_MEMSTR			50
+#define	DIF_SUBR_GETF			51
+#define	DIF_SUBR_JSON			52
+#define	DIF_SUBR_STRTOLL		53
+#define	DIF_SUBR_RANDOM			54
+#define	DIF_SUBR_UUIDTOSTR		55
+#define	DIF_SUBR_MAX			55	/* max subroutine value */
 
 typedef uint32_t dif_instr_t;
 
@@ -430,7 +428,6 @@ typedef struct dtrace_difv {
 #define	DTRACEACT_TRACEMEM		6	/* tracemem() action */
 #define	DTRACEACT_TRACEMEM_DYNSIZE	7	/* dynamic tracemem() size */
 #define	DTRACEACT_PRINTM		8	/* printm() action (BSD) */
-#define	DTRACEACT_PRINTT		9	/* printt() action (BSD) */
 
 #define	DTRACEACT_PROC			0x0100
 #define	DTRACEACT_USTACK		(DTRACEACT_PROC + 1)
@@ -789,6 +786,7 @@ typedef struct dof_relodesc {
 
 #define	DOF_RELO_NONE	0		/* empty relocation entry */
 #define	DOF_RELO_SETX	1		/* relocate setx value */
+#define	DOF_RELO_DOFREL	2		/* relocate DOF-relative value */
 
 typedef struct dof_optdesc {
 	uint32_t dofo_option;		/* option identifier */
@@ -1416,7 +1414,6 @@ typedef struct {
 #define	DTRACEHIOC_REMOVE	(DTRACEHIOC | 2)	/* remove helper */
 #define	DTRACEHIOC_ADDDOF	(DTRACEHIOC | 3)	/* add helper DOF */
 #else
-#define	DTRACEHIOC_ADD		_IOWR('z', 1, dof_hdr_t)/* add helper */
 #define	DTRACEHIOC_REMOVE	_IOW('z', 2, int)	/* remove helper */
 #define	DTRACEHIOC_ADDDOF	_IOWR('z', 3, dof_helper_t)/* add helper DOF */
 #endif
@@ -2500,8 +2497,8 @@ extern void dtrace_helpers_destroy(proc_t *);
 
 #elif defined(__riscv__)
 
-#define	SD_RA_SP_MASK		0x1fff07f
-#define	SD_RA_SP		0x0113023
+#define	SD_RA_SP_MASK		0x01fff07f
+#define	SD_RA_SP		0x00113023
 
 #define	DTRACE_INVOP_SD		1
 #define	DTRACE_INVOP_RET	2

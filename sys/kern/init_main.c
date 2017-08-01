@@ -204,9 +204,9 @@ void
 mi_startup(void)
 {
 
-	register struct sysinit **sipp;		/* system initialization*/
-	register struct sysinit **xipp;		/* interior loop of sort*/
-	register struct sysinit *save;		/* bubble*/
+	struct sysinit **sipp;	/* system initialization*/
+	struct sysinit **xipp;	/* interior loop of sort*/
+	struct sysinit *save;	/* bubble*/
 
 #if defined(VERBOSE_SYSINIT)
 	int last;
@@ -316,15 +316,6 @@ restart:
 	/* NOTREACHED*/
 }
 
-
-/*
- ***************************************************************************
- ****
- **** The following SYSINIT's belong elsewhere, but have not yet
- **** been moved.
- ****
- ***************************************************************************
- */
 static void
 print_caddr_t(void *data)
 {
@@ -369,8 +360,7 @@ SYSINIT(diagwarn2, SI_SUB_LAST, SI_ORDER_THIRD + 2,
 #endif
 
 static int
-null_fetch_syscall_args(struct thread *td __unused,
-    struct syscall_args *sa __unused)
+null_fetch_syscall_args(struct thread *td __unused)
 {
 
 	panic("null_fetch_syscall_args");
@@ -418,17 +408,10 @@ struct sysentvec null_sysvec = {
 };
 
 /*
- ***************************************************************************
- ****
- **** The two following SYSINIT's are proc0 specific glue code.  I am not
- **** convinced that they can not be safely combined, but their order of
- **** operation has been maintained as the same as the original init_main.c
- **** for right now.
- ****
- **** These probably belong in init_proc.c or kern_proc.c, since they
- **** deal with proc0 (the fork template process).
- ****
- ***************************************************************************
+ * The two following SYSINIT's are proc0 specific glue code.  I am not
+ * convinced that they can not be safely combined, but their order of
+ * operation has been maintained as the same as the original init_main.c
+ * for right now.
  */
 /* ARGSUSED*/
 static void
@@ -502,7 +485,7 @@ proc0_init(void *dummy __unused)
 	td->td_lend_user_pri = PRI_MAX;
 	td->td_priority = PVM;
 	td->td_base_pri = PVM;
-	td->td_oncpu = 0;
+	td->td_oncpu = curcpu;
 	td->td_flags = TDF_INMEM;
 	td->td_pflags = TDP_KTHREAD;
 	td->td_cpuset = cpuset_thread0();
@@ -669,16 +652,6 @@ SYSINIT(random, SI_SUB_RANDOM, SI_ORDER_FIRST, random_init, NULL);
  ***************************************************************************
  */
 
-
-/*
- ***************************************************************************
- ****
- **** The following code probably belongs in another file, like
- **** kern/init_init.c.
- ****
- ***************************************************************************
- */
-
 /*
  * List of paths to try when searching for "init".
  */
@@ -826,7 +799,7 @@ start_init(void *dummy)
 }
 
 /*
- * Like kproc_create(), but runs in it's own address space.
+ * Like kproc_create(), but runs in its own address space.
  * We do this early to reserve pid 1.
  *
  * Note special case - do not make it runnable yet.  Other work

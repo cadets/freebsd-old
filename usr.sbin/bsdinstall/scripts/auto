@@ -260,7 +260,7 @@ Shell \"Open a shell and partition by hand\""
 
 CURARCH=$( uname -m )
 case $CURARCH in
-	amd64|i386)	# Booting ZFS Supported
+	amd64|arm64|i386)	# Booting ZFS Supported
 		PMODES="$PMODES \"Auto (ZFS)\" \"Guided Root-on-ZFS\""
 		;;
 	*)		# Booting ZFS Unspported
@@ -319,7 +319,7 @@ if [ ! -z "$FETCH_DISTRIBUTIONS" ]; then
 		export DISTRIBUTIONS="$FETCH_DISTRIBUTIONS"
 		export BSDINSTALL_DISTDIR="$BSDINSTALL_FETCHDEST"
 	fi
-		
+
 	export FTP_PASSIVE_MODE=YES
 	# Iterate through the distribution list and set a flag if debugging
 	# distributions have been selected.
@@ -413,7 +413,7 @@ finalconfig() {
 		finalconfig
 		;;
 	"Root Password")
-		bsdinstall rootpass 
+		bsdinstall rootpass
 		finalconfig
 		;;
 	"Hostname")

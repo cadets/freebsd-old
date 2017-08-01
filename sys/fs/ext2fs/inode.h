@@ -15,7 +15,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -50,8 +50,8 @@
  */
 #define	doff_t		int32_t
 
-#define	NDADDR	12			/* Direct addresses in inode. */
-#define	NIADDR	3			/* Indirect addresses in inode. */
+#define	EXT2_NDADDR	12		/* Direct addresses in inode. */
+#define	EXT2_NIADDR	3		/* Indirect addresses in inode. */
 
 /*
  * The size of physical and logical block numbers in EXT2FS.
@@ -91,7 +91,7 @@ struct inode {
 
 	/* Fields from struct dinode in UFS. */
 	uint16_t	i_mode;		/* IFMT, permissions; see below. */
-	int16_t		i_nlink;	/* File link count. */
+	int32_t		i_nlink;	/* File link count. */
 	uint32_t	i_uid;		/* File owner. */
 	uint32_t	i_gid;		/* File group. */
 	uint64_t	i_size;		/* File byte count. */
@@ -105,9 +105,10 @@ struct inode {
 	int32_t		i_ctimensec;	/* Last inode change time. */
 	int32_t		i_birthnsec;	/* Inode creation time. */
 	uint32_t	i_gen;		/* Generation number. */
+	uint64_t	i_facl;		/* EA block number. */
 	uint32_t	i_flags;	/* Status flags (chflags). */
-	uint32_t	i_db[NDADDR];	/* Direct disk blocks. */
-	uint32_t	i_ib[NIADDR];	/* Indirect disk blocks. */
+	uint32_t	i_db[EXT2_NDADDR]; /* Direct disk blocks. */
+	uint32_t	i_ib[EXT2_NIADDR]; /* Indirect disk blocks. */
 
 	struct ext4_extent_cache i_ext_cache; /* cache for ext4 extent */
 };

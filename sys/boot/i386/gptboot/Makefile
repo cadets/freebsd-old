@@ -34,22 +34,23 @@ CFLAGS=	-DBOOTPROG=\"gptboot\" \
 	-I${.CURDIR}/../btx/lib -I. \
 	-I${.CURDIR}/../boot2 \
 	-I${.CURDIR}/../../.. \
-	-Wall -Waggregate-return -Wbad-function-cast -Wcast-align \
+	-Wall -Waggregate-return -Wbad-function-cast -Wno-cast-align \
 	-Wmissing-declarations -Wmissing-prototypes -Wnested-externs \
 	-Wpointer-arith -Wshadow -Wstrict-prototypes -Wwrite-strings \
-	-Winline
+	-Winline -Wno-pointer-sign
 
 CFLAGS.gcc+=	--param max-inline-insns-single=100
 
 .if !defined(LOADER_NO_GELI_SUPPORT)
 CFLAGS+=	-DLOADER_GELI_SUPPORT
 CFLAGS+=	-I${.CURDIR}/../../geli
+CFLAGS+=	-I${.CURDIR}/../../..
 LIBGELIBOOT=	${.OBJDIR}/../../geli/libgeliboot.a
 .PATH:		${.CURDIR}/../../../opencrypto
 OPENCRYPTO_XTS=	xform_aes_xts.o
 .endif
 
-LD_FLAGS=-static -N --gc-sections
+LD_FLAGS=${LD_FLAGS_BIN}
 
 LIBSTAND=	${.OBJDIR}/../../libstand32/libstand.a
 
@@ -77,7 +78,7 @@ gptboot.bin: gptboot.out
 	${OBJCOPY} -S -O binary gptboot.out ${.TARGET}
 
 gptboot.out: ${BTXCRT} gptboot.o sio.o crc32.o drv.o cons.o util.o ${OPENCRYPTO_XTS}
-	${LD} ${LD_FLAGS} -Ttext ${ORG2} -o ${.TARGET} ${.ALLSRC} ${LIBSTAND} ${LIBGELIBOOT}
+	${LD} ${LD_FLAGS} -Ttext ${ORG2} -o ${.TARGET} ${.ALLSRC} ${LIBGELIBOOT} ${LIBSTAND}
 
 gptboot.o: ${.CURDIR}/../../common/ufsread.c
 

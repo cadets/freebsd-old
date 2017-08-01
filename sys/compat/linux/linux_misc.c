@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/reboot.h>
 #include <sys/racct.h>
+#include <sys/random.h>
 #include <sys/resourcevar.h>
 #include <sys/sched.h>
 #include <sys/sdt.h>
@@ -65,6 +66,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/vnode.h>
 #include <sys/wait.h>
 #include <sys/cpuset.h>
+#include <sys/uio.h>
 
 #include <security/mac/mac_framework.h>
 
@@ -2290,8 +2292,9 @@ linux_pselect6(struct thread *td, struct linux_pselect6_args *args)
 
 		TIMEVAL_TO_TIMESPEC(&utv, &uts);
 
-		native_to_linux_timespec(&lts, &uts);
-		error = copyout(&lts, args->tsp, sizeof(lts));
+		error = native_to_linux_timespec(&lts, &uts);
+		if (error == 0)
+			error = copyout(&lts, args->tsp, sizeof(lts));
 	}
 
 	return (error);
@@ -2343,8 +2346,9 @@ linux_ppoll(struct thread *td, struct linux_ppoll_args *args)
 		} else
 			timespecclear(&uts);
 
-		native_to_linux_timespec(&lts, &uts);
-		error = copyout(&lts, args->tsp, sizeof(lts));
+		error = native_to_linux_timespec(&lts, &uts);
+		if (error == 0)
+			error = copyout(&lts, args->tsp, sizeof(lts));
 	}
 
 	return (error);
@@ -2438,7 +2442,9 @@ linux_sched_rr_get_interval(struct thread *td,
 	PROC_UNLOCK(tdt->td_proc);
 	if (error != 0)
 		return (error);
-	native_to_linux_timespec(&lts, &ts);
+	error = native_to_linux_timespec(&lts, &ts);
+	if (error != 0)
+		return (error);
 	return (copyout(&lts, uap->interval, sizeof(lts)));
 }
 
@@ -2503,4 +2509,42 @@ linux_to_bsd_waitopts(int options, int *bsdopts)
 
 	if (options & __WCLONE)
 		*bsdopts |= WLINUXCLONE;
+}
+
+int
+linux_getrandom(struct thread *td, struct linux_getrandom_args *args)
+{
+	struct uio uio;
+	struct iovec iov;
+	int error;
+
+	if (args->flags & ~(LINUX_GRND_NONBLOCK|LINUX_GRND_RANDOM))
+		return (EINVAL);
+	if (args->count > INT_MAX)
+		args->count = INT_MAX;
+
+	iov.iov_base = args->buf;
+	iov.iov_len = args->count;
+
+	uio.uio_iov = &iov;
+	uio.uio_iovcnt = 1;
+	uio.uio_resid = iov.iov_len;
+	uio.uio_segflg = UIO_USERSPACE;
+	uio.uio_rw = UIO_READ;
+	uio.uio_td = td;
+
+	error = read_random_uio(&uio, args->flags & LINUX_GRND_NONBLOCK);
+	if (error == 0)
+		td->td_retval[0] = args->count - uio.uio_resid;
+	return (error);
+}
+
+int
+linux_mincore(struct thread *td, struct linux_mincore_args *args)
+{
+
+	/* Needs to be page-aligned */
+	if (args->start & PAGE_MASK)
+		return (EINVAL);
+	return (kern_mincore(td, args->start, args->len, args->vec));
 }

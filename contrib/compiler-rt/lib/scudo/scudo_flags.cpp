@@ -17,9 +17,12 @@
 #include "sanitizer_common/sanitizer_flags.h"
 #include "sanitizer_common/sanitizer_flag_parser.h"
 
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+const char* __scudo_default_options();
+
 namespace __scudo {
 
-Flags scudo_flags_dont_use_directly;  // use via flags().
+Flags ScudoFlags;  // Use via getFlags().
 
 void Flags::setDefaults() {
 #define SCUDO_FLAG(Type, Name, DefaultValue, Description) Name = DefaultValue;
@@ -34,6 +37,10 @@ static void RegisterScudoFlags(FlagParser *parser, Flags *f) {
 #undef SCUDO_FLAG
 }
 
+static const char *callGetScudoDefaultOptions() {
+  return (&__scudo_default_options) ? __scudo_default_options() : "";
+}
+
 void initFlags() {
   SetCommonFlagsDefaults();
   {
@@ -45,18 +52,23 @@ void initFlags() {
   Flags *f = getFlags();
   f->setDefaults();
 
-  FlagParser scudo_parser;
-  RegisterScudoFlags(&scudo_parser, f);
-  RegisterCommonFlags(&scudo_parser);
+  FlagParser ScudoParser;
+  RegisterScudoFlags(&ScudoParser, f);
+  RegisterCommonFlags(&ScudoParser);
 
-  scudo_parser.ParseString(GetEnv("SCUDO_OPTIONS"));
+  // Override from user-specified string.
+  const char *ScudoDefaultOptions = callGetScudoDefaultOptions();
+  ScudoParser.ParseString(ScudoDefaultOptions);
+
+  // Override from environment.
+  ScudoParser.ParseString(GetEnv("SCUDO_OPTIONS"));
 
   InitializeCommonFlags();
 
   // Sanity checks and default settings for the Quarantine parameters.
 
   if (f->QuarantineSizeMb < 0) {
-    const int DefaultQuarantineSizeMb = 64;
+    const int DefaultQuarantineSizeMb = FIRST_32_SECOND_64(4, 16);
     f->QuarantineSizeMb = DefaultQuarantineSizeMb;
   }
   // We enforce an upper limit for the quarantine size of 4Gb.
@@ -64,7 +76,8 @@ void initFlags() {
     dieWithMessage("ERROR: the quarantine size is too large\n");
   }
   if (f->ThreadLocalQuarantineSizeKb < 0) {
-    const int DefaultThreadLocalQuarantineSizeKb = 1024;
+    const int DefaultThreadLocalQuarantineSizeKb =
+        FIRST_32_SECOND_64(64, 256);
     f->ThreadLocalQuarantineSizeKb = DefaultThreadLocalQuarantineSizeKb;
   }
   // And an upper limit of 128Mb for the thread quarantine cache.
@@ -72,10 +85,14 @@ void initFlags() {
     dieWithMessage("ERROR: the per thread quarantine cache size is too "
                    "large\n");
   }
+  if (f->ThreadLocalQuarantineSizeKb == 0 && f->QuarantineSizeMb > 0) {
+    dieWithMessage("ERROR: ThreadLocalQuarantineSizeKb can be set to 0 only "
+                   "when QuarantineSizeMb is set to 0\n");
+  }
 }
 
 Flags *getFlags() {
-  return &scudo_flags_dont_use_directly;
+  return &ScudoFlags;
 }
 
-}
+}  // namespace __scudo

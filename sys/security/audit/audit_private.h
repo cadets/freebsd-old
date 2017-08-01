@@ -113,9 +113,9 @@ struct vnode_au_info {
 	mode_t	vn_mode;
 	uid_t	vn_uid;
 	gid_t	vn_gid;
-	dev_t	vn_dev;
-	long	vn_fsid;
-	long	vn_fileid;
+	u_int32_t vn_dev;		/* XXX dev_t compatibility */
+	long	vn_fsid;		/* XXX uint64_t compatibility */
+	long	vn_fileid;		/* XXX ino_t compatibility */
 	long	vn_gen;
 };
 
@@ -232,7 +232,7 @@ struct audit_record {
 	struct uuid		ar_arg_objuuid1;
 	struct uuid		ar_arg_objuuid2;
 #endif
-	int			ar_arg_dev;
+	int			ar_arg_dev;	/* XXX dev_t compatibility */
 	long			ar_arg_value;
 	void			*ar_arg_addr;
 	int			ar_arg_len;
@@ -380,9 +380,7 @@ struct kaudit_record {
 	void				*k_udata;	/* User data. */
 	u_int				 k_ulen;	/* User data length. */
 	struct uthread			*k_uthread;	/* Audited thread. */
-#ifdef KDTRACE_HOOKS
 	void				*k_dtaudit_state;
-#endif
 	TAILQ_ENTRY(kaudit_record)	 k_q;
 };
 TAILQ_HEAD(kaudit_queue, kaudit_record);
@@ -454,7 +452,6 @@ struct evname_elem {
 	LIST_ENTRY(evname_elem)	ene_entry;			/* (m) */
 	struct mtx		ene_lock;
 
-#ifdef KDTRACE_HOOKS
 	/* DTrace probe IDs; 0 if not yet registered. */
 	uint32_t		ene_commit_probe_id;		/* (M) */
 	uint32_t		ene_bsm_probe_id;		/* (M) */
@@ -462,7 +459,6 @@ struct evname_elem {
 	/* Flags indicating if the probes enabled or not. */
 	int			ene_commit_probe_enabled;	/* (M) */
 	int			ene_bsm_probe_enabled;		/* (M) */
-#endif
 };
 
 #define	EVNAME_LOCK(ene)	mtx_lock(&(ene)->ene_lock)
@@ -477,7 +473,6 @@ typedef	void	(*au_evnamemap_callback_t)(struct evname_elem *ene);
  * DTrace audit provider (dtaudit) hooks -- to be set non-NULL when the audit
  * provider is loaded and ready to be called into.
  */
-#ifdef KDTRACE_HOOKS
 extern void	*(*dtaudit_hook_preselect)(au_id_t auid, au_event_t event,
 		    au_class_t class);
 extern int	(*dtaudit_hook_commit)(struct kaudit_record *kar,
@@ -486,7 +481,6 @@ extern int	(*dtaudit_hook_commit)(struct kaudit_record *kar,
 extern void	(*dtaudit_hook_bsm)(struct kaudit_record *kar, au_id_t auid,
 		    au_event_t event, au_class_t class, int sorf,
 		    void *bsm_data, size_t bsm_len);
-#endif /* !KDTRACE_HOOKS */
 
 #include <sys/fcntl.h>
 #include <sys/kernel.h>
@@ -510,9 +504,7 @@ au_class_t	 au_event_class(au_event_t event);
 void		 au_evnamemap_init(void);
 void		 au_evnamemap_insert(au_event_t event, const char *name);
 void		 au_evnamemap_foreach(au_evnamemap_callback_t callback);
-#ifdef KDTRACE_HOOKS
 struct evname_elem	*au_evnamemap_lookup(au_event_t event);
-#endif
 int		 au_event_name(au_event_t event, char *name);
 au_event_t	 audit_ctlname_to_sysctlevent(int name[], uint64_t valid_arg);
 au_event_t	 audit_flags_and_error_to_openevent(int oflags, int error);

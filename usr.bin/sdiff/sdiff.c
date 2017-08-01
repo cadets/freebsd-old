@@ -22,7 +22,6 @@ __FBSDID("$FreeBSD$");
 #include <limits.h>
 #include <paths.h>
 #include <stdint.h>
-#define _WITH_GETLINE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -214,7 +213,6 @@ main(int argc, char **argv)
 	int ch, fd[2] = {-1}, status;
 	pid_t pid=0;
 	const char *outfile = NULL;
-	struct option *popt;
 	char **diffargv, *diffprog = DIFF_PATH, *filename1, *filename2,
 	     *tmp1, *tmp2, *s1, *s2;
 	int i;
@@ -260,9 +258,7 @@ main(int argc, char **argv)
 		case 'E':
 		case 'i':
 		case 't':
-		case 'H':
 		case 'W':
-			for(popt = longopts; ch != popt->val && popt->name != NULL; popt++);
 			diffargv[1]  = realloc(diffargv[1], sizeof(char) * strlen(diffargv[1]) + 2);
 			/*
 			 * In diff, the 'W' option is 'w' and the 'w' is 'W'.
@@ -271,6 +267,9 @@ main(int argc, char **argv)
 				sprintf(diffargv[1], "%sw", diffargv[1]);
 			else
 				sprintf(diffargv[1], "%s%c", diffargv[1], ch);
+			break;
+		case 'H':
+			diffargv[diffargc++] = "--speed-large-files";
 			break;
 		case DIFFPROG_OPT:
 			diffargv[0] = diffprog = optarg;
@@ -469,7 +468,7 @@ binexec(char *diffprog, char *f1, char *f2)
 	execv(diffprog, args);
 
 	/* If execv() fails, sdiff's execution will continue below. */
-	errx(1, "Could not execute diff process.\n");
+	errx(1, "could not execute diff process");
 }
 
 /*
@@ -1152,7 +1151,7 @@ usage(void)
 {
 
 	fprintf(stderr,
-	    "usage: sdiff [-abdilstW] [-I regexp] [-o outfile] [-w width] file1"
+	    "usage: sdiff [-abdilstHW] [-I regexp] [-o outfile] [-w width] file1"
 	    " file2\n");
 	exit(2);
 }

@@ -12,21 +12,22 @@
 
 #include "lld/Core/LLVM.h"
 #include "lld/Core/Reference.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/BinaryFormat/Magic.h"
+#include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/YAMLTraits.h"
-#include <functional>
+#include "llvm/Support/MemoryBuffer.h"
 #include <memory>
 #include <vector>
-
-using llvm::sys::fs::file_magic;
 
 namespace llvm {
 namespace yaml {
 class IO;
-}
-}
+} // end namespace yaml
+} // end namespace llvm
 
 namespace lld {
+
 class File;
 class LinkingContext;
 class MachOLinkingContext;
@@ -37,13 +38,13 @@ class MachOLinkingContext;
 /// Each file format (e.g. mach-o, etc) has a concrete subclass of Reader.
 class Reader {
 public:
-  virtual ~Reader() {}
+  virtual ~Reader() = default;
 
   /// Sniffs the file to determine if this Reader can parse it.
   /// The method is called with:
   /// 1) the file_magic enumeration returned by identify_magic()
   /// 2) the whole file content buffer if the above is not enough.
-  virtual bool canParse(file_magic magic, MemoryBufferRef mb) const = 0;
+  virtual bool canParse(llvm::file_magic magic, MemoryBufferRef mb) const = 0;
 
   /// \brief Parse a supplied buffer (already filled with the contents of a
   /// file) and create a File object.
@@ -51,7 +52,6 @@ public:
   virtual ErrorOr<std::unique_ptr<File>>
   loadFile(std::unique_ptr<MemoryBuffer> mb, const class Registry &) const = 0;
 };
-
 
 /// \brief An abstract class for handling alternate yaml representations
 /// of object files.
@@ -73,7 +73,6 @@ public:
   /// YAML I/O, then convert the result into an lld::File* and return it.
   virtual bool handledDocTag(llvm::yaml::IO &io, const lld::File *&f) const = 0;
 };
-
 
 /// A registry to hold the list of currently registered Readers and
 /// tables which map Reference kind values to strings.
@@ -127,7 +126,6 @@ public:
   void addKindTable(Reference::KindNamespace ns, Reference::KindArch arch,
                     const KindStrings array[]);
 
-
 private:
   struct KindEntry {
     Reference::KindNamespace  ns;
@@ -154,4 +152,4 @@ private:
 
 } // end namespace lld
 
-#endif
+#endif // LLD_CORE_READER_H

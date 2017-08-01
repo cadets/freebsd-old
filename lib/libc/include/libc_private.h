@@ -42,7 +42,10 @@
  * or more threads. It is used to avoid calling locking functions
  * when they are not required.
  */
+#ifndef __LIBC_ISTHREADED_DECLARED
+#define __LIBC_ISTHREADED_DECLARED
 extern int	__isthreaded;
+#endif
 
 /*
  * Elf_Auxinfo *__elf_aux_vector, the pointer to the ELF aux vector
@@ -229,6 +232,7 @@ enum {
 	INTERPOS_ppoll,
 	INTERPOS_map_stacks_exec,
 	INTERPOS_fdatasync,
+	INTERPOS_clock_nanosleep,
 	INTERPOS_MAX
 };
 
@@ -306,6 +310,8 @@ struct pollfd;
 struct rusage;
 struct sigaction;
 struct sockaddr;
+struct stat;
+struct statfs;
 struct timespec;
 struct timeval;
 struct timezone;
@@ -318,13 +324,20 @@ int		__sys_aio_suspend(const struct aiocb * const[], int,
 int		__sys_accept(int, struct sockaddr *, __socklen_t *);
 int		__sys_accept4(int, struct sockaddr *, __socklen_t *, int);
 int		__sys_clock_gettime(__clockid_t, struct timespec *ts);
+int		__sys_clock_nanosleep(__clockid_t, int,
+		    const struct timespec *, struct timespec *);
 int		__sys_close(int);
 int		__sys_connect(int, const struct sockaddr *, __socklen_t);
 int		__sys_fcntl(int, int, ...);
 int		__sys_fdatasync(int);
+int		__sys_fstat(int fd, struct stat *);
+int		__sys_fstatfs(int fd, struct statfs *);
+int		__sys_fstatat(int, const char *, struct stat *, int);
 int		__sys_fsync(int);
 __pid_t		__sys_fork(void);
 int		__sys_ftruncate(int, __off_t);
+__ssize_t	__sys_getdirentries(int, char *, __size_t, __off_t *);
+int		__sys_getfsstat(struct statfs *, long, int);
 int		__sys_gettimeofday(struct timeval *, struct timezone *);
 int		__sys_kevent(int, const struct kevent *, int, struct kevent *,
 		    int, const struct timespec *);
@@ -363,6 +376,7 @@ int		__sys_sigtimedwait(const __sigset_t *, struct __siginfo *,
 		    const struct timespec *);
 int		__sys_sigwait(const __sigset_t *, int *);
 int		__sys_sigwaitinfo(const __sigset_t *, struct __siginfo *);
+int		__sys_statfs(const char *, struct statfs *);
 int		__sys_swapcontext(struct __ucontext *,
 		    const struct __ucontext *);
 int		__sys_thr_kill(long, int);
@@ -400,5 +414,12 @@ void __libc_map_stacks_exec(void);
 
 void	_pthread_cancel_enter(int);
 void	_pthread_cancel_leave(int);
+
+struct _pthread_cleanup_info;
+void	___pthread_cleanup_push_imp(void (*)(void *), void *,
+	    struct _pthread_cleanup_info *);
+void	___pthread_cleanup_pop_imp(int);
+
+void __throw_constraint_handler_s(const char * restrict msg, int error);
 
 #endif /* _LIBC_PRIVATE_H_ */

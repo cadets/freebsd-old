@@ -16,7 +16,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -64,7 +64,7 @@ ext2_balloc(struct inode *ip, e2fs_lbn_t lbn, int size, struct ucred *cred,
 	struct ext2mount *ump;
 	struct buf *bp, *nbp;
 	struct vnode *vp = ITOV(ip);
-	struct indir indirs[NIADDR + 2];
+	struct indir indirs[EXT2_NIADDR + 2];
 	e4fs_daddr_t nb, newb;
 	e2fs_daddr_t *bap, pref;
 	int osize, nsize, num, i, error;
@@ -85,9 +85,9 @@ ext2_balloc(struct inode *ip, e2fs_lbn_t lbn, int size, struct ucred *cred,
 		ip->i_next_alloc_goal++;
 	}
 	/*
-	 * The first NDADDR blocks are direct blocks
+	 * The first EXT2_NDADDR blocks are direct blocks
 	 */
-	if (lbn < NDADDR) {
+	if (lbn < EXT2_NDADDR) {
 		nb = ip->i_db[lbn];
 		/*
 		 * no new block is to be allocated, and no need to expand

@@ -70,6 +70,7 @@ struct efi_md {
 #define	EFI_MD_TYPE_IOMEM	11	/* Memory-mapped I/O. */
 #define	EFI_MD_TYPE_IOPORT	12	/* I/O port space. */
 #define	EFI_MD_TYPE_PALCODE	13	/* PAL */
+#define	EFI_MD_TYPE_PERSISTENT	14	/* Persistent memory. */
 	uint32_t	__pad;
 	uint64_t	md_phys;
 	void		*md_virt;
@@ -83,6 +84,10 @@ struct efi_md {
 #define	EFI_MD_ATTR_WP		0x0000000000001000UL
 #define	EFI_MD_ATTR_RP		0x0000000000002000UL
 #define	EFI_MD_ATTR_XP		0x0000000000004000UL
+#define	EFI_MD_ATTR_NV		0x0000000000008000UL
+#define	EFI_MD_ATTR_MORE_RELIABLE \
+				0x0000000000010000UL
+#define	EFI_MD_ATTR_RO		0x0000000000020000UL
 #define	EFI_MD_ATTR_RT		0x8000000000000000UL
 };
 
@@ -117,6 +122,9 @@ struct efi_tblhdr {
 	uint32_t	__res;
 };
 
+#ifdef _KERNEL
+
+#ifdef EFIABI_ATTR
 struct efi_rt {
 	struct efi_tblhdr rt_hdr;
 	efi_status	(*rt_gettime)(struct efi_tm *, struct efi_tmcap *)
@@ -139,6 +147,7 @@ struct efi_rt {
 	efi_status	(*rt_reset)(enum efi_reset, efi_status, u_long,
 	    efi_char *) EFIABI_ATTR;
 };
+#endif
 
 struct efi_systbl {
 	struct efi_tblhdr st_hdr;
@@ -158,7 +167,6 @@ struct efi_systbl {
 	uint64_t	st_cfgtbl;
 };
 
-#ifdef _KERNEL
 extern vm_paddr_t efi_systbl_phys;
 #endif	/* _KERNEL */
 

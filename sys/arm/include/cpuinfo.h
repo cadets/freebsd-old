@@ -116,10 +116,15 @@ struct cpuinfo {
 	int dcache_line_mask;
 	int icache_line_size;
 	int icache_line_mask;
+
+	/* mpidr */
+	int mp_ext;
 };
 
 extern struct cpuinfo cpuinfo;
 
 void cpuinfo_init(void);
-void cpuinfo_get_actlr_modifier(uint32_t *actlr_mask, uint32_t *actlr_set);
+#if __ARM_ARCH >= 6
+void cpuinfo_reinit_mmu(uint32_t ttb);
+#endif
 #endif	/* _MACHINE_CPUINFO_H_ */

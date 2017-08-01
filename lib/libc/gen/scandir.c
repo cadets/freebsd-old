@@ -10,7 +10,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -59,17 +59,6 @@ qsort_b(void *, size_t, size_t, void*);
 
 static int alphasort_thunk(void *thunk, const void *p1, const void *p2);
 
-/*
- * The DIRSIZ macro is the minimum record length which will hold the directory
- * entry.  This requires the amount of space in struct dirent without the
- * d_name field, plus enough space for the name and a terminating nul byte
- * (dp->d_namlen + 1), rounded up to a 4 byte boundary.
- */
-#undef DIRSIZ
-#define DIRSIZ(dp)							\
-	((sizeof(struct dirent) - sizeof(dp)->d_name) +			\
-	    (((dp)->d_namlen + 1 + 3) &~ 3))
-
 int
 #ifdef I_AM_SCANDIR_B
 scandir_b(const char *dirname, struct dirent ***namelist,
@@ -82,8 +71,7 @@ scandir(const char *dirname, struct dirent ***namelist,
 #endif
 {
 	struct dirent *d, *p, **names = NULL;
-	size_t numitems;
-	long arraysz;
+	size_t arraysz, numitems;
 	DIR *dirp;
 
 	if ((dirp = opendir(dirname)) == NULL)
@@ -101,7 +89,7 @@ scandir(const char *dirname, struct dirent ***namelist,
 		/*
 		 * Make a minimum size copy of the data
 		 */
-		p = (struct dirent *)malloc(DIRSIZ(d));
+		p = (struct dirent *)malloc(_GENERIC_DIRSIZ(d));
 		if (p == NULL)
 			goto fail;
 		p->d_fileno = d->d_fileno;
@@ -116,8 +104,8 @@ scandir(const char *dirname, struct dirent ***namelist,
 		if (numitems >= arraysz) {
 			struct dirent **names2;
 
-			names2 = (struct dirent **)realloc((char *)names,
-				(arraysz * 2) * sizeof(struct dirent *));
+			names2 = reallocarray(names, arraysz,
+			    2 * sizeof(struct dirent *));
 			if (names2 == NULL) {
 				free(p);
 				goto fail;

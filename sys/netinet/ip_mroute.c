@@ -14,7 +14,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -1344,7 +1344,7 @@ X_ip_mforward(struct ip *ip, struct ifnet *ifp, struct mbuf *m,
 		goto fail;
 
 	    /* Make a copy of the header to send to the user level process */
-	    mm = m_copy(mb0, 0, hlen);
+	    mm = m_copym(mb0, 0, hlen, M_NOWAIT);
 	    if (mm == NULL)
 		goto fail1;
 
@@ -1542,7 +1542,7 @@ ip_mdq(struct mbuf *m, struct ifnet *ifp, struct mfc *rt, vifi_t xmt_vif)
 		struct sockaddr_in k_igmpsrc = { sizeof k_igmpsrc, AF_INET };
 		struct igmpmsg *im;
 		int hlen = ip->ip_hl << 2;
-		struct mbuf *mm = m_copy(m, 0, hlen);
+		struct mbuf *mm = m_copym(m, 0, hlen, M_NOWAIT);
 
 		if (mm && (!M_WRITABLE(mm) || mm->m_len < hlen))
 		    mm = m_pullup(mm, hlen);
@@ -2735,9 +2735,9 @@ pim_input(struct mbuf **mp, int *offp, int proto)
 	 * actions (e.g., send back PIM_REGISTER_STOP).
 	 * XXX: here m->m_data points to the outer IP header.
 	 */
-	mcp = m_copy(m, 0, iphlen + PIM_REG_MINLEN);
+	mcp = m_copym(m, 0, iphlen + PIM_REG_MINLEN, M_NOWAIT);
 	if (mcp == NULL) {
-	    CTR1(KTR_IPMF, "%s: m_copy() failed", __func__);
+	    CTR1(KTR_IPMF, "%s: m_copym() failed", __func__);
 	    m_freem(m);
 	    return (IPPROTO_DONE);
 	}

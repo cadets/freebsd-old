@@ -48,17 +48,21 @@ typedef struct ProfDataIOVec {
   size_t NumElm;
 } ProfDataIOVec;
 
-typedef uint32_t (*WriterCallback)(ProfDataIOVec *, uint32_t NumIOVecs,
-                                   void **WriterCtx);
+struct ProfDataWriter;
+typedef uint32_t (*WriterCallback)(struct ProfDataWriter *This, ProfDataIOVec *,
+                                   uint32_t NumIOVecs);
+
+typedef struct ProfDataWriter {
+  WriterCallback Write;
+  void *WriterCtx;
+} ProfDataWriter;
 
 /*!
  * The data structure for buffered IO of profile data.
  */
 typedef struct ProfBufferIO {
-  /* File handle.  */
-  void *File;
-  /* Low level IO callback. */
-  WriterCallback FileWriter;
+  ProfDataWriter *FileWriter;
+  uint32_t OwnFileWriter;
   /* The start of the buffer. */
   uint8_t *BufferStart;
   /* Total size of the buffer. */
@@ -73,7 +77,7 @@ ProfBufferIO *lprofCreateBufferIOInternal(void *File, uint32_t BufferSz);
 /*!
  * This is the interface to create a handle for buffered IO.
  */
-ProfBufferIO *lprofCreateBufferIO(WriterCallback FileWriter, void *File);
+ProfBufferIO *lprofCreateBufferIO(ProfDataWriter *FileWriter);
 
 /*!
  * The interface to destroy the bufferIO handle and reclaim
@@ -96,8 +100,9 @@ int lprofBufferIOFlush(ProfBufferIO *BufferIO);
 /* The low level interface to write data into a buffer. It is used as the
  * callback by other high level writer methods such as buffered IO writer
  * and profile data writer.  */
-uint32_t lprofBufferWriter(ProfDataIOVec *IOVecs, uint32_t NumIOVecs,
-                           void **WriterCtx);
+uint32_t lprofBufferWriter(ProfDataWriter *This, ProfDataIOVec *IOVecs,
+                           uint32_t NumIOVecs);
+void initBufferWriter(ProfDataWriter *BufferWriter, char *Buffer);
 
 struct ValueProfData;
 struct ValueProfRecord;
@@ -133,15 +138,17 @@ typedef struct VPDataReaderType {
                                         uint32_t N);
 } VPDataReaderType;
 
-int lprofWriteData(WriterCallback Writer, void *WriterCtx,
-                   VPDataReaderType *VPDataReader);
-int lprofWriteDataImpl(WriterCallback Writer, void *WriterCtx,
+/* Write profile data to destinitation. If SkipNameDataWrite is set to 1,
+   the name data is already in destintation, we just skip over it. */
+int lprofWriteData(ProfDataWriter *Writer, VPDataReaderType *VPDataReader,
+                   int SkipNameDataWrite);
+int lprofWriteDataImpl(ProfDataWriter *Writer,
                        const __llvm_profile_data *DataBegin,
                        const __llvm_profile_data *DataEnd,
                        const uint64_t *CountersBegin,
                        const uint64_t *CountersEnd,
                        VPDataReaderType *VPDataReader, const char *NamesBegin,
-                       const char *NamesEnd);
+                       const char *NamesEnd, int SkipNameDataWrite);
 
 /* Merge value profile data pointed to by SrcValueProfData into
  * in-memory profile counters pointed by to DstData.  */
@@ -163,21 +170,13 @@ void lprofSetupValueProfiler();
  * to dump merged profile data into its own profile file. */
 uint64_t lprofGetLoadModuleSignature();
 
-/* GCOV_PREFIX and GCOV_PREFIX_STRIP support */
-/* Return the path prefix specified by GCOV_PREFIX environment variable.
- * If GCOV_PREFIX_STRIP is also specified, the strip level (integer value)
- * is returned via \c *PrefixStrip. The prefix length is stored in *PrefixLen.
+/* 
+ * Return non zero value if the profile data has already been
+ * dumped to the file.
  */
-const char *lprofGetPathPrefix(int *PrefixStrip, size_t *PrefixLen);
-/* Apply the path prefix specified in \c Prefix to path string in \c PathStr,
- * and store the result to buffer pointed to by \c Buffer. If \c PrefixStrip
- * is not zero, path prefixes are stripped from \c PathStr (the level of
- * stripping is specified by \c PrefixStrip) before \c Prefix is added.
- */
-void lprofApplyPathPrefix(char *Dest, const char *PathStr, const char *Prefix,
-                          size_t PrefixLen, int PrefixStrip);
+unsigned lprofProfileDumped();
+void lprofSetProfileDumped();
 
-COMPILER_RT_VISIBILITY extern char *(*GetEnvHook)(const char *);
 COMPILER_RT_VISIBILITY extern void (*FreeHook)(void *);
 COMPILER_RT_VISIBILITY extern uint8_t *DynamicBufferIOBuffer;
 COMPILER_RT_VISIBILITY extern uint32_t VPBufferSize;

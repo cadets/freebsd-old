@@ -10,7 +10,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -62,6 +62,7 @@ __FBSDID("$FreeBSD$");
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <ctype.h>
+#include <capsicum_helpers.h>
 #include <err.h>
 #include <grp.h>
 #include <inttypes.h>
@@ -74,7 +75,6 @@ __FBSDID("$FreeBSD$");
 #include <stdlib.h>
 #include <string.h>
 #include <sysdecode.h>
-#include <termios.h>
 #include <time.h>
 #include <unistd.h>
 #include <vis.h>
@@ -109,7 +109,6 @@ void ktrstruct(char *, size_t);
 void ktrcapfail(struct ktr_cap_fail *);
 void ktrfault(struct ktr_fault *);
 void ktrfaultend(struct ktr_faultend *);
-void limitfd(int fd);
 void usage(void);
 
 #define	TIMESTAMP_NONE		0x0
@@ -461,9 +460,8 @@ main(int argc, char *argv[])
 			err(1, "unable to enter capability mode");
 	}
 #endif
-	limitfd(STDIN_FILENO);
-	limitfd(STDOUT_FILENO);
-	limitfd(STDERR_FILENO);
+	if (caph_limit_stdio() == -1)
+		err(1, "unable to limit stdio");
 
 	TAILQ_INIT(&trace_procs);
 	drop_logged = 0;
@@ -554,40 +552,6 @@ main(int argc, char *argv[])
 			fflush(stdout);
 	}
 	return 0;
-}
-
-void
-limitfd(int fd)
-{
-	cap_rights_t rights;
-	unsigned long cmd;
-
-	cap_rights_init(&rights, CAP_FSTAT);
-	cmd = 0;
-
-	switch (fd) {
-	case STDIN_FILENO:
-		cap_rights_set(&rights, CAP_READ);
-		break;
-	case STDOUT_FILENO:
-		cap_rights_set(&rights, CAP_IOCTL, CAP_WRITE);
-		cmd = TIOCGETA;	/* required by isatty(3) in printf(3) */
-		break;
-	case STDERR_FILENO:
-		cap_rights_set(&rights, CAP_WRITE);
-		if (!suppressdata) {
-			cap_rights_set(&rights, CAP_IOCTL);
-			cmd = TIOCGWINSZ;
-		}
-		break;
-	default:
-		abort();
-	}
-
-	if (cap_rights_limit(fd, &rights) < 0 && errno != ENOSYS)
-		err(1, "unable to limit rights for descriptor %d", fd);
-	if (cmd != 0 && cap_ioctls_limit(fd, &cmd, 1) < 0 && errno != ENOSYS)
-		err(1, "unable to limit ioctls for descriptor %d", fd);
 }
 
 int
@@ -876,6 +840,7 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 				quad_slots = 1;
 			switch (ktr->ktr_code) {
 			case SYS_bindat:
+			case SYS_chflagsat:
 			case SYS_connectat:
 			case SYS_faccessat:
 			case SYS_fchmodat:
@@ -967,7 +932,6 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 				ip++;
 				narg--;
 				break;
-			case SYS_mknod:
 			case SYS_mknodat:
 				print_number(ip, narg, c);
 				putchar(',');
@@ -1018,6 +982,7 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 				narg--;
 				break;
 			case SYS_chflags:
+			case SYS_chflagsat:
 			case SYS_fchflags:
 			case SYS_lchflags:
 				print_number(ip, narg, c);
@@ -1095,11 +1060,11 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 				ip++;
 				narg--;
 				break;
+			case SYS_getpriority:
 			case SYS_setpriority:
-				print_number(ip, narg, c);
-				print_number(ip, narg, c);
-				putchar(',');
+				putchar('(');
 				print_integer_arg(sysdecode_prio_which, *ip);
+				c = ',';
 				ip++;
 				narg--;
 				break;
@@ -1225,6 +1190,13 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 				narg--;
 				c = ',';
 				break;
+			case SYS_getrusage:
+				putchar('(');
+				print_integer_arg(sysdecode_getrusage_who, *ip);
+				ip++;
+				narg--;
+				c = ',';
+				break;
 			case SYS_quotactl:
 				print_number(ip, narg, c);
 				putchar(',');
@@ -1247,6 +1219,7 @@ ktrsyscall(struct ktr_syscall *ktr, u_int sv_flags)
 				c = ',';
 				break;
 			case SYS_rtprio:
+			case SYS_rtprio_thread:
 				putchar('(');
 				print_integer_arg(sysdecode_rtprio_function,
 				    *ip);
@@ -1770,8 +1743,6 @@ ktrsockaddr(struct sockaddr *sa)
 {
 /*
  TODO: Support additional address families
-	#include <netnatm/natm.h>
-	struct sockaddr_natm	*natm;
 	#include <netsmb/netbios.h>
 	struct sockaddr_nb	*nb;
 */

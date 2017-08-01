@@ -184,8 +184,8 @@ static struct ctl_frontend cfiscsi_frontend =
 	.ioctl = cfiscsi_ioctl,
 	.shutdown = cfiscsi_shutdown,
 };
-CTL_FRONTEND_DECLARE(ctlcfiscsi, cfiscsi_frontend);
-MODULE_DEPEND(ctlcfiscsi, icl, 1, 1, 1);
+CTL_FRONTEND_DECLARE(cfiscsi, cfiscsi_frontend);
+MODULE_DEPEND(cfiscsi, icl, 1, 1, 1);
 
 static struct icl_pdu *
 cfiscsi_pdu_new_response(struct icl_pdu *request, int flags)
@@ -321,11 +321,10 @@ cfiscsi_pdu_handle(struct icl_pdu *request)
 static void
 cfiscsi_receive_callback(struct icl_pdu *request)
 {
+#ifdef ICL_KERNEL_PROXY
 	struct cfiscsi_session *cs;
 
 	cs = PDU_SESSION(request);
-
-#ifdef ICL_KERNEL_PROXY
 	if (cs->cs_waiting_for_ctld || cs->cs_login_phase) {
 		if (cs->cs_login_pdu == NULL)
 			cs->cs_login_pdu = request;
@@ -1532,7 +1531,8 @@ cfiscsi_ioctl_handoff(struct ctl_iscsi *ci)
 	 */
 	cs->cs_cmdsn = cihp->cmdsn;
 	cs->cs_statsn = cihp->statsn;
-	cs->cs_max_data_segment_length = cihp->max_recv_data_segment_length;
+	cs->cs_max_recv_data_segment_length = cihp->max_recv_data_segment_length;
+	cs->cs_max_send_data_segment_length = cihp->max_send_data_segment_length;
 	cs->cs_max_burst_length = cihp->max_burst_length;
 	cs->cs_first_burst_length = cihp->first_burst_length;
 	cs->cs_immediate_data = !!cihp->immediate_data;
@@ -1672,9 +1672,10 @@ cfiscsi_ioctl_list(struct ctl_iscsi *ci)
 		    "<target_portal_group_tag>%u</target_portal_group_tag>"
 		    "<header_digest>%s</header_digest>"
 		    "<data_digest>%s</data_digest>"
-		    "<max_data_segment_length>%zd</max_data_segment_length>"
-		    "<max_burst_length>%zd</max_burst_length>"
-		    "<first_burst_length>%zd</first_burst_length>"
+		    "<max_recv_data_segment_length>%d</max_recv_data_segment_length>"
+		    "<max_send_data_segment_length>%d</max_send_data_segment_length>"
+		    "<max_burst_length>%d</max_burst_length>"
+		    "<first_burst_length>%d</first_burst_length>"
 		    "<immediate_data>%d</immediate_data>"
 		    "<iser>%d</iser>"
 		    "<offload>%s</offload>"
@@ -1685,7 +1686,8 @@ cfiscsi_ioctl_list(struct ctl_iscsi *ci)
 		    cs->cs_target->ct_tag,
 		    cs->cs_conn->ic_header_crc32c ? "CRC32C" : "None",
 		    cs->cs_conn->ic_data_crc32c ? "CRC32C" : "None",
-		    cs->cs_max_data_segment_length,
+		    cs->cs_max_recv_data_segment_length,
+		    cs->cs_max_send_data_segment_length,
 		    cs->cs_max_burst_length,
 		    cs->cs_first_burst_length,
 		    cs->cs_immediate_data,
@@ -1706,6 +1708,13 @@ cfiscsi_ioctl_list(struct ctl_iscsi *ci)
 	sbuf_finish(sb);
 
 	error = copyout(sbuf_data(sb), cilp->conn_xml, sbuf_len(sb) + 1);
+	if (error != 0) {
+		sbuf_delete(sb);
+		snprintf(ci->error_str, sizeof(ci->error_str),
+		    "copyout failed with error %d", error);
+		ci->status = CTL_ISCSI_ERROR;
+		return;
+	}
 	cilp->fill_len = sbuf_len(sb) + 1;
 	ci->status = CTL_ISCSI_OK;
 	sbuf_delete(sb);
@@ -1814,12 +1823,12 @@ static void
 cfiscsi_ioctl_limits(struct ctl_iscsi *ci)
 {
 	struct ctl_iscsi_limits_params *cilp;
+	struct icl_drv_limits idl;
 	int error;
 
 	cilp = (struct ctl_iscsi_limits_params *)&(ci->data);
 
-	error = icl_limits(cilp->offload, false,
-	    &cilp->data_segment_limit);
+	error = icl_limits(cilp->offload, false, &idl);
 	if (error != 0) {
 		ci->status = CTL_ISCSI_ERROR;
 		snprintf(ci->error_str, sizeof(ci->error_str),
@@ -1827,6 +1836,13 @@ cfiscsi_ioctl_limits(struct ctl_iscsi *ci)
 			__func__, error);
 		return;
 	}
+
+	cilp->max_recv_data_segment_length =
+	    idl.idl_max_recv_data_segment_length;
+	cilp->max_send_data_segment_length =
+	    idl.idl_max_send_data_segment_length;
+	cilp->max_burst_length = idl.idl_max_burst_length;
+	cilp->first_burst_length = idl.idl_first_burst_length;
 
 	ci->status = CTL_ISCSI_OK;
 }
@@ -2117,11 +2133,6 @@ cfiscsi_ioctl_port_create(struct ctl_req *req)
 	port->onoff_arg = ct;
 	port->fe_datamove = cfiscsi_datamove;
 	port->fe_done = cfiscsi_done;
-
-	/* XXX KDM what should we report here? */
-	/* XXX These should probably be fetched from CTL. */
-	port->max_targets = 1;
-	port->max_target_id = 15;
 	port->targ_port = -1;
 
 	port->options = opts;
@@ -2158,9 +2169,9 @@ cfiscsi_ioctl_port_create(struct ctl_req *req)
 	retval = ctl_port_register(port);
 	if (retval != 0) {
 		ctl_free_opts(&port->options);
-		cfiscsi_target_release(ct);
 		free(port->port_devid, M_CFISCSI);
 		free(port->target_devid, M_CFISCSI);
+		cfiscsi_target_release(ct);
 		req->status = CTL_LUN_ERROR;
 		snprintf(req->error_str, sizeof(req->error_str),
 		    "ctl_port_register() failed with error %d", retval);
@@ -2487,12 +2498,12 @@ cfiscsi_datamove_in(union ctl_io *io)
 		/*
 		 * Truncate to maximum data segment length.
 		 */
-		KASSERT(response->ip_data_len < cs->cs_max_data_segment_length,
-		    ("ip_data_len %zd >= max_data_segment_length %zd",
-		    response->ip_data_len, cs->cs_max_data_segment_length));
+		KASSERT(response->ip_data_len < cs->cs_max_send_data_segment_length,
+		    ("ip_data_len %zd >= max_send_data_segment_length %d",
+		    response->ip_data_len, cs->cs_max_send_data_segment_length));
 		if (response->ip_data_len + len >
-		    cs->cs_max_data_segment_length) {
-			len = cs->cs_max_data_segment_length -
+		    cs->cs_max_send_data_segment_length) {
+			len = cs->cs_max_send_data_segment_length -
 			    response->ip_data_len;
 			KASSERT(len <= sg_len, ("len %zd > sg_len %zd",
 			    len, sg_len));
@@ -2551,7 +2562,7 @@ cfiscsi_datamove_in(union ctl_io *io)
 			i++;
 		}
 
-		if (response->ip_data_len == cs->cs_max_data_segment_length) {
+		if (response->ip_data_len == cs->cs_max_send_data_segment_length) {
 			/*
 			 * Can't stuff more data into the current PDU;
 			 * queue it.  Note that's not enough to check

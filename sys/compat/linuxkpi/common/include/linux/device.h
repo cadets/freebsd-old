@@ -49,6 +49,8 @@
 enum irqreturn	{ IRQ_NONE = 0, IRQ_HANDLED, IRQ_WAKE_THREAD, };
 typedef enum irqreturn	irqreturn_t;
 
+struct device;
+
 struct class {
 	const char	*name;
 	struct module	*owner;
@@ -57,6 +59,33 @@ struct class {
 	void		(*class_release)(struct class *class);
 	void		(*dev_release)(struct device *dev);
 	char *		(*devnode)(struct device *dev, umode_t *mode);
+};
+
+struct dev_pm_ops {
+	int (*suspend)(struct device *dev);
+	int (*suspend_late)(struct device *dev);
+	int (*resume)(struct device *dev);
+	int (*resume_early)(struct device *dev);
+	int (*freeze)(struct device *dev);
+	int (*freeze_late)(struct device *dev);
+	int (*thaw)(struct device *dev);
+	int (*thaw_early)(struct device *dev);
+	int (*poweroff)(struct device *dev);
+	int (*poweroff_late)(struct device *dev);
+	int (*restore)(struct device *dev);
+	int (*restore_early)(struct device *dev);
+	int (*runtime_suspend)(struct device *dev);
+	int (*runtime_resume)(struct device *dev);
+	int (*runtime_idle)(struct device *dev);
+};
+
+struct device_driver {
+	const char	*name;
+	const struct dev_pm_ops *pm;
+};
+
+struct device_type {
+	const char	*name;
 };
 
 struct device {
@@ -71,6 +100,8 @@ struct device {
 	 * done somewhere else.
 	 */
 	bool		bsddev_attached_here;
+	struct device_driver *driver;
+	struct device_type *type;
 	dev_t		devt;
 	struct class	*class;
 	void		(*release)(struct device *dev);
@@ -141,6 +172,18 @@ show_class_attr_string(struct class *class,
 #define	dev_notice(dev, fmt, ...)	device_printf((dev)->bsddev, fmt, ##__VA_ARGS__)
 #define	dev_printk(lvl, dev, fmt, ...)					\
 	    device_printf((dev)->bsddev, fmt, ##__VA_ARGS__)
+
+#define	dev_err_ratelimited(dev, ...) do {	\
+	static linux_ratelimit_t __ratelimited;	\
+	if (linux_ratelimited(&__ratelimited))	\
+		dev_err(dev, __VA_ARGS__);	\
+} while (0)
+
+#define	dev_warn_ratelimited(dev, ...) do {	\
+	static linux_ratelimit_t __ratelimited;	\
+	if (linux_ratelimited(&__ratelimited))	\
+		dev_warn(dev, __VA_ARGS__);	\
+} while (0)
 
 static inline void *
 dev_get_drvdata(const struct device *dev)
@@ -316,13 +359,20 @@ device_create_with_groups(struct class *class,
 	return dev;
 }
 
+static inline bool
+device_is_registered(struct device *dev)
+{
+
+	return (dev->bsddev != NULL);
+}
+
 static inline int
 device_register(struct device *dev)
 {
 	device_t bsddev = NULL;
 	int unit = -1;
 
-	if (dev->bsddev != NULL)
+	if (device_is_registered(dev))
 		goto done;
 
 	if (dev->devt) {
@@ -413,7 +463,7 @@ class_create(struct module *owner, const char *name)
 
 	class = kzalloc(sizeof(*class), M_WAITOK);
 	class->owner = owner;
-	class->name= name;
+	class->name = name;
 	class->class_release = linux_class_kfree;
 	error = class_register(class);
 	if (error) {

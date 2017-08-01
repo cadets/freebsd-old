@@ -26,7 +26,7 @@
 
 /*
  * Copyright (c) 2013, Joyent, Inc. All rights reserved.
- * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright (c) 2011, 2016 by Delphix. All rights reserved.
  */
 
 #ifndef	_DT_IMPL_H
@@ -364,6 +364,7 @@ struct dtrace_hdl {
 	uint64_t dt_last_timestamp;	/* most recently consumed timestamp */
 	u_int dt_oformat;	/* output format, plain, XML, JSON */
 	char *dt_instance;	/* Current instance name or NULL */
+	boolean_t dt_has_sugar;	/* syntactic sugar used? */
 };
 
 /*
@@ -498,7 +499,6 @@ struct dtrace_hdl {
 #define	DT_ACT_SETOPT		DT_ACT(28)	/* setopt() action */
 #define	DT_ACT_PRINT		DT_ACT(29)	/* print() action */
 #define	DT_ACT_PRINTM		DT_ACT(30)	/* printm() action */
-#define	DT_ACT_PRINTT		DT_ACT(31)	/* printt() action */
 
 /*
  * Sentinel to tell freopen() to restore the saved stdout.  This must not

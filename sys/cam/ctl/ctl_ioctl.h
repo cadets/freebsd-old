@@ -82,7 +82,7 @@
 #define	CTL_MINOR	225
 
 /* Legacy statistics accumulated for every port for every LU. */
-#define CTL_LEGACY_STATS	1
+//#define CTL_LEGACY_STATS	1
 
 typedef enum {
 	CTL_DELAY_TYPE_NONE,
@@ -358,8 +358,8 @@ struct ctl_be_arg {
 	unsigned int	vallen;
 	void		*value;
 
-	char	*kname;
-	void	*kvalue;
+	char		*kname;
+	void		*kvalue;
 };
 
 typedef enum {
@@ -591,7 +591,7 @@ typedef enum {
 struct ctl_lun_list {
 	char			backend[CTL_BE_NAME_LEN]; /* passed to kernel*/
 	uint32_t		alloc_len;	/* passed to kernel */
-	char                   *lun_xml;	/* filled in kernel */
+	char			*lun_xml;	/* filled in kernel */
 	uint32_t		fill_len;	/* passed to userland */
 	ctl_lun_list_status	status;		/* passed to userland */
 	char			error_str[CTL_ERROR_STR_LEN];
@@ -691,7 +691,7 @@ struct ctl_iscsi_handoff_params {
 	char			target_name[CTL_ISCSI_NAME_LEN];
 	int			socket;
 	int			portal_group_tag;
-	
+
 	/*
 	 * Connection parameters negotiated by ctld(8).
 	 */
@@ -699,17 +699,17 @@ struct ctl_iscsi_handoff_params {
 	ctl_iscsi_digest	data_digest;
 	uint32_t		cmdsn;
 	uint32_t		statsn;
-	uint32_t		max_recv_data_segment_length;
-	uint32_t		max_burst_length;
-	uint32_t		first_burst_length;
+	int			max_recv_data_segment_length;
+	int			max_burst_length;
+	int			first_burst_length;
 	uint32_t		immediate_data;
 	char			offload[CTL_ISCSI_OFFLOAD_LEN];
 #ifdef ICL_KERNEL_PROXY
 	int			connection_id;
-	int			spare[1];
 #else
-	int			spare[2];
+	int			spare;
 #endif
+	int			max_send_data_segment_length;
 };
 
 struct ctl_iscsi_list_params {
@@ -740,51 +740,55 @@ struct ctl_iscsi_terminate_params {
 };
 
 struct ctl_iscsi_limits_params {
+	/* passed to kernel */
 	char			offload[CTL_ISCSI_OFFLOAD_LEN];
-						/* passed to kernel */
-	size_t			data_segment_limit;
-						/* passed to userland */
-	int			spare[4];
+
+	/* passed to userland */
+	size_t			spare;
+	int			max_recv_data_segment_length;
+	int			max_send_data_segment_length;
+	int			max_burst_length;
+	int			first_burst_length;
 };
 
 #ifdef ICL_KERNEL_PROXY
 struct ctl_iscsi_listen_params {
-	int				iser;
-	int				domain;
-	int				socktype;
-	int				protocol;
-	struct sockaddr			*addr;
-	socklen_t			addrlen;
-	int				portal_id;
-	int				spare[4];
+	int			iser;
+	int			domain;
+	int			socktype;
+	int			protocol;
+	struct sockaddr		*addr;
+	socklen_t		addrlen;
+	int			portal_id;
+	int			spare[4];
 };
 
 struct ctl_iscsi_accept_params {
-	int				connection_id;
-	int				portal_id;
-	struct sockaddr			*initiator_addr;
-	socklen_t			initiator_addrlen;
-	int				spare[4];
+	int			connection_id;
+	int			portal_id;
+	struct sockaddr		*initiator_addr;
+	socklen_t		initiator_addrlen;
+	int			spare[4];
 };
 
 struct ctl_iscsi_send_params {
-	int				connection_id;
-	void				*bhs;
-	size_t				spare;
-	void				*spare2;
-	size_t				data_segment_len;
-	void				*data_segment;
-	int				spare3[4];
+	int			connection_id;
+	void			*bhs;
+	size_t			spare;
+	void			*spare2;
+	size_t			data_segment_len;
+	void			*data_segment;
+	int			spare3[4];
 };
 
 struct ctl_iscsi_receive_params {
-	int				connection_id;
-	void				*bhs;
-	size_t				spare;
-	void				*spare2;
-	size_t				data_segment_len;
-	void				*data_segment;
-	int				spare3[4];
+	int			connection_id;
+	void			*bhs;
+	size_t			spare;
+	void			*spare2;
+	size_t			data_segment_len;
+	void			*data_segment;
+	int			spare3[4];
 };
 
 #endif /* ICL_KERNEL_PROXY */

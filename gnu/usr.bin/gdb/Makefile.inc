@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+.include <src.opts.mk>
+
 VERSION= "6.1.1 [FreeBSD]"
 VENDOR= marcel
 
@@ -21,7 +23,7 @@ OBJ_RL= ${OBJTOP}/gnu/lib/libreadline/readline
 # MACHINE_CPUARCH, but there's no easy way to export make functions...
 
 .if defined(TARGET_ARCH)
-TARGET_CPUARCH=${TARGET_ARCH:C/mips(n32|64)?(el)?/mips/:C/arm(v6)?(eb)?/arm/:C/powerpc64/powerpc/}
+TARGET_CPUARCH=${TARGET_ARCH:C/mips(n32|64)?(el)?(hf)?/mips/:C/arm(v6)?(eb)?/arm/:C/powerpc(64|spe)/powerpc/}
 .else
 TARGET_CPUARCH=${MACHINE_CPUARCH}
 .endif
@@ -52,6 +54,9 @@ GENSRCS+= nm.h tm.h
 .if defined(GDB_CROSS_DEBUGGER)
 CFLAGS+= -DCROSS_DEBUGGER -I${BMAKE_ROOT:H:H}
 GDB_SUFFIX= -${TARGET_ARCH}
+MAN=
+.elif ${MK_GDB_LIBEXEC} != "no"
+BINDIR?=	/usr/libexec
 MAN=
 .endif
 

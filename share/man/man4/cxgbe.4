@@ -31,7 +31,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd December 22, 2016
+.Dd May 16, 2017
 .Dt CXGBE 4
 .Os
 .Sh NAME
@@ -167,6 +167,10 @@ Tunables can be set at the
 .Xr loader 8
 prompt before booting the kernel or stored in
 .Xr loader.conf 5 .
+There are multiple tunables that control the number of queues of various
+types.
+A negative value for such a tunable instructs the driver to create
+up to that many queues if there are enough CPU cores available.
 .Bl -tag -width indent
 .It Va hw.cxgbe.ntxq10g
 Number of tx queues used for a 10Gb or higher-speed port.
@@ -363,6 +367,7 @@ email all the specific information related to the issue to
 .Sh SEE ALSO
 .Xr altq 4 ,
 .Xr arp 4 ,
+.Xr ccr 4 ,
 .Xr cxgb 4 ,
 .Xr cxgbev 4 ,
 .Xr netintro 4 ,

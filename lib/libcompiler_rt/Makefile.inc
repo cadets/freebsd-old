@@ -39,6 +39,7 @@ SRCF+=		enable_execute_stack
 SRCF+=		eprintf
 SRCF+=		extendhfsf2
 SRCF+=		ffsdi2
+SRCF+=		ffssi2
 SRCF+=		ffsti2
 SRCF+=		fixdfdi
 SRCF+=		fixdfti
@@ -128,8 +129,11 @@ SRCF+=		umodti3
 SRCF+=		cpu_model
 .endif
 
-# 128-bit quad precision long double support, only used on arm64
-.if ${MACHINE_CPUARCH} == "aarch64"
+#
+# 128-bit quad precision long double support,
+# only used on some architectures.
+#
+.if ${MACHINE_CPUARCH} == "aarch64" || ${MACHINE_CPUARCH} == "riscv"
 SRCF+=		addtf3
 SRCF+=		comparetf2
 SRCF+=		divtf3
@@ -148,8 +152,9 @@ SRCF+=		trunctfdf2
 SRCF+=		trunctfsf2
 .endif
 
-# These are already shipped by libc.a on arm and mips
-.if ${MACHINE_CPUARCH} != "arm" && ${MACHINE_CPUARCH} != "mips"
+# These are already shipped by libc.a on some architectures.
+.if ${MACHINE_CPUARCH} != "arm" && ${MACHINE_CPUARCH} != "mips" && \
+    ${MACHINE_CPUARCH} != "riscv"
 SRCF+=		adddf3
 SRCF+=		addsf3
 SRCF+=		divdf3
@@ -218,4 +223,10 @@ SRCS+=		switch32.S
 SRCS+=		switch8.S
 SRCS+=		switchu8.S
 SRCS+=		sync_synchronize.S
+.endif
+
+# On some archs GCC-6.3 requires bswap32 built-in.
+.if ${MACHINE_CPUARCH} == "mips" || ${MACHINE_CPUARCH} == "sparc64"
+SRCS+=		bswapdi2.c
+SRCS+=		bswapsi2.c
 .endif

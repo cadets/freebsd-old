@@ -21,13 +21,12 @@
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/VirtRegMap.h"
-#include "llvm/Target/TargetRegisterInfo.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Timer.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetRegisterInfo.h"
 
 using namespace llvm;
 
@@ -41,7 +40,8 @@ static cl::opt<bool, true>
 VerifyRegAlloc("verify-regalloc", cl::location(RegAllocBase::VerifyEnabled),
                cl::desc("Verify during register allocation"));
 
-const char RegAllocBase::TimerGroupName[] = "Register Allocation";
+const char RegAllocBase::TimerGroupName[] = "regalloc";
+const char RegAllocBase::TimerGroupDescription[] = "Register Allocation";
 bool RegAllocBase::VerifyEnabled = false;
 
 //===----------------------------------------------------------------------===//
@@ -67,7 +67,8 @@ void RegAllocBase::init(VirtRegMap &vrm,
 // register, unify them with the corresponding LiveIntervalUnion, otherwise push
 // them on the priority queue for later assignment.
 void RegAllocBase::seedLiveRegs() {
-  NamedRegionTimer T("Seed Live Regs", TimerGroupName, TimePassesIsEnabled);
+  NamedRegionTimer T("seed", "Seed Live Regs", TimerGroupName,
+                     TimerGroupDescription, TimePassesIsEnabled);
   for (unsigned i = 0, e = MRI->getNumVirtRegs(); i != e; ++i) {
     unsigned Reg = TargetRegisterInfo::index2VirtReg(i);
     if (MRI->reg_nodbg_empty(Reg))
@@ -143,6 +144,7 @@ void RegAllocBase::allocatePhysRegs() {
         continue;
       }
       DEBUG(dbgs() << "queuing new interval: " << *SplitVirtReg << "\n");
+      assert(!SplitVirtReg->empty() && "expecting non-empty interval");
       assert(TargetRegisterInfo::isVirtualRegister(SplitVirtReg->reg) &&
              "expect split value in virtual register");
       enqueue(SplitVirtReg);

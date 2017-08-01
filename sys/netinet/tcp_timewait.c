@@ -10,7 +10,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -352,7 +352,6 @@ tcp_twstart(struct tcpcb *tp)
 		    ("tcp_twstart: !SS_PROTOREF"));
 		inp->inp_flags &= ~INP_SOCKREF;
 		INP_WUNLOCK(inp);
-		ACCEPT_LOCK();
 		SOCK_LOCK(so);
 		so->so_state &= ~SS_PROTOREF;
 		sofree(so);
@@ -491,7 +490,6 @@ tcp_twclose(struct tcptw *tw, int reuse)
 		if (inp->inp_flags & INP_SOCKREF) {
 			inp->inp_flags &= ~INP_SOCKREF;
 			INP_WUNLOCK(inp);
-			ACCEPT_LOCK();
 			SOCK_LOCK(so);
 			KASSERT(so->so_state & SS_PROTOREF,
 			    ("tcp_twclose: INP_SOCKREF && !SS_PROTOREF"));

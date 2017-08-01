@@ -23,7 +23,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -252,7 +252,7 @@ kern_pread(struct thread *td, int fd, void *buf, size_t nbyte, off_t offset)
 	auio.uio_resid = nbyte;
 	auio.uio_segflg = UIO_USERSPACE;
 	error = kern_preadv(td, fd, &auio, offset, NULL);
-	return(error);
+	return (error);
 }
 
 #if defined(COMPAT_FREEBSD6)
@@ -1817,26 +1817,6 @@ pollscan(td, fds, nfd)
 	FILEDESC_SUNLOCK(fdp);
 	td->td_retval[0] = n;
 	return (0);
-}
-
-/*
- * OpenBSD poll system call.
- *
- * XXX this isn't quite a true representation..  OpenBSD uses select ops.
- */
-#ifndef _SYS_SYSPROTO_H_
-struct openbsd_poll_args {
-	struct pollfd *fds;
-	u_int	nfds;
-	int	timeout;
-};
-#endif
-int
-sys_openbsd_poll(td, uap)
-	register struct thread *td;
-	register struct openbsd_poll_args *uap;
-{
-	return (sys_poll(td, (struct poll_args *)uap));
 }
 
 /*

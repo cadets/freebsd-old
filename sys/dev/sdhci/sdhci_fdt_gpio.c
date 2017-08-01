@@ -90,7 +90,7 @@ cd_setup(struct sdhci_fdt_gpio *gpio, phandle_t node)
 		gpio->slot->opt |= SDHCI_NON_REMOVABLE;
 		gpio->cd_disabled = true;
 		if (bootverbose)
-			device_printf(dev, "Non-removable media");
+			device_printf(dev, "Non-removable media\n");
 		return;
 	}
 
@@ -177,8 +177,12 @@ wp_setup(struct sdhci_fdt_gpio *gpio, phandle_t node)
 
 	dev = gpio->dev;
 
-	if (OF_hasprop(node, "wp-disable"))
+	if (OF_hasprop(node, "wp-disable")) {
+		gpio->wp_disabled = true;
+		if (bootverbose)
+			device_printf(dev, "Write protect disabled\n");
 		return;
+	}
 
 	if (gpio_pin_get_by_ofw_property(dev, node, "wp-gpios", &gpio->wp_pin))
 		return;
@@ -216,9 +220,14 @@ sdhci_fdt_gpio_teardown(struct sdhci_fdt_gpio *gpio)
 	if (gpio == NULL)
 		return;
 
-	if (gpio->cd_ihandler != NULL) {
+	if (gpio->cd_ihandler != NULL)
 		bus_teardown_intr(gpio->dev, gpio->cd_ires, gpio->cd_ihandler);
-	}
+	if (gpio->wp_pin != NULL)
+		gpio_pin_release(gpio->wp_pin);
+	if (gpio->cd_pin != NULL)
+		gpio_pin_release(gpio->cd_pin);
+	if (gpio->cd_ires != NULL)
+		bus_release_resource(gpio->dev, SYS_RES_IRQ, 0, gpio->cd_ires);
 
 	free(gpio, M_DEVBUF);
 }

@@ -54,7 +54,6 @@ struct ogetdirentries_args;
 struct rlimit;
 struct rusage;
 union semun;
-struct sendfile_args;
 struct sockaddr;
 struct stat;
 struct thr_param;
@@ -62,7 +61,7 @@ struct sched_param;
 struct __wrusage;
 
 int	kern___getcwd(struct thread *td, char *buf, enum uio_seg bufseg,
-	    u_int buflen, u_int path_max);
+	    size_t buflen, size_t path_max);
 int	kern_accept(struct thread *td, int s, struct sockaddr **name,
 	    socklen_t *namelen, struct file **fp);
 int	kern_accept4(struct thread *td, int s, struct sockaddr **name,
@@ -84,6 +83,8 @@ int	kern_clock_getres(struct thread *td, clockid_t clock_id,
 	    struct timespec *ts);
 int	kern_clock_gettime(struct thread *td, clockid_t clock_id,
 	    struct timespec *ats);
+int	kern_clock_nanosleep(struct thread *td, clockid_t clock_id, int flags,
+	    const struct timespec *rqtp, struct timespec *rmtp);
 int	kern_clock_settime(struct thread *td, clockid_t clock_id,
 	    struct timespec *ats);
 int	kern_close(struct thread *td, int fd);
@@ -117,8 +118,8 @@ int	kern_futimes(struct thread *td, int fd, struct timeval *tptr,
 	    enum uio_seg tptrseg);
 int	kern_futimens(struct thread *td, int fd, struct timespec *tptr,
 	    enum uio_seg tptrseg);
-int	kern_getdirentries(struct thread *td, int fd, char *buf, u_int count,
-	    long *basep, ssize_t *residp, enum uio_seg bufseg);
+int	kern_getdirentries(struct thread *td, int fd, char *buf, size_t count,
+	    off_t *basep, ssize_t *residp, enum uio_seg bufseg);
 int	kern_getfsstat(struct thread *td, struct statfs **buf, size_t bufsize,
 	    size_t *countp, enum uio_seg bufseg, int mode);
 int	kern_getitimer(struct thread *, u_int, struct itimerval *);
@@ -152,12 +153,13 @@ int	kern_lseek(struct thread *td, int fd, off_t offset, int whence);
 int	kern_lutimes(struct thread *td, char *path, enum uio_seg pathseg,
 	    struct timeval *tptr, enum uio_seg tptrseg);
 int	kern_madvise(struct thread *td, uintptr_t addr, size_t len, int behav);
+int	kern_mincore(struct thread *td, uintptr_t addr, size_t len, char *vec);
 int	kern_mkdirat(struct thread *td, int fd, char *path,
 	    enum uio_seg segflg, int mode);
 int	kern_mkfifoat(struct thread *td, int fd, char *path,
 	    enum uio_seg pathseg, int mode);
 int	kern_mknodat(struct thread *td, int fd, char *path,
-	    enum uio_seg pathseg, int mode, int dev);
+	    enum uio_seg pathseg, int mode, dev_t dev);
 int	kern_mlock(struct proc *proc, struct ucred *cred, uintptr_t addr,
 	    size_t len);
 int	kern_mmap(struct thread *td, uintptr_t addr, size_t size, int prot,
@@ -225,8 +227,6 @@ int	kern_semctl(struct thread *td, int semid, int semnum, int cmd,
 	    union semun *arg, register_t *rval);
 int	kern_select(struct thread *td, int nd, fd_set *fd_in, fd_set *fd_ou,
 	    fd_set *fd_ex, struct timeval *tvp, int abi_nfdbits);
-int	kern_sendfile(struct thread *td, struct sendfile_args *uap,
-	    struct uio *hdr_uio, struct uio *trl_uio, int compat);
 int	kern_sendit(struct thread *td, int s, struct msghdr *mp, int flags,
 	    struct mbuf *control, enum uio_seg segflg, struct metaio *miop);
 int	kern_setgroups(struct thread *td, u_int ngrp, gid_t *groups);
@@ -252,6 +252,8 @@ int	kern_sigprocmask(struct thread *td, int how,
 int	kern_sigsuspend(struct thread *td, sigset_t mask);
 int	kern_sigtimedwait(struct thread *td, sigset_t waitset,
 	    struct ksiginfo *ksi, struct timespec *timeout);
+int	kern_sigqueue(struct thread *td, pid_t pid, int signum,
+	    union sigval *value);
 int	kern_socket(struct thread *td, int domain, int type, int protocol);
 int	kern_statat(struct thread *td, int flag, int fd, char *path,
 	    enum uio_seg pathseg, struct stat *sbp,
@@ -292,5 +294,10 @@ int	kern_socketpair(struct thread *td, int domain, int type, int protocol,
 /* flags for kern_sigaction */
 #define	KSA_OSIGSET	0x0001	/* uses osigact_t */
 #define	KSA_FREEBSD4	0x0002	/* uses ucontext4 */
+
+struct freebsd11_dirent;
+
+int	freebsd11_kern_getdirentries(struct thread *td, int fd, char *ubuf, u_int
+	    count, long *basep, void (*func)(struct freebsd11_dirent *));
 
 #endif /* !_SYS_SYSCALLSUBR_H_ */

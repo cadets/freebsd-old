@@ -180,6 +180,9 @@ ${PROGNAME}.debug: ${PROG_FULL}
 .endif
 
 .if defined(LLVM_LINK)
+# LLVM bitcode / textual IR representations of the program
+BCOBJS=	${OBJS:.o=.bco}
+LLOBJS=	${OBJS:.o=.llo}
 
 ${PROG_FULL}.bc: ${BCOBJS}
 	${LLVM_LINK} -o ${.TARGET} ${BCOBJS}
@@ -225,7 +228,7 @@ all: all-man
 .if defined(PROG)
 CLEANFILES+= ${PROG} ${PROG}.bc ${PROG}.ll ${PROG_INSTR} ${PROG_INSTR_IR}
 .if ${MK_DEBUG_FILES} != "no"
-CLEANFILES+=	${PROG_FULL} ${PROG_FULL}.bc ${PROGNAME}.debug ${PROG_FULL}.ll
+CLEANFILES+= ${PROG_FULL} ${PROG_FULL}.bc ${PROGNAME}.debug ${PROG_FULL}.ll
 .endif
 .endif
 

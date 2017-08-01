@@ -1,6 +1,6 @@
 # $FreeBSD$
 
-SYSDIR?=${.CURDIR}/../..
+SYSDIR?=${SRCTOP}/sys
 
 KMOD=	zfs
 
@@ -93,7 +93,7 @@ CFLAGS+=-I${SUNW}/common
 CFLAGS+=-DBUILDING_ZFS
 
 .if ${MACHINE_ARCH} == "powerpc64"
-CFLAGS+=-mminimal-toc
+CFLAGS.gcc+=-mminimal-toc
 .endif
 
 .ifdef ZFS_DEBUG

@@ -299,7 +299,7 @@ atomic_clear_32(volatile uint32_t *address, uint32_t clearmask)
 static __inline u_int32_t
 atomic_cmpset_32(volatile u_int32_t *p, volatile u_int32_t cmpval, volatile u_int32_t newval)
 {
-	register int done, ras_start = ARM_RAS_START;
+	int done, ras_start = ARM_RAS_START;
 
 	__asm __volatile("1:\n"
 	    "adr	%1, 1b\n"
@@ -463,6 +463,8 @@ atomic_cmpset_long(volatile u_long *dst, u_long old, u_long newe)
 	return (atomic_cmpset_32((volatile uint32_t *)dst, old, newe));
 }
 
+#ifdef _KERNEL
+/* atomic_fcmpset_32 is only defined for the kernel */
 static __inline u_long
 atomic_fcmpset_long(volatile u_long *dst, u_long *old, u_long newe)
 {
@@ -470,6 +472,7 @@ atomic_fcmpset_long(volatile u_long *dst, u_long *old, u_long newe)
 	return (atomic_fcmpset_32((volatile uint32_t *)dst,
 	    (uint32_t *)old, newe));
 }
+#endif
 
 static __inline u_long
 atomic_fetchadd_long(volatile u_long *p, u_long v)

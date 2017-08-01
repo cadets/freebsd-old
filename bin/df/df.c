@@ -15,7 +15,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -183,6 +183,9 @@ main(int argc, char *argv[])
 			hflag = 0;
 			break;
 		case 'l':
+			/* Ignore duplicate -l */
+			if (lflag)
+				break;
 			if (vfslist != NULL)
 				xo_errx(1, "-l and -t are mutually exclusive.");
 			vfslist = makevfslist(makenetvfslist());
@@ -487,7 +490,7 @@ prtstat(struct statfs *sfsp, struct maxwidths *mwp)
 		xo_emit("{T:/%-*s}", mwp->mntfrom, "Filesystem");
 		if (Tflag)
 			xo_emit("  {T:/%-*s}", mwp->fstype, "Type");
-		xo_emit(" {T:/%*s} {T:/%*s} {T:/%*s} Capacity",
+		xo_emit(" {T:/%*s} {T:/%*s} {T:/%*s} {T:Capacity}",
 			mwp->total, header,
 			mwp->used, "Used", mwp->avail, "Avail");
 		if (iflag) {

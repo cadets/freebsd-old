@@ -140,7 +140,6 @@ __FBSDID("$FreeBSD$");
 #ifdef SMP
 #include <machine/smp.h>
 #endif
-
 #ifndef PMAP_SHPGPERPROC
 #define PMAP_SHPGPERPROC 200
 #endif
@@ -291,8 +290,6 @@ vm_paddr_t first_managed_pa;
 /*
  *  All those kernel PT submaps that BSD is so fond of
  */
-static pt2_entry_t *CMAP3;
-static caddr_t CADDR3;
 caddr_t _tmppt = 0;
 
 struct msgbuf *msgbufp = NULL; /* XXX move it to machdep.c */
@@ -433,7 +430,9 @@ encode_ttb_flags(int idx)
 		reg |= (inner & 0x1) << 6;
 	reg |= (inner & 0x2) >> 1;
 #ifdef SMP
-	reg |= 1 << 1;
+	ARM_SMP_UP(
+		reg |= 1 << 1,
+	);
 #endif
 	return reg;
 }
@@ -487,13 +486,51 @@ pmap_set_tex(void)
 
 	/* Add shareable bits for normal memory in SMP case. */
 #ifdef SMP
-	prrr |= PRRR_NS1;
+	ARM_SMP_UP(
+		prrr |= PRRR_NS1,
+	);
 #endif
 	cp15_prrr_set(prrr);
 	cp15_nmrr_set(nmrr);
 
 	/* Caches are disabled, so full TLB flush should be enough. */
 	tlb_flush_all_local();
+}
+
+/*
+ * Remap one vm_meattr class to another one. This can be useful as
+ * workaround for SOC errata, e.g. if devices must be accessed using
+ * SO memory class.
+ *
+ * !!! Please note that this function is absolutely last resort thing.
+ * It should not be used under normal circumstances. !!!
+ *
+ * Usage rules:
+ * - it shall be called after pmap_bootstrap_prepare() and before
+ *   cpu_mp_start() (thus only on boot CPU). In practice, it's expected
+ *   to be called from platform_attach() or platform_late_init().
+ *
+ * - if remapping doesn't change caching mode, or until uncached class
+ *   is remapped to any kind of cached one, then no other restriction exists.
+ *
+ * - if pmap_remap_vm_attr() changes caching mode, but both (original and
+ *   remapped) remain cached, then caller is resposible for calling
+ *   of dcache_wbinv_poc_all().
+ *
+ * - remapping of any kind of cached class to uncached is not permitted.
+ */
+void
+pmap_remap_vm_attr(vm_memattr_t old_attr, vm_memattr_t new_attr)
+{
+	int old_idx, new_idx;
+
+	/* Map VM memattrs to indexes to tex_class table. */
+	old_idx = PTE2_ATTR2IDX(pte2_attr_tab[(int)old_attr]);
+	new_idx = PTE2_ATTR2IDX(pte2_attr_tab[(int)new_attr]);
+
+	/* Replace TEX attribute and apply it. */
+	tex_class[old_idx] = tex_class[new_idx];
+	pmap_set_tex();
 }
 
 /*
@@ -726,7 +763,7 @@ pmap_bootstrap_prepare(vm_paddr_t last)
 	pt1_entry_t *pte1p;
 	pt2_entry_t *pte2p;
 	u_int i;
-	uint32_t actlr_mask, actlr_set, l1_attr;
+	uint32_t l1_attr;
 
 	/*
 	 * Now, we are going to make real kernel mapping. Note that we are
@@ -843,8 +880,7 @@ pmap_bootstrap_prepare(vm_paddr_t last)
 
 	/* Finally, switch from 'boot_pt1' to 'kern_pt1'. */
 	pmap_kern_ttb = base_pt1 | ttb_flags;
-	cpuinfo_get_actlr_modifier(&actlr_mask, &actlr_set);
-	reinit_mmu(pmap_kern_ttb, actlr_mask, actlr_set);
+	cpuinfo_reinit_mmu(pmap_kern_ttb);
 	/*
 	 * Initialize the first available KVA. As kernel image is mapped by
 	 * sections, we are leaving some gap behind.
@@ -1160,14 +1196,12 @@ pmap_bootstrap(vm_offset_t firstaddr)
 	/*
 	 * Local CMAP1/CMAP2 are used for zeroing and copying pages.
 	 * Local CMAP2 is also used for data cache cleaning.
-	 * Global CMAP3 is used for the idle process page zeroing.
 	 */
 	pc = get_pcpu();
 	mtx_init(&pc->pc_cmap_lock, "SYSMAPS", NULL, MTX_DEF);
 	SYSMAP(caddr_t, pc->pc_cmap1_pte2p, pc->pc_cmap1_addr, 1);
 	SYSMAP(caddr_t, pc->pc_cmap2_pte2p, pc->pc_cmap2_addr, 1);
 	SYSMAP(vm_offset_t, pc->pc_qmap_pte2p, pc->pc_qmap_addr, 1);
-	SYSMAP(caddr_t, CMAP3, CADDR3, 1);
 
 	/*
 	 * Crashdump maps.
@@ -2746,31 +2780,25 @@ SYSCTL_INT(_vm_pmap, OID_AUTO, pv_entry_spare, CTLFLAG_RD, &pv_entry_spare, 0,
 /*
  *  Is given page managed?
  */
-static __inline boolean_t
+static __inline bool
 is_managed(vm_paddr_t pa)
 {
-	vm_offset_t pgnum;
 	vm_page_t m;
 
-	pgnum = atop(pa);
-	if (pgnum >= first_page) {
-		m = PHYS_TO_VM_PAGE(pa);
-		if (m == NULL)
-			return (FALSE);
-		if ((m->oflags & VPO_UNMANAGED) == 0)
-			return (TRUE);
-	}
-	return (FALSE);
+	m = PHYS_TO_VM_PAGE(pa);
+	if (m == NULL)
+		return (false);
+	return ((m->oflags & VPO_UNMANAGED) == 0);
 }
 
-static __inline boolean_t
+static __inline bool
 pte1_is_managed(pt1_entry_t pte1)
 {
 
 	return (is_managed(pte1_pa(pte1)));
 }
 
-static __inline boolean_t
+static __inline bool
 pte2_is_managed(pt2_entry_t pte2)
 {
 
@@ -3329,7 +3357,7 @@ pmap_change_pte1(pmap_t pmap, pt1_entry_t *pte1p, vm_offset_t va,
 		act.va = va;
 		act.npte1 = npte1;
 		act.update = PCPU_GET(cpuid);
-		smp_rendezvous_cpus(all_cpus, smp_no_rendevous_barrier,
+		smp_rendezvous_cpus(all_cpus, smp_no_rendezvous_barrier,
 		    pmap_update_pte1_action, NULL, &act);
 		sched_unpin();
 	} else {
@@ -5168,8 +5196,6 @@ pmap_is_referenced(vm_page_t m)
 	return (rv);
 }
 
-#define	PMAP_TS_REFERENCED_MAX	5
-
 /*
  *	pmap_ts_referenced:
  *
@@ -5177,10 +5203,6 @@ pmap_is_referenced(vm_page_t m)
  *	It is not necessary for every reference bit to be cleared, but it
  *	is necessary that 0 only be returned when there are truly no
  *	reference bits set.
- *
- *	XXX: The exact number of bits to check and clear is a matter that
- *	should be tested and standardized at some point in the future for
- *	optimal aging of shared pages.
  *
  *	As an optimization, update the page's dirty field if a modified bit is
  *	found while counting reference bits.  This opportunistic update can be
@@ -5814,27 +5836,6 @@ pmap_zero_page_area(vm_page_t m, int off, int size)
 }
 
 /*
- *	pmap_zero_page_idle zeros the specified hardware page by mapping
- *	the page into KVM and using bzero to clear its contents.  This
- *	is intended to be called from the vm_pagezero process only and
- *	outside of Giant.
- */
-void
-pmap_zero_page_idle(vm_page_t m)
-{
-
-	if (pte2_load(CMAP3) != 0)
-		panic("%s: CMAP3 busy", __func__);
-	sched_pin();
-	pte2_store(CMAP3, PTE2_KERN_NG(VM_PAGE_TO_PHYS(m), PTE2_AP_KRW,
-	    vm_page_pte2_attr(m)));
-	pagezero(CADDR3);
-	pte2_clear(CMAP3);
-	tlb_flush((vm_offset_t)CADDR3);
-	sched_unpin();
-}
-
-/*
  *	pmap_copy_page copies the specified (machine independent)
  *	page by mapping the page into virtual memory and using
  *	bcopy to copy the page, one machine dependent page at a
@@ -6148,7 +6149,7 @@ pmap_mincore(pmap_t pmap, vm_offset_t addr, vm_paddr_t *locked_pa)
 	pt1_entry_t *pte1p, pte1;
 	pt2_entry_t *pte2p, pte2;
 	vm_paddr_t pa;
-	boolean_t managed;
+	bool managed;
 	int val;
 
 	PMAP_LOCK(pmap);
@@ -6175,7 +6176,7 @@ retry:
 		if (pte2 & PTE2_A)
 			val |= MINCORE_REFERENCED | MINCORE_REFERENCED_OTHER;
 	} else {
-		managed = FALSE;
+		managed = false;
 		val = 0;
 	}
 	if ((val & (MINCORE_MODIFIED_OTHER | MINCORE_REFERENCED_OTHER)) !=

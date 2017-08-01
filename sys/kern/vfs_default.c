@@ -15,7 +15,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -718,8 +718,8 @@ loop2:
 			 * to write them out.
 			 */
 			TAILQ_FOREACH(bp, &bo->bo_dirty.bv_hd, b_bobufs)
-				if ((error = bp->b_error) == 0)
-					continue;
+				if ((error = bp->b_error) != 0)
+					break;
 			if (error == 0 && --maxretry >= 0)
 				goto loop1;
 			error = EAGAIN;
@@ -1128,7 +1128,7 @@ int
 vop_stdunp_bind(struct vop_unp_bind_args *ap)
 {
 
-	ap->a_vp->v_socket = ap->a_socket;
+	ap->a_vp->v_unpcb = ap->a_unpcb;
 	return (0);
 }
 
@@ -1136,7 +1136,7 @@ int
 vop_stdunp_connect(struct vop_unp_connect_args *ap)
 {
 
-	*ap->a_socket = ap->a_vp->v_socket;
+	*ap->a_unpcb = ap->a_vp->v_unpcb;
 	return (0);
 }
 
@@ -1144,7 +1144,7 @@ int
 vop_stdunp_detach(struct vop_unp_detach_args *ap)
 {
 
-	ap->a_vp->v_socket = NULL;
+	ap->a_vp->v_unpcb = NULL;
 	return (0);
 }
 

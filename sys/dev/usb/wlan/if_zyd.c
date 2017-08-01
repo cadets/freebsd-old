@@ -662,12 +662,24 @@ zyd_intr_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			 */
 			ni = ieee80211_find_txnode(vap, retry->macaddr);
 			if (ni != NULL) {
+				struct ieee80211_ratectl_tx_status *txs =
+				    &sc->sc_txs;
 				int retrycnt =
 				    (int)(le16toh(retry->count) & 0xff);
-				
-				ieee80211_ratectl_tx_complete(vap, ni,
-				    IEEE80211_RATECTL_TX_FAILURE,
-				    &retrycnt, NULL);
+
+				txs->flags =
+				    IEEE80211_RATECTL_STATUS_LONG_RETRY;
+				txs->long_retries = retrycnt;
+				if (le16toh(retry->count) & 0x100) {
+					txs->status =
+					    IEEE80211_RATECTL_TX_FAIL_LONG;
+				} else {
+					txs->status =
+					    IEEE80211_RATECTL_TX_SUCCESS;
+				}
+
+
+				ieee80211_ratectl_tx_complete(ni, txs);
 				ieee80211_free_node(ni);
 			}
 			if (le16toh(retry->count) & 0x100)
@@ -2427,7 +2439,7 @@ zyd_tx_start(struct zyd_softc *sc, struct mbuf *m0, struct ieee80211_node *ni)
 	struct zyd_tx_desc *desc;
 	struct zyd_tx_data *data;
 	struct ieee80211_frame *wh;
-	const struct ieee80211_txparam *tp;
+	const struct ieee80211_txparam *tp = ni->ni_txparms;
 	struct ieee80211_key *k;
 	int rate, totlen;
 	static const uint8_t ratediv[] = ZYD_TX_RATEDIV;
@@ -2441,11 +2453,10 @@ zyd_tx_start(struct zyd_softc *sc, struct mbuf *m0, struct ieee80211_node *ni)
 	sc->tx_nfree--;
 
 	if ((wh->i_fc[0] & IEEE80211_FC0_TYPE_MASK) == IEEE80211_FC0_TYPE_MGT ||
-	    (wh->i_fc[0] & IEEE80211_FC0_TYPE_MASK) == IEEE80211_FC0_TYPE_CTL) {
-		tp = &vap->iv_txparms[ieee80211_chan2mode(ic->ic_curchan)];
+	    (wh->i_fc[0] & IEEE80211_FC0_TYPE_MASK) == IEEE80211_FC0_TYPE_CTL ||
+	    (m0->m_flags & M_EAPOL) != 0) {
 		rate = tp->mgmtrate;
 	} else {
-		tp = &vap->iv_txparms[ieee80211_chan2mode(ni->ni_chan)];
 		/* for data frames */
 		if (IEEE80211_IS_MULTICAST(wh->i_addr1))
 			rate = tp->mcastrate;

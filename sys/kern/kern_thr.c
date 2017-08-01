@@ -232,7 +232,6 @@ thread_create(struct thread *td, struct rtprio *rtp,
 
 	bzero(&newtd->td_startzero,
 	    __rangeof(struct thread, td_startzero, td_endzero));
-	newtd->td_sleeptimo = 0;
 	bcopy(&td->td_startcopy, &newtd->td_startcopy,
 	    __rangeof(struct thread, td_startcopy, td_endcopy));
 	newtd->td_proc = td->td_proc;
@@ -360,7 +359,7 @@ kern_thr_exit(struct thread *td)
 	p->p_pendingexits++;
 	td->td_dbgflags |= TDB_EXIT;
 	if (p->p_ptevents & PTRACE_LWP)
-		ptracestop(td, SIGTRAP);
+		ptracestop(td, SIGTRAP, NULL);
 	PROC_UNLOCK(p);
 	tidhash_remove(td);
 	PROC_LOCK(p);

@@ -34,7 +34,7 @@ cloudabi64_vdso_blob.o		optional	compat_cloudabi64	\
 #
 linux32_genassym.o		optional	compat_linux32		\
 	dependency 	"$S/amd64/linux32/linux32_genassym.c"		\
-	compile-with	"${CC} ${CFLAGS:N-fno-common} -c ${.IMPSRC}"	\
+	compile-with	"${CC} ${CFLAGS:N-flto:N-fno-common} -c ${.IMPSRC}" \
 	no-obj no-implicit-rule						\
 	clean		"linux32_genassym.o"
 #
@@ -46,7 +46,7 @@ linux32_assym.h			optional	compat_linux32		\
 #
 linux32_locore.o	optional	compat_linux32		\
 	dependency 	"linux32_assym.h $S/amd64/linux32/linux32_locore.s"	\
-	compile-with	"${CC} -x assembler-with-cpp -DLOCORE -m32 -shared -s -pipe -I. -I$S -Werror -Wall -fno-common -nostdinc -nostdlib -Wl,-T$S/amd64/linux32/linux32_vdso.lds.s -Wl,-soname=linux32_vdso.so,--eh-frame-hdr,-fPIC,-warn-common ${.IMPSRC} -o ${.TARGET}" \
+	compile-with	"${CC} -x assembler-with-cpp -DLOCORE -m32 -shared -s -pipe -I. -I$S -Werror -Wall -fPIC -fno-common -nostdinc -nostdlib -Wl,-T$S/amd64/linux32/linux32_vdso.lds.s -Wl,-soname=linux32_vdso.so,--eh-frame-hdr,-warn-common ${.IMPSRC} -o ${.TARGET}" \
 	no-obj no-implicit-rule						\
 	clean		"linux32_locore.o"
 #
@@ -58,7 +58,7 @@ linux32_vdso.so		optional	compat_linux32			\
 #
 ia32_genassym.o			standard				\
 	dependency 	"$S/compat/ia32/ia32_genassym.c"		\
-	compile-with	"${CC} ${CFLAGS:N-fno-common} -c ${.IMPSRC}"	\
+	compile-with	"${CC} ${CFLAGS:N-flto:N-fno-common} -c ${.IMPSRC}" \
 	no-obj no-implicit-rule						\
 	clean		"ia32_genassym.o"
 #
@@ -166,7 +166,7 @@ cddl/dev/dtrace/amd64/dtrace_asm.S			optional dtrace compile-with "${DTRACE_S}"
 cddl/dev/dtrace/amd64/dtrace_subr.c			optional dtrace compile-with "${DTRACE_C}"
 cddl/dev/fbt/x86/fbt_isa.c				optional dtrace_fbt | dtraceall compile-with "${FBT_C}"
 cddl/dev/dtrace/x86/dis_tables.c			optional dtrace_fbt | dtraceall compile-with "${DTRACE_C}"
-cddl/dev/dtrace/amd64/instr_size.c			optional dtrace_fbt | dtraceall compile-with "${DTRACE_C}"
+cddl/dev/dtrace/x86/instr_size.c			optional dtrace_fbt | dtraceall compile-with "${DTRACE_C}"
 crypto/aesni/aeskeys_amd64.S	optional aesni
 crypto/aesni/aesni.c		optional aesni
 aesni_ghash.o			optional aesni				\
@@ -187,6 +187,12 @@ crypto/via/padlock_cipher.c	optional	padlock
 crypto/via/padlock_hash.c	optional	padlock
 dev/acpica/acpi_if.m		standard
 dev/acpica/acpi_hpet.c		optional acpi
+dev/acpica/acpi_pci.c		optional acpi pci
+dev/acpica/acpi_pci_link.c	optional acpi pci
+dev/acpica/acpi_pcib.c		optional acpi pci
+dev/acpica/acpi_pcib_acpi.c	optional acpi pci
+dev/acpica/acpi_pcib_pci.c	optional acpi pci
+dev/acpica/acpi_timer.c		optional	acpi
 dev/acpi_support/acpi_wmi_if.m	standard
 dev/agp/agp_amd64.c		optional	agp
 dev/agp/agp_i810.c		optional	agp
@@ -247,7 +253,11 @@ dev/ixl/ixl_pf_main.c		optional	ixl pci \
 	compile-with "${NORMAL_C} -I$S/dev/ixl"
 dev/ixl/ixl_pf_qmgr.c		optional	ixl pci \
 	compile-with "${NORMAL_C} -I$S/dev/ixl"
-dev/ixl/ixl_pf_iov.c		optional	ixl pci \
+dev/ixl/ixl_pf_iov.c		optional	ixl pci  pci_iov \
+	compile-with "${NORMAL_C} -I$S/dev/ixl"
+dev/ixl/ixl_pf_i2c.c		optional	ixl pci \
+	compile-with "${NORMAL_C} -I$S/dev/ixl"
+dev/ixl/ixl_iw.c		optional	ixl pci \
 	compile-with "${NORMAL_C} -I$S/dev/ixl"
 dev/ixl/if_ixlv.c		optional	ixlv pci \
 	compile-with "${NORMAL_C} -I$S/dev/ixl"
@@ -293,6 +303,8 @@ dev/hwpmc/hwpmc_uncore.c	optional	hwpmc
 dev/hwpmc/hwpmc_piv.c		optional	hwpmc
 dev/hwpmc/hwpmc_tsc.c		optional	hwpmc
 dev/hwpmc/hwpmc_x86.c		optional	hwpmc
+dev/hyperv/input/hv_kbd.c				optional	hyperv
+dev/hyperv/input/hv_kbdc.c				optional	hyperv
 dev/hyperv/pcib/vmbus_pcib.c				optional	hyperv pci
 dev/hyperv/netvsc/hn_nvs.c				optional	hyperv
 dev/hyperv/netvsc/hn_rndis.c				optional	hyperv
@@ -311,9 +323,11 @@ dev/hyperv/vmbus/vmbus_br.c				optional	hyperv
 dev/hyperv/vmbus/vmbus_chan.c				optional	hyperv
 dev/hyperv/vmbus/vmbus_et.c				optional	hyperv
 dev/hyperv/vmbus/vmbus_if.m				optional	hyperv
+dev/hyperv/vmbus/vmbus_res.c				optional	hyperv
 dev/hyperv/vmbus/vmbus_xact.c				optional	hyperv
 dev/hyperv/vmbus/amd64/hyperv_machdep.c			optional	hyperv
 dev/hyperv/vmbus/amd64/vmbus_vector.S			optional	hyperv
+dev/nctgpio/nctgpio.c		optional	nctgpio
 dev/nfe/if_nfe.c		optional	nfe pci
 dev/ntb/if_ntb/if_ntb.c		optional	if_ntb
 dev/ntb/ntb_transport.c		optional	if_ntb
@@ -353,6 +367,34 @@ dev/qlxgbe/ql_isr.c		optional	qlxgbe pci
 dev/qlxgbe/ql_misc.c		optional	qlxgbe pci
 dev/qlxgbe/ql_os.c		optional	qlxgbe pci
 dev/qlxgbe/ql_reset.c		optional	qlxgbe pci
+dev/qlnx/qlnxe/ecore_cxt.c	optional	qlnxe pci \
+	compile-with "${LINUXKPI_C}"
+dev/qlnx/qlnxe/ecore_dbg_fw_funcs.c optional	qlnxe pci \
+	compile-with "${LINUXKPI_C}"
+dev/qlnx/qlnxe/ecore_dcbx.c	optional	qlnxe pci \
+	compile-with "${LINUXKPI_C}"
+dev/qlnx/qlnxe/ecore_dev.c	optional	qlnxe pci \
+	compile-with "${LINUXKPI_C}"
+dev/qlnx/qlnxe/ecore_hw.c	optional	qlnxe pci \
+	compile-with "${LINUXKPI_C}"
+dev/qlnx/qlnxe/ecore_init_fw_funcs.c optional	qlnxe pci \
+	compile-with "${LINUXKPI_C}"
+dev/qlnx/qlnxe/ecore_init_ops.c	optional	qlnxe pci \
+	compile-with "${LINUXKPI_C}"
+dev/qlnx/qlnxe/ecore_int.c	optional	qlnxe pci \
+	compile-with "${LINUXKPI_C}"
+dev/qlnx/qlnxe/ecore_l2.c	optional	qlnxe pci \
+	compile-with "${LINUXKPI_C}"
+dev/qlnx/qlnxe/ecore_mcp.c	optional	qlnxe pci \
+	compile-with "${LINUXKPI_C}"
+dev/qlnx/qlnxe/ecore_sp_commands.c optional	qlnxe pci \
+	compile-with "${LINUXKPI_C}"
+dev/qlnx/qlnxe/ecore_spq.c	optional	qlnxe pci \
+	compile-with "${LINUXKPI_C}"
+dev/qlnx/qlnxe/qlnx_ioctl.c	optional	qlnxe pci \
+	compile-with "${LINUXKPI_C}"
+dev/qlnx/qlnxe/qlnx_os.c	optional	qlnxe pci \
+	compile-with "${LINUXKPI_C}"
 dev/sfxge/common/ef10_ev.c	optional	sfxge pci
 dev/sfxge/common/ef10_filter.c	optional	sfxge pci
 dev/sfxge/common/ef10_intr.c	optional	sfxge pci
@@ -535,6 +577,9 @@ isa/syscons_isa.c		optional	sc
 isa/vga_isa.c			optional	vga
 kern/kern_clocksource.c		standard
 kern/link_elf_obj.c		standard
+libkern/x86/crc32_sse42.c	standard
+libkern/memmove.c		standard
+libkern/memset.c		standard
 #
 # IA32 binary support
 #
@@ -592,9 +637,6 @@ compat/ndis/subr_pe.c		optional	ndisapi pci
 compat/ndis/subr_usbd.c		optional	ndisapi pci
 compat/ndis/winx64_wrap.S	optional	ndisapi pci
 #
-libkern/memmove.c		standard
-libkern/memset.c		standard
-#
 # x86 real mode BIOS emulator, required by dpms/pci/vesa
 #
 compat/x86bios/x86bios.c	optional x86bios | dpms | pci | vesa
@@ -605,7 +647,7 @@ contrib/x86emu/x86emu.c		optional x86bios | dpms | pci | vesa
 dev/bvm/bvm_console.c		optional	bvmconsole
 dev/bvm/bvm_dbg.c		optional	bvmdebug
 #
-# x86 shared code between IA32, AMD64 and PC98 architectures
+# x86 shared code between IA32 and AMD64 architectures
 #
 x86/acpica/OsdEnvironment.c	optional	acpi
 x86/acpica/acpi_apm.c		optional	acpi

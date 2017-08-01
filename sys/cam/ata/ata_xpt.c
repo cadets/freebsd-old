@@ -189,6 +189,16 @@ static void	 ata_dev_async(u_int32_t async_code,
 				void *async_arg);
 static void	 ata_action(union ccb *start_ccb);
 static void	 ata_announce_periph(struct cam_periph *periph);
+static void	 ata_announce_periph_sbuf(struct cam_periph *periph, struct sbuf *sb);
+static void	 ata_proto_announce(struct cam_ed *device);
+static void	 ata_proto_announce_sbuf(struct cam_ed *device, struct sbuf *sb);
+static void	 ata_proto_denounce(struct cam_ed *device);
+static void	 ata_proto_denounce_sbuf(struct cam_ed *device, struct sbuf *sb);
+static void	 ata_proto_debug_out(union ccb *ccb);
+static void	 semb_proto_announce(struct cam_ed *device);
+static void	 semb_proto_announce_sbuf(struct cam_ed *device, struct sbuf *sb);
+static void	 semb_proto_denounce(struct cam_ed *device);
+static void	 semb_proto_denounce_sbuf(struct cam_ed *device, struct sbuf *sb);
 
 static int ata_dma = 1;
 static int atapi_dma = 1;
@@ -196,18 +206,68 @@ static int atapi_dma = 1;
 TUNABLE_INT("hw.ata.ata_dma", &ata_dma);
 TUNABLE_INT("hw.ata.atapi_dma", &atapi_dma);
 
-static struct xpt_xport ata_xport = {
+static struct xpt_xport_ops ata_xport_ops = {
 	.alloc_device = ata_alloc_device,
 	.action = ata_action,
 	.async = ata_dev_async,
 	.announce = ata_announce_periph,
+	.announce_sbuf = ata_announce_periph_sbuf,
+};
+#define ATA_XPT_XPORT(x, X)			\
+static struct xpt_xport ata_xport_ ## x = {	\
+	.xport = XPORT_ ## X,			\
+	.name = #x,				\
+	.ops = &ata_xport_ops,			\
+};						\
+CAM_XPT_XPORT(ata_xport_ ## x);
+
+ATA_XPT_XPORT(ata, ATA);
+ATA_XPT_XPORT(sata, SATA);
+
+#undef ATA_XPORT_XPORT
+
+static struct xpt_proto_ops ata_proto_ops_ata = {
+	.announce = ata_proto_announce,
+	.announce_sbuf = ata_proto_announce_sbuf,
+	.denounce = ata_proto_denounce,
+	.denounce_sbuf = ata_proto_denounce_sbuf,
+	.debug_out = ata_proto_debug_out,
+};
+static struct xpt_proto ata_proto_ata = {
+	.proto = PROTO_ATA,
+	.name = "ata",
+	.ops = &ata_proto_ops_ata,
 };
 
-struct xpt_xport *
-ata_get_xport(void)
-{
-	return (&ata_xport);
-}
+static struct xpt_proto_ops ata_proto_ops_satapm = {
+	.announce = ata_proto_announce,
+	.announce_sbuf = ata_proto_announce_sbuf,
+	.denounce = ata_proto_denounce,
+	.denounce_sbuf = ata_proto_denounce_sbuf,
+	.debug_out = ata_proto_debug_out,
+};
+static struct xpt_proto ata_proto_satapm = {
+	.proto = PROTO_SATAPM,
+	.name = "satapm",
+	.ops = &ata_proto_ops_satapm,
+};
+
+static struct xpt_proto_ops ata_proto_ops_semb = {
+	.announce = semb_proto_announce,
+	.announce_sbuf = semb_proto_announce_sbuf,
+	.denounce = semb_proto_denounce,
+	.denounce_sbuf = semb_proto_denounce_sbuf,
+	.debug_out = ata_proto_debug_out,
+};
+static struct xpt_proto ata_proto_semb = {
+	.proto = PROTO_SEMB,
+	.name = "semb",
+	.ops = &ata_proto_ops_semb,
+};
+
+CAM_XPT_PROTO(ata_proto_ata);
+CAM_XPT_PROTO(ata_proto_satapm);
+CAM_XPT_PROTO(ata_proto_semb);
 
 static void
 probe_periph_init()
@@ -736,6 +796,16 @@ out:
 		 * ABORT on attempt to disable it.
 		 */
 		} else if (softc->action == PROBE_SETPM &&
+		    status == CAM_ATA_STATUS_ERROR) {
+			goto noerror;
+
+		/*
+		 * Some old WD SATA disks have broken SPINUP handling.
+		 * If we really fail to spin up the disk, then there will be
+		 * some media access errors later on, but at least we will
+		 * have a device to interact with for recovery attempts.
+		 */
+		} else if (softc->action == PROBE_SPINUP &&
 		    status == CAM_ATA_STATUS_ERROR) {
 			goto noerror;
 
@@ -2024,42 +2094,51 @@ ata_dev_async(u_int32_t async_code, struct cam_eb *bus, struct cam_et *target,
 }
 
 static void
-ata_announce_periph(struct cam_periph *periph)
+_ata_announce_periph(struct cam_periph *periph, struct ccb_trans_settings *cts, u_int *speed)
 {
 	struct	ccb_pathinq cpi;
-	struct	ccb_trans_settings cts;
 	struct	cam_path *path = periph->path;
-	u_int	speed;
-	u_int	mb;
 
 	cam_periph_assert(periph, MA_OWNED);
 
-	xpt_setup_ccb(&cts.ccb_h, path, CAM_PRIORITY_NORMAL);
-	cts.ccb_h.func_code = XPT_GET_TRAN_SETTINGS;
-	cts.type = CTS_TYPE_CURRENT_SETTINGS;
-	xpt_action((union ccb*)&cts);
-	if ((cts.ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP)
+	xpt_setup_ccb(&cts->ccb_h, path, CAM_PRIORITY_NORMAL);
+	cts->ccb_h.func_code = XPT_GET_TRAN_SETTINGS;
+	cts->type = CTS_TYPE_CURRENT_SETTINGS;
+	xpt_action((union ccb*)cts);
+	if ((cts->ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP)
 		return;
 	/* Ask the SIM for its base transfer speed */
 	xpt_setup_ccb(&cpi.ccb_h, path, CAM_PRIORITY_NORMAL);
 	cpi.ccb_h.func_code = XPT_PATH_INQ;
 	xpt_action((union ccb *)&cpi);
 	/* Report connection speed */
-	speed = cpi.base_transfer_speed;
-	if (cts.ccb_h.status == CAM_REQ_CMP && cts.transport == XPORT_ATA) {
+	*speed = cpi.base_transfer_speed;
+	if (cts->transport == XPORT_ATA) {
 		struct	ccb_trans_settings_pata *pata =
-		    &cts.xport_specific.ata;
+		    &cts->xport_specific.ata;
 
 		if (pata->valid & CTS_ATA_VALID_MODE)
-			speed = ata_mode2speed(pata->mode);
+			*speed = ata_mode2speed(pata->mode);
 	}
-	if (cts.ccb_h.status == CAM_REQ_CMP && cts.transport == XPORT_SATA) {
+	if (cts->transport == XPORT_SATA) {
 		struct	ccb_trans_settings_sata *sata =
-		    &cts.xport_specific.sata;
+		    &cts->xport_specific.sata;
 
 		if (sata->valid & CTS_SATA_VALID_REVISION)
-			speed = ata_revision2speed(sata->revision);
+			*speed = ata_revision2speed(sata->revision);
 	}
+}
+
+static void
+ata_announce_periph(struct cam_periph *periph)
+{
+	struct ccb_trans_settings cts;
+	u_int speed, mb;
+
+	_ata_announce_periph(periph, &cts, &speed);
+	if ((cts.ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP)
+		return;
+
 	mb = speed / 1000;
 	if (mb > 0)
 		printf("%s%d: %d.%03dMB/s transfers",
@@ -2069,7 +2148,7 @@ ata_announce_periph(struct cam_periph *periph)
 		printf("%s%d: %dKB/s transfers", periph->periph_name,
 		       periph->unit_number, speed);
 	/* Report additional information about connection */
-	if (cts.ccb_h.status == CAM_REQ_CMP && cts.transport == XPORT_ATA) {
+	if (cts.transport == XPORT_ATA) {
 		struct ccb_trans_settings_pata *pata =
 		    &cts.xport_specific.ata;
 
@@ -2082,7 +2161,7 @@ ata_announce_periph(struct cam_periph *periph)
 			printf("PIO %dbytes", pata->bytecount);
 		printf(")");
 	}
-	if (cts.ccb_h.status == CAM_REQ_CMP && cts.transport == XPORT_SATA) {
+	if (cts.transport == XPORT_SATA) {
 		struct ccb_trans_settings_sata *sata =
 		    &cts.xport_specific.sata;
 
@@ -2100,4 +2179,117 @@ ata_announce_periph(struct cam_periph *periph)
 		printf(")");
 	}
 	printf("\n");
+}
+
+static void
+ata_announce_periph_sbuf(struct cam_periph *periph, struct sbuf *sb)
+{
+	struct ccb_trans_settings cts;
+	u_int speed, mb;
+
+	_ata_announce_periph(periph, &cts, &speed);
+	if ((cts.ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP)
+		return;
+
+	mb = speed / 1000;
+	if (mb > 0)
+		sbuf_printf(sb, "%s%d: %d.%03dMB/s transfers",
+		       periph->periph_name, periph->unit_number,
+		       mb, speed % 1000);
+	else
+		sbuf_printf(sb, "%s%d: %dKB/s transfers", periph->periph_name,
+		       periph->unit_number, speed);
+	/* Report additional information about connection */
+	if (cts.transport == XPORT_ATA) {
+		struct ccb_trans_settings_pata *pata =
+		    &cts.xport_specific.ata;
+
+		sbuf_printf(sb, " (");
+		if (pata->valid & CTS_ATA_VALID_MODE)
+			sbuf_printf(sb, "%s, ", ata_mode2string(pata->mode));
+		if ((pata->valid & CTS_ATA_VALID_ATAPI) && pata->atapi != 0)
+			sbuf_printf(sb, "ATAPI %dbytes, ", pata->atapi);
+		if (pata->valid & CTS_ATA_VALID_BYTECOUNT)
+			sbuf_printf(sb, "PIO %dbytes", pata->bytecount);
+		sbuf_printf(sb, ")");
+	}
+	if (cts.transport == XPORT_SATA) {
+		struct ccb_trans_settings_sata *sata =
+		    &cts.xport_specific.sata;
+
+		sbuf_printf(sb, " (");
+		if (sata->valid & CTS_SATA_VALID_REVISION)
+			sbuf_printf(sb, "SATA %d.x, ", sata->revision);
+		else
+			sbuf_printf(sb, "SATA, ");
+		if (sata->valid & CTS_SATA_VALID_MODE)
+			sbuf_printf(sb, "%s, ", ata_mode2string(sata->mode));
+		if ((sata->valid & CTS_ATA_VALID_ATAPI) && sata->atapi != 0)
+			sbuf_printf(sb, "ATAPI %dbytes, ", sata->atapi);
+		if (sata->valid & CTS_SATA_VALID_BYTECOUNT)
+			sbuf_printf(sb, "PIO %dbytes", sata->bytecount);
+		sbuf_printf(sb, ")");
+	}
+	sbuf_printf(sb, "\n");
+}
+
+static void
+ata_proto_announce_sbuf(struct cam_ed *device, struct sbuf *sb)
+{
+	ata_print_ident_sbuf(&device->ident_data, sb);
+}
+
+static void
+ata_proto_announce(struct cam_ed *device)
+{
+	ata_print_ident(&device->ident_data);
+}
+
+static void
+ata_proto_denounce(struct cam_ed *device)
+{
+	ata_print_ident_short(&device->ident_data);
+}
+
+static void
+ata_proto_denounce_sbuf(struct cam_ed *device, struct sbuf *sb)
+{
+	ata_print_ident_short_sbuf(&device->ident_data, sb);
+}
+
+static void
+semb_proto_announce_sbuf(struct cam_ed *device, struct sbuf *sb)
+{
+	semb_print_ident_sbuf((struct sep_identify_data *)&device->ident_data, sb);
+}
+
+static void
+semb_proto_announce(struct cam_ed *device)
+{
+	semb_print_ident((struct sep_identify_data *)&device->ident_data);
+}
+
+static void
+semb_proto_denounce(struct cam_ed *device)
+{
+	semb_print_ident_short((struct sep_identify_data *)&device->ident_data);
+}
+
+static void
+semb_proto_denounce_sbuf(struct cam_ed *device, struct sbuf *sb)
+{
+	semb_print_ident_short_sbuf((struct sep_identify_data *)&device->ident_data, sb);
+}
+
+static void
+ata_proto_debug_out(union ccb *ccb)
+{
+	char cdb_str[(sizeof(struct ata_cmd) * 3) + 1];
+
+	if (ccb->ccb_h.func_code != XPT_ATA_IO)
+		return;
+
+	CAM_DEBUG(ccb->ccb_h.path,
+	    CAM_DEBUG_CDB,("%s. ACB: %s\n", ata_op_string(&ccb->ataio.cmd),
+		ata_cmd_string(&ccb->ataio.cmd, cdb_str, sizeof(cdb_str))));
 }

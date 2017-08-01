@@ -209,7 +209,7 @@ alloc_lctx(struct adapter *sc, struct inpcb *inp, struct vi_info *vi)
 	    !IN6_ARE_ADDR_EQUAL(&in6addr_any, &inp->in6p_laddr)) {
 		struct tom_data *td = sc->tom_softc;
 
-		lctx->ce = hold_lip(td, &inp->in6p_laddr);
+		lctx->ce = hold_lip(td, &inp->in6p_laddr, NULL);
 		if (lctx->ce == NULL) {
 			free(lctx, M_CXGBE);
 			return (NULL);
@@ -1185,6 +1185,7 @@ do_pass_accept_req(struct sge_iq *iq, const struct rss_header *rss,
 	struct synq_entry *synqe = NULL;
 	int reject_reason, v, ntids;
 	uint16_t vid;
+	u_int wnd;
 #ifdef INVARIANTS
 	unsigned int opcode = G_CPL_OPCODE(be32toh(OPCODE_TID(cpl)));
 #endif
@@ -1326,10 +1327,10 @@ found:
 
 	mtu_idx = find_best_mtu_idx(sc, &inc, be16toh(cpl->tcpopt.mss));
 	rscale = cpl->tcpopt.wsf && V_tcp_do_rfc1323 ? select_rcv_wscale() : 0;
-	SOCKBUF_LOCK(&so->so_rcv);
 	/* opt0 rcv_bufsiz initially, assumes its normal meaning later */
-	rx_credits = min(select_rcv_wnd(so) >> 10, M_RCV_BUFSIZ);
-	SOCKBUF_UNLOCK(&so->so_rcv);
+	wnd = max(so->sol_sbrcv_hiwat, MIN_RCV_WND);
+	wnd = min(wnd, MAX_RCV_WND);
+	rx_credits = min(wnd >> 10, M_RCV_BUFSIZ);
 
 	save_qids_in_mbuf(m, vi);
 	get_qids_from_mbuf(m, NULL, &rxqid);
@@ -1584,6 +1585,8 @@ reset:
 	INP_WLOCK_ASSERT(new_inp);
 	MPASS(so->so_vnet == lctx->vnet);
 	toep->vnet = lctx->vnet;
+	if (inc.inc_flags & INC_ISIPV6)
+		toep->ce = hold_lip(sc->tom_softc, &inc.inc6_laddr, lctx->ce);
 
 	/*
 	 * This is for the unlikely case where the syncache entry that we added

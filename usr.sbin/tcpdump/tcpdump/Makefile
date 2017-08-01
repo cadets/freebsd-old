@@ -2,7 +2,7 @@
 
 .include <src.opts.mk>
 
-TCPDUMP_DISTDIR?= ${.CURDIR}/../../../contrib/tcpdump
+TCPDUMP_DISTDIR?= ${SRCTOP}/contrib/tcpdump
 .PATH: ${TCPDUMP_DISTDIR}
 
 PROG=	tcpdump
@@ -194,7 +194,7 @@ CFLAGS+=-DHAVE_CASPER
 .endif
 .if ${MK_OPENSSL} != "no"
 LIBADD+=	crypto
-CFLAGS+= -I${DESTDIR}/usr/include/openssl
+CFLAGS+= -I${SYSROOT:U${DESTDIR}}/usr/include/openssl
 CFLAGS+= -DHAVE_LIBCRYPTO -DHAVE_OPENSSL_EVP_H
 .endif
 

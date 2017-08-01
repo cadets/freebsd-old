@@ -63,7 +63,7 @@ class AsanThread {
   void Destroy();
 
   void Init();  // Should be called from the thread itself.
-  thread_return_t ThreadStart(uptr os_id,
+  thread_return_t ThreadStart(tid_t os_id,
                               atomic_uintptr_t *signal_thread_is_registered);
 
   uptr stack_top();
@@ -94,7 +94,8 @@ class AsanThread {
   }
 
   void StartSwitchFiber(FakeStack **fake_stack_save, uptr bottom, uptr size);
-  void FinishSwitchFiber(FakeStack *fake_stack_save);
+  void FinishSwitchFiber(FakeStack *fake_stack_save, uptr *bottom_old,
+                         uptr *size_old);
 
   bool has_fake_stack() {
     return !atomic_load(&stack_switching_, memory_order_relaxed) &&

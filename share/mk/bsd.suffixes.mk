@@ -1,7 +1,5 @@
 # $FreeBSD$
 
-.SUFFIXES:	.out .a .ln .o .bco .llo .c .cc .cpp .cxx .C .bcinstro .llinstro .m .F .f .e .r .y .l .S .asm .s .cl .p .h .sh
-
 .sh:
 	cp -f ${.IMPSRC} ${.TARGET}
 	chmod a+x ${.TARGET}

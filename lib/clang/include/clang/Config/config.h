@@ -9,8 +9,14 @@
 /* Bug report URL. */
 #define BUG_REPORT_URL "https://bugs.freebsd.org/submit/"
 
+/* Default linker to use. */
+#define CLANG_DEFAULT_LINKER ""
+
 /* Default C++ stdlib to use. */
 #define CLANG_DEFAULT_CXX_STDLIB ""
+
+/* Default runtime library to use. */
+#define CLANG_DEFAULT_RTLIB ""
 
 /* Default OpenMP runtime used by -fopenmp. */
 #define CLANG_DEFAULT_OPENMP_RUNTIME "libomp"
@@ -33,8 +39,14 @@
 /* Define if we have libxml2 */
 /* #undef CLANG_HAVE_LIBXML */
 
+/* Define if we have z3 and want to build it */
+/* #undef CLANG_ANALYZER_WITH_Z3 */
+
+/* Define if we have sys/resource.h (rlimits) */
+#define CLANG_HAVE_RLIMITS 1
+
 /* The LLVM product name and version */
-#define BACKEND_PACKAGE_STRING "LLVM 3.9.1"
+#define BACKEND_PACKAGE_STRING "LLVM 5.0.0svn"
 
 /* Linker version detected at compile time. */
 /* #undef HOST_LINK_VERSION */

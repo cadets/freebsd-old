@@ -52,7 +52,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/spibus/spibusvar.h>
 
 #ifdef FDT
-#include <dev/fdt/fdt_common.h>
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
 #endif
@@ -301,6 +300,8 @@ at91_spi_transfer(device_t dev, device_t child, struct spi_command *cmd)
 
 	/* get the proper chip select */
 	spibus_get_cs(child, &cs);
+
+	cs &= ~SPIBUS_CS_HIGH;
 
 	sc = device_get_softc(dev);
 	i = 0;

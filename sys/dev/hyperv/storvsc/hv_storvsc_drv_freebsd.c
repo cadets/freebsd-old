@@ -62,7 +62,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/sglist.h>
 #include <sys/eventhandler.h>
 #include <machine/bus.h>
-#include <sys/bus_dma.h>
 
 #include <cam/cam.h>
 #include <cam/cam_ccb.h>
@@ -1771,7 +1770,7 @@ storvsc_check_bounce_buffer_sgl(bus_dma_segment_t *sgl,
 			}
 			pre_aligned = TRUE;
 		} else {
-			tmp_bits |= 1 << i;
+			tmp_bits |= 1ULL << i;
 			if (!pre_aligned) {
 				if (phys_addr != vtophys(sgl[i-1].ds_addr +
 				    sgl[i-1].ds_len)) {
@@ -2095,6 +2094,7 @@ storvsc_io_done(struct hv_storvsc_request *reqp)
 	struct vmscsi_req *vm_srb = &reqp->vstor_packet.u.vm_srb;
 	bus_dma_segment_t *ori_sglist = NULL;
 	int ori_sg_count = 0;
+	const struct scsi_generic *cmd;
 
 	/* destroy bounce buffer if it is used */
 	if (reqp->bounce_sgl_count) {
@@ -2145,22 +2145,21 @@ storvsc_io_done(struct hv_storvsc_request *reqp)
 		callout_drain(&reqp->callout);
 	}
 #endif
+	cmd = (const struct scsi_generic *)
+	    ((ccb->ccb_h.flags & CAM_CDB_POINTER) ?
+	     csio->cdb_io.cdb_ptr : csio->cdb_io.cdb_bytes);
 
 	ccb->ccb_h.status &= ~CAM_SIM_QUEUED;
 	ccb->ccb_h.status &= ~CAM_STATUS_MASK;
+	int srb_status = SRB_STATUS(vm_srb->srb_status);
 	if (vm_srb->scsi_status == SCSI_STATUS_OK) {
-		const struct scsi_generic *cmd;
-
-		cmd = (const struct scsi_generic *)
-		    ((ccb->ccb_h.flags & CAM_CDB_POINTER) ?
-		     csio->cdb_io.cdb_ptr : csio->cdb_io.cdb_bytes);
-		if (vm_srb->srb_status != SRB_STATUS_SUCCESS) {
+		if (srb_status != SRB_STATUS_SUCCESS) {
 			/*
 			 * If there are errors, for example, invalid LUN,
 			 * host will inform VM through SRB status.
 			 */
 			if (bootverbose) {
-				if (vm_srb->srb_status == SRB_STATUS_INVALID_LUN) {
+				if (srb_status == SRB_STATUS_INVALID_LUN) {
 					xpt_print(ccb->ccb_h.path,
 					    "invalid LUN %d for op: %s\n",
 					    vm_srb->lun,
@@ -2168,7 +2167,7 @@ storvsc_io_done(struct hv_storvsc_request *reqp)
 				} else {
 					xpt_print(ccb->ccb_h.path,
 					    "Unknown SRB flag: %d for op: %s\n",
-					    vm_srb->srb_status,
+					    srb_status,
 					    scsi_op_desc(cmd->opcode, NULL));
 				}
 			}
@@ -2191,7 +2190,7 @@ storvsc_io_done(struct hv_storvsc_request *reqp)
 		}
 
 		if (cmd->opcode == INQUIRY &&
-		    vm_srb->srb_status == SRB_STATUS_SUCCESS) {
+		    srb_status == SRB_STATUS_SUCCESS) {
 			int resp_xfer_len, resp_buf_len, data_len;
 			uint8_t *resp_buf = (uint8_t *)csio->data_ptr;
 			struct scsi_inquiry_data *inq_data =
@@ -2211,6 +2210,23 @@ storvsc_io_done(struct hv_storvsc_request *reqp)
 				    resp_buf[3], resp_buf[4]);
 			}
 			/*
+			 * XXX: Hyper-V (since win2012r2) responses inquiry with
+			 * unknown version (0) for GEN-2 DVD device.
+			 * Manually set the version number to SPC3 in order to
+			 * ask CAM to continue probing with "PROBE_REPORT_LUNS".
+			 * see probedone() in scsi_xpt.c
+			 */
+			if (SID_TYPE(inq_data) == T_CDROM &&
+			    inq_data->version == 0 &&
+			    (vmstor_proto_version >= VMSTOR_PROTOCOL_VERSION_WIN8)) {
+				inq_data->version = SCSI_REV_SPC3;
+				if (bootverbose) {
+					xpt_print(ccb->ccb_h.path,
+					    "set version from 0 to %d\n",
+					    inq_data->version);
+				}
+			}
+			/*
 			 * XXX: Manually fix the wrong response returned from WS2012
 			 */
 			if (!is_scsi_valid(inq_data) &&
@@ -2219,7 +2235,7 @@ storvsc_io_done(struct hv_storvsc_request *reqp)
 			    vmstor_proto_version == VMSTOR_PROTOCOL_VERSION_WIN7)) {
 				if (data_len >= 4 &&
 				    (resp_buf[2] == 0 || resp_buf[3] == 0)) {
-					resp_buf[2] = 5; // verion=5 means SPC-3
+					resp_buf[2] = SCSI_REV_SPC3;
 					resp_buf[3] = 2; // resp fmt must be 2
 					if (bootverbose)
 						xpt_print(ccb->ccb_h.path,
@@ -2251,11 +2267,23 @@ storvsc_io_done(struct hv_storvsc_request *reqp)
 			}
 		}
 	} else {
-		mtx_lock(&sc->hs_lock);
-		xpt_print(ccb->ccb_h.path,
-			"storvsc scsi_status = %d\n",
-			vm_srb->scsi_status);
-		mtx_unlock(&sc->hs_lock);
+		/**
+		 * On Some Windows hosts TEST_UNIT_READY command can return
+		 * SRB_STATUS_ERROR and sense data, for example, asc=0x3a,1
+		 * "(Medium not present - tray closed)". This error can be
+		 * ignored since it will be sent to host periodically.
+		 */
+		boolean_t unit_not_ready = \
+		    vm_srb->scsi_status == SCSI_STATUS_CHECK_COND &&
+		    cmd->opcode == TEST_UNIT_READY &&
+		    srb_status == SRB_STATUS_ERROR;
+		if (!unit_not_ready && bootverbose) {
+			mtx_lock(&sc->hs_lock);
+			xpt_print(ccb->ccb_h.path,
+				"storvsc scsi_status = %d, srb_status = %d\n",
+				vm_srb->scsi_status, srb_status);
+			mtx_unlock(&sc->hs_lock);
+		}
 		ccb->ccb_h.status |= CAM_SCSI_STATUS_ERROR;
 	}
 

@@ -90,6 +90,8 @@
     cam
         ata
         ..
+        mmc
+        ..
         nvme
         ..
         scsi
@@ -130,6 +132,8 @@
         ..
         mfi
         ..
+        mmc
+        ..
         mpt
             mpilib
             ..
@@ -153,8 +157,6 @@
         speaker
         ..
         usb
-        ..
-        utopia
         ..
         vkbd
         ..
@@ -234,7 +236,7 @@
     gssapi
     ..
     infiniband
-        complib 
+        complib
         ..
         iba
         ..
@@ -338,6 +340,8 @@
     ssp
     ..
     sys
+        disk
+        ..
     ..
     teken
     ..

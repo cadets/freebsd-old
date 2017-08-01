@@ -270,7 +270,7 @@ ath_tdma_config(struct ath_softc *sc, struct ieee80211vap *vap)
 	 * fixed/lowest transmit rate.  Note that the interface
 	 * mtu does not include the 802.11 overhead so we must
 	 * tack that on (ath_hal_computetxtime includes the
-	 * preamble and plcp in it's calculation).
+	 * preamble and plcp in its calculation).
 	 */
 	tdma = vap->iv_tdma;
 	if (tp->ucastrate != IEEE80211_FIXED_RATE_NONE)
@@ -288,7 +288,8 @@ ath_tdma_config(struct ath_softc *sc, struct ieee80211vap *vap)
 		/* XXX short preamble assumed */
 		/* XXX non-11n rate assumed */
 		sc->sc_tdmaguard = ath_hal_computetxtime(ah, sc->sc_currates,
-		    vap->iv_ifp->if_mtu + IEEE80211_MAXOVERHEAD, rix, AH_TRUE);
+		    vap->iv_ifp->if_mtu + IEEE80211_MAXOVERHEAD, rix, AH_TRUE,
+		    AH_TRUE);
 	}
 
 	ath_hal_intrset(ah, 0);
@@ -430,7 +431,8 @@ ath_tdma_update(struct ieee80211_node *ni,
 	    rix,
 	    !! (rs->rs_flags & HAL_RX_2040),
 	    (rix & 0x80) ?
-	      (! (rs->rs_flags & HAL_RX_GI)) : rt->info[rix].shortPreamble);
+	      (! (rs->rs_flags & HAL_RX_GI)) : rt->info[rix].shortPreamble,
+	    AH_TRUE);
 	/* NB: << 9 is to cvt to TU and /2 */
 	nextslot = (rstamp - txtime) + (sc->sc_tdmabintval << 9);
 

@@ -6,7 +6,6 @@
 SUBDIR=	adduser \
 	arp \
 	binmiscctl \
-	bsdconfig \
 	camdd \
 	cdcontrol \
 	chkgrp \
@@ -63,6 +62,7 @@ SUBDIR=	adduser \
 	periodic \
 	powerd \
 	procctl \
+	prometheus_sysctl_exporter \
 	pstat \
 	pw \
 	pwd_mkdb \
@@ -123,6 +123,9 @@ SUBDIR.${MK_BOOTPARAMD}+=	bootparamd
 SUBDIR.${MK_BSDINSTALL}+=	bsdinstall
 SUBDIR.${MK_BSNMP}+=	bsnmpd
 SUBDIR.${MK_CTM}+=	ctm
+SUBDIR.${MK_CXGBETOOL}+=	cxgbetool
+SUBDIR.${MK_DIALOG}+=	bsdconfig
+SUBDIR.${MK_EFI}+=	efivar efidp
 SUBDIR.${MK_FLOPPY}+=	fdcontrol
 SUBDIR.${MK_FLOPPY}+=	fdformat
 SUBDIR.${MK_FLOPPY}+=	fdread
@@ -214,8 +217,6 @@ SUBDIR.${MK_WIRELESS}+=	wpa
 SUBDIR.${MK_TESTS}+=	tests
 
 .include <bsd.arch.inc.mk>
-
-SUBDIR:=	${SUBDIR:O}
 
 SUBDIR_PARALLEL=
 
