@@ -13,7 +13,7 @@ unix		?=	We run FreeBSD, not UNIX.
 # and/or endian.  This is called MACHINE_CPU in NetBSD, but that's used
 # for something different in FreeBSD.
 #
-MACHINE_CPUARCH=${MACHINE_ARCH:C/mips(n32|64)?(el)?/mips/:C/arm(v6)?(eb|hf)?/arm/:C/powerpc64/powerpc/:C/riscv64/riscv/}
+MACHINE_CPUARCH=${MACHINE_ARCH:C/mips(n32|64)?(el)?(hf)?/mips/:C/arm(v6)?(eb|hf)?/arm/:C/powerpc(64|spe)/powerpc/:C/riscv64(sf)?/riscv/}
 .endif
 
 
@@ -59,7 +59,7 @@ META_MODE+=	missing-meta=yes
 .if !defined(NO_SILENT)
 META_MODE+=	silent=yes
 .endif
-.if !exists(/dev/filemon)
+.if !exists(/dev/filemon) || defined(NO_FILEMON)
 META_MODE+= nofilemon
 .endif
 # Require filemon data with bmake
@@ -70,13 +70,15 @@ META_MODE+= missing-filemon=yes
 META_MODE?= normal
 .export META_MODE
 .MAKE.MODE?= ${META_MODE}
-.if !empty(.MAKE.MODE:Mmeta) && !defined(NO_META_IGNORE_HOST)
+.if !empty(.MAKE.MODE:Mmeta)
+.if !defined(NO_META_IGNORE_HOST)
 # Ignore host file changes that will otherwise cause
 # buildworld -> installworld -> buildworld to rebuild everything.
 # Since the build is self-reliant and bootstraps everything it needs,
 # this should not be a real problem for incremental builds.
 # XXX: This relies on the existing host tools retaining ABI compatibility
 # through upgrades since they won't be rebuilt on header/library changes.
+# This is mitigated by Makefile.inc1 for known-ABI-breaking revisions.
 # Note that these are prefix matching, so /lib matches /libexec.
 .MAKE.META.IGNORE_PATHS+= \
 	${__MAKE_SHELL} \
@@ -85,13 +87,20 @@ META_MODE?= normal
 	/rescue \
 	/sbin \
 	/usr/bin \
-	/usr/include \
 	/usr/lib \
 	/usr/sbin \
 	/usr/share \
 
+.else
+NO_META_IGNORE_HOST_HEADERS=	1
 .endif
-
+.if !defined(NO_META_IGNORE_HOST_HEADERS)
+.MAKE.META.IGNORE_PATHS+= /usr/include
+.endif
+# We do not want everything out-of-date just because
+# some unrelated shared lib updated this.
+.MAKE.META.IGNORE_PATHS+= /usr/local/etc/libmap.d
+.endif	# !empty(.MAKE.MODE:Mmeta)
 
 .if ${MK_AUTO_OBJ} == "yes"
 # This needs to be done early - before .PATH is computed
@@ -117,6 +126,12 @@ META_MODE?= normal
 # This functionality is currently broken, since make(1) processes sys.mk
 # before reading any other files, and consequently has no opportunity to
 # set the %POSIX macro before we read this point.
+
+.if defined(%POSIX)
+.SUFFIXES:	.o .c .y .l .a .sh .f
+.else
+.SUFFIXES:	.out .a .ln .o .bco .llo .c .cc .cpp .cxx .C .m .F .f .e .r .y .l .S .asm .s .cl .p .h .sh
+.endif
 
 AR		?=	ar
 .if defined(%POSIX)
@@ -213,9 +228,12 @@ INSTALL		?=	install
 LEX		?=	lex
 LFLAGS		?=
 
+# LDFLAGS is for CC, _LDFLAGS is for LD.  Generate _LDFLAGS from
+# LDFLAGS by stripping -Wl, from pass-through arguments and dropping
+# compiler driver flags (e.g. -mabi=*) that conflict with flags to LD.
 LD		?=	ld
-LDFLAGS		?=				# LDFLAGS is for CC, 
-_LDFLAGS	=	${LDFLAGS:S/-Wl,//g}	# strip -Wl, for LD
+LDFLAGS		?=
+_LDFLAGS	=	${LDFLAGS:S/-Wl,//g:N-mabi=*}
 
 LINT		?=	lint
 LINTFLAGS	?=	-cghapbx
@@ -232,6 +250,8 @@ MAKE		?=	make
 .if !defined(%POSIX)
 LLC		?=	llc
 LLVM_LINK	?=	llvm-link
+
+LORDER		?=	lorder
 
 NM		?=	nm
 NMFLAGS		?=
@@ -250,6 +270,9 @@ PFLAGS		?=
 
 RC		?=	f77
 RFLAGS		?=
+
+TSORT		?=	tsort
+TSORTFLAGS	?=	-q
 .endif
 
 SHELL		?=	sh

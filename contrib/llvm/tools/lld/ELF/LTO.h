@@ -23,9 +23,14 @@
 
 #include "lld/Core/LLVM.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/IR/Module.h"
-#include "llvm/Linker/IRMover.h"
+#include <memory>
+#include <vector>
+
+namespace llvm {
+namespace lto {
+class LTO;
+}
+} // namespace llvm
 
 namespace lld {
 namespace elf {
@@ -36,19 +41,17 @@ class InputFile;
 class BitcodeCompiler {
 public:
   BitcodeCompiler();
+  ~BitcodeCompiler();
+
   void add(BitcodeFile &F);
-  std::vector<std::unique_ptr<InputFile>> compile();
+  std::vector<InputFile *> compile();
 
 private:
-  std::vector<std::unique_ptr<InputFile>> runSplitCodegen(
-      const std::function<std::unique_ptr<llvm::TargetMachine>()> &TMFactory);
-
-  std::unique_ptr<llvm::Module> Combined;
-  std::vector<SmallString<0>> OwningData;
-  llvm::StringSet<> InternalizedSyms;
-  llvm::StringSet<> AsmUndefinedRefs;
+  std::unique_ptr<llvm::lto::LTO> LTOObj;
+  std::vector<SmallString<0>> Buff;
+  std::vector<std::unique_ptr<MemoryBuffer>> Files;
 };
-}
-}
+} // namespace elf
+} // namespace lld
 
 #endif

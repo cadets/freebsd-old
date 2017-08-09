@@ -100,7 +100,7 @@ void *realloc(void *ptr, size_t size) {
 
 ALLOCATION_FUNCTION_ATTRIBUTE
 void *_realloc_dbg(void *ptr, size_t size, int) {
-  CHECK(!"_realloc_dbg should not exist!");
+  UNREACHABLE("_realloc_dbg should not exist!");
   return 0;
 }
 
@@ -117,6 +117,11 @@ void *_recalloc(void *p, size_t n, size_t elem_size) {
   if (elem_size != 0 && size / elem_size != n)
     return 0;
   return realloc(p, size);
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_recalloc_base(void *p, size_t n, size_t elem_size) {
+  return _recalloc(p, n, elem_size);
 }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
@@ -218,6 +223,7 @@ void ReplaceSystemMalloc() {
   TryToOverrideFunction("_realloc_base", (uptr)realloc);
   TryToOverrideFunction("_realloc_crt", (uptr)realloc);
   TryToOverrideFunction("_recalloc", (uptr)_recalloc);
+  TryToOverrideFunction("_recalloc_base", (uptr)_recalloc);
   TryToOverrideFunction("_recalloc_crt", (uptr)_recalloc);
   TryToOverrideFunction("_msize", (uptr)_msize);
   TryToOverrideFunction("_expand", (uptr)_expand);

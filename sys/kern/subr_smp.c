@@ -451,7 +451,7 @@ smp_rendezvous_action(void)
 	 * function.  Ensure all CPUs have completed the setup
 	 * function before moving on to the action function.
 	 */
-	if (local_setup_func != smp_no_rendevous_barrier) {
+	if (local_setup_func != smp_no_rendezvous_barrier) {
 		if (smp_rv_setup_func != NULL)
 			smp_rv_setup_func(smp_rv_func_arg);
 		atomic_add_int(&smp_rv_waiters[1], 1);
@@ -462,7 +462,7 @@ smp_rendezvous_action(void)
 	if (local_action_func != NULL)
 		local_action_func(local_func_arg);
 
-	if (local_teardown_func != smp_no_rendevous_barrier) {
+	if (local_teardown_func != smp_no_rendezvous_barrier) {
 		/*
 		 * Signal that the main action has been completed.  If a
 		 * full exit rendezvous is requested, then all CPUs will
@@ -794,15 +794,8 @@ smp_rendezvous(void (*setup_func)(void *),
 	       void *arg)
 {
 
-	/* Look comments in the smp_rendezvous_cpus() case. */
-	spinlock_enter();
-	if (setup_func != NULL)
-		setup_func(arg);
-	if (action_func != NULL)
-		action_func(arg);
-	if (teardown_func != NULL)
-		teardown_func(arg);
-	spinlock_exit();
+	smp_rendezvous_cpus(all_cpus, setup_func, action_func, teardown_func,
+	    arg);
 }
 
 /*
@@ -822,10 +815,10 @@ SYSINIT(cpu_mp_setvariables, SI_SUB_TUNABLES, SI_ORDER_FIRST,
 #endif /* SMP */
 
 void
-smp_no_rendevous_barrier(void *dummy)
+smp_no_rendezvous_barrier(void *dummy)
 {
 #ifdef SMP
-	KASSERT((!smp_started),("smp_no_rendevous called and smp is started"));
+	KASSERT((!smp_started),("smp_no_rendezvous called and smp is started"));
 #endif
 }
 

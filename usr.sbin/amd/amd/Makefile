@@ -6,9 +6,9 @@
 # $FreeBSD$
 #
 
-.include <src.opts.mk>
+.include <bsd.init.mk>
 
-.PATH: ${.CURDIR}/../../../contrib/amd/amd
+.PATH:	${SRCTOP}/contrib/amd/amd
 
 PROG=	amd
 MAN=	amd.8
@@ -26,9 +26,9 @@ SRCS+=	ops_umapfs.c
 SRCS+=	ops_unionfs.c opts.c readdir.c restart.c rpc_fwd.c sched.c
 SRCS+=	srvr_amfs_auto.c srvr_nfs.c sun_map.c
 
-CFLAGS+= -I${.CURDIR}/../../../contrib/amd/amd \
+CFLAGS+= -I${SRCTOP}/contrib/amd/amd \
 	 -I${SRCTOP}/contrib/amd/include \
-	 -I${.OBJDIR}/../../../include/rpcsvc
+	 -I${OBJTOP}/include/rpcsvc
 
 LIBADD=	amu
 
@@ -62,7 +62,7 @@ SRCS+=		mount_xdr.c
 CLEANFILES+=	mount_xdr.c
 
 mount_xdr.c: ${MOUNT_X}
-	${RPCCOM} -c -DWANT_NFS3 ${MOUNT_X} -o ${.TARGET}
+	${RPCCOM} -c -DWANT_NFS3 ${.ALLSRC} -o ${.TARGET}
 
 .if ${MK_HESIOD} != "no"
 SRCS+=	info_hesiod.c

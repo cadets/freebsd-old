@@ -274,7 +274,7 @@ ds1307_probe(device_t dev)
 
 	compat = ofw_bus_search_compatible(dev, ds1307_compat_data);
 
-	if (compat == NULL)
+	if (compat->ocd_str == NULL)
 		return (ENXIO);
 
 	device_set_desc(dev, (const char *)compat->ocd_data);
@@ -299,8 +299,10 @@ ds1307_attach(device_t dev)
 	sc->enum_hook.ich_func = ds1307_start;
 	sc->enum_hook.ich_arg = dev;
 
+#ifdef FDT
 	if (ofw_bus_is_compatible(dev, "microchip,mcp7941x"))
 		sc->sc_mcp7941x = 1;
+#endif
 
 	/*
 	 * We have to wait until interrupts are enabled.  Usually I2C read

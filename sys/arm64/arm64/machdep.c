@@ -25,6 +25,7 @@
  *
  */
 
+#include "opt_acpi.h"
 #include "opt_platform.h"
 #include "opt_ddb.h"
 
@@ -82,10 +83,18 @@ __FBSDID("$FreeBSD$");
 #include <machine/vfp.h>
 #endif
 
+#ifdef DEV_ACPI
+#include <contrib/dev/acpica/include/acpi.h>
+#include <machine/acpica_machdep.h>
+#endif
+
 #ifdef FDT
 #include <dev/fdt/fdt_common.h>
 #include <dev/ofw/openfirm.h>
 #endif
+
+
+enum arm64_bus arm64_bus_method = ARM64_BUS_NONE;
 
 struct pcpu __pcpu[MAXCPU];
 
@@ -109,6 +118,7 @@ int64_t dcache_line_size;	/* The minimum D cache line size */
 int64_t icache_line_size;	/* The minimum I cache line size */
 int64_t idcache_line_size;	/* The minimum cache line size */
 int64_t dczva_line_size;	/* The size of cache line the dc zva zeroes */
+int has_pan;
 
 /* pagezero_* implementations are provided in support.S */
 void pagezero_simple(void *);
@@ -116,6 +126,37 @@ void pagezero_cache(void *);
 
 /* pagezero_simple is default pagezero */
 void (*pagezero)(void *p) = pagezero_simple;
+
+static void
+pan_setup(void)
+{
+	uint64_t id_aa64mfr1;
+
+	id_aa64mfr1 = READ_SPECIALREG(id_aa64mmfr1_el1);
+	if (ID_AA64MMFR1_PAN(id_aa64mfr1) != ID_AA64MMFR1_PAN_NONE)
+		has_pan = 1;
+}
+
+void
+pan_enable(void)
+{
+
+	/*
+	 * The LLVM integrated assembler doesn't understand the PAN
+	 * PSTATE field. Because of this we need to manually create
+	 * the instruction in an asm block. This is equivalent to:
+	 * msr pan, #1
+	 *
+	 * This sets the PAN bit, stopping the kernel from accessing
+	 * memory when userspace can also access it unless the kernel
+	 * uses the userspace load/store instructions.
+	 */
+	if (has_pan) {
+		WRITE_SPECIALREG(sctlr_el1,
+		    READ_SPECIALREG(sctlr_el1) & ~SCTLR_SPAN);
+		__asm __volatile(".inst 0xd500409f | (0x1 << 8)");
+	}
+}
 
 static void
 cpu_startup(void *dummy)
@@ -183,9 +224,12 @@ fill_fpregs(struct thread *td, struct fpreg *regs)
 		 */
 		vfp_save_state(td, pcb);
 
-		memcpy(regs->fp_q, pcb->pcb_vfp, sizeof(regs->fp_q));
-		regs->fp_cr = pcb->pcb_fpcr;
-		regs->fp_sr = pcb->pcb_fpsr;
+		KASSERT(pcb->pcb_fpusaved == &pcb->pcb_fpustate,
+		    ("Called fill_fpregs while the kernel is using the VFP"));
+		memcpy(regs->fp_q, pcb->pcb_fpustate.vfp_regs,
+		    sizeof(regs->fp_q));
+		regs->fp_cr = pcb->pcb_fpustate.vfp_fpcr;
+		regs->fp_sr = pcb->pcb_fpustate.vfp_fpsr;
 	} else
 #endif
 		memset(regs->fp_q, 0, sizeof(regs->fp_q));
@@ -199,9 +243,11 @@ set_fpregs(struct thread *td, struct fpreg *regs)
 	struct pcb *pcb;
 
 	pcb = td->td_pcb;
-	memcpy(pcb->pcb_vfp, regs->fp_q, sizeof(regs->fp_q));
-	pcb->pcb_fpcr = regs->fp_cr;
-	pcb->pcb_fpsr = regs->fp_sr;
+	KASSERT(pcb->pcb_fpusaved == &pcb->pcb_fpustate,
+	    ("Called set_fpregs while the kernel is using the VFP"));
+	memcpy(pcb->pcb_fpustate.vfp_regs, regs->fp_q, sizeof(regs->fp_q));
+	pcb->pcb_fpustate.vfp_fpcr = regs->fp_cr;
+	pcb->pcb_fpustate.vfp_fpsr = regs->fp_sr;
 #endif
 	return (0);
 }
@@ -325,10 +371,14 @@ get_fpcontext(struct thread *td, mcontext_t *mcp)
 		 */
 		vfp_save_state(td, curpcb);
 
-		memcpy(mcp->mc_fpregs.fp_q, curpcb->pcb_vfp,
+		KASSERT(curpcb->pcb_fpusaved == &curpcb->pcb_fpustate,
+		    ("Called get_fpcontext while the kernel is using the VFP"));
+		KASSERT((curpcb->pcb_fpflags & ~PCB_FP_USERMASK) == 0,
+		    ("Non-userspace FPU flags set in get_fpcontext"));
+		memcpy(mcp->mc_fpregs.fp_q, curpcb->pcb_fpustate.vfp_regs,
 		    sizeof(mcp->mc_fpregs));
-		mcp->mc_fpregs.fp_cr = curpcb->pcb_fpcr;
-		mcp->mc_fpregs.fp_sr = curpcb->pcb_fpsr;
+		mcp->mc_fpregs.fp_cr = curpcb->pcb_fpustate.vfp_fpcr;
+		mcp->mc_fpregs.fp_sr = curpcb->pcb_fpustate.vfp_fpsr;
 		mcp->mc_fpregs.fp_flags = curpcb->pcb_fpflags;
 		mcp->mc_flags |= _MC_FP_VALID;
 	}
@@ -354,11 +404,13 @@ set_fpcontext(struct thread *td, mcontext_t *mcp)
 		 */
 		vfp_discard(td);
 
-		memcpy(curpcb->pcb_vfp, mcp->mc_fpregs.fp_q,
+		KASSERT(curpcb->pcb_fpusaved == &curpcb->pcb_fpustate,
+		    ("Called set_fpcontext while the kernel is using the VFP"));
+		memcpy(curpcb->pcb_fpustate.vfp_regs, mcp->mc_fpregs.fp_q,
 		    sizeof(mcp->mc_fpregs));
-		curpcb->pcb_fpcr = mcp->mc_fpregs.fp_cr;
-		curpcb->pcb_fpsr = mcp->mc_fpregs.fp_sr;
-		curpcb->pcb_fpflags = mcp->mc_fpregs.fp_flags;
+		curpcb->pcb_fpustate.vfp_fpcr = mcp->mc_fpregs.fp_cr;
+		curpcb->pcb_fpustate.vfp_fpsr = mcp->mc_fpregs.fp_sr;
+		curpcb->pcb_fpflags = mcp->mc_fpregs.fp_flags & PCB_FP_USERMASK;
 	}
 
 	critical_exit();
@@ -598,6 +650,7 @@ init_proc0(vm_offset_t kstack)
 	thread0.td_kstack = kstack;
 	thread0.td_pcb = (struct pcb *)(thread0.td_kstack) - 1;
 	thread0.td_pcb->pcb_fpflags = 0;
+	thread0.td_pcb->pcb_fpusaved = &thread0.td_pcb->pcb_fpustate;
 	thread0.td_pcb->pcb_vfpcpu = UINT_MAX;
 	thread0.td_frame = &proc0_tf;
 	pcpup->pc_curpcb = thread0.td_pcb;
@@ -713,7 +766,8 @@ add_efi_map_entries(struct efi_map_header *efihdr, vm_paddr_t *physmap,
 		"ACPIMemoryNVS",
 		"MemoryMappedIO",
 		"MemoryMappedIOPortSpace",
-		"PalCode"
+		"PalCode",
+		"PersistentMemory"
 	};
 
 	/*
@@ -734,7 +788,7 @@ add_efi_map_entries(struct efi_map_header *efihdr, vm_paddr_t *physmap,
 	for (i = 0, p = map; i < ndesc; i++,
 	    p = efi_next_descriptor(p, efihdr->descriptor_size)) {
 		if (boothowto & RB_VERBOSE) {
-			if (p->md_type <= EFI_MD_TYPE_PALCODE)
+			if (p->md_type < nitems(types))
 				type = types[p->md_type];
 			else
 				type = "<INVALID>";
@@ -756,6 +810,12 @@ add_efi_map_entries(struct efi_map_header *efihdr, vm_paddr_t *physmap,
 				printf("RP ");
 			if (p->md_attr & EFI_MD_ATTR_XP)
 				printf("XP ");
+			if (p->md_attr & EFI_MD_ATTR_NV)
+				printf("NV ");
+			if (p->md_attr & EFI_MD_ATTR_MORE_RELIABLE)
+				printf("MORE_RELIABLE ");
+			if (p->md_attr & EFI_MD_ATTR_RO)
+				printf("RO ");
 			if (p->md_attr & EFI_MD_ATTR_RT)
 				printf("RUNTIME");
 			printf("\n");
@@ -800,6 +860,61 @@ try_load_dtb(caddr_t kmdp)
 		panic("OF_init failed with the found device tree");
 }
 #endif
+
+static bool
+bus_probe(void)
+{
+	bool has_acpi, has_fdt;
+	char *order, *env;
+
+	has_acpi = has_fdt = false;
+
+#ifdef FDT
+	has_fdt = (OF_peer(0) != 0);
+#endif
+#ifdef DEV_ACPI
+	has_acpi = (acpi_find_table(ACPI_SIG_SPCR) != 0);
+#endif
+
+	env = kern_getenv("kern.cfg.order");
+	if (env != NULL) {
+		order = env;
+		while (order != NULL) {
+			if (has_acpi &&
+			    strncmp(order, "acpi", 4) == 0 &&
+			    (order[4] == ',' || order[4] == '\0')) {
+				arm64_bus_method = ARM64_BUS_ACPI;
+				break;
+			}
+			if (has_fdt &&
+			    strncmp(order, "fdt", 3) == 0 &&
+			    (order[3] == ',' || order[3] == '\0')) {
+				arm64_bus_method = ARM64_BUS_FDT;
+				break;
+			}
+			order = strchr(order, ',');
+		}
+		freeenv(env);
+
+		/* If we set the bus method it is valid */
+		if (arm64_bus_method != ARM64_BUS_NONE)
+			return (true);
+	}
+	/* If no order or an invalid order was set use the default */
+	if (arm64_bus_method == ARM64_BUS_NONE) {
+		if (has_fdt)
+			arm64_bus_method = ARM64_BUS_FDT;
+		else if (has_acpi)
+			arm64_bus_method = ARM64_BUS_ACPI;
+	}
+
+	/*
+	 * If no option was set the default is valid, otherwise we are
+	 * setting one to get cninit() working, then calling panic to tell
+	 * the user about the invalid bus setup.
+	 */
+	return (env == NULL);
+}
 
 static void
 cache_setup(void)
@@ -848,6 +963,7 @@ initarm(struct arm64_bootparams *abp)
 	vm_offset_t lastaddr;
 	caddr_t kmdp;
 	vm_paddr_t mem_len;
+	bool valid;
 	int i;
 
 	/* Set the module data location */
@@ -913,6 +1029,7 @@ initarm(struct arm64_bootparams *abp)
 	init_param1();
 
 	cache_setup();
+	pan_setup();
 
 	/* Bootstrap enough of pmap  to enter the kernel proper */
 	pmap_bootstrap(abp->kern_l0pt, abp->kern_l1pt,
@@ -920,7 +1037,13 @@ initarm(struct arm64_bootparams *abp)
 
 	devmap_bootstrap(0, NULL);
 
+	valid = bus_probe();
+
 	cninit();
+
+	if (!valid)
+		panic("Invalid bus configuration: %s",
+		    kern_getenv("kern.cfg.order"));
 
 	init_proc0(abp->kern_stack);
 	msgbufinit(msgbufp, msgbufsize);
@@ -929,6 +1052,7 @@ initarm(struct arm64_bootparams *abp)
 
 	dbg_monitor_init();
 	kdb_init();
+	pan_enable();
 
 	early_boot = 0;
 }
@@ -1017,9 +1141,13 @@ DB_SHOW_COMMAND(vtop, db_show_vtop)
 
 	if (have_addr) {
 		phys = arm64_address_translate_s1e1r(addr);
-		db_printf("Physical address reg (read):  0x%016lx\n", phys);
+		db_printf("EL1 physical address reg (read):  0x%016lx\n", phys);
 		phys = arm64_address_translate_s1e1w(addr);
-		db_printf("Physical address reg (write): 0x%016lx\n", phys);
+		db_printf("EL1 physical address reg (write): 0x%016lx\n", phys);
+		phys = arm64_address_translate_s1e0r(addr);
+		db_printf("EL0 physical address reg (read):  0x%016lx\n", phys);
+		phys = arm64_address_translate_s1e0w(addr);
+		db_printf("EL0 physical address reg (write): 0x%016lx\n", phys);
 	} else
 		db_printf("show vtop <virt_addr>\n");
 }

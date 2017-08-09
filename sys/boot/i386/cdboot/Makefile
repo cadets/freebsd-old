@@ -12,7 +12,7 @@ CFLAGS+=-I${.CURDIR}/../common
 
 ORG=	0x7c00
 
-LDFLAGS=-e start -Ttext ${ORG} -Wl,-N,-S,--oformat,binary
+LDFLAGS=${LDFLAGS_BIN}
 
 .include <bsd.prog.mk>
 

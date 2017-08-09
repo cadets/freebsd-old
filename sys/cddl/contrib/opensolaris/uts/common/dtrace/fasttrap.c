@@ -64,6 +64,7 @@
 #include <sys/dtrace_bsd.h>
 #include <sys/eventhandler.h>
 #include <sys/rmlock.h>
+#include <sys/sysent.h>
 #include <sys/sysctl.h>
 #include <sys/u8_textprep.h>
 #include <sys/user.h>
@@ -930,6 +931,13 @@ again:
 		ASSERT(0);
 	}
 
+#ifdef __FreeBSD__
+	if (SV_PROC_FLAG(p, SV_LP64))
+		p->p_model = DATAMODEL_LP64;
+	else
+		p->p_model = DATAMODEL_ILP32;
+#endif
+
 	/*
 	 * If the ISA-dependent initialization goes to plan, go back to the
 	 * beginning and try to install this freshly made tracepoint.
@@ -1238,7 +1246,7 @@ fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg)
 	ASSERT(!(p->p_flag & SVFORK));
 	mutex_exit(&p->p_lock);
 #else
-	if ((p = pfind(probe->ftp_pid)) == NULL)
+	if (pget(probe->ftp_pid, PGET_HOLD | PGET_NOTWEXIT, &p) != 0)
 		return;
 #endif
 
@@ -1247,13 +1255,6 @@ fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg)
 	 * the chance to execute the trap instruction we're about to place
 	 * in their process's text.
 	 */
-#ifdef __FreeBSD__
-	/*
-	 * pfind() returns a locked process.
-	 */
-	_PHOLD(p);
-	PROC_UNLOCK(p);
-#endif
 	fasttrap_enable_callbacks();
 
 	/*
@@ -1325,17 +1326,8 @@ fasttrap_pid_disable(void *arg, dtrace_id_t id, void *parg)
 	 * provider lock as a point of mutual exclusion to prevent other
 	 * DTrace consumers from disabling this probe.
 	 */
-	if ((p = pfind(probe->ftp_pid)) != NULL) {
-#ifdef __FreeBSD__
-		if (p->p_flag & P_WEXIT) {
-			PROC_UNLOCK(p);
-			p = NULL;
-		} else {
-			_PHOLD(p);
-			PROC_UNLOCK(p);
-		}
-#endif
-	}
+	if (pget(probe->ftp_pid, PGET_HOLD | PGET_NOTWEXIT, &p) != 0)
+		p = NULL;
 
 	/*
 	 * Disable all the associated tracepoints (for fully enabled probes).
@@ -2277,10 +2269,6 @@ static int
 fasttrap_ioctl(struct cdev *dev, u_long cmd, caddr_t arg, int fflag,
     struct thread *td)
 {
-#ifdef notyet
-	struct kinfo_proc kp;
-	const cred_t *cr = td->td_ucred;
-#endif
 	if (!dtrace_attached())
 		return (EAGAIN);
 
@@ -2336,47 +2324,24 @@ fasttrap_ioctl(struct cdev *dev, u_long cmd, caddr_t arg, int fflag,
 			proc_t *p;
 			pid_t pid = probe->ftps_pid;
 
-#ifdef illumos
 			mutex_enter(&pidlock);
-#endif
 			/*
 			 * Report an error if the process doesn't exist
 			 * or is actively being birthed.
 			 */
-			sx_slock(&proctree_lock);
-			p = pfind(pid);
-			if (p)
-				fill_kinfo_proc(p, &kp);
-			sx_sunlock(&proctree_lock);
-			if (p == NULL || kp.ki_stat == SIDL) {
-#ifdef illumos
+			if ((p = pfind(pid)) == NULL || p->p_stat == SIDL) {
 				mutex_exit(&pidlock);
-#endif
 				return (ESRCH);
 			}
-#ifdef illumos
 			mutex_enter(&p->p_lock);
 			mutex_exit(&pidlock);
-#else
-			PROC_LOCK_ASSERT(p, MA_OWNED);
-#endif
 
-#ifdef notyet
 			if ((ret = priv_proc_cred_perm(cr, p, NULL,
 			    VREAD | VWRITE)) != 0) {
-#ifdef illumos
 				mutex_exit(&p->p_lock);
-#else
-				PROC_UNLOCK(p);
-#endif
 				return (ret);
 			}
-#endif /* notyet */
-#ifdef illumos
 			mutex_exit(&p->p_lock);
-#else
-			PROC_UNLOCK(p);
-#endif
 		}
 #endif /* notyet */
 
@@ -2390,7 +2355,7 @@ err:
 		fasttrap_instr_query_t instr;
 		fasttrap_tracepoint_t *tp;
 		uint_t index;
-#ifdef illumos
+#ifdef notyet
 		int ret;
 #endif
 
@@ -2404,48 +2369,25 @@ err:
 			proc_t *p;
 			pid_t pid = instr.ftiq_pid;
 
-#ifdef illumos
 			mutex_enter(&pidlock);
-#endif
 			/*
 			 * Report an error if the process doesn't exist
 			 * or is actively being birthed.
 			 */
-			sx_slock(&proctree_lock);
-			p = pfind(pid);
-			if (p)
-				fill_kinfo_proc(p, &kp);
-			sx_sunlock(&proctree_lock);
-			if (p == NULL || kp.ki_stat == SIDL) {
-#ifdef illumos
+			if ((p == pfind(pid)) == NULL || p->p_stat == SIDL) {
 				mutex_exit(&pidlock);
-#endif
 				return (ESRCH);
 			}
-#ifdef illumos
 			mutex_enter(&p->p_lock);
 			mutex_exit(&pidlock);
-#else
-			PROC_LOCK_ASSERT(p, MA_OWNED);
-#endif
 
-#ifdef notyet
 			if ((ret = priv_proc_cred_perm(cr, p, NULL,
 			    VREAD)) != 0) {
-#ifdef illumos
 				mutex_exit(&p->p_lock);
-#else
-				PROC_UNLOCK(p);
-#endif
 				return (ret);
 			}
-#endif /* notyet */
 
-#ifdef illumos
 			mutex_exit(&p->p_lock);
-#else
-			PROC_UNLOCK(p);
-#endif
 		}
 #endif /* notyet */
 

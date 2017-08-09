@@ -4,11 +4,13 @@
 
 .PATH:		${CLANG_SRCS}/lib/Headers
 
-INCSDIR=	${LIBDIR}/clang/3.9.1/include
+INCSDIR=	${LIBDIR}/clang/5.0.0/include
 
 GENINCS+=	arm_neon.h
 
+INCS+=		__clang_cuda_builtin_vars.h
 INCS+=		__clang_cuda_cmath.h
+INCS+=		__clang_cuda_complex_builtins.h
 INCS+=		__clang_cuda_intrinsics.h
 INCS+=		__clang_cuda_math_forward_declares.h
 INCS+=		__clang_cuda_runtime_wrapper.h
@@ -19,6 +21,7 @@ INCS+=		adxintrin.h
 INCS+=		altivec.h
 INCS+=		ammintrin.h
 INCS+=		arm_acle.h
+INCS+=		armintr.h
 INCS+=		avx2intrin.h
 INCS+=		avx512bwintrin.h
 INCS+=		avx512cdintrin.h
@@ -34,12 +37,13 @@ INCS+=		avx512vlbwintrin.h
 INCS+=		avx512vlcdintrin.h
 INCS+=		avx512vldqintrin.h
 INCS+=		avx512vlintrin.h
+INCS+=		avx512vpopcntdqintrin.h
 INCS+=		avxintrin.h
 INCS+=		bmi2intrin.h
 INCS+=		bmiintrin.h
 INCS+=		clflushoptintrin.h
+INCS+=		clzerointrin.h
 INCS+=		cpuid.h
-INCS+=		cuda_builtin_vars.h
 INCS+=		emmintrin.h
 INCS+=		f16cintrin.h
 INCS+=		fma4intrin.h
@@ -49,6 +53,7 @@ INCS+=		htmintrin.h
 INCS+=		htmxlintrin.h
 INCS+=		ia32intrin.h
 INCS+=		immintrin.h
+INCS+=		lwpintrin.h
 INCS+=		lzcntintrin.h
 INCS+=		mm3dnow.h
 INCS+=		mm_malloc.h
@@ -81,6 +86,25 @@ INCS+=		xsaveoptintrin.h
 INCS+=		xsavesintrin.h
 INCS+=		xtestintrin.h
 INCS+=		${GENINCS}
+
+# Headers which possibly conflict with our own versions:
+.if defined(INSTALL_CONFLICTING_CLANG_HEADERS)
+INCS+=		float.h
+INCS+=		intrin.h
+INCS+=		inttypes.h
+INCS+=		iso646.h
+INCS+=		limits.h
+INCS+=		stdalign.h
+INCS+=		stdarg.h
+INCS+=		stdatomic.h
+INCS+=		stdbool.h
+INCS+=		stddef.h
+INCS+=		stdint.h
+INCS+=		stdnoreturn.h
+INCS+=		tgmath.h
+INCS+=		unwind.h
+INCS+=		varargs.h
+.endif
 
 arm_neon.h: ${CLANG_SRCS}/include/clang/Basic/arm_neon.td
 	${CLANG_TBLGEN} -gen-arm-neon \

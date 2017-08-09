@@ -1,6 +1,7 @@
 /*-
  * Copyright (c) 2007, 2011 Robert N. M. Watson
  * Copyright (c) 2015 Allan Jude <allanjude@freebsd.org>
+ * Copyright (c) 2017 Dell EMC
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,19 +42,31 @@
 
 #include "procstat.h"
 
-static int aflag, bflag, cflag, eflag, fflag, iflag, jflag, kflag, lflag, rflag;
-static int sflag, tflag, vflag, xflag, Sflag;
+static int aflag, bflag, cflag, eflag, fflag, iflag, jflag, kflag;
+static int lflag, Lflag, rflag, sflag, tflag, vflag, xflag, Sflag;
 int	hflag, nflag, Cflag, Hflag;
 
 static void
 usage(void)
 {
 
-	xo_error("usage: procstat [-CHhn] [-M core] [-N system] "
-	    "[-w interval]\n"
-	    "                [-b | -c | -e | -f | -i | -j | -k | "
-	    "-l | -r | -s | -S | -t | -v | -x]\n"
-	    "                [-a | pid | core ...]\n");
+	xo_error(
+	    "usage: procstat [--libxo] [-Hhn] [-M core] "
+	    "[-N system] [-w interval]\n"
+	    "                [-S | -b | -c | -e | -i | -j | -k | -kk | "
+	    "-l | -r | -s | \n"
+	    "                 -t | -v | -x]\n"
+	    "                [-a | pid ... | core ...]\n"
+	    "       procstat [--libxo] -Cf [-hn] [-M core] "
+	    "[-N system] [-a | pid ... | core ...]\n"
+	    "                [-S | -b | -c | -e | -i | -j | -k | -kk | "
+	    "-l | -r | -s | \n"
+	    "       procstat [--libxo] -L [-hn] [-M core] "
+	    "[-N system] [-w interval]\n"
+	    "                [-S | -b | -c | -e | -i | -j | -k | -kk | "
+	    "-l | -r | -s | \n"
+	    "                 -t | -v | -x]\n"
+	    "                [core ...]\n");
 	xo_finish();
 	exit(EX_USAGE);
 }
@@ -84,6 +97,8 @@ procstat(struct procstat *prstat, struct kinfo_proc *kipp)
 		procstat_kstack(prstat, kipp, kflag);
 	else if (lflag)
 		procstat_rlimit(prstat, kipp);
+	else if (Lflag)
+		procstat_ptlwpinfo(prstat);
 	else if (rflag)
 		procstat_rusage(prstat, kipp);
 	else if (sflag)
@@ -161,7 +176,7 @@ main(int argc, char *argv[])
 	argc = xo_parse_args(argc, argv);
 	xocontainer = "basic";
 
-	while ((ch = getopt(argc, argv, "CHN:M:abcefijklhrsStvw:x")) != -1) {
+	while ((ch = getopt(argc, argv, "abCcefHhijkLlM:N:nrSstvw:x")) != -1) {
 		switch (ch) {
 		case 'C':
 			Cflag++;
@@ -223,6 +238,11 @@ main(int argc, char *argv[])
 		case 'l':
 			lflag++;
 			xocontainer = "rlimit";
+			break;
+
+		case 'L':
+			Lflag++;
+			xocontainer = "ptlwpinfo";
 			break;
 
 		case 'n':

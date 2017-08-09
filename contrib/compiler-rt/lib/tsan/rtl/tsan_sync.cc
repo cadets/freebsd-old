@@ -30,7 +30,7 @@ void SyncVar::Init(ThreadState *thr, uptr pc, uptr addr, u64 uid) {
   this->next = 0;
 
   creation_stack_id = 0;
-  if (kCppMode)  // Go does not use them
+  if (!SANITIZER_GO)  // Go does not use them
     creation_stack_id = CurrentStackId(thr, pc);
   if (common_flags()->detect_deadlocks)
     DDMutexInit(thr, pc, this);
@@ -42,10 +42,7 @@ void SyncVar::Reset(Processor *proc) {
   owner_tid = kInvalidTid;
   last_lock = 0;
   recursion = 0;
-  is_rw = 0;
-  is_recursive = 0;
-  is_broken = 0;
-  is_linker_init = 0;
+  atomic_store_relaxed(&flags, 0);
 
   if (proc == 0) {
     CHECK_EQ(clock.size(), 0);
@@ -56,7 +53,9 @@ void SyncVar::Reset(Processor *proc) {
   }
 }
 
-MetaMap::MetaMap() {
+MetaMap::MetaMap()
+    : block_alloc_("heap block allocator")
+    , sync_alloc_("sync allocator") {
   atomic_store(&uid_gen_, 0, memory_order_relaxed);
 }
 
@@ -64,6 +63,7 @@ void MetaMap::AllocBlock(ThreadState *thr, uptr pc, uptr p, uptr sz) {
   u32 idx = block_alloc_.Alloc(&thr->proc()->block_cache);
   MBlock *b = block_alloc_.Map(idx);
   b->siz = sz;
+  b->tag = 0;
   b->tid = thr->tid;
   b->stk = CurrentStackId(thr, pc);
   u32 *meta = MemToMeta(p);
@@ -120,7 +120,7 @@ bool MetaMap::FreeRange(Processor *proc, uptr p, uptr sz) {
 // without meta objects, at this point it stops freeing meta objects. Because
 // thread stacks grow top-down, we do the same starting from end as well.
 void MetaMap::ResetRange(Processor *proc, uptr p, uptr sz) {
-  if (kGoMode) {
+  if (SANITIZER_GO) {
     // UnmapOrDie/MmapFixedNoReserve does not work on Windows,
     // so we do the optimization only for C/C++.
     FreeRange(proc, p, sz);

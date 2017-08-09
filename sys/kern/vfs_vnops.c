@@ -21,7 +21,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -422,8 +422,7 @@ vn_open_vnode(struct vnode *vp, int fmode, struct ucred *cred,
  * Prototype text segments cannot be written.
  */
 int
-vn_writechk(vp)
-	register struct vnode *vp;
+vn_writechk(struct vnode *vp)
 {
 
 	ASSERT_VOP_LOCKED(vp, "vn_writechk");
@@ -1403,15 +1402,11 @@ vn_statfile(fp, sb, active_cred, td)
  * Stat a vnode; implementation for the stat syscall
  */
 int
-vn_stat(vp, sb, active_cred, file_cred, td)
-	struct vnode *vp;
-	register struct stat *sb;
-	struct ucred *active_cred;
-	struct ucred *file_cred;
-	struct thread *td;
+vn_stat(struct vnode *vp, struct stat *sb, struct ucred *active_cred,
+    struct ucred *file_cred, struct thread *td)
 {
 	struct vattr vattr;
-	register struct vattr *vap;
+	struct vattr *vap;
 	int error;
 	u_short mode;
 
@@ -1514,12 +1509,8 @@ vn_stat(vp, sb, active_cred, file_cred, td)
  * File table vnode ioctl routine.
  */
 static int
-vn_ioctl(fp, com, data, active_cred, td)
-	struct file *fp;
-	u_long com;
-	void *data;
-	struct ucred *active_cred;
-	struct thread *td;
+vn_ioctl(struct file *fp, u_long com, void *data, struct ucred *active_cred,
+    struct thread *td)
 {
 	struct vattr vattr;
 	struct vnode *vp;
@@ -1544,6 +1535,10 @@ vn_ioctl(fp, com, data, active_cred, td)
 			return (VOP_IOCTL(vp, com, data, fp->f_flag,
 			    active_cred, td));
 		}
+		break;
+	case VCHR:
+		return (VOP_IOCTL(vp, com, data, fp->f_flag,
+		    active_cred, td));
 	default:
 		return (ENOTTY);
 	}
@@ -1553,11 +1548,8 @@ vn_ioctl(fp, com, data, active_cred, td)
  * File table vnode poll routine.
  */
 static int
-vn_poll(fp, events, active_cred, td)
-	struct file *fp;
-	int events;
-	struct ucred *active_cred;
-	struct thread *td;
+vn_poll(struct file *fp, int events, struct ucred *active_cred,
+    struct thread *td)
 {
 	struct vnode *vp;
 	int error;
@@ -1802,8 +1794,7 @@ vn_start_secondary_write(struct vnode *vp, struct mount **mpp, int flags)
  * now in effect.
  */
 void
-vn_finished_write(mp)
-	struct mount *mp;
+vn_finished_write(struct mount *mp)
 {
 	if (mp == NULL || !vn_suspendable(mp))
 		return;
@@ -1825,8 +1816,7 @@ vn_finished_write(mp)
  * that the suspension is now in effect.
  */
 void
-vn_finished_secondary_write(mp)
-	struct mount *mp;
+vn_finished_secondary_write(struct mount *mp)
 {
 	if (mp == NULL || !vn_suspendable(mp))
 		return;
@@ -2388,7 +2378,7 @@ vn_fill_kinfo_vnode(struct vnode *vp, struct kinfo_file *kif)
 	char *fullpath, *freepath;
 	int error;
 
-	kif->kf_vnode_type = vntype_to_kinfo(vp->v_type);
+	kif->kf_un.kf_file.kf_file_type = vntype_to_kinfo(vp->v_type);
 	freepath = NULL;
 	fullpath = "-";
 	error = vn_fullpath(curthread, vp, &fullpath, &freepath);
@@ -2417,10 +2407,14 @@ vn_fill_kinfo_vnode(struct vnode *vp, struct kinfo_file *kif)
 	else
 		kif->kf_un.kf_file.kf_file_fsid =
 		    vp->v_mount->mnt_stat.f_fsid.val[0];
+	kif->kf_un.kf_file.kf_file_fsid_freebsd11 =
+	    kif->kf_un.kf_file.kf_file_fsid; /* truncate */
 	kif->kf_un.kf_file.kf_file_fileid = va.va_fileid;
 	kif->kf_un.kf_file.kf_file_mode = MAKEIMODE(va.va_type, va.va_mode);
 	kif->kf_un.kf_file.kf_file_size = va.va_size;
 	kif->kf_un.kf_file.kf_file_rdev = va.va_rdev;
+	kif->kf_un.kf_file.kf_file_rdev_freebsd11 =
+	    kif->kf_un.kf_file.kf_file_rdev; /* truncate */
 	return (0);
 }
 
@@ -2554,4 +2548,15 @@ vn_getuuid(struct file *fp, struct uuid *uuidp)
 #endif
 	*uuidp = vp->v_uuid;
 	return (0);
+}
+
+void
+vn_fsid(struct vnode *vp, struct vattr *va)
+{
+	fsid_t *f;
+
+	f = &vp->v_mount->mnt_stat.f_fsid;
+	va->va_fsid = (uint32_t)f->val[1];
+	va->va_fsid <<= sizeof(f->val[1]) * NBBY;
+	va->va_fsid += (uint32_t)f->val[0];
 }

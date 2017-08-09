@@ -21,12 +21,17 @@ def base    : P<"base", "Base address of the program">;
 def defaultlib : P<"defaultlib", "Add the library to the list of input files">;
 def delayload : P<"delayload", "Delay loaded DLL name">;
 def entry   : P<"entry", "Name of entry point symbol">;
+def errorlimit : P<"errorlimit",
+    "Maximum number of errors to emit before stopping (0 = no limit)">;
 def export  : P<"export", "Export a function">;
 // No help text because /failifmismatch is not intended to be used by the user.
 def failifmismatch : P<"failifmismatch", "">;
 def heap    : P<"heap", "Size of the heap">;
 def implib  : P<"implib", "Import library name">;
 def libpath : P<"libpath", "Additional library search path">;
+def linkrepro : P<"linkrepro", "Dump linker invocation and input files for debugging">;
+def lldsavetemps : F<"lldsavetemps">,
+    HelpText<"Save temporary files instead of deleting them">;
 def machine : P<"machine", "Specify target platform">;
 def merge   : P<"merge", "Combine sections">;
 def mllvm   : P<"mllvm", "Options to pass to LLVM">;
@@ -61,7 +66,9 @@ def deffile : Joined<["/", "-"], "def:">,
     HelpText<"Use module-definition file">;
 
 def debug : F<"debug">, HelpText<"Embed a symbol table in the image">;
+def debugtype : P<"debugtype", "Debug Info Options">;
 def dll : F<"dll">, HelpText<"Create a DLL">;
+def driver : P<"driver", "Generate a Windows NT Kernel Mode Driver">;
 def nodefaultlib_all : F<"nodefaultlib">;
 def noentry : F<"noentry">;
 def profile : F<"profile">;
@@ -75,6 +82,8 @@ def force_unresolved : F<"force:unresolved">;
 
 defm allowbind: B<"allowbind", "Disable DLL binding">;
 defm allowisolation : B<"allowisolation", "Set NO_ISOLATION bit">;
+defm appcontainer : B<"appcontainer",
+                      "Image can only be run in an app container">;
 defm dynamicbase : B<"dynamicbase",
                      "Disable address space layout randomization">;
 defm fixed    : B<"fixed", "Enable base relocations">;
@@ -88,10 +97,13 @@ def help : F<"help">;
 def help_q : Flag<["/?", "-?"], "">, Alias<help>;
 
 // LLD extensions
+def nopdb : F<"nopdb">, HelpText<"Disable PDB generation for DWARF users">;
 def nosymtab : F<"nosymtab">;
+def msvclto : F<"msvclto">;
 
 // Flags for debugging
-def lldmap : Joined<["/", "-"], "lldmap:">;
+def lldmap : F<"lldmap">;
+def lldmap_file : Joined<["/", "-"], "lldmap:">;
 
 //==============================================================================
 // The flags below do nothing. They are defined only for link.exe compatibility.

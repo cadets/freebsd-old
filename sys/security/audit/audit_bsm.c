@@ -1798,6 +1798,18 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 			kau_write(rec, tok);
 		} else if (RET_IS_VALID(kar, RET_OBJUUID1)) {
 			tok = au_to_return_uuid(1, "shm", &ar->ar_ret_objuuid1);
+		}
+		if (ARG_IS_VALID(kar, ARG_POSIX_IPC_PERM)) {
+			struct ipc_perm perm;
+
+			perm.uid = ar->ar_arg_pipc_perm.pipc_uid;
+			perm.gid = ar->ar_arg_pipc_perm.pipc_gid;
+			perm.cuid = ar->ar_arg_pipc_perm.pipc_uid;
+			perm.cgid = ar->ar_arg_pipc_perm.pipc_gid;
+			perm.mode = ar->ar_arg_pipc_perm.pipc_mode;
+			perm.seq = 0;
+			perm.key = 0;
+			tok = au_to_ipc_perm(&perm);
 			kau_write(rec, tok);
 		}
 		break;

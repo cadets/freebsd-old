@@ -197,12 +197,14 @@ unlock_sx(struct lock_object *lock)
 int
 owner_sx(const struct lock_object *lock, struct thread **owner)
 {
-        const struct sx *sx = (const struct sx *)lock;
-	uintptr_t x = sx->sx_lock;
+	const struct sx *sx;
+	uintptr_t x;
 
-        *owner = (struct thread *)SX_OWNER(x);
-        return ((x & SX_LOCK_SHARED) != 0 ? (SX_SHARERS(x) != 0) :
-	    (*owner != NULL));
+	sx = (const struct sx *)lock;
+	x = sx->sx_lock;
+	*owner = NULL;
+	return ((x & SX_LOCK_SHARED) != 0 ? (SX_SHARERS(x) != 0) :
+	    ((*owner = (struct thread *)SX_OWNER(x)) != NULL));
 }
 #endif
 
@@ -293,7 +295,8 @@ _sx_xlock(struct sx *sx, int opts, const char *file, int line)
 	uintptr_t tid, x;
 	int error = 0;
 
-	KASSERT(kdb_active != 0 || !TD_IS_IDLETHREAD(curthread),
+	KASSERT(kdb_active != 0 || SCHEDULER_STOPPED() ||
+	    !TD_IS_IDLETHREAD(curthread),
 	    ("sx_xlock() by idle thread %p on sx %s @ %s:%d",
 	    curthread, sx->lock_object.lo_name, file, line));
 	KASSERT(sx->sx_lock != SX_LOCK_DESTROYED,
@@ -330,7 +333,7 @@ sx_try_xlock_(struct sx *sx, const char *file, int line)
 	if (SCHEDULER_STOPPED_TD(td))
 		return (1);
 
-	KASSERT(kdb_active != 0 || !TD_IS_IDLETHREAD(curthread),
+	KASSERT(kdb_active != 0 || !TD_IS_IDLETHREAD(td),
 	    ("sx_try_xlock() by idle thread %p on sx %s @ %s:%d",
 	    curthread, sx->lock_object.lo_name, file, line));
 	KASSERT(sx->sx_lock != SX_LOCK_DESTROYED,
@@ -1028,7 +1031,8 @@ _sx_slock(struct sx *sx, int opts, const char *file, int line)
 	uintptr_t x;
 	int error;
 
-	KASSERT(kdb_active != 0 || !TD_IS_IDLETHREAD(curthread),
+	KASSERT(kdb_active != 0 || SCHEDULER_STOPPED() ||
+	    !TD_IS_IDLETHREAD(curthread),
 	    ("sx_slock() by idle thread %p on sx %s @ %s:%d",
 	    curthread, sx->lock_object.lo_name, file, line));
 	KASSERT(sx->sx_lock != SX_LOCK_DESTROYED,

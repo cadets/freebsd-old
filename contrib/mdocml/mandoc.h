@@ -1,7 +1,7 @@
-/*	$Id: mandoc.h,v 1.209 2016/01/08 02:53:13 schwarze Exp $ */
+/*	$Id: mandoc.h,v 1.226 2017/06/08 18:11:22 schwarze Exp $ */
 /*
  * Copyright (c) 2010, 2011, 2014 Kristaps Dzonsons <kristaps@bsd.lv>
- * Copyright (c) 2010-2016 Ingo Schwarze <schwarze@openbsd.org>
+ * Copyright (c) 2010-2017 Ingo Schwarze <schwarze@openbsd.org>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -28,7 +28,7 @@
  */
 enum	mandoclevel {
 	MANDOCLEVEL_OK = 0,
-	MANDOCLEVEL_RESERVED,
+	MANDOCLEVEL_STYLE, /* style suggestions */
 	MANDOCLEVEL_WARNING, /* warnings: syntax, whitespace, etc. */
 	MANDOCLEVEL_ERROR, /* input has been thrown away */
 	MANDOCLEVEL_UNSUPP, /* input needs unimplemented features */
@@ -43,6 +43,14 @@ enum	mandoclevel {
  */
 enum	mandocerr {
 	MANDOCERR_OK,
+
+	MANDOCERR_STYLE, /* ===== start of style suggestions ===== */
+
+	MANDOCERR_MACRO_USELESS, /* useless macro: macro */
+	MANDOCERR_BX, /* consider using OS macro: macro */
+	MANDOCERR_ER_ORDER, /* errnos out of order: Er ... */
+	MANDOCERR_ER_REP, /* duplicate errno: Er ... */
+	MANDOCERR_ND_DOT, /* description line ends with a full stop */
 
 	MANDOCERR_WARNING, /* ===== start of warnings ===== */
 
@@ -65,11 +73,13 @@ enum	mandocerr {
 	MANDOCERR_DOC_EMPTY, /* no document body */
 	MANDOCERR_SEC_BEFORE, /* content before first section header: macro */
 	MANDOCERR_NAMESEC_FIRST, /* first section is not NAME: Sh title */
-	MANDOCERR_NAMESEC_NONM, /* NAME section without name */
+	MANDOCERR_NAMESEC_NONM, /* NAME section without Nm before Nd */
 	MANDOCERR_NAMESEC_NOND, /* NAME section without description */
 	MANDOCERR_NAMESEC_ND, /* description not at the end of NAME */
 	MANDOCERR_NAMESEC_BAD, /* bad NAME section content: macro */
+	MANDOCERR_NAMESEC_PUNCT, /* missing comma before name: Nm name */
 	MANDOCERR_ND_EMPTY, /* missing description line, using "" */
+	MANDOCERR_ND_LATE, /* description line outside NAME section */
 	MANDOCERR_SEC_ORDER, /* sections out of conventional order: Sh title */
 	MANDOCERR_SEC_REP, /* duplicate section title: Sh title */
 	MANDOCERR_SEC_MSEC, /* unexpected section: Sh title for ... only */
@@ -89,6 +99,7 @@ enum	mandocerr {
 	MANDOCERR_FI_SKIP, /* fill mode already enabled, skipping: fi */
 	MANDOCERR_NF_SKIP, /* fill mode already disabled, skipping: nf */
 	MANDOCERR_BLK_LINE, /* line scope broken: macro breaks macro */
+	MANDOCERR_BLK_BLANK, /* skipping blank line in line scope */
 
 	/* related to missing arguments */
 	MANDOCERR_REQ_EMPTY, /* skipping empty request: request */
@@ -98,7 +109,7 @@ enum	mandocerr {
 	MANDOCERR_ARG_EMPTY, /* empty argument, using 0n: macro arg */
 	MANDOCERR_BD_NOTYPE, /* missing display type, using -ragged: Bd */
 	MANDOCERR_BL_LATETYPE, /* list type is not the first argument: Bl arg */
-	MANDOCERR_BL_NOWIDTH, /* missing -width in -tag list, using 8n */
+	MANDOCERR_BL_NOWIDTH, /* missing -width in -tag list, using 6n */
 	MANDOCERR_EX_NONAME, /* missing utility name, using "": Ex */
 	MANDOCERR_FO_NOHEAD, /* missing function name, using "": Fo */
 	MANDOCERR_IT_NOHEAD, /* empty head in list item: Bl -type It */
@@ -107,6 +118,7 @@ enum	mandocerr {
 	MANDOCERR_BF_BADFONT, /* unknown font type, using \fR: Bf font */
 	MANDOCERR_PF_SKIP, /* nothing follows prefix: Pf arg */
 	MANDOCERR_RS_EMPTY, /* empty reference block: Rs */
+	MANDOCERR_XR_NOSEC, /* missing section argument: Xr arg */
 	MANDOCERR_ARG_STD, /* missing -std argument, adding it: macro */
 	MANDOCERR_OP_EMPTY, /* missing option string, using "": OP */
 	MANDOCERR_UR_NOHEAD, /* missing resource identifier, using "": UR */
@@ -123,6 +135,7 @@ enum	mandocerr {
 	MANDOCERR_AT_BAD, /* unknown AT&T UNIX version: At version */
 	MANDOCERR_FA_COMMA, /* comma in function argument: arg */
 	MANDOCERR_FN_PAREN, /* parenthesis in function name: arg */
+	MANDOCERR_LB_BAD, /* unknown library name: Lb ... */
 	MANDOCERR_RS_BAD, /* invalid content in Rs block: macro */
 	MANDOCERR_SM_BAD, /* invalid Boolean argument: macro arg */
 	MANDOCERR_FT_BAD, /* unknown font, skipping request: ft font */
@@ -132,6 +145,7 @@ enum	mandocerr {
 	MANDOCERR_FI_BLANK, /* blank line in fill mode, using .sp */
 	MANDOCERR_FI_TAB, /* tab in filled text */
 	MANDOCERR_SPACE_EOL, /* whitespace at end of input line */
+	MANDOCERR_EOS, /* new sentence, new line */
 	MANDOCERR_COMMENT_BAD, /* bad comment style */
 	MANDOCERR_ESC_BAD, /* invalid escape sequence: esc */
 	MANDOCERR_STR_UNDEF, /* undefined string, using "": name */
@@ -174,6 +188,7 @@ enum	mandocerr {
 	MANDOCERR_BD_FILE, /* NOT IMPLEMENTED: Bd -file */
 	MANDOCERR_BD_NOARG, /* skipping display without arguments: Bd */
 	MANDOCERR_BL_NOTYPE, /* missing list type, using -item: Bl */
+	MANDOCERR_CE_NONUM, /* argument is not numeric, using 1: ce ... */
 	MANDOCERR_NM_NONAME, /* missing manual name, using "": Nm */
 	MANDOCERR_OS_UNAME, /* uname(3) system call failed, using UNKNOWN */
 	MANDOCERR_ST_BAD, /* unknown standard specifier: St standard */
@@ -231,9 +246,10 @@ enum	tbl_cellt {
  */
 struct	tbl_cell {
 	struct tbl_cell	 *next;
+	char		 *wstr; /* min width represented as a string */
+	size_t		  width; /* minimum column width */
+	size_t		  spacing; /* to the right of the column */
 	int		  vert; /* width of subsequent vertical line */
-	enum tbl_cellt	  pos;
-	size_t		  spacing;
 	int		  col; /* column number, starting from 0 */
 	int		  flags;
 #define	TBL_CELL_TALIGN	 (1 << 0) /* t, T */
@@ -244,6 +260,7 @@ struct	tbl_cell {
 #define	TBL_CELL_UP	 (1 << 5) /* u, U */
 #define	TBL_CELL_WIGN	 (1 << 6) /* z, Z */
 #define	TBL_CELL_WMAX	 (1 << 7) /* x, X */
+	enum tbl_cellt	  pos;
 };
 
 /*
@@ -271,9 +288,10 @@ enum	tbl_datt {
  */
 struct	tbl_dat {
 	struct tbl_cell	 *layout; /* layout cell */
-	int		  spans; /* how many spans follow */
 	struct tbl_dat	 *next;
 	char		 *string; /* data (NULL if not TBL_DATA_DATA) */
+	int		  spans; /* how many spans follow */
+	int		  block; /* T{ text block T} */
 	enum tbl_datt	  pos;
 };
 
@@ -401,6 +419,8 @@ enum	mandoc_esc {
 	ESCAPE_NUMBERED, /* a numbered glyph */
 	ESCAPE_UNICODE, /* a unicode codepoint */
 	ESCAPE_NOSPACE, /* suppress space if the last on a line */
+	ESCAPE_HORIZ, /* horizontal movement */
+	ESCAPE_HLINE, /* horizontal line drawing */
 	ESCAPE_SKIPCHAR, /* skip the next character */
 	ESCAPE_OVERSTRIKE /* overstrike all chars in the argument */
 };
@@ -433,3 +453,4 @@ void		  mparse_result(struct mparse *,
 const char	 *mparse_getkeep(const struct mparse *);
 const char	 *mparse_strerror(enum mandocerr);
 const char	 *mparse_strlevel(enum mandoclevel);
+void		  mparse_updaterc(struct mparse *, enum mandoclevel *);

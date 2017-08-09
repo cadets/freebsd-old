@@ -58,21 +58,24 @@
 # that mmc/sd card drivers call to make requests.
 #
 
-#include <sys/types.h>
-#include <sys/systm.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
+#include <sys/types.h>
 #include <sys/sysctl.h>
 #include <sys/taskqueue.h>
 
 #include <machine/bus.h>
 
 #include <dev/mmc/bridge.h>
-#include <dev/mmc/mmcreg.h>
 #include <dev/sdhci/sdhci.h>
 
 CODE {
-	struct sdhci_slot;
+	static void
+	null_set_uhs_timing(device_t brdev __unused,
+	    struct sdhci_slot *slot __unused)
+	{
+
+	}
 }
 
 INTERFACE sdhci;
@@ -158,3 +161,7 @@ METHOD bool get_card_present {
 	struct sdhci_slot	*slot;
 } DEFAULT sdhci_generic_get_card_present;
 
+METHOD void set_uhs_timing {
+	device_t		brdev;
+	struct sdhci_slot	*slot;
+} DEFAULT null_set_uhs_timing;

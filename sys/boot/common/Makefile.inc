@@ -7,8 +7,6 @@ SRCS+=	module.c panic.c
 .if ${MACHINE} == "i386" || ${MACHINE_CPUARCH} == "amd64"
 SRCS+=	load_elf32.c load_elf32_obj.c reloc_elf32.c
 SRCS+=	load_elf64.c load_elf64_obj.c reloc_elf64.c
-.elif ${MACHINE} == "pc98"
-SRCS+=	load_elf32.c load_elf32_obj.c reloc_elf32.c
 .elif ${MACHINE_CPUARCH} == "aarch64"
 SRCS+=	load_elf64.c reloc_elf64.c
 .elif ${MACHINE_CPUARCH} == "arm"
@@ -18,7 +16,7 @@ SRCS+=	load_elf32.c reloc_elf32.c
 SRCS+=	load_elf64.c reloc_elf64.c
 .elif ${MACHINE_CPUARCH} == "sparc64"
 SRCS+=	load_elf64.c reloc_elf64.c
-.elif ${MACHINE_ARCH} == "mips64" || ${MACHINE_ARCH} == "mips64el"
+.elif ${MACHINE_ARCH:Mmips64*} != ""
 SRCS+= load_elf64.c reloc_elf64.c
 .elif ${MACHINE} == "mips"
 SRCS+=	load_elf32.c reloc_elf32.c
@@ -38,6 +36,9 @@ CFLAGS+= -DLOADER_GPT_SUPPORT
 .if !defined(LOADER_NO_MBR_SUPPORT)
 CFLAGS+= -DLOADER_MBR_SUPPORT
 .endif
+.endif
+.if !defined(LOADER_NO_GELI_SUPPORT)
+CFLAGS+= -DLOADER_GELI_SUPPORT
 .endif
 
 .if defined(HAVE_BCACHE)
@@ -60,6 +61,7 @@ SRCS+=	pnp.c
 # Forth interpreter
 .if defined(BOOT_FORTH)
 SRCS+=	interp_forth.c
+.include "${SRCTOP}/sys/boot/Makefile.ficl"
 .endif
 
 .if defined(BOOT_PROMPT_123)

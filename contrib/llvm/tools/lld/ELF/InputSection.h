@@ -14,257 +14,326 @@
 #include "Relocations.h"
 #include "Thunks.h"
 #include "lld/Core/LLVM.h"
+#include "llvm/ADT/CachedHashString.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/Object/ELF.h"
+#include "llvm/Support/Threading.h"
+#include <mutex>
 
 namespace lld {
 namespace elf {
 
-template <class ELFT> bool isDiscarded(InputSectionBase<ELFT> *S);
-
+class DefinedCommon;
 class SymbolBody;
+struct SectionPiece;
 
-template <class ELFT> class ICF;
-template <class ELFT> class DefinedRegular;
+class DefinedRegular;
+class SyntheticSection;
+template <class ELFT> class EhFrameSection;
+class MergeSyntheticSection;
 template <class ELFT> class ObjectFile;
-template <class ELFT> class OutputSection;
-template <class ELFT> class OutputSectionBase;
+class OutputSection;
 
-// This corresponds to a section of an input file.
-template <class ELFT> class InputSectionBase {
-protected:
-  typedef typename ELFT::Chdr Elf_Chdr;
-  typedef typename ELFT::Rel Elf_Rel;
-  typedef typename ELFT::Rela Elf_Rela;
-  typedef typename ELFT::Shdr Elf_Shdr;
-  typedef typename ELFT::Sym Elf_Sym;
-  typedef typename ELFT::uint uintX_t;
-  const Elf_Shdr *Header;
-
-  // The file this section is from.
-  ObjectFile<ELFT> *File;
-
-  // If a section is compressed, this vector has uncompressed section data.
-  SmallVector<char, 0> Uncompressed;
-
+// This is the base class of all sections that lld handles. Some are sections in
+// input files, some are sections in the produced output file and some exist
+// just as a convenience for implementing special ways of combining some
+// sections.
+class SectionBase {
 public:
-  enum Kind { Regular, EHFrame, Merge, MipsReginfo, MipsOptions };
-  Kind SectionKind;
+  enum Kind { Regular, EHFrame, Merge, Synthetic, Output };
 
-  InputSectionBase() : Repl(this) {}
+  Kind kind() const { return (Kind)SectionKind; }
 
-  InputSectionBase(ObjectFile<ELFT> *File, const Elf_Shdr *Header,
-                   Kind SectionKind);
-  OutputSectionBase<ELFT> *OutSec = nullptr;
+  StringRef Name;
+
+  unsigned SectionKind : 3;
+
+  // The next two bit fields are only used by InputSectionBase, but we
+  // put them here so the struct packs better.
+
+  // The garbage collector sets sections' Live bits.
+  // If GC is disabled, all sections are considered live by default.
+  unsigned Live : 1;     // for garbage collection
+  unsigned Assigned : 1; // for linker script
+
   uint32_t Alignment;
 
-  // Used for garbage collection.
-  bool Live;
+  // These corresponds to the fields in Elf_Shdr.
+  uint64_t Flags;
+  uint64_t Entsize;
+  uint32_t Type;
+  uint32_t Link;
+  uint32_t Info;
+
+  OutputSection *getOutputSection();
+  const OutputSection *getOutputSection() const {
+    return const_cast<SectionBase *>(this)->getOutputSection();
+  }
+
+  // Translate an offset in the input section to an offset in the output
+  // section.
+  uint64_t getOffset(uint64_t Offset) const;
+
+  uint64_t getOffset(const DefinedRegular &Sym) const;
+
+protected:
+  SectionBase(Kind SectionKind, StringRef Name, uint64_t Flags,
+              uint64_t Entsize, uint64_t Alignment, uint32_t Type,
+              uint32_t Info, uint32_t Link)
+      : Name(Name), SectionKind(SectionKind), Alignment(Alignment),
+        Flags(Flags), Entsize(Entsize), Type(Type), Link(Link), Info(Info) {
+    Live = false;
+    Assigned = false;
+  }
+};
+
+// This corresponds to a section of an input file.
+class InputSectionBase : public SectionBase {
+public:
+  static bool classof(const SectionBase *S);
+
+  // The file this section is from.
+  InputFile *File;
+
+  ArrayRef<uint8_t> Data;
+  uint64_t getOffsetInFile() const;
+
+  static InputSectionBase Discarded;
+
+  InputSectionBase()
+      : SectionBase(Regular, "", /*Flags*/ 0, /*Entsize*/ 0, /*Alignment*/ 0,
+                    /*Type*/ 0,
+                    /*Info*/ 0, /*Link*/ 0),
+        Repl(this) {
+    Live = false;
+    Assigned = false;
+    NumRelocations = 0;
+    AreRelocsRela = false;
+  }
+
+  template <class ELFT>
+  InputSectionBase(ObjectFile<ELFT> *File, const typename ELFT::Shdr *Header,
+                   StringRef Name, Kind SectionKind);
+
+  InputSectionBase(InputFile *File, uint64_t Flags, uint32_t Type,
+                   uint64_t Entsize, uint32_t Link, uint32_t Info,
+                   uint32_t Alignment, ArrayRef<uint8_t> Data, StringRef Name,
+                   Kind SectionKind);
+
+  // Input sections are part of an output section. Special sections
+  // like .eh_frame and merge sections are first combined into a
+  // synthetic section that is then added to an output section. In all
+  // cases this points one level up.
+  SectionBase *Parent = nullptr;
+
+  // Relocations that refer to this section.
+  const void *FirstRelocation = nullptr;
+  unsigned NumRelocations : 31;
+  unsigned AreRelocsRela : 1;
+  template <class ELFT> ArrayRef<typename ELFT::Rel> rels() const {
+    assert(!AreRelocsRela);
+    return llvm::makeArrayRef(
+        static_cast<const typename ELFT::Rel *>(FirstRelocation),
+        NumRelocations);
+  }
+  template <class ELFT> ArrayRef<typename ELFT::Rela> relas() const {
+    assert(AreRelocsRela);
+    return llvm::makeArrayRef(
+        static_cast<const typename ELFT::Rela *>(FirstRelocation),
+        NumRelocations);
+  }
 
   // This pointer points to the "real" instance of this instance.
   // Usually Repl == this. However, if ICF merges two sections,
   // Repl pointer of one section points to another section. So,
   // if you need to get a pointer to this instance, do not use
   // this but instead this->Repl.
-  InputSectionBase<ELFT> *Repl;
+  InputSectionBase *Repl;
+
+  // InputSections that are dependent on us (reverse dependency for GC)
+  llvm::TinyPtrVector<InputSectionBase *> DependentSections;
 
   // Returns the size of this section (even if this is a common or BSS.)
   size_t getSize() const;
 
-  static InputSectionBase<ELFT> Discarded;
+  template <class ELFT> ObjectFile<ELFT> *getFile() const;
 
-  StringRef getSectionName() const;
-  const Elf_Shdr *getSectionHdr() const { return Header; }
-  ObjectFile<ELFT> *getFile() const { return File; }
-  uintX_t getOffset(const DefinedRegular<ELFT> &Sym) const;
+  template <class ELFT> llvm::object::ELFFile<ELFT> getObj() const {
+    return getFile<ELFT>()->getObj();
+  }
 
-  // Translate an offset in the input section to an offset in the output
-  // section.
-  uintX_t getOffset(uintX_t Offset) const;
-
-  ArrayRef<uint8_t> getSectionData() const;
+  InputSection *getLinkOrderDep() const;
 
   void uncompress();
 
-  void relocate(uint8_t *Buf, uint8_t *BufEnd);
-  std::vector<Relocation<ELFT>> Relocations;
+  // Returns a source location string. Used to construct an error message.
+  template <class ELFT> std::string getLocation(uint64_t Offset);
+  template <class ELFT> std::string getSrcMsg(uint64_t Offset);
+  template <class ELFT> std::string getObjMsg(uint64_t Offset);
 
-  bool Compressed;
+  template <class ELFT> void relocate(uint8_t *Buf, uint8_t *BufEnd);
+  void relocateAlloc(uint8_t *Buf, uint8_t *BufEnd);
+  template <class ELFT> void relocateNonAlloc(uint8_t *Buf, uint8_t *BufEnd);
+
+  std::vector<Relocation> Relocations;
+
+  template <typename T> llvm::ArrayRef<T> getDataAs() const {
+    size_t S = Data.size();
+    assert(S % sizeof(T) == 0);
+    return llvm::makeArrayRef<T>((const T *)Data.data(), S / sizeof(T));
+  }
 };
-
-template <class ELFT> InputSectionBase<ELFT> InputSectionBase<ELFT>::Discarded;
 
 // SectionPiece represents a piece of splittable section contents.
+// We allocate a lot of these and binary search on them. This means that they
+// have to be as compact as possible, which is why we don't store the size (can
+// be found by looking at the next one) and put the hash in a side table.
 struct SectionPiece {
-  SectionPiece(size_t Off, ArrayRef<uint8_t> Data)
-      : InputOff(Off), Data((const uint8_t *)Data.data()), Size(Data.size()),
-        Live(!Config->GcSections) {}
-
-  ArrayRef<uint8_t> data() { return {Data, Size}; }
-  size_t size() const { return Size; }
+  SectionPiece(size_t Off, bool Live = false)
+      : InputOff(Off), OutputOff(-1), Live(Live || !Config->GcSections) {}
 
   size_t InputOff;
-  size_t OutputOff = -1;
-
-private:
-  // We use bitfields because SplitInputSection is accessed by
-  // std::upper_bound very often.
-  // We want to save bits to make it cache friendly.
-  const uint8_t *Data;
-  uint32_t Size : 31;
-
-public:
-  uint32_t Live : 1;
+  ssize_t OutputOff : 8 * sizeof(ssize_t) - 1;
+  size_t Live : 1;
 };
+static_assert(sizeof(SectionPiece) == 2 * sizeof(size_t),
+              "SectionPiece is too big");
 
-// Usually sections are copied to the output as atomic chunks of data,
-// but some special types of sections are split into small pieces of data
-// and each piece is copied to a different place in the output.
-// This class represents such special sections.
-template <class ELFT> class SplitInputSection : public InputSectionBase<ELFT> {
-  typedef typename ELFT::Shdr Elf_Shdr;
-  typedef typename ELFT::uint uintX_t;
-
+// This corresponds to a SHF_MERGE section of an input file.
+class MergeInputSection : public InputSectionBase {
 public:
-  SplitInputSection(ObjectFile<ELFT> *File, const Elf_Shdr *Header,
-                    typename InputSectionBase<ELFT>::Kind SectionKind);
+  template <class ELFT>
+  MergeInputSection(ObjectFile<ELFT> *F, const typename ELFT::Shdr *Header,
+                    StringRef Name);
+  static bool classof(const SectionBase *S);
+  void splitIntoPieces();
+
+  // Mark the piece at a given offset live. Used by GC.
+  void markLiveAt(uint64_t Offset) {
+    assert(this->Flags & llvm::ELF::SHF_ALLOC);
+    LiveOffsets.insert(Offset);
+  }
+
+  // Translate an offset in the input section to an offset
+  // in the output section.
+  uint64_t getOffset(uint64_t Offset) const;
 
   // Splittable sections are handled as a sequence of data
   // rather than a single large blob of data.
   std::vector<SectionPiece> Pieces;
 
+  // Returns I'th piece's data. This function is very hot when
+  // string merging is enabled, so we want to inline.
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  llvm::CachedHashStringRef getData(size_t I) const {
+    size_t Begin = Pieces[I].InputOff;
+    size_t End;
+    if (Pieces.size() - 1 == I)
+      End = this->Data.size();
+    else
+      End = Pieces[I + 1].InputOff;
+
+    StringRef S = {(const char *)(this->Data.data() + Begin), End - Begin};
+    return {S, Hashes[I]};
+  }
+
   // Returns the SectionPiece at a given input section offset.
-  SectionPiece *getSectionPiece(uintX_t Offset);
-  const SectionPiece *getSectionPiece(uintX_t Offset) const;
-};
+  SectionPiece *getSectionPiece(uint64_t Offset);
+  const SectionPiece *getSectionPiece(uint64_t Offset) const;
 
-// This corresponds to a SHF_MERGE section of an input file.
-template <class ELFT> class MergeInputSection : public SplitInputSection<ELFT> {
-  typedef typename ELFT::uint uintX_t;
-  typedef typename ELFT::Sym Elf_Sym;
-  typedef typename ELFT::Shdr Elf_Shdr;
-
-public:
-  MergeInputSection(ObjectFile<ELFT> *F, const Elf_Shdr *Header);
-  static bool classof(const InputSectionBase<ELFT> *S);
-  void splitIntoPieces();
-
-  // Mark the piece at a given offset live. Used by GC.
-  void markLiveAt(uintX_t Offset) { LiveOffsets.insert(Offset); }
-
-  // Translate an offset in the input section to an offset
-  // in the output section.
-  uintX_t getOffset(uintX_t Offset) const;
-
-  void finalizePieces();
+  SyntheticSection *getParent() const;
 
 private:
-  llvm::DenseMap<uintX_t, uintX_t> OffsetMap;
-  llvm::DenseSet<uintX_t> LiveOffsets;
+  void splitStrings(ArrayRef<uint8_t> A, size_t Size);
+  void splitNonStrings(ArrayRef<uint8_t> A, size_t Size);
+
+  std::vector<uint32_t> Hashes;
+
+  mutable llvm::DenseMap<uint64_t, uint64_t> OffsetMap;
+  mutable llvm::once_flag InitOffsetMap;
+
+  llvm::DenseSet<uint64_t> LiveOffsets;
+};
+
+struct EhSectionPiece : public SectionPiece {
+  EhSectionPiece(size_t Off, InputSectionBase *ID, uint32_t Size,
+                 unsigned FirstRelocation)
+      : SectionPiece(Off, false), ID(ID), Size(Size),
+        FirstRelocation(FirstRelocation) {}
+  InputSectionBase *ID;
+  uint32_t Size;
+  uint32_t size() const { return Size; }
+
+  ArrayRef<uint8_t> data() { return {ID->Data.data() + this->InputOff, Size}; }
+  unsigned FirstRelocation;
 };
 
 // This corresponds to a .eh_frame section of an input file.
-template <class ELFT> class EhInputSection : public SplitInputSection<ELFT> {
+class EhInputSection : public InputSectionBase {
 public:
-  typedef typename ELFT::Shdr Elf_Shdr;
-  typedef typename ELFT::uint uintX_t;
-  EhInputSection(ObjectFile<ELFT> *F, const Elf_Shdr *Header);
-  static bool classof(const InputSectionBase<ELFT> *S);
-  void split();
+  template <class ELFT>
+  EhInputSection(ObjectFile<ELFT> *F, const typename ELFT::Shdr *Header,
+                 StringRef Name);
+  static bool classof(const SectionBase *S);
+  template <class ELFT> void split();
+  template <class ELFT, class RelTy> void split(ArrayRef<RelTy> Rels);
 
-  // Translate an offset in the input section to an offset in the output
-  // section.
-  uintX_t getOffset(uintX_t Offset) const;
+  // Splittable sections are handled as a sequence of data
+  // rather than a single large blob of data.
+  std::vector<EhSectionPiece> Pieces;
 
-  // Relocation section that refer to this one.
-  const Elf_Shdr *RelocSection = nullptr;
+  SyntheticSection *getParent() const;
 };
 
-// This corresponds to a non SHF_MERGE section of an input file.
-template <class ELFT> class InputSection : public InputSectionBase<ELFT> {
-  friend ICF<ELFT>;
-  typedef InputSectionBase<ELFT> Base;
-  typedef typename ELFT::Shdr Elf_Shdr;
-  typedef typename ELFT::Rela Elf_Rela;
-  typedef typename ELFT::Rel Elf_Rel;
-  typedef typename ELFT::Sym Elf_Sym;
-  typedef typename ELFT::uint uintX_t;
-
+// This is a section that is added directly to an output section
+// instead of needing special combination via a synthetic section. This
+// includes all input sections with the exceptions of SHF_MERGE and
+// .eh_frame. It also includes the synthetic sections themselves.
+class InputSection : public InputSectionBase {
 public:
-  InputSection(ObjectFile<ELFT> *F, const Elf_Shdr *Header);
+  InputSection(uint64_t Flags, uint32_t Type, uint32_t Alignment,
+               ArrayRef<uint8_t> Data, StringRef Name, Kind K = Regular);
+  template <class ELFT>
+  InputSection(ObjectFile<ELFT> *F, const typename ELFT::Shdr *Header,
+               StringRef Name);
 
   // Write this section to a mmap'ed file, assuming Buf is pointing to
   // beginning of the output section.
-  void writeTo(uint8_t *Buf);
+  template <class ELFT> void writeTo(uint8_t *Buf);
 
-  // Relocation sections that refer to this one.
-  llvm::TinyPtrVector<const Elf_Shdr *> RelocSections;
+  OutputSection *getParent() const;
 
   // The offset from beginning of the output sections this section was assigned
   // to. The writer sets a value.
   uint64_t OutSecOff = 0;
 
-  static bool classof(const InputSectionBase<ELFT> *S);
+  static bool classof(const SectionBase *S);
 
-  InputSectionBase<ELFT> *getRelocatedSection();
+  InputSectionBase *getRelocatedSection();
 
-  // Register thunk related to the symbol. When the section is written
-  // to a mmap'ed file, target is requested to write an actual thunk code.
-  // Now thunks is supported for MIPS and ARM target only.
-  void addThunk(const Thunk<ELFT> *T);
-
-  // The offset of synthetic thunk code from beginning of this section.
-  uint64_t getThunkOff() const;
-
-  // Size of chunk with thunks code.
-  uint64_t getThunksSize() const;
-
-  template <class RelTy>
+  template <class ELFT, class RelTy>
   void relocateNonAlloc(uint8_t *Buf, llvm::ArrayRef<RelTy> Rels);
 
-private:
-  template <class RelTy>
-  void copyRelocations(uint8_t *Buf, llvm::ArrayRef<RelTy> Rels);
+  // Used by ICF.
+  uint32_t Class[2] = {0, 0};
 
   // Called by ICF to merge two input sections.
-  void replace(InputSection<ELFT> *Other);
+  void replace(InputSection *Other);
 
-  // Used by ICF.
-  uint64_t GroupId = 0;
+private:
+  template <class ELFT, class RelTy>
+  void copyRelocations(uint8_t *Buf, llvm::ArrayRef<RelTy> Rels);
 
-  llvm::TinyPtrVector<const Thunk<ELFT> *> Thunks;
+  template <class ELFT> void copyShtGroup(uint8_t *Buf);
 };
 
-// MIPS .reginfo section provides information on the registers used by the code
-// in the object file. Linker should collect this information and write a single
-// .reginfo section in the output file. The output section contains a union of
-// used registers masks taken from input .reginfo sections and final value
-// of the `_gp` symbol.  For details: Chapter 4 / "Register Information" at
-// ftp://www.linux-mips.org/pub/linux/mips/doc/ABI/mipsabi.pdf
-template <class ELFT>
-class MipsReginfoInputSection : public InputSectionBase<ELFT> {
-  typedef typename ELFT::Shdr Elf_Shdr;
-
-public:
-  MipsReginfoInputSection(ObjectFile<ELFT> *F, const Elf_Shdr *Hdr);
-  static bool classof(const InputSectionBase<ELFT> *S);
-
-  const llvm::object::Elf_Mips_RegInfo<ELFT> *Reginfo = nullptr;
-};
-
-template <class ELFT>
-class MipsOptionsInputSection : public InputSectionBase<ELFT> {
-  typedef typename ELFT::Shdr Elf_Shdr;
-
-public:
-  MipsOptionsInputSection(ObjectFile<ELFT> *F, const Elf_Shdr *Hdr);
-  static bool classof(const InputSectionBase<ELFT> *S);
-
-  const llvm::object::Elf_Mips_RegInfo<ELFT> *Reginfo = nullptr;
-};
+// The list of all input sections.
+extern std::vector<InputSectionBase *> InputSections;
 
 } // namespace elf
+
+std::string toString(const elf::InputSectionBase *);
 } // namespace lld
 
 #endif

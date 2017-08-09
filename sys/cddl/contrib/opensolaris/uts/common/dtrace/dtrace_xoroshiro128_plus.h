@@ -40,10 +40,9 @@
 extern "C" {
 #endif
 
-extern void dtrace_xoroshiro128_plus_jump(uint64_t * const, uint64_t * const);
-extern uint64_t dtrace_xoroshiro128_plus_next(uint64_t * const);
+void dtrace_xoroshiro128_plus_jump(uint64_t * const, uint64_t * const);
+uint64_t dtrace_xoroshiro128_plus_next(uint64_t * const);
 
 #ifdef __cplusplus
 }
 #endif
-

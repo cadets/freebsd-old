@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/bus.h>
 #include <sys/limits.h>
+#include <sys/sysctl.h>
 
 #include <machine/resource.h>
 
@@ -60,11 +61,15 @@ __FBSDID("$FreeBSD$");
 
 #define FDT_REG_CELLS	4
 
+SYSCTL_NODE(_hw, OID_AUTO, fdt, CTLFLAG_RD, 0, "Flattened Device Tree");
+
 vm_paddr_t fdt_immr_pa;
 vm_offset_t fdt_immr_va;
 vm_offset_t fdt_immr_size;
 
 struct fdt_ic_list fdt_ic_list_head = SLIST_HEAD_INITIALIZER(fdt_ic_list_head);
+
+static int fdt_is_compatible(phandle_t, const char *);
 
 static int
 fdt_get_range_by_busaddr(phandle_t node, u_long addr, u_long *base,
@@ -239,7 +244,7 @@ moveon:
  * Note the buffer has to be on the stack since malloc() is usually not
  * available in such cases either.
  */
-int
+static int
 fdt_is_compatible(phandle_t node, const char *compatstr)
 {
 	char buf[FDT_COMPAT_LEN];
@@ -416,13 +421,13 @@ fdt_addrsize_cells(phandle_t node, int *addr_cells, int *size_cells)
 	 * Retrieve #{address,size}-cells.
 	 */
 	cell_size = sizeof(cell);
-	if (OF_getprop(node, "#address-cells", &cell, cell_size) < cell_size)
+	if (OF_getencprop(node, "#address-cells", &cell, cell_size) < cell_size)
 		cell = 2;
-	*addr_cells = fdt32_to_cpu((int)cell);
+	*addr_cells = (int)cell;
 
-	if (OF_getprop(node, "#size-cells", &cell, cell_size) < cell_size)
+	if (OF_getencprop(node, "#size-cells", &cell, cell_size) < cell_size)
 		cell = 1;
-	*size_cells = fdt32_to_cpu((int)cell);
+	*size_cells = (int)cell;
 
 	if (*addr_cells > 3 || *size_cells > 2)
 		return (ERANGE);
@@ -537,11 +542,11 @@ fdt_get_phyaddr(phandle_t node, device_t dev, int *phy_addr, void **phy_sc)
 
 	phy_node = OF_node_from_xref(phy_handle);
 
-	if (OF_getprop(phy_node, "reg", (void *)&phy_reg,
+	if (OF_getencprop(phy_node, "reg", (void *)&phy_reg,
 	    sizeof(phy_reg)) <= 0)
 		return (ENXIO);
 
-	*phy_addr = fdt32_to_cpu(phy_reg);
+	*phy_addr = phy_reg;
 
 	/*
 	 * Search for softc used to communicate with phy.

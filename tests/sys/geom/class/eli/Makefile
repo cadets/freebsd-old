@@ -1,8 +1,12 @@
 # $FreeBSD$
 
+.PATH: ${SRCTOP}/sys/geom/eli ${SRCTOP}/sys/crypto/sha2
+
 PACKAGE=	tests
 
 TESTSDIR=	${TESTSBASE}/sys/geom/class/${.CURDIR:T}
+
+ATF_TESTS_C=	pbkdf2_test
 
 TAP_TESTS_SH+= attach_d_test
 TAP_TESTS_SH+= configure_b_B_test
@@ -26,18 +30,33 @@ TAP_TESTS_SH+= readonly_test
 TAP_TESTS_SH+= resize_test
 TAP_TESTS_SH+= setkey_test
 
-TEST_METADATA.init_a_test+=	timeout="1200"
-TEST_METADATA.init_test+=	timeout="300"
-TEST_METADATA.integrity_copy_test+=	timeout="1200"
-TEST_METADATA.integrity_data_test+=	timeout="600"
-TEST_METADATA.integrity_hmac_test+=	timeout="600"
-TEST_METADATA.onetime_a_test+=	timeout="600"
-TEST_METADATA.onetime_test+=	timeout="600"
+TEST_METADATA.init_a_test+=	timeout="3600"
+TEST_METADATA.init_test+=	timeout="600"
+TEST_METADATA.integrity_copy_test+=	timeout="3600"
+TEST_METADATA.integrity_data_test+=	timeout="1800"
+TEST_METADATA.integrity_hmac_test+=	timeout="1800"
+TEST_METADATA.onetime_a_test+=	timeout="1800"
+TEST_METADATA.onetime_test+=	timeout="1800"
 
 ${PACKAGE}FILES+=		conf.sh
 
 .for t in ${TAP_TESTS_SH}
 TEST_METADATA.$t+=	required_user="root"
 .endfor
+
+CFLAGS.pbkdf2_test=	-I${SRCTOP}/sys
+
+SRCS.pbkdf2_test=	\
+		hmac_test.c \
+		g_eli_crypto.c \
+		g_eli_hmac.c \
+		pkcs5v2.c \
+		sha512c.c \
+		sha256c.c
+
+LIBADD.pbkdf2_test= crypto
+
+testvect.h:
+	python gentestvect.py > ${.TARGET}
 
 .include <bsd.test.mk>

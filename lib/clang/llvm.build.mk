@@ -12,11 +12,10 @@
 
 CFLAGS+=	-I${SRCTOP}/lib/clang/include
 CFLAGS+=	-I${LLVM_SRCS}/include
-CFLAGS+=	-DLLVM_ON_UNIX
-CFLAGS+=	-DLLVM_ON_FREEBSD
+CFLAGS+=	-DLLVM_BUILD_GLOBAL_ISEL
 CFLAGS+=	-D__STDC_LIMIT_MACROS
 CFLAGS+=	-D__STDC_CONSTANT_MACROS
-CFLAGS+=	-DNDEBUG
+#CFLAGS+=	-DNDEBUG
 
 TARGET_ARCH?=	${MACHINE_ARCH}
 BUILD_ARCH?=	${MACHINE_ARCH}
@@ -25,20 +24,25 @@ BUILD_ARCH?=	${MACHINE_ARCH}
 # arm (for armv4 and armv5 CPUs) always uses the soft float ABI.
 # For all other targets, we stick with 'unknown'.
 .if ${TARGET_ARCH:Marmv6*} && (!defined(CPUTYPE) || ${CPUTYPE:M*soft*} == "")
-TARGET_ABI=	gnueabihf
+TARGET_ABI=	-gnueabihf
 .elif ${TARGET_ARCH:Marm*}
-TARGET_ABI=	gnueabi
+TARGET_ABI=	-gnueabi
 .else
-TARGET_ABI=	unknown
+TARGET_ABI=
 .endif
-OS_VERSION=	freebsd11.0
+VENDOR=		unknown
+OS_VERSION=	freebsd12.0
 
-TARGET_TRIPLE?=	${TARGET_ARCH:C/amd64/x86_64/:C/arm64/aarch64/}-${TARGET_ABI}-${OS_VERSION}
-BUILD_TRIPLE?=	${BUILD_ARCH:C/amd64/x86_64/:C/arm64/aarch64/}-unknown-${OS_VERSION}
+TARGET_TRIPLE?=	${TARGET_ARCH:C/amd64/x86_64/:C/arm64/aarch64/}-${VENDOR}-${OS_VERSION}${TARGET_ABI}
+BUILD_TRIPLE?=	${BUILD_ARCH:C/amd64/x86_64/:C/arm64/aarch64/}-${VENDOR}-${OS_VERSION}
 
 CFLAGS+=	-DLLVM_DEFAULT_TARGET_TRIPLE=\"${TARGET_TRIPLE}\"
 CFLAGS+=	-DLLVM_HOST_TRIPLE=\"${BUILD_TRIPLE}\"
 CFLAGS+=	-DDEFAULT_SYSROOT=\"${TOOLS_PREFIX}\"
+
+CFLAGS+=	-ffunction-sections
+CFLAGS+=	-fdata-sections
+LDFLAGS+=	-Wl,--gc-sections
 
 CXXFLAGS+=	-std=c++11
 CXXFLAGS+=	-fno-exceptions
@@ -46,5 +50,6 @@ CXXFLAGS+=	-fno-rtti
 CXXFLAGS.clang+= -stdlib=libc++
 
 .if ${MACHINE_CPUARCH} == "arm"
+STATIC_CFLAGS+= -mlong-calls
 STATIC_CXXFLAGS+= -mlong-calls
 .endif

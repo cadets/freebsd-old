@@ -45,7 +45,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/ofw_bus_subr.h>
 
 #include <dev/mmc/bridge.h>
-#include <dev/mmc/mmcreg.h>
 #include <dev/mmc/mmcbrvar.h>
 
 #include <arm/allwinner/a10_mmc.h>
@@ -65,6 +64,8 @@ __FBSDID("$FreeBSD$");
 static struct ofw_compat_data compat_data[] = {
 	{"allwinner,sun4i-a10-mmc", 1},
 	{"allwinner,sun5i-a13-mmc", 1},
+	{"allwinner,sun7i-a20-mmc", 1},
+	{"allwinner,sun50i-a64-mmc", 1},
 	{NULL,             0}
 };
 
@@ -897,7 +898,6 @@ static device_method_t a10_mmc_methods[] = {
 	/* Bus interface */
 	DEVMETHOD(bus_read_ivar,	a10_mmc_read_ivar),
 	DEVMETHOD(bus_write_ivar,	a10_mmc_write_ivar),
-	DEVMETHOD(bus_print_child,	bus_generic_print_child),
 
 	/* MMC bridge interface */
 	DEVMETHOD(mmcbr_update_ios,	a10_mmc_update_ios),
@@ -917,6 +917,6 @@ static driver_t a10_mmc_driver = {
 	sizeof(struct a10_mmc_softc),
 };
 
-DRIVER_MODULE(a10_mmc, simplebus, a10_mmc_driver, a10_mmc_devclass, 0, 0);
-DRIVER_MODULE(mmc, a10_mmc, mmc_driver, mmc_devclass, NULL, NULL);
-MODULE_DEPEND(a10_mmc, mmc, 1, 1, 1);
+DRIVER_MODULE(a10_mmc, simplebus, a10_mmc_driver, a10_mmc_devclass, NULL,
+    NULL);
+MMC_DECLARE_BRIDGE(a10_mmc);

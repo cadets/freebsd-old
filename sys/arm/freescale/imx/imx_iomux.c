@@ -59,11 +59,10 @@
 
 #include <machine/bus.h>
 
-#include <dev/fdt/fdt_common.h>
-#include <dev/fdt/fdt_pinctrl.h>
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
+#include <dev/fdt/fdt_pinctrl.h>
 
 #include <arm/freescale/imx/imx_iomuxvar.h>
 #include <arm/freescale/imx/imx_machdep.h>
@@ -80,6 +79,7 @@ static struct ofw_compat_data compat_data[] = {
 	{"fsl,imx6dl-iomuxc",	true},
 	{"fsl,imx6q-iomuxc",	true},
 	{"fsl,imx6sl-iomuxc",	true},
+	{"fsl,imx6ul-iomuxc",	true},
 	{"fsl,imx6sx-iomuxc",	true},
 	{"fsl,imx53-iomuxc",	true},
 	{"fsl,imx51-iomuxc",	true},
@@ -223,6 +223,9 @@ iomux_attach(device_t dev)
 	case IMXSOC_6SL:
 	case IMXSOC_6Q:
 		sc->last_gpreg = 13;
+		break;
+	case IMXSOC_6UL:
+		sc->last_gpreg = 14;
 		break;
 	default:
 		device_printf(dev, "Unknown SoC type\n");

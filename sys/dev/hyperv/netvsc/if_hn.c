@@ -69,6 +69,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/queue.h>
 #include <sys/lock.h>
+#include <sys/rmlock.h>
+#include <sys/sbuf.h>
 #include <sys/smp.h>
 #include <sys/socket.h>
 #include <sys/sockio.h>
@@ -118,6 +120,8 @@ __FBSDID("$FreeBSD$");
 #define HN_IFSTART_SUPPORT
 
 #define HN_RING_CNT_DEF_MAX		8
+
+#define HN_VFMAP_SIZE_DEF		8
 
 /* YYY should get it from the underlying channel */
 #define HN_TX_DESC_CNT			512
@@ -255,12 +259,18 @@ static int			hn_ifmedia_upd(struct ifnet *);
 static void			hn_ifmedia_sts(struct ifnet *,
 				    struct ifmediareq *);
 
+static void			hn_ifnet_event(void *, struct ifnet *, int);
+static void			hn_ifaddr_event(void *, struct ifnet *);
+static void			hn_ifnet_attevent(void *, struct ifnet *);
+static void			hn_ifnet_detevent(void *, struct ifnet *);
+
 static int			hn_rndis_rxinfo(const void *, int,
 				    struct hn_rxinfo *);
 static void			hn_rndis_rx_data(struct hn_rx_ring *,
 				    const void *, int);
 static void			hn_rndis_rx_status(struct hn_softc *,
 				    const void *, int);
+static void			hn_rndis_init_fixat(struct hn_softc *, int);
 
 static void			hn_nvs_handle_notify(struct hn_softc *,
 				    const struct vmbus_chanpkt_hdr *);
@@ -302,6 +312,9 @@ static int			hn_txagg_pktmax_sysctl(SYSCTL_HANDLER_ARGS);
 static int			hn_txagg_align_sysctl(SYSCTL_HANDLER_ARGS);
 static int			hn_polling_sysctl(SYSCTL_HANDLER_ARGS);
 static int			hn_vf_sysctl(SYSCTL_HANDLER_ARGS);
+static int			hn_rxvf_sysctl(SYSCTL_HANDLER_ARGS);
+static int			hn_vflist_sysctl(SYSCTL_HANDLER_ARGS);
+static int			hn_vfmap_sysctl(SYSCTL_HANDLER_ARGS);
 
 static void			hn_stop(struct hn_softc *, bool);
 static void			hn_init_locked(struct hn_softc *);
@@ -328,6 +341,8 @@ static void			hn_resume_mgmt(struct hn_softc *);
 static void			hn_suspend_mgmt_taskfunc(void *, int);
 static void			hn_chan_drain(struct hn_softc *,
 				    struct vmbus_channel *);
+static void			hn_disable_rx(struct hn_softc *);
+static void			hn_drain_rxtx(struct hn_softc *, int);
 static void			hn_polling(struct hn_softc *, u_int);
 static void			hn_chan_polling(struct vmbus_channel *, u_int);
 
@@ -499,8 +514,20 @@ static int			hn_tx_agg_pkts = -1;
 SYSCTL_INT(_hw_hn, OID_AUTO, tx_agg_pkts, CTLFLAG_RDTUN,
     &hn_tx_agg_pkts, 0, "Packet transmission aggregation packet limit");
 
+/* VF list */
+SYSCTL_PROC(_hw_hn, OID_AUTO, vflist, CTLFLAG_RD | CTLTYPE_STRING,
+    0, 0, hn_vflist_sysctl, "A", "VF list");
+
+/* VF mapping */
+SYSCTL_PROC(_hw_hn, OID_AUTO, vfmap, CTLFLAG_RD | CTLTYPE_STRING,
+    0, 0, hn_vfmap_sysctl, "A", "VF mapping");
+
 static u_int			hn_cpu_index;	/* next CPU for channel */
 static struct taskqueue		**hn_tx_taskque;/* shared TX taskqueues */
+
+static struct rmlock		hn_vfmap_lock;
+static int			hn_vfmap_size;
+static struct ifnet		**hn_vfmap;
 
 #ifndef RSS
 static const uint8_t
@@ -619,6 +646,16 @@ hn_chim_free(struct hn_softc *sc, uint32_t chim_idx)
 }
 
 #if defined(INET6) || defined(INET)
+
+#define PULLUP_HDR(m, len)				\
+do {							\
+	if (__predict_false((m)->m_len < (len))) {	\
+		(m) = m_pullup((m), (len));		\
+		if ((m) == NULL)			\
+			return (NULL);			\
+	}						\
+} while (0)
+
 /*
  * NOTE: If this function failed, the m_head would be freed.
  */
@@ -630,15 +667,6 @@ hn_tso_fixup(struct mbuf *m_head)
 	int ehlen;
 
 	KASSERT(M_WRITABLE(m_head), ("TSO mbuf not writable"));
-
-#define PULLUP_HDR(m, len)				\
-do {							\
-	if (__predict_false((m)->m_len < (len))) {	\
-		(m) = m_pullup((m), (len));		\
-		if ((m) == NULL)			\
-			return (NULL);			\
-	}						\
-} while (0)
 
 	PULLUP_HDR(m_head, sizeof(*evl));
 	evl = mtod(m_head, struct ether_vlan_header *);
@@ -688,8 +716,65 @@ do {							\
 #endif
 	return (m_head);
 
-#undef PULLUP_HDR
 }
+
+/*
+ * NOTE: If this function failed, the m_head would be freed.
+ */
+static __inline struct mbuf *
+hn_check_tcpsyn(struct mbuf *m_head, int *tcpsyn)
+{
+	const struct ether_vlan_header *evl;
+	const struct tcphdr *th;
+	int ehlen;
+
+	*tcpsyn = 0;
+
+	PULLUP_HDR(m_head, sizeof(*evl));
+	evl = mtod(m_head, const struct ether_vlan_header *);
+	if (evl->evl_encap_proto == ntohs(ETHERTYPE_VLAN))
+		ehlen = ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN;
+	else
+		ehlen = ETHER_HDR_LEN;
+
+#ifdef INET
+	if (m_head->m_pkthdr.csum_flags & CSUM_IP_TCP) {
+		const struct ip *ip;
+		int iphlen;
+
+		PULLUP_HDR(m_head, ehlen + sizeof(*ip));
+		ip = mtodo(m_head, ehlen);
+		iphlen = ip->ip_hl << 2;
+
+		PULLUP_HDR(m_head, ehlen + iphlen + sizeof(*th));
+		th = mtodo(m_head, ehlen + iphlen);
+		if (th->th_flags & TH_SYN)
+			*tcpsyn = 1;
+	}
+#endif
+#if defined(INET6) && defined(INET)
+	else
+#endif
+#ifdef INET6
+	{
+		const struct ip6_hdr *ip6;
+
+		PULLUP_HDR(m_head, ehlen + sizeof(*ip6));
+		ip6 = mtodo(m_head, ehlen);
+		if (ip6->ip6_nxt != IPPROTO_TCP)
+			return (m_head);
+
+		PULLUP_HDR(m_head, ehlen + sizeof(*ip6) + sizeof(*th));
+		th = mtodo(m_head, ehlen + sizeof(*ip6));
+		if (th->th_flags & TH_SYN)
+			*tcpsyn = 1;
+	}
+#endif
+	return (m_head);
+}
+
+#undef PULLUP_HDR
+
 #endif	/* INET6 || INET */
 
 static int
@@ -910,7 +995,7 @@ hn_update_vf_task(void *arg, int pending __unused)
 {
 	struct hn_update_vf *uv = arg;
 
-	uv->rxr->hn_vf = uv->vf;
+	uv->rxr->hn_rxvf_ifp = uv->vf;
 }
 
 static void
@@ -933,9 +1018,33 @@ hn_update_vf(struct hn_softc *sc, struct ifnet *vf)
 			uv.vf = vf;
 			vmbus_chan_run_task(rxr->hn_chan, &task);
 		} else {
-			rxr->hn_vf = vf;
+			rxr->hn_rxvf_ifp = vf;
 		}
 	}
+}
+
+static __inline bool
+hn_ismyvf(const struct hn_softc *sc, const struct ifnet *ifp)
+{
+	const struct ifnet *hn_ifp;
+
+	hn_ifp = sc->hn_ifp;
+
+	if (ifp == hn_ifp)
+		return (false);
+
+	if (ifp->if_alloctype != IFT_ETHER)
+		return (false);
+
+	/* Ignore lagg/vlan interfaces */
+	if (strcmp(ifp->if_dname, "lagg") == 0 ||
+	    strcmp(ifp->if_dname, "vlan") == 0)
+		return (false);
+
+	if (bcmp(IF_LLADDR(ifp), IF_LLADDR(hn_ifp), ETHER_ADDR_LEN) != 0)
+		return (false);
+
+	return (true);
 }
 
 static void
@@ -948,21 +1057,10 @@ hn_set_vf(struct hn_softc *sc, struct ifnet *ifp, bool vf)
 	if (!(sc->hn_flags & HN_FLAG_SYNTH_ATTACHED))
 		goto out;
 
+	if (!hn_ismyvf(sc, ifp))
+		goto out;
+
 	hn_ifp = sc->hn_ifp;
-
-	if (ifp == hn_ifp)
-		goto out;
-
-	if (ifp->if_alloctype != IFT_ETHER)
-		goto out;
-
-	/* Ignore lagg/vlan interfaces */
-	if (strcmp(ifp->if_dname, "lagg") == 0 ||
-	    strcmp(ifp->if_dname, "vlan") == 0)
-		goto out;
-
-	if (bcmp(IF_LLADDR(ifp), IF_LLADDR(hn_ifp), ETHER_ADDR_LEN) != 0)
-		goto out;
 
 	/* Now we're sure 'ifp' is a real VF device. */
 	if (vf) {
@@ -976,7 +1074,7 @@ hn_set_vf(struct hn_softc *sc, struct ifnet *ifp, bool vf)
 			goto out;
 
 		sc->hn_flags &= ~HN_FLAG_VF;
-		if (sc->hn_ifp->if_drv_flags & IFF_DRV_RUNNING)
+		if (hn_ifp->if_drv_flags & IFF_DRV_RUNNING)
 			hn_rxfilter_config(sc);
 		else
 			hn_set_rxfilter(sc, NDIS_PACKET_TYPE_NONE);
@@ -991,7 +1089,7 @@ hn_set_vf(struct hn_softc *sc, struct ifnet *ifp, bool vf)
 		hn_suspend_mgmt(sc);
 		sc->hn_link_flags &=
 		    ~(HN_LINK_FLAG_LINKUP | HN_LINK_FLAG_NETCHG);
-		if_link_state_change(sc->hn_ifp, LINK_STATE_DOWN);
+		if_link_state_change(hn_ifp, LINK_STATE_DOWN);
 	} else {
 		hn_resume_mgmt(sc);
 	}
@@ -1019,6 +1117,85 @@ static void
 hn_ifaddr_event(void *arg, struct ifnet *ifp)
 {
 	hn_set_vf(arg, ifp, ifp->if_flags & IFF_UP);
+}
+
+static void
+hn_ifnet_attevent(void *xsc, struct ifnet *ifp)
+{
+	struct hn_softc *sc = xsc;
+
+	HN_LOCK(sc);
+
+	if (!(sc->hn_flags & HN_FLAG_SYNTH_ATTACHED))
+		goto done;
+
+	if (!hn_ismyvf(sc, ifp))
+		goto done;
+
+	if (sc->hn_vf_ifp != NULL) {
+		if_printf(sc->hn_ifp, "%s was attached as VF\n",
+		    sc->hn_vf_ifp->if_xname);
+		goto done;
+	}
+
+	rm_wlock(&hn_vfmap_lock);
+
+	if (ifp->if_index >= hn_vfmap_size) {
+		struct ifnet **newmap;
+		int newsize;
+
+		newsize = ifp->if_index + HN_VFMAP_SIZE_DEF;
+		newmap = malloc(sizeof(struct ifnet *) * newsize, M_DEVBUF,
+		    M_WAITOK | M_ZERO);
+
+		memcpy(newmap, hn_vfmap,
+		    sizeof(struct ifnet *) * hn_vfmap_size);
+		free(hn_vfmap, M_DEVBUF);
+		hn_vfmap = newmap;
+		hn_vfmap_size = newsize;
+	}
+	KASSERT(hn_vfmap[ifp->if_index] == NULL,
+	    ("%s: ifindex %d was mapped to %s",
+	     ifp->if_xname, ifp->if_index, hn_vfmap[ifp->if_index]->if_xname));
+	hn_vfmap[ifp->if_index] = sc->hn_ifp;
+
+	rm_wunlock(&hn_vfmap_lock);
+
+	sc->hn_vf_ifp = ifp;
+done:
+	HN_UNLOCK(sc);
+}
+
+static void
+hn_ifnet_detevent(void *xsc, struct ifnet *ifp)
+{
+	struct hn_softc *sc = xsc;
+
+	HN_LOCK(sc);
+
+	if (sc->hn_vf_ifp == NULL)
+		goto done;
+
+	if (!hn_ismyvf(sc, ifp))
+		goto done;
+
+	sc->hn_vf_ifp = NULL;
+
+	rm_wlock(&hn_vfmap_lock);
+
+	KASSERT(ifp->if_index < hn_vfmap_size,
+	    ("ifindex %d, vfmapsize %d", ifp->if_index, hn_vfmap_size));
+	if (hn_vfmap[ifp->if_index] != NULL) {
+		KASSERT(hn_vfmap[ifp->if_index] == sc->hn_ifp,
+		    ("%s: ifindex %d was mapped to %s",
+		     ifp->if_xname, ifp->if_index,
+		     hn_vfmap[ifp->if_index]->if_xname));
+		hn_vfmap[ifp->if_index] = NULL;
+	}
+
+	rm_wunlock(&hn_vfmap_lock);
+done:
+	HN_UNLOCK(sc);
 }
 
 /* {F8615163-DF3E-46c5-913F-F2D2F965ED0E} */
@@ -1261,6 +1438,9 @@ hn_attach(device_t dev)
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "vf",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    hn_vf_sysctl, "A", "Virtual Function's name");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rxvf",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    hn_rxvf_sysctl, "A", "activated Virtual Function's name");
 
 	/*
 	 * Setup the ifmedia, which has been initialized earlier.
@@ -1351,9 +1531,13 @@ hn_attach(device_t dev)
 
 	sc->hn_ifnet_evthand = EVENTHANDLER_REGISTER(ifnet_event,
 	    hn_ifnet_event, sc, EVENTHANDLER_PRI_ANY);
-
 	sc->hn_ifaddr_evthand = EVENTHANDLER_REGISTER(ifaddr_event,
 	    hn_ifaddr_event, sc, EVENTHANDLER_PRI_ANY);
+
+	sc->hn_ifnet_atthand = EVENTHANDLER_REGISTER(ether_ifattach_event,
+	    hn_ifnet_attevent, sc, EVENTHANDLER_PRI_ANY);
+	sc->hn_ifnet_dethand = EVENTHANDLER_REGISTER(ifnet_departure_event,
+	    hn_ifnet_detevent, sc, EVENTHANDLER_PRI_ANY);
 
 	return (0);
 failed:
@@ -1367,12 +1551,25 @@ static int
 hn_detach(device_t dev)
 {
 	struct hn_softc *sc = device_get_softc(dev);
-	struct ifnet *ifp = sc->hn_ifp;
+	struct ifnet *ifp = sc->hn_ifp, *vf_ifp;
 
 	if (sc->hn_ifaddr_evthand != NULL)
 		EVENTHANDLER_DEREGISTER(ifaddr_event, sc->hn_ifaddr_evthand);
 	if (sc->hn_ifnet_evthand != NULL)
 		EVENTHANDLER_DEREGISTER(ifnet_event, sc->hn_ifnet_evthand);
+	if (sc->hn_ifnet_atthand != NULL) {
+		EVENTHANDLER_DEREGISTER(ether_ifattach_event,
+		    sc->hn_ifnet_atthand);
+	}
+	if (sc->hn_ifnet_dethand != NULL) {
+		EVENTHANDLER_DEREGISTER(ifnet_departure_event,
+		    sc->hn_ifnet_dethand);
+	}
+
+	vf_ifp = sc->hn_vf_ifp;
+	__compiler_membar();
+	if (vf_ifp != NULL)
+		hn_ifnet_detevent(sc, vf_ifp);
 
 	if (sc->hn_xact != NULL && vmbus_chan_is_revoked(sc->hn_prichan)) {
 		/*
@@ -2265,7 +2462,19 @@ hn_rxpkt(struct hn_rx_ring *rxr, const void *data, int dlen,
 	int hash_type;
 
 	/* If the VF is active, inject the packet through the VF */
-	ifp = rxr->hn_vf ? rxr->hn_vf : rxr->hn_ifp;
+	ifp = rxr->hn_rxvf_ifp ? rxr->hn_rxvf_ifp : rxr->hn_ifp;
+
+	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
+		/*
+		 * NOTE:
+		 * See the NOTE of hn_rndis_init_fixat().  This
+		 * function can be reached, immediately after the
+		 * RNDIS is initialized but before the ifnet is
+		 * setup on the hn_attach() path; drop the unexpected
+		 * packets.
+		 */
+		return (0);
+	}
 
 	if (dlen <= MHLEN) {
 		m_new = m_gethdr(M_NOWAIT, MT_DATA);
@@ -3228,16 +3437,120 @@ static int
 hn_vf_sysctl(SYSCTL_HANDLER_ARGS)
 {
 	struct hn_softc *sc = arg1;
-	char vf_name[128];
+	char vf_name[IFNAMSIZ + 1];
 	struct ifnet *vf;
 
 	HN_LOCK(sc);
 	vf_name[0] = '\0';
-	vf = sc->hn_rx_ring[0].hn_vf;
+	vf = sc->hn_vf_ifp;
 	if (vf != NULL)
 		snprintf(vf_name, sizeof(vf_name), "%s", if_name(vf));
 	HN_UNLOCK(sc);
 	return sysctl_handle_string(oidp, vf_name, sizeof(vf_name), req);
+}
+
+static int
+hn_rxvf_sysctl(SYSCTL_HANDLER_ARGS)
+{
+	struct hn_softc *sc = arg1;
+	char vf_name[IFNAMSIZ + 1];
+	struct ifnet *vf;
+
+	HN_LOCK(sc);
+	vf_name[0] = '\0';
+	vf = sc->hn_rx_ring[0].hn_rxvf_ifp;
+	if (vf != NULL)
+		snprintf(vf_name, sizeof(vf_name), "%s", if_name(vf));
+	HN_UNLOCK(sc);
+	return sysctl_handle_string(oidp, vf_name, sizeof(vf_name), req);
+}
+
+static int
+hn_vflist_sysctl(SYSCTL_HANDLER_ARGS)
+{
+	struct rm_priotracker pt;
+	struct sbuf *sb;
+	int error, i;
+	bool first;
+
+	error = sysctl_wire_old_buffer(req, 0);
+	if (error != 0)
+		return (error);
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 128, req);
+	if (sb == NULL)
+		return (ENOMEM);
+
+	rm_rlock(&hn_vfmap_lock, &pt);
+
+	first = true;
+	for (i = 0; i < hn_vfmap_size; ++i) {
+		struct ifnet *ifp;
+
+		if (hn_vfmap[i] == NULL)
+			continue;
+
+		ifp = ifnet_byindex(i);
+		if (ifp != NULL) {
+			if (first)
+				sbuf_printf(sb, "%s", ifp->if_xname);
+			else
+				sbuf_printf(sb, " %s", ifp->if_xname);
+			first = false;
+		}
+	}
+
+	rm_runlock(&hn_vfmap_lock, &pt);
+
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+static int
+hn_vfmap_sysctl(SYSCTL_HANDLER_ARGS)
+{
+	struct rm_priotracker pt;
+	struct sbuf *sb;
+	int error, i;
+	bool first;
+
+	error = sysctl_wire_old_buffer(req, 0);
+	if (error != 0)
+		return (error);
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 128, req);
+	if (sb == NULL)
+		return (ENOMEM);
+
+	rm_rlock(&hn_vfmap_lock, &pt);
+
+	first = true;
+	for (i = 0; i < hn_vfmap_size; ++i) {
+		struct ifnet *ifp, *hn_ifp;
+
+		hn_ifp = hn_vfmap[i];
+		if (hn_ifp == NULL)
+			continue;
+
+		ifp = ifnet_byindex(i);
+		if (ifp != NULL) {
+			if (first) {
+				sbuf_printf(sb, "%s:%s", ifp->if_xname,
+				    hn_ifp->if_xname);
+			} else {
+				sbuf_printf(sb, " %s:%s", ifp->if_xname,
+				    hn_ifp->if_xname);
+			}
+			first = false;
+		}
+	}
+
+	rm_runlock(&hn_vfmap_lock, &pt);
+
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
 }
 
 static int
@@ -4354,7 +4667,29 @@ hn_transmit(struct ifnet *ifp, struct mbuf *m)
 			idx = bid % sc->hn_tx_ring_inuse;
 		else
 #endif
-			idx = m->m_pkthdr.flowid % sc->hn_tx_ring_inuse;
+		{
+#if defined(INET6) || defined(INET)
+			int tcpsyn = 0;
+
+			if (m->m_pkthdr.len < 128 &&
+			    (m->m_pkthdr.csum_flags &
+			     (CSUM_IP_TCP | CSUM_IP6_TCP)) &&
+			    (m->m_pkthdr.csum_flags & CSUM_TSO) == 0) {
+				m = hn_check_tcpsyn(m, &tcpsyn);
+				if (__predict_false(m == NULL)) {
+					if_inc_counter(ifp,
+					    IFCOUNTER_OERRORS, 1);
+					return (EIO);
+				}
+			}
+#else
+			const int tcpsyn = 0;
+#endif
+			if (tcpsyn)
+				idx = 0;
+			else
+				idx = m->m_pkthdr.flowid % sc->hn_tx_ring_inuse;
+		}
 	}
 	txr = &sc->hn_tx_ring[idx];
 
@@ -4711,6 +5046,27 @@ hn_synth_attachable(const struct hn_softc *sc)
 	return (true);
 }
 
+/*
+ * Make sure that the RX filter is zero after the successful
+ * RNDIS initialization.
+ *
+ * NOTE:
+ * Under certain conditions on certain versions of Hyper-V,
+ * the RNDIS rxfilter is _not_ zero on the hypervisor side
+ * after the successful RNDIS initialization, which breaks
+ * the assumption of any following code (well, it breaks the
+ * RNDIS API contract actually).  Clear the RNDIS rxfilter
+ * explicitly, drain packets sneaking through, and drain the
+ * interrupt taskqueues scheduled due to the stealth packets.
+ */
+static void
+hn_rndis_init_fixat(struct hn_softc *sc, int nchan)
+{
+
+	hn_disable_rx(sc);
+	hn_drain_rxtx(sc, nchan);
+}
+
 static int
 hn_synth_attach(struct hn_softc *sc, int mtu)
 {
@@ -4718,7 +5074,7 @@ hn_synth_attach(struct hn_softc *sc, int mtu)
 #define ATTACHED_RNDIS		0x0004
 
 	struct ndis_rssprm_toeplitz *rss = &sc->hn_rss;
-	int error, nsubch, nchan, i;
+	int error, nsubch, nchan = 1, i, rndis_inited;
 	uint32_t old_caps, attached = 0;
 
 	KASSERT((sc->hn_flags & HN_FLAG_SYNTH_ATTACHED) == 0,
@@ -4753,10 +5109,11 @@ hn_synth_attach(struct hn_softc *sc, int mtu)
 	/*
 	 * Attach RNDIS _after_ NVS is attached.
 	 */
-	error = hn_rndis_attach(sc, mtu);
+	error = hn_rndis_attach(sc, mtu, &rndis_inited);
+	if (rndis_inited)
+		attached |= ATTACHED_RNDIS;
 	if (error)
 		goto failed;
-	attached |= ATTACHED_RNDIS;
 
 	/*
 	 * Make sure capabilities are not changed.
@@ -4859,14 +5216,18 @@ back:
 	 * Fixup transmission aggregation setup.
 	 */
 	hn_set_txagg(sc);
+	hn_rndis_init_fixat(sc, nchan);
 	return (0);
 
 failed:
 	if (sc->hn_flags & HN_FLAG_SYNTH_ATTACHED) {
+		hn_rndis_init_fixat(sc, nchan);
 		hn_synth_detach(sc);
 	} else {
-		if (attached & ATTACHED_RNDIS)
+		if (attached & ATTACHED_RNDIS) {
+			hn_rndis_init_fixat(sc, nchan);
 			hn_rndis_detach(sc);
+		}
 		if (attached & ATTACHED_NVS)
 			hn_nvs_detach(sc);
 		hn_chan_detach(sc, sc->hn_prichan);
@@ -4946,11 +5307,56 @@ hn_chan_drain(struct hn_softc *sc, struct vmbus_channel *chan)
 }
 
 static void
-hn_suspend_data(struct hn_softc *sc)
+hn_disable_rx(struct hn_softc *sc)
+{
+
+	/*
+	 * Disable RX by clearing RX filter forcefully.
+	 */
+	sc->hn_rx_filter = NDIS_PACKET_TYPE_NONE;
+	hn_rndis_set_rxfilter(sc, sc->hn_rx_filter); /* ignore error */
+
+	/*
+	 * Give RNDIS enough time to flush all pending data packets.
+	 */
+	pause("waitrx", (200 * hz) / 1000);
+}
+
+/*
+ * NOTE:
+ * RX/TX _must_ have been suspended/disabled, before this function
+ * is called.
+ */
+static void
+hn_drain_rxtx(struct hn_softc *sc, int nchan)
 {
 	struct vmbus_channel **subch = NULL;
+	int nsubch;
+
+	/*
+	 * Drain RX/TX bufrings and interrupts.
+	 */
+	nsubch = nchan - 1;
+	if (nsubch > 0)
+		subch = vmbus_subchan_get(sc->hn_prichan, nsubch);
+
+	if (subch != NULL) {
+		int i;
+
+		for (i = 0; i < nsubch; ++i)
+			hn_chan_drain(sc, subch[i]);
+	}
+	hn_chan_drain(sc, sc->hn_prichan);
+
+	if (subch != NULL)
+		vmbus_subchan_rel(subch, nsubch);
+}
+
+static void
+hn_suspend_data(struct hn_softc *sc)
+{
 	struct hn_tx_ring *txr;
-	int i, nsubch;
+	int i;
 
 	HN_LOCK_ASSERT(sc);
 
@@ -4978,38 +5384,21 @@ hn_suspend_data(struct hn_softc *sc)
 	}
 
 	/*
-	 * Disable RX by clearing RX filter.
+	 * Disable RX.
 	 */
-	hn_set_rxfilter(sc, NDIS_PACKET_TYPE_NONE);
+	hn_disable_rx(sc);
 
 	/*
-	 * Give RNDIS enough time to flush all pending data packets.
+	 * Drain RX/TX.
 	 */
-	pause("waitrx", (200 * hz) / 1000);
-
-	/*
-	 * Drain RX/TX bufrings and interrupts.
-	 */
-	nsubch = sc->hn_rx_ring_inuse - 1;
-	if (nsubch > 0)
-		subch = vmbus_subchan_get(sc->hn_prichan, nsubch);
-
-	if (subch != NULL) {
-		for (i = 0; i < nsubch; ++i)
-			hn_chan_drain(sc, subch[i]);
-	}
-	hn_chan_drain(sc, sc->hn_prichan);
-
-	if (subch != NULL)
-		vmbus_subchan_rel(subch, nsubch);
+	hn_drain_rxtx(sc, sc->hn_rx_ring_inuse);
 
 	/*
 	 * Drain any pending TX tasks.
 	 *
 	 * NOTE:
-	 * The above hn_chan_drain() can dispatch TX tasks, so the TX
-	 * tasks will have to be drained _after_ the above hn_chan_drain()
-	 * calls.
+	 * The above hn_drain_rxtx() can dispatch TX tasks, so the TX
+	 * tasks will have to be drained _after_ the above hn_drain_rxtx().
 	 */
 	for (i = 0; i < sc->hn_tx_ring_inuse; ++i) {
 		txr = &sc->hn_tx_ring[i];
@@ -5185,6 +5574,7 @@ hn_rndis_rx_status(struct hn_softc *sc, const void *data, int dlen)
 		break;
 
 	case RNDIS_STATUS_TASK_OFFLOAD_CURRENT_CONFIG:
+	case RNDIS_STATUS_LINK_SPEED_CHANGE:
 		/* Not really useful; ignore. */
 		break;
 
@@ -5680,9 +6070,17 @@ hn_chan_callback(struct vmbus_channel *chan, void *xrxr)
 }
 
 static void
-hn_tx_taskq_create(void *arg __unused)
+hn_sysinit(void *arg __unused)
 {
 	int i;
+
+	/*
+	 * Initialize VF map.
+	 */
+	rm_init_flags(&hn_vfmap_lock, "hn_vfmap", RM_SLEEPABLE);
+	hn_vfmap_size = HN_VFMAP_SIZE_DEF;
+	hn_vfmap = malloc(sizeof(struct ifnet *) * hn_vfmap_size, M_DEVBUF,
+	    M_WAITOK | M_ZERO);
 
 	/*
 	 * Fix the # of TX taskqueues.
@@ -5720,11 +6118,10 @@ hn_tx_taskq_create(void *arg __unused)
 		    "hn tx%d", i);
 	}
 }
-SYSINIT(hn_txtq_create, SI_SUB_DRIVERS, SI_ORDER_SECOND,
-    hn_tx_taskq_create, NULL);
+SYSINIT(hn_sysinit, SI_SUB_DRIVERS, SI_ORDER_SECOND, hn_sysinit, NULL);
 
 static void
-hn_tx_taskq_destroy(void *arg __unused)
+hn_sysuninit(void *arg __unused)
 {
 
 	if (hn_tx_taskque != NULL) {
@@ -5734,6 +6131,9 @@ hn_tx_taskq_destroy(void *arg __unused)
 			taskqueue_free(hn_tx_taskque[i]);
 		free(hn_tx_taskque, M_DEVBUF);
 	}
+
+	if (hn_vfmap != NULL)
+		free(hn_vfmap, M_DEVBUF);
+	rm_destroy(&hn_vfmap_lock);
 }
-SYSUNINIT(hn_txtq_destroy, SI_SUB_DRIVERS, SI_ORDER_SECOND,
-    hn_tx_taskq_destroy, NULL);
+SYSUNINIT(hn_sysuninit, SI_SUB_DRIVERS, SI_ORDER_SECOND, hn_sysuninit, NULL);

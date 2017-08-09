@@ -8,7 +8,6 @@ SUBDIR= cat \
 	chio \
 	chmod \
 	cp \
-	cp_metaio \
 	date \
 	dd \
 	df \
@@ -18,7 +17,6 @@ SUBDIR= cat \
 	expr \
 	freebsd-version \
 	getfacl \
-	getuuid \
 	hostname \
 	kenv \
 	kill \
@@ -48,8 +46,6 @@ SUBDIR.${MK_TCSH}+=	csh
 SUBDIR.${MK_TESTS}+=	tests
 
 .include <bsd.arch.inc.mk>
-
-SUBDIR:=	${SUBDIR:O}
 
 SUBDIR_PARALLEL=
 

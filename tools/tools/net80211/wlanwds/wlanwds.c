@@ -96,7 +96,7 @@ static	int wds_vap_destroy(const char *ifname);
 static void
 usage(const char *progname)
 {
-	fprintf(stderr, "usage: %s [-fjtv] [-P pidfile] [-s <set_scriptname>] [ifnet0 ... | any]\n",
+	fprintf(stderr, "usage: %s [-efjtv] [-P pidfile] [-s <set_scriptname>] [ifnet0 ... | any]\n",
 		progname);
 	exit(-1);
 }
@@ -108,10 +108,14 @@ main(int argc, char *argv[])
 	const char *pidfile = NULL;
 	int s, c, logmask, bg = 1;
 	char msg[2048];
+	int log_stderr = 0;
 
 	logmask = LOG_UPTO(LOG_INFO);
-	while ((c = getopt(argc, argv, "fjP:s:tv")) != -1)
+	while ((c = getopt(argc, argv, "efjP:s:tv")) != -1)
 		switch (c) {
+		case 'e':
+			log_stderr = LOG_PERROR;
+			break;
 		case 'f':
 			bg = 0;
 			break;
@@ -155,7 +159,7 @@ main(int argc, char *argv[])
 	if (bg && daemon(0, 0) < 0)
 		err(EX_OSERR, "daemon");
 
-	openlog("wlanwds", LOG_PID | LOG_CONS, LOG_DAEMON);
+	openlog("wlanwds", log_stderr | LOG_PID | LOG_CONS, LOG_DAEMON);
 	setlogmask(logmask);
 
 	for (;;) {
@@ -182,7 +186,7 @@ static int
 getparent(const char *ifname, char parent[IFNAMSIZ+1])
 {
 	char oid[256];
-	int parentlen;
+	size_t parentlen;
 
 	/* fetch parent interface name */
 	snprintf(oid, sizeof(oid), "net.wlan.%s.%%parent", ifname+4);
@@ -239,7 +243,7 @@ iswdsvap(int s, const char *ifname)
  * to have already verified this is possible.
  */
 static void
-getbssid(int s, const char *ifname, char bssid[IEEE80211_ADDR_LEN])
+getbssid(int s, const char *ifname, uint8_t bssid[IEEE80211_ADDR_LEN])
 {
 	struct ieee80211req ireq;
 
@@ -261,7 +265,7 @@ static void
 scanforvaps(int s)
 {
 	char ifname[IFNAMSIZ+1];
-	char bssid[IEEE80211_ADDR_LEN];
+	uint8_t bssid[IEEE80211_ADDR_LEN];
 	int i;
 
 	/* XXX brutal; should just walk sysctl tree */

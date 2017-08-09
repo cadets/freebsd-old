@@ -214,7 +214,7 @@ void __tsan_go_start(ThreadState *parent, ThreadState **pthr, void *pc) {
   ThreadState *thr = AllocGoroutine();
   *pthr = thr;
   int goid = ThreadCreate(parent, (uptr)pc, 0, true);
-  ThreadStart(thr, goid, 0);
+  ThreadStart(thr, goid, 0, /*workerthread*/ false);
 }
 
 void __tsan_go_end(ThreadState *thr) {
@@ -247,13 +247,17 @@ void __tsan_finalizer_goroutine(ThreadState *thr) {
 }
 
 void __tsan_mutex_before_lock(ThreadState *thr, uptr addr, uptr write) {
+  if (write)
+    MutexPreLock(thr, 0, addr);
+  else
+    MutexPreReadLock(thr, 0, addr);
 }
 
 void __tsan_mutex_after_lock(ThreadState *thr, uptr addr, uptr write) {
   if (write)
-    MutexLock(thr, 0, addr);
+    MutexPostLock(thr, 0, addr);
   else
-    MutexReadLock(thr, 0, addr);
+    MutexPostReadLock(thr, 0, addr);
 }
 
 void __tsan_mutex_before_unlock(ThreadState *thr, uptr addr, uptr write) {
@@ -269,6 +273,11 @@ void __tsan_go_ignore_sync_begin(ThreadState *thr) {
 
 void __tsan_go_ignore_sync_end(ThreadState *thr) {
   ThreadIgnoreSyncEnd(thr, 0);
+}
+
+void __tsan_report_count(u64 *pn) {
+  Lock lock(&ctx->report_mtx);
+  *pn = ctx->nreported;
 }
 
 }  // extern "C"

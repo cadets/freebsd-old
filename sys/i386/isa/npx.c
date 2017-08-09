@@ -11,7 +11,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -281,14 +281,6 @@ npx_probe(void)
 			 */
 			control &= ~(1 << 2);	/* enable divide by 0 trap */
 			fldcw(control);
-#ifdef FPU_ERROR_BROKEN
-			/*
-			 * FPU error signal doesn't work on some CPU
-			 * accelerator board.
-			 */
-			hw_float = 1;
-			return (1);
-#endif
 			npx_traps_while_probing = 0;
 			fp_divide_by_0();
 			if (npx_traps_while_probing != 0) {
@@ -1116,7 +1108,7 @@ npx_fill_fpregs_xmm1(struct savexmm *sv_xmm, struct save87 *sv_87)
 		sv_87->sv_ac[i] = sv_xmm->sv_fp[i].fp_acc;
 		if ((penv_xmm->en_tw & (1 << i)) != 0)
 			/* zero and special are set as valid */
-			penv_87->en_tw &= ~(3 << i);
+			penv_87->en_tw &= ~(3 << i * 2);
 	}
 }
 
@@ -1147,12 +1139,17 @@ npx_set_fpregs_xmm(struct save87 *sv_87, struct savexmm *sv_xmm)
 	penv_xmm->en_foo = penv_87->en_foo;
 	penv_xmm->en_fos = penv_87->en_fos;
 
-	/* FPU registers and tags */
+	/*
+	 * FPU registers and tags.
+	 * Abridged  /  Full translation (values in binary), see FXSAVE spec.
+	 * 0		11
+	 * 1		00, 01, 10
+	 */
 	penv_xmm->en_tw = 0;
 	for (i = 0; i < 8; ++i) {
 		sv_xmm->sv_fp[i].fp_acc = sv_87->sv_ac[i];
-		if ((penv_87->en_tw && (3 << i)) != (3 << i))
-		    penv_xmm->en_tw |= 1 << i;
+		if ((penv_87->en_tw & (3 << i * 2)) != (3 << i * 2))
+			penv_xmm->en_tw |= 1 << i;
 	}
 }
 
@@ -1277,9 +1274,7 @@ static driver_t npxisa_driver = {
 static devclass_t npxisa_devclass;
 
 DRIVER_MODULE(npxisa, isa, npxisa_driver, npxisa_devclass, 0, 0);
-#ifndef PC98
 DRIVER_MODULE(npxisa, acpi, npxisa_driver, npxisa_devclass, 0, 0);
-#endif
 #endif /* DEV_ISA */
 
 static MALLOC_DEFINE(M_FPUKERN_CTX, "fpukern_ctx",

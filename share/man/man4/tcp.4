@@ -580,6 +580,12 @@ downshift.
 List of available TCP function blocks (TCP stacks).
 .It Va functions_default
 The default TCP function block (TCP stack).
+.It Va functions_inherit_listen_socket_stack
+Determines whether to inherit listen socket's tcp stack or use the current
+system default tcp stack, as defined by
+.Va functions_default
+.Pc .
+Default is true.
 .It Va insecure_rst
 Use criteria defined in RFC793 instead of RFC5961 for accepting RST segments.
 Default is false.
@@ -633,7 +639,8 @@ when trying to use a TCP function block that is not available;
 .Xr mod_cc 4 ,
 .Xr siftr 4 ,
 .Xr syncache 4 ,
-.Xr setkey 8
+.Xr setkey 8 ,
+.Xr tcp_functions 9
 .Rs
 .%A "V. Jacobson"
 .%A "R. Braden"

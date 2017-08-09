@@ -428,7 +428,7 @@ hdac_reset(struct hdac_softc *sc, int wakeup)
 
 	/*
 	 * Wait for codecs to finish their own reset sequence. The delay here
-	 * should be of 250us but for some reasons, on it's not enough on my
+	 * should be of 250us but for some reasons, it's not enough on my
 	 * computer. Let's use twice as much as necessary to make sure that
 	 * it's reset properly.
 	 */
@@ -1766,6 +1766,9 @@ hdac_read_ivar(device_t dev, device_t child, int which, uintptr_t *result)
 		break;
 	case HDA_IVAR_DMA_NOCACHE:
 		*result = (sc->flags & HDAC_F_DMA_NOCACHE) != 0;
+		break;
+	case HDA_IVAR_STRIPES_MASK:
+		*result = (1 << (1 << sc->num_sdo)) - 1;
 		break;
 	default:
 		return (ENOENT);
