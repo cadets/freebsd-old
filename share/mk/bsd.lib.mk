@@ -261,7 +261,8 @@ ${SHLIB_NAME_FULL}: ${SOBJS}
 .endif
 
 .if ${MK_DEBUG_FILES} != "no"
-CLEANFILES+=	${SHLIB_NAME_FULL} ${SHLIB_NAME}.debug
+CLEANFILES+=	${SHLIB_NAME_FULL} ${SHLIB_NAME}.debug \
+		lib${LIB_PRIVATE}${LIB}.bc lib${LIB_PRIVATE}${LIB}.ll
 ${SHLIB_NAME}: ${SHLIB_NAME_FULL} ${SHLIB_NAME}.debug
 	${OBJCOPY} --strip-debug --add-gnu-debuglink=${SHLIB_NAME}.debug \
 	    ${SHLIB_NAME_FULL} ${.TARGET}
