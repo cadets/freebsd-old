@@ -190,6 +190,9 @@ lib${LIB_PRIVATE}${LIB}.bc: ${BCOBJS}
 lib${LIB_PRIVATE}${LIB}.ll: ${LLOBJS}
 	${LLVM_LINK} -S -o ${.TARGET} ${LLOBJS}
 
+.if defined(BITCODE_EVERYWHERE) && !defined(BOOTSTRAPPING)
+_LIBS+=		lib${LIB_PRIVATE}${LIB}.bc
+.endif
 .endif
 
 .if !defined(INTERNALLIB)
