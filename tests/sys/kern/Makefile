@@ -34,12 +34,18 @@ LIBADD.mqueue_test+=	rt
     ${MACHINE_ARCH} == "i386" || \
     ${MACHINE_ARCH} == "aarch64"
 ATF_TESTS_C+=	libkern_crc32
-CFLAGS.libkern_crc32+=	-DUSERSPACE_TESTING
 .if ${MACHINE_ARCH} == "amd64" || ${MACHINE_ARCH} == "i386"
-LDADD.libkern_crc32+=	${SRCTOP}/sys/libkern/x86/crc32_sse42.c
+CRC_IMPL=	x86/crc32_sse42
 .else
-LDADD.libkern_crc32+=	${SRCTOP}/sys/libkern/arm64/crc32c_armv8.S
+CRC_IMPL=	arm64/crc32c_armv8
 .endif
+CRC_SRC=	${CRC_IMPL}.c
+CRC_OBJ=	${CRC_IMPL:T}.o
+
+CFLAGS+=	-DUSERSPACE_TESTING
+${CRC_OBJ}: ${SRCTOP}/sys/libkern/${CRC_SRC}
+LDADD.libkern_crc32+=	${CRC_OBJ}
+libkern_crc32: ${CRC_OBJ}
 .endif
 
 # subr_unit.c contains functions whose prototypes lie in headers that cannot be
