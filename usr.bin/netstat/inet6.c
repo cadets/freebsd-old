@@ -11,7 +11,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -618,7 +618,7 @@ ip6_ifstats(char *ifname)
 		return;
 	}
 
-	strcpy(ifr.ifr_name, ifname);
+	strlcpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
 	if (ioctl(s, SIOCGIFSTAT_IN6, (char *)&ifr) < 0) {
 		if (errno != EPFNOSUPPORT)
 			xo_warn("Warning: ioctl(SIOCGIFSTAT_IN6)");
@@ -1079,7 +1079,7 @@ icmp6_ifstats(char *ifname)
 		return;
 	}
 
-	strcpy(ifr.ifr_name, ifname);
+	strlcpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
 	if (ioctl(s, SIOCGIFSTAT_ICMP6, (char *)&ifr) < 0) {
 		if (errno != EPFNOSUPPORT)
 			xo_warn("Warning: ioctl(SIOCGIFSTAT_ICMP6)");

@@ -111,10 +111,9 @@ _CPUCFLAGS = -march=armv5te -D__XSCALE__
 .  elif ${CPUTYPE:M*soft*} != ""
 _CPUCFLAGS = -mfloat-abi=softfp
 .  elif ${CPUTYPE} == "armv6"
-# Not sure we still need ARM_ARCH_6=1 here.
-_CPUCFLAGS = -march=${CPUTYPE} -DARM_ARCH_6=1
+_CPUCFLAGS = -march=${CPUTYPE}
 .  elif ${CPUTYPE} == "cortexa"
-_CPUCFLAGS = -march=armv7 -DARM_ARCH_6=1 -mfpu=vfp
+_CPUCFLAGS = -march=armv7 -mfpu=vfp
 .  elif ${CPUTYPE:Marmv[4567]*} != ""
 # Handle all the armvX types that FreeBSD runs:
 #	armv4, armv4t, armv5, armv5te, armv6, armv6t2, armv7, armv7-a, armv7ve
@@ -137,6 +136,8 @@ _CPUCFLAGS = -Wa,-me500 -msoft-float
 .  else
 _CPUCFLAGS = -mcpu=${CPUTYPE} -mno-powerpc64
 .  endif
+. elif ${MACHINE_ARCH} == "powerpcspe"
+_CPUCFLAGS = -Wa,-me500 -mspe=yes -mabi=spe -mfloat-gprs=double
 . elif ${MACHINE_ARCH} == "powerpc64"
 _CPUCFLAGS = -mcpu=${CPUTYPE}
 . elif ${MACHINE_CPUARCH} == "mips"
@@ -153,8 +154,6 @@ _CPUCFLAGS = -march=${CPUTYPE}
 #	sb1, xlp, xlr
 _CPUCFLAGS = -march=${CPUTYPE:S/^mips//}
 . endif
-. elif ${MACHINE_CPUARCH} == "riscv"
-_CPUCFLAGS = -msoft-float # -march="RV64I" # RISCVTODO
 . elif ${MACHINE_ARCH} == "sparc64"
 .  if ${CPUTYPE} == "v9"
 _CPUCFLAGS = -mcpu=v9
@@ -173,7 +172,9 @@ _CPUCFLAGS = -mcpu=${CPUTYPE}
 
 ########## i386
 . if ${MACHINE_CPUARCH} == "i386"
-.  if ${CPUTYPE} == "bdver4"
+.  if ${CPUTYPE} == "znver1"
+MACHINE_CPU = avx2 avx sse42 sse41 ssse3 sse4a sse3 sse2 sse mmx k6 k5 i586
+.  elif ${CPUTYPE} == "bdver4"
 MACHINE_CPU = xop avx2 avx sse42 sse41 ssse3 sse4a sse3 sse2 sse mmx k6 k5 i586
 .  elif ${CPUTYPE} == "bdver3" || ${CPUTYPE} == "bdver2" || \
     ${CPUTYPE} == "bdver1"
@@ -242,7 +243,9 @@ MACHINE_CPU = mmx
 MACHINE_CPU += i486
 ########## amd64
 . elif ${MACHINE_CPUARCH} == "amd64"
-.  if ${CPUTYPE} == "bdver4"
+.  if ${CPUTYPE} == "znver1"
+MACHINE_CPU = avx2 avx sse42 sse41 ssse3 sse4a sse3
+.  elif ${CPUTYPE} == "bdver4"
 MACHINE_CPU = xop avx2 avx sse42 sse41 ssse3 sse4a sse3
 .  elif ${CPUTYPE} == "bdver3" || ${CPUTYPE} == "bdver2" || \
     ${CPUTYPE} == "bdver1"
@@ -301,6 +304,33 @@ MACHINE_CPU = v9 ultrasparc ultrasparc3
 
 .if ${MACHINE_CPUARCH} == "mips"
 CFLAGS += -G0
+. if ${MACHINE_ARCH:Mmips*el*} != ""
+AFLAGS += -EL
+CFLAGS += -EL
+LDFLAGS += -EL
+. else
+AFLAGS += -EB
+CFLAGS += -EB
+LDFLAGS += -EB
+. endif
+. if ${MACHINE_ARCH:Mmips64*} != ""
+AFLAGS+= -mabi=64
+CFLAGS+= -mabi=64
+LDFLAGS+= -mabi=64
+. elif ${MACHINE_ARCH:Mmipsn32*} != ""
+AFLAGS+= -mabi=n32
+CFLAGS+= -mabi=n32
+LDFLAGS+= -mabi=n32
+. else
+AFLAGS+= -mabi=32
+CFLAGS+= -mabi=32
+LDFLAGS+= -mabi=32
+. endif
+. if ${MACHINE_ARCH:Mmips*hf}
+CFLAGS += -mhard-float
+. else
+CFLAGS += -msoft-float
+. endif
 .endif
 
 ########## arm
@@ -327,8 +357,18 @@ CFLAGS += -mfloat-abi=softfp
 .endif
 .endif
 
+.if ${MACHINE_ARCH} == "powerpcspe"
+CFLAGS += -mcpu=8540 -Wa,-me500 -mspe=yes -mabi=spe -mfloat-gprs=double
+.endif
+
 .if ${MACHINE_CPUARCH} == "riscv"
-CFLAGS += -msoft-float
+.if ${TARGET_ARCH:Mriscv*sf}
+CFLAGS += -march=rv64imac -mabi=lp64
+ACFLAGS += -march=rv64imac -mabi=lp64
+.else
+CFLAGS += -march=rv64imafdc -mabi=lp64
+ACFLAGS += -march=rv64imafdc -mabi=lp64
+.endif
 .endif
 
 # NB: COPTFLAGS is handled in /usr/src/sys/conf/kern.pre.mk
@@ -358,7 +398,7 @@ CFLAGS_NO_SIMD= -mno-mmx -mno-sse
 .endif
 CFLAGS_NO_SIMD += ${CFLAGS_NO_SIMD.${COMPILER_TYPE}}
 
-# Add in any architecture-specific CFLAGS.  
+# Add in any architecture-specific CFLAGS.
 # These come from make.conf or the command line or the environment.
 CFLAGS += ${CFLAGS.${MACHINE_ARCH}}
 CXXFLAGS += ${CXXFLAGS.${MACHINE_ARCH}}

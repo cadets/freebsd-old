@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #ifdef GPROF 
 #include <sys/gmon.h>
 #endif
+#include <sys/kdb.h>
 #include <sys/kernel.h>
 #include <sys/ktr.h>
 #include <sys/lock.h>
@@ -83,13 +84,13 @@ __FBSDID("$FreeBSD$");
 #define BIOS_RESET		(0x0f)
 #define BIOS_WARM		(0x0a)
 
+static MALLOC_DEFINE(M_CPUS, "cpus", "CPU items");
+
 /* lock region used by kernel profiling */
 int	mcount_lock;
 
 int	mp_naps;		/* # of Applications processors */
 int	boot_cpu_id = -1;	/* designated BSP */
-
-extern	struct pcpu __pcpu[];
 
 /* AP uses this during bootstrap.  Do not staticize.  */
 char *bootSTK;
@@ -133,9 +134,13 @@ volatile int aps_ready = 0;
  * Store data from cpu_add() until later in the boot when we actually setup
  * the APs.
  */
-struct cpu_info cpu_info[MAX_APIC_ID + 1];
-int apic_cpuids[MAX_APIC_ID + 1];
+struct cpu_info *cpu_info;
+int *apic_cpuids;
 int cpu_apic_ids[MAXCPU];
+_Static_assert(MAXCPU <= MAX_APIC_ID,
+    "MAXCPU cannot be larger that MAX_APIC_ID");
+_Static_assert(xAPIC_MAX_APIC_ID <= MAX_APIC_ID,
+    "xAPIC_MAX_APIC_ID cannot be larger that MAX_APIC_ID");
 
 /* Holds pending bitmap based IPIs per CPU */
 volatile u_int cpu_ipi_pending[MAXCPU];
@@ -208,14 +213,14 @@ add_deterministic_cache(int type, int level, int share_count)
 
 	if (caches[level - 1].id_shift > pkg_id_shift) {
 		printf("WARNING: L%u data cache covers more "
-		    "APIC IDs than a package\n", level);
-		printf("%u > %u\n", caches[level - 1].id_shift, pkg_id_shift);
+		    "APIC IDs than a package (%u > %u)\n", level,
+		    caches[level - 1].id_shift, pkg_id_shift);
 		caches[level - 1].id_shift = pkg_id_shift;
 	}
 	if (caches[level - 1].id_shift < core_id_shift) {
-		printf("WARNING: L%u data cache covers less "
-		    "APIC IDs than a core\n", level);
-		printf("%u < %u\n", caches[level - 1].id_shift, core_id_shift);
+		printf("WARNING: L%u data cache covers fewer "
+		    "APIC IDs than a core (%u < %u)\n", level,
+		    caches[level - 1].id_shift, core_id_shift);
 		caches[level - 1].id_shift = core_id_shift;
 	}
 
@@ -226,17 +231,18 @@ add_deterministic_cache(int type, int level, int share_count)
  * Determine topology of processing units and caches for AMD CPUs.
  * See:
  *  - AMD CPUID Specification (Publication # 25481)
- *  - BKDG For AMD Family 10h Processors (Publication # 31116), section 2.15
  *  - BKDG for AMD NPT Family 0Fh Processors (Publication # 32559)
- * XXX At the moment the code does not recognize grouping of AMD CMT threads,
- * if supported, into cores, so each thread is treated as being in its own
- * core.  In other words, each logical CPU is considered to be a core.
+ *  - BKDG For AMD Family 10h Processors (Publication # 31116)
+ *  - BKDG For AMD Family 15h Models 00h-0Fh Processors (Publication # 42301)
+ *  - BKDG For AMD Family 16h Models 00h-0Fh Processors (Publication # 48751)
  */
 static void
 topo_probe_amd(void)
 {
 	u_int p[4];
+	uint64_t v;
 	int level;
+	int nodes_per_socket;
 	int share_count;
 	int type;
 	int i;
@@ -253,6 +259,22 @@ topo_probe_amd(void)
 	if (pkg_id_shift == 0)
 		pkg_id_shift =
 		    mask_width((cpu_procinfo2 & AMDID_CMP_CORES) + 1);
+
+	/*
+	 * Families prior to 16h define the following value as
+	 * cores per compute unit and we don't really care about the AMD
+	 * compute units at the moment.  Perhaps we should treat them as
+	 * cores and cores within the compute units as hardware threads,
+	 * but that's up for debate.
+	 * Later families define the value as threads per compute unit,
+	 * so we are following AMD's nomenclature here.
+	 */
+	if ((amd_feature2 & AMDID2_TOPOLOGY) != 0 &&
+	    CPUID_TO_FAMILY(cpu_id) >= 0x16) {
+		cpuid_count(0x8000001e, 0, p);
+		share_count = ((p[1] >> 8) & 0xff) + 1;
+		core_id_shift = mask_width(share_count);
+	}
 
 	if ((amd_feature2 & AMDID2_TOPOLOGY) != 0) {
 		for (i = 0; ; i++) {
@@ -279,13 +301,18 @@ topo_probe_amd(void)
 				caches[1].present = 1;
 			}
 			if (((p[3] >> 18) & 0x3fff) != 0) {
-
-				/*
-				 * TODO: Account for dual-node processors
-				 * where each node within a package has its own
-				 * L3 cache.
-				 */
-				caches[2].id_shift = pkg_id_shift;
+				nodes_per_socket = 1;
+				if ((amd_feature2 & AMDID2_NODE_ID) != 0) {
+					/*
+					 * Handle multi-node processors that
+					 * have multiple chips, each with its
+					 * own L3 cache, on the same die.
+					 */
+					v = rdmsr(0xc001100c);
+					nodes_per_socket = 1 + ((v >> 3) & 0x7);
+				}
+				caches[2].id_shift =
+				    pkg_id_shift - mask_width(nodes_per_socket);
 				caches[2].present = 1;
 			}
 		}
@@ -525,7 +552,7 @@ topo_probe(void)
 	nlayers++;
 
 	topo_init_root(&topo_root);
-	for (i = 0; i <= MAX_APIC_ID; ++i) {
+	for (i = 0; i <= max_apic_id; ++i) {
 		if (!cpu_info[i].cpu_present)
 			continue;
 
@@ -651,12 +678,10 @@ cpu_mp_announce(void)
 	TOPO_FOREACH(node, &topo_root) {
 		switch (node->type) {
 		case TOPO_TYPE_PKG:
-			printf("Package HW ID = %u (%#x)\n",
-			    node->hwid, node->hwid);
+			printf("Package HW ID = %u\n", node->hwid);
 			break;
 		case TOPO_TYPE_CORE:
-			printf("\tCore HW ID = %u (%#x)\n",
-			    node->hwid, node->hwid);
+			printf("\tCore HW ID = %u\n", node->hwid);
 			break;
 		case TOPO_TYPE_PU:
 			if (cpu_info[node->hwid].cpu_hyperthread)
@@ -665,16 +690,14 @@ cpu_mp_announce(void)
 				hyperthread = "";
 
 			if (node->subtype == 0)
-				printf("\t\tCPU (AP%s): APIC ID: %u (%#x)"
-				    "(disabled)\n", hyperthread, node->hwid,
-				    node->hwid);
+				printf("\t\tCPU (AP%s): APIC ID: %u"
+				    "(disabled)\n", hyperthread, node->hwid);
 			else if (node->id == 0)
-				printf("\t\tCPU0 (BSP): APIC ID: %u (%#x)\n",
-				    node->hwid, node->hwid);
-			else
-				printf("\t\tCPU%u (AP%s): APIC ID: %u (%#x)\n",
-				    node->id, hyperthread, node->hwid,
+				printf("\t\tCPU0 (BSP): APIC ID: %u\n",
 				    node->hwid);
+			else
+				printf("\t\tCPU%u (AP%s): APIC ID: %u\n",
+				    node->id, hyperthread, node->hwid);
 			break;
 		default:
 			/* ignored */
@@ -786,6 +809,19 @@ cpu_topo(void)
 	return (cg_root);
 }
 
+static void
+cpu_alloc(void *dummy __unused)
+{
+	/*
+	 * Dynamically allocate the arrays that depend on the
+	 * maximum APIC ID.
+	 */
+	cpu_info = malloc(sizeof(*cpu_info) * (max_apic_id + 1), M_CPUS,
+	    M_WAITOK | M_ZERO);
+	apic_cpuids = malloc(sizeof(*apic_cpuids) * (max_apic_id + 1), M_CPUS,
+	    M_WAITOK | M_ZERO);
+}
+SYSINIT(cpu_alloc, SI_SUB_CPU, SI_ORDER_FIRST, cpu_alloc, NULL);
 
 /*
  * Add a logical CPU to the topology.
@@ -794,26 +830,22 @@ void
 cpu_add(u_int apic_id, char boot_cpu)
 {
 
-	if (apic_id > MAX_APIC_ID) {
+	if (apic_id > max_apic_id) {
 		panic("SMP: APIC ID %d too high", apic_id);
 		return;
 	}
-	KASSERT(cpu_info[apic_id].cpu_present == 0, ("CPU %d added twice",
+	KASSERT(cpu_info[apic_id].cpu_present == 0, ("CPU %u added twice",
 	    apic_id));
 	cpu_info[apic_id].cpu_present = 1;
 	if (boot_cpu) {
 		KASSERT(boot_cpu_id == -1,
-		    ("CPU %d claims to be BSP, but CPU %d already is", apic_id,
+		    ("CPU %u claims to be BSP, but CPU %u already is", apic_id,
 		    boot_cpu_id));
 		boot_cpu_id = apic_id;
 		cpu_info[apic_id].cpu_bsp = 1;
 	}
-	if (mp_ncpus < MAXCPU) {
-		mp_ncpus++;
-		mp_maxid = mp_ncpus - 1;
-	}
 	if (bootverbose)
-		printf("SMP: Added CPU %d (%s)\n", apic_id, boot_cpu ? "BSP" :
+		printf("SMP: Added CPU %u (%s)\n", apic_id, boot_cpu ? "BSP" :
 		    "AP");
 }
 
@@ -1273,6 +1305,12 @@ cpustop_handler_post(u_int cpu)
 	CPU_CLR_ATOMIC(cpu, &started_cpus);
 	CPU_CLR_ATOMIC(cpu, &stopped_cpus);
 
+	/*
+	 * We don't broadcast TLB invalidations to other CPUs when they are
+	 * stopped. Hence, we clear the TLB before resuming.
+	 */
+	invltlb_glob();
+
 #if defined(__amd64__) && defined(DDB)
 	amd64_db_resume_dbreg();
 #endif
@@ -1430,6 +1468,10 @@ smp_targeted_tlb_shootdown(cpuset_t mask, u_int vector, pmap_t pmap,
 	volatile uint32_t *p_cpudone;
 	uint32_t generation;
 	int cpu;
+
+	/* It is not necessary to signal other CPUs while in the debugger. */
+	if (kdb_active || panicstr != NULL)
+		return;
 
 	/*
 	 * Check for other cpus.  Return if none.

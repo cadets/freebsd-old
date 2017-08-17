@@ -63,7 +63,7 @@ static int md_init(void);
 static int md_strategy(void *, int, daddr_t, size_t, char *, size_t *);
 static int md_open(struct open_file *, ...);
 static int md_close(struct open_file *);
-static void md_print(int);
+static int md_print(int);
 
 struct devsw md_dev = {
 	"md",
@@ -106,7 +106,7 @@ md_strategy(void *devdata, int rw, daddr_t blk, size_t size,
 	if (rsize != NULL)
 		*rsize = size;
 
-	switch (rw) {
+	switch (rw & F_MASK) {
 	case F_READ:
 		bcopy(md_image.start + ofs, buf, size);
 		return (0);
@@ -143,9 +143,14 @@ md_close(struct open_file *f)
 	return ((dev->d_unit != 0) ? ENXIO : 0);
 }
 
-static void
+static int
 md_print(int verbose)
 {
 
-	printf("MD (%u bytes)\n", MD_IMAGE_SIZE);
+	printf("%s devices:", md_dev.dv_name);
+	if (pager_output("\n") != 0)
+		return (1);
+
+	printf("MD (%u bytes)", MD_IMAGE_SIZE);
+	return (pager_output("\n"));
 }

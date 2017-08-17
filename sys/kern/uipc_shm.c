@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2006, 2011, 2016 Robert N. M. Watson
+ * Copyright (c) 2006, 2011, 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * Portions of this software were developed by BAE Systems, the University of
@@ -51,7 +51,6 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_capsicum.h"
 #include "opt_ktrace.h"
-#include "opt_metaio.h"
 
 #include <sys/param.h>
 #include <sys/capsicum.h>
@@ -67,7 +66,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/ktrace.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
-#include <sys/metaio.h>
 #include <sys/mman.h>
 #include <sys/mutex.h>
 #include <sys/priv.h>
@@ -85,7 +83,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/vnode.h>
 #include <sys/unistd.h>
 #include <sys/user.h>
-#include <sys/uuid.h>
 
 #include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
@@ -124,8 +121,8 @@ static void	shm_insert(char *path, Fnv32_t fnv, struct shmfd *shmfd);
 static struct shmfd *shm_lookup(char *path, Fnv32_t fnv);
 static int	shm_remove(char *path, Fnv32_t fnv, struct ucred *ucred);
 
-static fo_read_t	shm_read;
-static fo_write_t	shm_write;
+static fo_rdwr_t	shm_read;
+static fo_rdwr_t	shm_write;
 static fo_truncate_t	shm_truncate;
 static fo_stat_t	shm_stat;
 static fo_close_t	shm_close;
@@ -134,7 +131,6 @@ static fo_chown_t	shm_chown;
 static fo_seek_t	shm_seek;
 static fo_fill_kinfo_t	shm_fill_kinfo;
 static fo_mmap_t	shm_mmap;
-static fo_getuuid_t	shm_getuuid;
 
 /* File descriptor operations. */
 struct fileops shm_ops = {
@@ -152,7 +148,6 @@ struct fileops shm_ops = {
 	.fo_seek = shm_seek,
 	.fo_fill_kinfo = shm_fill_kinfo,
 	.fo_mmap = shm_mmap,
-	.fo_getuuid = shm_getuuid,
 	.fo_flags = DFLAG_PASSABLE | DFLAG_SEEKABLE
 };
 
@@ -265,9 +260,6 @@ shm_seek(struct file *fp, off_t offset, int whence, struct thread *td)
 	int error;
 
 	shmfd = fp->f_data;
-#ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&shmfd->shm_uuid);
-#endif
 	foffset = foffset_lock(fp, 0);
 	error = 0;
 	switch (whence) {
@@ -303,19 +295,13 @@ shm_seek(struct file *fp, off_t offset, int whence, struct thread *td)
 
 static int
 shm_read(struct file *fp, struct uio *uio, struct ucred *active_cred,
-    int flags, struct thread *td, struct metaio *miop)
+    int flags, struct thread *td)
 {
 	struct shmfd *shmfd;
 	void *rl_cookie;
 	int error;
 
 	shmfd = fp->f_data;
-#ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&shmfd->shm_uuid);
-#endif
-#ifdef METAIO
-	metaio_from_uuid(&shmfd->shm_uuid, miop);
-#endif
 #ifdef MAC
 	error = mac_posixshm_check_read(active_cred, fp->f_cred, shmfd);
 	if (error)
@@ -339,9 +325,6 @@ shm_write(struct file *fp, struct uio *uio, struct ucred *active_cred,
 	int error;
 
 	shmfd = fp->f_data;
-#ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&shmfd->shm_uuid);
-#endif
 #ifdef MAC
 	error = mac_posixshm_check_write(active_cred, fp->f_cred, shmfd);
 	if (error)
@@ -372,9 +355,6 @@ shm_truncate(struct file *fp, off_t length, struct ucred *active_cred,
 #endif
 
 	shmfd = fp->f_data;
-#ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&shmfd->shm_uuid);
-#endif
 #ifdef MAC
 	error = mac_posixshm_check_truncate(active_cred, fp->f_cred, shmfd);
 	if (error)
@@ -393,9 +373,7 @@ shm_stat(struct file *fp, struct stat *sb, struct ucred *active_cred,
 #endif
 
 	shmfd = fp->f_data;
-#ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&shmfd->shm_uuid);
-#endif
+
 #ifdef MAC
 	error = mac_posixshm_check_stat(active_cred, fp->f_cred, shmfd);
 	if (error)
@@ -446,6 +424,7 @@ shm_dotruncate(struct shmfd *shmfd, off_t length)
 	vm_ooffset_t delta;
 	int base, rv;
 
+	KASSERT(length >= 0, ("shm_dotruncate: length < 0"));
 	object = shmfd->shm_object;
 	VM_OBJECT_WLOCK(object);
 	if (length == shmfd->shm_size) {
@@ -483,15 +462,20 @@ retry:
 					VM_WAIT;
 					VM_OBJECT_WLOCK(object);
 					goto retry;
-				} else if (m->valid != VM_PAGE_BITS_ALL)
-					rv = vm_pager_get_pages(object, &m, 1,
-					    NULL, NULL);
-				else
-					/* A cached page was reactivated. */
-					rv = VM_PAGER_OK;
+				}
+				rv = vm_pager_get_pages(object, &m, 1, NULL,
+				    NULL);
 				vm_page_lock(m);
 				if (rv == VM_PAGER_OK) {
-					vm_page_deactivate(m);
+					/*
+					 * Since the page was not resident,
+					 * and therefore not recently
+					 * accessed, immediately enqueue it
+					 * for asynchronous laundering.  The
+					 * current operation is not regarded
+					 * as an access.
+					 */
+					vm_page_launder(m);
 					vm_page_unlock(m);
 					vm_page_xunbusy(m);
 				} else {
@@ -509,7 +493,7 @@ retry:
 				vm_pager_page_unswapped(m);
 			}
 		}
-		delta = ptoa(object->size - nobjsize);
+		delta = IDX_TO_OFF(object->size - nobjsize);
 
 		/* Toss in memory pages. */
 		if (nobjsize < object->size)
@@ -524,8 +508,8 @@ retry:
 		swap_release_by_cred(delta, object->cred);
 		object->charge -= delta;
 	} else {
-		/* Attempt to reserve the swap */
-		delta = ptoa(nobjsize - object->size);
+		/* Try to reserve additional swap space. */
+		delta = IDX_TO_OFF(nobjsize - object->size);
 		if (!swap_reserve_by_cred(delta, object->cred)) {
 			VM_OBJECT_WUNLOCK(object);
 			return (ENOMEM);
@@ -580,7 +564,7 @@ shm_alloc(struct ucred *ucred, mode_t mode)
 	mac_posixshm_init(shmfd);
 	mac_posixshm_create(ucred, shmfd);
 #endif
-	(void)kern_uuidgen(&shmfd->shm_uuid, 1);
+
 	return (shmfd);
 }
 
@@ -688,9 +672,6 @@ shm_remove(char *path, Fnv32_t fnv, struct ucred *ucred)
 		if (map->sm_fnv != fnv)
 			continue;
 		if (strcmp(map->sm_path, path) == 0) {
-#ifdef KDTRACE_HOOKS
-			AUDIT_ARG_OBJUUID1(&map->sm_shmfd->shm_uuid);
-#endif
 #ifdef MAC
 			error = mac_posixshm_check_unlink(ucred, map->sm_shmfd);
 			if (error)
@@ -850,10 +831,6 @@ kern_shm_open(struct thread *td, const char *userpath, int flags, mode_t mode,
 
 	finit(fp, FFLAGS(flags & O_ACCMODE), DTYPE_SHM, shmfd, &shm_ops);
 
-#ifdef KDTRACE_HOOKS
-	AUDIT_RET_FD1(fd);
-	AUDIT_RET_OBJUUID1(&shmfd->shm_uuid);
-#endif
 	td->td_retval[0] = fd;
 	fdrop(fp, td);
 
@@ -904,7 +881,7 @@ sys_shm_unlink(struct thread *td, struct shm_unlink_args *uap)
 int
 shm_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t objsize,
     vm_prot_t prot, vm_prot_t cap_maxprot, int flags,
-    vm_ooffset_t foff, struct thread *td, struct metaio *miop)
+    vm_ooffset_t foff, struct thread *td)
 {
 	struct shmfd *shmfd;
 	vm_prot_t maxprot;
@@ -912,13 +889,6 @@ shm_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t objsize,
 
 	shmfd = fp->f_data;
 	maxprot = VM_PROT_NONE;
-
-#ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&shmfd->shm_uuid);
-#endif
-#ifdef METAIO
-	metaio_from_uuid(&shmfd->shm_uuid, miop);
-#endif
 
 	/* FREAD should always be set. */
 	if ((fp->f_flag & FREAD) != 0)
@@ -956,7 +926,7 @@ shm_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t objsize,
 	    shmfd->shm_object, foff, FALSE, td);
 	if (error != 0)
 		vm_object_deallocate(shmfd->shm_object);
-	return (0);
+	return (error);
 }
 
 static int
@@ -968,9 +938,6 @@ shm_chmod(struct file *fp, mode_t mode, struct ucred *active_cred,
 
 	error = 0;
 	shmfd = fp->f_data;
-#ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&shmfd->shm_uuid);
-#endif
 	mtx_lock(&shm_timestamp_lock);
 	/*
 	 * SUSv4 says that x bits of permission need not be affected.
@@ -1000,9 +967,6 @@ shm_chown(struct file *fp, uid_t uid, gid_t gid, struct ucred *active_cred,
 
 	error = 0;
 	shmfd = fp->f_data;
-#ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&shmfd->shm_uuid);
-#endif
 	mtx_lock(&shm_timestamp_lock);
 #ifdef MAC
 	error = mac_posixshm_check_setowner(active_cred, shmfd, uid, gid);
@@ -1156,15 +1120,5 @@ shm_fill_kinfo(struct file *fp, struct kinfo_file *kif, struct filedesc *fdp)
 		}
 		sx_sunlock(&shm_dict_lock);
 	}
-	return (0);
-}
-
-static int
-shm_getuuid(struct file *fp, struct uuid *uuidp)
-{
-	struct shmfd *shmfd;
-
-	shmfd = fp->f_data;
-	*uuidp = shmfd->shm_uuid;
 	return (0);
 }

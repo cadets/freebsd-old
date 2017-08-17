@@ -112,7 +112,8 @@ extern int io_compare();
 #endif
 time_t time();
 
-caddr_t get_process_info();
+caddr_t get_process_info(struct system_info *si, struct process_select *sel,
+    int (*compare)(const void *, const void *));
 
 /* different routines for displaying the user's identification */
 /* (values assigned to get_userid) */
@@ -120,18 +121,122 @@ char *username();
 char *itoa7();
 
 /* pointers to display routines */
-void (*d_loadave)() = i_loadave;
-void (*d_procstates)() = i_procstates;
-void (*d_cpustates)() = i_cpustates;
-void (*d_memory)() = i_memory;
-void (*d_arc)() = i_arc;
-void (*d_swap)() = i_swap;
-void (*d_message)() = i_message;
-void (*d_header)() = i_header;
-void (*d_process)() = i_process;
+void (*d_loadave)(int mpid, double *avenrun) = i_loadave;
+void (*d_procstates)(int total, int *brkdn) = i_procstates;
+void (*d_cpustates)(int *states) = i_cpustates;
+void (*d_memory)(int *stats) = i_memory;
+void (*d_arc)(int *stats) = i_arc;
+void (*d_carc)(int *stats) = i_carc;
+void (*d_swap)(int *stats) = i_swap;
+void (*d_message)(void) = i_message;
+void (*d_header)(char *text) = i_header;
+void (*d_process)(int line, char *thisline) = i_process;
 
 void reset_display(void);
 
+static void
+reset_uids()
+{
+    for (size_t i = 0; i < TOP_MAX_UIDS; ++i)
+	ps.uid[i] = -1;
+}
+
+static int
+add_uid(int uid)
+{
+    size_t i = 0;
+
+    /* Add the uid if there's room */
+    for (; i < TOP_MAX_UIDS; ++i)
+    {
+	if (ps.uid[i] == -1 || ps.uid[i] == uid)
+	{
+	    ps.uid[i] = uid;
+	    break;
+	}
+    }
+
+    return (i == TOP_MAX_UIDS);
+}
+
+static void
+rem_uid(int uid)
+{
+    size_t i = 0;
+    size_t where = TOP_MAX_UIDS;
+
+    /* Look for the user to remove - no problem if it's not there */
+    for (; i < TOP_MAX_UIDS; ++i)
+    {
+	if (ps.uid[i] == -1)
+	    break;
+	if (ps.uid[i] == uid)
+	    where = i;
+    }
+
+    /* Make sure we don't leave a hole in the middle */
+    if (where != TOP_MAX_UIDS)
+    {
+	ps.uid[where] = ps.uid[i-1];
+	ps.uid[i-1] = -1;
+    }
+}
+
+static int
+handle_user(char *buf, size_t buflen)
+{
+    int rc = 0;
+    int uid = -1;
+    char *buf2 = buf;
+
+    new_message(MT_standout, "Username to show (+ for all): ");
+    if (readline(buf, buflen, No) <= 0)
+    {
+	clear_message();
+	return rc;
+    }
+
+    if (buf[0] == '+' || buf[0] == '-')
+    {
+	if (buf[1] == '\0')
+	{
+	    reset_uids();
+	    goto end;
+	}
+	else
+	    ++buf2;
+    }
+
+    if ((uid = userid(buf2)) == -1)
+    {
+	new_message(MT_standout, " %s: unknown user", buf2);
+	rc = 1;
+	goto end;
+    }
+
+    if (buf2 == buf)
+    {
+	reset_uids();
+	ps.uid[0] = uid;
+	goto end;
+    }
+
+    if (buf[0] == '+')
+    {
+	if (add_uid(uid))
+	{
+	    new_message(MT_standout, " too many users, reset with '+'");
+	    rc = 1;
+	    goto end;
+	}
+    }
+    else
+	rem_uid(uid);
+
+end:
+    putchar('\r');
+    return rc;
+}
 
 int
 main(argc, argv)
@@ -250,7 +355,7 @@ char *argv[];
     ps.idle    = Yes;
     ps.self    = -1;
     ps.system  = No;
-    ps.uid     = -1;
+    reset_uids();
     ps.thread  = No;
     ps.wcpu    = 1;
     ps.jid     = -1;
@@ -297,7 +402,7 @@ char *argv[];
 		break;
 
 	      case 'U':			/* display only username's processes */
-		if ((ps.uid = userid(optarg)) == -1)
+		if ((ps.uid[0] = userid(optarg)) == -1)
 		{
 		    fprintf(stderr, "%s: unknown user\n", optarg);
 		    exit(1);
@@ -431,7 +536,7 @@ char *argv[];
 	      default:
 		fprintf(stderr,
 "Top version %s\n"
-"Usage: %s [-abCHIijnPqStuvz] [-d count] [-m io | cpu] [-o field] [-s time]\n"
+"Usage: %s [-abCHIijnPqStuvwz] [-d count] [-m io | cpu] [-o field] [-s time]\n"
 "       [-J jail] [-U username] [number]\n",
 			version_string(), myname);
 		exit(1);
@@ -658,6 +763,7 @@ restart:
 	/* display memory stats */
 	(*d_memory)(system_info.memory);
 	(*d_arc)(system_info.arc);
+	(*d_carc)(system_info.carc);
 
 	/* display swap stats */
 	(*d_swap)(system_info.swap);
@@ -724,6 +830,7 @@ restart:
 		    d_cpustates = u_cpustates;
 		    d_memory = u_memory;
 		    d_arc = u_arc;
+		    d_carc = u_carc;
 		    d_swap = u_swap;
 		    d_message = u_message;
 		    d_header = u_header;
@@ -1000,31 +1107,8 @@ restart:
 				break;
 
 			    case CMD_user:
-				new_message(MT_standout,
-				    "Username to show (+ for all): ");
-				if (readline(tempbuf2, sizeof(tempbuf2), No) > 0)
-				{
-				    if (tempbuf2[0] == '+' &&
-					tempbuf2[1] == '\0')
-				    {
-					ps.uid = -1;
-				    }
-				    else if ((i = userid(tempbuf2)) == -1)
-				    {
-					new_message(MT_standout,
-					    " %s: unknown user", tempbuf2);
-					no_command = Yes;
-				    }
-				    else
-				    {
-					ps.uid = i;
-				    }
-				    putchar('\r');
-				}
-				else
-				{
-				    clear_message();
-				}
+				if (handle_user(tempbuf2, sizeof(tempbuf2)))
+				    no_command = Yes;
 				break;
 	    
 			    case CMD_thrtog:
@@ -1190,6 +1274,7 @@ reset_display()
     d_cpustates  = i_cpustates;
     d_memory     = i_memory;
     d_arc        = i_arc;
+    d_carc       = i_carc;
     d_swap       = i_swap;
     d_message	 = i_message;
     d_header	 = i_header;

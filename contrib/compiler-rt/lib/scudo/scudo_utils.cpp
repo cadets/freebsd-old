@@ -17,8 +17,12 @@
 #include <fcntl.h>
 #include <stdarg.h>
 #include <unistd.h>
-
-#include <cstring>
+#if defined(__x86_64__) || defined(__i386__)
+# include <cpuid.h>
+#endif
+#if defined(__arm__) || defined(__aarch64__)
+# include <sys/auxv.h>
+#endif
 
 // TODO(kostyak): remove __sanitizer *Printf uses in favor for our own less
 //                complicated string formatting code. The following is a
@@ -28,14 +32,14 @@ namespace __sanitizer {
 extern int VSNPrintf(char *buff, int buff_length, const char *format,
                      va_list args);
 
-} // namespace __sanitizer
+}  // namespace __sanitizer
 
 namespace __scudo {
 
 FORMAT(1, 2)
-void dieWithMessage(const char *Format, ...) {
-  // Our messages are tiny, 128 characters is more than enough.
-  char Message[128];
+void NORETURN dieWithMessage(const char *Format, ...) {
+  // Our messages are tiny, 256 characters is more than enough.
+  char Message[256];
   va_list Args;
   va_start(Args, Format);
   __sanitizer::VSNPrintf(Message, sizeof(Message), Format, Args);
@@ -44,90 +48,79 @@ void dieWithMessage(const char *Format, ...) {
   Die();
 }
 
+#if defined(__x86_64__) || defined(__i386__)
+// i386 and x86_64 specific code to detect CRC32 hardware support via CPUID.
+// CRC32 requires the SSE 4.2 instruction set.
 typedef struct {
   u32 Eax;
   u32 Ebx;
   u32 Ecx;
   u32 Edx;
-} CPUIDInfo;
+} CPUIDRegs;
 
-static void getCPUID(CPUIDInfo *info, u32 leaf, u32 subleaf)
+static void getCPUID(CPUIDRegs *Regs, u32 Level)
 {
-  asm volatile("cpuid"
-      : "=a" (info->Eax), "=b" (info->Ebx), "=c" (info->Ecx), "=d" (info->Edx)
-      : "a" (leaf), "c" (subleaf)
-  );
+  __get_cpuid(Level, &Regs->Eax, &Regs->Ebx, &Regs->Ecx, &Regs->Edx);
 }
 
-// Returns true is the CPU is a "GenuineIntel" or "AuthenticAMD"
-static bool isSupportedCPU()
-{
-  CPUIDInfo Info;
-
-  getCPUID(&Info, 0, 0);
-  if (memcmp(reinterpret_cast<char *>(&Info.Ebx), "Genu", 4) == 0 &&
-      memcmp(reinterpret_cast<char *>(&Info.Edx), "ineI", 4) == 0 &&
-      memcmp(reinterpret_cast<char *>(&Info.Ecx), "ntel", 4) == 0) {
-      return true;
+CPUIDRegs getCPUFeatures() {
+  CPUIDRegs VendorRegs = {};
+  getCPUID(&VendorRegs, 0);
+  bool IsIntel =
+      (VendorRegs.Ebx == signature_INTEL_ebx) &&
+      (VendorRegs.Edx == signature_INTEL_edx) &&
+      (VendorRegs.Ecx == signature_INTEL_ecx);
+  bool IsAMD =
+      (VendorRegs.Ebx == signature_AMD_ebx) &&
+      (VendorRegs.Edx == signature_AMD_edx) &&
+      (VendorRegs.Ecx == signature_AMD_ecx);
+  // Default to an empty feature set if not on a supported CPU.
+  CPUIDRegs FeaturesRegs = {};
+  if (IsIntel || IsAMD) {
+    getCPUID(&FeaturesRegs, 1);
   }
-  if (memcmp(reinterpret_cast<char *>(&Info.Ebx), "Auth", 4) == 0 &&
-      memcmp(reinterpret_cast<char *>(&Info.Edx), "enti", 4) == 0 &&
-      memcmp(reinterpret_cast<char *>(&Info.Ecx), "cAMD", 4) == 0) {
-      return true;
-  }
-  return false;
+  return FeaturesRegs;
 }
 
-bool testCPUFeature(CPUFeature feature)
-{
-  static bool InfoInitialized = false;
-  static CPUIDInfo CPUInfo = {};
+#ifndef bit_SSE4_2
+# define bit_SSE4_2 bit_SSE42  // clang and gcc have different defines.
+#endif
 
-  if (InfoInitialized == false) {
-    if (isSupportedCPU() == true)
-      getCPUID(&CPUInfo, 1, 0);
-    else
-      UNIMPLEMENTED();
-    InfoInitialized = true;
-  }
-  switch (feature) {
-    case SSE4_2:
-      return ((CPUInfo.Ecx >> 20) & 0x1) != 0;
+bool testCPUFeature(CPUFeature Feature)
+{
+  CPUIDRegs FeaturesRegs = getCPUFeatures();
+
+  switch (Feature) {
+    case CRC32CPUFeature:  // CRC32 is provided by SSE 4.2.
+      return !!(FeaturesRegs.Ecx & bit_SSE4_2);
     default:
       break;
   }
   return false;
 }
+#elif defined(__arm__) || defined(__aarch64__)
+// For ARM and AArch64, hardware CRC32 support is indicated in the
+// AT_HWVAL auxiliary vector.
 
-// readRetry will attempt to read Count bytes from the Fd specified, and if
-// interrupted will retry to read additional bytes to reach Count.
-static ssize_t readRetry(int Fd, u8 *Buffer, size_t Count) {
-  ssize_t AmountRead = 0;
-  while (static_cast<size_t>(AmountRead) < Count) {
-    ssize_t Result = read(Fd, Buffer + AmountRead, Count - AmountRead);
-    if (Result > 0)
-      AmountRead += Result;
-    else if (!Result)
+#ifndef HWCAP_CRC32
+# define HWCAP_CRC32 (1<<7)  // HWCAP_CRC32 is missing on older platforms.
+#endif
+
+bool testCPUFeature(CPUFeature Feature) {
+  uptr HWCap = getauxval(AT_HWCAP);
+
+  switch (Feature) {
+    case CRC32CPUFeature:
+      return !!(HWCap & HWCAP_CRC32);
+    default:
       break;
-    else if (errno != EINTR) {
-      AmountRead = -1;
-      break;
-    }
   }
-  return AmountRead;
+  return false;
 }
-
-// Default constructor for Xorshift128Plus seeds the state with /dev/urandom
-Xorshift128Plus::Xorshift128Plus() {
-  int Fd = open("/dev/urandom", O_RDONLY);
-  bool Success = readRetry(Fd, reinterpret_cast<u8 *>(&State_0_),
-                           sizeof(State_0_)) == sizeof(State_0_);
-  Success &= readRetry(Fd, reinterpret_cast<u8 *>(&State_1_),
-                           sizeof(State_1_)) == sizeof(State_1_);
-  close(Fd);
-  if (!Success) {
-    dieWithMessage("ERROR: failed to read enough data from /dev/urandom.\n");
-  }
+#else
+bool testCPUFeature(CPUFeature Feature) {
+  return false;
 }
+#endif  // defined(__x86_64__) || defined(__i386__)
 
-} // namespace __scudo
+}  // namespace __scudo

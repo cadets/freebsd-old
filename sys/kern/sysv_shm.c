@@ -30,7 +30,7 @@
  */
 /*-
  * Copyright (c) 2003-2005 McAfee, Inc.
- * Copyright (c) 2016 Robert N. M. Watson
+ * Copyright (c) 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * This software was developed for the FreeBSD Project in part by McAfee
@@ -92,7 +92,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysent.h>
 #include <sys/sysproto.h>
 #include <sys/jail.h>
-#include <sys/uuid.h>
 
 #include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
@@ -283,7 +282,7 @@ shm_delete_mapping(struct vmspace *vm, struct shmmap_state *shmmap_s)
 		return (EINVAL);
 	shmmap_s->shmid = -1;
 	shmseg->u.shm_dtime = time_second;
-	if ((--shmseg->u.shm_nattch <= 0) &&
+	if (--shmseg->u.shm_nattch == 0 &&
 	    (shmseg->u.shm_perm.mode & SHMSEG_REMOVED)) {
 		shm_deallocate_segment(shmseg);
 		shm_last_free = segnum;
@@ -297,7 +296,7 @@ shm_remove(struct shmid_kernel *shmseg, int segnum)
 
 	shmseg->u.shm_perm.key = IPC_PRIVATE;
 	shmseg->u.shm_perm.mode |= SHMSEG_REMOVED;
-	if (shmseg->u.shm_nattch <= 0) {
+	if (shmseg->u.shm_nattch == 0) {
 		shm_deallocate_segment(shmseg);
 		shm_last_free = segnum;
 	}
@@ -357,9 +356,6 @@ kern_shmdt_locked(struct thread *td, const void *shmaddr)
 #if (defined(AUDIT) && defined(KDTRACE_HOOKS)) || defined(MAC)
 	shmsegptr = &shmsegs[IPCID_TO_IX(shmmap_s->shmid)];
 #endif
-#ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&shmsegptr->uuid);
-#endif
 #ifdef MAC
 	error = mac_sysvshm_check_shmdt(td->td_ucred, shmsegptr);
 	if (error != 0)
@@ -416,9 +412,6 @@ kern_shmat_locked(struct thread *td, int shmid, const void *shmaddr,
 	shmseg = shm_find_segment(rpr, shmid, true);
 	if (shmseg == NULL)
 		return (EINVAL);
-#ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&shmseg->uuid);
-#endif
 	error = ipcperm(td, &shmseg->u.shm_perm,
 	    (shmflg & SHM_RDONLY) ? IPC_R : IPC_R|IPC_W);
 	if (error != 0)
@@ -550,9 +543,6 @@ kern_shmctl_locked(struct thread *td, int shmid, int cmd, void *buf,
 	shmseg = shm_find_segment(rpr, shmid, cmd != SHM_STAT);
 	if (shmseg == NULL)
 		return (EINVAL);
-#ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&shmseg->uuid);
-#endif
 #ifdef MAC
 	error = mac_sysvshm_check_shmctl(td->td_ucred, shmseg, cmd);
 	if (error != 0)
@@ -688,9 +678,6 @@ shmget_existing(struct thread *td, struct shmget_args *uap, int mode,
 #endif
 	if (uap->size != 0 && uap->size > shmseg->u.shm_segsz)
 		return (EINVAL);
-#ifdef KDTRACE_HOOKS
-	AUDIT_RET_OBJUUID1(&shmseg->uuid);
-#endif
 	td->td_retval[0] = IXSEQ_TO_IPCID(segnum, shmseg->u.shm_perm);
 	return (0);
 }
@@ -782,12 +769,8 @@ shmget_allocate_segment(struct thread *td, struct shmget_args *uap, int mode)
 	mac_sysvshm_create(cred, shmseg);
 #endif
 	shmseg->u.shm_ctime = time_second;
-	(void)kern_uuidgen(&shmseg->uuid, 1);
 	shm_committed += btoc(size);
 	shm_nused++;
-#ifdef KDTRACE_HOOKS
-	AUDIT_RET_OBJUUID1(&shmseg->uuid);
-#endif
 	td->td_retval[0] = IXSEQ_TO_IPCID(segnum, shmseg->u.shm_perm);
 
 	return (0);

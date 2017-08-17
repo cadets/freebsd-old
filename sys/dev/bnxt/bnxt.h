@@ -32,12 +32,12 @@ __FBSDID("$FreeBSD$");
 #ifndef _BNXT_H
 #define _BNXT_H
 
-#include <sys/types.h>
-#include <sys/bus.h>
-#include <sys/bus_dma.h>
+#include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/sysctl.h>
 #include <sys/taskqueue.h>
+
+#include <machine/bus.h>
 
 #include <net/ethernet.h>
 #include <net/if.h>
@@ -78,6 +78,7 @@ __FBSDID("$FreeBSD$");
 #define BCM57417_NPAR1	0x16c0
 #define BCM57417_NPAR2	0x16cc
 #define BCM57417_SFP	0x16e2
+#define BCM57454	0x1614
 #define BCM58700	0x16cd
 #define NETXTREME_C_VF1	0x16cb
 #define NETXTREME_C_VF2	0x16e1
@@ -91,6 +92,17 @@ __FBSDID("$FreeBSD$");
 				 CSUM_IP6_UDP|CSUM_IP6_TCP|CSUM_IP6_SCTP)
 
 #define BNXT_MAX_MTU	9000
+
+#define BNXT_RSS_HASH_TYPE_TCPV4	0
+#define BNXT_RSS_HASH_TYPE_UDPV4	1
+#define BNXT_RSS_HASH_TYPE_IPV4		2
+#define BNXT_RSS_HASH_TYPE_TCPV6	3
+#define BNXT_RSS_HASH_TYPE_UDPV6	4
+#define BNXT_RSS_HASH_TYPE_IPV6		5
+#define BNXT_GET_RSS_PROFILE_ID(rss_hash_type) ((rss_hash_type >> 1) & 0x1F)
+
+#define BNXT_NO_MORE_WOL_FILTERS	0xFFFF
+#define bnxt_wol_supported(softc)	((softc)->flags & BNXT_FLAG_WOL_CAP)
 
 /* Completion related defines */
 #define CMP_VALID(cmp, v_bit) \
@@ -201,6 +213,18 @@ __FBSDID("$FreeBSD$");
 
 /* Chip info */
 #define BNXT_TSO_SIZE	UINT16_MAX
+
+#define min_t(type, x, y) ({                    \
+        type __min1 = (x);                      \
+        type __min2 = (y);                      \
+        __min1 < __min2 ? __min1 : __min2; })
+
+#define max_t(type, x, y) ({                    \
+        type __max1 = (x);                      \
+        type __max2 = (y);                      \
+        __max1 > __max2 ? __max1 : __max2; })
+
+#define clamp_t(type, _x, min, max)     min_t(type, max_t(type, _x, min), max)
 
 /* NVRAM access */
 enum bnxt_nvm_directory_type {
@@ -426,6 +450,7 @@ struct bnxt_ring {
 	uint32_t		ring_size;	/* Must be a power of two */
 	uint16_t		id;		/* Logical ID */
 	uint16_t		phys_id;
+	struct bnxt_full_tpa_start *tpa_start;
 };
 
 struct bnxt_cp_ring {
@@ -504,7 +529,8 @@ struct bnxt_softc {
 	struct bnxt_bar_info	hwrm_bar;
 	struct bnxt_bar_info	doorbell_bar;
 	struct bnxt_link_info	link_info;
-#define BNXT_FLAG_NPAR		1
+#define BNXT_FLAG_NPAR		0x1
+#define BNXT_FLAG_WOL_CAP	0x2
 	uint32_t		flags;
 	uint32_t		total_msix;
 
@@ -551,9 +577,24 @@ struct bnxt_softc {
 	struct sysctl_ctx_list	hw_stats;
 	struct sysctl_oid	*hw_stats_oid;
 
-	struct bnxt_full_tpa_start *tpa_start;
 	struct bnxt_ver_info	*ver_info;
 	struct bnxt_nvram_info	*nvm_info;
+	bool wol;
+	uint8_t wol_filter_id;
+	uint16_t		rx_coal_usecs;
+	uint16_t		rx_coal_usecs_irq;
+	uint16_t               	rx_coal_frames;
+	uint16_t               	rx_coal_frames_irq;
+	uint16_t               	tx_coal_usecs;
+	uint16_t               	tx_coal_usecs_irq;
+	uint16_t               	tx_coal_frames;
+	uint16_t               	tx_coal_frames_irq;
+
+#define BNXT_USEC_TO_COAL_TIMER(x)      ((x) * 25 / 2)
+#define BNXT_DEF_STATS_COAL_TICKS        1000000
+#define BNXT_MIN_STATS_COAL_TICKS         250000
+#define BNXT_MAX_STATS_COAL_TICKS        1000000
+
 };
 
 struct bnxt_filter_info {

@@ -18,7 +18,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -217,12 +217,12 @@ xfsize(int i, int n, off_t off, off_t len)
 /*
  * Helper function to get offset within object for i page.
  */
-static inline vm_offset_t
+static inline vm_ooffset_t
 vmoff(int i, off_t off)
 {
 
 	if (i == 0)
-		return ((vm_offset_t)off);
+		return ((vm_ooffset_t)off);
 
 	return (trunc_page(off + i * PAGE_SIZE));
 }
@@ -268,7 +268,8 @@ sendfile_iodone(void *arg, vm_page_t *pg, int count, int error)
 	struct socket *so;
 
 	for (int i = 0; i < count; i++)
-		vm_page_xunbusy(pg[i]);
+		if (pg[i] != bogus_page)
+			vm_page_xunbusy(pg[i]);
 
 	if (error)
 		sfio->error = error;
@@ -318,7 +319,7 @@ sendfile_swapin(vm_object_t obj, struct sf_io *sfio, off_t off, off_t len,
     int npages, int rhpages, int flags)
 {
 	vm_page_t *pa = sfio->pa;
-	int nios;
+	int grabbed, nios;
 
 	nios = 0;
 	flags = (flags & SF_NODISKIO) ? VM_ALLOC_NOWAIT : 0;
@@ -328,14 +329,14 @@ sendfile_swapin(vm_object_t obj, struct sf_io *sfio, off_t off, off_t len,
 	 * only required pages.  Readahead pages are dealt with later.
 	 */
 	VM_OBJECT_WLOCK(obj);
-	for (int i = 0; i < npages; i++) {
-		pa[i] = vm_page_grab(obj, OFF_TO_IDX(vmoff(i, off)),
-		    VM_ALLOC_WIRED | VM_ALLOC_NORMAL | flags);
-		if (pa[i] == NULL) {
-			npages = i;
-			rhpages = 0;
-			break;
-		}
+
+	grabbed = vm_page_grab_pages(obj, OFF_TO_IDX(off),
+	    VM_ALLOC_NORMAL | VM_ALLOC_WIRED | flags, pa, npages);
+	if (grabbed < npages) {
+		for (int i = grabbed; i < npages; i++)
+			pa[i] = NULL;
+		npages = grabbed;
+		rhpages = 0;
 	}
 
 	for (int i = 0; i < npages;) {
@@ -351,50 +352,52 @@ sendfile_swapin(vm_object_t obj, struct sf_io *sfio, off_t off, off_t len,
 		}
 
 		/*
-		 * Now 'i' points to first invalid page, iterate further
-		 * to make 'j' point at first valid after a bunch of
-		 * invalid ones.
-		 */
-		for (j = i + 1; j < npages; j++)
-			if (vm_page_is_valid(pa[j], vmoff(j, off) & PAGE_MASK,
-			    xfsize(j, npages, off, len))) {
-				SFSTAT_INC(sf_pages_valid);
-				break;
-			}
-
-		/*
-		 * Now we got region of invalid pages between 'i' and 'j'.
-		 * Check that they belong to pager.  They may not be there,
-		 * which is a regular situation for shmem pager.  For vnode
-		 * pager this happens only in case of sparse file.
+		 * Next page is invalid.  Check if it belongs to pager.  It
+		 * may not be there, which is a regular situation for shmem
+		 * pager.  For vnode pager this happens only in case of
+		 * a sparse file.
 		 *
 		 * Important feature of vm_pager_has_page() is the hint
 		 * stored in 'a', about how many pages we can pagein after
 		 * this page in a single I/O.
 		 */
-		while (!vm_pager_has_page(obj, OFF_TO_IDX(vmoff(i, off)),
-		    NULL, &a) && i < j) {
+		if (!vm_pager_has_page(obj, OFF_TO_IDX(vmoff(i, off)), NULL,
+		    &a)) {
 			pmap_zero_page(pa[i]);
 			pa[i]->valid = VM_PAGE_BITS_ALL;
-			pa[i]->dirty = 0;
+			MPASS(pa[i]->dirty == 0);
 			vm_page_xunbusy(pa[i]);
 			i++;
-		}
-		if (i == j)
 			continue;
+		}
 
 		/*
 		 * We want to pagein as many pages as possible, limited only
 		 * by the 'a' hint and actual request.
-		 *
-		 * We should not pagein into already valid page, thus if
-		 * 'j' didn't reach last page, trim by that page.
-		 *
-		 * When the pagein fulfils the request, also specify readahead.
 		 */
-		if (j < npages)
-			a = min(a, j - i - 1);
 		count = min(a + 1, npages - i);
+
+		/*
+		 * We should not pagein into a valid page, thus we first trim
+		 * any valid pages off the end of request, and substitute
+		 * to bogus_page those, that are in the middle.
+		 */
+		for (j = i + count - 1; j > i; j--) {
+			if (vm_page_is_valid(pa[j], vmoff(j, off) & PAGE_MASK,
+			    xfsize(j, npages, off, len))) {
+				count--;
+				rhpages = 0;
+			} else
+				break;
+		}
+		for (j = i + 1; j < i + count - 1; j++)
+			if (vm_page_is_valid(pa[j], vmoff(j, off) & PAGE_MASK,
+			    xfsize(j, npages, off, len))) {
+				vm_page_xunbusy(pa[j]);
+				SFSTAT_INC(sf_pages_valid);
+				SFSTAT_INC(sf_pages_bogus);
+				pa[j] = bogus_page;
+			}
 
 		refcount_acquire(&sfio->nios);
 		rv = vm_pager_get_pages_async(obj, pa + i, count, NULL,
@@ -408,13 +411,18 @@ sendfile_swapin(vm_object_t obj, struct sf_io *sfio, off_t off, off_t len,
 		if (i + count == npages)
 			SFSTAT_ADD(sf_rhpages_read, rhpages);
 
-#ifdef INVARIANTS
-		for (j = i; j < i + count && j < npages; j++)
-			KASSERT(pa[j] == vm_page_lookup(obj,
-			    OFF_TO_IDX(vmoff(j, off))),
-			    ("pa[j] %p lookup %p\n", pa[j],
-			    vm_page_lookup(obj, OFF_TO_IDX(vmoff(j, off)))));
-#endif
+		/*
+		 * Restore the valid page pointers.  They are already
+		 * unbusied, but still wired.
+		 */
+		for (j = i; j < i + count; j++)
+			if (pa[j] == bogus_page) {
+				pa[j] = vm_page_lookup(obj,
+				    OFF_TO_IDX(vmoff(j, off)));
+				KASSERT(pa[j], ("%s: page %p[%d] disappeared",
+				    __func__, pa, j));
+
+			}
 		i += count;
 		nios++;
 	}
@@ -697,11 +705,10 @@ retry_space:
 				goto done;
 			}
 			if (va.va_size != obj_size) {
-				if (nbytes == 0)
-					rem += va.va_size - obj_size;
-				else if (offset + nbytes > va.va_size)
-					rem -= (offset + nbytes - va.va_size);
 				obj_size = va.va_size;
+				rem = nbytes ?
+				    omin(nbytes + offset, obj_size) : obj_size;
+				rem -= off;
 			}
 		}
 
@@ -712,13 +719,20 @@ retry_space:
 
 		/*
 		 * Calculate maximum allowed number of pages for readahead
-		 * at this iteration.  First, we allow readahead up to "rem".
+		 * at this iteration.  If SF_USER_READAHEAD was set, we don't
+		 * do any heuristics and use exactly the value supplied by
+		 * application.  Otherwise, we allow readahead up to "rem".
 		 * If application wants more, let it be, but there is no
 		 * reason to go above MAXPHYS.  Also check against "obj_size",
 		 * since vm_pager_has_page() can hint beyond EOF.
 		 */
-		rhpages = howmany(rem + (off & PAGE_MASK), PAGE_SIZE) - npages;
-		rhpages += SF_READAHEAD(flags);
+		if (flags & SF_USER_READAHEAD) {
+			rhpages = SF_READAHEAD(flags);
+		} else {
+			rhpages = howmany(rem + (off & PAGE_MASK), PAGE_SIZE) -
+			    npages;
+			rhpages += SF_READAHEAD(flags);
+		}
 		rhpages = min(howmany(MAXPHYS, PAGE_SIZE), rhpages);
 		rhpages = min(howmany(obj_size - trunc_page(off), PAGE_SIZE) -
 		    npages, rhpages);
@@ -947,6 +961,7 @@ sendfile(struct thread *td, struct sendfile_args *uap, int compat)
 	if (uap->offset < 0)
 		return (EINVAL);
 
+	sbytes = 0;
 	hdr_uio = trl_uio = NULL;
 
 	if (uap->hdtr != NULL) {

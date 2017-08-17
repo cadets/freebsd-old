@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 2014 Jakub Wojciech Klama <jceel@FreeBSD.org>
- * Copyright (c) 2015-2016 Vladimir Kondratyev <wulf@cicgroup.ru>
+ * Copyright (c) 2015-2016 Vladimir Kondratyev <wulf@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,25 +29,24 @@
 
 #include "opt_evdev.h"
 
-#include <sys/types.h>
-#include <sys/systm.h>
 #include <sys/param.h>
+#include <sys/conf.h>
 #include <sys/fcntl.h>
 #include <sys/kernel.h>
-#include <sys/module.h>
-#include <sys/conf.h>
-#include <sys/uio.h>
-#include <sys/proc.h>
-#include <sys/poll.h>
-#include <sys/selinfo.h>
-#include <sys/malloc.h>
 #include <sys/lock.h>
+#include <sys/malloc.h>
+#include <sys/module.h>
+#include <sys/poll.h>
+#include <sys/proc.h>
+#include <sys/selinfo.h>
+#include <sys/systm.h>
 #include <sys/sx.h>
+#include <sys/uio.h>
 
-#include <dev/evdev/input.h>
-#include <dev/evdev/uinput.h>
 #include <dev/evdev/evdev.h>
 #include <dev/evdev/evdev_private.h>
+#include <dev/evdev/input.h>
+#include <dev/evdev/uinput.h>
 
 #ifdef UINPUT_DEBUG
 #define	debugf(state, fmt, args...)	printf("uinput: " fmt "\n", ##args)
@@ -501,9 +500,10 @@ uinput_ioctl_sub(struct uinput_cdev_state *state, u_long cmd, caddr_t data)
 
 		evdev_set_methods(state->ucs_evdev, state, &uinput_ev_methods);
 		evdev_set_flag(state->ucs_evdev, EVDEV_FLAG_SOFTREPEAT);
-		evdev_register(state->ucs_evdev);
-		state->ucs_state = UINPUT_RUNNING;
-		return (0);
+		ret = evdev_register(state->ucs_evdev);
+		if (ret == 0)
+			state->ucs_state = UINPUT_RUNNING;
+		return (ret);
 
 	case UI_DEV_DESTROY:
 		if (state->ucs_state != UINPUT_RUNNING)

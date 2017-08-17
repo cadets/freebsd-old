@@ -1,7 +1,6 @@
 # $FreeBSD$
 
 .include <src.opts.mk>
-MK_INSTRUMENT_BINARIES=	no
 MK_SSP=		no
 
 LOADER?=	loader
@@ -10,9 +9,12 @@ MAN=
 INTERNALPROG=
 NEWVERSWHAT?=	"bootstrap loader" x86
 VERSION_FILE=	${.CURDIR}/../loader/version
+LOADER_NET_SUPPORT?=	yes
+LOADER_NFS_SUPPORT?=	yes
+LOADER_TFTP_SUPPORT?=	yes
 
 # architecture-specific loader code
-SRCS=		main.c conf.c vers.c
+SRCS=		main.c conf.c vers.c chain.c
 
 # Put LOADER_FIREWIRE_SUPPORT=yes in /etc/make.conf for FireWire/dcons support
 .if defined(LOADER_FIREWIRE_SUPPORT)
@@ -26,10 +28,14 @@ CFLAGS+=	-DLOADER_ZFS_SUPPORT
 LIBZFSBOOT=	${.OBJDIR}/../../zfs/libzfsboot.a
 .endif
 
-# Enable PXE TFTP or NFS support, not both.
+.if defined(LOADER_NET_SUPPORT)
+CFLAGS+=	-I${.CURDIR}/../../../../lib/libstand
+.endif
+
 .if defined(LOADER_TFTP_SUPPORT)
 CFLAGS+=	-DLOADER_TFTP_SUPPORT
-.else
+.endif
+.if defined(LOADER_NFS_SUPPORT)
 CFLAGS+=	-DLOADER_NFS_SUPPORT
 .endif
 
@@ -62,6 +68,7 @@ CFLAGS+=	-DLOADER_NANDFS_SUPPORT
 .endif
 .if !defined(LOADER_NO_GELI_SUPPORT)
 CFLAGS+=	-DLOADER_GELI_SUPPORT
+CFLAGS+=	-I${.CURDIR}/../../geli
 LIBGELIBOOT=	${.OBJDIR}/../../geli/libgeliboot.a
 .PATH:		${.CURDIR}/../../../opencrypto
 SRCS+=		xform_aes_xts.c
@@ -120,8 +127,8 @@ FILES+=	loader.rc menu.rc
 # XXX crt0.o needs to be first for pxeboot(8) to work
 OBJS=	${BTXCRT}
 
-DPADD=	${LIBFICL} ${LIBFIREWIRE} ${LIBZFSBOOT} ${LIBI386} ${LIBSTAND} ${LIBGELIBOOT}
-LDADD=	${LIBFICL} ${LIBFIREWIRE} ${LIBZFSBOOT} ${LIBI386} ${LIBSTAND} ${LIBGELIBOOT}
+DPADD=	${LIBFICL} ${LIBFIREWIRE} ${LIBZFSBOOT} ${LIBI386} ${LIBGELIBOOT} ${LIBSTAND}
+LDADD=	${LIBFICL} ${LIBFIREWIRE} ${LIBZFSBOOT} ${LIBI386} ${LIBGELIBOOT} ${LIBSTAND}
 
 .include <bsd.prog.mk>
 

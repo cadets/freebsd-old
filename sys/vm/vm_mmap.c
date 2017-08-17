@@ -7,14 +7,6 @@
  * the Systems Programming Group of the University of Utah Computer
  * Science Department.
  *
- * Copyright (c) 2016 Robert N. M. Watson
- * All rights reserved.
- *
- * Portions of this software were developed by BAE Systems, the University of
- * Cambridge Computer Laboratory, and Memorial University under DARPA/AFRL
- * contract FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent
- * Computing (TC) research program.
- *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -23,7 +15,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -53,7 +45,6 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_compat.h"
 #include "opt_hwpmc_hooks.h"
-#include "opt_metaio.h"
 #include "opt_vm.h"
 
 #include <sys/param.h>
@@ -75,7 +66,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/vnode.h>
 #include <sys/fcntl.h>
 #include <sys/file.h>
-#include <sys/metaio.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/conf.h>
@@ -110,9 +100,6 @@ SYSCTL_INT(_vm, OID_AUTO, old_mlock, CTLFLAG_RWTUN, &old_mlock, 0,
 #ifdef MAP_32BIT
 #define	MAP_32BIT_MAX_ADDR	((vm_offset_t)1 << 31)
 #endif
-
-int	kern_mmap(struct thread *td, uintptr_t addr0, size_t size, int prot,
-		    int flags, int fd, off_t pos, struct metaio *miop);
 
 #ifndef _SYS_SYSPROTO_H_
 struct sbrk_args {
@@ -187,30 +174,12 @@ sys_mmap(struct thread *td, struct mmap_args *uap)
 {
 
 	return (kern_mmap(td, (uintptr_t)uap->addr, uap->len, uap->prot,
-	    uap->flags, uap->fd, uap->pos, NULL));
-}
-
-int
-sys_metaio_mmap(struct thread *td, struct metaio_mmap_args *uap)
-{
-#ifdef METAIO
-	struct metaio mio;
-	int error;
-
-	metaio_init(td, &mio);
-	error = kern_mmap(td, (uintptr_t)uap->addr, uap->len, uap->prot,
-	    uap->flags, uap->fd, uap->pos, &mio);
-	if (error == 0)
-		error = copyout(&mio, uap->miop, sizeof(mio));
-	return (error);
-#else /* !METAIO */
-	return (ENOSYS);
-#endif /* METAIO */
+	    uap->flags, uap->fd, uap->pos));
 }
 
 int
 kern_mmap(struct thread *td, uintptr_t addr0, size_t size, int prot, int flags,
-    int fd, off_t pos, struct metaio *miop)
+    int fd, off_t pos)
 {
 	struct vmspace *vms;
 	struct file *fp;
@@ -257,7 +226,7 @@ kern_mmap(struct thread *td, uintptr_t addr0, size_t size, int prot, int flags,
 	}
 	if ((flags & ~(MAP_SHARED | MAP_PRIVATE | MAP_FIXED | MAP_HASSEMAPHORE |
 	    MAP_STACK | MAP_NOSYNC | MAP_ANON | MAP_EXCL | MAP_NOCORE |
-	    MAP_PREFAULT_READ |
+	    MAP_PREFAULT_READ | MAP_GUARD |
 #ifdef MAP_32BIT
 	    MAP_32BIT |
 #endif
@@ -269,6 +238,10 @@ kern_mmap(struct thread *td, uintptr_t addr0, size_t size, int prot, int flags,
 		return (EINVAL);
 	if (prot != PROT_NONE &&
 	    (prot & ~(PROT_READ | PROT_WRITE | PROT_EXEC)) != 0)
+		return (EINVAL);
+	if ((flags & MAP_GUARD) != 0 && (prot != PROT_NONE || fd != -1 ||
+	    pos != 0 || (flags & (MAP_SHARED | MAP_PRIVATE | MAP_PREFAULT |
+	    MAP_PREFAULT_READ | MAP_ANON | MAP_STACK)) != 0))
 		return (EINVAL);
 
 	/*
@@ -345,7 +318,10 @@ kern_mmap(struct thread *td, uintptr_t addr0, size_t size, int prot, int flags,
 		 * returns an error earlier.
 		 */
 		error = 0;
-	} else if (flags & MAP_ANON) {
+	} else if ((flags & MAP_GUARD) != 0) {
+		error = vm_mmap_object(&vms->vm_map, &addr, size, VM_PROT_NONE,
+		    VM_PROT_NONE, flags, NULL, pos, FALSE, td);
+	} else if ((flags & MAP_ANON) != 0) {
 		/*
 		 * Mapping blank space is trivial.
 		 *
@@ -380,7 +356,7 @@ kern_mmap(struct thread *td, uintptr_t addr0, size_t size, int prot, int flags,
 
 		/* This relies on VM_PROT_* matching PROT_*. */
 		error = fo_mmap(fp, &vms->vm_map, &addr, size, prot,
-		    cap_maxprot, flags, pos, td, miop);
+		    cap_maxprot, flags, pos, td);
 	}
 
 	if (error == 0)
@@ -398,7 +374,7 @@ freebsd6_mmap(struct thread *td, struct freebsd6_mmap_args *uap)
 {
 
 	return (kern_mmap(td, (uintptr_t)uap->addr, uap->len, uap->prot,
-	    uap->flags, uap->fd, uap->pos, NULL));
+	    uap->flags, uap->fd, uap->pos));
 }
 #endif
 
@@ -453,7 +429,7 @@ ommap(struct thread *td, struct ommap_args *uap)
 	if (uap->flags & OMAP_FIXED)
 		flags |= MAP_FIXED;
 	return (kern_mmap(td, (uintptr_t)uap->addr, uap->len, prot, flags,
-	    uap->fd, uap->pos, NULL));
+	    uap->fd, uap->pos));
 }
 #endif				/* COMPAT_43 */
 
@@ -742,11 +718,17 @@ struct mincore_args {
 int
 sys_mincore(struct thread *td, struct mincore_args *uap)
 {
+
+	return (kern_mincore(td, (uintptr_t)uap->addr, uap->len, uap->vec));
+}
+
+int
+kern_mincore(struct thread *td, uintptr_t addr0, size_t len, char *vec)
+{
 	vm_offset_t addr, first_addr;
 	vm_offset_t end, cend;
 	pmap_t pmap;
 	vm_map_t map;
-	char *vec;
 	int error = 0;
 	int vecindex, lastvecindex;
 	vm_map_entry_t current;
@@ -763,16 +745,11 @@ sys_mincore(struct thread *td, struct mincore_args *uap)
 	 * Make sure that the addresses presented are valid for user
 	 * mode.
 	 */
-	first_addr = addr = trunc_page((vm_offset_t) uap->addr);
-	end = addr + (vm_size_t)round_page(uap->len);
+	first_addr = addr = trunc_page(addr0);
+	end = addr + (vm_size_t)round_page(len);
 	map = &td->td_proc->p_vmspace->vm_map;
 	if (end > vm_map_max(map) || end < addr)
 		return (ENOMEM);
-
-	/*
-	 * Address of byte vector
-	 */
-	vec = uap->vec;
 
 	pmap = vmspace_pmap(td->td_proc->p_vmspace);
 
@@ -879,9 +856,6 @@ RestartScan:
 					pindex = OFF_TO_IDX(current->offset +
 					    (addr - current->start));
 					m = vm_page_lookup(object, pindex);
-					if (m == NULL &&
-					    vm_page_is_cached(object, pindex))
-						mincoreinfo = MINCORE_INCORE;
 					if (m != NULL && m->valid == 0)
 						m = NULL;
 					if (m != NULL)
@@ -919,7 +893,7 @@ RestartScan:
 			/*
 			 * calculate index into user supplied byte vector
 			 */
-			vecindex = OFF_TO_IDX(addr - first_addr);
+			vecindex = atop(addr - first_addr);
 
 			/*
 			 * If we have skipped map entries, we need to make sure that
@@ -965,7 +939,7 @@ RestartScan:
 	/*
 	 * Zero the last entries in the byte vector.
 	 */
-	vecindex = OFF_TO_IDX(end - first_addr);
+	vecindex = atop(end - first_addr);
 	while ((lastvecindex + 1) < vecindex) {
 		++lastvecindex;
 		error = subyte(vec + lastvecindex, 0);
@@ -1464,10 +1438,12 @@ vm_mmap_object(vm_map_t map, vm_offset_t *addr, vm_size_t size, vm_prot_t prot,
     vm_prot_t maxprot, int flags, vm_object_t object, vm_ooffset_t foff,
     boolean_t writecounted, struct thread *td)
 {
-	boolean_t fitit;
+	boolean_t curmap, fitit;
+	vm_offset_t max_addr;
 	int docow, error, findspace, rv;
 
-	if (map == &td->td_proc->p_vmspace->vm_map) {
+	curmap = map == &td->td_proc->p_vmspace->vm_map;
+	if (curmap) {
 		PROC_LOCK(td->td_proc);
 		if (map->size + size > lim_cur_proc(td->td_proc, RLIMIT_VMEM)) {
 			PROC_UNLOCK(td->td_proc);
@@ -1544,6 +1520,8 @@ vm_mmap_object(vm_map_t map, vm_offset_t *addr, vm_size_t size, vm_prot_t prot,
 	}
 	if ((flags & MAP_EXCL) != 0)
 		docow |= MAP_CHECK_EXCL;
+	if ((flags & MAP_GUARD) != 0)
+		docow |= MAP_CREATE_GUARD;
 
 	if (fitit) {
 		if ((flags & MAP_ALIGNMENT_MASK) == MAP_ALIGNED_SUPER)
@@ -1553,11 +1531,20 @@ vm_mmap_object(vm_map_t map, vm_offset_t *addr, vm_size_t size, vm_prot_t prot,
 			    MAP_ALIGNMENT_SHIFT);
 		else
 			findspace = VMFS_OPTIMAL_SPACE;
-		rv = vm_map_find(map, object, foff, addr, size,
+		max_addr = 0;
 #ifdef MAP_32BIT
-		    flags & MAP_32BIT ? MAP_32BIT_MAX_ADDR :
+		if ((flags & MAP_32BIT) != 0)
+			max_addr = MAP_32BIT_MAX_ADDR;
 #endif
-		    0, findspace, prot, maxprot, docow);
+		if (curmap) {
+			rv = vm_map_find_min(map, object, foff, addr, size,
+			    round_page((vm_offset_t)td->td_proc->p_vmspace->
+			    vm_daddr + lim_max(td, RLIMIT_DATA)), max_addr,
+			    findspace, prot, maxprot, docow);
+		} else {
+			rv = vm_map_find(map, object, foff, addr, size,
+			    max_addr, findspace, prot, maxprot, docow);
+		}
 	} else {
 		rv = vm_map_fixed(map, object, foff, *addr, size,
 		    prot, maxprot, docow);

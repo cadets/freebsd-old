@@ -373,7 +373,7 @@ mps_iocfacts_allocate(struct mps_softc *sc, uint8_t attaching)
 		}
 	}
 
-	mps_print_iocfacts(sc, sc->facts);
+	MPS_DPRINT_PAGE(sc, MPS_XINFO, iocfacts, sc->facts);
 
 	snprintf(sc->fw_version, sizeof(sc->fw_version), 
 	    "%02d.%02d.%02d.%02d", 
@@ -427,6 +427,8 @@ mps_iocfacts_allocate(struct mps_softc *sc, uint8_t attaching)
 
 	/* Only deallocate and reallocate if relevant IOC Facts have changed */
 	reallocating = FALSE;
+	sc->mps_flags &= ~MPS_FLAGS_REALLOCATED;
+
 	if ((!attaching) &&
 	    ((saved_facts.MsgVersion != sc->facts->MsgVersion) ||
 	    (saved_facts.HeaderVersion != sc->facts->HeaderVersion) ||
@@ -447,6 +449,9 @@ mps_iocfacts_allocate(struct mps_softc *sc, uint8_t attaching)
 	    (saved_facts.MaxPersistentEntries !=
 	    sc->facts->MaxPersistentEntries))) {
 		reallocating = TRUE;
+
+		/* Record that we reallocated everything */
+		sc->mps_flags |= MPS_FLAGS_REALLOCATED;
 	}
 
 	/*
@@ -505,7 +510,8 @@ mps_iocfacts_allocate(struct mps_softc *sc, uint8_t attaching)
 	 */
 	if (reallocating) {
 		mps_iocfacts_free(sc);
-		mpssas_realloc_targets(sc, saved_facts.MaxTargets);
+		mpssas_realloc_targets(sc, saved_facts.MaxTargets +
+		    saved_facts.MaxVolumes);
 	}
 
 	/*
@@ -1340,7 +1346,7 @@ mps_init_queues(struct mps_softc *sc)
  * Next are the global settings, if they exist.  Highest are the per-unit
  * settings, if they exist.
  */
-static void
+void
 mps_get_tunables(struct mps_softc *sc)
 {
 	char tmpstr[80];
@@ -1353,6 +1359,7 @@ mps_get_tunables(struct mps_softc *sc)
 	sc->max_io_pages = MPS_MAXIO_PAGES;
 	sc->enable_ssu = MPS_SSU_ENABLE_SSD_DISABLE_HDD;
 	sc->spinup_wait_time = DEFAULT_SPINUP_WAIT;
+	sc->use_phynum = 1;
 
 	/*
 	 * Grab the global variables.
@@ -1364,6 +1371,7 @@ mps_get_tunables(struct mps_softc *sc)
 	TUNABLE_INT_FETCH("hw.mps.max_io_pages", &sc->max_io_pages);
 	TUNABLE_INT_FETCH("hw.mps.enable_ssu", &sc->enable_ssu);
 	TUNABLE_INT_FETCH("hw.mps.spinup_wait_time", &sc->spinup_wait_time);
+	TUNABLE_INT_FETCH("hw.mps.use_phy_num", &sc->use_phynum);
 
 	/* Grab the unit-instance variables */
 	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.debug_level",
@@ -1398,6 +1406,10 @@ mps_get_tunables(struct mps_softc *sc)
 	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.spinup_wait_time",
 	    device_get_unit(sc->mps_dev));
 	TUNABLE_INT_FETCH(tmpstr, &sc->spinup_wait_time);
+
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.use_phy_num",
+	    device_get_unit(sc->mps_dev));
+	TUNABLE_INT_FETCH(tmpstr, &sc->use_phynum);
 }
 
 static void
@@ -1495,6 +1507,10 @@ mps_setup_sysctl(struct mps_softc *sc)
 	SYSCTL_ADD_PROC(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
 	    OID_AUTO, "encl_table_dump", CTLTYPE_STRING | CTLFLAG_RD, sc, 0,
 	    mps_mapping_encl_dump, "A", "Enclosure Table Dump");
+
+	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
+	    OID_AUTO, "use_phy_num", CTLFLAG_RD, &sc->use_phynum, 0,
+	    "Use the phy number for enumeration");
 }
 
 int
@@ -1502,12 +1518,11 @@ mps_attach(struct mps_softc *sc)
 {
 	int error;
 
-	mps_get_tunables(sc);
-
 	MPS_FUNCTRACE(sc);
 
 	mtx_init(&sc->mps_mtx, "MPT2SAS lock", NULL, MTX_DEF);
 	callout_init_mtx(&sc->periodic, &sc->mps_mtx, 0);
+	callout_init_mtx(&sc->device_check_callout, &sc->mps_mtx, 0);
 	TAILQ_INIT(&sc->event_list);
 	timevalclear(&sc->lastfail);
 
@@ -1613,7 +1628,7 @@ mps_log_evt_handler(struct mps_softc *sc, uintptr_t data,
 {
 	MPI2_EVENT_DATA_LOG_ENTRY_ADDED *entry;
 
-	mps_print_event(sc, event);
+	MPS_DPRINT_EVENT(sc, generic, event);
 
 	switch (event->Event) {
 	case MPI2_EVENT_LOG_DATA:
@@ -1672,6 +1687,7 @@ mps_free(struct mps_softc *sc)
 	mps_unlock(sc);
 	/* Lock must not be held for this */
 	callout_drain(&sc->periodic);
+	callout_drain(&sc->device_check_callout);
 
 	if (((error = mps_detach_log(sc)) != 0) ||
 	    ((error = mps_detach_sas(sc)) != 0))
@@ -2022,7 +2038,7 @@ mps_reregister_events_complete(struct mps_softc *sc, struct mps_command *cm)
 	mps_dprint(sc, MPS_TRACE, "%s\n", __func__);
 
 	if (cm->cm_reply)
-		mps_print_event(sc,
+		MPS_DPRINT_EVENT(sc, generic,
 			(MPI2_EVENT_NOTIFICATION_REPLY *)cm->cm_reply);
 
 	mps_free_command(sc, cm);
@@ -2064,7 +2080,7 @@ mps_update_events(struct mps_softc *sc, struct mps_event_handle *handle,
     u32 *mask)
 {
 	MPI2_EVENT_NOTIFICATION_REQUEST *evtreq;
-	MPI2_EVENT_NOTIFICATION_REPLY *reply;
+	MPI2_EVENT_NOTIFICATION_REPLY *reply = NULL;
 	struct mps_command *cm;
 	int error, i;
 
@@ -2102,15 +2118,20 @@ mps_update_events(struct mps_softc *sc, struct mps_event_handle *handle,
 	cm->cm_desc.Default.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE;
 	cm->cm_data = NULL;
 
-	error = mps_wait_command(sc, cm, 60, 0);
-	reply = (MPI2_EVENT_NOTIFICATION_REPLY *)cm->cm_reply;
+	error = mps_wait_command(sc, &cm, 60, 0);
+	if (cm != NULL)
+		reply = (MPI2_EVENT_NOTIFICATION_REPLY *)cm->cm_reply;
 	if ((reply == NULL) ||
 	    (reply->IOCStatus & MPI2_IOCSTATUS_MASK) != MPI2_IOCSTATUS_SUCCESS)
 		error = ENXIO;
-	mps_print_event(sc, reply);
+
+	if (reply)
+		MPS_DPRINT_EVENT(sc, generic, reply);
+
 	mps_dprint(sc, MPS_TRACE, "%s finished error %d\n", __func__, error);
 
-	mps_free_command(sc, cm);
+	if (cm != NULL)
+		mps_free_command(sc, cm);
 	return (error);
 }
 
@@ -2516,11 +2537,12 @@ mps_map_command(struct mps_softc *sc, struct mps_command *cm)
  * be executed and enqueued automatically.  Other errors come from msleep().
  */
 int
-mps_wait_command(struct mps_softc *sc, struct mps_command *cm, int timeout,
+mps_wait_command(struct mps_softc *sc, struct mps_command **cmp, int timeout,
     int sleep_flag)
 {
 	int error, rc;
 	struct timeval cur_time, start_time;
+	struct mps_command *cm = *cmp;
 
 	if (sc->mps_flags & MPS_FLAGS_DIAGRESET) 
 		return  EBUSY;
@@ -2538,10 +2560,18 @@ mps_wait_command(struct mps_softc *sc, struct mps_command *cm, int timeout,
 	 */
 	if (curthread->td_no_sleeping != 0)
 		sleep_flag = NO_SLEEP;
-	getmicrotime(&start_time);
+	getmicrouptime(&start_time);
 	if (mtx_owned(&sc->mps_mtx) && sleep_flag == CAN_SLEEP) {
 		cm->cm_flags |= MPS_CM_FLAGS_WAKEUP;
 		error = msleep(cm, &sc->mps_mtx, 0, "mpswait", timeout*hz);
+		if (error == EWOULDBLOCK) {
+			/*
+			 * Record the actual elapsed time in the case of a
+			 * timeout for the message below.
+			 */
+			getmicrouptime(&cur_time);
+			timevalsub(&cur_time, &start_time);
+		}
 	} else {
 		while ((cm->cm_flags & MPS_CM_FLAGS_COMPLETE) == 0) {
 			mps_intr_locked(sc);
@@ -2550,8 +2580,9 @@ mps_wait_command(struct mps_softc *sc, struct mps_command *cm, int timeout,
 			else
 				DELAY(50000);
 		
-			getmicrotime(&cur_time);
-			if ((cur_time.tv_sec - start_time.tv_sec) > timeout) {
+			getmicrouptime(&cur_time);
+			timevalsub(&cur_time, &start_time);
+			if (cur_time.tv_sec > timeout) {
 				error = EWOULDBLOCK;
 				break;
 			}
@@ -2559,10 +2590,19 @@ mps_wait_command(struct mps_softc *sc, struct mps_command *cm, int timeout,
 	}
 
 	if (error == EWOULDBLOCK) {
-		mps_dprint(sc, MPS_FAULT, "Calling Reinit from %s\n", __func__);
+		mps_dprint(sc, MPS_FAULT, "Calling Reinit from %s, timeout=%d,"
+		    " elapsed=%jd\n", __func__, timeout,
+		    (intmax_t)cur_time.tv_sec);
 		rc = mps_reinit(sc);
 		mps_dprint(sc, MPS_FAULT, "Reinit %s\n", (rc == 0) ? "success" :
 		    "failed");
+		if (sc->mps_flags & MPS_FLAGS_REALLOCATED) {
+			/*
+			 * Tell the caller that we freed the command in a
+			 * reinit.
+			 */
+			*cmp = NULL;
+		}
 		error = ETIMEDOUT;
 	}
 	return (error);
@@ -2629,11 +2669,12 @@ mps_read_config_page(struct mps_softc *sc, struct mps_config_params *params)
 		cm->cm_complete = mps_config_complete;
 		return (mps_map_command(sc, cm));
 	} else {
-		error = mps_wait_command(sc, cm, 0, CAN_SLEEP);
+		error = mps_wait_command(sc, &cm, 0, CAN_SLEEP);
 		if (error) {
 			mps_dprint(sc, MPS_FAULT,
 			    "Error %d reading config page\n", error);
-			mps_free_command(sc, cm);
+			if (cm != NULL)
+				mps_free_command(sc, cm);
 			return (error);
 		}
 		mps_config_complete(sc, cm);

@@ -47,6 +47,24 @@ public:
   llvm::StringRef str();
 
   uint64_t size() const { return Stream.tell(); }
+  TypeRecordKind kind() const { return Kind; }
+
+  /// Returns the number of bytes remaining before this record is larger than
+  /// the maximum record length. Accounts for the extra two byte size field in
+  /// the header.
+  size_t maxBytesRemaining() const { return MaxRecordLength - size() - 2; }
+
+  void truncate(uint64_t Size) {
+    // This works because raw_svector_ostream is not buffered.
+    assert(Size < Buffer.size());
+    Buffer.resize(Size);
+  }
+
+  void reset(TypeRecordKind K) {
+    Buffer.clear();
+    Kind = K;
+    writeTypeRecordKind(K);
+  }
 
   void truncate(uint64_t Size) {
     // This works because raw_svector_ostream is not buffered.
@@ -60,6 +78,7 @@ public:
   }
 
 private:
+  TypeRecordKind Kind;
   llvm::SmallVector<char, 256> Buffer;
   llvm::raw_svector_ostream Stream;
   llvm::support::endian::Writer<llvm::support::endianness::little> Writer;

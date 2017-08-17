@@ -80,7 +80,7 @@ static int		 blockpolicy = PFRULE_DROP;
 static int		 require_order = 1;
 static int		 default_statelock;
 
-TAILQ_HEAD(files, file)		 files = TAILQ_HEAD_INITIALIZER(files);
+static TAILQ_HEAD(files, file)	 files = TAILQ_HEAD_INITIALIZER(files);
 static struct file {
 	TAILQ_ENTRY(file)	 entry;
 	FILE			*stream;
@@ -100,7 +100,7 @@ int		 lgetc(int);
 int		 lungetc(int);
 int		 findeol(void);
 
-TAILQ_HEAD(symhead, sym)	 symhead = TAILQ_HEAD_INITIALIZER(symhead);
+static TAILQ_HEAD(symhead, sym)	 symhead = TAILQ_HEAD_INITIALIZER(symhead);
 struct sym {
 	TAILQ_ENTRY(sym)	 entry;
 	int			 used;
@@ -196,7 +196,7 @@ struct peer {
 	struct node_port	*port;
 };
 
-struct node_queue {
+static struct node_queue {
 	char			 queue[PF_QNAME_SIZE];
 	char			 parent[PF_QNAME_SIZE];
 	char			 ifname[IFNAMSIZ];
@@ -210,7 +210,7 @@ struct node_qassign {
 	char		*pqname;
 };
 
-struct filter_opts {
+static struct filter_opts {
 	int			 marker;
 #define FOM_FLAGS	0x01
 #define FOM_ICMP	0x02
@@ -250,12 +250,12 @@ struct filter_opts {
 	}			 divert;
 } filter_opts;
 
-struct antispoof_opts {
+static struct antispoof_opts {
 	char			*label;
 	u_int			 rtableid;
 } antispoof_opts;
 
-struct scrub_opts {
+static struct scrub_opts {
 	int			 marker;
 #define SOM_MINTTL	0x01
 #define SOM_MAXMSS	0x02
@@ -273,7 +273,7 @@ struct scrub_opts {
 	u_int			 rtableid;
 } scrub_opts;
 
-struct queue_opts {
+static struct queue_opts {
 	int			marker;
 #define QOM_BWSPEC	0x01
 #define QOM_SCHEDULER	0x02
@@ -287,13 +287,13 @@ struct queue_opts {
 	int			qlimit;
 } queue_opts;
 
-struct table_opts {
+static struct table_opts {
 	int			flags;
 	int			init_addr;
 	struct node_tinithead	init_nodes;
 } table_opts;
 
-struct pool_opts {
+static struct pool_opts {
 	int			 marker;
 #define POM_TYPE		0x01
 #define POM_STICKYADDRESS	0x02
@@ -304,10 +304,10 @@ struct pool_opts {
 
 } pool_opts;
 
-struct codel_opts	 codel_opts;
-struct node_hfsc_opts	 hfsc_opts;
-struct node_fairq_opts	 fairq_opts;
-struct node_state_opt	*keep_state_defaults = NULL;
+static struct codel_opts	 codel_opts;
+static struct node_hfsc_opts	 hfsc_opts;
+static struct node_fairq_opts	 fairq_opts;
+static struct node_state_opt	*keep_state_defaults = NULL;
 
 int		 disallow_table(struct node_host *, const char *);
 int		 disallow_urpf_failed(struct node_host *, const char *);
@@ -351,8 +351,10 @@ void	 decide_address_family(struct node_host *, sa_family_t *);
 void	 remove_invalid_hosts(struct node_host **, sa_family_t *);
 int	 invalid_redirect(struct node_host *, sa_family_t);
 u_int16_t parseicmpspec(char *, sa_family_t);
+int	 kw_casecmp(const void *, const void *);
+int	 map_tos(char *string, int *);
 
-TAILQ_HEAD(loadanchorshead, loadanchors)
+static TAILQ_HEAD(loadanchorshead, loadanchors)
     loadanchorshead = TAILQ_HEAD_INITIALIZER(loadanchorshead);
 
 struct loadanchors {
@@ -2330,7 +2332,7 @@ pfrule		: action dir logquick interface route af proto fromto
 					memcpy(&r.rpool.key, $5.key,
 					    sizeof(struct pf_poolhashkey));
 			}
-			if (r.rt && r.rt != PF_FASTROUTE) {
+			if (r.rt) {
 				decide_address_family($5.host, &r.af);
 				remove_invalid_hosts(&$5.host, &r.af);
 				if ($5.host == NULL) {
@@ -3584,15 +3586,17 @@ icmp6type	: STRING			{
 		;
 
 tos	: STRING			{
-			if (!strcmp($1, "lowdelay"))
-				$$ = IPTOS_LOWDELAY;
-			else if (!strcmp($1, "throughput"))
-				$$ = IPTOS_THROUGHPUT;
-			else if (!strcmp($1, "reliability"))
-				$$ = IPTOS_RELIABILITY;
-			else if ($1[0] == '0' && $1[1] == 'x')
-				$$ = strtoul($1, NULL, 16);
-			else
+			int val;
+			char *end;
+
+			if (map_tos($1, &val))
+				$$ = val;
+			else if ($1[0] == '0' && $1[1] == 'x') {
+				errno = 0;
+				$$ = strtoul($1, &end, 16);
+				if (errno || *end != '\0')
+					$$ = 256;
+			} else
 				$$ = 256;		/* flag bad argument */
 			if ($$ < 0 || $$ > 255) {
 				yyerror("illegal tos value %s", $1);
@@ -4416,8 +4420,9 @@ route		: /* empty */			{
 			$$.pool_opts = 0;
 		}
 		| FASTROUTE {
+			/* backwards-compat */
 			$$.host = NULL;
-			$$.rt = PF_FASTROUTE;
+			$$.rt = 0;
 			$$.pool_opts = 0;
 		}
 		| ROUTETO routespec pool_opts {
@@ -5582,10 +5587,10 @@ lookup(char *s)
 
 #define MAXPUSHBACK	128
 
-char	*parsebuf;
-int	 parseindex;
-char	 pushback_buffer[MAXPUSHBACK];
-int	 pushback_index = 0;
+static char	*parsebuf;
+static int	 parseindex;
+static char	 pushback_buffer[MAXPUSHBACK];
+static int	 pushback_index = 0;
 
 int
 lgetc(int quotec)
@@ -6245,6 +6250,57 @@ pfctl_load_anchors(int dev, struct pfctl *pf, struct pfr_buffer *trans)
 			return (-1);
 	}
 
+	return (0);
+}
+
+int
+kw_casecmp(const void *k, const void *e)
+{
+	return (strcasecmp(k, ((const struct keywords *)e)->k_name));
+}
+
+int
+map_tos(char *s, int *val)
+{
+	/* DiffServ Codepoints and other TOS mappings */
+	const struct keywords	 toswords[] = {
+		{ "af11",		IPTOS_DSCP_AF11 },
+		{ "af12",		IPTOS_DSCP_AF12 },
+		{ "af13",		IPTOS_DSCP_AF13 },
+		{ "af21",		IPTOS_DSCP_AF21 },
+		{ "af22",		IPTOS_DSCP_AF22 },
+		{ "af23",		IPTOS_DSCP_AF23 },
+		{ "af31",		IPTOS_DSCP_AF31 },
+		{ "af32",		IPTOS_DSCP_AF32 },
+		{ "af33",		IPTOS_DSCP_AF33 },
+		{ "af41",		IPTOS_DSCP_AF41 },
+		{ "af42",		IPTOS_DSCP_AF42 },
+		{ "af43",		IPTOS_DSCP_AF43 },
+		{ "critical",		IPTOS_PREC_CRITIC_ECP },
+		{ "cs0",		IPTOS_DSCP_CS0 },
+		{ "cs1",		IPTOS_DSCP_CS1 },
+		{ "cs2",		IPTOS_DSCP_CS2 },
+		{ "cs3",		IPTOS_DSCP_CS3 },
+		{ "cs4",		IPTOS_DSCP_CS4 },
+		{ "cs5",		IPTOS_DSCP_CS5 },
+		{ "cs6",		IPTOS_DSCP_CS6 },
+		{ "cs7",		IPTOS_DSCP_CS7 },
+		{ "ef",			IPTOS_DSCP_EF },
+		{ "inetcontrol",	IPTOS_PREC_INTERNETCONTROL },
+		{ "lowdelay",		IPTOS_LOWDELAY },
+		{ "netcontrol",		IPTOS_PREC_NETCONTROL },
+		{ "reliability",	IPTOS_RELIABILITY },
+		{ "throughput",		IPTOS_THROUGHPUT }
+	};
+	const struct keywords	*p;
+
+	p = bsearch(s, toswords, sizeof(toswords)/sizeof(toswords[0]),
+	    sizeof(toswords[0]), kw_casecmp);
+
+	if (p) {
+		*val = p->k_val;
+		return (1);
+	}
 	return (0);
 }
 

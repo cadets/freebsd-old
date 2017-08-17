@@ -38,6 +38,7 @@
 #include <sys/mman.h>
 #if SANITIZER_LINUX
 #include <sys/personality.h>
+#include <setjmp.h>
 #endif
 #include <sys/syscall.h>
 #include <sys/socket.h>
@@ -46,7 +47,6 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <errno.h>
 #include <sched.h>
 #include <dlfcn.h>
 #if SANITIZER_LINUX
@@ -65,6 +65,10 @@
 #if SANITIZER_FREEBSD
 extern "C" void *__libc_stack_end;
 void *__libc_stack_end = 0;
+#endif
+
+#if SANITIZER_LINUX && defined(__aarch64__)
+void InitializeGuardPtr() __attribute__((visibility("hidden")));
 #endif
 
 namespace __tsan {
@@ -93,7 +97,7 @@ void FillProfileCallback(uptr p, uptr rss, bool file,
     mem[MemShadow] += rss;
   else if (p >= MetaShadowBeg() && p < MetaShadowEnd())
     mem[MemMeta] += rss;
-#ifndef SANITIZER_GO
+#if !SANITIZER_GO
   else if (p >= HeapMemBeg() && p < HeapMemEnd())
     mem[MemHeap] += rss;
   else if (p >= LoAppMemBeg() && p < LoAppMemEnd())
@@ -129,7 +133,7 @@ void WriteMemoryProfile(char *buf, uptr buf_size, uptr nthread, uptr nlive) {
 void FlushShadowMemoryCallback(
     const SuspendedThreadsList &suspended_threads_list,
     void *argument) {
-  FlushUnneededShadowMemory(ShadowBeg(), ShadowEnd() - ShadowBeg());
+  ReleaseMemoryPagesToOS(ShadowBeg(), ShadowEnd());
 }
 #endif
 
@@ -139,7 +143,7 @@ void FlushShadowMemory() {
 #endif
 }
 
-#ifndef SANITIZER_GO
+#if !SANITIZER_GO
 // Mark shadow for .rodata sections with the special kShadowRodata marker.
 // Accesses to .rodata can't race, so this saves time, memory and trace space.
 static void MapRodata() {
@@ -177,17 +181,15 @@ static void MapRodata() {
   }
   // Map the file into shadow of .rodata sections.
   MemoryMappingLayout proc_maps(/*cache_enabled*/true);
-  uptr start, end, offset, prot;
   // Reusing the buffer 'name'.
-  while (proc_maps.Next(&start, &end, &offset, name, ARRAY_SIZE(name), &prot)) {
-    if (name[0] != 0 && name[0] != '['
-        && (prot & MemoryMappingLayout::kProtectionRead)
-        && (prot & MemoryMappingLayout::kProtectionExecute)
-        && !(prot & MemoryMappingLayout::kProtectionWrite)
-        && IsAppMem(start)) {
+  MemoryMappedSegment segment(name, ARRAY_SIZE(name));
+  while (proc_maps.Next(&segment)) {
+    if (segment.filename[0] != 0 && segment.filename[0] != '[' &&
+        segment.IsReadable() && segment.IsExecutable() &&
+        !segment.IsWritable() && IsAppMem(segment.start)) {
       // Assume it's .rodata
-      char *shadow_start = (char*)MemToShadow(start);
-      char *shadow_end = (char*)MemToShadow(end);
+      char *shadow_start = (char *)MemToShadow(segment.start);
+      char *shadow_end = (char *)MemToShadow(segment.end);
       for (char *p = shadow_start; p < shadow_end; p += marker.size()) {
         internal_mmap(p, Min<uptr>(marker.size(), shadow_end - p),
                       PROT_READ, MAP_PRIVATE | MAP_FIXED, fd, 0);
@@ -201,16 +203,16 @@ void InitializeShadowMemoryPlatform() {
   MapRodata();
 }
 
-#endif  // #ifndef SANITIZER_GO
+#endif  // #if !SANITIZER_GO
 
 void InitializePlatformEarly() {
 #ifdef TSAN_RUNTIME_VMA
   vmaSize =
     (MostSignificantSetBitIndex(GET_CURRENT_FRAME()) + 1);
 #if defined(__aarch64__)
-  if (vmaSize != 39 && vmaSize != 42) {
+  if (vmaSize != 39 && vmaSize != 42 && vmaSize != 48) {
     Printf("FATAL: ThreadSanitizer: unsupported VMA range\n");
-    Printf("FATAL: Found %d - Supported 39 and 42\n", vmaSize);
+    Printf("FATAL: Found %d - Supported 39, 42 and 48\n", vmaSize);
     Die();
   }
 #elif defined(__powerpc64__)
@@ -229,7 +231,7 @@ void InitializePlatform() {
   // Go maps shadow memory lazily and works fine with limited address space.
   // Unlimited stack is not a problem as well, because the executable
   // is not compiled with -pie.
-  if (kCppMode) {
+  if (!SANITIZER_GO) {
     bool reexec = false;
     // TSan doesn't play well with unlimited stack size (as stack
     // overlaps with shadow memory). If we detect unlimited stack size,
@@ -264,25 +266,27 @@ void InitializePlatform() {
       CHECK_NE(personality(old_personality | ADDR_NO_RANDOMIZE), -1);
       reexec = true;
     }
+    // Initialize the guard pointer used in {sig}{set,long}jump.
+    InitializeGuardPtr();
 #endif
     if (reexec)
       ReExec();
   }
 
-#ifndef SANITIZER_GO
+#if !SANITIZER_GO
   CheckAndProtect();
   InitTlsSize();
 #endif
 }
 
-#ifndef SANITIZER_GO
+#if !SANITIZER_GO
 // Extract file descriptors passed to glibc internal __res_iclose function.
 // This is required to properly "close" the fds, because we do not see internal
 // closes within glibc. The code is a pure hack.
 int ExtractResolvFDs(void *state, int *fds, int nfd) {
 #if SANITIZER_LINUX && !SANITIZER_ANDROID
   int cnt = 0;
-  __res_state *statp = (__res_state*)state;
+  struct __res_state *statp = (struct __res_state*)state;
   for (int i = 0; i < MAXNS && cnt < nfd; i++) {
     if (statp->_u._ext.nsaddrs[i] && statp->_u._ext.nssocks[i] != -1)
       fds[cnt++] = statp->_u._ext.nssocks[i];
@@ -313,6 +317,20 @@ int ExtractRecvmsgFDs(void *msgp, int *fds, int nfd) {
   return res;
 }
 
+void ImitateTlsWrite(ThreadState *thr, uptr tls_addr, uptr tls_size) {
+  // Check that the thr object is in tls;
+  const uptr thr_beg = (uptr)thr;
+  const uptr thr_end = (uptr)thr + sizeof(*thr);
+  CHECK_GE(thr_beg, tls_addr);
+  CHECK_LE(thr_beg, tls_addr + tls_size);
+  CHECK_GE(thr_end, tls_addr);
+  CHECK_LE(thr_end, tls_addr + tls_size);
+  // Since the thr object is huge, skip it.
+  MemoryRangeImitateWrite(thr, /*pc=*/2, tls_addr, thr_beg - tls_addr);
+  MemoryRangeImitateWrite(thr, /*pc=*/2, thr_end,
+                          tls_addr + tls_size - thr_end);
+}
+
 // Note: this function runs with async signals enabled,
 // so it must not touch any tsan state.
 int call_pthread_cancel_with_cleanup(int(*fn)(void *c, void *m,
@@ -328,42 +346,28 @@ int call_pthread_cancel_with_cleanup(int(*fn)(void *c, void *m,
 }
 #endif
 
-#ifndef SANITIZER_GO
+#if !SANITIZER_GO
 void ReplaceSystemMalloc() { }
 #endif
 
-#ifndef SANITIZER_GO
+#if !SANITIZER_GO
 #if SANITIZER_ANDROID
-
-#if defined(__aarch64__)
-# define __get_tls() \
-    ({ void** __val; __asm__("mrs %0, tpidr_el0" : "=r"(__val)); __val; })
-#elif defined(__x86_64__)
-# define __get_tls() \
-    ({ void** __val; __asm__("mov %%fs:0, %0" : "=r"(__val)); __val; })
-#else
-#error unsupported architecture
-#endif
-
-// On Android, __thread is not supported. So we store the pointer to ThreadState
-// in TLS_SLOT_TSAN, which is the tls slot allocated by Android bionic for tsan.
-static const int TLS_SLOT_TSAN = 8;
 // On Android, one thread can call intercepted functions after
 // DestroyThreadState(), so add a fake thread state for "dead" threads.
 static ThreadState *dead_thread_state = nullptr;
 
 ThreadState *cur_thread() {
-  ThreadState* thr = (ThreadState*)__get_tls()[TLS_SLOT_TSAN];
+  ThreadState* thr = reinterpret_cast<ThreadState*>(*get_android_tls_ptr());
   if (thr == nullptr) {
     __sanitizer_sigset_t emptyset;
     internal_sigfillset(&emptyset);
     __sanitizer_sigset_t oldset;
     CHECK_EQ(0, internal_sigprocmask(SIG_SETMASK, &emptyset, &oldset));
-    thr = reinterpret_cast<ThreadState*>(__get_tls()[TLS_SLOT_TSAN]);
+    thr = reinterpret_cast<ThreadState*>(*get_android_tls_ptr());
     if (thr == nullptr) {
       thr = reinterpret_cast<ThreadState*>(MmapOrDie(sizeof(ThreadState),
                                                      "ThreadState"));
-      __get_tls()[TLS_SLOT_TSAN] = thr;
+      *get_android_tls_ptr() = reinterpret_cast<uptr>(thr);
       if (dead_thread_state == nullptr) {
         dead_thread_state = reinterpret_cast<ThreadState*>(
             MmapOrDie(sizeof(ThreadState), "ThreadState"));
@@ -385,15 +389,15 @@ void cur_thread_finalize() {
   internal_sigfillset(&emptyset);
   __sanitizer_sigset_t oldset;
   CHECK_EQ(0, internal_sigprocmask(SIG_SETMASK, &emptyset, &oldset));
-  ThreadState* thr = (ThreadState*)__get_tls()[TLS_SLOT_TSAN];
+  ThreadState* thr = reinterpret_cast<ThreadState*>(*get_android_tls_ptr());
   if (thr != dead_thread_state) {
-    __get_tls()[TLS_SLOT_TSAN] = dead_thread_state;
+    *get_android_tls_ptr() = reinterpret_cast<uptr>(dead_thread_state);
     UnmapOrDie(thr, sizeof(ThreadState));
   }
   CHECK_EQ(0, internal_sigprocmask(SIG_SETMASK, &oldset, nullptr));
 }
 #endif  // SANITIZER_ANDROID
-#endif  // ifndef SANITIZER_GO
+#endif  // if !SANITIZER_GO
 
 }  // namespace __tsan
 

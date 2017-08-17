@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2009-2012,2016 Microsoft Corp.
+ * Copyright (c) 2009-2012,2016-2017 Microsoft Corp.
  * Copyright (c) 2010-2012 Citrix Inc.
  * Copyright (c) 2012 NetApp Inc.
  * All rights reserved.
@@ -33,7 +33,7 @@
 
 struct hn_softc;
 
-int		hn_rndis_attach(struct hn_softc *sc, int mtu);
+int		hn_rndis_attach(struct hn_softc *sc, int mtu, int *init_done);
 void		hn_rndis_detach(struct hn_softc *sc);
 int		hn_rndis_conf_rss(struct hn_softc *sc, uint16_t flags);
 int		hn_rndis_query_rsscaps(struct hn_softc *sc, int *rxr_cnt);

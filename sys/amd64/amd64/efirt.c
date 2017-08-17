@@ -45,6 +45,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/sched.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
+#include <sys/vmmeter.h>
+#include <isa/rtc.h>
 #include <machine/fpu.h>
 #include <machine/efi.h>
 #include <machine/metadata.h>
@@ -192,8 +194,8 @@ efi_create_1t1_map(struct efi_md *map, int ndesc, int descsz)
 	uint64_t idx;
 	int bits, i, mode;
 
-	obj_1t1_pt = vm_pager_allocate(OBJT_PHYS, NULL, 1 + NPML4EPG +
-	    NPML4EPG * NPDPEPG + NPML4EPG * NPDPEPG * NPDEPG,
+	obj_1t1_pt = vm_pager_allocate(OBJT_PHYS, NULL, ptoa(1 +
+	    NPML4EPG + NPML4EPG * NPDPEPG + NPML4EPG * NPDPEPG * NPDEPG),
 	    VM_PROT_ALL, 0, NULL);
 	VM_OBJECT_WLOCK(obj_1t1_pt);
 	efi_pml4_page = efi_1t1_page(0);
@@ -355,14 +357,14 @@ efi_init(void)
 	if (efi_systbl_phys == 0) {
 		if (bootverbose)
 			printf("EFI systbl not available\n");
-		return (ENXIO);
+		return (0);
 	}
 	efi_systbl = (struct efi_systbl *)PHYS_TO_DMAP(efi_systbl_phys);
 	if (efi_systbl->st_hdr.th_sig != EFI_SYSTBL_SIG) {
 		efi_systbl = NULL;
 		if (bootverbose)
 			printf("EFI systbl signature invalid\n");
-		return (ENXIO);
+		return (0);
 	}
 	efi_cfgtbl = (efi_systbl->st_cfgtbl == 0) ? NULL :
 	    (struct efi_cfgtbl *)efi_systbl->st_cfgtbl;
@@ -379,7 +381,7 @@ efi_init(void)
 	if (efihdr == NULL) {
 		if (bootverbose)
 			printf("EFI map is not present\n");
-		return (ENXIO);
+		return (0);
 	}
 	efisz = (sizeof(struct efi_map_header) + 0xf) & ~0xf;
 	map = (struct efi_md *)((uint8_t *)efihdr + efisz);
@@ -419,12 +421,21 @@ efi_uninit(void)
 }
 
 int
+efi_rt_ok(void)
+{
+
+	if (efi_runtime == NULL)
+		return (ENXIO);
+	return (0);
+}
+
+int
 efi_get_table(struct uuid *uuid, void **ptr)
 {
 	struct efi_cfgtbl *ct;
 	u_long count;
 
-	if (efi_cfgtbl == NULL)
+	if (efi_cfgtbl == NULL || efi_systbl == NULL)
 		return (ENXIO);
 	count = efi_systbl->st_entries;
 	ct = efi_cfgtbl;
@@ -444,7 +455,7 @@ efi_get_time_locked(struct efi_tm *tm)
 	efi_status status;
 	int error;
 
-	mtx_assert(&resettodr_lock, MA_OWNED);
+	mtx_assert(&atrtc_time_lock, MA_OWNED);
 	error = efi_enter();
 	if (error != 0)
 		return (error);
@@ -461,9 +472,9 @@ efi_get_time(struct efi_tm *tm)
 
 	if (efi_runtime == NULL)
 		return (ENXIO);
-	mtx_lock(&resettodr_lock);
+	mtx_lock(&atrtc_time_lock);
 	error = efi_get_time_locked(tm);
-	mtx_unlock(&resettodr_lock);
+	mtx_unlock(&atrtc_time_lock);
 	return (error);
 }
 
@@ -486,7 +497,7 @@ efi_set_time_locked(struct efi_tm *tm)
 	efi_status status;
 	int error;
 
-	mtx_assert(&resettodr_lock, MA_OWNED);
+	mtx_assert(&atrtc_time_lock, MA_OWNED);
 	error = efi_enter();
 	if (error != 0)
 		return (error);
@@ -503,9 +514,9 @@ efi_set_time(struct efi_tm *tm)
 
 	if (efi_runtime == NULL)
 		return (ENXIO);
-	mtx_lock(&resettodr_lock);
+	mtx_lock(&atrtc_time_lock);
 	error = efi_set_time_locked(tm);
-	mtx_unlock(&resettodr_lock);
+	mtx_unlock(&atrtc_time_lock);
 	return (error);
 }
 
@@ -563,7 +574,6 @@ efirt_modevents(module_t m, int event, void *arg __unused)
 	switch (event) {
 	case MOD_LOAD:
 		return (efi_init());
-		break;
 
 	case MOD_UNLOAD:
 		efi_uninit();

@@ -181,9 +181,9 @@ next:
  * IPsec output logic for IPv4.
  */
 static int
-ipsec4_perform_request(struct mbuf *m, struct secpolicy *sp, u_int idx)
+ipsec4_perform_request(struct mbuf *m, struct secpolicy *sp,
+    struct inpcb *inp, u_int idx)
 {
-	char sbuf[IPSEC_ADDRSTRLEN], dbuf[IPSEC_ADDRSTRLEN];
 	struct ipsec_ctx_data ctx;
 	union sockaddr_union *dst;
 	struct secasvar *sav;
@@ -212,7 +212,7 @@ ipsec4_perform_request(struct mbuf *m, struct secpolicy *sp, u_int idx)
 	/*
 	 * XXXAE: most likely ip_sum at this point is wrong.
 	 */
-	IPSEC_INIT_CTX(&ctx, &m, sav, AF_INET, IPSEC_ENC_BEFORE);
+	IPSEC_INIT_CTX(&ctx, &m, inp, sav, AF_INET, IPSEC_ENC_BEFORE);
 	if ((error = ipsec_run_hhooks(&ctx, HHOOK_TYPE_IPSEC_OUT)) != 0)
 		goto bad;
 
@@ -230,18 +230,16 @@ ipsec4_perform_request(struct mbuf *m, struct secpolicy *sp, u_int idx)
 		ip->ip_sum = in_cksum(m, ip->ip_hl << 2);
 		error = ipsec_encap(&m, &sav->sah->saidx);
 		if (error != 0) {
-			DPRINTF(("%s: encapsulation for SA %s->%s "
-			    "SPI 0x%08x failed with error %d\n", __func__,
-			    ipsec_address(&sav->sah->saidx.src, sbuf,
-				sizeof(sbuf)),
-			    ipsec_address(&sav->sah->saidx.dst, dbuf,
-				sizeof(dbuf)), ntohl(sav->spi), error));
+			DPRINTF(("%s: encapsulation for SPI 0x%08x failed "
+			    "with error %d\n", __func__, ntohl(sav->spi),
+			    error));
 			/* XXXAE: IPSEC_OSTAT_INC(tunnel); */
 			goto bad;
 		}
+		inp = NULL;
 	}
 
-	IPSEC_INIT_CTX(&ctx, &m, sav, dst->sa.sa_family, IPSEC_ENC_AFTER);
+	IPSEC_INIT_CTX(&ctx, &m, inp, sav, dst->sa.sa_family, IPSEC_ENC_AFTER);
 	if ((error = ipsec_run_hhooks(&ctx, HHOOK_TYPE_IPSEC_OUT)) != 0)
 		goto bad;
 
@@ -273,10 +271,6 @@ ipsec4_perform_request(struct mbuf *m, struct secpolicy *sp, u_int idx)
 		goto bad;
 	}
 	error = (*sav->tdb_xform->xf_output)(m, sp, sav, idx, i, off);
-	if (error != 0) {
-		key_freesav(&sav);
-		key_freesp(&sp);
-	}
 	return (error);
 bad:
 	IPSECSTAT_INC(ips_out_inval);
@@ -293,7 +287,7 @@ ipsec4_process_packet(struct mbuf *m, struct secpolicy *sp,
     struct inpcb *inp)
 {
 
-	return (ipsec4_perform_request(m, sp, 0));
+	return (ipsec4_perform_request(m, sp, inp, 0));
 }
 
 static int
@@ -499,9 +493,9 @@ next:
  * IPsec output logic for IPv6.
  */
 static int
-ipsec6_perform_request(struct mbuf *m, struct secpolicy *sp, u_int idx)
+ipsec6_perform_request(struct mbuf *m, struct secpolicy *sp,
+    struct inpcb *inp, u_int idx)
 {
-	char sbuf[IPSEC_ADDRSTRLEN], dbuf[IPSEC_ADDRSTRLEN];
 	struct ipsec_ctx_data ctx;
 	union sockaddr_union *dst;
 	struct secasvar *sav;
@@ -523,7 +517,7 @@ ipsec6_perform_request(struct mbuf *m, struct secpolicy *sp, u_int idx)
 	ip6 = mtod(m, struct ip6_hdr *);
 	ip6->ip6_plen = htons(m->m_pkthdr.len - sizeof(*ip6));
 
-	IPSEC_INIT_CTX(&ctx, &m, sav, AF_INET6, IPSEC_ENC_BEFORE);
+	IPSEC_INIT_CTX(&ctx, &m, inp, sav, AF_INET6, IPSEC_ENC_BEFORE);
 	if ((error = ipsec_run_hhooks(&ctx, HHOOK_TYPE_IPSEC_OUT)) != 0)
 		goto bad;
 
@@ -543,18 +537,16 @@ ipsec6_perform_request(struct mbuf *m, struct secpolicy *sp, u_int idx)
 		}
 		error = ipsec_encap(&m, &sav->sah->saidx);
 		if (error != 0) {
-			DPRINTF(("%s: encapsulation for SA %s->%s "
-			    "SPI 0x%08x failed with error %d\n", __func__,
-			    ipsec_address(&sav->sah->saidx.src, sbuf,
-				sizeof(sbuf)),
-			    ipsec_address(&sav->sah->saidx.dst, dbuf,
-				sizeof(dbuf)), ntohl(sav->spi), error));
+			DPRINTF(("%s: encapsulation for SPI 0x%08x failed "
+			    "with error %d\n", __func__, ntohl(sav->spi),
+			    error));
 			/* XXXAE: IPSEC_OSTAT_INC(tunnel); */
 			goto bad;
 		}
+		inp = NULL;
 	}
 
-	IPSEC_INIT_CTX(&ctx, &m, sav, dst->sa.sa_family, IPSEC_ENC_AFTER);
+	IPSEC_INIT_CTX(&ctx, &m, inp, sav, dst->sa.sa_family, IPSEC_ENC_AFTER);
 	if ((error = ipsec_run_hhooks(&ctx, HHOOK_TYPE_IPSEC_OUT)) != 0)
 		goto bad;
 
@@ -581,10 +573,6 @@ ipsec6_perform_request(struct mbuf *m, struct secpolicy *sp, u_int idx)
 		goto bad;
 	}
 	error = (*sav->tdb_xform->xf_output)(m, sp, sav, idx, i, off);
-	if (error != 0) {
-		key_freesav(&sav);
-		key_freesp(&sp);
-	}
 	return (error);
 bad:
 	IPSEC6STAT_INC(ips_out_inval);
@@ -601,7 +589,7 @@ ipsec6_process_packet(struct mbuf *m, struct secpolicy *sp,
     struct inpcb *inp)
 {
 
-	return (ipsec6_perform_request(m, sp, 0));
+	return (ipsec6_perform_request(m, sp, inp, 0));
 }
 
 static int
@@ -766,14 +754,14 @@ ipsec_process_done(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav,
 		case AF_INET:
 			key_freesav(&sav);
 			IPSECSTAT_INC(ips_out_bundlesa);
-			return (ipsec4_perform_request(m, sp, idx));
+			return (ipsec4_perform_request(m, sp, NULL, idx));
 			/* NOTREACHED */
 #endif
 #ifdef INET6
 		case AF_INET6:
 			key_freesav(&sav);
 			IPSEC6STAT_INC(ips_out_bundlesa);
-			return (ipsec6_perform_request(m, sp, idx));
+			return (ipsec6_perform_request(m, sp, NULL, idx));
 			/* NOTREACHED */
 #endif /* INET6 */
 		default:

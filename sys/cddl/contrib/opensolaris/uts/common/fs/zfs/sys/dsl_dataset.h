@@ -96,7 +96,9 @@ struct dsl_pool;
 #define	DS_FIELD_RESUME_OBJECT "com.delphix:resume_object"
 #define	DS_FIELD_RESUME_OFFSET "com.delphix:resume_offset"
 #define	DS_FIELD_RESUME_BYTES "com.delphix:resume_bytes"
+#define	DS_FIELD_RESUME_LARGEBLOCK "com.delphix:resume_largeblockok"
 #define	DS_FIELD_RESUME_EMBEDOK "com.delphix:resume_embedok"
+#define	DS_FIELD_RESUME_COMPRESSOK "com.delphix:resume_compressok"
 
 /*
  * DS_FLAG_CI_DATASET is set if the dataset contains a file system whose
@@ -280,9 +282,6 @@ void dsl_dataset_block_born(dsl_dataset_t *ds, const blkptr_t *bp,
     dmu_tx_t *tx);
 int dsl_dataset_block_kill(dsl_dataset_t *ds, const blkptr_t *bp,
     dmu_tx_t *tx, boolean_t async);
-boolean_t dsl_dataset_block_freeable(dsl_dataset_t *ds, const blkptr_t *bp,
-    uint64_t blk_birth);
-uint64_t dsl_dataset_prev_snap_txg(dsl_dataset_t *ds);
 
 void dsl_dataset_dirty(dsl_dataset_t *ds, dmu_tx_t *tx);
 void dsl_dataset_stats(dsl_dataset_t *os, nvlist_t *nv);
@@ -335,7 +334,8 @@ void dsl_dataset_set_refreservation_sync_impl(dsl_dataset_t *ds,
 void dsl_dataset_zapify(dsl_dataset_t *ds, dmu_tx_t *tx);
 boolean_t dsl_dataset_is_zapified(dsl_dataset_t *ds);
 boolean_t dsl_dataset_has_resume_receive_state(dsl_dataset_t *ds);
-int dsl_dataset_rollback(const char *fsname, void *owner, nvlist_t *result);
+int dsl_dataset_rollback(const char *fsname, const char *tosnap, void *owner,
+    nvlist_t *result);
 
 void dsl_dataset_deactivate_feature(uint64_t dsobj,
     spa_feature_t f, dmu_tx_t *tx);

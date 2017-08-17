@@ -127,6 +127,8 @@ static pci_vendor_info_t bnxt_vendor_info_array[] =
 	"Broadcom BCM57417 NetXtreme-E Ethernet Partition"),
     PVID(BROADCOM_VENDOR_ID, BCM57417_SFP,
 	"Broadcom BCM57417 NetXtreme-E 10Gb/25Gb Ethernet"),
+    PVID(BROADCOM_VENDOR_ID, BCM57454,
+	"Broadcom BCM57454 NetXtreme-E 10Gb/25Gb/40Gb/50Gb/100Gb Ethernet"),
     PVID(BROADCOM_VENDOR_ID, BCM58700,
 	"Broadcom BCM58700 Nitro 1Gb/2.5Gb/10Gb Ethernet"),
     PVID(BROADCOM_VENDOR_ID, NETXTREME_C_VF1,
@@ -177,7 +179,8 @@ static void bnxt_update_admin_status(if_ctx_t ctx);
 
 /* Interrupt enable / disable */
 static void bnxt_intr_enable(if_ctx_t ctx);
-static int bnxt_queue_intr_enable(if_ctx_t ctx, uint16_t qid);
+static int bnxt_rx_queue_intr_enable(if_ctx_t ctx, uint16_t qid);
+static int bnxt_tx_queue_intr_enable(if_ctx_t ctx, uint16_t qid);
 static void bnxt_disable_intr(if_ctx_t ctx);
 static int bnxt_msix_intr_assign(if_ctx_t ctx, int msix);
 
@@ -187,6 +190,10 @@ static void bnxt_vlan_unregister(if_ctx_t ctx, uint16_t vtag);
 
 /* ioctl */
 static int bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data);
+
+static int bnxt_shutdown(if_ctx_t ctx);
+static int bnxt_suspend(if_ctx_t ctx);
+static int bnxt_resume(if_ctx_t ctx);
 
 /* Internal support functions */
 static int bnxt_probe_phy(struct bnxt_softc *softc);
@@ -205,6 +212,8 @@ static void bnxt_handle_async_event(struct bnxt_softc *softc,
     struct cmpl_base *cmpl);
 static uint8_t get_phy_type(struct bnxt_softc *softc);
 static uint64_t bnxt_get_baudrate(struct bnxt_link_info *link);
+static void bnxt_get_wol_settings(struct bnxt_softc *softc);
+static int bnxt_wol_config(if_ctx_t ctx);
 
 /*
  * Device Interface Declaration
@@ -253,7 +262,8 @@ static device_method_t bnxt_iflib_methods[] = {
 	DEVMETHOD(ifdi_update_admin_status, bnxt_update_admin_status),
 
 	DEVMETHOD(ifdi_intr_enable, bnxt_intr_enable),
-	DEVMETHOD(ifdi_queue_intr_enable, bnxt_queue_intr_enable),
+	DEVMETHOD(ifdi_tx_queue_intr_enable, bnxt_tx_queue_intr_enable),
+	DEVMETHOD(ifdi_rx_queue_intr_enable, bnxt_rx_queue_intr_enable),
 	DEVMETHOD(ifdi_intr_disable, bnxt_disable_intr),
 	DEVMETHOD(ifdi_msix_intr_assign, bnxt_msix_intr_assign),
 
@@ -261,6 +271,10 @@ static device_method_t bnxt_iflib_methods[] = {
 	DEVMETHOD(ifdi_vlan_unregister, bnxt_vlan_unregister),
 
 	DEVMETHOD(ifdi_priv_ioctl, bnxt_priv_ioctl),
+
+	DEVMETHOD(ifdi_suspend, bnxt_suspend),
+	DEVMETHOD(ifdi_shutdown, bnxt_shutdown),
+	DEVMETHOD(ifdi_resume, bnxt_resume),
 
 	DEVMETHOD_END
 };
@@ -273,11 +287,11 @@ static driver_t bnxt_iflib_driver = {
  * iflib shared context
  */
 
-char bnxt_driver_version[] = "FreeBSD base";
+#define BNXT_DRIVER_VERSION	"1.0.0.1"
+char bnxt_driver_version[] = BNXT_DRIVER_VERSION;
 extern struct if_txrx bnxt_txrx;
 static struct if_shared_ctx bnxt_sctx_init = {
 	.isc_magic = IFLIB_MAGIC,
-	.isc_txrx = &bnxt_txrx,
 	.isc_driver = &bnxt_iflib_driver,
 	.isc_nfl = 2,				// Number of Free Lists
 	.isc_flags = IFLIB_HAS_RXCQ | IFLIB_HAS_TXCQ,
@@ -492,6 +506,17 @@ bnxt_rx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs,
 		softc->rx_rings[i].vaddr = vaddrs[i * nrxqs + 1];
 		softc->rx_rings[i].paddr = paddrs[i * nrxqs + 1];
 
+		/* Allocate the TPA start buffer */
+		softc->rx_rings[i].tpa_start = malloc(sizeof(struct bnxt_full_tpa_start) *
+	    		(RX_TPA_START_CMPL_AGG_ID_MASK >> RX_TPA_START_CMPL_AGG_ID_SFT),
+	    		M_DEVBUF, M_NOWAIT | M_ZERO);
+		if (softc->rx_rings[i].tpa_start == NULL) {
+			rc = -ENOMEM;
+			device_printf(softc->dev,
+					"Unable to allocate space for TPA\n");
+			goto tpa_alloc_fail;
+		}
+
 		/* Allocate the AG ring */
 		softc->ag_rings[i].phys_id = (uint16_t)HWRM_NA_SIGNATURE;
 		softc->ag_rings[i].softc = softc;
@@ -557,7 +582,10 @@ rss_grp_alloc_fail:
 	iflib_dma_free(&softc->vnic_info.rss_hash_key_tbl);
 rss_hash_alloc_fail:
 	iflib_dma_free(&softc->vnic_info.mc_list);
+tpa_alloc_fail:
 mc_list_alloc_fail:
+	for (i = i - 1; i >= 0; i--)
+		free(softc->rx_rings[i].tpa_start, M_DEVBUF);
 	iflib_dma_free(&softc->rx_stats);
 hw_stats_alloc_fail:
 	free(softc->grp_info, M_DEVBUF);
@@ -621,16 +649,6 @@ bnxt_attach_pre(if_ctx_t ctx)
 	if (rc)
 		goto dma_fail;
 
-	/* Allocate the TPA start buffer */
-	softc->tpa_start = malloc(sizeof(struct bnxt_full_tpa_start) *
-	    (RX_TPA_START_CMPL_AGG_ID_MASK >> RX_TPA_START_CMPL_AGG_ID_SFT),
-	    M_DEVBUF, M_NOWAIT | M_ZERO);
-	if (softc->tpa_start == NULL) {
-		rc = ENOMEM;
-		device_printf(softc->dev,
-		    "Unable to allocate space for TPA\n");
-		goto tpa_failed;
-	}
 
 	/* Get firmware version and compare with driver */
 	softc->ver_info = malloc(sizeof(struct bnxt_ver_info),
@@ -673,11 +691,35 @@ bnxt_attach_pre(if_ctx_t ctx)
 		goto drv_rgtr_fail;
 	}
 
+        rc = bnxt_hwrm_func_rgtr_async_events(softc, NULL, 0);
+	if (rc) {
+		device_printf(softc->dev, "attach: hwrm rgtr async evts failed\n");
+		goto drv_rgtr_fail;
+	}
+
 	/* Get the HW capabilities */
 	rc = bnxt_hwrm_func_qcaps(softc);
 	if (rc)
 		goto failed;
+
 	iflib_set_mac(ctx, softc->func.mac_addr);
+
+	scctx->isc_txrx = &bnxt_txrx;
+	scctx->isc_tx_csum_flags = (CSUM_IP | CSUM_TCP | CSUM_UDP |
+	    CSUM_TCP_IPV6 | CSUM_UDP_IPV6 | CSUM_TSO);
+	scctx->isc_capenable =
+	    /* These are translated to hwassit bits */
+	    IFCAP_TXCSUM | IFCAP_TXCSUM_IPV6 | IFCAP_TSO4 | IFCAP_TSO6 |
+	    /* These are checked by iflib */
+	    IFCAP_LRO | IFCAP_VLAN_HWFILTER |
+	    /* These are part of the iflib mask */
+	    IFCAP_RXCSUM | IFCAP_RXCSUM_IPV6 | IFCAP_VLAN_MTU |
+	    IFCAP_VLAN_HWTAGGING | IFCAP_VLAN_HWTSO |
+	    /* These likely get lost... */
+	    IFCAP_VLAN_HWCSUM | IFCAP_JUMBO_MTU;
+
+	if (bnxt_wol_supported(softc))
+		scctx->isc_capenable |= IFCAP_WOL_MAGIC;
 
 	/* Get the queue config */
 	rc = bnxt_hwrm_queue_qportcfg(softc);
@@ -685,6 +727,8 @@ bnxt_attach_pre(if_ctx_t ctx)
 		device_printf(softc->dev, "attach: hwrm qportcfg failed\n");
 		goto failed;
 	}
+
+	bnxt_get_wol_settings(softc);
 
 	/* Now perform a function reset */
 	rc = bnxt_hwrm_func_reset(softc);
@@ -698,6 +742,8 @@ bnxt_attach_pre(if_ctx_t ctx)
 	scctx->isc_tx_tso_size_max = BNXT_TSO_SIZE;
 	scctx->isc_tx_tso_segsize_max = BNXT_TSO_SIZE;
 	scctx->isc_vectors = softc->func.max_cp_rings;
+	scctx->isc_txrx = &bnxt_txrx;
+
 	if (scctx->isc_nrxd[0] <
 	    ((scctx->isc_nrxd[1] * 4) + scctx->isc_nrxd[2]))
 		device_printf(softc->dev,
@@ -715,12 +761,12 @@ bnxt_attach_pre(if_ctx_t ctx)
 	    scctx->isc_nrxd[1];
 	scctx->isc_rxqsizes[2] = sizeof(struct rx_prod_pkt_bd) *
 	    scctx->isc_nrxd[2];
-	scctx->isc_max_rxqsets = min(pci_msix_count(softc->dev)-1,
+	scctx->isc_nrxqsets_max = min(pci_msix_count(softc->dev)-1,
 	    softc->func.max_cp_rings - 1);
-	scctx->isc_max_rxqsets = min(scctx->isc_max_rxqsets,
+	scctx->isc_nrxqsets_max = min(scctx->isc_nrxqsets_max,
 	    softc->func.max_rx_rings);
-	scctx->isc_max_txqsets = min(softc->func.max_rx_rings,
-	    softc->func.max_cp_rings - scctx->isc_max_rxqsets - 1);
+	scctx->isc_ntxqsets_max = min(softc->func.max_rx_rings,
+	    softc->func.max_cp_rings - scctx->isc_nrxqsets_max - 1);
 	scctx->isc_rss_table_size = HW_HASH_INDEX_SIZE;
 	scctx->isc_rss_table_mask = scctx->isc_rss_table_size - 1;
 
@@ -778,8 +824,6 @@ nvm_alloc_fail:
 ver_fail:
 	free(softc->ver_info, M_DEVBUF);
 ver_alloc_fail:
-	free(softc->tpa_start, M_DEVBUF);
-tpa_failed:
 	bnxt_free_hwrm_dma_mem(softc);
 dma_fail:
 	BNXT_HWRM_LOCK_DESTROY(softc);
@@ -793,7 +837,6 @@ bnxt_attach_post(if_ctx_t ctx)
 {
 	struct bnxt_softc *softc = iflib_get_softc(ctx);
 	if_t ifp = iflib_get_ifp(ctx);
-	int capabilities, enabling;
 	int rc;
 
 	bnxt_create_config_sysctls_post(softc);
@@ -807,26 +850,6 @@ bnxt_attach_post(if_ctx_t ctx)
 	bnxt_create_ver_sysctls(softc);
 	bnxt_add_media_types(softc);
 	ifmedia_set(softc->media, IFM_ETHER | IFM_AUTO);
-
-	if_sethwassist(ifp, (CSUM_TCP | CSUM_UDP | CSUM_TCP_IPV6 |
-	    CSUM_UDP_IPV6 | CSUM_TSO));
-
-	capabilities =
-	    /* These are translated to hwassit bits */
-	    IFCAP_TXCSUM | IFCAP_TXCSUM_IPV6 | IFCAP_TSO4 | IFCAP_TSO6 |
-	    /* These are checked by iflib */
-	    IFCAP_LRO | IFCAP_VLAN_HWFILTER |
-	    /* These are part of the iflib mask */
-	    IFCAP_RXCSUM | IFCAP_RXCSUM_IPV6 | IFCAP_VLAN_MTU |
-	    IFCAP_VLAN_HWTAGGING | IFCAP_VLAN_HWTSO |
-	    /* These likely get lost... */
-	    IFCAP_VLAN_HWCSUM | IFCAP_JUMBO_MTU;
-
-	if_setcapabilities(ifp, capabilities);
-
-	enabling = capabilities;
-
-	if_setcapenable(ifp, enabling);
 
 	softc->scctx->isc_max_frame_size = ifp->if_mtu + ETHER_HDR_LEN +
 	    ETHER_CRC_LEN;
@@ -843,6 +866,7 @@ bnxt_detach(if_ctx_t ctx)
 	struct bnxt_vlan_tag *tmp;
 	int i;
 
+	bnxt_wol_config(ctx);
 	bnxt_do_disable_intr(&softc->def_cp_ring);
 	bnxt_free_sysctl_ctx(softc);
 	bnxt_hwrm_func_reset(softc);
@@ -861,7 +885,8 @@ bnxt_detach(if_ctx_t ctx)
 	SLIST_FOREACH_SAFE(tag, &softc->vnic_info.vlan_tags, next, tmp)
 		free(tag, M_DEVBUF);
 	iflib_dma_free(&softc->def_cp_ring_mem);
-	free(softc->tpa_start, M_DEVBUF);
+	for (i = 0; i < softc->nrxqsets; i++)
+		free(softc->rx_rings[i].tpa_start, M_DEVBUF);
 	free(softc->ver_info, M_DEVBUF);
 	free(softc->nvm_info, M_DEVBUF);
 
@@ -993,14 +1018,17 @@ bnxt_init(if_ctx_t ctx)
 	if (rc)
 		goto fail;
 
-#ifdef notyet
-	/* Enable LRO/TPA/GRO */
+	/* 
+         * Enable LRO/TPA/GRO 
+         * TBD: 
+         *      Enable / Disable HW_LRO based on
+         *      ifconfig lro / ifconfig -lro setting
+         */
 	rc = bnxt_hwrm_vnic_tpa_cfg(softc, &softc->vnic_info,
 	    (if_getcapenable(iflib_get_ifp(ctx)) & IFCAP_LRO) ?
 	    HWRM_VNIC_TPA_CFG_INPUT_FLAGS_TPA : 0);
 	if (rc)
 		goto fail;
-#endif
 
 	for (i = 0; i < softc->ntxqsets; i++) {
 		/* Allocate the statistics context */
@@ -1136,7 +1164,12 @@ bnxt_media_status(if_ctx_t ctx, struct ifmediareq * ifmr)
 			ifmr->ifm_active |= IFM_1000_SGMII;
 			break;
 		default:
-			ifmr->ifm_active |= IFM_UNKNOWN;
+                        /*
+                         * Workaround: 
+                         *    Don't return IFM_UNKNOWN until 
+                         *    Stratus return proper media_type 
+                         */  
+			ifmr->ifm_active |= IFM_1000_KX;
 			break;
 		}
 	break;
@@ -1176,7 +1209,12 @@ bnxt_media_status(if_ctx_t ctx, struct ifmediareq * ifmr)
 			ifmr->ifm_active |= IFM_10G_T;
 			break;
 		default:
-			ifmr->ifm_active |= IFM_UNKNOWN;
+                        /*
+                         * Workaround: 
+                         *    Don't return IFM_UNKNOWN until 
+                         *    Stratus return proper media_type 
+                         */  
+			ifmr->ifm_active |= IFM_10G_CR1;
 			break;
 		}
 		break;
@@ -1197,7 +1235,12 @@ bnxt_media_status(if_ctx_t ctx, struct ifmediareq * ifmr)
 			ifmr->ifm_active |= IFM_25G_SR;
 			break;
 		default:
-			ifmr->ifm_active |= IFM_UNKNOWN;
+                        /*
+                         * Workaround: 
+                         *    Don't return IFM_UNKNOWN until 
+                         *    Stratus return proper media_type 
+                         */  
+			ifmr->ifm_active |= IFM_25G_CR;
 			break;
 		}
 		break;
@@ -1233,7 +1276,12 @@ bnxt_media_status(if_ctx_t ctx, struct ifmediareq * ifmr)
 			ifmr->ifm_active |= IFM_50G_KR2;
 			break;
 		default:
-			ifmr->ifm_active |= IFM_UNKNOWN;
+                        /*
+                         * Workaround: 
+                         *    Don't return IFM_UNKNOWN until 
+                         *    Stratus return proper media_type 
+                         */  
+			ifmr->ifm_active |= IFM_50G_CR2;
 			break;
 		}
 		break;
@@ -1254,7 +1302,12 @@ bnxt_media_status(if_ctx_t ctx, struct ifmediareq * ifmr)
 			ifmr->ifm_active |= IFM_100G_SR4;
 			break;
 		default:
-			ifmr->ifm_active |= IFM_UNKNOWN;
+                        /*
+                         * Workaround: 
+                         *    Don't return IFM_UNKNOWN until 
+                         *    Stratus return proper media_type 
+                         */  
+			ifmr->ifm_active |= IFM_100G_CR4;
 			break;
 		}
 	default:
@@ -1442,7 +1495,16 @@ bnxt_intr_enable(if_ctx_t ctx)
 
 /* Enable interrupt for a single queue */
 static int
-bnxt_queue_intr_enable(if_ctx_t ctx, uint16_t qid)
+bnxt_tx_queue_intr_enable(if_ctx_t ctx, uint16_t qid)
+{
+	struct bnxt_softc *softc = iflib_get_softc(ctx);
+
+	bnxt_do_enable_intr(&softc->tx_cp_rings[qid]);
+	return 0;
+}
+
+static int
+bnxt_rx_queue_intr_enable(if_ctx_t ctx, uint16_t qid)
 {
 	struct bnxt_softc *softc = iflib_get_softc(ctx);
 
@@ -1475,6 +1537,7 @@ bnxt_msix_intr_assign(if_ctx_t ctx, int msix)
 	struct bnxt_softc *softc = iflib_get_softc(ctx);
 	int rc;
 	int i;
+	char irq_name[16];
 
 	rc = iflib_irq_alloc_generic(ctx, &softc->def_cp_ring.irq,
 	    softc->def_cp_ring.ring.id + 1, IFLIB_INTR_ADMIN,
@@ -1486,9 +1549,10 @@ bnxt_msix_intr_assign(if_ctx_t ctx, int msix)
 	}
 
 	for (i=0; i<softc->scctx->isc_nrxqsets; i++) {
+		snprintf(irq_name, sizeof(irq_name), "rxq%d", i);
 		rc = iflib_irq_alloc_generic(ctx, &softc->rx_cp_rings[i].irq,
 		    softc->rx_cp_rings[i].ring.id + 1, IFLIB_INTR_RX,
-		    bnxt_handle_rx_cp, &softc->rx_cp_rings[i], i, "rx_cp");
+		    bnxt_handle_rx_cp, &softc->rx_cp_rings[i], i, irq_name);
 		if (rc) {
 			device_printf(iflib_get_dev(ctx),
 			    "Failed to register RX completion ring handler\n");
@@ -1542,6 +1606,58 @@ bnxt_vlan_unregister(if_ctx_t ctx, uint16_t vtag)
 			break;
 		}
 	}
+}
+
+static int
+bnxt_wol_config(if_ctx_t ctx)
+{
+	struct bnxt_softc *softc = iflib_get_softc(ctx);
+	if_t ifp = iflib_get_ifp(ctx);
+
+	if (!softc)
+		return -EBUSY;
+
+	if (!bnxt_wol_supported(softc))
+		return -ENOTSUP;
+
+	if (if_getcapabilities(ifp) & IFCAP_WOL_MAGIC) {
+		if (!softc->wol) {
+			if (bnxt_hwrm_alloc_wol_fltr(softc))
+				return -EBUSY;
+			softc->wol = 1;
+		}
+	} else {
+		if (softc->wol) {
+			if (bnxt_hwrm_free_wol_fltr(softc))
+				return -EBUSY;
+			softc->wol = 0;
+		}
+	}
+
+	return 0;
+}
+
+static int
+bnxt_shutdown(if_ctx_t ctx)
+{
+	bnxt_wol_config(ctx);
+	return 0;
+}
+
+static int
+bnxt_suspend(if_ctx_t ctx)
+{
+	bnxt_wol_config(ctx);
+	return 0;
+}
+
+static int
+bnxt_resume(if_ctx_t ctx)
+{
+	struct bnxt_softc *softc = iflib_get_softc(ctx);
+
+	bnxt_get_wol_settings(softc);
+	return 0;
 }
 
 static int
@@ -1946,9 +2062,6 @@ bnxt_add_media_types(struct bnxt_softc *softc)
 			ifmedia_add(softc->media, IFM_ETHER | IFM_10G_CR1, 0,
 			    NULL);
 		break;
-	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_UNKNOWN:
-		/* Auto only */
-		break;
 	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR4:
 	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR2:
 	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKR:
@@ -2029,6 +2142,32 @@ bnxt_add_media_types(struct bnxt_softc *softc)
 		if (supported & HWRM_PORT_PHY_QCFG_OUTPUT_SUPPORT_SPEEDS_1GB)
 			ifmedia_add(softc->media, IFM_ETHER | IFM_1000_SGMII, 0,
 			    NULL);
+		break;
+	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_UNKNOWN:
+        default:
+                /*
+                 * Workaround for Cumulus & Stratus 
+                 *  For Stratus: 
+                 *      media_type is being returned as 0x0
+                 *      Return support speeds as 10G, 25G, 50G & 100G
+                 *
+                 *  For Cumulus: 
+                 *      phy_type is being returned as 0x14 (PHY_TYPE_40G_BASECR4)
+                 *      Return support speeds as 1G, 10G, 25G & 50G
+                 */
+		if (pci_get_device(softc->dev) == BCM57454) {
+                        /* For Stratus: 10G, 25G, 50G & 100G */
+			ifmedia_add(softc->media, IFM_ETHER | IFM_100G_CR4, 0, NULL);
+			ifmedia_add(softc->media, IFM_ETHER | IFM_50G_CR2, 0, NULL);
+			ifmedia_add(softc->media, IFM_ETHER | IFM_25G_CR, 0, NULL);
+			ifmedia_add(softc->media, IFM_ETHER | IFM_10G_CR1, 0, NULL);
+		} else if (pci_get_device(softc->dev) == BCM57414) {
+                        /* For Cumulus: 1G, 10G, 25G & 50G */
+			ifmedia_add(softc->media, IFM_ETHER | IFM_50G_CR2, 0, NULL);
+			ifmedia_add(softc->media, IFM_ETHER | IFM_25G_CR, 0, NULL);
+			ifmedia_add(softc->media, IFM_ETHER | IFM_10G_CR1, 0, NULL);
+			ifmedia_add(softc->media, IFM_ETHER | IFM_1000_T, 0, NULL);
+                } 
 		break;
 	}
 
@@ -2153,11 +2292,11 @@ bnxt_report_link(struct bnxt_softc *softc)
 		    HWRM_PORT_PHY_QCFG_OUTPUT_PAUSE_RX)
 			flow_ctrl = "FC - receive";
 		else
-			flow_ctrl = "none";
+			flow_ctrl = "FC - none";
 		iflib_link_state_change(softc->ctx, LINK_STATE_UP,
 		    IF_Gbps(100));
-		device_printf(softc->dev, "Link is UP %s, %s\n", duplex,
-		    flow_ctrl);
+		device_printf(softc->dev, "Link is UP %s, %s - %d Mbps \n", duplex,
+		    flow_ctrl, (softc->link_info.link_speed * 100));
 	} else {
 		iflib_link_state_change(softc->ctx, LINK_STATE_DOWN,
 		    bnxt_get_baudrate(&softc->link_info));
@@ -2416,4 +2555,17 @@ bnxt_get_baudrate(struct bnxt_link_info *link)
 		return IF_Mbps(10);
 	}
 	return IF_Gbps(100);
+}
+
+static void
+bnxt_get_wol_settings(struct bnxt_softc *softc)
+{
+	uint16_t wol_handle = 0;
+
+	if (!bnxt_wol_supported(softc))
+		return;
+
+	do {
+		wol_handle = bnxt_hwrm_get_wol_fltrs(softc, wol_handle);
+	} while (wol_handle && wol_handle != BNXT_NO_MORE_WOL_FILTERS);
 }

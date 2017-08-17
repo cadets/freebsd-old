@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 1999-2006, 2016 Robert N. M. Watson
+ * Copyright (c) 1999-2006, 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * This software was developed by Robert Watson for the TrustedBSD Project.
@@ -35,8 +35,6 @@
  *
  * ACL system calls and other functions common across different ACL types.
  * Type-specific routines go into subr_acl_<type>.c.
- *
- * XXXRW: Additional auditing of ACL arguments is required.
  */
 
 #include <sys/cdefs.h>

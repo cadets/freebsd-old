@@ -811,7 +811,7 @@ mpt_read(struct mpt_softc *mpt, int offset)
 /*
  * Some operations (e.g. diagnostic register writes while the ARM proccessor
  * is disabled), must be performed using "PCI pio" operations.  On non-PCI
- * busses, these operations likely map to normal register accesses.
+ * buses, these operations likely map to normal register accesses.
  */
 static __inline void
 mpt_pio_write(struct mpt_softc *mpt, size_t offset, uint32_t val)
@@ -932,14 +932,14 @@ enum {
 
 #define mpt_lprt(mpt, level, ...)		\
 do {						\
-	if (level <= (mpt)->verbose)		\
+	if ((level) <= (mpt)->verbose)		\
 		mpt_prt(mpt, __VA_ARGS__);	\
 } while (0)
 
 #if 0
 #define mpt_lprtc(mpt, level, ...)		\
 do {						\
-	if (level <= (mpt)->verbose)		\
+	if ((level) <= (mpt)->verbose)		\
 		mpt_prtc(mpt, __VA_ARGS__);	\
 } while (0)
 #endif

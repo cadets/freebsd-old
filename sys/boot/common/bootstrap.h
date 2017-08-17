@@ -35,8 +35,9 @@
 
 /* Commands and return values; nonzero return sets command_errmsg != NULL */
 typedef int	(bootblk_cmd_t)(int argc, char *argv[]);
+#define	COMMAND_ERRBUFSZ	(256)
 extern char	*command_errmsg;	
-extern char	command_errbuf[];	/* XXX blah, length */
+extern char	command_errbuf[COMMAND_ERRBUFSZ];
 #define CMD_OK		0
 #define CMD_WARN	1
 #define CMD_ERROR	2
@@ -72,7 +73,7 @@ int	kern_pread(int fd, vm_offset_t dest, size_t len, off_t off);
 void	*alloc_pread(int fd, off_t off, size_t len);
 
 /* bcache.c */
-void	bcache_init(u_int nblks, size_t bsize);
+void	bcache_init(size_t nblks, size_t bsize);
 void	bcache_add_dev(int);
 void	*bcache_allocate(void);
 void	bcache_free(void *);
@@ -140,8 +141,6 @@ struct pnpinfo
 };
 
 STAILQ_HEAD(pnpinfo_stql, pnpinfo);
-
-extern struct pnpinfo_stql pnp_devices;
 
 extern struct pnphandler	*pnphandlers[];		/* provided by MD code */
 
@@ -229,6 +228,7 @@ void file_discard(struct preloaded_file *fp);
 void file_addmetadata(struct preloaded_file *fp, int type, size_t size, void *p);
 int  file_addmodule(struct preloaded_file *fp, char *modname, int version,
 	struct kernel_module **newmp);
+void file_removemetadata(struct preloaded_file *fp);
 
 /* MI module loaders */
 #ifdef __elfN

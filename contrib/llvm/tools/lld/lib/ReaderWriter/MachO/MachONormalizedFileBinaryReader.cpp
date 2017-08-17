@@ -21,24 +21,25 @@
 ///                  | normalized |
 ///                  +------------+
 
-#include "MachONormalizedFile.h"
 #include "ArchHandler.h"
+#include "MachONormalizedFile.h"
 #include "MachONormalizedFileBinaryUtils.h"
 #include "lld/Core/Error.h"
 #include "lld/Core/LLVM.h"
 #include "lld/Core/SharedLibraryFile.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/BinaryFormat/MachO.h"
+#include "llvm/BinaryFormat/Magic.h"
 #include "llvm/Object/MachO.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Errc.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileOutputBuffer.h"
 #include "llvm/Support/Host.h"
-#include "llvm/Support/MachO.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 #include <functional>
@@ -46,6 +47,7 @@
 
 using namespace llvm::MachO;
 using llvm::object::ExportEntry;
+using llvm::file_magic;
 using llvm::object::MachOObjectFile;
 
 namespace lld {
@@ -70,12 +72,12 @@ static llvm::Error forEachLoadCommand(
       return llvm::make_error<GenericError>("Load command exceeds range");
 
     if (func(slc->cmd, slc->cmdsize, p))
-      return llvm::Error();
+      return llvm::Error::success();
 
     p += slc->cmdsize;
   }
 
-  return llvm::Error();
+  return llvm::Error::success();
 }
 
 static std::error_code appendRelocations(Relocations &relocs, StringRef buffer,
@@ -390,12 +392,14 @@ readBinary(std::unique_ptr<MemoryBuffer> &mb,
           if (sin->n_strx > strSize)
             return true;
           sout.name  = &strings[sin->n_strx];
-          sout.type  = (NListType)(sin->n_type & N_TYPE);
+          sout.type = static_cast<NListType>(sin->n_type & (N_STAB|N_TYPE));
           sout.scope = (sin->n_type & (N_PEXT|N_EXT));
           sout.sect  = sin->n_sect;
           sout.desc  = sin->n_desc;
           sout.value = sin->n_value;
-          if (sout.type == N_UNDF)
+          if (sin->n_type & N_STAB)
+            f->stabsSymbols.push_back(sout);
+          else if (sout.type == N_UNDF)
             f->undefinedSymbols.push_back(sout);
           else if (sin->n_type & N_EXT)
             f->globalSymbols.push_back(sout);
@@ -429,6 +433,8 @@ readBinary(std::unique_ptr<MemoryBuffer> &mb,
             f->undefinedSymbols.push_back(sout);
           else if (sout.scope == (SymbolScope)N_EXT)
             f->globalSymbols.push_back(sout);
+          else if (sin->n_type & N_STAB)
+            f->stabsSymbols.push_back(sout);
           else
             f->localSymbols.push_back(sout);
         }
@@ -502,9 +508,9 @@ readBinary(std::unique_ptr<MemoryBuffer> &mb,
   if (dyldInfo) {
     // If any exports, extract and add to normalized exportInfo vector.
     if (dyldInfo->export_size) {
-      const uint8_t *trieStart = reinterpret_cast<const uint8_t*>(start +
-                                                          dyldInfo->export_off);
-      ArrayRef<uint8_t> trie(trieStart, dyldInfo->export_size);
+      const uint8_t *trieStart = reinterpret_cast<const uint8_t *>(
+          start + read32(&dyldInfo->export_off, isBig));
+      ArrayRef<uint8_t> trie(trieStart, read32(&dyldInfo->export_size, isBig));
       for (const ExportEntry &trieExport : MachOObjectFile::exports(trie)) {
         Export normExport;
         normExport.name = trieExport.name().copy(f->ownedAllocations);
@@ -527,15 +533,14 @@ public:
   MachOObjectReader(MachOLinkingContext &ctx) : _ctx(ctx) {}
 
   bool canParse(file_magic magic, MemoryBufferRef mb) const override {
-    return (magic == llvm::sys::fs::file_magic::macho_object &&
-            mb.getBufferSize() > 32);
+    return (magic == file_magic::macho_object && mb.getBufferSize() > 32);
   }
 
   ErrorOr<std::unique_ptr<File>>
   loadFile(std::unique_ptr<MemoryBuffer> mb,
            const Registry &registry) const override {
     std::unique_ptr<File> ret =
-        llvm::make_unique<MachOFile>(std::move(mb), &_ctx);
+      llvm::make_unique<MachOFile>(std::move(mb), &_ctx);
     return std::move(ret);
   }
 
@@ -549,8 +554,8 @@ public:
 
   bool canParse(file_magic magic, MemoryBufferRef mb) const override {
     switch (magic) {
-    case llvm::sys::fs::file_magic::macho_dynamically_linked_shared_lib:
-    case llvm::sys::fs::file_magic::macho_dynamically_linked_shared_lib_stub:
+    case file_magic::macho_dynamically_linked_shared_lib:
+    case file_magic::macho_dynamically_linked_shared_lib_stub:
       return mb.getBufferSize() > 32;
     default:
       return false;

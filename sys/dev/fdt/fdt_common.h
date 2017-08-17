@@ -32,6 +32,7 @@
 #ifndef _FDT_COMMON_H_
 #define _FDT_COMMON_H_
 
+#include <sys/sysctl.h>
 #include <sys/slicer.h>
 #include <contrib/libfdt/libfdt_env.h>
 #include <dev/ofw/ofw_bus.h>
@@ -70,15 +71,11 @@ extern vm_paddr_t fdt_immr_pa;
 extern vm_offset_t fdt_immr_va;
 extern vm_offset_t fdt_immr_size;
 
-struct fdt_pm_mask_entry {
-	char		*compat;
-	uint32_t	mask;
-};
-extern struct fdt_pm_mask_entry fdt_pm_mask_table[];
-
 #if defined(FDT_DTB_STATIC)
 extern u_char fdt_static_dtb;
 #endif
+
+SYSCTL_DECL(_hw_fdt);
 
 int fdt_addrsize_cells(phandle_t, int *, int *);
 u_long fdt_data_get(void *, int);
@@ -91,7 +88,6 @@ int fdt_get_phyaddr(phandle_t, device_t, int *, void **);
 int fdt_get_range(phandle_t, int, u_long *, u_long *);
 int fdt_immr_addr(vm_offset_t);
 int fdt_regsize(phandle_t, u_long *, u_long *);
-int fdt_is_compatible(phandle_t, const char *);
 int fdt_is_compatible_strict(phandle_t, const char *);
 int fdt_is_enabled(phandle_t);
 int fdt_pm_is_enabled(phandle_t);

@@ -1,4 +1,5 @@
-//===-- LibCxxAtomic.h -------------------------------------------*- C++ -*-===//
+//===-- LibCxxAtomic.h -------------------------------------------*- C++
+//-*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -10,20 +11,21 @@
 #ifndef liblldb_LibCxxAtomic_h_
 #define liblldb_LibCxxAtomic_h_
 
-#include "lldb/Core/Stream.h"
 #include "lldb/Core/ValueObject.h"
 #include "lldb/DataFormatters/TypeSummary.h"
 #include "lldb/DataFormatters/TypeSynthetic.h"
+#include "lldb/Utility/Stream.h"
 
 namespace lldb_private {
-    namespace formatters
-    {
-        bool
-        LibCxxAtomicSummaryProvider (ValueObject& valobj, Stream& stream, const TypeSummaryOptions& options);
-        
-        SyntheticChildrenFrontEnd* LibcxxAtomicSyntheticFrontEndCreator (CXXSyntheticChildren*, lldb::ValueObjectSP);
-        
-    } // namespace formatters
+namespace formatters {
+bool LibCxxAtomicSummaryProvider(ValueObject &valobj, Stream &stream,
+                                 const TypeSummaryOptions &options);
+
+SyntheticChildrenFrontEnd *
+LibcxxAtomicSyntheticFrontEndCreator(CXXSyntheticChildren *,
+                                     lldb::ValueObjectSP);
+
+} // namespace formatters
 } // namespace lldb_private
 
 #endif // liblldb_LibCxxAtomic_h_

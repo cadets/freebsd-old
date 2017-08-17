@@ -10,7 +10,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -266,9 +266,9 @@ sysctl_netinet_intr_direct_queue_maxlen(SYSCTL_HANDLER_ARGS)
 		return (EINVAL);
 	return (netisr_setqlimit(&ip_direct_nh, qlimit));
 }
-SYSCTL_PROC(_net_inet_ip, IPCTL_INTRQMAXLEN, intr_direct_queue_maxlen,
-    CTLTYPE_INT|CTLFLAG_RW, 0, 0, sysctl_netinet_intr_direct_queue_maxlen, "I",
-    "Maximum size of the IP direct input queue");
+SYSCTL_PROC(_net_inet_ip, IPCTL_INTRDQMAXLEN, intr_direct_queue_maxlen,
+    CTLTYPE_INT|CTLFLAG_RW, 0, 0, sysctl_netinet_intr_direct_queue_maxlen,
+    "I", "Maximum size of the IP direct input queue");
 
 static int
 sysctl_netinet_intr_direct_queue_drops(SYSCTL_HANDLER_ARGS)
@@ -287,7 +287,7 @@ sysctl_netinet_intr_direct_queue_drops(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
-SYSCTL_PROC(_net_inet_ip, IPCTL_INTRQDROPS, intr_direct_queue_drops,
+SYSCTL_PROC(_net_inet_ip, IPCTL_INTRDQDROPS, intr_direct_queue_drops,
     CTLTYPE_INT|CTLFLAG_RD, 0, 0, sysctl_netinet_intr_direct_queue_drops, "I",
     "Number of packets dropped from the IP direct input queue");
 #endif	/* RSS */
@@ -991,7 +991,7 @@ ip_forward(struct mbuf *m, int srcrt)
 	 * because unnecessary, or because rate limited), so we are
 	 * really we are wasting a lot of work here.
 	 *
-	 * We don't use m_copy() because it might return a reference
+	 * We don't use m_copym() because it might return a reference
 	 * to a shared cluster. Both this function and ip_output()
 	 * assume exclusive access to the IP header in `m', so any
 	 * data in a cluster may change before we reach icmp_error().
@@ -1136,30 +1136,48 @@ ip_forward(struct mbuf *m, int srcrt)
 	icmp_error(mcopy, type, code, dest.s_addr, mtu);
 }
 
+#define	CHECK_SO_CT(sp, ct) \
+    (((sp->so_options & SO_TIMESTAMP) && (sp->so_ts_clock == ct)) ? 1 : 0)
+
 void
 ip_savecontrol(struct inpcb *inp, struct mbuf **mp, struct ip *ip,
     struct mbuf *m)
 {
 
-	if (inp->inp_socket->so_options & (SO_BINTIME | SO_TIMESTAMP)) {
+	if ((inp->inp_socket->so_options & SO_BINTIME) ||
+	    CHECK_SO_CT(inp->inp_socket, SO_TS_BINTIME)) {
 		struct bintime bt;
 
 		bintime(&bt);
-		if (inp->inp_socket->so_options & SO_BINTIME) {
-			*mp = sbcreatecontrol((caddr_t)&bt, sizeof(bt),
-			    SCM_BINTIME, SOL_SOCKET);
-			if (*mp)
-				mp = &(*mp)->m_next;
-		}
-		if (inp->inp_socket->so_options & SO_TIMESTAMP) {
-			struct timeval tv;
+		*mp = sbcreatecontrol((caddr_t)&bt, sizeof(bt),
+		    SCM_BINTIME, SOL_SOCKET);
+		if (*mp)
+			mp = &(*mp)->m_next;
+	}
+	if (CHECK_SO_CT(inp->inp_socket, SO_TS_REALTIME_MICRO)) {
+		struct timeval tv;
 
-			bintime2timeval(&bt, &tv);
-			*mp = sbcreatecontrol((caddr_t)&tv, sizeof(tv),
-			    SCM_TIMESTAMP, SOL_SOCKET);
-			if (*mp)
-				mp = &(*mp)->m_next;
-		}
+		microtime(&tv);
+		*mp = sbcreatecontrol((caddr_t)&tv, sizeof(tv),
+		    SCM_TIMESTAMP, SOL_SOCKET);
+		if (*mp)
+			mp = &(*mp)->m_next;
+	} else if (CHECK_SO_CT(inp->inp_socket, SO_TS_REALTIME)) {
+		struct timespec ts;
+
+		nanotime(&ts);
+		*mp = sbcreatecontrol((caddr_t)&ts, sizeof(ts),
+		    SCM_REALTIME, SOL_SOCKET);
+		if (*mp)
+			mp = &(*mp)->m_next;
+	} else if (CHECK_SO_CT(inp->inp_socket, SO_TS_MONOTONIC)) {
+		struct timespec ts;
+
+		nanouptime(&ts);
+		*mp = sbcreatecontrol((caddr_t)&ts, sizeof(ts),
+		    SCM_MONOTONIC, SOL_SOCKET);
+		if (*mp)
+			mp = &(*mp)->m_next;
 	}
 	if (inp->inp_flags & INP_RECVDSTADDR) {
 		*mp = sbcreatecontrol((caddr_t)&ip->ip_dst,

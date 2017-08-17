@@ -9,12 +9,12 @@
 
 #include "LayoutPass.h"
 #include "lld/Core/Instrumentation.h"
-#include "lld/Core/Parallel.h"
 #include "lld/Core/PassManager.h"
 #include "lld/ReaderWriter/MachOLinkingContext.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/Parallel.h"
 #include <algorithm>
 #include <set>
 #include <utility>
@@ -461,10 +461,10 @@ llvm::Error LayoutPass::perform(SimpleFile &mergedFile) {
   });
 
   std::vector<LayoutPass::SortKey> vec = decorate(atomRange);
-  parallel_sort(vec.begin(), vec.end(),
-      [&](const LayoutPass::SortKey &l, const LayoutPass::SortKey &r) -> bool {
-        return compareAtoms(l, r, _customSorter);
-      });
+  sort(llvm::parallel::par, vec.begin(), vec.end(),
+       [&](const LayoutPass::SortKey &l, const LayoutPass::SortKey &r) -> bool {
+         return compareAtoms(l, r, _customSorter);
+       });
   DEBUG(checkTransitivity(vec, _customSorter));
   undecorate(atomRange, vec);
 
@@ -474,7 +474,7 @@ llvm::Error LayoutPass::perform(SimpleFile &mergedFile) {
   });
 
   DEBUG(llvm::dbgs() << "******** Finished laying out atoms\n");
-  return llvm::Error();
+  return llvm::Error::success();
 }
 
 void addLayoutPass(PassManager &pm, const MachOLinkingContext &ctx) {

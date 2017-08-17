@@ -232,7 +232,6 @@ thread_create(struct thread *td, struct rtprio *rtp,
 
 	bzero(&newtd->td_startzero,
 	    __rangeof(struct thread, td_startzero, td_endzero));
-	newtd->td_sleeptimo = 0;
 	bcopy(&td->td_startcopy, &newtd->td_startcopy,
 	    __rangeof(struct thread, td_startcopy, td_endcopy));
 	newtd->td_proc = td->td_proc;
@@ -280,9 +279,6 @@ thread_create(struct thread *td, struct rtprio *rtp,
 	TD_SET_CAN_RUN(newtd);
 	sched_add(newtd, SRQ_BORING);
 	thread_unlock(newtd);
-#ifdef KDTRACE_HOOKS
-	AUDIT_RET_OBJUUID1(&newtd->td_uuid);
-#endif
 
 	return (0);
 
@@ -360,7 +356,7 @@ kern_thr_exit(struct thread *td)
 	p->p_pendingexits++;
 	td->td_dbgflags |= TDB_EXIT;
 	if (p->p_ptevents & PTRACE_LWP)
-		ptracestop(td, SIGTRAP);
+		ptracestop(td, SIGTRAP, NULL);
 	PROC_UNLOCK(p);
 	tidhash_remove(td);
 	PROC_LOCK(p);
@@ -404,9 +400,6 @@ sys_thr_kill(struct thread *td, struct thr_kill_args *uap)
 			PROC_LOCK(p);
 			FOREACH_THREAD_IN_PROC(p, ttd) {
 				if (ttd != td) {
-#ifdef KDTRACE_HOOKS
-					AUDIT_ARG_OBJUUID2(&ttd->td_uuid);
-#endif
 					error = 0;
 					if (uap->sig == 0)
 						break;
@@ -420,9 +413,6 @@ sys_thr_kill(struct thread *td, struct thr_kill_args *uap)
 		ttd = tdfind((lwpid_t)uap->id, p->p_pid);
 		if (ttd == NULL)
 			return (ESRCH);
-#ifdef KDTRACE_HOOKS
-		AUDIT_ARG_OBJUUID2(&ttd->td_uuid);
-#endif
 		if (uap->sig == 0)
 			;
 		else if (!_SIG_VALID(uap->sig))
@@ -465,9 +455,6 @@ sys_thr_kill2(struct thread *td, struct thr_kill2_args *uap)
 			error = ESRCH;
 			FOREACH_THREAD_IN_PROC(p, ttd) {
 				if (ttd != td) {
-#ifdef KDTRACE_HOOKS
-					AUDIT_ARG_OBJUUID2(&ttd->td_uuid);
-#endif
 					error = 0;
 					if (uap->sig == 0)
 						break;
@@ -482,9 +469,6 @@ sys_thr_kill2(struct thread *td, struct thr_kill2_args *uap)
 			return (ESRCH);
 		p = ttd->td_proc;
 		AUDIT_ARG_PROCESS(p);
-#ifdef KDTRACE_HOOKS
-		AUDIT_ARG_OBJUUID2(&ttd->td_uuid);
-#endif
 		error = p_cansignal(td, p, uap->sig);
 		if (uap->sig == 0)
 			;

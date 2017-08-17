@@ -52,7 +52,6 @@ __FBSDID("$FreeBSD$");
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
-#define	_WITH_DPRINTF
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -315,7 +314,7 @@ nvlist_set_flags(nvlist_t *nvl, int flags)
 	nvl->nvl_flags = flags;
 }
 
-static void
+void
 nvlist_report_missing(int type, const char *name)
 {
 

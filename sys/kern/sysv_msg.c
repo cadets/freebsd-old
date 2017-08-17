@@ -70,7 +70,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/mount.h>
 #include <sys/msg.h>
-#include <sys/msgid.h>
 #include <sys/racct.h>
 #include <sys/sx.h>
 #include <sys/syscall.h>
@@ -79,7 +78,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/malloc.h>
 #include <sys/jail.h>
-#include <sys/uuid.h>
 
 #include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
@@ -482,9 +480,7 @@ struct msgctl_args {
 };
 #endif
 int
-sys_msgctl(td, uap)
-	struct thread *td;
-	register struct msgctl_args *uap;
+sys_msgctl(struct thread *td, struct msgctl_args *uap)
 {
 	int msqid = uap->msqid;
 	int cmd = uap->cmd;
@@ -509,7 +505,7 @@ kern_msgctl(td, msqid, cmd, msqbuf)
 	struct msqid_ds *msqbuf;
 {
 	int rval, error, msqix;
-	register struct msqid_kernel *msqkptr;
+	struct msqid_kernel *msqkptr;
 	struct prison *rpr;
 
 	rpr = msg_find_prison(td->td_ucred);
@@ -529,9 +525,6 @@ kern_msgctl(td, msqid, cmd, msqbuf)
 	msqkptr = &msqids[msqix];
 
 	mtx_lock(&msq_mtx);
-#ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&msqkptr->uuid);
-#endif
 	if (msqkptr->u.msg_qbytes == 0) {
 		DPRINTF(("no such msqid\n"));
 		error = EINVAL;
@@ -649,15 +642,13 @@ struct msgget_args {
 #endif
 
 int
-sys_msgget(td, uap)
-	struct thread *td;
-	register struct msgget_args *uap;
+sys_msgget(struct thread *td, struct msgget_args *uap)
 {
 	int msqid, error = 0;
 	int key = uap->key;
 	int msgflg = uap->msgflg;
 	struct ucred *cred = td->td_ucred;
-	register struct msqid_kernel *msqkptr = NULL;
+	struct msqid_kernel *msqkptr = NULL;
 
 	DPRINTF(("msgget(0x%x, 0%o)\n", key, msgflg));
 
@@ -683,9 +674,6 @@ sys_msgget(td, uap)
 			}
 			AUDIT_ARG_SVIPC_ID(IXSEQ_TO_IPCID(msqid,
 			    msqkptr->u.msg_perm));
-#ifdef KDTRACE_HOOKS
-			AUDIT_ARG_OBJUUID1(&msqkptr->uuid);
-#endif
 			if ((error = ipcperm(td, &msqkptr->u.msg_perm,
 			    msgflg & 0700))) {
 				DPRINTF(("requester doesn't have 0%o access\n",
@@ -754,13 +742,6 @@ sys_msgget(td, uap)
 #ifdef MAC
 		mac_sysvmsq_create(cred, msqkptr);
 #endif
-		(void)kern_uuidgen(&msqkptr->uuid, 1);
-		AUDIT_RET_SVIPC_ID(IXSEQ_TO_IPCID(msqid,
-		    msqkptr->u.msg_perm));
-#ifdef KDTRACE_HOOKS
-		AUDIT_RET_OBJUUID1(&msqkptr->uuid);
-#endif
-		/* XXXRW: Some argument for an AUDIT_RET_SVIPC_PERM(). */
 		AUDIT_ARG_SVIPC_PERM(&msqkptr->u.msg_perm);
 	} else {
 		DPRINTF(("didn't find it and wasn't asked to create it\n"));
@@ -779,23 +760,18 @@ done2:
 #ifndef _SYS_SYSPROTO_H_
 struct msgsnd_args {
 	int	msqid;
-	const void	*msgp;
+	const void	*msgp;	/* XXX msgp is actually mtext. */
 	size_t	msgsz;
 	int	msgflg;
 };
 #endif
 int
-kern_msgsnd(td, msqid, msgp, msgsz, msgflg, mtype)
-	struct thread *td;
-	int msqid;
-	const void *msgp;	/* XXX msgp is actually mtext. */
-	size_t msgsz;
-	int msgflg;
-	long mtype;
+kern_msgsnd(struct thread *td, int msqid, const void *msgp,
+    size_t msgsz, int msgflg, long mtype)
 {
 	int msqix, segs_needed, error = 0;
-	register struct msqid_kernel *msqkptr;
-	register struct msg *msghdr;
+	struct msqid_kernel *msqkptr;
+	struct msg *msghdr;
 	struct prison *rpr;
 	short next;
 #ifdef RACCT
@@ -819,9 +795,6 @@ kern_msgsnd(td, msqid, msgp, msgsz, msgflg, mtype)
 
 	msqkptr = &msqids[msqix];
 	AUDIT_ARG_SVIPC_PERM(&msqkptr->u.msg_perm);
-#ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&msqkptr->uuid);
-#endif
 	if (msqkptr->u.msg_qbytes == 0) {
 		DPRINTF(("no such message queue id\n"));
 		error = EINVAL;
@@ -994,8 +967,6 @@ kern_msgsnd(td, msqid, msgp, msgsz, msgflg, mtype)
 	 */
 	mac_sysvmsg_create(td->td_ucred, msqkptr, msghdr);
 #endif
-	msgid_generate(&msghdr->msgid);
-	AUDIT_RET_MSGID(&msghdr->msgid);
 
 	/*
 	 * Allocate space for the message
@@ -1137,9 +1108,7 @@ done2:
 }
 
 int
-sys_msgsnd(td, uap)
-	struct thread *td;
-	register struct msgsnd_args *uap;
+sys_msgsnd(struct thread *td, struct msgsnd_args *uap)
 {
 	int error;
 	long mtype;
@@ -1165,19 +1134,14 @@ struct msgrcv_args {
 	int	msgflg;
 };
 #endif
+/* XXX msgp is actually mtext. */
 int
-kern_msgrcv(td, msqid, msgp, msgsz, msgtyp, msgflg, mtype)
-	struct thread *td;
-	int msqid;
-	void *msgp;	/* XXX msgp is actually mtext. */
-	size_t msgsz;
-	long msgtyp;
-	int msgflg;
-	long *mtype;
+kern_msgrcv(struct thread *td, int msqid, void *msgp, size_t msgsz, long msgtyp,
+    int msgflg, long *mtype)
 {
 	size_t len;
-	register struct msqid_kernel *msqkptr;
-	register struct msg *msghdr;
+	struct msqid_kernel *msqkptr;
+	struct msg *msghdr;
 	struct prison *rpr;
 	int msqix, error = 0;
 	short next;
@@ -1198,9 +1162,6 @@ kern_msgrcv(td, msqid, msgp, msgsz, msgtyp, msgflg, mtype)
 	msqkptr = &msqids[msqix];
 	mtx_lock(&msq_mtx);
 	AUDIT_ARG_SVIPC_PERM(&msqkptr->u.msg_perm);
-#ifdef KDTRACE_HOOKS
-	AUDIT_ARG_OBJUUID1(&msqkptr->uuid);
-#endif
 	if (msqkptr->u.msg_qbytes == 0) {
 		DPRINTF(("no such message queue id\n"));
 		error = EINVAL;
@@ -1424,7 +1385,7 @@ kern_msgrcv(td, msqid, msgp, msgsz, msgtyp, msgflg, mtype)
 	/*
 	 * Done, return the actual number of bytes copied out.
 	 */
-	AUDIT_RET_MSGID(&msghdr->msgid);
+
 	msg_freehdr(msghdr);
 	wakeup(msqkptr);
 	td->td_retval[0] = msgsz;
@@ -1434,9 +1395,7 @@ done2:
 }
 
 int
-sys_msgrcv(td, uap)
-	struct thread *td;
-	register struct msgrcv_args *uap;
+sys_msgrcv(struct thread *td, struct msgrcv_args *uap)
 {
 	int error;
 	long mtype;
@@ -1835,19 +1794,19 @@ static sy_call_t *msgcalls[] = {
 
 /*
  * Entry point for all MSG calls.
+ *
+ * XXX actually varargs.
+ * struct msgsys_args {
+ *		int	which;
+ *		int	a2;
+ *		int	a3;
+ *		int	a4;
+ *		int	a5;
+ *		int	a6;
+ *	} *uap;
  */
 int
-sys_msgsys(td, uap)
-	struct thread *td;
-	/* XXX actually varargs. */
-	struct msgsys_args /* {
-		int	which;
-		int	a2;
-		int	a3;
-		int	a4;
-		int	a5;
-		int	a6;
-	} */ *uap;
+sys_msgsys(struct thread *td, struct msgsys_args *uap)
 {
 	int error;
 
@@ -1870,9 +1829,7 @@ struct freebsd7_msgctl_args {
 };
 #endif
 int
-freebsd7_msgctl(td, uap)
-	struct thread *td;
-	struct freebsd7_msgctl_args *uap;
+freebsd7_msgctl(struct thread *td, struct freebsd7_msgctl_args *uap)
 {
 	struct msqid_ds_old msqold;
 	struct msqid_ds msqbuf;

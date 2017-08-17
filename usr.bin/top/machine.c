@@ -178,13 +178,19 @@ char *cpustatenames[] = {
 
 int memory_stats[7];
 char *memorynames[] = {
-	"K Active, ", "K Inact, ", "K Wired, ", "K Cache, ", "K Buf, ",
+	"K Active, ", "K Inact, ", "K Laundry, ", "K Wired, ", "K Buf, ",
 	"K Free", NULL
 };
 
 int arc_stats[7];
 char *arcnames[] = {
 	"K Total, ", "K MFU, ", "K MRU, ", "K Anon, ", "K Header, ", "K Other",
+	NULL
+};
+
+int carc_stats[4];
+char *carcnames[] = {
+	"K Compressed, ", "K Uncompressed, ", ":1 Ratio, ",
 	NULL
 };
 
@@ -223,6 +229,7 @@ static long total_majflt;
 /* these are for getting the memory statistics */
 
 static int arc_enabled;
+static int carc_enabled;
 static int pageshift;		/* log base 2 of the pagesize */
 
 /* define pagetok in terms of pageshift */
@@ -234,7 +241,7 @@ static int pageshift;		/* log base 2 of the pagesize */
     ((kip)->ki_swrss > (kip)->ki_rssize ? (kip)->ki_swrss - (kip)->ki_rssize : 0)
 
 /* useful externals */
-long percentages();
+long percentages(int cnt, int *out, long *new, long *old, long *diffs);
 
 #ifdef ORDER
 /*
@@ -266,6 +273,18 @@ static const char *format_nice(const struct kinfo_proc *pp);
 static void getsysctl(const char *name, void *ptr, size_t len);
 static int swapmode(int *retavail, int *retfree);
 static void update_layout(void);
+static int find_uid(uid_t needle, int *haystack);
+
+static int
+find_uid(uid_t needle, int *haystack)
+{
+	size_t i = 0;
+
+	for (; i < TOP_MAX_UIDS; ++i)
+		if ((uid_t)haystack[i] == needle)
+			return 1;
+	return 0;
+}
 
 void
 toggle_pcpustats(void)
@@ -283,16 +302,18 @@ update_layout(void)
 
 	y_mem = 3;
 	y_arc = 4;
-	y_swap = 4 + arc_enabled;
-	y_idlecursor = 5 + arc_enabled;
-	y_message = 5 + arc_enabled;
-	y_header = 6 + arc_enabled;
-	y_procs = 7 + arc_enabled;
-	Header_lines = 7 + arc_enabled;
+	y_carc = 5;
+	y_swap = 4 + arc_enabled + carc_enabled;
+	y_idlecursor = 5 + arc_enabled + carc_enabled;
+	y_message = 5 + arc_enabled + carc_enabled;
+	y_header = 6 + arc_enabled + carc_enabled;
+	y_procs = 7 + arc_enabled + carc_enabled;
+	Header_lines = 7 + arc_enabled + carc_enabled;
 
 	if (pcpu_stats) {
 		y_mem += ncpus - 1;
 		y_arc += ncpus - 1;
+		y_carc += ncpus - 1;
 		y_swap += ncpus - 1;
 		y_idlecursor += ncpus - 1;
 		y_message += ncpus - 1;
@@ -307,6 +328,7 @@ machine_init(struct statics *statics, char do_unames)
 {
 	int i, j, empty, pagesize;
 	uint64_t arc_size;
+	boolean_t carc_en;
 	size_t size;
 	struct passwd *pw;
 
@@ -322,6 +344,11 @@ machine_init(struct statics *statics, char do_unames)
 	if (sysctlbyname("kstat.zfs.misc.arcstats.size", &arc_size, &size,
 	    NULL, 0) == 0 && arc_size != 0)
 		arc_enabled = 1;
+	size = sizeof(carc_en);
+	if (arc_enabled &&
+	    sysctlbyname("vfs.zfs.compressed_arc_enabled", &carc_en, &size,
+	    NULL, 0) == 0 && carc_en == 1)
+		carc_enabled = 1;
 
 	if (do_unames) {
 	    while ((pw = getpwent()) != NULL) {
@@ -368,6 +395,10 @@ machine_init(struct statics *statics, char do_unames)
 		statics->arc_names = arcnames;
 	else
 		statics->arc_names = NULL;
+	if (carc_enabled)
+		statics->carc_names = carcnames;
+	else
+		statics->carc_names = NULL;
 	statics->swap_names = swapnames;
 #ifdef ORDER
 	statics->order_names = ordernames;
@@ -498,13 +529,13 @@ get_system_info(struct system_info *si)
 		static int swapavail = 0;
 		static int swapfree = 0;
 		static long bufspace = 0;
-		static int nspgsin, nspgsout;
+		static uint64_t nspgsin, nspgsout;
 
 		GETSYSCTL("vfs.bufspace", bufspace);
 		GETSYSCTL("vm.stats.vm.v_active_count", memory_stats[0]);
 		GETSYSCTL("vm.stats.vm.v_inactive_count", memory_stats[1]);
-		GETSYSCTL("vm.stats.vm.v_wire_count", memory_stats[2]);
-		GETSYSCTL("vm.stats.vm.v_cache_count", memory_stats[3]);
+		GETSYSCTL("vm.stats.vm.v_laundry_count", memory_stats[2]);
+		GETSYSCTL("vm.stats.vm.v_wire_count", memory_stats[3]);
 		GETSYSCTL("vm.stats.vm.v_free_count", memory_stats[5]);
 		GETSYSCTL("vm.stats.vm.v_swappgsin", nspgsin);
 		GETSYSCTL("vm.stats.vm.v_swappgsout", nspgsout);
@@ -558,6 +589,14 @@ get_system_info(struct system_info *si)
 		GETSYSCTL("kstat.zfs.misc.arcstats.other_size", arc_stat);
 		arc_stats[5] = arc_stat >> 10;
 		si->arc = arc_stats;
+	}
+	if (carc_enabled) {
+		GETSYSCTL("kstat.zfs.misc.arcstats.compressed_size", arc_stat);
+		carc_stats[0] = arc_stat >> 10;
+		carc_stats[2] = arc_stat >> 10; /* For ratio */
+		GETSYSCTL("kstat.zfs.misc.arcstats.uncompressed_size", arc_stat);
+		carc_stats[1] = arc_stat >> 10;
+		si->carc = carc_stats;
 	}
 
 	/* set arrays and strings */
@@ -820,7 +859,7 @@ get_process_info(struct system_info *si, struct process_select *sel,
 	show_jid = sel->jid != -1;
 	show_self = sel->self == -1;
 	show_system = sel->system;
-	show_uid = sel->uid != -1;
+	show_uid = sel->uid[0] != -1;
 	show_command = sel->command != NULL;
 	show_kidle = sel->kidle;
 
@@ -879,7 +918,7 @@ get_process_info(struct system_info *si, struct process_select *sel,
 			/* skip proc. that don't belong to the selected JID */
 			continue;
 
-		if (show_uid && pp->ki_ruid != (uid_t)sel->uid)
+		if (show_uid && !find_uid(pp->ki_ruid, sel->uid))
 			/* skip proc. that don't belong to the selected UID */
 			continue;
 

@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 1999-2005 Apple Inc.
- * Copyright (c) 2016 Robert N. M. Watson
+ * Copyright (c) 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * Portions of this software were developed by BAE Systems, the University of
@@ -36,15 +36,11 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include "opt_metaio.h"
-
 #include <sys/param.h>
 #include <sys/filedesc.h>
 #include <sys/capsicum.h>
 #include <sys/ipc.h>
 #include <sys/mount.h>
-#include <sys/selinfo.h>
-#include <sys/pipe.h>
 #include <sys/proc.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
@@ -330,23 +326,6 @@ audit_arg_mask(int mask)
 	ARG_SET_VALID(ar, ARG_MASK);
 }
 
-#ifdef METAIO
-void
-audit_arg_metaio(struct metaio *miop)
-{
-	struct kaudit_record *ar;
-
-	ar = currecord();
-	if (ar == NULL)
-		return;
-
-	if (miop == NULL)
-		return;
-	ar->k_ar.ar_arg_metaio = *miop;
-	ARG_SET_VALID(ar, ARG_METAIO);
-}
-#endif /* METAIO */
-
 void
 audit_arg_mode(mode_t mode)
 {
@@ -385,36 +364,6 @@ audit_arg_value(long value)
 	ar->k_ar.ar_arg_value = value;
 	ARG_SET_VALID(ar, ARG_VALUE);
 }
-
-#ifdef KDTRACE_HOOKS
-void
-audit_arg_objuuid1(struct uuid *uuid)
-{
-	struct kaudit_record *ar;
-
-	ar = currecord();
-	if (ar == NULL)
-		return;
-
-	bcopy(uuid, &ar->k_ar.ar_arg_objuuid1,
-	    sizeof(ar->k_ar.ar_arg_objuuid1));
-	ARG_SET_VALID(ar, ARG_OBJUUID1);
-}
-
-void
-audit_arg_objuuid2(struct uuid *uuid)
-{
-	struct kaudit_record *ar;
-
-	ar = currecord();
-	if (ar == NULL)
-		return;
-
-	bcopy(uuid, &ar->k_ar.ar_arg_objuuid2,
-	    sizeof(ar->k_ar.ar_arg_objuuid2));
-	ARG_SET_VALID(ar, ARG_OBJUUID2);
-}
-#endif
 
 void
 audit_arg_owner(uid_t uid, gid_t gid)
@@ -468,17 +417,6 @@ audit_arg_process(struct proc *p)
 	ar->k_ar.ar_arg_pid = p->p_pid;
 	ARG_SET_VALID(ar, ARG_AUID | ARG_EUID | ARG_EGID | ARG_RUID |
 	    ARG_RGID | ARG_ASID | ARG_TERMID_ADDR | ARG_PID | ARG_PROCESS);
-
-	/*
-	 * If we are auditing a process argument, we almost certainly want its
-	 * UUID as well as PID/etc.
-	 *
-	 * XXXRW: Assume for now that it will be object UUID 1 -- but we might
-	 * need to change that in the future.
-	 */
-#ifdef KDTRACE_HOOKS
-	audit_arg_objuuid1(&p->p_uuid);
-#endif
 }
 
 void
@@ -733,9 +671,6 @@ void
 audit_arg_file(struct proc *p, struct file *fp)
 {
 	struct kaudit_record *ar;
-#ifdef KDTRACE_HOOKS
-	struct pipe *pipe;
-#endif
 	struct socket *so;
 	struct inpcb *pcb;
 	struct vnode *vp;
@@ -780,16 +715,6 @@ audit_arg_file(struct proc *p, struct file *fp)
 			INP_RUNLOCK(pcb);
 			ARG_SET_VALID(ar, ARG_SOCKINFO);
 		}
-#ifdef KDTRACE_HOOKS
-		audit_arg_objuuid1(&so->so_uuid);
-#endif
-		break;
-
-	case DTYPE_PIPE:
-#ifdef KDTRACE_HOOKS
-		pipe = (struct pipe *)fp->f_data;
-		audit_arg_objuuid1(&pipe->pipe_uuid);
-#endif
 		break;
 
 	default:
@@ -901,8 +826,7 @@ audit_arg_upath2_canon(char *upath)
  * XXXAUDIT: Possibly KASSERT the path pointer is NULL?
  */
 static int
-audit_arg_vnode(struct vnode *vp, struct vnode_au_info *vnp,
-    struct uuid *uuid)
+audit_arg_vnode(struct vnode *vp, struct vnode_au_info *vnp)
 {
 	struct vattr vattr;
 	int error;
@@ -922,7 +846,6 @@ audit_arg_vnode(struct vnode *vp, struct vnode_au_info *vnp,
 	vnp->vn_fsid = vattr.va_fsid;
 	vnp->vn_fileid = vattr.va_fileid;
 	vnp->vn_gen = vattr.va_gen;
-	*uuid = vp->v_uuid;
 	return (0);
 }
 
@@ -937,13 +860,9 @@ audit_arg_vnode1(struct vnode *vp)
 		return;
 
 	ARG_CLEAR_VALID(ar, ARG_VNODE1);
-	ARG_CLEAR_VALID(ar, ARG_OBJUUID1);
-	error = audit_arg_vnode(vp, &ar->k_ar.ar_arg_vnode1,
-	    &ar->k_ar.ar_arg_objuuid1);
-	if (error == 0) {
+	error = audit_arg_vnode(vp, &ar->k_ar.ar_arg_vnode1);
+	if (error == 0)
 		ARG_SET_VALID(ar, ARG_VNODE1);
-		ARG_SET_VALID(ar, ARG_OBJUUID1);
-	}
 }
 
 void
@@ -957,13 +876,9 @@ audit_arg_vnode2(struct vnode *vp)
 		return;
 
 	ARG_CLEAR_VALID(ar, ARG_VNODE2);
-	ARG_CLEAR_VALID(ar, ARG_OBJUUID2);
-	error = audit_arg_vnode(vp, &ar->k_ar.ar_arg_vnode2,
-	    &ar->k_ar.ar_arg_objuuid2);
-	if (error == 0) {
+	error = audit_arg_vnode(vp, &ar->k_ar.ar_arg_vnode2);
+	if (error == 0)
 		ARG_SET_VALID(ar, ARG_VNODE2);
-		ARG_SET_VALID(ar, ARG_OBJUUID2);
-	}
 }
 
 /*
@@ -1063,108 +978,4 @@ audit_sysclose(struct thread *td, int fd)
 	audit_arg_vnode1(vp);
 	VOP_UNLOCK(vp, 0);
 	fdrop(fp, td);
-}
-
-#ifdef KDTRACE_HOOKS
-void
-audit_ret_fd1(int fd)
-{
-	struct kaudit_record *ar;
-
-	ar = currecord();
-	if (ar == NULL)
-		return;
-	ar->k_ar.ar_ret_fd1 = fd;
-	RET_SET_VALID(ar, RET_FD1);
-}
-
-void
-audit_ret_fd2(int fd)
-{
-	struct kaudit_record *ar;
-
-	ar = currecord();
-	if (ar == NULL)
-		return;
-	ar->k_ar.ar_ret_fd2 = fd;
-	RET_SET_VALID(ar, RET_FD2);
-}
-
-void
-audit_ret_msgid(msgid_t *msgidp)
-{
-	struct kaudit_record *ar;
-
-	ar = currecord();
-	if (ar == NULL)
-		return;
-	if (!msgid_isvalid(msgidp))
-		return;
-	ar->k_ar.ar_ret_msgid = *msgidp;
-	RET_SET_VALID(ar, RET_MSGID);
-}
-
-void
-audit_ret_objuuid1(struct uuid *uuid)
-{
-	struct kaudit_record *ar;
-
-	KASSERT(uuid != NULL, ("%s: uuid == NULL", __func__));
-	/* XXXRW: Assertion that UUID is initialised? */
-
-	ar = currecord();
-	if (ar == NULL)
-		return;
-
-	bcopy(uuid, &ar->k_ar.ar_ret_objuuid1,
-	    sizeof(ar->k_ar.ar_ret_objuuid1));
-	RET_SET_VALID(ar, RET_OBJUUID1);
-}
-
-void
-audit_ret_objuuid2(struct uuid *uuid)
-{
-	struct kaudit_record *ar;
-
-	KASSERT(uuid != NULL, ("%s: uuid == NULL", __func__));
-	/* XXXRW: Assertion that UUID is initialised? */
-
-	ar = currecord();
-	if (ar == NULL)
-		return;
-
-	bcopy(uuid, &ar->k_ar.ar_ret_objuuid2,
-	    sizeof(ar->k_ar.ar_ret_objuuid2));
-	RET_SET_VALID(ar, RET_OBJUUID2);
-}
-#endif
-
-#ifdef METAIO
-void
-audit_ret_metaio(struct metaio *miop)
-{
-	struct kaudit_record *ar;
-
-	ar = currecord();
-	if (ar == NULL)
-		return;
-
-	if (miop == NULL)
-		return;
-	ar->k_ar.ar_ret_metaio = *miop;
-	RET_SET_VALID(ar, RET_METAIO);
-}
-#endif /* METAIO */
-
-void
-audit_ret_svipc_id(int id)
-{
-	struct kaudit_record *ar;
-
-	ar = currecord();
-	if (ar == NULL)
-		return;
-
-	ar->k_ar.ar_ret_svipc_id = id;
-	RET_SET_VALID(ar, RET_SVIPC_ID);
 }

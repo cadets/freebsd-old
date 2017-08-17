@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 1999-2005 Apple Inc.
- * Copyright (c) 2006-2007, 2016 Robert N. M. Watson
+ * Copyright (c) 2006-2007, 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * Portions of this software were developed by BAE Systems, the University of
@@ -254,11 +254,6 @@ audit_record_ctor(void *mem, int size, void *arg, int flags)
 	ar->k_ar.ar_subj_pid = td->td_proc->p_pid;
 	ar->k_ar.ar_subj_amask = cred->cr_audit.ai_mask;
 	ar->k_ar.ar_subj_term_addr = cred->cr_audit.ai_termid;
-#ifdef KDTRACE_HOOKS
-	ar->k_ar.ar_subj_tid = td->td_tid;
-	ar->k_ar.ar_subj_cpuid = curcpu;
-#endif
-
 	/*
 	 * If this process is jailed, make sure we capture the name of the
 	 * jail so we can use it to generate a zonename token when we covert
@@ -270,30 +265,6 @@ audit_record_ctor(void *mem, int size, void *arg, int flags)
 		    sizeof(ar->k_ar.ar_jailname));
 	} else
 		ar->k_ar.ar_jailname[0] = '\0';
-
-	/*
-	 * p_comm can change during execve(), but as the current thread is
-	 * generating the record, and execve() is single-threaded when it
-	 * changes p_comm, we know that the contents are safe to access
-	 * without the expense of acquiring the process lock on every system
-	 * call.
-	 *
-	 * XXXRW: Hopefully?
-	 */
-#ifdef KDTRACE_HOOKS
-	bcopy(td->td_proc->p_comm, ar->k_ar.ar_subj_comm,
-	    sizeof(ar->k_ar.ar_subj_comm));
-
-	/*
-	 * Also preserve the process/thread/jail UUIDs -- no lock required.
-	 */
-	bcopy(&td->td_proc->p_uuid, &ar->k_ar.ar_subj_proc_uuid,
-	    sizeof(ar->k_ar.ar_subj_proc_uuid));
-	bcopy(&td->td_uuid, &ar->k_ar.ar_subj_thr_uuid,
-	    sizeof(ar->k_ar.ar_subj_thr_uuid));
-	bcopy(&td->td_ucred->cr_prison->pr_uuid, &ar->k_ar.ar_subj_jail_uuid,
-	    sizeof(&ar->k_ar.ar_subj_jail_uuid));
-#endif
 	return (0);
 }
 
@@ -666,7 +637,7 @@ audit_syscall_enter(unsigned short code, struct thread *td)
 	 * DTrace may want to stick event state onto a record we were going to
 	 * produce due to the trail or pipes.  The event state returned by the
 	 * DTrace provider must be safe without locks held between here and
-	 * below -- i.e., ene must be stable in memory.
+	 * below -- i.e., dtaudit_state must must refer to stable memory.
 	 */
 #ifdef KDTRACE_HOOKS
 	dtaudit_state = NULL;
@@ -678,12 +649,13 @@ audit_syscall_enter(unsigned short code, struct thread *td)
 #endif
 
 	/*
-	 * If a record is required, allocated it and attach it to the thread
+	 * If a record is required, allocate it and attach it to the thread
 	 * for use throughout the system call.  Also attach DTrace state if
 	 * required.
 	 *
-	 * XXXRW: If we decided to reference count 'ene', we'd need a free
-	 * case here if no record is allocated or allocateable.
+	 * XXXRW: If we decide to reference count the evname_elem underlying
+	 * dtaudit_state, we will need to free here if no record is allocated
+	 * or allocatable.
 	 */
 	if (record_needed) {
 		td->td_ar = audit_new(event, td);

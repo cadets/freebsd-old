@@ -59,9 +59,6 @@ TAG_ARGS=	-T ${TAGS:[*]:S/ /,/g}
 LDFLAGS+= -static
 .endif
 
-PROG_INSTR=${PROG}.instrumented
-PROG_INSTR_IR=${PROG_INSTR}.${LLVM_IR_TYPE}
-
 .if ${MK_DEBUG_FILES} != "no"
 PROG_FULL=${PROG}.full
 # Use ${DEBUGDIR} for base system debug files, else .debug subdirectory
@@ -88,27 +85,8 @@ PROGNAME?=	${PROG}
 
 .if defined(SRCS)
 
-# Set EXPLICIT_OBJS to any OBJS that were set in the program's Makefile,
-# before anything derived from SRCS is added. Ensure that OBJS has been
-# defined to something to make the expansion reliable.
-OBJS?=
-EXPLICIT_OBJS:=${OBJS}
-
 OBJS+=  ${SRCS:N*.h:R:S/$/.o/g}
 
-# LLVM bitcode / textual IR representations of the program
-BCOBJS+=${SRCS:N*.h:N*.s:N*.S:N*.asm:R:S/$/.bco/g}
-LLOBJS+=${SRCS:N*.h:N*.s:N*.S:N*.asm:R:S/$/.llo/g}
-
-# Object files that can't be built via LLVM IR, currently defined by
-# excluding .c* files from SRCS. This substitution can result in an
-# empty string with '.o' tacked on the end, so explicitly filter out '.o'.
-NON_IR_OBJS+=${SRCS:N*.c*:N*.h:R:S/$/.o/g:S/^.o$//}
-
-.if ${MK_INSTRUMENT_BINARIES} == "yes" && !defined(BOOTSTRAPPING)
-${PROG_FULL}: ${PROG_INSTR}
-	${CP} ${PROG_INSTR} ${PROG_FULL}
-.else	# ${MK_INSTRUMENT_BINARIES} == "no" || defined(BOOTSTRAPPING)
 .if target(beforelinking)
 beforelinking: ${OBJS}
 ${PROG_FULL}: beforelinking
@@ -121,7 +99,6 @@ ${PROG_FULL}: ${OBJS}
 	${CC:N${CCACHE_BIN}} ${CFLAGS:N-M*} ${LDFLAGS} -o ${.TARGET} ${OBJS} \
 	    ${LDADD}
 .endif
-.endif	# ${MK_INSTRUMENT_BINARIES} == "no" || defined(BOOTSTRAPPING)
 .if ${MK_CTF} != "no"
 	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${OBJS}
 .endif
@@ -142,14 +119,6 @@ SRCS=	${PROG}.c
 # - it's useful to keep objects around for crunching.
 OBJS+=	${PROG}.o
 
-# LLVM bitcode / textual IR representations of the program
-BCOBJS+=${PROG}.bco
-LLOBJS+=${PROG}.llo
-
-.if defined(INSTRUMENT_EVERYTHING) && !defined(BOOTSTRAPPING)
-${PROG_FULL}: ${PROG_INSTR}
-	${CP} ${PROG_INSTR} ${PROG_FULL}
-.else	# !defined(INSTRUMENT_EVERYTHING) || defined(BOOTSTRAPPING)
 .if target(beforelinking)
 beforelinking: ${OBJS}
 ${PROG_FULL}: beforelinking
@@ -165,7 +134,6 @@ ${PROG_FULL}: ${OBJS}
 .if ${MK_CTF} != "no"
 	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${OBJS}
 .endif
-.endif	# !defined(INSTRUMENT_EVERYTHING) || defined(BOOTSTRAPPING)
 .endif # !target(${PROG})
 
 .endif # !defined(SRCS)
@@ -180,27 +148,15 @@ ${PROGNAME}.debug: ${PROG_FULL}
 .endif
 
 .if defined(LLVM_LINK)
+# LLVM bitcode / textual IR representations of the program
+BCOBJS=	${OBJS:.o=.bco}
+LLOBJS=	${OBJS:.o=.llo}
 
 ${PROG_FULL}.bc: ${BCOBJS}
 	${LLVM_LINK} -o ${.TARGET} ${BCOBJS}
 
 ${PROG_FULL}.ll: ${LLOBJS}
 	${LLVM_LINK} -S -o ${.TARGET} ${LLOBJS}
-
-${PROG_INSTR}.bc: ${PROG_FULL}.bc
-	${OPT} ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${PROG_FULL}.bc
-
-${PROG_INSTR}.ll: ${PROG_FULL}.ll
-	${OPT} -S ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${PROG_FULL}.ll
-
-${PROG_INSTR}: ${PROG_INSTR_IR} ${EXPLICIT_OBJS} ${NON_IR_OBJS}
-.if defined(PROG_CXX)
-	${CXX:N${CCACHE_BIN}} ${OPT_CXXFLAGS} ${LDFLAGS} -o ${.TARGET} \
-	    ${PROG_INSTR_IR} ${EXPLICIT_OBJS} ${NON_IR_OBJS} ${LDADD} ${LLVM_INSTR_LDADD}
-.else
-	${CC:N${CCACHE_BIN}} ${OPT_CFLAGS} ${LDFLAGS} -o ${.TARGET} \
-	    ${PROG_INSTR_IR} ${EXPLICIT_OBJS} ${NON_IR_OBJS} ${LDADD} ${LLVM_INSTR_LDADD}
-.endif
 
 .endif # defined(LLVM_LINK)
 
@@ -223,15 +179,13 @@ all: all-man
 .endif
 
 .if defined(PROG)
-CLEANFILES+= ${PROG} ${PROG}.bc ${PROG}.ll ${PROG_INSTR} ${PROG_INSTR_IR}
+CLEANFILES+= ${PROG} ${PROG}.bc ${PROG}.ll
 .if ${MK_DEBUG_FILES} != "no"
-CLEANFILES+=	${PROG_FULL} ${PROG_FULL}.bc ${PROGNAME}.debug ${PROG_FULL}.ll
+CLEANFILES+= ${PROG_FULL} ${PROG_FULL}.bc ${PROGNAME}.debug ${PROG_FULL}.ll
 .endif
 .endif
 
 .if defined(OBJS)
-BCOBJS?= ${OBJS:.o=.bco} ${OBJS:.o=.bcinstro}
-LLOBJS?= ${OBJS:.o=.llo} ${OBJS:.o=.llinstro}
 CLEANFILES+= ${OBJS} ${BCOBJS} ${LLOBJS}
 .endif
 
@@ -345,6 +299,13 @@ lint: ${SRCS:M*.c}
 
 .if ${MK_MAN} != "no"
 .include <bsd.man.mk>
+.endif
+
+.if defined(HAS_TESTS)
+MAKE+=			MK_MAKE_CHECK_USE_SANDBOX=yes
+SUBDIR_TARGETS+=	check
+TESTS_LD_LIBRARY_PATH+=	${.OBJDIR}
+TESTS_PATH+=		${.OBJDIR}
 .endif
 
 .if defined(PROG)

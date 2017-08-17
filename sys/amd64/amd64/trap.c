@@ -166,17 +166,23 @@ trap(struct trapframe *frame)
 #ifdef KDTRACE_HOOKS
 	struct reg regs;
 #endif
-	struct thread *td = curthread;
-	struct proc *p = td->td_proc;
+	ksiginfo_t ksi;
+	struct thread *td;
+	struct proc *p;
+	register_t addr;
 #ifdef KDB
 	register_t dr6;
 #endif
-	int i = 0, ucode = 0;
+	int i, ucode;
 	u_int type;
-	register_t addr = 0;
-	ksiginfo_t ksi;
 
-	PCPU_INC(cnt.v_trap);
+	td = curthread;
+	p = td->td_proc;
+	i = 0;
+	ucode = 0;
+	addr = 0;
+
+	VM_CNT_INC(v_trap);
 	type = frame->tf_trapno;
 
 #ifdef SMP
@@ -370,7 +376,7 @@ trap(struct trapframe *frame)
 #ifdef DEV_ISA
 		case T_NMI:
 			nmi_handle_intr(type, frame);
-			break;
+			goto out;
 #endif /* DEV_ISA */
 
 		case T_OFLOW:		/* integer overflow fault */
@@ -408,7 +414,7 @@ trap(struct trapframe *frame)
 			if (dtrace_return_probe_ptr != NULL &&
 			    dtrace_return_probe_ptr(&regs) == 0)
 				goto out;
-			break;
+			goto userout;
 #endif
 		}
 	} else {
@@ -816,10 +822,24 @@ dblfault_handler(struct trapframe *frame)
 	if (dtrace_doubletrap_func != NULL)
 		(*dtrace_doubletrap_func)();
 #endif
-	printf("\nFatal double fault\n");
-	printf("rip = 0x%lx\n", frame->tf_rip);
-	printf("rsp = 0x%lx\n", frame->tf_rsp);
-	printf("rbp = 0x%lx\n", frame->tf_rbp);
+	printf("\nFatal double fault\n"
+	    "rip %#lx rsp %#lx rbp %#lx\n"
+	    "rax %#lx rdx %#lx rbx %#lx\n"
+	    "rcx %#lx rsi %#lx rdi %#lx\n"
+	    "r8 %#lx r9 %#lx r10 %#lx\n"
+	    "r11 %#lx r12 %#lx r13 %#lx\n"
+	    "r14 %#lx r15 %#lx rflags %#lx\n"
+	    "cs %#lx ss %#lx ds %#hx es %#hx fs %#hx gs %#hx\n"
+	    "fsbase %#lx gsbase %#lx kgsbase %#lx\n",
+	    frame->tf_rip, frame->tf_rsp, frame->tf_rbp,
+	    frame->tf_rax, frame->tf_rdx, frame->tf_rbx,
+	    frame->tf_rcx, frame->tf_rdi, frame->tf_rsi,
+	    frame->tf_r8, frame->tf_r9, frame->tf_r10,
+	    frame->tf_r11, frame->tf_r12, frame->tf_r13,
+	    frame->tf_r14, frame->tf_r15, frame->tf_rflags,
+	    frame->tf_cs, frame->tf_ss, frame->tf_ds, frame->tf_es,
+	    frame->tf_fs, frame->tf_gs,
+	    rdmsr(MSR_FSBASE), rdmsr(MSR_GSBASE), rdmsr(MSR_KGSBASE));
 #ifdef SMP
 	/* two separate prints in case of a trap on an unmapped page */
 	printf("cpuid = %d; ", PCPU_GET(cpuid));
@@ -829,16 +849,18 @@ dblfault_handler(struct trapframe *frame)
 }
 
 int
-cpu_fetch_syscall_args(struct thread *td, struct syscall_args *sa)
+cpu_fetch_syscall_args(struct thread *td)
 {
 	struct proc *p;
 	struct trapframe *frame;
 	register_t *argp;
+	struct syscall_args *sa;
 	caddr_t params;
 	int reg, regcnt, error;
 
 	p = td->td_proc;
 	frame = td->td_frame;
+	sa = &td->td_sa;
 	reg = 0;
 	regcnt = 6;
 
@@ -889,7 +911,6 @@ cpu_fetch_syscall_args(struct thread *td, struct syscall_args *sa)
 void
 amd64_syscall(struct thread *td, int traced)
 {
-	struct syscall_args sa;
 	int error;
 	ksiginfo_t ksi;
 
@@ -899,7 +920,7 @@ amd64_syscall(struct thread *td, int traced)
 		/* NOT REACHED */
 	}
 #endif
-	error = syscallenter(td, &sa);
+	error = syscallenter(td);
 
 	/*
 	 * Traced syscall.
@@ -915,15 +936,16 @@ amd64_syscall(struct thread *td, int traced)
 
 	KASSERT(PCB_USER_FPU(td->td_pcb),
 	    ("System call %s returning with kernel FPU ctx leaked",
-	     syscallname(td->td_proc, sa.code)));
+	     syscallname(td->td_proc, td->td_sa.code)));
 	KASSERT(td->td_pcb->pcb_save == get_pcb_user_save_td(td),
 	    ("System call %s returning with mangled pcb_save",
-	     syscallname(td->td_proc, sa.code)));
+	     syscallname(td->td_proc, td->td_sa.code)));
 	KASSERT(td->td_md.md_invl_gen.gen == 0,
 	    ("System call %s returning with leaked invl_gen %lu",
-	    syscallname(td->td_proc, sa.code), td->td_md.md_invl_gen.gen));
+	    syscallname(td->td_proc, td->td_sa.code),
+	    td->td_md.md_invl_gen.gen));
 
-	syscallret(td, error, &sa);
+	syscallret(td, error);
 
 	/*
 	 * If the user-supplied value of %rip is not a canonical
@@ -933,6 +955,6 @@ amd64_syscall(struct thread *td, int traced)
 	 * not be safe.  Instead, use the full return path which
 	 * catches the problem safely.
 	 */
-	if (td->td_frame->tf_rip >= VM_MAXUSER_ADDRESS)
+	if (__predict_false(td->td_frame->tf_rip >= VM_MAXUSER_ADDRESS))
 		set_pcb_flags(td->td_pcb, PCB_FULL_IRET);
 }

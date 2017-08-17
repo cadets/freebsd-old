@@ -1,16 +1,8 @@
 # $FreeBSD$
 
-.SUFFIXES:	.out .a .ln .o .bco .llo .c .cc .cpp .cxx .C .bcinstro .llinstro .m .F .f .e .r .y .l .S .asm .s .cl .p .h .sh
-
 .sh:
 	cp -f ${.IMPSRC} ${.TARGET}
 	chmod a+x ${.TARGET}
-
-.bco.bcinstro: ${LLVM_INSTR_DEPS}
-	${OPT} ${LLVM_INSTR_FLAGS} ${.IMPSRC} -o ${.TARGET}
-
-.llo.llinstro: ${LLVM_INSTR_DEPS}
-	${OPT} -S ${LLVM_INSTR_FLAGS} ${.IMPSRC} -o ${.TARGET}
 
 .c.ln:
 	${LINT} ${LINTOBJFLAGS} ${CFLAGS:M-[DIU]*} ${.IMPSRC} || \

@@ -42,6 +42,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/fdt/fdt_common.h>
 #include <dev/ofw/ofwvar.h>
 #include <dev/ofw/openfirm.h>
+#include <dev/ofw/ofw_bus_subr.h>
 
 #include "ofw_if.h"
 
@@ -103,6 +104,27 @@ static ofw_def_t ofw_fdt = {
 OFW_DEF(ofw_fdt);
 
 static void *fdtp = NULL;
+
+static int
+sysctl_handle_dtb(SYSCTL_HANDLER_ARGS)
+{
+
+        return (sysctl_handle_opaque(oidp, fdtp, fdt_totalsize(fdtp), req));
+}
+
+static void
+sysctl_register_fdt_oid(void *arg)
+{
+
+	/* If there is no FDT registered, skip adding the sysctl */
+	if (fdtp == NULL)
+		return;
+
+	SYSCTL_ADD_PROC(NULL, SYSCTL_STATIC_CHILDREN(_hw_fdt), OID_AUTO, "dtb",
+	    CTLTYPE_OPAQUE | CTLFLAG_RD, NULL, 0, sysctl_handle_dtb, "",
+	    "Device Tree Blob");
+}
+SYSINIT(dtb_oid, SI_SUB_KMEM, SI_ORDER_ANY, sysctl_register_fdt_oid, 0);
 
 static int
 ofw_fdt_init(ofw_t ofw, void *data)
@@ -359,7 +381,11 @@ ofw_fdt_setprop(ofw_t ofw, phandle_t package, const char *propname,
 	if (offset < 0)
 		return (-1);
 
-	return (fdt_setprop_inplace(fdtp, offset, propname, buf, len));
+	if (fdt_setprop_inplace(fdtp, offset, propname, buf, len) != 0)
+		/* Try to add property, when setting value inplace failed */
+		return (fdt_setprop(fdtp, offset, propname, buf, len));
+
+	return (0);
 }
 
 /* Convert a device specifier to a fully qualified pathname. */
@@ -429,7 +455,15 @@ ofw_fdt_fixup(ofw_t ofw)
 	for (i = 0; fdt_fixup_table[i].model != NULL; i++) {
 		if (strncmp(model, fdt_fixup_table[i].model,
 		    FDT_MODEL_LEN) != 0)
-			continue;
+			/*
+			 * Sometimes it's convenient to provide one
+			 * fixup entry that refers to many boards.
+			 * To handle this case, simply check if model
+			 * is compatible parameter
+			 */
+			if(!ofw_bus_node_is_compatible(root,
+			    fdt_fixup_table[i].model))
+				continue;
 
 		if (fdt_fixup_table[i].handler != NULL)
 			(*fdt_fixup_table[i].handler)(root);

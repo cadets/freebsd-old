@@ -1,8 +1,7 @@
 # $FreeBSD$
 
-MK_INSTRUMENT_BINARIES=	no
-
-.PATH:		${.CURDIR}/../boot2 ${.CURDIR}/../common ${.CURDIR}/../../common
+.PATH:		${.CURDIR}/../boot2 ${.CURDIR}/../common \
+		${.CURDIR}/../../common ${.CURDIR}/../../../crypto/skein
 
 FILES=		zfsboot
 MAN=		zfsboot.8
@@ -27,16 +26,19 @@ CFLAGS=	-DBOOTPROG=\"zfsboot\" \
 	-I${.CURDIR}/../common \
 	-I${.CURDIR}/../../zfs \
 	-I${.CURDIR}/../../../cddl/boot/zfs \
+	-I${.CURDIR}/../../../crypto/skein \
 	-I${.CURDIR}/../btx/lib -I. \
 	-I${.CURDIR}/../boot2 \
-	-Wall -Waggregate-return -Wbad-function-cast -Wcast-align \
+	-Wall -Waggregate-return -Wbad-function-cast -Wno-cast-align \
 	-Wmissing-declarations -Wmissing-prototypes -Wnested-externs \
 	-Wpointer-arith -Wshadow -Wstrict-prototypes -Wwrite-strings \
 	-Winline
 
 CFLAGS.gcc+=	--param max-inline-insns-single=100
+# Do not unroll skein loops, reduce code size
+CFLAGS+=	-DSKEIN_LOOP=111
 
-LD_FLAGS=-static -N --gc-sections
+LD_FLAGS=${LD_FLAGS_BIN}
 
 LIBSTAND=	${.OBJDIR}/../../libstand32/libstand.a
 
@@ -57,17 +59,18 @@ zfsldr.out: zfsldr.o
 	${LD} ${LD_FLAGS} -e start -Ttext ${ORG1} -o ${.TARGET} zfsldr.o
 
 CLEANFILES+=	zfsboot2 zfsboot.ld zfsboot.ldr zfsboot.bin zfsboot.out \
-		zfsboot.o zfsboot.s zfsboot.s.tmp sio.o cons.o drv.o util.o
+		zfsboot.o zfsboot.s zfsboot.s.tmp sio.o cons.o drv.o util.o \
+		skein.o skein_block.o
 
-# We currently allow 65536 bytes for zfsboot - in practice it could be
+# We currently allow 128k bytes for zfsboot - in practice it could be
 # any size up to 3.5Mb but keeping it fixed size simplifies zfsldr.
 # 
-BOOT2SIZE=	65536
+BOOT2SIZE=	131072
 
 zfsboot2: zfsboot.ld
-	@set -- `ls -l zfsboot.ld`; x=$$((${BOOT2SIZE}-$$5)); \
+	@set -- `ls -l ${.ALLSRC}`; x=$$((${BOOT2SIZE}-$$5)); \
 	    echo "$$x bytes available"; test $$x -ge 0
-	dd if=zfsboot.ld of=${.TARGET} obs=${BOOT2SIZE} conv=osync status=none
+	${DD} if=${.ALLSRC} of=${.TARGET} obs=${BOOT2SIZE} conv=osync
 
 zfsboot.ld: zfsboot.ldr zfsboot.bin ${BTXKERN}
 	btxld -v -E ${ORG2} -f bin -b ${BTXKERN} -l zfsboot.ldr \
@@ -79,7 +82,7 @@ zfsboot.ldr:
 zfsboot.bin: zfsboot.out
 	${OBJCOPY} -S -O binary zfsboot.out ${.TARGET}
 
-zfsboot.out: ${BTXCRT} zfsboot.o sio.o drv.o cons.o util.o
+zfsboot.out: ${BTXCRT} zfsboot.o sio.o drv.o cons.o util.o skein.o skein_block.o
 	${LD} ${LD_FLAGS} -Ttext ${ORG2} -o ${.TARGET} ${.ALLSRC} ${LIBSTAND}
 
 SRCS=	zfsboot.c

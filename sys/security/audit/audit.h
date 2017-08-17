@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 1999-2005 Apple Inc.
- * Copyright (c) 2016 Robert N. M. Watson
+ * Copyright (c) 2016-2017 Robert N. M. Watson
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -51,7 +51,6 @@
 
 #include <sys/file.h>
 #include <sys/sysctl.h>
-#include <sys/msgid.h>
 
 /*
  * Audit subsystem condition flags.  The audit_enabled flag is set and
@@ -73,9 +72,7 @@ void	 audit_syscall_exit(int error, struct thread *td);
  */
 #ifdef AUDIT
 struct ipc_perm;
-struct metaio;
 struct sockaddr;
-struct uuid;
 union auditon_udata;
 void	 audit_arg_addr(void * addr);
 void	 audit_arg_exit(int status, int retval);
@@ -96,14 +93,9 @@ void	 audit_arg_groupset(gid_t *gidset, u_int gidset_size);
 void	 audit_arg_login(char *login);
 void	 audit_arg_ctlname(int *name, int namelen);
 void	 audit_arg_mask(int mask);
-#ifdef METAIO
-void	 audit_arg_metaio(struct metaio *miop);
-#endif
 void	 audit_arg_mode(mode_t mode);
 void	 audit_arg_dev(int dev);
 void	 audit_arg_value(long value);
-void	 audit_arg_objuuid1(struct uuid *uuid);
-void	 audit_arg_objuuid2(struct uuid *uuid);
 void	 audit_arg_owner(uid_t uid, gid_t gid);
 void	 audit_arg_pid(pid_t pid);
 void	 audit_arg_process(struct proc *p);
@@ -142,18 +134,6 @@ void	 audit_cred_proc1(struct ucred *cred);
 void	 audit_proc_coredump(struct thread *td, char *path, int errcode);
 void	 audit_thread_alloc(struct thread *td);
 void	 audit_thread_free(struct thread *td);
-
-#ifdef KDTRACE_HOOKS
-void	 audit_ret_fd1(int fd);
-void	 audit_ret_fd2(int fd);
-void	 audit_ret_msgid(msgid_t *msgidp);
-void	 audit_ret_objuuid1(struct uuid *uuid);
-void	 audit_ret_objuuid2(struct uuid *uuid);
-#endif
-#ifdef METAIO
-void	 audit_ret_metaio(struct metaio *miop);
-#endif
-void	 audit_ret_svipc_id(int id);
 
 /*
  * Define macros to wrap the audit_arg_* calls by checking the global
@@ -246,29 +226,10 @@ void	 audit_ret_svipc_id(int id);
 		audit_arg_login((login));				\
 } while (0)
 
-#ifdef METAIO
-#define	AUDIT_ARG_METAIO(miop) do {					\
-	if (AUDITING_TD(curthread))					\
-		audit_arg_metaio((miop));				\
-} while (0)
-#endif /* METAIO */
-
 #define	AUDIT_ARG_MODE(mode) do {					\
 	if (AUDITING_TD(curthread))					\
 		audit_arg_mode((mode));					\
 } while (0)
-
-#ifdef KDTRACE_HOOKS
-#define	AUDIT_ARG_OBJUUID1(uuid) do {					\
-	if (AUDITING_TD(curthread))					\
-		audit_arg_objuuid1((uuid));				\
-} while (0)
-
-#define	AUDIT_ARG_OBJUUID2(uuid) do {					\
-	if (AUDITING_TD(curthread))					\
-		audit_arg_objuuid2((uuid));				\
-} while (0)
-#endif /* !KDTRACE_HOOKS */
 
 #define	AUDIT_ARG_OWNER(uid, gid) do {					\
 	if (AUDITING_TD(curthread))					\
@@ -405,45 +366,6 @@ void	 audit_ret_svipc_id(int id);
 		audit_arg_vnode2((vp));					\
 } while (0)
 
-#ifdef KDTRACE_HOOKS
-#define	AUDIT_RET_FD1(fd) do {						\
-	if (AUDITING_TD(curthread))					\
-		audit_ret_fd1((fd));					\
-} while (0)
-
-#define	AUDIT_RET_FD2(fd) do {						\
-	if (AUDITING_TD(curthread))					\
-		audit_ret_fd2((fd));					\
-} while (0)
-
-#define	AUDIT_RET_MSGID(msgidp) do {					\
-	if (AUDITING_TD(curthread))					\
-		audit_ret_msgid((msgidp));				\
-} while (0)
-
-#define	AUDIT_RET_OBJUUID1(p) do {					\
-	if (AUDITING_TD(curthread))					\
-		audit_ret_objuuid1((p));				\
-} while (0)
-
-#define	AUDIT_RET_OBJUUID2(p) do {					\
-	if (AUDITING_TD(curthread))					\
-		audit_ret_objuuid2((p));				\
-} while (0)
-#endif /* !KDTRACE_HOOKS */
-
-#ifdef METAIO
-#define	AUDIT_RET_METAIO(miop) do {					\
-	if (AUDITING_TD(curthread))					\
-		audit_ret_metaio((miop));				\
-} while (0)
-#endif /* METAIO */
-
-#define	AUDIT_RET_SVIPC_ID(id) do {					\
-	if (AUDITING_TD(curthread))					\
-		audit_ret_svipc_id((id));				\
-} while (0)
-
 #define	AUDIT_SYSCALL_ENTER(code, td)	do {				\
 	if (audit_enabled) {						\
 		audit_syscall_enter(code, td);				\
@@ -487,12 +409,7 @@ void	 audit_ret_svipc_id(int id);
 #define	AUDIT_ARG_GID(gid)
 #define	AUDIT_ARG_GROUPSET(gidset, gidset_size)
 #define	AUDIT_ARG_LOGIN(login)
-#ifdef METAIO
-#define	AUDIT_ARG_METAIO(miop)
-#endif
 #define	AUDIT_ARG_MODE(mode)
-#define	AUDIT_ARG_OBJUUID1(uuid)
-#define	AUDIT_ARG_OBJUUID2(uuid)
 #define	AUDIT_ARG_OWNER(uid, gid)
 #define	AUDIT_ARG_PID(pid)
 #define	AUDIT_ARG_POSIX_IPC_PERM(uid, gid, mode)
@@ -514,24 +431,12 @@ void	 audit_ret_svipc_id(int id);
 #define	AUDIT_ARG_TEXT(text)
 #define	AUDIT_ARG_UID(uid)
 #define	AUDIT_ARG_UPATH1(td, dirfd, upath)
-#define	AUDIT_ARG_UPATH1_NONCANON(td, upath)
+#define	AUDIT_ARG_UPATH1_CANON(upath)
 #define	AUDIT_ARG_UPATH2(td, dirfd, upath)
-#define	AUDIT_ARG_UPATH2_NONCANON(td, upath)
+#define	AUDIT_ARG_UPATH2_CANON(upath)
 #define	AUDIT_ARG_VALUE(value)
 #define	AUDIT_ARG_VNODE1(vp)
 #define	AUDIT_ARG_VNODE2(vp)
-
-#ifdef KDTRACE_HOOKS
-#define	AUDIT_RET_FD1(fd)
-#define	AUDIT_RET_FD2(fd)
-#define	AUDIT_RET_MSGID(msgidp)
-#define	AUDIT_RET_OBJUUID1(p)
-#define	AUDIT_RET_OBJUUID2(p)
-#endif /* KDTRACE_HOOKS */
-#ifdef METAIO
-#define	AUDIT_RET_METAIO(miop)
-#endif
-#define	AUDIT_RET_SVIPC_ID(id)
 
 #define	AUDIT_SYSCALL_ENTER(code, td)
 #define	AUDIT_SYSCALL_EXIT(error, td)

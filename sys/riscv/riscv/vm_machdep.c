@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015 Ruslan Bukin <br@bsdpad.com>
+ * Copyright (c) 2015-2017 Ruslan Bukin <br@bsdpad.com>
  * All rights reserved.
  *
  * Portions of this software were developed by SRI International and the
@@ -53,6 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/cpu.h>
 #include <machine/pcb.h>
 #include <machine/frame.h>
+#include <machine/sbi.h>
 
 /*
  * Finish a fork operation, with process p2 nearly set up.
@@ -86,7 +87,9 @@ cpu_fork(struct thread *td1, struct proc *p2, struct thread *td2, int flags)
 	/* Arguments for child */
 	tf->tf_a[0] = 0;
 	tf->tf_a[1] = 0;
-	tf->tf_sstatus = SSTATUS_PIE;
+	tf->tf_sstatus |= (SSTATUS_SPIE); /* Enable interrupts. */
+	tf->tf_sstatus |= (SSTATUS_SUM); /* Supervisor can access userspace. */
+	tf->tf_sstatus &= ~(SSTATUS_SPP); /* User mode. */
 
 	td2->td_frame = tf;
 
@@ -98,16 +101,16 @@ cpu_fork(struct thread *td1, struct proc *p2, struct thread *td2, int flags)
 
 	/* Setup to release spin count in fork_exit(). */
 	td2->td_md.md_spinlock_count = 1;
-	td2->td_md.md_saved_sstatus_ie = 1;
+	td2->td_md.md_saved_sstatus_ie = (SSTATUS_SIE);
 }
 
 void
 cpu_reset(void)
 {
 
-	printf("cpu_reset");
-	while(1)
-		__asm volatile("wfi" ::: "memory");
+	sbi_shutdown();
+
+	while(1);
 }
 
 void
@@ -166,7 +169,7 @@ cpu_copy_thread(struct thread *td, struct thread *td0)
 
 	/* Setup to release spin count in fork_exit(). */
 	td->td_md.md_spinlock_count = 1;
-	td->td_md.md_saved_sstatus_ie = 1;
+	td->td_md.md_saved_sstatus_ie = (SSTATUS_SIE);
 }
 
 /*
@@ -177,7 +180,9 @@ void
 cpu_set_upcall(struct thread *td, void (*entry)(void *), void *arg,
 	stack_t *stack)
 {
-	struct trapframe *tf = td->td_frame;
+	struct trapframe *tf;
+
+	tf = td->td_frame;
 
 	tf->tf_sp = STACKALIGN((uintptr_t)stack->ss_sp + stack->ss_size);
 	tf->tf_sepc = (register_t)entry;

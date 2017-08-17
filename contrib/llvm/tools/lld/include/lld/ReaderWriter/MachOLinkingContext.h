@@ -16,8 +16,8 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
+#include "llvm/BinaryFormat/MachO.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/MachO.h"
 #include <set>
 
 using llvm::MachO::HeaderFileType;
@@ -377,6 +377,10 @@ public:
 
   uint32_t dylibCompatVersion(StringRef installName) const;
 
+  ArrayRef<mach_o::MachODylibFile*> allDylibs() const {
+    return _allDylibs;
+  }
+
   /// Creates a copy (owned by this MachOLinkingContext) of a string.
   StringRef copy(StringRef str) { return str.copy(_allocator); }
 
@@ -485,7 +489,7 @@ private:
   mutable std::unique_ptr<Writer> _writer;
   std::vector<SectionAlign> _sectAligns;
   mutable llvm::StringMap<mach_o::MachODylibFile*> _pathToDylibMap;
-  mutable std::set<mach_o::MachODylibFile*> _allDylibs;
+  mutable std::vector<mach_o::MachODylibFile*> _allDylibs;
   mutable std::set<mach_o::MachODylibFile*> _upwardDylibs;
   mutable std::vector<std::unique_ptr<File>> _indirectDylibs;
   mutable std::mutex _dylibsMutex;

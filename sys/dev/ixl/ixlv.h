@@ -38,7 +38,8 @@
 
 #include "ixlv_vc_mgr.h"
 
-#define IXLV_AQ_MAX_ERR		200
+#define IXLV_AQ_MAX_ERR		30
+#define IXLV_MAX_INIT_WAIT	120
 #define IXLV_MAX_FILTERS	128
 #define IXLV_MAX_QUEUES		16
 #define IXLV_AQ_TIMEOUT		(1 * hz)
@@ -115,7 +116,7 @@ SLIST_HEAD(vlan_list, ixlv_vlan_filter);
 struct ixlv_sc {
 	struct i40e_hw		hw;
 	struct i40e_osdep	osdep;
-	struct device		*dev;
+	device_t		dev;
 
 	struct resource		*pci_mem;
 	struct resource		*msix_mem;

@@ -19,7 +19,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -121,6 +121,7 @@ mkfs(struct partition *pp, char *fsys)
 	ino_t maxinum;
 	int minfragsperinode;	/* minimum ratio of frags to inodes */
 	char tmpbuf[100];	/* XXX this will break in about 2,500 years */
+	struct fsrecovery fsr;
 	union {
 		struct fs fdummy;
 		char cdummy[SBLOCKSIZE];
@@ -273,7 +274,7 @@ restart:
 		sblock.fs_sblockloc = SBLOCK_UFS1;
 		sblock.fs_nindir = sblock.fs_bsize / sizeof(ufs1_daddr_t);
 		sblock.fs_inopb = sblock.fs_bsize / sizeof(struct ufs1_dinode);
-		sblock.fs_maxsymlinklen = ((NDADDR + NIADDR) *
+		sblock.fs_maxsymlinklen = ((UFS_NDADDR + UFS_NIADDR) *
 		    sizeof(ufs1_daddr_t));
 		sblock.fs_old_inodefmt = FS_44INODEFMT;
 		sblock.fs_old_cgoffset = 0;
@@ -292,7 +293,7 @@ restart:
 		sblock.fs_sblockloc = SBLOCK_UFS2;
 		sblock.fs_nindir = sblock.fs_bsize / sizeof(ufs2_daddr_t);
 		sblock.fs_inopb = sblock.fs_bsize / sizeof(struct ufs2_dinode);
-		sblock.fs_maxsymlinklen = ((NDADDR + NIADDR) *
+		sblock.fs_maxsymlinklen = ((UFS_NDADDR + UFS_NIADDR) *
 		    sizeof(ufs2_daddr_t));
 	}
 	sblock.fs_sblkno =
@@ -301,8 +302,8 @@ restart:
 	sblock.fs_cblkno = sblock.fs_sblkno +
 	    roundup(howmany(SBLOCKSIZE, sblock.fs_fsize), sblock.fs_frag);
 	sblock.fs_iblkno = sblock.fs_cblkno + sblock.fs_frag;
-	sblock.fs_maxfilesize = sblock.fs_bsize * NDADDR - 1;
-	for (sizepb = sblock.fs_bsize, i = 0; i < NIADDR; i++) {
+	sblock.fs_maxfilesize = sblock.fs_bsize * UFS_NDADDR - 1;
+	for (sizepb = sblock.fs_bsize, i = 0; i < UFS_NIADDR; i++) {
 		sizepb *= NINDIR(&sblock);
 		sblock.fs_maxfilesize += sizepb;
 	}
@@ -473,7 +474,8 @@ restart:
 	    fragnum(&sblock, sblock.fs_size) +
 	    (fragnum(&sblock, csfrags) > 0 ?
 	     sblock.fs_frag - fragnum(&sblock, csfrags) : 0);
-	sblock.fs_cstotal.cs_nifree = sblock.fs_ncg * sblock.fs_ipg - ROOTINO;
+	sblock.fs_cstotal.cs_nifree =
+	    sblock.fs_ncg * sblock.fs_ipg - UFS_ROOTINO;
 	sblock.fs_cstotal.cs_ndir = 0;
 	sblock.fs_dsize -= csfrags;
 	sblock.fs_time = utime;
@@ -616,6 +618,25 @@ restart:
 			MIN(sblock.fs_cssize - i, sblock.fs_bsize),
 			((char *)fscs) + i);
 	/*
+	 * Read the last sector of the boot block, replace the last
+	 * 20 bytes with the recovery information, then write it back.
+	 * The recovery information only works for UFS2 filesystems.
+	 */
+	if (sblock.fs_magic == FS_UFS2_MAGIC) {
+		i = bread(&disk,
+		    part_ofs + (SBLOCK_UFS2 - sizeof(fsr)) / disk.d_bsize,
+		    (char *)&fsr, sizeof(fsr));
+		if (i == -1)
+			err(1, "can't read recovery area: %s", disk.d_error);
+		fsr.fsr_magic = sblock.fs_magic;
+		fsr.fsr_fpg = sblock.fs_fpg;
+		fsr.fsr_fsbtodb = sblock.fs_fsbtodb;
+		fsr.fsr_sblkno = sblock.fs_sblkno;
+		fsr.fsr_ncg = sblock.fs_ncg;
+		wtfs((SBLOCK_UFS2 - sizeof(fsr)) / disk.d_bsize, sizeof(fsr),
+		    (char *)&fsr);
+	}
+	/*
 	 * Update information about this partition in pack
 	 * label, to that it may be updated on disk.
 	 */
@@ -696,7 +717,7 @@ initcg(int cylno, time_t utime)
 	}
 	acg.cg_cs.cs_nifree += sblock.fs_ipg;
 	if (cylno == 0)
-		for (i = 0; i < (long)ROOTINO; i++) {
+		for (i = 0; i < (long)UFS_ROOTINO; i++) {
 			setbit(cg_inosused(&acg), i);
 			acg.cg_cs.cs_nifree--;
 		}
@@ -808,16 +829,16 @@ initcg(int cylno, time_t utime)
 #define ROOTLINKCNT 3
 
 static struct direct root_dir[] = {
-	{ ROOTINO, sizeof(struct direct), DT_DIR, 1, "." },
-	{ ROOTINO, sizeof(struct direct), DT_DIR, 2, ".." },
-	{ ROOTINO + 1, sizeof(struct direct), DT_DIR, 5, ".snap" },
+	{ UFS_ROOTINO, sizeof(struct direct), DT_DIR, 1, "." },
+	{ UFS_ROOTINO, sizeof(struct direct), DT_DIR, 2, ".." },
+	{ UFS_ROOTINO + 1, sizeof(struct direct), DT_DIR, 5, ".snap" },
 };
 
 #define SNAPLINKCNT 2
 
 static struct direct snap_dir[] = {
-	{ ROOTINO + 1, sizeof(struct direct), DT_DIR, 1, "." },
-	{ ROOTINO, sizeof(struct direct), DT_DIR, 2, ".." },
+	{ UFS_ROOTINO + 1, sizeof(struct direct), DT_DIR, 1, "." },
+	{ UFS_ROOTINO, sizeof(struct direct), DT_DIR, 2, ".." },
 };
 
 void
@@ -854,7 +875,7 @@ fsinit(time_t utime)
 		    btodb(fragroundup(&sblock, node.dp1.di_size));
 		wtfs(fsbtodb(&sblock, node.dp1.di_db[0]), sblock.fs_fsize,
 		    iobuf);
-		iput(&node, ROOTINO);
+		iput(&node, UFS_ROOTINO);
 		if (!nflag) {
 			/*
 			 * create the .snap directory
@@ -869,7 +890,7 @@ fsinit(time_t utime)
 			    btodb(fragroundup(&sblock, node.dp1.di_size));
 				wtfs(fsbtodb(&sblock, node.dp1.di_db[0]),
 				    sblock.fs_fsize, iobuf);
-			iput(&node, ROOTINO + 1);
+			iput(&node, UFS_ROOTINO + 1);
 		}
 	} else {
 		/*
@@ -890,7 +911,7 @@ fsinit(time_t utime)
 		    btodb(fragroundup(&sblock, node.dp2.di_size));
 		wtfs(fsbtodb(&sblock, node.dp2.di_db[0]), sblock.fs_fsize,
 		    iobuf);
-		iput(&node, ROOTINO);
+		iput(&node, UFS_ROOTINO);
 		if (!nflag) {
 			/*
 			 * create the .snap directory
@@ -905,7 +926,7 @@ fsinit(time_t utime)
 			    btodb(fragroundup(&sblock, node.dp2.di_size));
 				wtfs(fsbtodb(&sblock, node.dp2.di_db[0]), 
 				    sblock.fs_fsize, iobuf);
-			iput(&node, ROOTINO + 1);
+			iput(&node, UFS_ROOTINO + 1);
 		}
 	}
 }

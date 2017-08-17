@@ -46,9 +46,13 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/bus.h>
 #include <sys/devmap.h>
+#include <sys/kernel.h>
 
 #include <vm/vm.h>
 #include <vm/pmap.h>
+
+#include <arm/arm/mpcore_timervar.h>
+#include <arm/arm/nexusvar.h>
 
 #include <machine/bus.h>
 #include <machine/fdt.h>
@@ -59,6 +63,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/cpu-v4.h>
 #else
 #include <machine/cpu-v6.h>
+#include <machine/pte-v6.h>
 #endif
 
 #include <arm/mv/mvreg.h>	/* XXX */
@@ -66,6 +71,7 @@ __FBSDID("$FreeBSD$");
 #include <arm/mv/mvwin.h>
 
 #include <dev/fdt/fdt_common.h>
+#include <dev/ofw/ofw_bus_subr.h>
 
 static int platform_mpp_init(void);
 #if defined(SOC_MV_ARMADAXP)
@@ -76,6 +82,7 @@ void armadaxp_l2_init(void);
 int armada38x_win_set_iosync_barrier(void);
 int armada38x_scu_enable(void);
 int armada38x_open_bootrom_win(void);
+int armada38x_mbus_optimization(void);
 #endif
 
 #define MPP_PIN_MAX		68
@@ -83,6 +90,39 @@ int armada38x_open_bootrom_win(void);
 #define MPP_PINS_PER_REG	8
 #define MPP_SEL(pin,func)	(((func) & 0xf) <<		\
     (((pin) % MPP_PINS_PER_REG) * 4))
+
+static void
+mv_busdma_tag_init(void *arg __unused)
+{
+	phandle_t node;
+	bus_dma_tag_t dmat;
+
+	/*
+	 * If this platform has coherent DMA, create the parent DMA tag to pass
+	 * down the coherent flag to all busses and devices on the platform,
+	 * otherwise return without doing anything. By default create tag
+	 * for all A38x-based platforms only.
+	 */
+	if ((node = OF_finddevice("/")) == -1)
+		return;
+	if (ofw_bus_node_is_compatible(node, "marvell,armada380") == 0)
+		return;
+
+	bus_dma_tag_create(NULL,	/* No parent tag */
+	    1, 0,			/* alignment, bounds */
+	    BUS_SPACE_MAXADDR,		/* lowaddr */
+	    BUS_SPACE_MAXADDR,		/* highaddr */
+	    NULL, NULL,			/* filter, filterarg */
+	    BUS_SPACE_MAXSIZE,		/* maxsize */
+	    BUS_SPACE_UNRESTRICTED,	/* nsegments */
+	    BUS_SPACE_MAXSIZE,		/* maxsegsize */
+	    BUS_DMA_COHERENT,		/* flags */
+	    NULL, NULL,			/* lockfunc, lockarg */
+	    &dmat);
+
+	nexus_set_dma_tag(dmat);
+}
+SYSINIT(mv_busdma_tag, SI_SUB_DRIVERS, SI_ORDER_ANY, mv_busdma_tag_init, NULL);
 
 static int
 platform_mpp_init(void)
@@ -103,7 +143,7 @@ platform_mpp_init(void)
 	 * Try to access the MPP node directly i.e. through /aliases/mpp.
 	 */
 	if ((node = OF_finddevice("mpp")) != -1)
-		if (fdt_is_compatible(node, "mrvl,mpp"))
+		if (ofw_bus_node_is_compatible(node, "mrvl,mpp"))
 			goto moveon;
 	/*
 	 * Find the node the long way.
@@ -243,14 +283,9 @@ platform_late_init(void)
 	/*
 	 * Re-initialise decode windows
 	 */
-#if !defined(SOC_MV_FREY)
 	if (soc_decode_win() != 0)
 		printf("WARNING: could not re-initialise decode windows! "
 		    "Running with existing settings...\n");
-#else
-	/* Disable watchdog and timers */
-	write_cpu_ctrl(CPU_TIMERS_BASE + CPU_TIMER_CONTROL, 0);
-#endif
 #if defined(SOC_MV_ARMADAXP)
 #if !defined(SMP)
 	/* For SMP case it should be initialized after APs are booted */
@@ -260,9 +295,23 @@ platform_late_init(void)
 #endif
 
 #if defined(SOC_MV_ARMADA38X)
+	/* Configure timers' base frequency */
+	arm_tmr_change_frequency(get_cpu_freq() / 2);
+
+	/*
+	 * Workaround for Marvell Armada38X family HW issue
+	 * between Cortex-A9 CPUs and on-chip devices that may
+	 * cause hang on heavy load.
+	 * To avoid that, map all registers including PCIe IO
+	 * as strongly ordered instead of device memory.
+	 */
+	pmap_remap_vm_attr(VM_MEMATTR_DEVICE, VM_MEMATTR_SO);
+
 	/* Set IO Sync Barrier bit for all Mbus devices */
 	if (armada38x_win_set_iosync_barrier() != 0)
 		printf("WARNING: could not map CPU Subsystem registers\n");
+	if (armada38x_mbus_optimization() != 0)
+		printf("WARNING: could not enable mbus optimization\n");
 	if (armada38x_scu_enable() != 0)
 		printf("WARNING: could not enable SCU\n");
 #ifdef SMP
@@ -288,8 +337,8 @@ platform_sram_devmap(struct devmap_entry *map)
 	 * SRAM range.
 	 */
 	if ((child = OF_finddevice("/sram")) != 0)
-		if (fdt_is_compatible(child, "mrvl,cesa-sram") ||
-		    fdt_is_compatible(child, "mrvl,scratchpad"))
+		if (ofw_bus_node_is_compatible(child, "mrvl,cesa-sram") ||
+		    ofw_bus_node_is_compatible(child, "mrvl,scratchpad"))
 			goto moveon;
 
 	if ((root = OF_finddevice("/")) == 0)
@@ -404,7 +453,7 @@ platform_devmap_init(void)
 			i += 2;
 		}
 
-		if (fdt_is_compatible(child, "mrvl,lbc")) {
+		if (ofw_bus_node_is_compatible(child, "mrvl,lbc")) {
 			/* Check available space */
 			if (OF_getencprop(child, "bank-count", &bank_count,
 			    sizeof(bank_count)) <= 0)

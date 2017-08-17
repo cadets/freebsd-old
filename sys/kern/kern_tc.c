@@ -28,7 +28,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/limits.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
+#include <sys/proc.h>
 #include <sys/sbuf.h>
+#include <sys/sleepqueue.h>
 #include <sys/sysctl.h>
 #include <sys/syslog.h>
 #include <sys/systm.h>
@@ -101,8 +103,6 @@ int tc_min_ticktock_freq = 1;
 volatile time_t time_second = 1;
 volatile time_t time_uptime = 1;
 
-struct bintime boottimebin;
-struct timeval boottime;
 static int sysctl_kern_boottime(SYSCTL_HANDLER_ARGS);
 SYSCTL_PROC(_kern, KERN_BOOTTIME, boottime, CTLTYPE_STRUCT|CTLFLAG_RD,
     NULL, 0, sysctl_kern_boottime, "S,timeval", "System boottime");
@@ -128,6 +128,8 @@ SYSCTL_PROC(_kern_timecounter, OID_AUTO, alloweddeviation,
     sysctl_kern_timecounter_adjprecision, "I",
     "Allowed time interval deviation in percents");
 
+volatile int rtc_generation = 1;
+
 static int tc_chosen;	/* Non-zero if a specific tc was chosen via sysctl. */
 
 static void tc_windup(struct bintime *new_boottimebin);
@@ -138,22 +140,22 @@ void dtrace_getnanotime(struct timespec *tsp);
 static int
 sysctl_kern_boottime(SYSCTL_HANDLER_ARGS)
 {
-	struct timeval boottime_x;
+	struct timeval boottime;
 
-	getboottime(&boottime_x);
+	getboottime(&boottime);
 
 #ifndef __mips__
 #ifdef SCTL_MASK32
 	int tv[2];
 
 	if (req->flags & SCTL_MASK32) {
-		tv[0] = boottime_x.tv_sec;
-		tv[1] = boottime_x.tv_usec;
+		tv[0] = boottime.tv_sec;
+		tv[1] = boottime.tv_usec;
 		return (SYSCTL_OUT(req, tv, sizeof(tv)));
 	}
 #endif
 #endif
-	return (SYSCTL_OUT(req, &boottime_x, sizeof(boottime_x)));
+	return (SYSCTL_OUT(req, &boottime, sizeof(boottime)));
 }
 
 static int
@@ -499,16 +501,16 @@ getmicrotime(struct timeval *tvp)
 #endif /* FFCLOCK */
 
 void
-getboottime(struct timeval *boottime_x)
+getboottime(struct timeval *boottime)
 {
-	struct bintime boottimebin_x;
+	struct bintime boottimebin;
 
-	getboottimebin(&boottimebin_x);
-	bintime2timeval(&boottimebin_x, boottime_x);
+	getboottimebin(&boottimebin);
+	bintime2timeval(&boottimebin, boottime);
 }
 
 void
-getboottimebin(struct bintime *boottimebin_x)
+getboottimebin(struct bintime *boottimebin)
 {
 	struct timehands *th;
 	u_int gen;
@@ -516,7 +518,7 @@ getboottimebin(struct bintime *boottimebin_x)
 	do {
 		th = timehands;
 		gen = atomic_load_acq_int(&th->th_generation);
-		*boottimebin_x = th->th_boottime;
+		*boottimebin = th->th_boottime;
 		atomic_thread_fence_acq();
 	} while (gen == 0 || gen != th->th_generation);
 }
@@ -1137,7 +1139,7 @@ int
 sysclock_snap2bintime(struct sysclock_snap *cs, struct bintime *bt,
     int whichclock, uint32_t flags)
 {
-	struct bintime boottimebin_x;
+	struct bintime boottimebin;
 #ifdef FFCLOCK
 	struct bintime bt2;
 	uint64_t period;
@@ -1152,8 +1154,8 @@ sysclock_snap2bintime(struct sysclock_snap *cs, struct bintime *bt,
 			bintime_addx(bt, cs->fb_info.th_scale * cs->delta);
 
 		if ((flags & FBCLOCK_UPTIME) == 0) {
-			getboottimebin(&boottimebin_x);
-			bintime_add(bt, &boottimebin_x);
+			getboottimebin(&boottimebin);
+			bintime_add(bt, &boottimebin);
 		}
 		break;
 #ifdef FFCLOCK
@@ -1220,9 +1222,9 @@ tc_init(struct timecounter *tc)
 	/*
 	 * Set up sysctl tree for this counter.
 	 */
-	tc_root = SYSCTL_ADD_NODE(NULL,
+	tc_root = SYSCTL_ADD_NODE_WITH_LABEL(NULL,
 	    SYSCTL_STATIC_CHILDREN(_kern_timecounter_tc), OID_AUTO, tc->tc_name,
-	    CTLFLAG_RW, 0, "timecounter description");
+	    CTLFLAG_RW, 0, "timecounter description", "timecounter");
 	SYSCTL_ADD_UINT(NULL, SYSCTL_CHILDREN(tc_root), OID_AUTO,
 	    "mask", CTLFLAG_RD, &(tc->tc_counter_mask), 0,
 	    "mask for implemented bits");
@@ -1263,6 +1265,26 @@ tc_getfrequency(void)
 	return (timehands->th_counter->tc_frequency);
 }
 
+static bool
+sleeping_on_old_rtc(struct thread *td)
+{
+
+	/*
+	 * td_rtcgen is modified by curthread when it is running,
+	 * and by other threads in this function.  By finding the thread
+	 * on a sleepqueue and holding the lock on the sleepqueue
+	 * chain, we guarantee that the thread is not running and that
+	 * modifying td_rtcgen is safe.  Setting td_rtcgen to zero informs
+	 * the thread that it was woken due to a real-time clock adjustment.
+	 * (The declaration of td_rtcgen refers to this comment.)
+	 */
+	if (td->td_rtcgen != 0 && td->td_rtcgen != rtc_generation) {
+		td->td_rtcgen = 0;
+		return (true);
+	}
+	return (false);
+}
+
 static struct mtx tc_setclock_mtx;
 MTX_SYSINIT(tc_setclock_init, &tc_setclock_mtx, "tcsetc", MTX_SPIN);
 
@@ -1286,8 +1308,10 @@ tc_setclock(struct timespec *ts)
 	/* XXX fiddle all the little crinkly bits around the fiords... */
 	tc_windup(&bt);
 	mtx_unlock_spin(&tc_setclock_mtx);
-	getboottimebin(&boottimebin);
-	bintime2timeval(&boottimebin, &boottime);
+
+	/* Avoid rtc_generation == 0, since td_rtcgen == 0 is special. */
+	atomic_add_rel_int(&rtc_generation, 2);
+	sleepq_chains_remove_matching(sleeping_on_old_rtc);
 	if (timestepwarnings) {
 		nanotime(&taft);
 		log(LOG_INFO,

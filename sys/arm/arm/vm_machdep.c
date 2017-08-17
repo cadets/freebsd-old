@@ -93,8 +93,7 @@ uint32_t initial_fpscr = VFPSCR_DN | VFPSCR_FZ;
  * ready to run and return to user mode.
  */
 void
-cpu_fork(register struct thread *td1, register struct proc *p2,
-    struct thread *td2, int flags)
+cpu_fork(struct thread *td1, struct proc *p2, struct thread *td2, int flags)
 {
 	struct pcb *pcb2;
 	struct trapframe *tf;
@@ -110,6 +109,14 @@ cpu_fork(register struct thread *td1, register struct proc *p2,
 #ifndef CPU_XSCALE_CORE3
 	pmap_use_minicache(td2->td_kstack, td2->td_kstack_pages * PAGE_SIZE);
 #endif
+#endif
+#ifdef VFP
+	/* Store actual state of VFP */
+	if (curthread == td1) {
+		critical_enter();
+		vfp_store(&td1->td_pcb->pcb_vfpstate, false);
+		critical_exit();
+	}
 #endif
 	td2->td_pcb = pcb2;
 
@@ -220,7 +227,7 @@ cpu_set_syscall_retval(struct thread *td, int error)
 		/* nothing to do */
 		break;
 	default:
-		frame->tf_r0 = error;
+		frame->tf_r0 = SV_ABI_ERRNO(td->td_proc, error);
 		frame->tf_spsr |= PSR_C;    /* carry bit */
 		break;
 	}
