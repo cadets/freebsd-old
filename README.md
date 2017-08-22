@@ -1,3 +1,5 @@
+[![Build Status](https://allendale.engr.mun.ca/jenkins/job/cadets-bsd-cadets-build/lastCompletedBuild/badge/icon)](https://allendale.engr.mun.ca/jenkins/job/cadets-bsd-cadets-build)
+
 FreeBSD Source:
 ---------------
 This is the top level of the FreeBSD source directory.  This file
