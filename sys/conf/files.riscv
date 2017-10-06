@@ -17,6 +17,7 @@ libkern/ffsl.c			standard
 libkern/fls.c			standard
 libkern/flsl.c			standard
 libkern/flsll.c			standard
+libkern/memcmp.c		standard
 libkern/memmove.c		standard
 libkern/memset.c		standard
 riscv/riscv/autoconf.c		standard

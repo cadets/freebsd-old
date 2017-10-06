@@ -12,6 +12,9 @@ CFLAGS+= -I${SRCTOP}/sys/amd64/vmm/io
 CFLAGS+= -I${SRCTOP}/sys/amd64/vmm/intel
 CFLAGS+= -I${SRCTOP}/sys/amd64/vmm/amd
 
+CFLAGS_INCLUDE_SOLARIS= -I${.CURDIR}/../../cddl/compat/opensolaris
+CFLAGS_INCLUDE_SOLARIS+= -I${.CURDIR}/../../cddl/contrib/opensolaris/uts/common
+
 # generic vmm support
 .PATH: ${SRCTOP}/sys/amd64/vmm
 SRCS+=	vmm.c		\
@@ -60,8 +63,13 @@ CLEANFILES=	vmx_assym.h vmx_genassym.o svm_assym.h svm_genassym.o
 vmx_assym.h:    vmx_genassym.o
 	sh ${SYSDIR}/kern/genassym.sh vmx_genassym.o > ${.TARGET}
 
+
 svm_assym.h:    svm_genassym.o
 	sh ${SYSDIR}/kern/genassym.sh svm_genassym.o > ${.TARGET}
+
+vmm_dtrace.o:
+	${CC} -c ${CFLAGS_INCLUDE_SOLARIS} ${CFLAGS} \
+		${.IMPSRC} -o ${.TARGET}
 
 vmx_support.o:
 	${CC} -c -x assembler-with-cpp -DLOCORE ${CFLAGS} \
@@ -76,5 +84,9 @@ vmx_genassym.o:
 
 svm_genassym.o:
 	${CC} -c ${CFLAGS:N-flto:N-fno-common} ${.IMPSRC}
+
+vmm.o:
+	${CC} -c ${CFLAGS_INCLUDE_SOLARIS} ${CFLAGS} \
+		${.IMPSRC} -o ${.TARGET}
 
 .include <bsd.kmod.mk>

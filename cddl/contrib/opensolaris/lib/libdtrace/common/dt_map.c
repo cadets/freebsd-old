@@ -199,6 +199,8 @@ dt_epid_add(dtrace_hdl_t *dtp, dtrace_epid_t id)
 	}
 
 	probe->dtpd_id = enabled->dtepd_probeid;
+	strlcpy(probe->dtpd_instance,
+	    enabled->dtepd_instance, DTRACE_INSTANCENAMELEN);
 
 	if (dt_ioctl(dtp, DTRACEIOC_PROBES, probe) == -1) {
 		rval = dt_set_errno(dtp, errno);

@@ -70,15 +70,16 @@ static int mevent_pipefd[2];
 static pthread_mutex_t mevent_lmutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct mevent {	
-	void	(*me_func)(int, enum ev_type, void *);
-#define me_msecs me_fd
-	int	me_fd;
-	int	me_timid;
-	enum ev_type me_type;
-	void    *me_param;
-	int	me_cq;
-	int	me_state;
-	int	me_closefd;
+	void		(*me_func)(int, enum ev_type, int, void *);
+#define me_msecs 	me_fd
+	int		me_fd;
+	int		me_timid;
+	enum ev_type	me_type;
+	void		*me_param;
+	__intptr_t	me_data;
+	int		me_cq;
+	int		me_state;
+	int		me_closefd;
 	LIST_ENTRY(mevent) me_list;			   
 };
 
@@ -97,7 +98,7 @@ mevent_qunlock(void)
 }
 
 static void
-mevent_pipe_read(int fd, enum ev_type type, void *param)
+mevent_pipe_read(int fd, enum ev_type type, int ne __unused, void *param)
 {
 	char buf[MEVENT_MAX];
 	int status;
@@ -144,6 +145,9 @@ mevent_kq_filter(struct mevent *mevp)
 	if (mevp->me_type == EVF_SIGNAL)
 		retval = EVFILT_SIGNAL;
 
+	if (mevp->me_type == EVF_DTRACE)
+		retval = EVFILT_DTRACE;
+
 	return (retval);
 }
 
@@ -176,7 +180,10 @@ mevent_kq_flags(struct mevent *mevp)
 static int
 mevent_kq_fflags(struct mevent *mevp)
 {
-	/* XXX nothing yet, perhaps EV_EOF for reads ? */
+	if (mevp->me_type == EVF_DTRACE) {
+		return (NOTE_PROBE_INSTALL | NOTE_PROBE_UNINSTALL);
+	}
+
 	return (0);
 }
 
@@ -203,10 +210,13 @@ mevent_build(int mfd, struct kevent *kev)
 				kev[i].data = mevp->me_msecs;
 			} else {
 				kev[i].ident = mevp->me_fd;
-				kev[i].data = 0;
+				kev[i].data = mevp->me_data;
 			}
-			kev[i].filter = mevent_kq_filter(mevp);
 			kev[i].flags = mevent_kq_flags(mevp);
+			if (mevp->me_type == EVF_DTRACE)
+				kev[i].flags |= EV_CLEAR;
+
+			kev[i].filter = mevent_kq_filter(mevp);
 			kev[i].fflags = mevent_kq_fflags(mevp);
 			kev[i].udata = mevp;
 			i++;
@@ -240,13 +250,13 @@ mevent_handle(struct kevent *kev, int numev)
 
 		/* XXX check for EV_ERROR ? */
 
-		(*mevp->me_func)(mevp->me_fd, mevp->me_type, mevp->me_param);
+		(*mevp->me_func)(mevp->me_fd, mevp->me_type, kev[i].fflags, mevp->me_param);
 	}
 }
 
 struct mevent *
 mevent_add(int tfd, enum ev_type type,
-	   void (*func)(int, enum ev_type, void *), void *param)
+	   void (*func)(int, enum ev_type, int, void *), void *param, __intptr_t data)
 {
 	struct mevent *lp, *mevp;
 
@@ -291,6 +301,7 @@ mevent_add(int tfd, enum ev_type type,
 	mevp->me_type = type;
 	mevp->me_func = func;
 	mevp->me_param = param;
+	mevp->me_data = data;
 
 	LIST_INSERT_HEAD(&change_head, mevp, me_list);
 	mevp->me_cq = 1;
@@ -444,7 +455,7 @@ mevent_dispatch(void)
 	/*
 	 * Add internal event handler for the pipe write fd
 	 */
-	pipev = mevent_add(mevent_pipefd[0], EVF_READ, mevent_pipe_read, NULL);
+	pipev = mevent_add(mevent_pipefd[0], EVF_READ, mevent_pipe_read, NULL, 0);
 	assert(pipev != NULL);
 
 	for (;;) {

@@ -207,7 +207,6 @@ mi_startup(void)
 	struct sysinit **sipp;	/* system initialization*/
 	struct sysinit **xipp;	/* interior loop of sort*/
 	struct sysinit *save;	/* bubble*/
-
 #if defined(VERBOSE_SYSINIT)
 	int last;
 	int verbose;

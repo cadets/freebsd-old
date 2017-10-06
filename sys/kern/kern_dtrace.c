@@ -39,6 +39,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/dtrace_bsd.h>
 #include <sys/sysctl.h>
 #include <sys/sysent.h>
+#include <sys/event.h>
+#include <sys/uio.h>
 
 #define KDTRACE_PROC_SIZE	64
 #define	KDTRACE_THREAD_SIZE	256
@@ -53,8 +55,24 @@ dtrace_trap_func_t		dtrace_trap_func;
 dtrace_doubletrap_func_t	dtrace_doubletrap_func;
 dtrace_pid_probe_ptr_t		dtrace_pid_probe_ptr;
 dtrace_return_probe_ptr_t	dtrace_return_probe_ptr;
+dtrace_install_probe_ptr_t	dtrace_install_probe_ptr;
+dtrace_uninstall_probe_ptr_t	dtrace_uninstall_probe_ptr;
 
 systrace_probe_func_t		systrace_probe_func;
+
+static int filt_dtraceattach(struct knote *);
+static void filt_dtracedetach(struct knote *);
+static int filt_dtrace(struct knote *, long);
+
+struct knlist dtrace_knlist;
+struct mtx dtrace_knlist_mtx;
+int dtrace_synchronize;
+
+struct filterops dtrace_filtops = {
+	.f_attach = filt_dtraceattach,
+	.f_detach = filt_dtracedetach,
+	.f_event = filt_dtrace,
+};
 
 /* Return the DTrace process data size compiled in the kernel hooks. */
 size_t
@@ -121,6 +139,58 @@ init_dtrace(void *dummy __unused)
 	    EVENTHANDLER_PRI_ANY);
 	EVENTHANDLER_REGISTER(thread_dtor, kdtrace_thread_dtor, NULL,
 	    EVENTHANDLER_PRI_ANY);
+	mtx_init(&dtrace_knlist_mtx, "dtknlmtx", NULL, MTX_DEF);
+	knlist_init_mtx(&dtrace_knlist, &dtrace_knlist_mtx);
+}
+
+static void
+uninit_dtrace(void *dummy __unused)
+{
+	mtx_destroy(&dtrace_knlist_mtx);
+	knlist_destroy(&dtrace_knlist);
+}
+
+static int
+filt_dtraceattach(struct knote *kn)
+{
+	if ((kn->kn_filter & EVFILT_DTRACE) == 0)
+		return (ENXIO);
+
+	if ((kn->kn_sfflags & (NOTE_PROBE_INSTALL | NOTE_PROBE_UNINSTALL)) == 0)
+		return (EINVAL);
+
+	dtrace_synchronize = 1;
+	kn->kn_status |= KN_KQUEUE;
+	kn->kn_iov = malloc(sizeof(struct iovec), M_KQUEUE, M_WAITOK | M_ZERO);
+	sema_init(&kn->kn_iovsema, 0, "knote iovec semaphore");
+	knlist_add(&dtrace_knlist, kn, 0);
+	return (kn->kn_iov == NULL);
+}
+
+static void
+filt_dtracedetach(struct knote *kn)
+{
+	mtx_lock(&dtrace_knlist_mtx);
+	while (dtrace_synchronize == 0) {
+		if (sema_value(&kn->kn_iovsema) <= 0)
+			sema_post(&kn->kn_iovsema);
+	}
+	dtrace_synchronize = 1;
+	sema_destroy(&kn->kn_iovsema);
+	free(kn->kn_iov, M_KQUEUE);
+	kn->kn_iov = NULL;
+	knlist_remove(&dtrace_knlist, kn, 1);
+	mtx_unlock(&dtrace_knlist_mtx);
+}
+
+static __inline int
+filt_dtrace(struct knote *kn, long hint)
+{
+	kn->kn_fflags |= hint;
+	return ((kn->kn_sfflags & NOTE_PROBE_INSTALL)   &&
+	        (kn->kn_sfflags & NOTE_PROBE_UNINSTALL) &&
+	        (kn->kn_iov->iov_base != NULL));
 }
 
 SYSINIT(kdtrace, SI_SUB_KDTRACE, SI_ORDER_FIRST, init_dtrace, NULL);
+SYSUNINIT(kdtrace, SI_SUB_KDTRACE, SI_ORDER_FIRST, uninit_dtrace, NULL);

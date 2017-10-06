@@ -74,7 +74,10 @@ dtrace_load(void *dummy)
 
 	dtrace_taskq = taskq_create("dtrace_taskq", 1, maxclsyspri, 0, 0, 0);
 
-	dtrace_arena = new_unrhdr(1, INT_MAX, &dtrace_unr_mtx);
+	dtrace_arenas = kmem_zalloc(sizeof (struct unrhdr *) * DTRACE_MAX_INSTANCES,
+	    KM_SLEEP);
+
+/*	dtrace_arena = new_unrhdr(1, INT_MAX, &dtrace_unr_mtx); */
 
 	/* Register callbacks for linker file load and unload events. */
 	dtrace_kld_load_tag = EVENTHANDLER_REGISTER(kld_load,
@@ -91,13 +94,17 @@ dtrace_load(void *dummy)
 	 * the very problem we are trying to trace.
 	 */
 	mutex_init(&dtrace_lock,"dtrace probe state", MUTEX_DEFAULT, NULL);
+	mutex_init(&dtrace_instance_lock, "dtrace instance state", MUTEX_DEFAULT, NULL);
 	mutex_init(&dtrace_provider_lock,"dtrace provider state", MUTEX_DEFAULT, NULL);
 	mutex_init(&dtrace_meta_lock,"dtrace meta-provider state", MUTEX_DEFAULT, NULL);
 #ifdef DEBUG
 	mutex_init(&dtrace_errlock,"dtrace error lock", MUTEX_DEFAULT, NULL);
 #endif
 
+	dtrace_instance_seed = arc4random();
+
 	mutex_enter(&cpu_lock);
+	mutex_enter(&dtrace_instance_lock);
 	mutex_enter(&dtrace_provider_lock);
 	mutex_enter(&dtrace_lock);
 
@@ -106,6 +113,19 @@ dtrace_load(void *dummy)
 	    NULL, NULL, NULL, NULL, NULL, 0);
 
 	ASSERT(MUTEX_HELD(&cpu_lock));
+
+	dtrace_istc_probes = kmem_zalloc(DTRACE_MAX_INSTANCES *
+	    sizeof(dtrace_probe_t **), KM_SLEEP);
+	dtrace_istc_probecount = kmem_zalloc(DTRACE_MAX_INSTANCES *
+	    sizeof(uint32_t), KM_SLEEP);
+	dtrace_istc_names = kmem_zalloc(DTRACE_MAX_INSTANCES *
+	    sizeof(char *), KM_SLEEP);
+
+	dtrace_byinstance = dtrace_hash_create(offsetof(dtrace_probe_t,
+	    dtpr_instance),
+	    offsetof(dtrace_probe_t, dtpr_nextinstance),
+	    offsetof(dtrace_probe_t, dtpr_previnstance));
+
 	dtrace_bymod = dtrace_hash_create(offsetof(dtrace_probe_t, dtpr_mod),
 	    offsetof(dtrace_probe_t, dtpr_nextmod),
 	    offsetof(dtrace_probe_t, dtpr_prevmod));
@@ -142,6 +162,7 @@ dtrace_load(void *dummy)
 	ASSERT(dtrace_provider != NULL);
 	ASSERT((dtrace_provider_id_t)dtrace_provider == id);
 
+	dtrace_provider->dtpv_next = NULL;
 	dtrace_probeid_begin = dtrace_probe_create((dtrace_provider_id_t)
 	    dtrace_provider, NULL, NULL, "BEGIN", 0, NULL);
 	dtrace_probeid_end = dtrace_probe_create((dtrace_provider_id_t)
@@ -151,6 +172,8 @@ dtrace_load(void *dummy)
 
 	mutex_exit(&dtrace_lock);
 	mutex_exit(&dtrace_provider_lock);
+	mutex_exit(&dtrace_instance_lock);
+
 
 #ifdef EARLY_AP_STARTUP
 	CPU_FOREACH(i) {

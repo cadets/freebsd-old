@@ -40,5 +40,6 @@
 #define VIRTIO_ID_IOMEMORY	0x06
 #define VIRTIO_ID_SCSI		0x08
 #define VIRTIO_ID_9P		0x09
+#define	VIRTIO_ID_DTRACE	0x0A
 
 #endif /* _VIRTIO_IDS_H_ */

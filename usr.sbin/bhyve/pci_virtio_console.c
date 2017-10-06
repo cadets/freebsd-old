@@ -153,8 +153,8 @@ static void pci_vtcon_notify_tx(void *, struct vqueue_info *);
 static int pci_vtcon_cfgread(void *, int, int, uint32_t *);
 static int pci_vtcon_cfgwrite(void *, int, int, uint32_t);
 static void pci_vtcon_neg_features(void *, uint64_t);
-static void pci_vtcon_sock_accept(int, enum ev_type,  void *);
-static void pci_vtcon_sock_rx(int, enum ev_type, void *);
+static void pci_vtcon_sock_accept(int, enum ev_type, int, void *);
+static void pci_vtcon_sock_rx(int, enum ev_type, int, void *);
 static void pci_vtcon_sock_tx(struct pci_vtcon_port *, void *, struct iovec *,
     int);
 static void pci_vtcon_control_send(struct pci_vtcon_softc *,
@@ -340,7 +340,7 @@ pci_vtcon_sock_add(struct pci_vtcon_softc *sc, const char *name,
 	sock->vss_conn_fd = -1;
 	sock->vss_server_fd = s;
 	sock->vss_server_evp = mevent_add(s, EVF_READ, pci_vtcon_sock_accept,
-	    sock);
+	    sock, 0);
 
 	if (sock->vss_server_evp == NULL) {
 		error = -1;
@@ -358,7 +358,7 @@ out:
 }
 
 static void
-pci_vtcon_sock_accept(int fd __unused, enum ev_type t __unused, void *arg)
+pci_vtcon_sock_accept(int fd __unused, enum ev_type t __unused, int en __unused, void *arg)
 {
 	struct pci_vtcon_sock *sock = (struct pci_vtcon_sock *)arg;
 	int s;
@@ -374,13 +374,13 @@ pci_vtcon_sock_accept(int fd __unused, enum ev_type t __unused, void *arg)
 
 	sock->vss_open = true;
 	sock->vss_conn_fd = s;
-	sock->vss_conn_evp = mevent_add(s, EVF_READ, pci_vtcon_sock_rx, sock);
+	sock->vss_conn_evp = mevent_add(s, EVF_READ, pci_vtcon_sock_rx, sock, 0);
 
 	pci_vtcon_open_port(sock->vss_port, true);
 }
 
 static void
-pci_vtcon_sock_rx(int fd __unused, enum ev_type t __unused, void *arg)
+pci_vtcon_sock_rx(int fd __unused, enum ev_type t __unused, int en __unused, void *arg)
 {
 	struct pci_vtcon_port *port;
 	struct pci_vtcon_sock *sock = (struct pci_vtcon_sock *)arg;

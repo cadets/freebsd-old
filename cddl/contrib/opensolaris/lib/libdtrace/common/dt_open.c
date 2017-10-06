@@ -402,6 +402,8 @@ static const dt_ident_t _dtrace_globals[] = {
 	DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string" },
 { "probeprov", DT_IDENT_SCALAR, 0, DIF_VAR_PROBEPROV,
 	DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string" },
+{ "probeistc", DT_IDENT_SCALAR, 0, DIF_VAR_PROBEISTC,
+	DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string" },
 { "progenyof", DT_IDENT_FUNC, 0, DIF_SUBR_PROGENYOF,
 	DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_func, "int(pid_t)" },

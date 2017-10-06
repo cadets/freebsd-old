@@ -2,6 +2,7 @@
 # $FreeBSD$
 #
 
+.include <bsd.mkopt.mk>
 .include <src.opts.mk>
 
 PROG=	bhyve
@@ -59,6 +60,26 @@ SRCS=	\
 	vga.c			\
 	xmsr.c			\
 	spinup_ap.c
+
+
+.if ${MK_DTVIRT} != "no"
+SRCS+=  dthyve.c pci_virtio_dtrace.c
+DTHYVE_INCLUDES= -I${.CURDIR}/../../cddl/compat/opensolaris/include
+DTHYVE_INCLUDES+= -I${.CURDIR}/../../cddl/contrib/opensolaris/lib/libdtrace/common
+DTHYVE_INCLUDES+= -I${.CURDIR}/../../cddl/contrib/opensolaris/lib/libctf/common
+DTHYVE_INCLUDES+= -I${.CURDIR}/../../cddl/lib/libdtrace
+DTHYVE_INCLUDES+= -I${.CURDIR}/../../sys/cddl/compat/opensolaris
+DTHYVE_INCLUDES+= -I${.CURDIR}/../../sys/cddl/contrib/opensolaris/uts/common
+DTHYVE_CFLAGS= -O2 -Wall -Wextra
+DTHYVE_LDFLAGS= -l dtrace -l proc -l ctf -l elf -l z -l rtld_db -l pthread -l util
+
+dthyve.o:
+	${CC} -D NEED_SOLARIS_BOOLEAN -c ${DTHYVE_INCLUDES} ${DTHYVE_CFLAGS} \
+		${.IMPSRC} -o ${.TARGET}
+
+CFLAGS+= -D DTVIRT
+LDFLAGS+= -l dtrace -l proc -l ctf -l elf -l z -l rtld_db -l pthread -l util
+.endif
 
 .PATH:  ${BHYVE_SYSDIR}/sys/amd64/vmm
 SRCS+=	vmm_instruction_emul.c

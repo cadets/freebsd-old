@@ -545,6 +545,12 @@ vm_get_desc(struct vmctx *ctx, int vcpu, int reg,
 	return (error);
 }
 
+char *
+vm_get_name(struct vmctx *ctx)
+{
+	return (ctx->name);
+}
+
 int
 vm_get_seg_desc(struct vmctx *ctx, int vcpu, int reg, struct seg_desc *seg_desc)
 {

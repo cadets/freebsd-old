@@ -802,6 +802,7 @@ ENTRY(wrmsr_safe)
 	POP_FRAME_POINTER
 	ret
 
+
 /*
  * MSR operations fault handler
  */

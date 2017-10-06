@@ -155,6 +155,7 @@ if (yypcb->pcb_token != 0) {
 <S0>if		return (DT_KEY_IF);
 <S0>import	return (DT_KEY_IMPORT);
 <S0>inline	return (DT_KEY_INLINE);
+<S0>instance	return (DT_KEY_INSTANCE);
 <S0>int		return (DT_KEY_INT);
 <S0>long	return (DT_KEY_LONG);
 <S0>offsetof	return (DT_TOK_OFFSETOF);
@@ -193,6 +194,7 @@ if (yypcb->pcb_token != 0) {
 <S2>float	{ yybegin(YYS_EXPR);	return (DT_KEY_FLOAT); }
 <S2>import	{ yybegin(YYS_EXPR);	return (DT_KEY_IMPORT); }
 <S2>inline	{ yybegin(YYS_DEFINE);	return (DT_KEY_INLINE); }
+<S2>instance	{ yybegin(YYS_EXPR);	return (DT_KEY_INSTANCE); }
 <S2>int		{ yybegin(YYS_EXPR);	return (DT_KEY_INT); }
 <S2>long	{ yybegin(YYS_EXPR);	return (DT_KEY_LONG); }
 <S2>provider	{ yybegin(YYS_DEFINE);	return (DT_KEY_PROVIDER); }

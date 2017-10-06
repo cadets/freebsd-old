@@ -111,15 +111,19 @@ typedef uint64_t dtrace_genid_t;
  */
 struct dtrace_probe {
 	dtrace_id_t dtpr_id;			/* probe identifier */
+	uint8_t dtpr_mode;			/* probe mode; see below */
 	dtrace_ecb_t *dtpr_ecb;			/* ECB list; see below */
 	dtrace_ecb_t *dtpr_ecb_last;		/* last ECB in list */
 	void *dtpr_arg;				/* provider argument */
 	dtrace_cacheid_t dtpr_predcache;	/* predicate cache ID */
 	int dtpr_aframes;			/* artificial frames */
 	dtrace_provider_t *dtpr_provider;	/* pointer to provider */
+	char *dtpr_instance;			/* probe's instance name */
 	char *dtpr_mod;				/* probe's module name */
 	char *dtpr_func;			/* probe's function name */
 	char *dtpr_name;			/* probe's name */
+	dtrace_probe_t *dtpr_nextinstance;	/* next in instance hash */
+	dtrace_probe_t *dtpr_previnstance;	/* previous in instance hash */
 	dtrace_probe_t *dtpr_nextmod;		/* next in module hash */
 	dtrace_probe_t *dtpr_prevmod;		/* previous in module hash */
 	dtrace_probe_t *dtpr_nextfunc;		/* next in function hash */
@@ -132,6 +136,8 @@ struct dtrace_probe {
 typedef int dtrace_probekey_f(const char *, const char *, int);
 
 typedef struct dtrace_probekey {
+	char *dtpk_instance;			/* instance name to match */
+	dtrace_probekey_f *dtpk_imatch;		/* instance matching function */
 	char *dtpk_prov;			/* provider name to match */
 	dtrace_probekey_f *dtpk_pmatch;		/* provider matching function */
 	char *dtpk_mod;				/* module name to match */
@@ -1177,14 +1183,36 @@ struct dtrace_state {
 	uint64_t dts_rstate[NCPU][2];		/* per-CPU random state */
 };
 
+#define	DTRACE_MAX_INSTANCES	65536
+#define	DTRACE_INSTANCE_MASK	(DTRACE_MAX_INSTANCES - 1)
+
+typedef struct dtrace_instance {
+	char *dtis_name;			/* instance name */
+	struct dtrace_provider *dtis_provhead;	/* first provider in the instance */
+	struct dtrace_instance *dtis_next;	/* next instance */
+	struct dtrace_instance *dtis_prev;	/* previous instance */
+} dtrace_instance_t;
+
+/*
+ * XXX(dstolfa): Could be made a doubly linked list to allow
+ * for turning some operations to O(1) when it comes
+ * to instances
+ *
+ * XXX(dstolfa): dtpv_next is now redundant. We can can access
+ * instances at any point and we can easily traverse all the
+ * providers using that
+ */
 struct dtrace_provider {
 	dtrace_pattr_t dtpv_attr;		/* provider attributes */
 	dtrace_ppriv_t dtpv_priv;		/* provider privileges */
 	dtrace_pops_t dtpv_pops;		/* provider operations */
+	struct uuid *dtpv_uuid;			/* provider uuid */
+	struct uuid *dtpv_advuuid;		/* advertised provider uuid */
+	char *dtpv_instance;			/* instance name */
 	char *dtpv_name;			/* provider name */
 	void *dtpv_arg;				/* provider argument */
 	hrtime_t dtpv_defunct;			/* when made defunct */
-	struct dtrace_provider *dtpv_next;	/* next provider */
+	struct dtrace_provider *dtpv_next;	/* next provider in the instance*/
 };
 
 struct dtrace_meta {
@@ -1303,8 +1331,8 @@ extern uint8_t dtrace_fuword8(void *);
 extern uint16_t dtrace_fuword16(void *);
 extern uint32_t dtrace_fuword32(void *);
 extern uint64_t dtrace_fuword64(void *);
-extern void dtrace_probe_error(dtrace_state_t *, dtrace_epid_t, int, int,
-    int, uintptr_t);
+extern void dtrace_probe_error(const char *, dtrace_state_t *, dtrace_epid_t,
+    int, int, int, uintptr_t);
 extern int dtrace_assfail(const char *, const char *, int);
 extern int dtrace_attached(void);
 #ifdef illumos

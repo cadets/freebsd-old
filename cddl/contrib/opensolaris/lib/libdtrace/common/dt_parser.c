@@ -475,10 +475,18 @@ dt_node_name(const dt_node_t *dnp, char *buf, size_t len)
 		break;
 	case DT_NODE_PDESC:
 		if (dnp->dn_desc->dtpd_id == 0) {
-			(void) snprintf(buf, len,
-			    "probe description %s:%s:%s:%s",
-			    dnp->dn_desc->dtpd_provider, dnp->dn_desc->dtpd_mod,
-			    dnp->dn_desc->dtpd_func, dnp->dn_desc->dtpd_name);
+			if (strcmp(dnp->dn_desc->dtpd_instance, "host") == 0) {
+				(void) snprintf(buf, len,
+				    "probe description %s:%s:%s:%s",
+				    dnp->dn_desc->dtpd_provider, dnp->dn_desc->dtpd_mod,
+				    dnp->dn_desc->dtpd_func, dnp->dn_desc->dtpd_name);
+			} else {
+				(void) snprintf(buf, len,
+				    "probe description %s:%s:%s:%s:%s",
+				    dnp->dn_desc->dtpd_instance, dnp->dn_desc->dtpd_provider,
+				    dnp->dn_desc->dtpd_mod, dnp->dn_desc->dtpd_func,
+				    dnp->dn_desc->dtpd_name);
+			}
 		} else {
 			(void) snprintf(buf, len, "probe description %u",
 			    dnp->dn_desc->dtpd_id);
@@ -2185,7 +2193,7 @@ dt_node_t *
 dt_node_pdesc_by_id(uintmax_t id)
 {
 	static const char *const names[] = {
-		"providers", "modules", "functions"
+		"instances", "providers", "modules", "functions"
 	};
 
 	dtrace_hdl_t *dtp = yypcb->pcb_hdl;
@@ -4748,9 +4756,16 @@ dt_printd(dt_node_t *dnp, FILE *fp, int depth)
 		break;
 
 	case DT_NODE_PDESC:
-		(void) fprintf(fp, "%s:%s:%s:%s",
-		    dnp->dn_desc->dtpd_provider, dnp->dn_desc->dtpd_mod,
-		    dnp->dn_desc->dtpd_func, dnp->dn_desc->dtpd_name);
+		if (strcmp(dnp->dn_desc->dtpd_instance, "host") == 0) {
+			(void) fprintf(fp, "%s:%s:%s:%s",
+			    dnp->dn_desc->dtpd_provider, dnp->dn_desc->dtpd_mod,
+			    dnp->dn_desc->dtpd_func, dnp->dn_desc->dtpd_name);
+		} else {
+			(void) fprintf(fp, "%s:%s:%s:%s:%s",
+			    dnp->dn_desc->dtpd_instance, dnp->dn_desc->dtpd_provider,
+			    dnp->dn_desc->dtpd_mod, dnp->dn_desc->dtpd_func,
+			    dnp->dn_desc->dtpd_name);
+		}
 		break;
 
 	case DT_NODE_CLAUSE:
@@ -4954,10 +4969,17 @@ dt_node_printr(dt_node_t *dnp, FILE *fp, int depth)
 		break;
 
 	case DT_NODE_PDESC:
-		(void) fprintf(fp, "PDESC %s:%s:%s:%s [%u]\n",
-		    dnp->dn_desc->dtpd_provider, dnp->dn_desc->dtpd_mod,
-		    dnp->dn_desc->dtpd_func, dnp->dn_desc->dtpd_name,
-		    dnp->dn_desc->dtpd_id);
+		if (strcmp(dnp->dn_desc->dtpd_instance, "host") == 0) {
+			(void) fprintf(fp, "PDESC %s:%s:%s:%s [%u]\n",
+			    dnp->dn_desc->dtpd_provider, dnp->dn_desc->dtpd_mod,
+			    dnp->dn_desc->dtpd_func, dnp->dn_desc->dtpd_name,
+			    dnp->dn_desc->dtpd_id);
+		} else {
+			(void) fprintf(fp, "PDESC %s:%s:%s:%s:%s [%u]\n",
+			    dnp->dn_desc->dtpd_instance, dnp->dn_desc->dtpd_provider,
+			    dnp->dn_desc->dtpd_mod, dnp->dn_desc->dtpd_func,
+			    dnp->dn_desc->dtpd_name, dnp->dn_desc->dtpd_id);
+		}
 		break;
 
 	case DT_NODE_CLAUSE:

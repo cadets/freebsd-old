@@ -91,6 +91,8 @@ typedef struct dt_probe {
 	int pr_argc;			/* output argument count */
 } dt_probe_t;
 
+extern dt_provider_t *dt_provider_distributed_lookup(dtrace_hdl_t *,
+    const char *, const char *);
 extern dt_provider_t *dt_provider_lookup(dtrace_hdl_t *, const char *);
 extern dt_provider_t *dt_provider_create(dtrace_hdl_t *, const char *);
 extern void dt_provider_destroy(dtrace_hdl_t *, dt_provider_t *);

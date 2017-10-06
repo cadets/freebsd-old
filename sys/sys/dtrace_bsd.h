@@ -31,6 +31,8 @@
 #ifndef _SYS_DTRACE_BSD_H
 #define	_SYS_DTRACE_BSD_H
 
+#ifdef _KERNEL
+
 /* Forward definitions: */
 struct mbuf;
 struct trapframe;
@@ -38,6 +40,23 @@ struct thread;
 struct vattr;
 struct vnode;
 struct reg;
+struct knote;
+struct knlist;
+struct mtx;
+
+#define	DTRACE_KNOTE(list, hint, flags)					\
+	do {								\
+		if (!KNLIST_EMPTY(list)) {				\
+			KNOTE(list, hint, flags | KNF_NOKQLOCK);	\
+		}							\
+	} while (0)
+
+#define	DTRACE_KNOTE_LOCKED(list, hint)		DTRACE_KNOTE(list, hint, KNF_LISTLOCKED)
+#define	DTRACE_KNOTE_UNLOCKED(list, hint)	DTRACE_KNOTE(list, hint, 0);
+
+extern struct knlist dtrace_knlist;
+extern struct mtx dtrace_knlist_mtx;
+extern int dtrace_synchronize;
 
 int dtrace_trap(struct trapframe *, u_int);
 
@@ -62,6 +81,10 @@ typedef int (*dtrace_pid_probe_ptr_t)(struct reg *);
 extern	dtrace_pid_probe_ptr_t	dtrace_pid_probe_ptr;
 typedef int (*dtrace_return_probe_ptr_t)(struct reg *);
 extern	dtrace_return_probe_ptr_t	dtrace_return_probe_ptr;
+typedef int (*dtrace_install_probe_ptr_t)(struct reg *);
+extern	dtrace_install_probe_ptr_t	dtrace_install_probe_ptr;
+typedef int (*dtrace_uninstall_probe_ptr_t)(struct reg *);
+extern	dtrace_uninstall_probe_ptr_t	dtrace_uninstall_probe_ptr;
 
 /* Virtual time hook function type. */
 typedef	void (*dtrace_vtime_switch_func_t)(struct thread *);
@@ -157,7 +180,7 @@ extern dtrace_nfsclient_nfs23_done_probe_func_t
     dtrace_nfscl_nfs234_done_probe;
 
 /*
- * Functions which allow the dtrace module to check that the kernel 
+ * Functions which allow the dtrace module to check that the kernel
  * hooks have been compiled with sufficient space for it's private
  * structures.
  */
@@ -170,5 +193,21 @@ size_t	kdtrace_thread_size(void);
  */
 uint64_t	dtrace_gethrtime(void);
 uint64_t	dtrace_gethrestime(void);
+
+#endif /* _KERNEL */
+
+/*
+ * XXX: Hack
+ */
+#define	DTRACE_INSTANCENAMELEN	64
+#define	DTRACE_PROVNAMELEN	64
+#define	DTRACE_MODNAMELEN	64
+#define	DTRACE_FUNCNAMELEN	192
+#define	DTRACE_NAMELEN		64
+
+struct dtrace_probeinfo {
+	int	id;					/* ID of the probe to install */
+	char	instance[DTRACE_INSTANCENAMELEN];	/* instance to install it on */
+};
 
 #endif /* _SYS_DTRACE_BSD_H */

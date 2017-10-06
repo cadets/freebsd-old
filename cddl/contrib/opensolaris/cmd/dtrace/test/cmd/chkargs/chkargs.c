@@ -47,9 +47,15 @@ probe(dtrace_hdl_t *dtp, const dtrace_probedesc_t *pdp, void *data)
 	(void) fflush(stdout);
 
 	if (dtrace_probe_info(dtp, pdp, &p) != 0) {
-		(void) printf(" failed to get probe info for "
-		    "%s:%s:%s:%s [%d]\n", pdp->dtpd_provider, pdp->dtpd_mod,
-		    pdp->dtpd_func, pdp->dtpd_name, pdp->dtpd_id);
+		if (strcmp(pdp->dtpd_instance, "host") == 0) {
+			(void) printf(" failed to get probe info for "
+			    "%s:%s:%s:%s [%d]\n", pdp->dtpd_provider, pdp->dtpd_mod,
+			    pdp->dtpd_func, pdp->dtpd_name, pdp->dtpd_id);
+		} else {
+			(void) printf(" failed to get probe info for "
+			    "%s:%s:%s:%s:%s [%d]\n", pdp->dtpd_instance, pdp->dtpd_provider,
+			    pdp->dtpd_mod, pdp->dtpd_func, pdp->dtpd_name, pdp->dtpd_id);
+		}
 		g_errs++;
 		return (0);
 	}
@@ -59,13 +65,22 @@ probe(dtrace_hdl_t *dtp, const dtrace_probedesc_t *pdp, void *data)
 			bzero(&arg, sizeof (dtrace_argdesc_t));
 			arg.dtargd_id = pdp->dtpd_id;
 			arg.dtargd_ndx = i;
+			arg.dtargd_instance = pdp->dtpd_instance;
 			(void) ioctl(g_fd, DTRACEIOC_PROBEARG, &arg);
 
-			(void) printf(" failed to get types for args[%d] "
-			    "of %s:%s:%s:%s [%d]: <%s> -> <%s>\n", i,
-			    pdp->dtpd_provider, pdp->dtpd_mod, pdp->dtpd_func,
-			    pdp->dtpd_name, pdp->dtpd_id,
-			    arg.dtargd_native, arg.dtargd_xlate);
+			if (strcmp(pdp->dtpd_instance, "host") == 0) {
+				(void) printf(" failed to get types for args[%d] "
+				    "of %s:%s:%s:%s [%d]: <%s> -> <%s>\n", i,
+				    pdp->dtpd_provider, pdp->dtpd_mod, pdp->dtpd_func,
+				    pdp->dtpd_name, pdp->dtpd_id,
+				    arg.dtargd_native, arg.dtargd_xlate);
+			} else {
+				(void) printf(" failed to get types for args[%d] "
+				    "of %s:%s:%s:%s:%s [%d]: <%s> -> <%s>\n", i,
+				    pdp->dtpd_instance, pdp->dtpd_provider, pdp->dtpd_mod,
+				    pdp->dtpd_func, pdp->dtpd_name, pdp->dtpd_id,
+				    arg.dtargd_native, arg.dtargd_xlate);
+			}
 
 			g_errs++;
 

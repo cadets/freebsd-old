@@ -62,7 +62,8 @@ dt_provider_insert(dtrace_hdl_t *dtp, dt_provider_t *pvp, uint_t h)
 }
 
 dt_provider_t *
-dt_provider_lookup(dtrace_hdl_t *dtp, const char *name)
+dt_provider_distributed_lookup(dtrace_hdl_t *dtp,
+    const char *instance, const char *name)
 {
 	uint_t h = dt_strtab_hash(name, NULL) % dtp->dt_provbuckets;
 	dtrace_providerdesc_t desc;
@@ -80,6 +81,7 @@ dt_provider_lookup(dtrace_hdl_t *dtp, const char *name)
 
 	bzero(&desc, sizeof (desc));
 	(void) strlcpy(desc.dtvd_name, name, DTRACE_PROVNAMELEN);
+	(void) strlcpy(desc.dtvd_instance, instance, DTRACE_INSTANCENAMELEN);
 
 	if (dt_ioctl(dtp, DTRACEIOC_PROVIDER, &desc) == -1) {
 		(void) dt_set_errno(dtp, errno == ESRCH ? EDT_NOPROV : errno);
@@ -92,6 +94,12 @@ dt_provider_lookup(dtrace_hdl_t *dtp, const char *name)
 	bcopy(&desc, &pvp->pv_desc, sizeof (desc));
 	pvp->pv_flags |= DT_PROVIDER_IMPL;
 	return (pvp);
+}
+
+dt_provider_t *
+dt_provider_lookup(dtrace_hdl_t *dtp, const char *name)
+{
+	return (dt_provider_distributed_lookup(dtp, "host", name));
 }
 
 dt_provider_t *
@@ -260,6 +268,8 @@ dt_probe_discover(dt_provider_t *pvp, const dtrace_probedesc_t *pdp)
 		bzero(adp, sizeof (dtrace_argdesc_t));
 		adp->dtargd_ndx = i;
 		adp->dtargd_id = pdp->dtpd_id;
+		strlcpy(adp->dtargd_instance, pdp->dtpd_instance,
+		    DTRACE_INSTANCENAMELEN);
 
 		if (dt_ioctl(dtp, DTRACEIOC_PROBEARG, adp) != 0) {
 			(void) dt_set_errno(dtp, errno);
@@ -691,7 +701,8 @@ dt_probe_info(dtrace_hdl_t *dtp,
 	 * If none is found and an explicit probe ID was specified, discover
 	 * that specific probe and cache its description and arguments.
 	 */
-	if ((pvp = dt_provider_lookup(dtp, pdp->dtpd_provider)) != NULL) {
+	if ((pvp = dt_provider_distributed_lookup(dtp,
+	    pdp->dtpd_instance, pdp->dtpd_provider)) != NULL) {
 		size_t keylen = dt_probe_keylen(pdp);
 		char *key = dt_probe_key(pdp, alloca(keylen));
 
@@ -725,7 +736,8 @@ dt_probe_info(dtrace_hdl_t *dtp,
 		if ((m = dtrace_probe_iter(dtp, pdp, dt_probe_desc, &pd)) < 0)
 			return (NULL); /* dt_errno is set for us */
 
-		if ((pvp = dt_provider_lookup(dtp, pd.dtpd_provider)) == NULL)
+		if ((pvp = dt_provider_distributed_lookup(dtp,
+		    pd.dtpd_instance, pd.dtpd_provider)) == NULL)
 			return (NULL); /* dt_errno is set for us */
 
 		/*
@@ -839,17 +851,45 @@ dtrace_probe_iter(dtrace_hdl_t *dtp,
     const dtrace_probedesc_t *pdp, dtrace_probe_f *func, void *arg)
 {
 	const char *provider = pdp ? pdp->dtpd_provider : NULL;
+	char (*instance)[DTRACE_INSTANCENAMELEN];
 	dtrace_id_t id = DTRACE_IDNONE;
 
+	dtrace_instance_info_t iinfo;
 	dtrace_probedesc_t pd;
 	dt_probe_iter_t pit;
-	int cmd, rv;
+	int cmd, rv, i;
 
 	bzero(&pit, sizeof (pit));
 	pit.pit_hdl = dtp;
 	pit.pit_func = func;
 	pit.pit_arg = arg;
 	pit.pit_pat = pdp ? pdp->dtpd_name : NULL;
+
+	/*
+	 * XXX(dstolfa): This is very ugly. It needs to be done in a better way.
+	 * Perhaps with a file descriptor somehow?
+	 */
+	if (pdp != NULL) {
+		instance = malloc(DTRACE_INSTANCENAMELEN);
+		if (strlen(pdp->dtpd_instance) <= 0)
+			strcpy(instance[0], "host");
+		else
+			strncpy(instance[0], pdp->dtpd_instance,
+			    DTRACE_INSTANCENAMELEN);
+
+		instance[0][DTRACE_INSTANCENAMELEN - 1] = '\0';
+	} else {
+		iinfo.dtii_action = DTRACE_INSTANCEINFO_ACTION_MAP;
+		iinfo.dtii_instances = NULL;
+		rv = dt_ioctl(dtp, DTRACEIOC_INSTANCES, &iinfo);
+
+		if (rv != 0) {
+			return (dt_set_errno(dtp, errno));
+		}
+
+		instance = (char (*)[DTRACE_INSTANCENAMELEN])
+		    iinfo.dtii_instances;
+	}
 
 	for (pit.pit_pvp = dt_list_next(&dtp->dt_provlist);
 	    pit.pit_pvp != NULL; pit.pit_pvp = dt_list_next(pit.pit_pvp)) {
@@ -873,19 +913,35 @@ dtrace_probe_iter(dtrace_hdl_t *dtp,
 	else
 		cmd = DTRACEIOC_PROBES;
 
-	for (;;) {
-		if (pdp != NULL)
-			bcopy(pdp, &pd, sizeof (pd));
+	for (i = 0; i < iinfo.dtii_size; i++) {
+		strncpy(pd.dtpd_instance, instance[i],
+		    DTRACE_INSTANCENAMELEN);
+		id = 0;
+		for (;;) {
+			if (pdp != NULL)
+				bcopy(pdp, &pd, sizeof (pd));
 
-		pd.dtpd_id = id;
+			pd.dtpd_id = id;
 
-		if (dt_ioctl(dtp, cmd, &pd) != 0)
-			break;
-		else if ((rv = func(dtp, &pd, arg)) != 0)
-			return (rv);
+			if (dt_ioctl(dtp, cmd, &pd) != 0)
+				break;
+			else if ((rv = func(dtp, &pd, arg)) != 0)
+				return (rv);
 
-		pit.pit_matches++;
-		id = pd.dtpd_id + 1;
+			pit.pit_matches++;
+			id = pd.dtpd_id + 1;
+		}
+	}
+
+	if (pdp != NULL) {
+		free(instance);
+	} else {
+		iinfo.dtii_action = DTRACE_INSTANCEINFO_ACTION_UNMAP;
+		rv = dt_ioctl(dtp, DTRACEIOC_INSTANCES, &iinfo);
+
+		if (rv != 0) {
+			return (dt_set_errno(dtp, errno));
+		}
 	}
 
 	switch (errno) {

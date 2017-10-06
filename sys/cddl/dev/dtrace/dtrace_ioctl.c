@@ -28,6 +28,20 @@ SYSCTL_INT(_debug_dtrace, OID_AUTO, verbose_ioctl, CTLFLAG_RW,
 
 #define DTRACE_IOCTL_PRINTF(fmt, ...)	if (dtrace_verbose_ioctl) printf(fmt, ## __VA_ARGS__ )
 
+static __inline int
+dtvirt_loaded(void)
+{
+	return (dtvirt_hook_commit &&
+	    dtvirt_hook_register   &&
+	    dtvirt_hook_unregister &&
+	    dtvirt_hook_create     &&
+	    dtvirt_hook_enable     &&
+	    dtvirt_hook_disable    &&
+	    dtvirt_hook_getargdesc &&
+	    dtvirt_hook_getargval  &&
+	    dtvirt_hook_destroy);
+}
+
 static int
 dtrace_ioctl_helper(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
     struct thread *td)
@@ -468,7 +482,6 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		int nrecs;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_EPROBE\n",__func__,__LINE__);
-
 		if (copyin((void *)*pepdesc, &epdesc, sizeof (epdesc)) != 0)
 			return (EFAULT);
 
@@ -487,6 +500,8 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		epdesc.dtepd_probeid = ecb->dte_probe->dtpr_id;
 		epdesc.dtepd_uarg = ecb->dte_uarg;
 		epdesc.dtepd_size = ecb->dte_size;
+		strlcpy(epdesc.dtepd_instance,
+		    ecb->dte_probe->dtpr_instance, DTRACE_INSTANCENAMELEN);
 
 		nrecs = epdesc.dtepd_nrecs;
 		epdesc.dtepd_nrecs = 0;
@@ -586,7 +601,10 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 	case DTRACEIOC_PROBEARG: {
 		dtrace_argdesc_t *desc = (dtrace_argdesc_t *) addr;
 		dtrace_probe_t *probe;
+		dtrace_probe_t **dtrace_probes;
 		dtrace_provider_t *prov;
+		uint32_t idx;
+		uint32_t dtrace_nprobes;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_PROBEARG\n",__func__,__LINE__);
 
@@ -601,6 +619,12 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_enter(&mod_lock);
 #endif
 		mutex_enter(&dtrace_lock);
+
+		idx = dtrace_instance_lookup_id(desc->dtargd_instance);
+		dtrace_nprobes = dtrace_istc_probecount[idx];
+		dtrace_probes = dtrace_istc_probes[idx];
+
+		ASSERT(dtrace_probes != NULL);
 
 		if (desc->dtargd_id > dtrace_nprobes) {
 			mutex_exit(&dtrace_lock);
@@ -650,10 +674,14 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 	case DTRACEIOC_PROBES: {
 		dtrace_probedesc_t *p_desc = (dtrace_probedesc_t *) addr;
 		dtrace_probe_t *probe = NULL;
+		dtrace_probe_t **dtrace_probes;
+		dtrace_instance_t *instance;
 		dtrace_probekey_t pkey;
 		dtrace_id_t i;
 		int m = 0;
 		uint32_t priv = 0;
+		uint32_t dtrace_nprobes;
+		uint32_t idx;
 		uid_t uid = 0;
 		zoneid_t zoneid = 0;
 
@@ -661,6 +689,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		    cmd == DTRACEIOC_PROBEMATCH ?
 		    "DTRACEIOC_PROBEMATCH":"DTRACEIOC_PROBES");
 
+		p_desc->dtpd_instance[DTRACE_INSTANCENAMELEN - 1] = '\0';
 		p_desc->dtpd_provider[DTRACE_PROVNAMELEN - 1] = '\0';
 		p_desc->dtpd_mod[DTRACE_MODNAMELEN - 1] = '\0';
 		p_desc->dtpd_func[DTRACE_FUNCNAMELEN - 1] = '\0';
@@ -671,13 +700,24 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		 * all providers the opportunity to provide it.
 		 */
 		if (p_desc->dtpd_id == DTRACE_IDNONE) {
+			/*
+			 * XXX(dstolfa): Possibly clean up these locks. The hash
+			 * table should be protected via dtrace_lock, not
+			 * dtrace_instance_lock, which protects the instance
+			 * list.
+			 */
+			mutex_enter(&dtrace_instance_lock);
 			mutex_enter(&dtrace_provider_lock);
 			dtrace_probe_provide(p_desc, NULL);
 			mutex_exit(&dtrace_provider_lock);
+			mutex_exit(&dtrace_instance_lock);
 			p_desc->dtpd_id++;
 		}
 
 		if (cmd == DTRACEIOC_PROBEMATCH)  {
+			/*
+			 * FIXME: This does not seem to yield any useful data :(
+			 */
 			dtrace_probekey(p_desc, &pkey);
 			pkey.dtpk_id = DTRACE_IDNONE;
 		}
@@ -686,25 +726,90 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		mutex_enter(&dtrace_lock);
 
-		if (cmd == DTRACEIOC_PROBEMATCH) {
-			for (i = p_desc->dtpd_id; i <= dtrace_nprobes; i++) {
-				if ((probe = dtrace_probes[i - 1]) != NULL &&
-				    (m = dtrace_match_probe(probe, &pkey,
-				    priv, uid, zoneid)) != 0)
-					break;
-			}
-
-			if (m < 0) {
-				mutex_exit(&dtrace_lock);
-				return (EINVAL);
-			}
-
+		if (strlen(p_desc->dtpd_instance) > 0) {
+			idx = dtrace_instance_lookup_id(p_desc->dtpd_instance);
+			dtrace_probes = dtrace_istc_probes[idx];
+			dtrace_nprobes = dtrace_istc_probecount[idx];
 		} else {
-			for (i = p_desc->dtpd_id; i <= dtrace_nprobes; i++) {
-				if ((probe = dtrace_probes[i - 1]) != NULL &&
-				    dtrace_match_priv(probe, priv, uid, zoneid))
-					break;
+			dtrace_probes = NULL;
+		}
+
+		/*
+		 * FIXME: The way probe matching in DTrace works is by doing an
+		 * ioctl and getting the probe description back in userspace.
+		 * We have to allow for a way to specify _which_ instance we
+		 * want here. For -l, we should go instance-by-instance and
+		 * allow for listing of all of them.
+		 *
+		 * Currently, we have this problem:
+		 * dtrace: invalid probe specifier vm-1: Unknown provider name
+		 *
+		 * An example is:
+		 *
+		 *  # dtrace -l -> lists all of the probes in all of the
+		 *  instances
+		 *
+		 *  # dtrace -l -M foo -> lists all of the probes in 'foo'
+		 *
+		 *  # dtrace -M foo -> attach all of the probes in 'foo'
+		 *
+		 *  # dtrace -n 'foo::::' -> match all of the probes in 'foo'
+		 */
+		if (dtrace_probes != NULL) {
+			if (cmd == DTRACEIOC_PROBEMATCH) {
+				for (i = p_desc->dtpd_id; i <= dtrace_nprobes; i++) {
+					if ((probe = dtrace_probes[i - 1]) != NULL &&
+					    (m = dtrace_match_probe(probe, &pkey,
+					    priv, uid, zoneid)) != 0)
+						break;
+				}
+
+				if (m < 0) {
+					mutex_exit(&dtrace_lock);
+					return (EINVAL);
+				}
+
+			} else {
+				for (i = p_desc->dtpd_id; i <= dtrace_nprobes; i++) {
+					if ((probe = dtrace_probes[i - 1]) != NULL &&
+					    dtrace_match_priv(probe, priv, uid, zoneid))
+						break;
+				}
 			}
+		} else {
+			mutex_enter(&dtrace_instance_lock);
+			instance = dtrace_instance;
+			while (instance != NULL) {
+				idx = dtrace_instance_lookup_id(instance->dtis_name);
+				dtrace_probes = dtrace_istc_probes[idx];
+				dtrace_nprobes = dtrace_istc_probecount[idx];
+
+				if (cmd == DTRACEIOC_PROBEMATCH) {
+					for (i = p_desc->dtpd_id; i <= dtrace_nprobes; i++) {
+						if ((probe = dtrace_probes[i - 1]) != NULL &&
+						    (m = dtrace_match_probe(probe, &pkey,
+						    priv, uid, zoneid)) != 0)
+							goto exit;
+					}
+
+					if (m < 0) {
+						mutex_exit(&dtrace_instance_lock);
+						mutex_exit(&dtrace_lock);
+						return (EINVAL);
+					}
+				} else {
+					for (i = p_desc->dtpd_id; i <= dtrace_nprobes; i++) {
+						if ((probe = dtrace_probes[i - 1]) != NULL &&
+						    dtrace_match_priv(probe, priv, uid, zoneid))
+							goto exit;
+					}
+				}
+
+				instance = instance->dtis_next;
+			}
+
+exit:
+			mutex_exit(&dtrace_instance_lock);
 		}
 
 		if (probe == NULL) {
@@ -719,19 +824,46 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 	}
 	case DTRACEIOC_PROVIDER: {
 		dtrace_providerdesc_t *pvd = (dtrace_providerdesc_t *) addr;
+		dtrace_instance_t *is;
 		dtrace_provider_t *pvp;
+		struct uuid *puuid;
+		char istcname[DTRACE_INSTANCENAMELEN];
+		int retval;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_PROVIDER\n",__func__,__LINE__);
 
+		puuid = NULL;
+		pvd->dtvd_instance[DTRACE_INSTANCENAMELEN - 1] = '\0';
 		pvd->dtvd_name[DTRACE_PROVNAMELEN - 1] = '\0';
+		retval = 0;
+
+		if (strlen(pvd->dtvd_instance) == 0)
+			strlcpy(istcname, "host", DTRACE_INSTANCENAMELEN);
+		else
+			strlcpy(istcname, pvd->dtvd_instance,
+			    DTRACE_INSTANCENAMELEN);
+
+		mutex_enter(&dtrace_instance_lock);
 		mutex_enter(&dtrace_provider_lock);
 
-		for (pvp = dtrace_provider; pvp != NULL; pvp = pvp->dtpv_next) {
+		for (is = dtrace_instance; is != NULL; is = is->dtis_next) {
+			if (strcmp(is->dtis_name, istcname) == 0)
+				break;
+		}
+
+		if (is == NULL) {
+			mutex_exit(&dtrace_provider_lock);
+			mutex_exit(&dtrace_instance_lock);
+			return (ESRCH);
+		}
+
+		for (pvp = is->dtis_provhead; pvp != NULL; pvp = pvp->dtpv_next) {
 			if (strcmp(pvp->dtpv_name, pvd->dtvd_name) == 0)
 				break;
 		}
 
 		mutex_exit(&dtrace_provider_lock);
+		mutex_exit(&dtrace_instance_lock);
 
 		if (pvp == NULL)
 			return (ESRCH);
@@ -846,6 +978,215 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_exit(&dtrace_lock);
 
 		return (rval);
+	}
+	case DTRACEIOC_PROVCREATE: {
+		dtrace_virt_providerdesc_t *pvd = (dtrace_virt_providerdesc_t *) addr;
+		dtrace_provider_id_t provid;
+		dtrace_pops_t *ppops;
+		struct uuid *puuid;
+		dtrace_pattr_t *pattr;
+		char vm[DTRACE_INSTANCENAMELEN];
+		char provname[DTRACE_PROVNAMELEN];
+		int retval;
+		uint32_t priv;
+
+		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_PROVCREATE\n",__func__,__LINE__);
+
+		puuid = NULL;
+		retval = 0;
+		pvd->vpvd_instance[DTRACE_INSTANCENAMELEN - 1] = '\0';
+		pvd->vpvd_name[DTRACE_PROVNAMELEN - 1] = '\0';
+
+		if (!dtvirt_loaded())
+			return (EINVAL);
+
+		ppops = &dtvirt_pops;
+		pattr = &dtvirt_attr;
+		priv = DTRACE_PRIV_USER;
+
+		if (pvd->vpvd_uuid == NULL)
+			return (EINVAL);
+
+		/*
+		 * If userspace has already provided an UUID to us, we will use
+		 * it to generate a UUIDv5
+		 */
+		if ((puuid = dtrace_uuid_copyin(
+		    (uintptr_t) pvd->vpvd_uuid, &retval)) == NULL)
+			return (retval);
+
+		bcopy(pvd->vpvd_instance, vm, DTRACE_INSTANCENAMELEN);
+		bcopy(pvd->vpvd_name, provname, DTRACE_PROVNAMELEN);
+
+		/*
+		 * Hook into the dtvirt module to register the provider
+		 */
+		retval = dtvirt_hook_register(provname, vm, puuid, pattr, priv, ppops);
+
+		if (retval)
+			goto end;
+
+		/*
+		 * We copyout the provider UUID to userspace, so that userspace
+		 * can identify it and create probes for it
+		 */
+
+		if (copyout((void *)puuid, pvd->vpvd_uuid,
+		    sizeof (struct uuid)) != 0) {
+			retval = EFAULT;
+		}
+
+end:
+		kmem_free(puuid, sizeof (struct uuid));
+
+		return (retval);
+	}
+	case DTRACEIOC_PROBECREATE: {
+		dtrace_virt_probedesc_t *pbd = (dtrace_virt_probedesc_t *) addr;
+		struct uuid *puuid;
+		char mod[DTRACE_MODNAMELEN];
+		char func[DTRACE_FUNCNAMELEN];
+		char name[DTRACE_NAMELEN];
+		int retval;
+
+		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_PROBECREATE\n",__func__,__LINE__);
+
+		pbd->vpbd_mod[DTRACE_MODNAMELEN - 1] = '\0';
+		pbd->vpbd_func[DTRACE_FUNCNAMELEN - 1] = '\0';
+		pbd->vpbd_name[DTRACE_NAMELEN - 1] = '\0';
+
+		if (!dtvirt_loaded())
+			return (EINVAL);
+
+		if (pbd->vpbd_uuid == NULL)
+			return (EINVAL);
+
+		if ((puuid = dtrace_uuid_copyin(
+		    (uintptr_t) pbd->vpbd_uuid, &retval)) == NULL) {
+			return (retval);
+		}
+
+		/*
+		argsiz = kmem_zalloc(nargs * sizeof (size_t), KM_SLEEP);
+		
+		if (copyin((void *)pbd->vpbd_argsiz, argsiz,
+		    nargs * sizeof (size_t)) != 0)  {
+			kmem_free(argsiz, nargs * sizeof (size_t));
+
+			return (EFAULT);
+		}
+
+		argtypes = kmem_zalloc(nargs * DTRACE_ARGTYPELEN, KM_SLEEP);
+
+		if (copyin((void *)pbd->vpbd_args, argtypes,
+		    DTRACE_ARGTYPELEN * nargs) != 0) {
+			kmem_free(argtypes, nargs * DTRACE_ARGTYPELEN);
+			kmem_free(argsiz, nargs * sizeof (size_t));
+
+			return (EFAULT);
+		}
+		*/
+
+		bcopy(pbd->vpbd_mod, mod, DTRACE_MODNAMELEN);
+		bcopy(pbd->vpbd_func, func, DTRACE_FUNCNAMELEN);
+		bcopy(pbd->vpbd_name, name, DTRACE_NAMELEN);
+
+		retval = dtvirt_hook_create(puuid, mod, func, name);
+
+		kmem_free(puuid, sizeof (struct uuid));
+		/*
+		kmem_free(argsiz, nargs * sizeof (size_t));
+		kmem_free(argtypes, nargs * DTRACE_ARGTYPELEN);
+		*/
+		return (retval);
+	}
+	case DTRACEIOC_PROVDESTROY: {
+		struct uuid *puuid = (struct uuid *) addr;
+		int retval;
+
+		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_PROVDESTROY\n",__func__,__LINE__);
+
+		if (!dtvirt_loaded())
+			return (EINVAL);
+
+		if (puuid == NULL)
+			return (EINVAL);
+
+		retval = dtvirt_hook_unregister(puuid);
+		return (retval);
+	}
+	case DTRACEIOC_INSTANCES: {
+		dtrace_instance_t *instance;
+		char *buf;
+		dtrace_instance_info_t *instinfo = (dtrace_instance_info_t *) addr;
+		char *ubuf;
+		int retval, size, nentries;
+		uint32_t offset;
+
+		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_INSTANCES\n",__func__,__LINE__);
+
+		offset = 0;
+		retval = 0;
+		buf = NULL;
+		size = 1;
+		nentries = 0;
+
+		if (instinfo == NULL)
+			return (EINVAL);
+
+		if (instinfo->dtii_action == DTRACE_INSTANCEINFO_ACTION_UNMAP) {
+			retval = copyout_unmap(curthread,
+			    (vm_offset_t) *instinfo->dtii_instances,
+			    instinfo->dtii_size * DTRACE_INSTANCENAMELEN);
+
+			return (retval);
+		}
+
+		buf = kmem_zalloc(size * DTRACE_INSTANCENAMELEN, KM_SLEEP);
+		if (buf == NULL)
+			return (ENOMEM);
+
+		mutex_enter(&dtrace_instance_lock);
+		instance = dtrace_instance;
+		while (instance) {
+			if (nentries >= size) {
+				char *obuf = buf;
+				int osize = size;
+
+				size <<= 1;
+				buf = kmem_zalloc(size * DTRACE_INSTANCENAMELEN, KM_SLEEP);
+				bcopy(obuf, buf, osize * DTRACE_INSTANCENAMELEN);
+
+				kmem_free(obuf, osize * DTRACE_INSTANCENAMELEN);
+			}
+
+			strlcpy(buf + offset, instance->dtis_name,
+			    DTRACE_INSTANCENAMELEN);
+
+			offset += DTRACE_INSTANCENAMELEN;
+			nentries++;
+			instance = instance->dtis_next;
+		}
+		mutex_exit(&dtrace_instance_lock);
+
+		ubuf = (char *)instinfo->dtii_instances;
+
+		retval = copyout_map(curthread,
+		    (vm_offset_t *)&ubuf,
+		    nentries * DTRACE_INSTANCENAMELEN);
+
+		instinfo->dtii_instances = ubuf;
+
+		if (retval)
+			return (retval);
+
+		retval = copyout(buf, instinfo->dtii_instances,
+		    nentries * DTRACE_INSTANCENAMELEN);
+
+		instinfo->dtii_size = nentries;
+
+		kmem_free(buf, size * DTRACE_INSTANCENAMELEN);
+		return (retval);
 	}
 	default:
 		error = ENOTTY;

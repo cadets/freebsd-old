@@ -69,6 +69,9 @@ typedef int model_t;
 #else
 #include <sys/stdint.h>
 #endif
+#ifdef __FreeBSD__
+#include <sys/uuid.h>
+#endif
 
 /*
  * DTrace Universal Constants and Typedefs
@@ -83,13 +86,17 @@ typedef int model_t;
 #define	DTRACE_METAPROVNONE	0	/* invalid meta-provider identifier */
 #define	DTRACE_ARGNONE		-1	/* invalid argument index */
 
+#define	DTRACE_INSTANCENAMELEN	64
 #define	DTRACE_PROVNAMELEN	64
 #define	DTRACE_MODNAMELEN	64
 #define	DTRACE_FUNCNAMELEN	192
 #define	DTRACE_NAMELEN		64
 #define	DTRACE_FULLNAMELEN	(DTRACE_PROVNAMELEN + DTRACE_MODNAMELEN + \
 				DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 4)
+#define	DTRACE_RANDBUFLEN	(DTRACE_INSTANCENAMELEN + 32)
+#define	DTRACE_RANDBYTES	32
 #define	DTRACE_ARGTYPELEN	128
+#define	DTRACE_MAXARGS		5
 
 typedef uint32_t dtrace_id_t;		/* probe identifier */
 typedef uint32_t dtrace_epid_t;		/* enabled probe identifier */
@@ -101,7 +108,8 @@ typedef uint32_t dtrace_cacheid_t;	/* predicate cache identifier */
 
 typedef enum dtrace_probespec {
 	DTRACE_PROBESPEC_NONE = -1,
-	DTRACE_PROBESPEC_PROVIDER = 0,
+	DTRACE_PROBESPEC_INSTANCE = 0,
+	DTRACE_PROBESPEC_PROVIDER = 1,
 	DTRACE_PROBESPEC_MOD,
 	DTRACE_PROBESPEC_FUNC,
 	DTRACE_PROBESPEC_NAME
@@ -238,22 +246,23 @@ typedef enum dtrace_probespec {
 #define	DIF_VAR_ARG9		0x010f	/* tenth argument */
 #define	DIF_VAR_STACKDEPTH	0x0110	/* stack depth */
 #define	DIF_VAR_CALLER		0x0111	/* caller */
-#define	DIF_VAR_PROBEPROV	0x0112	/* probe provider */
-#define	DIF_VAR_PROBEMOD	0x0113	/* probe module */
-#define	DIF_VAR_PROBEFUNC	0x0114	/* probe function */
-#define	DIF_VAR_PROBENAME	0x0115	/* probe name */
-#define	DIF_VAR_PID		0x0116	/* process ID */
-#define	DIF_VAR_TID		0x0117	/* (per-process) thread ID */
-#define	DIF_VAR_EXECNAME	0x0118	/* name of executable */
-#define	DIF_VAR_ZONENAME	0x0119	/* zone name associated with process */
-#define	DIF_VAR_WALLTIMESTAMP	0x011a	/* wall-clock timestamp */
-#define	DIF_VAR_USTACKDEPTH	0x011b	/* user-land stack depth */
-#define	DIF_VAR_UCALLER		0x011c	/* user-level caller */
-#define	DIF_VAR_PPID		0x011d	/* parent process ID */
-#define	DIF_VAR_UID		0x011e	/* process user ID */
-#define	DIF_VAR_GID		0x011f	/* process group ID */
-#define	DIF_VAR_ERRNO		0x0120	/* thread errno */
-#define	DIF_VAR_EXECARGS	0x0121	/* process arguments */
+#define	DIF_VAR_PROBEISTC	0x0112	/* probe instance */
+#define	DIF_VAR_PROBEPROV	0x0113	/* probe provider */
+#define	DIF_VAR_PROBEMOD	0x0114	/* probe module */
+#define	DIF_VAR_PROBEFUNC	0x0115	/* probe function */
+#define	DIF_VAR_PROBENAME	0x0116	/* probe name */
+#define	DIF_VAR_PID		0x0117	/* process ID */
+#define	DIF_VAR_TID		0x0118	/* (per-process) thread ID */
+#define	DIF_VAR_EXECNAME	0x0119	/* name of executable */
+#define	DIF_VAR_ZONENAME	0x011a	/* zone name associated with process */
+#define	DIF_VAR_WALLTIMESTAMP	0x011b	/* wall-clock timestamp */
+#define	DIF_VAR_USTACKDEPTH	0x011c	/* user-land stack depth */
+#define	DIF_VAR_UCALLER		0x011d	/* user-level caller */
+#define	DIF_VAR_PPID		0x011e	/* parent process ID */
+#define	DIF_VAR_UID		0x011f	/* process user ID */
+#define	DIF_VAR_GID		0x0120	/* process group ID */
+#define	DIF_VAR_ERRNO		0x0121	/* thread errno */
+#define	DIF_VAR_EXECARGS	0x0122	/* process arguments */
 
 #ifndef illumos
 #define	DIF_VAR_CPU		0x0200
@@ -498,6 +507,19 @@ typedef struct dtrace_difv {
 #define	DTRACEACT_ISAGG(x)		\
 	(DTRACEACT_CLASS(x) == DTRACEACT_AGGREGATION)
 
+/*
+ * DTrace-virt actions
+ *
+ * These are actions that are related to tracing the guest operating system from
+ * the host.
+ */
+
+#define	DTRACEACT_VIRT			0x0800
+#define	DTRACEVT_HYPERCALL		(DTRACEACT_VIRT + 1)
+
+#define	DTRACEACT_ISVIRT(x)		\
+	(DTRACEACT_CLASS(x) == DTRACEACT_VIRT)
+
 #define	DTRACE_QUANTIZE_NBUCKETS	\
 	(((sizeof (uint64_t) * NBBY) - 1) * 2 + 1)
 
@@ -711,18 +733,19 @@ typedef struct dof_sec {
 #define	DOF_SECT_URELHDR	12	/* dof_relohdr_t (user relocations) */
 #define	DOF_SECT_KRELHDR	13	/* dof_relohdr_t (kernel relocations) */
 #define	DOF_SECT_OPTDESC	14	/* dof_optdesc_t array */
-#define	DOF_SECT_PROVIDER	15	/* dof_provider_t */
-#define	DOF_SECT_PROBES		16	/* dof_probe_t array */
-#define	DOF_SECT_PRARGS		17	/* uint8_t array (probe arg mappings) */
-#define	DOF_SECT_PROFFS		18	/* uint32_t array (probe arg offsets) */
-#define	DOF_SECT_INTTAB		19	/* uint64_t array */
-#define	DOF_SECT_UTSNAME	20	/* struct utsname */
-#define	DOF_SECT_XLTAB		21	/* dof_xlref_t array */
-#define	DOF_SECT_XLMEMBERS	22	/* dof_xlmember_t array */
-#define	DOF_SECT_XLIMPORT	23	/* dof_xlator_t */
-#define	DOF_SECT_XLEXPORT	24	/* dof_xlator_t */
-#define	DOF_SECT_PREXPORT	25	/* dof_secidx_t array (exported objs) */
-#define	DOF_SECT_PRENOFFS	26	/* uint32_t array (enabled offsets) */
+#define	DOF_SECT_INSTANCE	15	/* dof_instance_t */
+#define	DOF_SECT_PROVIDER	16	/* dof_provider_t */
+#define	DOF_SECT_PROBES		17	/* dof_probe_t array */
+#define	DOF_SECT_PRARGS		18	/* uint8_t array (probe arg mappings) */
+#define	DOF_SECT_PROFFS		19	/* uint32_t array (probe arg offsets) */
+#define	DOF_SECT_INTTAB		20	/* uint64_t array */
+#define	DOF_SECT_UTSNAME	21	/* struct utsname */
+#define	DOF_SECT_XLTAB		22	/* dof_xlref_t array */
+#define	DOF_SECT_XLMEMBERS	23	/* dof_xlmember_t array */
+#define	DOF_SECT_XLIMPORT	24	/* dof_xlator_t */
+#define	DOF_SECT_XLEXPORT	25	/* dof_xlator_t */
+#define	DOF_SECT_PREXPORT	26	/* dof_secidx_t array (exported objs) */
+#define	DOF_SECT_PRENOFFS	27	/* uint32_t array (enabled offsets) */
 
 #define	DOF_SECF_LOAD		1	/* section should be loaded */
 
@@ -733,11 +756,12 @@ typedef struct dof_sec {
 	((x) == DOF_SECT_VARTAB) || ((x) == DOF_SECT_RELTAB) ||		\
 	((x) == DOF_SECT_TYPTAB) || ((x) == DOF_SECT_URELHDR) ||	\
 	((x) == DOF_SECT_KRELHDR) || ((x) == DOF_SECT_OPTDESC) ||	\
-	((x) == DOF_SECT_PROVIDER) || ((x) == DOF_SECT_PROBES) ||	\
-	((x) == DOF_SECT_PRARGS) || ((x) == DOF_SECT_PROFFS) ||		\
-	((x) == DOF_SECT_INTTAB) || ((x) == DOF_SECT_XLTAB) ||		\
-	((x) == DOF_SECT_XLMEMBERS) || ((x) == DOF_SECT_XLIMPORT) ||	\
-	((x) == DOF_SECT_XLEXPORT) ||  ((x) == DOF_SECT_PREXPORT) || 	\
+	((x) == DOF_SECT_INSTANCE) || ((x) == DOF_SECT_PROVIDER) ||	\
+	((x) == DOF_SECT_PROBES) || ((x) == DOF_SECT_PRARGS) ||		\
+	((x) == DOF_SECT_PROFFS) || ((x) == DOF_SECT_INTTAB) ||		\
+	((x) == DOF_SECT_XLTAB) || ((x) == DOF_SECT_XLMEMBERS) ||	\
+	((x) == DOF_SECT_XLIMPORT) || ((x) == DOF_SECT_XLIMPORT) ||	\
+	((x) == DOF_SECT_XLEXPORT) || ((x) == DOF_SECT_PREXPORT) ||	\
 	((x) == DOF_SECT_PRENOFFS))
 
 typedef struct dof_ecbdesc {
@@ -750,6 +774,7 @@ typedef struct dof_ecbdesc {
 
 typedef struct dof_probedesc {
 	dof_secidx_t dofp_strtab;	/* link to DOF_SECT_STRTAB section */
+	dof_stridx_t dofp_instance;	/* instance string */
 	dof_stridx_t dofp_provider;	/* provider string */
 	dof_stridx_t dofp_mod;		/* module string */
 	dof_stridx_t dofp_func;		/* function string */
@@ -803,6 +828,7 @@ typedef uint32_t dof_attr_t;		/* encoded stability attributes */
 
 typedef struct dof_provider {
 	dof_secidx_t dofpv_strtab;	/* link to DOF_SECT_STRTAB section */
+	dof_secidx_t dofpv_instance;	/* link to DOF_SECT_INSTANCE section */
 	dof_secidx_t dofpv_probes;	/* link to DOF_SECT_PROBES section */
 	dof_secidx_t dofpv_prargs;	/* link to DOF_SECT_PRARGS section */
 	dof_secidx_t dofpv_proffs;	/* link to DOF_SECT_PROFFS section */
@@ -817,6 +843,7 @@ typedef struct dof_provider {
 
 typedef struct dof_probe {
 	uint64_t dofpr_addr;		/* probe base address or offset */
+	dof_stridx_t dofpr_instance;	/* probe instance string */
 	dof_stridx_t dofpr_func;	/* probe function string */
 	dof_stridx_t dofpr_name;	/* probe name string */
 	dof_stridx_t dofpr_nargv;	/* native argument type strings */
@@ -910,11 +937,12 @@ typedef struct dtrace_difo {
 struct dtrace_predicate;
 
 typedef struct dtrace_probedesc {
-	dtrace_id_t dtpd_id;			/* probe identifier */
-	char dtpd_provider[DTRACE_PROVNAMELEN]; /* probe provider name */
-	char dtpd_mod[DTRACE_MODNAMELEN];	/* probe module name */
-	char dtpd_func[DTRACE_FUNCNAMELEN];	/* probe function name */
-	char dtpd_name[DTRACE_NAMELEN];		/* probe name */
+	dtrace_id_t dtpd_id;				/* probe identifier */
+	char dtpd_instance[DTRACE_INSTANCENAMELEN];	/* probe instance name */
+	char dtpd_provider[DTRACE_PROVNAMELEN];		/* probe provider name */
+	char dtpd_mod[DTRACE_MODNAMELEN];		/* probe module name */
+	char dtpd_func[DTRACE_FUNCNAMELEN];		/* probe function name */
+	char dtpd_name[DTRACE_NAMELEN];			/* probe name */
 } dtrace_probedesc_t;
 
 typedef struct dtrace_repldesc {
@@ -973,6 +1001,7 @@ typedef struct dtrace_recdesc {
 } dtrace_recdesc_t;
 
 typedef struct dtrace_eprobedesc {
+	char dtepd_instance[DTRACE_INSTANCENAMELEN]; /* instance name */
 	dtrace_epid_t dtepd_epid;		/* enabled probe ID */
 	dtrace_id_t dtepd_probeid;		/* probe ID */
 	uint64_t dtepd_uarg;			/* library argument */
@@ -1197,11 +1226,12 @@ typedef struct dtrace_conf {
  * to map to multiple args[X] variables.
  */
 typedef struct dtrace_argdesc {
-	dtrace_id_t dtargd_id;			/* probe identifier */
-	int dtargd_ndx;				/* arg number (-1 iff none) */
-	int dtargd_mapping;			/* value mapping */
-	char dtargd_native[DTRACE_ARGTYPELEN];	/* native type name */
-	char dtargd_xlate[DTRACE_ARGTYPELEN];	/* translated type name */
+	dtrace_id_t dtargd_id;				/* probe identifier */
+	int dtargd_ndx;					/* arg number (-1 iff none) */
+	int dtargd_mapping;				/* value mapping */
+	char dtargd_native[DTRACE_ARGTYPELEN];		/* native type name */
+	char dtargd_xlate[DTRACE_ARGTYPELEN];		/* translated type name */
+	char dtargd_instance[DTRACE_INSTANCENAMELEN];	/* instance name */
 } dtrace_argdesc_t;
 
 /*
@@ -1245,30 +1275,57 @@ typedef uint8_t dtrace_class_t;		/* architectural dependency class */
 	DTRACE_PRIV_PROC | DTRACE_PRIV_OWNER | DTRACE_PRIV_ZONEOWNER)
 
 typedef struct dtrace_ppriv {
-	uint32_t dtpp_flags;			/* privilege flags */
-	uid_t dtpp_uid;				/* user ID */
-	zoneid_t dtpp_zoneid;			/* zone ID */
+	uint32_t dtpp_flags;				/* privilege flags */
+	uid_t dtpp_uid;					/* user ID */
+	zoneid_t dtpp_zoneid;				/* zone ID */
 } dtrace_ppriv_t;
 
 typedef struct dtrace_attribute {
-	dtrace_stability_t dtat_name;		/* entity name stability */
-	dtrace_stability_t dtat_data;		/* entity data stability */
-	dtrace_class_t dtat_class;		/* entity data dependency */
+	dtrace_stability_t dtat_name;			/* entity name stability */
+	dtrace_stability_t dtat_data;			/* entity data stability */
+	dtrace_class_t dtat_class;			/* entity data dependency */
 } dtrace_attribute_t;
 
 typedef struct dtrace_pattr {
-	dtrace_attribute_t dtpa_provider;	/* provider attributes */
-	dtrace_attribute_t dtpa_mod;		/* module attributes */
-	dtrace_attribute_t dtpa_func;		/* function attributes */
-	dtrace_attribute_t dtpa_name;		/* name attributes */
-	dtrace_attribute_t dtpa_args;		/* args[] attributes */
+	dtrace_attribute_t dtpa_provider;		/* provider attributes */
+	dtrace_attribute_t dtpa_mod;			/* module attributes */
+	dtrace_attribute_t dtpa_func;			/* function attributes */
+	dtrace_attribute_t dtpa_name;			/* name attributes */
+	dtrace_attribute_t dtpa_args;			/* args[] attributes */
 } dtrace_pattr_t;
 
 typedef struct dtrace_providerdesc {
-	char dtvd_name[DTRACE_PROVNAMELEN];	/* provider name */
-	dtrace_pattr_t dtvd_attr;		/* stability attributes */
-	dtrace_ppriv_t dtvd_priv;		/* privileges required */
+	char		dtvd_instance[DTRACE_INSTANCENAMELEN];
+	    						/* instance name */
+	char		dtvd_name[DTRACE_PROVNAMELEN];
+	    						/* provider name */
+	dtrace_pattr_t	dtvd_attr;			/* stability attributes */
+	dtrace_ppriv_t	dtvd_priv;			/* privileges required */
 } dtrace_providerdesc_t;
+
+typedef struct dtrace_virt_providerdesc {
+	char		vpvd_instance[DTRACE_INSTANCENAMELEN];
+	char		vpvd_name[DTRACE_PROVNAMELEN];
+	struct uuid	*vpvd_uuid;
+} dtrace_virt_providerdesc_t;
+
+typedef struct dtrace_virt_probedesc {
+	char			(*vpbd_args)[DTRACE_ARGTYPELEN];
+	size_t			*vpbd_argsiz;
+	struct uuid		*vpbd_uuid;
+	char			vpbd_mod[DTRACE_MODNAMELEN];
+	char			vpbd_func[DTRACE_FUNCNAMELEN];
+	char			vpbd_name[DTRACE_NAMELEN];
+	uint8_t			vpbd_nargs;
+} dtrace_virt_probedesc_t;
+
+typedef struct dtrace_instance_info {
+	char		*dtii_instances;
+	int		dtii_action;
+	int		dtii_size;
+#define	DTRACE_INSTANCEINFO_ACTION_MAP		0x00
+#define	DTRACE_INSTANCEINFO_ACTION_UNMAP	0x01
+} dtrace_instance_info_t;
 
 /*
  * DTrace Pseudodevice Interface
@@ -1332,6 +1389,14 @@ typedef struct {
 							/* get DOF */
 #define	DTRACEIOC_REPLICATE	_IOW('x',18,dtrace_repldesc_t)	
 							/* replicate enab */
+#define	DTRACEIOC_PROVCREATE	_IOWR('x',19,dtrace_virt_providerdesc_t)
+							/* create provider */
+#define	DTRACEIOC_PROBECREATE	_IOWR('x',20,dtrace_virt_probedesc_t)
+							/* create probe */
+#define	DTRACEIOC_PROVDESTROY	_IOWR('x',21,struct uuid)
+							/* destroy provider */
+#define	DTRACEIOC_INSTANCES	_IOWR('x',22,dtrace_instance_info_t)
+							/* get instances */
 #endif
 
 /*
@@ -2146,9 +2211,13 @@ typedef struct dtrace_pops {
 
 typedef uintptr_t	dtrace_provider_id_t;
 
+extern int dtrace_distributed_register(const char *, const char *, struct uuid *,
+    const dtrace_pattr_t *, uint32_t, cred_t *, const dtrace_pops_t *,
+    void *, dtrace_provider_id_t *);
 extern int dtrace_register(const char *, const dtrace_pattr_t *, uint32_t,
     cred_t *, const dtrace_pops_t *, void *, dtrace_provider_id_t *);
 extern int dtrace_unregister(dtrace_provider_id_t);
+extern struct uuid * dtrace_provider_uuid(dtrace_provider_id_t id);
 extern int dtrace_condense(dtrace_provider_id_t);
 extern void dtrace_invalidate(dtrace_provider_id_t);
 extern dtrace_id_t dtrace_probe_lookup(dtrace_provider_id_t, char *,
@@ -2158,6 +2227,12 @@ extern dtrace_id_t dtrace_probe_create(dtrace_provider_id_t, const char *,
 extern void *dtrace_probe_arg(dtrace_provider_id_t, dtrace_id_t);
 extern void dtrace_probe(dtrace_id_t, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4);
+extern void dtrace_distributed_probe(const char *, dtrace_id_t, uintptr_t arg0,
+    uintptr_t arg1, uintptr_t arg2, uintptr_t arg3, uintptr_t arg4);
+extern int dtrace_probeid_enable(dtrace_id_t id);
+extern int dtrace_probeid_disable(dtrace_id_t id);
+
+extern void dtrace_vtdtr_enable(void *xsc);
 
 /*
  * DTrace Meta Provider API
@@ -2283,6 +2358,7 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t arg0, uintptr_t arg1,
  *   provider-related DTrace provider APIs including dtrace_unregister().
  */
 typedef struct dtrace_helper_probedesc {
+	char *dthpb_instance;			/* probe instance */
 	char *dthpb_mod;			/* probe module */
 	char *dthpb_func; 			/* probe function */
 	char *dthpb_name; 			/* probe name */
@@ -2299,6 +2375,7 @@ typedef struct dtrace_helper_probedesc {
 } dtrace_helper_probedesc_t;
 
 typedef struct dtrace_helper_provdesc {
+	char *dthpv_instance;			/* instance name */
 	char *dthpv_provname;			/* provider name */
 	dtrace_pattr_t dthpv_pattr;		/* stability attributes */
 } dtrace_helper_provdesc_t;
@@ -2433,6 +2510,7 @@ extern void dtrace_helpers_destroy(proc_t *);
 #define	DTRACE_INVOP_LEAVE		3
 #define	DTRACE_INVOP_NOP		4
 #define	DTRACE_INVOP_RET		5
+#define	DTRACE_INVOP_INSTALL_PROBE	6
 
 #elif defined(__powerpc__)
 

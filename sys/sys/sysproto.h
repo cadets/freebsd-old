@@ -1760,6 +1760,7 @@ struct kevent_args {
 	char eventlist_l_[PADL_(struct kevent *)]; struct kevent * eventlist; char eventlist_r_[PADR_(struct kevent *)];
 	char nevents_l_[PADL_(int)]; int nevents; char nevents_r_[PADR_(int)];
 	char timeout_l_[PADL_(const struct timespec *)]; const struct timespec * timeout; char timeout_r_[PADR_(const struct timespec *)];
+#define	kev_data	eventlist->data
 };
 struct metaio_read_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];

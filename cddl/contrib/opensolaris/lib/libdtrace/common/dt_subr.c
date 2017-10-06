@@ -55,6 +55,7 @@ static const struct {
 	size_t dtps_offset;
 	size_t dtps_len;
 } dtrace_probespecs[] = {
+	{ offsetof(dtrace_probedesc_t, dtpd_instance),	DTRACE_INSTANCENAMELEN },
 	{ offsetof(dtrace_probedesc_t, dtpd_provider),	DTRACE_PROVNAMELEN },
 	{ offsetof(dtrace_probedesc_t, dtpd_mod),	DTRACE_MODNAMELEN },
 	{ offsetof(dtrace_probedesc_t, dtpd_func),	DTRACE_FUNCNAMELEN },
@@ -67,6 +68,7 @@ dtrace_xstr2desc(dtrace_hdl_t *dtp, dtrace_probespec_t spec,
 {
 	size_t off, len, vlen, wlen;
 	const char *p, *q, *v, *w;
+	int8_t cnt;
 
 	char buf[32]; /* for id_t as %d (see below) */
 
@@ -75,6 +77,7 @@ dtrace_xstr2desc(dtrace_hdl_t *dtp, dtrace_probespec_t spec,
 
 	bzero(pdp, sizeof (dtrace_probedesc_t));
 	p = s + strlen(s) - 1;
+	cnt = 0;
 
 	do {
 		for (len = 0; p >= s && *p != ':'; len++)
@@ -152,6 +155,7 @@ dtrace_xstr2desc(dtrace_hdl_t *dtp, dtrace_probespec_t spec,
 		bcopy(q, (char *)pdp + off, len);
 		bcopy(v, (char *)pdp + off + len, vlen);
 		bcopy(w, (char *)pdp + off + len + vlen, wlen);
+		cnt++;
 	} while (--p >= s);
 
 	pdp->dtpd_id = DTRACE_IDNONE;
@@ -182,8 +186,13 @@ char *
 dtrace_desc2str(const dtrace_probedesc_t *pdp, char *buf, size_t len)
 {
 	if (pdp->dtpd_id == 0) {
-		(void) snprintf(buf, len, "%s:%s:%s:%s", pdp->dtpd_provider,
-		    pdp->dtpd_mod, pdp->dtpd_func, pdp->dtpd_name);
+		if (strcmp(pdp->dtpd_instance, "host") == 0) {
+			(void) snprintf(buf, len, "%s:%s:%s:%s", pdp->dtpd_provider,
+			    pdp->dtpd_mod, pdp->dtpd_func, pdp->dtpd_name);
+		} else {
+			(void) snprintf(buf, len, "%s:%s:%s:%s:%s", pdp->dtpd_instance,
+			    pdp->dtpd_provider, pdp->dtpd_mod, pdp->dtpd_func, pdp->dtpd_name);
+		}
 	} else
 		(void) snprintf(buf, len, "%u", pdp->dtpd_id);
 
@@ -612,7 +621,7 @@ dt_printf(dtrace_hdl_t *dtp, FILE *fp, const char *format, ...)
 
 		va_end(ap2);
 		va_end(ap);
-		
+
 		return (n);
 	}
 

@@ -728,6 +728,7 @@ dtrace_dof_create(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, uint_t flags)
 		 * and copy the probe description strings into the string table.
 		 */
 		dofp.dofp_strtab = ddo->ddo_strsec;
+		dofp.dofp_instance = dof_add_string(ddo, pdp->dtpd_instance);
 		dofp.dofp_provider = dof_add_string(ddo, pdp->dtpd_provider);
 		dofp.dofp_mod = dof_add_string(ddo, pdp->dtpd_mod);
 		dofp.dofp_func = dof_add_string(ddo, pdp->dtpd_func);

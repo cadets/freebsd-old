@@ -62,11 +62,10 @@ sema_init(struct sema *sema, int value, const char *description)
 void
 sema_destroy(struct sema *sema)
 {
-
 	CTR3(KTR_LOCK, "%s(%p) \"%s\"", __func__, sema,
 	    cv_wmesg(&sema->sema_cv));
 
-	KASSERT((sema->sema_waiters == 0), ("%s(): waiters\n", __func__));
+	KASSERT((sema->sema_waiters == 0), ("%s(): %d waiters\n",  __func__, sema->sema_waiters));
 
 	mtx_destroy(&sema->sema_mtx);
 	cv_destroy(&sema->sema_cv);

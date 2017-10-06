@@ -199,7 +199,7 @@ INOUT_PORT(pm1_status, PM1A_EVT_ADDR, IOPORT_F_INOUT, pm1_status_handler);
 INOUT_PORT(pm1_enable, PM1A_EVT_ADDR + 2, IOPORT_F_INOUT, pm1_enable_handler);
 
 static void
-power_button_handler(int signal, enum ev_type type, void *arg)
+power_button_handler(int signal, enum ev_type type, int ne __unused, void *arg)
 {
 	struct vmctx *ctx;
 
@@ -280,7 +280,7 @@ smi_cmd_handler(struct vmctx *ctx, int vcpu, int in, int port, int bytes,
 		pm1_control |= PM1_SCI_EN;
 		if (power_button == NULL) {
 			power_button = mevent_add(SIGTERM, EVF_SIGNAL,
-			    power_button_handler, ctx);
+			    power_button_handler, ctx, 0);
 			old_power_handler = signal(SIGTERM, SIG_IGN);
 		}
 		break;

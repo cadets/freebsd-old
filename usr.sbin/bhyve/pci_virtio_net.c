@@ -584,7 +584,7 @@ pci_vtnet_netmap_rx(struct pci_vtnet_softc *sc)
 }
 
 static void
-pci_vtnet_rx_callback(int fd, enum ev_type type, void *param)
+pci_vtnet_rx_callback(int fd, enum ev_type type, int ne __unused, void *param)
 {
 	struct pci_vtnet_softc *sc = param;
 
@@ -784,7 +784,8 @@ pci_vtnet_tap_setup(struct pci_vtnet_softc *sc, char *devname)
 	sc->vsc_mevp = mevent_add(sc->vsc_tapfd,
 				  EVF_READ,
 				  pci_vtnet_rx_callback,
-				  sc);
+				  sc,
+				  0);
 	if (sc->vsc_mevp == NULL) {
 		WPRINTF(("Could not register event\n"));
 		close(sc->vsc_tapfd);
@@ -807,7 +808,8 @@ pci_vtnet_netmap_setup(struct pci_vtnet_softc *sc, char *ifname)
 	sc->vsc_mevp = mevent_add(sc->vsc_nmd->fd,
 				  EVF_READ,
 				  pci_vtnet_rx_callback,
-				  sc);
+				  sc,
+				  0);
 	if (sc->vsc_mevp == NULL) {
 		WPRINTF(("Could not register event\n"));
 		nm_close(sc->vsc_nmd);

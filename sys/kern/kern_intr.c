@@ -111,10 +111,10 @@ static int	intr_event_schedule_thread(struct intr_event *ie);
 static struct intr_thread *ithread_create(const char *name);
 #endif
 static void	ithread_destroy(struct intr_thread *ithread);
-static void	ithread_execute_handlers(struct proc *p, 
+static void	ithread_execute_handlers(struct proc *p,
 		    struct intr_event *ie);
 #ifdef INTR_FILTER
-static void	priv_ithread_execute_handler(struct proc *p, 
+static void	priv_ithread_execute_handler(struct proc *p,
 		    struct intr_handler *ih);
 #endif
 static void	ithread_loop(void *);
@@ -128,7 +128,8 @@ intr_priority(enum intr_type flags)
 	u_char pri;
 
 	flags &= (INTR_TYPE_TTY | INTR_TYPE_BIO | INTR_TYPE_NET |
-	    INTR_TYPE_CAM | INTR_TYPE_MISC | INTR_TYPE_CLK | INTR_TYPE_AV);
+	    INTR_TYPE_CAM | INTR_TYPE_MISC | INTR_TYPE_CLK |
+	    INTR_TYPE_AV | INTR_TYPE_DTRACE);
 	switch (flags) {
 	case INTR_TYPE_TTY:
 		pri = PI_TTY;
@@ -150,6 +151,9 @@ intr_priority(enum intr_type flags)
 		break;
 	case INTR_TYPE_MISC:
 		pri = PI_DULL;          /* don't care */
+		break;
+	case INTR_TYPE_DTRACE:
+		pri = PI_SOFT;
 		break;
 	default:
 		/* We didn't specify an interrupt level. */
@@ -1031,7 +1035,7 @@ ok:
 #endif
 	/*
 	 * If there are no ithreads (per event and per handler), then
-	 * just remove the handler and return.  
+	 * just remove the handler and return.
 	 * XXX: Note that an INTR_FAST handler might be running on another CPU!
 	 */
 	if (ie->ie_thread == NULL && handler->ih_thread == NULL) {
@@ -1072,7 +1076,7 @@ ok:
 	thread_unlock(it->it_thread);
 	while (handler->ih_flags & IH_DEAD)
 		msleep(handler, &ie->ie_lock, 0, "iev_rmh", 0);
-	/* 
+	/*
 	 * At this point, the handler has been disconnected from the event,
 	 * so we can kill the private ithread if any.
 	 */
@@ -1272,12 +1276,12 @@ priv_ithread_execute_handler(struct proc *p, struct intr_handler *ih)
 		mtx_unlock(&ie->ie_lock);
 		return;
 	}
-	
+
 	/* Execute this handler. */
 	CTR6(KTR_INTR, "%s: pid %d exec %p(%p) for %s flg=%x",
 	     __func__, p->p_pid, (void *)ih->ih_handler, ih->ih_argument,
 	     ih->ih_name, ih->ih_flags);
-	
+
 	if (!(ih->ih_flags & IH_MPSAFE))
 		mtx_lock(&Giant);
 	ih->ih_handler(ih->ih_argument);
@@ -1328,7 +1332,7 @@ intr_event_execute_handlers(struct proc *p, struct intr_event *ie)
 
 		/* Execute this handler. */
 		CTR6(KTR_INTR, "%s: pid %d exec %p(%p) for %s flg=%x",
-		    __func__, p->p_pid, (void *)ih->ih_handler, 
+		    __func__, p->p_pid, (void *)ih->ih_handler,
 		    ih->ih_argument, ih->ih_name, ih->ih_flags);
 
 		if (!(ih->ih_flags & IH_MPSAFE))
@@ -1514,18 +1518,18 @@ intr_event_handle(struct intr_event *ie, struct trapframe *frame)
 		    ("%s: incorrect return value %#x from %s", __func__, ret,
 		    ih->ih_name));
 
-		/* 
+		/*
 		 * Wrapper handler special handling:
 		 *
-		 * in some particular cases (like pccard and pccbb), 
+		 * in some particular cases (like pccard and pccbb),
 		 * the _real_ device handler is wrapped in a couple of
 		 * functions - a filter wrapper and an ithread wrapper.
-		 * In this case (and just in this case), the filter wrapper 
+		 * In this case (and just in this case), the filter wrapper
 		 * could ask the system to schedule the ithread and mask
 		 * the interrupt source if the wrapped handler is composed
 		 * of just an ithread handler.
 		 *
-		 * TODO: write a generic wrapper to avoid people rolling 
+		 * TODO: write a generic wrapper to avoid people rolling
 		 * their own
 		 */
 		if (!thread) {
@@ -1542,7 +1546,7 @@ intr_event_handle(struct intr_event *ie, struct trapframe *frame)
 		if (ie->ie_post_filter != NULL)
 			ie->ie_post_filter(ie->ie_source);
 	}
-	
+
 	/* Schedule the ithread if needed. */
 	if (thread) {
 		error = intr_event_schedule_thread(ie);
@@ -1605,7 +1609,7 @@ ithread_loop(void *arg)
 		while (atomic_cmpset_acq_int(&ithd->it_need, 1, 0) != 0) {
 			if (priv)
 				priv_ithread_execute_handler(p, ih);
-			else 
+			else
 				ithread_execute_handlers(p, ie);
 		}
 		WITNESS_WARN(WARN_PANIC, NULL, "suspending ithread");
@@ -1635,32 +1639,32 @@ ithread_loop(void *arg)
 	}
 }
 
-/* 
+/*
  * Main loop for interrupt filter.
  *
- * Some architectures (i386, amd64 and arm) require the optional frame 
+ * Some architectures (i386, amd64 and arm) require the optional frame
  * parameter, and use it as the main argument for fast handler execution
  * when ih_argument == NULL.
  *
  * Return value:
  * o FILTER_STRAY:              No filter recognized the event, and no
- *                              filter-less handler is registered on this 
+ *                              filter-less handler is registered on this
  *                              line.
  * o FILTER_HANDLED:            A filter claimed the event and served it.
  * o FILTER_SCHEDULE_THREAD:    No filter claimed the event, but there's at
  *                              least one filter-less handler on this line.
- * o FILTER_HANDLED | 
+ * o FILTER_HANDLED |
  *   FILTER_SCHEDULE_THREAD:    A filter claimed the event, and asked for
  *                              scheduling the per-handler ithread.
  *
- * In case an ithread has to be scheduled, in *ithd there will be a 
+ * In case an ithread has to be scheduled, in *ithd there will be a
  * pointer to a struct intr_thread containing the thread to be
  * scheduled.
  */
 
 static int
-intr_filter_loop(struct intr_event *ie, struct trapframe *frame, 
-		 struct intr_thread **ithd) 
+intr_filter_loop(struct intr_event *ie, struct trapframe *frame,
+		 struct intr_thread **ithd)
 {
 	struct intr_handler *ih;
 	void *arg;
@@ -1676,7 +1680,7 @@ intr_filter_loop(struct intr_event *ie, struct trapframe *frame,
 		 * a trapframe as its argument.
 		 */
 		arg = ((ih->ih_argument == NULL) ? frame : ih->ih_argument);
-		
+
 		CTR5(KTR_INTR, "%s: exec %p/%p(%p) for %s", __func__,
 		     ih->ih_filter, ih->ih_handler, arg, ih->ih_name);
 
@@ -1693,7 +1697,7 @@ intr_filter_loop(struct intr_event *ie, struct trapframe *frame,
 		    ih->ih_name));
 		if (ret & FILTER_STRAY)
 			continue;
-		else { 
+		else {
 			*ithd = ih->ih_thread;
 			return (ret);
 		}
@@ -1703,7 +1707,7 @@ intr_filter_loop(struct intr_event *ie, struct trapframe *frame,
 	 * No filters handled the interrupt and we have at least
 	 * one handler without a filter.  In this case, we schedule
 	 * all of the filter-less handlers to run in the ithread.
-	 */	
+	 */
 	if (thread_only) {
 		*ithd = ie->ie_thread;
 		return (FILTER_SCHEDULE_THREAD);
@@ -1741,7 +1745,7 @@ intr_event_handle(struct intr_event *ie, struct trapframe *frame)
 	critical_enter();
 	oldframe = td->td_intr_frame;
 	td->td_intr_frame = frame;
-	thread = intr_filter_loop(ie, frame, &ithd);	
+	thread = intr_filter_loop(ie, frame, &ithd);
 	if (thread & FILTER_HANDLED) {
 		if (ie->ie_post_filter != NULL)
 			ie->ie_post_filter(ie->ie_source);
@@ -1751,7 +1755,7 @@ intr_event_handle(struct intr_event *ie, struct trapframe *frame)
 	}
 	td->td_intr_frame = oldframe;
 	critical_exit();
-	
+
 	/* Interrupt storm logic */
 	if (thread & FILTER_STRAY) {
 		ie->ie_count++;

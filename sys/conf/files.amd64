@@ -103,6 +103,10 @@ hptrr_lib.o			optional	hptrr			\
 	compile-with	"uudecode < $S/dev/hptrr/amd64-elf.hptrr_lib.o.uu" \
 	no-implicit-rule
 #
+amd64/amd64/bhyve_hypercall.S	standard						\
+	compile-with	"${CC} -x assembler-with-cpp ${CFLAGS} -D__asm__ -c ${.IMPSRC}"	\
+	clean		"bhyve_hypercall.o"
+#
 amd64/acpica/acpi_machdep.c	optional	acpi
 acpi_wakecode.o			optional	acpi			\
 	dependency	"$S/amd64/acpica/acpi_wakecode.S assym.s"	\
@@ -580,6 +584,7 @@ kern/link_elf_obj.c		standard
 libkern/x86/crc32_sse42.c	standard
 libkern/memmove.c		standard
 libkern/memset.c		standard
+libkern/amd64/memcmp.S		standard
 #
 # IA32 binary support
 #

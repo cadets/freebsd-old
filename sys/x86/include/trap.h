@@ -63,6 +63,8 @@
 #define	T_XMMFLT	29	/* SIMD floating-point exception */
 #define	T_RESERVED	30	/* reserved (unknown) */
 #define	T_DTRACE_RET	32	/* DTrace pid return */
+#define	T_DTRACE_INST	35	/* DTrace probe install */
+#define	T_DTRACE_UINST	36	/* DTrace probe uninstall */
 
 /* XXX most of the following codes aren't used, but could be. */
 

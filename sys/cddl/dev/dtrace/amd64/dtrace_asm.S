@@ -81,6 +81,10 @@
 	je	bp_nop
 	cmpl	$DTRACE_INVOP_RET, %eax
 	je	bp_ret
+/*
+	cmpl	$DTRACE_INVOP_INSTALL_PROBE, %eax
+	je	call
+*/
 
 	/* When all else fails handle the trap in the usual way. */
 	jmpq	*dtrace_invop_calltrap_addr
@@ -300,21 +304,39 @@ dtrace_fuword64_nocheck(void *addr)
 
 /*
 void
-dtrace_probe_error(dtrace_state_t *state, dtrace_epid_t epid, int which,
-    int fault, int fltoffs, uintptr_t illval)
+dtrace_probe_error(const char *instance, dtrace_state_t *state,
+    dtrace_epid_t epid, int which, int fault, int fltoffs, uintptr_t illval)
 */
 	ENTRY(dtrace_probe_error)
 	pushq	%rbp
 	movq	%rsp, %rbp
+/*
+	illval(stack first)
+	fltoffs(r9)
+	fault(r8)
+	which(rcx)
+	epid(rdx)
+	state(rsi)
+	instance(rdi)
+	--------------
+	illval(stack second)
+	fltoffs(stack first)
+	fault(r9)
+	which(r8)
+	epid(rcx)
+	state(rdx)
+	probe_id(rsi)
+	instance(rdi)
+*/
 	subq	$0x8, %rsp
-	movq	%r9, (%rsp)
-	movq	%r8, %r9
-	movq	%rcx, %r8
-	movq	%rdx, %rcx
-	movq	%rsi, %rdx
-	movq	%rdi, %rsi
-	movl	dtrace_probeid_error(%rip), %edi
-	call	dtrace_probe
+	movq	%r9, (%rsp) /* fltoffs(first on the stack) */
+	movq	%r8, %r9 /* fault(r9) */
+	movq	%rcx, %r8 /* which(r8) */
+	movq	%rdx, %rcx /* epid(rcx) */
+	movq	%rsi, %rdx /* state(rdx) */
+	movl	dtrace_probeid_error(%rip), %esi /* dtrace_probeid_error(rsi) */
+	/* The instance string is already in the correct register */
+	call	dtrace_distributed_probe
 	addq	$0x8, %rsp
 	leave
 	ret

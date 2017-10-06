@@ -79,6 +79,9 @@ __FBSDID("$FreeBSD$");
 #include "xmsr.h"
 #include "spinup_ap.h"
 #include "rtc.h"
+#ifdef DTVIRT
+#include "dthyve.h"
+#endif
 
 #define GUEST_NIO_PORT		0x488	/* guest upcalls via i/o port */
 
@@ -641,6 +644,8 @@ vm_loop(struct vmctx *ctx, int vcpu, uint64_t startrip)
 		case VMEXIT_CONTINUE:
 			break;
 		case VMEXIT_ABORT:
+#ifdef DTVIRT
+#endif
 			abort();
 		default:
 			exit(1);
@@ -981,6 +986,11 @@ main(int argc, char *argv[])
 
 	if (lpc_bootrom())
 		fwctl_init();
+
+#ifdef DTVIRT
+	error = dthyve_open();
+	assert(error == 0);
+#endif
 
 #ifndef WITHOUT_CAPSICUM
 	caph_cache_catpages();

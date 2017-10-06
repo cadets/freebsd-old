@@ -31,6 +31,8 @@
 
 #include <sys/_types.h>
 #include <sys/queue.h>
+#include <sys/malloc.h>
+#include <sys/sema.h>
 
 #define EVFILT_READ		(-1)
 #define EVFILT_WRITE		(-2)
@@ -45,7 +47,8 @@
 #define EVFILT_USER		(-11)	/* User events */
 #define EVFILT_SENDFILE		(-12)	/* attached to sendfile requests */
 #define EVFILT_EMPTY		(-13)	/* empty send socket buf */
-#define EVFILT_SYSCOUNT		13
+#define EVFILT_DTRACE		(-14)	/* dtrace related events */
+#define EVFILT_SYSCOUNT		14
 
 #define EV_SET(kevp_, a, b, c, d, e, f) do {	\
 	struct kevent *kevp = (kevp_);		\
@@ -156,6 +159,13 @@ struct kevent {
 #define NOTE_NSECONDS		0x00000008	/* data is nanoseconds */
 #define	NOTE_ABSTIME		0x00000010	/* timeout is absolute */
 
+/* additional flags for EVFILT_DTRACE */
+#define	NOTE_REGISTER		0x00000001	/* register provider */
+#define	NOTE_UNREGISTER		0x00000002	/* unregister provider */
+#define	NOTE_PROBE_CREATE	0x00000004	/* create probe */
+#define	NOTE_PROBE_INSTALL	0x00000008	/* install probe */
+#define	NOTE_PROBE_UNINSTALL	0x00000010	/* uninstall probe */
+
 struct knote;
 SLIST_HEAD(klist, knote);
 struct kqueue;
@@ -172,6 +182,10 @@ struct knlist {
 
 
 #ifdef _KERNEL
+
+#ifdef MALLOC_DECLARE
+MALLOC_DECLARE(M_KQUEUE);
+#endif
 
 /*
  * Flags for knote call
@@ -246,6 +260,10 @@ struct knote {
 		struct		aioliojob *p_lio;	/* LIO job pointer */
 		void		*p_v;		/* generic other pointer */
 	} kn_ptr;
+
+	struct			iovec *kn_iov;	/* data to be uiomove()'d */
+	struct			sema kn_iovsema; /* iovec semaphore */
+
 	struct			filterops *kn_fop;
 
 #define kn_id		kn_kevent.ident
@@ -253,7 +271,9 @@ struct knote {
 #define kn_flags	kn_kevent.flags
 #define kn_fflags	kn_kevent.fflags
 #define kn_data		kn_kevent.data
+#define	kn_udata	kn_kevent.udata
 #define kn_fp		kn_ptr.p_fp
+#define	kn_td		kn_ptr.p_td
 };
 struct kevent_copyops {
 	void	*arg;

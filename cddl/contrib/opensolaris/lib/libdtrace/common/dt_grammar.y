@@ -87,6 +87,7 @@
 %token	DT_KEY_IF
 %token	DT_KEY_IMPORT
 %token	DT_KEY_INLINE
+%token	DT_KEY_INSTANCE
 %token	DT_KEY_INT
 %token	DT_KEY_LONG
 %token	DT_KEY_PROBE
@@ -393,6 +394,7 @@ primary_expression:
 	|	DT_TOK_AGG { $$ = dt_node_ident($1); }
 	|	DT_TOK_INT { $$ = dt_node_int($1); }
 	|	DT_TOK_STRING { $$ = dt_node_string($1); }
+	|	DT_KEY_INSTANCE { $$ = dt_node_ident(DUP("instance")); }
 	|	DT_KEY_SELF { $$ = dt_node_ident(DUP("self")); }
 	|	DT_KEY_THIS { $$ = dt_node_ident(DUP("this")); }
 	|	DT_TOK_LPAR expression DT_TOK_RPAR { $$ = $2; }
@@ -659,8 +661,9 @@ storage_class_specifier:
 
 d_storage_class_specifier:
 		storage_class_specifier
-	|	DT_KEY_SELF { dt_decl_class(DT_DC_SELF); }
-	|	DT_KEY_THIS { dt_decl_class(DT_DC_THIS); }
+	|	DT_KEY_INSTANCE	{ dt_decl_class(DT_DC_INSTANCE); }
+	|	DT_KEY_SELF	{ dt_decl_class(DT_DC_SELF); }
+	|	DT_KEY_THIS	{ dt_decl_class(DT_DC_THIS); }
 	;
 
 type_specifier:	DT_KEY_VOID { $$ = dt_decl_spec(CTF_K_INTEGER, DUP("void")); }

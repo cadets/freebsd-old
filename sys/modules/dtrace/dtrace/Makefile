@@ -49,9 +49,11 @@ CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris \
 
 CFLAGS+=	-DSMP
 
-EXPORT_SYMS=	dtrace_register \
+EXPORT_SYMS=	dtrace_distributed_register \
+		dtrace_register \
 		dtrace_unregister \
-		dtrace_probe_lookup
+		dtrace_probe_lookup \
+		dtrace_vtdtr_enable
 
 dtrace_asm.o:  assym.s
 

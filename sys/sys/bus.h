@@ -261,7 +261,8 @@ enum intr_type {
 	INTR_MD1 = 4096,		/* flag reserved for MD use */
 	INTR_MD2 = 8192,		/* flag reserved for MD use */
 	INTR_MD3 = 16384,		/* flag reserved for MD use */
-	INTR_MD4 = 32768		/* flag reserved for MD use */
+	INTR_MD4 = 32768,		/* flag reserved for MD use */
+	INTR_TYPE_DTRACE = 1073741824
 };
 
 enum intr_trigger {

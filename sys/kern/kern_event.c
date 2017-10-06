@@ -66,6 +66,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/taskqueue.h>
 #include <sys/uio.h>
 #include <sys/user.h>
+#include <sys/dtrace_bsd.h>
 #ifdef KTRACE
 #include <sys/ktrace.h>
 #endif
@@ -75,7 +76,7 @@ __FBSDID("$FreeBSD$");
 
 #include <vm/uma.h>
 
-static MALLOC_DEFINE(M_KQUEUE, "kqueue", "memory for kqueue system");
+MALLOC_DEFINE(M_KQUEUE, "kqueue", "memory for kqueue system");
 
 /*
  * This lock is used if multiple kq locks are required.  This possibly
@@ -98,6 +99,8 @@ TASKQUEUE_DEFINE_THREAD(kqueue_ctx);
 
 static int	kevent_copyout(void *arg, struct kevent *kevp, int count);
 static int	kevent_copyin(void *arg, struct kevent *kevp, int count);
+static int	kevent_kn_uiomove(struct iovec iovlist[KQ_NEVENTS][2], int niov,
+          	    struct thread *td);
 static int	kqueue_register(struct kqueue *kq, struct kevent *kev,
 		    struct thread *td, int waitok);
 static int	kqueue_acquire(struct file *fp, struct kqueue **kqp);
@@ -325,6 +328,7 @@ struct filterops null_filtops = {
 };
 
 /* XXX - make SYSINIT to add these, and move into respective modules. */
+extern struct filterops dtrace_filtops;
 extern struct filterops sig_filtops;
 extern struct filterops fs_filtops;
 
@@ -352,6 +356,7 @@ static struct {
 	{ &user_filtops, 1 },			/* EVFILT_USER */
 	{ &null_filtops },			/* EVFILT_SENDFILE */
 	{ &file_filtops, 1 },                   /* EVFILT_EMPTY */
+	{ &dtrace_filtops, 1 },			/* EVFILT_DTRACE */
 };
 
 /*
@@ -685,6 +690,7 @@ filt_timerexpire(void *knx)
 
 	if ((kn->kn_flags & EV_ONESHOT) != 0)
 		return;
+
 	kc = kn->kn_ptr.p_v;
 	if (kc->to == 0)
 		return;
@@ -1045,6 +1051,50 @@ kevent_copyin(void *arg, struct kevent *kevp, int count)
 	return (error);
 }
 
+static int
+kevent_kn_uiomove(struct iovec iovlist[KQ_NEVENTS][2], int niov,
+    struct thread *td)
+{
+	struct iovec *iovk, *iovu;
+	struct uio uio;
+	void *kaddr;
+	size_t nbytes;
+	int error, i;
+
+	kaddr = NULL;
+	nbytes = 0;
+	error = 0;
+
+	for (i = 0; i < niov; i++) {
+		iovk = &iovlist[i][0];
+		iovu = &iovlist[i][1];
+
+		kaddr = iovk->iov_base;
+		nbytes = iovk->iov_len;
+
+		if (kaddr == NULL)
+			return (EINVAL);
+		if (((long) kaddr) - nbytes <= 0)
+			return (EINVAL);
+
+		uio = (struct uio) {
+			.uio_iov = iovu,
+			.uio_iovcnt = 1,
+			.uio_offset = 0,
+			.uio_segflg = UIO_USERSPACE,
+			.uio_rw = UIO_READ,
+			.uio_resid = nbytes,
+			.uio_td = td
+		};
+
+		error = uiomove_frombuf(kaddr, nbytes, &uio);
+		free(iovk->iov_base, M_KQUEUE);
+		iovk->iov_base = NULL;
+	}
+	
+	return (error);
+}
+
 #ifdef COMPAT_FREEBSD11
 struct kevent_freebsd11 {
 	__uintptr_t	ident;		/* identifier for this event */
@@ -1241,7 +1291,7 @@ kqueue_add_filteropts(int filt, struct filterops *filtops)
 		printf(
 "trying to add a filterop that is out of range: %d is beyond %d\n",
 		    ~filt, EVFILT_SYSCOUNT);
-		return EINVAL;
+		return (EINVAL);
 	}
 	mtx_lock(&filterops_lock);
 	if (sysfilt_ops[~filt].for_fop != &null_filtops &&
@@ -1285,10 +1335,10 @@ kqueue_fo_find(int filt)
 {
 
 	if (filt > 0 || filt + EVFILT_SYSCOUNT < 0)
-		return NULL;
+		return (NULL);
 
 	if (sysfilt_ops[~filt].for_nolock)
-		return sysfilt_ops[~filt].for_fop;
+		return (sysfilt_ops[~filt].for_fop);
 
 	mtx_lock(&filterops_lock);
 	sysfilt_ops[~filt].for_refcnt++;
@@ -1296,7 +1346,7 @@ kqueue_fo_find(int filt)
 		sysfilt_ops[~filt].for_fop = &null_filtops;
 	mtx_unlock(&filterops_lock);
 
-	return sysfilt_ops[~filt].for_fop;
+	return (sysfilt_ops[~filt].for_fop);
 }
 
 static void
@@ -1345,7 +1395,7 @@ kqueue_register(struct kqueue *kq, struct kevent *kev, struct thread *td, int wa
 	filt = kev->filter;
 	fops = kqueue_fo_find(filt);
 	if (fops == NULL)
-		return EINVAL;
+		return (EINVAL);
 
 	if (kev->flags & EV_ADD) {
 		/*
@@ -1468,6 +1518,7 @@ findkn:
 			kn->kn_fp = fp;
 			kn->kn_kq = kq;
 			kn->kn_fop = fops;
+			kn->kn_iov = NULL; 
 			/*
 			 * apply reference counts to knote structure, and
 			 * do not release it at the end of this routine.
@@ -1657,7 +1708,7 @@ kqueue_expand(struct kqueue *kq, struct filterops *fops, uintptr_t ident,
 				size += KQEXTENT;
 			list = malloc(size * sizeof(*list), M_KQUEUE, mflag);
 			if (list == NULL)
-				return ENOMEM;
+				return (ENOMEM);
 			KQ_LOCK(kq);
 			if (kq->kq_knlistsize > fd) {
 				to_free = list;
@@ -1682,7 +1733,7 @@ kqueue_expand(struct kqueue *kq, struct filterops *fops, uintptr_t ident,
 			tmp_knhash = hashinit(KN_HASHSIZE, M_KQUEUE,
 			    &tmp_knhashmask);
 			if (tmp_knhash == NULL)
-				return ENOMEM;
+				return (ENOMEM);
 			KQ_LOCK(kq);
 			if (kq->kq_knhashmask == 0) {
 				kq->kq_knhash = tmp_knhash;
@@ -1696,7 +1747,7 @@ kqueue_expand(struct kqueue *kq, struct filterops *fops, uintptr_t ident,
 	free(to_free, M_KQUEUE);
 
 	KQ_NOTOWNED(kq);
-	return 0;
+	return (0);
 }
 
 static void
@@ -1732,13 +1783,15 @@ kqueue_scan(struct kqueue *kq, int maxevents, struct kevent_copyops *k_ops,
 	struct kevent *kevp;
 	struct knote *kn, *marker;
 	struct knlist *knl;
+	struct iovec iovlist[KQ_NEVENTS][2];
 	sbintime_t asbt, rsbt;
-	int count, error, haskqglobal, influx, nkev, touch;
+	int count, error, haskqglobal, influx, nkev, touch, niov;
 
 	count = maxevents;
 	nkev = 0;
 	error = 0;
 	haskqglobal = 0;
+	niov = 0;
 
 	if (maxevents == 0)
 		goto done_nl;
@@ -1889,7 +1942,7 @@ retry:
 				kq->kq_count--;
 			} else
 				TAILQ_INSERT_TAIL(&kq->kq_head, kn, kn_tqe);
-			
+
 			kn->kn_status &= ~KN_SCAN;
 			kn_leave_flux(kn);
 			kn_list_unlock(knl);
@@ -1899,7 +1952,31 @@ retry:
 		/* we are returning a copy to the user */
 		kevp++;
 		nkev++;
-		count--;
+		count--;		
+		if (kn && kn->kn_iov && kn->kn_iov->iov_base) {
+			/*
+			 * XXX:
+			 * This is far from ideal, but it _works_. What might make sense here
+			 * is to handle the iovlist lockless, there is no need to hold the kq
+			 * lock in this case. Furthermore, all of these iovecs are being
+			 * duplicated unnecessarily. The copy is being performed once already
+			 * so there is no need to copy into the iovlist[niov][0] again.
+			 */
+			struct iovec iovtmp;
+			KQ_UNLOCK_FLUX(kq);
+			iovtmp.iov_base = malloc(kn->kn_iov->iov_len, M_KQUEUE, M_WAITOK);
+			iovtmp.iov_len = kn->kn_iov->iov_len;
+			memcpy(iovtmp.iov_base, kn->kn_iov->iov_base, iovtmp.iov_len);
+			kn->kn_iov->iov_base = NULL;
+			sema_post(&kn->kn_iovsema);
+			KQ_LOCK(kq);
+			iovlist[niov][0] = iovtmp;
+			iovlist[niov][1] = (struct iovec) {
+				.iov_base = (void *)kn->kn_sdata,
+				.iov_len = iovlist[niov][0].iov_len
+			};
+			niov++;
+		}
 
 		if (nkev == KQ_NEVENTS) {
 			influx = 0;
@@ -1907,6 +1984,12 @@ retry:
 			error = k_ops->k_copyout(k_ops->arg, keva, nkev);
 			nkev = 0;
 			kevp = keva;
+			if (error) {
+				KQ_LOCK(kq);
+				break;
+			}
+			error = kevent_kn_uiomove(iovlist, niov, td);
+			niov = 0;
 			KQ_LOCK(kq);
 			if (error)
 				break;
@@ -1919,8 +2002,15 @@ done:
 	knote_free(marker);
 done_nl:
 	KQ_NOTOWNED(kq);
-	if (nkev != 0)
+	if (nkev != 0) {
 		error = k_ops->k_copyout(k_ops->arg, keva, nkev);
+		if (error)
+			goto done_ret;
+	}
+	if (niov != 0) {
+		error = kevent_kn_uiomove(iovlist, niov, td);
+	}
+done_ret:
 	td->td_retval[0] = maxevents - count;
 	return (error);
 }

@@ -114,6 +114,10 @@ IDTVEC(bpt)
 #ifdef KDTRACE_HOOKS
 IDTVEC(dtrace_ret)
 	TRAP_NOEN(T_DTRACE_RET)
+IDTVEC(dtrace_install)
+	TRAP_NOEN(T_DTRACE_INST)
+IDTVEC(dtrace_uninstall)
+	TRAP_NOEN(T_DTRACE_UINST)
 #endif
 
 /* Regular traps; The cpu does not supply tf_err for these. */

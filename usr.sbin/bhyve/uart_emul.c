@@ -127,7 +127,7 @@ struct uart_softc {
 	uart_intr_func_t intr_deassert;
 };
 
-static void uart_drain(int fd, enum ev_type ev, void *arg);
+static void uart_drain(int fd, enum ev_type ev, int en, void *arg);
 
 static void
 ttyclose(void)
@@ -275,7 +275,7 @@ uart_opentty(struct uart_softc *sc)
 {
 
 	ttyopen(&sc->tty);
-	sc->mev = mevent_add(sc->tty.fd, EVF_READ, uart_drain, sc);
+	sc->mev = mevent_add(sc->tty.fd, EVF_READ, uart_drain, sc, 0);
 	assert(sc->mev != NULL);
 }
 
@@ -365,7 +365,7 @@ uart_toggle_intr(struct uart_softc *sc)
 }
 
 static void
-uart_drain(int fd, enum ev_type ev, void *arg)
+uart_drain(int fd, enum ev_type ev, int en __unused, void *arg)
 {
 	struct uart_softc *sc;
 	int ch;
