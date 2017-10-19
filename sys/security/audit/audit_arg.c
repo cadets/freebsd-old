@@ -61,6 +61,8 @@ __FBSDID("$FreeBSD$");
 #include <security/audit/audit.h>
 #include <security/audit/audit_private.h>
 
+#include <security/mac/mac_framework.h>
+
 /*
  * Calls to manipulate elements of the audit record structure from system
  * call code.  Macro wrappers will prevent this functions from being entered
@@ -782,6 +784,12 @@ audit_arg_file(struct proc *p, struct file *fp)
 		}
 #ifdef KDTRACE_HOOKS
 		audit_arg_objuuid1(&so->so_uuid);
+#ifdef MAC
+		SOCK_LOCK(so);
+		mac_socket_audit(so, ar->k_ar.ar_arg_objmac1,
+		    sizeof(ar->k_ar.ar_arg_objmac1));
+		SOCK_UNLOCK(so);
+#endif
 #endif
 		break;
 
@@ -789,6 +797,13 @@ audit_arg_file(struct proc *p, struct file *fp)
 #ifdef KDTRACE_HOOKS
 		pipe = (struct pipe *)fp->f_data;
 		audit_arg_objuuid1(&pipe->pipe_uuid);
+#ifdef MAC
+		PIPE_LOCK(pipe);
+		mac_pipe_audit(pipe->pipe_pair,
+		    ar->k_ar.ar_arg_objmac1,
+		    sizeof(ar->k_ar.ar_arg_objmac1));
+		PIPE_UNLOCK(pipe);
+#endif
 #endif
 		break;
 
@@ -899,10 +914,14 @@ audit_arg_upath2_canon(char *upath)
  * XXX: Error handling in this function is poor.
  *
  * XXXAUDIT: Possibly KASSERT the path pointer is NULL?
+ *
+ * XXXMAC: Would be nice if mac_vnode_audit() were called from
+ * audit_arg_vnode() rather than in the callers, but that's harder to do in C
+ * for reasons of typing.
  */
 static int
 audit_arg_vnode(struct vnode *vp, struct vnode_au_info *vnp,
-    struct uuid *uuid)
+    struct uuid *uuid, char *mac_buf, size_t mac_buflen)
 {
 	struct vattr vattr;
 	int error;
@@ -914,7 +933,13 @@ audit_arg_vnode(struct vnode *vp, struct vnode_au_info *vnp,
 		/* XXX: How to handle this case? */
 		return (error);
 	}
-
+#ifdef MAC
+	error = mac_vnode_audit(vp, mac_buf, mac_buflen);
+	if (error) {
+		/* XXX: How to handle this case? */
+		return (error);
+	}
+#endif
 	vnp->vn_mode = vattr.va_mode;
 	vnp->vn_uid = vattr.va_uid;
 	vnp->vn_gid = vattr.va_gid;
@@ -938,11 +963,18 @@ audit_arg_vnode1(struct vnode *vp)
 
 	ARG_CLEAR_VALID(ar, ARG_VNODE1);
 	ARG_CLEAR_VALID(ar, ARG_OBJUUID1);
+#ifdef MAC
+	ARG_CLEAR_VALID(ar, ARG_OBJMAC1);
+#endif
 	error = audit_arg_vnode(vp, &ar->k_ar.ar_arg_vnode1,
-	    &ar->k_ar.ar_arg_objuuid1);
+	    &ar->k_ar.ar_arg_objuuid1, ar->k_ar.ar_arg_objmac1,
+	    sizeof(ar->k_ar.ar_arg_objmac1));
 	if (error == 0) {
 		ARG_SET_VALID(ar, ARG_VNODE1);
 		ARG_SET_VALID(ar, ARG_OBJUUID1);
+#ifdef MAC
+		ARG_SET_VALID(ar, ARG_OBJMAC1);
+#endif
 	}
 }
 
@@ -958,11 +990,18 @@ audit_arg_vnode2(struct vnode *vp)
 
 	ARG_CLEAR_VALID(ar, ARG_VNODE2);
 	ARG_CLEAR_VALID(ar, ARG_OBJUUID2);
+#ifdef MAC
+	ARG_CLEAR_VALID(ar, ARG_OBJMAC2);
+#endif
 	error = audit_arg_vnode(vp, &ar->k_ar.ar_arg_vnode2,
-	    &ar->k_ar.ar_arg_objuuid2);
+	    &ar->k_ar.ar_arg_objuuid2, ar->k_ar.ar_arg_objmac2,
+	    sizeof(ar->k_ar.ar_arg_objmac2));
 	if (error == 0) {
 		ARG_SET_VALID(ar, ARG_VNODE2);
 		ARG_SET_VALID(ar, ARG_OBJUUID2);
+#ifdef MAC
+		ARG_SET_VALID(ar, ARG_OBJMAC2);
+#endif
 	}
 }
 

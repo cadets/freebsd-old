@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 1999-2002, 2009 Robert N. M. Watson
+ * Copyright (c) 1999-2002, 2009, 2017 Robert N. M. Watson
  * Copyright (c) 2001 Ilmar S. Habibulin
  * Copyright (c) 2001-2004 Networks Associates Technology, Inc.
  * Copyright (c) 2006 SPARTA, Inc.
@@ -17,6 +17,11 @@
  *
  * This software was developed at the University of Cambridge Computer
  * Laboratory with support from a grant from Google, Inc. 
+ *
+ * This software was developed by BAE Systems, the University of Cambridge
+ * Computer Laboratory, and Memorial University under DARPA/AFRL contract
+ * FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent Computing
+ * (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,8 +50,17 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
+#include <sys/mac.h>
+#include <sys/mutex.h>
 #include <sys/module.h>
+#include <sys/selinfo.h>
+#include <sys/pipe.h>
+#include <sys/proc.h>
 #include <sys/queue.h>
+#include <sys/rwlock.h>
+#include <sys/socket.h>
+#include <sys/socketvar.h>
 #include <sys/sdt.h>
 #include <sys/vnode.h>
 
@@ -56,6 +70,15 @@ __FBSDID("$FreeBSD$");
 #include <security/mac/mac_internal.h>
 #include <security/mac/mac_policy.h>
 
+/*
+ * There are two parts to audit support in the MAC Framework: (1) access
+ * control for audit-related operations, such as setting audit properties on a
+ * process credential; and (2) auditing of MAC labels.  Both are in this file.
+ */
+
+/*
+ * Access control checks for audit-related system calls.
+ */
 MAC_CHECK_PROBE_DEFINE2(cred_check_setaudit, "struct ucred *",
     "struct auditinfo *");
 
@@ -140,4 +163,99 @@ mac_system_check_auditon(struct ucred *cred, int cmd)
 	MAC_CHECK_PROBE2(system_check_auditon, error, cred, cmd);
 
 	return (error);
+}
+
+/*
+ * Support for auditing MAC labels on subjects and objects.
+ *
+ * Globals configuring which labels are audited for which object types.  If
+ * NULL, then no auditing is requested for the obect type; otherwise, it
+ * contains a string suitable to query the labels on objects of that type.
+ *
+ * XXXRW: Need syscalls or sysctls to set these.  How will synchronisation
+ * work..?
+ */
+
+static struct rwlock mac_audit_elements_lock;
+RW_SYSINIT(mac_audit_elements_lock, &mac_audit_elements_lock,
+    "mac_audit_elements_lock");
+
+static const char *mac_cred_label_audit_elements =
+    "?biba,?lomac,?mls,?partition,?sebsd";
+static const char *mac_pipe_label_audit_elements =
+    "?biba,?lomac,?mls,?sebsd";
+static const char *mac_socket_label_audit_elements =
+    "?biba,?lomac,?mls,?sebsd";
+static const char *mac_vnode_label_audit_elements =
+    "?biba,?lomac,?mls,?sebsd";
+
+/*
+ * Elements-list parsing in mac_*_externalize_label() routines is destructive,
+ * so we stack allocate a short buffer to contain a copy of the elements
+ * string for the type.  If too long a string is passed, return an error.
+ */
+#define	MAX_MAC_LABEL_AUDIT_ELEMENTS_STR	64
+
+int
+mac_cred_audit(struct ucred *cred, char *buf, size_t buflen)
+{
+	char elements[MAX_MAC_LABEL_AUDIT_ELEMENTS_STR];
+
+	rw_rlock(&mac_audit_elements_lock);
+	if (strlcpy(elements, mac_cred_label_audit_elements,
+	    sizeof(elements)) >= sizeof(elements)) {
+		rw_runlock(&mac_audit_elements_lock);
+		return (EINVAL);
+	}
+	rw_runlock(&mac_audit_elements_lock);
+	return (mac_cred_externalize_label(cred->cr_label, elements, buf,
+	    buflen));
+}
+
+int
+mac_pipe_audit(struct pipepair *pp, char *buf, size_t buflen)
+{
+	char elements[MAX_MAC_LABEL_AUDIT_ELEMENTS_STR];
+
+	rw_rlock(&mac_audit_elements_lock);
+	if (strlcpy(elements, mac_pipe_label_audit_elements,
+	    sizeof(elements)) >= sizeof(elements)) {
+		rw_runlock(&mac_audit_elements_lock);
+		return (EINVAL);
+	}
+	rw_runlock(&mac_audit_elements_lock);
+	return (mac_pipe_externalize_label(pp->pp_label, elements, buf,
+	    buflen));
+}
+
+int
+mac_socket_audit(struct socket *so, char *buf, size_t buflen)
+{
+	char elements[MAX_MAC_LABEL_AUDIT_ELEMENTS_STR];
+
+	rw_rlock(&mac_audit_elements_lock);
+	if (strlcpy(elements, mac_socket_label_audit_elements,
+	    sizeof(elements)) >= sizeof(elements)) {
+		rw_runlock(&mac_audit_elements_lock);
+		return (EINVAL);
+	}
+	rw_runlock(&mac_audit_elements_lock);
+	return (mac_socket_externalize_label(so->so_label, elements, buf,
+	    buflen));
+}
+
+int
+mac_vnode_audit(struct vnode *vp, char *buf, size_t buflen)
+{
+	char elements[MAX_MAC_LABEL_AUDIT_ELEMENTS_STR];
+
+	rw_rlock(&mac_audit_elements_lock);
+	if (strlcpy(elements, mac_vnode_label_audit_elements,
+	    sizeof(elements)) >= sizeof(elements)) {
+		rw_runlock(&mac_audit_elements_lock);
+		return (EINVAL);
+	}
+	rw_runlock(&mac_audit_elements_lock);
+	return (mac_vnode_externalize_label(vp->v_label, elements, buf,
+	    buflen));
 }

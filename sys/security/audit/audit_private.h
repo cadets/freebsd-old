@@ -103,6 +103,12 @@ extern int			audit_arge;
 #define	AR_PRESELECT_DTRACE	0x00010000U
 
 /*
+ * When collecting MAC labels, limit individual label lengths to this number
+ * of 8-byte characters (including terminating nul).
+ */
+#define	AUDIT_MAC_LABEL_MAX	64
+
+/*
  * Audit data is generated as a stream of struct audit_record structures,
  * linked by struct kaudit_record, and contain storage for possible audit so
  * that it will not need to be allocated during the processing of a system
@@ -197,6 +203,7 @@ struct audit_record {
 	lwpid_t			ar_subj_tid;
 	cpuid_t			ar_subj_cpuid;
 #endif
+	char			ar_subj_mac[AUDIT_MAC_LABEL_MAX];
 	struct au_tid		ar_subj_term;
 	struct au_tid_addr	ar_subj_term_addr;
 	struct au_mask		ar_subj_amask;
@@ -231,6 +238,8 @@ struct audit_record {
 #ifdef KDTRACE_HOOKS
 	struct uuid		ar_arg_objuuid1;
 	struct uuid		ar_arg_objuuid2;
+	char			ar_arg_objmac1[AUDIT_MAC_LABEL_MAX];
+	char			ar_arg_objmac2[AUDIT_MAC_LABEL_MAX];
 #endif
 	int			ar_arg_dev;	/* XXX dev_t compatibility */
 	long			ar_arg_value;
@@ -336,11 +345,13 @@ struct audit_record {
 #define	ARG_ATFD2		0x0008000000000000ULL
 #define	ARG_RIGHTS		0x0010000000000000ULL
 #define	ARG_FCNTL_RIGHTS	0x0020000000000000ULL
-/* Gap:				0x0040000000000000ULL */
+#define	ARG_SUBJMAC		0x0040000000000000ULL
 #define	ARG_OBJUUID1		0x0080000000000000ULL
 #define	ARG_OBJUUID2		0x0100000000000000ULL
 #define	ARG_SVIPC_WHICH		0x0200000000000000ULL
 #define	ARG_METAIO		0x0400000000000000ULL
+#define	ARG_OBJMAC1		0x0800000000000000ULL
+#define	ARG_OBJMAC2		0x1000000000000000ULL
 #define	ARG_NONE		0x0000000000000000ULL
 #define	ARG_ALL			0xFFFFFFFFFFFFFFFFULL
 

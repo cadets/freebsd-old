@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 1999-2002, 2007-2011 Robert N. M. Watson
+ * Copyright (c) 1999-2002, 2007-2011, 2017 Robert N. M. Watson
  * Copyright (c) 2001-2005 Networks Associates Technology, Inc.
  * Copyright (c) 2005-2006 SPARTA, Inc.
  * All rights reserved.
@@ -16,6 +16,11 @@
  *
  * This software was developed at the University of Cambridge Computer
  * Laboratory with support from a grant from Google, Inc.
+ *
+ * This software was developed by BAE Systems, the University of Cambridge
+ * Computer Laboratory, and Memorial University under DARPA/AFRL contract
+ * FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent Computing
+ * (TC) research program.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -107,6 +112,7 @@ void	mac_bpfdesc_destroy(struct bpf_d *);
 void	mac_bpfdesc_init(struct bpf_d *);
 
 void	mac_cred_associate_nfsd(struct ucred *cred);
+int	mac_cred_audit(struct ucred *cred, char *buf, size_t buflen);
 int	mac_cred_check_setaudit(struct ucred *cred, struct auditinfo *ai);
 int	mac_cred_check_setaudit_addr(struct ucred *cred,
 	    struct auditinfo_addr *aia);
@@ -206,6 +212,7 @@ void	mac_netinet_tcp_reply(struct mbuf *m);
 
 void	mac_netinet6_nd6_send(struct ifnet *ifp, struct mbuf *m);
 
+int	mac_pipe_audit(struct pipepair *pp, char *buf, size_t buflen);
 int	mac_pipe_check_ioctl(struct ucred *cred, struct pipepair *pp,
 	    unsigned long cmd, void *data);
 int	mac_pipe_check_poll(struct ucred *cred, struct pipepair *pp);
@@ -275,6 +282,7 @@ void	mac_execve_interpreter_enter(struct vnode *interpvp,
 	    struct label **interplabel);
 void	mac_execve_interpreter_exit(struct label *interpvplabel);
 
+int	mac_socket_audit(struct socket *so, char *buf, size_t buflen);
 int	mac_socket_check_accept(struct ucred *cred, struct socket *so);
 int	mac_socket_check_bind(struct ucred *cred, struct socket *so,
 	    struct sockaddr *sa);
@@ -373,6 +381,7 @@ void	mac_thread_userret(struct thread *td);
 
 int	mac_vnode_associate_extattr(struct mount *mp, struct vnode *vp);
 void	mac_vnode_associate_singlelabel(struct mount *mp, struct vnode *vp);
+int	mac_vnode_audit(struct vnode *vp, char *buf, size_t buflen);
 int	mac_vnode_check_access(struct ucred *cred, struct vnode *vp,
 	    accmode_t accmode);
 int	mac_vnode_check_chdir(struct ucred *cred, struct vnode *dvp);

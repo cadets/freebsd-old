@@ -76,6 +76,8 @@ __FBSDID("$FreeBSD$");
 #include <security/audit/audit.h>
 #include <security/audit/audit_private.h>
 
+#include <security/mac/mac_framework.h>
+
 #include <vm/uma.h>
 
 FEATURE(audit, "BSM audit support");
@@ -232,6 +234,9 @@ audit_record_ctor(void *mem, int size, void *arg, int flags)
 	struct thread *td;
 	struct ucred *cred;
 	struct prison *pr;
+#ifdef MAC
+	int error;
+#endif
 
 	KASSERT(sizeof(*ar) == size, ("audit_record_ctor: wrong size"));
 
@@ -257,6 +262,15 @@ audit_record_ctor(void *mem, int size, void *arg, int flags)
 #ifdef KDTRACE_HOOKS
 	ar->k_ar.ar_subj_tid = td->td_tid;
 	ar->k_ar.ar_subj_cpuid = curcpu;
+#endif
+#ifdef MAC
+	error = mac_cred_audit(cred, ar->k_ar.ar_subj_mac,
+	    sizeof(ar->k_ar.ar_subj_mac));
+	if (error == 0) {
+		ARG_SET_VALID(ar, ARG_SUBJMAC);
+	} else {
+		printf("%s: mac_cred_audit returned %d\n", __func__, error);
+	}
 #endif
 
 	/*
