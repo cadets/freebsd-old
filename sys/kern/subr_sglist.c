@@ -319,6 +319,73 @@ sglist_append_phys(struct sglist *sg, vm_paddr_t paddr, size_t len)
 	return (error);
 }
 
+static inline
+int
+sglist_append_mb_ext_pgs(struct sglist *sg, struct mbuf *m)
+{
+	struct mbuf_ext_pgs *ext_pgs;
+	uintptr_t off, segoff;
+	vm_paddr_t paddr;
+	int len, seglen, error, pgoff, pglen, i;
+
+
+	/* for now, all unmapped mbufs are assumed to be EXT_PGS */
+	MBUF_EXT_PGS_ASSERT(m);
+	ext_pgs = (void *)m->m_ext.ext_buf;
+	len = m->m_len;
+	error = 0;
+
+	/* somebody may have removed data from the front;
+	 * so skip ahead until we find the start
+	 */
+	off = mtod(m, vm_offset_t);
+
+	if (ext_pgs->hdr_len != 0) {
+		if (off >= ext_pgs->hdr_len) {
+			off -= ext_pgs->hdr_len;
+		} else {
+			seglen = ext_pgs->hdr_len - off;
+			segoff = off;
+			seglen = min (seglen, len);
+			off = 0;
+			len -= seglen;
+			error = sglist_append(sg,
+			    &ext_pgs->hdr[segoff], seglen);
+		}
+	}
+	pgoff = ext_pgs->first_pg_off;
+	for (i = 0; i < ext_pgs->npgs && error == 0 && len > 0; i++) {
+		pglen = mbuf_ext_pg_len(ext_pgs, i, pgoff);
+		if (off != 0) {
+			if (off >= pglen) {
+				off -= pglen;
+				pgoff = 0;
+				continue;
+			} else {
+				seglen = pglen - off;
+				segoff = pgoff + off;
+				off = 0;
+			}
+		} else {
+			seglen = pglen;
+			segoff = pgoff;
+		}
+		seglen = min(seglen, len);
+		len -= seglen;
+		paddr = ext_pgs->pa[i] + segoff;
+		error = sglist_append_phys(sg, paddr, seglen);
+		pgoff = 0;
+	};
+	if (len) {
+		seglen = min(len, ext_pgs->trail_len - off);
+		len -= seglen;
+		error = sglist_append(sg,
+		    &ext_pgs->trail[off], seglen);
+	}
+	KASSERT(len == 0, ("len != 0"));
+	return (error);
+}
+
 /*
  * Append the segments that describe a single mbuf chain to a
  * scatter/gather list.  If there are insufficient segments, then this
@@ -338,7 +405,11 @@ sglist_append_mbuf(struct sglist *sg, struct mbuf *m0)
 	SGLIST_SAVE(sg, save);
 	for (m = m0; m != NULL; m = m->m_next) {
 		if (m->m_len > 0) {
-			error = sglist_append(sg, m->m_data, m->m_len);
+			if ((m->m_flags & M_NOMAP) != 0)
+				error = sglist_append_mb_ext_pgs(sg, m);
+			else
+				error = sglist_append(sg, m->m_data,
+				    m->m_len);
 			if (error) {
 				SGLIST_RESTORE(sg, save);
 				return (error);

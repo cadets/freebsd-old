@@ -50,6 +50,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/protosw.h>
 #include <sys/uio.h>
 #include <sys/sdt.h>
+#include <vm/vm.h>
+#include <vm/vm_pageout.h>
+#include <vm/vm_page.h>
+#include <sys/vmmeter.h>
 
 SDT_PROBE_DEFINE5_XLATE(sdt, , , m__init,
     "struct mbuf *", "mbufinfo_t *",
@@ -202,7 +206,7 @@ mb_dupcl(struct mbuf *n, struct mbuf *m)
 	else
 		bcopy(&m->m_ext, &n->m_ext, m_ext_copylen);
 	n->m_flags |= M_EXT;
-	n->m_flags |= m->m_flags & M_RDONLY;
+	n->m_flags |= m->m_flags & (M_RDONLY|M_NOMAP);
 
 	/* See if this is the mbuf that holds the embedded refcount. */
 	if (m->m_ext.ext_flags & EXT_FLAG_EMBREF) {
@@ -246,7 +250,8 @@ m_demote(struct mbuf *m0, int all, int flags)
 		    __func__, m, m0));
 		if (m->m_flags & M_PKTHDR)
 			m_demote_pkthdr(m);
-		m->m_flags = m->m_flags & (M_EXT | M_RDONLY | M_NOFREE | flags);
+		m->m_flags = m->m_flags & (M_EXT | M_RDONLY | M_NOFREE |
+		    M_NOMAP | flags);
 	}
 }
 
@@ -373,7 +378,8 @@ m_move_pkthdr(struct mbuf *to, struct mbuf *from)
 	if (to->m_flags & M_PKTHDR)
 		m_tag_delete_chain(to, NULL);
 #endif
-	to->m_flags = (from->m_flags & M_COPYFLAGS) | (to->m_flags & M_EXT);
+	to->m_flags = (from->m_flags & M_COPYFLAGS) |
+	    (to->m_flags & (M_EXT | M_NOMAP));
 	if ((to->m_flags & M_EXT) == 0)
 		to->m_data = to->m_pktdat;
 	to->m_pkthdr = from->m_pkthdr;		/* especially tags */
@@ -407,7 +413,8 @@ m_dup_pkthdr(struct mbuf *to, const struct mbuf *from, int how)
 	if (to->m_flags & M_PKTHDR)
 		m_tag_delete_chain(to, NULL);
 #endif
-	to->m_flags = (from->m_flags & M_COPYFLAGS) | (to->m_flags & M_EXT);
+	to->m_flags = (from->m_flags & M_COPYFLAGS) |
+	    (to->m_flags & (M_EXT | M_NOMAP));
 	if ((to->m_flags & M_EXT) == 0)
 		to->m_data = to->m_pktdat;
 	to->m_pkthdr = from->m_pkthdr;
@@ -570,6 +577,29 @@ nospace:
 	return (NULL);
 }
 
+static void
+m_copyfromunmapped(const struct mbuf *m, int off, int len, caddr_t cp)
+{
+	struct iovec iov;
+	struct uio uio;
+	int error;
+
+
+	KASSERT(off < m->m_len, ("len exceeds mbuf length"));
+	iov.iov_base = cp;
+	iov.iov_len = len;
+	uio.uio_resid = len;
+	uio.uio_iov = &iov;
+	uio.uio_segflg = UIO_SYSSPACE;
+	uio.uio_iovcnt = 1;
+	uio.uio_offset = 0;
+	uio.uio_rw = UIO_READ;
+	error = m_unmappedtouio(m, off, &uio, len);
+	KASSERT(error == 0, ("m_mbuftouio failed, off %d, len %d\n",
+		off, len));
+
+}
+
 /*
  * Copy data from an mbuf chain starting "off" bytes from the beginning,
  * continuing for "len" bytes, into the indicated buffer.
@@ -591,7 +621,10 @@ m_copydata(const struct mbuf *m, int off, int len, caddr_t cp)
 	while (len > 0) {
 		KASSERT(m != NULL, ("m_copydata, length > size of mbuf chain"));
 		count = min(m->m_len - off, len);
-		bcopy(mtod(m, caddr_t) + off, cp, count);
+		if ((m->m_flags & M_NOMAP) != 0)
+			m_copyfromunmapped(m, off, count, cp);
+		else
+			bcopy(mtod(m, caddr_t) + off, cp, count);
 		len -= count;
 		cp += count;
 		off = 0;
@@ -686,6 +719,7 @@ m_cat(struct mbuf *m, struct mbuf *n)
 		m = m->m_next;
 	while (n) {
 		if (!M_WRITABLE(m) ||
+		    (n->m_flags & M_NOMAP) != 0 ||
 		    M_TRAILINGSPACE(m) < n->m_len) {
 			/* just join the two chains */
 			m->m_next = n;
@@ -1511,6 +1545,115 @@ nospace:
 #endif
 
 /*
+ * Free pages from mbuf_ext_pgs, assuming they aren't associated
+ * with any object.  Complement to allocator from m_uiotombuf_nomap()
+ * and from TLS code.
+ */
+void
+mb_free_mext_pgs(struct mbuf *m)
+{
+	struct mbuf_ext_pgs *ext_pgs;
+	vm_page_t pg;
+	int wire_adj;
+
+	KASSERT(m->m_flags & M_EXT && m->m_ext.ext_type == EXT_PGS,
+	    ("%s: m %p !M_EXT or !EXT_PGS", __func__, m));
+
+	ext_pgs = (void *)m->m_ext.ext_buf;
+
+	wire_adj = 0;
+	for (int i = 0; i < ext_pgs->npgs; i++) {
+		pg = PHYS_TO_VM_PAGE(ext_pgs->pa[i]);
+		/*
+		 * Note: page is not locked, as it has no
+		 * object and is not on any queues.
+		 */
+		vm_page_free_toq(pg);
+		wire_adj++;
+	}
+	if (wire_adj)
+		vm_wire_add(wire_adj);
+}
+
+static struct mbuf *
+m_uiotombuf_nomap(struct uio *uio, int how, int len, int maxseg, int flags)
+{
+	struct mbuf *m, *mb, *prev;
+	struct mbuf_ext_pgs *pgs;
+	vm_page_t pg_array[MBUF_PEXT_MAX_PGS];
+	int error, length, i, needed, wire_adj = 0;
+	ssize_t total;
+	int pflags = malloc2vm_flags(how) | VM_ALLOC_NOOBJ | VM_ALLOC_NODUMP;
+
+	/*
+	 * len can be zero or an arbitrary large value bound by
+	 * the total data supplied by the uio.
+	 */
+	if (len > 0)
+		total = MIN(uio->uio_resid, len);
+	else
+		total = uio->uio_resid;
+
+	if (maxseg == 0)
+		maxseg = MBUF_PEXT_MAX_PGS * PAGE_SIZE;
+
+	/*
+	 * Allocate the pages
+	 */
+	m = NULL;
+	while (total > 0) {
+		mb = mb_alloc_ext_pgs(how, (flags & M_PKTHDR), mb_free_mext_pgs);
+		if (mb == NULL)
+			goto failed;
+		if (m == NULL)
+			m = mb;
+		else
+			prev->m_next = mb;
+		prev = mb;
+		pgs = (void *)mb->m_ext.ext_buf;
+		needed = length = MIN(maxseg, total);
+		for (i = 0; needed > 0; i++, needed -= PAGE_SIZE) {
+retry_page:
+			pg_array[i] = vm_page_alloc(NULL, 0, pflags);
+			if (pg_array[i] == NULL) {
+				if (wire_adj)
+					vm_wire_add(wire_adj);
+				wire_adj = 0;
+				if (how & M_NOWAIT) {
+					goto failed;
+				}
+				else {
+					VM_WAIT;
+					goto retry_page;
+				}
+			}
+			wire_adj++;
+			pgs->pa[i] = VM_PAGE_TO_PHYS(pg_array[i]);
+			pgs->npgs++;
+		}
+		pgs->last_pg_len = length - PAGE_SIZE * (pgs->npgs - 1);
+		vm_wire_add(wire_adj);
+		wire_adj = 0;
+		total -= length;
+		error = uiomove_fromphys(pg_array, 0, length, uio);
+		if (error != 0)
+			goto failed;
+		mb->m_len = length;
+		mb->m_ext.ext_size += PAGE_SIZE * pgs->npgs;
+		if (flags & M_PKTHDR)
+			m->m_pkthdr.len += length;
+
+
+	}
+	return (m);
+
+
+failed:
+	m_freem(m);
+	return (NULL);
+}
+
+/*
  * Copy the contents of uio into a properly sized mbuf chain.
  */
 struct mbuf *
@@ -1520,6 +1663,9 @@ m_uiotombuf(struct uio *uio, int how, int len, int align, int flags)
 	int error, length;
 	ssize_t total;
 	int progress = 0;
+
+	if (flags & M_NOMAP)
+		return (m_uiotombuf_nomap(uio, how, len, align, flags));
 
 	/*
 	 * len can be zero or an arbitrary large value bound by
@@ -1566,6 +1712,70 @@ m_uiotombuf(struct uio *uio, int how, int len, int align, int flags)
 	return (m);
 }
 
+int
+m_unmappedtouio(const struct mbuf *m, int m_off, struct uio *uio, int len)
+{
+	struct mbuf_ext_pgs *ext_pgs;
+	vm_page_t pg;
+	int off, segoff, seglen, error, pgoff, pglen, i;
+
+
+	/* for now, all unmapped mbufs are assumed to be EXT_PGS */
+	MBUF_EXT_PGS_ASSERT(m);
+	ext_pgs = (void *)m->m_ext.ext_buf;
+	error = 0;
+
+	/* somebody may have removed data from the front;
+	 * so skip ahead until we find the start
+	 */
+	off = mtod(m, vm_offset_t);
+	off += m_off;
+	if (ext_pgs->hdr_len != 0) {
+		if (off >= ext_pgs->hdr_len) {
+			off -= ext_pgs->hdr_len;
+		} else {
+			seglen = ext_pgs->hdr_len - off;
+			segoff = off;
+			seglen = min (seglen, len);
+			off = 0;
+			len -= seglen;
+			error = uiomove(&ext_pgs->hdr[segoff], seglen, uio);
+		}
+	}
+	pgoff = ext_pgs->first_pg_off;
+	for (i = 0; i < ext_pgs->npgs && error == 0 && len > 0; i++) {
+		pglen = mbuf_ext_pg_len(ext_pgs, i, pgoff);
+		if (off != 0) {
+			if (off >= pglen) {
+				off -= pglen;
+				pgoff = 0;
+				continue;
+			} else {
+				seglen = pglen - off;
+				segoff = pgoff + off;
+				off = 0;
+			}
+		} else {
+			seglen = pglen;
+			segoff = pgoff;
+		}
+		seglen = min(seglen, len);
+		len -= seglen;
+		pg = PHYS_TO_VM_PAGE(ext_pgs->pa[i]);
+		error = uiomove_fromphys(&pg, segoff, seglen, uio);
+		pgoff = 0;
+	};
+	if (len) {
+		KASSERT((off + len) <= ext_pgs->trail_len,
+		    ("off + len > trail (%d + %d > %d, m_off = %d)\n",
+			off, len, ext_pgs->trail_len,
+			m_off));
+		error = uiomove(&ext_pgs->trail[off], len, uio);
+	}
+	return (error);
+}
+
+
 /*
  * Copy an mbuf chain into a uio limited by len if set.
  */
@@ -1584,7 +1794,10 @@ m_mbuftouio(struct uio *uio, const struct mbuf *m, int len)
 	for (; m != NULL; m = m->m_next) {
 		length = min(m->m_len, total - progress);
 
-		error = uiomove(mtod(m, void *), length, uio);
+		if ((m->m_flags & M_NOMAP) != 0)
+			error = m_unmappedtouio(m, 0, uio, length);
+		else
+			error = uiomove(mtod(m, void *), length, uio);
 		if (error)
 			return (error);
 

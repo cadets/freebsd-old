@@ -95,23 +95,42 @@ int
 sbready(struct sockbuf *sb, struct mbuf *m, int count)
 {
 	u_int blocker;
+	struct mbuf *om = m;
 
 	SOCKBUF_LOCK_ASSERT(sb);
 	KASSERT(sb->sb_fnrdy != NULL, ("%s: sb %p NULL fnrdy", __func__, sb));
 
 	blocker = (sb->sb_fnrdy == m) ? M_BLOCKED : 0;
 
-	for (int i = 0; i < count; i++, m = m->m_next) {
+	for (int i = 0; i < count; i++) {
 		KASSERT(m->m_flags & M_NOTREADY,
 		    ("%s: m %p !M_NOTREADY", __func__, m));
+		if ((m->m_flags & M_EXT) != 0 &&
+		    m->m_ext.ext_type == EXT_PGS) {
+			struct mbuf_ext_pgs *ext_pgs;
+
+			ext_pgs = (void *)m->m_ext.ext_buf;
+			ext_pgs->nrdy--;
+			if (ext_pgs->nrdy != 0)
+				continue;
+		}
+
 		m->m_flags &= ~(M_NOTREADY | blocker);
 		if (blocker)
 			sb->sb_acc += m->m_len;
+		m = m->m_next;
 	}
 
 	if (!blocker)
 		return (EINPROGRESS);
 
+	/*
+	 * not completing all of bocker's pages is the same
+	 * as not finding the blocker
+	 */
+	if (m == om)
+		return (EINPROGRESS);
+	
 	/* This one was blocking all the queue. */
 	for (; m && (m->m_flags & M_NOTREADY) == 0; m = m->m_next) {
 		KASSERT(m->m_flags & M_BLOCKED,
@@ -1040,8 +1059,8 @@ sbcompress(struct sockbuf *sb, struct mbuf *m, struct mbuf *n)
 		if (n && (n->m_flags & M_EOR) == 0 &&
 		    M_WRITABLE(n) &&
 		    ((sb->sb_flags & SB_NOCOALESCE) == 0) &&
-		    !(m->m_flags & M_NOTREADY) &&
-		    !(n->m_flags & M_NOTREADY) &&
+		    !(m->m_flags & (M_NOTREADY | M_NOMAP)) &&
+		    !(n->m_flags & (M_NOTREADY | M_NOMAP)) &&
 		    m->m_len <= MCLBYTES / 4 && /* XXX: Don't copy too much */
 		    m->m_len <= M_TRAILINGSPACE(n) &&
 		    n->m_type == m->m_type) {

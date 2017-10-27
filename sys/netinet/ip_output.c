@@ -602,8 +602,19 @@ sendit:
 
 	m->m_pkthdr.csum_flags |= CSUM_IP;
 	if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA & ~ifp->if_hwassist) {
+		m = mb_unmapped_to_ext(m);
+		if (m == NULL) {
+			error = ENOBUFS;
+			goto bad;
+		}
 		in_delayed_cksum(m);
 		m->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
+	} else if (0 == (ifp->if_capenable & IFCAP_NOMAP)) {
+		m = mb_unmapped_to_ext(m);
+		if (m == NULL) {
+			error = ENOBUFS;
+			goto bad;
+		}
 	}
 #ifdef SCTP
 	if (m->m_pkthdr.csum_flags & CSUM_SCTP & ~ifp->if_hwassist) {
@@ -778,6 +789,15 @@ ip_fragment(struct ip *ip, struct mbuf **m_frag, int mtu,
 	 */
 	if (len < 8)
 		return EMSGSIZE;
+
+	/*
+	 * Ensure packet is accessible to CPU
+	 */
+	m0 = mb_unmapped_to_ext(m0);
+	if (m0 == NULL) {
+		*m_frag = NULL;
+		return ENOBUFS;
+	}
 
 	/*
 	 * If the interface will not calculate checksums on

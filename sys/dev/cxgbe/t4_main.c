@@ -1433,7 +1433,8 @@ cxgbe_probe(device_t dev)
 
 #define T4_CAP (IFCAP_VLAN_HWTAGGING | IFCAP_VLAN_MTU | IFCAP_HWCSUM | \
     IFCAP_VLAN_HWCSUM | IFCAP_TSO | IFCAP_JUMBO_MTU | IFCAP_LRO | \
-    IFCAP_VLAN_HWTSO | IFCAP_LINKSTATE | IFCAP_HWCSUM_IPV6 | IFCAP_HWSTATS)
+    IFCAP_VLAN_HWTSO | IFCAP_LINKSTATE | IFCAP_HWCSUM_IPV6 | IFCAP_HWSTATS | \
+    IFCAP_NOMAP)
 #define T4_CAP_ENABLE (T4_CAP)
 
 static int
@@ -1717,6 +1718,8 @@ redo_sifflags:
 		if (mask & IFCAP_RXCSUM_IPV6)
 			ifp->if_capenable ^= IFCAP_RXCSUM_IPV6;
 
+		if (mask & IFCAP_NOMAP)
+			ifp->if_capenable ^= IFCAP_NOMAP;
 		/*
 		 * Note that we leave CSUM_TSO alone (it is always set).  The
 		 * kernel takes both IFCAP_TSOx and CSUM_TSO into account before

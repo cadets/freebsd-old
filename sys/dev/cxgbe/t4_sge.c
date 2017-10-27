@@ -2065,12 +2065,84 @@ m_advance(struct mbuf **pm, int *poffset, int len)
 	return ((void *)p);
 }
 
+static inline int
+count_mbuf_ext_pgs(struct mbuf *m, vm_paddr_t *lastb)
+{
+	struct mbuf_ext_pgs *ext_pgs;
+	vm_paddr_t tmp;
+	uintptr_t off, segoff;
+	int len, seglen, pgoff, pglen, i;
+	int nsegs = 0;
+
+	/* for now, all unmapped mbufs are assumed to be EXT_PGS */
+	MBUF_EXT_PGS_ASSERT(m);
+	ext_pgs = (void *)m->m_ext.ext_buf;
+	len = m->m_len;
+
+	/* somebody may have removed data from the front;
+	 * so skip ahead until we find the start
+	 */
+	off = mtod(m, vm_offset_t);
+
+	if (ext_pgs->hdr_len != 0) {
+		if (off >= ext_pgs->hdr_len) {
+			off -= ext_pgs->hdr_len;
+		} else {
+			seglen = ext_pgs->hdr_len - off;
+			segoff = off;
+			seglen = min (seglen, len);
+			off = 0;
+			len -= seglen;
+			tmp = pmap_kextract((vm_offset_t)&ext_pgs->hdr[segoff]);
+			if ((*lastb + 1) != tmp)
+				nsegs++;
+			*lastb = tmp + seglen - 1;
+		}
+	}
+	pgoff = ext_pgs->first_pg_off;
+	for (i = 0; i < ext_pgs->npgs && len > 0; i++) {
+		pglen = mbuf_ext_pg_len(ext_pgs, i, pgoff);
+		if (off != 0) {
+			if (off >= pglen) {
+				off -= pglen;
+				pgoff = 0;
+				continue;
+			} else {
+				seglen = pglen - off;
+				segoff = pgoff + off;
+				off = 0;
+			}
+		} else {
+			seglen = pglen;
+			segoff = pgoff;
+		}
+		seglen = min(seglen, len);
+		len -= seglen;
+		tmp = ext_pgs->pa[i] + segoff;
+		if ((*lastb) + 1 != tmp)
+			nsegs++;
+		*lastb = tmp + seglen - 1;
+		pgoff = 0;
+	};
+	if (len) {
+		seglen = min(len, ext_pgs->trail_len - off);
+		len -= seglen;
+		tmp = pmap_kextract((vm_offset_t)&ext_pgs->trail[off]);
+		if ((*lastb + 1) != tmp)
+			nsegs++;
+		*lastb = tmp + seglen - 1;
+	}
+
+	return (nsegs);
+}
+
+
 /*
  * Can deal with empty mbufs in the chain that have m_len = 0, but the chain
  * must have at least one mbuf that's not empty.
  */
 static inline int
-count_mbuf_nsegs(struct mbuf *m)
+count_mbuf_nsegs(struct mbuf *m, int *ext_pgs)
 {
 	vm_paddr_t lastb, next;
 	vm_offset_t va;
@@ -2085,6 +2157,11 @@ count_mbuf_nsegs(struct mbuf *m)
 		len = m->m_len;
 		if (__predict_false(len == 0))
 			continue;
+		if ((m->m_flags & M_NOMAP) != 0) {
+			*ext_pgs = 1;
+			nsegs += count_mbuf_ext_pgs(m, &lastb);
+			continue;
+		}
 		va = mtod(m, vm_offset_t);
 		next = pmap_kextract(va);
 		nsegs += sglist_count(m->m_data, len);
@@ -2106,7 +2183,7 @@ int
 parse_pkt(struct adapter *sc, struct mbuf **mp)
 {
 	struct mbuf *m0 = *mp, *m;
-	int rc, nsegs, defragged = 0, offset;
+	int rc, nsegs, defragged = 0, offset, ext_pgs = 0;
 	struct ether_header *eh;
 	void *l3hdr;
 #if defined(INET) || defined(INET6)
@@ -2129,7 +2206,7 @@ restart:
 	 */
 	M_ASSERTPKTHDR(m0);
 	MPASS(m0->m_pkthdr.len > 0);
-	nsegs = count_mbuf_nsegs(m0);
+	nsegs = count_mbuf_nsegs(m0, &ext_pgs);
 	if (nsegs > (needs_tso(m0) ? TX_SGL_SEGS_TSO : TX_SGL_SEGS)) {
 		if (defragged++ > 0 || (m = m_defrag(m0, M_NOWAIT)) == NULL) {
 			rc = EFBIG;
@@ -2139,7 +2216,8 @@ restart:
 		goto restart;
 	}
 
-	if (__predict_false(nsegs > 2 && m0->m_pkthdr.len <= MHLEN)) {
+	if (__predict_false(nsegs > 2 && m0->m_pkthdr.len <= MHLEN &&
+		!ext_pgs)) {
 		m0 = m_pullup(m0, m0->m_pkthdr.len);
 		if (m0 == NULL) {
 			/* Should have left well enough alone. */
@@ -4007,12 +4085,16 @@ txpkts1_len16(void)
 static inline u_int
 imm_payload(u_int ndesc)
 {
+#if 0 /* XXX what about M_UNMAPPED */
 	u_int n;
 
 	n = ndesc * EQ_ESIZE - sizeof(struct fw_eth_tx_pkt_wr) -
 	    sizeof(struct cpl_tx_pkt_core);
 
 	return (n);
+#else
+	return (0);
+#endif
 }
 
 /*
