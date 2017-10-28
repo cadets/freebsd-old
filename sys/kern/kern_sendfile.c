@@ -36,6 +36,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/capsicum.h>
 #include <sys/kernel.h>
+#include <netinet/in.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/sysproto.h>
@@ -64,6 +65,7 @@ __FBSDID("$FreeBSD$");
 
 #define	EXT_FLAG_SYNC		EXT_FLAG_VENDOR1
 #define	EXT_FLAG_NOCACHE	EXT_FLAG_VENDOR2
+#define	EXT_FLAG_CACHE_LAST	EXT_FLAG_VENDOR3
 
 /*
  * Structure describing a single sendfile(2) I/O, which may consist of
@@ -120,6 +122,11 @@ sfstat_sysctl(SYSCTL_HANDLER_ARGS)
 }
 SYSCTL_PROC(_kern_ipc, OID_AUTO, sfstat, CTLTYPE_OPAQUE | CTLFLAG_RW,
     NULL, 0, sfstat_sysctl, "I", "sendfile statistics");
+
+int sf_use_ext_pgs;
+SYSCTL_INT(_kern_ipc, OID_AUTO, sf_use_ext_pgs, CTLFLAG_RWTUN,
+    &sf_use_ext_pgs, 0,
+    "Should we use bundles of pages for sendfile(2) and TLS");
 
 /*
  * Detach mapped page and release resources back to the system.  Called
@@ -193,6 +200,39 @@ sendfile_free_mext(struct mbuf *m)
 
 	sf_buf_free(sf);
 	sendfile_free_page(pg, nocache);
+
+	if (m->m_ext.ext_flags & EXT_FLAG_SYNC) {
+		struct sendfile_sync *sfs = m->m_ext.ext_arg2;
+
+		mtx_lock(&sfs->mtx);
+		KASSERT(sfs->count > 0, ("Sendfile sync botchup count == 0"));
+		if (--sfs->count == 0)
+			cv_signal(&sfs->cv);
+		mtx_unlock(&sfs->mtx);
+	}
+}
+
+static void
+sendfile_free_mext_pg(struct mbuf *m)
+{
+	struct mbuf_ext_pgs *ext_pgs;
+	bool nocache, cache_last;
+
+	KASSERT(m->m_flags & M_EXT && m->m_ext.ext_type == EXT_PGS,
+	    ("%s: m %p !M_EXT or !EXT_PGS", __func__, m));
+
+	if ((nocache = m->m_ext.ext_flags & EXT_FLAG_NOCACHE))
+		cache_last = m->m_ext.ext_flags & EXT_FLAG_CACHE_LAST;
+	ext_pgs = (void *)m->m_ext.ext_buf;
+
+	for (int i = 0; i < ext_pgs->npgs; i++) {
+		vm_page_t pg;
+
+		if (cache_last && i == ext_pgs->npgs - 1)
+			nocache = false;
+		pg = PHYS_TO_VM_PAGE(ext_pgs->pa[i]);
+		sendfile_free_page(pg, nocache);
+	}
 
 	if (m->m_ext.ext_flags & EXT_FLAG_SYNC) {
 		struct sendfile_sync *sfs = m->m_ext.ext_arg2;
@@ -304,8 +344,7 @@ sendfile_iodone(void *arg, vm_page_t *pg, int count, int error)
 		so->so_error = EIO;
 
 		m = sfio->m;
-		for (int i = 0; i < sfio->npages; i++)
-			m = m_free(m);
+		mb_free_notready(m, sfio->npages);
 	} else
 		(void )(so->so_proto->pr_usrreqs->pru_ready)(so, sfio->m,
 		    sfio->npages);
@@ -549,7 +588,11 @@ vn_sendfile(struct file *fp, int sockfd, struct uio *hdr_uio,
 	struct sendfile_sync *sfs;
 	struct vattr va;
 	off_t off, sbytes, rem, obj_size;
+	struct mbuf_ext_pgs *ext_pgs;
+	struct mbuf *m0;
+	int use_ext_pgs = 0;
 	int error, softerr, bsize, hdrlen;
+	int ext_pgs_idx;
 
 	obj = NULL;
 	so = NULL;
@@ -754,9 +797,18 @@ retry_space:
 		 * dumped into socket buffer.
 		 */
 		pa = sfio->pa;
-		for (int i = 0; i < npages; i++) {
-			struct mbuf *m0;
 
+		if ((sf_use_ext_pgs &&
+			so->so_proto->pr_protocol == IPPROTO_TCP)) {
+			/* cache state in a local, to avoid locks */
+			use_ext_pgs = 1;
+			/* start at last index, to wrap to first */
+			ext_pgs_idx = MBUF_PEXT_MAX_PGS - 1;
+			m0 = NULL; /* -Wsometimes-uninitialized */
+		}
+
+
+		for (int i = 0; i < npages; i++) {
 			/*
 			 * If a page wasn't grabbed successfully, then
 			 * trim the array. Can happen only with SF_NODISKIO.
@@ -767,6 +819,66 @@ retry_space:
 				npages = i;
 				softerr = EBUSY;
 				break;
+			}
+
+			if (use_ext_pgs) {
+				off_t xfs;
+
+				ext_pgs_idx++;
+				if (ext_pgs_idx == MBUF_PEXT_MAX_PGS) {
+					m0 = mb_alloc_ext_pgs(M_WAITOK, false,
+					    sendfile_free_mext_pg);
+
+					if (flags & SF_NOCACHE) {
+						m0->m_ext.ext_flags |=
+						    EXT_FLAG_NOCACHE;
+
+						/*
+						 * See comment below regarding
+						 * ignoring SF_NOCACHE for the
+						 * last page.
+						 */
+						if ((i + min(npages - i,
+						    MBUF_PEXT_MAX_PGS) == npages) &&
+						    ((off + space) & PAGE_MASK) &&
+						    (rem > space || rhpages > 0))
+							m0->m_ext.ext_flags |=
+							    EXT_FLAG_CACHE_LAST;
+					}
+					if (sfs != NULL) {
+						m0->m_ext.ext_flags |=
+						    EXT_FLAG_SYNC;
+						m0->m_ext.ext_arg2 = sfs;
+						mtx_lock(&sfs->mtx);
+						sfs->count++;
+						mtx_unlock(&sfs->mtx);
+					}
+					ext_pgs = (void *)m0->m_ext.ext_buf;
+					if (i == 0)
+						sfio->m = m0;
+					ext_pgs_idx = 0;
+					/* Append to mbuf chain. */
+					if (mtail != NULL)
+						mtail->m_next = m0;
+					else
+						m = m0;
+					mtail = m0;
+					ext_pgs->first_pg_off =
+					    vmoff(i, off) & PAGE_MASK;
+				}
+				if (nios) {
+					m0->m_flags |= M_NOTREADY;
+					ext_pgs->nrdy++;
+				}
+
+				ext_pgs->pa[ext_pgs_idx] = VM_PAGE_TO_PHYS(pa[i]);
+				ext_pgs->npgs++;
+				xfs = xfsize(i, npages, off, space);
+				ext_pgs->last_pg_len = xfs;
+				m0->m_len += xfs;
+				m0->m_ext.ext_size += PAGE_SIZE;
+
+				continue;
 			}
 
 			/*
