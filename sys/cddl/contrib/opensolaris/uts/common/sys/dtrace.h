@@ -228,6 +228,9 @@ typedef enum dtrace_probespec {
 #define	DIF_VAR_ARGS		0x0000	/* arguments array */
 #define	DIF_VAR_REGS		0x0001	/* registers array */
 #define	DIF_VAR_UREGS		0x0002	/* user registers array */
+#define	DIF_VAR_GARGS		0x0003  /* guest arguments array */
+#define	DIF_VAR_GREGS		0x0004  /* guest register array */
+#define	DIF_VAR_GUREGS		0x0005  /* guest user registers array */
 #define	DIF_VAR_CURTHREAD	0x0100	/* thread pointer */
 #define	DIF_VAR_TIMESTAMP	0x0101	/* timestamp */
 #define	DIF_VAR_VTIMESTAMP	0x0102	/* virtual timestamp */
@@ -263,6 +266,30 @@ typedef enum dtrace_probespec {
 #define	DIF_VAR_GID		0x0120	/* process group ID */
 #define	DIF_VAR_ERRNO		0x0121	/* thread errno */
 #define	DIF_VAR_EXECARGS	0x0122	/* process arguments */
+
+#define	DIF_VAR_GCURTHREAD	0x0303  /* guest thread pointer */
+#define	DIF_VAR_GARG0		0x0304  /* guest first argument */
+#define	DIF_VAR_GARG1		0x0305  /* guest second argument */
+#define	DIF_VAR_GARG2		0x0306  /* guest third argument */
+#define	DIF_VAR_GARG3		0x0307  /* guest fourth argument */
+#define	DIF_VAR_GARG4		0x0308  /* guest fifth argument */
+#define	DIF_VAR_GARG5		0x0309  /* guest sixth argument */
+#define	DIF_VAR_GARG6		0x030a  /* guest seventh argument */
+#define	DIF_VAR_GARG7		0x030b  /* guest eight argument */
+#define	DIF_VAR_GARG8		0x030c  /* guest ninth argument */
+#define	DIF_VAR_GARG9		0x030d  /* guest tenth argument */
+#define	DIF_VAR_GSTACKDEPTH	0x030e  /* guest stack depth */
+#define	DIF_VAR_GCALLER		0x030f  /* guest caller */
+#define	DIF_VAR_GPID		0x0310  /* guest process ID */
+#define	DIF_VAR_GTID		0x0311  /* guest thread ID */
+#define	DIF_VAR_GEXECNAME	0x0312  /* name of the executable in the guest */
+#define	DIF_VAR_GUSTACKDEPTH	0x0313  /* guest user-land stack depth */
+#define	DIF_VAR_GUCALLER	0x0314  /* guest user-level caller */
+#define	DIF_VAR_GPPID		0x0315  /* guest parent process ID */
+#define	DIF_VAR_GUID		0x0316  /* guest process user ID */
+#define	DIF_VAR_GGID		0x0317  /* guest process group ID */
+#define	DIF_VAR_GERRNO		0x0318  /* guest thread errno */
+#define	DIF_VAR_GEXECARGS	0x0319  /* guest process arguments */
 
 #ifndef illumos
 #define	DIF_VAR_CPU		0x0200

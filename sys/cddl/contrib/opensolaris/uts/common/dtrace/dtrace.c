@@ -3423,6 +3423,11 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		v = DIF_VAR_ARGS;
 	}
 
+	if (v >= DIF_VAR_GARG0 && v <= DIF_VAR_GARG9) {
+		ndx = v - DIF_VAR_GARG0;
+		v = DIF_VAR_ARGS;
+	}
+
 	switch (v) {
 	case DIF_VAR_ARGS:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_ARGS);
@@ -3871,6 +3876,75 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		return curcpu;
 	}
 #endif
+	case DIF_VAR_GARGS: {
+		/*
+		 * if (cached(arg))
+		 * 	return arg;
+		 *
+		 * arg = copy_from_guest();
+		 * return arg;
+		 */
+	}
+	case DIF_VAR_GREGS: {
+		/*
+		 * val = ask_hypervisor(reg);
+		 * return val;
+		 */
+	}
+	case DIF_VAR_GUREGS: {
+		/*
+		 * val = copy_from_guest();
+		 * return val;
+		 */
+	}
+	/*
+	 * we cache these things
+	 */
+	case DIF_VAR_GCURTHREAD: {
+		/*
+		 * return gthreads[vm];
+		 */
+	}
+	case DIF_VAR_GSTACKDEPTH: {
+		/*
+		 * return stackdepth[vm];
+		 */
+	}
+	case DIF_VAR_GCALLER: {
+		/*
+		 * return caller[vm];
+		 */
+	}
+	case DIF_VAR_GPID: {
+		/*
+		 * return pids[vm];
+		 */
+	}
+	case DIF_VAR_GTID: {
+		/*
+		 * NOTE: Caching this helps us with TLS as well
+		 * return tids[vm];
+		 */
+	}
+	case DIF_VAR_GEXECNAME: {
+		/*
+		 * NOTE: We do not cache this because it's not as commonly used.
+		 * gexecname = copy_from_guest();
+		 * return gexecname;
+		 */
+	}
+	case DIF_VAR_GUSTACKDEPTH: {
+		/*
+		 * gustackdepth = ustackdepth[vm];
+		 */
+	}
+	case DIF_VAR_GUCALLER: {
+	}
+	case DIF_VAR_GPPID:
+	case DIF_VAR_GUID:
+	case DIF_VAR_GGID:
+	case DIF_VAR_GERRNO:
+	case DIF_VAR_GEXECARGS:
 	default:
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
 		return (0);
