@@ -603,7 +603,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		dtrace_probe_t *probe;
 		dtrace_probe_t **dtrace_probes;
 		dtrace_provider_t *prov;
-		uint32_t idx;
+		dtrace_instance_id_t idx;
 		uint32_t dtrace_nprobes;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_PROBEARG\n",__func__,__LINE__);
@@ -681,7 +681,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		int m = 0;
 		uint32_t priv = 0;
 		uint32_t dtrace_nprobes;
-		uint32_t idx;
+		dtrace_instance_id_t idx;
 		uid_t uid = 0;
 		zoneid_t zoneid = 0;
 

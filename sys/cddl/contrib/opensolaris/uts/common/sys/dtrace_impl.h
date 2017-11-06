@@ -87,6 +87,7 @@ typedef struct dtrace_state dtrace_state_t;
 typedef uint32_t dtrace_optid_t;
 typedef uint32_t dtrace_specid_t;
 typedef uint64_t dtrace_genid_t;
+typedef uint32_t dtrace_instance_id_t;
 
 /*
  * DTrace Probes

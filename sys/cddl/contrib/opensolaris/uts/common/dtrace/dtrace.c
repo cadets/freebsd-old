@@ -512,14 +512,22 @@ static kmutex_t dtrace_errlock;
 	    (((uint64_t)1 << 61) - 1)) | ((uint64_t)intr << 61); \
 }
 #else
-#define	DTRACE_TLS_THRKEY(where) { \
+/*
+ * Here we need to send in the namespaced TID in order
+ * to be able to identify which TLS we want once we exit
+ * the guest the second time and migrate threads inbetween.
+ */
+#define	DTRACE_TLS_THRKEY(mid, where, ns_tid) { \
 	solaris_cpu_t *_c = &solaris_cpu[curcpu]; \
 	uint_t intr = 0; \
 	uint_t actv = _c->cpu_intr_actv; \
+	lwpid_t _tid = ns_tid; \
+	if (_tid == 0) \
+		_tid = curthread->td_tid; \
 	for (; actv; actv >>= 1) \
 		intr++; \
 	ASSERT(intr < (1 << 3)); \
-	(where) = ((curthread->td_tid + DIF_VARIABLE_MAX) & \
+	(where) = ((((uint64_t)mid << 32) + _tid + DIF_VARIABLE_MAX) & \
 	    (((uint64_t)1 << 61) - 1)) | ((uint64_t)intr << 61); \
 }
 #endif
@@ -646,7 +654,7 @@ dtrace_load##bits(uintptr_t addr)					\
 /* Function prototype definitions: */
 static size_t dtrace_strlen_pc(const char *, size_t);
 static size_t dtrace_strlen(const char *, size_t);
-static dtrace_probe_t *dtrace_probe_lookup_id(uint32_t idx, dtrace_id_t id);
+static dtrace_probe_t *dtrace_probe_lookup_id(dtrace_instance_id_t idx, dtrace_id_t id);
 static void dtrace_enabling_provide(dtrace_provider_t *);
 static int dtrace_enabling_match(dtrace_enabling_t *, int *);
 static void dtrace_enabling_matchall(void);
@@ -6315,8 +6323,8 @@ inetout:	regs[rd] = (uintptr_t)end + 1;
  * the necessary checks are handled by a call to dtrace_difo_validate().
  */
 static uint64_t
-dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
-    dtrace_vstate_t *vstate, dtrace_state_t *state)
+dtrace_dif_emulate(dtrace_instance_id_t idx, dtrace_difo_t *difo,
+    dtrace_mstate_t *mstate, dtrace_vstate_t *vstate, dtrace_state_t *state)
 {
 	const dif_instr_t *text = difo->dtdo_buf;
 	const uint_t textlen = difo->dtdo_len;
@@ -6795,7 +6803,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			key = &tupregs[DIF_DTR_NREGS];
 			key[0].dttk_value = (uint64_t)id;
 			key[0].dttk_size = 0;
-			DTRACE_TLS_THRKEY(key[1].dttk_value);
+			DTRACE_TLS_THRKEY(idx, key[1].dttk_value, 0);
 			key[1].dttk_size = 0;
 
 			dvar = dtrace_dynvar(dstate, 2, key,
@@ -6828,7 +6836,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			key = &tupregs[DIF_DTR_NREGS];
 			key[0].dttk_value = (uint64_t)id;
 			key[0].dttk_size = 0;
-			DTRACE_TLS_THRKEY(key[1].dttk_value);
+			DTRACE_TLS_THRKEY(idx, key[1].dttk_value, 0);
 			key[1].dttk_size = 0;
 			v = &vstate->dtvs_tlocals[id];
 
@@ -6937,7 +6945,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			key[nkeys++].dttk_size = 0;
 
 			if (DIF_INSTR_OP(instr) == DIF_OP_LDTAA) {
-				DTRACE_TLS_THRKEY(key[nkeys].dttk_value);
+				DTRACE_TLS_THRKEY(idx, key[nkeys].dttk_value, 0);
 				key[nkeys++].dttk_size = 0;
 				VERIFY(id < vstate->dtvs_ntlocals);
 				v = &vstate->dtvs_tlocals[id];
@@ -6979,7 +6987,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			key[nkeys++].dttk_size = 0;
 
 			if (DIF_INSTR_OP(instr) == DIF_OP_STTAA) {
-				DTRACE_TLS_THRKEY(key[nkeys].dttk_value);
+				DTRACE_TLS_THRKEY(idx, key[nkeys].dttk_value, 0);
 				key[nkeys++].dttk_size = 0;
 				VERIFY(id < vstate->dtvs_ntlocals);
 				v = &vstate->dtvs_tlocals[id];
@@ -7512,7 +7520,8 @@ dtrace_distributed_probe(const char *instance, dtrace_id_t id,
 	dtrace_action_t *act;
 	intptr_t offs;
 	size_t size;
-	uint32_t idx, dtrace_nprobes;
+	dtrace_instance_id_t idx;
+	uint32_t dtrace_nprobes;
 	int vtime, onintr, error;
 	volatile uint16_t *flags;
 	hrtime_t now;
@@ -7781,7 +7790,7 @@ dtrace_distributed_probe(const char *instance, dtrace_id_t id,
 			dtrace_difo_t *dp = pred->dtp_difo;
 			uint64_t rval;
 
-			rval = dtrace_dif_emulate(dp, &mstate, vstate, state);
+			rval = dtrace_dif_emulate(idx, dp, &mstate, vstate, state);
 
 			if (!(*flags & CPU_DTRACE_ERROR) && !rval) {
 				dtrace_cacheid_t cid = probe->dtpr_predcache;
@@ -7814,7 +7823,7 @@ dtrace_distributed_probe(const char *instance, dtrace_id_t id,
 				agg = (dtrace_aggregation_t *)act;
 
 				if ((dp = act->dta_difo) != NULL)
-					v = dtrace_dif_emulate(dp,
+					v = dtrace_dif_emulate(idx, dp,
 					    &mstate, vstate, state);
 
 				if (*flags & CPU_DTRACE_ERROR)
@@ -7908,7 +7917,7 @@ dtrace_distributed_probe(const char *instance, dtrace_id_t id,
 			dp = act->dta_difo;
 			ASSERT(dp != NULL);
 
-			val = dtrace_dif_emulate(dp, &mstate, vstate, state);
+			val = dtrace_dif_emulate(idx, dp, &mstate, vstate, state);
 
 			if (*flags & CPU_DTRACE_ERROR)
 				continue;
@@ -8227,7 +8236,8 @@ dtrace_vtdtr_enable(void *xsc)
 	dtrace_instance_t *is;
 	dtrace_provider_t *pv;
 	dtrace_probe_t *probe, **dtrace_probes;
-	uint32_t dtrace_nprobes, idx, i;
+	uint32_t dtrace_nprobes, i;
+	dtrace_instance_id_t idx;
 
 	if (xsc == NULL)
 		return;
@@ -8589,10 +8599,10 @@ dtrace_strcmp_pc(const char *s, const char *p)
  * be handled with great care. They are used in order to look up which probe
  * array is to be indexed based on a probe instance.
  */
-static uint32_t
+static dtrace_instance_id_t
 dtrace_instance_lookup_id(const char *s)
 {
-	uint32_t idx;
+	dtrace_instance_id_t idx;
 	uint32_t hash_res;
 	uint32_t i = 0;
 	const uint32_t c1 = 2;
@@ -8613,7 +8623,7 @@ dtrace_instance_lookup_id(const char *s)
 static dtrace_probe_t **
 dtrace_instance_lookup_probes(const char *s)
 {
-	uint32_t idx;
+	dtrace_instance_id_t idx;
 	idx = dtrace_instance_lookup_id(s);
 	return (dtrace_istc_probes[idx]);
 }
@@ -8969,7 +8979,7 @@ dtrace_match(const dtrace_probekey_t *pkp, uint32_t priv, uid_t uid,
 	dtrace_hash_t *hash = NULL;
 	int len, best = INT_MAX, nmatched = 0;
 	uint32_t dtrace_nprobes;
-	uint32_t idx;
+	dtrace_instance_id_t idx;
 	dtrace_id_t i;
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
@@ -9459,7 +9469,7 @@ dtrace_priv_unregister(dtrace_provider_id_t id, uint8_t recursing)
 	int i, self = 0, noreap = 0, error;
 	dtrace_probe_t *probe, *first = NULL;
 	dtrace_probe_t **dtrace_probes;
-	uint32_t idx;
+	dtrace_instance_id_t idx;
 	uint32_t dtrace_nprobes;
 
 	if (old->dtpv_pops.dtps_enable ==
@@ -9807,7 +9817,7 @@ dtrace_condense(dtrace_provider_id_t id)
 	dtrace_probe_t *probe;
 	dtrace_probe_t **dtrace_probes;
 	struct unrhdr *dtrace_arena;
-	uint32_t idx;
+	dtrace_instance_id_t idx;
 	uint32_t dtrace_nprobes;
 
 	/*
@@ -9895,7 +9905,7 @@ dtrace_probe_create(dtrace_provider_id_t prov, const char *mod,
 	dtrace_provider_t *provider = (dtrace_provider_t *)prov;
 	dtrace_id_t id;
 	struct unrhdr *dtrace_arena;
-	uint32_t idx;
+	dtrace_instance_id_t idx;
 	uint32_t dtrace_nprobes;
 
 
@@ -10005,7 +10015,7 @@ dtrace_probe_create(dtrace_provider_id_t prov, const char *mod,
 }
 
 static dtrace_probe_t *
-dtrace_probe_lookup_id(uint32_t idx, dtrace_id_t id)
+dtrace_probe_lookup_id(dtrace_instance_id_t idx, dtrace_id_t id)
 {
 	dtrace_probe_t **dtrace_probes;
 	uint32_t dtrace_nprobes;
@@ -10072,7 +10082,7 @@ dtrace_probe_arg(dtrace_provider_id_t id, dtrace_id_t pid)
 {
 	dtrace_probe_t *probe;
 	dtrace_provider_t *prov = (dtrace_provider_t *)id;
-	uint32_t idx;
+	dtrace_instance_id_t idx;
 	void *rval = NULL;
 
 	mutex_enter(&dtrace_lock);
@@ -10192,7 +10202,7 @@ dtrace_probe_foreach(uintptr_t offs)
 	dtrace_probe_t *probe;
 	dtrace_probe_t **dtrace_probes;
 	dtrace_icookie_t cookie;
-	uint32_t idx;
+	dtrace_instance_id_t idx;
 	uint32_t dtrace_nprobes;
 	int i;
 
@@ -14043,7 +14053,7 @@ dtrace_enabling_reap(void)
 	dtrace_probe_t **dtrace_probes;
 	dtrace_ecb_t *ecb;
 	hrtime_t when;
-	uint32_t idx;
+	dtrace_instance_id_t idx;
 	uint32_t dtrace_nprobes;
 	int i;
 
@@ -16495,7 +16505,7 @@ dtrace_probeid_enable(dtrace_id_t id)
 	dtrace_state_t *state;
 	dtrace_actdesc_t *adesc;
 	const char *host = "host";
-	uint32_t idx;
+	dtrace_instance_id_t idx;
 	int error;
 
 	error = 0;
@@ -16542,7 +16552,7 @@ dtrace_probeid_disable(dtrace_id_t id)
 	dtrace_state_t *state;
 	dtrace_action_t *act;
 	const char *host = "host";
-	uint32_t idx;
+	dtrace_instance_id_t idx;
 	int error;
 
 	mutex_enter(&cpu_lock);
@@ -16787,7 +16797,10 @@ dtrace_helper(int which, dtrace_mstate_t *mstate,
 	dtrace_helper_action_t *helper;
 	dtrace_vstate_t *vstate;
 	dtrace_difo_t *pred;
+	dtrace_instance_id_t idx;
 	int i, trace = dtrace_helptrace_buffer != NULL;
+
+	idx = dtrace_instance_lookup_id("host");
 
 	ASSERT(which >= 0 && which < DTRACE_NHELPER_ACTIONS);
 
@@ -16815,7 +16828,7 @@ dtrace_helper(int which, dtrace_mstate_t *mstate,
 			if (trace)
 				dtrace_helper_trace(helper, mstate, vstate, 0);
 
-			if (!dtrace_dif_emulate(pred, mstate, vstate, state))
+			if (!dtrace_dif_emulate(idx, pred, mstate, vstate, state))
 				goto next;
 
 			if (*flags & CPU_DTRACE_FAULT)
@@ -16827,7 +16840,7 @@ dtrace_helper(int which, dtrace_mstate_t *mstate,
 				dtrace_helper_trace(helper,
 				    mstate, vstate, i + 1);
 
-			rval = dtrace_dif_emulate(helper->dtha_actions[i],
+			rval = dtrace_dif_emulate(idx, helper->dtha_actions[i],
 			    mstate, vstate, state);
 
 			if (*flags & CPU_DTRACE_FAULT)
@@ -17815,7 +17828,7 @@ dtrace_module_unloaded(modctl_t *ctl, int *error)
 	char modname[DTRACE_MODNAMELEN];
 	size_t len;
 #endif
-	uint32_t idx;
+	dtrace_instance_id_t idx;
 
 #ifdef illumos
 	template.dtpr_mod = ctl->mod_modname;
@@ -18866,7 +18879,7 @@ dtrace_ioctl(dev_t dev, int cmd, intptr_t arg, int md, cred_t *cr, int *rv)
 		dtrace_id_t i;
 		int m = 0;
 		uint32_t priv;
-		uint32_t idx;
+		dtrace_instance_id_t idx;
 		uint32_t dtrace_nprobes;
 		uid_t uid;
 		zoneid_t zoneid;
@@ -18952,7 +18965,7 @@ dtrace_ioctl(dev_t dev, int cmd, intptr_t arg, int md, cred_t *cr, int *rv)
 		dtrace_probe_t *probe;
 		dtrace_probe_t **dtrace_probes;
 		dtrace_provider_t *prov;
-		uint32_t idx;
+		dtrace_instance_id_t idx;
 		uint32_t dtrace_nprobes;
 
 		if (copyin((void *)arg, &desc, sizeof (desc)) != 0)
