@@ -40,6 +40,8 @@
 #include <machine/vmm.h>
 #include <machine/vmm_dtrace.h>
 
+#include <machine/bhyve_hypercall.h>
+
 /*
  * Identifying information of a probe
  */
@@ -82,9 +84,7 @@ static void	vmmdt_free_vmdtree(struct vmdtree *);
 static int	vmmdt_add_probe(const char *, int);
 static int	vmmdt_rm_probe(const char *, int);
 static int	vmmdt_enabled(const char *, int);
-static void	vmmdt_fire_probe(const char *, int,
-           	    uintptr_t, uintptr_t, uintptr_t,
-		    uintptr_t, uintptr_t);
+static void	vmmdt_fire_probe(const char *, int, struct hypercall_args *);
 static struct vmdtree * vmmdt_hash_lookup(const char *, uint32_t *);
 static int	vmmdt_probe_cmp(struct vmmdt_probe *, struct vmmdt_probe *);
 
@@ -338,13 +338,18 @@ vmmdt_enabled(const char *vm, int probeid)
 }
 
 static  __inline void
-vmmdt_fire_probe(const char *vm, int probeid,
-    uintptr_t arg0, uintptr_t arg1, uintptr_t arg2,
-    uintptr_t arg3, uintptr_t arg4)
+vmmdt_fire_probe(const char *vm, struct hypercall_args *args)
 {
+	/*
+	 * Here we pass in everything to dtvirt.
+	 *
+	 * XXX(dstolfa): This might make no sense in the new architecture
+	 */
 	/*if (vmmdt_enabled(vm, probeid))*/
-	dtvirt_hook_commit(vm, probeid, arg0, arg1,
-	    arg2, arg3, arg4);
+	/*
+	dtvirt_hook_commit(vm, probeid, args);
+	*/
+	dtvirt_hook_commit(vm, args);
 }
 
 static struct vmdtree *

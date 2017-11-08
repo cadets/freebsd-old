@@ -238,8 +238,7 @@ int	(*vmmdt_hook_add)(const char *, int);
 int	(*vmmdt_hook_rm)(const char *, int);
 void	(*vmmdt_hook_enable)(const char *, int);
 void	(*vmmdt_hook_disable)(const char *, int);
-void	(*vmmdt_hook_fire_probe)(const char *, int,
-    	    uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t);
+void	(*vmmdt_hook_fire_probe)(const char *, int, struct hypercall_args *);
 uint64_t (*vmmdt_hook_valueof)(const char *, int, int);
 void	(*vmmdt_hook_setargs)(const char *, int, const uint64_t[VMMDT_MAXARGS]);
 
@@ -1775,28 +1774,50 @@ static int64_t
 hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
     uint64_t *args, struct vm_guest_paging *paging)
 {
-	/*
-	 * TODO:
-	 * (1) Get the information of data structures from the DTvirt layer.
-	 * (2) Load each of the arguments in using the base + length approach
-	 * (3) Call dtrace_distributed_probe() from the host context
-	 */
 	struct seg_desc ds_desc;
+	struct hypercall_args h_args;
 	int error, probeid;
+	char *execname;
+	size_t opt_strsize;
 
+	/*
+	 * We need this for copyin (in theory)
+	 */
 	error = vm_get_seg_desc(vm, vcpuid, VM_REG_GUEST_DS, &ds_desc);
 	KASSERT(error == 0, ("%s: error %d getting DS descriptor",
 	    __func__, error));
 
+	error = HYPERCALL_RET_SUCCESS;
+
 	/*
-	error = hypercall_copy_arg(vm, vcpuid, ds_desc.base, w0t,
-	    sizeof(int), paging, &probeid);
-	*/
+	 * We now copy the rest of the hypercall arguments.
+	 */
+	error = hypercall_copy_arg(vm, vcpuid, ds_desc.base, args[0],
+	    sizeof(struct hypercall_args), paging, &h_args);
 
-	probeid = (int) args[0];
+	if (error)
+		return (error);
 
-	vmmdt_hook_fire_probe(vm->name, probeid, 0, 0, 0, 0, 0);
-	return (HYPERCALL_RET_SUCCESS);
+	/*
+	 * Get the configured strsize from DTrace
+	 */
+
+	execname = malloc(opt_strsize, M_VM, M_ZERO | M_NOWAIT);
+	if (execname == NULL)
+		return (HYPERCALL_RET_ERROR);
+
+	h_args.execname = execname;
+
+	error = hypercall_copy_arg(vm, vcpuid, ds_desc.base, h_args.execname,
+	    opt_strsize, paging, execname);
+
+	if (error)
+		return (error);
+
+	vmmdt_hook_fire_probe(vm->name, probeid, NULL);
+
+	free(execname, M_VM);
+	return (error);
 }
 
 int

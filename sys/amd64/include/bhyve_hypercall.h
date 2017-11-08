@@ -42,6 +42,34 @@
 #include <sys/stdint.h>
 #include <machine/cpufunc.h>
 
+#include <sys/types.h>
+
+/*
+ * Hierarchical structure with hypercall arguments. It contains the hypercall
+ * identifier and hypercall-specific arguments packed into a union of types.
+ */
+struct hypercall_args {
+	union {
+		struct {
+			int probeid;
+			uintptr_t args[10];
+			lwpid_t tid;
+			/* XXX(dstolfa): Do we have to copyin here */
+			char *execname;
+			uint32_t stackdepth;
+			/*
+			 * FIXME: Needs usym for this -- not sure how to do it.
+			 */
+			uint64_t ucaller;
+			pid_t ppid;
+			uid_t uid;
+			gid_t gid;
+			int errno;
+			struct pargs execargs; /* We fill this directly */
+		} dt;
+	} u;
+};
+
 /*
  * Arguments are only specified in this header file.
  * Do not move the arguments around in the assembly

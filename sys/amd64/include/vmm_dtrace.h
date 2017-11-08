@@ -28,8 +28,9 @@
 
 #define	VMMDT_MAXARGS		5
 
+struct hypercall_args;
+
 extern int	(*vmmdt_hook_add)(const char *, int);
 extern int	(*vmmdt_hook_rm)(const char *, int);
 extern void	(*vmmdt_hook_fire_probe)(const char *, int,
-          	    uintptr_t, uintptr_t, uintptr_t,
-		    uintptr_t, uintptr_t);
+		    struct hypercall_args *);

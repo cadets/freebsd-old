@@ -2260,6 +2260,7 @@ extern int dtrace_probeid_enable(dtrace_id_t id);
 extern int dtrace_probeid_disable(dtrace_id_t id);
 
 extern void dtrace_vtdtr_enable(void *xsc);
+extern size_t dtraceopt_strsize(void);
 
 /*
  * DTrace Meta Provider API
