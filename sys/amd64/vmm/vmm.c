@@ -1817,7 +1817,7 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 	/*
 	 * TODO: Fill the hypercall_args structure.
 	 */
-	vmmdt_hook_fire_probe(vm->name, NULL);
+	vmmdt_hook_fire_probe(vm->name, &h_args);
 
 	free(execname, M_VM);
 	return (error);

@@ -1050,8 +1050,8 @@ end:
 		/*
 		 * TODO: Fill in these types.
 		 */
-		char types[DTRACE_ARGTYPELEN][10];
-		int retval;
+		char types[10][DTRACE_ARGTYPELEN];
+		int retval, i;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_PROBECREATE\n",__func__,__LINE__);
 
@@ -1070,38 +1070,17 @@ end:
 			return (retval);
 		}
 
-		/*
-		argsiz = kmem_zalloc(nargs * sizeof (size_t), KM_SLEEP);
-
-		if (copyin((void *)pbd->vpbd_argsiz, argsiz,
-		    nargs * sizeof (size_t)) != 0)  {
-			kmem_free(argsiz, nargs * sizeof (size_t));
-
-			return (EFAULT);
-		}
-
-		argtypes = kmem_zalloc(nargs * DTRACE_ARGTYPELEN, KM_SLEEP);
-
-		if (copyin((void *)pbd->vpbd_args, argtypes,
-		    DTRACE_ARGTYPELEN * nargs) != 0) {
-			kmem_free(argtypes, nargs * DTRACE_ARGTYPELEN);
-			kmem_free(argsiz, nargs * sizeof (size_t));
-
-			return (EFAULT);
-		}
-		*/
-
 		bcopy(pbd->vpbd_mod, mod, DTRACE_MODNAMELEN);
 		bcopy(pbd->vpbd_func, func, DTRACE_FUNCNAMELEN);
 		bcopy(pbd->vpbd_name, name, DTRACE_NAMELEN);
+		for (i = 0; i < 10; i++) {
+			pbd->vpbd_types[i][DTRACE_ARGTYPELEN - 1] = '\0';
+			bcopy(pbd->vpbd_types, types[i], DTRACE_ARGTYPELEN);
+		}
 
 		retval = dtvirt_hook_create(puuid, mod, func, name, types);
 
 		kmem_free(puuid, sizeof (struct uuid));
-		/*
-		kmem_free(argsiz, nargs * sizeof (size_t));
-		kmem_free(argtypes, nargs * DTRACE_ARGTYPELEN);
-		*/
 		return (retval);
 	}
 	case DTRACEIOC_PROVDESTROY: {

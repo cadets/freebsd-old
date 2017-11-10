@@ -54,16 +54,16 @@
  */
 #define CPARGS(infl, hargs) \
 	do { \
-		memcpy(infl->args, hargs->u.dt.args, 10*sizeof(uintptr_t)); \
-		infl->n_args = hargs->u.dt.n_args; \
-		infl->tid = hargs->u.dt.tid; \
-		infl->execname = strdup(hargs->u.dt.execname, M_DTVIRT); \
-		infl->ucaller = hargs->u.dt.ucaller; \
-		infl->ppid = hargs->u.dt.ppid; \
-		infl->uid = hargs->u.dt.uid; \
-		infl->gid = hargs->u.dt.gid; \
-		infl->errno = hargs->u.dt.errno; \
-		memcpy(&infl->execargs, &hargs->u.dt.execargs, sizeof(struct pargs)); \
+		memcpy((infl)->args, (hargs)->u.dt.args, DTVIRT_MAXARGS*sizeof(uintptr_t)); \
+		(infl)->n_args = (hargs)->u.dt.n_args; \
+		(infl)->tid = (hargs)->u.dt.tid; \
+		(infl)->execname = strdup((hargs)->u.dt.execname, M_DTVIRT); \
+		(infl)->ucaller = (hargs)->u.dt.ucaller; \
+		(infl)->ppid = (hargs)->u.dt.ppid; \
+		(infl)->uid = (hargs)->u.dt.uid; \
+		(infl)->gid = (hargs)->u.dt.gid; \
+		(infl)->errno = (hargs)->u.dt.errno; \
+		memcpy(&(infl)->execargs, &(hargs)->u.dt.execargs, sizeof(struct pargs)); \
 	} while (0)
 
 /*
@@ -115,7 +115,7 @@ static void dtvirt_load(void);
 static void dtvirt_unload(void);
 static void dtvirt_commit(const char *, struct hypercall_args *);
 static int dtvirt_probe_create(struct uuid *, const char *, const char *,
-    const char *, char types[DTRACE_ARGTYPELEN][DTVIRT_MAXARGS]);
+    const char *, char types[DTVIRT_MAXARGS][DTRACE_ARGTYPELEN]);
 static int dtvirt_provider_register(const char *,
     const char *, struct uuid *,
     dtrace_pattr_t *, uint32_t, dtrace_pops_t *);
@@ -296,7 +296,7 @@ dtvirt_commit(const char *vm, struct hypercall_args *args)
 
 static int
 dtvirt_probe_create(struct uuid *uuid, const char *mod, const char *func,
-    const char *name, char types[DTRACE_ARGTYPELEN][DTVIRT_MAXARGS])
+    const char *name, char types[DTVIRT_MAXARGS][DTRACE_ARGTYPELEN])
 {
 	struct dtvirt_probe *virt_probe;
 	struct dtvirt_prov *prov, tmp;

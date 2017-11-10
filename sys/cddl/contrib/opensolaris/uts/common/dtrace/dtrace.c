@@ -376,7 +376,7 @@ int	(*dtvirt_hook_register)(const char *, const char *,
    	    struct uuid *, dtrace_pattr_t *, uint32_t, dtrace_pops_t *);
 int	(*dtvirt_hook_unregister)(struct uuid *);
 int	(*dtvirt_hook_create)(struct uuid *, const char *, const char *,
-   	    const char *, char types[DTRACE_ARGTYPELEN][10]);
+   	    const char *, char types[10][DTRACE_ARGTYPELEN]);
 void	(*dtvirt_hook_enable)(void *, dtrace_id_t, void *);
 void	(*dtvirt_hook_disable)(void *, dtrace_id_t, void *);
 void	(*dtvirt_hook_getargdesc)(void *, dtrace_id_t, void *, dtrace_argdesc_t *);

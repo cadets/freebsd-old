@@ -1338,13 +1338,13 @@ typedef struct dtrace_virt_providerdesc {
 } dtrace_virt_providerdesc_t;
 
 typedef struct dtrace_virt_probedesc {
-	char			(*vpbd_args)[DTRACE_ARGTYPELEN];
-	size_t			*vpbd_argsiz;
-	struct uuid		*vpbd_uuid;
-	char			vpbd_mod[DTRACE_MODNAMELEN];
-	char			vpbd_func[DTRACE_FUNCNAMELEN];
-	char			vpbd_name[DTRACE_NAMELEN];
-	uint8_t			vpbd_nargs;
+	size_t *vpbd_argsiz;
+	struct uuid *vpbd_uuid;
+	char vpbd_mod[DTRACE_MODNAMELEN];
+	char vpbd_func[DTRACE_FUNCNAMELEN];
+	char vpbd_name[DTRACE_NAMELEN];
+	char vpbd_types[10][DTRACE_ARGTYPELEN];
+	uint8_t vpbd_nargs;
 } dtrace_virt_probedesc_t;
 
 typedef struct dtrace_instance_info {
