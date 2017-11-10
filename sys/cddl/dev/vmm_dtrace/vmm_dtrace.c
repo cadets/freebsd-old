@@ -84,7 +84,7 @@ static void	vmmdt_free_vmdtree(struct vmdtree *);
 static int	vmmdt_add_probe(const char *, int);
 static int	vmmdt_rm_probe(const char *, int);
 static int	vmmdt_enabled(const char *, int);
-static void	vmmdt_fire_probe(const char *, int, struct hypercall_args *);
+static void	vmmdt_fire_probe(const char *, struct hypercall_args *);
 static struct vmdtree * vmmdt_hash_lookup(const char *, uint32_t *);
 static int	vmmdt_probe_cmp(struct vmmdt_probe *, struct vmmdt_probe *);
 

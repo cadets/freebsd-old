@@ -30,18 +30,17 @@
 
 struct hypercall_args;
 
-extern void (*dtvirt_hook_commit)(const char *, dtrace_id_t,
-    struct hypercall_args *);
+extern void (*dtvirt_hook_commit)(const char *, struct hypercall_args *);
 extern int (*dtvirt_hook_register)(const char *, const char *,
     struct uuid *, dtrace_pattr_t *, uint32_t, dtrace_pops_t *);
 extern int (*dtvirt_hook_unregister)(struct uuid *);
 extern int (*dtvirt_hook_create)(struct uuid *, const char *, const char *,
-    const char *);
+    const char *, char types[DTRACE_ARGTYPELEN][10]);
 extern void (*dtvirt_hook_enable)(void *, dtrace_id_t, void *);
 extern void (*dtvirt_hook_disable)(void *, dtrace_id_t, void *);
 extern void (*dtvirt_hook_getargdesc)(void *, dtrace_id_t,
     void *, dtrace_argdesc_t *);
-extern uint64_t (*dtvirt_hook_getargval)(void *, dtrace_id_t,
+extern uint64_t (*dtvirt_hook_getargval)(void *, dtvirt_nonce_t,
     void *, uint64_t, int);
 extern void (*dtvirt_hook_destroy)(void *, dtrace_id_t, void *);
 

@@ -238,7 +238,7 @@ int	(*vmmdt_hook_add)(const char *, int);
 int	(*vmmdt_hook_rm)(const char *, int);
 void	(*vmmdt_hook_enable)(const char *, int);
 void	(*vmmdt_hook_disable)(const char *, int);
-void	(*vmmdt_hook_fire_probe)(const char *, int, struct hypercall_args *);
+void	(*vmmdt_hook_fire_probe)(const char *, struct hypercall_args *);
 uint64_t (*vmmdt_hook_valueof)(const char *, int, int);
 void	(*vmmdt_hook_setargs)(const char *, int, const uint64_t[VMMDT_MAXARGS]);
 
@@ -1776,9 +1776,9 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 {
 	struct seg_desc ds_desc;
 	struct hypercall_args h_args;
-	int error, probeid;
+	int error;
 	char *execname;
-	size_t opt_strsize;
+	size_t opt_strsize = 0;
 
 	/*
 	 * We need this for copyin (in theory)
@@ -1806,15 +1806,18 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 	if (execname == NULL)
 		return (HYPERCALL_RET_ERROR);
 
-	h_args.execname = execname;
-
-	error = hypercall_copy_arg(vm, vcpuid, ds_desc.base, h_args.execname,
-	    opt_strsize, paging, execname);
+	error = hypercall_copy_arg(vm, vcpuid, ds_desc.base,
+			(uintptr_t)h_args.u.dt.execname, opt_strsize, paging, execname);
 
 	if (error)
 		return (error);
 
-	vmmdt_hook_fire_probe(vm->name, probeid, NULL);
+	h_args.u.dt.execname = execname;
+
+	/*
+	 * TODO: Fill the hypercall_args structure.
+	 */
+	vmmdt_hook_fire_probe(vm->name, NULL);
 
 	free(execname, M_VM);
 	return (error);

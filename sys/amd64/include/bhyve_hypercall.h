@@ -53,6 +53,7 @@ struct hypercall_args {
 		struct {
 			int probeid;
 			uintptr_t args[10];
+			size_t n_args;
 			lwpid_t tid;
 			/* XXX(dstolfa): Do we have to copyin here */
 			char *execname;

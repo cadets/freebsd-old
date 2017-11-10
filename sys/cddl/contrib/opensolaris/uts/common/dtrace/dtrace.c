@@ -369,18 +369,18 @@ static void
 dtrace_virtop(void)
 {}
 
-void	(*dtvirt_hook_commit)(const char *, dtrace_id_t,
-            uintptr_t, uintptr_t, uintptr_t,
-	    uintptr_t, uintptr_t);
+struct hypercall_args;
+
+void	(*dtvirt_hook_commit)(const char *, struct hypercall_args *);
 int	(*dtvirt_hook_register)(const char *, const char *,
    	    struct uuid *, dtrace_pattr_t *, uint32_t, dtrace_pops_t *);
 int	(*dtvirt_hook_unregister)(struct uuid *);
 int	(*dtvirt_hook_create)(struct uuid *, const char *, const char *,
-   	    const char *);
+   	    const char *, char types[DTRACE_ARGTYPELEN][10]);
 void	(*dtvirt_hook_enable)(void *, dtrace_id_t, void *);
 void	(*dtvirt_hook_disable)(void *, dtrace_id_t, void *);
 void	(*dtvirt_hook_getargdesc)(void *, dtrace_id_t, void *, dtrace_argdesc_t *);
-uint64_t (*dtvirt_hook_getargval)(void *, dtrace_id_t, void *, uint64_t, int);
+uint64_t (*dtvirt_hook_getargval)(void *, dtvirt_nonce_t, void *, uint64_t, int);
 void	(*dtvirt_hook_destroy)(void *, dtrace_id_t, void *);
 
 void	(*vtdtr_advertise_prov)(void *, const char *, struct uuid *);
@@ -7511,8 +7511,8 @@ dtrace_store_by_ref(dtrace_difo_t *dp, caddr_t tomax, size_t size,
  * subsequent probe-context DTrace activity emanates.
  */
 void
-dtrace_distributed_probe(const char *instance, dtrace_id_t id,
-    uintptr_t arg0, uintptr_t arg1, uintptr_t arg2,
+dtrace_distributed_probe(const char *instance, dtvirt_nonce_t nonce,
+    dtrace_id_t id, uintptr_t arg0, uintptr_t arg1, uintptr_t arg2,
     uintptr_t arg3, uintptr_t arg4)
 {
 	processorid_t cpuid;
@@ -8225,7 +8225,7 @@ __inline void
 dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4)
 {
-	dtrace_distributed_probe("host", id, arg0, arg1,
+	dtrace_distributed_probe("host", 0, id, arg0, arg1,
 	    arg2, arg3, arg4);
 }
 

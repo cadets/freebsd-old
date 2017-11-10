@@ -1047,6 +1047,10 @@ end:
 		char mod[DTRACE_MODNAMELEN];
 		char func[DTRACE_FUNCNAMELEN];
 		char name[DTRACE_NAMELEN];
+		/*
+		 * TODO: Fill in these types.
+		 */
+		char types[DTRACE_ARGTYPELEN][10];
 		int retval;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_PROBECREATE\n",__func__,__LINE__);
@@ -1068,7 +1072,7 @@ end:
 
 		/*
 		argsiz = kmem_zalloc(nargs * sizeof (size_t), KM_SLEEP);
-		
+
 		if (copyin((void *)pbd->vpbd_argsiz, argsiz,
 		    nargs * sizeof (size_t)) != 0)  {
 			kmem_free(argsiz, nargs * sizeof (size_t));
@@ -1091,7 +1095,7 @@ end:
 		bcopy(pbd->vpbd_func, func, DTRACE_FUNCNAMELEN);
 		bcopy(pbd->vpbd_name, name, DTRACE_NAMELEN);
 
-		retval = dtvirt_hook_create(puuid, mod, func, name);
+		retval = dtvirt_hook_create(puuid, mod, func, name, types);
 
 		kmem_free(puuid, sizeof (struct uuid));
 		/*

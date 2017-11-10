@@ -54,19 +54,17 @@
  */
 #define CPARGS(infl, hargs) \
 	do { \
-		memcpy(infl->args, hargs->args, 10*sizeof(uintptr_t)); \
-		infl->n_args = hargs->n_args; \
-		infl->tid = hargs->tid; \
-		infl->execname = strdup(hargs->execname, M_DTVIRT); \
-		infl->ucaller = hargs->ucaller; \
-		infl->ppid = hargs->ppid; \
-		infl->uid = hargs->uid; \
-		infl->gid = hargs->gid; \
-		infl->errno = hargs->errno; \
-		memcpy(infl->execargs, hargs->execargs, sizeof(struct pargs)); \
+		memcpy(infl->args, hargs->u.dt.args, 10*sizeof(uintptr_t)); \
+		infl->n_args = hargs->u.dt.n_args; \
+		infl->tid = hargs->u.dt.tid; \
+		infl->execname = strdup(hargs->u.dt.execname, M_DTVIRT); \
+		infl->ucaller = hargs->u.dt.ucaller; \
+		infl->ppid = hargs->u.dt.ppid; \
+		infl->uid = hargs->u.dt.uid; \
+		infl->gid = hargs->u.dt.gid; \
+		infl->errno = hargs->u.dt.errno; \
+		memcpy(&infl->execargs, &hargs->u.dt.execargs, sizeof(struct pargs)); \
 	} while (0)
-
-typedef uintptr_t dtvirt_nonce_t;
 
 /*
  * Quick note as to why we have a type list and not a probe list. When we
@@ -78,7 +76,7 @@ typedef uintptr_t dtvirt_nonce_t;
  */
 struct dtvirt_typelist {
 	char native_type[DTRACE_ARGTYPELEN]; /* The type itself */
-	LIST_ENTRY(dtvirt_type_list) next; /* Next pointer */
+	LIST_ENTRY(dtvirt_typelist) next; /* Next pointer */
 	size_t probe_count; /* Number of probes that exist */
 };
 
@@ -115,9 +113,9 @@ struct dtvirt_probe {
 
 static void dtvirt_load(void);
 static void dtvirt_unload(void);
-static void dtvirt_commit(const char *, dtrace_id_t, struct hypercall_args *);
+static void dtvirt_commit(const char *, struct hypercall_args *);
 static int dtvirt_probe_create(struct uuid *, const char *, const char *,
-    const char *);
+    const char *, char types[DTRACE_ARGTYPELEN][DTVIRT_MAXARGS]);
 static int dtvirt_provider_register(const char *,
     const char *, struct uuid *,
     dtrace_pattr_t *, uint32_t, dtrace_pops_t *);
@@ -126,13 +124,13 @@ static int dtvirt_provider_unregister(struct uuid *);
 static void dtvirt_enable(void *, dtrace_id_t, void *);
 static void dtvirt_disable(void *, dtrace_id_t, void *);
 static void dtvirt_getargdesc(void *,
-    dtvirt_nonce_t, void *, dtrace_argdesc_t *);
+    dtrace_id_t, void *, dtrace_argdesc_t *);
 static uint64_t dtvirt_getargval(void *, dtvirt_nonce_t, void *, uint64_t, int);
-static void dtvirt_destroy(void *, dtvirt_nonce_t, void *);
+static void dtvirt_destroy(void *, dtrace_id_t, void *);
 static int dtvirt_prov_cmp(struct dtvirt_prov *, struct dtvirt_prov *);
 
 struct mtx dtvirt_typelist_mtx;
-LIST_HEAD(dtvirt_tlist, dtvirt_typelist) dtvirt_type_list =
+LIST_HEAD(, dtvirt_typelist) dtvirt_type_list =
     LIST_HEAD_INITIALIZER(_dtvirt_typelist);
 
 struct mtx dtvirt_provtree_mtx;
@@ -255,7 +253,7 @@ dtvirt_add_inflight(struct hypercall_args *args)
 	 * In case we can't allocate this -- too many probes firing.
 	 */
 	if (inflight == NULL)
-		return (NULL);
+		return ((uintptr_t)NULL);
 
 	CPARGS(inflight, args);
 
@@ -268,7 +266,7 @@ dtvirt_add_inflight(struct hypercall_args *args)
 static void
 dtvirt_remove_inflight(dtvirt_nonce_t nonce)
 {
-	struct dtvirt_inflight *probe
+	struct dtvirt_inflight *probe;
 
 	probe = (struct dtvirt_inflight *)nonce;
 
@@ -290,8 +288,9 @@ dtvirt_commit(const char *vm, struct hypercall_args *args)
 	dtvirt_nonce_t nonce;
 
 	nonce = dtvirt_add_inflight(args);
-	dtrace_distributed_probe(vm, nonce, args->dt.probeid, args->dt.args[0],
-	    args->dt.args[1], args->dt.args[2], args->dt.args[3], args->dt.args[4]);
+	dtrace_distributed_probe(vm, nonce, args->u.dt.probeid, args->u.dt.args[0],
+	    args->u.dt.args[1], args->u.dt.args[2], args->u.dt.args[3],
+	    args->u.dt.args[4]);
 	dtvirt_remove_inflight(nonce);
 }
 
@@ -303,6 +302,7 @@ dtvirt_probe_create(struct uuid *uuid, const char *mod, const char *func,
 	struct dtvirt_prov *prov, tmp;
 	struct uuid tmpuuid;
 	struct dtvirt_typelist *type;
+	size_t n;
 	dtrace_provider_id_t provid;
 	int i;
 
@@ -323,14 +323,7 @@ dtvirt_probe_create(struct uuid *uuid, const char *mod, const char *func,
 		return (ENOMEM);
 
 	virt_probe->enabled = 0;
-
-	n = strlcpy(virt_probe->vm,
-		prov->vm, DTRACE_INSTANCENAMELEN);
-
-	if (n >= DTRACE_INSTANCENAMELEN) {
-		free(virt_probe, M_DTVIRT);
-		return (ENOMEM);
-	}
+	virt_probe->provider = prov;
 
 	/*
 	 * FIXME: This should be optimized a bit eventually. Instead of going
@@ -341,8 +334,7 @@ dtvirt_probe_create(struct uuid *uuid, const char *mod, const char *func,
 	 */
 	mtx_lock(&dtvirt_typelist_mtx);
 	for (i = 0; i < DTVIRT_MAXARGS; i++) {
-		type = LIST_HEAD(&dtvirt_type_list);
-		for (type = LIST_HEAD(&dtvirt_type_list);
+		for (type = LIST_FIRST(&dtvirt_type_list);
 		    type != NULL; type = LIST_NEXT(type, next)) {
 			if (strcmp(type->native_type, types[i]) == 0)
 				break;
@@ -428,8 +420,8 @@ dtvirt_provider_register(const char *provname, const char *vm,
 	 */
 	if (n >= DTRACE_INSTANCENAMELEN) {
 		dtrace_unregister(provid);
-		free(prov->uuid);
-		free(prov);
+		free(prov->uuid, M_DTVIRT);
+		free(prov, M_DTVIRT);
 		return (EOVERFLOW);
 	}
 
@@ -488,7 +480,7 @@ dtvirt_enable(void *arg, dtrace_id_t id, void *parg)
 
 	virt_probe = (struct dtvirt_probe *) parg;
 	virt_probe->enabled = 1;
-	vmmdt_hook_add(virt_probe->vm, id);
+	vmmdt_hook_add(virt_probe->provider->vm, id);
 }
 
 static void
@@ -500,7 +492,7 @@ dtvirt_disable(void *arg, dtrace_id_t id, void *parg)
 
 	virt_probe = (struct dtvirt_probe *) parg;
 	virt_probe->enabled = 0;
-	vmmdt_hook_rm(virt_probe->vm, id);
+	vmmdt_hook_rm(virt_probe->provider->vm, id);
 }
 
 static void
@@ -523,14 +515,16 @@ dtvirt_getargdesc(void *arg, dtrace_id_t id,
 	 */
 	struct dtvirt_probe *probe;
 	struct dtvirt_typelist *t;
+	size_t n;
 
 	KASSERT(parg, ("%s(%d): parg is NULL", __func__, __LINE__));
-	probe = (dtvirt_provider_t *) parg;
+	probe = (struct dtvirt_probe *) parg;
 
 	/*
-	 * Check if DTrace is being sane here.
+	 * Check if DTrace is being sane.
 	 */
-	if (adesc->dtargd_ndx > probe->n_args) {
+	t = probe->types[adesc->dtargd_ndx];
+	if (t->native_type[0] == '\0') {
 		adesc->dtargd_ndx = DTRACE_ARGNONE;
 		return;
 	}
@@ -538,7 +532,6 @@ dtvirt_getargdesc(void *arg, dtrace_id_t id,
 	/*
 	 * If so, let's give it a type.
 	 */
-	t = probe->types[adesc->dtargd_ndx];
 	n = strlcpy(adesc->dtargd_native, t->native_type,
 			sizeof(adesc->dtargd_native));
 
@@ -547,7 +540,7 @@ dtvirt_getargdesc(void *arg, dtrace_id_t id,
 	 * we will notify DTrace of an overflow.
 	 */
 	if (n >= sizeof(adesc->dtargd_native)) {
-		memcpy(adesc->dtargd_native, 0, sizeof(adesc->dtargd_native));
+		memset(adesc->dtargd_native, 0, sizeof(adesc->dtargd_native));
 		adesc->dtargd_ndx = DTRACE_ARGNONE;
 	}
 }
@@ -577,6 +570,7 @@ dtvirt_destroy(void *arg, dtrace_id_t id, void *parg)
 {
 	struct dtvirt_probe *virt_probe;
 	struct dtvirt_typelist *type;
+	int i;
 
 	KASSERT(parg != NULL, ("%s: parg is NULL", __func__));
 
@@ -584,7 +578,7 @@ dtvirt_destroy(void *arg, dtrace_id_t id, void *parg)
 	mtx_lock(&dtvirt_typelist_mtx);
 	for (i = 0, type = virt_probe->types[i]; i != DTVIRT_MAXARGS; i++)
 		if (--type->probe_count == 0) {
-			LIST_REMOVE(&dtvirt_type_list, type);
+			LIST_REMOVE(type, next);
 			free(type, M_DTVIRT);
 		}
 	mtx_unlock(&dtvirt_typelist_mtx);

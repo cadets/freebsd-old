@@ -105,6 +105,7 @@ typedef int64_t dtrace_aggvarid_t;	/* aggregation variable identifier */
 typedef uint16_t dtrace_actkind_t;	/* action kind */
 typedef int64_t dtrace_optval_t;	/* option value */
 typedef uint32_t dtrace_cacheid_t;	/* predicate cache identifier */
+typedef uintptr_t dtvirt_nonce_t; /* FIXME: This does not belong here */
 
 typedef enum dtrace_probespec {
 	DTRACE_PROBESPEC_NONE = -1,
@@ -1384,7 +1385,7 @@ typedef struct dtrace_instance_info {
 							/* provider query */
 #define	DTRACEIOC_PROBES	_IOWR('x',2,dtrace_probedesc_t)
 							/* probe query */
-#define	DTRACEIOC_BUFSNAP	_IOW('x',4,dtrace_bufdesc_t *)	
+#define	DTRACEIOC_BUFSNAP	_IOW('x',4,dtrace_bufdesc_t *)
 							/* snapshot buffer */
 #define	DTRACEIOC_PROBEMATCH	_IOWR('x',5,dtrace_probedesc_t)
 							/* match probes */
@@ -1408,13 +1409,13 @@ typedef struct {
 							/* start tracing */
 #define	DTRACEIOC_STOP		_IOWR('x',13,processorid_t)
 							/* stop tracing */
-#define	DTRACEIOC_AGGDESC	_IOW('x',15,dtrace_aggdesc_t *)	
+#define	DTRACEIOC_AGGDESC	_IOW('x',15,dtrace_aggdesc_t *)
 							/* get agg. desc. */
-#define	DTRACEIOC_FORMAT	_IOWR('x',16,dtrace_fmtdesc_t)	
+#define	DTRACEIOC_FORMAT	_IOWR('x',16,dtrace_fmtdesc_t)
 							/* get format str */
 #define	DTRACEIOC_DOFGET	_IOW('x',17,dof_hdr_t *)
 							/* get DOF */
-#define	DTRACEIOC_REPLICATE	_IOW('x',18,dtrace_repldesc_t)	
+#define	DTRACEIOC_REPLICATE	_IOW('x',18,dtrace_repldesc_t)
 							/* replicate enab */
 #define	DTRACEIOC_PROVCREATE	_IOWR('x',19,dtrace_virt_providerdesc_t)
 							/* create provider */
@@ -2254,8 +2255,9 @@ extern dtrace_id_t dtrace_probe_create(dtrace_provider_id_t, const char *,
 extern void *dtrace_probe_arg(dtrace_provider_id_t, dtrace_id_t);
 extern void dtrace_probe(dtrace_id_t, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4);
-extern void dtrace_distributed_probe(const char *, dtrace_id_t, uintptr_t arg0,
-    uintptr_t arg1, uintptr_t arg2, uintptr_t arg3, uintptr_t arg4);
+extern void dtrace_distributed_probe(const char *, dtvirt_nonce_t, dtrace_id_t,
+		uintptr_t arg0, uintptr_t arg1, uintptr_t arg2,
+    uintptr_t arg3, uintptr_t arg4);
 extern int dtrace_probeid_enable(dtrace_id_t id);
 extern int dtrace_probeid_disable(dtrace_id_t id);
 
