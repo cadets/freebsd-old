@@ -30,20 +30,20 @@
 
 struct hypercall_args;
 
-extern void	(*dtvirt_hook_commit)(const char *, dtrace_id_t,
-           	    struct hypercall_args *);
-extern int	(*dtvirt_hook_register)(const char *, const char *,
-          	    struct uuid *, dtrace_pattr_t *, uint32_t, dtrace_pops_t *);
-extern int	(*dtvirt_hook_unregister)(struct uuid *);
-extern int	(*dtvirt_hook_create)(struct uuid *, const char *, const char *,
-		const char *);
-extern void	(*dtvirt_hook_enable)(void *, dtrace_id_t, void *);
-extern void	(*dtvirt_hook_disable)(void *, dtrace_id_t, void *);
-extern void	(*dtvirt_hook_getargdesc)(void *, dtrace_id_t,
-           	    void *, dtrace_argdesc_t *);
-extern uint64_t	(*dtvirt_hook_getargval)(void *, dtrace_id_t,
-           	    void *, uint64_t, int);
-extern void	(*dtvirt_hook_destroy)(void *, dtrace_id_t, void *);
+extern void (*dtvirt_hook_commit)(const char *, dtrace_id_t,
+    struct hypercall_args *);
+extern int (*dtvirt_hook_register)(const char *, const char *,
+    struct uuid *, dtrace_pattr_t *, uint32_t, dtrace_pops_t *);
+extern int (*dtvirt_hook_unregister)(struct uuid *);
+extern int (*dtvirt_hook_create)(struct uuid *, const char *, const char *,
+    const char *);
+extern void (*dtvirt_hook_enable)(void *, dtrace_id_t, void *);
+extern void (*dtvirt_hook_disable)(void *, dtrace_id_t, void *);
+extern void (*dtvirt_hook_getargdesc)(void *, dtrace_id_t,
+    void *, dtrace_argdesc_t *);
+extern uint64_t (*dtvirt_hook_getargval)(void *, dtrace_id_t,
+    void *, uint64_t, int);
+extern void (*dtvirt_hook_destroy)(void *, dtrace_id_t, void *);
 
 /*
  * These operations need to be handled with great care. They are meant as a
@@ -52,6 +52,7 @@ extern void	(*dtvirt_hook_destroy)(void *, dtrace_id_t, void *);
 extern void dtps_virt_provide(void *, dtrace_probedesc_t *);
 extern void dtps_virt_enable(void *, dtrace_id_t, void *);
 extern void dtps_virt_disable(void *, dtrace_id_t, void *);
-extern void dtps_virt_getargdesc(void *, dtrace_id_t, void *, dtrace_argdesc_t *);
+extern void dtps_virt_getargdesc(void *, dtrace_id_t, void *,
+    dtrace_argdesc_t *);
 extern void dtps_virt_destroy(void *, dtrace_id_t, void *);
 

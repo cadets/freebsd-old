@@ -39,6 +39,7 @@
 
 #undef BITS
 #define BITS 8
+#define DTVIRT_MAXARGS 10
 
 /*
  * We use CPARGS to copy all of the hypercall arguments into the structure
@@ -65,7 +66,7 @@
 		memcpy(infl->execargs, hargs->execargs, sizeof(struct pargs)); \
 	} while (0)
 
-typedef dtrace_id_t dtvirt_nonce_t;
+typedef uintptr_t dtvirt_nonce_t;
 
 /*
  * Quick note as to why we have a type list and not a probe list. When we
@@ -76,38 +77,40 @@ typedef dtrace_id_t dtvirt_nonce_t;
  * argument when we are tracing.
  */
 struct dtvirt_typelist {
-	struct dtvirt_probe *probeid; /* Array holding all probes for this type */
 	char native_type[DTRACE_ARGTYPELEN]; /* The type itself */
-	struct dtvirt_typelist *next;
+	LIST_ENTRY(dtvirt_type_list) next; /* Next pointer */
+	size_t probe_count; /* Number of probes that exist */
 };
 
 struct dtvirt_prov {
-	RB_ENTRY(dtvirt_prov) node;
-	dtrace_provider_id_t id;
-	struct uuid *uuid;
-	char instance[DTRACE_INSTANCENAMELEN];
+	RB_ENTRY(dtvirt_prov) node; /* A provider node in the RB tree */
+	dtrace_provider_id_t id; /* The DTrace identifier of the provider */
+	struct uuid *uuid; /* The UUID of the provider */
+	char vm[DTRACE_INSTANCENAMELEN]; /* The VM it resides in */
 };
 
+/*
+ * The way we identify a nonce for this structure is by its pointer.
+ */
 struct dtvirt_inflight {
-	RB_ENTRY(dtvirt_inflight) node;
-	dtvirt_nonce_t nonce;
-	uintptr_t args[10];
-	size_t n_args;
-	lwpid_t tid;
-	char *execname;
-	uint32_t stackdepth;
-	uint64_t ucaller;
-	pid_t ppid;
-	uid_t uid;
-	gid_t gid;
-	int errno;
-	struct pargs execargs;
+	uintptr_t args[DTVIRT_MAXARGS]; /* All of the arguments */
+	size_t n_args; /* Number of arguments */
+	lwpid_t tid; /* Guest thread id */
+	char *execname; /* execname in the guest */
+	uint32_t stackdepth; /* Guest stack depth */
+	uint64_t ucaller; /* Guest ucaller */
+	pid_t ppid; /* Guest ppid */
+	uid_t uid; /* Guest uid */
+	gid_t gid; /* Guest gid */
+	int errno; /* Guest errno */
+	struct pargs execargs; /* Guest execargs */
 };
 
 struct dtvirt_probe {
-	struct dtvirt_prov *provider;
-	dtrace_id_t id;
-	uint8_t enabled;
+	struct dtvirt_prov *provider; /* Back-pointer to the provider */
+	struct dtvirt_typelist (*types)[DTVIRT_MAXARGS]; /* All of the types */
+	dtrace_id_t id; /* The DTrace probe ID */
+	uint8_t enabled; /* Enabled flag */
 };
 
 static void dtvirt_load(void);
@@ -122,11 +125,11 @@ static int dtvirt_priv_unregister(struct dtvirt_prov *);
 static int dtvirt_provider_unregister(struct uuid *);
 static void dtvirt_enable(void *, dtrace_id_t, void *);
 static void dtvirt_disable(void *, dtrace_id_t, void *);
-static void dtvirt_getargdesc(void *, dtvirt_nonce_t, void *, dtrace_argdesc_t *);
+static void dtvirt_getargdesc(void *,
+    dtvirt_nonce_t, void *, dtrace_argdesc_t *);
 static uint64_t dtvirt_getargval(void *, dtvirt_nonce_t, void *, uint64_t, int);
 static void dtvirt_destroy(void *, dtvirt_nonce_t, void *);
 static int dtvirt_prov_cmp(struct dtvirt_prov *, struct dtvirt_prov *);
-static int dtvirt_inflight_cmp(struct dtvirt_inflight *, struct dtvirt_inflight *);
 
 struct mtx dtvirt_typelist_mtx;
 LIST_HEAD(dtvirt_tlist, dtvirt_typelist) dtvirt_type_list =
@@ -136,15 +139,8 @@ struct mtx dtvirt_provtree_mtx;
 RB_HEAD(dtvirt_provtree, dtvirt_prov) dtvirt_provider_tree =
 		RB_INITIALIZER(_dtvirt_prov);
 
-struct mtx dtvirt_inflight_mtx;
-RB_HEAD(dtvirt_infltree, dtvirt_inflight) dtvirt_inflight_tree =
-    RB_INITIALIZER(_dtvirt_inflight);
-
 RB_GENERATE_STATIC(dtvirt_provtree, dtvirt_prov, node,
 		dtvirt_prov_cmp);
-
-RB_GENERATE_STATIC(dtvirt_infltree, dtvirt_inflight, node,
-    dtvirt_inflight_cmp);
 
 static MALLOC_DEFINE(M_DTVIRT, "dtvirt", "DTvirt memory");
 
@@ -189,7 +185,7 @@ dtvirt_load(void)
 	 */
 	mtx_init(&dtvirt_typelist_mtx, "Type list mutex", NULL, MTX_DEF);
 	mtx_init(&dtvirt_provtree_mtx, "DTvirt provider tree mutex", NULL, MTX_DEF);
-	mtx_init(&dtvirt_inflight_mtx, "In-flight probe mutex", NULL, MTX_DEF);
+	LIST_INIT(&dtvirt_type_list);
 
 	/*
 	 * Now we expose the hooks to the rest of the system for dtvirt.
@@ -240,7 +236,6 @@ dtvirt_unload(void)
 	 * Clean up the mutexes.
 	 */
 	mtx_destroy(&dtvirt_provtree_mtx);
-	mtx_destroy(&dtvirt_inflight_mtx);
 	mtx_destroy(&dtvirt_typelist_mtx);
 }
 
@@ -248,56 +243,50 @@ static dtvirt_nonce_t
 dtvirt_add_inflight(struct hypercall_args *args)
 {
 	/*
-	 * If fire a probe, we will mark it as in flight. We have to ensure
-	 * that our nonce really is unique. We then add it to a red-black tree that
-	 * will then be searched from other functions (getargval, ...) in order to
-	 * provide information that DTrace might be asking for.
-	 *
-	 * FIXME: We currently do not take into account as to what happens when
-	 * we have so many probes in flight that we simply exhaust the nonce
-	 * space and spin forever.
+	 * For all in-flight probes, we generate a "nonce", which is currently
+	 * just its pointer. We can be sure that it's unique due to the memory
+	 * allocator being unique and gives is O(1) access to everything we need
+	 * whenever DTrace needs us to access data.
 	 */
-	struct dtvirt_inflight *inflight, *res;
+	struct dtvirt_inflight *inflight;
 
 	inflight = malloc(sizeof(struct dtvirt_inflight), M_DTVIRT, M_NOWAIT);
+	/*
+	 * In case we can't allocate this -- too many probes firing.
+	 */
+	if (inflight == NULL)
+		return (NULL);
+
 	CPARGS(inflight, args);
 
 	/*
-	 * We iterate until we find a valid nonce.
+	 * Our nonce is just the pointer to the in-flight probe.
 	 */
-	do {
-		arc4rand(&inflight->nonce, sizeof(dtvirt_nonce_t)*BITS, 0);
-
-		mtx_lock(&dtvirt_inflight_mtx);
-		res = RB_INSERT(dtvirt_inflight, &dtvirt_inflight_tree, inflight);
-		mtx_unlock(&dtvirt_inflight_mtx);
-	} while (res != NULL);
-
-	/*
-	 * Finally, we return the nonce.
-	 */
-	return (inflight->nonce);
+	return ((uintptr_t)inflight);
 }
 
 static void
 dtvirt_remove_inflight(dtvirt_nonce_t nonce)
 {
-	/*
-	 * Once the probe is done executing, we do not care about it anymore.
-	 * We find it in the tree, remove it and free the allocated memory.
-	 */
-	struct dtvirt_inflight tmp, *found;
+	struct dtvirt_inflight *probe
 
-	tmp.nonce = nonce;
-	found = RB_FIND(dtvirt_infltree, &dtvirt_inflight_tree, &tmp);
-	RB_REMOVE(dtvirt_infltree, &dtvirt_inflight_tree, found);
-	free(found->execname, M_DTVIRT);
-	free(found, M_DTVIRT);
+	probe = (struct dtvirt_inflight *)nonce;
+
+	free(probe->execname, M_DTVIRT);
+	free(probe, M_DTVIRT);
 }
 
 static void
 dtvirt_commit(const char *vm, struct hypercall_args *args)
 {
+	/*
+	 * A simple intermediate layer for firing DTrace probes from the guest.
+	 * We first grab a nonce to the probe that is firing and pass it in to
+	 * the DTrace Framework. This allows us to call dtps_* functions in DTvirt
+	 * and get information easily for each in-flight probe. After we have fired
+	 * the probe, we don't actually need the information anymore, so we delete
+	 * the in-flight probe.
+	 */
 	dtvirt_nonce_t nonce;
 
 	nonce = dtvirt_add_inflight(args);
@@ -308,15 +297,14 @@ dtvirt_commit(const char *vm, struct hypercall_args *args)
 
 static int
 dtvirt_probe_create(struct uuid *uuid, const char *mod, const char *func,
-    const char *name, char types[DTRACE_ARGTYPELEN][10])
+    const char *name, char types[DTRACE_ARGTYPELEN][DTVIRT_MAXARGS])
 {
-	/*
-	 * TODO: Fill the type list in.
-	 */
 	struct dtvirt_probe *virt_probe;
 	struct dtvirt_prov *prov, tmp;
 	struct uuid tmpuuid;
+	struct dtvirt_typelist *type;
 	dtrace_provider_id_t provid;
+	int i;
 
 	memcpy(&tmpuuid, uuid, sizeof(struct uuid));
 
@@ -336,16 +324,60 @@ dtvirt_probe_create(struct uuid *uuid, const char *mod, const char *func,
 
 	virt_probe->enabled = 0;
 
+	n = strlcpy(virt_probe->vm,
+		prov->vm, DTRACE_INSTANCENAMELEN);
+
+	if (n >= DTRACE_INSTANCENAMELEN) {
+		free(virt_probe, M_DTVIRT);
+		return (ENOMEM);
+	}
+
+	/*
+	 * FIXME: This should be optimized a bit eventually. Instead of going
+	 * through the types that were passed in, we should be going through the
+	 * list and comparing to the types. That way we have better caching and
+	 * in turn, a decent speed-up given that the list will be large and we will
+	 * only traverse it once.
+	 */
+	mtx_lock(&dtvirt_typelist_mtx);
+	for (i = 0; i < DTVIRT_MAXARGS; i++) {
+		type = LIST_HEAD(&dtvirt_type_list);
+		for (type = LIST_HEAD(&dtvirt_type_list);
+		    type != NULL; type = LIST_NEXT(type, next)) {
+			if (strcmp(type->native_type, types[i]) == 0)
+				break;
+		}
+		if (type == NULL) {
+			type = malloc(sizeof(struct dtvirt_typelist),
+			    M_DTVIRT, M_NOWAIT | M_ZERO);
+			if (type == NULL) {
+				free(virt_probe, M_DTVIRT);
+				return (ENOMEM);
+			}
+
+			n = strlcpy(type->native_type, types[i], DTRACE_ARGTYPELEN);
+			if (n >= DTRACE_ARGTYPELEN) {
+				free(virt_probe, M_DTVIRT);
+				free(type, M_DTVIRT);
+				return (EOVERFLOW);
+			}
+
+			LIST_INSERT_HEAD(&dtvirt_type_list, type, next);
+		}
+
+		type->probe_count++;
+	}
+	mtx_unlock(&dtvirt_typelist_mtx);
+
 	virt_probe->id = dtrace_probe_create(provid, mod, func,
-	    name, 0, virt_probe);
-	strlcpy(virt_probe->vm,
-	    prov->instance, DTRACE_INSTANCENAMELEN);
+			name, 0, virt_probe);
+	virt_probe->provider = prov;
 
 	return (0);
 }
 
 static int
-dtvirt_provider_register(const char *provname, const char *instance,
+dtvirt_provider_register(const char *provname, const char *vm,
     struct uuid *uuid, dtrace_pattr_t *pattr, uint32_t priv,
     dtrace_pops_t *pops)
 {
@@ -372,7 +404,7 @@ dtvirt_provider_register(const char *provname, const char *instance,
 	/*
 	 * Attempt to register the provider with the DTrace Framework.
 	 */
-	error = dtrace_distributed_register(provname, instance,
+	error = dtrace_distributed_register(provname, vm,
 	    uuid, pattr, priv, NULL, pops, NULL, &provid);
 
 	/*
@@ -389,7 +421,7 @@ dtvirt_provider_register(const char *provname, const char *instance,
 	 */
 	prov->id = provid;
 	memcpy(prov->uuid, uuid, sizeof(struct uuid));
-	n = strlcpy(prov->instance, instance, DTRACE_INSTANCENAMELEN);
+	n = strlcpy(prov->vm, vm, DTRACE_INSTANCENAMELEN);
 	/*
 	 * If somehow this happened (strlcpy tells us), there is something weird
 	 * going on. Free everything and return an overflow errno.
@@ -402,21 +434,9 @@ dtvirt_provider_register(const char *provname, const char *instance,
 	}
 
 	/*
-	 * Allocate the space for a type list. Here, we want to keep a list of all
-	 * types for each of the probes.
-	 */
-	prov->typelist_head = malloc(sizeof(struct dtvirt_typelist),
-			M_DTVIRT, M_NOWAIT | M_ZERO);
-	if (prov->typelist_head == NULL) {
-		dtrace_unregister(provid);
-		free(prov->uuid);
-		free(prov);
-		return (ENOMEM);
-	}
-
-	/*
 	 * If all is well, insert the provider into the red-black tree and return 0.
-	 * FIXME - maybe: We do not currently handle the case where the UUID conflicts.
+	 * FIXME - maybe: We do not currently handle the case where the UUID
+	 * conflicts.
 	 */
 	RB_INSERT(dtvirt_provtree, &dtvirt_provider_tree, prov);
 	return (0);
@@ -498,58 +518,77 @@ dtvirt_getargdesc(void *arg, dtrace_id_t id,
 	 * FIXME: As it stands, we assume host types == guest types, but this
 	 * implementation should provide a basis for the more sophisticated
 	 * version without much change.
+	 *
+	 * XXX: Is it safe to not acquire the list mutex here?
 	 */
-	dtvirt_provider_t *prov;
-	dtvirt_type_t *t;
+	struct dtvirt_probe *probe;
+	struct dtvirt_typelist *t;
 
-	KASSERT(arg, ("%s(%d): arg is NULL", __func__, __LINE__));
-	prov = (dtvirt_provider_t *) arg;
+	KASSERT(parg, ("%s(%d): parg is NULL", __func__, __LINE__));
+	probe = (dtvirt_provider_t *) parg;
 
 	/*
-	 * Start from the head.
+	 * Check if DTrace is being sane here.
 	 */
-	mtx_lock(&prov->typelist_mtx);
-	t = prov->type_head;
-	while (t) {
-		if (t->probeid == id) {
-			n = strlcpy(adesc->dtargd_native, t->native_type,
-			    sizeof(adesc->dtargd_native));
-			if (n >= sizeof(adesc->dtargd_native)) {
-				memset(adesc->dtargd_native, 0, sizeof(adesc->dtargd_native));
-				adesc->dtargd_ndx = DTRACE_ARGNONE;
-			}
-			mtx_unlock(&prov->typelist_mtx);
-			return;
-		}
-		t = t->next;
+	if (adesc->dtargd_ndx > probe->n_args) {
+		adesc->dtargd_ndx = DTRACE_ARGNONE;
+		return;
 	}
 
-	mtx_unlock(&prov->typelist_mtx);
-	adesc->dtargd_ngx = DTRACE_ARGNONE;
+	/*
+	 * If so, let's give it a type.
+	 */
+	t = probe->types[adesc->dtargd_ndx];
+	n = strlcpy(adesc->dtargd_native, t->native_type,
+			sizeof(adesc->dtargd_native));
+
+	/*
+	 * There's a possibility that something weird is happening here. If so,
+	 * we will notify DTrace of an overflow.
+	 */
+	if (n >= sizeof(adesc->dtargd_native)) {
+		memcpy(adesc->dtargd_native, 0, sizeof(adesc->dtargd_native));
+		adesc->dtargd_ndx = DTRACE_ARGNONE;
+	}
 }
 
 static uint64_t
 dtvirt_getargval(void *arg, dtvirt_nonce_t nonce,
     void *parg, uint64_t ndx, int aframes)
 {
-	struct dtvirt_inflight *found, tmp;
+	/*
+	 * We take a nonce and follow up by simply returning the argument that
+	 * the DTrace Framework is asking for (unless out of bounds).
+	 */
+	struct dtvirt_inflight *probe;
 
-	found = RB_FIND(dtvirt_infltree, &dtvirt_inflight_tree, &tmp);
-	if (found == NULL) {
-		return (ESRCH);
-	}
+	probe = (struct dtvirt_inflight *)nonce;
+	if (probe == NULL)
+		return (0);
 
-	return (0);
+	if (probe->n_args < ndx)
+		return (0);
+
+	return (probe->args[ndx]);
 }
 
 static void
-dtvirt_destroy(void *arg, dtvirt_nonce_t nonce, void *parg)
+dtvirt_destroy(void *arg, dtrace_id_t id, void *parg)
 {
 	struct dtvirt_probe *virt_probe;
+	struct dtvirt_typelist *type;
 
 	KASSERT(parg != NULL, ("%s: parg is NULL", __func__));
 
 	virt_probe = (struct dtvirt_probe *) parg;
+	mtx_lock(&dtvirt_typelist_mtx);
+	for (i = 0, type = virt_probe->types[i]; i != DTVIRT_MAXARGS; i++)
+		if (--type->probe_count == 0) {
+			LIST_REMOVE(&dtvirt_type_list, type);
+			free(type, M_DTVIRT);
+		}
+	mtx_unlock(&dtvirt_typelist_mtx);
+
 	free(virt_probe, M_DTVIRT);
 }
 
@@ -558,15 +597,4 @@ dtvirt_prov_cmp(struct dtvirt_prov *p1, struct dtvirt_prov *p2)
 {
 
 	return (uuidcmp(p1->uuid, p2->uuid));
-}
-
-static int
-dtvirt_inflight_cmp(struct dtvirt_inflight *p1, struct dtvirt_inflight *p2)
-{
-	if (p1->probeid < p2->probeid)
-		return (-1);
-	else if (p1->probeid > p2->probeid)
-		return (1);
-
-	return (0);
 }

@@ -513,9 +513,13 @@ static kmutex_t dtrace_errlock;
 }
 #else
 /*
- * Here we need to send in the namespaced TID in order
- * to be able to identify which TLS we want once we exit
- * the guest the second time and migrate threads inbetween.
+ * Here we need to send in the namespaced TID in order to be able to identify
+ * which TLS we want once we exit the guest the second time and migrate
+ * threads inbetween.
+ *
+ * FIXME: This whole thing is absolutely terrible. DTRACE_TLS_THRKEY gives us
+ * a TLS key which will then be hashed and the dynamic variable bucket will
+ * be produced. This is not ideal and should probably be handled much better.
  */
 #define	DTRACE_TLS_THRKEY(mid, where, ns_tid) { \
 	solaris_cpu_t *_c = &solaris_cpu[curcpu]; \
@@ -9323,7 +9327,7 @@ dtrace_distributed_register(const char *name, const char *istcname,
 	 * generate a UUIDv5, allowing for a way to keep track of
 	 * UUIDs across different machines.
 	 */
-	
+
 	provider->dtpv_advuuid = kmem_zalloc(sizeof (struct uuid), KM_SLEEP);
 	provider->dtpv_uuid = kmem_zalloc(sizeof (struct uuid), KM_SLEEP);
 	if (strcmp(provider->dtpv_instance, "host") != 0) {
@@ -16439,7 +16443,7 @@ dtrace_state_destroy(dtrace_state_t *state)
 
 	dtrace_buffer_free(state->dts_buffer);
 	dtrace_buffer_free(state->dts_aggbuffer);
-	
+
 	for (i = 0; i < nspec; i++)
 		dtrace_buffer_free(spec[i].dtsp_buffer);
 
@@ -16525,7 +16529,7 @@ dtrace_probeid_enable(dtrace_id_t id)
 	ASSERT(ecb != NULL);
 	adesc = dtrace_actdesc_create(DTRACEVT_HYPERCALL, 0, 0, 0);
 	ASSERT(adesc != NULL);
-	
+
 	error = dtrace_ecb_action_add(ecb, adesc);
 	if (error) {
 		kmem_free(state, sizeof (dtrace_state_t));
