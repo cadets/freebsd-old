@@ -31,16 +31,16 @@
 #ifndef _X86_H_
 #define	_X86_H_
 
-#define CPUID_0000_0000 (0x0)
+#define CPUID_0000_0000	(0x0)
 #define CPUID_0000_0001	(0x1)
-#define CPUID_0000_0002 (0x2)
-#define CPUID_0000_0003 (0x3)
-#define CPUID_0000_0004 (0x4)
-#define CPUID_0000_0006 (0x6)
-#define CPUID_0000_0007 (0x7)
-#define	CPUID_0000_000A	(0xA)
-#define	CPUID_0000_000B	(0xB)
-#define	CPUID_0000_000D	(0xD)
+#define CPUID_0000_0002	(0x2)
+#define CPUID_0000_0003	(0x3)
+#define CPUID_0000_0004	(0x4)
+#define CPUID_0000_0006	(0x6)
+#define CPUID_0000_0007	(0x7)
+#define CPUID_0000_000A	(0xA)
+#define CPUID_0000_000B	(0xB)
+#define CPUID_0000_000D	(0xD)
 #define CPUID_8000_0000	(0x80000000)
 #define CPUID_8000_0001	(0x80000001)
 #define CPUID_8000_0002	(0x80000002)
@@ -49,7 +49,8 @@
 #define CPUID_8000_0006	(0x80000006)
 #define CPUID_8000_0007	(0x80000007)
 #define CPUID_8000_0008	(0x80000008)
-
+#define CPUID_4000_0000	(0x40000000)
+#define CPUID_4000_0001	(0x40000001)
 /*
  * CPUID instruction Fn0000_0001:
  */

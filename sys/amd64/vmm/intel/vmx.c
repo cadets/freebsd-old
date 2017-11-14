@@ -2476,6 +2476,15 @@ vmx_exit_process(struct vmx *vmx, int vcpu, struct vm_exit *vmexit)
 	case EXIT_REASON_MWAIT:
 		vmexit->exitcode = VM_EXITCODE_MWAIT;
 		break;
+	case EXIT_REASON_VMCALL:
+		if (hypercalls_enabled == 0) {
+			vm_inject_ud(vmx->vm, vcpu);
+			handled = HANDLED;
+		} else {
+			vmexit->exitcode = VM_EXITCODE_HYPERCALL;
+			vmx_paging_info(&vmexit->u.hypercall.paging);
+		}
+		break;
 	default:
 		vmm_stat_incr(vmx->vm, vcpu, VMEXIT_UNKNOWN, 1);
 		break;
