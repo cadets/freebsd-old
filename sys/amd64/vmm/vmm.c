@@ -59,7 +59,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/smp.h>
 #include <machine/md_var.h>
 #include <machine/bhyve_hypercall.h>
-#include <machine/vmm_dtrace.h>
+//#include <machine/vmm_dtrace.h>
 #include <x86/psl.h>
 #include <x86/apicreg.h>
 
@@ -243,6 +243,7 @@ SYSCTL_INT(_hw_vmm, OID_AUTO, hypercalls_enabled, CTLFLAG_RWTUN,
     &hypercalls_enabled, 0,
     "Enable hypercalls on all guests");
 
+/*
 int	(*vmmdt_hook_add)(const char *, int);
 int	(*vmmdt_hook_rm)(const char *, int);
 void	(*vmmdt_hook_enable)(const char *, int);
@@ -250,6 +251,7 @@ void	(*vmmdt_hook_disable)(const char *, int);
 void	(*vmmdt_hook_fire_probe)(const char *, struct hypercall_args *);
 uint64_t (*vmmdt_hook_valueof)(const char *, int, int);
 void	(*vmmdt_hook_setargs)(const char *, int, const uint64_t[VMMDT_MAXARGS]);
+*/
 
 /*
  * The maximum amount of arguments currently supproted
@@ -1867,7 +1869,7 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 	/*
 	 * TODO: Fill the hypercall_args structure.
 	 */
-	vmmdt_hook_fire_probe(vm->name, &h_args);
+	//vmmdt_hook_fire_probe(vm->name, &h_args);
 
 	free(execname, M_VM);
 	return (error);
@@ -2415,17 +2417,17 @@ vm_inject_bp(void *vm, int vcpuid)
 __inline void
 vm_dtrace_init_install(void *vm, int vcpuid)
 {
-	int error;
-	error = vm_inject_exception(vm, vcpuid, IDT_DTRACE_INST, 0, 0, 0);
-	KASSERT(error == 0, ("vm_dtrace_init_install error %d", error));
+	//int error = 0;
+	//error = vm_inject_exception(vm, vcpuid, IDT_DTRACE_INST, 0, 0, 0);
+	//KASSERT(error == 0, ("vm_dtrace_init_install error %d", error));
 }
 
 __inline void
 vm_dtrace_init_uninstall(void *vm, int vcpuid)
 {
-	int error;
-	error =vm_inject_exception(vm, vcpuid, IDT_DTRACE_UINST, 0, 0, 0);
-	KASSERT(error == 0, ("vm_dtrace_init_uninstall error %d", error));
+	//int error = 0;
+	//error =vm_inject_exception(vm, vcpuid, IDT_DTRACE_UINST, 0, 0, 0);
+	//KASSERT(error == 0, ("vm_dtrace_init_uninstall error %d", error));
 }
 
 static VMM_STAT(VCPU_NMI_COUNT, "number of NMIs delivered to vcpu");
