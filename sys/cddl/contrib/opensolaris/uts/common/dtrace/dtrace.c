@@ -1852,7 +1852,7 @@ dtrace_dynvar_clean(dtrace_dstate_t *dstate)
 
 	for (i = 0; i < NCPU; i++) {
 		dcpu = &dstate->dtds_percpu[i];
-		rinsep = &dcpu->dtdsc_rinsing;
+			p = &dcpu->dtdsc_rinsing;
 
 		/*
 		 * If the dirty list is NULL, there is no dirty work to do.

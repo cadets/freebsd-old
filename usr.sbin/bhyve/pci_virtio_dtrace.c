@@ -86,10 +86,14 @@ static int pci_vtdtr_debug;
 #define	WPRINTF(params)		printf params
 
 struct pci_vtdtr_probe_create_event {
-	char		mod[DTRACE_MODNAMELEN];
-	char		func[DTRACE_FUNCNAMELEN];
-	char		name[DTRACE_NAMELEN];
-	struct uuid	uuid;
+	char mod[DTRACE_MODNAMELEN];
+	char func[DTRACE_FUNCNAMELEN];
+	char name[DTRACE_NAMELEN];
+	/*
+	 * FIXME: Fixed types, needs to be DTrace-defined
+	 */
+	char types[10][128];
+	struct uuid uuid;
 }__attribute__((packed));
 
 struct pci_vtdtr_probe_toggle_event {
@@ -251,6 +255,9 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		char *func;
 		char *name;
 		struct uuid *uuid;
+		/*
+		 * FIXME: All of this is fixed. Should be DTrace-defined.
+		 */
 		sc->vsd_ready = 0;
 		pb_ev = &ctrl->uctrl.probe_ev;
 
@@ -259,7 +266,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		name = pb_ev->upbev.probe_evcreate.name;
 		uuid = &pb_ev->upbev.probe_evcreate.uuid;
 
-		error = dthyve_probe_create(uuid, mod, func, name);
+		error = dthyve_probe_create(uuid, mod, func, name,
+		    pb_ev->upbev.probe_evcreate.types);
 		if (error)
 			WPRINTF(("%s: error %d during probe creation",
 			    __func__, errno));
@@ -632,7 +640,7 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	assert(error == 0);
 	error = pthread_create(&communicator, NULL, pci_vtdtr_run, sc);
 	assert(error == 0);
-	
+
 	if (vi_intr_init(&sc->vsd_vs, 1, fbsdrun_virtio_msix()))
 		return (1);
 

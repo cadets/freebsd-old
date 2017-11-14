@@ -144,9 +144,12 @@ dthyve_unregister_provider(struct uuid *uuid)
 	return (dthyve_priv_unregister(pv));
 }
 
+/*
+ * FIXME: Types is of fixed size. Should be DTrace-defined.
+ */
 int
 dthyve_probe_create(struct uuid *uuid, const char *mod,
-    const char *func, const char *name)
+    const char *func, const char *name, char types[10][128])
 {
 	struct dthyve_prov *pv, tmp;
 	dtrace_virt_probedesc_t vpdesc;
