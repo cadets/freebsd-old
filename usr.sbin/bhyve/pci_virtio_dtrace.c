@@ -57,8 +57,8 @@ __FBSDID("$FreeBSD$");
 #include "virtio.h"
 #include "mevent.h"
 
-#define	VTDTR_RINGSZ			512
-#define	VTDTR_MAXQ			2
+#define	VTDTR_RINGSZ 512
+#define	VTDTR_MAXQ     2
 
 /*
  * As already documented in virtio_dtrace.h, probe installation/uninstallation
@@ -72,27 +72,27 @@ __FBSDID("$FreeBSD$");
  * READY and EOF are used for synchronization purposes, while CLEANUP is meant
  * to be sent to the guest in order to clean up the TX virtqueue.
  */
-#define	VTDTR_DEVICE_READY		0x00
-#define	VTDTR_DEVICE_REGISTER		0x01
-#define	VTDTR_DEVICE_UNREGISTER		0x02
-#define	VTDTR_DEVICE_DESTROY		0x03
-#define	VTDTR_DEVICE_PROBE_CREATE	0x04
-#define	VTDTR_DEVICE_PROBE_INSTALL	0x05
-#define	VTDTR_DEVICE_PROBE_UNINSTALL	0x06
-#define	VTDTR_DEVICE_EOF		0x07
+#define	VTDTR_DEVICE_READY           0x00
+#define	VTDTR_DEVICE_REGISTER        0x01
+#define	VTDTR_DEVICE_UNREGISTER      0x02
+#define	VTDTR_DEVICE_DESTROY         0x03
+#define	VTDTR_DEVICE_PROBE_CREATE    0x04
+#define	VTDTR_DEVICE_PROBE_INSTALL   0x05
+#define	VTDTR_DEVICE_PROBE_UNINSTALL 0x06
+#define	VTDTR_DEVICE_EOF             0x07
 
 static int pci_vtdtr_debug;
-#define	DPRINTF(params)		if (pci_vtdtr_debug) printf params
-#define	WPRINTF(params)		printf params
+#define	DPRINTF(params) if (pci_vtdtr_debug) printf params
+#define	WPRINTF(params) printf params
 
 struct pci_vtdtr_probe_create_event {
-	char mod[DTRACE_MODNAMELEN];
-	char func[DTRACE_FUNCNAMELEN];
-	char name[DTRACE_NAMELEN];
+	char        mod[DTRACE_MODNAMELEN];
+	char        func[DTRACE_FUNCNAMELEN];
+	char        name[DTRACE_NAMELEN];
 	/*
 	 * FIXME: Fixed types, needs to be DTrace-defined
 	 */
-	char types[10][128];
+	char        types[10][128];
 	struct uuid uuid;
 }__attribute__((packed));
 
@@ -102,6 +102,7 @@ struct pci_vtdtr_probe_toggle_event {
 
 struct pci_vtdtr_ctrl_pbevent {
 	uint32_t probe;
+
 	union _upbev {
 		struct pci_vtdtr_probe_create_event probe_evcreate;
 		struct pci_vtdtr_probe_toggle_event probe_evtoggle;
@@ -109,41 +110,42 @@ struct pci_vtdtr_ctrl_pbevent {
 }__attribute__((packed));
 
 struct pci_vtdtr_ctrl_provevent {
-	char name[DTRACE_PROVNAMELEN];
+	char        name[DTRACE_PROVNAMELEN];
 	struct uuid uuid;
 }__attribute__((packed));
 
 struct pci_vtdtr_control {
 	uint32_t event;
+
 	union _uctrl {
-		struct pci_vtdtr_ctrl_pbevent probe_ev;
+		struct pci_vtdtr_ctrl_pbevent   probe_ev;
 		struct pci_vtdtr_ctrl_provevent prov_ev;
 	} uctrl;
 }__attribute__((packed));
 
 struct pci_vtdtr_ctrl_entry {
-	struct pci_vtdtr_control ctrl;
+	struct pci_vtdtr_control           ctrl;
 	STAILQ_ENTRY(pci_vtdtr_ctrl_entry) entries;
 };
 
 struct pci_vtdtr_ctrlq {
 	STAILQ_HEAD(ctrlq, pci_vtdtr_ctrl_entry) head;
-	pthread_mutex_t mtx;
+	pthread_mutex_t                          mtx;
 };
 
 struct pci_vtdtr_softc {
-	struct virtio_softc vsd_vs;
-	struct vqueue_info vsd_queues[VTDTR_MAXQ];
-	struct vmctx *vsd_vmctx;
+	struct virtio_softc     vsd_vs;
+	struct vqueue_info      vsd_queues[VTDTR_MAXQ];
+	struct vmctx           *vsd_vmctx;
 	struct dtrace_probeinfo vsd_pbi;
-	struct mevent *vsd_mev;
+	struct mevent          *vsd_mev;
 	struct pci_vtdtr_ctrlq *vsd_ctrlq;
-	pthread_mutex_t vsd_condmtx;
-	pthread_cond_t vsd_cond;
-	pthread_mutex_t vsd_mtx;
-	uint64_t vsd_cfg;
-	int vsd_guest_ready;
-	int vsd_ready;
+	pthread_mutex_t         vsd_condmtx;
+	pthread_cond_t          vsd_cond;
+	pthread_mutex_t         vsd_mtx;
+	uint64_t                vsd_cfg;
+	int                     vsd_guest_ready;
+	int                     vsd_ready;
 };
 
 static void pci_vtdtr_reset(void *);
@@ -653,9 +655,9 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 }
 
 struct pci_devemu pci_de_vdtr = {
-	.pe_emu		= "virtio-dtrace",
-	.pe_init	= pci_vtdtr_init,
-	.pe_barwrite	= vi_pci_write,
-	.pe_barread	= vi_pci_read
+	.pe_emu      = "virtio-dtrace",
+	.pe_init     = pci_vtdtr_init,
+	.pe_barwrite = vi_pci_write,
+	.pe_barread  = vi_pci_read
 };
 PCI_EMUL_SET(pci_de_vdtr);
