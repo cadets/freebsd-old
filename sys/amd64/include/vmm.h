@@ -107,6 +107,7 @@ enum x2apic_state {
 #ifdef _KERNEL
 
 #define	VM_MAX_NAMELEN	32
+#define	HV_MAX_NAMELEN	32
 
 struct vm;
 struct vm_exception;
@@ -171,6 +172,12 @@ struct vmm_ops {
 
 extern struct vmm_ops vmm_ops_intel;
 extern struct vmm_ops vmm_ops_amd;
+
+#define BHYVE_MODE		0
+#define VMM_MAX_MODES		1
+
+extern	int	hypervisor_mode;
+extern	int	hypercalls_enabled;
 
 int vm_create(const char *name, struct vm **retvm);
 void vm_destroy(struct vm *vm);
@@ -377,7 +384,7 @@ struct vm_copyinfo {
 /*
  * Set up 'copyinfo[]' to copy to/from guest linear address space starting
  * at 'gla' and 'len' bytes long. The 'prot' should be set to PROT_READ for
- * a copyin or PROT_WRITE for a copyout. 
+ * a copyin or PROT_WRITE for a copyout.
  *
  * retval	is_fault	Interpretation
  *   0		   0		Success
@@ -419,7 +426,7 @@ enum vm_intr_trigger {
 	EDGE_TRIGGER,
 	LEVEL_TRIGGER
 };
-	
+
 /*
  * The 'access' field has the format specified in Table 21-2 of the Intel
  * Architecture Manual vol 3b.
@@ -535,6 +542,7 @@ enum vm_exitcode {
 	VM_EXITCODE_MWAIT,
 	VM_EXITCODE_SVM,
 	VM_EXITCODE_REQIDLE,
+	VM_EXITCODE_HYPERCALL,
 	VM_EXITCODE_MAX
 };
 
@@ -573,6 +581,10 @@ struct vm_task_switch {
 	int		errcode_valid;	/* push 'errcode' on the new stack */
 	enum task_switch_reason reason;
 	struct vm_guest_paging paging;
+};
+
+struct vm_hypercall {
+	struct vm_guest_paging	paging;
 };
 
 struct vm_exit {
@@ -638,7 +650,8 @@ struct vm_exit {
 		struct {
 			enum vm_suspend_how how;
 		} suspended;
-		struct vm_task_switch task_switch;
+		struct vm_task_switch	task_switch;
+		struct vm_hypercall	hypercall;
 	} u;
 };
 
@@ -671,6 +684,8 @@ vm_inject_ss(void *vm, int vcpuid, int errcode)
 }
 
 void vm_inject_pf(void *vm, int vcpuid, int error_code, uint64_t cr2);
+void vm_dtrace_init_install(void *vm, int vcpuid);
+void vm_dtrace_init_uninstall(void *vm, int vcpuid);
 
 int vm_restart_instruction(void *vm, int vcpuid);
 
