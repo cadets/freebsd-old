@@ -2592,6 +2592,15 @@ vmx_exit_process(struct vmx *vmx, int vcpu, struct vm_exit *vmexit)
 		SDT_PROBE3(vmm, vmx, exit, mwait, vmx, vcpu, vmexit);
 		vmexit->exitcode = VM_EXITCODE_MWAIT;
 		break;
+	case EXIT_REASON_VMCALL:
+		if (hypercalls_enabled == 0) {
+			vm_inject_ud(vmx->vm, vcpu);
+			handled = HANDLED;
+		} else {
+			vmexit->exitcode = VM_EXITCODE_HYPERCALL;
+			vmx_paging_info(&vmexit->u.hypercall.paging);
+		}
+		break;
 	default:
 		SDT_PROBE4(vmm, vmx, exit, unknown,
 		    vmx, vcpu, vmexit, reason);
