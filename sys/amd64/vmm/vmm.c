@@ -59,7 +59,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/smp.h>
 #include <machine/md_var.h>
 #include <machine/bhyve_hypercall.h>
-//#include <machine/vmm_dtrace.h>
 #include <x86/psl.h>
 #include <x86/apicreg.h>
 
@@ -261,17 +260,17 @@ void	(*vmmdt_hook_setargs)(const char *, int, const uint64_t[VMMDT_MAXARGS]);
  */
 #define	HYPERCALL_MAX_ARGS	6
 
-typedef int	(*hc_handler_t)(uint64_t, struct vm *, int,
+typedef int (*hc_handler_t)(uint64_t, struct vm *, int,
     struct vm_exit *, bool *);
-typedef int64_t	(*hc_dispatcher_t)(struct vm *, int,
+typedef int64_t (*hc_dispatcher_t)(struct vm *, int,
     uint64_t *, struct vm_guest_paging *);
 
 /*
  * The default hypervisor mode used is BHYVE_MODE.
  */
-int hypervisor_mode	= BHYVE_MODE;
+int hypervisor_mode = BHYVE_MODE;
 
-static int	bhyve_handle_hypercall(uint64_t hcid, struct vm *vm,
+static int bhyve_handle_hypercall(uint64_t hcid, struct vm *vm,
     int vcpuid, struct vm_exit *vmexit, bool *retu);
 
 /*
@@ -281,12 +280,11 @@ static int	bhyve_handle_hypercall(uint64_t hcid, struct vm *vm,
  * to. This should be kept in sync with the global
  * variable hc_dispatcher(see below).
  */
-hc_handler_t	hc_handler[VMM_MAX_MODES] = {
-	[BHYVE_MODE]	= bhyve_handle_hypercall
+hc_handler_t hc_handler[VMM_MAX_MODES] = {
+	[BHYVE_MODE] = bhyve_handle_hypercall
 };
 
-static int
-hypercall_copy_arg(struct vm *, int, uint64_t,
+static int hypercall_copy_arg(struct vm *, int, uint64_t,
     uintptr_t, uint64_t, struct vm_guest_paging *, void *);
 
 static int64_t hc_handle_prototype(struct vm *, int,
@@ -305,10 +303,10 @@ static int64_t hc_handle_dtrace_probe(struct vm *, int,
  * the guest without exception. Keep in sync with
  * hc_handler(see above) and ring_plevel(see below).
  */
-hc_dispatcher_t	hc_dispatcher[VMM_MAX_MODES][HYPERCALL_INDEX_MAX] = {
+hc_dispatcher_t hc_dispatcher[VMM_MAX_MODES][HYPERCALL_INDEX_MAX] = {
 	[BHYVE_MODE] = {
-		[HYPERCALL_PROTOTYPE]		= hc_handle_prototype,
-		[HYPERCALL_DTRACE_PROBE]	= hc_handle_dtrace_probe,
+		[HYPERCALL_PROTOTYPE]    = hc_handle_prototype,
+		[HYPERCALL_DTRACE_PROBE] = hc_handle_dtrace_probe,
 	}
 };
 
@@ -319,10 +317,10 @@ hc_dispatcher_t	hc_dispatcher[VMM_MAX_MODES][HYPERCALL_INDEX_MAX] = {
  * for correct operation of the hypercall. This should
  * be kept in snyc with hc_dispatcher(see above).
  */
-static int8_t	ring_plevel[VMM_MAX_MODES][HYPERCALL_INDEX_MAX] = {
+static int8_t ring_plevel[VMM_MAX_MODES][HYPERCALL_INDEX_MAX] = {
 	[BHYVE_MODE] = {
-		[HYPERCALL_PROTOTYPE]		= 0,
-		[HYPERCALL_DTRACE_PROBE]	= 0
+		[HYPERCALL_PROTOTYPE]    = 0,
+		[HYPERCALL_DTRACE_PROBE] = 0
 	}
 };
 
