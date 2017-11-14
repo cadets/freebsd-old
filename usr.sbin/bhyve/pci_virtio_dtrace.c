@@ -97,82 +97,82 @@ struct pci_vtdtr_probe_create_event {
 }__attribute__((packed));
 
 struct pci_vtdtr_probe_toggle_event {
-	char					*dif; /* TODO */
+	char *dif; /* TODO */
 }__attribute__((packed));
 
 struct pci_vtdtr_ctrl_pbevent {
 	uint32_t probe;
 	union _upbev {
-		struct pci_vtdtr_probe_create_event	probe_evcreate;
-		struct pci_vtdtr_probe_toggle_event	probe_evtoggle;
+		struct pci_vtdtr_probe_create_event probe_evcreate;
+		struct pci_vtdtr_probe_toggle_event probe_evtoggle;
 	} upbev;
 }__attribute__((packed));
 
 struct pci_vtdtr_ctrl_provevent {
-	char		name[DTRACE_PROVNAMELEN];
-	struct uuid	uuid;
+	char name[DTRACE_PROVNAMELEN];
+	struct uuid uuid;
 }__attribute__((packed));
 
 struct pci_vtdtr_control {
-	uint32_t	event;
+	uint32_t event;
 	union _uctrl {
-		struct pci_vtdtr_ctrl_pbevent		probe_ev;
-		struct pci_vtdtr_ctrl_provevent		prov_ev;
+		struct pci_vtdtr_ctrl_pbevent probe_ev;
+		struct pci_vtdtr_ctrl_provevent prov_ev;
 	} uctrl;
 }__attribute__((packed));
 
 struct pci_vtdtr_ctrl_entry {
-	struct pci_vtdtr_control		ctrl;
-	STAILQ_ENTRY(pci_vtdtr_ctrl_entry)	entries;
+	struct pci_vtdtr_control ctrl;
+	STAILQ_ENTRY(pci_vtdtr_ctrl_entry) entries;
 };
 
 struct pci_vtdtr_ctrlq {
-	STAILQ_HEAD(ctrlq, pci_vtdtr_ctrl_entry)	head;
-	pthread_mutex_t					mtx;
+	STAILQ_HEAD(ctrlq, pci_vtdtr_ctrl_entry) head;
+	pthread_mutex_t mtx;
 };
 
 struct pci_vtdtr_softc {
-	struct virtio_softc		 vsd_vs;
-	struct vqueue_info		 vsd_queues[VTDTR_MAXQ];
-	struct vmctx			*vsd_vmctx;
-	struct dtrace_probeinfo		 vsd_pbi;
-	struct mevent			*vsd_mev;
-	struct pci_vtdtr_ctrlq		*vsd_ctrlq;
-	pthread_mutex_t			 vsd_condmtx;
-	pthread_cond_t			 vsd_cond;
-	pthread_mutex_t			 vsd_mtx;
-	uint64_t			 vsd_cfg;
-	int				 vsd_guest_ready;
-	int				 vsd_ready;
+	struct virtio_softc vsd_vs;
+	struct vqueue_info vsd_queues[VTDTR_MAXQ];
+	struct vmctx *vsd_vmctx;
+	struct dtrace_probeinfo vsd_pbi;
+	struct mevent *vsd_mev;
+	struct pci_vtdtr_ctrlq *vsd_ctrlq;
+	pthread_mutex_t vsd_condmtx;
+	pthread_cond_t vsd_cond;
+	pthread_mutex_t vsd_mtx;
+	uint64_t vsd_cfg;
+	int vsd_guest_ready;
+	int vsd_ready;
 };
 
-static void	pci_vtdtr_reset(void *);
-static void	pci_vtdtr_control_tx(struct pci_vtdtr_softc *,
-           	    struct iovec *, int);
-static int	pci_vtdtr_control_rx(struct pci_vtdtr_softc *,
-           	    struct iovec *, int);
-static void	pci_vtdtr_process_prov_evt(struct pci_vtdtr_softc *,
-           	    struct pci_vtdtr_control *);
-static void	pci_vtdtr_process_probe_evt(struct pci_vtdtr_softc *,
-           	    struct pci_vtdtr_control *);
-static void	pci_vtdtr_notify_tx(void *, struct vqueue_info *);
-static void	pci_vtdtr_notify_rx(void *, struct vqueue_info *);
-static void	pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *,
-           	    struct pci_vtdtr_ctrl_entry *);
-static void	pci_vtdtr_cq_enqueue_front(struct pci_vtdtr_ctrlq *,
-           	    struct pci_vtdtr_ctrl_entry *);
-static int	pci_vtdtr_cq_empty(struct pci_vtdtr_ctrlq *);
+static void pci_vtdtr_reset(void *);
+static void pci_vtdtr_control_tx(struct pci_vtdtr_softc *,
+    struct iovec *, int);
+static int pci_vtdtr_control_rx(struct pci_vtdtr_softc *,
+    struct iovec *, int);
+static void pci_vtdtr_process_prov_evt(struct pci_vtdtr_softc *,
+    struct pci_vtdtr_control *);
+static void pci_vtdtr_process_probe_evt(struct pci_vtdtr_softc *,
+    struct pci_vtdtr_control *);
+static void pci_vtdtr_notify_tx(void *, struct vqueue_info *);
+static void pci_vtdtr_notify_rx(void *, struct vqueue_info *);
+static void pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *,
+    struct pci_vtdtr_ctrl_entry *);
+static void pci_vtdtr_cq_enqueue_front(struct pci_vtdtr_ctrlq *,
+    struct pci_vtdtr_ctrl_entry *);
+static int pci_vtdtr_cq_empty(struct pci_vtdtr_ctrlq *);
 static struct pci_vtdtr_ctrl_entry *pci_vtdtr_cq_dequeue(
-                  struct pci_vtdtr_ctrlq *);
-static void	pci_vtdtr_fill_desc(struct vqueue_info *,
-           	    struct pci_vtdtr_control *);
-static void	pci_vtdtr_poll(struct vqueue_info *, int);
-static void	pci_vtdtr_notify_ready(struct pci_vtdtr_softc *);
-static void	pci_vtdtr_fill_eof_desc(struct vqueue_info *);
-static void *	pci_vtdtr_run(void *);
-static void	pci_vtdtr_handle_mev(int, enum ev_type, int, void *);
-static void	pci_vtdtr_reset_queue(struct pci_vtdtr_softc *);
-static int	pci_vtdtr_init(struct vmctx *, struct pci_devinst *, char *);
+    struct pci_vtdtr_ctrlq *);
+static void pci_vtdtr_fill_desc(struct vqueue_info *,
+    struct pci_vtdtr_control *);
+static void pci_vtdtr_poll(struct vqueue_info *, int);
+static void pci_vtdtr_notify_ready(struct pci_vtdtr_softc *);
+static void pci_vtdtr_fill_eof_desc(struct vqueue_info *);
+static void * pci_vtdtr_run(void *);
+static void pci_vtdtr_handle_mev(int, enum ev_type, int, void *);
+static void pci_vtdtr_reset_queue(struct pci_vtdtr_softc *);
+static int pci_vtdtr_init(struct vmctx *, struct pci_devinst *, char *);
 
 static struct virtio_consts vtdtr_vi_consts = {
 	"vtdtr",			/* name */
