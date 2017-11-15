@@ -1824,9 +1824,10 @@ static int64_t
 hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
     uint64_t *args, struct vm_guest_paging *paging)
 {
+	int error = HYPERCALL_RET_SUCCESS;
+#ifdef DTRACE_VIRT_COPYIN_ARGS
 	struct seg_desc ds_desc;
 	struct hypercall_args h_args;
-	int error;
 	char *execname;
 	size_t opt_strsize = 0;
 
@@ -1867,9 +1868,17 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 	/*
 	 * TODO: Fill the hypercall_args structure.
 	 */
-	//vmmdt_hook_fire_probe(vm->name, &h_args);
+	dtvirt_probe(vm->name, h_args);
+#else
+	/*
+	 * FIXME: We should actually make this call, but for now, leave it like this.
+	 */
+	//	dtvirt_probe(h_args.u.dt.probeid);
+#endif
 
+#ifdef DTRACE_VIRT_COPYIN_ARGS
 	free(execname, M_VM);
+#endif
 	return (error);
 }
 
