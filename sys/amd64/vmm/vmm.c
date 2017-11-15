@@ -66,6 +66,8 @@ __FBSDID("$FreeBSD$");
 #include <machine/vmm_dev.h>
 #include <machine/vmm_instruction_emul.h>
 
+#include <dtvirt.h>
+
 #include "vmm_ioport.h"
 #include "vmm_ktr.h"
 #include "vmm_host.h"
@@ -1873,7 +1875,7 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 	/*
 	 * FIXME: We should actually make this call, but for now, leave it like this.
 	 */
-	//	dtvirt_probe(h_args.u.dt.probeid);
+	dtvirt_probe((int)args[0]);
 #endif
 
 #ifdef DTRACE_VIRT_COPYIN_ARGS

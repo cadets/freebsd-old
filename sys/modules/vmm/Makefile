@@ -11,6 +11,7 @@ CFLAGS+= -I${SRCTOP}/sys/amd64/vmm
 CFLAGS+= -I${SRCTOP}/sys/amd64/vmm/io
 CFLAGS+= -I${SRCTOP}/sys/amd64/vmm/intel
 CFLAGS+= -I${SRCTOP}/sys/amd64/vmm/amd
+CFLAGS+= -I${SRCTOP}/sys/cddl/dev/dtvirt
 
 # generic vmm support
 .PATH: ${SRCTOP}/sys/amd64/vmm
