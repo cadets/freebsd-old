@@ -46,6 +46,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/uuid.h>
 #include <sys/vtdtr.h>
 #include <sys/dtrace.h>
+#include <sys/sema.h>
 
 #include <sys/conf.h>
 
@@ -55,7 +56,7 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/virtio/virtio.h>
 #include <dev/virtio/virtqueue.h>
-#include <dev/virtio/dtrace/virtio_dtrace.h>
+#include <dev/virtio/dtrace/backend/virtio_dtrace.h>
 #include "virtio_if.h"
 
 struct vtdtr_probe {
@@ -358,7 +359,7 @@ vtdtr_attach(device_t dev)
 	kthread_add(vtdtr_run, sc, NULL, &sc->vtdtr_commtd,
 	    0, 0, NULL, "vtdtr_communicator");
 
-	dtrace_vtdtr_enable((void *)sc);
+	/*dtrace_vtdtr_enable((void *)sc);*/
 fail:
 	if (error)
 		vtdtr_detach(dev);
@@ -630,6 +631,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 
 	dev = sc->vtdtr_dev;
 	retval = 0;
+	error = 0;
 
 	/*
 	 * XXX: Double switch statement... meh.
@@ -657,7 +659,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		sc->vtdtr_ready = 0;
 		pb = &ctrl->uctrl.probe_ev;
 
-		error = dtrace_probeid_enable(pb->probe);
+		/*error = dtrace_probeid_enable(pb->probe);*/
 		if (error) {
 			device_printf(dev, "%s: error %d enabling"
 			    " probe %d\n", __func__, error, pb->probe);
@@ -696,7 +698,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 
 		KASSERT(found == 1, ("%s: probe not found", __func__));
 
-		error = dtrace_probeid_disable(pb->probe);
+		/*error = dtrace_probeid_disable(pb->probe);*/
 		if (error) {
 			device_printf(dev, "%s: error %d disabling"
 			    " probe %d\n", __func__, error, pb->probe);
