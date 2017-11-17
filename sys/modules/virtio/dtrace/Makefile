@@ -23,6 +23,7 @@
 # SUCH DAMAGE.
 #
 
-SUBDIR=	virtio pci network block balloon scsi random console dtrace
+SUBDIR=	backend frontend
 
 .include <bsd.subdir.mk>
+

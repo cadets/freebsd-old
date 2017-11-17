@@ -62,6 +62,7 @@ static struct virtio_ident {
 	{ VIRTIO_ID_IOMEMORY,	"IOMemory"	},
 	{ VIRTIO_ID_SCSI,	"SCSI"		},
 	{ VIRTIO_ID_9P,		"9P Transport"	},
+	{ VIRTIO_ID_DTRACE,	"DTrace"	},
 
 	{ 0, NULL }
 };
