@@ -55,6 +55,7 @@ static struct vtdtr_qentry *vtdtr_construct_entry(struct vtdtr_event *);
 static int vtdtr_subscribed(struct vtdtr_queue *, struct vtdtr_event *);
 static int vtdtr_read(struct cdev *, struct uio *, int);
 static int vtdtr_ioctl(struct cdev *, u_long, caddr_t, int, struct thread *);
+static int vtdtr_open(struct cdev *, int, int, struct thread *);
 static int vtdtr_modevent(module_t, int, void *);
 static int qtreecmp(struct vtdtr_queue *, struct vtdtr_queue *);
 
@@ -74,8 +75,9 @@ static struct cdevsw vtdtr_cdevsw = {
 	.d_version = D_VERSION,
 	.d_read    = vtdtr_read,
 	.d_write   = NULL,
-	.d_ioctl  = vtdtr_ioctl,
-	.d_name   = "vtdtr"
+	.d_ioctl   = vtdtr_ioctl,
+	.d_open    = vtdtr_open,
+	.d_name    = "vtdtr"
 };
 
 static struct vtdtr_qentry *
@@ -178,6 +180,12 @@ finalize_conf:
 	default:
 		break;
 	}
+	return (0);
+}
+
+static int
+vtdtr_open(struct cdev *dev __unused, int oflags, int devtype, struct thread *td)
+{
 	return (0);
 }
 
