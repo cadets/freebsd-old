@@ -13,6 +13,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/disk.h>
 #include <sys/bus.h>
 #include <sys/filio.h>
+#include <sys/tree.h>
+#include <sys/queue.h>
 #include <sys/dtrace.h>
 
 #include <machine/bus.h>
@@ -20,24 +22,49 @@ __FBSDID("$FreeBSD$");
 
 #include "vtdtr.h"
 
+#define BITS (8)
+#define VTDTR_BITMASK      ((((size_t)1 << (sizeof(size_t)*BITS-1)) - 1) | \
+                             ((size_t)1 << (sizeof(size_t)*BITS-1)))
+#define VTDTR_DEFAULT_SIZE ((size_t)VTDTR_BITMASK)
+#define VTDTR_ALL_EVENTS   ((size_t)VTDTR_BITMASK)
+
 /*
- * For now, only an abstraction. However, we could make use of this to have
- * multiple queues per process to only deal with certain types of events (i.e.
- * we are only interested in probe installs/uninstalls, ...). Can easily turn
- * this into statistics.
+ * Lets us implement the linked list.
  */
-struct vtdtr_queue {
-	struct mtx                 mtx;
-	STAILQ_HEAD(, vtdtr_event) head;
-	size_t                     max_size;
-	size_t                     num_entries;
+struct vtdtr_qentry {
+	struct vtdtr_event          *event;
+	STAILQ_ENTRY(vtdtr_qentry) next;
 };
 
+/*
+ * The queue is kept on a per-ucred basis. We do not want to deal with race
+ * conditions in the kernel and instead leave it up to the user to handle in
+ * case of more complex situations.
+ */
+struct vtdtr_queue {
+	struct mtx                  mtx;         /* Queue mutex */
+	struct proc                *proc;        /* Queue for a given proc */
+	RB_ENTRY(vtdtr_queue)       qnode;       /* This is a tree node */
+	STAILQ_HEAD(, vtdtr_qentry) head;        /* Head of the queue */
+	size_t                      max_size;    /* Max events we can hold */
+	size_t                      num_entries; /* Events in queue */
+	size_t                      event_flags;  /* Configuration flags */
+};
+
+static struct vtdtr_qentry *vtdtr_construct_entry(struct vtdtr_event *);
+static int vtdtr_subscribed(struct vtdtr_queue *, struct vtdtr_event *);
 static int vtdtr_read(struct cdev *, struct uio *, int);
 static int vtdtr_ioctl(struct cdev *, u_long, caddr_t, int, struct thread *);
 static int vtdtr_modevent(module_t, int, void *);
+static int qtreecmp(struct vtdtr_queue *, struct vtdtr_queue *);
 
-static struct vtdtr_queue *queue;
+/*
+ * We keep the queues as a red-black tree.
+ */
+static struct mtx qtree_mtx;
+static RB_HEAD(vtdtr_qtree, vtdtr_queue) vtdtr_queue_tree =
+    RB_INITIALIZER(&vtdtr_queue_tree);
+RB_GENERATE_STATIC(vtdtr_qtree, vtdtr_queue, qnode, qtreecmp);
 
 static struct cdev *vtdtr_dev;
 static d_ioctl_t    vtdtr_ioctl;
@@ -51,20 +78,106 @@ static struct cdevsw vtdtr_cdevsw = {
 	.d_name   = "vtdtr"
 };
 
+static struct vtdtr_qentry *
+vtdtr_construct_entry(struct vtdtr_event *e)
+{
+	struct vtdtr_qentry *ent;
+	ent = malloc(sizeof(struct vtdtr_qentry), M_TEMP, M_WAITOK | M_ZERO);
+	ent->event = e;
+
+	return (ent);
+}
+
 /*
- * TODO: We currently don't support any configuration, but it might be useful at
- * some point?
+ * XXX: This is currently limited to a number of event types. In the future,
+ * there might need to be a more complicated structure, but for now, this will
+ * do.
  */
+static int
+vtdtr_subscribed(struct vtdtr_queue *q, struct vtdtr_event *e)
+{
+
+	return (q->event_flags & (1 << e->type));
+}
+
+/*
+ * TODO: Do the enqueue for all registered processes.
+ */
+void
+vtdtr_enqueue(struct vtdtr_event *e)
+{
+	struct vtdtr_queue *q, *tmp;
+	struct vtdtr_qentry *ent;
+
+	q = NULL;
+	tmp = NULL;
+
+	/*
+	 * Iterate over all the known queues
+	 * */
+	RB_FOREACH_SAFE(q, vtdtr_qtree, &vtdtr_queue_tree, tmp) {
+		/*
+		 * Check if the queue is subscribed to the event
+		 */
+		if (q->num_entries >= q->max_size)
+			continue;
+
+		if (vtdtr_subscribed(q, e)) {
+			ent = vtdtr_construct_entry(e);
+			STAILQ_INSERT_TAIL(&q->head, ent, next);
+		}
+	}
+}
+
 static int
 vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags __unused)
 {
 	return (0);
 }
 
+/*
+ * TODO: We currently don't support any configuration, but it might be useful at
+ * some point?
+ */
 static int
-vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t data,
+vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
     int flags __unused, struct thread *td)
 {
+	struct vtdtr_conf *conf;
+	struct vtdtr_queue *q, tmp;
+	size_t max_size;
+	size_t event_flags;
+
+	max_size = VTDTR_DEFAULT_SIZE;
+	event_flags = VTDTR_ALL_EVENTS;
+
+	switch (cmd) {
+	case VTDTRIOC_CONF:
+		conf = (struct vtdtr_conf *)addr;
+		tmp.proc = td->td_proc;
+		q = RB_FIND(vtdtr_qtree, &vtdtr_queue_tree, &tmp);
+		if (q == NULL)
+			return (ENOENT);
+
+		/*
+		 * We just set the default configuration if no configuration has
+		 * been passed in. Eases programming on the consumer side.
+		 */
+		if (conf == NULL)
+			goto finalize_conf;
+
+		if (conf->max_size != 0)
+			max_size = conf->max_size;
+		if (conf->event_flags != 0)
+			event_flags = conf->event_flags;
+
+finalize_conf:
+		q->max_size = max_size;
+		q->event_flags = event_flags;
+		break;
+	default:
+		break;
+	}
 	return (0);
 }
 
@@ -88,6 +201,15 @@ vtdtr_modevent(module_t mod __unused, int type, void *data __unused)
 	};
 
 	return (0);
+}
+
+static int
+qtreecmp(struct vtdtr_queue *q1, struct vtdtr_queue *q2)
+{
+	if (q1->proc->p_pid == q2->proc->p_pid)
+		return (0);
+
+	return ((q1->proc->p_pid < q2->proc->p_pid) ? -1 : 1);
 }
 
 DEV_MODULE(vtdtr, vtdtr_modevent, NULL);
