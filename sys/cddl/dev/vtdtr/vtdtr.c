@@ -23,8 +23,8 @@ __FBSDID("$FreeBSD$");
 #include "vtdtr.h"
 
 #define BITS (8)
-#define VTDTR_BITMASK      ((((size_t)1 << (sizeof(size_t)*BITS-1)) - 1) | \
-                             ((size_t)1 << (sizeof(size_t)*BITS-1)))
+#define MAX_BITSHIFT       ((size_t)1 << (sizeof(size_t)*BITS-1))
+#define VTDTR_BITMASK      ((MAX_BITSHIFT - 1) | (MAX_BITSHIFT))
 #define VTDTR_DEFAULT_SIZE ((size_t)VTDTR_BITMASK)
 #define VTDTR_ALL_EVENTS   ((size_t)VTDTR_BITMASK)
 
@@ -102,6 +102,9 @@ vtdtr_construct_entry(struct vtdtr_event *e)
 static int
 vtdtr_subscribed(struct vtdtr_queue *q, struct vtdtr_event *e)
 {
+
+	if (e->type > MAX_BITSHIFT)
+		return (0);
 
 	return (q->event_flags & ((size_t)1 << e->type));
 }
