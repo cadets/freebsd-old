@@ -10,6 +10,7 @@ SRCS=		vtdtr.c	\
 
 CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris \
 		-I${SYSDIR}/cddl/contrib/opensolaris/uts/common \
+		-I${SYSDIR}/cddl/contrib/opensolaris/uts/common/dtrace \
 		-I${SYSDIR}
 
 

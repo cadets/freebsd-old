@@ -1,12 +1,15 @@
-#ifndef _VTDTR_H_
-#define _VTDTR_H_
+#ifndef _SYS_VTDTR_H_
+#define _SYS_VTDTR_H_
 
-struct uuid;
+#define VTDTR_EV_INSTALL   0x00
+#define VTDTR_EV_UNINSTALL 0x01
 
-extern void (*vtdtr_notify_load)(void);
-extern void (*vtdtr_advertise_prov)(void *, const char *, struct uuid *);
-extern void (*vtdtr_destroy_prov)(void *, struct uuid *);
-extern void (*vtdtr_advertise_probe)(void *, const char *,
-    const char *, const char *, struct uuid *);
+struct vtdtr_conf {
+	size_t max_size;
+	size_t event_flags;
+};
+
+#define VTDTRIOC_CONF 0x00
+
 
 #endif
