@@ -32,7 +32,7 @@ __FBSDID("$FreeBSD$");
  * Lets us implement the linked list.
  */
 struct vtdtr_qentry {
-	struct vtdtr_event          *event;
+	struct vtdtr_event        *event;
 	STAILQ_ENTRY(vtdtr_qentry) next;
 };
 
@@ -48,7 +48,8 @@ struct vtdtr_queue {
 	STAILQ_HEAD(, vtdtr_qentry) head;        /* Head of the queue */
 	size_t                      max_size;    /* Max events we can hold */
 	size_t                      num_entries; /* Events in queue */
-	size_t                      event_flags;  /* Configuration flags */
+	size_t                      event_flags; /* Configuration flags */
+	size_t                      drops;       /* Number of event drops */
 };
 
 static struct vtdtr_qentry *vtdtr_construct_entry(struct vtdtr_event *);
@@ -94,6 +95,9 @@ vtdtr_construct_entry(struct vtdtr_event *e)
  * XXX: This is currently limited to a number of event types. In the future,
  * there might need to be a more complicated structure, but for now, this will
  * do.
+ *
+ * FIXME: If we want to allow the users to configure their queues dynamically,
+ * we should either do this under a mutex of perform a CAS.
  */
 static int
 vtdtr_subscribed(struct vtdtr_queue *q, struct vtdtr_event *e)
@@ -116,19 +120,27 @@ vtdtr_enqueue(struct vtdtr_event *e)
 
 	/*
 	 * Iterate over all the known queues
-	 * */
+	 */
+	mtx_lock(&qtree_mtx);
 	RB_FOREACH_SAFE(q, vtdtr_qtree, &vtdtr_queue_tree, tmp) {
 		/*
 		 * Check if the queue is subscribed to the event
 		 */
-		if (q->num_entries >= q->max_size)
+		mtx_lock(&q->mtx);
+		if (q->num_entries >= q->max_size) {
+			q->drops++;
+			mtx_unlock(&q->mtx);
 			continue;
+		}
 
 		if (vtdtr_subscribed(q, e)) {
 			ent = vtdtr_construct_entry(e);
 			STAILQ_INSERT_TAIL(&q->head, ent, next);
+			q->num_entries++;
 		}
+		mtx_unlock(&q->mtx);
 	}
+	mtx_unlock(&qtree_mtx);
 }
 
 static int
@@ -157,7 +169,9 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 	case VTDTRIOC_CONF:
 		conf = (struct vtdtr_conf *)addr;
 		tmp.proc = td->td_proc;
+		mtx_lock(&qtree_mtx);
 		q = RB_FIND(vtdtr_qtree, &vtdtr_queue_tree, &tmp);
+		mtx_unlock(&qtree_mtx);
 		if (q == NULL)
 			return (ENOENT);
 
@@ -174,6 +188,10 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 			event_flags = conf->event_flags;
 
 finalize_conf:
+		/*
+		 * FIXME: Similarly as in vtdtr_subscribed, if we want this to
+		 * be done dynamically, we should either lock or perform CAS.
+		 */
 		q->max_size = max_size;
 		q->event_flags = event_flags;
 		break;
@@ -198,8 +216,13 @@ vtdtr_modevent(module_t mod __unused, int type, void *data __unused)
 			printf("vtdtr: <vtdtr device>\n");
 		vtdtr_dev = make_dev_credf(MAKEDEV_ETERNAL_KLD, &vtdtr_cdevsw, 0,
 		    NULL, UID_ROOT, GID_WHEEL, 0440, "vtdtr");
+		mtx_init(&qtree_mtx, "Queue tree mutex", NULL, MTX_DEF);
 		break;
 	case MOD_UNLOAD:
+		/*
+		 * FIXME: We ought to clean up the queues here.
+		 */
+		mtx_destroy(&qtree_mtx);
 		destroy_dev(vtdtr_dev);
 		break;
 	case MOD_SHUTDOWN:
