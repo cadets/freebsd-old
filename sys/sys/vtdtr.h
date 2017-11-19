@@ -9,7 +9,6 @@ struct vtdtr_conf {
 	size_t event_flags;
 };
 
-#define VTDTRIOC_CONF 0x00
-
+#define VTDTRIOC_CONF _IOR('v',1,struct vtdtr_conf)
 
 #endif
