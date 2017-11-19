@@ -103,7 +103,7 @@ static int
 vtdtr_subscribed(struct vtdtr_queue *q, struct vtdtr_event *e)
 {
 
-	return (q->event_flags & (1 << e->type));
+	return (q->event_flags & ((size_t)1 << e->type));
 }
 
 /*
