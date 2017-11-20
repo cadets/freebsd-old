@@ -13,6 +13,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/disk.h>
 #include <sys/bus.h>
 #include <sys/filio.h>
+#include <sys/priv.h>
 #include <sys/tree.h>
 #include <sys/queue.h>
 #include <sys/dtrace.h>
@@ -22,11 +23,12 @@ __FBSDID("$FreeBSD$");
 
 #include "vtdtr.h"
 
-#define BITS (8)
-#define MAX_BITSHIFT       ((size_t)1 << (sizeof(size_t)*BITS-1))
-#define VTDTR_BITMASK      ((MAX_BITSHIFT - 1) | (MAX_BITSHIFT))
-#define VTDTR_DEFAULT_SIZE ((size_t)VTDTR_BITMASK)
-#define VTDTR_ALL_EVENTS   ((size_t)VTDTR_BITMASK)
+#define BITS                8
+#define MAX_BITSHIFT        ((size_t)1 << (sizeof(size_t)*BITS-1))
+#define VTDTR_BITMASK       ((MAX_BITSHIFT - 1) | (MAX_BITSHIFT))
+#define VTDTR_DEFAULT_SIZE  ((size_t)VTDTR_BITMASK)
+#define VTDTR_ALL_EVENTS    ((size_t)VTDTR_BITMASK)
+#define VTDTR_MTX_NAME_SIZE 64
 
 /*
  * Lets us implement the linked list.
@@ -57,6 +59,7 @@ static int vtdtr_subscribed(struct vtdtr_queue *, struct vtdtr_event *);
 static int vtdtr_read(struct cdev *, struct uio *, int);
 static int vtdtr_ioctl(struct cdev *, u_long, caddr_t, int, struct thread *);
 static int vtdtr_open(struct cdev *, int, int, struct thread *);
+static int vtdtr_close(struct cdev *, int, int, struct thread *);
 static int vtdtr_modevent(module_t, int, void *);
 static int qtreecmp(struct vtdtr_queue *, struct vtdtr_queue *);
 
@@ -78,9 +81,13 @@ static struct cdevsw vtdtr_cdevsw = {
 	.d_write   = NULL,
 	.d_ioctl   = vtdtr_ioctl,
 	.d_open    = vtdtr_open,
+	.d_close   = vtdtr_close,
 	.d_name    = "vtdtr"
 };
 
+/*
+ * Helper function used to create a queue entry
+ */
 static struct vtdtr_qentry *
 vtdtr_construct_entry(struct vtdtr_event *e)
 {
@@ -109,9 +116,6 @@ vtdtr_subscribed(struct vtdtr_queue *q, struct vtdtr_event *e)
 	return (q->event_flags & ((size_t)1 << e->type));
 }
 
-/*
- * TODO: Do the enqueue for all registered processes.
- */
 void
 vtdtr_enqueue(struct vtdtr_event *e)
 {
@@ -152,10 +156,6 @@ vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags __unused)
 	return (0);
 }
 
-/*
- * TODO: We currently don't support any configuration, but it might be useful at
- * some point?
- */
 static int
 vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
     int flags __unused, struct thread *td)
@@ -164,12 +164,22 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 	struct vtdtr_queue *q, tmp;
 	size_t max_size;
 	size_t event_flags;
+	/*
+	 * FIXME: No.
+	 */
+	static int first = 1;
 
 	max_size = VTDTR_DEFAULT_SIZE;
 	event_flags = VTDTR_ALL_EVENTS;
 
 	switch (cmd) {
 	case VTDTRIOC_CONF:
+		/*
+		 * FIXME: Nasty, but currently helps prevent concurrency issues.
+		 */
+		if (!first)
+			return (EBUSY);
+		first = 0;
 		conf = (struct vtdtr_conf *)addr;
 		tmp.proc = td->td_proc;
 		mtx_lock(&qtree_mtx);
@@ -207,6 +217,94 @@ finalize_conf:
 static int
 vtdtr_open(struct cdev *dev __unused, int oflags, int devtype, struct thread *td)
 {
+	struct vtdtr_queue *q, tmp;
+	int error, n;
+	char mtx_name[VTDTR_MTX_NAME_SIZE];
+
+	/*
+	 * Check if we can inspect what DTrace is doing to the kernel, as we are
+	 * currently not limiting what the consumer can listen for.
+	 */
+	error = priv_check(td, PRIV_DTRACE_KERNEL);
+	if (error)
+		return (error);
+
+	tmp.proc = td->td_proc;
+
+	/*
+	 * If we find an entry in the tree, that means a process is trying to
+	 * open two file descriptors for the driver. For simplicity and
+	 * performance reasons (and sort of to impose a certain type of
+	 * architecture to avoid race conditions), we return EBUSY.
+	 */
+	mtx_lock(&qtree_mtx);
+	q = RB_FIND(vtdtr_qtree, &vtdtr_queue_tree, &tmp);
+	if (q != NULL) {
+		mtx_unlock(&qtree_mtx);
+		return (EBUSY);
+	}
+	mtx_unlock(&qtree_mtx);
+
+	/*
+	 * Set up the queue's initial state.
+	 */
+	q = malloc(sizeof(struct vtdtr_queue), M_DEVBUF, M_WAITOK | M_ZERO);
+	q->proc = td->td_proc;
+
+	n = snprintf(mtx_name, VTDTR_MTX_NAME_SIZE,
+	    "VTDTR Queue Mutex: %d", q->proc->p_pid);
+	KASSERT(n < VTDTR_MTX_NAME_SIZE,
+	    ("n = %zu %s(%d)", n, __func__, __LINE__));
+
+	mtx_init(&q->mtx, "vtdtrqmtx", mtx_name, MTX_DEF);
+	STAILQ_INIT(&q->head);
+
+	/*
+	 * Drop it into the tree.
+	 */
+	mtx_lock(&qtree_mtx);
+	RB_INSERT(vtdtr_qtree, &vtdtr_queue_tree, q);
+	mtx_unlock(&qtree_mtx);
+
+	return (0);
+}
+
+static void
+vtdtr_flush(struct vtdtr_queue *q)
+{
+	struct vtdtr_qentry *ent, *tmp;
+
+	ASSERT(MUTEX_HELD(q->mtx));
+	STAILQ_FOREACH_SAFE(ent, &q->head, next, tmp) {
+		STAILQ_REMOVE(&q->head, ent, vtdtr_qentry, next);
+		free(ent->event, M_TEMP);
+		free(ent, M_TEMP);
+	}
+}
+
+static int
+vtdtr_close(struct cdev *dev __unused, int foo, int bar, struct thread *td)
+{
+	struct vtdtr_queue *q, tmp;
+
+	tmp.proc = td->td_proc;
+
+	mtx_lock(&qtree_mtx);
+	q = RB_FIND(vtdtr_qtree, &vtdtr_queue_tree, &tmp);
+	if (q == NULL) {
+		mtx_unlock(&qtree_mtx);
+		return (ESRCH);
+	}
+
+	RB_REMOVE(vtdtr_qtree, &vtdtr_queue_tree, q);
+	mtx_unlock(&qtree_mtx);
+
+	mtx_lock(&q->mtx);
+	vtdtr_flush(q);
+	mtx_unlock(&q->mtx);
+
+	free(q, M_DEVBUF);
+
 	return (0);
 }
 
