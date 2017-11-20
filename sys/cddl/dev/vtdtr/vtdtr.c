@@ -10,16 +10,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/malloc.h>
 #include <sys/module.h>
-#include <sys/disk.h>
-#include <sys/bus.h>
-#include <sys/filio.h>
 #include <sys/priv.h>
 #include <sys/tree.h>
 #include <sys/queue.h>
 #include <sys/dtrace.h>
 
 #include <machine/bus.h>
-#include <machine/vmparam.h>
 
 #include "vtdtr.h"
 

@@ -269,9 +269,11 @@ vtdtr_attach(device_t dev)
 	sc->vtdtr_shutdown = 0;
 	sc->vtdtr_host_ready = 1;
 
+	/*
 	vtdtr_advertise_prov = vtdtr_advertise_prov_priv;
 	vtdtr_destroy_prov = vtdtr_destroy_prov_priv;
 	vtdtr_advertise_probe = vtdtr_advertise_probe_priv;
+	*/
 
 	sc->vtdtr_ctrlq = malloc(sizeof(struct vtdtr_ctrlq),
 	    M_DEVBUF, M_NOWAIT | M_ZERO);
