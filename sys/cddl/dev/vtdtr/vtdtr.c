@@ -99,12 +99,12 @@ vtdtr_construct_entry(struct vtdtr_event *e)
  * there might need to be a more complicated structure, but for now, this will
  * do.
  *
- * FIXME: If we want to allow the users to configure their queues dynamically,
- * we should either do this under a mutex of perform a CAS.
+ * XXX: CAS? Do we care?
  */
 static int
 vtdtr_subscribed(struct vtdtr_queue *q, struct vtdtr_event *e)
 {
+	ASSERT(MUTEX_HELD(q->mtx));
 
 	if (e->type > MAX_BITSHIFT)
 		return (0);
@@ -160,22 +160,12 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 	struct vtdtr_queue *q, tmp;
 	size_t max_size;
 	size_t event_flags;
-	/*
-	 * FIXME: No.
-	 */
-	static int first = 1;
 
 	max_size = VTDTR_DEFAULT_SIZE;
 	event_flags = VTDTR_ALL_EVENTS;
 
 	switch (cmd) {
 	case VTDTRIOC_CONF:
-		/*
-		 * FIXME: Nasty, but currently helps prevent concurrency issues.
-		 */
-		if (!first)
-			return (EBUSY);
-		first = 0;
 		conf = (struct vtdtr_conf *)addr;
 		tmp.proc = td->td_proc;
 		mtx_lock(&qtree_mtx);
@@ -185,6 +175,9 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 			return (ENOENT);
 
 		/*
+		 * XXX: This is probably handled ahead of time, so we have no
+		 * business checking here -- but better safe than sorry!
+		 *
 		 * We just set the default configuration if no configuration has
 		 * been passed in. Eases programming on the consumer side.
 		 */
@@ -198,11 +191,12 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 
 finalize_conf:
 		/*
-		 * FIXME: Similarly as in vtdtr_subscribed, if we want this to
-		 * be done dynamically, we should either lock or perform CAS.
+		 * XXX: Possibly CAS? Do we care?
 		 */
+		mtx_lock(&q->mtx);
 		q->max_size = max_size;
 		q->event_flags = event_flags;
+		mtx_unlock(&q->mtx);
 		break;
 	default:
 		break;
