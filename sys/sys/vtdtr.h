@@ -1,8 +1,25 @@
 #ifndef _SYS_VTDTR_H_
 #define _SYS_VTDTR_H_
 
+//#include <sys/dtrace.h>
+
 #define VTDTR_EV_INSTALL   0x00
 #define VTDTR_EV_UNINSTALL 0x01
+
+/*
+ * We only have one event at the moment -- possibly others in the future.
+ */
+struct vtdtr_event {
+	size_t type;
+
+	union {
+		struct {
+			int probeid;
+		} p_toggle;
+	} args;
+};
+
+
 
 struct vtdtr_conf {
 	size_t max_size;
