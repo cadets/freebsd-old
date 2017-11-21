@@ -146,10 +146,78 @@ vtdtr_enqueue(struct vtdtr_event *e)
 	mtx_unlock(&qtree_mtx);
 }
 
+/*
+ * FIXME: Make sure concurrency is fine here.
+ */
 static int
-vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags __unused)
+vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags)
 {
-	return (0);
+	struct proc *u_proc;
+	struct vtdtr_queue *q, tmp;
+	struct vtdtr_qentry *ent;
+	struct vtdtr_event *e;
+	char *data; /* Isn't actually a string */
+	char *dptr;
+	size_t len;
+	int n_events, error;
+
+	n_events = 0;
+	len = 0;
+	error = 0;
+	u_proc = uio->uio_td->td_proc;
+	tmp.proc = u_proc;
+
+	mtx_lock(&qtree_mtx);
+	q = RB_FIND(vtdtr_qtree, &vtdtr_queue_tree, &tmp);
+	mtx_unlock(&qtree_mtx);
+	if (q == NULL)
+		return (ESRCH);
+
+	/*
+	 * XXX: Modulo + division is painful, but we can fix this if it turns
+	 * out to be a problem.
+	 */
+	if (uio->uio_resid % sizeof(struct vtdtr_event) != 0)
+		return (EINVAL);
+
+	n_events = uio->uio_resid / sizeof(struct vtdtr_event);
+	if (n_events == 0)
+		return (EINVAL);
+
+	/*
+	 * We don't lock here because we synchronize inside the if on the
+	 * condvar.
+	 */
+	if (q->num_entries == 0) {
+		if (flags & O_NONBLOCK)
+			return (EAGAIN);
+		else {
+			/*
+			 * FIXME: Go to sleep.
+			 */
+			return (0);
+		}
+	}
+
+	data = malloc(uio->uio_resid, M_TEMP, M_WAITOK | M_ZERO);
+	dptr = data;
+
+	mtx_lock(&q->mtx);
+	STAILQ_FOREACH(ent, &q->head, next) {
+		e = ent->event;
+		n_events++;
+		memcpy(dptr, e, sizeof(struct vtdtr_event));
+		dptr += sizeof(struct vtdtr_event);
+		len += sizeof(struct vtdtr_event);
+		if (n_events == 0)
+			break;
+	}
+	mtx_unlock(&q->mtx);
+
+	error = uiomove(data, len, uio);
+	free(data, M_TEMP);
+
+	return (error);
 }
 
 static int
@@ -229,11 +297,10 @@ vtdtr_open(struct cdev *dev __unused, int oflags, int devtype, struct thread *td
 	 */
 	mtx_lock(&qtree_mtx);
 	q = RB_FIND(vtdtr_qtree, &vtdtr_queue_tree, &tmp);
+	mtx_unlock(&qtree_mtx);
 	if (q != NULL) {
-		mtx_unlock(&qtree_mtx);
 		return (EBUSY);
 	}
-	mtx_unlock(&qtree_mtx);
 
 	/*
 	 * Set up the queue's initial state.
