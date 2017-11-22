@@ -128,6 +128,7 @@
 #include <sys/rwlock.h>
 #include <sys/sx.h>
 #include <sys/sysctl.h>
+#include <cddl/dev/vtdtr/vtdtr.h>
 
 #include <sys/dtrace_bsd.h>
 
@@ -11153,6 +11154,7 @@ dtrace_ecb_enable(dtrace_ecb_t *ecb)
 	}
 
 	if (probe->dtpr_ecb == NULL) {
+		struct vtdtr_event e;
 		dtrace_provider_t *prov = probe->dtpr_provider;
 
 		/*
@@ -11165,6 +11167,10 @@ dtrace_ecb_enable(dtrace_ecb_t *ecb)
 
 		prov->dtpv_pops.dtps_enable(prov->dtpv_arg,
 		    probe->dtpr_id, probe->dtpr_arg);
+
+		e.type = VTDTR_EV_INSTALL;
+		e.args.p_toggle.probeid = probe->dtpr_id;
+		vtdtr_enqueue(&e);
 	} else {
 		/*
 		 * This probe is already active.  Swing the last pointer to
