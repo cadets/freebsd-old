@@ -22,6 +22,7 @@ struct vtdtr_event {
 
 
 struct vtdtr_conf {
+	sbintime_t timeout;
 	size_t max_size;
 	size_t event_flags;
 };
