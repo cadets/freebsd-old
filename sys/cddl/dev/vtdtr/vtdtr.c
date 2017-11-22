@@ -24,6 +24,7 @@ __FBSDID("$FreeBSD$");
 #define VTDTR_BITMASK       ((MAX_BITSHIFT - 1) | (MAX_BITSHIFT))
 #define VTDTR_DEFAULT_SIZE  ((size_t)VTDTR_BITMASK)
 #define VTDTR_ALL_EVENTS    ((size_t)VTDTR_BITMASK)
+#define VTDTR_TIMEOUT       (10*SBT_1S)
 #define VTDTR_MTX_NAME_SIZE 64
 
 /*
@@ -40,10 +41,13 @@ struct vtdtr_qentry {
  * case of more complex situations.
  */
 struct vtdtr_queue {
+	struct cv                   cv;          /* Queue condvar */
+	struct mtx                  cvmtx;       /* Condvar mutex */
 	struct mtx                  mtx;         /* Queue mutex */
 	struct proc                *proc;        /* Queue for a given proc */
 	RB_ENTRY(vtdtr_queue)       qnode;       /* This is a tree node */
 	STAILQ_HEAD(, vtdtr_qentry) head;        /* Head of the queue */
+	sbintime_t                  timeout;     /* Timeout for read */
 	size_t                      max_size;    /* Max events we can hold */
 	size_t                      num_entries; /* Events in queue */
 	size_t                      event_flags; /* Configuration flags */
@@ -140,6 +144,9 @@ vtdtr_enqueue(struct vtdtr_event *e)
 			ent = vtdtr_construct_entry(e);
 			STAILQ_INSERT_TAIL(&q->head, ent, next);
 			q->num_entries++;
+			mtx_lock(&q->cvmtx);
+			cv_signal(&q->cv);
+			mtx_unlock(&q->cvmtx);
 		}
 		mtx_unlock(&q->mtx);
 	}
@@ -152,9 +159,9 @@ vtdtr_enqueue(struct vtdtr_event *e)
 static int
 vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags)
 {
-	struct proc *u_proc;
 	struct vtdtr_queue *q, tmp;
 	struct vtdtr_qentry *ent;
+	struct proc *u_proc;
 	struct vtdtr_event *e;
 	char *data; /* Isn't actually a string */
 	char *dptr;
@@ -192,10 +199,18 @@ vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags)
 		if (flags & O_NONBLOCK)
 			return (EAGAIN);
 		else {
-			/*
-			 * FIXME: Go to sleep.
-			 */
-			return (0);
+			if (q->timeout == 0) {
+				mtx_lock(&q->cvmtx);
+				while (q->num_entries == 0)
+					cv_wait(&q->cv, &q->cvmtx);
+				mtx_unlock(&q->cvmtx);
+			} else {
+				mtx_lock(&q->mtx);
+				msleep_sbt(q, &q->mtx, 0, "qwait", q->timeout, 0, 0);
+				mtx_unlock(&q->mtx);
+				if (q->num_entries == 0)
+					return (EAGAIN);
+			}
 		}
 	}
 
@@ -226,11 +241,17 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 {
 	struct vtdtr_conf *conf;
 	struct vtdtr_queue *q, tmp;
+	sbintime_t timeout;
 	size_t max_size;
 	size_t event_flags;
 
 	max_size = VTDTR_DEFAULT_SIZE;
 	event_flags = VTDTR_ALL_EVENTS;
+	/*
+	 * We timeout in VTDTR_TIMEOUT by default. If the user wants to block
+	 * indefinitely, we require that explicitly.
+	 */
+	timeout = VTDTR_TIMEOUT;
 
 	switch (cmd) {
 	case VTDTRIOC_CONF:
@@ -256,6 +277,8 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 			max_size = conf->max_size;
 		if (conf->event_flags != 0)
 			event_flags = conf->event_flags;
+		if (conf->timeout != 0)
+			timeout = conf->timeout * SBT_1S;
 
 finalize_conf:
 		/*
@@ -264,6 +287,7 @@ finalize_conf:
 		mtx_lock(&q->mtx);
 		q->max_size = max_size;
 		q->event_flags = event_flags;
+		q->timeout = timeout;
 		mtx_unlock(&q->mtx);
 		break;
 	default:
@@ -314,6 +338,8 @@ vtdtr_open(struct cdev *dev __unused, int oflags, int devtype, struct thread *td
 	    ("n = %zu %s(%d)", n, __func__, __LINE__));
 
 	mtx_init(&q->mtx, "vtdtrqmtx", mtx_name, MTX_DEF);
+	cv_init(&q->cv, "VTDTR Condvar");
+	mtx_init(&q->cvmtx, "vtdtrcondmtx", NULL, MTX_DEF);
 	STAILQ_INIT(&q->head);
 
 	/*
@@ -358,8 +384,15 @@ vtdtr_close(struct cdev *dev __unused, int foo, int bar, struct thread *td)
 
 	mtx_lock(&q->mtx);
 	vtdtr_flush(q);
+
+	mtx_lock(&q->cvmtx);
+	cv_destroy(&q->cv);
+	mtx_unlock(&q->cvmtx);
+
+	mtx_destroy(&q->cvmtx);
 	mtx_unlock(&q->mtx);
 
+	mtx_destroy(&q->mtx);
 	free(q, M_DEVBUF);
 
 	return (0);
