@@ -92,8 +92,11 @@ static struct vtdtr_qentry *
 vtdtr_construct_entry(struct vtdtr_event *e)
 {
 	struct vtdtr_qentry *ent;
+	struct vtdtr_event *ev;
 	ent = malloc(sizeof(struct vtdtr_qentry), M_TEMP, M_WAITOK | M_ZERO);
-	ent->event = e;
+	ev = malloc(sizeof(struct vtdtr_event), M_TEMP, M_WAITOK | M_ZERO);
+	memcpy(ev, e, sizeof(struct vtdtr_event));
+	ent->event = ev;
 
 	return (ent);
 }
@@ -160,7 +163,7 @@ static int
 vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags)
 {
 	struct vtdtr_queue *q, tmp;
-	struct vtdtr_qentry *ent;
+	struct vtdtr_qentry *ent, *t;
 	struct proc *u_proc;
 	struct vtdtr_event *e;
 	char *data; /* Isn't actually a string */
@@ -218,10 +221,23 @@ vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags)
 	dptr = data;
 
 	mtx_lock(&q->mtx);
-	STAILQ_FOREACH(ent, &q->head, next) {
+	STAILQ_FOREACH_SAFE(ent, &q->head, next, t) {
 		e = ent->event;
-		n_events++;
+		n_events--;
+		/*
+		 * Copy the event
+		 */
 		memcpy(dptr, e, sizeof(struct vtdtr_event));
+
+		/*
+		 * We copied the event into our buffer, we can now remove it
+		 * from the queue and free the memory.
+		 */
+		STAILQ_REMOVE_HEAD(&q->head, next);
+		free(ent, M_TEMP);
+		free(e, M_TEMP);
+		q->num_entries--;
+
 		dptr += sizeof(struct vtdtr_event);
 		len += sizeof(struct vtdtr_event);
 		if (n_events == 0)
@@ -359,7 +375,7 @@ vtdtr_flush(struct vtdtr_queue *q)
 
 	ASSERT(MUTEX_HELD(q->mtx));
 	STAILQ_FOREACH_SAFE(ent, &q->head, next, tmp) {
-		STAILQ_REMOVE(&q->head, ent, vtdtr_qentry, next);
+		STAILQ_REMOVE_HEAD(&q->head, next);
 		free(ent->event, M_TEMP);
 		free(ent, M_TEMP);
 	}
