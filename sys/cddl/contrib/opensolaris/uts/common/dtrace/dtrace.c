@@ -11880,6 +11880,7 @@ dtrace_ecb_disable(dtrace_ecb_t *ecb)
 	dtrace_sync();
 
 	if (probe->dtpr_ecb == NULL) {
+		struct vtdtr_event e;
 		/*
 		 * That was the last ECB on the probe; clear the predicate
 		 * cache ID for the probe, disable it and sync one more time
@@ -11893,6 +11894,11 @@ dtrace_ecb_disable(dtrace_ecb_t *ecb)
 		prov->dtpv_pops.dtps_disable(prov->dtpv_arg,
 		    probe->dtpr_id, probe->dtpr_arg);
 		dtrace_sync();
+#ifdef VTDTR
+		e.type = VTDTR_EV_UNINSTALL;
+		e.args.p_toggle.probeid = probe->dtpr_id;
+		vtdtr_enqueue(&e);
+#endif
 	} else {
 		/*
 		 * There is at least one ECB remaining on the probe.  If there
