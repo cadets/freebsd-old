@@ -128,7 +128,9 @@
 #include <sys/rwlock.h>
 #include <sys/sx.h>
 #include <sys/sysctl.h>
+#ifdef VTDTR
 #include <cddl/dev/vtdtr/vtdtr.h>
+#endif
 
 #include <sys/dtrace_bsd.h>
 
@@ -11210,7 +11212,9 @@ dtrace_ecb_enable(dtrace_ecb_t *ecb)
 	}
 
 	if (probe->dtpr_ecb == NULL) {
+#ifdef VTDTR
 		struct vtdtr_event e;
+#endif
 		dtrace_provider_t *prov = probe->dtpr_provider;
 
 		/*
@@ -11880,7 +11884,9 @@ dtrace_ecb_disable(dtrace_ecb_t *ecb)
 	dtrace_sync();
 
 	if (probe->dtpr_ecb == NULL) {
+#ifdef VTDTR
 		struct vtdtr_event e;
+#endif
 		/*
 		 * That was the last ECB on the probe; clear the predicate
 		 * cache ID for the probe, disable it and sync one more time
