@@ -11224,9 +11224,11 @@ dtrace_ecb_enable(dtrace_ecb_t *ecb)
 		prov->dtpv_pops.dtps_enable(prov->dtpv_arg,
 		    probe->dtpr_id, probe->dtpr_arg);
 
+#ifdef VTDTR
 		e.type = VTDTR_EV_INSTALL;
 		e.args.p_toggle.probeid = probe->dtpr_id;
 		vtdtr_enqueue(&e);
+#endif
 	} else {
 		/*
 		 * This probe is already active.  Swing the last pointer to
@@ -18492,4 +18494,7 @@ SYSINIT(dtrace_anon_init, SI_SUB_DTRACE_ANON, SI_ORDER_FIRST, dtrace_anon_init, 
 DEV_MODULE(dtrace, dtrace_modevent, NULL);
 MODULE_VERSION(dtrace, 1);
 MODULE_DEPEND(dtrace, opensolaris, 1, 1, 1);
+#ifdef VTDTR
+MODULE_DEPEND(dtrace, vtdtr, 1, 1, 1);
+#endif
 #endif

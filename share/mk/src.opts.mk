@@ -183,6 +183,7 @@ __DEFAULT_YES_OPTIONS = \
     UTMPX \
     VI \
     VT \
+    VTDTR \
     WIRELESS \
     WPA_SUPPLICANT_EAPOL \
     ZFS \
@@ -416,6 +417,7 @@ MK_SOURCELESS_UCODE:= no
 .if ${MK_CDDL} == "no"
 MK_ZFS:=	no
 MK_CTF:=	no
+MK_VTDTR:=	no
 .endif
 
 .if ${MK_CRYPT} == "no"
