@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+.include <src.opts.mk>
+
 SYSDIR?=	${SRCTOP}/sys
 
 ARCHDIR=	${MACHINE_CPUARCH}
@@ -48,6 +50,10 @@ CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris \
 		-I${SYSDIR} -DDIS_MEM
 
 CFLAGS+=	-DSMP
+
+.if ${MK_VTDTR} != "no"
+CFLAGS+=	-DVTDTR
+.endif
 
 EXPORT_SYMS=	dtrace_register \
 		dtrace_unregister \
