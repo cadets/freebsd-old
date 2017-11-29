@@ -26,10 +26,13 @@
  * $FreeBSD$
  */
 
-#include <sys/dtrace.h>
-#include <sys/uuid.h>
-#include <sys/capsicum.h>
-#include <sys/tree.h>
+//#include <sys/dtrace.h>
+//#include <sys/uuid.h>
+//#include <sys/capsicum.h>
+//#include <sys/tree.h>
+#include <sys/types.h>
+#include <sys/vtdtr.h>
+#include <sys/ioctl.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,21 +42,79 @@
 #include <errno.h>
 #include <assert.h>
 
-#include <dt_impl.h>
-#include <dt_printf.h>
-#include <dtrace.h>
+//#include <dt_impl.h>
+//#include <dt_printf.h>
+//#include <dtrace.h>
 
 #include "dthyve.h"
 
+#ifndef VTDTR
+
+static int vtdtr_fd = -1;
+static struct vtdtr_conf vtdtr_conf;
+
+void
+dthyve_init(const char *vm __unused)
+{
+	int error;
+
+	error = 0;
+
+	vtdtr_fd = open("/dev/vtdtr", O_RDWR);
+	if (vtdtr_fd == -1) {
+		fprintf(stderr, "Error: '%s' opening /dev/vtdtr",
+		    strerror(errno));
+		exit(1);
+	}
+	
+	/*
+	 * Default configuration.
+	 */
+	vtdtr_conf.timeout = 0;
+	vtdtr_conf.event_flags = VTDTR_EV_INSTALL | VTDTR_EV_UNINSTALL;
+
+	error = ioctl(vtdtr_fd, VTDTRIOC_CONF, &vtdtr_conf);
+	if (error) {
+		fprintf(stderr, "Error: '%s' configuring vtdtr",
+		    strerror(errno));
+		exit(1);
+	}
+}
+
+int
+dthyve_read(struct vtdtr_event *es, size_t n_events)
+{
+	ssize_t res;
+
+	if (es == NULL || n_events == 0) {
+		return (EINVAL);
+	}
+
+	res = read(vtdtr_fd, es, n_events * sizeof(struct vtdtr_event));
+	if (res != n_events * sizeof(struct vtdtr_event))
+		return (errno);
+
+	return (0);
+}
+
+void
+dthyve_destroy()
+{
+	close(vtdtr_fd);
+}
+
+#endif
+
+#ifdef VTDTR
 static dtrace_hdl_t *g_dtp;
 static const char *g_prog = "dthyve";
 
 struct dthyve_prov {
-	RB_ENTRY(dthyve_prov)	node;
-	char			vm[DTRACE_INSTANCENAMELEN];
-	char			name[DTRACE_PROVNAMELEN];
-	struct uuid		*uuid;
-	struct uuid		*host_uuid;
+	RB_ENTRY(dthyve_prov) node;
+	char                  vm[DTRACE_INSTANCENAMELEN];
+	char                  name[DTRACE_PROVNAMELEN];
+	struct uuid          *uuid;
+	struct uuid          *host_uuid;
 };
 
 static int	dthyve_priv_unregister(struct dthyve_prov *);
@@ -205,3 +266,4 @@ dthyve_prov_cmp(struct dthyve_prov *p1, struct dthyve_prov *p2)
 
 	return (uuidcmp(p1_uuid, p2_uuid));
 }
+#endif

@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/uuid.h>
 #include <sys/types.h>
 #include <sys/dtrace_bsd.h>
+#include <sys/vtdtr.h>
 
 #include <machine/vmm.h>
 
@@ -55,7 +56,6 @@ __FBSDID("$FreeBSD$");
 #include "bhyverun.h"
 #include "pci_emul.h"
 #include "virtio.h"
-#include "mevent.h"
 
 #define	VTDTR_RINGSZ 512
 #define	VTDTR_MAXQ     2
@@ -137,8 +137,6 @@ struct pci_vtdtr_softc {
 	struct virtio_softc     vsd_vs;
 	struct vqueue_info      vsd_queues[VTDTR_MAXQ];
 	struct vmctx           *vsd_vmctx;
-	struct dtrace_probeinfo vsd_pbi;
-	struct mevent          *vsd_mev;
 	struct pci_vtdtr_ctrlq *vsd_ctrlq;
 	pthread_mutex_t         vsd_condmtx;
 	pthread_cond_t          vsd_cond;
@@ -349,6 +347,7 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 
 }
 
+#if 0
 /*
  * Here we handle the kernel event that we get from kqueue and identify various
  * control messages that we need to send
@@ -392,6 +391,7 @@ pci_vtdtr_handle_mev(int fd __unused, enum ev_type et __unused, int ne,
 	pthread_cond_signal(&sc->vsd_cond);
 	pthread_mutex_unlock(&sc->vsd_condmtx);
 }
+#endif
 
 static __inline void
 pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
@@ -600,6 +600,51 @@ pci_vtdtr_reset_queue(struct pci_vtdtr_softc *sc)
 	pthread_mutex_unlock(&q->mtx);
 }
 
+static void *
+pci_vtdtr_events(void *xsc)
+{
+	struct pci_vtdtr_softc *sc;
+	int error;
+
+	sc = xsc;
+
+	/*
+	 * We listen for events indefinitely.
+	 */
+	for (;;) {
+		struct vtdtr_event ev;
+		struct pci_vtdtr_ctrl_entry *ctrl_entry;
+		struct pci_vtdtr_control *ctrl;
+
+		error = dthyve_read(&ev, 1);
+		if (error) {
+			fprintf(stderr, "Error: '%s' reading.\n",
+			    strerror(error));
+			continue;
+		}
+
+		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+		assert(ctrl_entry != NULL);
+		ctrl = &ctrl_entry->ctrl;
+
+		assert((ne & (NOTE_PROBE_INSTALL | NOTE_PROBE_UNINSTALL)) != 0);
+		if (ev.event == VTDTR_EV_INSTALL)
+			ctrl->event = VTDTR_DEVICE_PROBE_INSTALL;
+		else
+			ctrl->event = VTDTR_DEVICE_PROBE_UNINSTALL;
+
+		ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
+
+		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
+		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+
+		pthread_mutex_lock(&sc->vsd_condmtx);
+		pthread_cond_signal(&sc->vsd_cond);
+		pthread_mutex_unlock(&sc->vsd_condmtx);
+	}
+}
+
 /*
  * Mostly boilerplate, we initialize everything required for the correct
  * operation of the emulated PCI device, do error checking and finally dispatch
@@ -609,7 +654,7 @@ static int
 pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 {
 	struct pci_vtdtr_softc *sc;
-	pthread_t communicator;
+	pthread_t communicator, reader;
 	int error;
 
 	error = 0;
@@ -643,14 +688,13 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	error = pthread_create(&communicator, NULL, pci_vtdtr_run, sc);
 	assert(error == 0);
 
+	error = pthread_create(&reader, NULL, pci_vtdtr_events, sc);
+	assert(error == 0);
+
 	if (vi_intr_init(&sc->vsd_vs, 1, fbsdrun_virtio_msix()))
 		return (1);
 
 	vi_set_io_bar(&sc->vsd_vs, 0);
-
-	sc->vsd_mev = mevent_add(0, EVF_DTRACE, pci_vtdtr_handle_mev,
-	    sc, (__intptr_t)&(sc->vsd_pbi));
-
 	return (0);
 }
 
