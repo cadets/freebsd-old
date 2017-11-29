@@ -29,6 +29,15 @@
 #ifndef _DTHYVE_H_
 #define _DTHYVE_H_
 
+#ifndef VTDTR
+struct vtdtr_event;
+
+void dthyve_init(const char *);
+int dthyve_read(struct vtdtr_event *, size_t);
+void dthyve_destroy(void);
+#endif
+
+#ifdef VTDTR
 #ifdef DTVIRT
 
 struct uuid;
@@ -41,5 +50,6 @@ int	dthyve_probe_create(struct uuid *, const char *,
 void	dthyve_cleanup(void);
 
 #endif /* DTVIRT */
+#endif
 
 #endif /* _DTHYVE_H_ */

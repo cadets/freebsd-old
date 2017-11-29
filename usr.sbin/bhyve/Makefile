@@ -23,6 +23,7 @@ SRCS=	\
 	console.c		\
 	consport.c		\
 	dbgport.c		\
+	dthyve.c		\
 	fwctl.c			\
 	inout.c			\
 	ioapic.c		\
