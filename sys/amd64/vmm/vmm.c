@@ -529,6 +529,7 @@ static moduledata_t vmm_kmod = {
  */
 DECLARE_MODULE(vmm, vmm_kmod, SI_SUB_SMP + 1, SI_ORDER_ANY);
 MODULE_VERSION(vmm, 1);
+MODULE_DEPEND(vmm, dtvirt, 1, 1, 1);
 
 static void
 vm_init(struct vm *vm, bool create)

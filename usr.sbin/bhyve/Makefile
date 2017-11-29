@@ -27,6 +27,7 @@ SRCS=	\
 	ctl_util.c		\
 	ctl_scsi_all.c		\
 	dbgport.c		\
+	dthyve.c		\
 	fwctl.c			\
 	gdb.c			\
 	inout.c			\
