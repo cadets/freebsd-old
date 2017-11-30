@@ -23,7 +23,24 @@
 # SUCH DAMAGE.
 #
 
-SUBDIR=	backend frontend
+.include <src.opts.mk>
 
-.include <bsd.subdir.mk>
+SYSDIR?=	${SRCTOP}/sys
+
+.PATH: ${SYSDIR}/dev/virtio/dtrace
+
+KMOD=	virtio_dtrace
+SRCS=	virtio_dtrace.c
+SRCS+=	vnode_if.h
+SRCS+=	virtio_bus_if.h virtio_if.h
+SRCS+=	bus_if.h device_if.h
+
+CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris \
+		-I${SYSDIR}/cddl/contrib/opensolaris/uts/common \
+		-I${SYSDIR} \
+		-nostdinc
+
+.include <bsd.kmod.mk>
+
+CFLAGS+=	-include ${SYSDIR}/cddl/compat/opensolaris/sys/debug_compat.h
 

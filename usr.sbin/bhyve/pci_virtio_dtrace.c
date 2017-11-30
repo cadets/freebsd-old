@@ -37,6 +37,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/uio.h>
 #include <sys/uuid.h>
 #include <sys/types.h>
+#include <sys/proc.h>
+#include <sys/ucred.h>
 #include <sys/dtrace_bsd.h>
 #include <sys/vtdtr.h>
 
@@ -170,7 +172,9 @@ static void pci_vtdtr_poll(struct vqueue_info *, int);
 static void pci_vtdtr_notify_ready(struct pci_vtdtr_softc *);
 static void pci_vtdtr_fill_eof_desc(struct vqueue_info *);
 static void * pci_vtdtr_run(void *);
+#if 0
 static void pci_vtdtr_handle_mev(int, enum ev_type, int, void *);
+#endif
 static void pci_vtdtr_reset_queue(struct pci_vtdtr_softc *);
 static int pci_vtdtr_init(struct vmctx *, struct pci_devinst *, char *);
 
@@ -209,7 +213,7 @@ pci_vtdtr_control_tx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 }
 
 /*
- * In this fucntion we process each of the events, for probe and provider
+ * In this function we process each of the events, for probe and provider
  * related events, we delegate the processing to a function specialized for that
  * type of event.
  */
@@ -217,9 +221,9 @@ static int
 pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 {
 	struct pci_vtdtr_control *ctrl;
-	struct pci_vtdtr_ctrl_provevent *pv_ev;
-	struct pci_vtdtr_ctrl_pbevent *pb_ev;
-	int retval, error;
+	//struct pci_vtdtr_ctrl_provevent *pv_ev;
+	//struct pci_vtdtr_ctrl_pbevent *pb_ev;
+	int retval;// error;
 
 	assert(niov == 1);
 	retval = 0;
@@ -231,6 +235,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		sc->vsd_guest_ready = 1;
 		pthread_mutex_unlock(&sc->vsd_mtx);
 		break;
+#if 0
 	case VTDTR_DEVICE_REGISTER:
 		sc->vsd_ready = 0;
 		pv_ev = &ctrl->uctrl.prov_ev;
@@ -276,6 +281,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	case VTDTR_DEVICE_PROBE_INSTALL:
 	case VTDTR_DEVICE_PROBE_UNINSTALL:
 		break;
+#endif
 	case VTDTR_DEVICE_EOF:
 		retval = 1;
 		break;
@@ -627,8 +633,8 @@ pci_vtdtr_events(void *xsc)
 		assert(ctrl_entry != NULL);
 		ctrl = &ctrl_entry->ctrl;
 
-		assert((ne & (NOTE_PROBE_INSTALL | NOTE_PROBE_UNINSTALL)) != 0);
-		if (ev.event == VTDTR_EV_INSTALL)
+		assert((ev.type & (VTDTR_EV_INSTALL | VTDTR_EV_UNINSTALL)) != 0);
+		if (ev.type == VTDTR_EV_INSTALL)
 			ctrl->event = VTDTR_DEVICE_PROBE_INSTALL;
 		else
 			ctrl->event = VTDTR_DEVICE_PROBE_UNINSTALL;

@@ -361,6 +361,7 @@ device		vtnet			# VirtIO Ethernet device
 device		virtio_blk		# VirtIO Block device
 device		virtio_scsi		# VirtIO SCSI device
 device		virtio_balloon		# VirtIO Memory Balloon device
+device		virtio_dtrace		# VirtIO DTrace frontend
 
 # HyperV drivers and enhancement support
 device		hyperv			# HyperV drivers 
