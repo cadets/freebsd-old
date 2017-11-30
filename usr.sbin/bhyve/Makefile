@@ -40,6 +40,7 @@ SRCS=	\
 	pci_passthru.c		\
 	pci_virtio_block.c	\
 	pci_virtio_console.c	\
+	pci_virtio_dtrace.c	\
 	pci_virtio_net.c	\
 	pci_virtio_rnd.c	\
 	pci_uart.c		\
@@ -60,6 +61,9 @@ SRCS=	\
 	vga.c			\
 	xmsr.c			\
 	spinup_ap.c
+
+LDFLAGS+= -l dtrace -l proc -l ctf -l elf -l z -l rtld_db -l pthread -l util
+
 
 .PATH:  ${BHYVE_SYSDIR}/sys/amd64/vmm
 SRCS+=	vmm_instruction_emul.c
