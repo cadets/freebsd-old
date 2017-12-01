@@ -257,17 +257,12 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 {
 	struct vtdtr_conf *conf;
 	struct vtdtr_queue *q, tmp;
-	sbintime_t timeout;
+	sbintime_t timeout = 0;
 	size_t max_size;
 	size_t event_flags;
 
 	max_size = VTDTR_DEFAULT_SIZE;
 	event_flags = VTDTR_ALL_EVENTS;
-	/*
-	 * We timeout in VTDTR_TIMEOUT by default. If the user wants to block
-	 * indefinitely, we require that explicitly.
-	 */
-	timeout = VTDTR_TIMEOUT;
 
 	switch (cmd) {
 	case VTDTRIOC_CONF:
@@ -293,8 +288,11 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 			max_size = conf->max_size;
 		if (conf->event_flags != 0)
 			event_flags = conf->event_flags;
-		if (conf->timeout != 0)
-			timeout = conf->timeout * SBT_1S;
+
+		/*
+		 * There's no timeout by default.
+		 */
+		timeout = conf->timeout * SBT_1S;
 
 finalize_conf:
 		/*

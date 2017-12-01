@@ -937,6 +937,11 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
+#ifndef VTDTR
+	if (trace)
+		dthyve_init(vmname);
+#endif
+
 	init_mem();
 	init_inout();
 	atkbdc_init(ctx);
@@ -990,11 +995,6 @@ main(int argc, char *argv[])
 
 	if (lpc_bootrom())
 		fwctl_init();
-
-#ifndef VTDTR
-	if (trace)
-		dthyve_init(vmname);
-#endif
 
 #ifndef WITHOUT_CAPSICUM
 	caph_cache_catpages();
