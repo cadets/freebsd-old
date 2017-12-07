@@ -82,11 +82,18 @@ dthyve_init(const char *vm __unused)
 }
 
 int
+dthyve_configured(void)
+{
+
+	return (vtdtr_fd != -1);
+}
+
+int
 dthyve_read(struct vtdtr_event *es, size_t n_events)
 {
 	ssize_t res;
 
-	if (es == NULL || n_events == 0) {
+	if (es == NULL || n_events == 0 || vtdtr_fd == -1) {
 		return (EINVAL);
 	}
 
