@@ -33,6 +33,7 @@
 struct vtdtr_event;
 
 void dthyve_init(const char *);
+int dthyve_configured(void);
 int dthyve_read(struct vtdtr_event *, size_t);
 void dthyve_destroy(void);
 #endif
