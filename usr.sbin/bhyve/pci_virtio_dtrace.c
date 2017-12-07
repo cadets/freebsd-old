@@ -693,9 +693,10 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	assert(error == 0);
 	error = pthread_create(&communicator, NULL, pci_vtdtr_run, sc);
 	assert(error == 0);
-
-	error = pthread_create(&reader, NULL, pci_vtdtr_events, sc);
-	assert(error == 0);
+	if (dthyve_configured()) {
+		error = pthread_create(&reader, NULL, pci_vtdtr_events, sc);
+		assert(error == 0);
+	}
 
 	if (vi_intr_init(&sc->vsd_vs, 1, fbsdrun_virtio_msix()))
 		return (1);
