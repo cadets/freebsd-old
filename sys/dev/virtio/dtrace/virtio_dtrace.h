@@ -68,7 +68,7 @@ struct vtdtr_pbev_toggle_event {
 struct vtdtr_ctrl_pbevent {
 	uint32_t probe;
 
-	union _upbev {
+	union {
 		struct vtdtr_pbev_create_event create;
 		struct vtdtr_pbev_toggle_event toggle;
 	} upbev;
@@ -82,7 +82,7 @@ struct vtdtr_ctrl_provevent {
 struct virtio_dtrace_control {
 	uint32_t event;
 
-	union _uctrl {
+	union {
 		struct vtdtr_ctrl_pbevent   probe_ev;
 		struct vtdtr_ctrl_provevent prov_ev;
 	} uctrl;
@@ -106,7 +106,7 @@ struct vtdtr_ctrl_entry {
 };
 
 struct vtdtr_ctrlq {
-	STAILQ_HEAD(ctrlq, vtdtr_ctrl_entry) head;
+	STAILQ_HEAD(, vtdtr_ctrl_entry) head;
 	struct mtx                           mtx;
 	size_t                               n_entries;
 };

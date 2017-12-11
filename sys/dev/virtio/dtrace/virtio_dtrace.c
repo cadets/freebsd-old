@@ -47,7 +47,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/vtdtr.h>
 #include <sys/dtrace.h>
 #include <sys/sema.h>
-
 #include <sys/conf.h>
 
 #include <machine/bus.h>
@@ -106,6 +105,10 @@ static MALLOC_DEFINE(M_VTDTR, "vtdtr", "VirtIO DTrace memory");
 
 SYSCTL_NODE(_dev, OID_AUTO, vtdtr, CTLFLAG_RD, NULL, NULL);
 
+/*
+ * This does not need to be locked or done per-CPU because we guarantee that the
+ * taskqueue can operate only on one current running thread at a time.
+ */
 static uint32_t num_dtprobes;
 SYSCTL_U32(_dev_vtdtr, OID_AUTO, nprobes, CTLFLAG_RD, &num_dtprobes, 0,
     "Number of installed probes through virtio-dtrace");
@@ -918,7 +921,6 @@ vtdtr_rxq_tq_intr(void *xrxq, int pending)
 	retval = 0;
 
 	VTDTR_QUEUE_LOCK(rxq);
-
 	while ((ctrl = virtqueue_dequeue(rxq->vtdq_vq, &len)) != NULL) {
 		VTDTR_QUEUE_UNLOCK(rxq);
 		KASSERT(len == sizeof(struct virtio_dtrace_control),
@@ -932,7 +934,6 @@ vtdtr_rxq_tq_intr(void *xrxq, int pending)
 		if (retval == 1)
 			break;
 	}
-
 	VTDTR_QUEUE_UNLOCK(rxq);
 
 	mtx_lock(&sc->vtdtr_mtx);
@@ -1253,8 +1254,6 @@ vtdtr_run(void *xsc)
 		}
 
 		mtx_unlock(&sc->vtdtr_ctrlq->mtx);
-
-
 	}
 }
 
