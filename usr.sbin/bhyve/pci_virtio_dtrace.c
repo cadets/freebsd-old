@@ -91,10 +91,6 @@ struct pci_vtdtr_probe_create_event {
 	char        mod[DTRACE_MODNAMELEN];
 	char        func[DTRACE_FUNCNAMELEN];
 	char        name[DTRACE_NAMELEN];
-	/*
-	 * FIXME: Fixed types, needs to be DTrace-defined
-	 */
-	char        types[10][128];
 	struct uuid uuid;
 }__attribute__((packed));
 
@@ -105,7 +101,7 @@ struct pci_vtdtr_probe_toggle_event {
 struct pci_vtdtr_ctrl_pbevent {
 	uint32_t probe;
 
-	union _upbev {
+	union {
 		struct pci_vtdtr_probe_create_event probe_evcreate;
 		struct pci_vtdtr_probe_toggle_event probe_evtoggle;
 	} upbev;
@@ -119,7 +115,7 @@ struct pci_vtdtr_ctrl_provevent {
 struct pci_vtdtr_control {
 	uint32_t event;
 
-	union _uctrl {
+	union {
 		struct pci_vtdtr_ctrl_pbevent   probe_ev;
 		struct pci_vtdtr_ctrl_provevent prov_ev;
 	} uctrl;
@@ -131,7 +127,7 @@ struct pci_vtdtr_ctrl_entry {
 };
 
 struct pci_vtdtr_ctrlq {
-	STAILQ_HEAD(ctrlq, pci_vtdtr_ctrl_entry) head;
+	STAILQ_HEAD(, pci_vtdtr_ctrl_entry) head;
 	pthread_mutex_t                          mtx;
 };
 
@@ -481,6 +477,7 @@ pci_vtdtr_notify_ready(struct pci_vtdtr_softc *sc)
 	ctrl = &ctrl_entry->ctrl;
 
 	ctrl->event = VTDTR_DEVICE_READY;
+
 
 	pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 	pci_vtdtr_cq_enqueue_front(sc->vsd_ctrlq, ctrl_entry);
