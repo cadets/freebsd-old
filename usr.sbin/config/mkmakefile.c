@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1980, 1990, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -501,6 +503,10 @@ nextparam:;
 		tp = new_fent();
 		tp->f_fn = this;
 		tp->f_type = filetype;
+		if (filetype == LOCAL)
+			tp->f_srcprefix = "";
+		else
+			tp->f_srcprefix = "$S/";
 		if (imp_rule)
 			tp->f_flags |= NO_IMPLCT_RULE;
 		if (no_obj)
@@ -576,7 +582,8 @@ do_before_depend(FILE *fp)
 			if (tp->f_flags & NO_IMPLCT_RULE)
 				fprintf(fp, "%s ", tp->f_fn);
 			else
-				fprintf(fp, "$S/%s ", tp->f_fn);
+				fprintf(fp, "%s%s ", tp->f_srcprefix,
+				    tp->f_fn);
 			lpos += len + 1;
 		}
 	if (lpos != 8)
@@ -641,10 +648,7 @@ do_xxfiles(char *tag, FILE *fp)
 				lpos = 8;
 				fputs("\\\n\t", fp);
 			}
-			if (tp->f_type != LOCAL)
-				fprintf(fp, "$S/%s ", tp->f_fn);
-			else
-				fprintf(fp, "%s ", tp->f_fn);
+			fprintf(fp, "%s%s ", tp->f_srcprefix, tp->f_fn);
 			lpos += len + 1;
 		}
 	free(suff);
@@ -752,7 +756,7 @@ emit_obj_rules(FILE *f, char *name, const char *prefix, char suffix,
 static void
 do_rules(FILE *f)
 {
-	char *np, och;
+	char *cp, *np, och;
 	struct file_list *ftp;
 	char *compilewith;
 	char cmd[128];
@@ -760,10 +764,35 @@ do_rules(FILE *f)
 	STAILQ_FOREACH(ftp, &ftab, f_next) {
 		if (ftp->f_warn)
 			fprintf(stderr, "WARNING: %s\n", ftp->f_warn);
-
-		np = ftp->f_fn;
-		och = np[strlen(np) - 1];
-
+		cp = (np = ftp->f_fn) + strlen(ftp->f_fn) - 1;
+		och = *cp;
+		if (ftp->f_flags & NO_IMPLCT_RULE) {
+			if (ftp->f_depends)
+				fprintf(f, "%s%s: %s\n",
+					ftp->f_objprefix, np, ftp->f_depends);
+			else
+				fprintf(f, "%s%s: \n", ftp->f_objprefix, np);
+		}
+		else {
+			*cp = '\0';
+			if (och == 'o') {
+				fprintf(f, "%s%so:\n\t-cp %s%so .\n\n",
+					ftp->f_objprefix, tail(np),
+					ftp->f_srcprefix, np);
+				continue;
+			}
+			if (ftp->f_depends) {
+				fprintf(f, "%s%so: %s%s%c %s\n",
+					ftp->f_objprefix, tail(np),
+					ftp->f_srcprefix, np, och,
+					ftp->f_depends);
+			}
+			else {
+				fprintf(f, "%s%so: %s%s%c\n",
+					ftp->f_objprefix, tail(np),
+					ftp->f_srcprefix, np, och);
+			}
+		}
 		compilewith = ftp->f_compilewith;
 		if (compilewith == NULL) {
 			const char *ftype = NULL;
@@ -788,6 +817,12 @@ do_rules(FILE *f)
 			    ftp->f_flags & NOWERROR ? "_NOWERROR" : "");
 			compilewith = cmd;
 		}
+		*cp = och;
+		if (strlen(ftp->f_objprefix))
+			fprintf(f, "\t%s %s%s\n", compilewith,
+			    ftp->f_srcprefix, np);
+		else
+			fprintf(f, "\t%s\n", compilewith);
 
 		emit_obj_rules(f, np, ftp->f_objprefix, och,
 			compilewith, ftp->f_flags,

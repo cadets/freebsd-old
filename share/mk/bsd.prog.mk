@@ -4,7 +4,7 @@
 .include <bsd.init.mk>
 .include <bsd.compiler.mk>
 
-.SUFFIXES: .out .o .bc .c .cc .cpp .cxx .C .m .y .l .ll .ln .s .S .asm
+.SUFFIXES: .out .o .bc .bco .bcinstro .c .cc .cpp .cxx .C .m .y .l .ll .llo .llinstro .s .S .asm
 
 # XXX The use of COPTS in modern makefiles is discouraged.
 .if defined(COPTS)
@@ -39,7 +39,7 @@ CFLAGS+=${CRUNCH_CFLAGS}
 .else
 .if ${MK_DEBUG_FILES} != "no" && empty(DEBUG_FLAGS:M-g) && \
     empty(DEBUG_FLAGS:M-gdwarf-*)
-CFLAGS+= -g
+CFLAGS+= ${DEBUG_FILES_CFLAGS}
 CTFFLAGS+= -g
 .endif
 .endif
@@ -88,11 +88,11 @@ PROGNAME?=	${PROG}
 
 .if defined(SRCS)
 
-OBJS+=  ${SRCS:N*.h:R:S/$/.o/g}
+OBJS+=  ${SRCS:N*.h:${OBJS_SRCS_FILTER:ts:}:S/$/.o/g}
 
 # LLVM bitcode / textual IR representations of the program
-BCOBJS+=${SRCS:N*.h:N*.s:N*.S:N*.asm:R:S/$/.bco/g}
-LLOBJS+=${SRCS:N*.h:N*.s:N*.S:N*.asm:R:S/$/.llo/g}
+BCOBJS+=${SRCS:N*.[hsS]:N*.asm:${OBJS_SRCS_FILTER:ts:}:S/$/.bco/g}
+LLOBJS+=${SRCS:N*.[hsS]:N*.asm:${OBJS_SRCS_FILTER:ts:}:S/$/.llo/g}
 
 # Object files that can't be built via LLVM IR, currently defined by
 # excluding .c* files from SRCS. This substitution can result in an
@@ -129,7 +129,10 @@ SRCS=	${PROG}.c
 # - the name of the object gets put into the executable symbol table instead of
 #   the name of a variable temporary object.
 # - it's useful to keep objects around for crunching.
-OBJS+=	${PROG}.o
+OBJS+=		${PROG}.o
+BCOBJS+=	${PROG}.bc
+LLOBJS+=	${PROG}.ll
+CLEANFILES+=	${PROG}.o ${PROG}.bc ${PROG}.ll
 
 # LLVM bitcode / textual IR representations of the program
 BCOBJS+=${PROG}.bco
@@ -164,7 +167,6 @@ ${PROGNAME}.debug: ${PROG_FULL}
 .endif
 
 .if defined(LLVM_LINK)
-
 ${PROG_FULL}.bc: ${BCOBJS}
 	${LLVM_LINK} -o ${.TARGET} ${BCOBJS}
 
@@ -186,6 +188,8 @@ ${PROG_INSTR}: ${PROG_INSTR_IR} ${NON_IR_OBJS}
 	    ${PROG_INSTR_IR} ${NON_IR_OBJS} ${LDADD} ${LLVM_INSTR_LDADD}
 .endif
 
+CLEANFILES+=	${PROG_FULL}.bc ${PROG_FULL}.ll \
+		${PROG_INSTR}.bc ${PROG_INSTR}.ll
 .endif # defined(LLVM_LINK)
 
 .if	${MK_MAN} != "no" && !defined(MAN) && \
@@ -209,7 +213,7 @@ all: all-man
 .if defined(PROG)
 CLEANFILES+= ${PROG} ${PROG}.bc ${PROG}.ll
 .if ${MK_DEBUG_FILES} != "no"
-CLEANFILES+= ${PROG_FULL} ${PROG_FULL}.bc ${PROGNAME}.debug ${PROG_FULL}.ll
+CLEANFILES+= ${PROG_FULL} ${PROGNAME}.debug
 .endif
 .endif
 
@@ -319,13 +323,6 @@ realinstall: maninstall
 .endif
 
 .endif	# !target(install)
-
-.if !target(lint)
-lint: ${SRCS:M*.c}
-.if defined(PROG)
-	${LINT} ${LINTFLAGS} ${CFLAGS:M-[DIU]*} ${.ALLSRC}
-.endif
-.endif
 
 .if ${MK_MAN} != "no"
 .include <bsd.man.mk>

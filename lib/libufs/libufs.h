@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2002 Juli Mallett.  All rights reserved.
  *
  * This software was written by Juli Mallett <jmallett@FreeBSD.org> for the
@@ -143,6 +145,11 @@ void	ffs_fragacct(struct fs *, int, int32_t [], int);
 int	ffs_isblock(struct fs *, u_char *, ufs1_daddr_t);
 int	ffs_isfreeblock(struct fs *, u_char *, ufs1_daddr_t);
 void	ffs_setblock(struct fs *, u_char *, ufs1_daddr_t);
+
+/*
+ * crc32c.c
+ */
+uint32_t calculate_crc32c(uint32_t, const void *, size_t);
 
 __END_DECLS
 
