@@ -622,8 +622,10 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 {
 	struct vtdtr_ctrl_pbevent *pb;
 	struct vtdtr_ctrl_provevent *pv;
+#ifdef notyet
 	struct vtdtr_probelist *list;
 	struct vtdtr_probe *probe, *ptmp;
+#endif
 	device_t dev;
 	int retval;
 	int error;
@@ -635,6 +637,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	/*
 	 * XXX: Double switch statement... meh.
 	 */
+
 	switch (ctrl->event) {
 	case VIRTIO_DTRACE_DEVICE_READY:
 		sc->vtdtr_host_ready = 1;
@@ -656,6 +659,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		break;
 	case VIRTIO_DTRACE_PROBE_INSTALL: {
 		sc->vtdtr_ready = 0;
+#ifdef notyet
 		pb = &ctrl->uctrl.probe_ev;
 
 		/*error = dtrace_probeid_enable(pb->probe);*/
@@ -673,10 +677,12 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			mtx_unlock(&list->mtx);
 		}
 		break;
+#endif
 	}
 	case VIRTIO_DTRACE_PROBE_UNINSTALL: {
-		int found;
 		sc->vtdtr_ready = 0;
+#ifdef notyet
+		int found;
 
 		list = sc->vtdtr_probelist;
 
@@ -703,6 +709,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			    " probe %d\n", __func__, error, pb->probe);
 		}
 		break;
+#endif
 	}
 	case VIRTIO_DTRACE_EOF:
 		retval = 1;
@@ -922,14 +929,14 @@ vtdtr_rxq_tq_intr(void *xrxq, int pending)
 
 	VTDTR_QUEUE_LOCK(rxq);
 	while ((ctrl = virtqueue_dequeue(rxq->vtdq_vq, &len)) != NULL) {
-		VTDTR_QUEUE_UNLOCK(rxq);
 		KASSERT(len == sizeof(struct virtio_dtrace_control),
 		    ("%s: wrong control message length: %u, expected %zu",
 		     __func__, len, sizeof(struct virtio_dtrace_control)));
-
+		j
+		VTDTR_QUEUE_UNLOCK(rxq);
 		retval = vtdtr_ctrl_process_event(sc, ctrl);
-
 		VTDTR_QUEUE_LOCK(rxq);
+
 		vtdtr_queue_requeue_ctrl(rxq, ctrl, 0, 1);
 		if (retval == 1)
 			break;
