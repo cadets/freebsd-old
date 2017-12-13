@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2008 Poul-Henning Kamp
  * Copyright (c) 2010 Alexander Motin <mav@FreeBSD.org>
  * All rights reserved.
@@ -164,7 +166,7 @@ atrtc_restore(void)
 	rtcin(RTC_INTR);
 }
 
-void
+static void
 atrtc_set(struct timespec *ts)
 {
 	struct clocktime ct;

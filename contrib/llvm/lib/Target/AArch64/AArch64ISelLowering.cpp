@@ -9347,11 +9347,20 @@ static SDValue replaceZeroVectorStore(SelectionDAG &DAG, StoreSDNode &St) {
       return SDValue();
   }
 
-  // Use WZR/XZR here to prevent DAGCombiner::MergeConsecutiveStores from
-  // undoing this transformation.
-  SDValue SplatVal = VT.getVectorElementType().getSizeInBits() == 32
-                         ? DAG.getRegister(AArch64::WZR, MVT::i32)
-                         : DAG.getRegister(AArch64::XZR, MVT::i64);
+  // Use a CopyFromReg WZR/XZR here to prevent
+  // DAGCombiner::MergeConsecutiveStores from undoing this transformation.
+  SDLoc DL(&St);
+  unsigned ZeroReg;
+  EVT ZeroVT;
+  if (VT.getVectorElementType().getSizeInBits() == 32) {
+    ZeroReg = AArch64::WZR;
+    ZeroVT = MVT::i32;
+  } else {
+    ZeroReg = AArch64::XZR;
+    ZeroVT = MVT::i64;
+  }
+  SDValue SplatVal =
+      DAG.getCopyFromReg(DAG.getEntryNode(), DL, ZeroReg, ZeroVT);
   return splitStoreSplat(DAG, St, SplatVal, NumVecElts);
 }
 
@@ -9586,8 +9595,8 @@ static bool performTBISimplification(SDValue Addr,
                                      SelectionDAG &DAG) {
   APInt DemandedMask = APInt::getLowBitsSet(64, 56);
   KnownBits Known;
-  TargetLowering::TargetLoweringOpt TLO(DAG, DCI.isBeforeLegalize(),
-                                        DCI.isBeforeLegalizeOps());
+  TargetLowering::TargetLoweringOpt TLO(DAG, !DCI.isBeforeLegalize(),
+                                        !DCI.isBeforeLegalizeOps());
   const TargetLowering &TLI = DAG.getTargetLoweringInfo();
   if (TLI.SimplifyDemandedBits(Addr, DemandedMask, Known, TLO)) {
     DCI.CommitTargetLoweringOpt(TLO);

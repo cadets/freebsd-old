@@ -4,6 +4,8 @@
 /*-
  * SVID compatible msg.h file
  *
+ * SPDX-License-Identifier: 0BSD
+ *
  * Author:  Daniel Boulet
  *
  * Copyright 1993 Daniel Boulet and RTMX Inc.

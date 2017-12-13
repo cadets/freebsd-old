@@ -17,6 +17,7 @@ MAN=	sysdecode.3 \
 	sysdecode_cap_rights.3 \
 	sysdecode_enum.3 \
 	sysdecode_fcntl_arg.3 \
+	sysdecode_kevent.3 \
 	sysdecode_ioctlname.3 \
 	sysdecode_mask.3 \
 	sysdecode_quotactl_cmd.3 \
@@ -42,6 +43,7 @@ MLINKS+=sysdecode_enum.3 sysdecode_acltype.3 \
 	sysdecode_enum.3 sysdecode_minherit_flags.3 \
 	sysdecode_enum.3 sysdecode_msgctl_cmd.3 \
 	sysdecode_enum.3 sysdecode_nfssvc_flags.3 \
+	sysdecode_enum.3 sysdecode_pathconf_name.3 \
 	sysdecode_enum.3 sysdecode_prio_which.3 \
 	sysdecode_enum.3 sysdecode_procctl_cmd.3 \
 	sysdecode_enum.3 sysdecode_ptrace_request.3 \
@@ -63,11 +65,16 @@ MLINKS+=sysdecode_enum.3 sysdecode_acltype.3 \
 	sysdecode_enum.3 sysdecode_socketdomain.3 \
 	sysdecode_enum.3 sysdecode_sockettype.3 \
 	sysdecode_enum.3 sysdecode_sockopt_level.3 \
+	sysdecode_enum.3 sysdecode_sysarch_number.3 \
 	sysdecode_enum.3 sysdecode_umtx_op.3 \
 	sysdecode_enum.3 sysdecode_vmresult.3 \
 	sysdecode_enum.3 sysdecode_whence.3
 MLINKS+=sysdecode_fcntl_arg.3 sysdecode_fcntl_arg_p.3
+MLINKS+=sysdecode_kevent.3 sysdecode_kevent_fflags.3 \
+	sysdecode_kevent.3 sysdecode_kevent_filter.3 \
+	sysdecode_kevent.3 sysdecode_kevent_flags.3
 MLINKS+=sysdecode_mask.3 sysdecode_accessmode.3 \
+	sysdecode_mask.3 sysdecode_atflags.3 \
 	sysdecode_mask.3 sysdecode_capfcntlrights.3 \
 	sysdecode_mask.3 sysdecode_fcntl_fileflags.3 \
 	sysdecode_mask.3 sysdecode_fileflags.3 \

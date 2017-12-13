@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2010 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -134,6 +136,10 @@ xhci_pci_match(device_t self)
 		return ("Intel Sunrise Point-LP USB 3.0 controller");
 	case 0xa12f8086:
 		return ("Intel Sunrise Point USB 3.0 controller");
+	case 0xa1af8086:
+		return ("Intel Lewisburg USB 3.0 controller");
+	case 0xa2af8086:
+		return ("Intel Union Point USB 3.0 controller");
 
 	case 0xa01b177d:
 		return ("Cavium ThunderX USB 3.0 controller");

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2008, 2009 Silicon Graphics International Corp.
  * Copyright (c) 2014-2015 Alexander Motin <mav@FreeBSD.org>
  * All rights reserved.
@@ -1003,7 +1005,8 @@ ctlfe_requeue_ccb(struct cam_periph *periph, union ccb *ccb, int unlock)
 	 * target/lun.  Reset the target and LUN fields back to the wildcard
 	 * values before we send them back down to the SIM.
 	 */
-	xpt_setup_ccb(&ccb->ccb_h, periph->path, CAM_PRIORITY_NONE);
+	xpt_setup_ccb_flags(&ccb->ccb_h, periph->path, CAM_PRIORITY_NONE,
+	    ccb->ccb_h.flags);
 
 	xpt_action(ccb);
 }
