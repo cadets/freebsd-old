@@ -3,8 +3,8 @@
 
 //#include <sys/dtrace.h>
 
-#define VTDTR_EV_INSTALL   0x00
-#define VTDTR_EV_UNINSTALL 0x01
+#define VTDTR_EV_INSTALL   0x01
+#define VTDTR_EV_UNINSTALL 0x02
 
 /*
  * We only have one event at the moment -- possibly others in the future.
