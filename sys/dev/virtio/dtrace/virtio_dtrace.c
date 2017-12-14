@@ -106,8 +106,7 @@ static MALLOC_DEFINE(M_VTDTR, "vtdtr", "VirtIO DTrace memory");
 SYSCTL_NODE(_dev, OID_AUTO, vtdtr, CTLFLAG_RD, NULL, NULL);
 
 /*
- * This does not need to be locked or done per-CPU because we guarantee that the
- * taskqueue can operate only on one current running thread at a time.
+ * This is protected by the vtdtr_probelist mutex.
  */
 static uint32_t num_dtprobes;
 SYSCTL_U32(_dev_vtdtr, OID_AUTO, nprobes, CTLFLAG_RD, &num_dtprobes, 0,
@@ -293,13 +292,11 @@ vtdtr_attach(device_t dev)
 		    " for the probe list");
 		goto fail;
 	}
-	mtx_init(&sc->vtdtr_probelist->mtx, "vtdtrpblistmtx", NULL, MTX_DEF);
-
+	LIST_INIT(&sc->vtdtr_probelist->head);
+	mtx_init(&sc->vtdtr_probelist->mtx, "pblistmtx", NULL, MTX_DEF);
 
 	virtio_set_feature_desc(dev, vtdtr_feature_desc);
 	vtdtr_setup_features(sc);
-
-	vtdtr_alloc_probelist(sc);
 
 	error = vtdtr_init_rxq(sc, 0);
 	if (error) {
@@ -461,14 +458,6 @@ vtdtr_setup_features(struct vtdtr_softc *sc)
 	vtdtr_negotiate_features(sc);
 }
 
-static __inline void
-vtdtr_alloc_probelist(struct vtdtr_softc *sc)
-{
-	mtx_lock(&sc->vtdtr_probelist->mtx);
-	LIST_INIT(&sc->vtdtr_probelist->head);
-	mtx_unlock(&sc->vtdtr_probelist->mtx);
-}
-
 /*
  * Allocate all the virtqueues.
  */
@@ -486,7 +475,7 @@ vtdtr_alloc_virtqueues(struct vtdtr_softc *sc)
 	rxq->vtdq_vqintr = vtdtr_rxq_vq_intr;
 	txq->vtdq_vqintr = vtdtr_txq_vq_intr;
 
-	info = malloc(sizeof(struct vq_alloc_info), M_TEMP, M_NOWAIT);
+	info = malloc(2 * sizeof(struct vq_alloc_info), M_TEMP, M_NOWAIT);
 	if (info == NULL)
 		return (ENOMEM);
 
@@ -622,10 +611,8 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 {
 	struct vtdtr_ctrl_pbevent *pb;
 	struct vtdtr_ctrl_provevent *pv;
-#ifdef notyet
 	struct vtdtr_probelist *list;
 	struct vtdtr_probe *probe, *ptmp;
-#endif
 	device_t dev;
 	int retval;
 	int error;
@@ -659,7 +646,6 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		break;
 	case VIRTIO_DTRACE_PROBE_INSTALL: {
 		sc->vtdtr_ready = 0;
-#ifdef notyet
 		pb = &ctrl->uctrl.probe_ev;
 
 		/*error = dtrace_probeid_enable(pb->probe);*/
@@ -677,18 +663,15 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			mtx_unlock(&list->mtx);
 		}
 		break;
-#endif
 	}
 	case VIRTIO_DTRACE_PROBE_UNINSTALL: {
-		sc->vtdtr_ready = 0;
-#ifdef notyet
 		int found;
+		sc->vtdtr_ready = 0;
 
 		list = sc->vtdtr_probelist;
-
 		pb = &ctrl->uctrl.probe_ev;
-
 		found = 0;
+
 		mtx_lock(&list->mtx);
 		LIST_FOREACH_SAFE(probe, &list->head, vtdprobe_next, ptmp) {
 			if (probe->vtdprobe_id == pb->probe) {
@@ -709,7 +692,6 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			    " probe %d\n", __func__, error, pb->probe);
 		}
 		break;
-#endif
 	}
 	case VIRTIO_DTRACE_EOF:
 		retval = 1;
@@ -932,7 +914,7 @@ vtdtr_rxq_tq_intr(void *xrxq, int pending)
 		KASSERT(len == sizeof(struct virtio_dtrace_control),
 		    ("%s: wrong control message length: %u, expected %zu",
 		     __func__, len, sizeof(struct virtio_dtrace_control)));
-		j
+
 		VTDTR_QUEUE_UNLOCK(rxq);
 		retval = vtdtr_ctrl_process_event(sc, ctrl);
 		VTDTR_QUEUE_LOCK(rxq);

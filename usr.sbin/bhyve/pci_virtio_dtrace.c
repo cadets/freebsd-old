@@ -454,6 +454,7 @@ pci_vtdtr_fill_desc(struct vqueue_info *vq, struct pci_vtdtr_control *ctrl)
 static void
 pci_vtdtr_poll(struct vqueue_info *vq, int all_used)
 {
+
 	vq_endchains(vq, all_used);
 }
 
