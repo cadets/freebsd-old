@@ -678,13 +678,14 @@ tail(char *fn)
  * (which may include lint rules, LLVM IR rules, instrumentation, etc.).
  */
 static void
-emit_obj_rules(FILE *f, char *name, const char *prefix, char suffix,
-	const char *command, int flags, const char *depends)
+emit_obj_rules(FILE *f, char *name, const char *objprefix,
+	const char *srcprefix, char suffix, const char *command, int flags,
+	const char *depends)
 {
 	char source[128];
 	char target[128];
 	int build_llvm_ir = 0;
-	int explicit_source = strlen(prefix) > 0;
+	int explicit_source = strlen(objprefix) > 0;
 
 	if (instrumenting || llvm_ir) {
 		if (suffix != 'c') {
@@ -697,27 +698,23 @@ emit_obj_rules(FILE *f, char *name, const char *prefix, char suffix,
 		}
 	}
 
-	CONCAT_INTO(source, "$S/", name);
+	CONCAT_INTO(source, srcprefix, name);
+	CONCAT_INTO(target, objprefix, name);
 
 	assert(command);
 	assert(strlen(command));
 
 	if (flags & NO_IMPLCT_RULE) {
-		fprintf(f, "%s%s: %s\n", prefix, name, depends);
+		fprintf(f, "%s: %s\n", target, depends);
 	}
 	else {
-		CONCAT_INTO(target, prefix, tail(source));
 		target[strlen(target) - 2] = '\0';
 
 		/* we already have an object file - just copy it */
 		if (suffix == 'o') {
-			fprintf(f, "%s:\n\t-cp $S/%s .\n\n", target, source);
+			fprintf(f, "%s:\n\t-cp %s .\n\n", target, source);
 			return;
 		}
-
-		/* lint rule */
-		fprintf(f, "%s.ln: %s %s\n", target, source, depends);
-		fprintf(f, "\t${NORMAL_LINT}\n\n");
 
 		/* LLVM intermediate representation and instrumentation */
 		if (build_llvm_ir) {
@@ -756,7 +753,7 @@ emit_obj_rules(FILE *f, char *name, const char *prefix, char suffix,
 static void
 do_rules(FILE *f)
 {
-	char *cp, *np, och;
+	char *np, och;
 	struct file_list *ftp;
 	char *compilewith;
 	char cmd[128];
@@ -764,35 +761,10 @@ do_rules(FILE *f)
 	STAILQ_FOREACH(ftp, &ftab, f_next) {
 		if (ftp->f_warn)
 			fprintf(stderr, "WARNING: %s\n", ftp->f_warn);
-		cp = (np = ftp->f_fn) + strlen(ftp->f_fn) - 1;
-		och = *cp;
-		if (ftp->f_flags & NO_IMPLCT_RULE) {
-			if (ftp->f_depends)
-				fprintf(f, "%s%s: %s\n",
-					ftp->f_objprefix, np, ftp->f_depends);
-			else
-				fprintf(f, "%s%s: \n", ftp->f_objprefix, np);
-		}
-		else {
-			*cp = '\0';
-			if (och == 'o') {
-				fprintf(f, "%s%so:\n\t-cp %s%so .\n\n",
-					ftp->f_objprefix, tail(np),
-					ftp->f_srcprefix, np);
-				continue;
-			}
-			if (ftp->f_depends) {
-				fprintf(f, "%s%so: %s%s%c %s\n",
-					ftp->f_objprefix, tail(np),
-					ftp->f_srcprefix, np, och,
-					ftp->f_depends);
-			}
-			else {
-				fprintf(f, "%s%so: %s%s%c\n",
-					ftp->f_objprefix, tail(np),
-					ftp->f_srcprefix, np, och);
-			}
-		}
+
+		np = ftp->f_fn;
+		och = np[strlen(np) - 1];
+
 		compilewith = ftp->f_compilewith;
 		if (compilewith == NULL) {
 			const char *ftype = NULL;
@@ -817,14 +789,7 @@ do_rules(FILE *f)
 			    ftp->f_flags & NOWERROR ? "_NOWERROR" : "");
 			compilewith = cmd;
 		}
-		*cp = och;
-		if (strlen(ftp->f_objprefix))
-			fprintf(f, "\t%s %s%s\n", compilewith,
-			    ftp->f_srcprefix, np);
-		else
-			fprintf(f, "\t%s\n", compilewith);
-
-		emit_obj_rules(f, np, ftp->f_objprefix, och,
+		emit_obj_rules(f, np, ftp->f_objprefix, ftp->f_srcprefix, och,
 			compilewith, ftp->f_flags,
 			ftp->f_depends ? ftp->f_depends : "");
 	}
