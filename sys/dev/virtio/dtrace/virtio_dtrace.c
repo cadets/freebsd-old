@@ -195,6 +195,9 @@ static struct virtio_feature_desc vtdtr_feature_desc[] = {
 	{ 0, NULL }
 };
 
+int (*dtrace_probeid_enable)(dtrace_id_t) = NULL;
+int (*dtrace_probeid_disable)(dtrace_id_t) = NULL;
+
 static int
 vtdtr_modevent(module_t mod, int type, void *unused)
 {
@@ -648,7 +651,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		sc->vtdtr_ready = 0;
 		pb = &ctrl->uctrl.probe_ev;
 
-		/*error = dtrace_probeid_enable(pb->probe);*/
+		error = dtrace_probeid_enable(pb->probe);
 		if (error) {
 			device_printf(dev, "%s: error %d enabling"
 			    " probe %d\n", __func__, error, pb->probe);
@@ -686,7 +689,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 
 		KASSERT(found == 1, ("%s: probe not found", __func__));
 
-		/*error = dtrace_probeid_disable(pb->probe);*/
+		error = dtrace_probeid_disable(pb->probe);
 		if (error) {
 			device_printf(dev, "%s: error %d disabling"
 			    " probe %d\n", __func__, error, pb->probe);
