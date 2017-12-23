@@ -500,6 +500,15 @@ typedef struct dtrace_difv {
 #define	DTRACEACT_ISAGG(x)		\
 	(DTRACEACT_CLASS(x) == DTRACEACT_AGGREGATION)
 
+/*
+ * DTrace-Virt functionality.
+ */
+#define DTRACEACT_VIRT      0x0800
+#define DTRACEVT_HYPERCALL (DTRACEACT_VIRT + 1)
+
+#define	DTRACEACT_ISVIRT(x)		\
+	(DTRACEACT_CLASS(x) == DTRACEACT_VIRT)
+
 #define	DTRACE_QUANTIZE_NBUCKETS	\
 	(((sizeof (uint64_t) * NBBY) - 1) * 2 + 1)
 
@@ -2160,6 +2169,9 @@ extern dtrace_id_t dtrace_probe_create(dtrace_provider_id_t, const char *,
 extern void *dtrace_probe_arg(dtrace_provider_id_t, dtrace_id_t);
 extern void dtrace_probe(dtrace_id_t, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4);
+extern int (*dtrace_probeid_enable)(dtrace_id_t id);
+extern int (*dtrace_probeid_disable)(dtrace_id_t id);
+
 
 /*
  * DTrace Meta Provider API

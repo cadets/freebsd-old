@@ -57,7 +57,9 @@ CFLAGS+=	-DVTDTR
 
 EXPORT_SYMS=	dtrace_register \
 		dtrace_unregister \
-		dtrace_probe_lookup
+		dtrace_probe_lookup \
+		dtrace_probeid_enable \
+		dtrace_probeid_disable
 
 dtrace_asm.o:  assym.inc
 

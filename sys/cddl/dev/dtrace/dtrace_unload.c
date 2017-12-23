@@ -122,5 +122,8 @@ dtrace_unload()
 	/* Unhook from the trap handler. */
 	dtrace_trap_func = NULL;
 
+	dtrace_probeid_enable = NULL;
+	dtrace_probeid_disable = NULL;
+
 	return (error);
 }

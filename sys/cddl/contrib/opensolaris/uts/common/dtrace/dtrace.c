@@ -18379,6 +18379,92 @@ dtrace_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 }
 #endif
 
+#ifndef illumos
+static int
+dtrace_priv_probeid_enable(dtrace_id_t id)
+{
+	dtrace_probe_t *probe;
+	dtrace_ecb_t *ecb;
+	dtrace_state_t *state;
+	dtrace_actdesc_t *adesc;
+	int error;
+
+	error = 0;
+
+	mutex_enter(&cpu_lock);
+	mutex_enter(&dtrace_lock);
+	probe = dtrace_probes[id - 1];
+	ASSERT(probe != NULL);
+
+	state = dtrace_state_create(NULL, NULL);
+	ASSERT(state != NULL);
+	ecb = dtrace_ecb_add(state, probe);
+	ASSERT(ecb != NULL);
+	adesc = dtrace_actdesc_create(DTRACEVT_HYPERCALL, 0, 0, 0);
+	ASSERT(adesc != NULL);
+
+	error = dtrace_ecb_action_add(ecb, adesc);
+	if (error) {
+		kmem_free(state, sizeof (dtrace_state_t));
+		kmem_free(ecb, sizeof (dtrace_ecb_t));
+		kmem_free(adesc, sizeof (dtrace_actdesc_t));
+		mutex_exit(&dtrace_lock);
+		mutex_exit(&cpu_lock);
+		return (error);
+	}
+
+	dtrace_ecb_enable(ecb);
+	ASSERT(probe->dtpr_ecb != NULL);
+	mutex_exit(&dtrace_lock);
+	mutex_exit(&cpu_lock);
+
+	return (error);
+}
+
+static int
+dtrace_priv_probeid_disable(dtrace_id_t id)
+{
+	dtrace_probe_t *probe;
+	dtrace_ecb_t *ecb;
+	dtrace_state_t *state;
+	dtrace_action_t *act;
+	int error;
+
+	mutex_enter(&cpu_lock);
+	mutex_enter(&dtrace_lock);
+
+	probe = dtrace_probes[id - 1];
+	ASSERT(probe != NULL);
+
+	ecb = probe->dtpr_ecb;
+	ASSERT(ecb != NULL);
+
+	/*
+	 * Find the necessary ECB to destroy
+	 */
+	while (ecb->dte_next) {
+		act = ecb->dte_action;
+		if (DTRACEACT_ISVIRT(act->dta_kind)) {
+			break;
+		}
+		ecb = ecb->dte_next;
+	}
+
+	if (!DTRACEACT_ISVIRT(ecb->dte_action[0].dta_kind)) {
+		return (ESRCH);
+	}
+
+	state = ecb->dte_state;
+	dtrace_state_destroy(state);
+	if (ecb->dte_next == NULL)
+		dtrace_ecb_destroy(ecb);
+	mutex_exit(&dtrace_lock);
+	mutex_exit(&cpu_lock);
+
+	return (0);
+}
+#endif
+
 #ifdef illumos
 /*ARGSUSED*/
 static int
