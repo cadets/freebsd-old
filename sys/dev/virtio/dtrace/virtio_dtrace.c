@@ -627,7 +627,6 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	/*
 	 * XXX: Double switch statement... meh.
 	 */
-
 	switch (ctrl->event) {
 	case VIRTIO_DTRACE_DEVICE_READY:
 		sc->vtdtr_host_ready = 1;
@@ -686,7 +685,6 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			}
 		}
 		mtx_unlock(&list->mtx);
-
 		KASSERT(found == 1, ("%s: probe not found", __func__));
 
 		error = dtrace_probeid_disable(pb->probe);
