@@ -134,6 +134,8 @@
 
 #include <sys/dtrace_bsd.h>
 
+#include <machine/bhyve_hypercall.h>
+
 #include <netinet/in.h>
 
 #include "dtrace_cddl.h"
@@ -7458,7 +7460,7 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		dtrace_vstate_t *vstate = &state->dts_vstate;
 		dtrace_provider_t *prov = probe->dtpr_provider;
 		uint64_t tracememsize = 0;
-		int committed = 0;
+		int committed = 0, error = 0;
 		caddr_t tomax;
 
 		/*
@@ -7489,6 +7491,23 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			if (arg0 != (uint64_t)(uintptr_t)state)
 				continue;
 		}
+#ifndef illumos
+		/*
+		 * We check if the action is used in a virtualization context.
+		 * Currently, it is only possible to have one action in this
+		 * list, so we assert it's correctness (TODO).
+		 */
+		if (ecb->dte_action &&
+		    DTRACEACT_ISVIRT(ecb->dte_action->dta_kind)) {
+			if (vm_guest == VM_GUEST_BHYVE &&
+			    bhyve_hypercalls_enabled())
+				if (ecb->dte_action->dta_kind == DTRACEVT_HYPERCALL)
+					error = hypercall_dtrace_probe(id, arg0, arg1,
+					    arg2, arg3, arg4);
+			continue;
+		}
+#endif
+
 
 		if (state->dts_activity != DTRACE_ACTIVITY_ACTIVE) {
 			/*
@@ -11703,6 +11722,8 @@ dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
 		case DTRACEACT_STOP:
 		case DTRACEACT_BREAKPOINT:
 		case DTRACEACT_PANIC:
+		case DTRACEACT_VIRT:
+		case DTRACEVT_HYPERCALL:
 			break;
 
 		case DTRACEACT_CHILL:

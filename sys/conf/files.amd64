@@ -1,4 +1,5 @@
 # This file tells config what files go into building a kernel,
+#WITH_CCACHE_BUILD=yes
 # files marked standard are always included.
 #
 # $FreeBSD$
@@ -102,6 +103,10 @@ hptrr_lib.o			optional	hptrr			\
 	dependency	"$S/dev/hptrr/amd64-elf.hptrr_lib.o.uu"		\
 	compile-with	"uudecode < $S/dev/hptrr/amd64-elf.hptrr_lib.o.uu" \
 	no-implicit-rule
+
+amd64/amd64/bhyve_hypercall.S   standard                                                \
+         compile-with    "${CC} -x assembler-with-cpp ${CFLAGS} -D__asm__ -c ${.IMPSRC}" \
+         clean           "bhyve_hypercall.o"
 #
 amd64/acpica/acpi_machdep.c	optional	acpi
 acpi_wakecode.o			optional	acpi			\
