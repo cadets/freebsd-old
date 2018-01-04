@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1989, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -240,6 +242,8 @@ nfscl_nget(struct mount *mntp, struct vnode *dvp, struct nfsfh *nfhp,
 	 * happened to return an error no special casing is needed).
 	 */
 	mtx_init(&np->n_mtx, "NEWNFSnode lock", NULL, MTX_DEF | MTX_DUPOK);
+	lockinit(&np->n_excl, PVFS, "nfsupg", VLKTIMEOUT, LK_NOSHARE |
+	    LK_CANRECURSE);
 
 	/* 
 	 * Are we getting the root? If so, make sure the vnode flags
@@ -281,6 +285,7 @@ nfscl_nget(struct mount *mntp, struct vnode *dvp, struct nfsfh *nfhp,
 	if (error != 0) {
 		*npp = NULL;
 		mtx_destroy(&np->n_mtx);
+		lockdestroy(&np->n_excl);
 		FREE((caddr_t)nfhp, M_NFSFH);
 		if (np->n_v4 != NULL)
 			FREE((caddr_t)np->n_v4, M_NFSV4NODE);

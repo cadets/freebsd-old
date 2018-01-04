@@ -151,16 +151,6 @@ cpu_idle_wakeup(int cpu)
 	return (0);
 }
 
-void
-bzero(void *buf, size_t len)
-{
-	uint8_t *p;
-
-	p = buf;
-	while(len-- > 0)
-		*p++ = 0;
-}
-
 int
 fill_regs(struct thread *td, struct reg *regs)
 {
@@ -289,12 +279,7 @@ exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 
 	memset(tf, 0, sizeof(struct trapframe));
 
-	/*
-	 * We need to set a0 for init as it doesn't call
-	 * cpu_set_syscall_retval to copy the value. We also
-	 * need to set td_retval for the cases where we do.
-	 */
-	tf->tf_a[0] = td->td_retval[0] = stack;
+	tf->tf_a[0] = stack;
 	tf->tf_sp = STACKALIGN(stack);
 	tf->tf_ra = imgp->entry_addr;
 	tf->tf_sepc = imgp->entry_addr;
@@ -890,4 +875,15 @@ initriscv(struct riscv_bootparams *rvbp)
 	riscv_init_interrupts();
 
 	early_boot = 0;
+}
+
+#undef bzero
+void
+bzero(void *buf, size_t len)
+{
+	uint8_t *p;
+
+	p = buf;
+	while(len-- > 0)
+		*p++ = 0;
 }

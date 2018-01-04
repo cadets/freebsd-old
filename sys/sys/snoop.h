@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: 0BSD
+ *
  * Copyright (c) 1995 Ugen J.S.Antsilevich
  *
  * Redistribution and use in source forms, with and without modification,

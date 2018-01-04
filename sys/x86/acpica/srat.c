@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2010 Hudson River Trading LLC
  * Written by: John H. Baldwin <jhb@FreeBSD.org>
  * All rights reserved.
@@ -172,7 +174,7 @@ overlaps_phys_avail(vm_paddr_t start, vm_paddr_t end)
 	int i;
 
 	for (i = 0; phys_avail[i] != 0 && phys_avail[i + 1] != 0; i += 2) {
-		if (phys_avail[i + 1] < start)
+		if (phys_avail[i + 1] <= start)
 			continue;
 		if (phys_avail[i] < end)
 			return (1);
@@ -449,6 +451,7 @@ parse_srat(void)
 	 * the default memory attribute (WB), and the DMAP when available.
 	 */
 	cpus = (struct cpu_info *)pmap_mapbios(addr, size);
+	bzero(cpus, size);
 
 	/*
 	 * Make a pass over the table to populate the cpus[] and

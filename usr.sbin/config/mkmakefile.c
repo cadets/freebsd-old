@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1980, 1990, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -501,6 +503,10 @@ nextparam:;
 		tp = new_fent();
 		tp->f_fn = this;
 		tp->f_type = filetype;
+		if (filetype == LOCAL)
+			tp->f_srcprefix = "";
+		else
+			tp->f_srcprefix = "$S/";
 		if (imp_rule)
 			tp->f_flags |= NO_IMPLCT_RULE;
 		if (no_obj)
@@ -576,7 +582,8 @@ do_before_depend(FILE *fp)
 			if (tp->f_flags & NO_IMPLCT_RULE)
 				fprintf(fp, "%s ", tp->f_fn);
 			else
-				fprintf(fp, "$S/%s ", tp->f_fn);
+				fprintf(fp, "%s%s ", tp->f_srcprefix,
+				    tp->f_fn);
 			lpos += len + 1;
 		}
 	if (lpos != 8)
@@ -641,10 +648,7 @@ do_xxfiles(char *tag, FILE *fp)
 				lpos = 8;
 				fputs("\\\n\t", fp);
 			}
-			if (tp->f_type != LOCAL)
-				fprintf(fp, "$S/%s ", tp->f_fn);
-			else
-				fprintf(fp, "%s ", tp->f_fn);
+			fprintf(fp, "%s%s ", tp->f_srcprefix, tp->f_fn);
 			lpos += len + 1;
 		}
 	free(suff);
@@ -674,13 +678,14 @@ tail(char *fn)
  * (which may include lint rules, LLVM IR rules, instrumentation, etc.).
  */
 static void
-emit_obj_rules(FILE *f, char *name, const char *prefix, char suffix,
-	const char *command, int flags, const char *depends)
+emit_obj_rules(FILE *f, char *name, const char *objprefix,
+	const char *srcprefix, char suffix, const char *command, int flags,
+	const char *depends)
 {
 	char source[128];
 	char target[128];
 	int build_llvm_ir = 0;
-	int explicit_source = strlen(prefix) > 0;
+	int explicit_source = strlen(objprefix) > 0;
 
 	if (instrumenting || llvm_ir) {
 		if (suffix != 'c') {
@@ -693,27 +698,23 @@ emit_obj_rules(FILE *f, char *name, const char *prefix, char suffix,
 		}
 	}
 
-	CONCAT_INTO(source, "$S/", name);
+	CONCAT_INTO(source, srcprefix, name);
+	CONCAT_INTO(target, objprefix, tail(name));
 
 	assert(command);
 	assert(strlen(command));
 
 	if (flags & NO_IMPLCT_RULE) {
-		fprintf(f, "%s%s: %s\n", prefix, name, depends);
+		fprintf(f, "%s: %s\n", target, depends);
 	}
 	else {
-		CONCAT_INTO(target, prefix, tail(source));
 		target[strlen(target) - 2] = '\0';
 
 		/* we already have an object file - just copy it */
 		if (suffix == 'o') {
-			fprintf(f, "%s:\n\t-cp $S/%s .\n\n", target, source);
+			fprintf(f, "%s:\n\t-cp %s .\n\n", target, source);
 			return;
 		}
-
-		/* lint rule */
-		fprintf(f, "%s.ln: %s %s\n", target, source, depends);
-		fprintf(f, "\t${NORMAL_LINT}\n\n");
 
 		/* LLVM intermediate representation and instrumentation */
 		if (build_llvm_ir) {
@@ -788,8 +789,7 @@ do_rules(FILE *f)
 			    ftp->f_flags & NOWERROR ? "_NOWERROR" : "");
 			compilewith = cmd;
 		}
-
-		emit_obj_rules(f, np, ftp->f_objprefix, och,
+		emit_obj_rules(f, np, ftp->f_objprefix, ftp->f_srcprefix, och,
 			compilewith, ftp->f_flags,
 			ftp->f_depends ? ftp->f_depends : "");
 	}

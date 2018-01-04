@@ -81,6 +81,9 @@ CWARNFLAGS.clang+=	-Wno-unused-local-typedef
 .if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 40000
 CWARNFLAGS.clang+=	-Wno-address-of-packed-member
 .endif
+.if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 60000
+CWARNFLAGS.clang+=	-Wno-error=tautological-constant-compare
+.endif
 .endif # WARNS <= 3
 .if ${WARNS} <= 2
 CWARNFLAGS.clang+=	-Wno-switch -Wno-switch-enum -Wno-knr-promoted-parameter
@@ -129,11 +132,6 @@ CWARNFLAGS+=	-Wno-error=address			\
 		-Wno-error=unused-but-set-variable	\
 		-Wno-error=unused-function		\
 		-Wno-error=unused-value
-.endif
-
-# GCC 5.3.0
-.if ${COMPILER_TYPE} == "gcc" && ${COMPILER_VERSION} >= 50300
-CWARNFLAGS+=	-Wno-error=strict-overflow
 .endif
 
 # GCC 6.1.0
@@ -211,6 +209,10 @@ SSP_CFLAGS?=	-fstack-protector
 .endif
 CFLAGS+=	${SSP_CFLAGS}
 .endif # SSP && !ARM && !MIPS
+
+# Additional flags passed in CFLAGS and CXXFLAGS when MK_DEBUG_FILES is
+# enabled.
+DEBUG_FILES_CFLAGS?= -g
 
 # Allow user-specified additional warning flags, plus compiler and file
 # specific flag overrides, unless we've overriden this...

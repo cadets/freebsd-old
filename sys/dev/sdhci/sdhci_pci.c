@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2008 Alexander Motin <mav@FreeBSD.org>
  * All rights reserved.
  *
@@ -395,11 +397,7 @@ sdhci_pci_attach(device_t dev)
 	pci_enable_busmaster(dev);
 	/* Process cards detection. */
 	for (i = 0; i < sc->num_slots; i++) {
-#ifdef MMCCAM
-		sdhci_cam_start_slot(&sc->slots[i]);
-#else
 		sdhci_start_slot(&sc->slots[i]);
-#endif
 	}
 
 	return (0);

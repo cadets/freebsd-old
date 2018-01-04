@@ -2169,7 +2169,7 @@ class AMDGPUTargetInfo final : public TargetInfo {
 public:
   AMDGPUTargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
     : TargetInfo(Triple) ,
-      GPU(isAMDGCN(Triple) ? GK_GFX6 : GK_R600),
+      GPU(isAMDGCN(Triple) ? GK_GFX6 : parseR600Name(Opts.CPU)),
       hasFP64(false),
       hasFMAF(false),
       hasLDEXPF(false),
@@ -2179,6 +2179,12 @@ public:
       hasFMAF = true;
       hasLDEXPF = true;
     }
+    if (getTriple().getArch() == llvm::Triple::r600) {
+      if (GPU == GK_EVERGREEN_DOUBLE_OPS || GPU == GK_CAYMAN) {
+        hasFMAF = true;
+      }
+    }
+
     auto IsGenericZero = isGenericZero(Triple);
     resetDataLayout(getTriple().getArch() == llvm::Triple::amdgcn ?
                     (IsGenericZero ? DataLayoutStringSIGenericIsZero :
@@ -8050,6 +8056,7 @@ class MipsTargetInfo : public TargetInfo {
     NoDSP, DSP1, DSP2
   } DspRev;
   bool HasMSA;
+  bool DisableMadd4;
 
 protected:
   bool HasFP64;
@@ -8060,7 +8067,7 @@ public:
       : TargetInfo(Triple), IsMips16(false), IsMicromips(false),
         IsNan2008(false), IsSingleFloat(false), IsNoABICalls(false),
         CanUseBSDABICalls(false), FloatABI(HardFloat), DspRev(NoDSP),
-        HasMSA(false), HasFP64(false) {
+        HasMSA(false), DisableMadd4(false), HasFP64(false) {
     TheCXXABI.set(TargetCXXABI::GenericMIPS);
 
     setABI((getTriple().getArch() == llvm::Triple::mips ||
@@ -8306,6 +8313,9 @@ public:
     if (HasMSA)
       Builder.defineMacro("__mips_msa", Twine(1));
 
+    if (DisableMadd4)
+      Builder.defineMacro("__mips_no_madd4", Twine(1));
+
     Builder.defineMacro("_MIPS_SZPTR", Twine(getPointerWidth(0)));
     Builder.defineMacro("_MIPS_SZINT", Twine(getIntWidth()));
     Builder.defineMacro("_MIPS_SZLONG", Twine(getLongWidth()));
@@ -8468,6 +8478,8 @@ public:
         DspRev = std::max(DspRev, DSP2);
       else if (Feature == "+msa")
         HasMSA = true;
+      else if (Feature == "+nomadd4")
+        DisableMadd4 = true;
       else if (Feature == "+fp64")
         HasFP64 = true;
       else if (Feature == "-fp64")
@@ -9344,8 +9356,7 @@ public:
     WIntType = SignedInt;
     Char32Type = UnsignedLong;
     SigAtomicType = SignedChar;
-    resetDataLayout("e-p:16:16:16-i8:8:8-i16:16:16-i32:32:32-i64:64:64"
-		    "-f32:32:32-f64:64:64-n8");
+    resetDataLayout("e-p:16:8-i8:8-i16:8-i32:8-i64:8-f32:8-f64:8-n8-a:8");
   }
 
   void getTargetDefines(const LangOptions &Opts,
