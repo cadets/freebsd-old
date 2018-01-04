@@ -699,7 +699,7 @@ emit_obj_rules(FILE *f, char *name, const char *objprefix,
 	}
 
 	CONCAT_INTO(source, srcprefix, name);
-	CONCAT_INTO(target, objprefix, name);
+	CONCAT_INTO(target, objprefix, tail(name));
 
 	assert(command);
 	assert(strlen(command));
