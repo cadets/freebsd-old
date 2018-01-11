@@ -3577,20 +3577,13 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			return (0);
 
 		return ((uint64_t)curthread->t_procp->p_ucred->cr_prison->pr_id);
-	case DIF_VAR_JAILNAME: {
-		int jid;
+	case DIF_VAR_JAILNAME:
 		if (!dtrace_priv_kernel(state))
 			return (0);
-
-		jid = curthread->t_procp->p_ucred->cr_prison->pr_id;
-		if (jid == 0)
-			return dtrace_dif_varstr((uintptr_t)"prison0",
-			    state, mstate);
 
 		return (dtrace_dif_varstr(
 		    (uintptr_t)curthread->t_procp->p_ucred->cr_prison->pr_name,
 		    state, mstate));
-	}
 	case DIF_VAR_PID:
 		if (!dtrace_priv_proc(state))
 			return (0);
