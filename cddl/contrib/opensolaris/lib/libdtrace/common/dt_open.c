@@ -315,7 +315,7 @@ static const dt_ident_t _dtrace_globals[] = {
 	DT_VERS_1_5, &dt_idops_func, "string(int, void *)" },
 { "ipl", DT_IDENT_SCALAR, 0, DIF_VAR_IPL, DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_type, "uint_t" },
-#ifndef illumos
+#ifdef __FreeBSD__
 { "jailname", DT_IDENT_SCALAR, 0, DIF_VAR_JAILNAME,
 	DT_ATTR_STABCMN, DT_VERS_1_13, &dt_idops_type, "string" },
 { "jid", DT_IDENT_SCALAR, 0, DIF_VAR_JID, DT_ATTR_STABCMN, DT_VERS_1_13,

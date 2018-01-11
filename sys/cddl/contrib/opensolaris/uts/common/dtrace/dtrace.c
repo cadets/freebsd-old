@@ -3689,7 +3689,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		return (dtrace_dif_varstr(
 		    (uintptr_t)curthread->t_procp->p_zone->zone_name,
 		    state, mstate));
-#endif
+#elif defined(__FreeBSD__)
 	case DIF_VAR_JAILNAME:
 		if (!dtrace_priv_kernel(state))
 			return (0);
@@ -3703,6 +3703,9 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			return (0);
 
 		return ((uint64_t)curthread->t_procp->p_ucred->cr_prison->pr_id);
+#else
+		return (0);
+#endif
 
 	case DIF_VAR_UID:
 		if (!dtrace_priv_proc(state))
