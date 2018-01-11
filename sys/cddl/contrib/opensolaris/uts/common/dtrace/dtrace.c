@@ -3572,18 +3572,6 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		    (uintptr_t)mstate->dtms_probe->dtpr_name,
 		    state, mstate));
 
-	case DIF_VAR_JID:
-		if (!dtrace_priv_kernel(state))
-			return (0);
-
-		return ((uint64_t)curthread->t_procp->p_ucred->cr_prison->pr_id);
-	case DIF_VAR_JAILNAME:
-		if (!dtrace_priv_kernel(state))
-			return (0);
-
-		return (dtrace_dif_varstr(
-		    (uintptr_t)curthread->t_procp->p_ucred->cr_prison->pr_name,
-		    state, mstate));
 	case DIF_VAR_PID:
 		if (!dtrace_priv_proc(state))
 			return (0);
@@ -3701,9 +3689,20 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		return (dtrace_dif_varstr(
 		    (uintptr_t)curthread->t_procp->p_zone->zone_name,
 		    state, mstate));
-#else
-		return (0);
 #endif
+	case DIF_VAR_JAILNAME:
+		if (!dtrace_priv_kernel(state))
+			return (0);
+
+		return (dtrace_dif_varstr(
+		    (uintptr_t)curthread->t_procp->p_ucred->cr_prison->pr_name,
+		    state, mstate));
+
+	case DIF_VAR_JID:
+		if (!dtrace_priv_kernel(state))
+			return (0);
+
+		return ((uint64_t)curthread->t_procp->p_ucred->cr_prison->pr_id);
 
 	case DIF_VAR_UID:
 		if (!dtrace_priv_proc(state))
