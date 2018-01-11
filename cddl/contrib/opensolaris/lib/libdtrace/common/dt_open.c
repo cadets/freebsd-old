@@ -271,7 +271,7 @@ static const dt_ident_t _dtrace_globals[] = {
 	DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string" },
 { "jid", DT_IDENT_SCALAR, 0, DIF_VAR_JID, DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_type, "uint_t" },
-{ "jname", DT_IDENT_SCALAR, 0, DIF_VAR_JNAME,
+{ "jailname", DT_IDENT_SCALAR, 0, DIF_VAR_JAILNAME,
 	DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string" },
 { "execname", DT_IDENT_SCALAR, 0, DIF_VAR_EXECNAME,
 	DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string" },
