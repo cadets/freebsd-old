@@ -3690,6 +3690,10 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		    (uintptr_t)curthread->t_procp->p_zone->zone_name,
 		    state, mstate));
 #elif defined(__FreeBSD__)
+	/*
+	 * On FreeBSD, we introduce compatibility to zonename by falling through
+	 * into jailname.
+	 */
 	case DIF_VAR_JAILNAME:
 		if (!dtrace_priv_kernel(state))
 			return (0);
