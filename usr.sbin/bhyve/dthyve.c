@@ -71,7 +71,14 @@ dthyve_init(const char *vm __unused)
 	 * Default configuration.
 	 */
 	vtdtr_conf.timeout = 0;
-	vtdtr_conf.event_flags = VTDTR_EV_INSTALL | VTDTR_EV_UNINSTALL;
+	/*
+	 * We are not currently interested in uninstall events because
+	 * everything is uninstalled once VTDTR_EV_STOP fires.
+	 */
+	vtdtr_conf.event_flags =
+	    (1 << VTDTR_EV_INSTALL) |
+	    (1 << VTDTR_EV_GO)      |
+	    (1 << VTDTR_EV_STOP);
 
 	error = ioctl(vtdtr_fd, VTDTRIOC_CONF, &vtdtr_conf);
 	if (error) {

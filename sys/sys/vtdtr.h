@@ -5,6 +5,8 @@
 
 #define VTDTR_EV_INSTALL   0x01
 #define VTDTR_EV_UNINSTALL 0x02
+#define VTDTR_EV_GO        0x03
+#define VTDTR_EV_STOP      0x04
 
 /*
  * We only have one event at the moment -- possibly others in the future.
