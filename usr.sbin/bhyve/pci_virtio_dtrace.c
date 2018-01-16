@@ -82,6 +82,8 @@ __FBSDID("$FreeBSD$");
 #define	VTDTR_DEVICE_PROBE_INSTALL   0x05
 #define	VTDTR_DEVICE_PROBE_UNINSTALL 0x06
 #define	VTDTR_DEVICE_EOF             0x07
+#define VTDTR_DEVICE_GO              0x08
+#define VTDTR_DEVICE_STOP            0x09
 
 static int pci_vtdtr_debug;
 #define	DPRINTF(params) if (pci_vtdtr_debug) printf params
@@ -631,11 +633,25 @@ pci_vtdtr_events(void *xsc)
 		assert(ctrl_entry != NULL);
 		ctrl = &ctrl_entry->ctrl;
 
-		assert((ev.type & (VTDTR_EV_INSTALL | VTDTR_EV_UNINSTALL)) != 0);
-		if (ev.type == VTDTR_EV_INSTALL)
+		switch (ev.type) {
+		case VTDTR_EV_INSTALL:
 			ctrl->event = VTDTR_DEVICE_PROBE_INSTALL;
-		else
+			break;
+		case VTDTR_EV_UNINSTALL:
 			ctrl->event = VTDTR_DEVICE_PROBE_UNINSTALL;
+			break;
+		case VTDTR_EV_GO:
+			ctrl->event = VTDTR_DEVICE_GO;
+			break;
+		case VTDTR_EV_STOP:
+			ctrl->event = VTDTR_DEVICE_STOP;
+			break;
+		default:
+			/*
+			 * XXX: Meh.
+			 */
+			assert(0);
+		}
 
 		ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
 

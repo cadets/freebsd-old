@@ -50,6 +50,8 @@
 #define	VIRTIO_DTRACE_PROBE_INSTALL   0x05 /* Probe Installation */
 #define	VIRTIO_DTRACE_PROBE_UNINSTALL 0x06 /* Probe Uninstallation */
 #define	VIRTIO_DTRACE_EOF             0x07 /* EOF Signal */
+#define	VIRTIO_DTRACE_GO              0x08 /* Start tracing */
+#define	VIRTIO_DTRACE_STOP            0x09 /* Start tracing */
 
 struct vtdtr_softc;
 struct uuid;

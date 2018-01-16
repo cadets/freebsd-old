@@ -12,6 +12,7 @@ __FBSDID("$FreeBSD$");
 void
 dtvirt_probe(int probeid)
 {
+
 	dtrace_probe(probeid, 0, 0, 0, 0, 0);
 }
 
