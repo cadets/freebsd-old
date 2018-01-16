@@ -258,6 +258,8 @@ static dtrace_genid_t	dtrace_retained_gen;	/* current retained enab gen */
 static dtrace_dynvar_t	dtrace_dynhash_sink;	/* end of dynamic hash chains */
 static int		dtrace_dynvar_failclean; /* dynvars failed to clean */
 #ifndef illumos
+static dtrace_state_t	*virt_state;
+static dtrace_probe_t	*active_probes[MAXCPU];
 static struct mtx	dtrace_unr_mtx;
 MTX_SYSINIT(dtrace_unr_mtx, &dtrace_unr_mtx, "Unique resource identifier", MTX_DEF);
 static eventhandler_tag	dtrace_kld_load_tag;
@@ -6953,6 +6955,12 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			}
 			*((uint64_t *)(uintptr_t)regs[rd]) = regs[r1];
 			break;
+		case DIF_OP_HCALL:
+			if (bhyve_hypercalls_enabled()) {
+				hypercall_dtrace_probe(active_probes[curcpu]->dtpr_id,
+				    0, 0, 0, 0, 0);
+			}
+			break;
 		}
 	}
 
@@ -7434,6 +7442,7 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		return;
 	}
 
+	active_probes[curcpu] = probe;
 	now = mstate.dtms_timestamp = dtrace_gethrtime();
 	mstate.dtms_present = DTRACE_MSTATE_TIMESTAMP;
 	vtime = dtrace_vtime_references != 0;
@@ -7491,23 +7500,6 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			if (arg0 != (uint64_t)(uintptr_t)state)
 				continue;
 		}
-#ifndef illumos
-		/*
-		 * We check if the action is used in a virtualization context.
-		 * Currently, it is only possible to have one action in this
-		 * list, so we assert it's correctness (TODO).
-		 */
-		if (ecb->dte_action &&
-		    DTRACEACT_ISVIRT(ecb->dte_action->dta_kind)) {
-			if (vm_guest == VM_GUEST_BHYVE &&
-			    bhyve_hypercalls_enabled())
-				if (ecb->dte_action->dta_kind == DTRACEVT_HYPERCALL)
-					error = hypercall_dtrace_probe(id, arg0, arg1,
-					    arg2, arg3, arg4);
-			continue;
-		}
-#endif
-
 
 		if (state->dts_activity != DTRACE_ACTIVITY_ACTIVE) {
 			/*
@@ -8072,7 +8064,8 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 
 	if (vtime)
 		curthread->t_dtrace_start = dtrace_gethrtime();
-
+    
+    active_probes[curcpu] = NULL;
 	dtrace_probe_exit(cookie);
 }
 
@@ -10120,6 +10113,7 @@ dtrace_difo_validate(dtrace_difo_t *dp, dtrace_vstate_t *vstate, uint_t nregs,
 			if (rs >= nregs)
 				err += efunc(pc, "invalid register %u\n", rs);
 			break;
+		case DIF_OP_HCALL:
 		default:
 			err += efunc(pc, "invalid opcode %u\n",
 			    DIF_INSTR_OP(instr));
@@ -12197,8 +12191,9 @@ static void
 dtrace_buffer_activate_cpu(dtrace_state_t *state, int cpu)
 {
 
-	if (state->dts_buffer[cpu].dtb_tomax != NULL)
+	if (state->dts_buffer[cpu].dtb_tomax != NULL) {
 		state->dts_buffer[cpu].dtb_flags &= ~DTRACEBUF_INACTIVE;
+	}
 }
 #endif
 
@@ -15296,7 +15291,8 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	 * We enable anonymous tracing before APs are started, so we must
 	 * activate buffers using the current CPU.
 	 */
-	if (state == dtrace_anon.dta_state)
+	if (state == dtrace_anon.dta_state ||
+	    state == virt_state)
 		for (int i = 0; i < NCPU; i++)
 			dtrace_buffer_activate_cpu(state, i);
 	else
@@ -18402,31 +18398,101 @@ dtrace_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 
 #ifndef illumos
 static int
+dtrace_priv_virtstate_create(void)
+{
+
+	virt_state = dtrace_state_create(NULL, NULL);
+	virt_state->dts_options[DTRACEOPT_BUFSIZE] = 20*1024*1024;
+	return (virt_state == NULL) ? ENOMEM : 0;
+}
+
+static void
+dtrace_priv_virtstate_destroy(void)
+{
+
+	dtrace_state_destroy(virt_state);
+	kmem_free(virt_state, sizeof(dtrace_state_t));
+	virt_state = NULL;
+}
+
+static int
+dtrace_priv_virtstate_go(void)
+{
+	int error;
+	processorid_t cpuid;
+
+	ASSERT(virt_state != NULL);
+	error = dtrace_state_go(virt_state, &cpuid);
+
+	return (error);
+}
+
+static int
+dtrace_priv_virtstate_stop(void)
+{
+
+	processorid_t cpuid;
+	return (dtrace_state_stop(virt_state, &cpuid));
+}
+
+static int
 dtrace_priv_probeid_enable(dtrace_id_t id)
 {
 	dtrace_probe_t *probe;
 	dtrace_ecb_t *ecb;
-	dtrace_state_t *state;
 	dtrace_actdesc_t *adesc;
+	dtrace_difo_t *hdifo;
+	processorid_t cpuid;
 	int error;
 
 	error = 0;
 
+	/*
+	 * We MUST have virt_state at this point.
+	 *
+	 * FIXME: What if something takes control of the kernel and calls this
+	 * hook...?
+	 */
+	ASSERT(virt_state != NULL);
+
+
 	mutex_enter(&cpu_lock);
 	mutex_enter(&dtrace_lock);
+
+	/*
+	 * Get the probe that we want to enable.
+	 */
 	probe = dtrace_probes[id - 1];
 	ASSERT(probe != NULL);
 
-	state = dtrace_state_create(NULL, NULL);
-	ASSERT(state != NULL);
-	ecb = dtrace_ecb_add(state, probe);
+	/*
+	 * We want to add a new ECB to the virtual state. This will contain our
+	 * IR.
+	 */
+	ecb = dtrace_ecb_add(virt_state, probe);
 	ASSERT(ecb != NULL);
-	adesc = dtrace_actdesc_create(DTRACEVT_HYPERCALL, 0, 0, 0);
+	/*
+	 * We create a DIFEXPR action description, which will then be used
+	 * during DIF execution.
+	 */
+	adesc = dtrace_actdesc_create(DTRACEACT_DIFEXPR, 0, 0, 0);
 	ASSERT(adesc != NULL);
+
+	/*
+	 * Get our DIFO.
+	 */
+	hdifo = kmem_zalloc(sizeof (dtrace_difo_t), KM_SLEEP);
+	hdifo->dtdo_buf = kmem_zalloc(sizeof (dif_instr_t), KM_SLEEP);
+	hdifo->dtdo_len = 1; /* We only do a hypercall for now */
+
+	hdifo->dtdo_buf[0] = DIF_INSTR_FMT(DIF_OP_HCALL, 0, 0, 0);
+
+	adesc->dtad_difo = hdifo;
 
 	error = dtrace_ecb_action_add(ecb, adesc);
 	if (error) {
-		kmem_free(state, sizeof (dtrace_state_t));
+		kmem_free(hdifo->dtdo_buf, hdifo->dtdo_len * sizeof (dif_instr_t));
+		kmem_free(hdifo, sizeof (dtrace_difo_t));
 		kmem_free(ecb, sizeof (dtrace_ecb_t));
 		kmem_free(adesc, sizeof (dtrace_actdesc_t));
 		mutex_exit(&dtrace_lock);
@@ -18445,43 +18511,55 @@ dtrace_priv_probeid_enable(dtrace_id_t id)
 static int
 dtrace_priv_probeid_disable(dtrace_id_t id)
 {
+	/*
 	dtrace_probe_t *probe;
-	dtrace_ecb_t *ecb;
-	dtrace_state_t *state;
+	dtrace_ecb_t *ecb, *pecb;
 	dtrace_action_t *act;
 	int error;
+
+	ASSERT(virt_state != NULL);
 
 	mutex_enter(&cpu_lock);
 	mutex_enter(&dtrace_lock);
 
+	printf("id - 1 = %d\n", id - 1);
 	probe = dtrace_probes[id - 1];
+	printf("probe = %p\n", probe);
 	ASSERT(probe != NULL);
 
 	ecb = probe->dtpr_ecb;
+	printf("ecb = %p\n", ecb);
 	ASSERT(ecb != NULL);
+	*/
 
 	/*
-	 * Find the necessary ECB to destroy
+	 * Find the ECB we want to destroy and its predecessor
 	 */
-	while (ecb->dte_next) {
-		act = ecb->dte_action;
-		if (DTRACEACT_ISVIRT(act->dta_kind)) {
+	/*
+	printf("ecb->dte_next = %p\n", ecb->dte_next);
+	pecb = ecb;
+	while (ecb) {
+		if (ecb->dte_state == virt_state) {
+			printf("it is virt\n");
 			break;
 		}
+		pecb = ecb;
 		ecb = ecb->dte_next;
+		printf("ecb = %p\n", ecb);
 	}
 
-	if (!DTRACEACT_ISVIRT(ecb->dte_action[0].dta_kind)) {
-		return (ESRCH);
-	}
+	printf("ecb = %p\n", ecb);
+	printf("pecb = %p\n", pecb);
+	ASSERT(ecb != NULL);
 
-	state = ecb->dte_state;
-	dtrace_state_destroy(state);
-	if (ecb->dte_next == NULL)
-		dtrace_ecb_destroy(ecb);
+	if (pecb != ecb)
+		pecb->dte_next = ecb->dte_next;
+	dtrace_ecb_destroy(ecb);
+
 	mutex_exit(&dtrace_lock);
 	mutex_exit(&cpu_lock);
 
+	*/
 	return (0);
 }
 #endif

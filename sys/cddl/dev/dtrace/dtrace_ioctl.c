@@ -572,12 +572,20 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		return (0);
 	}
 	case DTRACEIOC_GO: {
+#ifdef VTDTR
+		struct vtdtr_event e;
+#endif
 		int rval;
 		processorid_t *cpuid = (processorid_t *) addr;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_GO\n",__func__,__LINE__);
 
 		rval = dtrace_state_go(state, cpuid);
+
+#ifdef VTDTR
+		e.type = VTDTR_EV_GO;
+		vtdtr_enqueue(&e);
+#endif
 
 		return (rval);
 	}
@@ -830,6 +838,9 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		return (0);
 	}
 	case DTRACEIOC_STOP: {
+#ifdef VTDTR
+		struct vtdtr_event e;
+#endif
 		int rval;
 		processorid_t *cpuid = (processorid_t *) addr;
 
@@ -838,6 +849,11 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_enter(&dtrace_lock);
 		rval = dtrace_state_stop(state, cpuid);
 		mutex_exit(&dtrace_lock);
+
+#ifdef VTDTR
+		e.type = VTDTR_EV_STOP;
+		vtdtr_enqueue(&e);
+#endif
 
 		return (rval);
 	}

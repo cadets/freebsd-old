@@ -112,6 +112,10 @@ static uint32_t num_dtprobes;
 SYSCTL_U32(_dev_vtdtr, OID_AUTO, nprobes, CTLFLAG_RD, &num_dtprobes, 0,
     "Number of installed probes through virtio-dtrace");
 
+static uint32_t debug = 0;
+SYSCTL_U32(_dev_vtdtr, OID_AUTO, debug, CTLFLAG_RWTUN, &debug, 0,
+    "Enable debugging of virtio-dtrace");
+
 static int vtdtr_modevent(module_t, int, void *);
 static void vtdtr_cleanup(void);
 
@@ -197,6 +201,10 @@ static struct virtio_feature_desc vtdtr_feature_desc[] = {
 
 int (*dtrace_probeid_enable)(dtrace_id_t) = NULL;
 int (*dtrace_probeid_disable)(dtrace_id_t) = NULL;
+int (*dtrace_virtstate_create)(void) = NULL;
+void (*dtrace_virtstate_destroy)(void) = NULL;
+int (*dtrace_virtstate_go)(void) = NULL;
+int (*dtrace_virtstate_stop)(void) = NULL;
 
 static int
 vtdtr_modevent(module_t mod, int type, void *unused)
@@ -629,33 +637,56 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	 */
 	switch (ctrl->event) {
 	case VIRTIO_DTRACE_DEVICE_READY:
+		if (debug)
+			device_printf(dev, "VIRTIO_DTRACE_DEVICE_READY\n");
 		sc->vtdtr_host_ready = 1;
 		break;
 	case VIRTIO_DTRACE_REGISTER:
+		if (debug)
+			device_printf(dev, "VIRTIO_DTRACE_REGISTER\n");
 		sc->vtdtr_ready = 0;
 		pv = &ctrl->uctrl.prov_ev;
 		break;
 	case VIRTIO_DTRACE_UNREGISTER:
+		if (debug)
+			device_printf(dev, "VIRTIO_DTRACE_UNREGISTER\n");
 		sc->vtdtr_ready = 0;
 		pv = &ctrl->uctrl.prov_ev;
 		break;
 	case VIRTIO_DTRACE_DESTROY:
+		if (debug)
+			device_printf(dev, "VIRTIO_DTRACE_DESTROY\n");
 		sc->vtdtr_ready = 0;
 		break;
 	case VIRTIO_DTRACE_PROBE_CREATE:
 		pb = &ctrl->uctrl.probe_ev;
+		if (debug)
+			device_printf(dev, "VIRTIO_DTRACE_PROBE_CREATE: %d\n", pb->probe);
 		sc->vtdtr_ready = 0;
 		break;
 	case VIRTIO_DTRACE_PROBE_INSTALL: {
 		sc->vtdtr_ready = 0;
 		pb = &ctrl->uctrl.probe_ev;
+		list = sc->vtdtr_probelist;
+
+		if (debug)
+			device_printf(dev, "VIRTIO_DTRACE_PROBE_INSTALL: %d\n", pb->probe);
+		if (LIST_EMPTY(&list->head)) {
+			error = dtrace_virtstate_create();
+			if (error) {
+				device_printf(dev, "%s: error %d creating "
+				    "virtstate", __func__, error);
+				break;
+			}
+
+			device_printf(dev, "Virtual state created\n");
+		}
 
 		error = dtrace_probeid_enable(pb->probe);
 		if (error) {
 			device_printf(dev, "%s: error %d enabling"
 			    " probe %d\n", __func__, error, pb->probe);
 		} else {
-			list = sc->vtdtr_probelist;
 			probe = malloc(sizeof(struct vtdtr_probe),
 			    M_VTDTR, M_WAITOK | M_ZERO);
 			probe->vtdprobe_id = pb->probe;
@@ -674,6 +705,8 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		pb = &ctrl->uctrl.probe_ev;
 		found = 0;
 
+		if (debug)
+			device_printf(dev, "VIRTIO_DTRACE_PROBE_UNINSTALL: %d\n", pb->probe);
 		mtx_lock(&list->mtx);
 		LIST_FOREACH_SAFE(probe, &list->head, vtdprobe_next, ptmp) {
 			if (probe->vtdprobe_id == pb->probe) {
@@ -692,9 +725,39 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			device_printf(dev, "%s: error %d disabling"
 			    " probe %d\n", __func__, error, pb->probe);
 		}
+
+		if (LIST_EMPTY(&list->head)) {
+			dtrace_virtstate_destroy();
+			device_printf(dev, "Virtual state destroyed\n");
+		}
 		break;
 	}
+	case VIRTIO_DTRACE_GO:
+		sc->vtdtr_ready = 0;
+
+		if (debug)
+			device_printf(dev, "VIRTIO_DTRACE_GO\n");
+
+		error = dtrace_virtstate_go();
+		if (error)
+			device_printf(dev, "Error in dtrace_virtstate_go(): %d\n", error);
+		else
+			device_printf(dev, "Starting the trace...\n");
+		break;
+	case VIRTIO_DTRACE_STOP:
+		sc->vtdtr_ready = 0;
+		if (debug)
+			device_printf(dev, "VIRTIO_DTRACE_STOP\n");
+
+		error = dtrace_virtstate_stop();
+		if (error)
+			device_printf(dev, "Error in dtrace_virtstate_stop(): %d\n", error);
+		else
+			device_printf(dev, "Stopping the trace...\n");
+		break;
 	case VIRTIO_DTRACE_EOF:
+		if (debug)
+			device_printf(dev, "VIRTIO_DTRACE_EOF\n");
 		retval = 1;
 		break;
 	default:

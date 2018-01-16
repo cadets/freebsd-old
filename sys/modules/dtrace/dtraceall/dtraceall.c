@@ -66,9 +66,9 @@ MODULE_VERSION(dtraceall, 1);
 /* All the DTrace modules should be dependencies here: */
 MODULE_DEPEND(dtraceall, opensolaris, 1, 1, 1);
 MODULE_DEPEND(dtraceall, dtrace, 1, 1, 1);
-MODULE_DEPEND(dtraceall, dtaudit, 1, 1, 1);
+//MODULE_DEPEND(dtraceall, dtaudit, 1, 1, 1);
 #if defined(AUDIT)
-MODULE_DEPEND(dtraceall, dtmalloc, 1, 1, 1);
+//MODULE_DEPEND(dtraceall, dtmalloc, 1, 1, 1);
 #endif
 #if defined(NFSCL)
 MODULE_DEPEND(dtraceall, dtnfscl, 1, 1, 1);
@@ -76,14 +76,14 @@ MODULE_DEPEND(dtraceall, dtnfscl, 1, 1, 1);
 #if defined(__aarch64__) || defined(__amd64__) || defined(__arm__) || \
     defined(__i386__) || defined(__mips__) || \
     defined(__powerpc__) || defined(__riscv)
-MODULE_DEPEND(dtraceall, fbt, 1, 1, 1);
+//MODULE_DEPEND(dtraceall, fbt, 1, 1, 1);
 #endif
 #if defined(__amd64__) || defined(__i386__)
-MODULE_DEPEND(dtraceall, fasttrap, 1, 1, 1);
+//MODULE_DEPEND(dtraceall, fasttrap, 1, 1, 1);
 #endif
-MODULE_DEPEND(dtraceall, sdt, 1, 1, 1);
+//MODULE_DEPEND(dtraceall, sdt, 1, 1, 1);
 MODULE_DEPEND(dtraceall, systrace, 1, 1, 1);
 #if defined(COMPAT_FREEBSD32)
 MODULE_DEPEND(dtraceall, systrace_freebsd32, 1, 1, 1);
 #endif
-MODULE_DEPEND(dtraceall, profile, 1, 1, 1);
+//MODULE_DEPEND(dtraceall, profile, 1, 1, 1);

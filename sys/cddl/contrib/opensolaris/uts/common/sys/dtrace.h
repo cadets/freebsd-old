@@ -202,6 +202,10 @@ typedef enum dtrace_probespec {
 #define	DIF_OP_RLDX	77		/* rldx  [r1], rd */
 #define	DIF_OP_XLATE	78		/* xlate xlrindex, rd */
 #define	DIF_OP_XLARG	79		/* xlarg xlrindex, rd */
+/*
+ * XXX(dstolfa): Should we be passing in which hypercall?
+ */
+#define DIF_OP_HCALL	80		/* hcall */
 
 #define	DIF_INTOFF_MAX		0xffff	/* highest integer table offset */
 #define	DIF_STROFF_MAX		0xffff	/* highest string table offset */
@@ -508,6 +512,9 @@ typedef struct dtrace_difv {
 
 #define	DTRACEACT_ISVIRT(x)		\
 	(DTRACEACT_CLASS(x) == DTRACEACT_VIRT)
+
+_Static_assert(DTRACEACT_ISVIRT(DTRACEVT_HYPERCALL) != 0,
+    "DTRACEVT_HYPERCALL has to be of class DTRACEACT_VIRT");
 
 #define	DTRACE_QUANTIZE_NBUCKETS	\
 	(((sizeof (uint64_t) * NBBY) - 1) * 2 + 1)
@@ -2171,6 +2178,10 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4);
 extern int (*dtrace_probeid_enable)(dtrace_id_t id);
 extern int (*dtrace_probeid_disable)(dtrace_id_t id);
+extern int (*dtrace_virtstate_create)(void);
+extern void (*dtrace_virtstate_destroy)(void);
+extern int (*dtrace_virtstate_go)(void);
+extern int (*dtrace_virtstate_stop)(void);
 
 
 /*

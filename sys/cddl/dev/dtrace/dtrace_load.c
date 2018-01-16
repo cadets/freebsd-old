@@ -101,6 +101,8 @@ dtrace_load(void *dummy)
 	mutex_enter(&dtrace_provider_lock);
 	mutex_enter(&dtrace_lock);
 
+	memset(active_probes, 0, MAXCPU * sizeof(dtrace_probe_t *));
+
 	dtrace_state_cache = kmem_cache_create("dtrace_state_cache",
 	    sizeof (dtrace_dstate_percpu_t) * NCPU, DTRACE_STATE_ALIGN,
 	    NULL, NULL, NULL, NULL, NULL, 0);
@@ -169,4 +171,8 @@ dtrace_load(void *dummy)
 	    "dtrace/helper");
 	dtrace_probeid_enable = dtrace_priv_probeid_enable;
 	dtrace_probeid_disable = dtrace_priv_probeid_disable;
+	dtrace_virtstate_create = dtrace_priv_virtstate_create;
+	dtrace_virtstate_destroy = dtrace_priv_virtstate_destroy;
+	dtrace_virtstate_go = dtrace_priv_virtstate_go;
+	dtrace_virtstate_stop = dtrace_priv_virtstate_stop;
 }
