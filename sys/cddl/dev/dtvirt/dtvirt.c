@@ -10,10 +10,11 @@ __FBSDID("$FreeBSD$");
 #include "dtvirt.h"
 
 void
-dtvirt_probe(int probeid)
+dtvirt_probe(int probeid, uintptr_t arg0, uintptr_t arg1,
+    uintptr_t arg2, uintptr_t arg3, uintptr_t arg4)
 {
 
-	dtrace_probe(probeid, 0, 0, 0, 0, 0);
+	dtrace_probe(probeid, arg0, arg1, arg2, arg3, arg4);
 }
 
 static int

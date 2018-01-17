@@ -259,7 +259,6 @@ static dtrace_dynvar_t	dtrace_dynhash_sink;	/* end of dynamic hash chains */
 static int		dtrace_dynvar_failclean; /* dynvars failed to clean */
 #ifndef illumos
 static dtrace_state_t	*virt_state;
-static dtrace_probe_t	*active_probes[MAXCPU];
 static struct mtx	dtrace_unr_mtx;
 MTX_SYSINIT(dtrace_unr_mtx, &dtrace_unr_mtx, "Unique resource identifier", MTX_DEF);
 static eventhandler_tag	dtrace_kld_load_tag;
@@ -6939,8 +6938,11 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			break;
 		case DIF_OP_HCALL:
 			if (bhyve_hypercalls_enabled()) {
-				hypercall_dtrace_probe(active_probes[curcpu]->dtpr_id,
-				    0, 0, 0, 0, 0);
+				hypercall_dtrace_probe(
+				    mstate->dtms_probe->dtpr_id,
+				    mstate->dtms_arg[0], mstate->dtms_arg[1],
+				    mstate->dtms_arg[2], mstate->dtms_arg[3],
+				    mstate->dtms_arg[4]);
 			}
 			break;
 		}
@@ -7386,7 +7388,6 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		return;
 	}
 
-	active_probes[curcpu] = probe;
 	now = mstate.dtms_timestamp = dtrace_gethrtime();
 	mstate.dtms_present |= DTRACE_MSTATE_TIMESTAMP;
 	vtime = dtrace_vtime_references != 0;
@@ -8009,7 +8010,6 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	if (vtime)
 		curthread->t_dtrace_start = dtrace_gethrtime();
 
-	active_probes[curcpu] = NULL;
 	dtrace_interrupt_enable(cookie);
 }
 
@@ -18426,10 +18426,11 @@ dtrace_priv_probeid_enable(dtrace_id_t id)
 	 * Get our DIFO.
 	 */
 	hdifo = kmem_zalloc(sizeof (dtrace_difo_t), KM_SLEEP);
-	hdifo->dtdo_buf = kmem_zalloc(sizeof (dif_instr_t), KM_SLEEP);
-	hdifo->dtdo_len = 1; /* We only do a hypercall for now */
+	hdifo->dtdo_buf = kmem_zalloc(sizeof (dif_instr_t) * 2, KM_SLEEP);
+	hdifo->dtdo_len = 2; /* We only do a hypercall for now */
 
 	hdifo->dtdo_buf[0] = DIF_INSTR_FMT(DIF_OP_HCALL, 0, 0, 0);
+	hdifo->dtdo_buf[1] = DIF_INSTR_RET(0);
 
 	adesc->dtad_difo = hdifo;
 
