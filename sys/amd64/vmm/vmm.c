@@ -1876,7 +1876,8 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 	/*
 	 * FIXME: We should actually make this call, but for now, leave it like this.
 	 */
-	dtvirt_probe((int)args[0]);
+	dtvirt_probe((int)args[0], args[1],
+	    args[2], args[3], args[4], args[5]);
 #endif
 
 #ifdef DTRACE_VIRT_COPYIN_ARGS
