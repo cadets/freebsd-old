@@ -10,7 +10,7 @@ SHSRCS=	alias.c arith_yacc.c arith_yylex.c cd.c echo.c error.c eval.c \
 	exec.c expand.c \
 	histedit.c input.c jobs.c kill.c mail.c main.c memalloc.c miscbltin.c \
 	mystring.c options.c output.c parser.c printf.c redir.c show.c \
-	test.c trap.c var.c
+	test.c trap.c var.c sh_provider.d
 GENSRCS= builtins.c nodes.c syntax.c
 GENHDRS= builtins.h nodes.h syntax.h token.h
 SRCS= ${SHSRCS} ${GENSRCS} ${GENHDRS}

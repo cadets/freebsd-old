@@ -46,6 +46,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/wait.h> /* For WIFSIGNALED(status) */
 #include <errno.h>
 
+#include "sh_provider.h"
+
 /*
  * Evaluate a command.
  */
@@ -790,6 +792,38 @@ xtracecommand(struct arglist *varlist, int argc, char **argv)
 	flushout(&errout);
 }
 
+static void
+dtracecommand(struct arglist *varlist, int argc, char **argv)
+{
+	int i;
+	char *cmd, *cmdptr;
+	int start = 1;
+
+	cmd = cmdptr = ckmalloc(ARG_MAX);
+	for (i = 0; i < varlist->count; i++) {
+		if (start)
+			start = 0;
+		else 
+			cmdptr = stpcpy(cmdptr, " \0");
+
+		cmdptr = stpcpy(cmdptr, varlist->args[i]);
+	}
+	for (i = 0; i < argc; i++) {
+
+		if (start)
+			start = 0;
+		else 
+			cmdptr = stpcpy(cmdptr, " \0");
+
+		cmdptr = stpcpy(cmdptr, argv[i]);
+	}
+
+	// Fire USDT Probe
+	SH_SH_CMD(cmd);
+	
+	free(cmd);
+}
+
 /*
  * Check if a builtin can safely be executed in the same process,
  * even though it should be in a subshell (command substitution).
@@ -874,6 +908,10 @@ evalcommand(union node *cmd, int flags, struct backcmd *backcmd)
 	lastarg = NULL;
 	if (iflag && funcnest == 0 && argc > 0)
 		lastarg = argv[argc - 1];
+
+	/* Trace command if usdt probe is enabled */
+	if (SH_SH_CMD_ENABLED()) 
+		dtracecommand(&varlist, argc, argv);
 
 	/* Print the command if xflag is set. */
 	if (xflag)
