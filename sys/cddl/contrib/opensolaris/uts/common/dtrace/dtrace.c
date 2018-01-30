@@ -1079,6 +1079,19 @@ dtrace_canload_remains(uint64_t addr, size_t sz, size_t *remain,
 	return (0);
 }
 
+static int
+dtrace_filterfind(dtrace_filter_t *filt, const char *find)
+{
+	size_t i;
+
+	for (i = 0; i < filt->dtfl_count; i++) {
+		if (strcmp(filt->dtfl_entries[i], find) == 0)
+			return (0);
+	}
+
+	return (-1);
+}
+
 /*
  * Convenience routine to check to see if a given string is within a memory
  * region in which a load may be issued given the user's privilege level;
@@ -11213,6 +11226,7 @@ static void
 dtrace_ecb_enable(dtrace_ecb_t *ecb)
 {
 	dtrace_probe_t *probe = ecb->dte_probe;
+	dtrace_state_t *state = ecb->dte_state;
 
 	ASSERT(MUTEX_HELD(&cpu_lock));
 	ASSERT(MUTEX_HELD(&dtrace_lock));
@@ -11239,8 +11253,10 @@ dtrace_ecb_enable(dtrace_ecb_t *ecb)
 		if (ecb->dte_predicate != NULL)
 			probe->dtpr_predcache = ecb->dte_predicate->dtp_cacheid;
 
-		prov->dtpv_pops.dtps_enable(prov->dtpv_arg,
-		    probe->dtpr_id, probe->dtpr_arg);
+		if (state->dts_filter.dtfl_count == 0 ||
+		    dtrace_filterfind(&state->dts_filter, "host") == 0)
+			prov->dtpv_pops.dtps_enable(prov->dtpv_arg,
+			    probe->dtpr_id, probe->dtpr_arg);
 
 #ifdef VTDTR
 		e.type = VTDTR_EV_INSTALL;
@@ -11864,6 +11880,7 @@ dtrace_ecb_disable(dtrace_ecb_t *ecb)
 	 */
 	dtrace_ecb_t *pecb, *prev = NULL;
 	dtrace_probe_t *probe = ecb->dte_probe;
+	dtrace_state_t *state = ecb->dte_state;
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 
@@ -11913,8 +11930,10 @@ dtrace_ecb_disable(dtrace_ecb_t *ecb)
 		ASSERT(ecb->dte_next == NULL);
 		ASSERT(probe->dtpr_ecb_last == NULL);
 		probe->dtpr_predcache = DTRACE_CACHEIDNONE;
-		prov->dtpv_pops.dtps_disable(prov->dtpv_arg,
-		    probe->dtpr_id, probe->dtpr_arg);
+		if (state->dts_filter.dtfl_count == 0 ||
+		    dtrace_filterfind(&state->dts_filter, "host") == 0)
+			prov->dtpv_pops.dtps_disable(prov->dtpv_arg,
+			    probe->dtpr_id, probe->dtpr_arg);
 		dtrace_sync();
 #ifdef VTDTR
 		e.type = VTDTR_EV_UNINSTALL;
