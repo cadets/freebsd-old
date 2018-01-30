@@ -83,6 +83,9 @@ typedef int model_t;
 #define	DTRACE_METAPROVNONE	0	/* invalid meta-provider identifier */
 #define	DTRACE_ARGNONE		-1	/* invalid argument index */
 
+#define	DTRACEFILT_MAX		16
+#define	DTRACE_MAXFILTNAME	256
+
 #define	DTRACE_PROVNAMELEN	64
 #define	DTRACE_MODNAMELEN	64
 #define	DTRACE_FUNCNAMELEN	192
@@ -1288,6 +1291,11 @@ typedef struct dtrace_providerdesc {
 	dtrace_ppriv_t dtvd_priv;		/* privileges required */
 } dtrace_providerdesc_t;
 
+typedef struct dtrace_filter {
+	char	dtfl_entries[DTRACEFILT_MAX][DTRACE_MAXFILTNAME];
+	size_t	dtfl_count;
+} dtrace_filter_t;
+
 /*
  * DTrace Pseudodevice Interface
  *
@@ -1350,6 +1358,8 @@ typedef struct {
 							/* get DOF */
 #define	DTRACEIOC_REPLICATE	_IOW('x',18,dtrace_repldesc_t)	
 							/* replicate enab */
+#define	DTRACEIOC_FILTER	_IOW('x',19,dtrace_filter_t)
+							/* apply filter */
 #endif
 
 /*

@@ -83,7 +83,7 @@ typedef struct dtrace_cmd {
 #define OMODE_HTML	3
 
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:n:O:o:p:P:qs:SU:vVwx:X:Z";
+	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:M:n:O:o:p:P:qs:SU:vVwx:X:Z";
 static int g_oformat = OMODE_NONE;
 
 static char **g_argv;
@@ -146,6 +146,7 @@ usage(FILE *fp)
 	    "[-b bufsz] [-c cmd] [-D name[=def]]\n\t[-I path] [-L path] "
 	    "[-o output] [-p pid] [-s script] [-U name]\n\t"
 	    "[-x opt[=val]] [-X a|c|s|t]\n\n"
+	    "\t[-M [ f1,f2,f3,... ]\n"
 	    "\t[-P provider %s]\n"
 	    "\t[-m [ provider: ] module %s]\n"
 	    "\t[-f [[ provider: ] module: ] func %s]\n"
@@ -175,6 +176,7 @@ usage(FILE *fp)
 	    "\t-I  add include directory to preprocessor search path\n"
 	    "\t-l  list probes matching specified criteria\n"
 	    "\t-L  add library directory to library search path\n"
+	    "\t-M  specify filters\n"
 	    "\t-m  enable or list probes matching the specified module name\n"
 	    "\t-n  enable or list probes matching the specified probe name\n"
 	    "\t-O  output format json|xml\n"
@@ -1331,6 +1333,44 @@ installsighands(void)
 #endif
 }
 
+static void
+filter_machines(char *filt)
+{
+	dtrace_filter_t out;
+	char *list = strdup(filt);
+	char *f, *token;
+	size_t n, i;
+	int error;
+
+	memset(&out, 0, sizeof(dtrace_filter_t));
+	f = NULL;
+	token = NULL;
+	error = 0;
+	n = 0;
+
+	if (filt == NULL)
+		return;
+
+	f = list;
+	while ((token = strsep(&f, ",")) != NULL) {
+		if (out.dtfl_count >= DTRACEFILT_MAX)
+			dfatal("Too many arguments\n");
+		n = strlcpy(&out.dtfl_entries[out.dtfl_count++],
+		    token, DTRACE_MAXFILTNAME);
+		if (n >= DTRACE_MAXFILTNAME)
+			dfatal("Name too long: %s", token);
+	}
+
+	if (out.dtfl_count > 0) {
+		error = dt_filter(g_dtp, &out);
+	}
+
+	if (error)
+		dfatal("Can't filter: %d\n", error);
+
+	free(list);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -1338,6 +1378,7 @@ main(int argc, char *argv[])
 	dtrace_status_t status[2];
 	dtrace_optval_t opt;
 	dtrace_cmd_t *dcp;
+	char *filter;
 
 	g_ofp = stdout;
 	int done = 0, mode = 0;
@@ -1345,6 +1386,8 @@ main(int argc, char *argv[])
 	char *p, **v;
 	struct ps_prochandle *P;
 	pid_t pid;
+
+	filter = NULL;
 
 	g_pname = basename(argv[0]);
 
@@ -1429,6 +1472,10 @@ main(int argc, char *argv[])
 				g_cflags |= DTRACE_C_ZDEFS; /* -G implies -Z */
 				g_exec = 0;
 				mode++;
+				break;
+
+			case 'M':
+				filter = strdup(optarg);
 				break;
 
 			case 'l':
@@ -1558,6 +1605,11 @@ main(int argc, char *argv[])
 		g_argc = 1;
 	} else if (g_mode == DMODE_ANON)
 		(void) dtrace_setopt(g_dtp, "linkmode", "primary");
+
+	if (filter != NULL) {
+		filter_machines(filter);
+		free(filter);
+	}
 
 	/*
 	 * Now that we have libdtrace open, make a second pass through argv[]

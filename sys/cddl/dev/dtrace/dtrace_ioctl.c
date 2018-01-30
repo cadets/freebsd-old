@@ -857,6 +857,70 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		return (rval);
 	}
+	case DTRACEIOC_FILTER: {
+		dtrace_filter_t *in = (dtrace_filter_t *) addr;
+		dtrace_filter_t *cur = &state->dts_filter;
+		size_t i, j;
+
+		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_FILTER\n",__func__,__LINE__);
+		mutex_enter(&dtrace_lock);
+
+		/*
+		 * Check for overflows.
+		 */
+		if (in->dtfl_count >= DTRACEFILT_MAX)
+			return (EINVAL);
+
+		if (cur->dtfl_count >= DTRACEFILT_MAX)
+			return (EOVERFLOW);
+
+		/*
+		 * Iterate over the input filter.
+		 */
+		for (i = 0; i < in->dtfl_count; i++) {
+			char *entry;
+			uint8_t found;
+			size_t n;
+
+			entry = in->dtfl_entries[i];
+			found = 0;
+
+			/*
+			 * Iterate over the filters currently applied.
+			 */
+			for (j = 0; j < cur->dtfl_count; j++) {
+				/*
+				 * If we found the entry we want to filter in
+				 * the already applied filter list, break out of
+				 * the loop.
+				 */
+				if (strcmp(entry, cur->dtfl_entries[j]) == 0) {
+					found = 1;
+					break;
+				}
+			}
+
+			/*
+			 * If we haven't found it and we have room, copy over
+			 * the filter to the filter array and check for
+			 * overflow.
+			 */
+			if (found == 0) {
+				if (cur->dtfl_count < DTRACEFILT_MAX) {
+					n = strlcpy(
+					    cur->dtfl_entries[cur->dtfl_count++],
+					    entry, DTRACE_MAXFILTNAME);
+					if (n >= DTRACE_MAXFILTNAME)
+						return (EOVERFLOW);
+				} else
+					return (EDOOFUS);
+			}
+		}
+
+		mutex_exit(&dtrace_lock);
+
+		return (0);
+	}
 	default:
 		error = ENOTTY;
 	}
