@@ -858,6 +858,10 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		return (rval);
 	}
 	case DTRACEIOC_FILTER: {
+#ifdef VTDTR
+		struct vtdtr_event e;
+#endif
+
 		dtrace_filter_t *in = (dtrace_filter_t *) addr;
 		dtrace_filter_t *cur = &state->dts_filter;
 		size_t i, j;
@@ -916,6 +920,13 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 					return (EDOOFUS);
 			}
 		}
+
+#ifdef VTDTR
+		e.args.d_config.count = cur->dtfl_count;
+		memcpy(e.args.d_config.vms, cur->dtfl_entries,
+		    DTRACEFILT_MAX*DTRACE_MAXFILTNAME);
+		vtdtr_enqueue(&e);
+#endif
 
 		mutex_exit(&dtrace_lock);
 
