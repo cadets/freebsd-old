@@ -1136,6 +1136,7 @@ struct dtrace_state {
 	int dts_necbs;				/* total number of ECBs */
 	dtrace_ecb_t **dts_ecbs;		/* array of ECBs */
 	dtrace_epid_t dts_epid;			/* next EPID to allocate */
+	dtrace_filter_t dts_filter;		/* probe filter */
 	size_t dts_needed;			/* greatest needed space */
 	struct dtrace_state *dts_anon;		/* anon. state, if grabbed */
 	dtrace_activity_t dts_activity;		/* current activity */
