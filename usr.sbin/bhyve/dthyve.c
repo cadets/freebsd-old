@@ -30,8 +30,6 @@
 //#include <sys/uuid.h>
 //#include <sys/capsicum.h>
 //#include <sys/tree.h>
-#include <sys/types.h>
-#include <sys/vtdtr.h>
 #include <sys/ioctl.h>
 
 #include <stdio.h>
@@ -66,26 +64,18 @@ dthyve_init(const char *vm __unused)
 		    strerror(errno));
 		exit(1);
 	}
-	
-	/*
-	 * Default configuration.
-	 */
-	vtdtr_conf.timeout = 0;
-	/*
-	 * We are not currently interested in uninstall events because
-	 * everything is uninstalled once VTDTR_EV_STOP fires.
-	 */
-	vtdtr_conf.event_flags =
-	    (1 << VTDTR_EV_INSTALL) |
-	    (1 << VTDTR_EV_GO)      |
-	    (1 << VTDTR_EV_STOP);
 
-	error = ioctl(vtdtr_fd, VTDTRIOC_CONF, &vtdtr_conf);
-	if (error) {
-		fprintf(stderr, "Error: '%s' configuring vtdtr",
-		    strerror(errno));
-		exit(1);
-	}
+	dthyve_conf(1 << VTDTR_EV_RECONF, 0);
+	
+}
+
+int
+dthyve_conf(size_t flags, sbintime_t timeout)
+{
+
+	vtdtr_conf.timeout = timeout;
+	vtdtr_conf.event_flags = flags;
+	return (ioctl(vtdtr_fd, VTDTRIOC_CONF, &vtdtr_conf));
 }
 
 int

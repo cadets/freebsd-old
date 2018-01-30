@@ -295,6 +295,9 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 		timeout = conf->timeout * SBT_1S;
 
 finalize_conf:
+
+		if (event_flags & (1 << VTDTR_EV_RECONF) == 0)
+			return (EINVAL);
 		/*
 		 * XXX: Possibly CAS? Do we care?
 		 */

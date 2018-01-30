@@ -606,11 +606,26 @@ pci_vtdtr_reset_queue(struct pci_vtdtr_softc *sc)
 	pthread_mutex_unlock(&q->mtx);
 }
 
+static int
+pci_vtdtr_find(const char *vm,
+    char vms[VTDTR_MAXVMS][VTDTR_VMNAMEMAX], size_t count)
+{
+	size_t i;
+
+	for (i = 0; i < count; i++) {
+		if (strcmp(vm, vms[i]) == 0)
+			return (0);
+	}
+
+	return (-1);
+}
+
 static void *
 pci_vtdtr_events(void *xsc)
 {
 	struct pci_vtdtr_softc *sc;
 	int error;
+	size_t flags;
 
 	sc = xsc;
 
@@ -645,6 +660,21 @@ pci_vtdtr_events(void *xsc)
 			break;
 		case VTDTR_EV_STOP:
 			ctrl->event = VTDTR_DEVICE_STOP;
+			error = dthyve_conf(1 << VTDTR_EV_RECONF, 0);
+			assert(error == 0);
+			break;
+		case VTDTR_EV_RECONF:
+			flags = 1 << VTDTR_EV_RECONF;
+			char *vm = vm_get_name(sc->vsd_vmctx);
+
+			if (pci_vtdtr_find(vm, ev.args.d_config.vms,
+			    ev.args.d_config.count) == 0)
+				flags |= (1 << VTDTR_EV_INSTALL) |
+				    (1 << VTDTR_EV_STOP)         |
+				    (1 << VTDTR_EV_GO);
+
+			error = dthyve_conf(flags, 0);
+			assert(error == 0);
 			break;
 		default:
 			/*

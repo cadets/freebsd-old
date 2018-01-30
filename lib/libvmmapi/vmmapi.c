@@ -1460,3 +1460,9 @@ vm_get_ioctls(size_t *len)
 	return (NULL);
 }
 
+char *
+vm_get_name(struct vmctx *ctx)
+{
+
+	return (ctx->name);
+}

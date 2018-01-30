@@ -29,10 +29,14 @@
 #ifndef _DTHYVE_H_
 #define _DTHYVE_H_
 
+#include <sys/types.h>
+#include <sys/vtdtr.h>
+
 #ifndef VTDTR
 struct vtdtr_event;
 
 void dthyve_init(const char *);
+int dthyve_conf(size_t, sbintime_t);
 int dthyve_configured(void);
 int dthyve_read(struct vtdtr_event *, size_t);
 void dthyve_destroy(void);
