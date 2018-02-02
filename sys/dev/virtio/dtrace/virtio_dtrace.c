@@ -746,6 +746,8 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		break;
 	case VIRTIO_DTRACE_STOP:
 		sc->vtdtr_ready = 0;
+		list = sc->vtdtr_probelist;
+
 		if (debug)
 			device_printf(dev, "VIRTIO_DTRACE_STOP\n");
 
@@ -754,6 +756,17 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			device_printf(dev, "Error in dtrace_virtstate_stop(): %d\n", error);
 		else
 			device_printf(dev, "Stopping the trace...\n");
+
+		dtrace_virtstate_destroy();
+
+		mtx_lock(&list->mtx);
+		while (!LIST_EMPTY(&list->head)) {            /* List Deletion. */
+			probe = LIST_FIRST(&list->head);
+			LIST_REMOVE(probe, vtdprobe_next);
+			free(probe, M_VTDTR);
+			num_dtprobes--;
+		}
+		mtx_unlock(&list->mtx);
 		break;
 	case VIRTIO_DTRACE_EOF:
 		if (debug)

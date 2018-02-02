@@ -41,17 +41,20 @@ struct vtdtr_qentry {
  * case of more complex situations.
  */
 struct vtdtr_queue {
-	struct cv                   cv;          /* Queue condvar */
-	struct mtx                  cvmtx;       /* Condvar mutex */
-	struct mtx                  mtx;         /* Queue mutex */
-	struct proc                *proc;        /* Queue for a given proc */
-	RB_ENTRY(vtdtr_queue)       qnode;       /* This is a tree node */
-	STAILQ_HEAD(, vtdtr_qentry) head;        /* Head of the queue */
-	sbintime_t                  timeout;     /* Timeout for read */
-	size_t                      max_size;    /* Max events we can hold */
-	size_t                      num_entries; /* Events in queue */
-	size_t                      event_flags; /* Configuration flags */
-	size_t                      drops;       /* Number of event drops */
+	struct cv                   cv;           /* Queue condvar */
+	struct mtx                  cvmtx;        /* Condvar mutex */
+	struct cv                   rc_cv;        /* Reconfiguration condvar */
+	struct mtx                  rc_cvmtx;     /* Reconfiguration mutex */
+	struct mtx                  mtx;          /* Queue mutex */
+	struct proc                *proc;         /* Queue for a given proc */
+	RB_ENTRY(vtdtr_queue)       qnode;        /* This is a tree node */
+	STAILQ_HEAD(, vtdtr_qentry) head;         /* Head of the queue */
+	sbintime_t                  timeout;      /* Timeout for read */
+	size_t                      max_size;     /* Max events we can hold */
+	size_t                      num_entries;  /* Events in queue */
+	size_t                      event_flags;  /* Configuration flags */
+	size_t                      drops;        /* Number of event drops */
+	uint8_t                     needs_reconf; /* Need to reconfigure? */
 };
 
 static struct vtdtr_qentry *vtdtr_construct_entry(struct vtdtr_event *);
@@ -137,6 +140,12 @@ vtdtr_enqueue(struct vtdtr_event *e)
 		 * Check if the queue is subscribed to the event
 		 */
 		mtx_lock(&q->mtx);
+
+		mtx_lock(&q->rc_cvmtx);
+		while (q->needs_reconf != 0)
+			cv_wait(&q->rc_cv, &q->rc_cvmtx);
+		mtx_unlock(&q->rc_cvmtx);
+
 		if (q->num_entries >= q->max_size) {
 			q->drops++;
 			mtx_unlock(&q->mtx);
@@ -170,12 +179,14 @@ vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags)
 	char *dptr;
 	size_t len;
 	int n_events, error;
+	uint8_t reconfigure;
 
 	n_events = 0;
 	len = 0;
 	error = 0;
 	u_proc = uio->uio_td->td_proc;
 	tmp.proc = u_proc;
+	reconfigure = 0;
 
 	mtx_lock(&qtree_mtx);
 	q = RB_FIND(vtdtr_qtree, &vtdtr_queue_tree, &tmp);
@@ -228,6 +239,10 @@ vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags)
 		 * Copy the event
 		 */
 		memcpy(dptr, e, sizeof(struct vtdtr_event));
+
+		if ((e->type & ((size_t)1 << VTDTR_EV_RECONF)) != 0) {
+			q->needs_reconf = 1;
+		}
 
 		/*
 		 * We copied the event into our buffer, we can now remove it
@@ -296,7 +311,7 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 
 finalize_conf:
 
-		if (event_flags & (1 << VTDTR_EV_RECONF) == 0)
+		if ((event_flags & ((size_t)1 << VTDTR_EV_RECONF)) == 0)
 			return (EINVAL);
 		/*
 		 * XXX: Possibly CAS? Do we care?
@@ -305,7 +320,12 @@ finalize_conf:
 		q->max_size = max_size;
 		q->event_flags = event_flags;
 		q->timeout = timeout;
+		q->needs_reconf = 0;
 		mtx_unlock(&q->mtx);
+
+		mtx_lock(&q->rc_cvmtx);
+		cv_signal(&q->rc_cv);
+		mtx_unlock(&q->rc_cvmtx);
 		break;
 	default:
 		break;
@@ -358,6 +378,8 @@ vtdtr_open(struct cdev *dev __unused, int oflags, int devtype, struct thread *td
 	cv_init(&q->cv, "VTDTR Condvar");
 	mtx_init(&q->cvmtx, "vtdtrcondmtx", NULL, MTX_DEF);
 	STAILQ_INIT(&q->head);
+	cv_init(&q->rc_cv, "VTDTR Reconfiguration condvar");
+	mtx_init(&q->rc_cvmtx, "vtdtrrccvmtx", NULL, MTX_DEF);
 
 	/*
 	 * Drop it into the tree.
@@ -407,9 +429,16 @@ vtdtr_close(struct cdev *dev __unused, int foo, int bar, struct thread *td)
 	mtx_unlock(&q->cvmtx);
 
 	mtx_destroy(&q->cvmtx);
-	mtx_unlock(&q->mtx);
 
+	mtx_lock(&q->rc_cvmtx);
+	cv_destroy(&q->rc_cv);
+	mtx_unlock(&q->rc_cvmtx);
+
+	mtx_destroy(&q->rc_cvmtx);
+
+	mtx_unlock(&q->mtx);
 	mtx_destroy(&q->mtx);
+
 	free(q, M_DEVBUF);
 
 	return (0);

@@ -908,6 +908,12 @@ main(int argc, char *argv[])
 		usage(1);
 
 	vmname = argv[0];
+
+#ifndef VTDTR
+	if (trace)
+		dthyve_init(vmname);
+#endif
+
 	ctx = do_open(vmname);
 
 	if (guest_ncpus < 1) {
@@ -936,11 +942,6 @@ main(int argc, char *argv[])
 		fprintf(stderr, "init_msr error %d", error);
 		exit(1);
 	}
-
-#ifndef VTDTR
-	if (trace)
-		dthyve_init(vmname);
-#endif
 
 	init_mem();
 	init_inout();
