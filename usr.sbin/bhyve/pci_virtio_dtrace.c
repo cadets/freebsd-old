@@ -668,10 +668,11 @@ pci_vtdtr_events(void *xsc)
 			char *vm = vm_get_name(sc->vsd_vmctx);
 
 			if (pci_vtdtr_find(vm, ev.args.d_config.vms,
-			    ev.args.d_config.count) == 0)
+			    ev.args.d_config.count) == 0) {
 				flags |= (1 << VTDTR_EV_INSTALL) |
 				    (1 << VTDTR_EV_STOP)         |
 				    (1 << VTDTR_EV_GO);
+			}
 
 			error = dthyve_conf(flags, 0);
 			assert(error == 0);

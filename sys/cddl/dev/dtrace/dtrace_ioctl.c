@@ -922,6 +922,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		}
 
 #ifdef VTDTR
+		e.type = VTDTR_EV_RECONF;
 		e.args.d_config.count = cur->dtfl_count;
 		memcpy(e.args.d_config.vms, cur->dtfl_entries,
 		    DTRACEFILT_MAX*DTRACE_MAXFILTNAME);

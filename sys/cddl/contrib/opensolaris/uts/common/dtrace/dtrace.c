@@ -18430,6 +18430,7 @@ static void
 dtrace_priv_virtstate_destroy(void)
 {
 
+	ASSERT(virt_state != NULL);
 	dtrace_state_destroy(virt_state);
 	kmem_free(virt_state, sizeof(dtrace_state_t));
 	virt_state = NULL;
@@ -18452,6 +18453,8 @@ dtrace_priv_virtstate_stop(void)
 {
 
 	processorid_t cpuid;
+
+	ASSERT(virt_state != NULL);
 	return (dtrace_state_stop(virt_state, &cpuid));
 }
 

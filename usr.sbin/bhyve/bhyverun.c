@@ -1034,6 +1034,12 @@ main(int argc, char *argv[])
 		usage(1);
 
 	vmname = argv[0];
+
+#ifndef VTDTR
+	if (trace)
+		dthyve_init(vmname);
+#endif
+
 	ctx = do_open(vmname);
 
 	max_vcpus = num_vcpus_allowed(ctx);
@@ -1057,11 +1063,6 @@ main(int argc, char *argv[])
 		fprintf(stderr, "init_msr error %d", error);
 		exit(4);
 	}
-
-#ifndef VTDTR
-	if (trace)
-		dthyve_init(vmname);
-#endif
 
 	init_mem();
 	init_inout();
