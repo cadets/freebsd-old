@@ -114,15 +114,10 @@ LLOBJS+=${SRCS:N*.h:N*.s:N*.S:N*.asm:R:S/$/.llo/g}
 # empty string with '.o' tacked on the end, so explicitly filter out '.o'.
 NON_IR_OBJS+=${SRCS:N*.c*:N*.h:R:S/$/.o/g:S/^.o$//}
 
-.if target(beforelinking)
-beforelinking: ${OBJS}
-${PROG_FULL}: beforelinking
-.endif
-
-.if defined(INSTRUMENT_EVERYTHING) && !defined(BOOTSTRAPPING)
+.if ${MK_INSTRUMENT_BINARIES} == "yes" && !defined(BOOTSTRAPPING)
 ${PROG_FULL}: ${PROG_INSTR}
 	${CP} ${PROG_INSTR} ${PROG_FULL}
-.else	# !defined(INSTRUMENT_EVERYTHING) || defined(BOOTSTRAPPING)
+.else	# !${MK_INSTRUMENT_BINARIES} == "yes" || defined(BOOTSTRAPPING)
 .if target(beforelinking)
 beforelinking: ${OBJS}
 ${PROG_FULL}: beforelinking
@@ -167,10 +162,10 @@ LLOBJS+=${PROG}.llo
 BCOBJS+=${PROG}.bco
 LLOBJS+=${PROG}.llo
 
-.if defined(INSTRUMENT_EVERYTHING) && !defined(BOOTSTRAPPING)
+.if ${MK_INSTRUMENT_BINARIES} == "yes" && !defined(BOOTSTRAPPING)
 ${PROG_FULL}: ${PROG_INSTR}
 	${CP} ${PROG_INSTR} ${PROG_FULL}
-.else	# !defined(INSTRUMENT_EVERYTHING) || defined(BOOTSTRAPPING)
+.else	# !${MK_INSTRUMENT_BINARIES} == "yes" || defined(BOOTSTRAPPING)
 .if target(beforelinking)
 beforelinking: ${OBJS}
 ${PROG_FULL}: beforelinking
@@ -186,7 +181,7 @@ ${PROG_FULL}: ${OBJS}
 .if ${MK_CTF} != "no"
 	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${OBJS}
 .endif
-.endif	# !defined(INSTRUMENT_EVERYTHING) || defined(BOOTSTRAPPING)
+.endif	# !${MK_INSTRUMENT_BINARIES} == "yes" || defined(BOOTSTRAPPING)
 .endif # !target(${PROG})
 
 .endif # !defined(SRCS)
