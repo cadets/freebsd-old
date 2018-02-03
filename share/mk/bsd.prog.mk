@@ -105,15 +105,6 @@ LLOBJS+=${SRCS:N*.[hsS]:N*.asm:${OBJS_SRCS_FILTER:ts:}:S/$/.llo/g}
 # empty string with '.o' tacked on the end, so explicitly filter out '.o'.
 NON_IR_OBJS=${SRCS:N*.c*:N*.h:R:S/$/.o/g:S/^.o$//}
 
-# LLVM bitcode / textual IR representations of the program
-BCOBJS+=${SRCS:N*.h:N*.s:N*.S:N*.asm:R:S/$/.bco/g}
-LLOBJS+=${SRCS:N*.h:N*.s:N*.S:N*.asm:R:S/$/.llo/g}
-
-# Object files that can't be built via LLVM IR, currently defined by
-# excluding .c* files from SRCS. This substitution can result in an
-# empty string with '.o' tacked on the end, so explicitly filter out '.o'.
-NON_IR_OBJS+=${SRCS:N*.c*:N*.h:R:S/$/.o/g:S/^.o$//}
-
 .if ${MK_INSTRUMENT_BINARIES} == "yes" && !defined(BOOTSTRAPPING)
 ${PROG_FULL}: ${PROG_INSTR}
 	${CP} ${PROG_INSTR} ${PROG_FULL}
@@ -150,13 +141,7 @@ SRCS=	${PROG}.c
 #   the name of a variable temporary object.
 # - it's useful to keep objects around for crunching.
 OBJS+=		${PROG}.o
-BCOBJS+=	${PROG}.bc
-LLOBJS+=	${PROG}.ll
-CLEANFILES+=	${PROG}.o ${PROG}.bc ${PROG}.ll
-
-# LLVM bitcode / textual IR representations of the program
-BCOBJS+=${PROG}.bco
-LLOBJS+=${PROG}.llo
+CLEANFILES+=	${PROG}.o
 
 # LLVM bitcode / textual IR representations of the program
 BCOBJS+=${PROG}.bco
