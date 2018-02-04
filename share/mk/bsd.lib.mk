@@ -184,7 +184,7 @@ lib${LIB_PRIVATE}${LIB}.a: ${OBJS} ${STATICOBJS}
 	    ${LORDER} ${OBJS} ${STATICOBJS} | ${TSORT} ${TSORTFLAGS}` ${ARADD}
 	${RANLIB} ${RANLIBFLAGS} ${.TARGET}
 
-.if defined(BITCODE_EVERYWHERE) && !defined(BOOTSTRAPPING)
+.if ${MK_BITCODE_EVERYWHERE} == "yes" && !defined(BOOTSTRAPPING)
 _LIBS+=		lib${LIB_PRIVATE}${LIB}.bc
 .endif
 .endif
@@ -347,7 +347,7 @@ _libinstall:
 	${INSTALL} ${TAG_ARGS:D${TAG_ARGS},profile} -C -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
 	    ${_INSTALLFLAGS} lib${LIB_PRIVATE}${LIB}_p.a ${DESTDIR}${_LIBDIR}/
 .endif
-.if defined(BITCODE_EVERYWHERE) && !defined(BOOTSTRAPPING) \
+.if ${MK_BITCODE_EVERYWHERE} == "yes" && !defined(BOOTSTRAPPING) \
 	&& defined(LIB) && !empty(LIB)
 	${INSTALL} ${TAG_ARGS} -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
 	    ${_INSTALLFLAGS} lib${LIB_PRIVATE}${LIB}.bc ${DESTDIR}${_LIBDIR}/
