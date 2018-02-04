@@ -6,6 +6,8 @@ BINMODE=${NOBINMODE}
 MAN=
 SRCS=	${PROG}.s
 
+MK_INSTRUMENT_BINARIES=	no
+
 # MBR flags: 0x80 -- try packet interface (also known as EDD or LBA)
 BOOT_MBR_FLAGS?=	0x80
 

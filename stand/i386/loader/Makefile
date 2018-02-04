@@ -14,6 +14,7 @@ LOADER_BZIP2_SUPPORT?=	yes
 
 .include <bsd.init.mk>
 
+MK_INSTRUMENT_BINARIES=	no
 MK_SSP=		no
 
 LOADER?=	loader

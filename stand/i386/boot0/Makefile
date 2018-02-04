@@ -6,6 +6,8 @@ BINMODE=${NOBINMODE}
 MAN=
 SRCS=	${PROG}.S
 
+MK_INSTRUMENT_BINARIES=	no
+
 # Additional options that you can specify with make OPTS="..."
 # (these only apply to boot0.S)
 #
