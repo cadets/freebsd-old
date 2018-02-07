@@ -21,5 +21,6 @@ TESTEXES= \
 CFILES= \
      tst.usdt.c  \
 
+MK_INSTRUMENT_BINARIES=	no
 
 .include "../../dtrace.test.mk"

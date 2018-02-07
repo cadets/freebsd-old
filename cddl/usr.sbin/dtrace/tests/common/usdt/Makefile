@@ -65,5 +65,6 @@ CFILES= \
      tst.args.c  \
      tst.forker.c  \
 
+MK_INSTRUMENT_BINARIES=	no
 
 .include "../../dtrace.test.mk"

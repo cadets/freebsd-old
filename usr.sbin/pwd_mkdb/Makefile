@@ -9,4 +9,6 @@ SRCS=	pw_scan.c pwd_mkdb.c
 
 CFLAGS+= -I${SRCTOP}/lib/libc/gen		# for pw_scan.h
 
+MK_INSTRUMENT_BINARIES=	no
+
 .include <bsd.prog.mk>

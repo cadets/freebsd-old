@@ -4,6 +4,7 @@ MAN=
 
 .include <bsd.init.mk>
 
+MK_INSTRUMENT_BINARIES=	no
 MK_SSP=		no
 MK_FORTH=	no
 

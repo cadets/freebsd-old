@@ -10,6 +10,7 @@ LOADER_EXT2FS_SUPPORT?=	no
 
 .include <bsd.init.mk>
 
+MK_INSTRUMENT_BINARIES=	no
 MK_SSP=		no
 
 PROG=		loader.sym

@@ -83,6 +83,12 @@ PROG_FULL=	${PROG}
 PROG_INSTR=${PROG_FULL}.instrumented
 PROG_INSTR_IR=${PROG_INSTR}.${LLVM_IR_TYPE}
 
+# Set EXPLICIT_OBJS to any OBJS that were set in the program's Makefile,
+# before anything derived from SRCS is added. Ensure that OBJS has been
+# defined to something to make the expansion reliable.
+OBJS?=
+EXPLICIT_OBJS:=${OBJS}
+
 .if defined(PROG)
 PROGNAME?=	${PROG}
 
@@ -99,6 +105,10 @@ LLOBJS+=${SRCS:N*.[hsS]:N*.asm:${OBJS_SRCS_FILTER:ts:}:S/$/.llo/g}
 # empty string with '.o' tacked on the end, so explicitly filter out '.o'.
 NON_IR_OBJS=${SRCS:N*.c*:N*.h:R:S/$/.o/g:S/^.o$//}
 
+.if ${MK_INSTRUMENT_BINARIES} == "yes" && !defined(BOOTSTRAPPING)
+${PROG_FULL}: ${PROG_INSTR}
+	${CP} ${PROG_INSTR} ${PROG_FULL}
+.else	# !${MK_INSTRUMENT_BINARIES} == "yes" || defined(BOOTSTRAPPING)
 .if target(beforelinking)
 beforelinking: ${OBJS}
 ${PROG_FULL}: beforelinking
@@ -110,6 +120,7 @@ ${PROG_FULL}: ${OBJS}
 .else
 	${CC:N${CCACHE_BIN}} ${CFLAGS:N-M*} ${LDFLAGS} -o ${.TARGET} ${OBJS} \
 	    ${LDADD}
+.endif
 .endif
 .if ${MK_CTF} != "no"
 	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${OBJS}
@@ -130,14 +141,16 @@ SRCS=	${PROG}.c
 #   the name of a variable temporary object.
 # - it's useful to keep objects around for crunching.
 OBJS+=		${PROG}.o
-BCOBJS+=	${PROG}.bc
-LLOBJS+=	${PROG}.ll
-CLEANFILES+=	${PROG}.o ${PROG}.bc ${PROG}.ll
+CLEANFILES+=	${PROG}.o
 
 # LLVM bitcode / textual IR representations of the program
 BCOBJS+=${PROG}.bco
 LLOBJS+=${PROG}.llo
 
+.if ${MK_INSTRUMENT_BINARIES} == "yes" && !defined(BOOTSTRAPPING)
+${PROG_FULL}: ${PROG_INSTR}
+	${CP} ${PROG_INSTR} ${PROG_FULL}
+.else	# !${MK_INSTRUMENT_BINARIES} == "yes" || defined(BOOTSTRAPPING)
 .if target(beforelinking)
 beforelinking: ${OBJS}
 ${PROG_FULL}: beforelinking
@@ -153,6 +166,7 @@ ${PROG_FULL}: ${OBJS}
 .if ${MK_CTF} != "no"
 	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${OBJS}
 .endif
+.endif	# !${MK_INSTRUMENT_BINARIES} == "yes" || defined(BOOTSTRAPPING)
 .endif # !target(${PROG})
 
 .endif # !defined(SRCS)
@@ -179,13 +193,13 @@ ${PROG_INSTR}.bc: ${PROG_FULL}.bc
 ${PROG_INSTR}.ll: ${PROG_FULL}.ll
 	${OPT} -S ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${PROG_FULL}.ll
 
-${PROG_INSTR}: ${PROG_INSTR_IR} ${NON_IR_OBJS}
+${PROG_INSTR}: ${PROG_INSTR_IR} ${EXPLICIT_OBJS} ${NON_IR_OBJS}
 .if defined(PROG_CXX)
 	${CXX:N${CCACHE_BIN}} ${OPT_CXXFLAGS} ${LDFLAGS} -o ${.TARGET} \
-	    ${PROG_INSTR_IR} ${NON_IR_OBJS} ${LDADD} ${LLVM_INSTR_LDADD}
+	    ${PROG_INSTR_IR} ${EXPLICIT_OBJS} ${NON_IR_OBJS} ${LDADD} ${LLVM_INSTR_LDADD}
 .else
 	${CC:N${CCACHE_BIN}} ${OPT_CFLAGS} ${LDFLAGS} -o ${.TARGET} \
-	    ${PROG_INSTR_IR} ${NON_IR_OBJS} ${LDADD} ${LLVM_INSTR_LDADD}
+	    ${PROG_INSTR_IR} ${EXPLICIT_OBJS} ${NON_IR_OBJS} ${LDADD} ${LLVM_INSTR_LDADD}
 .endif
 
 CLEANFILES+=	${PROG_FULL}.bc ${PROG_FULL}.ll \
@@ -211,7 +225,7 @@ all: all-man
 .endif
 
 .if defined(PROG)
-CLEANFILES+= ${PROG} ${PROG}.bc ${PROG}.ll
+CLEANFILES+= ${PROG} ${PROG}.bc ${PROG}.ll ${PROG_INSTR} ${PROG_INSTR_IR}
 .if ${MK_DEBUG_FILES} != "no"
 CLEANFILES+= ${PROG_FULL} ${PROGNAME}.debug
 .endif
