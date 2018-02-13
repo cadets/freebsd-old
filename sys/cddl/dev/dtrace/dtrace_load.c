@@ -82,6 +82,8 @@ dtrace_load(void *dummy)
 	dtrace_kld_unload_try_tag = EVENTHANDLER_REGISTER(kld_unload_try,
 	    dtrace_kld_unload_try, NULL, EVENTHANDLER_PRI_ANY);
 
+	dtrace_gc_init();
+
 	/*
 	 * Initialise the mutexes without 'witness' because the dtrace
 	 * code is mostly written to wait for memory. To have the

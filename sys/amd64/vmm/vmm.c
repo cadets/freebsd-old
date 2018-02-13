@@ -86,6 +86,12 @@ __FBSDID("$FreeBSD$");
 #include "io/ppt.h"
 #include "io/iommu.h"
 
+struct vm_biscuit {
+	struct vm *vm;
+	struct vm_guest_paging *paging;
+	int vcpuid;
+};
+
 struct vlapic;
 
 /*
@@ -1827,62 +1833,16 @@ static int64_t
 hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
     uint64_t *args, struct vm_guest_paging *paging)
 {
+	struct vm_biscuit *biscuit = malloc(sizeof(
+	    struct vm_biscuit), M_VM, M_ZERO | M_WAITOK);
+
+	biscuit->vm = vm;
+	biscuit->paging = paging;
+	biscuit->vcpuid = vcpuid;
+
 	int error = HYPERCALL_RET_SUCCESS;
-#ifdef DTRACE_VIRT_COPYIN_ARGS
-	struct seg_desc ds_desc;
-	struct hypercall_args h_args;
-	char *execname;
-	size_t opt_strsize = 0;
-
-	/*
-	 * We need this for copyin (in theory)
-	 */
-	error = vm_get_seg_desc(vm, vcpuid, VM_REG_GUEST_DS, &ds_desc);
-	KASSERT(error == 0, ("%s: error %d getting DS descriptor",
-	    __func__, error));
-
-	error = HYPERCALL_RET_SUCCESS;
-
-	/*
-	 * We now copy the rest of the hypercall arguments.
-	 */
-	error = hypercall_copy_arg(vm, vcpuid, ds_desc.base, args[0],
-	    sizeof(struct hypercall_args), paging, &h_args);
-
-	if (error)
-		return (error);
-
-	/*
-	 * Get the configured strsize from DTrace
-	 */
-
-	execname = malloc(opt_strsize, M_VM, M_ZERO | M_NOWAIT);
-	if (execname == NULL)
-		return (HYPERCALL_RET_ERROR);
-
-	error = hypercall_copy_arg(vm, vcpuid, ds_desc.base,
-			(uintptr_t)h_args.u.dt.execname, opt_strsize, paging, execname);
-
-	if (error)
-		return (error);
-
-	h_args.u.dt.execname = execname;
-
-	/*
-	 * TODO: Fill the hypercall_args structure.
-	 */
-	dtvirt_probe(vm->name, h_args);
-#else
-	/*
-	 * FIXME: We should actually make this call, but for now, leave it like this.
-	 */
-	dtvirt_probe((int)args[0], args[1],
+	dtvirt_probe(biscuit, (int)args[0], args[1],
 	    args[2], args[3], args[4], args[5]);
-#endif
-
-#ifdef DTRACE_VIRT_COPYIN_ARGS
-	free(execname, M_VM);
-#endif
 	return (error);
 }
 
@@ -3032,6 +2992,70 @@ vm_copyout(struct vm *vm, int vcpuid, const void *kaddr,
 		src += copyinfo[idx].len;
 		idx++;
 	}
+}
+
+/*
+ *
+	struct vm_copyinfo copyinfo[2];
+	uint64_t gla;
+	int error, fault;
+
+	if (arg == 0) {
+		return (HYPERCALL_RET_ERROR);
+	}
+
+	gla = ds_base + arg;
+	error = vm_copy_setup(vm, vcpuid, paging, gla, arg_len,
+	    PROT_READ, copyinfo, nitems(copyinfo), &fault);
+	if (error || fault) {
+		return (error);
+	}
+
+	vm_copyin(vm, vcpuid, copyinfo, dst, arg_len);
+	vm_copy_teardown(vm, vcpuid, copyinfo, nitems(copyinfo));
+
+	return (0);
+	*/
+uintptr_t
+vmm_copyin(void *xbiscuit, void *addr, size_t len, struct malloc_type *t)
+{
+	struct vm_biscuit *biscuit;
+	struct vm *vm;
+	struct vm_guest_paging *paging;
+	struct vm_copyinfo copyinfo[2];
+	struct seg_desc ds_desc;
+	uintptr_t gla;
+	int error, fault, vcpuid;
+	void *dst;
+
+	dst = NULL;
+	biscuit = xbiscuit;
+	fault = 0;
+	gla = 0;
+
+	KASSERT(biscuit != 0, "biscuit must not be NULL\n");
+
+	vm = biscuit->vm;
+	paging = biscuit->paging;
+	vcpuid = biscuit->vcpuid;
+
+	error = vm_get_seg_desc(vm, vcpuid, VM_REG_GUEST_DS, &ds_desc);
+	KASSERT(error == 0, ("%s: error %d getting DS descriptor",
+	    __func__, error));
+
+	gla = ds_desc.base + (uintptr_t)addr;
+	error = vm_copy_setup(vm, vcpuid,
+	    paging, gla, len, PROT_READ, copyinfo, nitems(copyinfo), &fault);
+
+	if (error || fault) {
+		return ((uintptr_t)NULL);
+	}
+
+	dst = malloc(len, t, M_WAITOK | M_ZERO);
+	vm_copyin(vm, vcpuid, copyinfo, dst, len);
+	vm_copy_teardown(vm, vcpuid, copyinfo, nitems(copyinfo));
+
+	return ((uintptr_t)dst);
 }
 
 /*

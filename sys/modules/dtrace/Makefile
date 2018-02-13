@@ -13,7 +13,8 @@ SUBDIR=		dtaudit		\
 		profile		\
 		prototype	\
 		sdt		\
-		systrace
+		systrace	\
+		vmm_dtrace
 
 .if ${MK_VTDTR} != "no"
 SUBDIR+=	vtdtr

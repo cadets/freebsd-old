@@ -128,6 +128,7 @@
 #include <sys/rwlock.h>
 #include <sys/sx.h>
 #include <sys/sysctl.h>
+#include <vmm_dtrace.h>
 #ifdef VTDTR
 #include <cddl/dev/vtdtr/vtdtr.h>
 #endif
@@ -263,6 +264,15 @@ static struct mtx	dtrace_unr_mtx;
 MTX_SYSINIT(dtrace_unr_mtx, &dtrace_unr_mtx, "Unique resource identifier", MTX_DEF);
 static eventhandler_tag	dtrace_kld_load_tag;
 static eventhandler_tag	dtrace_kld_unload_try_tag;
+
+typedef struct dtrace_gcinfo {
+	void	*dtgc_addr;			/* the address we want to free */
+	size_t	dtgc_size;			/* the length */
+	SLIST_ENTRY(dtrace_gcinfo) dtgc_next;	/* next address */
+} dtrace_gcinfo_t;
+
+static SLIST_HEAD(, dtrace_gcinfo) dtrace_gc[NCPU];
+
 #endif
 
 /*
@@ -549,6 +559,33 @@ dtrace_load##bits(uintptr_t addr)					\
 	return (!(*flags & CPU_DTRACE_FAULT) ? rval : 0);		\
 }
 
+#define	DTRACE_VMLOADFUNC(bits)						\
+/*CSTYLED*/								\
+uint##bits##_t								\
+dtrace_vmload##bits(void *biscuit, uintptr_t addr)			\
+{									\
+	size_t size = bits / NBBY;					\
+	/*CSTYLED*/							\
+	uint##bits##_t rval;						\
+	volatile uint##bits##_t *loc;					\
+	int err;							\
+	volatile uint16_t *flags = (volatile uint16_t *)		\
+	    &cpu_core[curcpu].cpuc_dtrace_flags;			\
+									\
+	DTRACE_ALIGNCHECK(addr, size, flags);				\
+									\
+	*flags |= CPU_DTRACE_NOFAULT;					\
+	loc = (volatile uint##bits##_t *)vmmdt_ptr(			\
+	    biscuit, addr, size);					\
+	rval = (uint##bits##_t) *loc;					\
+	*flags &= ~CPU_DTRACE_NOFAULT;					\
+	if ((*flags & CPU_DTRACE_FAULT) == 0) {				\
+		dtrace_gc_add((void *)loc, size);			\
+		return (rval);						\
+	}								\
+	return (0);							\
+}
+
 #ifdef _LP64
 #define	dtrace_loadptr	dtrace_load64
 #else
@@ -603,6 +640,10 @@ uint16_t dtrace_load16(uintptr_t);
 uint32_t dtrace_load32(uintptr_t);
 uint64_t dtrace_load64(uintptr_t);
 uint8_t dtrace_load8(uintptr_t);
+uint16_t dtrace_vmload16(void *, uintptr_t);
+uint32_t dtrace_vmload32(void *, uintptr_t);
+uint64_t dtrace_vmload64(void *, uintptr_t);
+uint8_t dtrace_vmload8(void *, uintptr_t);
 void dtrace_dynvar_clean(dtrace_dstate_t *);
 dtrace_dynvar_t *dtrace_dynvar(dtrace_dstate_t *, uint_t, dtrace_key_t *,
     size_t, dtrace_dynvar_op_t, dtrace_mstate_t *, dtrace_vstate_t *);
@@ -613,6 +654,11 @@ static int dtrace_canload_remains(uint64_t, size_t, size_t *,
     dtrace_mstate_t *, dtrace_vstate_t *);
 static int dtrace_canstore_remains(uint64_t, size_t, size_t *,
     dtrace_mstate_t *, dtrace_vstate_t *);
+#ifndef illumos
+static void dtrace_gc_init(void);
+static void dtrace_gc_add(void *, size_t);
+static size_t dtrace_gc_collect(void);
+#endif
 
 static __inline uint64_t
 rotl(const uint64_t x, int k)
@@ -739,6 +785,10 @@ DTRACE_LOADFUNC(8)
 DTRACE_LOADFUNC(16)
 DTRACE_LOADFUNC(32)
 DTRACE_LOADFUNC(64)
+DTRACE_VMLOADFUNC(8)
+DTRACE_VMLOADFUNC(16)
+DTRACE_VMLOADFUNC(32)
+DTRACE_VMLOADFUNC(64)
 /* END CSTYLED */
 
 static int
@@ -6351,50 +6401,74 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 				break;
 			/*FALLTHROUGH*/
 		case DIF_OP_LDSB:
-			regs[rd] = (int8_t)dtrace_load8(regs[r1]);
+			if (mstate->dtms_biscuit)
+				regs[rd] = (int8_t)dtrace_vmload8(mstate->dtms_biscuit, regs[r1]);
+			else
+				regs[rd] = (int8_t)dtrace_load8(regs[r1]);
 			break;
 		case DIF_OP_RLDSH:
 			if (!dtrace_canload(regs[r1], 2, mstate, vstate))
 				break;
 			/*FALLTHROUGH*/
 		case DIF_OP_LDSH:
-			regs[rd] = (int16_t)dtrace_load16(regs[r1]);
+			if (mstate->dtms_biscuit)
+				regs[rd] = (int16_t)dtrace_vmload16(mstate->dtms_biscuit, regs[r1]);
+			else
+				regs[rd] = (int16_t)dtrace_load16(regs[r1]);
 			break;
 		case DIF_OP_RLDSW:
 			if (!dtrace_canload(regs[r1], 4, mstate, vstate))
 				break;
 			/*FALLTHROUGH*/
 		case DIF_OP_LDSW:
-			regs[rd] = (int32_t)dtrace_load32(regs[r1]);
+			if (mstate->dtms_biscuit)
+				regs[rd] = (int32_t)dtrace_vmload32(mstate->dtms_biscuit, regs[r1]);
+			else
+				regs[rd] = (int32_t)dtrace_load32(regs[r1]);
 			break;
 		case DIF_OP_RLDUB:
 			if (!dtrace_canload(regs[r1], 1, mstate, vstate))
 				break;
 			/*FALLTHROUGH*/
 		case DIF_OP_LDUB:
-			regs[rd] = dtrace_load8(regs[r1]);
+			if (mstate->dtms_biscuit)
+				regs[rd] = dtrace_vmload8(mstate->dtms_biscuit, regs[r1]);
+			else
+				regs[rd] = dtrace_load8(regs[r1]);
 			break;
 		case DIF_OP_RLDUH:
 			if (!dtrace_canload(regs[r1], 2, mstate, vstate))
 				break;
 			/*FALLTHROUGH*/
 		case DIF_OP_LDUH:
-			regs[rd] = dtrace_load16(regs[r1]);
+			if (mstate->dtms_biscuit)
+				regs[rd] = dtrace_vmload16(mstate->dtms_biscuit, regs[r1]);
+			else
+				regs[rd] = dtrace_load16(regs[r1]);
 			break;
 		case DIF_OP_RLDUW:
 			if (!dtrace_canload(regs[r1], 4, mstate, vstate))
 				break;
 			/*FALLTHROUGH*/
 		case DIF_OP_LDUW:
-			regs[rd] = dtrace_load32(regs[r1]);
+			if (mstate->dtms_biscuit)
+				regs[rd] = dtrace_vmload32(mstate->dtms_biscuit, regs[r1]);
+			else
+				regs[rd] = dtrace_load32(regs[r1]);
 			break;
 		case DIF_OP_RLDX:
 			if (!dtrace_canload(regs[r1], 8, mstate, vstate))
 				break;
 			/*FALLTHROUGH*/
 		case DIF_OP_LDX:
-			regs[rd] = dtrace_load64(regs[r1]);
+			if (mstate->dtms_biscuit)
+				regs[rd] = dtrace_vmload64(mstate->dtms_biscuit, regs[r1]);
+			else
+				regs[rd] = dtrace_load64(regs[r1]);
 			break;
+		/*
+		 * FIXME(dstolfa): In the VM case we don't deal with userspace yet.
+		 */
 		case DIF_OP_ULDSB:
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 			regs[rd] = (int8_t)
@@ -7402,7 +7476,7 @@ dtrace_probe_exit(dtrace_icookie_t cookie)
  * subsequent probe-context DTrace activity emanates.
  */
 void
-dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
+dtrace_ns_probe(void *biscuit, dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4)
 {
 	processorid_t cpuid;
@@ -7472,6 +7546,7 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	mstate.dtms_arg[2] = arg2;
 	mstate.dtms_arg[3] = arg3;
 	mstate.dtms_arg[4] = arg4;
+	mstate.dtms_biscuit = biscuit;
 
 	flags = (volatile uint16_t *)&cpu_core[cpuid].cpuc_dtrace_flags;
 
@@ -8081,6 +8156,14 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
     
     active_probes[curcpu] = NULL;
 	dtrace_probe_exit(cookie);
+}
+
+void
+dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
+    uintptr_t arg2, uintptr_t arg3, uintptr_t arg4)
+{
+
+	dtrace_ns_probe(NULL, id, arg0, arg1, arg2, arg3, arg4);
 }
 
 /*
@@ -18417,6 +18500,49 @@ dtrace_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 #endif
 
 #ifndef illumos
+
+static void
+dtrace_gc_init(void)
+{
+
+	uint32_t i;
+	for (i = 0; i < NCPU; i++) {
+		SLIST_INIT(&dtrace_gc[i]);
+	}
+}
+
+static void
+dtrace_gc_add(void *loc, size_t size)
+{
+	dtrace_gcinfo_t *info;
+	info = kmem_zalloc(sizeof (dtrace_gcinfo_t), KM_SLEEP);
+	info->dtgc_addr = loc;
+	info->dtgc_size = size;
+	SLIST_INSERT_HEAD(&dtrace_gc[curcpu], info, dtgc_next);
+}
+
+static size_t
+dtrace_gc_collect(void)
+{
+	dtrace_gcinfo_t *info;
+	size_t ncollected;
+
+	ncollected = 0;
+	info = NULL;
+
+	while (!SLIST_EMPTY(&dtrace_gc[curcpu])) {
+		info = SLIST_FIRST(&dtrace_gc[curcpu]);
+		SLIST_REMOVE_HEAD(&dtrace_gc[curcpu], dtgc_next);
+		vmmdt_free(info->dtgc_addr, info->dtgc_size);
+		kmem_free(info, sizeof (dtrace_gcinfo_t));
+		ncollected++;
+	}
+
+	SLIST_INIT(&dtrace_gc[curcpu]);
+
+	return (ncollected);
+}
+
 static int
 dtrace_priv_virtstate_create(void)
 {

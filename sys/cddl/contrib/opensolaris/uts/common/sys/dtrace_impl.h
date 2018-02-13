@@ -941,6 +941,7 @@ typedef struct dtrace_mstate {
 	uint32_t dtms_access;			/* memory access rights */
 	dtrace_difo_t *dtms_difo;		/* current dif object */
 	file_t *dtms_getf;			/* cached rval of getf() */
+	void *dtms_biscuit;			/* current VM biscuit */
 } dtrace_mstate_t;
 
 #define	DTRACE_COND_OWNER	0x1
