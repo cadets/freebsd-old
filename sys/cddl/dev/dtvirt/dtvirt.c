@@ -6,15 +6,19 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/module.h>
 #include <sys/dtrace.h>
+#include <machine/vmm.h>
 
 #include "dtvirt.h"
 
+static MALLOC_DEFINE(M_DTVIRT, "dtvirt", "");
+
 void
-dtvirt_probe(int probeid, uintptr_t arg0, uintptr_t arg1,
+dtvirt_probe(void *biscuit, int probeid, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4)
 {
 
-	dtrace_probe(probeid, arg0, arg1, arg2, arg3, arg4);
+	dtrace_ns_probe(biscuit, probeid,
+	    arg0, arg1, arg2, arg3, arg4);
 }
 
 static int
