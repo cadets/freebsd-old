@@ -2994,28 +2994,6 @@ vm_copyout(struct vm *vm, int vcpuid, const void *kaddr,
 	}
 }
 
-/*
- *
-	struct vm_copyinfo copyinfo[2];
-	uint64_t gla;
-	int error, fault;
-
-	if (arg == 0) {
-		return (HYPERCALL_RET_ERROR);
-	}
-
-	gla = ds_base + arg;
-	error = vm_copy_setup(vm, vcpuid, paging, gla, arg_len,
-	    PROT_READ, copyinfo, nitems(copyinfo), &fault);
-	if (error || fault) {
-		return (error);
-	}
-
-	vm_copyin(vm, vcpuid, copyinfo, dst, arg_len);
-	vm_copy_teardown(vm, vcpuid, copyinfo, nitems(copyinfo));
-
-	return (0);
-	*/
 uintptr_t
 vmm_copyin(void *xbiscuit, void *addr, size_t len, struct malloc_type *t)
 {
