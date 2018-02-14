@@ -11,6 +11,11 @@ __FBSDID("$FreeBSD$");
 #include "dtvirt.h"
 
 static MALLOC_DEFINE(M_DTVIRT, "dtvirt", "");
+static uintptr_t dtvirt_priv_ptr(void *, uintptr_t, size_t);
+static void dtvirt_priv_free(void *, size_t);
+
+uintptr_t (*vmm_copyin)(void *biscuit,
+    void *addr, size_t len, struct malloc_type *t);
 
 void
 dtvirt_probe(void *biscuit, int probeid, uintptr_t arg0, uintptr_t arg1,
@@ -26,13 +31,32 @@ dtvirt_handler(module_t mod __unused, int what, void *arg __unused)
 {
 	switch (what) {
 	case MOD_LOAD:
+		dtvirt_ptr = dtvirt_priv_ptr;
+		dtvirt_free = dtvirt_priv_free;
+		vmm_copyin = NULL;
 		break;
 	case MOD_UNLOAD:
+		dtvirt_ptr = NULL;
+		dtvirt_free = NULL;
 		break;
 	default:
 		break;
 	}
 	return (0);
+}
+
+static uintptr_t
+dtvirt_priv_ptr(void *biscuit, uintptr_t addr, size_t size)
+{
+
+	return (vmm_copyin(biscuit, (void *)addr, size, M_DTVIRT));
+}
+
+static void
+dtvirt_priv_free(void *addr, size_t size)
+{
+
+	free(addr, M_DTVIRT);
 }
 
 static moduledata_t dtvirt_kmod = {
