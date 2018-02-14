@@ -425,7 +425,7 @@ void vm_copyin(struct vm *vm, int vcpuid, struct vm_copyinfo *copyinfo,
     void *kaddr, size_t len);
 void vm_copyout(struct vm *vm, int vcpuid, const void *kaddr,
     struct vm_copyinfo *copyinfo, size_t len);
-uintptr_t vmm_copyin(void *biscuit,
+extern uintptr_t (*vmm_copyin)(void *biscuit,
     void *addr, size_t len, struct malloc_type *t);
 
 int vcpu_trace_exceptions(struct vm *vm, int vcpuid);

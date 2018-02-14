@@ -332,11 +332,12 @@ static int8_t ring_plevel[VMM_MAX_MODES][HYPERCALL_INDEX_MAX] = {
 	}
 };
 
-/*static LIST_HEAD(, uintptr_t) provhead; */
-
 static void vm_free_memmap(struct vm *vm, int ident);
 static bool sysmem_mapping(struct vm *vm, struct mem_map *mm);
 static void vcpu_notify_event_locked(struct vcpu *vcpu, bool lapic_intr);
+
+static uintptr_t vmm_priv_copyin(void *xbiscuit,
+    void *addr, size_t len, struct malloc_type *t);
 
 static int
 sysctl_vmm_hypervisor_mode(SYSCTL_HANDLER_ARGS)
@@ -495,6 +496,7 @@ vmm_handler(module_t mod, int what, void *arg)
 	case MOD_LOAD:
 		vmmdev_init();
 		error = vmm_init();
+		vmm_copyin = vmm_priv_copyin;
 		if (error == 0)
 			vmm_initialized = 1;
 		break;
@@ -2994,8 +2996,8 @@ vm_copyout(struct vm *vm, int vcpuid, const void *kaddr,
 	}
 }
 
-uintptr_t
-vmm_copyin(void *xbiscuit, void *addr, size_t len, struct malloc_type *t)
+static uintptr_t
+vmm_priv_copyin(void *xbiscuit, void *addr, size_t len, struct malloc_type *t)
 {
 	struct vm_biscuit *biscuit;
 	struct vm *vm;

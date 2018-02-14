@@ -63,6 +63,10 @@ dtrace_load(void *dummy)
 		dtrace_destructive_disallow = 1;
 #endif
 
+	/* Hook into dtvirt */
+	dtvirt_ptr = NULL;
+	dtvirt_free = NULL;
+
 	/* Hook into the trap handler. */
 	dtrace_trap_func = dtrace_trap;
 

@@ -128,7 +128,7 @@
 #include <sys/rwlock.h>
 #include <sys/sx.h>
 #include <sys/sysctl.h>
-#include <vmm_dtrace.h>
+#include <dtvirt.h>
 #ifdef VTDTR
 #include <cddl/dev/vtdtr/vtdtr.h>
 #endif
@@ -393,6 +393,14 @@ static uint32_t		dtrace_helptrace_next = 0;
 static int		dtrace_helptrace_wrapped = 0;
 
 /*
+ * DTrace DTVIRT hooks.
+ */
+
+uintptr_t (*dtvirt_ptr)(void *, uintptr_t, size_t);
+void (*dtvirt_free)(void *, size_t);
+
+
+/*
  * DTrace Error Hashing
  *
  * On DEBUG kernels, DTrace will track the errors that has seen in a hash
@@ -574,8 +582,10 @@ dtrace_vmload##bits(void *biscuit, uintptr_t addr)			\
 									\
 	DTRACE_ALIGNCHECK(addr, size, flags);				\
 									\
+	if (dtvirt_ptr == NULL)						\
+		return (0);						\
 	*flags |= CPU_DTRACE_NOFAULT;					\
-	loc = (volatile uint##bits##_t *)vmmdt_ptr(			\
+	loc = (volatile uint##bits##_t *)dtvirt_ptr(			\
 	    biscuit, addr, size);					\
 	rval = (uint##bits##_t) *loc;					\
 	*flags &= ~CPU_DTRACE_NOFAULT;					\
@@ -18529,11 +18539,12 @@ dtrace_gc_collect(void)
 
 	ncollected = 0;
 	info = NULL;
+	ASSERT(dtvirt_free != NULL);
 
 	while (!SLIST_EMPTY(&dtrace_gc[curcpu])) {
 		info = SLIST_FIRST(&dtrace_gc[curcpu]);
 		SLIST_REMOVE_HEAD(&dtrace_gc[curcpu], dtgc_next);
-		vmmdt_free(info->dtgc_addr, info->dtgc_size);
+		dtvirt_free(info->dtgc_addr, info->dtgc_size);
 		kmem_free(info, sizeof (dtrace_gcinfo_t));
 		ncollected++;
 	}
