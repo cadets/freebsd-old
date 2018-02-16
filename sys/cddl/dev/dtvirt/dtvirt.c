@@ -11,10 +11,10 @@ __FBSDID("$FreeBSD$");
 #include "dtvirt.h"
 
 static MALLOC_DEFINE(M_DTVIRT, "dtvirt", "");
-static uintptr_t dtvirt_priv_ptr(void *, uintptr_t, size_t);
+static void * dtvirt_priv_ptr(void *, uintptr_t, size_t);
 static void dtvirt_priv_free(void *, size_t);
 
-uintptr_t (*vmm_copyin)(void *biscuit,
+void * (*vmm_copyin)(void *biscuit,
     void *addr, size_t len, struct malloc_type *t);
 
 void
@@ -33,7 +33,6 @@ dtvirt_handler(module_t mod __unused, int what, void *arg __unused)
 	case MOD_LOAD:
 		dtvirt_ptr = dtvirt_priv_ptr;
 		dtvirt_free = dtvirt_priv_free;
-		vmm_copyin = NULL;
 		break;
 	case MOD_UNLOAD:
 		dtvirt_ptr = NULL;
@@ -45,11 +44,13 @@ dtvirt_handler(module_t mod __unused, int what, void *arg __unused)
 	return (0);
 }
 
-static uintptr_t
+static void *
 dtvirt_priv_ptr(void *biscuit, uintptr_t addr, size_t size)
 {
 
-	return (vmm_copyin(biscuit, (void *)addr, size, M_DTVIRT));
+	if (vmm_copyin != NULL)
+		return (vmm_copyin(biscuit, (void *)addr, size, M_DTVIRT));
+	return (NULL);
 }
 
 static void
@@ -65,6 +66,6 @@ static moduledata_t dtvirt_kmod = {
 	NULL
 };
 
-DECLARE_MODULE(dtvirt, dtvirt_kmod, SI_SUB_SMP + 1, SI_ORDER_ANY);
+DECLARE_MODULE(dtvirt, dtvirt_kmod, SI_SUB_DTRACE + 1, SI_ORDER_ANY);
 MODULE_VERSION(dtvirt, 1);
 MODULE_DEPEND(dtvirt, dtrace, 1, 1, 1);

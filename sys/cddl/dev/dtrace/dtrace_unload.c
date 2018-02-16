@@ -123,7 +123,6 @@ dtrace_unload()
 	dtrace_trap_func = NULL;
 
 	dtrace_probeid_enable = NULL;
-	dtrace_probeid_disable = NULL;
 	dtrace_virtstate_create = NULL;
 	dtrace_virtstate_destroy = NULL;
 	dtrace_virtstate_go = NULL;
