@@ -200,7 +200,6 @@ static struct virtio_feature_desc vtdtr_feature_desc[] = {
 };
 
 int (*dtrace_probeid_enable)(dtrace_id_t) = NULL;
-int (*dtrace_probeid_disable)(dtrace_id_t) = NULL;
 int (*dtrace_virtstate_create)(void) = NULL;
 void (*dtrace_virtstate_destroy)(void) = NULL;
 int (*dtrace_virtstate_go)(void) = NULL;
@@ -623,7 +622,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	struct vtdtr_ctrl_pbevent *pb;
 	struct vtdtr_ctrl_provevent *pv;
 	struct vtdtr_probelist *list;
-	struct vtdtr_probe *probe, *ptmp;
+	struct vtdtr_probe *probe;
 	device_t dev;
 	int retval;
 	int error;
@@ -694,41 +693,6 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			LIST_INSERT_HEAD(&list->head, probe, vtdprobe_next);
 			num_dtprobes++;
 			mtx_unlock(&list->mtx);
-		}
-		break;
-	}
-	case VIRTIO_DTRACE_PROBE_UNINSTALL: {
-		int found;
-		sc->vtdtr_ready = 0;
-
-		list = sc->vtdtr_probelist;
-		pb = &ctrl->uctrl.probe_ev;
-		found = 0;
-
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_PROBE_UNINSTALL: %d\n", pb->probe);
-		mtx_lock(&list->mtx);
-		LIST_FOREACH_SAFE(probe, &list->head, vtdprobe_next, ptmp) {
-			if (probe->vtdprobe_id == pb->probe) {
-				LIST_REMOVE(probe, vtdprobe_next);
-				free(probe, M_VTDTR);
-				num_dtprobes--;
-				found = 1;
-				break;
-			}
-		}
-		mtx_unlock(&list->mtx);
-		KASSERT(found == 1, ("%s: probe not found", __func__));
-
-		error = dtrace_probeid_disable(pb->probe);
-		if (error) {
-			device_printf(dev, "%s: error %d disabling"
-			    " probe %d\n", __func__, error, pb->probe);
-		}
-
-		if (LIST_EMPTY(&list->head)) {
-			dtrace_virtstate_destroy();
-			device_printf(dev, "Virtual state destroyed\n");
 		}
 		break;
 	}

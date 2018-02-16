@@ -336,7 +336,7 @@ static void vm_free_memmap(struct vm *vm, int ident);
 static bool sysmem_mapping(struct vm *vm, struct mem_map *mm);
 static void vcpu_notify_event_locked(struct vcpu *vcpu, bool lapic_intr);
 
-static uintptr_t vmm_priv_copyin(void *xbiscuit,
+static void * vmm_priv_copyin(void *xbiscuit,
     void *addr, size_t len, struct malloc_type *t);
 
 static int
@@ -2996,7 +2996,7 @@ vm_copyout(struct vm *vm, int vcpuid, const void *kaddr,
 	}
 }
 
-static uintptr_t
+static void *
 vmm_priv_copyin(void *xbiscuit, void *addr, size_t len, struct malloc_type *t)
 {
 	struct vm_biscuit *biscuit;
@@ -3008,10 +3008,10 @@ vmm_priv_copyin(void *xbiscuit, void *addr, size_t len, struct malloc_type *t)
 	int error, fault, vcpuid;
 	void *dst;
 
-	dst = NULL;
 	biscuit = xbiscuit;
 	fault = 0;
 	gla = 0;
+	dst = NULL;
 
 	KASSERT(biscuit != 0, "biscuit must not be NULL\n");
 
@@ -3028,14 +3028,15 @@ vmm_priv_copyin(void *xbiscuit, void *addr, size_t len, struct malloc_type *t)
 	    paging, gla, len, PROT_READ, copyinfo, nitems(copyinfo), &fault);
 
 	if (error || fault) {
-		return ((uintptr_t)NULL);
+		return (NULL);
 	}
 
 	dst = malloc(len, t, M_WAITOK | M_ZERO);
+
 	vm_copyin(vm, vcpuid, copyinfo, dst, len);
 	vm_copy_teardown(vm, vcpuid, copyinfo, nitems(copyinfo));
 
-	return ((uintptr_t)dst);
+	return (dst);
 }
 
 /*

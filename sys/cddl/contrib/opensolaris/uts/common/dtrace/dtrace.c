@@ -396,7 +396,7 @@ static int		dtrace_helptrace_wrapped = 0;
  * DTrace DTVIRT hooks.
  */
 
-uintptr_t (*dtvirt_ptr)(void *, uintptr_t, size_t);
+void * (*dtvirt_ptr)(void *, uintptr_t, size_t);
 void (*dtvirt_free)(void *, size_t);
 
 
@@ -570,16 +570,18 @@ dtrace_load##bits(uintptr_t addr)					\
 #define	DTRACE_VMLOADFUNC(bits)						\
 /*CSTYLED*/								\
 uint##bits##_t								\
-dtrace_vmload##bits(void *biscuit, uintptr_t addr)			\
+dtrace_vmload##bits(dtrace_mstate_t *mstate, uintptr_t addr)		\
 {									\
 	size_t size = bits / NBBY;					\
 	/*CSTYLED*/							\
+	uint##bits##_t *loc;						\
 	uint##bits##_t rval;						\
-	volatile uint##bits##_t *loc;					\
+	void *biscuit = mstate->dtms_biscuit;				\
 	int err;							\
 	volatile uint16_t *flags = (volatile uint16_t *)		\
 	    &cpu_core[curcpu].cpuc_dtrace_flags;			\
 									\
+	loc = NULL;							\
 	DTRACE_ALIGNCHECK(addr, size, flags);				\
 									\
 	if (dtvirt_ptr == NULL)						\
@@ -587,10 +589,10 @@ dtrace_vmload##bits(void *biscuit, uintptr_t addr)			\
 	*flags |= CPU_DTRACE_NOFAULT;					\
 	loc = (volatile uint##bits##_t *)dtvirt_ptr(			\
 	    biscuit, addr, size);					\
-	rval = (uint##bits##_t) *loc;					\
+	rval = *loc;							\
 	*flags &= ~CPU_DTRACE_NOFAULT;					\
 	if ((*flags & CPU_DTRACE_FAULT) == 0) {				\
-		dtrace_gc_add((void *)loc, size);			\
+		dtrace_gc_add(loc, size);				\
 		return (rval);						\
 	}								\
 	return (0);							\
@@ -650,10 +652,10 @@ uint16_t dtrace_load16(uintptr_t);
 uint32_t dtrace_load32(uintptr_t);
 uint64_t dtrace_load64(uintptr_t);
 uint8_t dtrace_load8(uintptr_t);
-uint16_t dtrace_vmload16(void *, uintptr_t);
-uint32_t dtrace_vmload32(void *, uintptr_t);
-uint64_t dtrace_vmload64(void *, uintptr_t);
-uint8_t dtrace_vmload8(void *, uintptr_t);
+uint16_t dtrace_vmload16(dtrace_mstate_t *, uintptr_t);
+uint32_t dtrace_vmload32(dtrace_mstate_t *, uintptr_t);
+uint64_t dtrace_vmload64(dtrace_mstate_t *, uintptr_t);
+uint8_t dtrace_vmload8(dtrace_mstate_t *, uintptr_t);
 void dtrace_dynvar_clean(dtrace_dstate_t *);
 dtrace_dynvar_t *dtrace_dynvar(dtrace_dstate_t *, uint_t, dtrace_key_t *,
     size_t, dtrace_dynvar_op_t, dtrace_mstate_t *, dtrace_vstate_t *);
@@ -6412,7 +6414,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			/*FALLTHROUGH*/
 		case DIF_OP_LDSB:
 			if (mstate->dtms_biscuit)
-				regs[rd] = (int8_t)dtrace_vmload8(mstate->dtms_biscuit, regs[r1]);
+				regs[rd] = (int8_t)dtrace_vmload8(mstate, regs[r1]);
 			else
 				regs[rd] = (int8_t)dtrace_load8(regs[r1]);
 			break;
@@ -6422,7 +6424,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			/*FALLTHROUGH*/
 		case DIF_OP_LDSH:
 			if (mstate->dtms_biscuit)
-				regs[rd] = (int16_t)dtrace_vmload16(mstate->dtms_biscuit, regs[r1]);
+				regs[rd] = (int16_t)dtrace_vmload16(mstate, regs[r1]);
 			else
 				regs[rd] = (int16_t)dtrace_load16(regs[r1]);
 			break;
@@ -6432,7 +6434,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			/*FALLTHROUGH*/
 		case DIF_OP_LDSW:
 			if (mstate->dtms_biscuit)
-				regs[rd] = (int32_t)dtrace_vmload32(mstate->dtms_biscuit, regs[r1]);
+				regs[rd] = (int32_t)dtrace_vmload32(mstate, regs[r1]);
 			else
 				regs[rd] = (int32_t)dtrace_load32(regs[r1]);
 			break;
@@ -6442,7 +6444,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			/*FALLTHROUGH*/
 		case DIF_OP_LDUB:
 			if (mstate->dtms_biscuit)
-				regs[rd] = dtrace_vmload8(mstate->dtms_biscuit, regs[r1]);
+				regs[rd] = dtrace_vmload8(mstate, regs[r1]);
 			else
 				regs[rd] = dtrace_load8(regs[r1]);
 			break;
@@ -6452,7 +6454,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			/*FALLTHROUGH*/
 		case DIF_OP_LDUH:
 			if (mstate->dtms_biscuit)
-				regs[rd] = dtrace_vmload16(mstate->dtms_biscuit, regs[r1]);
+				regs[rd] = dtrace_vmload16(mstate, regs[r1]);
 			else
 				regs[rd] = dtrace_load16(regs[r1]);
 			break;
@@ -6462,7 +6464,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			/*FALLTHROUGH*/
 		case DIF_OP_LDUW:
 			if (mstate->dtms_biscuit)
-				regs[rd] = dtrace_vmload32(mstate->dtms_biscuit, regs[r1]);
+				regs[rd] = dtrace_vmload32(mstate, regs[r1]);
 			else
 				regs[rd] = dtrace_load32(regs[r1]);
 			break;
@@ -6472,7 +6474,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			/*FALLTHROUGH*/
 		case DIF_OP_LDX:
 			if (mstate->dtms_biscuit)
-				regs[rd] = dtrace_vmload64(mstate->dtms_biscuit, regs[r1]);
+				regs[rd] = dtrace_vmload64(mstate, regs[r1]);
 			else
 				regs[rd] = dtrace_load64(regs[r1]);
 			break;
@@ -18669,60 +18671,6 @@ dtrace_priv_probeid_enable(dtrace_id_t id)
 	return (error);
 }
 
-static int
-dtrace_priv_probeid_disable(dtrace_id_t id)
-{
-	/*
-	dtrace_probe_t *probe;
-	dtrace_ecb_t *ecb, *pecb;
-	dtrace_action_t *act;
-	int error;
-
-	ASSERT(virt_state != NULL);
-
-	mutex_enter(&cpu_lock);
-	mutex_enter(&dtrace_lock);
-
-	printf("id - 1 = %d\n", id - 1);
-	probe = dtrace_probes[id - 1];
-	printf("probe = %p\n", probe);
-	ASSERT(probe != NULL);
-
-	ecb = probe->dtpr_ecb;
-	printf("ecb = %p\n", ecb);
-	ASSERT(ecb != NULL);
-	*/
-
-	/*
-	 * Find the ECB we want to destroy and its predecessor
-	 */
-	/*
-	printf("ecb->dte_next = %p\n", ecb->dte_next);
-	pecb = ecb;
-	while (ecb) {
-		if (ecb->dte_state == virt_state) {
-			printf("it is virt\n");
-			break;
-		}
-		pecb = ecb;
-		ecb = ecb->dte_next;
-		printf("ecb = %p\n", ecb);
-	}
-
-	printf("ecb = %p\n", ecb);
-	printf("pecb = %p\n", pecb);
-	ASSERT(ecb != NULL);
-
-	if (pecb != ecb)
-		pecb->dte_next = ecb->dte_next;
-	dtrace_ecb_destroy(ecb);
-
-	mutex_exit(&dtrace_lock);
-	mutex_exit(&cpu_lock);
-
-	*/
-	return (0);
-}
 #endif
 
 #ifdef illumos
