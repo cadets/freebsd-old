@@ -1623,7 +1623,7 @@ retry_page:
 					goto failed;
 				}
 				else {
-					VM_WAIT;
+					vm_wait(NULL);
 					goto retry_page;
 				}
 			}
