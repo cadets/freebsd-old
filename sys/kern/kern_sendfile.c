@@ -50,6 +50,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sf_buf.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
+#include <sys/sockbuf_tls.h>
 #include <sys/syscallsubr.h>
 #include <sys/sysctl.h>
 #include <sys/vnode.h>
@@ -340,12 +341,28 @@ sendfile_iodone(void *arg, vm_page_t *pg, int count, int error)
 
 		m = sfio->m;
 		mb_free_notready(m, sfio->npages);
-	} else
-		(void )(so->so_proto->pr_usrreqs->pru_ready)(so, sfio->m,
-		    sfio->npages);
+	} else {
+		if (so->so_snd.sb_tls_flags & SB_TLS_ACTIVE) {
+			/*
+			 * I/O operation is complete, but we still
+			 * need to encrypt.  We cannot do this in the
+			 * interrupt thread of the disk controller, so
+			 * forward the mbufs to a different thread.
+			 *
+			 * Note that the socket was referenced by
+			 * sendfile, and we're inheriting that ref,
+			 * so we do not need to do an soref() here.
+			 */
+			sbtls_enqueue(sfio->m, so, sfio->npages);
+			goto out_with_ref;
+		} else
+			(void )(so->so_proto->pr_usrreqs->pru_ready)(so,
+			    sfio->m, sfio->npages);
+	}
 
 	SOCK_LOCK(so);
 	sorele(so);
+out_with_ref:
 	CURVNET_RESTORE();
 	free(sfio, M_TEMP);
 }
@@ -585,9 +602,10 @@ vn_sendfile(struct file *fp, int sockfd, struct uio *hdr_uio,
 	off_t off, sbytes, rem, obj_size;
 	struct mbuf_ext_pgs *ext_pgs;
 	struct mbuf *m0;
+	struct sbtls_info *tls;
 	int use_ext_pgs = 0;
 	int error, softerr, bsize, hdrlen;
-	int ext_pgs_idx;
+	int ext_pgs_idx, max_pgs, tls_enq_cnt;
 
 	obj = NULL;
 	so = NULL;
@@ -628,6 +646,10 @@ vn_sendfile(struct file *fp, int sockfd, struct uio *hdr_uio,
 	 * we implement that, but possibly shouldn't.
 	 */
 	(void)sblock(&so->so_snd, SBL_WAIT | SBL_NOINTR);
+	if (so->so_snd.sb_tls_flags & SB_TLS_ACTIVE)
+		tls = so->so_snd.sb_tls_info;
+	else
+		tls = NULL;
 
 	/*
 	 * Loop through the pages of the file, starting with the requested
@@ -721,7 +743,14 @@ retry_space:
 		if (hdr_uio != NULL && hdr_uio->uio_resid > 0) {
 			hdr_uio->uio_td = td;
 			hdr_uio->uio_rw = UIO_WRITE;
-			mh = m_uiotombuf(hdr_uio, M_WAITOK, space, 0, 0);
+			if (tls == NULL) {
+				mh = m_uiotombuf(hdr_uio, M_WAITOK,
+				    space, 0, 0);
+			} else {
+				mh = m_uiotombuf(hdr_uio, M_WAITOK,
+				    space, tls->sb_params.sb_maxlen,
+				    M_NOMAP);
+			}
 			hdrlen = m_length(mh, &mhtail);
 			space -= hdrlen;
 			/*
@@ -755,6 +784,16 @@ retry_space:
 
 		if (space > rem)
 			space = rem;
+		else if (space > PAGE_SIZE) {
+			/*
+			 * Keep TLS chunked at a page boundary, when possible.
+			 */
+			if (off & PAGE_MASK)
+				space -= (PAGE_SIZE - (off & PAGE_MASK));
+			space = trunc_page(space);
+			if (off & PAGE_MASK)
+				space += (PAGE_SIZE - (off & PAGE_MASK));
+		}
 
 		npages = howmany(space + (off & PAGE_MASK), PAGE_SIZE);
 
@@ -794,11 +833,16 @@ retry_space:
 		pa = sfio->pa;
 
 		if ((mb_use_ext_pgs &&
-			so->so_proto->pr_protocol == IPPROTO_TCP)) {
+			so->so_proto->pr_protocol == IPPROTO_TCP) ||
+		    tls != NULL) {
 			/* cache state in a local, to avoid locks */
 			use_ext_pgs = 1;
+			if (tls != NULL)
+				max_pgs = num_pages(tls->sb_params.sb_maxlen);
+			else
+				max_pgs = MBUF_PEXT_MAX_PGS;
 			/* start at last index, to wrap to first */
-			ext_pgs_idx = MBUF_PEXT_MAX_PGS - 1;
+			ext_pgs_idx = max_pgs - 1;
 			m0 = NULL; /* -Wsometimes-uninitialized */
 		}
 
@@ -820,7 +864,7 @@ retry_space:
 				off_t xfs;
 
 				ext_pgs_idx++;
-				if (ext_pgs_idx == MBUF_PEXT_MAX_PGS) {
+				if (ext_pgs_idx == max_pgs) {
 					m0 = mb_alloc_ext_pgs(M_WAITOK, false,
 					    sendfile_free_mext_pg);
 
@@ -834,7 +878,7 @@ retry_space:
 						 * last page.
 						 */
 						if ((i + min(npages - i,
-						    MBUF_PEXT_MAX_PGS) == npages) &&
+						    max_pgs) == npages) &&
 						    ((off + space) & PAGE_MASK) &&
 						    (rem > space || rhpages > 0))
 							m0->m_ext.ext_flags |=
@@ -974,6 +1018,12 @@ prepend_header:
 		    __func__, m_length(m, NULL), space, hdrlen));
 
 		CURVNET_SET(so->so_vnet);
+		if (tls != NULL) {
+			error = sbtls_frame(&m, tls, &tls_enq_cnt,
+			    TLS_RLTYPE_APP);
+			if (error != 0)
+				goto done;
+		}
 		if (nios == 0) {
 			/*
 			 * If sendfile_swapin() didn't initiate any I/Os,
@@ -982,8 +1032,15 @@ prepend_header:
 			 * PRUS_NOTREADY flag.
 			 */
 			free(sfio, M_TEMP);
-			error = (*so->so_proto->pr_usrreqs->pru_send)
-			    (so, 0, m, NULL, NULL, td);
+			if (tls != NULL) {
+				soref(so);
+				error = (*so->so_proto->pr_usrreqs->pru_send)
+				    (so, PRUS_NOTREADY, m, NULL, NULL, td);
+				sbtls_enqueue(m, so, tls_enq_cnt);
+			} else {
+				error = (*so->so_proto->pr_usrreqs->pru_send)
+				    (so, 0, m, NULL, NULL, td);
+			}
 		} else {
 			sfio->npages = npages;
 			soref(so);

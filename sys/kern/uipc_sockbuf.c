@@ -49,6 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/signalvar.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
+#include <sys/sockbuf_tls.h>
 #include <sys/sx.h>
 #include <sys/sysctl.h>
 
@@ -581,8 +582,16 @@ sbrelease(struct sockbuf *sb, struct socket *so)
 void
 sbdestroy(struct sockbuf *sb, struct socket *so)
 {
+	int locked = 0;
 
+	if (SOCKBUF_OWNED(sb) == 0) {
+		SOCKBUF_LOCK(sb);
+		locked = 1;
+	}
 	sbrelease_internal(sb, so);
+	sbtlsdestroy(sb);
+	if (locked)
+		SOCKBUF_UNLOCK(sb);
 }
 
 /*
@@ -745,6 +754,9 @@ sbappendstream_locked(struct sockbuf *sb, struct mbuf *m, int flags)
 	KASSERT(sb->sb_mb == sb->sb_lastrecord,("sbappendstream 1"));
 
 	SBLASTMBUFCHK(sb);
+
+	if ((sb->sb_tls_flags & SB_TLS_ACTIVE) != 0)
+		sbtls_seq(sb, m);
 
 	/* Remove all packet headers and mbuf tags to get a pure data chain. */
 	m_demote(m, 1, flags & PRUS_NOTREADY ? M_NOTREADY : 0);
