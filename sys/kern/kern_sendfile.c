@@ -123,11 +123,6 @@ sfstat_sysctl(SYSCTL_HANDLER_ARGS)
 SYSCTL_PROC(_kern_ipc, OID_AUTO, sfstat, CTLTYPE_OPAQUE | CTLFLAG_RW,
     NULL, 0, sfstat_sysctl, "I", "sendfile statistics");
 
-int sf_use_ext_pgs;
-SYSCTL_INT(_kern_ipc, OID_AUTO, sf_use_ext_pgs, CTLFLAG_RWTUN,
-    &sf_use_ext_pgs, 0,
-    "Should we use bundles of pages for sendfile(2) and TLS");
-
 /*
  * Detach mapped page and release resources back to the system.  Called
  * by mbuf(9) code when last reference to a page is freed.
@@ -798,7 +793,7 @@ retry_space:
 		 */
 		pa = sfio->pa;
 
-		if ((sf_use_ext_pgs &&
+		if ((mb_use_ext_pgs &&
 			so->so_proto->pr_protocol == IPPROTO_TCP)) {
 			/* cache state in a local, to avoid locks */
 			use_ext_pgs = 1;
