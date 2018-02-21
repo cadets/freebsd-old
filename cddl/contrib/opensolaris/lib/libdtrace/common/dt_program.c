@@ -153,6 +153,9 @@ dtrace_program_info(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 void
 dtrace_program_summary(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 {
+	int i;
+	char type[DT_TYPE_NAMELEN];
+	int was_write = 0;
 	dt_stmt_t *stp;
 	dtrace_actdesc_t *ap;
 	dtrace_ecbdesc_t *last = NULL;
@@ -176,12 +179,64 @@ dtrace_program_summary(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 				continue;
 			}
 
-			if (DTRACEACT_ISDESTRUCTIVE(ap->dtad_kind))
-				continue;
-
 			if (ap->dtad_kind == DTRACEACT_DIFEXPR ) {//&& ap->dtad_difo->dtdo_rtype.dtdt_size == 0) {
-				printf("Action: Dif Expression\n")
-				dt_dis(ap->dtad_difo, stdout);
+				printf("Action: Dif Expression\n");
+				
+				for (i = 0; i < ap->dtad_difo->dtdo_varlen; i++) {
+					dtrace_difv_t *v = &ap->dtad_difo->dtdo_vartab[i];
+					char kind[4], scope[4], flags[16] = { 0 };
+
+					switch (v->dtdv_kind) {
+					case DIFV_KIND_ARRAY:
+						(void) strcpy(kind, "arr");
+						break;
+					case DIFV_KIND_SCALAR:
+						(void) strcpy(kind, "scl");
+						break;
+					default:
+						(void) snprintf(kind, sizeof (kind),
+							"%u", v->dtdv_kind);
+					}
+
+					switch (v->dtdv_scope) {
+					case DIFV_SCOPE_GLOBAL:
+						(void) strcpy(scope, "glb");
+						break;
+					case DIFV_SCOPE_THREAD:
+						(void) strcpy(scope, "tls");
+						break;
+					case DIFV_SCOPE_LOCAL:
+						(void) strcpy(scope, "loc");
+						break;
+					default:
+						(void) snprintf(scope, sizeof (scope),
+							"%u", v->dtdv_scope);
+					}
+
+					if (v->dtdv_flags & ~(DIFV_F_REF | DIFV_F_MOD)) {
+						(void) snprintf(flags, sizeof (flags), "/0x%x",
+							v->dtdv_flags & ~(DIFV_F_REF | DIFV_F_MOD));
+					}
+
+					if (v->dtdv_flags & DIFV_F_REF)
+					{
+						if (was_write == 1)
+							fprintf(stderr, "Error: Read after write.");
+						(void) strcat(flags, "/r");
+					}
+					if (v->dtdv_flags & DIFV_F_MOD)
+					{
+						was_write = 1;
+						(void) strcat(flags, "/w");
+					}
+
+					(void) fprintf(stdout, "%-16s %-4u %-3s %-3s %-4s\n",
+						&ap->dtad_difo->dtdo_strtab[v->dtdv_name],
+						v->dtdv_id, kind, scope, flags + 1
+						);
+				}
+					
+				/* dt_dis(ap->dtad_difo, stdout); */
 				continue;
 			}
 
