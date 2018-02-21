@@ -587,7 +587,7 @@ dtrace_vmload##bits(dtrace_mstate_t *mstate, uintptr_t addr)		\
 	if (dtvirt_ptr == NULL)						\
 		return (0);						\
 	*flags |= CPU_DTRACE_NOFAULT;					\
-	loc = (volatile uint##bits##_t *)dtvirt_ptr(			\
+	loc = (uint##bits##_t *)dtvirt_ptr(				\
 	    biscuit, addr, size);					\
 	rval = *loc;							\
 	*flags &= ~CPU_DTRACE_NOFAULT;					\
@@ -656,6 +656,7 @@ uint16_t dtrace_vmload16(dtrace_mstate_t *, uintptr_t);
 uint32_t dtrace_vmload32(dtrace_mstate_t *, uintptr_t);
 uint64_t dtrace_vmload64(dtrace_mstate_t *, uintptr_t);
 uint8_t dtrace_vmload8(dtrace_mstate_t *, uintptr_t);
+uintptr_t dtrace_vmloadmem(dtrace_mstate_t *, uintptr_t, size_t);
 void dtrace_dynvar_clean(dtrace_dstate_t *);
 dtrace_dynvar_t *dtrace_dynvar(dtrace_dstate_t *, uint_t, dtrace_key_t *,
     size_t, dtrace_dynvar_op_t, dtrace_mstate_t *, dtrace_vstate_t *);
@@ -802,6 +803,34 @@ DTRACE_VMLOADFUNC(16)
 DTRACE_VMLOADFUNC(32)
 DTRACE_VMLOADFUNC(64)
 /* END CSTYLED */
+
+uintptr_t
+dtrace_vmloadmem(dtrace_mstate_t *mstate, uintptr_t addr, size_t size)
+{
+	uintptr_t rval;
+	void *biscuit = mstate->dtms_biscuit;
+	int err;
+	volatile uint16_t *flags = (volatile uint16_t *)
+	    &cpu_core[curcpu].cpuc_dtrace_flags;
+
+	rval = 0;
+	/*
+	 * No need to check for alignment because we are not working with
+	 * primitive operations anymore.
+	 */
+
+	if (dtvirt_ptr == NULL)
+		return (0);
+	*flags |= CPU_DTRACE_NOFAULT;
+	rval = (uintptr_t)dtvirt_ptr(biscuit, addr, size);
+	*flags &= ~CPU_DTRACE_NOFAULT;
+	if ((*flags & CPU_DTRACE_FAULT) == 0) {
+		dtrace_gc_add((void *)rval, size);
+		return (rval);
+	}
+
+	return (0);
+}
 
 static int
 dtrace_inscratch(uintptr_t dest, size_t size, dtrace_mstate_t *mstate)
@@ -6524,6 +6553,12 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 			break;
 		case DIF_OP_RET:
+			if (mstate->dtms_biscuit) {
+				if (difo->dtdo_rtype.dtdt_flags != 0) {
+					regs[rd] = dtrace_vmloadmem(mstate, regs[rd],
+					    difo->dtdo_rtype.dtdt_size);
+				}
+			}
 			rval = regs[rd];
 			pc = textlen;
 			break;
