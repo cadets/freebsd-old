@@ -5997,7 +5997,10 @@ next:
 			/*
 			 * Safely load the IPv4 address.
 			 */
-			ip4 = dtrace_load32(tupregs[argi].dttk_value);
+			if (mstate->dtms_biscuit)
+				ip4 = dtrace_vmload32(mstate, tupregs[argi].dttk_value);
+			else
+				ip4 = dtrace_load32(tupregs[argi].dttk_value);
 
 			/*
 			 * Check an IPv4 string will fit in scratch.
@@ -6033,7 +6036,7 @@ next:
 			ASSERT(end + 1 >= base);
 
 		} else if (af == AF_INET6) {
-			struct in6_addr ip6;
+			struct in6_addr ip6, *ip6p;
 			int firstzero, tryzero, numzero, v6end;
 			uint16_t val;
 			const char digits[] = "0123456789abcdef";
@@ -6056,8 +6059,15 @@ next:
 			/*
 			 * Safely load the IPv6 address.
 			 */
+			if (mstate->dtms_biscuit)
+				ip6p = (struct in6_addr *)dtrace_vmloadmem(
+				    mstate, tupregs[argi].dttk_value,
+				    sizeof(struct in6_addr));
+			else
+				ip6p = (struct in6_addr *)tupregs[argi].dttk_value;
+
 			dtrace_bcopy(
-			    (void *)(uintptr_t)tupregs[argi].dttk_value,
+			    (void *)(uintptr_t)ip6p,
 			    (void *)(uintptr_t)&ip6, sizeof (struct in6_addr));
 
 			/*
@@ -6554,7 +6564,8 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			break;
 		case DIF_OP_RET:
 			if (mstate->dtms_biscuit) {
-				if (difo->dtdo_rtype.dtdt_flags != 0) {
+				if (difo->dtdo_rtype.dtdt_flags != 0 &&
+				    difo->dtdo_rtype.dtdt_kind == DIF_TYPE_CTF) {
 					regs[rd] = dtrace_vmloadmem(mstate, regs[rd],
 					    difo->dtdo_rtype.dtdt_size);
 				}
