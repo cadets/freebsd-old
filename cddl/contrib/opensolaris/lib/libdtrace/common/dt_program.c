@@ -149,6 +149,46 @@ dtrace_program_info(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	}
 }
 
+/*ARGSUSED*/
+void
+dtrace_program_summary(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
+{
+	dt_stmt_t *stp;
+	dtrace_actdesc_t *ap;
+	dtrace_ecbdesc_t *last = NULL;
+
+	
+	for (stp = dt_list_next(&pgp->dp_stmts); stp; stp = dt_list_next(stp)) {
+		dtrace_ecbdesc_t *edp = stp->ds_desc->dtsd_ecbdesc;
+
+		if (edp	== last)
+			continue;
+		last = edp;
+
+		for (ap = edp->dted_action; ap != NULL; ap = ap->dtad_next) {
+			if (ap->dtad_kind == DTRACEACT_SPECULATE) {
+				printf("Action: Speculation\n");
+				continue;
+			}
+
+			if (DTRACEACT_ISAGG(ap->dtad_kind)) {
+				printf("Action: Aggregation\n");
+				continue;
+			}
+
+			if (DTRACEACT_ISDESTRUCTIVE(ap->dtad_kind))
+				continue;
+
+			if (ap->dtad_kind == DTRACEACT_DIFEXPR ) {//&& ap->dtad_difo->dtdo_rtype.dtdt_size == 0) {
+				printf("Action: Dif Expression\n")
+				dt_dis(ap->dtad_difo, stdout);
+				continue;
+			}
+
+		}
+	}
+}
+
 int
 dtrace_program_exec(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
     dtrace_proginfo_t *pip)

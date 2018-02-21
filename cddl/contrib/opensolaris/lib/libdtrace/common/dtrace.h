@@ -134,6 +134,7 @@ extern int dtrace_program_exec(dtrace_hdl_t *, dtrace_prog_t *,
     dtrace_proginfo_t *);
 extern void dtrace_program_info(dtrace_hdl_t *, dtrace_prog_t *,
     dtrace_proginfo_t *);
+extern void dtrace_program_summary(dtrace_hdl_t *dtp, dtrace_prog_t *pgp);
 
 #define	DTRACE_D_STRIP	0x01	/* strip non-loadable sections from program */
 #define	DTRACE_D_PROBES	0x02	/* include provider and probe definitions */

@@ -649,6 +649,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 
 	if (!g_exec) {
 		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
+		dtrace_program_summary(g_dtp, dcp->dc_prog);
 	} else if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
 		dfatal("failed to enable '%s'", dcp->dc_name);
 	} else {
