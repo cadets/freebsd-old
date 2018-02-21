@@ -26,6 +26,7 @@
 
 #include <unistd.h>
 #include <strings.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <assert.h>
@@ -38,6 +39,20 @@
 #include <dt_program.h>
 #include <dt_printf.h>
 #include <dt_provider.h>
+
+/*
+ * Print GraphViz .dot-formatted output for a DTrace action.
+ *
+ * Returns whether or not the action modifies variables.
+ */
+static bool print_action(dtrace_actdesc_t *, const char *probename, FILE *out);
+
+/*
+ * Print GraphViz .dot-formatted output for a DTrace Instruction Format Object.
+ *
+ * Returns whether or not the DIFO modifies variables.
+ */
+static bool print_difo(dtrace_difo_t *, const char *probename, FILE *out);
 
 dtrace_prog_t *
 dt_program_create(dtrace_hdl_t *dtp)
@@ -149,99 +164,151 @@ dtrace_program_info(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	}
 }
 
+static bool
+print_action(dtrace_actdesc_t *ap, const char *probename, FILE *dot_output)
+{
+	dtrace_actkind_t kind = ap->dtad_kind;
+	bool mod = false;
+
+	if (kind == DTRACEACT_DIFEXPR) {
+		mod |= print_difo(ap->dtad_difo, probename, dot_output);
+
+	} else if (DTRACEACT_CLASS(kind) == DTRACEACT_SPECULATIVE) {
+		/* TODO */
+
+	} else if (DTRACEACT_ISAGG(kind)) {
+		/* TODO */
+		mod |= true;
+
+	}
+
+	return false;
+}
+
+static bool
+print_difo(dtrace_difo_t *dp, const char *probename, FILE *dot_output)
+{
+	char label[DTRACE_FULLNAMELEN];
+	char name[DTRACE_FULLNAMELEN];
+	dtrace_difv_t *vp;
+	size_t remaining;
+	char *cp;
+	int i;
+	bool mod = false;
+
+	/*
+	 * Iterate over symbol table, outputting mods and refs to .dot output
+	 * and taking note of any mods.
+	 */
+	for (i = 0; i < dp->dtdo_varlen; i++) {
+		vp = &dp->dtdo_vartab[i];
+
+		/* Prefix clause-local variables with the name of the clause */
+		cp = name;
+		if (vp->dtdv_scope == DIFV_SCOPE_LOCAL) {
+			cp = stpncpy(cp, probename, sizeof(name));
+			*cp++ = ':';
+		}
+		cp = stpncpy(cp, dp->dtdo_strtab + vp->dtdv_name,
+			sizeof(name) - (cp - name) - 1);
+		assert(*cp == 0);
+
+		/* Generate user-visible label, include the variable's scope */
+		cp = label;
+		cp = stpncpy(cp, name, sizeof(label) - 1);
+		remaining = sizeof(label) - (cp - label) - 1;
+
+		switch (vp->dtdv_scope) {
+		case DIFV_SCOPE_GLOBAL:
+			cp = stpncpy(cp, " (global)", remaining);
+			break;
+		case DIFV_SCOPE_THREAD:
+			cp = stpncpy(cp, " (thread-local)", remaining);
+			break;
+		case DIFV_SCOPE_LOCAL:
+			cp = stpncpy(cp, " (clause-local)", remaining);
+			stpncpy(name, probename, sizeof(name));
+			break;
+		default:
+			cp = stpncpy(cp, " (unknown scope)", remaining);
+		}
+
+		/*
+		 * Output the basic information about the variable as well as
+		 * references (var->probe edges) and modifications (probe->var).
+		 */
+		fprintf(dot_output, "\"%s\" [ label = \"%s\" ];\n",
+			name, label);
+
+		if (vp->dtdv_flags & DIFV_F_REF) {
+			fprintf(dot_output, "\"%s\" -> \"%s\"\n",
+				name, probename);
+		}
+
+		if (vp->dtdv_flags & DIFV_F_MOD)
+		{
+			fprintf(dot_output, "\"%s\" -> \"%s\"\n",
+				probename, name);
+			mod = true;
+		}
+	}
+
+	return mod;
+}
+
 /*ARGSUSED*/
 void
 dtrace_program_summary(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 {
-	int i;
-	char type[DT_TYPE_NAMELEN];
-	int was_write = 0;
+	char probename[DTRACE_FULLNAMELEN];
 	dt_stmt_t *stp;
 	dtrace_actdesc_t *ap;
 	dtrace_ecbdesc_t *last = NULL;
+	dtrace_probedesc_t *descp;
+	FILE *dot_output;
+	char *cp;
+	bool modified = false;
 
-	
+	dot_output = stdout;
+	fprintf(dot_output, "digraph {\n");
+
 	for (stp = dt_list_next(&pgp->dp_stmts); stp; stp = dt_list_next(stp)) {
 		dtrace_ecbdesc_t *edp = stp->ds_desc->dtsd_ecbdesc;
-
 		if (edp	== last)
 			continue;
 		last = edp;
+		descp = &edp->dted_probe;
+
+		assert(sizeof(probename) == (sizeof(descp->dtpd_provider) +
+			sizeof(descp->dtpd_mod) + sizeof(descp->dtpd_func) +
+			sizeof(descp->dtpd_name) + 4));
+
+		cp = probename;
+		cp = stpncpy(cp, descp->dtpd_provider,
+			sizeof(probename) - (cp - probename) - 1);
+		*cp++ = ':';
+		cp = stpncpy(cp, descp->dtpd_mod,
+			sizeof(probename) - (cp - probename) - 1);
+		*cp++ = ':';
+		cp = stpncpy(cp, descp->dtpd_func,
+			sizeof(probename) - (cp - probename) - 1);
+		*cp++ = ':';
+		cp = stpncpy(cp, descp->dtpd_name,
+			sizeof(probename) - (cp - probename) - 1);
+		assert(*cp == 0);
 
 		for (ap = edp->dted_action; ap != NULL; ap = ap->dtad_next) {
-			if (ap->dtad_kind == DTRACEACT_SPECULATE) {
-				printf("Action: Speculation\n");
-				continue;
+			bool mod = print_action(ap, probename, dot_output);
+			if (modified && !mod) {
+				fprintf(stderr, "Read after write in %s\n",
+					probename);
 			}
 
-			if (DTRACEACT_ISAGG(ap->dtad_kind)) {
-				printf("Action: Aggregation\n");
-				continue;
-			}
-
-			if (ap->dtad_kind == DTRACEACT_DIFEXPR ) {//&& ap->dtad_difo->dtdo_rtype.dtdt_size == 0) {
-				printf("Action: Dif Expression\n");
-				
-				for (i = 0; i < ap->dtad_difo->dtdo_varlen; i++) {
-					dtrace_difv_t *v = &ap->dtad_difo->dtdo_vartab[i];
-					char kind[4], scope[4], flags[16] = { 0 };
-
-					switch (v->dtdv_kind) {
-					case DIFV_KIND_ARRAY:
-						(void) strcpy(kind, "arr");
-						break;
-					case DIFV_KIND_SCALAR:
-						(void) strcpy(kind, "scl");
-						break;
-					default:
-						(void) snprintf(kind, sizeof (kind),
-							"%u", v->dtdv_kind);
-					}
-
-					switch (v->dtdv_scope) {
-					case DIFV_SCOPE_GLOBAL:
-						(void) strcpy(scope, "glb");
-						break;
-					case DIFV_SCOPE_THREAD:
-						(void) strcpy(scope, "tls");
-						break;
-					case DIFV_SCOPE_LOCAL:
-						(void) strcpy(scope, "loc");
-						break;
-					default:
-						(void) snprintf(scope, sizeof (scope),
-							"%u", v->dtdv_scope);
-					}
-
-					if (v->dtdv_flags & ~(DIFV_F_REF | DIFV_F_MOD)) {
-						(void) snprintf(flags, sizeof (flags), "/0x%x",
-							v->dtdv_flags & ~(DIFV_F_REF | DIFV_F_MOD));
-					}
-
-					if (v->dtdv_flags & DIFV_F_REF)
-					{
-						if (was_write == 1)
-							fprintf(stderr, "Error: Read after write.");
-						(void) strcat(flags, "/r");
-					}
-					if (v->dtdv_flags & DIFV_F_MOD)
-					{
-						was_write = 1;
-						(void) strcat(flags, "/w");
-					}
-
-					(void) fprintf(stdout, "%-16s %-4u %-3s %-3s %-4s\n",
-						&ap->dtad_difo->dtdo_strtab[v->dtdv_name],
-						v->dtdv_id, kind, scope, flags + 1
-						);
-				}
-					
-				/* dt_dis(ap->dtad_difo, stdout); */
-				continue;
-			}
-
+			modified |= mod;
 		}
 	}
+
+	fprintf(dot_output, "}\n");
 }
 
 int
