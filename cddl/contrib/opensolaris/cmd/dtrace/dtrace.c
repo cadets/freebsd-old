@@ -83,7 +83,7 @@ typedef struct dtrace_cmd {
 #define OMODE_HTML	3
 
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:n:O:o:p:P:qs:SU:vVwx:X:Z";
+	"3:6:aAb:Bc:CD:ef:Fg:GhHi:I:lL:m:n:O:o:p:P:qs:SU:vVwx:X:Z";
 static int g_oformat = OMODE_NONE;
 
 static char **g_argv;
@@ -109,6 +109,7 @@ static int g_cflags;
 static int g_oflags;
 static int g_verbose;
 static int g_exec = 1;
+static const char *g_graphfile = NULL;
 static int g_mode = DMODE_EXEC;
 static int g_status = E_SUCCESS;
 static int g_grabanon = 0;
@@ -143,8 +144,8 @@ usage(FILE *fp)
 	static const char predact[] = "[[ predicate ] action ]";
 
 	(void) fprintf(fp, "Usage: %s [-32|-64] [-aACeFGhHlqSvVwZ] "
-	    "[-b bufsz] [-c cmd] [-D name[=def]]\n\t[-I path] [-L path] "
-	    "[-o output] [-p pid] [-s script] [-U name]\n\t"
+	    "[-b bufsz] [-c cmd] [-D name[=def]]\n\t[-g gv_output] [-I path] "
+	    "[-L path] [-o output] [-p pid] [-s script] [-U name]\n\t"
 	    "[-x opt[=val]] [-X a|c|s|t]\n\n"
 	    "\t[-P provider %s]\n"
 	    "\t[-m [ provider: ] module %s]\n"
@@ -169,6 +170,7 @@ usage(FILE *fp)
 	    "\t-f  enable or list probes matching the specified function name\n"
 	    "\t-F  coalesce trace output by function\n"
 	    "\t-G  generate an ELF file containing embedded dtrace program\n"
+	    "\t-g  output GraphViz Dot representation of script actions\n"
 	    "\t-h  generate a header file with definitions for static probes\n"
 	    "\t-H  print included files when invoking preprocessor\n"
 	    "\t-i  enable or list probes matching the specified probe id\n"
@@ -647,9 +649,20 @@ exec_prog(const dtrace_cmd_t *dcp)
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_proginfo_t dpi;
 
+	if (g_graphfile) {
+		FILE *graph_file = fopen(g_graphfile, "w");
+		if (graph_file == NULL) {
+			fprintf(stderr, "Failed to open %s for writing\n",
+				g_graphfile);
+			return;
+		}
+
+		dtrace_graph_program(g_dtp, dcp->dc_prog, graph_file);
+		fclose(graph_file);
+	}
+
 	if (!g_exec) {
 		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
-		dtrace_program_summary(g_dtp, dcp->dc_prog);
 	} else if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
 		dfatal("failed to enable '%s'", dcp->dc_name);
 	} else {
@@ -1414,6 +1427,10 @@ main(int argc, char *argv[])
 			case 'e':
 				g_exec = 0;
 				done = 1;
+				break;
+
+			case 'g':
+				g_graphfile = optarg;
 				break;
 
 			case 'h':

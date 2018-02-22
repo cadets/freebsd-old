@@ -258,18 +258,16 @@ print_difo(dtrace_difo_t *dp, const char *probename, FILE *dot_output)
 
 /*ARGSUSED*/
 void
-dtrace_program_summary(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
+dtrace_graph_program(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, FILE *dot_output)
 {
 	char probename[DTRACE_FULLNAMELEN];
 	dt_stmt_t *stp;
 	dtrace_actdesc_t *ap;
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_probedesc_t *descp;
-	FILE *dot_output;
 	char *cp;
 	bool modified = false;
 
-	dot_output = stdout;
 	fprintf(dot_output, "digraph {\n");
 
 	for (stp = dt_list_next(&pgp->dp_stmts); stp; stp = dt_list_next(stp)) {
