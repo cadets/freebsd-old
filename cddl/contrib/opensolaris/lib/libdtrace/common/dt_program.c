@@ -196,6 +196,37 @@ print_difo(dtrace_difo_t *dp, const char *probename, FILE *dot_output)
 	int i;
 	bool mod = false;
 
+	const uint_t CALL_OPCODE = 0x2F;
+
+	/*
+	 * Iterate over the difo, outputing any calls to builtin functioms.
+	 */
+
+	for (i = 1; i < dp->dtdo_len; i++) {
+		dif_instr_t instr = dp->dtdo_buf[i];
+		dif_instr_t opcode = DIF_INSTR_OP(instr);
+
+		if (opcode == CALL_OPCODE)
+		{
+			uint_t subr = DIF_INSTR_SUBR(instr);
+			stpncpy(name, dtrace_subrstr(NULL, subr), sizeof(name));
+			cp = stpncpy(label, name, sizeof(label));
+			stpncpy(cp, "()", 2);
+
+			fprintf(dot_output, "\"%s\" [ label = \"%s\" ];\n",
+				name, label);
+
+			fprintf(dot_output, "\"%s\" -> \"%s\"\n",
+				name, probename);
+
+			fprintf(dot_output, "\"%s\" -> \"%s\"\n",
+				probename, name);
+			mod = true;
+			
+		}
+	}
+	
+
 	/*
 	 * Iterate over symbol table, outputting mods and refs to .dot output
 	 * and taking note of any mods.
