@@ -193,6 +193,11 @@ extern "C" {
 #  define BIO_CTRL_DGRAM_SCTP_SAVE_SHUTDOWN               70
 # endif
 
+# define BIO_CTRL_SET_OFFLOAD_TX               71
+# define BIO_CTRL_GET_OFFLOAD_TX               72
+# define BIO_CTRL_SET_OFFLOAD_TX_CTRL_MSG      73
+# define BIO_CTRL_CLEAR_OFFLOAD_TX_CTRL_MSG    74
+
 /* modifiers */
 # define BIO_FP_READ             0x02
 # define BIO_FP_WRITE            0x04
@@ -235,9 +240,22 @@ extern "C" {
  */
 # define BIO_FLAGS_MEM_RDONLY    0x200
 
+/*
+ * This is used with memory BIOs:
+ * BIO_FLAGS_MEM_RDONLY means we shouldn't free up or change the data in any way;
+ * BIO_FLAGS_NONCLEAR_RST means we should't clear data on reset.
+ */
+# define BIO_FLAGS_MEM_RDONLY    0x200
+# define BIO_FLAGS_NONCLEAR_RST  0x400
+
+# define BIO_FLAGS_OFFLOAD_TX           0x2000
+# define BIO_FLAGS_OFFLOAD_TX_CTRL_MSG  0x4000
+
 typedef struct bio_st BIO;
 
 void BIO_set_flags(BIO *b, int flags);
+void BIO_set_error(BIO *b, int error);
+int BIO_get_error(BIO *b);
 int BIO_test_flags(const BIO *b, int flags);
 void BIO_clear_flags(BIO *b, int flags);
 
@@ -248,6 +266,18 @@ void BIO_clear_flags(BIO *b, int flags);
                 BIO_set_flags(b, (BIO_FLAGS_READ|BIO_FLAGS_SHOULD_RETRY))
 # define BIO_set_retry_write(b) \
                 BIO_set_flags(b, (BIO_FLAGS_WRITE|BIO_FLAGS_SHOULD_RETRY))
+
+/* Offload related controls and flags */
+# define BIO_set_offload_tx_flag(b) \
+                BIO_set_flags(b, BIO_FLAGS_OFFLOAD_TX)
+# define BIO_should_offload_tx_flag(b) \
+    BIO_test_flags(b, BIO_FLAGS_OFFLOAD_TX)
+# define BIO_set_offload_tx_ctrl_msg_flag(b) \
+    BIO_set_flags(b, BIO_FLAGS_OFFLOAD_TX_CTRL_MSG)
+# define BIO_should_offload_tx_ctrl_msg_flag(b) \
+    BIO_test_flags(b, (BIO_FLAGS_OFFLOAD_TX_CTRL_MSG))
+# define BIO_clear_offload_tx_ctrl_msg_flag(b) \
+    BIO_clear_flags(b, (BIO_FLAGS_OFFLOAD_TX_CTRL_MSG))
 
 /* These are normally used internally in BIOs */
 # define BIO_clear_retry_flags(b) \
@@ -330,6 +360,7 @@ struct bio_st {
     int init;
     int shutdown;
     int flags;                  /* extra storage */
+    int error_reason;
     int retry_reason;
     int num;
     void *ptr;
@@ -482,6 +513,14 @@ struct bio_dgram_sctp_prinfo {
 # define BIO_get_conn_int_port(b) BIO_ctrl(b,BIO_C_GET_CONNECT,3,NULL)
 
 # define BIO_set_nbio(b,n)       BIO_ctrl(b,BIO_C_SET_NBIO,(n),NULL)
+#  define BIO_set_offload_tx(b, keyblob) \
+    BIO_ctrl(b, BIO_CTRL_SET_OFFLOAD_TX, 0, keyblob)
+#  define BIO_get_offload_tx(b)         \
+    BIO_ctrl(b, BIO_CTRL_GET_OFFLOAD_TX, 0, NULL)
+#  define BIO_set_offload_tx_ctrl_msg(b, record_type)   \
+    BIO_ctrl(b, BIO_CTRL_SET_OFFLOAD_TX_CTRL_MSG, record_type, NULL)
+#  define BIO_clear_offload_tx_ctrl_msg(b) \
+    BIO_ctrl(b, BIO_CTRL_CLEAR_OFFLOAD_TX_CTRL_MSG, 0, NULL)
 
 /* BIO_s_accept() */
 # define BIO_set_accept_port(b,name) BIO_ctrl(b,BIO_C_SET_ACCEPT,0,(char *)name)

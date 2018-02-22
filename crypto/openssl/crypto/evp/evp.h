@@ -402,6 +402,7 @@ struct evp_cipher_st {
 # define         EVP_CTRL_GCM_SET_TAG            0x11
 # define         EVP_CTRL_GCM_SET_IV_FIXED       0x12
 # define         EVP_CTRL_GCM_IV_GEN             0x13
+# define         EVP_CTRL_GCM_GET_IV             0xa
 # define         EVP_CTRL_CCM_SET_IVLEN          EVP_CTRL_GCM_SET_IVLEN
 # define         EVP_CTRL_CCM_GET_TAG            EVP_CTRL_GCM_GET_TAG
 # define         EVP_CTRL_CCM_SET_TAG            EVP_CTRL_GCM_SET_TAG
