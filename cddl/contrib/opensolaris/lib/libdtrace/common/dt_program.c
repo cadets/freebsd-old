@@ -52,12 +52,16 @@
 #define	DTRACE_MODREF_CLAUSE_LOCAL_REF	0x20
 #define	DTRACE_MODREF_MEMORY_MOD	0x40
 #define	DTRACE_MODREF_MEMORY_REF	0x80
+#define	DTRACE_MODREF_STATE_MOD		0x100
+#define	DTRACE_MODREF_STATE_REF		0x200
+
 
 #define	DTRACE_MODREF_ALL ( \
 	DTRACE_MODREF_GLOBAL_MOD | DTRACE_MODREF_GLOBAL_REF \
 	| DTRACE_MODREF_THREAD_LOCAL_MOD | DTRACE_MODREF_THREAD_LOCAL_REF \
 	| DTRACE_MODREF_CLAUSE_LOCAL_MOD | DTRACE_MODREF_CLAUSE_LOCAL_REF \
 	| DTRACE_MODREF_MEMORY_MOD | DTRACE_MODREF_MEMORY_REF \
+	| DTRACE_MODREF_STATE_MOD | DTRACE_MODREF_STATE_REF \
 	)
 
 
@@ -119,7 +123,7 @@ dt_program_destroy(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	dt_free(dtp, pgp);
 }
 
-/*ARGSUSED*/
+/a*ARGSUSED*/
 void
 dtrace_program_info(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
     dtrace_proginfo_t *pip)
@@ -193,16 +197,67 @@ modref_action(const dtrace_actdesc_t *ap)
 	dtrace_actkind_t kind = ap->dtad_kind;
 	int modref = 0;
 
-	if (kind == DTRACEACT_DIFEXPR) {
+	switch (kind) {
+
+	DTRACEACT_NONE:
+	DTRACEACT_STOP:
+	DTRACEACT_RAISE:
+	DTRACEACT_PRINT:
+	DTRACEACT_PRINTA:
+	DTRACEACT_PRINTM:
+		break;
+
+	DTRACEACT_EXIT:
+	DTRACEACT_TRACEMEM:
+	DTRACEACT_TRACEMEM_DYNSIZE:
+		modref |= DTRACE_MODREF_MEMORY_MOD;
+		break;
+
+	DTRACEACT_DIFEXPR:
 		modref |= modref_difo(ap->dtad_difo);
+		break;
 
-	} else if (DTRACEACT_CLASS(kind) == DTRACEACT_SPECULATIVE) {
+	DTRACEACT_USTACK:
+	DTRACEACT_JSTACK:
+		modref |= DTRACE_MODREF_MEMORY_REF | DTRACE_MODREF_MEMORY_MOD;
+		break;
+
+	DTRACEACT_SPECULATIVE:
+	DTRACEACT_SPECULATE:
+	DTRACEACT_DISCARD:
+		modref |= DTRACE_MODREF_STATE_REF | DTRACE_MODREF_STATE_MOD;
+		break;
+
+	DTRACEACT_COMMIT:
+		/* TODO */
+		modref |= DTRACE_MODREF_STATE_REF | DTRACE_MODREF_STATE_MOD | DTRACE_MODREF_MEMORY_MOD;
+		break;
+
+	DTRACEACT_ISAGG:
 		/* TODO */
 		modref |= DTRACE_MODREF_ALL;
+		break;
 
-	} else if (DTRACEACT_ISAGG(kind)) {
-		/* TODO */
+	DTRACEACT_PROC:
+	DTRACEACT_USYM:
+	DTRACEACT_UMOD:
+	DTRACEACT_UADDR:
+	DTRACEACT_PROC_DESTRUCTIVE:
+	DTRACEACT_SYSTEM:
+	DTRACEACT_FREOPEN:
+	DTRACEACT_PROC_CONTROL:
+	DTRACEACT_KERNEL:
+	DTRACEACT_STACK	:
+	DTRACEACT_SYM:
+	DTRACEACT_MOD:
+	DTRACEACT_KERNEL_DESTRUCTIVE:
+	DTRACEACT_BREAKPOINT:
+	DTRACEACT_PANIC:
+	DTRACEACT_CHILL:
+	default:
 		modref |= DTRACE_MODREF_ALL;
+		break;
+		
 
 	}
 
@@ -216,6 +271,7 @@ modref_call(const dif_instr_t *ip)
 	assert(DIF_INSTR_OP(*ip) == CALL_OPCODE);
 
 	switch (DIF_INSTR_SUBR(*ip)) {
+	  
 	default:
 		// If we haven't explicitly described the behaviour of the
 		// called subroutine, assume the worst:
