@@ -638,6 +638,24 @@ info_stmt(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	return (0);
 }
 
+static bool
+checkmodref(int action_modref, int cumulative_modref,
+	     const dtrace_probedesc_t *dp, FILE *output)
+{
+
+	if ((action_modref & cumulative_modref) == action_modref) {
+		// No new modifications or references have been made
+		return (true);
+	}
+
+	// TODO: check various scenario policies
+	fprintf(output, "new mod/ref behaviour in %s:%s:%s:%s: 0x%x vs 0x%x\n",
+		dp->dtpd_provider, dp->dtpd_mod, dp->dtpd_func, dp->dtpd_name,
+		action_modref, cumulative_modref);
+
+	return (true);
+}
+
 /*
  * Execute the specified program by enabling the corresponding instrumentation.
  * If -e has been specified, we get the program info but do not enable it.  If
@@ -649,7 +667,9 @@ exec_prog(const dtrace_cmd_t *dcp)
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_proginfo_t dpi;
 
-	dtrace_analyze_program_modref(dcp->dc_prog, stderr);
+	if (!dtrace_analyze_program_modref(dcp->dc_prog, checkmodref, stderr)) {
+		dfatal("mod/ref analysis failed");
+	}
 
 	if (g_graphfile) {
 		FILE *graph_file = fopen(g_graphfile, "w");

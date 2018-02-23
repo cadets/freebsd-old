@@ -52,7 +52,8 @@ static void print_difo(dtrace_difo_t *, const char *probename, FILE *out);
 
 /*ARGSUSED*/
 bool
-dtrace_analyze_program_modref(dtrace_prog_t *pgp, FILE *output)
+dtrace_analyze_program_modref(dtrace_prog_t *pgp, dtrace_modref_check_f *check,
+	FILE *output)
 {
 	dt_stmt_t *stp;
 	dtrace_actdesc_t *ap;
@@ -71,8 +72,7 @@ dtrace_analyze_program_modref(dtrace_prog_t *pgp, FILE *output)
 		for (ap = edp->dted_action; ap != NULL; ap = ap->dtad_next) {
 			int modref = dtrace_modref_action(ap);
 
-			ok &= dtrace_modref_check(modref, cumulative_modref,
-				descp, stderr);
+			ok &= check(modref, cumulative_modref, descp, output);
 
 			cumulative_modref |= modref;
 		}
@@ -206,24 +206,6 @@ dtrace_modref_call(const dif_instr_t *ip)
 		// called subroutine, assume the worst:
 		return (DTRACE_MODREF_ALL);
 	}
-}
-
-bool
-dtrace_modref_check(int action_modref, int cumulative_modref,
-	     const dtrace_probedesc_t *dp, FILE *output)
-{
-
-	if ((action_modref & cumulative_modref) == action_modref) {
-		// No new modifications or references have been made
-		return (0);
-	}
-
-	// TODO: check various scenario policies
-	fprintf(output, "new mod/ref behaviour in %s:%s:%s:%s: 0x%x vs 0x%x\n",
-		dp->dtpd_provider, dp->dtpd_mod, dp->dtpd_func, dp->dtpd_name,
-		action_modref, cumulative_modref);
-
-	return (DTRACE_MODREF_ALL);
 }
 
 int
