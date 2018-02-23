@@ -71,8 +71,8 @@ dtrace_analyze_program_modref(dtrace_prog_t *pgp, FILE *output)
 		for (ap = edp->dted_action; ap != NULL; ap = ap->dtad_next) {
 			int modref = dtrace_modref_action(ap);
 
-			ok &= dtrace_modref_check(modref, cumulative_modref, descp,
-				stderr);
+			ok &= dtrace_modref_check(modref, cumulative_modref,
+				descp, stderr);
 
 			cumulative_modref |= modref;
 		}
@@ -88,14 +88,14 @@ dtrace_graph_program(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, FILE *dot_output)
 	char probename[DTRACE_FULLNAMELEN];
 	dt_stmt_t *stp;
 	dtrace_actdesc_t *ap;
-	dtrace_ecbdesc_t *last = NULL;
+	dtrace_ecbdesc_t *edp, *last = NULL;
 	dtrace_probedesc_t *descp;
 	char *cp;
 
 	fprintf(dot_output, "digraph {\n");
 
 	for (stp = dt_list_next(&pgp->dp_stmts); stp; stp = dt_list_next(stp)) {
-		dtrace_ecbdesc_t *edp = stp->ds_desc->dtsd_ecbdesc;
+		edp = stp->ds_desc->dtsd_ecbdesc;
 		if (edp	== last)
 			continue;
 		last = edp;
@@ -134,7 +134,6 @@ dtrace_modref_action(const dtrace_actdesc_t *ap)
 	int modref = 0;
 
 	switch (kind) {
-
 	case DTRACEACT_NONE:
 	case DTRACEACT_STOP:
 	case DTRACEACT_RAISE:
@@ -166,9 +165,9 @@ dtrace_modref_action(const dtrace_actdesc_t *ap)
 
 	case DTRACEACT_COMMIT:
 		/* TODO */
-		modref |= DTRACE_MODREF_STATE_REF | DTRACE_MODREF_STATE_MOD | DTRACE_MODREF_MEMORY_MOD;
+		modref |= DTRACE_MODREF_STATE_REF | DTRACE_MODREF_STATE_MOD
+			| DTRACE_MODREF_MEMORY_MOD;
 		break;
-
 
 	case DTRACEACT_PROC:
 	case DTRACEACT_USYM:
@@ -187,18 +186,10 @@ dtrace_modref_action(const dtrace_actdesc_t *ap)
 	case DTRACEACT_PANIC:
 	case DTRACEACT_CHILL:
 	default:
+		/* TODO: classify more action kinds */
 		modref |= DTRACE_MODREF_ALL;
 		break;
-		
-
 	}
-
-	if (DTRACEACT_ISAGG(kind))
-	{
-		/* TODO */
-		modref |= DTRACE_MODREF_ALL;
-	}
-		
 
 	return (modref);
 }
@@ -210,7 +201,6 @@ dtrace_modref_call(const dif_instr_t *ip)
 	assert(DIF_INSTR_OP(*ip) == CALL_OPCODE);
 
 	switch (DIF_INSTR_SUBR(*ip)) {
-	  
 	default:
 		// If we haven't explicitly described the behaviour of the
 		// called subroutine, assume the worst:
@@ -240,6 +230,7 @@ int
 dtrace_modref_difo(const dtrace_difo_t *dp)
 {
 	dtrace_difv_t *vp;
+	dif_instr_t *ip;
 	int i;
 	int modref = 0;
 
@@ -278,10 +269,9 @@ dtrace_modref_difo(const dtrace_difo_t *dp)
 
 	/* Check implicit mod/ref behaviour of subroutine calls within DIF */
 	for (i = 0; i < dp->dtdo_len; i++) {
-		const dif_instr_t *ip = dp->dtdo_buf + i;
-		const dif_instr_t opcode = DIF_INSTR_OP(*ip);
+		ip = dp->dtdo_buf + i;
 
-		if (opcode == CALL_OPCODE) {
+		if (DIF_INSTR_OP(*ip) == CALL_OPCODE) {
 			modref |= dtrace_modref_call(ip);
 		}
 	}
