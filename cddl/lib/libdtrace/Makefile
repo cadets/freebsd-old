@@ -5,6 +5,7 @@
 
 LIB=		dtrace
 SRCS=		dt_aggregate.c \
+		dt_analysis.c \
 		dt_as.c \
 		dt_buf.c \
 		dt_cc.c \
