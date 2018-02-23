@@ -325,7 +325,7 @@ sbtls_init_sb_tls(struct socket *so, struct tls_so_enable *en, size_t size)
 	}
 	tls->cipher = cipher;
 	so->so_snd.sb_tls_info = tls;
-	so->so_snd.sb_tls_flags =  SB_TLS_SEND_SIDE | SB_TLS_CRY_INI,
+	so->so_snd.sb_tls_flags =  SB_TLS_SEND_SIDE | SB_TLS_CRY_INI;
 
 
 	/* cache cpu index */
