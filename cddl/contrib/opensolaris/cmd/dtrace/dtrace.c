@@ -649,6 +649,8 @@ exec_prog(const dtrace_cmd_t *dcp)
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_proginfo_t dpi;
 
+	dtrace_analyze_program_modref(dcp->dc_prog, stderr);
+
 	if (g_graphfile) {
 		FILE *graph_file = fopen(g_graphfile, "w");
 		if (graph_file == NULL) {

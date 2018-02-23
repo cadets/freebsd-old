@@ -34,6 +34,7 @@
 
 #include <sys/dtrace.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <gelf.h>
 #include <libproc.h>
@@ -134,6 +135,9 @@ extern int dtrace_program_exec(dtrace_hdl_t *, dtrace_prog_t *,
     dtrace_proginfo_t *);
 extern void dtrace_program_info(dtrace_hdl_t *, dtrace_prog_t *,
     dtrace_proginfo_t *);
+
+/* Analyze the mod/ref behaviour of a DTrace program */
+extern bool dtrace_analyze_program_modref(dtrace_prog_t *pgp, FILE *);
 
 /* Output GraphViz .dot representation of a DTrace program's actions. */
 extern void dtrace_graph_program(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, FILE *);

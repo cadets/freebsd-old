@@ -40,19 +40,42 @@
 #include <dt_printf.h>
 #include <dt_provider.h>
 
-/*
- * Print GraphViz .dot-formatted output for a DTrace action.
- *
- * Returns whether or not the action modifies variables.
- */
-static bool print_action(dtrace_actdesc_t *, const char *probename, FILE *out);
 
-/*
- * Print GraphViz .dot-formatted output for a DTrace Instruction Format Object.
- *
- * Returns whether or not the DIFO modifies variables.
- */
-static bool print_difo(dtrace_difo_t *, const char *probename, FILE *out);
+/* TODO: refactor into another translation unit? */
+#define	CALL_OPCODE	0x2F
+
+#define	DTRACE_MODREF_GLOBAL_MOD		0x01
+#define	DTRACE_MODREF_GLOBAL_REF		0x02
+#define	DTRACE_MODREF_THREAD_LOCAL_MOD	0x04
+#define	DTRACE_MODREF_THREAD_LOCAL_REF	0x08
+#define	DTRACE_MODREF_CLAUSE_LOCAL_MOD	0x10
+#define	DTRACE_MODREF_CLAUSE_LOCAL_REF	0x20
+#define	DTRACE_MODREF_MEMORY_MOD	0x40
+#define	DTRACE_MODREF_MEMORY_REF	0x80
+
+#define	DTRACE_MODREF_ALL ( \
+	DTRACE_MODREF_GLOBAL_MOD | DTRACE_MODREF_GLOBAL_REF \
+	| DTRACE_MODREF_THREAD_LOCAL_MOD | DTRACE_MODREF_THREAD_LOCAL_REF \
+	| DTRACE_MODREF_CLAUSE_LOCAL_MOD | DTRACE_MODREF_CLAUSE_LOCAL_REF \
+	| DTRACE_MODREF_MEMORY_MOD | DTRACE_MODREF_MEMORY_REF \
+	)
+
+
+/* Analyze the mod/ref behaviour of an action */
+static int	modref_action(const dtrace_actdesc_t *);
+
+/* Check for conformance with mod/ref policies */
+static bool	modref_check(int action_modref, int cumulative_modref,
+	const dtrace_probedesc_t *, FILE *output);
+
+/* Analyze the mod/ref behaviour of a DTrace Instruction Formation Object */
+static int	modref_difo(const dtrace_difo_t *);
+
+/* Print GraphViz Dot-formatted output for a DTrace action */
+static void print_action(dtrace_actdesc_t *, const char *probename, FILE *out);
+
+/* Print GraphViz Dot-formatted output for a DTrace Instruction Format Object */
+static void print_difo(dtrace_difo_t *, const char *probename, FILE *out);
 
 dtrace_prog_t *
 dt_program_create(dtrace_hdl_t *dtp)
@@ -164,28 +187,162 @@ dtrace_program_info(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	}
 }
 
+static int
+modref_action(const dtrace_actdesc_t *ap)
+{
+	dtrace_actkind_t kind = ap->dtad_kind;
+	int modref = 0;
+
+	if (kind == DTRACEACT_DIFEXPR) {
+		modref |= modref_difo(ap->dtad_difo);
+
+	} else if (DTRACEACT_CLASS(kind) == DTRACEACT_SPECULATIVE) {
+		/* TODO */
+		modref |= DTRACE_MODREF_ALL;
+
+	} else if (DTRACEACT_ISAGG(kind)) {
+		/* TODO */
+		modref |= DTRACE_MODREF_ALL;
+
+	}
+
+	return (modref);
+}
+
+static int
+modref_call(const dif_instr_t *ip)
+{
+
+	assert(DIF_INSTR_OP(*ip) == CALL_OPCODE);
+
+	switch (DIF_INSTR_SUBR(*ip)) {
+	default:
+		// If we haven't explicitly described the behaviour of the
+		// called subroutine, assume the worst:
+		return (DTRACE_MODREF_ALL);
+	}
+}
+
 static bool
+modref_check(int action_modref, int cumulative_modref,
+	     const dtrace_probedesc_t *dp, FILE *output)
+{
+
+	if ((action_modref & cumulative_modref) == action_modref) {
+		// No new modifications or references have been made
+		return (0);
+	}
+
+	// TODO: check various scenario policies
+	fprintf(output, "new mod/ref behaviour in %s:%s:%s:%s: 0x%x vs 0x%x\n",
+		dp->dtpd_provider, dp->dtpd_mod, dp->dtpd_func, dp->dtpd_name,
+		action_modref, cumulative_modref);
+
+	return (DTRACE_MODREF_ALL);
+}
+
+static int
+modref_difo(const dtrace_difo_t *dp)
+{
+	dtrace_difv_t *vp;
+	int i;
+	int modref = 0;
+
+	/* Check explicit mod/ref behaviour described in symbol table */
+	for (i = 0; i < dp->dtdo_varlen; i++) {
+		vp = &dp->dtdo_vartab[i];
+
+		if (vp->dtdv_flags & DIFV_F_MOD) {
+			switch (vp->dtdv_scope) {
+			case DIFV_SCOPE_GLOBAL:
+				modref |= DTRACE_MODREF_GLOBAL_MOD;
+				break;
+			case DIFV_SCOPE_THREAD:
+				modref |= DTRACE_MODREF_THREAD_LOCAL_MOD;
+				break;
+			case DIFV_SCOPE_LOCAL:
+				modref |= DTRACE_MODREF_CLAUSE_LOCAL_MOD;
+				break;
+			}
+		}
+
+		if (vp->dtdv_flags & DIFV_F_REF) {
+			switch (vp->dtdv_scope) {
+			case DIFV_SCOPE_GLOBAL:
+				modref |= DTRACE_MODREF_GLOBAL_REF;
+				break;
+			case DIFV_SCOPE_THREAD:
+				modref |= DTRACE_MODREF_THREAD_LOCAL_REF;
+				break;
+			case DIFV_SCOPE_LOCAL:
+				modref |= DTRACE_MODREF_CLAUSE_LOCAL_REF;
+				break;
+			}
+		}
+	}
+
+	/* Check implicit mod/ref behaviour of subroutine calls within DIF */
+	for (i = 0; i < dp->dtdo_len; i++) {
+		const dif_instr_t *ip = dp->dtdo_buf + i;
+		const dif_instr_t opcode = DIF_INSTR_OP(*ip);
+
+		if (opcode == CALL_OPCODE) {
+			modref |= modref_call(ip);
+		}
+	}
+
+	return (modref);
+}
+
+/*ARGSUSED*/
+bool
+dtrace_analyze_program_modref(dtrace_prog_t *pgp, FILE *output)
+{
+	dt_stmt_t *stp;
+	dtrace_actdesc_t *ap;
+	dtrace_ecbdesc_t *last = NULL;
+	dtrace_probedesc_t *descp;
+	int modref, cumulative_modref = 0;
+	bool ok = true;
+
+	for (stp = dt_list_next(&pgp->dp_stmts); stp; stp = dt_list_next(stp)) {
+		dtrace_ecbdesc_t *edp = stp->ds_desc->dtsd_ecbdesc;
+		if (edp	== last)
+			continue;
+		last = edp;
+		descp = &edp->dted_probe;
+
+		for (ap = edp->dted_action; ap != NULL; ap = ap->dtad_next) {
+			int modref = modref_action(ap);
+
+			ok &= modref_check(modref, cumulative_modref, descp,
+				stderr);
+
+			cumulative_modref |= modref;
+		}
+	}
+
+	return (ok);
+}
+
+static void
 print_action(dtrace_actdesc_t *ap, const char *probename, FILE *dot_output)
 {
 	dtrace_actkind_t kind = ap->dtad_kind;
-	bool mod = false;
 
 	if (kind == DTRACEACT_DIFEXPR) {
-		mod |= print_difo(ap->dtad_difo, probename, dot_output);
+		print_difo(ap->dtad_difo, probename, dot_output);
 
 	} else if (DTRACEACT_CLASS(kind) == DTRACEACT_SPECULATIVE) {
 		/* TODO */
 
 	} else if (DTRACEACT_ISAGG(kind)) {
 		/* TODO */
-		mod |= true;
 
 	}
-
-	return false;
 }
 
-static bool
+static void
 print_difo(dtrace_difo_t *dp, const char *probename, FILE *dot_output)
 {
 	char label[DTRACE_FULLNAMELEN];
@@ -194,9 +351,6 @@ print_difo(dtrace_difo_t *dp, const char *probename, FILE *dot_output)
 	size_t remaining;
 	char *cp;
 	int i;
-	bool mod = false;
-
-	const uint_t CALL_OPCODE = 0x2F;
 
 	/*
 	 * Iterate over the difo, outputing any calls to builtin functioms.
@@ -221,8 +375,6 @@ print_difo(dtrace_difo_t *dp, const char *probename, FILE *dot_output)
 
 			fprintf(dot_output, "\"%s\" -> \"%s\"\n",
 				probename, name);
-			mod = true;
-			
 		}
 	}
 	
@@ -280,11 +432,8 @@ print_difo(dtrace_difo_t *dp, const char *probename, FILE *dot_output)
 		{
 			fprintf(dot_output, "\"%s\" -> \"%s\"\n",
 				probename, name);
-			mod = true;
 		}
 	}
-
-	return mod;
 }
 
 /*ARGSUSED*/
@@ -297,7 +446,6 @@ dtrace_graph_program(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, FILE *dot_output)
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_probedesc_t *descp;
 	char *cp;
-	bool modified = false;
 
 	fprintf(dot_output, "digraph {\n");
 
@@ -327,13 +475,7 @@ dtrace_graph_program(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, FILE *dot_output)
 		assert(*cp == 0);
 
 		for (ap = edp->dted_action; ap != NULL; ap = ap->dtad_next) {
-			bool mod = print_action(ap, probename, dot_output);
-			if (modified && !mod) {
-				fprintf(stderr, "Read after write in %s\n",
-					probename);
-			}
-
-			modified |= mod;
+			print_action(ap, probename, dot_output);
 		}
 	}
 
