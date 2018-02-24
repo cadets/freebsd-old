@@ -681,9 +681,9 @@ exec_prog(const dtrace_cmd_t *dcp)
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_proginfo_t dpi;
 
-	if (!dtrace_analyze_program_modref(dcp->dc_prog, checkmodref, stderr)) {
-		dfatal("mod/ref analysis failed");
-	}
+	// Don't take any action based on unwanted mod/ref behaviour:
+	// checkmodref emits warnings and that's the end of it.
+	(void) dtrace_analyze_program_modref(dcp->dc_prog, checkmodref, stderr);
 
 	if (g_graphfile) {
 		FILE *graph_file = fopen(g_graphfile, "w");
