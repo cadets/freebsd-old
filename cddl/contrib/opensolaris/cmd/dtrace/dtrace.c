@@ -643,15 +643,29 @@ checkmodref(int action_modref, int cumulative_modref,
 	     const dtrace_probedesc_t *dp, FILE *output)
 {
 
-	if ((action_modref & cumulative_modref) == action_modref) {
-		// No new modifications or references have been made
+	if ((cumulative_modref & DTRACE_MODREF_ANY_MOD) == 0) {
+		// We don't care about pre-modification behaviour.
 		return (true);
 	}
 
-	// TODO: check various scenario policies
-	fprintf(output, "new mod/ref behaviour in %s:%s:%s:%s: 0x%x vs 0x%x\n",
-		dp->dtpd_provider, dp->dtpd_mod, dp->dtpd_func, dp->dtpd_name,
-		action_modref, cumulative_modref);
+	if (action_modref & DTRACE_MODREF_ANY_REF) {
+		fprintf(output, "ref-after-mod in %s:%s:%s:%s:",
+			dp->dtpd_provider, dp->dtpd_mod, dp->dtpd_func,
+			dp->dtpd_name);
+		if (action_modref & DTRACE_MODREF_GLOBAL_REF)
+			fprintf(output, " global");
+		if (action_modref & DTRACE_MODREF_THREAD_LOCAL_REF)
+			fprintf(output, " thread");
+		if (action_modref & DTRACE_MODREF_CLAUSE_LOCAL_REF)
+			fprintf(output, " clause");
+		if (action_modref & DTRACE_MODREF_MEMORY_REF)
+			fprintf(output, " external");
+		if (action_modref & DTRACE_MODREF_STATE_REF)
+			fprintf(output, " internal");
+		fprintf(output, "\n");
+
+		return (false);
+	}
 
 	return (true);
 }
