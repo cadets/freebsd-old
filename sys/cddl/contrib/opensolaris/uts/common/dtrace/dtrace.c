@@ -18578,8 +18578,12 @@ static int
 dtrace_priv_virtstate_create(void)
 {
 
+	mutex_enter(&dtrace_lock);
+	mutex_enter(&cpu_lock);
 	virt_state = dtrace_state_create(NULL, NULL);
 	virt_state->dts_options[DTRACEOPT_BUFSIZE] = 20*1024*1024;
+	mutex_exit(&cpu_lock);
+	mutex_exit(&dtrace_lock);
 	return (virt_state == NULL) ? ENOMEM : 0;
 }
 
@@ -18588,7 +18592,11 @@ dtrace_priv_virtstate_destroy(void)
 {
 
 	ASSERT(virt_state != NULL);
+	mutex_enter(&dtrace_lock);
+	mutex_enter(&cpu_lock);
 	dtrace_state_destroy(virt_state);
+	mutex_exit(&cpu_lock);
+	mutex_exit(&dtrace_lock);
 	kmem_free(virt_state, sizeof(dtrace_state_t));
 	virt_state = NULL;
 }
@@ -18610,9 +18618,14 @@ dtrace_priv_virtstate_stop(void)
 {
 
 	processorid_t cpuid;
+	int err;
 
 	ASSERT(virt_state != NULL);
-	return (dtrace_state_stop(virt_state, &cpuid));
+	mutex_enter(&dtrace_lock);
+	err = dtrace_state_stop(virt_state, &cpuid);
+	mutex_exit(&dtrace_lock);
+
+	return (err);
 }
 
 static int
