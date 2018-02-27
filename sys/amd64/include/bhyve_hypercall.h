@@ -78,8 +78,7 @@ struct hypercall_args {
  * calling convention.
  */
 int	hypercall_prototype(void /* args */);
-int	hypercall_dtrace_probe(uint32_t, uintptr_t, uintptr_t, uintptr_t,
-   	    uintptr_t, uintptr_t);
+int	hypercall_dtrace_probe(uint32_t, uintptr_t, lwpid_t);
 
 static __inline int
 bhyve_hypercalls_enabled(void)
