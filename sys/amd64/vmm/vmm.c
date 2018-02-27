@@ -90,6 +90,7 @@ struct vm_biscuit {
 	struct vm *vm;
 	struct vm_guest_paging *paging;
 	int vcpuid;
+	lwpid_t tid;
 };
 
 struct vlapic;
@@ -271,7 +272,7 @@ void	(*vmmdt_hook_setargs)(const char *, int, const uint64_t[VMMDT_MAXARGS]);
 typedef int (*hc_handler_t)(uint64_t, struct vm *, int,
     struct vm_exit *, bool *);
 typedef int64_t (*hc_dispatcher_t)(struct vm *, int,
-    uint64_t *, struct vm_guest_paging *);
+    uintptr_t *, struct vm_guest_paging *);
 
 /*
  * The default hypervisor mode used is BHYVE_MODE.
@@ -296,10 +297,10 @@ static int hypercall_copy_arg(struct vm *, int, uint64_t,
     uintptr_t, uint64_t, struct vm_guest_paging *, void *);
 
 static int64_t hc_handle_prototype(struct vm *, int,
-    uint64_t *, struct vm_guest_paging *);
+    uintptr_t *, struct vm_guest_paging *);
 
 static int64_t hc_handle_dtrace_probe(struct vm *, int,
-    uint64_t *, struct vm_guest_paging *);
+    uintptr_t *, struct vm_guest_paging *);
 
 /*
  * Each hypercall mode implements different hypercalls
@@ -339,6 +340,7 @@ static void vcpu_notify_event_locked(struct vcpu *vcpu, bool lapic_intr);
 static void * vmm_priv_copyin(void *xbiscuit,
     void *addr, size_t len, struct malloc_type *t);
 static void vmm_priv_bcopy(void *, void *, void *, size_t);
+static lwpid_t vmm_priv_gettid(void *);
 
 static int
 sysctl_vmm_hypervisor_mode(SYSCTL_HANDLER_ARGS)
@@ -499,6 +501,7 @@ vmm_handler(module_t mod, int what, void *arg)
 		error = vmm_init();
 		vmm_copyin = vmm_priv_copyin;
 		vmm_bcopy = vmm_priv_bcopy;
+		vmm_gettid = vmm_priv_gettid;
 		if (error == 0)
 			vmm_initialized = 1;
 		break;
@@ -1696,7 +1699,7 @@ vm_handle_reqidle(struct vm *vm, int vcpuid, bool *retu)
 
 static __inline int64_t
 hypercall_dispatch(uint64_t hcid, struct vm *vm, int vcpuid,
-    uint64_t *args, struct vm_guest_paging *paging)
+    uintptr_t *args, struct vm_guest_paging *paging)
 {
 	/*
 	 * Do not allow hypercalls that aren't implemented.
@@ -1828,26 +1831,43 @@ vm_handle_hypercall(struct vm *vm, int vcpuid, struct vm_exit *vmexit, bool *ret
 
 static __inline int64_t
 hc_handle_prototype(struct vm *vm, int vcpuid,
-    uint64_t *args, struct vm_guest_paging *paging)
+    uintptr_t *args, struct vm_guest_paging *paging)
 {
 	return (HYPERCALL_RET_SUCCESS);
 }
 
 static int64_t
 hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
-    uint64_t *args, struct vm_guest_paging *paging)
+    uintptr_t *args, struct vm_guest_paging *paging)
 {
 	struct vm_biscuit *biscuit = malloc(sizeof(
 	    struct vm_biscuit), M_VM, M_ZERO | M_WAITOK);
+	struct seg_desc ds_desc;
+	uintptr_t dt_probe_args[5];
+	int err;
 
 	biscuit->vm = vm;
 	biscuit->paging = paging;
 	biscuit->vcpuid = vcpuid;
+	biscuit->tid = args[2];
+	err = 0;
+	memset(dt_probe_args, 0, sizeof(uintptr_t) * 5);
 
-	int error = HYPERCALL_RET_SUCCESS;
-	dtvirt_probe(biscuit, (int)args[0], args[1],
-	    args[2], args[3], args[4], args[5]);
-	return (error);
+	err = vm_get_seg_desc(vm, vcpuid, VM_REG_GUEST_DS, &ds_desc);
+	KASSERT(err == 0, ("%s: error %d getting DS descriptor",
+	    __func__, error));
+
+	err = hypercall_copy_arg(vm, vcpuid, ds_desc.base,
+	    args[1], 5 * sizeof(uintptr_t), paging, dt_probe_args);
+	KASSERT(err == 0, ("%s: error %d getting DS descriptor",
+	    __func__, error));
+
+	dtvirt_probe(biscuit, (int)args[0], 
+	    dt_probe_args[0], dt_probe_args[1],
+	    dt_probe_args[2], dt_probe_args[3],
+	    dt_probe_args[4]);
+
+	return (HYPERCALL_RET_SUCCESS);
 }
 
 int
@@ -2387,22 +2407,6 @@ vm_inject_bp(void *vm, int vcpuid)
 	error = vm_inject_exception(vm, vcpuid, IDT_BP, 0, 0, 0);
 	KASSERT(error == 0, ("vm_inject_bp error %d", error));
 
-}
-
-__inline void
-vm_dtrace_init_install(void *vm, int vcpuid)
-{
-	//int error = 0;
-	//error = vm_inject_exception(vm, vcpuid, IDT_DTRACE_INST, 0, 0, 0);
-	//KASSERT(error == 0, ("vm_dtrace_init_install error %d", error));
-}
-
-__inline void
-vm_dtrace_init_uninstall(void *vm, int vcpuid)
-{
-	//int error = 0;
-	//error =vm_inject_exception(vm, vcpuid, IDT_DTRACE_UINST, 0, 0, 0);
-	//KASSERT(error == 0, ("vm_dtrace_init_uninstall error %d", error));
 }
 
 static VMM_STAT(VCPU_NMI_COUNT, "number of NMIs delivered to vcpu");
@@ -3077,6 +3081,14 @@ vmm_priv_bcopy(void *xbiscuit, void *src, void *dst, size_t len)
 
 	vm_copyin(vm, vcpuid, copyinfo, dst, len);
 	vm_copy_teardown(vm, vcpuid, copyinfo, nitems(copyinfo));
+}
+
+static lwpid_t
+vmm_priv_gettid(void *xbiscuit)
+{
+
+	struct vm_biscuit *biscuit = xbiscuit;
+	return (biscuit->tid);
 }
 
 /*

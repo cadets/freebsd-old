@@ -14,11 +14,13 @@ static MALLOC_DEFINE(M_DTVIRT, "dtvirt", "");
 static void * dtvirt_priv_ptr(void *, uintptr_t, size_t);
 static void dtvirt_priv_bcopy(void *, void *, void *, size_t);
 static void dtvirt_priv_free(void *, size_t);
+static lwpid_t dtvirt_priv_gettid(void *);
 
 void * (*vmm_copyin)(void *biscuit,
     void *addr, size_t len, struct malloc_type *t);
 void (*vmm_bcopy)(void *biscuit,
     void *src, void *dst, size_t len);
+lwpid_t (*vmm_gettid)(void *biscuit);
 
 void
 dtvirt_probe(void *biscuit, int probeid, uintptr_t arg0, uintptr_t arg1,
@@ -37,11 +39,13 @@ dtvirt_handler(module_t mod __unused, int what, void *arg __unused)
 		dtvirt_ptr = dtvirt_priv_ptr;
 		dtvirt_free = dtvirt_priv_free;
 		dtvirt_bcopy = dtvirt_priv_bcopy;
+		dtvirt_gettid = dtvirt_priv_gettid;
 		break;
 	case MOD_UNLOAD:
 		dtvirt_ptr = NULL;
 		dtvirt_free = NULL;
 		dtvirt_bcopy = NULL;
+		dtvirt_gettid = NULL;
 		break;
 	default:
 		break;
@@ -71,6 +75,14 @@ dtvirt_priv_free(void *addr, size_t size)
 {
 
 	free(addr, M_DTVIRT);
+}
+
+static lwpid_t
+dtvirt_priv_gettid(void *biscuit)
+{
+
+	if (vmm_gettid != NULL)
+		return (vmm_gettid(biscuit));
 }
 
 static moduledata_t dtvirt_kmod = {

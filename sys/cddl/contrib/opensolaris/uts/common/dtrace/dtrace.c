@@ -399,6 +399,7 @@ static int		dtrace_helptrace_wrapped = 0;
 void * (*dtvirt_ptr)(void *, uintptr_t, size_t);
 void (*dtvirt_bcopy)(void *, void *, void *, size_t);
 void (*dtvirt_free)(void *, size_t);
+lwpid_t (*dtvirt_gettid)(void *);
 
 
 /*
@@ -468,14 +469,24 @@ static kmutex_t dtrace_errlock;
 	    (((uint64_t)1 << 61) - 1)) | ((uint64_t)intr << 61); \
 }
 #else
-#define	DTRACE_TLS_THRKEY(where) { \
+/*
+ * FIXME(dstolfa): This does not work because we don't guarantee the uniqueness
+ * of keys when firing on multiple guests + host.
+ */
+#define	DTRACE_TLS_THRKEY(mstate, where) { \
 	solaris_cpu_t *_c = &solaris_cpu[curcpu]; \
 	uint_t intr = 0; \
 	uint_t actv = _c->cpu_intr_actv; \
+	lwpid_t tid; \
+	void *biscuit = mstate->dtms_biscuit; \
 	for (; actv; actv >>= 1) \
 		intr++; \
 	ASSERT(intr < (1 << 3)); \
-	(where) = ((curthread->td_tid + DIF_VARIABLE_MAX) & \
+	if (biscuit) \
+		tid = dtvirt_gettid(biscuit); \
+	else \
+		tid = curthread->td_tid; \
+	(where) = ((tid + DIF_VARIABLE_MAX) & \
 	    (((uint64_t)1 << 61) - 1)) | ((uint64_t)intr << 61); \
 }
 #endif
@@ -6754,7 +6765,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			key = &tupregs[DIF_DTR_NREGS];
 			key[0].dttk_value = (uint64_t)id;
 			key[0].dttk_size = 0;
-			DTRACE_TLS_THRKEY(key[1].dttk_value);
+			DTRACE_TLS_THRKEY(mstate, key[1].dttk_value);
 			key[1].dttk_size = 0;
 
 			dvar = dtrace_dynvar(dstate, 2, key,
@@ -6787,7 +6798,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			key = &tupregs[DIF_DTR_NREGS];
 			key[0].dttk_value = (uint64_t)id;
 			key[0].dttk_size = 0;
-			DTRACE_TLS_THRKEY(key[1].dttk_value);
+			DTRACE_TLS_THRKEY(mstate, key[1].dttk_value);
 			key[1].dttk_size = 0;
 			v = &vstate->dtvs_tlocals[id];
 
@@ -6896,7 +6907,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			key[nkeys++].dttk_size = 0;
 
 			if (DIF_INSTR_OP(instr) == DIF_OP_LDTAA) {
-				DTRACE_TLS_THRKEY(key[nkeys].dttk_value);
+				DTRACE_TLS_THRKEY(mstate, key[nkeys].dttk_value);
 				key[nkeys++].dttk_size = 0;
 				VERIFY(id < vstate->dtvs_ntlocals);
 				v = &vstate->dtvs_tlocals[id];
@@ -6938,7 +6949,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			key[nkeys++].dttk_size = 0;
 
 			if (DIF_INSTR_OP(instr) == DIF_OP_STTAA) {
-				DTRACE_TLS_THRKEY(key[nkeys].dttk_value);
+				DTRACE_TLS_THRKEY(mstate, key[nkeys].dttk_value);
 				key[nkeys++].dttk_size = 0;
 				VERIFY(id < vstate->dtvs_ntlocals);
 				v = &vstate->dtvs_tlocals[id];
@@ -7060,15 +7071,15 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			}
 			*((uint64_t *)(uintptr_t)regs[rd]) = regs[r1];
 			break;
-		case DIF_OP_HCALL:
+		case DIF_OP_HCALL: {
 			if (bhyve_hypercalls_enabled()) {
 				hypercall_dtrace_probe(
 				    mstate->dtms_probe->dtpr_id,
-				    mstate->dtms_arg[0], mstate->dtms_arg[1],
-				    mstate->dtms_arg[2], mstate->dtms_arg[3],
-				    mstate->dtms_arg[4]);
+				    (uintptr_t)&mstate->dtms_arg, curthread->td_tid);
 			}
 			break;
+		}
+
 		}
 	}
 
