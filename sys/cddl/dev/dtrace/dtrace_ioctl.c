@@ -876,7 +876,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 			return (EINVAL);
 
 		if (cur->dtfl_count >= DTRACEFILT_MAX)
-			return (EOVERFLOW);
+			return (EINVAL);
 
 		/*
 		 * Iterate over the input filter.

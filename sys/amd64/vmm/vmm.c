@@ -338,6 +338,7 @@ static void vcpu_notify_event_locked(struct vcpu *vcpu, bool lapic_intr);
 
 static void * vmm_priv_copyin(void *xbiscuit,
     void *addr, size_t len, struct malloc_type *t);
+static void vmm_priv_bcopy(void *, void *, void *, size_t);
 
 static int
 sysctl_vmm_hypervisor_mode(SYSCTL_HANDLER_ARGS)
@@ -497,6 +498,7 @@ vmm_handler(module_t mod, int what, void *arg)
 		vmmdev_init();
 		error = vmm_init();
 		vmm_copyin = vmm_priv_copyin;
+		vmm_bcopy = vmm_priv_bcopy;
 		if (error == 0)
 			vmm_initialized = 1;
 		break;
@@ -3037,6 +3039,44 @@ vmm_priv_copyin(void *xbiscuit, void *addr, size_t len, struct malloc_type *t)
 	vm_copy_teardown(vm, vcpuid, copyinfo, nitems(copyinfo));
 
 	return (dst);
+}
+
+static void
+vmm_priv_bcopy(void *xbiscuit, void *src, void *dst, size_t len)
+{
+	struct vm_biscuit *biscuit;
+	struct vm *vm;
+	struct vm_guest_paging *paging;
+	struct vm_copyinfo copyinfo[2];
+	struct seg_desc ds_desc;
+	uintptr_t gla;
+	int error, fault, vcpuid;
+
+	biscuit = xbiscuit;
+	fault = 0;
+	gla = 0;
+
+	KASSERT(biscuit != 0, "biscuit must not be NULL\n");
+	KASSERT(dst != 0, "dst must not be NULL\n");
+
+	vm = biscuit->vm;
+	paging = biscuit->paging;
+	vcpuid = biscuit->vcpuid;
+
+	error = vm_get_seg_desc(vm, vcpuid, VM_REG_GUEST_DS, &ds_desc);
+	KASSERT(error == 0, ("%s: error %d getting DS descriptor",
+	    __func__, error));
+
+	gla = ds_desc.base + (uintptr_t)src;
+	error = vm_copy_setup(vm, vcpuid,
+	    paging, gla, len, PROT_READ, copyinfo, nitems(copyinfo), &fault);
+
+	if (error || fault) {
+		return;
+	}
+
+	vm_copyin(vm, vcpuid, copyinfo, dst, len);
+	vm_copy_teardown(vm, vcpuid, copyinfo, nitems(copyinfo));
 }
 
 /*
