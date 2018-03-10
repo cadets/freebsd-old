@@ -430,6 +430,7 @@ extern void * (*vmm_copyin)(void *biscuit,
 extern void (*vmm_bcopy)(void *biscuit,
     void *src, void *dst, size_t len);
 extern lwpid_t (*vmm_gettid)(void *biscuit);
+extern uint16_t (*vmm_getid)(void *biscuit);
 
 int vcpu_trace_exceptions(struct vm *vm, int vcpuid);
 #endif	/* KERNEL */

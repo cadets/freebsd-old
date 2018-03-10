@@ -181,6 +181,7 @@ struct vm {
 	uint16_t	cores;			/* (o) num of cores/socket */
 	uint16_t	threads;		/* (o) num of threads/core */
 	uint16_t	maxcpus;		/* (o) max pluggable cpus */
+	uint16_t	id;			/* (i) the VM id */
 };
 
 static int vmm_initialized;
@@ -250,6 +251,10 @@ int hypercalls_enabled = 0;
 SYSCTL_INT(_hw_vmm, OID_AUTO, hypercalls_enabled, CTLFLAG_RWTUN,
     &hypercalls_enabled, 0,
     "Enable hypercalls on all guests");
+
+static struct unrhdr *vm_arena;
+static struct mtx vm_unrmtx;
+MTX_SYSINIT(vm_unrmtx, &vm_unrmtx, "Unique resource identifier", MTX_DEF);
 
 /*
 int	(*vmmdt_hook_add)(const char *, int);
@@ -341,6 +346,7 @@ static void * vmm_priv_copyin(void *xbiscuit,
     void *addr, size_t len, struct malloc_type *t);
 static void vmm_priv_bcopy(void *, void *, void *, size_t);
 static lwpid_t vmm_priv_gettid(void *);
+static uint16_t vmm_priv_getid(void *);
 
 static int
 sysctl_vmm_hypervisor_mode(SYSCTL_HANDLER_ARGS)
@@ -502,6 +508,8 @@ vmm_handler(module_t mod, int what, void *arg)
 		vmm_copyin = vmm_priv_copyin;
 		vmm_bcopy = vmm_priv_bcopy;
 		vmm_gettid = vmm_priv_gettid;
+		vmm_getid = vmm_priv_getid;
+		vm_arena = new_unrhdr(1, UINT16_MAX, &vm_unrmtx);
 		if (error == 0)
 			vmm_initialized = 1;
 		break;
@@ -510,6 +518,7 @@ vmm_handler(module_t mod, int what, void *arg)
 		if (error == 0) {
 			vmm_resume_p = NULL;
 			iommu_cleanup();
+			delete_unrhdr(vm_arena);
 			if (vmm_ipinum != IPI_AST)
 				lapic_ipi_free(vmm_ipinum);
 			error = VMM_CLEANUP();
@@ -599,6 +608,7 @@ vm_create(const char *name, struct vm **retvm)
 	strcpy(vm->name, name);
 	vm->vmspace = vmspace;
 	mtx_init(&vm->rendezvous_mtx, "vm rendezvous lock", 0, MTX_DEF);
+	vm->id = alloc_unr(vm_arena);
 
 	vm->sockets = 1;
 	vm->cores = cores_per_package;	/* XXX backwards compatibility */
@@ -683,6 +693,7 @@ vm_cleanup(struct vm *vm, bool destroy)
 
 		VMSPACE_FREE(vm->vmspace);
 		vm->vmspace = NULL;
+		free_unr(vm_arena, vm->id);
 	}
 }
 
@@ -3089,6 +3100,14 @@ vmm_priv_gettid(void *xbiscuit)
 
 	struct vm_biscuit *biscuit = xbiscuit;
 	return (biscuit->tid);
+}
+
+static uint16_t
+vmm_priv_getid(void *xbiscuit)
+{
+
+	struct vm_biscuit *biscuit = xbiscuit;
+	return (biscuit->vm->id);
 }
 
 /*
