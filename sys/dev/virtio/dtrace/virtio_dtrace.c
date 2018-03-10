@@ -116,6 +116,8 @@ static uint32_t debug = 0;
 SYSCTL_U32(_dev_vtdtr, OID_AUTO, debug, CTLFLAG_RWTUN, &debug, 0,
     "Enable debugging of virtio-dtrace");
 
+static int vstate = 0;
+
 static int vtdtr_modevent(module_t, int, void *);
 static void vtdtr_cleanup(void);
 
@@ -621,7 +623,6 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 {
 	struct vtdtr_ctrl_pbevent *pb;
 	struct vtdtr_ctrl_provevent *pv;
-	struct vtdtr_probelist *list;
 	struct vtdtr_probe *probe;
 	device_t dev;
 	int retval;
@@ -666,11 +667,10 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	case VIRTIO_DTRACE_PROBE_INSTALL: {
 		sc->vtdtr_ready = 0;
 		pb = &ctrl->uctrl.probe_ev;
-		list = sc->vtdtr_probelist;
 
 		if (debug)
 			device_printf(dev, "VIRTIO_DTRACE_PROBE_INSTALL: %d\n", pb->probe);
-		if (LIST_EMPTY(&list->head)) {
+		if (vstate == 0) {
 			error = dtrace_virtstate_create();
 			if (error) {
 				device_printf(dev, "%s: error %d creating "
@@ -679,20 +679,14 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			}
 
 			device_printf(dev, "Virtual state created\n");
+			vstate = 1;
 		}
 
+		KASSERT(vstate == 1, "vstate must be 1\n");
 		error = dtrace_probeid_enable(pb->probe);
 		if (error) {
 			device_printf(dev, "%s: error %d enabling"
 			    " probe %d\n", __func__, error, pb->probe);
-		} else {
-			probe = malloc(sizeof(struct vtdtr_probe),
-			    M_VTDTR, M_WAITOK | M_ZERO);
-			probe->vtdprobe_id = pb->probe;
-			mtx_lock(&list->mtx);
-			LIST_INSERT_HEAD(&list->head, probe, vtdprobe_next);
-			num_dtprobes++;
-			mtx_unlock(&list->mtx);
 		}
 		break;
 	}
@@ -710,7 +704,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		break;
 	case VIRTIO_DTRACE_STOP:
 		sc->vtdtr_ready = 0;
-		list = sc->vtdtr_probelist;
+		KASSERT(vstate == 1, ("vstate must exist\n"));
 
 		if (debug)
 			device_printf(dev, "VIRTIO_DTRACE_STOP\n");
@@ -722,15 +716,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			device_printf(dev, "Stopping the trace...\n");
 
 		dtrace_virtstate_destroy();
-
-		mtx_lock(&list->mtx);
-		while (!LIST_EMPTY(&list->head)) {            /* List Deletion. */
-			probe = LIST_FIRST(&list->head);
-			LIST_REMOVE(probe, vtdprobe_next);
-			free(probe, M_VTDTR);
-			num_dtprobes--;
-		}
-		mtx_unlock(&list->mtx);
+		vstate = 0;
 		break;
 	case VIRTIO_DTRACE_EOF:
 		if (debug)
