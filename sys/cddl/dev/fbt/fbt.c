@@ -127,6 +127,14 @@ fbt_excluded(const char *name)
 	}
 
 	/*
+	 * In DTrace-virt, we fire a host probe using the hypercall instruction.
+	 * This is called from the probe context, so we should exclude it from
+	 * fbt.
+	 */
+	if (strcmp(name, "hypercall_dtrace_probe") == 0)
+		return (1);
+
+	/*
 	 * Lock owner methods may be called from probe context.
 	 */
 	if (strcmp(name, "owner_mtx") == 0 ||

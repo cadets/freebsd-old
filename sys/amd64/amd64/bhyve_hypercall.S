@@ -56,11 +56,9 @@ hc_prototype:
 END(hypercall_prototype)
 
 ENTRY(hypercall_dtrace_probe)
-	VENTER
 	movq $HYPERCALL_DTRACE_PROBE, %rax
 hc_dtrace_probe:
 	.byte 0x0f,0x01,0xc1
-	VLEAVE
 	ret
 END(hypercall_dtrace_probe)
 
