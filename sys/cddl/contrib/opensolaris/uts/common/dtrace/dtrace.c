@@ -407,6 +407,7 @@ void * (*dtvirt_ptr)(void *, uintptr_t, size_t);
 void (*dtvirt_bcopy)(void *, void *, void *, size_t);
 void (*dtvirt_free)(void *, size_t);
 lwpid_t (*dtvirt_gettid)(void *);
+uint16_t (*dtvirt_getns)(void *);
 
 
 /*
@@ -485,15 +486,20 @@ static kmutex_t dtrace_errlock;
 	uint_t intr = 0; \
 	uint_t actv = _c->cpu_intr_actv; \
 	lwpid_t tid; \
+	uint16_t ns; \
 	void *biscuit = mstate->dtms_biscuit; \
 	for (; actv; actv >>= 1) \
 		intr++; \
 	ASSERT(intr < (1 << 3)); \
-	if (biscuit) \
+	if (biscuit) { \
 		tid = dtvirt_gettid(biscuit); \
-	else \
+		ns = dtvirt_getns(biscuit); \
+	} \
+	else { \
 		tid = curthread->td_tid; \
-	(where) = ((tid + DIF_VARIABLE_MAX) & \
+		ns = 0; \
+	} \
+	(where) = (((uint64_t)ns << 33) | (tid + DIF_VARIABLE_MAX) & \
 	    (((uint64_t)1 << 61) - 1)) | ((uint64_t)intr << 61); \
 }
 #endif
