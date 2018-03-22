@@ -118,6 +118,7 @@ dtvirt_priv_gettid(void *biscuit)
 
 	if (vmm_gettid != NULL)
 		return (vmm_gettid(biscuit));
+	return (0);
 }
 
 static uint16_t
@@ -126,6 +127,7 @@ dtvirt_priv_getns(void *biscuit)
 
 	if (vmm_getid != NULL)
 		return (vmm_getid(biscuit));
+	return (0);
 }
 
 static moduledata_t dtvirt_kmod = {
