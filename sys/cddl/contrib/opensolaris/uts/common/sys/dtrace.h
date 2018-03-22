@@ -224,6 +224,21 @@ typedef enum dtrace_probespec {
 #define	DIF_VAR_OTHER_UBASE	0x0500	/* lowest user-defined scalar or assc */
 #define	DIF_VAR_OTHER_MAX	0xffff	/* highest numbered scalar or assc */
 
+#define	DIF_VAR_ARRAY_GMIN	0x0150 /* lowest numbered guest array */
+#define	DIF_VAR_ARRAY_GMAX	0x024f /* highest numbered guest array */
+
+#define	DIF_VAR_OTHER_GMIN	0x0150 /* lowest numbered guest builtin */
+#define	DIF_VAR_OTHER_GMAX	0x0300 /* highest numbered guest builtin */
+
+#define	DIF_VAR_ARRAY_HMIN	0x0300 /* lowest numbered host array */
+#define	DIF_VAR_ARRAY_HMAX	0x024f /* highest numbered host array */
+
+#define	DIF_VAR_OTHER_HMIN	0x0400 /* lowest numbered host builtin */
+#define	DIF_VAR_OTHER_HMAX	0x0450 /* highest numbered host builtin */
+
+#define	DIF_VAR_HOSTVAR_OFFS	0x300   /* offset to the host variables */
+#define	DIF_VAR_GUESTVAR_OFFS	0x150   /* offset to the guest variables */
+
 #define	DIF_VAR_ARGS		0x0000	/* arguments array */
 #define	DIF_VAR_REGS		0x0001	/* registers array */
 #define	DIF_VAR_UREGS		0x0002	/* user registers array */
@@ -265,8 +280,88 @@ typedef enum dtrace_probespec {
 #define	DIF_VAR_JAILNAME	0x0123	/* process jail name */
 
 #ifndef illumos
-#define	DIF_VAR_CPU		0x0200
+#define	DIF_VAR_CPU		0x014f
 #endif
+
+#define	DIF_VAR_GARGS		0x0150 /* common across h/g */
+#define	DIF_VAR_GREGS		0x0151 /* guest regs */
+#define	DIF_VAR_GUREGS		0x0152 /* guest uregs */
+#define	DIF_VAR_GCURTHREAD	0x0250 /* guest curthread */
+#define	DIF_VAR_GTIMESTAMP	0x0251 /* common across h/g */
+#define	DIF_VAR_GVTIMESTAMP	0x0252 /* common across h/g */
+#define	DIF_VAR_GIPL		0x0253 /* not supported */
+#define	DIF_VAR_GEPID		0x0254 /* guest epid */
+#define	DIF_VAR_GPRID		0x0255 /* common across h/g */
+#define	DIF_VAR_GARG0		0x0256 /* common across h/g */
+#define	DIF_VAR_GARG1		0x0257 /* common across h/g */
+#define	DIF_VAR_GARG2		0x0258 /* common across h/g */
+#define	DIF_VAR_GARG3		0x0259 /* common across h/g */
+#define	DIF_VAR_GARG4		0x025a /* common across h/g */
+#define	DIF_VAR_GARG5		0x025b /* common across h/g */
+#define	DIF_VAR_GARG6		0x025c /* common across h/g */
+#define	DIF_VAR_GARG7		0x025d /* common across h/g */
+#define	DIF_VAR_GARG8		0x025e /* common across h/g */
+#define	DIF_VAR_GARG9		0x025f /* common across h/g */
+#define	DIF_VAR_GSTACKDEPTH	0x0260 /* guest stackdepth */
+#define	DIF_VAR_GCALLER		0x0261 /* guest caller */
+#define	DIF_VAR_GPROBEPROV	0x0262 /* common across h/g */
+#define	DIF_VAR_GPROBEMOD	0x0263 /* common across h/g */
+#define	DIF_VAR_GPROBEFUNC	0x0264 /* common across h/g */
+#define	DIF_VAR_GPROBENAME	0x0265 /* common across h/g */
+#define	DIF_VAR_GPID		0x0266 /* guest pid */
+#define	DIF_VAR_GTID		0x0267 /* guest tid */
+#define	DIF_VAR_GEXECNAME	0x0268 /* guest execname */
+#define	DIF_VAR_GZONENAME	0x0269 /* guest zonename */
+#define	DIF_VAR_GWALLTIMESTAMP	0x026a /* common across h/g */
+#define	DIF_VAR_GUSTACKDEPTH	0x026b /* guest ustackdepth */
+#define	DIF_VAR_GUCALLER	0x026c /* guest ucaller */
+#define	DIF_VAR_GPPID		0x026d /* guest ppid */
+#define	DIF_VAR_GUID		0x026e /* guest uid */
+#define	DIF_VAR_GGID		0x026f /* guest gid */
+#define	DIF_VAR_GERRNO		0x0270 /* guest errno */
+#define	DIF_VAR_GEXECARGS	0x0271 /* guest execargs */
+
+#define	DIF_VAR_GCPU		0x029f /* guest cpu */
+
+#define	DIF_VAR_HARGS		0x0300 /* common across h/g */
+#define	DIF_VAR_HREGS		0x0301 /* host regs */
+#define	DIF_VAR_HUREGS		0x0302 /* host uregs */
+#define	DIF_VAR_HCURTHREAD	0x0400 /* host curthread */
+#define	DIF_VAR_HTIMESTAMP	0x0401 /* common across h/g */
+#define	DIF_VAR_HVTIMESTAMP	0x0402 /* common across h/g */
+#define	DIF_VAR_HIPL		0x0403 /* not supported */
+#define	DIF_VAR_HEPID		0x0404 /* host epid */
+#define	DIF_VAR_HPRID		0x0405 /* common across h/g */
+#define	DIF_VAR_HARG0		0x0406 /* common across h/g */
+#define	DIF_VAR_HARG1		0x0407 /* common across h/g */
+#define	DIF_VAR_HARG2		0x0408 /* common across h/g */
+#define	DIF_VAR_HARG3		0x0409 /* common across h/g */
+#define	DIF_VAR_HARG4		0x040a /* common across h/g */
+#define	DIF_VAR_HARG5		0x040b /* common across h/g */
+#define	DIF_VAR_HARG6		0x040c /* common across h/g */
+#define	DIF_VAR_HARG7		0x040d /* common across h/g */
+#define	DIF_VAR_HARG8		0x040e /* common across h/g */
+#define	DIF_VAR_HARG9		0x040f /* common across h/g */
+#define	DIF_VAR_HSTACKDEPTH	0x0410 /* host stack depth */
+#define	DIF_VAR_HCALLER		0x0411 /* host caller */
+#define	DIF_VAR_HPROBEPROV	0x0412 /* common across h/g */
+#define	DIF_VAR_HPROBEMOD	0x0413 /* common across h/g */
+#define	DIF_VAR_HPROBEFUNC	0x0414 /* common across h/g */
+#define	DIF_VAR_HPROBENAME	0x0415 /* common across h/g */
+#define	DIF_VAR_HPID		0x0416 /* host pid */
+#define	DIF_VAR_HTID		0x0417 /* host tid */
+#define	DIF_VAR_HEXECNAME	0x0418 /* host execname */
+#define	DIF_VAR_HZONENAME	0x0419 /* host zonename */
+#define	DIF_VAR_HWALLTIMESTAMP	0x041a /* common across h/g */
+#define	DIF_VAR_HUSTACKDEPTH	0x041b /* host ustackdepth */
+#define DIF_VAR_HUCALLER	0x041c /* host ucaller */
+#define	DIF_VAR_HPPID		0x041d /* host ppid */
+#define	DIF_VAR_HUID		0x041e /* host uid */
+#define	DIF_VAR_HGID		0x041f /* host gid */
+#define	DIF_VAR_HERRNO		0x0420 /* host errno */
+#define	DIF_VAR_HEXECARGS	0x0421 /* host execargs */
+
+#define	DIF_VAR_HCPU		0x044f /* host cpu */
 
 #define	DIF_SUBR_RAND			0
 #define	DIF_SUBR_MUTEX_OWNED		1

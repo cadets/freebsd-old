@@ -3473,8 +3473,31 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		v = DIF_VAR_ARGS;
 	}
 
+	/*
+	 * FIXME(dstolfa): Need a better way to check for this that's not as
+	 * unstable as this.
+	 */
+	if (v >= DIF_VAR_GARGS &&
+	    v <= DIF_VAR_GCPU  &&
+	    mstate->dtms_biscuit == NULL)
+		return (0);
+
+	if (mstate->dtms_biscuit)
+		v += DIF_VAR_GUESTVAR_OFFS;
+	else
+		v += DIF_VAR_HOSTVAR_OFFS;
+
+	ASSERT(v >= DIF_VAR_GARGS);
+
 	switch (v) {
-	case DIF_VAR_ARGS:
+	/*
+	 * This currently remains the same across guest and host because we are
+	 * simply passing in the arguments in dtrace_probe() and have no way to
+	 * differentiate between the two. The interface would need to be changed
+	 * for that.
+	 */
+	case DIF_VAR_GARGS:
+	case DIF_VAR_HARGS:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_ARGS);
 		if (ndx >= sizeof (mstate->dtms_arg) /
 		    sizeof (mstate->dtms_arg[0])) {
@@ -3506,7 +3529,6 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		}
 
 		return (mstate->dtms_arg[ndx]);
-
 #ifdef illumos
 	case DIF_VAR_UREGS: {
 		klwp_t *lwp;
@@ -3524,7 +3546,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		return (0);
 	}
 #else
-	case DIF_VAR_UREGS: {
+	case DIF_VAR_HUREGS: {
 		struct trapframe *tframe;
 
 		if (!dtrace_priv_proc(state))
@@ -3538,31 +3560,45 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 
 		return (dtrace_getreg(tframe, ndx));
 	}
+
+	case DIF_VAR_GUREGS:
+		return (0);
 #endif
 
-	case DIF_VAR_CURTHREAD:
+	case DIF_VAR_HCURTHREAD:
 		if (!dtrace_priv_proc(state))
 			return (0);
 		return ((uint64_t)(uintptr_t)curthread);
+	case DIF_VAR_GCURTHREAD:
+		return (0);
 
-	case DIF_VAR_TIMESTAMP:
+	/*
+	 * We currently keep these identical because maintain time on the host
+	 * and try to avoid clock drift in the VM. This may be desirable to be
+	 * separate for some occasions though.
+	 */
+	case DIF_VAR_GTIMESTAMP:
+	case DIF_VAR_HTIMESTAMP:
 		if (!(mstate->dtms_present & DTRACE_MSTATE_TIMESTAMP)) {
 			mstate->dtms_timestamp = dtrace_gethrtime();
 			mstate->dtms_present |= DTRACE_MSTATE_TIMESTAMP;
 		}
 		return (mstate->dtms_timestamp);
 
-	case DIF_VAR_VTIMESTAMP:
+	/* See DIF_VAR_GTIMESTAMP */
+	case DIF_VAR_GVTIMESTAMP:
+	case DIF_VAR_HVTIMESTAMP:
 		ASSERT(dtrace_vtime_references != 0);
 		return (curthread->t_dtrace_vtime);
 
-	case DIF_VAR_WALLTIMESTAMP:
+	/* See DIF_VAR_GTIMESTAMP */
+	case DIF_VAR_GWALLTIMESTAMP:
+	case DIF_VAR_HWALLTIMESTAMP:
 		if (!(mstate->dtms_present & DTRACE_MSTATE_WALLTIMESTAMP)) {
 			mstate->dtms_walltimestamp = dtrace_gethrestime();
 			mstate->dtms_present |= DTRACE_MSTATE_WALLTIMESTAMP;
 		}
 		return (mstate->dtms_walltimestamp);
-
 #ifdef illumos
 	case DIF_VAR_IPL:
 		if (!dtrace_priv_kernel(state))
@@ -3574,15 +3610,26 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		return (mstate->dtms_ipl);
 #endif
 
-	case DIF_VAR_EPID:
+	/*
+	 * We currently assume a homogeneous system, therefore we only care
+	 * about the EPID on the host, not the guest. However, this could be
+	 * passed in on the hypercall interface and interpreted as the guest
+	 * EPID.
+	 */
+	case DIF_VAR_GEPID:
+	case DIF_VAR_HEPID:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_EPID);
 		return (mstate->dtms_epid);
 
-	case DIF_VAR_ID:
+	/*
+	 * We require probe IDs to be identical on the guest and host.
+	 */
+	case DIF_VAR_HPRID:
+	case DIF_VAR_GPRID:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
 		return (mstate->dtms_probe->dtpr_id);
 
-	case DIF_VAR_STACKDEPTH:
+	case DIF_VAR_HSTACKDEPTH:
 		if (!dtrace_priv_kernel(state))
 			return (0);
 		if (!(mstate->dtms_present & DTRACE_MSTATE_STACKDEPTH)) {
@@ -3592,8 +3639,10 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			mstate->dtms_present |= DTRACE_MSTATE_STACKDEPTH;
 		}
 		return (mstate->dtms_stackdepth);
+	case DIF_VAR_GSTACKDEPTH:
+		return (0);
 
-	case DIF_VAR_USTACKDEPTH:
+	case DIF_VAR_HUSTACKDEPTH:
 		if (!dtrace_priv_proc(state))
 			return (0);
 		if (!(mstate->dtms_present & DTRACE_MSTATE_USTACKDEPTH)) {
@@ -3612,8 +3661,10 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			mstate->dtms_present |= DTRACE_MSTATE_USTACKDEPTH;
 		}
 		return (mstate->dtms_ustackdepth);
+	case DIF_VAR_GUSTACKDEPTH:
+		return (0);
 
-	case DIF_VAR_CALLER:
+	case DIF_VAR_HCALLER:
 		if (!dtrace_priv_kernel(state))
 			return (0);
 		if (!(mstate->dtms_present & DTRACE_MSTATE_CALLER)) {
@@ -3647,8 +3698,10 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			mstate->dtms_present |= DTRACE_MSTATE_CALLER;
 		}
 		return (mstate->dtms_caller);
+	case DIF_VAR_GCALLER:
+		return (0);
 
-	case DIF_VAR_UCALLER:
+	case DIF_VAR_HUCALLER:
 		if (!dtrace_priv_proc(state))
 			return (0);
 
@@ -3671,32 +3724,42 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		}
 
 		return (mstate->dtms_ucaller);
+	case DIF_VAR_GUCALLER:
+		return (0);
 
-	case DIF_VAR_PROBEPROV:
+	/* See DIF_VAR_GPRID */
+	case DIF_VAR_HPROBEPROV:
+	case DIF_VAR_GPROBEPROV:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
 		return (dtrace_dif_varstr(
 		    (uintptr_t)mstate->dtms_probe->dtpr_provider->dtpv_name,
 		    state, mstate));
 
-	case DIF_VAR_PROBEMOD:
+	/* See DIF_VAR_GPRID */
+	case DIF_VAR_HPROBEMOD:
+	case DIF_VAR_GPROBEMOD:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
 		return (dtrace_dif_varstr(
 		    (uintptr_t)mstate->dtms_probe->dtpr_mod,
 		    state, mstate));
 
-	case DIF_VAR_PROBEFUNC:
+	/* See DIF_VAR_GPRID */
+	case DIF_VAR_HPROBEFUNC:
+	case DIF_VAR_GPROBEFUNC:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
 		return (dtrace_dif_varstr(
 		    (uintptr_t)mstate->dtms_probe->dtpr_func,
 		    state, mstate));
 
-	case DIF_VAR_PROBENAME:
+	/* See DIF_VAR_GPRID */
+	case DIF_VAR_HPROBENAME:
+	case DIF_VAR_GPROBENAME:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
 		return (dtrace_dif_varstr(
 		    (uintptr_t)mstate->dtms_probe->dtpr_name,
 		    state, mstate));
 
-	case DIF_VAR_PID:
+	case DIF_VAR_HPID:
 		if (!dtrace_priv_proc(state))
 			return (0);
 
@@ -3721,8 +3784,10 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 #else
 		return ((uint64_t)curproc->p_pid);
 #endif
+	case DIF_VAR_GPID:
+		return (0);
 
-	case DIF_VAR_PPID:
+	case DIF_VAR_HPPID:
 		if (!dtrace_priv_proc(state))
 			return (0);
 
@@ -3746,8 +3811,10 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		else
 			return (curproc->p_pptr->p_pid);
 #endif
+	case DIF_VAR_GPPID:
+		return (0);
 
-	case DIF_VAR_TID:
+	case DIF_VAR_HTID:
 #ifdef illumos
 		/*
 		 * See comment in DIF_VAR_PID.
@@ -3757,8 +3824,10 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 #endif
 
 		return ((uint64_t)curthread->t_tid);
+	case DIF_VAR_GTID:
+		return (0);
 
-	case DIF_VAR_EXECARGS: {
+	case DIF_VAR_HEXECARGS: {
 		struct pargs *p_args = curthread->td_proc->p_args;
 
 		if (p_args == NULL)
@@ -3768,7 +3837,10 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		    (uintptr_t) p_args->ar_args, p_args->ar_length, state, mstate));
 	}
 
-	case DIF_VAR_EXECNAME:
+	case DIF_VAR_GEXECARGS:
+		return (0);
+
+	case DIF_VAR_HEXECNAME:
 #ifdef illumos
 		if (!dtrace_priv_proc(state))
 			return (0);
@@ -3792,8 +3864,10 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		return (dtrace_dif_varstr(
 		    (uintptr_t) curthread->td_proc->p_comm, state, mstate));
 #endif
+	case DIF_VAR_GEXECNAME:
+		return (0);
 
-	case DIF_VAR_ZONENAME:
+	case DIF_VAR_HZONENAME:
 #ifdef illumos
 		if (!dtrace_priv_proc(state))
 			return (0);
@@ -3834,8 +3908,10 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 #else
 		return (0);
 #endif
+	case DIF_VAR_GZONENAME:
+		return (0);
 
-	case DIF_VAR_UID:
+	case DIF_VAR_HUID:
 		if (!dtrace_priv_proc(state))
 			return (0);
 
@@ -3859,8 +3935,10 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 #else
 		return ((uint64_t)curthread->td_ucred->cr_uid);
 #endif
+	case DIF_VAR_GUID:
+		return (0);
 
-	case DIF_VAR_GID:
+	case DIF_VAR_HGID:
 		if (!dtrace_priv_proc(state))
 			return (0);
 
@@ -3884,8 +3962,10 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 #else
 		return ((uint64_t)curthread->td_ucred->cr_gid);
 #endif
+	case DIF_VAR_GGID:
+		return (0);
 
-	case DIF_VAR_ERRNO: {
+	case DIF_VAR_HERRNO: {
 #ifdef illumos
 		klwp_t *lwp;
 		if (!dtrace_priv_proc(state))
@@ -3911,10 +3991,13 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		return (curthread->td_errno);
 #endif
 	}
+	case DIF_VAR_GERRNO:
+		return (0);
 #ifndef illumos
-	case DIF_VAR_CPU: {
-		return curcpu;
-	}
+	case DIF_VAR_HCPU:
+		return (curcpu);
+	case DIF_VAR_GCPU:
+		return (0);
 #endif
 	default:
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
@@ -10179,7 +10262,9 @@ dtrace_difo_validate(dtrace_difo_t *dp, dtrace_vstate_t *vstate, uint_t nregs,
 			break;
 		case DIF_OP_LDGA:
 		case DIF_OP_LDTA:
-			if (r1 > DIF_VAR_ARRAY_MAX)
+			if (r1 > DIF_VAR_ARRAY_MAX                               &&
+			    (r1 < DIF_VAR_ARRAY_GMIN && r1 > DIF_VAR_ARRAY_GMAX) &&
+			    (r1 < DIF_VAR_ARRAY_HMIN && r1 > DIF_VAR_ARRAY_HMAX))
 				err += efunc(pc, "invalid array %u\n", r1);
 			if (r2 >= nregs)
 				err += efunc(pc, "invalid register %u\n", r2);
@@ -14285,6 +14370,8 @@ dtrace_dof_relocate(dof_hdr_t *dof, dof_sec_t *sec, uint64_t ubase,
 				dtrace_dof_error(dof, "misaligned setx relo");
 				return (-1);
 			}
+
+			ASSERT(taddr & 7 == 0);
 
 			if (r->dofr_type == DOF_RELO_SETX)
 				*(uint64_t *)taddr += ubase;
