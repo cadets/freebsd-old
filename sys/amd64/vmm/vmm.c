@@ -3013,6 +3013,23 @@ vm_copyout(struct vm *vm, int vcpuid, const void *kaddr,
 	}
 }
 
+/*
+ * FIXME: This is being called in the probe context and is not safe. We would
+ * have to do something about that. One possibility is to implement a scratch
+ * space in DTrace specifically for these things. However, there is still a need
+ * to call vm_copyin on the memory. This could be done with a DTrace-specific
+ * routine by passing page tables and reversing the direction of how things
+ * flow. Currently, we should absolutely *not* enable fbt::: on the host while
+ * tracing the guest, as it would cause recursion in the probe context.
+ *
+ * The problematic functions are:
+ * 	vmm_priv_*
+ * 	malloc (only in the context of vmm_priv_copyin)
+ * 	vm_copyin (both cases -- bcopy and copyin)
+ * 	vm_get_seg_desc (both cases -- bcopy and copyin)
+ * 	vm_copy_setup (both cases -- bcopy and copyin)
+ * 	vm_copy_teardown (both cases -- bcopy and copyin)
+ */
 static void *
 vmm_priv_copyin(void *xbiscuit, void *addr, size_t len, struct malloc_type *t)
 {
