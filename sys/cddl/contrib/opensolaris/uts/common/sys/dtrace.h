@@ -2123,6 +2123,14 @@ typedef struct dof_helper {
  *   instrument the kernel arbitrarily should be sure to not instrument these
  *   routines.
  */
+ 
+struct dtrace_state;
+
+typedef struct dtrace_kops {
+	void (*dtkops_open)(void *, struct dtrace_state *);
+	void (*dtkops_close)(void *, struct dtrace_state *);
+} dtrace_kops_t;
+
 typedef struct dtrace_pops {
 	void (*dtps_provide)(void *arg, dtrace_probedesc_t *spec);
 	void (*dtps_provide_module)(void *arg, modctl_t *mp);
@@ -2144,8 +2152,12 @@ typedef struct dtrace_pops {
 #define	DTRACE_MODE_NOPRIV_RESTRICT		0x20
 #define	DTRACE_MODE_LIMITEDPRIV_RESTRICT	0x40
 
+typedef uintptr_t	dtrace_konsumer_id_t;
 typedef uintptr_t	dtrace_provider_id_t;
 
+extern int dtrace_konsumer_register(const char *, const dtrace_kops_t *,
+    void *, dtrace_konsumer_id_t *);
+extern int dtrace_konsumer_unregister(dtrace_konsumer_id_t *);
 extern int dtrace_register(const char *, const dtrace_pattr_t *, uint32_t,
     cred_t *, const dtrace_pops_t *, void *, dtrace_provider_id_t *);
 extern int dtrace_unregister(dtrace_provider_id_t);
