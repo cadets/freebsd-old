@@ -1,6 +1,7 @@
 #ifndef _DTVIRT_H_
 #define _DTVIRT_H_
 
+#include <sys/types.h>
 #include <sys/proc.h>
 
 #define	DTVIRT_ARGS_MAX	10
@@ -19,19 +20,19 @@
  * NULL-terminate a string?
  */
 struct dtvirt_args {
-	uintptr_t	args[DTVIRT_ARGS_MAX];	/* guest probe args */
-	void		*curthread;		/* guest thread */
-	char		*execname;		/* (v) guest execname */
-	char		*execargs;		/* (v) guest execargs */
-	lwpid_t		tid;			/* guest tid */
-	pid_t		pid;			/* guest pid */
-	pid_t		ppid;			/* guest ppid */
-	uid_t		uid;			/* guest uid */
-	gid_t		gid;			/* guest gid */
-	errno_t		errno;			/* guest errno */
-	u_int		execname_len;		/* (v) length of execname */
-	u_int		execargs_len;		/* (v) length of execargs */
-	u_int		curcpu;			/* (h) guest curcpu */
+	uintptr_t dtv_args[DTVIRT_ARGS_MAX]; /* guest probe args */
+	void *dtv_curthread;		     /* guest thread */
+	char *dtv_execname;		     /* (v) guest execname */
+	char *dtv_execargs;		     /* (v) guest execargs */
+	lwpid_t dtv_tid;		     /* guest tid */
+	pid_t dtv_pid;			     /* guest pid */
+	pid_t dtv_ppid;			     /* guest ppid */
+	uid_t dtv_uid;			     /* guest uid */
+	gid_t dtv_gid;			     /* guest gid */
+	int dtv_errno;			     /* guest errno */
+	u_int dtv_execname_len;		     /* (v) length of execname */
+	u_int dtv_execargs_len;		     /* (v) length of execargs r*/
+	u_int dtv_curcpu;		     /* (h) guest curcpu */
 };
 
 extern void dtvirt_probe(void *, int, uintptr_t,
