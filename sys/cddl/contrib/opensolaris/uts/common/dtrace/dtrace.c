@@ -15738,24 +15738,6 @@ dtrace_state_option(dtrace_state_t *state, dtrace_optid_t option,
 
 		state->dts_cred.dcr_destructive = 1;
 		break;
-	case DTRACEOPT_VMSCRATCHSIZE:
-		/*
-		 * For the sake for error handling, avoid val < 0.
-		 */
-		if (val < 0)
-			return (EINVAL);
-		/*
-		 * If the value is unreasonably low, bump it.
-		 */
-		if (val < DTRACE_VMSCRATCH_MIN)
-			val = DTRACE_VMSCRATCH_MIN;
-
-		/*
-		 * If it's unreasonably high, bound it.
-		 */
-		if (val > DTRACE_VMSCRATCH_MAX)
-			val = DTRACE_VMSCRATCH_MAX;
-		break;
 	case DTRACEOPT_BUFSIZE:
 	case DTRACEOPT_DYNVARSIZE:
 	case DTRACEOPT_AGGSIZE:
