@@ -8292,6 +8292,7 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	dtrace_ns_probe(NULL, id, arg0, arg1, arg2, arg3, arg4);
 }
 
+
 /*
  * DTrace Probe Hashing Functions
  *
@@ -15260,6 +15261,72 @@ dtrace_state_prereserve(dtrace_state_t *state)
 	}
 }
 
+/*
+ * We don't do anything with this yet, it's mainly here to act as an idea for a
+ * VM scratch space. However, it will not be used yet.
+ */
+#if 0
+static void
+dtrace_vmscratch_free(dtrace_state_t *state, int cpu)
+{
+	dtrace_optval_t *opt = state->dts_options;
+
+	kmem_free(state->dts_vmscratch[cpu], opt[DTRACEOPT_VMSCRATCHSIZE]);
+}
+
+static void
+dtrace_state_vmscratch_cleanup(dtrace_state_t *state)
+{
+	int i = 0;
+
+	CPU_FOREACH(i) {
+		dtrace_vmscratch_free(state, i);
+	}
+}
+
+static int
+dtrace_vmscratch_alloc(dtrace_state_t *state, int cpu)
+{
+	dtrace_optval_t *opt = state->dts_options;
+
+	/*
+	 * Truncate to 8-byte alignment.
+	 *
+	 * FIXME(dstolfa): What if our maximum alignment is > 8?
+	 */
+	opt[DTRACEOPT_VMSCRATCHSIZE] &= ~7;
+
+	state->dts_vmscratch[cpu] =
+	    kmem_zalloc(opt[DTRACEOPT_VMSCRATCHSIZE], KM_SLEEP);
+	return (0);
+}
+
+/*
+ * We don't allocate space in the entire array (NCPU-sized) because it might
+ * end up being very space-consuming. We really just need the actual number of
+ * CPUs.
+ */
+static int
+dtrace_state_vmscratch_setup(dtrace_state_t *state)
+{
+	int i;
+
+	i = 0;
+	CPU_FOREACH(i) {
+		rval = dtrace_vmscratch_alloc(state, i);
+		/*
+		 * XXX(dstolfa): Cleanup needed?
+		 */
+		if (rval != 0) {
+			dtrace_state_vmscratch_cleanup(state);
+			return (rval);
+		}
+	}
+
+	return (0);
+}
+#endif /* 0 */
+
 static int
 dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 {
@@ -15573,6 +15640,7 @@ out:
 	mutex_exit(&dtrace_lock);
 	mutex_exit(&cpu_lock);
 
+
 	return (rval);
 }
 
@@ -15670,7 +15738,24 @@ dtrace_state_option(dtrace_state_t *state, dtrace_optid_t option,
 
 		state->dts_cred.dcr_destructive = 1;
 		break;
+	case DTRACEOPT_VMSCRATCHSIZE:
+		/*
+		 * For the sake for error handling, avoid val < 0.
+		 */
+		if (val < 0)
+			return (EINVAL);
+		/*
+		 * If the value is unreasonably low, bump it.
+		 */
+		if (val < DTRACE_VMSCRATCH_MIN)
+			val = DTRACE_VMSCRATCH_MIN;
 
+		/*
+		 * If it's unreasonably high, bound it.
+		 */
+		if (val > DTRACE_VMSCRATCH_MAX)
+			val = DTRACE_VMSCRATCH_MAX;
+		break;
 	case DTRACEOPT_BUFSIZE:
 	case DTRACEOPT_DYNVARSIZE:
 	case DTRACEOPT_AGGSIZE:
@@ -18681,7 +18766,7 @@ dtrace_priv_virtstate_create(void)
 	mutex_enter(&dtrace_lock);
 	mutex_enter(&cpu_lock);
 	virt_state = dtrace_state_create(NULL, NULL);
-	virt_state->dts_options[DTRACEOPT_BUFSIZE] = 20*1024*1024;
+	virt_state->dts_options[DTRACEOPT_BUFSIZE] = 1024;
 	mutex_exit(&cpu_lock);
 	mutex_exit(&dtrace_lock);
 	return (virt_state == NULL) ? ENOMEM : 0;
