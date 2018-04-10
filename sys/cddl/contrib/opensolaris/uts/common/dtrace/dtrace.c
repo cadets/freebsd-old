@@ -8284,8 +8284,7 @@ dtrace_ns_probe(void *biscuit, dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 
 	if (vtime)
 		curthread->t_dtrace_start = dtrace_gethrtime();
-    
-    active_probes[curcpu] = NULL;
+
 	dtrace_probe_exit(cookie);
 }
 
