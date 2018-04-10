@@ -29,6 +29,9 @@
  * SUCH DAMAGE.
  */
 
+#include <machine/vmparam.h>
+#include <machine/pmap.h>
+
 #if 0
 static boolean_t
 dtrace_vm_map_lookup_entry(vm_map_t map, vm_offset_t address,
@@ -130,6 +133,7 @@ dtrace_vm_map_lookup(vm_map_t *var_map, vm_offset_t vaddr,
 	*out_prot = prot;
 	return (KERN_SUCCESS);
 }
+#endif
 
 static pt_entry_t *
 dtrace_pde_to_pte(pd_entry_t *pde, vm_offset_t va)
@@ -141,17 +145,18 @@ dtrace_pde_to_pte(pd_entry_t *pde, vm_offset_t va)
 }
 
 int
-dtrace_gla2hpa(struct vm_guest_paging *paging, caddr_t gla, caddr_t *hpa)
+dtrace_gla2hpa(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hpa)
 {
-	pt_entry_t *pte;
+	uintptr_t pte;
 	const uint8_t shift = PAGE_SHIFT + 9;
 	uint64_t pgsize = 0;
+	uint64_t gpa;
 
 	*hpa = 0;
-	if (paging->mode != PAGING_MODE_64)
+	if (paging->paging_mode != PAGING_MODE_64)
 		return (EINVAL);
 
-	pte = dtrace_pde_to_pte((pd_entry_t *)paging->cr3, gla);
+	pte = (uintptr_t)dtrace_pde_to_pte((pd_entry_t *)paging->cr3, gla);
 	/* Zero out the lower 'shift' bits and the upper 12 bits */
 	pte >>= shift; pte <<= (shift + 12); pte >>= 12;
 	pgsize = 1ULL << shift;
@@ -160,4 +165,3 @@ dtrace_gla2hpa(struct vm_guest_paging *paging, caddr_t gla, caddr_t *hpa)
 
 	return (0);
 }
-#endif

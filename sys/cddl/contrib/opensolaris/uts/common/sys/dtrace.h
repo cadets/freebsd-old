@@ -1169,8 +1169,7 @@ typedef struct dtrace_fmtdesc {
 #define	DTRACEOPT_AGGZOOM	30	/* zoomed aggregation scaling */
 #define	DTRACEOPT_ZONE		31	/* zone in which to enable probes */
 #define DTRACEOPT_OFORMAT	32	/* output format (JSON, XML, etc.) */
-#define	DTRACEOPT_VMSCRATCHSIZE	33	/* VM scratch size */
-#define	DTRACEOPT_MAX		34	/* number of options */
+#define	DTRACEOPT_MAX		33	/* number of options */
 
 #define	DTRACEOPT_UNSET		(dtrace_optval_t)-2	/* unset option */
 
@@ -2528,6 +2527,9 @@ extern int dtrace_mach_aframes(void);
 extern int dtrace_instr_size(uchar_t *instr);
 extern int dtrace_instr_size_isa(uchar_t *, model_t, int *);
 extern void dtrace_invop_callsite(void);
+
+struct vm_guest_paging;
+extern int dtrace_gla2hpa(struct vm_guest_paging *, uint64_t gla, uint64_t *);
 #endif
 extern void dtrace_invop_add(int (*)(uintptr_t, struct trapframe *, uintptr_t));
 extern void dtrace_invop_remove(int (*)(uintptr_t, struct trapframe *,
