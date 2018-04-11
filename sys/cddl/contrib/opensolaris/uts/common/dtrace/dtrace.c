@@ -135,6 +135,7 @@
 #include <sys/rwlock.h>
 #include <sys/sx.h>
 #include <sys/sysctl.h>
+#include <machine/vmm.h>
 #include <dtvirt.h>
 #ifdef VTDTR
 #include <cddl/dev/vtdtr/vtdtr.h>
@@ -555,6 +556,13 @@ _NOTE(CONSTCOND) } while (0)
 	((mstate)->dtms_scratch_base + (mstate)->dtms_scratch_size - \
 	(mstate)->dtms_scratch_ptr >= (alloc_sz))
 
+static struct vm_guest_paging *
+dtrace_get_paging(dtrace_mstate_t *mstate)
+{
+	struct vm_biscuit *bis = mstate->dtms_biscuit;
+	return (bis->paging);
+}
+
 #define	DTRACE_LOADFUNC(bits)						\
 /*CSTYLED*/								\
 uint##bits##_t								\
@@ -578,15 +586,12 @@ dtrace_load##bits(dtrace_mstate_t *mstate, uintptr_t addr)		\
 	DTRACE_ALIGNCHECK(addr, size, flags);				\
 	loc = NULL;							\
 	if (biscuit != NULL) {						\
-		if (dtvirt_ptr == NULL)					\
+		if (dtvirt_bcopy == NULL)				\
 			return (0);					\
 		*flags |= CPU_DTRACE_NOFAULT;				\
-		loc = (uint##bits##_t *)dtvirt_ptr(			\
-		    biscuit, addr, size);				\
-		rval = *loc;						\
+		dtvirt_bcopy(biscuit, (void *)addr, &rval, size);	\
 		*flags &= ~CPU_DTRACE_NOFAULT;				\
 		if ((*flags & CPU_DTRACE_FAULT) == 0) {			\
-			dtrace_gc_add(loc, size);			\
 			return (rval);					\
 		}							\
 		return (0);						\
