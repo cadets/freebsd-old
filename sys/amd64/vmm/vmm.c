@@ -86,13 +86,6 @@ __FBSDID("$FreeBSD$");
 #include "io/ppt.h"
 #include "io/iommu.h"
 
-struct vm_biscuit {
-	struct vm *vm;
-	struct vm_guest_paging *paging;
-	int vcpuid;
-	lwpid_t tid;
-};
-
 struct vlapic;
 
 /*

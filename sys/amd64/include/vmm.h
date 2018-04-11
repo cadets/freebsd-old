@@ -494,6 +494,13 @@ struct vm_guest_paging {
 	enum vm_paging_mode paging_mode;
 };
 
+struct vm_biscuit {
+	struct vm *vm;
+	struct vm_guest_paging *paging;
+	int vcpuid;
+	lwpid_t tid;
+};
+
 /*
  * The data structures 'vie' and 'vie_op' are meant to be opaque to the
  * consumers of instruction decoding. The only reason why their contents
