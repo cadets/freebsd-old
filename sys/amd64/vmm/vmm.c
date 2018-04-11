@@ -1811,12 +1811,12 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 
 	err = vm_get_seg_desc(vm, vcpuid, VM_REG_GUEST_DS, &ds_desc);
 	KASSERT(err == 0, ("%s: error %d getting DS descriptor",
-	    __func__, error));
+	    __func__, err));
 
 	err = hypercall_copy_arg(vm, vcpuid, ds_desc.base,
 	    args[1], 5 * sizeof(uintptr_t), paging, dt_probe_args);
 	KASSERT(err == 0, ("%s: error %d getting DS descriptor",
-	    __func__, error));
+	    __func__, err));
 
 	dtvirt_probe(biscuit, (int)args[0], 
 	    dt_probe_args[0], dt_probe_args[1],
@@ -2925,7 +2925,7 @@ vmm_priv_copyin(void *xbiscuit, void *addr, size_t len, struct malloc_type *t)
 	gla = 0;
 	dst = NULL;
 
-	KASSERT(biscuit != 0, "biscuit must not be NULL\n");
+	KASSERT(biscuit != NULL, ("biscuit must not be NULL\n"));
 
 	vm = biscuit->vm;
 	paging = biscuit->paging;
@@ -2966,8 +2966,8 @@ vmm_priv_bcopy(void *xbiscuit, void *src, void *dst, size_t len)
 	fault = 0;
 	gla = 0;
 
-	KASSERT(biscuit != 0, "biscuit must not be NULL\n");
-	KASSERT(dst != 0, "dst must not be NULL\n");
+	KASSERT(biscuit != NULL, ("biscuit must not be NULL\n"));
+	KASSERT(dst != NULL, ("dst must not be NULL\n"));
 
 	vm = biscuit->vm;
 	paging = biscuit->paging;

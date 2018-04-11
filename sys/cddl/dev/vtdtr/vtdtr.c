@@ -114,7 +114,7 @@ vtdtr_construct_entry(struct vtdtr_event *e)
 static int
 vtdtr_subscribed(struct vtdtr_queue *q, struct vtdtr_event *e)
 {
-	ASSERT(MUTEX_HELD(q->mtx));
+	mtx_assert(&q->mtx, MA_OWNED);
 
 	if (e->type > MAX_BITSHIFT)
 		return (0);
@@ -372,7 +372,7 @@ vtdtr_open(struct cdev *dev __unused, int oflags, int devtype, struct thread *td
 	n = snprintf(mtx_name, VTDTR_MTX_NAME_SIZE,
 	    "VTDTR Queue Mutex: %d", q->proc->p_pid);
 	KASSERT(n < VTDTR_MTX_NAME_SIZE,
-	    ("n = %zu %s(%d)", n, __func__, __LINE__));
+	    ("n = %d %s(%d)", n, __func__, __LINE__));
 
 	mtx_init(&q->mtx, "vtdtrqmtx", mtx_name, MTX_DEF);
 	cv_init(&q->cv, "VTDTR Condvar");
@@ -396,7 +396,7 @@ vtdtr_flush(struct vtdtr_queue *q)
 {
 	struct vtdtr_qentry *ent, *tmp;
 
-	ASSERT(MUTEX_HELD(q->mtx));
+	mtx_assert(&q->mtx, MA_OWNED);
 	STAILQ_FOREACH_SAFE(ent, &q->head, next, tmp) {
 		STAILQ_REMOVE_HEAD(&q->head, next);
 		free(ent->event, M_TEMP);
