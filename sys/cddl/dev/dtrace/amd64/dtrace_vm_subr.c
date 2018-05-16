@@ -30,112 +30,123 @@
  */
 
 #include <machine/vmparam.h>
+#include <vm/vm_page.h>
 #include <machine/pmap.h>
+#include <vm/pmap.h>
 
-#if 0
-static boolean_t
-dtrace_vm_map_lookup_entry(vm_map_t map, vm_offset_t address,
-    vm_map_entry_t *entry)
+/*
+ * This was copy pasted from vmm_instruction_emul.c as it is useful here too.
+ */
+static int
+dtrace_canonical_check(enum vm_cpu_mode cpu_mode, uint64_t gla)
 {
-	vm_map_entry_t cur;
-	boolean_t locked;
+	uint64_t mask;
 
-	cur = map->root;
-	if (cur == NULL)
-		*entry = &map->header;
-	else if (address >= cur->start && cur->end > address) {
-		*entry = cur;
-		return (TRUE);
-	} else {
-		/*
-		 * Traverse the BST and find the address.
-		 */
-		for (;;) {
-			if (address < cur->start) {
-				if (cur->left == NULL) {
-					*entry = cur->prev;
-					break;
-				}
-				cur = cur->left;
-			} else if (cur->end > address) {
-				*entry = cur;
-				return (TRUE);
-			} else {
-				if (cur->right == NULL) {
-					*entry = cur;
-					break;
-				}
-				cur = cur->right;
-			}
-		}
+	if (cpu_mode != CPU_MODE_64BIT)
+		return (0);
 
-	}
-
-	return (FALSE);
+	/*
+	 * The value of the bit 47 in the 'gla' should be replicated in the
+	 * most significant 16 bits.
+	 */
+	mask = ~((1UL << 48) - 1);
+	if (gla & (1UL << 47))
+		return ((gla & mask) != mask);
+	else
+		return ((gla & mask) != 0);
 }
 
-static vm_object_t *
-dtrace_vm_map_lookup(vm_map_t *var_map, vm_offset_t vaddr,
-    vm_prot_t fault_typea, vm_map_entry_t *out_entry,
-    vm_object_t *object, vm_pindex_t *pindex,
-    vm_prot_t *out_prot, boolean_t *wired)
+/* Return a pointer to the PML4 slot that corresponds to a VA */
+static __inline pml4_entry_t *
+dtrace_pml4e(pmap_t pmap, vm_offset_t va)
 {
-	vm_map_entry_t entry;
-	vm_map_t map = *var_map;
-	vm_prot_t prot;
-	vm_prot_t fault_type = fault_typea;
 
-	/*
-	 * Look up the address.
-	 */
-	if (!dtrace_vm_map_lookup_entry(map, vaddr, out_entry))
-		return (KERN_INVALID_ADDRESS);
+	return (&pmap->pm_pml4[pmap_pml4e_index(va)]);
+}
 
-	entry = *out_entry;
+static __inline boolean_t
+dtrace_emulate_ad_bits(pmap_t pmap)
+{
 
-	/*
-	 * We don't care about submaps.
-	 */
-	if (entry->eflags & MAP_ENTRY_IS_SUB_MAP)
-		return (KERN_FAILURE);
+	return ((pmap->pm_flags & PMAP_EMULATE_AD_BITS) != 0);
+}
 
-	prot = entry->protection;
-	fault_type &= VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE;
-	/*
-	 * XXX(dstolfa): We might not care about this.
-	 */
-	if ((fault_type & prot) != fault_type)
-		return (KERN_PROTECTION_FAILURE);
+static __inline pt_entry_t
+dtrace_valid_bit(pmap_t pmap)
+{
+	pt_entry_t mask;
 
-	*wired = (entry->wired_count != 0);
-	if (*wired)
-		fault_type = entry->protection;
-
-	if (entry->eflags & MAP_ENTRY_NEEDS_COPY) {
-		/*
-		 * We don't care about CoW
-		 */
-		if (fault_type & VM_PROT_WRITE)
-			return (KERN_FAILURE);
-
-		prot &= ~VM_PROT_WRITE;
+	switch (pmap->pm_type) {
+	case PT_X86:
+	case PT_RVI:
+		mask = X86_PG_V;
+		break;
+	case PT_EPT:
+		if (dtrace_emulate_ad_bits(pmap))
+			mask = EPT_PG_EMUL_V;
+		else
+			mask = EPT_PG_READ;
+		break;
+	default:
+		panic("dtrace_valid_bit: invalid pm_type %d", pmap->pm_type);
 	}
 
-	/*
-	 * We don't create an object.
-	 */
-	if (entry->object.vm_object == NULL && !map->system_map)
-		return (KERN_FAILURE);
-
-	*pindex = UOFF_TO_IDX((vaddr - entry->start) + entry->offset);
-	*object = entry->object.vm_object;
-
-	*out_prot = prot;
-	return (KERN_SUCCESS);
+	return (mask);
 }
-#endif
 
-static pt_entry_t *
+
+/* Return a pointer to the PDP slot that corresponds to a VA */
+static __inline pdp_entry_t *
+dtrace_pml4e_to_pdpe(pml4_entry_t *pml4e, vm_offset_t va)
+{
+	pdp_entry_t *pdpe;
+
+	pdpe = (pdp_entry_t *)PHYS_TO_DMAP(*pml4e & PG_FRAME);
+	return (&pdpe[pmap_pdpe_index(va)]);
+}
+
+/* Return a pointer to the PDP slot that corresponds to a VA */
+static __inline pdp_entry_t *
+dtrace_pdpe(pmap_t pmap, vm_offset_t va)
+{
+	pml4_entry_t *pml4e;
+	pt_entry_t PGV;
+
+	PGV = dtrace_valid_bit(pmap);
+	pml4e = dtrace_pml4e(pmap, va);
+	if ((*pml4e & PGV) == 0)
+		return (NULL);
+	return (dtrace_pml4e_to_pdpe(pml4e, va));
+}
+
+
+/* Return a pointer to the PD slot that corresponds to a VA */
+static __inline pd_entry_t *
+dtrace_pdpe_to_pde(pdp_entry_t *pdpe, vm_offset_t va)
+{
+	pd_entry_t *pde;
+
+	pde = (pd_entry_t *)PHYS_TO_DMAP(*pdpe & PG_FRAME);
+	return (&pde[pmap_pde_index(va)]);
+}
+
+
+/* Return a pointer to the PD slot that corresponds to a VA */
+static __inline pd_entry_t *
+dtrace_pde(pmap_t pmap, vm_offset_t va)
+{
+	pdp_entry_t *pdpe;
+	pt_entry_t PGV;
+
+	PGV = dtrace_valid_bit(pmap);
+	pdpe = dtrace_pdpe(pmap, va);
+	if (pdpe == NULL || (*pdpe & PGV) == 0)
+		return (NULL);
+	return (dtrace_pdpe_to_pde(pdpe, va));
+}
+
+/* Return a pointer to the PT slot that corresponds to a VA */
+static __inline pt_entry_t *
 dtrace_pde_to_pte(pd_entry_t *pde, vm_offset_t va)
 {
 	pt_entry_t *pte;
@@ -144,24 +155,112 @@ dtrace_pde_to_pte(pd_entry_t *pde, vm_offset_t va)
 	return (&pte[pmap_pte_index(va)]);
 }
 
+static vm_page_t
+DTRACE_PHYS_TO_VM_PAGE(vm_paddr_t pa)
+{
+#ifndef VM_PHYSSEG_DENSE
+#error "Need dense paging."
+#endif
+	vm_page_t m;
+	long pi;
+
+	pi = atop(pa);
+	m = &vm_page_array[pi - first_page];
+	return (m);
+}
+
+static vm_page_t
+dtrace_get_page(pmap_t pmap, vm_offset_t va)
+{
+	pd_entry_t pde, *pdep;
+	pt_entry_t pte;
+	vm_paddr_t pa;
+	vm_page_t m;
+
+	pa = 0;
+	m = NULL;
+	pdep = dtrace_pde(pmap, va);
+	if (pdep != NULL && (pde = *pdep)) {
+		if (pde & PG_PS) {
+			m = DTRACE_PHYS_TO_VM_PAGE((pde & PG_PS_FRAME) |
+			    (va & PDRMASK));
+		} else {
+			pte = *dtrace_pde_to_pte(pdep, va);
+			m = DTRACE_PHYS_TO_VM_PAGE(pte & PG_FRAME);
+		}
+	}
+	return (m);
+}
+
+
 int
 dtrace_gla2hpa(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hpa)
 {
-	uintptr_t pte;
 	const uint8_t shift = PAGE_SHIFT + 9;
-	uint64_t pgsize = 0;
-	uint64_t gpa;
+	uint64_t *ptpbase, ptpphys, pte, pgsize, pde, thing_to_or;
+	vm_page_t m;
+	uint64_t index = 0, gpa = 0;
+	int ptpshift, nlevels, ptpindex, pageoff;
+	pdp_entry_t *pdp, *pdpe;
+	pml4_entry_t *pml4e;
+	pd_entry_t *pdep;
+	pmap_t pmap;
+	long pi;
 
 	*hpa = 0;
-	if (paging->paging_mode != PAGING_MODE_64)
+	/* Make sure we have the paging */
+	ASSERT(paging != NULL);
+
+	if (paging->cpl == 3)
 		return (EINVAL);
 
-	pte = (uintptr_t)dtrace_pde_to_pte((pd_entry_t *)paging->cr3, gla);
-	/* Zero out the lower 'shift' bits and the upper 12 bits */
-	pte >>= shift; pte <<= (shift + 12); pte >>= 12;
-	pgsize = 1ULL << shift;
-	gpa = pte | (gla & (pgsize - 1));
-	*hpa = DMAP_TO_PHYS((uintptr_t)gpa);
+ restart:
+	/* Page table root */
+	ptpphys = paging->cr3;
+	if (dtrace_canonical_check(paging->cpu_mode, gla))
+	    return (EINVAL);
 
+	if (paging->paging_mode == PAGING_MODE_FLAT)
+		gpa = gla;
+	else if (paging->paging_mode == PAGING_MODE_64) {
+		nlevels = 4;
+		pmap = paging->pmap;
+		while (--nlevels >= 0) {
+			ptpphys >>= 12;
+			ptpphys <<= 24;
+			ptpphys >>= 12;
+			m = dtrace_get_page(pmap, trunc_page(ptpphys));
+			pageoff = ptpphys & PAGE_MASK;
+			ptpbase = (void *)(PHYS_TO_DMAP(VM_PAGE_TO_PHYS(m)) +
+			    pageoff);
+
+			ptpshift = PAGE_SHIFT + nlevels * 9;
+			ptpindex = (gla >> ptpshift) & 0x1ff;
+			pgsize = 1UL << ptpshift;
+
+			pte = ptpbase[ptpindex];
+			if ((pte & PG_A) == 0) {
+				if (atomic_cmpset_64(&ptpbase[ptpindex],
+				    pte, pte | PG_A) == 0) {
+					goto restart;
+				}
+			}
+
+			if (nlevels > 0 && (pte & PG_PS) != 0) {
+				if (pgsize > 1 * 1024*1024*1024) {
+					*hpa = 0;
+					return (EINVAL);
+				}
+				break;
+			}
+			ptpphys = pte;
+		}
+		pte >>= ptpshift; pte <<= (ptpshift + 12); pte >>= 12;
+		gpa = pte | (gla & (pgsize - 1));
+	} else {
+		return (EINVAL);
+	}
+
+	*hpa = gpa;
 	return (0);
 }
