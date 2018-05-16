@@ -760,6 +760,7 @@ basl_open(struct basl_fio *bf, int suffix)
 
 	err = 0;
 
+	printf("bf->f_name = %s\n", bf->f_name);
 	if (suffix) {
 		strlcpy(bf->f_name, basl_stemplate, MAXPATHLEN);
 		bf->fd = mkstemps(bf->f_name, strlen(BHYVE_ASL_SUFFIX));

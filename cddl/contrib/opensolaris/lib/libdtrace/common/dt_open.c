@@ -715,6 +715,8 @@ static const dt_ident_t _dtrace_globals[] = {
 { "hwalltimestamp", DT_IDENT_SCALAR, 0, DIF_VAR_HWALLTIMESTAMP,
 	DT_ATTR_STABCMN, DT_VERS_1_13,
 	&dt_idops_type, "int64_t" },
+{ "ptinfo", DT_IDENT_FUNC, 0, DIF_SUBR_PTINFO, DT_ATTR_STABCMN, DT_VERS_1_13,
+	&dt_idops_func, "void *(uintptr_t)",},
 #ifndef illumos
 { "hcpu", DT_IDENT_SCALAR, 0, DIF_VAR_HCPU,
 	DT_ATTR_STABCMN, DT_VERS_1_13, &dt_idops_type, "int" },

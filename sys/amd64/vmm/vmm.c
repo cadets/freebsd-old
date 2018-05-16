@@ -1849,9 +1849,12 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 	struct seg_desc ds_desc;
 	uintptr_t dt_probe_args[5];
 	int err;
+	int fault = 0;
+	uint64_t gpa = 0;
 
 	biscuit->vm = vm;
 	biscuit->paging = paging;
+	paging->pmap = vmspace_pmap(vm->vmspace);
 	biscuit->vcpuid = vcpuid;
 	biscuit->tid = args[2];
 	err = 0;
@@ -1866,7 +1869,12 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 	KASSERT(err == 0, ("%s: error %d getting DS descriptor",
 	    __func__, err));
 
-	dtvirt_probe(biscuit, (int)args[0], 
+	err = _vm_gla2gpa(vm, vcpuid, paging, dt_probe_args[0],
+	    PROT_READ, &gpa, &fault, 1);
+	KASSERT(err == 0, ("vm_gla2gpa failed"));
+	printf("gpa = %p\n", (void *)(uintptr_t)gpa);
+
+	dtvirt_probe(biscuit, (int)args[0],
 	    dt_probe_args[0], dt_probe_args[1],
 	    dt_probe_args[2], dt_probe_args[3],
 	    dt_probe_args[4]);

@@ -4502,6 +4502,13 @@ dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 #endif
 
 	switch (subr) {
+	case DIF_SUBR_PTINFO: {
+		uintptr_t gla = tupregs[0].dttk_value;
+		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
+		dtrace_gla2hpa(dtrace_get_paging(mstate), gla, &regs[rd]);
+		DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
+		break;
+	}
 	case DIF_SUBR_RAND:
 		regs[rd] = dtrace_xoroshiro128_plus_next(
 		    state->dts_rstate[curcpu]);

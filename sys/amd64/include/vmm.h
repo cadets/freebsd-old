@@ -490,6 +490,7 @@ enum vm_paging_mode {
 struct vm_guest_paging {
 	uint64_t	cr3;
 	int		cpl;
+	void		*pmap;
 	enum vm_cpu_mode cpu_mode;
 	enum vm_paging_mode paging_mode;
 };
