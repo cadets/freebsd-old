@@ -261,6 +261,10 @@ dtrace_gla2hpa(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hpa)
 		return (EINVAL);
 	}
 
-	*hpa = gpa;
+	pageoff = gpa & PAGE_MASK;
+	m = dtrace_get_page(pmap, trunc_page(gpa));
+	ptpbase = (void *)(PHYS_TO_DMAP(VM_PAGE_TO_PHYS(m)) +
+	    pageoff);
+	*hpa = DMAP_TO_PHYS((uintptr_t)ptpbase);
 	return (0);
 }
