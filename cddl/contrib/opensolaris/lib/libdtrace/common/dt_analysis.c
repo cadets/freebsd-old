@@ -38,17 +38,11 @@
 #include <dt_analysis.h>
 #include <dt_program.h>
 
-
-/* TODO: refactor */
-#define	CALL_OPCODE	0x2F
-
-
 /* Print GraphViz Dot-formatted output for a DTrace action */
 static void print_action(dtrace_actdesc_t *, const char *probename, FILE *out);
 
 /* Print GraphViz Dot-formatted output for a DTrace Instruction Format Object */
 static void print_difo(dtrace_difo_t *, const char *probename, FILE *out);
-
 
 /*ARGSUSED*/
 bool
@@ -79,6 +73,19 @@ dtrace_analyze_program_modref(dtrace_prog_t *pgp, dtrace_modref_check_f *check,
 	}
 
 	return (ok);
+}
+
+const char *
+dtrace_get_varname(uint32_t var)
+{
+	switch(var) {
+	case DIF_VAR_ARGS:          return ("args");
+	case DIF_VAR_REGS:          return ("regs");
+	case DIF_VAR_UREGS:         return ("uregs");
+	default:                    return (NULL);
+	}
+
+	return (NULL);
 }
 
 /*ARGSUSED*/
@@ -198,7 +205,7 @@ int
 dtrace_modref_call(const dif_instr_t *ip)
 {
 
-	assert(DIF_INSTR_OP(*ip) == CALL_OPCODE);
+	assert(DIF_INSTR_OP(*ip) == DIF_OP_CALL);
 
 	switch (DIF_INSTR_SUBR(*ip)) {
 	default:
@@ -253,7 +260,7 @@ dtrace_modref_difo(const dtrace_difo_t *dp)
 	for (i = 0; i < dp->dtdo_len; i++) {
 		ip = dp->dtdo_buf + i;
 
-		if (DIF_INSTR_OP(*ip) == CALL_OPCODE) {
+		if (DIF_INSTR_OP(*ip) == DIF_OP_CALL) {
 			modref |= dtrace_modref_call(ip);
 		}
 	}
@@ -296,7 +303,7 @@ print_difo(dtrace_difo_t *dp, const char *probename, FILE *dot_output)
 		dif_instr_t instr = dp->dtdo_buf[i];
 		dif_instr_t opcode = DIF_INSTR_OP(instr);
 
-		if (opcode == CALL_OPCODE) {
+		if (opcode == DIF_OP_CALL) {
 			uint_t subr = DIF_INSTR_SUBR(instr);
 			stpncpy(name, dtrace_subrstr(NULL, subr), sizeof(name));
 			cp = stpncpy(label, name, sizeof(label));
@@ -310,6 +317,23 @@ print_difo(dtrace_difo_t *dp, const char *probename, FILE *dot_output)
 
 			fprintf(dot_output, "\"%s\" -> \"%s\"\n",
 				probename, name);
+		}
+
+		if (opcode == DIF_OP_LDGA) {
+			uint_t v = (instr >> 16) & 0xff;
+			uint_t ndx = (instr >> 8) & 0xff;
+			const char *var = dtrace_get_varname(v);
+			if (var == NULL)
+				continue;
+
+			strncpy(name, var, sizeof(name));
+			fprintf(dot_output,
+			    "\"%s(%d)\" [ label = \"%s(%d) (global)\" ];\n",
+			    name, ndx, name, ndx);
+
+			fprintf(dot_output, "\"%s(%d)\" -> \"%s\"\n",
+			    name, ndx, probename);
+
 		}
 	}
 
