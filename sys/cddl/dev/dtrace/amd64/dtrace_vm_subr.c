@@ -34,6 +34,34 @@
 #include <machine/pmap.h>
 #include <vm/pmap.h>
 
+static __inline vm_pindex_t
+dtrace_pte_index(vm_offset_t va)
+{
+
+	return ((va >> PAGE_SHIFT) & ((1ul << NPTEPGSHIFT) - 1));
+}
+
+static __inline vm_pindex_t
+dtrace_pde_index(vm_offset_t va)
+{
+
+	return ((va >> PDRSHIFT) & ((1ul << NPDEPGSHIFT) - 1));
+}
+
+static __inline vm_pindex_t
+dtrace_pdpe_index(vm_offset_t va)
+{
+
+	return ((va >> PDPSHIFT) & ((1ul << NPDPEPGSHIFT) - 1));
+}
+
+static __inline vm_pindex_t
+dtrace_pml4e_index(vm_offset_t va)
+{
+
+	return ((va >> PML4SHIFT) & ((1ul << NPML4EPGSHIFT) - 1));
+}
+
 /*
  * This was copy pasted from vmm_instruction_emul.c as it is useful here too.
  */
@@ -61,7 +89,7 @@ static __inline pml4_entry_t *
 dtrace_pml4e(pmap_t pmap, vm_offset_t va)
 {
 
-	return (&pmap->pm_pml4[pmap_pml4e_index(va)]);
+	return (&pmap->pm_pml4[dtrace_pml4e_index(va)]);
 }
 
 static __inline boolean_t
@@ -102,7 +130,7 @@ dtrace_pml4e_to_pdpe(pml4_entry_t *pml4e, vm_offset_t va)
 	pdp_entry_t *pdpe;
 
 	pdpe = (pdp_entry_t *)PHYS_TO_DMAP(*pml4e & PG_FRAME);
-	return (&pdpe[pmap_pdpe_index(va)]);
+	return (&pdpe[dtrace_pdpe_index(va)]);
 }
 
 /* Return a pointer to the PDP slot that corresponds to a VA */
@@ -127,7 +155,7 @@ dtrace_pdpe_to_pde(pdp_entry_t *pdpe, vm_offset_t va)
 	pd_entry_t *pde;
 
 	pde = (pd_entry_t *)PHYS_TO_DMAP(*pdpe & PG_FRAME);
-	return (&pde[pmap_pde_index(va)]);
+	return (&pde[dtrace_pde_index(va)]);
 }
 
 
@@ -152,7 +180,7 @@ dtrace_pde_to_pte(pd_entry_t *pde, vm_offset_t va)
 	pt_entry_t *pte;
 
 	pte = (pt_entry_t *)PHYS_TO_DMAP(*pde & PG_FRAME);
-	return (&pte[pmap_pte_index(va)]);
+	return (&pte[dtrace_pte_index(va)]);
 }
 
 static vm_page_t
