@@ -425,10 +425,6 @@ void vm_copyin(struct vm *vm, int vcpuid, struct vm_copyinfo *copyinfo,
     void *kaddr, size_t len);
 void vm_copyout(struct vm *vm, int vcpuid, const void *kaddr,
     struct vm_copyinfo *copyinfo, size_t len);
-extern void * (*vmm_copyin)(void *biscuit,
-    void *addr, size_t len, struct malloc_type *t);
-extern void (*vmm_bcopy)(void *biscuit,
-    void *src, void *dst, size_t len);
 extern lwpid_t (*vmm_gettid)(void *biscuit);
 extern uint16_t (*vmm_getid)(void *biscuit);
 

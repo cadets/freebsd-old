@@ -335,9 +335,6 @@ static void vm_free_memmap(struct vm *vm, int ident);
 static bool sysmem_mapping(struct vm *vm, struct mem_map *mm);
 static void vcpu_notify_event_locked(struct vcpu *vcpu, bool lapic_intr);
 
-static void * vmm_priv_copyin(void *xbiscuit,
-    void *addr, size_t len, struct malloc_type *t);
-static void vmm_priv_bcopy(void *, void *, void *, size_t);
 static lwpid_t vmm_priv_gettid(void *);
 static uint16_t vmm_priv_getid(void *);
 
@@ -498,8 +495,6 @@ vmm_handler(module_t mod, int what, void *arg)
 	case MOD_LOAD:
 		vmmdev_init();
 		error = vmm_init();
-		vmm_copyin = vmm_priv_copyin;
-		vmm_bcopy = vmm_priv_bcopy;
 		vmm_gettid = vmm_priv_gettid;
 		vmm_getid = vmm_priv_getid;
 		vm_arena = new_unrhdr(1, UINT16_MAX, &vm_unrmtx);
@@ -3006,104 +3001,6 @@ vm_copyout(struct vm *vm, int vcpuid, const void *kaddr,
 		src += copyinfo[idx].len;
 		idx++;
 	}
-}
-
-/*
- * FIXME: This is being called in the probe context and is not safe. We would
- * have to do something about that. One possibility is to implement a scratch
- * space in DTrace specifically for these things. However, there is still a need
- * to call vm_copyin on the memory. This could be done with a DTrace-specific
- * routine by passing page tables and reversing the direction of how things
- * flow. Currently, we should absolutely *not* enable fbt::: on the host while
- * tracing the guest, as it would cause recursion in the probe context.
- *
- * The problematic functions are:
- * 	vmm_priv_*
- * 	malloc (only in the context of vmm_priv_copyin)
- * 	vm_copyin (both cases -- bcopy and copyin)
- * 	vm_get_seg_desc (both cases -- bcopy and copyin)
- * 	vm_copy_setup (both cases -- bcopy and copyin)
- * 	vm_copy_teardown (both cases -- bcopy and copyin)
- */
-static void *
-vmm_priv_copyin(void *xbiscuit, void *addr, size_t len, struct malloc_type *t)
-{
-	struct vm_biscuit *biscuit;
-	struct vm *vm;
-	struct vm_guest_paging *paging;
-	struct vm_copyinfo copyinfo[2];
-	struct seg_desc ds_desc;
-	uintptr_t gla;
-	int error, fault, vcpuid;
-	void *dst;
-
-	biscuit = xbiscuit;
-	fault = 0;
-	gla = 0;
-	dst = NULL;
-
-	KASSERT(biscuit != NULL, ("biscuit must not be NULL\n"));
-
-	vm = biscuit->vm;
-	paging = biscuit->paging;
-	vcpuid = biscuit->vcpuid;
-
-	error = vm_get_seg_desc(vm, vcpuid, VM_REG_GUEST_DS, &ds_desc);
-	KASSERT(error == 0, ("%s: error %d getting DS descriptor",
-	    __func__, error));
-
-	gla = ds_desc.base + (uintptr_t)addr;
-	error = vm_copy_setup(vm, vcpuid,
-	    paging, gla, len, PROT_READ, copyinfo, nitems(copyinfo), &fault);
-
-	if (error || fault) {
-		return (NULL);
-	}
-
-	dst = malloc(len, t, M_WAITOK | M_ZERO);
-
-	vm_copyin(vm, vcpuid, copyinfo, dst, len);
-	vm_copy_teardown(vm, vcpuid, copyinfo, nitems(copyinfo));
-
-	return (dst);
-}
-
-static void
-vmm_priv_bcopy(void *xbiscuit, void *src, void *dst, size_t len)
-{
-	struct vm_biscuit *biscuit;
-	struct vm *vm;
-	struct vm_guest_paging *paging;
-	struct vm_copyinfo copyinfo[2];
-	struct seg_desc ds_desc;
-	uintptr_t gla;
-	int error, fault, vcpuid;
-
-	biscuit = xbiscuit;
-	fault = 0;
-	gla = 0;
-
-	KASSERT(biscuit != NULL, ("biscuit must not be NULL\n"));
-	KASSERT(dst != NULL, ("dst must not be NULL\n"));
-
-	vm = biscuit->vm;
-	paging = biscuit->paging;
-	vcpuid = biscuit->vcpuid;
-
-	error = vm_get_seg_desc(vm, vcpuid, VM_REG_GUEST_DS, &ds_desc);
-	KASSERT(error == 0, ("%s: error %d getting DS descriptor",
-	    __func__, error));
-
-	gla = ds_desc.base + (uintptr_t)src;
-	error = vm_copy_setup(vm, vcpuid,
-	    paging, gla, len, PROT_READ, copyinfo, nitems(copyinfo), &fault);
-
-	if (error || fault) {
-		return;
-	}
-
-	vm_copyin(vm, vcpuid, copyinfo, dst, len);
-	vm_copy_teardown(vm, vcpuid, copyinfo, nitems(copyinfo));
 }
 
 static lwpid_t

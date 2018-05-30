@@ -273,14 +273,6 @@ MTX_SYSINIT(dtrace_unr_mtx, &dtrace_unr_mtx, "Unique resource identifier", MTX_D
 static eventhandler_tag	dtrace_kld_load_tag;
 static eventhandler_tag	dtrace_kld_unload_try_tag;
 
-typedef struct dtrace_gcinfo {
-	void	*dtgc_addr;			/* the address we want to free */
-	size_t	dtgc_size;			/* the length */
-	SLIST_ENTRY(dtrace_gcinfo) dtgc_next;	/* next address */
-} dtrace_gcinfo_t;
-
-static SLIST_HEAD(, dtrace_gcinfo) dtrace_gc[NCPU];
-
 #endif
 
 /*
@@ -404,9 +396,6 @@ static int		dtrace_helptrace_wrapped = 0;
  * DTrace DTVIRT hooks.
  */
 
-void * (*dtvirt_ptr)(void *, uintptr_t, size_t);
-void (*dtvirt_bcopy)(void *, void *, void *, size_t);
-void (*dtvirt_free)(void *, size_t);
 lwpid_t (*dtvirt_gettid)(void *);
 uint16_t (*dtvirt_getns)(void *);
 
@@ -586,10 +575,12 @@ dtrace_load##bits(dtrace_mstate_t *mstate, uintptr_t addr)		\
 	DTRACE_ALIGNCHECK(addr, size, flags);				\
 	loc = NULL;							\
 	if (biscuit != NULL) {						\
-		if (dtvirt_bcopy == NULL)				\
-			return (0);					\
 		*flags |= CPU_DTRACE_NOFAULT;				\
-		dtvirt_bcopy(biscuit, (void *)addr, &rval, size);	\
+		err = dtrace_gla2hva(dtrace_get_paging(mstate),		\
+		    addr, &addr);					\
+		if (err)						\
+			return (0);					\
+		rval = *(uint##bits##_t *)addr;				\
 		*flags &= ~CPU_DTRACE_NOFAULT;				\
 		if ((*flags & CPU_DTRACE_FAULT) == 0) {			\
 			return (rval);					\
@@ -689,11 +680,6 @@ static int dtrace_canload_remains(uint64_t, size_t, size_t *,
     dtrace_mstate_t *, dtrace_vstate_t *);
 static int dtrace_canstore_remains(uint64_t, size_t, size_t *,
     dtrace_mstate_t *, dtrace_vstate_t *);
-#ifndef illumos
-static void dtrace_gc_init(void);
-static void dtrace_gc_add(void *, size_t);
-static size_t dtrace_gc_collect(void);
-#endif
 
 static __inline uint64_t
 rotl(const uint64_t x, int k)
@@ -836,14 +822,10 @@ dtrace_vmloadmem(dtrace_mstate_t *mstate, uintptr_t addr, size_t size)
 	 * No need to check for alignment because we are not working with
 	 * primitive operations anymore.
 	 */
-
-	if (dtvirt_ptr == NULL)
-		return (0);
 	*flags |= CPU_DTRACE_NOFAULT;
-	rval = (uintptr_t)dtvirt_ptr(biscuit, addr, size);
+	err = (uintptr_t)dtrace_gla2hva(dtrace_get_paging(mstate), addr, &rval);
 	*flags &= ~CPU_DTRACE_NOFAULT;
-	if ((*flags & CPU_DTRACE_FAULT) == 0) {
-		dtrace_gc_add((void *)rval, size);
+	if (err == 0 && (*flags & CPU_DTRACE_FAULT) == 0) {
 		return (rval);
 	}
 
@@ -4505,7 +4487,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 	case DIF_SUBR_PTINFO: {
 		uintptr_t gla = tupregs[0].dttk_value;
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
-		dtrace_gla2hpa(dtrace_get_paging(mstate), gla, &regs[rd]);
+		dtrace_gla2hva(dtrace_get_paging(mstate), gla, &regs[rd]);
 		DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 		break;
 	}
@@ -7534,7 +7516,7 @@ dtrace_store_by_ref(dtrace_mstate_t *mstate, dtrace_difo_t *dp, caddr_t tomax, s
 
 		for (s = 0; s < size; s++) {
 			if (c != '\0' && dtkind == DIF_TF_BYREF) {
-				c = dtrace_load8(NULL, val++);
+				c = dtrace_load8(mstate, val++);
 			} else if (c != '\0' && dtkind == DIF_TF_BYUREF) {
 				DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 				c = dtrace_fuword8((void *)(uintptr_t)val++);
@@ -18708,49 +18690,6 @@ dtrace_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 #endif
 
 #ifndef illumos
-
-static void
-dtrace_gc_init(void)
-{
-
-	uint32_t i;
-	for (i = 0; i < NCPU; i++) {
-		SLIST_INIT(&dtrace_gc[i]);
-	}
-}
-
-static void
-dtrace_gc_add(void *loc, size_t size)
-{
-	dtrace_gcinfo_t *info;
-	info = kmem_zalloc(sizeof (dtrace_gcinfo_t), KM_SLEEP);
-	info->dtgc_addr = loc;
-	info->dtgc_size = size;
-	SLIST_INSERT_HEAD(&dtrace_gc[curcpu], info, dtgc_next);
-}
-
-static size_t
-dtrace_gc_collect(void)
-{
-	dtrace_gcinfo_t *info;
-	size_t ncollected;
-
-	ncollected = 0;
-	info = NULL;
-	ASSERT(dtvirt_free != NULL);
-
-	while (!SLIST_EMPTY(&dtrace_gc[curcpu])) {
-		info = SLIST_FIRST(&dtrace_gc[curcpu]);
-		SLIST_REMOVE_HEAD(&dtrace_gc[curcpu], dtgc_next);
-		dtvirt_free(info->dtgc_addr, info->dtgc_size);
-		kmem_free(info, sizeof (dtrace_gcinfo_t));
-		ncollected++;
-	}
-
-	SLIST_INIT(&dtrace_gc[curcpu]);
-
-	return (ncollected);
-}
 
 static int
 dtrace_priv_virtstate_create(void)

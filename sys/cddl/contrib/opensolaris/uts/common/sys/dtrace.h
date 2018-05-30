@@ -2530,7 +2530,7 @@ extern int dtrace_instr_size_isa(uchar_t *, model_t, int *);
 extern void dtrace_invop_callsite(void);
 
 struct vm_guest_paging;
-extern int dtrace_gla2hpa(struct vm_guest_paging *, uint64_t gla, uint64_t *);
+extern int dtrace_gla2hva(struct vm_guest_paging *, uint64_t gla, uint64_t *);
 #endif
 extern void dtrace_invop_add(int (*)(uintptr_t, struct trapframe *, uintptr_t));
 extern void dtrace_invop_remove(int (*)(uintptr_t, struct trapframe *,
