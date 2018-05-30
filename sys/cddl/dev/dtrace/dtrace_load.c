@@ -63,10 +63,6 @@ dtrace_load(void *dummy)
 		dtrace_destructive_disallow = 1;
 #endif
 
-	/* Hook into dtvirt */
-	dtvirt_ptr = NULL;
-	dtvirt_free = NULL;
-
 	/* Hook into the trap handler. */
 	dtrace_trap_func = dtrace_trap;
 
@@ -85,8 +81,6 @@ dtrace_load(void *dummy)
 	    dtrace_kld_load, NULL, EVENTHANDLER_PRI_ANY);
 	dtrace_kld_unload_try_tag = EVENTHANDLER_REGISTER(kld_unload_try,
 	    dtrace_kld_unload_try, NULL, EVENTHANDLER_PRI_ANY);
-
-	dtrace_gc_init();
 
 	/*
 	 * Initialise the mutexes without 'witness' because the dtrace

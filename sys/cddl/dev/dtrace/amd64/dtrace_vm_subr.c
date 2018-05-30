@@ -222,7 +222,7 @@ dtrace_get_page(pmap_t pmap, vm_offset_t va)
 
 
 int
-dtrace_gla2hpa(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hpa)
+dtrace_gla2hva(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hva)
 {
 	const uint8_t shift = PAGE_SHIFT + 9;
 	uint64_t *ptpbase, ptpphys, pte, pgsize, pde, thing_to_or;
@@ -235,7 +235,7 @@ dtrace_gla2hpa(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hpa)
 	pmap_t pmap;
 	long pi;
 
-	*hpa = 0;
+	*hva = 0;
 	/* Make sure we have the paging */
 	ASSERT(paging != NULL);
 
@@ -276,7 +276,7 @@ dtrace_gla2hpa(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hpa)
 
 			if (nlevels > 0 && (pte & PG_PS) != 0) {
 				if (pgsize > 1 * 1024*1024*1024) {
-					*hpa = 0;
+					*hva = 0;
 					return (EINVAL);
 				}
 				break;
@@ -293,6 +293,6 @@ dtrace_gla2hpa(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hpa)
 	m = dtrace_get_page(pmap, trunc_page(gpa));
 	ptpbase = (void *)(PHYS_TO_DMAP(VM_PAGE_TO_PHYS(m)) +
 	    pageoff);
-	*hpa = DMAP_TO_PHYS((uintptr_t)ptpbase);
+	*hva = PHYS_TO_DMAP(DMAP_TO_PHYS((uintptr_t)ptpbase));
 	return (0);
 }
