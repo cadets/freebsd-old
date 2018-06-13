@@ -148,6 +148,15 @@
 # include <openssl/des.h>
 #endif
 
+#ifdef __FreeBSD__
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/sockbuf_tls.h>
+#include <crypto/cryptodev.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#endif
+
 /* seed1 through seed5 are virtually concatenated */
 static int tls1_P_hash(const EVP_MD *md, const unsigned char *sec,
                        int sec_len,
@@ -339,6 +348,11 @@ int tls1_change_cipher_state(SSL *s, int which)
     EVP_PKEY *mac_key;
     int is_export, n, i, j, k, exp_label_len, cl;
     int reuse_dd = 0;
+#if defined(TCP_TLS_ENABLE)
+    struct tls_so_enable tls_en;
+    int sd;
+    BIO *wbio;
+#endif
 
     is_export = SSL_C_IS_EXPORT(s->s3->tmp.new_cipher);
     c = s->s3->tmp.new_sym_enc;
@@ -583,6 +597,77 @@ int tls1_change_cipher_state(SSL *s, int which)
         SSLerr(SSL_F_TLS1_CHANGE_CIPHER_STATE, ERR_R_INTERNAL_ERROR);
         goto err2;
     }
+
+#if defined(TCP_TLS_ENABLE)
+
+    if (!(which & SSL3_CC_WRITE)) {
+        goto skip_offload;
+    }
+
+    wbio = s->wbio;
+    if (!wbio) {
+        goto skip_offload;
+    }
+    bzero(&tls_en, sizeof(tls_en));
+    sd = BIO_get_fd(wbio, NULL);
+    if (EVP_CIPHER_mode(c) == EVP_CIPH_GCM_MODE) {
+	tls_en.crypt_algorithm = CRYPTO_AES_NIST_GCM_16;
+	tls_en.iv_len = EVP_GCM_TLS_FIXED_IV_LEN;
+	switch (8 * EVP_CIPHER_key_length(c)) {
+	case 128:
+	    tls_en.mac_algorthim = CRYPTO_AES_128_NIST_GMAC;
+	    break;
+	case 192:
+	    tls_en.mac_algorthim = CRYPTO_AES_192_NIST_GMAC;
+	    break;
+	case 256:
+	    tls_en.mac_algorthim = CRYPTO_AES_256_NIST_GMAC;
+	    break;
+	default:
+#ifdef KSSL_DEBUG
+	    printf("\nSkipping offload fpr ciph len %d\n", EVP_CIPHER_key_length(c));
+#endif
+
+	    goto skip_offload;
+	}
+    } else if (EVP_CIPHER_mode(c) == EVP_CIPH_CBC_MODE) {
+
+	tls_en.crypt_algorithm = CRYPTO_AES_CBC;
+	tls_en.iv_len = EVP_CIPHER_iv_length(c);
+	switch (dd->cipher->nid) {
+	/* XXX CBC?  Do we even care */
+	case NID_aes_128_cbc_hmac_sha1:
+	case NID_aes_256_cbc_hmac_sha1:
+	    tls_en.mac_algorthim = CRYPTO_SHA1_HMAC;
+	    break;
+	case NID_aes_128_cbc_hmac_sha256:
+	case NID_aes_256_cbc_hmac_sha256:
+	    tls_en.mac_algorthim = CRYPTO_SHA2_256_HMAC;
+	    break;
+	default:
+	    goto skip_offload;
+	}
+	tls_en.hmac_key = ms;
+	tls_en.hmac_key_len = *mac_secret_size;
+    } else {
+#ifdef KSSL_DEBUG
+	    printf("\nSkipping offload fpr ciph mode %lu\n", EVP_CIPHER_mode(c));
+#endif
+
+	goto skip_offload;
+    }
+    tls_en.key_size = EVP_CIPHER_key_length(c);
+    tls_en.tls_vmajor = (s->version >> 8) & 0x000000ff;
+    tls_en.tls_vminor = (s->version & 0x000000ff);
+    tls_en.crypt_key_len = EVP_CIPHER_key_length(c);
+    tls_en.crypt = key;
+    tls_en.iv = iv;
+    (void)BIO_flush(wbio);
+    BIO_set_offload_tx(wbio, &tls_en);
+
+skip_offload:
+#endif
+
 #ifdef OPENSSL_SSL_TRACE_CRYPTO
     if (s->msg_callback) {
         int wh = which & SSL3_CC_WRITE ? TLS1_RT_CRYPTO_WRITE : 0;

@@ -680,3 +680,6 @@ options 	VM_KMEM_SIZE_SCALE
 # Enable NDIS binary driver support
 options 	NDISAPI
 device		ndis
+
+# Kernel TLS
+options		KERN_TLS

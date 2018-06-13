@@ -59,6 +59,7 @@ __FBSDID("$FreeBSD$");
 #endif /* INET6 */
 #include <sys/socket.h>
 #include <sys/socketvar.h>
+#include <sys/sockbuf_tls.h>
 #include <sys/protosw.h>
 #include <sys/proc.h>
 #include <sys/jail.h>
@@ -1045,8 +1046,7 @@ tcp_usr_ready(struct socket *so, struct mbuf *m, int count)
 	INP_WLOCK(inp);
 	if (inp->inp_flags & (INP_TIMEWAIT | INP_DROPPED)) {
 		INP_WUNLOCK(inp);
-		for (int i = 0; i < count; i++)
-			m = m_free(m);
+		mb_free_notready(m, count);
 		return (ECONNRESET);
 	}
 	tp = intotcpcb(inp);
@@ -1536,6 +1536,7 @@ tcp_default_ctloutput(struct socket *so, struct sockopt *sopt, struct inpcb *inp
 	int	error, opt, optval;
 	u_int	ui;
 	struct	tcp_info ti;
+	struct  tls_so_enable tls;
 	struct cc_algo *algo;
 	char	*pbuf, buf[TCP_CA_NAME_MAX];
 	size_t	len;
@@ -1692,6 +1693,16 @@ unlock_and_done:
 				 */
 				error = ENOMEM;
 			}
+			INP_WUNLOCK(inp);
+			break;
+
+		case TCP_TLS_ENABLE:
+			INP_WUNLOCK(inp);
+			error = sooptcopyin(sopt, &tls, sizeof(tls),
+			    sizeof(tls));
+			INP_WLOCK_RECHECK(inp);
+			if (!error)
+				error = sbtls_crypt_tls_enable(so, &tls);
 			INP_WUNLOCK(inp);
 			break;
 
