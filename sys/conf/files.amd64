@@ -728,3 +728,7 @@ x86/xen/xenpv.c			optional	xenhvm
 x86/xen/xen_nexus.c		optional	xenhvm
 x86/xen/xen_msi.c		optional	xenhvm
 x86/xen/xen_pci_bus.c		optional	xenhvm
+#
+# Kernel TLS support
+#
+kern/uipc_sockbuf_tls.c		optional	kern_tls

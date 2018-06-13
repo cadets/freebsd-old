@@ -49,6 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/signalvar.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
+#include <sys/sockbuf_tls.h>
 #include <sys/sx.h>
 #include <sys/sysctl.h>
 
@@ -95,23 +96,42 @@ int
 sbready(struct sockbuf *sb, struct mbuf *m, int count)
 {
 	u_int blocker;
+	struct mbuf *om = m;
 
 	SOCKBUF_LOCK_ASSERT(sb);
 	KASSERT(sb->sb_fnrdy != NULL, ("%s: sb %p NULL fnrdy", __func__, sb));
 
 	blocker = (sb->sb_fnrdy == m) ? M_BLOCKED : 0;
 
-	for (int i = 0; i < count; i++, m = m->m_next) {
+	for (int i = 0; i < count; i++) {
 		KASSERT(m->m_flags & M_NOTREADY,
 		    ("%s: m %p !M_NOTREADY", __func__, m));
+		if ((m->m_flags & M_EXT) != 0 &&
+		    m->m_ext.ext_type == EXT_PGS) {
+			struct mbuf_ext_pgs *ext_pgs;
+
+			ext_pgs = (void *)m->m_ext.ext_buf;
+			ext_pgs->nrdy--;
+			if (ext_pgs->nrdy != 0)
+				continue;
+		}
+
 		m->m_flags &= ~(M_NOTREADY | blocker);
 		if (blocker)
 			sb->sb_acc += m->m_len;
+		m = m->m_next;
 	}
 
 	if (!blocker)
 		return (EINPROGRESS);
 
+	/*
+	 * not completing all of bocker's pages is the same
+	 * as not finding the blocker
+	 */
+	if (m == om)
+		return (EINPROGRESS);
+	
 	/* This one was blocking all the queue. */
 	for (; m && (m->m_flags & M_NOTREADY) == 0; m = m->m_next) {
 		KASSERT(m->m_flags & M_BLOCKED,
@@ -562,8 +582,16 @@ sbrelease(struct sockbuf *sb, struct socket *so)
 void
 sbdestroy(struct sockbuf *sb, struct socket *so)
 {
+	int locked = 0;
 
+	if (SOCKBUF_OWNED(sb) == 0) {
+		SOCKBUF_LOCK(sb);
+		locked = 1;
+	}
 	sbrelease_internal(sb, so);
+	sbtlsdestroy(sb);
+	if (locked)
+		SOCKBUF_UNLOCK(sb);
 }
 
 /*
@@ -726,6 +754,9 @@ sbappendstream_locked(struct sockbuf *sb, struct mbuf *m, int flags)
 	KASSERT(sb->sb_mb == sb->sb_lastrecord,("sbappendstream 1"));
 
 	SBLASTMBUFCHK(sb);
+
+	if ((sb->sb_tls_flags & SB_TLS_ACTIVE) != 0)
+		sbtls_seq(sb, m);
 
 	/* Remove all packet headers and mbuf tags to get a pure data chain. */
 	m_demote(m, 1, flags & PRUS_NOTREADY ? M_NOTREADY : 0);
@@ -1040,8 +1071,8 @@ sbcompress(struct sockbuf *sb, struct mbuf *m, struct mbuf *n)
 		if (n && (n->m_flags & M_EOR) == 0 &&
 		    M_WRITABLE(n) &&
 		    ((sb->sb_flags & SB_NOCOALESCE) == 0) &&
-		    !(m->m_flags & M_NOTREADY) &&
-		    !(n->m_flags & M_NOTREADY) &&
+		    !(m->m_flags & (M_NOTREADY | M_NOMAP)) &&
+		    !(n->m_flags & (M_NOTREADY | M_NOMAP)) &&
 		    m->m_len <= MCLBYTES / 4 && /* XXX: Don't copy too much */
 		    m->m_len <= M_TRAILINGSPACE(n) &&
 		    n->m_type == m->m_type) {
@@ -1240,46 +1271,52 @@ sbdrop(struct sockbuf *sb, int len)
  * avoid traversal of the entire socket buffer for larger offsets.
  */
 struct mbuf *
-sbsndptr(struct sockbuf *sb, u_int off, u_int len, u_int *moff)
+sbsndptr(struct sockbuf *sb, uint32_t off, uint32_t * moff)
 {
-	struct mbuf *m, *ret;
+	struct mbuf *m;
 
 	KASSERT(sb->sb_mb != NULL, ("%s: sb_mb is NULL", __func__));
-	KASSERT(off + len <= sb->sb_acc, ("%s: beyond sb", __func__));
-	KASSERT(sb->sb_sndptroff <= sb->sb_acc, ("%s: sndptroff broken", __func__));
-
-	/*
-	 * Is off below stored offset? Happens on retransmits.
-	 * Just return, we can't help here.
-	 */
-	if (sb->sb_sndptroff > off) {
+	if (sb->sb_sndptr == NULL || sb->sb_sndptroff > off) {
 		*moff = off;
+		if (sb->sb_sndptr == NULL) {
+			sb->sb_sndptr = sb->sb_mb;
+			sb->sb_sndptroff = 0;
+		}
 		return (sb->sb_mb);
+	} else {
+		m = sb->sb_sndptr;
+		off -= sb->sb_sndptroff;
 	}
+	*moff = off;
+	return (m);
+}
 
-	/* Return closest mbuf in chain for current offset. */
-	*moff = off - sb->sb_sndptroff;
-	m = ret = sb->sb_sndptr ? sb->sb_sndptr : sb->sb_mb;
-	if (*moff == m->m_len) {
-		*moff = 0;
-		sb->sb_sndptroff += m->m_len;
-		m = ret = m->m_next;
-		KASSERT(ret->m_len > 0,
-		    ("mbuf %p in sockbuf %p chain has no valid data", ret, sb));
+void
+sbsndptr_adv(struct sockbuf *sb, struct mbuf *mb, uint32_t len)
+{
+	/*
+	 * A small copy was done, advance forward the sb_sbsndptr to cover
+	 * it.
+	 */
+	struct mbuf *m;
+
+	if (mb != sb->sb_sndptr) {
+		/* Did not copyout at the same mbuf */
+		return;
 	}
-
-	/* Advance by len to be as close as possible for the next transmit. */
-	for (off = off - sb->sb_sndptroff + len - 1;
-	     off > 0 && m != NULL && off >= m->m_len;
-	     m = m->m_next) {
-		sb->sb_sndptroff += m->m_len;
-		off -= m->m_len;
+	m = mb;
+	while (m && (len > 0)) {
+		if (len >= m->m_len) {
+			len -= m->m_len;
+			if (m->m_next) {
+				sb->sb_sndptroff += m->m_len;
+				sb->sb_sndptr = m->m_next;
+			}
+			m = m->m_next;
+		} else {
+			len = 0;
+		}
 	}
-	if (off > 0 && m == NULL)
-		panic("%s: sockbuf %p and mbuf %p clashing", __func__, sb, ret);
-	sb->sb_sndptr = m;
-
-	return (ret);
 }
 
 /*
