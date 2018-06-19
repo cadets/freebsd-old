@@ -49,12 +49,10 @@ lwpid_t (*vmm_gettid)(void *biscuit);
 uint16_t (*vmm_getid)(void *biscuit);
 
 void
-dtvirt_probe(void *biscuit, int probeid, uintptr_t arg0, uintptr_t arg1,
-    uintptr_t arg2, uintptr_t arg3, uintptr_t arg4)
+dtvirt_probe(void *biscuit, int probeid, struct dtvirt_args *dtv_args)
 {
 
-	dtrace_ns_probe(biscuit, probeid,
-	    arg0, arg1, arg2, arg3, arg4);
+	dtrace_ns_probe(biscuit, probeid, dtv_args);
 }
 
 static int

@@ -22,7 +22,7 @@
 struct dtvirt_args {
 	uintptr_t dtv_args[DTVIRT_ARGS_MAX]; /* guest probe args */
 	void *dtv_curthread;		     /* guest thread */
-	char *dtv_execname;		     /* (v) guest execname */
+	char dtv_execname[MAXCOMLEN + 1];    /* (v) guest execname */
 	char *dtv_execargs;		     /* (v) guest execargs */
 	lwpid_t dtv_tid;		     /* guest tid */
 	pid_t dtv_pid;			     /* guest pid */
@@ -30,13 +30,11 @@ struct dtvirt_args {
 	uid_t dtv_uid;			     /* guest uid */
 	gid_t dtv_gid;			     /* guest gid */
 	int dtv_errno;			     /* guest errno */
-	u_int dtv_execname_len;		     /* (v) length of execname */
-	u_int dtv_execargs_len;		     /* (v) length of execargs r*/
 	u_int dtv_curcpu;		     /* (h) guest curcpu */
+	u_int dtv_execargs_len;
 };
 
-extern void dtvirt_probe(void *, int, uintptr_t,
-    uintptr_t, uintptr_t, uintptr_t, uintptr_t);
+extern void dtvirt_probe(void *, int, struct dtvirt_args *);
 extern lwpid_t (*dtvirt_gettid)(void *);
 extern uint16_t (*dtvirt_getns)(void *);
 
