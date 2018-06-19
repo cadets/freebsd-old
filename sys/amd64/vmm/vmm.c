@@ -1843,6 +1843,8 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 	    struct vm_biscuit), M_VM, M_ZERO | M_WAITOK);
 	struct seg_desc ds_desc;
 	uintptr_t dt_probe_args[5];
+	struct dtvirt_args dtv_args;
+	char *execargs = NULL;
 	int err;
 	int fault = 0;
 
@@ -1859,14 +1861,22 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 	    __func__, err));
 
 	err = hypercall_copy_arg(vm, vcpuid, ds_desc.base,
-	    args[1], 5 * sizeof(uintptr_t), paging, dt_probe_args);
-	KASSERT(err == 0, ("%s: error %d getting DS descriptor",
+	    args[1], sizeof(struct dtvirt_args), paging, &dtv_args);
+	KASSERT(err == 0, ("%s: error %d copying the arguments",
 	    __func__, err));
 
-	dtvirt_probe(biscuit, (int)args[0],
-	    dt_probe_args[0], dt_probe_args[1],
-	    dt_probe_args[2], dt_probe_args[3],
-	    dt_probe_args[4]);
+	execargs = dtv_args.dtv_execargs;
+	dtv_args.dtv_execargs = malloc(dtv_args.dtv_execargs_len, M_VM, M_WAITOK);
+	if (dtv_args.dtv_execargs != NULL) {
+		err = hypercall_copy_arg(vm, vcpuid, ds_desc.base,
+		    (uintptr_t) execargs,
+		    dtv_args.dtv_execargs_len, paging,
+		    dtv_args.dtv_execargs);
+		KASSERT(err == 0, ("%s: error %d copying execargs",
+		    __func__, err));
+	}
+
+	dtvirt_probe(biscuit, (int)args[0], &dtv_args);
 
 	return (HYPERCALL_RET_SUCCESS);
 }

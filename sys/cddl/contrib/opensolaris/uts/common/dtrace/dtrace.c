@@ -578,8 +578,10 @@ dtrace_load##bits(dtrace_mstate_t *mstate, uintptr_t addr)		\
 		*flags |= CPU_DTRACE_NOFAULT;				\
 		err = dtrace_gla2hva(dtrace_get_paging(mstate),		\
 		    addr, &addr);					\
-		if (err)						\
+		if (err) {						\
 			return (0);					\
+			*flags &= ~CPU_DTRACE_NOFAULT;			\
+		}							\
 		rval = *(uint##bits##_t *)addr;				\
 		*flags &= ~CPU_DTRACE_NOFAULT;				\
 		if ((*flags & CPU_DTRACE_FAULT) == 0) {			\
@@ -665,10 +667,6 @@ uint16_t dtrace_load16(dtrace_mstate_t *, uintptr_t);
 uint32_t dtrace_load32(dtrace_mstate_t *, uintptr_t);
 uint64_t dtrace_load64(dtrace_mstate_t *, uintptr_t);
 uint8_t dtrace_load8(dtrace_mstate_t *, uintptr_t);
-uint16_t dtrace_vmload16(dtrace_mstate_t *, uintptr_t);
-uint32_t dtrace_vmload32(dtrace_mstate_t *, uintptr_t);
-uint64_t dtrace_vmload64(dtrace_mstate_t *, uintptr_t);
-uint8_t dtrace_vmload8(dtrace_mstate_t *, uintptr_t);
 uintptr_t dtrace_vmloadmem(dtrace_mstate_t *, uintptr_t, size_t);
 void dtrace_dynvar_clean(dtrace_dstate_t *);
 dtrace_dynvar_t *dtrace_dynvar(dtrace_dstate_t *, uint_t, dtrace_key_t *,
@@ -819,8 +817,9 @@ dtrace_vmloadmem(dtrace_mstate_t *mstate, uintptr_t addr, size_t size)
 
 	rval = 0;
 	/*
-	 * No need to check for alignment because we are not working with
-	 * primitive operations anymore.
+	 * Here we just get the HVA of the data we want. We do not actually
+	 * copy it inside DTrace. This means that it may be paged out or gone
+	 * later on if we carry the pointer through multiple probe firings.
 	 */
 	*flags |= CPU_DTRACE_NOFAULT;
 	err = (uintptr_t)dtrace_gla2hva(dtrace_get_paging(mstate), addr, &rval);
@@ -3383,22 +3382,20 @@ dtrace_dif_varstr(uintptr_t addr, dtrace_state_t *state,
 	 */
 	if ((mstate->dtms_access & DTRACE_ACCESS_KERNEL) != 0)
 		return (addr);
-
 	/*
 	 * This is the tougher case: we copy the string in question from
 	 * kernel memory into scratch memory and return it that way: this
 	 * ensures that we won't trip up when access checking tests the
 	 * BYREF return value.
 	 */
-	strsz = dtrace_strlen(mstate, (char *)addr, size) + 1;
+	strsz = dtrace_strlen(NULL, (char *)addr, size) + 1;
 
 	if (mstate->dtms_scratch_ptr + strsz >
 	    mstate->dtms_scratch_base + mstate->dtms_scratch_size) {
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
 		return (0);
 	}
-
-	dtrace_strcpy(mstate, (const void *)addr, (void *)mstate->dtms_scratch_ptr,
+	dtrace_strcpy(NULL, (const void *)addr, (void *)mstate->dtms_scratch_ptr,
 	    strsz);
 	ret = mstate->dtms_scratch_ptr;
 	mstate->dtms_scratch_ptr += strsz;
@@ -3429,7 +3426,7 @@ dtrace_dif_varstrz(uintptr_t addr, size_t strsz, dtrace_state_t *state,
 		return (0);
 	}
 
-	dtrace_bcopy(mstate, (const void *)addr, (void *)mstate->dtms_scratch_ptr,
+	dtrace_bcopy(NULL, (const void *)addr, (void *)mstate->dtms_scratch_ptr,
 	    strsz);
 
 	/* Replace sub-string termination characters with a space. */
@@ -3557,7 +3554,10 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			return (0);
 		return ((uint64_t)(uintptr_t)curthread);
 	case DIF_VAR_GCURTHREAD:
-		return (0);
+		if (!dtrace_priv_proc(state))
+			return (0);
+		return ((uint64_t)
+		    (uintptr_t)mstate->dtms_dtvargs->dtv_curthread);
 
 	/*
 	 * We currently keep these identical because maintain time on the host
@@ -3712,6 +3712,8 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 
 		return (mstate->dtms_ucaller);
 	case DIF_VAR_GUCALLER:
+		if (!dtrace_priv_proc(state))
+			return (0);
 		return (0);
 
 	/* See DIF_VAR_GPRID */
@@ -3772,7 +3774,9 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		return ((uint64_t)curproc->p_pid);
 #endif
 	case DIF_VAR_GPID:
-		return (0);
+		if (!dtrace_priv_proc(state))
+			return (0);
+		return ((uint64_t)mstate->dtms_dtvargs->dtv_pid);
 
 	case DIF_VAR_HPPID:
 		if (!dtrace_priv_proc(state))
@@ -3799,7 +3803,12 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			return (curproc->p_pptr->p_pid);
 #endif
 	case DIF_VAR_GPPID:
-		return (0);
+		if (!dtrace_priv_proc(state))
+			return (0);
+		/* XXX(dstolfa): Hardcoding pid0 -- not good */
+		if (mstate->dtms_dtvargs->dtv_pid == 0)
+			return (mstate->dtms_dtvargs->dtv_pid);
+		return (mstate->dtms_dtvargs->dtv_ppid);
 
 	case DIF_VAR_HTID:
 #ifdef illumos
@@ -3812,7 +3821,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 
 		return ((uint64_t)curthread->t_tid);
 	case DIF_VAR_GTID:
-		return (0);
+		return ((uint64_t)mstate->dtms_dtvargs->dtv_tid);
 
 	case DIF_VAR_HEXECARGS: {
 		struct pargs *p_args = curthread->td_proc->p_args;
@@ -3825,7 +3834,11 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 	}
 
 	case DIF_VAR_GEXECARGS:
-		return (0);
+		if (mstate->dtms_dtvargs->dtv_execargs == NULL)
+			return (0);
+		return (dtrace_dif_varstrz(
+		    (uintptr_t) mstate->dtms_dtvargs->dtv_execargs,
+		    mstate->dtms_dtvargs->dtv_execargs_len, state, mstate));
 
 	case DIF_VAR_HEXECNAME:
 #ifdef illumos
@@ -3852,7 +3865,8 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		    (uintptr_t) curthread->td_proc->p_comm, state, mstate));
 #endif
 	case DIF_VAR_GEXECNAME:
-		return (0);
+		return (dtrace_dif_varstr(
+		    (uintptr_t) mstate->dtms_dtvargs->dtv_execname, state, mstate));
 
 	case DIF_VAR_HZONENAME:
 #ifdef illumos
@@ -3923,7 +3937,9 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		return ((uint64_t)curthread->td_ucred->cr_uid);
 #endif
 	case DIF_VAR_GUID:
-		return (0);
+		if (!dtrace_priv_proc(state))
+			return (0);
+		return (((uint64_t)mstate->dtms_dtvargs->dtv_uid));
 
 	case DIF_VAR_HGID:
 		if (!dtrace_priv_proc(state))
@@ -3950,7 +3966,9 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		return ((uint64_t)curthread->td_ucred->cr_gid);
 #endif
 	case DIF_VAR_GGID:
-		return (0);
+		if (!dtrace_priv_proc(state))
+			return (0);
+		return (((uint64_t)mstate->dtms_dtvargs->dtv_gid));
 
 	case DIF_VAR_HERRNO: {
 #ifdef illumos
@@ -3979,12 +3997,12 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 #endif
 	}
 	case DIF_VAR_GERRNO:
-		return (0);
+		return (mstate->dtms_dtvargs->dtv_errno);
 #ifndef illumos
 	case DIF_VAR_HCPU:
 		return (curcpu);
 	case DIF_VAR_GCPU:
-		return (0);
+		return (mstate->dtms_dtvargs->dtv_curcpu);
 #endif
 	default:
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
@@ -6625,13 +6643,13 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 			break;
 		case DIF_OP_RET:
-			if (mstate->dtms_biscuit) {
+			/*			if (mstate->dtms_biscuit) {
 				if (difo->dtdo_rtype.dtdt_flags != 0 &&
 				    difo->dtdo_rtype.dtdt_kind == DIF_TYPE_CTF) {
 					regs[rd] = dtrace_vmloadmem(mstate, regs[rd],
 					    difo->dtdo_rtype.dtdt_size);
 				}
-			}
+				}*/
 			rval = regs[rd];
 			pc = textlen;
 			break;
@@ -6702,6 +6720,8 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			}
 
 			regs[rd] = dtrace_dif_variable(mstate, state, id, 0);
+			printf("regs[rd] = %s\n", (char *)regs[rd]);
+
 			break;
 
 		case DIF_OP_STGS:
@@ -7163,9 +7183,44 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			break;
 		case DIF_OP_HCALL: {
 			if (bhyve_hypercalls_enabled()) {
+				struct dtvirt_args _dtv_args = {
+					.dtv_args = {
+						mstate->dtms_arg[0],
+						mstate->dtms_arg[1],
+						mstate->dtms_arg[2],
+						mstate->dtms_arg[3],
+						mstate->dtms_arg[4],
+						0,
+						0,
+						0,
+						0,
+						0
+					},
+					.dtv_curthread = curthread,
+					.dtv_execname = "",
+					.dtv_execargs = NULL, /* needs check */
+					.dtv_tid = curthread->td_tid,
+					.dtv_pid = curthread->td_proc->p_pid,
+					.dtv_ppid = 0, /* needs check */
+					.dtv_uid = curthread->td_ucred->cr_uid,
+					.dtv_gid = curthread->td_ucred->cr_gid,
+					.dtv_errno = curthread->td_errno,
+					.dtv_curcpu = curcpu,
+					.dtv_execargs_len = 0
+				};
+				dtrace_strcpy(mstate, curthread->td_proc->p_comm,
+				    _dtv_args.dtv_execname, MAXCOMLEN);
+				if (curthread->td_proc->p_args != NULL) {
+					_dtv_args.dtv_execargs =
+					    curthread->td_proc->p_args->ar_args;
+					_dtv_args.dtv_execargs_len =
+					    curthread->td_proc->p_args->ar_length;
+				}
+				if (curproc->p_pid != proc0.p_pid)
+					_dtv_args.dtv_ppid = curproc->p_pptr->p_pid;
 				hypercall_dtrace_probe(
 				    mstate->dtms_probe->dtpr_id,
-				    (uintptr_t)&mstate->dtms_arg, curthread->td_tid);
+				    (uintptr_t)&_dtv_args, curthread->td_tid);
 			}
 			break;
 		}
@@ -7534,7 +7589,7 @@ dtrace_store_by_ref(dtrace_mstate_t *mstate, dtrace_difo_t *dp, caddr_t tomax, s
 		uint8_t c;
 		while (valoffs < end) {
 			if (dtkind == DIF_TF_BYREF) {
-				c = dtrace_load8(NULL, val++);
+				c = dtrace_load8(mstate, val++);
 			} else if (dtkind == DIF_TF_BYUREF) {
 				DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 				c = dtrace_fuword8((void *)(uintptr_t)val++);
@@ -7596,8 +7651,7 @@ dtrace_probe_exit(dtrace_icookie_t cookie)
  * subsequent probe-context DTrace activity emanates.
  */
 void
-dtrace_ns_probe(void *biscuit, dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
-    uintptr_t arg2, uintptr_t arg3, uintptr_t arg4)
+dtrace_ns_probe(void *biscuit, dtrace_id_t id, struct dtvirt_args *dtv_args)
 {
 	processorid_t cpuid;
 	dtrace_icookie_t cookie;
@@ -7610,6 +7664,7 @@ dtrace_ns_probe(void *biscuit, dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	int vtime, onintr;
 	volatile uint16_t *flags;
 	hrtime_t now;
+	uintptr_t arg0, arg1, arg2, arg3, arg4;
 
 	if (panicstr != NULL)
 		return;
@@ -7661,12 +7716,18 @@ dtrace_ns_probe(void *biscuit, dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	mstate.dtms_difo = NULL;
 	mstate.dtms_probe = probe;
 	mstate.dtms_strtok = 0;
-	mstate.dtms_arg[0] = arg0;
-	mstate.dtms_arg[1] = arg1;
-	mstate.dtms_arg[2] = arg2;
-	mstate.dtms_arg[3] = arg3;
-	mstate.dtms_arg[4] = arg4;
+	arg0 = dtv_args->dtv_args[0];
+	arg1 = dtv_args->dtv_args[1];
+	arg2 = dtv_args->dtv_args[2];
+	arg3 = dtv_args->dtv_args[3];
+	arg4 = dtv_args->dtv_args[4];
+	mstate.dtms_arg[0] = dtv_args->dtv_args[0];
+	mstate.dtms_arg[1] = dtv_args->dtv_args[1];
+	mstate.dtms_arg[2] = dtv_args->dtv_args[2];
+	mstate.dtms_arg[3] = dtv_args->dtv_args[3];
+	mstate.dtms_arg[4] = dtv_args->dtv_args[4];
 	mstate.dtms_biscuit = biscuit;
+	mstate.dtms_dtvargs = dtv_args;
 
 	flags = (volatile uint16_t *)&cpu_core[cpuid].cpuc_dtrace_flags;
 
@@ -7883,9 +7944,10 @@ dtrace_ns_probe(void *biscuit, dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 
 				agg = (dtrace_aggregation_t *)act;
 
-				if ((dp = act->dta_difo) != NULL)
+				if ((dp = act->dta_difo) != NULL) {
 					v = dtrace_dif_emulate(dp,
 					    &mstate, vstate, state);
+				}
 
 				if (*flags & CPU_DTRACE_ERROR)
 					continue;
@@ -8282,7 +8344,10 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4)
 {
 
-	dtrace_ns_probe(NULL, id, arg0, arg1, arg2, arg3, arg4);
+	struct dtvirt_args dtv_args = {
+		{ arg0, arg1, arg2, arg3, arg4, 0, 0, 0, 0 },
+	};
+	dtrace_ns_probe(NULL, id, &dtv_args);
 }
 
 
