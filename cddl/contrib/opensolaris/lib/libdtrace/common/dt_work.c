@@ -213,6 +213,17 @@ dtrace_go(dtrace_hdl_t *dtp)
 	if (r == -1 && (error != ENOTTY || dtp->dt_vector == NULL))
 		return (dt_set_errno(dtp, error));
 
+	int i=1;
+	int a=0;
+	dtrace_eprobedesc_t **epdp = malloc(sizeof(**epdp));
+	dtrace_probedesc_t **pdp = malloc(sizeof(**pdp));
+	do {
+		a=dt_epid_lookup(dtp, i, epdp, pdp);
+		i++;
+	} while(a == 0);
+	free(epdp);
+	free(pdp);
+
 	if (dt_ioctl(dtp, DTRACEIOC_GO, &dtp->dt_beganon) == -1) {
 		if (errno == EACCES)
 			return (dt_set_errno(dtp, EDT_DESTRUCTIVE));
