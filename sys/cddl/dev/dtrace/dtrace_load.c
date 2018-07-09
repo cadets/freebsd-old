@@ -167,6 +167,7 @@ dtrace_load(void *dummy)
 	    "dtrace/dtrace");
 	helper_dev = make_dev(&helper_cdevsw, 0, UID_ROOT, GID_WHEEL, 0660,
 	    "dtrace/helper");
+	dtrace_provide_all_probes = dtrace_priv_provide_all_probes;
 	dtrace_probeid_enable = dtrace_priv_probeid_enable;
 	dtrace_virtstate_create = dtrace_priv_virtstate_create;
 	dtrace_virtstate_destroy = dtrace_priv_virtstate_destroy;

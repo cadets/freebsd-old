@@ -201,6 +201,7 @@ static struct virtio_feature_desc vtdtr_feature_desc[] = {
 	{ 0, NULL }
 };
 
+void (*dtrace_provide_all_probes)(void) = NULL;
 int (*dtrace_probeid_enable)(dtrace_id_t) = NULL;
 int (*dtrace_virtstate_create)(void) = NULL;
 void (*dtrace_virtstate_destroy)(void) = NULL;
@@ -683,6 +684,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		}
 
 		KASSERT(vstate == 1, ("vstate must be 1\n"));
+		dtrace_provide_all_probes();
 		error = dtrace_probeid_enable(pb->probe);
 		if (error) {
 			device_printf(dev, "%s: error %d enabling"
