@@ -18791,6 +18791,15 @@ dtrace_priv_virtstate_stop(void)
 	return (err);
 }
 
+static void
+dtrace_priv_provide_all_probes(void)
+{
+
+	mutex_enter(&dtrace_provider_lock);
+	dtrace_probe_provide(NULL, NULL);
+	mutex_exit(&dtrace_provider_lock);
+}
+
 static int
 dtrace_priv_probeid_enable(dtrace_id_t id)
 {
