@@ -34,6 +34,25 @@
 #include <machine/pmap.h>
 #include <vm/pmap.h>
 
+static uintptr_t
+DTRACE_PHYS_TO_DMAP(uintptr_t x)
+{
+	if (dmaplimit == 0 || x < dmaplimit)
+		return (x | DMAP_MIN_ADDRESS);
+
+	return (0);
+}
+
+static uintptr_t
+DTRACE_DMAP_TO_PHYS(uintptr_t x)
+{
+	if (x < (DMAP_MIN_ADDRESS + dmaplimit) &&
+	    x >= DMAP_MIN_ADDRESS)
+		return (x & (~DMAP_MIN_ADDRESS));
+
+	return (0);
+}
+
 static __inline vm_pindex_t
 dtrace_pte_index(vm_offset_t va)
 {
@@ -129,7 +148,10 @@ dtrace_pml4e_to_pdpe(pml4_entry_t *pml4e, vm_offset_t va)
 {
 	pdp_entry_t *pdpe;
 
-	pdpe = (pdp_entry_t *)PHYS_TO_DMAP(*pml4e & PG_FRAME);
+	pdpe = (pdp_entry_t *)DTRACE_PHYS_TO_DMAP(*pml4e & PG_FRAME);
+	if (pdpe == 0)
+		return (0);
+
 	return (&pdpe[dtrace_pdpe_index(va)]);
 }
 
@@ -154,7 +176,10 @@ dtrace_pdpe_to_pde(pdp_entry_t *pdpe, vm_offset_t va)
 {
 	pd_entry_t *pde;
 
-	pde = (pd_entry_t *)PHYS_TO_DMAP(*pdpe & PG_FRAME);
+	pde = (pd_entry_t *)DTRACE_PHYS_TO_DMAP(*pdpe & PG_FRAME);
+	if (pde == 0)
+		return (0);
+
 	return (&pde[dtrace_pde_index(va)]);
 }
 
@@ -179,7 +204,10 @@ dtrace_pde_to_pte(pd_entry_t *pde, vm_offset_t va)
 {
 	pt_entry_t *pte;
 
-	pte = (pt_entry_t *)PHYS_TO_DMAP(*pde & PG_FRAME);
+	pte = (pt_entry_t *)DTRACE_PHYS_TO_DMAP(*pde & PG_FRAME);
+	if (pte == 0)
+		return (0);
+
 	return (&pte[dtrace_pte_index(va)]);
 }
 
@@ -259,8 +287,12 @@ dtrace_gla2hva(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hva)
 			ptpphys >>= 12;
 			m = dtrace_get_page(pmap, trunc_page(ptpphys));
 			pageoff = ptpphys & PAGE_MASK;
-			ptpbase = (void *)(PHYS_TO_DMAP(VM_PAGE_TO_PHYS(m)) +
+			ptpbase = (void *)(DTRACE_PHYS_TO_DMAP(VM_PAGE_TO_PHYS(m)) +
 			    pageoff);
+			if ((uint64_t)ptpbase == (uint64_t)pageoff) {
+				*hva = 0;
+				return (EINVAL);
+			}
 
 			ptpshift = PAGE_SHIFT + nlevels * 9;
 			ptpindex = (gla >> ptpshift) & 0x1ff;
@@ -291,8 +323,12 @@ dtrace_gla2hva(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hva)
 
 	pageoff = gpa & PAGE_MASK;
 	m = dtrace_get_page(pmap, trunc_page(gpa));
-	ptpbase = (void *)(PHYS_TO_DMAP(VM_PAGE_TO_PHYS(m)) +
+	ptpbase = (void *)(DTRACE_PHYS_TO_DMAP(VM_PAGE_TO_PHYS(m)) +
 	    pageoff);
-	*hva = PHYS_TO_DMAP(DMAP_TO_PHYS((uintptr_t)ptpbase));
+	if ((uint64_t)ptpbase == (uint64_t)pageoff) {
+		*hva = 0;
+		return (EINVAL);
+	}
+	*hva = DTRACE_PHYS_TO_DMAP(DTRACE_DMAP_TO_PHYS((uintptr_t)ptpbase));
 	return (0);
 }

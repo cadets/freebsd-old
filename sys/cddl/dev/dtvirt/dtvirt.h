@@ -22,7 +22,7 @@
 struct dtvirt_args {
 	uintptr_t dtv_args[DTVIRT_ARGS_MAX]; /* guest probe args */
 	void *dtv_curthread;		     /* guest thread */
-	char dtv_execname[MAXCOMLEN + 1];    /* (v) guest execname */
+	char *dtv_execname;                  /* (v) guest execname */
 	char *dtv_execargs;		     /* (v) guest execargs */
 	lwpid_t dtv_tid;		     /* guest tid */
 	pid_t dtv_pid;			     /* guest pid */
