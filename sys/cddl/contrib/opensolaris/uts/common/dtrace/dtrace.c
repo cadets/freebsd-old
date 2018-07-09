@@ -6720,7 +6720,6 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			}
 
 			regs[rd] = dtrace_dif_variable(mstate, state, id, 0);
-			printf("regs[rd] = %s\n", (char *)regs[rd]);
 
 			break;
 
