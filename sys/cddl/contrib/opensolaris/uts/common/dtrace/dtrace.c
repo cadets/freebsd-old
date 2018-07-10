@@ -3466,9 +3466,9 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 	    mstate->dtms_biscuit == NULL)
 		return (0);
 
-	if (mstate->dtms_biscuit)
+	if (mstate->dtms_biscuit && v < DIF_VAR_GARGS)
 		v += DIF_VAR_GUESTVAR_OFFS;
-	else
+	else if (v < DIF_VAR_GARGS)
 		v += DIF_VAR_HOSTVAR_OFFS;
 
 	ASSERT(v >= DIF_VAR_GARGS);
