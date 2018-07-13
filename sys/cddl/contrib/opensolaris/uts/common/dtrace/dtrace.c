@@ -18755,6 +18755,30 @@ dtrace_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 
 #ifndef illumos
 
+/*
+ * dtrace_priv_virtstate_create,
+ * dtrace_priv_virtstate_destroy,
+ * dtrace_priv_virtstate_go,
+ * dtrace_priv_virtstate_stop,
+ * dtrace_priv_provide_all_probes,
+ * dtrace_priv_probeid_enable
+ *
+ * are functions that are exposed to virtio_dtrace.c via function
+ * pointers of the same name without "priv". They are used to set
+ * up, destroy start and stop state as well as provide and enable
+ * probes.
+ *
+ * These functions only run on the guest when controlled by the host
+ * via VirtIO.
+ */
+
+/*
+ * Create the virtual tracing state (much like anonymous state is
+ * created) and set the buffer size to 1KiB. We currently do not
+ * need more, however with a different point in the design space
+ * this may be bumped to a larger number in order to keep records
+ * in the guest.
+ */
 static int
 dtrace_priv_virtstate_create(void)
 {
@@ -18768,6 +18792,12 @@ dtrace_priv_virtstate_create(void)
 	return (virt_state == NULL) ? ENOMEM : 0;
 }
 
+/*
+ * Destroy the anonymous virtual tracing state that was created by
+ * dtrace_priv_virtstate_create. This requires that the state is
+ * in the stopped state by calling dtrace_priv_virtstate_stop by
+ * nature of how dtrace_state_destroy works.
+ */
 static void
 dtrace_priv_virtstate_destroy(void)
 {
@@ -18794,6 +18824,12 @@ dtrace_priv_virtstate_go(void)
 	return (error);
 }
 
+/*
+ * Once the state has been created, we can call this function
+ * on it to start tracing. This will allow dtrace_probe() to
+ * execute DIF that we have set up in the enabling and produce
+ * records.
+ */
 static int
 dtrace_priv_virtstate_stop(void)
 {
@@ -18809,6 +18845,12 @@ dtrace_priv_virtstate_stop(void)
 	return (err);
 }
 
+/*
+ * The guest providers may not have provided all of the probes
+ * when they are loaded as kernel modules. This is called from
+ * the VirtIO frontend in order to ensure that all of the probes
+ * that we may be enabling from the host are indeed provided.
+ */
 static void
 dtrace_priv_provide_all_probes(void)
 {
@@ -18818,6 +18860,16 @@ dtrace_priv_provide_all_probes(void)
 	mutex_exit(&dtrace_provider_lock);
 }
 
+/*
+ * This function is used to enabled a given probe ID. The assumption
+ * is that the host is aware of the correct probe ID for a given probe
+ * name -- which in the current prototype is manifested through a
+ * homogeneous system.
+ *
+ * The function will perform a number of sanity-checks for the virtual
+ * tracing state, create a DIFO with a DIF_OP_HCALL instruction and
+ * set up the ECB for a given probe.
+ */
 static int
 dtrace_priv_probeid_enable(dtrace_id_t id)
 {

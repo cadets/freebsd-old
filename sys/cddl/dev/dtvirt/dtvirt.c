@@ -29,6 +29,12 @@
  * SUCH DAMAGE.
  */
 
+/*
+ * dtvirt.c is a simple proxy between DTrace and vmm due to linking problems.
+ * It exposes a number of interfaces via function pointers to access internal
+ * vmm state from the DTrace probe context.
+ */
+
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
@@ -73,6 +79,9 @@ dtvirt_handler(module_t mod __unused, int what, void *arg __unused)
 	return (0);
 }
 
+/*
+ * Get the thread ID of the VM.
+ */
 static lwpid_t
 dtvirt_priv_gettid(void *biscuit)
 {
@@ -82,6 +91,10 @@ dtvirt_priv_gettid(void *biscuit)
 	return (0);
 }
 
+/*
+ * Get a unique identifier of each vm (uint16_t). This is used to scope
+ * thread-local storage in the DTrace probe context.
+ */
 static uint16_t
 dtvirt_priv_getns(void *biscuit)
 {
