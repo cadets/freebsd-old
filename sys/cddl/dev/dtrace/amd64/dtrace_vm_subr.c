@@ -34,6 +34,15 @@
 #include <machine/pmap.h>
 #include <vm/pmap.h>
 
+/*
+ * The DTrace alternative to PHYS_TO_DMAP.
+ *
+ * This is necessary because the kernel's PHYS_TO_DMAP has an assertion
+ * that we can not guarantee in the DTrace probe context when an address
+ * from the wrong address space has been given to the nested page table
+ * walk. Instead, we simply return 0 if it's an invalid address and handle
+ * the error in the caller.
+ */
 static uintptr_t
 DTRACE_PHYS_TO_DMAP(uintptr_t x)
 {
@@ -43,6 +52,11 @@ DTRACE_PHYS_TO_DMAP(uintptr_t x)
 	return (0);
 }
 
+/*
+ * The DTrace alternative to DMAP_TO_PHYS.
+ *
+ * See DTRACE_PHYS_TO_DMAP.
+ */
 static uintptr_t
 DTRACE_DMAP_TO_PHYS(uintptr_t x)
 {
@@ -53,6 +67,17 @@ DTRACE_DMAP_TO_PHYS(uintptr_t x)
 	return (0);
 }
 
+/*
+ * dtrace_pte_index,
+ * dtrace_pde_index,
+ * dtrace_pdpe_index,
+ * dtrace_pml4e_index
+ *
+ * are identical to the pmap_* functions with the same name, but have been
+ * replicated here in order to allow for tracing of the pmap functions
+ * without causing recursion in DTrace, as the following functions are
+ * called from the probe context.
+ */
 static __inline vm_pindex_t
 dtrace_pte_index(vm_offset_t va)
 {
@@ -82,7 +107,11 @@ dtrace_pml4e_index(vm_offset_t va)
 }
 
 /*
- * This was copy pasted from vmm_instruction_emul.c as it is useful here too.
+ * This function is used to ensure that the address that has been passed
+ * in the nested page table walk is in its canonical form.
+ *
+ * This was copy-pasted from vmm_instruction_emul.c:vie_canonical_check
+ * and is not re-used for the same reason that the pmap functions are not.
  */
 static int
 dtrace_canonical_check(enum vm_cpu_mode cpu_mode, uint64_t gla)
@@ -141,8 +170,17 @@ dtrace_valid_bit(pmap_t pmap)
 	return (mask);
 }
 
-
-/* Return a pointer to the PDP slot that corresponds to a VA */
+/*
+ * dtrace_pml4e_to_pdpe,
+ * dtrace_pdpe,
+ * dtrace_pdpe_to_pde,
+ * dtrace_pde,
+ * dtrace_pde_to_pte
+ *
+ * have identical functionality to their pmap counterparts of the same name.
+ * The reason they have been moved to here is to avoid recursion in the
+ * probe context.
+ */
 static __inline pdp_entry_t *
 dtrace_pml4e_to_pdpe(pml4_entry_t *pml4e, vm_offset_t va)
 {
@@ -155,7 +193,6 @@ dtrace_pml4e_to_pdpe(pml4_entry_t *pml4e, vm_offset_t va)
 	return (&pdpe[dtrace_pdpe_index(va)]);
 }
 
-/* Return a pointer to the PDP slot that corresponds to a VA */
 static __inline pdp_entry_t *
 dtrace_pdpe(pmap_t pmap, vm_offset_t va)
 {
@@ -170,7 +207,6 @@ dtrace_pdpe(pmap_t pmap, vm_offset_t va)
 }
 
 
-/* Return a pointer to the PD slot that corresponds to a VA */
 static __inline pd_entry_t *
 dtrace_pdpe_to_pde(pdp_entry_t *pdpe, vm_offset_t va)
 {
@@ -184,7 +220,6 @@ dtrace_pdpe_to_pde(pdp_entry_t *pdpe, vm_offset_t va)
 }
 
 
-/* Return a pointer to the PD slot that corresponds to a VA */
 static __inline pd_entry_t *
 dtrace_pde(pmap_t pmap, vm_offset_t va)
 {
@@ -198,7 +233,6 @@ dtrace_pde(pmap_t pmap, vm_offset_t va)
 	return (dtrace_pdpe_to_pde(pdpe, va));
 }
 
-/* Return a pointer to the PT slot that corresponds to a VA */
 static __inline pt_entry_t *
 dtrace_pde_to_pte(pd_entry_t *pde, vm_offset_t va)
 {
@@ -211,6 +245,13 @@ dtrace_pde_to_pte(pd_entry_t *pde, vm_offset_t va)
 	return (&pte[dtrace_pte_index(va)]);
 }
 
+/*
+ * DTRACE_PHYS_TO_VM_PAGE is similar to PHYS_TO_VM_PAGE with a gotcha.
+ * It is not safe to acquire any kind of lock in the DTrace probe
+ * context, therefore we are not able to walk the red-black tree of VM
+ * mappings that is present for sparse mappings. Hence, this function
+ * only works on architectures with dense mappings.
+ */
 static vm_page_t
 DTRACE_PHYS_TO_VM_PAGE(vm_paddr_t pa)
 {
@@ -225,6 +266,9 @@ DTRACE_PHYS_TO_VM_PAGE(vm_paddr_t pa)
 	return (m);
 }
 
+/*
+ * A helper function that returns the host VM page.
+ */
 static vm_page_t
 dtrace_get_page(pmap_t pmap, vm_offset_t va)
 {
@@ -249,6 +293,19 @@ dtrace_get_page(pmap_t pmap, vm_offset_t va)
 }
 
 
+/*
+ * This is the main function of this file. It performs a nested page table
+ * walk in order to translate a guest virtual address to a host virtual
+ * address. It has two fundamental failure modes:
+ *
+ *  1) A part of the translation has failed.
+ *  2) The resulting address is not mapped and therefore causes a fault.
+ *
+ * The former manifests inside this function and the result is that hva is
+ * set to 0, while the latter manifests in the caller. Because this is
+ * intended to be called in the probe context, the usual DTrace error
+ * handling code ought to take care of problem (2).
+ */
 int
 dtrace_gla2hva(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hva)
 {
@@ -276,6 +333,10 @@ dtrace_gla2hva(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hva)
 	if (dtrace_canonical_check(paging->cpu_mode, gla))
 	    return (EINVAL);
 
+	/*
+	 * We only care about flat and 64-bit paging modes. We ignore
+	 * 32-bit and PAE modes.
+	 */
 	if (paging->paging_mode == PAGING_MODE_FLAT)
 		gpa = gla;
 	else if (paging->paging_mode == PAGING_MODE_64) {
