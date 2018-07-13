@@ -26,10 +26,6 @@
  * $FreeBSD$
  */
 
-//#include <sys/dtrace.h>
-//#include <sys/uuid.h>
-//#include <sys/capsicum.h>
-//#include <sys/tree.h>
 #include <sys/ioctl.h>
 
 #include <stdio.h>
@@ -40,17 +36,14 @@
 #include <errno.h>
 #include <assert.h>
 
-//#include <dt_impl.h>
-//#include <dt_printf.h>
-//#include <dtrace.h>
-
 #include "dthyve.h"
-
-#ifndef VTDTR
 
 static int vtdtr_fd = -1;
 static struct vtdtr_conf vtdtr_conf;
 
+/*
+ * Open the vtdtr device in order to set up the state.
+ */
 void
 dthyve_init(const char *vm __unused)
 {
@@ -66,9 +59,11 @@ dthyve_init(const char *vm __unused)
 	}
 
 	dthyve_conf(1 << VTDTR_EV_RECONF, 0);
-	
 }
 
+/*
+ * Issues an ioctl to vtdtr to configure itself.
+ */
 int
 dthyve_conf(size_t flags, sbintime_t timeout)
 {
@@ -78,6 +73,11 @@ dthyve_conf(size_t flags, sbintime_t timeout)
 	return (ioctl(vtdtr_fd, VTDTRIOC_CONF, &vtdtr_conf));
 }
 
+/*
+ * If we have the file-descriptor, we also have at least the
+ * default configuration of the device. Thus, it is sufficient
+ * to simply check if the fd is not -1.
+ */
 int
 dthyve_configured(void)
 {
@@ -85,6 +85,10 @@ dthyve_configured(void)
 	return (vtdtr_fd != -1);
 }
 
+/*
+ * Read events from the device. This may or may not be a blocking
+ * read, depending on the configuration of vtdtr.
+ */
 int
 dthyve_read(struct vtdtr_event *es, size_t n_events)
 {
@@ -107,9 +111,12 @@ dthyve_destroy()
 	close(vtdtr_fd);
 }
 
-#endif
-
-#ifdef VTDTR
+/*
+ * We may need this code in the future in order to support more
+ * heterogeneous systems. With the current homogeneous approach,
+ * this code is useless.
+ */
+#ifdef notyet
 static dtrace_hdl_t *g_dtp;
 static const char *g_prog = "dthyve";
 
