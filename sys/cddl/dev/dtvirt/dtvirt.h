@@ -32,6 +32,10 @@ struct dtvirt_args {
 	int dtv_errno;			     /* guest errno */
 	u_int dtv_curcpu;		     /* (h) guest curcpu */
 	u_int dtv_execargs_len;
+	char *dtv_probeprov;
+	char *dtv_probemod;
+	char *dtv_probefunc;
+	char *dtv_probename;
 };
 
 extern void dtvirt_probe(void *, int, struct dtvirt_args *);

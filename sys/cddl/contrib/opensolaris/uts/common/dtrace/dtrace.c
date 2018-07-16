@@ -3718,34 +3718,54 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 
 	/* See DIF_VAR_GPRID */
 	case DIF_VAR_HPROBEPROV:
-	case DIF_VAR_GPROBEPROV:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
 		return (dtrace_dif_varstr(
 		    (uintptr_t)mstate->dtms_probe->dtpr_provider->dtpv_name,
 		    state, mstate));
 
+	case DIF_VAR_GPROBEPROV:
+		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
+		return (dtrace_dif_varstr(
+		    (uintptr_t)mstate->dtms_dtvargs->dtv_probeprov,
+		    state, mstate));
+
 	/* See DIF_VAR_GPRID */
 	case DIF_VAR_HPROBEMOD:
-	case DIF_VAR_GPROBEMOD:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
 		return (dtrace_dif_varstr(
 		    (uintptr_t)mstate->dtms_probe->dtpr_mod,
 		    state, mstate));
 
+	case DIF_VAR_GPROBEMOD:
+		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
+		return (dtrace_dif_varstr(
+		    (uintptr_t)mstate->dtms_dtvargs->dtv_probemod,
+		    state, mstate));
+
 	/* See DIF_VAR_GPRID */
 	case DIF_VAR_HPROBEFUNC:
-	case DIF_VAR_GPROBEFUNC:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
 		return (dtrace_dif_varstr(
 		    (uintptr_t)mstate->dtms_probe->dtpr_func,
 		    state, mstate));
 
+	case DIF_VAR_GPROBEFUNC:
+		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
+		return (dtrace_dif_varstr(
+		    (uintptr_t)mstate->dtms_dtvargs->dtv_probefunc,
+		    state, mstate));
+
 	/* See DIF_VAR_GPRID */
 	case DIF_VAR_HPROBENAME:
-	case DIF_VAR_GPROBENAME:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
 		return (dtrace_dif_varstr(
 		    (uintptr_t)mstate->dtms_probe->dtpr_name,
+		    state, mstate));
+
+	case DIF_VAR_GPROBENAME:
+		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
+		return (dtrace_dif_varstr(
+		    (uintptr_t)mstate->dtms_dtvargs->dtv_probename,
 		    state, mstate));
 
 	case DIF_VAR_HPID:
@@ -7205,7 +7225,11 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 					.dtv_gid = curthread->td_ucred->cr_gid,
 					.dtv_errno = curthread->td_errno,
 					.dtv_curcpu = curcpu,
-					.dtv_execargs_len = 0
+					.dtv_execargs_len = 0,
+					.dtv_probeprov = mstate->dtms_probe->dtpr_provider->dtpv_name,
+					.dtv_probemod = mstate->dtms_probe->dtpr_mod,
+					.dtv_probefunc = mstate->dtms_probe->dtpr_func,
+					.dtv_probename = mstate->dtms_probe->dtpr_name,
 				};
 				dtrace_strcpy(mstate, curthread->td_proc->p_comm,
 				    _dtv_args.dtv_execname, MAXCOMLEN);
