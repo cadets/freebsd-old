@@ -1355,7 +1355,7 @@ filter_machines(char *filt)
 	while ((token = strsep(&f, ",")) != NULL) {
 		if (out.dtfl_count >= DTRACEFILT_MAX)
 			dfatal("Too many arguments\n");
-		n = strlcpy(&out.dtfl_entries[out.dtfl_count++],
+	        n = strlcpy((char*) &out.dtfl_entries[out.dtfl_count++],
 		    token, DTRACE_MAXFILTNAME);
 		if (n >= DTRACE_MAXFILTNAME)
 			dfatal("Name too long: %s", token);
