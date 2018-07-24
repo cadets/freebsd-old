@@ -7542,6 +7542,26 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			}
 		}
 
+		// TODO: These checks should be in dtrace_buffer_reserve()
+		if (buf->dtb_flags & DTRACEBUF_DISRUPTOR) {
+			/* Iterate DTrace konsumers...*/
+			dtrace_konsumer_t *konsumer = dtrace_konsumer;
+			while (konsumer != NULL ){
+				if ((buf->dtb_size -
+				    (buf->dtb_offset - *konsumer->dtk_offset)) <
+				    ecb->dte_needed) {
+					/* Spin waiting if the konsumer is
+					 * too far behind.
+					*/
+					printf("spinning in dtrace...\n");
+				} else {
+					log(7, "konsumer OK %lu...\n",
+					    buf->dtb_offset);
+				}
+				konsumer = konsumer->dtk_next;
+			}
+		}
+
 		if ((offs = dtrace_buffer_reserve(buf, ecb->dte_needed,
 		    ecb->dte_alignment, state, &mstate)) < 0)
 			continue;
@@ -7990,8 +8010,13 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			continue;
 		}
 
-		if (!committed)
-			buf->dtb_offset = offs + ecb->dte_size;
+		if (!committed) {
+			if (buf->dtb_flags & DTRACEBUF_DISRUPTOR)
+				atomic_store_rel_64(&buf->dtb_offset,
+				    offs + ecb->dte_size);
+			else
+				buf->dtb_offset = offs + ecb->dte_size;
+		}
 	}
 
 	if (vtime)
@@ -12131,6 +12156,7 @@ dtrace_buffer_switch(dtrace_buffer_t *buf)
 
 	ASSERT(!(buf->dtb_flags & DTRACEBUF_NOSWITCH));
 	ASSERT(!(buf->dtb_flags & DTRACEBUF_RING));
+	//ASSERT(!(buf->dtb_flags & DTRACEBUF_DISRUPTOR));
 
 	cookie = dtrace_interrupt_disable();
 	now = dtrace_gethrtime();
@@ -14926,6 +14952,9 @@ dtrace_state_buffer(dtrace_state_t *state, dtrace_buffer_t *buf, int which)
 		flags |= DTRACEBUF_NOSWITCH;
 
 	if (which == DTRACEOPT_BUFSIZE) {
+		if (opt[DTRACEOPT_BUFPOLICY] == DTRACEOPT_BUFPOLICY_DISRUPTOR)
+			flags |= (DTRACEBUF_DISRUPTOR & DTRACEBUF_RING);
+
 		if (opt[DTRACEOPT_BUFPOLICY] == DTRACEOPT_BUFPOLICY_RING)
 			flags |= DTRACEBUF_RING;
 
@@ -15303,6 +15332,24 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	dtrace_xcall(DTRACE_CPUALL,
 	    (dtrace_xcall_t)dtrace_buffer_activate, state);
 #endif
+
+	if (opt[DTRACEOPT_KONSUMERARG] != DTRACEOPT_UNSET) {
+		/* Iterate DTrace konsumers and notify them of the
+		 * dtrace_state_go.
+		 */ 
+		dtrace_konsumer_t *konsumer = dtrace_konsumer;
+		while (konsumer != NULL ) {
+			if (state != dtrace_anon.dta_state &&
+			    opt[DTRACEOPT_GRABANON] != DTRACEOPT_UNSET) {
+				konsumer->dtk_ops.dtkops_open(konsumer,
+				    state->dts_anon);
+			} else {
+				konsumer->dtk_ops.dtkops_open(konsumer, state);
+			}
+			konsumer = konsumer->dtk_next;
+		}
+	}
+
 	goto out;
 
 err:
@@ -15328,7 +15375,6 @@ err:
 	kmem_free(spec, nspec * sizeof (dtrace_speculation_t));
 	state->dts_nspeculations = 0;
 	state->dts_speculations = NULL;
-
 out:
 	mutex_exit(&dtrace_lock);
 	mutex_exit(&cpu_lock);
@@ -15404,6 +15450,23 @@ dtrace_state_stop(dtrace_state_t *state, processorid_t *cpu)
 			dtrace_closef = NULL;
 	}
 #endif
+
+	if (opt[DTRACEOPT_KONSUMERARG] != DTRACEOPT_UNSET) {
+		/* Iterate DTrace konsumers and notify them of the
+		 * dtrace_state_stop.
+		 */ 
+		dtrace_konsumer_t *konsumer = dtrace_konsumer;
+		while (konsumer != NULL ) {
+			if (state != dtrace_anon.dta_state &&
+			    opt[DTRACEOPT_GRABANON] != DTRACEOPT_UNSET) {
+				konsumer->dtk_ops.dtkops_close(konsumer,
+				    state->dts_anon);
+			} else {
+				konsumer->dtk_ops.dtkops_close(konsumer, state);
+			}
+			konsumer = konsumer->dtk_next;
+		}
+	}
 
 	return (0);
 }
@@ -17345,13 +17408,6 @@ dtrace_open(struct cdev *dev, int oflags, int devtype, struct thread *td)
 	state = dtrace_state_create(dev, NULL);
 	devfs_set_cdevpriv(state, dtrace_dtr);
 #endif
-	/* Iterate DTrace konsumers and notify them of the dtrace open. */ 
-	dtrace_konsumer_t *konsumer = dtrace_konsumer;
-	while (konsumer != NULL ){
-		konsumer->dtk_ops.dtkops_open(konsumer, state);
-		konsumer = konsumer->dtk_next;
-	}
-
 	mutex_exit(&cpu_lock);
 
 	if (state == NULL) {
@@ -17420,13 +17476,6 @@ dtrace_dtr(void *data)
 		 */
 		buf = dtrace_helptrace_buffer;
 		dtrace_helptrace_buffer = NULL;
-	}
-
-	/* Iterate DTrace konsumers and notify them of the dtrace close. */ 
-	dtrace_konsumer_t *konsumer = dtrace_konsumer;
-	while (konsumer != NULL ){
-		konsumer->dtk_ops.dtkops_close(konsumer, state);
-		konsumer = konsumer->dtk_next;
 	}
 
 #ifdef illumos

@@ -1053,13 +1053,15 @@ typedef struct dtrace_fmtdesc {
 #define	DTRACEOPT_AGGZOOM	30	/* zoomed aggregation scaling */
 #define	DTRACEOPT_ZONE		31	/* zone in which to enable probes */
 #define DTRACEOPT_OFORMAT	32	/* output format (JSON, XML, etc.) */
-#define	DTRACEOPT_MAX		33	/* number of options */
+#define	DTRACEOPT_KONSUMERARG	33	/* opaque konsumer argument */
+#define	DTRACEOPT_MAX		34	/* number of options */
 
 #define	DTRACEOPT_UNSET		(dtrace_optval_t)-2	/* unset option */
 
 #define	DTRACEOPT_BUFPOLICY_RING	0	/* ring buffer */
 #define	DTRACEOPT_BUFPOLICY_FILL	1	/* fill buffer, then stop */
 #define	DTRACEOPT_BUFPOLICY_SWITCH	2	/* switch buffers */
+#define	DTRACEOPT_BUFPOLICY_DISRUPTOR	3	/* lockless distruptor */
 
 #define	DTRACEOPT_BUFRESIZE_AUTO	0	/* automatic resizing */
 #define	DTRACEOPT_BUFRESIZE_MANUAL	1	/* manual resizing */

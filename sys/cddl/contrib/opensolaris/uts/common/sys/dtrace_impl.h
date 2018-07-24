@@ -431,9 +431,10 @@ typedef struct dtrace_aggregation {
 #define	DTRACEBUF_FULL		0x0040		/* "fill" buffer is full */
 #define	DTRACEBUF_CONSUMED	0x0080		/* buffer has been consumed */
 #define	DTRACEBUF_INACTIVE	0x0100		/* buffer is not yet active */
+#define	DTRACEBUF_DISRUPTOR 	0x0200		/* bufpolicy = "disruptor" */
 
 typedef struct dtrace_buffer {
-	uint64_t dtb_offset;			/* current offset in buffer */
+	volatile uint64_t dtb_offset;		/* current offset in buffer */
 	uint64_t dtb_size;			/* size of buffer */
 	uint32_t dtb_flags;			/* flags */
 	uint32_t dtb_drops;			/* number of drops */
@@ -1183,6 +1184,7 @@ struct dtrace_konsumer {
 	dtrace_kops_t dtk_ops;			/* konsumer operations */
 	char *dtk_name;				/* konsumer name */
 	void *dtk_arg;				/* konsumer argument */
+volatile uint64_t *dtk_offset;			/* TODO: konsumer offset */
 	struct dtrace_konsumer *dtk_next;	/* next konsumer */
 };
 
