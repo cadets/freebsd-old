@@ -63,9 +63,12 @@ __FBSDID("$FreeBSD$");
 #include <net/rss_config.h>
 #endif
 #if defined(__i386__) || defined(__amd64__)
+#include <machine/md_var.h>
+#include <machine/cputypes.h>
 #include <vm/vm.h>
 #include <vm/pmap.h>
 #endif
+#include <crypto/rijndael/rijndael.h>
 #ifdef DDB
 #include <ddb/ddb.h>
 #include <ddb/db_lex.h>
@@ -353,10 +356,12 @@ TUNABLE_INT("hw.cxgbe.nnmrxq_vi", &t4_nnmrxq_vi);
 #define TMR_IDX 1
 int t4_tmr_idx = TMR_IDX;
 TUNABLE_INT("hw.cxgbe.holdoff_timer_idx", &t4_tmr_idx);
+TUNABLE_INT("hw.cxgbe.holdoff_timer_idx_10G", &t4_tmr_idx);	/* Old name */
 
 #define PKTC_IDX (-1)
 int t4_pktc_idx = PKTC_IDX;
 TUNABLE_INT("hw.cxgbe.holdoff_pktc_idx", &t4_pktc_idx);
+TUNABLE_INT("hw.cxgbe.holdoff_pktc_idx_10G", &t4_pktc_idx);	/* Old name */
 
 /*
  * Size (# of entries) of each tx and rx queue.
@@ -454,6 +459,16 @@ TUNABLE_INT("hw.cxl.write_combine", &t5_write_combine);
 
 static int t4_num_vis = 1;
 TUNABLE_INT("hw.cxgbe.num_vis", &t4_num_vis);
+/*
+ * PCIe Relaxed Ordering.
+ * -1: driver should figure out a good value.
+ * 0: disable RO.
+ * 1: enable RO.
+ * 2: leave RO alone.
+ */
+static int pcie_relaxed_ordering = -1;
+TUNABLE_INT("hw.cxgbe.pcie_relaxed_ordering", &pcie_relaxed_ordering);
+
 
 /* Functions used by VIs to obtain unique MAC addresses for each VI. */
 static int vi_mac_funcs[] = {
@@ -470,7 +485,6 @@ struct intrs_and_queues {
 	uint16_t intr_type;	/* INTx, MSI, or MSI-X */
 	uint16_t num_vis;	/* number of VIs for each port */
 	uint16_t nirq;		/* Total # of vectors */
-	uint16_t intr_flags;	/* Interrupt flags for each port */
 	uint16_t ntxq;		/* # of NIC txq's for each port */
 	uint16_t nrxq;		/* # of NIC rxq's for each port */
 	uint16_t nofldtxq;	/* # of TOE txq's for each port */
@@ -577,6 +591,7 @@ static int sysctl_wcwr_stats(SYSCTL_HANDLER_ARGS);
 static int sysctl_tc_params(SYSCTL_HANDLER_ARGS);
 #endif
 #ifdef TCP_OFFLOAD
+static int sysctl_tls_rx_ports(SYSCTL_HANDLER_ARGS);
 static int sysctl_tp_tick(SYSCTL_HANDLER_ARGS);
 static int sysctl_tp_dack_timer(SYSCTL_HANDLER_ARGS);
 static int sysctl_tp_timer(SYSCTL_HANDLER_ARGS);
@@ -836,7 +851,7 @@ t4_attach(device_t dev)
 	struct make_dev_args mda;
 	struct intrs_and_queues iaq;
 	struct sge *s;
-	uint8_t *buf;
+	uint32_t *buf;
 #ifdef TCP_OFFLOAD
 	int ofld_rqidx, ofld_tqidx;
 #endif
@@ -857,10 +872,16 @@ t4_attach(device_t dev)
 
 		pci_set_max_read_req(dev, 4096);
 		v = pci_read_config(dev, i + PCIER_DEVICE_CTL, 2);
-		v |= PCIEM_CTL_RELAXED_ORD_ENABLE;
-		pci_write_config(dev, i + PCIER_DEVICE_CTL, v, 2);
-
 		sc->params.pci.mps = 128 << ((v & PCIEM_CTL_MAX_PAYLOAD) >> 5);
+		if (pcie_relaxed_ordering == 0 &&
+		    (v | PCIEM_CTL_RELAXED_ORD_ENABLE) != 0) {
+			v &= ~PCIEM_CTL_RELAXED_ORD_ENABLE;
+			pci_write_config(dev, i + PCIER_DEVICE_CTL, v, 2);
+		} else if (pcie_relaxed_ordering == 1 &&
+		    (v & PCIEM_CTL_RELAXED_ORD_ENABLE) == 0) {
+			v |= PCIEM_CTL_RELAXED_ORD_ENABLE;
+			pci_write_config(dev, i + PCIER_DEVICE_CTL, v, 2);
+		}
 	}
 
 	sc->sge_gts_reg = MYPF_REG(A_SGE_PF_GTS);
@@ -1118,7 +1139,6 @@ t4_attach(device_t dev)
 			vi->first_txq = tqidx;
 			vi->tmr_idx = t4_tmr_idx;
 			vi->pktc_idx = t4_pktc_idx;
-			vi->flags |= iaq.intr_flags & INTR_RXQ;
 			vi->nrxq = j == 0 ? iaq.nrxq : iaq.nrxq_vi;
 			vi->ntxq = j == 0 ? iaq.ntxq : iaq.ntxq_vi;
 
@@ -1135,7 +1155,6 @@ t4_attach(device_t dev)
 			vi->ofld_pktc_idx = t4_pktc_idx_ofld;
 			vi->first_ofld_rxq = ofld_rqidx;
 			vi->first_ofld_txq = ofld_tqidx;
-			vi->flags |= iaq.intr_flags & INTR_OFLD_RXQ;
 			vi->nofldrxq = j == 0 ? iaq.nofldrxq : iaq.nofldrxq_vi;
 			vi->nofldtxq = j == 0 ? iaq.nofldtxq : iaq.nofldtxq_vi;
 
@@ -1372,6 +1391,7 @@ t4_detach_common(device_t dev)
 	free(sc->sge.iqmap, M_CXGBE);
 	free(sc->sge.eqmap, M_CXGBE);
 	free(sc->tids.ftid_tab, M_CXGBE);
+	free(sc->tt.tls_rx_ports, M_CXGBE);
 	t4_destroy_dma_tag(sc);
 	if (mtx_initialized(&sc->sc_lock)) {
 		sx_xlock(&t4_list_lock);
@@ -1416,7 +1436,8 @@ cxgbe_probe(device_t dev)
 
 #define T4_CAP (IFCAP_VLAN_HWTAGGING | IFCAP_VLAN_MTU | IFCAP_HWCSUM | \
     IFCAP_VLAN_HWCSUM | IFCAP_TSO | IFCAP_JUMBO_MTU | IFCAP_LRO | \
-    IFCAP_VLAN_HWTSO | IFCAP_LINKSTATE | IFCAP_HWCSUM_IPV6 | IFCAP_HWSTATS)
+    IFCAP_VLAN_HWTSO | IFCAP_LINKSTATE | IFCAP_HWCSUM_IPV6 | IFCAP_HWSTATS | \
+    IFCAP_NOMAP)
 #define T4_CAP_ENABLE (T4_CAP)
 
 static int
@@ -1700,6 +1721,8 @@ redo_sifflags:
 		if (mask & IFCAP_RXCSUM_IPV6)
 			ifp->if_capenable ^= IFCAP_RXCSUM_IPV6;
 
+		if (mask & IFCAP_NOMAP)
+			ifp->if_capenable ^= IFCAP_NOMAP;
 		/*
 		 * Note that we leave CSUM_TSO alone (it is always set).  The
 		 * kernel takes both IFCAP_TSOx and CSUM_TSO into account before
@@ -2648,26 +2671,43 @@ fixup_devlog_params(struct adapter *sc)
 	return (rc);
 }
 
-static int
-cfg_itype_and_nqueues(struct adapter *sc, struct intrs_and_queues *iaq)
+static void
+update_nirq(struct intrs_and_queues *iaq, int nports)
 {
-	int rc, itype, navail, nrxq, nports, n;
-	int nofldrxq = 0;
+	int extra = T4_EXTRA_INTR;
 
-	nports = sc->params.nports;
+	iaq->nirq = extra;
+	iaq->nirq += nports * (iaq->nrxq + iaq->nofldrxq);
+	iaq->nirq += nports * (iaq->num_vis - 1) *
+	    max(iaq->nrxq_vi, iaq->nnmrxq_vi);
+	iaq->nirq += nports * (iaq->num_vis - 1) * iaq->nofldrxq_vi;
+}
+
+/*
+ * Adjust requirements to fit the number of interrupts available.
+ */
+static void
+calculate_iaq(struct adapter *sc, struct intrs_and_queues *iaq, int itype,
+    int navail)
+{
+	int old_nirq;
+	const int nports = sc->params.nports;
+
 	MPASS(nports > 0);
+	MPASS(navail > 0);
 
 	bzero(iaq, sizeof(*iaq));
+	iaq->intr_type = itype;
 	iaq->num_vis = t4_num_vis;
 	iaq->ntxq = t4_ntxq;
 	iaq->ntxq_vi = t4_ntxq_vi;
-	iaq->nrxq = nrxq = t4_nrxq;
+	iaq->nrxq = t4_nrxq;
 	iaq->nrxq_vi = t4_nrxq_vi;
 #ifdef TCP_OFFLOAD
 	if (is_offload(sc)) {
 		iaq->nofldtxq = t4_nofldtxq;
 		iaq->nofldtxq_vi = t4_nofldtxq_vi;
-		iaq->nofldrxq = nofldrxq = t4_nofldrxq;
+		iaq->nofldrxq = t4_nofldrxq;
 		iaq->nofldrxq_vi = t4_nofldrxq_vi;
 	}
 #endif
@@ -2675,6 +2715,105 @@ cfg_itype_and_nqueues(struct adapter *sc, struct intrs_and_queues *iaq)
 	iaq->nnmtxq_vi = t4_nnmtxq_vi;
 	iaq->nnmrxq_vi = t4_nnmrxq_vi;
 #endif
+
+	update_nirq(iaq, nports);
+	if (iaq->nirq <= navail &&
+	    (itype != INTR_MSI || powerof2(iaq->nirq))) {
+		/*
+		 * This is the normal case -- there are enough interrupts for
+		 * everything.
+		 */
+		goto done;
+	}
+
+	/*
+	 * If extra VIs have been configured try reducing their count and see if
+	 * that works.
+	 */
+	while (iaq->num_vis > 1) {
+		iaq->num_vis--;
+		update_nirq(iaq, nports);
+		if (iaq->nirq <= navail &&
+		    (itype != INTR_MSI || powerof2(iaq->nirq))) {
+			device_printf(sc->dev, "virtual interfaces per port "
+			    "reduced to %d from %d.  nrxq=%u, nofldrxq=%u, "
+			    "nrxq_vi=%u nofldrxq_vi=%u, nnmrxq_vi=%u.  "
+			    "itype %d, navail %u, nirq %d.\n",
+			    iaq->num_vis, t4_num_vis, iaq->nrxq, iaq->nofldrxq,
+			    iaq->nrxq_vi, iaq->nofldrxq_vi, iaq->nnmrxq_vi,
+			    itype, navail, iaq->nirq);
+			goto done;
+		}
+	}
+
+	/*
+	 * Extra VIs will not be created.  Log a message if they were requested.
+	 */
+	MPASS(iaq->num_vis == 1);
+	iaq->ntxq_vi = iaq->nrxq_vi = 0;
+	iaq->nofldtxq_vi = iaq->nofldrxq_vi = 0;
+	iaq->nnmtxq_vi = iaq->nnmrxq_vi = 0;
+	if (iaq->num_vis != t4_num_vis) {
+		device_printf(sc->dev, "extra virtual interfaces disabled.  "
+		    "nrxq=%u, nofldrxq=%u, nrxq_vi=%u nofldrxq_vi=%u, "
+		    "nnmrxq_vi=%u.  itype %d, navail %u, nirq %d.\n",
+		    iaq->nrxq, iaq->nofldrxq, iaq->nrxq_vi, iaq->nofldrxq_vi,
+		    iaq->nnmrxq_vi, itype, navail, iaq->nirq);
+	}
+
+	/*
+	 * Keep reducing the number of NIC rx queues to the next lower power of
+	 * 2 (for even RSS distribution) and halving the TOE rx queues and see
+	 * if that works.
+	 */
+	do {
+		if (iaq->nrxq > 1) {
+			do {
+				iaq->nrxq--;
+			} while (!powerof2(iaq->nrxq));
+		}
+		if (iaq->nofldrxq > 1)
+			iaq->nofldrxq >>= 1;
+
+		old_nirq = iaq->nirq;
+		update_nirq(iaq, nports);
+		if (iaq->nirq <= navail &&
+		    (itype != INTR_MSI || powerof2(iaq->nirq))) {
+			device_printf(sc->dev, "running with reduced number of "
+			    "rx queues because of shortage of interrupts.  "
+			    "nrxq=%u, nofldrxq=%u.  "
+			    "itype %d, navail %u, nirq %d.\n", iaq->nrxq,
+			    iaq->nofldrxq, itype, navail, iaq->nirq);
+			goto done;
+		}
+	} while (old_nirq != iaq->nirq);
+
+	/* One interrupt for everything.  Ugh. */
+	device_printf(sc->dev, "running with minimal number of queues.  "
+	    "itype %d, navail %u.\n", itype, navail);
+	iaq->nirq = 1;
+	MPASS(iaq->nrxq == 1);
+	iaq->ntxq = 1;
+	if (iaq->nofldrxq > 1)
+		iaq->nofldtxq = 1;
+done:
+	MPASS(iaq->num_vis > 0);
+	if (iaq->num_vis > 1) {
+		MPASS(iaq->nrxq_vi > 0);
+		MPASS(iaq->ntxq_vi > 0);
+	}
+	MPASS(iaq->nirq > 0);
+	MPASS(iaq->nrxq > 0);
+	MPASS(iaq->ntxq > 0);
+	if (itype == INTR_MSI) {
+		MPASS(powerof2(iaq->nirq));
+	}
+}
+
+static int
+cfg_itype_and_nqueues(struct adapter *sc, struct intrs_and_queues *iaq)
+{
+	int rc, itype, navail, nalloc;
 
 	for (itype = INTR_MSIX; itype; itype >>= 1) {
 
@@ -2691,126 +2830,33 @@ restart:
 		if (navail == 0)
 			continue;
 
-		iaq->intr_type = itype;
-		iaq->intr_flags = 0;
-
-		/*
-		 * Best option: an interrupt vector for errors, one for the
-		 * firmware event queue, and one for every rxq (NIC and TOE) of
-		 * every VI.  The VIs that support netmap use the same
-		 * interrupts for the NIC rx queues and the netmap rx queues
-		 * because only one set of queues is active at a time.
-		 */
-		iaq->nirq = T4_EXTRA_INTR;
-		iaq->nirq += nports * (nrxq + nofldrxq);
-		iaq->nirq += nports * (iaq->num_vis - 1) *
-		    max(iaq->nrxq_vi, iaq->nnmrxq_vi);	/* See comment above. */
-		iaq->nirq += nports * (iaq->num_vis - 1) * iaq->nofldrxq_vi;
-		if (iaq->nirq <= navail &&
-		    (itype != INTR_MSI || powerof2(iaq->nirq))) {
-			iaq->intr_flags = INTR_ALL;
-			goto allocate;
-		}
-
-		/* Disable the VIs (and netmap) if there aren't enough intrs */
-		if (iaq->num_vis > 1) {
-			device_printf(sc->dev, "virtual interfaces disabled "
-			    "because num_vis=%u with current settings "
-			    "(nrxq=%u, nofldrxq=%u, nrxq_vi=%u nofldrxq_vi=%u, "
-			    "nnmrxq_vi=%u) would need %u interrupts but "
-			    "only %u are available.\n", iaq->num_vis, nrxq,
-			    nofldrxq, iaq->nrxq_vi, iaq->nofldrxq_vi,
-			    iaq->nnmrxq_vi, iaq->nirq, navail);
-			iaq->num_vis = 1;
-			iaq->ntxq_vi = iaq->nrxq_vi = 0;
-			iaq->nofldtxq_vi = iaq->nofldrxq_vi = 0;
-			iaq->nnmtxq_vi = iaq->nnmrxq_vi = 0;
-			goto restart;
-		}
-
-		/*
-		 * Second best option: a vector for errors, one for the firmware
-		 * event queue, and vectors for either all the NIC rx queues or
-		 * all the TOE rx queues.  The queues that don't get vectors
-		 * will forward their interrupts to those that do.
-		 */
-		iaq->nirq = T4_EXTRA_INTR;
-		if (nrxq >= nofldrxq) {
-			iaq->intr_flags = INTR_RXQ;
-			iaq->nirq += nports * nrxq;
-		} else {
-			iaq->intr_flags = INTR_OFLD_RXQ;
-			iaq->nirq += nports * nofldrxq;
-		}
-		if (iaq->nirq <= navail &&
-		    (itype != INTR_MSI || powerof2(iaq->nirq)))
-			goto allocate;
-
-		/*
-		 * Next best option: an interrupt vector for errors, one for the
-		 * firmware event queue, and at least one per main-VI.  At this
-		 * point we know we'll have to downsize nrxq and/or nofldrxq to
-		 * fit what's available to us.
-		 */
-		iaq->nirq = T4_EXTRA_INTR;
-		iaq->nirq += nports;
-		if (iaq->nirq <= navail) {
-			int leftover = navail - iaq->nirq;
-			int target = max(nrxq, nofldrxq);
-
-			iaq->intr_flags = nrxq >= nofldrxq ?
-			    INTR_RXQ : INTR_OFLD_RXQ;
-
-			n = 1;
-			while (n < target && leftover >= nports) {
-				leftover -= nports;
-				iaq->nirq += nports;
-				n++;
-			}
-			iaq->nrxq = min(n, nrxq);
-#ifdef TCP_OFFLOAD
-			iaq->nofldrxq = min(n, nofldrxq);
-#endif
-
-			if (itype != INTR_MSI || powerof2(iaq->nirq))
-				goto allocate;
-		}
-
-		/*
-		 * Least desirable option: one interrupt vector for everything.
-		 */
-		iaq->nirq = iaq->nrxq = 1;
-		iaq->intr_flags = 0;
-#ifdef TCP_OFFLOAD
-		if (is_offload(sc))
-			iaq->nofldrxq = 1;
-#endif
-allocate:
-		navail = iaq->nirq;
+		calculate_iaq(sc, iaq, itype, navail);
+		nalloc = iaq->nirq;
 		rc = 0;
 		if (itype == INTR_MSIX)
-			rc = pci_alloc_msix(sc->dev, &navail);
+			rc = pci_alloc_msix(sc->dev, &nalloc);
 		else if (itype == INTR_MSI)
-			rc = pci_alloc_msi(sc->dev, &navail);
+			rc = pci_alloc_msi(sc->dev, &nalloc);
 
-		if (rc == 0) {
-			if (navail == iaq->nirq)
+		if (rc == 0 && nalloc > 0) {
+			if (nalloc == iaq->nirq)
 				return (0);
 
 			/*
 			 * Didn't get the number requested.  Use whatever number
-			 * the kernel is willing to allocate (it's in navail).
+			 * the kernel is willing to allocate.
 			 */
 			device_printf(sc->dev, "fewer vectors than requested, "
 			    "type=%d, req=%d, rcvd=%d; will downshift req.\n",
-			    itype, iaq->nirq, navail);
+			    itype, iaq->nirq, nalloc);
 			pci_release_msi(sc->dev);
+			navail = nalloc;
 			goto restart;
 		}
 
 		device_printf(sc->dev,
 		    "failed to allocate vectors:%d, type=%d, req=%d, rcvd=%d\n",
-		    itype, rc, iaq->nirq, navail);
+		    itype, rc, iaq->nirq, nalloc);
 	}
 
 	device_printf(sc->dev,
@@ -3622,6 +3668,18 @@ get_params__post_init(struct adapter *sc)
 		sc->vres.iscsi.start = val[0];
 		sc->vres.iscsi.size = val[1] - val[0] + 1;
 	}
+	if (sc->cryptocaps & FW_CAPS_CONFIG_TLSKEYS) {
+		param[0] = FW_PARAM_PFVF(TLS_START);
+		param[1] = FW_PARAM_PFVF(TLS_END);
+		rc = -t4_query_params(sc, sc->mbox, sc->pf, 0, 2, param, val);
+		if (rc != 0) {
+			device_printf(sc->dev,
+			    "failed to query TLS parameters: %d.\n", rc);
+			return (rc);
+		}
+		sc->vres.key.start = val[0];
+		sc->vres.key.size = val[1] - val[0] + 1;
+	}
 
 	t4_init_sge_params(sc);
 
@@ -4352,7 +4410,7 @@ t4_setup_intr_handlers(struct adapter *sc)
 	 */
 	irq = &sc->irq[0];
 	rid = sc->intr_type == INTR_INTX ? 0 : 1;
-	if (sc->intr_count == 1)
+	if (forwarding_intr_to_fwq(sc))
 		return (t4_alloc_irq(sc, irq, rid, t4_intr_all, sc, "all"));
 
 	/* Multiple interrupts. */
@@ -4387,8 +4445,6 @@ t4_setup_intr_handlers(struct adapter *sc)
 			if (vi->nnmrxq > 0) {
 				int n = max(vi->nrxq, vi->nnmrxq);
 
-				MPASS(vi->flags & INTR_RXQ);
-
 				rxq = &sge->rxq[vi->first_rxq];
 #ifdef DEV_NETMAP
 				nm_rxq = &sge->nm_rxq[vi->first_nm_rxq];
@@ -4406,11 +4462,17 @@ t4_setup_intr_handlers(struct adapter *sc)
 					    t4_vi_intr, irq, s);
 					if (rc != 0)
 						return (rc);
+#ifdef RSS
+					if (q < vi->nrxq) {
+						bus_bind_intr(sc->dev, irq->res,
+						    rss_getcpu(q % nbuckets));
+					}
+#endif
 					irq++;
 					rid++;
 					vi->nintr++;
 				}
-			} else if (vi->flags & INTR_RXQ) {
+			} else {
 				for_each_rxq(vi, q, rxq) {
 					snprintf(s, sizeof(s), "%x%c%x", p,
 					    'a' + v, q);
@@ -4428,18 +4490,15 @@ t4_setup_intr_handlers(struct adapter *sc)
 				}
 			}
 #ifdef TCP_OFFLOAD
-			if (vi->flags & INTR_OFLD_RXQ) {
-				for_each_ofld_rxq(vi, q, ofld_rxq) {
-					snprintf(s, sizeof(s), "%x%c%x", p,
-					    'A' + v, q);
-					rc = t4_alloc_irq(sc, irq, rid,
-					    t4_intr, ofld_rxq, s);
-					if (rc != 0)
-						return (rc);
-					irq++;
-					rid++;
-					vi->nintr++;
-				}
+			for_each_ofld_rxq(vi, q, ofld_rxq) {
+				snprintf(s, sizeof(s), "%x%c%x", p, 'A' + v, q);
+				rc = t4_alloc_irq(sc, irq, rid, t4_intr,
+				    ofld_rxq, s);
+				if (rc != 0)
+					return (rc);
+				irq++;
+				rid++;
+				vi->nintr++;
 			}
 #endif
 		}
@@ -5127,6 +5186,9 @@ t4_sysctls(struct adapter *sc)
 	SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "ec",
 	    CTLFLAG_RD, sc->params.vpd.ec, 0, "engineering change");
 
+	SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "md_version",
+	    CTLFLAG_RD, sc->params.vpd.md, 0, "manufacturing diags version");
+
 	SYSCTL_ADD_STRING(ctx, children, OID_AUTO, "na",
 	    CTLFLAG_RD, sc->params.vpd.na, 0, "network address");
 
@@ -5375,6 +5437,14 @@ t4_sysctls(struct adapter *sc)
 		sc->tt.rx_coalesce = 1;
 		SYSCTL_ADD_INT(ctx, children, OID_AUTO, "rx_coalesce",
 		    CTLFLAG_RW, &sc->tt.rx_coalesce, 0, "receive coalescing");
+
+		sc->tt.tls = 0;
+		SYSCTL_ADD_INT(ctx, children, OID_AUTO, "tls", CTLFLAG_RW,
+		    &sc->tt.tls, 0, "Inline TLS allowed");
+
+		SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "tls_rx_ports",
+		    CTLTYPE_INT | CTLFLAG_RW, sc, 0, sysctl_tls_rx_ports,
+		    "I", "TCP ports that use inline TLS+TOE RX");
 
 		sc->tt.tx_align = 1;
 		SYSCTL_ADD_INT(ctx, children, OID_AUTO, "tx_align",
@@ -5779,6 +5849,19 @@ cxgbe_sysctls(struct port_info *pi)
 	    "# of buffer-group 3 truncated packets");
 
 #undef SYSCTL_ADD_T4_PORTSTAT
+
+	SYSCTL_ADD_ULONG(ctx, children, OID_AUTO, "tx_tls_records",
+	    CTLFLAG_RD, &pi->tx_tls_records,
+	    "# of TLS records transmitted");
+	SYSCTL_ADD_ULONG(ctx, children, OID_AUTO, "tx_tls_octets",
+	    CTLFLAG_RD, &pi->tx_tls_octets,
+	    "# of payload octets in transmitted TLS records");
+	SYSCTL_ADD_ULONG(ctx, children, OID_AUTO, "rx_tls_records",
+	    CTLFLAG_RD, &pi->rx_tls_records,
+	    "# of TLS records received");
+	SYSCTL_ADD_ULONG(ctx, children, OID_AUTO, "rx_tls_octets",
+	    CTLFLAG_RD, &pi->rx_tls_octets,
+	    "# of payload octets in received TLS records");
 }
 
 static int
@@ -6962,7 +7045,7 @@ sysctl_meminfo(SYSCTL_HANDLER_ARGS)
 		"TDDP region:", "TPT region:", "STAG region:", "RQ region:",
 		"RQUDP region:", "PBL region:", "TXPBL region:",
 		"DBVFIFO region:", "ULPRX state:", "ULPTX state:",
-		"On-chip queues:"
+		"On-chip queues:", "TLS keys:",
 	};
 	struct mem_desc avail[4];
 	struct mem_desc mem[nitems(region) + 3];	/* up to 3 holes */
@@ -7098,6 +7181,13 @@ sysctl_meminfo(SYSCTL_HANDLER_ARGS)
 	md->base = sc->vres.ocq.start;
 	if (sc->vres.ocq.size)
 		md->limit = md->base + sc->vres.ocq.size - 1;
+	else
+		md->idx = nitems(region);  /* hide it */
+	md++;
+
+	md->base = sc->vres.key.start;
+	if (sc->vres.key.size)
+		md->limit = md->base + sc->vres.key.size - 1;
 	else
 		md->idx = nitems(region);  /* hide it */
 	md++;
@@ -8193,6 +8283,68 @@ done:
 #endif
 
 #ifdef TCP_OFFLOAD
+static int
+sysctl_tls_rx_ports(SYSCTL_HANDLER_ARGS)
+{
+	struct adapter *sc = arg1;
+	int *old_ports, *new_ports;
+	int i, new_count, rc;
+
+	if (req->newptr == NULL && req->oldptr == NULL)
+		return (SYSCTL_OUT(req, NULL, imax(sc->tt.num_tls_rx_ports, 1) *
+		    sizeof(sc->tt.tls_rx_ports[0])));
+
+	rc = begin_synchronized_op(sc, NULL, SLEEP_OK | INTR_OK, "t4tlsrx");
+	if (rc)
+		return (rc);
+
+	if (sc->tt.num_tls_rx_ports == 0) {
+		i = -1;
+		rc = SYSCTL_OUT(req, &i, sizeof(i));
+	} else
+		rc = SYSCTL_OUT(req, sc->tt.tls_rx_ports,
+		    sc->tt.num_tls_rx_ports * sizeof(sc->tt.tls_rx_ports[0]));
+	if (rc == 0 && req->newptr != NULL) {
+		new_count = req->newlen / sizeof(new_ports[0]);
+		new_ports = malloc(new_count * sizeof(new_ports[0]), M_CXGBE,
+		    M_WAITOK);
+		rc = SYSCTL_IN(req, new_ports, new_count *
+		    sizeof(new_ports[0]));
+		if (rc)
+			goto err;
+
+		/* Allow setting to a single '-1' to clear the list. */
+		if (new_count == 1 && new_ports[0] == -1) {
+			ADAPTER_LOCK(sc);
+			old_ports = sc->tt.tls_rx_ports;
+			sc->tt.tls_rx_ports = NULL;
+			sc->tt.num_tls_rx_ports = 0;
+			ADAPTER_UNLOCK(sc);
+			free(old_ports, M_CXGBE);
+		} else {
+			for (i = 0; i < new_count; i++) {
+				if (new_ports[i] < 1 ||
+				    new_ports[i] > IPPORT_MAX) {
+					rc = EINVAL;
+					goto err;
+				}
+			}
+
+			ADAPTER_LOCK(sc);
+			old_ports = sc->tt.tls_rx_ports;
+			sc->tt.tls_rx_ports = new_ports;
+			sc->tt.num_tls_rx_ports = new_count;
+			ADAPTER_UNLOCK(sc);
+			free(old_ports, M_CXGBE);
+			new_ports = NULL;
+		}
+	err:
+		free(new_ports, M_CXGBE);
+	}
+	end_synchronized_op(sc, 0);
+	return (rc);
+}
+
 static void
 unit_conv(char *buf, size_t len, u_int val, u_int factor)
 {
@@ -9938,6 +10090,14 @@ tweak_tunables(void)
 		t4_num_vis = nitems(vi_mac_funcs);
 		printf("cxgbe: number of VIs limited to %d\n", t4_num_vis);
 	}
+
+	if (pcie_relaxed_ordering < 0 || pcie_relaxed_ordering > 2) {
+		pcie_relaxed_ordering = 1;
+#if defined(__i386__) || defined(__amd64__)
+		if (cpu_vendor_id == CPU_VENDOR_INTEL)
+			pcie_relaxed_ordering = 0;
+#endif
+	}
 }
 
 #ifdef DDB
@@ -10112,6 +10272,44 @@ DB_FUNC(tcb, db_show_t4tcb, db_t4_table, CS_OWN, NULL)
 	t4_dump_tcb(device_get_softc(dev), tid);
 }
 #endif
+
+/*
+ * Borrowed from cesa_prep_aes_key().
+ *
+ * NB: The crypto engine wants the words in the decryption key in reverse
+ * order.
+ */
+void
+t4_aes_getdeckey(void *dec_key, const void *enc_key, unsigned int kbits)
+{
+	uint32_t ek[4 * (RIJNDAEL_MAXNR + 1)];
+	uint32_t *dkey;
+	int i;
+
+	rijndaelKeySetupEnc(ek, enc_key, kbits);
+	dkey = dec_key;
+	dkey += (kbits / 8) / 4;
+
+	switch (kbits) {
+	case 128:
+		for (i = 0; i < 4; i++)
+			*--dkey = htobe32(ek[4 * 10 + i]);
+		break;
+	case 192:
+		for (i = 0; i < 2; i++)
+			*--dkey = htobe32(ek[4 * 11 + 2 + i]);
+		for (i = 0; i < 4; i++)
+			*--dkey = htobe32(ek[4 * 12 + i]);
+		break;
+	case 256:
+		for (i = 0; i < 4; i++)
+			*--dkey = htobe32(ek[4 * 13 + i]);
+		for (i = 0; i < 4; i++)
+			*--dkey = htobe32(ek[4 * 14 + i]);
+		break;
+	}
+	MPASS(dkey == dec_key);
+}
 
 static struct sx mlu;	/* mod load unload */
 SX_SYSINIT(cxgbe_mlu, &mlu, "cxgbe mod load/unload");

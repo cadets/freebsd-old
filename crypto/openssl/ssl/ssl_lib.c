@@ -159,6 +159,8 @@
 #ifndef OPENSSL_NO_ENGINE
 # include <openssl/engine.h>
 #endif
+#include <sys/socket.h>
+#include <sys/uio.h>
 
 const char *SSL_version_str = OPENSSL_VERSION_TEXT;
 
@@ -3249,6 +3251,84 @@ void SSL_set_info_callback(SSL *ssl,
                            void (*cb) (const SSL *ssl, int type, int val))
 {
     ssl->info_callback = cb;
+}
+
+#ifdef __FreeBSD__
+int SSL_can_use_sendfile(SSL *s)
+{
+	BIO *wbio;
+
+	if (s == NULL)
+		return (0);
+
+	if (s->compress) {
+		return (0);
+	}
+
+	wbio = s->wbio;
+
+	if (wbio == NULL) {
+		return (0);
+	}
+
+	return (!!BIO_should_offload_tx_flag(wbio));
+}
+
+int SSL_sendfile(int fd, SSL *s, off_t offset, size_t nbytes,
+		 struct sf_hdtr *hdtr, int flags)
+{
+	off_t sbytes;
+	int ret;
+
+	if ((fd == -1) || (s == NULL)) {
+		errno = EINVAL;
+		return (-1);
+	}
+	if (SSL_can_use_sendfile(s) == 0) {
+		/* You must be able to use it! */
+		return (-1);
+	}
+	s->rwstate = SSL_WRITING;
+	if (BIO_flush(s->wbio) <= 0) {
+		if (!BIO_should_retry(s->wbio)) {
+			s->rwstate = SSL_NOTHING;
+		} else {
+			errno = EAGAIN;
+		}
+		return (-1);
+	}
+	sbytes = 0;
+	ret = sendfile(fd, BIO_get_fd(s->wbio, NULL), offset, nbytes, hdtr,
+	    &sbytes, flags);
+	if (ret < 0) {
+		BIO_set_error(s->wbio, errno);
+		if ((errno == EAGAIN) ||
+		    (errno == EINTR) ||
+		    (errno == EBUSY)) {
+			BIO_set_retry_write(s->wbio);
+			if (sbytes == 0) {
+				sbytes = -1;
+			}
+			return (sbytes);
+		}
+	} else {
+		BIO_set_error(s->wbio, 0);
+	}
+	s->rwstate = SSL_NOTHING;
+	return (sbytes);
+}
+#endif
+
+int
+SSL_get_wbio_error(SSL *ssl)
+{
+	return(BIO_get_error(ssl->wbio));
+}
+
+int
+SSL_get_rbio_error(SSL *ssl)
+{
+	return(BIO_get_error(ssl->rbio));
 }
 
 /*

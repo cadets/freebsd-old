@@ -85,7 +85,7 @@ static const struct bhnd_core_desc {
 	BHND_CDESC(BCM, PCI,		PCI,		"PCI Bridge"),
 	BHND_CDESC(BCM, MIPS,		CPU,		"BMIPS CPU"),
 	BHND_CDESC(BCM, ENET,		ENET_MAC,	"Fast Ethernet MAC"),
-	BHND_CDESC(BCM, CODEC,		OTHER,		"V.90 Modem Codec"),
+	BHND_CDESC(BCM, V90_CODEC,	SOFTMODEM,	"V.90 SoftModem Codec"),
 	BHND_CDESC(BCM, USB,		USB_DUAL,	"USB 1.1 Device/Host Controller"),
 	BHND_CDESC(BCM, ADSL,		OTHER,		"ADSL Core"),
 	BHND_CDESC(BCM, ILINE100,	OTHER,		"iLine100 HPNA"),
@@ -805,6 +805,10 @@ bhnd_board_matches(const struct bhnd_board_info *board,
 		return (false);
 
 	if (desc->m.match.board_type && board->board_type != desc->board_type)
+		return (false);
+
+	if (desc->m.match.board_devid &&
+	    board->board_devid != desc->board_devid)
 		return (false);
 
 	if (desc->m.match.board_rev &&
@@ -2325,6 +2329,7 @@ bhnd_bus_generic_read_board_info(device_t dev, device_t child,
 
 	OPT_BHND_GV(info->board_vendor,	BOARDVENDOR,	0);
 	OPT_BHND_GV(info->board_type,	BOARDTYPE,	0);	/* srom >= 2 */
+	OPT_BHND_GV(info->board_devid,	DEVID,		0);	/* srom >= 8 */
 	REQ_BHND_GV(info->board_rev,	BOARDREV);
 	OPT_BHND_GV(info->board_srom_rev,SROMREV,	0);	/* missing in
 								   some SoC

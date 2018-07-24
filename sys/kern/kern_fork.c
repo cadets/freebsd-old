@@ -69,8 +69,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/acct.h>
 #include <sys/ktr.h>
 #include <sys/ktrace.h>
+<<<<<<< HEAD
 #include <sys/unistd.h>	
 #include <sys/uuid.h>
+=======
+#include <sys/unistd.h>
+>>>>>>> ce23241775838a47433b730e2c5fad9ff980f5d4
 #include <sys/sdt.h>
 #include <sys/sx.h>
 #include <sys/sysent.h>
@@ -84,7 +88,6 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_map.h>
 #include <vm/vm_extern.h>
 #include <vm/uma.h>
-#include <vm/vm_domain.h>
 
 #ifdef KDTRACE_HOOKS
 #include <sys/dtrace_bsd.h>
@@ -191,7 +194,7 @@ sys_rfork(struct thread *td, struct rfork_args *uap)
 
 int	nprocs = 1;		/* process 0 */
 int	lastpid = 0;
-SYSCTL_INT(_kern, OID_AUTO, lastpid, CTLFLAG_RD, &lastpid, 0, 
+SYSCTL_INT(_kern, OID_AUTO, lastpid, CTLFLAG_RD, &lastpid, 0,
     "Last used PID");
 
 /*
@@ -224,7 +227,7 @@ sysctl_kern_randompid(SYSCTL_HANDLER_ARGS)
 		else if (pid < 0 || pid > pid_max - 100)
 			/* out of range */
 			randompid = pid_max - 100;
-		else if (pid < 100)	 
+		else if (pid < 100)
 			/* Make it reasonable */
 			randompid = 100;
 		else
@@ -399,14 +402,12 @@ do_fork(struct thread *td, struct fork_req *fr, struct proc *p2, struct thread *
 	struct filedesc_to_leader *fdtol;
 	struct sigacts *newsigacts;
 
-	sx_assert(&proctree_lock, SX_SLOCKED);
+	sx_assert(&proctree_lock, SX_LOCKED);
 	sx_assert(&allproc_lock, SX_XLOCKED);
 
 	p1 = td->td_proc;
 
 	trypid = fork_findpid(fr->fr_flags);
-
-	sx_sunlock(&proctree_lock);
 
 	p2->p_state = PRS_NEW;		/* protect against others */
 	p2->p_pid = trypid;
@@ -427,11 +428,11 @@ do_fork(struct thread *td, struct fork_req *fr, struct proc *p2, struct thread *
 	LIST_INSERT_HEAD(&allproc, p2, p_list);
 	allproc_gen++;
 	LIST_INSERT_HEAD(PIDHASH(p2->p_pid), p2, p_hash);
-	tidhash_add(td2);
 	PROC_LOCK(p2);
 	PROC_LOCK(p1);
 
 	sx_xunlock(&allproc_lock);
+	sx_xunlock(&proctree_lock);
 
 	bcopy(&p1->p_startcopy, &p2->p_startcopy,
 	    __rangeof(struct proc, p_startcopy, p_endcopy));
@@ -447,6 +448,8 @@ do_fork(struct thread *td, struct fork_req *fr, struct proc *p2, struct thread *
 	prison_proc_hold(p2->p_ucred->cr_prison);
 
 	PROC_UNLOCK(p2);
+
+	tidhash_add(td2);
 
 	/*
 	 * Malloc things while we don't hold any locks.
@@ -480,7 +483,7 @@ do_fork(struct thread *td, struct fork_req *fr, struct proc *p2, struct thread *
 			fdtol->fdl_refcount++;
 			FILEDESC_XUNLOCK(p1->p_fd);
 		} else {
-			/* 
+			/*
 			 * Shared file descriptor table, and different
 			 * process leaders.
 			 */
@@ -530,14 +533,6 @@ do_fork(struct thread *td, struct fork_req *fr, struct proc *p2, struct thread *
 	p2->p_swtick = ticks;
 	if (p1->p_flag & P_PROFIL)
 		startprofclock(p2);
-
-	/*
-	 * Whilst the proc lock is held, copy the VM domain data out
-	 * using the VM domain method.
-	 */
-	vm_domain_policy_init(&p2->p_vm_dom_policy);
-	vm_domain_policy_localcopy(&p2->p_vm_dom_policy,
-	    &p1->p_vm_dom_policy);
 
 	if (fr->fr_flags & RFSIGSHARE) {
 		p2->p_sigacts = sigacts_hold(p1->p_sigacts);
@@ -983,7 +978,7 @@ fork1(struct thread *td, struct fork_req *fr)
 	STAILQ_INIT(&newproc->p_ktr);
 
 	/* We have to lock the process tree while we look for a pid. */
-	sx_slock(&proctree_lock);
+	sx_xlock(&proctree_lock);
 	sx_xlock(&allproc_lock);
 
 	/*
@@ -1005,8 +1000,8 @@ fork1(struct thread *td, struct fork_req *fr)
 	}
 
 	error = EAGAIN;
-	sx_sunlock(&proctree_lock);
 	sx_xunlock(&allproc_lock);
+	sx_xunlock(&proctree_lock);
 #ifdef MAC
 	mac_proc_destroy(newproc);
 #endif

@@ -254,6 +254,8 @@ typedef enum dtrace_probespec {
 #define	DIF_VAR_GID		0x011f	/* process group ID */
 #define	DIF_VAR_ERRNO		0x0120	/* thread errno */
 #define	DIF_VAR_EXECARGS	0x0121	/* process arguments */
+#define	DIF_VAR_JID		0x0122	/* process jail id */
+#define	DIF_VAR_JAILNAME	0x0123	/* process jail name */
 
 #ifndef illumos
 #define	DIF_VAR_CPU		0x0200
@@ -1052,9 +1054,14 @@ typedef struct dtrace_fmtdesc {
 #define	DTRACEOPT_AGGPACK	29	/* packed aggregation output */
 #define	DTRACEOPT_AGGZOOM	30	/* zoomed aggregation scaling */
 #define	DTRACEOPT_ZONE		31	/* zone in which to enable probes */
+<<<<<<< HEAD
 #define DTRACEOPT_OFORMAT	32	/* output format (JSON, XML, etc.) */
 #define	DTRACEOPT_KONSUMERARG	33	/* opaque konsumer argument */
 #define	DTRACEOPT_MAX		34	/* number of options */
+=======
+#define	DTRACEOPT_BUFPROV	32	/* name of buf provider */
+#define	DTRACEOPT_MAX		33	/* number of options */
+>>>>>>> ce23241775838a47433b730e2c5fad9ff980f5d4
 
 #define	DTRACEOPT_UNSET		(dtrace_optval_t)-2	/* unset option */
 

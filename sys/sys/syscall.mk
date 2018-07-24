@@ -393,8 +393,6 @@ MIASM =  \
 	ppoll.o \
 	futimens.o \
 	utimensat.o \
-	numa_getaffinity.o \
-	numa_setaffinity.o \
 	fdatasync.o \
 	fstat.o \
 	fstatat.o \
@@ -406,6 +404,7 @@ MIASM =  \
 	fhstatfs.o \
 	mknodat.o \
 	kevent.o \
+<<<<<<< HEAD
 	metaio_read.o \
 	metaio_write.o \
 	metaio_mmap.o \
@@ -423,3 +422,7 @@ MIASM =  \
 	metaio_sendmsg.o \
 	metaio_recvmsg.o \
 	metaio_sendfile.o
+=======
+	cpuset_getdomain.o \
+	cpuset_setdomain.o
+>>>>>>> ce23241775838a47433b730e2c5fad9ff980f5d4

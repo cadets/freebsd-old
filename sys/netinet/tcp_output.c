@@ -71,9 +71,6 @@ __FBSDID("$FreeBSD$");
 #include <netinet/ip6.h>
 #include <netinet6/ip6_var.h>
 #endif
-#ifdef TCP_RFC7413
-#include <netinet/tcp_fastopen.h>
-#endif
 #include <netinet/tcp.h>
 #define	TCPOUTFLAGS
 #include <netinet/tcp_fsm.h>
@@ -82,6 +79,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/tcp_var.h>
 #include <netinet/tcpip.h>
 #include <netinet/cc/cc.h>
+#include <netinet/tcp_fastopen.h>
 #ifdef TCPPCAP
 #include <netinet/tcp_pcap.h>
 #endif
@@ -151,6 +149,9 @@ static void inline	hhook_run_tcp_est_out(struct tcpcb *tp,
 #endif
 static void inline	cc_after_idle(struct tcpcb *tp);
 
+static struct mbuf *tcp_m_copym(struct mbuf *m, int32_t off0, int32_t *plen,
+    int32_t seglimit, int32_t segsize, struct sockbuf *sb);
+
 #ifdef TCP_HHOOK
 /*
  * Wrapper for the TCP established output helper hook.
@@ -196,10 +197,15 @@ tcp_output(struct tcpcb *tp)
 	int32_t len;
 	uint32_t recwin, sendwin;
 	int off, flags, error = 0;	/* Keep compiler happy */
+	u_int if_hw_tsomaxsegcount = 0;
+	u_int if_hw_tsomaxsegsize;
 	struct mbuf *m;
 	struct ip *ip = NULL;
+#ifdef TCPDEBUG
 	struct ipovly *ipov = NULL;
+#endif
 	struct tcphdr *th;
+	struct sockbuf *msb;
 	u_char opt[TCP_MAXOLEN];
 	unsigned ipoptlen, optlen, hdrlen;
 #if defined(IPSEC) || defined(IPSEC_SUPPORT)
@@ -210,6 +216,8 @@ tcp_output(struct tcpcb *tp)
 	struct sackhole *p;
 	int tso, mtu;
 	struct tcpopt to;
+	unsigned int wanted_cookie = 0;
+	unsigned int dont_sendalot = 0;
 #if 0
 	int maxburst = TCP_MAXBURST;
 #endif
@@ -227,7 +235,6 @@ tcp_output(struct tcpcb *tp)
 		return (tcp_offload_output(tp));
 #endif
 
-#ifdef TCP_RFC7413
 	/*
 	 * For TFO connections in SYN_RECEIVED, only allow the initial
 	 * SYN|ACK and those sent by the retransmit timer.
@@ -235,9 +242,9 @@ tcp_output(struct tcpcb *tp)
 	if (IS_FASTOPEN(tp->t_flags) &&
 	    (tp->t_state == TCPS_SYN_RECEIVED) &&
 	    SEQ_GT(tp->snd_max, tp->snd_una) &&    /* initial SYN|ACK sent */
-	    (tp->snd_nxt != tp->snd_una))          /* not a retransmit */
+	    (tp->snd_nxt != tp->snd_una))         /* not a retransmit */
 		return (0);
-#endif
+
 	/*
 	 * Determine length of data that should be transmitted,
 	 * and flags that will be used.
@@ -423,7 +430,6 @@ after_sack_rexmit:
 	if ((flags & TH_SYN) && SEQ_GT(tp->snd_nxt, tp->snd_una)) {
 		if (tp->t_state != TCPS_SYN_RECEIVED)
 			flags &= ~TH_SYN;
-#ifdef TCP_RFC7413
 		/*
 		 * When sending additional segments following a TFO SYN|ACK,
 		 * do not include the SYN bit.
@@ -431,7 +437,6 @@ after_sack_rexmit:
 		if (IS_FASTOPEN(tp->t_flags) &&
 		    (tp->t_state == TCPS_SYN_RECEIVED))
 			flags &= ~TH_SYN;
-#endif
 		off--, len++;
 	}
 
@@ -445,17 +450,24 @@ after_sack_rexmit:
 		flags &= ~TH_FIN;
 	}
 
-#ifdef TCP_RFC7413
 	/*
-	 * When retransmitting SYN|ACK on a passively-created TFO socket,
-	 * don't include data, as the presence of data may have caused the
-	 * original SYN|ACK to have been dropped by a middlebox.
+	 * On TFO sockets, ensure no data is sent in the following cases:
+	 *
+	 *  - When retransmitting SYN|ACK on a passively-created socket
+	 *
+	 *  - When retransmitting SYN on an actively created socket
+	 *
+	 *  - When sending a zero-length cookie (cookie request) on an
+	 *    actively created socket
+	 *
+	 *  - When the socket is in the CLOSED state (RST is being sent)
 	 */
 	if (IS_FASTOPEN(tp->t_flags) &&
-	    (((tp->t_state == TCPS_SYN_RECEIVED) && (tp->t_rxtshift > 0)) ||
+	    (((flags & TH_SYN) && (tp->t_rxtshift > 0)) ||
+	     ((tp->t_state == TCPS_SYN_SENT) &&
+	      (tp->t_tfo_client_cookie_len == 0)) ||
 	     (flags & TH_RST)))
 		len = 0;
-#endif
 	if (len <= 0) {
 		/*
 		 * If FIN has been sent but not acked,
@@ -539,7 +551,7 @@ after_sack_rexmit:
 	if ((tp->t_flags & TF_TSO) && V_tcp_do_tso && len > tp->t_maxseg &&
 	    ((tp->t_flags & TF_SIGNATURE) == 0) &&
 	    tp->rcv_numsacks == 0 && sack_rxmit == 0 &&
-	    ipoptlen == 0)
+	    ipoptlen == 0 && !(flags & TH_SYN))
 		tso = 1;
 
 	if (sack_rxmit) {
@@ -759,22 +771,39 @@ send:
 			tp->snd_nxt = tp->iss;
 			to.to_mss = tcp_mssopt(&tp->t_inpcb->inp_inc);
 			to.to_flags |= TOF_MSS;
-#ifdef TCP_RFC7413
+
 			/*
-			 * Only include the TFO option on the first
-			 * transmission of the SYN|ACK on a
-			 * passively-created TFO socket, as the presence of
-			 * the TFO option may have caused the original
-			 * SYN|ACK to have been dropped by a middlebox.
+			 * On SYN or SYN|ACK transmits on TFO connections,
+			 * only include the TFO option if it is not a
+			 * retransmit, as the presence of the TFO option may
+			 * have caused the original SYN or SYN|ACK to have
+			 * been dropped by a middlebox.
 			 */
 			if (IS_FASTOPEN(tp->t_flags) &&
-			    (tp->t_state == TCPS_SYN_RECEIVED) &&
 			    (tp->t_rxtshift == 0)) {
-				to.to_tfo_len = TCP_FASTOPEN_COOKIE_LEN;
-				to.to_tfo_cookie = (u_char *)&tp->t_tfo_cookie;
-				to.to_flags |= TOF_FASTOPEN;
+				if (tp->t_state == TCPS_SYN_RECEIVED) {
+					to.to_tfo_len = TCP_FASTOPEN_COOKIE_LEN;
+					to.to_tfo_cookie =
+					    (u_int8_t *)&tp->t_tfo_cookie.server;
+					to.to_flags |= TOF_FASTOPEN;
+					wanted_cookie = 1;
+				} else if (tp->t_state == TCPS_SYN_SENT) {
+					to.to_tfo_len =
+					    tp->t_tfo_client_cookie_len;
+					to.to_tfo_cookie =
+					    tp->t_tfo_cookie.client;
+					to.to_flags |= TOF_FASTOPEN;
+					wanted_cookie = 1;
+					/*
+					 * If we wind up having more data to
+					 * send with the SYN than can fit in
+					 * one segment, don't send any more
+					 * until the SYN|ACK comes back from
+					 * the other end.
+					 */
+					dont_sendalot = 1;
+				}
 			}
-#endif
 		}
 		/* Window scaling. */
 		if ((flags & TH_SYN) && (tp->t_flags & TF_REQ_SCALE)) {
@@ -818,6 +847,13 @@ send:
 
 		/* Processing the options. */
 		hdrlen += optlen = tcp_addoptions(&to, opt);
+		/*
+		 * If we wanted a TFO option to be added, but it was unable
+		 * to fit, ensure no data is sent.
+		 */
+		if (IS_FASTOPEN(tp->t_flags) && wanted_cookie &&
+		    !(to.to_flags & TOF_FASTOPEN))
+			len = 0;
 	}
 
 	/*
@@ -831,9 +867,6 @@ send:
 
 		if (tso) {
 			u_int if_hw_tsomax;
-			u_int if_hw_tsomaxsegcount;
-			u_int if_hw_tsomaxsegsize;
-			struct mbuf *mb;
 			u_int moff;
 			int max_len;
 
@@ -858,64 +891,6 @@ send:
 				/* compute maximum TSO length */
 				max_len = (if_hw_tsomax - hdrlen -
 				    max_linkhdr);
-				if (max_len <= 0) {
-					len = 0;
-				} else if (len > max_len) {
-					sendalot = 1;
-					len = max_len;
-				}
-			}
-
-			/*
-			 * Check if we should limit by maximum segment
-			 * size and count:
-			 */
-			if (if_hw_tsomaxsegcount != 0 &&
-			    if_hw_tsomaxsegsize != 0) {
-				/*
-				 * Subtract one segment for the LINK
-				 * and TCP/IP headers mbuf that will
-				 * be prepended to this mbuf chain
-				 * after the code in this section
-				 * limits the number of mbufs in the
-				 * chain to if_hw_tsomaxsegcount.
-				 */
-				if_hw_tsomaxsegcount -= 1;
-				max_len = 0;
-				mb = sbsndmbuf(&so->so_snd, off, &moff);
-
-				while (mb != NULL && max_len < len) {
-					u_int mlen;
-					u_int frags;
-
-					/*
-					 * Get length of mbuf fragment
-					 * and how many hardware frags,
-					 * rounded up, it would use:
-					 */
-					mlen = (mb->m_len - moff);
-					frags = howmany(mlen,
-					    if_hw_tsomaxsegsize);
-
-					/* Handle special case: Zero Length Mbuf */
-					if (frags == 0)
-						frags = 1;
-
-					/*
-					 * Check if the fragment limit
-					 * will be reached or exceeded:
-					 */
-					if (frags >= if_hw_tsomaxsegcount) {
-						max_len += min(mlen,
-						    if_hw_tsomaxsegcount *
-						    if_hw_tsomaxsegsize);
-						break;
-					}
-					max_len += mlen;
-					if_hw_tsomaxsegcount -= frags;
-					moff = 0;
-					mb = mb->m_next;
-				}
 				if (max_len <= 0) {
 					len = 0;
 				} else if (len > max_len) {
@@ -962,6 +937,8 @@ send:
 		} else {
 			len = tp->t_maxseg - optlen - ipoptlen;
 			sendalot = 1;
+			if (dont_sendalot)
+				sendalot = 0;
 		}
 	} else
 		tso = 0;
@@ -1024,14 +1001,21 @@ send:
 		 * Start the m_copy functions from the closest mbuf
 		 * to the offset in the socket buffer chain.
 		 */
-		mb = sbsndptr(&so->so_snd, off, len, &moff);
-
+		mb = sbsndptr(&so->so_snd, off, &moff);
+		if (SEQ_LT(tp->snd_nxt, tp->snd_max))
+			msb = NULL;
+		else
+			msb = &so->so_snd;
 		if (len <= MHLEN - hdrlen - max_linkhdr) {
+			if (msb != NULL)
+				sbsndptr_adv(&so->so_snd, mb, len);
 			m_copydata(mb, moff, len,
 			    mtod(m, caddr_t) + hdrlen);
 			m->m_len += len;
 		} else {
-			m->m_next = m_copym(mb, moff, len, M_NOWAIT);
+			m->m_next = tcp_m_copym(mb, moff,
+			    &len, if_hw_tsomaxsegcount,
+			    if_hw_tsomaxsegsize, msb);
 			if (m->m_next == NULL) {
 				SOCKBUF_UNLOCK(&so->so_snd);
 				(void) m_free(m);
@@ -1091,7 +1075,9 @@ send:
 #endif /* INET6 */
 	{
 		ip = mtod(m, struct ip *);
+#ifdef TCPDEBUG
 		ipov = (struct ipovly *)ip;
+#endif
 		th = (struct tcphdr *)(ip + 1);
 		tcpip_fillheaders(tp->t_inpcb, ip, th);
 	}
@@ -1239,12 +1225,13 @@ send:
 		 * NOTE: since TCP options buffer doesn't point into
 		 * mbuf's data, calculate offset and use it.
 		 */
-		if (!TCPMD5_ENABLED() || TCPMD5_OUTPUT(m, th,
-		    (u_char *)(th + 1) + (to.to_signature - opt)) != 0) {
+		if (!TCPMD5_ENABLED() || (error = TCPMD5_OUTPUT(m, th,
+		    (u_char *)(th + 1) + (to.to_signature - opt))) != 0) {
 			/*
 			 * Do not send segment if the calculation of MD5
 			 * digest has failed.
 			 */
+			m_freem(m);
 			goto out;
 		}
 	}
@@ -1762,15 +1749,16 @@ tcp_addoptions(struct tcpopt *to, u_char *optp)
 			TCPSTAT_INC(tcps_sack_send_blocks);
 			break;
 			}
-#ifdef TCP_RFC7413
 		case TOF_FASTOPEN:
 			{
 			int total_len;
 
 			/* XXX is there any point to aligning this option? */
 			total_len = TCPOLEN_FAST_OPEN_EMPTY + to->to_tfo_len;
-			if (TCP_MAXOLEN - optlen < total_len)
+			if (TCP_MAXOLEN - optlen < total_len) {
+				to->to_flags &= ~TOF_FASTOPEN;
 				continue;
+			}
 			*optp++ = TCPOPT_FAST_OPEN;
 			*optp++ = total_len;
 			if (to->to_tfo_len > 0) {
@@ -1780,7 +1768,6 @@ tcp_addoptions(struct tcpopt *to, u_char *optp)
 			optlen += total_len;
 			break;
 			}
-#endif
 		default:
 			panic("%s: unknown TCP option type", __func__);
 			break;
@@ -1805,6 +1792,144 @@ tcp_addoptions(struct tcpopt *to, u_char *optp)
 
 	KASSERT(optlen <= TCP_MAXOLEN, ("%s: TCP options too long", __func__));
 	return (optlen);
+}
+
+/*
+ * This is a copy of m_copym(), taking the TSO segment size/limit
+ * constraints into account, and advancing the sndptr as it goes.
+ */
+static struct mbuf *
+tcp_m_copym(struct mbuf *m, int32_t off0, int32_t *plen,
+    int32_t seglimit, int32_t segsize, struct sockbuf *sb)
+{
+	struct mbuf *n, **np;
+	struct mbuf *top;
+	int32_t off = off0;
+	int32_t len = *plen;
+	int32_t fragsize;
+	int32_t len_cp = 0;
+	int32_t *pkthdrlen;
+	uint32_t mlen, frags;
+	bool copyhdr;
+
+
+	KASSERT(off >= 0, ("tcp_m_copym, negative off %d", off));
+	KASSERT(len >= 0, ("tcp_m_copym, negative len %d", len));
+	if (off == 0 && m->m_flags & M_PKTHDR)
+		copyhdr = true;
+	else
+		copyhdr = false;
+	while (off > 0) {
+		KASSERT(m != NULL, ("tcp_m_copym, offset > size of mbuf chain"));
+		if (off < m->m_len)
+			break;
+		off -= m->m_len;
+		if ((sb) && (m == sb->sb_sndptr)) {
+			sb->sb_sndptroff += m->m_len;
+			sb->sb_sndptr = m->m_next;
+		}
+		m = m->m_next;
+	}
+	np = &top;
+	top = NULL;
+	pkthdrlen = NULL;
+	while (len > 0) {
+		if (m == NULL) {
+			KASSERT(len == M_COPYALL,
+			    ("tcp_m_copym, length > size of mbuf chain"));
+			*plen = len_cp;
+			if (pkthdrlen != NULL)
+				*pkthdrlen = len_cp;
+			break;
+		}
+		mlen = min(len, m->m_len - off);
+		if (seglimit) {
+			/*
+			 * For M_NOMAP mbufs, add 3 segments
+			 * + 1 in case we are crossing page boundaries
+			 * + 2 in case the TLS hdr/trailer are used
+			 * It is cheaper to just add the segments
+			 * than it is to take the cache miss to look
+			 * at the mbuf ext_pgs state in detail.
+			 */
+			if (m->m_flags & M_NOMAP) {
+				fragsize = min(segsize, PAGE_SIZE);
+				frags = 3;
+			} else {
+				fragsize = segsize;
+				frags = 0;
+			}
+
+			/* Break if we really can't fit anymore. */
+			if ((frags + 1) >= seglimit) {
+				*plen =	len_cp;
+				if (pkthdrlen != NULL)
+					*pkthdrlen = len_cp;
+				break;
+			}
+
+			/*
+			 * Reduce size if you can't copy the whole
+			 * mbuf. If we can't copy the whole mbuf, also
+			 * adjust len so the loop will end after this
+			 * mbuf.
+			 */
+			if ((frags + howmany(mlen, fragsize)) >= seglimit) {
+				mlen = (seglimit - frags - 1) * fragsize;
+				len = mlen;
+				*plen = len_cp + len;
+				if (pkthdrlen != NULL)
+					*pkthdrlen = *plen;
+			}
+			frags += howmany(mlen, fragsize);
+			if (frags == 0)
+				frags++;
+			seglimit -= frags;
+			KASSERT(seglimit > 0,
+			    ("%s: seglimit went too low", __func__));
+		}
+		if (copyhdr)
+			n = m_gethdr(M_NOWAIT, m->m_type);
+		else
+			n = m_get(M_NOWAIT, m->m_type);
+		*np = n;
+		if (n == NULL)
+			goto nospace;
+		if (copyhdr) {
+			if (!m_dup_pkthdr(n, m, M_NOWAIT))
+				goto nospace;
+			if (len == M_COPYALL)
+				n->m_pkthdr.len -= off0;
+			else
+				n->m_pkthdr.len = len;
+			pkthdrlen = &n->m_pkthdr.len;
+			copyhdr = false;
+		}
+		n->m_len = mlen;
+		len_cp += n->m_len;
+		if (m->m_flags & M_EXT) {
+			n->m_data = m->m_data + off;
+			mb_dupcl(n, m);
+		} else
+			bcopy(mtod(m, caddr_t)+off, mtod(n, caddr_t),
+			    (u_int)n->m_len);
+
+		if (sb && (sb->sb_sndptr == m) &&
+		    ((n->m_len + off) >= m->m_len) && m->m_next) {
+			sb->sb_sndptroff += m->m_len;
+			sb->sb_sndptr = m->m_next;
+		}
+		off = 0;
+		if (len != M_COPYALL) {
+			len -= n->m_len;
+		}
+		m = m->m_next;
+		np = &n->m_next;
+	}
+	return (top);
+nospace:
+	m_freem(top);
+	return (NULL);
 }
 
 void

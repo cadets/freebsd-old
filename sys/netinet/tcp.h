@@ -101,8 +101,6 @@ struct tcphdr {
 #define	   TCPOLEN_SIGNATURE		18
 #define	TCPOPT_FAST_OPEN	34
 #define	   TCPOLEN_FAST_OPEN_EMPTY	2
-#define	   TCPOLEN_FAST_OPEN_MIN	6
-#define	   TCPOLEN_FAST_OPEN_MAX	18
 
 /* Miscellaneous constants */
 #define	MAX_SACK_BLKS	6	/* Max # SACK blocks stored at receiver side */
@@ -152,6 +150,10 @@ struct tcphdr {
 #define TCP_MAXHLEN	(0xf<<2)	/* max length of header in bytes */
 #define TCP_MAXOLEN	(TCP_MAXHLEN - sizeof(struct tcphdr))
 					/* max space left for options */
+
+#define TCP_FASTOPEN_MIN_COOKIE_LEN	4	/* Per RFC7413 */
+#define TCP_FASTOPEN_MAX_COOKIE_LEN	16	/* Per RFC7413 */
+#define TCP_FASTOPEN_PSK_LEN		16	/* Same as TCP_FASTOPEN_KEY_LEN */
 #endif /* __BSD_VISIBLE */
 
 /*
@@ -173,6 +175,7 @@ struct tcphdr {
 #define	TCP_KEEPINTVL	512	/* L,N interval between keepalives */
 #define	TCP_KEEPCNT	1024	/* L,N number of keepalives before close */
 #define	TCP_FASTOPEN	1025	/* enable TFO / was created via TFO */
+#define	TCP_TLS_ENABLE	1026	/* TLS Crypt enable */
 #define	TCP_PCAP_OUT	2048	/* number of output packets to keep */
 #define	TCP_PCAP_IN	4096	/* number of input packets to keep */
 #define TCP_FUNCTION_BLK 8192	/* Set the tcp function pointers to the specified stack */
@@ -252,6 +255,16 @@ struct tcp_info {
 	/* Padding to grow without breaking ABI. */
 	u_int32_t	__tcpi_pad[26];		/* Padding. */
 };
+
+/*
+ * If this structure is provided when setting the TCP_FASTOPEN socket
+ * option, and the enable member is non-zero, a subsequent connect will use
+ * pre-shared key (PSK) mode using the provided key.
+ */
+struct tcp_fastopen {
+	int enable;
+	uint8_t psk[TCP_FASTOPEN_PSK_LEN];
+};
 #endif
 #define TCP_FUNCTION_NAME_LEN_MAX 32
 
@@ -259,5 +272,8 @@ struct tcp_function_set {
 	char function_set_name[TCP_FUNCTION_NAME_LEN_MAX];
 	uint32_t pcbcnt;
 };
-
+/*
+ * TCP Control message types
+ */
+#define TLS_SET_RECORD_TYPE 1
 #endif /* !_NETINET_TCP_H_ */

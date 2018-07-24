@@ -102,10 +102,9 @@ MODULE_VERSION(linux, 1);
 #endif
 
 /*
- * Allow the sendsig functions to use the ldebug() facility
- * even though they are not syscalls themselves. Map them
- * to syscall 0. This is slightly less bogus than using
- * ldebug(sigreturn).
+ * Allow the sendsig functions to use the ldebug() facility even though they
+ * are not syscalls themselves.  Map them to syscall 0.  This is slightly less
+ * bogus than using ldebug(sigreturn).
  */
 #define	LINUX32_SYS_linux_rt_sendsig	0
 #define	LINUX32_SYS_linux_sendsig	0
@@ -125,32 +124,12 @@ static int	elf_linux_fixup(register_t **stack_base,
 		    struct image_params *iparams);
 static register_t *linux_copyout_strings(struct image_params *imgp);
 static void     linux_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask);
-static void	exec_linux_setregs(struct thread *td, 
+static void	exec_linux_setregs(struct thread *td,
 				   struct image_params *imgp, u_long stack);
 static void	linux32_fixlimit(struct rlimit *rl, int which);
-static boolean_t linux32_trans_osrel(const Elf_Note *note, int32_t *osrel);
+static bool	linux32_trans_osrel(const Elf_Note *note, int32_t *osrel);
 static void	linux_vdso_install(void *param);
 static void	linux_vdso_deinstall(void *param);
-
-/*
- * Linux syscalls return negative errno's, we do positive and map them
- * Reference:
- *   FreeBSD: src/sys/sys/errno.h
- *   Linux:   linux-2.6.17.8/include/asm-generic/errno-base.h
- *            linux-2.6.17.8/include/asm-generic/errno.h
- */
-static int bsd_to_linux_errno[ELAST + 1] = {
-	-0,  -1,  -2,  -3,  -4,  -5,  -6,  -7,  -8,  -9,
-	-10, -35, -12, -13, -14, -15, -16, -17, -18, -19,
-	-20, -21, -22, -23, -24, -25, -26, -27, -28, -29,
-	-30, -31, -32, -33, -34, -11,-115,-114, -88, -89,
-	-90, -91, -92, -93, -94, -95, -96, -97, -98, -99,
-	-100,-101,-102,-103,-104,-105,-106,-107,-108,-109,
-	-110,-111, -40, -36,-112,-113, -39, -11, -87,-122,
-	-116, -66,  -6,  -6,  -6,  -6,  -6, -37, -38,  -9,
-	  -6,  -6, -43, -42, -75,-125, -84, -61, -16, -74,
-	 -72, -67, -71
-};
 
 #define LINUX_T_UNKNOWN  255
 static int _bsd_to_linux_trapcode[] = {
@@ -298,7 +277,7 @@ linux_rt_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	int oonstack;
 	int sig;
 	int code;
-	
+
 	sig = ksi->ksi_signo;
 	code = ksi->ksi_code;
 	PROC_LOCK_ASSERT(p, MA_OWNED);
@@ -312,9 +291,7 @@ linux_rt_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 		printf(ARGS(rt_sendsig, "%p, %d, %p, %u"),
 		    catcher, sig, (void*)mask, code);
 #endif
-	/*
-	 * Allocate space for the signal handler context.
-	 */
+	/* Allocate space for the signal handler context. */
 	if ((td->td_pflags & TDP_ALTSTACK) && !oonstack &&
 	    SIGISMEMBER(psp->ps_sigonstack, sig)) {
 		fp = (struct l_rt_sigframe *)((uintptr_t)td->td_sigstk.ss_sp +
@@ -323,9 +300,7 @@ linux_rt_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 		fp = (struct l_rt_sigframe *)regs->tf_rsp - 1;
 	mtx_unlock(&psp->ps_mtx);
 
-	/*
-	 * Build the argument list for the signal handler.
-	 */
+	/* Build the argument list for the signal handler. */
 	sig = bsd_to_linux_signal(sig);
 
 	bzero(&frame, sizeof(frame));
@@ -335,12 +310,11 @@ linux_rt_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	frame.sf_siginfo = PTROUT(&fp->sf_si);
 	frame.sf_ucontext = PTROUT(&fp->sf_sc);
 
-	/* Fill in POSIX parts */
+	/* Fill in POSIX parts. */
 	ksiginfo_to_lsiginfo(ksi, &frame.sf_si, sig);
 
 	/*
-	 * Build the signal context to be used by sigreturn
-	 * and libgcc unwind.
+	 * Build the signal context to be used by sigreturn and libgcc unwind.
 	 */
 	frame.sf_sc.uc_flags = 0;		/* XXX ??? */
 	frame.sf_sc.uc_link = 0;		/* XXX ??? */
@@ -396,9 +370,7 @@ linux_rt_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 		sigexit(td, SIGILL);
 	}
 
-	/*
-	 * Build context to run handler in.
-	 */
+	/* Build context to run handler in. */
 	regs->tf_rsp = PTROUT(fp);
 	regs->tf_rip = linux32_rt_sigcode;
 	regs->tf_rflags &= ~(PSL_T | PSL_D);
@@ -457,9 +429,7 @@ linux_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 		    catcher, sig, (void*)mask, code);
 #endif
 
-	/*
-	 * Allocate space for the signal handler context.
-	 */
+	/* Allocate space for the signal handler context. */
 	if ((td->td_pflags & TDP_ALTSTACK) && !oonstack &&
 	    SIGISMEMBER(psp->ps_sigonstack, sig)) {
 		fp = (struct l_sigframe *)((uintptr_t)td->td_sigstk.ss_sp +
@@ -469,9 +439,7 @@ linux_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	mtx_unlock(&psp->ps_mtx);
 	PROC_UNLOCK(p);
 
-	/*
-	 * Build the argument list for the signal handler.
-	 */
+	/* Build the argument list for the signal handler. */
 	sig = bsd_to_linux_signal(sig);
 
 	bzero(&frame, sizeof(frame));
@@ -481,9 +449,7 @@ linux_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 
 	bsd_to_linux_sigset(mask, &lmask);
 
-	/*
-	 * Build the signal context to be used by sigreturn.
-	 */
+	/* Build the signal context to be used by sigreturn. */
 	frame.sf_sc.sc_mask   = lmask.__mask;
 	frame.sf_sc.sc_gs     = regs->tf_gs;
 	frame.sf_sc.sc_fs     = regs->tf_fs;
@@ -517,9 +483,7 @@ linux_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 		sigexit(td, SIGILL);
 	}
 
-	/*
-	 * Build context to run handler in.
-	 */
+	/* Build context to run handler in. */
 	regs->tf_rsp = PTROUT(fp);
 	regs->tf_rip = linux32_sigcode;
 	regs->tf_rflags &= ~(PSL_T | PSL_D);
@@ -569,9 +533,7 @@ linux_sigreturn(struct thread *td, struct linux_sigreturn_args *args)
 	if (copyin(args->sfp, &frame, sizeof(frame)) != 0)
 		return (EFAULT);
 
-	/*
-	 * Check for security violations.
-	 */
+	/* Check for security violations. */
 #define	EFLAGS_SECURE(ef, oef)	((((ef) ^ (oef)) & ~PSL_USERCHANGE) == 0)
 	eflags = frame.sf_sc.sc_eflags;
 	if (!EFLAGS_SECURE(eflags, regs->tf_rflags))
@@ -598,9 +560,7 @@ linux_sigreturn(struct thread *td, struct linux_sigreturn_args *args)
 	linux_to_bsd_sigset(&lmask, &bmask);
 	kern_sigprocmask(td, SIG_SETMASK, &bmask, NULL, 0);
 
-	/*
-	 * Restore signal context.
-	 */
+	/* Restore signal context. */
 	regs->tf_rdi    = frame.sf_sc.sc_edi;
 	regs->tf_rsi    = frame.sf_sc.sc_esi;
 	regs->tf_rbp    = frame.sf_sc.sc_ebp;
@@ -660,9 +620,7 @@ linux_rt_sigreturn(struct thread *td, struct linux_rt_sigreturn_args *args)
 
 	context = &uc.uc_mcontext;
 
-	/*
-	 * Check for security violations.
-	 */
+	/* Check for security violations. */
 #define	EFLAGS_SECURE(ef, oef)	((((ef) ^ (oef)) & ~PSL_USERCHANGE) == 0)
 	eflags = context->sc_eflags;
 	if (!EFLAGS_SECURE(eflags, regs->tf_rflags))
@@ -759,9 +717,9 @@ linux32_fetch_syscall_args(struct thread *td)
 }
 
 /*
- * If a linux binary is exec'ing something, try this image activator
+ * If a Linux binary is exec'ing something, try this image activator
  * first.  We override standard shell script execution in order to
- * be able to modify the interpreter path.  We only do this if a linux
+ * be able to modify the interpreter path.  We only do this if a Linux
  * binary is doing the exec, so we do not create an EXEC module for it.
  */
 static int	exec_linux_imgact_try(struct image_params *iparams);
@@ -774,9 +732,9 @@ exec_linux_imgact_try(struct image_params *imgp)
 	int error = -1;
 
 	/*
-	* The interpreter for shell scripts run from a linux binary needs
+	* The interpreter for shell scripts run from a Linux binary needs
 	* to be located in /compat/linux if possible in order to recursively
-	* maintain linux path emulation.
+	* maintain Linux path emulation.
 	*/
 	if (((const short *)head)[0] == SHELLMAGIC) {
 		/*
@@ -850,9 +808,7 @@ linux_copyout_strings(struct image_params *imgp)
 	char canary[LINUX_AT_RANDOM_LEN];
 	size_t execpath_len;
 
-	/*
-	 * Calculate string base and vector table pointers.
-	 */
+	/* Calculate string base and vector table pointers. */
 	if (imgp->execpath != NULL && imgp->auxargs != NULL)
 		execpath_len = strlen(imgp->execpath) + 1;
 	else
@@ -869,19 +825,14 @@ linux_copyout_strings(struct image_params *imgp)
 		copyout(imgp->execpath, (void *)imgp->execpathp, execpath_len);
 	}
 
-	/*
-	 * Prepare the canary for SSP.
-	 */
+	/* Prepare the canary for SSP. */
 	arc4rand(canary, sizeof(canary), 0);
 	imgp->canary = (uintptr_t)arginfo -
 	    roundup(execpath_len, sizeof(char *)) -
 	    roundup(sizeof(canary), sizeof(char *));
 	copyout(canary, (void *)imgp->canary, sizeof(canary));
 
-	/*
-	 * If we have a valid auxargs ptr, prepare some room
-	 * on the stack.
-	 */
+	/* If we have a valid auxargs ptr, prepare some room on the stack. */
 	if (imgp->auxargs) {
 		/*
 		 * 'AT_COUNT*2' is size for the ELF Auxargs data. This is for
@@ -906,28 +857,20 @@ linux_copyout_strings(struct image_params *imgp)
 		vectp = (u_int32_t *)(destp - (imgp->args->argc +
 		    imgp->args->envc + 2) * sizeof(u_int32_t));
 
-	/*
-	 * vectp also becomes our initial stack base
-	 */
+	/* vectp also becomes our initial stack base. */
 	stack_base = vectp;
 
 	stringp = imgp->args->begin_argv;
 	argc = imgp->args->argc;
 	envc = imgp->args->envc;
-	/*
-	 * Copy out strings - arguments and environment.
-	 */
+	/* Copy out strings - arguments and environment. */
 	copyout(stringp, destp, ARG_MAX - imgp->args->stringspace);
 
-	/*
-	 * Fill in "ps_strings" struct for ps, w, etc.
-	 */
+	/* Fill in "ps_strings" struct for ps, w, etc. */
 	suword32(&arginfo->ps_argvstr, (uint32_t)(intptr_t)vectp);
 	suword32(&arginfo->ps_nargvstr, argc);
 
-	/*
-	 * Fill in argument portion of vector table.
-	 */
+	/* Fill in argument portion of vector table. */
 	for (; argc > 0; --argc) {
 		suword32(vectp++, (uint32_t)(intptr_t)destp);
 		while (*stringp++ != 0)
@@ -935,15 +878,13 @@ linux_copyout_strings(struct image_params *imgp)
 		destp++;
 	}
 
-	/* a null vector table pointer separates the argp's from the envp's */
+	/* A null vector table pointer separates the argp's from the envp's. */
 	suword32(vectp++, 0);
 
 	suword32(&arginfo->ps_envstr, (uint32_t)(intptr_t)vectp);
 	suword32(&arginfo->ps_nenvstr, envc);
 
-	/*
-	 * Fill in environment portion of vector table.
-	 */
+	/* Fill in environment portion of vector table. */
 	for (; envc > 0; --envc) {
 		suword32(vectp++, (uint32_t)(intptr_t)destp);
 		while (*stringp++ != 0)
@@ -951,7 +892,7 @@ linux_copyout_strings(struct image_params *imgp)
 		destp++;
 	}
 
-	/* end of vector table is a null pointer */
+	/* The end of the vector table is a null pointer. */
 	suword32(vectp, 0);
 
 	return ((register_t *)stack_base);
@@ -971,10 +912,8 @@ SYSCTL_ULONG(_compat_linux32, OID_AUTO, maxvmem, CTLFLAG_RW,
     &linux32_maxvmem, 0, "");
 
 #if defined(DEBUG)
-SYSCTL_PROC(_compat_linux32, OID_AUTO, debug,
-            CTLTYPE_STRING | CTLFLAG_RW,
-            0, 0, linux_sysctl_debug, "A",
-            "Linux debugging control");
+SYSCTL_PROC(_compat_linux32, OID_AUTO, debug, CTLTYPE_STRING | CTLFLAG_RW, 0, 0,
+    linux_sysctl_debug, "A", "Linux debugging control");
 #endif
 
 static void
@@ -1014,7 +953,7 @@ struct sysentvec elf_linux_sysvec = {
 	.sv_table	= linux32_sysent,
 	.sv_mask	= 0,
 	.sv_errsize	= ELAST + 1,
-	.sv_errtbl	= bsd_to_linux_errno,
+	.sv_errtbl	= bsd_to_linux_errno_generic,
 	.sv_transtrap	= translate_traps,
 	.sv_fixup	= elf_linux_fixup,
 	.sv_sendsig	= linux_sendsig,
@@ -1042,14 +981,14 @@ struct sysentvec elf_linux_sysvec = {
 	.sv_shared_page_len = PAGE_SIZE,
 	.sv_schedtail	= linux_schedtail,
 	.sv_thread_detach = linux_thread_detach,
-	.sv_trap	= NULL,	
+	.sv_trap	= NULL,
 };
 
 static void
 linux_vdso_install(void *param)
 {
 
-	linux_szsigcode = (&_binary_linux32_locore_o_end - 
+	linux_szsigcode = (&_binary_linux32_locore_o_end -
 	    &_binary_linux32_locore_o_start);
 
 	if (linux_szsigcode > elf_linux_sysvec.sv_shared_page_len)
@@ -1077,14 +1016,14 @@ linux_vdso_deinstall(void *param)
 {
 
 	__elfN(linux_shared_page_fini)(linux_shared_page_obj);
-};
+}
 SYSUNINIT(elf_linux_vdso_uninit, SI_SUB_EXEC, SI_ORDER_FIRST,
     (sysinit_cfunc_t)linux_vdso_deinstall, NULL);
 
 static char GNU_ABI_VENDOR[] = "GNU";
 static int GNULINUX_ABI_DESC = 0;
 
-static boolean_t
+static bool
 linux32_trans_osrel(const Elf_Note *note, int32_t *osrel)
 {
 	const Elf32_Word *desc;
@@ -1095,15 +1034,15 @@ linux32_trans_osrel(const Elf_Note *note, int32_t *osrel)
 
 	desc = (const Elf32_Word *)p;
 	if (desc[0] != GNULINUX_ABI_DESC)
-		return (FALSE);
+		return (false);
 
 	/*
-	 * For linux we encode osrel as follows (see linux_mib.c):
+	 * For Linux we encode osrel as follows (see linux_mib.c):
 	 * VVVMMMIII (version, major, minor), see linux_mib.c.
 	 */
 	*osrel = desc[1] * 1000000 + desc[2] * 1000 + desc[3];
 
-	return (TRUE);
+	return (true);
 }
 
 static Elf_Brandnote linux32_brandnote = {

@@ -161,6 +161,11 @@
 # endif
 # include <openssl/pem.h>
 # include <openssl/hmac.h>
+#ifdef __FreeBSD__
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/uio.h>
+#endif
 
 # include <openssl/kssl.h>
 # include <openssl/safestack.h>
@@ -2451,6 +2456,14 @@ void SSL_set_info_callback(SSL *ssl,
 void (*SSL_get_info_callback(const SSL *ssl)) (const SSL *ssl, int type,
                                                int val);
 int SSL_state(const SSL *ssl);
+#ifdef __FreeBSD__
+int SSL_can_use_sendfile(SSL *ssl);
+int SSL_sendfile(int fd, SSL *s, off_t offset, size_t nbytes,
+		 struct sf_hdtr *hdtr, int flags);
+#endif
+int SSL_get_wbio_error(SSL *ssl);
+int SSL_get_rbio_error(SSL *ssl);
+
 void SSL_set_state(SSL *ssl, int state);
 
 void SSL_set_verify_result(SSL *ssl, long v);

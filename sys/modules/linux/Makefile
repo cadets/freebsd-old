@@ -17,9 +17,9 @@ SRCS=	linux_fork.c linux${SFX}_dummy.c linux_file.c linux_event.c \
 	linux${SFX}_sysvec.c linux_uid16.c linux_time.c \
 	linux_timer.c linux_vdso.c \
 	opt_inet6.h opt_compat.h opt_posix.h opt_usb.h vnode_if.h \
-	device_if.h bus_if.h assym.s \
+	device_if.h bus_if.h \
 	linux${SFX}_support.s
-DPSRCS=	linux${SFX}_genassym.c
+DPSRCS=	assym.s linux${SFX}_genassym.c
 
 # XXX: for assym.s
 SRCS+=  opt_kstack_pages.h opt_nfs.h opt_compat.h opt_hwpmc_hooks.h
@@ -31,7 +31,7 @@ OBJS=	${VDSO}.so
 
 .if ${MACHINE_CPUARCH} == "i386"
 SRCS+=	linux_ptrace.c imgact_linux.c linux_util.c linux_mib.c linux_mmap.c \
-	linux_emul.c opt_cpu.h linux.c
+	linux_emul.c linux_errno.c opt_cpu.h linux.c
 .endif
 
 .if ${MACHINE_CPUARCH} == "i386"

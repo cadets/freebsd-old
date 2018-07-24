@@ -269,6 +269,11 @@ dtrace_stop(dtrace_hdl_t *dtp)
 
 dtrace_workstatus_t
 dtrace_work(dtrace_hdl_t *dtp, FILE *fp, dtrace_consumer_t *con, void *arg)
+<<<<<<< HEAD
+=======
+//dtrace_work(dtrace_hdl_t *dtp, FILE *fp,
+//    dtrace_consume_probe_f *pfunc, dtrace_consume_rec_f *rfunc, void *arg)
+>>>>>>> ce23241775838a47433b730e2c5fad9ff980f5d4
 {
 	int status = dtrace_status(dtp);
 	dtrace_optval_t policy = dtp->dt_options[DTRACEOPT_BUFPOLICY];
@@ -314,6 +319,7 @@ dtrace_work(dtrace_hdl_t *dtp, FILE *fp, dtrace_consumer_t *con, void *arg)
 	if (dtrace_aggregate_snap(dtp) == -1)
 		return (DTRACE_WORKSTATUS_ERROR);
 
+<<<<<<< HEAD
 	if (dtrace_consume(dtp, fp, con, arg) == -1)
 		return (DTRACE_WORKSTATUS_ERROR);
 
@@ -339,6 +345,9 @@ dtrace_work_detached(dtrace_hdl_t *dtp, FILE *fp, dtrace_consumer_t *con,
 	//if (dtrace_aggregate_snap(dtp) == -1)
 	//	return (DTRACE_WORKSTATUS_ERROR);
 
+=======
+	//if (dtrace_consume(dtp, fp, pfunc, rfunc, arg) == -1)
+>>>>>>> ce23241775838a47433b730e2c5fad9ff980f5d4
 	if (dtrace_consume(dtp, fp, con, arg) == -1)
 		return (DTRACE_WORKSTATUS_ERROR);
 

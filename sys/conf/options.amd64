@@ -68,3 +68,6 @@ ISCI_LOGGING	opt_isci.h
 
 # EFI Runtime services support
 EFIRT			opt_efirt.h
+
+# accelerated TLS sockets
+KERN_TLS		opt_kern_tls.h

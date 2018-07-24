@@ -69,7 +69,7 @@ CWARNFLAGS+=	-Wno-pointer-sign
 .if ${WARNS} <= 6
 CWARNFLAGS.clang+=	-Wno-empty-body -Wno-string-plus-int
 .if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 30400
-CWARNFLAGS.clang+= -Wno-unused-const-variable
+CWARNFLAGS.clang+=	-Wno-unused-const-variable
 .endif
 .endif # WARNS <= 6
 .if ${WARNS} <= 3
@@ -80,9 +80,6 @@ CWARNFLAGS.clang+=	-Wno-unused-local-typedef
 .endif
 .if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 40000
 CWARNFLAGS.clang+=	-Wno-address-of-packed-member
-.endif
-.if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 60000
-CWARNFLAGS.clang+=	-Wno-error=tautological-constant-compare
 .endif
 .endif # WARNS <= 3
 .if ${WARNS} <= 2

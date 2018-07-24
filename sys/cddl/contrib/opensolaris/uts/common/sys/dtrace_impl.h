@@ -1184,7 +1184,10 @@ struct dtrace_konsumer {
 	dtrace_kops_t dtk_ops;			/* konsumer operations */
 	char *dtk_name;				/* konsumer name */
 	void *dtk_arg;				/* konsumer argument */
+<<<<<<< HEAD
 volatile uint64_t *dtk_offset;			/* TODO: konsumer offset */
+=======
+>>>>>>> ce23241775838a47433b730e2c5fad9ff980f5d4
 	struct dtrace_konsumer *dtk_next;	/* next konsumer */
 };
 

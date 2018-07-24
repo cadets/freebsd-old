@@ -214,7 +214,7 @@ const char *syscallnames[] = {
 	"undelete",			/* 205 = undelete */
 	"futimes",			/* 206 = futimes */
 	"getpgid",			/* 207 = getpgid */
-	"#208",			/* 208 = newreboot */
+	"#208",			/* 208 = nosys */
 	"poll",			/* 209 = poll */
 	"lkmnosys",			/* 210 = lkmnosys */
 	"lkmnosys",			/* 211 = lkmnosys */
@@ -554,8 +554,8 @@ const char *syscallnames[] = {
 	"ppoll",			/* 545 = ppoll */
 	"futimens",			/* 546 = futimens */
 	"utimensat",			/* 547 = utimensat */
-	"numa_getaffinity",			/* 548 = numa_getaffinity */
-	"numa_setaffinity",			/* 549 = numa_setaffinity */
+	"#548",			/* 548 = numa_getaffinity */
+	"#549",			/* 549 = numa_setaffinity */
 	"fdatasync",			/* 550 = fdatasync */
 	"fstat",			/* 551 = fstat */
 	"fstatat",			/* 552 = fstatat */
@@ -567,6 +567,7 @@ const char *syscallnames[] = {
 	"fhstatfs",			/* 558 = fhstatfs */
 	"mknodat",			/* 559 = mknodat */
 	"kevent",			/* 560 = kevent */
+<<<<<<< HEAD
 	"#561",			/* 561 = placeholder */
 	"#562",			/* 562 = placeholder */
 	"#563",			/* 563 = placeholder */
@@ -594,4 +595,8 @@ const char *syscallnames[] = {
 	"metaio_sendmsg",			/* 585 = metaio_sendmsg */
 	"metaio_recvmsg",			/* 586 = metaio_recvmsg */
 	"metaio_sendfile",			/* 587 = metaio_sendfile */
+=======
+	"cpuset_getdomain",			/* 561 = cpuset_getdomain */
+	"cpuset_setdomain",			/* 562 = cpuset_setdomain */
+>>>>>>> ce23241775838a47433b730e2c5fad9ff980f5d4
 };

@@ -215,8 +215,13 @@ sys_read(td, uap)
 	auio.uio_iovcnt = 1;
 	auio.uio_resid = uap->nbyte;
 	auio.uio_segflg = UIO_USERSPACE;
+<<<<<<< HEAD
 	error = kern_readv(td, uap->fd, &auio, NULL);
 	return(error);
+=======
+	error = kern_readv(td, uap->fd, &auio);
+	return (error);
+>>>>>>> ce23241775838a47433b730e2c5fad9ff980f5d4
 }
 
 /*
@@ -480,7 +485,7 @@ dofileread(td, fd, fp, auio, offset, flags, miop)
 	/* Finish zero length reads right here */
 	if (auio->uio_resid == 0) {
 		td->td_retval[0] = 0;
-		return(0);
+		return (0);
 	}
 	auio->uio_rw = UIO_READ;
 	auio->uio_offset = offset;
@@ -531,7 +536,7 @@ sys_write(td, uap)
 	auio.uio_resid = uap->nbyte;
 	auio.uio_segflg = UIO_USERSPACE;
 	error = kern_writev(td, uap->fd, &auio);
-	return(error);
+	return (error);
 }
 
 /*
@@ -570,7 +575,7 @@ kern_pwrite(struct thread *td, int fd, const void *buf, size_t nbyte,
 	auio.uio_resid = nbyte;
 	auio.uio_segflg = UIO_USERSPACE;
 	error = kern_pwritev(td, fd, &auio, offset);
-	return(error);
+	return (error);
 }
 
 #if defined(COMPAT_FREEBSD6)

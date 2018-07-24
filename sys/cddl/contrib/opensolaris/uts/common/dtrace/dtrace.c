@@ -3691,6 +3691,24 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		return (dtrace_dif_varstr(
 		    (uintptr_t)curthread->t_procp->p_zone->zone_name,
 		    state, mstate));
+#elif defined(__FreeBSD__)
+	/*
+	 * On FreeBSD, we introduce compatibility to zonename by falling through
+	 * into jailname.
+	 */
+	case DIF_VAR_JAILNAME:
+		if (!dtrace_priv_kernel(state))
+			return (0);
+
+		return (dtrace_dif_varstr(
+		    (uintptr_t)curthread->td_ucred->cr_prison->pr_name,
+		    state, mstate));
+
+	case DIF_VAR_JID:
+		if (!dtrace_priv_kernel(state))
+			return (0);
+
+		return ((uint64_t)curthread->td_ucred->cr_prison->pr_id);
 #else
 		return (0);
 #endif
@@ -7376,7 +7394,7 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	}
 
 	now = mstate.dtms_timestamp = dtrace_gethrtime();
-	mstate.dtms_present |= DTRACE_MSTATE_TIMESTAMP;
+	mstate.dtms_present = DTRACE_MSTATE_TIMESTAMP;
 	vtime = dtrace_vtime_references != 0;
 
 	if (vtime && curthread->t_dtrace_start)
@@ -17408,6 +17426,16 @@ dtrace_open(struct cdev *dev, int oflags, int devtype, struct thread *td)
 	state = dtrace_state_create(dev, NULL);
 	devfs_set_cdevpriv(state, dtrace_dtr);
 #endif
+<<<<<<< HEAD
+=======
+	/* Iterate DTrace konsumers and notify them of the dtrace open. */ 
+	dtrace_konsumer_t *konsumer = dtrace_konsumer;
+	while (konsumer != NULL ){
+		konsumer->dtk_ops.dtkops_open(konsumer, state);
+		konsumer = konsumer->dtk_next;
+	}
+
+>>>>>>> ce23241775838a47433b730e2c5fad9ff980f5d4
 	mutex_exit(&cpu_lock);
 
 	if (state == NULL) {
@@ -17476,6 +17504,13 @@ dtrace_dtr(void *data)
 		 */
 		buf = dtrace_helptrace_buffer;
 		dtrace_helptrace_buffer = NULL;
+	}
+
+	/* Iterate DTrace konsumers and notify them of the dtrace close. */ 
+	dtrace_konsumer_t *konsumer = dtrace_konsumer;
+	while (konsumer != NULL ){
+		konsumer->dtk_ops.dtkops_close(konsumer, state);
+		konsumer = konsumer->dtk_next;
 	}
 
 #ifdef illumos

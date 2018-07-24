@@ -71,6 +71,15 @@
 #  define sock_puts  SockPuts
 # endif
 
+#ifdef __FreeBSD__
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/sockbuf_tls.h>
+#include <crypto/cryptodev.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#endif
+
 static int sock_write(BIO *h, const char *buf, int num);
 static int sock_read(BIO *h, char *buf, int size);
 static int sock_puts(BIO *h, const char *str);
@@ -147,12 +156,56 @@ static int sock_read(BIO *b, char *out, int outl)
     return (ret);
 }
 
+static int send_ctrl_message(int fd, unsigned char record_type,
+        const void *data, size_t length)
+{
+    struct msghdr msg = {0};
+    int cmsg_len = sizeof(record_type);
+    struct cmsghdr *cmsg;
+    char buf[CMSG_SPACE(cmsg_len)];
+    struct iovec msg_iov;   /* Vector of data to send/receive into */
+
+    msg.msg_control = buf;
+    msg.msg_controllen = sizeof(buf);
+    cmsg = CMSG_FIRSTHDR(&msg);
+#if defined(TCP_TLS_ENABLE)
+    cmsg->cmsg_level = IPPROTO_TCP;
+    cmsg->cmsg_type = TLS_SET_RECORD_TYPE;
+#endif
+    cmsg->cmsg_len = CMSG_LEN(cmsg_len);
+    *((unsigned char *)CMSG_DATA(cmsg)) = record_type;
+    msg.msg_controllen = cmsg->cmsg_len;
+
+    msg_iov.iov_base = (void *)data;
+    msg_iov.iov_len = length;
+    msg.msg_iov = &msg_iov;
+    msg.msg_iovlen = 1;
+
+    return sendmsg(fd, &msg, 0);
+}
+
 static int sock_write(BIO *b, const char *in, int inl)
 {
     int ret;
 
     clear_socket_error();
-    ret = writesocket(b->num, in, inl);
+    if (BIO_should_offload_tx_ctrl_msg_flag(b)) {
+        unsigned char record_type = (unsigned char)(uintptr_t)b->ptr;
+
+#ifdef SSL_DEBUG
+        printf("\nsending ctrl msg, type = %d, len = %d\n", record_type, inl);
+#endif
+        BIO_clear_offload_tx_ctrl_msg_flag(b);
+        ret = send_ctrl_message(b->num, record_type, in, inl);
+        if (ret >= 0) {
+            ret = inl;
+        }
+    } else {
+#ifdef SSL_DEBUG
+        printf("\nsending data msg %p %d\n", b, b->flags);
+#endif
+        ret = writesocket(b->num, in, inl);
+    }
     BIO_clear_retry_flags(b);
     if (ret <= 0) {
         if (BIO_sock_should_retry(ret))
@@ -165,6 +218,9 @@ static long sock_ctrl(BIO *b, int cmd, long num, void *ptr)
 {
     long ret = 1;
     int *ip;
+#if defined(TCP_TLS_ENABLE)
+    struct tls_so_enable *tls_en;
+#endif
 
     switch (cmd) {
     case BIO_C_SET_FD:
@@ -192,6 +248,37 @@ static long sock_ctrl(BIO *b, int cmd, long num, void *ptr)
     case BIO_CTRL_FLUSH:
         ret = 1;
         break;
+#if defined(TCP_TLS_ENABLE)
+    case BIO_CTRL_SET_OFFLOAD_TX:
+	tls_en = ptr;
+	ret = setsockopt(b->num, IPPROTO_TCP, TCP_TLS_ENABLE,
+			 tls_en, sizeof(*tls_en));
+#ifdef SSL_DEBUG
+        printf("\nAttempt to offload...");
+#endif
+        if (!ret) {
+            BIO_set_offload_tx_flag(b);
+#ifdef SSL_DEBUG
+            printf("Success %p %p\n", b, &(b->flags));
+#endif
+        } else {
+#ifdef SSL_DEBUG
+            printf("Failed ret=%ld\n", ret);
+#endif
+        }
+        break;
+     case BIO_CTRL_GET_OFFLOAD_TX:
+         return BIO_should_offload_tx_flag(b);
+     case BIO_CTRL_SET_OFFLOAD_TX_CTRL_MSG:
+         BIO_set_offload_tx_ctrl_msg_flag(b);
+	 b->ptr = (void *)num;
+         ret = 0;
+         break;
+     case BIO_CTRL_CLEAR_OFFLOAD_TX_CTRL_MSG:
+         BIO_clear_offload_tx_ctrl_msg_flag(b);
+         ret = 0;
+         break;
+#endif
     default:
         ret = 0;
         break;
