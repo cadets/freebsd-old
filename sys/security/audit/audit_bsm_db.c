@@ -264,7 +264,7 @@ au_evnamemap_insert(au_event_t event, const char *name)
 }
 
 /*
- * If /etc/security/audit_events has been preloaded by the boot loader, parse
+ * If /etc/security/audit_event has been preloaded by the boot loader, parse
  * it to build an initial set of event number<->name mappings.
  */
 static void
@@ -296,7 +296,6 @@ au_evnamemap_init_preload(void)
 	 */
 	nextline = ptr;
 	lineno = 0;
-	printf("%s: Starting\n", __func__);
 	while ((line = strsep(&nextline, "\n")) != NULL) {
 		/*
 		 * Skip blank lines and comment lines.
@@ -332,11 +331,8 @@ au_evnamemap_init_preload(void)
 			continue;
 		}
 		au_evnamemap_insert(evnum, evname);
-		printf("%s: Added line %u - %ld:%s\n", __func__, lineno,
-		    evnum, evname);
 		lineno++;
 	}
-	printf("%s: Done\n", __func__);
 }
 
 void
