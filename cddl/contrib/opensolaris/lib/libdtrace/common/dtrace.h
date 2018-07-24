@@ -222,6 +222,7 @@ extern int dtrace_consume(dtrace_hdl_t *, FILE *, dtrace_consumer_t *, void *);
 #define	DTRACE_STATUS_EXITED	2	/* exit() was called; tracing stopped */
 #define	DTRACE_STATUS_FILLED	3	/* fill buffer filled; tracing stoped */
 #define	DTRACE_STATUS_STOPPED	4	/* tracing already stopped */
+#define	DTRACE_STATUS_INACTIVE	5	/* tracing not started */
 
 extern int dtrace_status(dtrace_hdl_t *);
 

@@ -3002,9 +3002,6 @@ dtrace_consume(dtrace_hdl_t *dtp, FILE *fp, dtrace_consumer_t *dc, void *arg)
 		dtp->dt_lastswitch = now;
 	}
 
-	if (!dtp->dt_active)
-		return (dt_set_errno(dtp, EINVAL));
-
 	if (max_ncpus == 0)
 		max_ncpus = dt_sysconf(dtp, _SC_CPUID_MAX) + 1;
 
