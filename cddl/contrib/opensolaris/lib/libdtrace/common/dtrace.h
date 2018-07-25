@@ -279,9 +279,9 @@ typedef enum {
 	DTRACE_WORKSTATUS_DONE
 } dtrace_workstatus_t;
 
-//extern dtrace_workstatus_t dtrace_work(dtrace_hdl_t *, FILE *,
-//    dtrace_consume_probe_f *, dtrace_consume_rec_f *, void *);
 extern dtrace_workstatus_t dtrace_work(dtrace_hdl_t *, FILE *,
+    dtrace_consumer_t *, void *);
+extern dtrace_workstatus_t dtrace_work_detached(dtrace_hdl_t *, FILE *,
     dtrace_consumer_t *, void *);
 
 /*
