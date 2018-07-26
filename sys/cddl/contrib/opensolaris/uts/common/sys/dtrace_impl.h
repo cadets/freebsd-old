@@ -75,6 +75,7 @@ struct dtrace_ecb;
 struct dtrace_predicate;
 struct dtrace_action;
 struct dtrace_provider;
+struct dtrace_konsumer;
 struct dtrace_state;
 
 typedef struct dtrace_probe dtrace_probe_t;
@@ -84,6 +85,7 @@ typedef struct dtrace_action dtrace_action_t;
 typedef struct dtrace_provider dtrace_provider_t;
 typedef struct dtrace_meta dtrace_meta_t;
 typedef struct dtrace_state dtrace_state_t;
+typedef struct dtrace_konsumer dtrace_konsumer_t;
 typedef uint32_t dtrace_optid_t;
 typedef uint32_t dtrace_specid_t;
 typedef uint64_t dtrace_genid_t;
@@ -429,9 +431,10 @@ typedef struct dtrace_aggregation {
 #define	DTRACEBUF_FULL		0x0040		/* "fill" buffer is full */
 #define	DTRACEBUF_CONSUMED	0x0080		/* buffer has been consumed */
 #define	DTRACEBUF_INACTIVE	0x0100		/* buffer is not yet active */
+#define	DTRACEBUF_DISRUPTOR 	0x0200		/* bufpolicy = "disruptor" */
 
 typedef struct dtrace_buffer {
-	uint64_t dtb_offset;			/* current offset in buffer */
+	volatile uint64_t dtb_offset;		/* current offset in buffer */
 	uint64_t dtb_size;			/* size of buffer */
 	uint32_t dtb_flags;			/* flags */
 	uint32_t dtb_drops;			/* number of drops */
@@ -1175,6 +1178,13 @@ struct dtrace_state {
 	size_t dts_nretained;			/* number of retained enabs */
 	int dts_getf;				/* number of getf() calls */
 	uint64_t dts_rstate[NCPU][2];		/* per-CPU random state */
+};
+
+struct dtrace_konsumer {
+	dtrace_kops_t dtk_ops;			/* konsumer operations */
+	char *dtk_name;				/* konsumer name */
+	void *dtk_arg;				/* konsumer argument */
+	struct dtrace_konsumer *dtk_next;	/* next konsumer */
 };
 
 struct dtrace_provider {

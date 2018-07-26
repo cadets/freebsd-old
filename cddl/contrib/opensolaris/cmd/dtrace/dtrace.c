@@ -54,8 +54,6 @@
 #include <spawn.h>
 #endif
 
-#include <dt_impl.h>
-
 #include <libxo/xo.h>
 
 typedef struct dtrace_cmd {
@@ -219,15 +217,15 @@ fatal(const char *fmt, ...)
 	verror(fmt, ap);
 	va_end(ap);
 
-	if (g_oformat)
-		xo_finish_h(g_dtp->dt_xo_hdl);
-
 	/*
 	 * Close the DTrace handle to ensure that any controlled processes are
 	 * correctly restored and continued.
 	 */
 	if (g_dtp)
 		dtrace_close(g_dtp);
+
+	if (g_oformat)
+		xo_finish();
 
 	exit(E_ERROR);
 }
@@ -263,14 +261,14 @@ dfatal(const char *fmt, ...)
 		printf("File '%s', line %d\n", p_errfile, errline);
 #endif
 
-	if (g_oformat)
-		xo_finish_h(g_dtp->dt_xo_hdl);
-
 	/*
 	 * Close the DTrace handle to ensure that any controlled processes are
 	 * correctly restored and continued.
 	 */
 	dtrace_close(g_dtp);
+
+	if (g_oformat)
+		xo_finish();
 
 	exit(E_ERROR);
 }
@@ -1148,13 +1146,13 @@ chew(const dtrace_probedata_t *data, void *arg)
 	if (!g_flowindent) {
 		if (!g_quiet) {
 			if (g_oformat) {
-				xo_open_container_h(g_dtp->dt_xo_hdl, "probe");
-				xo_emit_h(g_dtp->dt_xo_hdl, "{:timestamp/%U} {:cpu/%d} {:id/%d} {:func/%s} {:name/%s}",
+				xo_open_container("probe");
+				xo_emit("{:timestamp/%U} {:cpu/%d} {:id/%d} {:func/%s} {:name/%s}",
 				    data->dtpda_timestamp, cpu,
 				    pd->dtpd_id, pd->dtpd_func,
 				    pd->dtpd_name);
-				xo_close_container_h(g_dtp->dt_xo_hdl, "probe");
-				xo_flush_h(g_dtp->dt_xo_hdl);
+				xo_close_container("probe");
+				xo_flush();
 			} else {
 				char name[DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 2];
 
@@ -1340,6 +1338,12 @@ main(int argc, char *argv[])
 	dtrace_status_t status[2];
 	dtrace_optval_t opt;
 	dtrace_cmd_t *dcp;
+	dtrace_consumer_t con;
+
+	con.dc_consume_probe = chew;
+	con.dc_consume_rec = chewrec;
+	con.dc_get_buf = NULL;
+	con.dc_put_buf = NULL;
 
 	g_ofp = stdout;
 	int done = 0, mode = 0;
@@ -1965,18 +1969,17 @@ main(int argc, char *argv[])
 
 	(void) dtrace_getopt(g_dtp, "oformat", &opt);
 	if (opt != DTRACEOPT_UNSET) {
-		g_dtp->dt_xo_hdl = NULL;	
 		g_oformat = opt;
-		xo_set_flags(g_dtp->dt_xo_hdl, XOF_PRETTY|XOF_FLUSH);
+		xo_set_flags(NULL, XOF_PRETTY|XOF_FLUSH);
 		switch (g_oformat) {
 		case OMODE_JSON:
-			xo_set_style(g_dtp->dt_xo_hdl, XO_STYLE_JSON);
+			xo_set_style(NULL, XO_STYLE_JSON);
 			break;
 		case OMODE_XML:
-			xo_set_style(g_dtp->dt_xo_hdl, XO_STYLE_XML);
+			xo_set_style(NULL, XO_STYLE_XML);
 			break;
 		case OMODE_HTML:
-			xo_set_style(g_dtp->dt_xo_hdl, XO_STYLE_HTML);
+			xo_set_style(NULL, XO_STYLE_HTML);
 			break;
 		default:
 			break;
@@ -2051,7 +2054,7 @@ main(int argc, char *argv[])
 				dfatal("couldn't stop tracing");
 		}
 
-		switch (dtrace_work(g_dtp, g_ofp, chew, chewrec, NULL)) {
+		switch (dtrace_work(g_dtp, g_ofp, &con, NULL)) {
 		case DTRACE_WORKSTATUS_DONE:
 			done = 1;
 			break;
@@ -2075,10 +2078,10 @@ main(int argc, char *argv[])
 			dfatal("failed to print aggregations");
 	}
 
-	if (g_oformat)
-		xo_finish_h(g_dtp->dt_xo_hdl);
-	
 	dtrace_close(g_dtp);
+
+	if (g_oformat)
+		xo_finish();
 
 	return (g_status);
 }
