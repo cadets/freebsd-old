@@ -77,13 +77,13 @@ __FBSDID("$FreeBSD$");
  * structures.
  */
 #ifdef __amd64__
-_Static_assert(offsetof(struct thread, td_flags) == 0x104,
+_Static_assert(offsetof(struct thread, td_flags) == 0x110,
     "struct thread KBI td_flags");
-_Static_assert(offsetof(struct thread, td_pflags) == 0x10c,
+_Static_assert(offsetof(struct thread, td_pflags) == 0x118,
     "struct thread KBI td_pflags");
-_Static_assert(offsetof(struct thread, td_frame) == 0x470,
+_Static_assert(offsetof(struct thread, td_frame) == 0x488,
     "struct thread KBI td_frame");
-_Static_assert(offsetof(struct thread, td_emuldata) == 0x518,
+_Static_assert(offsetof(struct thread, td_emuldata) == 0x530,
     "struct thread KBI td_emuldata");
 _Static_assert(offsetof(struct proc, p_flag) == 0xb0,
     "struct proc KBI p_flag");
@@ -91,7 +91,7 @@ _Static_assert(offsetof(struct proc, p_pid) == 0xbc,
     "struct proc KBI p_pid");
 _Static_assert(offsetof(struct proc, p_filemon) == 0x3e0,
     "struct proc KBI p_filemon");
-_Static_assert(offsetof(struct proc, p_comm) == 0x3f0,
+_Static_assert(offsetof(struct proc, p_comm) == 0x3f4,
     "struct proc KBI p_comm");
 _Static_assert(offsetof(struct proc, p_emuldata) == 0x4c8,
     "struct proc KBI p_emuldata");

@@ -67,7 +67,6 @@
 #include <sys/ucontext.h>
 #include <sys/ucred.h>
 #include <sys/uuid.h>
-#include <sys/_vm_domain.h>
 #include <sys/types.h>
 #include <sys/_domainset.h>
 

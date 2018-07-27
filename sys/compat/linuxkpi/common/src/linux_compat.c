@@ -1457,7 +1457,7 @@ linux_file_mmap_sub(struct thread *td, vm_size_t objsize, vm_prot_t prot,
 static int
 linux_file_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
     vm_prot_t prot, vm_prot_t cap_maxprot, int flags, vm_ooffset_t foff,
-    struct thread *td)
+    struct thread *td, struct metaio *miop)
 {
 	struct linux_file *filp;
 	struct mount *mp;
@@ -2105,6 +2105,32 @@ linux_irq_handler(void *ent)
 	irqe->handler(irqe->irq, irqe->arg);
 }
 
+#if defined(__i386__) || defined(__amd64__)
+int
+linux_wbinvd_on_all_cpus(void)
+{
+
+	pmap_invalidate_cache();
+	return (0);
+}
+#endif
+
+int
+linux_on_each_cpu(void callback(void *), void *data)
+{
+
+	smp_rendezvous(smp_no_rendezvous_barrier, callback,
+	    smp_no_rendezvous_barrier, data);
+	return (0);
+}
+
+int
+linux_in_atomic(void)
+{
+
+	return ((curthread->td_pflags & TDP_NOFAULTING) != 0);
+}
+
 struct linux_cdev *
 linux_find_cdev(const char *name, unsigned major, unsigned minor)
 {
@@ -2179,32 +2205,6 @@ __unregister_chrdev(unsigned int major, unsigned int baseminor,
 		if (cdevp != NULL)
 			cdev_del(cdevp);
 	}
-}
-
-#if defined(__i386__) || defined(__amd64__)
-int
-linux_wbinvd_on_all_cpus(void)
-{
-
-	pmap_invalidate_cache();
-	return (0);
-}
-#endif
-
-int
-linux_on_each_cpu(void callback(void *), void *data)
-{
-
-	smp_rendezvous(smp_no_rendezvous_barrier, callback,
-	    smp_no_rendezvous_barrier, data);
-	return (0);
-}
-
-int
-linux_in_atomic(void)
-{
-
-	return ((curthread->td_pflags & TDP_NOFAULTING) != 0);
 }
 
 #if defined(__i386__) || defined(__amd64__)

@@ -104,7 +104,6 @@ struct msqid_ds {
 #ifdef _KERNEL
 
 #include <sys/msgid.h>
-#include <sys/uuid.h>
 
 struct msg {
 	struct	msg *msg_next;  /* next msg in the chain */
@@ -119,6 +118,9 @@ struct msg {
 #endif
 
 #if defined(_KERNEL) || defined(_WANT_SYSVMSG_INTERNALS)
+
+#include <sys/uuid.h>
+
 /*
  * Based on the configuration parameters described in an SVR2 (yes, two)
  * config(1m) man page.
