@@ -54,14 +54,16 @@ __FBSDID("$FreeBSD$");
 static int attach_untested = 0; 
 TUNABLE_INT("hw.bwn_pci.attach_untested", &attach_untested);
 
-/* If non-zero, probe at a higher priority than the stable if_bwn driver. */
-static int prefer_new_driver = 0; 
-TUNABLE_INT("hw.bwn_pci.preferred", &prefer_new_driver);
-
 /* SIBA Devices */
 static const struct bwn_pci_device siba_devices[] = {
 	BWN_BCM_DEV(BCM4306_D11A,	"BCM4306 802.11a",
-	    BWN_QUIRK_WLAN_DUALCORE),
+	    BWN_QUIRK_WLAN_DUALCORE|BWN_QUIRK_SOFTMODEM_UNPOPULATED),
+	BWN_BCM_DEV(BCM4306_D11G,	"BCM4306 802.11b/g",
+	    BWN_QUIRK_SOFTMODEM_UNPOPULATED),
+	BWN_BCM_DEV(BCM4306_D11G_ID2,	"BCM4306 802.11b/g",
+	    BWN_QUIRK_SOFTMODEM_UNPOPULATED),
+	BWN_BCM_DEV(BCM4306_D11DUAL,	"BCM4306 802.11a/b/g",
+	    BWN_QUIRK_SOFTMODEM_UNPOPULATED),
 	BWN_BCM_DEV(BCM4307,		"BCM4307 802.11b",		0),
 
 	BWN_BCM_DEV(BCM4311_D11G,	"BCM4311 802.11b/g",		0),
@@ -98,6 +100,7 @@ static const struct bwn_pci_device bcma_devices[] = {
 	BWN_BCM_DEV(BCM4331_D11N2G,	"BCM4331 802.11n 2GHz",		0),
 	BWN_BCM_DEV(BCM4331_D11N5G,	"BCM4331 802.11n 5GHz",		0),
 	BWN_BCM_DEV(BCM43224_D11N,	"BCM43224 802.11n Dual-Band",	0),
+	BWN_BCM_DEV(BCM43224_D11N_ID_VEN1, "BCM43224 802.11n Dual-Band",0),
 	BWN_BCM_DEV(BCM43225_D11N2G,	"BCM43225 802.11n 2GHz",	0),
 
 	{ 0, 0, NULL, 0}
@@ -162,15 +165,7 @@ bwn_pci_probe(device_t dev)
 		return (ENXIO);
 
 	device_set_desc(dev, ident->desc);
-
-	/* Until this driver is complete, require explicit opt-in before
-	 * superceding if_bwn/siba_bwn. */
-	if (prefer_new_driver)
-		return (BUS_PROBE_DEFAULT+1);
-	else
-		return (BUS_PROBE_LOW_PRIORITY);
-
-	// return (BUS_PROBE_DEFAULT);
+	return (BUS_PROBE_DEFAULT);
 }
 
 static int
@@ -265,6 +260,9 @@ bwn_pci_is_core_disabled(device_t dev, device_t child,
 	case BHND_DEVCLASS_USB_HOST:
 		return ((sc->quirks & BWN_QUIRK_USBH_UNPOPULATED) != 0);
 
+	case BHND_DEVCLASS_SOFTMODEM:
+		return ((sc->quirks & BWN_QUIRK_SOFTMODEM_UNPOPULATED) != 0);
+
 	default:
 		return (false);
 	}
@@ -297,6 +295,10 @@ DEFINE_CLASS_0(bwn_pci, bwn_pci_driver, bwn_pci_methods,
     sizeof(struct bwn_pci_softc));
 DRIVER_MODULE_ORDERED(bwn_pci, pci, bwn_pci_driver, bwn_pci_devclass, NULL,
     NULL, SI_ORDER_ANY);
+MODULE_PNP_INFO("U16:vendor;U16:device;D:#", pci, bwn_siba,
+    siba_devices, sizeof(siba_devices[0]), nitems(siba_devices) - 1);
+MODULE_PNP_INFO("U16:vendor;U16:device;D:#", pci, bwn_bcma,
+    bcma_devices, sizeof(bcma_devices[0]), nitems(bcma_devices) - 1);
 DRIVER_MODULE(bhndb, bwn_pci, bhndb_pci_driver, bhndb_devclass, NULL, NULL);
 
 MODULE_DEPEND(bwn_pci, bwn, 1, 1, 1);
@@ -305,3 +307,4 @@ MODULE_DEPEND(bwn_pci, bhndb, 1, 1, 1);
 MODULE_DEPEND(bwn_pci, bhndb_pci, 1, 1, 1);
 MODULE_DEPEND(bwn_pci, bcma_bhndb, 1, 1, 1);
 MODULE_DEPEND(bwn_pci, siba_bhndb, 1, 1, 1);
+MODULE_VERSION(bwn_pci, 1);

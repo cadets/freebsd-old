@@ -48,7 +48,6 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_capsicum.h"
-#include "opt_compat.h"
 #include "opt_ktrace.h"
 #include "opt_metaio.h"
 
@@ -199,9 +198,7 @@ struct read_args {
 };
 #endif
 int
-sys_read(td, uap)
-	struct thread *td;
-	struct read_args *uap;
+sys_read(struct thread *td, struct read_args *uap)
 {
 	struct uio auio;
 	struct iovec aiov;
@@ -216,7 +213,7 @@ sys_read(td, uap)
 	auio.uio_resid = uap->nbyte;
 	auio.uio_segflg = UIO_USERSPACE;
 	error = kern_readv(td, uap->fd, &auio, NULL);
-	return(error);
+	return (error);
 }
 
 /*
@@ -294,10 +291,9 @@ int
 kern_readv(struct thread *td, int fd, struct uio *auio, struct metaio *miop)
 {
 	struct file *fp;
-	cap_rights_t rights;
 	int error;
 
-	error = fget_read(td, fd, cap_rights_init(&rights, CAP_READ), &fp);
+	error = fget_read(td, fd, &cap_read_rights, &fp);
 	if (error)
 		return (error);
 	error = dofileread(td, fd, fp, auio, (off_t)-1, 0, miop);
@@ -331,18 +327,13 @@ sys_preadv(struct thread *td, struct preadv_args *uap)
 }
 
 int
-kern_preadv(td, fd, auio, offset, miop)
-	struct thread *td;
-	int fd;
-	struct uio *auio;
-	off_t offset;
-	struct metaio *miop;
+kern_preadv(struct thread *td, int fd, struct uio *auio, off_t offset,
+    struct metaio *miop)
 {
 	struct file *fp;
-	cap_rights_t rights;
 	int error;
 
-	error = fget_read(td, fd, cap_rights_init(&rights, CAP_PREAD), &fp);
+	error = fget_read(td, fd, &cap_pread_rights, &fp);
 	if (error)
 		return (error);
 	if (!(fp->f_ops->fo_flags & DFLAG_SEEKABLE))
@@ -460,14 +451,8 @@ sys_metaio_preadv(struct thread *td, struct metaio_preadv_args *uap)
  * from a file using the passed in uio, offset, and flags.
  */
 static int
-dofileread(td, fd, fp, auio, offset, flags, miop)
-	struct thread *td;
-	int fd;
-	struct file *fp;
-	struct uio *auio;
-	off_t offset;
-	int flags;
-	struct metaio *miop;
+dofileread(struct thread *td, int fd, struct file *fp, struct uio *auio,
+    off_t offset, int flags, struct metaio *miop)
 {
 	ssize_t cnt;
 	int error;
@@ -480,7 +465,7 @@ dofileread(td, fd, fp, auio, offset, flags, miop)
 	/* Finish zero length reads right here */
 	if (auio->uio_resid == 0) {
 		td->td_retval[0] = 0;
-		return(0);
+		return (0);
 	}
 	auio->uio_rw = UIO_READ;
 	auio->uio_offset = offset;
@@ -514,9 +499,7 @@ struct write_args {
 };
 #endif
 int
-sys_write(td, uap)
-	struct thread *td;
-	struct write_args *uap;
+sys_write(struct thread *td, struct write_args *uap)
 {
 	struct uio auio;
 	struct iovec aiov;
@@ -531,7 +514,7 @@ sys_write(td, uap)
 	auio.uio_resid = uap->nbyte;
 	auio.uio_segflg = UIO_USERSPACE;
 	error = kern_writev(td, uap->fd, &auio);
-	return(error);
+	return (error);
 }
 
 /*
@@ -570,7 +553,7 @@ kern_pwrite(struct thread *td, int fd, const void *buf, size_t nbyte,
 	auio.uio_resid = nbyte;
 	auio.uio_segflg = UIO_USERSPACE;
 	error = kern_pwritev(td, fd, &auio, offset);
-	return(error);
+	return (error);
 }
 
 #if defined(COMPAT_FREEBSD6)
@@ -610,10 +593,9 @@ int
 kern_writev(struct thread *td, int fd, struct uio *auio)
 {
 	struct file *fp;
-	cap_rights_t rights;
 	int error;
 
-	error = fget_write(td, fd, cap_rights_init(&rights, CAP_WRITE), &fp);
+	error = fget_write(td, fd, &cap_write_rights, &fp);
 	if (error)
 		return (error);
 	error = dofilewrite(td, fd, fp, auio, (off_t)-1, 0);
@@ -647,17 +629,12 @@ sys_pwritev(struct thread *td, struct pwritev_args *uap)
 }
 
 int
-kern_pwritev(td, fd, auio, offset)
-	struct thread *td;
-	struct uio *auio;
-	int fd;
-	off_t offset;
+kern_pwritev(struct thread *td, int fd, struct uio *auio, off_t offset)
 {
 	struct file *fp;
-	cap_rights_t rights;
 	int error;
 
-	error = fget_write(td, fd, cap_rights_init(&rights, CAP_PWRITE), &fp);
+	error = fget_write(td, fd, &cap_pwrite_rights, &fp);
 	if (error)
 		return (error);
 	if (!(fp->f_ops->fo_flags & DFLAG_SEEKABLE))
@@ -778,13 +755,8 @@ sys_metaio_pwritev(struct thread *td, struct metaio_pwritev_args *uap)
  * a file using the passed in uio, offset, and flags.
  */
 static int
-dofilewrite(td, fd, fp, auio, offset, flags)
-	struct thread *td;
-	int fd;
-	struct file *fp;
-	struct uio *auio;
-	off_t offset;
-	int flags;
+dofilewrite(struct thread *td, int fd, struct file *fp, struct uio *auio,
+    off_t offset, int flags)
 {
 	ssize_t cnt;
 	int error;
@@ -833,19 +805,15 @@ dofilewrite(td, fd, fp, auio, offset, flags)
  * descriptor isn't writable.
  */
 int
-kern_ftruncate(td, fd, length)
-	struct thread *td;
-	int fd;
-	off_t length;
+kern_ftruncate(struct thread *td, int fd, off_t length)
 {
 	struct file *fp;
-	cap_rights_t rights;
 	int error;
 
 	AUDIT_ARG_FD(fd);
 	if (length < 0)
 		return (EINVAL);
-	error = fget(td, fd, cap_rights_init(&rights, CAP_FTRUNCATE), &fp);
+	error = fget(td, fd, &cap_ftruncate_rights, &fp);
 	if (error)
 		return (error);
 	AUDIT_ARG_FILE(td->td_proc, fp);
@@ -866,9 +834,7 @@ struct ftruncate_args {
 };
 #endif
 int
-sys_ftruncate(td, uap)
-	struct thread *td;
-	struct ftruncate_args *uap;
+sys_ftruncate(struct thread *td, struct ftruncate_args *uap)
 {
 
 	return (kern_ftruncate(td, uap->fd, uap->length));
@@ -882,9 +848,7 @@ struct oftruncate_args {
 };
 #endif
 int
-oftruncate(td, uap)
-	struct thread *td;
-	struct oftruncate_args *uap;
+oftruncate(struct thread *td, struct oftruncate_args *uap)
 {
 
 	return (kern_ftruncate(td, uap->fd, uap->length));
@@ -973,9 +937,6 @@ kern_ioctl(struct thread *td, int fd, u_long com, caddr_t data)
 {
 	struct file *fp;
 	struct filedesc *fdp;
-#ifndef CAPABILITIES
-	cap_rights_t rights;
-#endif
 	int error, tmp, locked;
 
 	AUDIT_ARG_FD(fd);
@@ -1014,7 +975,7 @@ kern_ioctl(struct thread *td, int fd, u_long com, caddr_t data)
 		locked = LA_UNLOCKED;
 	}
 #else
-	error = fget(td, fd, cap_rights_init(&rights, CAP_IOCTL), &fp);
+	error = fget(td, fd, &cap_ioctl_rights, &fp);
 	if (error != 0) {
 		fp = NULL;
 		goto out;
@@ -1452,11 +1413,8 @@ selsetbits(fd_mask **ibits, fd_mask **obits, int idx, fd_mask bit, int events)
 static __inline int
 getselfd_cap(struct filedesc *fdp, int fd, struct file **fpp)
 {
-	cap_rights_t rights;
 
-	cap_rights_init(&rights, CAP_EVENT);
-
-	return (fget_unlocked(fdp, fd, &rights, fpp, NULL));
+	return (fget_unlocked(fdp, fd, &cap_event_rights, fpp, NULL));
 }
 
 /*
@@ -1506,10 +1464,7 @@ selrescan(struct thread *td, fd_mask **ibits, fd_mask **obits)
  * each selinfo.
  */
 static int
-selscan(td, ibits, obits, nfd)
-	struct thread *td;
-	fd_mask **ibits, **obits;
-	int nfd;
+selscan(struct thread *td, fd_mask **ibits, fd_mask **obits, int nfd)
 {
 	struct filedesc *fdp;
 	struct file *fp;
@@ -1694,9 +1649,6 @@ pollrescan(struct thread *td)
 	struct filedesc *fdp;
 	struct file *fp;
 	struct pollfd *fd;
-#ifdef CAPABILITIES
-	cap_rights_t rights;
-#endif
 	int n;
 
 	n = 0;
@@ -1713,8 +1665,7 @@ pollrescan(struct thread *td)
 		fp = fdp->fd_ofiles[fd->fd].fde_file;
 #ifdef CAPABILITIES
 		if (fp == NULL ||
-		    cap_check(cap_rights(fdp, fd->fd),
-		    cap_rights_init(&rights, CAP_EVENT)) != 0)
+		    cap_check(cap_rights(fdp, fd->fd), &cap_event_rights) != 0)
 #else
 		if (fp == NULL)
 #endif
@@ -1740,11 +1691,7 @@ pollrescan(struct thread *td)
 
 
 static int
-pollout(td, fds, ufds, nfd)
-	struct thread *td;
-	struct pollfd *fds;
-	struct pollfd *ufds;
-	u_int nfd;
+pollout(struct thread *td, struct pollfd *fds, struct pollfd *ufds, u_int nfd)
 {
 	int error = 0;
 	u_int i = 0;
@@ -1765,16 +1712,10 @@ pollout(td, fds, ufds, nfd)
 }
 
 static int
-pollscan(td, fds, nfd)
-	struct thread *td;
-	struct pollfd *fds;
-	u_int nfd;
+pollscan(struct thread *td, struct pollfd *fds, u_int nfd)
 {
 	struct filedesc *fdp = td->td_proc->p_fd;
 	struct file *fp;
-#ifdef CAPABILITIES
-	cap_rights_t rights;
-#endif
 	int i, n = 0;
 
 	FILEDESC_SLOCK(fdp);
@@ -1788,8 +1729,7 @@ pollscan(td, fds, nfd)
 			fp = fdp->fd_ofiles[fds->fd].fde_file;
 #ifdef CAPABILITIES
 			if (fp == NULL ||
-			    cap_check(cap_rights(fdp, fds->fd),
-			    cap_rights_init(&rights, CAP_EVENT)) != 0)
+			    cap_check(cap_rights(fdp, fds->fd), &cap_event_rights) != 0)
 #else
 			if (fp == NULL)
 #endif
@@ -1915,8 +1855,7 @@ selfdfree(struct seltd *stp, struct selfd *sfp)
 
 /* Drain the waiters tied to all the selfd belonging the specified selinfo. */
 void
-seldrain(sip)
-        struct selinfo *sip;
+seldrain(struct selinfo *sip)
 {
 
 	/*
@@ -1934,9 +1873,7 @@ seldrain(sip)
  * Record a select request.
  */
 void
-selrecord(selector, sip)
-	struct thread *selector;
-	struct selinfo *sip;
+selrecord(struct thread *selector, struct selinfo *sip)
 {
 	struct selfd *sfp;
 	struct seltd *stp;
@@ -1985,17 +1922,14 @@ selrecord(selector, sip)
 
 /* Wake up a selecting thread. */
 void
-selwakeup(sip)
-	struct selinfo *sip;
+selwakeup(struct selinfo *sip)
 {
 	doselwakeup(sip, -1);
 }
 
 /* Wake up a selecting thread, and set its priority. */
 void
-selwakeuppri(sip, pri)
-	struct selinfo *sip;
-	int pri;
+selwakeuppri(struct selinfo *sip, int pri)
 {
 	doselwakeup(sip, pri);
 }
@@ -2004,9 +1938,7 @@ selwakeuppri(sip, pri)
  * Do a wakeup when a selectable event occurs.
  */
 static void
-doselwakeup(sip, pri)
-	struct selinfo *sip;
-	int pri;
+doselwakeup(struct selinfo *sip, int pri)
 {
 	struct selfd *sfp;
 	struct selfd *sfn;

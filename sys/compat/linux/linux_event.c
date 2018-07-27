@@ -266,6 +266,7 @@ epoll_create_common(struct thread *td, int flags)
 	return (0);
 }
 
+#ifdef LINUX_LEGACY_SYSCALLS
 int
 linux_epoll_create(struct thread *td, struct linux_epoll_create_args *args)
 {
@@ -279,6 +280,7 @@ linux_epoll_create(struct thread *td, struct linux_epoll_create_args *args)
 
 	return (epoll_create_common(td, 0));
 }
+#endif
 
 int
 linux_epoll_create1(struct thread *td, struct linux_epoll_create1_args *args)
@@ -346,7 +348,7 @@ epoll_to_kevent(struct thread *td, struct file *epfp,
 	return (0);
 }
 
-/* 
+/*
  * Structure converting function from kevent to epoll. In a case
  * this is called on error in registration we store the error in
  * event->data and pick it up later in linux_epoll_ctl().
@@ -373,7 +375,7 @@ kevent_to_epoll(struct kevent *kevent, struct epoll_event *l_event)
 	}
 }
 
-/* 
+/*
  * Copyout callback used by kevent. This converts kevent
  * events to epoll events and copies them back to the
  * userspace. This is also called on error on registering
@@ -420,7 +422,7 @@ epoll_kev_copyout(void *arg, struct kevent *kevp, int count)
 
 /*
  * Copyin callback used by kevent. This copies already
- * converted filters from kernel memory to the kevent 
+ * converted filters from kernel memory to the kevent
  * internal kernel memory. Hence the memcpy instead of
  * copyin.
  */
@@ -603,7 +605,7 @@ linux_epoll_wait_common(struct thread *td, int epfd, struct epoll_event *events,
 	if (error == 0 && coargs.error != 0)
 		error = coargs.error;
 
-	/* 
+	/*
 	 * kern_kevent might return ENOMEM which is not expected from epoll_wait.
 	 * Maybe we should translate that but I don't think it matters at all.
 	 */
@@ -619,6 +621,7 @@ leave1:
 	return (error);
 }
 
+#ifdef LINUX_LEGACY_SYSCALLS
 int
 linux_epoll_wait(struct thread *td, struct linux_epoll_wait_args *args)
 {
@@ -626,6 +629,7 @@ linux_epoll_wait(struct thread *td, struct linux_epoll_wait_args *args)
 	return (linux_epoll_wait_common(td, args->epfd, args->events,
 	    args->maxevents, args->timeout, NULL));
 }
+#endif
 
 int
 linux_epoll_pwait(struct thread *td, struct linux_epoll_pwait_args *args)
@@ -699,7 +703,7 @@ eventfd_create(struct thread *td, uint32_t initval, int flags)
 
 	knlist_init_mtx(&efd->efd_sel.si_note, &efd->efd_lock);
 
-	fflags = FREAD | FWRITE; 
+	fflags = FREAD | FWRITE;
 	if ((flags & LINUX_O_NONBLOCK) != 0)
 		fflags |= FNONBLOCK;
 
@@ -713,12 +717,14 @@ eventfd_create(struct thread *td, uint32_t initval, int flags)
 	return (error);
 }
 
+#ifdef LINUX_LEGACY_SYSCALLS
 int
 linux_eventfd(struct thread *td, struct linux_eventfd_args *args)
 {
 
 	return (eventfd_create(td, args->initval, 0));
 }
+#endif
 
 int
 linux_eventfd2(struct thread *td, struct linux_eventfd2_args *args)
@@ -1196,14 +1202,13 @@ linux_timerfd_curval(struct timerfd *tfd, struct itimerspec *ots)
 int
 linux_timerfd_gettime(struct thread *td, struct linux_timerfd_gettime_args *args)
 {
-	cap_rights_t rights;
 	struct l_itimerspec lots;
 	struct itimerspec ots;
 	struct timerfd *tfd;
 	struct file *fp;
 	int error;
 
-	error = fget(td, args->fd, cap_rights_init(&rights, CAP_READ), &fp);
+	error = fget(td, args->fd, &cap_read_rights, &fp);
 	if (error != 0)
 		return (error);
 	tfd = fp->f_data;
@@ -1231,7 +1236,6 @@ linux_timerfd_settime(struct thread *td, struct linux_timerfd_settime_args *args
 	struct l_itimerspec lots;
 	struct itimerspec nts, ots;
 	struct timespec cts, ts;
-	cap_rights_t rights;
 	struct timerfd *tfd;
 	struct timeval tv;
 	struct file *fp;
@@ -1247,7 +1251,7 @@ linux_timerfd_settime(struct thread *td, struct linux_timerfd_settime_args *args
 	if (error != 0)
 		return (error);
 
-	error = fget(td, args->fd, cap_rights_init(&rights, CAP_WRITE), &fp);
+	error = fget(td, args->fd, &cap_write_rights, &fp);
 	if (error != 0)
 		return (error);
 	tfd = fp->f_data;

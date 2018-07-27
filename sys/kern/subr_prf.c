@@ -276,6 +276,7 @@ _vprintf(int level, int flags, const char *fmt, va_list ap)
 	char bufr[PRINTF_BUFR_SIZE];
 #endif
 
+	TSENTER();
 	pca.tty = NULL;
 	pca.pri = level;
 	pca.flags = flags;
@@ -303,6 +304,7 @@ _vprintf(int level, int flags, const char *fmt, va_list ap)
 	}
 #endif
 
+	TSEXIT();
 	return (retval);
 }
 
@@ -658,6 +660,7 @@ kvprintf(char const *fmt, void (*func)(int, void*), void *arg, int radix, va_lis
 	int stop = 0, retval = 0;
 
 	num = 0;
+	q = NULL;
 	if (!func)
 		d = (char *) arg;
 	else
@@ -713,6 +716,7 @@ reswitch:	switch (ch = (u_char)*fmt++) {
 				padc = '0';
 				goto reswitch;
 			}
+			/* FALLTHROUGH */
 		case '1': case '2': case '3': case '4':
 		case '5': case '6': case '7': case '8': case '9':
 				for (n = 0;; ++fmt) {

@@ -109,7 +109,7 @@ sleepinit(void *unused)
  * vmem tries to lock the sleepq mutexes when free'ing kva, so make sure
  * it is available.
  */
-SYSINIT(sleepinit, SI_SUB_KMEM, SI_ORDER_ANY, sleepinit, 0);
+SYSINIT(sleepinit, SI_SUB_KMEM, SI_ORDER_ANY, sleepinit, NULL);
 
 /*
  * General sleep call.  Suspends the current thread until a wakeup is
@@ -131,14 +131,12 @@ _sleep(void *ident, struct lock_object *lock, int priority,
     const char *wmesg, sbintime_t sbt, sbintime_t pr, int flags)
 {
 	struct thread *td;
-	struct proc *p;
 	struct lock_class *class;
 	uintptr_t lock_state;
 	int catch, pri, rval, sleepq_flags;
 	WITNESS_SAVE_DECL(lock_witness);
 
 	td = curthread;
-	p = td->td_proc;
 #ifdef KTRACE
 	if (KTRPOINT(td, KTR_CSW))
 		ktrcsw(1, 0, wmesg);
@@ -149,6 +147,7 @@ _sleep(void *ident, struct lock_object *lock, int priority,
 	    ("sleeping without a lock"));
 	KASSERT(ident != NULL, ("_sleep: NULL ident"));
 	KASSERT(TD_IS_RUNNING(td), ("_sleep: curthread not running"));
+	KASSERT(td->td_epochnest == 0, ("sleeping in an epoch section"));
 	if (priority & PDROP)
 		KASSERT(lock != NULL && lock != &Giant.lock_object,
 		    ("PDROP requires a non-Giant lock"));
@@ -177,7 +176,7 @@ _sleep(void *ident, struct lock_object *lock, int priority,
 
 	sleepq_lock(ident);
 	CTR5(KTR_PROC, "sleep: thread %ld (pid %ld, %s) on %s (%p)",
-	    td->td_tid, p->p_pid, td->td_name, wmesg, ident);
+	    td->td_tid, td->td_proc->p_pid, td->td_name, wmesg, ident);
 
 	if (lock == &Giant.lock_object)
 		mtx_assert(&Giant, MA_OWNED);
@@ -235,12 +234,10 @@ msleep_spin_sbt(void *ident, struct mtx *mtx, const char *wmesg,
     sbintime_t sbt, sbintime_t pr, int flags)
 {
 	struct thread *td;
-	struct proc *p;
 	int rval;
 	WITNESS_SAVE_DECL(mtx);
 
 	td = curthread;
-	p = td->td_proc;
 	KASSERT(mtx != NULL, ("sleeping without a mutex"));
 	KASSERT(ident != NULL, ("msleep_spin_sbt: NULL ident"));
 	KASSERT(TD_IS_RUNNING(td), ("msleep_spin_sbt: curthread not running"));
@@ -250,7 +247,7 @@ msleep_spin_sbt(void *ident, struct mtx *mtx, const char *wmesg,
 
 	sleepq_lock(ident);
 	CTR5(KTR_PROC, "msleep_spin: thread %ld (pid %ld, %s) on %s (%p)",
-	    td->td_tid, p->p_pid, td->td_name, wmesg, ident);
+	    td->td_tid, td->td_proc->p_pid, td->td_name, wmesg, ident);
 
 	DROP_GIANT();
 	mtx_assert(mtx, MA_OWNED | MA_NOTRECURSED);
@@ -301,16 +298,16 @@ msleep_spin_sbt(void *ident, struct mtx *mtx, const char *wmesg,
 }
 
 /*
- * pause() delays the calling thread by the given number of system ticks.
- * During cold bootup, pause() uses the DELAY() function instead of
- * the tsleep() function to do the waiting. The "timo" argument must be
- * greater than or equal to zero. A "timo" value of zero is equivalent
- * to a "timo" value of one.
+ * pause_sbt() delays the calling thread by the given signed binary
+ * time. During cold bootup, pause_sbt() uses the DELAY() function
+ * instead of the _sleep() function to do the waiting. The "sbt"
+ * argument must be greater than or equal to zero. A "sbt" value of
+ * zero is equivalent to a "sbt" value of one tick.
  */
 int
 pause_sbt(const char *wmesg, sbintime_t sbt, sbintime_t pr, int flags)
 {
-	KASSERT(sbt >= 0, ("pause: timeout must be >= 0"));
+	KASSERT(sbt >= 0, ("pause_sbt: timeout must be >= 0"));
 
 	/* silently convert invalid timeouts */
 	if (sbt == 0)
@@ -330,9 +327,10 @@ pause_sbt(const char *wmesg, sbintime_t sbt, sbintime_t pr, int flags)
 		sbt = howmany(sbt, SBT_1US);
 		if (sbt > 0)
 			DELAY(sbt);
-		return (0);
+		return (EWOULDBLOCK);
 	}
-	return (_sleep(&pause_wchan[curcpu], NULL, 0, wmesg, sbt, pr, flags));
+	return (_sleep(&pause_wchan[curcpu], NULL,
+	    (flags & C_CATCH) ? PCATCH : 0, wmesg, sbt, pr, flags));
 }
 
 /*
@@ -433,8 +431,9 @@ mi_switch(int flags, struct thread *newtd)
 	CTR4(KTR_PROC, "mi_switch: old thread %ld (td_sched %p, pid %ld, %s)",
 	    td->td_tid, td_get_sched(td), td->td_proc->p_pid, td->td_name);
 #ifdef KDTRACE_HOOKS
-	if ((flags & SW_PREEMPT) != 0 || ((flags & SW_INVOL) != 0 &&
-	    (flags & SW_TYPE_MASK) == SWT_NEEDRESCHED))
+	if (__predict_false(sdt_probes_enabled) &&
+	    ((flags & SW_PREEMPT) != 0 || ((flags & SW_INVOL) != 0 &&
+	    (flags & SW_TYPE_MASK) == SWT_NEEDRESCHED)))
 		SDT_PROBE0(sched, , , preempt);
 #endif
 	sched_switch(td, newtd, flags);

@@ -175,34 +175,7 @@ static TAILQ_HEAD(trace_procs, proc_info) trace_procs;
 
 #ifdef WITH_CASPER
 static cap_channel_t *cappwd, *capgrp;
-#endif
 
-static void
-strerror_init(void)
-{
-
-	/*
-	 * Cache NLS data before entering capability mode.
-	 * XXXPJD: There should be strerror_init() and strsignal_init() in libc.
-	 */
-	(void)catopen("libc", NL_CAT_LOCALE);
-}
-
-static void
-localtime_init(void)
-{
-	time_t ltime;
-
-	/*
-	 * Allow localtime(3) to cache /etc/localtime content before entering
-	 * capability mode.
-	 * XXXPJD: There should be localtime_init() in libc.
-	 */
-	(void)time(&ltime);
-	(void)localtime(&ltime);
-}
-
-#ifdef WITH_CASPER
 static int
 cappwdgrp_setup(cap_channel_t **cappwdp, cap_channel_t **capgrpp)
 {
@@ -450,8 +423,9 @@ main(int argc, char *argv[])
 		if (!freopen(tracefile, "r", stdin))
 			err(1, "%s", tracefile);
 
-	strerror_init();
-	localtime_init();
+	caph_cache_catpages();
+	caph_cache_tzdata();
+
 #ifdef WITH_CASPER
 	if (resolv != 0) {
 		if (cappwdgrp_setup(&cappwd, &capgrp) < 0) {
@@ -460,12 +434,12 @@ main(int argc, char *argv[])
 		}
 	}
 	if (resolv == 0 || (cappwd != NULL && capgrp != NULL)) {
-		if (cap_enter() < 0 && errno != ENOSYS)
+		if (caph_enter() < 0)
 			err(1, "unable to enter capability mode");
 	}
 #else
 	if (resolv == 0) {
-		if (cap_enter() < 0 && errno != ENOSYS)
+		if (caph_enter() < 0)
 			err(1, "unable to enter capability mode");
 	}
 #endif
@@ -784,18 +758,14 @@ syscallabi(u_int sv_flags)
 	switch (sv_flags & SV_ABI_MASK) {
 	case SV_ABI_FREEBSD:
 		return (SYSDECODE_ABI_FREEBSD);
-#if defined(__amd64__) || defined(__i386__)
 	case SV_ABI_LINUX:
-#ifdef __amd64__
+#ifdef __LP64__
 		if (sv_flags & SV_ILP32)
 			return (SYSDECODE_ABI_LINUX32);
 #endif
 		return (SYSDECODE_ABI_LINUX);
-#endif
-#if defined(__aarch64__) || defined(__amd64__)
 	case SV_ABI_CLOUDABI:
 		return (SYSDECODE_ABI_CLOUDABI64);
-#endif
 	default:
 		return (SYSDECODE_ABI_UNKNOWN);
 	}

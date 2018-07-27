@@ -92,7 +92,7 @@ long	 atol(const char *);
 void	*bsearch(const void *, const void *, size_t,
 	    size_t, int (*)(const void * _Nonnull, const void *));
 void	*calloc(size_t, size_t) __malloc_like __result_use_check
-	     __alloc_size(1) __alloc_size(2);
+	     __alloc_size2(1, 2);
 div_t	 div(int, int) __pure2;
 _Noreturn void	 exit(int);
 void	 free(void *);
@@ -274,6 +274,7 @@ int	 cgetstr(char *, const char *, char **);
 int	 cgetustr(char *, const char *, char **);
 
 int	 daemon(int, int);
+int	 daemonfd(int, int);
 char	*devname(__dev_t, __mode_t);
 char	*devname_r(__dev_t, __mode_t, char *, int);
 char	*fdevname(int);
@@ -301,9 +302,9 @@ void	 qsort_r(void *, size_t, size_t, void *,
 	    int (*)(void *, const void *, const void *));
 int	 radixsort(const unsigned char **, int, const unsigned char *,
 	    unsigned);
-void	*reallocarray(void *, size_t, size_t) __result_use_check __alloc_size(2)
-	    __alloc_size(3);
-void	*reallocf(void *, size_t) __alloc_size(2);
+void	*reallocarray(void *, size_t, size_t) __result_use_check
+	    __alloc_size2(2, 3);
+void	*reallocf(void *, size_t) __result_use_check __alloc_size(2);
 int	 rpmatch(const char *);
 void	 setprogname(const char *);
 int	 sradixsort(const unsigned char **, int, const unsigned char *,

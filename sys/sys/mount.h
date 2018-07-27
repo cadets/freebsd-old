@@ -40,6 +40,7 @@
 #ifdef _KERNEL
 #include <sys/lock.h>
 #include <sys/lockmgr.h>
+#include <sys/tslog.h>
 #include <sys/_mutex.h>
 #include <sys/_sx.h>
 #endif
@@ -515,6 +516,7 @@ struct vfsconf {
 	int	vfc_typenum;		/* historic filesystem type number */
 	int	vfc_refcount;		/* number mounted of this type */
 	int	vfc_flags;		/* permanent flags */
+	int	vfc_prison_flag;	/* prison allow.mount.* flag */
 	struct	vfsoptdecl *vfc_opts;	/* mount options */
 	TAILQ_ENTRY(vfsconf) vfc_list;	/* list of vfscons */
 };
@@ -708,9 +710,11 @@ vfs_statfs_t	__vfs_statfs;
 #define	VFS_MOUNT(MP) ({						\
 	int _rc;							\
 									\
+	TSRAW(curthread, TS_ENTER, "VFS_MOUNT", (MP)->mnt_vfc->vfc_name);\
 	VFS_PROLOGUE(MP);						\
 	_rc = (*(MP)->mnt_op->vfs_mount)(MP);				\
 	VFS_EPILOGUE(MP);						\
+	TSRAW(curthread, TS_EXIT, "VFS_MOUNT", (MP)->mnt_vfc->vfc_name);\
 	_rc; })
 
 #define	VFS_UNMOUNT(MP, FORCE) ({					\
@@ -848,7 +852,8 @@ vfs_statfs_t	__vfs_statfs;
  */
 #define VFS_VERSION_00	0x19660120
 #define VFS_VERSION_01	0x20121030
-#define VFS_VERSION	VFS_VERSION_01
+#define VFS_VERSION_02	0x20180504
+#define VFS_VERSION	VFS_VERSION_02
 
 #define VFS_SET(vfsops, fsname, flags) \
 	static struct vfsconf fsname ## _vfsconf = {		\

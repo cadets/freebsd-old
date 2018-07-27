@@ -78,15 +78,12 @@ nullfs_mount(struct mount *mp)
 	struct vnode *lowerrootvp, *vp;
 	struct vnode *nullm_rootvp;
 	struct null_mount *xmp;
-	struct thread *td = curthread;
 	char *target;
 	int isvnunlocked = 0, len;
 	struct nameidata nd, *ndp = &nd;
 
 	NULLFSDEBUG("nullfs_mount(mp = %p)\n", (void *)mp);
 
-	if (!prison_allow(td->td_ucred, PR_ALLOW_MOUNT_NULLFS))
-		return (EPERM);
 	if (mp->mnt_flag & MNT_ROOTFS)
 		return (EOPNOTSUPP);
 
@@ -320,7 +317,8 @@ nullfs_statfs(mp, sbp)
 	/* now copy across the "interesting" information and fake the rest */
 	sbp->f_type = mstat->f_type;
 	sbp->f_flags = (sbp->f_flags & (MNT_RDONLY | MNT_NOEXEC | MNT_NOSUID |
-	    MNT_UNION | MNT_NOSYMFOLLOW)) | (mstat->f_flags & ~MNT_ROOTFS);
+	    MNT_UNION | MNT_NOSYMFOLLOW | MNT_AUTOMOUNTED)) |
+	    (mstat->f_flags & ~(MNT_ROOTFS | MNT_AUTOMOUNTED));
 	sbp->f_bsize = mstat->f_bsize;
 	sbp->f_iosize = mstat->f_iosize;
 	sbp->f_blocks = mstat->f_blocks;

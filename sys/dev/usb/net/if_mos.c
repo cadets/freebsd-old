@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: 0BSD AND BSD-4-Clause
+ * SPDX-License-Identifier: (BSD-1-Clause AND BSD-4-Clause)
  *
  * Copyright (c) 2011 Rick van der Zwet <info@rickvanderzwet.nl>
  *
@@ -606,7 +606,7 @@ mos_setmulti(struct usb_ether *ue)
 
 	/* get all new ones */
 	if_maddr_rlock(ifp);
-	TAILQ_FOREACH(ifma, &ifp->if_multiaddrs, ifma_link) {
+	CK_STAILQ_FOREACH(ifma, &ifp->if_multiaddrs, ifma_link) {
 		if (ifma->ifma_addr->sa_family != AF_LINK) {
 			allmulti = 1;
 			continue;

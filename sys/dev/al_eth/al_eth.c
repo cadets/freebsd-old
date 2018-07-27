@@ -272,7 +272,6 @@ al_probe(device_t dev)
 static int
 al_attach(device_t dev)
 {
-	struct al_eth_lm_context *lm_context;
 	struct al_eth_adapter *adapter;
 	struct sysctl_oid_list *child;
 	struct sysctl_ctx_list *ctx;
@@ -304,8 +303,6 @@ al_attach(device_t dev)
 	AL_RX_LOCK_INIT(adapter);
 
 	g_adapters[g_adapters_count] = adapter;
-
-	lm_context = &adapter->lm_context;
 
 	bar_udma = PCIR_BAR(AL_ETH_UDMA_BAR);
 	adapter->udma_res = bus_alloc_resource_any(dev, SYS_RES_MEMORY,
@@ -2894,7 +2891,7 @@ al_eth_set_rx_mode(struct al_eth_adapter *adapter)
 	unsigned char *mac;
 
 	if_maddr_rlock(ifp);
-	TAILQ_FOREACH(ifma, &ifp->if_multiaddrs, ifma_link) {
+	CK_STAILQ_FOREACH(ifma, &ifp->if_multiaddrs, ifma_link) {
 		if (ifma->ifma_addr->sa_family != AF_LINK)
 			continue;
 		if (mc == MAX_NUM_MULTICAST_ADDRESSES)
@@ -2908,7 +2905,7 @@ al_eth_set_rx_mode(struct al_eth_adapter *adapter)
 	if_maddr_runlock(ifp);
 
 	if_addr_rlock(ifp);
-	TAILQ_FOREACH(ifua, &ifp->if_addrhead, ifa_link) {
+	CK_STAILQ_FOREACH(ifua, &ifp->if_addrhead, ifa_link) {
 		if (ifua->ifa_addr->sa_family != AF_LINK)
 			continue;
 		if (uc == MAX_NUM_ADDRESSES)
@@ -2954,7 +2951,7 @@ al_eth_set_rx_mode(struct al_eth_adapter *adapter)
 			/* set new addresses */
 			i = AL_ETH_MAC_TABLE_UNICAST_IDX_BASE + 1;
 			if_addr_rlock(ifp);
-			TAILQ_FOREACH(ifua, &ifp->if_addrhead, ifa_link) {
+			CK_STAILQ_FOREACH(ifua, &ifp->if_addrhead, ifa_link) {
 				if (ifua->ifa_addr->sa_family != AF_LINK) {
 					continue;
 				}

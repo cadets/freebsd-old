@@ -11,7 +11,7 @@
 	${OPT} -S ${LLVM_INSTR_FLAGS} ${.IMPSRC} -o ${.TARGET}
 
 .c:
-	${CC} ${CFLAGS} ${LDFLAGS} ${.IMPSRC} ${LDLIBS} -o ${.TARGET}
+	${CC:N${CCACHE_BIN}} ${CFLAGS} ${LDFLAGS} ${.IMPSRC} ${LDLIBS} -o ${.TARGET}
 	${CTFCONVERT_CMD}
 
 .c.o:

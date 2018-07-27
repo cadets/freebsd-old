@@ -29,7 +29,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include "opt_compat.h"
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ktrace.h"
@@ -1787,25 +1786,6 @@ freebsd11_freebsd32_getdents(struct thread *td,
 }
 #endif /* COMPAT_FREEBSD11 */
 
-int
-freebsd32_getdirentries(struct thread *td,
-    struct freebsd32_getdirentries_args *uap)
-{
-	long base;
-	int32_t base32;
-	int error;
-
-	error = kern_getdirentries(td, uap->fd, uap->buf, uap->count, &base,
-	    NULL, UIO_USERSPACE);
-	if (error)
-		return (error);
-	if (uap->basep != NULL) {
-		base32 = base;
-		error = copyout(&base32, uap->basep, sizeof(int32_t));
-	}
-	return (error);
-}
-
 #ifdef COMPAT_FREEBSD6
 /* versions with the 'int pad' argument */
 int
@@ -1993,6 +1973,7 @@ static void
 copy_ostat(struct stat *in, struct ostat32 *out)
 {
 
+	bzero(out, sizeof(*out));
 	CP(*in, *out, st_dev);
 	CP(*in, *out, st_ino);
 	CP(*in, *out, st_mode);
@@ -2000,7 +1981,7 @@ copy_ostat(struct stat *in, struct ostat32 *out)
 	CP(*in, *out, st_uid);
 	CP(*in, *out, st_gid);
 	CP(*in, *out, st_rdev);
-	CP(*in, *out, st_size);
+	out->st_size = MIN(in->st_size, INT32_MAX);
 	TS_CP(*in, *out, st_atim);
 	TS_CP(*in, *out, st_mtim);
 	TS_CP(*in, *out, st_ctim);
@@ -2147,11 +2128,27 @@ freebsd11_cvtstat32(struct stat *in, struct freebsd11_stat32 *out)
 			break;
 		}
 	}
-	CP(*in, *out, st_dev);
+	out->st_dev = in->st_dev;
+	if (out->st_dev != in->st_dev) {
+		switch (ino64_trunc_error) {
+		default:
+			break;
+		case 1:
+			return (EOVERFLOW);
+		}
+	}
 	CP(*in, *out, st_mode);
 	CP(*in, *out, st_uid);
 	CP(*in, *out, st_gid);
-	CP(*in, *out, st_rdev);
+	out->st_rdev = in->st_rdev;
+	if (out->st_rdev != in->st_rdev) {
+		switch (ino64_trunc_error) {
+		default:
+			break;
+		case 1:
+			return (EOVERFLOW);
+		}
+	}
 	TS_CP(*in, *out, st_atim);
 	TS_CP(*in, *out, st_mtim);
 	TS_CP(*in, *out, st_ctim);
@@ -2284,7 +2281,7 @@ freebsd32_sysctl(struct thread *td, struct freebsd32_sysctl_args *uap)
 	error = userland_sysctl(td, name, uap->namelen,
 		uap->old, &oldlen, 1,
 		uap->new, uap->newlen, &j, SCTL_MASK32);
-	if (error && error != ENOMEM)
+	if (error)
 		return (error);
 	if (uap->oldlenp)
 		suword32(uap->oldlenp, j);
@@ -3018,6 +3015,24 @@ freebsd32_cpuset_setaffinity(struct thread *td,
 }
 
 int
+freebsd32_cpuset_getdomain(struct thread *td,
+    struct freebsd32_cpuset_getdomain_args *uap)
+{
+
+	return (kern_cpuset_getdomain(td, uap->level, uap->which,
+	    PAIR32TO64(id_t,uap->id), uap->domainsetsize, uap->mask, uap->policy));
+}
+
+int
+freebsd32_cpuset_setdomain(struct thread *td,
+    struct freebsd32_cpuset_setdomain_args *uap)
+{
+
+	return (kern_cpuset_setdomain(td, uap->level, uap->which,
+	    PAIR32TO64(id_t,uap->id), uap->domainsetsize, uap->mask, uap->policy));
+}
+
+int
 freebsd32_nmount(struct thread *td,
     struct freebsd32_nmount_args /* {
     	struct iovec *iovp;
@@ -3091,120 +3106,24 @@ freebsd32_xxx(struct thread *td, struct freebsd32_xxx_args *uap)
 #endif
 
 int
-syscall32_register(int *offset, struct sysent *new_sysent,
-    struct sysent *old_sysent, int flags)
-{
-
-	if ((flags & ~SY_THR_STATIC) != 0)
-		return (EINVAL);
-
-	if (*offset == NO_SYSCALL) {
-		int i;
-
-		for (i = 1; i < SYS_MAXSYSCALL; ++i)
-			if (freebsd32_sysent[i].sy_call ==
-			    (sy_call_t *)lkmnosys)
-				break;
-		if (i == SYS_MAXSYSCALL)
-			return (ENFILE);
-		*offset = i;
-	} else if (*offset < 0 || *offset >= SYS_MAXSYSCALL)
-		return (EINVAL);
-	else if (freebsd32_sysent[*offset].sy_call != (sy_call_t *)lkmnosys &&
-	    freebsd32_sysent[*offset].sy_call != (sy_call_t *)lkmressys)
-		return (EEXIST);
-
-	*old_sysent = freebsd32_sysent[*offset];
-	freebsd32_sysent[*offset] = *new_sysent;
-	atomic_store_rel_32(&freebsd32_sysent[*offset].sy_thrcnt, flags);
-	return (0);
-}
-
-int
-syscall32_deregister(int *offset, struct sysent *old_sysent)
-{
-
-	if (*offset == 0)
-		return (0);
-
-	freebsd32_sysent[*offset] = *old_sysent;
-	return (0);
-}
-
-int
 syscall32_module_handler(struct module *mod, int what, void *arg)
 {
-	struct syscall_module_data *data = (struct syscall_module_data*)arg;
-	modspecific_t ms;
-	int error;
 
-	switch (what) {
-	case MOD_LOAD:
-		error = syscall32_register(data->offset, data->new_sysent,
-		    &data->old_sysent, SY_THR_STATIC_KLD);
-		if (error) {
-			/* Leave a mark so we know to safely unload below. */
-			data->offset = NULL;
-			return error;
-		}
-		ms.intval = *data->offset;
-		MOD_XLOCK;
-		module_setspecific(mod, &ms);
-		MOD_XUNLOCK;
-		if (data->chainevh)
-			error = data->chainevh(mod, what, data->chainarg);
-		return (error);
-	case MOD_UNLOAD:
-		/*
-		 * MOD_LOAD failed, so just return without calling the
-		 * chained handler since we didn't pass along the MOD_LOAD
-		 * event.
-		 */
-		if (data->offset == NULL)
-			return (0);
-		if (data->chainevh) {
-			error = data->chainevh(mod, what, data->chainarg);
-			if (error)
-				return (error);
-		}
-		error = syscall32_deregister(data->offset, &data->old_sysent);
-		return (error);
-	default:
-		error = EOPNOTSUPP;
-		if (data->chainevh)
-			error = data->chainevh(mod, what, data->chainarg);
-		return (error);
-	}
+	return (kern_syscall_module_handler(freebsd32_sysent, mod, what, arg));
 }
 
 int
 syscall32_helper_register(struct syscall_helper_data *sd, int flags)
 {
-	struct syscall_helper_data *sd1;
-	int error;
 
-	for (sd1 = sd; sd1->syscall_no != NO_SYSCALL; sd1++) {
-		error = syscall32_register(&sd1->syscall_no, &sd1->new_sysent,
-		    &sd1->old_sysent, flags);
-		if (error != 0) {
-			syscall32_helper_unregister(sd);
-			return (error);
-		}
-		sd1->registered = 1;
-	}
-	return (0);
+	return (kern_syscall_helper_register(freebsd32_sysent, sd, flags));
 }
 
 int
 syscall32_helper_unregister(struct syscall_helper_data *sd)
 {
-	struct syscall_helper_data *sd1;
 
-	for (sd1 = sd; sd1->registered != 0; sd1++) {
-		syscall32_deregister(&sd1->syscall_no, &sd1->old_sysent);
-		sd1->registered = 0;
-	}
-	return (0);
+	return (kern_syscall_helper_unregister(freebsd32_sysent, sd));
 }
 
 register_t *
@@ -3279,33 +3198,21 @@ freebsd32_copyout_strings(struct image_params *imgp)
 	destp -= ARG_MAX - imgp->args->stringspace;
 	destp = rounddown2(destp, sizeof(uint32_t));
 
-	/*
-	 * If we have a valid auxargs ptr, prepare some room
-	 * on the stack.
-	 */
+	vectp = (uint32_t *)destp;
 	if (imgp->auxargs) {
 		/*
-		 * 'AT_COUNT*2' is size for the ELF Auxargs data. This is for
-		 * lower compatibility.
+		 * Allocate room on the stack for the ELF auxargs
+		 * array.  It has up to AT_COUNT entries.
 		 */
-		imgp->auxarg_size = (imgp->auxarg_size) ? imgp->auxarg_size
-			: (AT_COUNT * 2);
-		/*
-		 * The '+ 2' is for the null pointers at the end of each of
-		 * the arg and env vector sets,and imgp->auxarg_size is room
-		 * for argument of Runtime loader.
-		 */
-		vectp = (u_int32_t *) (destp - (imgp->args->argc +
-		    imgp->args->envc + 2 + imgp->auxarg_size + execpath_len) *
-		    sizeof(u_int32_t));
-	} else {
-		/*
-		 * The '+ 2' is for the null pointers at the end of each of
-		 * the arg and env vector sets
-		 */
-		vectp = (u_int32_t *)(destp - (imgp->args->argc +
-		    imgp->args->envc + 2) * sizeof(u_int32_t));
+		vectp -= howmany(AT_COUNT * sizeof(Elf32_Auxinfo),
+		    sizeof(*vectp));
 	}
+
+	/*
+	 * Allocate room for the argv[] and env vectors including the
+	 * terminating NULL pointers.
+	 */
+	vectp -= imgp->args->argc + 1 + imgp->args->envc + 1;
 
 	/*
 	 * vectp also becomes our initial stack base
@@ -3383,6 +3290,7 @@ freebsd32_kldstat(struct thread *td, struct freebsd32_kldstat_args *uap)
 		CP(*stat, *stat32, size);
 		bcopy(&stat->pathname[0], &stat32->pathname[0],
 		    sizeof(stat->pathname));
+		stat32->version  = version;
 		error = copyout(stat32, uap->stat, version);
 	}
 	free(stat, M_TEMP);
@@ -3450,7 +3358,7 @@ freebsd32_procctl(struct thread *td, struct freebsd32_procctl_args *uap)
 	union {
 		struct procctl_reaper_pids32 rp;
 	} x32;
-	int error, error1, flags;
+	int error, error1, flags, signum;
 
 	switch (uap->com) {
 	case PROC_SPROTECT:
@@ -3488,6 +3396,15 @@ freebsd32_procctl(struct thread *td, struct freebsd32_procctl_args *uap)
 	case PROC_TRAPCAP_STATUS:
 		data = &flags;
 		break;
+	case PROC_PDEATHSIG_CTL:
+		error = copyin(uap->data, &signum, sizeof(signum));
+		if (error != 0)
+			return (error);
+		data = &signum;
+		break;
+	case PROC_PDEATHSIG_STATUS:
+		data = &signum;
+		break;
 	default:
 		return (EINVAL);
 	}
@@ -3507,6 +3424,10 @@ freebsd32_procctl(struct thread *td, struct freebsd32_procctl_args *uap)
 	case PROC_TRAPCAP_STATUS:
 		if (error == 0)
 			error = copyout(&flags, uap->data, sizeof(flags));
+		break;
+	case PROC_PDEATHSIG_STATUS:
+		if (error == 0)
+			error = copyout(&signum, uap->data, sizeof(signum));
 		break;
 	}
 	return (error);

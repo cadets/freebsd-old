@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016 Matt Macy <mmacy@nextbsd.org>
+ * Copyright (c) 2016 Matthew Macy <mmacy@mattmacy.io>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -62,14 +62,14 @@ extern void igb_if_enable_intr(if_ctx_t ctx);
 extern int em_intr(void *arg);
 
 struct if_txrx igb_txrx = {
-	igb_isc_txd_encap,
-	igb_isc_txd_flush,
-	igb_isc_txd_credits_update,
-	igb_isc_rxd_available,
-	igb_isc_rxd_pkt_get,
-	igb_isc_rxd_refill,
-	igb_isc_rxd_flush,
-	em_intr
+	.ift_txd_encap = igb_isc_txd_encap,
+	.ift_txd_flush = igb_isc_txd_flush,
+	.ift_txd_credits_update = igb_isc_txd_credits_update,
+	.ift_rxd_available = igb_isc_rxd_available,
+	.ift_rxd_pkt_get = igb_isc_rxd_pkt_get,
+	.ift_rxd_refill = igb_isc_rxd_refill,
+	.ift_rxd_flush = igb_isc_rxd_flush,
+	.ift_legacy_intr = em_intr
 };
 
 extern if_shared_ctx_t em_sctx;
@@ -237,7 +237,7 @@ igb_isc_txd_encap(void *arg, if_pkt_info_t pi)
 	int nsegs = pi->ipi_nsegs;
 	bus_dma_segment_t *segs = pi->ipi_segs;
 	union e1000_adv_tx_desc *txd = NULL;
-	int i, j, first, pidx_last;
+	int i, j, pidx_last;
 	u32 olinfo_status, cmd_type_len, txd_flags;
 	qidx_t ntxd;
 
@@ -249,7 +249,7 @@ igb_isc_txd_encap(void *arg, if_pkt_info_t pi)
 	if (pi->ipi_mflags & M_VLANTAG)
 		cmd_type_len |= E1000_ADVTXD_DCMD_VLE;
 
-	first = i = pi->ipi_pidx;
+	i = pi->ipi_pidx;
 	ntxd = scctx->isc_ntxd[0];
 	txd_flags = pi->ipi_flags & IPI_TX_INTR ? E1000_ADVTXD_DCMD_RS : 0;
 	/* Consume the first descriptor */

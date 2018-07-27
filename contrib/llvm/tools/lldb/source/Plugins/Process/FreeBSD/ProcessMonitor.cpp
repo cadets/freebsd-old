@@ -163,8 +163,10 @@ static size_t DoReadMemory(lldb::pid_t pid, lldb::addr_t vm_addr, void *buf,
   pi_desc.piod_addr = buf;
   pi_desc.piod_len = size;
 
-  if (PTRACE(PT_IO, pid, (caddr_t)&pi_desc, 0) < 0)
+  if (PTRACE(PT_IO, pid, (caddr_t)&pi_desc, 0) < 0) {
     error.SetErrorToErrno();
+    return 0;
+  }
   return pi_desc.piod_len;
 }
 
@@ -843,7 +845,7 @@ bool ProcessMonitor::Launch(LaunchArgs *args) {
   const FileSpec &stderr_file_spec = args->m_stderr_file_spec;
   const FileSpec &working_dir = args->m_working_dir;
 
-  lldb_utility::PseudoTerminal terminal;
+  PseudoTerminal terminal;
   const size_t err_len = 1024;
   char err_str[err_len];
   ::pid_t pid;

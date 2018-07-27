@@ -1241,10 +1241,8 @@ static void
 pcib_pcie_ab_timeout(void *arg)
 {
 	struct pcib_softc *sc;
-	device_t dev;
 
 	sc = arg;
-	dev = sc->dev;
 	mtx_assert(&Giant, MA_OWNED);
 	if (sc->flags & PCIB_DETACH_PENDING) {
 		sc->flags |= PCIB_DETACHING;
@@ -1484,16 +1482,14 @@ pcib_cfg_save(struct pcib_softc *sc)
 static void
 pcib_cfg_restore(struct pcib_softc *sc)
 {
-	device_t	dev;
 #ifndef NEW_PCIB
 	uint16_t command;
 #endif
-	dev = sc->dev;
 
 #ifdef NEW_PCIB
 	pcib_write_windows(sc, WIN_IO | WIN_MEM | WIN_PMEM);
 #else
-	command = pci_read_config(dev, PCIR_COMMAND, 2);
+	command = pci_read_config(sc->dev, PCIR_COMMAND, 2);
 	if (command & PCIM_CMD_PORTEN)
 		pcib_set_io_decode(sc);
 	if (command & PCIM_CMD_MEMEN)
@@ -2549,6 +2545,22 @@ pcib_enable_ari(struct pcib_softc *sc, uint32_t pcie_pos)
 int
 pcib_maxslots(device_t dev)
 {
+#if !defined(__amd64__) && !defined(__i386__)
+	uint32_t pcie_pos;
+	uint16_t val;
+
+	/*
+	 * If this is a PCIe rootport or downstream switch port, there's only
+	 * one slot permitted.
+	 */
+	if (pci_find_cap(dev, PCIY_EXPRESS, &pcie_pos) == 0) {
+		val = pci_read_config(dev, pcie_pos + PCIER_FLAGS, 2);
+		val &= PCIEM_FLAGS_TYPE;
+		if (val == PCIEM_TYPE_ROOT_PORT ||
+		    val == PCIEM_TYPE_DOWNSTREAM_PORT)
+			return (0);
+	}
+#endif
 	return (PCI_SLOTMAX);
 }
 
@@ -2562,7 +2574,7 @@ pcib_ari_maxslots(device_t dev)
 	if (sc->flags & PCIB_ENABLE_ARI)
 		return (PCIE_ARI_SLOTMAX);
 	else
-		return (PCI_SLOTMAX);
+		return (pcib_maxslots(dev));
 }
 
 static int

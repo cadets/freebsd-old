@@ -23,8 +23,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include "opt_compat.h"
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/malloc.h>
@@ -152,6 +150,11 @@ static int num_buf_aio = 0;
 SYSCTL_INT(_vfs_aio, OID_AUTO, num_buf_aio, CTLFLAG_RD, &num_buf_aio, 0,
     "Number of aio requests presently handled by the buf subsystem");
 
+static int num_unmapped_aio = 0;
+SYSCTL_INT(_vfs_aio, OID_AUTO, num_unmapped_aio, CTLFLAG_RD, &num_unmapped_aio,
+    0,
+    "Number of aio requests presently handled by unmapped I/O buffers");
+
 /* Number of async I/O processes in the process of being started */
 /* XXX This should be local to aio_aqueue() */
 static int num_aio_resv_start = 0;
@@ -163,16 +166,16 @@ SYSCTL_INT(_vfs_aio, OID_AUTO, aiod_lifetime, CTLFLAG_RW, &aiod_lifetime, 0,
 static int max_aio_per_proc = MAX_AIO_PER_PROC;
 SYSCTL_INT(_vfs_aio, OID_AUTO, max_aio_per_proc, CTLFLAG_RW, &max_aio_per_proc,
     0,
-    "Maximum active aio requests per process (stored in the process)");
+    "Maximum active aio requests per process");
 
 static int max_aio_queue_per_proc = MAX_AIO_QUEUE_PER_PROC;
 SYSCTL_INT(_vfs_aio, OID_AUTO, max_aio_queue_per_proc, CTLFLAG_RW,
     &max_aio_queue_per_proc, 0,
-    "Maximum queued aio requests per process (stored in the process)");
+    "Maximum queued aio requests per process");
 
 static int max_buf_aio = MAX_BUF_AIO;
 SYSCTL_INT(_vfs_aio, OID_AUTO, max_buf_aio, CTLFLAG_RW, &max_buf_aio, 0,
-    "Maximum buf aio requests per process (stored in the process)");
+    "Maximum buf aio requests per process");
 
 /* 
  * Though redundant with vfs.aio.max_aio_queue_per_proc, POSIX requires
@@ -265,11 +268,8 @@ struct aioliojob {
 struct kaioinfo {
 	struct	mtx kaio_mtx;		/* the lock to protect this struct */
 	int	kaio_flags;		/* (a) per process kaio flags */
-	int	kaio_maxactive_count;	/* (*) maximum number of AIOs */
 	int	kaio_active_count;	/* (c) number of currently used AIOs */
-	int	kaio_qallowed_count;	/* (*) maxiumu size of AIO queue */
 	int	kaio_count;		/* (a) size of AIO queue */
-	int	kaio_ballowed_count;	/* (*) maximum number of buffers */
 	int	kaio_buffer_count;	/* (a) number of physio buffers */
 	TAILQ_HEAD(,kaiocb) kaio_all;	/* (a) all AIOs in a process */
 	TAILQ_HEAD(,kaiocb) kaio_done;	/* (a) done queue for process */
@@ -442,11 +442,8 @@ aio_init_aioinfo(struct proc *p)
 	ki = uma_zalloc(kaio_zone, M_WAITOK);
 	mtx_init(&ki->kaio_mtx, "aiomtx", NULL, MTX_DEF | MTX_NEW);
 	ki->kaio_flags = 0;
-	ki->kaio_maxactive_count = max_aio_per_proc;
 	ki->kaio_active_count = 0;
-	ki->kaio_qallowed_count = max_aio_queue_per_proc;
 	ki->kaio_count = 0;
-	ki->kaio_ballowed_count = max_buf_aio;
 	ki->kaio_buffer_count = 0;
 	TAILQ_INIT(&ki->kaio_all);
 	TAILQ_INIT(&ki->kaio_done);
@@ -705,7 +702,7 @@ restart:
 		userp = job->userproc;
 		ki = userp->p_aioinfo;
 
-		if (ki->kaio_active_count < ki->kaio_maxactive_count) {
+		if (ki->kaio_active_count < max_aio_per_proc) {
 			TAILQ_REMOVE(&aio_jobs, job, list);
 			if (!aio_clear_cancel_function(job))
 				goto restart;
@@ -966,7 +963,6 @@ aio_schedule_fsync(void *context, int pending)
 bool
 aio_cancel_cleared(struct kaiocb *job)
 {
-	struct kaioinfo *ki;
 
 	/*
 	 * The caller should hold the same queue lock held when
@@ -974,7 +970,6 @@ aio_cancel_cleared(struct kaiocb *job)
 	 * ensuring this check sees an up-to-date value.  However,
 	 * there is no way to assert that.
 	 */
-	ki = job->userproc->p_aioinfo;
 	return ((job->jobflags & KAIOCB_CLEARED) != 0);
 }
 
@@ -1228,6 +1223,9 @@ aio_qphysio(struct proc *p, struct kaiocb *job)
 	cb = &job->uaiocb;
 	fp = job->fd_file;
 
+	if (!(cb->aio_lio_opcode == LIO_WRITE ||
+	    cb->aio_lio_opcode == LIO_READ))
+		return (-1);
 	if (fp == NULL || fp->f_type != DTYPE_VNODE)
 		return (-1);
 
@@ -1267,8 +1265,8 @@ aio_qphysio(struct proc *p, struct kaiocb *job)
 			error = -1;
 			goto unref;
 		}
-		if (ki->kaio_buffer_count >= ki->kaio_ballowed_count) {
-			error = -1;
+		if (ki->kaio_buffer_count >= max_buf_aio) {
+			error = EAGAIN;
 			goto unref;
 		}
 
@@ -1310,6 +1308,7 @@ aio_qphysio(struct proc *p, struct kaiocb *job)
 		bp->bio_ma_offset = poff;
 		bp->bio_data = unmapped_buf;
 		bp->bio_flags |= BIO_UNMAPPED;
+		atomic_add_int(&num_unmapped_aio, 1);
 	}
 
 	/* Perform transfer. */
@@ -1454,7 +1453,6 @@ aio_aqueue(struct thread *td, struct aiocb *ujob, struct aioliojob *lj,
     int type, struct aiocb_ops *ops)
 {
 	struct proc *p = td->td_proc;
-	cap_rights_t rights;
 	struct file *fp;
 	struct kaiocb *job;
 	struct kaioinfo *ki;
@@ -1475,7 +1473,7 @@ aio_aqueue(struct thread *td, struct aiocb *ujob, struct aioliojob *lj,
 	ops->store_kernelinfo(ujob, -1);
 
 	if (num_queue_count >= max_queue_count ||
-	    ki->kaio_count >= ki->kaio_qallowed_count) {
+	    ki->kaio_count >= max_aio_queue_per_proc) {
 		ops->store_error(ujob, EAGAIN);
 		return (EAGAIN);
 	}
@@ -1533,21 +1531,19 @@ aio_aqueue(struct thread *td, struct aiocb *ujob, struct aioliojob *lj,
 	AUDIT_ARG_FD(fd);
 	switch (opcode) {
 	case LIO_WRITE:
-		error = fget_write(td, fd,
-		    cap_rights_init(&rights, CAP_PWRITE), &fp);
+		error = fget_write(td, fd, &cap_pwrite_rights, &fp);
 		break;
 	case LIO_READ:
-		error = fget_read(td, fd,
-		    cap_rights_init(&rights, CAP_PREAD), &fp);
+		error = fget_read(td, fd, &cap_pread_rights, &fp);
 		break;
 	case LIO_SYNC:
-		error = fget(td, fd, cap_rights_init(&rights, CAP_FSYNC), &fp);
+		error = fget(td, fd, &cap_fsync_rights, &fp);
 		break;
 	case LIO_MLOCK:
 		fp = NULL;
 		break;
 	case LIO_NOP:
-		error = fget(td, fd, cap_rights_init(&rights), &fp);
+		error = fget(td, fd, &cap_no_rights, &fp);
 		break;
 	default:
 		error = EINVAL;
@@ -1705,33 +1701,17 @@ aio_cancel_sync(struct kaiocb *job)
 int
 aio_queue_file(struct file *fp, struct kaiocb *job)
 {
-	struct aioliojob *lj;
 	struct kaioinfo *ki;
 	struct kaiocb *job2;
 	struct vnode *vp;
 	struct mount *mp;
-	int error, opcode;
+	int error;
 	bool safe;
 
-	lj = job->lio;
 	ki = job->userproc->p_aioinfo;
-	opcode = job->uaiocb.aio_lio_opcode;
-	if (opcode == LIO_SYNC)
-		goto queueit;
-
-	if ((error = aio_qphysio(job->userproc, job)) == 0)
-		goto done;
-#if 0
-	/*
-	 * XXX: This means qphysio() failed with EFAULT.  The current
-	 * behavior is to retry the operation via fo_read/fo_write.
-	 * Wouldn't it be better to just complete the request with an
-	 * error here?
-	 */
-	if (error > 0)
-		goto done;
-#endif
-queueit:
+	error = aio_qphysio(job->userproc, job);
+	if (error >= 0)
+		return (error);
 	safe = false;
 	if (fp->f_type == DTYPE_VNODE) {
 		vp = fp->f_vnode;
@@ -1747,7 +1727,13 @@ queueit:
 		return (EOPNOTSUPP);
 	}
 
-	if (opcode == LIO_SYNC) {
+	switch (job->uaiocb.aio_lio_opcode) {
+	case LIO_READ:
+	case LIO_WRITE:
+		aio_schedule(job, aio_process_rw);
+		error = 0;
+		break;
+	case LIO_SYNC:
 		AIO_LOCK(ki);
 		TAILQ_FOREACH(job2, &ki->kaio_jobqueue, plist) {
 			if (job2->fd_file == job->fd_file &&
@@ -1769,22 +1755,12 @@ queueit:
 			return (0);
 		}
 		AIO_UNLOCK(ki);
-	}
-
-	switch (opcode) {
-	case LIO_READ:
-	case LIO_WRITE:
-		aio_schedule(job, aio_process_rw);
-		error = 0;
-		break;
-	case LIO_SYNC:
 		aio_schedule(job, aio_process_sync);
 		error = 0;
 		break;
 	default:
 		error = EINVAL;
 	}
-done:
 	return (error);
 }
 
@@ -1800,8 +1776,7 @@ aio_kick_nowait(struct proc *userp)
 		aiop->aioprocflags &= ~AIOP_FREE;
 		wakeup(aiop->aioproc);
 	} else if (num_aio_resv_start + num_aio_procs < max_aio_procs &&
-	    ki->kaio_active_count + num_aio_resv_start <
-	    ki->kaio_maxactive_count) {
+	    ki->kaio_active_count + num_aio_resv_start < max_aio_per_proc) {
 		taskqueue_enqueue(taskqueue_aiod_kick, &ki->kaio_task);
 	}
 }
@@ -1820,8 +1795,7 @@ retryproc:
 		aiop->aioprocflags &= ~AIOP_FREE;
 		wakeup(aiop->aioproc);
 	} else if (num_aio_resv_start + num_aio_procs < max_aio_procs &&
-	    ki->kaio_active_count + num_aio_resv_start <
-	    ki->kaio_maxactive_count) {
+	    ki->kaio_active_count + num_aio_resv_start < max_aio_per_proc) {
 		num_aio_resv_start++;
 		mtx_unlock(&aio_job_mtx);
 		error = aio_newproc(&num_aio_resv_start);
@@ -1995,14 +1969,13 @@ sys_aio_cancel(struct thread *td, struct aio_cancel_args *uap)
 	struct kaioinfo *ki;
 	struct kaiocb *job, *jobn;
 	struct file *fp;
-	cap_rights_t rights;
 	int error;
 	int cancelled = 0;
 	int notcancelled = 0;
 	struct vnode *vp;
 
 	/* Lookup file object. */
-	error = fget(td, uap->fd, cap_rights_init(&rights), &fp);
+	error = fget(td, uap->fd, &cap_no_rights, &fp);
 	if (error)
 		return (error);
 
@@ -2167,7 +2140,7 @@ kern_lio_listio(struct thread *td, int mode, struct aiocb * const *uacb_list,
 	struct aioliojob *lj;
 	struct kevent kev;
 	int error;
-	int nerror;
+	int nagain, nerror;
 	int i;
 
 	if ((mode != LIO_NOWAIT) && (mode != LIO_WAIT))
@@ -2236,12 +2209,15 @@ kern_lio_listio(struct thread *td, int mode, struct aiocb * const *uacb_list,
 	/*
 	 * Get pointers to the list of I/O requests.
 	 */
+	nagain = 0;
 	nerror = 0;
 	for (i = 0; i < nent; i++) {
 		job = acb_list[i];
 		if (job != NULL) {
 			error = aio_aqueue(td, job, lj, LIO_NOP, ops);
-			if (error != 0)
+			if (error == EAGAIN)
+				nagain++;
+			else if (error != 0)
 				nerror++;
 		}
 	}
@@ -2288,7 +2264,10 @@ kern_lio_listio(struct thread *td, int mode, struct aiocb * const *uacb_list,
 
 	if (nerror)
 		return (EIO);
-	return (error);
+	else if (nagain)
+		return (EAGAIN);
+	else
+		return (error);
 }
 
 /* syscall - list directed I/O (REALTIME) */
@@ -2382,7 +2361,8 @@ aio_physwakeup(struct bio *bp)
 		AIO_LOCK(ki);
 		ki->kaio_buffer_count--;
 		AIO_UNLOCK(ki);
-	}
+	} else
+		atomic_subtract_int(&num_unmapped_aio, 1);
 	vm_page_unhold_pages(job->pages, job->npages);
 
 	bp = job->bp;

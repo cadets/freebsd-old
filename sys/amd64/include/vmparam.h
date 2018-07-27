@@ -190,6 +190,7 @@
  * because the result is not actually accessed until later, but the early
  * vt fb startup needs to be reworked.
  */
+#define	PMAP_HAS_DMAP	1
 #define	PHYS_TO_DMAP(x)	({						\
 	KASSERT(dmaplimit == 0 || (x) < dmaplimit,			\
 	    ("physical address %#jx not covered by the DMAP",		\
@@ -225,5 +226,11 @@
 #endif
 
 #define	ZERO_REGION_SIZE	(2 * 1024 * 1024)	/* 2MB */
+
+/*
+ * Use a fairly large batch size since we expect amd64 systems to have lots of
+ * memory.
+ */
+#define	VM_BATCHQUEUE_SIZE	31
 
 #endif /* _MACHINE_VMPARAM_H_ */

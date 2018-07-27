@@ -59,7 +59,7 @@ MIASM =  \
 	vfork.o \
 	sbrk.o \
 	sstk.o \
-	vadvise.o \
+	freebsd11_vadvise.o \
 	munmap.o \
 	mprotect.o \
 	madvise.o \
@@ -170,9 +170,7 @@ MIASM =  \
 	lio_listio.o \
 	freebsd11_getdents.o \
 	lchmod.o \
-	netbsd_lchown.o \
 	lutimes.o \
-	netbsd_msync.o \
 	freebsd11_nstat.o \
 	freebsd11_nfstat.o \
 	freebsd11_nlstat.o \
@@ -393,8 +391,6 @@ MIASM =  \
 	ppoll.o \
 	futimens.o \
 	utimensat.o \
-	numa_getaffinity.o \
-	numa_setaffinity.o \
 	fdatasync.o \
 	fstat.o \
 	fstatat.o \
@@ -406,6 +402,9 @@ MIASM =  \
 	fhstatfs.o \
 	mknodat.o \
 	kevent.o \
+	cpuset_getdomain.o \
+	cpuset_setdomain.o \
+	getrandom.o \
 	metaio_read.o \
 	metaio_write.o \
 	metaio_mmap.o \

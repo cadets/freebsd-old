@@ -41,8 +41,9 @@ MALLOC_DECLARE(M_ALIAS);
 
 /* Use kernel allocator. */
 #if defined(_SYS_MALLOC_H_)
+#undef malloc
 #define	malloc(x)	malloc(x, M_ALIAS, M_NOWAIT|M_ZERO)
-#define	calloc(x, n)	malloc(x*n)
+#define	calloc(n, x)	mallocarray((n), (x), M_ALIAS, M_NOWAIT|M_ZERO)
 #define	free(x)		free(x, M_ALIAS)
 #endif
 #endif

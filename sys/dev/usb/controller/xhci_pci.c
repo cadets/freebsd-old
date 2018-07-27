@@ -97,6 +97,13 @@ xhci_pci_match(device_t self)
 	uint32_t device_id = pci_get_devid(self);
 
 	switch (device_id) {
+	case 0x145c1022:
+		return ("AMD KERNCZ USB 3.0 controller");
+	case 0x43ba1022:
+		return ("AMD X399 USB 3.0 controller");
+	case 0x43b91022: /* X370 */
+	case 0x43bb1022: /* B350 */
+		return ("AMD 300 Series USB 3.0 controller");
 	case 0x78141022:
 		return ("AMD FCH USB 3.0 controller");
 
@@ -107,6 +114,8 @@ xhci_pci_match(device_t self)
 
 	case 0x10001b73:
 		return ("Fresco Logic FL1000G USB 3.0 controller");
+	case 0x11001b73:
+		return ("Fresco Logic FL1100 USB 3.0 controller");
 
 	case 0x10421b21:
 		return ("ASMedia ASM1042 USB 3.0 controller");
@@ -250,6 +259,7 @@ xhci_pci_attach(device_t self)
 		 */
 		sc->sc_port_route = &xhci_pci_port_route;
 		sc->sc_imod_default = XHCI_IMOD_DEFAULT_LP;
+		sc->sc_ctlstep = 1;
 		break;
 	}
 

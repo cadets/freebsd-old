@@ -31,13 +31,15 @@
 #define _SYS_SYSCALLSUBR_H_
 
 #include <sys/signal.h>
-#include <sys/uio.h>
 #include <sys/socket.h>
 #include <sys/mac.h>
 #include <sys/metaio.h>
 #include <sys/mount.h>
 #include <sys/_cpuset.h>
+#include <sys/_domainset.h>
+#include <sys/_uio.h>
 
+struct __wrusage;
 struct file;
 struct filecaps;
 enum idtype;
@@ -55,12 +57,12 @@ struct pollfd;
 struct ogetdirentries_args;
 struct rlimit;
 struct rusage;
+struct sched_param;
 union semun;
 struct sockaddr;
 struct stat;
 struct thr_param;
-struct sched_param;
-struct __wrusage;
+struct uio;
 
 int	kern___getcwd(struct thread *td, char *buf, enum uio_seg bufseg,
 	    size_t buflen, size_t path_max);
@@ -75,6 +77,7 @@ int	kern_adjtime(struct thread *td, struct timeval *delta,
 int	kern_alternate_path(struct thread *td, const char *prefix, const char *path,
 	    enum uio_seg pathseg, char **pathbuf, int create, int dirfd);
 int	kern_bindat(struct thread *td, int dirfd, int fd, struct sockaddr *sa);
+int	kern_break(struct thread *td, uintptr_t *addr);
 int	kern_cap_ioctls_limit(struct thread *td, int fd, u_long *cmds,
 	    size_t ncmds);
 int	kern_cap_rights_limit(struct thread *td, int fd, cap_rights_t *rights);
@@ -97,6 +100,12 @@ int	kern_cpuset_getaffinity(struct thread *td, cpulevel_t level,
 int	kern_cpuset_setaffinity(struct thread *td, cpulevel_t level,
 	    cpuwhich_t which, id_t id, size_t cpusetsize,
 	    const cpuset_t *maskp);
+int	kern_cpuset_getdomain(struct thread *td, cpulevel_t level,
+	    cpuwhich_t which, id_t id, size_t domainsetsize,
+	    domainset_t *maskp, int *policyp);
+int	kern_cpuset_setdomain(struct thread *td, cpulevel_t level,
+	    cpuwhich_t which, id_t id, size_t domainsetsize,
+	    const domainset_t *maskp, int policy);
 int	kern_cpuset_getid(struct thread *td, cpulevel_t level,
 	    cpuwhich_t which, id_t id, cpusetid_t *setid);
 int	kern_cpuset_setid(struct thread *td, cpuwhich_t which,
@@ -112,6 +121,7 @@ int	kern_fcntl(struct thread *td, int fd, int cmd, intptr_t arg);
 int	kern_fcntl_freebsd(struct thread *td, int fd, int cmd, long arg);
 int	kern_fhstat(struct thread *td, fhandle_t fh, struct stat *buf);
 int	kern_fhstatfs(struct thread *td, fhandle_t fh, struct statfs *buf);
+int	kern_fpathconf(struct thread *td, int fd, int name, long *valuep);
 int	kern_fstat(struct thread *td, int fd, struct stat *sbp);
 int	kern_fstatfs(struct thread *td, int fd, struct statfs *buf);
 int	kern_fsync(struct thread *td, int fd, bool fullsync);
@@ -180,7 +190,7 @@ int	kern_ogetdirentries(struct thread *td, struct ogetdirentries_args *uap,
 int	kern_openat(struct thread *td, int fd, char *path,
 	    enum uio_seg pathseg, int flags, int mode);
 int	kern_pathconf(struct thread *td, char *path, enum uio_seg pathseg,
-	    int name, u_long flags);
+	    int name, u_long flags, long *valuep);
 int	kern_pipe(struct thread *td, int fildes[2], int flags,
 	    struct filecaps *fcaps1, struct filecaps *fcaps2);
 int	kern_poll(struct thread *td, struct pollfd *fds, u_int nfds,

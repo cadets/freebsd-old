@@ -280,6 +280,8 @@ get_process_cputime(struct proc *targetp, struct timespec *ats)
 	PROC_STATLOCK(targetp);
 	rufetch(targetp, &ru);
 	runtime = targetp->p_rux.rux_runtime;
+	if (curthread->td_proc == targetp)
+		runtime += cpu_ticks() - PCPU_GET(switchtime);
 	PROC_STATUNLOCK(targetp);
 	cputick2timespec(runtime, ats);
 }
@@ -563,7 +565,8 @@ kern_clock_nanosleep(struct thread *td, clockid_t clock_id, int flags,
 	} while (error == 0 && is_abs_real && td->td_rtcgen == 0);
 	td->td_rtcgen = 0;
 	if (error != EWOULDBLOCK) {
-		TIMESEL(&sbtt, tmp);
+		if (TIMESEL(&sbtt, tmp))
+			sbtt += tc_tick_sbt;
 		if (sbtt >= sbt)
 			return (0);
 		if (error == ERESTART)

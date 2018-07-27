@@ -21,6 +21,7 @@ FILES=	DAEMON \
 	${_bluetooth} \
 	bridge \
 	${_bthidd} \
+	cfumass \
 	cleanvar \
 	cleartmp \
 	cron \
@@ -29,6 +30,7 @@ FILES=	DAEMON \
 	defaultroute \
 	devd \
 	devfs \
+	devmatch \
 	dhclient \
 	dmesg \
 	dumpon \
@@ -155,7 +157,9 @@ AMDPACKAGE=	amd
 .if ${MK_APM} != "no"
 FILESGROUPS+=	APM
 APM+=		apm
+.if ${MACHINE} == "i386"
 APM+=		apmd
+.endif
 APMPACKAGE=	apm
 .endif
 

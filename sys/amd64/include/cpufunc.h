@@ -386,6 +386,15 @@ rdtsc(void)
 	return (low | ((uint64_t)high << 32));
 }
 
+static __inline uint64_t
+rdtscp(void)
+{
+	uint32_t low, high;
+
+	__asm __volatile("rdtscp" : "=a" (low), "=d" (high) : : "ecx");
+	return (low | ((uint64_t)high << 32));
+}
+
 static __inline uint32_t
 rdtsc32(void)
 {
@@ -834,6 +843,20 @@ static __inline void
 intr_restore(register_t rflags)
 {
 	write_rflags(rflags);
+}
+
+static __inline void
+stac(void)
+{
+
+	__asm __volatile("stac" : : : "cc");
+}
+
+static __inline void
+clac(void)
+{
+
+	__asm __volatile("clac" : : : "cc");
 }
 
 enum {

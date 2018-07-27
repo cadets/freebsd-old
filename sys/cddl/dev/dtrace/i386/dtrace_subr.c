@@ -45,6 +45,7 @@
 #include <machine/cpufunc.h>
 #include <machine/frame.h>
 #include <machine/psl.h>
+#include <machine/trap.h>
 #include <vm/pmap.h>
 
 extern uintptr_t 	kernelbase;
@@ -355,11 +356,11 @@ SYSINIT(dtrace_gethrtime_init, SI_SUB_SMP, SI_ORDER_ANY, dtrace_gethrtime_init,
  * Returns nanoseconds since boot.
  */
 uint64_t
-dtrace_gethrtime()
+dtrace_gethrtime(void)
 {
 	uint64_t tsc;
-	uint32_t lo;
-	uint32_t hi;
+	uint32_t lo, hi;
+	register_t eflags;
 
 	/*
 	 * We split TSC value into lower and higher 32-bit halves and separately
@@ -367,7 +368,10 @@ dtrace_gethrtime()
 	 * (see nsec_scale calculations) taking into account 32-bit shift of
 	 * the higher half and finally add.
 	 */
+	eflags = intr_disable();
 	tsc = rdtsc() - tsc_skew[curcpu];
+	intr_restore(eflags);
+
 	lo = tsc;
 	hi = tsc >> 32;
 	return (((lo * nsec_scale) >> SCALE_SHIFT) +
