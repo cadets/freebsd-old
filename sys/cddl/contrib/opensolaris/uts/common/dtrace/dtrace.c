@@ -12116,6 +12116,22 @@ dtrace_epid2ecb(dtrace_state_t *state, dtrace_epid_t id)
 	return (state->dts_ecbs[id - 1]);
 }
 
+size_t
+dtrace_epid2size(dtrace_state_t *state, dtrace_epid_t id)
+{
+	dtrace_ecb_t *ecb;
+
+	ASSERT(MUTEX_HELD(&dtrace_lock));
+
+	if (id == 0 || id > state->dts_necbs)
+		return (0);
+
+	ASSERT(state->dts_necbs > 0 && state->dts_ecbs != NULL);
+	ASSERT((ecb = state->dts_ecbs[id - 1]) == NULL || ecb->dte_epid == id);
+
+	return (state->dts_ecbs[id - 1]->dte_size);
+}
+
 static dtrace_aggregation_t *
 dtrace_aggid2agg(dtrace_state_t *state, dtrace_aggid_t id)
 {
@@ -12148,7 +12164,7 @@ dtrace_aggid2agg(dtrace_state_t *state, dtrace_aggid_t id)
  * interrupts serializes the execution with any execution of dtrace_probe() on
  * the same CPU.
  */
-static void
+void
 dtrace_buffer_switch(dtrace_buffer_t *buf)
 {
 	caddr_t tomax = buf->dtb_tomax;
