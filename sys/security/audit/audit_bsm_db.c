@@ -298,6 +298,12 @@ au_evnamemap_init_preload(void)
 	lineno = 0;
 	while ((line = strsep(&nextline, "\n")) != NULL) {
 		/*
+		 * Skip any leading white space.
+		 */
+		while (line[0] == ' ' || line[0] == '\t')
+			line++;
+
+		/*
 		 * Skip blank lines and comment lines.
 		 */
 		if (line[0] == '\0' || line[0] == '#') {
@@ -317,7 +323,8 @@ au_evnamemap_init_preload(void)
 			continue;
 		}
 		evnum = strtol(evnum_str, &endptr, 10);
-		if (endptr == NULL || *endptr != '\0') {
+		if (*evnum_str == '\0' || *endptr != '\0' ||
+		    evnum <= 0 || evnum > UINT16_MAX) {
 			printf("%s: Invalid line %u - evnum strtol\n",
 			    __func__, lineno);
 			lineno++;
