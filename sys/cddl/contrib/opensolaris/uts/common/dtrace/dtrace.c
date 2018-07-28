@@ -8008,13 +8008,8 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			continue;
 		}
 
-		if (!committed) {
-			if (buf->dtb_flags & DTRACEBUF_DISRUPTOR)
-				atomic_store_rel_64(&buf->dtb_offset,
-				    offs + ecb->dte_size);
-			else
-				buf->dtb_offset = offs + ecb->dte_size;
-		}
+		if (!committed)
+			buf->dtb_offset = offs + ecb->dte_size;
 	}
 
 	if (vtime)
@@ -12174,7 +12169,6 @@ dtrace_buffer_switch(dtrace_buffer_t *buf)
 
 	ASSERT(!(buf->dtb_flags & DTRACEBUF_NOSWITCH));
 	ASSERT(!(buf->dtb_flags & DTRACEBUF_RING));
-	//ASSERT(!(buf->dtb_flags & DTRACEBUF_DISRUPTOR));
 
 	cookie = dtrace_interrupt_disable();
 	now = dtrace_gethrtime();
@@ -14970,9 +14964,6 @@ dtrace_state_buffer(dtrace_state_t *state, dtrace_buffer_t *buf, int which)
 		flags |= DTRACEBUF_NOSWITCH;
 
 	if (which == DTRACEOPT_BUFSIZE) {
-		if (opt[DTRACEOPT_BUFPOLICY] == DTRACEOPT_BUFPOLICY_DISRUPTOR)
-			flags |= (DTRACEBUF_DISRUPTOR & DTRACEBUF_RING);
-
 		if (opt[DTRACEOPT_BUFPOLICY] == DTRACEOPT_BUFPOLICY_RING)
 			flags |= DTRACEBUF_RING;
 

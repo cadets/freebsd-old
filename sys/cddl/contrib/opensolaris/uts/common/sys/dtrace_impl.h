@@ -431,7 +431,6 @@ typedef struct dtrace_aggregation {
 #define	DTRACEBUF_FULL		0x0040		/* "fill" buffer is full */
 #define	DTRACEBUF_CONSUMED	0x0080		/* buffer has been consumed */
 #define	DTRACEBUF_INACTIVE	0x0100		/* buffer is not yet active */
-#define	DTRACEBUF_DISRUPTOR 	0x0200		/* bufpolicy = "disruptor" */
 
 typedef struct dtrace_buffer {
 	volatile uint64_t dtb_offset;		/* current offset in buffer */

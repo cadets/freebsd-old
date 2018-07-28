@@ -1063,7 +1063,6 @@ typedef struct dtrace_fmtdesc {
 #define	DTRACEOPT_BUFPOLICY_RING	0	/* ring buffer */
 #define	DTRACEOPT_BUFPOLICY_FILL	1	/* fill buffer, then stop */
 #define	DTRACEOPT_BUFPOLICY_SWITCH	2	/* switch buffers */
-#define	DTRACEOPT_BUFPOLICY_DISRUPTOR	3	/* lockless distruptor */
 
 #define	DTRACEOPT_BUFRESIZE_AUTO	0	/* automatic resizing */
 #define	DTRACEOPT_BUFRESIZE_MANUAL	1	/* manual resizing */

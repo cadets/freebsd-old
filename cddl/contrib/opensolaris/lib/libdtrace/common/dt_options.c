@@ -817,7 +817,6 @@ static const struct {
 	{ "ring", DTRACEOPT_BUFPOLICY_RING },
 	{ "fill", DTRACEOPT_BUFPOLICY_FILL },
 	{ "switch", DTRACEOPT_BUFPOLICY_SWITCH },
-	{ "disruptor", DTRACEOPT_BUFPOLICY_DISRUPTOR},
 	{ NULL, 0 }
 };
 
