@@ -752,6 +752,11 @@ extern int _dtrace_debug;		/* debugging messages enabled */
 extern size_t _dtrace_bufsize;		/* default dt_buf_create() size */
 extern int _dtrace_argmax;		/* default maximum probe arguments */
 
+
+#define DT_SCRIPT_TYPE_GUEST 0x1
+#define DT_SCRIPT_TYPE_HOST 0x2
+extern int script_type;		/* default script type */
+
 extern const char *_dtrace_libdir;	/* default library directory */
 extern const char *_dtrace_moddir;	/* default kernel module directory */
 
