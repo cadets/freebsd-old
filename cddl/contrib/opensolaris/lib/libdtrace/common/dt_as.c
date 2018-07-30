@@ -384,7 +384,6 @@ dt_as(dt_pcb_t *pcb)
 		uint_t op = DIF_INSTR_OP(instr);
 
 		if (op == DIF_OP_CALL) {
-			printf("There's a call instruction\n");
 			if (script_type == DT_SCRIPT_TYPE_GUEST &&
 			    dt_subr_h2g[DIF_INSTR_SUBR(instr)] == 1) {
 				dp->dtdo_rtype.dtdt_flags &= ~DIF_TF_GUEST;
