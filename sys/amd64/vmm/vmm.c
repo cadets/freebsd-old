@@ -1798,7 +1798,6 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 	struct dtvirt_args dtv_args;
 	char *execargs = NULL;
 	int err;
-	//	int fault = 0;
 
 	biscuit->vm = vm;
 	biscuit->paging = paging;
