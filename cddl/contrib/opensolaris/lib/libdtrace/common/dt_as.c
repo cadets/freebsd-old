@@ -37,6 +37,63 @@
 #include <dt_parser.h>
 #include <dt_as.h>
 
+static int dt_subr_h2g[] = {
+	[DIF_SUBR_RAND] = 0,
+	[DIF_SUBR_MUTEX_OWNED] = 0,
+	[DIF_SUBR_MUTEX_OWNER] = 0,
+	[DIF_SUBR_MUTEX_TYPE_ADAPTIVE] = 0,
+	[DIF_SUBR_MUTEX_TYPE_SPIN] = 0,
+	[DIF_SUBR_RW_READ_HELD] = 0,
+	[DIF_SUBR_RW_WRITE_HELD] = 0,
+	[DIF_SUBR_RW_ISWRITER] = 0,
+	[DIF_SUBR_COPYIN] = 1, /* copyin(some_guest_uaddr); */
+	[DIF_SUBR_COPYINSTR] = 1, /* copyinstr(some_guest_uaddr); */
+	[DIF_SUBR_SPECULATION] = 0,
+	[DIF_SUBR_PROGENYOF] = 0,
+	[DIF_SUBR_STRLEN] = 0,
+	[DIF_SUBR_COPYOUT] = 0,
+	[DIF_SUBR_COPYOUTSTR] = 0,
+	[DIF_SUBR_ALLOCA] = 0,
+	[DIF_SUBR_BCOPY] = 0,
+	[DIF_SUBR_COPYINTO] = 0, /* XXX: Not sure what this is yet */
+	[DIF_SUBR_MSGDSIZE] = 0, /* XXX: Not sure what this is yet */
+	[DIF_SUBR_MSGSIZE] = 0,
+	[DIF_SUBR_GETMAJOR] = 0,
+	[DIF_SUBR_GETMINOR] = 0,
+	[DIF_SUBR_DDI_PATHNAME] = 0, /* XXX: Not sure what this is yet */
+	[DIF_SUBR_STRJOIN] = 1, /* x = strjoin(a, b); */
+	[DIF_SUBR_LLTOSTR] = 1, /* x = lltostr(3); */
+	[DIF_SUBR_BASENAME] = 1, /* x = basename(guest_addr); */
+	[DIF_SUBR_DIRNAME] = 1, /* x = dirname(guest_addr); */
+	[DIF_SUBR_CLEANPATH] = 1, /* x = cleanpath(guest_addr); */
+	[DIF_SUBR_STRCHR] = 1, /* x = strchr(guest_addr);
+                                * This is because we need to copy the string
+                                * into the host in order to search for things. */
+	[DIF_SUBR_STRRCHR] = 1,
+	[DIF_SUBR_STRSTR] = 1,
+	[DIF_SUBR_STRTOK] = 1,
+	[DIF_SUBR_SUBSTR] = 1,
+	[DIF_SUBR_INDEX] = 0,
+	[DIF_SUBR_RINDEX] = 0,
+	[DIF_SUBR_HTONS] = 0,
+	[DIF_SUBR_HTONL] = 0,
+	[DIF_SUBR_HTONLL] = 0,
+	[DIF_SUBR_NTOHS] = 0,
+	[DIF_SUBR_NTOHL] = 0,
+	[DIF_SUBR_NTOHLL] = 0,
+	[DIF_SUBR_INET_NTOP] = 1,
+	[DIF_SUBR_INET_NTOA] = 1,
+	[DIF_SUBR_INET_NTOA6] = 1,
+	[DIF_SUBR_TOUPPER] = 1,
+	[DIF_SUBR_TOLOWER] = 1,
+	[DIF_SUBR_MEMREF] = 0,
+	[DIF_SUBR_GETF] = 0,
+	[DIF_SUBR_JSON] = 1,
+	[DIF_SUBR_STRTOLL] = 0,
+	[DIF_SUBR_RANDOM] = 0,
+	[DIF_SUBR_UUIDTOSTR] = 1,
+};
+
 void
 dt_irlist_create(dt_irlist_t *dlp)
 {
@@ -320,11 +377,18 @@ dt_as(dt_pcb_t *pcb)
 	 * label to the index of the final instruction in the buffer and noting
 	 * any other instruction-specific DIFO flags such as dtdo_destructive.
 	 */
+	if (script_type == DT_SCRIPT_TYPE_GUEST)
+		dp->dtdo_rtype.dtdt_flags |= DIF_TF_GUEST;
 	for (i = 0; i < dp->dtdo_len; i++) {
 		dif_instr_t instr = dp->dtdo_buf[i];
 		uint_t op = DIF_INSTR_OP(instr);
 
 		if (op == DIF_OP_CALL) {
+			printf("There's a call instruction\n");
+			if (script_type == DT_SCRIPT_TYPE_GUEST &&
+			    dt_subr_h2g[DIF_INSTR_SUBR(instr)] == 1) {
+				dp->dtdo_rtype.dtdt_flags &= ~DIF_TF_GUEST;
+			}
 			if (DIF_INSTR_SUBR(instr) == DIF_SUBR_COPYOUT ||
 			    DIF_INSTR_SUBR(instr) == DIF_SUBR_COPYOUTSTR)
 				dp->dtdo_destructive = 1;

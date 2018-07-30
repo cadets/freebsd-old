@@ -6663,13 +6663,6 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 			break;
 		case DIF_OP_RET:
-			/*			if (mstate->dtms_biscuit) {
-				if (difo->dtdo_rtype.dtdt_flags != 0 &&
-				    difo->dtdo_rtype.dtdt_kind == DIF_TYPE_CTF) {
-					regs[rd] = dtrace_vmloadmem(mstate, regs[rd],
-					    difo->dtdo_rtype.dtdt_size);
-				}
-				}*/
 			rval = regs[rd];
 			pc = textlen;
 			break;
