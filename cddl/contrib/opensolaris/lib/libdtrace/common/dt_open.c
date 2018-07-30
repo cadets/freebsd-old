@@ -987,7 +987,7 @@ int _dtrace_debug = 0;		/* debug messages enabled (off) */
 const char *const _dtrace_version = DT_VERS_STRING; /* API version string */
 int _dtrace_rdvers = RD_VERSION; /* rtld_db feature version */
 
-int script_type = 0; /* script type */
+int script_type = DT_SCRIPT_TYPE_HOST; /* script type */
 
 typedef struct dt_fdlist {
 	int *df_fds;		/* array of provider driver file descriptors */
