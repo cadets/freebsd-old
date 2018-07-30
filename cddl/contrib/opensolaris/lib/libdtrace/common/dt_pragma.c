@@ -402,6 +402,25 @@ dt_pragma_option(const char *prname, dt_node_t *dnp)
 	if ((val = strchr(opt, '=')) != NULL)
 		*val++ = '\0';
 
+	if (strcmp(opt, "script_type") == 0) {
+		if (val == NULL) {
+			xyerror(D_PRAGMA_INVAL, "invalid script type");
+		}
+
+		if (strcmp(val, "guest") == 0) {
+			script_type = DT_SCRIPT_TYPE_GUEST;
+		} else if (strcmp(val, "host") == 0) {
+			script_type = DT_SCRIPT_TYPE_HOST;
+		} else {
+			xyerror(D_PRAGMA_INVAL, "invalid script type");
+		}
+
+		assert(script_type == DT_SCRIPT_TYPE_GUEST ||
+		    script_type == DT_SCRIPT_TYPE_HOST);
+
+		return;
+	}
+
 	if (dtrace_setopt(dtp, opt, val) == -1) {
 		if (val == NULL) {
 			xyerror(D_PRAGMA_OPTSET,
