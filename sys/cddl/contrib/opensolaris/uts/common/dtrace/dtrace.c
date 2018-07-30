@@ -7557,7 +7557,7 @@ out:
 
 static void
 dtrace_store_by_ref(dtrace_mstate_t *mstate, dtrace_difo_t *dp, caddr_t tomax, size_t size,
-    size_t *valoffsp, uint64_t *valp, uint64_t end, int intuple, int dtkind)
+    size_t *valoffsp, uint64_t *valp, uint64_t end, int intuple, int dtkind, int xlate)
 {
 	volatile uint16_t *flags;
 	uint64_t val = *valp;
@@ -7576,7 +7576,10 @@ dtrace_store_by_ref(dtrace_mstate_t *mstate, dtrace_difo_t *dp, caddr_t tomax, s
 
 		for (s = 0; s < size; s++) {
 			if (c != '\0' && dtkind == DIF_TF_BYREF) {
-				c = dtrace_load8(mstate, val++);
+				if (xlate)
+					c = dtrace_load8(mstate, val++);
+				else
+					c = dtrace_load8(NULL, val++);
 			} else if (c != '\0' && dtkind == DIF_TF_BYUREF) {
 				DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 				c = dtrace_fuword8((void *)(uintptr_t)val++);
@@ -7594,7 +7597,10 @@ dtrace_store_by_ref(dtrace_mstate_t *mstate, dtrace_difo_t *dp, caddr_t tomax, s
 		uint8_t c;
 		while (valoffs < end) {
 			if (dtkind == DIF_TF_BYREF) {
-				c = dtrace_load8(mstate, val++);
+				if (xlate)
+					c = dtrace_load8(mstate, val++);
+				else
+					c = dtrace_load8(NULL, val++);
 			} else if (dtkind == DIF_TF_BYUREF) {
 				DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 				c = dtrace_fuword8((void *)(uintptr_t)val++);
@@ -8254,7 +8260,8 @@ dtrace_ns_probe(void *biscuit, dtrace_id_t id, struct dtvirt_args *dtv_args)
 				dtrace_store_by_ref(&mstate, dp, tomax, size, &valoffs,
 				    &val, end, act->dta_intuple,
 				    dp->dtdo_rtype.dtdt_flags & DIF_TF_BYREF ?
-				    DIF_TF_BYREF: DIF_TF_BYUREF);
+				    DIF_TF_BYREF: DIF_TF_BYUREF,
+				    dp->dtdo_rtype.dtdt_flags & DIF_TF_GUEST ? 1 : 0);
 				continue;
 			}
 
