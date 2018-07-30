@@ -482,7 +482,7 @@ typedef struct dtrace_diftype {
 
 #define	DIF_TF_BYREF		0x1	/* type is passed by reference */
 #define	DIF_TF_BYUREF		0x2	/* user type is passed by reference */
-#define DIF_TF_GUEST		0x3	/* this is a guest address */
+#define DIF_TF_GUEST		0x4	/* this is a guest address */
 
 /*
  * A DTrace Intermediate Format variable record is used to describe each of the
