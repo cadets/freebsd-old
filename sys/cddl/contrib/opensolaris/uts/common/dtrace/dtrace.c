@@ -1182,6 +1182,46 @@ dtrace_filterfind(dtrace_filter_t *filt, const char *find)
 	return (-1);
 }
 
+static int
+dtrace_strcanload_h(uint64_t addr, size_t sz, size_t *remain,
+    dtrace_mstate_t *mstate, dtrace_vstate_t *vstate)
+{
+	size_t rsize;
+
+	/*
+	 * If we hold the privilege to read from kernel memory, then
+	 * everything is readable.
+	 */
+	if ((mstate->dtms_access & DTRACE_ACCESS_KERNEL) != 0) {
+		DTRACE_RANGE_REMAIN(remain, addr, addr, sz);
+		return (1);
+	}
+
+	/*
+	 * Even if the caller is uninterested in querying the remaining valid
+	 * range, it is required to ensure that the access is allowed.
+	 */
+	if (remain == NULL) {
+		remain = &rsize;
+	}
+	if (dtrace_canload_remains(addr, 0, remain, mstate, vstate)) {
+		size_t strsz;
+		/*
+		 * Perform the strlen after determining the length of the
+		 * memory region which is accessible.  This prevents timing
+		 * information from being used to find NULs in memory which is
+		 * not accessible to the caller.
+		 */
+		strsz = 1 + dtrace_strlen(NULL, (char *)(uintptr_t)addr,
+		    MIN(sz, *remain));
+		if (strsz <= *remain) {
+			return (1);
+		}
+	}
+
+	return (0);
+}
+
 /*
  * Convenience routine to check to see if a given string is within a memory
  * region in which a load may be issued given the user's privilege level;
@@ -1226,6 +1266,14 @@ dtrace_strcanload(uint64_t addr, size_t sz, size_t *remain,
 	}
 
 	return (0);
+}
+
+static int
+dtrace_strcanload_g(uint64_t addr, size_t sz, size_t *remain,
+    dtrace_mstate_t *mstate, dtrace_vstate_t *vstate)
+{
+
+	return (dtrace_strcanload(addr, sz, remain, mstate, vstate));
 }
 
 /*
@@ -1362,6 +1410,75 @@ dtrace_strncmp(dtrace_mstate_t *mstate, char *s1, char *s2, size_t limit)
 	} while (--limit && c1 != '\0' && !(*flags & CPU_DTRACE_FAULT));
 
 	return (0);
+}
+
+static int
+dtrace_strncmp_hh(dtrace_mstate_t *mstate, char *s1, char *s2, size_t limit)
+{
+	uint8_t c1, c2;
+	volatile uint16_t *flags;
+
+	if (s1 == s2 || limit == 0)
+		return (0);
+
+	flags = (volatile uint16_t *)&cpu_core[curcpu].cpuc_dtrace_flags;
+
+	do {
+		if (s1 == NULL) {
+			c1 = '\0';
+		} else {
+			c1 = dtrace_load8(NULL, (uintptr_t)s1++);
+		}
+
+		if (s2 == NULL) {
+			c2 = '\0';
+		} else {
+			c2 = dtrace_load8(NULL, (uintptr_t)s2++);
+		}
+
+		if (c1 != c2)
+			return (c1 - c2);
+	} while (--limit && c1 != '\0' && !(*flags & CPU_DTRACE_FAULT));
+
+	return (0);
+}
+
+static int
+dtrace_strncmp_hg(dtrace_mstate_t *mstate, char *s1, char *s2, size_t limit)
+{
+	uint8_t c1, c2;
+	volatile uint16_t *flags;
+
+	if (s1 == s2 || limit == 0)
+		return (0);
+
+	flags = (volatile uint16_t *)&cpu_core[curcpu].cpuc_dtrace_flags;
+
+	do {
+		if (s1 == NULL) {
+			c1 = '\0';
+		} else {
+			c1 = dtrace_load8(NULL, (uintptr_t)s1++);
+		}
+
+		if (s2 == NULL) {
+			c2 = '\0';
+		} else {
+			c2 = dtrace_load8(mstate, (uintptr_t)s2++);
+		}
+
+		if (c1 != c2)
+			return (c1 - c2);
+	} while (--limit && c1 != '\0' && !(*flags & CPU_DTRACE_FAULT));
+
+	return (0);
+}
+
+static int
+dtrace_strncmp_gg(dtrace_mstate_t *mstate, char *s1, char *s2, size_t limit)
+{
+
+	return (dtrace_strncmp(mstate, s1, s2, limit));
 }
 
 /*
@@ -6657,7 +6774,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			regs[rd] = (uint64_t)(uintptr_t)
 			    (strtab + DIF_INSTR_STRING(instr));
 			break;
-		case DIF_OP_SCMP: {
+		case DIF_OP_SCMP_GG: {
 			size_t sz = state->dts_options[DTRACEOPT_STRSIZE];
 			uintptr_t s1 = regs[r1];
 			uintptr_t s2 = regs[r2];
@@ -6671,6 +6788,71 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 				break;
 
 			cc_r = dtrace_strncmp(mstate, (char *)s1, (char *)s2,
+			    MIN(lim1, lim2));
+
+			cc_n = cc_r < 0;
+			cc_z = cc_r == 0;
+			cc_v = cc_c = 0;
+			break;
+
+		}
+		case DIF_OP_SCMP_HG: {
+			size_t sz = state->dts_options[DTRACEOPT_STRSIZE];
+			uintptr_t s1 = regs[r1];
+			uintptr_t s2 = regs[r2];
+			size_t lim1, lim2;
+
+			if (s1 != 0 &&
+			    !dtrace_strcanload_h(s1, sz, &lim1, mstate, vstate))
+				break;
+			if (s2 != 0 &&
+			    !dtrace_strcanload_g(s2, sz, &lim2, mstate, vstate))
+				break;
+
+			cc_r = dtrace_strncmp_hg(mstate, (char *)s1, (char *)s2,
+			    MIN(lim1, lim2));
+
+			cc_n = cc_r < 0;
+			cc_z = cc_r == 0;
+			cc_v = cc_c = 0;
+			break;
+		}
+		case DIF_OP_SCMP_GH: {
+			size_t sz = state->dts_options[DTRACEOPT_STRSIZE];
+			uintptr_t s1 = regs[r1];
+			uintptr_t s2 = regs[r2];
+			size_t lim1, lim2;
+
+			if (s1 != 0 &&
+			    !dtrace_strcanload_g(s1, sz, &lim1, mstate, vstate))
+				break;
+			if (s2 != 0 &&
+			    !dtrace_strcanload_h(s2, sz, &lim2, mstate, vstate))
+				break;
+
+			cc_r = dtrace_strncmp_hh(mstate, (char *)s2, (char *)s1,
+			    MIN(lim1, lim2));
+
+			cc_n = cc_r < 0;
+			cc_z = cc_r == 0;
+			cc_v = cc_c = 0;
+			break;
+		}
+		case DIF_OP_SCMP:
+		case DIF_OP_SCMP_HH: {
+			size_t sz = state->dts_options[DTRACEOPT_STRSIZE];
+			uintptr_t s1 = regs[r1];
+			uintptr_t s2 = regs[r2];
+			size_t lim1, lim2;
+
+			if (s1 != 0 &&
+			    !dtrace_strcanload_h(s1, sz, &lim1, mstate, vstate))
+				break;
+			if (s2 != 0 &&
+			    !dtrace_strcanload_h(s2, sz, &lim2, mstate, vstate))
+				break;
+
+			cc_r = dtrace_strncmp(NULL, (char *)s1, (char *)s2,
 			    MIN(lim1, lim2));
 
 			cc_n = cc_r < 0;
