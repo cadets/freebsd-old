@@ -210,6 +210,10 @@ typedef enum dtrace_probespec {
  * XXX(dstolfa): Should we be passing in which hypercall?
  */
 #define DIF_OP_HCALL	80		/* hcall */
+#define DIF_OP_SCMP_HH 81
+#define DIF_OP_SCMP_GH 82
+#define DIF_OP_SCMP_GG 83
+#define DIF_OP_SCMP_HG 84
 
 #define	DIF_INTOFF_MAX		0xffff	/* highest integer table offset */
 #define	DIF_STROFF_MAX		0xffff	/* highest string table offset */
