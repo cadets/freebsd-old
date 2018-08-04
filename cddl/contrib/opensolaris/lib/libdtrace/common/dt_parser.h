@@ -50,6 +50,9 @@ extern "C" {
 typedef struct dt_node {
 	ctf_file_t *dn_ctfp;	/* CTF type container for node's type */
 	ctf_id_t dn_type;	/* CTF type reference for node's type */
+#define DT_ADDR_HOST	0x01
+#define DT_ADDR_GUEST	0x02
+	uchar_t dn_addr_type;	/* address type (host/guest) */
 	uchar_t dn_kind;	/* node kind (DT_NODE_*, defined below) */
 	uchar_t dn_flags;	/* node flags (DT_NF_*, defined below) */
 	ushort_t dn_op;		/* operator (DT_TOK_*, defined by lex) */

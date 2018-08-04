@@ -785,8 +785,15 @@ dt_cg_compare_op(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp, uint_t op)
 	dt_cg_node(dnp->dn_left, dlp, drp);
 	dt_cg_node(dnp->dn_right, dlp, drp);
 
-	if (dt_node_is_string(dnp->dn_left) || dt_node_is_string(dnp->dn_right))
-		opc = DIF_OP_SCMP;
+	if (dt_node_is_string(dnp->dn_left) || dt_node_is_string(dnp->dn_right)) {
+		if (dt_node_is_host(dnp->dn_left)) {
+			opc = dt_node_is_host(dnp->dn_right) ?
+			    DIF_OP_SCMP_HH : DIF_OP_SCMP_HG;
+		} else {
+			opc = dt_node_is_host(dnp->dn_right) ?
+			    DIF_OP_SCMP_GH : DIF_OP_SCMP_GG;
+		}
+	}
 	else
 		opc = DIF_OP_CMP;
 
