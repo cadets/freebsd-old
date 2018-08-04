@@ -284,10 +284,10 @@ au_evnamemap_init_preload(void)
 	size = preload_fetch_size(kmdp);
 
 	/*
-	 * Assume that we can write into preloaded memory, and that because
-	 * the last character is a new line, we can replace it with a nul byte
-	 * safely.  This allows us to then use strsep(3).  Alternatively, we
-	 * could allocate memory, memcpy(), etc...
+	 * Parse preloaded configuration file "in place".  Assume that the
+	 * last character is a new line, meaning that we can replace it with a
+	 * nul byte safely.  We can then use strsep(3) to process the full
+	 * buffer.
 	 */
 	ptr[size-1] = '\0';
 
