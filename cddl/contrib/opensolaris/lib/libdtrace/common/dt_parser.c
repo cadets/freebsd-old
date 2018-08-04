@@ -950,6 +950,14 @@ dt_node_is_dynamic(const dt_node_t *dnp)
 }
 
 int
+dt_node_is_host(const dt_node_t *dnp)
+{
+
+	return (dnp->dn_addr_type == DT_ADDR_HOST);
+}
+
+
+int
 dt_node_is_string(const dt_node_t *dnp)
 {
 	return (dnp->dn_ctfp == DT_STR_CTFP(yypcb->pcb_hdl) &&
@@ -1297,6 +1305,7 @@ dt_node_string(char *string)
 	dnp = dt_node_alloc(DT_NODE_STRING);
 	dnp->dn_op = DT_TOK_STRING;
 	dnp->dn_string = string;
+	dnp->dn_addr_type = DT_ADDR_HOST;
 	dt_node_type_assign(dnp, DT_STR_CTFP(dtp), DT_STR_TYPE(dtp), B_FALSE);
 
 	return (dnp);
