@@ -62,6 +62,37 @@ dt_cg_node_alloc(uint_t label, dif_instr_t instr)
 	return (dip);
 }
 
+static int
+dt_cg_resolve_addr_type(dt_node_t *dnp)
+{
+	if (dnp->dn_kind != DT_NODE_STRING &&
+	    dnp->dn_kind != DT_NODE_VAR)
+		return (0);
+
+	/*
+	 * This should cover any user-defined variable that has previously
+	 * been assigned to.
+	 */
+	if (dnp->dn_addr_type == DT_ADDR_HOST ||
+	    dnp->dn_addr_type == DT_ADDR_GUEST)
+		return (dnp->dn_addr_type);
+
+	/*
+	 * Any string literal.
+	 */
+	if (dnp->dn_kind == DT_NODE_STRING)
+		return (DT_ADDR_HOST);
+
+	/*
+	 * This is actually a built-in variable.
+	 */
+	if (dnp->dn_kind == DT_NODE_VAR &&
+	    script_type == DT_SCRIPT_TYPE_GUEST)
+		return (DT_ADDR_GUEST);
+
+	return (DT_ADDR_HOST);
+}
+
 /*
  * Code generator wrapper function for ctf_member_info.  If we are given a
  * reference to a forward declaration tag, search the entire type space for
@@ -786,11 +817,11 @@ dt_cg_compare_op(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp, uint_t op)
 	dt_cg_node(dnp->dn_right, dlp, drp);
 
 	if (dt_node_is_string(dnp->dn_left) || dt_node_is_string(dnp->dn_right)) {
-		if (dt_node_is_host(dnp->dn_left)) {
-			opc = dt_node_is_host(dnp->dn_right) ?
+		if (dt_cg_resolve_addr_type(dnp->dn_left) == DT_ADDR_HOST) {
+			opc = dt_cg_resolve_addr_type(dnp->dn_right) == DT_ADDR_HOST ?
 			    DIF_OP_SCMP_HH : DIF_OP_SCMP_HG;
 		} else {
-			opc = dt_node_is_host(dnp->dn_right) ?
+			opc = dt_cg_resolve_addr_type(dnp->dn_right) == DT_ADDR_HOST ?
 			    DIF_OP_SCMP_GH : DIF_OP_SCMP_GG;
 		}
 	}
@@ -1540,6 +1571,15 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 	case DT_TOK_ASGN:
 		dt_cg_node(dnp->dn_right, dlp, drp);
 		dnp->dn_reg = dnp->dn_right->dn_reg;
+		if (dt_node_is_string(dnp->dn_right)) {
+			if (dnp->dn_addr_type != 0)
+				xyerror(D_OP_INCOMPAT,
+				    "trying to assign %s to %s",
+				    dt_node_addr_type_name(dnp->dn_right),
+				    dt_node_addr_type_name(dnp));
+			dnp->dn_addr_type =
+			    dt_cg_resolve_addr_type(dnp->dn_right);
+		}
 		dt_cg_asgn_op(dnp, dlp, drp);
 		break;
 
