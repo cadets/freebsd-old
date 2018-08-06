@@ -250,13 +250,6 @@ dt_dis_xlate(const dtrace_difo_t *dp,
 	}
 }
 
-static void
-dt_dis_scmp_hh(const dtrace_difo_t *dp,
-    const char *name, dif_instr_t in, FILE *fp)
-{
-
-}
-
 static char *
 dt_dis_locstr(const dtrace_diftype_t *t)
 {
