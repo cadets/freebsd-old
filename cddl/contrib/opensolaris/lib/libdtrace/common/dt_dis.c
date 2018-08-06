@@ -253,10 +253,8 @@ dt_dis_xlate(const dtrace_difo_t *dp,
 static char *
 dt_dis_locstr(const dtrace_diftype_t *t)
 {
-	if (t->dtdt_flags & DIF_TF_GUEST)
-		return "guest";
-	else
-		return "host";
+
+	return (t->dtdt_flags & DIF_TF_GUEST ? "guest" : "host");
 }
 
 static char *
