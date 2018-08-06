@@ -250,6 +250,13 @@ dt_dis_xlate(const dtrace_difo_t *dp,
 	}
 }
 
+static void
+dt_dis_scmp_hh(const dtrace_difo_t *dp,
+    const char *name, dif_instr_t in, FILE *fp)
+{
+
+}
+
 static char *
 dt_dis_locstr(const dtrace_diftype_t *t)
 {
@@ -437,6 +444,11 @@ dt_dis(const dtrace_difo_t *dp, FILE *fp)
 		{ "rldx", dt_dis_load },	/* DIF_OP_RLDX */
 		{ "xlate", dt_dis_xlate },	/* DIF_OP_XLATE */
 		{ "xlarg", dt_dis_xlate },	/* DIF_OP_XLARG */
+		{ "hcall", dt_dis_str },	/* DIF_OP_HCALL */
+		{ "scmp_hh", dt_dis_cmp },	/* DIF_OP_SCMP_HH */
+		{ "scmp_gh", dt_dis_cmp },	/* DIF_OP_SCMP_GH */
+		{ "scmp_gg", dt_dis_cmp },	/* DIF_OP_SCMP_GG */
+		{ "scmp_hg", dt_dis_cmp },	/* DIF_OP_SCMP_HG */
 	};
 
 	const struct opent *op;

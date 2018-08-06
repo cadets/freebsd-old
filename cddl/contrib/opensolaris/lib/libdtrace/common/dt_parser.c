@@ -530,6 +530,7 @@ dt_node_xalloc(dtrace_hdl_t *dtp, int kind)
 	dnp->dn_attr = _dtrace_defattr;
 	dnp->dn_list = NULL;
 	dnp->dn_link = NULL;
+	dnp->dn_addr_type = 0;
 	bzero(&dnp->dn_u, sizeof (dnp->dn_u));
 
 	return (dnp);
@@ -724,6 +725,14 @@ dt_node_type_propagate(const dt_node_t *src, dt_node_t *dst)
 	dst->dn_flags = src->dn_flags & ~DT_NF_LVALUE;
 	dst->dn_ctfp = src->dn_ctfp;
 	dst->dn_type = src->dn_type;
+}
+
+const char *
+dt_node_addr_type_name(const dt_node_t *dnp)
+{
+
+	return (dnp->dn_addr_type == DT_ADDR_HOST ? "host" :
+	    dnp->dn_addr_type == DT_ADDR_GUEST ? "guest" : "unknown");
 }
 
 const char *
@@ -1305,7 +1314,6 @@ dt_node_string(char *string)
 	dnp = dt_node_alloc(DT_NODE_STRING);
 	dnp->dn_op = DT_TOK_STRING;
 	dnp->dn_string = string;
-	dnp->dn_addr_type = DT_ADDR_HOST;
 	dt_node_type_assign(dnp, DT_STR_CTFP(dtp), DT_STR_TYPE(dtp), B_FALSE);
 
 	return (dnp);
@@ -3179,6 +3187,37 @@ dt_assign_common(dt_node_t *dnp)
 	dt_node_attr_assign(dnp, dt_attr_min(lp->dn_attr, rp->dn_attr));
 }
 
+static int
+dt_node_is_builtin(dt_node_t *dnp)
+{
+	const char *name;
+
+	if (dnp->dn_kind != DT_NODE_VAR)
+		return (0);
+
+	name = dnp->dn_ident->di_name;
+
+	/*
+	 * XXXDS: This should include all built-ins that can follow pointers
+	 * because we may end up with something along the lines of:
+	 *
+	 *     stringof(curthread->td_proc->p_comm)
+	 *
+	 * which is a string by CTF type and it's guest memory via a builtin.
+	 *
+	 * For now, we only deal with a couple as a PoC, but I have to extend
+	 * this for audit.d to run correctly.
+	 */
+	return (strcmp(name, "execname")          ||
+	    strcmp(name, "execargs")              ||
+	    strcmp(name, "probeprov")             ||
+	    strcmp(name, "probemod")              ||
+	    strcmp(name, "probefunc")             ||
+	    strcmp(name, "probename")             ||
+	    strcmp(name, "zonename")              ||
+	    strncmp(name, "arg", sizeof("arg")));
+}
+
 static dt_node_t *
 dt_cook_op2(dt_node_t *dnp, uint_t idflags)
 {
@@ -3587,6 +3626,17 @@ dt_cook_op2(dt_node_t *dnp, uint_t idflags)
 				lp->dn_flags |= DT_NF_USERLAND;
 				lp->dn_ident->di_flags |= DT_IDFLG_USER;
 			}
+
+			if (dt_node_is_string(rp)) {
+				if (dt_node_is_builtin(rp))
+					lp->dn_addr_type =
+					    script_type == DT_SCRIPT_TYPE_HOST ?
+					    DT_ADDR_HOST : DT_ADDR_GUEST;
+				else if (rp->dn_kind == DT_NODE_STRING)
+					lp->dn_addr_type = DT_ADDR_HOST;
+				else
+					lp->dn_addr_type = rp->dn_addr_type;
+			}
 		}
 
 		if (lp->dn_kind == DT_NODE_VAR)
@@ -3607,6 +3657,16 @@ dt_cook_op2(dt_node_t *dnp, uint_t idflags)
 				    opstr(op),
 				    dt_node_type_name(lp, n1, sizeof (n1)));
 			}
+		}
+
+		if (dt_node_is_string(rp) && dt_node_is_string(lp)) {
+			if (lp->dn_addr_type != rp->dn_addr_type &&
+			    !dt_node_is_builtin(rp))
+				xyerror(D_OP_INCOMPAT,
+				    "operands have incompatible "
+				    "address types: \"%s\" %s \"%s\"\n",
+				    dt_node_addr_type_name(lp), opstr(op),
+				    dt_node_addr_type_name(rp));
 		}
 
 		if (idp != NULL && idp->di_kind == DT_IDENT_XLSOU &&

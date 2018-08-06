@@ -10459,6 +10459,10 @@ dtrace_difo_validate(dtrace_difo_t *dp, dtrace_vstate_t *vstate, uint_t nregs,
 			break;
 		case DIF_OP_CMP:
 		case DIF_OP_SCMP:
+		case DIF_OP_SCMP_HH:
+		case DIF_OP_SCMP_HG:
+		case DIF_OP_SCMP_GH:
+		case DIF_OP_SCMP_GG:
 			if (r1 >= nregs)
 				err += efunc(pc, "invalid register %u\n", r1);
 			if (r2 >= nregs)
