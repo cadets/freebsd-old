@@ -388,6 +388,7 @@ dt_as(dt_pcb_t *pcb)
 			    dt_subr_h2g[DIF_INSTR_SUBR(instr)] == 1) {
 				dp->dtdo_rtype.dtdt_flags &= ~DIF_TF_GUEST;
 			}
+
 			if (DIF_INSTR_SUBR(instr) == DIF_SUBR_COPYOUT ||
 			    DIF_INSTR_SUBR(instr) == DIF_SUBR_COPYOUTSTR)
 				dp->dtdo_destructive = 1;
