@@ -4686,9 +4686,15 @@ dt_node_diftype(dtrace_hdl_t *dtp, const dt_node_t *dnp, dtrace_diftype_t *tp)
 		    ctf_type_resolve(dnp->dn_ctfp, dnp->dn_type));
 	}
 
-	tp->dtdt_flags = (dnp->dn_flags & DT_NF_REF) ?
-	    (dnp->dn_flags & DT_NF_USERLAND) ? DIF_TF_BYUREF :
-	    DIF_TF_BYREF : 0;
+	if (dnp->dn_flags & DT_NF_REF) {
+		if (dnp->dn_flags & DT_NF_USERLAND)
+			tp->dtdt_flags |= DIF_TF_BYUREF;
+		else
+			tp->dtdt_flags |= DIF_TF_BYREF;
+	} else {
+		tp->dtdt_flags &= ~(DIF_TF_BYUREF | DIF_TF_BYREF);
+	}
+
 	tp->dtdt_pad = 0;
 	tp->dtdt_size = ctf_type_size(dnp->dn_ctfp, dnp->dn_type);
 }
