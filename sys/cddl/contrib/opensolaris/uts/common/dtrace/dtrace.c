@@ -6848,7 +6848,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			    !dtrace_strcanload_h(s2, sz, &lim2, mstate, vstate))
 				break;
 
-			cc_r = dtrace_strncmp_hh(mstate, (char *)s2, (char *)s1,
+			cc_r = dtrace_strncmp_hg(mstate, (char *)s2, (char *)s1,
 			    MIN(lim1, lim2));
 
 			cc_n = cc_r < 0;
@@ -6870,7 +6870,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			    !dtrace_strcanload_h(s2, sz, &lim2, mstate, vstate))
 				break;
 
-			cc_r = dtrace_strncmp(NULL, (char *)s1, (char *)s2,
+			cc_r = dtrace_strncmp_hh(NULL, (char *)s1, (char *)s2,
 			    MIN(lim1, lim2));
 
 			cc_n = cc_r < 0;
@@ -10735,7 +10735,8 @@ dtrace_difo_validate(dtrace_difo_t *dp, dtrace_vstate_t *vstate, uint_t nregs,
 
 		et = &existing->dtdv_type;
 
-		if (vt->dtdt_flags != et->dtdt_flags) {
+		if ((vt->dtdt_flags & DIF_TF_BMASK) !=
+		    (et->dtdt_flags & DIF_TF_BMASK)) {
 			err += efunc(i, "%d changed variable type flags\n", id);
 			break;
 		}
