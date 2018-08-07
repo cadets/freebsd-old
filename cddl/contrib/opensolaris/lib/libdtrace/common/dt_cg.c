@@ -594,7 +594,16 @@ dt_cg_arglist(dt_ident_t *idp, dt_node_t *args,
 		isp->dis_args[i].dn_reg = -1;
 
 		if (t.dtdt_flags & DIF_TF_BYREF) {
-			op = DIF_OP_PUSHTR;
+			if (dt_node_is_string(dnp) &&
+			    dnp->dn_kind == DT_NODE_VAR) {
+				assert(dt_cg_resolve_addr_type(dnp) == DT_ADDR_HOST ||
+				    dt_cg_resolve_addr_type(dnp) == DT_ADDR_GUEST);
+				if (dt_cg_resolve_addr_type(dnp) == DT_ADDR_HOST)
+					op = DIF_OP_PUSHTR_H;
+				else
+					op = DIF_OP_PUSHTR_G;
+			} else
+				op = DIF_OP_PUSHTR_H;
 			if (t.dtdt_size != 0) {
 				reg = dt_regset_alloc(drp);
 				dt_cg_setx(dlp, reg, t.dtdt_size);

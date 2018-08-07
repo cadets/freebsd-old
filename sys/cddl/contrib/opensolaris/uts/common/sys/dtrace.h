@@ -214,6 +214,8 @@ typedef enum dtrace_probespec {
 #define DIF_OP_SCMP_GH	82
 #define DIF_OP_SCMP_GG	83
 #define DIF_OP_SCMP_HG	84
+#define	DIF_OP_PUSHTR_G	85
+#define	DIF_OP_PUSHTR_H	86
 
 #define	DIF_INTOFF_MAX		0xffff	/* highest integer table offset */
 #define	DIF_STROFF_MAX		0xffff	/* highest string table offset */
