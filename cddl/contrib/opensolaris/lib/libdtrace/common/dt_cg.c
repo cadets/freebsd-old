@@ -2034,8 +2034,29 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 			dt_cg_arglist(dnp->dn_ident, dnp->dn_args, dlp, drp);
 
 			dnp->dn_reg = dt_regset_alloc(drp);
-			instr = DIF_INSTR_CALL(dnp->dn_ident->di_id,
-			    dnp->dn_reg);
+
+			if (dnp->dn_ident->di_id == DIF_SUBR_STRJOIN) {
+				dt_node_t *fst, *snd;
+
+				fst = dnp->dn_args;
+				snd = fst->dn_list;
+
+				assert(dt_cg_resolve_addr_type(fst) == DT_ADDR_HOST ||
+				    dt_cg_resolve_addr_type(fst) == DT_ADDR_GUEST);
+				assert(dt_cg_resolve_addr_type(snd) == DT_ADDR_HOST ||
+				    dt_cg_resolve_addr_type(snd) == DT_ADDR_GUEST);
+
+				if (dt_cg_resolve_addr_type(fst) == DT_ADDR_HOST)
+					instr = DIF_INSTR_CALL(
+					    dt_cg_resolve_addr_type(snd) == DT_ADDR_HOST ?
+					    DIF_SUBR_STRJOIN_HH : DIF_SUBR_STRJOIN_HG, dnp->dn_reg);
+				else
+					instr = DIF_INSTR_CALL(
+					    dt_cg_resolve_addr_type(snd) == DT_ADDR_HOST ?
+					    DIF_SUBR_STRJOIN_GH : DIF_SUBR_STRJOIN_GG, dnp->dn_reg);
+			} else
+				instr = DIF_INSTR_CALL(dnp->dn_ident->di_id,
+				    dnp->dn_reg);
 
 			dt_irlist_append(dlp,
 			    dt_cg_node_alloc(DT_LBL_NONE, instr));

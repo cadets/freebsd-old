@@ -460,7 +460,7 @@ static const dt_ident_t _dtrace_globals[] = {
 	&dt_idops_func, "string(const char *, char)" },
 { "strlen", DT_IDENT_FUNC, 0, DIF_SUBR_STRLEN, DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_func, "size_t(const char *)" },
-{ "strjoin", DT_IDENT_FUNC, 0, DIF_SUBR_STRJOIN_GG, DT_ATTR_STABCMN, DT_VERS_1_0,
+{ "strjoin", DT_IDENT_FUNC, 0, DIF_SUBR_STRJOIN, DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_func, "string(const char *, const char *)" },
 { "strjoin_hh", DT_IDENT_FUNC, 0, DIF_SUBR_STRJOIN_HH, DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_func, "string(const char *, const char *)" },
