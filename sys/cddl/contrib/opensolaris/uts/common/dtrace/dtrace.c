@@ -7168,6 +7168,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			    regs, tupregs, ttop, mstate, state);
 			break;
 
+		case DIF_OP_PUSHTR_G:
 		case DIF_OP_PUSHTR:
 			if (ttop == DIF_DTR_NREGS) {
 				*flags |= CPU_DTRACE_TUPOFLOW;
@@ -7185,6 +7186,37 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 				 */
 				tupregs[ttop].dttk_size =
 				    dtrace_strlen(mstate, (char *)(uintptr_t)regs[rd],
+				    regs[r2] ? regs[r2] :
+				    dtrace_strsize_default) + 1;
+			} else {
+				if (regs[r2] > LONG_MAX) {
+					*flags |= CPU_DTRACE_ILLOP;
+					break;
+				}
+
+				tupregs[ttop].dttk_size = regs[r2];
+			}
+
+			tupregs[ttop++].dttk_value = regs[rd];
+			break;
+
+		case DIF_OP_PUSHTR_H:
+			if (ttop == DIF_DTR_NREGS) {
+				*flags |= CPU_DTRACE_TUPOFLOW;
+				break;
+			}
+
+			if (r1 == DIF_TYPE_STRING) {
+				/*
+				 * If this is a string type and the size is 0,
+				 * we'll use the system-wide default string
+				 * size.  Note that we are _not_ looking at
+				 * the value of the DTRACEOPT_STRSIZE option;
+				 * had this been set, we would expect to have
+				 * a non-zero size value in the "pushtr".
+				 */
+				tupregs[ttop].dttk_size =
+				    dtrace_strlen(NULL, (char *)(uintptr_t)regs[rd],
 				    regs[r2] ? regs[r2] :
 				    dtrace_strsize_default) + 1;
 			} else {
@@ -10612,6 +10644,8 @@ dtrace_difo_validate(dtrace_difo_t *dp, dtrace_vstate_t *vstate, uint_t nregs,
 
 			break;
 		case DIF_OP_PUSHTR:
+		case DIF_OP_PUSHTR_H:
+		case DIF_OP_PUSHTR_G:
 			if (type != DIF_TYPE_STRING && type != DIF_TYPE_CTF)
 				err += efunc(pc, "invalid ref type %u\n", type);
 			if (r2 >= nregs)

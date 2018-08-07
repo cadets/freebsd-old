@@ -440,6 +440,8 @@ dt_dis(const dtrace_difo_t *dp, FILE *fp)
 		{ "scmp_gh", dt_dis_cmp },	/* DIF_OP_SCMP_GH */
 		{ "scmp_gg", dt_dis_cmp },	/* DIF_OP_SCMP_GG */
 		{ "scmp_hg", dt_dis_cmp },	/* DIF_OP_SCMP_HG */
+		{ "pushtr_g", dt_dis_pushts},	/* DIF_OP_PUSHTR_G */
+		{ "pushtr_h", dt_dis_pushts},	/* DIF_OP_PUSHTR_H */
 	};
 
 	const struct opent *op;
