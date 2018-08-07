@@ -4586,6 +4586,82 @@ dtrace_json(dtrace_mstate_t *mstate, uint64_t size,
 	return (NULL);
 }
 
+static char *
+dtrace_strjoin(dtrace_state_t *state, dtrace_mstate_t *mstate,
+    dtrace_vstate_t *vstate, uintptr_t s1, uintptr_t s2, int t1, int t2)
+{
+	char *d = (char *)mstate->dtms_scratch_ptr;
+	uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
+	int i = 0, j = 0;
+	size_t lim1, lim2;
+	char c;
+
+	if (t1 && t2) {
+		if (!dtrace_strcanload_g(s1, size, &lim1, mstate, vstate) ||
+		    !dtrace_strcanload_g(s2, size, &lim2, mstate, vstate)) {
+			return (NULL);
+		}
+	} else if (t1 && !t2) {
+		if (!dtrace_strcanload_g(s1, size, &lim1, mstate, vstate) ||
+		    !dtrace_strcanload_h(s2, size, &lim2, mstate, vstate)) {
+			return (NULL);
+		}
+	} else if (!t1 && t2) {
+		if (!dtrace_strcanload_h(s1, size, &lim1, mstate, vstate) ||
+		    !dtrace_strcanload_g(s2, size, &lim2, mstate, vstate)) {
+			return (NULL);
+		}
+	} else {
+		if (!dtrace_strcanload_h(s1, size, &lim1, mstate, vstate) ||
+		    !dtrace_strcanload_h(s2, size, &lim2, mstate, vstate)) {
+			return (NULL);
+		}
+	}
+
+	if (!DTRACE_INSCRATCH(mstate, size)) {
+		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
+		return (NULL);
+	}
+
+	for (;;) {
+		if (i >= size) {
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
+			return (NULL);
+		}
+		if (t1)
+			c = (i >= lim1) ? '\0' : dtrace_load8(mstate, s1++);
+		else
+			c = (i >= lim1) ? '\0' : dtrace_load8(NULL, s1++);
+
+		if ((d[i++] = c) == '\0') {
+			i--;
+			break;
+		}
+	}
+
+	for (;;) {
+		if (i >= size) {
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
+			return (NULL);
+		}
+
+		if (t2)
+			c = (j++ >= lim2) ? '\0' : dtrace_load8(mstate, s2++);
+		else
+			c = (j++ >= lim2) ? '\0' : dtrace_load8(NULL, s2++);
+
+		if ((d[i++] = c) == '\0')
+			break;
+	}
+
+	if (i < size) {
+		mstate->dtms_scratch_ptr += i;
+		return (d);
+	}
+
+	return (NULL);
+}
+
 /*
  * Emulate the execution of DTrace ID subroutines invoked by the call opcode.
  * Notice that we don't bother validating the proper number of arguments or
@@ -5728,60 +5804,23 @@ dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 	}
 #endif
 
-	case DIF_SUBR_STRJOIN: {
-		char *d = (char *)mstate->dtms_scratch_ptr;
-		uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
-		uintptr_t s1 = tupregs[0].dttk_value;
-		uintptr_t s2 = tupregs[1].dttk_value;
-		int i = 0, j = 0;
-		size_t lim1, lim2;
-		char c;
-
-		if (!dtrace_strcanload(s1, size, &lim1, mstate, vstate) ||
-		    !dtrace_strcanload(s2, size, &lim2, mstate, vstate)) {
-			regs[rd] = 0;
-			break;
-		}
-
-		if (!DTRACE_INSCRATCH(mstate, size)) {
-			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
-			regs[rd] = 0;
-			break;
-		}
-
-		for (;;) {
-			if (i >= size) {
-				DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
-				regs[rd] = 0;
-				break;
-			}
-			c = (i >= lim1) ? '\0' : dtrace_load8(mstate, s1++);
-			if ((d[i++] = c) == '\0') {
-				i--;
-				break;
-			}
-		}
-
-		for (;;) {
-			if (i >= size) {
-				DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
-				regs[rd] = 0;
-				break;
-			}
-
-			c = (j++ >= lim2) ? '\0' : dtrace_load8(mstate, s2++);
-			if ((d[i++] = c) == '\0')
-				break;
-		}
-
-		if (i < size) {
-			mstate->dtms_scratch_ptr += i;
-			regs[rd] = (uintptr_t)d;
-		}
-
+	case DIF_SUBR_STRJOIN_GG:
+	case DIF_SUBR_STRJOIN:
+		regs[rd] = (uintptr_t)dtrace_strjoin(state, mstate, vstate,
+		    tupregs[0].dttk_value, tupregs[1].dttk_value, 1, 1);
 		break;
-	}
-
+	case DIF_SUBR_STRJOIN_HH:
+		regs[rd] = (uintptr_t)dtrace_strjoin(state, mstate, vstate,
+		    tupregs[0].dttk_value, tupregs[1].dttk_value, 0, 0);
+		break;
+	case DIF_SUBR_STRJOIN_HG:
+		regs[rd] = (uintptr_t)dtrace_strjoin(state, mstate, vstate,
+		    tupregs[0].dttk_value, tupregs[1].dttk_value, 0, 1);
+		break;
+	case DIF_SUBR_STRJOIN_GH:
+		regs[rd] = (uintptr_t)dtrace_strjoin(state, mstate, vstate,
+		    tupregs[0].dttk_value, tupregs[1].dttk_value, 1, 0);
+		break;
 	case DIF_SUBR_STRTOLL: {
 		uintptr_t s = tupregs[0].dttk_value;
 		uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
