@@ -92,6 +92,10 @@ static int dt_subr_h2g[] = {
 	[DIF_SUBR_STRTOLL] = 0,
 	[DIF_SUBR_RANDOM] = 0,
 	[DIF_SUBR_UUIDTOSTR] = 1,
+	[DIF_SUBR_STRJOIN_HH] = 1,
+	[DIF_SUBR_STRJOIN_GH] = 1,
+	[DIF_SUBR_STRJOIN_HG] = 1,
+	[DIF_SUBR_STRJOIN_GG] = 1,
 };
 
 void
