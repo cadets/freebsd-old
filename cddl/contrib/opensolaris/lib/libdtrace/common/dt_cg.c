@@ -66,7 +66,11 @@ static int
 dt_cg_resolve_addr_type(dt_node_t *dnp)
 {
 	if (dnp->dn_kind != DT_NODE_STRING &&
-	    dnp->dn_kind != DT_NODE_VAR)
+	    dnp->dn_kind != DT_NODE_VAR    &&
+	    dnp->dn_kind != DT_NODE_FUNC   &&
+	    dnp->dn_kind != DT_NODE_OP1    &&
+	    dnp->dn_kind != DT_NODE_OP2    &&
+	    dnp->dn_kind != DT_NODE_OP3)
 		return (0);
 
 	/*
@@ -78,11 +82,27 @@ dt_cg_resolve_addr_type(dt_node_t *dnp)
 		return (dnp->dn_addr_type);
 
 	/*
-	 * Any string literal.
+	 * Any string literal or a function returning a string.
 	 */
-	if (dnp->dn_kind == DT_NODE_STRING)
+	if (dnp->dn_kind == DT_NODE_STRING ||
+	    dnp->dn_kind == DT_NODE_FUNC   ||
+	    dnp->dn_kind == DT_NODE_OP2)
 		return (DT_ADDR_HOST);
 
+	if (dnp->dn_kind == DT_NODE_OP1)
+		return (dt_cg_resolve_addr_type(dnp->dn_child));
+
+	if (dnp->dn_kind == DT_NODE_OP3) {
+		int t1, t2;
+
+		t1 = dt_cg_resolve_addr_type(dnp->dn_right->dn_left);
+		t2 = dt_cg_resolve_addr_type(dnp->dn_right->dn_right);
+
+		if (t1 == t2)
+			return (t1);
+
+		return (NULL);
+	}
 	/*
 	 * This is actually a built-in variable.
 	 */
@@ -2041,6 +2061,7 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 				fst = dnp->dn_args;
 				snd = fst->dn_list;
 
+				    dt_cg_resolve_addr_type(snd));
 				assert(dt_cg_resolve_addr_type(fst) == DT_ADDR_HOST ||
 				    dt_cg_resolve_addr_type(fst) == DT_ADDR_GUEST);
 				assert(dt_cg_resolve_addr_type(snd) == DT_ADDR_HOST ||
