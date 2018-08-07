@@ -8771,7 +8771,7 @@ dtrace_konsumer_register(const char *name, const dtrace_kops_t *kops,
 int
 dtrace_konsumer_unregister(dtrace_konsumer_id_t *id)
 {
-	dtrace_konsumer_t *old = (dtrace_konsumer_t *)id;
+	dtrace_konsumer_t *old = (dtrace_konsumer_t *)*id;
 	dtrace_konsumer_t *prev = NULL;
 
 	mutex_enter(&dtrace_konsumer_lock);
