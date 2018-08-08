@@ -95,13 +95,13 @@ dt_cg_resolve_addr_type(dt_node_t *dnp)
 	if (dnp->dn_kind == DT_NODE_OP3) {
 		int t1, t2;
 
-		t1 = dt_cg_resolve_addr_type(dnp->dn_right->dn_left);
-		t2 = dt_cg_resolve_addr_type(dnp->dn_right->dn_right);
+		t1 = dt_cg_resolve_addr_type(dnp->dn_left);
+		t2 = dt_cg_resolve_addr_type(dnp->dn_right);
 
 		if (t1 == t2)
 			return (t1);
 
-		return (NULL);
+		return (0);
 	}
 	/*
 	 * This is actually a built-in variable.
@@ -2061,7 +2061,6 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 				fst = dnp->dn_args;
 				snd = fst->dn_list;
 
-				    dt_cg_resolve_addr_type(snd));
 				assert(dt_cg_resolve_addr_type(fst) == DT_ADDR_HOST ||
 				    dt_cg_resolve_addr_type(fst) == DT_ADDR_GUEST);
 				assert(dt_cg_resolve_addr_type(snd) == DT_ADDR_HOST ||
