@@ -782,6 +782,12 @@ main(int argc, char **argv)
 	char *p, *end;
 	struct sigaction act;
 	int done = 0;
+	dtrace_consumer_t con;
+
+	con.dc_consume_probe = NULL; 
+	con.dc_consume_rec = chewrec;
+	con.dc_put_buf = NULL;
+	con.dc_get_buf = NULL; 
 
 	g_pname = basename(argv[0]);
 	argv[0] = g_pname; /* rewrite argv[0] for getopt errors */
@@ -1004,7 +1010,7 @@ main(int argc, char **argv)
 				dfatal("couldn't stop tracing");
 		}
 
-		switch (dtrace_work(g_dtp, stdout, NULL, chewrec, NULL)) {
+		switch (dtrace_work(g_dtp, stdout, &con, NULL)) {
 		case DTRACE_WORKSTATUS_DONE:
 			done = 1;
 			break;
