@@ -1307,7 +1307,7 @@ dtrace_istoxic(uintptr_t kaddr, size_t size)
  * that we can store to directly because it is managed by DTrace.  As with
  * standard bcopy, overlapping copies are handled properly.
  */
-static void
+void
 dtrace_bcopy(const void *src, void *dst, size_t len)
 {
 	if (len != 0) {
@@ -1401,7 +1401,7 @@ dtrace_bcmp(const void *s1, const void *s2, size_t len)
  * Zero the specified region using a simple byte-by-byte loop.  Note that this
  * is for safe DTrace-managed memory only.
  */
-static void
+void
 dtrace_bzero(void *dst, size_t len)
 {
 	uchar_t *cp;
@@ -6151,6 +6151,53 @@ inetout:	regs[rd] = (uintptr_t)end + 1;
 	case DIF_SUBR_RANDOM: {
 		regs[rd] = dtrace_xoroshiro128_plus_next(
 		    state->dts_rstate[curcpu]);
+		break;
+	}
+	case DIF_SUBR_UUIDGEN: {
+		dtrace_uuidsrc_t uuid_src;
+		struct uuid uuid_nil;
+		uint64_t src_size, dst_size;
+		uintptr_t dest, src;
+			
+		src = P2ROUNDUP(mstate->dtms_scratch_ptr, sizeof(uint64_t));
+		
+		if (!DTRACE_INSCRATCH(mstate,
+		    (src - mstate->dtms_scratch_ptr) +
+		    sizeof(dtrace_uuidsrc_t))) {
+
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
+			regs[rd] = 0;
+			break;
+		}
+
+		/* Assemble the name of the UUID in the scratch space. */
+		uuid_src.dt_hrtime = dtrace_gethrtime();
+		uuid_src.dt_uuidstate = state->dts_uuidstate[curcpu]++;
+		uuid_src.dt_cpuid = curcpu;
+
+		*((dtrace_uuidsrc_t *)src) = uuid_src;
+		mstate->dtms_scratch_ptr +=
+		    (src - mstate->dtms_scratch_ptr) + sizeof(dtrace_uuidsrc_t);
+
+		/* Create the UUID and store in the scratch space. */
+		dest = P2ROUNDUP(mstate->dtms_scratch_ptr, sizeof(uint64_t));
+
+		if (!DTRACE_INSCRATCH(mstate,
+		    (dest - mstate->dtms_scratch_ptr) + sizeof(struct uuid))) {
+
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
+			regs[rd] = 0;
+			break;
+		}
+
+		dtrace_uuid_generate_nil(&uuid_nil);
+		dtrace_uuid_generate_version5((struct uuid *)dest, &uuid_nil,
+		    (void *)src, sizeof(dtrace_uuidsrc_t));
+
+		mstate->dtms_scratch_ptr +=
+		    (dest - mstate->dtms_scratch_ptr) + sizeof(struct uuid);
+
+		regs[rd] = (uintptr_t)dest;
 		break;
 	}
 	}

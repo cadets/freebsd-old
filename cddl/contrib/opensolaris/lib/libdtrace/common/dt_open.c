@@ -521,6 +521,8 @@ static const dt_ident_t _dtrace_globals[] = {
 	DT_VERS_1_2, &dt_idops_func, "_usymaddr(uintptr_t)" },
 { "uid", DT_IDENT_SCALAR, 0, DIF_VAR_UID, DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_type, "uid_t" },
+{ "uuidgen", DT_IDENT_FUNC, 0, DIF_SUBR_UUIDGEN, DT_ATTR_STABCMN,
+	DT_VERS_1_13, &dt_idops_func, "uintptr_t()" },
 { "umod", DT_IDENT_ACTFUNC, 0, DT_ACT_UMOD, DT_ATTR_STABCMN,
 	DT_VERS_1_2, &dt_idops_func, "_usymaddr(uintptr_t)" },
 { "uregs", DT_IDENT_ARRAY, 0, DIF_VAR_UREGS, DT_ATTR_STABCMN, DT_VERS_1_0,

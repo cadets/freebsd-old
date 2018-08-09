@@ -1,5 +1,6 @@
 /*-
  * Copyright (c) 2016 BAE Systems
+ * Copyright (c) 2018 Graeme Jenkinson
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -57,6 +58,10 @@ struct uuid_private {
 	uint16_t	seq;			/* Big-endian. */
 	uint16_t	node[UUID_NODE_LEN>>1];
 };
+
+extern void dtrace_uuid_generate_nil(struct uuid *);
+extern void dtrace_uuid_generate_version5(struct uuid *, const struct uuid *,
+    const void *, size_t);
 
 #ifdef __cplusplus
 }
