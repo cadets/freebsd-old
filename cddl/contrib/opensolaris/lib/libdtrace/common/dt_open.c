@@ -175,6 +175,67 @@ static char	rwlock_str[MAXPATHLEN];
 static char	sxlock_str[MAXPATHLEN];
 #endif
 
+int dt_subr_h2g[DIF_SUBR_MAX+1] = {
+	[DIF_SUBR_RAND] = 0,
+	[DIF_SUBR_MUTEX_OWNED] = 0,
+	[DIF_SUBR_MUTEX_OWNER] = 0,
+	[DIF_SUBR_MUTEX_TYPE_ADAPTIVE] = 0,
+	[DIF_SUBR_MUTEX_TYPE_SPIN] = 0,
+	[DIF_SUBR_RW_READ_HELD] = 0,
+	[DIF_SUBR_RW_WRITE_HELD] = 0,
+	[DIF_SUBR_RW_ISWRITER] = 0,
+	[DIF_SUBR_COPYIN] = 1, /* copyin(some_guest_uaddr); */
+	[DIF_SUBR_COPYINSTR] = 1, /* copyinstr(some_guest_uaddr); */
+	[DIF_SUBR_SPECULATION] = 0,
+	[DIF_SUBR_PROGENYOF] = 0,
+	[DIF_SUBR_STRLEN] = 0,
+	[DIF_SUBR_COPYOUT] = 0,
+	[DIF_SUBR_COPYOUTSTR] = 0,
+	[DIF_SUBR_ALLOCA] = 0,
+	[DIF_SUBR_BCOPY] = 0,
+	[DIF_SUBR_COPYINTO] = 0, /* XXX: Not sure what this is yet */
+	[DIF_SUBR_MSGDSIZE] = 0, /* XXX: Not sure what this is yet */
+	[DIF_SUBR_MSGSIZE] = 0,
+	[DIF_SUBR_GETMAJOR] = 0,
+	[DIF_SUBR_GETMINOR] = 0,
+	[DIF_SUBR_DDI_PATHNAME] = 0, /* XXX: Not sure what this is yet */
+	[DIF_SUBR_STRJOIN] = 1, /* x = strjoin(a, b); */
+	[DIF_SUBR_LLTOSTR] = 1, /* x = lltostr(3); */
+	[DIF_SUBR_BASENAME] = 1, /* x = basename(guest_addr); */
+	[DIF_SUBR_DIRNAME] = 1, /* x = dirname(guest_addr); */
+	[DIF_SUBR_CLEANPATH] = 1, /* x = cleanpath(guest_addr); */
+	[DIF_SUBR_STRCHR] = 1, /* x = strchr(guest_addr);
+                                * This is because we need to copy the string
+                                * into the host in order to search for things. */
+	[DIF_SUBR_STRRCHR] = 1,
+	[DIF_SUBR_STRSTR] = 1,
+	[DIF_SUBR_STRTOK] = 1,
+	[DIF_SUBR_SUBSTR] = 1,
+	[DIF_SUBR_INDEX] = 0,
+	[DIF_SUBR_RINDEX] = 0,
+	[DIF_SUBR_HTONS] = 0,
+	[DIF_SUBR_HTONL] = 0,
+	[DIF_SUBR_HTONLL] = 0,
+	[DIF_SUBR_NTOHS] = 0,
+	[DIF_SUBR_NTOHL] = 0,
+	[DIF_SUBR_NTOHLL] = 0,
+	[DIF_SUBR_INET_NTOP] = 1,
+	[DIF_SUBR_INET_NTOA] = 1,
+	[DIF_SUBR_INET_NTOA6] = 1,
+	[DIF_SUBR_TOUPPER] = 1,
+	[DIF_SUBR_TOLOWER] = 1,
+	[DIF_SUBR_MEMREF] = 0,
+	[DIF_SUBR_GETF] = 0,
+	[DIF_SUBR_JSON] = 1,
+	[DIF_SUBR_STRTOLL] = 0,
+	[DIF_SUBR_RANDOM] = 0,
+	[DIF_SUBR_UUIDTOSTR] = 1,
+	[DIF_SUBR_STRJOIN_HH] = 1,
+	[DIF_SUBR_STRJOIN_GH] = 1,
+	[DIF_SUBR_STRJOIN_HG] = 1,
+	[DIF_SUBR_STRJOIN_GG] = 1,
+};
+
 /*
  * Table of global identifiers.  This is used to populate the global identifier
  * hash when a new dtrace client open occurs.  For more info see dt_ident.h.

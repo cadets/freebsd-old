@@ -3215,6 +3215,7 @@ dt_node_is_builtin(dt_node_t *dnp)
 	    strcmp(name, "probename")             ||
 	    strcmp(name, "zonename")              ||
 	    strncmp(name, "arg", sizeof("arg"))   ||
+	    strncmp(name, "fds", sizeof("fds"))   ||
 	    strncmp(name, "strjoin", sizeof("strjoin")));
 }
 

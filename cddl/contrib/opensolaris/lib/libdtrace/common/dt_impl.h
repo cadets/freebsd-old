@@ -72,6 +72,8 @@ struct dt_arg;			/* see below */
 struct dt_provider;		/* see <dt_provider.h> */
 struct dt_xlator;		/* see <dt_xlator.h> */
 
+extern int dt_subr_h2g[DIF_SUBR_MAX+1];
+
 typedef struct dt_intrinsic {
 	const char *din_name;	/* string name of the intrinsic type */
 	ctf_encoding_t din_data; /* integer or floating-point CTF encoding */
