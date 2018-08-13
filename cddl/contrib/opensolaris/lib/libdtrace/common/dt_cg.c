@@ -70,9 +70,13 @@ dt_cg_resolve_addr_type(dt_node_t *dnp)
 	    dnp->dn_kind != DT_NODE_FUNC   &&
 	    dnp->dn_kind != DT_NODE_OP1    &&
 	    dnp->dn_kind != DT_NODE_OP2    &&
-	    dnp->dn_kind != DT_NODE_OP3)
+	    dnp->dn_kind != DT_NODE_OP3    &&
+	    dnp->dn_kind != DT_NODE_IDENT)
 		return (0);
 
+	if (dnp->dn_ident && dnp->dn_kind == DT_NODE_IDENT &&
+	    strcmp(dnp->dn_ident->di_name, "fds") == 0)
+		return (DT_ADDR_GUEST);
 	/*
 	 * This should cover any user-defined variable that has previously
 	 * been assigned to.
@@ -81,12 +85,18 @@ dt_cg_resolve_addr_type(dt_node_t *dnp)
 	    dnp->dn_addr_type == DT_ADDR_GUEST)
 		return (dnp->dn_addr_type);
 
+	if (dnp->dn_kind == DT_NODE_FUNC &&
+	    dt_subr_h2g[dnp->dn_ident->di_id] == 0)
+		return (DT_ADDR_GUEST);
+
+
+	if (dnp->dn_kind == DT_NODE_OP2)
+		return (DT_ADDR_GUEST);
 	/*
 	 * Any string literal or a function returning a string.
 	 */
 	if (dnp->dn_kind == DT_NODE_STRING ||
-	    dnp->dn_kind == DT_NODE_FUNC   ||
-	    dnp->dn_kind == DT_NODE_OP2)
+	    dnp->dn_kind == DT_NODE_FUNC)
 		return (DT_ADDR_HOST);
 
 	if (dnp->dn_kind == DT_NODE_OP1)
