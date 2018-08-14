@@ -45,7 +45,24 @@ __FBSDID("$FreeBSD$");
 #include <sys/time.h>
 #include <sys/systm.h>
 
-#include "dtrace_sha1.h"
+struct dtrace_sha1_ctxt {
+	union {
+		u_int8_t	b8[20];
+		u_int32_t	b32[5];
+	} h;
+	union {
+		u_int8_t	b8[8];
+		u_int64_t	b64[1];
+	} c;
+	union {
+		u_int8_t	b8[64];
+		u_int32_t	b32[16];
+	} m;
+	u_int8_t	count;
+};
+typedef struct dtrace_sha1_ctxt DTRACE_SHA1_CTX;
+
+#define	DTRACE_SHA1_RESULTLEN	(160/8)
 
 /* sanity check */
 #if BYTE_ORDER != BIG_ENDIAN
@@ -78,7 +95,7 @@ static u_int32_t _K[] = { 0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xca62c1d6 };
 	COUNT %= 64;				\
 	ctxt->c.b64[0] += 8;			\
 	if (COUNT % 64 == 0)			\
-		sha1_step(ctxt);		\
+		dtrace_sha1_step(ctxt);		\
      }
 
 #define	PUTPAD(x)	{ \
@@ -86,22 +103,28 @@ static u_int32_t _K[] = { 0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xca62c1d6 };
 	COUNT++;				\
 	COUNT %= 64;				\
 	if (COUNT % 64 == 0)			\
-		sha1_step(ctxt);		\
+		dtrace_sha1_step(ctxt);		\
      }
 
-static void sha1_step(struct sha1_ctxt *);
+#define DTraceSHA1Init(x)		dtrace_sha1_init((x))
+#define DTraceSHA1Update(x, y, z)	dtrace_sha1_loop((x), (y), (z))
+#define DTraceSHA1Final(x, y)		dtrace_sha1_result((y), (x))
+
+static void dtrace_sha1_step(struct dtrace_sha1_ctxt *);
+static void dtrace_bcopy(const void *, void *, size_t);
+static void dtrace_bzero(void *, size_t);
 
 static void
-sha1_step(ctxt)
-	struct sha1_ctxt *ctxt;
+dtrace_sha1_step(ctxt)
+	struct dtrace_sha1_ctxt *ctxt;
 {
 	u_int32_t	a, b, c, d, e;
 	size_t t, s;
 	u_int32_t	tmp;
 
 #if BYTE_ORDER == LITTLE_ENDIAN
-	struct sha1_ctxt tctxt;
-	bcopy(&ctxt->m.b8[0], &tctxt.m.b8[0], 64);
+	struct dtrace_sha1_ctxt tctxt;
+	dtrace_bcopy(&ctxt->m.b8[0], &tctxt.m.b8[0], 64);
 	ctxt->m.b8[0] = tctxt.m.b8[3]; ctxt->m.b8[1] = tctxt.m.b8[2];
 	ctxt->m.b8[2] = tctxt.m.b8[1]; ctxt->m.b8[3] = tctxt.m.b8[0];
 	ctxt->m.b8[4] = tctxt.m.b8[7]; ctxt->m.b8[5] = tctxt.m.b8[6];
@@ -171,16 +194,16 @@ sha1_step(ctxt)
 	H(3) = H(3) + d;
 	H(4) = H(4) + e;
 
-	bzero(&ctxt->m.b8[0], 64);
+	dtrace_bzero(&ctxt->m.b8[0], 64);
 }
 
 /*------------------------------------------------------------*/
 
-void
+static void
 dtrace_sha1_init(ctxt)
-	struct sha1_ctxt *ctxt;
+	struct dtrace_sha1_ctxt *ctxt;
 {
-	bzero(ctxt, sizeof(struct sha1_ctxt));
+	dtrace_bzero(ctxt, sizeof(struct dtrace_sha1_ctxt));
 	H(0) = 0x67452301;
 	H(1) = 0xefcdab89;
 	H(2) = 0x98badcfe;
@@ -188,9 +211,9 @@ dtrace_sha1_init(ctxt)
 	H(4) = 0xc3d2e1f0;
 }
 
-void
+static void
 dtrace_sha1_pad(ctxt)
-	struct sha1_ctxt *ctxt;
+	struct dtrace_sha1_ctxt *ctxt;
 {
 	size_t padlen;		/*pad length in bytes*/
 	size_t padstart;
@@ -200,14 +223,14 @@ dtrace_sha1_pad(ctxt)
 	padstart = COUNT % 64;
 	padlen = 64 - padstart;
 	if (padlen < 8) {
-		bzero(&ctxt->m.b8[padstart], padlen);
+		dtrace_bzero(&ctxt->m.b8[padstart], padlen);
 		COUNT += padlen;
 		COUNT %= 64;
-		sha1_step(ctxt);
+		dtrace_sha1_step(ctxt);
 		padstart = COUNT % 64;	/* should be 0 */
 		padlen = 64 - padstart;	/* should be 64 */
 	}
-	bzero(&ctxt->m.b8[padstart], padlen - 8);
+	dtrace_bzero(&ctxt->m.b8[padstart], padlen - 8);
 	COUNT += (padlen - 8);
 	COUNT %= 64;
 #if BYTE_ORDER == BIG_ENDIAN
@@ -223,9 +246,9 @@ dtrace_sha1_pad(ctxt)
 #endif
 }
 
-void
+static void
 dtrace_sha1_loop(ctxt, input, len)
-	struct sha1_ctxt *ctxt;
+	struct dtrace_sha1_ctxt *ctxt;
 	const u_int8_t *input;
 	size_t len;
 {
@@ -241,26 +264,26 @@ dtrace_sha1_loop(ctxt, input, len)
 		gaplen = 64 - gapstart;
 
 		copysiz = (gaplen < len - off) ? gaplen : len - off;
-		bcopy(&input[off], &ctxt->m.b8[gapstart], copysiz);
+		dtrace_bcopy(&input[off], &ctxt->m.b8[gapstart], copysiz);
 		COUNT += copysiz;
 		COUNT %= 64;
 		ctxt->c.b64[0] += copysiz * 8;
 		if (COUNT % 64 == 0)
-			sha1_step(ctxt);
+			dtrace_sha1_step(ctxt);
 		off += copysiz;
 	}
 }
 
-void
-dtrace_sha1_result(struct sha1_ctxt *ctxt,
-    char digest0[static SHA1_RESULTLEN])
+static void
+dtrace_sha1_result(struct dtrace_sha1_ctxt *ctxt,
+    char digest0[static DTRACE_SHA1_RESULTLEN])
 {
 	u_int8_t *digest;
 
 	digest = (u_int8_t *)digest0;
 	dtrace_sha1_pad(ctxt);
 #if BYTE_ORDER == BIG_ENDIAN
-	bcopy(&ctxt->h.b8[0], digest, SHA1_RESULTLEN);
+	dtrace_bcopy(&ctxt->h.b8[0], digest, DTRACE_SHA1_RESULTLEN);
 #else
 	digest[0] = ctxt->h.b8[3]; digest[1] = ctxt->h.b8[2];
 	digest[2] = ctxt->h.b8[1]; digest[3] = ctxt->h.b8[0];

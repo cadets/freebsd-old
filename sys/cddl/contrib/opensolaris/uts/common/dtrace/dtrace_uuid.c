@@ -34,18 +34,31 @@
  */
 
 #include <sys/types.h>
-#include <sys/endian.h>
 #include <sys/uuid.h>
 
-#include "dtrace_uuid.h"
-#include "dtrace_sha1.h"
+#include <dtrace_endian.h>
+#include <dtrace_sha1.c>
 
-#define	SHA_DIGEST_LENGTH	SHA1_RESULTLEN
+#define	DTRACE_UUID_NODE_LEN		_UUID_NODE_LEN
+#define	DTRACE_SHA_DIGEST_LENGTH	DTRACE_SHA1_RESULTLEN
 
-extern void dtrace_bcopy(const void *, void *, size_t);
-extern void dtrace_bzero(void *, size_t);
+/* We use an alternative, more convenient representation in the generator. */
+struct dtrace_uuid_private {
+	union {
+		uint64_t	ll;		/* internal. */
+		struct {
+			uint32_t	low;
+			uint16_t	mid;
+			uint16_t	hi;
+		} x;
+	} time;
+	uint16_t	seq;			/* Big-endian. */
+	uint16_t	node[DTRACE_UUID_NODE_LEN>>1];
+};
 
-void
+
+
+static void
 dtrace_uuid_generate_nil(struct uuid *store)
 {
 
@@ -56,16 +69,16 @@ dtrace_uuid_generate_nil(struct uuid *store)
  * Compute a SHA-1-based namespace UUID.  Inputs are the UUID of the namespace
  * and canonical name within that namespace.
  */
-void
+static void
 dtrace_uuid_generate_version5(struct uuid *store, const struct uuid *namespace,
     const void *name, size_t name_len)
 {
 	struct uuid uuid, uuid_namespace;
-	struct sha1_ctxt sha1_ctxt;
+	struct dtrace_sha1_ctxt sha1_ctxt;
 	union {
-		uint8_t		uint8[SHA_DIGEST_LENGTH];
-		uint16_t	uint16[SHA_DIGEST_LENGTH / 2];
-		uint32_t	uint32[SHA_DIGEST_LENGTH / 4];
+		uint8_t		uint8[DTRACE_SHA_DIGEST_LENGTH];
+		uint16_t	uint16[DTRACE_SHA_DIGEST_LENGTH / 2];
+		uint32_t	uint32[DTRACE_SHA_DIGEST_LENGTH / 4];
 	} md;
 
 	/*
@@ -76,10 +89,10 @@ dtrace_uuid_generate_version5(struct uuid *store, const struct uuid *namespace,
 	 * NB: We assume caller places name in suitable byte order.
 	 */
 	uuid_namespace = *namespace;
-	uuid_namespace.time_low = be32toh(uuid_namespace.time_low);
-	uuid_namespace.time_mid = be16toh(uuid_namespace.time_mid);
+	uuid_namespace.time_low = dtrace_be32toh(uuid_namespace.time_low);
+	uuid_namespace.time_mid = dtrace_be16toh(uuid_namespace.time_mid);
 	uuid_namespace.time_hi_and_version =
-	    be16toh(uuid_namespace.time_hi_and_version);
+	    dtrace_be16toh(uuid_namespace.time_hi_and_version);
 
 	/*
 	 * RFC: Compute the hash of the name space ID concatenated with the
@@ -109,8 +122,8 @@ dtrace_uuid_generate_version5(struct uuid *store, const struct uuid *namespace,
 	/*
 	 * RFC: Convert the resulting UUID to network byte order.
 	 */
-	uuid.time_low = htobe32(uuid.time_low);
-	uuid.time_mid = htobe16(uuid.time_mid);
-	uuid.time_hi_and_version = htobe16(uuid.time_hi_and_version);
+	uuid.time_low = dtrace_htobe32(uuid.time_low);
+	uuid.time_mid = dtrace_htobe16(uuid.time_mid);
+	uuid.time_hi_and_version = dtrace_htobe16(uuid.time_hi_and_version);
 	*store = uuid;
 }
