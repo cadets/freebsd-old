@@ -557,13 +557,15 @@ tooshort:
 
 	/*
 	 * Try to forward the packet, but if we fail continue.
+	 * ip_tryforward() does not generate redirects, so fall
+	 * through to normal processing if redirects are required.
 	 * ip_tryforward() does inbound and outbound packet firewall
 	 * processing. If firewall has decided that destination becomes
 	 * our local address, it sets M_FASTFWD_OURS flag. In this
 	 * case skip another inbound firewall processing and update
 	 * ip pointer.
 	 */
-	if (V_ipforwarding != 0
+	if (V_ipforwarding != 0 && V_ipsendredirects == 0
 #if defined(IPSEC) || defined(IPSEC_SUPPORT)
 	    && (!IPSEC_ENABLED(ipv4) ||
 	    IPSEC_CAPS(ipv4, m, IPSEC_CAP_OPERABLE) == 0)
@@ -1193,7 +1195,7 @@ ip_savecontrol(struct inpcb *inp, struct mbuf **mp, struct ip *ip,
 			mbuf_tstmp2timespec(m, &ts);
 			getboottimebin(&boottimebin);
 			bintime2timespec(&boottimebin, &ts1);
-			timespecadd(&ts, &ts1);
+			timespecadd(&ts, &ts1, &ts);
 		} else {
 			nanotime(&ts);
 		}
