@@ -60,6 +60,7 @@ ${PACKAGE}FILES= \
 TESTEXES= \
 
 
+CFLAGS+=	-fuse-ld=bfd
 CFILES= \
      tst.argmap.c  \
      tst.args.c  \
