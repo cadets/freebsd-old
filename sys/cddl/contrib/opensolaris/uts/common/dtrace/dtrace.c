@@ -268,6 +268,7 @@ static dtrace_dynvar_t	dtrace_dynhash_sink;	/* end of dynamic hash chains */
 static int		dtrace_dynvar_failclean; /* dynvars failed to clean */
 #ifndef illumos
 static dtrace_state_t	*virt_state;
+static struct callout	virt_state_callout;
 static struct mtx	dtrace_unr_mtx;
 MTX_SYSINIT(dtrace_unr_mtx, &dtrace_unr_mtx, "Unique resource identifier", MTX_DEF);
 static eventhandler_tag	dtrace_kld_load_tag;
@@ -7987,7 +7988,6 @@ dtrace_ns_probe(void *biscuit, dtrace_id_t id, struct dtvirt_args *dtv_args)
 
 	if (vtime && curthread->t_dtrace_start)
 		curthread->t_dtrace_vtime += now - curthread->t_dtrace_start;
-
 	mstate.dtms_difo = NULL;
 	mstate.dtms_probe = probe;
 	mstate.dtms_strtok = 0;
@@ -8163,7 +8163,7 @@ dtrace_ns_probe(void *biscuit, dtrace_id_t id, struct dtvirt_args *dtv_args)
 		ASSERT(tomax != NULL);
 
 		if (ecb->dte_size != 0) {
-			dtrace_rechdr_t dtrh;
+			dtrace_rechdr_t dtrh;\
 			if (!(mstate.dtms_present & DTRACE_MSTATE_TIMESTAMP)) {
 				mstate.dtms_timestamp = dtrace_gethrtime();
 				mstate.dtms_present |= DTRACE_MSTATE_TIMESTAMP;
@@ -15226,7 +15226,25 @@ dtrace_state_deadman(void *arg)
 	callout_reset(&state->dts_deadman, hz * dtrace_deadman_interval / NANOSEC,
 	    dtrace_state_deadman, state);
 }
+
 #endif	/* illumos */
+
+static void
+dtrace_virt_state_tick(void *arg)
+{
+	dtrace_state_t *state = arg;
+
+	dtrace_sync();
+	if (state != virt_state)
+		return;
+
+	state->dts_laststatus = INT64_MAX;
+	dtrace_membar_producer();
+	state->dts_laststatus = dtrace_gethrtime();
+
+	callout_reset(&virt_state_callout, hz * 2 * dtrace_deadman_interval / NANOSEC,
+	    dtrace_virt_state_tick, virt_state);
+}
 
 static dtrace_state_t *
 #ifdef illumos
@@ -19069,11 +19087,18 @@ dtrace_priv_virtstate_create(void)
 
 	mutex_enter(&dtrace_lock);
 	mutex_enter(&cpu_lock);
+	callout_init(&virt_state_callout, 1);
 	virt_state = dtrace_state_create(NULL, NULL);
+	if (virt_state == NULL) {
+		mutex_exit(&cpu_lock);
+		mutex_exit(&dtrace_lock);
+		return (ENOMEM);
+	}
+
 	virt_state->dts_options[DTRACEOPT_BUFSIZE] = 1024;
 	mutex_exit(&cpu_lock);
 	mutex_exit(&dtrace_lock);
-	return (virt_state == NULL) ? ENOMEM : 0;
+	return (0);
 }
 
 /*
@@ -19090,6 +19115,8 @@ dtrace_priv_virtstate_destroy(void)
 	mutex_enter(&dtrace_lock);
 	mutex_enter(&cpu_lock);
 	dtrace_state_destroy(virt_state);
+	callout_stop(&virt_state_callout);
+	callout_drain(&virt_state_callout);
 	mutex_exit(&cpu_lock);
 	mutex_exit(&dtrace_lock);
 	kmem_free(virt_state, sizeof(dtrace_state_t));
@@ -19103,6 +19130,9 @@ dtrace_priv_virtstate_go(void)
 	processorid_t cpuid;
 
 	ASSERT(virt_state != NULL);
+	callout_reset(&virt_state_callout, hz * 2 * dtrace_deadman_interval / NANOSEC,
+	    dtrace_virt_state_tick, virt_state);
+
 	error = dtrace_state_go(virt_state, &cpuid);
 
 	return (error);
@@ -19153,6 +19183,12 @@ dtrace_priv_provide_all_probes(void)
  * The function will perform a number of sanity-checks for the virtual
  * tracing state, create a DIFO with a DIF_OP_HCALL instruction and
  * set up the ECB for a given probe.
+ *
+ * FIXMEDS: This can go through dtrace_enabling_match() and it will work.
+ *   - We need:
+ *      + dtrace_enabling_t *
+ *      + dtrace_probedesc_t with probeid alone
+ *      + ECB
  */
 static int
 dtrace_priv_probeid_enable(dtrace_id_t id)
@@ -19162,7 +19198,11 @@ dtrace_priv_probeid_enable(dtrace_id_t id)
 	dtrace_actdesc_t *adesc;
 	dtrace_difo_t *hdifo;
 	processorid_t cpuid;
-	int error;
+	dtrace_enabling_t *enabling;
+	dtrace_ecbdesc_t *ep;
+	dtrace_probedesc_t pdesc;
+	dtrace_vstate_t *vstate;
+	int error, nmatched;
 
 	error = 0;
 
@@ -19175,25 +19215,26 @@ dtrace_priv_probeid_enable(dtrace_id_t id)
 	ASSERT(virt_state != NULL);
 
 
+	enabling = kmem_zalloc(sizeof (dtrace_enabling_t), KM_SLEEP);
 	mutex_enter(&cpu_lock);
 	mutex_enter(&dtrace_lock);
 
 	/*
 	 * Get the probe that we want to enable.
 	 */
+	/*
 	probe = dtrace_probes[id - 1];
 	ASSERT(probe != NULL);
+	*/
 
-	/*
-	 * We want to add a new ECB to the virtual state. This will contain our
-	 * IR.
-	 */
-	ecb = dtrace_ecb_add(virt_state, probe);
-	ASSERT(ecb != NULL);
-	/*
-	 * We create a DIFEXPR action description, which will then be used
-	 * during DIF execution.
-	 */
+	ep = kmem_zalloc(sizeof (dtrace_ecbdesc_t), KM_SLEEP);
+	ep->dted_probe.dtpd_id = id;
+
+	enabling->dten_desc = kmem_zalloc(sizeof (dtrace_ecbdesc_t *), KM_SLEEP);
+	enabling->dten_desc[0] = ep;
+	enabling->dten_ndesc = 1;
+	enabling->dten_maxdesc = 1;
+
 	adesc = dtrace_actdesc_create(DTRACEACT_DIFEXPR, 0, 0, 0);
 	ASSERT(adesc != NULL);
 
@@ -19209,8 +19250,33 @@ dtrace_priv_probeid_enable(dtrace_id_t id)
 
 	adesc->dtad_difo = hdifo;
 
+	ep->dted_action = adesc;
+
+	vstate = kmem_zalloc(sizeof (dtrace_vstate_t), KM_SLEEP);
+	vstate->dtvs_state = virt_state;
+
+	enabling->dten_vstate = vstate;
+
+	/*
+	 * We want to add a new ECB to the virtual state. This will contain our
+	 * IR.
+	 */
+	/*
+	ecb = dtrace_ecb_add(virt_state, probe);
+	ASSERT(ecb != NULL);
+	*/
+	/*
+	 * We create a DIFEXPR action description, which will then be used
+	 * during DIF execution.
+	 */
+	/*
 	error = dtrace_ecb_action_add(ecb, adesc);
+	*/
+
+	error = dtrace_enabling_match(enabling, &nmatched);
+	ASSERT(nmatched == 1);
 	if (error) {
+		dtrace_enabling_destroy(enabling);
 		kmem_free(hdifo->dtdo_buf, hdifo->dtdo_len * sizeof (dif_instr_t));
 		kmem_free(hdifo, sizeof (dtrace_difo_t));
 		kmem_free(ecb, sizeof (dtrace_ecb_t));
@@ -19218,10 +19284,11 @@ dtrace_priv_probeid_enable(dtrace_id_t id)
 		mutex_exit(&dtrace_lock);
 		mutex_exit(&cpu_lock);
 		return (error);
+	} else {
+		error = dtrace_enabling_retain(enabling);
+		ASSERT(error == 0);
 	}
 
-	dtrace_ecb_enable(ecb);
-	ASSERT(probe->dtpr_ecb != NULL);
 	mutex_exit(&dtrace_lock);
 	mutex_exit(&cpu_lock);
 
