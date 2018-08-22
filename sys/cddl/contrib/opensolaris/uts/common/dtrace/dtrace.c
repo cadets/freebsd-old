@@ -19208,33 +19208,39 @@ dtrace_priv_probeid_enable(dtrace_id_t id)
 
 	/*
 	 * We MUST have virt_state at this point.
-	 *
-	 * FIXME: What if something takes control of the kernel and calls this
-	 * hook...?
 	 */
 	ASSERT(virt_state != NULL);
 
 
+	/*
+	 * We allocate the enabling that will be retained in the case that we
+	 * enable probes correctly.
+	 */
 	enabling = kmem_zalloc(sizeof (dtrace_enabling_t), KM_SLEEP);
 	mutex_enter(&cpu_lock);
 	mutex_enter(&dtrace_lock);
 
 	/*
-	 * Get the probe that we want to enable.
+	 * We need an ECB description to enable the probe. Here, we just set
+	 * the probe ID instead of setting the probe description, as it will be
+	 * populated for us by dtrace_enabling_match().
 	 */
-	/*
-	probe = dtrace_probes[id - 1];
-	ASSERT(probe != NULL);
-	*/
-
 	ep = kmem_zalloc(sizeof (dtrace_ecbdesc_t), KM_SLEEP);
 	ep->dted_probe.dtpd_id = id;
 
+	/*
+	 * Here we set up the ECB description array. We only have one in this
+	 * case, as we're just enabling with virtual state, nothing else can
+	 * interfere with it.
+	 */
 	enabling->dten_desc = kmem_zalloc(sizeof (dtrace_ecbdesc_t *), KM_SLEEP);
 	enabling->dten_desc[0] = ep;
 	enabling->dten_ndesc = 1;
 	enabling->dten_maxdesc = 1;
 
+	/*
+	 * Create an action description.
+	 */
 	adesc = dtrace_actdesc_create(DTRACEACT_DIFEXPR, 0, 0, 0);
 	ASSERT(adesc != NULL);
 
@@ -19252,30 +19258,22 @@ dtrace_priv_probeid_enable(dtrace_id_t id)
 
 	ep->dted_action = adesc;
 
+	/*
+	 * We need the vstate in order to set up the correct structure of an
+	 * enabling. The state is gathered through vstate, and the only state
+	 * we care about here is virt_state.
+	 */
 	vstate = kmem_zalloc(sizeof (dtrace_vstate_t), KM_SLEEP);
 	vstate->dtvs_state = virt_state;
 
 	enabling->dten_vstate = vstate;
 
-	/*
-	 * We want to add a new ECB to the virtual state. This will contain our
-	 * IR.
-	 */
-	/*
-	ecb = dtrace_ecb_add(virt_state, probe);
-	ASSERT(ecb != NULL);
-	*/
-	/*
-	 * We create a DIFEXPR action description, which will then be used
-	 * during DIF execution.
-	 */
-	/*
-	error = dtrace_ecb_action_add(ecb, adesc);
-	*/
-
 	error = dtrace_enabling_match(enabling, &nmatched);
 	ASSERT(nmatched == 1);
 	if (error) {
+		/*
+		 * Oops, destroy everything.
+		 */
 		dtrace_enabling_destroy(enabling);
 		kmem_free(hdifo->dtdo_buf, hdifo->dtdo_len * sizeof (dif_instr_t));
 		kmem_free(hdifo, sizeof (dtrace_difo_t));
@@ -19285,6 +19283,9 @@ dtrace_priv_probeid_enable(dtrace_id_t id)
 		mutex_exit(&cpu_lock);
 		return (error);
 	} else {
+		/*
+		 * Retain the enabling so we don't get GC'd.
+		 */
 		error = dtrace_enabling_retain(enabling);
 		ASSERT(error == 0);
 	}
