@@ -41,5 +41,6 @@ struct dtvirt_args {
 extern void dtvirt_probe(void *, int, struct dtvirt_args *);
 extern lwpid_t (*dtvirt_gettid)(void *);
 extern uint16_t (*dtvirt_getns)(void *);
+extern const char *(*dtvirt_getname)(void *);
 
 #endif

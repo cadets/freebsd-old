@@ -427,6 +427,7 @@ void vm_copyout(struct vm *vm, int vcpuid, const void *kaddr,
     struct vm_copyinfo *copyinfo, size_t len);
 extern lwpid_t (*vmm_gettid)(void *biscuit);
 extern uint16_t (*vmm_getid)(void *biscuit);
+extern const char *(*vmm_getname)(void *biscuit);
 
 int vcpu_trace_exceptions(struct vm *vm, int vcpuid);
 #endif	/* KERNEL */

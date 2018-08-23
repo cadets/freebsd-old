@@ -337,6 +337,7 @@ static void vcpu_notify_event_locked(struct vcpu *vcpu, bool lapic_intr);
 
 static lwpid_t vmm_priv_gettid(void *);
 static uint16_t vmm_priv_getid(void *);
+static const char *vmm_priv_getname(void *);
 
 static int
 sysctl_vmm_hypervisor_mode(SYSCTL_HANDLER_ARGS)
@@ -497,6 +498,7 @@ vmm_handler(module_t mod, int what, void *arg)
 		error = vmm_init();
 		vmm_gettid = vmm_priv_gettid;
 		vmm_getid = vmm_priv_getid;
+		vmm_getname = vmm_priv_getname;
 		vm_arena = new_unrhdr(1, UINT16_MAX, &vm_unrmtx);
 		if (error == 0)
 			vmm_initialized = 1;
@@ -3026,6 +3028,14 @@ vmm_priv_getid(void *xbiscuit)
 
 	struct vm_biscuit *biscuit = xbiscuit;
 	return (biscuit->vm->id);
+}
+
+static const char *
+vmm_priv_getname(void *xbiscuit)
+{
+
+	struct vm_biscuit *biscuit = xbiscuit;
+	return (biscuit->vm->name);
 }
 
 /*

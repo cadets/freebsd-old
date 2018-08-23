@@ -50,9 +50,11 @@ __FBSDID("$FreeBSD$");
 static MALLOC_DEFINE(M_DTVIRT, "dtvirt", "");
 static lwpid_t dtvirt_priv_gettid(void *);
 static uint16_t dtvirt_priv_getns(void *);
+static const char *dtvirt_priv_getname(void *);
 
 lwpid_t (*vmm_gettid)(void *biscuit);
 uint16_t (*vmm_getid)(void *biscuit);
+const char *(*vmm_getname)(void *biscuit);
 
 void
 dtvirt_probe(void *biscuit, int probeid, struct dtvirt_args *dtv_args)
@@ -68,10 +70,12 @@ dtvirt_handler(module_t mod __unused, int what, void *arg __unused)
 	case MOD_LOAD:
 		dtvirt_gettid = dtvirt_priv_gettid;
 		dtvirt_getns = dtvirt_priv_getns;
+		dtvirt_getname = dtvirt_priv_getname;
 		break;
 	case MOD_UNLOAD:
 		dtvirt_gettid = NULL;
 		dtvirt_getns = NULL;
+		dtvirt_getname = NULL;
 		break;
 	default:
 		break;
@@ -102,6 +106,13 @@ dtvirt_priv_getns(void *biscuit)
 	if (vmm_getid != NULL)
 		return (vmm_getid(biscuit));
 	return (0);
+}
+
+static const char *
+dtvirt_priv_getname(void *biscuit)
+{
+
+	return (vmm_getname == NULL ? 0 : vmm_getname(biscuit));
 }
 
 static moduledata_t dtvirt_kmod = {

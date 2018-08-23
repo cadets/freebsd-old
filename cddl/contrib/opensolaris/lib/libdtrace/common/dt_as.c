@@ -213,20 +213,6 @@ dt_as_is_host(dtrace_difo_t *dp)
 	if (script_type == DT_SCRIPT_TYPE_GUEST)
 		set = 1;
 
-	/*
-	for (i = 0; i < dp->dtdo_len; i++) {
-		dif_instr_t instr = dp->dtdo_buf[i];
-		uint_t op = DIF_INSTR_OP(instr);
-
-		if (op == DIF_OP_CALL) {
-			if (script_type == DT_SCRIPT_TYPE_GUEST &&
-			    dt_subr_h2g[DIF_INSTR_SUBR(instr)] == 1) {
-				return (1);
-			}
-		}
-	}
-	*/
-
 	for (i = dp->dtdo_len - 1; i >= 0; i--) {
 		dif_instr_t instr = dp->dtdo_buf[i];
 		uint_t op = DIF_INSTR_OP(instr);
@@ -241,7 +227,13 @@ dt_as_is_host(dtrace_difo_t *dp)
 			if (op == DIF_OP_SETS ||
 			    op == DIF_OP_CALL)
 				return (1);
-			else
+			else if (op == DIF_OP_LDGS) {
+				uint64_t var = DIF_INSTR_VAR(instr);
+				if (var == DIF_VAR_VMNAME  ||
+				    var == DIF_VAR_GVMNAME ||
+				    var == DIF_VAR_HVMNAME)
+					return (1);
+			} else
 				return (0);
 		}
 	}

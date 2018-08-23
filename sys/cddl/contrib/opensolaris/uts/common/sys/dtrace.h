@@ -285,6 +285,7 @@ typedef enum dtrace_probespec {
 #define	DIF_VAR_EXECARGS	0x0121	/* process arguments */
 #define	DIF_VAR_JID		0x0122	/* process jail id */
 #define	DIF_VAR_JAILNAME	0x0123	/* process jail name */
+#define	DIF_VAR_VMNAME		0x0124	/* current VM name */
 
 #ifndef illumos
 #define	DIF_VAR_CPU		0x014f
@@ -327,6 +328,9 @@ typedef enum dtrace_probespec {
 #define	DIF_VAR_GGID		0x026f /* guest gid */
 #define	DIF_VAR_GERRNO		0x0270 /* guest errno */
 #define	DIF_VAR_GEXECARGS	0x0271 /* guest execargs */
+#define	DIF_VAR_GJID		0x0272	/* process jail id */
+#define	DIF_VAR_GJAILNAME	0x0273	/* process jail name */
+#define	DIF_VAR_GVMNAME		0x0274	/* current VM name */
 
 #define	DIF_VAR_GCPU		0x029f /* guest cpu */
 
@@ -367,6 +371,9 @@ typedef enum dtrace_probespec {
 #define	DIF_VAR_HGID		0x041f /* host gid */
 #define	DIF_VAR_HERRNO		0x0420 /* host errno */
 #define	DIF_VAR_HEXECARGS	0x0421 /* host execargs */
+#define	DIF_VAR_HJID		0x0422	/* process jail id */
+#define	DIF_VAR_HJAILNAME	0x0423	/* process jail name */
+#define	DIF_VAR_HVMNAME		0x0424	/* current VM name */
 
 #define	DIF_VAR_HCPU		0x044f /* host cpu */
 

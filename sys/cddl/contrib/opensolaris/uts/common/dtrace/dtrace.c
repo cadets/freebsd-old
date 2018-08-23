@@ -399,6 +399,7 @@ static int		dtrace_helptrace_wrapped = 0;
 
 lwpid_t (*dtvirt_gettid)(void *);
 uint16_t (*dtvirt_getns)(void *);
+const char *(*dtvirt_getname)(void *);
 
 
 /*
@@ -4142,6 +4143,12 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 	case DIF_VAR_GCPU:
 		return (mstate->dtms_dtvargs->dtv_curcpu);
 #endif
+	case DIF_VAR_HVMNAME:
+	case DIF_VAR_GVMNAME:
+		return (dtrace_dif_varstr(
+		    (uintptr_t)dtvirt_getname(mstate->dtms_biscuit),
+		    state, mstate));
+
 	default:
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
 		return (0);
