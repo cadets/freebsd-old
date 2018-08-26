@@ -4,6 +4,8 @@
 # machine-independent gen sources
 .PATH: ${LIBC_SRCTOP}/${LIBC_ARCH}/gen ${LIBC_SRCTOP}/gen
 
+CONFS=	shells
+
 SRCS+=	__getosreldate.c \
 	__pthread_mutex_init_calloc_cb_stub.c \
 	__xuname.c \
@@ -14,6 +16,7 @@ SRCS+=	__getosreldate.c \
 	_thread_init.c \
 	alarm.c \
 	arc4random.c \
+	arc4random_uniform.c \
 	assert.c \
 	auxv.c \
 	basename.c \
@@ -133,6 +136,7 @@ SRCS+=	__getosreldate.c \
 	termios.c \
 	time.c \
 	times.c \
+	timespec_get.c \
 	timezone.c \
 	tls.c \
 	ttyname.c \
@@ -297,6 +301,7 @@ MAN+=	alarm.3 \
 	tcsetsid.3 \
 	time.3 \
 	times.3 \
+	timespec_get.3 \
 	timezone.3 \
 	ttyname.3 \
 	tzset.3 \

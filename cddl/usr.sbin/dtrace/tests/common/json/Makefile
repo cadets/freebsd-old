@@ -17,6 +17,8 @@ ${PACKAGE}FILES= \
 
 TESTEXES= \
 
+
+CFLAGS+=	-fuse-ld=bfd
 CFILES= \
      tst.usdt.c  \
 

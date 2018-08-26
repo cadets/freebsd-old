@@ -372,23 +372,18 @@ kmem_suballoc(vm_map_t parent, vm_offset_t *min, vm_offset_t *max,
  *	Allocate wired-down pages in the kernel's address space.
  */
 vm_offset_t
-kmem_malloc_domain(struct vmem *vmem, int domain, vm_size_t size, int flags)
+kmem_malloc_domain(int domain, vm_size_t size, int flags)
 {
 	vmem_t *arena;
 	vm_offset_t addr;
 	int rv;
 
 #if VM_NRESERVLEVEL > 0
-	KASSERT(vmem == kernel_arena || vmem == kernel_rwx_arena,
-	    ("kmem_malloc_domain: Only kernel_arena or kernel_rwx_arena "
-	    "are supported."));
-	if (__predict_true(vmem == kernel_arena))
+	if (__predict_true((flags & M_EXEC) == 0))
 		arena = vm_dom[domain].vmd_kernel_arena;
 	else
 		arena = vm_dom[domain].vmd_kernel_rwx_arena;
 #else
-	KASSERT(vmem == kernel_arena,
-	    ("kmem_malloc_domain: Only kernel_arena is supported."));
 	arena = vm_dom[domain].vmd_kernel_arena;
 #endif
 	size = round_page(size);
@@ -404,7 +399,7 @@ kmem_malloc_domain(struct vmem *vmem, int domain, vm_size_t size, int flags)
 }
 
 vm_offset_t
-kmem_malloc(struct vmem *vmem, vm_size_t size, int flags)
+kmem_malloc(struct vmem *vmem __unused, vm_size_t size, int flags)
 {
 	struct vm_domainset_iter di;
 	vm_offset_t addr;
@@ -412,7 +407,7 @@ kmem_malloc(struct vmem *vmem, vm_size_t size, int flags)
 
 	vm_domainset_iter_malloc_init(&di, kernel_object, &domain, &flags);
 	do {
-		addr = kmem_malloc_domain(vmem, domain, size, flags);
+		addr = kmem_malloc_domain(domain, size, flags);
 		if (addr != 0)
 			break;
 	} while (vm_domainset_iter_malloc(&di, &domain, &flags) == 0);
@@ -700,23 +695,28 @@ kmem_bootstrap_free(vm_offset_t start, vm_size_t size)
 {
 #if defined(__i386__) || defined(__amd64__)
 	struct vm_domain *vmd;
-	vm_offset_t end;
+	vm_offset_t end, va;
 	vm_paddr_t pa;
 	vm_page_t m;
 
 	end = trunc_page(start + size);
 	start = round_page(start);
 
-	(void)vm_map_remove(kernel_map, start, end);
-	for (; start < end; start += PAGE_SIZE) {
-		pa = pmap_kextract(start);
+	for (va = start; va < end; va += PAGE_SIZE) {
+		pa = pmap_kextract(va);
 		m = PHYS_TO_VM_PAGE(pa);
 
 		vmd = vm_pagequeue_domain(m);
 		vm_domain_free_lock(vmd);
 		vm_phys_free_pages(m, 0);
+		vmd->vmd_page_count++;
 		vm_domain_free_unlock(vmd);
+
+		vm_domain_freecnt_inc(vmd, 1);
+		vm_cnt.v_page_count++;
 	}
+	pmap_remove(kernel_pmap, start, end);
+	(void)vmem_add(kernel_arena, start, end - start, M_WAITOK);
 #endif
 }
 

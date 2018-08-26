@@ -130,6 +130,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/specialreg.h>
 #include <machine/trap.h>
 #include <machine/tss.h>
+#include <x86/ucode.h>
 #ifdef SMP
 #include <machine/smp.h>
 #endif
@@ -1548,7 +1549,7 @@ amd64_conf_fast_syscall(void)
 	msr = ((u_int64_t)GSEL(GCODE_SEL, SEL_KPL) << 32) |
 	    ((u_int64_t)GSEL(GUCODE32_SEL, SEL_UPL) << 48);
 	wrmsr(MSR_STAR, msr);
-	wrmsr(MSR_SF_MASK, PSL_NT | PSL_T | PSL_I | PSL_C | PSL_D);
+	wrmsr(MSR_SF_MASK, PSL_NT | PSL_T | PSL_I | PSL_C | PSL_D | PSL_AC);
 }
 
 u_int64_t
@@ -1567,6 +1568,9 @@ hammer_time(u_int64_t modulep, u_int64_t physfree)
 	TSRAW(&thread0, TS_ENTER, __func__, NULL);
 
 	kmdp = init_ops.parse_preload_data(modulep);
+
+	physfree += ucode_load_bsp(physfree + KERNBASE);
+	physfree = roundup2(physfree, PAGE_SIZE);
 
 	identify_cpu1();
 	identify_hypervisor();
