@@ -2,6 +2,8 @@
 
 .include <bsd.init.mk>
 
+MK_INSTRUMENT_BINARIES=	no
+
 PROG=		boot1.sym
 INTERNALPROG=
 WARNS?=		6

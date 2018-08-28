@@ -22,7 +22,7 @@ S.yes+=			man
 
 .include <bsd.arch.inc.mk>
 
-#S.${MK_EFI}+=		efi
+S.${MK_EFI}+=		efi
 S.${MK_LOADER_UBOOT}+=	uboot
 
 .if exists(${.CURDIR}/${MACHINE}/.)
