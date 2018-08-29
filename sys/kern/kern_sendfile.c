@@ -138,6 +138,7 @@ SYSCTL_PROC(_kern_ipc, OID_AUTO, sfstat, CTLTYPE_OPAQUE | CTLFLAG_RW,
 static void
 sendfile_free_page(vm_page_t pg, bool nocache)
 {
+	bool freed;
 
 	vm_page_lock(pg);
 	/*
@@ -146,15 +147,15 @@ sendfile_free_page(vm_page_t pg, bool nocache)
 	 * responsible for freeing the page.  In 'noncache' case try to free
 	 * the page, but only if it is cheap to.
 	 */
-	if (vm_page_unwire(pg, nocache ? PQ_NONE : PQ_INACTIVE)) {
+	if (vm_page_unwire_noq(pg)) {
 		vm_object_t obj;
 
 		if ((obj = pg->object) == NULL)
 			vm_page_free(pg);
-		else if (nocache) {
-			if (!vm_page_xbusied(pg) && VM_OBJECT_TRYWLOCK(obj)) {
-				bool freed;
-
+		else {
+			freed = false;
+			if (nocache && !vm_page_xbusied(pg) &&
+			    VM_OBJECT_TRYWLOCK(obj)) {
 				/* Only free unmapped pages. */
 				if (obj->ref_count == 0 ||
 				    !pmap_page_is_mapped(pg))
@@ -163,13 +164,22 @@ sendfile_free_page(vm_page_t pg, bool nocache)
 					 * locked cannot be relied upon.
 					 */
 					freed = vm_page_try_to_free(pg);
-				else
-					freed = false;
 				VM_OBJECT_WUNLOCK(obj);
-				if (!freed)
+			}
+			if (!freed) {
+				/*
+				 * If we were asked to not cache the page, place
+				 * it near the head of the inactive queue so
+				 * that it is reclaimed sooner.  Otherwise,
+				 * maintain LRU.
+				 */
+				if (nocache)
 					vm_page_deactivate_noreuse(pg);
-			} else
-				vm_page_deactivate_noreuse(pg);
+				else if (vm_page_active(pg))
+					vm_page_reference(pg);
+				else
+					vm_page_deactivate(pg);
+			}
 		}
 	}
 	vm_page_unlock(pg);
@@ -283,6 +293,7 @@ sendfile_iodone(void *arg, vm_page_t *pg, int count, int error)
 	if (!refcount_release(&sfio->nios))
 		return;
 
+	CURVNET_SET(so->so_vnet);
 	if (sfio->error) {
 		struct mbuf *m;
 
@@ -303,15 +314,13 @@ sendfile_iodone(void *arg, vm_page_t *pg, int count, int error)
 		m = sfio->m;
 		for (int i = 0; i < sfio->npages; i++)
 			m = m_free(m);
-	} else {
-		CURVNET_SET(so->so_vnet);
+	} else
 		(void )(so->so_proto->pr_usrreqs->pru_ready)(so, sfio->m,
 		    sfio->npages);
-		CURVNET_RESTORE();
-	}
 
 	SOCK_LOCK(so);
 	sorele(so);
+	CURVNET_RESTORE();
 	free(sfio, M_TEMP);
 }
 
@@ -344,7 +353,7 @@ sendfile_swapin(vm_object_t obj, struct sf_io *sfio, off_t off, off_t len,
 	}
 
 	for (int i = 0; i < npages;) {
-		int j, a, count, rv;
+		int j, a, count, rv __unused;
 
 		/* Skip valid pages. */
 		if (vm_page_is_valid(pa[i], vmoff(i, off) & PAGE_MASK,
@@ -515,7 +524,6 @@ static int
 sendfile_getsock(struct thread *td, int s, struct file **sock_fp,
     struct socket **so)
 {
-	cap_rights_t rights;
 	int error;
 
 	*sock_fp = NULL;
@@ -524,7 +532,7 @@ sendfile_getsock(struct thread *td, int s, struct file **sock_fp,
 	/*
 	 * The socket must be a stream socket and connected.
 	 */
-	error = getsock_cap(td, s, cap_rights_init(&rights, CAP_SEND),
+	error = getsock_cap(td, s, &cap_send_rights,
 	    sock_fp, NULL, NULL);
 	if (error != 0)
 		return (error);
@@ -958,7 +966,6 @@ sendfile(struct thread *td, struct sendfile_args *uap, int compat)
 	struct sf_hdtr hdtr;
 	struct uio *hdr_uio, *trl_uio;
 	struct file *fp;
-	cap_rights_t rights;
 	off_t sbytes;
 	int error;
 
@@ -1009,10 +1016,8 @@ sendfile(struct thread *td, struct sendfile_args *uap, int compat)
 	 * sendfile(2) can start at any offset within a file so we require
 	 * CAP_READ+CAP_SEEK = CAP_PREAD.
 	 */
-	if ((error = fget_read(td, uap->fd,
-	    cap_rights_init(&rights, CAP_PREAD), &fp)) != 0) {
+	if ((error = fget_read(td, uap->fd, &cap_pread_rights, &fp)) != 0)
 		goto out;
-	}
 
 	error = fo_sendfile(fp, uap->s, hdr_uio, trl_uio, uap->offset,
 	    uap->nbytes, &sbytes, uap->flags, td);

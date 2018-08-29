@@ -137,6 +137,8 @@
 #define	SIE_SSIE	(1 << 1)
 #define	SIE_UTIE	(1 << 4)
 #define	SIE_STIE	(1 << 5)
+#define	SIE_UEIE	(1 << 8)
+#define	SIE_SEIE	(1 << 9)
 
 #define	MIP_SEIP	(1 << 9)
 
@@ -152,13 +154,6 @@
 #define	SATP_MODE_M	(0xf << SATP_MODE_S)
 #define	SATP_MODE_SV39	(8ULL << SATP_MODE_S)
 #define	SATP_MODE_SV48	(9ULL << SATP_MODE_S)
-
-#if 0
-/* lowRISC TODO */
-#define	NCSRS		4096
-#define	CSR_IPI		0x783
-#define	CSR_IO_IRQ	0x7c0	/* lowRISC only? */
-#endif
 
 #define	XLEN		8
 #define	INSN_SIZE	4

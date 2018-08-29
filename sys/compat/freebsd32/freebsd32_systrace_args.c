@@ -121,9 +121,9 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 3;
 		break;
 	}
-	/* obreak */
+	/* break */
 	case 17: {
-		struct obreak_args *p = params;
+		struct break_args *p = params;
 		uarg[0] = (intptr_t) p->nsize; /* char * */
 		*n_args = 1;
 		break;
@@ -432,13 +432,6 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	case 70: {
 		struct sstk_args *p = params;
 		iarg[0] = p->incr; /* int */
-		*n_args = 1;
-		break;
-	}
-	/* ovadvise */
-	case 72: {
-		struct ovadvise_args *p = params;
-		iarg[0] = p->anom; /* int */
 		*n_args = 1;
 		break;
 	}
@@ -1299,30 +1292,12 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 2;
 		break;
 	}
-	/* lchown */
-	case 275: {
-		struct lchown_args *p = params;
-		uarg[0] = (intptr_t) p->path; /* char * */
-		uarg[1] = p->uid; /* uid_t */
-		iarg[2] = p->gid; /* gid_t */
-		*n_args = 3;
-		break;
-	}
 	/* freebsd32_lutimes */
 	case 276: {
 		struct freebsd32_lutimes_args *p = params;
 		uarg[0] = (intptr_t) p->path; /* char * */
 		uarg[1] = (intptr_t) p->tptr; /* struct timeval32 * */
 		*n_args = 2;
-		break;
-	}
-	/* msync */
-	case 277: {
-		struct msync_args *p = params;
-		uarg[0] = (intptr_t) p->addr; /* void * */
-		uarg[1] = p->len; /* size_t */
-		iarg[2] = p->flags; /* int */
-		*n_args = 3;
 		break;
 	}
 	/* freebsd32_preadv */
@@ -1559,11 +1534,11 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 1;
 		break;
 	}
-	/* sched_rr_get_interval */
+	/* freebsd32_sched_rr_get_interval */
 	case 334: {
-		struct sched_rr_get_interval_args *p = params;
+		struct freebsd32_sched_rr_get_interval_args *p = params;
 		iarg[0] = p->pid; /* pid_t */
-		uarg[1] = (intptr_t) p->interval; /* struct timespec * */
+		uarg[1] = (intptr_t) p->interval; /* struct timespec32 * */
 		*n_args = 2;
 		break;
 	}
@@ -3150,24 +3125,6 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 4;
 		break;
 	}
-	/* numa_getaffinity */
-	case 548: {
-		struct numa_getaffinity_args *p = params;
-		iarg[0] = p->which; /* cpuwhich_t */
-		iarg[1] = p->id; /* id_t */
-		uarg[2] = (intptr_t) p->policy; /* struct vm_domain_policy * */
-		*n_args = 3;
-		break;
-	}
-	/* numa_setaffinity */
-	case 549: {
-		struct numa_setaffinity_args *p = params;
-		iarg[0] = p->which; /* cpuwhich_t */
-		iarg[1] = p->id; /* id_t */
-		uarg[2] = (intptr_t) p->policy; /* const struct vm_domain_policy * */
-		*n_args = 3;
-		break;
-	}
 	/* fdatasync */
 	case 550: {
 		struct fdatasync_args *p = params;
@@ -3201,13 +3158,13 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 2;
 		break;
 	}
-	/* freebsd32_getdirentries */
+	/* getdirentries */
 	case 554: {
-		struct freebsd32_getdirentries_args *p = params;
+		struct getdirentries_args *p = params;
 		iarg[0] = p->fd; /* int */
 		uarg[1] = (intptr_t) p->buf; /* char * */
 		uarg[2] = p->count; /* size_t */
-		uarg[3] = (intptr_t) p->basep; /* int32_t * */
+		uarg[3] = (intptr_t) p->basep; /* off_t * */
 		*n_args = 4;
 		break;
 	}
@@ -3264,6 +3221,41 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		iarg[4] = p->nevents; /* int */
 		uarg[5] = (intptr_t) p->timeout; /* const struct timespec32 * */
 		*n_args = 6;
+		break;
+	}
+	/* freebsd32_cpuset_getdomain */
+	case 561: {
+		struct freebsd32_cpuset_getdomain_args *p = params;
+		iarg[0] = p->level; /* cpulevel_t */
+		iarg[1] = p->which; /* cpuwhich_t */
+		uarg[2] = p->id1; /* uint32_t */
+		uarg[3] = p->id2; /* uint32_t */
+		uarg[4] = p->domainsetsize; /* size_t */
+		uarg[5] = (intptr_t) p->mask; /* domainset_t * */
+		uarg[6] = (intptr_t) p->policy; /* int * */
+		*n_args = 7;
+		break;
+	}
+	/* freebsd32_cpuset_setdomain */
+	case 562: {
+		struct freebsd32_cpuset_setdomain_args *p = params;
+		iarg[0] = p->level; /* cpulevel_t */
+		iarg[1] = p->which; /* cpuwhich_t */
+		uarg[2] = p->id1; /* uint32_t */
+		uarg[3] = p->id2; /* uint32_t */
+		uarg[4] = p->domainsetsize; /* size_t */
+		uarg[5] = (intptr_t) p->mask; /* domainset_t * */
+		iarg[6] = p->policy; /* int */
+		*n_args = 7;
+		break;
+	}
+	/* getrandom */
+	case 563: {
+		struct getrandom_args *p = params;
+		uarg[0] = (intptr_t) p->buf; /* void * */
+		uarg[1] = p->buflen; /* size_t */
+		uarg[2] = p->flags; /* unsigned int */
+		*n_args = 3;
 		break;
 	}
 	default:
@@ -3444,7 +3436,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
-	/* obreak */
+	/* break */
 	case 17:
 		switch(ndx) {
 		case 0:
@@ -3919,16 +3911,6 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		break;
 	/* sstk */
 	case 70:
-		switch(ndx) {
-		case 0:
-			p = "int";
-			break;
-		default:
-			break;
-		};
-		break;
-	/* ovadvise */
-	case 72:
 		switch(ndx) {
 		case 0:
 			p = "int";
@@ -5316,22 +5298,6 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
-	/* lchown */
-	case 275:
-		switch(ndx) {
-		case 0:
-			p = "userland char *";
-			break;
-		case 1:
-			p = "uid_t";
-			break;
-		case 2:
-			p = "gid_t";
-			break;
-		default:
-			break;
-		};
-		break;
 	/* freebsd32_lutimes */
 	case 276:
 		switch(ndx) {
@@ -5340,22 +5306,6 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		case 1:
 			p = "userland struct timeval32 *";
-			break;
-		default:
-			break;
-		};
-		break;
-	/* msync */
-	case 277:
-		switch(ndx) {
-		case 0:
-			p = "userland void *";
-			break;
-		case 1:
-			p = "size_t";
-			break;
-		case 2:
-			p = "int";
 			break;
 		default:
 			break;
@@ -5719,14 +5669,14 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
-	/* sched_rr_get_interval */
+	/* freebsd32_sched_rr_get_interval */
 	case 334:
 		switch(ndx) {
 		case 0:
 			p = "pid_t";
 			break;
 		case 1:
-			p = "userland struct timespec *";
+			p = "userland struct timespec32 *";
 			break;
 		default:
 			break;
@@ -8563,38 +8513,6 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
-	/* numa_getaffinity */
-	case 548:
-		switch(ndx) {
-		case 0:
-			p = "cpuwhich_t";
-			break;
-		case 1:
-			p = "id_t";
-			break;
-		case 2:
-			p = "userland struct vm_domain_policy *";
-			break;
-		default:
-			break;
-		};
-		break;
-	/* numa_setaffinity */
-	case 549:
-		switch(ndx) {
-		case 0:
-			p = "cpuwhich_t";
-			break;
-		case 1:
-			p = "id_t";
-			break;
-		case 2:
-			p = "userland const struct vm_domain_policy *";
-			break;
-		default:
-			break;
-		};
-		break;
 	/* fdatasync */
 	case 550:
 		switch(ndx) {
@@ -8650,7 +8568,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
-	/* freebsd32_getdirentries */
+	/* getdirentries */
 	case 554:
 		switch(ndx) {
 		case 0:
@@ -8663,7 +8581,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			p = "size_t";
 			break;
 		case 3:
-			p = "userland int32_t *";
+			p = "userland off_t *";
 			break;
 		default:
 			break;
@@ -8768,6 +8686,78 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
+	/* freebsd32_cpuset_getdomain */
+	case 561:
+		switch(ndx) {
+		case 0:
+			p = "cpulevel_t";
+			break;
+		case 1:
+			p = "cpuwhich_t";
+			break;
+		case 2:
+			p = "uint32_t";
+			break;
+		case 3:
+			p = "uint32_t";
+			break;
+		case 4:
+			p = "size_t";
+			break;
+		case 5:
+			p = "userland domainset_t *";
+			break;
+		case 6:
+			p = "userland int *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* freebsd32_cpuset_setdomain */
+	case 562:
+		switch(ndx) {
+		case 0:
+			p = "cpulevel_t";
+			break;
+		case 1:
+			p = "cpuwhich_t";
+			break;
+		case 2:
+			p = "uint32_t";
+			break;
+		case 3:
+			p = "uint32_t";
+			break;
+		case 4:
+			p = "size_t";
+			break;
+		case 5:
+			p = "userland domainset_t *";
+			break;
+		case 6:
+			p = "int";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* getrandom */
+	case 563:
+		switch(ndx) {
+		case 0:
+			p = "userland void *";
+			break;
+		case 1:
+			p = "size_t";
+			break;
+		case 2:
+			p = "unsigned int";
+			break;
+		default:
+			break;
+		};
+		break;
 	default:
 		break;
 	};
@@ -8846,10 +8836,10 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
-	/* obreak */
+	/* break */
 	case 17:
 		if (ndx == 0 || ndx == 1)
-			p = "int";
+			p = "caddr_t";
 		break;
 	/* getpid */
 	case 20:
@@ -9024,11 +9014,6 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		break;
 	/* sstk */
 	case 70:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
-	/* ovadvise */
-	case 72:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
@@ -9522,18 +9507,8 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
-	/* lchown */
-	case 275:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
 	/* freebsd32_lutimes */
 	case 276:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
-	/* msync */
-	case 277:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
@@ -9683,7 +9658,7 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
-	/* sched_rr_get_interval */
+	/* freebsd32_sched_rr_get_interval */
 	case 334:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
@@ -10554,16 +10529,6 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
-	/* numa_getaffinity */
-	case 548:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
-	/* numa_setaffinity */
-	case 549:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
 	/* fdatasync */
 	case 550:
 		if (ndx == 0 || ndx == 1)
@@ -10584,7 +10549,7 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
-	/* freebsd32_getdirentries */
+	/* getdirentries */
 	case 554:
 		if (ndx == 0 || ndx == 1)
 			p = "ssize_t";
@@ -10616,6 +10581,21 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		break;
 	/* freebsd32_kevent */
 	case 560:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* freebsd32_cpuset_getdomain */
+	case 561:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* freebsd32_cpuset_setdomain */
+	case 562:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* getrandom */
+	case 563:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;

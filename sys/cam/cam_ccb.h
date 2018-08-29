@@ -506,7 +506,6 @@ struct device_match_result {
 	struct scsi_inquiry_data	inq_data;
 	struct ata_params		ident_data;
 	dev_result_flags		flags;
-	struct mmc_params		mmc_ident_data;
 };
 
 struct bus_match_result {
@@ -633,6 +632,11 @@ struct ccb_pathinq_settings_sas {
 
 struct ccb_pathinq_settings_nvme {
 	uint32_t nsid;		/* Namespace ID for this path */
+	uint32_t domain;
+	uint8_t  bus;
+	uint8_t  slot;
+	uint8_t  function;
+	uint8_t  extra;
 };
 
 #define	PATHINQ_SETTINGS_SIZE	128
@@ -1273,6 +1277,7 @@ struct ccb_dev_advinfo {
 #define	CDAI_TYPE_EXT_INQ	5
 #define	CDAI_TYPE_NVME_CNTRL	6	/* NVMe Identify Controller data */
 #define	CDAI_TYPE_NVME_NS	7	/* NVMe Identify Namespace data */
+#define	CDAI_TYPE_MMC_PARAMS	8	/* MMC/SD ident */
 	off_t bufsiz;			/* IN: Size of external buffer */
 #define	CAM_SCSI_DEVID_MAXLEN	65536	/* length in buffer is an uint16_t */
 	off_t provsiz;			/* OUT: Size required/used */
@@ -1338,48 +1343,6 @@ union ccb {
 	    sizeof(*(ccbp)) - sizeof((ccbp)->ccb_h))
 
 __BEGIN_DECLS
-static __inline void
-cam_fill_csio(struct ccb_scsiio *csio, u_int32_t retries,
-	      void (*cbfcnp)(struct cam_periph *, union ccb *),
-	      u_int32_t flags, u_int8_t tag_action,
-	      u_int8_t *data_ptr, u_int32_t dxfer_len,
-	      u_int8_t sense_len, u_int8_t cdb_len,
-	      u_int32_t timeout);
-
-static __inline void
-cam_fill_nvmeio(struct ccb_nvmeio *nvmeio, u_int32_t retries,
-	      void (*cbfcnp)(struct cam_periph *, union ccb *),
-	      u_int32_t flags, u_int8_t *data_ptr, u_int32_t dxfer_len,
-	      u_int32_t timeout);
-
-static __inline void
-cam_fill_ctio(struct ccb_scsiio *csio, u_int32_t retries,
-	      void (*cbfcnp)(struct cam_periph *, union ccb *),
-	      u_int32_t flags, u_int tag_action, u_int tag_id,
-	      u_int init_id, u_int scsi_status, u_int8_t *data_ptr,
-	      u_int32_t dxfer_len, u_int32_t timeout);
-
-static __inline void
-cam_fill_ataio(struct ccb_ataio *ataio, u_int32_t retries,
-	      void (*cbfcnp)(struct cam_periph *, union ccb *),
-	      u_int32_t flags, u_int tag_action,
-	      u_int8_t *data_ptr, u_int32_t dxfer_len,
-	      u_int32_t timeout);
-
-static __inline void
-cam_fill_smpio(struct ccb_smpio *smpio, uint32_t retries,
-	       void (*cbfcnp)(struct cam_periph *, union ccb *), uint32_t flags,
-	       uint8_t *smp_request, int smp_request_len,
-	       uint8_t *smp_response, int smp_response_len,
-	       uint32_t timeout);
-
-static __inline void
-cam_fill_mmcio(struct ccb_mmcio *mmcio, uint32_t retries,
-	       void (*cbfcnp)(struct cam_periph *, union ccb *), uint32_t flags,
-               uint32_t mmc_opcode, uint32_t mmc_arg, uint32_t mmc_flags,
-	       struct mmc_data *mmc_d,
-	       uint32_t timeout);
-
 static __inline void
 cam_fill_csio(struct ccb_scsiio *csio, u_int32_t retries,
 	      void (*cbfcnp)(struct cam_periph *, union ccb *),

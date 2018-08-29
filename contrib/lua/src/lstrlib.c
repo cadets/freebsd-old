@@ -1,5 +1,5 @@
 /*
-** $Id: lstrlib.c,v 1.254 2016/12/22 13:08:50 roberto Exp $
+** $Id: lstrlib.c,v 1.254.1.1 2017/04/19 17:29:57 roberto Exp $
 ** Standard library for string operations and pattern-matching
 ** See Copyright Notice in lua.h
 */
@@ -879,7 +879,7 @@ static int lua_number2strx (lua_State *L, char *buff, int sz,
       buff[i] = toupper(uchar(buff[i]));
   }
   else if (fmt[SIZELENMOD] != 'a')
-    luaL_error(L, "modifiers for format '%%a'/'%%A' not implemented");
+    return luaL_error(L, "modifiers for format '%%a'/'%%A' not implemented");
   return n;
 }
 
@@ -928,6 +928,7 @@ static void addquoted (luaL_Buffer *b, const char *s, size_t len) {
 }
 
 
+#if LUA_FLOAT_TYPE != LUA_FLOAT_INT64
 /*
 ** Ensures the 'buff' string uses a dot as the radix character.
 */
@@ -938,7 +939,7 @@ static void checkdp (char *buff, int nb) {
     if (ppoint) *ppoint = '.';  /* change it to a dot */
   }
 }
-
+#endif
 
 static void addliteral (lua_State *L, luaL_Buffer *b, int arg) {
   switch (lua_type(L, arg)) {
@@ -951,12 +952,16 @@ static void addliteral (lua_State *L, luaL_Buffer *b, int arg) {
     case LUA_TNUMBER: {
       char *buff = luaL_prepbuffsize(b, MAX_ITEM);
       int nb;
+#if LUA_FLOAT_TYPE != LUA_FLOAT_INT64
       if (!lua_isinteger(L, arg)) {  /* float? */
         lua_Number n = lua_tonumber(L, arg);  /* write as hexa ('%a') */
         nb = lua_number2strx(L, buff, MAX_ITEM, "%" LUA_NUMBER_FRMLEN "a", n);
         checkdp(buff, nb);  /* ensure it uses a dot */
       }
       else {  /* integers */
+#else
+      {
+#endif
         lua_Integer n = lua_tointeger(L, arg);
         const char *format = (n == LUA_MININTEGER)  /* corner case? */
                            ? "0x%" LUA_INTEGER_FRMLEN "x"  /* use hexa */
@@ -1130,7 +1135,11 @@ static const union {
 /* dummy structure to get native alignment requirements */
 struct cD {
   char c;
-  union { double d; void *p; lua_Integer i; lua_Number n; } u;
+  union {
+#if LUA_FLOAT_TYPE != LUA_FLOAT_INT64
+	  double d;
+#endif
+	  void *p; lua_Integer i; lua_Number n; } u;
 };
 
 #define MAXALIGN	(offsetof(struct cD, u))
@@ -1140,8 +1149,10 @@ struct cD {
 ** Union for serializing floats
 */
 typedef union Ftypes {
+#if LUA_FLOAT_TYPE != LUA_FLOAT_INT64
   float f;
   double d;
+#endif
   lua_Number n;
   char buff[5 * sizeof(lua_Number)];  /* enough for any float type */
 } Ftypes;
@@ -1199,8 +1210,8 @@ static int getnum (const char **fmt, int df) {
 static int getnumlimit (Header *h, const char **fmt, int df) {
   int sz = getnum(fmt, df);
   if (sz > MAXINTSIZE || sz <= 0)
-    luaL_error(h->L, "integral size (%d) out of limits [1,%d]",
-                     sz, MAXINTSIZE);
+    return luaL_error(h->L, "integral size (%d) out of limits [1,%d]",
+                            sz, MAXINTSIZE);
   return sz;
 }
 
@@ -1231,8 +1242,10 @@ static KOption getoption (Header *h, const char **fmt, int *size) {
     case 'j': *size = sizeof(lua_Integer); return Kint;
     case 'J': *size = sizeof(lua_Integer); return Kuint;
     case 'T': *size = sizeof(size_t); return Kuint;
+#if LUA_FLOAT_TYPE != LUA_FLOAT_INT64
     case 'f': *size = sizeof(float); return Kfloat;
     case 'd': *size = sizeof(double); return Kfloat;
+#endif
     case 'n': *size = sizeof(lua_Number); return Kfloat;
     case 'i': *size = getnumlimit(h, fmt, sizeof(int)); return Kint;
     case 'I': *size = getnumlimit(h, fmt, sizeof(int)); return Kuint;
@@ -1365,9 +1378,13 @@ static int str_pack (lua_State *L) {
         volatile Ftypes u;
         char *buff = luaL_prepbuffsize(&b, size);
         lua_Number n = luaL_checknumber(L, arg);  /* get argument */
+#if LUA_FLOAT_TYPE != LUA_FLOAT_INT64
         if (size == sizeof(u.f)) u.f = (float)n;  /* copy it into 'u' */
         else if (size == sizeof(u.d)) u.d = (double)n;
         else u.n = n;
+#else
+	u.n = n;
+#endif
         /* move 'u' to final result, correcting endianness if needed */
         copywithendian(buff, u.buff, size, h.islittle);
         luaL_addsize(&b, size);
@@ -1503,9 +1520,13 @@ static int str_unpack (lua_State *L) {
         volatile Ftypes u;
         lua_Number num;
         copywithendian(u.buff, data + pos, size, h.islittle);
+#if LUA_FLOAT_TYPE != LUA_FLOAT_INT64
         if (size == sizeof(u.f)) num = (lua_Number)u.f;
         else if (size == sizeof(u.d)) num = (lua_Number)u.d;
         else num = u.n;
+#else
+	num = u.n;
+#endif
         lua_pushnumber(L, num);
         break;
       }

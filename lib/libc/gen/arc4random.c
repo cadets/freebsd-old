@@ -59,7 +59,6 @@ struct arc4_stream {
 
 static pthread_mutex_t	arc4random_mtx = PTHREAD_MUTEX_INITIALIZER;
 
-#define	RANDOMDEV	"/dev/random"
 #define	KEYSIZE		128
 #define	_ARC4_LOCK()						\
 	do {							\
@@ -112,8 +111,8 @@ arc4_addrandom(u_char *dat, int datlen)
 	rs.j = rs.i;
 }
 
-static size_t
-arc4_sysctl(u_char *buf, size_t size)
+size_t
+__arc4_sysctl(u_char *buf, size_t size)
 {
 	int mib[2];
 	size_t len, done;
@@ -144,7 +143,7 @@ arc4_stir(void)
 		arc4_init();
 		rs_initialized = 1;
 	}
-	if (arc4_sysctl(rdat, KEYSIZE) != KEYSIZE) {
+	if (__arc4_sysctl(rdat, KEYSIZE) != KEYSIZE) {
 		/*
 		 * The sysctl cannot fail. If it does fail on some FreeBSD
 		 * derivative or after some future change, just abort so that
@@ -243,41 +242,6 @@ arc4random_buf(void *_buf, size_t n)
 		buf[n] = arc4_getbyte();
 	}
 	_ARC4_UNLOCK();
-}
-
-/*
- * Calculate a uniformly distributed random number less than upper_bound
- * avoiding "modulo bias".
- *
- * Uniformity is achieved by generating new random numbers until the one
- * returned is outside the range [0, 2**32 % upper_bound).  This
- * guarantees the selected random number will be inside
- * [2**32 % upper_bound, 2**32) which maps back to [0, upper_bound)
- * after reduction modulo upper_bound.
- */
-u_int32_t
-arc4random_uniform(u_int32_t upper_bound)
-{
-	u_int32_t r, min;
-
-	if (upper_bound < 2)
-		return 0;
-
-	/* 2**32 % x == (2**32 - x) % x */
-	min = -upper_bound % upper_bound;
-	/*
-	 * This could theoretically loop forever but each retry has
-	 * p > 0.5 (worst case, usually far better) of selecting a
-	 * number inside the range we need, so it should rarely need
-	 * to re-roll.
-	 */
-	for (;;) {
-		r = arc4random();
-		if (r >= min)
-			break;
-	}
-
-	return r % upper_bound;
 }
 
 #if 0

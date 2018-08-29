@@ -239,6 +239,63 @@ static void fw_asrt(struct adapter *adap, struct fw_debug_cmd *asrt)
 		  be32_to_cpu(asrt->u.assert.y));
 }
 
+struct port_tx_state {
+	uint64_t rx_pause;
+	uint64_t tx_frames;
+};
+
+static void
+read_tx_state_one(struct adapter *sc, int i, struct port_tx_state *tx_state)
+{
+	uint32_t rx_pause_reg, tx_frames_reg;
+
+	if (is_t4(sc)) {
+		tx_frames_reg = PORT_REG(i, A_MPS_PORT_STAT_TX_PORT_FRAMES_L);
+		rx_pause_reg = PORT_REG(i, A_MPS_PORT_STAT_RX_PORT_PAUSE_L);
+	} else {
+		tx_frames_reg = T5_PORT_REG(i, A_MPS_PORT_STAT_TX_PORT_FRAMES_L);
+		rx_pause_reg = T5_PORT_REG(i, A_MPS_PORT_STAT_RX_PORT_PAUSE_L);
+	}
+
+	tx_state->rx_pause = t4_read_reg64(sc, rx_pause_reg);
+	tx_state->tx_frames = t4_read_reg64(sc, tx_frames_reg);
+}
+
+static void
+read_tx_state(struct adapter *sc, struct port_tx_state *tx_state)
+{
+	int i;
+
+	for_each_port(sc, i)
+		read_tx_state_one(sc, i, &tx_state[i]);
+}
+
+static void
+check_tx_state(struct adapter *sc, struct port_tx_state *tx_state)
+{
+	uint32_t port_ctl_reg;
+	uint64_t tx_frames, rx_pause;
+	int i;
+
+	for_each_port(sc, i) {
+		rx_pause = tx_state[i].rx_pause;
+		tx_frames = tx_state[i].tx_frames;
+		read_tx_state_one(sc, i, &tx_state[i]);	/* update */
+
+		if (is_t4(sc))
+			port_ctl_reg = PORT_REG(i, A_MPS_PORT_CTL);
+		else
+			port_ctl_reg = T5_PORT_REG(i, A_MPS_PORT_CTL);
+		if (t4_read_reg(sc, port_ctl_reg) & F_PORTTXEN &&
+		    rx_pause != tx_state[i].rx_pause &&
+		    tx_frames == tx_state[i].tx_frames) {
+			t4_set_reg_field(sc, port_ctl_reg, F_PORTTXEN, 0);
+			mdelay(1);
+			t4_set_reg_field(sc, port_ctl_reg, F_PORTTXEN, F_PORTTXEN);
+		}
+	}
+}
+
 #define X_CIM_PF_NOACCESS 0xeeeeeeee
 /**
  *	t4_wr_mbox_meat_timeout - send a command to FW through the given mailbox
@@ -280,13 +337,14 @@ int t4_wr_mbox_meat_timeout(struct adapter *adap, int mbox, const void *cmd,
 	};
 	u32 v;
 	u64 res;
-	int i, ms, delay_idx, ret;
+	int i, ms, delay_idx, ret, next_tx_check;
 	const __be64 *p = cmd;
 	u32 data_reg = PF_REG(mbox, A_CIM_PF_MAILBOX_DATA);
 	u32 ctl_reg = PF_REG(mbox, A_CIM_PF_MAILBOX_CTRL);
 	u32 ctl;
 	__be64 cmd_rpl[MBOX_LEN/8];
 	u32 pcie_fw;
+	struct port_tx_state tx_state[MAX_NPORTS];
 
 	if (adap->flags & CHK_MBOX_ACCESS)
 		ASSERT_SYNCHRONIZED_OP(adap);
@@ -375,8 +433,8 @@ int t4_wr_mbox_meat_timeout(struct adapter *adap, int mbox, const void *cmd,
 	CH_DUMP_MBOX(adap, mbox, data_reg);
 
 	t4_write_reg(adap, ctl_reg, F_MBMSGVALID | V_MBOWNER(X_MBOWNER_FW));
-	t4_read_reg(adap, ctl_reg);	/* flush write */
-
+	read_tx_state(adap, &tx_state[0]);	/* also flushes the write_reg */
+	next_tx_check = 1000;
 	delay_idx = 0;
 	ms = delay[0];
 
@@ -391,6 +449,12 @@ int t4_wr_mbox_meat_timeout(struct adapter *adap, int mbox, const void *cmd,
 			if (pcie_fw & F_PCIE_FW_ERR)
 				break;
 		}
+
+		if (i >= next_tx_check) {
+			check_tx_state(adap, &tx_state[0]);
+			next_tx_check = i + 1000;
+		}
+
 		if (sleep_ok) {
 			ms = delay[delay_idx];  /* last element may repeat */
 			if (delay_idx < ARRAY_SIZE(delay) - 1)
@@ -2664,13 +2728,16 @@ void t4_get_regs(struct adapter *adap, u8 *buf, size_t buf_size)
 }
 
 /*
- * Partial EEPROM Vital Product Data structure.  Includes only the ID and
- * VPD-R sections.
+ * Partial EEPROM Vital Product Data structure.  The VPD starts with one ID
+ * header followed by one or more VPD-R sections, each with its own header.
  */
 struct t4_vpd_hdr {
 	u8  id_tag;
 	u8  id_len[2];
 	u8  id_data[ID_LEN];
+};
+
+struct t4_vpdr_hdr {
 	u8  vpdr_tag;
 	u8  vpdr_len[2];
 };
@@ -2905,32 +2972,43 @@ int t4_seeprom_wp(struct adapter *adapter, int enable)
 
 /**
  *	get_vpd_keyword_val - Locates an information field keyword in the VPD
- *	@v: Pointer to buffered vpd data structure
+ *	@vpd: Pointer to buffered vpd data structure
  *	@kw: The keyword to search for
+ *	@region: VPD region to search (starting from 0)
  *
  *	Returns the value of the information field keyword or
  *	-ENOENT otherwise.
  */
-static int get_vpd_keyword_val(const struct t4_vpd_hdr *v, const char *kw)
+static int get_vpd_keyword_val(const u8 *vpd, const char *kw, int region)
 {
-	int i;
-	unsigned int offset , len;
-	const u8 *buf = (const u8 *)v;
-	const u8 *vpdr_len = &v->vpdr_len[0];
-	offset = sizeof(struct t4_vpd_hdr);
-	len =  (u16)vpdr_len[0] + ((u16)vpdr_len[1] << 8);
+	int i, tag;
+	unsigned int offset, len;
+	const struct t4_vpdr_hdr *vpdr;
 
-	if (len + sizeof(struct t4_vpd_hdr) > VPD_LEN) {
+	offset = sizeof(struct t4_vpd_hdr);
+	vpdr = (const void *)(vpd + offset);
+	tag = vpdr->vpdr_tag;
+	len = (u16)vpdr->vpdr_len[0] + ((u16)vpdr->vpdr_len[1] << 8);
+	while (region--) {
+		offset += sizeof(struct t4_vpdr_hdr) + len;
+		vpdr = (const void *)(vpd + offset);
+		if (++tag != vpdr->vpdr_tag)
+			return -ENOENT;
+		len = (u16)vpdr->vpdr_len[0] + ((u16)vpdr->vpdr_len[1] << 8);
+	}
+	offset += sizeof(struct t4_vpdr_hdr);
+
+	if (offset + len > VPD_LEN) {
 		return -ENOENT;
 	}
 
 	for (i = offset; i + VPD_INFO_FLD_HDR_SIZE <= offset + len;) {
-		if(memcmp(buf + i , kw , 2) == 0){
+		if (memcmp(vpd + i , kw , 2) == 0){
 			i += VPD_INFO_FLD_HDR_SIZE;
 			return i;
 		}
 
-		i += VPD_INFO_FLD_HDR_SIZE + buf[i+2];
+		i += VPD_INFO_FLD_HDR_SIZE + vpd[i+2];
 	}
 
 	return -ENOENT;
@@ -2946,18 +3024,18 @@ static int get_vpd_keyword_val(const struct t4_vpd_hdr *v, const char *kw)
  *	Reads card parameters stored in VPD EEPROM.
  */
 static int get_vpd_params(struct adapter *adapter, struct vpd_params *p,
-    u8 *vpd)
+    uint16_t device_id, u32 *buf)
 {
 	int i, ret, addr;
-	int ec, sn, pn, na;
+	int ec, sn, pn, na, md;
 	u8 csum;
-	const struct t4_vpd_hdr *v;
+	const u8 *vpd = (const u8 *)buf;
 
 	/*
 	 * Card information normally starts at VPD_BASE but early cards had
 	 * it at 0.
 	 */
-	ret = t4_seeprom_read(adapter, VPD_BASE, (u32 *)(vpd));
+	ret = t4_seeprom_read(adapter, VPD_BASE, buf);
 	if (ret)
 		return (ret);
 
@@ -2971,14 +3049,13 @@ static int get_vpd_params(struct adapter *adapter, struct vpd_params *p,
 	addr = *vpd == CHELSIO_VPD_UNIQUE_ID ? VPD_BASE : VPD_BASE_OLD;
 
 	for (i = 0; i < VPD_LEN; i += 4) {
-		ret = t4_seeprom_read(adapter, addr + i, (u32 *)(vpd + i));
+		ret = t4_seeprom_read(adapter, addr + i, buf++);
 		if (ret)
 			return ret;
 	}
- 	v = (const struct t4_vpd_hdr *)vpd;
 
 #define FIND_VPD_KW(var,name) do { \
-	var = get_vpd_keyword_val(v , name); \
+	var = get_vpd_keyword_val(vpd, name, 0); \
 	if (var < 0) { \
 		CH_ERR(adapter, "missing VPD keyword " name "\n"); \
 		return -EINVAL; \
@@ -3001,7 +3078,7 @@ static int get_vpd_params(struct adapter *adapter, struct vpd_params *p,
 	FIND_VPD_KW(na, "NA");
 #undef FIND_VPD_KW
 
-	memcpy(p->id, v->id_data, ID_LEN);
+	memcpy(p->id, vpd + offsetof(struct t4_vpd_hdr, id_data), ID_LEN);
 	strstrip(p->id);
 	memcpy(p->ec, vpd + ec, EC_LEN);
 	strstrip(p->ec);
@@ -3014,6 +3091,18 @@ static int get_vpd_params(struct adapter *adapter, struct vpd_params *p,
 	i = vpd[na - VPD_INFO_FLD_HDR_SIZE + 2];
 	memcpy(p->na, vpd + na, min(i, MACADDR_LEN));
 	strstrip((char *)p->na);
+
+	if (device_id & 0x80)
+		return 0;	/* Custom card */
+
+	md = get_vpd_keyword_val(vpd, "VF", 1);
+	if (md < 0) {
+		snprintf(p->md, sizeof(p->md), "unknown");
+	} else {
+		i = vpd[md - VPD_INFO_FLD_HDR_SIZE + 2];
+		memcpy(p->md, vpd + md, min(i, MD_LEN));
+		strstrip((char *)p->md);
+	}
 
 	return 0;
 }
@@ -3697,27 +3786,28 @@ int t4_link_l1cfg(struct adapter *adap, unsigned int mbox, unsigned int port,
 		fec = FW_PORT_CAP_FEC_RS;
 	else if (lc->requested_fec & FEC_BASER_RS)
 		fec = FW_PORT_CAP_FEC_BASER_RS;
-	else if (lc->requested_fec & FEC_RESERVED)
-		fec = FW_PORT_CAP_FEC_RESERVED;
 
 	if (!(lc->supported & FW_PORT_CAP_ANEG) ||
 	    lc->requested_aneg == AUTONEG_DISABLE) {
 		aneg = 0;
 		switch (lc->requested_speed) {
-		case 100:
+		case 100000:
 			speed = FW_PORT_CAP_SPEED_100G;
 			break;
-		case 40:
+		case 40000:
 			speed = FW_PORT_CAP_SPEED_40G;
 			break;
-		case 25:
+		case 25000:
 			speed = FW_PORT_CAP_SPEED_25G;
 			break;
-		case 10:
+		case 10000:
 			speed = FW_PORT_CAP_SPEED_10G;
 			break;
-		case 1:
+		case 1000:
 			speed = FW_PORT_CAP_SPEED_1G;
+			break;
+		case 100:
+			speed = FW_PORT_CAP_SPEED_100M;
 			break;
 		default:
 			return -EINVAL;
@@ -3731,8 +3821,10 @@ int t4_link_l1cfg(struct adapter *adap, unsigned int mbox, unsigned int port,
 
 	rcap = aneg | speed | fc | fec;
 	if ((rcap | lc->supported) != lc->supported) {
+#ifdef INVARIANTS
 		CH_WARN(adap, "rcap 0x%08x, pcap 0x%08x\n", rcap,
 		    lc->supported);
+#endif
 		rcap &= lc->supported;
 	}
 	rcap |= mdi;
@@ -7690,11 +7782,9 @@ static void handle_port_info(struct port_info *pi, const struct fw_port_info *p)
 
 	fec = 0;
 	if (lc->advertising & FW_PORT_CAP_FEC_RS)
-		fec |= FEC_RS;
-	if (lc->advertising & FW_PORT_CAP_FEC_BASER_RS)
-		fec |= FEC_BASER_RS;
-	if (lc->advertising & FW_PORT_CAP_FEC_RESERVED)
-		fec |= FEC_RESERVED;
+		fec = FEC_RS;
+	else if (lc->advertising & FW_PORT_CAP_FEC_BASER_RS)
+		fec = FEC_BASER_RS;
 	lc->fec = fec;
 }
 
@@ -7755,14 +7845,16 @@ int t4_handle_fw_rpl(struct adapter *adap, const __be64 *rpl)
 		}
 
 		lc = &pi->link_cfg;
+		PORT_LOCK(pi);
 		old_lc = &pi->old_link_cfg;
 		old_ptype = pi->port_type;
 		old_mtype = pi->mod_type;
-
 		handle_port_info(pi, &p->u.info);
+		PORT_UNLOCK(pi);
 		if (old_ptype != pi->port_type || old_mtype != pi->mod_type) {
 			t4_os_portmod_changed(pi);
 		}
+		PORT_LOCK(pi);
 		if (old_lc->link_ok != lc->link_ok ||
 		    old_lc->speed != lc->speed ||
 		    old_lc->fec != lc->fec ||
@@ -7770,6 +7862,7 @@ int t4_handle_fw_rpl(struct adapter *adap, const __be64 *rpl)
 			t4_os_link_changed(pi);
 			*old_lc = *lc;
 		}
+		PORT_UNLOCK(pi);
 	} else {
 		CH_WARN_RATELIMIT(adap, "Unknown firmware reply %d\n", opcode);
 		return -EINVAL;
@@ -7817,7 +7910,7 @@ int t4_get_flash_params(struct adapter *adapter)
 	int ret;
 	u32 flashid = 0;
 	unsigned int part, manufacturer;
-	unsigned int density, size;
+	unsigned int density, size = 0;
 
 
 	/*
@@ -7856,7 +7949,7 @@ int t4_get_flash_params(struct adapter *adapter)
 	 */
 	manufacturer = flashid & 0xff;
 	switch (manufacturer) {
-	case 0x20: { /* Micron/Numonix */
+	case 0x20: /* Micron/Numonix */
 		/*
 		 * This Density -> Size decoding table is taken from Micron
 		 * Data Sheets.
@@ -7872,17 +7965,34 @@ int t4_get_flash_params(struct adapter *adapter)
 		case 0x20: size = 1 << 26; break; /*  64MB */
 		case 0x21: size = 1 << 27; break; /* 128MB */
 		case 0x22: size = 1 << 28; break; /* 256MB */
-
-		default:
-			CH_ERR(adapter, "Micron Flash Part has bad size, "
-			       "ID = %#x, Density code = %#x\n",
-			       flashid, density);
-			return -EINVAL;
 		}
 		break;
-	}
 
-	case 0xef: { /* Winbond */
+	case 0x9d: /* ISSI -- Integrated Silicon Solution, Inc. */
+		/*
+		 * This Density -> Size decoding table is taken from ISSI
+		 * Data Sheets.
+		 */
+		density = (flashid >> 16) & 0xff;
+		switch (density) {
+		case 0x16: size = 1 << 25; break; /*  32MB */
+		case 0x17: size = 1 << 26; break; /*  64MB */
+		}
+		break;
+
+	case 0xc2: /* Macronix */
+		/*
+		 * This Density -> Size decoding table is taken from Macronix
+		 * Data Sheets.
+		 */
+		density = (flashid >> 16) & 0xff;
+		switch (density) {
+		case 0x17: size = 1 << 23; break; /*   8MB */
+		case 0x18: size = 1 << 24; break; /*  16MB */
+		}
+		break;
+
+	case 0xef: /* Winbond */
 		/*
 		 * This Density -> Size decoding table is taken from Winbond
 		 * Data Sheets.
@@ -7891,19 +8001,19 @@ int t4_get_flash_params(struct adapter *adapter)
 		switch (density) {
 		case 0x17: size = 1 << 23; break; /*   8MB */
 		case 0x18: size = 1 << 24; break; /*  16MB */
-
-		default:
-			CH_ERR(adapter, "Winbond Flash Part has bad size, "
-			       "ID = %#x, Density code = %#x\n",
-			       flashid, density);
-			return -EINVAL;
 		}
 		break;
 	}
 
-	default:
-		CH_ERR(adapter, "Unsupported Flash Part, ID = %#x\n", flashid);
-		return -EINVAL;
+	/* If we didn't recognize the FLASH part, that's no real issue: the
+	 * Hardware/Software contract says that Hardware will _*ALWAYS*_
+	 * use a FLASH part which is at least 4MB in size and has 64KB
+	 * sectors.  The unrecognized FLASH part is likely to be much larger
+	 * than 4MB, but that's all we really need.
+	 */
+	if (size == 0) {
+		CH_WARN(adapter, "Unknown Flash Part, ID = %#x, assuming 4MB\n", flashid);
+		size = 1 << 22;
 	}
 
 	/*
@@ -7997,7 +8107,7 @@ const struct chip_params *t4_get_chip_params(int chipid)
  *	values for some adapter tunables, take PHYs out of reset, and
  *	initialize the MDIO interface.
  */
-int t4_prep_adapter(struct adapter *adapter, u8 *buf)
+int t4_prep_adapter(struct adapter *adapter, u32 *buf)
 {
 	int ret;
 	uint16_t device_id;
@@ -8030,10 +8140,6 @@ int t4_prep_adapter(struct adapter *adapter, u8 *buf)
 	if (ret < 0)
 		return ret;
 
-	ret = get_vpd_params(adapter, &adapter->params.vpd, buf);
-	if (ret < 0)
-		return ret;
-
 	/* Cards with real ASICs have the chipid in the PCIe device id */
 	t4_os_pci_read_cfg2(adapter, PCI_DEVICE_ID, &device_id);
 	if (device_id >> 12 == chip_id(adapter))
@@ -8043,6 +8149,10 @@ int t4_prep_adapter(struct adapter *adapter, u8 *buf)
 		adapter->params.fpga = 1;
 		adapter->params.cim_la_size = 2 * CIMLA_SIZE;
 	}
+
+	ret = get_vpd_params(adapter, &adapter->params.vpd, device_id, buf);
+	if (ret < 0)
+		return ret;
 
 	init_cong_ctrl(adapter->params.a_wnd, adapter->params.b_wnd);
 
@@ -8345,6 +8455,7 @@ int t4_init_sge_params(struct adapter *adapter)
 static void read_filter_mode_and_ingress_config(struct adapter *adap,
     bool sleep_ok)
 {
+	uint32_t v;
 	struct tp_params *tpp = &adap->params.tp;
 
 	t4_tp_pio_read(adap, &tpp->vlan_pri_map, 1, A_TP_VLAN_PRI_MAP,
@@ -8368,12 +8479,12 @@ static void read_filter_mode_and_ingress_config(struct adapter *adap,
 	tpp->matchtype_shift = t4_filter_field_shift(adap, F_MPSHITTYPE);
 	tpp->frag_shift = t4_filter_field_shift(adap, F_FRAGMENTATION);
 
-	/*
-	 * If TP_INGRESS_CONFIG.VNID == 0, then TP_VLAN_PRI_MAP.VNIC_ID
-	 * represents the presence of an Outer VLAN instead of a VNIC ID.
-	 */
-	if ((tpp->ingress_config & F_VNIC) == 0)
-		tpp->vnic_shift = -1;
+	if (chip_id(adap) > CHELSIO_T4) {
+		v = t4_read_reg(adap, LE_HASH_MASK_GEN_IPV4T5(3));
+		adap->params.tp.hash_filter_mask = v;
+		v = t4_read_reg(adap, LE_HASH_MASK_GEN_IPV4T5(4));
+		adap->params.tp.hash_filter_mask |= (u64)v << 32;
+	}
 }
 
 /**
@@ -9692,7 +9803,7 @@ int t4_sched_config(struct adapter *adapter, int type, int minmaxen,
 int t4_sched_params(struct adapter *adapter, int type, int level, int mode,
 		    int rateunit, int ratemode, int channel, int cl,
 		    int minrate, int maxrate, int weight, int pktsize,
-		    int sleep_ok)
+		    int burstsize, int sleep_ok)
 {
 	struct fw_sched_cmd cmd;
 
@@ -9714,6 +9825,7 @@ int t4_sched_params(struct adapter *adapter, int type, int level, int mode,
 	cmd.u.params.max = cpu_to_be32(maxrate);
 	cmd.u.params.weight = cpu_to_be16(weight);
 	cmd.u.params.pktsize = cpu_to_be16(pktsize);
+	cmd.u.params.burstsize = cpu_to_be16(burstsize);
 
 	return t4_wr_mbox_meat(adapter,adapter->mbox, &cmd, sizeof(cmd),
 			       NULL, sleep_ok);

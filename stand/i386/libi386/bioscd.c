@@ -90,7 +90,7 @@ static struct bcinfo {
 } bcinfo [MAXBCDEV];
 static int nbcinfo = 0;
 
-#define	BC(dev)	(bcinfo[(dev)->d_unit])
+#define	BC(dev)	(bcinfo[(dev)->dd.d_unit])
 
 static int	bc_read(int unit, daddr_t dblk, int blks, caddr_t dest);
 static int	bc_init(void);
@@ -211,7 +211,7 @@ bc_open(struct open_file *f, ...)
 	va_start(ap, f);
 	dev = va_arg(ap, struct i386_devdesc *);
 	va_end(ap);
-	if (dev->d_unit >= nbcinfo) {
+	if (dev->dd.d_unit >= nbcinfo) {
 		DEBUG("attempt to open nonexistent disk");
 		return(ENXIO);
 	}
@@ -258,20 +258,14 @@ bc_realstrategy(void *devdata, int rw, daddr_t dblk, size_t size,
 	struct i386_devdesc *dev;
 	int unit;
 	int blks;
-#ifdef BD_SUPPORT_FRAGS
-	char fragbuf[BIOSCD_SECSIZE];
-	size_t fragsize;
 
-	fragsize = size % BIOSCD_SECSIZE;
-#else
 	if (size % BIOSCD_SECSIZE)
 		return (EINVAL);
-#endif
 
 	if ((rw & F_MASK) != F_READ)
 		return(EROFS);
 	dev = (struct i386_devdesc *)devdata;
-	unit = dev->d_unit;
+	unit = dev->dd.d_unit;
 	blks = size / BIOSCD_SECSIZE;
 	if (dblk % (BIOSCD_SECSIZE / DEV_BSIZE) != 0)
 		return (EINVAL);
@@ -290,20 +284,6 @@ bc_realstrategy(void *devdata, int rw, daddr_t dblk, size_t size,
 			return (0);
 		}
 	}
-#ifdef BD_SUPPORT_FRAGS
-	DEBUG("frag read %d from %lld+%d to %p", 
-	    fragsize, dblk, blks, buf + (blks * BIOSCD_SECSIZE));
-	if (fragsize && bc_read(unit, dblk + blks, 1, fragbuf) != 1) {
-		if (blks) {
-			if (rsize)
-				*rsize = blks * BIOSCD_SECSIZE;
-			return (0);
-		}
-		DEBUG("frag read error");
-		return(EIO);
-	}
-	bcopy(fragbuf, buf + (blks * BIOSCD_SECSIZE), fragsize);
-#endif	
 	if (rsize)
 		*rsize = size;
 	return (0);
@@ -427,7 +407,7 @@ bc_getdev(struct i386_devdesc *dev)
     int major;
     int rootdev;
 
-    unit = dev->d_unit;
+    unit = dev->dd.d_unit;
     biosdev = bc_unit2bios(unit);
     DEBUG("unit %d BIOS device %d", unit, biosdev);
     if (biosdev == -1)				/* not a BIOS device */

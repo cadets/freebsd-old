@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-3-Clause
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
  * Copyright (c) 1995 Søren Schmidt
  * All rights reserved.
@@ -8,24 +8,22 @@
  * modification, are permitted provided that the following conditions
  * are met:
  * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer
- *    in this position and unchanged.
+ *    notice, this list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission
  *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
- * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
  */
 
 #include <sys/cdefs.h>
@@ -85,7 +83,7 @@ static int linux_recvmsg_common(struct thread *, l_int, struct l_msghdr *,
 static int linux_set_socket_flags(int, int *);
 
 /*
- * Reads a linux sockaddr and does any necessary translation.
+ * Reads a Linux sockaddr and does any necessary translation.
  * Linux sockaddrs don't have a length field, only a family.
  * Copy the osockaddr structure pointed to by osa to kernel, adjust
  * family and convert to sockaddr.
@@ -170,7 +168,7 @@ linux_getsockaddr(struct sockaddr **sap, const struct osockaddr *osa, int salen)
 		name = ((struct sockaddr_un *)kosa)->sun_path;
 		if (*name == '\0') {
 			/*
-		 	 * Linux abstract namespace starts with a NULL byte.
+			 * Linux abstract namespace starts with a NULL byte.
 			 * XXX We do not support abstract namespace yet.
 			 */
 			namelen = strnlen(name + 1, salen - hdrlen - 1) + 1;
@@ -761,14 +759,13 @@ linux_bind(struct thread *td, struct linux_bind_args *args)
 	error = kern_bindat(td, AT_FDCWD, args->s, sa);
 	free(sa, M_SONAME);
 	if (error == EADDRNOTAVAIL && args->namelen != sizeof(struct sockaddr_in))
-	   	return (EINVAL);
+		return (EINVAL);
 	return (error);
 }
 
 int
 linux_connect(struct thread *td, struct linux_connect_args *args)
 {
-	cap_rights_t rights;
 	struct socket *so;
 	struct sockaddr *sa;
 	struct file *fp;
@@ -790,7 +787,7 @@ linux_connect(struct thread *td, struct linux_connect_args *args)
 	 * when on a non-blocking socket. Instead it returns the
 	 * error getsockopt(SOL_SOCKET, SO_ERROR) would return on BSD.
 	 */
-	error = getsock_cap(td, args->s, cap_rights_init(&rights, CAP_CONNECT),
+	error = getsock_cap(td, args->s, &cap_connect_rights,
 	    &fp, &fflag, NULL);
 	if (error != 0)
 		return (error);
@@ -826,7 +823,6 @@ linux_accept_common(struct thread *td, int s, l_uintptr_t addr,
 		socklen_t * __restrict anamelen;
 		int	flags;
 	} */ bsd_args;
-	cap_rights_t rights;
 	struct socket *so;
 	struct file *fp;
 	int error, error1;
@@ -844,8 +840,7 @@ linux_accept_common(struct thread *td, int s, l_uintptr_t addr,
 		if (error == EFAULT && namelen != sizeof(struct sockaddr_in))
 			return (EINVAL);
 		if (error == EINVAL) {
-			error1 = getsock_cap(td, s,
-			    cap_rights_init(&rights, CAP_ACCEPT), &fp, NULL, NULL);
+			error1 = getsock_cap(td, s, &cap_accept_rights, &fp, NULL, NULL);
 			if (error1 != 0)
 				return (error1);
 			so = fp->f_data;
@@ -1268,7 +1263,7 @@ linux_recvmsg_common(struct thread *td, l_int s, struct l_msghdr *msghdr,
 	struct cmsgcred *cmcred;
 	struct l_cmsghdr *linux_cmsg = NULL;
 	struct l_ucred linux_ucred;
-	socklen_t datalen, outlen;
+	socklen_t datalen, maxlen, outlen;
 	struct l_msghdr linux_msg;
 	struct iovec *iov, *uiov;
 	struct mbuf *control = NULL;
@@ -1327,9 +1322,8 @@ linux_recvmsg_common(struct thread *td, l_int s, struct l_msghdr *msghdr,
 			goto bad;
 	}
 
-	outbuf = PTRIN(linux_msg.msg_control);
-	outlen = 0;
-
+	maxlen = linux_msg.msg_controllen;
+	linux_msg.msg_controllen = 0;
 	if (control) {
 		linux_cmsg = malloc(L_CMSG_HDRSZ, M_LINUX, M_WAITOK | M_ZERO);
 
@@ -1337,15 +1331,15 @@ linux_recvmsg_common(struct thread *td, l_int s, struct l_msghdr *msghdr,
 		msg->msg_controllen = control->m_len;
 
 		cm = CMSG_FIRSTHDR(msg);
-
+		outbuf = PTRIN(linux_msg.msg_control);
+		outlen = 0;
 		while (cm != NULL) {
 			linux_cmsg->cmsg_type =
 			    bsd_to_linux_cmsg_type(cm->cmsg_type);
 			linux_cmsg->cmsg_level =
 			    bsd_to_linux_sockopt_level(cm->cmsg_level);
-			if (linux_cmsg->cmsg_type == -1
-			    || cm->cmsg_level != SOL_SOCKET)
-			{
+			if (linux_cmsg->cmsg_type == -1 ||
+			    cm->cmsg_level != SOL_SOCKET) {
 				error = EINVAL;
 				goto bad;
 			}
@@ -1353,8 +1347,7 @@ linux_recvmsg_common(struct thread *td, l_int s, struct l_msghdr *msghdr,
 			data = CMSG_DATA(cm);
 			datalen = (caddr_t)cm + cm->cmsg_len - (caddr_t)data;
 
-			switch (cm->cmsg_type)
-			{
+			switch (cm->cmsg_type) {
 			case SCM_RIGHTS:
 				if (flags & LINUX_MSG_CMSG_CLOEXEC) {
 					fds = datalen / sizeof(int);
@@ -1399,14 +1392,13 @@ linux_recvmsg_common(struct thread *td, l_int s, struct l_msghdr *msghdr,
 				break;
 			}
 
-			if (outlen + LINUX_CMSG_LEN(datalen) >
-			    linux_msg.msg_controllen) {
+			if (outlen + LINUX_CMSG_LEN(datalen) > maxlen) {
 				if (outlen == 0) {
 					error = EMSGSIZE;
 					goto bad;
 				} else {
-					linux_msg.msg_flags |=
-					    LINUX_MSG_CTRUNC;
+					linux_msg.msg_flags |= LINUX_MSG_CTRUNC;
+					m_dispose_extcontrolm(control);
 					goto out;
 				}
 			}
@@ -1427,15 +1419,19 @@ linux_recvmsg_common(struct thread *td, l_int s, struct l_msghdr *msghdr,
 
 			cm = CMSG_NXTHDR(msg, cm);
 		}
+		linux_msg.msg_controllen = outlen;
 	}
 
 out:
-	linux_msg.msg_controllen = outlen;
 	error = copyout(&linux_msg, msghdr, sizeof(linux_msg));
 
 bad:
+	if (control != NULL) {
+		if (error != 0)
+			m_dispose_extcontrolm(control);
+		m_freem(control);
+	}
 	free(iov, M_IOV);
-	m_freem(control);
 	free(linux_cmsg, M_LINUX);
 
 	return (error);
@@ -1468,7 +1464,7 @@ linux_recvmmsg(struct thread *td, struct linux_recvmmsg_args *args)
 		if (error != 0)
 			return (error);
 		getnanotime(&tts);
-		timespecadd(&tts, &ts);
+		timespecadd(&tts, &ts, &tts);
 	}
 
 	msg = PTRIN(args->msg);
@@ -1497,7 +1493,7 @@ linux_recvmmsg(struct thread *td, struct linux_recvmmsg_args *args)
 		 */
 		if (args->timeout) {
 			getnanotime(&ts);
-			timespecsub(&ts, &tts);
+			timespecsub(&ts, &tts, &ts);
 			if (!timespecisset(&ts) || ts.tv_sec > 0)
 				break;
 		}

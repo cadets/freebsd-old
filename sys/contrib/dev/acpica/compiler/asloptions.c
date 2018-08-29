@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2017, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -323,7 +323,7 @@ AslDoOptions (
             Gbl_IntegerOptimizationFlag = FALSE;
             Gbl_ReferenceOptimizationFlag = FALSE;
             Gbl_OptimizeTrivialParseNodes = FALSE;
-            Gbl_CaptureComments = TRUE;
+            AcpiGbl_CaptureComments = TRUE;
             AcpiGbl_DoDisassemblerOptimizations = FALSE;
             AcpiGbl_DebugAslConversion = TRUE;
             AcpiGbl_DmEmitExternalOpcodes = TRUE;
@@ -391,7 +391,7 @@ AslDoOptions (
             Gbl_IntegerOptimizationFlag = FALSE;
             Gbl_ReferenceOptimizationFlag = FALSE;
             Gbl_OptimizeTrivialParseNodes = FALSE;
-            Gbl_CaptureComments = TRUE;
+            AcpiGbl_CaptureComments = TRUE;
             AcpiGbl_DoDisassemblerOptimizations = FALSE;
             AcpiGbl_DmEmitExternalOpcodes = TRUE;
             Gbl_DoExternalsInPlace = TRUE;
@@ -416,24 +416,10 @@ AslDoOptions (
         {
         case '^':
 
-            /* Get the required argument */
-
-            if (AcpiGetoptArgument (argc, argv))
-            {
-                return (-1);
-            }
-
             Gbl_DoCompile = FALSE;
             break;
 
         case 'a':
-
-            /* Get the required argument */
-
-            if (AcpiGetoptArgument (argc, argv))
-            {
-                return (-1);
-            }
 
             Gbl_DoCompile = FALSE;
             Gbl_DisassembleAll = TRUE;
@@ -796,8 +782,8 @@ AslDoOptions (
         Gbl_IntegerOptimizationFlag = FALSE;
         Gbl_ReferenceOptimizationFlag = FALSE;
         Gbl_OptimizeTrivialParseNodes = FALSE;
-        Gbl_CaptureComments = TRUE;
         Gbl_DoExternalsInPlace = TRUE;
+        AcpiGbl_CaptureComments = TRUE;
         return (0);
 
     case 'r':   /* Override revision found in table header */
@@ -1088,7 +1074,7 @@ AslDoResponseFile (
      * Process all lines in the response file. There must be one complete
      * option per line
      */
-    while (fgets (StringBuffer, ASL_MSG_BUFFER_SIZE, ResponseFile))
+    while (fgets (StringBuffer, ASL_STRING_BUFFER_SIZE, ResponseFile))
     {
         /* Compress all tokens, allowing us to use a single argv entry */
 

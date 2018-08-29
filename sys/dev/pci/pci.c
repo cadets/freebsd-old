@@ -123,6 +123,8 @@ static void		pci_resume_msi(device_t dev);
 static void		pci_resume_msix(device_t dev);
 static int		pci_remap_intr_method(device_t bus, device_t dev,
 			    u_int irq);
+static void		pci_hint_device_unit(device_t acdev, device_t child,
+			    const char *name, int *unitp);
 
 static int		pci_get_id_method(device_t dev, device_t child,
 			    enum pci_id_type type, uintptr_t *rid);
@@ -162,6 +164,7 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(bus_child_detached,	pci_child_detached),
 	DEVMETHOD(bus_child_pnpinfo_str, pci_child_pnpinfo_str_method),
 	DEVMETHOD(bus_child_location_str, pci_child_location_str_method),
+	DEVMETHOD(bus_hint_device_unit,	pci_hint_device_unit),
 	DEVMETHOD(bus_remap_intr,	pci_remap_intr_method),
 	DEVMETHOD(bus_suspend_child,	pci_suspend_child),
 	DEVMETHOD(bus_resume_child,	pci_resume_child),
@@ -180,8 +183,11 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(pci_set_powerstate,	pci_set_powerstate_method),
 	DEVMETHOD(pci_assign_interrupt,	pci_assign_interrupt_method),
 	DEVMETHOD(pci_find_cap,		pci_find_cap_method),
+	DEVMETHOD(pci_find_next_cap,	pci_find_next_cap_method),
 	DEVMETHOD(pci_find_extcap,	pci_find_extcap_method),
+	DEVMETHOD(pci_find_next_extcap,	pci_find_next_extcap_method),
 	DEVMETHOD(pci_find_htcap,	pci_find_htcap_method),
+	DEVMETHOD(pci_find_next_htcap,	pci_find_next_htcap_method),
 	DEVMETHOD(pci_alloc_msi,	pci_alloc_msi_method),
 	DEVMETHOD(pci_alloc_msix,	pci_alloc_msix_method),
 	DEVMETHOD(pci_enable_msi,	pci_enable_msi_method),
@@ -392,6 +398,11 @@ SYSCTL_INT(_hw_pci, OID_AUTO, clear_buses, CTLFLAG_RDTUN, &pci_clear_buses, 0,
 static int pci_enable_ari = 1;
 SYSCTL_INT(_hw_pci, OID_AUTO, enable_ari, CTLFLAG_RDTUN, &pci_enable_ari,
     0, "Enable support for PCIe Alternative RID Interpretation");
+
+static int pci_clear_aer_on_attach = 0;
+SYSCTL_INT(_hw_pci, OID_AUTO, clear_aer_on_attach, CTLFLAG_RWTUN,
+    &pci_clear_aer_on_attach, 0,
+    "Clear port and device AER state on driver attach");
 
 static int
 pci_has_quirk(uint32_t devid, int quirk)
@@ -1374,7 +1385,7 @@ pci_find_htcap_method(device_t dev, device_t child, int capability, int *capreg)
 	 * Traverse the capabilities list checking each HT capability
 	 * to see if it matches the requested HT capability.
 	 */
-	while (ptr != 0) {
+	for (;;) {
 		val = pci_read_config(child, ptr + PCIR_HT_COMMAND, 2);
 		if (capability == PCIM_HTCAP_SLAVE ||
 		    capability == PCIM_HTCAP_HOST)
@@ -1388,13 +1399,51 @@ pci_find_htcap_method(device_t dev, device_t child, int capability, int *capreg)
 		}
 
 		/* Skip to the next HT capability. */
-		while (ptr != 0) {
-			ptr = pci_read_config(child, ptr + PCICAP_NEXTPTR, 1);
-			if (pci_read_config(child, ptr + PCICAP_ID, 1) ==
-			    PCIY_HT)
-				break;
+		if (pci_find_next_cap(child, PCIY_HT, ptr, &ptr) != 0)
+			break;
+	}
+
+	return (ENOENT);
+}
+
+/*
+ * Find the next requested HyperTransport capability after start and return
+ * the offset in configuration space via the pointer provided.  The function
+ * returns 0 on success and an error code otherwise.
+ */
+int
+pci_find_next_htcap_method(device_t dev, device_t child, int capability,
+    int start, int *capreg)
+{
+	int ptr;
+	uint16_t val;
+
+	KASSERT(pci_read_config(child, start + PCICAP_ID, 1) == PCIY_HT,
+	    ("start capability is not HyperTransport capability"));
+	ptr = start;
+
+	/*
+	 * Traverse the capabilities list checking each HT capability
+	 * to see if it matches the requested HT capability.
+	 */
+	for (;;) {
+		/* Skip to the next HT capability. */
+		if (pci_find_next_cap(child, PCIY_HT, ptr, &ptr) != 0)
+			break;
+
+		val = pci_read_config(child, ptr + PCIR_HT_COMMAND, 2);
+		if (capability == PCIM_HTCAP_SLAVE ||
+		    capability == PCIM_HTCAP_HOST)
+			val &= 0xe000;
+		else
+			val &= PCIM_HTCMD_CAP_MASK;
+		if (val == capability) {
+			if (capreg != NULL)
+				*capreg = ptr;
+			return (0);
 		}
 	}
+
 	return (ENOENT);
 }
 
@@ -1409,8 +1458,8 @@ pci_find_cap_method(device_t dev, device_t child, int capability,
 {
 	struct pci_devinfo *dinfo = device_get_ivars(child);
 	pcicfgregs *cfg = &dinfo->cfg;
-	u_int32_t status;
-	u_int8_t ptr;
+	uint32_t status;
+	uint8_t ptr;
 
 	/*
 	 * Check the CAP_LIST bit of the PCI status register first.
@@ -1439,6 +1488,33 @@ pci_find_cap_method(device_t dev, device_t child, int capability,
 	/*
 	 * Traverse the capabilities list.
 	 */
+	while (ptr != 0) {
+		if (pci_read_config(child, ptr + PCICAP_ID, 1) == capability) {
+			if (capreg != NULL)
+				*capreg = ptr;
+			return (0);
+		}
+		ptr = pci_read_config(child, ptr + PCICAP_NEXTPTR, 1);
+	}
+
+	return (ENOENT);
+}
+
+/*
+ * Find the next requested capability after start and return the offset in
+ * configuration space via the pointer provided.  The function returns
+ * 0 on success and an error code otherwise.
+ */
+int
+pci_find_next_cap_method(device_t dev, device_t child, int capability,
+    int start, int *capreg)
+{
+	uint8_t ptr;
+
+	KASSERT(pci_read_config(child, start + PCICAP_ID, 1) == capability,
+	    ("start capability is not expected capability"));
+
+	ptr = pci_read_config(child, start + PCICAP_NEXTPTR, 1);
 	while (ptr != 0) {
 		if (pci_read_config(child, ptr + PCICAP_ID, 1) == capability) {
 			if (capreg != NULL)
@@ -1483,6 +1559,41 @@ pci_find_extcap_method(device_t dev, device_t child, int capability,
 		if (ptr == 0)
 			break;
 		ecap = pci_read_config(child, ptr, 4);
+	}
+
+	return (ENOENT);
+}
+
+/*
+ * Find the next requested extended capability after start and return the
+ * offset in configuration space via the pointer provided.  The function
+ * returns 0 on success and an error code otherwise.
+ */
+int
+pci_find_next_extcap_method(device_t dev, device_t child, int capability,
+    int start, int *capreg)
+{
+	struct pci_devinfo *dinfo = device_get_ivars(child);
+	pcicfgregs *cfg = &dinfo->cfg;
+	uint32_t ecap;
+	uint16_t ptr;
+
+	/* Only supported for PCI-express devices. */
+	if (cfg->pcie.pcie_location == 0)
+		return (ENXIO);
+
+	ecap = pci_read_config(child, start, 4);
+	KASSERT(PCI_EXTCAP_ID(ecap) == capability,
+	    ("start extended capability is not expected capability"));
+	ptr = PCI_EXTCAP_NEXTPTR(ecap);
+	while (ptr != 0) {
+		ecap = pci_read_config(child, ptr, 4);
+		if (PCI_EXTCAP_ID(ecap) == capability) {
+			if (capreg != NULL)
+				*capreg = ptr;
+			return (0);
+		}
+		ptr = PCI_EXTCAP_NEXTPTR(ecap);
 	}
 
 	return (ENOENT);
@@ -3977,7 +4088,6 @@ pci_rescan_method(device_t dev)
 {
 #define	REG(n, w)	PCIB_READ_CONFIG(pcib, busno, s, f, n, w)
 	device_t pcib = device_get_parent(dev);
-	struct pci_softc *sc;
 	device_t child, *devlist, *unchanged;
 	int devcount, error, i, j, maxslots, oldcount;
 	int busno, domain, s, f, pcifunchigh;
@@ -3997,7 +4107,6 @@ pci_rescan_method(device_t dev)
 	} else
 		unchanged = NULL;
 
-	sc = device_get_softc(dev);
 	domain = pcib_get_domain(dev);
 	busno = pcib_get_bus(dev);
 	maxslots = PCIB_MAXSLOTS(pcib);
@@ -4074,11 +4183,9 @@ device_t
 pci_add_iov_child(device_t bus, device_t pf, uint16_t rid, uint16_t vid,
     uint16_t did)
 {
-	struct pci_devinfo *pf_dinfo, *vf_dinfo;
+	struct pci_devinfo *vf_dinfo;
 	device_t pcib;
 	int busno, slot, func;
-
-	pf_dinfo = device_get_ivars(pf);
 
 	pcib = device_get_parent(bus);
 
@@ -4102,17 +4209,98 @@ pci_create_iov_child_method(device_t bus, device_t pf, uint16_t rid,
 }
 #endif
 
+static void
+pci_add_child_clear_aer(device_t dev, struct pci_devinfo *dinfo)
+{
+	int aer;
+	uint32_t r;
+	uint16_t r2;
+
+	if (dinfo->cfg.pcie.pcie_location != 0 &&
+	    dinfo->cfg.pcie.pcie_type == PCIEM_TYPE_ROOT_PORT) {
+		r2 = pci_read_config(dev, dinfo->cfg.pcie.pcie_location +
+		    PCIER_ROOT_CTL, 2);
+		r2 &= ~(PCIEM_ROOT_CTL_SERR_CORR |
+		    PCIEM_ROOT_CTL_SERR_NONFATAL | PCIEM_ROOT_CTL_SERR_FATAL);
+		pci_write_config(dev, dinfo->cfg.pcie.pcie_location +
+		    PCIER_ROOT_CTL, r2, 2);
+	}
+	if (pci_find_extcap(dev, PCIZ_AER, &aer) == 0) {
+		r = pci_read_config(dev, aer + PCIR_AER_UC_STATUS, 4);
+		pci_write_config(dev, aer + PCIR_AER_UC_STATUS, r, 4);
+		if (r != 0 && bootverbose) {
+			pci_printf(&dinfo->cfg,
+			    "clearing AER UC 0x%08x -> 0x%08x\n",
+			    r, pci_read_config(dev, aer + PCIR_AER_UC_STATUS,
+			    4));
+		}
+
+		r = pci_read_config(dev, aer + PCIR_AER_UC_MASK, 4);
+		r &= ~(PCIM_AER_UC_TRAINING_ERROR |
+		    PCIM_AER_UC_DL_PROTOCOL_ERROR |
+		    PCIM_AER_UC_SURPRISE_LINK_DOWN |
+		    PCIM_AER_UC_POISONED_TLP |
+		    PCIM_AER_UC_FC_PROTOCOL_ERROR |
+		    PCIM_AER_UC_COMPLETION_TIMEOUT |
+		    PCIM_AER_UC_COMPLETER_ABORT |
+		    PCIM_AER_UC_UNEXPECTED_COMPLETION |
+		    PCIM_AER_UC_RECEIVER_OVERFLOW |
+		    PCIM_AER_UC_MALFORMED_TLP |
+		    PCIM_AER_UC_ECRC_ERROR |
+		    PCIM_AER_UC_UNSUPPORTED_REQUEST |
+		    PCIM_AER_UC_ACS_VIOLATION |
+		    PCIM_AER_UC_INTERNAL_ERROR |
+		    PCIM_AER_UC_MC_BLOCKED_TLP |
+		    PCIM_AER_UC_ATOMIC_EGRESS_BLK |
+		    PCIM_AER_UC_TLP_PREFIX_BLOCKED);
+		pci_write_config(dev, aer + PCIR_AER_UC_MASK, r, 4);
+
+		r = pci_read_config(dev, aer + PCIR_AER_COR_STATUS, 4);
+		pci_write_config(dev, aer + PCIR_AER_COR_STATUS, r, 4);
+		if (r != 0 && bootverbose) {
+			pci_printf(&dinfo->cfg,
+			    "clearing AER COR 0x%08x -> 0x%08x\n",
+			    r, pci_read_config(dev, aer + PCIR_AER_COR_STATUS,
+			    4));
+		}
+
+		r = pci_read_config(dev, aer + PCIR_AER_COR_MASK, 4);
+		r &= ~(PCIM_AER_COR_RECEIVER_ERROR |
+		    PCIM_AER_COR_BAD_TLP |
+		    PCIM_AER_COR_BAD_DLLP |
+		    PCIM_AER_COR_REPLAY_ROLLOVER |
+		    PCIM_AER_COR_REPLAY_TIMEOUT |
+		    PCIM_AER_COR_ADVISORY_NF_ERROR |
+		    PCIM_AER_COR_INTERNAL_ERROR |
+		    PCIM_AER_COR_HEADER_LOG_OVFLOW);
+		pci_write_config(dev, aer + PCIR_AER_COR_MASK, r, 4);
+
+		r = pci_read_config(dev, dinfo->cfg.pcie.pcie_location +
+		    PCIER_DEVICE_CTL, 2);
+		r |=  PCIEM_CTL_COR_ENABLE | PCIEM_CTL_NFER_ENABLE |
+		    PCIEM_CTL_FER_ENABLE | PCIEM_CTL_URR_ENABLE;
+		pci_write_config(dev, dinfo->cfg.pcie.pcie_location +
+		    PCIER_DEVICE_CTL, r, 2);
+	}
+}
+
 void
 pci_add_child(device_t bus, struct pci_devinfo *dinfo)
 {
-	dinfo->cfg.dev = device_add_child(bus, NULL, -1);
-	device_set_ivars(dinfo->cfg.dev, dinfo);
+	device_t dev;
+
+	dinfo->cfg.dev = dev = device_add_child(bus, NULL, -1);
+	device_set_ivars(dev, dinfo);
 	resource_list_init(&dinfo->resources);
-	pci_cfg_save(dinfo->cfg.dev, dinfo, 0);
-	pci_cfg_restore(dinfo->cfg.dev, dinfo);
+	pci_cfg_save(dev, dinfo, 0);
+	pci_cfg_restore(dev, dinfo);
 	pci_print_verbose(dinfo);
-	pci_add_resources(bus, dinfo->cfg.dev, 0, 0);
+	pci_add_resources(bus, dev, 0, 0);
 	pci_child_added(dinfo->cfg.dev);
+
+	if (pci_clear_aer_on_attach)
+		pci_add_child_clear_aer(dev, dinfo);
+
 	EVENTHANDLER_INVOKE(pci_add_device, dinfo->cfg.dev);
 }
 
@@ -4218,6 +4406,31 @@ pci_detach(device_t dev)
 		return (error);
 #endif
 	return (device_delete_children(dev));
+}
+
+static void
+pci_hint_device_unit(device_t dev, device_t child, const char *name, int *unitp)
+{
+	int line, unit;
+	const char *at;
+	char me1[24], me2[32];
+	uint8_t b, s, f;
+	uint32_t d;
+
+	d = pci_get_domain(child);
+	b = pci_get_bus(child);
+	s = pci_get_slot(child);
+	f = pci_get_function(child);
+	snprintf(me1, sizeof(me1), "pci%u:%u:%u", b, s, f);
+	snprintf(me2, sizeof(me2), "pci%u:%u:%u:%u", d, b, s, f);
+	line = 0;
+	while (resource_find_dev(&line, name, &unit, "at", NULL) == 0) {
+		resource_string_value(name, unit, "at", &at);
+		if (strcmp(at, me1) != 0 && strcmp(at, me2) != 0)
+			continue; /* No match, try next candidate */
+		*unitp = unit;
+		return;
+	}
 }
 
 static void
@@ -6117,3 +6330,164 @@ pcie_flr(device_t dev, u_int max_delay, bool force)
 		pci_printf(&dinfo->cfg, "Transactions pending after FLR!\n");
 	return (true);
 }
+
+const struct pci_device_table *
+pci_match_device(device_t child, const struct pci_device_table *id, size_t nelt)
+{
+	bool match;
+	uint16_t vendor, device, subvendor, subdevice, class, subclass, revid;
+
+	vendor = pci_get_vendor(child);
+	device = pci_get_device(child);
+	subvendor = pci_get_subvendor(child);
+	subdevice = pci_get_subdevice(child);
+	class = pci_get_class(child);
+	subclass = pci_get_subclass(child);
+	revid = pci_get_revid(child);
+	while (nelt-- > 0) {
+		match = true;
+		if (id->match_flag_vendor)
+			match &= vendor == id->vendor;
+		if (id->match_flag_device)
+			match &= device == id->device;
+		if (id->match_flag_subvendor)
+			match &= subvendor == id->subvendor;
+		if (id->match_flag_subdevice)
+			match &= subdevice == id->subdevice;
+		if (id->match_flag_class)
+			match &= class == id->class_id;
+		if (id->match_flag_subclass)
+			match &= subclass == id->subclass;
+		if (id->match_flag_revid)
+			match &= revid == id->revid;
+		if (match)
+			return (id);
+		id++;
+	}
+	return (NULL);
+}
+
+static void
+pci_print_faulted_dev_name(const struct pci_devinfo *dinfo)
+{
+	const char *dev_name;
+	device_t dev;
+
+	dev = dinfo->cfg.dev;
+	printf("pci%d:%d:%d:%d", dinfo->cfg.domain, dinfo->cfg.bus,
+	    dinfo->cfg.slot, dinfo->cfg.func);
+	dev_name = device_get_name(dev);
+	if (dev_name != NULL)
+		printf(" (%s%d)", dev_name, device_get_unit(dev));
+}
+
+void
+pci_print_faulted_dev(void)
+{
+	struct pci_devinfo *dinfo;
+	device_t dev;
+	int aer, i;
+	uint32_t r1, r2;
+	uint16_t status;
+
+	STAILQ_FOREACH(dinfo, &pci_devq, pci_links) {
+		dev = dinfo->cfg.dev;
+		status = pci_read_config(dev, PCIR_STATUS, 2);
+		status &= PCIM_STATUS_MDPERR | PCIM_STATUS_STABORT |
+		    PCIM_STATUS_RTABORT | PCIM_STATUS_RMABORT |
+		    PCIM_STATUS_SERR | PCIM_STATUS_PERR;
+		if (status != 0) {
+			pci_print_faulted_dev_name(dinfo);
+			printf(" error 0x%04x\n", status);
+		}
+		if (dinfo->cfg.pcie.pcie_location != 0) {
+			status = pci_read_config(dev,
+			    dinfo->cfg.pcie.pcie_location +
+			    PCIER_DEVICE_STA, 2);
+			if ((status & (PCIEM_STA_CORRECTABLE_ERROR |
+			    PCIEM_STA_NON_FATAL_ERROR | PCIEM_STA_FATAL_ERROR |
+			    PCIEM_STA_UNSUPPORTED_REQ)) != 0) {
+				pci_print_faulted_dev_name(dinfo);
+				printf(" PCIe DEVCTL 0x%04x DEVSTA 0x%04x\n",
+				    pci_read_config(dev,
+				    dinfo->cfg.pcie.pcie_location +
+				    PCIER_DEVICE_CTL, 2),
+				    status);
+			}
+		}
+		if (pci_find_extcap(dev, PCIZ_AER, &aer) == 0) {
+			r1 = pci_read_config(dev, aer + PCIR_AER_UC_STATUS, 4);
+			r2 = pci_read_config(dev, aer + PCIR_AER_COR_STATUS, 4);
+			if (r1 != 0 || r2 != 0) {
+				pci_print_faulted_dev_name(dinfo);
+				printf(" AER UC 0x%08x Mask 0x%08x Svr 0x%08x\n"
+				    "  COR 0x%08x Mask 0x%08x Ctl 0x%08x\n",
+				    r1, pci_read_config(dev, aer +
+				    PCIR_AER_UC_MASK, 4),
+				    pci_read_config(dev, aer +
+				    PCIR_AER_UC_SEVERITY, 4),
+				    r2, pci_read_config(dev, aer +
+				    PCIR_AER_COR_MASK, 4),
+				    pci_read_config(dev, aer +
+				    PCIR_AER_CAP_CONTROL, 4));
+				for (i = 0; i < 4; i++) {
+					r1 = pci_read_config(dev, aer +
+					    PCIR_AER_HEADER_LOG + i * 4, 4);
+					printf("    HL%d: 0x%08x\n", i, r1);
+				}
+			}
+		}
+	}
+}
+
+#ifdef DDB
+DB_SHOW_COMMAND(pcierr, pci_print_faulted_dev_db)
+{
+
+	pci_print_faulted_dev();
+}
+
+static void
+db_clear_pcie_errors(const struct pci_devinfo *dinfo)
+{
+	device_t dev;
+	int aer;
+	uint32_t r;
+
+	dev = dinfo->cfg.dev;
+	r = pci_read_config(dev, dinfo->cfg.pcie.pcie_location +
+	    PCIER_DEVICE_STA, 2);
+	pci_write_config(dev, dinfo->cfg.pcie.pcie_location +
+	    PCIER_DEVICE_STA, r, 2);
+
+	if (pci_find_extcap(dev, PCIZ_AER, &aer) != 0)
+		return;
+	r = pci_read_config(dev, aer + PCIR_AER_UC_STATUS, 4);
+	if (r != 0)
+		pci_write_config(dev, aer + PCIR_AER_UC_STATUS, r, 4);
+	r = pci_read_config(dev, aer + PCIR_AER_COR_STATUS, 4);
+	if (r != 0)
+		pci_write_config(dev, aer + PCIR_AER_COR_STATUS, r, 4);
+}
+
+DB_COMMAND(pci_clearerr, db_pci_clearerr)
+{
+	struct pci_devinfo *dinfo;
+	device_t dev;
+	uint16_t status, status1;
+
+	STAILQ_FOREACH(dinfo, &pci_devq, pci_links) {
+		dev = dinfo->cfg.dev;
+		status1 = status = pci_read_config(dev, PCIR_STATUS, 2);
+		status1 &= PCIM_STATUS_MDPERR | PCIM_STATUS_STABORT |
+		    PCIM_STATUS_RTABORT | PCIM_STATUS_RMABORT |
+		    PCIM_STATUS_SERR | PCIM_STATUS_PERR;
+		if (status1 != 0) {
+			status &= ~status1;
+			pci_write_config(dev, PCIR_STATUS, status, 2);
+		}
+		if (dinfo->cfg.pcie.pcie_location != 0)
+			db_clear_pcie_errors(dinfo);
+	}
+}
+#endif

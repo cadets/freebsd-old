@@ -222,7 +222,7 @@ static struct bufarea *cgbufs;	/* header for cylinder group cache */
 static int flushtries;		/* number of tries to reclaim memory */
 
 struct bufarea *
-cgget(int cg)
+cglookup(int cg)
 {
 	struct bufarea *cgbp;
 	struct cg *cgp;
@@ -297,28 +297,6 @@ foundit:
 	return (bp);
 }
 
-/*
- * Timespec operations (from <sys/time.h>).
- */
-#define	timespecsub(vvp, uvp)						\
-	do {								\
-		(vvp)->tv_sec -= (uvp)->tv_sec;				\
-		(vvp)->tv_nsec -= (uvp)->tv_nsec;			\
-		if ((vvp)->tv_nsec < 0) {				\
-			(vvp)->tv_sec--;				\
-			(vvp)->tv_nsec += 1000000000;			\
-		}							\
-	} while (0)
-#define	timespecadd(vvp, uvp)						\
-	do {								\
-		(vvp)->tv_sec += (uvp)->tv_sec;				\
-		(vvp)->tv_nsec += (uvp)->tv_nsec;			\
-		if ((vvp)->tv_nsec >= 1000000000) {			\
-			(vvp)->tv_sec++;				\
-			(vvp)->tv_nsec -= 1000000000;			\
-		}							\
-	} while (0)
-
 void
 getblk(struct bufarea *bp, ufs2_daddr_t blk, long size)
 {
@@ -337,8 +315,9 @@ getblk(struct bufarea *bp, ufs2_daddr_t blk, long size)
 		bp->b_errs = blread(fsreadfd, bp->b_un.b_buf, dblk, size);
 		if (debug) {
 			clock_gettime(CLOCK_REALTIME_PRECISE, &finish);
-			timespecsub(&finish, &start);
-			timespecadd(&readtime[bp->b_type], &finish);
+			timespecsub(&finish, &start, &finish);
+			timespecadd(&readtime[bp->b_type], &finish,
+			    &readtime[bp->b_type]);
 		}
 		bp->b_bno = dblk;
 		bp->b_size = size;
@@ -348,24 +327,9 @@ getblk(struct bufarea *bp, ufs2_daddr_t blk, long size)
 void
 flush(int fd, struct bufarea *bp)
 {
-	int i, j;
 
 	if (!bp->b_dirty)
 		return;
-	/*
-	 * Calculate any needed check hashes.
-	 */
-	switch (bp->b_type) {
-	case BT_CYLGRP:
-		if ((sblock.fs_metackhash & CK_CYLGRP) == 0)
-			break;
-		bp->b_un.b_cg->cg_ckhash = 0;
-		bp->b_un.b_cg->cg_ckhash =
-		    calculate_crc32c(~0L, bp->b_un.b_buf, bp->b_size);
-		break;
-	default:
-		break;
-	}
 	bp->b_dirty = 0;
 	if (fswritefd < 0) {
 		pfatal("WRITING IN READ_ONLY MODE.\n");
@@ -376,13 +340,24 @@ flush(int fd, struct bufarea *bp)
 		    (bp->b_errs == bp->b_size / dev_bsize) ? "" : "PARTIALLY ",
 		    (long long)bp->b_bno);
 	bp->b_errs = 0;
-	blwrite(fd, bp->b_un.b_buf, bp->b_bno, bp->b_size);
-	if (bp != &sblk)
-		return;
-	for (i = 0, j = 0; i < sblock.fs_cssize; i += sblock.fs_bsize, j++) {
-		blwrite(fswritefd, (char *)sblock.fs_csp + i,
-		    fsbtodb(&sblock, sblock.fs_csaddr + j * sblock.fs_frag),
-		    MIN(sblock.fs_cssize - i, sblock.fs_bsize));
+	/*
+	 * Write using the appropriate function.
+	 */
+	switch (bp->b_type) {
+	case BT_SUPERBLK:
+		if (bp != &sblk)
+			pfatal("BUFFER %p DOES NOT MATCH SBLK %p\n",
+			    bp, &sblk);
+		if (sbput(fd, (struct fs *)bp->b_un.b_buf, 0) == 0)
+			fsmodified = 1;
+		break;
+	case BT_CYLGRP:
+		if (cgput(&disk, (struct cg *)bp->b_un.b_buf) == 0)
+			fsmodified = 1;
+		break;
+	default:
+		blwrite(fd, bp->b_un.b_buf, bp->b_bno, bp->b_size);
+		break;
 	}
 }
 
@@ -436,6 +411,8 @@ ckfini(int markclean)
 	if (havesb && cursnapshot == 0 && sblock.fs_magic == FS_UFS2_MAGIC &&
 	    sblk.b_bno != sblock.fs_sblockloc / dev_bsize &&
 	    !preen && reply("UPDATE STANDARD SUPERBLOCK")) {
+		/* Change the write destination to standard superblock */
+		sblock.fs_sblockactualloc = sblock.fs_sblockloc;
 		sblk.b_bno = sblock.fs_sblockloc / dev_bsize;
 		sbdirty();
 		flush(fswritefd, &sblk);
@@ -511,7 +488,7 @@ IOstats(char *what)
 	totaldiskreads += diskreads;
 	diskreads = 0;
 	for (i = 0; i < BT_NUMBUFTYPES; i++) {
-		timespecadd(&totalreadtime[i], &readtime[i]);
+		timespecadd(&totalreadtime[i], &readtime[i], &totalreadtime[i]);
 		totalreadcnt[i] += readcnt[i];
 		readtime[i].tv_sec = readtime[i].tv_nsec = 0;
 		readcnt[i] = 0;
@@ -531,7 +508,7 @@ finalIOstats(void)
 	diskreads = totaldiskreads;
 	startpass = startprog;
 	for (i = 0; i < BT_NUMBUFTYPES; i++) {
-		timespecadd(&totalreadtime[i], &readtime[i]);
+		timespecadd(&totalreadtime[i], &readtime[i], &totalreadtime[i]);
 		totalreadcnt[i] += readcnt[i];
 		readtime[i] = totalreadtime[i];
 		readcnt[i] = totalreadcnt[i];
@@ -545,7 +522,7 @@ static void printIOstats(void)
 	int i;
 
 	clock_gettime(CLOCK_REALTIME_PRECISE, &finishpass);
-	timespecsub(&finishpass, &startpass);
+	timespecsub(&finishpass, &startpass, &finishpass);
 	printf("Running time: %jd.%03ld sec\n",
 		(intmax_t)finishpass.tv_sec, finishpass.tv_nsec / 1000000);
 	printf("buffer reads by type:\n");
@@ -791,7 +768,7 @@ allocblk(long frags)
 				continue;
 			}
 			cg = dtog(&sblock, i + j);
-			cgbp = cgget(cg);
+			cgbp = cglookup(cg);
 			cgp = cgbp->b_un.b_cg;
 			if (!check_cgmagic(cg, cgbp))
 				return (0);

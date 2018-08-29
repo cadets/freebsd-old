@@ -345,6 +345,7 @@ static s32 e1000_init_phy_workarounds_pchlan(struct e1000_hw *hw)
 	switch (hw->mac.type) {
 	case e1000_pch_lpt:
 	case e1000_pch_spt:
+	case e1000_pch_cnp:
 		if (e1000_phy_is_accessible_pchlan(hw))
 			break;
 
@@ -493,6 +494,7 @@ static s32 e1000_init_phy_params_pchlan(struct e1000_hw *hw)
 		case e1000_pch2lan:
 		case e1000_pch_lpt:
 		case e1000_pch_spt:
+		case e1000_pch_cnp:
 			/* In case the PHY needs to be in mdio slow mode,
 			 * set slow mode and try to get the PHY id again.
 			 */
@@ -695,9 +697,6 @@ static s32 e1000_init_nvm_params_ich8lan(struct e1000_hw *hw)
 		dev_spec->shadow_ram[i].value    = 0xFFFF;
 	}
 
-	E1000_MUTEX_INIT(&dev_spec->nvm_mutex);
-	E1000_MUTEX_INIT(&dev_spec->swflag_mutex);
-
 	/* Function Pointers */
 	nvm->ops.acquire	= e1000_acquire_nvm_ich8lan;
 	nvm->ops.release	= e1000_release_nvm_ich8lan;
@@ -794,6 +793,7 @@ static s32 e1000_init_mac_params_ich8lan(struct e1000_hw *hw)
 		/* fall-through */
 	case e1000_pch_lpt:
 	case e1000_pch_spt:
+	case e1000_pch_cnp:
 		/* multicast address update for pch2 */
 		mac->ops.update_mc_addr_list =
 			e1000_update_mc_addr_list_pch2lan;
@@ -1831,6 +1831,7 @@ void e1000_init_function_pointers_ich8lan(struct e1000_hw *hw)
 	case e1000_pch2lan:
 	case e1000_pch_lpt:
 	case e1000_pch_spt:
+	case e1000_pch_cnp:
 		hw->phy.ops.init_params = e1000_init_phy_params_pchlan;
 		break;
 	default:
@@ -1848,7 +1849,7 @@ static s32 e1000_acquire_nvm_ich8lan(struct e1000_hw *hw)
 {
 	DEBUGFUNC("e1000_acquire_nvm_ich8lan");
 
-	E1000_MUTEX_LOCK(&hw->dev_spec.ich8lan.nvm_mutex);
+	ASSERT_CTX_LOCK_HELD(hw);
 
 	return E1000_SUCCESS;
 }
@@ -1863,9 +1864,7 @@ static void e1000_release_nvm_ich8lan(struct e1000_hw *hw)
 {
 	DEBUGFUNC("e1000_release_nvm_ich8lan");
 
-	E1000_MUTEX_UNLOCK(&hw->dev_spec.ich8lan.nvm_mutex);
-
-	return;
+	ASSERT_CTX_LOCK_HELD(hw);
 }
 
 /**
@@ -1882,7 +1881,7 @@ static s32 e1000_acquire_swflag_ich8lan(struct e1000_hw *hw)
 
 	DEBUGFUNC("e1000_acquire_swflag_ich8lan");
 
-	E1000_MUTEX_LOCK(&hw->dev_spec.ich8lan.swflag_mutex);
+	ASSERT_CTX_LOCK_HELD(hw);
 
 	while (timeout) {
 		extcnf_ctrl = E1000_READ_REG(hw, E1000_EXTCNF_CTRL);
@@ -1923,9 +1922,6 @@ static s32 e1000_acquire_swflag_ich8lan(struct e1000_hw *hw)
 	}
 
 out:
-	if (ret_val)
-		E1000_MUTEX_UNLOCK(&hw->dev_spec.ich8lan.swflag_mutex);
-
 	return ret_val;
 }
 
@@ -1950,10 +1946,6 @@ static void e1000_release_swflag_ich8lan(struct e1000_hw *hw)
 	} else {
 		DEBUGOUT("Semaphore unexpectedly released by sw/fw/hw\n");
 	}
-
-	E1000_MUTEX_UNLOCK(&hw->dev_spec.ich8lan.swflag_mutex);
-
-	return;
 }
 
 /**
@@ -2295,6 +2287,7 @@ static s32 e1000_sw_lcd_config_ich8lan(struct e1000_hw *hw)
 	case e1000_pch2lan:
 	case e1000_pch_lpt:
 	case e1000_pch_spt:
+	case e1000_pch_cnp:
 		sw_cfg_mask = E1000_FEXTNVM_SW_CONFIG_ICH8M;
 		break;
 	default:
@@ -2655,6 +2648,8 @@ static s32 e1000_hv_phy_workarounds_ich8lan(struct e1000_hw *hw)
 			e1000_phy_sw_reset_generic(hw);
 			ret_val = hw->phy.ops.write_reg(hw, PHY_CONTROL,
 							0x3140);
+			if (ret_val)
+				return ret_val;
 		}
 	}
 
@@ -3412,6 +3407,7 @@ static s32 e1000_valid_nvm_bank_detect_ich8lan(struct e1000_hw *hw, u32 *bank)
 
 	switch (hw->mac.type) {
 	case e1000_pch_spt:
+	case e1000_pch_cnp:
 		bank1_offset = nvm->flash_bank_size;
 		act_offset = E1000_ICH_NVM_SIG_WORD;
 
@@ -4387,6 +4383,7 @@ static s32 e1000_validate_nvm_checksum_ich8lan(struct e1000_hw *hw)
 	switch (hw->mac.type) {
 	case e1000_pch_lpt:
 	case e1000_pch_spt:
+	case e1000_pch_cnp:
 		word = NVM_COMPAT;
 		valid_csum_mask = NVM_COMPAT_VALID_CSUM;
 		break;
@@ -5023,8 +5020,6 @@ static s32 e1000_reset_hw_ich8lan(struct e1000_hw *hw)
 		E1000_WRITE_REG(hw, E1000_FEXTNVM3, reg);
 	}
 
-	if (!ret_val)
-		E1000_MUTEX_UNLOCK(&hw->dev_spec.ich8lan.swflag_mutex);
 
 	if (ctrl & E1000_CTRL_PHY_RST) {
 		ret_val = hw->phy.ops.get_cfg_done(hw);
@@ -5193,7 +5188,7 @@ static void e1000_initialize_hw_bits_ich8lan(struct e1000_hw *hw)
 	/* Device Status */
 	if (hw->mac.type == e1000_ich8lan) {
 		reg = E1000_READ_REG(hw, E1000_STATUS);
-		reg &= ~(1 << 31);
+		reg &= ~(1U << 31);
 		E1000_WRITE_REG(hw, E1000_STATUS, reg);
 	}
 

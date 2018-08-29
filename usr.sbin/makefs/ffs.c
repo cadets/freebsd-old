@@ -70,6 +70,10 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#if HAVE_NBTOOL_CONFIG_H
+#include "nbtool_config.h"
+#endif
+
 #include <sys/param.h>
 
 #include <sys/mount.h>
@@ -111,8 +115,8 @@ __FBSDID("$FreeBSD$");
 /*
  * Various file system defaults (cribbed from newfs(8)).
  */
-#define	DFL_FRAGSIZE		1024		/* fragment size */
-#define	DFL_BLKSIZE		8192		/* block size */
+#define	DFL_FRAGSIZE		4096		/* fragment size */
+#define	DFL_BLKSIZE		32768		/* block size */
 #define	DFL_SECSIZE		512		/* sector size */
 #define	DFL_CYLSPERGROUP	65536		/* cylinders per group */
 #define	DFL_FRAGSPERINODE	4		/* fragments per inode */
@@ -315,7 +319,7 @@ static void
 ffs_validate(const char *dir, fsnode *root, fsinfo_t *fsopts)
 {
 	int32_t	ncg = 1;
-#if notyet
+#ifdef notyet
 	int32_t	spc, nspf, ncyl, fssize;
 #endif
 	ffs_opt_t	*ffs_opts = fsopts->fs_specific;
@@ -976,7 +980,7 @@ ffs_write_file(union dinode *din, uint32_t ino, void *buf, fsinfo_t *fsopts)
 		errno = bwrite(bp);
 		if (errno != 0)
 			goto bad_ffs_write_file;
-		brelse(bp, 0);
+		brelse(bp);
 		if (!isfile)
 			p += chunk;
 	}
@@ -1130,7 +1134,7 @@ ffs_write_inode(union dinode *dp, uint32_t ino, const fsinfo_t *fsopts)
 	 * Initialize inode blocks on the fly for UFS2.
 	 */
 	initediblk = ufs_rw32(cgp->cg_initediblk, fsopts->needswap);
-	if (ffs_opts->version == 2 && cgino + INOPB(fs) > initediblk &&
+	while (ffs_opts->version == 2 && cgino + INOPB(fs) > initediblk &&
 	    initediblk < ufs_rw32(cgp->cg_niblk, fsopts->needswap)) {
 		memset(buf, 0, fs->fs_bsize);
 		dip = (struct ufs2_dinode *)buf;

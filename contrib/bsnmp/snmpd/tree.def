@@ -31,16 +31,7 @@
 # System group and private Begemot SNMPd MIB.
 #
 
-#include "tc.def"
-
-typedef RowStatus ENUM (
-	1 active
-	2 notInService
-	3 notReady
-	4 createAndGo
-	5 createAndWait
-	6 destroy
-)
+include "tc.def"
 
 (1 internet
   (2 mgmt
@@ -135,6 +126,7 @@ typedef RowStatus ENUM (
                   (2 begemotSnmpdCommunityIndex UNSIGNED32)
                   (3 begemotSnmpdCommunityString OCTETSTRING GET SET)
                   (4 begemotSnmpdCommunityDescr OCTETSTRING GET)
+                  (5 begemotSnmpdCommunityPermission INTEGER GET SET)
               ))
 #
 #	Module table

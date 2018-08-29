@@ -273,6 +273,15 @@ cksummer(void *arg)
 	ofp = fdopen(dda->inputfd, "r");
 	while (ssread(drr, sizeof (*drr), ofp) != 0) {
 
+		/*
+		 * kernel filled in checksum, we are going to write same
+		 * record, but need to regenerate checksum.
+		 */
+		if (drr->drr_type != DRR_BEGIN) {
+			bzero(&drr->drr_u.drr_checksum.drr_checksum,
+			    sizeof (drr->drr_u.drr_checksum.drr_checksum));
+		}
+
 		switch (drr->drr_type) {
 		case DRR_BEGIN:
 		{
@@ -480,15 +489,10 @@ typedef struct fsavl_node {
 static int
 fsavl_compare(const void *arg1, const void *arg2)
 {
-	const fsavl_node_t *fn1 = arg1;
-	const fsavl_node_t *fn2 = arg2;
+	const fsavl_node_t *fn1 = (const fsavl_node_t *)arg1;
+	const fsavl_node_t *fn2 = (const fsavl_node_t *)arg2;
 
-	if (fn1->fn_guid > fn2->fn_guid)
-		return (+1);
-	else if (fn1->fn_guid < fn2->fn_guid)
-		return (-1);
-	else
-		return (0);
+	return (AVL_CMP(fn1->fn_guid, fn2->fn_guid));
 }
 
 /*
@@ -1576,6 +1580,7 @@ zfs_send_resume(libzfs_handle_t *hdl, sendflags_t *flags, int outfd,
 	int error = 0;
 	char name[ZFS_MAX_DATASET_NAME_LEN];
 	enum lzc_send_flags lzc_flags = 0;
+	FILE *fout = (flags->verbose && flags->dryrun) ? stdout : stderr;
 
 	(void) snprintf(errbuf, sizeof (errbuf), dgettext(TEXT_DOMAIN,
 	    "cannot resume send"));
@@ -1590,9 +1595,9 @@ zfs_send_resume(libzfs_handle_t *hdl, sendflags_t *flags, int outfd,
 		return (zfs_error(hdl, EZFS_FAULT, errbuf));
 	}
 	if (flags->verbose) {
-		(void) fprintf(stderr, dgettext(TEXT_DOMAIN,
+		(void) fprintf(fout, dgettext(TEXT_DOMAIN,
 		    "resume token contents:\n"));
-		nvlist_print(stderr, resume_nvl);
+		nvlist_print(fout, resume_nvl);
 	}
 
 	if (nvlist_lookup_string(resume_nvl, "toname", &toname) != 0 ||
@@ -1649,7 +1654,7 @@ zfs_send_resume(libzfs_handle_t *hdl, sendflags_t *flags, int outfd,
 		    lzc_flags, &size);
 		if (error == 0)
 			size = MAX(0, (int64_t)(size - bytes));
-		send_print_verbose(stderr, zhp->zfs_name, fromname,
+		send_print_verbose(fout, zhp->zfs_name, fromname,
 		    size, flags->parsable);
 	}
 
@@ -2542,7 +2547,7 @@ again:
 					needagain = B_TRUE;
 				else
 					progress = B_TRUE;
-				sprintf(guidname, "%lu", thisguid);
+				sprintf(guidname, "%" PRIu64, thisguid);
 				nvlist_add_boolean(deleted, guidname);
 				continue;
 			}
@@ -2599,7 +2604,7 @@ again:
 				needagain = B_TRUE;
 			else
 				progress = B_TRUE;
-			sprintf(guidname, "%lu", parent_fromsnap_guid);
+			sprintf(guidname, "%" PRIu64, parent_fromsnap_guid);
 			nvlist_add_boolean(deleted, guidname);
 			continue;
 		}
@@ -2632,7 +2637,7 @@ again:
 		if (stream_parent_fromsnap_guid != 0 &&
                     parent_fromsnap_guid != 0 &&
                     stream_parent_fromsnap_guid != parent_fromsnap_guid) {
-			sprintf(guidname, "%lu", parent_fromsnap_guid);
+			sprintf(guidname, "%" PRIu64, parent_fromsnap_guid);
 			if (nvlist_exists(deleted, guidname)) {
 				progress = B_TRUE;
 				needagain = B_TRUE;

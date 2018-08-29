@@ -27,11 +27,6 @@ namespace __asan {
 
 // AsanThreadContext implementation.
 
-struct CreateThreadContextArgs {
-  AsanThread *thread;
-  StackTrace *stack;
-};
-
 void AsanThreadContext::OnCreated(void *arg) {
   CreateThreadContextArgs *args = static_cast<CreateThreadContextArgs*>(arg);
   if (args->stack)
@@ -88,7 +83,7 @@ AsanThread *AsanThread::Create(thread_callback_t start_routine, void *arg,
   AsanThread *thread = (AsanThread*)MmapOrDie(size, __func__);
   thread->start_routine_ = start_routine;
   thread->arg_ = arg;
-  CreateThreadContextArgs args = { thread, stack };
+  AsanThreadContext::CreateThreadContextArgs args = {thread, stack};
   asanThreadRegistry().CreateThread(*reinterpret_cast<uptr *>(thread), detached,
                                     parent_tid, &args);
 
@@ -223,21 +218,28 @@ FakeStack *AsanThread::AsyncSignalSafeLazyInitFakeStack() {
   return nullptr;
 }
 
-void AsanThread::Init() {
+void AsanThread::Init(const InitOptions *options) {
   next_stack_top_ = next_stack_bottom_ = 0;
   atomic_store(&stack_switching_, false, memory_order_release);
-  fake_stack_ = nullptr;  // Will be initialized lazily if needed.
   CHECK_EQ(this->stack_size(), 0U);
-  SetThreadStackAndTls();
+  SetThreadStackAndTls(options);
   CHECK_GT(this->stack_size(), 0U);
   CHECK(AddrIsInMem(stack_bottom_));
   CHECK(AddrIsInMem(stack_top_ - 1));
   ClearShadowForThreadStackAndTLS();
+  fake_stack_ = nullptr;
+  if (__asan_option_detect_stack_use_after_return)
+    AsyncSignalSafeLazyInitFakeStack();
   int local = 0;
   VReport(1, "T%d: stack [%p,%p) size 0x%zx; local=%p\n", tid(),
           (void *)stack_bottom_, (void *)stack_top_, stack_top_ - stack_bottom_,
           &local);
 }
+
+// Fuchsia and RTEMS don't use ThreadStart.
+// asan_fuchsia.c/asan_rtems.c define CreateMainThread and
+// SetThreadStackAndTls.
+#if !SANITIZER_FUCHSIA && !SANITIZER_RTEMS
 
 thread_return_t AsanThread::ThreadStart(
     tid_t os_id, atomic_uintptr_t *signal_thread_is_registered) {
@@ -270,7 +272,21 @@ thread_return_t AsanThread::ThreadStart(
   return res;
 }
 
-void AsanThread::SetThreadStackAndTls() {
+AsanThread *CreateMainThread() {
+  AsanThread *main_thread = AsanThread::Create(
+      /* start_routine */ nullptr, /* arg */ nullptr, /* parent_tid */ 0,
+      /* stack */ nullptr, /* detached */ true);
+  SetCurrentThread(main_thread);
+  main_thread->ThreadStart(internal_getpid(),
+                           /* signal_thread_is_registered */ nullptr);
+  return main_thread;
+}
+
+// This implementation doesn't use the argument, which is just passed down
+// from the caller of Init (which see, above).  It's only there to support
+// OS-specific implementations that need more information passed through.
+void AsanThread::SetThreadStackAndTls(const InitOptions *options) {
+  DCHECK_EQ(options, nullptr);
   uptr tls_size = 0;
   uptr stack_size = 0;
   GetThreadStackAndTls(tid() == 0, const_cast<uptr *>(&stack_bottom_),
@@ -283,10 +299,17 @@ void AsanThread::SetThreadStackAndTls() {
   CHECK(AddrIsInStack((uptr)&local));
 }
 
+#endif  // !SANITIZER_FUCHSIA && !SANITIZER_RTEMS
+
 void AsanThread::ClearShadowForThreadStackAndTLS() {
   PoisonShadow(stack_bottom_, stack_top_ - stack_bottom_, 0);
-  if (tls_begin_ != tls_end_)
-    PoisonShadow(tls_begin_, tls_end_ - tls_begin_, 0);
+  if (tls_begin_ != tls_end_) {
+    uptr tls_begin_aligned = RoundDownTo(tls_begin_, SHADOW_GRANULARITY);
+    uptr tls_end_aligned = RoundUpTo(tls_end_, SHADOW_GRANULARITY);
+    FastPoisonShadowPartialRightRedzone(tls_begin_aligned,
+                                        tls_end_ - tls_begin_aligned,
+                                        tls_end_aligned - tls_end_, 0);
+  }
 }
 
 bool AsanThread::GetStackFrameAccessByAddr(uptr addr,
@@ -302,7 +325,7 @@ bool AsanThread::GetStackFrameAccessByAddr(uptr addr,
     access->frame_descr = (const char *)((uptr*)bottom)[1];
     return true;
   }
-  uptr aligned_addr = addr & ~(SANITIZER_WORDSIZE/8 - 1);  // align addr.
+  uptr aligned_addr = RoundDownTo(addr, SANITIZER_WORDSIZE / 8);  // align addr.
   uptr mem_ptr = RoundDownTo(aligned_addr, SHADOW_GRANULARITY);
   u8 *shadow_ptr = (u8*)MemToShadow(aligned_addr);
   u8 *shadow_bottom = (u8*)MemToShadow(bottom);
@@ -331,6 +354,29 @@ bool AsanThread::GetStackFrameAccessByAddr(uptr addr,
   return true;
 }
 
+uptr AsanThread::GetStackVariableShadowStart(uptr addr) {
+  uptr bottom = 0;
+  if (AddrIsInStack(addr)) {
+    bottom = stack_bottom();
+  } else if (has_fake_stack()) {
+    bottom = fake_stack()->AddrIsInFakeStack(addr);
+    CHECK(bottom);
+  } else
+    return 0;
+
+  uptr aligned_addr = RoundDownTo(addr, SANITIZER_WORDSIZE / 8);  // align addr.
+  u8 *shadow_ptr = (u8*)MemToShadow(aligned_addr);
+  u8 *shadow_bottom = (u8*)MemToShadow(bottom);
+
+  while (shadow_ptr >= shadow_bottom &&
+         (*shadow_ptr != kAsanStackLeftRedzoneMagic &&
+          *shadow_ptr != kAsanStackMidRedzoneMagic &&
+          *shadow_ptr != kAsanStackRightRedzoneMagic))
+    shadow_ptr--;
+
+  return (uptr)shadow_ptr + 1;
+}
+
 bool AsanThread::AddrIsInStack(uptr addr) {
   const auto bounds = GetStackBounds();
   return addr >= bounds.bottom && addr < bounds.top;
@@ -348,6 +394,9 @@ static bool ThreadStackContainsAddress(ThreadContextBase *tctx_base,
 }
 
 AsanThread *GetCurrentThread() {
+  if (SANITIZER_RTEMS && !asan_inited)
+    return nullptr;
+
   AsanThreadContext *context =
       reinterpret_cast<AsanThreadContext *>(AsanTSDGet());
   if (!context) {
@@ -437,6 +486,11 @@ void LockThreadRegistry() {
 
 void UnlockThreadRegistry() {
   __asan::asanThreadRegistry().Unlock();
+}
+
+ThreadRegistry *GetThreadRegistryLocked() {
+  __asan::asanThreadRegistry().CheckLocked();
+  return &__asan::asanThreadRegistry();
 }
 
 void EnsureMainThreadIDIsCorrect() {

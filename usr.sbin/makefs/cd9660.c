@@ -309,6 +309,7 @@ cd9660_prep_opts(fsinfo_t *fsopts)
 		OPT_STR('\0', "no-boot", "No boot support"),
 		OPT_STR('\0', "hard-disk-boot", "Boot from hard disk"),
 		OPT_STR('\0', "boot-load-segment", "Boot load segment"),
+		OPT_STR('\0', "platformid", "Section Header Platform ID"),
 
 		{ .name = NULL }
 	};
@@ -444,7 +445,8 @@ cd9660_parse_opts(const char *option, fsinfo_t *fsopts)
 			/* RRIP */
 			cd9660_eltorito_add_boot_option(diskStructure, name, 0);
 			rv = 1;
-		} else if (strcmp(name, "boot-load-segment") == 0) {
+		} else if (strcmp(name, "boot-load-segment") == 0 ||
+		    strcmp(name, "platformid") == 0) {
 			if (buf[0] == '\0') {
 				warnx("Option `%s' doesn't contain a value",
 				    name);
@@ -2121,7 +2123,7 @@ cd9660_add_generic_bootimage(iso9660_disk *diskStructure, const char *bootimage)
 	}
 
 	if (diskStructure->verbose_level > 0) {
-		printf("Generic boot image image has size %lld\n",
+		printf("Generic boot image has size %lld\n",
 		    (long long)stbuf.st_size);
 	}
 

@@ -218,7 +218,8 @@ main(int argc, char *argv[])
 {
 	char *bp, *buf, *memf, *nlistf;
 	float f;
-	int bufsize, c, len, reps, todo;
+	int bufsize, c, reps, todo;
+	size_t len;
 	unsigned int interval;
 	char errbuf[_POSIX2_LINE_MAX];
 
@@ -318,7 +319,8 @@ main(int argc, char *argv[])
 retry_nlist:
 	if (kd != NULL && (c = kvm_nlist(kd, namelist)) != 0) {
 		if (c > 0) {
-			bufsize = 0, len = 0;
+			bufsize = 0;
+			len = 0;
 
 			/*
 			 * 'cnt' was renamed to 'vm_cnt'.  If 'vm_cnt' is not
@@ -436,8 +438,11 @@ getdrivedata(char **argv)
 		if (isdigit(**argv))
 			break;
 		num_devices_specified++;
-		specified_devices = realloc(specified_devices,
+		specified_devices = reallocf(specified_devices,
 		    sizeof(char *) * num_devices_specified);
+		if (specified_devices == NULL) {
+			xo_errx(1, "%s", "reallocf (specified_devices)");
+		}
 		specified_devices[num_devices_specified - 1] = *argv;
 	}
 	dev_select = NULL;
@@ -1041,15 +1046,15 @@ dosum(void)
 	    sum.v_vnodepgsout);
 	xo_emit("{:page-daemon-wakeups/%9u} {N:page daemon wakeups}\n",
 	    sum.v_pdwakeups);
-	xo_emit("{:page-daemon-pages/%9u} {N:pages examined by the page"
+	xo_emit("{:page-daemon-pages/%9u} {N:pages examined by the page "
 	    "daemon}\n", sum.v_pdpages);
-	xo_emit("{:page-reclamation-shortfalls/%9u} {N:clean page reclamation"
+	xo_emit("{:page-reclamation-shortfalls/%9u} {N:clean page reclamation "
 	    "shortfalls}\n", sum.v_pdshortfalls);
 	xo_emit("{:reactivated/%9u} {N:pages reactivated by the page daemon}\n",
 	    sum.v_reactivated);
 	xo_emit("{:copy-on-write-faults/%9u} {N:copy-on-write faults}\n",
 	    sum.v_cow_faults);
-	xo_emit("{:copy-on-write-optimized-faults/%9u} {N:copy-on-write"
+	xo_emit("{:copy-on-write-optimized-faults/%9u} {N:copy-on-write "
 	    "optimized faults}\n", sum.v_cow_optim);
 	xo_emit("{:zero-fill-pages/%9u} {N:zero fill pages zeroed}\n",
 	    sum.v_zfod);
@@ -1061,7 +1066,7 @@ dosum(void)
 	    sum.v_vm_faults);
 	xo_emit("{:faults-requiring-io/%9u} {N:page faults requiring I\\/O}\n",
 	    sum.v_io_faults);
-	xo_emit("{:faults-from-thread-creation/%9u} {N:pages affected by"
+	xo_emit("{:faults-from-thread-creation/%9u} {N:pages affected by "
 	    "kernel thread creation}\n", sum.v_kthreadpages);
 	xo_emit("{:faults-from-fork/%9u} {N:pages affected by  fork}()\n",
 	    sum.v_forkpages);
@@ -1206,7 +1211,7 @@ cpustats(void)
 	total = 0;
 	for (state = 0; state < CPUSTATES; ++state)
 		total += cur.cp_time[state];
-	if (total)
+	if (total > 0)
 		lpct = 100.0 / total;
 	else
 		lpct = 0.0;
@@ -1304,7 +1309,7 @@ print_intrcnts(unsigned long *intrcnts, unsigned long *old_intrcnts,
 	for (i = 0, intrcnt=intrcnts, old_intrcnt=old_intrcnts; i < nintr; i++) {
 		if (intrname[0] != '\0' && (*intrcnt != 0 || aflag)) {
 			count = *intrcnt - *old_intrcnt;
-			rate = (count * 1000 + period_ms / 2) / period_ms;
+			rate = ((uint64_t)count * 1000 + period_ms / 2) / period_ms;
 			xo_open_instance("interrupt");
 			xo_emit("{d:name/%-*s}{ket:name/%s} "
 			    "{:total/%20lu} {:rate/%10lu}\n",
@@ -1682,7 +1687,7 @@ kread(int nlx, void *addr, size_t size)
 	kreado(nlx, addr, size, 0);
 }
 
-static void
+static void __dead2
 usage(void)
 {
 	xo_error("%s%s",

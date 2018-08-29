@@ -33,14 +33,12 @@ exclude EXFAIL common/funcs/tst.copyin.d
 exclude EXFAIL common/funcs/tst.copyinto.d
 exclude EXFAIL common/funcs/tst.ddi_pathname.d
 exclude EXFAIL common/io/tst.fds.d
-exclude EXFAIL common/ip/tst.ipv4localudp.ksh
 exclude EXFAIL common/mdb/tst.dtracedcmd.ksh
 exclude EXFAIL common/misc/tst.dofmax.ksh
 exclude EXFAIL common/misc/tst.include.ksh
 exclude EXFAIL common/safety/tst.copyin2.d
 exclude EXFAIL common/safety/tst.msgdsize.d
 exclude EXFAIL common/safety/tst.msgsize.d
-exclude EXFAIL common/safety/tst.zonename.d
 exclude EXFAIL common/scalars/tst.misc.d
 exclude EXFAIL common/scalars/tst.selfarray2.d
 exclude EXFAIL common/sched/tst.enqueue.d
@@ -121,11 +119,9 @@ exclude SKIP common/builtinvar/tst.ipl1.d
 # These tests rely on being able to find a host via broadcast pings.
 exclude EXFAIL common/ip/tst.ipv4remotetcp.ksh
 exclude EXFAIL common/ip/tst.ipv4remoteudp.ksh
+exclude EXFAIL common/ip/tst.ipv4remoteudplite.ksh
 exclude EXFAIL common/ip/tst.ipv6remoteicmp.ksh
 exclude EXFAIL common/ip/tst.ipv4remoteicmp.ksh
-
-# FreeBSD never places tcpcbs in the TIME_WAIT state, so the probe never fires.
-exclude EXFAIL common/ip/tst.localtcpstate.ksh
 exclude EXFAIL common/ip/tst.remotetcpstate.ksh
 
 # Tries to enable pid$target:libc::entry, though there's no "libc" module.
@@ -165,6 +161,9 @@ exclude EXFAIL common/vars/tst.ucaller.ksh
 # These rely on process attributes that FreeBSD doesn't carry.
 exclude EXFAIL common/scripting/tst.projid.ksh
 exclude EXFAIL common/scripting/tst.taskid.ksh
+
+# Depends on tst.chasestrings.exe being ELF32. See r326181 and r326285.
+exclude EXFAIL common/uctf/err.user64mode.ksh
 
 # This test expects its test program to be installed without CTF data, but
 # the rest of the programs for this feature need CTF data. Not yet sure how

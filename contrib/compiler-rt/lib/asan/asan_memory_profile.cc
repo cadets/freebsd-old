@@ -31,9 +31,9 @@ struct AllocationSite {
 
 class HeapProfile {
  public:
-  HeapProfile() : allocations_(1024) {}
+  HeapProfile() { allocations_.reserve(1024); }
 
-  void ProcessChunk(const AsanChunkView& cv) {
+  void ProcessChunk(const AsanChunkView &cv) {
     if (cv.IsAllocated()) {
       total_allocated_user_size_ += cv.UsedSize();
       total_allocated_count_++;
@@ -49,10 +49,10 @@ class HeapProfile {
   }
 
   void Print(uptr top_percent, uptr max_number_of_contexts) {
-    InternalSort(&allocations_, allocations_.size(),
-                 [](const AllocationSite &a, const AllocationSite &b) {
-                   return a.total_size > b.total_size;
-                 });
+    Sort(allocations_.data(), allocations_.size(),
+         [](const AllocationSite &a, const AllocationSite &b) {
+           return a.total_size > b.total_size;
+         });
     CHECK(total_allocated_user_size_);
     uptr total_shown = 0;
     Printf("Live Heap Allocations: %zd bytes in %zd chunks; quarantined: "
@@ -107,6 +107,9 @@ static void MemoryProfileCB(const SuspendedThreadsList &suspended_threads_list,
   __lsan::ForEachChunk(ChunkCallback, &hp);
   uptr *Arg = reinterpret_cast<uptr*>(argument);
   hp.Print(Arg[0], Arg[1]);
+
+  if (Verbosity())
+    __asan_print_accumulated_stats();
 }
 
 }  // namespace __asan

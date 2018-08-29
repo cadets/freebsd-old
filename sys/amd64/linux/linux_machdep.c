@@ -33,15 +33,14 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
-#include <sys/kernel.h>
-#include <sys/systm.h>
 #include <sys/capsicum.h>
-#include <sys/dirent.h>
-#include <sys/file.h>
-#include <sys/fcntl.h>
-#include <sys/filedesc.h>
 #include <sys/clock.h>
+#include <sys/dirent.h>
+#include <sys/fcntl.h>
+#include <sys/file.h>
+#include <sys/filedesc.h>
 #include <sys/imgact.h>
+#include <sys/kernel.h>
 #include <sys/ktr.h>
 #include <sys/limits.h>
 #include <sys/lock.h>
@@ -55,8 +54,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/sched.h>
 #include <sys/syscallsubr.h>
 #include <sys/sysproto.h>
-#include <sys/vnode.h>
+#include <sys/systm.h>
 #include <sys/unistd.h>
+#include <sys/vnode.h>
 #include <sys/wait.h>
 
 #include <security/mac/mac_framework.h>
@@ -72,23 +72,24 @@ __FBSDID("$FreeBSD$");
 #include <machine/segments.h>
 #include <machine/specialreg.h>
 
-#include <vm/vm.h>
 #include <vm/pmap.h>
+#include <vm/vm.h>
 #include <vm/vm_extern.h>
 #include <vm/vm_kern.h>
 #include <vm/vm_map.h>
 
+#include <x86/ifunc.h>
+#include <x86/sysarch.h>
+
 #include <amd64/linux/linux.h>
 #include <amd64/linux/linux_proto.h>
-#include <compat/linux/linux_ipc.h>
+#include <compat/linux/linux_emul.h>
 #include <compat/linux/linux_file.h>
+#include <compat/linux/linux_ipc.h>
 #include <compat/linux/linux_misc.h>
 #include <compat/linux/linux_mmap.h>
 #include <compat/linux/linux_signal.h>
 #include <compat/linux/linux_util.h>
-#include <compat/linux/linux_emul.h>
-
-#include <x86/include/sysarch.h>
 
 int
 linux_execve(struct thread *td, struct linux_execve_args *args)
@@ -275,4 +276,49 @@ linux_set_cloned_tls(struct thread *td, void *desc)
 	td->td_frame->tf_fs = _ufssel;
 
 	return (0);
+}
+
+int futex_xchgl_nosmap(int oparg, uint32_t *uaddr, int *oldval);
+int futex_xchgl_smap(int oparg, uint32_t *uaddr, int *oldval);
+DEFINE_IFUNC(, int, futex_xchgl, (int, uint32_t *, int *), static)
+{
+
+	return ((cpu_stdext_feature & CPUID_STDEXT_SMAP) != 0 ?
+	    futex_xchgl_smap : futex_xchgl_nosmap);
+}
+
+int futex_addl_nosmap(int oparg, uint32_t *uaddr, int *oldval);
+int futex_addl_smap(int oparg, uint32_t *uaddr, int *oldval);
+DEFINE_IFUNC(, int, futex_addl, (int, uint32_t *, int *), static)
+{
+
+	return ((cpu_stdext_feature & CPUID_STDEXT_SMAP) != 0 ?
+	    futex_addl_smap : futex_addl_nosmap);
+}
+
+int futex_orl_nosmap(int oparg, uint32_t *uaddr, int *oldval);
+int futex_orl_smap(int oparg, uint32_t *uaddr, int *oldval);
+DEFINE_IFUNC(, int, futex_orl, (int, uint32_t *, int *), static)
+{
+
+	return ((cpu_stdext_feature & CPUID_STDEXT_SMAP) != 0 ?
+	    futex_orl_smap : futex_orl_nosmap);
+}
+
+int futex_andl_nosmap(int oparg, uint32_t *uaddr, int *oldval);
+int futex_andl_smap(int oparg, uint32_t *uaddr, int *oldval);
+DEFINE_IFUNC(, int, futex_andl, (int, uint32_t *, int *), static)
+{
+
+	return ((cpu_stdext_feature & CPUID_STDEXT_SMAP) != 0 ?
+	    futex_andl_smap : futex_andl_nosmap);
+}
+
+int futex_xorl_nosmap(int oparg, uint32_t *uaddr, int *oldval);
+int futex_xorl_smap(int oparg, uint32_t *uaddr, int *oldval);
+DEFINE_IFUNC(, int, futex_xorl, (int, uint32_t *, int *), static)
+{
+
+	return ((cpu_stdext_feature & CPUID_STDEXT_SMAP) != 0 ?
+	    futex_xorl_smap : futex_xorl_nosmap);
 }

@@ -54,7 +54,6 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_capsicum.h"
-#include "opt_compat.h"
 
 #include <sys/param.h>
 #include <sys/kernel.h>
@@ -1357,14 +1356,12 @@ mqfs_read(struct vop_read_args *ap)
 	char buf[80];
 	struct vnode *vp = ap->a_vp;
 	struct uio *uio = ap->a_uio;
-	struct mqfs_node *pn;
 	struct mqueue *mq;
 	int len, error;
 
 	if (vp->v_type != VREG)
 		return (EINVAL);
 
-	pn = VTON(vp);
 	mq = VTOMQ(vp);
 	snprintf(buf, sizeof(buf),
 		"QSIZE:%-10ld MAXMSG:%-10ld CURMSG:%-10ld MSGSIZE:%-10ld\n",
@@ -1753,9 +1750,8 @@ mqueue_send(struct mqueue *mq, const char *msg_ptr,
 		goto bad;
 	}
 	for (;;) {
-		ts2 = *abs_timeout;
 		getnanotime(&ts);
-		timespecsub(&ts2, &ts);
+		timespecsub(abs_timeout, &ts, &ts2);
 		if (ts2.tv_sec < 0 || (ts2.tv_sec == 0 && ts2.tv_nsec <= 0)) {
 			error = ETIMEDOUT;
 			break;
@@ -1906,9 +1902,8 @@ mqueue_receive(struct mqueue *mq, char *msg_ptr,
 	}
 
 	for (;;) {
-		ts2 = *abs_timeout;
 		getnanotime(&ts);
-		timespecsub(&ts2, &ts);
+		timespecsub(abs_timeout, &ts, &ts2);
 		if (ts2.tv_sec < 0 || (ts2.tv_sec == 0 && ts2.tv_nsec <= 0)) {
 			error = ETIMEDOUT;
 			return (error);
@@ -2216,9 +2211,8 @@ static __inline int
 getmq(struct thread *td, int fd, struct file **fpp, struct mqfs_node **ppn,
 	struct mqueue **pmq)
 {
-	cap_rights_t rights;
 
-	return _getmq(td, fd, cap_rights_init(&rights, CAP_EVENT), fget,
+	return _getmq(td, fd, &cap_event_rights, fget,
 	    fpp, ppn, pmq);
 }
 
@@ -2226,9 +2220,8 @@ static __inline int
 getmq_read(struct thread *td, int fd, struct file **fpp,
 	 struct mqfs_node **ppn, struct mqueue **pmq)
 {
-	cap_rights_t rights;
 
-	return _getmq(td, fd, cap_rights_init(&rights, CAP_READ), fget_read,
+	return _getmq(td, fd, &cap_read_rights, fget_read,
 	    fpp, ppn, pmq);
 }
 
@@ -2236,9 +2229,8 @@ static __inline int
 getmq_write(struct thread *td, int fd, struct file **fpp,
 	struct mqfs_node **ppn, struct mqueue **pmq)
 {
-	cap_rights_t rights;
 
-	return _getmq(td, fd, cap_rights_init(&rights, CAP_WRITE), fget_write,
+	return _getmq(td, fd, &cap_write_rights, fget_write,
 	    fpp, ppn, pmq);
 }
 
@@ -2358,9 +2350,6 @@ sys_kmq_timedsend(struct thread *td, struct kmq_timedsend_args *uap)
 static int
 kern_kmq_notify(struct thread *td, int mqd, struct sigevent *sigev)
 {
-#ifdef CAPABILITIES
-	cap_rights_t rights;
-#endif
 	struct filedesc *fdp;
 	struct proc *p;
 	struct mqueue *mq;
@@ -2396,8 +2385,7 @@ again:
 		goto out;
 	}
 #ifdef CAPABILITIES
-	error = cap_check(cap_rights(fdp, mqd),
-	    cap_rights_init(&rights, CAP_EVENT));
+	error = cap_check(cap_rights(fdp, mqd), &cap_event_rights);
 	if (error) {
 		FILEDESC_SUNLOCK(fdp);
 		goto out;
@@ -2485,11 +2473,13 @@ sys_kmq_notify(struct thread *td, struct kmq_notify_args *uap)
 static void
 mqueue_fdclose(struct thread *td, int fd, struct file *fp)
 {
-	struct filedesc *fdp;
 	struct mqueue *mq;
+#ifdef INVARIANTS
+	struct filedesc *fdp;
  
 	fdp = td->td_proc->p_fd;
 	FILEDESC_LOCK_ASSERT(fdp);
+#endif
 
 	if (fp->f_ops == &mqueueops) {
 		mq = FPTOMQ(fp);

@@ -5684,6 +5684,7 @@ iwm_intr(void *arg)
 #define	PCI_PRODUCT_INTEL_WL_3160_2	0x08b4
 #define	PCI_PRODUCT_INTEL_WL_3165_1	0x3165
 #define	PCI_PRODUCT_INTEL_WL_3165_2	0x3166
+#define	PCI_PRODUCT_INTEL_WL_3168_1	0x24fb
 #define	PCI_PRODUCT_INTEL_WL_7260_1	0x08b1
 #define	PCI_PRODUCT_INTEL_WL_7260_2	0x08b2
 #define	PCI_PRODUCT_INTEL_WL_7265_1	0x095a
@@ -5700,6 +5701,7 @@ static const struct iwm_devices {
 	{ PCI_PRODUCT_INTEL_WL_3160_2, &iwm3160_cfg },
 	{ PCI_PRODUCT_INTEL_WL_3165_1, &iwm3165_cfg },
 	{ PCI_PRODUCT_INTEL_WL_3165_2, &iwm3165_cfg },
+	{ PCI_PRODUCT_INTEL_WL_3168_1, &iwm3168_cfg },
 	{ PCI_PRODUCT_INTEL_WL_7260_1, &iwm7260_cfg },
 	{ PCI_PRODUCT_INTEL_WL_7260_2, &iwm7260_cfg },
 	{ PCI_PRODUCT_INTEL_WL_7265_1, &iwm7265_cfg },
@@ -6041,6 +6043,7 @@ iwm_wme_update(struct ieee80211com *ic)
 {
 #define IWM_EXP2(x)	((1 << (x)) - 1)	/* CWmin = 2^ECWmin - 1 */
 	struct iwm_softc *sc = ic->ic_softc;
+	struct chanAccParams chp;
 	struct ieee80211vap *vap = TAILQ_FIRST(&ic->ic_vaps);
 	struct iwm_vap *ivp = IWM_VAP(vap);
 	struct iwm_node *in;
@@ -6050,9 +6053,11 @@ iwm_wme_update(struct ieee80211com *ic)
 	if (vap == NULL)
 		return (0);
 
+	ieee80211_wme_ic_getparams(ic, &chp);
+
 	IEEE80211_LOCK(ic);
 	for (aci = 0; aci < WME_NUM_AC; aci++)
-		tmp[aci] = ic->ic_wme.wme_chanParams.cap_wmeParams[aci];
+		tmp[aci] = chp.cap_wmeParams[aci];
 	IEEE80211_UNLOCK(ic);
 
 	IWM_LOCK(sc);

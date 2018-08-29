@@ -75,8 +75,7 @@ efi_destroy_1t1_map(void)
 		VM_OBJECT_RLOCK(obj_1t1_pt);
 		TAILQ_FOREACH(m, &obj_1t1_pt->memq, listq)
 			m->wire_count = 0;
-		atomic_subtract_int(&vm_cnt.v_wire_count,
-		    obj_1t1_pt->resident_page_count);
+		vm_wire_sub(obj_1t1_pt->resident_page_count);
 		VM_OBJECT_RUNLOCK(obj_1t1_pt);
 		vm_object_deallocate(obj_1t1_pt);
 	}
@@ -144,13 +143,26 @@ efi_1t1_l3(vm_offset_t va)
 }
 
 /*
+ * Map a physical address from EFI runtime space into KVA space.  Returns 0 to
+ * indicate a failed mapping so that the caller may handle error.
+ */
+vm_offset_t
+efi_phys_to_kva(vm_paddr_t paddr)
+{
+
+	if (!PHYS_IN_DMAP(paddr))
+		return (0);
+	return (PHYS_TO_DMAP(paddr));
+}
+
+/*
  * Create the 1:1 virtual to physical map for EFI
  */
 bool
 efi_create_1t1_map(struct efi_md *map, int ndesc, int descsz)
 {
 	struct efi_md *p;
-	pt_entry_t *l3;
+	pt_entry_t *l3, l3_attr;
 	vm_offset_t va;
 	uint64_t idx;
 	int i, mode;
@@ -170,7 +182,7 @@ efi_create_1t1_map(struct efi_md *map, int ndesc, int descsz)
 	    descsz)) {
 		if ((p->md_attr & EFI_MD_ATTR_RT) == 0)
 			continue;
-		if (p->md_virt != NULL) {
+		if (p->md_virt != NULL && (uint64_t)p->md_virt != p->md_phys) {
 			if (bootverbose)
 				printf("EFI Runtime entry %d is mapped\n", i);
 			goto fail;
@@ -197,7 +209,7 @@ efi_create_1t1_map(struct efi_md *map, int ndesc, int descsz)
 		else if ((p->md_attr & EFI_MD_ATTR_WC) != 0)
 			mode = VM_MEMATTR_WRITE_COMBINING;
 		else if ((p->md_attr & EFI_MD_ATTR_UC) != 0)
-			mode = VM_MEMATTR_UNCACHEABLE;
+			mode = VM_MEMATTR_DEVICE;
 		else {
 			if (bootverbose)
 				printf("EFI Runtime entry %d mapping "
@@ -206,12 +218,17 @@ efi_create_1t1_map(struct efi_md *map, int ndesc, int descsz)
 		}
 
 		printf("MAP %lx mode %x pages %lu\n", p->md_phys, mode, p->md_pages);
+
+		l3_attr = ATTR_DEFAULT | ATTR_IDX(mode) | ATTR_AP(ATTR_AP_RW) |
+		    L3_PAGE;
+		if (mode == VM_MEMATTR_DEVICE)
+			l3_attr |= ATTR_UXN | ATTR_PXN;
+
 		VM_OBJECT_WLOCK(obj_1t1_pt);
 		for (va = p->md_phys, idx = 0; idx < p->md_pages; idx++,
 		    va += PAGE_SIZE) {
 			l3 = efi_1t1_l3(va);
-			*l3 = va | ATTR_DEFAULT | ATTR_IDX(mode) |
-			    ATTR_AP(ATTR_AP_RW) | L3_PAGE;
+			*l3 = va | l3_attr;
 		}
 		VM_OBJECT_WUNLOCK(obj_1t1_pt);
 	}

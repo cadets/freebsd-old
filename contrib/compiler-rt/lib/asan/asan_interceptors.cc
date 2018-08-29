@@ -24,8 +24,18 @@
 #include "lsan/lsan_common.h"
 #include "sanitizer_common/sanitizer_libc.h"
 
+// There is no general interception at all on Fuchsia and RTEMS.
+// Only the functions in asan_interceptors_memintrinsics.cc are
+// really defined to replace libc functions.
+#if !SANITIZER_FUCHSIA && !SANITIZER_RTEMS
+
 #if SANITIZER_POSIX
 #include "sanitizer_common/sanitizer_posix.h"
+#endif
+
+#if ASAN_INTERCEPT__UNWIND_RAISEEXCEPTION || \
+    ASAN_INTERCEPT__SJLJ_UNWIND_RAISEEXCEPTION
+#include <unwind.h>
 #endif
 
 #if defined(__i386) && SANITIZER_LINUX
@@ -36,131 +46,12 @@
 
 namespace __asan {
 
-// Return true if we can quickly decide that the region is unpoisoned.
-// We assume that a redzone is at least 16 bytes.
-static inline bool QuickCheckForUnpoisonedRegion(uptr beg, uptr size) {
-  if (size == 0) return true;
-  if (size <= 32)
-    return !AddressIsPoisoned(beg) &&
-           !AddressIsPoisoned(beg + size - 1) &&
-           !AddressIsPoisoned(beg + size / 2);
-  if (size <= 64)
-    return !AddressIsPoisoned(beg) &&
-           !AddressIsPoisoned(beg + size / 4) &&
-           !AddressIsPoisoned(beg + size - 1) &&
-           !AddressIsPoisoned(beg + 3 * size / 4) &&
-           !AddressIsPoisoned(beg + size / 2);
-  return false;
-}
-
-struct AsanInterceptorContext {
-  const char *interceptor_name;
-};
-
-// We implement ACCESS_MEMORY_RANGE, ASAN_READ_RANGE,
-// and ASAN_WRITE_RANGE as macro instead of function so
-// that no extra frames are created, and stack trace contains
-// relevant information only.
-// We check all shadow bytes.
-#define ACCESS_MEMORY_RANGE(ctx, offset, size, isWrite) do {            \
-    uptr __offset = (uptr)(offset);                                     \
-    uptr __size = (uptr)(size);                                         \
-    uptr __bad = 0;                                                     \
-    if (__offset > __offset + __size) {                                 \
-      GET_STACK_TRACE_FATAL_HERE;                                       \
-      ReportStringFunctionSizeOverflow(__offset, __size, &stack);       \
-    }                                                                   \
-    if (!QuickCheckForUnpoisonedRegion(__offset, __size) &&             \
-        (__bad = __asan_region_is_poisoned(__offset, __size))) {        \
-      AsanInterceptorContext *_ctx = (AsanInterceptorContext *)ctx;     \
-      bool suppressed = false;                                          \
-      if (_ctx) {                                                       \
-        suppressed = IsInterceptorSuppressed(_ctx->interceptor_name);   \
-        if (!suppressed && HaveStackTraceBasedSuppressions()) {         \
-          GET_STACK_TRACE_FATAL_HERE;                                   \
-          suppressed = IsStackTraceSuppressed(&stack);                  \
-        }                                                               \
-      }                                                                 \
-      if (!suppressed) {                                                \
-        GET_CURRENT_PC_BP_SP;                                           \
-        ReportGenericError(pc, bp, sp, __bad, isWrite, __size, 0, false);\
-      }                                                                 \
-    }                                                                   \
-  } while (0)
-
-// memcpy is called during __asan_init() from the internals of printf(...).
-// We do not treat memcpy with to==from as a bug.
-// See http://llvm.org/bugs/show_bug.cgi?id=11763.
-#define ASAN_MEMCPY_IMPL(ctx, to, from, size)                           \
-  do {                                                                  \
-    if (UNLIKELY(!asan_inited)) return internal_memcpy(to, from, size); \
-    if (asan_init_is_running) {                                         \
-      return REAL(memcpy)(to, from, size);                              \
-    }                                                                   \
-    ENSURE_ASAN_INITED();                                               \
-    if (flags()->replace_intrin) {                                      \
-      if (to != from) {                                                 \
-        CHECK_RANGES_OVERLAP("memcpy", to, size, from, size);           \
-      }                                                                 \
-      ASAN_READ_RANGE(ctx, from, size);                                 \
-      ASAN_WRITE_RANGE(ctx, to, size);                                  \
-    }                                                                   \
-    return REAL(memcpy)(to, from, size);                                \
-  } while (0)
-
-// memset is called inside Printf.
-#define ASAN_MEMSET_IMPL(ctx, block, c, size)                           \
-  do {                                                                  \
-    if (UNLIKELY(!asan_inited)) return internal_memset(block, c, size); \
-    if (asan_init_is_running) {                                         \
-      return REAL(memset)(block, c, size);                              \
-    }                                                                   \
-    ENSURE_ASAN_INITED();                                               \
-    if (flags()->replace_intrin) {                                      \
-      ASAN_WRITE_RANGE(ctx, block, size);                               \
-    }                                                                   \
-    return REAL(memset)(block, c, size);                                \
-  } while (0)
-
-#define ASAN_MEMMOVE_IMPL(ctx, to, from, size)                           \
-  do {                                                                   \
-    if (UNLIKELY(!asan_inited)) return internal_memmove(to, from, size); \
-    ENSURE_ASAN_INITED();                                                \
-    if (flags()->replace_intrin) {                                       \
-      ASAN_READ_RANGE(ctx, from, size);                                  \
-      ASAN_WRITE_RANGE(ctx, to, size);                                   \
-    }                                                                    \
-    return internal_memmove(to, from, size);                             \
-  } while (0)
-
-#define ASAN_READ_RANGE(ctx, offset, size) \
-  ACCESS_MEMORY_RANGE(ctx, offset, size, false)
-#define ASAN_WRITE_RANGE(ctx, offset, size) \
-  ACCESS_MEMORY_RANGE(ctx, offset, size, true)
-
 #define ASAN_READ_STRING_OF_LEN(ctx, s, len, n)                 \
   ASAN_READ_RANGE((ctx), (s),                                   \
     common_flags()->strict_string_checks ? (len) + 1 : (n))
 
 #define ASAN_READ_STRING(ctx, s, n)                             \
   ASAN_READ_STRING_OF_LEN((ctx), (s), REAL(strlen)(s), (n))
-
-// Behavior of functions like "memcpy" or "strcpy" is undefined
-// if memory intervals overlap. We report error in this case.
-// Macro is used to avoid creation of new frames.
-static inline bool RangesOverlap(const char *offset1, uptr length1,
-                                 const char *offset2, uptr length2) {
-  return !((offset1 + length1 <= offset2) || (offset2 + length2 <= offset1));
-}
-#define CHECK_RANGES_OVERLAP(name, _offset1, length1, _offset2, length2) do { \
-  const char *offset1 = (const char*)_offset1; \
-  const char *offset2 = (const char*)_offset2; \
-  if (RangesOverlap(offset1, length1, offset2, length2)) { \
-    GET_STACK_TRACE_FATAL_HERE; \
-    ReportStringFunctionMemoryRangesOverlap(name, offset1, length1, \
-                                            offset2, length2, &stack); \
-  } \
-} while (0)
 
 static inline uptr MaybeRealStrnlen(const char *s, uptr maxlen) {
 #if SANITIZER_INTERCEPT_STRNLEN
@@ -275,6 +166,7 @@ DECLARE_REAL_AND_INTERCEPTOR(void, free, void *)
   } while (false)
 
 #include "sanitizer_common/sanitizer_common_interceptors.inc"
+#include "sanitizer_common/sanitizer_signal_interceptors.inc"
 
 // Syscall interceptors don't have contexts, we don't support suppressions
 // for them.
@@ -291,6 +183,7 @@ DECLARE_REAL_AND_INTERCEPTOR(void, free, void *)
     (void)(s);                                \
   } while (false)
 #include "sanitizer_common/sanitizer_common_syscalls.inc"
+#include "sanitizer_common/sanitizer_syscalls_netbsd.inc"
 
 struct ThreadStartParam {
   atomic_uintptr_t t;
@@ -356,42 +249,6 @@ INTERCEPTOR(int, pthread_join, void *t, void **arg) {
 DEFINE_REAL_PTHREAD_FUNCTIONS
 #endif  // ASAN_INTERCEPT_PTHREAD_CREATE
 
-#if ASAN_INTERCEPT_SIGNAL_AND_SIGACTION
-
-#if SANITIZER_ANDROID
-INTERCEPTOR(void*, bsd_signal, int signum, void *handler) {
-  if (GetHandleSignalMode(signum) != kHandleSignalExclusive)
-    return REAL(bsd_signal)(signum, handler);
-  return 0;
-}
-#endif
-
-INTERCEPTOR(void*, signal, int signum, void *handler) {
-  if (GetHandleSignalMode(signum) != kHandleSignalExclusive)
-    return REAL(signal)(signum, handler);
-  return nullptr;
-}
-
-INTERCEPTOR(int, sigaction, int signum, const struct sigaction *act,
-                            struct sigaction *oldact) {
-  if (GetHandleSignalMode(signum) != kHandleSignalExclusive)
-    return REAL(sigaction)(signum, act, oldact);
-  return 0;
-}
-
-namespace __sanitizer {
-int real_sigaction(int signum, const void *act, void *oldact) {
-  return REAL(sigaction)(signum, (const struct sigaction *)act,
-                         (struct sigaction *)oldact);
-}
-} // namespace __sanitizer
-
-#elif SANITIZER_POSIX
-// We need to have defined REAL(sigaction) on posix systems.
-DEFINE_REAL(int, sigaction, int signum, const struct sigaction *act,
-    struct sigaction *oldact)
-#endif  // ASAN_INTERCEPT_SIGNAL_AND_SIGACTION
-
 #if ASAN_INTERCEPT_SWAPCONTEXT
 static void ClearShadowMemoryForContextStack(uptr stack, uptr ssize) {
   // Align to page size.
@@ -418,7 +275,15 @@ INTERCEPTOR(int, swapcontext, struct ucontext_t *oucp,
   uptr stack, ssize;
   ReadContextStack(ucp, &stack, &ssize);
   ClearShadowMemoryForContextStack(stack, ssize);
+#if __has_attribute(__indirect_return__) && \
+    (defined(__x86_64__) || defined(__i386__))
+  int (*real_swapcontext)(struct ucontext_t *, struct ucontext_t *)
+    __attribute__((__indirect_return__))
+    = REAL(swapcontext);
+  int res = real_swapcontext(oucp, ucp);
+#else
   int res = REAL(swapcontext)(oucp, ucp);
+#endif
   // swapcontext technically does not return, but program may swap context to
   // "oucp" later, that would look as if swapcontext() returned 0.
   // We need to clear shadow for ucp once again, as it may be in arbitrary
@@ -427,6 +292,11 @@ INTERCEPTOR(int, swapcontext, struct ucontext_t *oucp,
   return res;
 }
 #endif  // ASAN_INTERCEPT_SWAPCONTEXT
+
+#if SANITIZER_NETBSD
+#define longjmp __longjmp14
+#define siglongjmp __siglongjmp14
+#endif
 
 INTERCEPTOR(void, longjmp, void *env, int val) {
   __asan_handle_no_return();
@@ -462,17 +332,31 @@ INTERCEPTOR(void, __cxa_throw, void *a, void *b, void *c) {
 }
 #endif
 
-void *__asan_memcpy(void *to, const void *from, uptr size) {
-  ASAN_MEMCPY_IMPL(nullptr, to, from, size);
+#if ASAN_INTERCEPT___CXA_RETHROW_PRIMARY_EXCEPTION
+INTERCEPTOR(void, __cxa_rethrow_primary_exception, void *a) {
+  CHECK(REAL(__cxa_rethrow_primary_exception));
+  __asan_handle_no_return();
+  REAL(__cxa_rethrow_primary_exception)(a);
 }
+#endif
 
-void *__asan_memset(void *block, int c, uptr size) {
-  ASAN_MEMSET_IMPL(nullptr, block, c, size);
+#if ASAN_INTERCEPT__UNWIND_RAISEEXCEPTION
+INTERCEPTOR(_Unwind_Reason_Code, _Unwind_RaiseException,
+            _Unwind_Exception *object) {
+  CHECK(REAL(_Unwind_RaiseException));
+  __asan_handle_no_return();
+  return REAL(_Unwind_RaiseException)(object);
 }
+#endif
 
-void *__asan_memmove(void *to, const void *from, uptr size) {
-  ASAN_MEMMOVE_IMPL(nullptr, to, from, size);
+#if ASAN_INTERCEPT__SJLJ_UNWIND_RAISEEXCEPTION
+INTERCEPTOR(_Unwind_Reason_Code, _Unwind_SjLj_RaiseException,
+            _Unwind_Exception *object) {
+  CHECK(REAL(_Unwind_SjLj_RaiseException));
+  __asan_handle_no_return();
+  return REAL(_Unwind_SjLj_RaiseException)(object);
 }
+#endif
 
 #if ASAN_INTERCEPT_INDEX
 # if ASAN_USE_ALIAS_ATTRIBUTE_FOR_INDEX
@@ -696,14 +580,6 @@ INTERCEPTOR(int, __cxa_atexit, void (*func)(void *), void *arg,
 }
 #endif  // ASAN_INTERCEPT___CXA_ATEXIT
 
-#if ASAN_INTERCEPT_FORK
-INTERCEPTOR(int, fork, void) {
-  ENSURE_ASAN_INITED();
-  int pid = REAL(fork)();
-  return pid;
-}
-#endif  // ASAN_INTERCEPT_FORK
-
 // ---------------------- InitializeAsanInterceptors ---------------- {{{1
 namespace __asan {
 void InitializeAsanInterceptors() {
@@ -711,6 +587,7 @@ void InitializeAsanInterceptors() {
   CHECK(!was_called_once);
   was_called_once = true;
   InitializeCommonInterceptors();
+  InitializeSignalInterceptors();
 
   // Intercept str* functions.
   ASAN_INTERCEPT_FUNC(strcat);  // NOLINT
@@ -733,15 +610,9 @@ void InitializeAsanInterceptors() {
   ASAN_INTERCEPT_FUNC(strtoll);
 #endif
 
-  // Intecept signal- and jump-related functions.
+  // Intecept jump-related functions.
   ASAN_INTERCEPT_FUNC(longjmp);
-#if ASAN_INTERCEPT_SIGNAL_AND_SIGACTION
-  ASAN_INTERCEPT_FUNC(sigaction);
-#if SANITIZER_ANDROID
-  ASAN_INTERCEPT_FUNC(bsd_signal);
-#endif
-  ASAN_INTERCEPT_FUNC(signal);
-#endif
+
 #if ASAN_INTERCEPT_SWAPCONTEXT
   ASAN_INTERCEPT_FUNC(swapcontext);
 #endif
@@ -759,6 +630,17 @@ void InitializeAsanInterceptors() {
 #if ASAN_INTERCEPT___CXA_THROW
   ASAN_INTERCEPT_FUNC(__cxa_throw);
 #endif
+#if ASAN_INTERCEPT___CXA_RETHROW_PRIMARY_EXCEPTION
+  ASAN_INTERCEPT_FUNC(__cxa_rethrow_primary_exception);
+#endif
+  // Indirectly intercept std::rethrow_exception.
+#if ASAN_INTERCEPT__UNWIND_RAISEEXCEPTION
+  INTERCEPT_FUNCTION(_Unwind_RaiseException);
+#endif
+  // Indirectly intercept std::rethrow_exception.
+#if ASAN_INTERCEPT__UNWIND_SJLJ_RAISEEXCEPTION
+  INTERCEPT_FUNCTION(_Unwind_SjLj_RaiseException);
+#endif
 
   // Intercept threading-related functions
 #if ASAN_INTERCEPT_PTHREAD_CREATE
@@ -775,13 +657,11 @@ void InitializeAsanInterceptors() {
   ASAN_INTERCEPT_FUNC(__cxa_atexit);
 #endif
 
-#if ASAN_INTERCEPT_FORK
-  ASAN_INTERCEPT_FUNC(fork);
-#endif
-
   InitializePlatformInterceptors();
 
   VReport(1, "AddressSanitizer: libc interceptors initialized\n");
 }
 
 } // namespace __asan
+
+#endif  // !SANITIZER_FUCHSIA

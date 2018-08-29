@@ -31,7 +31,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd May 16, 2017
+.Dd Aug 9, 2018
 .Dt CXGBE 4
 .Os
 .Sh NAME
@@ -243,6 +243,13 @@ Permitted interrupt types.
 Bit 0 represents INTx (line interrupts), bit 1 MSI, and bit 2 MSI-X.
 The default is 7 (all allowed).
 The driver selects the best possible type out of the allowed types.
+.It Va hw.cxgbe.pcie_relaxed_ordering
+PCIe Relaxed Ordering.
+-1 indicates the driver should determine whether to enable or disable PCIe RO.
+0 disables PCIe RO.
+1 enables PCIe RO.
+2 indicates the driver should not modify the PCIe RO setting.
+The default is -1.
 .It Va hw.cxgbe.fw_install
 0 prohibits the driver from installing a firmware on the card.
 1 allows the driver to install a new firmware if internal driver
@@ -255,7 +262,8 @@ The default is 1.
 .It Va hw.cxgbe.fl_pktshift
 Number of padding bytes inserted before the beginning of an Ethernet
 frame in the receive buffer.
-The default value of 2 ensures that the Ethernet payload (usually the IP header)
+The default value is 0.
+A value of of 2 would ensure that the Ethernet payload (usually the IP header)
 is at a 4 byte aligned address.
 0-7 are all valid values.
 .It Va hw.cxgbe.fl_pad

@@ -688,6 +688,7 @@ static MALLOC_DEFINE(M_MOUNTDATA, "softdep", "Softdep per-mount data");
  * MUST match the defines above, such that memtype[D_XXX] == M_XXX
  */
 static struct malloc_type *memtype[] = {
+	NULL,
 	M_PAGEDEP,
 	M_INODEDEP,
 	M_BMSAFEMAP,
@@ -724,7 +725,8 @@ static struct malloc_type *memtype[] = {
  * Names of malloc types.
  */
 #define TYPENAME(type)  \
-	((unsigned)(type) <= D_LAST ? memtype[type]->ks_shortdesc : "???")
+	((unsigned)(type) <= D_LAST && (unsigned)(type) >= D_FIRST ? \
+	memtype[type]->ks_shortdesc : "???")
 /*
  * End system adaptation definitions.
  */
@@ -867,7 +869,7 @@ static	void cancel_allocdirect(struct allocdirectlst *,
 	    struct allocdirect *, struct freeblks *);
 static	int check_inode_unwritten(struct inodedep *);
 static	int free_inodedep(struct inodedep *);
-static	void freework_freeblock(struct freework *);
+static	void freework_freeblock(struct freework *, int);
 static	void freework_enqueue(struct freework *);
 static	int handle_workitem_freeblocks(struct freeblks *, int);
 static	int handle_complete_freeblocks(struct freeblks *, int);
@@ -882,7 +884,7 @@ static	struct allocindir *newallocindir(struct inode *, int, ufs2_daddr_t,
 	    ufs2_daddr_t, ufs_lbn_t);
 static	void handle_workitem_freefrag(struct freefrag *);
 static	struct freefrag *newfreefrag(struct inode *, ufs2_daddr_t, long,
-	    ufs_lbn_t);
+	    ufs_lbn_t, int);
 static	void allocdirect_merge(struct allocdirectlst *,
 	    struct allocdirect *, struct allocdirect *);
 static	struct freefrag *allocindir_merge(struct allocindir *,
@@ -906,6 +908,7 @@ static	int request_cleanup(struct mount *, int);
 static	int softdep_request_cleanup_flush(struct mount *, struct ufsmount *);
 static	void schedule_cleanup(struct mount *);
 static void softdep_ast_cleanup_proc(struct thread *);
+static struct ufsmount *softdep_bp_to_mp(struct buf *bp);
 static	int process_worklist_item(struct mount *, int, int);
 static	void process_removes(struct vnode *);
 static	void process_truncates(struct vnode *);
@@ -2465,7 +2468,8 @@ softdep_mount(devvp, mp, fs, cred)
 	struct ufsmount *ump;
 	struct cg *cgp;
 	struct buf *bp;
-	int i, error, cyl;
+	u_int cyl, i;
+	int error;
 
 	sdp = malloc(sizeof(struct mount_softdeps), M_MOUNTDATA,
 	    M_WAITOK | M_ZERO);
@@ -5285,7 +5289,22 @@ softdep_setup_allocdirect(ip, off, newblkno, oldblkno, newsize, oldsize, bp)
 	KASSERT(MOUNTEDSOFTDEP(mp) != 0,
 	    ("softdep_setup_allocdirect called on non-softdep filesystem"));
 	if (oldblkno && oldblkno != newblkno)
-		freefrag = newfreefrag(ip, oldblkno, oldsize, lbn);
+		/*
+		 * The usual case is that a smaller fragment that
+		 * was just allocated has been replaced with a bigger
+		 * fragment or a full-size block. If it is marked as
+		 * B_DELWRI, the current contents have not been written
+		 * to disk. It is possible that the block was written
+		 * earlier, but very uncommon. If the block has never
+		 * been written, there is no need to send a BIO_DELETE
+		 * for it when it is freed. The gain from avoiding the
+		 * TRIMs for the common case of unwritten blocks far
+		 * exceeds the cost of the write amplification for the
+		 * uncommon case of failing to send a TRIM for a block
+		 * that had been written.
+		 */
+		freefrag = newfreefrag(ip, oldblkno, oldsize, lbn,
+		    (bp->b_flags & B_DELWRI) != 0 ? NOTRIM : SINGLETON);
 	else
 		freefrag = NULL;
 
@@ -5562,11 +5581,12 @@ newjfreefrag(freefrag, ip, blkno, size, lbn)
  * Allocate a new freefrag structure.
  */
 static struct freefrag *
-newfreefrag(ip, blkno, size, lbn)
+newfreefrag(ip, blkno, size, lbn, trimtype)
 	struct inode *ip;
 	ufs2_daddr_t blkno;
 	long size;
 	ufs_lbn_t lbn;
+	int trimtype;
 {
 	struct freefrag *freefrag;
 	struct ufsmount *ump;
@@ -5587,6 +5607,7 @@ newfreefrag(ip, blkno, size, lbn)
 	freefrag->ff_vtype = ITOV(ip)->v_type;
 	freefrag->ff_blkno = blkno;
 	freefrag->ff_fragsize = size;
+	freefrag->ff_trimtype = trimtype;
 
 	if (MOUNTEDSUJ(UFSTOVFS(ump))) {
 		freefrag->ff_jdep = (struct worklist *)
@@ -5632,7 +5653,8 @@ handle_workitem_freefrag(freefrag)
 	}
 	FREE_LOCK(ump);
 	ffs_blkfree(ump, ump->um_fs, ump->um_devvp, freefrag->ff_blkno,
-	   freefrag->ff_fragsize, freefrag->ff_inum, freefrag->ff_vtype, &wkhd);
+	   freefrag->ff_fragsize, freefrag->ff_inum, freefrag->ff_vtype, &wkhd,
+	   freefrag->ff_trimtype);
 	ACQUIRE_LOCK(ump);
 	WORKITEM_FREE(freefrag, D_FREEFRAG);
 	FREE_LOCK(ump);
@@ -5672,7 +5694,22 @@ softdep_setup_allocext(ip, off, newblkno, oldblkno, newsize, oldsize, bp)
 
 	lbn = bp->b_lblkno;
 	if (oldblkno && oldblkno != newblkno)
-		freefrag = newfreefrag(ip, oldblkno, oldsize, lbn);
+		/*
+		 * The usual case is that a smaller fragment that
+		 * was just allocated has been replaced with a bigger
+		 * fragment or a full-size block. If it is marked as
+		 * B_DELWRI, the current contents have not been written
+		 * to disk. It is possible that the block was written
+		 * earlier, but very uncommon. If the block has never
+		 * been written, there is no need to send a BIO_DELETE
+		 * for it when it is freed. The gain from avoiding the
+		 * TRIMs for the common case of unwritten blocks far
+		 * exceeds the cost of the write amplification for the
+		 * uncommon case of failing to send a TRIM for a block
+		 * that had been written.
+		 */
+		freefrag = newfreefrag(ip, oldblkno, oldsize, lbn,
+		    (bp->b_flags & B_DELWRI) != 0 ? NOTRIM : SINGLETON);
 	else
 		freefrag = NULL;
 
@@ -5785,7 +5822,8 @@ newallocindir(ip, ptrno, newblkno, oldblkno, lbn)
 	struct jnewblk *jnewblk;
 
 	if (oldblkno)
-		freefrag = newfreefrag(ip, oldblkno, ITOFS(ip)->fs_bsize, lbn);
+		freefrag = newfreefrag(ip, oldblkno, ITOFS(ip)->fs_bsize, lbn,
+		    SINGLETON);
 	else
 		freefrag = NULL;
 	ACQUIRE_LOCK(ITOUMP(ip));
@@ -6289,7 +6327,9 @@ setup_trunc_indir(freeblks, ip, lbn, lastlbn, blkno)
 	 * live on this newblk.
 	 */
 	if ((indirdep->ir_state & DEPCOMPLETE) == 0) {
-		newblk_lookup(mp, dbtofsb(ump->um_fs, bp->b_blkno), 0, &newblk);
+		if (newblk_lookup(mp, dbtofsb(ump->um_fs, bp->b_blkno), 0,
+		    &newblk) == 0)
+			panic("setup_trunc_indir: lost block");
 		LIST_FOREACH(indirn, &newblk->nb_indirdeps, ir_next)
 			trunc_indirdep(indirn, freeblks, bp, off);
 	} else
@@ -6903,7 +6943,7 @@ softdep_setup_freeblocks(ip, length, flags)
 	UFS_UNLOCK(ump);
 	DIP_SET(ip, i_blocks, DIP(ip, i_blocks) - datablocks);
 	/*
-	 * Push the zero'ed inode to to its disk buffer so that we are free
+	 * Push the zero'ed inode to its disk buffer so that we are free
 	 * to delete its dependencies below. Once the dependencies are gone
 	 * the buffer can be safely released.
 	 */
@@ -7249,9 +7289,9 @@ deallocate_dependencies(bp, freeblks, off)
 	struct worklist *wk, *wkn;
 	struct ufsmount *ump;
 
-	if ((wk = LIST_FIRST(&bp->b_dep)) == NULL)
+	ump = softdep_bp_to_mp(bp);
+	if (ump == NULL)
 		goto done;
-	ump = VFSTOUFS(wk->wk_mp);
 	ACQUIRE_LOCK(ump);
 	LIST_FOREACH_SAFE(wk, &bp->b_dep, wk_list, wkn) {
 		switch (wk->wk_type) {
@@ -7718,8 +7758,9 @@ free_inodedep(inodedep)
  * in memory immediately.
  */
 static void
-freework_freeblock(freework)
+freework_freeblock(freework, trimtype)
 	struct freework *freework;
+	int trimtype;
 {
 	struct freeblks *freeblks;
 	struct jnewblk *jnewblk;
@@ -7773,10 +7814,10 @@ freework_freeblock(freework)
 	FREE_LOCK(ump);
 	freeblks_free(ump, freeblks, btodb(bsize));
 	CTR4(KTR_SUJ,
-	    "freework_freeblock: ino %d blkno %jd lbn %jd size %ld",
+	    "freework_freeblock: ino %jd blkno %jd lbn %jd size %d",
 	    freeblks->fb_inum, freework->fw_blkno, freework->fw_lbn, bsize);
 	ffs_blkfree(ump, fs, freeblks->fb_devvp, freework->fw_blkno, bsize,
-	    freeblks->fb_inum, freeblks->fb_vtype, &wkhd);
+	    freeblks->fb_inum, freeblks->fb_vtype, &wkhd, trimtype);
 	ACQUIRE_LOCK(ump);
 	/*
 	 * The jnewblk will be discarded and the bits in the map never
@@ -7829,7 +7870,7 @@ handle_workitem_indirblk(freework)
 		return;
 	}
 	if (freework->fw_off == NINDIR(fs)) {
-		freework_freeblock(freework);
+		freework_freeblock(freework, SINGLETON);
 		return;
 	}
 	freework->fw_state |= INPROGRESS;
@@ -7883,16 +7924,19 @@ handle_workitem_freeblocks(freeblks, flags)
 	struct freeblks *freeblks;
 	int flags;
 {
-	struct freework *freework;
+	struct freework *freework, *prevfreework;
 	struct newblk *newblk;
 	struct allocindir *aip;
 	struct ufsmount *ump;
 	struct worklist *wk;
+	int trimtype;
 
 	KASSERT(LIST_EMPTY(&freeblks->fb_jblkdephd),
 	    ("handle_workitem_freeblocks: Journal entries not written."));
 	ump = VFSTOUFS(freeblks->fb_list.wk_mp);
 	ACQUIRE_LOCK(ump);
+	prevfreework = NULL;
+	trimtype = 0;
 	while ((wk = LIST_FIRST(&freeblks->fb_freeworkhd)) != NULL) {
 		WORKLIST_REMOVE(wk);
 		switch (wk->wk_type) {
@@ -7926,16 +7970,26 @@ handle_workitem_freeblocks(freeblks, flags)
 
 		case D_FREEWORK:
 			freework = WK_FREEWORK(wk);
-			if (freework->fw_lbn <= -UFS_NDADDR)
+			if (freework->fw_lbn <= -UFS_NDADDR) {
 				handle_workitem_indirblk(freework);
-			else
-				freework_freeblock(freework);
+				continue;
+			} else if (prevfreework == NULL) {
+				trimtype = SINGLETON;
+			} else if (trimtype == SINGLETON) {
+				freework_freeblock(prevfreework, STARTFREE);
+				trimtype = ENDFREE;
+			} else {
+				freework_freeblock(prevfreework, CONTINUEFREE);
+			}
+			prevfreework = freework;
 			continue;
 		default:
 			panic("handle_workitem_freeblocks: Unknown type %s",
 			    TYPENAME(wk->wk_type));
 		}
 	}
+	if (prevfreework != NULL)
+		freework_freeblock(prevfreework, trimtype);
 	if (freeblks->fb_ref != 0) {
 		freeblks->fb_state &= ~INPROGRESS;
 		wake_worklist(&freeblks->fb_list);
@@ -8074,13 +8128,8 @@ indir_trunc(freework, dbn, lbn)
 	ufs1_daddr_t *bap1;
 	ufs2_daddr_t nb, nnb, *bap2;
 	ufs_lbn_t lbnadd, nlbn;
-	int i, nblocks, ufs1fmt;
-	int freedblocks;
-	int goingaway;
-	int freedeps;
-	int needj;
-	int level;
-	int cnt;
+	int nblocks, ufs1fmt, firstfree, trimtype, freedblocks;
+	int goingaway, freedeps, needj, level, cnt, i;
 
 	freeblks = freework->fw_freeblks;
 	ump = VFSTOUFS(freeblks->fb_list.wk_mp);
@@ -8174,6 +8223,7 @@ indir_trunc(freework, dbn, lbn)
 	 * arranges for the current level to be freed when subordinates
 	 * are free when journaling.
 	 */
+	firstfree = 1;
 	for (i = freework->fw_off; i < NINDIR(fs); i++, nb = nnb) {
 		if (i != NINDIR(fs) - 1) {
 			if (ufs1fmt)
@@ -8209,11 +8259,26 @@ indir_trunc(freework, dbn, lbn)
 				freedeps++;
 			}
 			CTR3(KTR_SUJ,
-			    "indir_trunc: ino %d blkno %jd size %ld",
+			    "indir_trunc: ino %jd blkno %jd size %d",
 			    freeblks->fb_inum, nb, fs->fs_bsize);
+			if (firstfree) {
+				if (i == NINDIR(fs) - 1 || nnb == 0) {
+					trimtype = SINGLETON;
+				} else {
+					trimtype = STARTFREE;
+					firstfree = 0;
+				}
+			} else {
+				if (i == NINDIR(fs) - 1 || nnb == 0) {
+					trimtype = ENDFREE;
+					firstfree = 1;
+				} else {
+					trimtype = CONTINUEFREE;
+				}
+			}
 			ffs_blkfree(ump, fs, freeblks->fb_devvp, nb,
 			    fs->fs_bsize, freeblks->fb_inum,
-			    freeblks->fb_vtype, &wkhd);
+			    freeblks->fb_vtype, &wkhd, trimtype);
 		}
 	}
 	if (goingaway) {
@@ -8238,7 +8303,7 @@ indir_trunc(freework, dbn, lbn)
 		if (level == 0)
 			freeblks->fb_cgwait += freedeps;
 		if (freework->fw_ref == 0)
-			freework_freeblock(freework);
+			freework_freeblock(freework, SINGLETON);
 		FREE_LOCK(ump);
 		return;
 	}
@@ -8247,10 +8312,10 @@ indir_trunc(freework, dbn, lbn)
 	 */
 	dbn = dbtofsb(fs, dbn);
 	CTR3(KTR_SUJ,
-	    "indir_trunc 2: ino %d blkno %jd size %ld",
+	    "indir_trunc 2: ino %jd blkno %jd size %d",
 	    freeblks->fb_inum, dbn, fs->fs_bsize);
 	ffs_blkfree(ump, fs, freeblks->fb_devvp, dbn, fs->fs_bsize,
-	    freeblks->fb_inum, freeblks->fb_vtype, NULL);
+	    freeblks->fb_inum, freeblks->fb_vtype, NULL, SINGLETON);
 	/* Non SUJ softdep does single-threaded truncations. */
 	if (freework->fw_blkno == dbn) {
 		freework->fw_state |= ALLCOMPLETE;
@@ -9976,9 +10041,9 @@ softdep_disk_io_initiation(bp)
 		panic("softdep_disk_io_initiation: Writing buffer with "
 		    "background write in progress: %p", bp);
 
-	if ((wk = LIST_FIRST(&bp->b_dep)) == NULL)
+	ump = softdep_bp_to_mp(bp);
+	if (ump == NULL)
 		return;
-	ump = VFSTOUFS(wk->wk_mp);
 
 	marker.wk_type = D_LAST + 1;	/* Not a normal workitem */
 	PHOLD(curproc);			/* Don't swap out kernel stack */
@@ -10978,12 +11043,19 @@ softdep_disk_write_complete(bp)
 	struct freeblks *freeblks;
 	struct buf *sbp;
 
+	ump = softdep_bp_to_mp(bp);
+	if (ump == NULL)
+		return;
+
+	sbp = NULL;
+
 	/*
 	 * If an error occurred while doing the write, then the data
 	 * has not hit the disk and the dependencies cannot be processed.
 	 * But we do have to go through and roll forward any dependencies
 	 * that were rolled back before the disk write.
 	 */
+	ACQUIRE_LOCK(ump);
 	if ((bp->b_ioflags & BIO_ERROR) != 0 && (bp->b_flags & B_INVAL) == 0) {
 		LIST_FOREACH(wk, &bp->b_dep, wk_list) {
 			switch (wk->wk_type) {
@@ -11011,18 +11083,15 @@ softdep_disk_write_complete(bp)
 				continue;
 			}
 		}
+		FREE_LOCK(ump);
 		return;
 	}
-	if ((wk = LIST_FIRST(&bp->b_dep)) == NULL)
-		return;
-	ump = VFSTOUFS(wk->wk_mp);
 	LIST_INIT(&reattach);
+
 	/*
-	 * This lock must not be released anywhere in this code segment.
+	 * Ump SU lock must not be released anywhere in this code segment.
 	 */
-	sbp = NULL;
 	owk = NULL;
-	ACQUIRE_LOCK(ump);
 	while ((wk = LIST_FIRST(&bp->b_dep)) != NULL) {
 		WORKLIST_REMOVE(wk);
 		atomic_add_long(&dep_write[wk->wk_type], 1);
@@ -12954,7 +13023,7 @@ flush_newblk_dep(vp, mp, lbn)
 			break;
 		}
 		if (newblk->nb_list.wk_type != D_ALLOCDIRECT)
-			panic("flush_newblk_deps: Bad newblk %p", newblk);
+			panic("flush_newblk_dep: Bad newblk %p", newblk);
 		/*
 		 * Flush the journal.
 		 */
@@ -13893,6 +13962,40 @@ softdep_freework(wkhd)
 	FREE_LOCK(ump);
 }
 
+static struct ufsmount *
+softdep_bp_to_mp(bp)
+	struct buf *bp;
+{
+	struct mount *mp;
+	struct vnode *vp;
+
+	if (LIST_EMPTY(&bp->b_dep))
+		return (NULL);
+	vp = bp->b_vp;
+
+	/*
+	 * The ump mount point is stable after we get a correct
+	 * pointer, since bp is locked and this prevents unmount from
+	 * proceeding.  But to get to it, we cannot dereference bp->b_dep
+	 * head wk_mp, because we do not yet own SU ump lock and
+	 * workitem might be freed while dereferenced.
+	 */
+retry:
+	if (vp->v_type == VCHR) {
+		VI_LOCK(vp);
+		mp = vp->v_type == VCHR ? vp->v_rdev->si_mountpt : NULL;
+		VI_UNLOCK(vp);
+		if (mp == NULL)
+			goto retry;
+	} else if (vp->v_type == VREG || vp->v_type == VDIR ||
+	    vp->v_type == VLNK) {
+		mp = vp->v_mount;
+	} else {
+		return (NULL);
+	}
+	return (VFSTOUFS(mp));
+}
+
 /*
  * Function to determine if the buffer has outstanding dependencies
  * that will cause a roll-back if the buffer is written. If wantcount
@@ -13916,36 +14019,12 @@ softdep_count_dependencies(bp, wantcount)
 	struct newblk *newblk;
 	struct mkdir *mkdir;
 	struct diradd *dap;
-	struct vnode *vp;
-	struct mount *mp;
 	int i, retval;
 
+	ump = softdep_bp_to_mp(bp);
+	if (ump == NULL)
+		return (0);
 	retval = 0;
-	if (LIST_EMPTY(&bp->b_dep))
-		return (0);
-	vp = bp->b_vp;
-
-	/*
-	 * The ump mount point is stable after we get a correct
-	 * pointer, since bp is locked and this prevents unmount from
-	 * proceed.  But to get to it, we cannot dereference bp->b_dep
-	 * head wk_mp, because we do not yet own SU ump lock and
-	 * workitem might be freed while dereferenced.
-	 */
-retry:
-	if (vp->v_type == VCHR) {
-		VI_LOCK(vp);
-		mp = vp->v_type == VCHR ? vp->v_rdev->si_mountpt : NULL;
-		VI_UNLOCK(vp);
-		if (mp == NULL)
-			goto retry;
-	} else if (vp->v_type == VREG) {
-		mp = vp->v_mount;
-	} else {
-		return (0);
-	}
-	ump = VFSTOUFS(mp);
-
 	ACQUIRE_LOCK(ump);
 	LIST_FOREACH(wk, &bp->b_dep, wk_list) {
 		switch (wk->wk_type) {

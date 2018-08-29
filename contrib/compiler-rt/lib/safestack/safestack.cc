@@ -21,7 +21,9 @@
 #include <unistd.h>
 #include <sys/resource.h>
 #include <sys/types.h>
+#if !defined(__NetBSD__)
 #include <sys/user.h>
+#endif
 
 #include "interception/interception.h"
 #include "sanitizer_common/sanitizer_common.h"
@@ -169,11 +171,13 @@ static void thread_cleanup_handler(void *_iter) {
   }
 }
 
+static void EnsureInterceptorsInitialized();
+
 /// Intercept thread creation operation to allocate and setup the unsafe stack
 INTERCEPTOR(int, pthread_create, pthread_t *thread,
             const pthread_attr_t *attr,
             void *(*start_routine)(void*), void *arg) {
-
+  EnsureInterceptorsInitialized();
   size_t size = 0;
   size_t guard = 0;
 
@@ -205,6 +209,19 @@ INTERCEPTOR(int, pthread_create, pthread_t *thread,
   return REAL(pthread_create)(thread, attr, thread_start, tinfo);
 }
 
+static BlockingMutex interceptor_init_lock(LINKER_INITIALIZED);
+static bool interceptors_inited = false;
+
+static void EnsureInterceptorsInitialized() {
+  BlockingMutexLock lock(&interceptor_init_lock);
+  if (interceptors_inited) return;
+
+  // Initialize pthread interceptors for thread allocation
+  INTERCEPT_FUNCTION(pthread_create);
+
+  interceptors_inited = true;
+}
+
 extern "C" __attribute__((visibility("default")))
 #if !SANITIZER_CAN_USE_PREINIT_ARRAY
 // On ELF platforms, the constructor is invoked using .preinit_array (see below)
@@ -225,9 +242,6 @@ void __safestack_init() {
   unsafe_stack_setup(addr, size, guard);
   pageSize = sysconf(_SC_PAGESIZE);
 
-  // Initialize pthread interceptors for thread allocation
-  INTERCEPT_FUNCTION(pthread_create);
-
   // Setup the cleanup handler
   pthread_key_create(&thread_cleanup_key, thread_cleanup_handler);
 }
@@ -241,6 +255,16 @@ __attribute__((section(".preinit_array"),
                used)) void (*__safestack_preinit)(void) = __safestack_init;
 }
 #endif
+
+extern "C"
+    __attribute__((visibility("default"))) void *__get_unsafe_stack_bottom() {
+  return unsafe_stack_start;
+}
+
+extern "C"
+    __attribute__((visibility("default"))) void *__get_unsafe_stack_top() {
+  return (char*)unsafe_stack_start + unsafe_stack_size;
+}
 
 extern "C"
     __attribute__((visibility("default"))) void *__get_unsafe_stack_start() {

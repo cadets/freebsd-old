@@ -230,8 +230,10 @@
 #endif
 #if __GNUC_PREREQ__(4, 3) || __has_attribute(__alloc_size__)
 #define	__alloc_size(x)	__attribute__((__alloc_size__(x)))
+#define	__alloc_size2(n, x)	__attribute__((__alloc_size__(n, x)))
 #else
 #define	__alloc_size(x)
+#define	__alloc_size2(n, x)
 #endif
 #if __GNUC_PREREQ__(4, 9) || __has_attribute(__alloc_align__)
 #define	__alloc_align(x)	__attribute__((__alloc_align__(x)))
@@ -266,7 +268,7 @@
 #endif
 
 #if !defined(__cplusplus) && !__has_extension(c_atomic) && \
-    !__has_extension(cxx_atomic)
+	!__has_extension(cxx_atomic) && !__GNUC_PREREQ__(4, 7)
 /*
  * No native support for _Atomic(). Place object in structure to prevent
  * most forms of direct non-atomic access.
@@ -589,7 +591,7 @@
  *	__FBSDID("$FreeBSD$");
  */
 #ifndef	__FBSDID
-#if !defined(lint) && !defined(STRIP_FBSDID)
+#if !defined(STRIP_FBSDID)
 #define	__FBSDID(s)	__IDSTRING(__CONCAT(__rcsid_,__LINE__),s)
 #else
 #define	__FBSDID(s)	struct __hack

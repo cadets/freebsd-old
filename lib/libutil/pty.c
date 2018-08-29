@@ -31,12 +31,7 @@
 
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
-
-#if defined(LIBC_SCCS) && !defined(lint)
-#if 0
-static char sccsid[] = "@(#)pty.c	8.3 (Berkeley) 5/16/94";
-#endif
-#endif /* LIBC_SCCS and not lint */
+__SCCSID("@(#)pty.c	8.3 (Berkeley) 5/16/94");
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -101,12 +96,13 @@ forkpty(int *amaster, char *name, struct termios *termp, struct winsize *winp)
 		return (-1);
 	switch (pid = fork()) {
 	case -1:
+		(void)close(slave);
 		return (-1);
 	case 0:
 		/*
 		 * child
 		 */
-		(void) close(master);
+		(void)close(master);
 		login_tty(slave);
 		return (0);
 	}

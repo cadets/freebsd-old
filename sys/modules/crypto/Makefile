@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+LIBSODIUM=${SRCTOP}/sys/contrib/libsodium/src/libsodium
+
 .PATH:	${SRCTOP}/sys/opencrypto
 .PATH:	${SRCTOP}/sys/crypto
 .PATH:	${SRCTOP}/sys/crypto/blowfish
@@ -9,6 +11,13 @@
 .PATH:	${SRCTOP}/sys/crypto/sha2
 .PATH:	${SRCTOP}/sys/crypto/siphash
 .PATH:	${SRCTOP}/sys/crypto/skein
+.PATH:	${SRCTOP}/sys/crypto/blake2
+.PATH:	${SRCTOP}/sys/crypto/chacha20
+.PATH:	${SRCTOP}/sys/contrib/libb2
+.PATH:	${LIBSODIUM}/crypto_onetimeauth/poly1305
+.PATH:	${LIBSODIUM}/crypto_onetimeauth/poly1305/donna
+.PATH:	${LIBSODIUM}/crypto_verify/sodium
+.PATH:	${SRCTOP}/sys/crypto/libsodium
 
 KMOD	= crypto
 SRCS	= crypto.c cryptodev_if.c
@@ -31,6 +40,32 @@ AFLAGS+= --defsym SKEIN_LOOP=0
 .endif
 SRCS	+= siphash.c
 SRCS	+= gmac.c gfmult.c
+SRCS	+= blake2b-ref.c
+SRCS	+= blake2s-ref.c
+SRCS	+= blake2-sw.c
+CFLAGS.blake2b-ref.c	+= -I${SRCTOP}/sys/crypto/blake2 -DSUFFIX=_ref
+CFLAGS.blake2s-ref.c	+= -I${SRCTOP}/sys/crypto/blake2 -DSUFFIX=_ref
+CFLAGS.blake2-sw.c	+= -I${SRCTOP}/sys/crypto/blake2
+CWARNFLAGS.blake2b-ref.c	+= -Wno-cast-qual -Wno-unused-function
+CWARNFLAGS.blake2s-ref.c	+= -Wno-cast-qual -Wno-unused-function
+SRCS	+= chacha.c
+SRCS	+= chacha-sw.c
+
+LIBSODIUM_INC=${LIBSODIUM}/include
+LIBSODIUM_COMPAT=${SRCTOP}/sys/crypto/libsodium
+SRCS	+= xform_poly1305.c
+CFLAGS.xform_poly1305.c		+= -I${LIBSODIUM_INC} -I${LIBSODIUM_COMPAT}
+SRCS	+= onetimeauth_poly1305.c
+CFLAGS.onetimeauth_poly1305.c	+= -I${LIBSODIUM_INC}/sodium -I${LIBSODIUM_COMPAT}
+SRCS	+= poly1305_donna.c
+CFLAGS.poly1305_donna.c		+= -I${LIBSODIUM_INC}/sodium -I${LIBSODIUM_COMPAT}
+SRCS	+= verify.c
+CFLAGS.verify.c			+= -I${LIBSODIUM_INC}/sodium -I${LIBSODIUM_COMPAT}
+SRCS	+= randombytes.c
+CFLAGS.randombytes.c		+= -I${LIBSODIUM_INC} -I${LIBSODIUM_COMPAT}
+SRCS	+= utils.c
+CFLAGS.utils.c			+= -I${LIBSODIUM_INC} -I${LIBSODIUM_COMPAT}
+
 SRCS	+= opt_param.h cryptodev_if.h bus_if.h device_if.h
 SRCS	+= opt_ddb.h
 

@@ -77,7 +77,7 @@ COPTFLAGS+= ${_CPUCFLAGS}
 .endif
 NOSTDINC= -nostdinc
 
-INCLUDES= ${NOSTDINC} ${INCLMAGIC} -I. -I$S
+INCLUDES= ${NOSTDINC} ${INCLMAGIC} -I. -I$S -I$S/contrib/ck/include
 
 CFLAGS=	${COPTFLAGS} ${DEBUG}
 CFLAGS+= ${INCLUDES} -D_KERNEL -DHAVE_KERNEL_OPTION_HEADERS -include opt_global.h
@@ -120,6 +120,16 @@ CFLAGS+=	${CONF_CFLAGS}
 LDFLAGS+=	-Wl,--build-id=sha1
 .endif
 
+.if ${MACHINE_CPUARCH} == "amd64"
+.if defined(LINKER_FEATURES) && ${LINKER_FEATURES:Mifunc} == ""
+.error amd64 kernel requires linker ifunc support
+.endif
+LDFLAGS+=	-Wl,-z max-page-size=2097152
+.if ${LINKER_TYPE} != "lld"
+LDFLAGS+=	-Wl,-z common-page-size=4096
+.endif
+.endif
+
 NORMAL_C= ${CC} -c ${CFLAGS} ${WERROR} ${PROF} ${.IMPSRC}
 NORMAL_S= ${CC:N${CCACHE_BIN}} -c ${ASM_CFLAGS} ${WERROR} ${.IMPSRC}
 LLVM_C= ${CC} -emit-llvm ${CFLAGS:N-O*} -c ${.IMPSRC} -o ${.TARGET}
@@ -137,6 +147,9 @@ NORMAL_FWO= ${LD} -b binary --no-warn-mismatch -d -warn-common -r \
 	-m ${LD_EMULATION} -o ${.TARGET} ${.ALLSRC:M*.fw}
 
 LLVM_INSTRUMENT= ${OPT} ${LLVM_INSTR_FLAGS} ${.IMPSRC} -o ${.TARGET}
+
+# for ZSTD in the kernel (include zstd/lib/freebsd before other CFLAGS)
+ZSTD_C= ${CC} -c -DZSTD_HEAPMODE=1 -I$S/contrib/zstd/lib/freebsd ${CFLAGS} -I$S/contrib/zstd/lib -I$S/contrib/zstd/lib/common ${WERROR} -Wno-inline -Wno-missing-prototypes ${PROF} -U__BMI__ ${.IMPSRC}
 
 # Common for dtrace / zfs
 CDDL_CFLAGS=	-DFREEBSD_NAMECACHE -nostdinc -I$S/cddl/compat/opensolaris -I$S/cddl/contrib/opensolaris/uts/common -I$S -I$S/cddl/contrib/opensolaris/common ${CFLAGS} -Wno-unknown-pragmas -Wno-missing-prototypes -Wno-undef -Wno-strict-prototypes -Wno-cast-qual -Wno-parentheses -Wno-redundant-decls -Wno-missing-braces -Wno-uninitialized -Wno-unused -Wno-inline -Wno-switch -Wno-pointer-arith -Wno-unknown-pragmas
@@ -213,7 +226,8 @@ SYSTEM_LD_TAIL= @${OBJCOPY} --strip-symbol gcc2_compiled. ${.TARGET} ; \
 SYSTEM_DEP+= ${LDSCRIPT}
 
 # Calculate path for .m files early, if needed.
-.if !defined(NO_MODULES) && !defined(__MPATH) && !make(install)
+.if !defined(NO_MODULES) && !defined(__MPATH) && !make(install) && \
+    (empty(.MAKEFLAGS:M-V) || defined(NO_SKIP_MPATH))
 __MPATH!=find ${S:tA}/ -name \*_if.m
 .endif
 
@@ -238,7 +252,7 @@ MKMODULESENV+=	DEBUG_FLAGS="${DEBUG}"
 MKMODULESENV+=	__MPATH="${__MPATH}"
 .endif
 
-# Architecture and output format arguments for objdump to convert image to
+# Architecture and output format arguments for objcopy to convert image to
 # object file
 
 .if ${MFS_IMAGE:Uno} != "no"

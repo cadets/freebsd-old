@@ -52,6 +52,37 @@ __FBSDID("$FreeBSD$");
 #include <atf-c.h>
 
 /*
+ * Architectures with a user-visible breakpoint().
+ */
+#if defined(__aarch64__) || defined(__amd64__) || defined(__arm__) ||	\
+    defined(__i386__) || defined(__mips__) || defined(__riscv) ||	\
+    defined(__sparc64__)
+#define	HAVE_BREAKPOINT
+#endif
+
+/*
+ * Adjust PC to skip over a breakpoint when stopped for a breakpoint trap.
+ */
+#ifdef HAVE_BREAKPOINT
+#if defined(__aarch64__)
+#define	SKIP_BREAK(reg)	((reg)->elr += 4)
+#elif defined(__amd64__) || defined(__i386__)
+#define	SKIP_BREAK(reg)
+#elif defined(__arm__)
+#define	SKIP_BREAK(reg)	((reg)->r_pc += 4)
+#elif defined(__mips__)
+#define	SKIP_BREAK(reg)	((reg)->r_regs[PC] += 4)
+#elif defined(__riscv)
+#define	SKIP_BREAK(reg)	((reg)->sepc += 4)
+#elif defined(__sparc64__)
+#define	SKIP_BREAK(reg)	do {						\
+	(reg)->r_tpc = (reg)->r_tnpc + 4;				\
+	(reg)->r_tnpc += 8;						\
+} while (0)
+#endif
+#endif
+
+/*
  * A variant of ATF_REQUIRE that is suitable for use in child
  * processes.  This only works if the parent process is tripped up by
  * the early exit and fails some requirement itself.
@@ -104,6 +135,10 @@ wait_for_zombie(pid_t pid)
 	/*
 	 * Wait for a process to exit.  This is kind of gross, but
 	 * there is not a better way.
+	 *
+	 * Prior to r325719, the kern.proc.pid.<pid> sysctl failed
+	 * with ESRCH.  After that change, a valid struct kinfo_proc
+	 * is returned for zombies with ki_stat set to SZOMB.
 	 */
 	for (;;) {
 		struct kinfo_proc kp;
@@ -116,10 +151,11 @@ wait_for_zombie(pid_t pid)
 		mib[3] = pid;
 		len = sizeof(kp);
 		if (sysctl(mib, nitems(mib), &kp, &len, NULL, 0) == -1) {
-			/* The KERN_PROC_PID sysctl fails for zombies. */
 			ATF_REQUIRE(errno == ESRCH);
 			break;
 		}
+		if (kp.ki_stat == SZOMB)
+			break;
 		usleep(5000);
 	}
 }
@@ -1683,11 +1719,7 @@ ATF_TC_BODY(ptrace__ptrace_vfork_follow, tc)
 	ATF_REQUIRE(errno == ECHILD);
 }
 
-/*
- * XXX: There's nothing inherently platform specific about this test, however a
- * userspace visible breakpoint() is a prerequisite.
- */
- #if defined(__amd64__) || defined(__i386__) || defined(__sparc64__)
+#ifdef HAVE_BREAKPOINT
 /*
  * Verify that no more events are reported after PT_KILL except for the
  * process exit when stopped due to a breakpoint trap.
@@ -1733,7 +1765,7 @@ ATF_TC_BODY(ptrace__PT_KILL_breakpoint, tc)
 	ATF_REQUIRE(wpid == -1);
 	ATF_REQUIRE(errno == ECHILD);
 }
-#endif /* defined(__amd64__) || defined(__i386__) || defined(__sparc64__) */
+#endif /* HAVE_BREAKPOINT */
 
 /*
  * Verify that no more events are reported after PT_KILL except for the
@@ -2953,7 +2985,7 @@ ATF_TC_BODY(ptrace__PT_CONTINUE_with_sigmask, tc)
 /*
  * Verify that if ptrace stops due to a signal but continues with
  * a different signal that the new signal is routed to a thread
- * that can accept it, and that that thread is awakened by the signal
+ * that can accept it, and that the thread is awakened by the signal
  * in a timely manner.
  */
 ATF_TC_WITHOUT_HEAD(ptrace__PT_CONTINUE_with_signal_thread_sigmask);
@@ -3463,13 +3495,113 @@ ATF_TC_BODY(ptrace__PT_STEP_with_signal, tc)
 	ATF_REQUIRE(errno == ECHILD);
 }
 
-#if defined(__amd64__) || defined(__i386__)
+#ifdef HAVE_BREAKPOINT
 /*
- * Only x86 both define breakpoint() and have a PC after breakpoint so
- * that restarting doesn't retrigger the breakpoint.
+ * Verify that a SIGTRAP event with the TRAP_BRKPT code is reported
+ * for a breakpoint trap.
  */
+ATF_TC_WITHOUT_HEAD(ptrace__breakpoint_siginfo);
+ATF_TC_BODY(ptrace__breakpoint_siginfo, tc)
+{
+	struct ptrace_lwpinfo pl;
+	pid_t fpid, wpid;
+	int status;
+
+	ATF_REQUIRE((fpid = fork()) != -1);
+	if (fpid == 0) {
+		trace_me();
+		breakpoint();
+		exit(1);
+	}
+
+	/* The first wait() should report the stop from SIGSTOP. */
+	wpid = waitpid(fpid, &status, 0);
+	ATF_REQUIRE(wpid == fpid);
+	ATF_REQUIRE(WIFSTOPPED(status));
+	ATF_REQUIRE(WSTOPSIG(status) == SIGSTOP);
+
+	/* Continue the child ignoring the SIGSTOP. */
+	ATF_REQUIRE(ptrace(PT_CONTINUE, fpid, (caddr_t)1, 0) == 0);
+
+	/* The second wait() should report hitting the breakpoint. */
+	wpid = waitpid(fpid, &status, 0);
+	ATF_REQUIRE(wpid == fpid);
+	ATF_REQUIRE(WIFSTOPPED(status));
+	ATF_REQUIRE(WSTOPSIG(status) == SIGTRAP);
+
+	ATF_REQUIRE(ptrace(PT_LWPINFO, wpid, (caddr_t)&pl, sizeof(pl)) != -1);
+	ATF_REQUIRE((pl.pl_flags & PL_FLAG_SI) != 0);
+	ATF_REQUIRE(pl.pl_siginfo.si_signo == SIGTRAP);
+	ATF_REQUIRE(pl.pl_siginfo.si_code == TRAP_BRKPT);
+
+	/* Kill the child process. */
+	ATF_REQUIRE(ptrace(PT_KILL, fpid, 0, 0) == 0);
+
+	/* The last wait() should report the SIGKILL. */
+	wpid = waitpid(fpid, &status, 0);
+	ATF_REQUIRE(wpid == fpid);
+	ATF_REQUIRE(WIFSIGNALED(status));
+	ATF_REQUIRE(WTERMSIG(status) == SIGKILL);
+
+	wpid = wait(&status);
+	ATF_REQUIRE(wpid == -1);
+	ATF_REQUIRE(errno == ECHILD);
+}
+#endif /* HAVE_BREAKPOINT */
+
+/*
+ * Verify that a SIGTRAP event with the TRAP_TRACE code is reported
+ * for a single-step trap from PT_STEP.
+ */
+ATF_TC_WITHOUT_HEAD(ptrace__step_siginfo);
+ATF_TC_BODY(ptrace__step_siginfo, tc)
+{
+	struct ptrace_lwpinfo pl;
+	pid_t fpid, wpid;
+	int status;
+
+	ATF_REQUIRE((fpid = fork()) != -1);
+	if (fpid == 0) {
+		trace_me();
+		exit(1);
+	}
+
+	/* The first wait() should report the stop from SIGSTOP. */
+	wpid = waitpid(fpid, &status, 0);
+	ATF_REQUIRE(wpid == fpid);
+	ATF_REQUIRE(WIFSTOPPED(status));
+	ATF_REQUIRE(WSTOPSIG(status) == SIGSTOP);
+
+	/* Step the child ignoring the SIGSTOP. */
+	ATF_REQUIRE(ptrace(PT_STEP, fpid, (caddr_t)1, 0) == 0);
+
+	/* The second wait() should report a single-step trap. */
+	wpid = waitpid(fpid, &status, 0);
+	ATF_REQUIRE(wpid == fpid);
+	ATF_REQUIRE(WIFSTOPPED(status));
+	ATF_REQUIRE(WSTOPSIG(status) == SIGTRAP);
+
+	ATF_REQUIRE(ptrace(PT_LWPINFO, wpid, (caddr_t)&pl, sizeof(pl)) != -1);
+	ATF_REQUIRE((pl.pl_flags & PL_FLAG_SI) != 0);
+	ATF_REQUIRE(pl.pl_siginfo.si_signo == SIGTRAP);
+	ATF_REQUIRE(pl.pl_siginfo.si_code == TRAP_TRACE);
+
+	/* Continue the child process. */
+	ATF_REQUIRE(ptrace(PT_CONTINUE, fpid, (caddr_t)1, 0) == 0);
+
+	/* The last event should be for the child process's exit. */
+	wpid = waitpid(fpid, &status, 0);
+	ATF_REQUIRE(WIFEXITED(status));
+	ATF_REQUIRE(WEXITSTATUS(status) == 1);
+
+	wpid = wait(&status);
+	ATF_REQUIRE(wpid == -1);
+	ATF_REQUIRE(errno == ECHILD);
+}
+
+#if defined(HAVE_BREAKPOINT) && defined(SKIP_BREAK)
 static void *
-continue_thread(void *arg)
+continue_thread(void *arg __unused)
 {
 	breakpoint();
 	return (NULL);
@@ -3501,6 +3633,7 @@ ATF_TC_BODY(ptrace__PT_CONTINUE_different_thread, tc)
 	pid_t fpid, wpid;
 	lwpid_t lwps[2];
 	bool hit_break[2];
+	struct reg reg;
 	int i, j, status;
 
 	ATF_REQUIRE((fpid = fork()) != -1);
@@ -3574,6 +3707,9 @@ ATF_TC_BODY(ptrace__PT_CONTINUE_different_thread, tc)
 	else
 		i = 1;
 	hit_break[i] = true;
+	ATF_REQUIRE(ptrace(PT_GETREGS, pl.pl_lwpid, (caddr_t)&reg, 0) != -1);
+	SKIP_BREAK(&reg);
+	ATF_REQUIRE(ptrace(PT_SETREGS, pl.pl_lwpid, (caddr_t)&reg, 0) != -1);
 
 	/*
 	 * Resume both threads but pass the other thread's LWPID to
@@ -3611,6 +3747,11 @@ ATF_TC_BODY(ptrace__PT_CONTINUE_different_thread, tc)
 			ATF_REQUIRE_MSG(!hit_break[i],
 			    "double breakpoint event");
 			hit_break[i] = true;
+			ATF_REQUIRE(ptrace(PT_GETREGS, pl.pl_lwpid, (caddr_t)&reg,
+			    0) != -1);
+			SKIP_BREAK(&reg);
+			ATF_REQUIRE(ptrace(PT_SETREGS, pl.pl_lwpid, (caddr_t)&reg,
+			    0) != -1);
 		}
 
 		ATF_REQUIRE(ptrace(PT_CONTINUE, fpid, (caddr_t)1, 0) == 0);
@@ -3658,7 +3799,7 @@ ATF_TP_ADD_TCS(tp)
 	ATF_TP_ADD_TC(tp, ptrace__event_mask);
 	ATF_TP_ADD_TC(tp, ptrace__ptrace_vfork);
 	ATF_TP_ADD_TC(tp, ptrace__ptrace_vfork_follow);
-#if defined(__amd64__) || defined(__i386__) || defined(__sparc64__)
+#ifdef HAVE_BREAKPOINT
 	ATF_TP_ADD_TC(tp, ptrace__PT_KILL_breakpoint);
 #endif
 	ATF_TP_ADD_TC(tp, ptrace__PT_KILL_system_call);
@@ -3683,7 +3824,11 @@ ATF_TP_ADD_TCS(tp)
 	ATF_TP_ADD_TC(tp, ptrace__event_mask_sigkill_discard);
 	ATF_TP_ADD_TC(tp, ptrace__PT_ATTACH_with_SBDRY_thread);
 	ATF_TP_ADD_TC(tp, ptrace__PT_STEP_with_signal);
-#if defined(__amd64__) || defined(__i386__)
+#ifdef HAVE_BREAKPOINT
+	ATF_TP_ADD_TC(tp, ptrace__breakpoint_siginfo);
+#endif
+	ATF_TP_ADD_TC(tp, ptrace__step_siginfo);
+#if defined(HAVE_BREAKPOINT) && defined(SKIP_BREAK)
 	ATF_TP_ADD_TC(tp, ptrace__PT_CONTINUE_different_thread);
 #endif
 

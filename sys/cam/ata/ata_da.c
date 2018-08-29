@@ -238,7 +238,7 @@ struct ada_softc {
 	int	 write_cache;
 	int	 unmappedio;
 	int	 rotating;
-#ifdef ADA_TEST_FAILURE
+#ifdef CAM_TEST_FAILURE
 	int      force_read_error;
 	int      force_write_error;
 	int      periodic_read_error;
@@ -363,7 +363,12 @@ static struct ada_quirk_entry ada_quirk_table[] =
 	},
 	{
 		/* WDC Caviar Black Advanced Format (4k) drives */
-		{ T_DIRECT, SIP_MEDIA_FIXED, "*", "WDC WD??????EX*", "*" },
+		{ T_DIRECT, SIP_MEDIA_FIXED, "*", "WDC WD????AZEX*", "*" },
+		/*quirks*/ADA_Q_4K
+	},
+	{
+		/* WDC Caviar Black Advanced Format (4k) drives */
+		{ T_DIRECT, SIP_MEDIA_FIXED, "*", "WDC WD????FZEX*", "*" },
 		/*quirks*/ADA_Q_4K
 	},
 	{
@@ -906,7 +911,7 @@ adaopen(struct disk *dp)
 	int error;
 
 	periph = (struct cam_periph *)dp->d_drv1;
-	if (cam_periph_acquire(periph) != CAM_REQ_CMP) {
+	if (cam_periph_acquire(periph) != 0) {
 		return(ENXIO);
 	}
 
@@ -952,7 +957,7 @@ adaclose(struct disk *dp)
 		ccb = cam_periph_getccb(periph, CAM_PRIORITY_NORMAL);
 		cam_fill_ataio(&ccb->ataio,
 				    1,
-				    adadone,
+				    NULL,
 				    CAM_DIR_NONE,
 				    0,
 				    NULL,
@@ -1057,15 +1062,12 @@ adadump(void *arg, void *virtual, vm_offset_t physical, off_t offset, size_t len
 	dp = arg;
 	periph = dp->d_drv1;
 	softc = (struct ada_softc *)periph->softc;
-	cam_periph_lock(periph);
 	secsize = softc->params.secsize;
 	lba = offset / secsize;
 	count = length / secsize;
 	
-	if ((periph->flags & CAM_PERIPH_INVALID) != 0) {
-		cam_periph_unlock(periph);
+	if ((periph->flags & CAM_PERIPH_INVALID) != 0)
 		return (ENXIO);
-	}
 
 	memset(&ataio, 0, sizeof(ataio));
 	if (length > 0) {
@@ -1073,7 +1075,7 @@ adadump(void *arg, void *virtual, vm_offset_t physical, off_t offset, size_t len
 		ataio.ccb_h.ccb_state = ADA_CCB_DUMP;
 		cam_fill_ataio(&ataio,
 		    0,
-		    adadone,
+		    NULL,
 		    CAM_DIR_OUT,
 		    0,
 		    (u_int8_t *) virtual,
@@ -1093,7 +1095,6 @@ adadump(void *arg, void *virtual, vm_offset_t physical, off_t offset, size_t len
 		if (error != 0)
 			printf("Aborting dump due to I/O error.\n");
 
-		cam_periph_unlock(periph);
 		return (error);
 	}
 
@@ -1108,7 +1109,7 @@ adadump(void *arg, void *virtual, vm_offset_t physical, off_t offset, size_t len
 		ataio.ccb_h.ccb_state = ADA_CCB_DUMP;
 		cam_fill_ataio(&ataio,
 				    0,
-				    adadone,
+				    NULL,
 				    CAM_DIR_NONE,
 				    0,
 				    NULL,
@@ -1124,7 +1125,6 @@ adadump(void *arg, void *virtual, vm_offset_t physical, off_t offset, size_t len
 		if (error != 0)
 			xpt_print(periph->path, "Synchronize cache failed\n");
 	}
-	cam_periph_unlock(periph);
 	return (error);
 }
 
@@ -1328,7 +1328,7 @@ adaasync(void *callback_arg, u_int32_t code,
 			softc->state = ADA_STATE_LOGDIR;
 		else
 		    break;
-		if (cam_periph_acquire(periph) != CAM_REQ_CMP)
+		if (cam_periph_acquire(periph) != 0)
 			softc->state = ADA_STATE_NORMAL;
 		else
 			xpt_schedule(periph, CAM_PRIORITY_DEV);
@@ -1411,7 +1411,7 @@ adasysctlinit(void *context, int pending)
 {
 	struct cam_periph *periph;
 	struct ada_softc *softc;
-	char tmpstr[80], tmpstr2[80];
+	char tmpstr[32], tmpstr2[16];
 
 	periph = (struct cam_periph *)context;
 
@@ -1475,7 +1475,7 @@ adasysctlinit(void *context, int pending)
 		"max_seq_zones", CTLFLAG_RD, &softc->max_seq_zones,
 		"Maximum Number of Open Sequential Write Required Zones");
 
-#ifdef ADA_TEST_FAILURE
+#ifdef CAM_TEST_FAILURE
 	/*
 	 * Add a 'door bell' sysctl which allows one to set it from userland
 	 * and cause something bad to happen.  For the moment, we only allow
@@ -1493,6 +1493,10 @@ adasysctlinit(void *context, int pending)
 		OID_AUTO, "periodic_read_error", CTLFLAG_RW | CTLFLAG_MPSAFE,
 		&softc->periodic_read_error, 0,
 		"Force a read error every N reads (don't set too low).");
+	SYSCTL_ADD_PROC(&softc->sysctl_ctx, SYSCTL_CHILDREN(softc->sysctl_tree),
+		OID_AUTO, "invalidate", CTLTYPE_U64 | CTLFLAG_RW | CTLFLAG_MPSAFE,
+		periph, 0, cam_periph_invalidate_sysctl, "I",
+		"Write 1 to invalidate the drive immediately");
 #endif
 
 #ifdef CAM_IO_STATS
@@ -1841,7 +1845,7 @@ adaregister(struct cam_periph *periph, void *arg)
 	 * We'll release this reference once GEOM calls us back (via
 	 * adadiskgonecb()) telling us that our provider has been freed.
 	 */
-	if (cam_periph_acquire(periph) != CAM_REQ_CMP) {
+	if (cam_periph_acquire(periph) != 0) {
 		xpt_print(periph->path, "%s: lost periph during "
 			  "registration!\n", __func__);
 		cam_periph_lock(periph);
@@ -1866,7 +1870,7 @@ adaregister(struct cam_periph *periph, void *arg)
 	 * Create our sysctl variables, now that we know
 	 * we have successfully attached.
 	 */
-	if (cam_periph_acquire(periph) == CAM_REQ_CMP)
+	if (cam_periph_acquire(periph) == 0)
 		taskqueue_enqueue(taskqueue_thread, &softc->sysctl_task);
 
 	/*
@@ -2293,7 +2297,7 @@ adastart(struct cam_periph *periph, union ccb *start_ccb)
 				data_ptr = bp;
 			}
 
-#ifdef ADA_TEST_FAILURE
+#ifdef CAM_TEST_FAILURE
 			int fail = 0;
 
 			/*
@@ -2454,7 +2458,6 @@ out:
 		cam_periph_unlock(periph);
 		xpt_action(start_ccb);
 		cam_periph_lock(periph);
-		softc->refcount--;
 
 		/* May have more work to do, so ensure we stay scheduled */
 		adaschedule(periph);
@@ -2631,10 +2634,8 @@ adaprobedone(struct cam_periph *periph, union ccb *ccb)
 static void
 adazonedone(struct cam_periph *periph, union ccb *ccb)
 {
-	struct ada_softc *softc;
 	struct bio *bp;
 
-	softc = periph->softc;
 	bp = (struct bio *)ccb->ccb_h.ccb_bp;
 
 	switch (bp->bio_zone.zone_cmd) {
@@ -2649,7 +2650,7 @@ adazonedone(struct cam_periph *periph, union ccb *ccb)
 		struct scsi_report_zones_hdr *hdr;
 		struct scsi_report_zones_desc *desc;
 		struct disk_zone_rep_entry *entry;
-		uint32_t num_alloced, hdr_len, num_avail;
+		uint32_t hdr_len, num_avail;
 		uint32_t num_to_fill, i;
 
 		rep = &bp->bio_zone.zone_params.report;
@@ -2664,7 +2665,6 @@ adazonedone(struct cam_periph *periph, union ccb *ccb)
 		 * be different than the amount of data transferred to
 		 * the user.
 		 */
-		num_alloced = rep->entries_allocated;
 		hdr = (struct scsi_report_zones_hdr *)ccb->ataio.data_ptr;
 		if (avail_len < sizeof(*hdr)) {
 			/*
@@ -2855,10 +2855,13 @@ adadone(struct cam_periph *periph, union ccb *done_ccb)
 		 * We need to call cam_iosched before we call biodone so that we
 		 * don't measure any activity that happens in the completion
 		 * routine, which in the case of sendfile can be quite
-		 * extensive.
+		 * extensive.  Release the periph refcount taken in adastart()
+		 * for each CCB.
 		 */
 		cam_iosched_bio_complete(softc->cam_iosched, bp, done_ccb);
 		xpt_release_ccb(done_ccb);
+		KASSERT(softc->refcount >= 1, ("adadone softc %p refcount %d", softc, softc->refcount));
+		softc->refcount--;
 		if (state == ADA_CCB_TRIM) {
 			TAILQ_HEAD(, bio) queue;
 			struct bio *bp1;
@@ -3438,7 +3441,7 @@ adaflush(void)
 		ccb = cam_periph_getccb(periph, CAM_PRIORITY_NORMAL);
 		cam_fill_ataio(&ccb->ataio,
 				    0,
-				    adadone,
+				    NULL,
 				    CAM_DIR_NONE,
 				    0,
 				    NULL,
@@ -3490,7 +3493,7 @@ adaspindown(uint8_t cmd, int flags)
 
 		cam_fill_ataio(&local_ccb,
 				    0,
-				    adadone,
+				    NULL,
 				    CAM_DIR_NONE | flags,
 				    0,
 				    NULL,

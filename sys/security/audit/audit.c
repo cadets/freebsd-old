@@ -308,7 +308,7 @@ audit_record_ctor(void *mem, int size, void *arg, int flags)
 	bcopy(&td->td_uuid, &ar->k_ar.ar_subj_thr_uuid,
 	    sizeof(ar->k_ar.ar_subj_thr_uuid));
 	bcopy(&td->td_ucred->cr_prison->pr_uuid, &ar->k_ar.ar_subj_jail_uuid,
-	    sizeof(&ar->k_ar.ar_subj_jail_uuid));
+	    sizeof(ar->k_ar.ar_subj_jail_uuid));
 #endif
 	return (0);
 }

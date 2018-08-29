@@ -25,6 +25,10 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#if HAVE_NBTOOL_CONFIG_H
+#include "nbtool_config.h"
+#endif
+
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
@@ -54,7 +58,7 @@ __FBSDID("$FreeBSD$");
 #include "makefs.h"
 
 #ifndef ENOATTR
-#define	ENOATTR	ENOMSG
+#define	ENOATTR	ENODATA
 #endif
 
 #define	IS_DOT(nm)	((nm)[0] == '.' && (nm)[1] == '\0')
@@ -532,11 +536,13 @@ read_mtree_keywords(FILE *fp, fsnode *node)
 					break;
 				}
 				flset = flclr = 0;
+#if HAVE_STRUCT_STAT_ST_FLAGS
 				if (!strtofflags(&value, &flset, &flclr)) {
 					st->st_flags &= ~flclr;
 					st->st_flags |= flset;
 				} else
 					error = errno;
+#endif
 			} else
 				error = ENOSYS;
 			break;

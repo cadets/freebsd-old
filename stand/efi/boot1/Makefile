@@ -1,12 +1,8 @@
 # $FreeBSD$
 
-MAN=
-
 .include <bsd.init.mk>
 
 MK_INSTRUMENT_BINARIES=	no
-MK_SSP=		no
-MK_FORTH=	no
 
 PROG=		boot1.sym
 INTERNALPROG=
@@ -36,7 +32,6 @@ CFLAGS.zfs_module.c+=	-I${ZFSSRC}
 CFLAGS.zfs_module.c+=	-I${SYSDIR}/cddl/boot/zfs
 CFLAGS.zfs_module.c+=	-I${SYSDIR}/crypto/skein
 CFLAGS+=	-DEFI_ZFS_BOOT
-LIBZFSBOOT=	${BOOTOBJ}/zfs/libzfsboot.a
 .endif
 
 .if ${COMPILER_TYPE} == "gcc" && ${COMPILER_VERSION} > 40201
@@ -78,25 +73,11 @@ LIBEFI=		${BOOTOBJ}/efi/libefi/libefi.a
 # __aeabi_* (arm) or __divdi3 (i386).
 # as well as required string and memory functions for all platforms.
 #
-DPADD+=		${LIBEFI} ${LIBZFSBOOT} ${LIBSA}
-LDADD+=		${LIBEFI} ${LIBZFSBOOT} ${LIBSA}
+DPADD+=		${LIBEFI} ${LIBSA}
+LDADD+=		${LIBEFI} ${LIBSA}
 
 DPADD+=		${LDSCRIPT}
 
-NM?=		nm
-OBJCOPY?=	objcopy
-
-.if ${MACHINE_CPUARCH} == "amd64"
-EFI_TARGET=	efi-app-x86_64
-.elif ${MACHINE_CPUARCH} == "i386"
-EFI_TARGET=	efi-app-ia32
-.else
-EFI_TARGET=	binary
-.endif
-
-# Arbitrarily set the PE/COFF header timestamps to 1 Jan 2016 00:00:00
-# for build reproducibility.
-SOURCE_DATE_EPOCH?=1451606400
 boot1.efi: ${PROG}
 	if ${NM} ${.ALLSRC} | grep ' U '; then \
 		echo "Undefined symbols in ${.ALLSRC}"; \
@@ -111,7 +92,7 @@ boot1.efi: ${PROG}
 # The following inserts our objects into a template FAT file system
 # created by generate-fat.sh
 
-.include "${.CURDIR}/Makefile.fat"
+.include "Makefile.fat"
 
 boot1.efifat: boot1.efi
 	@set -- `ls -l ${.ALLSRC}`; \
@@ -121,7 +102,7 @@ boot1.efifat: boot1.efi
 	    exit 1; \
 	fi
 	echo ${.OBJDIR}
-	xz -d -c ${.CURDIR}/fat-${MACHINE}.tmpl.xz > ${.TARGET}
+	xz -d -c ${BOOTSRC}/efi/boot1/fat-${MACHINE}.tmpl.xz > ${.TARGET}
 	${DD} if=${.ALLSRC} of=${.TARGET} seek=${BOOT1_OFFSET} conv=notrunc
 
 CLEANFILES+= boot1.efi boot1.efifat

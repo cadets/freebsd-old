@@ -76,6 +76,7 @@
 #define	CR4_PCIDE 0x00020000	/* Enable Context ID */
 #define	CR4_XSAVE 0x00040000	/* XSETBV/XGETBV */
 #define	CR4_SMEP 0x00100000	/* Supervisor-Mode Execution Prevention */
+#define	CR4_SMAP 0x00200000	/* Supervisor-Mode Access Prevention */
 
 /*
  * Bits in AMD64 special registers.  EFER is 64 bits wide.
@@ -409,6 +410,7 @@
 #define	CPUID_STDEXT_AVX512CD	0x10000000
 #define	CPUID_STDEXT_SHA	0x20000000
 #define	CPUID_STDEXT_AVX512BW	0x40000000
+#define	CPUID_STDEXT_AVX512VL	0x80000000
 
 /*
  * CPUID instruction 7 Structured Extended Features, leaf 0 ecx info
@@ -419,6 +421,20 @@
 #define	CPUID_STDEXT2_OSPKE	0x00000010
 #define	CPUID_STDEXT2_RDPID	0x00400000
 #define	CPUID_STDEXT2_SGXLC	0x40000000
+
+/*
+ * CPUID instruction 7 Structured Extended Features, leaf 0 edx info
+ */
+#define	CPUID_STDEXT3_IBPB	0x04000000
+#define	CPUID_STDEXT3_STIBP	0x08000000
+#define	CPUID_STDEXT3_L1D_FLUSH	0x10000000
+#define	CPUID_STDEXT3_ARCH_CAP	0x20000000
+#define	CPUID_STDEXT3_SSBD	0x80000000
+
+/* MSR IA32_ARCH_CAP(ABILITIES) bits */
+#define	IA32_ARCH_CAP_RDCL_NO	0x00000001
+#define	IA32_ARCH_CAP_IBRS_ALL	0x00000002
+#define	IA32_ARCH_CAP_SSBD_NO	0x00000004
 
 /*
  * CPUID manufacturers identifiers
@@ -448,6 +464,8 @@
 #define	MSR_EBL_CR_POWERON	0x02a
 #define	MSR_TEST_CTL		0x033
 #define	MSR_IA32_FEATURE_CONTROL 0x03a
+#define	MSR_IA32_SPEC_CTRL	0x048
+#define	MSR_IA32_PRED_CMD	0x049
 #define	MSR_BIOS_UPDT_TRIG	0x079
 #define	MSR_BBL_CR_D0		0x088
 #define	MSR_BBL_CR_D1		0x089
@@ -460,6 +478,8 @@
 #define	MSR_APERF		0x0e8
 #define	MSR_IA32_EXT_CONFIG	0x0ee	/* Undocumented. Core Solo/Duo only */
 #define	MSR_MTRRcap		0x0fe
+#define	MSR_IA32_ARCH_CAP	0x10a
+#define	MSR_IA32_FLUSH_CMD	0x10b
 #define	MSR_BBL_CR_ADDR		0x116
 #define	MSR_BBL_CR_DECC		0x118
 #define	MSR_BBL_CR_CTL		0x119
@@ -680,6 +700,21 @@
 #define	IA32_MISC_EN_LIMCPUID	0x0000000000400000ULL
 #define	IA32_MISC_EN_xTPRD	0x0000000000800000ULL
 #define	IA32_MISC_EN_XDD	0x0000000400000000ULL
+
+/*
+ * IA32_SPEC_CTRL and IA32_PRED_CMD MSRs are described in the Intel'
+ * document 336996-001 Speculative Execution Side Channel Mitigations.
+ */
+/* MSR IA32_SPEC_CTRL */
+#define	IA32_SPEC_CTRL_IBRS	0x00000001
+#define	IA32_SPEC_CTRL_STIBP	0x00000002
+#define	IA32_SPEC_CTRL_SSBD	0x00000004
+
+/* MSR IA32_PRED_CMD */
+#define	IA32_PRED_CMD_IBPB_BARRIER	0x0000000000000001ULL
+
+/* MSR IA32_FLUSH_CMD */
+#define	IA32_FLUSH_CMD_L1D	0x00000001
 
 /*
  * PAT modes.
@@ -968,18 +1003,19 @@
 #define	MSR_TOP_MEM	0xc001001a	/* boundary for ram below 4G */
 #define	MSR_TOP_MEM2	0xc001001d	/* boundary for ram above 4G */
 #define	MSR_NB_CFG1	0xc001001f	/* NB configuration 1 */
+#define	MSR_K8_UCODE_UPDATE 0xc0010020	/* update microcode */
+#define	MSR_MC0_CTL_MASK 0xc0010044
 #define	MSR_P_STATE_LIMIT 0xc0010061	/* P-state Current Limit Register */
 #define	MSR_P_STATE_CONTROL 0xc0010062	/* P-state Control Register */
 #define	MSR_P_STATE_STATUS 0xc0010063	/* P-state Status Register */
 #define	MSR_P_STATE_CONFIG(n) (0xc0010064 + (n)) /* P-state Config */
 #define	MSR_SMM_ADDR	0xc0010112	/* SMM TSEG base address */
 #define	MSR_SMM_MASK	0xc0010113	/* SMM TSEG address mask */
+#define	MSR_VM_CR	0xc0010114	/* SVM: feature control */
+#define	MSR_VM_HSAVE_PA 0xc0010117	/* SVM: host save area address */
+#define	MSR_AMD_CPUID07	0xc0011002	/* CPUID 07 %ebx override */
 #define	MSR_EXTFEATURES	0xc0011005	/* Extended CPUID Features override */
 #define	MSR_IC_CFG	0xc0011021	/* Instruction Cache Configuration */
-#define	MSR_K8_UCODE_UPDATE	0xc0010020	/* update microcode */
-#define	MSR_MC0_CTL_MASK	0xc0010044
-#define	MSR_VM_CR		0xc0010114 /* SVM: feature control */
-#define	MSR_VM_HSAVE_PA		0xc0010117 /* SVM: host save area address */
 
 /* MSR_VM_CR related */
 #define	VM_CR_SVMDIS		0x10	/* SVM: disabled by BIOS */

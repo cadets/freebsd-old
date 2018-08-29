@@ -36,6 +36,7 @@
 #endif
 #include <stdlib.h>
 #include <stdio.h>
+#include "include/atomic_support.h"
 #include "__undef_macros"
 
 // On Linux, wint_t and wchar_t have different signed-ness, and this causes
@@ -667,7 +668,7 @@ locale::id::__get()
 void
 locale::id::__init()
 {
-    __id_ = __sync_add_and_fetch(&__next_id, 1);
+    __id_ = __libcpp_atomic_add(&__next_id, 1);
 }
 
 // template <> class collate_byname<char>
@@ -4239,6 +4240,7 @@ static bool checked_string_to_char_convert(char& dest,
   // FIXME: Work around specific multibyte sequences that we can reasonable
   // translate into a different single byte.
   switch (wout) {
+  case L'\u202F': // narrow non-breaking space
   case L'\u00A0': // non-breaking space
     dest = ' ';
     return true;
@@ -4658,7 +4660,7 @@ static
 string*
 init_am_pm()
 {
-    static string am_pm[24];
+    static string am_pm[2];
     am_pm[0]  = "AM";
     am_pm[1]  = "PM";
     return am_pm;
@@ -4668,7 +4670,7 @@ static
 wstring*
 init_wam_pm()
 {
-    static wstring am_pm[24];
+    static wstring am_pm[2];
     am_pm[0]  = L"AM";
     am_pm[1]  = L"PM";
     return am_pm;

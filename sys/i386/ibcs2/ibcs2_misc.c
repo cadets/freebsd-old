@@ -330,6 +330,7 @@ ibcs2_getdents(struct thread *td, struct ibcs2_getdents_args *uap)
 #define	BSD_DIRENT(cp)		((struct dirent *)(cp))
 #define	IBCS2_RECLEN(reclen)	(reclen + sizeof(u_short))
 
+	memset(&idb, 0, sizeof(idb));
 	error = getvnode(td, uap->fd, cap_rights_init(&rights, CAP_READ), &fp);
 	if (error != 0)
 		return (error);
@@ -737,12 +738,16 @@ int
 ibcs2_pathconf(struct thread *td, struct ibcs2_pathconf_args *uap)
 {
 	char *path;
+	long value;
 	int error;
 
 	CHECKALTEXIST(td, uap->path, &path);
 	uap->name++;	/* iBCS2 _PC_* defines are offset by one */
-	error = kern_pathconf(td, path, UIO_SYSSPACE, uap->name, FOLLOW);
+	error = kern_pathconf(td, path, UIO_SYSSPACE, uap->name, FOLLOW,
+	    &value);
 	free(path, M_TEMP);
+	if (error == 0)
+		td->td_retval[0] = value;
 	return (error);
 }
 
