@@ -862,8 +862,8 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		struct vtdtr_event e;
 #endif
 
-		dtrace_filter_t *in = (dtrace_filter_t *) addr;
-		dtrace_filter_t *cur = &state->dts_filter;
+		dtrace_machine_filter_t *in = (dtrace_machine_filter_t *) addr;
+		dtrace_machine_filter_t *cur = &state->dts_filter;
 		size_t i, j;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_FILTER\n",__func__,__LINE__);

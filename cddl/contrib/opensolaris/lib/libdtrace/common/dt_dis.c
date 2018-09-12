@@ -435,7 +435,7 @@ dt_dis(const dtrace_difo_t *dp, FILE *fp)
 		{ "rldx", dt_dis_load },	/* DIF_OP_RLDX */
 		{ "xlate", dt_dis_xlate },	/* DIF_OP_XLATE */
 		{ "xlarg", dt_dis_xlate },	/* DIF_OP_XLARG */
-		{ "hcall", dt_dis_str },	/* DIF_OP_HCALL */
+		{ "hypercall", dt_dis_str },	/* DIF_OP_HYPERRCALL */
 		{ "scmp_hh", dt_dis_cmp },	/* DIF_OP_SCMP_HH */
 		{ "scmp_gh", dt_dis_cmp },	/* DIF_OP_SCMP_GH */
 		{ "scmp_gg", dt_dis_cmp },	/* DIF_OP_SCMP_GG */

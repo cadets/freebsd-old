@@ -146,7 +146,7 @@ usage(FILE *fp)
 	    "[-b bufsz] [-c cmd] [-D name[=def]]\n\t[-I path] [-L path] "
 	    "[-o output] [-p pid] [-s script] [-U name]\n\t"
 	    "[-x opt[=val]] [-X a|c|s|t]\n\n"
-	    "\t[-M [ f1,f2,f3,... ]\n"
+	    "\t[-M [ vm1,vm2,vm3,... ]\n"
 	    "\t[-P provider %s]\n"
 	    "\t[-m [ provider: ] module %s]\n"
 	    "\t[-f [[ provider: ] module: ] func %s]\n"
@@ -176,7 +176,7 @@ usage(FILE *fp)
 	    "\t-I  add include directory to preprocessor search path\n"
 	    "\t-l  list probes matching specified criteria\n"
 	    "\t-L  add library directory to library search path\n"
-	    "\t-M  specify filters\n"
+	    "\t-M  specify virtual-machine filters\n"
 	    "\t-m  enable or list probes matching the specified module name\n"
 	    "\t-n  enable or list probes matching the specified probe name\n"
 	    "\t-O  output format json|xml\n"
@@ -1336,13 +1336,13 @@ installsighands(void)
 static void
 filter_machines(char *filt)
 {
-	dtrace_filter_t out;
+	dtrace_machine_filter_t out;
 	char *list = strdup(filt);
 	char *f, *token;
 	size_t n, i;
 	int error;
 
-	memset(&out, 0, sizeof(dtrace_filter_t));
+	memset(&out, 0, sizeof(dtrace_machine_filter_t));
 	f = NULL;
 	token = NULL;
 	error = 0;
@@ -1378,7 +1378,7 @@ main(int argc, char *argv[])
 	dtrace_status_t status[2];
 	dtrace_optval_t opt;
 	dtrace_cmd_t *dcp;
-	char *filter;
+	char *machine_filter;
 
 	g_ofp = stdout;
 	int done = 0, mode = 0;
@@ -1387,7 +1387,7 @@ main(int argc, char *argv[])
 	struct ps_prochandle *P;
 	pid_t pid;
 
-	filter = NULL;
+	machine_filter = NULL;
 
 	g_pname = basename(argv[0]);
 
@@ -1475,7 +1475,7 @@ main(int argc, char *argv[])
 				break;
 
 			case 'M':
-				filter = strdup(optarg);
+				machine_filter = strdup(optarg);
 				break;
 
 			case 'l':
@@ -1606,9 +1606,9 @@ main(int argc, char *argv[])
 	} else if (g_mode == DMODE_ANON)
 		(void) dtrace_setopt(g_dtp, "linkmode", "primary");
 
-	if (filter != NULL) {
-		filter_machines(filter);
-		free(filter);
+	if (machine_filter != NULL) {
+		filter_machines(machine_filter);
+		free(machine_filter);
 	}
 
 	/*

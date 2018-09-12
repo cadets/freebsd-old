@@ -209,13 +209,13 @@ typedef enum dtrace_probespec {
 /*
  * XXX(dstolfa): Should we be passing in which hypercall?
  */
-#define DIF_OP_HCALL	80		/* hcall */
-#define DIF_OP_SCMP_HH	81
-#define DIF_OP_SCMP_GH	82
-#define DIF_OP_SCMP_GG	83
-#define DIF_OP_SCMP_HG	84
-#define	DIF_OP_PUSHTR_G	85
-#define	DIF_OP_PUSHTR_H	86
+#define DIF_OP_HYPERCALL 80		/* hcall */
+#define DIF_OP_SCMP_HH   81
+#define DIF_OP_SCMP_GH   82
+#define DIF_OP_SCMP_GG   83
+#define DIF_OP_SCMP_HG   84
+#define	DIF_OP_PUSHTR_G  85
+#define	DIF_OP_PUSHTR_H  86
 
 #define	DIF_INTOFF_MAX		0xffff	/* highest integer table offset */
 #define	DIF_STROFF_MAX		0xffff	/* highest string table offset */
@@ -1407,10 +1407,10 @@ typedef struct dtrace_providerdesc {
 	dtrace_ppriv_t dtvd_priv;		/* privileges required */
 } dtrace_providerdesc_t;
 
-typedef struct dtrace_filter {
+typedef struct dtrace_machine_filter {
 	char	dtfl_entries[DTRACEFILT_MAX][DTRACE_MAXFILTNAME];
 	size_t	dtfl_count;
-} dtrace_filter_t;
+} dtrace_machine_filter_t;
 
 /*
  * DTrace Pseudodevice Interface
@@ -1474,7 +1474,7 @@ typedef struct {
 							/* get DOF */
 #define	DTRACEIOC_REPLICATE	_IOW('x',18,dtrace_repldesc_t)	
 							/* replicate enab */
-#define	DTRACEIOC_FILTER	_IOW('x',19,dtrace_filter_t)
+#define	DTRACEIOC_FILTER	_IOW('x',19,dtrace_machine_filter_t)
 							/* apply filter */
 #endif
 

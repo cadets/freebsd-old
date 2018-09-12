@@ -1885,7 +1885,6 @@ dtrace_program_link(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, uint_t dflags,
 		(void) snprintf(cmd, len, fmt, dtp->dt_ld_path, file, tfile,
 		    drti);
 #endif
-		printf("drti = %s\n", drti);
 		if ((status = system(cmd)) == -1) {
 			ret = dt_link_error(dtp, NULL, fd, NULL,
 			    "failed to run %s: %s", dtp->dt_ld_path,

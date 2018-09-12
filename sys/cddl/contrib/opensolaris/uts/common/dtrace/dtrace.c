@@ -1172,7 +1172,7 @@ dtrace_canload_remains(uint64_t addr, size_t sz, size_t *remain,
 }
 
 static int
-dtrace_filterfind(dtrace_filter_t *filt, const char *find)
+dtrace_filterfind(dtrace_machine_filter_t *filt, const char *find)
 {
 	size_t i;
 
@@ -7454,7 +7454,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			}
 			*((uint64_t *)(uintptr_t)regs[rd]) = regs[r1];
 			break;
-		case DIF_OP_HCALL: {
+		case DIF_OP_HYPERCALL: {
 			if (bhyve_hypercalls_enabled()) {
 				struct dtvirt_args _dtv_args = {
 					.dtv_args = {
@@ -10686,7 +10686,7 @@ dtrace_difo_validate(dtrace_difo_t *dp, dtrace_vstate_t *vstate, uint_t nregs,
 			if (rs >= nregs)
 				err += efunc(pc, "invalid register %u\n", rs);
 			break;
-		case DIF_OP_HCALL:
+		case DIF_OP_HYPERCALL:
 		default:
 			err += efunc(pc, "invalid opcode %u\n",
 			    DIF_INSTR_OP(instr));
@@ -19188,7 +19188,7 @@ dtrace_priv_provide_all_probes(void)
  * homogeneous system.
  *
  * The function will perform a number of sanity-checks for the virtual
- * tracing state, create a DIFO with a DIF_OP_HCALL instruction and
+ * tracing state, create a DIFO with a DIF_OP_HYPERCALL instruction and
  * set up the ECB for a given probe.
  *
  * FIXMEDS: This can go through dtrace_enabling_match() and it will work.
@@ -19258,7 +19258,7 @@ dtrace_priv_probeid_enable(dtrace_id_t id)
 	hdifo->dtdo_buf = kmem_zalloc(sizeof (dif_instr_t) * 2, KM_SLEEP);
 	hdifo->dtdo_len = 2; /* We only do a hypercall for now */
 
-	hdifo->dtdo_buf[0] = DIF_INSTR_FMT(DIF_OP_HCALL, 0, 0, 0);
+	hdifo->dtdo_buf[0] = DIF_INSTR_FMT(DIF_OP_HYPERCALL, 0, 0, 0);
 	hdifo->dtdo_buf[1] = DIF_INSTR_RET(0);
 
 	adesc->dtad_difo = hdifo;

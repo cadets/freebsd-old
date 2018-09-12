@@ -5,7 +5,7 @@ SYSDIR?= ${SRCTOP}/sys
 .PATH: ${SYSDIR}/cddl/dev/dtvirt
 
 KMOD= dtvirt
-SRCS= dtvirt.c
+SRCS= dtvirt.c vnode_if.h
 
 
 CFLAGS+=	-I${SYSDIR}/cddl/dev/dtvirt \

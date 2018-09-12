@@ -1156,7 +1156,7 @@ dtrace_setopt(dtrace_hdl_t *dtp, const char *opt, const char *val)
 }
 
 int
-dt_filter(dtrace_hdl_t *dtp, dtrace_filter_t *out)
+dt_filter(dtrace_hdl_t *dtp, dtrace_machine_filter_t *out)
 {
 
 	return (dt_ioctl(dtp, DTRACEIOC_FILTER, out));

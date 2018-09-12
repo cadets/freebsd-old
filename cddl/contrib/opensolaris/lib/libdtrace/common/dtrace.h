@@ -528,7 +528,7 @@ extern int dtrace_type_fcompile(dtrace_hdl_t *,
 extern struct dt_node *dt_compile_sugar(dtrace_hdl_t *,
     struct dt_node *);
 
-extern int dt_filter(dtrace_hdl_t *, dtrace_filter_t *);
+extern int dt_filter(dtrace_hdl_t *, dtrace_machine_filter_t *);
 
 
 /*
