@@ -76,6 +76,7 @@ CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
 CFLAGS+=-L/usr/local/lib
 CFLAGS+=-I/usr/local/include
 CFLAGS+=-I${SRCTOP}/contrib/dlog
+CFLAGS+=-I${SRCTOP}/contrib/libucl/include
 CFLAGS+=-I${SRCTOP}/sys/dev/dlog
 
 .include <bsd.prog.mk>
