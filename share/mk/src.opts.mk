@@ -87,6 +87,7 @@ __DEFAULT_YES_OPTIONS = \
     CXX \
     DIALOG \
     DICT \
+    DLOG \
     DMAGENT \
     DYNAMICROOT \
     ED_CRYPTO \

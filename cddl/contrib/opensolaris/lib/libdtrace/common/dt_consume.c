@@ -2187,7 +2187,7 @@ dt_setopt(dtrace_hdl_t *dtp, const dtrace_probedata_t *data,
 static int
 dt_consume_cpu(dtrace_hdl_t *dtp, FILE *fp, int cpu,
     dtrace_bufdesc_t *buf, boolean_t just_one,
-    dtrace_consume_probe_f *efunc, dtrace_consume_rec_f *rfunc, void *arg)
+    dtrace_consumer_t *dc, void *arg)
 {
 	dtrace_epid_t id;
 	size_t offs;
@@ -2245,7 +2245,7 @@ dt_consume_cpu(dtrace_hdl_t *dtp, FILE *fp, int cpu,
 			(void) dt_flowindent(dtp, &data, dtp->dt_last_epid,
 			    buf, offs);
 
-		rval = (*efunc)(&data, arg);
+		rval = (*dc->dc_consume_probe)(&data, arg);
 
 		if (flow) {
 			if (data.dtpda_flow == DTRACEFLOW_ENTRY)
@@ -2375,7 +2375,7 @@ dt_consume_cpu(dtrace_hdl_t *dtp, FILE *fp, int cpu,
 				continue;
 			}
 
-			rval = (*rfunc)(&data, rec, arg);
+			rval = (*dc->dc_consume_rec)(&data, rec, arg);
 
 			if (rval == DTRACE_CONSUME_NEXT)
 				continue;
@@ -2625,7 +2625,7 @@ nextrec:
 		 * Call the record callback with a NULL record to indicate
 		 * that we're done processing this EPID.
 		 */
-		rval = (*rfunc)(&data, NULL, arg);
+		rval = (*dc->dc_consume_rec)(&data, NULL, arg);
 nextepid:
 		offs += epd->dtepd_size;
 		dtp->dt_last_epid = id;
@@ -2775,6 +2775,7 @@ dt_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 	return (0);
 }
 
+
 typedef struct dt_begin {
 	dtrace_consume_probe_f *dtbgn_probefunc;
 	dtrace_consume_rec_f *dtbgn_recfunc;
@@ -2838,8 +2839,7 @@ dt_consume_begin_error(const dtrace_errdata_t *data, void *arg)
 }
 
 static int
-dt_consume_begin(dtrace_hdl_t *dtp, FILE *fp,
-    dtrace_consume_probe_f *pf, dtrace_consume_rec_f *rf, void *arg)
+dt_consume_begin(dtrace_hdl_t *dtp, FILE *fp, dtrace_consumer_t *dc, void *arg)
 {
 	/*
 	 * There's this idea that the BEGIN probe should be processed before
@@ -2868,10 +2868,11 @@ dt_consume_begin(dtrace_hdl_t *dtp, FILE *fp,
 	int rval, i;
 	static int max_ncpus;
 	dtrace_bufdesc_t *buf;
+	dtrace_consumer_t begin_dc;
 
 	dtp->dt_beganon = -1;
 
-	if (dt_get_buf(dtp, cpu, &buf) != 0)
+	if (dc->dc_get_buf(dtp, cpu, &buf) != 0)
 		return (-1);
 	if (buf == NULL)
 		return (0);
@@ -2882,14 +2883,13 @@ dt_consume_begin(dtrace_hdl_t *dtp, FILE *fp,
 		 * we are, we actually processed any END probes on another
 		 * CPU.  We can simply consume this buffer and return.
 		 */
-		rval = dt_consume_cpu(dtp, fp, cpu, buf, B_FALSE,
-		    pf, rf, arg);
-		dt_put_buf(dtp, buf);
+		rval = dt_consume_cpu(dtp, fp, cpu, buf, B_FALSE, dc, arg);
+		dc->dc_put_buf(dtp, buf);
 		return (rval);
 	}
 
-	begin.dtbgn_probefunc = pf;
-	begin.dtbgn_recfunc = rf;
+	begin.dtbgn_probefunc = dc->dc_consume_probe;
+	begin.dtbgn_recfunc = dc->dc_consume_rec;
 	begin.dtbgn_arg = arg;
 	begin.dtbgn_beginonly = 1;
 
@@ -2902,14 +2902,18 @@ dt_consume_begin(dtrace_hdl_t *dtp, FILE *fp,
 	dtp->dt_errhdlr = dt_consume_begin_error;
 	dtp->dt_errarg = &begin;
 
-	rval = dt_consume_cpu(dtp, fp, cpu, buf, B_FALSE,
-	    dt_consume_begin_probe, dt_consume_begin_record, &begin);
+	begin_dc.dc_consume_probe = dt_consume_begin_probe;
+	begin_dc.dc_consume_rec = dt_consume_begin_record;
+	begin_dc.dc_put_buf = dc->dc_put_buf;
+	begin_dc.dc_get_buf - dc->dc_get_buf;
+
+	rval = dt_consume_cpu(dtp, fp, cpu, buf, B_FALSE, &begin_dc, &begin);
 
 	dtp->dt_errhdlr = begin.dtbgn_errhdlr;
 	dtp->dt_errarg = begin.dtbgn_errarg;
 
 	if (rval != 0) {
-		dt_put_buf(dtp, buf);
+		dc->dc_put_buf(dtp, buf);
 		return (rval);
 	}
 
@@ -2921,18 +2925,17 @@ dt_consume_begin(dtrace_hdl_t *dtp, FILE *fp,
 		if (i == cpu)
 			continue;
 
-		if (dt_get_buf(dtp, i, &nbuf) != 0) {
-			dt_put_buf(dtp, buf);
+		if (dc->dc_get_buf(dtp, i, &nbuf) != 0) {
+			dc->dc_put_buf(dtp, buf);
 			return (-1);
 		}
 		if (nbuf == NULL)
 			continue;
 
-		rval = dt_consume_cpu(dtp, fp, i, nbuf, B_FALSE,
-		    pf, rf, arg);
-		dt_put_buf(dtp, nbuf);
+		rval = dt_consume_cpu(dtp, fp, i, nbuf, B_FALSE, dc, arg);
+		dc->dc_put_buf(dtp, nbuf);
 		if (rval != 0) {
-			dt_put_buf(dtp, buf);
+			dc->dc_put_buf(dtp, buf);
 			return (rval);
 		}
 	}
@@ -2951,8 +2954,7 @@ dt_consume_begin(dtrace_hdl_t *dtp, FILE *fp,
 	dtp->dt_errhdlr = dt_consume_begin_error;
 	dtp->dt_errarg = &begin;
 
-	rval = dt_consume_cpu(dtp, fp, cpu, buf, B_FALSE,
-	    dt_consume_begin_probe, dt_consume_begin_record, &begin);
+	rval = dt_consume_cpu(dtp, fp, cpu, buf, B_FALSE, &begin_dc, &begin);
 
 	dtp->dt_errhdlr = begin.dtbgn_errhdlr;
 	dtp->dt_errarg = begin.dtbgn_errarg;
@@ -2983,8 +2985,7 @@ dt_buf_oldest(void *elem, void *arg)
 }
 
 int
-dtrace_consume(dtrace_hdl_t *dtp, FILE *fp,
-    dtrace_consume_probe_f *pf, dtrace_consume_rec_f *rf, void *arg)
+dtrace_consume(dtrace_hdl_t *dtp, FILE *fp, dtrace_consumer_t *dc, void *arg)
 {
 	dtrace_optval_t size;
 	static int max_ncpus;
@@ -3001,17 +3002,20 @@ dtrace_consume(dtrace_hdl_t *dtp, FILE *fp,
 		dtp->dt_lastswitch = now;
 	}
 
-	if (!dtp->dt_active)
-		return (dt_set_errno(dtp, EINVAL));
-
 	if (max_ncpus == 0)
 		max_ncpus = dt_sysconf(dtp, _SC_CPUID_MAX) + 1;
 
-	if (pf == NULL)
-		pf = (dtrace_consume_probe_f *)dt_nullprobe;
+	if (dc->dc_consume_probe == NULL)
+		dc->dc_consume_probe = (dtrace_consume_probe_f *)dt_nullprobe;
 
-	if (rf == NULL)
-		rf = (dtrace_consume_rec_f *)dt_nullrec;
+	if (dc->dc_consume_rec == NULL)
+		dc->dc_consume_rec = (dtrace_consume_rec_f *)dt_nullrec;
+
+	if (dc->dc_put_buf == NULL)
+		dc->dc_put_buf = (dtrace_put_buf_f *)dt_put_buf;
+
+	if (dc->dc_get_buf == NULL)
+		dc->dc_get_buf = (dtrace_get_buf_f *)dt_get_buf;
 
 	if (dtp->dt_options[DTRACEOPT_TEMPORAL] == DTRACEOPT_UNSET) {
 		/*
@@ -3025,7 +3029,7 @@ dtrace_consume(dtrace_hdl_t *dtp, FILE *fp,
 		 * executed the BEGIN probe (if any).
 		 */
 		if (dtp->dt_active && dtp->dt_beganon != -1 &&
-		    (rval = dt_consume_begin(dtp, fp, pf, rf, arg)) != 0)
+		    (rval = dt_consume_begin(dtp, fp, dc, arg)) != 0)
 			return (rval);
 
 		for (i = 0; i < max_ncpus; i++) {
@@ -3039,7 +3043,7 @@ dtrace_consume(dtrace_hdl_t *dtp, FILE *fp,
 			if (dtp->dt_stopped && (i == dtp->dt_endedon))
 				continue;
 
-			if (dt_get_buf(dtp, i, &buf) != 0)
+			if (dc->dc_get_buf(dtp, i, &buf) != 0)
 				return (-1);
 			if (buf == NULL)
 				continue;
@@ -3048,22 +3052,22 @@ dtrace_consume(dtrace_hdl_t *dtp, FILE *fp,
 			dtp->dt_indent = 0;
 			dtp->dt_prefix = NULL;
 			rval = dt_consume_cpu(dtp, fp, i,
-			    buf, B_FALSE, pf, rf, arg);
-			dt_put_buf(dtp, buf);
+			    buf, B_FALSE, dc, arg);
+			dc->dc_put_buf(dtp, buf);
 			if (rval != 0)
 				return (rval);
 		}
 		if (dtp->dt_stopped) {
 			dtrace_bufdesc_t *buf;
 
-			if (dt_get_buf(dtp, dtp->dt_endedon, &buf) != 0)
+			if (dc->dc_get_buf(dtp, dtp->dt_endedon, &buf) != 0)
 				return (-1);
 			if (buf == NULL)
 				return (0);
 
 			rval = dt_consume_cpu(dtp, fp, dtp->dt_endedon,
-			    buf, B_FALSE, pf, rf, arg);
-			dt_put_buf(dtp, buf);
+			    buf, B_FALSE, dc, arg);
+			dc->dc_put_buf(dtp, buf);
 			return (rval);
 		}
 	} else {
@@ -3135,7 +3139,7 @@ dtrace_consume(dtrace_hdl_t *dtp, FILE *fp,
 				 * buffer, we must do another pass
 				 * to retrieve more data.
 				 */
-				dt_put_buf(dtp, buf);
+				dc->dc_put_buf(dtp, buf);
 				if (timestamp == first_timestamp &&
 				    !dtp->dt_stopped)
 					break;
@@ -3143,7 +3147,7 @@ dtrace_consume(dtrace_hdl_t *dtp, FILE *fp,
 			}
 
 			if ((rval = dt_consume_cpu(dtp, fp,
-			    buf->dtbd_cpu, buf, B_TRUE, pf, rf, arg)) != 0)
+			    buf->dtbd_cpu, buf, B_TRUE, dc, arg)) != 0)
 				return (rval);
 			dt_pq_insert(dtp->dt_bufq, buf);
 		}
