@@ -109,7 +109,9 @@ SUBDIR=	\
 	dc \
 	dcons \
 	dcons_crom \
+	ddtrace \
 	de \
+	dlog \
 	${_dpms} \
 	${_dpt} \
 	${_drm} \
