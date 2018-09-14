@@ -98,6 +98,7 @@ CY_PCI_FASTINTR
 DEADLKRES	opt_watchdog.h
 EXT_RESOURCES	opt_global.h
 DIRECTIO
+DLOG		opt_global.h
 FILEMON		opt_dontuse.h
 FFCLOCK
 FULL_PREEMPTION	opt_sched.h
