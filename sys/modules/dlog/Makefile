@@ -51,7 +51,7 @@ SRCS= dlog_client.c \
 
 CFLAGS+=-D_KERNEL
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
-CFLAGS+=-I/include
+CFLAGS+=-I${SRCTOP}/include
 CFLAGS+=-I${SRCTOP}/sys
 CFLAGS+=-I${SRCTOP}/sys/sys
 CFLAGS+=-I${SRCTOP}/cddl/compat/opensolaris/include
