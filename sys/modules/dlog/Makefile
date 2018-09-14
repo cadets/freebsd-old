@@ -51,13 +51,13 @@ SRCS= dlog_client.c \
 
 CFLAGS+=-D_KERNEL
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
-CFLAGS+=-I/usr/src/include
-CFLAGS+=-I/usr/src/sys
-CFLAGS+=-I/usr/src/sys/sys
-CFLAGS+=-I/usr/src/cddl/compat/opensolaris/include
-CFLAGS+=-I/usr/src/sys/cddl/compat/opensolaris/
-CFLAGS+=-I/usr/src/sys/cddl/contrib/opensolaris/uts/common/
-CFLAGS+=-I/usr/src/sys/cddl/contrib/opensolaris/uts/common/sys
+CFLAGS+=-I/include
+CFLAGS+=-I${SRCTOP}/sys
+CFLAGS+=-I${SRCTOP}/sys/sys
+CFLAGS+=-I${SRCTOP}/cddl/compat/opensolaris/include
+CFLAGS+=-I${SRCTOP}/sys/cddl/compat/opensolaris/
+CFLAGS+=-I${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common/
+CFLAGS+=-I${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common/sys
 CFLAGS+=-I${SRCTOP}/contrib/dlog
 
 EXPORT_SYMS= dlog_produce dlog_produce_no_key
