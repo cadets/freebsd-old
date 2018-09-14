@@ -33,10 +33,10 @@ KMOD= konsumer
 
 SRCS= konsumer.c vnode_if.h
 
-CFLAGS+=-I/usr/src/sys/cddl/compat/opensolaris/
-CFLAGS+=-I/usr/src/sys/cddl/contrib/opensolaris/uts/common/
-CFLAGS+=-I/usr/src/sys/cddl/contrib/opensolaris/uts/common/sys
-CFLAGS+=-I/usr/src/sys
+CFLAGS+=-I${SRCTOP}/sys/cddl/compat/opensolaris/
+CFLAGS+=-I${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common/
+CFLAGS+=-I${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common/sys
+CFLAGS+=-I${SRCTOP}/sys
 CFLAGS+=-I${SRCTOP}/contrib/dlog
 
 .include <bsd.kmod.mk>
