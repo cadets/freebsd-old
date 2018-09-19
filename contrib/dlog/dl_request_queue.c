@@ -196,7 +196,7 @@ dl_request_q_delete(struct dl_request_q *self)
 	dlog_free(self);
 }
 
-void 
+void
 dl_request_q_lock(struct dl_request_q *self) __attribute((no_thread_safety_analysis))
 {
 
@@ -204,7 +204,7 @@ dl_request_q_lock(struct dl_request_q *self) __attribute((no_thread_safety_analy
 	pthread_mutex_lock(&self->dlrq_mtx);
 }
 
-void 
+void
 dl_request_q_unlock(struct dl_request_q *self) __attribute((no_thread_safety_analysis))
 {
 
