@@ -75,7 +75,8 @@ static inline void
 dl_bbuf_assert_integrity(const char *func, struct dl_bbuf *self)
 #else
 static inline void
-dl_bbuf_assert_integrity(const char *func __attribute((unused)), struct dl_bbuf *self)
+dl_bbuf_assert_integrity(const char *func __attribute((unused)),
+    struct dl_bbuf *self)
 #endif
 {
 
@@ -151,7 +152,7 @@ dl_bbuf_new(struct dl_bbuf **self, unsigned char *buf, int capacity, int flags)
 
 	DL_ASSERT(capacity >= 0,
 	    ("attempt to create a dl_buf of negative length (%d)",
-	     capacity));
+	    capacity));
 	DL_ASSERT((flags & ~DL_BBUF_USRFLAGMASK) == 0,
 	    ("%s called with invalid flags", __func__));
 

@@ -78,9 +78,9 @@
 #endif /* KERNEL */
 
 #ifdef _KERNEL
-#define PRIO_HIGH   3 //LOG_DEBUG
-#define PRIO_NORMAL 6 //LOG_NOTIC
-#define PRIO_LOW    7 //LOG_ERR
+#define PRIO_HIGH   3 //LOG_ERR
+#define PRIO_NORMAL 5 //LOG_NOTICE
+#define PRIO_LOW    7 //LOG_DEBUG
 #else
 #define PRIO_HIGH   1 << 1
 #define PRIO_NORMAL 1 << 2
