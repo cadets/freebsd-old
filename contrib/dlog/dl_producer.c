@@ -688,6 +688,17 @@ dl_producer_syncing(struct dl_producer * const self)
 	    self->dlp_state);
 #endif
 
+	/* Start the thread to enqueue log entries for syncing
+	 * with the distributed broker.
+	 */	
+	rc = pthread_create(&producer->dlp_enqueue_tid, NULL,
+	    dlp_enqueue_thread, producer);
+	if (rc != 0) {
+		DLOGTR1(PRIO_HIGH,
+		    "Failed creating enqueing thread: %d\n", rc);
+		goto err_producer;
+	}
+
 	/* Start the thread to dequeue log entries for syncing
 	 * with the distributed broker.
 	 */	
@@ -855,17 +866,6 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 
 	dl_poll_reactor_register(&producer->dlp_ktimer_hdlr,
 	    POLLIN | POLLOUT | POLLERR);
-
-	/* Start the thread to enqueue log entries for syncing
-	 * with the distributed broker.
-	 */	
-	rc = pthread_create(&producer->dlp_enqueue_tid, NULL,
-	    dlp_enqueue_thread, producer);
-	if (rc != 0) {
-		DLOGTR1(PRIO_HIGH,
-		    "Failed creating enqueing thread: %d\n", rc);
-		goto err_producer;
-	}
 
 	if (nvlist_exists_bool(props, DL_CONF_TORESEND)) {
 		producer->dlp_to_resend = nvlist_get_bool(props,
