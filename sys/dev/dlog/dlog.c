@@ -43,6 +43,9 @@
 #include <sys/malloc.h>
 #include <sys/ioccom.h>
 #include <sys/stat.h>
+#include <sys/eventhandler.h>
+#include <sys/mount.h>
+#include <sys/vnode.h>
 
 #include "dl_assert.h"
 #include "dl_config.h"
@@ -59,6 +62,7 @@ extern uint32_t hashlittle(const void *, size_t, uint32_t);
 
 static int dlog_init(void);
 static void dlog_fini(void);
+static void dlog_sync(void);
 
 static void dl_client_close(void *);
 static int dlog_event_handler(struct module *, int, void *);
@@ -103,6 +107,8 @@ static struct proc *dlog_client_proc;
 static struct mtx dlog_mtx;
 static struct cv dlog_cv;
 static int dlog_exit = 0;
+
+static eventhandler_tag dlog_pre_sync = NULL;
 
 static int 
 dlog_init()
@@ -152,16 +158,31 @@ dlog_init()
 		mtx_destroy(&dlog_mtx);
 	}
 
+	dlog_pre_sync = EVENTHANDLER_REGISTER(shutdown_pre_sync,
+	    dlog_sync, NULL, SHUTDOWN_PRI_LAST);
+
 	return e;
 }
 
 static void 
 dlog_fini()
 {
-	int t, rc;
-	struct dl_topic *topic, *tmp;
 
 	DLOGTR1(PRIO_LOW, "Stoping %s process...\n", DLOG_NAME);
+
+	if (dlog_pre_sync != NULL)	
+	    EVENTHANDLER_DEREGISTER(shutdown_pre_sync, dlog_pre_sync);
+
+	dlog_sync();
+}
+
+static void
+dlog_sync(void)
+{
+	struct dl_segment *s;
+	struct dl_topic *topic, *tmp;
+	struct mount *mp;
+	int t, rc, error;
 	
 	mtx_assert(&dlog_mtx, MA_NOTOWNED);
 	mtx_lock(&dlog_mtx);
@@ -180,10 +201,19 @@ dlog_fini()
 	cv_destroy(&dlog_cv);
 	mtx_destroy(&dlog_mtx);
 
-	/* Delete the topics from the topic hashmap. */
 	for (t = 0; t < topic_hashmask + 1 ; t++) {
 		LIST_FOREACH_SAFE(topic, &topic_hashmap[t],
 		    dlt_entries, tmp) {
+
+			s = dl_topic_get_active_segment(topic);
+
+			error = vn_start_write(s->_log, &mp, V_WAIT);
+			if (error == 0) {
+				VOP_LOCK(s->_log, LK_EXCLUSIVE | LK_RETRY);
+				VOP_FSYNC(s->_log, MNT_WAIT, curthread);
+				VOP_UNLOCK(s->_log, 0);
+				vn_finished_write(mp);
+			}
 
 			LIST_REMOVE(topic, dlt_entries);
 			dl_topic_delete(topic);
@@ -452,13 +482,14 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 static void
 dl_client_close(void *arg)
 {
-	struct dlog_handle *handle = (struct dlog_handle *) arg;
+	//struct dlog_handle *handle = (struct dlog_handle *) arg;
 
 	DL_ASSERT(handle != NULL, ("DLog client handle cannot be NULL."));
 
 	DLOGTR0(PRIO_LOW, "Closing DLog producer.\n");
-	dlog_client_close(handle);
+	//dlog_client_close(handle);
 }
+
 
 DEV_MODULE(dlog, dlog_event_handler, NULL);
 MODULE_VERSION(dlog, 1);

@@ -55,6 +55,7 @@
 #include <sys/conf.h>
 #include <sys/sysctl.h>
 #include <fs/devfs/devfs_int.h>
+#include <sys/eventhandler.h>
 
 #include <dtrace.h>
 #include <dtrace_impl.h>
@@ -63,6 +64,8 @@
 #include "dlog_client.h"
 #include "dl_protocol.h"
 #include "dl_utils.h"
+
+LIST_HEAD(konsumers, konsumer);
 
 extern hrtime_t dtrace_gethrtime(void);
 
@@ -78,6 +81,9 @@ static void konsumer_persist_trace(dtrace_state_t *, struct dlog_handle *,
 
 static void konsumer_open(void *, struct dtrace_state *);
 static void konsumer_close(void *, struct dtrace_state *);
+static void konsumer_stop(struct konsumers *);
+
+extern hrtime_t dtrace_deadman_user;
 
 static char const * const KONSUMER_NAME = "dlog_konsumer";
 
@@ -107,7 +113,7 @@ extern kmutex_t dtrace_lock;
 
 static const int KON_NHASH_BUCKETS = 16;
 
-static LIST_HEAD(konsumers, konsumer) *konsumer_hashtbl = NULL;
+static struct konsumers *konsumer_hashtbl = NULL;
 static u_long konsumer_hashmask;
 
 static uint32_t konsumer_poll_ms = 1000;
@@ -116,6 +122,8 @@ SYSCTL_NODE(_debug, OID_AUTO, konsumer, CTLFLAG_RW, 0, "Konsumer");
 
 SYSCTL_U32(_debug_konsumer, OID_AUTO, poll_period_ms, CTLFLAG_RD,
     &konsumer_poll_ms, 0,  "Konsumer poll period (ms)");
+
+static eventhandler_tag kon_pre_sync = NULL;
 
 static inline void
 konsumer_assert_integrity(const char *func, struct konsumer *self)
@@ -133,8 +141,7 @@ konsumer_assert_integrity(const char *func, struct konsumer *self)
 static int
 konsumer_event_handler(struct module *module, int event, void *arg)
 {
-	struct konsumer *k, *k_tmp;
-	int e = 0, i, rc;
+	int e = 0;
 
 	switch(event) {
 	case MOD_LOAD:
@@ -155,6 +162,10 @@ konsumer_event_handler(struct module *module, int event, void *arg)
 
 			DLOGTR0(PRIO_NORMAL,
 			    "Successfully registered konsumer with DTrace\n");
+
+			kon_pre_sync = EVENTHANDLER_REGISTER(
+			    shutdown_pre_sync, konsumer_stop, konsumer_hashtbl,
+			    SHUTDOWN_PRI_DEFAULT);
 		} else {
 
 			DLOGTR0(PRIO_HIGH,
@@ -164,40 +175,11 @@ konsumer_event_handler(struct module *module, int event, void *arg)
 		break;
 	case MOD_UNLOAD:
 		DLOGTR0(PRIO_LOW, "Unloading Konsumer kernel module\n");
-		
-		/* Unregister and stop any konsumer threads. */ 
-		for (i = 0; i < KON_NHASH_BUCKETS; i++) {	
-			LIST_FOREACH_SAFE(k, &konsumer_hashtbl[i],
-			    konsumer_entries, k_tmp) {
 
-				DLOGTR1(PRIO_LOW,
-				    "Stopping konsumer thread %p..\n", k);
-				/* Signal konsumer and wait for completion. */
-				mtx_lock(&k->konsumer_mtx);
-				k->konsumer_exit = 1;
-				mtx_unlock(&k->konsumer_mtx);
-				cv_broadcast(&k->konsumer_cv);
-				rc = tsleep(k->konsumer_pid, 0,
-				    "Waiting for konsumer process to stop",
-				    60 * (10 * hz / 9));
-				DL_ASSERT(rc == 0,
-				   ("Failed to stop konsumer thread"));
-
-				/* Remove the konsumer and destroy. */
-				DLOGTR0(PRIO_LOW,
-				    "Konsumer thread stoppped successfully\n");
-				LIST_REMOVE(k, konsumer_entries);
-				mtx_destroy(&k->konsumer_mtx);
-				cv_destroy(&k->konsumer_cv);
-				free(k, M_DLKON);
-			}
-		}
+		if (kon_pre_sync != NULL)	
+		    EVENTHANDLER_DEREGISTER(shutdown_pre_sync, kon_pre_sync);
 		
-		/* Destroy the hash table of konsumer instances. */
-		hashdestroy(konsumer_hashtbl, M_DLKON, konsumer_hashmask);
-	
-		/* Unregister the Konsumer with DTrace. */	
-		dtrace_konsumer_unregister(&kid);
+		konsumer_stop(konsumer_hashtbl);
 		break;
 	default:
 		e = EOPNOTSUPP;
@@ -205,6 +187,47 @@ konsumer_event_handler(struct module *module, int event, void *arg)
 	}
 
 	return e;
+}
+
+static void
+konsumer_stop(struct konsumers *konsumer_hashtbl)
+{
+	struct konsumer *k, *k_tmp;
+	int i, rc;
+	
+	/* Unregister and stop any konsumer threads. */ 
+	for (i = 0; i < KON_NHASH_BUCKETS; i++) {	
+		LIST_FOREACH_SAFE(k, &konsumer_hashtbl[i],
+		    konsumer_entries, k_tmp) {
+
+			DLOGTR1(PRIO_LOW,
+			    "Stopping konsumer thread %p..\n", k);
+			/* Signal konsumer and wait for completion. */
+			mtx_lock(&k->konsumer_mtx);
+			k->konsumer_exit = 1;
+			mtx_unlock(&k->konsumer_mtx);
+			cv_broadcast(&k->konsumer_cv);
+			rc = tsleep(k->konsumer_pid, 0,
+			    "Waiting for konsumer process to stop",
+			    60 * (10 * hz / 9));
+			DL_ASSERT(rc == 0,
+			   ("Failed to stop konsumer thread"));
+
+			/* Remove the konsumer and destroy. */
+			DLOGTR0(PRIO_LOW,
+			    "Konsumer thread stoppped successfully\n");
+			LIST_REMOVE(k, konsumer_entries);
+			mtx_destroy(&k->konsumer_mtx);
+			cv_destroy(&k->konsumer_cv);
+			free(k, M_DLKON);
+		}
+	}
+	
+	/* Destroy the hash table of konsumer instances. */
+	hashdestroy(konsumer_hashtbl, M_DLKON, konsumer_hashmask);
+
+	/* Unregister the Konsumer with DTrace. */	
+	dtrace_konsumer_unregister(&kid);
 }
 
 static void
@@ -266,8 +289,6 @@ konsumer_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 			konsumer_persist_trace(state, handle, &desc);
 	}
 }
-
-extern hrtime_t dtrace_deadman_user;
 
 static void
 konsumer_thread(void *arg)
