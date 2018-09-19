@@ -691,12 +691,12 @@ dl_producer_syncing(struct dl_producer * const self)
 	/* Start the thread to enqueue log entries for syncing
 	 * with the distributed broker.
 	 */	
-	rc = pthread_create(&producer->dlp_enqueue_tid, NULL,
-	    dlp_enqueue_thread, producer);
+	rc = pthread_create(&self->dlp_enqueue_tid, NULL,
+	    dlp_enqueue_thread, self);
 	if (rc != 0) {
 		DLOGTR1(PRIO_HIGH,
 		    "Failed creating enqueing thread: %d\n", rc);
-		goto err_producer;
+		dl_producer_error(self);
 	}
 
 	/* Start the thread to dequeue log entries for syncing
