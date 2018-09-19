@@ -285,12 +285,6 @@ dl_segment_get_message_by_offset(struct dl_segment *self, int offset,
 #endif
 		rc = pread(self->_log, tmp_buf, sizeof(tmp_buf), poffset);
 	
-		unsigned char *bufval = (unsigned char *) tmp_buf;
-		for (unsigned int i = 0; i < sizeof(tmp_buf); i++) {
-			DLOGTR1(PRIO_LOW, "<0x%02hhX>", bufval[i]);
-		};
-		DLOGTR0(PRIO_LOW, "\n");
-
 		dl_bbuf_new(&t, (unsigned char *) tmp_buf,
 		    sizeof(tmp_buf), DL_BBUF_BIGENDIAN);
 		dl_bbuf_get_int32(t, &cid);
