@@ -125,6 +125,7 @@ SUBDIR.${MK_BSNMP}+=	bsnmpd
 SUBDIR.${MK_CTM}+=	ctm
 SUBDIR.${MK_CXGBETOOL}+=	cxgbetool
 SUBDIR.${MK_DIALOG}+=	bsdconfig
+SUBDIR.${MK_DLOG}+=	dlogd
 SUBDIR.${MK_EFI}+=	efivar efidp efibootmgr
 .if ${MK_OPENSSL} != "no"
 SUBDIR.${MK_EFI}+=	uefisign

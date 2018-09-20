@@ -1072,15 +1072,20 @@ process_trace(const dtrace_probedata_t *pdata, void *arg)
 static int
 process_data(FILE *out, char *data)
 {
+	dtrace_consumer_t con;
 	lsdata_t lsdata;
 
 	/* LINTED - alignment */
 	lsdata.lsd_next = (lsrec_t *)data;
 	lsdata.lsd_count = 0;
 
+	con.dc_consume_probe = process_trace;
+	con.dc_consume_rec = NULL;
+	con.dc_put_buf = NULL;
+	con.dc_get_buf = NULL;
+
 	if (g_tracing) {
-		if (dtrace_consume(g_dtp, out,
-		    process_trace, NULL, &lsdata) != 0)
+		if (dtrace_consume(g_dtp, out, &con, &lsdata) != 0)
 			dfail("failed to consume buffer");
 
 		return (lsdata.lsd_count);

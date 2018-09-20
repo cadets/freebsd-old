@@ -1041,6 +1041,7 @@ static const dt_option_t _dtrace_rtoptions[] = {
 	{ "dynvarsize", dt_opt_size, DTRACEOPT_DYNVARSIZE },
 	{ "grabanon", dt_opt_runtime, DTRACEOPT_GRABANON },
 	{ "jstackframes", dt_opt_runtime, DTRACEOPT_JSTACKFRAMES },
+	{ "konarg", dt_opt_runtime, DTRACEOPT_KONSUMERARG},
 	{ "jstackstrsize", dt_opt_size, DTRACEOPT_JSTACKSTRSIZE },
 	{ "nspec", dt_opt_runtime, DTRACEOPT_NSPEC },
 	{ "specsize", dt_opt_size, DTRACEOPT_SPECSIZE },

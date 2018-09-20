@@ -1,0 +1,5 @@
+include CADETS
+ident DDTRACE
+
+# Kafka-compatible distributed log
+options		DLOG

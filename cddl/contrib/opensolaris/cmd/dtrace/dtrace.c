@@ -1379,6 +1379,12 @@ main(int argc, char *argv[])
 	dtrace_optval_t opt;
 	dtrace_cmd_t *dcp;
 	char *machine_filter;
+	dtrace_consumer_t con;
+
+	con.dc_consume_probe = chew;
+	con.dc_consume_rec = chewrec;
+	con.dc_get_buf = NULL;
+	con.dc_put_buf = NULL;
 
 	g_ofp = stdout;
 	int done = 0, mode = 0;
@@ -2100,7 +2106,7 @@ main(int argc, char *argv[])
 				dfatal("couldn't stop tracing");
 		}
 
-		switch (dtrace_work(g_dtp, g_ofp, chew, chewrec, NULL)) {
+		switch (dtrace_work(g_dtp, g_ofp, &con, NULL)) {
 		case DTRACE_WORKSTATUS_DONE:
 			done = 1;
 			break;

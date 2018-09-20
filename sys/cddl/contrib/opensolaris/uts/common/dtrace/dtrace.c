@@ -243,6 +243,7 @@ static dtrace_probe_t	**dtrace_probes;	/* array of all probes */
 static int		dtrace_nprobes;		/* number of probes */
 static dtrace_provider_t *dtrace_provider;	/* provider list */
 static dtrace_meta_t	*dtrace_meta_pid;	/* user-land meta provider */
+static dtrace_konsumer_t *dtrace_konsumer = NULL;	/* konsumer list */
 static int		dtrace_opens;		/* number of opens */
 static int		dtrace_helpers;		/* number of helpers */
 static int		dtrace_getf;		/* number of unpriv getf()s */
@@ -308,6 +309,7 @@ static eventhandler_tag	dtrace_kld_unload_try_tag;
  */
 static kmutex_t		dtrace_lock;		/* probe state lock */
 static kmutex_t		dtrace_provider_lock;	/* provider state lock */
+static kmutex_t		dtrace_konsumer_lock;	/* konsumer state lock */
 static kmutex_t		dtrace_meta_lock;	/* meta-provider state lock */
 
 #ifndef illumos
@@ -9330,6 +9332,94 @@ dtrace_probekey(dtrace_probedesc_t *pdp, dtrace_probekey_t *pkp)
 }
 
 /*
+ * Register the konsumer with the DTrace framework.
+ */
+int
+dtrace_konsumer_register(const char *name, const dtrace_kops_t *kops,
+    void *arg, dtrace_konsumer_id_t *id)
+{
+	dtrace_konsumer_t *konsumer;
+
+	if (name == NULL || kops == NULL || id == NULL) {
+		cmn_err(CE_WARN,
+		    "failed to register buf provider '%s': invalid arguments",
+		    name ? name : "<NULL>");
+		return (EINVAL);
+	}
+
+	if (name[0] == '\0') {
+		cmn_err(CE_WARN,
+		    "failed to register provider '%s': invalid konsumer name",
+		    name);
+		return (EINVAL);
+	}
+
+	/* Construct the konsumer instance. */
+	konsumer = kmem_zalloc(sizeof (dtrace_konsumer_t), KM_SLEEP);
+	ASSERT(konsumer != NULL);
+	konsumer->dtk_name = kmem_alloc(strlen(name) + 1, KM_SLEEP);
+	ASSERT(konsumer->dtk_name != NULL);
+	(void) strcpy(konsumer->dtk_name, name);
+	konsumer->dtk_arg = arg;
+	konsumer->dtk_ops = *kops;
+	konsumer->dtk_next = NULL;
+
+	*id = (dtrace_konsumer_id_t)konsumer;
+
+	mutex_enter(&dtrace_konsumer_lock);
+	mutex_enter(&dtrace_lock);
+
+	/* Add the newly registered konsumer to the list. */
+	if (dtrace_konsumer != NULL) {
+		konsumer->dtk_next = dtrace_konsumer->dtk_next;
+		dtrace_konsumer->dtk_next = konsumer;
+	} else {
+		dtrace_konsumer = konsumer;
+	}
+
+	mutex_exit(&dtrace_lock);
+	mutex_exit(&dtrace_konsumer_lock);
+
+	return (0);
+}
+
+/*
+ * Un-register the konsumer with the DTrace framework.
+ */
+int
+dtrace_konsumer_unregister(dtrace_konsumer_id_t *id)
+{
+	dtrace_konsumer_t *old = (dtrace_konsumer_t *)*id;
+	dtrace_konsumer_t *prev = NULL;
+
+	mutex_enter(&dtrace_konsumer_lock);
+	ASSERT(MUTEX_HELD(&dtrace_lock));
+
+	/* Remove the unregistered konsumer from the list. */
+	if ((prev = dtrace_konsumer) == old) {
+
+		dtrace_konsumer = old->dtk_next;
+	} else {
+		while (prev != NULL && prev->dtk_next != old)
+			prev = prev->dtk_next;
+
+		if (prev == NULL) {
+			panic("attempt to unregister non-existent "
+			    "dtrace konsumer %p\n", (void *)id);
+		}
+
+		prev->dtk_next = old->dtk_next;
+	}
+
+	mutex_exit(&dtrace_konsumer_lock);
+
+	kmem_free(old->dtk_name, strlen(old->dtk_name) + 1);
+	kmem_free(old, sizeof(dtrace_konsumer_t));
+
+	return 0;
+}
+	
+/*
  * DTrace Provider-to-Framework API Functions
  *
  * These functions implement much of the Provider-to-Framework API, as
@@ -12674,6 +12764,20 @@ dtrace_epid2ecb(dtrace_state_t *state, dtrace_epid_t id)
 	return (state->dts_ecbs[id - 1]);
 }
 
+size_t
+dtrace_epid2size(dtrace_state_t *state, dtrace_epid_t id)
+{
+	dtrace_ecb_t *ecb;
+
+	if (id == 0 || id > state->dts_necbs)
+		return (0);
+
+	ASSERT(state->dts_necbs > 0 && state->dts_ecbs != NULL);
+	ASSERT((ecb = state->dts_ecbs[id - 1]) == NULL || ecb->dte_epid == id);
+
+	return (state->dts_ecbs[id - 1]->dte_size);
+}
+
 static dtrace_aggregation_t *
 dtrace_aggid2agg(dtrace_state_t *state, dtrace_aggid_t id)
 {
@@ -12706,7 +12810,7 @@ dtrace_aggid2agg(dtrace_state_t *state, dtrace_aggid_t id)
  * interrupts serializes the execution with any execution of dtrace_probe() on
  * the same CPU.
  */
-static void
+void
 dtrace_buffer_switch(dtrace_buffer_t *buf)
 {
 	caddr_t tomax = buf->dtb_tomax;
@@ -15784,7 +15888,22 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 		state->dts_options[DTRACEOPT_GRABANON] =
 		    opt[DTRACEOPT_GRABANON];
 
+		/* Similarly copy the "konarg" option into the grabbed state. */
+		state->dts_options[DTRACEOPT_KONSUMERARG] =
+		    opt[DTRACEOPT_KONSUMERARG];
+
 		*cpu = dtrace_anon.dta_beganon;
+
+		if (opt[DTRACEOPT_KONSUMERARG] != DTRACEOPT_UNSET) {
+			/* Iterate the DTrace konsumers and notify them of the
+			 * dtrace_state_go.
+			 */ 
+			dtrace_konsumer_t *konsumer = dtrace_konsumer;
+			while (konsumer != NULL ) {
+				konsumer->dtk_ops.dtkops_open(konsumer, state);
+				konsumer = konsumer->dtk_next;
+			}
+		}
 
 		/*
 		 * If the anonymous state is active (as it almost certainly
@@ -15976,6 +16095,18 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	dtrace_xcall(DTRACE_CPUALL,
 	    (dtrace_xcall_t)dtrace_buffer_activate, state);
 #endif
+
+	if (opt[DTRACEOPT_KONSUMERARG] != DTRACEOPT_UNSET) {
+		/* Iterate the DTrace konsumers and notify them of the
+		 * dtrace_state_go.
+		 */ 
+		dtrace_konsumer_t *konsumer = dtrace_konsumer;
+		while (konsumer != NULL ) {
+			konsumer->dtk_ops.dtkops_open(konsumer, state);
+			konsumer = konsumer->dtk_next;
+		}
+	}
+
 	goto out;
 
 err:
@@ -16001,7 +16132,6 @@ err:
 	kmem_free(spec, nspec * sizeof (dtrace_speculation_t));
 	state->dts_nspeculations = 0;
 	state->dts_speculations = NULL;
-
 out:
 	mutex_exit(&dtrace_lock);
 	mutex_exit(&cpu_lock);
@@ -16013,6 +16143,7 @@ out:
 static int
 dtrace_state_stop(dtrace_state_t *state, processorid_t *cpu)
 {
+	dtrace_optval_t *opt = state->dts_options, sz, nspec;
 	dtrace_icookie_t cookie;
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
@@ -16078,6 +16209,23 @@ dtrace_state_stop(dtrace_state_t *state, processorid_t *cpu)
 			dtrace_closef = NULL;
 	}
 #endif
+
+	if (opt[DTRACEOPT_KONSUMERARG] != DTRACEOPT_UNSET) {
+		/* Iterate the DTrace konsumers and notify them of the
+		 * dtrace_state_stop.
+		 */ 
+		dtrace_konsumer_t *konsumer = dtrace_konsumer;
+		while (konsumer != NULL ) {
+			if (state != dtrace_anon.dta_state &&
+			    opt[DTRACEOPT_GRABANON] != DTRACEOPT_UNSET) {
+				konsumer->dtk_ops.dtkops_close(konsumer,
+				    state->dts_anon);
+			} else {
+				konsumer->dtk_ops.dtkops_close(konsumer, state);
+			}
+			konsumer = konsumer->dtk_next;
+		}
+	}
 
 	return (0);
 }
@@ -18018,7 +18166,6 @@ dtrace_open(struct cdev *dev, int oflags, int devtype, struct thread *td)
 	state = dtrace_state_create(dev, NULL);
 	devfs_set_cdevpriv(state, dtrace_dtr);
 #endif
-
 	mutex_exit(&cpu_lock);
 
 	if (state == NULL) {
@@ -18087,6 +18234,13 @@ dtrace_dtr(void *data)
 		 */
 		buf = dtrace_helptrace_buffer;
 		dtrace_helptrace_buffer = NULL;
+	}
+
+	/* Iterate DTrace konsumers and notify them of the dtrace close. */ 
+	dtrace_konsumer_t *konsumer = dtrace_konsumer;
+	while (konsumer != NULL ){
+		konsumer->dtk_ops.dtkops_close(konsumer, state);
+		konsumer = konsumer->dtk_next;
 	}
 
 #ifdef illumos

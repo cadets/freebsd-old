@@ -75,6 +75,7 @@ struct dtrace_ecb;
 struct dtrace_predicate;
 struct dtrace_action;
 struct dtrace_provider;
+struct dtrace_konsumer;
 struct dtrace_state;
 struct dtvirt_args;
 
@@ -85,6 +86,7 @@ typedef struct dtrace_action dtrace_action_t;
 typedef struct dtrace_provider dtrace_provider_t;
 typedef struct dtrace_meta dtrace_meta_t;
 typedef struct dtrace_state dtrace_state_t;
+typedef struct dtrace_konsumer dtrace_konsumer_t;
 typedef uint32_t dtrace_optid_t;
 typedef uint32_t dtrace_specid_t;
 typedef uint64_t dtrace_genid_t;
@@ -1181,6 +1183,13 @@ struct dtrace_state {
 	uint64_t dts_rstate[NCPU][2];		/* per-CPU random state */
 };
 
+struct dtrace_konsumer {
+	dtrace_kops_t dtk_ops;			/* konsumer operations */
+	char *dtk_name;				/* konsumer name */
+	void *dtk_arg;				/* konsumer argument */
+	struct dtrace_konsumer *dtk_next;	/* next konsumer */
+};
+
 struct dtrace_provider {
 	dtrace_pattr_t dtpv_attr;		/* provider attributes */
 	dtrace_ppriv_t dtpv_priv;		/* provider privileges */
@@ -1324,6 +1333,9 @@ extern uint_t dtrace_getfprs(void);
 extern void dtrace_copy(uintptr_t, uintptr_t, size_t);
 extern void dtrace_copystr(uintptr_t, uintptr_t, size_t, volatile uint16_t *);
 #endif
+
+void dtrace_buffer_switch(dtrace_buffer_t *);
+size_t dtrace_epid2size(dtrace_state_t *, dtrace_epid_t);
 
 /*
  * DTrace Assertions
