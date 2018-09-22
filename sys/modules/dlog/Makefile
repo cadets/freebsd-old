@@ -60,6 +60,9 @@ CFLAGS+=-I${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common/
 CFLAGS+=-I${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common/sys
 CFLAGS+=-I${SRCTOP}/contrib/dlog
 
+CWARNFLAGS+=-Wno-cast-qual
+CWARNFLAGS+=-Wno-pointer-sign
+
 EXPORT_SYMS= dlog_produce dlog_produce_no_key
 
 .include <bsd.kmod.mk>

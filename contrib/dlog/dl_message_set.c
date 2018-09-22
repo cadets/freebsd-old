@@ -38,6 +38,7 @@
 #ifdef _KERNEL
 #include <sys/types.h>
 #include <sys/libkern.h>
+#include <sys/zlib.h>
 #else
 #include <zlib.h>
 #include <stddef.h>
@@ -54,7 +55,8 @@
 static const int8_t DL_MESSAGE_MAGIC_BYTE_V0 = 0x00;
 static const int8_t DL_MESSAGE_MAGIC_BYTE_V1 = 0x01;
 static const int8_t DL_MESSAGE_MAGIC_BYTE = DL_MESSAGE_MAGIC_BYTE_V1;
-static const int8_t DL_MESSAGE_ATTRIBUTES = 0x00;
+static const int8_t DL_MESSAGE_ATTRIBUTES_UNCOMPRESSED = 0x00;
+static const int8_t DL_MESSAGE_ATTRIBUTES_GZIP= 0x01;
 static const int64_t DL_DEFAULT_OFFSET = 0;
 
 #define DL_ATTRIBUTES_SIZE sizeof(int8_t)
@@ -70,8 +72,29 @@ static const int64_t DL_DEFAULT_OFFSET = 0;
 #define CRC32(data, len) crc32(0, data, len)
 #endif
 
+static int dl_messages_encode(struct dl_messages const *,
+    struct dl_bbuf *);
 static int dl_message_decode(struct dl_message **, struct dl_bbuf *);
-static int dl_message_encode(struct dl_message const *, struct dl_bbuf *);
+static int dl_message_encode(struct dl_message const *, struct dl_bbuf *,
+    int64_t, int8_t);
+static int dl_message_encode_uncompressed(struct dl_message const *,
+    struct dl_bbuf *);
+static int dl_message_encode_compressed(struct dl_message const *,
+    struct dl_bbuf *);
+
+void *
+dlog_zalloc(void *g __attribute((unused)), unsigned n, unsigned m)
+{
+
+	return dlog_alloc(n * m);
+}
+
+void
+dlog_zfree(void *g __attribute((unused)), void *p)
+{
+
+	dlog_free(p);
+}
 
 int
 dl_message_set_new(struct dl_message_set **self, unsigned char *key,
@@ -290,12 +313,194 @@ err_message:
  * other arrays.
  */
 int
+dl_message_set_encode_compressed(struct dl_message_set const *message_set,
+    struct dl_bbuf *target)
+{
+	struct dl_bbuf *uncompressed, *gzipd;
+	struct dl_message message;
+	struct timeval tv;
+	z_stream stream;
+	uint8_t *compressed;
+	int msgset_size_pos, msgset_start, msgset_end, rc = 0;
+	int deflate_rc = Z_OK;
+
+	DL_ASSERT(message_set != NULL, ("MessageSet cannot be NULL"));
+	DL_ASSERT((dl_bbuf_get_flags(target) & DL_BBUF_AUTOEXTEND) != 0,
+	    ("Target buffer must be auto-extending"));
+
+	/* Instantiate a dl_bbuf instance to store the compressed MessageSet.
+	 * The underlying buffer stores the data in big endian format for
+	 * compatibility with Kafka.
+	 */
+	rc |= dl_bbuf_new(&uncompressed, NULL, DL_MTU,
+	    DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN);
+
+	/* Encode the message set uncompressed */
+	rc |= dl_messages_encode(&message_set->dlms_messages, uncompressed);
+
+	/* Initialise the zlib deflate (LZ77) algorithm.
+	 * Specifying a negative window size (-MAX_WBITS) to defalteInit2()
+	 * excludes the zlib header (this is an undocumented feature).
+	 */ 
+	bzero(&stream, sizeof(stream));
+	stream.zalloc = dlog_zalloc;
+	stream.zfree = dlog_zfree;
+	stream.opaque = Z_NULL;
+
+	deflate_rc = deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
+	    -MAX_WBITS, MAX_MEM_LEVEL, Z_DEFAULT_STRATEGY);
+	DL_ASSERT(deflate_rc == Z_OK,
+	    ("Error initializing zlib %d", deflate_rc));
+
+	/* As the version of zlib in kernel is sufficiently out of date it
+	 * does not provide the ability to compute an upper bound for the 
+	 * compressed data. Therefore, I instead allocate a buffer as big as 
+	 * the input (uncomoressed data).
+	 */
+	compressed = (uint8_t *) dlog_alloc(
+	    sizeof(uint8_t *) * dl_bbuf_pos(uncompressed)); 
+#ifdef _KERNEL
+	DL_ASSERT(compressed != NULL,
+	    ("Failed allocating buffer for compressed data."));
+#endif
+	stream.next_in = dl_bbuf_data(uncompressed);
+	stream.avail_in = dl_bbuf_pos(uncompressed);
+	stream.next_out = compressed;
+	stream.avail_out = dl_bbuf_pos(uncompressed);
+
+	/* Compress the encoded Messages using zlib (LZ77/GZIP) using the
+	 * default compression level. Use Z_NO_FLUSH so that zlib can
+	 * accumulate data and therefore efficiently compress before
+	 * writting any output.
+	 */
+	while (stream.avail_in != 0) {
+		deflate_rc = deflate(&stream, Z_NO_FLUSH);
+		if (stream.avail_out == 0) {
+			/* The compressed MessageSet is larger than the
+			 * uncompressed version (although rare this can
+			 * happen). Abbandon sending a compressed Message
+			 * and proceed wit sending the uncompressed message. 
+			 */
+			DL_ASSERT(0,
+			    ("Compressed MessageSet > than uncompressed."));
+		}
+	};
+
+	/* FLush the compressed output. */
+	while (deflate_rc == Z_OK) {
+		if (stream.avail_out == 0) {
+			/* The compressed MessageSet is larger than the
+			 * uncompressed version (although rare this can
+			 * happen). Abbandon sending a compressed Message
+			 * and proceed wit sending the uncompressed message. 
+			 */
+			DL_ASSERT(0,
+			    ("Compressed MessageSet > than uncompressed."));
+		}
+		deflate_rc = deflate(&stream, Z_FINISH);
+		DL_ASSERT(deflate_rc == Z_OK,
+		    ("Error deflating MessageSet with zlib %d", deflate_rc));
+	};
+
+	deflateEnd(&stream);
+
+	/* Allocate a buffer into which a GZIP formated data is written. */
+	rc |= dl_bbuf_new(&gzipd, NULL, DL_MTU, DL_BBUF_AUTOEXTEND);
+
+	/* Write out GZIP header as the version of zlib in kernel is
+	 * significantly out of date and does not support this (updating
+	 * zlib is fairly laborious and needs some though how to manage.)
+	 *
+	 * GZIP header (RFC 1952): 
+	 * <0x1F>	 		- Identification 1 
+	 * <0x8B> 			- Identification 2 
+	 * <0x08>			- Compression method (8 = Defalte)
+	 * <0x00>			- Flags
+	 * <0x00><0x00><0x00><0x00>	- Modification TIME (of file) 
+	 * <0x00>			- Operating System
+	 */
+	rc |= dl_bbuf_put_uint8(gzipd, 0x1F);
+	rc |= dl_bbuf_put_uint8(gzipd, 0x8B);
+	rc |= dl_bbuf_put_uint8(gzipd, 8);
+	rc |= dl_bbuf_put_uint8(gzipd, 0);
+	rc |= dl_bbuf_put_int32(gzipd, 0);
+	rc |= dl_bbuf_put_uint8(gzipd, 0);
+	rc |= dl_bbuf_put_uint8(gzipd, 0);
+	/* Copy the deflate compressed data into the buffer. */
+	rc |= dl_bbuf_bcat(gzipd, compressed, stream.total_out);
+
+	/* Write out GZIP trailer.
+	 *
+	 * GZIP trailer (RFC 1952):
+	 *
+	 * <0x00><0x00><0x00><0x00>	- CRC32 of uncompressed data
+	 * <0x00><0x00><0x00><0x00>	- ISIZE (size of uncompressed data )
+	 */
+	rc |= dl_bbuf_put_int32(gzipd,
+	    CRC32(dl_bbuf_data(uncompressed), dl_bbuf_pos(uncompressed)));
+	rc |= dl_bbuf_put_int32(gzipd, dl_bbuf_pos(uncompressed));
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
+
+	dlog_free(compressed);
+	dl_bbuf_delete(uncompressed);
+
+	/* Add a placeholder for the MessageSetSize. */
+	msgset_size_pos = dl_bbuf_pos(target);
+	rc |= DL_ENCODE_MESSAGE_SIZE(target, -1);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
+	/* Save the position of the start of the MessageSet; this is used
+	 * to compute the MessageSetSize once the MessageSet has been
+	 * successfully encoded.
+	 */
+	msgset_start = dl_bbuf_pos(target);
+
+	/* Contrust a new Kafka Message encapsulating the compressed
+	 * MessageSet.
+	 */
+	message.dlm_offset = DL_DEFAULT_OFFSET; 
+#ifdef _KERNEL	
+	getmicrotime(&tv);
+	message.dlm_timestamp = (tv.tv_sec * 1000) + (tv.tv_usec / 1000); 
+#else
+	message.dlm_timestamp = time(NULL);
+#endif
+	message.dlm_key = NULL, 
+	message.dlm_key_len = 0;
+	message.dlm_value = dl_bbuf_data(gzipd);
+	message.dlm_value_len = dl_bbuf_pos(gzipd);
+
+	rc |= dl_message_encode_compressed(&message, target);
+
+	dl_bbuf_delete(gzipd);
+
+	/* Encode the MessageSetSize into the buffer. */
+	msgset_end = dl_bbuf_pos(target);
+	rc |= DL_ENCODE_MESSAGE_SIZE_AT(target, (msgset_end-msgset_start),
+	    msgset_size_pos);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
+	if (rc == 0)
+		return 0;
+
+	DLOGTR0(PRIO_HIGH, "Failed encoding MessageSet.\n");
+	return -1;
+}
+
+/**
+ * N.B. MessageSets are not preceded by an int32 specifying the length unlike
+ * other arrays.
+ */
+int
 dl_message_set_encode(struct dl_message_set const *message_set,
     struct dl_bbuf *target)
 {
 	struct dl_message const *message;
-	int msgset_size_pos, msgset_start, msgset_end;
-	int rc = 0;
+	int msgset_size_pos, msgset_start, msgset_end, rc = 0;
 
 	DL_ASSERT(message_set != NULL, ("MessageSet cannot be NULL"));
 	DL_ASSERT((dl_bbuf_get_flags(target) & DL_BBUF_AUTOEXTEND) != 0,
@@ -313,11 +518,7 @@ dl_message_set_encode(struct dl_message_set const *message_set,
 	 * successfully encoded.
 	 */
 	msgset_start = dl_bbuf_pos(target);
-	STAILQ_FOREACH(message, &message_set->dlms_messages, dlm_entries) {
-
-		/* Encode the Message. */
-		rc |= dl_message_encode(message, target);
-	}
+	rc |= dl_messages_encode(&message_set->dlms_messages, target);
 
 	/* Encode the MessageSetSize into the buffer. */
 	msgset_end = dl_bbuf_pos(target);
@@ -335,7 +536,50 @@ dl_message_set_encode(struct dl_message_set const *message_set,
 }
 
 static int
-dl_message_encode(struct dl_message const *message, struct dl_bbuf *target)
+dl_messages_encode(struct dl_messages const *messages,
+    struct dl_bbuf *target)
+{
+	struct dl_message const *message;
+	int rc = 0;
+
+	DL_ASSERT(messages != NULL, ("Messages cannot be NULL"));
+	DL_ASSERT((dl_bbuf_get_flags(target) & DL_BBUF_AUTOEXTEND) != 0,
+	    ("Target buffer must be auto-extending"));
+
+	/* Iterate across the messages encoding each into the target buffer. */
+	STAILQ_FOREACH(message, messages, dlm_entries) {
+
+		rc |= dl_message_encode_uncompressed(message, target);
+	}
+
+	if (rc == 0)
+		return 0;
+
+	DLOGTR0(PRIO_HIGH, "Failed encoding Messages.\n");
+	return -1;
+}
+
+static int
+dl_message_encode_uncompressed(struct dl_message const *message,
+    struct dl_bbuf *target)
+{
+
+	return dl_message_encode(message, target,
+	    DL_DEFAULT_OFFSET, DL_MESSAGE_ATTRIBUTES_UNCOMPRESSED);
+}
+
+static int
+dl_message_encode_compressed(struct dl_message const *message,
+    struct dl_bbuf *target)
+{
+
+	return dl_message_encode(message, target,
+	    DL_DEFAULT_OFFSET, DL_MESSAGE_ATTRIBUTES_GZIP);
+}
+
+static int
+dl_message_encode(struct dl_message const *message, struct dl_bbuf *target,
+   int64_t offset, int8_t attributes)
 {
 	unsigned long crc_value, timestamp;
 	unsigned char *crc_data;
@@ -346,7 +590,7 @@ dl_message_encode(struct dl_message const *message, struct dl_bbuf *target)
 	    ("Target buffer must be auto-extending"));
 
 	/* Encode the Message Offset into the target buffer. */
-	rc |= DL_ENCODE_OFFSET(target, DL_DEFAULT_OFFSET);
+	rc |= DL_ENCODE_OFFSET(target, offset);
 #ifdef _KERNEL
 	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
@@ -370,7 +614,7 @@ dl_message_encode(struct dl_message const *message, struct dl_bbuf *target)
 #endif
 	
 	/* Encode the Attributes */
-	rc |= DL_ENCODE_ATTRIBUTES(target, DL_MESSAGE_ATTRIBUTES);
+	rc |= DL_ENCODE_ATTRIBUTES(target, attributes);
 #ifdef _KERNEL
 	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
