@@ -73,6 +73,8 @@ extern int dl_bbuf_len(struct dl_bbuf *);
 extern int dl_bbuf_pos(struct dl_bbuf *);
 extern int dl_bbuf_put_int8(struct dl_bbuf *, int8_t);
 extern int dl_bbuf_put_int8_at(struct dl_bbuf *, int8_t, int);
+extern int dl_bbuf_put_uint8(struct dl_bbuf *, uint8_t);
+extern int dl_bbuf_put_uint8_at(struct dl_bbuf *, uint8_t, int);
 extern int dl_bbuf_put_int16(struct dl_bbuf *, int16_t);
 extern int dl_bbuf_put_int16_at(struct dl_bbuf *, int16_t, int);
 extern int dl_bbuf_put_int32(struct dl_bbuf *, int32_t);

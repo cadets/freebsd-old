@@ -352,7 +352,7 @@ dlog_produce(struct dlog_handle *self, unsigned char *k, size_t k_len,
 	    DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN) != 0)
 		goto err_free_msgset;
 
-	if (dl_message_set_encode(message_set, buffer) != 0) {
+	if (dl_message_set_encode_compressed(message_set, buffer) != 0) {
 
 		DLOGTR0(PRIO_HIGH, "Error encoding MessageSet\n");
 		goto err_free_bbuf;

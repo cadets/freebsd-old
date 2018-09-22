@@ -458,6 +458,39 @@ dl_bbuf_put_int8(struct dl_bbuf *self, int8_t value)
 }
 
 int
+dl_bbuf_put_uint8_at(struct dl_bbuf *self, uint8_t value, int pos)
+{
+
+	dl_bbuf_assert_integrity(__func__, self);
+	if (self != NULL &&
+	    (int) (pos + sizeof(uint8_t)) > self->dlb_capacity) {
+
+		if (self->dlb_flags & DL_BBUF_AUTOEXTEND) {
+
+			if (dl_bbuf_extend(self, (int) sizeof(uint8_t)) != 0)
+				return -1;
+		} else {
+			return -1;
+		}
+	}
+	self->dlb_data[pos++] = value;
+	return 0;
+}
+
+int
+dl_bbuf_put_uint8(struct dl_bbuf *self, uint8_t value)
+{
+
+	dl_bbuf_assert_integrity(__func__, self);
+	if (dl_bbuf_put_int8_at(self, value, self->dlb_pos) == 0) {
+
+		self->dlb_pos += sizeof(int8_t);	
+		return 0;
+	}
+	return -1;
+}
+
+int
 dl_bbuf_put_int16_at(struct dl_bbuf *self, int16_t value, int pos)
 {
 
