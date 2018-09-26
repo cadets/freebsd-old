@@ -8777,9 +8777,12 @@ dtrace_konsumer_register(const char *name, const dtrace_kops_t *kops,
 	/* Construct the konsumer instance. */
 	konsumer = kmem_zalloc(sizeof (dtrace_konsumer_t), KM_SLEEP);
 	ASSERT(konsumer != NULL);
-	konsumer->dtk_name = kmem_alloc(strlen(name) + 1, KM_SLEEP);
+//	konsumer->dtk_name = kmem_alloc(strlen(name) + 1, KM_SLEEP);
+	konsumer->dtk_name = kmem_alloc(DTRACE_KONNAMELEN, KM_SLEEP);
 	ASSERT(konsumer->dtk_name != NULL);
-	(void) strcpy(konsumer->dtk_name, name);
+	//(void) strcpy(konsumer->dtk_name, name);
+	(void) strncpy(konsumer->dtk_name, name, DTRACE_KONNAMELEN);
+	konsumer->dtk_name[DTRACE_KONNAMELEN -1] = 0;
 	konsumer->dtk_arg = arg;
 	konsumer->dtk_ops = *kops;
 	konsumer->dtk_next = NULL;
