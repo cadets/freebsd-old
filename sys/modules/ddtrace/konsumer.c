@@ -240,7 +240,13 @@ konsumer_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
 	DL_ASSERT(handle != NULL, ("DLog handle cannot be NULL\n"));
 
-	/* Switch and process the trace buffers for each CPU. */
+	/* Process each of the per-CPU buffers.
+	 * The tomax and xamot buffers are first swtich using a xcall.
+	 * Provided that the xcvall is successful in switching the buffers,
+	 * the buffer is then persisted into Dlog.
+	 * Persisting the buffer may involving splitting into portions portions
+	 * on a record boundary.
+	 */
 	for (int cpu = 0; cpu < mp_ncpus; cpu++) {
 
 		/* Note: Unlike in the BUFSNAP ioctl it is unnecessary to
@@ -297,8 +303,6 @@ konsumer_thread(void *arg)
 	struct timespec curtime;
 
 	konsumer_assert_integrity(__func__, k);
-	DL_ASSERT(k->konsumer_state != NULL,
-	    ("DTrace state cannot be NULL"));
 	
 	for (;;) {
 
@@ -354,7 +358,7 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	DL_ASSERT(desc->dtbd_size != 0,
 	    ("konsumer_persist_trace called with empty buffer."));
 
-	while (desc->dtbd_size != 0 && size < desc->dtbd_size) {
+	while (size < desc->dtbd_size) {
 
 		epid = (dtrace_epid_t) desc->dtbd_data[size];
 		if (epid == DTRACE_EPIDNONE) {
