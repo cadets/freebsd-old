@@ -83,6 +83,7 @@ typedef int model_t;
 #define	DTRACE_METAPROVNONE	0	/* invalid meta-provider identifier */
 #define	DTRACE_ARGNONE		-1	/* invalid argument index */
 
+#define	DTRACE_KONNAMELEN	64
 #define	DTRACE_PROVNAMELEN	64
 #define	DTRACE_MODNAMELEN	64
 #define	DTRACE_FUNCNAMELEN	192
