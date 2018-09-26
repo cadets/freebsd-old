@@ -482,7 +482,7 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 static void
 dl_client_close(void *arg)
 {
-	//struct dlog_handle *handle = (struct dlog_handle *) arg;
+	struct dlog_handle *handle = (struct dlog_handle *) arg;
 
 	DL_ASSERT(handle != NULL, ("DLog client handle cannot be NULL."));
 
