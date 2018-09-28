@@ -128,13 +128,7 @@ dl_add_to_registry(struct dl_event_handler const * const handler, int events)
 
 	registry = (struct dl_handler_registry *) dlog_alloc(
 	    sizeof(struct dl_handler_registry));
-#ifdef KERNEL
-	DL_ASSERT(registry != NULL,
-	    ("Failed allocating poll reactor registry.."));
-	{
-#else
 	if (registry != NULL ) {
-#endif
 		registry->dlh_handler = handler;
 		registry->dlh_fd.fd = handler->dleh_get_handle(
 		    handler->dleh_instance);
@@ -200,17 +194,11 @@ void
 dl_poll_reactor_handle_events(void)
 {
 	struct pollfd fds[MAX_NO_OF_HANDLES];
-#ifdef _KERNEL
-	struct thread *td = curthread;
-#endif
 	size_t nhandles;
 
 	bzero(fds, MAX_NO_OF_HANDLES * sizeof(struct pollfd));
 	nhandles = dl_build_poll_array(fds);
 
-#ifdef _KERNEL
-	kern_poll(td, fds, nhandles, NULL, NULL);
-#else
 	/* Invoke the synchronous event demultiplexer. */
 	if (poll(fds, nhandles, -1) > 0) {
 		/** 
@@ -221,7 +209,6 @@ dl_poll_reactor_handle_events(void)
 	} else {
 		DLOGTR0(PRIO_LOW, "Poll failure\n");
 	}
-#endif
 }
 
 void

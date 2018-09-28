@@ -59,6 +59,7 @@
 #include "dl_request_queue.h"
 #include "dl_topic.h"
 #include "dl_transport.h"
+#include "dl_user_segment.h"
 #include "dl_utils.h"
 
 typedef enum dl_producer_state {
@@ -88,7 +89,6 @@ struct dl_producer {
 	int dlp_broker_port;
 	int dlp_ktimer;
 	int dlp_reconn_ms;
-	int offset;
 	int dlp_resend_timeout;
 	int dlp_resend_period;
 	bool dlp_to_resend;
@@ -293,13 +293,10 @@ static dl_event_handler_handle
 dl_producer_get_kq_fd(void *instance)
 {
 	struct dl_producer const * const p = instance;
-	struct dl_segment *seg;
 
 	dl_producer_check_integrity(p);
 
-	seg = dl_topic_get_active_segment(p->dlp_topic);
-	DL_ASSERT(seg != NULL, ("Topic's active segment cannot be NULL"));
-	return seg->_klog;
+	return p->dlp_topic->_klog;
 }
 
 static void 
@@ -313,25 +310,27 @@ dl_producer_kq_handler(void *instance, int fd __attribute((unused)),
 	int rc;
 	
 	dl_producer_check_integrity(p);
-	
+
 	seg = dl_topic_get_active_segment(p->dlp_topic);
 	DL_ASSERT(seg != NULL, ("Topic's active segment cannot be NULL"));
 
-	rc = kevent(seg->_klog, 0, 0, &event, 1, 0);
+	rc = kevent(p->dlp_topic->_klog, 0, 0, &event, 1, 0);
 	if (rc == -1)
 		DLOGTR2(PRIO_HIGH, "Error reading kqueue event %d %d\n.",
 		    rc, errno);
 	else {
 		dl_segment_lock(seg);
-		log_position = lseek(seg->_log, 0, SEEK_END);
+		log_position = lseek(dl_user_segment_get_log(seg), 0,
+		    SEEK_END);
 		if (log_position - seg->last_sync_pos >
 		    DL_FSYNC_DEFAULT_CHARS) {
 
-			fsync(seg->_log);
+			fsync(dl_user_segment_get_log(seg));
 			dl_segment_set_last_sync_pos(seg, log_position);
 			dl_segment_unlock(seg);
 
-			dl_index_update(seg->dls_idx, log_position);
+			dl_index_update(
+			    dl_user_segment_get_index(seg), log_position);
 			dl_producer_produce(p);
 		} else {
 			dl_segment_unlock(seg);
@@ -476,7 +475,7 @@ dlp_produce_thread(void *vargp)
 				DLOGTR3(PRIO_LOW,
 				    "Successfully sent request (id = %d) "
 				    "Successfully sent request "
-				    "(nbytes = %zu, bytes = %zu)\n",
+				    "(nbytes = %zu, bytes = %d)\n",
 				    request->dlrq_correlation_id,
 				    nbytes,
 				    dl_bbuf_pos(request->dlrq_buffer));
@@ -540,11 +539,11 @@ dlp_enqueue_thread(void *vargp)
 	seg = dl_topic_get_active_segment(topic);
 	DL_ASSERT(seg != NULL, ("Topic's active segment cannot be NULL"));
     	
-	while (dl_segment_get_message_by_offset(seg, self->offset,
+	while (dl_segment_get_message_by_offset(seg, dl_segment_get_offset(seg),
 	    &msg_buffer) == 0) {
 	
 #ifndef NDEBUG	
-		DLOGTR1(PRIO_NORMAL, "MessageSet (%zu bytes)\n",
+		DLOGTR1(PRIO_NORMAL, "MessageSet (%d bytes)\n",
 		    dl_bbuf_pos(msg_buffer));
 
 		unsigned char *bufval;
@@ -580,7 +579,7 @@ dlp_enqueue_thread(void *vargp)
 			DLOGTR1(PRIO_LOW, "Enqueuing request %d\n",
 			    dl_correlation_id_val(self->dlp_cid));
 
-			DLOGTR1(PRIO_LOW, "ProduceRequest (%zu bytes)\n",
+			DLOGTR1(PRIO_LOW, "ProduceRequest (%d bytes)\n",
 			    dl_bbuf_pos(buffer));
 
 			bufval = dl_bbuf_data(buffer);
@@ -603,7 +602,7 @@ dlp_enqueue_thread(void *vargp)
 			dl_correlation_id_inc(self->dlp_cid);
 		
 			/* Increment the offset to process. */
-			self->offset++;
+			dl_offset_inc(dl_user_segment_get_offset_tmp(seg));
 		} else {
 
 			DLOGTR0(PRIO_HIGH,
@@ -789,7 +788,6 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 
 	bzero(producer, sizeof(struct dl_producer));
 
-	producer->offset = 0;
 	producer->dlp_state = DLP_INITIAL;
 	producer->dlp_topic = topic;
 	producer->dlp_transport = NULL;
@@ -957,6 +955,7 @@ dl_producer_produce(struct dl_producer const * const self)
 	case DLP_IDLE:
 		dl_producer_syncing(self);
 		break;
+	case DLP_OFFLINE:
 	case DLP_SYNCING:
 		/* IGNORE */
 		break;
