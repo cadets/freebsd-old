@@ -60,8 +60,9 @@
 #include <dtrace.h>
 #include <dtrace_impl.h>
 
-#include "dl_assert.h"
 #include "dlog_client.h"
+#include "dl_assert.h"
+#include "dl_config.h"
 #include "dl_protocol.h"
 #include "dl_utils.h"
 
@@ -303,7 +304,7 @@ konsumer_thread(void *arg)
 	struct timespec curtime;
 
 	konsumer_assert_integrity(__func__, k);
-	
+
 	for (;;) {
 
 		mtx_lock(&k->konsumer_mtx);
@@ -480,7 +481,7 @@ konsumer_open(void *arg, struct dtrace_state *state)
 		    konsumer->dtk_name);
 		return;
 	}
-	
+
 	/* Convert the DLog file descriptor into a struct dlog_handle */
 	if (state->dts_options[DTRACEOPT_KONSUMERARG] == DTRACEOPT_UNSET) {
 
@@ -489,7 +490,7 @@ konsumer_open(void *arg, struct dtrace_state *state)
 		    "DTrace konarg option is unset\n", konsumer->dtk_name);
 		return;
 	}
-
+	
 	FILEDESC_SLOCK(fdp);
 	fp = fget_locked(fdp, state->dts_options[DTRACEOPT_KONSUMERARG]);
 	FILEDESC_SUNLOCK(fdp);
@@ -497,7 +498,7 @@ konsumer_open(void *arg, struct dtrace_state *state)
 
 		DLOGTR1(PRIO_HIGH,
 		    "Konsumer (%s) rendezvous with DLog state failed "
-		    "DTrace konarg is not a valid file secriptor\n",
+		    "DTrace konarg is not a valid file decriptor\n",
 		    konsumer->dtk_name);
 		return;
 	}
@@ -507,7 +508,7 @@ konsumer_open(void *arg, struct dtrace_state *state)
 
 		DLOGTR1(PRIO_HIGH,
 		    "Konsumer (%s) rendezvous with DLog state failed "
-		    "DTrace konarg file secriptor is not associated with "
+		    "DTrace konarg file descriptor is not associated with "
 		    "dlog handle\n", konsumer->dtk_name);
 		return;
 	}
