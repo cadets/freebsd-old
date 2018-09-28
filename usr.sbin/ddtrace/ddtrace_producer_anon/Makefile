@@ -29,7 +29,7 @@
 # SUCH DAMAGE.
 #
 
-.PATH : ${SRCTOP}/contrib/dlog/src
+.PATH : ${SRCTOP}/contrib/ddtrace
 
 PROG= ddtrace_producer_anon
 BINDIR= /usr/sbin
