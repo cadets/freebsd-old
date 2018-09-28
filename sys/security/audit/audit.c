@@ -465,11 +465,6 @@ audit_new(int event, struct thread *td)
 	struct kaudit_record *ar;
 
 	/*
-	 * XXXRW: I removed checks to see if audit is enabled here, as the
-	 * caller should perform them...?
-	 */
-
-	/*
 	 * Note: the number of outstanding uncommitted audit records is
 	 * limited to the number of concurrent threads servicing system calls
 	 * in the kernel.
