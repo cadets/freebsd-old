@@ -1,0 +1,43 @@
+#!/bin/sh
+#
+# $FreeBSD$
+#
+# Start up for the DLog daemon.
+#
+
+# PROVIDE: dlogd
+# REQUIRE: syslogd
+# BEFORE:  DAEMON
+# KEYWORD: nojail shutdown
+
+. /etc/rc.subr
+
+name="dlogd"
+desc="DLog daemon"
+start_cmd="dlogd_start"
+stop_cmd="dlogd_stop"
+dlog_command="/usr/sbin/${name}"
+dlogd_dir="/var/db/dlog"
+rcvar="dlogd_enable"
+command_args="${dlogd_flags}"
+
+dlogd_start()
+{
+	if [ ! -d "$dlogd_dir" ]; then
+		if ! mkdir -p "$dlogd_dir"; then
+			err 1 "Could not create $dlogd_dir."
+		fi
+	fi
+
+	${dlogd_command}
+}
+
+dlogd_stop()
+{
+
+	/usr/sbin/dlogd -t
+	sleep 1
+}
+
+load_rc_config $name
+run_rc_command "$1"
