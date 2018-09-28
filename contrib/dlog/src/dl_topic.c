@@ -151,8 +151,6 @@ dl_topic_new(struct dl_topic **self, char *topic_name, char *path_name)
 	    sizeof(struct dl_topic));
 	if (topic != NULL) {
 		topic->dlt_name = sbuf_new_auto();
-		//sbuf_printf(topic->dlt_name, "%s-%d", topic_name,
-		//    DL_DEFAULT_PARTITION);
 		sbuf_printf(topic->dlt_name, "%s", topic_name);
 		sbuf_finish(topic->dlt_name);
 
@@ -160,7 +158,6 @@ dl_topic_new(struct dl_topic **self, char *topic_name, char *path_name)
 		sbuf_printf(path, "%s/%s", path_name, topic_name);
 		sbuf_finish(path);
 		rc = dl_make_folder(path);
-		DLOGTR1(PRIO_HIGH, "make_dir= %d\n", rc);
 		if (rc == 0) {
 
 		SLIST_INIT(&topic->dlp_segments);
@@ -171,7 +168,6 @@ dl_topic_new(struct dl_topic **self, char *topic_name, char *path_name)
 		rc = dl_user_segment_new_default(&topic->dlp_active_segment,
 		    path, topic->dlt_name);
 #endif
-		DLOGTR1(PRIO_HIGH, "user_segment = %d\n", rc);
 		if (rc == 0) {
 			sbuf_delete(path);
 
