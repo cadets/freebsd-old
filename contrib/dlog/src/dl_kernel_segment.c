@@ -56,7 +56,6 @@ struct dl_kernel_segment {
 	SLIST_ENTRY(dl_segment) dls_entries;
 	struct sx dls_lock; /* Lock for whilst updating segment. */
 	uint32_t offset;
-	//struct ucred *ucred;
 	struct file *_log;
 };
 
@@ -69,7 +68,8 @@ static int dl_kernel_segment_get_message_by_offset(
 static void dl_kernel_segment_delete(struct dl_segment *);
 static uint32_t dl_kernel_get_offset(struct dl_segment *);
 
-static inline void dl_kernel_segment_check_integrity(struct dl_kernel_segment *self)
+static inline void dl_kernel_segment_check_integrity(
+    struct dl_kernel_segment *self)
 {
 
 	DL_ASSERT(self != NULL, ("Segment instance cannot be NULL."));
@@ -109,6 +109,8 @@ dl_kernel_segment_from_desc(struct dl_segment **self,
 	    dl_kernel_segment_unlock,
 	    dl_kernel_segment_delete);
 	if (rc != 0) {
+
+		return -1;
 	}
 	
 	kseg = seg->dls_kernel = (struct dl_kernel_segment *) dlog_alloc(
@@ -136,8 +138,6 @@ dl_kernel_segment_from_desc(struct dl_segment **self,
 		return -1;
 	}
 
-	//kseg->_log = fp->f_vnode;
-	//kseg->_log = seg_desc->dlsd_log;
 	sx_init(&kseg->dls_lock, "segment mtx");
 
 	dl_kernel_segment_check_integrity(kseg);
@@ -162,9 +162,6 @@ dl_kernel_segment_insert_message(struct dl_segment *self,
 	DL_ASSERT(buffer != NULL,
 	    ("Buffer to insert into segment cannot be NULL."));
 
-	DLOGTR1(PRIO_HIGH, "Inserting (%d bytes) into the log\n",
-	    dl_bbuf_pos(buffer));
-
 	dl_kernel_segment_lock(self);
 
 	/* Update the log file. */
@@ -187,10 +184,6 @@ dl_kernel_segment_insert_message(struct dl_segment *self,
         u.uio_rw = UIO_WRITE;
         u.uio_td = td;
 
-	//kern_writev(td, sockfd, u);
-	//VREF(self->dls_kernel->_log);
-	//crhold(self->dls_kernel->ucred);
-
 	/* Check that the vnode is non-NULL */
 	vp = kseg->_log->f_vnode;
 	if (vp->v_type != VREG) {
@@ -200,11 +193,9 @@ dl_kernel_segment_insert_message(struct dl_segment *self,
 
 	vn_start_write(vp, &mp, V_WAIT);
 	VOP_LOCK(vp, LK_EXCLUSIVE | LK_RETRY);
-	VOP_WRITE(vp, &u, IO_UNIT | IO_APPEND,
-	    self->dls_kernel->_log->f_cred);
+	VOP_WRITE(vp, &u, IO_UNIT | IO_APPEND, self->dls_kernel->_log->f_cred);
 	VOP_UNLOCK(vp, 0);
 	vn_finished_write(mp);
-	//crfree(self->dls_kernel->ucred);
 
 	/* Delete the buffer holding the log metadata */
 	dl_bbuf_delete(metadata);
