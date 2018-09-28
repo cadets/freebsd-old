@@ -187,8 +187,6 @@ dl_request_q_delete(struct dl_request_q *self)
 {
 
 	dlrq_check_integrity(self);
-	DL_ASSERT(STAILQ_EMPTY(&self->dlrq_requests) != 0,
-	    ("Request queue is not emprty"));
 
 	pthread_mutex_destroy(&self->dlrq_mtx);
 	sem_destroy(&self->dlrq_spaces);

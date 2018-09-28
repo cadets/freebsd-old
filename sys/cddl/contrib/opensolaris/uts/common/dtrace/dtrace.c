@@ -8759,6 +8759,7 @@ dtrace_konsumer_register(const char *name, const dtrace_kops_t *kops,
     void *arg, dtrace_konsumer_id_t *id)
 {
 	dtrace_konsumer_t *konsumer;
+	dtrace_state_t *state;
 
 	if (name == NULL || kops == NULL || id == NULL) {
 		cmn_err(CE_WARN,
@@ -8777,10 +8778,8 @@ dtrace_konsumer_register(const char *name, const dtrace_kops_t *kops,
 	/* Construct the konsumer instance. */
 	konsumer = kmem_zalloc(sizeof (dtrace_konsumer_t), KM_SLEEP);
 	ASSERT(konsumer != NULL);
-//	konsumer->dtk_name = kmem_alloc(strlen(name) + 1, KM_SLEEP);
 	konsumer->dtk_name = kmem_alloc(DTRACE_KONNAMELEN, KM_SLEEP);
 	ASSERT(konsumer->dtk_name != NULL);
-	//(void) strcpy(konsumer->dtk_name, name);
 	(void) strncpy(konsumer->dtk_name, name, DTRACE_KONNAMELEN);
 	konsumer->dtk_name[DTRACE_KONNAMELEN -1] = 0;
 	konsumer->dtk_arg = arg;
@@ -15189,23 +15188,7 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 		state->dts_options[DTRACEOPT_GRABANON] =
 		    opt[DTRACEOPT_GRABANON];
 
-		/* Similarly copy the "konarg" option into the grabbed state. */
-		state->dts_options[DTRACEOPT_KONSUMERARG] =
-		    opt[DTRACEOPT_KONSUMERARG];
-
 		*cpu = dtrace_anon.dta_beganon;
-
-		if (opt[DTRACEOPT_KONSUMERARG] != DTRACEOPT_UNSET) {
-			/* Iterate the DTrace konsumers and notify them of the
-			 * dtrace_state_go.
-			 */ 
-			dtrace_konsumer_t *konsumer = dtrace_konsumer;
-			while (konsumer != NULL ) {
-				konsumer->dtk_ops.dtkops_open(konsumer, state);
-				konsumer = konsumer->dtk_next;
-			}
-		}
-
 		/*
 		 * If the anonymous state is active (as it almost certainly
 		 * is if the anonymous enabling ultimately matched anything),
@@ -15402,7 +15385,15 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 		 */ 
 		dtrace_konsumer_t *konsumer = dtrace_konsumer;
 		while (konsumer != NULL ) {
-			konsumer->dtk_ops.dtkops_open(konsumer, state);
+			if (dtrace_anon.dta_state != NULL) {
+				dtrace_anon.dta_state->
+				    dts_options[DTRACEOPT_KONSUMERARG] =
+				    opt[DTRACEOPT_KONSUMERARG];
+				konsumer->dtk_ops.dtkops_open(konsumer,
+				    dtrace_anon.dta_state);
+			} else {
+				konsumer->dtk_ops.dtkops_open(konsumer, state);
+			}
 			konsumer = konsumer->dtk_next;
 		}
 	}
@@ -15509,19 +15500,14 @@ dtrace_state_stop(dtrace_state_t *state, processorid_t *cpu)
 	}
 #endif
 
-	if (opt[DTRACEOPT_KONSUMERARG] != DTRACEOPT_UNSET) {
+	if (opt[DTRACEOPT_KONSUMERARG] != DTRACEOPT_UNSET &&
+	    dtrace_anon.dta_state == NULL) {
 		/* Iterate the DTrace konsumers and notify them of the
 		 * dtrace_state_stop.
 		 */ 
 		dtrace_konsumer_t *konsumer = dtrace_konsumer;
 		while (konsumer != NULL ) {
-			if (state != dtrace_anon.dta_state &&
-			    opt[DTRACEOPT_GRABANON] != DTRACEOPT_UNSET) {
-				konsumer->dtk_ops.dtkops_close(konsumer,
-				    state->dts_anon);
-			} else {
-				konsumer->dtk_ops.dtkops_close(konsumer, state);
-			}
+			konsumer->dtk_ops.dtkops_close(konsumer, state);
 			konsumer = konsumer->dtk_next;
 		}
 	}
