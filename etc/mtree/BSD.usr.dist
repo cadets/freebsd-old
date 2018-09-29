@@ -13,6 +13,8 @@
             ..
             event
             ..
+            rdkafka
+            ..
             sqlite3
             ..
             ucl
