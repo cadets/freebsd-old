@@ -29,22 +29,13 @@
 # SUCH DAMAGE.
 #
 
-.PATH : ${SRCTOP}/contrib/dlog/src
+.PATH : ${SRCTOP}/contrib/ddtrace
 
-.OBJDIR:= obj
-MK_AUTO_OBJ:= yes
+PROG= ddtrace_consumer
+BINDIR= /usr/sbin
 
-PROGS= ddtrace_consumer ddtrace_producer ddtrace_producer_anon
-BINDIR= bin
-
-SRCS.ddtrace_consumer = ddtrace_consumer.c
-MAN.ddtrace_consumer =
-
-SRCS.ddtrace_producer = ddtrace_producer.c
-MAN.ddtrace_producer =
-
-SRCS.ddtrace_producer_anon = ddtrace_producer_anon.c
-MAN.ddtrace_producer_anon =
+SRCS= ddtrace_consumer.c
+MAN=
 
 LIBADD+=dtrace
 LIBADD+=proc
@@ -67,7 +58,7 @@ CFLAGS+=-I/usr/src/cddl/lib/libdtrace
 CFLAGS+=-I/usr/src/sys/cddl/compat/opensolaris
 CFLAGS+=-I/usr/src/sys/cddl/contrib/opensolaris/uts/common
 CFLAGS+=-I/usr/src/sys
-CFLAGS+=-I${SRCTOP}/dlog/src
+CFLAGS+=-I${SRCTOP}/contrib/dlog/src
 CFLAGS+=-I${SRCTOP}/sys/dev/dlog
 
-.include <bsd.progs.mk>
+.include <bsd.prog.mk>
