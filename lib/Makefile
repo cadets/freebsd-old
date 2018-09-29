@@ -72,6 +72,7 @@ SUBDIR=	${SUBDIR_BOOTSTRAP} \
 	libpjdlog \
 	${_libproc} \
 	libprocstat \
+	librdkafka \
 	libregex \
 	librpcsvc \
 	librss \
