@@ -118,11 +118,19 @@ static struct konsumers *konsumer_hashtbl = NULL;
 static u_long konsumer_hashmask;
 
 static uint32_t konsumer_poll_ms = 1000;
+/* Maximum record size before compression; the default value is a heurstic
+ * base on the level of compression seen in DTrace buffers.
+ */
+static uint32_t konsumer_record_bound = 1024*1024;
 
 SYSCTL_NODE(_debug, OID_AUTO, konsumer, CTLFLAG_RW, 0, "Konsumer");
 
 SYSCTL_U32(_debug_konsumer, OID_AUTO, poll_period_ms, CTLFLAG_RD,
-    &konsumer_poll_ms, 0,  "Konsumer poll period (ms)");
+    &konsumer_poll_ms, 0, "Konsumer poll period (ms)");
+
+SYSCTL_U32(_debug_konsumer, OID_AUTO, record_bound, CTLFLAG_RD,
+    &konsumer_record_bound, 0,
+    "Konsumer maximum record size (before compression)");
 
 static eventhandler_tag kon_pre_sync = NULL;
 
@@ -380,7 +388,15 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 		/* Check whether the record would take the msg_size
 		 * over the MTU configured for the distributed log.
 		 */
-		if (msg_size + dtrace_epid2size(state, epid) > DL_MTU) {
+
+		/* As the zlib in kernel is significantly out of date, it
+		 * doesn't provide the defalateBounds() method which would
+		 * allow me to determine the size of the compressed output.
+		 *
+		 * Therefore, I using a configurable parameter.
+		 */
+		if (msg_size + dtrace_epid2size(state, epid) >
+		    konsumer_record_bound) {
 
 			/* The umsg_size is zero this occurs when the
 			 * DTrace record size is greater than the log
