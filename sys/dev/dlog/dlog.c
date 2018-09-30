@@ -205,19 +205,14 @@ dlog_sync(void)
 	for (t = 0; t < topic_hashmask + 1 ; t++) {
 		LIST_FOREACH_SAFE(topic, &topic_hashmap[t],
 		    dlt_entries, tmp) {
-/*
+
 			s = dl_topic_get_active_segment(topic);
-
-			error = vn_start_write(
-			    dl_kernel_segment_get_log(s), &mp, V_WAIT);
-			if (error == 0) {
-
-				VOP_LOCK(dl_kernel_segment_get_log(s), LK_EXCLUSIVE | LK_RETRY);
-				VOP_FSYNC(dl_kernel_segment_get_log(s), MNT_WAIT, curthread);
-				VOP_UNLOCK(dl_kernel_segment_get_log(s), 0);
-				vn_finished_write(mp);
+			if (dl_kernel_segment_sync(s) != 0) {
+				DLOGTR1(PRIO_NORMAL,
+				    "Failed to sync topic %s\n",
+				    sbuf_data(topic->dlt_name));
 			}
-*/
+
 			LIST_REMOVE(topic, dlt_entries);
 			dl_topic_delete(topic);
 		}
