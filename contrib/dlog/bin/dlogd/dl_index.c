@@ -78,6 +78,11 @@ dl_index_new(struct dl_index **self, int log, int64_t base_offset,
 {
 	struct dl_index *idx;
 	struct sbuf *idx_name;
+	struct dl_index_record record;
+	struct dl_bbuf *idx_buf;
+	int32_t roffset ;
+	off_t idx_end;
+	int rc;
 
 	DL_ASSERT(self != NULL, ("Index instance cannot be NULL."));
 	
@@ -105,6 +110,7 @@ dl_index_new(struct dl_index **self, int log, int64_t base_offset,
 		return -1;
 	}
 	sbuf_delete(idx_name);
+	idx->dli_log_fd = log;
 
 	if (pthread_mutex_init(&idx->dli_mtx, NULL) != 0) {
 
@@ -115,9 +121,44 @@ dl_index_new(struct dl_index **self, int log, int64_t base_offset,
 		*self = NULL;
 		return -1;
 	}
+	
+	/* Read the last value out of the index. */
+	idx_end = lseek(idx->dli_idx_fd, 0, SEEK_END);
+	if (idx_end == 0) {
 
-	idx->dli_log_fd = log;
-	idx->dli_last = 0;
+		DLOGTR0(PRIO_LOW, "New index file created\n");
+		idx->dli_last = 0;
+	} else {
+
+		rc = pread(idx->dli_idx_fd, &record, sizeof(record),
+		idx_end - sizeof(record));
+		if (rc == -1 || rc == 0) {
+
+			DLOGTR1(PRIO_HIGH,
+			"Failed to read from index file %d\n", errno);
+			return -1;
+		} else {
+			DLOGTR0(PRIO_LOW,
+			    "Reading the last index from file \n");
+
+			/* Data in the index is stored in big-endian format for
+			* compatibility with the Kafka log format.
+			* The data read from the index is used as an external buffer
+			* from a bbuf instance, this allows the values of the relative
+			* and * physical offset to be read.
+			*/
+			rc = dl_bbuf_new(&idx_buf,
+			    (unsigned char *) &record, sizeof(record),
+			    DL_BBUF_BIGENDIAN);
+			if (rc != 0)
+				return -1;
+
+			dl_bbuf_get_int32(idx_buf, &roffset);
+			idx->dli_last = roffset;
+			dl_bbuf_delete(idx_buf);
+		}
+	}
+	DLOGTR1(PRIO_HIGH, "Read offset (%ld)\n", idx->dli_last);
 
 	dl_index_check_integrity(idx);
 	*self = idx;
