@@ -45,6 +45,7 @@ struct dl_kernel_segment;
 
 extern int dl_kernel_segment_from_desc(struct dl_segment **,
     struct dl_segment_desc *);
-extern struct file* dl_kernel_segment_get_log(struct dl_segment *self);
+extern struct file* dl_kernel_segment_get_log(struct dl_segment *);
+extern int dl_kernel_segment_sync(struct dl_segment *);
 
 #endif
