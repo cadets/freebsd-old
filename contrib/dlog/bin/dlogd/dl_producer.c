@@ -543,7 +543,7 @@ dlp_enqueue_thread(void *vargp)
 	    &msg_buffer) == 0) {
 	
 #ifndef NDEBUG	
-		DLOGTR1(PRIO_NORMAL, "MessageSet (%d bytes)\n",
+		DLOGTR1(PRIO_LOW, "MessageSet (%d bytes)\n",
 		    dl_bbuf_pos(msg_buffer));
 
 		unsigned char *bufval;
