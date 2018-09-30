@@ -242,7 +242,38 @@ dl_kernel_get_offset(struct dl_segment *self)
 struct file*
 dl_kernel_segment_get_log(struct dl_segment *self)
 {
+
 	dl_kernel_segment_check_integrity(self->dls_kernel);
 	return self->dls_kernel->_log;
+}
+
+int
+dl_kernel_segment_sync(struct dl_segment *self)
+{
+	struct dl_kernel_segment *kseg = self->dls_kernel;
+	struct mount *mp;
+	struct vnode *vp;
+	int rc;
+
+	dl_kernel_segment_check_integrity(kseg);
+
+	/* Check that the vnode is non-NULL */
+	vp = kseg->_log->f_vnode;
+	if (vp->v_type != VREG) {
+
+		return -1;
+	}
+
+	rc = vn_start_write(vp, &mp, V_WAIT);
+	if (rc == 0) {
+
+		VOP_LOCK(vp, LK_EXCLUSIVE | LK_RETRY);
+		VOP_FSYNC(vp, MNT_WAIT, curthread);
+		VOP_UNLOCK(vp, 0);
+		vn_finished_write(mp);
+		return 0;
+	}
+
+	return -1;
 }
 
