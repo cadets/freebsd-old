@@ -30,6 +30,7 @@
  *
  */
 
+#include <stdbool.h>
 #include <dt_impl.h>
 #include <errno.h>
 #include <libgen.h>
@@ -41,21 +42,29 @@
 #include <unistd.h>
 
 #include "dl_assert.h"
+#include "dl_bbuf.h"
+#include "dl_memory.h"
 #include "dl_utils.h"
+
+const dlog_malloc_func dlog_alloc = malloc;
+const dlog_free_func dlog_free = free;
 
 static int dtc_get_buf(dtrace_hdl_t *, int, dtrace_bufdesc_t **);
 static void dtc_put_buf(dtrace_hdl_t *, dtrace_bufdesc_t *b);
 static int dtc_buffered_handler(const dtrace_bufdata_t *, void *);
 static int dtc_setup_rx_topic(char *, char *);
 static int dtc_setup_tx_topic(char *, char *);
+static int dtc_register_daemon(void);
 
 static char *g_pname;
 static int g_status = 0;
-static int g_intr;
+static volatile int g_intr = 0;
 static rd_kafka_t *rx_rk;
 static rd_kafka_t *tx_rk;
 static rd_kafka_topic_t *tx_topic;
 static rd_kafka_topic_t *rx_topic;
+
+static char const * const DTC_PIDFILE = "/var/run/ddtracec.pid";
 
 static inline void 
 dtc_usage(FILE * fp)
@@ -63,14 +72,14 @@ dtc_usage(FILE * fp)
 
 	(void) fprintf(fp,
 	    "Usage: %s -b brokers -d -i input_topic"
-	    "[-o output_topic] -s script\n", g_pname);
+	    "[-o output_topic] -s script [-x]\n", g_pname);
 }
 
 /*ARGSUSED*/
 static inline void
 dtc_intr(int signo)
 {
-
+	DLOGTR1(PRIO_NORMAL, "Stopping %s...\n", g_pname);
 	g_intr = 1;
 }
 	
@@ -196,55 +205,84 @@ static int
 dtc_buffered_handler(const dtrace_bufdata_t *buf_data, void *arg)
 {
 	rd_kafka_topic_t *tx_topic = (rd_kafka_topic_t *) arg;
-	size_t len;
+	static struct dl_bbuf *output_buf = NULL;
+	size_t buf_len;
+	int rc;
 
 	DL_ASSERT(tx_topic != NULL, ("Transmit topic cannot be NULL"));
 
-retry:
-        if (rd_kafka_produce(
-		/* Topic object */
-		tx_topic,
-		/* Use builtin partitioner to select partition*/
-		RD_KAFKA_PARTITION_UA,
-		/* Make a copy of the payload. */
-		RD_KAFKA_MSG_F_COPY,
-		/* Message payload (value) and length */
-		(void *) buf_data->dtbda_buffered,
-		strlen(buf_data->dtbda_buffered),
-		/* Optional key and its length */
-		NULL, 0,
-		/* Message opaque, provided in
-		 * delivery report callback as
-		 * msg_opaque. */
-		NULL) == -1) {
-		/**
-		* Failed to *enqueue* message for producing.
-		*/
-		DLOGTR2(PRIO_HIGH,
-		    "%% Failed to produce to topic %s: %s\n",
-		    rd_kafka_topic_name(rx_topic),
-		    rd_kafka_err2str(rd_kafka_last_error()));
+	buf_len = strlen(buf_data->dtbda_buffered);
 
-		/* Poll to handle delivery reports */
-		if (rd_kafka_last_error() ==
-		    RD_KAFKA_RESP_ERR__QUEUE_FULL) {
-			/* If the internal queue is full, wait for
-			 * messages to be delivered and then retry.
-			 * The internal queue represents both
-			 * messages to be sent and messages that have
-			 * been sent or failed, awaiting their
-			 * delivery report callback to be called.
-			 *
-			 * The internal queue is limited by the
-			 * configuration property
-			 * queue.buffering.max.messages */
-			rd_kafka_poll(tx_rk, 1000 /*block for max 1000ms*/);
-			goto retry;
+	/* '{' indicates the start of the JSON message.
+	 * Allocate a buffer into which the message is written.
+	 */
+	if (buf_data->dtbda_buffered[0] == '{') {
+
+		DLOGTR0(PRIO_LOW, "Start of JSON message\n");
+		dl_bbuf_new_auto(&output_buf) ;
+	} 
+
+	/* Buffer the received data until the end of the JSON message 
+	 * is received.
+	 * */
+	dl_bbuf_bcat(output_buf, buf_data->dtbda_buffered, buf_len);
+
+	/* '}' indicates the start of the JSON message.
+	 * Allocate a buffer into which the message is written.
+	 */
+	if (buf_data->dtbda_buffered[0] == '}') {
+
+		DLOGTR0(PRIO_LOW, "End of JSON message\n");
+retry:
+		if (rd_kafka_produce(
+			/* Topic object */
+			tx_topic,
+			/* Use builtin partitioner to select partition*/
+			RD_KAFKA_PARTITION_UA,
+			/* Make a copy of the payload. */
+			RD_KAFKA_MSG_F_COPY,
+			/* Message payload (value) and length */
+			dl_bbuf_data(output_buf),
+			dl_bbuf_pos(output_buf),
+			/* Optional key and its length */
+			NULL, 0,
+			/* Message opaque, provided in
+			* delivery report callback as
+			* msg_opaque. */
+			NULL) == -1) {
+			/**
+			* Failed to *enqueue* message for producing.
+			*/
+			DLOGTR2(PRIO_HIGH,
+			"%% Failed to produce to topic %s: %s\n",
+			rd_kafka_topic_name(rx_topic),
+			rd_kafka_err2str(rd_kafka_last_error()));
+
+			/* Poll to handle delivery reports */
+			if (rd_kafka_last_error() ==
+			RD_KAFKA_RESP_ERR__QUEUE_FULL) {
+				/* If the internal queue is full, wait for
+				* messages to be delivered and then retry.
+				* The internal queue represents both
+				* messages to be sent and messages that have
+				* been sent or failed, awaiting their
+				* delivery report callback to be called.
+				*
+				* The internal queue is limited by the
+				* configuration property
+				* queue.buffering.max.messages */
+				rd_kafka_poll(tx_rk, 1000 /*block for max 1000ms*/);
+				goto retry;
+			}
+		} else {
+			DLOGTR2(PRIO_LOW,
+			    "%% Enqueued message (%zd bytes) for topic %s\n",
+			    buf_len, rd_kafka_topic_name(tx_topic));
 		}
-	} else {
-		DLOGTR2(PRIO_LOW,
-		    "%% Enqueued message (%zd bytes) for topic %s\n",
-		    len, rd_kafka_topic_name(tx_topic));
+
+		/* Free the buffer for the start of the next JSON message */
+		dl_bbuf_delete(output_buf);
+		output_buf = NULL;
 	}
 	return 0;
 }
@@ -275,6 +313,34 @@ dtc_setup_rx_topic(char *topic_name, char *brokers)
          * set of brokers from the cluster.
 	 */
         if (rd_kafka_conf_set(conf, "bootstrap.servers", brokers,
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_rx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "enable.auto.commit", "true",
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_rx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "auto.commit.interval.ms", "1000",
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_rx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "enable.auto.offset.store", "true",
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_rx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "group.id", g_pname,
 	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
                 DLOGTR1(PRIO_HIGH, "%s\n", errstr);
@@ -351,7 +417,7 @@ dtc_setup_tx_topic(char *topic_name, char *brokers)
 	 * The configuration instance does not need to be freed after
 	 * this succeeds.
 	 */
-	if (!(tx_rk = rd_kafka_new(RD_KAFKA_CONSUMER, conf, errstr,
+	if (!(tx_rk = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr,
 	    sizeof(errstr)))) {
 
 		DLOGTR2(PRIO_HIGH,
@@ -381,6 +447,61 @@ configure_tx_topic_err:
 	return -1;
 }
 
+static void
+dtc_close_pidfile(void)
+{
+
+	/* Unlink the dlogd pid file. */	
+	DLOGTR0(PRIO_LOW, "Unlinking dlogd pid file\n");
+	if (unlink(DTC_PIDFILE) == -1 && errno != ENOENT)
+		DLOGTR0(PRIO_HIGH,
+		    "Error unlinking ddtrace_consumer pid file\n");
+}
+
+static int
+dtc_register_daemon(void)
+{
+	FILE * pidfile;
+	struct sigaction act;
+	int fd;
+	pid_t pid;
+
+	(void) sigemptyset(&act.sa_mask);
+	act.sa_flags = 0;
+	act.sa_handler = dtc_intr;
+	(void) sigaction(SIGINT, &act, NULL);
+	(void) sigaction(SIGTERM, &act, NULL);
+
+	if ((pidfile = fopen(DTC_PIDFILE, "a")) == NULL) {
+	
+		DLOGTR0(PRIO_HIGH,
+		    "Failed to open pid file for DDTrace consumer\n");
+		return (-1);
+	}
+
+	/* Attempt to lock the pid file; if a lock is present, exit. */
+	fd = fileno(pidfile);
+	if (flock(fd, LOCK_EX | LOCK_NB) < 0) {
+
+		DLOGTR0(PRIO_HIGH,
+		    "Failed to lock pid file for DDTrace consumer\n");
+		return (-1);
+	}
+
+	pid = getpid();
+	ftruncate(fd, 0);
+	if (fprintf(pidfile, "%u\n", pid) < 0) {
+
+		/* Should not start the daemon. */
+		DLOGTR0(PRIO_HIGH,
+		    "Failed write pid file for DDTrace consumer\n");
+	}
+
+	fflush(pidfile);
+	atexit(dtc_close_pidfile);
+	return 0;
+}
+
 /*
  * Prototype distributed dtrace agent.
  * The agent recieves DTrace records from an Apache Kafka topic and prints
@@ -394,12 +515,13 @@ main(int argc, char *argv[])
 	dtrace_proginfo_t info;
 	dtrace_hdl_t *dtp;
 	FILE *fp = NULL;
-	int64_t start_offset = RD_KAFKA_OFFSET_BEGINNING;
+	int64_t start_offset = RD_KAFKA_OFFSET_STORED;
 	int c, err, partition = 0, ret = 0, script_argc = 0;
-	char *args, *brokers = NULL, *rx_topic_name = NULL,
-	    *tx_topic_name = NULL;
+	char *args, *brokers = NULL, *rx_topic_name = NULL;
+	char *tx_topic_name = NULL;
 	char **script_argv;
-	int debug = 0;
+	int fds[2];
+	bool debug = false;
 
 	g_pname = basename(argv[0]); 	
 
@@ -416,13 +538,13 @@ main(int argc, char *argv[])
 
 	opterr = 0;
 	for (optind = 0; optind < argc; optind++) {
-		while ((c = getopt(argc, argv, "b:idi:o:s:")) != -1) {
+		while ((c = getopt(argc, argv, "b:di:o:s:x")) != -1) {
 			switch(c) {
 			case 'b':
 				brokers = optarg;
 				break;
 			case 'd':
-				debug = 1;
+				debug = true;
 				break;
 			case 'i':
 				rx_topic_name = optarg;
@@ -439,6 +561,9 @@ main(int argc, char *argv[])
 					ret = -1;
 					goto free_script_args;
 				}
+				break;
+			case 'x': 
+				start_offset = RD_KAFKA_OFFSET_BEGINNING;
 				break;
 			case '?':
 			default:
@@ -460,13 +585,29 @@ main(int argc, char *argv[])
 	}
 
 	/* Daemonise */
+	if (debug == false && daemon(0, 0) == -1) {
 
-	if (dtc_setup_rx_topic(rx_topic_name, brokers) != 0){
+		DLOGTR0(PRIO_HIGH, "Failed registering dlogd as daemon\n");
+		ret = -1;
+		goto free_script_args;
+	}
+	
+	DLOGTR1(PRIO_LOW, "%s daemon starting...\n", g_pname);
 
+	if (dtc_register_daemon() != 0) {
+
+		DLOGTR0(PRIO_HIGH, "Failed registering dlogd as daemon\n");
 		ret = -1;
 		goto free_script_args;
 	}
 
+	if (dtc_setup_rx_topic(rx_topic_name, brokers) != 0){
+
+		DLOGTR1(PRIO_HIGH, "Failed to setup receive topic %s\n",
+		    rx_topic_name);
+		ret = -1;
+		goto free_script_args;
+	}
 
 	if (rd_kafka_consume_start(rx_topic, partition, start_offset) == -1) {
 
@@ -496,30 +637,6 @@ main(int argc, char *argv[])
 	}
 	DLOGTR1(PRIO_LOW, "%s: dtrace initialized\n", g_pname);
 
-	/* If the transmit topic name is configured create a new tranmitting
-	 * topic and register a buffered handler to write to this
-	 * topic with dtrace.
-	 */
-       if (tx_topic_name != NULL) {	
-		if (dtc_setup_tx_topic(tx_topic_name, brokers)
-		    != 0) {
-	
-			ret = -1;
-			goto destroy_dtrace;
-		}
-
-		if (dtrace_handle_buffered(dtp, dtc_buffered_handler,
-		    tx_topic)) {
-
-			DLOGTR2(PRIO_HIGH,
-			    "%s: failed registering dtrace "
-			    "buffered handler %s",
-			    g_pname, dtrace_errmsg(dtp, dtrace_errno(dtp)));
-			ret = -1;
-			goto destroy_tx_kafka;
-		}
-	}
-
 	/* Configure dtrace.
 	 * Trivially small buffers can be configured as trace collection
 	 * does not occure locally.
@@ -538,7 +655,7 @@ main(int argc, char *argv[])
 		DLOGTR2(PRIO_HIGH, "%s: failed to compile dtrace program %s",
 		    g_pname, dtrace_errmsg(dtp, dtrace_errno(dtp)));
 		ret = -1;
-		goto destroy_tx_kafka;
+		goto destroy_dtrace;
 	}
 	DLOGTR1(PRIO_LOW, "%s: dtrace program compiled\n", g_pname);
 	
@@ -549,27 +666,47 @@ main(int argc, char *argv[])
 		DLOGTR2(PRIO_HIGH, "%s: failed to enable dtrace probes %s",
 		    g_pname, dtrace_errmsg(dtp, dtrace_errno(dtp)));
 		ret = -1;
-		goto destroy_tx_kafka;
+		goto destroy_dtrace;
 	}
 	DLOGTR1(PRIO_LOW, "%s: dtrace probes enabled\n", g_pname);
 
-	struct sigaction act;
-	(void) sigemptyset(&act.sa_mask);
-	act.sa_flags = 0;
-	act.sa_handler = dtc_intr;
-	(void) sigaction(SIGINT, &act, NULL);
-	(void) sigaction(SIGTERM, &act, NULL);
+	/* If the transmit topic name is configured create a new tranmitting
+	 * topic and register a buffered handler to write to this
+	 * topic with dtrace.
+	 */
+        if (tx_topic_name != NULL) {	
+		if (dtc_setup_tx_topic(tx_topic_name, brokers)
+		    != 0) {
+	
+			ret = -1;
+			goto destroy_dtrace;
+		}
+
+		if (dtrace_handle_buffered(dtp, dtc_buffered_handler,
+		    tx_topic) == -1) {
+
+			DLOGTR2(PRIO_HIGH,
+			    "%s: failed registering dtrace "
+			    "buffered handler %s",
+			    g_pname, dtrace_errmsg(dtp, dtrace_errno(dtp)));
+			ret = -1;
+			goto destroy_tx_kafka;
+		}
+	}
 
 	int done = 0;
 	do {
 		if (!done || !g_intr)
-			dtrace_sleep(dtp);	
+			sleep(1);	
 
 		if (done || g_intr) {
 			done = 1;
 		}
 
-		switch (dtrace_work_detached(dtp, stdout, &con, rx_topic)) {
+		/* Poll to handle delivery reports. */
+		rd_kafka_poll(tx_rk, 0);
+
+		switch (dtrace_work_detached(dtp, NULL, &con, rx_topic)) {
 		case DTRACE_WORKSTATUS_DONE:
 			done = 1;
 			break;
@@ -586,9 +723,14 @@ main(int argc, char *argv[])
 
 	} while (!done);
 
+
 destroy_tx_kafka:
+	rd_kafka_flush(tx_rk, 10*1000);
+
 	if (tx_topic_name != NULL) {	
 		/* Destroy the Kafka transmit topic */
+		DLOGTR1(PRIO_LOW, "%s: destroy kafka transmit topic\n",
+		    g_pname);
 		rd_kafka_topic_destroy(tx_topic);
 
 		/* Destroy the Kafka transmit handle. */
@@ -605,12 +747,21 @@ destroy_dtrace:
 destroy_rx_kafka:
 	DLOGTR1(PRIO_LOW, "%s: destroy kafka receive topic\n", g_pname);
 
+	rd_kafka_consume_stop(rx_rk, partition);
+
 	/* Destroy the Kafka receive topic */
 	rd_kafka_topic_destroy(rx_topic);
 
 	/* Destroy the Kafka recieve handle. */
 	DLOGTR1(PRIO_LOW, "%s: destroy kafka receive handle\n", g_pname);
 	rd_kafka_destroy(rx_rk);
+
+	/* Let background threads clean up and terminate cleanly. */
+	int run = 5;
+	while (run-- > 0 && rd_kafka_wait_destroyed(1000) == -1)
+		printf("Waiting for librdkafka to decommission\n");
+	if (run <= 0)
+		rd_kafka_dump(stdout, rx_rk);
 
 free_script_args:	
 	/* Free the memory used to hold the script arguments. */	
