@@ -29,7 +29,7 @@
 # SUCH DAMAGE.
 #
 
-.PATH : ${SRCTOP}/contrib/ddtrace .${SRCTOP}/contrib/dlog/src
+.PATH : ${SRCTOP}/contrib/ddtrace ${SRCTOP}/contrib/dlog/src
 
 PROG= ddtrace_consumer
 BINDIR= /usr/sbin
