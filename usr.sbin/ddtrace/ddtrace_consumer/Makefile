@@ -29,12 +29,12 @@
 # SUCH DAMAGE.
 #
 
-.PATH : ${SRCTOP}/contrib/ddtrace
+.PATH : ${SRCTOP}/contrib/ddtrace .${SRCTOP}/contrib/dlog/src
 
 PROG= ddtrace_consumer
 BINDIR= /usr/sbin
 
-SRCS= ddtrace_consumer.c
+SRCS= ddtrace_consumer.c dl_bbuf.c
 MAN=
 
 LIBADD+=dtrace
