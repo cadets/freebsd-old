@@ -69,9 +69,7 @@
  * XXXRW: Move trail flags to audit_private.h, as they no longer need to be
  * visible outside the audit code...?
  */
-#ifdef KDTRACE_HOOKS
 extern u_int	audit_dtrace_enabled;
-#endif
 extern int	audit_trail_enabled;
 extern int	audit_trail_suspended;
 extern int	audit_syscalls_enabled;
