@@ -20,7 +20,7 @@
 
 include GENERIC
 
-ident   CADETS
+ident   CADETS-LITE
 options METAIO
 
 # Disable most of the things that GENERIC-NODEBUG disables, but keep
