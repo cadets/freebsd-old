@@ -78,7 +78,7 @@ SRCS=		crc32c.c \
 .PATH:		${LIBRDKAFKA}/src
 
 INCS=		rdkafka.h
-#LIBADD=	c
+INCSDIR=	${INCLUDEDIR}/private/rdkafka
 
 WARNS=		1
 CFLAGS+=	-I${LIBRDKAFKA}/src
