@@ -1,0 +1,35 @@
+#!/bin/sh
+#
+# $FreeBSD$
+#
+# Start up for the DDTrace consumer daemon.
+#
+
+# PROVIDE: ddtracec
+# REQUIRE: syslogd
+# BEFORE:  DAEMON
+# KEYWORD: nojail shutdown
+
+. /etc/rc.subr
+
+name="ddtrace_consumer"
+desc="DDTrace consumer daemon"
+start_cmd="ddtracecd_start"
+stop_cmd="ddtracecd_stop"
+dddtraced_command="/usr/sbin/${name}"
+rcvar="ddtracecd_enable"
+command_args="${ddtracec_flags}"
+
+ddtracecd_start()
+{
+
+	${ddtracecd_command}
+}
+
+ddtracecd_stop()
+{
+
+}
+
+load_rc_config $name
+run_rc_command "$1"
