@@ -2,7 +2,7 @@
 
 LIBRDKAFKA=	${SRCTOP}/contrib/librdkafka
 
-.include <${LIBRDKAFKA}/Makefile.config>
+#.include <${LIBRDKAFKA}/Makefile.config>
 
 .if !defined(COMPAT_32BIT)
 CFLASG+= -DWITH_CRC32C_HW=1
