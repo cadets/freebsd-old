@@ -52,7 +52,6 @@ CFLAGS+=-DNDEBUG
 CFLAGS+=-DNEED_SOLARIS_BOOLEAN
 CFLAGS+=-L/usr/local/lib
 CFLAGS+=-I/usr/local/include
-CFLAGS+=-I/usr/include/private
 CFLAGS+=-I${SRCTOP}/cddl/compat/opensolaris/include
 CFLAGS+=-I${SRCTOP}/cddl/contrib/opensolaris/lib/libdtrace/common
 CFLAGS+=-I${SRCTOP}/cddl/contrib/opensolaris/lib/libctf/common

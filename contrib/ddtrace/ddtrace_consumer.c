@@ -34,7 +34,7 @@
 #include <dt_impl.h>
 #include <errno.h>
 #include <libgen.h>
-#include <rdkafka/rdkafka.h>
+#include <private/rdkafka/rdkafka.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdlib.h>
