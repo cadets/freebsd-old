@@ -1,0 +1,7 @@
+include CADETS
+ident DDTRACE
+
+# Distributed DTrace components
+options		DDTRACE
+# Kafka-compatible distributed log
+options		DLOG

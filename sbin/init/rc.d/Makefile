@@ -32,6 +32,7 @@ CONFS=	DAEMON \
 	devfs \
 	devmatch \
 	dhclient \
+	dlogd \
 	dmesg \
 	dumpon \
 	fsck \

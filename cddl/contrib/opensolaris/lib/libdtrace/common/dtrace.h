@@ -205,15 +205,24 @@ typedef struct dtrace_probedata {
 typedef int dtrace_consume_probe_f(const dtrace_probedata_t *, void *);
 typedef int dtrace_consume_rec_f(const dtrace_probedata_t *,
     const dtrace_recdesc_t *, void *);
+typedef void dtrace_put_buf_f(dtrace_hdl_t *, dtrace_bufdesc_t *);
+typedef int dtrace_get_buf_f(dtrace_hdl_t *, int, dtrace_bufdesc_t **);
 
-extern int dtrace_consume(dtrace_hdl_t *, FILE *,
-    dtrace_consume_probe_f *, dtrace_consume_rec_f *, void *);
+typedef struct dtrace_consumer {
+	dtrace_consume_probe_f *dc_consume_probe;
+	dtrace_consume_rec_f *dc_consume_rec;
+	dtrace_put_buf_f *dc_put_buf;
+	dtrace_get_buf_f *dc_get_buf;
+} dtrace_consumer_t;
+
+extern int dtrace_consume(dtrace_hdl_t *, FILE *, dtrace_consumer_t *, void *);
 
 #define	DTRACE_STATUS_NONE	0	/* no status; not yet time */
 #define	DTRACE_STATUS_OKAY	1	/* status okay */
 #define	DTRACE_STATUS_EXITED	2	/* exit() was called; tracing stopped */
 #define	DTRACE_STATUS_FILLED	3	/* fill buffer filled; tracing stoped */
 #define	DTRACE_STATUS_STOPPED	4	/* tracing already stopped */
+#define	DTRACE_STATUS_INACTIVE	5	/* tracing not started */
 
 extern int dtrace_status(dtrace_hdl_t *);
 
@@ -271,7 +280,9 @@ typedef enum {
 } dtrace_workstatus_t;
 
 extern dtrace_workstatus_t dtrace_work(dtrace_hdl_t *, FILE *,
-    dtrace_consume_probe_f *, dtrace_consume_rec_f *, void *);
+    dtrace_consumer_t *, void *);
+extern dtrace_workstatus_t dtrace_work_detached(dtrace_hdl_t *, FILE *,
+    dtrace_consumer_t *, void *);
 
 /*
  * DTrace Handler Interface
