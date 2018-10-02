@@ -47,6 +47,7 @@ LIBADD+=rdkafka
 LIBADD+=sbuf #?
 LIBADD+=nv
 
+# TOD: These includes need some tidying up
 CFLAGS+=-DNDEBUG
 CFLAGS+=-DNEED_SOLARIS_BOOLEAN
 CFLAGS+=-L/usr/local/lib
@@ -55,9 +56,11 @@ CFLAGS+=-I/usr/src/cddl/compat/opensolaris/include
 CFLAGS+=-I/usr/src/cddl/contrib/opensolaris/lib/libdtrace/common
 CFLAGS+=-I/usr/src/cddl/contrib/opensolaris/lib/libctf/common
 CFLAGS+=-I/usr/src/cddl/lib/libdtrace
+CFLAGS+=-I/usr/src/cddl/lib/libdtrace/common
 CFLAGS+=-I/usr/src/sys/cddl/compat/opensolaris
 CFLAGS+=-I/usr/src/sys/cddl/contrib/opensolaris/uts/common
 CFLAGS+=-I/usr/src/sys
+CFLAGS+=-I${SRCTOP}/cddl/contrib/opensolaris/lib/libdtrace/common
 CFLAGS+=-I${SRCTOP}/contrib/dlog/src
 CFLAGS+=-I${SRCTOP}/sys/dev/dlog
 
