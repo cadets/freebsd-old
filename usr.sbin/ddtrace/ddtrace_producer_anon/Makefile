@@ -57,6 +57,7 @@ CFLAGS+=-I/usr/src/cddl/lib/libdtrace
 CFLAGS+=-I/usr/src/sys/cddl/compat/opensolaris
 CFLAGS+=-I/usr/src/sys/cddl/contrib/opensolaris/uts/common
 CFLAGS+=-I/usr/src/sys
+CFLAGS+=-I${SRCTOP}/cddl/contrib/opensolaris/lib/libdtrace/common
 CFLAGS+=-I${SRCTOP}/contrib/dlog/src
 CFLAGS+=-I${SRCTOP}/sys/dev/dlog
 
