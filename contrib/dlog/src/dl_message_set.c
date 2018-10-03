@@ -397,7 +397,7 @@ dl_message_set_encode_compressed(struct dl_message_set const *message_set,
 			    ("Compressed MessageSet > than uncompressed."));
 		}
 		deflate_rc = deflate(&stream, Z_FINISH);
-		DL_ASSERT(deflate_rc == Z_OK,
+		DL_ASSERT(deflate_rc >= 0,
 		    ("Error deflating MessageSet with zlib %d", deflate_rc));
 	};
 
