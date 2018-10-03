@@ -100,7 +100,9 @@ void rd_kafka_transport_close (rd_kafka_transport_t *rktrans) {
 	}
 #endif
 
+#if WITH_SASL
         rd_kafka_sasl_close(rktrans);
+#endif
 
 	if (rktrans->rktrans_recv_buf)
 		rd_kafka_buf_destroy(rktrans->rktrans_recv_buf);

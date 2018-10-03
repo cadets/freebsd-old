@@ -159,7 +159,9 @@ static void rd_kafka_global_cnt_incr (void) {
 #if WITH_SSL
 		rd_kafka_transport_ssl_init();
 #endif
+#if WITH_SASL
                 rd_kafka_sasl_global_init();
+#endif
 	}
 	mtx_unlock(&rd_kafka_global_lock);
 }
@@ -173,7 +175,9 @@ static void rd_kafka_global_cnt_decr (void) {
 	rd_kafka_assert(NULL, rd_kafka_global_cnt > 0);
 	rd_kafka_global_cnt--;
 	if (rd_kafka_global_cnt == 0) {
+#if WITH_SASL
                 rd_kafka_sasl_global_term();
+#endif
 #if WITH_SSL
 		rd_kafka_transport_ssl_term();
 #endif
@@ -1636,6 +1640,7 @@ rd_kafka_t *rd_kafka_new (rd_kafka_type_t type, rd_kafka_conf_t *app_conf,
                 goto fail;
         }
 
+#if WITH_SASL
         if (rk->rk_conf.security_protocol == RD_KAFKA_PROTO_SASL_SSL ||
             rk->rk_conf.security_protocol == RD_KAFKA_PROTO_SASL_PLAINTEXT) {
                 if (rd_kafka_sasl_select_provider(rk,
@@ -1645,6 +1650,7 @@ rd_kafka_t *rd_kafka_new (rd_kafka_type_t type, rd_kafka_conf_t *app_conf,
                         goto fail;
                 }
         }
+#endif
 
 #if WITH_SSL
 	if (rk->rk_conf.security_protocol == RD_KAFKA_PROTO_SSL ||
