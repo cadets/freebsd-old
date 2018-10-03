@@ -206,17 +206,11 @@ dlp_transport_hdlr(void *instance, int fd, int revents)
 
 						switch (req->dlrq_api_key) {
 						case DL_PRODUCE_API_KEY:
-							dl_produce_response_decode(
-							&response, buffer);
 							break;
 						case DL_FETCH_API_KEY:
-							dl_fetch_response_decode(
-							&response, buffer);
-							break;
+							/* FALLTHROUGH */
 						case DL_OFFSET_API_KEY:
-							dl_list_offset_response_decode(
-							&response, buffer);
-							break;
+							/* FALLTHROUGH */
 						default:
 							DLOGTR1(PRIO_HIGH,
 							"Request ApiKey is invalid (%d)\n",
