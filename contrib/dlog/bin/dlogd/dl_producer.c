@@ -110,8 +110,8 @@ static void dl_producer_timer_handler(void *instance, int, int);
 static void *dlp_produce_thread(void *vargp);
 static void *dlp_resender_thread(void *vargp);
 
-static const off_t DL_FSYNC_DEFAULT_CHARS = 1024*1024;
-static const off_t DL_INDEX_DEFAULT_CHARS = 1024*1024;
+static const off_t DL_FSYNC_DEFAULT_CHARS = 200*1024;
+static const off_t DL_INDEX_DEFAULT_CHARS = 200*1024;
 static const int NOTIFY_IDENT = 1337;
 static const int DLP_MINRECONN_MS = 1000;
 static const int DLP_MAXRECONN_MS = 60000;
