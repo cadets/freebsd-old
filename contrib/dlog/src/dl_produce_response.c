@@ -199,7 +199,7 @@ dl_produce_response_decode(struct dl_response **self,
 		/* Allocate, decode and enqueue each response. */
 		topic_response = (struct dl_produce_response_topic *)
 		    dlog_alloc(sizeof(struct dl_produce_response_topic) +
-		    (nparts-1 * sizeof(struct dl_produce_response_partition)));
+		    (nparts * sizeof(struct dl_produce_response_partition)));
 #ifdef _KERNEL
 		DL_ASSERT(topic_response != NULL,
 		    ("Failed to allocate ProduceResponse.\n"));
