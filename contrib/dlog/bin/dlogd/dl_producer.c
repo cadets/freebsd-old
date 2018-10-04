@@ -147,7 +147,7 @@ dlp_transport_hdlr(void *instance, int fd, int revents)
 {
 	struct dl_producer * const self = instance;
 	struct dl_request_element *req;
-	struct dl_response *response;
+	/* struct dl_response *response; */ //TODO: check response and clear memory
 	struct dl_response_header *hdr;
 	struct dl_bbuf *buffer;
 	socklen_t len = sizeof(int);
