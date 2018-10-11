@@ -19,8 +19,8 @@
 # $FreeBSD$
 
 include GENERIC
+ident   CADETS-DEBUG
 
-ident   CADETS
 options	DDTRACE
 options	DLOG
 options METAIO
