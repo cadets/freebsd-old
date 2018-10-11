@@ -34,12 +34,18 @@
 #include <dt_impl.h>
 #include <errno.h>
 #include <libgen.h>
-#include <private/rdkafka/rdkafka.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <getopt.h>
+
+#ifdef _KERNEL
+#include <private/rdkafka/rdkafka.h>
+#else
+#include <librdkafka/rdkafka.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_bbuf.h"
@@ -52,9 +58,13 @@ const dlog_free_func dlog_free = free;
 static int dtc_get_buf(dtrace_hdl_t *, int, dtrace_bufdesc_t **);
 static void dtc_put_buf(dtrace_hdl_t *, dtrace_bufdesc_t *b);
 static int dtc_buffered_handler(const dtrace_bufdata_t *, void *);
-static int dtc_setup_rx_topic(char *, char *);
-static int dtc_setup_tx_topic(char *, char *);
+static int dtc_setup_rx_topic(char *, char *, char *, char *, char *,
+    char *);
+static int dtc_setup_tx_topic(char *, char *, char *, char *, char *,
+    char *);
 static int dtc_register_daemon(void);
+
+static char const * const DTC_PIDFILE = "/var/run/ddtracec.pid";
 
 static char *g_pname;
 static int g_status = 0;
@@ -63,8 +73,6 @@ static rd_kafka_t *rx_rk;
 static rd_kafka_t *tx_rk;
 static rd_kafka_topic_t *tx_topic;
 static rd_kafka_topic_t *rx_topic;
-
-static char const * const DTC_PIDFILE = "/var/run/ddtracec.pid";
 
 static inline void 
 dtc_usage(FILE * fp)
@@ -288,7 +296,8 @@ retry:
 }
 
 static int
-dtc_setup_rx_topic(char *topic_name, char *brokers)
+dtc_setup_rx_topic(char *topic_name, char *brokers, char *ca_cert,
+    char *client_cert, char *priv_key, char *password)
 {
 	rd_kafka_conf_t *conf;
 	char errstr[512];
@@ -347,6 +356,51 @@ dtc_setup_rx_topic(char *topic_name, char *brokers)
 		goto configure_rx_topic_new_err;
         }
 
+	/* Configure TLS support:
+	 * https://github.com/edenhill/librdkafka/wiki/Using-SSL-with-librdkafkaxi
+	 */
+	if (rd_kafka_conf_set(conf, "metadata.broker.list", brokers,
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_rx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "security.protocol", "ssl",
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_rx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "ssl.ca.location", ca_cert,
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_rx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "ssl.certificate.location", client_cert,
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_rx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "ssl.key.location", priv_key,
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_rx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "ssl.key.password", password,
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_rx_topic_new_err;
+        }
+
 	/* Create the Kafka consumer.
 	 * The configuration instance does not need to be freed after
 	 * this succeeds.
@@ -382,7 +436,8 @@ configure_rx_topic_err:
 }
 
 static int
-dtc_setup_tx_topic(char *topic_name, char *brokers)
+dtc_setup_tx_topic(char *topic_name, char *brokers, char *ca_cert,
+    char *client_cert, char *priv_key, char *password)
 {
 	rd_kafka_conf_t *conf;
 	char errstr[512];
@@ -411,6 +466,51 @@ dtc_setup_tx_topic(char *topic_name, char *brokers)
 
                 DLOGTR1(PRIO_HIGH, "%s\n", errstr);
 		goto configure_tx_topic_conf_err;
+        }
+
+	/* Configure TLS support:
+	 * https://github.com/edenhill/librdkafka/wiki/Using-SSL-with-librdkafkaxi
+	 */
+	if (rd_kafka_conf_set(conf, "metadata.broker.list", brokers,
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_tx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "security.protocol", "ssl",
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_tx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "ssl.ca.location", ca_cert,
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_tx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "ssl.certificate.location", client_cert,
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_tx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "ssl.key.location", priv_key,
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_tx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "ssl.key.password", password,
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_tx_topic_new_err;
         }
 
 	/* Create the Kafka producer.
@@ -515,11 +615,25 @@ main(int argc, char *argv[])
 	dtrace_proginfo_t info;
 	dtrace_hdl_t *dtp;
 	FILE *fp = NULL;
-	int64_t start_offset = RD_KAFKA_OFFSET_STORED;
 	int c, err, partition = 0, ret = 0, script_argc = 0;
-	char *args, *brokers = NULL, *rx_topic_name = NULL;
-	char *tx_topic_name = NULL;
+	char *args, *brokers, *rx_topic_name = NULL;
+	char *tx_topic_name = NULL, *client_cert = NULL;
+	char *ca_cert = NULL, *priv_key = NULL, *password = NULL;
 	char **script_argv;
+	int64_t start_offset = RD_KAFKA_OFFSET_STORED;
+	static struct option dtc_options[] = {
+		{"brokers", required_argument, 0, 'b'},
+		{"cacert", no_argument, NULL, 'a'},
+		{"clientcert", no_argument, NULL, 'c'},
+		{"debug", no_argument, NULL, 'd'},
+		{"frombeginning", no_argument, NULL, 'f'},
+		{"intopic", required_argument, NULL, 'i'},
+		{"outtopic", required_argument, NULL, 'o'},
+		{"password", required_argument, NULL, 'p'},
+		{"privkey", required_argument, NULL, 'k'},
+		{"script", required_argument, NULL, 's'},
+		{0, 0, 0, 0}
+	};
 	int fds[2];
 	bool debug = false;
 
@@ -536,45 +650,72 @@ main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	opterr = 0;
-	for (optind = 0; optind < argc; optind++) {
-		while ((c = getopt(argc, argv, "b:di:o:s:x")) != -1) {
-			switch(c) {
-			case 'b':
-				brokers = optarg;
-				break;
-			case 'd':
-				debug = true;
-				break;
-			case 'i':
-				rx_topic_name = optarg;
-				break;
-			case 'o':
-				tx_topic_name = optarg;
-				break;
-			case 's':
-				if ((fp = fopen(optarg, "r")) == NULL) {
+	while ((c = getopt_long(argc, argv, "a:b:c:dfi:k:o:p:s:",
+	    dtc_options, NULL)) != -1) {
+		switch (c) {
+		case 'a':
+			/* CA certifcate file for TLS */
+			ca_cert = optarg;
+			break;
+		case 'b':
+			/* Kafka broker string */
+			brokers = optarg;
+			break;
+		case 'c':
+			/* Client certificate file for TLS */
+			client_cert = optarg;
+			break;
+		case 'd':
+			/* Debug flag */
+			debug = true;
+			break;
+		case 'f':
+			/* Kafla offset from beginning of topic */
+			start_offset = RD_KAFKA_OFFSET_BEGINNING;
+			break;
+		case 'i':
+			/* Kafla input topic */
+			rx_topic_name = optarg;
+			break;
+		case 'k':
+			/* Client private key file for TLS */
+			priv_key = optarg;
+			break;
+		case 'o':
+			/* Kafla output topic */
+			tx_topic_name = optarg;
+			break;
+		case 'p':
+			/* Client private key password for TLS */
+			password = optarg;
+			break;
+		case 's':
+			/* DTrace script used to interpret the
+			 * records within the kafka topic.
+			 */
+			if ((fp = fopen(optarg, "r")) == NULL) {
 
-					DLOGTR2(PRIO_HIGH,
-					    "%s: failed to open script file "
-					    "%s\n", optarg, g_pname);
-					ret = -1;
-					goto free_script_args;
-				}
-				break;
-			case 'x': 
-				start_offset = RD_KAFKA_OFFSET_BEGINNING;
-				break;
-			case '?':
-			default:
-				dtc_usage(stderr);
+				DLOGTR2(PRIO_HIGH,
+					"%s: failed to open script file "
+					"%s\n", optarg, g_pname);
 				ret = -1;
 				goto free_script_args;
 			}
+			break;
+		case '?':
+			/* FALLTHROUGH */
+		default:
+			dtc_usage(stderr);
+			ret = -1;
+			goto free_script_args;
+			break;
 		}
-
-		if (optind < argc)
-			script_argv[script_argc++] = argv[optind];
+	};
+	
+	/* Pass the remaining command line arguments to the DTrace script. */
+	script_argv[script_argc++] = g_pname;
+	while (optind < argc) {
+		script_argv[script_argc++] = argv[optind++];
 	}
 
 	if (brokers == NULL || rx_topic_name == NULL || fp == NULL) {
@@ -601,7 +742,8 @@ main(int argc, char *argv[])
 		goto free_script_args;
 	}
 
-	if (dtc_setup_rx_topic(rx_topic_name, brokers) != 0){
+	if (dtc_setup_rx_topic(rx_topic_name, brokers, ca_cert, client_cert,
+	    priv_key, password) != 0){
 
 		DLOGTR1(PRIO_HIGH, "Failed to setup receive topic %s\n",
 		    rx_topic_name);
@@ -675,7 +817,8 @@ main(int argc, char *argv[])
 	 * topic with dtrace.
 	 */
         if (tx_topic_name != NULL) {	
-		if (dtc_setup_tx_topic(tx_topic_name, brokers)
+		if (dtc_setup_tx_topic(tx_topic_name, brokers, ca_cert,
+		    client_cert, priv_key, password)
 		    != 0) {
 	
 			ret = -1;
@@ -747,7 +890,7 @@ destroy_dtrace:
 destroy_rx_kafka:
 	DLOGTR1(PRIO_LOW, "%s: destroy kafka receive topic\n", g_pname);
 
-	rd_kafka_consume_stop(rx_rk, partition);
+	rd_kafka_consume_stop(rx_topic, partition);
 
 	/* Destroy the Kafka receive topic */
 	rd_kafka_topic_destroy(rx_topic);
