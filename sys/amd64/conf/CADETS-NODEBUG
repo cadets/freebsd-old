@@ -21,4 +21,6 @@
 include GENERIC-NODEBUG
 
 ident   CADETS-NODEBUG
+options	DDTRACE
+options	DLOG
 options METAIO

@@ -1,5 +1,5 @@
 #
-# CADETS-NOWITNESS -- Configuration file for daily-driving CADETS kernel
+# CADETS -- Configuration file for a kernel instrumented by CADETS
 #
 # For more information on this file, please read the config(5) manual page,
 # and/or the handbook section on Kernel Configuration Files:
@@ -19,16 +19,18 @@
 # $FreeBSD$
 
 include GENERIC
+ident   CADETS-DEBUG
 
-ident   CADETS-LITE
 options	DDTRACE
 options	DLOG
 options METAIO
 
-# Disable most of the things that GENERIC-NODEBUG disables, but keep
-# INVARIANTS.
-nooptions       WITNESS
-nooptions       WITNESS_SKIPSPIN
-nooptions       BUF_TRACKING
-nooptions       DEADLKRES
-nooptions       FULL_BUF_TRACKING
+# Enable lots of debugging options:
+options BUF_TRACKING
+options DEBUG_VFS_LOCKS
+options DEADLKRES
+options FULL_BUF_TRACKING
+options INVARIANTS
+options INVARIANT_SUPPORT
+options WITNESS
+options WITNESS_SKIPSPIN
