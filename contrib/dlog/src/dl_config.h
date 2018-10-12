@@ -42,6 +42,7 @@
 
 #include "dl_response.h" 
 
+/* TODO: Remove this? */
 typedef void (* dl_response_func) (struct dl_response const * const);
 
 struct dl_broker_config {
@@ -66,6 +67,11 @@ struct dl_client_config_desc {
 #define DL_CONF_RESENDTIMEOUT "resend.timeout"
 #define DL_CONF_RESENDPERIOD "resend.period"
 #define DL_CONF_TOPIC "client.topic"
+#define DL_CONF_PRIVATEKEY_FILE "tls.privatekey.file"
+#define DL_CONF_CLIENT_FILE "tls.client.file"
+#define DL_CONF_CACERT_FILE "tls.cacert.file"
+#define DL_CONF_USER_PASSWORD "tls.user.password"
+#define DL_CONF_TLS_ENABLE "tls.enable"
 
 #define DL_DEFAULT_CLIENTID "dlog"
 #define DL_DEFAULT_BROKER "127.0.0.1"
@@ -74,5 +80,10 @@ struct dl_client_config_desc {
 #define DL_DEFAULT_RESENDTIMEOUT 30
 #define DL_DEFAULT_RESENDPERIOD 2
 #define DL_DEFAULT_TOPIC "test" 
+#define DL_DEFAULT_PRIVATEKEY_FILE "client.pem"
+#define DL_DEFAULT_CLIENT_FILE "client.pem"
+#define DL_DEFAULT_CACERT_FILE "cacert.pem"
+#define DL_DEFAULT_USER_PASSWORD "password"
+#define DL_DEFAULT_TLS_ENABLE false
 
 #endif

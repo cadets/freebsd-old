@@ -39,6 +39,8 @@
 
 #include <sys/nv.h>
 
+#include "dl_response.h"
+
 struct dl_producer;
 struct dl_topic;
 
@@ -54,5 +56,8 @@ extern void dl_producer_down(struct dl_producer const * const);
 extern void dl_producer_syncd(struct dl_producer const * const);
 extern void dl_producer_reconnect(struct dl_producer const * const);
 extern void dl_producer_error(struct dl_producer const * const);
+
+extern int dl_producer_response(struct dl_producer *,
+    struct dl_response_header *);
 
 #endif
