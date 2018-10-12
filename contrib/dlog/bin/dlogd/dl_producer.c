@@ -112,9 +112,11 @@ static void *dlp_resender_thread(void *vargp);
 
 static const off_t DL_FSYNC_DEFAULT_CHARS = 1024*1024;
 static const off_t DL_INDEX_DEFAULT_CHARS = 1024*1024;
-static const int NOTIFY_IDENT = 1337;
+static const int RECONNECT_TIMEOUT_EVENT = 1337;
+static const int UPDATE_INDEX_EVENT = 1336;
 static const int DLP_MINRECONN_MS = 1000;
 static const int DLP_MAXRECONN_MS = 60000;
+static const int DLP_UPDATE_INDEX_MS = 2000;
 
 static inline void 
 dl_producer_check_integrity(struct dl_producer const * const self)
@@ -197,21 +199,41 @@ dl_producer_timer_handler(void *instance, int fd __attribute((unused)),
     int revents __attribute((unused)))
 {
 	struct dl_producer const * const p = instance;
-	struct kevent event;
+	struct dl_segment *seg;
+	struct kevent events[2];
+	off_t log_position;
 	int rc;
 	
 	dl_producer_check_integrity(p);
 	
-	rc = kevent(p->dlp_ktimer, 0, 0, &event, 1, 0);
+	rc = kevent(p->dlp_ktimer, 0, 0, events, 2, 0);
 	if (rc == -1) {
 		DLOGTR2(PRIO_HIGH, "Error reading kqueue event %d %d\n.",
 		    rc, errno);
 	} else {
-
+		for (int i = 0; i < rc; i++) {
+			switch (events[i].ident) {
+			case RECONNECT_TIMEOUT_EVENT:
 #ifndef NDEBUG
-		DLOGTR0(PRIO_LOW, "Re-connect timeout\n");
+				DLOGTR0(PRIO_LOW, "Re-connect timeout\n");
 #endif
-		dl_producer_reconnect(p);
+				dl_producer_reconnect(p);
+				break;
+			case UPDATE_INDEX_EVENT:
+				seg = dl_topic_get_active_segment(p->dlp_topic);
+				DL_ASSERT(seg != NULL,
+				("Topic's active segment cannot be NULL"));
+
+				dl_segment_lock(seg);
+				log_position = lseek(dl_user_segment_get_log(seg), 0,
+					SEEK_END);
+				dl_segment_unlock(seg);
+				dl_index_update(
+				dl_user_segment_get_index(seg), log_position);
+				dl_producer_produce(p);
+				break;
+			}
+		}
 	}
 }
 
@@ -579,7 +601,7 @@ dl_producer_offline(struct dl_producer * const self)
 	self->dlp_transport = NULL;
 
 	/* Trigger reconnect event after timeout period. */	
-	EV_SET(&kev, NOTIFY_IDENT, EVFILT_TIMER,
+	EV_SET(&kev, RECONNECT_TIMEOUT_EVENT, EVFILT_TIMER,
 	    EV_ADD | EV_ONESHOT, 0, self->dlp_reconn_ms, NULL);
 	kevent(self->dlp_ktimer, &kev, 1, NULL, 0, NULL);
 
@@ -607,8 +629,9 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
     char *hostname, int port, nvlist_t *props)
 {
 	struct dl_producer *producer;
-	int rc;
+	struct kevent kev;
 	char *client_id;
+	int rc;
 
 	DL_ASSERT(self != NULL, ("Producer instance cannot be NULL."));
 	DL_ASSERT(topic != NULL, ("Producer instance cannot be NULL."));
@@ -694,6 +717,11 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 	    dl_producer_get_timer_fd;
 	producer->dlp_ktimer_hdlr.dleh_handle_event =
 	    dl_producer_timer_handler;
+
+	/* Trigger reconnect event after timeout period. */	
+	EV_SET(&kev, UPDATE_INDEX_EVENT, EVFILT_TIMER,
+	    EV_ADD , 0, DLP_UPDATE_INDEX_MS, NULL);
+	kevent(producer->dlp_ktimer, &kev, 1, NULL, 0, NULL);
 
 	dl_poll_reactor_register(&producer->dlp_ktimer_hdlr,
 	    POLLIN | POLLOUT | POLLERR);
