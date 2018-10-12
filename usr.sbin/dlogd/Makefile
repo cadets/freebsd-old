@@ -76,7 +76,6 @@ LIBADD+=ssl
 LIBADD+=ucl
 LIBADD+=z
 
-CFLAGS+=-DNDEBUG
 CFLAGS+=-g
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
 CFLAGS+=-L/usr/local/lib
