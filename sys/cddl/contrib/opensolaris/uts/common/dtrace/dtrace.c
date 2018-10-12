@@ -8815,7 +8815,7 @@ dtrace_konsumer_unregister(dtrace_konsumer_id_t *id)
 	dtrace_konsumer_t *prev = NULL;
 
 	mutex_enter(&dtrace_konsumer_lock);
-	ASSERT(MUTEX_HELD(&dtrace_lock));
+	mutex_enter(&dtrace_lock);
 
 	/* Remove the unregistered konsumer from the list. */
 	if ((prev = dtrace_konsumer) == old) {
@@ -8833,6 +8833,7 @@ dtrace_konsumer_unregister(dtrace_konsumer_id_t *id)
 		prev->dtk_next = old->dtk_next;
 	}
 
+	mutex_exit(&dtrace_lock);
 	mutex_exit(&dtrace_konsumer_lock);
 
 	kmem_free(old->dtk_name, strlen(old->dtk_name) + 1);
