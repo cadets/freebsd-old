@@ -50,7 +50,7 @@ LIBADD+=nv
 LIBADD+=z
 
 # TOD: These includes need some tidying up
-CFLAGS+=-DNDEBUG
+CFLAGS+=-DPRIVATE_RDKAFKA
 CFLAGS+=-DNEED_SOLARIS_BOOLEAN
 CFLAGS+=-L/usr/local/lib
 CFLAGS+=-I/usr/local/include
