@@ -34,32 +34,16 @@
  *
  */
 
-#ifndef _DL_TRANSPORT_H
-#define _DL_TRANSPORT_H
-
-#ifdef _KERNEL
-#include <sys/socket.h>
-#include <sys/socketvar.h>
-#endif
+#ifndef _DL_SOCK_TRANSPORT_H
+#define _DL_SOCK_TRANSPORT_H
 
 #include "dl_bbuf.h"
+#include "dl_producer.h"
+#include "dl_transport.h"
 
 struct dl_transport;
 
-extern int dl_transport_new(struct dl_transport **);
-extern void dl_transport_delete(struct dl_transport *);
-
-extern int dl_transport_connect(struct dl_transport *,
-    const char * const, const int);
-extern int dl_transport_reconnect(struct dl_transport *,
-    const char * const, const int);
-
-extern int dl_transport_read_msg(struct dl_transport *, struct dl_bbuf **);
-extern int dl_transport_send_request(struct dl_transport const *,
-    struct dl_bbuf const *);
-extern int dl_transport_poll(struct dl_transport const *, int, int);
-extern int dl_transport_close(void);
-
-extern int dl_transport_get_fd(struct dl_transport *);
+extern int dl_sock_transport_new(struct dl_transport **,
+    struct dl_producer *);
 
 #endif
