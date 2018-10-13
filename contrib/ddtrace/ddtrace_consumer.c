@@ -130,7 +130,7 @@ chewrec(const dtrace_probedata_t * data, const dtrace_recdesc_t * rec,
 	DLOGTR1(PRIO_LOW, "dtrd_alignment %u\n", rec->dtrd_alignment);
 	DLOGTR1(PRIO_LOW, "dtrd_format %u\n", rec->dtrd_format);
 	DLOGTR1(PRIO_LOW, "dtrd_arg  %lu\n", rec->dtrd_arg);
-	DLOGTR1(PRIO_LOWPRIO_LOi, "dtrd_uarg  %lu\n", rec->dtrd_uarg);
+	DLOGTR1(PRIO_LOW, "dtrd_uarg  %lu\n", rec->dtrd_uarg);
 #endif
 
 	act = rec->dtrd_action;
