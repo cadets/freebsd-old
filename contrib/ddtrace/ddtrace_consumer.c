@@ -41,7 +41,7 @@
 #include <unistd.h>
 #include <getopt.h>
 
-#ifdef _KERNEL
+#ifdef PRIVATE_RDKAFKA 
 #include <private/rdkafka/rdkafka.h>
 #else
 #include <librdkafka/rdkafka.h>
