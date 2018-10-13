@@ -165,27 +165,37 @@ dtc_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 	rkmessage = rd_kafka_consume(rx_topic, partition, 0);
 	if (rkmessage != NULL) {
 
-		if (!rkmessage->err && rkmessage->len > 0) {
+		/* Check that the key of the received Kafka message indicated
+		 * the message was produced by Distributed DTrace.
+		 *
+		 * If the Message key indicates that the message was not
+		 * produced by Distribted DTrace, processing the message can
+		 * have dire consequences as libdtrace implicitly trusts the
+		 * buffers that it processes.
+		 */
+		if (strcmp(rkmessage->key, "ddtrace") == 0) {
+			if (!rkmessage->err && rkmessage->len > 0) {
 
-			DLOGTR2(PRIO_LOW, "%s: message in log %zu\n",
-			     g_pname, rkmessage->len);
+				DLOGTR2(PRIO_LOW, "%s: message in log %zu\n",
+				     g_pname, rkmessage->len);
 
-			buf->dtbd_data = dt_zalloc(dtp, rkmessage->len);
-			if (buf->dtbd_data == NULL) {
+				buf->dtbd_data = dt_zalloc(dtp, rkmessage->len);
+				if (buf->dtbd_data == NULL) {
 
-				dt_free(dtp, buf);
-				return -1;
-			}
-			buf->dtbd_size = rkmessage->len;
-			buf->dtbd_cpu = cpu;
+					dt_free(dtp, buf);
+					return -1;
+				}
+				buf->dtbd_size = rkmessage->len;
+				buf->dtbd_cpu = cpu;
 
-			memcpy(buf->dtbd_data, rkmessage->payload,
-			    rkmessage->len);
-		} else {
-			if (rkmessage->err ==
-			    RD_KAFKA_RESP_ERR__PARTITION_EOF) {
-				DLOGTR1(PRIO_HIGH,
-				    "%s: no message in log\n", g_pname);
+				memcpy(buf->dtbd_data, rkmessage->payload,
+				    rkmessage->len);
+			} else {
+				if (rkmessage->err ==
+				    RD_KAFKA_RESP_ERR__PARTITION_EOF) {
+					DLOGTR1(PRIO_HIGH,
+					    "%s: no message in log\n", g_pname);
+				}
 			}
 		}
 

@@ -38,9 +38,10 @@
 #include <sys/uio.h>
 
 #include <errno.h>
-#include <pthread.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <pthread.h>
+#include <strings.h>
+#include <unistd.h>
 
 #include "dl_assert.h"
 #include "dl_index.h"
@@ -94,6 +95,8 @@ dl_index_new(struct dl_index **self, int log, int64_t base_offset,
 		return -1;
 	}
 
+	bzero(idx, sizeof(struct dl_index));
+
 	idx_name = sbuf_new_auto();
 	sbuf_printf(idx_name, "%s/%.*ld.index",
 	    sbuf_data(part_name), DL_INDEX_DIGITS, base_offset);
@@ -112,7 +115,8 @@ dl_index_new(struct dl_index **self, int log, int64_t base_offset,
 	sbuf_delete(idx_name);
 	idx->dli_log_fd = log;
 
-	if (pthread_mutex_init(&idx->dli_mtx, NULL) != 0) {
+	rc = pthread_mutex_init(&idx->dli_mtx, NULL);
+	if (rc != 0) {
 
 		DLOGTR1(PRIO_HIGH,
 		    "Failed instantiating dl_index %d.\n", errno);
@@ -121,7 +125,7 @@ dl_index_new(struct dl_index **self, int log, int64_t base_offset,
 		*self = NULL;
 		return -1;
 	}
-	
+
 	/* Read the last value out of the index. */
 	idx_end = lseek(idx->dli_idx_fd, 0, SEEK_END);
 	if (idx_end == 0) {

@@ -35,8 +35,10 @@
  */
 
 #include <sys/types.h>
-#include <sys/uio.h>
 #include <machine/atomic.h>
+
+/*
+#include <sys/uio.h>
 
 #ifdef _KERNEL
 #include <sys/capsicum.h>
@@ -61,10 +63,10 @@
 #include <pthread.h>
 #include <unistd.h>
 #endif
+*/
 
 #include "dl_assert.h"
 #include "dl_memory.h"
-#include "dl_primitive_types.h"
 #include "dl_segment.h"
 #include "dl_utils.h"
 
@@ -72,6 +74,26 @@ static inline void dl_segment_check_integrity(struct dl_segment *self)
 {
 
 	DL_ASSERT(self != NULL, ("Segment instance cannot be NULL."));
+	DL_ASSERT(self->dls_insert_fcn != NULL,
+	    ("Segment insert function cannot be NULL"));
+	DL_ASSERT(self->dls_get_fcn != NULL,
+	    ("Segment get message function cannot be NULL"));
+	DL_ASSERT(self->dls_get_offset_fcn != NULL,
+	    ("Segment get offset function cannot be NULL"));
+	DL_ASSERT(self->dls_lock_fcn != NULL,
+	    ("Segment lock function cannot be NULL"));
+	DL_ASSERT(self->dls_unlock_fcn != NULL,
+	    ("Segment unlock function cannot be NULL"));
+	DL_ASSERT(self->dls_delete_fcn != NULL,
+	    ("Segment delete function cannot be NULL"));
+}
+
+void
+dl_segment_delete(struct dl_segment *self)
+{
+
+	dl_segment_check_integrity(self);
+	dlog_free(self);
 }
 
 int
@@ -83,7 +105,29 @@ dl_segment_new(struct dl_segment **self, uint32_t base_offset,
 {
 	struct dl_segment *seg;
 
+	DL_ASSERT(self != NULL, ("Segment instance cannot be NULL"));
+	DL_ASSERT(insert_fcn != NULL,
+	    ("Segment insert function cannot be NULL"));
+	DL_ASSERT(get_fcn != NULL,
+	    ("Segment get message function cannot be NULL"));
+	DL_ASSERT(get_offset_fcn != NULL,
+	    ("Segment get offset function cannot be NULL"));
+	DL_ASSERT(lock_fcn != NULL,
+	    ("Segment lock function cannot be NULL"));
+	DL_ASSERT(unlock_fcn != NULL,
+	    ("Segment unlock function cannot be NULL"));
+	DL_ASSERT(delete_fcn != NULL,
+	    ("Segment delete function cannot be NULL"));
+
 	seg = (struct dl_segment *) dlog_alloc(sizeof(struct dl_segment));
+#ifdef _KERNEL
+	DL_ASSERT(seg != NULL, ("Failed allocating Segment"));
+#else
+	if (seg == NULL) {
+
+		goto err_seg_ctor;
+	}
+#endif
 
 	seg->base_offset = base_offset;
 	seg->segment_size = size;
@@ -98,7 +142,16 @@ dl_segment_new(struct dl_segment **self, uint32_t base_offset,
     
 	dl_segment_check_integrity(seg);
 	*self = seg;
+
 	return 0;
+
+#ifndef _KERNEL
+err_seg_ctor:
+
+	DLOGTR0(PRIO_HIGH, "Failed allocating Segment instance\n");
+	*self = NULL;
+	return -1;
+#endif
 }
 
 int
@@ -154,13 +207,16 @@ int
 dl_segment_insert_message(struct dl_segment *self,
     struct dl_bbuf *buffer)
 {
+
 	dl_segment_check_integrity(self);
+	DL_ASSERT(buffer != NULL, ("Bufer to insert cannot be NULL"));
 	return self->dls_insert_fcn(self, buffer);
 }
 
 int
 dl_segment_get_offset(struct dl_segment *self)
 {
+
 	dl_segment_check_integrity(self);
 	return self->dls_get_offset_fcn(self);
 }

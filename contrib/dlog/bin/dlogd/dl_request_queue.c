@@ -56,15 +56,20 @@ int
 dl_request_q_enqueue(struct dl_request_q *self,
     struct dl_request_element *request)
 {
+	int rc = 0;
 
 	dlrq_check_integrity(self);
 	DL_ASSERT(request != NULL, ("Request instance cannot be NULL"));
 
-	sem_wait(&self->dlrq_spaces);
-	pthread_mutex_lock(&self->dlrq_mtx);
+	rc = sem_wait(&self->dlrq_spaces);
+	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue space semaphore"));
+	rc = pthread_mutex_lock(&self->dlrq_mtx);
+	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
 	STAILQ_INSERT_TAIL(&self->dlrq_requests, request, dlrq_entries);
-	pthread_mutex_unlock(&self->dlrq_mtx);
-	sem_post(&self->dlrq_items);
+	rc = pthread_mutex_unlock(&self->dlrq_mtx);
+	DL_ASSERT(rc == 0, ("Failed releasing RequyyestQueue mutex"));
+	rc = sem_post(&self->dlrq_items);
+	DL_ASSERT(rc == 0, ("Failed releasing RequestQueue item semaphore"));
 
 	return 0;
 }
@@ -74,13 +79,16 @@ dl_request_q_dequeue(struct dl_request_q *self,
     struct dl_request_element **elem)
 {
 	struct dl_request_element *request;
+	int rc = 0;
 
 	dlrq_check_integrity(self);
 	DL_ASSERT(elem != NULL,
 	    ("Request element instance cannot be NULL."));
 
-	sem_wait(&self->dlrq_items);
-	pthread_mutex_lock(&self->dlrq_mtx);		
+	rc = sem_wait(&self->dlrq_items);
+	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue item semaphore"));
+	rc = pthread_mutex_lock(&self->dlrq_mtx);		
+	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
 	if (STAILQ_EMPTY(&self->dlrq_requests) == 0) {
 
 		request = STAILQ_FIRST(&self->dlrq_requests);
@@ -88,8 +96,10 @@ dl_request_q_dequeue(struct dl_request_q *self,
 
 		*elem = request;
 	}
-	pthread_mutex_unlock(&self->dlrq_mtx);
-	sem_post(&self->dlrq_spaces);
+	rc = pthread_mutex_unlock(&self->dlrq_mtx);
+	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
+	rc = sem_post(&self->dlrq_spaces);
+	DL_ASSERT(rc == 0, ("Failed releasing RequestQueue space semaphore"));
 
 	return 0;
 }
@@ -101,10 +111,10 @@ dl_request_q_enqueue_new(struct dl_request_q *self, struct dl_bbuf *buffer,
 	struct dl_request_element *request;
 	
 	dlrq_check_integrity(self);
-	DL_ASSERT(buffer != NULL, ("Buffer cannot be NULL"));
+	DL_ASSERT(buffer != NULL, ("RequestQueue element buffer cannot be NULL"));
 
 	/* Allocate a new request; this stores the encoded request
-	 * along with associate metadata allowing correlation of reuqets
+	 * along with associate metadata allowing correlation of requests
 	 * and responses.
 	 */
 	request = (struct dl_request_element *) dlog_alloc(
@@ -138,9 +148,10 @@ dl_request_q_new(struct dl_request_q **self, uint32_t qlimit)
 	struct dl_request_q *queue;
 	int rc;
 	
-	DL_ASSERT(self != NULL, ("Request queue instance cannot be NULL."));
+	DL_ASSERT(self != NULL, ("Request queue instance cannot be NULL"));
 
-	queue = (struct dl_request_q *) dlog_alloc(sizeof(struct dl_request_q));
+	queue = (struct dl_request_q *) dlog_alloc(
+	    sizeof(struct dl_request_q));
 	if (queue == NULL)
 		goto err_queue_ctor;
 
@@ -171,12 +182,13 @@ dl_request_q_new(struct dl_request_q **self, uint32_t qlimit)
 		goto err_queue_ctor;
 	}
 
+	dlrq_check_integrity(queue);
 	*self = queue;
-	dlrq_check_integrity(*self);
 	return 0;
 
 err_queue_ctor:
 	DLOGTR0(PRIO_HIGH, "Failed allocating request queue.\n");
+
 	*self = NULL;
 	return -1;
 

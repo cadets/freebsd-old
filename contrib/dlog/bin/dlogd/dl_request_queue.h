@@ -62,9 +62,6 @@ struct dl_request_q {
 	pthread_mutex_t dlrq_mtx;
 };
 
-//struct dl_request_q;
-//struct dl_request_q_it;
-
 extern int dl_request_q_dequeue(struct dl_request_q *,
     struct dl_request_element **);
 extern int dl_request_q_enqueue(struct dl_request_q *,

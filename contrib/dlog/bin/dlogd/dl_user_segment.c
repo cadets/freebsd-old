@@ -37,12 +37,6 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 
-#ifdef _KERNEL
-#include <sys/capsicum.h>
-#include <sys/syscallsubr.h>
-#include <sys/vnode.h>
-#include <sys/unistd.h>
-#else
 #include <dirent.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -59,7 +53,6 @@
 #include <stdarg.h>
 #include <pthread.h>
 #include <unistd.h>
-#endif
 
 #include "dl_assert.h"
 #include "dl_index.h"
@@ -145,8 +138,10 @@ dl_user_segment_new(struct dl_segment **self, long int base_offset,
 	int rc;
 
 	DL_ASSERT(self != NULL, ("Segment instance cannot be NULL"));
+	DL_ASSERT(path_name != NULL,
+	    ("UserSegment path name name cannot be NULL"));
 	DL_ASSERT(partition_name != NULL,
-	    ("Segment partition name cannot be NULL"));
+	    ("UserSegment partition name cannot be NULL"));
 
 	/* Initalise the super class. */
 	rc = dl_segment_new(&seg, base_offset, length,
@@ -169,9 +164,10 @@ dl_user_segment_new(struct dl_segment **self, long int base_offset,
 		DLOGTR0(PRIO_LOW, "Failed allocating UserSegment instance\n");
 		goto err_user_seg_ctor;
 	}
+	
+	bzero(useg, sizeof(struct dl_user_segment));
 
 	/* Initialise the class members. */
-
 	useg->log_name = sbuf_new_auto();
 	sbuf_printf(useg->log_name, "%s/%.*ld.log",
 	    sbuf_data(path_name), DL_LOG_DIGITS, base_offset);
@@ -208,7 +204,7 @@ dl_user_segment_new(struct dl_segment **self, long int base_offset,
 		DLOGTR0(PRIO_LOW, "Failed instatiating UserSegment index\n");
 		goto err_user_seg_mutex_ctor;
 	}
-
+	
 	dl_user_segment_check_integrity(useg);
 	*self = seg;
 	return 0;
@@ -223,14 +219,16 @@ err_user_seg_alloc_ctor:
 	dlog_free(useg);
 
 err_user_seg_ctor:
-	//dl_segment_delete(seg);
+	dl_segment_delete(seg);
 
 err_seg_ctor:
 	DLOGTR0(PRIO_HIGH, "Error Instantiating UserSegment\n");
+
 	*self = NULL;
 	return -1;
 }
 
+/* TODO: The Kafka log format also includes a timestamp */
 static int
 dl_user_segment_insert_message(struct dl_segment *self, struct dl_bbuf *buffer)
 {
@@ -251,7 +249,6 @@ dl_user_segment_insert_message(struct dl_segment *self, struct dl_bbuf *buffer)
 	dl_bbuf_new(&metadata, NULL, sizeof(uint32_t),
 	    DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN);
 	dl_bbuf_put_int32(metadata, dl_offset_val(self->dls_user->dls_offset));
-	/* TODO: The Kafka log format also includes a timestamp */
 
 	log_bufs[0].iov_base = dl_bbuf_data(metadata);
 	log_bufs[0].iov_len = dl_bbuf_pos(metadata);
