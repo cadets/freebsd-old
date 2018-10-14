@@ -84,16 +84,6 @@ static void konsumer_open(void *, struct dtrace_state *);
 static void konsumer_close(void *, struct dtrace_state *);
 static void konsumer_stop(struct konsumers *);
 
-extern hrtime_t dtrace_deadman_user;
-
-static char const * const KONSUMER_NAME = "dlog_konsumer";
-
-static moduledata_t konsumer_conf = {
-	KONSUMER_NAME,
-	konsumer_event_handler,
-	NULL
-};
-
 struct konsumer {
 	LIST_ENTRY(konsumer) konsumer_entries;
 	struct cv konsumer_cv;
@@ -110,6 +100,7 @@ static dtrace_kops_t kops = {
 };
 static dtrace_konsumer_id_t kid;
 
+extern hrtime_t dtrace_deadman_user;
 extern kmutex_t dtrace_lock;
 
 static char const * const KONSUMER_NAME = "dlog_konsumer";
@@ -122,21 +113,18 @@ static moduledata_t konsumer_conf = {
 };
 
 static const int KON_NHASH_BUCKETS = 16;
-
 static struct konsumers *konsumer_hashtbl = NULL;
 static u_long konsumer_hashmask;
 
 static uint32_t konsumer_poll_ms = 1000;
-/* Maximum record size before compression; the default value is a heurstic
- * base on the level of compression seen in DTrace buffers.
- */
-static uint32_t konsumer_record_bound = 1024*1024;
-
 SYSCTL_NODE(_debug, OID_AUTO, konsumer, CTLFLAG_RW, 0, "Konsumer");
 
 SYSCTL_U32(_debug_konsumer, OID_AUTO, poll_period_ms, CTLFLAG_RD,
     &konsumer_poll_ms, 0, "Konsumer poll period (ms)");
-
+/* Maximum record size before compression; the default value is a heurstic
+ * base on the level of compression seen in DTrace buffers.
+ */
+static uint32_t konsumer_record_bound = 1024*1024;
 SYSCTL_U32(_debug_konsumer, OID_AUTO, record_bound, CTLFLAG_RD,
     &konsumer_record_bound, 0,
     "Konsumer maximum record size (before compression)");
@@ -244,7 +232,10 @@ konsumer_stop(struct konsumers *konsumer_hashtbl)
 	/* Destroy the hash table of konsumer instances. */
 	hashdestroy(konsumer_hashtbl, M_DLKON, konsumer_hashmask);
 
-	/* Unregister the Konsumer with DTrace. */	
+	/* Unregister the Konsumer with DTrace.
+	 * Note that dtrace_lock must be held to manipulate the mutable dtrace
+	 * state (the list of in-kernel konsumers).
+	 */	
 	dtrace_konsumer_unregister(&kid);
 }
 

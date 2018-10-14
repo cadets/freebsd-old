@@ -29,60 +29,37 @@
 # SUCH DAMAGE.
 #
 
-DLOGDIR= ${SRCTOP}/contrib/dlog
-.PATH : ${DLOGDIR}/src ${DLOGDIR}/bin/dlogd
+.PATH : ../../src
 
-PROG= dlogd
+.OBJDIR:= obj
+MK_AUTO_OBJ:= yes
 
-DLOG_SRCS= dl_bbuf.c \
-	dl_correlation_id.c \
-	dl_fetch_request.c \
-	dl_fetch_response.c \
-	dl_index.c \
-	dl_list_offset_request.c \
-	dl_list_offset_response.c \
-	dl_message_set.c \
-	dl_offset.c \
-	dl_poll_reactor.c \
-	dl_primitive_types.c \
-	dl_producer.c \
-	dl_produce_request.c \
-	dl_produce_response.c \
-	dl_request.c \
-	dl_request_queue.c \
-	dl_response.c \
-	dl_segment.c \
-	dl_topic.c \
-	dl_transport.c \
-	dl_sock_transport.c \
-	dl_tls_transport.c \
-	dl_user_segment.c \
-	dl_utils.c \
-	lookup3.c
+PROGS= dlogdstat
+BINDIR= bin
 
-SRCS= dlogd.c ${DLOG_SRCS}
-MAN=
+SRCS.dlogdstat = dlogdstat.c
+MAN.dlogdstat =
 
-CONFS= dlogd.cfg
-CONFSDIR= ${CONFDIR}/dlogd
-CONFSMODE= 600
+#LDADD+=-lc
+#LDADD+=-lcrypto
+#LDADD+=-lnv
+#LDADD+=-lpthread
+LDADD+=-lncurses
+LDADD+=-lsbuf
+#LDADD+=-lssl
+#LDADD+=-lucl
+#LDADD+=-lz
 
-LIBADD=c
-LIBADD+=crypto
-LIBADD+=nv
-LIBADD+=pthread
-LIBADD+=sbuf
-LIBADD+=ssl
-LIBADD+=ucl
-LIBADD+=z
-
+CFLAGS+=-DNDEBUG
 CFLAGS+=-g
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
 CFLAGS+=-L/usr/local/lib
 CFLAGS+=-I/usr/local/include
-CFLAGS+=-I${DLOGDIR}/src
-CFLAGS+=-I${DLOGDIR}/bin/dlogd
-CFLAGS+=-I${SRCTOP}/contrib/libucl/include
-CFLAGS+=-I${SRCTOP}/sys/dev/dlog
+CFLAGS+=-I../dlogd
+CFLAGS+=-I../../src
+CFLAGS+=-I.
+#CFLAGS+=-O1
+#CFLAGS+=-fsanitize=address
+#CFLAGS+=-fno-omit-frame-pointer
 
-.include <bsd.prog.mk>
+.include <bsd.progs.mk>

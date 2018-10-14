@@ -34,48 +34,55 @@
  *
  */
 
-#ifndef _DL_PRODUCER_H
-#define _DL_PRODUCER_H
+#ifndef _DL_TRANSPORT_H
+#define _DL_TRANSPORT_H
 
 #include <sys/nv.h>
 
-#include <stdbool.h>
+#include "dl_bbuf.h"
+#include "dl_event_handler.h"
+#include "dl_sock_transport.h"
+#include "dl_tls_transport.h"
 
-#include "dl_response.h"
+struct dl_transport;
 
-struct dl_producer_stats {
-	char dlps_topic_name[255];	
-	char dlps_state_name[255];	
-	bool dlps_tcp_connected;
-	bool dlps_tls_connected;
-	int32_t dlps_queued_requests;
-	int32_t dlps_unackd_requests;
-	volatile uint64_t dlps_bytes_sent;
-	volatile uint64_t dlps_bytes_received;
+typedef void (* dlt_delete)(struct dl_transport *);
+typedef int (* dlt_connect)(struct dl_transport *,
+    const char * const, const int);
+typedef int (* dlt_read_msg)(struct dl_transport *, struct dl_bbuf **);
+typedef int (* dlt_send_request)(struct dl_transport *,
+    struct dl_bbuf const *);
+typedef int (* dlt_close)(struct dl_transport *);
+typedef int (* dlt_get_fd)(struct dl_transport *);
+
+struct dl_transport {
+	dlt_delete dlt_delete_fcn;
+	dlt_connect dlt_connect_fcn;
+	dlt_read_msg dlt_read_msg_fcn;
+	dlt_send_request dlt_send_request_fcn;
+	dlt_close dlt_close_fcn;
+	dlt_get_fd dlt_get_fd_fcn;
+	struct dl_event_handler dlt_event_hdlr;
+	struct dl_producer *dlt_producer;
+	union {
+		struct dl_tls_transport *dlt_tls;
+		struct dl_sock_transport *dlt_sock;
+	};
 };
 
-struct dl_producer;
-struct dl_topic;
+extern int dl_transport_close(struct dl_transport *);
+extern int dl_transport_connect(struct dl_transport *,
+    const char * const, const int);
+extern void dl_transport_delete(struct dl_transport *);
+extern int dl_transport_get_fd(struct dl_transport *);
+extern int dl_transport_new(struct dl_transport **,
+    dlt_delete, dlt_connect, dlt_read_msg, dlt_send_request, dlt_get_fd,
+    struct dl_producer *);
+extern int dl_transport_read_msg(struct dl_transport *, struct dl_bbuf **);
+extern int dl_transport_send_request(struct dl_transport const *,
+    struct dl_bbuf const *);
 
-extern int dl_producer_new(struct dl_producer **, struct dl_topic *,
-    char *, char *, int, nvlist_t *);
-extern void dl_producer_delete(struct dl_producer *);
-
-extern struct dl_topic * dl_producer_get_topic(struct dl_producer *); 
-
-extern void dl_producer_produce(struct dl_producer const * const);
-extern void dl_producer_up(struct dl_producer const * const);
-extern void dl_producer_down(struct dl_producer const * const);
-extern void dl_producer_syncd(struct dl_producer const * const);
-extern void dl_producer_reconnect(struct dl_producer const * const);
-extern void dl_producer_error(struct dl_producer const * const);
-
-extern int dl_producer_response(struct dl_producer *,
-    struct dl_response_header *);
-
-extern void dl_producer_stats_tcp_connect(struct dl_producer *, bool);
-extern void dl_producer_stats_tls_connect(struct dl_producer *, bool);
-extern void dl_producer_stats_bytes_sent(struct dl_producer *self, int32_t);
-extern void dl_producer_stats_bytes_received(struct dl_producer *self, int32_t);
+extern int dl_transport_factory_get_inst(struct dl_transport **,
+    struct dl_producer *, nvlist_t *);
 
 #endif

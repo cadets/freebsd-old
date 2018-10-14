@@ -183,7 +183,7 @@ dl_user_segment_new(struct dl_segment **self, long int base_offset,
 
 	dl_alloc_big_file(useg->dls_log, 0, length);
 
-	rc = dl_offset_new(&useg->dls_offset, path_name, partition_name);
+	rc = dl_offset_new(&useg->dls_offset, path_name);
 	if (rc != 0) {
 
 		DLOGTR0(PRIO_LOW, "Failed instatiating UserSegment offset\n");

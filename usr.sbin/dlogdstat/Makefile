@@ -30,59 +30,18 @@
 #
 
 DLOGDIR= ${SRCTOP}/contrib/dlog
-.PATH : ${DLOGDIR}/src ${DLOGDIR}/bin/dlogd
+.PATH : ${DLOGDIR}/bin/dlogdstat
 
-PROG= dlogd
+PROG= dlogdstat
 
-DLOG_SRCS= dl_bbuf.c \
-	dl_correlation_id.c \
-	dl_fetch_request.c \
-	dl_fetch_response.c \
-	dl_index.c \
-	dl_list_offset_request.c \
-	dl_list_offset_response.c \
-	dl_message_set.c \
-	dl_offset.c \
-	dl_poll_reactor.c \
-	dl_primitive_types.c \
-	dl_producer.c \
-	dl_produce_request.c \
-	dl_produce_response.c \
-	dl_request.c \
-	dl_request_queue.c \
-	dl_response.c \
-	dl_segment.c \
-	dl_topic.c \
-	dl_transport.c \
-	dl_sock_transport.c \
-	dl_tls_transport.c \
-	dl_user_segment.c \
-	dl_utils.c \
-	lookup3.c
-
-SRCS= dlogd.c ${DLOG_SRCS}
+SRCS= dlogdstat.c
 MAN=
 
-CONFS= dlogd.cfg
-CONFSDIR= ${CONFDIR}/dlogd
-CONFSMODE= 600
-
-LIBADD=c
-LIBADD+=crypto
-LIBADD+=nv
-LIBADD+=pthread
+LIBADD+=ncurses
 LIBADD+=sbuf
-LIBADD+=ssl
-LIBADD+=ucl
-LIBADD+=z
 
 CFLAGS+=-g
-CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
-CFLAGS+=-L/usr/local/lib
-CFLAGS+=-I/usr/local/include
-CFLAGS+=-I${DLOGDIR}/src
 CFLAGS+=-I${DLOGDIR}/bin/dlogd
-CFLAGS+=-I${SRCTOP}/contrib/libucl/include
-CFLAGS+=-I${SRCTOP}/sys/dev/dlog
+CFLAGS+=-I${DLOGDIR}/src
 
 .include <bsd.prog.mk>

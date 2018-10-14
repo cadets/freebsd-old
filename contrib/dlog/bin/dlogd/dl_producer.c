@@ -34,11 +34,15 @@
  *
  */
 
+#include <sys/file.h>
+#include <sys/mman.h>
+#include <sys/nv.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/sbuf.h>
 #include <sys/uio.h>
-#include <sys/nv.h>
+#include <sys/types.h>
+#include <machine/atomic.h>
 
 #include <errno.h>
 #include <pthread.h>
@@ -53,6 +57,7 @@
 #include "dl_correlation_id.h"
 #include "dl_config.h"
 #include "dl_event_handler.h"
+#include "dl_index.h"
 #include "dl_memory.h"
 #include "dl_poll_reactor.h"
 #include "dl_producer.h"
@@ -73,6 +78,7 @@ typedef enum dl_producer_state {
 	DLP_FINAL} dl_producer_state;
 
 struct dl_producer {
+	struct dl_producer_stats *dlp_stats;
 	LIST_ENTRY(dl_prodcuer) dlp_entries;
 	struct dl_correlation_id *dlp_cid;
 	struct dl_event_handler dlp_kq_hdlr;
@@ -94,6 +100,7 @@ struct dl_producer {
 	int dlp_resend_timeout;
 	int dlp_resend_period;
 	bool dlp_to_resend;
+	int dlp_stats_fd;
 };
 
 static void dl_producer_idle(struct dl_producer * const self);
@@ -110,12 +117,19 @@ static void dl_producer_timer_handler(void *instance, int, int);
 static void *dlp_produce_thread(void *vargp);
 static void *dlp_resender_thread(void *vargp);
 
+static char const * const DLP_INITIAL_NAME = "INITIAL";
+static char const * const DLP_IDLE_NAME = "IDLE";
+static char const * const DLP_SYNCING_NAME = "SYNCING";
+static char const * const DLP_OFFLINE_NAME = "OFFLINE";
+static char const * const DLP_CONNECTING_NAME = "CONNECTING";
+static char const * const DLP_FINAL_NAME = "FINAL";
 static const off_t DL_FSYNC_DEFAULT_CHARS = 1024*1024;
 static const off_t DL_INDEX_DEFAULT_CHARS = 1024*1024;
 static const int RECONNECT_TIMEOUT_EVENT = 1337;
 static const int UPDATE_INDEX_EVENT = 1336;
 static const int DLP_MINRECONN_MS = 1000;
 static const int DLP_MAXRECONN_MS = 60000;
+static const int DLP_UPDATE_INDEX_MS = 2000;
 
 static inline void
 dl_producer_check_integrity(struct dl_producer const * const self)
@@ -173,9 +187,14 @@ dl_producer_kq_handler(void *instance, int fd __attribute((unused)),
 			dl_segment_set_last_sync_pos(seg, log_position);
 			dl_segment_unlock(seg);
 
-			dl_index_update(
-			    dl_user_segment_get_index(seg), log_position);
-			dl_producer_produce(p);
+			if (dl_index_update(
+			    dl_user_segment_get_index(seg),
+			    log_position) != 0) {
+				/* Fire the produce() event into the
+				 * Producer statemachine .
+				 */
+				dl_producer_produce(p);
+			}
 		} else {
 			dl_segment_unlock(seg);
 		}
@@ -196,11 +215,14 @@ dl_producer_timer_handler(void *instance, int fd __attribute((unused)),
     int revents __attribute((unused)))
 {
 	struct dl_producer const * const p = instance;
-	struct kevent event;
+	struct dl_segment *seg;
+	struct kevent events[2];
+	off_t log_position;
 	int rc;
 
 	dl_producer_check_integrity(p);
-	
+
+	rc = kevent(p->dlp_ktimer, 0, 0, events, 2, 0);
 	if (rc == -1) {
 
 		DLOGTR2(PRIO_HIGH, "Error reading kqueue event %d %d\n",
@@ -227,14 +249,15 @@ dl_producer_timer_handler(void *instance, int fd __attribute((unused)),
 				log_position = lseek(
 				    dl_user_segment_get_log(seg), 0, SEEK_END);
 				dl_segment_unlock(seg);
-				dl_index_update(
-				    dl_user_segment_get_index(seg),
-				    log_position);
 
-				/* Fire the produce() event into the
-				 * Producer statemachine .
-				 */
-				dl_producer_produce(p);
+				if (dl_index_update(
+				    dl_user_segment_get_index(seg),
+				    log_position) != 0) {
+					/* Fire the produce() event into the
+					 * Producer statemachine .
+					 */
+					dl_producer_produce(p);
+				}
 				break;
 			}
 		}
@@ -316,6 +339,9 @@ dlp_produce_thread(void *vargp)
 		if (dl_request_q_dequeue(self->dlp_requests,
 		    &request) == 0) {
 
+			/* Update the producer statistics */
+			self->dlp_stats->dlps_queued_requests--;
+
 			nbytes = dl_transport_send_request(
 			    self->dlp_transport, request->dlrq_buffer);
 			if (nbytes != -1) {
@@ -325,8 +351,6 @@ dlp_produce_thread(void *vargp)
 				    request->dlrq_correlation_id,
 				    nbytes,
 				    dl_bbuf_pos(request->dlrq_buffer));
-
-				
 			} else {
 				DLOGTR1(PRIO_NORMAL,
 				    "Transport send error (%d)\n", errno);
@@ -353,6 +377,9 @@ dlp_produce_thread(void *vargp)
 
 				DLOGTR0(PRIO_NORMAL,
 				    "Failed  enqueuing unacks request\n");
+			} else {
+				/* Update the producer statistics */
+				self->dlp_stats->dlps_unackd_requests++;
 			}
 		} else {
 			dl_producer_error(self);
@@ -415,13 +442,18 @@ dlp_enqueue_thread(void *vargp)
 				DLOGTR0(PRIO_HIGH,
 				    "Failed enqueing ProduceRequest\n");
 				dl_producer_error(self);
+				break;
+			} else {
+
+				/* Update the producer statistics */
+				self->dlp_stats->dlps_queued_requests++;
+
+				/* Increment the monotonic correlation id. */
+				dl_correlation_id_inc(self->dlp_cid);
+
+				/* Increment the offset to process. */
+				dl_offset_inc(dl_user_segment_get_offset_tmp(seg));
 			}
-
-			/* Increment the monotonic correlation id. */
-			dl_correlation_id_inc(self->dlp_cid);
-
-			/* Increment the offset to process. */
-			dl_offset_inc(dl_user_segment_get_offset_tmp(seg));
 		} else {
 
 			DLOGTR0(PRIO_HIGH,
@@ -481,7 +513,10 @@ dl_producer_idle(struct dl_producer * const self)
 	    ("Producer transport cannot be NULL."));
 
 	self->dlp_state = DLP_IDLE;
-	DLOGTR1(PRIO_LOW, "Producer state = IDLE (%d)\n", self->dlp_state);
+	strncpy(self->dlp_stats->dlps_state_name,
+	    DLP_IDLE_NAME, 255); 
+	DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
+	    DLP_IDLE_NAME, self->dlp_state);
 }
 
 static void
@@ -494,8 +529,10 @@ dl_producer_syncing(struct dl_producer * const self)
 	    ("Producer transport cannot be NULL."));
 
 	self->dlp_state = DLP_SYNCING;
-	DLOGTR1(PRIO_LOW, "Producer state = SYNCING (%d)\n",
-	    self->dlp_state);
+	strncpy(self->dlp_stats->dlps_state_name,
+	    DLP_SYNCING_NAME, 255); 
+	DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
+	    DLP_SYNCING_NAME, self->dlp_state);
 
 	/* Connection is up reset the reconnect timeout */
 	self->dlp_reconn_ms = DLP_MINRECONN_MS;
@@ -512,7 +549,7 @@ dl_producer_syncing(struct dl_producer * const self)
 		dl_producer_error(self);
 	}
 
-	/* Start the thread to dequeue log entries for syncing
+	/* Start the thread to enqueue log entries for syncing
 	 * with the distributed broker.
 	 */
 	rc = pthread_create(&self->dlp_produce_tid, NULL,
@@ -545,8 +582,10 @@ dl_producer_offline(struct dl_producer * const self)
 	dl_producer_check_integrity(self);
 
 	self->dlp_state = DLP_OFFLINE;
-	DLOGTR1(PRIO_LOW, "Producer state = OFFLINE (%d)\n",
-	    self->dlp_state);
+	strncpy(self->dlp_stats->dlps_state_name,
+	    DLP_OFFLINE_NAME, 255); 
+	DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
+	    self->dlp_stats->dlps_state_name, self->dlp_state);
 
         /* Stop the produce and resender threads */
 	pthread_cancel(self->dlp_resender_tid);
@@ -581,17 +620,21 @@ dl_producer_final(struct dl_producer * const self)
 	dl_producer_check_integrity(self);
 
 	self->dlp_state = DLP_FINAL;
-	DLOGTR1(PRIO_HIGH, "Producer state = FINAL (%d)\n",
-	    self->dlp_state);
+	strncpy(self->dlp_stats->dlps_state_name,
+	    DLP_FINAL_NAME, 255); 
+	DLOGTR2(PRIO_HIGH, "Producer state = %s (%d)\n",
+	    DLP_FINAL_NAME, self->dlp_state);
 }
 
 int
 dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
-    char *hostname, int port, nvlist_t *props)
+    char *path, char *hostname, int port, nvlist_t *props)
 {
 	struct dl_producer *producer;
-	int rc;
+	struct kevent kev;
+	struct sbuf *stats_path;
 	char *client_id;
+	int rc;
 
 	DL_ASSERT(self != NULL, ("Producer instance cannot be NULL."));
 	DL_ASSERT(topic != NULL, ("Producer instance cannot be NULL."));
@@ -604,6 +647,40 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 	}
 
 	bzero(producer, sizeof(struct dl_producer));
+
+	/* Open a memory mapped file for the Producer stats. */
+	stats_path = sbuf_new_auto();
+	sbuf_printf(stats_path, "%s/%s/stats", path,
+	    sbuf_data(dl_topic_get_name(topic))); 
+	sbuf_finish(stats_path);
+	producer->dlp_stats_fd = open(sbuf_data(stats_path),
+	    O_RDWR | O_APPEND | O_CREAT, 0666);
+	if (producer->dlp_stats_fd == -1) {
+
+		DLOGTR1(PRIO_HIGH,
+		    "Failed opening Producer stats file %d.\n", errno);
+		sbuf_delete(stats_path);
+		goto err_producer_ctor;
+	}
+	sbuf_delete(stats_path);
+	ftruncate(producer->dlp_stats_fd, sizeof(struct dl_producer_stats));
+
+	producer->dlp_stats = (struct dl_producer_stats *) mmap(
+	    NULL, sizeof(struct dl_producer_stats), PROT_READ | PROT_WRITE,
+	    MAP_SHARED, producer->dlp_stats_fd, 0);
+	if (producer->dlp_stats == NULL) {
+
+		DLOGTR1(PRIO_HIGH,
+		    "Failed mmap of Producer stats file %d.\n", errno);
+		goto err_producer_ctor;
+	}
+
+	strncpy(producer->dlp_stats->dlps_topic_name,
+	    sbuf_data(dl_topic_get_name(topic)), 255); 
+	strncpy(producer->dlp_stats->dlps_state_name,
+	    DLP_INITIAL_NAME, 255); 
+	producer->dlp_stats->dlps_queued_requests = 0;
+	producer->dlp_stats->dlps_unackd_requests = 0;
 
 	producer->dlp_state = DLP_INITIAL;
 	producer->dlp_props = props;
@@ -702,6 +779,9 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 	dl_producer_connecting(*self);
 	return 0;
 
+err_producer_ctor:
+	dlog_free(producer);
+
 err_producer:
 	DLOGTR0(PRIO_HIGH, "Failed instantiating Producer instance\n");
 
@@ -727,6 +807,11 @@ dl_producer_delete(struct dl_producer *self)
 	/* Unregister any poll reeactor handlers */
 	dl_poll_reactor_unregister(&self->dlp_kq_hdlr);
 	dl_poll_reactor_unregister(&self->dlp_ktimer_hdlr);
+
+	/* Close and unmap the stats file. */
+	close(self->dlp_stats_fd);
+	msync(self->dlp_stats, sizeof(struct dl_producer_stats), MS_SYNC);
+	munmap(self->dlp_stats, sizeof(struct dl_producer_stats));
 
 	close(self->dlp_ktimer);
 
@@ -772,6 +857,8 @@ dl_producer_response(struct dl_producer *self,
 	 * returned in the response.
 	 */
 	if (dl_request_q_dequeue(self->dlp_unackd_requests, &req) == 0) {
+		/* Update the producer statistics */
+		self->dlp_stats->dlps_unackd_requests--;
 
 		if (req->dlrq_correlation_id ==
 			hdr->dlrsh_correlation_id) {
@@ -965,4 +1052,35 @@ dl_producer_error(struct dl_producer const * const self)
 		    self->dlp_state));
 		break;
 	}
+}
+
+void dl_producer_stats_tcp_connect(struct dl_producer *self, bool status)
+{
+
+	dl_producer_check_integrity(self);
+	self->dlp_stats->dlps_tcp_connected = status;
+}
+
+void
+dl_producer_stats_tls_connect(struct dl_producer *self, bool status)
+{
+
+	dl_producer_check_integrity(self);
+	self->dlp_stats->dlps_tls_connected = status;
+}
+
+void
+dl_producer_stats_bytes_sent(struct dl_producer *self, int32_t nbytes)
+{
+
+	dl_producer_check_integrity(self);
+	atomic_add_64(&self->dlp_stats->dlps_bytes_sent, nbytes);
+}
+
+void
+dl_producer_stats_bytes_received(struct dl_producer *self, int32_t nbytes)
+{
+
+	dl_producer_check_integrity(self);
+	atomic_add_64(&self->dlp_stats->dlps_bytes_received, nbytes);
 }

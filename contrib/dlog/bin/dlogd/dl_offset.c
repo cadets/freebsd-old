@@ -62,8 +62,7 @@ dl_offset_assert_intergity(struct dl_offset *offset)
 }
 
 int
-dl_offset_new(struct dl_offset **self, struct sbuf *path_name,
-    struct sbuf *part_name)
+dl_offset_new(struct dl_offset **self, struct sbuf *path_name)
 {
 	struct dl_offset *offset;
 	struct sbuf *offset_name;
@@ -72,7 +71,6 @@ dl_offset_new(struct dl_offset **self, struct sbuf *path_name,
 	
 	DL_ASSERT(self != NULL, ("Offset instance cannot be NULL"));
 	DL_ASSERT(path_name != NULL, ("Offset file path name cannot be NULL"));
-	DL_ASSERT(part_name != NULL, ("Offset partition name cannot be NULL"));
 
 	offset = (struct dl_offset *) dlog_alloc(sizeof(struct dl_offset));
 	if (offset == NULL) {
@@ -86,8 +84,7 @@ dl_offset_new(struct dl_offset **self, struct sbuf *path_name,
 
 	/* Construct the path for the Offset file */
 	offset_name = sbuf_new_auto();
-	sbuf_printf(offset_name, "%s/%s.offset",
-	    sbuf_data(path_name), sbuf_data(part_name));
+	sbuf_printf(offset_name, "%s/offset", sbuf_data(path_name));
 	sbuf_finish(offset_name);
 
 	fd = open(sbuf_data(offset_name), O_RDWR | O_CREAT, 0666);

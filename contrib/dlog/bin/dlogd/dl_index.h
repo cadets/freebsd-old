@@ -45,7 +45,7 @@ struct dl_segment;
 extern int dl_index_new(struct dl_index **, int, int64_t, struct sbuf *);
 extern void dl_index_delete(struct dl_index *);
 
-extern void dl_index_update(struct dl_index *, off_t); 
+extern int dl_index_update(struct dl_index *, off_t); 
 extern off_t dl_index_lookup(struct dl_index *, uint32_t); 
 extern off_t dl_index_get_last(struct dl_index *);
 

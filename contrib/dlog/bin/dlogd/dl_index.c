@@ -40,6 +40,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <strings.h>
 #include <unistd.h>
 
@@ -63,6 +64,9 @@ struct dl_index_record {
 	uint32_t dlir_poffset;
 };
 
+static int dl_index_recompute(struct dl_index *);
+static int dl_index_update_locked(struct dl_index *, off_t);
+
 /* Number of digits in base 10 required to represent a 32-bit number. */
 #define DL_INDEX_DIGITS 20
 
@@ -71,6 +75,103 @@ dl_index_check_integrity(struct dl_index const * const self)
 {
 
 	DL_ASSERT(self != NULL, ("Index instance cannot be NULL."));
+}
+
+static int
+dl_index_recompute(struct dl_index *self)
+{
+	off_t last;
+	int rc;
+
+	dl_index_check_integrity(self);
+	/* Recompute the index from the satrt to the last 
+	 * position in the log file that was used to create
+	 * an index.
+	 */
+	pthread_mutex_lock(&self->dli_mtx);
+	last = self->dli_last;
+	self->dli_last = 0;
+	/* Truncate the log file to zero before recomputing. */
+	ftruncate(self->dli_idx_fd, 0);
+	rc = dl_index_update_locked(self, last);
+	pthread_mutex_unlock(&self->dli_mtx);
+	return rc;
+}
+
+static int
+dl_index_update_locked(struct dl_index *self, off_t log_end)
+{
+	struct iovec index_bufs[2];
+	uint32_t o, s, t;
+	int rc, idx_cnt = 0;
+	
+	dl_index_check_integrity(self);
+	
+	/* Create the index. */
+	while (self->dli_last < log_end) {
+	
+		index_bufs[0].iov_base = &o;
+		index_bufs[0].iov_len = sizeof(o);
+
+		index_bufs[1].iov_base = &s;
+		index_bufs[1].iov_len = sizeof(s);
+
+		rc = preadv(self->dli_log_fd, index_bufs,
+			sizeof(index_bufs)/sizeof(struct iovec),
+			self->dli_last);	
+		if (rc == -1) {
+
+			DLOGTR1(PRIO_HIGH,
+			    "Failed to read from log file %d\n", errno);
+			break;
+		} else if (rc == 0) {
+			/* EOF */
+
+			break;
+		} else if(((off_t) (sizeof(o) + sizeof(s) + be32toh(s)) >
+		    log_end)) {
+			/* Check that the entry in the log is not corrupt,
+			 * that is if the size of the message exceeds the total
+			 * log length.
+			 */
+
+			DLOGTR1(PRIO_HIGH,
+			    "Log message at offset %d is corrupt",
+			    be32toh(o));
+			break;
+		}
+		DL_ASSERT(rc == sizeof(o) + sizeof(s),
+		   ("Number of bytes read from log"));
+
+		index_bufs[0].iov_base = &o;
+		index_bufs[0].iov_len = sizeof(o);
+
+		t = htobe32(self->dli_last);
+		index_bufs[1].iov_base = &t;
+		index_bufs[1].iov_len = sizeof(t);
+
+		rc = writev(self->dli_idx_fd, index_bufs,
+			sizeof(index_bufs)/sizeof(struct iovec));
+		if (rc == -1) {
+
+			DLOGTR1(PRIO_HIGH,
+			    "Failed to write to index file %d\n", errno);
+			break;
+		}
+
+		/* Advance the index offset into the log by the processed
+		 * entry.
+		 */
+		self->dli_last += sizeof(o);
+		self->dli_last += sizeof(s);
+		self->dli_last += be32toh(s);
+
+		/* Increment the count of new indexs that were created. */
+		idx_cnt++;
+	}
+
+	/* Sync the updated index file to disk. */
+	return idx_cnt;
 }
 
 int
@@ -180,62 +281,21 @@ dl_index_delete(struct dl_index *self)
 	dlog_free(self);
 }
 
-void
+int
 dl_index_update(struct dl_index *self, off_t log_end)
 {
-	struct iovec index_bufs[2];
-	uint32_t o, s, t;
-	int rc;
+	int idx_cnt = 0;
 	
 	dl_index_check_integrity(self);
 	
 	/* Create the index. */
 	pthread_mutex_lock(&self->dli_mtx);
-	while (self->dli_last < log_end) {
-	
-		index_bufs[0].iov_base = &o;
-		index_bufs[0].iov_len = sizeof(o);
-
-		index_bufs[1].iov_base = &s;
-		index_bufs[1].iov_len = sizeof(s);
-
-		rc = preadv(self->dli_log_fd, index_bufs,
-			sizeof(index_bufs)/sizeof(struct iovec),
-			self->dli_last);	
-		if (rc == -1) {
-
-			DLOGTR1(PRIO_HIGH,
-			    "Failed to read from log file %d\n", errno);
-			break;
-		}
-
-		index_bufs[0].iov_base = &o;
-		index_bufs[0].iov_len = sizeof(o);
-
-		t = htobe32(self->dli_last);
-		index_bufs[1].iov_base = &t;
-		index_bufs[1].iov_len = sizeof(t);
-
-		rc = writev(self->dli_idx_fd, index_bufs,
-			sizeof(index_bufs)/sizeof(struct iovec));
-		if (rc == -1) {
-
-			DLOGTR1(PRIO_HIGH,
-			    "Failed to write to index file %d\n", errno);
-			break;
-		}
-
-		/* Advance the index offset into the log by the processed
-		 * entry.x
-		 */
-		self->dli_last += sizeof(o);
-		self->dli_last += sizeof(s);
-		self->dli_last += be32toh(s);
-	}
+	idx_cnt = dl_index_update_locked(self, log_end);
 	pthread_mutex_unlock(&self->dli_mtx);
 
 	/* Sync the updated index file to disk. */
 	fsync(self->dli_idx_fd);
+	return idx_cnt;
 }
 
 off_t
@@ -245,9 +305,11 @@ dl_index_lookup(struct dl_index *self, uint32_t offset)
 	struct dl_bbuf *idx_buf;
 	int32_t roffset, poffset;
 	int rc;
+	bool retry_lookup = true;
 
 	dl_index_check_integrity(self);
 
+retry:
 	rc = pread(self->dli_idx_fd, &record, sizeof(record),
 	    offset * sizeof(struct dl_index_record));
 	if (rc == -1 || rc == 0) {
@@ -269,9 +331,27 @@ dl_index_lookup(struct dl_index *self, uint32_t offset)
 		return -1;
 
 	dl_bbuf_get_int32(idx_buf, &roffset);
-	DL_ASSERT((int32_t) offset == roffset,
-	    ("Request offset (%X) doesn't match index (%u).",
-	     offset, roffset));
+	if ((int32_t) offset != roffset) {
+		/* The index file is corrupt.
+		 * Recompute the index and then retry the lookup.
+		 */
+		DLOGTR2(PRIO_HIGH,
+		    "Request offset (%X) doesn't match index (%u).",
+		    offset, roffset);
+		dl_bbuf_delete(idx_buf);
+		/* Recompute the index and retry the lookup,
+		 * this is only attempted once to prevent livelock.
+		 */
+		if (retry_lookup == true) {
+			retry_lookup = false;
+			if (dl_index_recompute(self) >= 0) {
+				goto retry;
+			}
+		}
+		DL_ASSERT(((int32_t) offset != roffset),
+		    ("Request offset (%X) doesn't match index (%u).",
+		    offset, roffset));
+	}
 	dl_bbuf_get_int32(idx_buf, &poffset);
 	dl_bbuf_delete(idx_buf);
 
