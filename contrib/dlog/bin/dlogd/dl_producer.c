@@ -38,6 +38,7 @@
 #include <sys/socket.h>
 #include <sys/sbuf.h>
 #include <sys/uio.h>
+#include <sys/nv.h>
 
 #include <errno.h>
 #include <pthread.h>
@@ -58,6 +59,7 @@
 #include "dl_request.h"
 #include "dl_request_queue.h"
 #include "dl_topic.h"
+#include "dl_tls_transport.h"
 #include "dl_transport.h"
 #include "dl_user_segment.h"
 #include "dl_utils.h"
@@ -73,13 +75,13 @@ typedef enum dl_producer_state {
 struct dl_producer {
 	LIST_ENTRY(dl_prodcuer) dlp_entries;
 	struct dl_correlation_id *dlp_cid;
-	struct dl_event_handler dlp_trans_hdlr;
 	struct dl_event_handler dlp_kq_hdlr;
 	struct dl_event_handler dlp_ktimer_hdlr;
 	struct dl_request_q *dlp_requests;
 	struct dl_request_q *dlp_unackd_requests;
 	struct dl_topic *dlp_topic;
 	struct dl_transport *dlp_transport;
+	nvlist_t *dlp_props;
 	dl_producer_state dlp_state;
 	pthread_t dlp_enqueue_tid;
 	pthread_t dlp_produce_tid;
@@ -100,8 +102,6 @@ static void dl_producer_offline(struct dl_producer * const self);
 static void dl_producer_connecting(struct dl_producer * const self);
 static void dl_producer_final(struct dl_producer * const self);
 
-static dl_event_handler_handle dlp_get_transport_fd(void *);
-static void dlp_transport_hdlr(void *, int, int);
 static dl_event_handler_handle dl_producer_get_kq_fd(void *);
 static void dl_producer_kq_handler(void *, int, int);
 static dl_event_handler_handle dl_producer_get_timer_fd(void *);
@@ -110,11 +110,13 @@ static void dl_producer_timer_handler(void *instance, int, int);
 static void *dlp_produce_thread(void *vargp);
 static void *dlp_resender_thread(void *vargp);
 
-static const off_t DL_FSYNC_DEFAULT_CHARS = 200*1024;
-static const off_t DL_INDEX_DEFAULT_CHARS = 200*1024;
-static const int NOTIFY_IDENT = 1337;
+static const off_t DL_FSYNC_DEFAULT_CHARS = 1024*1024;
+static const off_t DL_INDEX_DEFAULT_CHARS = 1024*1024;
+static const int RECONNECT_TIMEOUT_EVENT = 1337;
+static const int UPDATE_INDEX_EVENT = 1336;
 static const int DLP_MINRECONN_MS = 1000;
 static const int DLP_MAXRECONN_MS = 60000;
+static const int DLP_UPDATE_INDEX_MS = 2000;
 
 static inline void 
 dl_producer_check_integrity(struct dl_producer const * const self)
@@ -131,156 +133,6 @@ dl_producer_check_integrity(struct dl_producer const * const self)
 	    ("Producer topic cannot be NULL."));
 	DL_ASSERT(self->dlp_name != NULL,
 	    ("Producer instance cannot be NULL."));
-}
-
-static dl_event_handler_handle
-dlp_get_transport_fd(void *instance)
-{
-	struct dl_producer const * const p = instance;
-
-	dl_producer_check_integrity(p);
-	return dl_transport_get_fd(p->dlp_transport);
-}
-
-static void 
-dlp_transport_hdlr(void *instance, int fd, int revents)
-{
-	struct dl_producer * const self = instance;
-	struct dl_request_element *req;
-	/* struct dl_response *response; */ //TODO: check response and clear memory
-	struct dl_response_header *hdr;
-	struct dl_bbuf *buffer;
-	socklen_t len = sizeof(int);
-	int rc, err;
-	
-	dl_producer_check_integrity(self);
-
-	if (revents & (POLLHUP | POLLERR)) {
-
-		len = sizeof(int);
-		rc = getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len); 
-		if (err == ECONNREFUSED) {
-			DLOGTR0(PRIO_LOW, "Connection refused\n");
-		}
-		
-		dl_producer_down(self);
-		return;
-	}
-
-	if (revents & POLLIN) {
-
-		if (dl_transport_read_msg(self->dlp_transport,
-		    &buffer) == 0) {
-
-#ifndef NDEBUG
-			DLOGTR0(PRIO_LOW, "Response\n");
-
-			unsigned char *bufval = dl_bbuf_data(buffer);
-			for (int i = 0; i < dl_bbuf_len(buffer); i++) {
-				DLOGTR1(PRIO_LOW, "<0x%02hhX>", bufval[i]);
-			};
-			DLOGTR0(PRIO_LOW, "\n");
-#endif
-			/* Deserialise the response header. */
-			if (dl_response_header_decode(&hdr, buffer) == 0) {
-
-#ifndef NDEBUG
-				DLOGTR1(PRIO_LOW,
-				    "Got response id = : %d\n",
-				    hdr->dlrsh_correlation_id);
-#endif
-
-				/* Acknowledge the request message based
-				 * on the CorrelationId returned in the
-				 * response.
-				 */
-				if (dl_request_q_dequeue(
-				    self->dlp_unackd_requests, &req) == 0) {
-
-					if (req->dlrq_correlation_id ==
-					    hdr->dlrsh_correlation_id) {
-
-						DLOGTR1(PRIO_HIGH,
-						"Found unack'd request id: %d\n",
-						hdr->dlrsh_correlation_id);
-
-						switch (req->dlrq_api_key) {
-						case DL_PRODUCE_API_KEY:
-							break;
-						case DL_FETCH_API_KEY:
-							/* FALLTHROUGH */
-						case DL_OFFSET_API_KEY:
-							/* FALLTHROUGH */
-						default:
-							DLOGTR1(PRIO_HIGH,
-							"Request ApiKey is invalid (%d)\n",
-							req->dlrq_api_key);
-							break;
-						}
-					} else {
-						/* The log's response doesn't
-						* correspond to the client's most
-						* recent request.
-						*/
-#ifndef NDEBUG
-						DLOGTR2(PRIO_HIGH,
-						    "Unack'd request d %d "
-						    "and response id: %d "
-						    "do not match\n",
-						    req->dlrq_correlation_id,	
-						    hdr->dlrsh_correlation_id);	
-#endif
-					}
-
-					/* The request can now be freed. */
-					dlog_free(req);
-				} else {
-					// TODO
-				}
-
-				/* Free the response header */
-				//dl_response_header_delete(header);
-				dlog_free(hdr);
-			} else {
-				DLOGTR0(PRIO_HIGH,
-				    "Error decoding response header.\n");
-			}
-
-			/* Free the buffer in which the raw response was
-			 * returned by the transport.
-			 */
-			dl_bbuf_delete(buffer);
-		} else {
-
-			/* Server disconnected. */
-			dl_producer_down(self);
-			return;
-
-		}
-	}
-
-	if (revents & POLLOUT) {
-
-		rc = getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len); 
-		if (rc == 0) {
-			if (err == 0) {
-#ifndef NDEBUG
-				DLOGTR0(PRIO_LOW, "Connected\n");
-#endif
-
-				self->dlp_reconn_ms = DLP_MINRECONN_MS;	
-				dl_poll_reactor_unregister(
-				    &self->dlp_trans_hdlr);
-				dl_poll_reactor_register(
-				    &self->dlp_trans_hdlr,
-				    POLLIN|POLLHUP|POLLERR);
-
-				dl_producer_up(self);
-			} 
-		} else {
-			dl_producer_down(self);
-		}
-	}
 }
 
 static dl_event_handler_handle
@@ -347,21 +199,41 @@ dl_producer_timer_handler(void *instance, int fd __attribute((unused)),
     int revents __attribute((unused)))
 {
 	struct dl_producer const * const p = instance;
-	struct kevent event;
+	struct dl_segment *seg;
+	struct kevent events[2];
+	off_t log_position;
 	int rc;
 	
 	dl_producer_check_integrity(p);
 	
-	rc = kevent(p->dlp_ktimer, 0, 0, &event, 1, 0);
+	rc = kevent(p->dlp_ktimer, 0, 0, events, 2, 0);
 	if (rc == -1) {
 		DLOGTR2(PRIO_HIGH, "Error reading kqueue event %d %d\n.",
 		    rc, errno);
 	} else {
-
+		for (int i = 0; i < rc; i++) {
+			switch (events[i].ident) {
+			case RECONNECT_TIMEOUT_EVENT:
 #ifndef NDEBUG
-		DLOGTR0(PRIO_LOW, "Re-connect timeout\n");
+				DLOGTR0(PRIO_LOW, "Re-connect timeout\n");
 #endif
-		dl_producer_reconnect(p);
+				dl_producer_reconnect(p);
+				break;
+			case UPDATE_INDEX_EVENT:
+				seg = dl_topic_get_active_segment(p->dlp_topic);
+				DL_ASSERT(seg != NULL,
+				("Topic's active segment cannot be NULL"));
+
+				dl_segment_lock(seg);
+				log_position = lseek(dl_user_segment_get_log(seg), 0,
+					SEEK_END);
+				dl_segment_unlock(seg);
+				dl_index_update(
+				dl_user_segment_get_index(seg), log_position);
+				dl_producer_produce(p);
+				break;
+			}
+		}
 	}
 }
 
@@ -533,8 +405,8 @@ dlp_enqueue_thread(void *vargp)
 	seg = dl_topic_get_active_segment(topic);
 	DL_ASSERT(seg != NULL, ("Topic's active segment cannot be NULL"));
     	
-	while (dl_segment_get_message_by_offset(seg, dl_segment_get_offset(seg),
-	    &msg_buffer) == 0) {
+	while (dl_segment_get_message_by_offset(seg,
+	    dl_segment_get_offset(seg), &msg_buffer) == 0) {
 	
 #ifndef NDEBUG	
 		DLOGTR1(PRIO_LOW, "MessageSet (%d bytes)\n",
@@ -609,9 +481,7 @@ dlp_enqueue_thread(void *vargp)
 	/* Self-trigger syncd() event. */
 	dl_producer_syncd(self);
 	
-#ifndef NDEBUG
 	DLOGTR0(PRIO_LOW, "Enqueue thread stopped.\n");
-#endif
 	pthread_exit(NULL);
 }
 
@@ -623,33 +493,30 @@ dl_producer_connecting(struct dl_producer * const self)
 	dl_producer_check_integrity(self);
 
 	self->dlp_state = DLP_CONNECTING;
-#ifndef NDEBUG
 	DLOGTR1(PRIO_LOW, "Producer state = CONNECTING (%d)\n",
 	    self->dlp_state);
-#endif
 
-	rc = dl_transport_new(&self->dlp_transport);
+	rc = dl_transport_factory_get_inst(&self->dlp_transport,
+	    self, self->dlp_props);
 	if (rc == 0) {
 
-		dl_transport_connect(self->dlp_transport,
+		rc = dl_transport_connect(self->dlp_transport,
 		    sbuf_data(self->dlp_broker_hostname),
 		    self->dlp_broker_port);
+		if (rc == 0 || (rc == -1 && errno == EINPROGRESS)) {
 
-		self->dlp_trans_hdlr.dleh_instance = self;
-		self->dlp_trans_hdlr.dleh_get_handle =
-		    dlp_get_transport_fd;
-		self->dlp_trans_hdlr.dleh_handle_event =
-		    dlp_transport_hdlr;
-
-		dl_poll_reactor_register(&self->dlp_trans_hdlr,
-		    POLLERR | POLLOUT | POLLHUP);
-	} else {
-		DLOGTR2(PRIO_HIGH, "Failed connecting to %s:%d\n",
-		    sbuf_data(self->dlp_broker_hostname),
-		    self->dlp_broker_port);
-
-		dl_producer_down(self);
+			/* Connect established or in the process
+			 * of establishing.
+			 */
+			return;
+		}
 	}
+
+	DLOGTR3(PRIO_HIGH, "Failed connecting to %s:%d (%d)\n",
+	    sbuf_data(self->dlp_broker_hostname), self->dlp_broker_port,
+	    errno);
+
+	dl_producer_down(self);
 }
 
 static void
@@ -661,9 +528,7 @@ dl_producer_idle(struct dl_producer * const self)
 	    ("Producer transport cannot be NULL."));
 
 	self->dlp_state = DLP_IDLE;
-#ifndef NDEBUG
 	DLOGTR1(PRIO_LOW, "Producer state = IDLE (%d)\n", self->dlp_state);
-#endif
 }
 
 static void
@@ -676,10 +541,11 @@ dl_producer_syncing(struct dl_producer * const self)
 	    ("Producer transport cannot be NULL."));
 
 	self->dlp_state = DLP_SYNCING;
-#ifndef NDEBUG
 	DLOGTR1(PRIO_LOW, "Producer state = SYNCING (%d)\n",
 	    self->dlp_state);
-#endif
+	
+	/* Connection is up reset the reconnect timeout */	
+	self->dlp_reconn_ms = DLP_MINRECONN_MS;	
 
 	/* Start the thread to enqueue log entries for syncing
 	 * with the distributed broker.
@@ -719,10 +585,8 @@ dl_producer_offline(struct dl_producer * const self)
 	dl_producer_check_integrity(self);
 
 	self->dlp_state = DLP_OFFLINE;
-#ifndef NDEBUG
 	DLOGTR1(PRIO_LOW, "Producer state = OFFLINE (%d)\n",
 	    self->dlp_state);
-#endif
 
         /* Stop the produce and resender threads */	
 	pthread_cancel(self->dlp_resender_tid);
@@ -731,15 +595,13 @@ dl_producer_offline(struct dl_producer * const self)
 	pthread_join(self->dlp_produce_tid, NULL);
 	pthread_join(self->dlp_resender_tid, NULL);
 	
-	/* The transport connection with the broker is offline, thus
-	 * unregister the transport file descriptor.
-	 */
-	dl_poll_reactor_unregister(&self->dlp_trans_hdlr);
-	dl_transport_delete(self->dlp_transport);
+	/* Delete the producer transport */
+	if (self->dlp_transport != NULL)
+		dl_transport_delete(self->dlp_transport);
 	self->dlp_transport = NULL;
 
 	/* Trigger reconnect event after timeout period. */	
-	EV_SET(&kev, NOTIFY_IDENT, EVFILT_TIMER,
+	EV_SET(&kev, RECONNECT_TIMEOUT_EVENT, EVFILT_TIMER,
 	    EV_ADD | EV_ONESHOT, 0, self->dlp_reconn_ms, NULL);
 	kevent(self->dlp_ktimer, &kev, 1, NULL, 0, NULL);
 
@@ -758,10 +620,8 @@ dl_producer_final(struct dl_producer * const self)
 	dl_producer_check_integrity(self);
 
 	self->dlp_state = DLP_FINAL;
-#ifndef NDEBUG
 	DLOGTR1(PRIO_HIGH, "Producer state = FINAL (%d)\n",
 	    self->dlp_state);
-#endif
 }
 
 int
@@ -769,8 +629,9 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
     char *hostname, int port, nvlist_t *props)
 {
 	struct dl_producer *producer;
-	int rc;
+	struct kevent kev;
 	char *client_id;
+	int rc;
 
 	DL_ASSERT(self != NULL, ("Producer instance cannot be NULL."));
 	DL_ASSERT(topic != NULL, ("Producer instance cannot be NULL."));
@@ -783,11 +644,12 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 	bzero(producer, sizeof(struct dl_producer));
 
 	producer->dlp_state = DLP_INITIAL;
+	producer->dlp_props = props;
 	producer->dlp_topic = topic;
 	producer->dlp_transport = NULL;
 
 	producer->dlp_name = sbuf_new_auto();
-	if (!nvlist_exists_string(props, DL_CONF_CLIENTID)) {
+	if (nvlist_exists_string(props, DL_CONF_CLIENTID)) {
 		client_id = nvlist_get_string(props, DL_CONF_CLIENTID);
 	} else {
 		client_id = DL_DEFAULT_CLIENTID;
@@ -856,6 +718,11 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 	producer->dlp_ktimer_hdlr.dleh_handle_event =
 	    dl_producer_timer_handler;
 
+	/* Trigger reconnect event after timeout period. */	
+	EV_SET(&kev, UPDATE_INDEX_EVENT, EVFILT_TIMER,
+	    EV_ADD , 0, DLP_UPDATE_INDEX_MS, NULL);
+	kevent(producer->dlp_ktimer, &kev, 1, NULL, 0, NULL);
+
 	dl_poll_reactor_register(&producer->dlp_ktimer_hdlr,
 	    POLLIN | POLLOUT | POLLERR);
 
@@ -895,7 +762,6 @@ dl_producer_delete(struct dl_producer *self)
 	pthread_join(self->dlp_enqueue_tid, NULL);
 	
 	/* Unregister any poll reeactor handlers */
-	dl_poll_reactor_unregister(&self->dlp_trans_hdlr);
 	dl_poll_reactor_unregister(&self->dlp_kq_hdlr);
 	dl_poll_reactor_unregister(&self->dlp_ktimer_hdlr);
 	
@@ -938,10 +804,7 @@ dl_producer_produce(struct dl_producer const * const self)
 {
 
 	dl_producer_check_integrity(self);
-	
-#ifndef NDEBUG
 	DLOGTR0(PRIO_LOW, "Producer event = produce()\n");
-#endif
 
 	switch(self->dlp_state) {
 	case DLP_CONNECTING:
@@ -966,10 +829,7 @@ dl_producer_up(struct dl_producer const * const self)
 {
 
 	dl_producer_check_integrity(self);
-	
-#ifndef NDEBUG
 	DLOGTR0(PRIO_LOW, "Producer event = up()\n");
-#endif
 
 	switch(self->dlp_state) {
 	case DLP_CONNECTING:
@@ -996,10 +856,7 @@ dl_producer_down(struct dl_producer const * const self)
 {
 
 	dl_producer_check_integrity(self);
-
-#ifndef NDEBUG
 	DLOGTR0(PRIO_LOW, "Producer event = down()\n");
-#endif
 
 	switch(self->dlp_state) {
 	case DLP_CONNECTING:
@@ -1016,7 +873,7 @@ dl_producer_down(struct dl_producer const * const self)
 	case DLP_INITIAL:
 		/* FALLTHROUGH */
 	default:
-		DL_ASSERT(1, ("Invalid topic state = %d",
+		DL_ASSERT(0, ("Invalid topic state = %d",
 		    self->dlp_state));
 		break;
 	}
@@ -1027,10 +884,7 @@ dl_producer_syncd(struct dl_producer const * const self)
 {
 
 	dl_producer_check_integrity(self);
-	
-#ifndef NDEBUG
 	DLOGTR0(PRIO_LOW, "Producer event = sync()\n");
-#endif
 
 	switch(self->dlp_state) {
 	case DLP_SYNCING:
@@ -1047,7 +901,7 @@ dl_producer_syncd(struct dl_producer const * const self)
 	case DLP_INITIAL:
 		/* FALLTHROUGH */
 	default:
-		DL_ASSERT(1, ("Invalid topic state = %d",
+		DL_ASSERT(0, ("Invalid topic state = %d",
 		    self->dlp_state));
 		break;
 	}
@@ -1058,10 +912,7 @@ dl_producer_reconnect(struct dl_producer const * const self)
 {
 
 	dl_producer_check_integrity(self);
-	
-#ifndef NDEBUG
 	DLOGTR0(PRIO_LOW, "Producer event = reconnect()\n");
-#endif
 
 	switch(self->dlp_state) {
 	case DLP_SYNCING:
@@ -1078,7 +929,7 @@ dl_producer_reconnect(struct dl_producer const * const self)
 		/* CANNOT HAPPEN */
 		break;
 	default:
-		DL_ASSERT(1, ("Invalid topic state = %d",
+		DL_ASSERT(0, ("Invalid topic state = %d",
 		    self->dlp_state));
 		break;
 	}
@@ -1089,10 +940,8 @@ dl_producer_error(struct dl_producer const * const self)
 {
 
 	dl_producer_check_integrity(self);
-
-#ifndef NDEBUG
 	DLOGTR0(PRIO_LOW, "Producer event = down()\n");
-#endif
+
 	switch(self->dlp_state) {
 	case DLP_SYNCING:
 		/* FALLTHROUGH */
@@ -1104,8 +953,55 @@ dl_producer_error(struct dl_producer const * const self)
 		dl_producer_final(self);
 		break;
 	default:
-		DL_ASSERT(1, ("Invalid topic state = %d",
+		DL_ASSERT(0, ("Invalid topic state = %d",
 		    self->dlp_state));
 		break;
 	}
+}
+
+int
+dl_producer_response(struct dl_producer *self,
+    struct dl_response_header *hdr)
+{
+	struct dl_request_element *req;
+
+	/* Acknowledge the request message based on the CorrelationId
+	 * returned in the response.
+	 */
+	if (dl_request_q_dequeue(self->dlp_unackd_requests, &req) == 0) {
+
+		if (req->dlrq_correlation_id ==
+			hdr->dlrsh_correlation_id) {
+
+			DLOGTR1(PRIO_HIGH, "Found unack'd request id: %d\n",
+			    hdr->dlrsh_correlation_id);
+
+			switch (req->dlrq_api_key) {
+			case DL_PRODUCE_API_KEY:
+				/* TODO: Construct ProducerResponse */
+				break;
+			default:
+				DLOGTR1(PRIO_HIGH,
+				"Request ApiKey is invalid (%d)\n",
+				req->dlrq_api_key);
+				break;
+			}
+		} else {
+			/* The log's response doesn't
+				* correspond to the client's most
+				* recent request.
+				*/
+#ifndef NDEBUG
+			DLOGTR2(PRIO_HIGH,
+				"Unack'd request d %d "
+				"and response id: %d "
+				"do not match\n",
+				req->dlrq_correlation_id,	
+				hdr->dlrsh_correlation_id);	
+#endif
+		}
+		/* The request can now be freed. */
+		dlog_free(req);
+	}
+	return 0;
 }

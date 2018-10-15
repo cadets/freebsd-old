@@ -74,6 +74,11 @@ static const int DLOGD_NELEMENTS_DEFAULT = 10;
 static char const * const DLOGD_TOPICS = "topics";
 static char const * const DLOGD_LOG_PATH= "log_path";
 static char const * const DLOGD_LOG_PATH_DEFAULT= ".";
+static char const * const DLOGD_PRIVATEKEY_FILE = "privatekey_file";
+static char const * const DLOGD_CLIENT_FILE = "client_file";
+static char const * const DLOGD_CACERT_FILE = "cacert_file";
+static char const * const DLOGD_USER_PASSWORD = "user_password";
+static char const * const DLOGD_TLS = "tls";
 
 struct dl_producer_elem {
 	LIST_ENTRY(dl_producer_elem) dlp_entries;
@@ -373,7 +378,37 @@ main(int argc, char *argv[])
 			nvlist_add_string(props, DL_CONF_CLIENTID,
 			    ucl_object_tostring_forced(obj));
 		}
+
+		if (strcmp(ucl_object_key(obj), DLOGD_PRIVATEKEY_FILE) == 0) {
+
+			nvlist_add_string(props, DL_CONF_PRIVATEKEY_FILE,
+			    ucl_object_tostring_forced(obj));
+		}
 		
+		if (strcmp(ucl_object_key(obj), DLOGD_CLIENT_FILE) == 0) {
+
+			nvlist_add_string(props, DL_CONF_CLIENT_FILE,
+			    ucl_object_tostring_forced(obj));
+		}
+		
+		if (strcmp(ucl_object_key(obj), DLOGD_CACERT_FILE) == 0) {
+
+			nvlist_add_string(props, DL_CONF_CACERT_FILE,
+			    ucl_object_tostring_forced(obj));
+		}
+	
+		if (strcmp(ucl_object_key(obj), DLOGD_USER_PASSWORD) == 0) {
+
+			nvlist_add_string(props, DL_CONF_USER_PASSWORD,
+			    ucl_object_tostring_forced(obj));
+		}
+		
+		if (strcmp(ucl_object_key(obj), DLOGD_TLS) == 0) {
+
+			nvlist_add_bool(props, DL_CONF_TLS_ENABLE,
+			    ucl_object_toboolean(obj));
+		}
+				
 		if (strcmp(ucl_object_key(obj), DLOGD_NELEMENTS) == 0) {
 	
 			nelements = ucl_object_toint(obj);
@@ -432,14 +467,14 @@ main(int argc, char *argv[])
 	/* Free the libucl parser. */	
 	ucl_parser_free(parser);
 	
-	/* Destroy the nvlist used to store producer configuration. */
-	nvlist_destroy(props);
-
 	/* Handle any events registered for the configured topics/producers. */
 	while (stop == 0) {
 
 		dl_poll_reactor_handle_events();
 	}
+
+	/* Destroy the nvlist used to store producer configuration. */
+	nvlist_destroy(props);
 
 	/* Delete all of the producers */
 	DLOGTR0(PRIO_LOW, "Deleting the producers.\n");

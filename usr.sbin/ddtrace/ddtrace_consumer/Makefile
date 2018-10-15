@@ -37,18 +37,20 @@ BINDIR= /usr/sbin
 SRCS= ddtrace_consumer.c dl_bbuf.c
 MAN=
 
-LIBADD+=dtrace
-LIBADD+=proc
 LIBADD+=ctf
+LIBADD+=crypto
+LIBADD+=dtrace
 LIBADD+=elf
-LIBADD+=z
-LIBADD+=rtld_db
+LIBADD+=proc
 LIBADD+=rdkafka
+LIBADD+=rtld_db
 LIBADD+=sbuf #?
+LIBADD+=ssl
 LIBADD+=nv
+LIBADD+=z
 
 # TOD: These includes need some tidying up
-CFLAGS+=-DNDEBUG
+CFLAGS+=-DPRIVATE_RDKAFKA
 CFLAGS+=-DNEED_SOLARIS_BOOLEAN
 CFLAGS+=-L/usr/local/lib
 CFLAGS+=-I/usr/local/include

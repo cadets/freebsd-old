@@ -9,10 +9,8 @@
 #define ENABLE_REFCNT_DEBUG 0
 #define ENABLE_SHAREDPTR_DEBUG 0
 #define ENABLE_LZ4_EXT 1
-#define ENABLE_SSL 0
-#define ENABLE_SASL 0
-#define ENABLE_SASL 0
-#define ENABLE_SSL 0
+#define WITH_SSL 1
+#define WITH_SASL 0
 #define MKL_APP_NAME "librdkafka"
 #define MKL_APP_DESC_ONELINE "The Apache Kafka C/C++ library"
 // distro

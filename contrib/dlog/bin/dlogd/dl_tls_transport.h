@@ -1,5 +1,4 @@
 /*-
- * Copyright (c) 2017 (Ilia Shumailov)
  * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
@@ -35,55 +34,17 @@
  *
  */
 
-#ifndef _DL_CONFIG_H
-#define _DL_CONFIG_H
+#ifndef _DL_TLS_TRANSPORT_H
+#define _DL_TLS_TRANSPORT_H
 
 #include <sys/nv.h>
 
-#include "dl_response.h" 
+#include "dl_producer.h"
+#include "dl_transport.h"
 
-/* TODO: Remove this? */
-typedef void (* dl_response_func) (struct dl_response const * const);
+struct dl_transport;
 
-struct dl_broker_config {
-	nvlist_t *dlbc_props;
-};
-
-struct dl_client_config {
-	dl_response_func dlcc_on_response;
-	nvlist_t *dlcc_props;
-};
-
-struct dl_client_config_desc {
-	dl_response_func dlcc_on_response;
-	void * dlcc_packed_nvlist;
-	size_t dlcc_packed_nvlist_len;
-};
-
-#define DL_CONF_CLIENTID "client.id"
-#define DL_CONF_BROKER "client.broker"
-#define DL_CONF_BROKER_PORT "broker.port"
-#define DL_CONF_TORESEND "resend.to_resend"
-#define DL_CONF_RESENDTIMEOUT "resend.timeout"
-#define DL_CONF_RESENDPERIOD "resend.period"
-#define DL_CONF_TOPIC "client.topic"
-#define DL_CONF_PRIVATEKEY_FILE "tls.privatekey.file"
-#define DL_CONF_CLIENT_FILE "tls.client.file"
-#define DL_CONF_CACERT_FILE "tls.cacert.file"
-#define DL_CONF_USER_PASSWORD "tls.user.password"
-#define DL_CONF_TLS_ENABLE "tls.enable"
-
-#define DL_DEFAULT_CLIENTID "dlog"
-#define DL_DEFAULT_BROKER "127.0.0.1"
-#define DL_DEFAULT_BROKER_PORT 9092
-#define DL_DEFAULT_TORESEND true 
-#define DL_DEFAULT_RESENDTIMEOUT 30
-#define DL_DEFAULT_RESENDPERIOD 2
-#define DL_DEFAULT_TOPIC "test" 
-#define DL_DEFAULT_PRIVATEKEY_FILE "client.pem"
-#define DL_DEFAULT_CLIENT_FILE "client.pem"
-#define DL_DEFAULT_CACERT_FILE "cacert.pem"
-#define DL_DEFAULT_USER_PASSWORD "password"
-#define DL_DEFAULT_TLS_ENABLE false
+extern int dl_tls_transport_new(struct dl_transport **,
+    struct dl_producer *, nvlist_t *);
 
 #endif

@@ -54,6 +54,8 @@ DLOG_SRCS= dl_bbuf.c \
 	dl_segment.c \
 	dl_topic.c \
 	dl_transport.c \
+	dl_sock_transport.c \
+	dl_tls_transport.c \
 	dl_user_segment.c \
 	dl_utils.c \
 	lookup3.c
@@ -70,8 +72,9 @@ LIBADD+=crypto
 LIBADD+=nv
 LIBADD+=pthread
 LIBADD+=sbuf
-LIBADD+=z
+LIBADD+=ssl
 LIBADD+=ucl
+LIBADD+=z
 
 CFLAGS+=-g
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
