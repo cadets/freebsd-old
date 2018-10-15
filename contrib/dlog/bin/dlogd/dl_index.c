@@ -102,9 +102,10 @@ static int
 dl_index_update_locked(struct dl_index *self, off_t log_end)
 {
 	struct iovec index_bufs[2];
+	off_t dli_new;
 	uint32_t o, s, t;
 	int rc, idx_cnt = 0;
-	
+		
 	dl_index_check_integrity(self);
 	
 	/* Create the index. */
@@ -128,16 +129,15 @@ dl_index_update_locked(struct dl_index *self, off_t log_end)
 			/* EOF */
 
 			break;
-		} else if(((off_t) (sizeof(o) + sizeof(s) + be32toh(s)) >
-		    log_end)) {
+		} else if((sizeof(o) + sizeof(s) + be32toh(s)) > log_end) {
 			/* Check that the entry in the log is not corrupt,
 			 * that is if the size of the message exceeds the total
 			 * log length.
 			 */
-
-			DLOGTR1(PRIO_HIGH,
-			    "Log message at offset %d is corrupt",
-			    be32toh(o));
+			DLOGTR3(PRIO_HIGH,
+			    "Log message at offset %u is corrupt (%lu > %ld)",
+			    be32toh(o), (sizeof(o) + sizeof(s) + be32toh(s)),
+			    log_end);
 			break;
 		}
 		DL_ASSERT(rc == sizeof(o) + sizeof(s),
@@ -162,9 +162,8 @@ dl_index_update_locked(struct dl_index *self, off_t log_end)
 		/* Advance the index offset into the log by the processed
 		 * entry.
 		 */
-		self->dli_last += sizeof(o);
-		self->dli_last += sizeof(s);
-		self->dli_last += be32toh(s);
+		dli_new = ((off_t) sizeof(o) + sizeof(s) + be32toh(s));
+		self->dli_last += dli_new;
 
 		/* Increment the count of new indexs that were created. */
 		idx_cnt++;
@@ -255,11 +254,16 @@ dl_index_new(struct dl_index **self, int log, int64_t base_offset,
 			rc = dl_bbuf_new(&idx_buf,
 			    (unsigned char *) &record, sizeof(record),
 			    DL_BBUF_BIGENDIAN);
-			if (rc != 0)
-				return -1;
+			if (rc == -1) {
 
-			dl_bbuf_get_int32(idx_buf, &roffset);
-			idx->dli_last = roffset;
+				return -1;
+			} else if (rc == 0) {
+
+				idx->dli_last = 0;
+			} else {
+				dl_bbuf_get_int32(idx_buf, &roffset);
+				idx->dli_last = roffset;
+			}
 			dl_bbuf_delete(idx_buf);
 		}
 	}

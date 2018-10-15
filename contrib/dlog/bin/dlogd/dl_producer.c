@@ -189,7 +189,7 @@ dl_producer_kq_handler(void *instance, int fd __attribute((unused)),
 
 			if (dl_index_update(
 			    dl_user_segment_get_index(seg),
-			    log_position) != 0) {
+			    log_position) > 0) {
 				/* Fire the produce() event into the
 				 * Producer statemachine .
 				 */
@@ -243,7 +243,7 @@ dl_producer_timer_handler(void *instance, int fd __attribute((unused)),
 				/* Periodic update of log index. */
 				seg = dl_topic_get_active_segment(p->dlp_topic);
 				DL_ASSERT(seg != NULL,
-				("Topic's active segment cannot be NULL"));
+				    ("Topic's active segment cannot be NULL"));
 
 				dl_segment_lock(seg);
 				log_position = lseek(
@@ -252,7 +252,7 @@ dl_producer_timer_handler(void *instance, int fd __attribute((unused)),
 
 				if (dl_index_update(
 				    dl_user_segment_get_index(seg),
-				    log_position) != 0) {
+				    log_position) > 0) {
 					/* Fire the produce() event into the
 					 * Producer statemachine .
 					 */
@@ -342,6 +342,7 @@ dlp_produce_thread(void *vargp)
 			/* Update the producer statistics */
 			self->dlp_stats->dlps_queued_requests--;
 
+retry_send:
 			nbytes = dl_transport_send_request(
 			    self->dlp_transport, request->dlrq_buffer);
 			if (nbytes != -1) {
@@ -355,10 +356,8 @@ dlp_produce_thread(void *vargp)
 				DLOGTR1(PRIO_NORMAL,
 				    "Transport send error (%d)\n", errno);
 
-				/* Fire the down() evet in the Producer
-				 * statemachine.
-				 */
-				dl_producer_down(self);
+				if (errno == EAGAIN)
+					goto retry_send;
 			}
 
 			/* The request must be acknowledged, store
@@ -366,8 +365,8 @@ dlp_produce_thread(void *vargp)
 			 * received from the broker.
 			 */
 
-			/* Successfuly send the request,
-			 * record the last send time.
+			/* Record the last attempted send time
+			 * of the request.
 			 */
 			request->dlrq_last_sent = time(NULL);
 
