@@ -39,13 +39,26 @@
 
 #include <sys/nv.h>
 
+#include <stdbool.h>
+
 #include "dl_response.h"
+
+struct dl_producer_stats {
+	char dlps_topic_name[255];	
+	char dlps_state_name[255];	
+	bool dlps_tcp_connected;
+	bool dlps_tls_connected;
+	int32_t dlps_queued_requests;
+	int32_t dlps_unackd_requests;
+	volatile uint64_t dlps_bytes_sent;
+	volatile uint64_t dlps_bytes_received;
+};
 
 struct dl_producer;
 struct dl_topic;
 
 extern int dl_producer_new(struct dl_producer **, struct dl_topic *,
-    char *, int, nvlist_t *);
+    char *, char *, int, nvlist_t *);
 extern void dl_producer_delete(struct dl_producer *);
 
 extern struct dl_topic * dl_producer_get_topic(struct dl_producer *); 
@@ -59,5 +72,10 @@ extern void dl_producer_error(struct dl_producer const * const);
 
 extern int dl_producer_response(struct dl_producer *,
     struct dl_response_header *);
+
+extern void dl_producer_stats_tcp_connect(struct dl_producer *, bool);
+extern void dl_producer_stats_tls_connect(struct dl_producer *, bool);
+extern void dl_producer_stats_bytes_sent(struct dl_producer *self, int32_t);
+extern void dl_producer_stats_bytes_received(struct dl_producer *self, int32_t);
 
 #endif

@@ -91,6 +91,7 @@ struct dl_segment_desc {
 	int dlsd_log; /* Segement's log file descriptor. */
 };
 
+extern void dl_segment_delete(struct dl_segment *);
 extern int dl_segment_new(struct dl_segment**, uint32_t, uint32_t,
     dls_insert_message, dls_get_message_by_offset, dls_get_offset,
     dls_lock, dls_unlock, dls_delete);

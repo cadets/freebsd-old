@@ -34,54 +34,31 @@
 .OBJDIR:= obj
 MK_AUTO_OBJ:= yes
 
-PROGS= dlogd
+PROGS= dlogdstat
 BINDIR= bin
 
-DLOG_SRCS= dl_bbuf.c \
-	dl_correlation_id.c \
-	dl_fetch_request.c \
-	dl_fetch_response.c \
-	dl_index.c \
-	dl_list_offset_request.c \
-	dl_list_offset_response.c \
-	dl_message_set.c \
-	dl_offset.c \
-	dl_poll_reactor.c \
-	dl_primitive_types.c \
-	dl_producer.c \
-	dl_produce_request.c \
-	dl_produce_response.c \
-	dl_request.c \
-	dl_request_queue.c \
-	dl_response.c \
-	dl_user_segment.c \
-	dl_segment.c \
-	dl_topic.c \
-	dl_sock_transport.c \
-	dl_tls_transport.c \
-	dl_transport.c \
-	dl_utils.c \
-	lookup3.c
+SRCS.dlogdstat = dlogdstat.c
+MAN.dlogdstat =
 
-SRCS.dlogd = dlogd.c ${DLOG_SRCS}
-MAN.dlogd =
-
-LDADD+=-lc
-LDADD+=-lcrypto
-LDADD+=-lnv
-LDADD+=-lpthread
+#LDADD+=-lc
+#LDADD+=-lcrypto
+#LDADD+=-lnv
+#LDADD+=-lpthread
+LDADD+=-lncurses
 LDADD+=-lsbuf
-LDADD+=-lssl
-LDADD+=-lucl
-LDADD+=-lz
+#LDADD+=-lssl
+#LDADD+=-lucl
+#LDADD+=-lz
 
-#CFLAGS+=-DNDEBUG
+CFLAGS+=-DNDEBUG
 CFLAGS+=-g
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
 CFLAGS+=-L/usr/local/lib
 CFLAGS+=-I/usr/local/include
+CFLAGS+=-I../dlogd
 CFLAGS+=-I../../src
-CFLAGS+=-I${SRCTOP}/../dlog
+CFLAGS+=-I.
+#CFLAGS+=-O1
 #CFLAGS+=-fsanitize=address
 #CFLAGS+=-fno-omit-frame-pointer
 

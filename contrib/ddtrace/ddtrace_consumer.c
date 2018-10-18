@@ -95,16 +95,6 @@ dtc_intr(int signo)
 static int
 chew(const dtrace_probedata_t *data, void *arg)
 {
-#ifndef NDEBUG
-	dtrace_probedesc_t *pd = data->dtpda_pdesc;
-	dtrace_eprobedesc_t *ed = data->dtpda_edesc;
-	processorid_t cpu = data->dtpda_cpu;
-
-	DLOGTR1(PRIO_LOW, "dtpd->id = %u\n", pd->dtpd_id);
-	DLOGTR1(PRIO_LOW, "dtepd->id = %u\n", ed->dtepd_epid);
-	DLOGTR1(PRIO_LOW, "dtpd->func = %s\n", pd->dtpd_func);
-	DLOGTR1(PRIO_LOW, "dtpd->name = %s\n", pd->dtpd_name);
-#endif
 
 	return (DTRACE_CONSUME_THIS);
 }
@@ -122,16 +112,6 @@ chewrec(const dtrace_probedata_t * data, const dtrace_recdesc_t * rec,
 
 		return (DTRACE_CONSUME_NEXT); 
 	}
-
-#ifndef NDEBUG
-	DLOGTR1(PRIO_LOW, "chewrec %p\n", rec);
-	DLOGTR1(PRIO_LOW, "dtrd_action %u\n", rec->dtrd_action);
-	DLOGTR1(PRIO_LOW, "dtrd_size %u\n", rec->dtrd_size);
-	DLOGTR1(PRIO_LOW, "dtrd_alignment %u\n", rec->dtrd_alignment);
-	DLOGTR1(PRIO_LOW, "dtrd_format %u\n", rec->dtrd_format);
-	DLOGTR1(PRIO_LOW, "dtrd_arg  %lu\n", rec->dtrd_arg);
-	DLOGTR1(PRIO_LOW, "dtrd_uarg  %lu\n", rec->dtrd_uarg);
-#endif
 
 	act = rec->dtrd_action;
 	addr = (uintptr_t)data->dtpda_data;
@@ -153,7 +133,6 @@ dtc_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 	int partition = 0;
 	
 	DL_ASSERT(dtp != NULL, ("DTrace handle cannot be NULL"));
-	DL_ASSERT(buf != NULL, ("Buffer instance to free cannot be NULL"));
 
 	buf = dt_zalloc(dtp, sizeof(*buf));
 	if (buf == NULL)
@@ -165,31 +144,59 @@ dtc_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 	rkmessage = rd_kafka_consume(rx_topic, partition, 0);
 	if (rkmessage != NULL) {
 
+		/* Check that the key of the received Kafka message indicated
+		 * the message was produced by Distributed DTrace.
+		 *
+		 * If the Message key indicates that the message was not
+		 * produced by Distribted DTrace, processing the message can
+		 * have dire consequences as libdtrace implicitly trusts the
+		 * buffers that it processes.
+		 */
+
 		if (!rkmessage->err && rkmessage->len > 0) {
+			if (rkmessage->key != NULL &&
+			    strncmp(rkmessage->key, "ddtrace", rkmessage->key_len) == 0) {
 
-			DLOGTR2(PRIO_LOW, "%s: message in log %zu\n",
-			     g_pname, rkmessage->len);
+					DLOGTR2(PRIO_LOW, "%s: message in log %zu\n",
+					g_pname, rkmessage->len);
 
-			buf->dtbd_data = dt_zalloc(dtp, rkmessage->len);
-			if (buf->dtbd_data == NULL) {
+					buf->dtbd_data = dt_zalloc(dtp, rkmessage->len);
+					if (buf->dtbd_data == NULL) {
 
-				dt_free(dtp, buf);
-				return -1;
+						dt_free(dtp, buf);
+						return -1;
+					}
+					buf->dtbd_size = rkmessage->len;
+					buf->dtbd_cpu = cpu;
+
+					memcpy(buf->dtbd_data, rkmessage->payload,
+					    rkmessage->len);
+			} else {
+
+				if (rkmessage->key == NULL) {
+					DLOGTR2(PRIO_LOW,
+					"%s: key of Kafka mesage %s is NULL or invalid\n",
+					g_pname, rkmessage->payload);
+				} else {
+					printf("key = %s\n", rkmessage->key);
+				}
+
+				if (rkmessage->payload != NULL) {
+					DLOGTR2(PRIO_LOW,
+					"%s: key of Kafka mesage %s is NULL or invalid\n",
+					g_pname, rkmessage->payload);
+				}
+				buf->dtbd_size = 0;
 			}
-			buf->dtbd_size = rkmessage->len;
-			buf->dtbd_cpu = cpu;
-
-			memcpy(buf->dtbd_data, rkmessage->payload,
-			    rkmessage->len);
 		} else {
 			if (rkmessage->err ==
-			    RD_KAFKA_RESP_ERR__PARTITION_EOF) {
+				RD_KAFKA_RESP_ERR__PARTITION_EOF) {
 				DLOGTR1(PRIO_HIGH,
-				    "%s: no message in log\n", g_pname);
+					"%s: no message in log\n", g_pname);
 			}
+			buf->dtbd_size = 0;
 		}
-
-		rd_kafka_message_destroy(rkmessage);
+			rd_kafka_message_destroy(rkmessage);
 	}
 
 	*bufp = buf;
@@ -202,10 +209,9 @@ dtc_put_buf(dtrace_hdl_t *dtp, dtrace_bufdesc_t *buf)
 
 	DL_ASSERT(dtp != NULL, ("DTrace handle cannot be NULL"));
 	DL_ASSERT(buf != NULL, ("Buffer instance to free cannot be NULL"));
-	DL_ASSERT(buf->dtbd_data != NULL,
-	    ("Buffer data pointer cannot be NULL"));
 
-	dt_free(dtp, buf->dtbd_data);
+	if (buf->dtbd_data != NULL)
+		dt_free(dtp, buf->dtbd_data);
 	dt_free(dtp, buf);
 }
 
@@ -356,50 +362,53 @@ dtc_setup_rx_topic(char *topic_name, char *brokers, char *ca_cert,
 		goto configure_rx_topic_new_err;
         }
 
-	/* Configure TLS support:
-	 * https://github.com/edenhill/librdkafka/wiki/Using-SSL-with-librdkafkaxi
-	 */
-	if (rd_kafka_conf_set(conf, "metadata.broker.list", brokers,
-	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+	if (ca_cert != NULL && client_cert != NULL && priv_key != NULL &&
+	    password != NULL) {
+		/* Configure TLS support:
+		* https://github.com/edenhill/librdkafka/wiki/Using-SSL-with-librdkafkaxi
+		*/
+		if (rd_kafka_conf_set(conf, "metadata.broker.list", brokers,
+		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
-                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
-		goto configure_rx_topic_new_err;
-        }
+			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+			goto configure_rx_topic_new_err;
+		}
 
-	if (rd_kafka_conf_set(conf, "security.protocol", "ssl",
-	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		if (rd_kafka_conf_set(conf, "security.protocol", "ssl",
+		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
-                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
-		goto configure_rx_topic_new_err;
-        }
+			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+			goto configure_rx_topic_new_err;
+		}
 
-	if (rd_kafka_conf_set(conf, "ssl.ca.location", ca_cert,
-	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		if (rd_kafka_conf_set(conf, "ssl.ca.location", ca_cert,
+		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
-                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
-		goto configure_rx_topic_new_err;
-        }
+			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+			goto configure_rx_topic_new_err;
+		}
 
-	if (rd_kafka_conf_set(conf, "ssl.certificate.location", client_cert,
-	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		if (rd_kafka_conf_set(conf, "ssl.certificate.location", client_cert,
+		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
-                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
-		goto configure_rx_topic_new_err;
-        }
+			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+			goto configure_rx_topic_new_err;
+		}
 
-	if (rd_kafka_conf_set(conf, "ssl.key.location", priv_key,
-	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		if (rd_kafka_conf_set(conf, "ssl.key.location", priv_key,
+		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
-                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
-		goto configure_rx_topic_new_err;
-        }
+			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+			goto configure_rx_topic_new_err;
+		}
 
-	if (rd_kafka_conf_set(conf, "ssl.key.password", password,
-	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		if (rd_kafka_conf_set(conf, "ssl.key.password", password,
+		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
-                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
-		goto configure_rx_topic_new_err;
-        }
+			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+			goto configure_rx_topic_new_err;
+		}
+	}
 
 	/* Create the Kafka consumer.
 	 * The configuration instance does not need to be freed after
@@ -468,50 +477,53 @@ dtc_setup_tx_topic(char *topic_name, char *brokers, char *ca_cert,
 		goto configure_tx_topic_conf_err;
         }
 
-	/* Configure TLS support:
-	 * https://github.com/edenhill/librdkafka/wiki/Using-SSL-with-librdkafkaxi
-	 */
-	if (rd_kafka_conf_set(conf, "metadata.broker.list", brokers,
-	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+	if (ca_cert != NULL && client_cert != NULL && priv_key != NULL &&
+	    password != NULL) {
+		/* Configure TLS support:
+		* https://github.com/edenhill/librdkafka/wiki/Using-SSL-with-librdkafkaxi
+		*/
+		if (rd_kafka_conf_set(conf, "metadata.broker.list", brokers,
+		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
-                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
-		goto configure_tx_topic_new_err;
-        }
+			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+			goto configure_tx_topic_new_err;
+		}
 
-	if (rd_kafka_conf_set(conf, "security.protocol", "ssl",
-	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		if (rd_kafka_conf_set(conf, "security.protocol", "ssl",
+		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
-                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
-		goto configure_tx_topic_new_err;
-        }
+			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+			goto configure_tx_topic_new_err;
+		}
 
-	if (rd_kafka_conf_set(conf, "ssl.ca.location", ca_cert,
-	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		if (rd_kafka_conf_set(conf, "ssl.ca.location", ca_cert,
+		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
-                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
-		goto configure_tx_topic_new_err;
-        }
+			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+			goto configure_tx_topic_new_err;
+		}
 
-	if (rd_kafka_conf_set(conf, "ssl.certificate.location", client_cert,
-	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		if (rd_kafka_conf_set(conf, "ssl.certificate.location", client_cert,
+		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
-                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
-		goto configure_tx_topic_new_err;
-        }
+			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+			goto configure_tx_topic_new_err;
+		}
 
-	if (rd_kafka_conf_set(conf, "ssl.key.location", priv_key,
-	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		if (rd_kafka_conf_set(conf, "ssl.key.location", priv_key,
+		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
-                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
-		goto configure_tx_topic_new_err;
-        }
+			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+			goto configure_tx_topic_new_err;
+		}
 
-	if (rd_kafka_conf_set(conf, "ssl.key.password", password,
-	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		if (rd_kafka_conf_set(conf, "ssl.key.password", password,
+		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
-                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
-		goto configure_tx_topic_new_err;
-        }
+			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+			goto configure_tx_topic_new_err;
+		}
+	}
 
 	/* Create the Kafka producer.
 	 * The configuration instance does not need to be freed after

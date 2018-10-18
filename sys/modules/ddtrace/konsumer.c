@@ -104,6 +104,7 @@ extern hrtime_t dtrace_deadman_user;
 extern kmutex_t dtrace_lock;
 
 static char const * const KONSUMER_NAME = "dlog_konsumer";
+static char *KONSUMER_KEY = "ddtrace";
 
 static moduledata_t konsumer_conf = {
 	KONSUMER_NAME,
@@ -368,18 +369,17 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 
 	while (size < desc->dtbd_size) {
 
-		epid = (dtrace_epid_t) desc->dtbd_data[size];
+		epid = *(dtrace_epid_t *) ((uintptr_t) desc->dtbd_data + size);
 		if (epid == DTRACE_EPIDNONE) {
 
-			DLOGTR0(PRIO_LOW, "End of DTrace buffer\n");
-			break;
+			size += sizeof(epid);
+			continue;
 		}
 
 		if (dtrace_epid2size(state, epid) == 0) {
 
 			DLOGTR1(PRIO_HIGH,
-			    "Error payload size is 0 for epid = %u\n",
-			    epid);
+			    "Error payload size is 0 for epid = %u\n", epid);
 			break;
 		}
 
@@ -407,7 +407,8 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 			     "than log MTU %d\n",
 			     dtrace_epid2size(state, epid), DL_MTU));
 
-			if (dlog_produce_no_key(hdl, 
+			if (dlog_produce(hdl, 
+			    KONSUMER_KEY, strlen(KONSUMER_KEY),
 			    &desc->dtbd_data[msg_start], msg_size) != 0) {
 
 				DLOGTR0(PRIO_HIGH,

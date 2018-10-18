@@ -163,6 +163,7 @@ dl_produce_response_decode(struct dl_response **self,
 
 	response = (struct dl_response *) dlog_alloc(
 	    sizeof(struct dl_response));
+	response->dlrs_api_key = DL_PRODUCE_API_KEY;
 
 	/* Allocate and initialise the produce_response instance. */
 	response->dlrs_produce_response = produce_response =

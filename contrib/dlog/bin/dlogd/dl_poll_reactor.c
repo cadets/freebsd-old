@@ -35,21 +35,8 @@
 
 #include <sys/queue.h>
 
-#ifdef _KERNEL
-#include <sys/libkern.h>
-#include <sys/poll.h>
-#include <sys/param.h>
-#include <sys/systm.h>
-#include <sys/proc.h>
-#include <sys/kthread.h>
-#include <sys/socket.h>
-#include <sys/socketvar.h>
-#include <sys/syscallsubr.h>
-#else
 #include <poll.h>
 #include <strings.h>
-#endif
-
 #include <stddef.h>
 
 #include "dl_assert.h"
@@ -72,7 +59,7 @@ static void dl_remove_from_registry(
     struct dl_event_handler const * const handler);
 
 // TODO: Limit number of handles correctly
-static const size_t MAX_NO_OF_HANDLES = 10;
+static const size_t MAX_NO_OF_HANDLES = 100;
 
 static STAILQ_HEAD(dl_handlers, dl_handler_registry) handlers =
     STAILQ_HEAD_INITIALIZER(handlers);
@@ -196,7 +183,7 @@ dl_poll_reactor_handle_events(void)
 	struct pollfd fds[MAX_NO_OF_HANDLES];
 	size_t nhandles;
 
-	bzero(fds, MAX_NO_OF_HANDLES * sizeof(struct pollfd));
+	bzero(fds, sizeof(fds));
 	nhandles = dl_build_poll_array(fds);
 
 	/* Invoke the synchronous event demultiplexer. */

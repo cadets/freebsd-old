@@ -183,6 +183,8 @@ dl_sock_transport_read_msg(struct dl_transport *self,
 		*/
 		dl_bbuf_flip(*target);
 
+		/* Update the Producer statistics. */
+		dl_producer_stats_bytes_received(self->dlt_producer, msg_size);
 		return msg_size;
 	} else {
 
@@ -198,6 +200,7 @@ dl_sock_transport_send_request(struct dl_transport *self,
 {
 	struct iovec iov[2];
 	int32_t buflen;
+	int rc;
 
 	dl_transport_check_integrity(self->dlt_sock);
 	DL_ASSERT(buffer != NULL, "Buffer to send cannot be NULL");
@@ -211,7 +214,13 @@ dl_sock_transport_send_request(struct dl_transport *self,
 	iov[1].iov_len = dl_bbuf_pos(buffer);
 
 	DLOGTR1(PRIO_LOW, "Sending request (bytes= %zu)\n", iov[1].iov_len);
-	return writev(self->dlt_sock->dlt_fd, iov, 2);
+	rc = writev(self->dlt_sock->dlt_fd, iov, 2);
+	if (rc > 0) {
+		/* Update the Producer statistics. */
+		dl_producer_stats_bytes_sent(self->dlt_producer,
+		    dl_bbuf_pos(buffer));
+	}
+	return rc;
 }
 
 static void 
@@ -233,6 +242,7 @@ dl_sock_transport_hdlr(void *instance, int fd, int revents)
 			DLOGTR0(PRIO_LOW, "Connection refused\n");
 		}
 		
+		dl_producer_stats_tcp_connect(self->dlt_producer, false);
 		dl_producer_down(self->dlt_producer);
 		return;
 	}
@@ -270,6 +280,8 @@ dl_sock_transport_hdlr(void *instance, int fd, int revents)
 		} else {
 
 			/* Server disconnected. */
+			dl_producer_stats_tcp_connect(self->dlt_producer,
+			    false);
 			dl_producer_down(self->dlt_producer);
 		}
 	}
@@ -280,6 +292,8 @@ dl_sock_transport_hdlr(void *instance, int fd, int revents)
 		if (rc == 0) {
 			if (err == 0) {
 				DLOGTR0(PRIO_LOW, "TCP Connected\n");
+				dl_producer_stats_tcp_connect(
+				    self->dlt_producer, true);
 
 				/* Re-register the handler to trigger
 				* when data is read to read
@@ -294,6 +308,8 @@ dl_sock_transport_hdlr(void *instance, int fd, int revents)
 				dl_producer_up(self->dlt_producer);
 			} 
 		} else {
+			dl_producer_stats_tcp_connect(
+			    self->dlt_producer, false);
 			dl_producer_down(self->dlt_producer);
 		}
 	}

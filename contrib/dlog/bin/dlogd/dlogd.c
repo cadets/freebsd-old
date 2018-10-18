@@ -242,7 +242,7 @@ dlogd_manage_topic(char * topic_name, char *log_path, char *hostname,
 				&topic_desc);	
 			if (rc == 0) {
 				rc = dl_producer_new(&producer, topic,
-					hostname, port, props); 
+					log_path, hostname, port, props); 
 				if (rc == 0) {
 					elem = (struct dl_producer_elem *) dlog_alloc(sizeof(struct dl_producer_elem));
 					elem->dlp_inst = producer;

@@ -111,7 +111,7 @@ dl_correlation_id_val(struct dl_correlation_id *self)
 #ifdef __APPLE__
 	return atomic_load(&self->val);
 #else
-	return self->val; //atomic_load_32(&self->val);
+	return atomic_load_32(&self->val);
 #endif
 }
 

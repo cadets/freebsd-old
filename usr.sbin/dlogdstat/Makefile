@@ -29,60 +29,19 @@
 # SUCH DAMAGE.
 #
 
-.PATH : ../../src
+DLOGDIR= ${SRCTOP}/contrib/dlog
+.PATH : ${DLOGDIR}/bin/dlogdstat
 
-.OBJDIR:= obj
-MK_AUTO_OBJ:= yes
+PROG= dlogdstat
 
-PROGS= dlogd
-BINDIR= bin
+SRCS= dlogdstat.c
+MAN=
 
-DLOG_SRCS= dl_bbuf.c \
-	dl_correlation_id.c \
-	dl_fetch_request.c \
-	dl_fetch_response.c \
-	dl_index.c \
-	dl_list_offset_request.c \
-	dl_list_offset_response.c \
-	dl_message_set.c \
-	dl_offset.c \
-	dl_poll_reactor.c \
-	dl_primitive_types.c \
-	dl_producer.c \
-	dl_produce_request.c \
-	dl_produce_response.c \
-	dl_request.c \
-	dl_request_queue.c \
-	dl_response.c \
-	dl_user_segment.c \
-	dl_segment.c \
-	dl_topic.c \
-	dl_sock_transport.c \
-	dl_tls_transport.c \
-	dl_transport.c \
-	dl_utils.c \
-	lookup3.c
+LIBADD+=ncurses
+LIBADD+=sbuf
 
-SRCS.dlogd = dlogd.c ${DLOG_SRCS}
-MAN.dlogd =
-
-LDADD+=-lc
-LDADD+=-lcrypto
-LDADD+=-lnv
-LDADD+=-lpthread
-LDADD+=-lsbuf
-LDADD+=-lssl
-LDADD+=-lucl
-LDADD+=-lz
-
-#CFLAGS+=-DNDEBUG
 CFLAGS+=-g
-CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
-CFLAGS+=-L/usr/local/lib
-CFLAGS+=-I/usr/local/include
-CFLAGS+=-I../../src
-CFLAGS+=-I${SRCTOP}/../dlog
-#CFLAGS+=-fsanitize=address
-#CFLAGS+=-fno-omit-frame-pointer
+CFLAGS+=-I${DLOGDIR}/bin/dlogd
+CFLAGS+=-I${DLOGDIR}/src
 
-.include <bsd.progs.mk>
+.include <bsd.prog.mk>
