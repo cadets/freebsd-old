@@ -315,6 +315,9 @@ dl_index_lookup(struct dl_index *self, uint32_t offset, off_t *poffset)
 
 	rc = dl_index_lookup_by_file_offset(self,
 	    (offset * sizeof(struct dl_index_record)), &roffset, poffset);
+	if (rc == -1) {
+		return -1;
+	}
 	if ((int32_t) offset != roffset) {
 		/* The index file is corrupt.
 		 * Recompute the index and then retry the lookup.
