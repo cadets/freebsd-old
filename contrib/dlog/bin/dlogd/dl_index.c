@@ -65,7 +65,7 @@ struct dl_index_record {
 };
 
 static int dl_index_lookup_by_file_offset(struct dl_index *, off_t,
-    off_t *, off_t *);
+    int32_t *, int32_t *);
 static int dl_index_update_locked(struct dl_index *, off_t);
 
 /* Number of digits in base 10 required to represent a 32-bit number. */
@@ -80,7 +80,7 @@ dl_index_check_integrity(struct dl_index const * const self)
 
 static int 
 dl_index_lookup_by_file_offset(struct dl_index *self, off_t offset,
-    off_t *roffset, off_t *poffset)
+    int32_t *roffset, int32_t *poffset)
 {
 	struct dl_index_record record;
 	struct dl_bbuf *idx_buf;
@@ -117,8 +117,8 @@ dl_index_lookup_by_file_offset(struct dl_index *self, off_t offset,
 		return -1;
 	}
 
-	dl_bbuf_get_int32(idx_buf, (int32_t *) roffset);
-	dl_bbuf_get_int32(idx_buf, (int32_t *) poffset);
+	dl_bbuf_get_int32(idx_buf, roffset);
+	dl_bbuf_get_int32(idx_buf, poffset);
 	dl_bbuf_delete(idx_buf);
 	pthread_mutex_unlock(&self->dli_mtx);
 
@@ -210,8 +210,8 @@ dl_index_new(struct dl_index **self, int log, int64_t base_offset,
 	struct dl_index *idx;
 	struct sbuf *idx_name;
 	struct dl_index_record record;
-	off_t roffset;
 	off_t idx_end;
+	int32_t roffset, poffset;
 	int rc;
 
 	DL_ASSERT(self != NULL, ("Index instance cannot be NULL."));
@@ -264,13 +264,14 @@ dl_index_new(struct dl_index **self, int log, int64_t base_offset,
 		idx->dli_last = 0;
 	} else {
 		rc = dl_index_lookup_by_file_offset(idx,
-		    (idx_end - sizeof(record)), &roffset, &idx->dli_last);
+		    (idx_end - sizeof(record)), &roffset, &poffset);
 		if (rc == -1) {
 
 			DLOGTR1(PRIO_HIGH,
 			    "Failed to read from index file %d\n", errno);
 			return -1;
 		}
+		idx->dli_last = poffset;
 	}
 	DLOGTR1(PRIO_HIGH, "Read offset (%ld)\n", idx->dli_last);
 
@@ -306,24 +307,24 @@ dl_index_update(struct dl_index *self, off_t log_end)
 }
 
 off_t
-dl_index_lookup(struct dl_index *self, uint32_t offset, off_t *poffset)
+dl_index_lookup(struct dl_index *self, uint32_t offset, off_t *offset_loc)
 {
-	off_t roffset;
+	int32_t roffset, poffset;
 	int rc;
 
 	dl_index_check_integrity(self);
 
 	rc = dl_index_lookup_by_file_offset(self,
-	    (offset * sizeof(struct dl_index_record)), &roffset, poffset);
+	    (offset * sizeof(struct dl_index_record)), &roffset, &poffset);
 	if (rc == -1) {
 		return -1;
 	}
-	if ((int32_t) offset != roffset) {
+	if (offset != (uint32_t) roffset) {
 		/* The index file is corrupt.
 		 * Recompute the index and then retry the lookup.
 		 */
 		DLOGTR2(PRIO_HIGH,
-		    "Request offset (%X) doesn't match index (%lX).",
+		    "Request offset (%X) doesn't match index (%X).",
 		    offset, roffset);
 		 /* Read the previous value of the index and set the 
 		  * value of dli_last to list.
@@ -331,12 +332,12 @@ dl_index_lookup(struct dl_index *self, uint32_t offset, off_t *poffset)
 		if (offset != 0) {
 			rc = dl_index_lookup_by_file_offset(self,
 			    ((offset - 1) * sizeof(struct dl_index_record)),
-			    &roffset, poffset);
+			    &roffset, &poffset);
 			if (rc == -1) {
 				ftruncate(self->dli_idx_fd, 0);
 				self->dli_last = 0;
 			} else {
-				self->dli_last = *poffset;
+				self->dli_last = poffset;
 			}
 		} else {
 			ftruncate(self->dli_idx_fd, 0);
@@ -345,6 +346,7 @@ dl_index_lookup(struct dl_index *self, uint32_t offset, off_t *poffset)
 		return -1;
 	}
 
+	*offset_loc = poffset;
 	return 0;
 }
 
