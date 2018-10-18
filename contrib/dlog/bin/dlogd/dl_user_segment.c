@@ -287,13 +287,14 @@ dl_user_segment_get_message_by_offset(struct dl_segment *self, int offset,
 {
 	struct dl_bbuf *t;
 	unsigned char *msg_tmp;
-	int32_t poffset, tmp_buf[2], cid, size;
+	int32_t tmp_buf[2], cid, size;
+	off_t poffset;
 	int rc;
 
 	dl_user_segment_check_integrity(self->dls_user);
 
-	poffset = dl_index_lookup(self->dls_user->dls_idx, offset);
-	if (poffset >= 0) {
+	rc = dl_index_lookup(self->dls_user->dls_idx, offset, &poffset);
+	if (rc == 0) {
 		rc = pread(self->dls_user->dls_log, tmp_buf, sizeof(tmp_buf),
 		    poffset);
 		if (rc == -1) {
@@ -323,6 +324,7 @@ dl_user_segment_get_message_by_offset(struct dl_segment *self, int offset,
 		dl_bbuf_new(msg_buf, NULL, size + sizeof(int32_t),
 		    DL_BBUF_BIGENDIAN);
 		dl_bbuf_bcat(*msg_buf, msg_tmp, size + sizeof(int32_t));
+		dlog_free(msg_tmp);
 		return 0;
 	} else {
 		DLOGTR2(PRIO_LOW, "For offset %d no message found (%d).\n",

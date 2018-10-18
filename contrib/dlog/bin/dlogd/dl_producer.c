@@ -161,6 +161,7 @@ static void
 dl_producer_kq_handler(void *instance, int fd __attribute((unused)),
     int revents __attribute((unused)))
 {
+	struct dl_index *idx;
 	struct dl_producer const * const p = instance;
 	struct dl_segment *seg;
 	struct kevent event;
@@ -187,9 +188,9 @@ dl_producer_kq_handler(void *instance, int fd __attribute((unused)),
 			dl_segment_set_last_sync_pos(seg, log_position);
 			dl_segment_unlock(seg);
 
-			if (dl_index_update(
-			    dl_user_segment_get_index(seg),
-			    log_position) > 0) {
+			idx = dl_user_segment_get_index(seg);
+			if (dl_index_update(idx,
+			    dl_index_get_last(idx) + DL_FSYNC_DEFAULT_CHARS) > 0) {
 				/* Fire the produce() event into the
 				 * Producer statemachine .
 				 */
@@ -214,6 +215,7 @@ static void
 dl_producer_timer_handler(void *instance, int fd __attribute((unused)),
     int revents __attribute((unused)))
 {
+	struct dl_index *idx;
 	struct dl_producer const * const p = instance;
 	struct dl_segment *seg;
 	struct kevent events[2];
@@ -250,9 +252,9 @@ dl_producer_timer_handler(void *instance, int fd __attribute((unused)),
 				    dl_user_segment_get_log(seg), 0, SEEK_END);
 				dl_segment_unlock(seg);
 
-				if (dl_index_update(
-				    dl_user_segment_get_index(seg),
-				    log_position) > 0) {
+				idx = dl_user_segment_get_index(seg);
+				if (dl_index_update(idx,
+			    	    dl_index_get_last(idx) + DL_FSYNC_DEFAULT_CHARS) > 0) {
 					/* Fire the produce() event into the
 					 * Producer statemachine .
 					 */
@@ -417,18 +419,27 @@ dlp_enqueue_thread(void *vargp)
 
 			rc = dl_request_encode(message, &buffer);
 			if (rc != 0) {
+
 				DLOGTR0(PRIO_HIGH,
 				    "Failed creating ProduceRequest\n");
 				dl_producer_error(self);
 			}
 
-			// Concat the buffers together?
+			/* Free the ProduceRequest */
+			dl_request_delete(message);
+
+			/* Concat the buffers together */
 			rc = dl_bbuf_concat(buffer, msg_buffer);
 			if (rc != 0) {
+
 				DLOGTR0(PRIO_HIGH,
 				    "Failed creating ProduceRequest\n");
+				dl_bbuf_delete(msg_buffer);
 				dl_producer_error(self);
 			}
+
+			/* Free the Message buffer read from the log file */
+			dl_bbuf_delete(msg_buffer);
 
 			DLOGTR1(PRIO_LOW,
 			    "Enqueing ProduceRequest (%d bytes)\n",
@@ -438,8 +449,10 @@ dlp_enqueue_thread(void *vargp)
 			    buffer, dl_correlation_id_val(self->dlp_cid),
 			    DL_PRODUCE_API_KEY);
 			if (rc != 0) {
+
 				DLOGTR0(PRIO_HIGH,
 				    "Failed enqueing ProduceRequest\n");
+				dl_bbuf_delete(buffer);
 				dl_producer_error(self);
 				break;
 			} else {
@@ -889,6 +902,7 @@ dl_producer_response(struct dl_producer *self,
 		}
 
 		/* The request can now be freed. */
+		dl_bbuf_delete(req->dlrq_buffer);
 		dlog_free(req);
 	}
 	return 0;

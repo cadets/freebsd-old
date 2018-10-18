@@ -64,7 +64,8 @@ struct dl_index_record {
 	uint32_t dlir_poffset;
 };
 
-static int dl_index_recompute(struct dl_index *);
+static int dl_index_lookup_by_file_offset(struct dl_index *, off_t,
+    off_t *, off_t *);
 static int dl_index_update_locked(struct dl_index *, off_t);
 
 /* Number of digits in base 10 required to represent a 32-bit number. */
@@ -77,25 +78,51 @@ dl_index_check_integrity(struct dl_index const * const self)
 	DL_ASSERT(self != NULL, ("Index instance cannot be NULL."));
 }
 
-static int
-dl_index_recompute(struct dl_index *self)
+static int 
+dl_index_lookup_by_file_offset(struct dl_index *self, off_t offset,
+    off_t *roffset, off_t *poffset)
 {
-	off_t last;
+	struct dl_index_record record;
+	struct dl_bbuf *idx_buf;
 	int rc;
 
 	dl_index_check_integrity(self);
-	/* Recompute the index from the satrt to the last 
-	 * position in the log file that was used to create
-	 * an index.
-	 */
+
 	pthread_mutex_lock(&self->dli_mtx);
-	last = self->dli_last;
-	self->dli_last = 0;
-	/* Truncate the log file to zero before recomputing. */
-	ftruncate(self->dli_idx_fd, 0);
-	rc = dl_index_update_locked(self, last);
+
+	rc = pread(self->dli_idx_fd, &record, sizeof(record), offset);
+	if (rc == 0) {
+		/* EOF */
+	
+		pthread_mutex_unlock(&self->dli_mtx);
+		return -1;
+	} else if (rc < 0) {
+
+		DLOGTR1(PRIO_HIGH,
+		    "Failed to read from index file %d\n", errno);
+		pthread_mutex_unlock(&self->dli_mtx);
+		return -1;
+	}
+
+	/* Data in the index is stored in big-endian format for
+	 * compatibility with the Kafka log format.
+	 * The data read from the index is used as an external buffer
+	 * from a bbuf instance, this allows the values of the relative
+	 * and * physical offset to be read.
+	 */
+	rc = dl_bbuf_new(&idx_buf, (unsigned char *) &record,
+	    sizeof(record), DL_BBUF_BIGENDIAN);
+	if (rc != 0) {
+		pthread_mutex_unlock(&self->dli_mtx);
+		return -1;
+	}
+
+	dl_bbuf_get_int32(idx_buf, (int32_t *) roffset);
+	dl_bbuf_get_int32(idx_buf, (int32_t *) poffset);
+	dl_bbuf_delete(idx_buf);
 	pthread_mutex_unlock(&self->dli_mtx);
-	return rc;
+
+	return 0;
 }
 
 static int
@@ -107,34 +134,34 @@ dl_index_update_locked(struct dl_index *self, off_t log_end)
 	int rc, idx_cnt = 0;
 		
 	dl_index_check_integrity(self);
-	
+
 	/* Create the index. */
 	while (self->dli_last < log_end) {
-	
+
 		index_bufs[0].iov_base = &o;
 		index_bufs[0].iov_len = sizeof(o);
 
 		index_bufs[1].iov_base = &s;
 		index_bufs[1].iov_len = sizeof(s);
-
 		rc = preadv(self->dli_log_fd, index_bufs,
 			sizeof(index_bufs)/sizeof(struct iovec),
 			self->dli_last);	
-		if (rc == -1) {
+		if (rc == 0) {
+			/* EOF */
+
+			break;
+		} else if (rc == -1) {
 
 			DLOGTR1(PRIO_HIGH,
 			    "Failed to read from log file %d\n", errno);
 			break;
-		} else if (rc == 0) {
-			/* EOF */
-
-			break;
-		} else if((sizeof(o) + sizeof(s) + be32toh(s)) > log_end) {
+		} else if((off_t) (sizeof(o) + sizeof(s) + be32toh(s)) >
+		    log_end) {
 			/* Check that the entry in the log is not corrupt,
 			 * that is if the size of the message exceeds the total
 			 * log length.
 			 */
-			DLOGTR3(PRIO_HIGH,
+			DLOGTR3(PRIO_NORMAL,
 			    "Log message at offset %u is corrupt (%lu > %ld)",
 			    be32toh(o), (sizeof(o) + sizeof(s) + be32toh(s)),
 			    log_end);
@@ -150,8 +177,9 @@ dl_index_update_locked(struct dl_index *self, off_t log_end)
 		index_bufs[1].iov_base = &t;
 		index_bufs[1].iov_len = sizeof(t);
 
-		rc = writev(self->dli_idx_fd, index_bufs,
-			sizeof(index_bufs)/sizeof(struct iovec));
+		rc = pwritev(self->dli_idx_fd, index_bufs,
+			sizeof(index_bufs)/sizeof(struct iovec),
+			be32toh(o) * sizeof(struct dl_index_record));
 		if (rc == -1) {
 
 			DLOGTR1(PRIO_HIGH,
@@ -159,6 +187,9 @@ dl_index_update_locked(struct dl_index *self, off_t log_end)
 			break;
 		}
 
+		/* Sync the updated index file to disk. */
+		fsync(self->dli_idx_fd);
+	
 		/* Advance the index offset into the log by the processed
 		 * entry.
 		 */
@@ -169,7 +200,6 @@ dl_index_update_locked(struct dl_index *self, off_t log_end)
 		idx_cnt++;
 	}
 
-	/* Sync the updated index file to disk. */
 	return idx_cnt;
 }
 
@@ -180,8 +210,7 @@ dl_index_new(struct dl_index **self, int log, int64_t base_offset,
 	struct dl_index *idx;
 	struct sbuf *idx_name;
 	struct dl_index_record record;
-	struct dl_bbuf *idx_buf;
-	int32_t roffset ;
+	off_t roffset;
 	off_t idx_end;
 	int rc;
 
@@ -228,43 +257,19 @@ dl_index_new(struct dl_index **self, int log, int64_t base_offset,
 
 	/* Read the last value out of the index. */
 	idx_end = lseek(idx->dli_idx_fd, 0, SEEK_END);
+	ftruncate(idx->dli_idx_fd, idx_end);
 	if (idx_end == 0) {
 
 		DLOGTR0(PRIO_LOW, "New index file created\n");
 		idx->dli_last = 0;
 	} else {
-
-		rc = pread(idx->dli_idx_fd, &record, sizeof(record),
-		idx_end - sizeof(record));
-		if (rc == -1 || rc == 0) {
+		rc = dl_index_lookup_by_file_offset(idx,
+		    (idx_end - sizeof(record)), &roffset, &idx->dli_last);
+		if (rc == -1) {
 
 			DLOGTR1(PRIO_HIGH,
-			"Failed to read from index file %d\n", errno);
+			    "Failed to read from index file %d\n", errno);
 			return -1;
-		} else {
-			DLOGTR0(PRIO_LOW,
-			    "Reading the last index from file \n");
-
-			/* Data in the index is stored in big-endian format for
-			* compatibility with the Kafka log format.
-			* The data read from the index is used as an external buffer
-			* from a bbuf instance, this allows the values of the relative
-			* and * physical offset to be read.
-			*/
-			rc = dl_bbuf_new(&idx_buf,
-			    (unsigned char *) &record, sizeof(record),
-			    DL_BBUF_BIGENDIAN);
-			if (rc == -1) {
-
-				return -1;
-			} else if (rc == 0) {
-
-				idx->dli_last = 0;
-			} else {
-				dl_bbuf_get_int32(idx_buf, &roffset);
-				idx->dli_last = roffset;
-			}
-			dl_bbuf_delete(idx_buf);
 		}
 	}
 	DLOGTR1(PRIO_HIGH, "Read offset (%ld)\n", idx->dli_last);
@@ -297,76 +302,58 @@ dl_index_update(struct dl_index *self, off_t log_end)
 	idx_cnt = dl_index_update_locked(self, log_end);
 	pthread_mutex_unlock(&self->dli_mtx);
 
-	/* Sync the updated index file to disk. */
-	fsync(self->dli_idx_fd);
 	return idx_cnt;
 }
 
 off_t
-dl_index_lookup(struct dl_index *self, uint32_t offset)
+dl_index_lookup(struct dl_index *self, uint32_t offset, off_t *poffset)
 {
-	struct dl_index_record record;
-	struct dl_bbuf *idx_buf;
-	int32_t roffset, poffset;
+	off_t roffset;
 	int rc;
-	bool retry_lookup = true;
 
 	dl_index_check_integrity(self);
 
-retry:
-	rc = pread(self->dli_idx_fd, &record, sizeof(record),
-	    offset * sizeof(struct dl_index_record));
-	if (rc == -1 || rc == 0) {
-
-		DLOGTR1(PRIO_HIGH,
-		    "Failed to read from index file %d\n", errno);
-		return -1;
-	}
-
-	/* Data in the index is stored in big-endian format for
-	 * compatibility with the Kafka log format.
-	 * The data read from the index is used as an external buffer
-	 * from a bbuf instance, this allows the values of the relative
-	 * and * physical offset to be read.
-	 */
-	rc = dl_bbuf_new(&idx_buf, (unsigned char *) &record,
-	    sizeof(record), DL_BBUF_BIGENDIAN);
-	if (rc != 0)
-		return -1;
-
-	dl_bbuf_get_int32(idx_buf, &roffset);
+	rc = dl_index_lookup_by_file_offset(self,
+	    (offset * sizeof(struct dl_index_record)), &roffset, poffset);
 	if ((int32_t) offset != roffset) {
 		/* The index file is corrupt.
 		 * Recompute the index and then retry the lookup.
 		 */
 		DLOGTR2(PRIO_HIGH,
-		    "Request offset (%X) doesn't match index (%u).",
+		    "Request offset (%X) doesn't match index (%lX).",
 		    offset, roffset);
-		dl_bbuf_delete(idx_buf);
-		/* Recompute the index and retry the lookup,
-		 * this is only attempted once to prevent livelock.
-		 */
-		if (retry_lookup == true) {
-			retry_lookup = false;
-			if (dl_index_recompute(self) >= 0) {
-				goto retry;
+		 /* Read the previous value of the index and set the 
+		  * value of dli_last to list.
+		  */
+		if (offset != 0) {
+			rc = dl_index_lookup_by_file_offset(self,
+			    ((offset - 1) * sizeof(struct dl_index_record)),
+			    &roffset, poffset);
+			if (rc == -1) {
+				ftruncate(self->dli_idx_fd, 0);
+				self->dli_last = 0;
+			} else {
+				self->dli_last = *poffset;
 			}
+		} else {
+			ftruncate(self->dli_idx_fd, 0);
+			self->dli_last = 0;
 		}
-		DL_ASSERT(((int32_t) offset != roffset),
-		    ("Request offset (%X) doesn't match index (%u).",
-		    offset, roffset));
+		return -1;
 	}
-	dl_bbuf_get_int32(idx_buf, &poffset);
-	dl_bbuf_delete(idx_buf);
 
-	return poffset;
+	return 0;
 }
 
 off_t
 dl_index_get_last(struct dl_index *self)
 {
+	off_t last;
 
 	dl_index_check_integrity(self);
-	return self->dli_last;
+	pthread_mutex_lock(&self->dli_mtx);
+	last = self->dli_last;
+	pthread_mutex_unlock(&self->dli_mtx);
+	return last;
 }
 

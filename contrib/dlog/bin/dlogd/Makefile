@@ -57,6 +57,8 @@ DLOG_SRCS= dl_bbuf.c \
 	dl_user_segment.c \
 	dl_segment.c \
 	dl_topic.c \
+	dl_sock_transport.c \
+	dl_tls_transport.c \
 	dl_transport.c \
 	dl_utils.c \
 	lookup3.c
@@ -69,8 +71,9 @@ LDADD+=-lcrypto
 LDADD+=-lnv
 LDADD+=-lpthread
 LDADD+=-lsbuf
-LDADD+=-lz
+LDADD+=-lssl
 LDADD+=-lucl
+LDADD+=-lz
 
 #CFLAGS+=-DNDEBUG
 CFLAGS+=-g
