@@ -915,12 +915,13 @@ dl_producer_produce(struct dl_producer const * const self)
 	DLOGTR0(PRIO_LOW, "Producer event = produce()\n");
 
 	switch(self->dlp_state) {
-	case DLP_CONNECTING:
-		/* FALLTHROUGH */
 	case DLP_IDLE:
 		dl_producer_syncing(self);
 		break;
+	case DLP_CONNECTING:
+		/* FALLTHROUGH */
 	case DLP_OFFLINE:
+		/* FALLTHROUGH */
 	case DLP_SYNCING:
 		/* IGNORE */
 		break;
