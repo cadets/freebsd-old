@@ -30,7 +30,7 @@
 #
 
 DLOGDIR= ${SRCTOP}/contrib/dlog
-.PATH : ${DLOGDIR} ${DLOGDIR}/bin/dlogd
+.PATH : ${DLOGDIR}/src ${DLOGDIR}/bin/dlogd
 
 PROG= dlogd
 
@@ -42,6 +42,7 @@ DLOG_SRCS= dl_bbuf.c \
 	dl_list_offset_request.c \
 	dl_list_offset_response.c \
 	dl_message_set.c \
+	dl_offset.c \
 	dl_poll_reactor.c \
 	dl_primitive_types.c \
 	dl_producer.c \
@@ -53,6 +54,9 @@ DLOG_SRCS= dl_bbuf.c \
 	dl_segment.c \
 	dl_topic.c \
 	dl_transport.c \
+	dl_sock_transport.c \
+	dl_tls_transport.c \
+	dl_user_segment.c \
 	dl_utils.c \
 	lookup3.c
 
@@ -68,14 +72,16 @@ LIBADD+=crypto
 LIBADD+=nv
 LIBADD+=pthread
 LIBADD+=sbuf
-LIBADD+=z
+LIBADD+=ssl
 LIBADD+=ucl
+LIBADD+=z
 
 CFLAGS+=-g
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
 CFLAGS+=-L/usr/local/lib
 CFLAGS+=-I/usr/local/include
-CFLAGS+=-I${SRCTOP}/contrib/dlog
+CFLAGS+=-I${DLOGDIR}/src
+CFLAGS+=-I${DLOGDIR}/bin/dlogd
 CFLAGS+=-I${SRCTOP}/contrib/libucl/include
 CFLAGS+=-I${SRCTOP}/sys/dev/dlog
 

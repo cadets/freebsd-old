@@ -54,6 +54,7 @@
 #include "dl_utils.h"
 #include "dlog.h"
 #include "dlog_client.h"
+#include "dl_kernel_segment.h"
 
 MALLOC_DECLARE(M_DLOG);
 MALLOC_DEFINE(M_DLOG, "dlog", "DLog memory");
@@ -206,13 +207,10 @@ dlog_sync(void)
 		    dlt_entries, tmp) {
 
 			s = dl_topic_get_active_segment(topic);
-
-			error = vn_start_write(s->_log, &mp, V_WAIT);
-			if (error == 0) {
-				VOP_LOCK(s->_log, LK_EXCLUSIVE | LK_RETRY);
-				VOP_FSYNC(s->_log, MNT_WAIT, curthread);
-				VOP_UNLOCK(s->_log, 0);
-				vn_finished_write(mp);
+			if (dl_kernel_segment_sync(s) != 0) {
+				DLOGTR1(PRIO_NORMAL,
+				    "Failed to sync topic %s\n",
+				    sbuf_data(topic->dlt_name));
 			}
 
 			LIST_REMOVE(topic, dlt_entries);
@@ -372,6 +370,7 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 			sbuf_delete(tp_name);
 			return -1;
 		}
+		sbuf_delete(tp_name);
 
 		break;
 	case DLOGIOC_DELTOPICPART:
@@ -482,9 +481,9 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 static void
 dl_client_close(void *arg)
 {
-	//struct dlog_handle *handle = (struct dlog_handle *) arg;
+	struct dlog_handle *handle = (struct dlog_handle *) arg;
 
-	DL_ASSERT(handle != NULL, ("DLog client handle cannot be NULL."));
+	//DL_ASSERT(handle != NULL, ("DLog client handle cannot be NULL."));
 
 	DLOGTR0(PRIO_LOW, "Closing DLog producer.\n");
 	//dlog_client_close(handle);

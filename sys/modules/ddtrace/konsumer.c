@@ -60,8 +60,9 @@
 #include <dtrace.h>
 #include <dtrace_impl.h>
 
-#include "dl_assert.h"
 #include "dlog_client.h"
+#include "dl_assert.h"
+#include "dl_config.h"
 #include "dl_protocol.h"
 #include "dl_utils.h"
 
@@ -83,16 +84,6 @@ static void konsumer_open(void *, struct dtrace_state *);
 static void konsumer_close(void *, struct dtrace_state *);
 static void konsumer_stop(struct konsumers *);
 
-extern hrtime_t dtrace_deadman_user;
-
-static char const * const KONSUMER_NAME = "dlog_konsumer";
-
-static moduledata_t konsumer_conf = {
-	KONSUMER_NAME,
-	konsumer_event_handler,
-	NULL
-};
-
 struct konsumer {
 	LIST_ENTRY(konsumer) konsumer_entries;
 	struct cv konsumer_cv;
@@ -109,19 +100,34 @@ static dtrace_kops_t kops = {
 };
 static dtrace_konsumer_id_t kid;
 
+extern hrtime_t dtrace_deadman_user;
 extern kmutex_t dtrace_lock;
 
-static const int KON_NHASH_BUCKETS = 16;
+static char const * const KONSUMER_NAME = "dlog_konsumer";
+static char *KONSUMER_KEY = "ddtrace";
 
+static moduledata_t konsumer_conf = {
+	KONSUMER_NAME,
+	konsumer_event_handler,
+	NULL
+};
+
+static const int KON_NHASH_BUCKETS = 16;
 static struct konsumers *konsumer_hashtbl = NULL;
 static u_long konsumer_hashmask;
 
 static uint32_t konsumer_poll_ms = 1000;
-
 SYSCTL_NODE(_debug, OID_AUTO, konsumer, CTLFLAG_RW, 0, "Konsumer");
 
 SYSCTL_U32(_debug_konsumer, OID_AUTO, poll_period_ms, CTLFLAG_RD,
-    &konsumer_poll_ms, 0,  "Konsumer poll period (ms)");
+    &konsumer_poll_ms, 0, "Konsumer poll period (ms)");
+/* Maximum record size before compression; the default value is a heurstic
+ * base on the level of compression seen in DTrace buffers.
+ */
+static uint32_t konsumer_record_bound = 1024*1024;
+SYSCTL_U32(_debug_konsumer, OID_AUTO, record_bound, CTLFLAG_RD,
+    &konsumer_record_bound, 0,
+    "Konsumer maximum record size (before compression)");
 
 static eventhandler_tag kon_pre_sync = NULL;
 
@@ -226,7 +232,10 @@ konsumer_stop(struct konsumers *konsumer_hashtbl)
 	/* Destroy the hash table of konsumer instances. */
 	hashdestroy(konsumer_hashtbl, M_DLKON, konsumer_hashmask);
 
-	/* Unregister the Konsumer with DTrace. */	
+	/* Unregister the Konsumer with DTrace.
+	 * Note that dtrace_lock must be held to manipulate the mutable dtrace
+	 * state (the list of in-kernel konsumers).
+	 */	
 	dtrace_konsumer_unregister(&kid);
 }
 
@@ -240,7 +249,13 @@ konsumer_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
 	DL_ASSERT(handle != NULL, ("DLog handle cannot be NULL\n"));
 
-	/* Switch and process the trace buffers for each CPU. */
+	/* Process each of the per-CPU buffers.
+	 * The tomax and xamot buffers are first swtich using a xcall.
+	 * Provided that the xcvall is successful in switching the buffers,
+	 * the buffer is then persisted into Dlog.
+	 * Persisting the buffer may involving splitting into portions portions
+	 * on a record boundary.
+	 */
 	for (int cpu = 0; cpu < mp_ncpus; cpu++) {
 
 		/* Note: Unlike in the BUFSNAP ioctl it is unnecessary to
@@ -297,9 +312,7 @@ konsumer_thread(void *arg)
 	struct timespec curtime;
 
 	konsumer_assert_integrity(__func__, k);
-	DL_ASSERT(k->konsumer_state != NULL,
-	    ("DTrace state cannot be NULL"));
-	
+
 	for (;;) {
 
 		mtx_lock(&k->konsumer_mtx);
@@ -354,20 +367,19 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	DL_ASSERT(desc->dtbd_size != 0,
 	    ("konsumer_persist_trace called with empty buffer."));
 
-	while (desc->dtbd_size != 0 && size < desc->dtbd_size) {
+	while (size < desc->dtbd_size) {
 
-		epid = (dtrace_epid_t) desc->dtbd_data[size];
+		epid = *(dtrace_epid_t *) ((uintptr_t) desc->dtbd_data + size);
 		if (epid == DTRACE_EPIDNONE) {
 
-			DLOGTR0(PRIO_LOW, "End of DTrace buffer\n");
-			break;
+			size += sizeof(epid);
+			continue;
 		}
 
 		if (dtrace_epid2size(state, epid) == 0) {
 
 			DLOGTR1(PRIO_HIGH,
-			    "Error payload size is 0 for epid = %u\n",
-			    epid);
+			    "Error payload size is 0 for epid = %u\n", epid);
 			break;
 		}
 
@@ -375,7 +387,15 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 		/* Check whether the record would take the msg_size
 		 * over the MTU configured for the distributed log.
 		 */
-		if (msg_size + dtrace_epid2size(state, epid) > DL_MTU) {
+
+		/* As the zlib in kernel is significantly out of date, it
+		 * doesn't provide the defalateBounds() method which would
+		 * allow me to determine the size of the compressed output.
+		 *
+		 * Therefore, I using a configurable parameter.
+		 */
+		if (msg_size + dtrace_epid2size(state, epid) >
+		    konsumer_record_bound) {
 
 			/* The umsg_size is zero this occurs when the
 			 * DTrace record size is greater than the log
@@ -387,7 +407,8 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 			     "than log MTU %d\n",
 			     dtrace_epid2size(state, epid), DL_MTU));
 
-			if (dlog_produce_no_key(hdl, 
+			if (dlog_produce(hdl, 
+			    KONSUMER_KEY, strlen(KONSUMER_KEY),
 			    &desc->dtbd_data[msg_start], msg_size) != 0) {
 
 				DLOGTR0(PRIO_HIGH,
@@ -476,7 +497,7 @@ konsumer_open(void *arg, struct dtrace_state *state)
 		    konsumer->dtk_name);
 		return;
 	}
-	
+
 	/* Convert the DLog file descriptor into a struct dlog_handle */
 	if (state->dts_options[DTRACEOPT_KONSUMERARG] == DTRACEOPT_UNSET) {
 
@@ -485,7 +506,7 @@ konsumer_open(void *arg, struct dtrace_state *state)
 		    "DTrace konarg option is unset\n", konsumer->dtk_name);
 		return;
 	}
-
+	
 	FILEDESC_SLOCK(fdp);
 	fp = fget_locked(fdp, state->dts_options[DTRACEOPT_KONSUMERARG]);
 	FILEDESC_SUNLOCK(fdp);
@@ -493,7 +514,7 @@ konsumer_open(void *arg, struct dtrace_state *state)
 
 		DLOGTR1(PRIO_HIGH,
 		    "Konsumer (%s) rendezvous with DLog state failed "
-		    "DTrace konarg is not a valid file secriptor\n",
+		    "DTrace konarg is not a valid file decriptor\n",
 		    konsumer->dtk_name);
 		return;
 	}
@@ -503,7 +524,7 @@ konsumer_open(void *arg, struct dtrace_state *state)
 
 		DLOGTR1(PRIO_HIGH,
 		    "Konsumer (%s) rendezvous with DLog state failed "
-		    "DTrace konarg file secriptor is not associated with "
+		    "DTrace konarg file descriptor is not associated with "
 		    "dlog handle\n", konsumer->dtk_name);
 		return;
 	}

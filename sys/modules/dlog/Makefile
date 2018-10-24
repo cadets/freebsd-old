@@ -29,14 +29,13 @@
 # SUCH DAMAGE.
 #
 
-.PATH : ${SRCTOP}/contrib/dlog ${SRCTOP}/sys/dev/dlog
+.PATH : ${SRCTOP}/contrib/dlog/src ${SRCTOP}/sys/dev/dlog
 
 KMOD=dlog
 
 SRCS= dlog_client.c \
 	dl_bbuf.c \
 	dl_utils.c \
-	dl_thread.c \
 	dl_message_set.c \
 	dl_primitive_types.c \
 	dl_produce_request.c \
@@ -44,6 +43,7 @@ SRCS= dlog_client.c \
 	dl_request.c \
 	dl_response.c \
 	dl_segment.c \
+	dl_kernel_segment.c \
 	dl_topic.c \
 	dlog.c \
 	lookup3.c \
@@ -58,7 +58,11 @@ CFLAGS+=-I${SRCTOP}/cddl/compat/opensolaris/include
 CFLAGS+=-I${SRCTOP}/sys/cddl/compat/opensolaris/
 CFLAGS+=-I${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common/
 CFLAGS+=-I${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common/sys
-CFLAGS+=-I${SRCTOP}/contrib/dlog
+CFLAGS+=-I${SRCTOP}/contrib/dlog/src
+CFLAGS+=-I${SRCTOP}/contrib/dlog/bin/dlogd
+
+CWARNFLAGS+=-Wno-cast-qual
+CWARNFLAGS+=-Wno-pointer-sign
 
 EXPORT_SYMS= dlog_produce dlog_produce_no_key
 
