@@ -507,13 +507,15 @@ dl_producer_connecting(struct dl_producer * const self)
 			 */
 			return;
 		}
+
+		DLOGTR3(PRIO_HIGH, "Failed connecting to %s:%d (%d)\n",
+		    sbuf_data(self->dlp_broker_hostname), self->dlp_broker_port,
+		errno);
+
+		dl_producer_down(self);
 	}
 
-	DLOGTR3(PRIO_HIGH, "Failed connecting to %s:%d (%d)\n",
-	    sbuf_data(self->dlp_broker_hostname), self->dlp_broker_port,
-	    errno);
-
-	dl_producer_down(self);
+	dl_producer_error(self);
 }
 
 static void
