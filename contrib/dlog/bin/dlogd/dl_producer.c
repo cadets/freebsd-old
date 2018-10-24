@@ -513,9 +513,10 @@ dl_producer_connecting(struct dl_producer * const self)
 		errno);
 
 		dl_producer_down(self);
-	}
+	} else {
 
-	dl_producer_error(self);
+		dl_producer_error(self);
+	}
 }
 
 static void
