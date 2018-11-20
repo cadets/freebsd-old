@@ -30,16 +30,17 @@
  *
  */
 
-#include <stdbool.h>
 #include <dt_impl.h>
+
 #include <errno.h>
+#include <getopt.h>
+#include <stdbool.h>
 #include <libgen.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <getopt.h>
 
 #ifdef PRIVATE_RDKAFKA 
 #include <private/rdkafka/rdkafka.h>
@@ -138,9 +139,6 @@ dtc_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 	if (buf == NULL)
 		return -1;
 
-	/* Non-blocking poll of the log. */
-	rd_kafka_poll(rx_rk, 0);
-
 	rkmessage = rd_kafka_consume(rx_topic, partition, 0);
 	if (rkmessage != NULL) {
 
@@ -157,9 +155,6 @@ dtc_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 			if (rkmessage->key != NULL &&
 			    strncmp(rkmessage->key, "ddtrace", rkmessage->key_len) == 0) {
 
-					DLOGTR2(PRIO_LOW, "%s: message in log %zu\n",
-					g_pname, rkmessage->len);
-
 					buf->dtbd_data = dt_zalloc(dtp, rkmessage->len);
 					if (buf->dtbd_data == NULL) {
 
@@ -174,29 +169,32 @@ dtc_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 			} else {
 
 				if (rkmessage->key == NULL) {
-					DLOGTR2(PRIO_LOW,
-					"%s: key of Kafka mesage %s is NULL or invalid\n",
-					g_pname, rkmessage->payload);
+					DLOGTR1(PRIO_LOW,
+					    "%s: key of Kafka mesage is NULL\n",
+					    g_pname);
 				} else {
-					printf("key = %s\n", rkmessage->key);
+					DLOGTR2(PRIO_LOW,
+					    "%s: key of Kafka mesage %s is invalid\n",
+					    g_pname, rkmessage->key);
 				}
 
 				if (rkmessage->payload != NULL) {
-					DLOGTR2(PRIO_LOW,
-					"%s: key of Kafka mesage %s is NULL or invalid\n",
-					g_pname, rkmessage->payload);
+					DLOGTR1(PRIO_LOW,
+					    "%s: payload of Kafka mesage NULL\n",
+					    g_pname);
 				}
 				buf->dtbd_size = 0;
 			}
 		} else {
 			if (rkmessage->err ==
 				RD_KAFKA_RESP_ERR__PARTITION_EOF) {
-				DLOGTR1(PRIO_HIGH,
-					"%s: no message in log\n", g_pname);
+				DLOGTR1(PRIO_LOW,
+				    "%s: no message in log\n", g_pname);
 			}
 			buf->dtbd_size = 0;
 		}
-			rd_kafka_message_destroy(rkmessage);
+			
+		rd_kafka_message_destroy(rkmessage);
 	}
 
 	*bufp = buf;
@@ -225,7 +223,6 @@ dtc_buffered_handler(const dtrace_bufdata_t *buf_data, void *arg)
 
 	DL_ASSERT(tx_topic != NULL, ("Transmit topic cannot be NULL"));
 
-	buf_len = strlen(buf_data->dtbda_buffered);
 
 	/* '{' indicates the start of the JSON message.
 	 * Allocate a buffer into which the message is written.
@@ -239,6 +236,7 @@ dtc_buffered_handler(const dtrace_bufdata_t *buf_data, void *arg)
 	/* Buffer the received data until the end of the JSON message 
 	 * is received.
 	 * */
+	buf_len = strlen(buf_data->dtbda_buffered);
 	dl_bbuf_bcat(output_buf, buf_data->dtbda_buffered, buf_len);
 
 	/* '}' indicates the start of the JSON message.
@@ -274,17 +272,17 @@ retry:
 
 			/* Poll to handle delivery reports */
 			if (rd_kafka_last_error() ==
-			RD_KAFKA_RESP_ERR__QUEUE_FULL) {
+			    RD_KAFKA_RESP_ERR__QUEUE_FULL) {
 				/* If the internal queue is full, wait for
-				* messages to be delivered and then retry.
-				* The internal queue represents both
-				* messages to be sent and messages that have
-				* been sent or failed, awaiting their
-				* delivery report callback to be called.
-				*
-				* The internal queue is limited by the
-				* configuration property
-				* queue.buffering.max.messages */
+				 * messages to be delivered and then retry.
+				 * The internal queue represents both
+				 * messages to be sent and messages that have
+				 * been sent or failed, awaiting their
+				 * delivery report callback to be called.
+				 *
+				 * The internal queue is limited by the
+				 * configuration property
+				 * queue.buffering.max.messages */
 				rd_kafka_poll(tx_rk, 1000 /*block for max 1000ms*/);
 				goto retry;
 			}
@@ -322,6 +320,20 @@ dtc_setup_rx_topic(char *topic_name, char *brokers, char *ca_cert,
 		goto configure_rx_topic_err;
 	}
 
+	if (rd_kafka_conf_set(conf, "client.id", g_pname,
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_rx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "socket.nagle.disable", "true",
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_rx_topic_new_err;
+        }
+
 	/* Set bootstrap broker(s) as a comma-separated list of
          * host or host:port (default port 9092).
          * librdkafka will use the bootstrap brokers to acquire the full
@@ -349,6 +361,20 @@ dtc_setup_rx_topic(char *topic_name, char *brokers, char *ca_cert,
         }
 
 	if (rd_kafka_conf_set(conf, "enable.auto.offset.store", "true",
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_rx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "auto.offset.reset", "earliest",
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_rx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "check.crcs", "true",
 	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
                 DLOGTR1(PRIO_HIGH, "%s\n", errstr);
@@ -477,6 +503,27 @@ dtc_setup_tx_topic(char *topic_name, char *brokers, char *ca_cert,
 		goto configure_tx_topic_conf_err;
         }
 
+	if (rd_kafka_conf_set(conf, "compression.codec", "gzip",
+		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+		DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_tx_topic_conf_err;
+	}
+
+	if (rd_kafka_conf_set(conf, "socket.nagle.disable", "true",
+	    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+                DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_tx_topic_new_err;
+        }
+
+	if (rd_kafka_conf_set(conf, "linger.ms", "10",
+		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+
+		DLOGTR1(PRIO_HIGH, "%s\n", errstr);
+		goto configure_tx_topic_conf_err;
+	}
+
 	if (ca_cert != NULL && client_cert != NULL && priv_key != NULL &&
 	    password != NULL) {
 		/* Configure TLS support:
@@ -563,7 +610,7 @@ static void
 dtc_close_pidfile(void)
 {
 
-	/* Unlink the dlogd pid file. */	
+	/* Unlink the dlogd pid file. */
 	DLOGTR0(PRIO_LOW, "Unlinking dlogd pid file\n");
 	if (unlink(DTC_PIDFILE) == -1 && errno != ENOENT)
 		DLOGTR0(PRIO_HIGH,
@@ -633,16 +680,18 @@ main(int argc, char *argv[])
 	char *ca_cert = NULL, *priv_key = NULL, *password = NULL;
 	char **script_argv;
 	int64_t start_offset = RD_KAFKA_OFFSET_STORED;
+	useconds_t poll_period = 100000; /* 100ms */
 	static struct option dtc_options[] = {
 		{"brokers", required_argument, 0, 'b'},
-		{"cacert", no_argument, NULL, 'a'},
-		{"clientcert", no_argument, NULL, 'c'},
+		{"cacert", optional_argument, NULL, 'a'},
+		{"clientcert", optional_argument, NULL, 'c'},
 		{"debug", no_argument, NULL, 'd'},
 		{"frombeginning", no_argument, NULL, 'f'},
 		{"intopic", required_argument, NULL, 'i'},
 		{"outtopic", required_argument, NULL, 'o'},
-		{"password", required_argument, NULL, 'p'},
-		{"privkey", required_argument, NULL, 'k'},
+		{"password", optional_argument, NULL, 'p'},
+		{"poll", optional_argument, NULL, 'q'},
+		{"privkey", optional_argument, NULL, 'k'},
 		{"script", required_argument, NULL, 's'},
 		{0, 0, 0, 0}
 	};
@@ -662,7 +711,7 @@ main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	while ((c = getopt_long(argc, argv, "a:b:c:dfi:k:o:p:s:",
+	while ((c = getopt_long(argc, argv, "a:b:c:dfi:k:o:p:q:s:",
 	    dtc_options, NULL)) != -1) {
 		switch (c) {
 		case 'a':
@@ -700,6 +749,10 @@ main(int argc, char *argv[])
 		case 'p':
 			/* Client private key password for TLS */
 			password = optarg;
+			break;
+		case 'q':
+			/* Poll period (us) */
+			sscanf(optarg, "%ul", &poll_period);
 			break;
 		case 's':
 			/* DTrace script used to interpret the
@@ -794,8 +847,8 @@ main(int argc, char *argv[])
 	/* Configure dtrace.
 	 * Trivially small buffers can be configured as trace collection
 	 * does not occure locally.
-	 * Desctructive tracing prevents dtrace from being terminated
-	 * (though this shouldn't happen as tracing is nver enabled).
+	 * Destructive tracing prevents dtrace from being terminated
+	 * (though this shouldn't happen as tracing is never enabled).
 	 */
 	(void) dtrace_setopt(dtp, "aggsize", "4k");
 	(void) dtrace_setopt(dtp, "bufsize", "4k");
@@ -852,7 +905,7 @@ main(int argc, char *argv[])
 	int done = 0;
 	do {
 		if (!done || !g_intr)
-			sleep(1);	
+			usleep(poll_period);	
 
 		if (done || g_intr) {
 			done = 1;
@@ -860,6 +913,7 @@ main(int argc, char *argv[])
 
 		/* Poll to handle delivery reports. */
 		rd_kafka_poll(tx_rk, 0);
+		rd_kafka_poll(rx_rk, 0);
 
 		switch (dtrace_work_detached(dtp, NULL, &con, rx_topic)) {
 		case DTRACE_WORKSTATUS_DONE:
