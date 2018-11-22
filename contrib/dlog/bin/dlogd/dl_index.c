@@ -53,84 +53,102 @@
 #include "dl_utils.h"
 
 struct dl_index {
+	off_t dli_last; /* The last offset in the log indexed. */
 	pthread_mutex_t dli_mtx; /* Lock for updating/lookup of index. */
-	off_t dli_last;
-	int dli_idx_fd;
-	int dli_log_fd;
+	int dli_idx_fd; /* File descriptor of index. */
+	int dli_log_fd; /* FIle descriptor of the log. */
 };
 
 struct dl_index_record {
-	uint32_t dlir_offset;
-	uint32_t dlir_poffset;
+	off_t dlir_poffset; /* Physical offset into log of dlir_offset. */
+	uint32_t dlir_offset; /* Log offset */
 };
 
-static int dl_index_lookup_by_file_offset(struct dl_index *, off_t,
-    int32_t *, int32_t *);
-static int dl_index_update_locked(struct dl_index *, off_t);
+/* The size of the index record. */
+#define DL_INDEX_RECORD_SIZE \
+    (sizeof(((struct dl_index_record *) 0)->dlir_poffset) + \
+    sizeof(((struct dl_index_record *) 0)->dlir_offset))
 
 /* Number of digits in base 10 required to represent a 32-bit number. */
 #define DL_INDEX_DIGITS 20
+
+static int dl_index_lookup_by_file_offset(struct dl_index *, off_t,
+    struct dl_index_record *);
+static int dl_index_update_locked(struct dl_index *, off_t);
 
 static inline void 
 dl_index_check_integrity(struct dl_index const * const self)
 {
 
 	DL_ASSERT(self != NULL, ("Index instance cannot be NULL."));
+	DL_ASSERT(self->dli_last != -1,
+	    ("Index log offset cannot be invalid (-1)."));
+	DL_ASSERT(self->dli_idx_fd  != -1,
+	    ("Index file descriptor cannot be invalid (-1)."));
+	DL_ASSERT(self->dli_log_fd != -1,
+	    ("Index log file descriptor cannot be invalid (-1)."));
 }
 
 static int 
 dl_index_lookup_by_file_offset(struct dl_index *self, off_t offset,
-    int32_t *roffset, int32_t *poffset)
+    struct dl_index_record *record)
 {
-	struct dl_index_record record;
 	struct dl_bbuf *idx_buf;
 	int rc;
+	unsigned char tmp_record[DL_INDEX_RECORD_SIZE];
 
 	dl_index_check_integrity(self);
 
 	pthread_mutex_lock(&self->dli_mtx);
 
-	rc = pread(self->dli_idx_fd, &record, sizeof(record), offset);
+	rc = pread(self->dli_idx_fd, &tmp_record, DL_INDEX_RECORD_SIZE, offset);
 	if (rc == 0) {
+
 		/* EOF */
-	
-		pthread_mutex_unlock(&self->dli_mtx);
-		return -1;
+		goto err_index_lookup;	
 	} else if (rc < 0) {
 
 		DLOGTR1(PRIO_HIGH,
 		    "Failed to read from index file %d\n", errno);
-		pthread_mutex_unlock(&self->dli_mtx);
-		return -1;
+		goto err_index_lookup;	
 	}
+	DL_ASSERT(rc == DL_INDEX_RECORD_SIZE,
+	    ("Failed to read index record size"));
 
 	/* Data in the index is stored in big-endian format for
 	 * compatibility with the Kafka log format.
-	 * The data read from the index is used as an external buffer
+	 * The data read from the dindex is used as an external buffer
 	 * from a bbuf instance, this allows the values of the relative
-	 * and * physical offset to be read.
+	 * and physical offset to be read.
 	 */
-	rc = dl_bbuf_new(&idx_buf, (unsigned char *) &record,
-	    sizeof(record), DL_BBUF_BIGENDIAN);
+	rc = dl_bbuf_new(&idx_buf, tmp_record, DL_INDEX_RECORD_SIZE,
+	    DL_BBUF_BIGENDIAN);
 	if (rc != 0) {
-		pthread_mutex_unlock(&self->dli_mtx);
-		return -1;
+
+		DLOGTR1(PRIO_HIGH,
+		    "Failed to create bbuf from record index %d\n", rc);
+		goto err_index_lookup;	
 	}
 
-	dl_bbuf_get_int32(idx_buf, roffset);
-	dl_bbuf_get_int32(idx_buf, poffset);
+	rc |= dl_bbuf_get_uint32(idx_buf, &record->dlir_offset);
+	rc |= dl_bbuf_get_int64(idx_buf, &record->dlir_poffset);
+	DL_ASSERT(rc == 0, ("dl_bbuf operations failed on index record."));
 	dl_bbuf_delete(idx_buf);
 	pthread_mutex_unlock(&self->dli_mtx);
 
 	return 0;
+
+err_index_lookup:
+	pthread_mutex_unlock(&self->dli_mtx);
+	return -1;
 }
 
 static int
 dl_index_update_locked(struct dl_index *self, off_t log_end)
 {
 	struct iovec index_bufs[2];
-	off_t dli_new;
-	uint32_t o, s, t;
+	off_t tmp_poffset;
+	uint32_t offset, size;
 	int rc, idx_cnt = 0;
 		
 	dl_index_check_integrity(self);
@@ -138,24 +156,26 @@ dl_index_update_locked(struct dl_index *self, off_t log_end)
 	/* Create the index. */
 	while (self->dli_last < log_end) {
 
-		index_bufs[0].iov_base = &o;
-		index_bufs[0].iov_len = sizeof(o);
+		/* Read the offset of the log entry and size. */
+		index_bufs[0].iov_base = &offset;
+		index_bufs[0].iov_len = sizeof(offset);
 
-		index_bufs[1].iov_base = &s;
-		index_bufs[1].iov_len = sizeof(s);
+		index_bufs[1].iov_base = &size;
+		index_bufs[1].iov_len = sizeof(size);
+
 		rc = preadv(self->dli_log_fd, index_bufs,
-			sizeof(index_bufs)/sizeof(struct iovec),
-			self->dli_last);	
+		    sizeof(index_bufs)/sizeof(struct iovec), self->dli_last);	
 		if (rc == 0) {
-			/* EOF */
 
+			/* EOF */
 			break;
 		} else if (rc == -1) {
 
 			DLOGTR1(PRIO_HIGH,
 			    "Failed to read from log file %d\n", errno);
 			break;
-		} else if((off_t) (sizeof(o) + sizeof(s) + be32toh(s)) >
+		} else if(
+		    (off_t) (sizeof(offset) + sizeof(size) + be32toh(size)) >
 		    log_end) {
 			/* Check that the entry in the log is not corrupt,
 			 * that is if the size of the message exceeds the total
@@ -163,23 +183,26 @@ dl_index_update_locked(struct dl_index *self, off_t log_end)
 			 */
 			DLOGTR3(PRIO_NORMAL,
 			    "Log message at offset %u is corrupt (%lu > %ld)",
-			    be32toh(o), (sizeof(o) + sizeof(s) + be32toh(s)),
+			    be32toh(offset),
+			  
+			    (sizeof(offset) + sizeof(size) + be32toh(size)),
 			    log_end);
 			break;
 		}
-		DL_ASSERT(rc == sizeof(o) + sizeof(s),
+		DL_ASSERT(rc == sizeof(offset) + sizeof(size),
 		   ("Number of bytes read from log"));
 
-		index_bufs[0].iov_base = &o;
-		index_bufs[0].iov_len = sizeof(o);
+		/* Write the index for the log entry. */
+		index_bufs[0].iov_base = &offset;
+		index_bufs[0].iov_len = sizeof(offset);
 
-		t = htobe32(self->dli_last);
-		index_bufs[1].iov_base = &t;
-		index_bufs[1].iov_len = sizeof(t);
+		tmp_poffset = htobe64(self->dli_last);
+		index_bufs[1].iov_base = &tmp_poffset;
+		index_bufs[1].iov_len = sizeof(tmp_poffset);
 
 		rc = pwritev(self->dli_idx_fd, index_bufs,
 			sizeof(index_bufs)/sizeof(struct iovec),
-			be32toh(o) * sizeof(struct dl_index_record));
+			be32toh(offset) * DL_INDEX_RECORD_SIZE); 
 		if (rc == -1) {
 
 			DLOGTR1(PRIO_HIGH,
@@ -193,8 +216,8 @@ dl_index_update_locked(struct dl_index *self, off_t log_end)
 		/* Advance the index offset into the log by the processed
 		 * entry.
 		 */
-		dli_new = ((off_t) sizeof(o) + sizeof(s) + be32toh(s));
-		self->dli_last += dli_new;
+		self->dli_last += (off_t) (sizeof(offset) + sizeof(size) +
+		    be32toh(size));
 
 		/* Increment the count of new indexs that were created. */
 		idx_cnt++;
@@ -211,11 +234,10 @@ dl_index_new(struct dl_index **self, int log, int64_t base_offset,
 	struct sbuf *idx_name;
 	struct dl_index_record record;
 	off_t idx_end;
-	int32_t roffset, poffset;
 	int rc;
 
 	DL_ASSERT(self != NULL, ("Index instance cannot be NULL."));
-	
+
 	idx = (struct dl_index *) dlog_alloc(sizeof(struct dl_index));
 	if (idx == NULL) {
 
@@ -257,23 +279,23 @@ dl_index_new(struct dl_index **self, int log, int64_t base_offset,
 
 	/* Read the last value out of the index. */
 	idx_end = lseek(idx->dli_idx_fd, 0, SEEK_END);
-	ftruncate(idx->dli_idx_fd, idx_end);
 	if (idx_end == 0) {
 
 		DLOGTR0(PRIO_LOW, "New index file created\n");
 		idx->dli_last = 0;
 	} else {
 		rc = dl_index_lookup_by_file_offset(idx,
-		    (idx_end - sizeof(record)), &roffset, &poffset);
+		    (idx_end - DL_INDEX_RECORD_SIZE), &record);
 		if (rc == -1) {
 
 			DLOGTR1(PRIO_HIGH,
 			    "Failed to read from index file %d\n", errno);
 			return -1;
 		}
-		idx->dli_last = poffset;
+		idx->dli_last = record.dlir_poffset;
 	}
-	DLOGTR1(PRIO_HIGH, "Read offset (%ld)\n", idx->dli_last);
+	DLOGTR1(PRIO_LOW, "Log offset at which last index is found  (%ld)\n",
+	    idx->dli_last);
 
 	dl_index_check_integrity(idx);
 	*self = idx;
@@ -298,7 +320,7 @@ dl_index_update(struct dl_index *self, off_t log_end)
 	
 	dl_index_check_integrity(self);
 	
-	/* Create the index. */
+	/* Update the index reuting a count of the new indexes created. */
 	pthread_mutex_lock(&self->dli_mtx);
 	idx_cnt = dl_index_update_locked(self, log_end);
 	pthread_mutex_unlock(&self->dli_mtx);
@@ -309,44 +331,48 @@ dl_index_update(struct dl_index *self, off_t log_end)
 off_t
 dl_index_lookup(struct dl_index *self, uint32_t offset, off_t *offset_loc)
 {
-	int32_t roffset, poffset;
 	int rc;
+	struct dl_index_record record;
 
 	dl_index_check_integrity(self);
 
 	rc = dl_index_lookup_by_file_offset(self,
-	    (offset * sizeof(struct dl_index_record)), &roffset, &poffset);
+	    (offset * DL_INDEX_RECORD_SIZE), &record);
 	if (rc == -1) {
+
 		return -1;
 	}
-	if (offset != (uint32_t) roffset) {
+	if (offset != (uint32_t) record.dlir_offset) {
 		/* The index file is corrupt.
 		 * Recompute the index and then retry the lookup.
 		 */
 		DLOGTR2(PRIO_HIGH,
 		    "Request offset (%X) doesn't match index (%X).",
-		    offset, roffset);
+		    offset, record.dlir_offset);
 		 /* Read the previous value of the index and set the 
 		  * value of dli_last to list.
 		  */
+		/*
 		if (offset != 0) {
 			rc = dl_index_lookup_by_file_offset(self,
-			    ((offset - 1) * sizeof(struct dl_index_record)),
-			    &roffset, &poffset);
+			    (offset - 1) * DL_INDEX_RECORD_SIZE, &record);
 			if (rc == -1) {
 				ftruncate(self->dli_idx_fd, 0);
 				self->dli_last = 0;
 			} else {
-				self->dli_last = poffset;
+				ftruncate(self->dli_idx_fd,
+			    	    (offset - 1) * DL_INDEX_RECORD_SIZE);
+				self->dli_last = record.dlir_poffset;
 			}
 		} else {
 			ftruncate(self->dli_idx_fd, 0);
 			self->dli_last = 0;
 		}
+		*/
 		return -1;
 	}
 
-	*offset_loc = poffset;
+	*offset_loc = record.dlir_poffset;
 	return 0;
 }
 
@@ -356,6 +382,7 @@ dl_index_get_last(struct dl_index *self)
 	off_t last;
 
 	dl_index_check_integrity(self);
+
 	pthread_mutex_lock(&self->dli_mtx);
 	last = self->dli_last;
 	pthread_mutex_unlock(&self->dli_mtx);
