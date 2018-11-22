@@ -73,6 +73,7 @@ LDADD+=-lpthread
 LDADD+=-lsbuf
 LDADD+=-lssl
 LDADD+=-lucl
+LDADD+=-lutil
 LDADD+=-lz
 
 #CFLAGS+=-DNDEBUG
