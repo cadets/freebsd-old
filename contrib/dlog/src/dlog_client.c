@@ -69,7 +69,6 @@
 #include "dl_topic.h"
 #include "dl_request.h"
 #include "dl_response.h"
-#include "dl_transport.h"
 #include "dl_utils.h"
 #include "dlog_client.h"
 
