@@ -72,6 +72,7 @@ struct dl_client_config_desc {
 #define DL_CONF_CACERT_FILE "tls.cacert.file"
 #define DL_CONF_USER_PASSWORD "tls.user.password"
 #define DL_CONF_TLS_ENABLE "tls.enable"
+#define DL_CONF_DEBUG_LEVEL "debug.level"
 
 #define DL_DEFAULT_CLIENTID "dlog"
 #define DL_DEFAULT_BROKER "127.0.0.1"
@@ -85,5 +86,6 @@ struct dl_client_config_desc {
 #define DL_DEFAULT_CACERT_FILE "cacert.pem"
 #define DL_DEFAULT_USER_PASSWORD "password"
 #define DL_DEFAULT_TLS_ENABLE false
+#define DL_DEFAULT_DEBUG_LEVEL 0
 
 #endif
