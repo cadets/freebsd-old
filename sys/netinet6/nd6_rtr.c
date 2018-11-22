@@ -94,7 +94,7 @@ static int rt6_deleteroute(const struct rtentry *, void *);
 VNET_DECLARE(int, nd6_recalc_reachtm_interval);
 #define	V_nd6_recalc_reachtm_interval	VNET(nd6_recalc_reachtm_interval)
 
-static VNET_DEFINE(struct ifnet *, nd6_defifp);
+VNET_DEFINE_STATIC(struct ifnet *, nd6_defifp);
 VNET_DEFINE(int, nd6_defifindex);
 #define	V_nd6_defifp			VNET(nd6_defifp)
 
@@ -137,6 +137,10 @@ nd6_rs_input(struct mbuf *m, int off, int icmp6len)
 	 * no ND6_IFF_ACCEPT_RTADV.
 	 */
 	if (!V_ip6_forwarding || ND_IFINFO(ifp)->flags & ND6_IFF_ACCEPT_RTADV)
+		goto freeit;
+
+	/* RFC 6980: Nodes MUST silently ignore fragments */   
+	if(m->m_flags & M_FRAGMENTED)
 		goto freeit;
 
 	/* Sanity checks */
@@ -227,6 +231,10 @@ nd6_ra_input(struct mbuf *m, int off, int icmp6len)
 	 * ND6_IFF_ACCEPT_RTADV is on the receiving interface.
 	 */
 	if (!(ndi->flags & ND6_IFF_ACCEPT_RTADV))
+		goto freeit;
+
+	/* RFC 6980: Nodes MUST silently ignore fragments */
+	if(m->m_flags & M_FRAGMENTED)
 		goto freeit;
 
 	if (ip6->ip6_hlim != 255) {
@@ -400,8 +408,11 @@ nd6_ra_input(struct mbuf *m, int off, int icmp6len)
 			int change = (ndi->linkmtu != mtu);
 
 			ndi->linkmtu = mtu;
-			if (change) /* in6_maxmtu may change */
+			if (change) {
+				/* in6_maxmtu may change */
 				in6_setmaxmtu();
+				rt_updatemtu(ifp);
+			}
 		} else {
 			nd6log((LOG_INFO, "nd6_ra_input: bogus mtu "
 			    "mtu=%lu sent from %s; "
@@ -467,7 +478,7 @@ nd6_rtmsg(int cmd, struct rtentry *rt)
 	ifp = rt->rt_ifp;
 	if (ifp != NULL) {
 		IF_ADDR_RLOCK(ifp);
-		ifa = TAILQ_FIRST(&ifp->if_addrhead);
+		ifa = CK_STAILQ_FIRST(&ifp->if_addrhead);
 		info.rti_info[RTAX_IFP] = ifa->ifa_addr;
 		ifa_ref(ifa);
 		IF_ADDR_RUNLOCK(ifp);
@@ -1336,7 +1347,7 @@ prelist_update(struct nd_prefixctl *new, struct nd_defrouter *dr,
 	 * "address".
 	 */
 	IF_ADDR_RLOCK(ifp);
-	TAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
+	CK_STAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
 		struct in6_ifaddr *ifa6;
 		u_int32_t remaininglifetime;
 
@@ -1708,7 +1719,7 @@ restart:
 	 * The precise detection logic is same as the one for prefixes.
 	 */
 	IN6_IFADDR_RLOCK(&in6_ifa_tracker);
-	TAILQ_FOREACH(ifa, &V_in6_ifaddrhead, ia_link) {
+	CK_STAILQ_FOREACH(ifa, &V_in6_ifaddrhead, ia_link) {
 		if (!(ifa->ia6_flags & IN6_IFF_AUTOCONF))
 			continue;
 
@@ -1725,7 +1736,7 @@ restart:
 			break;
 	}
 	if (ifa) {
-		TAILQ_FOREACH(ifa, &V_in6_ifaddrhead, ia_link) {
+		CK_STAILQ_FOREACH(ifa, &V_in6_ifaddrhead, ia_link) {
 			if ((ifa->ia6_flags & IN6_IFF_AUTOCONF) == 0)
 				continue;
 
@@ -1743,7 +1754,7 @@ restart:
 			}
 		}
 	} else {
-		TAILQ_FOREACH(ifa, &V_in6_ifaddrhead, ia_link) {
+		CK_STAILQ_FOREACH(ifa, &V_in6_ifaddrhead, ia_link) {
 			if ((ifa->ia6_flags & IN6_IFF_AUTOCONF) == 0)
 				continue;
 
@@ -1897,7 +1908,7 @@ nd6_prefix_onlink(struct nd_prefix *pr)
 	if (ifa == NULL) {
 		/* XXX: freebsd does not have ifa_ifwithaf */
 		IF_ADDR_RLOCK(ifp);
-		TAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
+		CK_STAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
 			if (ifa->ifa_addr->sa_family == AF_INET6) {
 				ifa_ref(ifa);
 				break;

@@ -44,7 +44,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/time.h>
 #include <sys/conf.h>
 #include <sys/fcntl.h>
-#include <sys/interrupt.h>
 #include <sys/proc.h>
 #include <sys/sbuf.h>
 #include <sys/smp.h>
@@ -1909,9 +1908,6 @@ xptedtdevicefunc(struct cam_ed *device, void *arg)
 		bcopy(&device->ident_data,
 		      &cdm->matches[j].result.device_result.ident_data,
 		      sizeof(struct ata_params));
-		bcopy(&device->mmc_ident_data,
-		      &cdm->matches[j].result.device_result.mmc_ident_data,
-		      sizeof(struct mmc_params));
 
 		/* Let the user know whether this device is unconfigured */
 		if (device->flags & CAM_DEV_UNCONFIGURED)
@@ -3202,6 +3198,25 @@ call_sim:
 		start_ccb->ccb_h.status));
 }
 
+/*
+ * Call the sim poll routine to allow the sim to complete
+ * any inflight requests, then call camisr_runqueue to
+ * complete any CCB that the polling completed.
+ */
+void
+xpt_sim_poll(struct cam_sim *sim)
+{
+	struct mtx *mtx;
+
+	mtx = sim->mtx;
+	if (mtx)
+		mtx_lock(mtx);
+	(*(sim->sim_poll))(sim);
+	if (mtx)
+		mtx_unlock(mtx);
+	camisr_runqueue();
+}
+
 uint32_t
 xpt_poll_setup(union ccb *start_ccb)
 {
@@ -3209,12 +3224,10 @@ xpt_poll_setup(union ccb *start_ccb)
 	struct	  cam_sim *sim;
 	struct	  cam_devq *devq;
 	struct	  cam_ed *dev;
-	struct mtx *mtx;
 
 	timeout = start_ccb->ccb_h.timeout * 10;
 	sim = start_ccb->ccb_h.path->bus->sim;
 	devq = sim->devq;
-	mtx = sim->mtx;
 	dev = start_ccb->ccb_h.path->device;
 
 	/*
@@ -3227,12 +3240,7 @@ xpt_poll_setup(union ccb *start_ccb)
 	    (--timeout > 0)) {
 		mtx_unlock(&devq->send_mtx);
 		DELAY(100);
-		if (mtx)
-			mtx_lock(mtx);
-		(*(sim->sim_poll))(sim);
-		if (mtx)
-			mtx_unlock(mtx);
-		camisr_runqueue();
+		xpt_sim_poll(sim);
 		mtx_lock(&devq->send_mtx);
 	}
 	dev->ccbq.dev_openings++;
@@ -3244,19 +3252,9 @@ xpt_poll_setup(union ccb *start_ccb)
 void
 xpt_pollwait(union ccb *start_ccb, uint32_t timeout)
 {
-	struct cam_sim	*sim;
-	struct mtx	*mtx;
-
-	sim = start_ccb->ccb_h.path->bus->sim;
-	mtx = sim->mtx;
 
 	while (--timeout > 0) {
-		if (mtx)
-			mtx_lock(mtx);
-		(*(sim->sim_poll))(sim);
-		if (mtx)
-			mtx_unlock(mtx);
-		camisr_runqueue();
+		xpt_sim_poll(start_ccb->ccb_h.path->bus->sim);
 		if ((start_ccb->ccb_h.status & CAM_STATUS_MASK)
 		    != CAM_REQ_INPROG)
 			break;
@@ -3383,6 +3381,7 @@ xpt_run_allocq(struct cam_periph *periph, int sleep)
 	cam_periph_assert(periph, MA_OWNED);
 	if (periph->periph_allocating)
 		return;
+	cam_periph_doacquire(periph);
 	periph->periph_allocating = 1;
 	CAM_DEBUG_PRINT(CAM_DEBUG_XPT, ("xpt_run_allocq(%p)\n", periph));
 	device = periph->path->device;
@@ -3426,6 +3425,7 @@ restart:
 	if (ccb != NULL)
 		xpt_release_ccb(ccb);
 	periph->periph_allocating = 0;
+	cam_periph_release_locked(periph);
 }
 
 static void
@@ -5012,6 +5012,8 @@ xpt_release_device(struct cam_ed *device)
 	free(device->physpath, M_CAMXPT);
 	free(device->rcap_buf, M_CAMXPT);
 	free(device->serial_num, M_CAMXPT);
+	free(device->nvme_data, M_CAMXPT);
+	free(device->nvme_cdata, M_CAMXPT);
 	taskqueue_enqueue(xsoftc.xpt_taskq, &device->device_destroy_task);
 }
 
@@ -5375,8 +5377,8 @@ xpt_path_mtx(struct cam_path *path)
 static void
 xpt_done_process(struct ccb_hdr *ccb_h)
 {
-	struct cam_sim *sim;
-	struct cam_devq *devq;
+	struct cam_sim *sim = NULL;
+	struct cam_devq *devq = NULL;
 	struct mtx *mtx = NULL;
 
 #if defined(BUF_TRACKING) || defined(FULL_BUF_TRACKING)
@@ -5419,9 +5421,15 @@ xpt_done_process(struct ccb_hdr *ccb_h)
 			mtx_unlock(&xsoftc.xpt_highpower_lock);
 	}
 
-	sim = ccb_h->path->bus->sim;
+	/*
+	 * Insulate against a race where the periph is destroyed
+	 * but CCBs are still not all processed.
+	 */
+	if (ccb_h->path->bus)
+		sim = ccb_h->path->bus->sim;
 
 	if (ccb_h->status & CAM_RELEASE_SIMQ) {
+		KASSERT(sim, ("sim missing for CAM_RELEASE_SIMQ request"));
 		xpt_release_simq(sim, /*run_queue*/FALSE);
 		ccb_h->status &= ~CAM_RELEASE_SIMQ;
 	}
@@ -5432,9 +5440,12 @@ xpt_done_process(struct ccb_hdr *ccb_h)
 		ccb_h->status &= ~CAM_DEV_QFRZN;
 	}
 
-	devq = sim->devq;
 	if ((ccb_h->func_code & XPT_FC_USER_CCB) == 0) {
 		struct cam_ed *dev = ccb_h->path->device;
+
+		if (sim)
+			devq = sim->devq;
+		KASSERT(devq, ("sim missing for XPT_FC_USER_CCB request"));
 
 		mtx_lock(&devq->send_mtx);
 		devq->send_active--;

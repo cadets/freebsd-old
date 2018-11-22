@@ -4,8 +4,6 @@
 
 FILES=		boot boot1 boot2
 
-NM?=		nm
-
 # A value of 0x80 enables LBA support.
 BOOT_BOOT1_FLAGS?=	0x80
 
@@ -31,7 +29,6 @@ CFLAGS+=-fomit-frame-pointer \
 	-DSIOFMT=${B2SIOFMT} \
 	-DSIOSPD=${BOOT_COMCONSOLE_SPEED} \
 	-I${LDRSRC} \
-	-I${BTXLIB} \
 	-Wall -Waggregate-return -Wbad-function-cast -Wno-cast-align \
 	-Wmissing-declarations -Wmissing-prototypes -Wnested-externs \
 	-Wpointer-arith -Wshadow -Wstrict-prototypes -Wwrite-strings \

@@ -4,6 +4,7 @@
 
 LOADER_ADDRESS?=0x200000
 LDFLAGS+=	-nostdlib
+LDFLAGS.lld+=	-Wl,--no-rosegment
 
 # BTX components
 BTXDIR=		${BOOTOBJ}/i386/btx
@@ -13,6 +14,8 @@ BTXCRT=		${BTXDIR}/lib/crt0.o
 
 BTXSRC=		${BOOTSRC}/i386/btx
 BTXLIB=		${BTXSRC}/lib
+
+CFLAGS+=	-I${BTXLIB}
 
 # compact binary with no padding between text, data, bss
 LDSCRIPT=	${BOOTSRC}/i386/boot.ldscript

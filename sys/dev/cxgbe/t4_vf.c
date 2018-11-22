@@ -62,7 +62,6 @@ __FBSDID("$FreeBSD$");
 struct intrs_and_queues {
 	uint16_t intr_type;	/* MSI, or MSI-X */
 	uint16_t nirq;		/* Total # of vectors */
-	uint16_t intr_flags;	/* Interrupt flags for each port */
 	uint16_t ntxq;		/* # of NIC txq's for each port */
 	uint16_t nrxq;		/* # of NIC rxq's for each port */
 };
@@ -330,7 +329,6 @@ cfg_itype_and_nqueues(struct adapter *sc, struct intrs_and_queues *iaq)
 			continue;
 
 		iaq->intr_type = itype;
-		iaq->intr_flags = 0;
 
 		/*
 		 * XXX: The Linux driver reserves an Ingress Queue for
@@ -438,7 +436,6 @@ cfg_itype_and_nqueues(struct adapter *sc, struct intrs_and_queues *iaq)
 				return (rc);
 			}
 			if (navail == iaq->nirq) {
-				iaq->intr_flags = INTR_RXQ;
 				return (0);
 			}
 			pci_release_msi(sc->dev);
@@ -455,7 +452,6 @@ cfg_itype_and_nqueues(struct adapter *sc, struct intrs_and_queues *iaq)
 			device_printf(sc->dev,
 		    "failed to allocate vectors:%d, type=%d, req=%d, rcvd=%d\n",
 			    itype, rc, iaq->nirq, navail);
-		iaq->intr_flags = 0;
 		return (rc);
 	}
 
@@ -666,7 +662,7 @@ t4vf_attach(device_t dev)
 	s->nrxq = sc->params.nports * iaq.nrxq;
 	s->ntxq = sc->params.nports * iaq.ntxq;
 	s->neq = s->ntxq + s->nrxq;	/* the free list in an rxq is an eq */
-	s->neq += sc->params.nports + 1;/* ctrl queues: 1 per port + 1 mgmt */
+	s->neq += sc->params.nports;	/* ctrl queues: 1 per port */
 	s->niq = s->nrxq + 1;		/* 1 extra for firmware event queue */
 
 	s->rxq = malloc(s->nrxq * sizeof(struct sge_rxq), M_CXGBE,
@@ -702,7 +698,6 @@ t4vf_attach(device_t dev)
 			vi->first_txq = tqidx;
 			vi->tmr_idx = t4_tmr_idx;
 			vi->pktc_idx = t4_pktc_idx;
-			vi->flags |= iaq.intr_flags & INTR_RXQ;
 			vi->nrxq = j == 0 ? iaq.nrxq: 1;
 			vi->ntxq = j == 0 ? iaq.ntxq: 1;
 

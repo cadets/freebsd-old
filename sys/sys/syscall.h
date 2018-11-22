@@ -77,7 +77,7 @@
 #define	SYS_sbrk	69
 #define	SYS_sstk	70
 				/* 71 is old mmap */
-#define	SYS_vadvise	72
+#define	SYS_freebsd11_vadvise	72
 #define	SYS_munmap	73
 #define	SYS_mprotect	74
 #define	SYS_madvise	75
@@ -231,9 +231,9 @@
 #define	SYS_lio_listio	257
 #define	SYS_freebsd11_getdents	272
 #define	SYS_lchmod	274
-#define	SYS_netbsd_lchown	275
+				/* 275 is obsolete netbsd_lchown */
 #define	SYS_lutimes	276
-#define	SYS_netbsd_msync	277
+				/* 277 is obsolete netbsd_msync */
 #define	SYS_freebsd11_nstat	278
 #define	SYS_freebsd11_nfstat	279
 #define	SYS_freebsd11_nlstat	280
@@ -465,8 +465,6 @@
 #define	SYS_ppoll	545
 #define	SYS_futimens	546
 #define	SYS_utimensat	547
-#define	SYS_numa_getaffinity	548
-#define	SYS_numa_setaffinity	549
 #define	SYS_fdatasync	550
 #define	SYS_fstat	551
 #define	SYS_fstatat	552
@@ -478,6 +476,9 @@
 #define	SYS_fhstatfs	558
 #define	SYS_mknodat	559
 #define	SYS_kevent	560
+#define	SYS_cpuset_getdomain	561
+#define	SYS_cpuset_setdomain	562
+#define	SYS_getrandom	563
 #define	SYS_metaio_read	571
 #define	SYS_metaio_write	572
 #define	SYS_metaio_mmap	573

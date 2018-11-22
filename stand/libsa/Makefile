@@ -6,21 +6,16 @@
 #   quite large.
 #
 
-MK_PROFILE=	no
-MK_SSP=		no
-
 .include <bsd.init.mk>
 
-INTERNALLIB=
 LIBSA_CPUARCH?=${MACHINE_CPUARCH}
 LIBC_SRC=	${SRCTOP}/lib/libc
 
 LIB?=		sa
-NO_PIC=
 
 # standalone components and stuff we have modified locally
-SRCS+=	gzguts.h zutil.h __main.c assert.c bcd.c environment.c getopt.c gets.c \
-	globals.c pager.c panic.c printf.c strdup.c strerror.c strtol.c strtoul.c \
+SRCS+=	gzguts.h zutil.h __main.c abort.c assert.c bcd.c environment.c getopt.c gets.c \
+	globals.c pager.c panic.c printf.c strdup.c strerror.c \
 	random.c sbrk.c twiddle.c zalloc.c zalloc_malloc.c
 
 # private (pruned) versions of libc string functions
@@ -36,7 +31,16 @@ SRCS+=	bcmp.c bcopy.c bzero.c ffs.c fls.c \
 	memccpy.c memchr.c memcmp.c memcpy.c memmove.c memset.c \
 	qdivrem.c strcat.c strchr.c strcmp.c strcpy.c stpcpy.c stpncpy.c \
 	strcspn.c strlcat.c strlcpy.c strlen.c strncat.c strncmp.c strncpy.c \
-	strpbrk.c strrchr.c strsep.c strspn.c strstr.c strtok.c swab.c
+	strnlen.c strpbrk.c strrchr.c strsep.c strspn.c strstr.c strtok.c swab.c
+
+# stdlib functions from libc
+.PATH: ${LIBC_SRC}/stdlib
+SRCS+=	abs.c strtol.c strtoll.c strtoul.c strtoull.c
+
+# common boot code
+.PATH:	${SYSDIR}/kern
+SRCS+=	subr_boot.c
+
 .if ${MACHINE_CPUARCH} == "arm"
 .PATH: ${LIBC_SRC}/arm/gen
 
@@ -73,6 +77,11 @@ SRCS+=	ashldi3.c ashrdi3.c
 SRCS+=	syncicache.c
 .endif
 
+.if ${MACHINE_CPUARCH} == "mips"
+.PATH: ${LIBC_SRC}/quad
+SRCS+=	ashldi3.c ashrdi3.c
+.endif
+
 # uuid functions from libc
 .PATH: ${LIBC_SRC}/uuid
 SRCS+= uuid_create_nil.c uuid_equal.c uuid_from_string.c uuid_is_nil.c uuid_to_string.c
@@ -103,7 +112,6 @@ STAND_H_INC=ctype.h fcntl.h signal.h stdio.h stdlib.h
 OTHER_INC=stdarg.h errno.h stdint.h
 
 beforedepend:
-	echo beforedepend; \
 	mkdir -p ${FAKE_DIRS}; \
 	for i in ${SAFE_INCS}; do \
 		ln -sf ${SRCTOP}/include/$$i $$i; \
@@ -141,11 +149,24 @@ SRCS+=	pkgfs.c
 SRCS+=	nandfs.c
 .endif
 
+# kernel ufs support
+.PATH: ${SRCTOP}/sys/ufs/ffs
+SRCS+=ffs_subr.c ffs_tables.c
+
 CFLAGS.bzipfs.c+= -I${SRCTOP}/contrib/bzip2
 
 # explicit_bzero
 .PATH: ${SYSDIR}/libkern
 SRCS+=  explicit_bzero.c
 
-.include <bsd.stand.mk>
+# Maybe GELI
+.if ${MK_LOADER_GELI} == "yes"
+.include "${SASRC}/geli/Makefile.inc"
+.endif
+
+# Maybe ZFS
+.if ${MK_ZFS} == "yes"
+.include "${SASRC}/zfs/Makefile.inc"
+.endif
+
 .include <bsd.lib.mk>

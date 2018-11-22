@@ -20,7 +20,9 @@
 
 include GENERIC
 
-ident   CADETS
+ident   CADETS-LITE
+options	DDTRACE
+options	DLOG
 options METAIO
 
 # Disable most of the things that GENERIC-NODEBUG disables, but keep

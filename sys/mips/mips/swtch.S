@@ -55,7 +55,6 @@
  *	assembly language support routines.
  */
 
-#include "opt_compat.h"
 #include <sys/syscall.h>
 #include <machine/asm.h>
 #include <machine/cpu.h>
@@ -64,7 +63,7 @@
 #include <machine/pte.h>
 #include <machine/pcb.h>
 
-#include "assym.s"
+#include "assym.inc"
 
 	.set	noreorder			# Noreorder is default style!
 
@@ -416,7 +415,7 @@ LEAF(MipsSwitchFPState)
 	.set hardfloat
 	mfc0	t1, MIPS_COP_0_STATUS	# Save old SR
 	HAZARD_DELAY
-#if defined(__mips_n64)
+#if defined(__mips_n32) || defined(__mips_n64)
 	or	t0, t1, MIPS_SR_COP_1_BIT | MIPS_SR_FR	# enable the coprocessor
 #else
 	or	t0, t1, MIPS_SR_COP_1_BIT 		# enable the coprocessor
@@ -546,7 +545,7 @@ LEAF(MipsFPID)
 	.set hardfloat
 	mfc0	t1, MIPS_COP_0_STATUS		# Save the status register.
 	HAZARD_DELAY
-#if defined(__mips_n64)
+#if defined(__mips_n32) || defined(__mips_n64)
 	or	t0, t1, MIPS_SR_COP_1_BIT | MIPS_SR_FR
 #else
 	or	t0, t1, MIPS_SR_COP_1_BIT
@@ -585,7 +584,7 @@ LEAF(MipsSaveCurFPState)
 	PTR_L	a0, TD_PCB(a0)			# get pointer to pcb for thread
 	mfc0	t1, MIPS_COP_0_STATUS		# Disable interrupts and
 	HAZARD_DELAY
-#if defined(__mips_n64)
+#if defined(__mips_n32) || defined(__mips_n64)
 	or	t0, t1, MIPS_SR_COP_1_BIT | MIPS_SR_FR		#  enable the coprocessor
 #else
 	or	t0, t1, MIPS_SR_COP_1_BIT 			#  enable the coprocessor

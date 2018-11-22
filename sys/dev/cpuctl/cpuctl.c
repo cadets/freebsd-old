@@ -53,6 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/cpufunc.h>
 #include <machine/md_var.h>
 #include <machine/specialreg.h>
+#include <x86/ucode.h>
 
 static d_open_t cpuctl_open;
 static d_ioctl_t cpuctl_ioctl;
@@ -73,6 +74,7 @@ static int cpuctl_do_cpuid(int cpu, cpuctl_cpuid_args_t *data,
     struct thread *td);
 static int cpuctl_do_cpuid_count(int cpu, cpuctl_cpuid_count_args_t *data,
     struct thread *td);
+static int cpuctl_do_eval_cpu_features(int cpu, struct thread *td);
 static int cpuctl_do_update(int cpu, cpuctl_update_args_t *data,
     struct thread *td);
 static int update_intel(int cpu, cpuctl_update_args_t *args,
@@ -159,7 +161,8 @@ cpuctl_ioctl(struct cdev *dev, u_long cmd, caddr_t data,
 	}
 	/* Require write flag for "write" requests. */
 	if ((cmd == CPUCTL_MSRCBIT || cmd == CPUCTL_MSRSBIT ||
-	    cmd == CPUCTL_UPDATE || cmd == CPUCTL_WRMSR) &&
+	    cmd == CPUCTL_UPDATE || cmd == CPUCTL_WRMSR ||
+	    cmd == CPUCTL_EVAL_CPU_FEATURES) &&
 	    (flags & FWRITE) == 0)
 		return (EPERM);
 	switch (cmd) {
@@ -186,6 +189,9 @@ cpuctl_ioctl(struct cdev *dev, u_long cmd, caddr_t data,
 	case CPUCTL_CPUID_COUNT:
 		ret = cpuctl_do_cpuid_count(cpu,
 		    (cpuctl_cpuid_count_args_t *)data, td);
+		break;
+	case CPUCTL_EVAL_CPU_FEATURES:
+		ret = cpuctl_do_eval_cpu_features(cpu, td);
 		break;
 	default:
 		ret = EINVAL;
@@ -328,11 +334,7 @@ static int
 update_intel(int cpu, cpuctl_update_args_t *args, struct thread *td)
 {
 	void *ptr;
-	uint64_t rev0, rev1;
-	uint32_t tmp[4];
-	int is_bound;
-	int oldcpu;
-	int ret;
+	int is_bound, oldcpu, ret;
 
 	if (args->size == 0 || args->data == NULL) {
 		DPRINTF("[cpuctl,%d]: zero-sized firmware image", __LINE__);
@@ -353,32 +355,26 @@ update_intel(int cpu, cpuctl_update_args_t *args, struct thread *td)
 		DPRINTF("[cpuctl,%d]: copyin %p->%p of %zd bytes failed",
 		    __LINE__, args->data, ptr, args->size);
 		ret = EFAULT;
-		goto fail;
+		goto out;
 	}
 	oldcpu = td->td_oncpu;
 	is_bound = cpu_sched_is_bound(td);
 	set_cpu(cpu, td);
 	critical_enter();
-	rdmsr_safe(MSR_BIOS_SIGN, &rev0); /* Get current microcode revision. */
 
-	/*
-	 * Perform update.
-	 */
-	wrmsr_safe(MSR_BIOS_UPDT_TRIG, (uintptr_t)(ptr));
-	wrmsr_safe(MSR_BIOS_SIGN, 0);
+	ret = ucode_intel_load(ptr, true);
 
-	/*
-	 * Serialize instruction flow.
-	 */
-	do_cpuid(0, tmp);
 	critical_exit();
-	rdmsr_safe(MSR_BIOS_SIGN, &rev1); /* Get new microcode revision. */
 	restore_cpu(oldcpu, is_bound, td);
-	if (rev1 > rev0)
-		ret = 0;
-	else
-		ret = EEXIST;
-fail:
+
+	/*
+	 * Replace any existing update.  This ensures that the new update
+	 * will be reloaded automatically during ACPI resume.
+	 */
+	if (ret == 0)
+		ptr = ucode_update(ptr);
+
+out:
 	free(ptr, M_CPUCTL);
 	return (ret);
 }
@@ -503,6 +499,32 @@ fail:
 	free(ptr, M_CPUCTL);
 	return (ret);
 }
+
+static int
+cpuctl_do_eval_cpu_features(int cpu, struct thread *td)
+{
+	int is_bound = 0;
+	int oldcpu;
+
+	KASSERT(cpu >= 0 && cpu <= mp_maxid,
+	    ("[cpuctl,%d]: bad cpu number %d", __LINE__, cpu));
+
+#ifdef __i386__
+	if (cpu_id == 0)
+		return (ENODEV);
+#endif
+	oldcpu = td->td_oncpu;
+	is_bound = cpu_sched_is_bound(td);
+	set_cpu(cpu, td);
+	identify_cpu1();
+	identify_cpu2();
+	hw_ibrs_recalculate();
+	restore_cpu(oldcpu, is_bound, td);
+	hw_ssb_recalculate(true);
+	printcpuinfo();
+	return (0);
+}
+
 
 int
 cpuctl_open(struct cdev *dev, int flags, int fmt __unused, struct thread *td)

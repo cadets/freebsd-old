@@ -14,21 +14,15 @@
 #ifndef SCUDO_ALLOCATOR_H_
 #define SCUDO_ALLOCATOR_H_
 
-#include "scudo_flags.h"
-
-#include "sanitizer_common/sanitizer_allocator.h"
-
-#if !SANITIZER_LINUX
-# error "The Scudo hardened allocator is currently only supported on Linux."
-#endif
+#include "scudo_platform.h"
 
 namespace __scudo {
 
 enum AllocType : u8 {
-  FromMalloc    = 0, // Memory block came from malloc, realloc, calloc, etc.
-  FromNew       = 1, // Memory block came from operator new.
-  FromNewArray  = 2, // Memory block came from operator new [].
-  FromMemalign  = 3, // Memory block came from memalign, posix_memalign, etc.
+  FromMalloc    = 0,  // Memory block came from malloc, realloc, calloc, etc.
+  FromNew       = 1,  // Memory block came from operator new.
+  FromNewArray  = 2,  // Memory block came from operator new [].
+  FromMemalign  = 3,  // Memory block came from memalign, posix_memalign, etc.
 };
 
 enum ChunkState : u8 {
@@ -45,16 +39,15 @@ enum ChunkState : u8 {
 typedef u64 PackedHeader;
 struct UnpackedHeader {
   u64 Checksum          : 16;
-  u64 SizeOrUnusedBytes : 19; // Size for Primary backed allocations, amount of
-                              // unused bytes in the chunk for Secondary ones.
-  u64 FromPrimary       : 1;
-  u64 State             : 2;  // available, allocated, or quarantined
-  u64 AllocType         : 2;  // malloc, new, new[], or memalign
-  u64 Offset            : 16; // Offset from the beginning of the backend
-                              // allocation to the beginning of the chunk
-                              // itself, in multiples of MinAlignment. See
-                              // comment about its maximum value and in init().
-  u64 Salt              : 8;
+  u64 ClassId           : 8;
+  u64 SizeOrUnusedBytes : 20;  // Size for Primary backed allocations, amount of
+                               // unused bytes in the chunk for Secondary ones.
+  u64 State             : 2;   // available, allocated, or quarantined
+  u64 AllocType         : 2;   // malloc, new, new[], or memalign
+  u64 Offset            : 16;  // Offset from the beginning of the backend
+                               // allocation to the beginning of the chunk
+                               // itself, in multiples of MinAlignment. See
+                               // comment about its maximum value and in init().
 };
 
 typedef atomic_uint64_t AtomicPackedHeader;
@@ -66,20 +59,20 @@ const uptr MaxAlignmentLog = 24;  // 16 MB
 const uptr MinAlignment = 1 << MinAlignmentLog;
 const uptr MaxAlignment = 1 << MaxAlignmentLog;
 
-const uptr ChunkHeaderSize = sizeof(PackedHeader);
-const uptr AlignedChunkHeaderSize =
-    (ChunkHeaderSize + MinAlignment - 1) & ~(MinAlignment - 1);
+// constexpr version of __sanitizer::RoundUp without the extraneous CHECK.
+// This way we can use it in constexpr variables and functions declarations.
+constexpr uptr RoundUpTo(uptr Size, uptr Boundary) {
+  return (Size + Boundary - 1) & ~(Boundary - 1);
+}
+
+namespace Chunk {
+  constexpr uptr getHeaderSize() {
+    return RoundUpTo(sizeof(PackedHeader), MinAlignment);
+  }
+}
 
 #if SANITIZER_CAN_USE_ALLOCATOR64
 const uptr AllocatorSpace = ~0ULL;
-# if defined(__aarch64__) && SANITIZER_ANDROID
-const uptr AllocatorSize = 0x4000000000ULL;  // 256G.
-# elif defined(__aarch64__)
-const uptr AllocatorSize = 0x10000000000ULL;  // 1T.
-# else
-const uptr AllocatorSize = 0x40000000000ULL;  // 4T.
-# endif
-typedef DefaultSizeClassMap SizeClassMap;
 struct AP64 {
   static const uptr kSpaceBeg = AllocatorSpace;
   static const uptr kSpaceSize = AllocatorSize;
@@ -89,19 +82,14 @@ struct AP64 {
   static const uptr kFlags =
       SizeClassAllocator64FlagMasks::kRandomShuffleChunks;
 };
-typedef SizeClassAllocator64<AP64> PrimaryAllocator;
+typedef SizeClassAllocator64<AP64> PrimaryT;
 #else
-// Currently, the 32-bit Sanitizer allocator has not yet benefited from all the
-// security improvements brought to the 64-bit one. This makes the 32-bit
-// version of Scudo slightly less toughened.
-static const uptr RegionSizeLog = 20;
 static const uptr NumRegions = SANITIZER_MMAP_RANGE_SIZE >> RegionSizeLog;
 # if SANITIZER_WORDSIZE == 32
 typedef FlatByteMap<NumRegions> ByteMap;
 # elif SANITIZER_WORDSIZE == 64
 typedef TwoLevelByteMap<(NumRegions >> 12), 1 << 12> ByteMap;
 # endif  // SANITIZER_WORDSIZE
-typedef DefaultSizeClassMap SizeClassMap;
 struct AP32 {
   static const uptr kSpaceBeg = 0;
   static const u64 kSpaceSize = SANITIZER_MMAP_RANGE_SIZE;
@@ -111,32 +99,25 @@ struct AP32 {
   typedef __scudo::ByteMap ByteMap;
   typedef NoOpMapUnmapCallback MapUnmapCallback;
   static const uptr kFlags =
-      SizeClassAllocator32FlagMasks::kRandomShuffleChunks;
+      SizeClassAllocator32FlagMasks::kRandomShuffleChunks |
+      SizeClassAllocator32FlagMasks::kUseSeparateSizeClassForBatch;
 };
-typedef SizeClassAllocator32<AP32> PrimaryAllocator;
+typedef SizeClassAllocator32<AP32> PrimaryT;
 #endif  // SANITIZER_CAN_USE_ALLOCATOR64
-
-// __sanitizer::RoundUp has a CHECK that is extraneous for us. Use our own.
-INLINE uptr RoundUpTo(uptr Size, uptr Boundary) {
-  return (Size + Boundary - 1) & ~(Boundary - 1);
-}
 
 #include "scudo_allocator_secondary.h"
 #include "scudo_allocator_combined.h"
 
-typedef SizeClassAllocatorLocalCache<PrimaryAllocator> AllocatorCache;
-typedef ScudoLargeMmapAllocator SecondaryAllocator;
-typedef ScudoCombinedAllocator<PrimaryAllocator, AllocatorCache,
-    SecondaryAllocator> ScudoBackendAllocator;
+typedef SizeClassAllocatorLocalCache<PrimaryT> AllocatorCacheT;
+typedef LargeMmapAllocator SecondaryT;
+typedef CombinedAllocator<PrimaryT, AllocatorCacheT, SecondaryT> BackendT;
 
 void initScudo();
 
-void *scudoMalloc(uptr Size, AllocType Type);
-void scudoFree(void *Ptr, AllocType Type);
-void scudoSizedFree(void *Ptr, uptr Size, AllocType Type);
+void *scudoAllocate(uptr Size, uptr Alignment, AllocType Type);
+void scudoDeallocate(void *Ptr, uptr Size, uptr Alignment, AllocType Type);
 void *scudoRealloc(void *Ptr, uptr Size);
 void *scudoCalloc(uptr NMemB, uptr Size);
-void *scudoMemalign(uptr Alignment, uptr Size);
 void *scudoValloc(uptr Size);
 void *scudoPvalloc(uptr Size);
 int scudoPosixMemalign(void **MemPtr, uptr Alignment, uptr Size);

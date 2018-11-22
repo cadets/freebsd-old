@@ -114,6 +114,8 @@ extern "C" {
 #include <vm/vm_extern.h>
 #include <vm/vnode_pager.h>
 
+#define	boot_ncpus	(mp_ncpus)
+
 #define	CPU_SEQID	(curcpu)
 
 #define	tsd_create(keyp, destructor)	do {				\
@@ -143,5 +145,8 @@ extern struct mtx zfs_debug_mtx;
 } while (0)
 
 #define	sys_shutdown	rebooting
+
+#define	noinline	__attribute__((noinline))
+#define	likely(x)	__builtin_expect((x), 1)
 
 #endif	/* _SYS_ZFS_CONTEXT_H */

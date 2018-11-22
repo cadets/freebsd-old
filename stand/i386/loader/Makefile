@@ -1,13 +1,13 @@
 # $FreeBSD$
 
-HAVE_GELI=		yes
+HAVE_ZFS=		${MK_ZFS}
 
 LOADER_NET_SUPPORT?=	yes
 LOADER_NFS_SUPPORT?=	yes
 LOADER_TFTP_SUPPORT?=	yes
-LOADER_CD9660_SUPPORT?=	no
-LOADER_EXT2FS_SUPPORT?=	no
-LOADER_MSDOS_SUPPORT?=	no
+LOADER_CD9660_SUPPORT?=	yes
+LOADER_EXT2FS_SUPPORT?=	yes
+LOADER_MSDOS_SUPPORT?=	yes
 LOADER_UFS_SUPPORT?=	yes
 LOADER_GZIP_SUPPORT?=	yes
 LOADER_BZIP2_SUPPORT?=	yes
@@ -15,11 +15,9 @@ LOADER_BZIP2_SUPPORT?=	yes
 .include <bsd.init.mk>
 
 MK_INSTRUMENT_BINARIES=	no
-MK_SSP=		no
 
-LOADER?=	loader
+LOADER?=	loader_${LOADER_INTERP}
 PROG=		${LOADER}.sym
-MAN=	
 INTERNALPROG=
 NEWVERSWHAT?=	"bootstrap loader" x86
 VERSION_FILE=	${.CURDIR}/../loader/version
@@ -42,9 +40,7 @@ LIBFIREWIRE=	${BOOTOBJ}/i386/libfirewire/libfirewire.a
 .endif
 
 .if exists(${.CURDIR}/help.i386)
-HELP_FILES+=	help.i386
-.else
-HELP_FILES=
+HELP_FILES=	${.CURDIR}/help.i386
 .endif
 
 # Always add MI sources
@@ -59,9 +55,6 @@ LDFLAGS+=	-static -Ttext 0x0
 LIBI386=	${BOOTOBJ}/i386/libi386/libi386.a
 CFLAGS+=	-I${BOOTSRC}/i386
 
-# BTX components
-CFLAGS+=	-I${BTXLIB}
-
 # Debug me!
 #CFLAGS+=	-g
 #LDFLAGS+=	-g
@@ -73,15 +66,20 @@ ${LOADER}: ${LOADER}.bin ${BTXLDR} ${BTXKERN}
 ${LOADER}.bin: ${LOADER}.sym
 	strip -R .comment -R .note -o ${.TARGET} ${.ALLSRC}
 
+.if ${MK_ZFS} == "yes" && ${LOADER_INTERP} == ${LOADER_DEFAULT_INTERP}
+LINKS+=		${BINDIR}/${LOADER} ${BINDIR}/zfsloader
+.endif
+.if ${LOADER_INTERP} == ${LOADER_DEFAULT_INTERP}
+LINKS+=		${BINDIR}/${LOADER} ${BINDIR}/loader
+.endif
 FILES+=	${LOADER}
-# XXX INSTALLFLAGS_loader= -b
 FILESMODE_${LOADER}= ${BINMODE} -b
 
 # XXX crt0.o needs to be first for pxeboot(8) to work
 OBJS=	${BTXCRT}
 
-DPADD=	${LIBFICL32} ${LIBFIREWIRE} ${LIBZFSBOOT} ${LIBI386} ${LIBGELIBOOT} ${LIBSA32}
-LDADD=	${LIBFICL32} ${LIBFIREWIRE} ${LIBZFSBOOT} ${LIBI386} ${LIBGELIBOOT} ${LIBSA32}
+DPADD=	${LDR_INTERP32} ${LIBFIREWIRE} ${LIBI386} ${LIBSA32}
+LDADD=	${LDR_INTERP32} ${LIBFIREWIRE} ${LIBI386} ${LIBSA32}
 
 .if ${MACHINE_CPUARCH} == "amd64"
 CFLAGS+=	-DLOADER_PREFER_AMD64

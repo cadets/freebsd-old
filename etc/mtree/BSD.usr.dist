@@ -13,6 +13,8 @@
             ..
             event
             ..
+            rdkafka
+            ..
             sqlite3
             ..
             ucl
@@ -25,7 +27,7 @@
         aout
         ..
         clang
-            5.0.1
+            7.0.0
                 include
                     sanitizer
                     ..
@@ -121,6 +123,8 @@
             ..
         ..
         bsdinstall
+        ..
+        dwatch
         ..
         hyperv
         ..
@@ -236,6 +240,8 @@
             dma
             ..
             drivers
+            ..
+            dwatch
             ..
             etc
                 defaults
@@ -812,6 +818,8 @@
             man3
             ..
             man4
+                aarch64
+                ..
                 amd64
                 ..
                 arm

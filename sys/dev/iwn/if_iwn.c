@@ -862,6 +862,7 @@ iwn_config_specific(struct iwn_softc *sc, uint16_t pid)
 			case IWN_SDID_6035_2:
 			case IWN_SDID_6035_3:
 			case IWN_SDID_6035_4:
+			case IWN_SDID_6035_5:
 				sc->fwname = "iwn6000g2bfw";
 				sc->limits = &iwn6235_sensitivity_limits;
 				sc->base_params = &iwn_6235_base_params;
@@ -5301,17 +5302,19 @@ iwn_updateedca(struct ieee80211com *ic)
 #define IWN_EXP2(x)	((1 << (x)) - 1)	/* CWmin = 2^ECWmin - 1 */
 	struct iwn_softc *sc = ic->ic_softc;
 	struct iwn_edca_params cmd;
+	struct chanAccParams chp;
 	int aci;
 
 	DPRINTF(sc, IWN_DEBUG_TRACE, "->%s begin\n", __func__);
+
+	ieee80211_wme_ic_getparams(ic, &chp);
 
 	memset(&cmd, 0, sizeof cmd);
 	cmd.flags = htole32(IWN_EDCA_UPDATE);
 
 	IEEE80211_LOCK(ic);
 	for (aci = 0; aci < WME_NUM_AC; aci++) {
-		const struct wmeParams *ac =
-		    &ic->ic_wme.wme_chanParams.cap_wmeParams[aci];
+		const struct wmeParams *ac = &chp.cap_wmeParams[aci];
 		cmd.ac[aci].aifsn = ac->wmep_aifsn;
 		cmd.ac[aci].cwmin = htole16(IWN_EXP2(ac->wmep_logcwmin));
 		cmd.ac[aci].cwmax = htole16(IWN_EXP2(ac->wmep_logcwmax));

@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright (c) 2012, 2015 by Delphix. All rights reserved.
  * Copyright (c) 2014 Spectra Logic Corporation, All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
  */
@@ -55,15 +55,10 @@
 static int
 dsl_deadlist_compare(const void *arg1, const void *arg2)
 {
-	const dsl_deadlist_entry_t *dle1 = arg1;
-	const dsl_deadlist_entry_t *dle2 = arg2;
+	const dsl_deadlist_entry_t *dle1 = (const dsl_deadlist_entry_t *)arg1;
+	const dsl_deadlist_entry_t *dle2 = (const dsl_deadlist_entry_t *)arg2;
 
-	if (dle1->dle_mintxg < dle2->dle_mintxg)
-		return (-1);
-	else if (dle1->dle_mintxg > dle2->dle_mintxg)
-		return (+1);
-	else
-		return (0);
+	return (AVL_CMP(dle1->dle_mintxg, dle2->dle_mintxg));
 }
 
 static void
@@ -99,6 +94,8 @@ dsl_deadlist_open(dsl_deadlist_t *dl, objset_t *os, uint64_t object)
 {
 	dmu_object_info_t doi;
 
+	ASSERT(!dsl_deadlist_is_open(dl));
+
 	mutex_init(&dl->dl_lock, NULL, MUTEX_DEFAULT, NULL);
 	dl->dl_os = os;
 	dl->dl_object = object;
@@ -117,17 +114,25 @@ dsl_deadlist_open(dsl_deadlist_t *dl, objset_t *os, uint64_t object)
 	dl->dl_havetree = B_FALSE;
 }
 
+boolean_t
+dsl_deadlist_is_open(dsl_deadlist_t *dl)
+{
+	return (dl->dl_os != NULL);
+}
+
 void
 dsl_deadlist_close(dsl_deadlist_t *dl)
 {
 	void *cookie = NULL;
 	dsl_deadlist_entry_t *dle;
 
-	dl->dl_os = NULL;
+	ASSERT(dsl_deadlist_is_open(dl));
 
 	if (dl->dl_oldfmt) {
 		dl->dl_oldfmt = B_FALSE;
 		bpobj_close(&dl->dl_bpobj);
+		dl->dl_os = NULL;
+		dl->dl_object = 0;
 		return;
 	}
 
@@ -143,6 +148,8 @@ dsl_deadlist_close(dsl_deadlist_t *dl)
 	mutex_destroy(&dl->dl_lock);
 	dl->dl_dbuf = NULL;
 	dl->dl_phys = NULL;
+	dl->dl_os = NULL;
+	dl->dl_object = 0;
 }
 
 uint64_t
@@ -309,7 +316,7 @@ static void
 dsl_deadlist_regenerate(objset_t *os, uint64_t dlobj,
     uint64_t mrs_obj, dmu_tx_t *tx)
 {
-	dsl_deadlist_t dl;
+	dsl_deadlist_t dl = { 0 };
 	dsl_pool_t *dp = dmu_objset_pool(os);
 
 	dsl_deadlist_open(&dl, os, dlobj);
@@ -365,6 +372,7 @@ void
 dsl_deadlist_space(dsl_deadlist_t *dl,
     uint64_t *usedp, uint64_t *compp, uint64_t *uncompp)
 {
+	ASSERT(dsl_deadlist_is_open(dl));
 	if (dl->dl_oldfmt) {
 		VERIFY3U(0, ==, bpobj_space(&dl->dl_bpobj,
 		    usedp, compp, uncompp));

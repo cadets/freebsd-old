@@ -63,7 +63,7 @@ int	ffs_balloc_ufs2(struct vnode *a_vp, off_t a_startoffset, int a_size,
             struct ucred *a_cred, int a_flags, struct buf **a_bpp);
 int	ffs_blkatoff(struct vnode *, off_t, char **, struct buf **);
 void	ffs_blkfree(struct ufsmount *, struct fs *, struct vnode *,
-	    ufs2_daddr_t, long, ino_t, enum vtype, struct workhead *);
+	    ufs2_daddr_t, long, ino_t, enum vtype, struct workhead *, int);
 ufs2_daddr_t ffs_blkpref_ufs1(struct inode *, ufs_lbn_t, int, ufs1_daddr_t *);
 ufs2_daddr_t ffs_blkpref_ufs2(struct inode *, ufs_lbn_t, int, ufs2_daddr_t *);
 int	ffs_checkfreefile(struct fs *, struct vnode *, ino_t);
@@ -87,6 +87,10 @@ int	ffs_reallocblks(struct vop_reallocblks_args *);
 int	ffs_realloccg(struct inode *, ufs2_daddr_t, ufs2_daddr_t,
 	    ufs2_daddr_t, int, int, int, struct ucred *, struct buf **);
 int	ffs_reload(struct mount *, struct thread *, int);
+int	ffs_sbget(void *, struct fs **, off_t, struct malloc_type *,
+	    int (*)(void *, off_t, void **, int));
+int	ffs_sbput(void *, struct fs *, off_t, int (*)(void *, off_t, void *,
+	    int));
 int	ffs_sbupdate(struct ufsmount *, int, int);
 void	ffs_setblock(struct fs *, u_char *, ufs1_daddr_t);
 int	ffs_snapblkfree(struct fs *, struct vnode *, ufs2_daddr_t, long, ino_t,
@@ -95,23 +99,39 @@ void	ffs_snapremove(struct vnode *vp);
 int	ffs_snapshot(struct mount *mp, char *snapfile);
 void	ffs_snapshot_mount(struct mount *mp);
 void	ffs_snapshot_unmount(struct mount *mp);
-void	process_deferred_inactive(struct mount *mp);
+void	ffs_susp_initialize(void);
+void	ffs_susp_uninitialize(void);
 void	ffs_sync_snap(struct mount *, int);
 int	ffs_syncvnode(struct vnode *vp, int waitfor, int flags);
 int	ffs_truncate(struct vnode *, off_t, int, struct ucred *);
 int	ffs_update(struct vnode *, int);
 int	ffs_valloc(struct vnode *, int, struct ucred *, struct vnode **);
-
 int	ffs_vfree(struct vnode *, ino_t, int);
 vfs_vget_t ffs_vget;
 int	ffs_vgetf(struct mount *, ino_t, int, struct vnode **, int);
-void	ffs_susp_initialize(void);
-void	ffs_susp_uninitialize(void);
+void	process_deferred_inactive(struct mount *mp);
 
+/*
+ * Flags to ffs_vgetf
+ */
 #define	FFSV_FORCEINSMQ	0x0001
 
+/*
+ * Flags to ffs_reload
+ */
 #define	FFSR_FORCE	0x0001
 #define	FFSR_UNSUSPEND	0x0002
+
+/*
+ * Trim type to ffs_blkfree - used to help with BIO_DELETE (trim) requests
+ */
+#define	NOTRIM		1	/* never written, so don't call trim for it */
+#define	SINGLETON	2	/* only block being freed, so trim it now */
+#define	STARTFREE	3	/* beginning to free for this inum */
+#define	CONTINUEFREE	4	/* additional block free for this inum */
+#define	ENDFREE		5	/* last block to free for this inum */
+
+#define	MAXTRIMIO	1024	/* maximum expected outstanding trim requests */
 
 extern struct vop_vector ffs_vnodeops1;
 extern struct vop_vector ffs_fifoops1;

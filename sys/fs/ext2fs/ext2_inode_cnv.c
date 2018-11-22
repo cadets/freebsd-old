@@ -34,6 +34,7 @@
 #include <sys/stat.h>
 #include <sys/vnode.h>
 
+#include <fs/ext2fs/ext2fs.h>
 #include <fs/ext2fs/fs.h>
 #include <fs/ext2fs/inode.h>
 #include <fs/ext2fs/ext2fs.h>
@@ -53,17 +54,19 @@ ext2_print_inode(struct inode *in)
 
 	printf("Inode: %5ju", (uintmax_t)in->i_number);
 	printf(	/* "Inode: %5d" */
-	    " Type: %10s Mode: 0x%o Flags: 0x%x  Version: %d acl: 0x%lx\n",
+	    " Type: %10s Mode: 0x%o Flags: 0x%x  Version: %d acl: 0x%jx\n",
 	    "n/a", in->i_mode, in->i_flags, in->i_gen, in->i_facl);
 	printf("User: %5u Group: %5u  Size: %ju\n",
 	    in->i_uid, in->i_gid, (uintmax_t)in->i_size);
 	printf("Links: %3d Blockcount: %ju\n",
 	    in->i_nlink, (uintmax_t)in->i_blocks);
-	printf("ctime: 0x%x", in->i_ctime);
-	printf("atime: 0x%x", in->i_atime);
-	printf("mtime: 0x%x", in->i_mtime);
+	printf("ctime: 0x%x ", in->i_ctime);
+	printf("atime: 0x%x ", in->i_atime);
+	printf("mtime: 0x%x ", in->i_mtime);
 	if (E2DI_HAS_XTIME(in))
-		printf("crtime %#x ", in->i_birthtime);
+		printf("crtime %#x\n", in->i_birthtime);
+	else
+		printf("\n");
 	if (in->i_flag & IN_E4EXTENTS) {
 		printf("Extents:\n");
 		ehp = (struct ext4_extent_header *)in->i_db;
@@ -86,9 +89,10 @@ ext2_print_inode(struct inode *in)
 /*
  *	raw ext2 inode to inode
  */
-void
+int
 ext2_ei2i(struct ext2fs_dinode *ei, struct inode *ip)
 {
+
 	ip->i_nlink = ei->e2di_nlink;
 	/*
 	 * Godmar thinks - if the link count is zero, then the inode is
@@ -131,6 +135,9 @@ ext2_ei2i(struct ext2fs_dinode *ei, struct inode *ip)
 	ip->i_gid |= (uint32_t)ei->e2di_gid_high << 16;
 
 	memcpy(ip->i_data, ei->e2di_blocks, sizeof(ei->e2di_blocks));
+
+	/* Verify inode csum. */
+	return (ext2_ei_csum_verify(ip, ei));
 }
 
 /*
@@ -190,6 +197,9 @@ ext2_i2ei(struct inode *ip, struct ext2fs_dinode *ei)
 	ei->e2di_gid_high = ip->i_gid >> 16 & 0xffff;
 
 	memcpy(ei->e2di_blocks, ip->i_data, sizeof(ei->e2di_blocks));
+
+	/* Set inode csum. */
+	ext2_ei_csum_set(ip, ei);
 
 	return (0);
 }

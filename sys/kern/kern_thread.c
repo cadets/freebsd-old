@@ -64,7 +64,6 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm.h>
 #include <vm/vm_extern.h>
 #include <vm/uma.h>
-#include <vm/vm_domain.h>
 #include <sys/eventhandler.h>
 
 /*
@@ -78,13 +77,13 @@ __FBSDID("$FreeBSD$");
  * structures.
  */
 #ifdef __amd64__
-_Static_assert(offsetof(struct thread, td_flags) == 0x104,
+_Static_assert(offsetof(struct thread, td_flags) == 0x110,
     "struct thread KBI td_flags");
-_Static_assert(offsetof(struct thread, td_pflags) == 0x10c,
+_Static_assert(offsetof(struct thread, td_pflags) == 0x118,
     "struct thread KBI td_pflags");
-_Static_assert(offsetof(struct thread, td_frame) == 0x470,
+_Static_assert(offsetof(struct thread, td_frame) == 0x488,
     "struct thread KBI td_frame");
-_Static_assert(offsetof(struct thread, td_emuldata) == 0x518,
+_Static_assert(offsetof(struct thread, td_emuldata) == 0x530,
     "struct thread KBI td_emuldata");
 _Static_assert(offsetof(struct proc, p_flag) == 0xb0,
     "struct proc KBI p_flag");
@@ -92,29 +91,29 @@ _Static_assert(offsetof(struct proc, p_pid) == 0xbc,
     "struct proc KBI p_pid");
 _Static_assert(offsetof(struct proc, p_filemon) == 0x3e0,
     "struct proc KBI p_filemon");
-_Static_assert(offsetof(struct proc, p_comm) == 0x3f0,
+_Static_assert(offsetof(struct proc, p_comm) == 0x3f4,
     "struct proc KBI p_comm");
 _Static_assert(offsetof(struct proc, p_emuldata) == 0x4c8,
     "struct proc KBI p_emuldata");
 #endif
 #ifdef __i386__
-_Static_assert(offsetof(struct thread, td_flags) == 0x9c,
+_Static_assert(offsetof(struct thread, td_flags) == 0xac,
     "struct thread KBI td_flags");
-_Static_assert(offsetof(struct thread, td_pflags) == 0xa4,
+_Static_assert(offsetof(struct thread, td_pflags) == 0xb4,
     "struct thread KBI td_pflags");
-_Static_assert(offsetof(struct thread, td_frame) == 0x2ec,
+_Static_assert(offsetof(struct thread, td_frame) == 0x2fc,
     "struct thread KBI td_frame");
-_Static_assert(offsetof(struct thread, td_emuldata) == 0x338,
+_Static_assert(offsetof(struct thread, td_emuldata) == 0x348,
     "struct thread KBI td_emuldata");
 _Static_assert(offsetof(struct proc, p_flag) == 0x68,
     "struct proc KBI p_flag");
 _Static_assert(offsetof(struct proc, p_pid) == 0x74,
     "struct proc KBI p_pid");
-_Static_assert(offsetof(struct proc, p_filemon) == 0x27c,
+_Static_assert(offsetof(struct proc, p_filemon) == 0x28c,
     "struct proc KBI p_filemon");
-_Static_assert(offsetof(struct proc, p_comm) == 0x288,
+_Static_assert(offsetof(struct proc, p_comm) == 0x29c,
     "struct proc KBI p_comm");
-_Static_assert(offsetof(struct proc, p_emuldata) == 0x314,
+_Static_assert(offsetof(struct proc, p_emuldata) == 0x328,
     "struct proc KBI p_emuldata");
 #endif
 
@@ -418,7 +417,6 @@ thread_alloc(int pages)
 		return (NULL);
 	}
 	cpu_thread_alloc(td);
-	vm_domain_policy_init(&td->td_vm_dom_policy);
 	return (td);
 }
 
@@ -448,7 +446,6 @@ thread_free(struct thread *td)
 	cpu_thread_free(td);
 	if (td->td_kstack != 0)
 		vm_thread_dispose(td);
-	vm_domain_policy_cleanup(&td->td_vm_dom_policy);
 	callout_drain(&td->td_slpcallout);
 	uma_zfree(thread_zone, td);
 }
@@ -540,9 +537,6 @@ thread_exit(void)
 	SDT_PROBE0(proc, , , lwp__exit);
 	KASSERT(TAILQ_EMPTY(&td->td_sigqueue.sq_list), ("signal pending"));
 
-#ifdef AUDIT
-	AUDIT_SYSCALL_EXIT(0, td);
-#endif
 	/*
 	 * drop FPU & debug register state storage, or any other
 	 * architecture specific resources that
@@ -594,8 +588,11 @@ thread_exit(void)
 	 * If this thread is part of a process that is being tracked by hwpmc(4),
 	 * inform the module of the thread's impending exit.
 	 */
-	if (PMC_PROC_IS_USING_PMCS(td->td_proc))
+	if (PMC_PROC_IS_USING_PMCS(td->td_proc)) {
 		PMC_SWITCH_CONTEXT(td, PMC_FN_CSW_OUT);
+		PMC_CALL_HOOK_UNLOCKED(td, PMC_FN_THR_EXIT, NULL);
+	} else if (PMC_SYSTEM_SAMPLING_ACTIVE())
+		PMC_CALL_HOOK_UNLOCKED(td, PMC_FN_THR_EXIT_LOG, NULL);
 #endif
 	PROC_UNLOCK(p);
 	PROC_STATLOCK(p);

@@ -45,7 +45,6 @@ __FBSDID("$FreeBSD$");
  */
 
 #include "opt_clock.h"
-#include "opt_compat.h"
 #include "opt_cpu.h"
 #include "opt_isa.h"
 
@@ -95,7 +94,8 @@ __FBSDID("$FreeBSD$");
 
 #define	IDTVEC(name)	__CONCAT(X,name)
 
-extern inthand_t IDTVEC(int0x80_syscall), IDTVEC(rsvd);
+extern inthand_t IDTVEC(int0x80_syscall), IDTVEC(int0x80_syscall_pti),
+    IDTVEC(rsvd), IDTVEC(rsvd_pti);
 
 void ia32_syscall(struct trapframe *frame);	/* Called from asm code */
 
@@ -115,10 +115,39 @@ ia32_fetch_syscall_args(struct thread *td)
 	caddr_t params;
 	u_int32_t args[8], tmp;
 	int error, i;
+#ifdef COMPAT_43
+	u_int32_t eip;
+	int cs;
+#endif
 
 	p = td->td_proc;
 	frame = td->td_frame;
 	sa = &td->td_sa;
+
+#ifdef COMPAT_43
+	if (__predict_false(frame->tf_cs == 7 && frame->tf_rip == 2)) {
+		/*
+		 * In lcall $7,$0 after int $0x80.  Convert the user
+		 * frame to what it would be for a direct int 0x80 instead
+		 * of lcall $7,$0, by popping the lcall return address.
+		 */
+		error = fueword32((void *)frame->tf_rsp, &eip);
+		if (error == -1)
+			return (EFAULT);
+		cs = fuword16((void *)(frame->tf_rsp + sizeof(u_int32_t)));
+		if (cs == -1)
+			return (EFAULT);
+
+		/*
+		 * Unwind in-kernel frame after all stack frame pieces
+		 * were successfully read.
+		 */
+		frame->tf_rip = eip;
+		frame->tf_cs = cs;
+		frame->tf_rsp += 2 * sizeof(u_int32_t);
+		frame->tf_err = 7;		/* size of lcall $7,$0 */
+	}
+#endif
 
 	params = (caddr_t)frame->tf_rsp + sizeof(u_int32_t);
 	sa->code = frame->tf_rax;
@@ -208,14 +237,16 @@ static void
 ia32_syscall_enable(void *dummy)
 {
 
- 	setidt(IDT_SYSCALL, &IDTVEC(int0x80_syscall), SDT_SYSIGT, SEL_UPL, 0);
+ 	setidt(IDT_SYSCALL, pti ? &IDTVEC(int0x80_syscall_pti) :
+	    &IDTVEC(int0x80_syscall), SDT_SYSIGT, SEL_UPL, 0);
 }
 
 static void
 ia32_syscall_disable(void *dummy)
 {
 
- 	setidt(IDT_SYSCALL, &IDTVEC(rsvd), SDT_SYSIGT, SEL_KPL, 0);
+ 	setidt(IDT_SYSCALL, pti ? &IDTVEC(rsvd_pti) : &IDTVEC(rsvd),
+	    SDT_SYSIGT, SEL_KPL, 0);
 }
 
 SYSINIT(ia32_syscall, SI_SUB_EXEC, SI_ORDER_ANY, ia32_syscall_enable, NULL);

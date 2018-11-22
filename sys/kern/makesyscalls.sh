@@ -47,7 +47,7 @@ systracetmp="systrace.$$"
 systraceret="systraceret.$$"
 
 if [ -r capabilities.conf ]; then
-	capenabled=`cat capabilities.conf | grep -v "^#" | grep -v "^$"`
+	capenabled=`egrep -v '^#|^$' capabilities.conf`
 	capenabled=`echo $capenabled | sed 's/ /,/g'`
 else
 	capenabled=""
@@ -139,6 +139,7 @@ sed -e '
 		printf "#include <sys/signal.h>\n" > sysarg
 		printf "#include <sys/acl.h>\n" > sysarg
 		printf "#include <sys/cpuset.h>\n" > sysarg
+		printf "#include <sys/domainset.h>\n" > sysarg
 		printf "#include <sys/_ffcounter.h>\n" > sysarg
 		printf "#include <sys/_semaphore.h>\n" > sysarg
 		printf "#include <sys/ucontext.h>\n" > sysarg
@@ -253,13 +254,6 @@ sed -e '
 		print > systraceret
 		next
 	}
-	syscall != $1 {
-		printf "%s: line %d: syscall number out of sync at %d\n",
-		    infile, NR, syscall
-		printf "line is:\n"
-		print
-		exit 1
-	}
 	# Returns true if the type "name" is the first flag in the type field
 	function type(name, flags, n) {
 		n = split($3, flags, /\|/)
@@ -272,6 +266,29 @@ sed -e '
 			if (flags[i] == name)
 				return 1
 		return 0
+	}
+	{
+		n = split($1, syscall_range, /-/)
+		if (n == 1) {
+			syscall_range[2] = syscall_range[1]
+		} else if (n == 2) {
+			if (!type("UNIMPL")) {
+				printf "%s: line %d: range permitted only with UNIMPL\n",
+				    infile, NR
+				exit 1
+			}
+		} else {
+			printf "%s: line %d: invalid syscall number or range %s\n",
+			    infile, NR, $1
+			exit 1
+		}
+	}
+	syscall != syscall_range[1] {
+		printf "%s: line %d: syscall number out of sync at %d\n",
+		    infile, NR, syscall
+		printf "line is:\n"
+		print
+		exit 1
 	}
 	function align_sysent_comment(column) {
 		printf("\t") > sysent
@@ -383,6 +400,16 @@ sed -e '
 			}
 			if (argtype[argc] == "")
 				parserr($f, "argument definition")
+
+			# The parser adds space around parens.
+			# Remove it from annotations.
+			gsub(/ \( /, "(", argtype[argc]);
+			gsub(/ \)/, ")", argtype[argc]);
+
+			#remove annotations
+			gsub(/_In[^ ]*[_)] /, "", argtype[argc]);
+			gsub(/_Out[^ ]*[_)] /, "", argtype[argc]);
+
 			argname[argc]=$f;
 			f += 2;			# skip name, and any comma
 		}
@@ -613,11 +640,13 @@ sed -e '
 		next
 	}
 	type("UNIMPL") {
-		printf("\t{ 0, (sy_call_t *)nosys, AUE_NULL, NULL, 0, 0, 0, SY_THR_ABSENT },\t\t\t/* %d = %s */\n",
-		    syscall, comment) > sysent
-		printf("\t\"#%d\",\t\t\t/* %d = %s */\n",
-		    syscall, syscall, comment) > sysnames
-		syscall++
+		while (syscall <= syscall_range[2]) {
+			printf("\t{ 0, (sy_call_t *)nosys, AUE_NULL, NULL, 0, 0, 0, SY_THR_ABSENT },\t\t\t/* %d = %s */\n",
+			    syscall, comment) > sysent
+			printf("\t\"#%d\",\t\t\t/* %d = %s */\n",
+			    syscall, syscall, comment) > sysnames
+			syscall++
+		}
 		next
 	}
 	{
@@ -626,9 +655,6 @@ sed -e '
 	}
 	END {
 		printf "\n#define AS(name) (sizeof(struct name) / sizeof(register_t))\n" > sysinc
-
-		if (ncompat != 0 || ncompat4 != 0 || ncompat6 != 0 || ncompat7 != 0 || ncompat10 != 0 || ncompat11 != 0)
-			printf "#include \"opt_compat.h\"\n\n" > syssw
 
 		if (ncompat != 0) {
 			printf "\n#ifdef %s\n", compat > sysinc

@@ -82,6 +82,13 @@ hex2ascii(int hex)
 	return (hex2ascii_data[hex]);
 }
 
+static inline bool
+validbcd(int bcd)
+{
+
+	return (bcd == 0 || (bcd > 0 && bcd <= 0x99 && bcd2bin_data[bcd] != 0));
+}
+
 static __inline int imax(int a, int b) { return (a > b ? a : b); }
 static __inline int imin(int a, int b) { return (a < b ? a : b); }
 static __inline long lmax(long a, long b) { return (a > b ? a : b); }
@@ -121,7 +128,6 @@ struct malloc_type;
 uint32_t arc4random(void);
 void	 arc4random_buf(void *, size_t);
 void	 arc4rand(void *, u_int, int);
-int	 bcmp(const void *, const void *, size_t);
 int	 timingsafe_bcmp(const void *, const void *, size_t);
 void	*bsearch(const void *, const void *, size_t,
 	    size_t, int (*)(const void *, const void *));
@@ -153,7 +159,6 @@ int	 fnmatch(const char *, const char *, int);
 int	 locc(int, char *, u_int);
 void	*memchr(const void *s, int c, size_t n);
 void	*memcchr(const void *s, int c, size_t n);
-int	 memcmp(const void *b1, const void *b2, size_t len);
 void	*memmem(const void *l, size_t l_len, const void *s, size_t s_len);
 void	 qsort(void *base, size_t nmemb, size_t size,
 	    int (*compar)(const void *, const void *));
@@ -215,23 +220,6 @@ uint32_t sse42_crc32c(uint32_t, const unsigned char *, unsigned);
 #if defined(__aarch64__)
 uint32_t armv8_crc32c(uint32_t, const unsigned char *, unsigned int);
 #endif
-#endif
-
-
-LIBKERN_INLINE void *memset(void *, int, size_t);
-#ifdef LIBKERN_BODY
-LIBKERN_INLINE void *
-memset(void *b, int c, size_t len)
-{
-	char *bb;
-
-	if (c == 0)
-		bzero(b, len);
-	else
-		for (bb = (char *)b; len--; )
-			*bb++ = c;
-	return (b);
-}
 #endif
 
 static __inline char *

@@ -363,7 +363,7 @@ iso_mountfs(devvp, mp)
 	 * filehandle validation.
 	 */
 	isomp->volume_space_size += ssector;
-	bcopy (rootp, isomp->root, sizeof isomp->root);
+	memcpy(isomp->root, rootp, sizeof isomp->root);
 	isomp->root_extent = isonum_733 (rootp->extent);
 	isomp->root_size = isonum_733 (rootp->size);
 
@@ -465,7 +465,7 @@ iso_mountfs(devvp, mp)
 			    joliet_level);
 		rootp = (struct iso_directory_record *)
 			sup->root_directory_record;
-		bcopy (rootp, isomp->root, sizeof isomp->root);
+		memcpy(isomp->root, rootp, sizeof isomp->root);
 		isomp->root_extent = isonum_733 (rootp->extent);
 		isomp->root_size = isonum_733 (rootp->size);
 		isomp->joliet_level = joliet_level;
@@ -680,7 +680,6 @@ cd9660_vget_internal(mp, ino, flags, vpp, relocated, isodir)
 	struct iso_node *ip;
 	struct buf *bp;
 	struct vnode *vp;
-	struct cdev *dev;
 	int error;
 	struct thread *td;
 
@@ -707,7 +706,6 @@ cd9660_vget_internal(mp, ino, flags, vpp, relocated, isodir)
 	 */
 
 	imp = VFSTOISOFS(mp);
-	dev = imp->im_dev;
 
 	/* Allocate a new vnode/iso_node. */
 	if ((error = getnewvnode("isofs", mp, &cd9660_vnodeops, &vp)) != 0) {

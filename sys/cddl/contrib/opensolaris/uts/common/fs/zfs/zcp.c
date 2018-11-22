@@ -137,13 +137,6 @@ typedef struct zcp_eval_arg {
 	uint64_t	ea_instrlimit;
 } zcp_eval_arg_t;
 
-/*ARGSUSED*/
-static int
-zcp_eval_check(void *arg, dmu_tx_t *tx)
-{
-	return (0);
-}
-
 /*
  * The outer-most error callback handler for use with lua_pcall(). On
  * error Lua will call this callback with a single argument that
@@ -187,41 +180,45 @@ zcp_argerror(lua_State *state, int narg, const char *msg, ...)
  *
  * If an error occurs, the cleanup function will be invoked exactly once and
  * then unreigstered.
+ *
+ * Returns the registered cleanup handler so the caller can deregister it
+ * if no error occurs.
  */
-void
+zcp_cleanup_handler_t *
 zcp_register_cleanup(lua_State *state, zcp_cleanup_t cleanfunc, void *cleanarg)
 {
 	zcp_run_info_t *ri = zcp_run_info(state);
-	/*
-	 * A cleanup function should always be explicitly removed before
-	 * installing a new one to avoid accidental clobbering.
-	 */
-	ASSERT3P(ri->zri_cleanup, ==, NULL);
 
-	ri->zri_cleanup = cleanfunc;
-	ri->zri_cleanup_arg = cleanarg;
+	zcp_cleanup_handler_t *zch = kmem_alloc(sizeof (*zch), KM_SLEEP);
+	zch->zch_cleanup_func = cleanfunc;
+	zch->zch_cleanup_arg = cleanarg;
+	list_insert_head(&ri->zri_cleanup_handlers, zch);
+
+	return (zch);
 }
 
 void
-zcp_clear_cleanup(lua_State *state)
+zcp_deregister_cleanup(lua_State *state, zcp_cleanup_handler_t *zch)
 {
 	zcp_run_info_t *ri = zcp_run_info(state);
-
-	ri->zri_cleanup = NULL;
-	ri->zri_cleanup_arg = NULL;
+	list_remove(&ri->zri_cleanup_handlers, zch);
+	kmem_free(zch, sizeof (*zch));
 }
 
 /*
- * If it exists, execute the currently set cleanup function then unregister it.
+ * Execute the currently registered cleanup handlers then free them and
+ * destroy the handler list.
  */
 void
 zcp_cleanup(lua_State *state)
 {
 	zcp_run_info_t *ri = zcp_run_info(state);
 
-	if (ri->zri_cleanup != NULL) {
-		ri->zri_cleanup(ri->zri_cleanup_arg);
-		zcp_clear_cleanup(state);
+	for (zcp_cleanup_handler_t *zch =
+	    list_remove_head(&ri->zri_cleanup_handlers); zch != NULL;
+	    zch = list_remove_head(&ri->zri_cleanup_handlers)) {
+		zch->zch_cleanup_func(zch->zch_cleanup_arg);
+		kmem_free(zch, sizeof (*zch));
 	}
 }
 
@@ -436,7 +433,7 @@ zcp_lua_to_nvlist_impl(lua_State *state, int index, nvlist_t *nvl,
 /*
  * Convert a lua value to an nvpair, adding it to an nvlist with the given key.
  */
-void
+static void
 zcp_lua_to_nvlist(lua_State *state, int index, nvlist_t *nvl, const char *key)
 {
 	/*
@@ -448,7 +445,7 @@ zcp_lua_to_nvlist(lua_State *state, int index, nvlist_t *nvl, const char *key)
 		(void) lua_error(state);
 }
 
-int
+static int
 zcp_lua_to_nvlist_helper(lua_State *state)
 {
 	nvlist_t *nv = (nvlist_t *)lua_touserdata(state, 2);
@@ -457,11 +454,12 @@ zcp_lua_to_nvlist_helper(lua_State *state)
 	return (0);
 }
 
-void
+static void
 zcp_convert_return_values(lua_State *state, nvlist_t *nvl,
     const char *key, zcp_eval_arg_t *evalargs)
 {
 	int err;
+	VERIFY3U(1, ==, lua_gettop(state));
 	lua_pushcfunction(state, zcp_lua_to_nvlist_helper);
 	lua_pushlightuserdata(state, (char *)key);
 	lua_pushlightuserdata(state, nvl);
@@ -822,19 +820,12 @@ zcp_panic_cb(lua_State *state)
 }
 
 static void
-zcp_eval_sync(void *arg, dmu_tx_t *tx)
+zcp_eval_impl(dmu_tx_t *tx, boolean_t sync, zcp_eval_arg_t *evalargs)
 {
 	int err;
 	zcp_run_info_t ri;
-	zcp_eval_arg_t *evalargs = arg;
 	lua_State *state = evalargs->ea_state;
 
-	/*
-	 * Open context should have setup the stack to contain:
-	 * 1: Error handler callback
-	 * 2: Script to run (converted to a Lua function)
-	 * 3: nvlist input to function (converted to Lua table or nil)
-	 */
 	VERIFY3U(3, ==, lua_gettop(state));
 
 	/*
@@ -847,8 +838,9 @@ zcp_eval_sync(void *arg, dmu_tx_t *tx)
 	ri.zri_cred = evalargs->ea_cred;
 	ri.zri_tx = tx;
 	ri.zri_timed_out = B_FALSE;
-	ri.zri_cleanup = NULL;
-	ri.zri_cleanup_arg = NULL;
+	ri.zri_sync = sync;
+	list_create(&ri.zri_cleanup_handlers, sizeof (zcp_cleanup_handler_t),
+	    offsetof(zcp_cleanup_handler_t, zch_node));
 	ri.zri_curinstrs = 0;
 	ri.zri_maxinstrs = evalargs->ea_instrlimit;
 
@@ -885,10 +877,10 @@ zcp_eval_sync(void *arg, dmu_tx_t *tx)
 
 	/*
 	 * Remove the error handler callback from the stack. At this point,
-	 * if there is a cleanup function registered, then it was registered
-	 * but never run or removed, which should never occur.
+	 * there shouldn't be any cleanup handler registered in the handler
+	 * list (zri_cleanup_handlers), regardless of whether it ran or not.
 	 */
-	ASSERT3P(ri.zri_cleanup, ==, NULL);
+	list_destroy(&ri.zri_cleanup_handlers);
 	lua_remove(state, 1);
 
 	switch (err) {
@@ -913,6 +905,7 @@ zcp_eval_sync(void *arg, dmu_tx_t *tx)
 			    ZCP_RET_RETURN, evalargs);
 		} else if (return_count > 1) {
 			evalargs->ea_result = SET_ERROR(ECHRNG);
+			lua_settop(state, 0);
 			(void) lua_pushfstring(state, "Multiple return "
 			    "values not supported");
 			zcp_convert_return_values(state, evalargs->ea_outnvl,
@@ -970,9 +963,74 @@ zcp_eval_sync(void *arg, dmu_tx_t *tx)
 	}
 }
 
+static void
+zcp_pool_error(zcp_eval_arg_t *evalargs, const char *poolname)
+{
+	evalargs->ea_result = SET_ERROR(ECHRNG);
+	lua_settop(evalargs->ea_state, 0);
+	(void) lua_pushfstring(evalargs->ea_state, "Could not open pool: %s",
+	    poolname);
+	zcp_convert_return_values(evalargs->ea_state, evalargs->ea_outnvl,
+	    ZCP_RET_ERROR, evalargs);
+
+}
+
+static void
+zcp_eval_sync(void *arg, dmu_tx_t *tx)
+{
+	zcp_eval_arg_t *evalargs = arg;
+
+	/*
+	 * Open context should have setup the stack to contain:
+	 * 1: Error handler callback
+	 * 2: Script to run (converted to a Lua function)
+	 * 3: nvlist input to function (converted to Lua table or nil)
+	 */
+	VERIFY3U(3, ==, lua_gettop(evalargs->ea_state));
+
+	zcp_eval_impl(tx, B_TRUE, evalargs);
+}
+
+static void
+zcp_eval_open(zcp_eval_arg_t *evalargs, const char *poolname)
+{
+
+	int error;
+	dsl_pool_t *dp;
+	dmu_tx_t *tx;
+
+	/*
+	 * See comment from the same assertion in zcp_eval_sync().
+	 */
+	VERIFY3U(3, ==, lua_gettop(evalargs->ea_state));
+
+	error = dsl_pool_hold(poolname, FTAG, &dp);
+	if (error != 0) {
+		zcp_pool_error(evalargs, poolname);
+		return;
+	}
+
+	/*
+	 * As we are running in open-context, we have no transaction associated
+	 * with the channel program. At the same time, functions from the
+	 * zfs.check submodule need to be associated with a transaction as
+	 * they are basically dry-runs of their counterparts in the zfs.sync
+	 * submodule. These functions should be able to run in open-context.
+	 * Therefore we create a new transaction that we later abort once
+	 * the channel program has been evaluated.
+	 */
+	tx = dmu_tx_create_dd(dp->dp_mos_dir);
+
+	zcp_eval_impl(tx, B_FALSE, evalargs);
+
+	dmu_tx_abort(tx);
+
+	dsl_pool_rele(dp, FTAG);
+}
+
 int
-zcp_eval(const char *poolname, const char *program, uint64_t instrlimit,
-    uint64_t memlimit, nvpair_t *nvarg, nvlist_t *outnvl)
+zcp_eval(const char *poolname, const char *program, boolean_t sync,
+    uint64_t instrlimit, uint64_t memlimit, nvpair_t *nvarg, nvlist_t *outnvl)
 {
 	int err;
 	lua_State *state;
@@ -1083,9 +1141,14 @@ zcp_eval(const char *poolname, const char *program, uint64_t instrlimit,
 	evalargs.ea_outnvl = outnvl;
 	evalargs.ea_result = 0;
 
-	VERIFY0(dsl_sync_task(poolname, zcp_eval_check,
-	    zcp_eval_sync, &evalargs, 0, ZFS_SPACE_CHECK_NONE));
-
+	if (sync) {
+		err = dsl_sync_task(poolname, NULL,
+		    zcp_eval_sync, &evalargs, 0, ZFS_SPACE_CHECK_ZCP_EVAL);
+		if (err != 0)
+			zcp_pool_error(&evalargs, poolname);
+	} else {
+		zcp_eval_open(&evalargs, poolname);
+	}
 	lua_close(state);
 
 	return (evalargs.ea_result);

@@ -74,7 +74,7 @@ MALLOC_DECLARE(M_BHND_NVRAM);
 #define	bhnd_nv_toupper(c)	toupper(c)
 
 #define	bhnd_nv_malloc(size)		malloc((size), M_BHND_NVRAM, M_NOWAIT)
-#define	bhnd_nv_calloc(n, size)		malloc((n) * (size), M_BHND_NVRAM, \
+#define	bhnd_nv_calloc(n, size)		mallocarray((n), (size), M_BHND_NVRAM, \
 					    M_NOWAIT | M_ZERO)
 #define	bhnd_nv_reallocf(buf, size)	reallocf((buf), (size), M_BHND_NVRAM, \
 					    M_NOWAIT)
@@ -91,6 +91,9 @@ bhnd_nv_strdup(const char *str)
 
 	len = strlen(str);
 	dest = malloc(len + 1, M_BHND_NVRAM, M_NOWAIT);
+	if (dest == NULL)
+		return (NULL);
+
 	memcpy(dest, str, len);
 	dest[len] = '\0';
 
@@ -105,6 +108,9 @@ bhnd_nv_strndup(const char *str, size_t len)
 
 	len = strnlen(str, len);
 	dest = malloc(len + 1, M_BHND_NVRAM, M_NOWAIT);
+	if (dest == NULL)
+		return (NULL);
+
 	memcpy(dest, str, len);
 	dest[len] = '\0';
 

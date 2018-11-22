@@ -7,6 +7,15 @@ WARNS?=1
 .if !defined(__BOOT_DEFS_MK__)
 __BOOT_DEFS_MK__=${MFILE}
 
+MK_CTF=		no
+MK_SSP=		no
+MK_PROFILE=	no
+MAN=
+.if !defined(PIC)
+NO_PIC=
+INTERNALLIB=
+.endif
+
 BOOTSRC=	${SRCTOP}/stand
 EFISRC=		${BOOTSRC}/efi
 EFIINC=		${EFISRC}/include
@@ -14,25 +23,18 @@ EFIINCMD=	${EFIINC}/${MACHINE}
 FDTSRC=		${BOOTSRC}/fdt
 FICLSRC=	${BOOTSRC}/ficl
 LDRSRC=		${BOOTSRC}/common
+LIBLUASRC=	${BOOTSRC}/liblua
+LUASRC=		${SRCTOP}/contrib/lua/src
 SASRC=		${BOOTSRC}/libsa
 SYSDIR=		${SRCTOP}/sys
 UBOOTSRC=	${BOOTSRC}/uboot
-ZFSSRC=		${BOOTSRC}/zfs
+ZFSSRC=		${SASRC}/zfs
 
 BOOTOBJ=	${OBJTOP}/stand
 
 # BINDIR is where we install
 BINDIR?=	/boot
 
-# NB: The makefiles depend on these being empty when we don't build forth.
-.if ${MK_FORTH} != "no"
-LIBFICL=	${BOOTOBJ}/ficl/libficl.a
-.if ${MACHINE} == "i386"
-LIBFICL32=	${LIBFICL}
-.else
-LIBFICL32=	${BOOTOBJ}/ficl32/libficl.a
-.endif
-.endif
 LIBSA=		${BOOTOBJ}/libsa/libsa.a
 .if ${MACHINE} == "i386"
 LIBSA32=	${LIBSA}
@@ -49,55 +51,16 @@ CFLAGS+=	-I${BOOTOBJ}/libsa
 .endif
 CFLAGS+=	-I${SASRC} -D_STANDALONE
 CFLAGS+=	-I${SYSDIR}
-
-# Filesystem support
-.if ${LOADER_CD9660_SUPPORT:Uno} == "yes"
-CFLAGS+=	-DLOADER_CD9660_SUPPORT
-.endif
-.if ${LOADER_EXT2FS_SUPPORT:Uno} == "yes"
-CFLAGS+=	-DLOADER_EXT2FS_SUPPORT
-.endif
-.if ${LOADER_MSDOS_SUPPORT:Uno} == "yes"
-CFLAGS+=	-DLOADER_MSDOS_SUPPORT
-.endif
-.if ${LOADER_NANDFS_SUPPORT:U${MK_NAND}} == "yes"
-CFLAGS+=	-DLOADER_NANDFS_SUPPORT
-.endif
-.if ${LOADER_UFS_SUPPORT:Uyes} == "yes"
-CFLAGS+=	-DLOADER_UFS_SUPPORT
-.endif
-
-# Compression
-.if ${LOADER_GZIP_SUPPORT:Uno} == "yes"
-CFLAGS+=	-DLOADER_GZIP_SUPPORT
-.endif
-.if ${LOADER_BZIP2_SUPPORT:Uno} == "yes"
-CFLAGS+=	-DLOADER_BZIP2_SUPPORT
-.endif
-
-# Network related things
-.if ${LOADER_NET_SUPPORT:Uno} == "yes"
-CFLAGS+=	-DLOADER_NET_SUPPORT
-.endif
-.if ${LOADER_NFS_SUPPORT:Uno} == "yes"
-CFLAGS+=	-DLOADER_NFS_SUPPORT
-.endif
-.if ${LOADER_TFTP_SUPPORT:Uno} == "yes"
-CFLAGS+=	-DLOADER_TFTP_SUPPORT
-.endif
-
-# Disk and partition support
-.if ${LOADER_DISK_SUPPORT:Uyes} == "yes"
-CFLAGS+= -DLOADER_DISK_SUPPORT
-.if ${LOADER_GPT_SUPPORT:Uyes} == "yes"
-CFLAGS+= -DLOADER_GPT_SUPPORT
-.endif
-.if ${LOADER_MBR_SUPPORT:Uyes} == "yes"
-CFLAGS+= -DLOADER_MBR_SUPPORT
-.endif
+# Spike the floating point interfaces
+CFLAGS+=	-Ddouble=jagged-little-pill -Dfloat=floaty-mcfloatface
+# Slim down the image. This saves about 15% in size with clang 6 on x86
+# Our most constrained /boot/loader env is BIOS booting on x86, where
+# our text + data + BTX have to fit into 640k below the ISA hole.
+# Experience has shown that problems arise between ~520k to ~530k.
+CFLAGS.clang+=	-Oz
+CFLAGS.gcc+=	-Os
 
 # GELI Support, with backward compat hooks (mostly)
-.if defined(HAVE_GELI)
 .if defined(LOADER_NO_GELI_SUPPORT)
 MK_LOADER_GELI=no
 .warning "Please move from LOADER_NO_GELI_SUPPORT to WITHOUT_LOADER_GELI"
@@ -108,10 +71,14 @@ MK_LOADER_GELI=yes
 .endif
 .if ${MK_LOADER_GELI} == "yes"
 CFLAGS+=	-DLOADER_GELI_SUPPORT
-CFLAGS+=	-I${BOOTSRC}/geli
-LIBGELIBOOT=	${BOOTOBJ}/geli/libgeliboot.a
-.endif
-.endif
+CFLAGS+=	-I${SASRC}/geli
+.endif # MK_LOADER_GELI
+
+# These should be confined to loader.mk, but can't because uboot/lib
+# also uses it. It's part of loader, but isn't a loader so we can't
+# just include loader.mk
+.if ${LOADER_DISK_SUPPORT:Uyes} == "yes"
+CFLAGS+= -DLOADER_DISK_SUPPORT
 .endif
 
 # Machine specific flags for all builds here
@@ -126,7 +93,7 @@ CFLAGS+=	-m32 -mcpu=powerpc
 # build 32-bit and some 64-bit (lib*, efi). Centralize all the 32-bit magic here
 # and activate it when DO32 is explicitly defined to be 1.
 .if ${MACHINE_ARCH} == "amd64" && ${DO32:U0} == 1
-CFLAGS+=	-m32 -mcpu=i386
+CFLAGS+=	-m32
 # LD_FLAGS is passed directly to ${LD}, not via ${CC}:
 LD_FLAGS+=	-m elf_i386_fbsd
 AFLAGS+=	--32
@@ -139,8 +106,10 @@ SSP_CFLAGS=
 # currently has no /boot/loader, but may soon.
 CFLAGS+=	-ffreestanding ${CFLAGS_NO_SIMD}
 .if ${MACHINE_CPUARCH} == "aarch64"
-CFLAGS+=	-mgeneral-regs-only
-.elif ${MACHINE_CPUARCH} != "riscv"
+CFLAGS+=	-mgeneral-regs-only -fPIC
+.elif ${MACHINE_CPUARCH} == "riscv"
+CFLAGS+=	-march=rv64ima -mabi=lp64
+.else
 CFLAGS+=	-msoft-float
 .endif
 
@@ -148,7 +117,9 @@ CFLAGS+=	-msoft-float
 CFLAGS+=	-march=i386
 CFLAGS.gcc+=	-mpreferred-stack-boundary=2
 .endif
-
+.if ${MACHINE_CPUARCH} == "amd64" && ${DO32:U0} == 0
+CFLAGS+=	-fPIC -mno-red-zone
+.endif
 
 .if ${MACHINE_CPUARCH} == "arm"
 # Do not generate movt/movw, because the relocation fixup for them does not
@@ -160,6 +131,7 @@ CFLAGS.clang+=	-mllvm -arm-use-movt=0
 CFLAGS.clang+=	-mno-movt
 .endif
 CFLAGS.clang+=  -mfpu=none
+CFLAGS+=	-fPIC
 .endif
 
 # The boot loader build uses dd status=none, where possible, for reproducible
@@ -169,15 +141,34 @@ CFLAGS.clang+=  -mfpu=none
 DD_NOSTATUS!=(dd status=none count=0 2> /dev/null && echo status=none) || true
 DD=dd ${DD_NOSTATUS}
 
+.if ${MACHINE_CPUARCH} == "mips"
+CFLAGS+=	-G0 -fno-pic -mno-abicalls
+.endif
+
 .if ${MK_LOADER_FORCE_LE} != "no"
 .if ${MACHINE_ARCH} == "powerpc64"
 CFLAGS+=	-mlittle-endian
 .endif
 .endif
 
+#
+# Have a sensible default
+#
+.if ${MK_FORTH} == "yes"
+LOADER_DEFAULT_INTERP?=4th
+.elif ${MK_LOADER_LUA} == "yes"
+LOADER_DEFAULT_INTERP?=lua
+.else
+LOADER_DEFAULT_INTERP?=simp
+.endif
+LOADER_INTERP?=${LOADER_DEFAULT_INTERP}
+
 # Make sure we use the machine link we're about to create
 CFLAGS+=-I.
 
+all: ${PROG}
+
+.if !defined(NO_OBJ)
 _ILINKS=machine
 .if ${MACHINE} != ${MACHINE_CPUARCH} && ${MACHINE} != "arm64"
 _ILINKS+=${MACHINE_CPUARCH}
@@ -187,8 +178,6 @@ _ILINKS+=x86
 .endif
 CLEANFILES+=${_ILINKS}
 
-all: ${PROG}
-
 beforedepend: ${_ILINKS}
 beforebuild: ${_ILINKS}
 
@@ -197,7 +186,7 @@ beforebuild: ${_ILINKS}
 .for _link in ${_ILINKS}
 .if !exists(${.OBJDIR}/${_link})
 ${OBJS}:       ${_link}
-.endif
+.endif # _link exists
 .endfor
 
 .NOPATH: ${_ILINKS}
@@ -216,9 +205,5 @@ ${_ILINKS}:
 	path=`(cd $$path && /bin/pwd)` ; \
 	${ECHO} ${.TARGET:T} "->" $$path ; \
 	ln -fhs $$path ${.TARGET:T}
-
-# For loader implementations, we generate a loader.help file. This can be suppressed by
-# setting HELP_FILES to nothing.
-HELP_FILES=	${LDRSRC}/help.common
-
+.endif # !NO_OBJ
 .endif # __BOOT_DEFS_MK__

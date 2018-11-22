@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/kernel.h>
 #include <sys/bio.h>
+#include <sys/conf.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/buf.h>
@@ -402,19 +403,19 @@ retry:
 	return (count);
 }
 
-cam_status
+int
 cam_periph_acquire(struct cam_periph *periph)
 {
-	cam_status status;
+	int status;
 
-	status = CAM_REQ_CMP_ERR;
 	if (periph == NULL)
-		return (status);
+		return (EINVAL);
 
+	status = ENOENT;
 	xpt_lock_buses();
 	if ((periph->flags & CAM_PERIPH_INVALID) == 0) {
 		periph->refcount++;
-		status = CAM_REQ_CMP;
+		status = 0;
 	}
 	xpt_unlock_buses();
 
@@ -481,7 +482,7 @@ cam_periph_hold(struct cam_periph *periph, int priority)
 	 * from user us while we sleep.
 	 */
 
-	if (cam_periph_acquire(periph) != CAM_REQ_CMP)
+	if (cam_periph_acquire(periph) != 0)
 		return (ENXIO);
 
 	cam_periph_assert(periph, MA_OWNED);
@@ -1147,6 +1148,10 @@ cam_periph_ccbwait(union ccb *ccb)
 	     ccb->ccb_h.status, ccb->ccb_h.pinfo.index));
 }
 
+/*
+ * Dispatch a CCB and wait for it to complete.  If the CCB has set a
+ * callback function (ccb->ccb_h.cbfcnp), it will be overwritten and lost.
+ */
 int
 cam_periph_runccb(union ccb *ccb,
 		  int (*error_routine)(union ccb *ccb,
@@ -1158,9 +1163,7 @@ cam_periph_runccb(union ccb *ccb,
 	struct bintime *starttime;
 	struct bintime ltime;
 	int error;
-	bool sched_stopped;
-	struct mtx *periph_mtx;
-	struct cam_periph *periph;
+	bool must_poll;
 	uint32_t timeout = 1;
 
 	starttime = NULL;
@@ -1182,19 +1185,31 @@ cam_periph_runccb(union ccb *ccb,
 		devstat_start_transaction(ds, starttime);
 	}
 
-	sched_stopped = SCHEDULER_STOPPED();
+	/*
+	 * We must poll the I/O while we're dumping. The scheduler is normally
+	 * stopped for dumping, except when we call doadump from ddb. While the
+	 * scheduler is running in this case, we still need to poll the I/O to
+	 * avoid sleeping waiting for the ccb to complete.
+	 *
+	 * A panic triggered dump stops the scheduler, any callback from the
+	 * shutdown_post_sync event will run with the scheduler stopped, but
+	 * before we're officially dumping. To avoid hanging in adashutdown
+	 * initiated commands (or other similar situations), we have to test for
+	 * either SCHEDULER_STOPPED() here as well.
+	 *
+	 * To avoid locking problems, dumping/polling callers must call
+	 * without a periph lock held.
+	 */
+	must_poll = dumping || SCHEDULER_STOPPED();
 	ccb->ccb_h.cbfcnp = cam_periph_done;
-	periph = xpt_path_periph(ccb->ccb_h.path);
-	periph_mtx = cam_periph_mtx(periph);
 
 	/*
 	 * If we're polling, then we need to ensure that we have ample resources
-	 * in the periph. We also need to drop the periph lock while we're polling.
-	 * cam_periph_error can reschedule the ccb by calling xpt_action and returning
-	 * ERESTART, so we have to effect the polling in the do loop below.
+	 * in the periph.  cam_periph_error can reschedule the ccb by calling
+	 * xpt_action and returning ERESTART, so we have to effect the polling
+	 * in the do loop below.
 	 */
-	if (sched_stopped) {
-		mtx_unlock(periph_mtx);
+	if (must_poll) {
 		timeout = xpt_poll_setup(ccb);
 	}
 
@@ -1204,11 +1219,11 @@ cam_periph_runccb(union ccb *ccb,
 	} else {
 		xpt_action(ccb);
 		do {
-			if (!sched_stopped)
-				cam_periph_ccbwait(ccb);
-			else {
+			if (must_poll) {
 				xpt_pollwait(ccb, timeout);
 				timeout = ccb->ccb_h.timeout * 10;
+			} else {
+				cam_periph_ccbwait(ccb);
 			}
 			if ((ccb->ccb_h.status & CAM_STATUS_MASK) == CAM_REQ_CMP)
 				error = 0;
@@ -1219,9 +1234,6 @@ cam_periph_runccb(union ccb *ccb,
 				error = 0;
 		} while (error == ERESTART);
 	}
-
-	if (sched_stopped)
-		mtx_lock(periph_mtx);
 
 	if ((ccb->ccb_h.status & CAM_DEV_QFRZN) != 0) {
 		cam_release_devq(ccb->ccb_h.path,
@@ -1297,7 +1309,7 @@ camperiphdone(struct cam_periph *periph, union ccb *done_ccb)
 	union ccb      *saved_ccb;
 	cam_status	status;
 	struct scsi_start_stop_unit *scsi_cmd;
-	int    error_code, sense_key, asc, ascq;
+	int		error = 0, error_code, sense_key, asc, ascq;
 
 	scsi_cmd = (struct scsi_start_stop_unit *)
 	    &done_ccb->csio.cdb_io.cdb_bytes;
@@ -1329,8 +1341,9 @@ camperiphdone(struct cam_periph *periph, union ccb *done_ccb)
 				goto out;
 			}
 		}
-		if (cam_periph_error(done_ccb,
-		    0, SF_RETRY_UA | SF_NO_PRINT) == ERESTART)
+		error = cam_periph_error(done_ccb, 0,
+		    SF_RETRY_UA | SF_NO_PRINT);
+		if (error == ERESTART)
 			goto out;
 		if (done_ccb->ccb_h.status & CAM_DEV_QFRZN) {
 			cam_release_devq(done_ccb->ccb_h.path, 0, 0, 0, 0);
@@ -1349,14 +1362,21 @@ camperiphdone(struct cam_periph *periph, union ccb *done_ccb)
 	}
 
 	/*
-	 * Perform the final retry with the original CCB so that final
-	 * error processing is performed by the owner of the CCB.
+	 * After recovery action(s) completed, return to the original CCB.
+	 * If the recovery CCB has failed, considering its own possible
+	 * retries and recovery, assume we are back in state where we have
+	 * been originally, but without recovery hopes left.  In such case,
+	 * after the final attempt below, we cancel any further retries,
+	 * blocking by that also any new recovery attempts for this CCB,
+	 * and the result will be the final one returned to the CCB owher.
 	 */
 	saved_ccb = (union ccb *)done_ccb->ccb_h.saved_ccb_ptr;
 	bcopy(saved_ccb, done_ccb, sizeof(*done_ccb));
 	xpt_free_ccb(saved_ccb);
 	if (done_ccb->ccb_h.cbfcnp != camperiphdone)
 		periph->flags &= ~CAM_PERIPH_RECOVERY_INPROG;
+	if (error != 0)
+		done_ccb->ccb_h.retry_count = 0;
 	xpt_action(done_ccb);
 
 out:
@@ -1903,8 +1923,11 @@ cam_periph_error(union ccb *ccb, cam_flags camflags,
 			    error, action_string);
 		} else if (action_string != NULL)
 			xpt_print(ccb->ccb_h.path, "%s\n", action_string);
-		else
-			xpt_print(ccb->ccb_h.path, "Retrying command\n");
+		else {
+			xpt_print(ccb->ccb_h.path,
+			    "Retrying command, %d more tries remain\n",
+			    ccb->ccb_h.retry_count);
+		}
 	}
 
 	if (devctl_err && (error != 0 || (action & SSQ_PRINT_SENSE) != 0))
@@ -2055,3 +2078,25 @@ cam_periph_devctl_notify(union ccb *ccb)
 	free(sbmsg, M_CAMPERIPH);
 }
 
+/*
+ * Sysctl to force an invalidation of the drive right now. Can be
+ * called with CTLFLAG_MPSAFE since we take periph lock.
+ */
+int
+cam_periph_invalidate_sysctl(SYSCTL_HANDLER_ARGS)
+{
+	struct cam_periph *periph;
+	int error, value;
+
+	periph = arg1;
+	value = 0;
+	error = sysctl_handle_int(oidp, &value, 0, req);
+	if (error != 0 || req->newptr == NULL || value != 1)
+		return (error);
+
+	cam_periph_lock(periph);
+	cam_periph_invalidate(periph);
+	cam_periph_unlock(periph);
+
+	return (0);
+}

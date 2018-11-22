@@ -72,6 +72,7 @@ __FBSDID("$FreeBSD$");
 #ifdef DEV_ACPI
 #include <contrib/dev/acpica/include/acpi.h>
 #include <dev/acpica/acpivar.h>
+#include "acpi_bus_if.h"
 #endif
 
 #define	GT_CTRL_ENABLE		(1 << 0)
@@ -91,6 +92,7 @@ __FBSDID("$FreeBSD$");
 struct arm_tmr_softc {
 	struct resource		*res[4];
 	void			*ihl[4];
+	uint64_t		(*get_cntxct)(bool);
 	uint32_t		clkfreq;
 	struct eventtimer	et;
 	bool			physical;
@@ -138,6 +140,28 @@ static int
 get_freq(void)
 {
 	return (get_el0(cntfrq));
+}
+
+static uint64_t
+get_cntxct_a64_unstable(bool physical)
+{
+	uint64_t val
+;
+	isb();
+	if (physical) {
+		do {
+			val = get_el0(cntpct);
+		}
+		while (((val + 1) & 0x7FF) <= 1);
+	}
+	else {
+		do {
+			val = get_el0(cntvct);
+		}
+		while (((val + 1) & 0x7FF) <= 1);
+	}
+
+	return (val);
 }
 
 static uint64_t
@@ -219,13 +243,13 @@ tmr_setup_user_access(void *arg __unused)
 	if (arm_tmr_sc != NULL)
 		smp_rendezvous(NULL, setup_user_access, NULL, NULL);
 }
-SYSINIT(tmr_ua, SI_SUB_SMP, SI_ORDER_SECOND, tmr_setup_user_access, NULL);
+SYSINIT(tmr_ua, SI_SUB_SMP, SI_ORDER_ANY, tmr_setup_user_access, NULL);
 
 static unsigned
 arm_tmr_get_timecount(struct timecounter *tc)
 {
 
-	return (get_cntxct(arm_tmr_sc->physical));
+	return (arm_tmr_sc->get_cntxct(arm_tmr_sc->physical));
 }
 
 static int
@@ -313,6 +337,15 @@ arm_tmr_fdt_probe(device_t dev)
 
 #ifdef DEV_ACPI
 static void
+arm_tmr_acpi_add_irq(device_t parent, device_t dev, int rid, u_int irq)
+{
+
+	irq = ACPI_BUS_MAP_INTR(parent, dev, irq,
+		INTR_TRIGGER_LEVEL, INTR_POLARITY_HIGH);
+	BUS_SET_RESOURCE(parent, dev, SYS_RES_IRQ, rid, irq, 1);
+}
+
+static void
 arm_tmr_acpi_identify(driver_t *driver, device_t parent)
 {
 	ACPI_TABLE_GTDT *gtdt;
@@ -336,12 +369,9 @@ arm_tmr_acpi_identify(driver_t *driver, device_t parent)
 		goto out;
 	}
 
-	BUS_SET_RESOURCE(parent, dev, SYS_RES_IRQ, 0,
-	    gtdt->SecureEl1Interrupt, 1);
-	BUS_SET_RESOURCE(parent, dev, SYS_RES_IRQ, 1,
-	    gtdt->NonSecureEl1Interrupt, 1);
-	BUS_SET_RESOURCE(parent, dev, SYS_RES_IRQ, 2,
-	    gtdt->VirtualTimerInterrupt, 1);
+	arm_tmr_acpi_add_irq(parent, dev, 0, gtdt->SecureEl1Interrupt);
+	arm_tmr_acpi_add_irq(parent, dev, 1, gtdt->NonSecureEl1Interrupt);
+	arm_tmr_acpi_add_irq(parent, dev, 2, gtdt->VirtualTimerInterrupt);
 
 out:
 	acpi_unmap_table(gtdt);
@@ -372,6 +402,7 @@ arm_tmr_attach(device_t dev)
 	if (arm_tmr_sc)
 		return (ENXIO);
 
+	sc->get_cntxct = &get_cntxct;
 #ifdef FDT
 	/* Get the base clock frequency */
 	node = ofw_bus_get_node(dev);
@@ -380,6 +411,13 @@ arm_tmr_attach(device_t dev)
 		    sizeof(clock));
 		if (error > 0)
 			sc->clkfreq = clock;
+
+		if (OF_hasprop(node, "allwinner,sun50i-a64-unstable-timer")) {
+			sc->get_cntxct = &get_cntxct_a64_unstable;
+			if (bootverbose)
+				device_printf(dev,
+				    "Enabling allwinner unstable timer workaround\n");
+		}
 	}
 #endif
 
@@ -511,10 +549,10 @@ arm_tmr_do_delay(int usec, void *arg)
 	else
 		counts = usec * counts_per_usec;
 
-	first = get_cntxct(sc->physical);
+	first = sc->get_cntxct(sc->physical);
 
 	while (counts > 0) {
-		last = get_cntxct(sc->physical);
+		last = sc->get_cntxct(sc->physical);
 		counts -= (int32_t)(last - first);
 		first = last;
 	}
@@ -526,6 +564,7 @@ DELAY(int usec)
 {
 	int32_t counts;
 
+	TSENTER();
 	/*
 	 * Check the timers are setup, if not just
 	 * use a for loop for the meantime
@@ -540,6 +579,7 @@ DELAY(int usec)
 				cpufunc_nullop();
 	} else
 		arm_tmr_do_delay(usec, arm_tmr_sc);
+	TSEXIT();
 }
 #endif
 

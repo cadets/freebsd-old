@@ -77,7 +77,7 @@
 #define	FREEBSD32_SYS_sbrk	69
 #define	FREEBSD32_SYS_sstk	70
 				/* 71 is old mmap */
-#define	FREEBSD32_SYS_vadvise	72
+#define	FREEBSD32_SYS_freebsd11_vadvise	72
 #define	FREEBSD32_SYS_munmap	73
 #define	FREEBSD32_SYS_freebsd32_mprotect	74
 #define	FREEBSD32_SYS_madvise	75
@@ -226,9 +226,9 @@
 #define	FREEBSD32_SYS_freebsd32_lio_listio	257
 #define	FREEBSD32_SYS_freebsd11_freebsd32_getdents	272
 #define	FREEBSD32_SYS_lchmod	274
-#define	FREEBSD32_SYS_netbsd_lchown	275
+				/* 275 is obsolete netbsd_lchown */
 #define	FREEBSD32_SYS_freebsd32_lutimes	276
-#define	FREEBSD32_SYS_netbsd_msync	277
+				/* 277 is obsolete netbsd_msync */
 #define	FREEBSD32_SYS_freebsd11_nstat	278
 #define	FREEBSD32_SYS_freebsd11_nfstat	279
 #define	FREEBSD32_SYS_freebsd11_nlstat	280
@@ -271,7 +271,7 @@
 #define	FREEBSD32_SYS_sched_yield	331
 #define	FREEBSD32_SYS_sched_get_priority_max	332
 #define	FREEBSD32_SYS_sched_get_priority_min	333
-#define	FREEBSD32_SYS_sched_rr_get_interval	334
+#define	FREEBSD32_SYS_freebsd32_sched_rr_get_interval	334
 #define	FREEBSD32_SYS_utrace	335
 				/* 336 is freebsd4 freebsd32_sendfile */
 #define	FREEBSD32_SYS_kldsym	337
@@ -455,17 +455,18 @@
 #define	FREEBSD32_SYS_freebsd32_ppoll	545
 #define	FREEBSD32_SYS_freebsd32_futimens	546
 #define	FREEBSD32_SYS_freebsd32_utimensat	547
-#define	FREEBSD32_SYS_numa_getaffinity	548
-#define	FREEBSD32_SYS_numa_setaffinity	549
 #define	FREEBSD32_SYS_fdatasync	550
 #define	FREEBSD32_SYS_freebsd32_fstat	551
 #define	FREEBSD32_SYS_freebsd32_fstatat	552
 #define	FREEBSD32_SYS_freebsd32_fhstat	553
-#define	FREEBSD32_SYS_freebsd32_getdirentries	554
+#define	FREEBSD32_SYS_getdirentries	554
 #define	FREEBSD32_SYS_statfs	555
 #define	FREEBSD32_SYS_fstatfs	556
 #define	FREEBSD32_SYS_getfsstat	557
 #define	FREEBSD32_SYS_fhstatfs	558
 #define	FREEBSD32_SYS_mknodat	559
 #define	FREEBSD32_SYS_freebsd32_kevent	560
-#define	FREEBSD32_SYS_MAXSYSCALL	561
+#define	FREEBSD32_SYS_freebsd32_cpuset_getdomain	561
+#define	FREEBSD32_SYS_freebsd32_cpuset_setdomain	562
+#define	FREEBSD32_SYS_getrandom	563
+#define	FREEBSD32_SYS_MAXSYSCALL	564

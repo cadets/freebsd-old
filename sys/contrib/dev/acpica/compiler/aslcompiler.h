@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2017, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -1186,6 +1186,15 @@ void
 UtDumpBasicOp (
     ACPI_PARSE_OBJECT       *Op,
     UINT32                  Level);
+
+void *
+UtGetParentMethod (
+    ACPI_NAMESPACE_NODE     *Node);
+
+BOOLEAN
+UtNodeIsDescendantOf (
+    ACPI_NAMESPACE_NODE     *Node1,
+    ACPI_NAMESPACE_NODE     *Node2);
 
 void
 UtDisplaySupportedTables (

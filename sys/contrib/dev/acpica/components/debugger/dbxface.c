@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2017, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -154,6 +154,7 @@
 #include <contrib/dev/acpica/include/amlcode.h>
 #include <contrib/dev/acpica/include/acdebug.h>
 #include <contrib/dev/acpica/include/acinterp.h>
+#include <contrib/dev/acpica/include/acparser.h>
 
 
 #define _COMPONENT          ACPI_CA_DEBUGGER
@@ -435,10 +436,17 @@ AcpiDbSingleStep (
             }
         }
 
-        /* Now we can display it */
+        /* Now we can disassemble and display it */
 
 #ifdef ACPI_DISASSEMBLER
         AcpiDmDisassemble (WalkState, DisplayOp, ACPI_UINT32_MAX);
+#else
+        /*
+         * The AML Disassembler is not configured - at least we can
+         * display the opcode value and name
+         */
+        AcpiOsPrintf ("AML Opcode: %4.4X  %s\n", Op->Common.AmlOpcode,
+            AcpiPsGetOpcodeName (Op->Common.AmlOpcode));
 #endif
 
         if ((Op->Common.AmlOpcode == AML_IF_OP) ||

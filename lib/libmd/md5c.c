@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: RSA-MD
+ *
  * MD5C.C - RSA Data Security, Inc., MD5 message-digest algorithm
  *
  * Copyright (C) 1991-2, RSA Data Security, Inc. Created 1991. All
@@ -218,7 +220,7 @@ MD5Final (unsigned char digest[16], MD5_CTX *context)
 	Encode (digest, context->state, 16);
 
 	/* Zeroize sensitive information. */
-	memset ((void *)context, 0, sizeof (*context));
+	explicit_bzero(context, sizeof(*context));
 }
 
 /* MD5 basic transformation. Transforms state based on block. */

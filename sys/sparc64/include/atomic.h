@@ -39,6 +39,8 @@
 #define	wmb()	mb()
 #define	rmb()	mb()
 
+#include <sys/atomic_common.h>
+
 /* Userland needs different ASI's. */
 #ifdef _KERNEL
 #define	__ASI_ATOMIC	ASI_N
@@ -152,14 +154,15 @@
 	e;								\
 })
 
-#define	atomic_st(p, v, sz) do {					\
+#define	atomic_st(p, v, sz) ({						\
 	itype(sz) e, r;							\
 	for (e = *(volatile itype(sz) *)(p);; e = r) {			\
 		r = atomic_cas((p), e, (v), sz);			\
 		if (r == e)						\
 			break;						\
 	}								\
-} while (0)
+	e;								\
+})
 
 #define	atomic_st_acq(p, v, sz) do {					\
 	atomic_st((p), (v), sz);					\
@@ -256,11 +259,6 @@ atomic_fcmpset_rel_ ## name(volatile ptype p, vtype *ep, vtype s)	\
 }									\
 									\
 static __inline vtype							\
-atomic_load_ ## name(volatile ptype p)					\
-{									\
-	return ((vtype)atomic_cas((p), 0, 0, sz));			\
-}									\
-static __inline vtype							\
 atomic_load_acq_ ## name(volatile ptype p)				\
 {									\
 	return ((vtype)atomic_cas_acq((p), 0, 0, sz));			\
@@ -313,6 +311,12 @@ static __inline void							\
 atomic_store_rel_ ## name(volatile ptype p, vtype v)			\
 {									\
 	atomic_st_rel((p), (v), sz);					\
+}									\
+									\
+static __inline vtype							\
+atomic_swap_ ## name(volatile ptype p, vtype v)				\
+{									\
+	return ((vtype)atomic_st((p), (v), sz));			\
 }
 
 static __inline void

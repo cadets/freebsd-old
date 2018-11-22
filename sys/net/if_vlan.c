@@ -196,25 +196,7 @@ static struct {
 	{0, NULL}
 };
 
-SYSCTL_DECL(_net_link);
-static SYSCTL_NODE(_net_link, IFT_L2VLAN, vlan, CTLFLAG_RW, 0,
-    "IEEE 802.1Q VLAN");
-static SYSCTL_NODE(_net_link_vlan, PF_LINK, link, CTLFLAG_RW, 0,
-    "for consistency");
-
-static VNET_DEFINE(int, soft_pad);
-#define	V_soft_pad	VNET(soft_pad)
-SYSCTL_INT(_net_link_vlan, OID_AUTO, soft_pad, CTLFLAG_RW | CTLFLAG_VNET,
-    &VNET_NAME(soft_pad), 0, "pad short frames before tagging");
-
-/*
- * For now, make preserving PCP via an mbuf tag optional, as it increases
- * per-packet memory allocations and frees.  In the future, it would be
- * preferable to reuse ether_vtag for this, or similar.
- */
-static int vlan_mtag_pcp = 0;
-SYSCTL_INT(_net_link_vlan, OID_AUTO, mtag_pcp, CTLFLAG_RW, &vlan_mtag_pcp, 0,
-	"Retain VLAN PCP information as packets are passed up the stack");
+extern int vlan_mtag_pcp;
 
 static const char vlanname[] = "vlan";
 static MALLOC_DEFINE(M_VLAN, vlanname, "802.1Q Virtual LAN Interface");
@@ -353,7 +335,7 @@ static  void vlan_lladdr_fn(void *arg, int pending);
 static struct if_clone *vlan_cloner;
 
 #ifdef VIMAGE
-static VNET_DEFINE(struct if_clone *, vlan_cloner);
+VNET_DEFINE_STATIC(struct if_clone *, vlan_cloner);
 #define	V_vlan_cloner	VNET(vlan_cloner)
 #endif
 
@@ -627,7 +609,7 @@ vlan_setmulti(struct ifnet *ifp)
 
 	/* Now program new ones. */
 	IF_ADDR_WLOCK(ifp);
-	TAILQ_FOREACH(ifma, &ifp->if_multiaddrs, ifma_link) {
+	CK_STAILQ_FOREACH(ifma, &ifp->if_multiaddrs, ifma_link) {
 		if (ifma->ifma_addr->sa_family != AF_LINK)
 			continue;
 		mc = malloc(sizeof(struct vlan_mc_entry), M_VLAN, M_NOWAIT);
@@ -776,6 +758,18 @@ vlan_tag(struct ifnet *ifp, uint16_t *vidp)
 	return (0);
 }
 
+static int
+vlan_pcp(struct ifnet *ifp, uint16_t *pcpp)
+{
+	struct ifvlan *ifv;
+
+	if (ifp->if_type != IFT_L2VLAN)
+		return (EINVAL);
+	ifv = ifp->if_softc;
+	*pcpp = ifv->ifv_pcp;
+	return (0);
+}
+
 /*
  * Return a driver specific cookie for this interface.  Synchronization
  * with setcookie must be provided by the driver. 
@@ -879,6 +873,7 @@ vlan_modevent(module_t mod, int type, void *data)
 		vlan_cookie_p = vlan_cookie;
 		vlan_setcookie_p = vlan_setcookie;
 		vlan_tag_p = vlan_tag;
+		vlan_pcp_p = vlan_pcp;
 		vlan_devat_p = vlan_devat;
 #ifndef VIMAGE
 		vlan_cloner = if_clone_advanced(vlanname, 0, vlan_clone_match,
@@ -1171,8 +1166,6 @@ vlan_transmit(struct ifnet *ifp, struct mbuf *m)
 {
 	struct ifvlan *ifv;
 	struct ifnet *p;
-	struct m_tag *mtag;
-	uint16_t tag;
 	int error, len, mcast;
 	VLAN_LOCK_READER;
 
@@ -1201,59 +1194,10 @@ vlan_transmit(struct ifnet *ifp, struct mbuf *m)
 		return (ENETDOWN);
 	}
 
-	/*
-	 * Pad the frame to the minimum size allowed if told to.
-	 * This option is in accord with IEEE Std 802.1Q, 2003 Ed.,
-	 * paragraph C.4.4.3.b.  It can help to work around buggy
-	 * bridges that violate paragraph C.4.4.3.a from the same
-	 * document, i.e., fail to pad short frames after untagging.
-	 * E.g., a tagged frame 66 bytes long (incl. FCS) is OK, but
-	 * untagging it will produce a 62-byte frame, which is a runt
-	 * and requires padding.  There are VLAN-enabled network
-	 * devices that just discard such runts instead or mishandle
-	 * them somehow.
-	 */
-	if (V_soft_pad && p->if_type == IFT_ETHER) {
-		static char pad[8];	/* just zeros */
-		int n;
-
-		for (n = ETHERMIN + ETHER_HDR_LEN - m->m_pkthdr.len;
-		     n > 0; n -= sizeof(pad))
-			if (!m_append(m, min(n, sizeof(pad)), pad))
-				break;
-
-		if (n > 0) {
-			if_printf(ifp, "cannot pad short frame\n");
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
-			VLAN_RUNLOCK();
-			m_freem(m);
-			return (0);
-		}
-	}
-
-	/*
-	 * If underlying interface can do VLAN tag insertion itself,
-	 * just pass the packet along. However, we need some way to
-	 * tell the interface where the packet came from so that it
-	 * knows how to find the VLAN tag to use, so we attach a
-	 * packet tag that holds it.
-	 */
-	if (vlan_mtag_pcp && (mtag = m_tag_locate(m, MTAG_8021Q,
-	    MTAG_8021Q_PCP_OUT, NULL)) != NULL)
-		tag = EVL_MAKETAG(ifv->ifv_vid, *(uint8_t *)(mtag + 1), 0);
-	else
-              tag = ifv->ifv_tag;
-	if (p->if_capenable & IFCAP_VLAN_HWTAGGING) {
-		m->m_pkthdr.ether_vtag = tag;
-		m->m_flags |= M_VLANTAG;
-	} else {
-		m = ether_vlanencap(m, tag);
-		if (m == NULL) {
-			if_printf(ifp, "unable to prepend VLAN header\n");
-			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
-			VLAN_RUNLOCK();
-			return (0);
-		}
+	if (!ether_8021q_frame(&m, ifp, p, ifv->ifv_vid, ifv->ifv_pcp)) {
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		VLAN_RUNLOCK();
+		return (0);
 	}
 
 	/*
@@ -1491,6 +1435,7 @@ vlan_config(struct ifvlan *ifv, struct ifnet *p, uint16_t vid)
 	ifp->if_resolvemulti = p->if_resolvemulti;
 	ifp->if_addrlen = p->if_addrlen;
 	ifp->if_broadcastaddr = p->if_broadcastaddr;
+	ifp->if_pcp = ifv->ifv_pcp;
 
 	/*
 	 * Copy only a selected subset of flags from the parent.
@@ -1859,12 +1804,8 @@ vlan_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 #endif
 		break;
 	case SIOCGIFADDR:
-                {
-			struct sockaddr *sa;
-
-			sa = (struct sockaddr *)&ifr->ifr_data;
-			bcopy(IF_LLADDR(ifp), sa->sa_data, ifp->if_addrlen);
-                }
+		bcopy(IF_LLADDR(ifp), &ifr->ifr_addr.sa_data[0],
+		    ifp->if_addrlen);
 		break;
 	case SIOCGIFMEDIA:
 		VLAN_SLOCK();
@@ -1930,7 +1871,7 @@ vlan_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 			break;
 		}
 #endif
-		error = copyin(ifr->ifr_data, &vlr, sizeof(vlr));
+		error = copyin(ifr_data_get_ptr(ifr), &vlr, sizeof(vlr));
 		if (error)
 			break;
 		if (vlr.vlr_parent[0] == '\0') {
@@ -1961,7 +1902,7 @@ vlan_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 			vlr.vlr_tag = ifv->ifv_vid;
 		}
 		VLAN_SUNLOCK();
-		error = copyout(&vlr, ifr->ifr_data, sizeof(vlr));
+		error = copyout(&vlr, ifr_data_get_ptr(ifr), sizeof(vlr));
 		break;
 		
 	case SIOCSIFFLAGS:
@@ -2019,7 +1960,10 @@ vlan_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 			break;
 		}
 		ifv->ifv_pcp = ifr->ifr_vlan_pcp;
+		ifp->if_pcp = ifv->ifv_pcp;
 		vlan_tag_recalculate(ifv);
+		/* broadcast event about PCP change */
+		EVENTHANDLER_INVOKE(ifnet_event, ifp, IFNET_EVENT_PCP);
 		break;
 
 	case SIOCSIFCAP:

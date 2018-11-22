@@ -7333,6 +7333,44 @@ dtrace_store_by_ref(dtrace_difo_t *dp, caddr_t tomax, size_t size,
 }
 
 /*
+ * Disables interrupts and sets the per-thread inprobe flag. When DEBUG is
+ * defined, we also assert that we are not recursing unless the probe ID is an
+ * error probe.
+ */
+static dtrace_icookie_t
+dtrace_probe_enter(dtrace_id_t id)
+{
+	dtrace_icookie_t cookie;
+
+	cookie = dtrace_interrupt_disable();
+
+	/*
+	 * Unless this is an ERROR probe, we are not allowed to recurse in
+	 * dtrace_probe(). Recursing into DTrace probe usually means that a
+	 * function is instrumented that should not have been instrumented or
+	 * that the ordering guarantee of the records will be violated,
+	 * resulting in unexpected output. If there is an exception to this
+	 * assertion, a new case should be added.
+	 */
+	ASSERT(curthread->t_dtrace_inprobe == 0 ||
+	    id == dtrace_probeid_error);
+	curthread->t_dtrace_inprobe = 1;
+
+	return (cookie);
+}
+
+/*
+ * Clears the per-thread inprobe flag and enables interrupts.
+ */
+static void
+dtrace_probe_exit(dtrace_icookie_t cookie)
+{
+
+	curthread->t_dtrace_inprobe = 0;
+	dtrace_interrupt_enable(cookie);
+}
+
+/*
  * If you're looking for the epicenter of DTrace, you just found it.  This
  * is the function called by the provider to fire a probe -- from which all
  * subsequent probe-context DTrace activity emanates.
@@ -7366,7 +7404,7 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		return;
 #endif
 
-	cookie = dtrace_interrupt_disable();
+	cookie = dtrace_probe_enter(id);
 	probe = dtrace_probes[id - 1];
 	cpuid = curcpu;
 	onintr = CPU_ON_INTR(CPU);
@@ -7377,7 +7415,7 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		 * We have hit in the predicate cache; we know that
 		 * this predicate would evaluate to be false.
 		 */
-		dtrace_interrupt_enable(cookie);
+		dtrace_probe_exit(cookie);
 		return;
 	}
 
@@ -7389,7 +7427,7 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		/*
 		 * We don't trace anything if we're panicking.
 		 */
-		dtrace_interrupt_enable(cookie);
+		dtrace_probe_exit(cookie);
 		return;
 	}
 
@@ -8015,7 +8053,7 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	if (vtime)
 		curthread->t_dtrace_start = dtrace_gethrtime();
 
-	dtrace_interrupt_enable(cookie);
+	dtrace_probe_exit(cookie);
 }
 
 /*
@@ -8721,6 +8759,7 @@ dtrace_konsumer_register(const char *name, const dtrace_kops_t *kops,
     void *arg, dtrace_konsumer_id_t *id)
 {
 	dtrace_konsumer_t *konsumer;
+	dtrace_state_t *state;
 
 	if (name == NULL || kops == NULL || id == NULL) {
 		cmn_err(CE_WARN,
@@ -8739,9 +8778,10 @@ dtrace_konsumer_register(const char *name, const dtrace_kops_t *kops,
 	/* Construct the konsumer instance. */
 	konsumer = kmem_zalloc(sizeof (dtrace_konsumer_t), KM_SLEEP);
 	ASSERT(konsumer != NULL);
-	konsumer->dtk_name = kmem_alloc(strlen(name) + 1, KM_SLEEP);
+	konsumer->dtk_name = kmem_alloc(DTRACE_KONNAMELEN, KM_SLEEP);
 	ASSERT(konsumer->dtk_name != NULL);
-	(void) strcpy(konsumer->dtk_name, name);
+	(void) strncpy(konsumer->dtk_name, name, DTRACE_KONNAMELEN);
+	konsumer->dtk_name[DTRACE_KONNAMELEN -1] = 0;
 	konsumer->dtk_arg = arg;
 	konsumer->dtk_ops = *kops;
 	konsumer->dtk_next = NULL;
@@ -8775,7 +8815,7 @@ dtrace_konsumer_unregister(dtrace_konsumer_id_t *id)
 	dtrace_konsumer_t *prev = NULL;
 
 	mutex_enter(&dtrace_konsumer_lock);
-	ASSERT(MUTEX_HELD(&dtrace_lock));
+	mutex_enter(&dtrace_lock);
 
 	/* Remove the unregistered konsumer from the list. */
 	if ((prev = dtrace_konsumer) == old) {
@@ -8793,6 +8833,7 @@ dtrace_konsumer_unregister(dtrace_konsumer_id_t *id)
 		prev->dtk_next = old->dtk_next;
 	}
 
+	mutex_exit(&dtrace_lock);
 	mutex_exit(&dtrace_konsumer_lock);
 
 	kmem_free(old->dtk_name, strlen(old->dtk_name) + 1);
@@ -12116,8 +12157,6 @@ dtrace_epid2size(dtrace_state_t *state, dtrace_epid_t id)
 {
 	dtrace_ecb_t *ecb;
 
-	ASSERT(MUTEX_HELD(&dtrace_lock));
-
 	if (id == 0 || id > state->dts_necbs)
 		return (0);
 
@@ -15150,23 +15189,7 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 		state->dts_options[DTRACEOPT_GRABANON] =
 		    opt[DTRACEOPT_GRABANON];
 
-		/* Similarly copy the "konarg" option into the grabbed state. */
-		state->dts_options[DTRACEOPT_KONSUMERARG] =
-		    opt[DTRACEOPT_KONSUMERARG];
-
 		*cpu = dtrace_anon.dta_beganon;
-
-		if (opt[DTRACEOPT_KONSUMERARG] != DTRACEOPT_UNSET) {
-			/* Iterate the DTrace konsumers and notify them of the
-			 * dtrace_state_go.
-			 */ 
-			dtrace_konsumer_t *konsumer = dtrace_konsumer;
-			while (konsumer != NULL ) {
-				konsumer->dtk_ops.dtkops_open(konsumer, state);
-				konsumer = konsumer->dtk_next;
-			}
-		}
-
 		/*
 		 * If the anonymous state is active (as it almost certainly
 		 * is if the anonymous enabling ultimately matched anything),
@@ -15363,7 +15386,15 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 		 */ 
 		dtrace_konsumer_t *konsumer = dtrace_konsumer;
 		while (konsumer != NULL ) {
-			konsumer->dtk_ops.dtkops_open(konsumer, state);
+			if (dtrace_anon.dta_state != NULL) {
+				dtrace_anon.dta_state->
+				    dts_options[DTRACEOPT_KONSUMERARG] =
+				    opt[DTRACEOPT_KONSUMERARG];
+				konsumer->dtk_ops.dtkops_open(konsumer,
+				    dtrace_anon.dta_state);
+			} else {
+				konsumer->dtk_ops.dtkops_open(konsumer, state);
+			}
 			konsumer = konsumer->dtk_next;
 		}
 	}
@@ -15470,19 +15501,14 @@ dtrace_state_stop(dtrace_state_t *state, processorid_t *cpu)
 	}
 #endif
 
-	if (opt[DTRACEOPT_KONSUMERARG] != DTRACEOPT_UNSET) {
+	if (opt[DTRACEOPT_KONSUMERARG] != DTRACEOPT_UNSET &&
+	    dtrace_anon.dta_state == NULL) {
 		/* Iterate the DTrace konsumers and notify them of the
 		 * dtrace_state_stop.
 		 */ 
 		dtrace_konsumer_t *konsumer = dtrace_konsumer;
 		while (konsumer != NULL ) {
-			if (state != dtrace_anon.dta_state &&
-			    opt[DTRACEOPT_GRABANON] != DTRACEOPT_UNSET) {
-				konsumer->dtk_ops.dtkops_close(konsumer,
-				    state->dts_anon);
-			} else {
-				konsumer->dtk_ops.dtkops_close(konsumer, state);
-			}
+			konsumer->dtk_ops.dtkops_close(konsumer, state);
 			konsumer = konsumer->dtk_next;
 		}
 	}

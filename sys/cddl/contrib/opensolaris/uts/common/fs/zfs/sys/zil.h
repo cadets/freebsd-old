@@ -185,6 +185,19 @@ typedef enum zil_create {
 	(txtype) == TX_WRITE2)
 
 /*
+ * The number of dnode slots consumed by the object is stored in the 8
+ * unused upper bits of the object ID. We subtract 1 from the value
+ * stored on disk for compatibility with implementations that don't
+ * support large dnodes. The slot count for a single-slot dnode will
+ * contain 0 for those bits to preserve the log record format for
+ * "small" dnodes.
+ */
+#define	LR_FOID_GET_SLOTS(oid) (BF64_GET((oid), 56, 8) + 1)
+#define	LR_FOID_SET_SLOTS(oid, x) BF64_SET((oid), 56, 8, (x) - 1)
+#define	LR_FOID_GET_OBJ(oid) BF64_GET((oid), 0, DN_MAX_OBJECT_SHIFT)
+#define	LR_FOID_SET_OBJ(oid, x) BF64_SET((oid), 0, DN_MAX_OBJECT_SHIFT, (x))
+
+/*
  * Format of log records.
  * The fields are carefully defined to allow them to be aligned
  * and sized the same on sparc & intel architectures.
@@ -389,7 +402,7 @@ typedef int zil_parse_blk_func_t(zilog_t *zilog, blkptr_t *bp, void *arg,
     uint64_t txg);
 typedef int zil_parse_lr_func_t(zilog_t *zilog, lr_t *lr, void *arg,
     uint64_t txg);
-typedef int zil_replay_func_t();
+typedef int zil_replay_func_t(void *arg1, void *arg2, boolean_t byteswap);
 typedef int zil_get_data_t(void *arg, lr_write_t *lr, char *dbuf,
     struct lwb *lwb, zio_t *zio);
 
@@ -418,8 +431,9 @@ extern void	zil_itx_assign(zilog_t *zilog, itx_t *itx, dmu_tx_t *tx);
 
 extern void	zil_async_to_sync(zilog_t *zilog, uint64_t oid);
 extern void	zil_commit(zilog_t *zilog, uint64_t oid);
+extern void	zil_commit_impl(zilog_t *zilog, uint64_t oid);
 
-extern int	zil_vdev_offline(const char *osname, void *txarg);
+extern int	zil_reset(const char *osname, void *txarg);
 extern int	zil_claim(struct dsl_pool *dp,
     struct dsl_dataset *ds, void *txarg);
 extern int 	zil_check_log_chain(struct dsl_pool *dp,

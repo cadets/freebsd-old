@@ -55,11 +55,13 @@ __FBSDID("$FreeBSD$");
 #include <err.h>
 #include <errno.h>
 #include <fts.h>
+#include <getopt.h>
 #include <grp.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <locale.h>
 #include <pwd.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -68,7 +70,6 @@ __FBSDID("$FreeBSD$");
 #include <termcap.h>
 #include <signal.h>
 #endif
-#include <libxo/xo.h>
 
 #include "ls.h"
 #include "extern.h"
@@ -99,6 +100,16 @@ static void	 display(const FTSENT *, FTSENT *, int);
 static int	 mastercmp(const FTSENT * const *, const FTSENT * const *);
 static void	 traverse(int, char **, int);
 
+#define	COLOR_OPT	(CHAR_MAX + 1)
+
+static const struct option long_opts[] =
+{
+#ifdef COLORLS
+        {"color",       optional_argument,      NULL, COLOR_OPT},
+#endif
+        {NULL,          no_argument,            NULL, 0}
+};
+
 static void (*printfcn)(const DISPLAY *);
 static int (*sortfcn)(const FTSENT *, const FTSENT *);
 
@@ -121,7 +132,7 @@ static int f_nofollow;		/* don't follow symbolic link arguments */
        int f_nonprint;		/* show unprintables as ? */
 static int f_nosort;		/* don't sort output */
        int f_notabs;		/* don't use tab-separated multi-col output */
-       int f_numericonly;	/* don't convert uid/gid to name */
+static int f_numericonly;	/* don't convert uid/gid to name */
        int f_octal;		/* show unprintables as \xxx */
        int f_octal_escape;	/* like f_octal but use C escapes if possible */
 static int f_recursive;		/* ls subdirectories also */
@@ -140,10 +151,10 @@ static int f_stream;		/* stream the output, separate with commas */
 static int f_timesort;		/* sort by time vice name */
        int f_type;		/* add type character for non-regular files */
 static int f_whiteout;		/* show whiteout entries */
-
 #ifdef COLORLS
+       int colorflag = COLORFLAG_AUTO;		/* passed in colorflag */
        int f_color;		/* add type in color for non-regular files */
-
+       bool explicitansi;	/* Explicit ANSI sequences, no termcap(5) */
 char *ansi_bgcol;		/* ANSI sequence to set background colour */
 char *ansi_fgcol;		/* ANSI sequence to set foreground colour */
 char *ansi_coloff;		/* ANSI sequence to reset colours */
@@ -152,6 +163,42 @@ char *enter_bold;		/* ANSI sequence to set color to bold mode */
 #endif
 
 static int rval;
+
+static bool
+do_color_from_env(void)
+{
+	const char *p;
+	bool doit;
+
+	doit = false;
+	p = getenv("CLICOLOR");
+	if (p == NULL) {
+		/*
+		 * COLORTERM is the more standard name for this variable.  We'll
+		 * honor it as long as it's both set and not empty.
+		 */
+		p = getenv("COLORTERM");
+		if (p != NULL && *p != '\0')
+			doit = true;
+	} else
+		doit = true;
+
+	return (doit &&
+	    (isatty(STDOUT_FILENO) || getenv("CLICOLOR_FORCE")));
+}
+
+static bool
+do_color(void)
+{
+
+#ifdef COLORLS
+	if (colorflag == COLORFLAG_NEVER)
+		return (false);
+	else if (colorflag == COLORFLAG_ALWAYS)
+		return (true);
+#endif
+	return (do_color_from_env());
+}
 
 int
 main(int argc, char *argv[])
@@ -164,7 +211,7 @@ main(int argc, char *argv[])
 #ifdef COLORLS
 	char termcapbuf[1024];	/* termcap definition buffer */
 	char tcapbuf[512];	/* capability buffer */
-	char *bp = tcapbuf;
+	char *bp = tcapbuf, *term;
 #endif
 
 	(void)setlocale(LC_ALL, "");
@@ -192,15 +239,9 @@ main(int argc, char *argv[])
 	fts_options = FTS_PHYSICAL;
 	if (getenv("LS_SAMESORT"))
 		f_samesort = 1;
-
-	argc = xo_parse_args(argc, argv);
-	if (argc < 0)
-		return (1);
-	xo_set_flags(NULL, XOF_COLUMNS);
-	xo_set_version(LS_XO_VERSION);
-
-	while ((ch = getopt(argc, argv,
-	    "1ABCD:FGHILPRSTUWXZabcdfghiklmnopqrstuwxy,")) != -1) {
+	while ((ch = getopt_long(argc, argv,
+	    "+1ABCD:FGHILPRSTUWXZabcdfghiklmnopqrstuwxy,", long_opts,
+	    NULL)) != -1) {
 		switch (ch) {
 		/*
 		 * The -1, -C, -x and -l options all override each other so
@@ -363,6 +404,19 @@ main(int argc, char *argv[])
 		case 'y':
 			f_samesort = 1;
 			break;
+#ifdef COLORLS
+		case COLOR_OPT:
+			if (optarg == NULL || strcmp(optarg, "always") == 0)
+				colorflag = COLORFLAG_ALWAYS;
+			else if (strcmp(optarg, "auto") == 0)
+				colorflag = COLORFLAG_AUTO;
+			else if (strcmp(optarg, "never") == 0)
+				colorflag = COLORFLAG_NEVER;
+			else
+				errx(2, "unsupported --color value '%s' (must be always, auto, or never)",
+				    optarg);
+			break;
+#endif
 		default:
 		case '?':
 			usage();
@@ -375,11 +429,14 @@ main(int argc, char *argv[])
 	if (!f_listdot && getuid() == (uid_t)0 && !f_noautodot)
 		f_listdot = 1;
 
-	/* Enabling of colours is conditional on the environment. */
-	if (getenv("CLICOLOR") &&
-	    (isatty(STDOUT_FILENO) || getenv("CLICOLOR_FORCE")))
+	/*
+	 * Enabling of colours is conditional on the environment in conjunction
+	 * with the --color and -G arguments, if supplied.
+	 */
+	if (do_color()) {
 #ifdef COLORLS
-		if (tgetent(termcapbuf, getenv("TERM")) == 1) {
+		if ((term = getenv("TERM")) != NULL &&
+		    tgetent(termcapbuf, term) == 1) {
 			ansi_fgcol = tgetstr("AF", &bp);
 			ansi_bgcol = tgetstr("AB", &bp);
 			attrs_off = tgetstr("me", &bp);
@@ -393,10 +450,19 @@ main(int argc, char *argv[])
 				ansi_coloff = tgetstr("oc", &bp);
 			if (ansi_fgcol && ansi_bgcol && ansi_coloff)
 				f_color = 1;
+		} else if (colorflag == COLORFLAG_ALWAYS) {
+			/*
+			 * If we're *always* doing color but we don't have
+			 * a functional TERM supplied, we'll fallback to
+			 * outputting raw ANSI sequences.
+			 */
+			f_color = 1;
+			explicitansi = true;
 		}
 #else
-		xo_warnx("color support not compiled in");
+		warnx("color support not compiled in");
 #endif /*COLORLS*/
+	}
 
 #ifdef COLORLS
 	if (f_color) {
@@ -493,13 +559,10 @@ main(int argc, char *argv[])
 	else
 		printfcn = printcol;
 
-	xo_open_container("file-information");
 	if (argc)
 		traverse(argc, argv, fts_options);
 	else
 		traverse(1, dotav, fts_options);
-	xo_close_container("file-information");
-	xo_finish();
 	exit(rval);
 }
 
@@ -517,11 +580,10 @@ traverse(int argc, char *argv[], int options)
 	FTS *ftsp;
 	FTSENT *p, *chp;
 	int ch_options;
-	int first = 1;
 
 	if ((ftsp =
 	    fts_open(argv, options, f_nosort ? NULL : mastercmp)) == NULL)
-		xo_err(1, "fts_open");
+		err(1, "fts_open");
 
 	/*
 	 * We ignore errors from fts_children here since they will be
@@ -543,11 +605,11 @@ traverse(int argc, char *argv[], int options)
 	while ((p = fts_read(ftsp)) != NULL)
 		switch (p->fts_info) {
 		case FTS_DC:
-			xo_warnx("%s: directory causes a cycle", p->fts_name);
+			warnx("%s: directory causes a cycle", p->fts_name);
 			break;
 		case FTS_DNR:
 		case FTS_ERR:
-			xo_warnx("%s: %s", p->fts_path, strerror(p->fts_errno));
+			warnx("%s: %s", p->fts_path, strerror(p->fts_errno));
 			rval = 1;
 			break;
 		case FTS_D:
@@ -555,40 +617,31 @@ traverse(int argc, char *argv[], int options)
 			    p->fts_name[0] == '.' && !f_listdot)
 				break;
 
-			if (first) {
-				first = 0;
-				xo_open_list("directory");
-			}
-			xo_open_instance("directory");
-
 			/*
 			 * If already output something, put out a newline as
 			 * a separator.  If multiple arguments, precede each
 			 * directory with its name.
 			 */
 			if (output) {
-				xo_emit("\n");
-				(void)printname("path", p->fts_path);
-				xo_emit(":\n");
+				putchar('\n');
+				(void)printname(p->fts_path);
+				puts(":");
 			} else if (argc > 1) {
-				(void)printname("path", p->fts_path);
-				xo_emit(":\n");
+				(void)printname(p->fts_path);
+				puts(":");
 				output = 1;
 			}
 			chp = fts_children(ftsp, ch_options);
 			display(p, chp, options);
 
-			xo_close_instance("directory");
 			if (!f_recursive && chp != NULL)
 				(void)fts_set(ftsp, p, FTS_SKIP);
 			break;
 		default:
 			break;
 		}
-	if (!first)
-		xo_close_list("directory");
 	if (errno)
-		xo_err(1, "fts_read");
+		err(1, "fts_read");
 }
 
 /*
@@ -635,7 +688,7 @@ display(const FTSENT *p, FTSENT *list, int options)
 		/* Fill-in "::" as "0:0:0" for the sake of scanf. */
 		jinitmax = malloc(strlen(initmax) * 2 + 2);
 		if (jinitmax == NULL)
-			xo_err(1, "malloc");
+			err(1, "malloc");
 		initmax2 = jinitmax;
 		if (*initmax == ':')
 			strcpy(initmax2, "0:"), initmax2 += 2;
@@ -706,7 +759,7 @@ display(const FTSENT *p, FTSENT *list, int options)
 	flags = NULL;
 	for (cur = list, entries = 0; cur; cur = cur->fts_link) {
 		if (cur->fts_info == FTS_ERR || cur->fts_info == FTS_NS) {
-			xo_warnx("%s: %s",
+			warnx("%s: %s",
 			    cur->fts_name, strerror(cur->fts_errno));
 			cur->fts_number = NO_PRINT;
 			rval = 1;
@@ -772,7 +825,7 @@ display(const FTSENT *p, FTSENT *list, int options)
 						flags = strdup("-");
 					}
 					if (flags == NULL)
-						xo_err(1, "fflagstostr");
+						err(1, "fflagstostr");
 					flen = strlen(flags);
 					if (flen > (size_t)maxflags)
 						maxflags = flen;
@@ -786,7 +839,7 @@ display(const FTSENT *p, FTSENT *list, int options)
 
 					error = mac_prepare_file_label(&label);
 					if (error == -1) {
-						xo_warn("MAC label for %s/%s",
+						warn("MAC label for %s/%s",
 						    cur->fts_parent->fts_path,
 						    cur->fts_name);
 						goto label_out;
@@ -807,7 +860,7 @@ display(const FTSENT *p, FTSENT *list, int options)
 						error = mac_get_link(name,
 						    label);
 					if (error == -1) {
-						xo_warn("MAC label for %s/%s",
+						warn("MAC label for %s/%s",
 						    cur->fts_parent->fts_path,
 						    cur->fts_name);
 						mac_free(label);
@@ -817,7 +870,7 @@ display(const FTSENT *p, FTSENT *list, int options)
 					error = mac_to_text(label,
 					    &labelstr);
 					if (error == -1) {
-						xo_warn("MAC label for %s/%s",
+						warn("MAC label for %s/%s",
 						    cur->fts_parent->fts_path,
 						    cur->fts_name);
 						mac_free(label);
@@ -835,7 +888,7 @@ label_out:
 
 				if ((np = malloc(sizeof(NAMES) + labelstrlen +
 				    ulen + glen + flen + 4)) == NULL)
-					xo_err(1, "malloc");
+					err(1, "malloc");
 
 				np->user = &np->data[0];
 				(void)strcpy(np->user, user);
