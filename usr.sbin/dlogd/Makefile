@@ -74,6 +74,7 @@ LIBADD+=pthread
 LIBADD+=sbuf
 LIBADD+=ssl
 LIBADD+=ucl
+LIBADD+=util
 LIBADD+=z
 
 CFLAGS+=-g
