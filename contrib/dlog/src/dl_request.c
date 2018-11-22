@@ -265,6 +265,7 @@ err_request:
 int
 dl_request_encode(struct dl_request const *request, struct dl_bbuf **target)
 {
+	int rc = 0;
 
 	DL_ASSERT(request != NULL, ("Request cannot be NULL"));
 	DL_ASSERT(target != NULL, ("Target buffer cannot be NULL"));
@@ -276,6 +277,9 @@ dl_request_encode(struct dl_request const *request, struct dl_bbuf **target)
 	 */
 	if (dl_bbuf_new(target, NULL, DL_MTU,
 	    DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN) == 0) {
+
+		/* Encode a placeholder for the total request size. */	
+		rc |= DL_ENCODE_REQUEST_SIZE(*target, -1);
 		
 		/* Encode the Request Header. */
 		if (dl_request_header_encode(request, *target) == 0) {
