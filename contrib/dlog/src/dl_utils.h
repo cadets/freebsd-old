@@ -46,6 +46,7 @@
 #else
 #include <syslog.h>
 #include <stdarg.h>
+#include <pthread.h>
 #endif
 
 #ifdef _KERNEL
@@ -65,30 +66,30 @@
 	log(event_mask, format, p1, p2, p3, p4, p5, p6)
 #else
 #define DLOGTR0(event_mask, format) \
-	syslog(event_mask, format)
+	syslog(event_mask, "[%X] " format, (uint32_t) pthread_self())
 #define DLOGTR1(event_mask, format, p1) \
-	syslog(event_mask, format, p1)
+	syslog(event_mask, "[%X] " format, (uint32_t) pthread_self(), \
+	p1)
 #define DLOGTR2(event_mask, format, p1, p2) \
-	syslog(event_mask, format, p1, p2)
+	syslog(event_mask, "[%X] " format, (uint32_t) pthread_self(), \
+	p1, p2)
 #define DLOGTR3(event_mask, format, p1, p2, p3) \
-	syslog(event_mask, format, p1, p2, p3)
+	syslog(event_mask, "[%X] " format, (uint32_t) pthread_self(), \
+	p1, p2, p3)
 #define DLOGTR4(event_mask, format, p1, p2, p3, p4) \
-	syslog(event_mask, format, p1, p2, p3, p4)
+	syslog(event_mask, "[%X] " format, (uint32_t) pthread_self(), \
+	p1, p2, p3, p4)
 #define DLOGTR5(event_mask, format, p1, p2, p3, p4, p5) \
-	syslog(event_mask, format, p1, p2, p3, p4, p5)
+	syslog(event_mask, "[%X] " format, (uint32_t) pthread_self(), \
+	p1, p2, p3, p4, p5)
 #define DLOGTR6(event_mask, format, p1, p2, p3, p4, p5, p6) \
-	syslog(event_mask, format, p1, p2, p3, p4, p5, p6)
+	syslog(event_mask, "[%X] " format, (uint32_t) pthread_self(), \
+	p1, p2, p3, p4, p5, p66)
 #endif /* KERNEL */
 
-//#ifdef _KERNEL
 #define PRIO_HIGH   3 //LOG_ERR
 #define PRIO_NORMAL 5 //LOG_NOTICE
 #define PRIO_LOW    7 //LOG_DEBUG
-//#else
-//#define PRIO_HIGH   1 << 1
-//#define PRIO_NORMAL 1 << 2
-//#define PRIO_LOW    1 << 3
-//#endif
 
 extern unsigned short PRIO_LOG;
 
