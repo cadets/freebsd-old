@@ -186,17 +186,17 @@ dtc_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 
 				if (rkmessage->key == NULL) {
 					DLOGTR1(PRIO_LOW,
-					    "%s: key of Kafka mesage is NULL\n",
+					    "%s: key of Kafka message is NULL\n",
 					    g_pname);
 				} else {
 					DLOGTR2(PRIO_LOW,
-					    "%s: key of Kafka mesage %s is invalid\n",
+					    "%s: key of Kafka message %s is invalid\n",
 					    g_pname, rkmessage->key);
 				}
 
 				if (rkmessage->payload != NULL) {
 					DLOGTR1(PRIO_LOW,
-					    "%s: payload of Kafka mesage NULL\n",
+					    "%s: payload of Kafka message NULL\n",
 					    g_pname);
 				}
 				buf->dtbd_size = 0;
@@ -246,6 +246,8 @@ dtc_buffered_handler(const dtrace_bufdata_t *buf_data, void *arg)
 	if (buf_data->dtbda_buffered[0] == '{') {
 
 		DLOGTR0(PRIO_LOW, "Start of JSON message\n");
+		if(output_buf != NULL)
+			DLOGTR1(PRIO_LOW, "Replacing incomplete message: %s\n", dl_bbuf_data(output_buf));
 		dl_bbuf_new_auto(&output_buf) ;
 	} 
 
@@ -255,7 +257,7 @@ dtc_buffered_handler(const dtrace_bufdata_t *buf_data, void *arg)
 	buf_len = strlen(buf_data->dtbda_buffered);
 	dl_bbuf_bcat(output_buf, buf_data->dtbda_buffered, buf_len);
 
-	/* '}' indicates the start of the JSON message.
+	/* A message starting with '}' indicates the end of the JSON message.
 	 * Allocate a buffer into which the message is written.
 	 */
 	if (buf_data->dtbda_buffered[0] == '}') {

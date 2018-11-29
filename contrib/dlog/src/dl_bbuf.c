@@ -233,6 +233,7 @@ dl_bbuf_bcat(struct dl_bbuf *self, unsigned char const * const source, int len)
 
 	bcopy(source, &self->dlb_data[self->dlb_pos], len);
 	self->dlb_pos += len;
+	self->dlb_data[self->dlb_pos]=0;
 	return 0;
 }
 
