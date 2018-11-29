@@ -80,8 +80,24 @@ dtc_usage(FILE * fp)
 {
 
 	(void) fprintf(fp,
-	    "Usage: %s -b brokers -d -i input_topic"
-	    "[-o output_topic] -s script [-x]\n", g_pname);
+	    "Usage: %s -b brokers [-df] "
+	    "-i input_topic [-o output_topic] "
+	    "[-c client_certificate] [-a ca_cert] [-p password] "
+	    "[-k private_key] [-q poll_interval] "
+	    "-s script script_args\n", g_pname);
+
+	(void) fprintf(fp, "\n"
+	    "\t-d\t--debug\t\t Increase debug output\n"
+	    "\t-f\t--frombeginning\t Read from beginning of input topic\n"
+	    "\t-b\t--brokers\t Kafka broker connection string\n"
+	    "\t-i\t--intopic\t Kafka topic to read from\n"
+	    "\t-o\t--outtopic\t Kafka topic to write to\n"
+	    "\t-a\t--cacert\t CA_cert path (for TLS support)\n"
+	    "\t-c\t--clientcert\t Client certificate path (for TLS support)\n"
+	    "\t-p\t--password\t Password for private key (for TLS support)\n"
+	    "\t-q\t--poll\t\t Kafka poll interval (in us)\n"
+	    "\t-k\t--privkey\t Private key (for TLS support)\n"
+	    "\t-s\t\t\t DTrace script. All remaining arguments will be passed to DTrace.\n");
 }
 
 /*ARGSUSED*/
@@ -683,15 +699,15 @@ main(int argc, char *argv[])
 	useconds_t poll_period = 100000; /* 100ms */
 	static struct option dtc_options[] = {
 		{"brokers", required_argument, 0, 'b'},
-		{"cacert", optional_argument, NULL, 'a'},
-		{"clientcert", optional_argument, NULL, 'c'},
+		{"cacert", required_argument, NULL, 'a'},
+		{"clientcert", required_argument, NULL, 'c'},
 		{"debug", no_argument, NULL, 'd'},
 		{"frombeginning", no_argument, NULL, 'f'},
 		{"intopic", required_argument, NULL, 'i'},
 		{"outtopic", required_argument, NULL, 'o'},
-		{"password", optional_argument, NULL, 'p'},
-		{"poll", optional_argument, NULL, 'q'},
-		{"privkey", optional_argument, NULL, 'k'},
+		{"password", required_argument, NULL, 'p'},
+		{"poll", required_argument, NULL, 'q'},
+		{"privkey", required_argument, NULL, 'k'},
 		{"script", required_argument, NULL, 's'},
 		{0, 0, 0, 0}
 	};
