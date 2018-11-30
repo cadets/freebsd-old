@@ -999,7 +999,7 @@ dl_producer_response(struct dl_producer *self,
 	if (dl_request_q_ack(self->dlp_requests,hdr->dlrsh_correlation_id,
 		&request) == 0) {
 
-		DLOGTR2(PRIO_NORMAL, "Found unack'd request id: %d (%d)\n",
+		DLOGTR2(PRIO_NORMAL, "Received ack for request id: %d (%d)\n",
 		    request->dlrq_correlation_id, hdr->dlrsh_correlation_id);
 
 		switch (request->dlrq_api_key) {
