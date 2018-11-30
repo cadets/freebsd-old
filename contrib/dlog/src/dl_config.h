@@ -81,7 +81,7 @@ struct dl_client_config_desc {
 #define DL_DEFAULT_RESENDTIMEOUT 30
 #define DL_DEFAULT_RESENDPERIOD 2
 #define DL_DEFAULT_TOPIC "test" 
-#define DL_DEFAULT_PRIVATEKEY_FILE "client.pem"
+#define DL_DEFAULT_PRIVATEKEY_FILE "client.key"
 #define DL_DEFAULT_CLIENT_FILE "client.pem"
 #define DL_DEFAULT_CACERT_FILE "cacert.pem"
 #define DL_DEFAULT_USER_PASSWORD "password"
