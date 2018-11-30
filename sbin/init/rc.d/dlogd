@@ -17,7 +17,7 @@ desc="DLog daemon"
 start_cmd="dlogd_start"
 stop_cmd="dlogd_stop"
 dlog_command="/usr/sbin/${name}"
-dlogd_dir="/var/db/dlog"
+dlogd_dir="/var/db/dlogd"
 rcvar="dlogd_enable"
 command_args="${dlogd_flags}"
 
