@@ -194,9 +194,9 @@ dtc_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 					    g_pname, rkmessage->key);
 				}
 
-				if (rkmessage->payload != NULL) {
+				if (rkmessage->payload == NULL) {
 					DLOGTR1(PRIO_LOW,
-					    "%s: payload of Kafka message NULL\n",
+					    "%s: payload of Kafka message is NULL\n",
 					    g_pname);
 				}
 				buf->dtbd_size = 0;
