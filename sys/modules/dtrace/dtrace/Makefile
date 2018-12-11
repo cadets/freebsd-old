@@ -51,6 +51,11 @@ CFLAGS+=	-DSMP
 
 EXPORT_SYMS=	dtrace_register \
 		dtrace_unregister \
+		dtrace_konsumer_register \
+		dtrace_konsumer_unregister \
+		dtrace_xcall \
+		dtrace_buffer_switch \
+		dtrace_epid2size \
 		dtrace_probe_lookup
 
 dtrace_asm.o:  assym.inc
