@@ -218,6 +218,8 @@ restart:
 		ndp->ni_cnd.cn_flags = ISOPEN | LOCKPARENT | LOCKLEAF | NOCACHE;
 		if ((fmode & O_EXCL) == 0 && (fmode & O_NOFOLLOW) == 0)
 			ndp->ni_cnd.cn_flags |= FOLLOW;
+		if ((fmode & O_BENEATH) != 0)
+			ndp->ni_cnd.cn_flags |= BENEATH;
 		if (!(vn_open_flags & VN_OPEN_NOAUDIT))
 			ndp->ni_cnd.cn_flags |= AUDITVNODE1;
 		if (vn_open_flags & VN_OPEN_NOCAPCHECK)
@@ -275,6 +277,8 @@ restart:
 		    ((fmode & O_NOFOLLOW) ? NOFOLLOW : FOLLOW) | LOCKLEAF;
 		if (!(fmode & FWRITE))
 			ndp->ni_cnd.cn_flags |= LOCKSHARED;
+		if ((fmode & O_BENEATH) != 0)
+			ndp->ni_cnd.cn_flags |= BENEATH;
 		if (!(vn_open_flags & VN_OPEN_NOAUDIT))
 			ndp->ni_cnd.cn_flags |= AUDITVNODE1;
 		if (vn_open_flags & VN_OPEN_NOCAPCHECK)
@@ -538,6 +542,8 @@ vn_rdwr(enum uio_rw rw, struct vnode *vp, void *base, int len, off_t offset,
 	struct vn_io_fault_args args;
 	int error, lock_flags;
 
+	if (offset < 0 && vp->v_type != VCHR)
+		return (EINVAL);
 	auio.uio_iov = &aiov;
 	auio.uio_iovcnt = 1;
 	aiov.iov_base = base;

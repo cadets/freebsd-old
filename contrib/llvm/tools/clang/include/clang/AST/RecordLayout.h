@@ -71,10 +71,6 @@ private:
   // Alignment - Alignment of record in characters.
   CharUnits Alignment;
 
-  // UnadjustedAlignment - Maximum of the alignments of the record members in
-  // characters.
-  CharUnits UnadjustedAlignment;
-
   /// RequiredAlignment - The required alignment of the object.  In the MS-ABI
   /// the __declspec(align()) trumps #pramga pack and must always be obeyed.
   CharUnits RequiredAlignment;
@@ -115,7 +111,7 @@ private:
     /// Only used for MS-ABI.
     bool EndsWithZeroSizedObject : 1;
 
-    /// True if this class is zero sized or first base is zero sized or
+    /// \brief True if this class is zero sized or first base is zero sized or
     /// has this property.  Only used for MS-ABI.
     bool LeadsWithZeroSizedBase : 1;
 
@@ -124,10 +120,10 @@ private:
 
     /// BaseSharingVBPtr - The base we share vbptr with.
     const CXXRecordDecl *BaseSharingVBPtr;
-
+    
     /// FIXME: This should really use a SmallPtrMap, once we have one in LLVM :)
     using BaseOffsetsMapTy = llvm::DenseMap<const CXXRecordDecl *, CharUnits>;
-
+    
     /// BaseOffsets - Contains a map from base classes to their offset.
     BaseOffsetsMapTy BaseOffsets;
 
@@ -140,7 +136,6 @@ private:
   CXXRecordLayoutInfo *CXXInfo = nullptr;
 
   ASTRecordLayout(const ASTContext &Ctx, CharUnits size, CharUnits alignment,
-                  CharUnits unadjustedAlignment,
                   CharUnits requiredAlignment, CharUnits datasize,
                   ArrayRef<uint64_t> fieldoffsets);
 
@@ -149,7 +144,6 @@ private:
   // Constructor for C++ records.
   ASTRecordLayout(const ASTContext &Ctx,
                   CharUnits size, CharUnits alignment,
-                  CharUnits unadjustedAlignment,
                   CharUnits requiredAlignment,
                   bool hasOwnVFPtr, bool hasExtendableVFPtr,
                   CharUnits vbptroffset,
@@ -168,17 +162,13 @@ private:
   ~ASTRecordLayout() = default;
 
   void Destroy(ASTContext &Ctx);
-
+  
 public:
   ASTRecordLayout(const ASTRecordLayout &) = delete;
   ASTRecordLayout &operator=(const ASTRecordLayout &) = delete;
 
   /// getAlignment - Get the record alignment in characters.
   CharUnits getAlignment() const { return Alignment; }
-
-  /// getUnadjustedAlignment - Get the record alignment in characters, before
-  /// alignment adjustement.
-  CharUnits getUnadjustedAlignment() const { return UnadjustedAlignment; }
 
   /// getSize - Get the record size in characters.
   CharUnits getSize() const { return Size; }
@@ -269,7 +259,7 @@ public:
     assert(CXXInfo && "Record layout does not have C++ specific info!");
     return CXXInfo->HasExtendableVFPtr;
   }
-
+  
   /// hasOwnVBPtr - Does this class provide its own virtual-base
   /// table pointer, rather than inheriting one from a primary base
   /// class?

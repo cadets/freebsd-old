@@ -44,7 +44,7 @@ using namespace lld::elf;
 // The calling thread returns almost immediately.
 void elf::unlinkAsync(StringRef Path) {
 // Removing a file is async on windows.
-#if defined(_WIN32)
+#if defined(LLVM_ON_WIN32)
   sys::fs::remove(Path);
 #else
   if (!ThreadsEnabled || !sys::fs::exists(Path) ||

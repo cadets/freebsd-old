@@ -1168,7 +1168,7 @@ lim_max_proc(struct proc *p, int which)
  * The which parameter which specifies the index into the rlimit array
  */
 rlim_t
-lim_cur(struct thread *td, int which)
+(lim_cur)(struct thread *td, int which)
 {
 	struct rlimit rl;
 
@@ -1276,7 +1276,6 @@ uifind(uid_t uid)
 	racct_create(&new_uip->ui_racct);
 	refcount_init(&new_uip->ui_ref, 1);
 	new_uip->ui_uid = uid;
-	mtx_init(&new_uip->ui_vmsize_mtx, "ui_vmsize", NULL, MTX_DEF);
 
 	rw_wlock(&uihashtbl_lock);
 	/*
@@ -1291,7 +1290,6 @@ uifind(uid_t uid)
 	} else {
 		rw_wunlock(&uihashtbl_lock);
 		racct_destroy(&new_uip->ui_racct);
-		mtx_destroy(&new_uip->ui_vmsize_mtx);
 		free(new_uip, M_UIDINFO);
 	}
 	return (uip);
@@ -1325,14 +1323,10 @@ uihold(struct uidinfo *uip)
 void
 uifree(struct uidinfo *uip)
 {
-	int old;
 
-	/* Prepare for optimal case. */
-	old = uip->ui_ref;
-	if (old > 1 && atomic_cmpset_int(&uip->ui_ref, old, old - 1))
+	if (refcount_release_if_not_last(&uip->ui_ref))
 		return;
 
-	/* Prepare for suboptimal case. */
 	rw_wlock(&uihashtbl_lock);
 	if (refcount_release(&uip->ui_ref) == 0) {
 		rw_wunlock(&uihashtbl_lock);
@@ -1352,7 +1346,6 @@ uifree(struct uidinfo *uip)
 	if (uip->ui_vmsize != 0)
 		printf("freeing uidinfo: uid = %d, swapuse = %lld\n",
 		    uip->ui_uid, (unsigned long long)uip->ui_vmsize);
-	mtx_destroy(&uip->ui_vmsize_mtx);
 	free(uip, M_UIDINFO);
 }
 

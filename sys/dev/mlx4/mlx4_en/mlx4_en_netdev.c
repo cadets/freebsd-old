@@ -53,6 +53,8 @@
 #include "en.h"
 #include "en_port.h"
 
+NETDUMP_DEFINE(mlx4_en);
+
 static void mlx4_en_sysctl_stat(struct mlx4_en_priv *priv);
 static void mlx4_en_sysctl_conf(struct mlx4_en_priv *priv);
 
@@ -905,28 +907,6 @@ static void mlx4_en_do_multicast(struct mlx4_en_priv *priv,
 			priv->flags &= ~MLX4_EN_FLAG_MC_PROMISC;
 		}
 
-		/* Update unicast list */
-		mlx4_en_cache_uclist(dev);
-
-		update_addr_list_flags(priv, &priv->curr_uc_list, &priv->uc_list);
-
-		list_for_each_entry_safe(addr_list, tmp, &priv->curr_uc_list, list) {
-			if (addr_list->action == MLX4_ADDR_LIST_REM) {
-				mlx4_en_uc_steer_release(priv, addr_list->addr,
-							       priv->rss_map.indir_qp.qpn,
-							       addr_list->reg_id);
-				/* remove from list */
-				list_del(&addr_list->list);
-				kfree(addr_list);
-			} else if (addr_list->action == MLX4_ADDR_LIST_ADD) {
-				err = mlx4_en_uc_steer_add(priv, addr_list->addr,
-							   &priv->rss_map.indir_qp.qpn,
-							   &addr_list->reg_id);
-				if (err)
-					en_err(priv, "Fail to add unicast address\n");
-			}
-		}
-
 		err = mlx4_SET_MCAST_FLTR(mdev->dev, priv->port, 0,
 					  0, MLX4_MCAST_DISABLE);
 		if (err)
@@ -996,6 +976,36 @@ static void mlx4_en_do_multicast(struct mlx4_en_priv *priv,
 	}
 }
 
+static void mlx4_en_do_unicast(struct mlx4_en_priv *priv,
+			       struct net_device *dev,
+			       struct mlx4_en_dev *mdev)
+{
+	struct mlx4_en_addr_list *addr_list, *tmp;
+	int err;
+
+	/* Update unicast list */
+	mlx4_en_cache_uclist(dev);
+
+	update_addr_list_flags(priv, &priv->curr_uc_list, &priv->uc_list);
+
+	list_for_each_entry_safe(addr_list, tmp, &priv->curr_uc_list, list) {
+		if (addr_list->action == MLX4_ADDR_LIST_REM) {
+			mlx4_en_uc_steer_release(priv, addr_list->addr,
+						 priv->rss_map.indir_qp.qpn,
+						 addr_list->reg_id);
+			/* remove from list */
+			list_del(&addr_list->list);
+			kfree(addr_list);
+		} else if (addr_list->action == MLX4_ADDR_LIST_ADD) {
+			err = mlx4_en_uc_steer_add(priv, addr_list->addr,
+						   &priv->rss_map.indir_qp.qpn,
+						   &addr_list->reg_id);
+			if (err)
+				en_err(priv, "Fail to add unicast address\n");
+		}
+	}
+}
+
 static void mlx4_en_do_set_rx_mode(struct work_struct *work)
 {
 	struct mlx4_en_priv *priv = container_of(work, struct mlx4_en_priv,
@@ -1026,17 +1036,19 @@ static void mlx4_en_do_set_rx_mode(struct work_struct *work)
 		}
 	}
 
+	/* Set unicast rules */
+	mlx4_en_do_unicast(priv, dev, mdev);
+
 	/* Promsicuous mode: disable all filters */
 	if ((dev->if_flags & IFF_PROMISC) ||
 	    (priv->flags & MLX4_EN_FLAG_FORCE_PROMISC)) {
 		mlx4_en_set_promisc_mode(priv, mdev);
-		goto out;
+	} else if (priv->flags & MLX4_EN_FLAG_PROMISC) {
+		/* Not in promiscuous mode */
+		mlx4_en_clear_promisc_mode(priv, mdev);
 	}
 
-	/* Not in promiscuous mode */
-	if (priv->flags & MLX4_EN_FLAG_PROMISC)
-		mlx4_en_clear_promisc_mode(priv, mdev);
-
+	/* Set multicast rules */
 	mlx4_en_do_multicast(priv, dev, mdev);
 out:
 	mutex_unlock(&mdev->state_lock);
@@ -1564,9 +1576,12 @@ static void mlx4_en_restart(struct work_struct *work)
 	if (priv->blocked == 0 || priv->port_up == 0)
 		return;
 	for (i = 0; i < priv->tx_ring_num; i++) {
+		int watchdog_time;
+
 		ring = priv->tx_ring[i];
-		if (ring->blocked &&
-				ring->watchdog_time + MLX4_EN_WATCHDOG_TIMEOUT < ticks)
+		watchdog_time = READ_ONCE(ring->watchdog_time);
+		if (watchdog_time != 0 &&
+		    time_after(ticks, ring->watchdog_time))
 			goto reset;
 	}
 	return;
@@ -1668,7 +1683,7 @@ void mlx4_en_free_resources(struct mlx4_en_priv *priv)
 	for (i = 0; i < priv->rx_ring_num; i++) {
 		if (priv->rx_ring[i])
 			mlx4_en_destroy_rx_ring(priv, &priv->rx_ring[i],
-				priv->prof->rx_ring_size, priv->stride);
+				priv->prof->rx_ring_size);
 		if (priv->rx_cq[i])
 			mlx4_en_destroy_cq(priv, &priv->rx_cq[i]);
 	}
@@ -1719,8 +1734,7 @@ err:
 	for (i = 0; i < priv->rx_ring_num; i++) {
 		if (priv->rx_ring[i])
 			mlx4_en_destroy_rx_ring(priv, &priv->rx_ring[i],
-						prof->rx_ring_size,
-						priv->stride);
+						prof->rx_ring_size);
 		if (priv->rx_cq[i])
 			mlx4_en_destroy_cq(priv, &priv->rx_cq[i]);
 	}
@@ -2222,9 +2236,6 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
                 goto out;
         }
 
-	priv->stride = roundup_pow_of_two(sizeof(struct mlx4_en_rx_desc) +
-					  DS_SIZE);
-
 	mlx4_en_sysctl_conf(priv);
 
 	err = mlx4_en_alloc_resources(priv);
@@ -2297,6 +2308,8 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	ifmedia_add(&priv->media, IFM_ETHER | IFM_FDX | IFM_40G_CR4, 0, NULL);
 	ifmedia_add(&priv->media, IFM_ETHER | IFM_AUTO, 0, NULL);
 	ifmedia_set(&priv->media, IFM_ETHER | IFM_AUTO);
+
+	NETDUMP_SET(dev, mlx4_en);
 
 	en_warn(priv, "Using %d TX rings\n", prof->tx_ring_num);
 	en_warn(priv, "Using %d RX rings\n", prof->rx_ring_num);
@@ -2879,3 +2892,54 @@ static void mlx4_en_sysctl_stat(struct mlx4_en_priv *priv)
 		    CTLFLAG_RD, &rx_ring->errors, 0, "RX soft errors");
 	}
 }
+
+#ifdef NETDUMP
+static void
+mlx4_en_netdump_init(struct ifnet *dev, int *nrxr, int *ncl, int *clsize)
+{
+	struct mlx4_en_priv *priv;
+
+	priv = if_getsoftc(dev);
+	mutex_lock(&priv->mdev->state_lock);
+	*nrxr = priv->rx_ring_num;
+	*ncl = NETDUMP_MAX_IN_FLIGHT;
+	*clsize = priv->rx_mb_size;
+	mutex_unlock(&priv->mdev->state_lock);
+}
+
+static void
+mlx4_en_netdump_event(struct ifnet *dev, enum netdump_ev event)
+{
+}
+
+static int
+mlx4_en_netdump_transmit(struct ifnet *dev, struct mbuf *m)
+{
+	struct mlx4_en_priv *priv;
+	int err;
+
+	priv = if_getsoftc(dev);
+	if ((if_getdrvflags(dev) & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
+	    IFF_DRV_RUNNING || !priv->link_state)
+		return (ENOENT);
+
+	err = mlx4_en_xmit(priv, 0, &m);
+	if (err != 0 && m != NULL)
+		m_freem(m);
+	return (err);
+}
+
+static int
+mlx4_en_netdump_poll(struct ifnet *dev, int count)
+{
+	struct mlx4_en_priv *priv;
+
+	priv = if_getsoftc(dev);
+	if ((if_getdrvflags(dev) & IFF_DRV_RUNNING) == 0 || !priv->link_state)
+		return (ENOENT);
+
+	mlx4_poll_interrupts(priv->mdev->dev);
+
+	return (0);
+}
+#endif /* NETDUMP */

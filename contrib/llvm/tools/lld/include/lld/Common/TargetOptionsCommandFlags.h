@@ -18,5 +18,4 @@
 namespace lld {
 llvm::TargetOptions InitTargetOptionsFromCodeGenFlags();
 llvm::Optional<llvm::CodeModel::Model> GetCodeModelFromCMModel();
-std::string GetCPUStr();
 }

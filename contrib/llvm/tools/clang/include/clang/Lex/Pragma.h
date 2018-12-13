@@ -26,27 +26,27 @@ class Preprocessor;
 class Token;
 
   /**
-   * Describes how the pragma was introduced, e.g., with \#pragma,
+   * \brief Describes how the pragma was introduced, e.g., with \#pragma,
    * _Pragma, or __pragma.
    */
   enum PragmaIntroducerKind {
     /**
-     * The pragma was introduced via \#pragma.
+     * \brief The pragma was introduced via \#pragma.
      */
     PIK_HashPragma,
-
+    
     /**
-     * The pragma was introduced via the C99 _Pragma(string-literal).
+     * \brief The pragma was introduced via the C99 _Pragma(string-literal).
      */
     PIK__Pragma,
-
+    
     /**
-     * The pragma was introduced via the Microsoft
+     * \brief The pragma was introduced via the Microsoft 
      * __pragma(token-string).
      */
     PIK___pragma
   };
-
+  
 /// PragmaHandler - Instances of this interface defined to handle the various
 /// pragmas that the language front-end uses.  Each handler optionally has a
 /// name (e.g. "pack") and the HandlePragma method is invoked when a pragma with

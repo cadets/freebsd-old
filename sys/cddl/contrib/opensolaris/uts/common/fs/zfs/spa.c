@@ -28,7 +28,7 @@
  * Copyright 2013 Saso Kiselkov. All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
  * Copyright 2016 Toomas Soome <tsoome@me.com>
- * Copyright 2017 Joyent, Inc.
+ * Copyright 2018 Joyent, Inc.
  * Copyright (c) 2017 Datto Inc.
  * Copyright 2018 OmniOS Community Edition (OmniOSce) Association.
  */
@@ -615,9 +615,7 @@ spa_prop_validate(spa_t *spa, nvlist_t *props)
 
 				/*
 				 * Must be ZPL, and its property settings
-				 * must be supported by GRUB (compression
-				 * is not gzip, and large blocks or large
-				 * dnodes are not used).
+				 * must be supported.
 				 */
 
 				if (dmu_objset_type(os) != DMU_OST_ZFS) {
@@ -627,12 +625,6 @@ spa_prop_validate(spa_t *spa, nvlist_t *props)
 				    zfs_prop_to_name(ZFS_PROP_COMPRESSION),
 				    &propval)) == 0 &&
 				    !BOOTFS_COMPRESS_VALID(propval)) {
-					error = SET_ERROR(ENOTSUP);
-				} else if ((error =
-				    dsl_prop_get_int_ds(dmu_objset_ds(os),
-				    zfs_prop_to_name(ZFS_PROP_DNODESIZE),
-				    &propval)) == 0 &&
-				    propval != ZFS_DNSIZE_LEGACY) {
 					error = SET_ERROR(ENOTSUP);
 				} else {
 					objnum = dmu_objset_id(os);
@@ -4793,6 +4785,7 @@ spa_create(const char *pool, nvlist_t *nvroot, nvlist_t *props,
 	spa->spa_removing_phys.sr_state = DSS_NONE;
 	spa->spa_removing_phys.sr_removing_vdev = -1;
 	spa->spa_removing_phys.sr_prev_indirect_vdev = -1;
+	spa->spa_indirect_vdevs_loaded = B_TRUE;
 
 	/*
 	 * Create "The Godfather" zio to hold all async IOs
@@ -6922,6 +6915,7 @@ spa_vdev_resilver_done_hunt(vdev_t *vd)
 
 	/*
 	 * Check for a completed resilver with the 'unspare' flag set.
+	 * Also potentially update faulted state.
 	 */
 	if (vd->vdev_ops == &vdev_spare_ops) {
 		vdev_t *first = vd->vdev_child[0];
@@ -6942,6 +6936,8 @@ spa_vdev_resilver_done_hunt(vdev_t *vd)
 		    vdev_dtl_empty(newvd, DTL_OUTAGE) &&
 		    !vdev_dtl_required(oldvd))
 			return (oldvd);
+
+		vdev_propagate_state(vd);
 
 		/*
 		 * If there are more than two spares attached to a disk,

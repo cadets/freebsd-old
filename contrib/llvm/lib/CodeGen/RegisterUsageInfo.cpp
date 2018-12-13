@@ -31,6 +31,8 @@
 
 using namespace llvm;
 
+#define DEBUG_TYPE "ip-regalloc"
+
 static cl::opt<bool> DumpRegUsage(
     "print-regusage", cl::init(false), cl::Hidden,
     cl::desc("print register usage details collected for analysis."));
@@ -40,9 +42,7 @@ INITIALIZE_PASS(PhysicalRegisterUsageInfo, "reg-usage-info",
 
 char PhysicalRegisterUsageInfo::ID = 0;
 
-void PhysicalRegisterUsageInfo::setTargetMachine(const TargetMachine &TM) {
-  this->TM = &TM;
-}
+void PhysicalRegisterUsageInfo::anchor() {}
 
 bool PhysicalRegisterUsageInfo::doInitialization(Module &M) {
   RegMasks.grow(M.size());
@@ -58,19 +58,22 @@ bool PhysicalRegisterUsageInfo::doFinalization(Module &M) {
 }
 
 void PhysicalRegisterUsageInfo::storeUpdateRegUsageInfo(
-    const Function &FP, ArrayRef<uint32_t> RegMask) {
-  RegMasks[&FP] = RegMask;
+    const Function *FP, std::vector<uint32_t> RegMask) {
+  assert(FP != nullptr && "Function * can't be nullptr.");
+  RegMasks[FP] = std::move(RegMask);
 }
 
-ArrayRef<uint32_t>
-PhysicalRegisterUsageInfo::getRegUsageInfo(const Function &FP) {
-  auto It = RegMasks.find(&FP);
+const std::vector<uint32_t> *
+PhysicalRegisterUsageInfo::getRegUsageInfo(const Function *FP) {
+  auto It = RegMasks.find(FP);
   if (It != RegMasks.end())
-    return makeArrayRef<uint32_t>(It->second);
-  return ArrayRef<uint32_t>();
+    return &(It->second);
+  return nullptr;
 }
 
 void PhysicalRegisterUsageInfo::print(raw_ostream &OS, const Module *M) const {
+  const TargetRegisterInfo *TRI;
+
   using FuncPtrRegMaskPair = std::pair<const Function *, std::vector<uint32_t>>;
 
   SmallVector<const FuncPtrRegMaskPair *, 64> FPRMPairVector;
@@ -80,7 +83,7 @@ void PhysicalRegisterUsageInfo::print(raw_ostream &OS, const Module *M) const {
     FPRMPairVector.push_back(&RegMask);
 
   // sort the vector to print analysis in alphabatic order of function name.
-  llvm::sort(
+  std::sort(
       FPRMPairVector.begin(), FPRMPairVector.end(),
       [](const FuncPtrRegMaskPair *A, const FuncPtrRegMaskPair *B) -> bool {
         return A->first->getName() < B->first->getName();
@@ -89,9 +92,8 @@ void PhysicalRegisterUsageInfo::print(raw_ostream &OS, const Module *M) const {
   for (const FuncPtrRegMaskPair *FPRMPair : FPRMPairVector) {
     OS << FPRMPair->first->getName() << " "
        << "Clobbered Registers: ";
-    const TargetRegisterInfo *TRI
-        = TM->getSubtarget<TargetSubtargetInfo>(*(FPRMPair->first))
-          .getRegisterInfo();
+    TRI = TM->getSubtarget<TargetSubtargetInfo>(*(FPRMPair->first))
+              .getRegisterInfo();
 
     for (unsigned PReg = 1, PRegE = TRI->getNumRegs(); PReg < PRegE; ++PReg) {
       if (MachineOperand::clobbersPhysReg(&(FPRMPair->second[0]), PReg))

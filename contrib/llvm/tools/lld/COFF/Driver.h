@@ -21,7 +21,6 @@
 #include "llvm/Object/COFF.h"
 #include "llvm/Option/Arg.h"
 #include "llvm/Option/ArgList.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/TarWriter.h"
 #include <memory>
 #include <set>
@@ -37,6 +36,12 @@ using llvm::COFF::MachineTypes;
 using llvm::COFF::WindowsSubsystem;
 using llvm::Optional;
 
+// Implemented in MarkLive.cpp.
+void markLive(ArrayRef<Chunk *> Chunks);
+
+// Implemented in ICF.cpp.
+void doICF(ArrayRef<Chunk *> Chunks);
+
 class COFFOptTable : public llvm::opt::OptTable {
 public:
   COFFOptTable();
@@ -51,10 +56,8 @@ public:
   llvm::opt::InputArgList parse(StringRef S) { return parse(tokenize(S)); }
 
   // Tokenizes a given string and then parses as command line options in
-  // .drectve section. /EXPORT options are returned in second element
-  // to be processed in fastpath.
-  std::pair<llvm::opt::InputArgList, std::vector<StringRef>>
-  parseDirectives(StringRef S);
+  // .drectve section.
+  llvm::opt::InputArgList parseDirectives(StringRef S);
 
 private:
   // Parses command line options.
@@ -95,11 +98,7 @@ private:
 
   // Library search path. The first element is always "" (current directory).
   std::vector<StringRef> SearchPaths;
-
-  // We don't want to add the same file more than once.
-  // Files are uniquified by their filesystem and file number.
-  std::set<llvm::sys::fs::UniqueID> VisitedFiles;
-
+  std::set<std::string> VisitedFiles;
   std::set<std::string> VisitedLibs;
 
   Symbol *addUndefined(StringRef Sym);
@@ -143,8 +142,6 @@ StringRef machineToStr(MachineTypes MT);
 
 // Parses a string in the form of "<integer>[,<integer>]".
 void parseNumbers(StringRef Arg, uint64_t *Addr, uint64_t *Size = nullptr);
-
-void parseGuard(StringRef Arg);
 
 // Parses a string in the form of "<integer>[.<integer>]".
 // Minor's default value is 0.

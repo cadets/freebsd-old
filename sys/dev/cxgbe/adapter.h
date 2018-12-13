@@ -41,6 +41,7 @@
 #include <sys/malloc.h>
 #include <sys/rwlock.h>
 #include <sys/sx.h>
+#include <sys/vmem.h>
 #include <vm/uma.h>
 
 #include <dev/pci/pcivar.h>
@@ -81,6 +82,8 @@ prefetch(void *x)
 #define CTLTYPE_U64 CTLTYPE_QUAD
 #endif
 
+SYSCTL_DECL(_hw_cxgbe);
+
 struct adapter;
 typedef struct adapter adapter_t;
 
@@ -113,6 +116,7 @@ enum {
 	SGE_MAX_WR_NDESC = SGE_MAX_WR_LEN / EQ_ESIZE, /* max WR size in desc */
 	TX_SGL_SEGS = 39,
 	TX_SGL_SEGS_TSO = 38,
+	TX_SGL_SEGS_EO_TSO = 30,	/* XXX: lower for IPv6. */
 	TX_WR_FLITS = SGE_MAX_WR_LEN / 8
 };
 
@@ -170,6 +174,7 @@ enum {
 	DF_DUMP_MBOX		= (1 << 0),	/* Log all mbox cmd/rpl. */
 	DF_LOAD_FW_ANYTIME	= (1 << 1),	/* Allow LOAD_FW after init */
 	DF_DISABLE_TCB_CACHE	= (1 << 2),	/* Disable TCB cache (T6+) */
+	DF_DISABLE_CFG_RETRY	= (1 << 3),	/* Disable fallback config */
 };
 
 #define IS_DOOMED(vi)	((vi)->flags & DOOMED)
@@ -193,6 +198,7 @@ struct vi_info {
 	int16_t  xact_addr_filt;/* index of exact MAC address filter */
 	uint16_t rss_size;	/* size of VI's RSS table slice */
 	uint16_t rss_base;	/* start of VI's RSS table slice */
+	int hashen;
 
 	int nintr;
 	int first_intr;
@@ -289,7 +295,6 @@ struct port_info {
 	uint8_t  rx_e_chan_map;	/* rx TP e-channel bitmap */
 
 	struct link_config link_cfg;
-	struct link_config old_link_cfg;
 	struct ifmedia media;
 
 	struct timeval last_refreshed;
@@ -573,6 +578,7 @@ struct sge_txq {
 	uint64_t txpkts1_wrs;	/* # of type1 coalesced tx work requests */
 	uint64_t txpkts0_pkts;	/* # of frames in type0 coalesced tx WRs */
 	uint64_t txpkts1_pkts;	/* # of frames in type1 coalesced tx WRs */
+	uint64_t raw_wrs;	/* # of raw work requests (alloc_wr_mbuf) */
 
 	/* stats for not-that-common events */
 } __aligned(CACHE_LINE_SIZE);
@@ -766,6 +772,8 @@ struct devnames {
 	const char *vf_ifnet_name;
 };
 
+struct clip_entry;
+
 struct adapter {
 	SLIST_ENTRY(adapter) link;
 	device_t dev;
@@ -812,6 +820,10 @@ struct adapter {
 	struct port_info *port[MAX_NPORTS];
 	uint8_t chan_map[MAX_NCHAN];		/* channel -> port */
 
+	struct mtx clip_table_lock;
+	TAILQ_HEAD(, clip_entry) clip_table;
+	int clip_gen;
+
 	void *tom_softc;	/* (struct tom_data *) */
 	struct tom_tunables tt;
 	struct t4_offload_policy *policy;
@@ -824,6 +836,7 @@ struct adapter {
 	struct l2t_data *l2t;	/* L2 table */
 	struct smt_data *smt;	/* Source MAC Table */
 	struct tid_info tids;
+	vmem_t *key_map;
 
 	uint8_t doorbells;
 	int offload_map;	/* ports with IFCAP_TOE enabled */
@@ -1073,52 +1086,6 @@ t4_os_set_hw_addr(struct port_info *pi, uint8_t hw_addr[])
 	bcopy(hw_addr, pi->vi[0].hw_addr, ETHER_ADDR_LEN);
 }
 
-static inline bool
-is_10G_port(const struct port_info *pi)
-{
-
-	return ((pi->link_cfg.supported & FW_PORT_CAP_SPEED_10G) != 0);
-}
-
-static inline bool
-is_25G_port(const struct port_info *pi)
-{
-
-	return ((pi->link_cfg.supported & FW_PORT_CAP_SPEED_25G) != 0);
-}
-
-static inline bool
-is_40G_port(const struct port_info *pi)
-{
-
-	return ((pi->link_cfg.supported & FW_PORT_CAP_SPEED_40G) != 0);
-}
-
-static inline bool
-is_100G_port(const struct port_info *pi)
-{
-
-	return ((pi->link_cfg.supported & FW_PORT_CAP_SPEED_100G) != 0);
-}
-
-static inline int
-port_top_speed(const struct port_info *pi)
-{
-
-	if (pi->link_cfg.supported & FW_PORT_CAP_SPEED_100G)
-		return (100);
-	if (pi->link_cfg.supported & FW_PORT_CAP_SPEED_40G)
-		return (40);
-	if (pi->link_cfg.supported & FW_PORT_CAP_SPEED_25G)
-		return (25);
-	if (pi->link_cfg.supported & FW_PORT_CAP_SPEED_10G)
-		return (10);
-	if (pi->link_cfg.supported & FW_PORT_CAP_SPEED_1G)
-		return (1);
-
-	return (0);
-}
-
 static inline int
 tx_resume_threshold(struct sge_eq *eq)
 {
@@ -1180,6 +1147,8 @@ int alloc_atid(struct adapter *, void *);
 void *lookup_atid(struct adapter *, int);
 void free_atid(struct adapter *, int);
 void release_tid(struct adapter *, int, struct sge_wrq *);
+int cxgbe_media_change(struct ifnet *);
+void cxgbe_media_status(struct ifnet *, struct ifmediareq *);
 
 #ifdef DEV_NETMAP
 /* t4_netmap.c */
@@ -1213,6 +1182,7 @@ void t4_intr_err(void *);
 void t4_intr_evt(void *);
 void t4_wrq_tx_locked(struct adapter *, struct sge_wrq *, struct wrqe *);
 void t4_update_fl_bufsize(struct ifnet *);
+struct mbuf *alloc_wr_mbuf(int, int);
 int parse_pkt(struct adapter *, struct mbuf **);
 void *start_wrq_wr(struct sge_wrq *, int, struct wrq_cookie *);
 void commit_wrq_wr(struct sge_wrq *, void *, struct wrq_cookie *);

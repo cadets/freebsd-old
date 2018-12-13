@@ -148,6 +148,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/intr_machdep.h>
 #include <x86/apicvar.h>
 #endif
+#include <x86/ifunc.h>
 #include <machine/bootinfo.h>
 #include <machine/cpu.h>
 #include <machine/cputypes.h>
@@ -314,6 +315,10 @@ static vm_page_t pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va,
     vm_page_t m, vm_prot_t prot, vm_page_t mpte);
 static void pmap_flush_page(vm_page_t m);
 static int pmap_insert_pt_page(pmap_t pmap, vm_page_t mpte);
+static void pmap_invalidate_cache_range_selfsnoop(vm_offset_t sva,
+    vm_offset_t eva);
+static void pmap_invalidate_cache_range_all(vm_offset_t sva,
+    vm_offset_t eva);
 static void pmap_invalidate_pde_page(pmap_t pmap, vm_offset_t va,
 		    pd_entry_t pde);
 static void pmap_fill_ptp(pt_entry_t *firstpte, pt_entry_t newpte);
@@ -574,7 +579,10 @@ pmap_bootstrap(vm_paddr_t firstaddr)
 	vm_offset_t va;
 	pt_entry_t *pte, *unused;
 	struct pcpu *pc;
+	u_long res;
 	int i;
+
+	res = atop(firstaddr - (vm_paddr_t)KERNLOAD);
 
 	/*
 	 * Add a physical memory segment (vm_phys_seg) corresponding to the
@@ -593,11 +601,12 @@ pmap_bootstrap(vm_paddr_t firstaddr)
 	 * unused virtual address in addition to "firstaddr".
 	 */
 	virtual_avail = (vm_offset_t)firstaddr;
-
 	virtual_end = VM_MAX_KERNEL_ADDRESS;
 
 	/*
 	 * Initialize the kernel pmap (which is statically allocated).
+	 * Count bootstrap data as being resident in case any of this data is
+	 * later unmapped (using pmap_remove()) and freed.
 	 */
 	PMAP_LOCK_INIT(kernel_pmap);
 	kernel_pmap->pm_pdir = IdlePTD;
@@ -605,6 +614,7 @@ pmap_bootstrap(vm_paddr_t firstaddr)
 	kernel_pmap->pm_pdpt = IdlePDPT;
 #endif
 	CPU_FILL(&kernel_pmap->pm_active);	/* don't allow deactivation */
+	kernel_pmap->pm_stats.resident_count = res;
 	TAILQ_INIT(&kernel_pmap->pm_pvchunk);
 
  	/*
@@ -854,8 +864,8 @@ pmap_pdpt_allocf(uma_zone_t zone, vm_size_t bytes, int domain, uint8_t *flags,
 
 	/* Inform UMA that this allocator uses kernel_map/object. */
 	*flags = UMA_SLAB_KERNEL;
-	return ((void *)kmem_alloc_contig_domain(domain, bytes, wait, 0x0ULL,
-	    0xffffffffULL, 1, 0, VM_MEMATTR_DEFAULT));
+	return ((void *)kmem_alloc_contig_domainset(DOMAINSET_FIXED(domain),
+	    bytes, wait, 0x0ULL, 0xffffffffULL, 1, 0, VM_MEMATTR_DEFAULT));
 }
 #endif
 
@@ -998,8 +1008,7 @@ pmap_init(void)
 	 */
 	s = (vm_size_t)(pv_npg * sizeof(struct md_page));
 	s = round_page(s);
-	pv_table = (struct md_page *)kmem_malloc(kernel_arena, s,
-	    M_WAITOK | M_ZERO);
+	pv_table = (struct md_page *)kmem_malloc(s, M_WAITOK | M_ZERO);
 	for (i = 0; i < pv_npg; i++)
 		TAILQ_INIT(&pv_table[i].pv_list);
 
@@ -1408,37 +1417,64 @@ pmap_invalidate_pde_page(pmap_t pmap, vm_offset_t va, pd_entry_t pde)
 		pmap_invalidate_page(pmap, va);
 }
 
-#define	PMAP_CLFLUSH_THRESHOLD	(2 * 1024 * 1024)
-
-void
-pmap_invalidate_cache_range(vm_offset_t sva, vm_offset_t eva, boolean_t force)
+DEFINE_IFUNC(, void, pmap_invalidate_cache_range, (vm_offset_t, vm_offset_t),
+    static)
 {
 
-	if (force) {
-		sva &= ~(vm_offset_t)(cpu_clflush_line_size - 1);
-	} else {
-		KASSERT((sva & PAGE_MASK) == 0,
-		    ("pmap_invalidate_cache_range: sva not page-aligned"));
-		KASSERT((eva & PAGE_MASK) == 0,
-		    ("pmap_invalidate_cache_range: eva not page-aligned"));
+	if ((cpu_feature & CPUID_SS) != 0)
+		return (pmap_invalidate_cache_range_selfsnoop);
+	if ((cpu_feature & CPUID_CLFSH) != 0)
+		return (pmap_force_invalidate_cache_range);
+	return (pmap_invalidate_cache_range_all);
+}
+
+#define	PMAP_CLFLUSH_THRESHOLD	(2 * 1024 * 1024)
+
+static void
+pmap_invalidate_cache_range_check_align(vm_offset_t sva, vm_offset_t eva)
+{
+
+	KASSERT((sva & PAGE_MASK) == 0,
+	    ("pmap_invalidate_cache_range: sva not page-aligned"));
+	KASSERT((eva & PAGE_MASK) == 0,
+	    ("pmap_invalidate_cache_range: eva not page-aligned"));
+}
+
+static void
+pmap_invalidate_cache_range_selfsnoop(vm_offset_t sva, vm_offset_t eva)
+{
+
+	pmap_invalidate_cache_range_check_align(sva, eva);
+}
+
+void
+pmap_force_invalidate_cache_range(vm_offset_t sva, vm_offset_t eva)
+{
+
+	sva &= ~(vm_offset_t)(cpu_clflush_line_size - 1);
+	if (eva - sva >= PMAP_CLFLUSH_THRESHOLD) {
+		/*
+		 * The supplied range is bigger than 2MB.
+		 * Globally invalidate cache.
+		 */
+		pmap_invalidate_cache();
+		return;
 	}
 
-	if ((cpu_feature & CPUID_SS) != 0 && !force)
-		; /* If "Self Snoop" is supported and allowed, do nothing. */
-	else if ((cpu_stdext_feature & CPUID_STDEXT_CLFLUSHOPT) != 0 &&
-	    eva - sva < PMAP_CLFLUSH_THRESHOLD) {
 #ifdef DEV_APIC
-		/*
-		 * XXX: Some CPUs fault, hang, or trash the local APIC
-		 * registers if we use CLFLUSH on the local APIC
-		 * range.  The local APIC is always uncached, so we
-		 * don't need to flush for that range anyway.
-		 */
-		if (pmap_kextract(sva) == lapic_paddr)
-			return;
+	/*
+	 * XXX: Some CPUs fault, hang, or trash the local APIC
+	 * registers if we use CLFLUSH on the local APIC
+	 * range.  The local APIC is always uncached, so we
+	 * don't need to flush for that range anyway.
+	 */
+	if (pmap_kextract(sva) == lapic_paddr)
+		return;
 #endif
+
+	if ((cpu_stdext_feature & CPUID_STDEXT_CLFLUSHOPT) != 0) {
 		/*
-		 * Otherwise, do per-cache line flush.  Use the sfence
+		 * Do per-cache line flush.  Use the sfence
 		 * instruction to insure that previous stores are
 		 * included in the write-back.  The processor
 		 * propagates flush to other processors in the cache
@@ -1448,12 +1484,7 @@ pmap_invalidate_cache_range(vm_offset_t sva, vm_offset_t eva, boolean_t force)
 		for (; sva < eva; sva += cpu_clflush_line_size)
 			clflushopt(sva);
 		sfence();
-	} else if ((cpu_feature & CPUID_CLFSH) != 0 &&
-	    eva - sva < PMAP_CLFLUSH_THRESHOLD) {
-#ifdef DEV_APIC
-		if (pmap_kextract(sva) == lapic_paddr)
-			return;
-#endif
+	} else {
 		/*
 		 * Writes are ordered by CLFLUSH on Intel CPUs.
 		 */
@@ -1463,15 +1494,15 @@ pmap_invalidate_cache_range(vm_offset_t sva, vm_offset_t eva, boolean_t force)
 			clflush(sva);
 		if (cpu_vendor_id != CPU_VENDOR_INTEL)
 			mfence();
-	} else {
-
-		/*
-		 * No targeted cache flush methods are supported by CPU,
-		 * or the supplied range is bigger than 2MB.
-		 * Globally invalidate cache.
-		 */
-		pmap_invalidate_cache();
 	}
+}
+
+static void
+pmap_invalidate_cache_range_all(vm_offset_t sva, vm_offset_t eva)
+{
+
+	pmap_invalidate_cache_range_check_align(sva, eva);
+	pmap_invalidate_cache();
 }
 
 void
@@ -2001,9 +2032,9 @@ pmap_pinit0(pmap_t pmap)
 #endif
 	pmap->pm_root.rt_root = 0;
 	CPU_ZERO(&pmap->pm_active);
-	PCPU_SET(curpmap, pmap);
 	TAILQ_INIT(&pmap->pm_pvchunk);
 	bzero(&pmap->pm_stats, sizeof pmap->pm_stats);
+	pmap_activate_boot(pmap);
 }
 
 /*
@@ -2230,13 +2261,13 @@ pmap_growkernel(vm_offset_t addr)
 
 	mtx_assert(&kernel_map->system_mtx, MA_OWNED);
 	addr = roundup2(addr, NBPDR);
-	if (addr - 1 >= kernel_map->max_offset)
-		addr = kernel_map->max_offset;
+	if (addr - 1 >= vm_map_max(kernel_map))
+		addr = vm_map_max(kernel_map);
 	while (kernel_vm_end < addr) {
 		if (pdir_pde(PTD, kernel_vm_end)) {
 			kernel_vm_end = (kernel_vm_end + NBPDR) & ~PDRMASK;
-			if (kernel_vm_end - 1 >= kernel_map->max_offset) {
-				kernel_vm_end = kernel_map->max_offset;
+			if (kernel_vm_end - 1 >= vm_map_max(kernel_map)) {
+				kernel_vm_end = vm_map_max(kernel_map);
 				break;
 			}
 			continue;
@@ -2258,8 +2289,8 @@ pmap_growkernel(vm_offset_t addr)
 
 		pmap_kenter_pde(kernel_vm_end, newpdir);
 		kernel_vm_end = (kernel_vm_end + NBPDR) & ~PDRMASK;
-		if (kernel_vm_end - 1 >= kernel_map->max_offset) {
-			kernel_vm_end = kernel_map->max_offset;
+		if (kernel_vm_end - 1 >= vm_map_max(kernel_map)) {
+			kernel_vm_end = vm_map_max(kernel_map);
 			break;
 		}
 	}
@@ -2537,7 +2568,7 @@ get_pv_entry(pmap_t pmap, boolean_t try)
 		if (ratecheck(&lastprint, &printinterval))
 			printf("Approaching the limit on PV entries, consider "
 			    "increasing either the vm.pmap.shpgperproc or the "
-			    "vm.pmap.pv_entry_max tunable.\n");
+			    "vm.pmap.pv_entries tunable.\n");
 retry:
 	pc = TAILQ_FIRST(&pmap->pm_pvchunk);
 	if (pc != NULL) {
@@ -2977,15 +3008,6 @@ pmap_remove_pde(pmap_t pmap, pd_entry_t *pdq, vm_offset_t sva,
 	/*
 	 * Machines that don't support invlpg, also don't support
 	 * PG_G.
-	 *
-	 * When workaround_erratum383 is false, a promotion to a 2M/4M
-	 * page mapping does not invalidate the 512/1024 4K page mappings
-	 * from the TLB.  Consequently, at this point, the TLB may
-	 * hold both 4K and 2M/4M page mappings.  Therefore, the entire
-	 * range of addresses must be invalidated here.  In contrast,
-	 * when workaround_erratum383 is true, a promotion does
-	 * invalidate the 512/1024 4K page mappings, and so a single INVLPG
-	 * suffices to invalidate the 2M/4M page mapping.
 	 */
 	if ((oldpde & PG_G) != 0)
 		pmap_invalidate_pde_page(kernel_pmap, sva, oldpde);
@@ -3798,6 +3820,8 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_prot_t prot,
 			if ((origpte & PG_A) != 0)
 				vm_page_aflag_set(om, PGA_REFERENCED);
 			pv = pmap_pvh_remove(&om->md, pmap, va);
+			KASSERT(pv != NULL,
+			    ("pmap_enter: no PV entry for %#x", va));
 			if ((newpte & PG_MANAGED) == 0)
 				free_pv_entry(pmap, pv);
 			if ((om->aflags & PGA_WRITEABLE) != 0 &&
@@ -5489,7 +5513,7 @@ pmap_mapdev_attr(vm_paddr_t pa, vm_size_t size, int mode)
 	for (tmpsize = 0; tmpsize < size; tmpsize += PAGE_SIZE)
 		pmap_kenter_attr(va + tmpsize, pa + tmpsize, mode);
 	pmap_invalidate_range(kernel_pmap, va, va + tmpsize);
-	pmap_invalidate_cache_range(va, va + size, FALSE);
+	pmap_invalidate_cache_range(va, va + size);
 	return ((void *)(va + offset));
 }
 
@@ -5728,7 +5752,7 @@ pmap_change_attr(vm_offset_t va, vm_size_t size, int mode)
 	 */
 	if (changed) {
 		pmap_invalidate_range(kernel_pmap, base, tmpva);
-		pmap_invalidate_cache_range(base, tmpva, FALSE);
+		pmap_invalidate_cache_range(base, tmpva);
 	}
 	return (0);
 }
@@ -5812,6 +5836,20 @@ pmap_activate(struct thread *td)
 	td->td_pcb->pcb_cr3 = cr3;
 	PCPU_SET(curpmap, pmap);
 	critical_exit();
+}
+
+void
+pmap_activate_boot(pmap_t pmap)
+{
+	u_int cpuid;
+
+	cpuid = PCPU_GET(cpuid);
+#if defined(SMP)
+	CPU_SET_ATOMIC(cpuid, &pmap->pm_active);
+#else
+	CPU_SET(cpuid, &pmap->pm_active);
+#endif
+	PCPU_SET(curpmap, pmap);
 }
 
 void

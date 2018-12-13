@@ -20,7 +20,7 @@ namespace lld {
 class SimpleFile;
 class Pass;
 
-/// Owns and runs a collection of passes.
+/// \brief Owns and runs a collection of passes.
 ///
 /// This class is currently just a container for passes and a way to run them.
 ///
@@ -40,7 +40,7 @@ public:
   }
 
 private:
-  /// Passes in the order they should run.
+  /// \brief Passes in the order they should run.
   std::vector<std::unique_ptr<Pass>> _passes;
 };
 } // end namespace lld

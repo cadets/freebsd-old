@@ -741,7 +741,7 @@ capdns_setup(void)
 	if (capdnsloc == NULL)
 		error("unable to open system.dns service");
 	/* Limit system.dns to reverse DNS lookups. */
-	types[0] = "ADDR";
+	types[0] = "ADDR2NAME";
 	if (cap_dns_type_limit(capdnsloc, types, 1) < 0)
 		error("unable to limit access to system.dns service");
 	families[0] = AF_INET;
@@ -2069,6 +2069,9 @@ main(int argc, char **argv)
 #else
 	cansandbox = (cansandbox && ndo->ndo_nflag);
 #endif	/* HAVE_CASPER */
+	cansandbox = (cansandbox && (pcap_fileno(pd) != -1 ||
+	    RFileName != NULL));
+
 	if (cansandbox && cap_enter() < 0 && errno != ENOSYS)
 		error("unable to enter the capability mode");
 #endif	/* HAVE_CAPSICUM */

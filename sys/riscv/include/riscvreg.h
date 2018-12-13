@@ -157,10 +157,31 @@
 
 #define	XLEN		8
 #define	INSN_SIZE	4
+#define	INSN_C_SIZE	2
 
-#define	RISCV_INSN_NOP		0x00000013
-#define	RISCV_INSN_BREAK	0x00100073
-#define	RISCV_INSN_RET		0x00008067
+#define	X_RA	1
+#define	X_SP	2
+#define	X_GP	3
+#define	X_TP	4
+#define	X_T0	5
+#define	X_T1	6
+#define	X_T2	7
+#define	X_T3	28
+
+#define	RD_SHIFT	7
+#define	RD_MASK		(0x1f << RD_SHIFT)
+#define	RS1_SHIFT	15
+#define	RS1_MASK	(0x1f << RS1_SHIFT)
+#define	RS1_SP		(X_SP << RS1_SHIFT)
+#define	RS2_SHIFT	20
+#define	RS2_MASK	(0x1f << RS2_SHIFT)
+#define	RS2_RA		(X_RA << RS2_SHIFT)
+#define	IMM_SHIFT	20
+#define	IMM_MASK	(0xfff << IMM_SHIFT)
+
+#define	RS2_C_SHIFT	2
+#define	RS2_C_MASK	(0x1f << RS2_C_SHIFT)
+#define	RS2_C_RA	(X_RA << RS2_C_SHIFT)
 
 #define	CSR_ZIMM(val)							\
 	(__builtin_constant_p(val) && ((u_long)(val) < 32))
@@ -201,5 +222,24 @@
 	__asm __volatile("csrr %0, " #csr : "=r" (val));		\
 	val;								\
 })
+
+#if __riscv_xlen == 32
+#define	csr_read64(csr)							\
+({	uint64_t val;							\
+	uint32_t high, low;						\
+	__asm __volatile("1: "						\
+			 "csrr t0, " #csr "h\n"				\
+			 "csrr %0, " #csr "\n"				\
+			 "csrr %1, " #csr "h\n"				\
+			 "bne t0, %1, 1b"				\
+			 : "=r" (low), "=r" (high)			\
+			 :						\
+			 : "t0");					\
+	val = (low | ((uint64_t)high << 32));				\
+	val;								\
+})
+#else
+#define	csr_read64(csr)		((uint64_t)csr_read(csr))
+#endif
 
 #endif /* !_MACHINE_RISCVREG_H_ */

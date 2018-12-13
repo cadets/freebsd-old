@@ -800,7 +800,7 @@ findpcb:
 	if (ti_locked == TI_RLOCKED) {
 		INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 	} else {
-		INP_INFO_UNLOCK_ASSERT(&V_tcbinfo);
+		INP_INFO_WUNLOCK_ASSERT(&V_tcbinfo);
 	}
 #endif
 #ifdef INET6
@@ -1051,6 +1051,8 @@ findpcb:
 #ifdef INET6
 		if (isipv6) {
 			inc.inc_flags |= INC_ISIPV6;
+			if (inp->inp_inc.inc_flags & INC_IPV6MINMTU)
+				inc.inc_flags |= INC_IPV6MINMTU;
 			inc.inc6_faddr = ip6->ip6_src;
 			inc.inc6_laddr = ip6->ip6_dst;
 		} else
@@ -1163,7 +1165,7 @@ tfo_socket_result:
 		 * causes.
 		 */
 		if (thflags & TH_RST) {
-			syncache_chkrst(&inc, th);
+			syncache_chkrst(&inc, th, m);
 			goto dropunlock;
 		}
 		/*
@@ -1356,7 +1358,7 @@ tfo_socket_result:
 			INP_INFO_RUNLOCK_ET(&V_tcbinfo, et);
 			ti_locked = TI_UNLOCKED;
 		}
-		INP_INFO_UNLOCK_ASSERT(&V_tcbinfo);
+		INP_INFO_WUNLOCK_ASSERT(&V_tcbinfo);
 		return (IPPROTO_DONE);
 	} else if (tp->t_state == TCPS_LISTEN) {
 		/*
@@ -1403,7 +1405,7 @@ dropwithreset:
 	else {
 		KASSERT(ti_locked == TI_UNLOCKED, ("%s: dropwithreset "
 		    "ti_locked: %d", __func__, ti_locked));
-		INP_INFO_UNLOCK_ASSERT(&V_tcbinfo);
+		INP_INFO_WUNLOCK_ASSERT(&V_tcbinfo);
 	}
 #endif
 
@@ -1427,7 +1429,7 @@ dropunlock:
 	else {
 		KASSERT(ti_locked == TI_UNLOCKED, ("%s: dropunlock "
 		    "ti_locked: %d", __func__, ti_locked));
-		INP_INFO_UNLOCK_ASSERT(&V_tcbinfo);
+		INP_INFO_WUNLOCK_ASSERT(&V_tcbinfo);
 	}
 #endif
 
@@ -1435,7 +1437,7 @@ dropunlock:
 		INP_WUNLOCK(inp);
 
 drop:
-	INP_INFO_UNLOCK_ASSERT(&V_tcbinfo);
+	INP_INFO_WUNLOCK_ASSERT(&V_tcbinfo);
 	if (s != NULL)
 		free(s, M_TCPLOG);
 	if (m != NULL)
@@ -1734,7 +1736,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	    tp->snd_nxt == tp->snd_max &&
 	    tiwin && tiwin == tp->snd_wnd && 
 	    ((tp->t_flags & (TF_NEEDSYN|TF_NEEDFIN)) == 0) &&
-	    LIST_EMPTY(&tp->t_segq) &&
+	    SEGQ_EMPTY(tp) &&
 	    ((to.to_flags & TOF_TS) == 0 ||
 	     TSTMP_GEQ(to.to_tsval, tp->ts_recent)) ) {
 
@@ -2440,7 +2442,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 		 * later; if not, do so now to pass queued data to user.
 		 */
 		if (tlen == 0 && (thflags & TH_FIN) == 0)
-			(void) tcp_reass(tp, (struct tcphdr *)0, 0,
+			(void) tcp_reass(tp, (struct tcphdr *)0, NULL, 0,
 			    (struct mbuf *)0);
 		tp->snd_wl1 = th->th_seq - 1;
 		/* FALLTHROUGH */
@@ -3017,7 +3019,7 @@ dodata:							/* XXX */
 		 * fast retransmit can work).
 		 */
 		if (th->th_seq == tp->rcv_nxt &&
-		    LIST_EMPTY(&tp->t_segq) &&
+		    SEGQ_EMPTY(tp) &&
 		    (TCPS_HAVEESTABLISHED(tp->t_state) ||
 		     tfo_syn)) {
 			if (DELAY_ACK(tp, tlen) || tfo_syn)
@@ -3042,7 +3044,7 @@ dodata:							/* XXX */
 			 * m_adj() doesn't actually frees any mbufs
 			 * when trimming from the head.
 			 */
-			thflags = tcp_reass(tp, th, &tlen, m);
+			thflags = tcp_reass(tp, th, &save_start, &tlen, m);
 			tp->t_flags |= TF_ACKNOW;
 		}
 		if (tlen > 0 && (tp->t_flags & TF_SACK_PERMIT))

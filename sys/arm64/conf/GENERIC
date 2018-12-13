@@ -50,7 +50,6 @@ options 	MSDOSFS			# MSDOS Filesystem
 options 	CD9660			# ISO 9660 Filesystem
 options 	PROCFS			# Process filesystem (requires PSEUDOFS)
 options 	PSEUDOFS		# Pseudo-filesystem framework
-options 	GEOM_PART_GPT		# GUID Partition Tables.
 options 	GEOM_RAID		# Soft RAID functionality.
 options 	GEOM_LABEL		# Provides labelization
 options 	COMPAT_FREEBSD32	# Incomplete, but used by cloudabi32.ko.
@@ -92,6 +91,9 @@ options 	WITNESS_SKIPSPIN	# Don't run witness on spinlocks for speed
 options 	MALLOC_DEBUG_MAXZONES=8	# Separate malloc(9) zones
 options 	ALT_BREAK_TO_DEBUGGER	# Enter debugger on keyboard escape sequence
 options 	USB_DEBUG		# enable debug msgs
+options 	VERBOSE_SYSINIT=0	# Support debug.verbose_sysinit, off by default
+# Warning: KUBSAN can result in a kernel too large for loader to load
+#options 	KUBSAN			# Kernel Undefined Behavior Sanitizer
 
 # Kernel dump features.
 options 	EKCD			# Support for encrypted kernel dumps
@@ -106,7 +108,11 @@ options 	SOC_CAVM_THUNDERX
 options 	SOC_HISI_HI6220
 options 	SOC_BRCM_BCM2837
 options 	SOC_ROCKCHIP_RK3328
+options 	SOC_ROCKCHIP_RK3399
 options 	SOC_XILINX_ZYNQ
+
+# Timer drivers
+device		a10_timer
 
 # Annapurna Alpine drivers
 device		al_ccu			# Alpine Cache Coherency Unit
@@ -188,6 +194,7 @@ device		ukbd			# Keyboard
 device		umass			# Disks/Mass storage - Requires scbus and da
 
 # USB ethernet support
+device		muge
 device		smcphy
 device		smsc
 
@@ -203,6 +210,8 @@ device		bcm2835_bsc	# Broadcom BCM283x I2C bus
 device		iicbus
 device		iic
 device		twsi		# Allwinner I2C controller
+device		rk_i2c		# RockChip I2C controller
+device		syr827		# Silergy SYR827 PMIC
 
 # Clock and reset controllers
 device		aw_ccu		# Allwinner clock controller
@@ -219,6 +228,7 @@ device		aw_wdog		# Allwinner Watchdog
 
 # Power management controllers
 device		axp81x		# X-Powers AXP81x PMIC
+device		rk805		# RockChip RK805 PMIC
 
 # EFUSE
 device		aw_sid		# Allwinner Secure ID EFUSE
@@ -235,6 +245,11 @@ device		vt
 device		kbdmux
 
 device		vt_efifb
+
+# EVDEV support
+device		evdev			# input event device support
+options		EVDEV_SUPPORT		# evdev support in legacy drivers
+device		uinput			# install /dev/uinput cdev
 
 # Pseudo devices.
 device		crypto		# core crypto support
@@ -256,6 +271,7 @@ device		hwreset
 device		nvmem
 device		regulator
 device		syscon
+device		aw_syscon
 
 # The `bpf' device enables the Berkeley Packet Filter.
 # Be aware of the administrative consequences of enabling this!
@@ -267,3 +283,6 @@ options 	THUNDERX_PASS_1_1_ERRATA
 
 options 	FDT
 device		acpi
+
+# DTBs
+makeoptions	MODULES_EXTRA="dtb/allwinner dtb/rockchip"

@@ -236,7 +236,7 @@ fill_fpregs(struct thread *td, struct fpreg *regs)
 		regs->fp_sr = pcb->pcb_fpustate.vfp_fpsr;
 	} else
 #endif
-		memset(regs->fp_q, 0, sizeof(regs->fp_q));
+		memset(regs, 0, sizeof(*regs));
 	return (0);
 }
 
@@ -656,13 +656,14 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	fp = (struct sigframe *)STACKALIGN(fp);
 
 	/* Fill in the frame to copy out */
+	bzero(&frame, sizeof(frame));
 	get_mcontext(td, &frame.sf_uc.uc_mcontext, 0);
 	get_fpcontext(td, &frame.sf_uc.uc_mcontext);
 	frame.sf_si = ksi->ksi_info;
 	frame.sf_uc.uc_sigmask = *mask;
-	frame.sf_uc.uc_stack.ss_flags = (td->td_pflags & TDP_ALTSTACK) ?
-	    ((onstack) ? SS_ONSTACK : 0) : SS_DISABLE;
 	frame.sf_uc.uc_stack = td->td_sigstk;
+	frame.sf_uc.uc_stack.ss_flags = (td->td_pflags & TDP_ALTSTACK) != 0 ?
+	    (onstack ? SS_ONSTACK : 0) : SS_DISABLE;
 	mtx_unlock(&psp->ps_mtx);
 	PROC_UNLOCK(td->td_proc);
 
@@ -982,6 +983,7 @@ cache_setup(void)
 void
 initarm(struct arm64_bootparams *abp)
 {
+	struct efi_fb *efifb;
 	struct efi_map_header *efihdr;
 	struct pcpu *pcpup;
 	char *env;
@@ -1003,6 +1005,7 @@ initarm(struct arm64_bootparams *abp)
 
 	boothowto = MD_FETCH(kmdp, MODINFOMD_HOWTO, int);
 	init_static_kenv(MD_FETCH(kmdp, MODINFOMD_ENVP, char *), 0);
+	link_elf_ireloc(kmdp);
 
 #ifdef FDT
 	try_load_dtb(kmdp);
@@ -1030,6 +1033,13 @@ initarm(struct arm64_bootparams *abp)
 		arm_physmem_exclude_regions(mem_regions, mem_regions_sz,
 		    EXFLAG_NODUMP | EXFLAG_NOALLOC);
 #endif
+
+	/* Exclude the EFI framebuffer from our view of physical memory. */
+	efifb = (struct efi_fb *)preload_search_info(kmdp,
+	    MODINFO_METADATA | MODINFOMD_EFI_FB);
+	if (efifb != NULL)
+		arm_physmem_exclude_region(efifb->fb_addr, efifb->fb_size,
+		    EXFLAG_NOALLOC);
 
 	/* Set the pcpu data, this is needed by pmap_bootstrap */
 	pcpup = &__pcpu[0];

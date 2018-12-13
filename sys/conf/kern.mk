@@ -40,10 +40,6 @@ CWARNEXTRA+=	-Wno-address-of-packed-member
 .endif
 
 CLANG_NO_IAS= -no-integrated-as
-.if ${COMPILER_VERSION} < 30500
-# XXX: clang < 3.5 integrated-as doesn't grok .codeNN directives
-CLANG_NO_IAS34= -no-integrated-as
-.endif
 .endif
 
 .if ${COMPILER_TYPE} == "gcc"
@@ -132,7 +128,7 @@ INLINE_LIMIT?=	8000
 .endif
 
 .if ${MACHINE_CPUARCH} == "riscv"
-CFLAGS.gcc+=	-mcmodel=medany -march=rv64imafd -mabi=lp64
+CFLAGS.gcc+=	-mcmodel=medany -march=rv64imafdc -mabi=lp64
 INLINE_LIMIT?=	8000
 .endif
 

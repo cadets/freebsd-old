@@ -15,8 +15,6 @@
 #if CAN_SANITIZE_UB
 #include "ubsan_handlers.h"
 #include "ubsan_diag.h"
-#include "ubsan_flags.h"
-#include "ubsan_monitor.h"
 
 #include "sanitizer_common/sanitizer_common.h"
 
@@ -72,17 +70,17 @@ static void handleTypeMismatchImpl(TypeMismatchData *Data, ValueHandle Pointer,
 
   switch (ET) {
   case ErrorType::NullPointerUse:
-    Diag(Loc, DL_Error, ET, "%0 null pointer of type %1")
+    Diag(Loc, DL_Error, "%0 null pointer of type %1")
         << TypeCheckKinds[Data->TypeCheckKind] << Data->Type;
     break;
   case ErrorType::MisalignedPointerUse:
-    Diag(Loc, DL_Error, ET, "%0 misaligned address %1 for type %3, "
+    Diag(Loc, DL_Error, "%0 misaligned address %1 for type %3, "
                         "which requires %2 byte alignment")
         << TypeCheckKinds[Data->TypeCheckKind] << (void *)Pointer << Alignment
         << Data->Type;
     break;
   case ErrorType::InsufficientObjectSize:
-    Diag(Loc, DL_Error, ET, "%0 address %1 with insufficient space "
+    Diag(Loc, DL_Error, "%0 address %1 with insufficient space "
                         "for an object of type %2")
         << TypeCheckKinds[Data->TypeCheckKind] << (void *)Pointer << Data->Type;
     break;
@@ -91,7 +89,7 @@ static void handleTypeMismatchImpl(TypeMismatchData *Data, ValueHandle Pointer,
   }
 
   if (Pointer)
-    Diag(Pointer, DL_Note, ET, "pointer points here");
+    Diag(Pointer, DL_Note, "pointer points here");
 }
 
 void __ubsan::__ubsan_handle_type_mismatch_v1(TypeMismatchData *Data,
@@ -119,15 +117,12 @@ static void handleIntegerOverflowImpl(OverflowData *Data, ValueHandle LHS,
   if (ignoreReport(Loc, Opts, ET))
     return;
 
-  if (!IsSigned && flags()->silence_unsigned_overflow)
-    return;
-
   ScopedReport R(Opts, Loc, ET);
 
-  Diag(Loc, DL_Error, ET, "%0 integer overflow: "
-                          "%1 %2 %3 cannot be represented in type %4")
-      << (IsSigned ? "signed" : "unsigned") << Value(Data->Type, LHS)
-      << Operator << RHS << Data->Type;
+  Diag(Loc, DL_Error, "%0 integer overflow: "
+                      "%1 %2 %3 cannot be represented in type %4")
+    << (IsSigned ? "signed" : "unsigned")
+    << Value(Data->Type, LHS) << Operator << RHS << Data->Type;
 }
 
 #define UBSAN_OVERFLOW_HANDLER(handler_name, op, unrecoverable)                \
@@ -156,18 +151,15 @@ static void handleNegateOverflowImpl(OverflowData *Data, ValueHandle OldVal,
   if (ignoreReport(Loc, Opts, ET))
     return;
 
-  if (!IsSigned && flags()->silence_unsigned_overflow)
-    return;
-
   ScopedReport R(Opts, Loc, ET);
 
   if (IsSigned)
-    Diag(Loc, DL_Error, ET,
+    Diag(Loc, DL_Error,
          "negation of %0 cannot be represented in type %1; "
          "cast to an unsigned type to negate this value to itself")
         << Value(Data->Type, OldVal) << Data->Type;
   else
-    Diag(Loc, DL_Error, ET, "negation of %0 cannot be represented in type %1")
+    Diag(Loc, DL_Error, "negation of %0 cannot be represented in type %1")
         << Value(Data->Type, OldVal) << Data->Type;
 }
 
@@ -204,12 +196,11 @@ static void handleDivremOverflowImpl(OverflowData *Data, ValueHandle LHS,
 
   switch (ET) {
   case ErrorType::SignedIntegerOverflow:
-    Diag(Loc, DL_Error, ET,
-         "division of %0 by -1 cannot be represented in type %1")
+    Diag(Loc, DL_Error, "division of %0 by -1 cannot be represented in type %1")
         << LHSVal << Data->Type;
     break;
   default:
-    Diag(Loc, DL_Error, ET, "division by zero");
+    Diag(Loc, DL_Error, "division by zero");
     break;
   }
 }
@@ -248,16 +239,15 @@ static void handleShiftOutOfBoundsImpl(ShiftOutOfBoundsData *Data,
 
   if (ET == ErrorType::InvalidShiftExponent) {
     if (RHSVal.isNegative())
-      Diag(Loc, DL_Error, ET, "shift exponent %0 is negative") << RHSVal;
+      Diag(Loc, DL_Error, "shift exponent %0 is negative") << RHSVal;
     else
-      Diag(Loc, DL_Error, ET,
-           "shift exponent %0 is too large for %1-bit type %2")
+      Diag(Loc, DL_Error, "shift exponent %0 is too large for %1-bit type %2")
           << RHSVal << Data->LHSType.getIntegerBitWidth() << Data->LHSType;
   } else {
     if (LHSVal.isNegative())
-      Diag(Loc, DL_Error, ET, "left shift of negative value %0") << LHSVal;
+      Diag(Loc, DL_Error, "left shift of negative value %0") << LHSVal;
     else
-      Diag(Loc, DL_Error, ET,
+      Diag(Loc, DL_Error,
            "left shift of %0 by %1 places cannot be represented in type %2")
           << LHSVal << RHSVal << Data->LHSType;
   }
@@ -289,7 +279,7 @@ static void handleOutOfBoundsImpl(OutOfBoundsData *Data, ValueHandle Index,
   ScopedReport R(Opts, Loc, ET);
 
   Value IndexVal(Data->IndexType, Index);
-  Diag(Loc, DL_Error, ET, "index %0 out of bounds for type %1")
+  Diag(Loc, DL_Error, "index %0 out of bounds for type %1")
     << IndexVal << Data->ArrayType;
 }
 
@@ -307,10 +297,8 @@ void __ubsan::__ubsan_handle_out_of_bounds_abort(OutOfBoundsData *Data,
 
 static void handleBuiltinUnreachableImpl(UnreachableData *Data,
                                          ReportOptions Opts) {
-  ErrorType ET = ErrorType::UnreachableCall;
-  ScopedReport R(Opts, Data->Loc, ET);
-  Diag(Data->Loc, DL_Error, ET,
-       "execution reached an unreachable program point");
+  ScopedReport R(Opts, Data->Loc, ErrorType::UnreachableCall);
+  Diag(Data->Loc, DL_Error, "execution reached an unreachable program point");
 }
 
 void __ubsan::__ubsan_handle_builtin_unreachable(UnreachableData *Data) {
@@ -320,9 +308,8 @@ void __ubsan::__ubsan_handle_builtin_unreachable(UnreachableData *Data) {
 }
 
 static void handleMissingReturnImpl(UnreachableData *Data, ReportOptions Opts) {
-  ErrorType ET = ErrorType::MissingReturn;
-  ScopedReport R(Opts, Data->Loc, ET);
-  Diag(Data->Loc, DL_Error, ET,
+  ScopedReport R(Opts, Data->Loc, ErrorType::MissingReturn);
+  Diag(Data->Loc, DL_Error,
        "execution reached the end of a value-returning function "
        "without returning a value");
 }
@@ -343,9 +330,9 @@ static void handleVLABoundNotPositive(VLABoundData *Data, ValueHandle Bound,
 
   ScopedReport R(Opts, Loc, ET);
 
-  Diag(Loc, DL_Error, ET, "variable length array bound evaluates to "
-                          "non-positive value %0")
-      << Value(Data->Type, Bound);
+  Diag(Loc, DL_Error, "variable length array bound evaluates to "
+                      "non-positive value %0")
+    << Value(Data->Type, Bound);
 }
 
 void __ubsan::__ubsan_handle_vla_bound_not_positive(VLABoundData *Data,
@@ -403,7 +390,7 @@ static void handleFloatCastOverflow(void *DataPtr, ValueHandle From,
 
   ScopedReport R(Opts, Loc, ET);
 
-  Diag(Loc, DL_Error, ET,
+  Diag(Loc, DL_Error,
        "%0 is outside the range of representable values of type %2")
       << Value(*FromType, From) << *FromType << *ToType;
 }
@@ -434,9 +421,9 @@ static void handleLoadInvalidValue(InvalidValueData *Data, ValueHandle Val,
 
   ScopedReport R(Opts, Loc, ET);
 
-  Diag(Loc, DL_Error, ET,
+  Diag(Loc, DL_Error,
        "load of value %0, which is not a valid value for type %1")
-      << Value(Data->Type, Val) << Data->Type;
+    << Value(Data->Type, Val) << Data->Type;
 }
 
 void __ubsan::__ubsan_handle_load_invalid_value(InvalidValueData *Data,
@@ -451,49 +438,6 @@ void __ubsan::__ubsan_handle_load_invalid_value_abort(InvalidValueData *Data,
   Die();
 }
 
-static void handleImplicitConversion(ImplicitConversionData *Data,
-                                     ReportOptions Opts, ValueHandle Src,
-                                     ValueHandle Dst) {
-  SourceLocation Loc = Data->Loc.acquire();
-  ErrorType ET = ErrorType::GenericUB;
-
-  switch (Data->Kind) {
-  case ICCK_IntegerTruncation:
-    ET = ErrorType::ImplicitIntegerTruncation;
-    break;
-  }
-
-  if (ignoreReport(Loc, Opts, ET))
-    return;
-
-  const TypeDescriptor &SrcTy = Data->FromType;
-  const TypeDescriptor &DstTy = Data->ToType;
-
-  ScopedReport R(Opts, Loc, ET);
-
-  // FIXME: is it possible to dump the values as hex with fixed width?
-
-  Diag(Loc, DL_Error, ET,
-       "implicit conversion from type %0 of value %1 (%2-bit, %3signed) to "
-       "type %4 changed the value to %5 (%6-bit, %7signed)")
-      << SrcTy << Value(SrcTy, Src) << SrcTy.getIntegerBitWidth()
-      << (SrcTy.isSignedIntegerTy() ? "" : "un") << DstTy << Value(DstTy, Dst)
-      << DstTy.getIntegerBitWidth() << (DstTy.isSignedIntegerTy() ? "" : "un");
-}
-
-void __ubsan::__ubsan_handle_implicit_conversion(ImplicitConversionData *Data,
-                                                 ValueHandle Src,
-                                                 ValueHandle Dst) {
-  GET_REPORT_OPTIONS(false);
-  handleImplicitConversion(Data, Opts, Src, Dst);
-}
-void __ubsan::__ubsan_handle_implicit_conversion_abort(
-    ImplicitConversionData *Data, ValueHandle Src, ValueHandle Dst) {
-  GET_REPORT_OPTIONS(true);
-  handleImplicitConversion(Data, Opts, Src, Dst);
-  Die();
-}
-
 static void handleInvalidBuiltin(InvalidBuiltinData *Data, ReportOptions Opts) {
   SourceLocation Loc = Data->Loc.acquire();
   ErrorType ET = ErrorType::InvalidBuiltin;
@@ -503,7 +447,7 @@ static void handleInvalidBuiltin(InvalidBuiltinData *Data, ReportOptions Opts) {
 
   ScopedReport R(Opts, Loc, ET);
 
-  Diag(Loc, DL_Error, ET,
+  Diag(Loc, DL_Error,
        "passing zero to %0, which is not a valid argument")
     << ((Data->Kind == BCK_CTZPassedZero) ? "ctz()" : "clz()");
 }
@@ -534,10 +478,10 @@ static void handleFunctionTypeMismatch(FunctionTypeMismatchData *Data,
   if (!FName)
     FName = "(unknown)";
 
-  Diag(CallLoc, DL_Error, ET,
+  Diag(CallLoc, DL_Error,
        "call to function %0 through pointer to incorrect function type %1")
       << FName << Data->Type;
-  Diag(FLoc, DL_Note, ET, "%0 defined here") << FName;
+  Diag(FLoc, DL_Note, "%0 defined here") << FName;
 }
 
 void
@@ -567,10 +511,10 @@ static void handleNonNullReturn(NonNullReturnData *Data, SourceLocation *LocPtr,
 
   ScopedReport R(Opts, Loc, ET);
 
-  Diag(Loc, DL_Error, ET,
-       "null pointer returned from function declared to never return null");
+  Diag(Loc, DL_Error, "null pointer returned from function declared to never "
+                      "return null");
   if (!Data->AttrLoc.isInvalid())
-    Diag(Data->AttrLoc, DL_Note, ET, "%0 specified here")
+    Diag(Data->AttrLoc, DL_Note, "%0 specified here")
         << (IsAttr ? "returns_nonnull attribute"
                    : "_Nonnull return type annotation");
 }
@@ -611,12 +555,12 @@ static void handleNonNullArg(NonNullArgData *Data, ReportOptions Opts,
 
   ScopedReport R(Opts, Loc, ET);
 
-  Diag(Loc, DL_Error, ET,
+  Diag(Loc, DL_Error,
        "null pointer passed as argument %0, which is declared to "
        "never be null")
       << Data->ArgIndex;
   if (!Data->AttrLoc.isInvalid())
-    Diag(Data->AttrLoc, DL_Note, ET, "%0 specified here")
+    Diag(Data->AttrLoc, DL_Note, "%0 specified here")
         << (IsAttr ? "nonnull attribute" : "_Nonnull type annotation");
 }
 
@@ -656,15 +600,14 @@ static void handlePointerOverflowImpl(PointerOverflowData *Data,
 
   if ((sptr(Base) >= 0) == (sptr(Result) >= 0)) {
     if (Base > Result)
-      Diag(Loc, DL_Error, ET,
-           "addition of unsigned offset to %0 overflowed to %1")
+      Diag(Loc, DL_Error, "addition of unsigned offset to %0 overflowed to %1")
           << (void *)Base << (void *)Result;
     else
-      Diag(Loc, DL_Error, ET,
+      Diag(Loc, DL_Error,
            "subtraction of unsigned offset from %0 overflowed to %1")
           << (void *)Base << (void *)Result;
   } else {
-    Diag(Loc, DL_Error, ET,
+    Diag(Loc, DL_Error,
          "pointer index expression with base %0 overflowed to %1")
         << (void *)Base << (void *)Result;
   }
@@ -687,7 +630,7 @@ void __ubsan::__ubsan_handle_pointer_overflow_abort(PointerOverflowData *Data,
 
 static void handleCFIBadIcall(CFICheckFailData *Data, ValueHandle Function,
                               ReportOptions Opts) {
-  if (Data->CheckKind != CFITCK_ICall && Data->CheckKind != CFITCK_NVMFCall)
+  if (Data->CheckKind != CFITCK_ICall)
     Die();
 
   SourceLocation Loc = Data->Loc.acquire();
@@ -698,33 +641,15 @@ static void handleCFIBadIcall(CFICheckFailData *Data, ValueHandle Function,
 
   ScopedReport R(Opts, Loc, ET);
 
-  const char *CheckKindStr = Data->CheckKind == CFITCK_NVMFCall
-                                 ? "non-virtual pointer to member function call"
-                                 : "indirect function call";
-  Diag(Loc, DL_Error, ET,
-       "control flow integrity check for type %0 failed during %1")
-      << Data->Type << CheckKindStr;
+  Diag(Loc, DL_Error, "control flow integrity check for type %0 failed during "
+                      "indirect function call")
+      << Data->Type;
 
   SymbolizedStackHolder FLoc(getSymbolizedLocation(Function));
   const char *FName = FLoc.get()->info.function;
   if (!FName)
     FName = "(unknown)";
-  Diag(FLoc, DL_Note, ET, "%0 defined here") << FName;
-
-  // If the failure involved different DSOs for the check location and icall
-  // target, report the DSO names.
-  const char *DstModule = FLoc.get()->info.module;
-  if (!DstModule)
-    DstModule = "(unknown)";
-
-  const char *SrcModule = Symbolizer::GetOrInit()->GetModuleNameForPc(Opts.pc);
-  if (!SrcModule)
-    SrcModule = "(unknown)";
-
-  if (internal_strcmp(SrcModule, DstModule))
-    Diag(Loc, DL_Note, ET,
-         "check failed in %0, destination function located in %1")
-        << SrcModule << DstModule;
+  Diag(FLoc, DL_Note, "%0 defined here") << FName;
 }
 
 namespace __ubsan {
@@ -760,7 +685,7 @@ void __ubsan::__ubsan_handle_cfi_check_fail(CFICheckFailData *Data,
                                             ValueHandle Value,
                                             uptr ValidVtable) {
   GET_REPORT_OPTIONS(false);
-  if (Data->CheckKind == CFITCK_ICall || Data->CheckKind == CFITCK_NVMFCall)
+  if (Data->CheckKind == CFITCK_ICall)
     handleCFIBadIcall(Data, Value, Opts);
   else
     __ubsan_handle_cfi_bad_type(Data, Value, ValidVtable, Opts);
@@ -770,7 +695,7 @@ void __ubsan::__ubsan_handle_cfi_check_fail_abort(CFICheckFailData *Data,
                                                   ValueHandle Value,
                                                   uptr ValidVtable) {
   GET_REPORT_OPTIONS(true);
-  if (Data->CheckKind == CFITCK_ICall || Data->CheckKind == CFITCK_NVMFCall)
+  if (Data->CheckKind == CFITCK_ICall)
     handleCFIBadIcall(Data, Value, Opts);
   else
     __ubsan_handle_cfi_bad_type(Data, Value, ValidVtable, Opts);

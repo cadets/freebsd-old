@@ -1,4 +1,4 @@
-//===------- Targets.h - Declare target feature support ---------*- C++ -*-===//
+//===------- Targets.h - Declare target feature support -------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //

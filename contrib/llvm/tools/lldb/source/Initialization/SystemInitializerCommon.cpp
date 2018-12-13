@@ -16,11 +16,19 @@
 #ifdef LLDB_ENABLE_ALL
 #include "Plugins/ObjectContainer/Universal-Mach-O/ObjectContainerUniversalMachO.h"
 #endif // LLDB_ENABLE_ALL
+#include "Plugins/ObjectFile/ELF/ObjectFileELF.h"
+#ifdef LLDB_ENABLE_ALL
+#include "Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.h"
+#endif // LLDB_ENABLE_ALL
 #include "Plugins/Process/gdb-remote/ProcessGDBRemoteLog.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Host/HostInfo.h"
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/Timer.h"
+
+#if defined(__APPLE__)
+#include "Plugins/ObjectFile/Mach-O/ObjectFileMachO.h"
+#endif
 
 #if defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__)
 #include "Plugins/Process/POSIX/ProcessPOSIXLog.h"
@@ -31,6 +39,7 @@
 #include "lldb/Host/windows/windows.h"
 #endif
 
+#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/TargetSelect.h"
 
 #include <string>
@@ -64,6 +73,9 @@ void SystemInitializerCommon::Initialize() {
   }
 #endif
 
+#if not defined(__APPLE__)
+  llvm::EnablePrettyStackTrace();
+#endif
   Log::Initialize();
   HostInfo::Initialize();
   static Timer::Category func_cat(LLVM_PRETTY_FUNCTION);
@@ -73,6 +85,10 @@ void SystemInitializerCommon::Initialize() {
 
   // Initialize plug-ins
   ObjectContainerBSDArchive::Initialize();
+  ObjectFileELF::Initialize();
+#ifdef LLDB_ENABLE_ALL
+  ObjectFilePECOFF::Initialize();
+#endif // LLDB_ENABLE_ALL
 
   EmulateInstructionARM::Initialize();
   EmulateInstructionMIPS::Initialize();
@@ -85,6 +101,9 @@ void SystemInitializerCommon::Initialize() {
   ObjectContainerUniversalMachO::Initialize();
 #endif // LLDB_ENABLE_ALL
 
+#if defined(__APPLE__)
+  ObjectFileMachO::Initialize();
+#endif
 #if defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__)
   ProcessPOSIXLog::Initialize();
 #endif
@@ -97,6 +116,10 @@ void SystemInitializerCommon::Terminate() {
   static Timer::Category func_cat(LLVM_PRETTY_FUNCTION);
   Timer scoped_timer(func_cat, LLVM_PRETTY_FUNCTION);
   ObjectContainerBSDArchive::Terminate();
+  ObjectFileELF::Terminate();
+#ifdef LLDB_ENABLE_ALL
+  ObjectFilePECOFF::Terminate();
+#endif // LLDB_ENABLE_ALL
 
   EmulateInstructionARM::Terminate();
   EmulateInstructionMIPS::Terminate();
@@ -105,6 +128,9 @@ void SystemInitializerCommon::Terminate() {
 #ifdef LLDB_ENABLE_ALL
   ObjectContainerUniversalMachO::Terminate();
 #endif // LLDB_ENABLE_ALL
+#if defined(__APPLE__)
+  ObjectFileMachO::Terminate();
+#endif
 
 #if defined(_MSC_VER)
   ProcessWindowsLog::Terminate();

@@ -76,6 +76,11 @@ cl::opt<bool> llvm::UniversalHeaders("universal-headers",
                                               "(requires -macho)"));
 
 cl::opt<bool>
+    llvm::ArchiveHeaders("archive-headers",
+                         cl::desc("Print archive headers for Mach-O archives "
+                                  "(requires -macho)"));
+
+cl::opt<bool>
     ArchiveMemberOffsets("archive-member-offsets",
                          cl::desc("Print the offset to each archive member for "
                                   "Mach-O archives (requires -macho and "
@@ -1279,35 +1284,14 @@ static void DumpLiteralPointerSection(MachOObjectFile *O,
   }
 }
 
-static void DumpInitTermPointerSection(MachOObjectFile *O,
-                                       const SectionRef &Section,
-                                       const char *sect,
+static void DumpInitTermPointerSection(MachOObjectFile *O, const char *sect,
                                        uint32_t sect_size, uint64_t sect_addr,
                                        SymbolAddressMap *AddrMap,
                                        bool verbose) {
   uint32_t stride;
   stride = (O->is64Bit()) ? sizeof(uint64_t) : sizeof(uint32_t);
-
-  // Collect the external relocation symbols for the pointers.
-  std::vector<std::pair<uint64_t, SymbolRef>> Relocs;
-  for (const RelocationRef &Reloc : Section.relocations()) {
-    DataRefImpl Rel;
-    MachO::any_relocation_info RE;
-    bool isExtern = false;
-    Rel = Reloc.getRawDataRefImpl();
-    RE = O->getRelocation(Rel);
-    isExtern = O->getPlainRelocationExternal(RE);
-    if (isExtern) {
-      uint64_t RelocOffset = Reloc.getOffset();
-      symbol_iterator RelocSym = Reloc.getSymbol();
-      Relocs.push_back(std::make_pair(RelocOffset, *RelocSym));
-    }
-  }
-  array_pod_sort(Relocs.begin(), Relocs.end());
-
   for (uint32_t i = 0; i < sect_size; i += stride) {
     const char *SymbolName = nullptr;
-    uint64_t p;
     if (O->is64Bit()) {
       outs() << format("0x%016" PRIx64, sect_addr + i * stride) << " ";
       uint64_t pointer_value;
@@ -1315,7 +1299,8 @@ static void DumpInitTermPointerSection(MachOObjectFile *O,
       if (O->isLittleEndian() != sys::IsLittleEndianHost)
         sys::swapByteOrder(pointer_value);
       outs() << format("0x%016" PRIx64, pointer_value);
-      p = pointer_value;
+      if (verbose)
+        SymbolName = GuessSymbolName(pointer_value, AddrMap);
     } else {
       outs() << format("0x%08" PRIx64, sect_addr + i * stride) << " ";
       uint32_t pointer_value;
@@ -1323,25 +1308,11 @@ static void DumpInitTermPointerSection(MachOObjectFile *O,
       if (O->isLittleEndian() != sys::IsLittleEndianHost)
         sys::swapByteOrder(pointer_value);
       outs() << format("0x%08" PRIx32, pointer_value);
-      p = pointer_value;
+      if (verbose)
+        SymbolName = GuessSymbolName(pointer_value, AddrMap);
     }
-    if (verbose) {
-      // First look for an external relocation entry for this pointer.
-      auto Reloc = find_if(Relocs, [&](const std::pair<uint64_t, SymbolRef> &P) {
-        return P.first == i;
-      });
-      if (Reloc != Relocs.end()) {
-        symbol_iterator RelocSym = Reloc->second;
-        Expected<StringRef> SymName = RelocSym->getName();
-        if (!SymName)
-          report_error(O->getFileName(), SymName.takeError());
-        outs() << " " << *SymName;
-      } else {
-        SymbolName = GuessSymbolName(p, AddrMap);
-        if (SymbolName)
-          outs() << " " << SymbolName;
-      }
-    }
+    if (SymbolName)
+      outs() << " " << SymbolName;
     outs() << "\n";
   }
 }
@@ -1492,8 +1463,8 @@ static void DumpSectionContents(StringRef Filename, MachOObjectFile *O,
             break;
           case MachO::S_MOD_INIT_FUNC_POINTERS:
           case MachO::S_MOD_TERM_FUNC_POINTERS:
-            DumpInitTermPointerSection(O, Section, sect, sect_size, sect_addr,
-                                       &AddrMap, verbose);
+            DumpInitTermPointerSection(O, sect, sect_size, sect_addr, &AddrMap,
+                                       verbose);
             break;
           default:
             outs() << "Unknown section type ("
@@ -2178,22 +2149,19 @@ void llvm::ParseInputMachO(StringRef Filename) {
 
 // The block of info used by the Symbolizer call backs.
 struct DisassembleInfo {
-  DisassembleInfo(MachOObjectFile *O, SymbolAddressMap *AddrMap,
-                  std::vector<SectionRef> *Sections, bool verbose)
-    : verbose(verbose), O(O), AddrMap(AddrMap), Sections(Sections) {}
   bool verbose;
   MachOObjectFile *O;
   SectionRef S;
   SymbolAddressMap *AddrMap;
   std::vector<SectionRef> *Sections;
-  const char *class_name = nullptr;
-  const char *selector_name = nullptr;
-  std::unique_ptr<char[]> method = nullptr;
-  char *demangled_name = nullptr;
-  uint64_t adrp_addr = 0;
-  uint32_t adrp_inst = 0;
+  const char *class_name;
+  const char *selector_name;
+  char *method;
+  char *demangled_name;
+  uint64_t adrp_addr;
+  uint32_t adrp_inst;
   std::unique_ptr<SymbolAddressMap> bindtable;
-  uint32_t depth = 0;
+  uint32_t depth;
 };
 
 // SymbolizerGetOpInfo() is the operand information call back function.
@@ -2788,33 +2756,32 @@ static void method_reference(struct DisassembleInfo *info,
   if (*ReferenceName != nullptr) {
     if (strcmp(*ReferenceName, "_objc_msgSend") == 0) {
       if (info->selector_name != nullptr) {
+        if (info->method != nullptr)
+          free(info->method);
         if (info->class_name != nullptr) {
-          info->method = llvm::make_unique<char[]>(
-              5 + strlen(info->class_name) + strlen(info->selector_name));
-          char *method = info->method.get();
-          if (method != nullptr) {
-            strcpy(method, "+[");
-            strcat(method, info->class_name);
-            strcat(method, " ");
-            strcat(method, info->selector_name);
-            strcat(method, "]");
-            *ReferenceName = method;
+          info->method = (char *)malloc(5 + strlen(info->class_name) +
+                                        strlen(info->selector_name));
+          if (info->method != nullptr) {
+            strcpy(info->method, "+[");
+            strcat(info->method, info->class_name);
+            strcat(info->method, " ");
+            strcat(info->method, info->selector_name);
+            strcat(info->method, "]");
+            *ReferenceName = info->method;
             *ReferenceType = LLVMDisassembler_ReferenceType_Out_Objc_Message;
           }
         } else {
-          info->method =
-              llvm::make_unique<char[]>(9 + strlen(info->selector_name));
-          char *method = info->method.get();
-          if (method != nullptr) {
+          info->method = (char *)malloc(9 + strlen(info->selector_name));
+          if (info->method != nullptr) {
             if (Arch == Triple::x86_64)
-              strcpy(method, "-[%rdi ");
+              strcpy(info->method, "-[%rdi ");
             else if (Arch == Triple::aarch64)
-              strcpy(method, "-[x0 ");
+              strcpy(info->method, "-[x0 ");
             else
-              strcpy(method, "-[r? ");
-            strcat(method, info->selector_name);
-            strcat(method, "]");
-            *ReferenceName = method;
+              strcpy(info->method, "-[r? ");
+            strcat(info->method, info->selector_name);
+            strcat(info->method, "]");
+            *ReferenceName = info->method;
             *ReferenceType = LLVMDisassembler_ReferenceType_Out_Objc_Message;
           }
         }
@@ -2822,19 +2789,19 @@ static void method_reference(struct DisassembleInfo *info,
       }
     } else if (strcmp(*ReferenceName, "_objc_msgSendSuper2") == 0) {
       if (info->selector_name != nullptr) {
-        info->method =
-            llvm::make_unique<char[]>(17 + strlen(info->selector_name));
-        char *method = info->method.get();
-        if (method != nullptr) {
+        if (info->method != nullptr)
+          free(info->method);
+        info->method = (char *)malloc(17 + strlen(info->selector_name));
+        if (info->method != nullptr) {
           if (Arch == Triple::x86_64)
-            strcpy(method, "-[[%rdi super] ");
+            strcpy(info->method, "-[[%rdi super] ");
           else if (Arch == Triple::aarch64)
-            strcpy(method, "-[[x0 super] ");
+            strcpy(info->method, "-[[x0 super] ");
           else
-            strcpy(method, "-[[r? super] ");
-          strcat(method, info->selector_name);
-          strcat(method, "]");
-          *ReferenceName = method;
+            strcpy(info->method, "-[[r? super] ");
+          strcat(info->method, info->selector_name);
+          strcat(info->method, "]");
+          *ReferenceName = info->method;
           *ReferenceType = LLVMDisassembler_ReferenceType_Out_Objc_Message;
         }
         info->class_name = nullptr;
@@ -3229,8 +3196,6 @@ struct imageInfo_t {
 /* masks for objc_image_info.flags */
 #define OBJC_IMAGE_IS_REPLACEMENT (1 << 0)
 #define OBJC_IMAGE_SUPPORTS_GC (1 << 1)
-#define OBJC_IMAGE_IS_SIMULATED (1 << 5)
-#define OBJC_IMAGE_HAS_CATEGORY_CLASS_PROPERTIES (1 << 6)
 
 struct message_ref64 {
   uint64_t imp; /* IMP (64-bit pointer) */
@@ -5592,24 +5557,12 @@ static void print_image_info64(SectionRef S, struct DisassembleInfo *info) {
     outs() << " OBJC_IMAGE_IS_REPLACEMENT";
   if (o.flags & OBJC_IMAGE_SUPPORTS_GC)
     outs() << " OBJC_IMAGE_SUPPORTS_GC";
-  if (o.flags & OBJC_IMAGE_IS_SIMULATED)
-    outs() << " OBJC_IMAGE_IS_SIMULATED";
-  if (o.flags & OBJC_IMAGE_HAS_CATEGORY_CLASS_PROPERTIES)
-    outs() << " OBJC_IMAGE_HAS_CATEGORY_CLASS_PROPERTIES";
   swift_version = (o.flags >> 8) & 0xff;
   if (swift_version != 0) {
     if (swift_version == 1)
       outs() << " Swift 1.0";
     else if (swift_version == 2)
       outs() << " Swift 1.1";
-    else if(swift_version == 3)
-      outs() << " Swift 2.0";
-    else if(swift_version == 4)
-      outs() << " Swift 3.0";
-    else if(swift_version == 5)
-      outs() << " Swift 4.0";
-    else if(swift_version == 6)
-      outs() << " Swift 4.1";
     else
       outs() << " unknown future Swift version (" << swift_version << ")";
   }
@@ -5653,14 +5606,6 @@ static void print_image_info32(SectionRef S, struct DisassembleInfo *info) {
       outs() << " Swift 1.0";
     else if (swift_version == 2)
       outs() << " Swift 1.1";
-    else if(swift_version == 3)
-      outs() << " Swift 2.0";
-    else if(swift_version == 4)
-      outs() << " Swift 3.0";
-    else if(swift_version == 5)
-      outs() << " Swift 4.0";
-    else if(swift_version == 6)
-      outs() << " Swift 4.1";
     else
       outs() << " unknown future Swift version (" << swift_version << ")";
   }
@@ -5714,8 +5659,21 @@ static void printObjc2_64bit_MetaData(MachOObjectFile *O, bool verbose) {
     Sections.push_back(Section);
   }
 
-  struct DisassembleInfo info(O, &AddrMap, &Sections, verbose);
+  struct DisassembleInfo info;
+  // Set up the block of info used by the Symbolizer call backs.
+  info.verbose = verbose;
+  info.O = O;
+  info.AddrMap = &AddrMap;
+  info.Sections = &Sections;
+  info.class_name = nullptr;
+  info.selector_name = nullptr;
+  info.method = nullptr;
+  info.demangled_name = nullptr;
+  info.bindtable = nullptr;
+  info.adrp_addr = 0;
+  info.adrp_inst = 0;
 
+  info.depth = 0;
   SectionRef CL = get_section(O, "__OBJC2", "__class_list");
   if (CL == SectionRef())
     CL = get_section(O, "__DATA", "__objc_classlist");
@@ -5799,7 +5757,19 @@ static void printObjc2_32bit_MetaData(MachOObjectFile *O, bool verbose) {
     Sections.push_back(Section);
   }
 
-  struct DisassembleInfo info(O, &AddrMap, &Sections, verbose);
+  struct DisassembleInfo info;
+  // Set up the block of info used by the Symbolizer call backs.
+  info.verbose = verbose;
+  info.O = O;
+  info.AddrMap = &AddrMap;
+  info.Sections = &Sections;
+  info.class_name = nullptr;
+  info.selector_name = nullptr;
+  info.method = nullptr;
+  info.demangled_name = nullptr;
+  info.bindtable = nullptr;
+  info.adrp_addr = 0;
+  info.adrp_inst = 0;
 
   SectionRef CL = get_section(O, "__OBJC2", "__class_list");
   if (CL == SectionRef())
@@ -5897,7 +5867,19 @@ static bool printObjc1_32bit_MetaData(MachOObjectFile *O, bool verbose) {
     Sections.push_back(Section);
   }
 
-  struct DisassembleInfo info(O, &AddrMap, &Sections, verbose);
+  struct DisassembleInfo info;
+  // Set up the block of info used by the Symbolizer call backs.
+  info.verbose = verbose;
+  info.O = O;
+  info.AddrMap = &AddrMap;
+  info.Sections = &Sections;
+  info.class_name = nullptr;
+  info.selector_name = nullptr;
+  info.method = nullptr;
+  info.demangled_name = nullptr;
+  info.bindtable = nullptr;
+  info.adrp_addr = 0;
+  info.adrp_inst = 0;
 
   for (i = 0; i < S.getSize(); i += sizeof(struct objc_module_t)) {
     p = S.getAddress() + i;
@@ -6058,7 +6040,19 @@ static void DumpProtocolSection(MachOObjectFile *O, const char *sect,
     Sections.push_back(Section);
   }
 
-  struct DisassembleInfo info(O, &AddrMap, &Sections, true);
+  struct DisassembleInfo info;
+  // Set up the block of info used by the Symbolizer call backs.
+  info.verbose = true;
+  info.O = O;
+  info.AddrMap = &AddrMap;
+  info.Sections = &Sections;
+  info.class_name = nullptr;
+  info.selector_name = nullptr;
+  info.method = nullptr;
+  info.demangled_name = nullptr;
+  info.bindtable = nullptr;
+  info.adrp_addr = 0;
+  info.adrp_inst = 0;
 
   const char *p;
   struct objc_protocol_t protocol;
@@ -6754,7 +6748,7 @@ static const char *SymbolizerSymbolLookUp(void *DisInfo,
   return SymbolName;
 }
 
-/// Emits the comments that are stored in the CommentStream.
+/// \brief Emits the comments that are stored in the CommentStream.
 /// Each comment in the CommentStream must end with a newline.
 static void emitComments(raw_svector_ostream &CommentStream,
                          SmallString<128> &CommentsToEmit,
@@ -6823,7 +6817,7 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
   std::unique_ptr<MCDisassembler> DisAsm(
       TheTarget->createMCDisassembler(*STI, Ctx));
   std::unique_ptr<MCSymbolizer> Symbolizer;
-  struct DisassembleInfo SymbolizerInfo(nullptr, nullptr, nullptr, false);
+  struct DisassembleInfo SymbolizerInfo;
   std::unique_ptr<MCRelocationInfo> RelInfo(
       TheTarget->createMCRelocationInfo(TripleName, Ctx));
   if (RelInfo) {
@@ -6861,7 +6855,7 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
   std::unique_ptr<MCInstPrinter> ThumbIP;
   std::unique_ptr<MCContext> ThumbCtx;
   std::unique_ptr<MCSymbolizer> ThumbSymbolizer;
-  struct DisassembleInfo ThumbSymbolizerInfo(nullptr, nullptr, nullptr, false);
+  struct DisassembleInfo ThumbSymbolizerInfo;
   std::unique_ptr<MCRelocationInfo> ThumbRelInfo;
   if (ThumbTarget) {
     ThumbMRI.reset(ThumbTarget->createMCRegInfo(ThumbTripleName));
@@ -6910,7 +6904,7 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
                         BaseSegmentAddress);
 
   // Sort the symbols by address, just in case they didn't come in that way.
-  llvm::sort(Symbols.begin(), Symbols.end(), SymbolSorter());
+  std::sort(Symbols.begin(), Symbols.end(), SymbolSorter());
 
   // Build a data in code table that is sorted on by the address of each entry.
   uint64_t BaseAddress = 0;
@@ -6946,12 +6940,10 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
         errs() << "llvm-objdump: " << Filename << ": " << EC.message() << '\n';
         return;
       }
-      Expected<std::unique_ptr<MachOObjectFile>> DbgObjCheck =
-          ObjectFile::createMachOObjectFile(BufOrErr.get()->getMemBufferRef());
-
-      if (DbgObjCheck.takeError())
-        report_error(MachOOF->getFileName(), DbgObjCheck.takeError());
-      DbgObj = DbgObjCheck.get().release();
+      DbgObj =
+          ObjectFile::createMachOObjectFile(BufOrErr.get()->getMemBufferRef())
+              .get()
+              .release();
     }
 
     // Setup the DIContext
@@ -7011,12 +7003,26 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
     SymbolizerInfo.S = Sections[SectIdx];
     SymbolizerInfo.AddrMap = &AddrMap;
     SymbolizerInfo.Sections = &Sections;
+    SymbolizerInfo.class_name = nullptr;
+    SymbolizerInfo.selector_name = nullptr;
+    SymbolizerInfo.method = nullptr;
+    SymbolizerInfo.demangled_name = nullptr;
+    SymbolizerInfo.bindtable = nullptr;
+    SymbolizerInfo.adrp_addr = 0;
+    SymbolizerInfo.adrp_inst = 0;
     // Same for the ThumbSymbolizer
     ThumbSymbolizerInfo.verbose = !NoSymbolicOperands;
     ThumbSymbolizerInfo.O = MachOOF;
     ThumbSymbolizerInfo.S = Sections[SectIdx];
     ThumbSymbolizerInfo.AddrMap = &AddrMap;
     ThumbSymbolizerInfo.Sections = &Sections;
+    ThumbSymbolizerInfo.class_name = nullptr;
+    ThumbSymbolizerInfo.selector_name = nullptr;
+    ThumbSymbolizerInfo.method = nullptr;
+    ThumbSymbolizerInfo.demangled_name = nullptr;
+    ThumbSymbolizerInfo.bindtable = nullptr;
+    ThumbSymbolizerInfo.adrp_addr = 0;
+    ThumbSymbolizerInfo.adrp_inst = 0;
 
     unsigned int Arch = MachOOF->getArch();
 
@@ -7287,8 +7293,12 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
     TripleName = "";
     ThumbTripleName = "";
 
+    if (SymbolizerInfo.method != nullptr)
+      free(SymbolizerInfo.method);
     if (SymbolizerInfo.demangled_name != nullptr)
       free(SymbolizerInfo.demangled_name);
+    if (ThumbSymbolizerInfo.method != nullptr)
+      free(ThumbSymbolizerInfo.method);
     if (ThumbSymbolizerInfo.demangled_name != nullptr)
       free(ThumbSymbolizerInfo.demangled_name);
   }
@@ -7300,25 +7310,12 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
 
 namespace {
 
-template <typename T>
-static uint64_t read(StringRef Contents, ptrdiff_t Offset) {
+template <typename T> static uint64_t readNext(const char *&Buf) {
   using llvm::support::little;
   using llvm::support::unaligned;
 
-  if (Offset + sizeof(T) > Contents.size()) {
-    outs() << "warning: attempt to read past end of buffer\n";
-    return T();
-  }
-
-  uint64_t Val =
-      support::endian::read<T, little, unaligned>(Contents.data() + Offset);
-  return Val;
-}
-
-template <typename T>
-static uint64_t readNext(StringRef Contents, ptrdiff_t &Offset) {
-  T Val = read<T>(Contents, Offset);
-  Offset += sizeof(T);
+  uint64_t Val = support::endian::read<T, little, unaligned>(Buf);
+  Buf += sizeof(T);
   return Val;
 }
 
@@ -7338,18 +7335,18 @@ struct CompactUnwindEntry {
   CompactUnwindEntry(StringRef Contents, unsigned Offset, bool Is64)
       : OffsetInSection(Offset) {
     if (Is64)
-      read<uint64_t>(Contents, Offset);
+      read<uint64_t>(Contents.data() + Offset);
     else
-      read<uint32_t>(Contents, Offset);
+      read<uint32_t>(Contents.data() + Offset);
   }
 
 private:
-  template <typename UIntPtr> void read(StringRef Contents, ptrdiff_t Offset) {
-    FunctionAddr = readNext<UIntPtr>(Contents, Offset);
-    Length = readNext<uint32_t>(Contents, Offset);
-    CompactEncoding = readNext<uint32_t>(Contents, Offset);
-    PersonalityAddr = readNext<UIntPtr>(Contents, Offset);
-    LSDAAddr = readNext<UIntPtr>(Contents, Offset);
+  template <typename UIntPtr> void read(const char *Buf) {
+    FunctionAddr = readNext<UIntPtr>(Buf);
+    Length = readNext<uint32_t>(Buf);
+    CompactEncoding = readNext<uint32_t>(Buf);
+    PersonalityAddr = readNext<UIntPtr>(Buf);
+    LSDAAddr = readNext<UIntPtr>(Buf);
   }
 };
 }
@@ -7451,7 +7448,7 @@ printMachOCompactUnwindSection(const MachOObjectFile *Obj,
 
   // First populate the initial raw offsets, encodings and so on from the entry.
   for (unsigned Offset = 0; Offset < Contents.size(); Offset += EntrySize) {
-    CompactUnwindEntry Entry(Contents, Offset, Is64);
+    CompactUnwindEntry Entry(Contents.data(), Offset, Is64);
     CompactUnwinds.push_back(Entry);
   }
 
@@ -7518,19 +7515,19 @@ printMachOCompactUnwindSection(const MachOObjectFile *Obj,
 // __unwind_info section dumping
 //===----------------------------------------------------------------------===//
 
-static void printRegularSecondLevelUnwindPage(StringRef PageData) {
-  ptrdiff_t Pos = 0;
-  uint32_t Kind = readNext<uint32_t>(PageData, Pos);
+static void printRegularSecondLevelUnwindPage(const char *PageStart) {
+  const char *Pos = PageStart;
+  uint32_t Kind = readNext<uint32_t>(Pos);
   (void)Kind;
   assert(Kind == 2 && "kind for a regular 2nd level index should be 2");
 
-  uint16_t EntriesStart = readNext<uint16_t>(PageData, Pos);
-  uint16_t NumEntries = readNext<uint16_t>(PageData, Pos);
+  uint16_t EntriesStart = readNext<uint16_t>(Pos);
+  uint16_t NumEntries = readNext<uint16_t>(Pos);
 
-  Pos = EntriesStart;
+  Pos = PageStart + EntriesStart;
   for (unsigned i = 0; i < NumEntries; ++i) {
-    uint32_t FunctionOffset = readNext<uint32_t>(PageData, Pos);
-    uint32_t Encoding = readNext<uint32_t>(PageData, Pos);
+    uint32_t FunctionOffset = readNext<uint32_t>(Pos);
+    uint32_t Encoding = readNext<uint32_t>(Pos);
 
     outs() << "      [" << i << "]: "
            << "function offset=" << format("0x%08" PRIx32, FunctionOffset)
@@ -7540,23 +7537,24 @@ static void printRegularSecondLevelUnwindPage(StringRef PageData) {
 }
 
 static void printCompressedSecondLevelUnwindPage(
-    StringRef PageData, uint32_t FunctionBase,
+    const char *PageStart, uint32_t FunctionBase,
     const SmallVectorImpl<uint32_t> &CommonEncodings) {
-  ptrdiff_t Pos = 0;
-  uint32_t Kind = readNext<uint32_t>(PageData, Pos);
+  const char *Pos = PageStart;
+  uint32_t Kind = readNext<uint32_t>(Pos);
   (void)Kind;
   assert(Kind == 3 && "kind for a compressed 2nd level index should be 3");
 
-  uint16_t EntriesStart = readNext<uint16_t>(PageData, Pos);
-  uint16_t NumEntries = readNext<uint16_t>(PageData, Pos);
+  uint16_t EntriesStart = readNext<uint16_t>(Pos);
+  uint16_t NumEntries = readNext<uint16_t>(Pos);
 
-  uint16_t EncodingsStart = readNext<uint16_t>(PageData, Pos);
-  readNext<uint16_t>(PageData, Pos);
-  StringRef PageEncodings = PageData.substr(EncodingsStart, StringRef::npos);
+  uint16_t EncodingsStart = readNext<uint16_t>(Pos);
+  readNext<uint16_t>(Pos);
+  const auto *PageEncodings = reinterpret_cast<const support::ulittle32_t *>(
+      PageStart + EncodingsStart);
 
-  Pos = EntriesStart;
+  Pos = PageStart + EntriesStart;
   for (unsigned i = 0; i < NumEntries; ++i) {
-    uint32_t Entry = readNext<uint32_t>(PageData, Pos);
+    uint32_t Entry = readNext<uint32_t>(Pos);
     uint32_t FunctionOffset = FunctionBase + (Entry & 0xffffff);
     uint32_t EncodingIdx = Entry >> 24;
 
@@ -7564,9 +7562,7 @@ static void printCompressedSecondLevelUnwindPage(
     if (EncodingIdx < CommonEncodings.size())
       Encoding = CommonEncodings[EncodingIdx];
     else
-      Encoding = read<uint32_t>(PageEncodings,
-                                sizeof(uint32_t) *
-                                    (EncodingIdx - CommonEncodings.size()));
+      Encoding = PageEncodings[EncodingIdx - CommonEncodings.size()];
 
     outs() << "      [" << i << "]: "
            << "function offset=" << format("0x%08" PRIx32, FunctionOffset)
@@ -7589,13 +7585,13 @@ static void printMachOUnwindInfoSection(const MachOObjectFile *Obj,
 
   StringRef Contents;
   UnwindInfo.getContents(Contents);
-  ptrdiff_t Pos = 0;
+  const char *Pos = Contents.data();
 
   //===----------------------------------
   // Section header
   //===----------------------------------
 
-  uint32_t Version = readNext<uint32_t>(Contents, Pos);
+  uint32_t Version = readNext<uint32_t>(Pos);
   outs() << "  Version:                                   "
          << format("0x%" PRIx32, Version) << '\n';
   if (Version != 1) {
@@ -7603,24 +7599,24 @@ static void printMachOUnwindInfoSection(const MachOObjectFile *Obj,
     return;
   }
 
-  uint32_t CommonEncodingsStart = readNext<uint32_t>(Contents, Pos);
+  uint32_t CommonEncodingsStart = readNext<uint32_t>(Pos);
   outs() << "  Common encodings array section offset:     "
          << format("0x%" PRIx32, CommonEncodingsStart) << '\n';
-  uint32_t NumCommonEncodings = readNext<uint32_t>(Contents, Pos);
+  uint32_t NumCommonEncodings = readNext<uint32_t>(Pos);
   outs() << "  Number of common encodings in array:       "
          << format("0x%" PRIx32, NumCommonEncodings) << '\n';
 
-  uint32_t PersonalitiesStart = readNext<uint32_t>(Contents, Pos);
+  uint32_t PersonalitiesStart = readNext<uint32_t>(Pos);
   outs() << "  Personality function array section offset: "
          << format("0x%" PRIx32, PersonalitiesStart) << '\n';
-  uint32_t NumPersonalities = readNext<uint32_t>(Contents, Pos);
+  uint32_t NumPersonalities = readNext<uint32_t>(Pos);
   outs() << "  Number of personality functions in array:  "
          << format("0x%" PRIx32, NumPersonalities) << '\n';
 
-  uint32_t IndicesStart = readNext<uint32_t>(Contents, Pos);
+  uint32_t IndicesStart = readNext<uint32_t>(Pos);
   outs() << "  Index array section offset:                "
          << format("0x%" PRIx32, IndicesStart) << '\n';
-  uint32_t NumIndices = readNext<uint32_t>(Contents, Pos);
+  uint32_t NumIndices = readNext<uint32_t>(Pos);
   outs() << "  Number of indices in array:                "
          << format("0x%" PRIx32, NumIndices) << '\n';
 
@@ -7635,9 +7631,9 @@ static void printMachOUnwindInfoSection(const MachOObjectFile *Obj,
 
   SmallVector<uint32_t, 64> CommonEncodings;
   outs() << "  Common encodings: (count = " << NumCommonEncodings << ")\n";
-  Pos = CommonEncodingsStart;
+  Pos = Contents.data() + CommonEncodingsStart;
   for (unsigned i = 0; i < NumCommonEncodings; ++i) {
-    uint32_t Encoding = readNext<uint32_t>(Contents, Pos);
+    uint32_t Encoding = readNext<uint32_t>(Pos);
     CommonEncodings.push_back(Encoding);
 
     outs() << "    encoding[" << i << "]: " << format("0x%08" PRIx32, Encoding)
@@ -7652,9 +7648,9 @@ static void printMachOUnwindInfoSection(const MachOObjectFile *Obj,
   // roughly). Particularly since they only get 2 bits in the compact encoding.
 
   outs() << "  Personality functions: (count = " << NumPersonalities << ")\n";
-  Pos = PersonalitiesStart;
+  Pos = Contents.data() + PersonalitiesStart;
   for (unsigned i = 0; i < NumPersonalities; ++i) {
-    uint32_t PersonalityFn = readNext<uint32_t>(Contents, Pos);
+    uint32_t PersonalityFn = readNext<uint32_t>(Pos);
     outs() << "    personality[" << i + 1
            << "]: " << format("0x%08" PRIx32, PersonalityFn) << '\n';
   }
@@ -7675,13 +7671,13 @@ static void printMachOUnwindInfoSection(const MachOObjectFile *Obj,
   SmallVector<IndexEntry, 4> IndexEntries;
 
   outs() << "  Top level indices: (count = " << NumIndices << ")\n";
-  Pos = IndicesStart;
+  Pos = Contents.data() + IndicesStart;
   for (unsigned i = 0; i < NumIndices; ++i) {
     IndexEntry Entry;
 
-    Entry.FunctionOffset = readNext<uint32_t>(Contents, Pos);
-    Entry.SecondLevelPageStart = readNext<uint32_t>(Contents, Pos);
-    Entry.LSDAStart = readNext<uint32_t>(Contents, Pos);
+    Entry.FunctionOffset = readNext<uint32_t>(Pos);
+    Entry.SecondLevelPageStart = readNext<uint32_t>(Pos);
+    Entry.LSDAStart = readNext<uint32_t>(Pos);
     IndexEntries.push_back(Entry);
 
     outs() << "    [" << i << "]: "
@@ -7700,14 +7696,12 @@ static void printMachOUnwindInfoSection(const MachOObjectFile *Obj,
   // the first top-level index's LSDAOffset to the last (sentinel).
 
   outs() << "  LSDA descriptors:\n";
-  Pos = IndexEntries[0].LSDAStart;
-  const uint32_t LSDASize = 2 * sizeof(uint32_t);
-  int NumLSDAs =
-      (IndexEntries.back().LSDAStart - IndexEntries[0].LSDAStart) / LSDASize;
-
+  Pos = Contents.data() + IndexEntries[0].LSDAStart;
+  int NumLSDAs = (IndexEntries.back().LSDAStart - IndexEntries[0].LSDAStart) /
+                 (2 * sizeof(uint32_t));
   for (int i = 0; i < NumLSDAs; ++i) {
-    uint32_t FunctionOffset = readNext<uint32_t>(Contents, Pos);
-    uint32_t LSDAOffset = readNext<uint32_t>(Contents, Pos);
+    uint32_t FunctionOffset = readNext<uint32_t>(Pos);
+    uint32_t LSDAOffset = readNext<uint32_t>(Pos);
     outs() << "    [" << i << "]: "
            << "function offset=" << format("0x%08" PRIx32, FunctionOffset)
            << ", "
@@ -7735,19 +7729,12 @@ static void printMachOUnwindInfoSection(const MachOObjectFile *Obj,
            << "base function offset="
            << format("0x%08" PRIx32, IndexEntries[i].FunctionOffset) << '\n';
 
-    Pos = IndexEntries[i].SecondLevelPageStart;
-    if (Pos + sizeof(uint32_t) > Contents.size()) {
-      outs() << "warning: invalid offset for second level page: " << Pos << '\n';
-      continue;
-    }
-
-    uint32_t Kind =
-        *reinterpret_cast<const support::ulittle32_t *>(Contents.data() + Pos);
+    Pos = Contents.data() + IndexEntries[i].SecondLevelPageStart;
+    uint32_t Kind = *reinterpret_cast<const support::ulittle32_t *>(Pos);
     if (Kind == 2)
-      printRegularSecondLevelUnwindPage(Contents.substr(Pos, 4096));
+      printRegularSecondLevelUnwindPage(Pos);
     else if (Kind == 3)
-      printCompressedSecondLevelUnwindPage(Contents.substr(Pos, 4096),
-                                           IndexEntries[i].FunctionOffset,
+      printCompressedSecondLevelUnwindPage(Pos, IndexEntries[i].FunctionOffset,
                                            CommonEncodings);
     else
       outs() << "    Skipping 2nd level page with unknown kind " << Kind
@@ -9365,26 +9352,6 @@ static void PrintThreadCommand(MachO::thread_command t, const char *Ptr,
           outs() << "\t    esh.flavor " << es.esh.flavor << "  esh.count "
                  << es.esh.count << "\n";
         }
-      } else if (flavor == MachO::x86_EXCEPTION_STATE64) {
-        outs() << "     flavor x86_EXCEPTION_STATE64\n";
-        if (count == MachO::x86_EXCEPTION_STATE64_COUNT)
-          outs() << "      count x86_EXCEPTION_STATE64_COUNT\n";
-        else
-          outs() << "      count " << count
-                 << " (not x86_EXCEPTION_STATE64_COUNT)\n";
-        struct MachO::x86_exception_state64_t es64;
-        left = end - begin;
-        if (left >= sizeof(MachO::x86_exception_state64_t)) {
-          memcpy(&es64, begin, sizeof(MachO::x86_exception_state64_t));
-          begin += sizeof(MachO::x86_exception_state64_t);
-        } else {
-          memset(&es64, '\0', sizeof(MachO::x86_exception_state64_t));
-          memcpy(&es64, begin, left);
-          begin += left;
-        }
-        if (isLittleEndian != sys::IsLittleEndianHost)
-          swapStruct(es64);
-        Print_x86_exception_state_t(es64);
       } else {
         outs() << "     flavor " << flavor << " (unknown)\n";
         outs() << "      count " << count << "\n";

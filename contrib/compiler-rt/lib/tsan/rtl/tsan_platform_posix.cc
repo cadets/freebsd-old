@@ -16,7 +16,6 @@
 #if SANITIZER_POSIX
 
 #include "sanitizer_common/sanitizer_common.h"
-#include "sanitizer_common/sanitizer_errno.h"
 #include "sanitizer_common/sanitizer_libc.h"
 #include "sanitizer_common/sanitizer_procmaps.h"
 #include "tsan_platform.h"
@@ -24,39 +23,16 @@
 
 namespace __tsan {
 
-static const char kShadowMemoryMappingWarning[] =
-    "FATAL: %s can not madvise shadow region [%zx, %zx] with %s (errno: %d)\n";
-static const char kShadowMemoryMappingHint[] =
-    "HINT: if %s is not supported in your environment, you may set "
-    "TSAN_OPTIONS=%s=0\n";
-
-static void NoHugePagesInShadow(uptr addr, uptr size) {
-  if (common_flags()->no_huge_pages_for_shadow)
-    if (!NoHugePagesInRegion(addr, size)) {
-      Printf(kShadowMemoryMappingWarning, SanitizerToolName, addr, addr + size,
-             "MADV_NOHUGEPAGE", errno);
-      Printf(kShadowMemoryMappingHint, "MADV_NOHUGEPAGE",
-             "no_huge_pages_for_shadow");
-      Die();
-    }
-}
-
-static void DontDumpShadow(uptr addr, uptr size) {
-  if (common_flags()->use_madv_dontdump)
-    if (!DontDumpShadowMemory(addr, size)) {
-      Printf(kShadowMemoryMappingWarning, SanitizerToolName, addr, addr + size,
-             "MADV_DONTDUMP", errno);
-      Printf(kShadowMemoryMappingHint, "MADV_DONTDUMP", "use_madv_dontdump");
-      Die();
-    }
-}
-
 #if !SANITIZER_GO
 void InitializeShadowMemory() {
   // Map memory shadow.
-  if (!MmapFixedNoReserve(ShadowBeg(), ShadowEnd() - ShadowBeg(), "shadow")) {
+  uptr shadow =
+      (uptr)MmapFixedNoReserve(ShadowBeg(), ShadowEnd() - ShadowBeg(),
+                               "shadow");
+  if (shadow != ShadowBeg()) {
     Printf("FATAL: ThreadSanitizer can not mmap the shadow memory\n");
-    Printf("FATAL: Make sure to compile with -fPIE and to link with -pie.\n");
+    Printf("FATAL: Make sure to compile with -fPIE and "
+               "to link with -pie (%p, %p).\n", shadow, ShadowBeg());
     Die();
   }
   // This memory range is used for thread stacks and large user mmaps.
@@ -98,23 +74,30 @@ void InitializeShadowMemory() {
     DCHECK(0);
   }
 #endif
-  NoHugePagesInShadow(MemToShadow(kMadviseRangeBeg),
+  NoHugePagesInRegion(MemToShadow(kMadviseRangeBeg),
                       kMadviseRangeSize * kShadowMultiplier);
-  DontDumpShadow(ShadowBeg(), ShadowEnd() - ShadowBeg());
+  // Meta shadow is compressing and we don't flush it,
+  // so it makes sense to mark it as NOHUGEPAGE to not over-allocate memory.
+  // On one program it reduces memory consumption from 5GB to 2.5GB.
+  NoHugePagesInRegion(MetaShadowBeg(), MetaShadowEnd() - MetaShadowBeg());
+  if (common_flags()->use_madv_dontdump)
+    DontDumpShadowMemory(ShadowBeg(), ShadowEnd() - ShadowBeg());
   DPrintf("memory shadow: %zx-%zx (%zuGB)\n",
       ShadowBeg(), ShadowEnd(),
       (ShadowEnd() - ShadowBeg()) >> 30);
 
   // Map meta shadow.
-  const uptr meta = MetaShadowBeg();
-  const uptr meta_size = MetaShadowEnd() - meta;
-  if (!MmapFixedNoReserve(meta, meta_size, "meta shadow")) {
+  uptr meta_size = MetaShadowEnd() - MetaShadowBeg();
+  uptr meta =
+      (uptr)MmapFixedNoReserve(MetaShadowBeg(), meta_size, "meta shadow");
+  if (meta != MetaShadowBeg()) {
     Printf("FATAL: ThreadSanitizer can not mmap the shadow memory\n");
-    Printf("FATAL: Make sure to compile with -fPIE and to link with -pie.\n");
+    Printf("FATAL: Make sure to compile with -fPIE and "
+               "to link with -pie (%p, %p).\n", meta, MetaShadowBeg());
     Die();
   }
-  NoHugePagesInShadow(meta, meta_size);
-  DontDumpShadow(meta, meta_size);
+  if (common_flags()->use_madv_dontdump)
+    DontDumpShadowMemory(meta, meta_size);
   DPrintf("meta shadow: %zx-%zx (%zuGB)\n",
       meta, meta + meta_size, meta_size >> 30);
 

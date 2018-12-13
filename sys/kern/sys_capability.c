@@ -86,7 +86,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm.h>
 
 bool __read_frequently trap_enotcap;
-SYSCTL_BOOL(_kern, OID_AUTO, trap_enotcap, CTLFLAG_RW, &trap_enotcap, 0,
+SYSCTL_BOOL(_kern, OID_AUTO, trap_enotcap, CTLFLAG_RWTUN, &trap_enotcap, 0,
     "Deliver SIGTRAP on ENOTCAPABLE");
 
 #ifdef CAPABILITY_MODE
@@ -208,7 +208,7 @@ const cap_rights_t *
 cap_rights_fde(const struct filedescent *fdep)
 {
 
-	return (&fdep->fde_rights);
+	return (cap_rights_fde_inline(fdep));
 }
 
 const cap_rights_t *

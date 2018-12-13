@@ -10,7 +10,6 @@ add_lld_library(lldCommon
   Strings.cpp
   TargetOptionsCommandFlags.cpp
   Threads.cpp
-  Timer.cpp
   Version.cpp
 
   ADDITIONAL_HEADER_DIRS

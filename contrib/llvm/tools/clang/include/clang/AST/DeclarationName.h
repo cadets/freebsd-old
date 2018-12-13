@@ -194,7 +194,7 @@ public:
            (reinterpret_cast<IdentifierInfo *>(Ptr & ~PtrMask));
   }
 
-  /// Evaluates true when this declaration name is empty.
+  /// \brief Evaluates true when this declaration name is empty.
   bool isEmpty() const {
     return !*this;
   }
@@ -211,14 +211,14 @@ public:
   /// getNameKind - Determine what kind of name this is.
   NameKind getNameKind() const;
 
-  /// Determines whether the name itself is dependent, e.g., because it
+  /// \brief Determines whether the name itself is dependent, e.g., because it 
   /// involves a C++ type that is itself dependent.
   ///
   /// Note that this does not capture all of the notions of "dependent name",
-  /// because an identifier can be a dependent name if it is used as the
+  /// because an identifier can be a dependent name if it is used as the 
   /// callee in a call expression with dependent arguments.
   bool isDependentName() const;
-
+  
   /// getNameAsString - Retrieve the human-readable string for this name.
   std::string getAsString() const;
 
@@ -541,10 +541,10 @@ public:
     LocInfo.CXXLiteralOperatorName.OpNameLoc = Loc.getRawEncoding();
   }
 
-  /// Determine whether this name involves a template parameter.
+  /// \brief Determine whether this name involves a template parameter.
   bool isInstantiationDependent() const;
-
-  /// Determine whether this name contains an unexpanded
+  
+  /// \brief Determine whether this name contains an unexpanded
   /// parameter pack.
   bool containsUnexpandedParameterPack() const;
 
@@ -558,7 +558,7 @@ public:
   SourceLocation getBeginLoc() const { return NameLoc; }
 
   /// getEndLoc - Retrieve the location of the last token.
-  SourceLocation getEndLoc() const { return getLocEnd(); }
+  SourceLocation getEndLoc() const;
 
   /// getSourceRange - The range of the declaration name.
   SourceRange getSourceRange() const LLVM_READONLY {
@@ -570,11 +570,9 @@ public:
   }
 
   SourceLocation getLocEnd() const LLVM_READONLY {
-    SourceLocation EndLoc = getEndLocPrivate();
+    SourceLocation EndLoc = getEndLoc();
     return EndLoc.isValid() ? EndLoc : getLocStart();
   }
-private:
-  SourceLocation getEndLocPrivate() const;
 };
 
 /// Insertion operator for diagnostics.  This allows sending DeclarationName's

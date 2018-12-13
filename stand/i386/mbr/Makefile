@@ -3,7 +3,7 @@
 PROG=	mbr
 STRIP=
 BINMODE=${NOBINMODE}
-SRCS=	${PROG}.s
+SRCS=	${PROG}.S
 
 MK_INSTRUMENT_BINARIES=	no
 
@@ -12,7 +12,7 @@ BOOT_MBR_FLAGS?=	0x80
 
 ORG=	0x600
 
-AFLAGS+=--defsym FLAGS=${BOOT_MBR_FLAGS}
+ACFLAGS+=-Wa,-defsym,FLAGS=${BOOT_MBR_FLAGS}
 LDFLAGS+=${LDFLAGS_BIN}
 
 .include <bsd.prog.mk>

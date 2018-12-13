@@ -27,12 +27,10 @@ SUBDIR+=	llvm-link
 SUBDIR+=	llvm-lto
 SUBDIR+=	llvm-lto2
 SUBDIR+=	llvm-mc
-SUBDIR+=	llvm-mca
 SUBDIR+=	llvm-modextract
 SUBDIR+=	llvm-nm
 SUBDIR+=	llvm-objcopy
 SUBDIR+=	llvm-pdbutil
-SUBDIR+=	llvm-profdata
 SUBDIR+=	llvm-rtdyld
 SUBDIR+=	llvm-symbolizer
 SUBDIR+=	llvm-xray
@@ -47,6 +45,7 @@ SUBDIR+=	lldb
 .endif
 .if ${MK_LLVM_COV} != "no"
 SUBDIR+=	llvm-cov
+SUBDIR+=	llvm-profdata
 .endif
 .endif # TOOLS_PREFIX
 

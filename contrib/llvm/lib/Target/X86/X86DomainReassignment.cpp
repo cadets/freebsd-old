@@ -340,7 +340,7 @@ public:
       if (!First)
         dbgs() << ", ";
       First = false;
-      dbgs() << printReg(Reg, MRI->getTargetRegisterInfo(), 0, MRI);
+      dbgs() << printReg(Reg, MRI->getTargetRegisterInfo());
     }
     dbgs() << "\n" << "Instructions:";
     for (MachineInstr *MI : Instrs) {
@@ -708,9 +708,8 @@ bool X86DomainReassignment::runOnMachineFunction(MachineFunction &MF) {
   if (DisableX86DomainReassignment)
     return false;
 
-  LLVM_DEBUG(
-      dbgs() << "***** Machine Function before Domain Reassignment *****\n");
-  LLVM_DEBUG(MF.print(dbgs()));
+  DEBUG(dbgs() << "***** Machine Function before Domain Reassignment *****\n");
+  DEBUG(MF.print(dbgs()));
 
   STI = &MF.getSubtarget<X86Subtarget>();
   // GPR->K is the only transformation currently supported, bail out early if no
@@ -753,7 +752,7 @@ bool X86DomainReassignment::runOnMachineFunction(MachineFunction &MF) {
   }
 
   for (Closure &C : Closures) {
-    LLVM_DEBUG(C.dump(MRI));
+    DEBUG(C.dump(MRI));
     if (isReassignmentProfitable(C, MaskDomain)) {
       reassign(C, MaskDomain);
       ++NumClosuresConverted;
@@ -763,9 +762,8 @@ bool X86DomainReassignment::runOnMachineFunction(MachineFunction &MF) {
 
   DeleteContainerSeconds(Converters);
 
-  LLVM_DEBUG(
-      dbgs() << "***** Machine Function after Domain Reassignment *****\n");
-  LLVM_DEBUG(MF.print(dbgs()));
+  DEBUG(dbgs() << "***** Machine Function after Domain Reassignment *****\n");
+  DEBUG(MF.print(dbgs()));
 
   return Changed;
 }

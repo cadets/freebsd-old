@@ -80,10 +80,6 @@ CWARNFLAGS.clang+=	-Wno-unused-local-typedef
 .if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 40000
 CWARNFLAGS.clang+=	-Wno-address-of-packed-member
 .endif
-.if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 70000 && \
-    ${MACHINE_CPUARCH} == "arm" && !${MACHINE_ARCH:Marmv[67]*}
-CWARNFLAGS.clang+=	-Wno-atomic-alignment
-.endif
 .endif # WARNS <= 3
 .if ${WARNS} <= 2
 CWARNFLAGS.clang+=	-Wno-switch -Wno-switch-enum -Wno-knr-promoted-parameter
@@ -254,8 +250,8 @@ PHONY_NOTMAIN = analyze afterdepend afterinstall all beforedepend beforeinstall 
 		beforelinking build build-tools buildconfig buildfiles \
 		buildincludes check checkdpadd clean cleandepend cleandir \
 		cleanobj configure depend distclean distribute exe \
-		files html includes install installconfig installfiles \
-		installincludes lint obj objlink objs objwarn \
+		files html includes install installconfig installdirs \
+		installfiles installincludes lint obj objlink objs objwarn \
 		realinstall tags whereobj
 
 # we don't want ${PROG} to be PHONY

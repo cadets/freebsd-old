@@ -130,8 +130,7 @@ public:
                           StringRef FileName, bool IsAngled,
                           CharSourceRange FilenameRange, const FileEntry *File,
                           StringRef SearchPath, StringRef RelativePath,
-                          const Module *Imported,
-                          SrcMgr::CharacteristicKind FileType) override;
+                          const Module *Imported) override;
   void Ident(SourceLocation Loc, StringRef str) override;
   void PragmaMessage(SourceLocation Loc, StringRef Namespace,
                      PragmaMessageKind Kind, StringRef Str) override;
@@ -160,7 +159,7 @@ public:
   }
   bool MoveToLine(unsigned LineNo);
 
-  bool AvoidConcat(const Token &PrevPrevTok, const Token &PrevTok,
+  bool AvoidConcat(const Token &PrevPrevTok, const Token &PrevTok, 
                    const Token &Tok) {
     return ConcatInfo.AvoidConcat(PrevPrevTok, PrevTok, Tok);
   }
@@ -248,7 +247,7 @@ PrintPPOutputPPCallbacks::startNewLineIfNeeded(bool ShouldUpdateCurrentLine) {
       ++CurLine;
     return true;
   }
-
+  
   return false;
 }
 
@@ -262,11 +261,11 @@ void PrintPPOutputPPCallbacks::FileChanged(SourceLocation Loc,
   // Unless we are exiting a #include, make sure to skip ahead to the line the
   // #include directive was at.
   SourceManager &SourceMgr = SM;
-
+  
   PresumedLoc UserLoc = SourceMgr.getPresumedLoc(Loc);
   if (UserLoc.isInvalid())
     return;
-
+  
   unsigned NewLine = UserLoc.getLine();
 
   if (Reason == PPCallbacks::EnterFile) {
@@ -281,7 +280,7 @@ void PrintPPOutputPPCallbacks::FileChanged(SourceLocation Loc,
     // off by one. We can do better by simply incrementing NewLine here.
     NewLine += 1;
   }
-
+  
   CurLine = NewLine;
 
   CurFilename.clear();
@@ -292,7 +291,7 @@ void PrintPPOutputPPCallbacks::FileChanged(SourceLocation Loc,
     startNewLineIfNeeded(/*ShouldUpdateCurrentLine=*/false);
     return;
   }
-
+  
   if (!Initialized) {
     WriteLineInfo(CurLine);
     Initialized = true;
@@ -321,17 +320,15 @@ void PrintPPOutputPPCallbacks::FileChanged(SourceLocation Loc,
   }
 }
 
-void PrintPPOutputPPCallbacks::InclusionDirective(
-    SourceLocation HashLoc,
-    const Token &IncludeTok,
-    StringRef FileName,
-    bool IsAngled,
-    CharSourceRange FilenameRange,
-    const FileEntry *File,
-    StringRef SearchPath,
-    StringRef RelativePath,
-    const Module *Imported,
-    SrcMgr::CharacteristicKind FileType) {
+void PrintPPOutputPPCallbacks::InclusionDirective(SourceLocation HashLoc,
+                                                  const Token &IncludeTok,
+                                                  StringRef FileName,
+                                                  bool IsAngled,
+                                                  CharSourceRange FilenameRange,
+                                                  const FileEntry *File,
+                                                  StringRef SearchPath,
+                                                  StringRef RelativePath,
+                                                  const Module *Imported) {
   // In -dI mode, dump #include directives prior to dumping their content or
   // interpretation.
   if (DumpIncludeDirectives) {
@@ -755,7 +752,7 @@ static void PrintPreprocessedTokens(Preprocessor &PP, Token &Tok,
     } else if (Tok.isLiteral() && !Tok.needsCleaning() &&
                Tok.getLiteralData()) {
       OS.write(Tok.getLiteralData(), Tok.getLength());
-    } else if (Tok.getLength() < llvm::array_lengthof(Buffer)) {
+    } else if (Tok.getLength() < 256) {
       const char *TokPtr = Buffer;
       unsigned Len = PP.getSpelling(Tok, TokPtr);
       OS.write(TokPtr, Len);

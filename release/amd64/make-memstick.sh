@@ -12,10 +12,8 @@
 
 set -e
 
-#PATH=/bin:/usr/bin:/sbin:/usr/sbin
-#export PATH
-
-echo "PATH=$PATH"
+PATH=/bin:/usr/bin:/sbin:/usr/sbin
+export PATH
 
 if [ $# -ne 2 ]; then
 	echo "make-memstick.sh /path/to/directory /path/to/image/file"

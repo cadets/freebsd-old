@@ -4780,7 +4780,7 @@ dodata:				/* XXX */
 		 * segments are out of order (so fast retransmit can work).
 		 */
 		if (th->th_seq == tp->rcv_nxt &&
-		    LIST_EMPTY(&tp->t_segq) &&
+		    SEGQ_EMPTY(tp) &&
 		    (TCPS_HAVEESTABLISHED(tp->t_state) ||
 		    tfo_syn)) {
 			if (DELAY_ACK(tp, tlen) || tfo_syn) {
@@ -4808,7 +4808,7 @@ dodata:				/* XXX */
 			 * m_adj() doesn't actually frees any mbufs when
 			 * trimming from the head.
 			 */
-			thflags = tcp_reass(tp, th, &tlen, m);
+			thflags = tcp_reass(tp, th, &save_start, &tlen, m);
 			tp->t_flags |= TF_ACKNOW;
 		}
 		if (tlen > 0)
@@ -5401,14 +5401,6 @@ rack_do_syn_recv(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	if (thflags & TH_RST)
 		return (rack_process_rst(m, th, so, tp));
 	/*
-	 * RFC5961 Section 4.2 Send challenge ACK for any SYN in
-	 * synchronized state.
-	 */
-	if (thflags & TH_SYN) {
-		rack_challenge_ack(m, th, tp, &ret_val);
-		return (ret_val);
-	}
-	/*
 	 * RFC 1323 PAWS: If we have a timestamp reply on this segment and
 	 * it's less than ts_recent, drop it.
 	 */
@@ -5478,6 +5470,16 @@ rack_do_syn_recv(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	 * FIN-WAIT-1
 	 */
 	tp->t_starttime = ticks;
+	if (IS_FASTOPEN(tp->t_flags) && tp->t_tfo_pending) {
+		tcp_fastopen_decrement_counter(tp->t_tfo_pending);
+		tp->t_tfo_pending = NULL;
+
+		/*
+		 * Account for the ACK of our SYN prior to
+		 * regular ACK processing below.
+		 */ 
+		tp->snd_una++;
+	}
 	if (tp->t_flags & TF_NEEDFIN) {
 		tcp_state_change(tp, TCPS_FIN_WAIT_1);
 		tp->t_flags &= ~TF_NEEDFIN;
@@ -5485,16 +5487,6 @@ rack_do_syn_recv(struct mbuf *m, struct tcphdr *th, struct socket *so,
 		tcp_state_change(tp, TCPS_ESTABLISHED);
 		TCP_PROBE5(accept__established, NULL, tp,
 		    mtod(m, const char *), tp, th);
-		if (IS_FASTOPEN(tp->t_flags) && tp->t_tfo_pending) {
-			tcp_fastopen_decrement_counter(tp->t_tfo_pending);
-			tp->t_tfo_pending = NULL;
-
-			/*
-			 * Account for the ACK of our SYN prior to regular
-			 * ACK processing below.
-			 */
-			tp->snd_una++;
-		}
 		/*
 		 * TFO connections call cc_conn_init() during SYN
 		 * processing.  Calling it again here for such connections
@@ -5509,7 +5501,7 @@ rack_do_syn_recv(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	 * not, do so now to pass queued data to user.
 	 */
 	if (tlen == 0 && (thflags & TH_FIN) == 0)
-		(void)tcp_reass(tp, (struct tcphdr *)0, 0,
+		(void) tcp_reass(tp, (struct tcphdr *)0, NULL, 0,
 		    (struct mbuf *)0);
 	tp->snd_wl1 = th->th_seq - 1;
 	if (rack_process_ack(m, th, so, tp, to, tiwin, tlen, &ourfinisacked, thflags, &ret_val)) {
@@ -5574,7 +5566,7 @@ rack_do_established(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	 */
 	if (__predict_true(((to->to_flags & TOF_SACK) == 0)) &&
 	    __predict_true((thflags & (TH_SYN | TH_FIN | TH_RST | TH_URG | TH_ACK)) == TH_ACK) &&
-	    __predict_true(LIST_EMPTY(&tp->t_segq)) &&
+	    __predict_true(SEGQ_EMPTY(tp)) &&
 	    __predict_true(th->th_seq == tp->rcv_nxt)) {
 		struct tcp_rack *rack;
 
@@ -6536,6 +6528,19 @@ rack_hpts_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 		TCP_LOG_EVENT(tp, th, &so->so_rcv, &so->so_snd, TCP_LOG_IN, 0,
 		    tlen, &log, true);
 	}
+	if ((thflags & TH_SYN) && (thflags & TH_FIN) && V_drop_synfin) {
+		way_out = 4;
+		goto done_with_input;
+	}
+	/*
+	 * If a segment with the ACK-bit set arrives in the SYN-SENT state
+	 * check SEQ.ACK first as described on page 66 of RFC 793, section 3.9.
+	 */
+	if ((tp->t_state == TCPS_SYN_SENT) && (thflags & TH_ACK) &&
+	    (SEQ_LEQ(th->th_ack, tp->iss) || SEQ_GT(th->th_ack, tp->snd_max))) {
+		rack_do_dropwithreset(m, tp, th, BANDLIM_RST_OPENPORT, tlen);
+		return;
+	}
 	/*
 	 * Segment received on connection. Reset idle time and keep-alive
 	 * timer. XXX: This should be done after segment validation to
@@ -6924,16 +6929,6 @@ rack_output(struct tcpcb *tp)
 	if (tp->t_flags & TF_TOE)
 		return (tcp_offload_output(tp));
 #endif
-
-	/*
-	 * For TFO connections in SYN_RECEIVED, only allow the initial
-	 * SYN|ACK and those sent by the retransmit timer.
-	 */
-	if (IS_FASTOPEN(tp->t_flags) &&
-	    (tp->t_state == TCPS_SYN_RECEIVED) &&
-	    SEQ_GT(tp->snd_max, tp->snd_una) &&    /* initial SYN|ACK sent */
-	    (rack->r_ctl.rc_resend == NULL))         /* not a retransmit */
-		return (0);
 #ifdef INET6
 	if (rack->r_state) {
 		/* Use the cache line loaded if possible */
@@ -6975,6 +6970,17 @@ rack_output(struct tcpcb *tp)
 	}
 	rack->r_wanted_output = 0;
 	rack->r_timer_override = 0;
+	/*
+	 * For TFO connections in SYN_SENT or SYN_RECEIVED,
+	 * only allow the initial SYN or SYN|ACK and those sent
+	 * by the retransmit timer.
+	 */
+	if (IS_FASTOPEN(tp->t_flags) &&
+	    ((tp->t_state == TCPS_SYN_RECEIVED) ||
+	     (tp->t_state == TCPS_SYN_SENT)) &&
+	    SEQ_GT(tp->snd_max, tp->snd_una) && /* initial SYN or SYN|ACK sent */
+	    (tp->t_rxtshift == 0))              /* not a retransmit */
+		return (0);
 	/*
 	 * Determine length of data that should be transmitted, and flags
 	 * that will be used. If there is some data or critical controls
@@ -7060,12 +7066,10 @@ again:
 		tlen = rsm->r_end - rsm->r_start;
 		if (tlen > tp->t_maxseg)
 			tlen = tp->t_maxseg;
-#ifdef INVARIANTS
-		if (SEQ_GT(tp->snd_una, rsm->r_start)) {
-			panic("tp:%p rack:%p snd_una:%u rsm:%p r_start:%u",
-			    tp, rack, tp->snd_una, rsm, rsm->r_start);
-		}
-#endif
+		KASSERT(SEQ_LEQ(tp->snd_una, rsm->r_start),
+		    ("%s:%d: r.start:%u < SND.UNA:%u; tp:%p, rack:%p, rsm:%p",
+		    __func__, __LINE__,
+		    rsm->r_start, tp->snd_una, tp, rack, rsm));
 		sb_offset = rsm->r_start - tp->snd_una;
 		cwin = min(tp->snd_wnd, tlen);
 		len = cwin;
@@ -7076,12 +7080,14 @@ again:
 		len = rsm->r_end - rsm->r_start;
 		sack_rxmit = 1;
 		sendalot = 0;
+		KASSERT(SEQ_LEQ(tp->snd_una, rsm->r_start),
+		    ("%s:%d: r.start:%u < SND.UNA:%u; tp:%p, rack:%p, rsm:%p",
+		    __func__, __LINE__,
+		    rsm->r_start, tp->snd_una, tp, rack, rsm));
 		sb_offset = rsm->r_start - tp->snd_una;
 		if (len >= tp->t_maxseg) {
 			len = tp->t_maxseg;
 		}
-		KASSERT(sb_offset >= 0, ("%s: sack block to the left of una : %d",
-		    __func__, sb_offset));
 	} else if ((rack->rc_in_persist == 0) &&
 	    ((rsm = tcp_rack_output(tp, rack, cts)) != NULL)) {
 		long tlen;
@@ -7106,6 +7112,10 @@ again:
 		}
 #endif
 		tlen = rsm->r_end - rsm->r_start;
+		KASSERT(SEQ_LEQ(tp->snd_una, rsm->r_start),
+		    ("%s:%d: r.start:%u < SND.UNA:%u; tp:%p, rack:%p, rsm:%p",
+		    __func__, __LINE__,
+		    rsm->r_start, tp->snd_una, tp, rack, rsm));
 		sb_offset = rsm->r_start - tp->snd_una;
 		if (tlen > rack->r_ctl.rc_prr_sndcnt) {
 			len = rack->r_ctl.rc_prr_sndcnt;
@@ -7127,8 +7137,6 @@ again:
 				goto just_return_nolock;
 			}
 		}
-		KASSERT(sb_offset >= 0, ("%s: sack block to the left of una : %d",
-		    __func__, sb_offset));
 		if (len > 0) {
 			sub_from_prr = 1;
 			sack_rxmit = 1;
@@ -7353,8 +7361,10 @@ again:
 	    (((flags & TH_SYN) && (tp->t_rxtshift > 0)) ||
 	     ((tp->t_state == TCPS_SYN_SENT) &&
 	      (tp->t_tfo_client_cookie_len == 0)) ||
-	     (flags & TH_RST)))
+	     (flags & TH_RST))) {
+		sack_rxmit = 0;
 		len = 0;
+	}
 	/* Without fast-open there should never be data sent on a SYN */
 	if ((flags & TH_SYN) && (!IS_FASTOPEN(tp->t_flags)))
 		len = 0;
@@ -8192,15 +8202,20 @@ send:
 	/*
 	 * Calculate receive window.  Don't shrink window, but avoid silly
 	 * window syndrome.
+	 * If a RST segment is sent, advertise a window of zero.
 	 */
-	if (recwin < (long)(so->so_rcv.sb_hiwat / 4) &&
-	    recwin < (long)tp->t_maxseg)
+	if (flags & TH_RST) {
 		recwin = 0;
-	if (SEQ_GT(tp->rcv_adv, tp->rcv_nxt) &&
-	    recwin < (long)(tp->rcv_adv - tp->rcv_nxt))
-		recwin = (long)(tp->rcv_adv - tp->rcv_nxt);
-	if (recwin > (long)TCP_MAXWIN << tp->rcv_scale)
-		recwin = (long)TCP_MAXWIN << tp->rcv_scale;
+	} else {
+		if (recwin < (long)(so->so_rcv.sb_hiwat / 4) &&
+		    recwin < (long)tp->t_maxseg)
+			recwin = 0;
+		if (SEQ_GT(tp->rcv_adv, tp->rcv_nxt) &&
+		    recwin < (long)(tp->rcv_adv - tp->rcv_nxt))
+			recwin = (long)(tp->rcv_adv - tp->rcv_nxt);
+		if (recwin > (long)TCP_MAXWIN << tp->rcv_scale)
+			recwin = (long)TCP_MAXWIN << tp->rcv_scale;
+	}
 
 	/*
 	 * According to RFC1323 the window field in a SYN (i.e., a <SYN> or
@@ -8491,9 +8506,7 @@ out:
 	    pass, rsm);
 	if ((tp->t_flags & TF_FORCEDATA) == 0 ||
 	    (rack->rc_in_persist == 0)) {
-#ifdef NETFLIX_STATS
 		tcp_seq startseq = tp->snd_nxt;
-#endif
 
 		/*
 		 * Advance snd_nxt over sequence space of this segment.
@@ -8525,6 +8538,17 @@ out:
 				tp->t_acktime = ticks;
 			}
 			tp->snd_max = tp->snd_nxt;
+			/*
+			 * Time this transmission if not a retransmission and
+			 * not currently timing anything.
+			 * This is only relevant in case of switching back to
+			 * the base stack.
+			 */
+			if (tp->t_rtttime == 0) {
+				tp->t_rtttime = ticks;
+				tp->t_rtseq = startseq;
+				TCPSTAT_INC(tcps_segstimed);
+			}
 #ifdef NETFLIX_STATS
 			if (!(tp->t_flags & TF_GPUTINPROG) && len) {
 				tp->t_flags |= TF_GPUTINPROG;

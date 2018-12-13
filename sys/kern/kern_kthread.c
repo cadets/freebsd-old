@@ -166,7 +166,7 @@ kproc_exit(int ecode)
 	 */
 	sx_xlock(&proctree_lock);
 	PROC_LOCK(p);
-	proc_reparent(p, initproc);
+	proc_reparent(p, initproc, true);
 	PROC_UNLOCK(p);
 	sx_xunlock(&proctree_lock);
 
@@ -283,7 +283,6 @@ kthread_add(void (*func)(void *), void *arg, struct proc *p,
 
 	bzero(&newtd->td_startzero,
 	    __rangeof(struct thread, td_startzero, td_endzero));
-	newtd->td_sleeptimo = 0;
 	bcopy(&oldtd->td_startcopy, &newtd->td_startcopy,
 	    __rangeof(struct thread, td_startcopy, td_endcopy));
 

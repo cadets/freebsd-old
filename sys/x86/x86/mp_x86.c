@@ -62,6 +62,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/pmap.h>
 #include <vm/vm_kern.h>
 #include <vm/vm_extern.h>
+#include <vm/vm_map.h>
 
 #include <x86/apicreg.h>
 #include <machine/clock.h>
@@ -967,6 +968,8 @@ init_secondary_tail(void)
 {
 	u_int cpuid;
 
+	pmap_activate_boot(vmspace_pmap(proc0.p_vmspace));
+
 	/*
 	 * On real hardware, switch to x2apic mode if possible.  Do it
 	 * after aps_ready was signalled, to avoid manipulating the
@@ -1068,9 +1071,23 @@ init_secondary_tail(void)
 	/* NOTREACHED */
 }
 
-/*******************************************************************
- * local functions and data
- */
+static void
+smp_after_idle_runnable(void *arg __unused)
+{
+	struct thread *idle_td;
+	int cpu;
+
+	for (cpu = 1; cpu < mp_ncpus; cpu++) {
+		idle_td = pcpu_find(cpu)->pc_idlethread;
+		while (idle_td->td_lastcpu == NOCPU &&
+		    idle_td->td_oncpu == NOCPU)
+			cpu_spinwait();
+		kmem_free((vm_offset_t)bootstacks[cpu], kstack_pages *
+		    PAGE_SIZE);
+	}
+}
+SYSINIT(smp_after_idle_runnable, SI_SUB_SMP, SI_ORDER_ANY,
+    smp_after_idle_runnable, NULL);
 
 /*
  * We tell the I/O APIC code about all the CPUs we want to receive

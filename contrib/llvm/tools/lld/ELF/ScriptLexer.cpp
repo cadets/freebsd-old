@@ -66,6 +66,8 @@ size_t ScriptLexer::getColumnNumber() {
 
 std::string ScriptLexer::getCurrentLocation() {
   std::string Filename = getCurrentMB().getBufferIdentifier();
+  if (!Pos)
+    return Filename;
   return (Filename + ":" + Twine(getLineNumber())).str();
 }
 
@@ -114,9 +116,8 @@ void ScriptLexer::tokenize(MemoryBufferRef MB) {
     }
 
     // ">foo" is parsed to ">" and "foo", but ">>" is parsed to ">>".
-    // "|", "||", "&" and "&&" are different operators.
     if (S.startswith("<<") || S.startswith("<=") || S.startswith(">>") ||
-        S.startswith(">=") || S.startswith("||") || S.startswith("&&")) {
+        S.startswith(">=")) {
       Vec.push_back(S.substr(0, 2));
       S = S.substr(2);
       continue;
@@ -281,7 +282,10 @@ static bool encloses(StringRef S, StringRef T) {
 
 MemoryBufferRef ScriptLexer::getCurrentMB() {
   // Find input buffer containing the current token.
-  assert(!MBs.empty() && Pos > 0);
+  assert(!MBs.empty());
+  if (!Pos)
+    return MBs[0];
+
   for (MemoryBufferRef MB : MBs)
     if (encloses(MB.getBuffer(), Tokens[Pos - 1]))
       return MB;

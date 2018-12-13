@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015-2017 Ruslan Bukin <br@bsdpad.com>
+ * Copyright (c) 2015-2018 Ruslan Bukin <br@bsdpad.com>
  * All rights reserved.
  *
  * Portions of this software were developed by SRI International and the
@@ -62,9 +62,6 @@ _start:
 	mv	s10, a0		/* s10 = hart id */
 	mv	s11, a1		/* s11 = dtbp */
 
-	li	t0, SSTATUS_SUM
-	csrs	sstatus, t0
-
 	/* Direct secondary cores to mpentry */
 	bnez	s10, mpentry
 
@@ -97,7 +94,7 @@ _start:
 	add	t3, t4, t2
 	li	t5, 0
 2:
-	li	t0, (PTE_V | PTE_RWX | PTE_D)
+	li	t0, (PTE_KERN | PTE_X)
 	slli	t2, t4, PTE_PPN1_S	/* << PTE_PPN1_S */
 	or	t5, t0, t2
 	sd	t5, (s1)		/* Store PTE entry to position */
@@ -129,7 +126,7 @@ _start:
 	mv	s2, s11
 	srli	s2, s2, PAGE_SHIFT
 
-	li	t0, (PTE_V | PTE_RWX | PTE_D)
+	li	t0, (PTE_KERN)
 	slli	t2, s2, PTE_PPN0_S	/* << PTE_PPN0_S */
 	or	t0, t0, t2
 
@@ -155,7 +152,7 @@ _start:
 	li	t0, SATP_MODE_SV39
 	or	s2, s2, t0
 	sfence.vma
-	csrw	sptbr, s2
+	csrw	satp, s2
 
 	.align 2
 va:
@@ -300,7 +297,7 @@ ENTRY(mpentry)
 	li	t0, SATP_MODE_SV39
 	or	s2, s2, t0
 	sfence.vma
-	csrw	sptbr, s2
+	csrw	satp, s2
 
 	.align 2
 mpva:

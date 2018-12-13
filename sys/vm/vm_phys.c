@@ -46,6 +46,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/domainset.h>
 #include <sys/lock.h>
 #include <sys/kernel.h>
 #include <sys/malloc.h>
@@ -78,6 +79,7 @@ int __read_mostly *mem_locality;
 #endif
 
 int __read_mostly vm_ndomains = 1;
+domainset_t __read_mostly all_domains = DOMAINSET_T_INITIALIZER(0x1);
 
 struct vm_phys_seg __read_mostly vm_phys_segs[VM_PHYSSEG_MAX];
 int __read_mostly vm_phys_nsegs;
@@ -460,7 +462,7 @@ void
 vm_phys_init(void)
 {
 	struct vm_freelist *fl;
-	struct vm_phys_seg *seg;
+	struct vm_phys_seg *end_seg, *prev_seg, *seg, *tmp_seg;
 	u_long npages;
 	int dom, flind, freelist, oind, pind, segind;
 
@@ -547,6 +549,29 @@ vm_phys_init(void)
 	}
 
 	/*
+	 * Coalesce physical memory segments that are contiguous and share the
+	 * same per-domain free queues.
+	 */
+	prev_seg = vm_phys_segs;
+	seg = &vm_phys_segs[1];
+	end_seg = &vm_phys_segs[vm_phys_nsegs];
+	while (seg < end_seg) {
+		if (prev_seg->end == seg->start &&
+		    prev_seg->free_queues == seg->free_queues) {
+			prev_seg->end = seg->end;
+			KASSERT(prev_seg->domain == seg->domain,
+			    ("vm_phys_init: free queues cannot span domains"));
+			vm_phys_nsegs--;
+			end_seg--;
+			for (tmp_seg = seg; tmp_seg < end_seg; tmp_seg++)
+				*tmp_seg = *(tmp_seg + 1);
+		} else {
+			prev_seg = seg;
+			seg++;
+		}
+	}
+
+	/*
 	 * Initialize the free queues.
 	 */
 	for (dom = 0; dom < vm_ndomains; dom++) {
@@ -560,6 +585,42 @@ vm_phys_init(void)
 	}
 
 	rw_init(&vm_phys_fictitious_reg_lock, "vmfctr");
+}
+
+/*
+ * Register info about the NUMA topology of the system.
+ *
+ * Invoked by platform-dependent code prior to vm_phys_init().
+ */
+void
+vm_phys_register_domains(int ndomains, struct mem_affinity *affinity,
+    int *locality)
+{
+#ifdef NUMA
+	int d, i;
+
+	/*
+	 * For now the only override value that we support is 1, which
+	 * effectively disables NUMA-awareness in the allocators.
+	 */
+	d = 0;
+	TUNABLE_INT_FETCH("vm.numa.disabled", &d);
+	if (d)
+		ndomains = 1;
+
+	if (ndomains > 1) {
+		vm_ndomains = ndomains;
+		mem_affinity = affinity;
+		mem_locality = locality;
+	}
+
+	for (i = 0; i < vm_ndomains; i++)
+		DOMAINSET_SET(i, &all_domains);
+#else
+	(void)ndomains;
+	(void)affinity;
+	(void)locality;
+#endif
 }
 
 /*

@@ -29,7 +29,7 @@ namespace RTLIB {
   ///
   enum Libcall {
 #define HANDLE_LIBCALL(code, name) code,
-    #include "llvm/IR/RuntimeLibcalls.def"
+    #include "RuntimeLibcalls.def"
 #undef HANDLE_LIBCALL
   };
 

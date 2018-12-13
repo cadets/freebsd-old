@@ -14,6 +14,11 @@ LIB32CPUFLAGS=	-march=i686 -mmmx -msse -msse2
 .else
 LIB32CPUFLAGS=	-march=${TARGET_CPUTYPE}
 .endif
+.if ${WANT_COMPILER_TYPE} == gcc || \
+    (defined(X_COMPILER_TYPE) && ${X_COMPILER_TYPE} == gcc)
+.else
+LIB32CPUFLAGS+=	-target x86_64-unknown-freebsd13.0
+.endif
 LIB32CPUFLAGS+=	-m32
 LIB32WMAKEENV=	MACHINE=i386 MACHINE_ARCH=i386 \
 		MACHINE_CPU="i686 mmx sse sse2"
@@ -44,9 +49,9 @@ LIB32CPUFLAGS=	-march=${TARGET_CPUTYPE}
 .endif
 .else
 .if ${TARGET_ARCH:Mmips64el*} != ""
-LIB32CPUFLAGS=  -target mipsel-unknown-freebsd12.0
+LIB32CPUFLAGS=  -target mipsel-unknown-freebsd13.0
 .else
-LIB32CPUFLAGS=  -target mips-unknown-freebsd12.0
+LIB32CPUFLAGS=  -target mips-unknown-freebsd13.0
 .endif
 .endif
 LIB32CPUFLAGS+= -mabi=32
@@ -195,7 +200,8 @@ build${libcompat}: .PHONY
 	    OBJTOP=${LIBCOMPAT_OBJTOP} \
 	    OBJROOT='$${OBJTOP}/' \
 	    MAKEOBJDIRPREFIX= \
-	    DIRPRFX=${_dir}/ -DNO_LINT -DNO_CPU_CFLAGS MK_WARNS=no MK_CTF=no \
+	    DIRPRFX=${_dir}/ -DNO_LINT -DNO_CPU_CFLAGS \
+	    MK_CTF=no MK_RETPOLINE=no MK_WARNS=no \
 	    ${_t}
 .endfor
 .endfor

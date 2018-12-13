@@ -14,3 +14,4 @@ SRCS+=		ubsan/ubsan_type_hash_itanium.cc
 CXXFLAGS.ubsan_handlers_cxx.cc=		-frtti
 CXXFLAGS.ubsan_type_hash.cc=		-frtti
 CXXFLAGS.ubsan_type_hash_itanium.cc=	-frtti
+CXXFLAGS.ubsan_type_hash_win.cc=	-frtti

@@ -28,6 +28,7 @@
 #include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/MachineValueType.h"
 #include "llvm/CodeGen/RuntimeLibcalls.h"
 #include "llvm/CodeGen/StackMaps.h"
 #include "llvm/CodeGen/TargetLowering.h"
@@ -49,7 +50,6 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/MachineValueType.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Target/TargetMachine.h"
 #include <algorithm>
@@ -118,7 +118,7 @@ static cl::opt<int> MinPercentageForPredictableBranch(
 void TargetLoweringBase::InitLibcalls(const Triple &TT) {
 #define HANDLE_LIBCALL(code, name) \
   setLibcallName(RTLIB::code, name);
-#include "llvm/IR/RuntimeLibcalls.def"
+#include "llvm/CodeGen/RuntimeLibcalls.def"
 #undef HANDLE_LIBCALL
   // Initialize calling conventions to their default.
   for (int LC = 0; LC < RTLIB::UNKNOWN_LIBCALL; ++LC)
@@ -192,9 +192,6 @@ RTLIB::Libcall RTLIB::getFPEXT(EVT OpVT, EVT RetVT) {
       return FPEXT_F64_F128;
     else if (RetVT == MVT::ppcf128)
       return FPEXT_F64_PPCF128;
-  } else if (OpVT == MVT::f80) {
-    if (RetVT == MVT::f128)
-      return FPEXT_F80_F128;
   }
 
   return UNKNOWN_LIBCALL;
@@ -230,9 +227,6 @@ RTLIB::Libcall RTLIB::getFPROUND(EVT OpVT, EVT RetVT) {
       return FPROUND_F128_F64;
     if (OpVT == MVT::ppcf128)
       return FPROUND_PPCF128_F64;
-  } else if (RetVT == MVT::f80) {
-    if (OpVT == MVT::f128)
-      return FPROUND_F128_F80;
   }
 
   return UNKNOWN_LIBCALL;
@@ -535,7 +529,6 @@ TargetLoweringBase::TargetLoweringBase(const TargetMachine &tm) : TM(tm) {
   // Perform these initializations only once.
   MaxStoresPerMemset = MaxStoresPerMemcpy = MaxStoresPerMemmove =
       MaxLoadsPerMemcmp = 8;
-  MaxGluedStoresPerMemcpy = 0;
   MaxStoresPerMemsetOptSize = MaxStoresPerMemcpyOptSize =
       MaxStoresPerMemmoveOptSize = MaxLoadsPerMemcmpOptSize = 4;
   UseUnderscoreSetJmp = false;
@@ -621,18 +614,12 @@ void TargetLoweringBase::initActions() {
     setOperationAction(ISD::SUBCARRY, VT, Expand);
     setOperationAction(ISD::SETCCCARRY, VT, Expand);
 
-    // ADDC/ADDE/SUBC/SUBE default to expand.
-    setOperationAction(ISD::ADDC, VT, Expand);
-    setOperationAction(ISD::ADDE, VT, Expand);
-    setOperationAction(ISD::SUBC, VT, Expand);
-    setOperationAction(ISD::SUBE, VT, Expand);
-
     // These default to Expand so they will be expanded to CTLZ/CTTZ by default.
     setOperationAction(ISD::CTLZ_ZERO_UNDEF, VT, Expand);
     setOperationAction(ISD::CTTZ_ZERO_UNDEF, VT, Expand);
 
     setOperationAction(ISD::BITREVERSE, VT, Expand);
-
+    
     // These library functions default to expand.
     setOperationAction(ISD::FROUND, VT, Expand);
     setOperationAction(ISD::FPOWI, VT, Expand);
@@ -692,13 +679,12 @@ MVT TargetLoweringBase::getScalarShiftAmountTy(const DataLayout &DL,
   return MVT::getIntegerVT(8 * DL.getPointerSize(0));
 }
 
-EVT TargetLoweringBase::getShiftAmountTy(EVT LHSTy, const DataLayout &DL,
-                                         bool LegalTypes) const {
+EVT TargetLoweringBase::getShiftAmountTy(EVT LHSTy,
+                                         const DataLayout &DL) const {
   assert(LHSTy.isInteger() && "Shift amount is not an integer type!");
   if (LHSTy.isVector())
     return LHSTy;
-  return LegalTypes ? getScalarShiftAmountTy(DL, LHSTy)
-                    : getPointerTy(DL);
+  return getScalarShiftAmountTy(DL, LHSTy);
 }
 
 bool TargetLoweringBase::canOpTrap(unsigned Op, EVT VT) const {
@@ -924,7 +910,7 @@ TargetLoweringBase::emitPatchPoint(MachineInstr &InitialMI,
   // STATEPOINT Deopt Spill - live-through, read only, indirect
   // STATEPOINT Deopt Alloca - live-through, read only, direct
   // (We're currently conservative and mark the deopt slots read/write in
-  // practice.)
+  // practice.) 
   // STATEPOINT GC Spill - live-through, read/write, indirect
   // STATEPOINT GC Alloca - live-through, read/write, direct
   // The live-in vs live-through is handled already (the live through ones are
@@ -990,36 +976,6 @@ TargetLoweringBase::emitPatchPoint(MachineInstr &InitialMI,
     MI->eraseFromParent();
     MI = MIB;
   }
-  return MBB;
-}
-
-MachineBasicBlock *
-TargetLoweringBase::emitXRayCustomEvent(MachineInstr &MI,
-                                        MachineBasicBlock *MBB) const {
-  assert(MI.getOpcode() == TargetOpcode::PATCHABLE_EVENT_CALL &&
-         "Called emitXRayCustomEvent on the wrong MI!");
-  auto &MF = *MI.getMF();
-  auto MIB = BuildMI(MF, MI.getDebugLoc(), MI.getDesc());
-  for (unsigned OpIdx = 0; OpIdx != MI.getNumOperands(); ++OpIdx)
-    MIB.add(MI.getOperand(OpIdx));
-
-  MBB->insert(MachineBasicBlock::iterator(MI), MIB);
-  MI.eraseFromParent();
-  return MBB;
-}
-
-MachineBasicBlock *
-TargetLoweringBase::emitXRayTypedEvent(MachineInstr &MI,
-                                       MachineBasicBlock *MBB) const {
-  assert(MI.getOpcode() == TargetOpcode::PATCHABLE_TYPED_EVENT_CALL &&
-         "Called emitXRayTypedEvent on the wrong MI!");
-  auto &MF = *MI.getMF();
-  auto MIB = BuildMI(MF, MI.getDebugLoc(), MI.getDesc());
-  for (unsigned OpIdx = 0; OpIdx != MI.getNumOperands(); ++OpIdx)
-    MIB.add(MI.getOperand(OpIdx));
-
-  MBB->insert(MachineBasicBlock::iterator(MI), MIB);
-  MI.eraseFromParent();
   return MBB;
 }
 
@@ -1337,8 +1293,7 @@ unsigned TargetLoweringBase::getVectorTypeBreakdown(LLVMContext &Context, EVT VT
 /// type of the given function.  This does not require a DAG or a return value,
 /// and is suitable for use before any DAGs for the function are constructed.
 /// TODO: Move this out of TargetLowering.cpp.
-void llvm::GetReturnInfo(CallingConv::ID CC, Type *ReturnType,
-                         AttributeList attr,
+void llvm::GetReturnInfo(Type *ReturnType, AttributeList attr,
                          SmallVectorImpl<ISD::OutputArg> &Outs,
                          const TargetLowering &TLI, const DataLayout &DL) {
   SmallVector<EVT, 4> ValueVTs;
@@ -1366,9 +1321,9 @@ void llvm::GetReturnInfo(CallingConv::ID CC, Type *ReturnType,
     }
 
     unsigned NumParts =
-        TLI.getNumRegistersForCallingConv(ReturnType->getContext(), CC, VT);
+        TLI.getNumRegistersForCallingConv(ReturnType->getContext(), VT);
     MVT PartVT =
-        TLI.getRegisterTypeForCallingConv(ReturnType->getContext(), CC, VT);
+        TLI.getRegisterTypeForCallingConv(ReturnType->getContext(), VT);
 
     // 'inreg' on function refers to return value
     ISD::ArgFlagsTy Flags = ISD::ArgFlagsTy();
@@ -1411,7 +1366,7 @@ bool TargetLoweringBase::allowsMemoryAccess(LLVMContext &Context,
       *Fast = true;
     return true;
   }
-
+  
   // This is a misaligned access.
   return allowsMisalignedMemoryAccesses(VT, AddrSpace, Alignment, Fast);
 }
@@ -1632,16 +1587,13 @@ Value *TargetLoweringBase::getIRStackGuard(IRBuilder<> &IRB) const {
 // Currently only support "standard" __stack_chk_guard.
 // TODO: add LOAD_STACK_GUARD support.
 void TargetLoweringBase::insertSSPDeclarations(Module &M) const {
-  if (!M.getNamedValue("__stack_chk_guard"))
-    new GlobalVariable(M, Type::getInt8PtrTy(M.getContext()), false,
-                       GlobalVariable::ExternalLinkage,
-                       nullptr, "__stack_chk_guard");
+  M.getOrInsertGlobal("__stack_chk_guard", Type::getInt8PtrTy(M.getContext()));
 }
 
 // Currently only support "standard" __stack_chk_guard.
 // TODO: add LOAD_STACK_GUARD support.
 Value *TargetLoweringBase::getSDagStackGuard(const Module &M) const {
-  return M.getNamedValue("__stack_chk_guard");
+  return M.getGlobalVariable("__stack_chk_guard", true);
 }
 
 Value *TargetLoweringBase::getSSPStackGuardCheck(const Module &M) const {
@@ -1731,7 +1683,7 @@ static int getOpEnabled(bool IsSqrt, EVT VT, StringRef Override) {
     return TargetLoweringBase::ReciprocalEstimate::Unspecified;
 
   SmallVector<StringRef, 4> OverrideVector;
-  Override.split(OverrideVector, ',');
+  SplitString(Override, OverrideVector, ",");
   unsigned NumArgs = OverrideVector.size();
 
   // Check if "all", "none", or "default" was specified.
@@ -1791,7 +1743,7 @@ static int getOpRefinementSteps(bool IsSqrt, EVT VT, StringRef Override) {
     return TargetLoweringBase::ReciprocalEstimate::Unspecified;
 
   SmallVector<StringRef, 4> OverrideVector;
-  Override.split(OverrideVector, ',');
+  SplitString(Override, OverrideVector, ",");
   unsigned NumArgs = OverrideVector.size();
 
   // Check if "all", "default", or "none" was specified.

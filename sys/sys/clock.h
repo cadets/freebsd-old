@@ -56,7 +56,6 @@
  */
 extern int tz_minuteswest;
 extern int tz_dsttime;
-extern struct mtx resettodr_lock;
 
 int utc_offset(void);
 
