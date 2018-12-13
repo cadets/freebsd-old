@@ -2958,6 +2958,7 @@ _vdrop(struct vnode *vp, bool locked)
 				mtx_unlock(&vnode_free_list_mtx);
 			}
 		} else {
+			VI_UNLOCK(vp);
 			counter_u64_add(free_owe_inact, 1);
 		}
 		return;
