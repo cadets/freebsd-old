@@ -42,6 +42,9 @@
 #include <sys/poll.h>
 #include <sys/types.h>
 
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+
 #include <strings.h>
 #include <stddef.h>
 #include <unistd.h>
@@ -66,6 +69,8 @@ struct dl_tls_transport {
  */
 static const long DLT_TLS_FLAGS = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 |
     SSL_OP_NO_COMPRESSION;
+
+static const int DLT_TLS_POLL_TIMEOUT = 2000;
 
 static dl_event_handler_handle dl_tls_get_transport_fd(void *);
 static void dl_tls_transport_hdlr(void *, int, int);
@@ -144,6 +149,10 @@ dl_tls_transport_connect(struct dl_transport *self,
 		return -1;
 	}
 
+	int fd, flags = 1;
+	BIO_get_fd(self->dlt_tls->dlt_tls_bio, &fd);
+	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
+
 	/* Configure the hostname and port to connect to.
 	 * (Note: These functions always return 1).
 	 */
@@ -200,27 +209,50 @@ static int
 dl_tls_transport_read_msg(struct dl_transport *self,
     struct dl_bbuf **target)
 {
+	struct pollfd fds;
 	const unsigned char *buffer;
 	int32_t msg_size;
-	int rc, total = 0;
+	int fd, rc, total = 0;
 	
 	dl_tls_transport_check_integrity(self->dlt_tls);
 	DL_ASSERT(self->dlt_tls->dlt_tls_bio != NULL,
 	    ("Transport TSL bio cannot be NULL"));
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
 	
+retry_read_length:
 	/* Read the size of the request or response to process. */
-	do {
-		rc = BIO_read(self->dlt_tls->dlt_tls_bio,
-	       	    &msg_size, sizeof(msg_size));
-	} while (rc <= 0 &&
-	    BIO_should_retry(self->dlt_tls->dlt_tls_bio) != 0);
+	rc = BIO_read(self->dlt_tls->dlt_tls_bio, &msg_size, sizeof(msg_size));
+	if (rc <= 0) {
+		if (BIO_should_retry(self->dlt_tls->dlt_tls_bio) != 0) {
 
-	if (rc == 0) {
+			/* Poll on the socket until it is ready to retry. */
+			BIO_get_fd(self->dlt_tls->dlt_tls_bio, &fd);
 
-		/* No data to read EOF */
-		return 0; 
-	} else if (rc == sizeof(msg_size)) {
+			fds.fd = fd;
+			fds.events = POLLIN;
+			rc = poll(&fds, 1, DLT_TLS_POLL_TIMEOUT);
+			if (rc == -1) {
+
+				DLOGTR1(PRIO_HIGH,
+					"Error whilst polling on socket (%d)\n",
+					errno);
+			} else if (rc == 0) {
+
+				/* Timeout whilst waiting on socket. */
+				DLOGTR0(PRIO_NORMAL,
+					"Timed out whilst attempting to resend.\n");
+			} else {
+
+				/* Socket is ready to write, retry. */
+				goto retry_read_length;
+			}
+		}
+
+		return -1;
+	} else {
+		DL_ASSERT(rc == sizeof(msg_size),
+		    ("Number of bytes read does not match message size"));
+
 		/* Successfully read the message size, now read the
 		 * remainder of the message.
 		 */
@@ -229,7 +261,7 @@ dl_tls_transport_read_msg(struct dl_transport *self,
 		 * endianess.
 		 */
 		msg_size = be32toh(msg_size);
-		DLOGTR1(PRIO_LOW, "Reading %d bytes...\n", msg_size);
+		//DLOGTR1(PRIO_LOW, "Reading %d bytes...\n", msg_size);
 
 		buffer = dlog_alloc(sizeof(unsigned char) * msg_size);
 		if (buffer == NULL) {
@@ -250,19 +282,46 @@ dl_tls_transport_read_msg(struct dl_transport *self,
 		}
 
 		while (total < msg_size) {
-			do {
-				rc = BIO_read(self->dlt_tls->dlt_tls_bio,
-				    buffer, msg_size-total);
-			} while (rc <= 0 &&
-			    BIO_should_retry(self->dlt_tls->dlt_tls_bio) != 0);
-
+retry_read_msg:
+			rc = BIO_read(self->dlt_tls->dlt_tls_bio, buffer,
+			    msg_size-total);
 			if (rc <= 0) {
+				if (BIO_should_retry(
+				    self->dlt_tls->dlt_tls_bio) != 0) {
 
+					/* Poll on the socket until it is ready to retry. */
+					BIO_get_fd(
+					    self->dlt_tls->dlt_tls_bio, &fd);
+
+					fds.fd = fd;
+					fds.events = POLLIN;
+					rc = poll(&fds, 1,
+					    DLT_TLS_POLL_TIMEOUT);
+					if (rc == -1) {
+
+						DLOGTR1(PRIO_HIGH,
+						    "Error whilst polling on "
+						    "socket (%d)\n", errno);
+					} else if (rc == 0) {
+
+						/* Timeout whilst waiting on socket. */
+						DLOGTR0(PRIO_NORMAL,
+						  "Timed out whilst "
+						  "attempting to resend.\n");
+					} else {
+
+						/* Socket is ready to read,
+						 * retry.
+						 */
+						goto retry_read_msg;
+					}
+				}
 			} else {
-				total+=rc;
-				DLOGTR2(PRIO_LOW,
-				    "\tRead %d characters; expected %d\n",
-				    rc, msg_size);
+
+				total += rc;
+				//DLOGTR2(PRIO_LOW,
+				//    "\tRead %d characters; expected %d\n",
+			//	    rc, msg_size);
 				rc = dl_bbuf_bcat(*target, buffer, rc);
 			}
 		}
@@ -276,11 +335,6 @@ dl_tls_transport_read_msg(struct dl_transport *self,
 		/* Update the Producer statistics. */
 		dl_producer_stats_bytes_received(self->dlt_producer, msg_size);
 		return msg_size;
-	} else {
-
-		/* Peer has closed connection */
-		DLOGTR1(PRIO_HIGH, "Peer has closed connection (%d)", rc);
-		return -1;
 	}
 }
 
@@ -289,8 +343,8 @@ dl_tls_transport_send_request(struct dl_transport *self,
     const struct dl_bbuf *buffer)
 {
 	BIO *bio, *bio_buf;
-	int32_t buflen;
-	int rc;
+	struct pollfd fds;
+	int fd, rc;
 
 	dl_tls_transport_check_integrity(self->dlt_tls);
 	DL_ASSERT(self->dlt_tls->dlt_tls_bio != NULL,
@@ -329,22 +383,8 @@ dl_tls_transport_send_request(struct dl_transport *self,
 	/* Convert the length of the buffer from host endianess to
 	 * big endian.
 	 */
-	DLOGTR1(PRIO_LOW, "Sending request (bytes= %u)\n",
-	    dl_bbuf_pos(buffer));
-
-	/* Write the length pre-pended request to the transport.
-	 * (The length is big-endian format).
-	 */
-	buflen = htobe32(dl_bbuf_pos(buffer));
-
-	rc = BIO_write(bio_buf, &buflen, sizeof(buflen));
-	if (rc <= 0) {
-		DLOGTR0(PRIO_HIGH,
-		    "BIO_write in TlsTransport send_request failed\n");
-		/* Free the BIO used to buffer the request. */
-		BIO_free(bio_buf);
-		return -1;
-	}
+	//DLOGTR1(PRIO_LOW, "Sending request (bytes= %u)\n",
+	//    dl_bbuf_pos(buffer));
 
 	rc = BIO_write(bio_buf, dl_bbuf_data(buffer), dl_bbuf_pos(buffer));
 	if (rc <= 0) {
@@ -356,15 +396,39 @@ dl_tls_transport_send_request(struct dl_transport *self,
 		return -1;
 	}
 
-	/* Flush any buffered data. */
-	do {
-		rc = BIO_flush(bio);
-	} while (rc <= 0 && (BIO_should_retry(bio) != 0));
-
+retry_flush:
+	/* Flush the buffered data. */
+	rc = BIO_flush(bio);
 	if (rc <= 0) {
-	
+		
+		if (BIO_should_retry(bio) != 0) {
+
+			/* Poll on the socket until it is ready to retry. */
+			BIO_get_fd(self->dlt_tls->dlt_tls_bio, &fd);
+
+			fds.fd = fd;
+			fds.events = POLLOUT;
+			rc = poll(&fds, 1, DLT_TLS_POLL_TIMEOUT);
+			if (rc == -1) {
+
+				DLOGTR1(PRIO_HIGH,
+				    "Error whilst polling on socket (%d)\n",
+				    errno);
+			} else if (rc == 0) {
+
+				/* Timeout whilst waiting on socket. */
+				DLOGTR0(PRIO_NORMAL,
+				    "Timed out whilst attempting to resend.\n");
+			} else {
+
+				/* Socket is ready to write, retry. */
+				goto retry_flush;
+			}
+		}
+
 		DLOGTR0(PRIO_HIGH,
 		    "BIO_flush in TlsTransport send_request failed\n");
+
 		/* Free the BIO used to buffer the request. */
 		BIO_free(bio_buf);
 		return -1;
@@ -413,9 +477,9 @@ dl_tls_transport_hdlr(void *instance, int fd, int revents)
 
 			/* Deserialise the response header. */
 			if (dl_response_header_decode(&hdr, buffer) == 0) {
-				DLOGTR1(PRIO_LOW,
-				    "Got response id = : %d\n",
-				    hdr->dlrsh_correlation_id);
+				//DLOGTR1(PRIO_LOW,
+				//    "Got response id = : %d\n",
+				//    hdr->dlrsh_correlation_id);
 
 				/* Process the received response. */
 				dl_producer_response(self->dlt_producer,
@@ -488,7 +552,6 @@ dl_tls_transport_hdlr(void *instance, int fd, int revents)
 					DLOGTR0(PRIO_LOW,
 					    "TLS handshake in progress\n");
 					sleep(1);
-
 				} else {
 					DLOGTR0(PRIO_HIGH,
 					    "Error establishing TLS handshake\n");

@@ -46,6 +46,7 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "dl_producer.h"
@@ -65,18 +66,49 @@ usage(FILE * fp)
 static void
 display_stats()
 {
+	time_t now;
+	char time_buf[20]; /*2018-10-28 12:00:00 */
+
+	now = time(NULL);
 
 	move(0, 0);
 	printw("CADETS - dlogd statistics\n");
-	printw("Producer topic = %s\n", stats->dlps_topic_name);
-	printw("State = %s\n", stats->dlps_state_name);
-	printw("TCP connected = %s\n",
-	    stats->dlps_tcp_connected ? "true" : "false");
-	printw("TLS connected = %s\n",
-	    stats->dlps_tls_connected ? "true" : "false");
-	printw("Queued requests = %d\n", stats->dlps_queued_requests);
-	printw("Unacknowledged requests = %d\n",
-	    stats->dlps_unackd_requests);
+	printw("Producer topic name = %s\n", stats->dlps_topic_name);
+	printw("Producer state = %s\n", stats->dlps_state_name);
+	printw("TCP status = %s\n",
+	    stats->dlps_tcp_connected ? "connected" : "disconnected");
+	printw("TLS status = %s\n",
+	    stats->dlps_tls_connected ? "established" : "none");
+	printw("Requests:\n");
+	printw("\tQueue capacity = %d\n",
+	    stats->dlps_request_q_stats.dlrqs_capacity);
+	printw("\tEnqueued = %d\n",
+	    stats->dlps_request_q_stats.dlrqs_requests);
+	printw("\tUnacknowledged = %d\n",
+	    stats->dlps_request_q_stats.dlrqs_unackd);
+	printw("\tLatest id = %ld\n", stats->dlps_sent.dlpsm_cid);
+	printw("\tStatus = %s\n",
+	    stats->dlps_sent.dlpsm_error ? "failed" : "OK");
+	strftime(time_buf, 20, "%Y-%m-%d %H:%M:%S",
+	    localtime(&stats->dlps_sent.dlpsm_timestamp));
+	printw("\tLast sent = %.0lf secs (%s)\n",
+	    difftime(now, stats->dlps_sent.dlpsm_timestamp),
+	    time_buf);
+	printw("Responses:\n");
+	printw("\tLatest id = %ld\n", stats->dlps_received.dlpsm_cid);
+	printw("\tStatus = %s\n",
+	    stats->dlps_received.dlpsm_error ? "failed" : "OK");
+	strftime(time_buf, 20, "%Y-%m-%d %H:%M:%S",
+	    localtime(&stats->dlps_received.dlpsm_timestamp));
+	printw("\tLast received = %.0lf secs (%s)\n",
+	    difftime(now, stats->dlps_received.dlpsm_timestamp),
+	    time_buf);
+	printw("Resend = %s\n",
+	    stats->dlps_resend ? "enabled" : "disabled");
+	if (stats->dlps_resend) {
+		printw("Resend after = %d secs\n",
+		    stats->dlps_resend_timeout);
+	}
 	printw("Total bytes sent = %ld\n",
 		stats->dlps_bytes_sent);
 	printw("Total bytes received = %ld\n",

@@ -1,0 +1,167 @@
+.\"-
+.\" Copyright (c) 2018 Robert N. M. Watson
+.\" All rights reserved.
+.\"
+.\" This software was developed by BAE Systems, the University of Cambridge
+.\" Computer Laboratory, and Memorial University under DARPA/AFRL contract
+.\" FA8650-15-C-7558 (\"CADETS\"), as part of the DARPA Transparent Computing
+.\" (TC) research program.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd October 23, 2018
+.Dt DLOGD 8
+.Os
+.Sh NAME
+.Nm dlogd
+.Nd Distributed DTrace Log Daemon
+.Sh SYNOPSIS
+.Nm
+.Op Fl c Ar conffile
+.Op Fl d
+.Sh DESCRIPTION
+The
+.Nm
+daemon is responsible for managing distributed aspects of
+.Xr dtrace 1
+operation.
+This primarily consists of configuring the kernel
+.Xr dtrace 1
+implementation to commit trace output to a
+.Xr libdlog 3
+log, and then performing reliable distributed spooling of trace records to a
+central Kafka server.
+.Xr libdlog 3
+provides upper bounds on loss in the event of a node crash, as well as
+reliable recovery following node or network failure.
+Records can only be buffered locally on disk as long as free space remains on
+the log filesystem.
+.Pp
+The following options are available:
+.Bl -tag -width indent
+.It Fl c Ar conffile
+Use
+.Ar conffile
+as the configuration file instead of the default
+.Pa /etc/dlogd/dlogd.cfg
+.It Fl d
+Enable additional debugging output to
+.Xr syslog 3
+and keep
+.Nm
+in the foreground after start.
+.El
+.Sh CONFIGURATION FILE
+.Nm
+accepts a single configuration file that configures various operating
+parameters, such as the IP address of the Kafka server to submit log
+records to.
+The file is processed using
+.Xr libucl .
+It consists of a set of global configuration settings (e.g., configuring the
+client ID), and a series of topics along with per-topic settings such as
+destination server.
+The following global configuration variables may be set:
+.Bl -tag -width indent
+.It Va cacert_file
+Specify the TLS client-side certificate bundle.
+Defaults to
+.Pa cacert.pem .
+.It Va client_file
+Specify the TLS client-side certificate.
+Defaults to
+.Pa client.pem .
+.It Va clientid
+Define the Kafka client name, which will appear in Kafka server logs.
+Defaults to
+.Pa dlog .
+.It Va log_path
+Set the directory in which
+.Nm
+will store log files, monitoring statistics, and ofher data.
+Defaults to the current working directory.
+.It Va nelements
+Size the producer hash table for
+.Va nelements
+entries.
+Defaults to
+.Dv 10 .
+.It Va privatekey_file
+Specify the TLS client-side private key file.
+.It Va tls
+Enable TLS support.
+Defaults to
+.Va false .
+.It Va topics
+Start the
+.Va topics
+block (see below).
+.It Va user_password
+Specify the TLS password.
+Defaults to
+.Va password .
+.El
+.Pp
+The
+.Va topics
+section consists of a series of blocks named by their Kafka topic defining the
+destination host name and port for the topic:
+.Bl -tag -width indent
+.It Va hostname
+Sets the host name of the Kafka server to submit log records to.
+.It Va port
+Sets the TCP port for the Kafka server to submit log records to.
+.El
+.Pp
+A typical configuration file might be as follows:
+.Pp
+.Bd -unfilled -offset indent -compact
+clientid = "dlogd",
+log_path = "/var/db/dlogd"
+topics = {
+	cadets-trace {
+		hostname = "192.0.2.1"
+		port = 9092
+	}
+}
+.Ed
+.Sh AUTHORS
+This software and this manual page were developed by BAE Systems, the
+University of Cambridge Computer Laboratory, and Memorial University under
+DARPA/AFRL contract
+.Pq FA8650-15-C-7558
+.Pq Do CADETS Dc ,
+as part of the DARPA Transparent Computing (TC) research program.
+.Sh BUGS
+.Xr libdlog 3
+is not yet able to interface to Kafka via Zookeeper, and therefore must be
+manually configured with information about the cluster leader.
+.Pp
+Unlike most other daemons, using the
+.Fl d
+flag does not enable the
+.Dv LOG_PERROR
+flag on
+.Xr syslog 3 ,
+and hence will not print log messages on the current terminal.
