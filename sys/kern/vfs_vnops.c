@@ -286,7 +286,13 @@ restart:
 	error = vn_open_vnode(vp, fmode, cred, td, fp);
 	if (error)
 		goto bad;
-	vp->v_path = strdup(ndp->ni_dirp, M_TEMP);
+
+	vp->v_path = malloc(MAXPATHLEN, M_TEMP, M_WAITOK);
+	if (ndp->ni_segflg == UIO_SYSSPACE)
+		error = copystr(ndp->ni_dirp, vp->v_path, MAXPATHLEN, NULL);
+	else
+		error = copyinstr(ndp->ni_dirp, vp->v_path, MAXPATHLEN, NULL);
+
 	*flagp = fmode;
 	return (0);
 bad:
