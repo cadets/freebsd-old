@@ -389,7 +389,7 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 		 */
 
 		/* As the zlib in kernel is significantly out of date, it
-		 * doesn't provide the defalateBounds() method which would
+		 * doesn't provide the deflateBounds() method which would
 		 * allow me to determine the size of the compressed output.
 		 *
 		 * Therefore, I using a configurable parameter.
@@ -433,7 +433,8 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 			 * buffer.
 			 */
 			if (msg_size == desc->dtbd_size) {
-				if (dlog_produce_no_key(hdl, 
+				if (dlog_produce(hdl,
+				    KONSUMER_KEY, strlen(KONSUMER_KEY),
 				    &desc->dtbd_data[msg_start],
 				    msg_size) != 0) {
 
