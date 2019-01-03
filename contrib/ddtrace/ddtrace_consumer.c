@@ -239,17 +239,12 @@ dtc_buffered_handler(const dtrace_bufdata_t *buf_data, void *arg)
 
 	DL_ASSERT(tx_topic != NULL, ("Transmit topic cannot be NULL"));
 
-
-	/* '{' indicates the start of the JSON message.
-	 * Allocate a buffer into which the message is written.
-	 */
-	if (buf_data->dtbda_buffered[0] == '{') {
-
-		DLOGTR0(PRIO_LOW, "Start of JSON message\n");
+	if (output_buf == NULL) {
+		DLOGTR0(PRIO_LOW, "Start of message\n");
 		if(output_buf != NULL)
-			DLOGTR1(PRIO_LOW, "Replacing incomplete message: %s\n", dl_bbuf_data(output_buf));
+                        DLOGTR1(PRIO_LOW, "Replacing incomplete message: %s\n", dl_bbuf_data(output_buf));
 		dl_bbuf_new_auto(&output_buf) ;
-	} 
+	}
 
 	/* Buffer the received data until the end of the JSON message 
 	 * is received.
@@ -257,12 +252,14 @@ dtc_buffered_handler(const dtrace_bufdata_t *buf_data, void *arg)
 	buf_len = strlen(buf_data->dtbda_buffered);
 	dl_bbuf_bcat(output_buf, buf_data->dtbda_buffered, buf_len);
 
-	/* A message starting with '}' indicates the end of the JSON message.
+	DLOGTR2(PRIO_LOW, "Curr message (len %zu): %s\n", buf_len, buf_data->dtbda_buffered);
+
+	/* A message ending with '\n' indicates the end of the JSON message.
 	 * Allocate a buffer into which the message is written.
 	 */
-	if (buf_data->dtbda_buffered[0] == '}') {
+	if (buf_data->dtbda_buffered[buf_len-1] == '\n') {
 
-		DLOGTR0(PRIO_LOW, "End of JSON message\n");
+		DLOGTR0(PRIO_LOW, "End of message\n");
 retry:
 		if (rd_kafka_produce(
 			/* Topic object */
