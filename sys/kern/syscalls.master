@@ -3172,10 +3172,6 @@
 ; sys/compat/freebsd32/syscalls.master
 
 ; Placeholders for future FreeBSD system calls during CADETS development.
-564	AUE_NULL	UNIMPL	placeholder
-565	AUE_NULL	UNIMPL	placeholder
-566	AUE_NULL	UNIMPL	placeholder
-567	AUE_NULL	UNIMPL	placeholder
 568	AUE_NULL	UNIMPL	placeholder
 569	AUE_NULL	UNIMPL	placeholder
 570	AUE_NULL	UNIMPL	placeholder
