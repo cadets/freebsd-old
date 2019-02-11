@@ -66,8 +66,6 @@ extern "C" {
 #include <dt_pcb.h>
 #include <dt_pq.h>
 
-#include <libxo/xo.h>
-
 struct dt_module;		/* see below */
 struct dt_pfdict;		/* see <dt_printf.h> */
 struct dt_arg;			/* see below */
@@ -367,7 +365,6 @@ struct dtrace_hdl {
 	u_int dt_oformat;	/* output format, plain, XML, JSON */
 	char *dt_instance;	/* Current instance name or NULL */
 	boolean_t dt_has_sugar;	/* syntactic sugar used? */
-	xo_handle_t *dt_xo_hdl;	/* Handle of libxo instance or NULL */
 };
 
 /*

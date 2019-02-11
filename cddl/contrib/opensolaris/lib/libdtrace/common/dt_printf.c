@@ -279,7 +279,7 @@ pfprint_sint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	switch (size) {
  	case sizeof (int8_t):
 		if (oformat) {
-			xo_emit_h(dtp->dt_xo_hdl,"{:int8_t/%d}",
+			xo_emit("{:int8_t/%d}",
 			    (int32_t)*((int8_t *)addr) / n);
 			goto closetag;
 		}
@@ -287,7 +287,7 @@ pfprint_sint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 			(int32_t)*((int8_t *)addr) / n));
 	case sizeof (int16_t):
 		if (oformat) {
-			xo_emit_h(dtp->dt_xo_hdl, "{:int16_t/%d}",
+			xo_emit("{:int16_t/%d}",
 			    (int32_t)*((int16_t *)addr) / n);
 			goto closetag;
 		}
@@ -295,7 +295,7 @@ pfprint_sint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 		    (int32_t)*((int16_t *)addr) / n));
 	case sizeof (int32_t):
 		if (oformat) {
-			xo_emit_h(dtp->dt_xo_hdl, "{:int32_t/%d}",
+			xo_emit("{:int32_t/%d}",
 			    *((int32_t *)addr) / n);
 			goto closetag;
 		}
@@ -303,7 +303,7 @@ pfprint_sint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 		    *((int32_t *)addr) / n));
 	case sizeof (int64_t):
 		if (oformat) {
-			xo_emit_h(dtp->dt_xo_hdl, "{:int64_t/%ld}",
+			xo_emit("{:int64_t/%ld}",
 			    *((int64_t *)addr) / normal);
 			goto closetag;
 		}
@@ -315,7 +315,7 @@ pfprint_sint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 
 closetag:
 	if (dtp->dt_instance != NULL) {
-		xo_close_container_h(dtp->dt_xo_hdl, dtp->dt_instance);
+		xo_close_container_d();
 	}
 	return (0);
 }
@@ -334,7 +334,7 @@ pfprint_uint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	switch (size) {
 	case sizeof (uint8_t):
 		if (oformat) {
-			xo_emit_h(dtp->dt_xo_hdl, "{:uint8_t/%d}",
+			xo_emit("{:uint8_t/%d}",
 			    (uint32_t)*((uint8_t *)addr) / n);
 			goto closetag;
 		}
@@ -342,7 +342,7 @@ pfprint_uint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 		    (uint32_t)*((uint8_t *)addr) / n));
 	case sizeof (uint16_t):
 		if (oformat) {
-			xo_emit_h(dtp->dt_xo_hdl, "{:uint16_t/%d}",
+			xo_emit("{:uint16_t/%d}",
 			    (uint32_t)*((uint16_t *)addr) / n);
 			goto closetag;
 		}
@@ -350,7 +350,7 @@ pfprint_uint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 		    (uint32_t)*((uint16_t *)addr) / n));
 	case sizeof (uint32_t):
 		if (oformat) {
-			xo_emit_h(dtp->dt_xo_hdl, "{:uint32_t/%d}",
+			xo_emit("{:uint32_t/%d}",
 			    *((uint32_t *)addr) / n);
 			goto closetag;
 		}
@@ -358,7 +358,7 @@ pfprint_uint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 		    *((uint32_t *)addr) / n));
 	case sizeof (uint64_t):
 		if (oformat) {
-			xo_emit_h(dtp->dt_xo_hdl, "{:uint64_t/%ld}",
+			xo_emit("{:uint64_t/%ld}",
 			    *((uint64_t *)addr) / normal);
 			goto closetag;
 		}
@@ -369,7 +369,7 @@ pfprint_uint(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	}
 closetag:
 	if (dtp->dt_instance != NULL) {
-		xo_close_container_h(dtp->dt_xo_hdl, dtp->dt_instance);
+		xo_close_container_d();
 	}
 	return (0);
 }
@@ -669,9 +669,9 @@ pfprint_cstr(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 		oformat = (int)dtp->dt_options[DTRACEOPT_OFORMAT];
 	
 	if (oformat) {
-		xo_emit_h(dtp->dt_xo_hdl, "{:string/%s}", s);
+		xo_emit("{:string/%s}", s);
 		if (dtp->dt_instance != NULL) {
-			xo_close_container_h(dtp->dt_xo_hdl, dtp->dt_instance);
+			xo_close_container_d();
 		}
 		return (0);
 	}
@@ -818,7 +818,7 @@ pfprint_mr(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	bcopy(addr, dtp->dt_instance, size);
 	dtp->dt_instance[size] = '\0';
 	
-	xo_open_container_h(dtp->dt_xo_hdl, dtp->dt_instance);
+	xo_open_container(dtp->dt_instance);
 
 	return (0);
 }

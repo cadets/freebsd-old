@@ -433,7 +433,7 @@ typedef struct dtrace_aggregation {
 #define	DTRACEBUF_INACTIVE	0x0100		/* buffer is not yet active */
 
 typedef struct dtrace_buffer {
-	volatile uint64_t dtb_offset;		/* current offset in buffer */
+	uint64_t dtb_offset;			/* current offset in buffer */
 	uint64_t dtb_size;			/* size of buffer */
 	uint32_t dtb_flags;			/* flags */
 	uint32_t dtb_drops;			/* number of drops */
