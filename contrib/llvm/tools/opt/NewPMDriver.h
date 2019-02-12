@@ -42,7 +42,7 @@ enum VerifierKind {
 };
 }
 
-/// Driver function to run the new pass manager over a module.
+/// \brief Driver function to run the new pass manager over a module.
 ///
 /// This function only exists factored away from opt.cpp in order to prevent
 /// inclusion of the new pass manager headers and the old headers into the same
@@ -57,8 +57,7 @@ bool runPassPipeline(StringRef Arg0, Module &M, TargetMachine *TM,
                      opt_tool::OutputKind OK, opt_tool::VerifierKind VK,
                      bool ShouldPreserveAssemblyUseListOrder,
                      bool ShouldPreserveBitcodeUseListOrder,
-                     bool EmitSummaryIndex, bool EmitModuleHash,
-                     bool EnableDebugify);
-} // namespace llvm
+                     bool EmitSummaryIndex, bool EmitModuleHash);
+}
 
 #endif

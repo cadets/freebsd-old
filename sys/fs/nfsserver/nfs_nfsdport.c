@@ -133,7 +133,7 @@ static void nfsrv_pnfssetfh(struct vnode *, struct pnfsdsfile *, char *, char *,
 static int nfsrv_dsremove(struct vnode *, char *, struct ucred *, NFSPROC_T *);
 static int nfsrv_dssetacl(struct vnode *, struct acl *, struct ucred *,
     NFSPROC_T *);
-static int nfsrv_pnfsstatfs(struct statfs *);
+static int nfsrv_pnfsstatfs(struct statfs *, struct mount *);
 
 int nfs_pnfsio(task_fn_t *, void *);
 
@@ -1593,7 +1593,7 @@ nfsvno_statfs(struct vnode *vp, struct statfs *sf)
 	if (nfsrv_devidcnt > 0) {
 		/* For a pNFS service, get the DS numbers. */
 		tsf = malloc(sizeof(*tsf), M_TEMP, M_WAITOK | M_ZERO);
-		error = nfsrv_pnfsstatfs(tsf);
+		error = nfsrv_pnfsstatfs(tsf, vp->v_mount);
 		if (error != 0) {
 			free(tsf, M_TEMP);
 			tsf = NULL;
@@ -1774,7 +1774,7 @@ nfsvno_fillattr(struct nfsrv_descript *nd, struct mount *mp, struct vnode *vp,
 	     NFSISSET_ATTRBIT(attrbitp, NFSATTRBIT_SPACEFREE) ||
 	     NFSISSET_ATTRBIT(attrbitp, NFSATTRBIT_SPACETOTAL))) {
 		sf = malloc(sizeof(*sf), M_TEMP, M_WAITOK | M_ZERO);
-		error = nfsrv_pnfsstatfs(sf);
+		error = nfsrv_pnfsstatfs(sf, mp);
 		if (error != 0) {
 			free(sf, M_TEMP);
 			sf = NULL;
@@ -2107,9 +2107,15 @@ nfsrvd_readdirplus(struct nfsrv_descript *nd, int isdgram,
 	 * cookie) should be in the reply. At least one client "hints" 0,
 	 * so I set it to cnt for that case. I also round it up to the
 	 * next multiple of DIRBLKSIZ.
+	 * Since the size of a Readdirplus directory entry reply will always
+	 * be greater than a directory entry returned by VOP_READDIR(), it
+	 * does not make sense to read more than NFS_SRVMAXDATA() via
+	 * VOP_READDIR().
 	 */
 	if (siz <= 0)
 		siz = cnt;
+	else if (siz > NFS_SRVMAXDATA(nd))
+		siz = NFS_SRVMAXDATA(nd);
 	siz = ((siz + DIRBLKSIZ - 1) & ~(DIRBLKSIZ - 1));
 
 	if (nd->nd_flag & ND_NFSV4) {
@@ -2267,17 +2273,25 @@ again:
 	}
 
 	/*
-	 * For now ZFS requires VOP_LOOKUP as a workaround.  Until ino_t is changed
-	 * to 64 bit type a ZFS filesystem with over 1 billion files in it
-	 * will suffer from 64bit -> 32bit truncation.
+	 * Check to see if entries in this directory can be safely acquired
+	 * via VFS_VGET() or if a switch to VOP_LOOKUP() is required.
+	 * ZFS snapshot directories need VOP_LOOKUP(), so that any
+	 * automount of the snapshot directory that is required will
+	 * be done.
+	 * This needs to be done here for NFSv4, since NFSv4 never does
+	 * a VFS_VGET() for "." or "..".
 	 */
-	if (is_zfs == 1)
-		usevget = 0;
-
-	cn.cn_nameiop = LOOKUP;
-	cn.cn_lkflags = LK_SHARED | LK_RETRY;
-	cn.cn_cred = nd->nd_cred;
-	cn.cn_thread = p;
+	if (is_zfs == 1) {
+		r = VFS_VGET(mp, at.na_fileid, LK_SHARED, &nvp);
+		if (r == EOPNOTSUPP) {
+			usevget = 0;
+			cn.cn_nameiop = LOOKUP;
+			cn.cn_lkflags = LK_SHARED | LK_RETRY;
+			cn.cn_cred = nd->nd_cred;
+			cn.cn_thread = p;
+		} else if (r == 0)
+			vput(nvp);
+	}
 
 	/*
 	 * Save this position, in case there is an error before one entry
@@ -2346,7 +2360,16 @@ again:
 					else
 						r = EOPNOTSUPP;
 					if (r == EOPNOTSUPP) {
-						usevget = 0;
+						if (usevget) {
+							usevget = 0;
+							cn.cn_nameiop = LOOKUP;
+							cn.cn_lkflags =
+							    LK_SHARED |
+							    LK_RETRY;
+							cn.cn_cred =
+							    nd->nd_cred;
+							cn.cn_thread = p;
+						}
 						cn.cn_nameptr = dp->d_name;
 						cn.cn_namelen = nlen;
 						cn.cn_flags = ISLASTCN |
@@ -2399,10 +2422,22 @@ again:
 						}
 					}
 				}
-				if (!r) {
-				    if (refp == NULL &&
-					((nd->nd_flag & ND_NFSV3) ||
-					 NFSNONZERO_ATTRBIT(&attrbits))) {
+
+				/*
+				 * If we failed to look up the entry, then it
+				 * has become invalid, most likely removed.
+				 */
+				if (r != 0) {
+					if (needs_unbusy)
+						vfs_unbusy(new_mp);
+					goto invalid;
+				}
+				KASSERT(refp != NULL || nvp != NULL,
+				    ("%s: undetected lookup error", __func__));
+
+				if (refp == NULL &&
+				    ((nd->nd_flag & ND_NFSV3) ||
+				     NFSNONZERO_ATTRBIT(&attrbits))) {
 					r = nfsvno_getfh(nvp, &nfh, p);
 					if (!r)
 					    r = nfsvno_getattr(nvp, nvap, nd, p,
@@ -2423,17 +2458,25 @@ again:
 					    if (new_mp == mp)
 						new_mp = nvp->v_mount;
 					}
-				    }
-				} else {
-				    nvp = NULL;
 				}
-				if (r) {
+
+				/*
+				 * If we failed to get attributes of the entry,
+				 * then just skip it for NFSv3 (the traditional
+				 * behavior in the old NFS server).
+				 * For NFSv4 the behavior is controlled by
+				 * RDATTRERROR: we either ignore the error or
+				 * fail the request.
+				 * Note that RDATTRERROR is never set for NFSv3.
+				 */
+				if (r != 0) {
 					if (!NFSISSET_ATTRBIT(&attrbits,
 					    NFSATTRBIT_RDATTRERROR)) {
-						if (nvp != NULL)
-							vput(nvp);
+						vput(nvp);
 						if (needs_unbusy != 0)
 							vfs_unbusy(new_mp);
+						if ((nd->nd_flag & ND_NFSV3))
+							goto invalid;
 						nd->nd_repstat = r;
 						break;
 					}
@@ -2502,6 +2545,7 @@ again:
 			if (dirlen <= cnt)
 				entrycnt++;
 		}
+invalid:
 		cpos += dp->d_reclen;
 		dp = (struct dirent *)cpos;
 		cookiep++;
@@ -5561,7 +5605,7 @@ nfsrv_killrpcs(struct nfsmount *nmp)
  * receive the total for all DSs.
  */
 static int
-nfsrv_pnfsstatfs(struct statfs *sf)
+nfsrv_pnfsstatfs(struct statfs *sf, struct mount *mp)
 {
 	struct statfs *tsf;
 	struct nfsdevice *ds;
@@ -5578,11 +5622,28 @@ nfsrv_pnfsstatfs(struct statfs *sf)
 	tdvpp = dvpp;
 	i = 0;
 	NFSDDSLOCK();
+	/* First, search for matches for same file system. */
 	TAILQ_FOREACH(ds, &nfsrv_devidhead, nfsdev_list) {
-		if (ds->nfsdev_nmp != NULL) {
+		if (ds->nfsdev_nmp != NULL && ds->nfsdev_mdsisset != 0 &&
+		    ds->nfsdev_mdsfsid.val[0] == mp->mnt_stat.f_fsid.val[0] &&
+		    ds->nfsdev_mdsfsid.val[1] == mp->mnt_stat.f_fsid.val[1]) {
 			if (++i > nfsrv_devidcnt)
 				break;
 			*tdvpp++ = ds->nfsdev_dvp;
+		}
+	}
+	/*
+	 * If no matches for same file system, total all servers not assigned
+	 * to a file system.
+	 */
+	if (i == 0) {
+		TAILQ_FOREACH(ds, &nfsrv_devidhead, nfsdev_list) {
+			if (ds->nfsdev_nmp != NULL &&
+			    ds->nfsdev_mdsisset == 0) {
+				if (++i > nfsrv_devidcnt)
+					break;
+				*tdvpp++ = ds->nfsdev_dvp;
+			}
 		}
 	}
 	NFSDDSUNLOCK();

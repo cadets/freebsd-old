@@ -13,7 +13,6 @@ add_lld_library(lldDriver
     Support
 
   LINK_LIBS
-    lldCommon
     lldCore
     lldMachO
     lldReaderWriter

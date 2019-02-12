@@ -583,7 +583,7 @@ loop:
 			if (len != 0 && len < fs->fs_bsize) {
 				ffs_blkfree(ump, copy_fs, vp,
 				    DIP(xp, i_db[loc]), len, xp->i_number,
-				    xvp->v_type, NULL, SINGLETON);
+				    xvp->v_type, NULL, SINGLETON_KEY);
 				blkno = DIP(xp, i_db[loc]);
 				DIP_SET(xp, i_db[loc], 0);
 			}
@@ -795,6 +795,7 @@ out1:
 		brelse(nbp);
 	} else {
 		loc = blkoff(fs, fs->fs_sblockloc);
+		copy_fs->fs_ckhash = ffs_calc_sbhash(copy_fs);
 		bcopy((char *)copy_fs, &nbp->b_data[loc], (u_int)fs->fs_sbsize);
 		bawrite(nbp);
 	}
@@ -1265,7 +1266,7 @@ mapacct_ufs1(vp, oldblkp, lastblkp, fs, lblkno, expungetype)
 		if (blkno == BLK_SNAP)
 			blkno = blkstofrags(fs, lblkno);
 		ffs_blkfree(ITOUMP(ip), fs, vp, blkno, fs->fs_bsize, inum,
-		    vp->v_type, NULL, SINGLETON);
+		    vp->v_type, NULL, SINGLETON_KEY);
 	}
 	return (0);
 }
@@ -1333,12 +1334,12 @@ expunge_ufs2(snapvp, cancelip, fs, acctfunc, expungetype, clearmode)
 	 */
 	dip = (struct ufs2_dinode *)bp->b_data +
 	    ino_to_fsbo(fs, cancelip->i_number);
-	if (clearmode || cancelip->i_effnlink == 0)
-		dip->di_mode = 0;
 	dip->di_size = 0;
 	dip->di_blocks = 0;
 	dip->di_flags &= ~SF_SNAPSHOT;
 	bzero(&dip->di_db[0], (UFS_NDADDR + UFS_NIADDR) * sizeof(ufs2_daddr_t));
+	if (clearmode || cancelip->i_effnlink == 0)
+		dip->di_mode = 0;
 	bdwrite(bp);
 	/*
 	 * Now go through and expunge all the blocks in the file
@@ -1549,7 +1550,7 @@ mapacct_ufs2(vp, oldblkp, lastblkp, fs, lblkno, expungetype)
 		if (blkno == BLK_SNAP)
 			blkno = blkstofrags(fs, lblkno);
 		ffs_blkfree(ITOUMP(ip), fs, vp, blkno, fs->fs_bsize, inum,
-		    vp->v_type, NULL, SINGLETON);
+		    vp->v_type, NULL, SINGLETON_KEY);
 	}
 	return (0);
 }

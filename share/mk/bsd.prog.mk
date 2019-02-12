@@ -34,6 +34,19 @@ PROG=	${PROG_CXX}
 MK_DEBUG_FILES=	no
 .endif
 
+# ELF hardening knobs
+.if ${MK_BIND_NOW} != "no"
+LDFLAGS+= -Wl,-znow
+.endif
+.if ${MK_RETPOLINE} != "no"
+CFLAGS+= -mretpoline
+CXXFLAGS+= -mretpoline
+# retpolineplt is broken with static linking (PR 233336)
+.if !defined(NO_SHARED) || ${NO_SHARED} == "no" || ${NO_SHARED} == "NO"
+LDFLAGS+= -Wl,-zretpolineplt
+.endif
+.endif
+
 .if defined(CRUNCH_CFLAGS)
 CFLAGS+=${CRUNCH_CFLAGS}
 .else
@@ -344,6 +357,13 @@ realinstall: maninstall
 
 .if ${MK_MAN} != "no"
 .include <bsd.man.mk>
+.endif
+
+.if defined(HAS_TESTS)
+MAKE+=			MK_MAKE_CHECK_USE_SANDBOX=yes
+SUBDIR_TARGETS+=	check
+TESTS_LD_LIBRARY_PATH+=	${.OBJDIR}
+TESTS_PATH+=		${.OBJDIR}
 .endif
 
 .if defined(PROG)

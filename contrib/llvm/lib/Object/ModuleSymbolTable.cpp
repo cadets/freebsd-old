@@ -68,9 +68,9 @@ void ModuleSymbolTable::addModule(Module *M) {
   });
 }
 
-static void
-initializeRecordStreamer(const Module &M,
-                         function_ref<void(RecordStreamer &)> Init) {
+void ModuleSymbolTable::CollectAsmSymbols(
+    const Module &M,
+    function_ref<void(StringRef, BasicSymbolRef::Flags)> AsmSymbol) {
   StringRef InlineAsm = M.getModuleInlineAsm();
   if (InlineAsm.empty())
     return;
@@ -119,53 +119,36 @@ initializeRecordStreamer(const Module &M,
   if (Parser->Run(false))
     return;
 
-  Init(Streamer);
-}
+  Streamer.flushSymverDirectives();
 
-void ModuleSymbolTable::CollectAsmSymbols(
-    const Module &M,
-    function_ref<void(StringRef, BasicSymbolRef::Flags)> AsmSymbol) {
-  initializeRecordStreamer(M, [&](RecordStreamer &Streamer) {
-    Streamer.flushSymverDirectives();
-
-    for (auto &KV : Streamer) {
-      StringRef Key = KV.first();
-      RecordStreamer::State Value = KV.second;
-      // FIXME: For now we just assume that all asm symbols are executable.
-      uint32_t Res = BasicSymbolRef::SF_Executable;
-      switch (Value) {
-      case RecordStreamer::NeverSeen:
-        llvm_unreachable("NeverSeen should have been replaced earlier");
-      case RecordStreamer::DefinedGlobal:
-        Res |= BasicSymbolRef::SF_Global;
-        break;
-      case RecordStreamer::Defined:
-        break;
-      case RecordStreamer::Global:
-      case RecordStreamer::Used:
-        Res |= BasicSymbolRef::SF_Undefined;
-        Res |= BasicSymbolRef::SF_Global;
-        break;
-      case RecordStreamer::DefinedWeak:
-        Res |= BasicSymbolRef::SF_Weak;
-        Res |= BasicSymbolRef::SF_Global;
-        break;
-      case RecordStreamer::UndefinedWeak:
-        Res |= BasicSymbolRef::SF_Weak;
-        Res |= BasicSymbolRef::SF_Undefined;
-      }
-      AsmSymbol(Key, BasicSymbolRef::Flags(Res));
+  for (auto &KV : Streamer) {
+    StringRef Key = KV.first();
+    RecordStreamer::State Value = KV.second;
+    // FIXME: For now we just assume that all asm symbols are executable.
+    uint32_t Res = BasicSymbolRef::SF_Executable;
+    switch (Value) {
+    case RecordStreamer::NeverSeen:
+      llvm_unreachable("NeverSeen should have been replaced earlier");
+    case RecordStreamer::DefinedGlobal:
+      Res |= BasicSymbolRef::SF_Global;
+      break;
+    case RecordStreamer::Defined:
+      break;
+    case RecordStreamer::Global:
+    case RecordStreamer::Used:
+      Res |= BasicSymbolRef::SF_Undefined;
+      Res |= BasicSymbolRef::SF_Global;
+      break;
+    case RecordStreamer::DefinedWeak:
+      Res |= BasicSymbolRef::SF_Weak;
+      Res |= BasicSymbolRef::SF_Global;
+      break;
+    case RecordStreamer::UndefinedWeak:
+      Res |= BasicSymbolRef::SF_Weak;
+      Res |= BasicSymbolRef::SF_Undefined;
     }
-  });
-}
-
-void ModuleSymbolTable::CollectAsmSymvers(
-    const Module &M, function_ref<void(StringRef, StringRef)> AsmSymver) {
-  initializeRecordStreamer(M, [&](RecordStreamer &Streamer) {
-    for (auto &KV : Streamer.symverAliases())
-      for (auto &Alias : KV.second)
-        AsmSymver(KV.first->getName(), Alias);
-  });
+    AsmSymbol(Key, BasicSymbolRef::Flags(Res));
+  }
 }
 
 void ModuleSymbolTable::printSymbolName(raw_ostream &OS, Symbol S) const {

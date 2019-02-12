@@ -71,8 +71,9 @@ class PCHContainerGenerator : public ASTConsumer {
     }
 
     bool VisitImportDecl(ImportDecl *D) {
-      if (!D->getImportedOwningModule())
-        DI.EmitImportDecl(*D);
+      auto *Import = cast<ImportDecl>(D);
+      if (!Import->getImportedOwningModule())
+        DI.EmitImportDecl(*Import);
       return true;
     }
 
@@ -290,7 +291,7 @@ public:
     else
       ASTSym->setSection("__clangast");
 
-    LLVM_DEBUG({
+    DEBUG({
       // Print the IR for the PCH container to the debug output.
       llvm::SmallString<0> Buffer;
       clang::EmitBackendOutput(

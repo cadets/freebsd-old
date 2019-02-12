@@ -69,6 +69,16 @@ TAGS+=		package=${PACKAGE:Uruntime}
 TAG_ARGS=	-T ${TAGS:[*]:S/ /,/g}
 .endif
 
+# ELF hardening knobs
+.if ${MK_BIND_NOW} != "no"
+LDFLAGS+= -Wl,-znow
+.endif
+.if ${MK_RETPOLINE} != "no"
+CFLAGS+= -mretpoline
+CXXFLAGS+= -mretpoline
+LDFLAGS+= -Wl,-zretpolineplt
+.endif
+
 .if ${MK_DEBUG_FILES} != "no" && empty(DEBUG_FLAGS:M-g) && \
     empty(DEBUG_FLAGS:M-gdwarf*)
 CFLAGS+= ${DEBUG_FILES_CFLAGS}
@@ -480,6 +490,12 @@ OBJS_DEPEND_GUESS.${_S:${OBJS_SRCS_FILTER:ts:}}.pico+=	${_S}
 .for _S in ${SRCS:N*.[hly]}
 OBJS_DEPEND_GUESS.${_S:${OBJS_SRCS_FILTER:ts:}}.nossppico+=	${_S}
 .endfor
+.endif
+
+.if defined(HAS_TESTS)
+MAKE+=			MK_MAKE_CHECK_USE_SANDBOX=yes
+SUBDIR_TARGETS+=	check
+TESTS_LD_LIBRARY_PATH+=	${.OBJDIR}
 .endif
 
 .include <bsd.dep.mk>

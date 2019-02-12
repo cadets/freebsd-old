@@ -304,8 +304,6 @@ public:
   std::error_code getSectionContents(DataRefImpl Sec,
                                      StringRef &Res) const override;
   uint64_t getSectionAlignment(DataRefImpl Sec) const override;
-  Expected<SectionRef> getSection(unsigned SectionIndex) const;
-  Expected<SectionRef> getSection(StringRef SectionName) const;
   bool isSectionCompressed(DataRefImpl Sec) const override;
   bool isSectionText(DataRefImpl Sec) const override;
   bool isSectionData(DataRefImpl Sec) const override;
@@ -333,7 +331,7 @@ public:
 
   relocation_iterator locrel_begin() const;
   relocation_iterator locrel_end() const;
-
+  
   void moveRelocationNext(DataRefImpl &Rel) const override;
   uint64_t getRelocationOffset(DataRefImpl Rel) const override;
   symbol_iterator getRelocationSymbol(DataRefImpl Rel) const override;
@@ -465,7 +463,7 @@ public:
 
   // In a MachO file, sections have a segment name. This is used in the .o
   // files. They have a single segment, but this field specifies which segment
-  // a section should be put in the final object.
+  // a section should be put in in the final object.
   StringRef getSectionFinalSegmentName(DataRefImpl Sec) const;
 
   // Names are stored as 16 bytes. These returns the raw 16 bytes without

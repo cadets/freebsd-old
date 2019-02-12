@@ -89,6 +89,7 @@ CFLAGS_ARCH_PARAMS?=--param max-inline-insns-single=1000 -DMACHINE_ARCH='"${MACH
 CFLAGS.gcc+= -fno-common -fms-extensions -finline-limit=${INLINE_LIMIT}
 CFLAGS.gcc+= --param inline-unit-growth=${CFLAGS_PARAM_INLINE_UNIT_GROWTH}
 CFLAGS.gcc+= --param large-function-growth=${CFLAGS_PARAM_LARGE_FUNCTION_GROWTH}
+CFLAGS.gcc+= -fms-extensions
 .if defined(CFLAGS_ARCH_PARAMS)
 CFLAGS.gcc+=${CFLAGS_ARCH_PARAMS}
 .endif
@@ -112,6 +113,12 @@ PROF=		-pg
 .endif
 DEFINED_PROF=	${PROF}
 
+KUBSAN_ENABLED!=	grep KUBSAN opt_global.h || true ; echo
+.if !empty(KUBSAN_ENABLED)
+SAN_CFLAGS+=	-fsanitize=undefined
+.endif
+CFLAGS+=	${SAN_CFLAGS}
+
 # Put configuration-specific C flags last (except for ${PROF}) so that they
 # can override the others.
 CFLAGS+=	${CONF_CFLAGS}
@@ -120,14 +127,13 @@ CFLAGS+=	${CONF_CFLAGS}
 LDFLAGS+=	-Wl,--build-id=sha1
 .endif
 
+.if (${MACHINE_CPUARCH} == "aarch64" || ${MACHINE_CPUARCH} == "amd64" || \
+    ${MACHINE_CPUARCH} == "i386") && \
+    defined(LINKER_FEATURES) && ${LINKER_FEATURES:Mifunc} == ""
+.error amd64/arm64/i386 kernel requires linker ifunc support
+.endif
 .if ${MACHINE_CPUARCH} == "amd64"
-.if defined(LINKER_FEATURES) && ${LINKER_FEATURES:Mifunc} == ""
-.error amd64 kernel requires linker ifunc support
-.endif
-LDFLAGS+=	-Wl,-z max-page-size=2097152
-.if ${LINKER_TYPE} != "lld"
-LDFLAGS+=	-Wl,-z common-page-size=4096
-.endif
+LDFLAGS+=	-Wl,-z max-page-size=2097152 -Wl,-z common-page-size=4096 -Wl,-z -Wl,ifunc-noplt
 .endif
 
 NORMAL_C= ${CC} -c ${CFLAGS} ${WERROR} ${PROF} ${.IMPSRC}
