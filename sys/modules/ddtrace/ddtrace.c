@@ -130,7 +130,7 @@ SYSCTL_U32(_debug_ddtrace, OID_AUTO, record_bound, CTLFLAG_RW,
     &ddtrace_record_bound, 0,
     "DDTrace maximum record size (before compression)");
 
-static eventhandler_tag kon_pre_sync = NULL;
+static eventhandler_tag ddtrace_pre_sync = NULL;
 
 static inline void
 ddtrace_assert_integrity(const char *func, struct client *self)
@@ -170,7 +170,7 @@ ddtrace_event_handler(struct module *module, int event, void *arg)
 			DLOGTR0(PRIO_NORMAL,
 			    "Successfully registered with DTrace\n");
 
-			kon_pre_sync = EVENTHANDLER_REGISTER(
+			ddtrace_pre_sync = EVENTHANDLER_REGISTER(
 			    shutdown_pre_sync, ddtrace_stop, ddtrace_hashtbl,
 			    SHUTDOWN_PRI_DEFAULT);
 		} else {
@@ -183,8 +183,8 @@ ddtrace_event_handler(struct module *module, int event, void *arg)
 	case MOD_UNLOAD:
 		DLOGTR0(PRIO_LOW, "Unloading DDTrace kernel module\n");
 
-		if (kon_pre_sync != NULL)	
-		    EVENTHANDLER_DEREGISTER(shutdown_pre_sync, kon_pre_sync);
+		if (ddtrace_pre_sync != NULL)	
+		    EVENTHANDLER_DEREGISTER(shutdown_pre_sync, ddtrace_pre_sync);
 		
 		ddtrace_stop(ddtrace_hashtbl);
 		break;
@@ -259,8 +259,9 @@ ddtrace_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 	 */
 	for (int cpu = 0; cpu < mp_ncpus; cpu++) {
 
-		/* Note: Unlike in the BUFSNAP ioctl it is unnecessary to
-		 * acquire the dtrace_lock.
+		/* NOTE:
+		 * Unlike in the BUFSNAP ioctl it is unnecessary to acquire
+		 * dtrace_lock.
 		 */
 
 		buf = &state->dts_buffer[cpu];
@@ -393,7 +394,7 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 		 * doesn't provide the defalateBounds() method which would
 		 * allow me to determine the size of the compressed output.
 		 *
-		 * Therefore, I using a configurable parameter.
+		 * Therefore, I am using a configurable parameter.
 		 */
 		if (msg_size + dtrace_epid2size(state, epid) >
 		    ddtrace_record_bound) {
@@ -434,13 +435,13 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 			 * buffer.
 			 */
 			if (msg_size == desc->dtbd_size) {
-				if (dlog_produce_no_key(hdl, 
+				if (dlog_produce(hdl, 
+				    DDTRACE_KEY, strlen(DDTRACE_KEY),
 				    &desc->dtbd_data[msg_start],
 				    msg_size) != 0) {
 
 					DLOGTR0(PRIO_HIGH,
-					    "Error producing message to "
-					    "DLog\n");
+					    "Error producing message to DLog\n");
 				}
 
 				/* Reset the msg_size and set the msg_start
@@ -468,8 +469,7 @@ ddtrace_open(void *arg, struct dtrace_state *state)
 	int rc;
 	
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL."));
-	DL_ASSERT(dist != NULL,
-	    ("DTrace client instance cannot be NULL."));
+	DL_ASSERT(dist != NULL, ("DTrace client instance cannot be NULL."));
 
 	DLOGTR0(PRIO_LOW, "ddtrace_open\n");
 
