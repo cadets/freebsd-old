@@ -169,7 +169,7 @@ main(int argc, char *argv[])
 	char *topic_name;
 	size_t packed_len;
 	int dlog, rc, c, err;
-	char errstr[512], konarg[13];
+	char errstr[512], ddtracearg[13];
 
 	g_pname = basename(argv[0]); 	
 
@@ -250,8 +250,8 @@ main(int argc, char *argv[])
 	(void) dtrace_setopt(g_dtp, "aggsize", "4m");
 	(void) dtrace_setopt(g_dtp, "bufsize", "4m");
 	(void) dtrace_setopt(g_dtp, "bufpolicy", "switch");
-	sprintf(konarg, "%d", dlog);
-	(void) dtrace_setopt(g_dtp, "konarg", konarg);
+	sprintf(ddtracearg, "%d", dlog);
+	(void) dtrace_setopt(g_dtp, "ddtracearg", ddtracearg);
 	//(void) dtrace_setopt(g_dtp, "grabanon", "1");
 	printf("%s: dtrace options set\n", g_pname);
 

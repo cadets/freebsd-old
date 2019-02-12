@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -66,86 +66,87 @@
 #include "dl_protocol.h"
 #include "dl_utils.h"
 
-LIST_HEAD(konsumers, konsumer);
+LIST_HEAD(clients, client);
 
 extern hrtime_t dtrace_gethrtime(void);
 
-MALLOC_DECLARE(M_DLKON);
-MALLOC_DEFINE(M_DLKON, "dlkon", "DLog konsumer memory");
+MALLOC_DECLARE(M_DDTRACE);
+MALLOC_DEFINE(M_DDTRACE, "ddtrace", "DDTrace memory");
 
-static int konsumer_event_handler(struct module *, int, void *);
-static void konsumer_thread(void *);
+static int ddtrace_event_handler(struct module *, int, void *);
+static void ddtrace_thread(void *);
 
-static void konsumer_buffer_switch(dtrace_state_t *, struct dlog_handle *);
-static void konsumer_persist_trace(dtrace_state_t *, struct dlog_handle *,
+static void ddtrace_buffer_switch(dtrace_state_t *, struct dlog_handle *);
+static void ddtrace_persist_trace(dtrace_state_t *, struct dlog_handle *,
     dtrace_bufdesc_t *);
 
-static void konsumer_open(void *, struct dtrace_state *);
-static void konsumer_close(void *, struct dtrace_state *);
-static void konsumer_stop(struct konsumers *);
+static void ddtrace_open(void *, struct dtrace_state *);
+static void ddtrace_close(void *, struct dtrace_state *);
+static void ddtrace_stop(struct clients *);
 
-struct konsumer {
-	LIST_ENTRY(konsumer) konsumer_entries;
-	struct cv konsumer_cv;
-	struct mtx konsumer_mtx;
-	struct proc *konsumer_pid;
-	struct dlog_handle *konsumer_dlog_handle;
-	dtrace_state_t *konsumer_state;
-	int konsumer_exit;
+struct client {
+	LIST_ENTRY(client) client_entries;
+	struct cv ddtrace_cv;
+	struct mtx ddtrace_mtx;
+	struct proc *ddtrace_pid;
+	struct dlog_handle *ddtrace_dlog_handle;
+	dtrace_state_t *ddtrace_state;
+	int ddtrace_exit;
 };
 
-static dtrace_kops_t kops = {
-	.dtkops_open = konsumer_open,
-	.dtkops_close = konsumer_close,
+static dtrace_dops_t dops = {
+	.dtdops_open = ddtrace_open,
+	.dtdops_close = ddtrace_close,
 };
-static dtrace_konsumer_id_t kid;
+static dtrace_dist_id_t did;
 
 extern hrtime_t dtrace_deadman_user;
 extern kmutex_t dtrace_lock;
 
-static char const * const KONSUMER_NAME = "dlog_konsumer";
-static char *KONSUMER_KEY = "ddtrace";
+static char const * const DDTRACE_NAME = "ddtrace";
+static char *DDTRACE_KEY = "ddtrace";
 
-static moduledata_t konsumer_conf = {
-	KONSUMER_NAME,
-	konsumer_event_handler,
+static moduledata_t ddtrace_conf = {
+	DDTRACE_NAME,
+	ddtrace_event_handler,
 	NULL
 };
 
-static const int KON_NHASH_BUCKETS = 16;
-static struct konsumers *konsumer_hashtbl = NULL;
-static u_long konsumer_hashmask;
+static const int DDTRACE_NHASH_BUCKETS = 16;
+static struct clients *ddtrace_hashtbl = NULL;
+static u_long ddtrace_hashmask;
 
-static uint32_t konsumer_poll_ms = 1000;
-SYSCTL_NODE(_debug, OID_AUTO, konsumer, CTLFLAG_RW, 0, "Konsumer");
+SYSCTL_NODE(_debug, OID_AUTO, ddtrace, CTLFLAG_RW, 0, "DDTrace");
 
-SYSCTL_U32(_debug_konsumer, OID_AUTO, poll_period_ms, CTLFLAG_RD,
-    &konsumer_poll_ms, 0, "Konsumer poll period (ms)");
+static uint32_t ddtrace_poll_ms = 1000;
+SYSCTL_U32(_debug_ddtrace, OID_AUTO, poll_period_ms, CTLFLAG_RD,
+    &ddtrace_poll_ms, 0, "Konsumer poll period (ms)");
+
 /* Maximum record size before compression; the default value is a heurstic
- * base on the level of compression seen in DTrace buffers.
+ * based on the level of compression seen in DTrace buffers.
  */
-static uint32_t konsumer_record_bound = 1024*1024;
-SYSCTL_U32(_debug_konsumer, OID_AUTO, record_bound, CTLFLAG_RD,
-    &konsumer_record_bound, 0,
+static uint32_t ddtrace_record_bound = 1024*1024;
+SYSCTL_U32(_debug_ddtrace, OID_AUTO, record_bound, CTLFLAG_RD,
+    &ddtrace_record_bound, 0,
     "Konsumer maximum record size (before compression)");
 
 static eventhandler_tag kon_pre_sync = NULL;
 
 static inline void
-konsumer_assert_integrity(const char *func, struct konsumer *self)
+ddtrace_assert_integrity(const char *func, struct client *self)
 {
 
-	DL_ASSERT(self != NULL, ("%s konsumer instance is NULL", func)); 
-	DL_ASSERT(self->konsumer_dlog_handle != NULL,
-	    ("%s konsumer instance Dlog handle field is NULL", func)); 
-	DL_ASSERT(self->konsumer_state != NULL,
-	    ("%s konsumer instance DTrace state field is NULL", func)); 
-	DL_ASSERT(self->konsumer_pid != NULL,
-	    ("%s konsumer instance proc is field NULL", func)); 
+	DL_ASSERT(self != NULL, ("%s client instance is NULL", func)); 
+	DL_ASSERT(self->ddtrace_dlog_handle != NULL,
+	    ("%s client instance Dlog handle field is NULL", func)); 
+	DL_ASSERT(self->ddtrace_state != NULL,
+	    ("%s client instance DTrace state field is NULL", func)); 
+	DL_ASSERT(self->ddtrace_pid != NULL,
+	    ("%s client instance proc is field NULL", func)); 
 }
 
 static int
-konsumer_event_handler(struct module *module, int event, void *arg)
+ddtrace_event_handler(struct module *module, int event, void *arg)
 {
 	int e = 0;
 
@@ -153,29 +154,29 @@ konsumer_event_handler(struct module *module, int event, void *arg)
 	case MOD_LOAD:
 		DLOGTR0(PRIO_LOW, "Loading Konsumer kernel module\n");
 
-		/* Initialise the hash table of konsumer instances. */
-		konsumer_hashtbl = hashinit(KON_NHASH_BUCKETS, M_DLKON,
-		    &konsumer_hashmask);
-		DL_ASSERT(konsumer_hashtbl != NULL,
-		    ("Failed to allocate new konsumer hash table instance."));
+		/* Initialise the hash table of client instances. */
+		ddtrace_hashtbl = hashinit(DDTRACE_NHASH_BUCKETS, M_DDTRACE,
+		    &ddtrace_hashmask);
+		DL_ASSERT(ddtrace_hashtbl != NULL,
+		    ("Failed to allocate new client hash table instance."));
 
-		/* Register the konsumer with DTrace. After successfully
-		 * registering the konsumer with be informed of lifecycle
+		/* Register with DTrace. After successfully
+		 * registering the client with be informed of lifecycle
 		 * events (open/close) that result from DTrace consumers.
 		 */ 
-		if (dtrace_konsumer_register(KONSUMER_NAME, &kops, NULL,
-		    &kid) == 0) {
+		if (dtrace_dist_register(DDTRACE_NAME, &dops, NULL,
+		    &did) == 0) {
 
 			DLOGTR0(PRIO_NORMAL,
-			    "Successfully registered konsumer with DTrace\n");
+			    "Successfully registered client with DTrace\n");
 
 			kon_pre_sync = EVENTHANDLER_REGISTER(
-			    shutdown_pre_sync, konsumer_stop, konsumer_hashtbl,
+			    shutdown_pre_sync, ddtrace_stop, ddtrace_hashtbl,
 			    SHUTDOWN_PRI_DEFAULT);
 		} else {
 
 			DLOGTR0(PRIO_HIGH,
-			    "Failed to register konsumer with DTrace\n");
+			    "Failed to register client with DTrace\n");
 			e = -1;
 		}
 		break;
@@ -185,7 +186,7 @@ konsumer_event_handler(struct module *module, int event, void *arg)
 		if (kon_pre_sync != NULL)	
 		    EVENTHANDLER_DEREGISTER(shutdown_pre_sync, kon_pre_sync);
 		
-		konsumer_stop(konsumer_hashtbl);
+		ddtrace_stop(ddtrace_hashtbl);
 		break;
 	default:
 		e = EOPNOTSUPP;
@@ -196,51 +197,51 @@ konsumer_event_handler(struct module *module, int event, void *arg)
 }
 
 static void
-konsumer_stop(struct konsumers *konsumer_hashtbl)
+ddtrace_stop(struct clients *ddtrace_hashtbl)
 {
-	struct konsumer *k, *k_tmp;
+	struct client *k, *k_tmp;
 	int i, rc;
 	
-	/* Unregister and stop any konsumer threads. */ 
-	for (i = 0; i < KON_NHASH_BUCKETS; i++) {	
-		LIST_FOREACH_SAFE(k, &konsumer_hashtbl[i],
-		    konsumer_entries, k_tmp) {
+	/* Unregister and stop any client threads. */ 
+	for (i = 0; i < DDTRACE_NHASH_BUCKETS; i++) {	
+		LIST_FOREACH_SAFE(k, &ddtrace_hashtbl[i],
+		    client_entries, k_tmp) {
 
 			DLOGTR1(PRIO_LOW,
-			    "Stopping konsumer thread %p..\n", k);
-			/* Signal konsumer and wait for completion. */
-			mtx_lock(&k->konsumer_mtx);
-			k->konsumer_exit = 1;
-			mtx_unlock(&k->konsumer_mtx);
-			cv_broadcast(&k->konsumer_cv);
-			rc = tsleep(k->konsumer_pid, 0,
-			    "Waiting for konsumer process to stop",
+			    "Stopping client thread %p..\n", k);
+			/* Signal client and wait for completion. */
+			mtx_lock(&k->ddtrace_mtx);
+			k->ddtrace_exit = 1;
+			mtx_unlock(&k->ddtrace_mtx);
+			cv_broadcast(&k->ddtrace_cv);
+			rc = tsleep(k->ddtrace_pid, 0,
+			    "Waiting for client process to stop",
 			    60 * (10 * hz / 9));
 			DL_ASSERT(rc == 0,
-			   ("Failed to stop konsumer thread"));
+			   ("Failed to stop client thread"));
 
-			/* Remove the konsumer and destroy. */
+			/* Remove the client and destroy. */
 			DLOGTR0(PRIO_LOW,
 			    "Konsumer thread stoppped successfully\n");
-			LIST_REMOVE(k, konsumer_entries);
-			mtx_destroy(&k->konsumer_mtx);
-			cv_destroy(&k->konsumer_cv);
-			free(k, M_DLKON);
+			LIST_REMOVE(k, client_entries);
+			mtx_destroy(&k->ddtrace_mtx);
+			cv_destroy(&k->ddtrace_cv);
+			free(k, M_DDTRACE);
 		}
 	}
 	
-	/* Destroy the hash table of konsumer instances. */
-	hashdestroy(konsumer_hashtbl, M_DLKON, konsumer_hashmask);
+	/* Destroy the hash table of client instances. */
+	hashdestroy(ddtrace_hashtbl, M_DDTRACE, ddtrace_hashmask);
 
-	/* Unregister the Konsumer with DTrace.
+	/* Unregister twith DTrace.
 	 * Note that dtrace_lock must be held to manipulate the mutable dtrace
-	 * state (the list of in-kernel konsumers).
+	 * state (the list of in-kernel clients).
 	 */	
-	dtrace_konsumer_unregister(&kid);
+	dtrace_dist_unregister(&did);
 }
 
 static void
-konsumer_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
+ddtrace_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 {
 	caddr_t cached;
 	dtrace_bufdesc_t desc;
@@ -301,58 +302,58 @@ konsumer_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 		 * distributed log.
 		 */
 		if (desc.dtbd_size != 0)
-			konsumer_persist_trace(state, handle, &desc);
+			ddtrace_persist_trace(state, handle, &desc);
 	}
 }
 
 static void
-konsumer_thread(void *arg)
+ddtrace_thread(void *arg)
 {
-	struct konsumer *k = (struct konsumer *)arg;
+	struct client *k = (struct client *)arg;
 	struct timespec curtime;
 
-	konsumer_assert_integrity(__func__, k);
+	ddtrace_assert_integrity(__func__, k);
 
 	for (;;) {
 
-		mtx_lock(&k->konsumer_mtx);
-		cv_timedwait_sbt(&k->konsumer_cv, &k->konsumer_mtx,
-		    SBT_1MS * konsumer_poll_ms, SBT_1MS, 0);
-		if (k->konsumer_exit)  {
+		mtx_lock(&k->ddtrace_mtx);
+		cv_timedwait_sbt(&k->ddtrace_cv, &k->ddtrace_mtx,
+		    SBT_1MS * ddtrace_poll_ms, SBT_1MS, 0);
+		if (k->ddtrace_exit)  {
 
-			mtx_unlock(&k->konsumer_mtx);
-	 		DLOGTR0(PRIO_LOW, "Stopping konsumer thread...\n");
+			mtx_unlock(&k->ddtrace_mtx);
+	 		DLOGTR0(PRIO_LOW, "Stopping client thread...\n");
 			break;
 		}
-		mtx_unlock(&k->konsumer_mtx);
+		mtx_unlock(&k->ddtrace_mtx);
 
 		/* Mimic the userpsace STATUS ioctl.
 		 * Without updating the dts_alive field DTrace
 		 * will transition to the KILLED state.
 		 */
 		nanouptime(&curtime);
-		k->konsumer_state->dts_alive = INT64_MAX;
+		k->ddtrace_state->dts_alive = INT64_MAX;
 		dtrace_membar_producer();
-		k->konsumer_state->dts_alive = dtrace_gethrtime();
+		k->ddtrace_state->dts_alive = dtrace_gethrtime();
 
 		/* Switch the buffer and write the contents to DLog. */ 
-		konsumer_buffer_switch(k->konsumer_state,
-		    k->konsumer_dlog_handle);
+		ddtrace_buffer_switch(k->ddtrace_state,
+		    k->ddtrace_dlog_handle);
 	}
 
 	/* Switch the buffer and write the contetnts to DLog before exiting.
 	 * This ensure that the userspace DTrace process recieves an
 	 * empty buffer on termination.
 	 */ 
-	konsumer_buffer_switch(k->konsumer_state,
-	     k->konsumer_dlog_handle);
+	ddtrace_buffer_switch(k->ddtrace_state,
+	     k->ddtrace_dlog_handle);
 
 	DLOGTR0(PRIO_NORMAL, "Konsumer thread exited successfully.\n");
 	kthread_exit();
 }
 
 static void
-konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
+ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
     dtrace_bufdesc_t *desc)
 {
 	dtrace_epid_t epid;
@@ -363,9 +364,9 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	DL_ASSERT(desc != NULL,
 	    ("DTrace buffer description cannot be NULL."));
 	DL_ASSERT(desc->dtbd_data != NULL,
-	    ("konsumer_persist_trace called with NULL buffer."));
+	    ("ddtrace_persist_trace called with NULL buffer."));
 	DL_ASSERT(desc->dtbd_size != 0,
-	    ("konsumer_persist_trace called with empty buffer."));
+	    ("ddtrace_persist_trace called with empty buffer."));
 
 	while (size < desc->dtbd_size) {
 
@@ -395,12 +396,12 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 		 * Therefore, I using a configurable parameter.
 		 */
 		if (msg_size + dtrace_epid2size(state, epid) >
-		    konsumer_record_bound) {
+		    ddtrace_record_bound) {
 
 			/* The umsg_size is zero this occurs when the
 			 * DTrace record size is greater than the log
 			 * MTU. This should have been checked during 
-			 * konsumer_open().
+			 * ddtrace_open().
 			 */
 			DL_ASSERT(msg_size != 0,
 			    ("Error DTrace record size %zu is greater "
@@ -408,7 +409,7 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 			     dtrace_epid2size(state, epid), DL_MTU));
 
 			if (dlog_produce(hdl, 
-			    KONSUMER_KEY, strlen(KONSUMER_KEY),
+			    DDTRACE_KEY, strlen(DDTRACE_KEY),
 			    &desc->dtbd_data[msg_start], msg_size) != 0) {
 
 				DLOGTR0(PRIO_HIGH,
@@ -454,23 +455,23 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 }
 
 static void
-konsumer_open(void *arg, struct dtrace_state *state)
+ddtrace_open(void *arg, struct dtrace_state *state)
 {
 	struct cdev_privdata *p;
 	struct dlog_handle *handle;
 	struct file *fp;
 	struct filedesc *fdp = curproc->p_fd;
-	struct konsumer *k;
+	struct client *k;
 	dtrace_epid_t epid;
-	dtrace_konsumer_t *konsumer = (dtrace_konsumer_t *)arg;
+	dtrace_dist_t *dist = (dtrace_dist_t *)arg;
 	uint32_t hash;
 	int rc;
 	
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL."));
-	DL_ASSERT(konsumer != NULL,
-	    ("DTrace konsumer instance cannot be NULL."));
+	DL_ASSERT(dist != NULL,
+	    ("DTrace client instance cannot be NULL."));
 
-	DLOGTR0(PRIO_LOW, "konsumer_open\n");
+	DLOGTR0(PRIO_LOW, "ddtrace_open\n");
 
        	/* Check the the payload of the enabled probes is less than the
 	 * configured MTU of the distributed log.
@@ -478,10 +479,10 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	for (epid  = 1; epid < state->dts_epid; epid++) {
 		if (dtrace_epid2size(state, epid) > DL_MTU) {
 			DLOGTR3(PRIO_HIGH,
-			    "Konsumer (%s) rendezvous with DLog state "
+			    "DDTrace (%s) rendezvous with DLog state "
 			    "DTrace record size %zu is greater "
 			    "than log MTU %d\n",
-			    konsumer->dtk_name,
+			    dist->dtd_name,
 			    dtrace_epid2size(state, epid), DL_MTU);
 			return;
 		}
@@ -492,30 +493,30 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	    DTRACEOPT_BUFPOLICY_SWITCH) {
 	
 		DLOGTR1(PRIO_HIGH,
-		    "Konsumer (%s) rendezvous with DLog state failed "
+		    "DDTrace (%s) rendezvous with DLog state failed "
 		    "DTrace bufpolicy must be switch\n",
-		    konsumer->dtk_name);
+		    dist->dtd_name);
 		return;
 	}
 
 	/* Convert the DLog file descriptor into a struct dlog_handle */
-	if (state->dts_options[DTRACEOPT_KONSUMERARG] == DTRACEOPT_UNSET) {
+	if (state->dts_options[DTRACEOPT_DDTRACEARG] == DTRACEOPT_UNSET) {
 
 		DLOGTR1(PRIO_HIGH,
 		    "Konsumer (%s) rendezvous with DLog state failed "
-		    "DTrace konarg option is unset\n", konsumer->dtk_name);
+		    "DTrace ddtracearg option is unset\n", dist->dtd_name);
 		return;
 	}
 	
 	FILEDESC_SLOCK(fdp);
-	fp = fget_locked(fdp, state->dts_options[DTRACEOPT_KONSUMERARG]);
+	fp = fget_locked(fdp, state->dts_options[DTRACEOPT_DDTRACEARG]);
 	FILEDESC_SUNLOCK(fdp);
 	if (fp == NULL) {
 
 		DLOGTR1(PRIO_HIGH,
-		    "Konsumer (%s) rendezvous with DLog state failed "
-		    "DTrace konarg is not a valid file decriptor\n",
-		    konsumer->dtk_name);
+		    "DDTrace (%s) rendezvous with DLog state failed "
+		    "DTrace ddtracearg is not a valid file decriptor\n",
+		    dist->dtd_name);
 		return;
 	}
 
@@ -523,9 +524,9 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	if (p == NULL) {
 
 		DLOGTR1(PRIO_HIGH,
-		    "Konsumer (%s) rendezvous with DLog state failed "
-		    "DTrace konarg file descriptor is not associated with "
-		    "dlog handle\n", konsumer->dtk_name);
+		    "DDTrace (%s) rendezvous with DLog state failed "
+		    "DTrace ddtracearg file descriptor is not associated with "
+		    "dlog handle\n", dist->dtd_name);
 		return;
 	}
 
@@ -533,42 +534,42 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	if (handle == NULL) {
 
 		DLOGTR1(PRIO_HIGH,
-		    "Konsumer (%s) rendezvous with DLog state failed "
-		    "DTrace konarg file secriptor is not associated with "
-		    "dlog handle\n", konsumer->dtk_name);
+		    "DDTrace (%s) rendezvous with DLog state failed "
+		    "DTrace ddtracearg file secriptor is not associated with "
+		    "dlog handle\n", dist->dtd_name);
 		return;
 	}
 
 	/* ALlocate a new Konsumer instance. */
-	k = (struct konsumer *) malloc(sizeof(struct konsumer), M_DLKON,
+	k = (struct client *) malloc(sizeof(struct client), M_DDTRACE,
 	    M_NOWAIT);
-	DL_ASSERT(k != NULL, ("Failed to allocate new konsumer instance."));
+	DL_ASSERT(k != NULL, ("Failed to allocate new client instance."));
 
-	bzero(k, sizeof(struct konsumer));
-	mtx_init(&k->konsumer_mtx, "konsumer mtx", KONSUMER_NAME, MTX_DEF);
-	cv_init(&k->konsumer_cv, "konsumer cv");
-	k->konsumer_state = state;
-	k->konsumer_exit = 0;
-	k->konsumer_dlog_handle = handle;
-	rc = kproc_kthread_add(konsumer_thread, k, &k->konsumer_pid, NULL, 0, 0,
+	bzero(k, sizeof(struct client));
+	mtx_init(&k->ddtrace_mtx, "ddtrace mtx", DDTRACE_NAME, MTX_DEF);
+	cv_init(&k->ddtrace_cv, "ddtrace cv");
+	k->ddtrace_state = state;
+	k->ddtrace_exit = 0;
+	k->ddtrace_dlog_handle = handle;
+	rc = kproc_kthread_add(ddtrace_thread, k, &k->ddtrace_pid, NULL, 0, 0,
 	    NULL, NULL);
 	DL_ASSERT(rc == 0, ("Konsumer open kproc_kthread_add failed %d\n", rc));
 	
-	konsumer_assert_integrity(__func__, k);
+	ddtrace_assert_integrity(__func__, k);
 
-	/* Added the new konsumer instance into the hashmap, index by the
+	/* Added the new client instance into the hashmap, index by the
 	 * dtrace_state pointer(the pointer is hashed as the state itself
 	 * changes over the execution).
 	 */
 	hash = murmur3_32_hash(&state, sizeof(struct dtrace_state *), 0) &
-	    konsumer_hashmask;
-	LIST_INSERT_HEAD(&konsumer_hashtbl[hash], k, konsumer_entries);
+	    ddtrace_hashmask;
+	LIST_INSERT_HEAD(&ddtrace_hashtbl[hash], k, client_entries);
 }
 
 static void
-konsumer_close(void *arg, struct dtrace_state *state)
+ddtrace_close(void *arg, struct dtrace_state *state)
 {
-	struct konsumer *k, *k_tmp;
+	struct client *k, *k_tmp;
 	uint32_t hash;
 	
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL"));
@@ -576,43 +577,43 @@ konsumer_close(void *arg, struct dtrace_state *state)
 	    ("dtrace_lock should be held in dtrace_state_stop()"));
 
 	/* Lookup the Konsumer instance based on the DTrace state passed into
-	 * konsumer_close.
+	 * ddtrace_close.
 	 */
 	hash = murmur3_32_hash(&state, sizeof(struct dtrace_state *), 0) &
-	    konsumer_hashmask;
-	LIST_FOREACH_SAFE(k, &konsumer_hashtbl[hash], konsumer_entries, k_tmp) {
+	    ddtrace_hashmask;
+	LIST_FOREACH_SAFE(k, &ddtrace_hashtbl[hash], client_entries, k_tmp) {
 	
-		konsumer_assert_integrity(__func__, k);
-		if (state == k->konsumer_state) {
+		ddtrace_assert_integrity(__func__, k);
+		if (state == k->ddtrace_state) {
 
-			/* Stop the konsumer thread and wait until it has
+			/* Stop the client thread and wait until it has
 			 * persisted all oustanding DTrace records to DLog.
 			 */
-			mtx_lock(&k->konsumer_mtx);
-			k->konsumer_exit = 1;
-			mtx_unlock(&k->konsumer_mtx);
-			cv_broadcast(&k->konsumer_cv);
-			tsleep(k->konsumer_pid, 0,
-			    "Waiting for konsumer thread to stop",
+			mtx_lock(&k->ddtrace_mtx);
+			k->ddtrace_exit = 1;
+			mtx_unlock(&k->ddtrace_mtx);
+			cv_broadcast(&k->ddtrace_cv);
+			tsleep(k->ddtrace_pid, 0,
+			    "Waiting for client thread to stop",
 			    60 * (10 * hz / 9));
 
-			/* Remove the konsumer instance from the hash map
+			/* Remove the client instance from the hash map
 			 * and destroy it.
 			 */
 			DLOGTR0(PRIO_NORMAL,
 			     "Konsumer thread stoppped successfully\n");
-			LIST_REMOVE(k, konsumer_entries);
-			mtx_destroy(&k->konsumer_mtx);
-			cv_destroy(&k->konsumer_cv);
-			free(k, M_DLKON);
+			LIST_REMOVE(k, client_entries);
+			mtx_destroy(&k->ddtrace_mtx);
+			cv_destroy(&k->ddtrace_cv);
+			free(k, M_DDTRACE);
 			return;
 		}
 	}
 
-	DL_ASSERT(1, ("konsumer_close called with invalid DTrace state."));
+	DL_ASSERT(1, ("ddtrace_close called with invalid DTrace state."));
 }
 
-DECLARE_MODULE(konsumer, konsumer_conf, SI_SUB_DRIVERS, SI_ORDER_MIDDLE);
-MODULE_VERSION(konsumer, 1);
-MODULE_DEPEND(konsumer, dlog, 1, 1, 1);
-MODULE_DEPEND(konsumer, dtrace, 1, 1, 1);
+DECLARE_MODULE(ddtrace, ddtrace_conf, SI_SUB_DRIVERS, SI_ORDER_MIDDLE);
+MODULE_VERSION(ddtrace, 1);
+MODULE_DEPEND(ddtrace, dlog, 1, 1, 1);
+MODULE_DEPEND(ddtrace, dtrace, 1, 1, 1);

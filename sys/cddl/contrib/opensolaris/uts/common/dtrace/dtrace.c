@@ -229,7 +229,7 @@ static dtrace_probe_t	**dtrace_probes;	/* array of all probes */
 static int		dtrace_nprobes;		/* number of probes */
 static dtrace_provider_t *dtrace_provider;	/* provider list */
 static dtrace_meta_t	*dtrace_meta_pid;	/* user-land meta provider */
-static dtrace_konsumer_t *dtrace_konsumer = NULL;	/* konsumer list */
+static dtrace_dist_t *dtrace_dist = NULL;	/* dist list */
 static int		dtrace_opens;		/* number of opens */
 static int		dtrace_helpers;		/* number of helpers */
 static int		dtrace_getf;		/* number of unpriv getf()s */
@@ -292,7 +292,7 @@ static eventhandler_tag	dtrace_kld_unload_try_tag;
  */
 static kmutex_t		dtrace_lock;		/* probe state lock */
 static kmutex_t		dtrace_provider_lock;	/* provider state lock */
-static kmutex_t		dtrace_konsumer_lock;	/* konsumer state lock */
+static kmutex_t		dtrace_dist_lock;	/* dist state lock */
 static kmutex_t		dtrace_meta_lock;	/* meta-provider state lock */
 
 #ifndef illumos
@@ -8752,13 +8752,13 @@ dtrace_probekey(dtrace_probedesc_t *pdp, dtrace_probekey_t *pkp)
 }
 
 /*
- * Register the konsumer with the DTrace framework.
+ * Register the dist with the DTrace framework.
  */
 int
-dtrace_konsumer_register(const char *name, const dtrace_kops_t *kops,
-    void *arg, dtrace_konsumer_id_t *id)
+dtrace_dist_register(const char *name, const dtrace_dops_t *kops,
+    void *arg, dtrace_dist_id_t *id)
 {
-	dtrace_konsumer_t *konsumer;
+	dtrace_dist_t *dist;
 	dtrace_state_t *state;
 
 	if (name == NULL || kops == NULL || id == NULL) {
@@ -8770,74 +8770,74 @@ dtrace_konsumer_register(const char *name, const dtrace_kops_t *kops,
 
 	if (name[0] == '\0') {
 		cmn_err(CE_WARN,
-		    "failed to register provider '%s': invalid konsumer name",
+		    "failed to register provider '%s': invalid dist name",
 		    name);
 		return (EINVAL);
 	}
 
-	/* Construct the konsumer instance. */
-	konsumer = kmem_zalloc(sizeof (dtrace_konsumer_t), KM_SLEEP);
-	ASSERT(konsumer != NULL);
-	konsumer->dtk_name = kmem_alloc(DTRACE_KONNAMELEN, KM_SLEEP);
-	ASSERT(konsumer->dtk_name != NULL);
-	(void) strncpy(konsumer->dtk_name, name, DTRACE_KONNAMELEN);
-	konsumer->dtk_name[DTRACE_KONNAMELEN -1] = 0;
-	konsumer->dtk_arg = arg;
-	konsumer->dtk_ops = *kops;
-	konsumer->dtk_next = NULL;
+	/* Construct the dist instance. */
+	dist = kmem_zalloc(sizeof (dtrace_dist_t), KM_SLEEP);
+	ASSERT(dist != NULL);
+	dist->dtd_name = kmem_alloc(DTRACE_KONNAMELEN, KM_SLEEP);
+	ASSERT(dist->dtd_name != NULL);
+	(void) strncpy(dist->dtd_name, name, DTRACE_KONNAMELEN);
+	dist->dtd_name[DTRACE_KONNAMELEN -1] = 0;
+	dist->dtd_arg = arg;
+	dist->dtd_ops = *kops;
+	dist->dtd_next = NULL;
 
-	*id = (dtrace_konsumer_id_t)konsumer;
+	*id = (dtrace_dist_id_t)dist;
 
-	mutex_enter(&dtrace_konsumer_lock);
+	mutex_enter(&dtrace_dist_lock);
 	mutex_enter(&dtrace_lock);
 
-	/* Add the newly registered konsumer to the list. */
-	if (dtrace_konsumer != NULL) {
-		konsumer->dtk_next = dtrace_konsumer->dtk_next;
-		dtrace_konsumer->dtk_next = konsumer;
+	/* Add the newly registered dist to the list. */
+	if (dtrace_dist != NULL) {
+		dist->dtd_next = dtrace_dist->dtd_next;
+		dtrace_dist->dtd_next = dist;
 	} else {
-		dtrace_konsumer = konsumer;
+		dtrace_dist = dist;
 	}
 
 	mutex_exit(&dtrace_lock);
-	mutex_exit(&dtrace_konsumer_lock);
+	mutex_exit(&dtrace_dist_lock);
 
 	return (0);
 }
 
 /*
- * Un-register the konsumer with the DTrace framework.
+ * Un-register the dist with the DTrace framework.
  */
 int
-dtrace_konsumer_unregister(dtrace_konsumer_id_t *id)
+dtrace_dist_unregister(dtrace_dist_id_t *id)
 {
-	dtrace_konsumer_t *old = (dtrace_konsumer_t *)*id;
-	dtrace_konsumer_t *prev = NULL;
+	dtrace_dist_t *old = (dtrace_dist_t *)*id;
+	dtrace_dist_t *prev = NULL;
 
-	mutex_enter(&dtrace_konsumer_lock);
+	mutex_enter(&dtrace_dist_lock);
 	mutex_enter(&dtrace_lock);
 
-	/* Remove the unregistered konsumer from the list. */
-	if ((prev = dtrace_konsumer) == old) {
+	/* Remove the unregistered dist from the list. */
+	if ((prev = dtrace_dist) == old) {
 
-		dtrace_konsumer = old->dtk_next;
+		dtrace_dist = old->dtd_next;
 	} else {
-		while (prev != NULL && prev->dtk_next != old)
-			prev = prev->dtk_next;
+		while (prev != NULL && prev->dtd_next != old)
+			prev = prev->dtd_next;
 
 		if (prev == NULL) {
 			panic("attempt to unregister non-existent "
-			    "dtrace konsumer %p\n", (void *)id);
+			    "dtrace dist %p\n", (void *)id);
 		}
 
-		prev->dtk_next = old->dtk_next;
+		prev->dtd_next = old->dtd_next;
 	}
 
 	mutex_exit(&dtrace_lock);
-	mutex_exit(&dtrace_konsumer_lock);
+	mutex_exit(&dtrace_dist_lock);
 
-	kmem_free(old->dtk_name, strlen(old->dtk_name) + 1);
-	kmem_free(old, sizeof(dtrace_konsumer_t));
+	kmem_free(old->dtd_name, strlen(old->dtd_name) + 1);
+	kmem_free(old, sizeof(dtrace_dist_t));
 
 	return 0;
 }
@@ -15380,22 +15380,22 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	    (dtrace_xcall_t)dtrace_buffer_activate, state);
 #endif
 
-	if (opt[DTRACEOPT_KONSUMERARG] != DTRACEOPT_UNSET) {
-		/* Iterate the DTrace konsumers and notify them of the
+	if (opt[DTRACEOPT_DDTRACEARG] != DTRACEOPT_UNSET) {
+		/* Iterate the DTrace dists and notify them of the
 		 * dtrace_state_go.
 		 */ 
-		dtrace_konsumer_t *konsumer = dtrace_konsumer;
-		while (konsumer != NULL ) {
+		dtrace_dist_t *dist = dtrace_dist;
+		while (dist != NULL ) {
 			if (dtrace_anon.dta_state != NULL) {
 				dtrace_anon.dta_state->
-				    dts_options[DTRACEOPT_KONSUMERARG] =
-				    opt[DTRACEOPT_KONSUMERARG];
-				konsumer->dtk_ops.dtkops_open(konsumer,
+				    dts_options[DTRACEOPT_DDTRACEARG] =
+				    opt[DTRACEOPT_DDTRACEARG];
+				dist->dtd_ops.dtdops_open(dist,
 				    dtrace_anon.dta_state);
 			} else {
-				konsumer->dtk_ops.dtkops_open(konsumer, state);
+				dist->dtd_ops.dtdops_open(dist, state);
 			}
-			konsumer = konsumer->dtk_next;
+			dist = dist->dtd_next;
 		}
 	}
 
@@ -15501,15 +15501,15 @@ dtrace_state_stop(dtrace_state_t *state, processorid_t *cpu)
 	}
 #endif
 
-	if (opt[DTRACEOPT_KONSUMERARG] != DTRACEOPT_UNSET &&
+	if (opt[DTRACEOPT_DDTRACEARG] != DTRACEOPT_UNSET &&
 	    dtrace_anon.dta_state == NULL) {
-		/* Iterate the DTrace konsumers and notify them of the
+		/* Iterate the DTrace dists and notify them of the
 		 * dtrace_state_stop.
 		 */ 
-		dtrace_konsumer_t *konsumer = dtrace_konsumer;
-		while (konsumer != NULL ) {
-			konsumer->dtk_ops.dtkops_close(konsumer, state);
-			konsumer = konsumer->dtk_next;
+		dtrace_dist_t *dist = dtrace_dist;
+		while (dist != NULL ) {
+			dist->dtd_ops.dtdops_close(dist, state);
+			dist = dist->dtd_next;
 		}
 	}
 
@@ -17523,11 +17523,11 @@ dtrace_dtr(void *data)
 		dtrace_helptrace_buffer = NULL;
 	}
 
-	/* Iterate DTrace konsumers and notify them of the dtrace close. */ 
-	dtrace_konsumer_t *konsumer = dtrace_konsumer;
-	while (konsumer != NULL ){
-		konsumer->dtk_ops.dtkops_close(konsumer, state);
-		konsumer = konsumer->dtk_next;
+	/* Iterate DTrace dists and notify them of the dtrace close. */ 
+	dtrace_dist_t *dist = dtrace_dist;
+	while (dist != NULL ){
+		dist->dtd_ops.dtdops_close(dist, state);
+		dist = dist->dtd_next;
 	}
 
 #ifdef illumos

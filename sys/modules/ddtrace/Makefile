@@ -1,5 +1,5 @@
 #-
-# Copyright (c) 2018 (Graeme Jenkinson)
+# Copyright (c) 2019 (Graeme Jenkinson)
 # All rights reserved.
 #
 # This software was developed by BAE Systems, the University of Cambridge
@@ -29,9 +29,9 @@
 # SUCH DAMAGE.
 #
 
-KMOD= konsumer
+KMOD= ddtrace
 
-SRCS= konsumer.c vnode_if.h
+SRCS= ddtrace.c vnode_if.h
 
 CFLAGS+=-I${SRCTOP}/sys/cddl/compat/opensolaris/
 CFLAGS+=-I${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common/
