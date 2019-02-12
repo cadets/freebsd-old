@@ -74,8 +74,8 @@ translator bufinfo_t < struct bio *B > {
 	b_blkno = 0;
 	b_lblkno = 0;
 	b_resid = B->bio_resid;
-	b_bufsize = 0; /* XXX gnn */
 	b_error = B->bio_error;
+	b_bufsize = 0; /* XXX gnn */
 };
 
 /*
@@ -259,3 +259,26 @@ inline string bio_flag_string[int flag] =
 	flag == BIO_TRANSIENT_MAPPING ?	"TRANSIENT_MAPPING" :
 	flag == BIO_VLIST ?		"VLIST" :
 	"";
+
+typedef struct fileinfo {
+	string fi_name;
+	string fi_dirname;
+	string fi_pathname;
+	off_t fi_offset;
+	int fi_type;
+	int fi_flag;
+} fileinfo_t;
+
+#pragma D binding "1.1" translator
+translator fileinfo_t < struct file *F > {
+	fi_name = F->f_vnode == NULL ? "<unknown>" : 
+		basename(cleanpath(F->f_vnode->v_path));
+	fi_dirname = F->f_vnode == NULL ? "<unknown>" : 
+		dirname(cleanpath(F->f_vnode->v_path));
+	fi_pathname = F->f_vnode == NULL ? "<unknown>" : F->f_vnode->v_path;
+	fi_offset = F->f_offset;
+	fi_type = F->f_type;
+	fi_flag = F->f_flag;
+};
+
+inline fileinfo_t fds[int fd] = xlate <fileinfo_t> (getf(fd));
