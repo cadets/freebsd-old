@@ -119,16 +119,16 @@ static u_long ddtrace_hashmask;
 SYSCTL_NODE(_debug, OID_AUTO, ddtrace, CTLFLAG_RW, 0, "DDTrace");
 
 static uint32_t ddtrace_poll_ms = 1000;
-SYSCTL_U32(_debug_ddtrace, OID_AUTO, poll_period_ms, CTLFLAG_RD,
-    &ddtrace_poll_ms, 0, "Konsumer poll period (ms)");
+SYSCTL_U32(_debug_ddtrace, OID_AUTO, poll_period_ms, CTLFLAG_RW,
+    &ddtrace_poll_ms, 0, "DDTrace poll period (ms)");
 
 /* Maximum record size before compression; the default value is a heurstic
  * based on the level of compression seen in DTrace buffers.
  */
 static uint32_t ddtrace_record_bound = 1024*1024;
-SYSCTL_U32(_debug_ddtrace, OID_AUTO, record_bound, CTLFLAG_RD,
+SYSCTL_U32(_debug_ddtrace, OID_AUTO, record_bound, CTLFLAG_RW,
     &ddtrace_record_bound, 0,
-    "Konsumer maximum record size (before compression)");
+    "DDTrace maximum record size (before compression)");
 
 static eventhandler_tag kon_pre_sync = NULL;
 
@@ -152,7 +152,7 @@ ddtrace_event_handler(struct module *module, int event, void *arg)
 
 	switch(event) {
 	case MOD_LOAD:
-		DLOGTR0(PRIO_LOW, "Loading Konsumer kernel module\n");
+		DLOGTR0(PRIO_LOW, "Loading DDTrace kernel module\n");
 
 		/* Initialise the hash table of client instances. */
 		ddtrace_hashtbl = hashinit(DDTRACE_NHASH_BUCKETS, M_DDTRACE,
@@ -168,7 +168,7 @@ ddtrace_event_handler(struct module *module, int event, void *arg)
 		    &did) == 0) {
 
 			DLOGTR0(PRIO_NORMAL,
-			    "Successfully registered client with DTrace\n");
+			    "Successfully registered with DTrace\n");
 
 			kon_pre_sync = EVENTHANDLER_REGISTER(
 			    shutdown_pre_sync, ddtrace_stop, ddtrace_hashtbl,
@@ -176,12 +176,12 @@ ddtrace_event_handler(struct module *module, int event, void *arg)
 		} else {
 
 			DLOGTR0(PRIO_HIGH,
-			    "Failed to register client with DTrace\n");
+			    "Failed to register with DTrace\n");
 			e = -1;
 		}
 		break;
 	case MOD_UNLOAD:
-		DLOGTR0(PRIO_LOW, "Unloading Konsumer kernel module\n");
+		DLOGTR0(PRIO_LOW, "Unloading DDTrace kernel module\n");
 
 		if (kon_pre_sync != NULL)	
 		    EVENTHANDLER_DEREGISTER(shutdown_pre_sync, kon_pre_sync);
@@ -222,7 +222,7 @@ ddtrace_stop(struct clients *ddtrace_hashtbl)
 
 			/* Remove the client and destroy. */
 			DLOGTR0(PRIO_LOW,
-			    "Konsumer thread stoppped successfully\n");
+			    "DDTrace thread stoppped successfully\n");
 			LIST_REMOVE(k, client_entries);
 			mtx_destroy(&k->ddtrace_mtx);
 			cv_destroy(&k->ddtrace_cv);
@@ -348,7 +348,7 @@ ddtrace_thread(void *arg)
 	ddtrace_buffer_switch(k->ddtrace_state,
 	     k->ddtrace_dlog_handle);
 
-	DLOGTR0(PRIO_NORMAL, "Konsumer thread exited successfully.\n");
+	DLOGTR0(PRIO_NORMAL, "DDTrace thread exited successfully.\n");
 	kthread_exit();
 }
 
@@ -503,7 +503,7 @@ ddtrace_open(void *arg, struct dtrace_state *state)
 	if (state->dts_options[DTRACEOPT_DDTRACEARG] == DTRACEOPT_UNSET) {
 
 		DLOGTR1(PRIO_HIGH,
-		    "Konsumer (%s) rendezvous with DLog state failed "
+		    "DDTrace (%s) rendezvous with DLog state failed "
 		    "DTrace ddtracearg option is unset\n", dist->dtd_name);
 		return;
 	}
@@ -540,7 +540,7 @@ ddtrace_open(void *arg, struct dtrace_state *state)
 		return;
 	}
 
-	/* ALlocate a new Konsumer instance. */
+	/* ALlocate a new DDTrace instance. */
 	k = (struct client *) malloc(sizeof(struct client), M_DDTRACE,
 	    M_NOWAIT);
 	DL_ASSERT(k != NULL, ("Failed to allocate new client instance."));
@@ -553,7 +553,7 @@ ddtrace_open(void *arg, struct dtrace_state *state)
 	k->ddtrace_dlog_handle = handle;
 	rc = kproc_kthread_add(ddtrace_thread, k, &k->ddtrace_pid, NULL, 0, 0,
 	    NULL, NULL);
-	DL_ASSERT(rc == 0, ("Konsumer open kproc_kthread_add failed %d\n", rc));
+	DL_ASSERT(rc == 0, ("DDTrace open kproc_kthread_add failed %d\n", rc));
 	
 	ddtrace_assert_integrity(__func__, k);
 
@@ -576,7 +576,7 @@ ddtrace_close(void *arg, struct dtrace_state *state)
 	DL_ASSERT(MUTEX_HELD(&dtrace_lock),
 	    ("dtrace_lock should be held in dtrace_state_stop()"));
 
-	/* Lookup the Konsumer instance based on the DTrace state passed into
+	/* Lookup the DDTrace instance based on the DTrace state passed into
 	 * ddtrace_close.
 	 */
 	hash = murmur3_32_hash(&state, sizeof(struct dtrace_state *), 0) &
@@ -601,7 +601,7 @@ ddtrace_close(void *arg, struct dtrace_state *state)
 			 * and destroy it.
 			 */
 			DLOGTR0(PRIO_NORMAL,
-			     "Konsumer thread stoppped successfully\n");
+			     "DDTrace thread stoppped successfully\n");
 			LIST_REMOVE(k, client_entries);
 			mtx_destroy(&k->ddtrace_mtx);
 			cv_destroy(&k->ddtrace_cv);
