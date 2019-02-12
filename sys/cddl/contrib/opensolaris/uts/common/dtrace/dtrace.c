@@ -138,7 +138,7 @@
 #endif
 
 #include "dtrace_xoroshiro128_plus.h"
-#include "dtrace_uuid.h"
+#include <dtrace_uuid.c>
 
 /*
  * DTrace Tunable Variables
@@ -5524,7 +5524,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 		int len = sizeof(uuid);
 		char buf[38];
 		uint64_t size = sizeof(buf);
-		struct uuid_private *id;
+		struct dtrace_uuid_private *id;
 		int i;
 
 		if (!dtrace_canload(src, len, mstate, vstate)) {
@@ -5542,10 +5542,11 @@ dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 		}
 
 		/* XXX-AT: Probably shouldn't use snprintf. */
-		id = (struct uuid_private *)&uuid;
+		id = (struct dtrace_uuid_private *)&uuid;
 		snprintf(dest, size, "%08x-%04x-%04x-%04x-%04x%04x%04x",
-		    id->time.x.low, id->time.x.mid, id->time.x.hi, be16toh(id->seq),
-		    be16toh(id->node[0]), be16toh(id->node[1]), be16toh(id->node[2]));
+		    id->time.x.low, id->time.x.mid, id->time.x.hi,
+		    dtrace_be16toh(id->seq), dtrace_be16toh(id->node[0]),
+		    dtrace_be16toh(id->node[1]), dtrace_be16toh(id->node[2]));
 		regs[rd] = (uintptr_t)dest;
 		mstate->dtms_scratch_ptr += size;
 		break;
@@ -6153,6 +6154,38 @@ inetout:	regs[rd] = (uintptr_t)end + 1;
 	case DIF_SUBR_RANDOM: {
 		regs[rd] = dtrace_xoroshiro128_plus_next(
 		    state->dts_rstate[curcpu]);
+		break;
+	}
+	case DIF_SUBR_UUIDGEN: {
+		dtrace_uuidsrc_t uuid_src;
+		struct uuid uuid_nil;
+		size_t aligned_dest_size;
+		uintptr_t dest;
+			
+		/* Assemble the name of the UUID in the scratch space. */
+		uuid_src.dt_hrtime = dtrace_gethrtime();
+		uuid_src.dt_uuidstate = state->dts_uuidstate[curcpu]++;
+		uuid_src.dt_cpuid = curcpu;
+
+		/* Create the UUID and store in the scratch space. */
+		dest = P2ROUNDUP(mstate->dtms_scratch_ptr, sizeof(uint64_t));
+		aligned_dest_size = (dest - mstate->dtms_scratch_ptr) +
+		    sizeof(struct uuid);
+
+		if (!DTRACE_INSCRATCH(mstate, aligned_dest_size)) {
+
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
+			regs[rd] = 0;
+			break;
+		}
+
+		dtrace_uuid_generate_nil(&uuid_nil);
+		dtrace_uuid_generate_version5((struct uuid *)dest, &uuid_nil,
+		    (void *)&uuid_src, sizeof(dtrace_uuidsrc_t));
+
+		mstate->dtms_scratch_ptr += aligned_dest_size;
+
+		regs[rd] = (uintptr_t)dest;
 		break;
 	}
 	}

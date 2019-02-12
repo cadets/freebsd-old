@@ -1177,6 +1177,7 @@ struct dtrace_state {
 	size_t dts_nretained;			/* number of retained enabs */
 	int dts_getf;				/* number of getf() calls */
 	uint64_t dts_rstate[NCPU][2];		/* per-CPU random state */
+	uint64_t dts_uuidstate[NCPU];		/* per-CPU UUID state */
 };
 
 struct dtrace_konsumer {
@@ -1285,6 +1286,19 @@ typedef struct dtrace_toxrange {
 	uintptr_t	dtt_base;		/* base of toxic range */
 	uintptr_t	dtt_limit;		/* limit of toxic range */
 } dtrace_toxrange_t;
+
+/*
+ * DTrace UUID source. 
+ *
+ * In order to uniquely identify a trace record it is possible to generate
+ * a Version 5 UUID using the `uuidgen()` subroutine. These UUIDs are
+ * constructed based on the hrtime, a per-CPU counter and the processor id.
+ */
+typedef struct dtrace_uuidsrc {
+	uint64_t dt_hrtime;
+	uint64_t dt_uuidstate;
+	processorid_t dt_cpuid;
+} dtrace_uuidsrc_t;
 
 #ifdef illumos
 extern uint64_t dtrace_getarg(int, int);
