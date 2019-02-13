@@ -66,9 +66,19 @@
 #include "dl_protocol.h"
 #include "dl_utils.h"
 
-LIST_HEAD(clients, client);
-
 extern hrtime_t dtrace_gethrtime(void);
+
+struct client {
+	LIST_ENTRY(client) client_entries;
+	struct cv ddtrace_cv;
+	struct mtx ddtrace_mtx;
+	struct proc *ddtrace_pid;
+	struct dlog_handle *ddtrace_dlog_handle;
+	dtrace_state_t *ddtrace_state;
+	int ddtrace_exit;
+};
+
+LIST_HEAD(clients, client);
 
 MALLOC_DECLARE(M_DDTRACE);
 MALLOC_DEFINE(M_DDTRACE, "ddtrace", "DDTrace memory");
@@ -84,23 +94,12 @@ static void ddtrace_open(void *, struct dtrace_state *);
 static void ddtrace_close(void *, struct dtrace_state *);
 static void ddtrace_stop(struct clients *);
 
-struct client {
-	LIST_ENTRY(client) client_entries;
-	struct cv ddtrace_cv;
-	struct mtx ddtrace_mtx;
-	struct proc *ddtrace_pid;
-	struct dlog_handle *ddtrace_dlog_handle;
-	dtrace_state_t *ddtrace_state;
-	int ddtrace_exit;
-};
-
 static dtrace_dops_t dops = {
 	.dtdops_open = ddtrace_open,
 	.dtdops_close = ddtrace_close,
 };
 static dtrace_dist_id_t did;
 
-extern hrtime_t dtrace_deadman_user;
 extern kmutex_t dtrace_lock;
 
 static char const * const DDTRACE_NAME = "ddtrace";
@@ -116,17 +115,21 @@ static const int DDTRACE_NHASH_BUCKETS = 16;
 static struct clients *ddtrace_hashtbl = NULL;
 static u_long ddtrace_hashmask;
 
-SYSCTL_NODE(_debug, OID_AUTO, ddtrace, CTLFLAG_RW, 0, "DDTrace");
+SYSCTL_NODE(_kern, OID_AUTO, ddtrace, CTLFLAG_RW, 0, "DDTrace");
 
+/* Poll period in ms; at the expiration of the poll period the in-kernel
+ * consumer performs a swap of the per-CPU trace buffers and processes
+ * the records.
+ */
 static uint32_t ddtrace_poll_ms = 1000;
-SYSCTL_U32(_debug_ddtrace, OID_AUTO, poll_period_ms, CTLFLAG_RW,
+SYSCTL_U32(_kern_ddtrace, OID_AUTO, poll_period_ms, CTLFLAG_RW,
     &ddtrace_poll_ms, 0, "DDTrace poll period (ms)");
 
 /* Maximum record size before compression; the default value is a heurstic
  * based on the level of compression seen in DTrace buffers.
  */
 static uint32_t ddtrace_record_bound = 1024*1024;
-SYSCTL_U32(_debug_ddtrace, OID_AUTO, record_bound, CTLFLAG_RW,
+SYSCTL_U32(_kern_ddtrace, OID_AUTO, record_bound, CTLFLAG_RW,
     &ddtrace_record_bound, 0,
     "DDTrace maximum record size (before compression)");
 
@@ -233,7 +236,7 @@ ddtrace_stop(struct clients *ddtrace_hashtbl)
 	/* Destroy the hash table of client instances. */
 	hashdestroy(ddtrace_hashtbl, M_DDTRACE, ddtrace_hashmask);
 
-	/* Unregister twith DTrace.
+	/* Unregister with DTrace.
 	 * Note that dtrace_lock must be held to manipulate the mutable dtrace
 	 * state (the list of in-kernel clients).
 	 */	
@@ -601,7 +604,7 @@ ddtrace_close(void *arg, struct dtrace_state *state)
 			 * and destroy it.
 			 */
 			DLOGTR0(PRIO_NORMAL,
-			     "DDTrace thread stoppped successfully\n");
+			    "DDTrace thread stoppped successfully\n");
 			LIST_REMOVE(k, client_entries);
 			mtx_destroy(&k->ddtrace_mtx);
 			cv_destroy(&k->ddtrace_cv);
