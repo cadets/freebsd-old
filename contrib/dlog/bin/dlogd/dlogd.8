@@ -107,8 +107,14 @@ Size the producer hash table for
 entries.
 Defaults to
 .Dv 10 .
+.It Va resend
+Try resending kafka messages if they are not acknowledged.
+Defaults to
+.Pa true .
 .It Va privatekey_file
 Specify the TLS client-side private key file.
+Defaults to
+.Pa client.key .
 .It Va tls
 Enable TLS support.
 Defaults to
