@@ -158,7 +158,7 @@ dl_tls_transport_connect(struct dl_transport *self,
 	 */
 	BIO_set_conn_hostname(self->dlt_tls->dlt_tls_bio,
 	    CONST_CAST(char *, hostname));
-	BIO_set_conn_int_port(self->dlt_tls->dlt_tls_bio,
+	BIO_set_conn_port(self->dlt_tls->dlt_tls_bio,
 	    CONST_CAST(int *, &port));
 
 	/* Setting SSL_MODE_AUTO_RETRY prevents the application from having
