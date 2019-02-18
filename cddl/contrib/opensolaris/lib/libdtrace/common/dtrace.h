@@ -233,6 +233,7 @@ typedef bool dtrace_modref_check_f(int modref, int cumulative_modref,
 extern bool dtrace_analyze_program_modref(dtrace_prog_t *,
 	dtrace_modref_check_f *, FILE *output);
 
+extern int dtrace_dump_actions(dtrace_prog_t *);
 /* Output GraphViz .dot representation of a DTrace program's actions. */
 extern void dtrace_graph_program(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, FILE *);
 

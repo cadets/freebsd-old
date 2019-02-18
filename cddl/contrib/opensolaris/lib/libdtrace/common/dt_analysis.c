@@ -38,6 +38,8 @@
 #include <dt_analysis.h>
 #include <dt_program.h>
 
+#include <dt_impl.h>
+
 /* Print GraphViz Dot-formatted output for a DTrace action */
 static void print_action(dtrace_actdesc_t *, const char *probename, FILE *out);
 
@@ -73,6 +75,212 @@ dtrace_analyze_program_modref(dtrace_prog_t *pgp, dtrace_modref_check_f *check,
 	}
 
 	return (ok);
+}
+
+static void
+dtrace_print_stack(uint64_t num_frames, const char *stack_name)
+{
+
+	fprintf(stderr, "%s %llu\n", stack_name, num_frames);
+}
+
+static void
+dump_action(dtrace_actdesc_t *ap)
+{
+	dtrace_actkind_t kind = ap->dtad_kind;
+	dtrace_difo_t *dp = ap->dtad_difo;
+	uint64_t num_frames = 0;
+
+	printf("\n");
+
+	switch (kind) {
+	case DTRACEACT_NONE:
+		break;
+
+	case DTRACEACT_DIFEXPR:
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEACT_EXIT:
+		fprintf(stderr, "EXIT\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEACT_PRINTF:
+		fprintf(stderr, "PRINTF\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEACT_PRINTA:
+		fprintf(stderr, " PRINTA\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEACT_TRACEMEM:
+		fprintf(stderr, "TRACEMEM\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEACT_TRACEMEM_DYNSIZE:
+		fprintf(stderr, "TRACEMEM_DYNSIZE\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEACT_PRINTM:
+		fprintf(stderr, "PRINTM\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	/* Stacks */
+	case DTRACEACT_STACK:
+		num_frames = ap->dtad_arg;
+		dtrace_print_stack(num_frames, "STACK");
+		break;
+
+	case DTRACEACT_USTACK:
+		num_frames = ap->dtad_arg;
+		dtrace_print_stack(num_frames, "USTACK");
+		break;
+
+	case DTRACEACT_JSTACK:
+		num_frames = ap->dtad_arg;
+		dtrace_print_stack(num_frames, "JSTACK");
+		break;
+
+	/* Aggregations */
+	case DTRACEAGG_COUNT:
+		fprintf(stderr, "COUNT\n");
+		break;
+
+	case DTRACEAGG_MIN:
+		fprintf(stderr, "MIN\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEAGG_MAX:
+		fprintf(stderr, "MAX\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEAGG_AVG:
+		fprintf(stderr, "AVG\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEAGG_SUM:
+		fprintf(stderr, "SUM\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEAGG_STDDEV:
+		fprintf(stderr, "STDDEV\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEAGG_QUANTIZE:
+		fprintf(stderr, "QUANTIZE\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEAGG_LQUANTIZE:
+		fprintf(stderr, "LQUANTIZE\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEAGG_LLQUANTIZE:
+		fprintf(stderr, "LLQUANTIZE\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	/* Destructive actions */
+	case DTRACEACT_STOP:
+		fprintf(stderr, "STOP\n");
+		break;
+
+	case DTRACEACT_RAISE:
+		fprintf(stderr, "RAISE\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEACT_SYSTEM:
+		fprintf(stderr, "SYSTEM\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEACT_PANIC:
+		fprintf(stderr, "PANIC\n");
+		break;
+
+	case DTRACEACT_CHILL:
+		fprintf(stderr, "CHILL\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEACT_BREAKPOINT:
+		fprintf(stderr, "BREAKPOINT\n");
+		break;
+
+	/* Speculative actions */
+	case DTRACEACT_COMMIT:
+		fprintf(stderr, "COMMIT\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	case DTRACEACT_DISCARD:
+		fprintf(stderr, "DISCARD\n");
+		assert(dp != NULL);
+		dt_dis(dp, stderr);
+		break;
+
+	default:
+		break;
+	}
+}
+
+int
+dtrace_dump_actions(dtrace_prog_t *pgp)
+{
+	dtrace_actdesc_t *ap;
+	dtrace_ecbdesc_t *last = NULL;
+	dtrace_probedesc_t *descp;
+	dt_stmt_t *stp;
+
+	for (stp = dt_list_next(&pgp->dp_stmts); stp; stp = dt_list_next(stp)) {
+		dtrace_ecbdesc_t *edp = stp->ds_desc->dtsd_ecbdesc;
+		if (edp == last)
+			continue;
+		last = edp;
+		descp = &edp->dted_probe;
+
+		fprintf(stderr, "%s:%s:%s:%s ==>\n", descp->dtpd_provider,
+		    descp->dtpd_mod, descp->dtpd_func, descp->dtpd_name);
+
+		for (ap = edp->dted_action; ap; ap = ap->dtad_next) {
+			dump_action(ap);
+		}
+
+		fprintf(stderr, "\n");
+	}
+	return (0);
 }
 
 const char *
