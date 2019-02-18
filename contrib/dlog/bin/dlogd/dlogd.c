@@ -39,12 +39,15 @@
 #include <sys/nv.h>
 #include <sys/queue.h>
 #include <sys/event.h>
+#include <sys/param.h>
 #include <sys/types.h>
 #include <sys/sysctl.h>
 
+#include <err.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <libgen.h>
+#include <libutil.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <time.h>
@@ -73,12 +76,13 @@ static char const * const DLOGD_NELEMENTS = "nelements";
 static const int DLOGD_NELEMENTS_DEFAULT = 10;
 static char const * const DLOGD_TOPICS = "topics";
 static char const * const DLOGD_LOG_PATH= "log_path";
-static char const * const DLOGD_LOG_PATH_DEFAULT= ".";
+static char const * const DLOGD_LOG_PATH_DEFAULT= "/var/db/dlogd";
 static char const * const DLOGD_PRIVATEKEY_FILE = "privatekey_file";
 static char const * const DLOGD_CLIENT_FILE = "client_file";
 static char const * const DLOGD_CACERT_FILE = "cacert_file";
 static char const * const DLOGD_USER_PASSWORD = "user_password";
 static char const * const DLOGD_TLS = "tls";
+static char const * const DLOGD_RESEND = "resend";
 
 struct dl_producer_elem {
 	LIST_ENTRY(dl_producer_elem) dlp_entries;
@@ -97,13 +101,7 @@ static unsigned long hashmask;
 static int dlog;
 static nvlist_t *props;
 static int nelements = DLOGD_NELEMENTS_DEFAULT;
-
-static inline void 
-dlogd_usage(FILE * fp)
-{
-
-	(void) fprintf(fp, "Usage: %s [-d] [-c config_file]\n", dlogd_name);
-}
+static int dlogd_debug = 0;
 
 static void
 dlogd_stop(int sig __attribute__((unused)))
@@ -113,58 +111,10 @@ dlogd_stop(int sig __attribute__((unused)))
 }
 
 static void
-dlogd_close_dlog(void)
-{
-	int rc;
-
-	/* Close the distibuted log. */	
-	DLOGTR0(PRIO_LOW, "Closing distributed log.\n");
-	rc = close(dlog);
-	if (rc != 0)
-		DLOGTR1(PRIO_HIGH, "Error closing distributed log %d\n",
-		    errno);
-}
-
-
-static void
-dlogd_close_pidfile(void)
+dlogd_ignore_sigpipe(int sig __attribute__((unused)))
 {
 
-	/* Unlink the dlogd pid file. */	
-	DLOGTR0(PRIO_LOW, "Unlinking dlogd pid file\n");
-	if (unlink(DLOGD_PIDFILE) == -1 && errno != ENOENT)
-		DLOGTR0(PRIO_HIGH, "Error unlinking dlogd pid file\n");
-}
-
-static int
-register_daemon(void)
-{
-	FILE * pidfile;
-	int fd;
-	pid_t pid;
-
-	signal(SIGINT, dlogd_stop);
-
-	if ((pidfile = fopen(DLOGD_PIDFILE, "a")) == NULL) {
-		return (-1);
-	}
-	atexit(dlogd_close_dlog);
-
-	/* Attempt to lock the pid file; if a lock is present, exit. */
-	fd = fileno(pidfile);
-	if (flock(fd, LOCK_EX | LOCK_NB) < 0) {
-		return (-1);
-	}
-
-	pid = getpid();
-	ftruncate(fd, 0);
-	if (fprintf(pidfile, "%u\n", pid) < 0) {
-		/* Should not start the daemon. */
-	}
-
-	fflush(pidfile);
-	atexit(dlogd_close_pidfile);
-	return 0;
+	DLOGTR0(PRIO_LOW, "Kafka closed read end of connection\n");
 }
 
 static int 
@@ -175,7 +125,7 @@ setup_daemon(void)
 	/* Create a new nvlist to store producer configuration. */
 	props = nvlist_create(0);
 
-	nvlist_add_bool(props, DL_CONF_TORESEND, false);
+	nvlist_add_number(props, DL_CONF_DEBUG_LEVEL, dlogd_debug);
 
 	/* Open the DLog device */
 	dlog = open(DLOG_DEV, O_RDWR);
@@ -207,16 +157,6 @@ setup_daemon(void)
 	hashmask = hashsize -1;
 
 	return 0;
-}
-
-static void
-dlogd_terminate(void)
-{
-	
-	if (unlink(DLOGD_PIDFILE) == -1 && errno != ENOENT) {
-
-		DLOGTR0(PRIO_HIGH, "Failed unli\n");
-	}
 }
 
 static int
@@ -294,11 +234,9 @@ main(int argc, char *argv[])
 	char *hostname;
 	char *log_path = DLOGD_LOG_PATH_DEFAULT;
 	int64_t port;
+	struct pidfh *pfh;
+	pid_t pid;
 	int c, rc;
-	size_t old_maxsockbuf, old_maxsockbuf_size;
-	size_t new_maxsockbuf  = 20 * DL_MTU * 2;
-	size_t new_maxsockbuf_size = sizeof(size_t);
-	bool debug = false;
 
 	dlogd_name = basename(argv[0]); 	
 
@@ -307,41 +245,53 @@ main(int argc, char *argv[])
 	while ((c = getopt(argc, argv, "dc:")) != -1) {
 		switch(c) {
 		case 'c':
+			/* Configuration file option */
 			conf_file = optarg;
 			break;
 		case 'd':
 			/* Debug option */
-			debug = true;
+			dlogd_debug++;
 			break;
 		case '?':
 		default:
-			dlogd_usage(stderr);
-			exit(EXIT_FAILURE);
+			errx(EXIT_FAILURE,
+			    "Usage: %s [-d] [-c config_file]\n", dlogd_name);
 		}
 	}
 
-	if (debug == false && daemon(0, 0) == -1) {
-
-		DLOGTR0(PRIO_HIGH, "Failed registering dlogd as daemon\n");
-		exit(EXIT_FAILURE);
+	/* Create a pid file for the dlogd daemon. */
+	pfh = pidfile_open(DLOGD_PIDFILE, 0600, &pid);
+	if (pfh == NULL) {
+		if (errno == EEXIST) {
+			errx(EXIT_FAILURE,
+			    "Daemon already running, pid: %d", pid);
+		}
+		DLOGTR0(PRIO_HIGH, "Cannot open or create pid file\n");
 	}
-	
+
+	if (dlogd_debug > 0) {
+
+		/* Configure syslog to copy error messages to stderr. */
+		openlog(dlogd_name, LOG_PERROR, LOG_USER);
+	} else { 
+		if (daemon(0, 0) == -1) {
+
+			pidfile_remove(pfh);
+			errx(EXIT_FAILURE,
+			    "Failed registering dlogd as daemon\n");
+		}
+	}
+
+	/* Write the pid */
+	pidfile_write(pfh);
+
 	DLOGTR1(PRIO_LOW, "%s daemon starting...\n", dlogd_name);
-
-	if (register_daemon() != 0) {
-
-		DLOGTR0(PRIO_HIGH, "Failed registering dlogd as daemon\n");
-		exit(EXIT_FAILURE);
-	}
 
 	if (setup_daemon() != 0) {
 
+		pidfile_remove(pfh);
+		errx(EXIT_FAILURE, "Failed setting up dlogd as daemon\n");
 	}
-
-	/* Configure the maxsockbuf based on the DLog MTU. */
-	sysctlbyname("kern.ipc.maxsockbuf",
-	    &old_maxsockbuf, &old_maxsockbuf_size,
-	    &new_maxsockbuf, new_maxsockbuf_size);
 
 	/* Instatiate libucl parser to parse the dlogd config file. */
 	parser = ucl_parser_new(0);
@@ -364,7 +314,7 @@ main(int argc, char *argv[])
 	if (top == NULL) {
 
 		DLOGTR0(PRIO_HIGH,
-		    "Failed to obtain reference to libucl objecit\n");
+		    "Failed to obtain reference to libucl object\n");
 		goto err_free_libucl;
 	}
 
@@ -377,53 +327,45 @@ main(int argc, char *argv[])
 
 			nvlist_add_string(props, DL_CONF_CLIENTID,
 			    ucl_object_tostring_forced(obj));
-		}
-
-		if (strcmp(ucl_object_key(obj), DLOGD_PRIVATEKEY_FILE) == 0) {
+		} else  if (strcmp(ucl_object_key(obj), DLOGD_PRIVATEKEY_FILE) == 0) {
 
 			nvlist_add_string(props, DL_CONF_PRIVATEKEY_FILE,
 			    ucl_object_tostring_forced(obj));
-		}
-		
-		if (strcmp(ucl_object_key(obj), DLOGD_CLIENT_FILE) == 0) {
+		} else if (strcmp(ucl_object_key(obj), DLOGD_CLIENT_FILE) == 0) {
 
 			nvlist_add_string(props, DL_CONF_CLIENT_FILE,
 			    ucl_object_tostring_forced(obj));
-		}
-		
-		if (strcmp(ucl_object_key(obj), DLOGD_CACERT_FILE) == 0) {
+		} else if (strcmp(ucl_object_key(obj), DLOGD_CACERT_FILE) == 0) {
 
 			nvlist_add_string(props, DL_CONF_CACERT_FILE,
 			    ucl_object_tostring_forced(obj));
-		}
-	
-		if (strcmp(ucl_object_key(obj), DLOGD_USER_PASSWORD) == 0) {
+		} else if (strcmp(ucl_object_key(obj), DLOGD_USER_PASSWORD) == 0) {
 
 			nvlist_add_string(props, DL_CONF_USER_PASSWORD,
 			    ucl_object_tostring_forced(obj));
-		}
-		
-		if (strcmp(ucl_object_key(obj), DLOGD_TLS) == 0) {
+		} else if (strcmp(ucl_object_key(obj), DLOGD_TLS) == 0) {
 
 			nvlist_add_bool(props, DL_CONF_TLS_ENABLE,
 			    ucl_object_toboolean(obj));
-		}
-				
-		if (strcmp(ucl_object_key(obj), DLOGD_NELEMENTS) == 0) {
+		} else if (strcmp(ucl_object_key(obj), DLOGD_RESEND) == 0) {
+
+			nvlist_add_bool(props, DL_CONF_TORESEND,
+			    ucl_object_toboolean(obj));
+		} else if (strcmp(ucl_object_key(obj), DLOGD_NELEMENTS) == 0) {
 	
 			nelements = ucl_object_toint(obj);
 			if (nelements <= 0 )
 				nelements = DLOGD_NELEMENTS_DEFAULT;
-		}
-
-		if (strcmp(ucl_object_key(obj), DLOGD_LOG_PATH) == 0) {
+		} else if (strcmp(ucl_object_key(obj), DLOGD_LOG_PATH) == 0) {
 
 			    log_path = ucl_object_tostring_forced(obj);
-		}
-
-		if (strcmp(ucl_object_key(obj), DLOGD_TOPICS) == 0) {
+		} else if (strcmp(ucl_object_key(obj), DLOGD_TOPICS) == 0) {
 
 			topics_obj = obj;
+		} else {
+			DLOGTR1(PRIO_HIGH,
+			   "Unrecongised configuration: %s\n",
+			   ucl_object_key(obj));
 		}
 	}
 		
@@ -440,6 +382,8 @@ main(int argc, char *argv[])
 	while ((cur = ucl_object_iterate_safe(it, true)) != NULL) {
 		
 		topic_name = ucl_object_key(cur);
+		hostname = NULL;
+		port = -1;
 
 		/* Iterate over the values of a key */
 		while ((t = ucl_iterate_object (cur, &tit, true))) {
@@ -447,17 +391,24 @@ main(int argc, char *argv[])
 			if (strcmp(ucl_object_key(t), "hostname") == 0) {
 			
 				hostname = ucl_object_tostring_forced(t);
-			}
-
-			if (strcmp(ucl_object_key(t), "port") == 0) {
+			} else if (strcmp(ucl_object_key(t), "port") == 0) {
 
 				port = ucl_object_toint(t);
+			} else {
+				DLOGTR1(PRIO_HIGH,
+				    "Unrecongised configuration: %s\n",
+				    ucl_object_key(t));
 			}
 		}
 
-		rc = dlogd_manage_topic(topic_name, log_path, hostname,
-		    port);
-		if (rc != 0) {
+		if (topic_name != NULL && hostname != NULL && port != -1) {
+			rc = dlogd_manage_topic(topic_name, log_path,
+			    hostname, port);
+			if (rc != 0) {
+
+				DLOGTR1(PRIO_HIGH, "Failed to topic %s\n",
+				topic_name);
+			}
 		}
 	}
 	ucl_object_iterate_free(it);
@@ -466,6 +417,12 @@ main(int argc, char *argv[])
 
 	/* Free the libucl parser. */	
 	ucl_parser_free(parser);
+
+	/* Register signal handler to terminate dlogd */
+	signal(SIGINT, dlogd_stop);
+
+	/* Register signal handler to ignore sigpipe */
+	signal(SIGPIPE, dlogd_ignore_sigpipe);
 	
 	/* Handle any events registered for the configured topics/producers. */
 	while (stop == 0) {
@@ -499,22 +456,24 @@ main(int argc, char *argv[])
 		}
 	}
 
-	dlogd_terminate();
-
 	/* Delete the producer hashmap */
 	DLOGTR0(PRIO_LOW, "Deleting the producer hashmap.\n");
 	dlog_free(producers);
 
-	/* Restore the maxsockbuf. */
-	new_maxsockbuf = old_maxsockbuf;
-	new_maxsockbuf_size = sizeof(size_t);
+	/* Close the distibuted log. */	
+	DLOGTR0(PRIO_LOW, "Closing distributed log.\n");
+	rc = close(dlog);
+	if (rc != 0)
+		DLOGTR1(PRIO_HIGH, "Error closing distributed log %d\n",
+		    errno);
 
-	sysctlbyname("kern.ipc.maxsockbuf",
-	    &old_maxsockbuf, &old_maxsockbuf_size,
-	    &new_maxsockbuf, new_maxsockbuf_size);
+	if (dlogd_debug > 0)
+		closelog();
+
+	pidfile_remove(pfh);
 
 	DLOGTR1(PRIO_LOW, "%s daemon stopped.\n", dlogd_name);
-
+	
 	return 0;
 
 err_free_libucl:
@@ -522,5 +481,9 @@ err_free_libucl:
 	ucl_parser_free(parser);
 	
 err:
+	if (dlogd_debug > 0)
+		closelog();
+
+	pidfile_remove(pfh);
 	exit(EXIT_FAILURE);
 }
