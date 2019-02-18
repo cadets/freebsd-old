@@ -109,6 +109,7 @@ static int g_cflags;
 static int g_oflags;
 static int g_verbose;
 static int g_exec = 1;
+static const char *g_graphfile = NULL;
 static int g_mode = DMODE_EXEC;
 static int g_status = E_SUCCESS;
 static int g_grabanon = 0;
@@ -143,8 +144,8 @@ usage(FILE *fp)
 	static const char predact[] = "[[ predicate ] action ]";
 
 	(void) fprintf(fp, "Usage: %s [-32|-64] [-aACeFGhHlqSvVwZ] "
-	    "[-b bufsz] [-c cmd] [-D name[=def]]\n\t[-I path] [-L path] "
-	    "[-o output] [-p pid] [-s script] [-U name]\n\t"
+	    "[-b bufsz] [-c cmd] [-D name[=def]]\n\t[-g gv_output] [-I path] "
+	    "[-L path] [-o output] [-p pid] [-s script] [-U name]\n\t"
 	    "[-x opt[=val]] [-X a|c|s|t]\n\n"
 	    "\t[-M [ vm1,vm2,vm3,... ]\n"
 	    "\t[-P provider %s]\n"
@@ -170,6 +171,7 @@ usage(FILE *fp)
 	    "\t-f  enable or list probes matching the specified function name\n"
 	    "\t-F  coalesce trace output by function\n"
 	    "\t-G  generate an ELF file containing embedded dtrace program\n"
+	    "\t-g  output GraphViz Dot representation of script actions\n"
 	    "\t-h  generate a header file with definitions for static probes\n"
 	    "\t-H  print included files when invoking preprocessor\n"
 	    "\t-i  enable or list probes matching the specified probe id\n"
@@ -638,6 +640,38 @@ info_stmt(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	return (0);
 }
 
+static bool
+checkmodref(int action_modref, int cumulative_modref,
+	     const dtrace_probedesc_t *dp, FILE *output)
+{
+
+	if ((cumulative_modref & DTRACE_MODREF_ANY_MOD) == 0) {
+		// We don't care about pre-modification behaviour.
+		return (true);
+	}
+
+	if (action_modref & DTRACE_MODREF_ANY_REF) {
+		fprintf(output, "ref-after-mod in %s:%s:%s:%s:",
+			dp->dtpd_provider, dp->dtpd_mod, dp->dtpd_func,
+			dp->dtpd_name);
+		if (action_modref & DTRACE_MODREF_GLOBAL_REF)
+			fprintf(output, " global");
+		if (action_modref & DTRACE_MODREF_THREAD_LOCAL_REF)
+			fprintf(output, " thread");
+		if (action_modref & DTRACE_MODREF_CLAUSE_LOCAL_REF)
+			fprintf(output, " clause");
+		if (action_modref & DTRACE_MODREF_MEMORY_REF)
+			fprintf(output, " external");
+		if (action_modref & DTRACE_MODREF_STATE_REF)
+			fprintf(output, " internal");
+		fprintf(output, "\n");
+
+		return (false);
+	}
+
+	return (true);
+}
+
 /*
  * Execute the specified program by enabling the corresponding instrumentation.
  * If -e has been specified, we get the program info but do not enable it.  If
@@ -648,6 +682,22 @@ exec_prog(const dtrace_cmd_t *dcp)
 {
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_proginfo_t dpi;
+
+	// Don't take any action based on unwanted mod/ref behaviour:
+	// checkmodref emits warnings and that's the end of it.
+	(void) dtrace_analyze_program_modref(dcp->dc_prog, checkmodref, stderr);
+
+	if (g_graphfile) {
+		FILE *graph_file = fopen(g_graphfile, "w");
+		if (graph_file == NULL) {
+			fprintf(stderr, "Failed to open %s for writing\n",
+				g_graphfile);
+			return;
+		}
+
+		dtrace_graph_program(g_dtp, dcp->dc_prog, graph_file);
+		fclose(graph_file);
+	}
 
 	if (!g_exec) {
 		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
@@ -1462,6 +1512,10 @@ main(int argc, char *argv[])
 			case 'e':
 				g_exec = 0;
 				done = 1;
+				break;
+
+			case 'g':
+				g_graphfile = optarg;
 				break;
 
 			case 'h':

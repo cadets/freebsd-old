@@ -34,6 +34,7 @@
 
 #include <sys/dtrace.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <gelf.h>
 #include <libproc.h>
@@ -175,6 +176,66 @@ extern int dtrace_stmt_add(dtrace_hdl_t *, dtrace_prog_t *,
 extern int dtrace_stmt_iter(dtrace_hdl_t *, dtrace_prog_t *,
     dtrace_stmt_f *, void *);
 extern void dtrace_stmt_destroy(dtrace_hdl_t *, dtrace_stmtdesc_t *);
+
+/*
+ * DTrace Program Analysis Interface
+ */
+
+/*
+ * DTrace actions can reference or modify variables (global, thread-local or
+ * clause-local), external memory or internal state (in a dtrace_state_t).
+ */
+
+#define	DTRACE_MODREF_GLOBAL_MOD	0x01
+#define	DTRACE_MODREF_GLOBAL_REF	0x02
+#define	DTRACE_MODREF_THREAD_LOCAL_MOD	0x04
+#define	DTRACE_MODREF_THREAD_LOCAL_REF	0x08
+#define	DTRACE_MODREF_CLAUSE_LOCAL_MOD	0x10
+#define	DTRACE_MODREF_CLAUSE_LOCAL_REF	0x20
+#define	DTRACE_MODREF_MEMORY_MOD	0x40
+#define	DTRACE_MODREF_MEMORY_REF	0x80
+#define	DTRACE_MODREF_STATE_MOD		0x100
+#define	DTRACE_MODREF_STATE_REF		0x200
+
+#define	DTRACE_MODREF_ANY_MOD ( \
+	DTRACE_MODREF_GLOBAL_MOD \
+	| DTRACE_MODREF_THREAD_LOCAL_MOD \
+	| DTRACE_MODREF_CLAUSE_LOCAL_MOD \
+	| DTRACE_MODREF_MEMORY_MOD \
+	| DTRACE_MODREF_STATE_MOD \
+	)
+
+#define	DTRACE_MODREF_ANY_REF ( \
+	DTRACE_MODREF_GLOBAL_REF \
+	| DTRACE_MODREF_THREAD_LOCAL_REF \
+	| DTRACE_MODREF_CLAUSE_LOCAL_REF \
+	| DTRACE_MODREF_MEMORY_REF \
+	| DTRACE_MODREF_STATE_REF \
+	)
+
+#define	DTRACE_MODREF_ALL ( \
+	DTRACE_MODREF_ANY_MOD | DTRACE_MODREF_ANY_REF)
+
+/*
+ * A callback function that checks for conformance with mod/ref policies.
+ *
+ * `modref` is the mod/ref behaviour of a DTrace action and `cumulative_modref`
+ * is the accumulated mod/ref behaviour of the program up to (but not including)
+ * the action in question. The probe description and `FILE*` parameters can be
+ * used for reporting error details.
+ *
+ * This callback should return `true` iff `modref` is acceptable.
+ */
+typedef bool dtrace_modref_check_f(int modref, int cumulative_modref,
+	const dtrace_probedesc_t *, FILE *output);
+
+/* Analyze the mod/ref behaviour of a DTrace program */
+extern bool dtrace_analyze_program_modref(dtrace_prog_t *,
+	dtrace_modref_check_f *, FILE *output);
+
+/* Output GraphViz .dot representation of a DTrace program's actions. */
+extern void dtrace_graph_program(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, FILE *);
+
 
 /*
  * DTrace Data Consumption Interface

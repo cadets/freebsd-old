@@ -29,10 +29,11 @@
 .Sh SYNOPSIS
 .Nm
 .Op Fl 32 | Fl 64
-.Op Fl aACeFGhHlqSvVwZ
+.Op Fl aACeFgGhHlqSvVwZ
 .Op Fl b Ar bufsz
 .Op Fl c Ar cmd
 .Op Fl D Ar name Op Ns = Ns value
+.Op Fl g Ar gv_output
 .Op Fl I Ar path
 .Op Fl L Ar path
 .Op Fl o Ar output
@@ -271,6 +272,11 @@ is
 then the ELF file is saved using the name
 .Ar filename.o .
 Otherwise the ELF file is saved using the name d.out.
+.It Fl g
+Generate a GraphViz .dot representation of the DTrace program's actions.
+This .dot file will show how various actions in a program's probes reference and
+modify DTrace variables.
+A filename (conventionally with a .dot or .gv suffix) must be given.
 .It Fl h
 Generate a header file containing macros that correspond to probes in the
 specified provider definitions.
