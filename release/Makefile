@@ -137,7 +137,7 @@ beforeclean:
 clean: beforeclean
 
 base.txz:
-	mkdir -p ${DISTDIR}
+	mkdir -p ${.OBJDIR}/${DISTDIR}
 	cd ${WORLDDIR} && ${IMAKE} distributeworld DISTDIR=${.OBJDIR}/${DISTDIR}
 # Set up mergemaster root database
 	sh ${.CURDIR}/scripts/mm-mtree.sh -m ${WORLDDIR} -F \
@@ -147,24 +147,24 @@ base.txz:
 	    -s ${WORLDDIR} -d "${.OBJDIR}/${DISTDIR}/base/var/db/etcupdate"
 # Package all components
 	cd ${WORLDDIR} && ${IMAKE} packageworld DISTDIR=${.OBJDIR}/${DISTDIR}
-	mv ${DISTDIR}/*.txz .
+	mv ${.OBJDIR}/${DISTDIR}/*.txz .
 
 kernel.txz:
-	mkdir -p ${DISTDIR}
+	mkdir -p ${.OBJDIR}/${DISTDIR}
 	cd ${WORLDDIR} && ${IMAKE} distributekernel packagekernel DISTDIR=${.OBJDIR}/${DISTDIR}
-	mv ${DISTDIR}/kernel*.txz .
+	mv ${.OBJDIR}/${DISTDIR}/kernel*.txz .
 
 src.txz:
-	mkdir -p ${DISTDIR}/usr
-	ln -fs ${WORLDDIR} ${DISTDIR}/usr/src
-	cd ${DISTDIR} && tar cLvf - --exclude .svn --exclude .zfs \
+	mkdir -p ${.OBJDIR}/${DISTDIR}/usr
+	ln -fs ${WORLDDIR} ${.OBJDIR}/${DISTDIR}/usr/src
+	cd ${.OBJDIR}/${DISTDIR} && tar cLvf - --exclude .svn --exclude .zfs \
 	    --exclude .git --exclude @ --exclude usr/src/release/dist usr/src | \
 	    ${XZ_CMD} > ${.OBJDIR}/src.txz
 
 ports.txz:
-	mkdir -p ${DISTDIR}/usr
-	ln -fs ${PORTSDIR} ${DISTDIR}/usr/ports
-	cd ${DISTDIR} && tar cLvf - \
+	mkdir -p ${.OBJDIR}/${DISTDIR}/usr
+	ln -fs ${PORTSDIR} ${.OBJDIR}/${DISTDIR}/usr/ports
+	cd ${.OBJDIR}/${DISTDIR} && tar cLvf - \
 	    --exclude .git --exclude .svn \
 	    --exclude usr/ports/distfiles --exclude usr/ports/packages \
 	    --exclude 'usr/ports/INDEX*' --exclude work usr/ports | \
