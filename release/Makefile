@@ -151,7 +151,7 @@ base.txz:
 
 kernel.txz:
 	mkdir -p ${.OBJDIR}/${DISTDIR}
-	cd ${WORLDDIR} && ${IMAKE} distributekernel packagekernel DISTDIR=${.OBJDIR}/${DISTDIR}
+	cd ${WORLDDIR} && ${IMAKE} distributekernel DISTDIR=${.OBJDIR}/${DISTDIR} && ${IMAKE} packagekernel DISTDIR=${.OBJDIR}/${DISTDIR}
 	mv ${.OBJDIR}/${DISTDIR}/kernel*.txz .
 
 src.txz:
