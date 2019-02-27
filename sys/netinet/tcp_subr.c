@@ -195,6 +195,15 @@ SYSCTL_INT(_net_inet_tcp, TCPCTL_DO_RFC1323, rfc1323, CTLFLAG_VNET | CTLFLAG_RW,
     &VNET_NAME(tcp_do_rfc1323), 0,
     "Enable rfc1323 (high performance TCP) extensions");
 
+/*
+ * By default, new sockets have Nagle's algorithm enabled.  Set this flag to
+ * true to set TF_NODELAY on newly created TCP sockets.
+ */
+VNET_DEFINE(int, tcp_nodelay_default) = 0;
+SYSCTL_INT(_net_inet_tcp, OID_AUTO, nodelay_default, CTLFLAG_VNET | CTLFLAG_RW,
+    &VNET_NAME(tcp_nodelay_default), 0,
+    "Default value for TCP_NODELAY on newly created sockets");
+
 static int	tcp_log_debug = 0;
 SYSCTL_INT(_net_inet_tcp, OID_AUTO, log_debug, CTLFLAG_RW,
     &tcp_log_debug, 0, "Log errors caused by incoming TCP segments");
@@ -1062,6 +1071,9 @@ tcp_init(void)
 	V_sack_hole_zone = uma_zcreate("sackhole", sizeof(struct sackhole),
 	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, 0);
 
+	TUNABLE_INT_FETCH("net.inet.tcp.nodelay_default",
+	    &V_tcp_nodelay_default);
+
 	tcp_fastopen_init();
 
 	/* Skip initialization of globals for non-default instances. */
@@ -1638,6 +1650,8 @@ tcp_newtcpcb(struct inpcb *inp)
 
 	if (V_tcp_do_rfc1323)
 		tp->t_flags = (TF_REQ_SCALE|TF_REQ_TSTMP);
+	if (V_tcp_nodelay_default)
+		tp->t_flags |= TF_NODELAY;
 	if (V_tcp_do_sack)
 		tp->t_flags |= TF_SACK_PERMIT;
 	TAILQ_INIT(&tp->snd_holes);

@@ -769,6 +769,7 @@ VNET_DECLARE(int, tcp_insecure_rst);
 VNET_DECLARE(int, tcp_insecure_syn);
 VNET_DECLARE(int, tcp_minmss);
 VNET_DECLARE(int, tcp_mssdflt);
+VNET_DECLARE(int, tcp_nodelay_default);
 VNET_DECLARE(int, tcp_recvspace);
 VNET_DECLARE(int, tcp_sack_globalholes);
 VNET_DECLARE(int, tcp_sack_globalmaxholes);
@@ -804,6 +805,7 @@ VNET_DECLARE(struct inpcbinfo, tcbinfo);
 #define	V_tcp_insecure_syn		VNET(tcp_insecure_syn)
 #define	V_tcp_minmss			VNET(tcp_minmss)
 #define	V_tcp_mssdflt			VNET(tcp_mssdflt)
+#define	V_tcp_nodelay_default		VNET(tcp_nodelay_default)
 #define	V_tcp_recvspace			VNET(tcp_recvspace)
 #define	V_tcp_sack_globalholes		VNET(tcp_sack_globalholes)
 #define	V_tcp_sack_globalmaxholes	VNET(tcp_sack_globalmaxholes)
