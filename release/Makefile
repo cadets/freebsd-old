@@ -147,12 +147,12 @@ base.txz:
 	    -s ${WORLDDIR} -d "${.OBJDIR}/${DISTDIR}/base/var/db/etcupdate"
 # Package all components
 	cd ${WORLDDIR} && ${IMAKE} packageworld DISTDIR=${.OBJDIR}/${DISTDIR}
-	mv ${.OBJDIR}/${DISTDIR}/*.txz .
+	mv ${.OBJDIR}/${DISTDIR}/*.txz ${.OBJDIR}
 
 kernel.txz:
 	mkdir -p ${.OBJDIR}/${DISTDIR}
 	cd ${WORLDDIR} && ${IMAKE} distributekernel DISTDIR=${.OBJDIR}/${DISTDIR} && ${IMAKE} packagekernel DISTDIR=${.OBJDIR}/${DISTDIR}
-	mv ${.OBJDIR}/${DISTDIR}/kernel*.txz .
+	mv ${.OBJDIR}/${DISTDIR}/kernel*.txz ${.OBJDIR}
 
 src.txz:
 	mkdir -p ${.OBJDIR}/${DISTDIR}/usr
