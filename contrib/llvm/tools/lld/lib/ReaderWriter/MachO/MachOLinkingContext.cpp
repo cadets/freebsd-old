@@ -7,7 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "lld/Common/ErrorHandler.h"
 #include "lld/ReaderWriter/MachOLinkingContext.h"
 #include "ArchHandler.h"
 #include "File.h"
@@ -580,26 +579,29 @@ MachOLinkingContext::findPathForFramework(StringRef fwName) const{
   return llvm::None;
 }
 
-bool MachOLinkingContext::validateImpl() {
+bool MachOLinkingContext::validateImpl(raw_ostream &diagnostics) {
   // TODO: if -arch not specified, look at arch of first .o file.
 
   if (_currentVersion && _outputMachOType != MH_DYLIB) {
-    error("-current_version can only be used with dylibs");
+    diagnostics << "error: -current_version can only be used with dylibs\n";
     return false;
   }
 
   if (_compatibilityVersion && _outputMachOType != MH_DYLIB) {
-    error("-compatibility_version can only be used with dylibs");
+    diagnostics
+        << "error: -compatibility_version can only be used with dylibs\n";
     return false;
   }
 
   if (_deadStrippableDylib && _outputMachOType != MH_DYLIB) {
-    error("-mark_dead_strippable_dylib can only be used with dylibs");
+    diagnostics
+        << "error: -mark_dead_strippable_dylib can only be used with dylibs.\n";
     return false;
   }
 
   if (!_bundleLoader.empty() && outputMachOType() != MH_BUNDLE) {
-    error("-bundle_loader can only be used with Mach-O bundles");
+    diagnostics
+        << "error: -bundle_loader can only be used with Mach-O bundles\n";
     return false;
   }
 

@@ -39,7 +39,7 @@ class DeleteWithNonVirtualDtorChecker
     : public Checker<check::PreStmt<CXXDeleteExpr>> {
   mutable std::unique_ptr<BugType> BT;
 
-  class DeleteBugVisitor : public BugReporterVisitor {
+  class DeleteBugVisitor : public BugReporterVisitorImpl<DeleteBugVisitor> {
   public:
     DeleteBugVisitor() : Satisfied(false) {}
     void Profile(llvm::FoldingSetNodeID &ID) const override {
@@ -110,6 +110,8 @@ DeleteWithNonVirtualDtorChecker::DeleteBugVisitor::VisitNode(
   if (Satisfied)
     return nullptr;
 
+  ProgramStateRef State = N->getState();
+  const LocationContext *LC = N->getLocationContext();
   const Stmt *S = PathDiagnosticLocation::getStmt(N);
   if (!S)
     return nullptr;
@@ -126,7 +128,7 @@ DeleteWithNonVirtualDtorChecker::DeleteBugVisitor::VisitNode(
   }
 
   // Region associated with the current cast expression.
-  const MemRegion *M = N->getSVal(CastE).getAsRegion();
+  const MemRegion *M = State->getSVal(CastE, LC).getAsRegion();
   if (!M)
     return nullptr;
 

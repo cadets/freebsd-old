@@ -16,6 +16,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <cstdint>
 #include <memory>
@@ -30,7 +31,7 @@ class Writer;
 class Node;
 class SharedLibraryFile;
 
-/// The LinkingContext class encapsulates "what and how" to link.
+/// \brief The LinkingContext class encapsulates "what and how" to link.
 ///
 /// The base class LinkingContext contains the options needed by core linking.
 /// Subclasses of LinkingContext have additional options needed by specific
@@ -166,10 +167,10 @@ public:
   /// After all set* methods are called, the Driver calls this method
   /// to validate that there are no missing options or invalid combinations
   /// of options.  If there is a problem, a description of the problem
-  /// is written to the global error handler.
+  /// is written to the supplied stream.
   ///
   /// \returns true if there is an error with the current settings.
-  bool validate();
+  bool validate(raw_ostream &diagnostics);
 
   /// Formats symbol name for use in error messages.
   virtual std::string demangle(StringRef symbolName) const = 0;
@@ -249,7 +250,7 @@ protected:
 
 private:
   /// Validate the subclass bits. Only called by validate.
-  virtual bool validateImpl() = 0;
+  virtual bool validateImpl(raw_ostream &diagnostics) = 0;
 };
 
 } // end namespace lld

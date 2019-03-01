@@ -869,7 +869,7 @@ static	void cancel_allocdirect(struct allocdirectlst *,
 	    struct allocdirect *, struct freeblks *);
 static	int check_inode_unwritten(struct inodedep *);
 static	int free_inodedep(struct inodedep *);
-static	void freework_freeblock(struct freework *, int);
+static	void freework_freeblock(struct freework *, u_long);
 static	void freework_enqueue(struct freework *);
 static	int handle_workitem_freeblocks(struct freeblks *, int);
 static	int handle_complete_freeblocks(struct freeblks *, int);
@@ -884,7 +884,7 @@ static	struct allocindir *newallocindir(struct inode *, int, ufs2_daddr_t,
 	    ufs2_daddr_t, ufs_lbn_t);
 static	void handle_workitem_freefrag(struct freefrag *);
 static	struct freefrag *newfreefrag(struct inode *, ufs2_daddr_t, long,
-	    ufs_lbn_t, int);
+	    ufs_lbn_t, u_long);
 static	void allocdirect_merge(struct allocdirectlst *,
 	    struct allocdirect *, struct allocdirect *);
 static	struct freefrag *allocindir_merge(struct allocindir *,
@@ -5304,7 +5304,7 @@ softdep_setup_allocdirect(ip, off, newblkno, oldblkno, newsize, oldsize, bp)
 		 * that had been written.
 		 */
 		freefrag = newfreefrag(ip, oldblkno, oldsize, lbn,
-		    (bp->b_flags & B_DELWRI) != 0 ? NOTRIM : SINGLETON);
+		    (bp->b_flags & B_DELWRI) != 0 ? NOTRIM_KEY : SINGLETON_KEY);
 	else
 		freefrag = NULL;
 
@@ -5581,12 +5581,12 @@ newjfreefrag(freefrag, ip, blkno, size, lbn)
  * Allocate a new freefrag structure.
  */
 static struct freefrag *
-newfreefrag(ip, blkno, size, lbn, trimtype)
+newfreefrag(ip, blkno, size, lbn, key)
 	struct inode *ip;
 	ufs2_daddr_t blkno;
 	long size;
 	ufs_lbn_t lbn;
-	int trimtype;
+	u_long key;
 {
 	struct freefrag *freefrag;
 	struct ufsmount *ump;
@@ -5607,7 +5607,7 @@ newfreefrag(ip, blkno, size, lbn, trimtype)
 	freefrag->ff_vtype = ITOV(ip)->v_type;
 	freefrag->ff_blkno = blkno;
 	freefrag->ff_fragsize = size;
-	freefrag->ff_trimtype = trimtype;
+	freefrag->ff_key = key;
 
 	if (MOUNTEDSUJ(UFSTOVFS(ump))) {
 		freefrag->ff_jdep = (struct worklist *)
@@ -5653,8 +5653,8 @@ handle_workitem_freefrag(freefrag)
 	}
 	FREE_LOCK(ump);
 	ffs_blkfree(ump, ump->um_fs, ump->um_devvp, freefrag->ff_blkno,
-	   freefrag->ff_fragsize, freefrag->ff_inum, freefrag->ff_vtype, &wkhd,
-	   freefrag->ff_trimtype);
+	   freefrag->ff_fragsize, freefrag->ff_inum, freefrag->ff_vtype,
+	   &wkhd, freefrag->ff_key);
 	ACQUIRE_LOCK(ump);
 	WORKITEM_FREE(freefrag, D_FREEFRAG);
 	FREE_LOCK(ump);
@@ -5709,7 +5709,7 @@ softdep_setup_allocext(ip, off, newblkno, oldblkno, newsize, oldsize, bp)
 		 * that had been written.
 		 */
 		freefrag = newfreefrag(ip, oldblkno, oldsize, lbn,
-		    (bp->b_flags & B_DELWRI) != 0 ? NOTRIM : SINGLETON);
+		    (bp->b_flags & B_DELWRI) != 0 ? NOTRIM_KEY : SINGLETON_KEY);
 	else
 		freefrag = NULL;
 
@@ -5823,7 +5823,7 @@ newallocindir(ip, ptrno, newblkno, oldblkno, lbn)
 
 	if (oldblkno)
 		freefrag = newfreefrag(ip, oldblkno, ITOFS(ip)->fs_bsize, lbn,
-		    SINGLETON);
+		    SINGLETON_KEY);
 	else
 		freefrag = NULL;
 	ACQUIRE_LOCK(ITOUMP(ip));
@@ -6698,12 +6698,13 @@ softdep_journal_freeblocks(ip, cred, length, flags)
 	if (bp->b_bufsize == fs->fs_bsize)
 		bp->b_flags |= B_CLUSTEROK;
 	softdep_update_inodeblock(ip, bp, 0);
-	if (ump->um_fstype == UFS1)
+	if (ump->um_fstype == UFS1) {
 		*((struct ufs1_dinode *)bp->b_data +
 		    ino_to_fsbo(fs, ip->i_number)) = *ip->i_din1;
-	else
+	} else {
 		*((struct ufs2_dinode *)bp->b_data +
 		    ino_to_fsbo(fs, ip->i_number)) = *ip->i_din2;
+	}
 	ACQUIRE_LOCK(ump);
 	(void) inodedep_lookup(mp, ip->i_number, DEPALLOC, &inodedep);
 	if ((inodedep->id_state & IOSTARTED) != 0)
@@ -7758,9 +7759,9 @@ free_inodedep(inodedep)
  * in memory immediately.
  */
 static void
-freework_freeblock(freework, trimtype)
+freework_freeblock(freework, key)
 	struct freework *freework;
-	int trimtype;
+	u_long key;
 {
 	struct freeblks *freeblks;
 	struct jnewblk *jnewblk;
@@ -7817,7 +7818,7 @@ freework_freeblock(freework, trimtype)
 	    "freework_freeblock: ino %jd blkno %jd lbn %jd size %d",
 	    freeblks->fb_inum, freework->fw_blkno, freework->fw_lbn, bsize);
 	ffs_blkfree(ump, fs, freeblks->fb_devvp, freework->fw_blkno, bsize,
-	    freeblks->fb_inum, freeblks->fb_vtype, &wkhd, trimtype);
+	    freeblks->fb_inum, freeblks->fb_vtype, &wkhd, key);
 	ACQUIRE_LOCK(ump);
 	/*
 	 * The jnewblk will be discarded and the bits in the map never
@@ -7870,7 +7871,7 @@ handle_workitem_indirblk(freework)
 		return;
 	}
 	if (freework->fw_off == NINDIR(fs)) {
-		freework_freeblock(freework, SINGLETON);
+		freework_freeblock(freework, SINGLETON_KEY);
 		return;
 	}
 	freework->fw_state |= INPROGRESS;
@@ -7924,19 +7925,18 @@ handle_workitem_freeblocks(freeblks, flags)
 	struct freeblks *freeblks;
 	int flags;
 {
-	struct freework *freework, *prevfreework;
+	struct freework *freework;
 	struct newblk *newblk;
 	struct allocindir *aip;
 	struct ufsmount *ump;
 	struct worklist *wk;
-	int trimtype;
+	u_long key;
 
 	KASSERT(LIST_EMPTY(&freeblks->fb_jblkdephd),
 	    ("handle_workitem_freeblocks: Journal entries not written."));
 	ump = VFSTOUFS(freeblks->fb_list.wk_mp);
+	key = ffs_blkrelease_start(ump, freeblks->fb_devvp, freeblks->fb_inum);
 	ACQUIRE_LOCK(ump);
-	prevfreework = NULL;
-	trimtype = 0;
 	while ((wk = LIST_FIRST(&freeblks->fb_freeworkhd)) != NULL) {
 		WORKLIST_REMOVE(wk);
 		switch (wk->wk_type) {
@@ -7970,32 +7970,23 @@ handle_workitem_freeblocks(freeblks, flags)
 
 		case D_FREEWORK:
 			freework = WK_FREEWORK(wk);
-			if (freework->fw_lbn <= -UFS_NDADDR) {
+			if (freework->fw_lbn <= -UFS_NDADDR)
 				handle_workitem_indirblk(freework);
-				continue;
-			} else if (prevfreework == NULL) {
-				trimtype = SINGLETON;
-			} else if (trimtype == SINGLETON) {
-				freework_freeblock(prevfreework, STARTFREE);
-				trimtype = ENDFREE;
-			} else {
-				freework_freeblock(prevfreework, CONTINUEFREE);
-			}
-			prevfreework = freework;
+			else
+				freework_freeblock(freework, key);
 			continue;
 		default:
 			panic("handle_workitem_freeblocks: Unknown type %s",
 			    TYPENAME(wk->wk_type));
 		}
 	}
-	if (prevfreework != NULL)
-		freework_freeblock(prevfreework, trimtype);
 	if (freeblks->fb_ref != 0) {
 		freeblks->fb_state &= ~INPROGRESS;
 		wake_worklist(&freeblks->fb_list);
 		freeblks = NULL;
 	}
 	FREE_LOCK(ump);
+	ffs_blkrelease_finish(ump, key);
 	if (freeblks)
 		return handle_complete_freeblocks(freeblks, flags);
 	return (0);
@@ -8128,7 +8119,8 @@ indir_trunc(freework, dbn, lbn)
 	ufs1_daddr_t *bap1;
 	ufs2_daddr_t nb, nnb, *bap2;
 	ufs_lbn_t lbnadd, nlbn;
-	int nblocks, ufs1fmt, firstfree, trimtype, freedblocks;
+	u_long key;
+	int nblocks, ufs1fmt, freedblocks;
 	int goingaway, freedeps, needj, level, cnt, i;
 
 	freeblks = freework->fw_freeblks;
@@ -8223,7 +8215,7 @@ indir_trunc(freework, dbn, lbn)
 	 * arranges for the current level to be freed when subordinates
 	 * are free when journaling.
 	 */
-	firstfree = 1;
+	key = ffs_blkrelease_start(ump, freeblks->fb_devvp, freeblks->fb_inum);
 	for (i = freework->fw_off; i < NINDIR(fs); i++, nb = nnb) {
 		if (i != NINDIR(fs) - 1) {
 			if (ufs1fmt)
@@ -8261,26 +8253,12 @@ indir_trunc(freework, dbn, lbn)
 			CTR3(KTR_SUJ,
 			    "indir_trunc: ino %jd blkno %jd size %d",
 			    freeblks->fb_inum, nb, fs->fs_bsize);
-			if (firstfree) {
-				if (i == NINDIR(fs) - 1 || nnb == 0) {
-					trimtype = SINGLETON;
-				} else {
-					trimtype = STARTFREE;
-					firstfree = 0;
-				}
-			} else {
-				if (i == NINDIR(fs) - 1 || nnb == 0) {
-					trimtype = ENDFREE;
-					firstfree = 1;
-				} else {
-					trimtype = CONTINUEFREE;
-				}
-			}
 			ffs_blkfree(ump, fs, freeblks->fb_devvp, nb,
 			    fs->fs_bsize, freeblks->fb_inum,
-			    freeblks->fb_vtype, &wkhd, trimtype);
+			    freeblks->fb_vtype, &wkhd, key);
 		}
 	}
+	ffs_blkrelease_finish(ump, key);
 	if (goingaway) {
 		bp->b_flags |= B_INVAL | B_NOCACHE;
 		brelse(bp);
@@ -8303,7 +8281,7 @@ indir_trunc(freework, dbn, lbn)
 		if (level == 0)
 			freeblks->fb_cgwait += freedeps;
 		if (freework->fw_ref == 0)
-			freework_freeblock(freework, SINGLETON);
+			freework_freeblock(freework, SINGLETON_KEY);
 		FREE_LOCK(ump);
 		return;
 	}
@@ -8315,7 +8293,7 @@ indir_trunc(freework, dbn, lbn)
 	    "indir_trunc 2: ino %jd blkno %jd size %d",
 	    freeblks->fb_inum, dbn, fs->fs_bsize);
 	ffs_blkfree(ump, fs, freeblks->fb_devvp, dbn, fs->fs_bsize,
-	    freeblks->fb_inum, freeblks->fb_vtype, NULL, SINGLETON);
+	    freeblks->fb_inum, freeblks->fb_vtype, NULL, SINGLETON_KEY);
 	/* Non SUJ softdep does single-threaded truncations. */
 	if (freework->fw_blkno == dbn) {
 		freework->fw_state |= ALLCOMPLETE;
@@ -9663,6 +9641,7 @@ static void
 clear_unlinked_inodedep(inodedep)
 	struct inodedep *inodedep;
 {
+	struct ufs2_dinode *dip;
 	struct ufsmount *ump;
 	struct inodedep *idp;
 	struct inodedep *idn;
@@ -9766,12 +9745,14 @@ clear_unlinked_inodedep(inodedep)
 			ffs_oldfscompat_write((struct fs *)bp->b_data, ump);
 			softdep_setup_sbupdate(ump, (struct fs *)bp->b_data,
 			    bp);
-		} else if (fs->fs_magic == FS_UFS1_MAGIC)
+		} else if (fs->fs_magic == FS_UFS1_MAGIC) {
 			((struct ufs1_dinode *)bp->b_data +
 			    ino_to_fsbo(fs, pino))->di_freelink = nino;
-		else
-			((struct ufs2_dinode *)bp->b_data +
-			    ino_to_fsbo(fs, pino))->di_freelink = nino;
+		} else {
+			dip = (struct ufs2_dinode *)bp->b_data +
+			    ino_to_fsbo(fs, pino);
+			dip->di_freelink = nino;
+		}
 		/*
 		 * If the bwrite fails we have no recourse to recover.  The
 		 * filesystem is corrupted already.
@@ -10284,22 +10265,22 @@ initiate_write_inodeblock_ufs1(inodedep, bp)
 		prevlbn = adp->ad_offset;
 		if (adp->ad_offset < UFS_NDADDR &&
 		    dp->di_db[adp->ad_offset] != adp->ad_newblkno)
-			panic("%s: direct pointer #%jd mismatch %d != %jd",
-			    "softdep_write_inodeblock",
+			panic("initiate_write_inodeblock_ufs1: "
+			    "direct pointer #%jd mismatch %d != %jd",
 			    (intmax_t)adp->ad_offset,
 			    dp->di_db[adp->ad_offset],
 			    (intmax_t)adp->ad_newblkno);
 		if (adp->ad_offset >= UFS_NDADDR &&
 		    dp->di_ib[adp->ad_offset - UFS_NDADDR] != adp->ad_newblkno)
-			panic("%s: indirect pointer #%jd mismatch %d != %jd",
-			    "softdep_write_inodeblock",
+			panic("initiate_write_inodeblock_ufs1: "
+			    "indirect pointer #%jd mismatch %d != %jd",
 			    (intmax_t)adp->ad_offset - UFS_NDADDR,
 			    dp->di_ib[adp->ad_offset - UFS_NDADDR],
 			    (intmax_t)adp->ad_newblkno);
 		deplist |= 1 << adp->ad_offset;
 		if ((adp->ad_state & ATTACHED) == 0)
-			panic("softdep_write_inodeblock: Unknown state 0x%x",
-			    adp->ad_state);
+			panic("initiate_write_inodeblock_ufs1: "
+			    "Unknown state 0x%x", adp->ad_state);
 #endif /* INVARIANTS */
 		adp->ad_state &= ~ATTACHED;
 		adp->ad_state |= UNDONE;
@@ -10322,7 +10303,8 @@ initiate_write_inodeblock_ufs1(inodedep, bp)
 		for (i = adp->ad_offset + 1; i < UFS_NDADDR; i++) {
 #ifdef INVARIANTS
 			if (dp->di_db[i] != 0 && (deplist & (1 << i)) == 0)
-				panic("softdep_write_inodeblock: lost dep1");
+				panic("initiate_write_inodeblock_ufs1: "
+				    "lost dep1");
 #endif /* INVARIANTS */
 			dp->di_db[i] = 0;
 		}
@@ -10330,7 +10312,8 @@ initiate_write_inodeblock_ufs1(inodedep, bp)
 #ifdef INVARIANTS
 			if (dp->di_ib[i] != 0 &&
 			    (deplist & ((1 << UFS_NDADDR) << i)) == 0)
-				panic("softdep_write_inodeblock: lost dep2");
+				panic("initiate_write_inodeblock_ufs1: "
+				    "lost dep2");
 #endif /* INVARIANTS */
 			dp->di_ib[i] = 0;
 		}
@@ -10452,18 +10435,18 @@ initiate_write_inodeblock_ufs2(inodedep, bp)
 	     adp = TAILQ_NEXT(adp, ad_next)) {
 #ifdef INVARIANTS
 		if (deplist != 0 && prevlbn >= adp->ad_offset)
-			panic("softdep_write_inodeblock: lbn order");
+			panic("initiate_write_inodeblock_ufs2: lbn order");
 		prevlbn = adp->ad_offset;
 		if (dp->di_extb[adp->ad_offset] != adp->ad_newblkno)
-			panic("%s: direct pointer #%jd mismatch %jd != %jd",
-			    "softdep_write_inodeblock",
+			panic("initiate_write_inodeblock_ufs2: "
+			    "ext pointer #%jd mismatch %jd != %jd",
 			    (intmax_t)adp->ad_offset,
 			    (intmax_t)dp->di_extb[adp->ad_offset],
 			    (intmax_t)adp->ad_newblkno);
 		deplist |= 1 << adp->ad_offset;
 		if ((adp->ad_state & ATTACHED) == 0)
-			panic("softdep_write_inodeblock: Unknown state 0x%x",
-			    adp->ad_state);
+			panic("initiate_write_inodeblock_ufs2: Unknown "
+			    "state 0x%x", adp->ad_state);
 #endif /* INVARIANTS */
 		adp->ad_state &= ~ATTACHED;
 		adp->ad_state |= UNDONE;
@@ -10484,7 +10467,8 @@ initiate_write_inodeblock_ufs2(inodedep, bp)
 		for (i = adp->ad_offset + 1; i < UFS_NXADDR; i++) {
 #ifdef INVARIANTS
 			if (dp->di_extb[i] != 0 && (deplist & (1 << i)) == 0)
-				panic("softdep_write_inodeblock: lost dep1");
+				panic("initiate_write_inodeblock_ufs2: "
+				    "lost dep1");
 #endif /* INVARIANTS */
 			dp->di_extb[i] = 0;
 		}
@@ -10517,22 +10501,22 @@ initiate_write_inodeblock_ufs2(inodedep, bp)
 		prevlbn = adp->ad_offset;
 		if (adp->ad_offset < UFS_NDADDR &&
 		    dp->di_db[adp->ad_offset] != adp->ad_newblkno)
-			panic("%s: direct pointer #%jd mismatch %jd != %jd",
-			    "softdep_write_inodeblock",
+			panic("initiate_write_inodeblock_ufs2: "
+			    "direct pointer #%jd mismatch %jd != %jd",
 			    (intmax_t)adp->ad_offset,
 			    (intmax_t)dp->di_db[adp->ad_offset],
 			    (intmax_t)adp->ad_newblkno);
 		if (adp->ad_offset >= UFS_NDADDR &&
 		    dp->di_ib[adp->ad_offset - UFS_NDADDR] != adp->ad_newblkno)
-			panic("%s indirect pointer #%jd mismatch %jd != %jd",
-			    "softdep_write_inodeblock:",
+			panic("initiate_write_inodeblock_ufs2: "
+			    "indirect pointer #%jd mismatch %jd != %jd",
 			    (intmax_t)adp->ad_offset - UFS_NDADDR,
 			    (intmax_t)dp->di_ib[adp->ad_offset - UFS_NDADDR],
 			    (intmax_t)adp->ad_newblkno);
 		deplist |= 1 << adp->ad_offset;
 		if ((adp->ad_state & ATTACHED) == 0)
-			panic("softdep_write_inodeblock: Unknown state 0x%x",
-			    adp->ad_state);
+			panic("initiate_write_inodeblock_ufs2: Unknown "
+			     "state 0x%x", adp->ad_state);
 #endif /* INVARIANTS */
 		adp->ad_state &= ~ATTACHED;
 		adp->ad_state |= UNDONE;
@@ -10555,7 +10539,8 @@ initiate_write_inodeblock_ufs2(inodedep, bp)
 		for (i = adp->ad_offset + 1; i < UFS_NDADDR; i++) {
 #ifdef INVARIANTS
 			if (dp->di_db[i] != 0 && (deplist & (1 << i)) == 0)
-				panic("softdep_write_inodeblock: lost dep2");
+				panic("initiate_write_inodeblock_ufs2: "
+				    "lost dep2");
 #endif /* INVARIANTS */
 			dp->di_db[i] = 0;
 		}
@@ -10563,7 +10548,8 @@ initiate_write_inodeblock_ufs2(inodedep, bp)
 #ifdef INVARIANTS
 			if (dp->di_ib[i] != 0 &&
 			    (deplist & ((1 << UFS_NDADDR) << i)) == 0)
-				panic("softdep_write_inodeblock: lost dep3");
+				panic("initiate_write_inodeblock_ufs2: "
+				    "lost dep3");
 #endif /* INVARIANTS */
 			dp->di_ib[i] = 0;
 		}

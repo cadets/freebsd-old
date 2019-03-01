@@ -405,6 +405,10 @@ MIASM =  \
 	cpuset_getdomain.o \
 	cpuset_setdomain.o \
 	getrandom.o \
+	getfhat.o \
+	fhlink.o \
+	fhlinkat.o \
+	fhreadlink.o \
 	metaio_read.o \
 	metaio_write.o \
 	metaio_mmap.o \

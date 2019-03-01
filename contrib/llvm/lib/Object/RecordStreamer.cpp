@@ -107,8 +107,7 @@ bool RecordStreamer::EmitSymbolAttribute(MCSymbol *Symbol,
 }
 
 void RecordStreamer::EmitZerofill(MCSection *Section, MCSymbol *Symbol,
-                                  uint64_t Size, unsigned ByteAlignment,
-                                  SMLoc Loc) {
+                                  uint64_t Size, unsigned ByteAlignment) {
   markDefined(*Symbol);
 }
 
@@ -127,11 +126,6 @@ RecordStreamer::State RecordStreamer::getSymbolState(const MCSymbol *Sym) {
 void RecordStreamer::emitELFSymverDirective(StringRef AliasName,
                                             const MCSymbol *Aliasee) {
   SymverAliasMap[Aliasee].push_back(AliasName);
-}
-
-iterator_range<RecordStreamer::const_symver_iterator>
-RecordStreamer::symverAliases() {
-  return {SymverAliasMap.begin(), SymverAliasMap.end()};
 }
 
 void RecordStreamer::flushSymverDirectives() {
@@ -222,10 +216,7 @@ void RecordStreamer::flushSymverDirectives() {
       // TODO: Handle "@@@". Depending on SymbolAttribute value it needs to be
       // converted into @ or @@.
       const MCExpr *Value = MCSymbolRefExpr::create(Aliasee, getContext());
-      if (IsDefined)
-        markDefined(*Alias);
-      // Don't use EmitAssignment override as it always marks alias as defined.
-      MCStreamer::EmitAssignment(Alias, Value);
+      EmitAssignment(Alias, Value);
       if (Attr != MCSA_Invalid)
         EmitSymbolAttribute(Alias, Attr);
     }
