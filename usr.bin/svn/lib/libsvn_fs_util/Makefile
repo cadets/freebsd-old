@@ -6,6 +6,7 @@
 
 INTERNALLIB=	yes
 LIB=		svn_fs_util
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=		fs-util.c
 

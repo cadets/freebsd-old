@@ -17,4 +17,7 @@ WARNS?=	2
 
 LIBADD=	lpr
 
+MK_BITCODE_EVERYWHERE=no
+
+
 .include <bsd.prog.mk>

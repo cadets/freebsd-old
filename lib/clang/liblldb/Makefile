@@ -5,6 +5,8 @@
 LIB=		lldb
 SRCDIR=		tools/lldb/source
 
+MK_BITCODE_EVERYWHERE=no
+
 CFLAGS+=	-I${LLDB_SRCS}/include
 CFLAGS+=	-I${LLDB_SRCS}/source
 CFLAGS+=	-I${LLDB_SRCS}/source/Plugins/Process/FreeBSD

@@ -14,6 +14,9 @@
 
 LIB=	amu
 INTERNALLIB=
+
+MK_BITCODE_EVERYWHERE=no
+
 SRCS=	hasmntopt.c misc_rpc.c mount_fs.c mtab.c nfs_prot_xdr.c \
 	strutil.c wire.c xutil.c
 

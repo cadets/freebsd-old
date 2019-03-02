@@ -5,6 +5,8 @@
 .PATH: ${SRCDIR}/binutils
 
 LIB=	binutils
+MK_BITCODE_EVERYWHERE=no
+
 SRCS+=	arlex.l \
 	arparse.y \
 	arsup.c \

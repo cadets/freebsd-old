@@ -4,6 +4,8 @@ PACKAGE=	ipf
 LIB=		ipf
 INTERNALLIB=
 
+MK_BITCODE_EVERYWHERE=no
+
 SRCS=		addicmp.c addipopt.c alist_free.c alist_new.c allocmbt.c \
 		assigndefined.c bcopywrap.c \
 		binprint.c buildopts.c checkrev.c connecttcp.c \

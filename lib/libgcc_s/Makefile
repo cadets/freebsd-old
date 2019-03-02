@@ -4,6 +4,7 @@ PACKAGE=	clibs
 SHLIB_NAME=	libgcc_s.so.1
 SHLIBDIR?=	/lib
 
+MK_BITCODE_EVERYWHERE=	no
 MK_SSP=		no
 WARNS?=	2
 

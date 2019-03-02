@@ -13,6 +13,8 @@ LIBC_SRC=	${SRCTOP}/lib/libc
 
 LIB?=		sa
 
+MK_BITCODE_EVERYWHERE=no
+
 # standalone components and stuff we have modified locally
 SRCS+=	gzguts.h zutil.h __main.c abort.c assert.c bcd.c environment.c getopt.c gets.c \
 	globals.c pager.c panic.c printf.c strdup.c strerror.c \

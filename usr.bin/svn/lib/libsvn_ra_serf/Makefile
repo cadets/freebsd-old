@@ -6,6 +6,7 @@
 
 INTERNALLIB=	yes
 LIB=		svn_ra_serf
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=		blame.c blncache.c commit.c eagain_bucket.c \
 		get_deleted_rev.c get_file.c get_lock.c getdate.c \

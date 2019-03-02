@@ -5,6 +5,9 @@
 LIB= ntpevent
 INTERNALLIB=
 
+MK_BITCODE_EVERYWHERE=no
+
+
 SRCS=	buffer.c bufferevent.c bufferevent_filter.c bufferevent_openssl.c \
 	bufferevent_pair.c epoll.c evdns.c event.c event_tagging.c \
 	evmap.c evport.c evrpc.c evthread.c evthread_pthread.c evutil.c \

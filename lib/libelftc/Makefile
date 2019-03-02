@@ -10,6 +10,8 @@ ELFTCDIR=	${SRCTOP}/contrib/elftoolchain
 
 LIB=	elftc
 
+MK_BITCODE_EVERYWHERE=no
+
 SRCS=	elftc_bfdtarget.c                       \
 	elftc_copyfile.c                        \
 	elftc_demangle.c                        \

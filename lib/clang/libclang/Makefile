@@ -5,6 +5,8 @@
 
 LIB=		clang
 
+MK_BITCODE_EVERYWHERE=no
+
 CFLAGS+=	-I${.OBJDIR}
 CFLAGS+=	-I${OBJTOP}/lib/clang/libllvm
 CFLAGS+=	-I${CLANG_SRCS}/lib/Basic

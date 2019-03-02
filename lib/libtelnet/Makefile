@@ -9,6 +9,8 @@ TELNETDIR=	${SRCTOP}/contrib/telnet
 
 LIB=		telnet
 
+MK_BITCODE_EVERYWHERE=no
+
 INTERNALLIB=
 
 SRCS=		genget.c getent.c misc.c

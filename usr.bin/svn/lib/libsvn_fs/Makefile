@@ -6,6 +6,7 @@
 
 INTERNALLIB=	yes
 LIB=		svn_fs
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=		access.c deprecated.c editor.c fs-loader.c
 

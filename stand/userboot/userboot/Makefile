@@ -11,6 +11,7 @@ PIC=yes
 SHLIB_NAME=	userboot_${LOADER_INTERP}.so
 STRIP=
 LIBDIR=		/boot
+MK_BITCODE_EVERYWHERE=no
 
 .PATH:		${.CURDIR}/../userboot
 SRCS=		autoload.c

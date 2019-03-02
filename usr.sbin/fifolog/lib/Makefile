@@ -3,6 +3,8 @@
 LIB=	fifolog
 INTERNALLIB=	# API not published or supported.
 
+MK_BITCODE_EVERYWHERE=no
+
 SRCS=	fifolog_int.c fifolog_create.c fifolog_write_poll.c fifolog_reader.c
 SRCS+=	getdate.y
 

@@ -5,6 +5,7 @@
 .include <src.opts.mk>
 PACKAGE=	rescue
 MK_SSP=		no
+MK_BITCODE_EVERYWHERE=no
 
 # Certain library entries have hard-coded references to
 # /bin, /sbin, etc, that require those entries to be

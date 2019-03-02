@@ -6,6 +6,7 @@
 
 INTERNALLIB=	yes
 LIB=		svn_ra_local
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=		ra_plugin.c split_url.c
 

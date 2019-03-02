@@ -6,6 +6,7 @@
 
 INTERNALLIB=	yes
 LIB=		svn_fs_fs
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=		cached_data.c caching.c dag.c dump-index.c fs.c fs_fs.c \
 		hotcopy.c id.c index.c load-index.c lock.c low_level.c \

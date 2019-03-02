@@ -4,6 +4,8 @@
 
 INTERNALLIB=	yes
 LIB=		apr
+MK_BITCODE_EVERYWHERE=no
+
 SRCS=		apr_cpystrn.c apr_fnmatch.c apr_getpass.c apr_hash.c apr_skiplist.c \
 		apr_pools.c apr_random.c apr_snprintf.c apr_strings.c \
 		apr_strnatcmp.c apr_strtok.c apr_tables.c buffer.c \

@@ -5,6 +5,8 @@
 LIB=		llvmminimal
 INTERNALLIB=
 
+MK_BITCODE_EVERYWHERE=no
+
 SRCDIR=		lib
 SRCS+=		Support/APFloat.cpp
 SRCS+=		Support/APInt.cpp

@@ -6,6 +6,8 @@
 LIB=		llvm
 INTERNALLIB=
 
+MK_BITCODE_EVERYWHERE=no
+
 CFLAGS+=	-I${.OBJDIR}
 
 .if ${MK_LLVM_TARGET_AARCH64} == "no" && ${MK_LLVM_TARGET_ARM} == "no" && \

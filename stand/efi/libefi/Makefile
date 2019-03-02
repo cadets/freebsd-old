@@ -4,6 +4,7 @@
 
 LIB=	efi
 WARNS?=	2
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=	delay.c \
 	devicename.c \

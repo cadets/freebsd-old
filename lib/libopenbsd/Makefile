@@ -2,6 +2,7 @@
 
 PACKAGE=lib${LIB}
 LIB=	openbsd
+MK_BITCODE_EVERYWHERE=no
 SRCS=	imsg-buffer.c \
 	imsg.c \
 	ohash.c

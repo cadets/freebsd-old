@@ -3,6 +3,7 @@
 .include <bsd.init.mk>
 
 LIB=			i386
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=	biosacpi.c biosdisk.c biosmem.c biospnp.c \
 	biospci.c biossmap.c bootinfo.c bootinfo32.c bootinfo64.c \

@@ -12,6 +12,8 @@ TARGET_ARCH?=	${MACHINE_ARCH}
 
 LIB=	gdb
 INTERNALLIB=
+MK_BITCODE_EVERYWHERE=no
+
 SRCS=	annotate.c arch-utils.c auxv.c ax-gdb.c ax-general.c \
 	bcache.c bfd-target.c block.c blockframe.c breakpoint.c \
 	buildsym.c \

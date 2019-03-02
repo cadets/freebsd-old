@@ -6,6 +6,7 @@
 
 INTERNALLIB=	yes
 LIB=		svn_subr
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=		adler32.c atomic.c auth.c base64.c bit_array.c \
 		cache-inprocess.c cache-membuffer.c cache-memcache.c \

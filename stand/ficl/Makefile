@@ -20,6 +20,8 @@ PROG=		testmain
 .include <bsd.prog.mk>
 .else
 LIB=		ficl
+MK_BITCODE_EVERYWHERE=no
+
 .include <bsd.lib.mk>
 .endif
 

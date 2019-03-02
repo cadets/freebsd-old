@@ -6,6 +6,7 @@
 
 INTERNALLIB=	yes
 LIB=		svn_diff
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=		binary_diff.c deprecated.c diff.c diff3.c diff4.c \
 		diff_file.c diff_memory.c diff_tree.c lcs.c parse-diff.c \
