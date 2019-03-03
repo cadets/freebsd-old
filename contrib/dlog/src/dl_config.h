@@ -73,13 +73,14 @@ struct dl_client_config_desc {
 #define DL_CONF_USER_PASSWORD "tls.user.password"
 #define DL_CONF_TLS_ENABLE "tls.enable"
 #define DL_CONF_DEBUG_LEVEL "debug.level"
+#define DL_CONF_REQUEST_QUEUE_LEN "request.queue.length"
 
 #define DL_DEFAULT_CLIENTID "dlog"
 #define DL_DEFAULT_BROKER "127.0.0.1"
 #define DL_DEFAULT_BROKER_PORT 9092
 #define DL_DEFAULT_TORESEND true 
-#define DL_DEFAULT_RESENDTIMEOUT 30
-#define DL_DEFAULT_RESENDPERIOD 2
+#define DL_DEFAULT_RESENDTIMEOUT 3000
+#define DL_DEFAULT_RESENDPERIOD 2000
 #define DL_DEFAULT_TOPIC "test" 
 #define DL_DEFAULT_PRIVATEKEY_FILE "client.key"
 #define DL_DEFAULT_CLIENT_FILE "client.pem"
@@ -87,5 +88,6 @@ struct dl_client_config_desc {
 #define DL_DEFAULT_USER_PASSWORD "password"
 #define DL_DEFAULT_TLS_ENABLE false
 #define DL_DEFAULT_DEBUG_LEVEL 0
+#define DL_DEFAULT_REQUEST_QUEUE_LEN 100
 
 #endif

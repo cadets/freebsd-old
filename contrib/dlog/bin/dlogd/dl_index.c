@@ -34,6 +34,7 @@
  *
  */
 
+#include <sys/nv.h>
 #include <sys/types.h>
 #include <sys/uio.h>
 
@@ -45,6 +46,7 @@
 #include <unistd.h>
 
 #include "dl_assert.h"
+#include "dl_config.h"
 #include "dl_index.h"
 #include "dl_memory.h"
 #include "dl_primitive_types.h"
@@ -56,7 +58,8 @@ struct dl_index {
 	off_t dli_last; /* The last offset in the log indexed. */
 	pthread_mutex_t dli_mtx; /* Lock for updating/lookup of index. */
 	int dli_idx_fd; /* File descriptor of index. */
-	int dli_log_fd; /* FIle descriptor of the log. */
+	int dli_log_fd; /* File descriptor of the log. */
+	int dli_debug_level;
 };
 
 struct dl_index_record {
@@ -71,6 +74,9 @@ struct dl_index_record {
 
 /* Number of digits in base 10 required to represent a 32-bit number. */
 #define DL_INDEX_DIGITS 20
+
+/* dlogd properties. */
+extern nvlist_t *dlogd_props;
 
 static int dl_index_lookup_by_file_offset(struct dl_index *, off_t,
     struct dl_index_record *);
@@ -297,6 +303,14 @@ dl_index_new(struct dl_index **self, int log, int64_t base_offset,
 	DLOGTR1(PRIO_LOW, "Log offset at which last index is found  (%ld)\n",
 	    idx->dli_last);
 
+	/* Read the configured debug level */
+	if (nvlist_exists_string(dlogd_props, DL_CONF_CLIENTID)) {
+		idx->dli_debug_level = nvlist_get_number(dlogd_props,
+		    DL_CONF_DEBUG_LEVEL);
+	} else {
+		idx->dli_debug_level = DL_DEFAULT_DEBUG_LEVEL;
+	}
+
 	dl_index_check_integrity(idx);
 	*self = idx;
 	return 0;
@@ -345,10 +359,12 @@ dl_index_lookup(struct dl_index *self, uint32_t offset, off_t *offset_loc)
 	if (offset != (uint32_t) record.dlir_offset) {
 		/* The index file is corrupt.
 		 * Recompute the index and then retry the lookup.
-		 */
-		DLOGTR2(PRIO_HIGH,
-		    "Request offset (%X) doesn't match index (%X).",
-		    offset, record.dlir_offset);
+		o */
+		if (self->dli_debug_level > 1)
+			DLOGTR2(PRIO_NORMAL,
+		    	    "Request offset (%X) doesn't match index (%X).",
+			    offset, record.dlir_offset);
+
 		 /* Read the previous value of the index and set the 
 		  * value of dli_last to list.
 		  */

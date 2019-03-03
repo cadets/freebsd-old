@@ -37,14 +37,11 @@
 #ifndef _DL_TLS_TRANSPORT_H
 #define _DL_TLS_TRANSPORT_H
 
-#include <sys/nv.h>
-
 #include "dl_producer.h"
 #include "dl_transport.h"
 
 struct dl_transport;
 
-extern int dl_tls_transport_new(struct dl_transport **,
-    struct dl_producer *, nvlist_t *);
+extern int dl_tls_transport_new(struct dl_transport **, struct dl_producer *);
 
 #endif

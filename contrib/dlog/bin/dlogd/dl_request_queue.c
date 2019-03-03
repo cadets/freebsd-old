@@ -39,17 +39,51 @@
 
 #include <pthread.h>
 #include <strings.h>
+#include <semaphore.h>
 
 #include "dl_assert.h"
 #include "dl_memory.h"
 #include "dl_request_queue.h"
 #include "dl_utils.h"
 
+static const uint8_t DLRQ_MAX_RETIRES = 3;
+
+STAILQ_HEAD(dl_request_queue, dl_request_element);
+
+struct dl_request_q {
+	struct dl_request_queue dlrq_queue;
+	struct dl_request_element *dlrq_requests;
+	struct dl_request_q_stats *dlrq_stats;
+	sem_t dlrq_request_items;
+	sem_t dlrq_unackd_items;
+	sem_t dlrq_unackd_spaces;
+	sem_t dlrq_spaces;
+	pthread_mutex_t dlrq_mtx;
+};
+
 static inline void
 dlrq_check_integrity(struct dl_request_q *self)
 {
 
 	DL_ASSERT(self != NULL, ("Request queue inst cannot be NULL."));
+}
+
+static inline void
+dl_request_q_stats_request_items(struct dl_request_q *self)
+{
+
+	dlrq_check_integrity(self);
+	sem_getvalue(&self->dlrq_request_items,
+	    &self->dlrq_stats->dlrq_requests);
+}
+
+static inline void
+dl_request_q_stats_unackd_items(struct dl_request_q *self)
+{
+
+	dlrq_check_integrity(self);
+	sem_getvalue(&self->dlrq_unackd_items,
+	    &self->dlrq_stats->dlrq_unackd);
 }
 
 int 
@@ -65,9 +99,11 @@ dl_request_q_dequeue(struct dl_request_q *self,
 	rc = sem_wait(&self->dlrq_request_items);
 	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue item semaphore"));
 
+	rc = sem_wait(&self->dlrq_unackd_spaces);
+	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue item semaphore"));
+
 	/* Update the request queue statistics. */	
-	sem_getvalue(&self->dlrq_request_items,
-	    &self->dlrq_stats->dlrqs_requests);
+	dl_request_q_stats_request_items(self);
 
 	rc = pthread_mutex_lock(&self->dlrq_mtx);		
 	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
@@ -82,12 +118,12 @@ dl_request_q_dequeue(struct dl_request_q *self,
 
 	rc = pthread_mutex_unlock(&self->dlrq_mtx);
 	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
+
 	rc = sem_post(&self->dlrq_unackd_items);
 	DL_ASSERT(rc == 0, ("Failed releasing RequestQueue space semaphore"));
 	
 	/* Update the request queue statistics. */	
-	sem_getvalue(&self->dlrq_unackd_items,
-	    &self->dlrq_stats->dlrqs_unackd);
+	dl_request_q_stats_unackd_items(self);
 
 	return 0;
 }
@@ -108,8 +144,7 @@ dl_request_q_dequeue_unackd(struct dl_request_q *self,
 	    ("Queue cannot be empty with unackd items semaphore"));
 
 	/* Update the request queue statistics. */	
-	sem_getvalue(&self->dlrq_unackd_items,
-	    &self->dlrq_stats->dlrqs_unackd);
+	dl_request_q_stats_unackd_items(self);
 
 	rc = pthread_mutex_lock(&self->dlrq_mtx);		
 	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
@@ -125,6 +160,10 @@ dl_request_q_dequeue_unackd(struct dl_request_q *self,
 
 	rc = pthread_mutex_unlock(&self->dlrq_mtx);
 	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
+
+	rc = sem_post(&self->dlrq_unackd_spaces);
+	DL_ASSERT(rc == 0, ("Failed releasing RequestQueue space semaphore"));
+
 	rc = sem_post(&self->dlrq_spaces);
 	DL_ASSERT(rc == 0, ("Failed releasing RequestQueue space semaphore"));
 
@@ -152,14 +191,13 @@ dl_request_q_enqueue(struct dl_request_q *self,
 		self->dlrq_requests = request;
 
 	rc = pthread_mutex_unlock(&self->dlrq_mtx);
-	DL_ASSERT(rc == 0, ("Failed releasing RequyyestQueue mutex"));
+	DL_ASSERT(rc == 0, ("Failed releasing RequestQueue mutex"));
 
 	rc = sem_post(&self->dlrq_request_items);
 	DL_ASSERT(rc == 0, ("Failed releasing RequestQueue item semaphore"));
 
 	/* Update the request queue statistics. */	
-	sem_getvalue(&self->dlrq_request_items,
-	    &self->dlrq_stats->dlrqs_requests);
+	dl_request_q_stats_request_items(self);
 
 	return 0;
 }
@@ -187,6 +225,7 @@ dl_request_q_enqueue_new(struct dl_request_q *self, struct dl_bbuf *buffer,
 		request->dlrq_buffer = buffer;
 		request->dlrq_correlation_id = correlation_id;
 		request->dlrq_api_key = api_key;
+		request->dlrq_retries = DLRQ_MAX_RETIRES;
 
 		if (dl_request_q_enqueue(self, request) != 0) {
 
@@ -258,8 +297,8 @@ dl_request_q_peek_unackd(struct dl_request_q *self, struct dl_request_element **
 			
 			*elem = STAILQ_FIRST(&self->dlrq_queue);
 
-			DL_ASSERT(rc == 0,
-			    ("Failed acquiring RequestQueue mutex"));
+			rc = pthread_mutex_unlock(&self->dlrq_mtx);
+			DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
 			ret = 0;
 		}
 	}
@@ -279,6 +318,8 @@ dl_request_q_new(struct dl_request_q **self,
 	int rc;
 	
 	DL_ASSERT(self != NULL, ("Request queue instance cannot be NULL"));
+	DL_ASSERT(stats != NULL,
+	    ("Request queue statistics instance cannot be NULL"));
 
 	queue = (struct dl_request_q *) dlog_alloc(
 	    sizeof(struct dl_request_q));
@@ -292,9 +333,9 @@ dl_request_q_new(struct dl_request_q **self,
 
 	/* Initialise the queue statistics. */
 	queue->dlrq_stats = stats;
-	queue->dlrq_stats->dlrqs_capacity = qlimit;
-	queue->dlrq_stats->dlrqs_requests = 0;
-	queue->dlrq_stats->dlrqs_unackd = 0;
+	queue->dlrq_stats->dlrq_capacity = qlimit;
+	queue->dlrq_stats->dlrq_requests = 0;
+	queue->dlrq_stats->dlrq_unackd = 0;
 
 	rc = sem_init(&queue->dlrq_request_items, 0, 0);
 	if (rc != 0) {
@@ -314,6 +355,16 @@ dl_request_q_new(struct dl_request_q **self,
 	rc = sem_init(&queue->dlrq_spaces, 0, qlimit);
 	if (rc != 0) {
 
+		sem_destroy(&queue->dlrq_unackd_items);
+		sem_destroy(&queue->dlrq_request_items);
+		dlog_free(queue);
+		goto err_queue_ctor;
+	}
+
+	rc = sem_init(&queue->dlrq_unackd_spaces, 0, 3);
+	if (rc != 0) {
+
+		sem_destroy(&queue->dlrq_spaces);
 		sem_destroy(&queue->dlrq_unackd_items);
 		sem_destroy(&queue->dlrq_request_items);
 		dlog_free(queue);
@@ -342,7 +393,6 @@ err_queue_ctor:
 
 	*self = NULL;
 	return -1;
-
 }
 
 void
@@ -378,7 +428,7 @@ int
 dl_request_q_ack(struct dl_request_q *self, int32_t id,
     struct dl_request_element **elem)
 {
-	struct dl_request_element *request;
+	struct dl_request_element *request, *request_tmp;
 	int rc, ret = -1;
 
 	rc = sem_wait(&self->dlrq_unackd_items);
@@ -387,8 +437,7 @@ dl_request_q_ack(struct dl_request_q *self, int32_t id,
 	    ("Queue cannot be empty with unackd items semaphore"));
 
 	/* Update the request queue statistics. */	
-	sem_getvalue(&self->dlrq_unackd_items,
-	    &self->dlrq_stats->dlrqs_unackd);
+	dl_request_q_stats_unackd_items(self);
 
 	rc = pthread_mutex_lock(&self->dlrq_mtx);		
 	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
@@ -413,6 +462,9 @@ dl_request_q_ack(struct dl_request_q *self, int32_t id,
 	rc = pthread_mutex_unlock(&self->dlrq_mtx);
 	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
 	if ( ret == 0) {
+		rc = sem_post(&self->dlrq_unackd_spaces);
+		DL_ASSERT(rc == 0, ("Failed releasing RequestQueue space semaphore"));
+
 		rc = sem_post(&self->dlrq_spaces);
 		DL_ASSERT(rc == 0, ("Failed releasing RequestQueue space semaphore"));
 	} else {

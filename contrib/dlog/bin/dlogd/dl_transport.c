@@ -34,6 +34,7 @@
  *
  */
 
+#include <sys/nv.h>
 #include <sys/socket.h>
 #include <sys/poll.h>
 #include <sys/types.h>
@@ -56,6 +57,9 @@
 
 extern int dl_transport_new(struct dl_transport **, dlt_delete, dlt_connect,
     dlt_read_msg, dlt_send_request, dlt_get_fd, struct dl_producer *);
+
+/* dlogd properties. */
+extern nvlist_t *dlogd_props;
 
 static inline void
 dl_transport_check_integrity(const char *func __attribute((unused)),
@@ -157,21 +161,21 @@ dl_transport_send_request(const struct dl_transport *self,
 
 	int
 dl_transport_factory_get_inst(struct dl_transport **self,
-    struct dl_producer *producer, nvlist_t *props)
+    struct dl_producer *producer)
 {
 	bool tls;
 
 	DL_ASSERT(self != NULL, ("Transport instance cannot be NULL"));
 	DL_ASSERT(props != NULL, ("Properties instance cannot be NULL"));
 
-	if (nvlist_exists_bool(props, DL_CONF_TLS_ENABLE)) {
-		tls = nvlist_get_bool(props, DL_CONF_TLS_ENABLE);
+	if (nvlist_exists_bool(dlogd_props, DL_CONF_TLS_ENABLE)) {
+		tls = nvlist_get_bool(dlogd_props, DL_CONF_TLS_ENABLE);
 	} else {
 		tls = DL_DEFAULT_TLS_ENABLE;
 	}
 
 	if (tls) {
-		return dl_tls_transport_new(self, producer, props);
+		return dl_tls_transport_new(self, producer);
 	} else {
 		return dl_sock_transport_new(self, producer);
 	}
