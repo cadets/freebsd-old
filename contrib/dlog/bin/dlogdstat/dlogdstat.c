@@ -72,47 +72,58 @@ display_stats()
 	now = time(NULL);
 
 	move(0, 0);
-	printw("CADETS - dlogd statistics\n");
-	printw("Producer topic name = %s\n", stats->dlps_topic_name);
-	printw("Producer state = %s\n", stats->dlps_state_name);
-	printw("TCP status = %s\n",
+	printw("dlogd statistics\n");
+	printw("================\n");
+	printw("Producer:\n");
+	printw("\tTopic = %s\n", stats->dlps_topic_name);
+	printw("\tState = %s\n", stats->dlps_state_name);
+	printw("\tTCP status = %s\n",
 	    stats->dlps_tcp_connected ? "connected" : "disconnected");
-	printw("TLS status = %s\n",
+	printw("\tTLS status = %s\n",
 	    stats->dlps_tls_connected ? "established" : "none");
-	printw("Requests:\n");
-	printw("\tQueue capacity = %d\n",
-	    stats->dlps_request_q_stats.dlrqs_capacity);
-	printw("\tEnqueued = %d\n",
-	    stats->dlps_request_q_stats.dlrqs_requests);
-	printw("\tUnacknowledged = %d\n",
-	    stats->dlps_request_q_stats.dlrqs_unackd);
-	printw("\tLatest id = %ld\n", stats->dlps_sent.dlpsm_cid);
-	printw("\tStatus = %s\n",
-	    stats->dlps_sent.dlpsm_error ? "failed" : "OK");
-	strftime(time_buf, 20, "%Y-%m-%d %H:%M:%S",
-	    localtime(&stats->dlps_sent.dlpsm_timestamp));
-	printw("\tLast sent = %.0lf secs (%s)\n",
-	    difftime(now, stats->dlps_sent.dlpsm_timestamp),
-	    time_buf);
-	printw("Responses:\n");
-	printw("\tLatest id = %ld\n", stats->dlps_received.dlpsm_cid);
-	printw("\tStatus = %s\n",
-	    stats->dlps_received.dlpsm_error ? "failed" : "OK");
-	strftime(time_buf, 20, "%Y-%m-%d %H:%M:%S",
-	    localtime(&stats->dlps_received.dlpsm_timestamp));
-	printw("\tLast received = %.0lf secs (%s)\n",
-	    difftime(now, stats->dlps_received.dlpsm_timestamp),
-	    time_buf);
-	printw("Resend = %s\n",
+	printw("\tResend = %s\n",
 	    stats->dlps_resend ? "enabled" : "disabled");
 	if (stats->dlps_resend) {
-		printw("Resend after = %d secs\n",
+		printw("\tResend after = %d secs\n",
 		    stats->dlps_resend_timeout);
 	}
-	printw("Total bytes sent = %ld\n",
-		stats->dlps_bytes_sent);
-	printw("Total bytes received = %ld\n",
-		stats->dlps_bytes_received);
+	printw("\tQueue capacity = %d\n",
+	    stats->dlps_request_q_stats.dlrq_capacity);
+	printw("\tEnqueued = %d\n",
+	    stats->dlps_request_q_stats.dlrq_requests);
+	printw("\tUnacknowledged = %d\n",
+	    stats->dlps_request_q_stats.dlrq_unackd);
+	if (stats->dlps_bytes_sent > 1048576) {
+		printw("\tTotal MiB sent = %ld\n",
+		    stats->dlps_bytes_sent/1048576);
+	} else {
+		printw("\tTotal KiB sent = %ld\n",
+		    stats->dlps_bytes_sent/1024);
+	}
+	if (stats->dlps_bytes_received > 1048576) {
+		printw("\tTotal MiB received = %ld\n",
+		    stats->dlps_bytes_received/1048576);
+	} else {
+		printw("\tTotal KiB received = %ld\n",
+		    stats->dlps_bytes_received/1024);
+	}
+	printw("ProduceRequests:\n");
+	printw("\tLatest id = %ld\n", stats->dlps_sent.dlpsm_cid);
+	strftime(time_buf, 20, "%Y-%m-%d %H:%M:%S",
+	    localtime(&stats->dlps_sent.dlpsm_timestamp));
+	printw("\tLast sent = %s (%.0lf secs)\n",
+	    time_buf, difftime(now, stats->dlps_sent.dlpsm_timestamp));
+	printw("\tStatus = %s\n",
+	    stats->dlps_sent.dlpsm_error ? "failed" : "OK");
+	printw("ProduceResponses:\n");
+	printw("\tLatest id = %ld\n", stats->dlps_received.dlpsm_cid);
+	strftime(time_buf, 20, "%Y-%m-%d %H:%M:%S",
+	    localtime(&stats->dlps_received.dlpsm_timestamp));
+	printw("\tLast received = %s (%.0lf secs)\n",
+	    time_buf, difftime(now, stats->dlps_received.dlpsm_timestamp));
+	printw("\tRTT = %d us\n", stats->dlps_rtt),
+	printw("\tStatus = %s\n",
+	    stats->dlps_received.dlpsm_error ? "failed" : "OK");
 	refresh();
 }
 
