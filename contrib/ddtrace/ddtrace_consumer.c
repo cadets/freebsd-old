@@ -248,7 +248,7 @@ dtc_buffered_handler(const dtrace_bufdata_t *buf_data, void *arg)
 	if (buf_data->dtbda_buffered[0] == '{') {
 
 		DLOGTR0(PRIO_LOW, "Start of JSON message\n");
-		DL_ASSERT(output_buff == NULL,
+		DL_ASSERT(output_buf == NULL,
 		    ("Output buffer should be NULL at the start of message."));
 		dl_bbuf_new_auto(&output_buf) ;
 	} 
