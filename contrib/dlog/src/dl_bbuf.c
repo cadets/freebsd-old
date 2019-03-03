@@ -336,6 +336,20 @@ dl_bbuf_get_int8(struct dl_bbuf *self, int8_t * const value)
 }
 
 int
+dl_bbuf_get_uint8(struct dl_bbuf *self, uint8_t * const value)
+{
+
+	dl_bbuf_assert_integrity(__func__, self);
+	if (self != NULL &&
+	    (int) (self->dlb_pos + sizeof(uint8_t)) <= self->dlb_limit) {
+
+		*value = self->dlb_data[self->dlb_pos++];
+		return 0;
+	}
+	return -1;
+}
+
+int
 dl_bbuf_get_int16(struct dl_bbuf *self, int16_t *value)
 {
 
@@ -358,12 +372,60 @@ dl_bbuf_get_int16(struct dl_bbuf *self, int16_t *value)
 }
 
 int
+dl_bbuf_get_uint16(struct dl_bbuf *self, uint16_t *value)
+{
+
+	dl_bbuf_assert_integrity(__func__, self);
+	if (self != NULL &&
+	    (int) (self->dlb_pos + sizeof(uint16_t)) <= self->dlb_limit) {
+
+		if (self->dlb_flags & DL_BBUF_BIGENDIAN) {
+			*value =
+			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0));
+		} else {
+			*value =
+			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 0) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8)); 
+		}
+		return 0;
+	}
+	return -1;
+}
+
+int
 dl_bbuf_get_int32(struct dl_bbuf *self, int32_t *value)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (self != NULL &&
 	    (int) (self->dlb_pos + sizeof(int32_t)) <= self->dlb_limit) {
+
+		if (self->dlb_flags & DL_BBUF_BIGENDIAN) {
+			*value =
+			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 24) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0));
+		} else {
+			*value =
+			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 0) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24));
+		}
+		return 0;
+	}
+	return -1;
+}
+
+int
+dl_bbuf_get_uint32(struct dl_bbuf *self, uint32_t *value)
+{
+
+	dl_bbuf_assert_integrity(__func__, self);
+	if (self != NULL &&
+	    (int) (self->dlb_pos + sizeof(uint32_t)) <= self->dlb_limit) {
 
 		if (self->dlb_flags & DL_BBUF_BIGENDIAN) {
 			*value =
@@ -423,6 +485,48 @@ dl_bbuf_get_int64(struct dl_bbuf *self, int64_t *value)
 	}
 	return -1;
 }
+
+int
+dl_bbuf_get_uint64(struct dl_bbuf *self, uint64_t *value)
+{
+	int l, h;
+
+	dl_bbuf_assert_integrity(__func__, self);
+	if (self != NULL &&
+	    (int) (self->dlb_pos + sizeof(uint64_t)) <= self->dlb_limit) {
+
+		if (self->dlb_flags & DL_BBUF_BIGENDIAN) {
+			h =
+			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 24) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0));
+			l = 
+			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 24) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0));
+			*value = (((uint64_t) h) << 32L) |
+			    (((long) l) & 0xFFFFFFFFL);
+		} else {
+			l =
+			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 0) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24));
+			h =
+			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 0) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
+			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24));
+			*value = (((uint64_t) h) << 32L) |
+			    (((uint64_t) l) & 0xFFFFFFFFL);
+		}
+		return 0;
+	}
+	return -1;
+}
+
 
 int
 dl_bbuf_put_int8_at(struct dl_bbuf *self, int8_t value, int pos)

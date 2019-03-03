@@ -37,34 +37,6 @@
 #include <sys/types.h>
 #include <machine/atomic.h>
 
-/*
-#include <sys/uio.h>
-
-#ifdef _KERNEL
-#include <sys/capsicum.h>
-#include <sys/syscallsubr.h>
-#include <sys/vnode.h>
-#include <sys/unistd.h>
-#else
-#include <dirent.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <strings.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <math.h>
-#include <string.h>
-#include <stdarg.h>
-#include <pthread.h>
-#include <unistd.h>
-#endif
-*/
-
 #include "dl_assert.h"
 #include "dl_memory.h"
 #include "dl_segment.h"

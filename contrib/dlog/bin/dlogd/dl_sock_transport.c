@@ -42,6 +42,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <netinet/tcp.h>
 #include <strings.h>
 #include <stddef.h>
 #include <unistd.h>
@@ -60,6 +61,8 @@
 struct dl_sock_transport {
 	int dlt_fd;
 };
+
+static const int DLT_SOCK_POLL_TIMEOUT = 2000;
 
 static inline void
 dl_transport_check_integrity(struct dl_sock_transport *self)
@@ -95,7 +98,7 @@ dl_sock_transport_connect(struct dl_transport *self,
     const char * const hostname, const int portnumber)
 {
 	struct sockaddr_in dest;
-	int rc;
+	int rc, flags;
 
 	dl_transport_check_integrity(self->dlt_sock);
 
@@ -108,6 +111,11 @@ dl_sock_transport_connect(struct dl_transport *self,
 
 		return -1;
 	}
+
+	/* Disbale NAGLE - send small messages immediately. */
+	flags = 1;
+	setsockopt(self->dlt_sock->dlt_fd, IPPROTO_TCP, TCP_NODELAY,
+	   (void *) &flags, sizeof(flags));
 
 	if (inet_pton(AF_INET, hostname, &(dest.sin_addr)) == 0) {
 
@@ -149,7 +157,6 @@ dl_sock_transport_read_msg(struct dl_transport *self,
 	} else if (rc > 0) {
 
 		msg_size = be32toh(msg_size);
-		DLOGTR1(PRIO_LOW, "Reading %d bytes...\n", msg_size);
 
 		buffer = dlog_alloc(sizeof(char) * msg_size);
 		if (buffer == NULL) {
@@ -170,10 +177,9 @@ dl_sock_transport_read_msg(struct dl_transport *self,
 		}
 
 		while (total < msg_size) {
+
 			total += rc  = recv(self->dlt_sock->dlt_fd, buffer,
 				msg_size-total, 0);
-			DLOGTR2(PRIO_LOW, "\tRead %d characters; expected %d\n",
-			    rc, msg_size);
 			dl_bbuf_bcat(*target, buffer, rc);
 		}
 		dlog_free(buffer);
@@ -199,28 +205,66 @@ dl_sock_transport_send_request(struct dl_transport *self,
     const struct dl_bbuf *buffer)
 {
 	struct iovec iov[2];
+	struct pollfd fds;
 	int32_t buflen;
 	int rc;
-
+	void *b;
+	size_t write_so_far = 0;
+	size_t len_write;
+	size_t buffer_size;
+	size_t offset;
+	size_t bytes_to_write;
+	
 	dl_transport_check_integrity(self->dlt_sock);
 	DL_ASSERT(buffer != NULL, "Buffer to send cannot be NULL");
 
-	buflen = htobe32(dl_bbuf_pos(buffer));
+	b = dl_bbuf_data(buffer);
+	buffer_size  = dl_bbuf_pos(buffer);
 
-	iov[0].iov_base = &buflen;
-	iov[0].iov_len = sizeof(buflen);
+retry_send:
+	offset = (write_so_far % buffer_size);
+	bytes_to_write = (buffer_size - write_so_far); // min(remaining_write, buffersize - offset);
 
-	iov[1].iov_base = dl_bbuf_data(buffer);
-	iov[1].iov_len = dl_bbuf_pos(buffer);
+	len_write = write(self->dlt_sock->dlt_fd, b + offset, bytes_to_write); 
+	if (len_write == -1 && errno != EAGAIN) {
 
-	DLOGTR1(PRIO_LOW, "Sending request (bytes= %zu)\n", iov[1].iov_len);
-	rc = writev(self->dlt_sock->dlt_fd, iov, 2);
-	if (rc > 0) {
+		DLOGTR1(PRIO_LOW, "Transport send error (%d)\n", errno);
+		return -1;
+	}
+
+	if (len_write > 0 && len_write <= buffer_size)
+		write_so_far += len_write;
+
+	if (write_so_far == buffer_size) {
+
 		/* Update the Producer statistics. */
 		dl_producer_stats_bytes_sent(self->dlt_producer,
 		    dl_bbuf_pos(buffer));
+
+		return write_so_far;
 	}
-	return rc;
+
+	/* Poll on the socket until it is ready to retry. */
+	fds.fd = self->dlt_sock->dlt_fd;
+	fds.events = POLLOUT;
+	rc = poll(&fds, 1, DLT_SOCK_POLL_TIMEOUT);
+	if (rc == -1) {
+
+		/* Socket is ready to write, retry. */
+		DLOGTR1(PRIO_HIGH,
+		    "Error whilst polling on socket (%d)\n", errno);
+	} else if (rc == 0) {
+
+		/* Timeout whilst waiting on socket. */
+		DLOGTR0(PRIO_NORMAL,
+		    "Timed out whilst attempting to resend.\n");
+	} else {
+
+		/* Socket is ready to write, retry. */
+		goto retry_send;
+	}
+
+	return -1;
 }
 
 static void 
@@ -253,24 +297,14 @@ dl_sock_transport_hdlr(void *instance, int fd, int revents)
 		if (rc == 0) {
 
 			/* No data to read. */
-		} else if (rc > 0) {
-			/* Deserialise the response header. */
-			if (dl_response_header_decode(&hdr, buffer) == 0) {
-				DLOGTR1(PRIO_LOW,
-				    "Got response id = : %d\n",
-				    hdr->dlrsh_correlation_id);
+		} if (rc > 0) {
 
-				/* Process the received response. */
-				dl_producer_response(self->dlt_producer,
-				    hdr);
+			/* Process the received response. */
+			if (dl_producer_response(self->dlt_producer,
+			    buffer) != 0) {
 
-				/* Free the response header
-				 * TODO: implement dl_response_header_delete(header);
-				 */
-				dlog_free(hdr);
-			} else {
 				DLOGTR0(PRIO_HIGH,
-				    "Error decoding response header.\n");
+				    "Error processing Response.\n");
 			}
 
 			/* Free the buffer in which the raw response was
@@ -283,6 +317,8 @@ dl_sock_transport_hdlr(void *instance, int fd, int revents)
 			dl_producer_stats_tcp_connect(self->dlt_producer,
 			    false);
 			dl_producer_down(self->dlt_producer);
+			return;
+
 		}
 	}
 

@@ -38,46 +38,55 @@
 #define _DL_REQUEST_QUEUE_H
 
 #include <sys/queue.h>
+#include <sys/time.h>
 #include <sys/types.h>
-
-#include <stdint.h>
-#include <semaphore.h>
 
 #include "dl_bbuf.h"
 
 struct dl_request_element {
 	STAILQ_ENTRY(dl_request_element) dlrq_entries;
+	/* Request buffer. */
 	struct dl_bbuf *dlrq_buffer;
-	time_t dlrq_last_sent;
-	int32_t dlrq_correlation_id;
-	int16_t dlrq_api_key;
+	/* Request metadata. */
+	struct {
+		struct timeval dlrq_tv;
+		int32_t dlrq_correlation_id;
+		int16_t dlrq_api_key;
+		uint8_t dlrq_retries;
+	};
 };
 
-STAILQ_HEAD(dl_request_queue, dl_request_element);
+/* Request queue stats. */
+struct dl_request_q_stats {
+	int dlrq_capacity;
+	int dlrq_requests;
+	int dlrq_unackd;
+} dlrq_stats;
 
-struct dl_request_q {
-	struct dl_request_queue dlrq_requests;
-	sem_t dlrq_items;
-	sem_t dlrq_spaces;
-	pthread_mutex_t dlrq_mtx;
-};
+struct dl_request_q;
 
+extern int dl_request_q_capacity(struct dl_request_q *, int *);
 extern int dl_request_q_dequeue(struct dl_request_q *,
+    struct dl_request_element **);
+extern int dl_request_q_dequeue_unackd(struct dl_request_q *,
     struct dl_request_element **);
 extern int dl_request_q_enqueue(struct dl_request_q *,
     struct dl_request_element *);
-extern int dl_request_q_enqueue_new(struct dl_request_q *, struct dl_bbuf *,
-    int32_t, int16_t);
-extern int dl_request_q_new(struct dl_request_q **, uint32_t);
+extern int dl_request_q_enqueue_new(struct dl_request_q *,
+    struct dl_bbuf *, int32_t, int16_t);
+extern int dl_request_q_peek(struct dl_request_q *,
+    struct dl_request_element **);
+extern int dl_request_q_peek_unackd(struct dl_request_q *,
+    struct dl_request_element **);
+
+extern int dl_request_q_new(struct dl_request_q **,
+    struct dl_request_q_stats *, uint32_t);
 extern void dl_request_q_delete(struct dl_request_q *);
 
 extern void dl_request_q_lock(struct dl_request_q *);
 extern void dl_request_q_unlock(struct dl_request_q *);
 
-//extern int dlrq_it_new(struct dl_request_q *);
-//extern int dlrq_unackid_it_new(struct dl_request_q *);
-//extern int dlrq_it_delete(struct dl_request_q *);
-//extern int dlrq_it_next(struct dl_request_q *);
-//extern int dlrq_it_has_next(struct dl_request_q *);
+extern int dl_request_q_ack(struct dl_request_q *, int32_t,
+    struct dl_request_element **);
 
 #endif

@@ -66,6 +66,8 @@ struct dl_response {
 /* Response createion/destruction API. */
 extern int dl_response_new(struct dl_response **, int16_t, int32_t);
 extern void dl_response_delete(struct dl_response const * const);
+extern void dl_response_header_delete(
+    struct dl_response_header const * const);
 
 /* Serialization/deserialization API. */
 extern int dl_response_decode(struct dl_response **,

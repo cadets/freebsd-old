@@ -1056,7 +1056,7 @@ typedef struct dtrace_fmtdesc {
 #define	DTRACEOPT_AGGZOOM	30	/* zoomed aggregation scaling */
 #define	DTRACEOPT_ZONE		31	/* zone in which to enable probes */
 #define DTRACEOPT_OFORMAT	32	/* output format (JSON, XML, etc.) */
-#define	DTRACEOPT_KONSUMERARG	33	/* opaque konsumer argument */
+#define	DTRACEOPT_DDTRACEARG	33	/* opaque DDTrace argument */
 #define	DTRACEOPT_MAX		34	/* number of options */
 
 #define	DTRACEOPT_UNSET		(dtrace_optval_t)-2	/* unset option */
@@ -2130,10 +2130,10 @@ typedef struct dof_helper {
  
 struct dtrace_state;
 
-typedef struct dtrace_kops {
-	void (*dtkops_open)(void *, struct dtrace_state *);
-	void (*dtkops_close)(void *, struct dtrace_state *);
-} dtrace_kops_t;
+typedef struct dtrace_dops {
+	void (*dtdops_open)(void *, struct dtrace_state *);
+	void (*dtdops_close)(void *, struct dtrace_state *);
+} dtrace_dops_t;
 
 typedef struct dtrace_pops {
 	void (*dtps_provide)(void *arg, dtrace_probedesc_t *spec);
@@ -2156,12 +2156,12 @@ typedef struct dtrace_pops {
 #define	DTRACE_MODE_NOPRIV_RESTRICT		0x20
 #define	DTRACE_MODE_LIMITEDPRIV_RESTRICT	0x40
 
-typedef uintptr_t	dtrace_konsumer_id_t;
+typedef uintptr_t	dtrace_dist_id_t;
 typedef uintptr_t	dtrace_provider_id_t;
 
-extern int dtrace_konsumer_register(const char *, const dtrace_kops_t *,
-    void *, dtrace_konsumer_id_t *);
-extern int dtrace_konsumer_unregister(dtrace_konsumer_id_t *);
+extern int dtrace_dist_register(const char *, const dtrace_dops_t *,
+    void *, dtrace_dist_id_t *);
+extern int dtrace_dist_unregister(dtrace_dist_id_t *);
 extern int dtrace_register(const char *, const dtrace_pattr_t *, uint32_t,
     cred_t *, const dtrace_pops_t *, void *, dtrace_provider_id_t *);
 extern int dtrace_unregister(dtrace_provider_id_t);

@@ -98,6 +98,9 @@
 #define DL_ENCODE_OFFSET(target, value) dl_bbuf_put_int64(target, value)
 #define DL_ENCODE_PARTITION(target, value) dl_bbuf_put_int32(target, value)
 #define DL_ENCODE_REPLICA_ID(target, value) dl_bbuf_put_int32(target, value)
+#define DL_ENCODE_REQUEST_SIZE(target, value) dl_bbuf_put_int32(target, value)
+#define DL_ENCODE_REQUEST_SIZE_AT(target, value, at) \
+	dl_bbuf_put_int32_at(target, value, at)
 #define DL_ENCODE_REQUIRED_ACKS(target, value) dl_bbuf_put_int16(target, value)
 #define DL_ENCODE_TIMEOUT(target, value) dl_bbuf_put_int32(target, value)
 #define DL_ENCODE_TIMESTAMP(target, value) dl_bbuf_put_int64(target, value)
