@@ -297,8 +297,8 @@ dl_request_q_peek_unackd(struct dl_request_q *self, struct dl_request_element **
 			
 			*elem = STAILQ_FIRST(&self->dlrq_queue);
 
-			rc = pthread_mutex_unlock(&self->dlrq_mtx);
-			DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
+// 			rc = pthread_mutex_unlock(&self->dlrq_mtx);
+// 			DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
 			ret = 0;
 		}
 	}
