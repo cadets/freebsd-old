@@ -291,11 +291,15 @@ restart:
 	if (error)
 		goto bad;
 
-	vp->v_path = malloc(MAXPATHLEN, M_TEMP, M_WAITOK);
-	if (ndp->ni_segflg == UIO_SYSSPACE)
-		error = copystr(ndp->ni_dirp, vp->v_path, MAXPATHLEN, NULL);
-	else
-		error = copyinstr(ndp->ni_dirp, vp->v_path, MAXPATHLEN, NULL);
+	if (vp->v_path == NULL) {
+		vp->v_path = malloc(MAXPATHLEN, M_TEMP, M_WAITOK);
+		if (ndp->ni_segflg == UIO_SYSSPACE)
+			error = copystr(ndp->ni_dirp, vp->v_path,
+				MAXPATHLEN, NULL);
+		else
+			error = copyinstr(ndp->ni_dirp, vp->v_path,
+				MAXPATHLEN, NULL);
+	}
 
 	*flagp = fmode;
 	return (0);
