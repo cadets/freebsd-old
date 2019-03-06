@@ -3014,7 +3014,7 @@ _vdrop(struct vnode *vp, bool locked)
 	vp->v_vflag = 0;
 	bo->bo_flag = 0;
 	if (vp->v_path != NULL) {
-		free(vp->v_path, M_TEMP);
+		free(vp->v_path, M_VNODE_PATH);
 		vp->v_path = NULL;
 	}
 	uma_zfree(vnode_zone, vp);

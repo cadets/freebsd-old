@@ -57,6 +57,7 @@ static int	vfs_register(struct vfsconf *);
 static int	vfs_unregister(struct vfsconf *);
 
 MALLOC_DEFINE(M_VNODE, "vnodes", "Dynamically allocated vnodes");
+MALLOC_DEFINE(M_VNODE_PATH, "vnode paths", "Paths cached in vnodes");
 
 /*
  * The highest defined VFS number.
