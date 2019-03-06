@@ -377,6 +377,7 @@ struct vattr {
 
 #ifdef MALLOC_DECLARE
 MALLOC_DECLARE(M_VNODE);
+MALLOC_DECLARE(M_VNODE_PATH);
 #endif
 
 extern u_int ncsizefactor;

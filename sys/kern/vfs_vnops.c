@@ -292,7 +292,7 @@ restart:
 		goto bad;
 
 	if (vp->v_path == NULL) {
-		vp->v_path = malloc(MAXPATHLEN, M_TEMP, M_WAITOK);
+		vp->v_path = malloc(MAXPATHLEN, M_VNODE_PATH, M_WAITOK);
 		if (ndp->ni_segflg == UIO_SYSSPACE)
 			error = copystr(ndp->ni_dirp, vp->v_path,
 				MAXPATHLEN, NULL);
@@ -2385,7 +2385,7 @@ vn_fill_kinfo_vnode(struct vnode *vp, struct kinfo_file *kif)
 		strlcpy(kif->kf_path, fullpath, sizeof(kif->kf_path));
 	}
 	if (freepath != NULL)
-		free(freepath, M_TEMP);
+		free(freepath, M_VNODE_PATH);
 
 	KFAIL_POINT_CODE(DEBUG_FP, fill_kinfo_vnode__random_path,
 		vn_fill_junk(kif);
