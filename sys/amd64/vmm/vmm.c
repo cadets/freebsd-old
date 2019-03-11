@@ -621,6 +621,13 @@ vm_get_topology(struct vm *vm, uint16_t *sockets, uint16_t *cores,
 	*maxcpus = vm->maxcpus;
 }
 
+uint16_t
+vm_get_id(struct vm *vm)
+{
+
+	return (vm->id);
+}
+
 int
 vm_set_topology(struct vm *vm, uint16_t sockets, uint16_t cores,
     uint16_t threads, uint16_t maxcpus)

@@ -58,6 +58,7 @@ struct tapinfo {
 #define	TAPSIFINFO		_IOW('t', 91, struct tapinfo)
 #define	TAPGIFINFO		_IOR('t', 92, struct tapinfo)
 #define	TAPGIFNAME		_IOR('t', 93, struct ifreq)
+#define	TAPSTAGGING		_IOW('t', 94, int)
 
 /* VMware ioctl's */
 #define VMIO_SIOCSIFFLAGS	_IOWINT('V', 0)

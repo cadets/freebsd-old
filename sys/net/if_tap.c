@@ -752,6 +752,15 @@ tapioctl(struct cdev *dev, u_long cmd, caddr_t data, int flag, struct thread *td
 			mtx_unlock(&tp->tap_mtx);
 			break;
 
+		case TAPSTAGGING:
+			mtx_lock(&tp->tap_mtx);
+			if (*(int *)data)
+				tp->tap_flags |= TAP_PROPAGATE_TAG;
+			else
+				tp->tap_flags &= ~TAP_PROPAGATE_TAG;
+			mtx_unlock(&tp->tap_mtx);
+			break;
+
 		case TAPSDEBUG:
 			tapdebug = *(int *)data;
 			break;
@@ -902,16 +911,43 @@ tapread(struct cdev *dev, struct uio *uio, int flag)
 
 	/* xfer packet to user space */
 	while ((m != NULL) && (uio->uio_resid > 0) && (error == 0)) {
+		if (tp->tap_flags & TAP_PROPAGATE_TAG) {
+			struct msgid_info m_info = {0};
+
+			len = min(uio->uio_resid, m->m_len + sizeof(struct msgid_info));
+			if (len <= sizeof(msgid_t))
+				break;
+
+			/* if it's a packet header, we know that a number of mbuf
+			   chains might follow. we are essentially just going to
+			   propagate the information that there is a msgid is present
+			   and the msgid itself. should this not be true, we just say
+			   that it is not present and have some zeroes at the start. */
+			if (m->m_flags & M_PKTHDR) {
+				m_info.mi_has_msgid = 1;
+				m_info.mi_msgid = m->m_pkthdr.msgid;
+			}
+
+			error = uiomove((void *)&m_info,
+			    sizeof(struct msgid_info), uio);
+		}
+
+		/* in case of msgid propagation, this should just
+		   shrink by sizeof(struct msgid_info) */
 		len = min(uio->uio_resid, m->m_len);
+		/* need this check because we don't always
+		   propagate msgids, it depends on the config */
 		if (len == 0)
 			break;
 
+		/* uiomove adjusts the offset with the first call,
+		   so this will always be correct under those assms */
 		error = uiomove(mtod(m, void *), len, uio);
 		m = m_free(m);
 	}
 
 	if (m != NULL) {
-		TAPDEBUG("%s dropping mbuf, minor = %#x\n", ifp->if_xname, 
+		TAPDEBUG("%s dropping mbuf, minor = %#x\n", ifp->if_xname,
 			dev2unit(dev));
 		m_freem(m);
 	}

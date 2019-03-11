@@ -40,6 +40,11 @@
  */
 typedef uint64_t	msgid_t;
 
+struct msgid_info {
+	uint8_t	mi_has_msgid;
+	msgid_t	mi_msgid;
+};
+
 /*
  * Assign various bits of the type to hold a CPU identifier, and the remaining
  * bits to be used as a counter.  See subr_msgid.c for compile-time assertions
