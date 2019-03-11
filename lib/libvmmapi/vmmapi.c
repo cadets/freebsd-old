@@ -77,6 +77,7 @@ struct vmctx {
 	size_t	highmem;
 	char	*baseaddr;
 	char	*name;
+	uint16_t id;
 };
 
 #define	CREATE(x)  sysctlbyname("hw.vmm.create", NULL, NULL, (x), strlen((x)))
@@ -111,6 +112,7 @@ struct vmctx *
 vm_open(const char *name)
 {
 	struct vmctx *vm;
+	int error;
 
 	vm = malloc(sizeof(struct vmctx) + strlen(name) + 1);
 	assert(vm != NULL);
@@ -124,8 +126,14 @@ vm_open(const char *name)
 	if ((vm->fd = vm_device_open(vm->name)) < 0)
 		goto err;
 
+	if ((error = ioctl(vm->fd, VM_GET_ID, &vm->id)) < 0)
+		goto err;
+
 	return (vm);
 err:
+	if (error)
+		fprintf(stderr, "Failed to open VM %s: %s",
+		    name, strerror(errno));
 	vm_destroy(vm);
 	return (NULL);
 }

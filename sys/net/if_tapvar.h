@@ -50,13 +50,13 @@
 struct tap_softc {
 	struct ifnet	*tap_ifp;
 	u_short		tap_flags;		/* misc flags                */
-#define	TAP_OPEN	(1 << 0)
-#define	TAP_INITED	(1 << 1)
-#define	TAP_RWAIT	(1 << 2)
-#define	TAP_ASYNC	(1 << 3)
-#define TAP_READY       (TAP_OPEN|TAP_INITED)
-#define	TAP_VMNET	(1 << 4)
-
+#define	TAP_OPEN		(1 << 0)
+#define	TAP_INITED		(1 << 1)
+#define	TAP_RWAIT		(1 << 2)
+#define	TAP_ASYNC		(1 << 3)
+#define	TAP_READY       	(TAP_OPEN|TAP_INITED)
+#define	TAP_VMNET		(1 << 4)
+#define	TAP_PROPAGATE_TAG	(1 << 8)
 	u_int8_t 	ether_addr[ETHER_ADDR_LEN]; /* ether addr of the remote side */
 
 	pid_t		 tap_pid;		/* PID of process to open    */

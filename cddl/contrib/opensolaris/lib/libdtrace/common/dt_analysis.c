@@ -115,7 +115,7 @@ dump_action(dtrace_actdesc_t *ap)
 		break;
 
 	case DTRACEACT_PRINTA:
-		fprintf(stderr, " PRINTA\n");
+		fprintf(stderr, "PRINTA\n");
 		assert(dp != NULL);
 		dt_dis(dp, stderr);
 		break;

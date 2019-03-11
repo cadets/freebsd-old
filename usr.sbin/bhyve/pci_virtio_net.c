@@ -39,6 +39,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/select.h>
 #include <sys/uio.h>
 #include <sys/ioctl.h>
+#include <sys/msgid.h>
+#include <net/if_tap.h>
 #include <machine/atomic.h>
 #include <net/ethernet.h>
 #ifndef NETMAP_WITH_LIBS
@@ -73,29 +75,30 @@ __FBSDID("$FreeBSD$");
 /*
  * Host capabilities.  Note that we only offer a few of these.
  */
-#define	VIRTIO_NET_F_CSUM	(1 <<  0) /* host handles partial cksum */
-#define	VIRTIO_NET_F_GUEST_CSUM	(1 <<  1) /* guest handles partial cksum */
-#define	VIRTIO_NET_F_MAC	(1 <<  5) /* host supplies MAC */
-#define	VIRTIO_NET_F_GSO_DEPREC	(1 <<  6) /* deprecated: host handles GSO */
-#define	VIRTIO_NET_F_GUEST_TSO4	(1 <<  7) /* guest can rcv TSOv4 */
-#define	VIRTIO_NET_F_GUEST_TSO6	(1 <<  8) /* guest can rcv TSOv6 */
-#define	VIRTIO_NET_F_GUEST_ECN	(1 <<  9) /* guest can rcv TSO with ECN */
-#define	VIRTIO_NET_F_GUEST_UFO	(1 << 10) /* guest can rcv UFO */
-#define	VIRTIO_NET_F_HOST_TSO4	(1 << 11) /* host can rcv TSOv4 */
-#define	VIRTIO_NET_F_HOST_TSO6	(1 << 12) /* host can rcv TSOv6 */
-#define	VIRTIO_NET_F_HOST_ECN	(1 << 13) /* host can rcv TSO with ECN */
-#define	VIRTIO_NET_F_HOST_UFO	(1 << 14) /* host can rcv UFO */
-#define	VIRTIO_NET_F_MRG_RXBUF	(1 << 15) /* host can merge RX buffers */
-#define	VIRTIO_NET_F_STATUS	(1 << 16) /* config status field available */
-#define	VIRTIO_NET_F_CTRL_VQ	(1 << 17) /* control channel available */
-#define	VIRTIO_NET_F_CTRL_RX	(1 << 18) /* control channel RX mode support */
-#define	VIRTIO_NET_F_CTRL_VLAN	(1 << 19) /* control channel VLAN filtering */
+#define	VIRTIO_NET_F_CSUM	(1ull <<  0) /* host handles partial cksum */
+#define	VIRTIO_NET_F_GUEST_CSUM	(1ull <<  1) /* guest handles partial cksum */
+#define	VIRTIO_NET_F_MAC	(1ull <<  5) /* host supplies MAC */
+#define	VIRTIO_NET_F_GSO_DEPREC	(1ull <<  6) /* deprecated: host handles GSO */
+#define	VIRTIO_NET_F_GUEST_TSO4	(1ull <<  7) /* guest can rcv TSOv4 */
+#define	VIRTIO_NET_F_GUEST_TSO6	(1ull <<  8) /* guest can rcv TSOv6 */
+#define	VIRTIO_NET_F_GUEST_ECN	(1ull <<  9) /* guest can rcv TSO with ECN */
+#define	VIRTIO_NET_F_GUEST_UFO	(1ull << 10) /* guest can rcv UFO */
+#define	VIRTIO_NET_F_HOST_TSO4	(1ull << 11) /* host can rcv TSOv4 */
+#define	VIRTIO_NET_F_HOST_TSO6	(1ull << 12) /* host can rcv TSOv6 */
+#define	VIRTIO_NET_F_HOST_ECN	(1ull << 13) /* host can rcv TSO with ECN */
+#define	VIRTIO_NET_F_HOST_UFO	(1ull << 14) /* host can rcv UFO */
+#define	VIRTIO_NET_F_MRG_RXBUF	(1ull << 15) /* host can merge RX buffers */
+#define	VIRTIO_NET_F_STATUS	(1ull << 16) /* config status field available */
+#define	VIRTIO_NET_F_CTRL_VQ	(1ull << 17) /* control channel available */
+#define	VIRTIO_NET_F_CTRL_RX	(1ull << 18) /* control channel RX mode support */
+#define	VIRTIO_NET_F_CTRL_VLAN	(1ull << 19) /* control channel VLAN filtering */
 #define	VIRTIO_NET_F_GUEST_ANNOUNCE \
-				(1 << 21) /* guest can send gratuitous pkts */
+				(1ull << 21) /* guest can send gratuitous pkts */
+#define	VIRTIO_NET_F_TAG	(1ull << 33) /* host can send/rcv packet tags */
 
 #define VTNET_S_HOSTCAPS      \
   ( VIRTIO_NET_F_MAC | VIRTIO_NET_F_MRG_RXBUF | VIRTIO_NET_F_STATUS | \
-    VIRTIO_F_NOTIFY_ON_EMPTY | VIRTIO_RING_F_INDIRECT_DESC)
+    VIRTIO_F_NOTIFY_ON_EMPTY | VIRTIO_RING_F_INDIRECT_DESC | VIRTIO_NET_F_TAG)
 
 /*
  * PCI config-space "registers"
@@ -157,11 +160,13 @@ struct pci_vtnet_softc {
 	int		rx_in_progress;
 	int		rx_vhdrlen;
 	int		rx_merge;	/* merged rx bufs in use */
+	int		rx_tag;
 
 	pthread_t 	tx_tid;
 	pthread_mutex_t	tx_mtx;
 	pthread_cond_t	tx_cond;
 	int		tx_in_progress;
+	int		tx_tag;
 
 	void (*pci_vtnet_rx)(struct pci_vtnet_softc *sc);
 	void (*pci_vtnet_tx)(struct pci_vtnet_softc *sc, struct iovec *iov,
@@ -276,7 +281,7 @@ pci_vtnet_tap_tx(struct pci_vtnet_softc *sc, struct iovec *iov, int iovcnt,
  *  MP note: the dummybuf is only used for discarding frames, so there
  * is no need for it to be per-vtnet or locked.
  */
-static uint8_t dummybuf[2048];
+static uint8_t dummybuf[2048 + sizeof(struct msgid_info)];
 
 static __inline struct iovec *
 rx_iov_trim(struct iovec *iov, int *niov, int tlen)
@@ -777,6 +782,12 @@ pci_vtnet_tap_setup(struct pci_vtnet_softc *sc, char *devname)
 		sc->vsc_tapfd = -1;
 	}
 
+	if (ioctl(sc->vsc_tapfd, TAPSTAGGING, &opt) < 0) {
+		WPRINTF(("tagging support for tap not available"));
+		close(sc->vsc_tapfd);
+		sc->vsc_tapfd = -1;
+	}
+
 #ifndef WITHOUT_CAPSICUM
 	cap_rights_init(&rights, CAP_EVENT, CAP_READ, CAP_WRITE);
 	if (cap_rights_limit(sc->vsc_tapfd, &rights) == -1 && errno != ENOSYS)
@@ -980,6 +991,11 @@ pci_vtnet_neg_features(void *vsc, uint64_t negotiated_features)
 		sc->rx_merge = 0;
 		/* non-merge rx header is 2 bytes shorter */
 		sc->rx_vhdrlen -= 2;
+	}
+
+	if (sc->vsc_features & VIRTIO_NET_F_TAG) {
+		sc->rx_tag = 1;
+		sc->tx_tag = 1;
 	}
 }
 

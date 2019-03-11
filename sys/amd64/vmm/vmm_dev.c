@@ -86,6 +86,7 @@ static SLIST_HEAD(, vmmdev_softc) head;
 
 static unsigned pr_allow_flag;
 static struct mtx vmmdev_mtx;
+static uint64_t global_id_cnt = 0;
 
 static MALLOC_DEFINE(M_VMMDEV, "vmmdev", "vmmdev");
 
@@ -772,6 +773,9 @@ vmmdev_ioctl(struct cdev *cdev, u_long cmd, caddr_t data, int fflag,
 		    &topology->threads, &topology->maxcpus);
 		error = 0;
 		break;
+	case VM_GET_IDENTIFIER:
+		*(uint16_t *)data = vm_get_id(sc->vm);
+		break;
 	default:
 		error = ENOTTY;
 		break;
@@ -1008,6 +1012,7 @@ sysctl_vmm_create(SYSCTL_HANDLER_ARGS)
 	mtx_lock(&vmmdev_mtx);
 	sc->cdev = cdev;
 	sc->cdev->si_drv1 = sc;
+	if (global_id_cnt)
 	mtx_unlock(&vmmdev_mtx);
 
 	return (0);
