@@ -126,7 +126,7 @@ vm_open(const char *name)
 	if ((vm->fd = vm_device_open(vm->name)) < 0)
 		goto err;
 
-	if ((error = ioctl(vm->fd, VM_GET_ID, &vm->id)) < 0)
+	if ((error = ioctl(vm->fd, VM_GET_IDENTIFIER, &vm->id)) < 0)
 		goto err;
 
 	return (vm);
