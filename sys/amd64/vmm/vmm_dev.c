@@ -86,7 +86,6 @@ static SLIST_HEAD(, vmmdev_softc) head;
 
 static unsigned pr_allow_flag;
 static struct mtx vmmdev_mtx;
-static uint64_t global_id_cnt = 0;
 
 static MALLOC_DEFINE(M_VMMDEV, "vmmdev", "vmmdev");
 
@@ -1012,7 +1011,6 @@ sysctl_vmm_create(SYSCTL_HANDLER_ARGS)
 	mtx_lock(&vmmdev_mtx);
 	sc->cdev = cdev;
 	sc->cdev->si_drv1 = sc;
-	if (global_id_cnt)
 	mtx_unlock(&vmmdev_mtx);
 
 	return (0);
