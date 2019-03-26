@@ -61,7 +61,7 @@ struct dl_request_q_stats {
 	int dlrq_capacity;
 	int dlrq_requests;
 	int dlrq_unackd;
-} dlrq_stats;
+};
 
 struct dl_request_q;
 

@@ -96,6 +96,7 @@ const dlog_malloc_func dlog_alloc = malloc;
 const dlog_free_func dlog_free = free;
 
 /* GLobal singleton dlogd configuration */
+extern nvlist_t *dlogd_props;
 nvlist_t *dlogd_props;
 
 static int stop  = 0;
