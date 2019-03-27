@@ -1,6 +1,5 @@
 /*-
- * Copyright (c) 2017 (Ilia Shumailov)
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -35,42 +34,27 @@
  *
  */
 
-#ifndef _DLOG_BROKER_H
-#define _DLOG_BROKER_H
+#ifndef _DL_RECORD_BATCH_H
+#define _DL_RECORD_BATCH_H
 
-#include "dl_config.h"
+#include <sys/types.h>
 
-/**
- * This function is invoked as a callback in case a disconnect on
- * TCP level is detected.
- */
-typedef void (*dl_on_client_closed_func)(void *, void *);
+#include "dl_bbuf.h"
+#include "dl_record.h"
 
-struct dl_broker_event_notifier {
-	/** An instance of the server owning the client.
-	 *  This instance shall be passed as an argument to the callbacks.
-	 */
-	void *server;
+struct dl_record_batch;
 
-	/** Specifies a callback to be used by the client to
-	 *  inform its server about a closed connection.
-	 */
-	dl_on_client_closed_func on_client_closed;
+extern int dl_record_batch_new(struct dl_record_batch **);
+extern void dl_record_batch_delete(struct dl_record_batch *);
 
-	struct broker_configuration *dlben_conf;
-};
+extern int dl_record_batch_add_record(struct dl_record_batch *,
+    struct dl_record *);
 
-/* Record statistics for the broker */
-struct dlog_broker_statistics {
-	u_int64_t dlbs_bytes_read;
-};
-
-struct dlog_broker_handle;
-
-extern struct dlog_broker_handle * dlog_broker_create_server(const int,
-    struct broker_configuration const * const);
-extern void dlog_broker_init(char const * const,
-    struct broker_configuration const * const);
-extern void dlog_broker_fini(void);
+extern int dl_record_batch_decode(struct dl_record_batch **,
+    struct dl_bbuf *);
+extern int dl_record_batch_encode(struct dl_record_batch const *,
+    struct dl_bbuf **);
+extern int dl_record_batch_encode_into(struct dl_record_batch const *,
+    struct dl_bbuf *);
 
 #endif
