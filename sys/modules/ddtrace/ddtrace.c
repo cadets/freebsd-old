@@ -415,7 +415,7 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 			     dtrace_epid2size(state, epid), DL_MTU));
 
 			if (dlog_produce(hdl, 
-			    DDTRACE_KEY, strlen(DDTRACE_KEY),
+			    DDTRACE_KEY,
 			    &desc->dtbd_data[msg_start], msg_size) != 0) {
 
 				DLOGTR0(PRIO_HIGH,
@@ -441,7 +441,7 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 			 */
 			if (msg_size == desc->dtbd_size) {
 				if (dlog_produce(hdl, 
-			    	    DDTRACE_KEY, strlen(DDTRACE_KEY),
+			    	    DDTRACE_KEY,
 				    &desc->dtbd_data[msg_start],
 				    msg_size) != 0) {
 
