@@ -160,7 +160,7 @@ dl_list_offset_request_delete(struct dl_list_offset_request *self)
  */
 int
 dl_list_offset_request_decode(struct dl_list_offset_request **self,
-    struct dl_bbuf *source)
+    struct dl_bbuf * const source)
 {
 	struct dl_list_offset_request *request;
 	struct dl_list_offset_request_topic *request_topic;

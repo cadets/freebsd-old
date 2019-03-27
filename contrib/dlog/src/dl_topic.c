@@ -58,8 +58,11 @@
 #include "dl_memory.h"
 #include "dl_request.h"
 #include "dl_topic.h"
-#include "dl_user_segment.h"
+#ifdef _KERNEL
 #include "dl_kernel_segment.h"
+#else
+#include "dl_user_segment.h"
+#endif
 #include "dl_utils.h"
 
 extern uint32_t hashlittle(const void *, size_t, uint32_t);

@@ -1,5 +1,5 @@
 #-
-# Copyright (c) 2018 (Graeme Jenkinson)
+# Copyright (c) 2018-2019 (Graeme Jenkinson)
 # All rights reserved.
 #
 # This software was developed by BAE Systems, the University of Cambridge
@@ -38,6 +38,7 @@ PROGS= dlogd
 BINDIR= bin
 
 DLOG_SRCS= dl_bbuf.c \
+	dl_config.c \
 	dl_correlation_id.c \
 	dl_fetch_request.c \
 	dl_fetch_response.c \
@@ -53,13 +54,16 @@ DLOG_SRCS= dl_bbuf.c \
 	dl_produce_response.c \
 	dl_request.c \
 	dl_request_queue.c \
+	dl_record.c \
+	dl_record_batch.c \
+	dl_record_header.c \
 	dl_response.c \
 	dl_user_segment.c \
 	dl_segment.c \
 	dl_topic.c \
+	dl_transport.c \
 	dl_sock_transport.c \
 	dl_tls_transport.c \
-	dl_transport.c \
 	dl_utils.c \
 	lookup3.c
 
@@ -72,17 +76,19 @@ LDADD+=-lnv
 LDADD+=-lpthread
 LDADD+=-lsbuf
 LDADD+=-lssl
-LDADD+=-lucl
 LDADD+=-lutil
 LDADD+=-lz
+LDADD+=-lucl
 
-#CFLAGS+=-DNDEBUG
+CFLAGS+=-DNDEBUG
 CFLAGS+=-g
+CFLAGS+=-Wunused-variable
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
 CFLAGS+=-L/usr/local/lib
 CFLAGS+=-I/usr/local/include
 CFLAGS+=-I../../src
-CFLAGS+=-I${SRCTOP}/../dlog
+CFLAGS+=-I.
+#CFLAGS+=-O1
 #CFLAGS+=-fsanitize=address
 #CFLAGS+=-fno-omit-frame-pointer
 

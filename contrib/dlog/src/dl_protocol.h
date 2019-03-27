@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 2017 (Ilia Shumailov)
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -42,10 +42,9 @@
 #include "dl_primitive_types.h"
 
 #define DLOG_API_V1 1
-#define DLOG_API_VERSION DLOG_API_V1
-
-#define DLOG_MESSAGE_V0 0
-#define DLOG_MESSAGE_V1 1
+#define DLOG_API_V2 2
+#define DLOG_API_V3 3
+#define DLOG_API_VERSION DLOG_API_V2
 
 // Topic names should have a maximum length
 // so that when persisted to the filesystem they

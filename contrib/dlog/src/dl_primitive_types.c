@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -89,7 +89,7 @@ dl_decode_string(struct dl_bbuf *source, struct sbuf **target)
  * a value of -1 indicates a NULL string.
  */
 int
-dl_decode_bytes(unsigned char ** const target, int *target_len,
+dl_decode_bytes(unsigned char const ** const target, int *target_len,
     struct dl_bbuf *source)
 {
 	int32_t nbytes;
@@ -111,7 +111,7 @@ dl_decode_bytes(unsigned char ** const target, int *target_len,
 		return 0;
 	}
 
-	*target = (int8_t *) dlog_alloc(nbytes * sizeof(int8_t));
+	*target = (unsigned char *) dlog_alloc(nbytes * sizeof(int8_t));
 #ifdef _KERNEL
 	DL_ASSERT(*target != NULL, ("Failed allocating target buffer."));
 #else
@@ -122,7 +122,7 @@ dl_decode_bytes(unsigned char ** const target, int *target_len,
 
 	/* TODO: Replace with bulk drain function in dl_bbuf */
 	for (int i = 0; i < nbytes; i++) {
-		dl_bbuf_get_int8(source, (* target) + i);
+		dl_bbuf_get_uint8(source, (const uint8_t *) (* target) + i);
 	}
 	return 0;
 }

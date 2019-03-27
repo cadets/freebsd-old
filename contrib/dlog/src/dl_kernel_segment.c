@@ -152,8 +152,7 @@ dl_kernel_segment_insert_message(struct dl_segment *self,
 	struct mount *mp;
 	struct thread *td = curthread;
 	struct uio u;
-	struct iovec log_bufs[2];
-	struct dl_bbuf *metadata;
+	struct iovec log_bufs[1];
 	struct vnode *vp;
 	struct dl_kernel_segment *kseg = self->dls_kernel;
 	int rc;
@@ -165,21 +164,14 @@ dl_kernel_segment_insert_message(struct dl_segment *self,
 	dl_kernel_segment_lock(self);
 
 	/* Update the log file. */
-	dl_bbuf_new(&metadata, NULL, sizeof(uint32_t),
-	    DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN);
-	dl_bbuf_put_int32(metadata, self->dls_kernel->offset);
-
-	log_bufs[0].iov_base = dl_bbuf_data(metadata);
-	log_bufs[0].iov_len = dl_bbuf_pos(metadata);
-	
-	log_bufs[1].iov_base = dl_bbuf_data(buffer);
-	log_bufs[1].iov_len = dl_bbuf_pos(buffer);
+	log_bufs[0].iov_base = dl_bbuf_data(buffer);
+	log_bufs[0].iov_len = dl_bbuf_pos(buffer);
 
 	bzero(&u, sizeof(struct uio));
 	u.uio_iov = log_bufs;
-	u.uio_iovcnt = 2;
+	u.uio_iovcnt = 1;
 	u.uio_offset = -1;
-        u.uio_resid = log_bufs[0].iov_len + log_bufs[1].iov_len;
+        u.uio_resid = log_bufs[0].iov_len;
         u.uio_segflg  = UIO_SYSSPACE;
         u.uio_rw = UIO_WRITE;
         u.uio_td = td;
@@ -196,9 +188,6 @@ dl_kernel_segment_insert_message(struct dl_segment *self,
 	VOP_WRITE(vp, &u, IO_UNIT | IO_APPEND, self->dls_kernel->_log->f_cred);
 	VOP_UNLOCK(vp, 0);
 	vn_finished_write(mp);
-
-	/* Delete the buffer holding the log metadata */
-	dl_bbuf_delete(metadata);
 
 	/* Update the offset. */
 	self->dls_kernel->offset++;

@@ -50,6 +50,13 @@
 #include "dl_message_set.h"
 #include "dl_request.h"
 
+enum dl_required_acks {
+	DL_NO_ACKS = -1,
+	DL_LEADER_ACKS = 0,
+	DL_ISR_ACKS = 1,
+};
+typedef enum dl_required_acks dl_required_acks;
+
 SLIST_HEAD(dl_produce_request_topics, dl_produce_request_topic);
 
 struct dl_produce_request_partition {
@@ -72,9 +79,9 @@ struct dl_produce_request {
 };
 
 extern int dl_produce_request_new(struct dl_request **, const int32_t,
-    struct sbuf *, int16_t, int32_t, struct sbuf *, struct dl_message_set *);
+    struct sbuf *, dl_required_acks, int32_t, struct sbuf *, struct dl_message_set *);
 extern int dl_produce_request_new_nomsg(struct dl_request **,
-    const int32_t, struct sbuf *, int16_t, int32_t, struct sbuf *);
+    const int32_t, struct sbuf *, dl_required_acks, int32_t, struct sbuf *);
 extern void dl_produce_request_delete(struct dl_produce_request *);
 
 extern int dl_produce_request_decode(struct dl_produce_request **,

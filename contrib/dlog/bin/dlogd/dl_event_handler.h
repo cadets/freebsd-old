@@ -37,8 +37,6 @@
 #ifndef _DL_EVENT_HANDLER_H
 #define _DL_EVENT_HANDLER_H
 
-#include "dl_config.h"
-
 typedef int dl_event_handler_handle;
 
 /**
@@ -53,8 +51,6 @@ struct dl_event_handler {
 	void *dleh_instance;
 	dl_get_handle_func dleh_get_handle;
 	dl_handle_event_func dleh_handle_event;
-	// TODO: what?
-	struct broker_configuration *dleh_conf;
 };
 
 #endif

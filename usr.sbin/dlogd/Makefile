@@ -35,6 +35,7 @@ DLOGDIR= ${SRCTOP}/contrib/dlog
 PROG= dlogd
 
 DLOG_SRCS= dl_bbuf.c \
+	dl_config.c \
 	dl_correlation_id.c \
 	dl_fetch_request.c \
 	dl_fetch_response.c \

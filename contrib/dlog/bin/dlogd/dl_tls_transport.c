@@ -38,6 +38,7 @@
 #include <openssl/opensslv.h>
 #include <openssl/ssl.h>
 
+#include <sys/dnv.h>
 #include <sys/socket.h>
 #include <sys/poll.h>
 #include <sys/types.h>
@@ -134,7 +135,6 @@ static int
 dl_tls_transport_connect(struct dl_transport *self,
     const char * const hostname, const int port)
 {
-	BIO *bio;
 	struct sbuf *host;
 	SSL *ssl;
 	int rc, fd, flags;
@@ -597,11 +597,8 @@ dl_tls_transport_new(struct dl_transport **self, struct dl_producer *producer)
 
 	SSL_CTX_set_options(tls->dlt_tls_ctx, DLT_TLS_FLAGS);
 	
-	if (nvlist_exists_string(dlogd_props, DL_CONF_CLIENT_FILE)) {
-		client_file = nvlist_get_string(dlogd_props, DL_CONF_CLIENT_FILE);
-	} else {
-		client_file = DL_DEFAULT_CLIENT_FILE;
-	}
+	client_file = dnvlist_get_string(dlogd_props, DL_CONF_CLIENT_FILE,
+	    DL_DEFAULT_CLIENT_FILE);
 
 	rc = SSL_CTX_use_certificate_file(tls->dlt_tls_ctx, client_file,
 	    SSL_FILETYPE_PEM);
@@ -614,20 +611,13 @@ dl_tls_transport_new(struct dl_transport **self, struct dl_producer *producer)
 		goto err_tls_ctx_free;
 	}
 
-	if (nvlist_exists_string(dlogd_props, DL_CONF_USER_PASSWORD)) {
-		password = nvlist_get_string(dlogd_props, DL_CONF_USER_PASSWORD);
-	} else {
-		password = DL_DEFAULT_USER_PASSWORD;
-	}
+	password = dnvlist_get_string(dlogd_props, DL_CONF_USER_PASSWORD,
+	    DL_DEFAULT_USER_PASSWORD);
 
 	SSL_CTX_set_default_passwd_cb_userdata(tls->dlt_tls_ctx, password);
 
-	if (nvlist_exists_string(dlogd_props, DL_CONF_PRIVATEKEY_FILE)) {
-		privkey_file = nvlist_get_string(dlogd_props,
-		    DL_CONF_PRIVATEKEY_FILE);
-	} else {
-		privkey_file = DL_DEFAULT_PRIVATEKEY_FILE;
-	}
+	privkey_file = dnvlist_get_string(dlogd_props, DL_CONF_PRIVATEKEY_FILE,
+	    DL_DEFAULT_PRIVATEKEY_FILE);
 
 	rc = SSL_CTX_use_PrivateKey_file(tls->dlt_tls_ctx, privkey_file,
 	    SSL_FILETYPE_PEM);
@@ -653,11 +643,8 @@ dl_tls_transport_new(struct dl_transport **self, struct dl_producer *producer)
 	 * are located (in not NULL a file of CA certificated in PEM
 	 * format).
 	 */
-	if (nvlist_exists_string(dlogd_props, DL_CONF_CACERT_FILE)) {
-		cacert_file = nvlist_get_string(dlogd_props, DL_CONF_CACERT_FILE);
-	} else {
-		cacert_file = DL_DEFAULT_CACERT_FILE;
-	}
+	cacert_file = dnvlist_get_string(dlogd_props, DL_CONF_CACERT_FILE,
+	    DL_DEFAULT_CACERT_FILE);
 
 	rc = SSL_CTX_load_verify_locations(tls->dlt_tls_ctx, cacert_file,
 	    NULL);

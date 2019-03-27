@@ -34,7 +34,7 @@
  *
  */
 
-#include <sys/nv.h>
+#include <sys/dnv.h>
 #include <sys/socket.h>
 #include <sys/poll.h>
 #include <sys/types.h>
@@ -166,14 +166,10 @@ dl_transport_factory_get_inst(struct dl_transport **self,
 	bool tls;
 
 	DL_ASSERT(self != NULL, ("Transport instance cannot be NULL"));
-	DL_ASSERT(props != NULL, ("Properties instance cannot be NULL"));
+	DL_ASSERT(producer != NULL, ("Producer instance cannot be NULL"));
 
-	if (nvlist_exists_bool(dlogd_props, DL_CONF_TLS_ENABLE)) {
-		tls = nvlist_get_bool(dlogd_props, DL_CONF_TLS_ENABLE);
-	} else {
-		tls = DL_DEFAULT_TLS_ENABLE;
-	}
-
+	tls = dnvlist_get_bool(dlogd_props, DL_CONF_TLS_ENABLE,
+	    DL_DEFAULT_TLS_ENABLE);
 	if (tls) {
 		return dl_tls_transport_new(self, producer);
 	} else {

@@ -90,6 +90,7 @@ int
 dl_request_q_dequeue(struct dl_request_q *self,
     struct dl_request_element **elem)
 {
+	struct timeval now, tdiff;
 	int rc = 0;
 
 	dlrq_check_integrity(self);
@@ -115,6 +116,12 @@ dl_request_q_dequeue(struct dl_request_q *self,
 
 	*elem = self->dlrq_requests;
 	self->dlrq_requests = STAILQ_NEXT(self->dlrq_requests, dlrq_entries);
+
+	/* Compute the residence time of the request element. */
+	gettimeofday(&now, NULL);
+	timersub(&now, &(*elem)->dlrq_enq_tv, &tdiff);
+	DLOGTR1(PRIO_NORMAL, "Residence time = %ldms\n",
+	    (tdiff.tv_sec * 1000 + tdiff.tv_usec/1000));
 
 	rc = pthread_mutex_unlock(&self->dlrq_mtx);
 	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
@@ -189,6 +196,9 @@ dl_request_q_enqueue(struct dl_request_q *self,
 	STAILQ_INSERT_TAIL(&self->dlrq_queue, request, dlrq_entries);
 	if (self->dlrq_requests == NULL)
 		self->dlrq_requests = request;
+
+	/* Record the enqueue time in order to compute residence time. */
+	gettimeofday(&request->dlrq_enq_tv, NULL);
 
 	rc = pthread_mutex_unlock(&self->dlrq_mtx);
 	DL_ASSERT(rc == 0, ("Failed releasing RequestQueue mutex"));
@@ -297,8 +307,6 @@ dl_request_q_peek_unackd(struct dl_request_q *self, struct dl_request_element **
 			
 			*elem = STAILQ_FIRST(&self->dlrq_queue);
 
-			rc = pthread_mutex_unlock(&self->dlrq_mtx);
-			DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
 			ret = 0;
 		}
 	}
@@ -428,7 +436,7 @@ int
 dl_request_q_ack(struct dl_request_q *self, int32_t id,
     struct dl_request_element **elem)
 {
-	struct dl_request_element *request, *request_tmp;
+	struct dl_request_element *request;
 	int rc, ret = -1;
 
 	rc = sem_wait(&self->dlrq_unackd_items);

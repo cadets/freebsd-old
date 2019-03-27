@@ -76,7 +76,7 @@ extern int dl_list_offset_request_new(struct dl_request **, int32_t,
 extern void dl_list_offset_request_delete(struct dl_list_offset_request *);
 
 extern int dl_list_offset_request_decode(struct dl_list_offset_request **, 
-    struct dl_bbuf *);
+    struct dl_bbuf  * const);
 extern int dl_list_offset_request_encode(struct dl_list_offset_request *,
     struct dl_bbuf *);
 
