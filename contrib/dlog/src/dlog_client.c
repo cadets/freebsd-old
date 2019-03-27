@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 2017 (Ilia Shumailov)
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2017-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -67,6 +67,8 @@
 #include "dl_correlation_id.h"
 #include "dl_memory.h"
 #include "dl_topic.h"
+#include "dl_record.h"
+#include "dl_record_batch.h"
 #include "dl_request.h"
 #include "dl_response.h"
 #include "dl_utils.h"
@@ -92,6 +94,9 @@ struct dlog_handle {
 	struct dl_topic *dlh_topic;
 };
 
+static int dlog_produce_v1(struct dlog_handle *, char *, unsigned char *, size_t);
+static int dlog_produce_v2(struct dlog_handle *, char *, unsigned char *, size_t);
+
 static inline void
 dlog_client_check_integrity(struct dlog_handle *self)
 {
@@ -100,6 +105,115 @@ dlog_client_check_integrity(struct dlog_handle *self)
 	    ("DLog client config cannot be NULL."));
 	DL_ASSERT(self->dlh_config->dlcc_props != NULL,
 	    ("DLog client config properties cannot be NULL."));
+}
+
+	static int
+dlog_produce_v1(struct dlog_handle *self, char *k,
+    unsigned char *v, size_t v_len)
+{
+	struct dl_bbuf *buffer;
+	struct dl_message_set *message_set;
+	struct dl_record_batch *record_batch;
+
+	dlog_client_check_integrity(self);
+
+	/* Instantiate a new MessageSet. */
+	if (dl_message_set_new(&message_set, (unsigned char *) k, strlen(k),
+	    v, v_len) != 0)
+		goto err_produce;
+
+	if (dl_bbuf_new(&buffer, NULL, DL_MTU,
+		DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN) != 0)
+		goto err_free_msgset;
+
+	if (dl_message_set_encode_compressed(message_set, buffer) != 0) {
+
+		DLOGTR0(PRIO_HIGH, "Error encoding MessageSet\n");
+		goto err_free_msgset;
+	}
+	dl_message_set_delete(message_set);
+	
+	/* Enqueue the MessageSet for processing */
+	if (dl_topic_produce_to(self->dlh_topic, buffer) != 0) {
+
+		DLOGTR0(PRIO_HIGH, "Error enquing MessageSet\n");
+		goto err_free_bbuf;
+	}
+		
+	dl_bbuf_delete(buffer);
+
+	/* Increment the SYSCTL count of produced records */
+	dlog_nproduce++;
+	return 0;
+
+err_free_bbuf:
+	dl_bbuf_delete(buffer);
+
+err_free_msgset:
+	dl_message_set_delete(message_set);
+
+err_produce:
+	DLOGTR0(PRIO_HIGH, "Error producing request\n");
+	return -1;
+}
+
+static int
+dlog_produce_v2(struct dlog_handle *self, char *k,
+    unsigned char *v, size_t v_len)
+{
+	struct dl_bbuf *buffer;
+	struct dl_record *record;
+	struct dl_record_batch *record_batch;
+
+	dlog_client_check_integrity(self);
+
+	/* Instantiate a new Record and add it to the RecordBatch. */
+	if (dl_record_new(&record, k, v, v_len))
+		goto err_produce;
+
+	/* Instantiate a new RecordBatch. */
+	if (dl_record_batch_new(&record_batch)) {
+
+		dl_record_delete(record);
+		goto err_produce;
+	}
+
+	if (dl_record_batch_add_record(record_batch, record)) {
+
+		dl_record_delete(record);
+		goto err_free_record_set;
+	}
+
+	/* Encode the RecordBatch */
+	if (dl_record_batch_encode(record_batch, &buffer) != 0) {
+
+		DLOGTR0(PRIO_HIGH, "Error encoding RecordBatch\n");
+		goto err_free_record_set;
+	}
+	dl_record_batch_delete(record_batch);
+	
+	/* Enqueue the MessageSet for processing */
+	if (dl_topic_produce_to(self->dlh_topic, buffer) != 0) {
+
+		DLOGTR0(PRIO_HIGH, "Error enquing MessageSet\n");
+		goto err_free_bbuf;
+	}
+		
+	dl_bbuf_delete(buffer);
+
+	/* Increment the SYSCTL count of produced records */
+	dlog_nproduce++;
+	return 0;
+
+err_free_bbuf:
+	dl_bbuf_delete(buffer);
+
+err_free_record_set:
+	dl_record_batch_delete(record_batch);
+
+err_produce:
+	DLOGTR0(PRIO_HIGH, "Error producing request\n");
+	return -1;
 }
 
 int
@@ -184,7 +298,7 @@ dlog_client_close(struct dlog_handle *self)
 	nvlist_destroy(props);
 
 	/* Free the client configuration. */
-	dlog_free(self->dlh_config);
+	dlog_free((struct dl_client_config *) self->dlh_config);
 
 	/* Free all the memory associated with the client handle. */
 	dlog_free(self);	
@@ -330,55 +444,26 @@ dlog_list_offset(struct dlog_handle *handle, struct sbuf *topic_name,
 #endif
 
 int
-dlog_produce(struct dlog_handle *self, unsigned char *k, size_t k_len,
-    unsigned char *v, size_t v_len)
+dlog_produce(struct dlog_handle *self, char *k, unsigned char *v, size_t v_len)
 {
 	struct dl_bbuf *buffer;
 	struct dl_message_set *message_set;
+	struct dl_record *record;
+	struct dl_record_batch *record_batch;
 
 	dlog_client_check_integrity(self);
 
-	/* Instantiate a new MessageSet. */
-	if (dl_message_set_new(&message_set, k, k_len, v, v_len) != 0)
-		return -1;
+	if (true) {
 
-	if (dl_bbuf_new(&buffer, NULL, DL_MTU,
-	    DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN) != 0)
-		goto err_free_msgset;
+		return dlog_produce_v1(self, k, v, v_len);
+	} else {
 
-	if (dl_message_set_encode_compressed(message_set, buffer) != 0) {
-
-		DLOGTR0(PRIO_HIGH, "Error encoding MessageSet\n");
-		goto err_free_bbuf;
+		return dlog_produce_v2(self, k, v, v_len);
 	}
-	
-	
-	/* Enqueue the MessageSet for processing */
-	if (dl_topic_produce_to(self->dlh_topic, buffer) != 0) {
-
-		DLOGTR0(PRIO_HIGH, "Error enquing MessageSet\n");
-		goto err_free_bbuf;
-	}
-		
-	dl_bbuf_delete(buffer);
-	dl_message_set_delete(message_set);
-
-	/* Increment the SYSCTL count of produced records */
-	dlog_nproduce++;
-	return 0;
-
-err_free_bbuf:
-	dl_bbuf_delete(buffer);
-
-err_free_msgset:
-	dl_message_set_delete(message_set);
-
-	DLOGTR0(PRIO_HIGH, "Error producing request\n");
-	return -1;
 }
 
 int
 dlog_produce_no_key(struct dlog_handle *handle, unsigned char *v, size_t v_len)
 {
-	return dlog_produce(handle, NULL, 0, v, v_len);
+	return dlog_produce(handle, NULL, v, v_len);
 }
