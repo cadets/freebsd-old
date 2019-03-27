@@ -464,7 +464,6 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 		    sizeof(struct dl_client_config));
 		DL_ASSERT(conf != NULL,
 		    ("Failed allocating DLog client configuration."));
-		conf->dlcc_on_response = conf_desc.dlcc_on_response;
 		conf->dlcc_props = props;
 
 		if (dlog_client_open(&handle, conf) != 0) {
