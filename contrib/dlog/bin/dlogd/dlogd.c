@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -37,6 +37,7 @@
 #include <sys/ioctl.h>
 #include <sys/ioccom.h>
 #include <sys/nv.h>
+#include <sys/dnv.h>
 #include <sys/queue.h>
 #include <sys/event.h>
 #include <sys/param.h>
@@ -50,8 +51,8 @@
 #include <libutil.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
-#include <ucl.h>
 #include <unistd.h>
 #include <malloc_np.h>
 
@@ -71,19 +72,6 @@ extern uint32_t hashlittle(const void *, size_t, uint32_t);
 static char const * const DLOGD_PIDFILE = "/var/run/dlogd.pid";
 static char const * const DLOGD_DEFAULT_CONFIG = "/etc/dlogd/dlogd.cfg";
 static char const * const DLOG_DEV = "/dev/dlog";
-static char const * const DLOGD_CLIENTID = "clientid";
-static char const * const DLOGD_NELEMENTS = "nelements";
-static const int DLOGD_NELEMENTS_DEFAULT = 10;
-static char const * const DLOGD_TOPICS = "topics";
-static char const * const DLOGD_LOG_PATH= "log_path";
-static char const * const DLOGD_LOG_PATH_DEFAULT= "/var/db/dlogd";
-static char const * const DLOGD_PRIVATEKEY_FILE = "privatekey_file";
-static char const * const DLOGD_CLIENT_FILE = "client_file";
-static char const * const DLOGD_CACERT_FILE = "cacert_file";
-static char const * const DLOGD_USER_PASSWORD = "user_password";
-static char const * const DLOGD_TLS = "tls";
-static char const * const DLOGD_RESEND = "resend";
-static char const * const DLOGD_REQUEST_QUEUE_LEN = "request_queue_len";
 
 struct dl_producer_elem {
 	LIST_ENTRY(dl_producer_elem) dlp_entries;
@@ -95,7 +83,7 @@ unsigned short PRIO_LOG = PRIO_LOW;
 const dlog_malloc_func dlog_alloc = malloc;
 const dlog_free_func dlog_free = free;
 
-/* GLobal singleton dlogd configuration */
+/* Global singleton dlogd configuration */
 extern nvlist_t *dlogd_props;
 nvlist_t *dlogd_props;
 
@@ -104,8 +92,6 @@ static char const* dlogd_name;
 static LIST_HEAD(dl_producers, dl_producer_elem) *producers;
 static unsigned long hashmask;
 static int dlog;
-static int nelements = DLOGD_NELEMENTS_DEFAULT;
-static int dlogd_debug = 0;
 
 static void
 dlogd_stop(int sig __attribute__((unused)))
@@ -125,11 +111,7 @@ static int
 setup_daemon(void)
 {
 	long hashsize;
-
-	/* Create a new nvlist to store producer configuration. */
-	dlogd_props = nvlist_create(0);
-
-	nvlist_add_number(dlogd_props, DL_CONF_DEBUG_LEVEL, dlogd_debug);
+	int nelements;
 
 	/* Open the DLog device */
 	dlog = open(DLOG_DEV, O_RDWR);
@@ -143,6 +125,8 @@ setup_daemon(void)
 	/* Create the hashmap to store producers for the topics managed by the
 	 * dlog daemon.
 	 */
+	nelements = dnvlist_get_number(dlogd_props,
+		DL_CONF_NELEMENTS, DL_DEFAULT_NELEMENTS);
 	for (hashsize = 1; hashsize <= nelements; hashsize <<= 1)
 		continue;
 	hashsize >>= 1;
@@ -164,17 +148,20 @@ setup_daemon(void)
 }
 
 static int
-dlogd_manage_topic(char * topic_name, char *log_path, char *hostname,
-    int64_t port)
+dlogd_manage_topic(char * topic_name, char *hostname, int64_t port)
 {
 	struct dl_producer *producer;
 	struct dl_producer_elem *elem;
 	struct dl_topic_desc *topic_desc;
 	struct dl_topic *topic;
+	char *log_path;
 	uint32_t h;
 	int rc;
 
-	/* Preallocate an initial segement file for the topic and add
+	/* Get the comnfigured log path from the properties. */
+	log_path = dnvlist_get_string(dlogd_props, DL_CONF_LOG_PATH, DL_DEFAULT_LOG_PATH);
+
+	/* Preallocate an initial segment file for the topic and add
 	 * to the hashmap.
 	 */
 	rc = dl_topic_new(&topic, topic_name, log_path);
@@ -228,19 +215,16 @@ dlogd_manage_topic(char * topic_name, char *log_path, char *hostname,
 int
 main(int argc, char *argv[])
 {
-	struct dl_producer_elem *p, *p_tmp;	
-	struct ucl_parser* parser;
-	ucl_object_t *top, *cur, *obj, *t, *topics_obj = NULL;
-	ucl_object_iter_t it, tit = NULL;
-	struct dl_topic *topic_tmp;
 	char const *conf_file = DLOGD_DEFAULT_CONFIG;
-	char *topic_name;
-	char *hostname;
-	char *log_path = DLOGD_LOG_PATH_DEFAULT;
+	char *topic_name, *hostname;
+	struct dl_producer_elem *p, *p_tmp;	
+	struct dl_topic *topic_tmp;
+	nvlist_t *topics, *topic;
+	void *cookie = NULL;
 	int64_t port;
 	struct pidfh *pfh;
 	pid_t pid;
-	int c, rc;
+	int c, rc, type, dlogd_debug = 0;
 
 	dlogd_name = basename(argv[0]); 	
 
@@ -291,141 +275,51 @@ main(int argc, char *argv[])
 
 	DLOGTR1(PRIO_LOW, "%s daemon starting...\n", dlogd_name);
 
+	/* Parse the configuration file. */
+	rc = dl_config_new(conf_file, dlogd_debug);
+	if (rc != 0) {
+
+		pidfile_remove(pfh);
+		errx(EXIT_FAILURE, "Failed parsing dlogd configuration file\n");
+	}
+	
 	if (setup_daemon() != 0) {
 
 		pidfile_remove(pfh);
 		errx(EXIT_FAILURE, "Failed setting up dlogd as daemon\n");
 	}
 
-	/* Instatiate libucl parser to parse the dlogd config file. */
-	parser = ucl_parser_new(0);
-	if (parser == NULL) {
-
-		DLOGTR0(PRIO_HIGH, "Error creating libucl parser\n");
-		goto err;
-	}
+	/* Iterate over the configured topics. */
+	topics = nvlist_take_nvlist(dlogd_props, DL_CONF_TOPICS);
+	while ((topic_name = nvlist_next(topics, &type, &cookie)) != NULL) {
+				
+		switch (type) {
+		case NV_TYPE_NVLIST: 
 	
-	if (!ucl_parser_add_file(parser, conf_file)) {
+			if (nvlist_exists_nvlist(topics, topic_name)) {
+				topic = nvlist_get_nvlist(topics, topic_name);
 
-		DLOGTR0(PRIO_HIGH, "Failed to parse config file\n");
-		/* Free the libucl parser. */	
-		ucl_parser_free(parser);
-		goto err;
-	}
+				hostname = dnvlist_get_string(topic, DL_CONF_BROKER,
+				    DL_DEFAULT_BROKER);
 
-	/* Obtain a reference to the top object */
-	top = ucl_parser_get_object(parser);
-	if (top == NULL) {
+				port = dnvlist_get_number(topic,
+				    DL_CONF_BROKER_PORT, DL_DEFAULT_BROKER_PORT);
 
-		DLOGTR0(PRIO_HIGH,
-		    "Failed to obtain reference to libucl object\n");
-		goto err_free_libucl;
-	}
-
-	/* Iterate over the object */
-	it = ucl_object_iterate_new(top);
-	while ((obj = ucl_object_iterate_safe(it, true)) != NULL) {
-
-		/* Parse each the configuration item. */
-		if (strcmp(ucl_object_key(obj), DLOGD_CLIENTID) == 0) {
-
-			nvlist_add_string(dlogd_props, DL_CONF_CLIENTID,
-			    ucl_object_tostring_forced(obj));
-		} else  if (strcmp(ucl_object_key(obj), DLOGD_PRIVATEKEY_FILE) == 0) {
-
-			nvlist_add_string(dlogd_props, DL_CONF_PRIVATEKEY_FILE,
-			    ucl_object_tostring_forced(obj));
-		} else if (strcmp(ucl_object_key(obj), DLOGD_CLIENT_FILE) == 0) {
-
-			nvlist_add_string(dlogd_props, DL_CONF_CLIENT_FILE,
-			    ucl_object_tostring_forced(obj));
-		} else if (strcmp(ucl_object_key(obj), DLOGD_CACERT_FILE) == 0) {
-
-			nvlist_add_string(dlogd_props, DL_CONF_CACERT_FILE,
-			    ucl_object_tostring_forced(obj));
-		} else if (strcmp(ucl_object_key(obj), DLOGD_USER_PASSWORD) == 0) {
-
-			nvlist_add_string(dlogd_props, DL_CONF_USER_PASSWORD,
-			    ucl_object_tostring_forced(obj));
-		} else if (strcmp(ucl_object_key(obj), DLOGD_TLS) == 0) {
-
-			nvlist_add_bool(dlogd_props, DL_CONF_TLS_ENABLE,
-			    ucl_object_toboolean(obj));
-		} else if (strcmp(ucl_object_key(obj), DLOGD_RESEND) == 0) {
-
-			nvlist_add_bool(dlogd_props, DL_CONF_TORESEND,
-			    ucl_object_toboolean(obj));
-		} else if (strcmp(ucl_object_key(obj),
-		    DLOGD_REQUEST_QUEUE_LEN) == 0) {
-
-			nvlist_add_number(dlogd_props, DL_CONF_REQUEST_QUEUE_LEN,
-			    ucl_object_toint(obj));
-		} else if (strcmp(ucl_object_key(obj), DLOGD_NELEMENTS) == 0) {
-	
-			nelements = ucl_object_toint(obj);
-			if (nelements <= 0 )
-				nelements = DLOGD_NELEMENTS_DEFAULT;
-		} else if (strcmp(ucl_object_key(obj), DLOGD_LOG_PATH) == 0) {
-
-			    log_path = ucl_object_tostring_forced(obj);
-		} else if (strcmp(ucl_object_key(obj), DLOGD_TOPICS) == 0) {
-
-			topics_obj = obj;
-		} else {
-			DLOGTR1(PRIO_HIGH,
-			   "Unrecongised configuration: %s\n",
-			   ucl_object_key(obj));
-		}
-	}
-		
-	/* Check whether topics to manage have been configured */
-	if (topics_obj == NULL) {
-
-		DLOGTR0(PRIO_HIGH,
-		    "No topics configured for dlog to manage\n");
-		goto err_free_libucl;
-	}
-
-	/* Parse the configured topics. */
-	it = ucl_object_iterate_reset(it, topics_obj);
-	while ((cur = ucl_object_iterate_safe(it, true)) != NULL) {
-		
-		topic_name = ucl_object_key(cur);
-		hostname = NULL;
-		port = -1;
-
-		/* Iterate over the values of a key */
-		while ((t = ucl_iterate_object (cur, &tit, true))) {
-
-			if (strcmp(ucl_object_key(t), "hostname") == 0) {
-			
-				hostname = ucl_object_tostring_forced(t);
-			} else if (strcmp(ucl_object_key(t), "port") == 0) {
-
-				port = ucl_object_toint(t);
+				rc = dlogd_manage_topic(topic_name, hostname, port);
+				if (rc != 0)
+					DLOGTR1(PRIO_HIGH,
+					    "Failed configuring topic %s\n", topic_name);
 			} else {
 				DLOGTR1(PRIO_HIGH,
-				    "Unrecongised configuration: %s\n",
-				    ucl_object_key(t));
+			    	    "Topic %s details missing\n", topic_name);
 			}
-		}
-
-		if (topic_name != NULL && hostname != NULL && port != -1) {
-			rc = dlogd_manage_topic(topic_name, log_path,
-			    hostname, port);
-			if (rc != 0) {
-
-				DLOGTR1(PRIO_HIGH, "Failed to topic %s\n",
-				topic_name);
-			}
+			break;
+		default:
+			DLOGTR1(PRIO_HIGH,
+			    "Invalid nvlist type for topic %s\n", topic_name);
+			break;
 		}
 	}
-	ucl_object_iterate_free(it);
-
-	ucl_object_unref(top);
-
-	/* Free the libucl parser. */	
-	ucl_parser_free(parser);
 
 	/* Register signal handler to terminate dlogd */
 	signal(SIGINT, dlogd_stop);
@@ -456,7 +350,15 @@ main(int argc, char *argv[])
 			DLOGTR1(PRIO_LOW,
 			    "Deleting the topic %s producer.\n",
 			    sbuf_data(dl_topic_get_name(topic_tmp)));
-					
+				
+			/* Destroy the nvlist used to store the topic details. */
+			if (nvlist_exists_nvlist(topics,
+			    sbuf_data(dl_topic_get_name(topic_tmp)))) {
+				    topic = nvlist_take_nvlist(topics,
+			    		sbuf_data(dl_topic_get_name(topic_tmp)));
+				nvlist_destroy(topic);
+			}
+	
 			/* Delete the topic producer */
 			dl_producer_delete(p->dlp_inst);
 	
@@ -464,6 +366,9 @@ main(int argc, char *argv[])
 			dlog_free(p);
 		}
 	}
+	
+	/* Destroy the nvlist used to store configured topics. */
+	nvlist_destroy(topics);
 
 	/* Delete the producer hashmap */
 	DLOGTR0(PRIO_LOW, "Deleting the producer hashmap.\n");
@@ -484,15 +389,4 @@ main(int argc, char *argv[])
 	DLOGTR1(PRIO_LOW, "%s daemon stopped.\n", dlogd_name);
 	
 	return 0;
-
-err_free_libucl:
-	/* Free the libucl parser. */	
-	ucl_parser_free(parser);
-	
-err:
-	if (dlogd_debug > 0)
-		closelog();
-
-	pidfile_remove(pfh);
-	exit(EXIT_FAILURE);
 }
