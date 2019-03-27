@@ -240,7 +240,7 @@ dl_user_segment_insert_message(struct dl_segment *self, struct dl_bbuf *buffer)
 	DL_ASSERT(buffer != NULL,
 	    ("Buffer to insert into segment cannot be NULL."));
 
-	DLOGTR1(PRIO_HIGH, "Inserting (%d bytes) into the log\n",
+	DLOGTR1(PRIO_HIGH, "Inserting (%zu bytes) into the log\n",
 	    dl_bbuf_pos(buffer));
 
 	dl_segment_lock(self);
@@ -287,7 +287,8 @@ dl_user_segment_get_message_by_offset(struct dl_segment *self, int offset,
 {
 	struct dl_bbuf *t;
 	unsigned char *msg_tmp;
-	int32_t tmp_buf[2], cid, size;
+	int64_t base_offset;
+	int32_t tmp_buf[3], size;
 	off_t poffset;
 	int rc;
 
@@ -304,8 +305,10 @@ dl_user_segment_get_message_by_offset(struct dl_segment *self, int offset,
 
 		dl_bbuf_new(&t, (unsigned char *) tmp_buf,
 		    sizeof(tmp_buf), DL_BBUF_BIGENDIAN);
-		dl_bbuf_get_int32(t, &cid);
+		dl_bbuf_get_int64(t, &base_offset);
+		DLOGTR1(PRIO_NORMAL, "base offset= %ld\n", base_offset);
 		dl_bbuf_get_int32(t, &size);
+		DLOGTR1(PRIO_NORMAL, "size = %d\n", size);
 		dl_bbuf_delete(t);
 
 		msg_tmp = dlog_alloc(size * sizeof(unsigned char) + sizeof(int32_t));
@@ -314,16 +317,16 @@ dl_user_segment_get_message_by_offset(struct dl_segment *self, int offset,
 			return -1;
 		}
 
-		rc = pread(self->dls_user->dls_log, msg_tmp, size + sizeof(int32_t),
-		    poffset + sizeof(int32_t));
+		rc = pread(self->dls_user->dls_log, msg_tmp,
+		    size + sizeof(int64_t) + sizeof(int32_t), poffset); // + sizeof(int64_t));
 		if (rc == -1) {
 			dlog_free(msg_tmp);
 			return -1;
 		}
 
-		dl_bbuf_new(msg_buf, NULL, size + sizeof(int32_t),
+		dl_bbuf_new(msg_buf, NULL, size + sizeof(int64_t) + sizeof(int32_t),
 		    DL_BBUF_BIGENDIAN);
-		dl_bbuf_bcat(*msg_buf, msg_tmp, size + sizeof(int32_t));
+		dl_bbuf_bcat(*msg_buf, msg_tmp, size + sizeof(int64_t) + sizeof(int32_t));
 		dlog_free(msg_tmp);
 		return 0;
 	} else {
