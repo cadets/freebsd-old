@@ -36,7 +36,7 @@
 
 #include <sys/file.h>
 #include <sys/mman.h>
-#include <sys/nv.h>
+#include <sys/dnv.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/sbuf.h>
@@ -280,7 +280,7 @@ dl_producer_kq_handler(void *instance, int fd __attribute((unused)),
 
 			idx = dl_user_segment_get_index(seg);
 			if (dl_index_update(idx,
-			    dl_index_get_last(idx) + DL_FSYNC_DEFAULT_CHARS) > 0) {
+			    dl_index_get_last(idx) + DL_INDEX_DEFAULT_CHARS) > 0) {
 				/* Fire the produce() event into the
 				 * Producer state machine .
 				 */
@@ -443,7 +443,6 @@ dlp_produce_thread(void *vargp)
 	struct dl_producer *self = (struct dl_producer *)vargp;
 	struct dl_request_element *request;
 	ssize_t nbytes;
-	int rc;
 
 	dl_producer_check_integrity(self);
 
@@ -485,7 +484,7 @@ dlp_produce_thread(void *vargp)
 				if (self->dlp_debug_level > 1)
 					DLOGTR2(PRIO_LOW,
 					    "ProduceRequest: id = %d failed "
-					    "(bytes = %d)\n",
+					    "(bytes = %zu)\n",
 					    request->dlrq_correlation_id,
 					    dl_bbuf_pos(request->dlrq_buffer));
 			}
@@ -530,7 +529,7 @@ dlp_enqueue_thread(void *vargp)
 		/* Instantiate a new ProduceRequest */
 		if (dl_produce_request_new_nomsg(&message,
 		    dl_correlation_id_val(self->dlp_cid),
-		    self->dlp_name, 1, 2000,
+		    self->dlp_name, DL_DEFAULT_ACKS, DL_DEFAULT_ACK_TIMEOUT,
 		    topic_name) == 0) {
 
 			rc = dl_request_encode(message, &buffer);
@@ -544,6 +543,16 @@ dlp_enqueue_thread(void *vargp)
 			/* Free the ProduceRequest */
 			dl_request_delete(message);
 
+			/* Encode the MessageSet/RecordBatch size. */
+			rc = dl_bbuf_put_int32(buffer, dl_bbuf_pos(msg_buffer));
+			if (rc != 0) {
+
+				DLOGTR0(PRIO_HIGH,
+				    "Failed creating ProduceRequest\n");
+				dl_bbuf_delete(msg_buffer);
+				dl_producer_error(self);
+			}
+	
 			/* Concat the buffers together */
 			rc = dl_bbuf_concat(buffer, msg_buffer);
 			if (rc != 0) {
@@ -570,7 +579,7 @@ dlp_enqueue_thread(void *vargp)
 
 			if (self->dlp_debug_level > 2)
 				DLOGTR2(PRIO_LOW,
-				    "ProduceRequest: id = %d enqueued (%d bytes)\n",
+				    "ProduceRequest: id = %d enqueued (%zu bytes)\n",
 				    dl_correlation_id_val(self->dlp_cid),
 				    dl_bbuf_pos(buffer));
 
@@ -592,6 +601,8 @@ dlp_enqueue_thread(void *vargp)
 				/* Increment the offset to process. */
 				dl_offset_inc(dl_user_segment_get_offset_tmp(seg));
 			}
+
+			getchar();
 		} else {
 
 			DLOGTR0(PRIO_HIGH,
@@ -866,34 +877,19 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 	producer->dlp_transport = NULL;
 
 	producer->dlp_name = sbuf_new_auto();
-	if (nvlist_exists_string(props, DL_CONF_CLIENTID)) {
-		client_id = nvlist_get_string(props, DL_CONF_CLIENTID);
-	} else {
-		client_id = DL_DEFAULT_CLIENTID;
-	}
+	client_id = dnvlist_get_string(props, DL_CONF_CLIENTID,
+	    DL_DEFAULT_CLIENTID);
 	sbuf_cpy(producer->dlp_name, client_id);
 	sbuf_finish(producer->dlp_name);
 
-	if (nvlist_exists_string(props, DL_CONF_RESENDTIMEOUT)) {
-		producer->dlp_resend_timeout = nvlist_get_number(props,
-		    DL_CONF_RESENDTIMEOUT);
-	} else {
-		producer->dlp_resend_timeout = DL_DEFAULT_RESENDTIMEOUT;
-	}
+	producer->dlp_resend_timeout = dnvlist_get_number(props,
+	    DL_CONF_RESENDTIMEOUT, DL_DEFAULT_RESENDTIMEOUT);
 
-	if (nvlist_exists_string(props, DL_CONF_RESENDPERIOD)) {
-		producer->dlp_resend_period = nvlist_get_number(props,
-		    DL_CONF_RESENDPERIOD);
-	} else {
-		producer->dlp_resend_period = DL_DEFAULT_RESENDPERIOD;
-	}
+	producer->dlp_resend_period = dnvlist_get_number(props,
+	    DL_CONF_RESENDPERIOD, DL_DEFAULT_RESENDPERIOD);
 
-	if (nvlist_exists_number(props, DL_CONF_REQUEST_QUEUE_LEN)) {
-		requestq_len = nvlist_get_number(props,
-		    DL_CONF_REQUEST_QUEUE_LEN);
-	} else {
-		requestq_len = DL_DEFAULT_REQUEST_QUEUE_LEN;
-	}
+	requestq_len = dnvlist_get_number(props, DL_CONF_REQUEST_QUEUE_LEN,
+	    DL_DEFAULT_REQUEST_QUEUE_LEN);
 	producer->dlp_broker_hostname = sbuf_new_auto();
 	sbuf_cpy(producer->dlp_broker_hostname, hostname);
 	sbuf_finish(producer->dlp_broker_hostname);
@@ -942,20 +938,12 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 	dl_poll_reactor_register(&producer->dlp_ktimer_hdlr,
 	    POLLIN | POLLOUT | POLLERR);
 
-	if (nvlist_exists_bool(props, DL_CONF_TORESEND)) {
-		producer->dlp_resend = nvlist_get_bool(props,
-		    DL_CONF_TORESEND);
-	} else {
-		producer->dlp_resend = DL_DEFAULT_TORESEND;
-	}
+	producer->dlp_resend = dnvlist_get_bool(props, DL_CONF_TORESEND,
+	    DL_DEFAULT_TORESEND);
 
 	/* Read the configured debug level */
-	if (nvlist_exists_string(props, DL_CONF_CLIENTID)) {
-		producer->dlp_debug_level = nvlist_get_number(props,
-		    DL_CONF_DEBUG_LEVEL);
-	} else {
-		producer->dlp_debug_level = DL_DEFAULT_DEBUG_LEVEL;
-	}
+	producer->dlp_debug_level = dnvlist_get_number(props,
+	    DL_CONF_DEBUG_LEVEL, DL_DEFAULT_DEBUG_LEVEL);
 
 	*self = producer;
 	dl_producer_check_integrity(*self);
@@ -1047,11 +1035,10 @@ dl_producer_response(struct dl_producer *self, struct dl_bbuf *buffer)
 {
 	struct dl_request_element *request;
 	struct timeval tv_now, tdiff;
-	struct dl_response *response;
 	struct dl_response_header *hdr;
 	
 	dl_producer_check_integrity(self);
-	DL_ASSERT(hdr != NULL, ("Response header cannot be NULL"));
+	DL_ASSERT(buffer != NULL, ("Response buffer cannot be NULL"));
 
 	/* Deserialise the response header. */
 	if (dl_response_header_decode(&hdr, buffer) == 0) {
@@ -1083,7 +1070,8 @@ dl_producer_response(struct dl_producer *self, struct dl_bbuf *buffer)
 			case DL_PRODUCE_API_KEY:
 				/* TODO: Construct ProducerResponse */
 				// dl_produce_response_decode(&response, &buffer);
-			
+		
+
 				//dl_response_delete(response);
 
 				/* Update the producer statistics */
