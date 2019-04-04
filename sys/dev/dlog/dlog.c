@@ -377,7 +377,7 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 			    dlt_entries); 
 			SYSCTL_ADD_STRING(&clist, SYSCTL_CHILDREN(oidp),
 			    OID_AUTO, "Topic", CTLFLAG_RD, sbuf_data(tp_name),
-			    0, "Topic name");
+			    sbuf_len(tp_name), "Topic name");
 		} else {
 			sbuf_delete(tp_name);
 			return -1;
@@ -425,6 +425,8 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 				LIST_REMOVE(t, dlt_entries);
 				dl_topic_delete(t);
 				sbuf_delete(tp_name);
+
+				/* TODO: sysctl_remove_oid */
 				return 0;
 			}
 		}
