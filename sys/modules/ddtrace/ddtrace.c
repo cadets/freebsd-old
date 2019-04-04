@@ -87,6 +87,7 @@ static int ddtrace_event_handler(struct module *, int, void *);
 static void ddtrace_thread(void *);
 
 static void ddtrace_buffer_switch(dtrace_state_t *, struct dlog_handle *);
+static void ddtrace_persist_metadata(dtrace_state_t *, struct dlog_handle *);
 static void ddtrace_persist_trace(dtrace_state_t *, struct dlog_handle *,
     dtrace_bufdesc_t *);
 
@@ -101,9 +102,16 @@ static dtrace_dops_t dops = {
 static dtrace_dist_id_t did;
 
 extern kmutex_t dtrace_lock;
+extern dtrace_probe_t **dtrace_probes;	/* array of all probes */
+extern int dtrace_nprobes;		/* number of probes */
 
 static char const * const DDTRACE_NAME = "ddtrace";
-static char *DDTRACE_KEY = "ddtrace";
+static char * DDTRACE_KEY = "ddtrace";
+static char * DDTRACE_EPROBE_KEY = "eprobe";
+static char * DDTRACE_FORMAT_KEY = "format";
+static char * DDTRACE_PROBE_KEY = "probe";
+static char * DDTRACE_NFORMAT_KEY = "nformat";
+static char * DDTRACE_NPROBE_KEY = "nprobe";
 
 static moduledata_t ddtrace_conf = {
 	DDTRACE_NAME,
@@ -321,6 +329,12 @@ ddtrace_thread(void *arg)
 
 	ddtrace_assert_integrity(__func__, k);
 
+	/* Write the metadata to the log before processing the trace
+	 * buffers.
+	 */
+	ddtrace_persist_metadata(k->ddtrace_state, k->ddtrace_dlog_handle);
+
+	/* Process the trace buffers. */
 	for (;;) {
 
 		mtx_lock(&k->ddtrace_mtx);
@@ -357,6 +371,181 @@ ddtrace_thread(void *arg)
 
 	DLOGTR0(PRIO_NORMAL, "DDTrace thread exited successfully.\n");
 	kthread_exit();
+}
+
+static void
+ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
+{
+	dtrace_action_t *act;
+	dtrace_ecb_t *ecb;
+	dtrace_eprobedesc_t epdesc;
+	dtrace_probe_t *probe;
+	dtrace_probedesc_t pdesc;
+	char *fmt_str;
+	size_t size;
+	uintptr_t dest;
+	void *buf;
+	int fmt_len, nrecs;
+
+	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL."));
+	DL_ASSERT(hdl != NULL, ("DLog handle cannot be NULL."));
+
+	/* Write the formats to the log:
+	 * this mirrors the DTRACEIOC_FORMAT ioctl.
+	 */
+	DLOGTR0(PRIO_LOW, "Persisting dtrace format string metadata\n");
+
+	mutex_enter(&dtrace_lock);
+	if (dlog_produce(hdl, DDTRACE_NFORMAT_KEY,
+	    (unsigned char *)&state->dts_nformats, sizeof(int)) != 0) {
+
+		DLOGTR0(PRIO_HIGH,
+		    "Error producing format metadata to DLog\n");
+	}
+
+	for (int fmt = 1; fmt <= state->dts_nformats; fmt++) {
+		/*
+		 * Format strings are allocated contiguously and they are
+		 * never freed; if a format index is less than the number
+		 * of formats, we can assert that the format map is non-NULL
+		 * and that the format for the specified index is non-NULL.
+		 */
+		DL_ASSERT(state->dts_formats != NULL,
+		    ("Format array cannot be NULL"));
+		fmt_str = state->dts_formats[fmt - 1];
+		DL_ASSERT(fmt_str != NULL, ("Format string cannor be NULL"));
+		fmt_len = strlen(fmt_str) + 1;
+
+		/* Persit the format string to dlog. */	
+		if (dlog_produce(hdl, DDTRACE_FORMAT_KEY, fmt_str, fmt_len) != 0) {
+
+			DLOGTR0(PRIO_HIGH,
+			    "Error producing format metadata to DLog\n");
+		}
+	} 
+	mutex_exit(&dtrace_lock);
+
+	/* Write the eprobedesc to the log: this duplicates the
+	 * DTRACEIOC_EPROBE ioctl.
+	 */
+	DLOGTR0(PRIO_LOW, "Persisting dtrace eprobe metadata\n");
+
+	/* TODO: Some though is needed here dtrace_nprobes is not part of
+	 * the dtrace state. How is it updated (under what lock)?
+	 * I truth I only what to send the epids, can these be rescaled
+	 * to monotonical increase for 1?
+	 */
+	if (dlog_produce(hdl, DDTRACE_NPROBE_KEY,
+	    (unsigned char *) &dtrace_nprobes, sizeof(int)) != 0) {
+
+		DLOGTR0(PRIO_HIGH,
+		    "Error producing format metadata to DLog\n");
+	}
+
+	mutex_enter(&dtrace_lock);
+	DL_ASSERT(state->dtnecbs > 0 && state->dts_ecbs != NULL,
+	    ("dtrace ecb state is invalid"));
+	for (dtrace_epid_t epid = 1; epid <= state->dts_epid; epid++) {
+
+		DLOGTR1(PRIO_LOW, "Persisting dtrace eprobe (%d) metadata\n",
+		    epid);
+
+		DL_ASSERT(state->dts_ecbs > 0 && state != NULL,
+		    ("DTace ECB state is invalid"));
+		DL_ASSERT((ecb = state->dts_ecbs[id - 1]) == NULL ||
+		    ecb->dte_epid == epid, ("DTrace ECBS state is inconsitent"));
+
+		ecb = state->dts_ecbs[epid - 1];
+		if (ecb == NULL || ecb->dte_probe == NULL)
+			continue;
+
+		/* TODO: Only persist the metadata where the probe is matched
+		 * for the current zone; see the DTRACEIOC_PROBES/_PROBEMATCH ioctl
+		 * implementation.
+		 */
+		if ((probe = dtrace_probes[ecb->dte_probe->dtpr_id - 1]) != NULL) {
+
+			bzero(&pdesc, sizeof(dtrace_probedesc_t));
+			pdesc.dtpd_provider[DTRACE_PROVNAMELEN - 1] = '\0';
+			pdesc.dtpd_mod[DTRACE_MODNAMELEN - 1] = '\0';
+			pdesc.dtpd_func[DTRACE_FUNCNAMELEN - 1] = '\0';
+			pdesc.dtpd_name[DTRACE_NAMELEN - 1] = '\0';
+
+			/* Construct the probe description and
+			 * persist the metadata to dlog.
+			 */
+			pdesc.dtpd_id = epid;// TODO: temporary fix
+			(void) strncpy(pdesc.dtpd_provider,
+			    probe->dtpr_provider->dtpv_name,
+			    DTRACE_PROVNAMELEN - 1);
+			(void) strncpy(pdesc.dtpd_mod, probe->dtpr_mod,
+			    DTRACE_MODNAMELEN - 1);
+			(void) strncpy(pdesc.dtpd_func, probe->dtpr_func,
+			    DTRACE_FUNCNAMELEN - 1);
+			(void) strncpy(pdesc.dtpd_name, probe->dtpr_name,
+			    DTRACE_NAMELEN - 1);
+
+			if (dlog_produce(hdl, DDTRACE_PROBE_KEY,
+			    (unsigned char *) &pdesc,
+		    	    sizeof(dtrace_probedesc_t)) != 0) {
+
+				DLOGTR0(PRIO_HIGH,
+			    	    "Error producing format probe metadata "
+				    "to DLog\n");
+				//return -1;
+			}
+	
+			epdesc.dtepd_epid = epid;
+			epdesc.dtepd_probeid = ecb->dte_probe->dtpr_id;
+			epdesc.dtepd_uarg = ecb->dte_uarg;
+			epdesc.dtepd_size = ecb->dte_size;
+			epdesc.dtepd_nrecs = 0;
+			for (act = ecb->dte_action; act != NULL; act = act->dta_next) {
+				if (DTRACEACT_ISAGG(act->dta_kind) || act->dta_intuple)
+					continue;
+
+				epdesc.dtepd_nrecs++;
+			}
+			nrecs = epdesc.dtepd_nrecs;
+
+			/*
+			 * now that we have the size, we need to allocate a temporary
+			 * buffer in which to store the complete description.  we need
+			 * the temporary buffer to be able to drop dtrace_lock()
+			 * across the copyout(), below.
+			 */
+			size = sizeof(dtrace_eprobedesc_t) +
+			    (epdesc.dtepd_nrecs * sizeof(dtrace_recdesc_t));
+
+			buf = malloc(size, M_DDTRACE, M_NOWAIT);
+			dest = (uintptr_t)buf;
+
+			bcopy(&epdesc, (void *)dest, sizeof(epdesc));
+			dest += offsetof(dtrace_eprobedesc_t, dtepd_rec[0]);
+
+			for (act = ecb->dte_action; act != NULL; act = act->dta_next) {
+				if (DTRACEACT_ISAGG(act->dta_kind) || act->dta_intuple)
+					continue;
+
+				if (nrecs-- == 0)
+					break;
+
+				bcopy(&act->dta_rec, (void *)dest,
+				    sizeof(dtrace_recdesc_t));
+				dest += sizeof(dtrace_recdesc_t);
+			}
+
+			/* Persist the EPROBE metadata to dlog. */
+			if (dlog_produce(hdl, DDTRACE_EPROBE_KEY, buf, size) != 0) {
+
+				DLOGTR0(PRIO_HIGH,
+				    "Error producing format eprobe metadata to DLog\n");
+			}
+
+			free(buf, M_DDTRACE);
+		}
+	}
+	mutex_exit(&dtrace_lock);
 }
 
 static void

@@ -601,8 +601,6 @@ dlp_enqueue_thread(void *vargp)
 				/* Increment the offset to process. */
 				dl_offset_inc(dl_user_segment_get_offset_tmp(seg));
 			}
-
-			getchar();
 		} else {
 
 			DLOGTR0(PRIO_HIGH,

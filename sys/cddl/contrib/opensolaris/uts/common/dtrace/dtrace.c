@@ -225,8 +225,8 @@ static vmem_t		*dtrace_minor;		/* minor number arena */
 static taskq_t		*dtrace_taskq;		/* task queue */
 static struct unrhdr	*dtrace_arena;		/* Probe ID number.     */
 #endif
-static dtrace_probe_t	**dtrace_probes;	/* array of all probes */
-static int		dtrace_nprobes;		/* number of probes */
+dtrace_probe_t		**dtrace_probes;	/* array of all probes */
+int			dtrace_nprobes;		/* number of probes */
 static dtrace_provider_t *dtrace_provider;	/* provider list */
 static dtrace_meta_t	*dtrace_meta_pid;	/* user-land meta provider */
 static dtrace_dist_t *dtrace_dist = NULL;	/* dist list */
