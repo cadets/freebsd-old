@@ -87,7 +87,7 @@ static int ddtrace_event_handler(struct module *, int, void *);
 static void ddtrace_thread(void *);
 
 static void ddtrace_buffer_switch(dtrace_state_t *, struct dlog_handle *);
-static void ddtrace_persist_metadata(dtrace_state_t *, struct dlog_handle *);
+static int ddtrace_persist_metadata(dtrace_state_t *, struct dlog_handle *);
 static void ddtrace_persist_trace(dtrace_state_t *, struct dlog_handle *,
     dtrace_bufdesc_t *);
 
@@ -332,7 +332,12 @@ ddtrace_thread(void *arg)
 	/* Write the metadata to the log before processing the trace
 	 * buffers.
 	 */
-	ddtrace_persist_metadata(k->ddtrace_state, k->ddtrace_dlog_handle);
+	if (ddtrace_persist_metadata(k->ddtrace_state,
+	    k->ddtrace_dlog_handle)) {
+
+		DLOGTR0(PRIO_HIGH, "Failed persisting metadata.\n");
+		return;
+	}
 
 	/* Process the trace buffers. */
 	for (;;) {
@@ -373,7 +378,7 @@ ddtrace_thread(void *arg)
 	kthread_exit();
 }
 
-static void
+static int 
 ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 {
 	dtrace_action_t *act;
@@ -401,6 +406,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 
 		DLOGTR0(PRIO_HIGH,
 		    "Error producing format metadata to DLog\n");
+		return -1;
 	}
 
 	for (int fmt = 1; fmt <= state->dts_nformats; fmt++) {
@@ -421,6 +427,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 
 			DLOGTR0(PRIO_HIGH,
 			    "Error producing format metadata to DLog\n");
+			return -1;
 		}
 	} 
 	mutex_exit(&dtrace_lock);
@@ -440,6 +447,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 
 		DLOGTR0(PRIO_HIGH,
 		    "Error producing format metadata to DLog\n");
+		return -1;
 	}
 
 	mutex_enter(&dtrace_lock);
@@ -492,7 +500,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 				DLOGTR0(PRIO_HIGH,
 			    	    "Error producing format probe metadata "
 				    "to DLog\n");
-				//return -1;
+				return -1;
 			}
 	
 			epdesc.dtepd_epid = epid;
@@ -540,12 +548,16 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 
 				DLOGTR0(PRIO_HIGH,
 				    "Error producing format eprobe metadata to DLog\n");
+				free(buf, M_DDTRACE);
+				return -1;
 			}
 
 			free(buf, M_DDTRACE);
 		}
 	}
 	mutex_exit(&dtrace_lock);
+
+	return 0;
 }
 
 static void
