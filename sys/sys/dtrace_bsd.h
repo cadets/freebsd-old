@@ -33,6 +33,8 @@
 #ifndef _SYS_DTRACE_BSD_H
 #define	_SYS_DTRACE_BSD_H
 
+#include <sys/_msgid.h>
+
 /* Forward definitions: */
 struct mbuf;
 struct trapframe;
@@ -84,6 +86,9 @@ extern dtrace_execexit_func_t	dtrace_fasttrap_exec;
 
 /* Global variable in kern_exit.c */
 extern dtrace_execexit_func_t	dtrace_fasttrap_exit;
+
+/* Global variable in kern_dtrace.c */
+extern hostid_t dtrace_node_id;
 
 /* The dtmalloc provider hooks into malloc. */
 typedef	void (*dtrace_malloc_probe_func_t)(u_int32_t, uintptr_t arg0,

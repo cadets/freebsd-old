@@ -1,5 +1,4 @@
 /*-
- * Copyright (c) 2016 Robert N. M. Watson
  * Copyright (c) 2019 Domagoj Stolfa
  * All rights reserved.
  *
@@ -30,36 +29,12 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _SYS_MSGID_H_
-#define	_SYS_MSGID_H_
+#ifndef _SYS_MBUFID_H_
+#define _SYS_MBUFID_H_
 
-#include <sys/_msgid.h>
+#include <sys/_mbufid.h>
 
-/*
- * Assign various bits of the type to hold a CPU identifier, and the remaining
- * bits to be used as a counter.  See subr_msgid.c for compile-time assertions
- * constraining possible values for these bits.
- */
-#define	MSGID_CPUBITS		9ULL		/* At most 512 CPUs. */
-#define	MSGID_COUNTERBITS	(sizeof(msgid_t)*8ULL - MSGID_CPUBITS)
-#define	MSGID_CPUMASK							\
-	    (((1ULL << MSGID_CPUBITS) - 1ULL) << MSGID_COUNTERBITS)
-#define	MSGID_COUNTERMASK	((1ULL << MSGID_COUNTERBITS) - 1ULL)
+void mbufid_generate(mbufid_t *mbufidp);
+int mbufid_isvalid(mbufid_t *mbufidp);
 
-/*
- * Macros to get and set the CPU ID portion of a message ID.
- */
-#define	MSGID_GETCPU(id)						\
-	(((id) & MSGID_CPUMASK) >> MSGID_COUNTERBITS)
-
-#define	MSGID_SETCPU(id, cpu) do {					\
-	(id) &= ~MSGID_CPUMASK;						\
-	(id) |= ((cpu) << MSGID_COUNTERBITS);				\
-} while (0)
-
-__BEGIN_DECLS
-void	msgid_generate(msgid_t *);
-int	msgid_isvalid(msgid_t *msgidp);
-__END_DECLS
-
-#endif /* _SYS_MSGID_H_ */
+#endif
