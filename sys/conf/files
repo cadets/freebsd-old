@@ -3895,6 +3895,7 @@ kern/subr_mchain.c		optional libmchain
 kern/subr_module.c		standard
 kern/subr_msgbuf.c		standard
 kern/subr_msgid.c		standard
+kern/subr_mbufid.c		standard
 kern/subr_param.c		standard
 kern/subr_pcpu.c		standard
 kern/subr_pctrie.c		standard

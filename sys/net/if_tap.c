@@ -912,9 +912,10 @@ tapread(struct cdev *dev, struct uio *uio, int flag)
 	/* xfer packet to user space */
 	while ((m != NULL) && (uio->uio_resid > 0) && (error == 0)) {
 		if (tp->tap_flags & TAP_PROPAGATE_TAG) {
-			struct msgid_info m_info = {0};
+			struct mbufid_info m_info;
+			memset(&m_info, 0, sizeof(m_info));
 
-			len = min(uio->uio_resid, m->m_len + sizeof(struct msgid_info));
+			len = min(uio->uio_resid, m->m_len + sizeof(struct mbufid_info));
 			if (len <= sizeof(msgid_t))
 				break;
 
@@ -924,16 +925,20 @@ tapread(struct cdev *dev, struct uio *uio, int flag)
 			   and the msgid itself. should this not be true, we just say
 			   that it is not present and have some zeroes at the start. */
 			if (m->m_flags & M_PKTHDR) {
-				m_info.mi_has_msgid = 1;
-				m_info.mi_msgid = m->m_pkthdr.msgid;
+				m_info.mi_has_data |= M_INFO_MSGID | M_INFO_HOSTID;
+				m_info.mi_id.mid_msgid = m->m_pkthdr.mbufid.mid_msgid;
+				m_info.mi_id.mid_hostid = m->m_pkthdr.mbufid.mid_hostid;
+				printf("m_info.mi_has_data = %x", m_info.mi_has_data);
+				printf("m_info.mi_id.mid_hostid = %llu", m_info.mi_id.mid_hostid);
+				printf("m_info.mi_id.mid_msgid = %llu", m_info.mi_id.mid_msgid);
 			}
 
 			error = uiomove((void *)&m_info,
-			    sizeof(struct msgid_info), uio);
+			    sizeof(struct mbufid_info), uio);
 		}
 
-		/* in case of msgid propagation, this should just
-		   shrink by sizeof(struct msgid_info) */
+		/* in case of mbufid propagation, this should just
+		   shrink by sizeof(struct mbufid_info) */
 		len = min(uio->uio_resid, m->m_len);
 		/* need this check because we don't always
 		   propagate msgids, it depends on the config */

@@ -158,7 +158,7 @@ CTASSERT(offsetof(struct mbuf, m_pktdat) % 8 == 0);
  */
 #if defined(__LP64__)
 CTASSERT(offsetof(struct mbuf, m_dat) == 32);
-CTASSERT(sizeof(struct pkthdr) == 56 + 8);
+CTASSERT(sizeof(struct pkthdr) == 56 + 24);
 CTASSERT(sizeof(struct m_ext) == 48);
 #else
 CTASSERT(offsetof(struct mbuf, m_dat) == 24);

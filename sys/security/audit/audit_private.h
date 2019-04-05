@@ -52,7 +52,7 @@
 #include <sys/caprights.h>
 #include <sys/ipc.h>
 #include <sys/metaio.h>
-#include <sys/msgid.h>
+#include <sys/mbufid.h>
 #include <sys/smp.h>
 #include <sys/socket.h>
 #include <sys/ucred.h>
@@ -283,6 +283,7 @@ struct audit_record {
 	struct uuid		ar_ret_objuuid1;
 	struct uuid		ar_ret_objuuid2;
 	msgid_t			ar_ret_msgid;
+	mbufid_t		ar_ret_mbufid;
 #endif
 	struct metaio		ar_ret_metaio;
 	int			ar_ret_svipc_id;

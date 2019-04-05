@@ -53,7 +53,7 @@
 
 #include <sys/file.h>
 #include <sys/sysctl.h>
-#include <sys/msgid.h>
+#include <sys/mbufid.h>
 
 /*
  * Audit subsystem condition flags.  The audit_trail_enabled flag is set and
@@ -158,6 +158,7 @@ void	 audit_thread_free(struct thread *td);
 void	 audit_ret_fd1(int fd);
 void	 audit_ret_fd2(int fd);
 void	 audit_ret_msgid(msgid_t *msgidp);
+void	 audit_ret_mbufid(mbufid_t *mbufidp);
 void	 audit_ret_objuuid1(struct uuid *uuid);
 void	 audit_ret_objuuid2(struct uuid *uuid);
 #endif
@@ -432,6 +433,11 @@ void	 audit_ret_svipc_id(int id);
 		audit_ret_msgid((msgidp));				\
 } while (0)
 
+#define	AUDIT_RET_MBUFID(mbufidp) do {					\
+	if (AUDITING_TD(curthread))					\
+		audit_ret_mbufid((mbufidp));				\
+} while (0)
+
 #define	AUDIT_RET_OBJUUID1(p) do {					\
 	if (AUDITING_TD(curthread))					\
 		audit_ret_objuuid1((p));				\
@@ -536,6 +542,7 @@ void	 audit_ret_svipc_id(int id);
 #define	AUDIT_RET_FD1(fd)
 #define	AUDIT_RET_FD2(fd)
 #define	AUDIT_RET_MSGID(msgidp)
+#define	AUDIT_RET_MBUFID(mbufidp)
 #define	AUDIT_RET_OBJUUID1(p)
 #define	AUDIT_RET_OBJUUID2(p)
 #endif /* KDTRACE_HOOKS */

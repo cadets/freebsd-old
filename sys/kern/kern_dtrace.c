@@ -49,6 +49,7 @@ FEATURE(kdtrace_hooks,
     "Kernel DTrace hooks which are required to load DTrace kernel modules");
 
 static MALLOC_DEFINE(M_KDTRACE, "kdtrace", "DTrace hooks");
+hostid_t	dtrace_node_id = 0;
 
 /* Hooks used in the machine-dependent trap handlers. */
 dtrace_trap_func_t		dtrace_trap_func;

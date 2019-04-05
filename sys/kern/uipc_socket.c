@@ -1382,8 +1382,8 @@ sosend_dgram(struct socket *so, struct sockaddr *addr, struct uio *uio,
 #ifdef KDTRACE_HOOKS
 	{
 		M_ASSERTPKTHDR(top);
-		msgid_generate(&top->m_pkthdr.msgid);
-		AUDIT_RET_MSGID(&top->m_pkthdr.msgid);
+		mbufid_generate(&top->m_pkthdr.mbufid);
+		AUDIT_RET_MBUFID(&top->m_pkthdr.mbufid);
 	}
 #endif
 
@@ -1580,8 +1580,8 @@ restart:
 #ifdef KDTRACE_HOOKS
 			if (so->so_type == SOCK_DGRAM) {
 				M_ASSERTPKTHDR(top);
-				msgid_generate(&top->m_pkthdr.msgid);
-				AUDIT_RET_MSGID(&top->m_pkthdr.msgid);
+				mbufid_generate(&top->m_pkthdr.mbufid);
+				AUDIT_RET_MBUFID(&top->m_pkthdr.mbufid);
 			}
 #endif
 			if (dontroute) {
@@ -1996,7 +1996,7 @@ dontblock:
 #ifdef KDTRACE_HOOKS
 		if (so->so_type == SOCK_DGRAM) {
 			M_ASSERTPKTHDR(m);
-			AUDIT_RET_MSGID(&m->m_pkthdr.msgid);
+			AUDIT_RET_MBUFID(&m->m_pkthdr.mbufid);
 		}
 #endif
 
@@ -2560,7 +2560,7 @@ soreceive_dgram(struct socket *so, struct sockaddr **psa, struct uio *uio,
 
 	{
 		M_ASSERTPKTHDR(m);
-		AUDIT_RET_MSGID(&m->m_pkthdr.msgid);
+		AUDIT_RET_MBUFID(&m->m_pkthdr.mbufid);
 	}
 
 	while (m != NULL && uio->uio_resid > 0) {

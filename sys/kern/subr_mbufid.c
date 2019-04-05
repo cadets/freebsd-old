@@ -1,5 +1,4 @@
 /*-
- * Copyright (c) 2016 Robert N. M. Watson
  * Copyright (c) 2019 Domagoj Stolfa
  * All rights reserved.
  *
@@ -30,36 +29,38 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _SYS_MSGID_H_
-#define	_SYS_MSGID_H_
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
-#include <sys/_msgid.h>
+#include <sys/param.h>
+#include <sys/mbufid.h>
+#include <sys/msgid.h>
+#include <sys/pcpu.h>
+#include <sys/systm.h>
+#include <sys/dtrace_bsd.h>
 
-/*
- * Assign various bits of the type to hold a CPU identifier, and the remaining
- * bits to be used as a counter.  See subr_msgid.c for compile-time assertions
- * constraining possible values for these bits.
- */
-#define	MSGID_CPUBITS		9ULL		/* At most 512 CPUs. */
-#define	MSGID_COUNTERBITS	(sizeof(msgid_t)*8ULL - MSGID_CPUBITS)
-#define	MSGID_CPUMASK							\
-	    (((1ULL << MSGID_CPUBITS) - 1ULL) << MSGID_COUNTERBITS)
-#define	MSGID_COUNTERMASK	((1ULL << MSGID_COUNTERBITS) - 1ULL)
+void
+mbufid_generate(mbufid_t *mbufidp)
+{
 
-/*
- * Macros to get and set the CPU ID portion of a message ID.
- */
-#define	MSGID_GETCPU(id)						\
-	(((id) & MSGID_CPUMASK) >> MSGID_COUNTERBITS)
+	/*
+	 * Save the generated host ID in the mbuf id. The host ID
+	 * is in network byte order already, so no conversion is
+	 * needed here.
+	 */
+	mbufidp->mid_hostid = dtrace_node_id;
+	msgid_generate(&mbufidp->mid_msgid);
+}
 
-#define	MSGID_SETCPU(id, cpu) do {					\
-	(id) &= ~MSGID_CPUMASK;						\
-	(id) |= ((cpu) << MSGID_COUNTERBITS);				\
-} while (0)
+int
+mbufid_isvalid(mbufid_t *mbufidp)
+{
 
-__BEGIN_DECLS
-void	msgid_generate(msgid_t *);
-int	msgid_isvalid(msgid_t *msgidp);
-__END_DECLS
-
-#endif /* _SYS_MSGID_H_ */
+	/*
+	 * Currently we just check for mid_hostid != 0, but there might be
+	 * some room to take some well known uuids that are not to be used,
+	 * precalculate their hashes (if possible) and check against that?
+	 */
+	return (msgid_isvalid(&mbufidp->mid_msgid) &&
+	    mbufidp->mid_hostid != 0);
+}

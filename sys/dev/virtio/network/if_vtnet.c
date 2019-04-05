@@ -47,7 +47,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/taskqueue.h>
 #include <sys/smp.h>
-#include <sys/msgid.h>
+#include <sys/mbufid.h>
 #include <machine/smp.h>
 
 #include <vm/uma.h>
@@ -688,6 +688,11 @@ vtnet_setup_features(struct vtnet_softc *sc)
 				sc->vtnet_flags |= VTNET_FLAG_MULTIQ;
 			}
 		}
+	}
+
+	if (virtio_with_feature(dev, VIRTIO_NET_F_TAG)) {
+		sc->vtnet_rx_tag = 1;
+		sc->vtnet_tx_tag = 1;
 	}
 }
 
@@ -1834,6 +1839,18 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 		 */
 		memcpy(hdr, mtod(m, void *), sizeof(struct virtio_net_hdr));
 		m_adj(m, adjsz);
+
+		/* in the case where there is a mbuf tag associated with the
+		   host mbuf, we are going to be sending it over. this only
+		   happens if we have negotiated the feature. */
+		if (sc->vtnet_rx_tag) {
+			struct mbufid_info *mi = mtod(m, struct mbufid_info *);
+			m_adj(m, sizeof(struct mbufid_info));
+
+			printf("mi->mi_has_data = %x", mi->mi_has_data);
+			printf("mi->mi_id.hostid = %llu", mi->mi_id.mid_hostid);
+			printf("mi->mi_id.msgid = %llu", mi->mi_id.mid_msgid);
+		}
 
 		vtnet_rxq_input(rxq, m, hdr);
 

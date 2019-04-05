@@ -110,6 +110,20 @@ audit_ret_msgid(msgid_t *msgidp)
 }
 
 void
+audit_ret_mbufid(mbufid_t *mbufidp)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+	if (!mbufid_isvalid(mbufidp))
+		return;
+	ar->k_ar.ar_ret_mbufid = *mbufidp;
+	RET_SET_VALID(ar, RET_MSGID);
+}
+
+void
 audit_ret_objuuid1(struct uuid *uuid)
 {
 	struct kaudit_record *ar;

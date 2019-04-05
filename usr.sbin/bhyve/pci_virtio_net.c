@@ -39,7 +39,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/select.h>
 #include <sys/uio.h>
 #include <sys/ioctl.h>
-#include <sys/msgid.h>
+#include <sys/mbufid.h>
 #include <net/if_tap.h>
 #include <machine/atomic.h>
 #include <net/ethernet.h>
@@ -281,7 +281,7 @@ pci_vtnet_tap_tx(struct pci_vtnet_softc *sc, struct iovec *iov, int iovcnt,
  *  MP note: the dummybuf is only used for discarding frames, so there
  * is no need for it to be per-vtnet or locked.
  */
-static uint8_t dummybuf[2048 + sizeof(struct msgid_info)];
+static uint8_t dummybuf[2048 + sizeof(struct mbufid_info)];
 
 static __inline struct iovec *
 rx_iov_trim(struct iovec *iov, int *niov, int tlen)

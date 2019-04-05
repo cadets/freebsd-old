@@ -37,7 +37,7 @@
 #define	_SYS_MBUF_H_
 
 /* XXX: These includes suck. Sorry! */
-#include <sys/msgid.h>
+#include <sys/mbufid.h>
 #include <sys/queue.h>
 #ifdef _KERNEL
 #include <sys/systm.h>
@@ -180,7 +180,7 @@ struct pkthdr {
 		void	*ptr;
 	} PH_per;
 
-	msgid_t		 msgid;		/* unique chain message ID */
+	mbufid_t	 mbufid;	/* unique chain ID */
 
 	/* Layer specific non-persistent local storage for reassembly, etc. */
 	union {
