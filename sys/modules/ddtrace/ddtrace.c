@@ -257,7 +257,6 @@ ddtrace_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 	caddr_t cached;
 	dtrace_bufdesc_t desc;
 	dtrace_buffer_t *buf;
-	processorid_t cpu = state->dts_beganon;
 
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
 	DL_ASSERT(handle != NULL, ("DLog handle cannot be NULL\n"));
@@ -269,10 +268,11 @@ ddtrace_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 	 * Persisting the buffer may involving splitting into portions portions
 	 * on a record boundary.
 	 */
-	for (int i = 0; i < mp_ncpus; i++) {
+	for (int cpu = 0; cpu < mp_ncpus; cpu++) {
 
-		/* NOTE: Unlike in the BUFSNAP ioctl it is unnecessary to
-		 * acquire dtrace_lock.
+		/* NOTE:
+		 * Unlike in the BUFSNAP ioctl it is unnecessary to acquire
+		 * dtrace_lock.
 		 */
 
 		buf = &state->dts_buffer[cpu];
@@ -315,9 +315,6 @@ ddtrace_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 		 */
 		if (desc.dtbd_size != 0)
 			ddtrace_persist_trace(state, handle, &desc);
-
-		/* Increment the CPU */
-		cpu = (cpu + 1) % mp_ncpus;
 	}
 }
 
@@ -566,7 +563,7 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 {
 	dtrace_epid_t epid;
 	size_t msg_start = 0, msg_size = 0, size = 0;
-		
+	
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL."));
 	DL_ASSERT(hdl != NULL, ("DLog handle cannot be NULL."));
 	DL_ASSERT(desc != NULL,
@@ -575,7 +572,7 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	    ("ddtrace_persist_trace called with NULL buffer."));
 	DL_ASSERT(desc->dtbd_size != 0,
 	    ("ddtrace_persist_trace called with empty buffer."));
-		
+
 	while (size < desc->dtbd_size) {
 
 		epid = *(dtrace_epid_t *) ((uintptr_t) desc->dtbd_data + size);
@@ -591,6 +588,7 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 			    "Error payload size is 0 for epid = %u\n", epid);
 			break;
 		}
+
 
 		/* Check whether the record would take the msg_size
 		 * over the MTU configured for the distributed log.

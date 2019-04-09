@@ -1177,7 +1177,6 @@ struct dtrace_state {
 	size_t dts_nretained;			/* number of retained enabs */
 	int dts_getf;				/* number of getf() calls */
 	uint64_t dts_rstate[NCPU][2];		/* per-CPU random state */
-	processorid_t dts_beganon;		/* which CPU BEGIN ran on */
 };
 
 struct dtrace_dist {
@@ -1245,6 +1244,7 @@ typedef struct dtrace_enabling {
 typedef struct dtrace_anon {
 	dtrace_state_t *dta_state;		/* DTrace consumer state */
 	dtrace_enabling_t *dta_enabling;	/* pointer to enabling */
+	processorid_t dta_beganon;		/* which CPU BEGIN ran on */
 } dtrace_anon_t;
 
 /*
