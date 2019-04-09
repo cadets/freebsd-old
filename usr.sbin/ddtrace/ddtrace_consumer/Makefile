@@ -44,26 +44,18 @@ LIBADD+=elf
 LIBADD+=proc
 LIBADD+=rdkafka
 LIBADD+=rtld_db
-LIBADD+=sbuf #?
+LIBADD+=sbuf
 LIBADD+=ssl
 LIBADD+=nv
+LIBADD+=util
 LIBADD+=z
 
-# TOD: These includes need some tidying up
 CFLAGS+=-DPRIVATE_RDKAFKA
 CFLAGS+=-DNEED_SOLARIS_BOOLEAN
-CFLAGS+=-L/usr/local/lib
-CFLAGS+=-I/usr/local/include
-CFLAGS+=-I${SRCTOP}/cddl/compat/opensolaris/include
-CFLAGS+=-I${SRCTOP}/cddl/contrib/opensolaris/lib/libdtrace/common
 CFLAGS+=-I${SRCTOP}/cddl/contrib/opensolaris/lib/libctf/common
-CFLAGS+=-I${SRCTOP}/cddl/lib/libdtrace
-CFLAGS+=-I${SRCTOP}/cddl/lib/libdtrace/common
 CFLAGS+=-I${SRCTOP}/sys/cddl/compat/opensolaris
 CFLAGS+=-I${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common
-CFLAGS+=-I${SRCTOP}/sys
 CFLAGS+=-I${SRCTOP}/cddl/contrib/opensolaris/lib/libdtrace/common
 CFLAGS+=-I${SRCTOP}/contrib/dlog/src
-CFLAGS+=-I${SRCTOP}/sys/dev/dlog
 
 .include <bsd.prog.mk>
