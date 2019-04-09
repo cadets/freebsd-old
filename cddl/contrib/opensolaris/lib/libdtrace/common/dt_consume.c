@@ -2184,7 +2184,7 @@ dt_setopt(dtrace_hdl_t *dtp, const dtrace_probedata_t *data,
 	return (rval);
 }
 
-static int
+int
 dt_consume_cpu(dtrace_hdl_t *dtp, FILE *fp, int cpu,
     dtrace_bufdesc_t *buf, boolean_t just_one,
     dtrace_consumer_t *dc, void *arg)
