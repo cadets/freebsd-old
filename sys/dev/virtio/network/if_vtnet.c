@@ -1848,8 +1848,8 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 			m_adj(m, sizeof(struct mbufid_info));
 
 			printf("mi->mi_has_data = %x", mi->mi_has_data);
-			printf("mi->mi_id.hostid = %llu", mi->mi_id.mid_hostid);
-			printf("mi->mi_id.msgid = %llu", mi->mi_id.mid_msgid);
+			printf("mi->mi_id.hostid = %lu", mi->mi_id.mid_hostid);
+			printf("mi->mi_id.msgid = %lu", mi->mi_id.mid_msgid);
 		}
 
 		vtnet_rxq_input(rxq, m, hdr);

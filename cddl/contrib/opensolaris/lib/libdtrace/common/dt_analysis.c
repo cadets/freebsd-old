@@ -81,7 +81,7 @@ static void
 dtrace_print_stack(uint64_t num_frames, const char *stack_name)
 {
 
-	fprintf(stderr, "%s %llu\n", stack_name, num_frames);
+	fprintf(stderr, "%s %llu\n", stack_name,(unsigned long long)num_frames);
 }
 
 static void

@@ -929,8 +929,8 @@ tapread(struct cdev *dev, struct uio *uio, int flag)
 				m_info.mi_id.mid_msgid = m->m_pkthdr.mbufid.mid_msgid;
 				m_info.mi_id.mid_hostid = m->m_pkthdr.mbufid.mid_hostid;
 				printf("m_info.mi_has_data = %x", m_info.mi_has_data);
-				printf("m_info.mi_id.mid_hostid = %llu", m_info.mi_id.mid_hostid);
-				printf("m_info.mi_id.mid_msgid = %llu", m_info.mi_id.mid_msgid);
+				printf("m_info.mi_id.mid_hostid = %lu", m_info.mi_id.mid_hostid);
+				printf("m_info.mi_id.mid_msgid = %lu", m_info.mi_id.mid_msgid);
 			}
 
 			error = uiomove((void *)&m_info,
