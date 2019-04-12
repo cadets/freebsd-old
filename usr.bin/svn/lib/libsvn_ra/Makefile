@@ -6,6 +6,7 @@
 
 INTERNALLIB=	yes
 LIB=		svn_ra
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=		compat.c debug_reporter.c deprecated.c editor.c \
 		ra_loader.c util.c

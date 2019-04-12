@@ -5,6 +5,9 @@
 .PATH: ${SRCDIR}/bfd ${SRCDIR}/opcodes
 
 LIB=	bfd
+
+MK_BITCODE_EVERYWHERE=no
+
 SRCS+=	archive.c \
 	archive64.c \
 	archures.c \

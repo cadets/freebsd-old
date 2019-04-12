@@ -9,6 +9,9 @@
 LIB= ntp
 INTERNALLIB=
 
+MK_BITCODE_EVERYWHERE=no
+
+
 NTP_SRCS= systime.c	a_md5encrypt.c	adjtime.c	atoint.c \
 	atolfp.c	atouint.c	audio.c	authkeys.c \
 	authreadkeys.c	authusekey.c	bsd_strerror.c	buftvtots.c \

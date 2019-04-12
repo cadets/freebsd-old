@@ -80,8 +80,25 @@ dtc_usage(FILE * fp)
 {
 
 	(void) fprintf(fp,
-	    "Usage: %s -b brokers -d -i input_topic"
-	    "[-o output_topic] -s script [-x]\n", g_pname);
+	    "Usage: %s -b brokers [-df] "
+	    "-i input_topic [-o output_topic] "
+	    "[-c client_certificate] [-a ca_cert] [-p password] "
+	    "[-k private_key] [-q poll_interval] "
+	    "-s script script_args\n", g_pname);
+
+	(void) fprintf(fp, "\n"
+	    "\t-d\t--debug\t\t Increase debug output\n"
+	    "\t-f\t--frombeginning\t Read from beginning of input topic\n"
+	    "\t-b\t--brokers\t Kafka broker connection string\n"
+	    "\t-i\t--intopic\t Kafka topic to read from\n"
+	    "\t-o\t--outtopic\t Kafka topic to write to\n"
+	    "\t-a\t--cacert\t CA_cert path (for TLS support)\n"
+	    "\t-c\t--clientcert\t Client certificate path (for TLS support)\n"
+	    "\t-p\t--password\t Password for private key (for TLS support)\n"
+	    "\t-q\t--poll\t\t Kafka poll interval (in us)\n"
+	    "\t-k\t--privkey\t Private key (for TLS support)\n"
+	    "\t-s\t\t\t DTrace script.\n"
+	    "All remaining arguments will be passed to DTrace.\n");
 }
 
 /*ARGSUSED*/
@@ -153,7 +170,8 @@ dtc_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 
 		if (!rkmessage->err && rkmessage->len > 0) {
 			if (rkmessage->key != NULL &&
-			    strncmp(rkmessage->key, "ddtrace", rkmessage->key_len) == 0) {
+			    strncmp(rkmessage->key, "ddtrace",
+				rkmessage->key_len) == 0) {
 
 					buf->dtbd_data = dt_zalloc(dtp, rkmessage->len);
 					if (buf->dtbd_data == NULL) {
@@ -170,17 +188,17 @@ dtc_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 
 				if (rkmessage->key == NULL) {
 					DLOGTR1(PRIO_LOW,
-					    "%s: key of Kafka mesage is NULL\n",
+					    "%s: key of Kafka message is NULL\n",
 					    g_pname);
 				} else {
 					DLOGTR2(PRIO_LOW,
-					    "%s: key of Kafka mesage %s is invalid\n",
+					    "%s: key of Kafka message %s is invalid\n",
 					    g_pname, rkmessage->key);
 				}
 
-				if (rkmessage->payload != NULL) {
+				if (rkmessage->payload == NULL) {
 					DLOGTR1(PRIO_LOW,
-					    "%s: payload of Kafka mesage NULL\n",
+					    "%s: payload of Kafka message is NULL\n",
 					    g_pname);
 				}
 				buf->dtbd_size = 0;
@@ -230,6 +248,8 @@ dtc_buffered_handler(const dtrace_bufdata_t *buf_data, void *arg)
 	if (buf_data->dtbda_buffered[0] == '{') {
 
 		DLOGTR0(PRIO_LOW, "Start of JSON message\n");
+		DL_ASSERT(output_buf == NULL,
+		    ("Output buffer should be NULL at the start of message."));
 		dl_bbuf_new_auto(&output_buf) ;
 	} 
 
@@ -239,7 +259,7 @@ dtc_buffered_handler(const dtrace_bufdata_t *buf_data, void *arg)
 	buf_len = strlen(buf_data->dtbda_buffered);
 	dl_bbuf_bcat(output_buf, buf_data->dtbda_buffered, buf_len);
 
-	/* '}' indicates the start of the JSON message.
+	/* '}' indicates the end of the JSON message.
 	 * Allocate a buffer into which the message is written.
 	 */
 	if (buf_data->dtbda_buffered[0] == '}') {
@@ -391,45 +411,45 @@ dtc_setup_rx_topic(char *topic_name, char *brokers, char *ca_cert,
 	if (ca_cert != NULL && client_cert != NULL && priv_key != NULL &&
 	    password != NULL) {
 		/* Configure TLS support:
-		* https://github.com/edenhill/librdkafka/wiki/Using-SSL-with-librdkafkaxi
+		 * https://github.com/edenhill/librdkafka/wiki/Using-SSL-with-librdkafka
 		*/
 		if (rd_kafka_conf_set(conf, "metadata.broker.list", brokers,
-		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
 			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
 			goto configure_rx_topic_new_err;
 		}
 
 		if (rd_kafka_conf_set(conf, "security.protocol", "ssl",
-		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
 			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
 			goto configure_rx_topic_new_err;
 		}
 
 		if (rd_kafka_conf_set(conf, "ssl.ca.location", ca_cert,
-		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
 			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
 			goto configure_rx_topic_new_err;
 		}
 
-		if (rd_kafka_conf_set(conf, "ssl.certificate.location", client_cert,
-		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		if (rd_kafka_conf_set(conf, "ssl.certificate.location",
+		    client_cert, errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
 			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
 			goto configure_rx_topic_new_err;
 		}
 
 		if (rd_kafka_conf_set(conf, "ssl.key.location", priv_key,
-		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
 			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
 			goto configure_rx_topic_new_err;
 		}
 
 		if (rd_kafka_conf_set(conf, "ssl.key.password", password,
-		errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		    errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 
 			DLOGTR1(PRIO_HIGH, "%s\n", errstr);
 			goto configure_rx_topic_new_err;
@@ -683,15 +703,15 @@ main(int argc, char *argv[])
 	useconds_t poll_period = 100000; /* 100ms */
 	static struct option dtc_options[] = {
 		{"brokers", required_argument, 0, 'b'},
-		{"cacert", optional_argument, NULL, 'a'},
-		{"clientcert", optional_argument, NULL, 'c'},
+		{"cacert", required_argument, NULL, 'a'},
+		{"clientcert", required_argument, NULL, 'c'},
 		{"debug", no_argument, NULL, 'd'},
 		{"frombeginning", no_argument, NULL, 'f'},
 		{"intopic", required_argument, NULL, 'i'},
 		{"outtopic", required_argument, NULL, 'o'},
-		{"password", optional_argument, NULL, 'p'},
-		{"poll", optional_argument, NULL, 'q'},
-		{"privkey", optional_argument, NULL, 'k'},
+		{"password", required_argument, NULL, 'p'},
+		{"poll", required_argument, NULL, 'q'},
+		{"privkey", required_argument, NULL, 'k'},
 		{"script", required_argument, NULL, 's'},
 		{0, 0, 0, 0}
 	};

@@ -2,6 +2,9 @@
 
 LIB=	vers
 INTERNALLIB=
+
+MK_BITCODE_EVERYWHERE=no
+
 SRCS=	print_version.c roken.h
 CFLAGS+=-I. -I${KRB5DIR}/lib/roken
 

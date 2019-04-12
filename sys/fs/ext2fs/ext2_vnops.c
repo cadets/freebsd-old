@@ -1081,7 +1081,13 @@ abortit:
 					    "rename: mangled dir");
 				} else {
 					dirbuf->dotdot_ino = newparent;
+					/*
+					 * dirblock 0 could be htree root,
+					 * try both csum update functions.
+					 */
 					ext2_dirent_csum_set(ip,
+					    (struct ext2fs_direct_2 *)dirbuf);
+					ext2_dx_csum_set(ip,
 					    (struct ext2fs_direct_2 *)dirbuf);
 					(void)vn_rdwr(UIO_WRITE, fvp,
 					    (caddr_t)dirbuf,
@@ -1515,8 +1521,8 @@ ext2_symlink(struct vop_symlink_args *ap)
 		ip->i_size = len;
 		ip->i_flag |= IN_CHANGE | IN_UPDATE;
 	} else
-		error = vn_rdwr(UIO_WRITE, vp, ap->a_target, len, (off_t)0,
-		    UIO_SYSSPACE, IO_NODELOCKED | IO_NOMACCHECK,
+		error = vn_rdwr(UIO_WRITE, vp, __DECONST(void *, ap->a_target),
+		    len, (off_t)0, UIO_SYSSPACE, IO_NODELOCKED | IO_NOMACCHECK,
 		    ap->a_cnp->cn_cred, NOCRED, NULL, NULL);
 	if (error)
 		vput(vp);

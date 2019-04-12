@@ -24,7 +24,6 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ErrorOr.h"
-#include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <cassert>
@@ -303,14 +302,6 @@ private:
     return Tmp;
   }
 
-  friend raw_ostream &operator<<(raw_ostream &OS, const Error &E) {
-    if (auto P = E.getPtr())
-      P->log(OS);
-    else
-      OS << "success";
-    return OS;
-  }
-
   ErrorInfoBase *Payload = nullptr;
 };
 
@@ -430,7 +421,7 @@ template <class T> class LLVM_NODISCARD Expected {
 
   static const bool isRef = std::is_reference<T>::value;
 
-  using wrap = std::reference_wrapper<typename std::remove_reference<T>::type>;
+  using wrap = ReferenceStorage<typename std::remove_reference<T>::type>;
 
   using error_type = std::unique_ptr<ErrorInfoBase>;
 
@@ -514,7 +505,7 @@ public:
       getErrorStorage()->~error_type();
   }
 
-  /// Return false if there is an error.
+  /// \brief Return false if there is an error.
   explicit operator bool() {
 #if LLVM_ENABLE_ABI_BREAKING_CHECKS
     Unchecked = HasError;
@@ -522,24 +513,24 @@ public:
     return !HasError;
   }
 
-  /// Returns a reference to the stored T value.
+  /// \brief Returns a reference to the stored T value.
   reference get() {
     assertIsChecked();
     return *getStorage();
   }
 
-  /// Returns a const reference to the stored T value.
+  /// \brief Returns a const reference to the stored T value.
   const_reference get() const {
     assertIsChecked();
     return const_cast<Expected<T> *>(this)->get();
   }
 
-  /// Check that this Expected<T> is an error of type ErrT.
+  /// \brief Check that this Expected<T> is an error of type ErrT.
   template <typename ErrT> bool errorIsA() const {
     return HasError && (*getErrorStorage())->template isA<ErrT>();
   }
 
-  /// Take ownership of the stored error.
+  /// \brief Take ownership of the stored error.
   /// After calling this the Expected<T> is in an indeterminate state that can
   /// only be safely destructed. No further calls (beside the destructor) should
   /// be made on the Expected<T> vaule.
@@ -550,25 +541,25 @@ public:
     return HasError ? Error(std::move(*getErrorStorage())) : Error::success();
   }
 
-  /// Returns a pointer to the stored T value.
+  /// \brief Returns a pointer to the stored T value.
   pointer operator->() {
     assertIsChecked();
     return toPointer(getStorage());
   }
 
-  /// Returns a const pointer to the stored T value.
+  /// \brief Returns a const pointer to the stored T value.
   const_pointer operator->() const {
     assertIsChecked();
     return toPointer(getStorage());
   }
 
-  /// Returns a reference to the stored T value.
+  /// \brief Returns a reference to the stored T value.
   reference operator*() {
     assertIsChecked();
     return *getStorage();
   }
 
-  /// Returns a const reference to the stored T value.
+  /// \brief Returns a const reference to the stored T value.
   const_reference operator*() const {
     assertIsChecked();
     return *getStorage();
@@ -891,16 +882,16 @@ Error handleErrors(Error E, HandlerTs &&... Hs) {
   return handleErrorImpl(std::move(Payload), std::forward<HandlerTs>(Hs)...);
 }
 
-/// Behaves the same as handleErrors, except that by contract all errors
-/// *must* be handled by the given handlers (i.e. there must be no remaining
-/// errors after running the handlers, or llvm_unreachable is called).
+/// Behaves the same as handleErrors, except that it requires that all
+/// errors be handled by the given handlers. If any unhandled error remains
+/// after the handlers have run, report_fatal_error() will be called.
 template <typename... HandlerTs>
 void handleAllErrors(Error E, HandlerTs &&... Handlers) {
   cantFail(handleErrors(std::move(E), std::forward<HandlerTs>(Handlers)...));
 }
 
 /// Check that E is a non-error, then drop it.
-/// If E is an error, llvm_unreachable will be called.
+/// If E is an error report_fatal_error will be called.
 inline void handleAllErrors(Error E) {
   cantFail(std::move(E));
 }
@@ -970,18 +961,6 @@ inline std::string toString(Error E) {
 /// might be more clearly refactored to return an Optional<T>.
 inline void consumeError(Error Err) {
   handleAllErrors(std::move(Err), [](const ErrorInfoBase &) {});
-}
-
-/// Helper for converting an Error to a bool.
-///
-/// This method returns true if Err is in an error state, or false if it is
-/// in a success state.  Puts Err in a checked state in both cases (unlike
-/// Error::operator bool(), which only does this for success states).
-inline bool errorToBool(Error Err) {
-  bool IsError = static_cast<bool>(Err);
-  if (IsError)
-    consumeError(std::move(Err));
-  return IsError;
 }
 
 /// Helper for Errors used as out-parameters.
@@ -1121,18 +1100,6 @@ private:
   std::string Msg;
   std::error_code EC;
 };
-
-/// Create formatted StringError object.
-template <typename... Ts>
-Error createStringError(std::error_code EC, char const *Fmt,
-                        const Ts &... Vals) {
-  std::string Buffer;
-  raw_string_ostream Stream(Buffer);
-  Stream << format(Fmt, Vals...);
-  return make_error<StringError>(Stream.str(), EC);
-}
-
-Error createStringError(std::error_code EC, char const *Msg);
 
 /// Helper for check-and-exit error handling.
 ///

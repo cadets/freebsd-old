@@ -39,7 +39,7 @@ class AddressPool {
 public:
   AddressPool() = default;
 
-  /// Returns the index into the address pool with the given
+  /// \brief Returns the index into the address pool with the given
   /// label/symbol.
   unsigned getIndex(const MCSymbol *Sym, bool TLS = false);
 
@@ -50,9 +50,6 @@ public:
   bool hasBeenUsed() const { return HasBeenUsed; }
 
   void resetUsedFlag() { HasBeenUsed = false; }
-
-private:
-  void emitHeader(AsmPrinter &Asm, MCSection *Section);
 };
 
 } // end namespace llvm

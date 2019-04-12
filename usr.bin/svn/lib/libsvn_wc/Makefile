@@ -6,6 +6,7 @@
 
 INTERNALLIB=	yes
 LIB=		svn_wc
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=		adm_crawler.c adm_files.c adm_ops.c \
 		ambient_depth_filter_editor.c cleanup.c conflicts.c \

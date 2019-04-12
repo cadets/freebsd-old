@@ -6,6 +6,7 @@
 
 INTERNALLIB=	yes
 LIB=		svn_repos
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=		authz.c authz_info.c authz_parse.c \
 		config_pool.c commit.c compat.c config_file.c delta.c \

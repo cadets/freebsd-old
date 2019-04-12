@@ -9,6 +9,8 @@ ELFTCDIR=	${SRCTOP}/contrib/elftoolchain
 
 LIB=	pe
 
+MK_BITCODE_EVERYWHERE=no
+
 SRCS=	libpe_buffer.c \
 	libpe_coff.c \
 	libpe_dos.c \

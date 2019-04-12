@@ -120,9 +120,10 @@ static bool ReverseFindMatchingChars(const llvm::StringRef &s,
 
 static bool IsTrivialBasename(const llvm::StringRef &basename) {
   // Check that the basename matches with the following regular expression
-  // "^~?([A-Za-z_][A-Za-z_0-9]*)$" We are using a hand written implementation
-  // because it is significantly more efficient then using the general purpose
-  // regular expression library.
+  // "^~?([A-Za-z_][A-Za-z_0-9]*)$"
+  // We are using a hand written implementation because it is significantly more
+  // efficient then
+  // using the general purpose regular expression library.
   size_t idx = 0;
   if (basename.size() > 0 && basename[0] == '~')
     idx = 1;
@@ -150,9 +151,10 @@ static bool IsTrivialBasename(const llvm::StringRef &basename) {
 }
 
 bool CPlusPlusLanguage::MethodName::TrySimplifiedParse() {
-  // This method tries to parse simple method definitions which are presumably
-  // most comman in user programs. Definitions that can be parsed by this
-  // function don't have return types and templates in the name.
+  // This method tries to parse simple method definitions
+  // which are presumably most comman in user programs.
+  // Definitions that can be parsed by this function don't have return types
+  // and templates in the name.
   // A::B::C::fun(std::vector<T> &) const
   size_t arg_start, arg_end;
   llvm::StringRef full(m_full.GetCString());
@@ -249,17 +251,13 @@ std::string CPlusPlusLanguage::MethodName::GetScopeQualifiedName() {
 }
 
 bool CPlusPlusLanguage::IsCPPMangledName(const char *name) {
-  // FIXME!! we should really run through all the known C++ Language plugins
-  // and ask each one if this is a C++ mangled name
-  
-  if (name == nullptr)
-    return false;
-  
-  // MSVC style mangling 
-  if (name[0] == '?')
-    return true;
-  
-  return (name[0] != '\0' && name[0] == '_' && name[1] == 'Z');
+  // FIXME, we should really run through all the known C++ Language plugins and
+  // ask each one if
+  // this is a C++ mangled name, but we can put that off till there is actually
+  // more than one
+  // we care about.
+
+  return (name != nullptr && name[0] == '_' && name[1] == 'Z');
 }
 
 bool CPlusPlusLanguage::ExtractContextAndIdentifier(
@@ -309,15 +307,13 @@ static ConstString SubsPrimitiveParmItanium(llvm::StringRef mangled,
 
   // FastDemangle will call our hook for each instance of a primitive type,
   // allowing us to perform substitution
-  char *const demangled =
+  const char *const demangled =
       FastDemangle(mangled.str().c_str(), mangled.size(), swap_parms_hook);
 
   if (log)
     log->Printf("substituted mangling for %s:{%s} %s:{%s}\n",
                 mangled.str().c_str(), demangled, output_buf.c_str(),
                 FastDemangle(output_buf.c_str()));
-  // FastDemangle malloc'd this string.
-  free(demangled);
 
   return output_buf == mangled ? ConstString() : ConstString(output_buf);
 }
@@ -423,20 +419,18 @@ static void LoadLibCxxFormatters(lldb::TypeCategoryImplSP cpp_category_sp) {
   SyntheticChildren::Flags stl_synth_flags;
   stl_synth_flags.SetCascades(true).SetSkipPointers(false).SetSkipReferences(
       false);
-  SyntheticChildren::Flags stl_deref_flags = stl_synth_flags;
-  stl_deref_flags.SetFrontEndWantsDereference();
 
   AddCXXSynthetic(
       cpp_category_sp,
       lldb_private::formatters::LibcxxBitsetSyntheticFrontEndCreator,
       "libc++ std::bitset synthetic children",
-      ConstString("^std::__(ndk)?1::bitset<.+>(( )?&)?$"), stl_deref_flags,
+      ConstString("^std::__(ndk)?1::bitset<.+>(( )?&)?$"), stl_synth_flags,
       true);
   AddCXXSynthetic(
       cpp_category_sp,
       lldb_private::formatters::LibcxxStdVectorSyntheticFrontEndCreator,
       "libc++ std::vector synthetic children",
-      ConstString("^std::__(ndk)?1::vector<.+>(( )?&)?$"), stl_deref_flags,
+      ConstString("^std::__(ndk)?1::vector<.+>(( )?&)?$"), stl_synth_flags,
       true);
   AddCXXSynthetic(
       cpp_category_sp,
@@ -459,13 +453,13 @@ static void LoadLibCxxFormatters(lldb::TypeCategoryImplSP cpp_category_sp) {
       cpp_category_sp,
       lldb_private::formatters::LibcxxStdMapSyntheticFrontEndCreator,
       "libc++ std::set synthetic children",
-      ConstString("^std::__(ndk)?1::set<.+> >(( )?&)?$"), stl_deref_flags,
+      ConstString("^std::__(ndk)?1::set<.+> >(( )?&)?$"), stl_synth_flags,
       true);
   AddCXXSynthetic(
       cpp_category_sp,
       lldb_private::formatters::LibcxxStdMapSyntheticFrontEndCreator,
       "libc++ std::multiset synthetic children",
-      ConstString("^std::__(ndk)?1::multiset<.+> >(( )?&)?$"), stl_deref_flags,
+      ConstString("^std::__(ndk)?1::multiset<.+> >(( )?&)?$"), stl_synth_flags,
       true);
   AddCXXSynthetic(
       cpp_category_sp,

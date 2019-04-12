@@ -101,7 +101,7 @@ struct malloc_type_internal {
 	uint32_t	mti_probes[DTMALLOC_PROBE_MAX];
 					/* DTrace probe ID array. */
 	u_char		mti_zone;
-	struct malloc_type_stats	mti_stats[MAXCPU];
+	struct malloc_type_stats	*mti_stats;
 };
 
 /*
@@ -160,6 +160,7 @@ MALLOC_DECLARE(M_TEMP);
  */
 MALLOC_DECLARE(M_IOV);
 
+struct domainset;
 extern struct mtx malloc_mtx;
 
 /*
@@ -172,8 +173,8 @@ void	*contigmalloc(unsigned long size, struct malloc_type *type, int flags,
 	    vm_paddr_t low, vm_paddr_t high, unsigned long alignment,
 	    vm_paddr_t boundary) __malloc_like __result_use_check
 	    __alloc_size(1) __alloc_align(6);
-void	*contigmalloc_domain(unsigned long size, struct malloc_type *type,
-	    int domain, int flags, vm_paddr_t low, vm_paddr_t high,
+void	*contigmalloc_domainset(unsigned long size, struct malloc_type *type,
+	    struct domainset *ds, int flags, vm_paddr_t low, vm_paddr_t high,
 	    unsigned long alignment, vm_paddr_t boundary)
 	    __malloc_like __result_use_check __alloc_size(1) __alloc_align(6);
 void	free(void *addr, struct malloc_type *type);
@@ -215,7 +216,6 @@ void	*malloc(size_t size, struct malloc_type *type, int flags) __malloc_like
  * an inline function variant ended up being compiled to a mere malloc call
  * regardless of argument. gcc generates expected code (like the above).
  */
-#ifdef _KERNEL
 #define	malloc(size, type, flags) ({					\
 	void *_malloc_item;						\
 	size_t _size = (size);						\
@@ -230,10 +230,10 @@ void	*malloc(size_t size, struct malloc_type *type, int flags) __malloc_like
 	}								\
 	_malloc_item;							\
 })
-#endif
 
-void	*malloc_domain(size_t size, struct malloc_type *type, int domain,
-	    int flags) __malloc_like __result_use_check __alloc_size(1);
+void	*malloc_domainset(size_t size, struct malloc_type *type,
+	    struct domainset *ds, int flags) __malloc_like __result_use_check
+	    __alloc_size(1);
 void	*mallocarray(size_t nmemb, size_t size, struct malloc_type *type,
 	    int flags) __malloc_like __result_use_check
 	    __alloc_size2(1, 2);

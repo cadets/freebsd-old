@@ -83,6 +83,7 @@ static char const * const DLOGD_CACERT_FILE = "cacert_file";
 static char const * const DLOGD_USER_PASSWORD = "user_password";
 static char const * const DLOGD_TLS = "tls";
 static char const * const DLOGD_RESEND = "resend";
+static char const * const DLOGD_REQUEST_QUEUE_LEN = "request_queue_len";
 
 struct dl_producer_elem {
 	LIST_ENTRY(dl_producer_elem) dlp_entries;
@@ -94,12 +95,15 @@ unsigned short PRIO_LOG = PRIO_LOW;
 const dlog_malloc_func dlog_alloc = malloc;
 const dlog_free_func dlog_free = free;
 
+/* GLobal singleton dlogd configuration */
+extern nvlist_t *dlogd_props;
+nvlist_t *dlogd_props;
+
 static int stop  = 0;
 static char const* dlogd_name;
 static LIST_HEAD(dl_producers, dl_producer_elem) *producers;
 static unsigned long hashmask;
 static int dlog;
-static nvlist_t *props;
 static int nelements = DLOGD_NELEMENTS_DEFAULT;
 static int dlogd_debug = 0;
 
@@ -123,9 +127,9 @@ setup_daemon(void)
 	long hashsize;
 
 	/* Create a new nvlist to store producer configuration. */
-	props = nvlist_create(0);
+	dlogd_props = nvlist_create(0);
 
-	nvlist_add_number(props, DL_CONF_DEBUG_LEVEL, dlogd_debug);
+	nvlist_add_number(dlogd_props, DL_CONF_DEBUG_LEVEL, dlogd_debug);
 
 	/* Open the DLog device */
 	dlog = open(DLOG_DEV, O_RDWR);
@@ -182,7 +186,7 @@ dlogd_manage_topic(char * topic_name, char *log_path, char *hostname,
 				&topic_desc);	
 			if (rc == 0) {
 				rc = dl_producer_new(&producer, topic,
-					log_path, hostname, port, props); 
+					log_path, hostname, port, dlogd_props); 
 				if (rc == 0) {
 					elem = (struct dl_producer_elem *) dlog_alloc(sizeof(struct dl_producer_elem));
 					elem->dlp_inst = producer;
@@ -325,32 +329,37 @@ main(int argc, char *argv[])
 		/* Parse each the configuration item. */
 		if (strcmp(ucl_object_key(obj), DLOGD_CLIENTID) == 0) {
 
-			nvlist_add_string(props, DL_CONF_CLIENTID,
+			nvlist_add_string(dlogd_props, DL_CONF_CLIENTID,
 			    ucl_object_tostring_forced(obj));
 		} else  if (strcmp(ucl_object_key(obj), DLOGD_PRIVATEKEY_FILE) == 0) {
 
-			nvlist_add_string(props, DL_CONF_PRIVATEKEY_FILE,
+			nvlist_add_string(dlogd_props, DL_CONF_PRIVATEKEY_FILE,
 			    ucl_object_tostring_forced(obj));
 		} else if (strcmp(ucl_object_key(obj), DLOGD_CLIENT_FILE) == 0) {
 
-			nvlist_add_string(props, DL_CONF_CLIENT_FILE,
+			nvlist_add_string(dlogd_props, DL_CONF_CLIENT_FILE,
 			    ucl_object_tostring_forced(obj));
 		} else if (strcmp(ucl_object_key(obj), DLOGD_CACERT_FILE) == 0) {
 
-			nvlist_add_string(props, DL_CONF_CACERT_FILE,
+			nvlist_add_string(dlogd_props, DL_CONF_CACERT_FILE,
 			    ucl_object_tostring_forced(obj));
 		} else if (strcmp(ucl_object_key(obj), DLOGD_USER_PASSWORD) == 0) {
 
-			nvlist_add_string(props, DL_CONF_USER_PASSWORD,
+			nvlist_add_string(dlogd_props, DL_CONF_USER_PASSWORD,
 			    ucl_object_tostring_forced(obj));
 		} else if (strcmp(ucl_object_key(obj), DLOGD_TLS) == 0) {
 
-			nvlist_add_bool(props, DL_CONF_TLS_ENABLE,
+			nvlist_add_bool(dlogd_props, DL_CONF_TLS_ENABLE,
 			    ucl_object_toboolean(obj));
 		} else if (strcmp(ucl_object_key(obj), DLOGD_RESEND) == 0) {
 
-			nvlist_add_bool(props, DL_CONF_TORESEND,
+			nvlist_add_bool(dlogd_props, DL_CONF_TORESEND,
 			    ucl_object_toboolean(obj));
+		} else if (strcmp(ucl_object_key(obj),
+		    DLOGD_REQUEST_QUEUE_LEN) == 0) {
+
+			nvlist_add_number(dlogd_props, DL_CONF_REQUEST_QUEUE_LEN,
+			    ucl_object_toint(obj));
 		} else if (strcmp(ucl_object_key(obj), DLOGD_NELEMENTS) == 0) {
 	
 			nelements = ucl_object_toint(obj);
@@ -431,7 +440,7 @@ main(int argc, char *argv[])
 	}
 
 	/* Destroy the nvlist used to store producer configuration. */
-	nvlist_destroy(props);
+	nvlist_destroy(dlogd_props);
 
 	/* Delete all of the producers */
 	DLOGTR0(PRIO_LOW, "Deleting the producers.\n");

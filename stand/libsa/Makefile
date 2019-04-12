@@ -13,6 +13,8 @@ LIBC_SRC=	${SRCTOP}/lib/libc
 
 LIB?=		sa
 
+MK_BITCODE_EVERYWHERE=no
+
 # standalone components and stuff we have modified locally
 SRCS+=	gzguts.h zutil.h __main.c abort.c assert.c bcd.c environment.c getopt.c gets.c \
 	globals.c pager.c panic.c printf.c strdup.c strerror.c \
@@ -73,13 +75,13 @@ SRCS+=	aeabi_memcmp.S aeabi_memcpy.S aeabi_memmove.S aeabi_memset.S
 
 .if ${MACHINE_CPUARCH} == "powerpc"
 .PATH: ${LIBC_SRC}/quad
-SRCS+=	ashldi3.c ashrdi3.c
+SRCS+=	ashldi3.c ashrdi3.c lshrdi3.c
 SRCS+=	syncicache.c
 .endif
 
 .if ${MACHINE_CPUARCH} == "mips"
 .PATH: ${LIBC_SRC}/quad
-SRCS+=	ashldi3.c ashrdi3.c
+SRCS+=	ashldi3.c ashrdi3.c lshrdi3.c
 .endif
 
 # uuid functions from libc
@@ -155,9 +157,9 @@ SRCS+=ffs_subr.c ffs_tables.c
 
 CFLAGS.bzipfs.c+= -I${SRCTOP}/contrib/bzip2
 
-# explicit_bzero
+# explicit_bzero and calculate_crc32c
 .PATH: ${SYSDIR}/libkern
-SRCS+=  explicit_bzero.c
+SRCS+=  explicit_bzero.c crc32_libkern.c
 
 # Maybe GELI
 .if ${MK_LOADER_GELI} == "yes"

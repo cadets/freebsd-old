@@ -37,8 +37,6 @@
 #ifndef _DL_TRANSPORT_H
 #define _DL_TRANSPORT_H
 
-#include <sys/nv.h>
-
 #include "dl_bbuf.h"
 #include "dl_event_handler.h"
 #include "dl_sock_transport.h"
@@ -83,6 +81,6 @@ extern int dl_transport_send_request(struct dl_transport const *,
     struct dl_bbuf const *);
 
 extern int dl_transport_factory_get_inst(struct dl_transport **,
-    struct dl_producer *, nvlist_t *);
+    struct dl_producer *);
 
 #endif

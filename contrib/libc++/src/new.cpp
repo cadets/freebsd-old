@@ -7,6 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define _LIBCPP_BUILDING_NEW
+
 #include <stdlib.h>
 
 #include "new"

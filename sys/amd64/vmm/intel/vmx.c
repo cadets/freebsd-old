@@ -191,11 +191,14 @@ SYSCTL_UINT(_hw_vmm_vmx, OID_AUTO, vpid_alloc_failed, CTLFLAG_RD,
 static int guest_l1d_flush;
 SYSCTL_INT(_hw_vmm_vmx, OID_AUTO, l1d_flush, CTLFLAG_RD,
     &guest_l1d_flush, 0, NULL);
+static int guest_l1d_flush_sw;
+SYSCTL_INT(_hw_vmm_vmx, OID_AUTO, l1d_flush_sw, CTLFLAG_RD,
+    &guest_l1d_flush_sw, 0, NULL);
 
-uint64_t vmx_msr_flush_cmd;
+static struct msr_entry msr_load_list[1] __aligned(16);
 
 /*
- * SDT probe defines.
+ * The definitions of SDT probes for VMX.
  */
 
 SDT_PROBE_DEFINE3(vmm, vmx, exit, entry,
@@ -267,11 +270,15 @@ SDT_PROBE_DEFINE3(vmm, vmx, exit, mwait,
 SDT_PROBE_DEFINE4(vmm, vmx, exit, hypercall,
     "struct vmx *", "int", "struct vm_exit *", "int");
 
+SDT_PROBE_DEFINE3(vmm, vmx, exit, vminsn,
+    "struct vmx *", "int", "struct vm_exit *");
+
 SDT_PROBE_DEFINE4(vmm, vmx, exit, unknown,
     "struct vmx *", "int", "struct vm_exit *", "uint32_t");
 
 SDT_PROBE_DEFINE4(vmm, vmx, exit, return,
     "struct vmx *", "int", "struct vm_exit *", "int");
+
 /*
  * Use the last page below 4GB as the APIC access address. This address is
  * occupied by the boot firmware so it is guaranteed that it will not conflict
@@ -581,6 +588,9 @@ vmx_cleanup(void)
 		vpid_unr = NULL;
 	}
 
+	if (nmi_flush_l1d_sw == 1)
+		nmi_flush_l1d_sw = 0;
+
 	smp_rendezvous(NULL, vmx_disable, NULL, NULL);
 
 	return (0);
@@ -807,11 +817,31 @@ vmx_init(int ipinum)
 		return (error);
 	}
 
-	guest_l1d_flush = (cpu_ia32_arch_caps & IA32_ARCH_CAP_RDCL_NO) == 0;
+	guest_l1d_flush = (cpu_ia32_arch_caps &
+	    IA32_ARCH_CAP_SKIP_L1DFL_VMENTRY) == 0;
 	TUNABLE_INT_FETCH("hw.vmm.l1d_flush", &guest_l1d_flush);
-	if (guest_l1d_flush &&
-	    (cpu_stdext_feature3 & CPUID_STDEXT3_L1D_FLUSH) != 0)
-		vmx_msr_flush_cmd = IA32_FLUSH_CMD_L1D;
+
+	/*
+	 * L1D cache flush is enabled.  Use IA32_FLUSH_CMD MSR when
+	 * available.  Otherwise fall back to the software flush
+	 * method which loads enough data from the kernel text to
+	 * flush existing L1D content, both on VMX entry and on NMI
+	 * return.
+	 */
+	if (guest_l1d_flush) {
+		if ((cpu_stdext_feature3 & CPUID_STDEXT3_L1D_FLUSH) == 0) {
+			guest_l1d_flush_sw = 1;
+			TUNABLE_INT_FETCH("hw.vmm.l1d_flush_sw",
+			    &guest_l1d_flush_sw);
+		}
+		if (guest_l1d_flush_sw) {
+			if (nmi_flush_l1d_sw <= 1)
+				nmi_flush_l1d_sw = 1;
+		} else {
+			msr_load_list[0].index = MSR_IA32_FLUSH_CMD;
+			msr_load_list[0].val = IA32_FLUSH_CMD_L1D;
+		}
+	}
 
 	/*
 	 * Stash the cr0 and cr4 bits that must be fixed to 0 or 1
@@ -1001,6 +1031,15 @@ vmx_vminit(struct vm *vm, pmap_t pmap)
 		error += vmwrite(VMCS_ENTRY_CTLS, entry_ctls);
 		error += vmwrite(VMCS_MSR_BITMAP, vtophys(vmx->msr_bitmap));
 		error += vmwrite(VMCS_VPID, vpid[i]);
+
+		if (guest_l1d_flush && !guest_l1d_flush_sw) {
+			vmcs_write(VMCS_ENTRY_MSR_LOAD, pmap_kextract(
+			    (vm_offset_t)&msr_load_list[0]));
+			vmcs_write(VMCS_ENTRY_MSR_LOAD_COUNT,
+			    nitems(msr_load_list));
+			vmcs_write(VMCS_EXIT_MSR_STORE, 0);
+			vmcs_write(VMCS_EXIT_MSR_STORE_COUNT, 0);
+		}
 
 		/* exception bitmap */
 		if (vcpu_trace_exceptions(vm, i))
@@ -2443,10 +2482,6 @@ vmx_exit_process(struct vmx *vmx, int vcpu, struct vm_exit *vmexit)
 		return (1);
 	case EXIT_REASON_INOUT:
 		vmm_stat_incr(vmx->vm, vcpu, VMEXIT_INOUT, 1);
-		/*
-		 * FIXME(dstolfa): This should give more info.
-		 */
-		SDT_PROBE3(vmm, vmx, exit, inout, vmx, vcpu, vmexit);
 		vmexit->exitcode = VM_EXITCODE_INOUT;
 		vmexit->u.inout.bytes = (qual & 0x7) + 1;
 		vmexit->u.inout.in = in = (qual & 0x8) ? 1 : 0;
@@ -2594,7 +2629,8 @@ vmx_exit_process(struct vmx *vmx, int vcpu, struct vm_exit *vmexit)
 		 */
 		vmexit->inst_length = 0;
 		vlapic = vm_lapic(vmx->vm, vcpu);
-		SDT_PROBE4(vmm, vmx, exit, apicwrite, vmx, vcpu, vmexit, vlapic);
+		SDT_PROBE4(vmm, vmx, exit, apicwrite,
+		    vmx, vcpu, vmexit, vlapic);
 		handled = vmx_handle_apic_write(vmx, vcpu, vlapic, qual);
 		break;
 	case EXIT_REASON_XSETBV:
@@ -2619,6 +2655,18 @@ vmx_exit_process(struct vmx *vmx, int vcpu, struct vm_exit *vmexit)
 			vmexit->exitcode = VM_EXITCODE_HYPERCALL;
 			vmx_paging_info(&vmexit->u.hypercall.paging);
 		}
+		break;
+	case EXIT_REASON_VMCLEAR:
+	case EXIT_REASON_VMLAUNCH:
+	case EXIT_REASON_VMPTRLD:
+	case EXIT_REASON_VMPTRST:
+	case EXIT_REASON_VMREAD:
+	case EXIT_REASON_VMRESUME:
+	case EXIT_REASON_VMWRITE:
+	case EXIT_REASON_VMXOFF:
+	case EXIT_REASON_VMXON:
+		SDT_PROBE3(vmm, vmx, exit, vminsn, vmx, vcpu, vmexit);
+		vmexit->exitcode = VM_EXITCODE_VMINSN;
 		break;
 	default:
 		SDT_PROBE4(vmm, vmx, exit, unknown,
@@ -2658,6 +2706,7 @@ vmx_exit_process(struct vmx *vmx, int vcpu, struct vm_exit *vmexit)
 			 */
 		}
 	}
+
 	SDT_PROBE4(vmm, vmx, exit, return,
 	    vmx, vcpu, vmexit, handled);
 	return (handled);
@@ -2798,6 +2847,8 @@ vmx_run(void *arg, int vcpu, register_t rip, pmap_t pmap,
 	struct vm_exit *vmexit;
 	struct vlapic *vlapic;
 	uint32_t exit_reason;
+	struct region_descriptor gdtr, idtr;
+	uint16_t ldt_sel;
 
 	vmx = arg;
 	vm = vmx->vm;
@@ -2889,10 +2940,30 @@ vmx_run(void *arg, int vcpu, register_t rip, pmap_t pmap,
 			break;
 		}
 
+		/*
+		 * VM exits restore the base address but not the
+		 * limits of GDTR and IDTR.  The VMCS only stores the
+		 * base address, so VM exits set the limits to 0xffff.
+		 * Save and restore the full GDTR and IDTR to restore
+		 * the limits.
+		 *
+		 * The VMCS does not save the LDTR at all, and VM
+		 * exits clear LDTR as if a NULL selector were loaded.
+		 * The userspace hypervisor probably doesn't use a
+		 * LDT, but save and restore it to be safe.
+		 */
+		sgdt(&gdtr);
+		sidt(&idtr);
+		ldt_sel = sldt();
+
 		vmx_run_trace(vmx, vcpu);
 		vmx_dr_enter_guest(vmxctx);
 		rc = vmx_enter_guest(vmxctx, vmx, launched);
 		vmx_dr_leave_guest(vmxctx);
+
+		bare_lgdt(&gdtr);
+		lidt(&idtr);
+		lldt(ldt_sel);
 
 		/* Collect some information for VM exit processing */
 		vmexit->rip = rip = vmcs_guest_rip();

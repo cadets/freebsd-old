@@ -289,7 +289,7 @@ au_evnamemap_init_preload(void)
 	 * nul byte safely.  We can then use strsep(3) to process the full
 	 * buffer.
 	 */
-	ptr[size-1] = '\0';
+	ptr[size - 1] = '\0';
 
 	/*
 	 * Process line by line.

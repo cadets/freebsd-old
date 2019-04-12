@@ -4,6 +4,8 @@
 
 INTERNALLIB=	yes
 LIB=		apr-util
+MK_BITCODE_EVERYWHERE=no
+
 
 SRCS=		apr_base64.c apr_brigade.c apr_buckets.c apr_buckets_alloc.c \
 		apr_buckets_eos.c apr_buckets_file.c apr_buckets_flush.c \

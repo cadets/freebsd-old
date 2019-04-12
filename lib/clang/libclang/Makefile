@@ -5,6 +5,8 @@
 
 LIB=		clang
 
+MK_BITCODE_EVERYWHERE=no
+
 CFLAGS+=	-I${.OBJDIR}
 CFLAGS+=	-I${OBJTOP}/lib/clang/libllvm
 CFLAGS+=	-I${CLANG_SRCS}/lib/Basic
@@ -56,7 +58,6 @@ SRCS_MIN+=	AST/CommentCommandTraits.cpp
 SRCS_MIN+=	AST/CommentLexer.cpp
 SRCS_MIN+=	AST/CommentParser.cpp
 SRCS_MIN+=	AST/CommentSema.cpp
-SRCS_MIN+=	AST/ComparisonCategories.cpp
 SRCS_FUL+=	AST/DataCollection.cpp
 SRCS_MIN+=	AST/Decl.cpp
 SRCS_MIN+=	AST/DeclBase.cpp
@@ -122,7 +123,6 @@ SRCS_MIN+=	Analysis/CloneDetection.cpp
 SRCS_MIN+=	Analysis/CocoaConventions.cpp
 SRCS_FUL+=	Analysis/CodeInjector.cpp
 SRCS_MIN+=	Analysis/Consumed.cpp
-SRCS_MIN+=	Analysis/ConstructionContext.cpp
 SRCS_FUL+=	Analysis/Dominators.cpp
 SRCS_MIN+=	Analysis/FormatString.cpp
 SRCS_MIN+=	Analysis/LiveVariables.cpp
@@ -177,7 +177,6 @@ SRCS_MIN+=	Basic/Targets/Nios2.cpp
 SRCS_MIN+=	Basic/Targets/OSTargets.cpp
 SRCS_MIN+=	Basic/Targets/PNaCl.cpp
 SRCS_MIN+=	Basic/Targets/PPC.cpp
-SRCS_MIN+=	Basic/Targets/RISCV.cpp
 SRCS_MIN+=	Basic/Targets/SPIR.cpp
 SRCS_MIN+=	Basic/Targets/Sparc.cpp
 SRCS_MIN+=	Basic/Targets/SystemZ.cpp
@@ -187,9 +186,9 @@ SRCS_MIN+=	Basic/Targets/X86.cpp
 SRCS_MIN+=	Basic/Targets/XCore.cpp
 SRCS_MIN+=	Basic/TokenKinds.cpp
 SRCS_MIN+=	Basic/Version.cpp
+SRCS_MIN+=	Basic/VersionTuple.cpp
 SRCS_MIN+=	Basic/VirtualFileSystem.cpp
 SRCS_MIN+=	Basic/Warnings.cpp
-SRCS_MIN+=	Basic/XRayInstr.cpp
 SRCS_MIN+=	Basic/XRayLists.cpp
 SRCS_MIN+=	CodeGen/BackendUtil.cpp
 SRCS_MIN+=	CodeGen/CGAtomic.cpp
@@ -215,7 +214,6 @@ SRCS_MIN+=	CodeGen/CGExprConstant.cpp
 SRCS_MIN+=	CodeGen/CGExprScalar.cpp
 SRCS_MIN+=	CodeGen/CGGPUBuiltin.cpp
 SRCS_MIN+=	CodeGen/CGLoopInfo.cpp
-SRCS_MIN+=	CodeGen/CGNonTrivialStruct.cpp
 SRCS_MIN+=	CodeGen/CGObjC.cpp
 SRCS_MIN+=	CodeGen/CGObjCGNU.cpp
 SRCS_MIN+=	CodeGen/CGObjCMac.cpp
@@ -246,7 +244,6 @@ SRCS_MIN+=	CodeGen/SanitizerMetadata.cpp
 SRCS_MIN+=	CodeGen/SwiftCallingConv.cpp
 SRCS_MIN+=	CodeGen/TargetInfo.cpp
 SRCS_MIN+=	CodeGen/VarBypassDetector.cpp
-SRCS_FUL+=	CrossTU/CrossTranslationUnit.cpp
 SRCS_MIN+=	Driver/Action.cpp
 SRCS_MIN+=	Driver/Compilation.cpp
 SRCS_MIN+=	Driver/Distro.cpp
@@ -265,7 +262,6 @@ SRCS_MIN+=	Driver/ToolChains/Arch/AArch64.cpp
 SRCS_MIN+=	Driver/ToolChains/Arch/ARM.cpp
 SRCS_MIN+=	Driver/ToolChains/Arch/Mips.cpp
 SRCS_MIN+=	Driver/ToolChains/Arch/PPC.cpp
-SRCS_MIN+=	Driver/ToolChains/Arch/RISCV.cpp
 SRCS_MIN+=	Driver/ToolChains/Arch/Sparc.cpp
 SRCS_MIN+=	Driver/ToolChains/Arch/SystemZ.cpp
 SRCS_MIN+=	Driver/ToolChains/Arch/X86.cpp
@@ -281,7 +277,6 @@ SRCS_MIN+=	Driver/ToolChains/DragonFly.cpp
 SRCS_MIN+=	Driver/ToolChains/FreeBSD.cpp
 SRCS_MIN+=	Driver/ToolChains/Fuchsia.cpp
 SRCS_MIN+=	Driver/ToolChains/Gnu.cpp
-SRCS_MIN+=	Driver/ToolChains/HIP.cpp
 SRCS_MIN+=	Driver/ToolChains/Haiku.cpp
 SRCS_MIN+=	Driver/ToolChains/Hexagon.cpp
 SRCS_MIN+=	Driver/ToolChains/Linux.cpp
@@ -294,7 +289,6 @@ SRCS_MIN+=	Driver/ToolChains/NaCl.cpp
 SRCS_MIN+=	Driver/ToolChains/NetBSD.cpp
 SRCS_MIN+=	Driver/ToolChains/OpenBSD.cpp
 SRCS_MIN+=	Driver/ToolChains/PS4CPU.cpp
-SRCS_MIN+=	Driver/ToolChains/RISCV.cpp
 SRCS_MIN+=	Driver/ToolChains/Solaris.cpp
 SRCS_MIN+=	Driver/ToolChains/TCE.cpp
 SRCS_MIN+=	Driver/ToolChains/WebAssembly.cpp
@@ -334,7 +328,6 @@ SRCS_MIN+=	Frontend/DiagnosticRenderer.cpp
 SRCS_MIN+=	Frontend/FrontendAction.cpp
 SRCS_MIN+=	Frontend/FrontendActions.cpp
 SRCS_MIN+=	Frontend/FrontendOptions.cpp
-SRCS_MIN+=	Frontend/FrontendTiming.cpp
 SRCS_MIN+=	Frontend/HeaderIncludeGen.cpp
 SRCS_MIN+=	Frontend/InitHeaderSearch.cpp
 SRCS_MIN+=	Frontend/InitPreprocessor.cpp
@@ -414,13 +407,13 @@ SRCS_MIN+=	Rewrite/RewriteRope.cpp
 SRCS_MIN+=	Rewrite/Rewriter.cpp
 SRCS_MIN+=	Rewrite/TokenRewriter.cpp
 SRCS_MIN+=	Sema/AnalysisBasedWarnings.cpp
+SRCS_MIN+=	Sema/AttributeList.cpp
 SRCS_MIN+=	Sema/CodeCompleteConsumer.cpp
 SRCS_MIN+=	Sema/DeclSpec.cpp
 SRCS_MIN+=	Sema/DelayedDiagnostic.cpp
 SRCS_MIN+=	Sema/IdentifierResolver.cpp
 SRCS_MIN+=	Sema/JumpDiagnostics.cpp
 SRCS_MIN+=	Sema/MultiplexExternalSemaSource.cpp
-SRCS_MIN+=	Sema/ParsedAttr.cpp
 SRCS_MIN+=	Sema/Scope.cpp
 SRCS_MIN+=	Sema/ScopeInfo.cpp
 SRCS_MIN+=	Sema/Sema.cpp
@@ -481,7 +474,6 @@ SRCS_FUL+=	StaticAnalyzer/Checkers/BasicObjCFoundationChecks.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/BlockInCriticalSectionChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/BoolAssignmentChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/BuiltinFunctionChecker.cpp
-SRCS_FUL+=	StaticAnalyzer/Checkers/GCDAntipatternChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/CStringChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/CStringSyntaxChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/CXXSelfAssignmentChecker.cpp
@@ -509,7 +501,6 @@ SRCS_FUL+=	StaticAnalyzer/Checkers/FixedAddressChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/GTestChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/GenericTaintChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/IdenticalExprChecker.cpp
-SRCS_FUL+=	StaticAnalyzer/Checkers/InnerPointerChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/IteratorChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/IvarInvalidationChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/LLVMConventionsChecker.cpp
@@ -523,7 +514,6 @@ SRCS_FUL+=	StaticAnalyzer/Checkers/MallocChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/MallocOverflowSecurityChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/MallocSizeofChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/MisusedMovedObjectChecker.cpp
-SRCS_FUL+=	StaticAnalyzer/Checkers/MmapWriteExecChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/NSAutoreleasePoolChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/NSErrorChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/NoReturnFunctionChecker.cpp
@@ -532,7 +522,6 @@ SRCS_FUL+=	StaticAnalyzer/Checkers/NonnullGlobalConstantsChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/NullabilityChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/NumberObjectConversionChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/ObjCAtSyncChecker.cpp
-SRCS_FUL+=	StaticAnalyzer/Checkers/ObjCAutoreleaseWriteChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/ObjCContainersASTChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/ObjCContainersChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/ObjCMissingSuperCallChecker.cpp
@@ -547,7 +536,6 @@ SRCS_FUL+=	StaticAnalyzer/Checkers/PthreadLockChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/RetainCountChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/ReturnPointerRangeChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/ReturnUndefChecker.cpp
-SRCS_FUL+=	StaticAnalyzer/Checkers/RunLoopAutoreleaseLeakChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/SimpleStreamChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/StackAddrEscapeChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/StdLibraryFunctionsChecker.cpp
@@ -555,13 +543,11 @@ SRCS_FUL+=	StaticAnalyzer/Checkers/StreamChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/TaintTesterChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/TestAfterDivZeroChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/TraversalChecker.cpp
-SRCS_FUL+=	StaticAnalyzer/Checkers/TrustNonnullChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/UndefBranchChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/UndefCapturedBlockVarChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/UndefResultChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/UndefinedArraySubscriptChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/UndefinedAssignmentChecker.cpp
-SRCS_FUL+=	StaticAnalyzer/Checkers/UninitializedObjectChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/UnixAPIChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/UnreachableCodeChecker.cpp
 SRCS_FUL+=	StaticAnalyzer/Checkers/VLASizeChecker.cpp
@@ -611,7 +597,6 @@ SRCS_FUL+=	StaticAnalyzer/Core/SimpleSValBuilder.cpp
 SRCS_FUL+=	StaticAnalyzer/Core/Store.cpp
 SRCS_FUL+=	StaticAnalyzer/Core/SubEngine.cpp
 SRCS_FUL+=	StaticAnalyzer/Core/SymbolManager.cpp
-SRCS_FUL+=	StaticAnalyzer/Core/WorkList.cpp
 SRCS_FUL+=	StaticAnalyzer/Core/Z3ConstraintManager.cpp
 SRCS_FUL+=	StaticAnalyzer/Frontend/AnalysisConsumer.cpp
 SRCS_FUL+=	StaticAnalyzer/Frontend/CheckerRegistration.cpp
@@ -625,8 +610,6 @@ SRCS_MIN+=	Tooling/Core/Lookup.cpp
 SRCS_EXT+=	Tooling/Core/Replacement.cpp
 SRCS_MIN+=	Tooling/FileMatchTrie.cpp
 SRCS_MIN+=	Tooling/FixIt.cpp
-SRCS_EXT+=	Tooling/Inclusions/HeaderIncludes.cpp
-SRCS_EXT+=	Tooling/Inclusions/IncludeStyle.cpp
 SRCS_MIN+=	Tooling/JSONCompilationDatabase.cpp
 SRCS_MIN+=	Tooling/Refactoring.cpp
 SRCS_MIN+=	Tooling/RefactoringCallbacks.cpp
@@ -770,16 +753,10 @@ clang/Basic/DiagnosticIndexName.inc: \
 	    -o ${.TARGET} ${CLANG_SRCS}/include/clang/Basic/Diagnostic.td
 TGHDRS+=	clang/Basic/DiagnosticIndexName.inc
 
-clang/Basic/arm_fp16.inc: ${CLANG_SRCS}/include/clang/Basic/arm_fp16.td
-	${CLANG_TBLGEN} -gen-arm-neon-sema \
-	    -I ${CLANG_SRCS}/include/clang/Basic -d ${.TARGET:C/$/.d/} \
-	    -o ${.TARGET} ${CLANG_SRCS}/include/clang/Basic/arm_fp16.td
-TGHDRS+=	clang/Basic/arm_fp16.inc
-
 clang/Basic/arm_neon.inc: ${CLANG_SRCS}/include/clang/Basic/arm_neon.td
 	${CLANG_TBLGEN} -gen-arm-neon-sema \
-	    -I ${CLANG_SRCS}/include/clang/Basic -d ${.TARGET:C/$/.d/} \
-	    -o ${.TARGET} ${CLANG_SRCS}/include/clang/Basic/arm_neon.td
+	    -d ${.TARGET:C/$/.d/} -o ${.TARGET} \
+	    ${CLANG_SRCS}/include/clang/Basic/arm_neon.td
 TGHDRS+=	clang/Basic/arm_neon.inc
 
 clang/Driver/Options.inc: ${CLANG_SRCS}/include/clang/Driver/Options.td
@@ -849,8 +826,7 @@ TGHDRS+=	clang/Serialization/AttrPCHWrite.inc
 clang/StaticAnalyzer/Checkers/Checkers.inc: \
 	${CLANG_SRCS}/include/clang/StaticAnalyzer/Checkers/Checkers.td
 	${CLANG_TBLGEN} -gen-clang-sa-checkers \
-	    -I ${CLANG_SRCS}/include/clang/StaticAnalyzer/Checkers \
-	    -d ${.TARGET:C/$/.d/} -o ${.TARGET} \
+	    -I ${CLANG_SRCS}/include -d ${.TARGET:C/$/.d/} -o ${.TARGET} \
 	    ${CLANG_SRCS}/include/clang/StaticAnalyzer/Checkers/Checkers.td
 TGHDRS+=	clang/StaticAnalyzer/Checkers/Checkers.inc
 

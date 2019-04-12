@@ -6,6 +6,7 @@
 
 INTERNALLIB=	yes
 LIB=		svn_delta
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=		branch.c branch_compat.c branch_migrate.c branch_nested.c \
 		branch_repos.c cancel.c compat.c compose_delta.c \

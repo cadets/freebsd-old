@@ -223,7 +223,9 @@ ext2_readdir(struct vop_readdir_args *ap)
 			dstdp.d_fileno = dp->e2d_ino;
 			dstdp.d_reclen = GENERIC_DIRSIZ(&dstdp);
 			bcopy(dp->e2d_name, dstdp.d_name, dstdp.d_namlen);
-			dstdp.d_name[dstdp.d_namlen] = '\0';
+			/* NOTE: d_off is the offset of the *next* entry. */
+			dstdp.d_off = offset + dp->e2d_reclen;
+			dirent_terminate(&dstdp);
 			if (dstdp.d_reclen > uio->uio_resid) {
 				if (uio->uio_resid == startresid)
 					error = EINVAL;
@@ -429,16 +431,13 @@ searchloop:
 		error = ext2_blkatoff(vdp, (off_t)i_offset, NULL, &bp);
 		if (error != 0)
 			return (error);
+
 		entryoffsetinblock = 0;
-		/*
-		 * If still looking for a slot, and at a DIRBLKSIZE
-		 * boundary, have to start looking for free space again.
-		 */
-		if (ss.slotstatus == NONE &&
-		    (entryoffsetinblock & (DIRBLKSIZ - 1)) == 0) {
+		if (ss.slotstatus == NONE) {
 			ss.slotoffset = -1;
 			ss.slotfreespace = 0;
 		}
+
 		error = ext2_search_dirblock(dp, bp->b_data, &entry_found,
 		    cnp->cn_nameptr, cnp->cn_namelen,
 		    &entryoffsetinblock, &i_offset, &prevoff,
@@ -719,9 +718,7 @@ ext2_search_dirblock(struct inode *ip, void *data, int *foundp,
 	vdp = ITOV(ip);
 
 	ep = (struct ext2fs_direct_2 *)((char *)data + offset);
-	top = (struct ext2fs_direct_2 *)((char *)data +
-	    bsize - EXT2_DIR_REC_LEN(0));
-
+	top = (struct ext2fs_direct_2 *)((char *)data + bsize);
 	while (ep < top) {
 		/*
 		 * Full validation checks are slow, so we only check
@@ -751,6 +748,8 @@ ext2_search_dirblock(struct inode *ip, void *data, int *foundp,
 
 			if (ep->e2d_ino != 0)
 				size -= EXT2_DIR_REC_LEN(ep->e2d_namlen);
+			else if (ext2_is_dirent_tail(ip, ep))
+				size -= sizeof(struct ext2fs_direct_tail);
 			if (size > 0) {
 				if (size >= ssp->slotneeded) {
 					ssp->slotstatus = FOUND;

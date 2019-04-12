@@ -130,6 +130,17 @@ dl_response_delete(struct dl_response const * const self)
 	dlog_free(self);	
 }
 
+/**
+ * Response header destructor.
+ */
+void
+dl_response_header_delete(struct dl_response_header const * const self)
+{
+
+	DL_ASSERT(self != NULL, ("Response header cannot be NULL."));
+	dlog_free(self);
+}
+
 /*
 int
 dl_response_decode(struct dl_response ** const self,
@@ -256,7 +267,6 @@ dl_response_header_decode(struct dl_response_header **self,
 #endif
 	/* Decode the CorrelationId */	
 	rc = DL_DECODE_CORRELATION_ID(source, &header->dlrsh_correlation_id);
-
 	if (rc == 0) {
 		/* Successfully decoded the Response header. */
 		*self =  header;

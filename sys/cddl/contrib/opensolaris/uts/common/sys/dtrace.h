@@ -1191,7 +1191,7 @@ typedef struct dtrace_fmtdesc {
 #define	DTRACEOPT_AGGZOOM	30	/* zoomed aggregation scaling */
 #define	DTRACEOPT_ZONE		31	/* zone in which to enable probes */
 #define DTRACEOPT_OFORMAT	32	/* output format (JSON, XML, etc.) */
-#define	DTRACEOPT_KONSUMERARG	33	/* opaque konsumer argument */
+#define	DTRACEOPT_DDTRACEARG	33	/* opaque DDTrace argument */
 #define	DTRACEOPT_MAX		34	/* number of options */
 
 #define	DTRACEOPT_UNSET		(dtrace_optval_t)-2	/* unset option */
@@ -2272,10 +2272,10 @@ typedef struct dof_helper {
  
 struct dtrace_state;
 
-typedef struct dtrace_kops {
-	void (*dtkops_open)(void *, struct dtrace_state *);
-	void (*dtkops_close)(void *, struct dtrace_state *);
-} dtrace_kops_t;
+typedef struct dtrace_dops {
+	void (*dtdops_open)(void *, struct dtrace_state *);
+	void (*dtdops_close)(void *, struct dtrace_state *);
+} dtrace_dops_t;
 
 typedef struct dtrace_pops {
 	void (*dtps_provide)(void *arg, dtrace_probedesc_t *spec);
@@ -2298,12 +2298,12 @@ typedef struct dtrace_pops {
 #define	DTRACE_MODE_NOPRIV_RESTRICT		0x20
 #define	DTRACE_MODE_LIMITEDPRIV_RESTRICT	0x40
 
-typedef uintptr_t	dtrace_konsumer_id_t;
+typedef uintptr_t	dtrace_dist_id_t;
 typedef uintptr_t	dtrace_provider_id_t;
 
-extern int dtrace_konsumer_register(const char *, const dtrace_kops_t *,
-    void *, dtrace_konsumer_id_t *);
-extern int dtrace_konsumer_unregister(dtrace_konsumer_id_t *);
+extern int dtrace_dist_register(const char *, const dtrace_dops_t *,
+    void *, dtrace_dist_id_t *);
+extern int dtrace_dist_unregister(dtrace_dist_id_t *);
 extern int dtrace_register(const char *, const dtrace_pattr_t *, uint32_t,
     cred_t *, const dtrace_pops_t *, void *, dtrace_provider_id_t *);
 extern int dtrace_unregister(dtrace_provider_id_t);
@@ -2605,12 +2605,11 @@ extern void dtrace_helpers_destroy(proc_t *);
 
 #elif defined(__powerpc__)
 
-#define DTRACE_INVOP_RET	1
-#define DTRACE_INVOP_BCTR	2
-#define DTRACE_INVOP_BLR	3
-#define DTRACE_INVOP_JUMP	4
-#define DTRACE_INVOP_MFLR_R0	5
-#define DTRACE_INVOP_NOP	6
+#define DTRACE_INVOP_BCTR	1
+#define DTRACE_INVOP_BLR	2
+#define DTRACE_INVOP_JUMP	3
+#define DTRACE_INVOP_MFLR_R0	4
+#define DTRACE_INVOP_NOP	5
 
 #elif defined(__arm__)
 
@@ -2666,12 +2665,11 @@ extern void dtrace_helpers_destroy(proc_t *);
 
 #elif defined(__riscv)
 
-#define	SD_RA_SP_MASK		0x01fff07f
-#define	SD_RA_SP		0x00113023
-
 #define	DTRACE_INVOP_SD		1
-#define	DTRACE_INVOP_RET	2
-#define	DTRACE_INVOP_NOP	3
+#define	DTRACE_INVOP_C_SDSP	2
+#define	DTRACE_INVOP_RET	3
+#define	DTRACE_INVOP_C_RET	4
+#define	DTRACE_INVOP_NOP	5
 
 #endif
 

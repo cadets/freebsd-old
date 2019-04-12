@@ -90,6 +90,15 @@ EXTRA_PACKAGES+= src.txz
 .endif
 .if !defined(NODOC)
 EXTRA_PACKAGES+= reldoc
+. if !defined(SVN) || empty(SVN)
+.  for S in svn svnlite
+.   for D in /usr/local/bin /usr/bin
+.    if(exists(${D}/${S}))
+SVN?=	${D}/${S}
+.    endif
+.   endfor
+.  endfor
+. endif
 .endif
 
 RELEASE_TARGETS= ftp
@@ -128,7 +137,7 @@ beforeclean:
 clean: beforeclean
 
 base.txz:
-	mkdir -p ${DISTDIR}
+	mkdir -p ${.OBJDIR}/${DISTDIR}
 	cd ${WORLDDIR} && ${IMAKE} distributeworld DISTDIR=${.OBJDIR}/${DISTDIR}
 # Set up mergemaster root database
 	sh ${.CURDIR}/scripts/mm-mtree.sh -m ${WORLDDIR} -F \
@@ -138,24 +147,24 @@ base.txz:
 	    -s ${WORLDDIR} -d "${.OBJDIR}/${DISTDIR}/base/var/db/etcupdate"
 # Package all components
 	cd ${WORLDDIR} && ${IMAKE} packageworld DISTDIR=${.OBJDIR}/${DISTDIR}
-	mv ${DISTDIR}/*.txz .
+	mv ${.OBJDIR}/${DISTDIR}/*.txz ${.OBJDIR}
 
 kernel.txz:
-	mkdir -p ${DISTDIR}
-	cd ${WORLDDIR} && ${IMAKE} distributekernel packagekernel DISTDIR=${.OBJDIR}/${DISTDIR}
-	mv ${DISTDIR}/kernel*.txz .
+	mkdir -p ${.OBJDIR}/${DISTDIR}
+	cd ${WORLDDIR} && ${IMAKE} distributekernel DISTDIR=${.OBJDIR}/${DISTDIR} && ${IMAKE} packagekernel DISTDIR=${.OBJDIR}/${DISTDIR}
+	mv ${.OBJDIR}/${DISTDIR}/kernel*.txz ${.OBJDIR}
 
 src.txz:
-	mkdir -p ${DISTDIR}/usr
-	ln -fs ${WORLDDIR} ${DISTDIR}/usr/src
-	cd ${DISTDIR} && tar cLvf - --exclude .svn --exclude .zfs \
+	mkdir -p ${.OBJDIR}/${DISTDIR}/usr
+	ln -fs ${WORLDDIR} ${.OBJDIR}/${DISTDIR}/usr/src
+	cd ${.OBJDIR}/${DISTDIR} && tar cLvf - --exclude .svn --exclude .zfs \
 	    --exclude .git --exclude @ --exclude usr/src/release/dist usr/src | \
 	    ${XZ_CMD} > ${.OBJDIR}/src.txz
 
 ports.txz:
-	mkdir -p ${DISTDIR}/usr
-	ln -fs ${PORTSDIR} ${DISTDIR}/usr/ports
-	cd ${DISTDIR} && tar cLvf - \
+	mkdir -p ${.OBJDIR}/${DISTDIR}/usr
+	ln -fs ${PORTSDIR} ${.OBJDIR}/${DISTDIR}/usr/ports
+	cd ${.OBJDIR}/${DISTDIR} && tar cLvf - \
 	    --exclude .git --exclude .svn \
 	    --exclude usr/ports/distfiles --exclude usr/ports/packages \
 	    --exclude 'usr/ports/INDEX*' --exclude work usr/ports | \
@@ -164,6 +173,8 @@ ports.txz:
 reldoc:
 	cd ${DOCDIR}/en_US.ISO8859-1/htdocs/releases/${REVISION}R && \
 	    env MAN4DIR=${WORLDDIR}/share/man/man4 \
+	    SVN=${SVN} \
+	    _BRANCH=${BRANCH} \
 	    ${MAKE} all install clean "FORMATS=html txt" \
 	    INSTALL_COMPRESSED='' URLS_ABSOLUTE=YES DOCDIR=${.OBJDIR}/rdoc \
 	    WEBDIR=${DOCDIR} DESTDIR=${.OBJDIR}/rdoc
@@ -202,6 +213,7 @@ disc1: packagesystem
 	echo hostid_enable=\"NO\" >> ${.TARGET}/etc/rc.conf
 	echo debug.witness.trace=0 >> ${.TARGET}/etc/sysctl.conf
 	echo vfs.mountroot.timeout=\"10\" >> ${.TARGET}/boot/loader.conf
+	echo kernels_autodetect=\"NO\" >> ${.TARGET}/boot/loader.conf
 	cp ${.CURDIR}/rc.local ${.TARGET}/etc
 	touch ${.TARGET}
 
@@ -229,6 +241,7 @@ bootonly: packagesystem
 	echo hostid_enable=\"NO\" >> ${.TARGET}/etc/rc.conf
 	echo debug.witness.trace=0 >> ${.TARGET}/etc/sysctl.conf
 	echo vfs.mountroot.timeout=\"10\" >> ${.TARGET}/boot/loader.conf
+	echo kernels_autodetect=\"NO\" >> ${.TARGET}/boot/loader.conf
 	cp ${.CURDIR}/rc.local ${.TARGET}/etc
 
 dvd: packagesystem
@@ -253,6 +266,7 @@ dvd: packagesystem
 	echo hostid_enable=\"NO\" >> ${.TARGET}/etc/rc.conf
 	echo debug.witness.trace=0 >> ${.TARGET}/etc/sysctl.conf
 	echo vfs.mountroot.timeout=\"10\" >> ${.TARGET}/boot/loader.conf
+	echo kernels_autodetect=\"NO\" >> ${.TARGET}/boot/loader.conf
 	cp ${.CURDIR}/rc.local ${.TARGET}/etc
 	touch ${.TARGET}
 

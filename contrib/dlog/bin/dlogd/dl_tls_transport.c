@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -75,6 +75,9 @@ static const int DLT_TLS_POLL_TIMEOUT = 2000;
 static dl_event_handler_handle dl_tls_get_transport_fd(void *);
 static void dl_tls_transport_hdlr(void *, int, int);
 
+/* dlogd properties. */
+extern nvlist_t *dlogd_props;
+
 static int dl_tls_transport_connect(struct dl_transport *,
     const char * const, const int);
 static void dl_tls_transport_delete(struct dl_transport *);
@@ -84,9 +87,6 @@ static int dl_tls_transport_read_msg(struct dl_transport *,
     struct dl_bbuf **);
 static int dl_tls_transport_send_request(struct dl_transport *,
     struct dl_bbuf const *);
-
-#define CONST_CAST2(TOTYPE,FROMTYPE,X) ((__extension__(union {FROMTYPE _q; TOTYPE _nq;})(X))._nq)
-#define CONST_CAST(TYPE,X) CONST_CAST2 (TYPE, const TYPE, (X))
 
 static inline void
 dl_tls_transport_check_integrity(struct dl_tls_transport *self)
@@ -126,7 +126,6 @@ dl_tls_transport_delete(struct dl_transport *self)
 
 	dl_poll_reactor_unregister(&self->dlt_event_hdlr);
 	BIO_ssl_shutdown(self->dlt_tls->dlt_tls_bio);
-	BIO_free_all(self->dlt_tls->dlt_tls_bio);
 	SSL_CTX_free(self->dlt_tls->dlt_tls_ctx);
 	dlog_free(self->dlt_tls);
 }
@@ -135,8 +134,10 @@ static int
 dl_tls_transport_connect(struct dl_transport *self,
     const char * const hostname, const int port)
 {
+	BIO *bio;
+	struct sbuf *host;
 	SSL *ssl;
-	int rc;
+	int rc, fd, flags;
 
 	dl_tls_transport_check_integrity(self->dlt_tls);
 	DL_ASSERT(hostname != NULL, "Hostname to connect to cannot be NULL");
@@ -149,17 +150,25 @@ dl_tls_transport_connect(struct dl_transport *self,
 		return -1;
 	}
 
-	int fd, flags = 1;
 	BIO_get_fd(self->dlt_tls->dlt_tls_bio, &fd);
+
+	/* Disbale NAGLE - send small messages immediately. */
+	flags = 1;
 	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
+
+//	flags = 65535;
+//	setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (void *)&flags, sizeof(flags));
+//	setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (void *)&flags, sizeof(flags));
 
 	/* Configure the hostname and port to connect to.
 	 * (Note: These functions always return 1).
 	 */
-	BIO_set_conn_hostname(self->dlt_tls->dlt_tls_bio,
-	    CONST_CAST(char *, hostname));
-	BIO_set_conn_int_port(self->dlt_tls->dlt_tls_bio,
-	    CONST_CAST(int *, &port));
+	host = sbuf_new_auto();
+	DL_ASSERT(host != NULL, ("Failed creating sbuf instance"));
+	sbuf_printf(host, "%s:%d", hostname, port);
+	sbuf_finish(host);
+	BIO_set_conn_hostname(self->dlt_tls->dlt_tls_bio, sbuf_data(host));
+	sbuf_delete(host);
 
 	/* Setting SSL_MODE_AUTO_RETRY prevents the application from having
 	 * to retry reads/writes in cases where the underlying transport
@@ -234,13 +243,13 @@ retry_read_length:
 			if (rc == -1) {
 
 				DLOGTR1(PRIO_HIGH,
-					"Error whilst polling on socket (%d)\n",
-					errno);
+				    "Error whilst polling on socket (%d)\n",
+				    errno);
 			} else if (rc == 0) {
 
 				/* Timeout whilst waiting on socket. */
 				DLOGTR0(PRIO_NORMAL,
-					"Timed out whilst attempting to resend.\n");
+				    "Timed out whilst attempting to resend.\n");
 			} else {
 
 				/* Socket is ready to write, retry. */
@@ -342,66 +351,27 @@ static int
 dl_tls_transport_send_request(struct dl_transport *self,
     const struct dl_bbuf *buffer)
 {
-	BIO *bio, *bio_buf;
 	struct pollfd fds;
 	int fd, rc;
 
 	dl_tls_transport_check_integrity(self->dlt_tls);
-	DL_ASSERT(self->dlt_tls->dlt_tls_bio != NULL,
-	    ("Transport TSL bio cannot be NULL"));
 	DL_ASSERT(buffer != NULL, "Buffer to send cannot be NULL");
 
-	/* Create a BIO to buffer the write of the length of the buffer
-	 * and it's contents.
-	 */
-	bio_buf = BIO_new(BIO_f_buffer());
-	if (bio_buf == NULL) {
-
-		DLOGTR0(PRIO_HIGH, "Error allocating BIO buffer\n");
-		return -1;
-	}
-
-	rc = BIO_set_write_buffer_size(bio_buf, dl_bbuf_pos(buffer));
-	if (rc == 0) {
-
-		DLOGTR0(PRIO_HIGH, "Error setting BIO rite buffer size\n");
-		/* Free the BIO used to buffer the request. */
-		BIO_free(bio_buf);
-		return -1;
-	}
-	
-	bio = BIO_push(bio_buf, self->dlt_tls->dlt_tls_bio);
-	if (bio == NULL) {
-
-		DLOGTR0(PRIO_HIGH,
-		    "BIO_push in TlsTransport send_request failed\n");
-		/* Free the BIO used to buffer the request. */
-		BIO_free(bio_buf);
-		return -1;
-	}
-
-	/* Convert the length of the buffer from host endianess to
-	 * big endian.
-	 */
-	//DLOGTR1(PRIO_LOW, "Sending request (bytes= %u)\n",
-	//    dl_bbuf_pos(buffer));
-
-	rc = BIO_write(bio_buf, dl_bbuf_data(buffer), dl_bbuf_pos(buffer));
+	rc = BIO_write(self->dlt_tls->dlt_tls_bio, dl_bbuf_data(buffer),
+	    dl_bbuf_pos(buffer));
 	if (rc <= 0) {
 
 		DLOGTR0(PRIO_HIGH,
 		    "BIO_write in TlsTransport send_request failed\n");
-		/* Free the BIO used to buffer the request. */
-		BIO_free(bio_buf);
 		return -1;
 	}
 
 retry_flush:
 	/* Flush the buffered data. */
-	rc = BIO_flush(bio);
+	rc = BIO_flush(self->dlt_tls->dlt_tls_bio);
 	if (rc <= 0) {
 		
-		if (BIO_should_retry(bio) != 0) {
+		if (BIO_should_retry(self->dlt_tls->dlt_tls_bio) != 0) {
 
 			/* Poll on the socket until it is ready to retry. */
 			BIO_get_fd(self->dlt_tls->dlt_tls_bio, &fd);
@@ -426,11 +396,10 @@ retry_flush:
 			}
 		}
 
-		DLOGTR0(PRIO_HIGH,
-		    "BIO_flush in TlsTransport send_request failed\n");
+		DLOGTR1(PRIO_HIGH,
+		    "BIO_flush in TlsTransport send_request failed (%d)\n",
+		    rc);
 
-		/* Free the BIO used to buffer the request. */
-		BIO_free(bio_buf);
 		return -1;
 	}
 
@@ -438,17 +407,13 @@ retry_flush:
 	dl_producer_stats_bytes_sent(self->dlt_producer,
 	    dl_bbuf_pos(buffer));
 
-	/* Free the BIO used to buffer the request. */
-	BIO_free(bio_buf);
-
-	return 0;
+	return dl_bbuf_pos(buffer);
 }
 
 static void 
 dl_tls_transport_hdlr(void *instance, int fd, int revents)
 {
 	struct dl_transport * const self = instance;
-	struct dl_response_header *hdr;
 	struct dl_bbuf *buffer;
 	socklen_t len = sizeof(int);
 	int rc, err = 0;
@@ -475,23 +440,12 @@ dl_tls_transport_hdlr(void *instance, int fd, int revents)
 			/* No data to read. */
 		} if (rc > 0) {
 
-			/* Deserialise the response header. */
-			if (dl_response_header_decode(&hdr, buffer) == 0) {
-				//DLOGTR1(PRIO_LOW,
-				//    "Got response id = : %d\n",
-				//    hdr->dlrsh_correlation_id);
+			/* Process the received response. */
+			if (dl_producer_response(self->dlt_producer,
+			    buffer) != 0) {
 
-				/* Process the received response. */
-				dl_producer_response(self->dlt_producer,
-				    hdr);
-
-				/* Free the response header
-				 * TODO: implement dl_response_header_delete(header);
-				 */
-				dlog_free(hdr);
-			} else {
 				DLOGTR0(PRIO_HIGH,
-				    "Error decoding response header.\n");
+				    "Error processing response.\n");
 			}
 
 			/* Free the buffer in which the raw response was
@@ -591,8 +545,7 @@ dl_tls_transport_get_fd(struct dl_transport *self)
 }
 
 int
-dl_tls_transport_new(struct dl_transport **self, struct dl_producer *producer,
-    nvlist_t *props)
+dl_tls_transport_new(struct dl_transport **self, struct dl_producer *producer)
 {
 	struct dl_transport *transport;
 	struct dl_tls_transport *tls;
@@ -602,7 +555,6 @@ dl_tls_transport_new(struct dl_transport **self, struct dl_producer *producer,
 
 	DL_ASSERT(self != NULL, ("Transport instance cannot be NULL"));
 	DL_ASSERT(producer != NULL, ("Producer instance cannot be NULL"));
-	DL_ASSERT(props != NULL, ("Properties instance cannot be NULL"));
       
        	rc = dl_transport_new(&transport, dl_tls_transport_delete,
 	    dl_tls_transport_connect, dl_tls_transport_read_msg,
@@ -645,8 +597,8 @@ dl_tls_transport_new(struct dl_transport **self, struct dl_producer *producer,
 
 	SSL_CTX_set_options(tls->dlt_tls_ctx, DLT_TLS_FLAGS);
 	
-	if (nvlist_exists_string(props, DL_CONF_CLIENT_FILE)) {
-		client_file = nvlist_get_string(props, DL_CONF_CLIENT_FILE);
+	if (nvlist_exists_string(dlogd_props, DL_CONF_CLIENT_FILE)) {
+		client_file = nvlist_get_string(dlogd_props, DL_CONF_CLIENT_FILE);
 	} else {
 		client_file = DL_DEFAULT_CLIENT_FILE;
 	}
@@ -662,16 +614,16 @@ dl_tls_transport_new(struct dl_transport **self, struct dl_producer *producer,
 		goto err_tls_ctx_free;
 	}
 
-	if (nvlist_exists_string(props, DL_CONF_USER_PASSWORD)) {
-		password = nvlist_get_string(props, DL_CONF_USER_PASSWORD);
+	if (nvlist_exists_string(dlogd_props, DL_CONF_USER_PASSWORD)) {
+		password = nvlist_get_string(dlogd_props, DL_CONF_USER_PASSWORD);
 	} else {
 		password = DL_DEFAULT_USER_PASSWORD;
 	}
 
 	SSL_CTX_set_default_passwd_cb_userdata(tls->dlt_tls_ctx, password);
 
-	if (nvlist_exists_string(props, DL_CONF_PRIVATEKEY_FILE)) {
-		privkey_file = nvlist_get_string(props,
+	if (nvlist_exists_string(dlogd_props, DL_CONF_PRIVATEKEY_FILE)) {
+		privkey_file = nvlist_get_string(dlogd_props,
 		    DL_CONF_PRIVATEKEY_FILE);
 	} else {
 		privkey_file = DL_DEFAULT_PRIVATEKEY_FILE;
@@ -701,8 +653,8 @@ dl_tls_transport_new(struct dl_transport **self, struct dl_producer *producer,
 	 * are located (in not NULL a file of CA certificated in PEM
 	 * format).
 	 */
-	if (nvlist_exists_string(props, DL_CONF_CACERT_FILE)) {
-		cacert_file = nvlist_get_string(props, DL_CONF_CACERT_FILE);
+	if (nvlist_exists_string(dlogd_props, DL_CONF_CACERT_FILE)) {
+		cacert_file = nvlist_get_string(dlogd_props, DL_CONF_CACERT_FILE);
 	} else {
 		cacert_file = DL_DEFAULT_CACERT_FILE;
 	}

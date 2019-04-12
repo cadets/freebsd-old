@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -41,6 +41,7 @@
 #include <sys/socket.h>
 #include <sys/sbuf.h>
 #include <sys/uio.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <machine/atomic.h>
 
@@ -104,9 +105,6 @@ struct dl_producer {
 	bool dlp_resend;
 };
 
-static const uint32_t DLP_REQUEST_QUEUE_LIMIT = 100;
-static const uint8_t DLP_MAX_RETRIES = 3;
-
 static void dl_producer_idle(struct dl_producer * const self);
 static void dl_producer_syncing(struct dl_producer * const self);
 static void dl_producer_offline(struct dl_producer * const self);
@@ -122,13 +120,8 @@ static void dl_producer_timer_handler(void *instance, int, int);
 static void *dlp_produce_thread(void *vargp);
 static void *dlp_resender_thread(void *vargp);
 
-static char const * const DLP_INITIAL_NAME = "INITIAL";
-static char const * const DLP_IDLE_NAME = "IDLE";
-static char const * const DLP_SYNCING_NAME = "SYNCING";
-static char const * const DLP_OFFLINE_NAME = "OFFLINE";
-static char const * const DLP_ONLINE_NAME = "ONLINE";
-static char const * const DLP_CONNECTING_NAME = "CONNECTING";
-static char const * const DLP_FINAL_NAME = "FINAL";
+static char const * const DLP_STATE_NAME[] =
+    {"INITIAL", "IDLE", "SYNCING", "OFFLINE", "ONLINE", "CONNECTING", "FINAL" };
 static const off_t DL_FSYNC_DEFAULT_CHARS = 1024*1024;
 static const off_t DL_INDEX_DEFAULT_CHARS = 1024*1024;
 static const int RECONNECT_TIMEOUT_EVENT = 1337;
@@ -150,6 +143,97 @@ dl_producer_check_integrity(struct dl_producer const * const self)
 	    ("Producer topic cannot be NULL."));
 	DL_ASSERT(self->dlp_name != NULL,
 	    ("Producer instance cannot be NULL."));
+}
+
+static inline void
+dlp_stats_rtt(struct dl_producer *self, int32_t rtt)
+{
+
+	dl_producer_check_integrity(self);
+	self->dlp_stats->dlps_rtt = rtt;
+}
+
+static inline void
+dlp_stats_received_cid(struct dl_producer *self, int32_t cid)
+{
+
+	dl_producer_check_integrity(self);
+	self->dlp_stats->dlps_received.dlpsm_cid = cid;
+}
+
+static inline void
+dlp_stats_received_error(struct dl_producer *self, bool err)
+{
+
+	dl_producer_check_integrity(self);
+	self->dlp_stats->dlps_received.dlpsm_error = err;
+}
+
+static inline void
+dlp_stats_received_timestamp(struct dl_producer *self)
+{
+
+	dl_producer_check_integrity(self);
+	self->dlp_stats->dlps_received.dlpsm_timestamp = time(NULL);
+}
+
+static inline void
+dlp_stats_sent_cid(struct dl_producer *self, int32_t cid)
+{
+
+	dl_producer_check_integrity(self);
+	self->dlp_stats->dlps_sent.dlpsm_cid = cid;
+}
+
+static inline void
+dlp_stats_sent_error(struct dl_producer *self, bool err)
+{
+
+	dl_producer_check_integrity(self);
+	self->dlp_stats->dlps_sent.dlpsm_error = err;
+}
+
+static inline void
+dlp_stats_sent_timestamp(struct dl_producer *self)
+{
+
+	dl_producer_check_integrity(self);
+	self->dlp_stats->dlps_sent.dlpsm_timestamp = time(NULL);
+}
+
+static inline void
+dlp_stats_state_name(struct dl_producer *self)
+{
+
+	dl_producer_check_integrity(self);
+	strncpy(self->dlp_stats->dlps_state_name,
+	    DLP_STATE_NAME[self->dlp_state],
+	    sizeof(self->dlp_stats->dlps_state_name)); 
+}
+
+static inline void
+dlp_stats_topic_name(struct dl_producer *self, char *topic_name)
+{
+
+	dl_producer_check_integrity(self);
+	strncpy(self->dlp_stats->dlps_topic_name, topic_name,
+	    sizeof(self->dlp_stats->dlps_topic_name)); 
+}
+
+static inline void
+dlp_stats_resend(struct dl_producer *self)
+{
+
+	dl_producer_check_integrity(self);
+	self->dlp_stats->dlps_resend = self->dlp_resend;
+}
+
+static inline void
+dlp_stats_resend_timeout(struct dl_producer *self)
+{
+
+	dl_producer_check_integrity(self);
+	self->dlp_stats->dlps_resend_timeout = self->dlp_resend_timeout;
 }
 
 static dl_event_handler_handle
@@ -179,9 +263,11 @@ dl_producer_kq_handler(void *instance, int fd __attribute((unused)),
 
 	rc = kevent(p->dlp_topic->_klog, 0, 0, &event, 1, 0);
 	if (rc == -1) {
+
 		DLOGTR2(PRIO_HIGH, "Error reading kqueue event %d %d\n.",
 		    rc, errno);
 	} else {
+
 		dl_segment_lock(seg);
 		log_position = lseek(dl_user_segment_get_log(seg), 0,
 		    SEEK_END);
@@ -196,7 +282,7 @@ dl_producer_kq_handler(void *instance, int fd __attribute((unused)),
 			if (dl_index_update(idx,
 			    dl_index_get_last(idx) + DL_FSYNC_DEFAULT_CHARS) > 0) {
 				/* Fire the produce() event into the
-				 * Producer statemachine .
+				 * Producer state machine .
 				 */
 				dl_producer_produce(p);
 			}
@@ -234,6 +320,7 @@ dl_producer_timer_handler(void *instance, int fd __attribute((unused)),
 		DLOGTR2(PRIO_HIGH, "Error reading kqueue event %d %d\n",
 		    rc, errno);
 	} else {
+
 		for (int i = 0; i < rc; i++) {
 			switch (events[i].ident) {
 			case RECONNECT_TIMEOUT_EVENT:
@@ -260,7 +347,7 @@ dl_producer_timer_handler(void *instance, int fd __attribute((unused)),
 				if (dl_index_update(idx,
 			    	    dl_index_get_last(idx) + DL_FSYNC_DEFAULT_CHARS) > 0) {
 					/* Fire the produce() event into the
-					 * Producer statemachine .
+					 * Producer state machine .
 					 */
 					dl_producer_produce(p);
 				}
@@ -275,7 +362,7 @@ dlp_resender_thread(void *vargp)
 {
 	struct dl_producer *self = (struct dl_producer *)vargp;
 	struct dl_request_element *request;
-	time_t now;
+	struct timeval tv, tdiff;
 	int rc;
 
 	dl_producer_check_integrity(self);
@@ -285,83 +372,63 @@ dlp_resender_thread(void *vargp)
 
 	for (;;) {
 		
-		if (dl_request_q_peek_unackd(self->dlp_requests,
+		/* Iterate accross all the unack'd requests. */	
+		dl_request_q_lock(self->dlp_requests);		
+		while (dl_request_q_peek_unackd(self->dlp_requests,
 		    &request) == 0) {
 
-			/* Iterate accross all the unack'd requests. */	
-			dl_request_q_lock(self->dlp_requests);		
-			DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
-			while(request != NULL && request !=
-			    self->dlp_requests->dlrq_requests) {
+			gettimeofday(&tv, NULL);
+			timersub(&tv, &request->dlrq_tv, &tdiff);
+			if ((tdiff.tv_sec * 1000 + tdiff.tv_usec/1000)
+			    > self->dlp_resend_timeout) {
 
-				now = time(NULL);
-				if ((now - request->dlrq_last_sent) >
-					self->dlp_resend_timeout) {
+				/* Dequeue the request as the it's timeout period
+				 * has expired.
+				 */ 
+				if (dl_request_q_dequeue_unackd(
+				    self->dlp_requests, &request) == 0) {
 
-					if (request->dlrq_max_retries-- <=  0) {
+					if (request->dlrq_retries-- <=  0) {
+
 						if (self->dlp_debug_level > 0)
-				  		    DLOGTR1(PRIO_LOW,
-						    "Exceeded resend for request id = %d\n",
-						    request->dlrq_correlation_id);
+							DLOGTR1(PRIO_LOW,
+							"Exceeded resend for request id = %d\n",
+							request->dlrq_correlation_id);
 
-						rc = sem_wait(&self->dlp_requests->dlrq_unackd_items);
-						DL_ASSERT(rc == 0,
-						    ("Failed acquiring RequestQueue unackd requests semaphore"));
-						/* Update the request queue statistics. */	
-						sem_getvalue(&self->dlp_requests->dlrq_unackd_items,
-						    &self->dlp_stats->dlps_request_q_stats.dlrqs_unackd);
-						STAILQ_REMOVE(&self->dlp_requests->dlrq_queue,
-						    request, dl_request_element, dlrq_entries);
+						/* The request can now be freed. */
+						dl_bbuf_delete(request->dlrq_buffer);
+						dlog_free(request);
+					} else {
+						
+						rc = dl_request_q_enqueue(
+						self->dlp_requests, request);
 
-						sem_post(&self->dlp_requests->dlrq_spaces);
+						if (self->dlp_debug_level > 0)
+							DLOGTR1(PRIO_LOW,
+							"Resending request id = %d\n",
+							request->dlrq_correlation_id);
 					}
-
-					if (self->dlp_debug_level > 0)
-						DLOGTR1(PRIO_LOW,
-						"Resending request id = %d\n",
-						request->dlrq_correlation_id);
-
-					rc = sem_wait(&self->dlp_requests->dlrq_unackd_items);
-					DL_ASSERT(rc == 0,
-					    ("Failed acquiring RequestQueue unackd requests semaphore"));
-					/* Update the request queue statistics. */	
-					sem_getvalue(&self->dlp_requests->dlrq_unackd_items,
-					    &self->dlp_stats->dlps_request_q_stats.dlrqs_unackd);
-					STAILQ_REMOVE(&self->dlp_requests->dlrq_queue,
-					    request, dl_request_element, dlrq_entries);
-
-					STAILQ_INSERT_TAIL(&self->dlp_requests->dlrq_queue,
-						request, dlrq_entries);
-					if (self->dlp_requests->dlrq_requests == NULL)
-						self->dlp_requests->dlrq_requests = request;
-					sem_post(&self->dlp_requests->dlrq_request_items);
-
-					/* Update the request queue statistics. */	
-					sem_getvalue(&self->dlp_requests->dlrq_request_items,
-					    &self->dlp_stats->dlps_request_q_stats.dlrqs_requests);
 				} else {
-					if (self->dlp_debug_level > 1) {
-						DLOGTR2(PRIO_LOW,
-						    "Resend request id: %d in %ld (secs)\n",
-						    request->dlrq_correlation_id,
-						    self->dlp_resend_timeout -
-						    (now - request->dlrq_last_sent));
-					}
-
-					/* Any further requests will no require
-					 * resending, therefore break out of the
-					 * loop.
-					 */
-					dl_request_q_unlock(self->dlp_requests);		
-					goto resender_sleep;
 				}
-				request = STAILQ_NEXT(request, dlrq_entries);
+			} else {
+				if (self->dlp_debug_level > 1) {
+					DLOGTR2(PRIO_LOW,
+					    "Resend request id: %d in %ld (ms)\n",
+					    request->dlrq_correlation_id,
+					    self->dlp_resend_timeout -
+					    (tdiff.tv_sec * 1000 + tdiff.tv_usec/1000));
+				}
+
+				/* Any further requests will no require
+				 * resending, therefore break out of the
+				 * loop.
+				 */
+				goto resender_sleep;
 			}
-			dl_request_q_unlock(self->dlp_requests);		
 		}
+		dl_request_q_unlock(self->dlp_requests);		
 		
 resender_sleep:
-		DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
 		sleep(self->dlp_resend_period);
 	}
 
@@ -380,74 +447,55 @@ dlp_produce_thread(void *vargp)
 
 	dl_producer_check_integrity(self);
 
-	if (self->dlp_debug_level > 0)
+	if (self->dlp_debug_level > 1)
 		DLOGTR0(PRIO_LOW, "Producer thread started...\n");
 
 	for (;;) {
 
-		while (dl_request_q_peek(self->dlp_requests,
-		    &request) == 0) {
-
-			if (self->dlp_debug_level > 0)
-				DLOGTR1(PRIO_LOW,
-				"Sending request id = %d\n",
-				request->dlrq_correlation_id);
-
-
-			nbytes = dl_transport_send_request(
-			    self->dlp_transport, request->dlrq_buffer);
+		/* Dequeue the request; this simply moves the item into
+		 * the unacknowledged part of the request queue.
+		 */
+		while (dl_request_q_dequeue(self->dlp_requests, &request) == 0) {
 
 			/* Record the last attempted send time
 			 * of the request.
 			 */
-			request->dlrq_last_sent = time(NULL);
-			request->dlrq_max_retries = DLP_MAX_RETRIES; 
+			gettimeofday(&request->dlrq_tv, NULL);
 
-			/* Dequeue the request; this simply moves
-			 * the item into the unacknowledged part
-			 * of the request queue.
-			 */
-			rc = dl_request_q_dequeue(self->dlp_requests, &request);
-			DL_ASSERT(rc == 0,
-			    ("Failed dequeuing request; this cannot fail "
-			    "as it is simply moving an item in the list."));
+			nbytes = dl_transport_send_request(
+			    self->dlp_transport, request->dlrq_buffer);
 
 			/* Update the producer statistics */
-			self->dlp_stats->dlps_sent.dlpsm_cid =
-			    request->dlrq_correlation_id;
-			self->dlp_stats->dlps_sent.dlpsm_timestamp =
-			    request->dlrq_last_sent;
-
+			dlp_stats_sent_cid(self, request->dlrq_correlation_id);
+			dlp_stats_sent_timestamp(self);
 			if (nbytes != -1) {
 				/* Update the producer statistics */
-				self->dlp_stats->dlps_sent.dlpsm_error = false;
+				dlp_stats_sent_error(self, false);
 
-				if (self->dlp_debug_level > 1) {
-					DLOGTR3(PRIO_LOW,
-					    "Successfully sent request id = %d "
-					    "(nbytes = %zu, bytes = %d)\n",
+				if (self->dlp_debug_level > 1)
+					DLOGTR2(PRIO_LOW,
+					    "ProduceRequest: id = %d "
+					    "sent (bytes = %ld)\n",
 					    request->dlrq_correlation_id,
-					    nbytes,
-					    dl_bbuf_pos(request->dlrq_buffer));
-				}
+					    nbytes);
 			} else {
 				/* Update the producer statistics */
-				self->dlp_stats->dlps_sent.dlpsm_error = true;
+				dlp_stats_sent_error(self, true);
 
-				if (self->dlp_debug_level > 0) {
-					DLOGTR3(PRIO_LOW,
-					    "Failed sending request id = %d "
-					    "(nbytes = %zu, bytes = %d)\n",
+				if (self->dlp_debug_level > 1)
+					DLOGTR2(PRIO_LOW,
+					    "ProduceRequest: id = %d failed "
+					    "(bytes = %d)\n",
 					    request->dlrq_correlation_id,
-					    nbytes,
 					    dl_bbuf_pos(request->dlrq_buffer));
-				}
 			}
 		}
-		sleep(self->dlp_resend_period);
+		DL_ASSERT(1,
+		    ("Failed dequeuing request; this cannot fail "
+		    "as it is simply moving an item in the list."));
 	}
 
-	if (self->dlp_debug_level > 0)
+	if (self->dlp_debug_level > 1)
 		DLOGTR0(PRIO_LOW, "Produce thread stopped.\n");
 	pthread_exit(NULL);
 }
@@ -460,13 +508,19 @@ dlp_enqueue_thread(void *vargp)
 	struct dl_topic *topic = self->dlp_topic;
 	struct dl_request *message;
 	struct dl_segment *seg;
+	struct sbuf *topic_name;
 	int rc;
 
 	dl_producer_check_integrity(self);
 
-	if (self->dlp_debug_level > 0)
+	if (self->dlp_debug_level > 1)
 		DLOGTR0(PRIO_LOW, "Enqueue thread started...\n");
 
+	/* Get the name of the topic produce to. */	
+	topic_name = dl_topic_get_name(self->dlp_topic);
+	DL_ASSERT(topic_name != NULL, ("Topic's name cannot be NULL"));
+
+	/* Get the topic's active segment. */
 	seg = dl_topic_get_active_segment(topic);
 	DL_ASSERT(seg != NULL, ("Topic's active segment cannot be NULL"));
 
@@ -477,7 +531,7 @@ dlp_enqueue_thread(void *vargp)
 		if (dl_produce_request_new_nomsg(&message,
 		    dl_correlation_id_val(self->dlp_cid),
 		    self->dlp_name, 1, 2000,
-		    dl_topic_get_name(self->dlp_topic)) == 0) {
+		    topic_name) == 0) {
 
 			rc = dl_request_encode(message, &buffer);
 			if (rc != 0) {
@@ -503,9 +557,7 @@ dlp_enqueue_thread(void *vargp)
 			/* Free the Message buffer read from the log file */
 			dl_bbuf_delete(msg_buffer);
 
-			/* Prepend the Producer request with the total
-			 * lenth.
-			 */
+			/* Prepend the Producer request with the total length. */
 			rc = DL_ENCODE_REQUEST_SIZE_AT(buffer,
 			    dl_bbuf_pos(buffer) - sizeof(int32_t), 0);
 			if (rc != 0) {
@@ -516,21 +568,19 @@ dlp_enqueue_thread(void *vargp)
 				dl_producer_error(self);
 			}
 
-
-			if (self->dlp_debug_level > 1) {
+			if (self->dlp_debug_level > 2)
 				DLOGTR2(PRIO_LOW,
-				    "Enqueing ProduceRequest: %d (%d bytes)\n",
+				    "ProduceRequest: id = %d enqueued (%d bytes)\n",
 				    dl_correlation_id_val(self->dlp_cid),
 				    dl_bbuf_pos(buffer));
-			}
 
 			rc = dl_request_q_enqueue_new(self->dlp_requests,
 			    buffer, dl_correlation_id_val(self->dlp_cid),
 			    DL_PRODUCE_API_KEY);
 			if (rc != 0) {
-
-				DLOGTR0(PRIO_HIGH,
-				    "Failed enqueing ProduceRequest\n");
+				DLOGTR1(PRIO_HIGH,
+				    "ProduceRequest: id = %d failed enqueing\n",
+				    dl_correlation_id_val(self->dlp_cid));
 				dl_bbuf_delete(buffer);
 				dl_producer_error(self);
 				break;
@@ -554,7 +604,7 @@ dlp_enqueue_thread(void *vargp)
 	/* Self-trigger syncd() event. */
 	dl_producer_syncd(self);
 
-	if (self->dlp_debug_level > 0)
+	if (self->dlp_debug_level > 1)
 		DLOGTR0(PRIO_LOW, "Enqueue thread stopped.\n");
 	pthread_exit(NULL);
 }
@@ -567,15 +617,15 @@ dl_producer_connecting(struct dl_producer * const self)
 	dl_producer_check_integrity(self);
 
 	self->dlp_state = DLP_CONNECTING;
-	if (self->dlp_debug_level > 0) {
-		strncpy(self->dlp_stats->dlps_state_name,
-		    DLP_CONNECTING_NAME, 255); 
-		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
-		    DLP_CONNECTING_NAME, self->dlp_state);
-	}
 
-	rc = dl_transport_factory_get_inst(&self->dlp_transport,
-	    self, self->dlp_props);
+	/* Update the producer statistics */
+	dlp_stats_state_name(self);
+
+	if (self->dlp_debug_level > 0)
+		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
+	    	    DLP_STATE_NAME[self->dlp_state], self->dlp_state);
+
+	rc = dl_transport_factory_get_inst(&self->dlp_transport, self);
 	if (rc == 0) {
 
 		rc = dl_transport_connect(self->dlp_transport,
@@ -591,7 +641,7 @@ dl_producer_connecting(struct dl_producer * const self)
 
 		DLOGTR3(PRIO_HIGH, "Failed connecting to %s:%d (%d)\n",
 		    sbuf_data(self->dlp_broker_hostname), self->dlp_broker_port,
-		errno);
+		    errno);
 
 		dl_producer_down(self);
 	} else {
@@ -609,12 +659,13 @@ dl_producer_idle(struct dl_producer * const self)
 	    ("Producer transport cannot be NULL."));
 
 	self->dlp_state = DLP_IDLE;
-	if (self->dlp_debug_level > 0) {
-		strncpy(self->dlp_stats->dlps_state_name,
-		    DLP_IDLE_NAME, 255); 
+
+	/* Update the producer statistics */
+	dlp_stats_state_name(self);
+
+	if (self->dlp_debug_level > 0)
 		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
-		    DLP_IDLE_NAME, self->dlp_state);
-	}
+	    	    DLP_STATE_NAME[self->dlp_state], self->dlp_state);
 }
 
 static void
@@ -627,14 +678,15 @@ dl_producer_syncing(struct dl_producer * const self)
 	    ("Producer transport cannot be NULL."));
 
 	self->dlp_state = DLP_SYNCING;
-	if (self->dlp_debug_level > 0) {
-		strncpy(self->dlp_stats->dlps_state_name,
-		    DLP_SYNCING_NAME, 255); 
-		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
-		    DLP_SYNCING_NAME, self->dlp_state);
-	}
 
-	/* Connection is up reset the reconnect timeout */
+	/* Update the producer statistics */
+	dlp_stats_state_name(self);
+
+	if (self->dlp_debug_level > 0)
+		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
+	    	    DLP_STATE_NAME[self->dlp_state], self->dlp_state);
+
+	/* Connection is up, reset the reconnect timeout */
 	self->dlp_reconn_ms = DLP_MINRECONN_MS;
 
 	/* Start the thread to enqueue log entries for syncing
@@ -658,12 +710,13 @@ dl_producer_offline(struct dl_producer * const self)
 	dl_producer_check_integrity(self);
 
 	self->dlp_state = DLP_OFFLINE;
-	if (self->dlp_debug_level > 0) {
-		strncpy(self->dlp_stats->dlps_state_name,
-		    DLP_OFFLINE_NAME, 255); 
+
+	/* Update the producer statistics */
+	dlp_stats_state_name(self);
+
+	if (self->dlp_debug_level > 0)
 		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
-		    self->dlp_stats->dlps_state_name, self->dlp_state);
-	}
+	    	    DLP_STATE_NAME[self->dlp_state], self->dlp_state);
 
         /* Stop the produce and resender threads */
 	if (self->dlp_resend)
@@ -701,12 +754,13 @@ dl_producer_online(struct dl_producer * const self)
 	dl_producer_check_integrity(self);
 
 	self->dlp_state = DLP_ONLINE;
-	if (self->dlp_debug_level > 0) {
-		strncpy(self->dlp_stats->dlps_state_name,
-		    DLP_ONLINE_NAME, 255); 
+
+	/* Update the producer statistics */
+	dlp_stats_state_name(self);
+
+	if (self->dlp_debug_level > 0)
 		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
-		    self->dlp_stats->dlps_state_name, self->dlp_state);
-	}
+	    	    DLP_STATE_NAME[self->dlp_state], self->dlp_state);
 
 	/* Start the thread to syncing log entries with the
 	 * distributed broker.
@@ -746,11 +800,13 @@ dl_producer_final(struct dl_producer * const self)
 	dl_producer_check_integrity(self);
 
 	self->dlp_state = DLP_FINAL;
+
+	/* Update the producer statistics */
+	dlp_stats_state_name(self);
+
 	if (self->dlp_debug_level > 0) {
-		strncpy(self->dlp_stats->dlps_state_name,
-		    DLP_FINAL_NAME, 255); 
 		DLOGTR2(PRIO_HIGH, "Producer state = %s (%d)\n",
-		    DLP_FINAL_NAME, self->dlp_state);
+	    	    DLP_STATE_NAME[self->dlp_state], self->dlp_state);
 	}
 }
 
@@ -762,7 +818,7 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 	struct kevent kev;
 	struct sbuf *stats_path;
 	char *client_id;
-	int rc;
+	int requestq_len, rc;
 
 	DL_ASSERT(self != NULL, ("Producer instance cannot be NULL."));
 	DL_ASSERT(topic != NULL, ("Producer instance cannot be NULL."));
@@ -793,6 +849,8 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 	sbuf_delete(stats_path);
 	ftruncate(producer->dlp_stats_fd, sizeof(struct dl_producer_stats));
 
+	producer->dlp_state = DLP_INITIAL;
+
 	producer->dlp_stats = (struct dl_producer_stats *) mmap(
 	    NULL, sizeof(struct dl_producer_stats), PROT_READ | PROT_WRITE,
 	    MAP_SHARED, producer->dlp_stats_fd, 0);
@@ -802,12 +860,6 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 		    "Failed mmap of Producer stats file %d.\n", errno);
 		goto err_producer_ctor;
 	}
-
-	producer->dlp_state = DLP_INITIAL;
-	strncpy(producer->dlp_stats->dlps_topic_name,
-	    sbuf_data(dl_topic_get_name(topic)), 255); 
-	strncpy(producer->dlp_stats->dlps_state_name,
-	    DLP_INITIAL_NAME, 255); 
 
 	producer->dlp_props = props;
 	producer->dlp_topic = topic;
@@ -828,7 +880,6 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 	} else {
 		producer->dlp_resend_timeout = DL_DEFAULT_RESENDTIMEOUT;
 	}
-	producer->dlp_stats->dlps_resend_timeout = producer->dlp_resend_timeout;
 
 	if (nvlist_exists_string(props, DL_CONF_RESENDPERIOD)) {
 		producer->dlp_resend_period = nvlist_get_number(props,
@@ -837,14 +888,21 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 		producer->dlp_resend_period = DL_DEFAULT_RESENDPERIOD;
 	}
 
+	if (nvlist_exists_number(props, DL_CONF_REQUEST_QUEUE_LEN)) {
+		requestq_len = nvlist_get_number(props,
+		    DL_CONF_REQUEST_QUEUE_LEN);
+	} else {
+		requestq_len = DL_DEFAULT_REQUEST_QUEUE_LEN;
+	}
 	producer->dlp_broker_hostname = sbuf_new_auto();
 	sbuf_cpy(producer->dlp_broker_hostname, hostname);
 	sbuf_finish(producer->dlp_broker_hostname);
 	producer->dlp_broker_port = port;
+	   
+	(&producer->dlp_stats->dlps_request_q_stats)->dlrq_capacity = 10;
 
 	rc = dl_request_q_new(&producer->dlp_requests,
-	    &producer->dlp_stats->dlps_request_q_stats,
-	    DLP_REQUEST_QUEUE_LIMIT);
+	   &producer->dlp_stats->dlps_request_q_stats, requestq_len);
 	if (rc != 0) {
 
 		dlog_free(producer);
@@ -890,7 +948,6 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 	} else {
 		producer->dlp_resend = DL_DEFAULT_TORESEND;
 	}
-	producer->dlp_stats->dlps_resend = producer->dlp_resend;
 
 	/* Read the configured debug level */
 	if (nvlist_exists_string(props, DL_CONF_CLIENTID)) {
@@ -902,6 +959,12 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 
 	*self = producer;
 	dl_producer_check_integrity(*self);
+
+	/* Update the producer statistics */
+	dlp_stats_topic_name(*self, sbuf_data(dl_topic_get_name(topic)));
+	dlp_stats_state_name(*self);
+	dlp_stats_resend(*self);
+	dlp_stats_resend_timeout(*self);
 
 	/* Synchnronously create the Producer in the connecting state. */
 	dl_producer_connecting(*self);
@@ -980,54 +1043,75 @@ dl_producer_get_topic(struct dl_producer *self)
 }
 
 int
-dl_producer_response(struct dl_producer *self,
-    struct dl_response_header *hdr)
+dl_producer_response(struct dl_producer *self, struct dl_bbuf *buffer)
 {
 	struct dl_request_element *request;
+	struct timeval tv_now, tdiff;
+	struct dl_response *response;
+	struct dl_response_header *hdr;
 	
 	dl_producer_check_integrity(self);
 	DL_ASSERT(hdr != NULL, ("Response header cannot be NULL"));
 
-	/* Update the producer statistics */
-	self->dlp_stats->dlps_received.dlpsm_cid =
-		hdr->dlrsh_correlation_id;
-	self->dlp_stats->dlps_received.dlpsm_timestamp = time(NULL);
+	/* Deserialise the response header. */
+	if (dl_response_header_decode(&hdr, buffer) == 0) {
 
-	/* Acknowledge the request message based on the CorrelationId
-	 * returned in the response.
-	 */
-	if (dl_request_q_ack(self->dlp_requests,hdr->dlrsh_correlation_id,
-		&request) == 0) {
+		/* Acknowledge the request message based on the
+		 * CorrelationId returned in the response.
+		 */
+		if (dl_request_q_ack(self->dlp_requests,
+		    hdr->dlrsh_correlation_id, &request) == 0) {
 
-		DLOGTR2(PRIO_NORMAL, "Found unack'd request id: %d (%d)\n",
-		    request->dlrq_correlation_id, hdr->dlrsh_correlation_id);
+			/* Update the producer statistics */
+			dlp_stats_received_cid(self, hdr->dlrsh_correlation_id);
+			dlp_stats_received_timestamp(self);
 
-		switch (request->dlrq_api_key) {
-		case DL_PRODUCE_API_KEY:
-			/* TODO: Construct ProducerResponse */
-			// response = dl_produce_response_new();
+			gettimeofday(&tv_now, NULL);
+			timersub(&tv_now, &request->dlrq_tv, &tdiff);
+			dlp_stats_rtt(self,
+			    (tdiff.tv_sec * 1000000 + tdiff.tv_usec));
+
+			if (self->dlp_debug_level > 1)
+				DLOGTR2(PRIO_NORMAL,
+				"ProduceResponse: id = %d received "
+				"(RTT = %ldms)\n",
+				request->dlrq_correlation_id,
+				(tdiff.tv_sec * 1000 +
+				tdiff.tv_usec / 1000));
+
+			switch (request->dlrq_api_key) {
+			case DL_PRODUCE_API_KEY:
+				/* TODO: Construct ProducerResponse */
+				// dl_produce_response_decode(&response, &buffer);
 			
-			/* Update the producer statistics */
-			self->dlp_stats->dlps_received.dlpsm_error =
-				false;
-			break;
-		default:
-			DLOGTR1(PRIO_HIGH,
-				"Request ApiKey is invalid (%d)\n",
-				request->dlrq_api_key);
+				//dl_response_delete(response);
 
-			/* Update the producer statistics */
-			self->dlp_stats->dlps_received.dlpsm_error =
-				false;
-			break;
+				/* Update the producer statistics */
+				dlp_stats_received_error(self, false);
+				break;
+			default:
+				DLOGTR1(PRIO_HIGH,
+				    "Request ApiKey is invalid (%d)\n",
+				    request->dlrq_api_key);
+
+				/* Update the producer statistics */
+				dlp_stats_received_error(self, true);
+				break;
+			}
+				
+			/* The request can now be freed. */
+			dl_bbuf_delete(request->dlrq_buffer);
+			dlog_free(request);
+		} else {
+			DLOGTR1(PRIO_HIGH,
+			   "Error acknowledging request id = %d\n",
+			    hdr->dlrsh_correlation_id);
 		}
 
-		/* The request can now be freed. */
-		dl_bbuf_delete(request->dlrq_buffer);
-		dlog_free(request);
+		/* Free the buffer containing the response header. */
+		dl_response_header_delete(hdr);
 	} else {
-		DLOGTR1(PRIO_HIGH, "Error acknowledging request id = %d\n",
-		    hdr->dlrsh_correlation_id);
+		DLOGTR0(PRIO_HIGH, "Error decoding response header.\n");
 	}
 
 	return 0;
@@ -1037,11 +1121,14 @@ dl_producer_produce(struct dl_producer const * const self)
 {
 
 	dl_producer_check_integrity(self);
-	if (self->dlp_debug_level > 1)
-		DLOGTR0(PRIO_LOW, "Producer event = produce()\n");
 
 	switch(self->dlp_state) {
 	case DLP_IDLE: /* idle -> syncing */
+		if (self->dlp_debug_level > 1)
+			DLOGTR1(PRIO_LOW,
+			    "Producer event = produce(): %s->SYNCING\n",
+			    DLP_STATE_NAME[self->dlp_state]);
+
 		dl_producer_syncing(self);
 		break;
 	case DLP_CONNECTING: /* IGNORE */
@@ -1051,6 +1138,8 @@ dl_producer_produce(struct dl_producer const * const self)
 	case DLP_OFFLINE:
 		/* FALLTHROUGH */
 	case DLP_SYNCING:
+		if (self->dlp_debug_level > 1)
+			DLOGTR0(PRIO_LOW, "Ignoring event = produce()\n");
 		break;
 	case DLP_INITIAL: /* CANNOT HAPPEN */
 		/* FALLTHROUGH */
@@ -1067,11 +1156,14 @@ dl_producer_up(struct dl_producer const * const self)
 {
 
 	dl_producer_check_integrity(self);
-	if (self->dlp_debug_level > 1)
-		DLOGTR0(PRIO_LOW, "Producer event = up()\n");
 
 	switch(self->dlp_state) {
 	case DLP_CONNECTING: /* connecting -> online */
+		if (self->dlp_debug_level > 1)
+			DLOGTR1(PRIO_LOW,
+			    "Producer event = up(): %s->ONLINE\n",
+			    DLP_STATE_NAME[self->dlp_state]);
+
 		dl_producer_online(self);
 		break;
 	case DLP_ONLINE: /* online -> syncing */
@@ -1080,6 +1172,8 @@ dl_producer_up(struct dl_producer const * const self)
 	case DLP_IDLE: /* IGNORE */
 		/* FALLTHROUGH */
 	case DLP_SYNCING:
+		if (self->dlp_debug_level > 1)
+			DLOGTR0(PRIO_LOW, "Ignoring event = up()\n");
 		break;
 	case DLP_OFFLINE: /* CANNOT HAPPEN */
 		/* FALLTHROUGH */
@@ -1098,8 +1192,6 @@ dl_producer_down(struct dl_producer const * const self)
 {
 
 	dl_producer_check_integrity(self);
-	if (self->dlp_debug_level > 1)
-		DLOGTR0(PRIO_LOW, "Producer event = down()\n");
 
 	switch(self->dlp_state) {
 	case DLP_CONNECTING: /* connecting -> offline */
@@ -1109,9 +1201,16 @@ dl_producer_down(struct dl_producer const * const self)
 	case DLP_IDLE: /* idle-> offline */
 		/* FALLTHROUGH */
 	case DLP_SYNCING: /* syncing -> offline */
+		if (self->dlp_debug_level > 1)
+			DLOGTR1(PRIO_LOW,
+			    "Producer event = down(): %s->OFFLINE\n",
+			    DLP_STATE_NAME[self->dlp_state]);
+
 		dl_producer_offline(self);
 		break;
 	case DLP_OFFLINE: /* IGNORE */
+		if (self->dlp_debug_level > 1)
+			DLOGTR0(PRIO_LOW, "Ignoring event = down()\n");
 		break;
 	case DLP_INITIAL: /* CANNOT HAPPEN */
 		/* FALLTHROUGH */
@@ -1129,11 +1228,14 @@ dl_producer_syncd(struct dl_producer const * const self)
 {
 
 	dl_producer_check_integrity(self);
-	if (self->dlp_debug_level > 1)
-		DLOGTR0(PRIO_LOW, "Producer event = sync()\n");
 
 	switch(self->dlp_state) {
 	case DLP_SYNCING: /* syncing->idle */
+		if (self->dlp_debug_level > 1)
+			DLOGTR1(PRIO_LOW,
+			    "Producer event = syncd(): %s->IDLE\n",
+			    DLP_STATE_NAME[self->dlp_state]);
+
 		dl_producer_idle(self);
 		break;
 	case DLP_IDLE: /* CANNOT HAPPEN */
@@ -1160,11 +1262,14 @@ dl_producer_reconnect(struct dl_producer const * const self)
 {
 
 	dl_producer_check_integrity(self);
-	if (self->dlp_debug_level > 1)
-		DLOGTR0(PRIO_LOW, "Producer event = reconnect()\n");
 
 	switch(self->dlp_state) {
 	case DLP_OFFLINE: /* offline -> connecting */
+		if (self->dlp_debug_level > 1)
+			DLOGTR1(PRIO_LOW,
+			    "Producer event = reconnect(): %s->CONNECTING\n",
+			    DLP_STATE_NAME[self->dlp_state]);
+
 		dl_producer_connecting(self);
 		break;
 	case DLP_CONNECTING: /* CANNOT HAPPEN */
@@ -1191,8 +1296,6 @@ dl_producer_error(struct dl_producer const * const self)
 {
 
 	dl_producer_check_integrity(self);
-	if (self->dlp_debug_level > 1)
-		DLOGTR0(PRIO_LOW, "Producer event = down()\n");
 
 	switch(self->dlp_state) {
 	case DLP_SYNCING: /* syncing -> final */
@@ -1204,6 +1307,11 @@ dl_producer_error(struct dl_producer const * const self)
 	case DLP_CONNECTING: /* connecting -> final */
 		/* FALLTHROUGH */
 	case DLP_IDLE: /* idle -> final */
+		if (self->dlp_debug_level > 1)
+			DLOGTR1(PRIO_LOW,
+			    "Producer event = error(): %s->FINAL\n",
+			    DLP_STATE_NAME[self->dlp_state]);
+
 		dl_producer_final(self);
 		break;
 	case DLP_INITIAL: /* CANNOT HAPPEN */

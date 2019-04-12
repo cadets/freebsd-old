@@ -3,6 +3,8 @@ PACKAGE=lib${LIB}
 LIB=	pmcstat
 INTERNALLIB=
 
+MK_BITCODE_EVERYWHERE=no
+
 SRCS=	\
 	libpmcstat_event.c	\
 	libpmcstat_image.c	\

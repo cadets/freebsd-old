@@ -6,6 +6,7 @@
 
 INTERNALLIB=	yes
 LIB=		svn_ra_svn
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=		client.c cram.c cyrus_auth.c deprecated.c editorp.c \
 		internal_auth.c marshal.c streams.c wrapped_sasl.c version.c

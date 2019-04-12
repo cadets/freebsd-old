@@ -189,9 +189,9 @@ fetch_default_port(const char *scheme)
 
 	if ((se = getservbyname(scheme, "tcp")) != NULL)
 		return (ntohs(se->s_port));
-	if (strcasecmp(scheme, SCHEME_FTP) == 0)
+	if (strcmp(scheme, SCHEME_FTP) == 0)
 		return (FTP_DEFAULT_PORT);
-	if (strcasecmp(scheme, SCHEME_HTTP) == 0)
+	if (strcmp(scheme, SCHEME_HTTP) == 0)
 		return (HTTP_DEFAULT_PORT);
 	return (0);
 }
@@ -202,9 +202,9 @@ fetch_default_port(const char *scheme)
 int
 fetch_default_proxy_port(const char *scheme)
 {
-	if (strcasecmp(scheme, SCHEME_FTP) == 0)
+	if (strcmp(scheme, SCHEME_FTP) == 0)
 		return (FTP_DEFAULT_PROXY_PORT);
-	if (strcasecmp(scheme, SCHEME_HTTP) == 0)
+	if (strcmp(scheme, SCHEME_HTTP) == 0)
 		return (HTTP_DEFAULT_PROXY_PORT);
 	return (0);
 }
@@ -674,7 +674,11 @@ fetch_ssl_verify_altname(STACK_OF(GENERAL_NAME) *altnames,
 #else
 		name = sk_GENERAL_NAME_value(altnames, i);
 #endif
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
 		ns = (const char *)ASN1_STRING_data(name->d.ia5);
+#else
+		ns = (const char *)ASN1_STRING_get0_data(name->d.ia5);
+#endif
 		nslen = (size_t)ASN1_STRING_length(name->d.ia5);
 
 		if (name->type == GEN_DNS && ip == NULL &&

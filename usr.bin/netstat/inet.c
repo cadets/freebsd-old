@@ -332,9 +332,10 @@ protopr(u_long off, const char *name, int af1, int proto)
 				    "R-HIWA", "S-HIWA", "R-LOWA", "S-LOWA",
 				    "R-BCNT", "S-BCNT", "R-BMAX", "S-BMAX");
 				xo_emit(" {T:/%7.7s} {T:/%7.7s} {T:/%7.7s} "
-				    "{T:/%7.7s} {T:/%7.7s} {T:/%7.7s}",
+				    "{T:/%7.7s} {T:/%7.7s} {T:/%7.7s} "
+				    "{T:/%8.8s}",
 				    "rexmt", "persist", "keep", "2msl",
-				    "delack", "rcvtime");
+				    "delack", "rcvtime", "tflags");
 			} else if (Rflag) {
 				xo_emit("  {T:/%8.8s} {T:/%5.5s}",
 				    "flowid", "ftype");
@@ -464,7 +465,8 @@ protopr(u_long off, const char *name, int af1, int proto)
 				    "{:keepalive-timer/%4d.%02d} "
 				    "{:msl2-timer/%4d.%02d} "
 				    "{:delay-ack-timer/%4d.%02d} "
-				    "{:inactivity-timer/%4d.%02d}",
+				    "{:inactivity-timer/%4d.%02d} "
+				    "{:tflags/%08x}",
 				    tp->tt_rexmt / 1000,
 				    (tp->tt_rexmt % 1000) / 10,
 				    tp->tt_persist / 1000,
@@ -476,7 +478,8 @@ protopr(u_long off, const char *name, int af1, int proto)
 				    tp->tt_delack / 1000,
 				    (tp->tt_delack % 1000) / 10,
 				    tp->t_rcvtime / 1000,
-				    (tp->t_rcvtime % 1000) / 10);
+				    (tp->t_rcvtime % 1000) / 10,
+				    tp->t_flags);
 		}
 		if (istcp && !Lflag && !xflag && !Tflag && !Rflag) {
 			if (tp->t_state < 0 || tp->t_state >= TCP_NSTATES)

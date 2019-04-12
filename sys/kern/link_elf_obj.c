@@ -368,6 +368,11 @@ link_elf_link_preload(linker_class_t cls, const char *filename,
 
 				dpcpu = dpcpu_alloc(shdr[i].sh_size);
 				if (dpcpu == NULL) {
+					printf("%s: pcpu module space is out "
+					    "of space; cannot allocate %#jx "
+					    "for %s\n", __func__,
+					    (uintmax_t)shdr[i].sh_size,
+					    filename);
 					error = ENOSPC;
 					goto out;
 				}
@@ -382,6 +387,11 @@ link_elf_link_preload(linker_class_t cls, const char *filename,
 
 				vnet_data = vnet_data_alloc(shdr[i].sh_size);
 				if (vnet_data == NULL) {
+					printf("%s: vnet module space is out "
+					    "of space; cannot allocate %#jx "
+					    "for %s\n", __func__,
+					    (uintmax_t)shdr[i].sh_size,
+					    filename);
 					error = ENOSPC;
 					goto out;
 				}
@@ -847,14 +857,30 @@ link_elf_load_file(linker_class_t cls, const char *filename,
 			else
 				ef->progtab[pb].name = "<<NOBITS>>";
 			if (ef->progtab[pb].name != NULL && 
-			    !strcmp(ef->progtab[pb].name, DPCPU_SETNAME))
+			    !strcmp(ef->progtab[pb].name, DPCPU_SETNAME)) {
 				ef->progtab[pb].addr =
 				    dpcpu_alloc(shdr[i].sh_size);
+				if (ef->progtab[pb].addr == NULL) {
+					printf("%s: pcpu module space is out "
+					    "of space; cannot allocate %#jx "
+					    "for %s\n", __func__,
+					    (uintmax_t)shdr[i].sh_size,
+					    filename);
+				}
+			}
 #ifdef VIMAGE
 			else if (ef->progtab[pb].name != NULL &&
-			    !strcmp(ef->progtab[pb].name, VNET_SETNAME))
+			    !strcmp(ef->progtab[pb].name, VNET_SETNAME)) {
 				ef->progtab[pb].addr =
 				    vnet_data_alloc(shdr[i].sh_size);
+				if (ef->progtab[pb].addr == NULL) {
+					printf("%s: vnet module space is out "
+					    "of space; cannot allocate %#jx "
+					    "for %s\n", __func__,
+					    (uintmax_t)shdr[i].sh_size,
+					    filename);
+				}
+			}
 #endif
 			else
 				ef->progtab[pb].addr =
@@ -1521,15 +1547,10 @@ link_elf_reloc_local(linker_file_t lf, bool ifuncs)
 			/* Only do local relocs */
 			if (ELF_ST_BIND(sym->st_info) != STB_LOCAL)
 				continue;
-			if ((ELF_ST_TYPE(sym->st_info) == STT_GNU_IFUNC) ==
-			    ifuncs)
+			if ((ELF_ST_TYPE(sym->st_info) == STT_GNU_IFUNC ||
+			    elf_is_ifunc_reloc(rel->r_info)) == ifuncs)
 				elf_reloc_local(lf, base, rel, ELF_RELOC_REL,
 				    elf_obj_lookup);
-#if defined(__i386__) || defined(__amd64__)
-			else if (ifuncs)
-				elf_reloc_ifunc(lf, base, rel, ELF_RELOC_REL,
-				    elf_obj_lookup);
-#endif
 		}
 	}
 
@@ -1554,15 +1575,10 @@ link_elf_reloc_local(linker_file_t lf, bool ifuncs)
 			/* Only do local relocs */
 			if (ELF_ST_BIND(sym->st_info) != STB_LOCAL)
 				continue;
-			if ((ELF_ST_TYPE(sym->st_info) == STT_GNU_IFUNC) ==
-			    ifuncs)
+			if ((ELF_ST_TYPE(sym->st_info) == STT_GNU_IFUNC ||
+			    elf_is_ifunc_reloc(rela->r_info)) == ifuncs)
 				elf_reloc_local(lf, base, rela, ELF_RELOC_RELA,
 				    elf_obj_lookup);
-#if defined(__i386__) || defined(__amd64__)
-			else if (ifuncs)
-				elf_reloc_ifunc(lf, base, rela, ELF_RELOC_RELA,
-				    elf_obj_lookup);
-#endif
 		}
 	}
 	return (0);

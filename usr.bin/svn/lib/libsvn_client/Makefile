@@ -6,6 +6,7 @@
 
 INTERNALLIB=	yes
 LIB=		svn_client
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=		add.c blame.c cat.c changelist.c checkout.c cleanup.c \
 		cmdline.c commit_util.c commit.c compat_providers.c \

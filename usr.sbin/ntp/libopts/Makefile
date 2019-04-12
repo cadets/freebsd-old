@@ -5,6 +5,9 @@
 LIB=	opts
 INTERNALLIB=
 
+MK_BITCODE_EVERYWHERE=no
+
+
 SRCS=	libopts.c
 
 CFLAGS+= -I${SRCTOP}/contrib/ntp/include \

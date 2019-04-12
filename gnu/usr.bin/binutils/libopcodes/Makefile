@@ -5,6 +5,9 @@
 .PATH: ${SRCDIR}/opcodes
 
 LIB=	opcodes
+
+MK_BITCODE_EVERYWHERE=no
+
 SRCS+=	dis-buf.c dis-init.c disassemble.c i386-opc.c
 CFLAGS+= -D_GNU_SOURCE
 CFLAGS+= -I${SRCDIR}/opcodes -I${SRCDIR}/bfd

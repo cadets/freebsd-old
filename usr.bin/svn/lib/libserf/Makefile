@@ -4,6 +4,8 @@
 
 INTERNALLIB=	yes
 LIB=		serf
+MK_BITCODE_EVERYWHERE=no
+
 
 SRCS=		aggregate_buckets.c allocator.c auth.c auth_basic.c \
 		auth_digest.c auth_spnego.c auth_spnego_gss.c barrier_buckets.c \

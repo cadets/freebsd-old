@@ -621,16 +621,19 @@ static int cma_acquire_dev(struct rdma_id_private *id_priv,
 	if (listen_id_priv) {
 		cma_dev = listen_id_priv->cma_dev;
 		port = listen_id_priv->id.port_num;
-		gidp = rdma_protocol_roce(cma_dev->device, port) ?
-		       &iboe_gid : &gid;
 
-		ret = cma_validate_port(cma_dev->device, port,
-					rdma_protocol_ib(cma_dev->device, port) ?
-					IB_GID_TYPE_IB :
-					listen_id_priv->gid_type, gidp, dev_addr);
-		if (!ret) {
-			id_priv->id.port_num = port;
-			goto out;
+		if (rdma_is_port_valid(cma_dev->device, port)) {
+			gidp = rdma_protocol_roce(cma_dev->device, port) ?
+			       &iboe_gid : &gid;
+
+			ret = cma_validate_port(cma_dev->device, port,
+				rdma_protocol_ib(cma_dev->device, port) ?
+				IB_GID_TYPE_IB :
+				listen_id_priv->gid_type, gidp, dev_addr);
+			if (!ret) {
+				id_priv->id.port_num = port;
+				goto out;
+			}
 		}
 	}
 
@@ -733,6 +736,10 @@ struct rdma_cm_id *rdma_create_id(struct vnet *net,
 {
 	struct rdma_id_private *id_priv;
 
+#ifdef VIMAGE
+	if (net == NULL)
+		return ERR_PTR(-EINVAL);
+#endif
 	id_priv = kzalloc(sizeof *id_priv, GFP_KERNEL);
 	if (!id_priv)
 		return ERR_PTR(-ENOMEM);
@@ -751,7 +758,7 @@ struct rdma_cm_id *rdma_create_id(struct vnet *net,
 	INIT_LIST_HEAD(&id_priv->listen_list);
 	INIT_LIST_HEAD(&id_priv->mc_list);
 	get_random_bytes(&id_priv->seq_num, sizeof id_priv->seq_num);
-	id_priv->id.route.addr.dev_addr.net = TD_TO_VNET(curthread);
+	id_priv->id.route.addr.dev_addr.net = net;
 
 	return &id_priv->id;
 }
@@ -1263,10 +1270,10 @@ static bool validate_ipv4_net_dev(struct net_device *net_dev,
 				  const struct sockaddr_in *src_addr)
 {
 #ifdef INET
-	struct sockaddr_in dst_tmp = *dst_addr;
+	struct sockaddr_in src_tmp = *src_addr;
 	__be32 daddr = dst_addr->sin_addr.s_addr,
 	       saddr = src_addr->sin_addr.s_addr;
-	struct net_device *src_dev;
+	struct net_device *dst_dev;
 	struct rtentry *rte;
 	bool ret;
 
@@ -1276,29 +1283,35 @@ static bool validate_ipv4_net_dev(struct net_device *net_dev,
 	    ipv4_is_loopback(saddr))
 		return false;
 
-	src_dev = ip_dev_find(net_dev->if_vnet, saddr);
-	if (src_dev != net_dev) {
-		if (src_dev != NULL)
-			dev_put(src_dev);
+	dst_dev = ip_dev_find(net_dev->if_vnet, daddr);
+	if (dst_dev != net_dev) {
+		if (dst_dev != NULL)
+			dev_put(dst_dev);
 		return false;
 	}
-	dev_put(src_dev);
+	dev_put(dst_dev);
+
+	/*
+	 * Check for loopback.
+	 */
+	if (saddr == daddr)
+		return true;
 
 	/*
 	 * Make sure the socket address length field
 	 * is set, else rtalloc1() will fail.
 	 */
-	dst_tmp.sin_len = sizeof(dst_tmp);
+	src_tmp.sin_len = sizeof(src_tmp);
 
 	CURVNET_SET(net_dev->if_vnet);
-	rte = rtalloc1((struct sockaddr *)&dst_tmp, 1, 0);
-	CURVNET_RESTORE();
+	rte = rtalloc1((struct sockaddr *)&src_tmp, 1, 0);
 	if (rte != NULL) {
 		ret = (rte->rt_ifp == net_dev);
 		RTFREE_LOCKED(rte);
 	} else {
 		ret = false;
 	}
+	CURVNET_RESTORE();
 	return ret;
 #else
 	return false;
@@ -1310,31 +1323,57 @@ static bool validate_ipv6_net_dev(struct net_device *net_dev,
 				  const struct sockaddr_in6 *src_addr)
 {
 #ifdef INET6
+	struct sockaddr_in6 src_tmp = *src_addr;
 	struct sockaddr_in6 dst_tmp = *dst_addr;
-	struct in6_addr in6_addr = src_addr->sin6_addr;
-	struct net_device *src_dev;
+	struct net_device *dst_dev;
 	struct rtentry *rte;
 	bool ret;
 
-	src_dev = ip6_dev_find(net_dev->if_vnet, in6_addr);
-	if (src_dev != net_dev)
+	dst_dev = ip6_dev_find(net_dev->if_vnet, dst_tmp.sin6_addr,
+	    net_dev->if_index);
+	if (dst_dev != net_dev) {
+		if (dst_dev != NULL)
+			dev_put(dst_dev);
 		return false;
+	}
+	dev_put(dst_dev);
+
+	CURVNET_SET(net_dev->if_vnet);
 
 	/*
 	 * Make sure the socket address length field
 	 * is set, else rtalloc1() will fail.
 	 */
-	dst_tmp.sin6_len = sizeof(dst_tmp);
+	src_tmp.sin6_len = sizeof(src_tmp);
 
-	CURVNET_SET(net_dev->if_vnet);
-	rte = rtalloc1((struct sockaddr *)&dst_tmp, 1, 0);
-	CURVNET_RESTORE();
-	if (rte != NULL) {
-		ret = (rte->rt_ifp == net_dev);
-		RTFREE_LOCKED(rte);
+	/*
+	 * Make sure the scope ID gets embedded, else rtalloc1() will
+	 * resolve to the loopback interface.
+	 */
+	src_tmp.sin6_scope_id = net_dev->if_index;
+	sa6_embedscope(&src_tmp, 0);
+
+	dst_tmp.sin6_scope_id = net_dev->if_index;
+	sa6_embedscope(&dst_tmp, 0);
+
+	/*
+	 * Check for loopback after scope ID
+	 * has been embedded:
+	 */
+	if (memcmp(&src_tmp.sin6_addr, &dst_tmp.sin6_addr,
+	    sizeof(dst_tmp.sin6_addr)) == 0) {
+		ret = true;
 	} else {
-		ret = false;
+		/* non-loopback case */
+		rte = rtalloc1((struct sockaddr *)&src_tmp, 1, 0);
+		if (rte != NULL) {
+			ret = (rte->rt_ifp == net_dev);
+			RTFREE_LOCKED(rte);
+		} else {
+			ret = false;
+		}
 	}
+	CURVNET_RESTORE();
 	return ret;
 #else
 	return false;
@@ -1364,6 +1403,26 @@ static bool validate_net_dev(struct net_device *net_dev,
 	}
 }
 
+static struct net_device *
+roce_get_net_dev_by_cm_event(struct ib_device *device, u8 port_num,
+    const struct ib_cm_event *ib_event)
+{
+	struct ib_gid_attr sgid_attr;
+	union ib_gid sgid;
+	int err = -EINVAL;
+
+	if (ib_event->event == IB_CM_REQ_RECEIVED) {
+		err = ib_get_cached_gid(device, port_num,
+		    ib_event->param.req_rcvd.ppath_sgid_index, &sgid, &sgid_attr);
+	} else if (ib_event->event == IB_CM_SIDR_REQ_RECEIVED) {
+		err = ib_get_cached_gid(device, port_num,
+		    ib_event->param.sidr_req_rcvd.sgid_index, &sgid, &sgid_attr);
+	}
+	if (err)
+		return (NULL);
+	return (sgid_attr.ndev);
+}
+
 static struct net_device *cma_get_net_dev(struct ib_cm_event *ib_event,
 					  const struct cma_req_info *req)
 {
@@ -1379,8 +1438,14 @@ static struct net_device *cma_get_net_dev(struct ib_cm_event *ib_event,
 	if (err)
 		return ERR_PTR(err);
 
-	net_dev = ib_get_net_dev_by_params(req->device, req->port, req->pkey,
-					   gid, listen_addr);
+	if (rdma_protocol_roce(req->device, req->port)) {
+		net_dev = roce_get_net_dev_by_cm_event(req->device, req->port,
+						       ib_event);
+	} else {
+		net_dev = ib_get_net_dev_by_params(req->device, req->port,
+						   req->pkey,
+						   gid, listen_addr);
+	}
 	if (!net_dev)
 		return ERR_PTR(-ENODEV);
 
@@ -1515,10 +1580,6 @@ static struct rdma_id_private *cma_id_from_event(struct ib_cm_id *cm_id,
 	if (IS_ERR(*net_dev)) {
 		if (PTR_ERR(*net_dev) == -EAFNOSUPPORT) {
 			/* Assuming the protocol is AF_IB */
-			*net_dev = NULL;
-		} else if (cma_protocol_roce_dev_port(req.device, req.port)) {
-			/* TODO find the net dev matching the request parameters
-			 * through the RoCE GID table */
 			*net_dev = NULL;
 		} else {
 			return ERR_CAST(*net_dev);

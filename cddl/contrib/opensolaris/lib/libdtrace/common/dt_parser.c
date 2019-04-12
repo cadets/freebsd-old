@@ -4011,6 +4011,10 @@ asgn_common:
 		else if (dt_node_is_string(lp) && (dt_node_is_scalar(rp) ||
 		    dt_node_is_pointer(rp) || dt_node_is_strcompat(rp)))
 			/*EMPTY*/;
+        /* XXX TEMPORARY HACK! FIX ME! XXX */
+		/* We need to be able to cast arg0-9 to float */
+		else if (dt_node_is_float(lp) && dt_node_is_integer(rp))
+			/*EMPTY*/;
 		else {
 			xyerror(D_CAST_INVAL,
 			    "invalid cast expression: \"%s\" to \"%s\"\n",

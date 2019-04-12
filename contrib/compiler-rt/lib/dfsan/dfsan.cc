@@ -425,8 +425,7 @@ static void dfsan_init(int argc, char **argv, char **envp) {
 
   InitializePlatformEarly();
 
-  if (!MmapFixedNoReserve(ShadowAddr(), UnusedAddr() - ShadowAddr()))
-    Die();
+  MmapFixedNoReserve(ShadowAddr(), UnusedAddr() - ShadowAddr());
 
   // Protect the region of memory we don't use, to preserve the one-to-one
   // mapping from application to shadow memory. But if ASLR is disabled, Linux

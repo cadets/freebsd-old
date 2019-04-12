@@ -77,7 +77,7 @@ main(int argc, char *argv[])
 	char *topic_name;
 	size_t packed_len;
 	int c, dlog, done = 0, err, ret = 0, rc, script_argc = 0;
-	char konarg[13];
+	char ddtracearg[13];
 	char **script_argv;
 
 	g_pname = basename(argv[0]); 	
@@ -186,8 +186,8 @@ main(int argc, char *argv[])
 	fprintf(stdout, "%s: dtrace initialized\n", g_pname);
 #endif
 
-	sprintf(konarg, "%d", dlog);
-	(void) dtrace_setopt(g_dtp, "konarg", konarg);
+	sprintf(ddtracearg, "%d", dlog);
+	(void) dtrace_setopt(g_dtp, "ddtracearg", ddtracearg);
 #ifndef NDEBUG
 	printf("%s: dtrace options set\n", g_pname);
 #endif

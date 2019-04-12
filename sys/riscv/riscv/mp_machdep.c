@@ -181,7 +181,7 @@ riscv64_cpu_attach(device_t dev)
 static void
 release_aps(void *dummy __unused)
 {
-	uintptr_t mask;
+	u_long mask;
 	int cpu, i;
 
 	if (mp_ncpus == 1)
@@ -328,6 +328,12 @@ ipi_handler(void *arg)
 			CPU_CLR_ATOMIC(cpu, &started_cpus);
 			CPU_CLR_ATOMIC(cpu, &stopped_cpus);
 			CTR0(KTR_SMP, "IPI_STOP (restart)");
+
+			/*
+			 * The kernel debugger might have set a breakpoint,
+			 * so flush the instruction cache.
+			 */
+			fence_i();
 			break;
 		case IPI_HARDCLOCK:
 			CTR1(KTR_SMP, "%s: IPI_HARDCLOCK", __func__);
@@ -391,8 +397,7 @@ cpu_init_fdt(u_int id, phandle_t node, u_int addr_size, pcell_t *reg)
 
 	pcpu_init(pcpup, id, sizeof(struct pcpu));
 
-	dpcpu[id - 1] = (void *)kmem_malloc(kernel_arena, DPCPU_SIZE,
-	    M_WAITOK | M_ZERO);
+	dpcpu[id - 1] = (void *)kmem_malloc(DPCPU_SIZE, M_WAITOK | M_ZERO);
 	dpcpu_init(dpcpu[id - 1], id);
 
 	printf("Starting CPU %u (%lx)\n", id, target_cpu);

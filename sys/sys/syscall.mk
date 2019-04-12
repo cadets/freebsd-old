@@ -405,6 +405,10 @@ MIASM =  \
 	cpuset_getdomain.o \
 	cpuset_setdomain.o \
 	getrandom.o \
+	getfhat.o \
+	fhlink.o \
+	fhlinkat.o \
+	fhreadlink.o \
 	metaio_read.o \
 	metaio_write.o \
 	metaio_mmap.o \
@@ -421,4 +425,5 @@ MIASM =  \
 	metaio_recvfrom.o \
 	metaio_sendmsg.o \
 	metaio_recvmsg.o \
-	metaio_sendfile.o
+	metaio_sendfile.o \
+	dt_probe.o

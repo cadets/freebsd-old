@@ -121,12 +121,6 @@ public:
   const char *getName() const { return Name; }
 };
 
-enum class ErrorType {
-#define UBSAN_CHECK(Name, SummaryKind, FSanitizeFlagName) Name,
-#include "ubsan_checks.inc"
-#undef UBSAN_CHECK
-};
-
 /// \brief Representation of an in-flight diagnostic.
 ///
 /// Temporary \c Diag instances are created by the handler routines to
@@ -138,9 +132,6 @@ class Diag {
 
   /// The diagnostic level.
   DiagLevel Level;
-
-  /// The error type.
-  ErrorType ET;
 
   /// The message which will be emitted, with %0, %1, ... placeholders for
   /// arguments.
@@ -178,7 +169,7 @@ public:
   };
 
 private:
-  static const unsigned MaxArgs = 8;
+  static const unsigned MaxArgs = 5;
   static const unsigned MaxRanges = 1;
 
   /// The arguments which have been added to this diagnostic so far.
@@ -206,9 +197,8 @@ private:
   Diag &operator=(const Diag &);
 
 public:
-  Diag(Location Loc, DiagLevel Level, ErrorType ET, const char *Message)
-      : Loc(Loc), Level(Level), ET(ET), Message(Message), NumArgs(0),
-        NumRanges(0) {}
+  Diag(Location Loc, DiagLevel Level, const char *Message)
+    : Loc(Loc), Level(Level), Message(Message), NumArgs(0), NumRanges(0) {}
   ~Diag();
 
   Diag &operator<<(const char *Str) { return AddArg(Str); }
@@ -227,6 +217,12 @@ struct ReportOptions {
   /// pc/bp are used to unwind the stack trace.
   uptr pc;
   uptr bp;
+};
+
+enum class ErrorType {
+#define UBSAN_CHECK(Name, SummaryKind, FSanitizeFlagName) Name,
+#include "ubsan_checks.inc"
+#undef UBSAN_CHECK
 };
 
 bool ignoreReport(SourceLocation SLoc, ReportOptions Opts, ErrorType ET);

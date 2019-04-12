@@ -14,6 +14,9 @@
 
 LIB=	amu
 INTERNALLIB=
+
+MK_BITCODE_EVERYWHERE=no
+
 SRCS=	hasmntopt.c misc_rpc.c mount_fs.c mtab.c nfs_prot_xdr.c \
 	strutil.c wire.c xutil.c
 
@@ -33,6 +36,6 @@ nfs_prot_x.c: ${NFS_PROT_X}
 XDRDEFS!= grep 'ifndef.*HAVE_XDR' ${SRCTOP}/contrib/amd/libamu/xdr_func.c | awk '{print "-D"$$2}'
 
 xdr_func_%undef.c: xdr_func.c
-	-unifdef ${XDRDEFS} < ${.ALLSRC} > ${.TARGET}
+	unifdef -x1 ${XDRDEFS} -o ${.TARGET} ${.ALLSRC}
 
 .include <bsd.lib.mk>

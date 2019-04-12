@@ -26,14 +26,13 @@ SUBDIR=	\
 	${_aesni} \
 	age \
 	${_agp} \
-	aha \
 	ahci \
-	${_aic} \
 	aic7xxx \
 	alc \
 	ale \
 	alq \
 	${_amd_ecc_inject} \
+	${_amdgpio} \
 	${_amdsbwd} \
 	${_amdsmn} \
 	${_amdtemp} \
@@ -113,7 +112,6 @@ SUBDIR=	\
 	de \
 	dlog \
 	${_dpms} \
-	${_dpt} \
 	${_drm} \
 	${_drm2} \
 	dummynet \
@@ -155,6 +153,7 @@ SUBDIR=	\
 	${_hwpmc_mips74k} \
 	${_hyperv} \
 	i2c \
+	${_iavf} \
         ${_ibcore} \
 	${_ibcs2} \
 	${_ichwd} \
@@ -208,7 +207,6 @@ SUBDIR=	\
 	${_ixv} \
 	${_ixl} \
 	jme \
-	joy \
 	kbdmux \
 	kgssapi \
 	kgssapi_krb5 \
@@ -254,14 +252,13 @@ SUBDIR=	\
 	${_mly} \
 	mmc \
 	mmcsd \
-	mpr \
-	mps \
+	${_mpr} \
+	${_mps} \
 	mpt \
 	mqueue \
 	mrsas \
 	msdosfs \
 	msdosfs_iconv \
-	${_mse} \
 	msk \
 	${_mthca} \
 	mvs \
@@ -271,9 +268,7 @@ SUBDIR=	\
 	my \
 	${_nandfs} \
 	${_nandsim} \
-	${_ncr} \
 	${_nctgpio} \
-	${_ncv} \
 	${_ndis} \
 	${_netgraph} \
 	${_nfe} \
@@ -285,10 +280,10 @@ SUBDIR=	\
 	nfssvc \
 	nge \
 	nmdm \
-	${_nsp} \
 	nullfs \
 	${_ntb} \
 	${_nvd} \
+	${_nvdimm} \
 	${_nvme} \
 	${_nvram} \
 	oce \
@@ -323,7 +318,6 @@ SUBDIR=	\
 	ral \
 	${_ralfw} \
 	${_random_fortuna} \
-	${_random_yarrow} \
 	${_random_other} \
 	rc4 \
 	${_rdma} \
@@ -339,7 +333,6 @@ SUBDIR=	\
 	${_safe} \
 	${_sbni} \
 	scc \
-	${_scsi_low} \
 	sdhci \
 	${_sdhci_acpi} \
 	sdhci_pci \
@@ -364,7 +357,6 @@ SUBDIR=	\
 	${_splash} \
 	${_sppp} \
 	ste \
-	${_stg} \
 	stge \
 	${_sym} \
 	${_syscons} \
@@ -437,7 +429,6 @@ SUBDIR+=	opensolaris
 _crypto=	crypto
 _cryptodev=	cryptodev
 _random_fortuna=random_fortuna
-_random_yarrow=	random_yarrow
 _random_other=	random_other
 .endif
 .endif
@@ -534,6 +525,13 @@ _rtwnfw=	rtwnfw
 _cxgbe=		cxgbe
 .endif
 
+# These rely on 64bit atomics
+.if ${MACHINE_ARCH} != "powerpc" && ${MACHINE_ARCH} != "powerpcspe" && \
+	${MACHINE_CPUARCH} != "mips"
+_mps=		mps
+_mpr=		mpr
+.endif
+
 .if ${MK_TESTS} != "no" || defined(ALL_MODULES)
 SUBDIR+=	tests
 .endif
@@ -587,8 +585,12 @@ _cpuctl=	cpuctl
 _cpufreq=	cpufreq
 _cs=		cs
 _dpms=		dpms
+.if ${MK_MODULE_DRM} != "no"
 _drm=		drm
+.endif
+.if ${MK_MODULE_DRM2} != "no"
 _drm2=		drm2
+.endif
 _ed=		ed
 _em=		em
 _ena=		ena
@@ -619,7 +621,6 @@ _pccard=	pccard
 _rdma=		rdma
 .endif
 _safe=		safe
-_scsi_low=	scsi_low
 _speaker=	speaker
 _splash=	splash
 _sppp=		sppp
@@ -715,14 +716,16 @@ _x86bios=	x86bios
 .endif
 
 .if ${MACHINE_CPUARCH} == "amd64"
+_amdgpio=	amdgpio
 _ccp=		ccp
 _efirt=		efirt
+_iavf=		iavf
 _ioat=		ioat
 _ixl=		ixl
-_ixlv=		ixlv
 _linux64=	linux64
 _linux_common=	linux_common
 _ntb=		ntb
+_nvdimm=	nvdimm
 _pms=		pms
 _qlxge=		qlxge
 _qlxgb=		qlxgb
@@ -745,7 +748,6 @@ _vmm=		vmm
 # XXX some of these can move now, but are untested on other architectures.
 _3dfx=		3dfx
 _3dfx_linux=	3dfx_linux
-_aic=		aic
 _apm=		apm
 .if ${MK_SOURCELESS_UCODE} != "no"
 _ce=		ce
@@ -757,18 +759,12 @@ _cp=		cp
 _glxiic=	glxiic
 _glxsb=		glxsb
 #_ibcs2=		ibcs2
-_mse=		mse
-_ncr=		ncr
-_ncv=		ncv
-_nsp=		nsp
 _pcfclock=	pcfclock
 _pst=		pst
 _sbni=		sbni
-_stg=		stg
 .if ${MK_SOURCELESS_UCODE} != "no"
 _ctau=		ctau
 .endif
-_dpt=		dpt
 _ex=		ex
 .endif
 
@@ -785,7 +781,9 @@ _cardbus=	cardbus
 _cbb=		cbb
 _cfi=		cfi
 _cpufreq=	cpufreq
+.if ${MK_MODULE_DRM} != "no"
 _drm=		drm
+.endif
 _exca=		exca
 _ffec=		ffec
 _nvd=		nvd
@@ -795,7 +793,9 @@ _wi=		wi
 .endif
 
 .if ${MACHINE_ARCH} == "powerpc64"
+.if ${MK_MODULE_DRM2} != "no"
 _drm2=		drm2
+.endif
 _ipmi=		ipmi
 .endif
 .if ${MACHINE_ARCH} == "powerpc64" || ${MACHINE_ARCH} == "powerpc"

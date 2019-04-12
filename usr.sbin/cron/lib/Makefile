@@ -1,6 +1,8 @@
 # $FreeBSD$
 
 LIB=	cron
+MK_BITCODE_EVERYWHERE=no
+
 INTERNALLIB=
 SRCS= entry.c env.c misc.c
 

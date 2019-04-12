@@ -45,6 +45,7 @@
 #include <sys/stat.h>
 #include <sys/eventhandler.h>
 #include <sys/mount.h>
+#include <sys/sysctl.h>
 #include <sys/vnode.h>
 
 #include "dl_assert.h"
@@ -110,6 +111,9 @@ static struct cv dlog_cv;
 static int dlog_exit = 0;
 
 static eventhandler_tag dlog_pre_sync = NULL;
+
+static struct sysctl_ctx_list clist;
+static struct sysctl_oid *oidp;
 
 static int 
 dlog_init()
@@ -232,6 +236,9 @@ dlog_event_handler(struct module *module, int event, void *arg)
 	switch(event) {
 	case MOD_LOAD:
 		DLOGTR0(PRIO_LOW, "Loading DLog kernel module\n");
+		sysctl_ctx_init(&clist);
+		oidp = SYSCTL_ADD_ROOT_NODE(&clist, OID_AUTO, "dlog",
+		    CTLFLAG_RW, 0, "distributed log (dlog)");
 
 		if (dlog_init() != 0)
 			e = EFAULT;
@@ -240,6 +247,8 @@ dlog_event_handler(struct module *module, int event, void *arg)
 		DLOGTR0(PRIO_LOW, "Unloading DLog kernel module\n");
 
 		dlog_fini();
+		sysctl_ctx_free(&clist);
+
 		break;
 	default:
 		e = EOPNOTSUPP;
@@ -366,6 +375,9 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 
 			LIST_INSERT_HEAD(&topic_hashmap[h & topic_hashmask], t,
 			    dlt_entries); 
+			SYSCTL_ADD_STRING(&clist, SYSCTL_CHILDREN(oidp),
+			    OID_AUTO, "Topic", CTLFLAG_RD, sbuf_data(tp_name),
+			    0, "Topic name");
 		} else {
 			sbuf_delete(tp_name);
 			return -1;

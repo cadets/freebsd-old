@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -41,8 +41,12 @@
 
 #include <stdbool.h>
 
+#include "dl_bbuf.h"
+#include "dl_protocol.h"
 #include "dl_response.h"
 #include "dl_request_queue.h"
+
+#define DL_MAX_STATE_NAME_LEN 255
 
 struct dl_producer_stats_msg {
 	time_t dlpsm_timestamp;
@@ -56,12 +60,13 @@ struct dl_producer_stats {
 	struct dl_producer_stats_msg dlps_sent;
 	struct dl_producer_stats_msg dlps_received;
 	struct dl_request_q_stats dlps_request_q_stats;
+	int32_t dlps_rtt;
 	int dlps_resend_timeout;
 	bool dlps_tcp_connected;
 	bool dlps_tls_connected;
 	bool dlps_resend;
-	char dlps_topic_name[255];	
-	char dlps_state_name[255];	
+	char dlps_topic_name[DL_MAX_TOPIC_NAME_LEN];	
+	char dlps_state_name[DL_MAX_STATE_NAME_LEN];	
 };
 
 struct dl_producer;
@@ -73,15 +78,14 @@ extern void dl_producer_delete(struct dl_producer *);
 
 extern struct dl_topic * dl_producer_get_topic(struct dl_producer *); 
 
+extern int dl_producer_response(struct dl_producer *, struct dl_bbuf *);
+
 extern void dl_producer_produce(struct dl_producer const * const);
 extern void dl_producer_up(struct dl_producer const * const);
 extern void dl_producer_down(struct dl_producer const * const);
 extern void dl_producer_syncd(struct dl_producer const * const);
 extern void dl_producer_reconnect(struct dl_producer const * const);
 extern void dl_producer_error(struct dl_producer const * const);
-
-extern int dl_producer_response(struct dl_producer *,
-    struct dl_response_header *);
 
 extern void dl_producer_stats_tcp_connect(struct dl_producer *, bool);
 extern void dl_producer_stats_tls_connect(struct dl_producer *, bool);

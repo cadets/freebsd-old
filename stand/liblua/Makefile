@@ -9,6 +9,7 @@
 
 LIB=		lua
 INTERNALLIB=
+MK_BITCODE_EVERYWHERE=no
 
 # Core Lua.
 SRCS=	lapi.c lcode.c lctype.c ldebug.c ldo.c ldump.c lfunc.c lgc.c llex.c \

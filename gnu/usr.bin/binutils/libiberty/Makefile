@@ -5,6 +5,9 @@
 .PATH: ${SRCDIR}/libiberty
 
 LIB=	iberty
+
+MK_BITCODE_EVERYWHERE=no
+
 SRCS=	argv.c \
 	concat.c \
 	choose-temp.c \

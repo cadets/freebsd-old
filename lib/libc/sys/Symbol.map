@@ -372,6 +372,7 @@ FBSD_1.3 {
 FBSD_1.4 {
 	fgetuuid;
 	futimens;
+	dt_probe;
 	getuuid;
 	lgetuuid;
 	metaio_mmap;
@@ -416,6 +417,13 @@ FBSD_1.5 {
 	statfs;
 	cpuset_getdomain;
 	cpuset_setdomain;
+};
+
+FBSD_1.6 {
+	fhlink;
+	fhlinkat;
+	fhreadlink;
+	getfhat;
 };
 
 FBSDprivate_1.0 {

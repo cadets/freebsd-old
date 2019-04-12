@@ -1,9 +1,12 @@
 # $FreeBSD$
 
-.PATH: ${SRCTOP}/contrib/ntp/sntp/libevent
+.PATH: ${SRCTOP}/contrib/libevent
 
 LIB= ntpevent
 INTERNALLIB=
+
+MK_BITCODE_EVERYWHERE=no
+
 
 SRCS=	buffer.c bufferevent.c bufferevent_filter.c bufferevent_openssl.c \
 	bufferevent_pair.c epoll.c evdns.c event.c event_tagging.c \
@@ -26,7 +29,7 @@ NTP_ATOMIC=noatomic
 .endif
 
 CFLAGS+= -I${SRCTOP}/contrib/ntp/include \
-	-I${SRCTOP}/contrib/ntp/sntp/libevent/include \
+	-I${SRCTOP}/contrib/libevent/include \
 	-I${.CURDIR}/
 
 CFLAGS+= -DHAVE_BSD_NICE -DHAVE_STDINT_H

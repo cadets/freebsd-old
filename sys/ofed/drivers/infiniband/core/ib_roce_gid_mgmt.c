@@ -149,16 +149,6 @@ roce_gid_enum_netdev_default(struct ib_device *ib_dev,
 	return (hweight_long(gid_type_mask));
 }
 
-#define ETH_IPOIB_DRV_NAME	"ib"
-
-static inline int
-is_eth_ipoib_intf(struct net_device *dev)
-{
-	if (strcmp(dev->if_dname, ETH_IPOIB_DRV_NAME))
-		return 0;
-	return 1;
-}
-
 static void
 roce_gid_update_addr_callback(struct ib_device *device, u8 port,
     struct net_device *ndev, void *cookie)
@@ -177,6 +167,7 @@ roce_gid_update_addr_callback(struct ib_device *device, u8 port,
 #if defined(INET) || defined(INET6)
 	struct ifaddr *ifa;
 #endif
+	VNET_ITERATOR_DECL(vnet_iter);
 	struct ib_gid_attr gid_attr;
 	union ib_gid gid;
 	int default_gids;
@@ -190,9 +181,11 @@ roce_gid_update_addr_callback(struct ib_device *device, u8 port,
 	/* make sure default GIDs are in */
 	default_gids = roce_gid_enum_netdev_default(device, port, ndev);
 
-	CURVNET_SET(ndev->if_vnet);
-	IFNET_RLOCK();
-	CK_STAILQ_FOREACH(idev, &V_ifnet, if_link) {
+	VNET_LIST_RLOCK();
+	VNET_FOREACH(vnet_iter) {
+	    CURVNET_SET(vnet_iter);
+	    IFNET_RLOCK();
+	    CK_STAILQ_FOREACH(idev, &V_ifnet, if_link) {
 		if (idev != ndev) {
 			if (idev->if_type != IFT_L2VLAN)
 				continue;
@@ -240,9 +233,11 @@ roce_gid_update_addr_callback(struct ib_device *device, u8 port,
 		}
 #endif
 		IF_ADDR_RUNLOCK(idev);
+	    }
+	    IFNET_RUNLOCK();
+	    CURVNET_RESTORE();
 	}
-	IFNET_RUNLOCK();
-	CURVNET_RESTORE();
+	VNET_LIST_RUNLOCK();
 
 	/* add missing GIDs, if any */
 	STAILQ_FOREACH(entry, &ipx_head, entry) {
@@ -322,15 +317,15 @@ roce_gid_queue_scan_event(struct net_device *ndev)
 	struct roce_netdev_event_work *work;
 
 retry:
-	if (is_eth_ipoib_intf(ndev))
-		return;
-
-	if (ndev->if_type != IFT_ETHER) {
-		if (ndev->if_type == IFT_L2VLAN) {
-			ndev = rdma_vlan_dev_real_dev(ndev);
-			if (ndev != NULL)
-				goto retry;
-		}
+	switch (ndev->if_type) {
+	case IFT_ETHER:
+		break;
+	case IFT_L2VLAN:
+		ndev = rdma_vlan_dev_real_dev(ndev);
+		if (ndev != NULL)
+			goto retry;
+		/* FALLTHROUGH */
+	default:
 		return;
 	}
 

@@ -6,6 +6,7 @@
 
 LIB=		efi_fdt
 WARNS?=		6
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=		efi_fdt.c
 
