@@ -3,5 +3,6 @@ ident DDTRACE
 
 # Distributed DTrace components
 options		DDTRACE
+options		DDTRACE_IPOPTION
 # Kafka-compatible distributed log
 options		DLOG

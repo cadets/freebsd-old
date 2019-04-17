@@ -22,6 +22,7 @@ include GENERIC
 
 ident   CADETS
 options	DDTRACE
+options	DDTRACE_IPOPTION
 options	DLOG
 options METAIO
 

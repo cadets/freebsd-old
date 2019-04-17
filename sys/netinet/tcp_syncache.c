@@ -1862,6 +1862,9 @@ syncache_respond(struct syncache *sc, struct syncache_head *sch,
 		}
 #endif
 		TCP_PROBE5(send, NULL, NULL, ip, NULL, th);
+#ifdef KDTRACE_HOOKS
+		msgid_generate(&m->m_pkthdr.msgid);
+#endif
 		error = ip_output(m, sc->sc_ipopts, NULL, 0, NULL, NULL);
 	}
 #endif

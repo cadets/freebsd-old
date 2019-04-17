@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016 Robert N. M. Watson
+ * Copyright (c) 2016, 2019 Robert N. M. Watson
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -33,6 +33,7 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+#include <sys/endian.h>
 #include <sys/msgid.h>
 #include <sys/pcpu.h>
 #include <sys/systm.h>
@@ -121,4 +122,29 @@ msgid_isvalid(msgid_t *msgidp)
 {
 
 	return (*msgidp != 0);
+}
+
+/*
+ * Routines to byte swap message IDs between host and network byte order,
+ * primarily for use in mbufs.  mbuf headers always contain the message ID in
+ * native byte order.
+ */
+void
+msgid_ntoh(msgid_t *to, msgid_t *from)
+{
+	msgid_t msgid;
+
+	memcpy(&msgid, from, sizeof(msgid));
+	msgid = be64toh(msgid);
+	memcpy(to, &msgid, sizeof(*to));
+}
+
+void
+msgid_hton(msgid_t *to, msgid_t *from)
+{
+	msgid_t msgid;
+
+	memcpy(&msgid, from, sizeof(msgid));
+	msgid = htobe64(msgid);
+	memcpy(to, &msgid, sizeof(*to));
 }

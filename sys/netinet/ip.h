@@ -158,6 +158,12 @@ struct ip {
 #define	IPOPT_SATID		136		/* satnet id */
 #define	IPOPT_SSRR		137		/* strict source route */
 #define	IPOPT_RA		148		/* router alert */
+#define	IPOPT_EXP30		30		/* exp: copy 0, class 0 */
+#define	IPOPT_EXP94		94		/* exp: copy 0, class 2 */
+#define	IPOPT_EXP158		158		/* exp: copy 1, class 0 */
+#define	IPOPT_EXP222		222		/* exp: copy 1, class 2 */
+
+#define	IPOPT_DDTRACE		IPOPT_EXP94
 
 /*
  * Offsets to fields in options other than EOL and NOP.
@@ -204,6 +210,9 @@ struct	ip_timestamp {
 #define	IPOPT_SECUR_RESTR	0xaf13
 #define	IPOPT_SECUR_SECRET	0xd788
 #define	IPOPT_SECUR_TOPSECRET	0x6bc5
+
+/* Size of Distributed DTrace option. */
+#define	IPOPT_DDTRACE_LEN	12		/* Header, msgid_t, padding */
 
 /*
  * Internet implementation parameters.

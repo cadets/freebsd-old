@@ -1575,6 +1575,9 @@ tcp_respond(struct tcpcb *tp, void *ipgen, struct tcphdr *th, struct mbuf *m,
 #ifdef INET
 	{
 		TCP_PROBE5(send, NULL, tp, ip, tp, nth);
+#ifdef KDTRACE_HOOKS
+		msgid_generate(&m->m_pkthdr.msgid);
+#endif
 		(void)ip_output(m, NULL, NULL, 0, NULL, inp);
 	}
 #endif

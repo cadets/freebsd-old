@@ -248,7 +248,11 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 		bzero(ro, sizeof (*ro));
 	}
 
-	if (opt) {
+	if (opt
+#ifdef DDTRACE_IPOPTION
+	    || V_ip_doopt_ddtrace
+#endif
+	    ) {
 		int len = 0;
 		m = ip_insertoptions(m, opt, &len);
 		if (len != 0)

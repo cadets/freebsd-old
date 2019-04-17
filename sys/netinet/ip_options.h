@@ -52,6 +52,9 @@ struct ipopt_tag {
 VNET_DECLARE(int, ip_doopts);		/* process or ignore IP options */
 #define	V_ip_doopts	VNET(ip_doopts)
 
+VNET_DECLARE(int, ip_doopt_ddtrace);	/* enable message IDs in IP options */
+#define	V_ip_doopt_ddtrace	VNET(ip_doopt_ddtrace)
+
 int		 ip_checkrouteralert(struct mbuf *);
 int		 ip_dooptions(struct mbuf *, int);
 struct mbuf	*ip_insertoptions(struct mbuf *, struct mbuf *, int *);

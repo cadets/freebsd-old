@@ -538,6 +538,19 @@ after_sack_rexmit:
 				offsetof(struct ipoption, ipopt_list);
 	else
 		ipoptlen = 0;
+#if 0
+	/*
+	 * XXXRW: Should shorten MSS to account for IP options to be inserted
+	 * during ip_output(), but a later assertion against m_length() is
+	 * performed before that code runs.  For IPSEC, a different
+	 * assertion is used, and adding more ifdefs there would not be nice.
+	 * Is there a better way to fix this?
+	 */
+#ifdef DDTRACE_IPOPTION
+	if (V_ip_doopt_ddtrace)
+		ipoptlen += IPOPT_DDTRACE_LEN;
+#endif
+#endif
 #if defined(IPSEC) || defined(IPSEC_SUPPORT)
 	ipoptlen += ipsec_optlen;
 #endif
@@ -1411,6 +1424,9 @@ send:
 	tcp_pcap_add(th, m, &(tp->t_outpkts));
 #endif
 
+#ifdef KDTRACE_HOOKS
+	msgid_generate(&m->m_pkthdr.msgid);
+#endif
 	error = ip_output(m, tp->t_inpcb->inp_options, &tp->t_inpcb->inp_route,
 	    ((so->so_options & SO_DONTROUTE) ? IP_ROUTETOIF : 0), 0,
 	    tp->t_inpcb);

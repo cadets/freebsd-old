@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016 Robert N. M. Watson
+ * Copyright (c) 2016, 2019 Robert N. M. Watson
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -65,6 +65,8 @@ typedef uint64_t	msgid_t;
 __BEGIN_DECLS
 void	msgid_generate(msgid_t *);
 int	msgid_isvalid(msgid_t *msgidp);
+void	msgid_ntoh(msgid_t *, msgid_t *);	/* To host byte order. */
+void	msgid_hton(msgid_t *, msgid_t *);	/* To network byte order. */
 __END_DECLS
 
 #endif /* _SYS_MSGID_H_ */
