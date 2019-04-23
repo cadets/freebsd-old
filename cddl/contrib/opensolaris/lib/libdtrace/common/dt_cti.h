@@ -67,6 +67,42 @@ typedef struct ct_insdesc {
 #define CT_INSDESC_B   4
 #define CT_INSDESC_EUL 5
 	uint8_t instr;
+#define CT_OP_OR   1
+#define CT_OP_XOR  2
+#define CT_OP_AND  3
+#define CT_OP_SLL  4
+#define CT_OP_SRL  5
+#define CT_OP_SUB  6
+#define CT_OP_ADD  7
+#define CT_OP_MUL  8
+#define CT_OP_SDIV 9
+#define CT_OP_UDIV 10
+#define CT_OP_SREM 11
+#define CT_OP_UREM 12
+#define CT_OP_NOT  13
+#define CT_OP_MOV  14
+#define CT_OP_CMP  15
+#define CT_OP_TST  16
+#define CT_OP_BA   17
+#define CT_OP_BE   18
+#define CT_OP_BNE  19
+#define CT_OP_BG   20
+#define CT_OP_BGU  21
+#define CT_OP_BGE  22
+#define CT_OP_BGEU 23
+#define CT_OP_BL   24
+#define CT_OP_BLU  25
+#define CT_OP_BLE  26
+#define CT_OP_BLEU 27
+#define CT_OP_LS8  28
+#define CT_OP_LS16 29
+#define CT_OP_LS32 30
+#define CT_OP_LU8  31
+#define CT_OP_LU16 32
+#define CT_OP_LU32 33
+#define CT_OP_L64  34
+#define CT_OP_RET  35
+#define CT_OP_NOP  36
 	union {
 		/*
 		 * Register-Register-Register instructions.
