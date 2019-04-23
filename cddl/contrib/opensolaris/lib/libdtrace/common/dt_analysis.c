@@ -393,7 +393,7 @@ dtrace_modref_action(const dtrace_actdesc_t *ap)
 	case DTRACEACT_FREOPEN:
 	case DTRACEACT_PROC_CONTROL:
 	case DTRACEACT_KERNEL:
-	case DTRACEACT_STACK	:
+	case DTRACEACT_STACK:
 	case DTRACEACT_SYM:
 	case DTRACEACT_MOD:
 	case DTRACEACT_KERNEL_DESTRUCTIVE:
