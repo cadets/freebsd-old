@@ -34,6 +34,7 @@
 #define	_DT_ANALYSIS_H
 
 #include <dtrace.h>
+#include <dt_cti.h>
 
 #ifdef	__cplusplus
 extern "C" {
