@@ -61,6 +61,11 @@
 
 typedef struct ct_insdesc {
 	uint8_t kind;
+#define CT_INSDESC_RRR 1
+#define CT_INSDESC_RR  2
+#define CT_INSDESC_RRI 3
+#define CT_INSDESC_B   4
+#define CT_INSDESC_EUL 5
 	uint8_t instr;
 	union {
 		/*
@@ -129,6 +134,48 @@ typedef struct ct_ins {
 } ct_ins_t;
 
 /*
+ * ct_msgtype is a type representing what is being sent through the channel, or
+ * a session type. There are three 'classes' of types that can be sent:
+ *  (*) D String: A type of any D string (result of copyinstr, etc.);
+ *  (*) CTF Type: One of the types known via CTF;
+ *  (*) Session Type: A type describing an interaction for a given process.
+ */
+typedef struct ct_msgtype {
+	int type_ident;
+#define CT_MSG_TYPE_D_STRING 1
+#define CT_MSG_TYPE_CTF      2
+#define CT_MSG_TYPE_SESSION  3
+
+	struct {
+		ct_proctype_t *ptype;
+		ct_proc_t *proc;
+	} session;
+} ct_msgtype_t;
+
+/*
+ * ct_typevar describes a type variable. These are used in global and process
+ * types for recursion.
+ */
+typedef struct ct_typevar {
+	int kind;
+#define CT_VAR_TYPE_GLOBAL 1
+#define CT_VAR_TYPE_PROC   2
+	union {
+		ct_globaltype_t *global;
+		ct_proctype_t *proc;
+	} u;
+} ct_typevar_t;
+
+/*
+ * A static channel is one that can be named statically. ct_static_chan is a
+ * structure that describes such channels.
+ */
+typedef struct ct_static_chan {
+	char *name;  /* Human-facing name */
+	uint64_t id; /* Identifier of the channel (unique) */
+} ct_static_chan_t;
+
+/*
  * ct_globaltype is a structure that contains all of the information about
  * a global type encoding the programmer's assumptions about the underlying
  * system. This includes things like, "a tid between two processes is guaranteed
@@ -138,7 +185,44 @@ typedef struct ct_ins {
  * use in a given script.
  */
 typedef struct ct_globaltype {
+	int type_ident;
+#define CT_GLOBAL_TYPE_ST_VALUE 1
+#define CT_GLOBAL_TYPE_BRANCH   2
+#define CT_GLOBAL_TYPE_PAR      3
+#define CT_GLOBAL_TYPE_REC      4
+#define CT_GLOBAL_TYPE_VAR      5
+#define CT_GLOBAL_TYPE_END      6
+	union {
+		struct {
+			ct_proc_t *p1;          /* Sending process */
+			ct_proc_t *p2;          /* Receiving process */
+			ct_msgtype_t *msg_type; /* Type of message being sent */
+			ct_static_chan_t *chan;
+			                        /* Static channel being communicated through */
+		} st_value;
 
+		struct {
+			ct_proc_t *p1; /* Sending process */
+			ct_proc_t *p2; /* Receiving process */
+			struct {
+				ct_label_t *label; /* Choice label */
+				struct ct_globaltype *interaction;
+				                   /* Interaction for that choice */
+			} *choices;    /* An array of choices */
+		} st_branch;
+
+		struct {
+			struct ct_globaltype *g1;
+			struct ct_globaltype *g2;
+		} parallel;
+
+		struct {
+			ct_typevar_t *var; /* Variable being recursed on */
+			struct ct_globaltype *g;  /* The type containing the variable */
+		} recursive;
+
+		ct_typevar_t *var;
+	} u;
 } ct_globaltype_t;
 
 /*
@@ -147,7 +231,50 @@ typedef struct ct_globaltype {
  * the script.
  */
 typedef struct ct_proctype {
+	int type_ident;
+#define CT_PROC_TYPE_SEND   1
+#define CT_PROC_TYPE_RECV   2
+#define CT_PROC_TYPE_BRANCH 3
+#define CT_PROC_TYPE_SELECT 4
+#define CT_PROC_TYPE_REC    5
+#define CT_PROC_TYPE_VAR    6
+#define CT_PROC_TYPE_END    7
+	union {
+		struct {
+			ct_static_chan_t *chan; /* Channel being sent on */
+			ct_msgtype_t *msg_type; /* Type of message being sent */
+		} st_send;
 
+		struct {
+			ct_static_chan_t *chan; /* Channel being received on */
+			ct_msgtype_t *msg_type; /* Type of message being received */
+		} st_recv;
+
+		struct {
+			ct_static_chan_t *chan; /* Channel being received on */
+			struct {
+				ct_label_t *label; /* Choice label */
+				struct ct_proctype *interaction;
+				                   /* Interaction for that choice */
+			} *choices;    /* An array of choices */
+		} st_branch;
+
+		struct {
+			ct_static_chan_t *chan; /* Channel being sent on */
+			struct {
+				ct_label_t *label; /* Choice label */
+				struct ct_proctype *interaction;
+				                   /* Interaction for that choice */
+			} *choices;    /* An array of choices */
+		} st_select;
+
+		struct {
+			ct_typevar_t *var; /* Variable being recursed on */
+			struct ct_proctype *g;  /* The type containing the variable */
+		} recursive;
+
+		ct_typevar_t *var;
+	} u;
 } ct_proctype_t;
 
 /*
