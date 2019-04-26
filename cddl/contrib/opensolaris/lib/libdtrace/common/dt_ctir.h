@@ -32,6 +32,9 @@
 #ifndef _DT_CTI_H_
 #define _DT_CTI_H_
 
+#include <sys/ctf_api.h>
+#include <dt_list.h>
+
 /*
  * The Concurrent Tracing Intermediate Representation (CTIR) is a representation
  * that DTrace programs are converted in order to be statically checked for
@@ -59,6 +62,13 @@
  *  (*) CTIR Execution Unit: TODO.
  */
 
+struct ct_globaltype;
+struct ct_proctype;
+struct ct_proc;
+struct ct_static_chan;
+struct ct_dynamic_chan;
+typedef uint64_t ct_label_t;
+
 typedef struct ct_insdesc {
 	uint8_t kind;
 #define CT_INSDESC_RRR 1
@@ -67,42 +77,60 @@ typedef struct ct_insdesc {
 #define CT_INSDESC_B   4
 #define CT_INSDESC_EUL 5
 	uint8_t instr;
-#define CT_OP_OR   1  /* or rd, rs1, rs2 */
-#define CT_OP_XOR  2  /* xor rd, rs1, rs2 */
-#define CT_OP_AND  3  /* and rd, rs1, rs2 */
-#define CT_OP_SLL  4  /* sll rd, rs1, rs2 */
-#define CT_OP_SRL  5  /* srl rd, rs1, rs2 */
-#define CT_OP_SUB  6  /* sub rd, rs1, rs2 */
-#define CT_OP_ADD  7  /* add rd, rs1, rs2 */
-#define CT_OP_MUL  8  /* mul rd, rs1, rs2 */
-#define CT_OP_SDIV 9  /* sdiv rd, rs1, rs2 */
-#define CT_OP_UDIV 10 /* udiv rd, rs1, rs2 */
-#define CT_OP_SREM 11 /* srem rd, rs1, rs2 */
-#define CT_OP_UREM 12 /* urem rd, rs1, rs2 */
-#define CT_OP_NOT  13 /* not rd, rs */
-#define CT_OP_MOV  14 /* mov, rd, rs */
-#define CT_OP_CMP  15 /* cmp rs1, rs2 */
-#define CT_OP_TST  16 /* tst rs */
-#define CT_OP_BA   17 /* ba label */
-#define CT_OP_BE   18 /* be label */
-#define CT_OP_BNE  19 /* bne label */
-#define CT_OP_BG   20 /* bg label */
-#define CT_OP_BGU  21 /* bgu label */
-#define CT_OP_BGE  22 /* bge label */
-#define CT_OP_BGEU 23 /* bgeu label */
-#define CT_OP_BL   24 /* bl label */
-#define CT_OP_BLU  25 /* blu label */
-#define CT_OP_BLE  26 /* ble label */
-#define CT_OP_BLEU 27 /* bleu label */
-#define CT_OP_LS8  28 /* ls8 rd, [rs] */
-#define CT_OP_LS16 29 /* ls16 rd, [rs] */
-#define CT_OP_LS32 30 /* ls32 rd, [rs] */
-#define CT_OP_LU8  31 /* lu8 rd, [rs] */
-#define CT_OP_LU16 32 /* lu16 rd, [rs] */
-#define CT_OP_LU32 33 /* lu32 rd, [rs] */
-#define CT_OP_L64  34 /* l64 rd, [rs] */
-#define CT_OP_RET  35 /* ret rs */
-#define CT_OP_NOP  36 /* nop */
+#define CT_OP_OR      1  /* or rd, rs1, rs2 */
+#define CT_OP_XOR     2  /* xor rd, rs1, rs2 */
+#define CT_OP_AND     3  /* and rd, rs1, rs2 */
+#define CT_OP_SLL     4  /* sll rd, rs1, rs2 */
+#define CT_OP_SRL     5  /* srl rd, rs1, rs2 */
+#define CT_OP_SRA     6 /* sra rd, rs1, rs2 */
+#define CT_OP_SUB     7  /* sub rd, rs1, rs2 */
+#define CT_OP_ADD     8  /* add rd, rs1, rs2 */
+#define CT_OP_MUL     9  /* mul rd, rs1, rs2 */
+#define CT_OP_SDIV    10  /* sdiv rd, rs1, rs2 */
+#define CT_OP_UDIV    11 /* udiv rd, rs1, rs2 */
+#define CT_OP_SREM    12 /* srem rd, rs1, rs2 */
+#define CT_OP_UREM    13 /* urem rd, rs1, rs2 */
+#define CT_OP_NOT     14 /* not rd, rs */
+#define CT_OP_MOV     15 /* mov, rd, rs */
+#define CT_OP_CMP     16 /* cmp rs1, rs2 */
+#define CT_OP_TST     17 /* tst rs */
+#define CT_OP_BA      18 /* ba label */
+#define CT_OP_BE      19 /* be label */
+#define CT_OP_BNE     20 /* bne label */
+#define CT_OP_BG      21 /* bg label */
+#define CT_OP_BGU     22 /* bgu label */
+#define CT_OP_BGE     23 /* bge label */
+#define CT_OP_BGEU    24 /* bgeu label */
+#define CT_OP_BL      25 /* bl label */
+#define CT_OP_BLU     26 /* blu label */
+#define CT_OP_BLE     27 /* ble label */
+#define CT_OP_BLEU    28 /* bleu label */
+#define CT_OP_LS8     29 /* ls8 rd, [rs] */
+#define CT_OP_LS16    30 /* ls16 rd, [rs] */
+#define CT_OP_LS32    31 /* ls32 rd, [rs] */
+#define CT_OP_LU8     32 /* lu8 rd, [rs] */
+#define CT_OP_LU16    33 /* lu16 rd, [rs] */
+#define CT_OP_LU32    34 /* lu32 rd, [rs] */
+#define CT_OP_L64     35 /* l64 rd, [rs] */
+#define CT_OP_RET     36 /* ret rs */
+#define CT_OP_NOP     37 /* nop */
+#define CT_OP_SETX    38 /* setx rd, idx */
+#define CT_OP_SETS    39 /* sets rd, idx */
+#define CT_OP_SCMP    40 /* scmp rs1, rs2 */
+#define CT_OP_GRECV   41 /* grecv rd, chan */
+#define CT_OP_GSEND   42 /* gsend rd, chan */
+#define CT_OP_TSEND   43 /* tsend rd, chan */
+#define CT_OP_TRECV   44 /* trecv rd, chan */
+#define CT_OP_CALL    45 /* call rd, subr */
+#define CT_OP_PUSHTR  46 /* pushtr groundtype, rsize, rref */
+#define CT_OP_PUSHTV  47 /* pushtv val */
+#define CT_OP_POPTS   50 /* popts */
+#define CT_OP_FLUSHTS 51 /* flushts */
+#define CT_OP_ALLOCS  52 /* allocs rd, rs */
+#define CT_OP_ST8     53 /* st8 [rd], rs */
+#define CT_OP_ST16    54 /* st16 [rd], rs */
+#define CT_OP_ST32    55 /* st32 [rd], rs */
+#define CT_OP_ST64    56 /* st64 [rd], rs */
 	union {
 		/*
 		 * Register-Register-Register instructions.
@@ -134,8 +162,24 @@ typedef struct ct_insdesc {
 		 * Branching instructions for control flow _within_ a process.
 		 */
 		struct {
-			uint24_t label;
+			uint32_t label;
 		} b;
+
+		/*
+		 * Static channel operations.
+		 */
+		struct {
+			struct ct_static_chan *chan;
+			uint8_t rd;
+		} s_chanop;
+
+		/*
+		 * Dynamic channel operations.
+		 */
+		struct {
+			struct ct_dynamic_chan *chan;
+			uint8_t rd;
+		} d_chanop;
 
 		/*
 		 * Execution-unit local instructions are those that only
@@ -183,8 +227,8 @@ typedef struct ct_msgtype {
 #define CT_MSG_TYPE_SESSION  3
 
 	struct {
-		ct_proctype_t *ptype;
-		ct_proc_t *proc;
+		struct ct_proctype *ptype;
+		struct ct_proc *proc;
 	} session;
 } ct_msgtype_t;
 
@@ -197,8 +241,8 @@ typedef struct ct_typevar {
 #define CT_VAR_TYPE_GLOBAL 1
 #define CT_VAR_TYPE_PROC   2
 	union {
-		ct_globaltype_t *global;
-		ct_proctype_t *proc;
+		struct ct_globaltype *global;
+		struct ct_proctype *proc;
 	} u;
 } ct_typevar_t;
 
@@ -210,6 +254,12 @@ typedef struct ct_static_chan {
 	char *name;  /* Human-facing name */
 	uint64_t id; /* Identifier of the channel (unique) */
 } ct_static_chan_t;
+
+typedef struct ct_dynamic_chan {
+	char *name;             /* Human-facing name */
+	uint64_t id;            /* Identifier of the channel (unique) */
+	ctf_id_t *ground_types; /* Array of CTF types used in resolution */
+} ct_dynamic_chan_t;
 
 /*
  * ct_globaltype is a structure that contains all of the information about
@@ -230,16 +280,16 @@ typedef struct ct_globaltype {
 #define CT_GLOBAL_TYPE_END      6
 	union {
 		struct {
-			ct_proc_t *p1;          /* Sending process */
-			ct_proc_t *p2;          /* Receiving process */
+			struct ct_proc *p1;      /* Sending process */
+			struct ct_proc *p2;     /* Receiving process */
 			ct_msgtype_t *msg_type; /* Type of message being sent */
 			ct_static_chan_t *chan;
 			                        /* Static channel being communicated through */
 		} st_value;
 
 		struct {
-			ct_proc_t *p1; /* Sending process */
-			ct_proc_t *p2; /* Receiving process */
+			struct ct_proc *p1; /* Sending process */
+			struct ct_proc *p2; /* Receiving process */
 			struct {
 				ct_label_t *label; /* Choice label */
 				struct ct_globaltype *interaction;
@@ -328,7 +378,7 @@ typedef struct ct_proctype {
 typedef struct ct_procdesc {
 	char *name;          /* Process name */
 	ct_ins_t insns;      /* List of instructions */
-	cd_proctype_t *type; /* Process type */
+	ct_proctype_t *type; /* Process type */
 } ct_procdesc_t;
 
 /*
