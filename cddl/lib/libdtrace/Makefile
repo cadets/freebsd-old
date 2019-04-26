@@ -9,6 +9,7 @@ SRCS=		dt_aggregate.c \
 		dt_as.c \
 		dt_buf.c \
 		dt_cc.c \
+		dt_ctir.c \
 		dt_cg.c \
 		dt_consume.c \
 		dt_decl.c \

@@ -35,6 +35,8 @@
 #include <sys/ctf_api.h>
 #include <dt_list.h>
 
+#include <dtrace.h>
+
 /*
  * The Concurrent Tracing Intermediate Representation (CTIR) is a representation
  * that DTrace programs are converted in order to be statically checked for
@@ -259,6 +261,7 @@ typedef struct ct_dynamic_chan {
 	char *name;             /* Human-facing name */
 	uint64_t id;            /* Identifier of the channel (unique) */
 	ctf_id_t *ground_types; /* Array of CTF types used in resolution */
+	size_t n_ground_types;  /* Size of the ground types array */
 } ct_dynamic_chan_t;
 
 /*
@@ -295,6 +298,7 @@ typedef struct ct_globaltype {
 				struct ct_globaltype *interaction;
 				                   /* Interaction for that choice */
 			} *choices;    /* An array of choices */
+			size_t n_choices; /* Number of choices */
 		} st_branch;
 
 		struct {
@@ -343,6 +347,7 @@ typedef struct ct_proctype {
 				struct ct_proctype *interaction;
 				                   /* Interaction for that choice */
 			} *choices;    /* An array of choices */
+			size_t n_choices; /* Number of choices */
 		} st_branch;
 
 		struct {
@@ -352,6 +357,7 @@ typedef struct ct_proctype {
 				struct ct_proctype *interaction;
 				                   /* Interaction for that choice */
 			} *choices;    /* An array of choices */
+			size_t n_choices; /* Number of choices */
 		} st_select;
 
 		struct {
@@ -368,6 +374,8 @@ typedef struct ct_proctype {
  * a CTIR Process:
  *  (*) CTIR Process Name: The name of a process is arbitrary and only used
  *      as human-facing information. It is not relevant for static checking.
+ *      However, it is used to construct CTIR, as DTrace probes are named via
+ *      human-facing names.
  *  (*) CTIR Process Instructions: A list of all of the CTIR instructions inside
  *      the process.
  *  (*) CTIR Process Type: A type of the process encoding the programmer
@@ -376,9 +384,10 @@ typedef struct ct_proctype {
  *      global type of a given DTrace program.
  */
 typedef struct ct_procdesc {
-	char *name;          /* Process name */
-	ct_ins_t insns;      /* List of instructions */
-	ct_proctype_t *type; /* Process type */
+	char name[DTRACE_FULLNAMELEN]; /* Process name */
+	uint64_t id;                   /* Process identifier */
+	ct_ins_t insns;                /* List of instructions */
+	ct_proctype_t *type;           /* Process type */
 } ct_procdesc_t;
 
 /*
@@ -391,5 +400,12 @@ typedef struct ct_proc {
 	dt_list_t list;
 	ct_procdesc_t *desc;
 } ct_proc_t;
+
+typedef struct ct_ctir {
+	ct_proc_t proc;
+} ct_ctir_t;
+
+ct_ctir_t *ctir_from_daf(dtrace_prog_t *pgp);
+
 
 #endif
