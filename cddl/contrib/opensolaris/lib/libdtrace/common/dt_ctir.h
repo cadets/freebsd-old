@@ -73,11 +73,15 @@ typedef uint64_t ct_label_t;
 
 typedef struct ct_insdesc {
 	uint8_t kind;
-#define CT_INSDESC_RRR 1
-#define CT_INSDESC_RR  2
-#define CT_INSDESC_RRI 3
-#define CT_INSDESC_B   4
-#define CT_INSDESC_EUL 5
+#define CT_INSDESC_RRR        1
+#define CT_INSDESC_RR         2
+#define CT_INSDESC_R          3
+#define CT_INSDESC_RRI        4
+#define CT_INSDESC_B          5
+#define CT_INSDESC_EUL        6
+#define CT_INSDESC_RI         7
+#define CT_INSDESC_STANDALONE 8
+#define CT_INSDESC_CHAN       10
 	uint8_t instr;
 #define CT_OP_OR      1  /* or rd, rs1, rs2 */
 #define CT_OP_XOR     2  /* xor rd, rs1, rs2 */
@@ -114,25 +118,24 @@ typedef struct ct_insdesc {
 #define CT_OP_LU16    33 /* lu16 rd, [rs] */
 #define CT_OP_LU32    34 /* lu32 rd, [rs] */
 #define CT_OP_L64     35 /* l64 rd, [rs] */
-#define CT_OP_RET     36 /* ret rs */
-#define CT_OP_NOP     37 /* nop */
-#define CT_OP_SETX    38 /* setx rd, idx */
-#define CT_OP_SETS    39 /* sets rd, idx */
-#define CT_OP_SCMP    40 /* scmp rs1, rs2 */
-#define CT_OP_GRECV   41 /* grecv rd, chan */
-#define CT_OP_GSEND   42 /* gsend rd, chan */
-#define CT_OP_TSEND   43 /* tsend rd, chan */
-#define CT_OP_TRECV   44 /* trecv rd, chan */
-#define CT_OP_CALL    45 /* call rd, subr */
-#define CT_OP_PUSHTR  46 /* pushtr groundtype, rsize, rref */
-#define CT_OP_PUSHTV  47 /* pushtv val */
-#define CT_OP_POPTS   50 /* popts */
-#define CT_OP_FLUSHTS 51 /* flushts */
-#define CT_OP_ALLOCS  52 /* allocs rd, rs */
-#define CT_OP_ST8     53 /* st8 [rd], rs */
-#define CT_OP_ST16    54 /* st16 [rd], rs */
-#define CT_OP_ST32    55 /* st32 [rd], rs */
-#define CT_OP_ST64    56 /* st64 [rd], rs */
+#define CT_OP_EMIT    36 /* emit rs */
+#define CT_OP_SETX    37 /* setx rd, idx */
+#define CT_OP_SETS    38 /* sets rd, idx */
+#define CT_OP_SCMP    39 /* scmp rs1, rs2 */
+#define CT_OP_GRECV   40 /* grecv rd, chan */
+#define CT_OP_GSEND   41 /* gsend rd, chan */
+#define CT_OP_TSEND   42 /* tsend rd, chan */
+#define CT_OP_TRECV   43 /* trecv rd, chan */
+#define CT_OP_CALL    44 /* call rd, subr */
+#define CT_OP_PUSHTR  45 /* pushtr groundtype, rsize, rref */
+#define CT_OP_PUSHTV  46 /* pushtv val */
+#define CT_OP_POPTS   47 /* popts */
+#define CT_OP_FLUSHTS 48 /* flushts */
+#define CT_OP_ALLOCS  49 /* allocs rd, rs */
+#define CT_OP_ST8     50 /* st8 [rd], rs */
+#define CT_OP_ST16    51 /* st16 [rd], rs */
+#define CT_OP_ST32    52 /* st32 [rd], rs */
+#define CT_OP_ST64    53 /* st64 [rd], rs */
 	union {
 		/*
 		 * Register-Register-Register instructions.
@@ -152,6 +155,13 @@ typedef struct ct_insdesc {
 		} rr;
 
 		/*
+		 * Single register operations.
+		 */
+		struct {
+			uint8_t r;
+		} r;
+
+		/*
 		 * Register-Register-Immediate instructions.
 		 */
 		struct {
@@ -168,20 +178,13 @@ typedef struct ct_insdesc {
 		} b;
 
 		/*
-		 * Static channel operations.
+		 * Channel operations.
 		 */
 		struct {
-			struct ct_static_chan *chan;
+			uint8_t kind;
+			void *chan;
 			uint8_t rd;
-		} s_chanop;
-
-		/*
-		 * Dynamic channel operations.
-		 */
-		struct {
-			struct ct_dynamic_chan *chan;
-			uint8_t rd;
-		} d_chanop;
+		} chanop;
 
 		/*
 		 * Execution-unit local instructions are those that only
@@ -202,6 +205,11 @@ typedef struct ct_insdesc {
 			 *       structures.
 			 */
 		} eunit_local;
+
+		struct {
+			uint8_t r;
+			uint16_t imm;
+		} ri;
 	} u;
 } ct_insdesc_t;
 
