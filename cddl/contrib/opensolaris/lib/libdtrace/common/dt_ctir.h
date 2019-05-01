@@ -76,12 +76,11 @@ typedef struct ct_insdesc {
 #define CT_INSDESC_RRR        1
 #define CT_INSDESC_RR         2
 #define CT_INSDESC_R          3
-#define CT_INSDESC_RRI        4
+#define CT_INSDESC_RI         4
 #define CT_INSDESC_B          5
 #define CT_INSDESC_EUL        6
-#define CT_INSDESC_RI         7
-#define CT_INSDESC_STANDALONE 8
-#define CT_INSDESC_CHAN       10
+#define CT_INSDESC_STANDALONE 7
+#define CT_INSDESC_CHAN       8
 	uint8_t instr;
 #define CT_OP_OR      1  /* or rd, rs1, rs2 */
 #define CT_OP_XOR     2  /* xor rd, rs1, rs2 */
@@ -141,17 +140,17 @@ typedef struct ct_insdesc {
 		 * Register-Register-Register instructions.
 		 */
 		struct {
-			uint8_t rs1;
-			uint8_t rs2;
-			uint8_t rd;
+			uint8_t r1;
+			uint8_t r2;
+			uint8_t r3;
 		} rrr;
 
 		/*
 		 * Register-Register instructions.
 		 */
 		struct {
-			uint8_t rs;
-			uint8_t rd;
+			uint8_t r1;
+			uint8_t r2;
 		} rr;
 
 		/*
@@ -160,15 +159,6 @@ typedef struct ct_insdesc {
 		struct {
 			uint8_t r;
 		} r;
-
-		/*
-		 * Register-Register-Immediate instructions.
-		 */
-		struct {
-			uint8_t rs;
-			uint16_t imm;
-			uint8_t rd;
-		} rri;
 
 		/*
 		 * Branching instructions for control flow _within_ a process.
@@ -182,6 +172,8 @@ typedef struct ct_insdesc {
 		 */
 		struct {
 			uint8_t kind;
+#define CT_CHANKIND_S 1
+#define CT_CHANKIND_D 2
 			void *chan;
 			uint8_t rd;
 		} chanop;
@@ -264,6 +256,14 @@ typedef struct ct_static_chan {
 	char *name;  /* Human-facing name */
 	uint64_t id; /* Identifier of the channel (unique) */
 } ct_static_chan_t;
+
+/*
+ * CT_CHAN_BOUNDARY splits the space for static and dynamic channels.
+ * This serves the purpose of ensuring that we can:
+ *  (i)  easily identify all static and dynamic channels;
+ *  (ii) easily generate unique names for new channels.
+ */
+#define CT_CHAN_BOUNDARY 0xFFFFFFFF
 
 typedef struct ct_dynamic_chan {
 	char *name;             /* Human-facing name */
