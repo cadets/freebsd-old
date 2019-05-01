@@ -13,10 +13,13 @@
 /*
  * TODO: Implement the macros.
  */
-#define CTIR_RS1(x) 0
-#define CTIR_RS2(x) 0
-#define CTIR_RS(x) 0
-#define CTIR_RD(x) 0
+#define CTIR_REG_FORMAT3(r1, r2, r3) ((r1) | (r2 << 8) | (r3 << 16))
+#define CTIR_REG_FORMAT2(r1, imm) ((r1) | (imm << 8))
+#define CTIR_R1(x) ((x) & 0xff)
+#define CTIR_R2(x) (((x) >> 8) & 0xff)
+#define CTIR_R3(x) (((x) >> 16) & 0xff)
+#define CTIR_IMM(x) (((x) >> 8) & 0xffff)
+#define CTIR_LABEL(x) ((x) & 0xffffff)
 
 static uint64_t cur_proc_id = 1; /* Start from 1 */
 
@@ -69,7 +72,7 @@ ctir_acquire_proc(ct_proc_t *p, dtrace_probedesc_t *pd)
 
 	/*
 	 * If it is NULL, we simply didn't find that process yet. We then
-	 * construct it and fill in the name of the process description.
+	 * conot innstruct it and fill in the name of the process description.
 	 * The instructions themselves and the type will be filled out at
 	 * a later stage.
 	 */
@@ -384,10 +387,146 @@ ctir_determine_opkind(uint8_t op)
 }
 
 static uint32_t
-ctir_registers(dif_instr_t instr)
+ctir_registers_from_dif(dif_instr_t instr)
 {
-	/* TODO */
-	return (0);
+	dif_instr_t opcode = DIF_INSTR_OP(instr);
+	uint32_t regs = 0;
+
+	switch (opcode) {
+	case DIF_OP_OR:
+	case DIF_OP_XOR:
+	case DIF_OP_AND:
+	case DIF_OP_SLL:
+	case DIF_OP_SRL:
+	case DIF_OP_SRA:
+	case DIF_OP_SUB:
+	case DIF_OP_ADD:
+	case DIF_OP_MUL:
+	case DIF_OP_SDIV:
+	case DIF_OP_UDIV:
+	case DIF_OP_SREM:
+	case DIF_OP_COPYS:
+	case DIF_OP_UREM: {
+		uint8_t rs1 = DIF_INSTR_R1(instr);
+		uint8_t rs2 = DIF_INSTR_R2(instr);
+		uint8_t rd  = DIF_INSTR_RD(instr);
+		regs = CTIR_REG_FORMAT3(rd, rs1, rs2);
+
+		break;
+	}
+	case DIF_OP_NOT:
+	case DIF_OP_MOV:
+	case DIF_OP_LDSB:
+	case DIF_OP_LDSH:
+	case DIF_OP_LDSW:
+	case DIF_OP_LDUB:
+	case DIF_OP_LDUH:
+	case DIF_OP_LDUW:
+	case DIF_OP_LDX:
+	case DIF_OP_STB:
+	case DIF_OP_STH:
+	case DIF_OP_STW:
+	case DIF_OP_STX:
+	case DIF_OP_ULDSB:
+	case DIF_OP_ULDSH:
+	case DIF_OP_ULDSW:
+	case DIF_OP_ULDUB:
+	case DIF_OP_ULDUH:
+	case DIF_OP_ULDUW:
+	case DIF_OP_ULDX:
+	case DIF_OP_RLDSB:
+	case DIF_OP_RLDSH:
+	case DIF_OP_RLDSW:
+	case DIF_OP_RLDUB:
+	case DIF_OP_RLDUH:
+	case DIF_OP_RLDUW:
+	case DIF_OP_RLDX:
+	case DIF_OP_ALLOCS:
+	case DIF_OP_PUSHTR: {
+		uint8_t rs = DIF_INSTR_R1(instr);
+		uint8_t rd = DIF_INSTR_RD(instr);
+		regs = CTIR_REG_FORMAT3(rd, rs, 0);
+
+		break;
+	}
+	case DIF_OP_CMP:
+	case DIF_OP_SCMP: {
+		uint8_t rs1 = DIF_INSTR_R1(instr);
+		uint8_t rs2 = DIF_INSTR_R2(instr);
+		regs = CTIR_REG_FORMAT3(rs1, rs2, 0);
+
+		break;
+	}
+	case DIF_OP_BA:
+	case DIF_OP_BE:
+	case DIF_OP_BNE:
+	case DIF_OP_BG:
+	case DIF_OP_BGU:
+	case DIF_OP_BGE:
+	case DIF_OP_BGEU:
+	case DIF_OP_BL:
+	case DIF_OP_BLU:
+	case DIF_OP_BLE:
+	case DIF_OP_BLEU:
+		regs = DIF_INSTR_LABEL(instr);
+		break;
+	case DIF_OP_RET:
+	case DIF_OP_PUSHTV: {
+		uint8_t rd = DIF_INSTR_RD(instr);
+		regs = CTIR_REG_FORMAT3(rd, 0, 0);
+
+		break;
+	}
+	case DIF_OP_TST: {
+		uint8_t rs = DIF_INSTR_R1(instr);
+		regs = CTIR_REG_FORMAT3(rs, 0, 0);
+
+		break;
+	}
+	case DIF_OP_LDGS:
+	case DIF_OP_STGS:
+	case DIF_OP_LDTS:
+	case DIF_OP_STTS:
+	case DIF_OP_LDGAA:
+	case DIF_OP_LDTAA:
+	case DIF_OP_STGAA:
+	case DIF_OP_STTAA:
+	case DIF_OP_LDLS:
+	case DIF_OP_STLS:
+	case DIF_OP_SETX:
+	case DIF_OP_SETS:
+	case DIF_OP_CALL: {
+		uint8_t r1 = DIF_INSTR_RD(instr);
+		uint16_t imm = DIF_INSTR_INTEGER(instr);
+		regs = CTIR_REG_FORMAT2(r1, imm);
+		break;
+	}
+	case DIF_OP_FLUSHTS:
+	case DIF_OP_POPTS:
+		regs = 0;
+		break;
+	default:
+		assert(instr == 0); /* XXX: Bad */
+	}
+
+	return (regs);
+}
+
+static void
+ctir_infer_ground_types(ct_ins_t *first_ins, ct_dynamic_chan_t *chan)
+{
+}
+
+static char *
+ctir_var_name(uint16_t var_id)
+{
+	return (NULL);
+}
+
+static uint8_t
+ctir_chankind(uint16_t var_id)
+{
+
 }
 
 /*
@@ -431,30 +570,105 @@ ctir_translate_difo(ct_ins_t *cti, dtrace_difo_t *dp)
 
 		switch (kind) {
 		case CT_INSDESC_RRR: {
-			uint32_t regs = ctir_registers(instr);
+			uint32_t regs = ctir_registers_from_dif(instr);
 
-		        desc->u.rrr.rs1 = CTIR_RS1(regs);
-			desc->u.rrr.rs2 = CTIR_RS2(regs);
-			desc->u.rrr.rd  = CTIR_RD(regs);
+			desc->u.rrr.r1 = CTIR_R1(regs);
+		        desc->u.rrr.r2 = CTIR_R2(regs);
+			desc->u.rrr.r3 = CTIR_R3(regs);
 
 			break;
 		}
 		case CT_INSDESC_RR: {
-		        uint32_t regs = ctir_registers(instr);
+		        uint32_t regs = ctir_registers_from_dif(instr);
 
-			desc->u.rr.rs = CTIR_RS(regs);
-			desc->u.rr.rd = CTIR_RD(regs);
+			desc->u.rr.r1 = CTIR_R1(regs);
+			desc->u.rr.r2 = CTIR_R2(regs);
 
 			break;
 		}
 		case CT_INSDESC_R: {
-			/*
-			 * XXX: Need to be careful here, RET and TST are not the
-			 *      same in terms of what registers they use!
-			 *
-			 *      There might be other instructions like that too...
-			 */
+			uint32_t regs = ctir_registers_from_dif(instr);
+
+			desc->u.r.r = CTIR_R1(regs);
+
+			break;
 		}
+		case CT_INSDESC_RI: {
+			uint32_t regs = ctir_registers_from_dif(instr);
+
+			desc->u.ri.r = CTIR_R1(regs);
+			desc->u.ri.imm = CTIR_IMM(regs);
+
+			break;
+		}
+		case CT_INSDESC_B: {
+			uint32_t regs = ctir_registers_from_dif(instr);
+
+			desc->u.b.label = CTIR_LABEL(regs);
+
+			break;
+		}
+		case CT_INSDESC_EUL: {
+			/* TODO */
+			break;
+		}
+		case CT_INSDESC_CHAN: {
+			uint32_t regs = ctir_registers_from_dif(instr);
+			uint16_t var_id = CTIR_IMM(regs);
+			uint8_t ckind;
+			void *chan = NULL;
+
+			ckind = ctir_chankind(var_id);
+			assert(ckind == CT_CHANKIND_S ||
+			       ckind == CT_CHANKIND_D);
+
+			if (ckind == CT_CHANKIND_S) {
+				/* The channel is static. */
+				ct_static_chan_t *schan;
+				schan = malloc(sizeof(ct_static_chan_t));
+				assert(schan != NULL);
+
+				schan->name = ctir_var_name(var_id);
+				schan->id = var_id;
+
+				chan = schan;
+			} else {
+				/* The channel is dynamic. */
+				ct_dynamic_chan_t *dchan;
+				dchan = malloc(sizeof(ct_dynamic_chan_t));
+				assert(dchan != NULL);
+
+				/*
+				 * We can easily give a human-facing name to the
+				 * dynamic channel. It is simply the variable
+				 * name.
+				 */
+				dchan->name = ctir_var_name(var_id);
+				/*
+				 * The ID is generated from the variable id and
+				 * the boundary between static and dynamic
+				 * channels.
+				 */
+				dchan->id = CT_CHAN_BOUNDARY + var_id;
+				/*
+				 * We now infer the ground types of each portion
+				 * of the dynamic channel name.
+				 */
+				ctir_infer_ground_types(dt_list_next(first),
+							dchan);
+
+				chan = dchan;
+			}
+
+			assert(chan != NULL);
+
+			desc->u.chanop.kind = ckind;
+			desc->u.chanop.chan = chan;
+			desc->u.chanop.rd = CTIR_R1(regs);
+			break;
+		}
+		default:
+			break;
 		}
 	}
 
@@ -596,5 +810,6 @@ ctir_from_daf(dtrace_prog_t *pgp)
 				ctir_translate_action(p, ap);
 		}
 	}
+
 	return (ctir);
 }
