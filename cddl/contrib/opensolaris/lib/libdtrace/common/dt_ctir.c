@@ -72,7 +72,7 @@ ctir_acquire_proc(ct_proc_t *p, dtrace_probedesc_t *pd)
 
 	/*
 	 * If it is NULL, we simply didn't find that process yet. We then
-	 * conot innstruct it and fill in the name of the process description.
+	 * construct it and fill in the name of the process description.
 	 * The instructions themselves and the type will be filled out at
 	 * a later stage.
 	 */
