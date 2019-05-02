@@ -1,6 +1,5 @@
 /*-
  * Copyright (c) 2016 Robert N. M. Watson
- * Copyright (c) 2018 Domagoj Stolfa
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -37,7 +36,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/msgid.h>
 #include <sys/pcpu.h>
 #include <sys/systm.h>
-#include <sys/endian.h>
 
 #include <machine/atomic.h>
 
@@ -109,8 +107,7 @@ msgid_generate(msgid_t *msgidp)
 	KASSERT(id < (1ULL << MSGID_COUNTERBITS),
 	    ("%s: message ID overflow CPU %u", __func__, curcpu));
 	MSGID_SETCPU(id, (uint64_t)curcpu);
-	/* Save the msgid in network byte order */
-	*msgidp = htobe64(id);
+	*msgidp = id;
 }
 
 /*

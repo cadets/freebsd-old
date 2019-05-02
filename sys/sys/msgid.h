@@ -1,6 +1,5 @@
 /*-
  * Copyright (c) 2016 Robert N. M. Watson
- * Copyright (c) 2019 Domagoj Stolfa
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -33,7 +32,18 @@
 #ifndef _SYS_MSGID_H_
 #define	_SYS_MSGID_H_
 
-#include <sys/_msgid.h>
+/*
+ * Message IDs: a lightweight alternative to UUIDs to provide unique
+ * identifiers for ephemeral kernel objects.  This typedef should be preferred
+ * to the underlying integer type as in the future this might need to change
+ * to a larger integer type or even struct.
+ */
+typedef uint64_t	msgid_t;
+
+struct msgid_info {
+	uint8_t	mi_has_msgid;
+	msgid_t	mi_msgid;
+};
 
 /*
  * Assign various bits of the type to hold a CPU identifier, and the remaining
