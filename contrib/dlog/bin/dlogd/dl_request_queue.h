@@ -49,6 +49,7 @@ struct dl_request_element {
 	struct dl_bbuf *dlrq_buffer;
 	/* Request metadata. */
 	struct {
+		struct timeval dlrq_enq_tv;
 		struct timeval dlrq_tv;
 		int32_t dlrq_correlation_id;
 		int16_t dlrq_api_key;

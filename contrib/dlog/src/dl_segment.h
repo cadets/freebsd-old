@@ -52,9 +52,6 @@
 #endif
 
 #include "dl_bbuf.h"
-#ifndef _KERNEL
-#include "dl_index.h"
-#endif
 #include "dl_offset.h"
 
 SLIST_HEAD(dl_segments, dl_segment);

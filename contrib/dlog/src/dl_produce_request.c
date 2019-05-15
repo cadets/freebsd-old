@@ -47,10 +47,12 @@
 #include "dl_produce_request.h"
 #include "dl_request.h"
 #include "dl_utils.h"
+	
+#define DL_ENCODE_TRANSACTIONAL_ID(target) dl_encode_string(target, NULL);
 
 int
 dl_produce_request_new(struct dl_request **self, const int32_t correlation_id,
-    struct sbuf *client, int16_t required_acks, int32_t timeout,
+    struct sbuf *client, dl_required_acks required_acks, int32_t timeout,
     struct sbuf *topic_name, struct dl_message_set *message_set)
 {
 	struct dl_produce_request *produce_request;
@@ -130,7 +132,7 @@ err_request_ctor:
 
 int
 dl_produce_request_new_nomsg(struct dl_request **self,
-    const int32_t correlation_id, struct sbuf *client, int16_t required_acks,
+    const int32_t correlation_id, struct sbuf *client, dl_required_acks required_acks,
     int32_t timeout, struct sbuf *topic_name)
 {
 	return dl_produce_request_new(self, correlation_id, client,
@@ -257,8 +259,8 @@ err_produce_request:
 }
 
 int
-dl_produce_request_encode(
-    struct dl_produce_request const * const self, struct dl_bbuf *target)
+dl_produce_request_encode(struct dl_produce_request const * const self,
+    struct dl_bbuf *target)
 {
 	struct dl_produce_request_topic *req_topic;
 	struct dl_produce_request_partition *req_part;
@@ -267,6 +269,15 @@ dl_produce_request_encode(
 	DL_ASSERT(self != NULL, ("ProduceRequest cannot be NULL"));
 	DL_ASSERT((dl_bbuf_get_flags(target) & DL_BBUF_AUTOEXTEND) != 0,
 	    ("Target buffer must be auto-extending"));
+
+	/* Encode the Request TransactionalId into the buffer. */
+	if (DLOG_API_VERSION >= DLOG_API_V3) {
+		rc |= DL_ENCODE_TRANSACTIONAL_ID(target);
+#ifdef _KERNEL
+		DL_ASSERT(rc == 0,
+		    ("Insert into autoextending buffer cannot fail."));
+#endif
+	}
 
 	/* Encode the Request RequiredAcks into the buffer. */
 	rc |= DL_ENCODE_REQUIRED_ACKS(target, self->dlpr_required_acks);

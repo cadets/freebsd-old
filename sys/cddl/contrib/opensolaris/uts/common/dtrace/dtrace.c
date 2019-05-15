@@ -239,8 +239,8 @@ static vmem_t		*dtrace_minor;		/* minor number arena */
 static taskq_t		*dtrace_taskq;		/* task queue */
 static struct unrhdr	*dtrace_arena;		/* Probe ID number.     */
 #endif
-static dtrace_probe_t	**dtrace_probes;	/* array of all probes */
-static int		dtrace_nprobes;		/* number of probes */
+dtrace_probe_t		**dtrace_probes;	/* array of all probes */
+int			dtrace_nprobes;		/* number of probes */
 static dtrace_provider_t *dtrace_provider;	/* provider list */
 static dtrace_meta_t	*dtrace_meta_pid;	/* user-land meta provider */
 static dtrace_dist_t *dtrace_dist = NULL;	/* dist list */
@@ -15891,7 +15891,7 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 		state->dts_options[DTRACEOPT_GRABANON] =
 		    opt[DTRACEOPT_GRABANON];
 
-		*cpu = dtrace_anon.dta_state->dts_beganon;
+		*cpu = dtrace_anon.dta_beganon;
 		/*
 		 * If the anonymous state is active (as it almost certainly
 		 * is if the anonymous enabling ultimately matched anything),
@@ -18066,8 +18066,7 @@ dtrace_attach(dev_info_t *devi, ddi_attach_cmd_t cmd)
 		/*
 		 * If we created any anonymous state, set it going now.
 		 */
-		(void) dtrace_state_go(state,
-		    &dtrace_anon.dta_state->dts_beganon);
+		(void) dtrace_state_go(state, &dtrace_anon.dta_beganon);
 	}
 
 	return (DDI_SUCCESS);
@@ -18771,12 +18770,13 @@ dtrace_ioctl(dev_t dev, int cmd, intptr_t arg, int md, cred_t *cr, int *rv)
 	}
 
 	case DTRACEIOC_GO: {
-		rval = dtrace_state_go(state, &dtp->dts_beganon);
+		processorid_t cpuid;
+		rval = dtrace_state_go(state, &cpuid);
 
 		if (rval != 0)
 			return (rval);
 
-		if (copyout(&dtp->dts_beganon, (void *)arg, sizeof(processorid_t)) != 0)
+		if (copyout(&cpuid, (void *)arg, sizeof (cpuid)) != 0)
 			return (EFAULT);
 
 		return (0);
