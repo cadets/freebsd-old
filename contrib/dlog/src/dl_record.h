@@ -1,6 +1,5 @@
 /*-
- * Copyright (c) 2017 (Ilia Shumailov)
- * Copyright (c) 2017-2019 (Graeme Jenkinson)
+ * Copyright (c) 2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -35,23 +34,37 @@
  *
  */
 
-#ifndef _DLOG_CLIENT_H
-#define _DLOG_CLIENT_H
+#ifndef _DL_RECORD_H
+#define _DL_RECORD_H
 
 #include <sys/types.h>
+#include <sys/sbuf.h>
+#include <sys/queue.h>
 
-#include "dl_config.h"
+#include "dl_bbuf.h"
+#include "dl_record_header.h"
 
-struct dlog_handle;
+STAILQ_HEAD(dl_record_headers, dl_record_header);
 
-extern int dlog_client_open(struct dlog_handle **, 
-    struct dl_client_config const * const);
-extern void dlog_client_close(struct dlog_handle *);
+struct dl_record {
+	STAILQ_ENTRY(dl_record) dlr_entries;
+	struct dl_record_headers dlr_headers;
+	struct sbuf *dlr_key;
+	unsigned char const *dlr_value;
+	int32_t dlr_offset_delta;
+	int32_t dlr_timestamp_delta;
+	int32_t dlr_value_len;
+};
 
-extern int dlog_fetch(struct dlog_handle *, struct sbuf *, 
-    const int32_t, const int32_t,  const int64_t, const int32_t);
-extern int dlog_list_offset(struct dlog_handle *, struct sbuf *, int64_t);
-extern int dlog_produce(struct dlog_handle *, char *, unsigned char *, size_t); 
-extern int dlog_produce_no_key(struct dlog_handle *, unsigned char *, size_t); 
+extern int dl_record_new(struct dl_record **, char *,
+    unsigned char *, int32_t);
+extern void dl_record_delete(struct dl_record *);
+
+extern int dl_record_decode(struct dl_record **, struct dl_bbuf *);
+extern int dl_record_encode(struct dl_record const *, struct dl_bbuf **);
+extern int dl_record_encode_into(struct dl_record const *, struct dl_bbuf *);
+
+extern void dl_record_set_offset_delta(struct dl_record * const, int32_t); 
+extern void dl_record_set_timestamp_delta(struct dl_record * const, int32_t); 
 
 #endif

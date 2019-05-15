@@ -34,6 +34,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <strings.h>
+#include <inttypes.h>
 
 #include <dt_analysis.h>
 #include <dt_program.h>
@@ -81,7 +82,7 @@ static void
 dtrace_print_stack(uint64_t num_frames, const char *stack_name)
 {
 
-	fprintf(stderr, "%s %llu\n", stack_name, num_frames);
+	fprintf(stderr, "%s %" PRIu64 "\n", stack_name, num_frames);
 }
 
 static void

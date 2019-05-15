@@ -40,25 +40,21 @@ BINDIR= bin
 SRCS.dlogdstat = dlogdstat.c
 MAN.dlogdstat =
 
-#LDADD+=-lc
-#LDADD+=-lcrypto
-#LDADD+=-lnv
-#LDADD+=-lpthread
 LDADD+=-lncurses
+LDADD+=-ltinfo
 LDADD+=-lsbuf
-#LDADD+=-lssl
-#LDADD+=-lucl
-#LDADD+=-lz
 
 CFLAGS+=-DNDEBUG
 CFLAGS+=-g
+CFLAGS+=-Werror
+CFLAGS+=-Wunused-variable
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
 CFLAGS+=-L/usr/local/lib
 CFLAGS+=-I/usr/local/include
 CFLAGS+=-I../dlogd
 CFLAGS+=-I../../src
 CFLAGS+=-I.
-#CFLAGS+=-O1
+CFLAGS+=-O3
 #CFLAGS+=-fsanitize=address
 #CFLAGS+=-fno-omit-frame-pointer
 
