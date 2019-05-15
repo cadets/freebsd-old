@@ -105,7 +105,7 @@ dl_response_new(struct dl_response **self, int16_t api_key,
  * Response destructor.
  */
 void
-dl_response_delete(struct dl_response const * const self)
+dl_response_delete(struct dl_response * const self)
 {
 
 	DL_ASSERT(self != NULL, ("Response cannot be NULL."));
@@ -134,7 +134,7 @@ dl_response_delete(struct dl_response const * const self)
  * Response header destructor.
  */
 void
-dl_response_header_delete(struct dl_response_header const * const self)
+dl_response_header_delete(struct dl_response_header * const self)
 {
 
 	DL_ASSERT(self != NULL, ("Response header cannot be NULL."));

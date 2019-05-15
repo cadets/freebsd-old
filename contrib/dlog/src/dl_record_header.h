@@ -1,5 +1,4 @@
 /*-
- * Copyright (c) 2017 (Ilia Shumailov)
  * Copyright (c) 2019 (Graeme Jenkinson)
  * All rights reserved.
  *
@@ -35,63 +34,36 @@
  *
  */
 
-#ifndef _DL_CONFIG_H
-#define _DL_CONFIG_H
+#ifndef _DL_RECORD_HEADER_H
+#define _DL_RECORD_HEADER_H
 
-#include <sys/nv.h>
+#include <sys/queue.h>
+#include <sys/sbuf.h>
+#include <sys/types.h>
 
-#include "dl_produce_request.h" 
-#include "dl_response.h" 
+#include "dl_bbuf.h"
 
-extern int dl_config_new(char *, int);
-
-/* TODO remove this type, use only the raw nvlist. */
-struct dl_client_config {
-	nvlist_t *dlcc_props;
+struct dl_record_header {
+	STAILQ_ENTRY(dl_record_header) dlrh_entries;
+	struct sbuf *dlrh_key;
+	unsigned char const *dlrh_value;
+	int32_t dlrh_key_len;
+	int32_t dlrh_value_len;
 };
 
-struct dl_client_config_desc {
-	void * dlcc_packed_nvlist;
-	size_t dlcc_packed_nvlist_len;
-};
+extern int dl_record_header_new(struct dl_record_header **,
+    char *, unsigned char *, int32_t);
+extern void dl_record_header_delete(struct dl_record_header *);
 
-#define DL_CONF_CLIENTID "clientid"
-#define DL_CONF_BROKER "hostname"
-#define DL_CONF_BROKER_PORT "port"
-#define DL_CONF_TORESEND "resend"
-#define DL_CONF_RESENDTIMEOUT "resend.timeout"
-#define DL_CONF_RESENDPERIOD "resend.period"
-#define DL_CONF_TOPIC "client.topic"
-#define DL_CONF_PRIVATEKEY_FILE "privatekey_file"
-#define DL_CONF_CLIENT_FILE "client_file"
-#define DL_CONF_CACERT_FILE "cacert_file"
-#define DL_CONF_USER_PASSWORD "user_password"
-#define DL_CONF_TLS_ENABLE "tls"
-#define DL_CONF_TOPICS "topics"
-#define DL_CONF_DEBUG_LEVEL "debug.level"
-#define DL_CONF_REQUEST_QUEUE_LEN "request_queue_len"
-#define DL_CONF_NELEMENTS "nelements"
-#define DL_CONF_LOG_PATH "log_path"
-#define DL_CONF_ACKS "acks"
-#define DL_CONF_ACK_TIMEOUT "ack_timeout"
+extern int dl_record_header_decode(struct dl_record_header **,
+    struct dl_bbuf *);
+extern int dl_record_header_encode(struct dl_record_header const *,
+    struct dl_bbuf **);
+extern int dl_record_header_encode_into(struct dl_record_header const *,
+    struct dl_bbuf *);
 
-#define DL_DEFAULT_CLIENTID "dlog"
-#define DL_DEFAULT_BROKER "127.0.0.1"
-#define DL_DEFAULT_BROKER_PORT 9092
-#define DL_DEFAULT_TORESEND true 
-#define DL_DEFAULT_RESENDTIMEOUT 3000
-#define DL_DEFAULT_RESENDPERIOD 2000
-#define DL_DEFAULT_TOPIC "test" 
-#define DL_DEFAULT_PRIVATEKEY_FILE "client.key"
-#define DL_DEFAULT_CLIENT_FILE "client.pem"
-#define DL_DEFAULT_CACERT_FILE "cacert.pem"
-#define DL_DEFAULT_USER_PASSWORD "password"
-#define DL_DEFAULT_TLS_ENABLE false
-#define DL_DEFAULT_DEBUG_LEVEL 0
-#define DL_DEFAULT_REQUEST_QUEUE_LEN 100
-#define DL_DEFAULT_NELEMENTS 10
-#define DL_DEFAULT_LOG_PATH "/var/db/dlogd"
-#define DL_DEFAULT_ACKS DL_LEADER_ACKS
-#define DL_DEFAULT_ACK_TIMEOUT 5000 
+extern struct sbuf * dl_record_header_get_key(struct dl_record_header *);
+extern unsigned char const * dl_record_header_get_value(
+    struct dl_record_header *);
 
 #endif

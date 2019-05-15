@@ -60,12 +60,12 @@ struct dl_request {
 	int16_t dlrqm_api_key;
 };
 
-extern void dl_request_delete(struct dl_request const * const);
+extern void dl_request_delete(struct dl_request * const);
 extern int dl_request_new(struct dl_request **, const int16_t, const int32_t,
     struct sbuf *);
 
 extern int dl_request_decode(struct dl_request ** const,
-    struct dl_bbuf const * const);
+    struct dl_bbuf * const);
 extern int dl_request_encode(struct dl_request const *,
     struct dl_bbuf ** const); 
 
