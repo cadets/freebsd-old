@@ -527,6 +527,7 @@ static uint8_t
 ctir_chankind(uint16_t var_id)
 {
 
+	return (0);
 }
 
 /*
