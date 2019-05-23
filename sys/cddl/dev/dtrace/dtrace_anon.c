@@ -79,6 +79,7 @@ dtrace_anon_init(void *dummy)
 		/*
 		 * If we created any anonymous state, set it going now.
 		 */
-		(void) dtrace_state_go(state, &dtrace_anon.dta_beganon);
+		(void) dtrace_state_go(state,
+		    &dtrace_anon.dta_state->dts_beganon);
 	}
 }
