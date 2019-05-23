@@ -4,6 +4,7 @@
 
 PACKAGE=lib${LIB}
 LIB=	procstat
+MK_BITCODE_EVERYWHERE=no
 
 SRCS=	cd9660.c	\
 	common_kvm.c	\
