@@ -91,7 +91,8 @@ CTFFLAGS+= -g
 # prefer .s to a .c, add .po, remove stuff not used in the BSD libraries
 # .pico used for PIC object files
 # .nossppico used for NOSSP PIC object files
-.SUFFIXES: .out .o .bc .ll .po .pico .nossppico .S .asm .s .c .cc .cpp .cxx .C .f .y .l .ln
+.SUFFIXES: .out .o .bco .po .pico .nossppico .S .asm .s .c .cc .cpp .cxx .C .f .y .l .ln
+
 
 .if !defined(PICFLAG)
 .if ${MACHINE_CPUARCH} == "sparc64"
@@ -170,6 +171,14 @@ PO_FLAG=-pg
 	    -c ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
 
+.cc.bco .C.bco .cpp.bco .cxx.bco:
+	@echo Brian bco cxx
+	${CXX} ${PICFLAG} -DPIC ${SHARED_CXXFLAGS} ${CXXFLAGS} -emit-llvm -c ${.IMPSRC} -o ${.TARGET}
+
+.c.bco:
+	@echo Brian bco c
+	${CC} ${PICFLAG} -DPIC ${SHARED_CFLAGS} ${CFLAGS} -emit-llvm -c ${.IMPSRC} -o ${.TARGET}
+
 _LIBDIR:=${LIBDIR}
 _SHLIBDIR:=${SHLIBDIR}
 
@@ -205,7 +214,8 @@ LDFLAGS+=	-Wl,--version-script=${VERSION_MAP}
 OBJS+=		${SRCS:N*.h:${OBJS_SRCS_FILTER:ts:}:S/$/.o/}
 BCOBJS+=	${SRCS:N*.[hsS]:N*.asm:${OBJS_SRCS_FILTER:ts:}:S/$/.bco/g}
 LLOBJS+=	${SRCS:N*.[hsS]:N*.asm:${OBJS_SRCS_FILTER:ts:}:S/$/.llo/g}
-CLEANFILES+=	${OBJS} ${BCOBJS} ${LLOBJS} ${STATICOBJS}
+NON_IR_OBJS=${SRCS:N*.c*:N*.h:R:S/$/.pico/g:S/^.pico$//}
+CLEANFILES+=	${OBJS} ${BCOBJS} ${LLOBJS} ${STATICOBJS} ${NON_IR_OBJS}
 .endif
 
 .if defined(LIB) && !empty(LIB)
@@ -259,6 +269,10 @@ CLEANFILES+=	${SOBJS}
 .if defined(SHLIB_NAME)
 _LIBS+=		${SHLIB_NAME}
 
+.if ${MK_BITCODE_EVERYWHERE} == "yes" && !defined(BOOTSTRAPPING)
+_LIBS+=		${SHLIB_NAME}.bc
+.endif
+
 SOLINKOPTS+=	-shared -Wl,-x
 .if defined(LD_FATAL_WARNINGS) && ${LD_FATAL_WARNINGS} == "no"
 SOLINKOPTS+=	-Wl,--no-fatal-warnings
@@ -280,11 +294,51 @@ ${SHLIB_LINK:R}.ld: ${.CURDIR}/${SHLIB_LDSCRIPT}
 	    ${.ALLSRC} > ${.TARGET}
 
 ${SHLIB_NAME_FULL}: ${SHLIB_LINK:R}.ld
-CLEANFILES+=	${SHLIB_LINK:R}.ld
+C[LEANFILES+=	${SHLIB_LINK:R}.ld
 .endif
 CLEANFILES+=	${SHLIB_LINK}
 .endif
 
+
+.if defined(LLVM_LINK)
+
+SHLIB_INSTR=${SHLIB_NAME_FULL}.instrumented
+SHLIB_INSTR_IR=${SHLIB_INSTR}.${LLVM_IR_TYPE}
+
+${SHLIB_NAME}.bc: ${BCOBJS}
+	@echo Brian ${SHLIB_NAME}.bc: ${BCOBJS}
+	@echo ${LLVM_LINK} -o ${.TARGET} ${BCOBJS}
+	${LLVM_LINK} -o ${.TARGET} ${BCOBJS}
+
+${SHLIB_NAME}.ll: ${LLOBJS}
+	${LLVM_LINK} -S -o ${.TARGET} ${LLOBJS}
+
+${SHLIB_INSTR}.bc: ${SHLIB_NAME}.bc
+	@echo Brian ${SHLIB_INSTR}.bc: ${SHLIB_NAME}.bc
+	@echo ${OPT} ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${SHLIB_NAME}.bc
+	${OPT} ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${SHLIB_NAME}.bc
+
+${SHLIB_INSTR}.ll: ${SHLIB_NAME}.ll
+	${OPT} -S ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${SHLIB_NAME}.ll
+
+${SHLIB_INSTR}: ${SHLIB_INSTR_IR} ${NON_IR_OBJS}
+	@echo Brian ${SHLIB_INSTR}: ${SHLIB_INSTR_IR} ${NON_IR_OBJS}}
+	${_LD:N${CCACHE_BIN}} -fPIC ${LDFLAGS} ${SSP_CFLAGS} ${SOLINKOPTS} \
+	    -o ${.TARGET} -Wl,-soname,${SONAME} \
+	    `NM='${NM}' NMFLAGS='${NMFLAGS}' ${LORDER} ${SHLIB_INSTR_IR} \
+	    ${NON_IR_OBJS} | ${TSORT} ${TSORTFLAGS}` ${LDADD}
+
+CLEANFILES+=	lib${LIB_PRIVATE}${LIB}.bc lib${LIB_PRIVATE}${LIB}.ll \
+						${SHLIB_NAME}.bc ${SHLIB_NAME}.ll \
+				        ${SHLIB_INSTR}.bc ${SHLIB_INSTR}.ll ${SHLIB_INSTR_IR} \
+						${SHLIB_INSTR} 
+.endif #defined(LLVM_LINK)
+
+.if ${MK_BITCODE_EVERYWHERE} == "yes" && !defined(BOOTSTRAPPING) && defined(LLVM_LINK)
+${SHLIB_NAME_FULL}: ${SHLIB_INSTR}
+	@${ECHO} building instrumented shared library ${SHLIB_NAME_FULL} from ${SHLIB_INSTR}
+	${CP} ${SHLIB_INSTR} ${SHLIB_NAME_FULL}
+.else
 ${SHLIB_NAME_FULL}: ${SOBJS}
 	@${ECHO} building shared library ${SHLIB_NAME}
 	@rm -f ${SHLIB_NAME} ${SHLIB_LINK}
@@ -295,6 +349,8 @@ ${SHLIB_NAME_FULL}: ${SOBJS}
 	    -o ${.TARGET} -Wl,-soname,${SONAME} \
 	    `NM='${NM}' NMFLAGS='${NMFLAGS}' ${LORDER} ${SOBJS} | \
 	    ${TSORT} ${TSORTFLAGS}` ${LDADD}
+.endif #${MK_BITCODE_EVERYWHERE} == "yes" && !defined(BOOTSTRAPPING)
+
 .if ${MK_CTF} != "no"
 	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${SOBJS}
 .endif
