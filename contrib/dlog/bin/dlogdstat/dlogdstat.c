@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -38,8 +38,6 @@
 #include <sys/types.h>
 #include <sys/sbuf.h>
 
-#include <errno.h>
-#include <fcntl.h>
 #include <getopt.h>
 #include <libgen.h>
 #include <ncurses.h>
@@ -49,7 +47,15 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "dl_producer.h"
+#include "dl_memory.h"
+#include "dl_producer_stats.h"
+
+static char const * const DLPS_STATE_NAME[] =
+    {"INITIAL", "IDLE", "SYNCING", "OFFLINE", "ONLINE", "CONNECTING",
+    "FINAL" };
+
+const dlog_malloc_func dlog_alloc = malloc;
+const dlog_free_func dlog_free = free;
 
 static char *g_pname;
 static bool stop  = false;
@@ -68,6 +74,7 @@ display_stats()
 {
 	time_t now;
 	char time_buf[20]; /*2018-10-28 12:00:00 */
+	time_t sent_ts, received_ts;
 
 	now = time(NULL);
 
@@ -75,55 +82,56 @@ display_stats()
 	printw("dlogd statistics\n");
 	printw("================\n");
 	printw("Producer:\n");
-	printw("\tTopic = %s\n", stats->dlps_topic_name);
-	printw("\tState = %s\n", stats->dlps_state_name);
+	printw("\tTopic = %s\n", dlps_get_topic_name(stats));
+	printw("\tState = %s\n", DLPS_STATE_NAME[dlps_get_state(stats)]);
 	printw("\tTCP status = %s\n",
-	    stats->dlps_tcp_connected ? "connected" : "disconnected");
+	    dlps_get_tcp_connect(stats) ? "connected" : "disconnected");
 	printw("\tTLS status = %s\n",
-	    stats->dlps_tls_connected ? "established" : "none");
+	    dlps_get_tls_connect(stats) ? "established" : "none");
 	printw("\tResend = %s\n",
-	    stats->dlps_resend ? "enabled" : "disabled");
-	if (stats->dlps_resend) {
+	    dlps_get_resend(stats) ? "enabled" : "disabled");
+	if (dlps_get_resend(stats)) {
 		printw("\tResend after = %d secs\n",
-		    stats->dlps_resend_timeout);
+		    dlps_get_resend_timeout(stats));
 	}
 	printw("\tQueue capacity = %d\n",
-	    stats->dlps_request_q_stats.dlrq_capacity);
+	    dlps_get_queue_capacity(stats));
 	printw("\tEnqueued = %d\n",
-	    stats->dlps_request_q_stats.dlrq_requests);
+	    dlps_get_queue_requests(stats));
 	printw("\tUnacknowledged = %d\n",
-	    stats->dlps_request_q_stats.dlrq_unackd);
-	if (stats->dlps_bytes_sent > 1048576) {
+	    dlps_get_queue_unackd(stats));
+	if (dlps_get_bytes_sent(stats) > 1048576) {
 		printw("\tTotal MiB sent = %ld\n",
-		    stats->dlps_bytes_sent/1048576);
+		    dlps_get_bytes_sent(stats)/1048576);
 	} else {
 		printw("\tTotal KiB sent = %ld\n",
-		    stats->dlps_bytes_sent/1024);
+		    dlps_get_bytes_sent(stats)/1024);
 	}
-	if (stats->dlps_bytes_received > 1048576) {
+	if (dlps_get_bytes_received(stats) > 1048576) {
 		printw("\tTotal MiB received = %ld\n",
-		    stats->dlps_bytes_received/1048576);
+		    dlps_get_bytes_received(stats)/1048576);
 	} else {
 		printw("\tTotal KiB received = %ld\n",
-		    stats->dlps_bytes_received/1024);
+		    dlps_get_bytes_received(stats)/1025);
 	}
 	printw("ProduceRequests:\n");
-	printw("\tLatest id = %ld\n", stats->dlps_sent.dlpsm_cid);
-	strftime(time_buf, 20, "%Y-%m-%d %H:%M:%S",
-	    localtime(&stats->dlps_sent.dlpsm_timestamp));
+	printw("\tLatest id = %ld\n", dlps_get_sent_cid(stats));
+	sent_ts = dlps_get_sent_timestamp(stats);
+	strftime(time_buf, 20, "%Y-%m-%d %H:%M:%S", localtime(&sent_ts));
 	printw("\tLast sent = %s (%.0lf secs)\n",
-	    time_buf, difftime(now, stats->dlps_sent.dlpsm_timestamp));
+	    time_buf, difftime(now, sent_ts));
 	printw("\tStatus = %s\n",
-	    stats->dlps_sent.dlpsm_error ? "failed" : "OK");
+	    dlps_get_sent_error(stats) ? "failed" : "OK");
 	printw("ProduceResponses:\n");
-	printw("\tLatest id = %ld\n", stats->dlps_received.dlpsm_cid);
+	printw("\tLatest id = %ld\n", dlps_get_received_cid(stats));
+	received_ts = dlps_get_received_timestamp(stats);
 	strftime(time_buf, 20, "%Y-%m-%d %H:%M:%S",
-	    localtime(&stats->dlps_received.dlpsm_timestamp));
+	    localtime(&received_ts));
 	printw("\tLast received = %s (%.0lf secs)\n",
-	    time_buf, difftime(now, stats->dlps_received.dlpsm_timestamp));
-	printw("\tRTT = %d us\n", stats->dlps_rtt),
+	    time_buf, difftime(now, received_ts));
+	printw("\tRTT = %d us\n", dlps_get_rtt(stats)),
 	printw("\tStatus = %s\n",
-	    stats->dlps_received.dlpsm_error ? "failed" : "OK");
+	    dlps_get_received_error(stats) ? "failed" : "OK");
 	refresh();
 }
 
@@ -144,14 +152,14 @@ dlogdstat_update(int sig __attribute__((unused)))
 int
 main(int argc, char **argv)
 {
-	struct sbuf *stats_path;
+	struct sbuf * t;
 	char *topic = NULL, *log_path = NULL;
 	static struct option options[] = {
 		{"log_path", required_argument, NULL, 'p'},
 		{"topic", required_argument, NULL, 't'},
 		{0, 0, 0, 0}
 	};
-	int c, stats_fd;
+	int c; //, stats_fd;
 
 	g_pname = basename(argv[0]);
 
@@ -184,29 +192,11 @@ main(int argc, char **argv)
 	signal(SIGINFO, dlogdstat_update);
 
 	/* Open a memory mapped file for the Producer stats. */
-	stats_path = sbuf_new_auto();
-	sbuf_printf(stats_path, "%s/%s/stats", log_path, topic);
-	sbuf_finish(stats_path);
-	stats_fd = open(sbuf_data(stats_path), O_RDONLY , 0200);
-	if (stats_fd == -1) {
-
-		fprintf(stderr,
-		    "Failed opening Producer stats file %d.\n", errno);
-		sbuf_delete(stats_path);
-		exit(EXIT_FAILURE);
-	}
-	sbuf_delete(stats_path);
-	ftruncate(stats_fd, sizeof(struct dl_producer_stats));
-
-	stats = (struct dl_producer_stats *) mmap(
-	    NULL, sizeof(struct dl_producer_stats), PROT_READ,
-	    MAP_SHARED, stats_fd, 0);
-	if (stats == NULL) {
-
-		fprintf(stderr,
-		    "Failed mmap of Producer stats file %d.\n", errno);
-		exit(EXIT_FAILURE);
-	}
+	t = sbuf_new_auto();
+	sbuf_cat(t, topic);
+	sbuf_finish(t);
+	if (dl_producer_stats_new(&stats, log_path, t))
+		goto err_dlogdstat;
 
 	/* NCurses scren initialization. */
 	initscr();
@@ -223,8 +213,19 @@ main(int argc, char **argv)
 	endwin();
 
 	/* Close and unmap the stats file. */
-	munmap(stats, sizeof(struct dl_producer_stats));
-	close(stats_fd);
+	dl_producer_stats_delete(stats);
 
-	return 0;
+	/* Free the sbuf containing the topic name. */
+	sbuf_delete(t);
+
+	return EXIT_SUCCESS;
+
+err_dlogdstat:	
+	/* Restore terminal */
+	endwin();
+	
+	/* Free the sbuf containing the topic name. */
+	sbuf_delete(t);
+
+	return EXIT_FAILURE;
 }
