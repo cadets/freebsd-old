@@ -112,6 +112,8 @@
         ..
         ciss
         ..
+        dlog 
+        ..
         evdev
         ..
         filemon
