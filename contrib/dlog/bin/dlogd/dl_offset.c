@@ -48,7 +48,7 @@
 
 struct dl_offset {
 	pthread_mutex_t dlo_mtx; /* Mutex protecting the dlo_value */
-	uint32_t dlo_value; /* Offset value (32bit value so atoomic) */
+	uint32_t dlo_value; /* Offset value (32bit value so atomic) */
 	int dlo_fd; /* File descriptor used to persist the Offset */
 };
 
