@@ -34,6 +34,7 @@
  *
  */
 
+#include <sys/dnv.h>
 #include <sys/types.h>
 #include <sys/time.h>
 
@@ -42,6 +43,7 @@
 #include <semaphore.h>
 
 #include "dl_assert.h"
+#include "dl_config.h"
 #include "dl_memory.h"
 #include "dl_request_queue.h"
 #include "dl_utils.h"
@@ -53,13 +55,16 @@ STAILQ_HEAD(dl_request_queue, dl_request_element);
 struct dl_request_q {
 	struct dl_request_queue dlrq_queue;
 	struct dl_request_element *dlrq_requests;
-	struct dl_request_q_stats *dlrq_stats;
+	struct dl_producer_stats *dlrq_stats;
 	sem_t dlrq_request_items;
 	sem_t dlrq_unackd_items;
 	sem_t dlrq_unackd_spaces;
 	sem_t dlrq_spaces;
 	pthread_mutex_t dlrq_mtx;
 };
+
+/* dlogd properties. */
+extern nvlist_t *dlogd_props;
 
 static inline void
 dlrq_check_integrity(struct dl_request_q *self)
@@ -71,19 +76,25 @@ dlrq_check_integrity(struct dl_request_q *self)
 static inline void
 dl_request_q_stats_request_items(struct dl_request_q *self)
 {
+	int sval, rc = 0;
 
 	dlrq_check_integrity(self);
-	sem_getvalue(&self->dlrq_request_items,
-	    &self->dlrq_stats->dlrq_requests);
+	rc = pthread_mutex_lock(&self->dlrq_mtx);		
+	sem_getvalue(&self->dlrq_request_items, &sval);
+	dlps_set_queue_requests(self->dlrq_stats, sval);
+	rc = pthread_mutex_unlock(&self->dlrq_mtx);
 }
 
 static inline void
 dl_request_q_stats_unackd_items(struct dl_request_q *self)
 {
+	int sval, rc = 0;
 
 	dlrq_check_integrity(self);
-	sem_getvalue(&self->dlrq_unackd_items,
-	    &self->dlrq_stats->dlrq_unackd);
+	rc = pthread_mutex_lock(&self->dlrq_mtx);		
+	sem_getvalue(&self->dlrq_unackd_items, &sval);
+	dlps_set_queue_unackd(self->dlrq_stats, sval);
+	rc = pthread_mutex_unlock(&self->dlrq_mtx);
 }
 
 int 
@@ -120,8 +131,11 @@ dl_request_q_dequeue(struct dl_request_q *self,
 	/* Compute the residence time of the request element. */
 	gettimeofday(&now, NULL);
 	timersub(&now, &(*elem)->dlrq_enq_tv, &tdiff);
-	DLOGTR1(PRIO_NORMAL, "Residence time = %ldms\n",
-	    (tdiff.tv_sec * 1000 + tdiff.tv_usec/1000));
+
+	if (dnvlist_get_number(dlogd_props,
+	    DL_CONF_DEBUG_LEVEL, DL_DEFAULT_DEBUG_LEVEL) > 1)
+		DLOGTR1(PRIO_NORMAL, "Residence time = %ldms\n",
+		    (tdiff.tv_sec * 1000 + tdiff.tv_usec/1000));
 
 	rc = pthread_mutex_unlock(&self->dlrq_mtx);
 	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
@@ -320,7 +334,7 @@ dl_request_q_peek_unackd(struct dl_request_q *self, struct dl_request_element **
 
 int
 dl_request_q_new(struct dl_request_q **self,
-    struct dl_request_q_stats *stats, uint32_t qlimit)
+    struct dl_producer_stats *stats, uint32_t qlimit)
 {
 	struct dl_request_q *queue;
 	int rc;
@@ -341,9 +355,9 @@ dl_request_q_new(struct dl_request_q **self,
 
 	/* Initialise the queue statistics. */
 	queue->dlrq_stats = stats;
-	queue->dlrq_stats->dlrq_capacity = qlimit;
-	queue->dlrq_stats->dlrq_requests = 0;
-	queue->dlrq_stats->dlrq_unackd = 0;
+	dlps_set_queue_capacity(queue->dlrq_stats, qlimit);
+	dlps_set_queue_requests(queue->dlrq_stats, 0);
+	dlps_set_queue_unackd(queue->dlrq_stats, 0);
 
 	rc = sem_init(&queue->dlrq_request_items, 0, 0);
 	if (rc != 0) {

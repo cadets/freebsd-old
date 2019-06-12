@@ -54,6 +54,7 @@
 #include "dl_primitive_types.h"
 #include "dl_memory.h"
 #include "dl_poll_reactor.h"
+#include "dl_producer_stats.h"
 #include "dl_transport.h"
 #include "dl_sock_transport.h"
 #include "dl_utils.h"
@@ -190,7 +191,8 @@ dl_sock_transport_read_msg(struct dl_transport *self,
 		dl_bbuf_flip(*target);
 
 		/* Update the Producer statistics. */
-		dl_producer_stats_bytes_received(self->dlt_producer, msg_size);
+		dlps_set_bytes_received(
+		    dl_producer_get_stats(self->dlt_producer), msg_size);
 		return msg_size;
 	} else {
 
@@ -217,11 +219,11 @@ dl_sock_transport_send_request(struct dl_transport *self,
 	DL_ASSERT(buffer != NULL, "Buffer to send cannot be NULL");
 
 	b = dl_bbuf_data(buffer);
-	buffer_size  = dl_bbuf_pos(buffer);
+	buffer_size = dl_bbuf_pos(buffer);
 
 retry_send:
 	offset = (write_so_far % buffer_size);
-	bytes_to_write = (buffer_size - write_so_far); // min(remaining_write, buffersize - offset);
+	bytes_to_write = (buffer_size - write_so_far);
 
 	len_write = write(self->dlt_sock->dlt_fd, b + offset, bytes_to_write); 
 	if (len_write == -1 && errno != EAGAIN) {
@@ -236,8 +238,8 @@ retry_send:
 	if (write_so_far == buffer_size) {
 
 		/* Update the Producer statistics. */
-		dl_producer_stats_bytes_sent(self->dlt_producer,
-		    dl_bbuf_pos(buffer));
+		dlps_set_bytes_sent(
+		    dl_producer_get_stats(self->dlt_producer), buffer_size);
 
 		return write_so_far;
 	}
@@ -283,7 +285,8 @@ dl_sock_transport_hdlr(void *instance, int fd, int revents)
 			DLOGTR0(PRIO_LOW, "Connection refused\n");
 		}
 		
-		dl_producer_stats_tcp_connect(self->dlt_producer, false);
+		dlps_set_tcp_connect(
+		    dl_producer_get_stats(self->dlt_producer), false);
 		dl_producer_down(self->dlt_producer);
 		return;
 	}
@@ -311,8 +314,8 @@ dl_sock_transport_hdlr(void *instance, int fd, int revents)
 		} else {
 
 			/* Server disconnected. */
-			dl_producer_stats_tcp_connect(self->dlt_producer,
-			    false);
+			dlps_set_tcp_connect(
+			    dl_producer_get_stats(self->dlt_producer), false);
 			dl_producer_down(self->dlt_producer);
 			return;
 
@@ -325,8 +328,8 @@ dl_sock_transport_hdlr(void *instance, int fd, int revents)
 		if (rc == 0) {
 			if (err == 0) {
 				DLOGTR0(PRIO_LOW, "TCP Connected\n");
-				dl_producer_stats_tcp_connect(
-				    self->dlt_producer, true);
+				dlps_set_tcp_connect(
+				    dl_producer_get_stats(self->dlt_producer), true);
 
 				/* Re-register the handler to trigger
 				* when data is read to read
@@ -341,8 +344,8 @@ dl_sock_transport_hdlr(void *instance, int fd, int revents)
 				dl_producer_up(self->dlt_producer);
 			} 
 		} else {
-			dl_producer_stats_tcp_connect(
-			    self->dlt_producer, false);
+			dlps_set_tcp_connect(
+			    dl_producer_get_stats(self->dlt_producer), false);
 			dl_producer_down(self->dlt_producer);
 		}
 	}
