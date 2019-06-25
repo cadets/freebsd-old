@@ -94,7 +94,7 @@ __FBSDID("$FreeBSD$");
 #define	VIRTIO_NET_F_CTRL_VLAN	(1ull << 19) /* control channel VLAN filtering */
 #define	VIRTIO_NET_F_GUEST_ANNOUNCE \
 				(1ull << 21) /* guest can send gratuitous pkts */
-#define	VIRTIO_NET_F_TAG	(1ull << 33) /* host can send/rcv packet tags */
+#define	VIRTIO_NET_F_TAG	(1ull << 24) /* host can send/rcv packet tags */
 
 #define VTNET_S_HOSTCAPS      \
   ( VIRTIO_NET_F_MAC | VIRTIO_NET_F_MRG_RXBUF | VIRTIO_NET_F_STATUS | \
@@ -987,16 +987,12 @@ pci_vtnet_neg_features(void *vsc, uint64_t negotiated_features)
 	struct pci_vtnet_softc *sc = vsc;
 	FILE *fp;
 
-	fp = fopen("/tmp/bhyveboo.log", "w+");
-	assert(fp != NULL);
-
 	sc->vsc_features = negotiated_features;
 
-	fprintf(fp, "caps = %llx\n", VTNET_S_HOSTCAPS);
-	fprintf(fp, "negotiated_features = %lx\n", negotiated_features);
-	fprintf(fp, "neg_features & tag = %lx\n", negotiated_features & VIRTIO_NET_F_TAG);
-
-	fclose(fp);
+       	fprintf(stderr, "caps = %llx\n", VTNET_S_HOSTCAPS);
+       	fprintf(stderr, "caps & tag = %llx\n", VTNET_S_HOSTCAPS & VIRTIO_NET_F_TAG);
+       	fprintf(stderr, "negotiated_features = %lx\n", negotiated_features);
+       	fprintf(stderr, "neg_features & tag = %lx\n", negotiated_features & VIRTIO_NET_F_TAG);
 
 	if (!(sc->vsc_features & VIRTIO_NET_F_MRG_RXBUF)) {
 		sc->rx_merge = 0;
@@ -1007,6 +1003,8 @@ pci_vtnet_neg_features(void *vsc, uint64_t negotiated_features)
 	if (sc->vsc_features & VIRTIO_NET_F_TAG) {
 		sc->rxtx_tag = 1;
 	}
+
+	fprintf(stderr, "sc->rxtx_tag = %d", sc->rxtx_tag);
 }
 
 struct pci_devemu pci_de_vnet = {
