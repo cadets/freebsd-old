@@ -180,8 +180,7 @@ struct vtnet_softc {
 	char			 vtnet_mtx_name[16];
 	char			 vtnet_hwaddr[ETHER_ADDR_LEN];
 
-	int			 vtnet_rx_tag; /* pass msgid/hostid on rx */
-	int			 vtnet_tx_tag; /* pass msdid/hostid on tx */
+	int			 vtnet_rxtx_tag; /* pass msgid/hostid on rxtx */
 };
 
 /*

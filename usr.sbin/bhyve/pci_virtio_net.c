@@ -160,13 +160,13 @@ struct pci_vtnet_softc {
 	int		rx_in_progress;
 	int		rx_vhdrlen;
 	int		rx_merge;	/* merged rx bufs in use */
-	int		rx_tag;
 
 	pthread_t 	tx_tid;
 	pthread_mutex_t	tx_mtx;
 	pthread_cond_t	tx_cond;
 	int		tx_in_progress;
-	int		tx_tag;
+
+	int		rxtx_tag;
 
 	void (*pci_vtnet_rx)(struct pci_vtnet_softc *sc);
 	void (*pci_vtnet_tx)(struct pci_vtnet_softc *sc, struct iovec *iov,
@@ -782,7 +782,8 @@ pci_vtnet_tap_setup(struct pci_vtnet_softc *sc, char *devname)
 		sc->vsc_tapfd = -1;
 	}
 
-	if (ioctl(sc->vsc_tapfd, TAPSTAGGING, &opt) < 0) {
+	if (sc->rxtx_tag == 1 &&
+	    ioctl(sc->vsc_tapfd, TAPSTAGGING, &opt) < 0) {
 		WPRINTF(("tagging support for tap not available"));
 		close(sc->vsc_tapfd);
 		sc->vsc_tapfd = -1;
@@ -984,8 +985,18 @@ static void
 pci_vtnet_neg_features(void *vsc, uint64_t negotiated_features)
 {
 	struct pci_vtnet_softc *sc = vsc;
+	FILE *fp;
+
+	fp = fopen("/tmp/bhyveboo.log", "w+");
+	assert(fp != NULL);
 
 	sc->vsc_features = negotiated_features;
+
+	fprintf(fp, "caps = %llx\n", VTNET_S_HOSTCAPS);
+	fprintf(fp, "negotiated_features = %lx\n", negotiated_features);
+	fprintf(fp, "neg_features & tag = %lx\n", negotiated_features & VIRTIO_NET_F_TAG);
+
+	fclose(fp);
 
 	if (!(sc->vsc_features & VIRTIO_NET_F_MRG_RXBUF)) {
 		sc->rx_merge = 0;
@@ -994,8 +1005,7 @@ pci_vtnet_neg_features(void *vsc, uint64_t negotiated_features)
 	}
 
 	if (sc->vsc_features & VIRTIO_NET_F_TAG) {
-		sc->rx_tag = 1;
-		sc->tx_tag = 1;
+		sc->rxtx_tag = 1;
 	}
 }
 

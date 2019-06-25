@@ -75,6 +75,7 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bus.h>
 #include <machine/resource.h>
+#include <machine/_inttypes.h>
 #include <sys/bus.h>
 #include <sys/rman.h>
 
@@ -586,6 +587,8 @@ vtnet_negotiate_features(struct vtnet_softc *sc)
 #endif
 
 	features = VTNET_FEATURES & ~mask;
+	printf("features = %lx\n", features);
+	printf("features & tag = %lx\n", features & VIRTIO_NET_F_TAG);
 	sc->vtnet_features = virtio_negotiate_features(dev, features);
 
 	if (virtio_with_feature(dev, VTNET_LRO_FEATURES) &&
@@ -690,9 +693,11 @@ vtnet_setup_features(struct vtnet_softc *sc)
 		}
 	}
 
+	printf("virtio_with_feature(dev, VIRTIO_NET_F_TAG) = %d",
+	       virtio_with_feature(dev, VIRTIO_NET_F_TAG));
 	if (virtio_with_feature(dev, VIRTIO_NET_F_TAG)) {
-		sc->vtnet_rx_tag = 1;
-		sc->vtnet_tx_tag = 1;
+		printf("TAGGING ENABLED\n\n");
+		sc->vtnet_rxtx_tag = 1;
 	}
 }
 
@@ -1851,13 +1856,13 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 		/* in the case where there is a mbuf tag associated with the
 		   host mbuf, we are going to be sending it over. this only
 		   happens if we have negotiated the feature. */
-		if (sc->vtnet_rx_tag) {
+		if (sc->vtnet_rxtx_tag) {
 			struct mbufid_info *mi = mtod(m, struct mbufid_info *);
 			m_adj(m, sizeof(struct mbufid_info));
 
-			printf("mi->mi_has_data = %x", mi->mi_has_data);
-			printf("mi->mi_id.hostid = %llu", mi->mi_id.mid_hostid);
-			printf("mi->mi_id.msgid = %llu", mi->mi_id.mid_msgid);
+			printf("%s: mi->mi_has_data = %x\n", __func__, mi->mi_has_data);
+			printf("%s: mi->mi_id.hostid = %" PRIu64 "\n", __func__, mi->mi_id.mid_hostid);
+			printf("%s: mi->mi_id.msgid = %" PRIu64 "\n", __func__, mi->mi_id.mid_msgid);
 		}
 
 		vtnet_rxq_input(rxq, m, hdr);
@@ -2179,6 +2184,7 @@ vtnet_txq_enqueue_buf(struct vtnet_txq *txq, struct mbuf **m_head,
 	struct virtqueue *vq;
 	struct sglist *sg;
 	struct mbuf *m;
+	struct mbufid_info m_info;
 	int error;
 
 	sc = txq->vtntx_sc;
@@ -2190,6 +2196,13 @@ vtnet_txq_enqueue_buf(struct vtnet_txq *txq, struct mbuf **m_head,
 	error = sglist_append(sg, &txhdr->vth_uhdr, sc->vtnet_hdr_size);
 	KASSERT(error == 0 && sg->sg_nseg == 1,
 	    ("%s: error %d adding header to sglist", __func__, error));
+
+	if (sc->vtnet_rxtx_tag) {
+		m_info.mi_id.mid_hostid = (*m_head)->m_pkthdr.mbufid.mid_hostid;
+		m_info.mi_id.mid_msgid = (*m_head)->m_pkthdr.mbufid.mid_msgid;
+		m_info.mi_has_data |= M_INFO_MSGID | M_INFO_HOSTID;
+		error = sglist_append(sg, &m_info, sizeof(m_info));
+	}
 
 	error = sglist_append_mbuf(sg, m);
 	if (error) {
@@ -2223,6 +2236,7 @@ vtnet_txq_encap(struct vtnet_txq *txq, struct mbuf **m_head, int flags)
 {
 	struct vtnet_tx_header *txhdr;
 	struct virtio_net_hdr *hdr;
+	struct vtnet_softc *sc = txq->vtntx_sc;
 	struct mbuf *m;
 	int error;
 
@@ -2258,6 +2272,17 @@ vtnet_txq_encap(struct vtnet_txq *txq, struct mbuf **m_head, int flags)
 			error = ENOBUFS;
 			goto fail;
 		}
+	}
+
+	if (sc->vtnet_rxtx_tag) {
+		mbufid_generate(&m->m_pkthdr.mbufid);
+		KASSERT(mbufid_isvalid(&m->m_pkthdr.mbufid),
+			("%s: (%lu, %lu) not a valid mbufid", __func__,
+			 m->m_pkthdr.mbufid.mid_hostid,
+			 m->m_pkthdr.mbufid.mid_msgid));
+		printf("Generated %s: (%lu, %lu)\n", __func__,
+		       m->m_pkthdr.mbufid.mid_hostid,
+		       m->m_pkthdr.mbufid.mid_msgid);
 	}
 
 	error = vtnet_txq_enqueue_buf(txq, m_head, txhdr);

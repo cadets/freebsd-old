@@ -60,6 +60,7 @@
 #include <sys/ttycom.h>
 #include <sys/uio.h>
 #include <sys/queue.h>
+#include <machine/_inttypes.h>
 
 #include <net/bpf.h>
 #include <net/ethernet.h>
@@ -924,30 +925,28 @@ tapread(struct cdev *dev, struct uio *uio, int flag)
 
 	/* xfer packet to user space */
 	while ((m != NULL) && (uio->uio_resid > 0) && (error == 0)) {
-		if (tp->tap_flags & TAP_PROPAGATE_TAG) {
-			struct mbufid_info m_info;
-			memset(&m_info, 0, sizeof(m_info));
+		if (tp->tap_flags & TAP_PROPAGATE_TAG == TAP_PROPAGATE_TAG &&
+		    m->m_flags & M_PKTHDR) {
+				struct mbufid_info m_info;
+				memset(&m_info, 0, sizeof(m_info));
 
-			len = min(uio->uio_resid, m->m_len + sizeof(struct mbufid_info));
-			if (len <= sizeof(msgid_t))
-				break;
+				len = min(uio->uio_resid, m->m_len + sizeof(struct mbufid_info));
+				if (len <= sizeof(msgid_t))
+					break;
 
-			/* if it's a packet header, we know that a number of mbuf
-			   chains might follow. we are essentially just going to
-			   propagate the information that there is a msgid is present
-			   and the msgid itself. should this not be true, we just say
-			   that it is not present and have some zeroes at the start. */
-			if (m->m_flags & M_PKTHDR) {
+				/* if it's a packet header, we know that a number of mbuf
+				   chains might follow. we are essentially just going to
+				   propagate the information that there is a msgid is present
+				   and the msgid itself. should this not be true, we just say
+				   that it is not present and have some zeroes at the start. */
 				m_info.mi_has_data |= M_INFO_MSGID | M_INFO_HOSTID;
 				m_info.mi_id.mid_msgid = m->m_pkthdr.mbufid.mid_msgid;
 				m_info.mi_id.mid_hostid = m->m_pkthdr.mbufid.mid_hostid;
-				printf("m_info.mi_has_data = %x", m_info.mi_has_data);
-				printf("m_info.mi_id.mid_hostid = %llu", m_info.mi_id.mid_hostid);
-				printf("m_info.mi_id.mid_msgid = %llu", m_info.mi_id.mid_msgid);
-			}
-
-			error = uiomove((void *)&m_info,
-			    sizeof(struct mbufid_info), uio);
+				printf("m_info.mi_has_data = %x\n", m_info.mi_has_data);
+				printf("m_info.mi_id.mid_hostid = %" PRIu64 "\n", m_info.mi_id.mid_hostid);
+				printf("m_info.mi_id.mid_msgid = %" PRIu64 "\n", m_info.mi_id.mid_msgid);
+				error = uiomove((void *)&m_info,
+						sizeof(struct mbufid_info), uio);
 		}
 
 		/* in case of mbufid propagation, this should just
@@ -986,6 +985,7 @@ tapwrite(struct cdev *dev, struct uio *uio, int flag)
 	struct tap_softc	*tp = dev->si_drv1;
 	struct ifnet		*ifp = tp->tap_ifp;
 	struct mbuf		*m;
+	struct mbufid_info       m_info;
 
 	TAPDEBUG("%s writing, minor = %#x\n", 
 		ifp->if_xname, dev2unit(dev));
@@ -1000,6 +1000,13 @@ tapwrite(struct cdev *dev, struct uio *uio, int flag)
 		return (EIO);
 	}
 
+	if (tp->tap_flags & TAP_PROPAGATE_TAG == TAP_PROPAGATE_TAG) {
+		uiomove(&m_info, sizeof(m_info), uio);
+		KASSERT((m_info.mi_has_data == M_INFO_MSGID | M_INFO_HOSTID) &&
+			mbufid_validate(m_info.mi_id),
+			("%s: malformed mbufid", __func__));
+	}
+
 	if ((m = m_uiotombuf(uio, M_NOWAIT, 0, ETHER_ALIGN,
 	    M_PKTHDR)) == NULL) {
 		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
@@ -1007,6 +1014,14 @@ tapwrite(struct cdev *dev, struct uio *uio, int flag)
 	}
 
 	m->m_pkthdr.rcvif = ifp;
+
+	if (tp->tap_flags & TAP_PROPAGATE_TAG == TAP_PROPAGATE_TAG) {
+		m->m_pkthdr.mbufid.mid_hostid = m_info.mi_id.mid_hostid;
+		m->m_pkthdr.mbufid.mid_msgid = m_info.mi_id.mid_msgid;
+		printf("%s: (%" PRIu64 ", %" PRIu64 ")\n", __func__,
+		       m->m_pkthdr.mbufid.mid_hostid,
+		       m->m_pkthdr.mbufid.mid_msgid);
+	}
 
 	/*
 	 * Only pass a unicast frame to ether_input(), if it would actually

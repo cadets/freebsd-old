@@ -1558,8 +1558,12 @@ m_uiotombuf(struct uio *uio, int how, int len, int align, int flags)
 
 		mb->m_len = length;
 		progress += length;
-		if (flags & M_PKTHDR)
+		if (flags & M_PKTHDR) {
+			printf("%s: (%lu, %lu)\n", __func__,
+			       m->m_pkthdr.mbufid.mid_hostid,
+			       m->m_pkthdr.mbufid.mid_msgid);
 			m->m_pkthdr.len += length;
+		}
 	}
 	KASSERT(progress == total, ("%s: progress != total", __func__));
 

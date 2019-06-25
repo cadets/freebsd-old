@@ -45,6 +45,6 @@ struct mbufid_info {
 #define	M_INFO_MSGID	(1 << 0)
 #define	M_INFO_HOSTID	(1 << 1)
 	uint8_t		mi_has_data;
-};
+} __packed;
 
 #endif

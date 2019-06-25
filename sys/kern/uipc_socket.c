@@ -1384,7 +1384,10 @@ sosend_dgram(struct socket *so, struct sockaddr *addr, struct uio *uio,
 #ifdef KDTRACE_HOOKS
 	{
 		M_ASSERTPKTHDR(top);
+		printf("Generating mbufid\n");
 		mbufid_generate(&top->m_pkthdr.mbufid);
+		printf("mbufid.hostid = %lx\n", top->m_pkthdr.mbufid.mid_hostid);
+		printf("mbufid.msgid = %lx\n", top->m_pkthdr.mbufid.mid_msgid);
 		AUDIT_RET_MBUFID(&top->m_pkthdr.mbufid);
 	}
 #endif
@@ -1582,7 +1585,10 @@ restart:
 #ifdef KDTRACE_HOOKS
 			if (so->so_type == SOCK_DGRAM) {
 				M_ASSERTPKTHDR(top);
+				printf("Generating 2 mbufid\n");
 				mbufid_generate(&top->m_pkthdr.mbufid);
+				printf("mbufid.hostid = %lx\n", top->m_pkthdr.mbufid.mid_hostid);
+				printf("mbufid.msgid = %lx\n", top->m_pkthdr.mbufid.mid_msgid);
 				AUDIT_RET_MBUFID(&top->m_pkthdr.mbufid);
 			}
 #endif
