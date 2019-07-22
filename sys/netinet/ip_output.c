@@ -234,6 +234,8 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 #endif
 	M_ASSERTPKTHDR(m);
 
+	printf("%s: (%lx, %lx)\n", __func__, m->m_pkthdr.mbufid.mid_hostid,
+	       m->m_pkthdr.mbufid.mid_msgid);
 	if (inp != NULL) {
 		INP_LOCK_ASSERT(inp);
 		M_SETFIB(m, inp->inp_inc.inc_fibnum);
@@ -709,6 +711,8 @@ sendit:
 				m->m_pkthdr.snd_tag = NULL;
 			}
 #endif
+			if_printf(ifp, "LOOP %s: (%lx, %lx)\n", __func__, m->m_pkthdr.mbufid.mid_hostid,
+			       m->m_pkthdr.mbufid.mid_msgid);
 			error = (*ifp->if_output)(ifp, m,
 			    (const struct sockaddr *)gw, ro);
 #ifdef RATELIMIT

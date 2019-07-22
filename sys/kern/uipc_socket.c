@@ -1384,10 +1384,9 @@ sosend_dgram(struct socket *so, struct sockaddr *addr, struct uio *uio,
 #ifdef KDTRACE_HOOKS
 	{
 		M_ASSERTPKTHDR(top);
-		printf("Generating mbufid\n");
 		mbufid_generate(&top->m_pkthdr.mbufid);
-		printf("mbufid.hostid = %lx\n", top->m_pkthdr.mbufid.mid_hostid);
-		printf("mbufid.msgid = %lx\n", top->m_pkthdr.mbufid.mid_msgid);
+		printf("%s: mbufid.hostid = %lx\n", __func__, top->m_pkthdr.mbufid.mid_hostid);
+		printf("%s: mbufid.msgid = %lx\n", __func__, top->m_pkthdr.mbufid.mid_msgid);
 		AUDIT_RET_MBUFID(&top->m_pkthdr.mbufid);
 	}
 #endif
@@ -1587,8 +1586,9 @@ restart:
 				M_ASSERTPKTHDR(top);
 				printf("Generating 2 mbufid\n");
 				mbufid_generate(&top->m_pkthdr.mbufid);
-				printf("mbufid.hostid = %lx\n", top->m_pkthdr.mbufid.mid_hostid);
-				printf("mbufid.msgid = %lx\n", top->m_pkthdr.mbufid.mid_msgid);
+				printf("%s %d: mbufid.hostid = %lx\n", __func__, __LINE__, top->m_pkthdr.mbufid.mid_hostid);
+				printf("%s %d: mbufid.msgid = %lx\n", __func__, __LINE__, top->m_pkthdr.mbufid.mid_msgid);
+				printf("%s %d: top->m_data = %p\n", __func__, __LINE__, top->m_data);
 				AUDIT_RET_MBUFID(&top->m_pkthdr.mbufid);
 			}
 #endif
@@ -1607,6 +1607,9 @@ restart:
 			 * places that this also happens.  We must rethink
 			 * this.
 			 */
+			printf("%s %d: mbufid.hostid = %lx\n", __func__, __LINE__, top->m_pkthdr.mbufid.mid_hostid);
+			printf("%s %d: mbufid.msgid = %lx\n", __func__, __LINE__, top->m_pkthdr.mbufid.mid_msgid);
+			printf("%s %d: top = %p\n", __func__, __LINE__, top);
 			VNET_SO_ASSERT(so);
 			error = (*so->so_proto->pr_usrreqs->pru_send)(so,
 			    (flags & MSG_OOB) ? PRUS_OOB :
@@ -1623,6 +1626,7 @@ restart:
 			    (flags & MSG_MORETOCOME) ||
 			    (resid > 0 && space > 0) ? PRUS_MORETOCOME : 0,
 			    top, addr, control, td);
+			printf("%s %d: error = %d\n", __func__, __LINE__, error);
 			if (dontroute) {
 				SOCK_LOCK(so);
 				so->so_options &= ~SO_DONTROUTE;

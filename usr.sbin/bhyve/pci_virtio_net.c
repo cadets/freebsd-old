@@ -782,16 +782,16 @@ pci_vtnet_tap_setup(struct pci_vtnet_softc *sc, char *devname)
 		sc->vsc_tapfd = -1;
 	}
 
-	if (sc->rxtx_tag == 1 &&
-	    ioctl(sc->vsc_tapfd, TAPSTAGGING, &opt) < 0) {
-		WPRINTF(("tagging support for tap not available"));
-		close(sc->vsc_tapfd);
-		sc->vsc_tapfd = -1;
-	}
-
 #ifndef WITHOUT_CAPSICUM
-	cap_rights_init(&rights, CAP_EVENT, CAP_READ, CAP_WRITE);
+	cap_rights_init(&rights, CAP_EVENT, CAP_READ, CAP_WRITE, CAP_IOCTL);
 	if (cap_rights_limit(sc->vsc_tapfd, &rights) == -1 && errno != ENOSYS)
+		errx(EX_OSERR, "Unable to apply rights for sandbox");
+
+	static const cap_ioctl_t tap_cmds[] = { TAPSTAGGING };
+	static const size_t tap_ncmds = nitems(tap_cmds);
+
+	if (cap_ioctls_limit(sc->vsc_tapfd, tap_cmds, tap_ncmds) == -1 &&
+	    errno != ENOSYS)
 		errx(EX_OSERR, "Unable to apply rights for sandbox");
 #endif
 
@@ -986,13 +986,9 @@ pci_vtnet_neg_features(void *vsc, uint64_t negotiated_features)
 {
 	struct pci_vtnet_softc *sc = vsc;
 	FILE *fp;
+	int flag;
 
 	sc->vsc_features = negotiated_features;
-
-       	fprintf(stderr, "caps = %llx\n", VTNET_S_HOSTCAPS);
-       	fprintf(stderr, "caps & tag = %llx\n", VTNET_S_HOSTCAPS & VIRTIO_NET_F_TAG);
-       	fprintf(stderr, "negotiated_features = %lx\n", negotiated_features);
-       	fprintf(stderr, "neg_features & tag = %lx\n", negotiated_features & VIRTIO_NET_F_TAG);
 
 	if (!(sc->vsc_features & VIRTIO_NET_F_MRG_RXBUF)) {
 		sc->rx_merge = 0;
@@ -1002,9 +998,19 @@ pci_vtnet_neg_features(void *vsc, uint64_t negotiated_features)
 
 	if (sc->vsc_features & VIRTIO_NET_F_TAG) {
 		sc->rxtx_tag = 1;
+	} else {
+		sc->rxtx_tag = 0;
 	}
 
-	fprintf(stderr, "sc->rxtx_tag = %d", sc->rxtx_tag);
+	flag = 1;
+	if (sc->rxtx_tag == 1) {
+		int ret = ioctl(sc->vsc_tapfd, TAPSTAGGING, &flag);
+		assert(errno == 0);
+	} else if (sc->rxtx_tag == 0) {
+		flag = 0;
+		int ret = ioctl(sc->vsc_tapfd, TAPSTAGGING, &flag);
+		assert(ret >= 0);
+	}
 }
 
 struct pci_devemu pci_de_vnet = {

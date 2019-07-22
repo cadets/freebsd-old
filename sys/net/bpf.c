@@ -62,6 +62,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/ttycom.h>
 #include <sys/uio.h>
 #include <sys/sysent.h>
+#include <sys/mbufid.h>
 
 #include <sys/event.h>
 #include <sys/file.h>
@@ -94,6 +95,7 @@ __FBSDID("$FreeBSD$");
 
 #include <net80211/ieee80211_freebsd.h>
 
+#include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
 
 MALLOC_DEFINE(M_BPF, "BPF", "BPF data");
@@ -1174,6 +1176,8 @@ bpfwrite(struct cdev *dev, struct uio *uio, int ioflag)
 	} else
 		mc = NULL;
 
+	mbufid_generate(&m->m_pkthdr.mbufid);
+	AUDIT_RET_MBUFID(&m->m_pkthdr.mbufid);
 	m->m_pkthdr.len -= hlen;
 	m->m_len -= hlen;
 	m->m_data += hlen;	/* XXX */
