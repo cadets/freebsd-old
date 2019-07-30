@@ -1551,9 +1551,6 @@ udp_output(struct inpcb *inp, struct mbuf *m, struct sockaddr *addr,
 		UDPLITE_PROBE(send, NULL, inp, &ui->ui_i, inp, &ui->ui_u);
 	else
 		UDP_PROBE(send, NULL, inp, &ui->ui_i, inp, &ui->ui_u);
-	printf("Sending to ip_output\n");
-	printf("SECOND %s: (%lx, %lx)\n", __func__, m->m_pkthdr.mbufid.mid_hostid,
-	       m->m_pkthdr.mbufid.mid_msgid);
 	error = ip_output(m, inp->inp_options,
 	    (unlock_inp == UH_WLOCKED ? &inp->inp_route : NULL), ipflags,
 	    inp->inp_moptions, inp);

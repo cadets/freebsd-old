@@ -1000,13 +1000,14 @@ tapwrite(struct cdev *dev, struct uio *uio, int flag)
 		return (EIO);
 	}
 
-	/*	if (tp->tap_flags & TAP_PROPAGATE_TAG == TAP_PROPAGATE_TAG) {
+	if ((tp->tap_flags & TAP_PROPAGATE_TAG) == TAP_PROPAGATE_TAG) {
+		printf("TAP iov[0] len = %d\n", uio->uio_iov[0].iov_len);
 		uiomove(&m_info, sizeof(m_info), uio);
-		printf("%s: mi_has_data = %d", ifp->if_xname, mi_info.mi_has_data);
+		printf("%s: mi_has_data = %d", ifp->if_xname, m_info.mi_has_data);
 		KASSERT((m_info.mi_has_data == M_INFO_MSGID | M_INFO_HOSTID) &&
 			mbufid_validate(m_info.mi_id),
 			("%s: malformed mbufid", __func__));
-			}*/
+	}
 
 	if ((m = m_uiotombuf(uio, M_NOWAIT, 0, ETHER_ALIGN,
 	    M_PKTHDR)) == NULL) {
@@ -1016,12 +1017,12 @@ tapwrite(struct cdev *dev, struct uio *uio, int flag)
 
 	m->m_pkthdr.rcvif = ifp;
 
-	if (tp->tap_flags & TAP_PROPAGATE_TAG == TAP_PROPAGATE_TAG) {
+	if ((tp->tap_flags & TAP_PROPAGATE_TAG) == TAP_PROPAGATE_TAG) {
+		m->m_pkthdr.mbufid.mid_hostid = m_info.mi_id.mid_hostid;
+		m->m_pkthdr.mbufid.mid_msgid = m_info.mi_id.mid_msgid;
 		printf("%s %s: (%lx, %lx)\n", ifp->if_xname, __func__,
 		       m->m_pkthdr.mbufid.mid_hostid,
 		       m->m_pkthdr.mbufid.mid_msgid);
-		//		m->m_pkthdr.mbufid.mid_hostid = m_info.mi_id.mid_hostid;
-		//		m->m_pkthdr.mbufid.mid_msgid = m_info.mi_id.mid_msgid;
 	}
 
 	/*

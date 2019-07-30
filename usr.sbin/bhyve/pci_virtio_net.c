@@ -133,7 +133,7 @@ struct virtio_net_rxhdr {
 /*
  * Debug printf
  */
-static int pci_vtnet_debug;
+static int pci_vtnet_debug = 1;
 #define DPRINTF(params) if (pci_vtnet_debug) printf params
 #define WPRINTF(params) printf params
 
@@ -254,7 +254,7 @@ pci_vtnet_reset(void *vsc)
  */
 static void
 pci_vtnet_tap_tx(struct pci_vtnet_softc *sc, struct iovec *iov, int iovcnt,
-		 int len)
+		 int len, struct mbufid_info *mi)
 {
 	static char pad[60]; /* all zero bytes */
 
@@ -481,7 +481,7 @@ pci_vtnet_netmap_readv(struct nm_desc *nmd, struct iovec *iov, int iovcnt)
  */
 static void
 pci_vtnet_netmap_tx(struct pci_vtnet_softc *sc, struct iovec *iov, int iovcnt,
-		    int len)
+		    int len, struct mbufid_info *m)
 {
 	static char pad[60]; /* all zero bytes */
 
@@ -624,6 +624,7 @@ pci_vtnet_proctx(struct pci_vtnet_softc *sc, struct vqueue_info *vq)
 	int i, n;
 	int plen, tlen;
 	uint16_t idx;
+	struct mbufid_info *mi;
 
 	/*
 	 * Obtain chain of descriptors.  The first one is
@@ -641,6 +642,7 @@ pci_vtnet_proctx(struct pci_vtnet_softc *sc, struct vqueue_info *vq)
 
 	DPRINTF(("virtio: packet send, %d bytes, %d segs\n\r", plen, n));
 	sc->pci_vtnet_tx(sc, &iov[1], n - 1, plen);
+
 
 	/* chain is processed, release it and set tlen */
 	vq_relchain(vq, idx, tlen);

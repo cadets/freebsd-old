@@ -2182,7 +2182,6 @@ vtnet_txq_enqueue_buf(struct vtnet_txq *txq, struct mbuf **m_head,
 	struct virtqueue *vq;
 	struct sglist *sg;
 	struct mbuf *m;
-	struct mbufid_info m_info;
 	int error;
 
 	sc = txq->vtntx_sc;
@@ -2191,15 +2190,19 @@ vtnet_txq_enqueue_buf(struct vtnet_txq *txq, struct mbuf **m_head,
 	m = *m_head;
 
 	sglist_reset(sg);
+
 	error = sglist_append(sg, &txhdr->vth_uhdr, sc->vtnet_hdr_size);
 	KASSERT(error == 0 && sg->sg_nseg == 1,
 	    ("%s: error %d adding header to sglist", __func__, error));
 
 	if (sc->vtnet_rxtx_tag) {
-		m_info.mi_id.mid_hostid = (*m_head)->m_pkthdr.mbufid.mid_hostid;
-		m_info.mi_id.mid_msgid = (*m_head)->m_pkthdr.mbufid.mid_msgid;
-		m_info.mi_has_data |= M_INFO_MSGID | M_INFO_HOSTID;
-		error = sglist_append(sg, &m_info, sizeof(m_info));
+		txhdr->vth_mi.mi_id.mid_hostid = (*m_head)->m_pkthdr.mbufid.mid_hostid;
+		txhdr->vth_mi.mi_id.mid_msgid = (*m_head)->m_pkthdr.mbufid.mid_msgid;
+		txhdr->vth_mi.mi_has_data |= M_INFO_MSGID | M_INFO_HOSTID;
+		error = sglist_append(sg, &txhdr->vth_mi, sizeof(struct mbufid_info));
+		KASSERT(error == 0 && sg->sg_nseg == 2,
+			("%s: error %d adding tags to sglist", __func__, error));
+		printf("%s: (%lx, %lx)\n", __func__, txhdr->vth_mi.mi_id.mid_hostid, txhdr->vth_mi.mi_id.mid_msgid);
 	}
 
 	error = sglist_append_mbuf(sg, m);
@@ -2239,11 +2242,6 @@ vtnet_txq_encap(struct vtnet_txq *txq, struct mbuf **m_head, int flags)
 	int error;
 
 	m = *m_head;
-	printf("%s %d: m = %p\n", __func__, __LINE__, m);
-	if (m != NULL) {
-		printf("%s %d: m->m_data = %p\n", __func__, __LINE__, m->m_data);
-		printf("%s %d: m->m_next = %p\n", __func__, __LINE__, m->m_next);
-	}
 	M_ASSERTPKTHDR(m);
 
 	txhdr = uma_zalloc(vtnet_tx_header_zone, flags | M_ZERO);
@@ -2262,11 +2260,6 @@ vtnet_txq_encap(struct vtnet_txq *txq, struct mbuf **m_head, int flags)
 
 	if (m->m_flags & M_VLANTAG) {
 		m = ether_vlanencap(m, m->m_pkthdr.ether_vtag);
-		printf("%s %d: m = %p\n", __func__, __LINE__, m);
-		if (m != NULL) {
-			printf("%s %d: m->m_data = %p\n", __func__, __LINE__, m->m_data);
-			printf("%s %d: m->m_next = %p\n", __func__, __LINE__, m->m_next);
-		}
 		if ((*m_head = m) == NULL) {
 			error = ENOBUFS;
 			goto fail;
@@ -2276,11 +2269,6 @@ vtnet_txq_encap(struct vtnet_txq *txq, struct mbuf **m_head, int flags)
 
 	if (m->m_pkthdr.csum_flags & VTNET_CSUM_ALL_OFFLOAD) {
 		m = vtnet_txq_offload(txq, m, hdr);
-		printf("%s %d: m = %p\n", __func__, __LINE__, m);
-		if (m != NULL) {
-			printf("%s %d: m->m_data = %p\n", __func__, __LINE__, m->m_data);
-			printf("%s %d: m->m_next = %p\n", __func__, __LINE__, m->m_next);
-		}
 		if ((*m_head = m) == NULL) {
 			error = ENOBUFS;
 			goto fail;
@@ -2288,17 +2276,7 @@ vtnet_txq_encap(struct vtnet_txq *txq, struct mbuf **m_head, int flags)
 	}
 
 	if (sc->vtnet_rxtx_tag) {
-		//mbufid_generate(&m->m_pkthdr.mbufid);
-		//KASSERT(mbufid_isvalid(&m->m_pkthdr.mbufid),
-		//	("%s: (%lu, %lu) not a valid mbufid", __func__,
-		//	 m->m_pkthdr.mbufid.mid_hostid,
-		//	 m->m_pkthdr.mbufid.mid_msgid));
-		printf("%s %d: m = %p\n", __func__, __LINE__, m);
-		if (m != NULL) {
-			printf("%s %d: m->m_data = %p\n", __func__, __LINE__, m->m_data);
-			printf("%s %d: m->m_next = %p\n", __func__, __LINE__, m->m_next);
-		}
-		printf("%s: (%lu, %lu)\n", __func__,
+		printf("%s: (%lx, %lx)\n", __func__,
 		       m->m_pkthdr.mbufid.mid_hostid,
 		       m->m_pkthdr.mbufid.mid_msgid);
 	}
@@ -2399,7 +2377,6 @@ vtnet_txq_mq_start_locked(struct vtnet_txq *txq, struct mbuf *m)
 
 	VTNET_TXQ_LOCK_ASSERT(txq);
 
-	if_printf(ifp, "%s: m = %p\n", __func__, m);
 	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0 ||
 	    sc->vtnet_link_active == 0) {
 		if (m != NULL)
@@ -2419,16 +2396,12 @@ again:
 	enq = 0;
 
 	while ((m = drbr_peek(ifp, br)) != NULL) {
-		if_printf(ifp, "%s (after peek): m = %p\n", __func__, m);
 		if (virtqueue_full(vq)) {
 			drbr_putback(ifp, br, m);
 			break;
 		}
 
-		if_printf(ifp, "%s (before msgid): m = %p\n", __func__, m);
-		if (m != NULL)
-			if_printf(ifp, "%s (before msgid): m->m_next = %p\n", __func__, m->m_next);
-		printf("%s: msgid %lx\n", __func__, m->m_pkthdr.mbufid.mid_msgid);
+		printf("%s: (%lx, %lx)\n", __func__, m->m_pkthdr.mbufid.mid_hostid, m->m_pkthdr.mbufid.mid_msgid);
 
 		if (vtnet_txq_encap(txq, &m, M_NOWAIT) != 0) {
 			if (m != NULL)
@@ -2464,7 +2437,6 @@ vtnet_txq_mq_start(struct ifnet *ifp, struct mbuf *m)
 	sc = ifp->if_softc;
 	npairs = sc->vtnet_act_vq_pairs;
 
-	if_printf(ifp, "%s: m = %p\n", __func__, m);
 	/* check if flowid is set */
 	if (M_HASHTYPE_GET(m) != M_HASHTYPE_NONE)
 		i = m->m_pkthdr.flowid % npairs;

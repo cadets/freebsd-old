@@ -1178,6 +1178,9 @@ bpfwrite(struct cdev *dev, struct uio *uio, int ioflag)
 
 	mbufid_generate(&m->m_pkthdr.mbufid);
 	AUDIT_RET_MBUFID(&m->m_pkthdr.mbufid);
+	printf("%s: (%lx, %lx)\n", __func__,
+	       m->m_pkthdr.mbufid.mid_hostid,
+	       m->m_pkthdr.mbufid.mid_msgid);
 	m->m_pkthdr.len -= hlen;
 	m->m_len -= hlen;
 	m->m_data += hlen;	/* XXX */

@@ -240,6 +240,8 @@ struct vtnet_tx_header {
 		struct virtio_net_hdr_mrg_rxbuf	mhdr;
 	} vth_uhdr;
 
+	struct mbufid_info vth_mi;
+
 	struct mbuf *vth_mbuf;
 };
 
@@ -323,7 +325,7 @@ CTASSERT(sizeof(struct vtnet_mac_filter) <= PAGE_SIZE);
  * header is placed inline with the data.
  */
 #define VTNET_MRG_RX_SEGS	1
-#define VTNET_MIN_RX_SEGS	2
+#define VTNET_MIN_RX_SEGS	32
 #define VTNET_MAX_RX_SEGS	34
 #define VTNET_MIN_TX_SEGS	32
 #define VTNET_MAX_TX_SEGS	64
