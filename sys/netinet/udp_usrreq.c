@@ -1165,7 +1165,6 @@ udp_output(struct inpcb *inp, struct mbuf *m, struct sockaddr *addr,
 		unlock_inp = UH_RLOCKED;
 	}
 	tos = inp->inp_ip_tos;
-	printf("in %s\n", __func__);
 	if (control != NULL) {
 		/*
 		 * XXX: Currently, we assume all the optional information is
@@ -1408,9 +1407,6 @@ udp_output(struct inpcb *inp, struct mbuf *m, struct sockaddr *addr,
 	m->m_data += max_linkhdr;
 	m->m_len -= max_linkhdr;
 	m->m_pkthdr.len -= max_linkhdr;
-
-	printf("%s: (%lx, %lx)\n", __func__, m->m_pkthdr.mbufid.mid_hostid,
-	       m->m_pkthdr.mbufid.mid_msgid);
 
 	/*
 	 * Fill in mbuf with extended UDP header and addresses and length put

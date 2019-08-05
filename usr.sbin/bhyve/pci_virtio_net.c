@@ -266,7 +266,8 @@ pci_vtnet_tap_tx(struct pci_vtnet_softc *sc, struct iovec *iov, int iovcnt,
 	 * extra zero'd segment to the iov. It is guaranteed that
 	 * there is always an extra iov available by the caller.
 	 */
-	if (len < 60) {
+	if ((sc->rxtx_tag && (len - sizeof(struct mbufid_info)) < 60) ||
+	    (!sc->rxtx_tag && (len < 60))) {
 		iov[iovcnt].iov_base = pad;
 		iov[iovcnt].iov_len = 60 - len;
 		iovcnt++;
@@ -624,7 +625,6 @@ pci_vtnet_proctx(struct pci_vtnet_softc *sc, struct vqueue_info *vq)
 	int i, n;
 	int plen, tlen;
 	uint16_t idx;
-	struct mbufid_info *mi;
 
 	/*
 	 * Obtain chain of descriptors.  The first one is

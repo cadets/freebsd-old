@@ -240,7 +240,7 @@ struct vtnet_tx_header {
 		struct virtio_net_hdr_mrg_rxbuf	mhdr;
 	} vth_uhdr;
 
-	struct mbufid_info vth_mi;
+	struct mbufid_info *vth_mi;
 
 	struct mbuf *vth_mbuf;
 };

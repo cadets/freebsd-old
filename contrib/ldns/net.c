@@ -33,6 +33,7 @@
 #ifdef HAVE_POLL
 #include <poll.h>
 #endif
+#include <stdio.h>
 
 ldns_status
 ldns_send(ldns_pkt **result_packet, ldns_resolver *r, const ldns_pkt *query_pkt)

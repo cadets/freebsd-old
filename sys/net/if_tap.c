@@ -911,7 +911,7 @@ tapread(struct cdev *dev, struct uio *uio, int flag)
 
 			tp->tap_flags |= TAP_RWAIT;
 			error = mtx_sleep(tp, &tp->tap_mtx, PCATCH | (PZERO + 1),
-			    "taprd", 0);
+			    "taped", 0);
 			if (error) {
 				mtx_unlock(&tp->tap_mtx);
 				return (error);
@@ -925,8 +925,8 @@ tapread(struct cdev *dev, struct uio *uio, int flag)
 
 	/* xfer packet to user space */
 	while ((m != NULL) && (uio->uio_resid > 0) && (error == 0)) {
-		if (tp->tap_flags & TAP_PROPAGATE_TAG == TAP_PROPAGATE_TAG &&
-		    m->m_flags & M_PKTHDR) {
+		if ((tp->tap_flags & TAP_PROPAGATE_TAG) &&
+		    (m->m_flags & M_PKTHDR)) {
 				struct mbufid_info m_info;
 				memset(&m_info, 0, sizeof(m_info));
 
@@ -942,9 +942,6 @@ tapread(struct cdev *dev, struct uio *uio, int flag)
 				m_info.mi_has_data |= M_INFO_MSGID | M_INFO_HOSTID;
 				m_info.mi_id.mid_msgid = m->m_pkthdr.mbufid.mid_msgid;
 				m_info.mi_id.mid_hostid = m->m_pkthdr.mbufid.mid_hostid;
-				printf("%s m_info.mi_has_data = %x\n", ifp->if_xname, m_info.mi_has_data);
-				printf("%s m_info.mi_id.mid_hostid = %lx\n", ifp->if_xname, m_info.mi_id.mid_hostid);
-				printf("%s m_info.mi_id.mid_msgid = %lx\n", ifp->if_xname, m_info.mi_id.mid_msgid);
 				error = uiomove((void *)&m_info,
 						sizeof(struct mbufid_info), uio);
 		}
@@ -1001,9 +998,7 @@ tapwrite(struct cdev *dev, struct uio *uio, int flag)
 	}
 
 	if ((tp->tap_flags & TAP_PROPAGATE_TAG) == TAP_PROPAGATE_TAG) {
-		printf("TAP iov[0] len = %d\n", uio->uio_iov[0].iov_len);
 		uiomove(&m_info, sizeof(m_info), uio);
-		printf("%s: mi_has_data = %d", ifp->if_xname, m_info.mi_has_data);
 		KASSERT((m_info.mi_has_data == M_INFO_MSGID | M_INFO_HOSTID) &&
 			mbufid_validate(m_info.mi_id),
 			("%s: malformed mbufid", __func__));
@@ -1020,9 +1015,6 @@ tapwrite(struct cdev *dev, struct uio *uio, int flag)
 	if ((tp->tap_flags & TAP_PROPAGATE_TAG) == TAP_PROPAGATE_TAG) {
 		m->m_pkthdr.mbufid.mid_hostid = m_info.mi_id.mid_hostid;
 		m->m_pkthdr.mbufid.mid_msgid = m_info.mi_id.mid_msgid;
-		printf("%s %s: (%lx, %lx)\n", ifp->if_xname, __func__,
-		       m->m_pkthdr.mbufid.mid_hostid,
-		       m->m_pkthdr.mbufid.mid_msgid);
 	}
 
 	/*

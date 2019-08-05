@@ -691,12 +691,8 @@ vtnet_setup_features(struct vtnet_softc *sc)
 		}
 	}
 
-	printf("virtio_with_feature(dev, VIRTIO_NET_F_TAG) = %d",
-	       virtio_with_feature(dev, VIRTIO_NET_F_TAG));
-	if (virtio_with_feature(dev, VIRTIO_NET_F_TAG)) {
-		printf("TAGGING ENABLED\n\n");
+	if (virtio_with_feature(dev, VIRTIO_NET_F_TAG))
 		sc->vtnet_rxtx_tag = 1;
-	}
 }
 
 static int
@@ -1857,10 +1853,6 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 		if (sc->vtnet_rxtx_tag) {
 			struct mbufid_info *mi = mtod(m, struct mbufid_info *);
 			m_adj(m, sizeof(struct mbufid_info));
-
-			printf("%s: mi->mi_has_data = %x\n", __func__, mi->mi_has_data);
-			printf("%s: mi->mi_id.hostid = %" PRIu64 "\n", __func__, mi->mi_id.mid_hostid);
-			printf("%s: mi->mi_id.msgid = %" PRIu64 "\n", __func__, mi->mi_id.mid_msgid);
 		}
 
 		vtnet_rxq_input(rxq, m, hdr);
@@ -2195,14 +2187,16 @@ vtnet_txq_enqueue_buf(struct vtnet_txq *txq, struct mbuf **m_head,
 	KASSERT(error == 0 && sg->sg_nseg == 1,
 	    ("%s: error %d adding header to sglist", __func__, error));
 
+	txhdr->vth_mi = malloc(sizeof(struct mbufid_info), M_TEMP, M_WAITOK);
+	memset(txhdr->vth_mi, 0, sizeof(struct mbufid_info));
+
 	if (sc->vtnet_rxtx_tag) {
-		txhdr->vth_mi.mi_id.mid_hostid = (*m_head)->m_pkthdr.mbufid.mid_hostid;
-		txhdr->vth_mi.mi_id.mid_msgid = (*m_head)->m_pkthdr.mbufid.mid_msgid;
-		txhdr->vth_mi.mi_has_data |= M_INFO_MSGID | M_INFO_HOSTID;
-		error = sglist_append(sg, &txhdr->vth_mi, sizeof(struct mbufid_info));
+		txhdr->vth_mi->mi_id.mid_hostid = (*m_head)->m_pkthdr.mbufid.mid_hostid;
+		txhdr->vth_mi->mi_id.mid_msgid = (*m_head)->m_pkthdr.mbufid.mid_msgid;
+		txhdr->vth_mi->mi_has_data |= M_INFO_MSGID | M_INFO_HOSTID;
+		error = sglist_append(sg, txhdr->vth_mi, sizeof(struct mbufid_info));
 		KASSERT(error == 0 && sg->sg_nseg == 2,
 			("%s: error %d adding tags to sglist", __func__, error));
-		printf("%s: (%lx, %lx)\n", __func__, txhdr->vth_mi.mi_id.mid_hostid, txhdr->vth_mi.mi_id.mid_msgid);
 	}
 
 	error = sglist_append_mbuf(sg, m);
@@ -2273,12 +2267,6 @@ vtnet_txq_encap(struct vtnet_txq *txq, struct mbuf **m_head, int flags)
 			error = ENOBUFS;
 			goto fail;
 		}
-	}
-
-	if (sc->vtnet_rxtx_tag) {
-		printf("%s: (%lx, %lx)\n", __func__,
-		       m->m_pkthdr.mbufid.mid_hostid,
-		       m->m_pkthdr.mbufid.mid_msgid);
 	}
 
 	error = vtnet_txq_enqueue_buf(txq, m_head, txhdr);
@@ -2400,8 +2388,6 @@ again:
 			drbr_putback(ifp, br, m);
 			break;
 		}
-
-		printf("%s: (%lx, %lx)\n", __func__, m->m_pkthdr.mbufid.mid_hostid, m->m_pkthdr.mbufid.mid_msgid);
 
 		if (vtnet_txq_encap(txq, &m, M_NOWAIT) != 0) {
 			if (m != NULL)
@@ -2537,6 +2523,7 @@ vtnet_txq_eof(struct vtnet_txq *txq)
 			txq->vtntx_stats.vtxs_omcasts++;
 
 		m_freem(m);
+		free(txhdr->vth_mi, M_TEMP);
 		uma_zfree(vtnet_tx_header_zone, txhdr);
 	}
 
