@@ -128,7 +128,7 @@ static void	vtnet_rxq_discard_merged_bufs(struct vtnet_rxq *, int);
 static void	vtnet_rxq_discard_buf(struct vtnet_rxq *, struct mbuf *);
 static int	vtnet_rxq_merged_eof(struct vtnet_rxq *, struct mbuf *, int);
 static void	vtnet_rxq_input(struct vtnet_rxq *, struct mbuf *,
-		    struct virtio_net_hdr *);
+		    struct virtio_net_hdr *m, struct mbufid_info *mi);
 static int	vtnet_rxq_eof(struct vtnet_rxq *);
 static void	vtnet_rx_vq_intr(void *);
 static void	vtnet_rxq_tq_intr(void *, int);
@@ -1725,7 +1725,7 @@ fail:
 
 static void
 vtnet_rxq_input(struct vtnet_rxq *rxq, struct mbuf *m,
-    struct virtio_net_hdr *hdr)
+    struct virtio_net_hdr *hdr, struct mbufid_info *mi)
 {
 	struct vtnet_softc *sc;
 	struct ifnet *ifp;
@@ -1747,7 +1747,10 @@ vtnet_rxq_input(struct vtnet_rxq *rxq, struct mbuf *m,
 		}
 	}
 
+	KASSERT(m->m_flags & M_PKTHDR,
+		("%s: mbuf is not a packet header", __func__));
 	m->m_pkthdr.flowid = rxq->vtnrx_id;
+	memcpy(&m->m_pkthr.mbufid, mi, sizeof(struct mbufid_info));
 	M_HASHTYPE_SET(m, M_HASHTYPE_OPAQUE);
 
 	/*
@@ -1825,6 +1828,8 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 			continue;
 		}
 
+		KASSERT(m->m_flags & M_PKTHDR,
+			("%s: mbuf is not a packet header", __func__));
 		m->m_pkthdr.len = len;
 		m->m_pkthdr.rcvif = ifp;
 		m->m_pkthdr.csum_flags = 0;
@@ -1855,7 +1860,7 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 			m_adj(m, sizeof(struct mbufid_info));
 		}
 
-		vtnet_rxq_input(rxq, m, hdr);
+		vtnet_rxq_input(rxq, m, hdr, mi);
 
 		/* Must recheck after dropping the Rx lock. */
 		if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
@@ -2190,7 +2195,8 @@ vtnet_txq_enqueue_buf(struct vtnet_txq *txq, struct mbuf **m_head,
 	txhdr->vth_mi = malloc(sizeof(struct mbufid_info), M_TEMP, M_WAITOK);
 	memset(txhdr->vth_mi, 0, sizeof(struct mbufid_info));
 
-	if (sc->vtnet_rxtx_tag) {
+	if (sc->vtnet_rxtx_tag &&
+	    ((*m_head)->m_flags & M_PKTHDR)) {
 		txhdr->vth_mi->mi_id.mid_hostid = (*m_head)->m_pkthdr.mbufid.mid_hostid;
 		txhdr->vth_mi->mi_id.mid_msgid = (*m_head)->m_pkthdr.mbufid.mid_msgid;
 		txhdr->vth_mi->mi_has_data |= M_INFO_MSGID | M_INFO_HOSTID;

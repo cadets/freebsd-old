@@ -1010,6 +1010,8 @@ tapwrite(struct cdev *dev, struct uio *uio, int flag)
 		return (ENOBUFS);
 	}
 
+	KASSERT(m->m_flags & M_PKTHDR,
+		("%s: mbuf is not a packet header", __func__));
 	m->m_pkthdr.rcvif = ifp;
 
 	if ((tp->tap_flags & TAP_PROPAGATE_TAG) == TAP_PROPAGATE_TAG) {
