@@ -266,8 +266,15 @@ pci_vtnet_tap_tx(struct pci_vtnet_softc *sc, struct iovec *iov, int iovcnt,
 	 * extra zero'd segment to the iov. It is guaranteed that
 	 * there is always an extra iov available by the caller.
 	 */
-	if ((sc->rxtx_tag && (len - sizeof(struct mbufid_info)) < 60) ||
-	    (!sc->rxtx_tag && (len < 60))) {
+
+	/*
+	 * FIXME: Malformed ethernet frames might come through in the
+	 *        case where a tag is prepended onto the frame, so in
+	 *        some cases we really just want to check that it's
+	 *        len - sizeof(struct mbufid_info), but there is no
+	 *        nice way I can think of doing that right now.
+	 */
+	if (len < 60) {
 		iov[iovcnt].iov_base = pad;
 		iov[iovcnt].iov_len = 60 - len;
 		iovcnt++;
