@@ -1747,10 +1747,12 @@ vtnet_rxq_input(struct vtnet_rxq *rxq, struct mbuf *m,
 		}
 	}
 
-	KASSERT(m->m_flags & M_PKTHDR,
-		("%s: mbuf is not a packet header", __func__));
+	M_ASSERTPKTHDR(m);
 	m->m_pkthdr.flowid = rxq->vtnrx_id;
-	memcpy(&m->m_pkthr.mbufid, mi, sizeof(struct mbufid_info));
+	if (mi != NULL) {
+		memcpy(&m->m_pkthdr.mbufid, &mi->mi_id, sizeof(mbufid_t));
+		mbufid_assert_sanity(&m->m_pkthdr.mbufid);
+	}
 	M_HASHTYPE_SET(m, M_HASHTYPE_OPAQUE);
 
 	/*
@@ -1782,6 +1784,7 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 	struct ifnet *ifp;
 	struct virtqueue *vq;
 	struct mbuf *m;
+	struct mbufid_info *mi = NULL;
 	struct virtio_net_hdr_mrg_rxbuf *mhdr;
 	int len, deq, nbufs, adjsz, count;
 
@@ -1856,7 +1859,8 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 		   host mbuf, we are going to be sending it over. this only
 		   happens if we have negotiated the feature. */
 		if (sc->vtnet_rxtx_tag) {
-			struct mbufid_info *mi = mtod(m, struct mbufid_info *);
+			mi = mtod(m, struct mbufid_info *);
+			mbufid_assert_sanity(&mi->mi_id);
 			m_adj(m, sizeof(struct mbufid_info));
 		}
 
@@ -2192,14 +2196,21 @@ vtnet_txq_enqueue_buf(struct vtnet_txq *txq, struct mbuf **m_head,
 	KASSERT(error == 0 && sg->sg_nseg == 1,
 	    ("%s: error %d adding header to sglist", __func__, error));
 
-	txhdr->vth_mi = malloc(sizeof(struct mbufid_info), M_TEMP, M_WAITOK);
+	txhdr->vth_mi = malloc(sizeof(struct mbufid_info), M_TEMP, M_NOWAIT);
+	if (txhdr->vth_mi == NULL) {
+		m_freem(m);
+		uma_zfree(vtnet_tx_header_zone, txhdr);
+		return (ENOMEM);
+	}
+
 	memset(txhdr->vth_mi, 0, sizeof(struct mbufid_info));
 
 	if (sc->vtnet_rxtx_tag &&
 	    ((*m_head)->m_flags & M_PKTHDR)) {
-		txhdr->vth_mi->mi_id.mid_hostid = (*m_head)->m_pkthdr.mbufid.mid_hostid;
-		txhdr->vth_mi->mi_id.mid_msgid = (*m_head)->m_pkthdr.mbufid.mid_msgid;
+		memcpy(&txhdr->vth_mi->mi_id,
+		       &(*m_head)->m_pkthdr.mbufid, sizeof(mbufid_t));
 		txhdr->vth_mi->mi_has_data |= M_INFO_MSGID | M_INFO_HOSTID;
+		mbufid_assert_sanity(&(*m_head)->m_pkthdr.mbufid);
 		error = sglist_append(sg, txhdr->vth_mi, sizeof(struct mbufid_info));
 		KASSERT(error == 0 && sg->sg_nseg == 2,
 			("%s: error %d adding tags to sglist", __func__, error));
@@ -2237,7 +2248,6 @@ vtnet_txq_encap(struct vtnet_txq *txq, struct mbuf **m_head, int flags)
 {
 	struct vtnet_tx_header *txhdr;
 	struct virtio_net_hdr *hdr;
-	struct vtnet_softc *sc = txq->vtntx_sc;
 	struct mbuf *m;
 	int error;
 

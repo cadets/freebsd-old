@@ -448,17 +448,17 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	}
 
 	mutex_enter(&dtrace_lock);
-	DL_ASSERT(state->dtnecbs > 0 && state->dts_ecbs != NULL,
+	DL_ASSERT(state->dts_necbs > 0 && state->dts_ecbs != NULL,
 	    ("dtrace ecb state is invalid"));
 	for (dtrace_epid_t epid = 1; epid <= state->dts_epid; epid++) {
 
 		DLOGTR1(PRIO_LOW, "Persisting dtrace eprobe (%d) metadata\n",
 		    epid);
 
-		DL_ASSERT(state->dts_ecbs > 0 && state != NULL,
+		DL_ASSERT(state->dts_necbs > 0 && state != NULL,
 		    ("DTace ECB state is invalid"));
-		DL_ASSERT((ecb = state->dts_ecbs[id - 1]) == NULL ||
-		    ecb->dte_epid == epid, ("DTrace ECBS state is inconsitent"));
+		DL_ASSERT((ecb = state->dts_ecbs[epid - 1]) == NULL ||
+		    ecb->dte_epid == epid, ("DTrace ECBS state is inconsistent"));
 
 		ecb = state->dts_ecbs[epid - 1];
 		if (ecb == NULL || ecb->dte_probe == NULL)

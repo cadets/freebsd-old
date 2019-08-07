@@ -50,6 +50,8 @@ mbufid_generate(mbufid_t *mbufidp)
 	 */
 	mbufidp->mid_hostid = dtrace_node_id;
 	msgid_generate(&mbufidp->mid_msgid);
+
+	mbufidp->mid_magic = MBUFID_MAGIC_NUMBER;
 }
 
 int

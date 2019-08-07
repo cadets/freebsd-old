@@ -1385,6 +1385,7 @@ sosend_dgram(struct socket *so, struct sockaddr *addr, struct uio *uio,
 	{
 		M_ASSERTPKTHDR(top);
 		mbufid_generate(&top->m_pkthdr.mbufid);
+		mbufid_assert_sanity(&top->m_pkthdr.mbufid);
 		AUDIT_RET_MBUFID(&top->m_pkthdr.mbufid);
 	}
 #endif
@@ -1583,6 +1584,7 @@ restart:
 			if (so->so_type == SOCK_DGRAM) {
 				M_ASSERTPKTHDR(top);
 				mbufid_generate(&top->m_pkthdr.mbufid);
+				mbufid_assert_sanity(&top->m_pkthdr.mbufid);
 				AUDIT_RET_MBUFID(&top->m_pkthdr.mbufid);
 			}
 #endif

@@ -925,8 +925,7 @@ tapread(struct cdev *dev, struct uio *uio, int flag)
 
 	/* xfer packet to user space */
 	while ((m != NULL) && (uio->uio_resid > 0) && (error == 0)) {
-		if ((tp->tap_flags & TAP_PROPAGATE_TAG) &&
-		    (m->m_flags & M_PKTHDR)) {
+		if (tp->tap_flags & TAP_PROPAGATE_TAG) {
 				struct mbufid_info m_info;
 				memset(&m_info, 0, sizeof(m_info));
 
@@ -934,14 +933,16 @@ tapread(struct cdev *dev, struct uio *uio, int flag)
 				if (len <= sizeof(msgid_t))
 					break;
 
-				/* if it's a packet header, we know that a number of mbuf
-				   chains might follow. we are essentially just going to
-				   propagate the information that there is a msgid is present
-				   and the msgid itself. should this not be true, we just say
-				   that it is not present and have some zeroes at the start. */
-				m_info.mi_has_data |= M_INFO_MSGID | M_INFO_HOSTID;
-				m_info.mi_id.mid_msgid = m->m_pkthdr.mbufid.mid_msgid;
-				m_info.mi_id.mid_hostid = m->m_pkthdr.mbufid.mid_hostid;
+				if (m->m_flags & M_PKTHDR) {
+					/* if it's a packet header, we know that a number of mbuf
+					   chains might follow. we are essentially just going to
+					   propagate the information that there is a msgid is present
+					   and the msgid itself. should this not be true, we just say
+					   that it is not present and have some zeroes at the start. */
+					m_info.mi_has_data |= M_INFO_MSGID | M_INFO_HOSTID;
+					memcpy(&m_info.mi_id, &m->m_pkthdr.mbufid, sizeof(mbufid_t));
+					mbufid_assert_sanity(&m->m_pkthdr.mbufid);
+				}
 				error = uiomove((void *)&m_info,
 						sizeof(struct mbufid_info), uio);
 		}
@@ -997,12 +998,8 @@ tapwrite(struct cdev *dev, struct uio *uio, int flag)
 		return (EIO);
 	}
 
-	if ((tp->tap_flags & TAP_PROPAGATE_TAG) == TAP_PROPAGATE_TAG) {
+	if ((tp->tap_flags & TAP_PROPAGATE_TAG) == TAP_PROPAGATE_TAG)
 		uiomove(&m_info, sizeof(m_info), uio);
-		KASSERT((m_info.mi_has_data == M_INFO_MSGID | M_INFO_HOSTID) &&
-			mbufid_validate(m_info.mi_id),
-			("%s: malformed mbufid", __func__));
-	}
 
 	if ((m = m_uiotombuf(uio, M_NOWAIT, 0, ETHER_ALIGN,
 	    M_PKTHDR)) == NULL) {
@@ -1015,8 +1012,8 @@ tapwrite(struct cdev *dev, struct uio *uio, int flag)
 	m->m_pkthdr.rcvif = ifp;
 
 	if ((tp->tap_flags & TAP_PROPAGATE_TAG) == TAP_PROPAGATE_TAG) {
-		m->m_pkthdr.mbufid.mid_hostid = m_info.mi_id.mid_hostid;
-		m->m_pkthdr.mbufid.mid_msgid = m_info.mi_id.mid_msgid;
+		memcpy(&m->m_pkthdr.mbufid, &m_info.mi_id, sizeof(mbufid_t));
+		mbufid_assert_sanity(&m->m_pkthdr.mbufid);
 	}
 
 	/*

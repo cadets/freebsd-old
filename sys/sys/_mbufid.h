@@ -37,6 +37,7 @@
 typedef struct mbufid {
 	hostid_t	mid_hostid;
 	msgid_t		mid_msgid;
+	uint64_t	mid_magic;
 	uint8_t		__mid_pad[8];
 } mbufid_t;
 

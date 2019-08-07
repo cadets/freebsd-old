@@ -1177,6 +1177,7 @@ bpfwrite(struct cdev *dev, struct uio *uio, int ioflag)
 		mc = NULL;
 
 	mbufid_generate(&m->m_pkthdr.mbufid);
+	mbufid_assert_sanity(&m->m_pkthdr.mbufid);
 	AUDIT_RET_MBUFID(&m->m_pkthdr.mbufid);
 	m->m_pkthdr.len -= hlen;
 	m->m_len -= hlen;

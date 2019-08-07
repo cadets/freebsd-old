@@ -34,7 +34,20 @@
 
 #include <sys/_mbufid.h>
 
+#define MBUFID_MAGIC_NUMBER 0xFEEDFACE
+
+
 void mbufid_generate(mbufid_t *mbufidp);
 int mbufid_isvalid(mbufid_t *mbufidp);
+
+inline void
+mbufid_assert_sanity(mbufid_t *mbufidp)
+{
+
+	if (mbufid_isvalid(mbufidp))
+		KASSERT(mbufidp->mid_magic == MBUFID_MAGIC_NUMBER,
+			("%s: mbufid magic number is %lx but should be %lx",
+			 __func__, mbufidp->mid_magic, MBUFID_MAGIC_NUMBER));
+}
 
 #endif
