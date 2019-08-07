@@ -34,7 +34,7 @@
 
 #include <sys/_mbufid.h>
 
-#define MBUFID_MAGIC_NUMBER 0xFEEDFACE
+#define MBUFID_MAGIC_NUMBER 0xFEEDFACEull
 
 
 void mbufid_generate(mbufid_t *mbufidp);

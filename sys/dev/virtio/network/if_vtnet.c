@@ -1816,11 +1816,17 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 			 * Account for our pad inserted between the header
 			 * and the actual start of the frame.
 			 */
-			len += VTNET_RX_HEADER_PAD;
+			if (!sc->vtnet_rxtx_tag)
+				len += VTNET_RX_HEADER_PAD;
+			else
+				len += MBUFID_PAD;
 		} else {
 			mhdr = mtod(m, struct virtio_net_hdr_mrg_rxbuf *);
 			nbufs = mhdr->num_buffers;
 			adjsz = sizeof(struct virtio_net_hdr_mrg_rxbuf);
+
+			if (sc->vtnet_rxtx_tag)
+				len += MBUFID_PAD;
 		}
 
 		if (vtnet_rxq_replace_buf(rxq, m, len) != 0) {
@@ -1831,8 +1837,7 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 			continue;
 		}
 
-		KASSERT(m->m_flags & M_PKTHDR,
-			("%s: mbuf is not a packet header", __func__));
+		M_ASSERTPKTHDR(m);
 		m->m_pkthdr.len = len;
 		m->m_pkthdr.rcvif = ifp;
 		m->m_pkthdr.csum_flags = 0;
@@ -1861,6 +1866,9 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 		if (sc->vtnet_rxtx_tag) {
 			mi = mtod(m, struct mbufid_info *);
 			mbufid_assert_sanity(&mi->mi_id);
+			printf("%s: (%lx, %lx, %lx, %lx)\n", __func__,
+			       mi->mi_has_data, mi->mi_id.mid_hostid,
+			       mi->mi_id.mid_msgid, mi->mi_id.mid_magic);
 			m_adj(m, sizeof(struct mbufid_info));
 		}
 
