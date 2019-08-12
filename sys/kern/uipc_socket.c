@@ -144,6 +144,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/syslog.h>
 #include <netinet/in.h>
 
+#include <sys/ddtrace.h>
+
 #include <net/vnet.h>
 
 #include <security/audit/audit.h>
@@ -2566,6 +2568,8 @@ soreceive_dgram(struct socket *so, struct sockaddr **psa, struct uio *uio,
 		M_ASSERTPKTHDR(m);
 		AUDIT_RET_MBUFID(&m->m_pkthdr.mbufid);
 	}
+
+	SDT_PROBE1(ddtrace, , tag, recv, &m->m_pkthdr.mbufid);
 
 	while (m != NULL && uio->uio_resid > 0) {
 		len = uio->uio_resid;

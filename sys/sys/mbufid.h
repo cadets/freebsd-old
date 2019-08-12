@@ -32,6 +32,11 @@
 #ifndef _SYS_MBUFID_H_
 #define _SYS_MBUFID_H_
 
+#ifdef _KERNEL
+#include <sys/param.h>
+#include <sys/systm.h>
+#endif /* _KERNEL */
+
 #include <sys/_mbufid.h>
 
 #define MBUFID_MAGIC_NUMBER 0xFEEDFACEull
@@ -40,6 +45,7 @@
 void mbufid_generate(mbufid_t *mbufidp);
 int mbufid_isvalid(mbufid_t *mbufidp);
 
+#ifdef _KERNEL
 inline void
 mbufid_assert_sanity(mbufid_t *mbufidp)
 {
@@ -49,5 +55,6 @@ mbufid_assert_sanity(mbufid_t *mbufidp)
 			("%s: mbufid magic number is %lx but should be %lx",
 			 __func__, mbufidp->mid_magic, MBUFID_MAGIC_NUMBER));
 }
+#endif /* _KERNEL */
 
 #endif

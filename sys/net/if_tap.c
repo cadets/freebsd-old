@@ -2,6 +2,7 @@
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
  * Copyright (C) 1999-2000 by Maksim Yevmenkin <m_evmenkin@yahoo.com>
+ * Copyright (C) 2019 Domagoj Stolfa
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without

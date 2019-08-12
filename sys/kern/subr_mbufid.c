@@ -39,6 +39,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/dtrace_bsd.h>
 
+#include <sys/ddtrace.h>
+
 void
 mbufid_generate(mbufid_t *mbufidp)
 {
@@ -52,6 +54,8 @@ mbufid_generate(mbufid_t *mbufidp)
 	msgid_generate(&mbufidp->mid_msgid);
 
 	mbufidp->mid_magic = MBUFID_MAGIC_NUMBER;
+
+	SDT_PROBE1(ddtrace, , tag, gen, mbufidp);
 }
 
 int
