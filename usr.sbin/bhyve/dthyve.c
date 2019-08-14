@@ -53,12 +53,17 @@ dthyve_init(const char *vm __unused)
 
 	vtdtr_fd = open("/dev/vtdtr", O_RDWR);
 	if (vtdtr_fd == -1) {
-		fprintf(stderr, "Error: '%s' opening /dev/vtdtr",
+		fprintf(stderr, "Error: '%s' opening /dev/vtdtr\n",
 		    strerror(errno));
 		exit(1);
 	}
 
-	dthyve_conf(1 << VTDTR_EV_RECONF, 0);
+	error = dthyve_conf(1 << VTDTR_EV_RECONF, 0);
+	if (error) {
+		fprintf(stderr, "Error: %s attempting to reconfigure /dev/vtdtr\n",
+		    strerror(errno));
+		exit(1);
+	}
 }
 
 /*
