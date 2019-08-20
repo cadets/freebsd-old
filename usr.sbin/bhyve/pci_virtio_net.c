@@ -1015,11 +1015,11 @@ pci_vtnet_neg_features(void *vsc, uint64_t negotiated_features)
 	flag = 1;
 	if (sc->rxtx_tag == 1) {
 		int ret = ioctl(sc->vsc_tapfd, TAPSTAGGING, &flag);
-		assert(errno == 0);
+		assert(ret != -1);
 	} else if (sc->rxtx_tag == 0) {
 		flag = 0;
 		int ret = ioctl(sc->vsc_tapfd, TAPSTAGGING, &flag);
-		assert(ret >= 0);
+		assert(ret != -1);
 	}
 }
 
