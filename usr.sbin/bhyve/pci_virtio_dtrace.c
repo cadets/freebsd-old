@@ -629,6 +629,8 @@ pci_vtdtr_events(void *xsc)
 
 	sc = xsc;
 
+	DPRINTF(("%s: starting event reads.\n", __func__));
+
 	/*
 	 * We listen for events indefinitely.
 	 */
@@ -641,6 +643,9 @@ pci_vtdtr_events(void *xsc)
 		if (error) {
 			fprintf(stderr, "Error: '%s' reading.\n",
 			    strerror(error));
+			if (errno = EINTR)
+			        exit(1);
+
 			continue;
 		}
 

@@ -58,6 +58,9 @@ __FBSDID("$FreeBSD$");
 #define VTDTR_TIMEOUT       (10*SBT_1S)
 #define VTDTR_MTX_NAME_SIZE 64
 
+static int debug = 1;
+#define DPRINTF(params) if (debug) printf params
+
 /*
  * Lets us implement the linked list.
  */
@@ -127,8 +130,16 @@ vtdtr_construct_entry(struct vtdtr_event *e)
 {
 	struct vtdtr_qentry *ent;
 	struct vtdtr_event *ev;
-	ent = malloc(sizeof(struct vtdtr_qentry), M_TEMP, M_WAITOK | M_ZERO);
-	ev = malloc(sizeof(struct vtdtr_event), M_TEMP, M_WAITOK | M_ZERO);
+	ent = malloc(sizeof(struct vtdtr_qentry), M_TEMP, M_ZERO);
+	if (ent == NULL)
+		return (NULL);
+
+	ev = malloc(sizeof(struct vtdtr_event), M_TEMP, M_ZERO);
+	if (ev == NULL) {
+		free(ent, M_TEMP);
+		return (NULL);
+	}
+
 	memcpy(ev, e, sizeof(struct vtdtr_event));
 	ent->event = ev;
 
@@ -158,6 +169,7 @@ vtdtr_enqueue(struct vtdtr_event *e)
 {
 	struct vtdtr_queue *q, *tmp;
 	struct vtdtr_qentry *ent;
+	int err = 0;
 
 	q = NULL;
 	tmp = NULL;
@@ -173,18 +185,42 @@ vtdtr_enqueue(struct vtdtr_event *e)
 		mtx_lock(&q->mtx);
 
 		mtx_lock(&q->rc_cvmtx);
-		while (q->needs_reconf != 0)
-			cv_wait(&q->rc_cv, &q->rc_cvmtx);
+		while (q->needs_reconf != 0) {
+			err = cv_wait_sig(&q->rc_cv, &q->rc_cvmtx);
+			if (err) {
+				q->drops++;
+				DPRINTF(("Dropped an event of type: %d"
+					 "because a signal was received."
+					 "Dropped %llu events so far.\n",
+					 e->type, q->drops));
+				mtx_unlock(&q->rc_cvmtx);
+				mtx_unlock(&q->mtx);
+				return;
+			}
+		}
 		mtx_unlock(&q->rc_cvmtx);
+
 
 		if (q->num_entries >= q->max_size) {
 			q->drops++;
+			DPRINTF(("Dropped an event of type: %d"
+				 "because the queue is full."
+				 "Dropped %llu events so far.\n",
+				 e->type, q->drops));
 			mtx_unlock(&q->mtx);
 			continue;
 		}
 
 		if (vtdtr_subscribed(q, e)) {
 			ent = vtdtr_construct_entry(e);
+			if (!ent) {
+				q->drops++;
+				DPRINTF(("Dropped an event of type: %d"
+					 "because entry could not be constructed."
+					 "Dropped %llu events so far.\n",
+					 e->type, q->drops));
+				continue;
+			}
 			STAILQ_INSERT_TAIL(&q->head, ent, next);
 			q->num_entries++;
 			mtx_lock(&q->cvmtx);
@@ -246,9 +282,15 @@ vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags)
 		else {
 			if (q->timeout == 0) {
 				mtx_lock(&q->cvmtx);
-				while (q->num_entries == 0)
-					cv_wait(&q->cv, &q->cvmtx);
+				while (q->num_entries == 0) {
+					error = cv_wait_sig(&q->cv, &q->cvmtx);
+					if (error) {
+						mtx_unlock(&q->cvmtx);
+						return (EINTR);
+					}
+				}
 				mtx_unlock(&q->cvmtx);
+
 			} else {
 				mtx_lock(&q->mtx);
 				msleep_sbt(q, &q->mtx, 0, "qwait", q->timeout, 0, 0);
