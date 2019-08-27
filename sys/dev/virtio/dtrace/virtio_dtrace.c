@@ -615,6 +615,13 @@ vtdtr_queue_enqueue_ctrl(struct virtio_dtrace_queue *q,
 	return (error);
 }
 
+static int
+vtdtr_add_probedesc(dtrace_probedesc_t *pd)
+{
+
+	return (0);
+}
+
 /*
  * Used for identification of the event type we need to process and delegating
  * it to the according functions.
@@ -625,9 +632,12 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 {
 	struct vtdtr_ctrl_pbevent *pb;
 	struct vtdtr_ctrl_provevent *pv;
+	struct vtdtr_pbev_adjust_event *pbadj;
+	dtrace_probedesc_t *pd;
 	device_t dev;
 	int retval;
 	int error;
+	size_t n;
 
 	dev = sc->vtdtr_dev;
 	retval = 0;
@@ -725,6 +735,62 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			device_printf(dev, "VIRTIO_DTRACE_EOF\n");
 		retval = 1;
 		break;
+	case VIRTIO_DTRACE_PROBEID_ADJUST:
+		sc->vtdtr_ready = 0;
+		pb = &ctrl->uctrl.probe_ev;
+
+		if (debug)
+			device_printf(dev, "VIRTIO_DTRACE_PROBEID_ADJUST\n");
+
+		pd = malloc(sizeof(dtrace_probedesc_t),
+		    M_VTDTR, M_WAITOK | M_ZERO);
+
+		pd->dtpd_id = pb->probe;
+		pbadj = &pb->upbev.adjust;
+
+		n = strlcpy(pd->dtpd_provider, pbadj->prov, DTRACE_PROVNAMELEN);
+		if (n >= DTRACE_PROVNAMELEN) {
+			device_printf(dev, "%s: attempted to copy %d bytes"
+			    " but could only copy %zu in the provider name\n",
+			    __func__, DTRACE_PROVNAMELEN, n);
+			free(pd, M_VTDTR);
+			break;
+		}
+
+		n = strlcpy(pd->dtpd_mod, pbadj->mod, DTRACE_MODNAMELEN);
+		if (n >= DTRACE_MODNAMELEN) {
+			device_printf(dev, "%s: attempted to copy %d bytes"
+				      " but could only copy %zu in the module name\n",
+				      __func__, DTRACE_MODNAMELEN, n);
+			free(pd, M_VTDTR);
+			break;
+		}
+
+		n = strlcpy(pd->dtpd_func, pbadj->func, DTRACE_FUNCNAMELEN);
+		if (n >= DTRACE_FUNCNAMELEN) {
+			device_printf(dev, "%s: attempted to copy %d bytes"
+				      " but could only copy %zu in the function name\n",
+				      __func__, DTRACE_FUNCNAMELEN, n);
+			free(pd, M_VTDTR);
+			break;
+		}
+
+		n = strlcpy(pd->dtpd_name, pbadj->name, DTRACE_NAMELEN);
+		if (n >= DTRACE_NAMELEN) {
+			device_printf(dev, "%s: attempted to copy %d bytes"
+				      " but could only copy %zu in the probe name\n",
+				      __func__, DTRACE_NAMELEN, n);
+			free(pd, M_VTDTR);
+			break;
+		}
+
+		error = vtdtr_add_probedesc(pd);
+		if (error)
+			device_printf(dev,
+			    "%s: could not add a probedesc to the array (%d)\n",
+			    __func__, error);
+		break;
+
 	default:
 		device_printf(dev, "WARNING: Wrong control event: %x\n", ctrl->event);
 	}

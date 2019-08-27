@@ -52,6 +52,7 @@
 #define	VIRTIO_DTRACE_EOF             0x07 /* EOF Signal */
 #define	VIRTIO_DTRACE_GO              0x08 /* Start tracing */
 #define	VIRTIO_DTRACE_STOP            0x09 /* Start tracing */
+#define VIRTIO_DTRACE_PROBEID_ADJUST  0x0A /* Adjust guest probe IDs */
 
 struct vtdtr_softc;
 struct uuid;
@@ -67,12 +68,20 @@ struct vtdtr_pbev_toggle_event {
 	char *dif; /* TODO */
 }__attribute__((packed));
 
+struct vtdtr_pbev_adjust_event {
+	char prov[DTRACE_PROVNAMELEN];
+	char mod[DTRACE_MODNAMELEN];
+	char func[DTRACE_FUNCNAMELEN];
+	char name[DTRACE_NAMELEN];
+}__attribute__((packed));
+
 struct vtdtr_ctrl_pbevent {
 	uint32_t probe;
 
 	union {
 		struct vtdtr_pbev_create_event create;
 		struct vtdtr_pbev_toggle_event toggle;
+		struct vtdtr_pbev_adjust_event adjust;
 	} upbev;
 }__attribute__((packed));
 
