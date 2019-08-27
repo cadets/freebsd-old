@@ -74,16 +74,19 @@ __FBSDID("$FreeBSD$");
  * READY and EOF are used for synchronization purposes, while CLEANUP is meant
  * to be sent to the guest in order to clean up the TX virtqueue.
  */
-#define	VTDTR_DEVICE_READY           0x00
-#define	VTDTR_DEVICE_REGISTER        0x01
-#define	VTDTR_DEVICE_UNREGISTER      0x02
-#define	VTDTR_DEVICE_DESTROY         0x03
-#define	VTDTR_DEVICE_PROBE_CREATE    0x04
-#define	VTDTR_DEVICE_PROBE_INSTALL   0x05
-#define	VTDTR_DEVICE_PROBE_UNINSTALL 0x06
-#define	VTDTR_DEVICE_EOF             0x07
-#define VTDTR_DEVICE_GO              0x08
-#define VTDTR_DEVICE_STOP            0x09
+#define	VTDTR_DEVICE_READY             0x00
+#define	VTDTR_DEVICE_REGISTER          0x01
+#define	VTDTR_DEVICE_UNREGISTER        0x02
+#define	VTDTR_DEVICE_DESTROY           0x03
+#define	VTDTR_DEVICE_PROBE_CREATE      0x04
+#define	VTDTR_DEVICE_PROBE_INSTALL     0x05
+#define	VTDTR_DEVICE_PROBE_UNINSTALL   0x06
+#define	VTDTR_DEVICE_EOF               0x07
+#define VTDTR_DEVICE_GO                0x08
+#define VTDTR_DEVICE_STOP              0x09
+#define VTDTR_DEVICE_PROBEID_ADJUST    0x0A
+#define VTDTR_DEVICE_START_ADJUSTING   0x0B
+#define VTDTR_DEVICE_ADJUST_COMMIT     0x0C
 
 static int pci_vtdtr_debug;
 #define	DPRINTF(params) if (pci_vtdtr_debug) printf params
@@ -643,7 +646,7 @@ pci_vtdtr_events(void *xsc)
 		if (error) {
 			fprintf(stderr, "Error: '%s' reading.\n",
 			    strerror(error));
-			if (errno = EINTR)
+			if ((errno = EINTR))
 			        exit(1);
 
 			continue;
@@ -653,7 +656,7 @@ pci_vtdtr_events(void *xsc)
 		assert(ctrl_entry != NULL);
 		ctrl = &ctrl_entry->ctrl;
 
-		DPRINTF(("event read: %d\n", ev.type));
+		DPRINTF(("event read: %zu\n", ev.type));
 		switch (ev.type) {
 		case VTDTR_EV_INSTALL:
 			ctrl->event = VTDTR_DEVICE_PROBE_INSTALL;
@@ -675,14 +678,25 @@ pci_vtdtr_events(void *xsc)
 
 			if (pci_vtdtr_find(vm, ev.args.d_config.vms,
 			    ev.args.d_config.count) == 0) {
-				flags |= (1 << VTDTR_EV_INSTALL) |
-				    (1 << VTDTR_EV_STOP)         |
-				    (1 << VTDTR_EV_GO);
+				flags |= (1 << VTDTR_EV_INSTALL)      |
+				    (1 << VTDTR_EV_STOP)              |
+				    (1 << VTDTR_EV_GO)                |
+				    (1 << VTDTR_EV_START_ADJUSTING)   |
+				    (1 << VTDTR_EV_ADJUST_COMMIT)     |
+				    (1 << VTDTR_EV_PROBEID_ADJUST);
 			}
 
 			error = dthyve_conf(flags, 0);
 			assert(error == 0);
 			break;
+		case VTDTR_EV_START_ADJUSTING:
+			ctrl->event = VTDTR_DEVICE_START_ADJUSTING;
+			break;
+		case VTDTR_EV_ADJUST_COMMIT:
+			ctrl->event = VTDTR_DEVICE_ADJUST_COMMIT;
+			break;
+		case VTDTR_EV_PROBEID_ADJUST:
+			ctrl->event = VTDTR_DEVICE_PROBEID_ADJUST;
 		default:
 			/*
 			 * XXX: Meh.

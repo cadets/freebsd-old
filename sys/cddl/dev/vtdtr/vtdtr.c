@@ -179,9 +179,6 @@ vtdtr_enqueue(struct vtdtr_event *e)
 	 */
 	mtx_lock(&qtree_mtx);
 	RB_FOREACH_SAFE(q, vtdtr_qtree, &vtdtr_queue_tree, tmp) {
-		/*
-		 * Check if the queue is subscribed to the event
-		 */
 		mtx_lock(&q->mtx);
 
 		mtx_lock(&q->rc_cvmtx);
@@ -211,6 +208,9 @@ vtdtr_enqueue(struct vtdtr_event *e)
 			continue;
 		}
 
+		/*
+		 * Check if the queue is subscribed to the event
+		 */
 		if (vtdtr_subscribed(q, e)) {
 			ent = vtdtr_construct_entry(e);
 			if (!ent) {

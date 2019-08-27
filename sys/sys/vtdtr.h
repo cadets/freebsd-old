@@ -6,11 +6,14 @@
 #define VTDTR_MAXVMS       16
 #define VTDTR_VMNAMEMAX    256
 
-#define VTDTR_EV_INSTALL   0x01
-#define VTDTR_EV_UNINSTALL 0x02
-#define VTDTR_EV_GO        0x03
-#define VTDTR_EV_STOP      0x04
-#define VTDTR_EV_RECONF    0x05
+#define VTDTR_EV_INSTALL           0x01
+#define VTDTR_EV_UNINSTALL         0x02
+#define VTDTR_EV_GO                0x03
+#define VTDTR_EV_STOP              0x04
+#define VTDTR_EV_RECONF            0x05
+#define VTDTR_EV_START_ADJUSTING   0x06
+#define VTDTR_EV_ADJUST_COMMIT     0x07
+#define VTDTR_EV_PROBEID_ADJUST    0x08
 
 /*
  * We only have one event at the moment -- possibly others in the future.
