@@ -4148,7 +4148,9 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 	case DIF_VAR_HVMNAME:
 	case DIF_VAR_GVMNAME:
 		if (mstate->dtms_biscuit == NULL)
-			return (dtrace_dif_varstr("host", state, mstate));
+			return (dtrace_dif_varstr(
+			    (uintptr_t)(const char *)"host",
+			    state, mstate));
 
 		return (dtrace_dif_varstr(
 		    (uintptr_t)dtvirt_getname(mstate->dtms_biscuit),
@@ -19218,6 +19220,7 @@ dtrace_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
  * dtrace_priv_virtstate_stop,
  * dtrace_priv_provide_all_probes,
  * dtrace_priv_probeid_enable
+ * dtrace_priv_probeid_adjust
  *
  * are functions that are exposed to virtio_dtrace.c via function
  * pointers of the same name without "priv". They are used to set
@@ -19448,6 +19451,114 @@ dtrace_priv_probeid_enable(dtrace_id_t id)
 	mutex_exit(&cpu_lock);
 
 	return (error);
+}
+
+static dtrace_probe_t *
+dtrace_find_probe(dtrace_probedesc_t *pd)
+{
+	dtrace_probe_t *pb = NULL;
+	size_t i;
+
+	ASSERT(MUTEX_HELD(&cpu_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
+
+	for (i = 0; i < dtrace_nprobes; i++) {
+		pb = dtrace_probes[i];
+		if (pb == NULL)
+			break;
+
+		/*
+		 * We only care about the 4-tuple for now, so we simply say
+		 * that a probe is 'the same' if their 4-tuples are equal.
+		 */
+		if (strcmp(pb->dtpr_provider->dtpv_name, pd->dtpd_provider) == 0 &&
+		    strcmp(pb->dtpr_mod, pd->dtpd_mod)                      == 0 &&
+		    strcmp(pb->dtpr_func, pd->dtpd_func)                    == 0 &&
+		    strcmp(pb->dtpr_name, pd->dtpd_name)                    == 0)
+			return (pb);
+	}
+
+	return (pb);
+}
+
+static int
+dtrace_priv_probeid_adjust(dtrace_probedesc_t **pda, size_t len)
+{
+	dtrace_probe_t **new_probes;
+	dtrace_probe_t **oprobes;
+	size_t i;
+
+	/*
+	 * Our strategy is to simply populate a new array of DTrace probes
+	 * in O(n^2) and replace the old probe array. This is acceptable
+	 * because it happens once during configuration time, and never
+	 * again.
+	 */
+	new_probes = kmem_zalloc(dtrace_nprobes, KM_SLEEP);
+
+	mutex_enter(&cpu_lock);
+	mutex_enter(&dtrace_lock);
+
+	/*
+	 * XXX: This assertion is here because we simply assume that
+	 *      both the host has at most the same amount of probes as the
+	 *      guest for now. In the future, we would ideally handle
+	 *      this by teaching the host about new probes in the guest
+	 *      as well.
+	 */
+	ASSERT(len <= dtrace_nprobes);
+
+	for (i = 0; i < len; i++) {
+		dtrace_probedesc_t *pd = pda[i];
+		dtrace_probe_t *pb;
+
+		ASSERT(pd != NULL);
+
+		/*
+		 * Get the probe we are looking for by using the 4-tuple.
+		 */
+		pb = dtrace_find_probe(pd);
+		if (pb == NULL) {
+			mutex_exit(&cpu_lock);
+			mutex_exit(&dtrace_lock);
+
+			kmem_free(new_probes, dtrace_nprobes);
+			return (ENOENT);
+		}
+
+		/*
+		 * We only populate the array here, because we want to only
+		 * update the probe IDs once we are sure we can do it with
+		 * _all_ probes, not just some.
+		 */
+		new_probes[pd->dtpd_id - 1] = pb;
+	}
+
+	/*
+	 * Replace the probe array and free the old probe array.
+	 */
+	oprobes = dtrace_probes;
+	dtrace_probes = new_probes;
+
+	/*
+	 * Now we re-adjust the probe IDs in the probes themselves.
+	 */
+	for (i = 0; i < len; i++) {
+		dtrace_probedesc_t *pd;
+		dtrace_probe_t *pb;
+
+		pd = pda[i];
+		pb = new_probes[pd->dtpd_id - 1];
+
+		pb->dtpr_id = pd->dtpd_id;
+	}
+
+	mutex_exit(&cpu_lock);
+	mutex_exit(&dtrace_lock);
+
+	kmem_free(oprobes, dtrace_nprobes);
+
+	return (0);
 }
 
 #endif

@@ -207,6 +207,7 @@ int (*dtrace_virtstate_create)(void) = NULL;
 void (*dtrace_virtstate_destroy)(void) = NULL;
 int (*dtrace_virtstate_go)(void) = NULL;
 int (*dtrace_virtstate_stop)(void) = NULL;
+int (*dtrace_probeid_adjust)(dtrace_probedesc_t **, size_t) = NULL;
 
 static int
 vtdtr_modevent(module_t mod, int type, void *unused)

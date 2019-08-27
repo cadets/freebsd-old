@@ -174,4 +174,5 @@ dtrace_load(void *dummy)
 	dtrace_virtstate_destroy = dtrace_priv_virtstate_destroy;
 	dtrace_virtstate_go = dtrace_priv_virtstate_go;
 	dtrace_virtstate_stop = dtrace_priv_virtstate_stop;
+	dtrace_probeid_adjust = dtrace_priv_probeid_adjust;
 }

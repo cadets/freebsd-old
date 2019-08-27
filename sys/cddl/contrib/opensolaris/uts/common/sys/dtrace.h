@@ -2323,6 +2323,7 @@ extern int (*dtrace_virtstate_create)(void);
 extern void (*dtrace_virtstate_destroy)(void);
 extern int (*dtrace_virtstate_go)(void);
 extern int (*dtrace_virtstate_stop)(void);
+extern int (*dtrace_probeid_adjust)(dtrace_probedesc_t **, size_t);
 
 
 /*

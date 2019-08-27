@@ -128,6 +128,7 @@ dtrace_unload()
 	dtrace_virtstate_destroy = NULL;
 	dtrace_virtstate_go = NULL;
 	dtrace_virtstate_stop = NULL;
+	dtrace_probeid_adjust = NULL;
 
 	return (error);
 }
