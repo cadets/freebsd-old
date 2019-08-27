@@ -117,6 +117,7 @@ SYSCTL_U32(_dev_vtdtr, OID_AUTO, debug, CTLFLAG_RWTUN, &debug, 0,
     "Enable debugging of virtio-dtrace");
 
 static int vstate = 0;
+static int vtdtr_adjusting = 0;
 
 static int vtdtr_modevent(module_t, int, void *);
 static void vtdtr_cleanup(void);
@@ -616,6 +617,13 @@ vtdtr_queue_enqueue_ctrl(struct virtio_dtrace_queue *q,
 }
 
 static int
+vtdtr_commit_adjustment(void)
+{
+
+	return (0);
+}
+
+static int
 vtdtr_add_probedesc(dtrace_probedesc_t *pd)
 {
 
@@ -735,12 +743,41 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			device_printf(dev, "VIRTIO_DTRACE_EOF\n");
 		retval = 1;
 		break;
+	case VIRTIO_DTRACE_START_ADJUSTING:
+		sc->vtdtr_ready = 0;
+
+		if (debug)
+			device_printf(dev, "VIRTIO_DTRACE_START_ADJUSTING\n");
+
+		vtdtr_adjusting = 1;
+
+		break;
+	case VIRTIO_DTRACE_ADJUST_COMMIT:
+		sc->vtdtr_ready = 0;
+
+		if (debug)
+			device_printf(dev, "VIRTIO_DTRACE_ADJUST_COMMIT\n");
+
+		vtdtr_adjusting = 0;
+		error = vtdtr_commit_adjustment();
+		if (error)
+			device_printf(dev, "%s: attempted to commit adjustment"
+			    " but failed with %d.\n", __func__, error);
+
+		break;
 	case VIRTIO_DTRACE_PROBEID_ADJUST:
 		sc->vtdtr_ready = 0;
 		pb = &ctrl->uctrl.probe_ev;
 
 		if (debug)
 			device_printf(dev, "VIRTIO_DTRACE_PROBEID_ADJUST\n");
+
+		if (vtdtr_adjusting == 0) {
+			device_printf(dev, "%s: received an adjust probe IDs"
+			    " event, but we are not in a state where it can be done\n",
+			    __func__);
+			break;
+		}
 
 		pd = malloc(sizeof(dtrace_probedesc_t),
 		    M_VTDTR, M_WAITOK | M_ZERO);

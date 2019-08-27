@@ -53,6 +53,8 @@
 #define	VIRTIO_DTRACE_GO              0x08 /* Start tracing */
 #define	VIRTIO_DTRACE_STOP            0x09 /* Start tracing */
 #define VIRTIO_DTRACE_PROBEID_ADJUST  0x0A /* Adjust guest probe IDs */
+#define VIRTIO_DTRACE_START_ADJUSTING 0x0B /* Toggle adjusting of probe IDs */
+#define VIRTIO_DTRACE_ADJUST_COMMIT   0x0C /* Commit probe ID adjustment */
 
 struct vtdtr_softc;
 struct uuid;
