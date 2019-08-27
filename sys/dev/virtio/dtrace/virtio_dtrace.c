@@ -118,6 +118,9 @@ SYSCTL_U32(_dev_vtdtr, OID_AUTO, debug, CTLFLAG_RWTUN, &debug, 0,
 
 static int vstate = 0;
 static int vtdtr_adjusting = 0;
+static dtrace_probedesc_t **vtdtr_pds = NULL;
+static size_t vtdtr_pdsize = 1 << 16;
+static size_t vtdtr_pdlen = 0;
 
 static int vtdtr_modevent(module_t, int, void *);
 static void vtdtr_cleanup(void);
@@ -362,6 +365,9 @@ vtdtr_attach(device_t dev)
 	mtx_init(&sc->vtdtr_condmtx, "vtdtrcondmtx", NULL, MTX_DEF);
 	sema_init(&sc->vtdtr_exit, 0, "vtdtrexitsema");
 
+	vtdtr_pds = malloc(sizeof(dtrace_probedesc_t *) * vtdtr_pdsize,
+	    M_VTDTR, M_WAITOK | M_ZERO);
+
 	vtdtr_enable_interrupts(sc);
 
 	vtdtr_start_taskqueues(sc);
@@ -432,6 +438,10 @@ vtdtr_detach(device_t dev)
 	free(sc->vtdtr_ctrlq, M_DEVBUF);
 	vtdtr_condvar_destroy(sc);
 	mtx_destroy(&sc->vtdtr_mtx);
+
+	free(vtdtr_pds, M_VTDTR);
+	vtdtr_pdlen = 0;
+	vtdtr_pdsize = 0;
 
 	return (0);
 }
@@ -617,16 +627,56 @@ vtdtr_queue_enqueue_ctrl(struct virtio_dtrace_queue *q,
 }
 
 static int
-vtdtr_commit_adjustment(void)
+vtdtr_commit_adjustment(struct vtdtr_softc *sc)
 {
+	int error, i;
+	device_t dev = sc->vtdtr_dev;
+	dtrace_probedesc_t *pd;
 
-	return (0);
+	error = dtrace_probeid_adjust(vtdtr_pds, vtdtr_pdlen);
+	if (error)
+		device_printf(dev, "%s: adjustment failed with %d.\n",
+		    __func__, error);
+
+	for (i = 0; i < vtdtr_pdlen; i++) {
+		pd = vtdtr_pds[i];
+		KASSERT(pd != NULL, ("%s: pd is NULL", __func__));
+		free(pd, M_VTDTR);
+	}
+
+	vtdtr_pdsize = 1 << 16;
+	vtdtr_pdlen = 0;
+	free(vtdtr_pds, M_VTDTR);
+	vtdtr_pds = malloc(sizeof(dtrace_probedesc_t *) * vtdtr_pdsize, M_VTDTR,
+	    M_WAITOK | M_ZERO);
+
+	return (error);
 }
 
 static int
 vtdtr_add_probedesc(dtrace_probedesc_t *pd)
 {
+	/*
+	 * FIXME TODO: Add a check that we're not overflowing.
+	 */
+	if (vtdtr_pdlen >= vtdtr_pdsize) {
+		size_t osize;
+		dtrace_probedesc_t **opds, **npds;
 
+		osize = vtdtr_pdsize;
+		opds = vtdtr_pds;
+
+		vtdtr_pdsize <<= 1;
+		npds = malloc(sizeof(dtrace_probedesc_t *) * vtdtr_pdsize,
+		    M_VTDTR, M_WAITOK | M_ZERO);
+
+		memcpy(npds, opds, sizeof(dtrace_probedesc_t *) * osize);
+
+		vtdtr_pds = npds;
+		free(opds, M_VTDTR);
+	}
+
+	vtdtr_pds[vtdtr_pdlen++] = pd;
 	return (0);
 }
 
@@ -759,7 +809,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			device_printf(dev, "VIRTIO_DTRACE_ADJUST_COMMIT\n");
 
 		vtdtr_adjusting = 0;
-		error = vtdtr_commit_adjustment();
+		error = vtdtr_commit_adjustment(sc);
 		if (error)
 			device_printf(dev, "%s: attempted to commit adjustment"
 			    " but failed with %d.\n", __func__, error);
