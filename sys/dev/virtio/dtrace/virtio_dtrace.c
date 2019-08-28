@@ -644,11 +644,15 @@ vtdtr_commit_adjustment(struct vtdtr_softc *sc)
 		free(pd, M_VTDTR);
 	}
 
-	vtdtr_pdsize = 1 << 16;
+	if (vtdtr_pdsize != (1 << 16)) {
+		vtdtr_pdsize = 1 << 16;
+		free(vtdtr_pds, M_VTDTR);
+		vtdtr_pds = malloc(sizeof(dtrace_probedesc_t *) * vtdtr_pdsize, M_VTDTR,
+		    M_WAITOK | M_ZERO);
+	} else
+		memset(vtdtr_pds, 0, sizeof(dtrace_probedesc_t *) * vtdtr_pdlen);
+
 	vtdtr_pdlen = 0;
-	free(vtdtr_pds, M_VTDTR);
-	vtdtr_pds = malloc(sizeof(dtrace_probedesc_t *) * vtdtr_pdsize, M_VTDTR,
-	    M_WAITOK | M_ZERO);
 
 	return (error);
 }
