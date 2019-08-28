@@ -295,7 +295,8 @@ vtdtr_enqueue_start_adjusting(size_t count, char *entries)
 }
 
 void
-vtdtr_enqueue_probeid_adjust(size_t count, char *entries, int id)
+vtdtr_enqueue_probeid_adjust(size_t count, char *entries, int id,
+			     char *prov, char *mod, char *func, char *name)
 {
 	struct vtdtr_event e;
 
@@ -304,6 +305,14 @@ vtdtr_enqueue_probeid_adjust(size_t count, char *entries, int id)
 	memcpy(e.args.p_adjust.vms, entries,
 	       DTRACEFILT_MAX*DTRACE_MAXFILTNAME);
 	e.args.p_adjust.id = id;
+	memcpy(e.args.p_adjust.prov, prov,
+	       DTRACE_PROVNAMELEN);
+	memcpy(e.args.p_adjust.mod, mod,
+	       DTRACE_MODNAMELEN);
+	memcpy(e.args.p_adjust.func, func,
+	       DTRACE_FUNCNAMELEN);
+	memcpy(e.args.p_adjust.name, name,
+	       DTRACE_NAMELEN);
 	vtdtr_enqueue(&e);
 }
 

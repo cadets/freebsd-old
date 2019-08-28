@@ -1,7 +1,7 @@
 #ifndef _SYS_VTDTR_H_
 #define _SYS_VTDTR_H_
 
-//#include <sys/dtrace.h>
+#include <sys/dtrace.h>
 
 #define VTDTR_MAXVMS       16
 #define VTDTR_VMNAMEMAX    256
@@ -35,6 +35,10 @@ struct vtdtr_event {
 			char vms[VTDTR_MAXVMS][VTDTR_VMNAMEMAX];
 			size_t count;
 			int id;
+			char prov[DTRACE_PROVNAMELEN];
+			char mod[DTRACE_MODNAMELEN];
+			char func[DTRACE_FUNCNAMELEN];
+			char name[DTRACE_NAMELEN];
 		} p_adjust;
 	} args;
 };
