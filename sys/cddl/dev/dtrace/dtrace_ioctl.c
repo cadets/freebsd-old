@@ -572,9 +572,6 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		return (0);
 	}
 	case DTRACEIOC_GO: {
-#ifdef VTDTR
-		struct vtdtr_event e;
-#endif
 		int rval;
 		processorid_t *cpuid = (processorid_t *) addr;
 
@@ -583,8 +580,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		rval = dtrace_state_go(state, cpuid);
 
 #ifdef VTDTR
-		e.type = VTDTR_EV_GO;
-		vtdtr_enqueue(&e);
+		vtdtr_enqueue_go();
 #endif
 
 		return (rval);
@@ -838,9 +834,6 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		return (0);
 	}
 	case DTRACEIOC_STOP: {
-#ifdef VTDTR
-		struct vtdtr_event e;
-#endif
 		int rval;
 		processorid_t *cpuid = (processorid_t *) addr;
 
@@ -851,17 +844,12 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_exit(&dtrace_lock);
 
 #ifdef VTDTR
-		e.type = VTDTR_EV_STOP;
-		vtdtr_enqueue(&e);
+		vtdtr_enqueue_stop();
 #endif
 
 		return (rval);
 	}
 	case DTRACEIOC_FILTER: {
-#ifdef VTDTR
-		struct vtdtr_event e;
-#endif
-
 		dtrace_machine_filter_t *in = (dtrace_machine_filter_t *) addr;
 		dtrace_machine_filter_t *cur = &state->dts_filter;
 		size_t i, j;
@@ -922,14 +910,14 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		}
 
 #ifdef VTDTR
-		e.type = VTDTR_EV_RECONF;
-		e.args.d_config.count = cur->dtfl_count;
-		memcpy(e.args.d_config.vms, cur->dtfl_entries,
-		    DTRACEFILT_MAX*DTRACE_MAXFILTNAME);
-		vtdtr_enqueue(&e);
+		vtdtr_enqueue_reconf(cur->dtfl_count, (char *)cur->dtfl_entries);
 #endif
 
 		mutex_exit(&dtrace_lock);
+
+		return (0);
+	}
+	case DTRACEIOC_PROBEID_ADJUST: {
 
 		return (0);
 	}

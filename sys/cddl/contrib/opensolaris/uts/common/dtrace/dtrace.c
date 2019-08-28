@@ -11898,9 +11898,6 @@ dtrace_ecb_enable(dtrace_ecb_t *ecb)
 	}
 
 	if (probe->dtpr_ecb == NULL) {
-#ifdef VTDTR
-		struct vtdtr_event e;
-#endif
 		dtrace_provider_t *prov = probe->dtpr_provider;
 
 		/*
@@ -11917,9 +11914,7 @@ dtrace_ecb_enable(dtrace_ecb_t *ecb)
 			    probe->dtpr_id, probe->dtpr_arg);
 
 #ifdef VTDTR
-		e.type = VTDTR_EV_INSTALL;
-		e.args.p_toggle.probeid = probe->dtpr_id;
-		vtdtr_enqueue(&e);
+		vtdtr_enqueue_install(probe->dtpr_id);
 #endif
 	} else {
 		/*
@@ -12575,9 +12570,6 @@ dtrace_ecb_disable(dtrace_ecb_t *ecb)
 	dtrace_sync();
 
 	if (probe->dtpr_ecb == NULL) {
-#ifdef VTDTR
-		struct vtdtr_event e;
-#endif
 		/*
 		 * That was the last ECB on the probe; clear the predicate
 		 * cache ID for the probe, disable it and sync one more time
@@ -12594,9 +12586,7 @@ dtrace_ecb_disable(dtrace_ecb_t *ecb)
 			    probe->dtpr_id, probe->dtpr_arg);
 		dtrace_sync();
 #ifdef VTDTR
-		e.type = VTDTR_EV_UNINSTALL;
-		e.args.p_toggle.probeid = probe->dtpr_id;
-		vtdtr_enqueue(&e);
+		vtdtr_enqueue_uninstall(probe->dtpr_id);
 #endif
 	} else {
 		/*

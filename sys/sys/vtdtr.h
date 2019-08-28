@@ -30,6 +30,12 @@ struct vtdtr_event {
 			char vms[VTDTR_MAXVMS][VTDTR_VMNAMEMAX];
 			size_t count;
 		} d_config;
+
+		struct {
+			char vms[VTDTR_MAXVMS][VTDTR_VMNAMEMAX];
+			size_t count;
+			int id;
+		} p_adjust;
 	} args;
 };
 

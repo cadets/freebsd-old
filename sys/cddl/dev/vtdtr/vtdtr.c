@@ -232,6 +232,93 @@ vtdtr_enqueue(struct vtdtr_event *e)
 	mtx_unlock(&qtree_mtx);
 }
 
+void
+vtdtr_enqueue_install(int id)
+{
+	struct vtdtr_event e;
+
+	e.type = VTDTR_EV_INSTALL;
+	e.args.p_toggle.probeid = id;
+	vtdtr_enqueue(&e);
+}
+
+void
+vtdtr_enqueue_uninstall(int id)
+{
+	struct vtdtr_event e;
+
+	e.type = VTDTR_EV_UNINSTALL;
+	e.args.p_toggle.probeid = id;
+	vtdtr_enqueue(&e);
+}
+
+void
+vtdtr_enqueue_reconf(size_t count, char *entries)
+{
+	struct vtdtr_event e;
+
+	e.type = VTDTR_EV_RECONF;
+	e.args.d_config.count = count;
+	memcpy(e.args.d_config.vms, entries,
+	       DTRACEFILT_MAX*DTRACE_MAXFILTNAME);
+	vtdtr_enqueue(&e);
+}
+
+void
+vtdtr_enqueue_go(void)
+{
+	struct vtdtr_event e;
+
+	e.type = VTDTR_EV_GO;
+	vtdtr_enqueue(&e);
+}
+
+void
+vtdtr_enqueue_stop(void)
+{
+	struct vtdtr_event e;
+
+	e.type = VTDTR_EV_STOP;
+	vtdtr_enqueue(&e);
+}
+
+void
+vtdtr_enqueue_start_adjusting(size_t count, char *entries)
+{
+	struct vtdtr_event e;
+
+	e.type = VTDTR_EV_START_ADJUSTING;
+	e.args.p_adjust.count = count;
+	memcpy(e.args.p_adjust.vms, entries,
+	       DTRACEFILT_MAX*DTRACE_MAXFILTNAME);
+	vtdtr_enqueue(&e);
+}
+
+void
+vtdtr_enqueue_probeid_adjust(size_t count, char *entries, int id)
+{
+	struct vtdtr_event e;
+
+	e.type = VTDTR_EV_PROBEID_ADJUST;
+	e.args.p_adjust.count = count;
+	memcpy(e.args.p_adjust.vms, entries,
+	       DTRACEFILT_MAX*DTRACE_MAXFILTNAME);
+	e.args.p_adjust.id = id;
+	vtdtr_enqueue(&e);
+}
+
+void
+vtdtr_enqueue_adjust_commit(size_t count, char *entries)
+{
+	struct vtdtr_event e;
+
+	e.type = VTDTR_EV_ADJUST_COMMIT;
+	e.args.p_adjust.count = count;
+	memcpy(e.args.p_adjust.vms, entries,
+	       DTRACEFILT_MAX*DTRACE_MAXFILTNAME);
+	vtdtr_enqueue(&e);
+}
+
 /*
  * FIXME: Make sure concurrency is fine here.
  */
