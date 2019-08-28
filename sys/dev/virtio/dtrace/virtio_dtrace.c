@@ -661,8 +661,11 @@ static int
 vtdtr_add_probedesc(dtrace_probedesc_t *pd)
 {
 	/*
-	 * FIXME TODO: Add a check that we're not overflowing.
+	 * FIXME: Checking overflow this way is kinda UB...
 	 */
+	if ((vtdtr_pdsize << 1) <= vtdtr_pdsize)
+		return (EOVERFLOW);
+
 	if (vtdtr_pdlen >= vtdtr_pdsize) {
 		size_t osize;
 		dtrace_probedesc_t **opds, **npds;
