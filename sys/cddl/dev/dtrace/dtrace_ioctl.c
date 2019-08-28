@@ -855,7 +855,6 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		size_t i, j;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_FILTER\n",__func__,__LINE__);
-		mutex_enter(&dtrace_lock);
 
 		/*
 		 * Check for overflows.
@@ -865,6 +864,8 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		if (cur->dtfl_count >= DTRACEFILT_MAX)
 			return (EINVAL);
+
+		mutex_enter(&dtrace_lock);
 
 		/*
 		 * Iterate over the input filter.
@@ -902,10 +903,14 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 					n = strlcpy(
 					    cur->dtfl_entries[cur->dtfl_count++],
 					    entry, DTRACE_MAXFILTNAME);
-					if (n >= DTRACE_MAXFILTNAME)
+					if (n >= DTRACE_MAXFILTNAME) {
+						mutex_exit(&dtrace_lock);
 						return (EOVERFLOW);
-				} else
+					}
+				} else {
+					mutex_exit(&dtrace_lock);
 					return (EDOOFUS);
+				}
 			}
 		}
 
@@ -918,6 +923,44 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		return (0);
 	}
 	case DTRACEIOC_PROBEID_ADJUST: {
+		dtrace_machine_filter_t *in = (dtrace_machine_filter_t *) addr;
+		dtrace_probe_t *pb;
+		size_t i, j;
+
+		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_PROBEID_ADJUST\n",__func__,__LINE__);
+		/*
+		 * Check for overflows.
+		 */
+		if (in->dtfl_count >= DTRACEFILT_MAX)
+			return (EINVAL);
+
+		mutex_enter(&dtrace_lock);
+
+#ifdef VTDTR
+		vtdtr_enqueue_start_adjusting(in->dtfl_count,
+					      (char *)in->dtfl_entries);
+
+		for (i = 0; i < dtrace_nprobes; i++) {
+			pb = dtrace_probes[i];
+			if (pb == NULL)
+				continue;
+
+			ASSERT(pb->dtpr_id == i);
+
+			vtdtr_enqueue_probeid_adjust(in->dtfl_count,
+						     (char *)in->dtfl_entries,
+						     pb->dtpr_id,
+						     pb->dtpr_provider->dtpv_name,
+						     pb->dtpr_mod,
+						     pb->dtpr_func,
+						     pb->dtpr_name);
+		}
+		vtdtr_enqueue_adjust_commit(in->dtfl_count,
+					    (char *)in->dtfl_entries);
+#endif
+
+		mutex_exit(&dtrace_lock);
+
 
 		return (0);
 	}

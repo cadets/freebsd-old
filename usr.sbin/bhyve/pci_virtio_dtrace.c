@@ -103,12 +103,20 @@ struct pci_vtdtr_probe_toggle_event {
 	char *dif; /* TODO */
 }__attribute__((packed));
 
+struct pci_vtdtr_probe_adjust_event {
+	char prov[DTRACE_PROVNAMELEN];
+	char mod[DTRACE_MODNAMELEN];
+	char func[DTRACE_FUNCNAMELEN];
+	char name[DTRACE_NAMELEN];
+}__attribute__((packed));
+
 struct pci_vtdtr_ctrl_pbevent {
-	uint32_t probe;
+	int probe;
 
 	union {
 		struct pci_vtdtr_probe_create_event probe_evcreate;
 		struct pci_vtdtr_probe_toggle_event probe_evtoggle;
+		struct pci_vtdtr_probe_adjust_event probe_evadjust;
 	} upbev;
 }__attribute__((packed));
 
@@ -660,9 +668,11 @@ pci_vtdtr_events(void *xsc)
 		switch (ev.type) {
 		case VTDTR_EV_INSTALL:
 			ctrl->event = VTDTR_DEVICE_PROBE_INSTALL;
+			ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
 			break;
 		case VTDTR_EV_UNINSTALL:
 			ctrl->event = VTDTR_DEVICE_PROBE_UNINSTALL;
+			ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
 			break;
 		case VTDTR_EV_GO:
 			ctrl->event = VTDTR_DEVICE_GO;
@@ -672,7 +682,7 @@ pci_vtdtr_events(void *xsc)
 			error = dthyve_conf(1 << VTDTR_EV_RECONF, 0);
 			assert(error == 0);
 			break;
-		case VTDTR_EV_RECONF:
+		case VTDTR_EV_RECONF: {
 			flags = 1 << VTDTR_EV_RECONF;
 			char *vm = vm_get_name(sc->vsd_vmctx);
 
@@ -689,14 +699,49 @@ pci_vtdtr_events(void *xsc)
 			error = dthyve_conf(flags, 0);
 			assert(error == 0);
 			break;
-		case VTDTR_EV_START_ADJUSTING:
+		}
+		case VTDTR_EV_START_ADJUSTING: {
+			char *vm;
+
+			vm = vm_get_name(sc->vsd_vmctx);
+			if (pci_vtdtr_find(vm, ev.args.p_adjust.vms,
+			    ev.args.p_adjust.count) != 0)
+				break;
+
 			ctrl->event = VTDTR_DEVICE_START_ADJUSTING;
 			break;
-		case VTDTR_EV_ADJUST_COMMIT:
+		}
+		case VTDTR_EV_ADJUST_COMMIT: {
+			char *vm;
+
+			vm = vm_get_name(sc->vsd_vmctx);
+			if (pci_vtdtr_find(vm, ev.args.p_adjust.vms,
+					   ev.args.p_adjust.count) != 0)
+				break;
+
 			ctrl->event = VTDTR_DEVICE_ADJUST_COMMIT;
 			break;
-		case VTDTR_EV_PROBEID_ADJUST:
+		}
+		case VTDTR_EV_PROBEID_ADJUST: {
+			char *vm;
+
+			vm = vm_get_name(sc->vsd_vmctx);
+			if (pci_vtdtr_find(vm, ev.args.p_adjust.vms,
+					   ev.args.p_adjust.count) != 0)
+				break;
+
 			ctrl->event = VTDTR_DEVICE_PROBEID_ADJUST;
+			ctrl->uctrl.probe_ev.probe = ev.args.p_adjust.id;
+			memcpy(ctrl->uctrl.probe_ev.upbev.probe_evadjust.prov,
+			       ev.args.p_adjust.prov, DTRACE_PROVNAMELEN);
+			memcpy(ctrl->uctrl.probe_ev.upbev.probe_evadjust.mod,
+			       ev.args.p_adjust.mod, DTRACE_MODNAMELEN);
+			memcpy(ctrl->uctrl.probe_ev.upbev.probe_evadjust.func,
+			       ev.args.p_adjust.func, DTRACE_FUNCNAMELEN);
+			memcpy(ctrl->uctrl.probe_ev.upbev.probe_evadjust.name,
+			       ev.args.p_adjust.name, DTRACE_NAMELEN);
+			break;
+		}
 		default:
 			/*
 			 * XXX: Meh.
@@ -704,7 +749,6 @@ pci_vtdtr_events(void *xsc)
 			assert(0);
 		}
 
-		ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
