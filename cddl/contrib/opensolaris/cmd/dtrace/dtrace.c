@@ -103,6 +103,7 @@ static int g_impatient;
 static int g_newline;
 #ifdef __FreeBSD__
 static int g_siginfo;
+static int g_adjust;
 #endif
 static int g_total;
 static int g_cflags;
@@ -159,42 +160,43 @@ usage(FILE *fp)
 	(void) fprintf(fp, "\t   action -> '{' D-statements '}'\n");
 
 	(void) fprintf(fp, "\n"
-	    "\t-32 generate 32-bit D programs and ELF files\n"
-	    "\t-64 generate 64-bit D programs and ELF files\n\n"
-	    "\t-a  claim anonymous tracing state\n"
-	    "\t-A  generate driver.conf(4) directives for anonymous tracing\n"
-	    "\t-b  set trace buffer size\n"
-	    "\t-c  run specified command and exit upon its completion\n"
-	    "\t-C  run cpp(1) preprocessor on script files\n"
-	    "\t-D  define symbol when invoking preprocessor\n"
-	    "\t-e  exit after compiling request but prior to enabling probes\n"
-	    "\t-f  enable or list probes matching the specified function name\n"
-	    "\t-F  coalesce trace output by function\n"
-	    "\t-G  generate an ELF file containing embedded dtrace program\n"
-	    "\t-g  output GraphViz Dot representation of script actions\n"
-	    "\t-h  generate a header file with definitions for static probes\n"
-	    "\t-H  print included files when invoking preprocessor\n"
-	    "\t-i  enable or list probes matching the specified probe id\n"
-	    "\t-I  add include directory to preprocessor search path\n"
-	    "\t-l  list probes matching specified criteria\n"
-	    "\t-L  add library directory to library search path\n"
-	    "\t-M  specify virtual-machine filters\n"
-	    "\t-m  enable or list probes matching the specified module name\n"
-	    "\t-n  enable or list probes matching the specified probe name\n"
-	    "\t-O  output format json|xml\n"
-	    "\t-o  set output file\n"
-	    "\t-p  grab specified process-ID and cache its symbol tables\n"
-	    "\t-P  enable or list probes matching the specified provider name\n"
-	    "\t-q  set quiet mode (only output explicitly traced data)\n"
-	    "\t-s  enable or list probes according to the specified D script\n"
-	    "\t-S  print D compiler intermediate code\n"
-	    "\t-U  undefine symbol when invoking preprocessor\n"
-	    "\t-v  set verbose mode (report stability attributes, arguments)\n"
-	    "\t-V  report DTrace API version\n"
-	    "\t-w  permit destructive actions\n"
-	    "\t-x  enable or modify compiler and tracing options\n"
-	    "\t-X  specify ISO C conformance settings for preprocessor\n"
-	    "\t-Z  permit probe descriptions that match zero probes\n");
+	    "\t-32       generate 32-bit D programs and ELF files\n"
+	    "\t-64       generate 64-bit D programs and ELF files\n\n"
+	    "\t--adjust  adjust probe IDs in the specified guests\n"
+	    "\t-a        claim anonymous tracing state\n"
+	    "\t-A        generate driver.conf(4) directives for anonymous tracing\n"
+	    "\t-b        set trace buffer size\n"
+	    "\t-c        run specified command and exit upon its completion\n"
+	    "\t-C        run cpp(1) preprocessor on script files\n"
+	    "\t-D        define symbol when invoking preprocessor\n"
+	    "\t-e        exit after compiling request but prior to enabling probes\n"
+	    "\t-f        enable or list probes matching the specified function name\n"
+	    "\t-F        coalesce trace output by function\n"
+	    "\t-G        generate an ELF file containing embedded dtrace program\n"
+	    "\t-g        output GraphViz Dot representation of script actions\n"
+	    "\t-h        generate a header file with definitions for static probes\n"
+	    "\t-H        print included files when invoking preprocessor\n"
+	    "\t-i        enable or list probes matching the specified probe id\n"
+	    "\t-I        add include directory to preprocessor search path\n"
+	    "\t-l        list probes matching specified criteria\n"
+	    "\t-L        add library directory to library search path\n"
+	    "\t-m        enable or list probes matching the specified module name\n"
+	    "\t-M        specify virtual-machine filters\n"
+	    "\t-n        enable or list probes matching the specified probe name\n"
+	    "\t-o        set output file\n"
+	    "\t-O        output format json|xml\n"
+	    "\t-p        grab specified process-ID and cache its symbol tables\n"
+	    "\t-P        enable or list probes matching the specified provider name\n"
+	    "\t-q        set quiet mode (only output explicitly traced data)\n"
+	    "\t-s        enable or list probes according to the specified D script\n"
+	    "\t-S        print D compiler intermediate code\n"
+	    "\t-U        undefine symbol when invoking preprocessor\n"
+	    "\t-v        set verbose mode (report stability attributes, arguments)\n"
+	    "\t-V        report DTrace API version\n"
+	    "\t-w        permit destructive actions\n"
+	    "\t-x        enable or modify compiler and tracing options\n"
+	    "\t-X        specify ISO C conformance settings for preprocessor\n"
+	    "\t-Z        permit probe descriptions that match zero probes\n");
 
 	return (E_USAGE);
 }
@@ -1385,41 +1387,67 @@ installsighands(void)
 }
 
 static void
+strfilter_to_mfilter(char *filt, dtrace_machine_filter_t *out)
+{
+	char *f, *token;
+	size_t n;
+	char *list = strdup(filt);
+
+	token = NULL;
+	f = list;
+	while ((token = strsep(&f, ",")) != NULL) {
+		if (out->dtfl_count >= DTRACEFILT_MAX)
+			dfatal("Too many arguments\n");
+	        n = strlcpy((char*) &out->dtfl_entries[out->dtfl_count++],
+			    token, DTRACE_MAXFILTNAME);
+		if (n >= DTRACE_MAXFILTNAME)
+			dfatal("Name too long: %s", token);
+	}
+
+	free(list);
+}
+
+static void
 filter_machines(char *filt)
 {
 	dtrace_machine_filter_t out;
-	char *list = strdup(filt);
-	char *f, *token;
-	size_t n, i;
 	int error;
 
 	memset(&out, 0, sizeof(dtrace_machine_filter_t));
-	f = NULL;
-	token = NULL;
 	error = 0;
-	n = 0;
 
 	if (filt == NULL)
 		return;
 
-	f = list;
-	while ((token = strsep(&f, ",")) != NULL) {
-		if (out.dtfl_count >= DTRACEFILT_MAX)
-			dfatal("Too many arguments\n");
-	        n = strlcpy((char*) &out.dtfl_entries[out.dtfl_count++],
-		    token, DTRACE_MAXFILTNAME);
-		if (n >= DTRACE_MAXFILTNAME)
-			dfatal("Name too long: %s", token);
-	}
+	strfilter_to_mfilter(filt, &out);
 
 	if (out.dtfl_count > 0) {
 		error = dt_filter(g_dtp, &out);
 	}
 
 	if (error)
-		dfatal("Can't filter: %d\n", error);
+		dfatal("Can't filter: %s\n", strerror(error));
+}
 
-	free(list);
+static void
+adjust_probeids(char *filt)
+{
+	dtrace_machine_filter_t out;
+	int error;
+
+	memset(&out, 0, sizeof(dtrace_machine_filter_t));
+	error = 0;
+
+	if (filt == NULL)
+		return;
+
+	strfilter_to_mfilter(filt, &out);
+
+	if (out.dtfl_count > 0)
+		error = dt_adjust(g_dtp, &out);
+
+	if (error)
+		dfatal("Can't adjust probe IDs: %s\n", strerror(error));
 }
 
 int
@@ -1498,6 +1526,16 @@ main(int argc, char *argv[])
 				}
 				g_oflags &= ~DTRACE_O_ILP32;
 				g_oflags |= DTRACE_O_LP64;
+				break;
+
+			case '-':
+				if (strcmp(optarg, "adjust") != 0) {
+					(void) fprintf(stderr,
+						       "%s: illegal option -- -%s\n",
+						       argv[0], optarg);
+					return (usage(stderr));
+				}
+				g_adjust = 1;
 				break;
 
 			case 'a':
@@ -1669,6 +1707,17 @@ main(int argc, char *argv[])
 
 	if (machine_filter != NULL) {
 		filter_machines(machine_filter);
+	}
+
+	if (g_adjust == 1) {
+		/*
+		 * FIXME: We could consider machine_filter being NULL as adjust
+		 *        probes on _all_ VMs. For now, we just require that it
+		 *        is not NULL.
+		 */
+		if (machine_filter == NULL)
+			dfatal("machine_filter is NULL while trying to adjust probes.");
+		adjust_probeids(machine_filter);
 		free(machine_filter);
 	}
 

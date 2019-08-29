@@ -35,6 +35,8 @@
 
 #include <sys/_msgid.h>
 
+#ifdef _KERNEL
+
 /* Forward definitions: */
 struct mbuf;
 struct trapframe;
@@ -178,6 +180,8 @@ size_t	kdtrace_thread_size(void);
  */
 uint64_t	dtrace_gethrtime(void);
 uint64_t	dtrace_gethrestime(void);
+
+#endif
 
 #define	DTRACE_PROVNAMELEN	64
 #define	DTRACE_MODNAMELEN	64

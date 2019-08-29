@@ -1162,3 +1162,10 @@ dt_filter(dtrace_hdl_t *dtp, dtrace_machine_filter_t *out)
 
 	return (dt_ioctl(dtp, DTRACEIOC_FILTER, out));
 }
+
+int
+dt_adjust(dtrace_hdl_t *dtp, dtrace_machine_filter_t *out)
+{
+
+	return (dt_ioctl(dtp, DTRACEIOC_PROBEID_ADJUST, out));
+}

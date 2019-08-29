@@ -602,6 +602,7 @@ extern struct dt_node *dt_compile_sugar(dtrace_hdl_t *,
     struct dt_node *);
 
 extern int dt_filter(dtrace_hdl_t *, dtrace_machine_filter_t *);
+extern int dt_adjust(dtrace_hdl_t *, dtrace_machine_filter_t *);
 
 
 /*
