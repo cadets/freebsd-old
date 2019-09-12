@@ -75,6 +75,7 @@ struct client {
 	struct proc *ddtrace_pid;
 	struct dlog_handle *ddtrace_dlog_handle;
 	dtrace_state_t *ddtrace_state;
+	processorid_t ddtrace_cpu;
 	int ddtrace_exit;
 };
 
@@ -86,7 +87,7 @@ MALLOC_DEFINE(M_DDTRACE, "ddtrace", "DDTrace memory");
 static int ddtrace_event_handler(struct module *, int, void *);
 static void ddtrace_thread(void *);
 
-static void ddtrace_buffer_switch(dtrace_state_t *, struct dlog_handle *);
+static void ddtrace_buffer_switch(struct client *);
 static int ddtrace_persist_metadata(dtrace_state_t *, struct dlog_handle *);
 static void ddtrace_persist_trace(dtrace_state_t *, struct dlog_handle *,
     dtrace_bufdesc_t *);
@@ -252,11 +253,14 @@ ddtrace_stop(struct clients *ddtrace_hashtbl)
 }
 
 static void
-ddtrace_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
+ddtrace_buffer_switch(struct client *k)
 {
 	caddr_t cached;
 	dtrace_bufdesc_t desc;
 	dtrace_buffer_t *buf;
+	dtrace_state_t *state = k->ddtrace_state;
+	struct dlog_handle *handle = k->ddtrace_dlog_handle;
+	processorid_t cpu = k->ddtrace_cpu;
 
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
 	DL_ASSERT(handle != NULL, ("DLog handle cannot be NULL\n"));
@@ -268,13 +272,11 @@ ddtrace_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 	 * Persisting the buffer may involving splitting into portions portions
 	 * on a record boundary.
 	 */
-	for (int cpu = 0; cpu < mp_ncpus; cpu++) {
+	for (int cpu_it = 0; cpu_it < mp_ncpus; cpu_it++) {
 
-		/* NOTE:
-		 * Unlike in the BUFSNAP ioctl it is unnecessary to acquire
-		 * dtrace_lock.
+		/* NOTE: Unlike in the BUFSNAP ioctl it is unnecessary to
+		 * acquire dtrace_lock. Really this seems dubious
 		 */
-
 		buf = &state->dts_buffer[cpu];
 		DL_ASSERT(
 		    (buf->dtb_flags & (DTRACEBUF_RING | DTRACEBUF_FILL)) == 0,
@@ -305,16 +307,20 @@ ddtrace_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 
 		desc.dtbd_data = buf->dtb_xamot;
 		desc.dtbd_size = buf->dtb_xamot_offset;
+		DLOGTR2(PRIO_LOW, "(%d) buf->dtb_xamot_offset = %zu\n", k->ddtrace_cpu, buf->dtb_xamot_offset);
 		desc.dtbd_drops = buf->dtb_xamot_drops;
 		desc.dtbd_errors = buf->dtb_xamot_errors;
 		desc.dtbd_oldest = 0;
 		desc.dtbd_timestamp = buf->dtb_switched;
-
+		
 		/* If the buffer contains records persist them to the
 		 * distributed log.
 		 */
 		if (desc.dtbd_size != 0)
 			ddtrace_persist_trace(state, handle, &desc);
+
+		/* Next CPU to process. */
+		cpu = (cpu +1) % mp_ncpus; 
 	}
 }
 
@@ -330,7 +336,7 @@ ddtrace_thread(void *arg)
 	 * buffers.
 	 */
 	if (ddtrace_persist_metadata(k->ddtrace_state,
-	    k->ddtrace_dlog_handle)) {
+	    k->ddtrace_dlog_handle) != 0) {
 
 		DLOGTR0(PRIO_HIGH, "Failed persisting metadata.\n");
 		return;
@@ -360,16 +366,14 @@ ddtrace_thread(void *arg)
 		k->ddtrace_state->dts_alive = dtrace_gethrtime();
 
 		/* Switch the buffer and write the contents to DLog. */ 
-		ddtrace_buffer_switch(k->ddtrace_state,
-		    k->ddtrace_dlog_handle);
+		ddtrace_buffer_switch(k);
 	}
 
 	/* Switch the buffer and write the contetnts to DLog before exiting.
 	 * This ensure that the userspace DTrace process recieves an
 	 * empty buffer on termination.
 	 */ 
-	ddtrace_buffer_switch(k->ddtrace_state,
-	     k->ddtrace_dlog_handle);
+	ddtrace_buffer_switch(k);
 
 	DLOGTR0(PRIO_NORMAL, "DDTrace thread exited successfully.\n");
 	kthread_exit();
@@ -448,16 +452,13 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	}
 
 	mutex_enter(&dtrace_lock);
-	DL_ASSERT(state->dtnecbs > 0 && state->dts_ecbs != NULL,
+	DL_ASSERT(state->dts_necbs > 0 && state->dts_ecbs != NULL,
 	    ("dtrace ecb state is invalid"));
 	for (dtrace_epid_t epid = 1; epid <= state->dts_epid; epid++) {
 
-		DLOGTR1(PRIO_LOW, "Persisting dtrace eprobe (%d) metadata\n",
-		    epid);
-
 		DL_ASSERT(state->dts_ecbs > 0 && state != NULL,
 		    ("DTace ECB state is invalid"));
-		DL_ASSERT((ecb = state->dts_ecbs[id - 1]) == NULL ||
+		DL_ASSERT((ecb = state->dts_ecbs[epid - 1]) == NULL ||
 		    ecb->dte_epid == epid, ("DTrace ECBS state is inconsitent"));
 
 		ecb = state->dts_ecbs[epid - 1];
@@ -548,7 +549,6 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 				free(buf, M_DDTRACE);
 				return -1;
 			}
-
 			free(buf, M_DDTRACE);
 		}
 	}
@@ -752,6 +752,7 @@ ddtrace_open(void *arg, struct dtrace_state *state)
 	bzero(k, sizeof(struct client));
 	mtx_init(&k->ddtrace_mtx, "ddtrace mtx", DDTRACE_NAME, MTX_DEF);
 	cv_init(&k->ddtrace_cv, "ddtrace cv");
+	k->ddtrace_cpu = curcpu;
 	k->ddtrace_state = state;
 	k->ddtrace_exit = 0;
 	k->ddtrace_dlog_handle = handle;
