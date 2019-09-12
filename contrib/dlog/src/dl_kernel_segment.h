@@ -37,15 +37,14 @@
 #ifndef _DL_KERNEL_SEGMENT_H
 #define _DL_KERNEL_SEGMENT_H
 
-#include <sys/file.h>
-
 #include "dl_segment.h"
+
+#include <dev/dlog/dlog.h>
 
 struct dl_kernel_segment;
 
-extern int dl_kernel_segment_from_desc(struct dl_segment **,
-    struct dl_segment_desc *);
-extern struct file* dl_kernel_segment_get_log(struct dl_segment *);
-extern int dl_kernel_segment_sync(struct dl_segment *);
+extern int dl_kernel_segment_from_desc(struct dl_kernel_segment **,
+    char *, char *, uint64_t, struct dl_segment_desc *);
+extern void dl_kernel_segment_delete(struct dl_kernel_segment *);
 
 #endif

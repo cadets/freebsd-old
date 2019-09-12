@@ -56,11 +56,7 @@
 
 struct dl_correlation_id
 {
-#ifdef __APPLE__
-	atomic_int_least32_t val;
-#else
-	volatile uint32_t val;
-#endif
+	uint32_t val;
 };
 
 int
@@ -72,17 +68,10 @@ dl_correlation_id_new(struct dl_correlation_id **self)
        
 	cid = (struct dl_correlation_id *)
 	    dlog_alloc(sizeof(struct dl_correlation_id));
-#ifdef _KERNEL
 	DL_ASSERT(cid != NULL, ("Failed to allocate Correlation Id."));
-	{
-#else
 	if (cid != NULL) {
-#endif
-#ifdef __APPLE__
-		atomic_init(&cid->val, 0);
-#else
 		cid->val = 0;
-#endif
+
 		*self = cid;
 		return 0;
 	}
@@ -90,17 +79,12 @@ dl_correlation_id_new(struct dl_correlation_id **self)
 	return -1;
 }
 
-int32_t
+void
 dl_correlation_id_inc(struct dl_correlation_id * self)
 {
 	DL_ASSERT(self != NULL, ("Correlation ID cannot be NULL"));
 
-#ifdef __APPLE__
-	return atomic_fetch_add(&self->val, 1);
-#else
-	atomic_add_32(&self->val, 1);
-	return 0;
-#endif
+	self->val++;
 }
 
 int32_t
@@ -108,11 +92,7 @@ dl_correlation_id_val(struct dl_correlation_id *self)
 {
 	DL_ASSERT(self != NULL, ("Correlation ID cannot be NULL"));
 
-#ifdef __APPLE__
-	return atomic_load(&self->val);
-#else
-	return atomic_load_32(&self->val);
-#endif
+	return self->val; 
 }
 
 void

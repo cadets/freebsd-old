@@ -34,6 +34,7 @@
  *
  */
 
+#include <sys/dnv.h>
 #include <sys/types.h>
 #include <machine/atomic.h>
 #include <sys/mman.h>
@@ -43,7 +44,10 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <dev/dlog/dlog.h>
+
 #include "dl_assert.h"
+#include "dl_config.h"
 #include "dl_memory.h"
 #include "dl_producer_stats.h"
 #include "dl_protocol.h"
@@ -77,6 +81,8 @@ struct dl_producer_stats {
 	int dlps_fd;
 };
 
+extern nvlist_t *dlogd_props;
+
 static inline void
 check_integrity(struct dl_producer_stats const * const self)
 {
@@ -85,11 +91,13 @@ check_integrity(struct dl_producer_stats const * const self)
 }
 
 int
-dl_producer_stats_new(struct dl_producer_stats **self, char *path,
-    struct sbuf *topic_name)
+dl_producer_stats_new(struct dl_producer_stats **self,
+    char *topic_name)
+    //struct sbuf *topic_name)
 {
 	struct dl_producer_stats *stats;
 	struct sbuf *stats_path;
+	const char *path;
 
 	DL_ASSERT(self != NULL, ("ProducerStats instance cannot be NULL."));
 
@@ -97,8 +105,11 @@ dl_producer_stats_new(struct dl_producer_stats **self, char *path,
 	    sizeof(struct dl_producer_stats));
 
 	/* Open a memory mapped file for the Producer stats. */
+	path = dnvlist_get_string(dlogd_props,
+	    DL_CONF_LOG_PATH, DL_DEFAULT_LOG_PATH);
+
 	stats_path = sbuf_new_auto();
-	sbuf_printf(stats_path, "%s/%s/stats", path, sbuf_data(topic_name)); 
+	sbuf_printf(stats_path, "%s/%s/stats", path, topic_name);
 	sbuf_finish(stats_path);
 	stats->dlps_fd = open(sbuf_data(stats_path),
 	    O_RDWR | O_APPEND | O_CREAT, 0666);

@@ -37,56 +37,55 @@
 #ifndef _DL_PRODUCE_REQUEST_H
 #define _DL_PRODUCE_REQUEST_H
 
-#include <sys/types.h>
-#include <sys/queue.h>
-
-#ifdef _KERNEL
-#include <sys/sbuf.h>
-#else
-#include <sys/sbuf.h>
-#endif
-
 #include "dl_bbuf.h"
 #include "dl_message_set.h"
 #include "dl_request.h"
 
 enum dl_required_acks {
-	DL_NO_ACKS = -1,
-	DL_LEADER_ACKS = 0,
-	DL_ISR_ACKS = 1,
+	DL_NO_ACKS = 0,
+	DL_LEADER_ACKS = 1,
+	DL_ISR_ACKS = -1,
 };
 typedef enum dl_required_acks dl_required_acks;
 
-SLIST_HEAD(dl_produce_request_topics, dl_produce_request_topic);
+struct dl_produce_request;
+struct dl_produce_request_topic;
+struct dl_produce_request_partition;
 
-struct dl_produce_request_partition {
-	struct dl_message_set *dlprp_message_set;
-	int32_t dlprp_partition;
-};
+typedef void (*dl_produce_request_topic_callback)(
+    struct dl_produce_request_topic *, void *);
+typedef void (*dl_produce_request_partition_callback)(
+    struct dl_produce_request_partition *, void *);
 
-struct dl_produce_request_topic {
-	SLIST_ENTRY(dl_produce_request_topic) dlprt_entries;
-	struct sbuf *dlprt_topic_name;
-	int32_t dlprt_npartitions;
-	struct dl_produce_request_partition dlprt_partitions[1];
-};
-
-struct dl_produce_request {
-	struct dl_produce_request_topics dlpr_topics;
-	int32_t dlpr_timeout;
-	int32_t dlpr_ntopics;
-	int16_t dlpr_required_acks;
-};
-
-extern int dl_produce_request_new(struct dl_request **, const int32_t,
-    struct sbuf *, dl_required_acks, int32_t, struct sbuf *, struct dl_message_set *);
-extern int dl_produce_request_new_nomsg(struct dl_request **,
-    const int32_t, struct sbuf *, dl_required_acks, int32_t, struct sbuf *);
+extern int dl_produce_request_new(struct dl_produce_request **, const int32_t,
+    struct sbuf *, dl_required_acks, int32_t, char *, struct dl_message_set *);
+extern int dl_produce_request_new_nomsg(struct dl_produce_request **,
+    const int32_t, struct sbuf *, dl_required_acks, int32_t, char *);
 extern void dl_produce_request_delete(struct dl_produce_request *);
 
 extern int dl_produce_request_decode(struct dl_produce_request **,
     struct dl_bbuf *);
-extern int dl_produce_request_encode(struct dl_produce_request const * const,
-    struct dl_bbuf *);
+extern int dl_produce_request_get_singleton_topic(struct dl_produce_request *,
+    struct dl_produce_request_topic **);
+
+extern int32_t dl_produce_request_get_timeout(struct dl_produce_request *);
+extern dl_required_acks dl_produce_request_get_required_acks(
+    struct dl_produce_request *);
+
+extern void dl_produce_request_topic_foreach(struct dl_produce_request *,
+    dl_produce_request_topic_callback, void *);
+extern struct sbuf * dl_produce_request_topic_get_name(
+    struct dl_produce_request_topic *);
+extern int dl_produce_request_topic_get_singleton_partition(
+    struct dl_produce_request_topic *,
+    struct dl_produce_request_partition **);
+
+extern void dl_produce_request_partition_foreach(
+    struct dl_produce_request_topic *, dl_produce_request_partition_callback,
+    void *);
+extern int32_t dl_produce_request_partition_get_num(
+    struct dl_produce_request_partition *);
+extern struct dl_message_set * dl_produce_request_partition_get_message_set(
+    struct dl_produce_request_partition *);
 
 #endif

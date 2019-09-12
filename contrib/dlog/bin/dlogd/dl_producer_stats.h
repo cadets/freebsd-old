@@ -44,8 +44,7 @@
 
 struct dl_producer_stats;
 
-extern int dl_producer_stats_new(struct dl_producer_stats **, char *,
-    struct sbuf *);
+extern int dl_producer_stats_new(struct dl_producer_stats **, char *);
 extern void dl_producer_stats_delete(struct dl_producer_stats *);
 
 extern void dlps_set_rtt(struct dl_producer_stats *, int32_t);

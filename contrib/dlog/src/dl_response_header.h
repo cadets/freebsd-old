@@ -34,28 +34,27 @@
  *
  */
 
-#ifndef _DL_RECORD_BATCH_H
-#define _DL_RECORD_BATCH_H
+#ifndef _DL_RESPONSE_HEADER_H
+#define _DL_RESPONSE_HEADER_H
 
+#ifdef _KERNEL
 #include <sys/types.h>
+#else
+#include <stdint.h>
+#endif
 
 #include "dl_bbuf.h"
-#include "dl_record.h"
 
-struct dl_record_batch;
+struct dl_response_header;
 
-extern int dl_record_batch_new(struct dl_record_batch **);
-extern void dl_record_batch_delete(struct dl_record_batch *);
+extern int dl_response_header_new(struct dl_response_header **, int32_t);
+extern void dl_response_header_delete(struct dl_response_header *);
 
-extern int dl_record_batch_add_record(struct dl_record_batch *,
-    struct dl_record *);
-extern size_t dl_record_batch_get_size(struct dl_record_batch *);
-
-extern int dl_record_batch_decode(struct dl_record_batch **,
+extern int dl_response_header_decode(struct dl_response_header **,
     struct dl_bbuf *);
-extern int dl_record_batch_encode(struct dl_record_batch const *,
-    struct dl_bbuf **);
-extern int dl_record_batch_encode_into(struct dl_record_batch const *,
-    struct dl_bbuf *);
+extern int dl_response_header_encode(
+    struct dl_response_header const * const, struct dl_bbuf * const);
+extern int32_t dl_response_header_get_correlation_id(
+    struct dl_response_header *);
 
 #endif

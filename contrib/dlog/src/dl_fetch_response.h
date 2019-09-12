@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -48,9 +48,6 @@
 
 #include "dl_bbuf.h"
 #include "dl_message_set.h"
-#include "dl_response.h"
-
-struct dl_response;
 
 SLIST_HEAD(dl_fetch_response_topics, dl_fetch_response_topic);
 
@@ -74,11 +71,11 @@ struct dl_fetch_response {
 	int32_t dlfr_throttle_time;
 };
 
-extern int dl_fetch_response_new(struct dl_response **, const int32_t,
+extern int dl_fetch_response_new(struct dl_fetch_response **, const int32_t,
     struct sbuf *, int16_t, int64_t, struct dl_message_set *);
 extern void dl_fetch_response_delete(struct dl_fetch_response *);
 
-extern int dl_fetch_response_decode(struct dl_response **, struct dl_bbuf *);
+extern int dl_fetch_response_decode(struct dl_fetch_response **, struct dl_bbuf *);
 extern int dl_fetch_response_encode(struct dl_fetch_response *,
     struct dl_bbuf *);
 

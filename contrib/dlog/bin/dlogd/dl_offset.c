@@ -62,7 +62,7 @@ dl_offset_assert_intergity(struct dl_offset *offset)
 }
 
 int
-dl_offset_new(struct dl_offset **self, struct sbuf *path_name)
+dl_offset_new(struct dl_offset **self, char *path_name)
 {
 	struct dl_offset *offset;
 	struct sbuf *offset_name;
@@ -84,7 +84,7 @@ dl_offset_new(struct dl_offset **self, struct sbuf *path_name)
 
 	/* Construct the path for the Offset file */
 	offset_name = sbuf_new_auto();
-	sbuf_printf(offset_name, "%s/offset", sbuf_data(path_name));
+	sbuf_printf(offset_name, "%s/offset", path_name);
 	sbuf_finish(offset_name);
 
 	fd = open(sbuf_data(offset_name), O_RDWR | O_CREAT, 0666);
@@ -210,7 +210,7 @@ dl_offset_inc(struct dl_offset *self)
 }
 
 int32_t
-dl_offset_val(struct dl_offset *self)
+dl_offset_get_val(struct dl_offset *self)
 {
 	uint32_t value;
 	int rc;
