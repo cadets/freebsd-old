@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -37,12 +37,35 @@
 #ifndef _DLOG_H
 #define _DLOG_H
 
+#include <sys/types.h>
 #include <sys/ioccom.h>
-	
-#define DLOGIOC_PRODUCER _IOWR('d', 1, struct dl_client_config)
-#define DLOGIOC_ADDTOPICPART _IOWR('d', 2, struct dl_client_config)
-#define DLOGIOC_DELTOPICPART _IOWR('d', 3, struct dl_client_config)
-#define DLOGIOC_ADDSEG _IOWR('d', 4, struct dl_client_config)
-#define DLOGIOC_DELSEG _IOWR('d', 5, struct dl_client_config)
+
+#define DL_MAX_TOPIC_NAME_LEN 249
+
+struct dl_client_config_desc {
+	void * dlcc_packed_nvlist;
+	size_t dlcc_packed_nvlist_len;
+};
+
+struct dl_segment_desc {
+	uint64_t dlsd_base_offset; /* Base offset of the segment. */
+	uint32_t dlsd_offset; /* Offset within the segment. */
+};
+
+struct dl_topic_desc {
+	struct dl_client_config_desc dltd_conf;
+	struct dl_segment_desc dltd_active_seg;
+	char dltd_name[DL_MAX_TOPIC_NAME_LEN]; /* Name of the topic. */
+};
+
+struct dl_topics_desc {
+	size_t dltsd_ntopics;
+	struct dl_topic_desc dltsd_topic_desc[1];
+};
+
+#define DLOGIOC_ADDTOPICPART _IOW('d', 1, struct dl_topic_desc *)
+#define DLOGIOC_DELTOPICPART _IOW('d', 2, struct dl_topic_desc *)
+#define DLOGIOC_GETTOPICS _IOWR('d', 3, struct dl_topics_desc *)
+#define DLOGIOC_PRODUCER _IOW('d', 4, struct dl_client_config_desc *)
 
 #endif

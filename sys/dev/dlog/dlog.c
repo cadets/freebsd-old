@@ -601,7 +601,6 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 	}
 }
 
-/* Why are these commented out? */
 static void
 dl_client_close(void *arg)
 {
