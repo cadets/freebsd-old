@@ -87,12 +87,13 @@ typedef int model_t;
 #define	DTRACE_MAXFILTNAME	256
 
 #define	DTRACE_KONNAMELEN	64
+#define DTRACE_MACHINENAMELEN   64
 #define	DTRACE_PROVNAMELEN	64
 #define	DTRACE_MODNAMELEN	64
 #define	DTRACE_FUNCNAMELEN	192
 #define	DTRACE_NAMELEN		64
-#define	DTRACE_FULLNAMELEN	(DTRACE_PROVNAMELEN + DTRACE_MODNAMELEN + \
-				DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 4)
+#define	DTRACE_FULLNAMELEN	(DTRACE_MACHINENAMELEN + DTRACE_PROVNAMELEN + \
+				 DTRACE_MODNAMELEN + DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 4)
 #define	DTRACE_ARGTYPELEN	128
 
 typedef uint32_t dtrace_id_t;		/* probe identifier */
@@ -106,7 +107,8 @@ struct dtvirt_args;
 
 typedef enum dtrace_probespec {
 	DTRACE_PROBESPEC_NONE = -1,
-	DTRACE_PROBESPEC_PROVIDER = 0,
+	DTRACE_PROBESPEC_MACHINE = 0,
+	DTRACE_PROBESPEC_PROVIDER,
 	DTRACE_PROBESPEC_MOD,
 	DTRACE_PROBESPEC_FUNC,
 	DTRACE_PROBESPEC_NAME
@@ -1048,11 +1050,12 @@ typedef struct dtrace_difo {
 struct dtrace_predicate;
 
 typedef struct dtrace_probedesc {
-	dtrace_id_t dtpd_id;			/* probe identifier */
-	char dtpd_provider[DTRACE_PROVNAMELEN]; /* probe provider name */
-	char dtpd_mod[DTRACE_MODNAMELEN];	/* probe module name */
-	char dtpd_func[DTRACE_FUNCNAMELEN];	/* probe function name */
-	char dtpd_name[DTRACE_NAMELEN];		/* probe name */
+	dtrace_id_t dtpd_id;			  /* probe identifier */
+	char dtpd_machine[DTRACE_MACHINENAMELEN]; /* probe machine name */
+	char dtpd_provider[DTRACE_PROVNAMELEN];   /* probe provider name */
+	char dtpd_mod[DTRACE_MODNAMELEN];	  /* probe module name */
+	char dtpd_func[DTRACE_FUNCNAMELEN];	  /* probe function name */
+	char dtpd_name[DTRACE_NAMELEN];		  /* probe name */
 } dtrace_probedesc_t;
 
 typedef struct dtrace_repldesc {
