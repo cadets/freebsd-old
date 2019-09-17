@@ -1610,6 +1610,7 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 	ssize_t stroff;
 	uint_t op;
 
+	fprintf(stderr, "%s: dep->dn_op = %d, looking for %d\n", __func__, dnp->dn_op, DT_TOK_DEREF);
 	switch (dnp->dn_op) {
 	case DT_TOK_COMMA:
 		dt_cg_node(dnp->dn_left, dlp, drp);
@@ -1819,10 +1820,21 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		dt_cg_node(dnp->dn_child, dlp, drp);
 		dnp->dn_reg = dnp->dn_child->dn_reg;
 
+		fprintf(stderr, "%s: dt_node_is_dynamic = %d\n", __func__, dt_node_is_dynamic(dnp->dn_child));
 		if (dt_node_is_dynamic(dnp->dn_child)) {
 			int reg;
 			idp = dt_node_resolve(dnp->dn_child, DT_IDENT_XLPTR);
 			assert(idp != NULL);
+
+			if (idp->di_name != NULL)
+				fprintf(stderr, "idp->di_name = %s\n", idp->di_name);
+			else
+				fprintf(stderr, "idp->di_name = NULL\n");
+
+			fprintf(stderr, "idp->di_kind = %u\n", idp->di_kind);
+			fprintf(stderr, "idp->di_flags = %u\n", idp->di_flags);
+			fprintf(stderr, "idp->di_id = %u\n", idp->di_id);
+
 			reg = dt_cg_xlate_expand(dnp, idp, dlp, drp);
 
 			dt_regset_free(drp, dnp->dn_child->dn_reg);
@@ -1841,6 +1853,8 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 
 			instr = DIF_INSTR_LOAD(dt_cg_load(dnp, ctfp,
 			    dnp->dn_type), dnp->dn_reg, dnp->dn_reg);
+
+			fprintf(stderr, "instr = (%d, %d, %d)\n", DIF_INSTR_OP(instr), DIF_INSTR_R1(instr), DIF_INSTR_RD(instr));
 
 			dnp->dn_flags &= ~DT_NF_USERLAND;
 			dnp->dn_flags |= ubit;
@@ -1983,6 +1997,8 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 			 * bits below after we generate the appropriate load.
 			 */
 			dt_cg_setx(dlp, reg, m.ctm_offset / NBBY);
+
+			fprintf(stderr, "%s: SETX r%d %lx\n", __func__, reg, m.ctm_offset / NBBY);
 
 			instr = DIF_INSTR_FMT(DIF_OP_ADD,
 			    dnp->dn_left->dn_reg, reg, dnp->dn_left->dn_reg);
