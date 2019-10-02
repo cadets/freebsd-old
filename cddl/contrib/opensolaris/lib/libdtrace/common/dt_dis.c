@@ -181,6 +181,20 @@ dt_dis_setx(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
 }
 
 static void
+dt_dis_usetx(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+{
+	uint_t symptr = DIF_INSTR_SYMBOL(in);
+
+	(void) fprintf(fp, "%-4s DT_SYMBOL[%u], %%r%u", name,
+	    symptr, DIF_INSTR_RD(in));
+
+	/*
+	 * TODO: Name the symbol, we need to keep some kind of symbol table
+	 *       somewhere... Perhaps in dtrace_difo_t? Meh.
+	 */
+}
+
+static void
 dt_dis_sets(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
 {
 	uint_t strptr = DIF_INSTR_STRING(in);
@@ -442,6 +456,9 @@ dt_dis(const dtrace_difo_t *dp, FILE *fp)
 		{ "scmp_hg", dt_dis_cmp },	/* DIF_OP_SCMP_HG */
 		{ "pushtr_g", dt_dis_pushts},	/* DIF_OP_PUSHTR_G */
 		{ "pushtr_h", dt_dis_pushts},	/* DIF_OP_PUSHTR_H */
+		{ "usetx", dt_dis_usetx },	/* DIF_OP_USETX */
+		{ "uload", dt_dis_load },	/* DIF_OP_ULOAD */
+		{ "uuload", dt_dis_load },	/* DIF_OP_UULOAD */
 	};
 
 	const struct opent *op;

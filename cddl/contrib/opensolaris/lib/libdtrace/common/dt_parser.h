@@ -60,6 +60,8 @@ typedef struct dt_node {
 	int dn_reg;		/* register allocated by cg */
 	dtrace_attribute_t dn_attr; /* node stability attributes */
 
+	char dn_target[DTRACE_TARGETNAMELEN]; /* what target is this node for? */
+
 	/*
 	 * D compiler nodes, as is the usual style, contain a union of the
 	 * different sub-elements required by the various kinds of nodes.

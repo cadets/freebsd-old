@@ -87,12 +87,12 @@ typedef int model_t;
 #define	DTRACE_MAXFILTNAME	256
 
 #define	DTRACE_KONNAMELEN	64
-#define DTRACE_MACHINENAMELEN   64
+#define DTRACE_TARGETNAMELEN    64
 #define	DTRACE_PROVNAMELEN	64
 #define	DTRACE_MODNAMELEN	64
 #define	DTRACE_FUNCNAMELEN	192
 #define	DTRACE_NAMELEN		64
-#define	DTRACE_FULLNAMELEN	(DTRACE_MACHINENAMELEN + DTRACE_PROVNAMELEN + \
+#define	DTRACE_FULLNAMELEN	(DTRACE_TARGETNAMELEN + DTRACE_PROVNAMELEN + \
 				 DTRACE_MODNAMELEN + DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 4)
 #define	DTRACE_ARGTYPELEN	128
 
@@ -107,7 +107,7 @@ struct dtvirt_args;
 
 typedef enum dtrace_probespec {
 	DTRACE_PROBESPEC_NONE = -1,
-	DTRACE_PROBESPEC_MACHINE = 0,
+	DTRACE_PROBESPEC_TARGET = 0,
 	DTRACE_PROBESPEC_PROVIDER,
 	DTRACE_PROBESPEC_MOD,
 	DTRACE_PROBESPEC_FUNC,
@@ -219,6 +219,9 @@ typedef enum dtrace_probespec {
 #define DIF_OP_SCMP_HG   84
 #define	DIF_OP_PUSHTR_G  85
 #define	DIF_OP_PUSHTR_H  86
+#define	DIF_OP_USETX     87
+#define	DIF_OP_ULOAD     88
+#define	DIF_OP_UULOAD    89
 
 #define	DIF_INTOFF_MAX		0xffff	/* highest integer table offset */
 #define	DIF_STROFF_MAX		0xffff	/* highest string table offset */
@@ -454,6 +457,7 @@ typedef uint32_t dif_instr_t;
 #define	DIF_INSTR_VAR(i)		(((i) >>  8) & 0xffff)
 #define	DIF_INSTR_INTEGER(i)		(((i) >>  8) & 0xffff)
 #define	DIF_INSTR_STRING(i)		(((i) >>  8) & 0xffff)
+#define	DIF_INSTR_SYMBOL(i)		(((i) >>  8) & 0xffff)
 #define	DIF_INSTR_SUBR(i)		(((i) >>  8) & 0xffff)
 #define	DIF_INSTR_TYPE(i)		(((i) >> 16) & 0xff)
 #define	DIF_INSTR_XLREF(i)		(((i) >>  8) & 0xffff)
@@ -469,6 +473,7 @@ typedef uint32_t dif_instr_t;
 #define	DIF_INSTR_LOAD(op, r1, d)	(DIF_INSTR_FMT(op, r1, 0, d))
 #define	DIF_INSTR_STORE(op, r1, d)	(DIF_INSTR_FMT(op, r1, 0, d))
 #define	DIF_INSTR_SETX(i, d)		((DIF_OP_SETX << 24) | ((i) << 8) | (d))
+#define	DIF_INSTR_USETX(i, d)		((DIF_OP_USETX << 24) | ((i) << 8) | (d))
 #define	DIF_INSTR_SETS(s, d)		((DIF_OP_SETS << 24) | ((s) << 8) | (d))
 #define	DIF_INSTR_RET(d)		(DIF_INSTR_FMT(DIF_OP_RET, 0, 0, d))
 #define	DIF_INSTR_NOP			(DIF_OP_NOP << 24)
@@ -1051,7 +1056,7 @@ struct dtrace_predicate;
 
 typedef struct dtrace_probedesc {
 	dtrace_id_t dtpd_id;			  /* probe identifier */
-	char dtpd_machine[DTRACE_MACHINENAMELEN]; /* probe machine name */
+	char dtpd_target[DTRACE_TARGETNAMELEN];   /* probe target name */
 	char dtpd_provider[DTRACE_PROVNAMELEN];   /* probe provider name */
 	char dtpd_mod[DTRACE_MODNAMELEN];	  /* probe module name */
 	char dtpd_func[DTRACE_FUNCNAMELEN];	  /* probe function name */

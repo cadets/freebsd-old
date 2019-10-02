@@ -169,6 +169,8 @@ dt_pcb_pop(dtrace_hdl_t *dtp, int err)
 		dt_inttab_destroy(pcb->pcb_inttab);
 	if (pcb->pcb_strtab != NULL)
 		dt_strtab_destroy(pcb->pcb_strtab);
+	if (pcb->pcb_symtab != NULL)
+		dt_strtab_destroy(pcb->pcb_symtab);
 	if (pcb->pcb_regs != NULL)
 		dt_regset_destroy(pcb->pcb_regs);
 
