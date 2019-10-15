@@ -1,0 +1,2 @@
+# libbbuf
+Binary buffer
