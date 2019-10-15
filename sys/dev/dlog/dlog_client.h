@@ -1,5 +1,6 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2017 (Ilia Shumailov)
+ * Copyright (c) 2017-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,45 +35,22 @@
  *
  */
 
-#ifndef _DL_RESPONSE_H
-#define _DL_RESPONSE_H
+#ifndef _DLOG_CLIENT_H
+#define _DLOG_CLIENT_H
 
-#ifdef _KERNEL
+#include <sys/nv.h>
 #include <sys/types.h>
-#else
-#include <stdint.h>
-#endif
 
-#include "dl_bbuf.h"
-#include "dl_fetch_response.h"
-#include "dl_list_offset_response.h"
-#include "dl_produce_response.h"
+#include "dlog.h"
+#include "dl_config.h"
 
-// TODO: don't think that this is really needed
-struct dl_response_header {
-	int32_t dlrsh_correlation_id;
-};
+struct dlog_handle;
 
-struct dl_response {
-	union {
-		struct dl_produce_response *dlrs_produce_response;
-		struct dl_fetch_response *dlrs_fetch_response;
-		struct dl_list_offset_response *dlrs_offset_response;
-	};
-	int32_t dlrs_correlation_id;
-	int16_t dlrs_api_key;
-};
+extern int dlog_client_open(struct dlog_handle **, nvlist_t const * const); 
+    //struct dl_client_config const * const);
+extern void dlog_client_close(struct dlog_handle *);
 
-/* Response createion/destruction API. */
-extern int dl_response_new(struct dl_response **, int16_t, int32_t);
-extern void dl_response_delete(struct dl_response * const);
-extern void dl_response_header_delete(struct dl_response_header * const);
-
-/* Serialization/deserialization API. */
-extern int dl_response_decode(struct dl_response **,
-    struct dl_bbuf const * const);
-extern int32_t dl_response_encode(struct dl_response *, struct dl_bbuf **);
-extern int dl_response_header_decode(struct dl_response_header **,
-    struct dl_bbuf *);
+extern int dlog_produce(struct dlog_handle *, char *, unsigned char *, size_t); 
+extern int dlog_produce_no_key(struct dlog_handle *, unsigned char *, size_t); 
 
 #endif

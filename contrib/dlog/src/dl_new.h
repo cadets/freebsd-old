@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,22 +34,25 @@
  *
  */
 
-#ifndef _DL_BROKER_CLIENT_H
-#define _DL_BROKER_CLIENT_H
+#ifndef _DL_NEW_H
+#define _DL_NEW_H
 
-#include "dlog_broker.h"
-#include "dl_request.h"
+#include <sys/types.h>
+#ifdef _KERNEL
+#include <machine/stdarg.h>
+#else
+#include <stdarg.h>
+#endif
 
-struct dl_broker_client 
-{
-	dl_event_handler_handle client_socket;
-	struct dl_event_handler event_handler;
-	struct dl_broker_event_notifier event_notifier;
-}; 
+struct dl_class {
+	size_t dl_size;
+	int (* dl_ctor) (void *, va_list *);
+	void (* dl_dtor) (void *);
+	void (* dl_to_string) (void *);
+};
 
-extern struct dl_response * dlog_broker_handle(struct dl_request * const);
-extern struct dl_broker_client * dl_broker_client_new(dl_event_handler_handle,
-    struct dl_broker_event_notifier *);
-extern void dl_broker_client_delete(struct dl_broker_client *);
+extern int dl_new(void **, const void *dl_class, ...);
+extern void dl_delete(void *);
+extern void dl_to_string(void *);
 
 #endif

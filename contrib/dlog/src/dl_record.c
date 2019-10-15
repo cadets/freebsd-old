@@ -265,6 +265,7 @@ dl_record_encode_into(struct dl_record const *self, struct dl_bbuf *target)
 #endif
 
 		/* Encode the Record Headers */
+		// TODO: [Header] uint32_t number of Headers
 		rc |= dl_bbuf_put_int32_as_varint(record, 0);
 #ifdef _KERNEL
 		DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
@@ -275,8 +276,6 @@ dl_record_encode_into(struct dl_record const *self, struct dl_bbuf *target)
 
 			rc |= dl_record_header_encode_into(record_hdr, record);
 		}
-
-		// TODO: [Header] uint32_t number of Headers
 
 		/* Encode the RecordSize into the buffer. */
 		rc |= DL_ENCODE_RECORD_SIZE(target, dl_bbuf_pos(record));

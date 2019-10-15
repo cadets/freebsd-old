@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -39,21 +39,14 @@
 
 #include <sys/queue.h>
 #include <sys/types.h>
-
-#ifdef _KERNEL
 #include <sys/sbuf.h>
-#else
-#include <sys/sbuf.h>
-#include <stddef.h>
-#include <stdint.h>
-#endif
 
 #include "dl_bbuf.h"
-#include "dl_response.h"
 
 SLIST_HEAD(dl_produce_response_topics, dl_produce_response_topic);
 
 struct dl_produce_response_partition {
+	int64_t dlprp_append_time;
 	int64_t dlprp_offset;
 	int32_t dlprp_partition;
 	int16_t dlprp_error_code;
@@ -72,11 +65,11 @@ struct dl_produce_response {
 	int32_t dlpr_throttle_time;
 };
 
-extern int dl_produce_response_decode(struct dl_response **, struct dl_bbuf *);
+extern int dl_produce_response_decode(struct dl_produce_response **, struct dl_bbuf *);
+extern void dl_produce_response_delete(struct dl_produce_response *);
 extern int32_t dl_produce_response_encode(struct dl_produce_response *,
     struct dl_bbuf *);
-extern int dl_produce_response_new(struct dl_response **, int32_t,
+extern int dl_produce_response_new(struct dl_produce_response **, int32_t,
     struct sbuf *, int32_t, int64_t, int16_t);
-extern void dl_produce_response_delete(struct dl_produce_response *);
 
 #endif

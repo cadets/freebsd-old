@@ -84,6 +84,7 @@ dl_record_header_new(struct dl_record_header **self, char *key,
 #endif
 	record_hdr->dlrh_key = sbuf_new_auto();
 	sbuf_cpy(record_hdr->dlrh_key, key);
+	sbuf_finish(record_hdr->dlrh_key);
 	record_hdr->dlrh_value = value;
 	record_hdr->dlrh_value_len = value_len;
 
@@ -127,6 +128,7 @@ dl_record_header_decode(struct dl_record_header **self, struct dl_bbuf *source)
        		goto err_record_hdr;
 #endif
 
+
 	/* Decode the Message KeyLen */
 	// TODO
 
@@ -135,7 +137,7 @@ dl_record_header_decode(struct dl_record_header **self, struct dl_bbuf *source)
 
 	/* Decode the Message ValueLen */
 	// TODO
-	//
+	
 	/* Decode the Message Value */
 	// TODO
 

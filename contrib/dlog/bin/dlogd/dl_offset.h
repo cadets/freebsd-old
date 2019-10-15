@@ -42,9 +42,9 @@
 
 struct dl_offset;
 
-int dl_offset_new(struct dl_offset **, struct sbuf *);
+int dl_offset_new(struct dl_offset **, char *);
 int dl_offset_inc(struct dl_offset *);
 void dl_offset_delete(struct dl_offset *);
-int32_t dl_offset_val(struct dl_offset *);
+int32_t dl_offset_get_val(struct dl_offset *);
 
 #endif

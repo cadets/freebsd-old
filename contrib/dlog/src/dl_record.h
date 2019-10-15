@@ -56,8 +56,7 @@ struct dl_record {
 	int32_t dlr_value_len;
 };
 
-extern int dl_record_new(struct dl_record **, char *,
-    unsigned char *, int32_t);
+extern int dl_record_new(struct dl_record **, char *, unsigned char *, int32_t);
 extern void dl_record_delete(struct dl_record *);
 
 extern int dl_record_decode(struct dl_record **, struct dl_bbuf *);

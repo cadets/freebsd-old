@@ -494,7 +494,6 @@ dl_message_set_encode_compressed(struct dl_message_set const *message_set,
 #endif
 
 	dlog_free(compressed);
-	dl_bbuf_delete(uncompressed);
 
 	/* Contruct a new Kafka Message encapsulating the compressed
 	 * MessageSet.
@@ -520,11 +519,21 @@ dl_message_set_encode_compressed(struct dl_message_set const *message_set,
 #endif
 	message.dlm_key = NULL, 
 	message.dlm_key_len = 0;
-	message.dlm_value = dl_bbuf_data(gzipd);
-	message.dlm_value_len = dl_bbuf_pos(gzipd);
 
-	rc |= dl_message_encode_compressed(&message, target);
+	/* Check that the Message is smaller when conpressed. */
+	if (dl_bbuf_pos(gzipd) < dl_bbuf_pos(uncompressed)) {
 
+		message.dlm_value = dl_bbuf_data(gzipd);
+		message.dlm_value_len = dl_bbuf_pos(gzipd);
+		rc |= dl_message_encode_compressed(&message, target);
+	} else {
+
+		message.dlm_value = dl_bbuf_data(uncompressed);
+		message.dlm_value_len = dl_bbuf_pos(uncompressed);
+		rc |= dl_message_encode_uncompressed(&message, target);
+	}
+
+	dl_bbuf_delete(uncompressed);
 	dl_bbuf_delete(gzipd);
 
 #ifdef _KERNEL

@@ -135,6 +135,12 @@ dl_config_new(char *conf_file, int debug_lvl)
 
 			nvlist_add_string(dlogd_props, DL_CONF_LOG_PATH,
 			    ucl_object_tostring_forced(obj));
+		} else if (strcmp(ucl_object_key(obj), DL_CONF_MSG_VERSION) == 0) {
+
+			int msg_ver;
+
+			msg_ver = ucl_object_toint(obj);
+			nvlist_add_number(dlogd_props, DL_CONF_MSG_VERSION, msg_ver);
 		} else if (strcmp(ucl_object_key(obj), DL_CONF_TOPICS) == 0) {
 
 			topics_obj = obj;

@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,54 +34,27 @@
  *
  */
 
-#ifndef _DL_REQUEST_QUEUE_H
-#define _DL_REQUEST_QUEUE_H
+#ifndef _DL_RESPONSE_HEADER_H
+#define _DL_RESPONSE_HEADER_H
 
-#include <sys/queue.h>
-#include <sys/time.h>
+#ifdef _KERNEL
 #include <sys/types.h>
+#else
+#include <stdint.h>
+#endif
 
 #include "dl_bbuf.h"
-#include "dl_producer_stats.h"
 
-struct dl_request_element {
-	STAILQ_ENTRY(dl_request_element) dlrq_entries;
-	/* Request buffer. */
-	struct dl_bbuf *dlrq_buffer;
-	/* Request metadata. */
-	struct {
-		struct timeval dlrq_enq_tv;
-		struct timeval dlrq_tv;
-		int32_t dlrq_correlation_id;
-		int16_t dlrq_api_key;
-		uint8_t dlrq_retries;
-	};
-};
+struct dl_response_header;
 
-struct dl_request_q;
+extern int dl_response_header_new(struct dl_response_header **, int32_t);
+extern void dl_response_header_delete(struct dl_response_header *);
 
-extern int dl_request_q_capacity(struct dl_request_q *, int *);
-extern int dl_request_q_dequeue(struct dl_request_q *,
-    struct dl_request_element **);
-extern int dl_request_q_dequeue_unackd(struct dl_request_q *,
-    struct dl_request_element **);
-extern int dl_request_q_enqueue(struct dl_request_q *,
-    struct dl_request_element *);
-extern int dl_request_q_enqueue_new(struct dl_request_q *,
-    struct dl_bbuf *, int32_t, int16_t);
-extern int dl_request_q_peek(struct dl_request_q *,
-    struct dl_request_element **);
-extern int dl_request_q_peek_unackd(struct dl_request_q *,
-    struct dl_request_element **);
-
-extern int dl_request_q_new(struct dl_request_q **,
-    struct dl_producer_stats *, uint32_t);
-extern void dl_request_q_delete(struct dl_request_q *);
-
-extern void dl_request_q_lock(struct dl_request_q *);
-extern void dl_request_q_unlock(struct dl_request_q *);
-
-extern int dl_request_q_ack(struct dl_request_q *, int32_t,
-    struct dl_request_element **);
+extern int dl_response_header_decode(struct dl_response_header **,
+    struct dl_bbuf *);
+extern int dl_response_header_encode(
+    struct dl_response_header const * const, struct dl_bbuf * const);
+extern int32_t dl_response_header_get_correlation_id(
+    struct dl_response_header *);
 
 #endif

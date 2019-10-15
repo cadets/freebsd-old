@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -37,36 +37,32 @@
 #ifndef _DL_REQUEST_H
 #define _DL_REQUEST_H
 
-#ifdef _KERNEL
 #include <sys/sbuf.h>
-#else
-#include <sys/sbuf.h>
-#include <stdint.h>
-#endif
 
 #include "dl_bbuf.h"
-#include "dl_fetch_request.h"
-#include "dl_list_offset_request.h"
-#include "dl_produce_request.h"
+#include "dl_new.h"
+
+struct dl_request;
+
+struct dl_request_class {
+	struct dl_class dlr_class;
+	int (*dlr_encode)(void *, struct dl_bbuf **);
+	int (*dlr_encode_into)(void *, struct dl_bbuf *);
+};
 
 struct dl_request {
+	struct dl_request_class *dlr_class;
 	struct sbuf *dlrqm_client_id;
-	union {
-		struct dl_produce_request *dlrqm_produce_request;
-		struct dl_fetch_request *dlrqm_fetch_request;
-		struct dl_list_offset_request *dlrqm_offset_request;
-	};
 	int32_t dlrqm_correlation_id;
 	int16_t dlrqm_api_key;
 };
 
-extern void dl_request_delete(struct dl_request * const);
-extern int dl_request_new(struct dl_request **, const int16_t, const int32_t,
-    struct sbuf *);
+extern const void *DL_REQUEST;
 
-extern int dl_request_decode(struct dl_request ** const,
+extern int dl_request_encode(void *, struct dl_bbuf ** const); 
+extern int dl_request_header_decode(struct dl_request * const,
     struct dl_bbuf * const);
-extern int dl_request_encode(struct dl_request const *,
-    struct dl_bbuf ** const); 
+extern int dl_request_header_encode(struct dl_request const * const,
+    struct dl_bbuf * const);
 
 #endif

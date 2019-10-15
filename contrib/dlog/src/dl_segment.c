@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -42,10 +42,29 @@
 #include "dl_segment.h"
 #include "dl_utils.h"
 
-static inline void dl_segment_check_integrity(struct dl_segment *self)
+static int dl_segment_ctor(void *, va_list * app); 
+
+static const struct dl_segment_class TYPE = {
+	{
+		sizeof(struct dl_segment),
+		dl_segment_ctor,
+		NULL,
+		NULL
+	},
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+};
+
+const void *DL_SEGMENT= &TYPE;
+
+static inline void
+assert_integrity(struct dl_segment *self)
 {
 
 	DL_ASSERT(self != NULL, ("Segment instance cannot be NULL."));
+	/*
 	DL_ASSERT(self->dls_insert_fcn != NULL,
 	    ("Segment insert function cannot be NULL"));
 	DL_ASSERT(self->dls_get_fcn != NULL,
@@ -56,139 +75,91 @@ static inline void dl_segment_check_integrity(struct dl_segment *self)
 	    ("Segment lock function cannot be NULL"));
 	DL_ASSERT(self->dls_unlock_fcn != NULL,
 	    ("Segment unlock function cannot be NULL"));
-	DL_ASSERT(self->dls_delete_fcn != NULL,
-	    ("Segment delete function cannot be NULL"));
+	    */
 }
 
-void
-dl_segment_delete(struct dl_segment *self)
-{
-
-	dl_segment_check_integrity(self);
-	dlog_free(self);
-}
-
+/**
+ * Segment constructor.
+ */
 int
-dl_segment_new(struct dl_segment **self, uint32_t base_offset,
-    uint32_t size, dls_insert_message insert_fcn,
-    dls_get_message_by_offset get_fcn,
-    dls_get_offset get_offset_fcn, dls_lock lock_fcn,
-    dls_unlock unlock_fcn, dls_delete delete_fcn)
+dl_segment_ctor(void *_self, va_list *ap)
 {
-	struct dl_segment *seg;
+	struct dl_segment *self = (struct dl_segment *) _self;
 
-	DL_ASSERT(self != NULL, ("Segment instance cannot be NULL"));
-	DL_ASSERT(insert_fcn != NULL,
-	    ("Segment insert function cannot be NULL"));
-	DL_ASSERT(get_fcn != NULL,
-	    ("Segment get message function cannot be NULL"));
-	DL_ASSERT(get_offset_fcn != NULL,
-	    ("Segment get offset function cannot be NULL"));
-	DL_ASSERT(lock_fcn != NULL,
-	    ("Segment lock function cannot be NULL"));
-	DL_ASSERT(unlock_fcn != NULL,
-	    ("Segment unlock function cannot be NULL"));
-	DL_ASSERT(delete_fcn != NULL,
-	    ("Segment delete function cannot be NULL"));
+	DL_ASSERT(self != NULL, ("Segment cannot be NULL."));
 
-	seg = (struct dl_segment *) dlog_alloc(sizeof(struct dl_segment));
-#ifdef _KERNEL
-	DL_ASSERT(seg != NULL, ("Failed allocating Segment"));
-#else
-	if (seg == NULL) {
-
-		goto err_seg_ctor;
-	}
-#endif
-
-	seg->base_offset = base_offset;
-	seg->segment_size = size;
-	seg->last_sync_pos = 0;
+	self->dls_base_offset = va_arg(*ap, uint32_t);
+	self->dls_last_sync_pos = 0;
 	
-	seg->dls_insert_fcn = insert_fcn;
-	seg->dls_get_fcn = get_fcn;
-	seg->dls_get_offset_fcn = get_offset_fcn;
-	seg->dls_lock_fcn = lock_fcn;
-	seg->dls_unlock_fcn = unlock_fcn;
-	seg->dls_delete_fcn = delete_fcn;
-    
-	dl_segment_check_integrity(seg);
-	*self = seg;
-
 	return 0;
-
-#ifndef _KERNEL
-err_seg_ctor:
-
-	DLOGTR0(PRIO_HIGH, "Failed allocating Segment instance\n");
-	*self = NULL;
-	return -1;
-#endif
 }
 
 int
-dl_segment_get_message_by_offset(struct dl_segment *self, int offset,
+dl_segment_get_message_by_offset(void *self, int offset,
     struct dl_bbuf **buffer)
 {
+	const struct dl_segment_class **class = self;
 
-	dl_segment_check_integrity(self);
-	return self->dls_get_fcn(self, offset,  buffer);
+	assert_integrity(self);
+	return (* class)->dls_get_message_by_offset(self, offset, buffer);
 }
 
-void
-dl_segment_lock(struct dl_segment *self) __attribute((no_thread_safety_analysis))
-{
-
-	dl_segment_check_integrity(self);
-	self->dls_lock_fcn(self);
-}
-
-void
-dl_segment_unlock(struct dl_segment *self) __attribute((no_thread_safety_analysis))
-{
-
-	dl_segment_check_integrity(self);
-	self->dls_unlock_fcn(self);
-}
-
-u_int64_t
+uint64_t
 dl_segment_get_base_offset(struct dl_segment *self)
 {
 
-	dl_segment_check_integrity(self);
-	return atomic_load_64(&self->base_offset);
+	assert_integrity(self);
+	return atomic_load_64(&self->dls_base_offset);
+}
+
+void
+dl_segment_set_base_offset(struct dl_segment *self, uint64_t base)
+{
+
+	assert_integrity(self);
+	atomic_store_64(&self->dls_base_offset, base);
 }
 
 off_t
 dl_segment_get_last_sync_pos(struct dl_segment *self)
 {
 
-	dl_segment_check_integrity(self);
-	return self->last_sync_pos;
+	assert_integrity(self);
+	return self->dls_last_sync_pos;
 }
 
 void
 dl_segment_set_last_sync_pos(struct dl_segment *self, off_t pos)
 {
 
-	dl_segment_check_integrity(self);
-	self->last_sync_pos = pos;
+	assert_integrity(self);
+	atomic_store_64(&self->dls_last_sync_pos, pos);
 }
 
 int
-dl_segment_insert_message(struct dl_segment *self,
-    struct dl_bbuf *buffer)
+dl_segment_insert_message(void *self, struct dl_bbuf *buffer)
 {
+	const struct dl_segment_class **class = self;
 
-	dl_segment_check_integrity(self);
+	assert_integrity(self);
 	DL_ASSERT(buffer != NULL, ("Bufer to insert cannot be NULL"));
-	return self->dls_insert_fcn(self, buffer);
+	return (* class)->dls_insert_message(self, buffer);
 }
 
 int
-dl_segment_get_offset(struct dl_segment *self)
+dl_segment_get_offset(void *self)
 {
+	const struct dl_segment_class **class = self;
 
-	dl_segment_check_integrity(self);
-	return self->dls_get_offset_fcn(self);
+	assert_integrity(self);
+	return (* class)->dls_get_offset(self);
+}
+
+int
+dl_segment_sync(void *self)
+{
+	const struct dl_segment_class **class = self;
+
+	assert_integrity(self);
+	return (* class)->dls_sync(self);
 }

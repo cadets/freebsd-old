@@ -30,14 +30,15 @@
 #
 
 DLOGDIR= ${SRCTOP}/contrib/dlog
-.PATH : ${DLOGDIR}/bin/dlogdstat
+.PATH : ${DLOGDIR}/bin/dlogdstat ${DLOGDIR}/bin/dlogd
 
 PROG= dlogdstat
 
-SRCS= dlogdstat.c
-MAN=
+SRCS= dlogdstat.c dl_producer_stats.c
+MAN= dlogdstat.8
 
 LIBADD+=ncurses
+LIBADD+=nv
 LIBADD+=sbuf
 
 CFLAGS+=-g

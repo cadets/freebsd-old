@@ -44,12 +44,12 @@
 #define DLOG_API_V1 1
 #define DLOG_API_V2 2
 #define DLOG_API_V3 3
-#define DLOG_API_VERSION DLOG_API_V2
+#define DLOG_API_V7 7
+#define DLOG_API_VERSION DLOG_API_V7
 
 // Topic names should have a maximum length
 // so that when persisted to the filesystem they
 // don't exceed the maximum allowable path length
-#define DL_MAX_TOPIC_NAME_LEN 249
 #define DL_MAX_CLIENT_ID_LEN 249
 #define DL_MTU 102400
 
@@ -69,6 +69,7 @@
 #define DL_DECODE_OFFSET(source, value) dl_bbuf_get_int64(source, value)
 #define DL_DECODE_PARTITION(source, value) dl_bbuf_get_int32(source, value)
 #define DL_DECODE_REPLICA_ID(source, value) dl_bbuf_get_int32(source, value)
+#define DL_DECODE_REQUEST_SIZE(source, value) dl_bbuf_get_int32(source, value)
 #define DL_DECODE_REQUIRED_ACKS(source, value) dl_bbuf_get_int16(source, value);
 #define DL_DECODE_TIMEOUT(source, value) dl_bbuf_get_int32(source, value)
 #define DL_DECODE_TIMESTAMP(source, value) dl_bbuf_get_int64(source, value)
@@ -113,6 +114,7 @@ enum dl_api_key {
 	DL_PRODUCE_API_KEY = 0,
 	DL_FETCH_API_KEY = 1,
 	DL_OFFSET_API_KEY = 2,
+	DL_METADATA_API_KEY = 3,
 };
 typedef enum dl_api_key dl_api_key;
 

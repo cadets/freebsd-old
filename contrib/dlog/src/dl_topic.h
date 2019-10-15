@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,52 +34,44 @@
  *
  */
 
-#ifndef _DL_BROKER_TOPIC_H
-#define _DL_BROKER_TOPIC_H
+#ifndef _DL_TOPIC_H
+#define _DL_TOPIC_H
 
-#include <sys/queue.h>
-#include <sys/sbuf.h>
 #include <sys/types.h>
+#include <sys/dnv.h>
+#include <sys/sbuf.h>
+
+#include <dev/dlog/dlog.h>
 
 #include "dl_bbuf.h"
-#include "dl_protocol.h"
 #include "dl_segment.h"
 
 struct dl_topic;
+struct dl_topic_hashmap;
 
-LIST_HEAD(dl_topics, dl_topic);
-
-struct dl_topic {
-	LIST_ENTRY(dl_topic) dlt_entries;
-	u_int64_t dlt_offset; /* Current position in the log. */
-	struct sbuf *dlt_name;
-	struct dl_segments dlp_segments;
-	struct dl_segment *dlp_active_segment;
-	int _klog;
-};
-
-struct dl_topic_desc {
-	struct dl_segment_desc dltd_active_seg;
-	char *dltd_name;
-};
+typedef void (*dl_topic_callback)(struct dl_topic *, void *);
 
 extern void dl_topic_delete(struct dl_topic *);
-extern int dl_topic_new(struct dl_topic **, char *, char *);
+extern int dl_topic_new(struct dl_topic **, char *,
+    nvlist_t *, struct dl_segment *);
 extern int dl_topic_as_desc(struct dl_topic *, struct dl_topic_desc **);
-extern int dl_topic_from_desc(struct dl_topic **, struct sbuf *,
-    struct dl_segment_desc *);
+extern int dl_topic_from_desc(struct dl_topic **, struct dl_topic_desc *);
 
-extern struct sbuf *dl_topic_get_name(struct dl_topic *);
+extern bool dl_topic_validate_name(char const * const);
+extern char *dl_topic_get_name(struct dl_topic *);
 extern struct dl_segment *dl_topic_get_active_segment(struct dl_topic *);
+extern void dl_topic_set_active_segment(struct dl_topic *, struct dl_segment *);
+extern int dl_topic_produce_record_to(struct dl_topic *, char *,
+    unsigned char *, size_t); 
+extern int dl_topic_get_message_by_offset(struct dl_topic *, struct dl_bbuf **);
 
-extern void dl_topic_hashmap_delete(void *);
-extern void * dl_topic_hashmap_new(int, unsigned long *);
-extern int dl_topic_hashmap_get(char const * const, struct dl_topic **);
-extern int dl_topic_hashmap_put(void *, struct dl_topic *);
-
-extern int dl_topic_produce_to(struct dl_topic *, struct dl_bbuf *); 
-
-extern unsigned long topic_hashmask;
-extern struct dl_topics *topic_hashmap;
+extern void dl_topic_hashmap_clear(struct dl_topic_hashmap *);
+extern void dl_topic_hashmap_delete(struct dl_topic_hashmap *);
+extern void dl_topic_hashmap_foreach(struct dl_topic_hashmap *, dl_topic_callback, void *);
+extern int dl_topic_hashmap_get(struct dl_topic_hashmap *, char const * const, struct dl_topic **);
+extern int dl_topic_hashmap_put(struct dl_topic_hashmap *, char *, struct dl_topic *);
+extern int dl_topic_hashmap_put_if_absent(struct dl_topic_hashmap *, char *, struct dl_topic *);
+extern int dl_topic_hashmap_new(struct dl_topic_hashmap **, size_t);
+extern int dl_topic_hashmap_remove(struct dl_topic_hashmap *, char *);
 
 #endif

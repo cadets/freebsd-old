@@ -29,7 +29,7 @@
 # SUCH DAMAGE.
 #
 
-.PATH : ../../src
+.PATH : ../../src ../dlogd
 
 .OBJDIR:= obj
 MK_AUTO_OBJ:= yes
@@ -37,7 +37,7 @@ MK_AUTO_OBJ:= yes
 PROGS= dlogdstat
 BINDIR= bin
 
-SRCS.dlogdstat = dlogdstat.c
+SRCS.dlogdstat = dlogdstat.c dl_producer_stats.c
 MAN.dlogdstat =
 
 LDADD+=-lncurses
@@ -55,7 +55,8 @@ CFLAGS+=-I../dlogd
 CFLAGS+=-I../../src
 CFLAGS+=-I.
 CFLAGS+=-O3
-#CFLAGS+=-fsanitize=address
-#CFLAGS+=-fno-omit-frame-pointer
+CFLAGS+=-fsanitize=address
+CFLAGS+=-fno-omit-frame-pointer
+CFLAGS+=-fsanitize=undefined
 
 .include <bsd.progs.mk>

@@ -40,20 +40,7 @@
 
 #include <sys/nv.h>
 
-#include "dl_produce_request.h" 
-#include "dl_response.h" 
-
 extern int dl_config_new(char *, int);
-
-/* TODO remove this type, use only the raw nvlist. */
-struct dl_client_config {
-	nvlist_t *dlcc_props;
-};
-
-struct dl_client_config_desc {
-	void * dlcc_packed_nvlist;
-	size_t dlcc_packed_nvlist_len;
-};
 
 #define DL_CONF_CLIENTID "clientid"
 #define DL_CONF_BROKER "hostname"
@@ -74,6 +61,8 @@ struct dl_client_config_desc {
 #define DL_CONF_LOG_PATH "log_path"
 #define DL_CONF_ACKS "acks"
 #define DL_CONF_ACK_TIMEOUT "ack_timeout"
+#define DL_CONF_MSG_VERSION "msg_ver"
+#define DL_CONF_MAX_SEGMENT_SIZE "max_seg_size"
 
 #define DL_DEFAULT_CLIENTID "dlog"
 #define DL_DEFAULT_BROKER "127.0.0.1"
@@ -93,5 +82,7 @@ struct dl_client_config_desc {
 #define DL_DEFAULT_LOG_PATH "/var/db/dlogd"
 #define DL_DEFAULT_ACKS DL_LEADER_ACKS
 #define DL_DEFAULT_ACK_TIMEOUT 5000 
+#define DL_DEFAULT_MSG_VERSION 2
+#define DL_DEFAULT_MAX_SEGMENT_SIZE 10 * 1024 * 1024
 
 #endif
