@@ -41,6 +41,7 @@ typedef struct dt_irnode {
 	dif_instr_t di_instr;		/* instruction opcode */
 	void *di_extern;		/* opcode-specific external reference */
 	struct dt_irnode *di_next;	/* next instruction */
+	struct dt_irnode *di_prev;	/* previous instruction */
 } dt_irnode_t;
 
 #define	DT_LBL_NONE	0		/* no label on this instruction */
