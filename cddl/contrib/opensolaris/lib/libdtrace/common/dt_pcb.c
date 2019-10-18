@@ -192,41 +192,47 @@ static int
 dt_pcb_dump_ident(dt_idhash_t *idh, dt_ident_t *idp, void *data)
 {
 	int fd = *((int *)data);
+	char *indent = data + sizeof(int);
 
-        dprintf(fd, "\t\tVAR:\n");
-	dprintf(fd, "\t\t\tdi_name = %s\n", idp->di_name);
-	dprintf(fd, "\t\t\tdi_kind = %u\n", idp->di_kind);
-	dprintf(fd, "\t\t\tdi_flags = %u\n", idp->di_flags);
-	dprintf(fd, "\t\t\tdi_id = %u\n", idp->di_id);
-	dprintf(fd, "\t\t\tdi_type = %ld\n", idp->di_type);
+        dprintf(fd, "%s\tVAR:\n", indent);
+	dprintf(fd, "%s\t\tdi_name = %s\n", indent, idp->di_name);
+	dprintf(fd, "%s\t\tdi_kind = %u\n", indent, idp->di_kind);
+	dprintf(fd, "%s\t\tdi_flags = %u\n", indent, idp->di_flags);
+	dprintf(fd, "%s\t\tdi_id = %u\n", indent, idp->di_id);
+	dprintf(fd, "%s\t\tdi_type = %ld\n", indent, idp->di_type);
 
 	return (0);
 }
 
 static void
-dt_pcb_dump_idhash(int fd, dt_idhash_t *idh)
+dt_pcb_dump_idhash(int fd, dt_idhash_t *idh, const char *indent)
 {
 
-	(void) dt_idhash_iter(idh, dt_pcb_dump_ident, &fd);
+	char *data = malloc(sizeof(int) + strlen(indent));
+
+	*((int *)data) = fd;
+	(void) strlcat(data + sizeof(int), indent, strlen(indent));
+	(void) dt_idhash_iter(idh, dt_pcb_dump_ident, data);
+ free(data):
 }
 
 static void
-dt_pcb_dump_idstack(int fd, dt_idstack_t *ids)
+dt_pcb_dump_idstack(int fd, dt_idstack_t *ids, const char *indent)
 {
 	dt_idhash_t *dhp;
 
 	for (dhp = ((dt_idhash_t *)(&ids->dids_list));
 	    dhp != NULL; dhp = dt_list_prev(dhp))
-		dt_pcb_dump_idhash(fd, dhp);
+		dt_pcb_dump_idhash(fd, dhp, indent);
 }
 
 static void
-dt_pcb_dump_inttab(int fd, dt_inttab_t *inttab)
+dt_pcb_dump_inttab(int fd, dt_inttab_t *inttab, const char *indent)
 {
 	dt_inthash_t *ih;
 
 	for (ih = inttab->int_head; ih != NULL; ih = ih->inh_next) {
-		dprintf(fd, "\t\t[%u] = %lu (%s)\n",
+		dprintf(fd, "%s\t[%u] = %lu (%s)\n", indent,
 			ih->inh_index, ih->inh_value,
 			ih->inh_flags ? "private" : "shared");
 	}
@@ -237,16 +243,23 @@ dt_pcb_dump_str_entry(const char *s, size_t n, size_t off, void *data)
 {
 
 	int fd = *((int *)data);
-	dprintf(fd, "\t\t[%zu] = %s\n", off, s);
+	char *indent = data + sizeof(int);
+	dprintf(fd, "%s\t[%zu] = %s\n", indent, off, s);
 	return (1);
 }
 
 static void
-dt_pcb_dump_strtab(int fd, dt_strtab_t *strtab)
+dt_pcb_dump_strtab(int fd, dt_strtab_t *strtab, const char *indent)
 {
 
+	char *data = malloc(sizeof(int) + strlen(indent));
+	*((int *)data) = fd;
+	(void) strlcat(data + sizeof(int), indent, strlen(indent));
+
 	(void) dt_strtab_write(strtab,
-	    (dt_strtab_write_f *)dt_pcb_dump_str_entry, &fd);
+	    (dt_strtab_write_f *)dt_pcb_dump_str_entry, data);
+
+	free(data);
 }
 
 #define OP2(opcode, instr, opstr)                        \
@@ -406,12 +419,12 @@ dt_pcb_dump_instr(int fd, dif_instr_t instr)
 }
 
 static void
-dt_pcb_dump_irlist(int fd, dt_irlist_t *irlist)
+dt_pcb_dump_irlist(int fd, dt_irlist_t *irlist, const char *indent)
 {
 	dt_irnode_t *in;
 
 	for (in = irlist->dl_list; in != NULL; in = in->di_next) {
-		dprintf(fd, "\t\t%u: ", in->di_label);
+		dprintf(fd, "%s\t%u: ", indent, in->di_label);
 		dt_pcb_dump_instr(fd, in->di_instr);
 	}
 }
@@ -436,18 +449,27 @@ dt_pcb_dump_typeinfo(int fd, dtrace_typeinfo_t *ti, const char *indent)
 }
 
 static void
-dt_pcb_dump_probeinfo(int fd, dtrace_probeinfo_t *pinfo)
+dt_pcb_dump_probeinfo(int fd, dtrace_probeinfo_t *pinfo, const char *indent)
 {
 	int i;
+ 	char *new_indent = malloc(strlen(indent) + 4);
+	(void) strlcat(new_indent, "\t", strlen(indent) + 2);
 
-	dprintf(fd, "\t\tdtp_attr:\n");
-	dt_pcb_dump_attribute(fd, &pinfo->dtp_attr, "\t\t");
-	dprintf(fd, "\t\tdtp_arga:\n");
-	dt_pcb_dump_attribute(fd, &pinfo->dtp_arga, "\t\t");
-	dprintf(fd, "\t\tdtp_argv:\n");
-	for (i = 0; i < pinfo->dtp_argc; i++)
+	dprintf(fd, "%s\tdtp_attr:\n", indent);
+	dt_pcb_dump_attribute(fd, &pinfo->dtp_attr, new_indent);
+
+	dprintf(fd, "%s\tdtp_arga:\n", indent);
+	dt_pcb_dump_attribute(fd, &pinfo->dtp_arga, new_indent);
+
+	(void) strlcat(new_indent, "\t", strlen(indent) + 4);
+	dprintf(fd, "%s\tdtp_argv:\n", indent);
+	for (i = 0; i < pinfo->dtp_argc; i++) {
+		dprintf(fd, "%s\t\tdtp_argv[%d]:\n", indent, i);
 		dt_pcb_dump_typeinfo(fd,
-		    (dtrace_typeinfo_t *)&pinfo->dtp_argv[i], "\t\t");
+		    (dtrace_typeinfo_t *)&pinfo->dtp_argv[i], new_indent);
+	}
+
+	free(new_indent);
 }
 
 static void
@@ -584,7 +606,7 @@ dt_pcb_dump_ecbdesc(int fd, dtrace_ecbdesc_t *ed, const char *indent)
 	(void) strlcat(new_indent, "\t", strlen(indent) + 2);
 
 	dprintf(fd, "%s\tdted_action list:\n", indent);
-	strlcat(new_indent, "\t", strlen(indent) + 4);
+	(void) strlcat(new_indent, "\t", strlen(indent) + 4);
 	for (ad = ed->dted_action;
 	     ad != NULL; ad = ad->dtad_next) {
 		dprintf(fd, "%s\t\t[%p]:\n", indent, ad);
@@ -622,7 +644,7 @@ dt_pcb_dump_stmt(int fd, dtrace_stmtdesc_t *stmt, const char *indent)
 	dt_pcb_dump_ecbdesc(fd, stmt->dtsd_ecbdesc, new_indent);
 
 	dprintf(fd, "%s\tdtsd_action list:\n", indent);
-	strlcat(new_indent, "\t", strlen(indent) + 4);
+	(void) strlcat(new_indent, "\t", strlen(indent) + 4);
 	for (ad = stmt->dtsd_action;
 	    ad != stmt->dtsd_action_last->dtad_next; ad = ad->dtad_next) {
 		dprintf(fd, "%s\t\t[%p]:\n", indent, ad);
@@ -652,12 +674,18 @@ dt_pcb_dump(dt_pcb_t *pcb, int fd)
 	dt_idhash_t *dhp;
 	dt_ident_t *idp;
 
-	dprintf(fd, "PCB(%p):\n", pcb->pcb_hdl);
+	dprintf(fd, "pcb = %p\n", pcb);
+	if (pcb == NULL)
+	        return;
+
+	dprintf(fd, "\tpcb_hdl = %p:\n", pcb->pcb_hdl);
 	dprintf(fd, "\tpcb_sargc = %d\n", pcb->pcb_sargc);
 
 	dprintf(fd, "\tpcb_sargv:\n");
-	for (i = 0; i < pcb->pcb_sargc; i++)
+	for (i = 0; i < pcb->pcb_sargc; i++) {
+		assert(pcb->pcb_sargv[i] != NULL);
 		dprintf(fd, "\t\t%s\n", pcb->pcb_sargv[i]);
+	}
 
 	dprintf(fd, "\tpcb_sflagv:\n");
 	for (i = 0; i < pcb->pcb_sargc; i++)
@@ -666,25 +694,34 @@ dt_pcb_dump(dt_pcb_t *pcb, int fd)
 	dprintf(fd, "\tpcb_dstack.ds_ident = %s\n", pcb->pcb_dstack.ds_ident);
 
 	dprintf(fd, "\tpcb_globals:\n");
-	dt_pcb_dump_idstack(fd, &pcb->pcb_globals);
+	dt_pcb_dump_idstack(fd, &pcb->pcb_globals, "\t");
 
 	dprintf(fd, "\tpcb_locals:\n");
-	dt_pcb_dump_idhash(fd, pcb->pcb_locals);
+	if (pcb->pcb_locals == NULL)
+		dprintf(fd, "\t\empty\n");
+	else
+		dt_pcb_dump_idhash(fd, pcb->pcb_locals, "\t");
 
 	dprintf(fd, "\tpcb_idents:\n");
-	dt_pcb_dump_idhash(fd, pcb->pcb_idents);
+	if (pcb->pcb_idents == NULL)
+		dprintf(fd, "\t\tEMPTY\n");
+	else
+		dt_pcb_dump_idhash(fd, pcb->pcb_idents, "\t");
 
 	dprintf(fd, "\tpcb_pragmas:\n");
-	dt_pcb_dump_idhash(fd, pcb->pcb_pragmas);
+	if (pcb->pcb_pragmas == NULL)
+		dprintf(fd, "\t\tEMPTY\n");
+	else
+		dt_pcb_dump_idhash(fd, pcb->pcb_pragmas, "\t");
 
 	dprintf(fd, "\tpcb_inttab:\n");
-	dt_pcb_dump_inttab(fd, pcb->pcb_inttab);
+	dt_pcb_dump_inttab(fd, pcb->pcb_inttab, "\t");
 
 	dprintf(fd, "\tpcb_strtab:\n");
-	dt_pcb_dump_strtab(fd, pcb->pcb_strtab);
+	dt_pcb_dump_strtab(fd, pcb->pcb_strtab, "\t");
 
 	dprintf(fd, "\tpcb_ir:\n");
-	dt_pcb_dump_irlist(fd, &pcb->pcb_ir);
+	dt_pcb_dump_irlist(fd, &pcb->pcb_ir, "\t");
 
 	dprintf(fd, "\tpcb_asvidx = %d\n", pcb->pcb_asvidx);
 	dprintf(fd, "\tpcb_pdesc = %s:%s:%s:%s:%s(%d)\n",
@@ -698,7 +735,7 @@ dt_pcb_dump(dt_pcb_t *pcb, int fd)
 	dprintf(fd, "\tpcb_probe = %p\n", pcb->pcb_probe);
 
 	dprintf(fd, "\tpcb_pinfo:\n");
-	dt_pcb_dump_probeinfo(fd, &pcb->pcb_pinfo);
+	dt_pcb_dump_probeinfo(fd, &pcb->pcb_pinfo, "\t");
 
 	dprintf(fd, "\tpcb_amin:\n");
 	dt_pcb_dump_attribute(fd, &pcb->pcb_amin, "\t");

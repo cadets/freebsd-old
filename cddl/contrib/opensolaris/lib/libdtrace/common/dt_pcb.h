@@ -96,6 +96,7 @@ typedef struct dt_pcb {
 
 extern void dt_pcb_push(dtrace_hdl_t *, dt_pcb_t *);
 extern void dt_pcb_pop(dtrace_hdl_t *, int);
+extern void dt_pcb_dump(dt_pcb_t *, int);
 
 #ifdef	__cplusplus
 }
