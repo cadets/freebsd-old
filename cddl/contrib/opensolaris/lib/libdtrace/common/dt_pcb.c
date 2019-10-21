@@ -194,6 +194,8 @@ dt_pcb_dump_ident(dt_idhash_t *idh, dt_ident_t *idp, void *data)
 	int fd = *((int *)data);
 	char *indent = data + sizeof(int);
 
+	assert(idp != NULL);
+
         dprintf(fd, "%s\tVAR:\n", indent);
 	dprintf(fd, "%s\t\tdi_name = %s\n", indent, idp->di_name);
 	dprintf(fd, "%s\t\tdi_kind = %u\n", indent, idp->di_kind);
@@ -213,7 +215,7 @@ dt_pcb_dump_idhash(int fd, dt_idhash_t *idh, const char *indent)
 	*((int *)data) = fd;
 	(void) strlcat(data + sizeof(int), indent, strlen(indent));
 	(void) dt_idhash_iter(idh, dt_pcb_dump_ident, data);
- free(data):
+	free(data);
 }
 
 static void
@@ -221,7 +223,7 @@ dt_pcb_dump_idstack(int fd, dt_idstack_t *ids, const char *indent)
 {
 	dt_idhash_t *dhp;
 
-	for (dhp = ((dt_idhash_t *)(&ids->dids_list));
+	for (dhp = dt_list_prev(&ids->dids_list);
 	    dhp != NULL; dhp = dt_list_prev(dhp))
 		dt_pcb_dump_idhash(fd, dhp, indent);
 }
@@ -254,7 +256,7 @@ dt_pcb_dump_strtab(int fd, dt_strtab_t *strtab, const char *indent)
 
 	char *data = malloc(sizeof(int) + strlen(indent));
 	*((int *)data) = fd;
-	(void) strlcat(data + sizeof(int), indent, strlen(indent));
+	(void) strlcpy(data + sizeof(int), indent, strlen(indent));
 
 	(void) dt_strtab_write(strtab,
 	    (dt_strtab_write_f *)dt_pcb_dump_str_entry, data);
@@ -453,6 +455,8 @@ dt_pcb_dump_probeinfo(int fd, dtrace_probeinfo_t *pinfo, const char *indent)
 {
 	int i;
  	char *new_indent = malloc(strlen(indent) + 4);
+
+	(void) strcpy(new_indent, indent);
 	(void) strlcat(new_indent, "\t", strlen(indent) + 2);
 
 	dprintf(fd, "%s\tdtp_attr:\n", indent);
@@ -481,6 +485,11 @@ dt_pcb_dump_difo(int fd, dtrace_difo_t *difo, const char *indent)
 	dtrace_diftype_t *t;
 	dof_relodesc_t *r;
 
+	if (difo == NULL) {
+		dprintf(fd, "%s\t\tEMPTY\n", indent);
+		return;
+	}
+
 	dprintf(fd, "%s\tdtdo_buf:\n", indent);
 	for (i = 0; i < difo->dtdo_len; i++) {
 		dprintf(fd, "%s\t\t", indent);
@@ -494,8 +503,8 @@ dt_pcb_dump_difo(int fd, dtrace_difo_t *difo, const char *indent)
 	dprintf(fd, "%s\tdtdo_strtab:\n%s\t\t", indent, indent);
 	i = 0;
 	for (c = difo->dtdo_strtab; i != difo->dtdo_strlen; c++) {
-		if (c == 0) {
-			dprintf(fd, "\n%s\t\t", indent);
+		if (c == 0 && i != difo->dtdo_strlen - 1) {
+			dprintf(fd, "\n");
 			i++;
 			continue;
 		} else
@@ -503,12 +512,12 @@ dt_pcb_dump_difo(int fd, dtrace_difo_t *difo, const char *indent)
 		i++;
 	}
 
-	dprintf(fd, "%s\tdtdo_vartab:\n", indent);
+	dprintf(fd, "\n%s\tdtdo_vartab:\n", indent);
 	for (i = 0; i < difo->dtdo_varlen; i++) {
 		v = &difo->dtdo_vartab[i];
 
 		dprintf(fd, "%s\t\t[%d]:\n", indent, i);
-		dprintf(fd, "%s\t\t\tdtdv_name = %u (%s)", indent,
+		dprintf(fd, "%s\t\t\tdtdv_name = %u (%s)\n", indent,
 		    v->dtdv_name, difo->dtdo_strtab + v->dtdv_name);
 		dprintf(fd, "%s\t\t\tdtdv_id = %u\n", indent, v->dtdv_id);
 		dprintf(fd, "%s\t\t\tdtdv_kind = %u\n", indent, v->dtdv_kind);
@@ -568,6 +577,8 @@ static void
 dt_pcb_dump_actdesc(int fd, dtrace_actdesc_t *ad, const char *indent)
 {
 	char *new_indent = malloc(strlen(indent) + 4);
+
+	(void) strcpy(new_indent, indent);
 	(void) strlcat(new_indent, "\t", strlen(indent) + 2);
 
 	dprintf(fd, "%s\tdtad_difo:\n", indent);
@@ -587,6 +598,8 @@ static void
 dt_pcb_dump_preddesc(int fd, dtrace_preddesc_t *pd, const char *indent)
 {
 	char *new_indent = malloc(strlen(indent) + 4);
+
+	(void) strcpy(new_indent, indent);
 	(void) strlcat(new_indent, "\t", strlen(indent) + 2);
 
 	dprintf(fd, "%s\tdtpdd_difo:\n", indent);
@@ -603,6 +616,8 @@ dt_pcb_dump_ecbdesc(int fd, dtrace_ecbdesc_t *ed, const char *indent)
 {
 	dtrace_actdesc_t *ad;
 	char *new_indent = malloc(strlen(indent) + 4);
+
+	(void) strcpy(new_indent, indent);
 	(void) strlcat(new_indent, "\t", strlen(indent) + 2);
 
 	dprintf(fd, "%s\tdted_action list:\n", indent);
@@ -638,6 +653,8 @@ dt_pcb_dump_stmt(int fd, dtrace_stmtdesc_t *stmt, const char *indent)
 {
 	dtrace_actdesc_t *ad;
 	char *new_indent = malloc(strlen(indent) + 4);
+
+	(void) strcpy(new_indent, indent);
 	(void) strlcat(new_indent, "\t", strlen(indent) + 2);
 
 	dprintf(fd, "%s\tdtsd_ecbdesc:\n", indent);
