@@ -4148,7 +4148,8 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 	case DIF_VAR_HVMNAME:
 	case DIF_VAR_GVMNAME:
 		if (mstate->dtms_biscuit == NULL)
-			return (dtrace_dif_varstr("host", state, mstate));
+			return (dtrace_dif_varstr(
+			    (uintptr_t)"host", state, mstate));
 
 		return (dtrace_dif_varstr(
 		    (uintptr_t)dtvirt_getname(mstate->dtms_biscuit),
