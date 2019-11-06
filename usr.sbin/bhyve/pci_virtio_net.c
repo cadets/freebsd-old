@@ -255,7 +255,7 @@ pci_vtnet_reset(void *vsc)
  */
 static void
 pci_vtnet_tap_tx(struct pci_vtnet_softc *sc, struct iovec *iov, int iovcnt,
-		 int len, struct mbufid_info *mi)
+		 int len)
 {
 	static char pad[60]; /* all zero bytes */
 
@@ -490,7 +490,7 @@ pci_vtnet_netmap_readv(struct nm_desc *nmd, struct iovec *iov, int iovcnt)
  */
 static void
 pci_vtnet_netmap_tx(struct pci_vtnet_softc *sc, struct iovec *iov, int iovcnt,
-		    int len, struct mbufid_info *m)
+		    int len)
 {
 	static char pad[60]; /* all zero bytes */
 

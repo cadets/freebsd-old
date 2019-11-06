@@ -653,7 +653,7 @@ pci_vtdtr_events(void *xsc)
 		assert(ctrl_entry != NULL);
 		ctrl = &ctrl_entry->ctrl;
 
-		DPRINTF(("event read: %d\n", ev.type));
+		DPRINTF(("event read: %zu\n", ev.type));
 		switch (ev.type) {
 		case VTDTR_EV_INSTALL:
 			ctrl->event = VTDTR_DEVICE_PROBE_INSTALL;
