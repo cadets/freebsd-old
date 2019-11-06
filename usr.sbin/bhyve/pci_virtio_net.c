@@ -171,7 +171,7 @@ struct pci_vtnet_softc {
 
 	void (*pci_vtnet_rx)(struct pci_vtnet_softc *sc);
 	void (*pci_vtnet_tx)(struct pci_vtnet_softc *sc, struct iovec *iov,
-			     int iovcnt, int len);
+			     int iovcnt, int len, struct mbufid_info *mi);
 };
 
 static void pci_vtnet_reset(void *);
@@ -490,7 +490,7 @@ pci_vtnet_netmap_readv(struct nm_desc *nmd, struct iovec *iov, int iovcnt)
  */
 static void
 pci_vtnet_netmap_tx(struct pci_vtnet_softc *sc, struct iovec *iov, int iovcnt,
-		    int len, struct mbufid_info *m)
+		    int len, struct mbufid_info *mi)
 {
 	static char pad[60]; /* all zero bytes */
 
