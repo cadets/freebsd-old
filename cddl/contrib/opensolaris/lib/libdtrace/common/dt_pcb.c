@@ -47,6 +47,7 @@
 #include <strings.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <execinfo.h>
 
 #include <dt_impl.h>
 #include <dt_program.h>
@@ -690,6 +691,17 @@ dt_pcb_dump(dt_pcb_t *pcb, int fd)
 	int i;
 	dt_idhash_t *dhp;
 	dt_ident_t *idp;
+	size_t syms;
+	char **strings;
+	void *array[10];
+
+	syms = backtrace(array, 10);
+	strings = backtrace_symbols(array, syms);
+	dprintf(fd, "BACKTRACE:\n");
+
+	for (i = 0; i < syms; i++) {
+		dprintf(fd, "%s\n", strings[i]);
+	}
 
 	dprintf(fd, "pcb = %p\n", pcb);
 	if (pcb == NULL)
@@ -710,8 +722,10 @@ dt_pcb_dump(dt_pcb_t *pcb, int fd)
 
 	dprintf(fd, "\tpcb_dstack.ds_ident = %s\n", pcb->pcb_dstack.ds_ident);
 
+	/*
 	dprintf(fd, "\tpcb_globals:\n");
 	dt_pcb_dump_idstack(fd, &pcb->pcb_globals, "\t");
+	*/
 
 	dprintf(fd, "\tpcb_locals:\n");
 	if (pcb->pcb_locals == NULL)
@@ -732,22 +746,31 @@ dt_pcb_dump(dt_pcb_t *pcb, int fd)
 		dt_pcb_dump_idhash(fd, pcb->pcb_pragmas, "\t");
 
 	dprintf(fd, "\tpcb_inttab:\n");
-	dt_pcb_dump_inttab(fd, pcb->pcb_inttab, "\t");
+	if (pcb->pcb_inttab)
+		dt_pcb_dump_inttab(fd, pcb->pcb_inttab, "\t");
+	else
+		dprintf(fd, "\t\tEMPTY\n");
 
 	dprintf(fd, "\tpcb_strtab:\n");
-	dt_pcb_dump_strtab(fd, pcb->pcb_strtab, "\t");
+	if (pcb->pcb_strtab)
+		dt_pcb_dump_strtab(fd, pcb->pcb_strtab, "\t");
+	else
+		dprintf(fd, "\t\tEMPTY\n");
 
 	dprintf(fd, "\tpcb_ir:\n");
 	dt_pcb_dump_irlist(fd, &pcb->pcb_ir, "\t");
 
 	dprintf(fd, "\tpcb_asvidx = %d\n", pcb->pcb_asvidx);
-	dprintf(fd, "\tpcb_pdesc = %s:%s:%s:%s:%s(%d)\n",
-		pcb->pcb_pdesc->dtpd_target,
-		pcb->pcb_pdesc->dtpd_provider,
-		pcb->pcb_pdesc->dtpd_mod,
-		pcb->pcb_pdesc->dtpd_func,
-		pcb->pcb_pdesc->dtpd_name,
-		pcb->pcb_pdesc->dtpd_id);
+	if (pcb->pcb_pdesc)
+		dprintf(fd, "\tpcb_pdesc = %s:%s:%s:%s:%s(%d)\n",
+			pcb->pcb_pdesc->dtpd_target,
+			pcb->pcb_pdesc->dtpd_provider,
+			pcb->pcb_pdesc->dtpd_mod,
+			pcb->pcb_pdesc->dtpd_func,
+			pcb->pcb_pdesc->dtpd_name,
+			pcb->pcb_pdesc->dtpd_id);
+	else
+		dprintf(fd, "\tpcb_pdesc = EMPTY\n");
 
 	dprintf(fd, "\tpcb_probe = %p\n", pcb->pcb_probe);
 
@@ -758,10 +781,16 @@ dt_pcb_dump(dt_pcb_t *pcb, int fd)
 	dt_pcb_dump_attribute(fd, &pcb->pcb_amin, "\t");
 
 	dprintf(fd, "\tpcb_stmt:\n");
-	dt_pcb_dump_stmt(fd, pcb->pcb_stmt, "\t");
+	if (pcb->pcb_stmt)
+		dt_pcb_dump_stmt(fd, pcb->pcb_stmt, "\t");
+	else
+		dprintf(fd, "\t\tEMPTY\n");
 
 	dprintf(fd, "\tpcb_ecbdesc:\n");
-	dt_pcb_dump_ecbdesc(fd, pcb->pcb_ecbdesc, "\t");
+	if (pcb->pcb_ecbdesc)
+		dt_pcb_dump_ecbdesc(fd, pcb->pcb_ecbdesc, "\t");
+	else
+		dprintf(fd, "\t\tEMPTY\n");
 
 	dprintf(fd, "\tpcb_cflags = %u\n", pcb->pcb_cflags);
 	dprintf(fd, "\tpcb_idepth = %u\n", pcb->pcb_idepth);

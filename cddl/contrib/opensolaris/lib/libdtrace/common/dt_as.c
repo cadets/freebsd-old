@@ -330,8 +330,6 @@ dt_as(dt_pcb_t *pcb)
 	uint_t kmask, kbits, umask, ubits;
 	uint_t krel = 0, urel = 0, xlrefs = 0;
 
-	dt_pcb_dump(pcb, fileno(stderr));
-
 	/*
 	 * Select bitmasks based upon the desired symbol linking policy.  We
 	 * test (di_extern->di_flags & xmask) == xbits to determine if the
@@ -614,6 +612,7 @@ dt_as(dt_pcb_t *pcb)
 
 	if (pcb->pcb_cflags & DTRACE_C_DIFV)
 		dt_dis(dp, stderr);
+
 
 	return (dp);
 }
