@@ -995,7 +995,6 @@ static void
 pci_vtnet_neg_features(void *vsc, uint64_t negotiated_features)
 {
 	struct pci_vtnet_softc *sc = vsc;
-	FILE *fp;
 	int flag;
 
 	sc->vsc_features = negotiated_features;
