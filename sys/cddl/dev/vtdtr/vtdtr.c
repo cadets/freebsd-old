@@ -189,9 +189,9 @@ vtdtr_enqueue(struct vtdtr_event *e)
 			err = cv_wait_sig(&q->rc_cv, &q->rc_cvmtx);
 			if (err) {
 				q->drops++;
-				DPRINTF(("Dropped an event of type: %d"
+				DPRINTF(("Dropped an event of type: %zu"
 					 "because a signal was received."
-					 "Dropped %llu events so far.\n",
+					 "Dropped %zu events so far.\n",
 					 e->type, q->drops));
 				mtx_unlock(&q->rc_cvmtx);
 				mtx_unlock(&q->mtx);
@@ -203,9 +203,9 @@ vtdtr_enqueue(struct vtdtr_event *e)
 
 		if (q->num_entries >= q->max_size) {
 			q->drops++;
-			DPRINTF(("Dropped an event of type: %d"
+			DPRINTF(("Dropped an event of type: %zu"
 				 "because the queue is full."
-				 "Dropped %llu events so far.\n",
+				 "Dropped %zu events so far.\n",
 				 e->type, q->drops));
 			mtx_unlock(&q->mtx);
 			continue;
@@ -215,9 +215,9 @@ vtdtr_enqueue(struct vtdtr_event *e)
 			ent = vtdtr_construct_entry(e);
 			if (!ent) {
 				q->drops++;
-				DPRINTF(("Dropped an event of type: %d"
+				DPRINTF(("Dropped an event of type: %zu"
 					 "because entry could not be constructed."
-					 "Dropped %llu events so far.\n",
+					 "Dropped %zu events so far.\n",
 					 e->type, q->drops));
 				continue;
 			}
