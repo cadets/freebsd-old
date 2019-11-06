@@ -643,7 +643,7 @@ pci_vtdtr_events(void *xsc)
 		if (error) {
 			fprintf(stderr, "Error: '%s' reading.\n",
 			    strerror(error));
-			if (errno = EINTR)
+			if (errno == EINTR)
 			        exit(1);
 
 			continue;
