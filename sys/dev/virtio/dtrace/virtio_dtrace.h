@@ -113,7 +113,7 @@ struct vtdtr_ctrlq {
 	size_t                               n_entries;
 };
 
-
+// name only to be used by stdl start with _
 #define	VTDTR_QUEUE_LOCK(__q)   mtx_lock(&((__q)->vtdq_mtx))
 #define	VTDTR_QUEUE_UNLOCK(__q) mtx_unlock(&((__q)->vtdq_mtx))
 #define	VTDTR_QUEUE_LOCK_ASSERT(__q)		\
