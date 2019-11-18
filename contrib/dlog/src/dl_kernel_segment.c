@@ -232,14 +232,21 @@ dl_kernel_segment_ctor(void *_super, va_list *ap)
 	sbuf_finish(&sb);
 	sbuf_delete(&sb);
 	
-	if (kern_mkdirat(td, 0, self->dlks_base_name, UIO_SYSSPACE,
-	    S_IRUSR | S_IWUSR) != 0) {
+	struct nameidata nd;
+	NDINIT(&nd, LOOKUP, NOFOLLOW, UIO_SYSSPACE, self->dlks_base_name, td);
+	if (namei(&nd) != 0) {	
+
+		if (kern_mkdirat(td, 0, self->dlks_base_name, UIO_SYSSPACE,
+		    S_IRUSR | S_IWUSR) != 0) {
 
 
-		DLOGTR1(PRIO_HIGH,
-		    "Failed KernelSegment file path is invalid: %s\n", path);
-		goto err_kseg_ctor;
+			DLOGTR1(PRIO_HIGH,
+			    "Failed KernelSegment file path is invalid: %s\n", path);
+			goto err_kseg_ctor;
+		}
 	}
+	NDFREE(&nd, NDF_ONLY_PNBUF);
+	vrele(nd.ni_vp);
 
 	/* Create the KernelSegment file. */
 	rc = create_segment_file(&self->dlks_vp, self->dlks_base_name,
