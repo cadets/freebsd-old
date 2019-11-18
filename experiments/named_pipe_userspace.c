@@ -9,7 +9,9 @@ int main() {
 
     int fd;
 
-    const char* fifo = "tmp/fifo";
+    const char* fifo = "/tmp/fifo";
+    printf("Welcome to userspace!\n");
+
     mkfifo(fifo, 0666);
 
     char fifo_input[80], fifo_output[80];
@@ -26,8 +28,11 @@ int main() {
        fd = open(fifo, O_RDONLY);
 
        read(fd,fifo_output,sizeof(fifo_output));
-
-       printf("pci_virtio said: %s\n", fifo_output);
+   
+        if(strlen(fifo_output) != 0)
+        {
+       printf("from kernel: %s\n", fifo_output);
+        }
        close(fd);
 
     }

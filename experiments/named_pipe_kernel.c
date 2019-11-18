@@ -10,8 +10,8 @@
 int main() {
 
     int fd;
-    char * fifo = "tmp/fifo";
-
+    const char * fifo = "/tmp/fifo";
+    printf("Welcome to kernel!\n");
     mkfifo(fifo, 0666);
 
     char fifo_output[80], fifo_input[80];
@@ -19,8 +19,11 @@ int main() {
     while(1){
         fd = open(fifo, O_RDONLY);
         read(fd, fifo_output, 80);
-
-        printf("from userspace: %s\n", fifo_output);
+        
+        if(strlen(fifo_output) != 0)
+        {
+        printf("From userspace: %s\n", fifo_output);
+        }
         close(fd);
 
         fd = open(fifo, O_WRONLY);
