@@ -83,7 +83,7 @@ typedef struct dtrace_cmd {
 #define OMODE_HTML	3
 
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:M:n:O:o:p:P:qs:SU:vVwx:X:Z";
+	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:M:n:O:o:p:P:qs:SU:vVwx:X:Y:Z";
 static int g_oformat = OMODE_NONE;
 
 static char **g_argv;
@@ -194,7 +194,8 @@ usage(FILE *fp)
 	    "\t-w  permit destructive actions\n"
 	    "\t-x  enable or modify compiler and tracing options\n"
 	    "\t-X  specify ISO C conformance settings for preprocessor\n"
-	    "\t-Z  permit probe descriptions that match zero probes\n");
+	    "\t-Z  permit probe descriptions that match zero probes\n"
+		"\t-Y send D script to kernel\n");
 
 	return (E_USAGE);
 }
@@ -1421,6 +1422,31 @@ filter_machines(char *filt)
 
 	free(list);
 }
+static void write_script(char *file_path)
+{
+
+ int fd;
+ static char * d_script;
+ struct stat st; 
+
+ fd = open(file_path, O_RDONLY);
+ fstat(fd, &st);
+ d_script = malloc(sizeof(st.st_size));
+ read(fd, d_script, st.st_size);
+
+ close(fd);
+ 
+ // TODO: choose the right path for a named pipe
+ const char *fifo = "/tmp/fifo";
+
+ mkfifo(fifo, 0666);
+
+ fd = open(fifo, O_WRONLY);
+ write(fd, d_script, st.st_size + 1);
+ 
+ close(fd);
+ free(d_script);
+}
 
 int
 main(int argc, char *argv[])
@@ -1549,6 +1575,9 @@ main(int argc, char *argv[])
 				g_mode = DMODE_VERS;
 				mode++;
 				break;
+			case 'Y':
+				mode = 3;
+				break;
 
 			default:
 				if (strchr(DTRACE_OPTSTR, c) == NULL)
@@ -1558,6 +1587,19 @@ main(int argc, char *argv[])
 
 		if (optind < argc)
 			g_argv[g_argc++] = argv[optind];
+	}
+
+	/**
+	 * We are passing a script to kernel
+	*/
+	if(mode == 3) {
+		const char * filepath;
+		printf("Number of arguments is %d", argc);
+		filepath = argv[2];
+		write_script(filepath);
+		read_script();
+		printf("yay");
+		return 0;
 	}
 
 	if (mode > 1) {

@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/ucred.h>
 #include <sys/dtrace_bsd.h>
 #include <sys/vtdtr.h>
+#include <sys/stat.h>
 
 #include <machine/vmm.h>
 
@@ -51,6 +52,8 @@ __FBSDID("$FreeBSD$");
 #include <assert.h>
 #include <pthread.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
 
 #include <vmmapi.h>
 
@@ -763,3 +766,28 @@ struct pci_devemu pci_de_vdtr = {
 	.pe_barread  = vi_pci_read
 };
 PCI_EMUL_SET(pci_de_vdtr);
+
+/*
+	Reads scripts provided by user via a named pipe.
+*/
+static int read_script() 
+{
+	int fd;
+	const char * fifo = "/tmp/fifo";
+	mkfifo(fifo, 0666);
+
+	static char * d_script;
+	struct stat st;
+
+	fd = open(fifo, O_RDONLY);
+		
+	fstat(fd, &st);
+	d_script = malloc(sizeof(st.st_size));
+	read(fd, d_script, st.st_size);		
+
+	// TODO: send this via virtio to the virtual machine
+    printf(d_script);
+
+	close(fd);
+	free(d_script);
+}
