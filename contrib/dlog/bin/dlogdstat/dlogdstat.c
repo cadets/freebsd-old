@@ -48,6 +48,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "dl_config.h"
 #include "dl_memory.h"
 #include "dl_producer_stats.h"
 
@@ -194,6 +195,11 @@ main(int argc, char **argv)
 
 	signal(SIGINT, dlogdstat_stop);
 	signal(SIGINFO, dlogdstat_update);
+
+	/* Create a new nvlist to store the dlogdstat configuration. */
+	dlogd_props = nvlist_create(0);
+
+	nvlist_add_string(dlogd_props, DL_CONF_LOG_PATH, log_path);
 
 	/* Open a memory mapped file for the Producer stats. */
 	if (dl_producer_stats_new(&stats, topic))

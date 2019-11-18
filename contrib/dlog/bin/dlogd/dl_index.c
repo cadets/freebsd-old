@@ -476,7 +476,7 @@ dl_index_new(struct dl_index **self, struct dl_user_segment *useg,
 	} else {
 		rc = dl_index_lookup_by_poffset(idx,
 		    (idx_end - DL_INDEX_RECORD_SIZE), &record);
-		if (rc != 0) {
+		if (rc <= 0) {
 
 			DLOGTR1(PRIO_HIGH,
 			    "Failed to read from index file %d\n", errno);

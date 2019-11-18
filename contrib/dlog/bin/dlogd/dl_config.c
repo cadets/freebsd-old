@@ -51,7 +51,8 @@ int
 dl_config_new(char *conf_file, int debug_lvl)
 {
 	struct ucl_parser* parser;
-	ucl_object_t *top, *cur, *obj, *t, *topics_obj = NULL;
+	const ucl_object_t *top;
+	ucl_object_t *cur, *obj, *t, *topics_obj = NULL;
 	ucl_object_iter_t it, tit = NULL;
 	char *topic_name;
 	nvlist_t *topics;

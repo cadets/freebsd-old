@@ -88,7 +88,9 @@ static int ddtrace_event_handler(struct module *, int, void *);
 static void ddtrace_thread(void *);
 
 static void ddtrace_buffer_switch(struct client *);
+#ifdef DTRACE_METADATA
 static int ddtrace_persist_metadata(dtrace_state_t *, struct dlog_handle *);
+#endif
 static void ddtrace_persist_trace(dtrace_state_t *, struct dlog_handle *,
     dtrace_bufdesc_t *);
 
@@ -108,6 +110,7 @@ extern int dtrace_nprobes;		/* number of probes */
 
 static char const * const DDTRACE_NAME = "ddtrace";
 static char * DDTRACE_KEY = "ddtrace";
+static char * DDTRACE_DOF_KEY = "dof";
 static char * DDTRACE_EPROBE_KEY = "eprobe";
 static char * DDTRACE_FORMAT_KEY = "format";
 static char * DDTRACE_PROBE_KEY = "probe";
@@ -332,6 +335,7 @@ ddtrace_thread(void *arg)
 
 	ddtrace_assert_integrity(__func__, k);
 
+#ifdef DTRACE_METADATA
 	/* Write the metadata to the log before processing the trace
 	 * buffers.
 	 */
@@ -341,6 +345,7 @@ ddtrace_thread(void *arg)
 		DLOGTR0(PRIO_HIGH, "Failed persisting metadata.\n");
 		return;
 	}
+#endif
 
 	/* Process the trace buffers. */
 	for (;;) {
@@ -382,6 +387,7 @@ ddtrace_thread(void *arg)
 static int 
 ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 {
+	dof_hdr_t *dof = state->dts_dof;
 	dtrace_action_t *act;
 	dtrace_ecb_t *ecb;
 	dtrace_eprobedesc_t epdesc;
@@ -399,6 +405,20 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	/* Write the formats to the log:
 	 * this mirrors the DTRACEIOC_FORMAT ioctl.
 	 */
+
+	/* Create DOF serilizing the enablings. */
+	DLOGTR2(PRIO_LOW, "Persisting the DOF (%lu bytes, %lu bytes)\n",
+	    dof->dofh_loadsz, dof->dofh_filesz);
+
+	if (dlog_produce(hdl, DDTRACE_DOF_KEY,
+	    (unsigned char *)dof, dof->dofh_loadsz) != 0) {
+
+		DLOGTR0(PRIO_HIGH,
+		    "Error producing format metadata to DLog\n");
+		dtrace_dof_destroy(dof);
+		return -1;
+	}
+
 	DLOGTR0(PRIO_LOW, "Persisting dtrace format string metadata\n");
 
 	mutex_enter(&dtrace_lock);
@@ -469,7 +489,10 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		 * for the current zone; see the DTRACEIOC_PROBES/_PROBEMATCH ioctl
 		 * implementation.
 		 */
+		//dtrace_cred2priv(cr, &priv, &uid, &zoneid);
+
 		if ((probe = dtrace_probes[ecb->dte_probe->dtpr_id - 1]) != NULL) {
+		    //&& dtrace_match_priv(probe, priv, uid, zoneid))
 
 			bzero(&pdesc, sizeof(dtrace_probedesc_t));
 			pdesc.dtpd_provider[DTRACE_PROVNAMELEN - 1] = '\0';

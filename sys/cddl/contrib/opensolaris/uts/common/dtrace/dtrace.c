@@ -13349,7 +13349,7 @@ dtrace_dof_error(dof_hdr_t *dof, const char *str)
  * DOF containing the run-time options -- but this could be expanded to create
  * complete DOF representing the enabled state.
  */
-static dof_hdr_t *
+dof_hdr_t *
 dtrace_dof_create(dtrace_state_t *state)
 {
 	dof_hdr_t *dof;
@@ -13659,7 +13659,7 @@ doferr:
 #endif /* !__FreeBSD__ */
 }
 
-static void
+void
 dtrace_dof_destroy(dof_hdr_t *dof)
 {
 	kmem_free(dof, dof->dofh_loadsz);
@@ -17901,7 +17901,8 @@ dtrace_ioctl(dev_t dev, int cmd, intptr_t arg, int md, cred_t *cr, int *rv)
 
 		mutex_exit(&cpu_lock);
 		mutex_exit(&dtrace_lock);
-		dtrace_dof_destroy(dof);
+		//where to destroy dof STOP
+		//dtrace_dof_destroy(dof);
 
 		return (err);
 	}

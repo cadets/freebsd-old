@@ -93,7 +93,6 @@ check_integrity(struct dl_producer_stats const * const self)
 int
 dl_producer_stats_new(struct dl_producer_stats **self,
     char *topic_name)
-    //struct sbuf *topic_name)
 {
 	struct dl_producer_stats *stats;
 	struct sbuf *stats_path;

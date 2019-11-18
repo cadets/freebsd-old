@@ -1177,6 +1177,7 @@ struct dtrace_state {
 	size_t dts_nretained;			/* number of retained enabs */
 	int dts_getf;				/* number of getf() calls */
 	uint64_t dts_rstate[NCPU][2];		/* per-CPU random state */
+	dof_hdr_t *dts_dof;			/* DOF used by distributed dtrace */
 };
 
 struct dtrace_dist {
@@ -1332,6 +1333,8 @@ extern void dtrace_copystr(uintptr_t, uintptr_t, size_t, volatile uint16_t *);
 
 void dtrace_buffer_switch(dtrace_buffer_t *);
 size_t dtrace_epid2size(dtrace_state_t *, dtrace_epid_t);
+dof_hdr_t * dtrace_dof_create(dtrace_state_t *);
+void dtrace_dof_destroy(dof_hdr_t *);
 
 /*
  * DTrace Assertions
