@@ -1435,7 +1435,7 @@ static void write_script(char *file_path)
 
 if((fstat(fd, &st)) == -1)
 	{
-		print("Error with opening file");
+		printf("Error with opening file");
 	}
 
  d_script = malloc(sizeof(char) * st.st_size);
