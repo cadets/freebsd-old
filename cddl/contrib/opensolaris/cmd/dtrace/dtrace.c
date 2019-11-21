@@ -1433,16 +1433,25 @@ static void write_script(char *file_path)
  if((fd = open(file_path, O_RDONLY)) == -1)
  	fatal("failed to open file '%s", file_path);
 
- fstat(fd, &st);
+if((fstat(fd, &st)) == -1)
+	{
+		print("Error with opening file");
+	}
+
  d_script = malloc(sizeof(char) * st.st_size);
- read(fd, d_script, st.st_size);
+
+if((read(fd, d_script, st.st_size)) == -1)
+		fatal("Error occured while reading from the script file");		
 
  close(fd);
  
  // TODO: choose the right path for a named pipe
  const char *fifo = "/tmp/fifo";
 
- mkfifo(fifo, 0666);
+if(mkfifo(fifo, 0666))
+{
+	warn("Pipe creation from %s returned error", fifo);
+}
 
  fd = open(fifo, O_WRONLY);
  write(fd, d_script, st.st_size + 1);
