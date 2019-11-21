@@ -178,6 +178,7 @@ static void pci_vtdtr_handle_mev(int, enum ev_type, int, void *);
 #endif
 static void pci_vtdtr_reset_queue(struct pci_vtdtr_softc *);
 static int pci_vtdtr_init(struct vmctx *, struct pci_devinst *, char *);
+static void read_script();
 
 static struct virtio_consts vtdtr_vi_consts = {
 	"vtdtr",			/* name */
@@ -785,16 +786,16 @@ static void read_script()
 
 	// TODO: set as O_NONBLOCK
 	if((fd = open(fifo, O_RDONLY)) == -1) 
-		fatal("failed to open named pipe '%s'", fifo);
+		printf("failed to open named pipe '%s'", fifo);
 		
 	if((fstat(fd, &st)) == -1)
 	{
-		print("Error %s",st->name);
+		printf("Error reading pipe");
 	}
 	d_script = malloc(sizeof(char) * st.st_size);
 	
-	if((read(fd, d_script, st.st_size) == -1)
-		fatal("Error occured while reading from the pipe");		
+	if((read(fd, d_script, st.st_size)) == -1)
+		printf("Error occured while reading from the pipe");		
 
 	// TODO: send this via virtio to the virtual machine instead of printing it
     printf(d_script);
