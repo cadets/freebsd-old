@@ -154,5 +154,6 @@ typedef struct dt_elf_prog {
 } dt_elf_prog_t;
 
 extern void dt_elf_create(dtrace_prog_t *, int);
+extern dtrace_prog_t *dt_elf_to_prog(int);
 
 #endif /* _DT_ELF_H_ */

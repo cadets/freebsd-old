@@ -588,6 +588,15 @@ dt_as(dt_pcb_t *pcb)
 		dp->dtdo_strlen = (uint32_t)n;
 	}
 
+	if ((n = dt_strtab_size(pcb->pcb_symtab)) != 0) {
+		if ((dp->dtdo_symtab = dt_alloc(dtp, n)) == NULL)
+			longjmp(pcb->pcb_jmpbuf, EDT_NOMEM);
+
+		(void) dt_strtab_write(pcb->pcb_symtab,
+		    (dt_strtab_write_f *)dt_copystr, pcb);
+		dp->dtdo_symlen = (uint32_t)n;
+	}
+
 	/*
 	 * Allocate memory for the compiled integer table and then copy the
 	 * integer constants from the table into the final integer buffer.

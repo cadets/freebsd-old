@@ -171,6 +171,36 @@ static Elf_Scn *
 dt_elf_new_symtab(Elf *e, dtrace_difo_t *difo, size_t *nsecs)
 {
 	Elf_Scn *scn = NULL;
+	Elf32_Shdr *shdr;
+	Elf_Data *data;
+	char *symtab = difo->dtdo_symtab;
+
+	if (symtab == NULL)
+		return (scn);
+
+	if ((scn = elf_newscn(e)) == NULL)
+		errx(EXIT_FAILURE, "elf_newscn(%p) failed with %s",
+		     e, elf_errmsg(-1));
+
+	if ((data = elf_newdata(scn)) == NULL)
+		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
+		     scn, elf_errmsg(-1));
+
+	data->d_align = 1;
+	data->d_buf = symtab;
+	data->d_size = difo->dtdo_symlen;
+	data->d_type = ELF_T_BYTE;
+	data->d_version = EV_CURRENT;
+
+	if ((shdr = elf32_getshdr(scn)) == NULL)
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
+		     elf_errmsg(-1));
+
+	shdr->sh_type = SHT_DTRACE_elf;
+	shdr->sh_name = DTELF_DIFOSYMTAB;
+	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
+	shdr->sh_entsize = 0;
+
 	return (scn);
 }
 
@@ -543,6 +573,8 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 
 	dt_elf_prog_t prog = {0};
 
+	memset(&dtelf_state, 0, sizeof(dt_elf_state_t));
+
 	/*
 	 * Create the directory that contains the ELF file (if needed).
 	 */
@@ -699,4 +731,11 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 
 	(void) elf_end(e);
 	(void) close(fd);
+}
+
+dtrace_prog_t *
+dt_elf_to_prog(int fd)
+{
+
+	return (NULL);
 }
