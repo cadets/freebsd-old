@@ -770,7 +770,7 @@ PCI_EMUL_SET(pci_de_vdtr);
 /*
 	Reads scripts provided by user via a named pipe.
 */
-static int read_script() 
+static void read_script() 
 {
 	int fd;
 	const char * fifo = "/tmp/fifo";
@@ -779,13 +779,20 @@ static int read_script()
 	static char * d_script;
 	struct stat st;
 
-	fd = open(fifo, O_RDONLY);
+	// TODO: set as O_NONBLOCK
+	if((fd = open(fifo, O_RDONLY)) == -1) 
+		fatal("failed to open named pipe '%s'", fifo);
 		
-	fstat(fd, &st);
-	d_script = malloc(sizeof(st.st_size));
-	read(fd, d_script, st.st_size);		
+	if((fstat(fd, &st)) == -1)
+	{
+		print("Error %s",st->name);
+	}
+	d_script = malloc(sizeof(char) * st.st_size);
+	
+	if((read(fd, d_script, st.st_size) == -1)
+		fatal("Error occured while reading from the pipe");		
 
-	// TODO: send this via virtio to the virtual machine
+	// TODO: send this via virtio to the virtual machine instead of printing it
     printf(d_script);
 
 	close(fd);

@@ -1429,9 +1429,12 @@ static void write_script(char *file_path)
  static char * d_script;
  struct stat st; 
 
- fd = open(file_path, O_RDONLY);
+// TODO: set as O_NONBLOCK
+ if((fd = open(file_path, O_RDONLY)) == -1)
+ 	fatal("failed to open file '%s", file_path);
+
  fstat(fd, &st);
- d_script = malloc(sizeof(st.st_size));
+ d_script = malloc(sizeof(char) * st.st_size);
  read(fd, d_script, st.st_size);
 
  close(fd);

@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "*.m": "matlab",
-        "*.inc": "c"
+        "*.inc": "c",
+        "typeinfo": "c"
     }
 }
