@@ -47,7 +47,6 @@
 #include <strings.h>
 #include <stdlib.h>
 #include <assert.h>
-#include <execinfo.h>
 
 #include <dt_impl.h>
 #include <dt_program.h>
@@ -691,17 +690,6 @@ dt_pcb_dump(dt_pcb_t *pcb, int fd)
 	int i;
 	dt_idhash_t *dhp;
 	dt_ident_t *idp;
-	size_t syms;
-	char **strings;
-	void *array[10];
-
-	syms = backtrace(array, 10);
-	strings = backtrace_symbols(array, syms);
-	dprintf(fd, "BACKTRACE:\n");
-
-	for (i = 0; i < syms; i++) {
-		dprintf(fd, "%s\n", strings[i]);
-	}
 
 	dprintf(fd, "pcb = %p\n", pcb);
 	if (pcb == NULL)

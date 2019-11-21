@@ -848,6 +848,7 @@ vtdtr_enable_interrupts(struct vtdtr_softc *sc)
 static int
 vtdtr_vq_enable_intr(struct virtio_dtrace_queue *q)
 {
+	struct vtdtr_softc *sc = q->vtdq_sc;
 
 	mtx_assert(&sc->vtdtr_mtx, MA_OWNED);
 	return (virtqueue_enable_intr(q->vtdq_vq));
@@ -859,6 +860,7 @@ vtdtr_vq_enable_intr(struct virtio_dtrace_queue *q)
 static void
 vtdtr_vq_disable_intr(struct virtio_dtrace_queue *q)
 {
+	struct vtdtr_softc *sc = q->vtdq_sc;
 
 	mtx_assert(&sc->vtdtr_mtx, MA_OWNED);
 	virtqueue_disable_intr(q->vtdq_vq);

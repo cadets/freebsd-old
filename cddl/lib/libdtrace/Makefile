@@ -114,7 +114,7 @@ CFLAGS+=	-I${OPENSOLARIS_SYS_DISTDIR}/uts/sparc
 # temporary hack
 CFLAGS+=	-I${OPENSOLARIS_SYS_DISTDIR}/uts/intel
 .endif
-
+CFLAGS+=	-g
 .if ${MACHINE_ARCH} == "i386" || ${MACHINE_ARCH} == "amd64"
 SRCS+=		dis_tables.c
 DSRCS+=		regs_x86.d
@@ -124,7 +124,7 @@ LFLAGS+=-l
 
 YFLAGS+=-d
 
-LIBADD=	ctf elf proc pthread rtld_db xo execinfo
+LIBADD=	ctf elf proc pthread rtld_db xo
 
 CLEANFILES=	dt_errtags.c dt_names.c
 

@@ -1031,6 +1031,8 @@ typedef struct dtrace_difo {
 	uint_t dtdo_krelen;		/* length of krelo table */
 	uint_t dtdo_urelen;		/* length of urelo table */
 	uint_t dtdo_xlmlen;		/* length of translator table */
+	char *dtdo_symtab;		/* symbol table (optional) */
+	uint64_t dtdo_symlen;		/* length of symbol table */
 #endif
 } dtrace_difo_t;
 

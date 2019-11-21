@@ -34,7 +34,7 @@
 /*
  * dt_elf_ref_t: A context-dependent reference to another ELF section.
  */
-typedef uint64_t dt_elf_ref_t;
+typedef uint32_t dt_elf_ref_t;
 
 /*
  * dt_elf_attribute_t: Same as dtrace_attribute_t.
@@ -68,14 +68,13 @@ typedef struct dt_elf_probedesc {
  * dted_destructive: Invoke destructive subroutines?
  */
 typedef struct dt_elf_difo {
-	dif_instr_t *dted_buf;
-	dt_elf_ref_t dted_inttab_le;
-	dt_elf_ref_t dted_inttab_be;
+	dt_elf_ref_t dted_inttab;
         dt_elf_ref_t dted_strtab;
-        dt_elf_ref_t *dted_vartab;
-	uint64_t dted_len;
+	dt_elf_ref_t dted_symtab;
+        dt_elf_ref_t dted_vartab;
 	uint64_t dted_intlen;
 	uint64_t dted_strlen;
+	uint64_t dted_symlen;
 	uint64_t dted_varlen;
 	dtrace_diftype_t dted_rtype;
 	uint64_t dted_destructive;
@@ -89,6 +88,8 @@ typedef struct dt_elf_difo {
 	 *               strongly assume that all of the DTrace "relocations"
 	 *               and translation happens on the source machine.
 	 */
+	uint64_t dted_len;
+	dif_instr_t dted_buf[];
 } dt_elf_difo_t;
 
 /*
@@ -104,7 +105,7 @@ typedef struct dt_elf_difo {
 typedef struct dt_elf_actdesc {
 	dt_elf_ref_t dtea_difo;
 	dt_elf_ref_t dtea_next;
-	uint64_t dtea_kind;
+	dtrace_actkind_t dtea_kind;
 	uint64_t dtea_ntuple;
 	uint64_t dtea_arg;
 	uint64_t dtea_uarg;
@@ -128,20 +129,30 @@ typedef struct dt_elf_ecbdesc {
 /*
  * dt_elf_stmt_t: A serialised version of a D statement.
  *
- * dtes_id: A monotonically increasing ID that identifies the order of stmts.
  * dtes_ecbdesc: A reference to an ELF section containing the ecbdesc.
  * dtes_action: A reference to an ELF section containing the first action.
  * dtes_descattr: probedesc attributes.
  * dtes_stmtattr: Statement attributes.
  */
 typedef struct dt_elf_stmt {
-	uint64_t dtes_id;
 	dt_elf_ref_t dtes_ecbdesc;
 	dt_elf_ref_t dtes_action;
+	dt_elf_ref_t dtes_action_last;
 	dt_elf_attribute_t dtes_descattr;
 	dt_elf_attribute_t dtes_stmtattr;
 } dt_elf_stmt_t;
 
-extern void dt_elf_create(dtrace_prog_t *, int, int);
+/*
+ * dt_elf_prog_t: Information about the DTrace program.
+ *
+ * dtep_first_stmt: A reference to an ELF section containing the first stmt.
+ * dtep_dofversion: The DOF version required for this DTrace program.
+ */
+typedef struct dt_elf_prog {
+	dt_elf_ref_t dtep_first_stmt;
+	uint8_t dtep_dofversion;
+} dt_elf_prog_t;
+
+extern void dt_elf_create(dtrace_prog_t *, int);
 
 #endif /* _DT_ELF_H_ */

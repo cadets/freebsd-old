@@ -33,6 +33,7 @@
 #include <sys/wait.h>
 
 #include <dtrace.h>
+#include <dt_elf.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -83,7 +84,7 @@ typedef struct dtrace_cmd {
 #define OMODE_HTML	3
 
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:M:n:O:o:p:P:qs:SU:vVwx:X:Z";
+	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:M:n:O:o:p:P:qs:SU:vVwx:X:Z";
 static int g_oformat = OMODE_NONE;
 
 static char **g_argv;
@@ -109,6 +110,7 @@ static int g_cflags;
 static int g_oflags;
 static int g_verbose;
 static int g_exec = 1;
+static int g_elf = 0;
 static const char *g_graphfile = NULL;
 static int g_mode = DMODE_EXEC;
 static int g_status = E_SUCCESS;
@@ -168,6 +170,7 @@ usage(FILE *fp)
 	    "\t-C  run cpp(1) preprocessor on script files\n"
 	    "\t-D  define symbol when invoking preprocessor\n"
 	    "\t-e  exit after compiling request but prior to enabling probes\n"
+	    "\t-E  generate an ELF file instead of a DOF file\n"
 	    "\t-f  enable or list probes matching the specified function name\n"
 	    "\t-F  coalesce trace output by function\n"
 	    "\t-G  generate an ELF file containing embedded dtrace program\n"
@@ -702,6 +705,8 @@ exec_prog(const dtrace_cmd_t *dcp)
 
 	if (!g_exec) {
 		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
+		if (g_elf)
+			dt_elf_create(dcp->dc_prog, ELFDATA2LSB);
 	} else if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
 		dfatal("failed to enable '%s'", dcp->dc_name);
 	} else {
@@ -1512,6 +1517,12 @@ main(int argc, char *argv[])
 
 			case 'e':
 				g_exec = 0;
+				done = 1;
+				break;
+
+			case 'E':
+				g_elf = 1;
+				g_exec = 0; /* For now... */
 				done = 1;
 				break;
 
