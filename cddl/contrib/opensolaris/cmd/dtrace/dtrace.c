@@ -1609,7 +1609,6 @@ main(int argc, char *argv[])
 		printf("Number of arguments is %d", argc);
 		filepath = argv[2];
 		write_script(filepath);
-		read_script();
 		printf("yay");
 		return 0;
 	}

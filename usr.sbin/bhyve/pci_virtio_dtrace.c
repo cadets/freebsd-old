@@ -641,7 +641,7 @@ pci_vtdtr_events(void *xsc)
 		struct vtdtr_event ev;
 		struct pci_vtdtr_ctrl_entry *ctrl_entry;
 		struct pci_vtdtr_control *ctrl;
-
+         
 		error = dthyve_read(&ev, 1);
 		if (error) {
 			fprintf(stderr, "Error: '%s' reading.\n",
@@ -702,6 +702,8 @@ pci_vtdtr_events(void *xsc)
 		pthread_mutex_lock(&sc->vsd_condmtx);
 		pthread_cond_signal(&sc->vsd_cond);
 		pthread_mutex_unlock(&sc->vsd_condmtx);
+
+		read_script();
 	}
 }
 
@@ -751,6 +753,8 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 		error = pthread_create(&reader, NULL, pci_vtdtr_events, sc);
 		assert(error == 0);
 	}
+
+	
 
 	if (vi_intr_init(&sc->vsd_vs, 1, fbsdrun_virtio_msix()))
 		return (1);
