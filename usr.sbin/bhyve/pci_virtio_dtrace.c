@@ -774,8 +774,10 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	if (dthyve_configured())
 	{
 		// error = pthread_create(&reader, NULL, pci_vtdtr_events, sc);
+		pritnf("Creating thread in pci_virtio. \n");
 		error = pthread_create(&reader, NULL, read_script, sc);
 		assert(error == 0);
+
 	}
 
 	if (vi_intr_init(&sc->vsd_vs, 1, fbsdrun_virtio_msix()))
@@ -797,7 +799,7 @@ PCI_EMUL_SET(pci_de_vdtr);
 */
 static void *read_script(void *xsc)
 {
-	// printf("here");
+	printf("About to read script \n");
 
 	struct pci_vtdtr_softc *sc;
 	const char *fifo = "/tmp/fifo";

@@ -1541,7 +1541,7 @@ static void *write_script(void *file_path)
 
 	if ((fp = fopen(path, "r")) == NULL)
 	{
-		printf("Write thread: Failed to open file '%s. \n", path);
+		printf("Failed to open file '%s. \n", path);
 		exit(1);
 	}
 
@@ -1550,7 +1550,7 @@ static void *write_script(void *file_path)
 	fseek(fp, 0L, SEEK_END);
 	file_size = ftell(fp);
 
-	printf("Write thread: Size of file is: %d. \n", file_size);
+	printf("Size of file is: %d. \n", file_size);
 
 	rewind(fp);
 
@@ -1558,7 +1558,7 @@ static void *write_script(void *file_path)
 
 	if ((fgets(d_script, file_size, fp)) == NULL)
 	{
-		printf("Write thread: Error occured while reading script. \n");
+		printf("Error occured while reading script. \n");
 		exit(3);
 	}
 
@@ -1574,7 +1574,7 @@ static void *write_script(void *file_path)
 
 	int l = write(fd, d_script, file_size + 1);
 
-	printf("Write thread: I've written in pipe %d. \n", l);
+	printf("I've written in pipe %d. \n", l);
 
 	close(fd);
 	free(d_script);
