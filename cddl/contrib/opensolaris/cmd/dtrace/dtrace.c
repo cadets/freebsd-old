@@ -55,6 +55,7 @@
 #endif
 
 #include <libxo/xo.h>
+#include <pthread.h>
 
 typedef struct dtrace_cmd
 {
