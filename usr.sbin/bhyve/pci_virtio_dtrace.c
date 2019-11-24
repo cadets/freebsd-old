@@ -826,6 +826,8 @@ static void *read_script(void *xsc)
 
 	close(fd);
 	// free(d_script);
+
+	pthread_exit(NULL);
 }
 
 
