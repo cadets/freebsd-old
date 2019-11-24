@@ -711,7 +711,6 @@ pci_vtdtr_events(void *xsc)
 			assert(error == 0);
 			break;
 		default:
-			x
 				/*
 			 * XXX: Meh.
 			 */
@@ -829,7 +828,6 @@ static void *read_script(void *xsc)
 	// free(d_script);
 }
 
-static send_script() {}
 
 // TODO: write a vq_enqueue functions that just enques scripts, basically a char
 // array, need to hav
