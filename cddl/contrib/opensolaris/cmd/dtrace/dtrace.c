@@ -43,6 +43,9 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <signal.h>
+#include <pthread.h>
+#include <fcntl.h>
+
 #ifdef illumos
 #include <alloca.h>
 #endif
@@ -55,7 +58,6 @@
 #endif
 
 #include <libxo/xo.h>
-#include <pthread.h>
 
 typedef struct dtrace_cmd
 {
