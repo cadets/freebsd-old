@@ -62,8 +62,8 @@ __FBSDID("$FreeBSD$");
 #include "pci_emul.h"
 #include "virtio.h"
 
-#define	VTDTR_RINGSZ 512
-#define	VTDTR_MAXQ     2
+#define VTDTR_RINGSZ 512
+#define VTDTR_MAXQ 2
 
 /*
  * As already documented in virtio_dtrace.h, probe installation/uninstallation
@@ -77,119 +77,131 @@ __FBSDID("$FreeBSD$");
  * READY and EOF are used for synchronization purposes, while CLEANUP is meant
  * to be sent to the guest in order to clean up the TX virtqueue.
  */
-#define	VTDTR_DEVICE_READY           0x00
-#define	VTDTR_DEVICE_REGISTER        0x01
-#define	VTDTR_DEVICE_UNREGISTER      0x02
-#define	VTDTR_DEVICE_DESTROY         0x03
-#define	VTDTR_DEVICE_PROBE_CREATE    0x04
-#define	VTDTR_DEVICE_PROBE_INSTALL   0x05
-#define	VTDTR_DEVICE_PROBE_UNINSTALL 0x06
-#define	VTDTR_DEVICE_EOF             0x07
-#define VTDTR_DEVICE_GO              0x08
-#define VTDTR_DEVICE_STOP            0x09
+#define VTDTR_DEVICE_READY 0x00
+#define VTDTR_DEVICE_REGISTER 0x01
+#define VTDTR_DEVICE_UNREGISTER 0x02
+#define VTDTR_DEVICE_DESTROY 0x03
+#define VTDTR_DEVICE_PROBE_CREATE 0x04
+#define VTDTR_DEVICE_PROBE_INSTALL 0x05
+#define VTDTR_DEVICE_PROBE_UNINSTALL 0x06
+#define VTDTR_DEVICE_EOF 0x07
+#define VTDTR_DEVICE_GO 0x08
+#define VTDTR_DEVICE_STOP 0x09
 
 static int pci_vtdtr_debug;
-#define	DPRINTF(params) if (pci_vtdtr_debug) printf params
-#define	WPRINTF(params) printf params
+#define DPRINTF(params)  \
+	if (pci_vtdtr_debug) \
+	printf params
+#define WPRINTF(params) printf params
 
-struct pci_vtdtr_probe_create_event {
-	char        mod[DTRACE_MODNAMELEN];
-	char        func[DTRACE_FUNCNAMELEN];
-	char        name[DTRACE_NAMELEN];
+struct pci_vtdtr_probe_create_event
+{
+	char mod[DTRACE_MODNAMELEN];
+	char func[DTRACE_FUNCNAMELEN];
+	char name[DTRACE_NAMELEN];
 	struct uuid uuid;
-}__attribute__((packed));
+} __attribute__((packed));
 
-struct pci_vtdtr_probe_toggle_event {
+struct pci_vtdtr_probe_toggle_event
+{
 	char *dif; /* TODO */
-}__attribute__((packed));
+} __attribute__((packed));
 
-struct pci_vtdtr_ctrl_pbevent {
+struct pci_vtdtr_ctrl_pbevent
+{
 	uint32_t probe;
 
 	union {
 		struct pci_vtdtr_probe_create_event probe_evcreate;
 		struct pci_vtdtr_probe_toggle_event probe_evtoggle;
 	} upbev;
-}__attribute__((packed));
+} __attribute__((packed));
 
-struct pci_vtdtr_ctrl_provevent {
-	char        name[DTRACE_PROVNAMELEN];
+struct pci_vtdtr_ctrl_provevent
+{
+	char name[DTRACE_PROVNAMELEN];
 	struct uuid uuid;
-}__attribute__((packed));
+} __attribute__((packed));
 
-struct pci_vtdtr_control {
+struct pci_vtdtr_control
+{
 	uint32_t event;
 
 	union {
-		struct pci_vtdtr_ctrl_pbevent   probe_ev;
+		struct pci_vtdtr_ctrl_pbevent probe_ev;
 		struct pci_vtdtr_ctrl_provevent prov_ev;
 	} uctrl;
-}__attribute__((packed));
+} __attribute__((packed));
 
-struct pci_vtdtr_ctrl_entry {
-	struct pci_vtdtr_control           ctrl;
-	STAILQ_ENTRY(pci_vtdtr_ctrl_entry) entries;
+struct pci_vtdtr_ctrl_entry
+{
+	struct pci_vtdtr_control ctrl;
+	STAILQ_ENTRY(pci_vtdtr_ctrl_entry)
+	entries;
 };
 
-struct pci_vtdtr_ctrlq {
-	STAILQ_HEAD(, pci_vtdtr_ctrl_entry) head;
-	pthread_mutex_t                          mtx;
+struct pci_vtdtr_ctrlq
+{
+	STAILQ_HEAD(, pci_vtdtr_ctrl_entry)
+	head;
+	pthread_mutex_t mtx;
 };
 
-struct pci_vtdtr_softc {
-	struct virtio_softc     vsd_vs;
-	struct vqueue_info      vsd_queues[VTDTR_MAXQ];
-	struct vmctx           *vsd_vmctx;
+struct pci_vtdtr_softc
+{
+	struct virtio_softc vsd_vs;
+	struct vqueue_info vsd_queues[VTDTR_MAXQ];
+	struct vmctx *vsd_vmctx;
 	struct pci_vtdtr_ctrlq *vsd_ctrlq;
-	pthread_mutex_t         vsd_condmtx;
-	pthread_cond_t          vsd_cond;
-	pthread_mutex_t         vsd_mtx;
-	uint64_t                vsd_cfg;
-	int                     vsd_guest_ready;
-	int                     vsd_ready;
+	pthread_mutex_t vsd_condmtx;
+	pthread_cond_t vsd_cond;
+	pthread_mutex_t vsd_mtx;
+	uint64_t vsd_cfg;
+	int vsd_guest_ready;
+	int vsd_ready;
 };
 
 static void pci_vtdtr_reset(void *);
 static void pci_vtdtr_control_tx(struct pci_vtdtr_softc *,
-    struct iovec *, int);
+								 struct iovec *, int);
 static int pci_vtdtr_control_rx(struct pci_vtdtr_softc *,
-    struct iovec *, int);
+								struct iovec *, int);
 static void pci_vtdtr_process_prov_evt(struct pci_vtdtr_softc *,
-    struct pci_vtdtr_control *);
+									   struct pci_vtdtr_control *);
 static void pci_vtdtr_process_probe_evt(struct pci_vtdtr_softc *,
-    struct pci_vtdtr_control *);
+										struct pci_vtdtr_control *);
 static void pci_vtdtr_notify_tx(void *, struct vqueue_info *);
 static void pci_vtdtr_notify_rx(void *, struct vqueue_info *);
 static void pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *,
-    struct pci_vtdtr_ctrl_entry *);
+								 struct pci_vtdtr_ctrl_entry *);
 static void pci_vtdtr_cq_enqueue_front(struct pci_vtdtr_ctrlq *,
-    struct pci_vtdtr_ctrl_entry *);
+									   struct pci_vtdtr_ctrl_entry *);
 static int pci_vtdtr_cq_empty(struct pci_vtdtr_ctrlq *);
 static struct pci_vtdtr_ctrl_entry *pci_vtdtr_cq_dequeue(
-    struct pci_vtdtr_ctrlq *);
+	struct pci_vtdtr_ctrlq *);
 static void pci_vtdtr_fill_desc(struct vqueue_info *,
-    struct pci_vtdtr_control *);
+								struct pci_vtdtr_control *);
 static void pci_vtdtr_poll(struct vqueue_info *, int);
 static void pci_vtdtr_notify_ready(struct pci_vtdtr_softc *);
 static void pci_vtdtr_fill_eof_desc(struct vqueue_info *);
-static void * pci_vtdtr_run(void *);
+static void *pci_vtdtr_run(void *);
 #if 0
 static void pci_vtdtr_handle_mev(int, enum ev_type, int, void *);
 #endif
 static void pci_vtdtr_reset_queue(struct pci_vtdtr_softc *);
 static int pci_vtdtr_init(struct vmctx *, struct pci_devinst *, char *);
-static void read_script();
+static void *read_script(void *);
 
 static struct virtio_consts vtdtr_vi_consts = {
-	"vtdtr",			/* name */
-	VTDTR_MAXQ,			/* maximum virtqueues */
-	0,				/* config reg size */
-	pci_vtdtr_reset,		/* reset */
-	NULL,				/* device-wide qnotify */
-	NULL,				/* read virtio config */
-	NULL,				/* write virtio config */
-	NULL,				/* apply negotiated features */
-	0,				/* capabilities */
+	"vtdtr",		 /* name */
+	VTDTR_MAXQ,		 /* maximum virtqueues */
+	0,				 /* config reg size */
+	pci_vtdtr_reset, /* reset */
+	NULL,			 /* device-wide qnotify */
+	NULL,			 /* read virtio config */
+	NULL,			 /* write virtio config */
+	NULL,			 /* apply negotiated features */
+	0,				 /* capabilities */
 };
 
 static void
@@ -225,13 +237,14 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	struct pci_vtdtr_control *ctrl;
 	//struct pci_vtdtr_ctrl_provevent *pv_ev;
 	//struct pci_vtdtr_ctrl_pbevent *pb_ev;
-	int retval;// error;
+	int retval; // error;
 
 	assert(niov == 1);
 	retval = 0;
 
 	ctrl = (struct pci_vtdtr_control *)iov->iov_base;
-	switch (ctrl->event) {
+	switch (ctrl->event)
+	{
 	case VTDTR_DEVICE_READY:
 		pthread_mutex_lock(&sc->vsd_mtx);
 		sc->vsd_guest_ready = 1;
@@ -297,7 +310,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 
 static void
 pci_vtdtr_process_prov_evt(struct pci_vtdtr_softc *sc,
-    struct pci_vtdtr_control *ctrl)
+						   struct pci_vtdtr_control *ctrl)
 {
 	/*
 	 * XXX: The processing functions... are the actually
@@ -308,9 +321,8 @@ pci_vtdtr_process_prov_evt(struct pci_vtdtr_softc *sc,
 
 static void
 pci_vtdtr_process_probe_evt(struct pci_vtdtr_softc *sc,
-    struct pci_vtdtr_control *ctrl)
+							struct pci_vtdtr_control *ctrl)
 {
-
 }
 
 static void
@@ -334,7 +346,8 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 
 	sc = xsc;
 
-	while (vq_has_descs(vq)) {
+	while (vq_has_descs(vq))
+	{
 		n = vq_getchain(vq, &idx, iov, 1, flags);
 		retval = pci_vtdtr_control_rx(sc, iov, 1);
 		vq_relchain(vq, idx, sizeof(struct pci_vtdtr_control));
@@ -352,7 +365,6 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 	pthread_mutex_lock(&sc->vsd_condmtx);
 	pthread_cond_signal(&sc->vsd_cond);
 	pthread_mutex_unlock(&sc->vsd_condmtx);
-
 }
 
 #if 0
@@ -403,7 +415,7 @@ pci_vtdtr_handle_mev(int fd __unused, enum ev_type et __unused, int ne,
 
 static __inline void
 pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
-    struct pci_vtdtr_ctrl_entry *ctrl_entry)
+					 struct pci_vtdtr_ctrl_entry *ctrl_entry)
 {
 
 	STAILQ_INSERT_TAIL(&cq->head, ctrl_entry, entries);
@@ -411,7 +423,7 @@ pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
 
 static __inline void
 pci_vtdtr_cq_enqueue_front(struct pci_vtdtr_ctrlq *cq,
-    struct pci_vtdtr_ctrl_entry *ctrl_entry)
+						   struct pci_vtdtr_ctrl_entry *ctrl_entry)
 {
 
 	STAILQ_INSERT_HEAD(&cq->head, ctrl_entry, entries);
@@ -429,7 +441,8 @@ pci_vtdtr_cq_dequeue(struct pci_vtdtr_ctrlq *cq)
 {
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
 	ctrl_entry = STAILQ_FIRST(&cq->head);
-	if (ctrl_entry != NULL) {
+	if (ctrl_entry != NULL)
+	{
 		STAILQ_REMOVE_HEAD(&cq->head, entries);
 	}
 
@@ -485,7 +498,6 @@ pci_vtdtr_notify_ready(struct pci_vtdtr_softc *sc)
 
 	ctrl->event = VTDTR_DEVICE_READY;
 
-
 	pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 	pci_vtdtr_cq_enqueue_front(sc->vsd_ctrlq, ctrl_entry);
 	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
@@ -504,6 +516,7 @@ pci_vtdtr_fill_eof_desc(struct vqueue_info *vq)
  * serves the purpose of draining the control queue of messages and filling the
  * guest memory with the descriptors.
  */
+/*Mara's note: we send the scripts via this function */
 static void *
 pci_vtdtr_run(void *xsc)
 {
@@ -517,7 +530,8 @@ pci_vtdtr_run(void *xsc)
 	sc = xsc;
 	vq = &sc->vsd_queues[0];
 
-	for (;;) {
+	for (;;)
+	{
 		nent = 0;
 		error = 0;
 		ready_flag = 1;
@@ -531,7 +545,8 @@ pci_vtdtr_run(void *xsc)
 		 * (2) The guest is ready
 		 */
 		while (!sc->vsd_guest_ready ||
-		    pci_vtdtr_cq_empty(sc->vsd_ctrlq)) {
+			   pci_vtdtr_cq_empty(sc->vsd_ctrlq))
+		{
 			error = pthread_cond_wait(&sc->vsd_cond, &sc->vsd_condmtx);
 			assert(error == 0);
 		}
@@ -547,13 +562,14 @@ pci_vtdtr_run(void *xsc)
 		 * While dealing with the entires, we will fill every single
 		 * entry as long as we have space or entries in the queue.
 		 */
-		while (vq_has_descs(vq) && !pci_vtdtr_cq_empty(sc->vsd_ctrlq)) {
+		while (vq_has_descs(vq) && !pci_vtdtr_cq_empty(sc->vsd_ctrlq))
+		{
 			ctrl_entry = pci_vtdtr_cq_dequeue(sc->vsd_ctrlq);
 			error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 			assert(error == 0);
 
 			if (ready_flag &&
-			    ctrl_entry->ctrl.event != VTDTR_DEVICE_READY)
+				ctrl_entry->ctrl.event != VTDTR_DEVICE_READY)
 				ready_flag = 0;
 
 			pci_vtdtr_fill_desc(vq, &ctrl_entry->ctrl);
@@ -569,9 +585,11 @@ pci_vtdtr_run(void *xsc)
 		 * EOF descriptor to send to the guest. Following that, we end
 		 * the chains and force an interrupt in the guest
 		 */
-		if (nent) {
+		if (nent)
+		{
 			if (pci_vtdtr_cq_empty(sc->vsd_ctrlq) &&
-			    vq_has_descs(vq)) {
+				vq_has_descs(vq))
+			{
 				pci_vtdtr_fill_eof_desc(vq);
 			}
 			pthread_mutex_lock(&sc->vsd_mtx);
@@ -581,7 +599,6 @@ pci_vtdtr_run(void *xsc)
 		}
 
 		error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
-
 	}
 
 	pthread_exit(NULL);
@@ -600,7 +617,8 @@ pci_vtdtr_reset_queue(struct pci_vtdtr_softc *sc)
 
 	pthread_mutex_lock(&q->mtx);
 	n1 = STAILQ_FIRST(&q->head);
-	while (n1 != NULL) {
+	while (n1 != NULL)
+	{
 		n2 = STAILQ_NEXT(n1, entries);
 		free(n1);
 		n1 = n2;
@@ -612,11 +630,12 @@ pci_vtdtr_reset_queue(struct pci_vtdtr_softc *sc)
 
 static int
 pci_vtdtr_find(const char *vm,
-    char vms[VTDTR_MAXVMS][VTDTR_VMNAMEMAX], size_t count)
+			   char vms[VTDTR_MAXVMS][VTDTR_VMNAMEMAX], size_t count)
 {
 	size_t i;
 
-	for (i = 0; i < count; i++) {
+	for (i = 0; i < count; i++)
+	{
 		if (strcmp(vm, vms[i]) == 0)
 			return (0);
 	}
@@ -638,17 +657,19 @@ pci_vtdtr_events(void *xsc)
 	/*
 	 * We listen for events indefinitely.
 	 */
-	for (;;) {
+	for (;;)
+	{
 		struct vtdtr_event ev;
 		struct pci_vtdtr_ctrl_entry *ctrl_entry;
 		struct pci_vtdtr_control *ctrl;
-         
+
 		error = dthyve_read(&ev, 1);
-		if (error) {
+		if (error)
+		{
 			fprintf(stderr, "Error: '%s' reading.\n",
-			    strerror(error));
+					strerror(error));
 			if (errno == EINTR)
-			        exit(1);
+				exit(1);
 
 			continue;
 		}
@@ -658,7 +679,8 @@ pci_vtdtr_events(void *xsc)
 		ctrl = &ctrl_entry->ctrl;
 
 		DPRINTF(("event read: %zu\n", ev.type));
-		switch (ev.type) {
+		switch (ev.type)
+		{
 		case VTDTR_EV_INSTALL:
 			ctrl->event = VTDTR_DEVICE_PROBE_INSTALL;
 			break;
@@ -678,20 +700,22 @@ pci_vtdtr_events(void *xsc)
 			char *vm = vm_get_name(sc->vsd_vmctx);
 
 			if (pci_vtdtr_find(vm, ev.args.d_config.vms,
-			    ev.args.d_config.count) == 0) {
+							   ev.args.d_config.count) == 0)
+			{
 				flags |= (1 << VTDTR_EV_INSTALL) |
-				    (1 << VTDTR_EV_STOP)         |
-				    (1 << VTDTR_EV_GO);
+						 (1 << VTDTR_EV_STOP) |
+						 (1 << VTDTR_EV_GO);
 			}
 
 			error = dthyve_conf(flags, 0);
 			assert(error == 0);
 			break;
 		default:
-			/*
+			x
+				/*
 			 * XXX: Meh.
 			 */
-			assert(0);
+				assert(0);
 		}
 
 		ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
@@ -703,8 +727,6 @@ pci_vtdtr_events(void *xsc)
 		pthread_mutex_lock(&sc->vsd_condmtx);
 		pthread_cond_signal(&sc->vsd_cond);
 		pthread_mutex_unlock(&sc->vsd_condmtx);
-
-		read_script();
 	}
 }
 
@@ -728,7 +750,7 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	STAILQ_INIT(&sc->vsd_ctrlq->head);
 
 	vi_softc_linkup(&sc->vsd_vs, &vtdtr_vi_consts,
-	    sc, pci_inst, sc->vsd_queues);
+					sc, pci_inst, sc->vsd_queues);
 	sc->vsd_vs.vs_mtx = &sc->vsd_mtx;
 	sc->vsd_vmctx = ctx;
 	sc->vsd_ready = 0;
@@ -750,12 +772,12 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	assert(error == 0);
 	error = pthread_create(&communicator, NULL, pci_vtdtr_run, sc);
 	assert(error == 0);
-	if (dthyve_configured()) {
-		error = pthread_create(&reader, NULL, pci_vtdtr_events, sc);
+	if (dthyve_configured())
+	{
+		// error = pthread_create(&reader, NULL, pci_vtdtr_events, sc);
+		error = pthread_create(&reader, NULL, read_script, sc);
 		assert(error == 0);
 	}
-
-	
 
 	if (vi_intr_init(&sc->vsd_vs, 1, fbsdrun_virtio_msix()))
 		return (1);
@@ -765,41 +787,49 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 }
 
 struct pci_devemu pci_de_vdtr = {
-	.pe_emu      = "virtio-dtrace",
-	.pe_init     = pci_vtdtr_init,
+	.pe_emu = "virtio-dtrace",
+	.pe_init = pci_vtdtr_init,
 	.pe_barwrite = vi_pci_write,
-	.pe_barread  = vi_pci_read
-};
+	.pe_barread = vi_pci_read};
 PCI_EMUL_SET(pci_de_vdtr);
 
 /*
-	Reads scripts provided by user via a named pipe.
+	Reads scripts provided by user from the named pipe.
 */
-static void read_script() 
+static void *read_script(void *xsc)
 {
+	// printf("here");
+
+	struct pci_vtdtr_softc *sc;
+	const char *fifo = "/tmp/fifo";
 	int fd;
-	const char * fifo = "/tmp/fifo";
-	mkfifo(fifo, 0666);
 
-	static char * d_script;
-	struct stat st;
+	sc = xsc;
 
-	// TODO: set as O_NONBLOCK
-	if((fd = open(fifo, O_RDONLY)) == -1) 
-		printf("failed to open named pipe '%s'", fifo);
-		
-	if((fstat(fd, &st)) == -1)
+	if ((fd = open(fifo, O_RDONLY)) == -1)
 	{
-		printf("Error reading pipe");
+		printf("Read thread: Failed to open named pipe %s. \n", fifo);
 	}
-	d_script = malloc(sizeof(char) * st.st_size);
-	
-	if((read(fd, d_script, st.st_size)) == -1)
-		printf("Error occured while reading from the pipe");		
 
-	// TODO: send this via virtio to the virtual machine instead of printing it
-    printf(d_script);
+	static char *d_script;
+	d_script = malloc(sizeof(char) * 80);
+
+	int l;
+
+	if ((l = read(fd, d_script, 80)) == -1)
+	{
+		printf("Read thread: Error occured while reading from the pipe. \n");
+	}
+
+	// printf("Read thread: Read from fifo %d. \n", l);
+
+	printf("Read thread: Script is %s. \n", d_script);
 
 	close(fd);
-	free(d_script);
+	// free(d_script);
 }
+
+static send_script() {}
+
+// TODO: write a vq_enqueue functions that just enques scripts, basically a char
+// array, need to hav
