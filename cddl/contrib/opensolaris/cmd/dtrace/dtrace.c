@@ -1735,20 +1735,17 @@ int main(int argc, char *argv[])
 	}
 
 	/**
-	 * We are passing a script to kernel.
-	 * TODO: refactor
+	 * We are passing a script to virtio via fifo. 
 	*/
 	if (m_mode == -1)
 	{
 		const char *file_path;
-		// printf("Number of arguments is %d", argc);
+	
+		// Assume the script is the last argument, for now.
 		file_path = argv[argc - 1];
-		// pthread_t write_thread;
-		// pthread_create(&write_thread, NULL, write_script, file_path);
 		write_script(file_path);
-		// pthread_join(write_thread, NULL);
-		// sleep(100);
-		printf("I've written in script. \n");
+	
+		printf("I've written the script. \n");
 		return 0;
 	}
 

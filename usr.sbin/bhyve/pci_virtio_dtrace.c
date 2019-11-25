@@ -90,7 +90,7 @@ __FBSDID("$FreeBSD$");
 
 static int pci_vtdtr_debug;
 #define DPRINTF(params)  \
-	if (pci_vtdtr_debug) \
+	/*if (pci_vtdtr_debug) \*/
 	printf params
 #define WPRINTF(params) printf params
 
@@ -129,7 +129,10 @@ struct pci_vtdtr_ctrl_script
 	struct uuid uuid;
 } __attribute__((packed));
 
-
+/** these are the types of elements that can be in the control queue, 
+ * which is drained by putting it's content into the virtual queue and
+ * sending events.
+*/
 struct pci_vtdtr_control
 {
 	uint32_t event;
@@ -144,6 +147,7 @@ struct pci_vtdtr_control
 struct pci_vtdtr_ctrl_entry
 {
 	struct pci_vtdtr_control ctrl;
+	//make each element be a queue element
 	STAILQ_ENTRY(pci_vtdtr_ctrl_entry)
 	entries;
 };
@@ -524,7 +528,7 @@ pci_vtdtr_fill_eof_desc(struct vqueue_info *vq)
  * serves the purpose of draining the control queue of messages and filling the
  * guest memory with the descriptors.
  */
-/*Mara's note: we send the scripts via this function */
+/*Mara's note: See if you can avoid touching this.*/
 static void *
 pci_vtdtr_run(void *xsc)
 {
@@ -742,8 +746,6 @@ pci_vtdtr_events(void *xsc)
 */
 static void *pci_vtdtr_read_script(void *xsc)
 {
-	DPRINTF("About to read script \n");
-
 	struct pci_vtdtr_softc *sc;
 	const char *fifo = "/tmp/fifo";
 	int fd;
@@ -769,10 +771,10 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	DPRINTF("Script is %s. \n", d_script);
 
-	// close(fd);
+	close(fd);
 
 	// process script
-	// free(d_script);
+	free(d_script);
 
 	pthread_exit(NULL);
 }
