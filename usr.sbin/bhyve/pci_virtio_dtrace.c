@@ -123,6 +123,13 @@ struct pci_vtdtr_ctrl_provevent
 	struct uuid uuid;
 } __attribute__((packed));
 
+struct pci_vtdtr_ctrl_script
+{
+	char d_script[256];
+	struct uuid uuid;
+} __attribute__((packed));
+
+
 struct pci_vtdtr_control
 {
 	uint32_t event;
@@ -130,6 +137,7 @@ struct pci_vtdtr_control
 	union {
 		struct pci_vtdtr_ctrl_pbevent probe_ev;
 		struct pci_vtdtr_ctrl_provevent prov_ev;
+		struct pci_vtdtr_ctrl_script script_ev;
 	} uctrl;
 } __attribute__((packed));
 
@@ -190,7 +198,7 @@ static void pci_vtdtr_handle_mev(int, enum ev_type, int, void *);
 #endif
 static void pci_vtdtr_reset_queue(struct pci_vtdtr_softc *);
 static int pci_vtdtr_init(struct vmctx *, struct pci_devinst *, char *);
-static void *read_script(void *);
+static void *pci_vtdtr_read_script(void *);
 
 static struct virtio_consts vtdtr_vi_consts = {
 	"vtdtr",		 /* name */
@@ -730,6 +738,48 @@ pci_vtdtr_events(void *xsc)
 }
 
 /*
+	Reads scripts provided by user from the named pipe.
+*/
+static void *pci_vtdtr_read_script(void *xsc)
+{
+	DPRINTF("About to read script \n");
+
+	struct pci_vtdtr_softc *sc;
+	const char *fifo = "/tmp/fifo";
+	int fd;
+
+	sc = xsc;
+
+	if ((fd = open(fifo, O_RDONLY)) == -1)
+	{
+		DPRINTF("Failed to open named pipe %s. \n", fifo);
+	}
+
+	static char *d_script;
+	d_script = malloc(sizeof(char) * 80);
+
+	int l;
+
+	if ((l = read(fd, d_script, 80)) == -1)
+	{
+		DPRINTF("Error occured while reading from the pipe. \n");
+	}
+
+	// printf("Read thread: Read from fifo %d. \n", l);
+
+	DPRINTF("Script is %s. \n", d_script);
+
+	// close(fd);
+
+	// process script
+	// free(d_script);
+
+	pthread_exit(NULL);
+}
+
+
+
+/*
  * Mostly boilerplate, we initialize everything required for the correct
  * operation of the emulated PCI device, do error checking and finally dispatch
  * the communicator thread and add an event handler for kqueue.
@@ -774,10 +824,9 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	if (dthyve_configured())
 	{
 		// error = pthread_create(&reader, NULL, pci_vtdtr_events, sc);
-		pritnf("Creating thread in pci_virtio. \n");
-		error = pthread_create(&reader, NULL, read_script, sc);
+		DPRINTF("Creating thread in pci_virtio to read script. \n");
+		error = pthread_create(&reader, NULL, pci_vtdtr_read_script, sc);
 		assert(error == 0);
-
 	}
 
 	if (vi_intr_init(&sc->vsd_vs, 1, fbsdrun_virtio_msix()))
@@ -793,45 +842,3 @@ struct pci_devemu pci_de_vdtr = {
 	.pe_barwrite = vi_pci_write,
 	.pe_barread = vi_pci_read};
 PCI_EMUL_SET(pci_de_vdtr);
-
-/*
-	Reads scripts provided by user from the named pipe.
-*/
-static void *read_script(void *xsc)
-{
-	printf("About to read script \n");
-
-	struct pci_vtdtr_softc *sc;
-	const char *fifo = "/tmp/fifo";
-	int fd;
-
-	sc = xsc;
-
-	if ((fd = open(fifo, O_RDONLY)) == -1)
-	{
-		printf("Read thread: Failed to open named pipe %s. \n", fifo);
-	}
-
-	static char *d_script;
-	d_script = malloc(sizeof(char) * 80);
-
-	int l;
-
-	if ((l = read(fd, d_script, 80)) == -1)
-	{
-		printf("Read thread: Error occured while reading from the pipe. \n");
-	}
-
-	// printf("Read thread: Read from fifo %d. \n", l);
-
-	printf("Read thread: Script is %s. \n", d_script);
-
-	close(fd);
-	// free(d_script);
-
-	pthread_exit(NULL);
-}
-
-
-// TODO: write a vq_enqueue functions that just enques scripts, basically a char
-// array, need to hav

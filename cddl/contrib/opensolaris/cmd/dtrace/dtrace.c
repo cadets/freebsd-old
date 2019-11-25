@@ -1741,14 +1741,14 @@ int main(int argc, char *argv[])
 	if (m_mode == -1)
 	{
 		const char *file_path;
-		printf("Number of arguments is %d", argc);
-		file_path = argv[2];
-		pthread_t write_thread;
-		pthread_create(&write_thread, NULL, write_script, file_path);
-
-		pthread_join(write_thread, NULL);
-		sleep(100);
-		printf("yay");
+		// printf("Number of arguments is %d", argc);
+		file_path = argv[argc - 1];
+		// pthread_t write_thread;
+		// pthread_create(&write_thread, NULL, write_script, file_path);
+		write_script(file_path);
+		// pthread_join(write_thread, NULL);
+		// sleep(100);
+		printf("I've written in script. \n");
 		return 0;
 	}
 
