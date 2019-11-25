@@ -153,7 +153,20 @@ typedef struct dt_elf_prog {
 	uint8_t dtep_dofversion;
 } dt_elf_prog_t;
 
+typedef struct dt_elf_opt {
+	const char *dteo_name;
+	int dteo_set;
+	const char *dteo_arg;
+	uintptr_t dteo_option;
+} dt_elf_opt_t;
+
+dt_elf_opt_t dtelf_ctopts[];
+dt_elf_opt_t dtelf_rtopts[];
+dt_elf_opt_t dtelf_drtopts[];
+
 extern void dt_elf_create(dtrace_prog_t *, int);
 extern dtrace_prog_t *dt_elf_to_prog(int);
+extern void dtrace_use_elf(dtrace_hdl_t *);
+
 
 #endif /* _DT_ELF_H_ */

@@ -28,6 +28,7 @@
 
 #include <dt_elf.h>
 #include <dt_program.h>
+#include <dt_impl.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -92,6 +93,98 @@ char sec_strtab[] =
 #define	DTELF_VARIABLE_SIZE	  0
 
 static dt_elf_state_t dtelf_state = {0};
+
+dt_elf_opt_t dtelf_ctopts[] = {
+	{ "aggpercpu", 0, NULL, DTRACE_A_PERCPU },
+	{ "amin", 0, NULL, 0 },
+	{ "argref", 0, NULL, DTRACE_C_ARGREF },
+	{ "core", 0, NULL, 0 },
+	{ "cpp", 0, NULL, DTRACE_C_CPP },
+	{ "cpphdrs", 0, NULL, 0 },
+	{ "cpppath", 0, NULL, 0 },
+	{ "ctypes", 0, NULL, 0 },
+	{ "defaultargs", 0, NULL, DTRACE_C_DEFARG },
+	{ "dtypes", 0, NULL, 0 },
+	{ "debug", 0, NULL, 0 },
+	{ "define", 0, NULL, (uintptr_t)"-D" },
+	{ "droptags", 0, NULL, 0 },
+	{ "empty", 0, NULL, DTRACE_C_EMPTY },
+	{ "encoding", 0, NULL, 0 },
+	{ "errtags", 0, NULL, DTRACE_C_ETAGS },
+	{ "evaltime", 0, NULL, 0 },
+	{ "incdir", 0, NULL, (uintptr_t)"-I" },
+	{ "iregs", 0, NULL, 0 },
+	{ "kdefs", 0, NULL, DTRACE_C_KNODEF },
+	{ "knodefs", 0, NULL, DTRACE_C_KNODEF },
+	{ "late", 0, NULL, 0 },
+	{ "lazyload", 0, NULL, 0 },
+	{ "ldpath", 0, NULL, 0 },
+	{ "libdir", 0, NULL, 0 },
+	{ "linkmode", 0, NULL, 0 },
+	{ "linktype", 0, NULL, 0 },
+	{ "nolibs", 0, NULL, DTRACE_C_NOLIBS },
+#ifdef __FreeBSD__
+	{ "objcopypath", 0, NULL, 0 },
+#endif
+	{ "pgmax", 0, NULL, 0 },
+	{ "pspec", 0, NULL, DTRACE_C_PSPEC },
+	{ "setenv", 0, NULL, 1 },
+	{ "stdc", 0, NULL, 0 },
+	{ "strip", 0, NULL, DTRACE_D_STRIP },
+	{ "syslibdir", 0, NULL, 0 },
+	{ "tree", 0, NULL, 0 },
+	{ "tregs", 0, NULL, 0 },
+	{ "udefs", 0, NULL, DTRACE_C_UNODEF },
+	{ "undef", 0, NULL, (uintptr_t)"-U" },
+	{ "unodefs", 0, NULL, DTRACE_C_UNODEF },
+	{ "unsetenv", 0, NULL, 0 },
+	{ "verbose", 0, NULL, DTRACE_C_DIFV },
+	{ "version", 0, NULL, 0 },
+	{ "zdefs", 0, NULL, DTRACE_C_ZDEFS },
+	{ NULL, NULL, 0 }
+};
+
+dt_elf_opt_t dtelf_rtopts[] = {
+	{ "aggsize", 0, NULL, DTRACEOPT_AGGSIZE },
+	{ "bufsize", 0, NULL, DTRACEOPT_BUFSIZE },
+	{ "bufpolicy", 0, NULL, DTRACEOPT_BUFPOLICY },
+	{ "bufresize", 0, NULL, DTRACEOPT_BUFRESIZE },
+	{ "cleanrate", 0, NULL, DTRACEOPT_CLEANRATE },
+	{ "cpu", 0, NULL, DTRACEOPT_CPU },
+	{ "destructive", 0, NULL, DTRACEOPT_DESTRUCTIVE },
+	{ "dynvarsize", 0, NULL, DTRACEOPT_DYNVARSIZE },
+	{ "grabanon", 0, NULL, DTRACEOPT_GRABANON },
+	{ "jstackframes", 0, NULL, DTRACEOPT_JSTACKFRAMES },
+	{ "ddtracearg", 0, NULL, DTRACEOPT_DDTRACEARG},
+	{ "jstackstrsize", 0, NULL, DTRACEOPT_JSTACKSTRSIZE },
+	{ "nspec", 0, NULL, DTRACEOPT_NSPEC },
+	{ "specsize", 0, NULL, DTRACEOPT_SPECSIZE },
+	{ "stackframes", 0, NULL, DTRACEOPT_STACKFRAMES },
+	{ "statusrate", 0, NULL, DTRACEOPT_STATUSRATE },
+	{ "strsize", 0, NULL, DTRACEOPT_STRSIZE },
+	{ "ustackframes", 0, NULL, DTRACEOPT_USTACKFRAMES },
+	{ "temporal", 0, NULL, DTRACEOPT_TEMPORAL },
+	{ NULL, NULL, 0 }
+};
+
+dt_elf_opt_t dtelf_drtopts[] = {
+	{ "agghist", 0, NULL, DTRACEOPT_AGGHIST },
+	{ "aggpack", 0, NULL, DTRACEOPT_AGGPACK },
+	{ "aggrate", 0, NULL, DTRACEOPT_AGGRATE },
+	{ "aggsortkey", 0, NULL, DTRACEOPT_AGGSORTKEY },
+	{ "aggsortkeypos", 0, NULL, DTRACEOPT_AGGSORTKEYPOS },
+	{ "aggsortpos", 0, NULL, DTRACEOPT_AGGSORTPOS },
+	{ "aggsortrev", 0, NULL, DTRACEOPT_AGGSORTREV },
+	{ "aggzoom", 0, NULL, DTRACEOPT_AGGZOOM },
+	{ "flowindent", 0, NULL, DTRACEOPT_FLOWINDENT },
+	{ "oformat", 0, NULL, DTRACEOPT_OFORMAT },
+	{ "quiet", 0, NULL, DTRACEOPT_QUIET },
+	{ "rawbytes", 0, NULL, DTRACEOPT_RAWBYTES },
+	{ "stackindent", 0, NULL, DTRACEOPT_STACKINDENT },
+	{ "switchrate", 0, NULL, DTRACEOPT_SWITCHRATE },
+	{ NULL, NULL, 0 }
+};
+
 
 static Elf_Scn *
 dt_elf_new_inttab(Elf *e, dtrace_difo_t *difo, size_t *nsecs)
@@ -738,4 +831,12 @@ dt_elf_to_prog(int fd)
 {
 
 	return (NULL);
+}
+
+
+void
+dtrace_use_elf(dtrace_hdl_t *dtp)
+{
+
+	dtp->dt_use_elf = 1;
 }

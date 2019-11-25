@@ -1644,6 +1644,9 @@ main(int argc, char *argv[])
 		    dtrace_errmsg(NULL, err));
 	}
 
+	if (g_elf)
+		dtrace_use_elf(g_dtp);
+
 #if defined(__i386__)
 	/* XXX The 32-bit seems to need more buffer space by default -sson */
 	(void) dtrace_setopt(g_dtp, "bufsize", "12m");

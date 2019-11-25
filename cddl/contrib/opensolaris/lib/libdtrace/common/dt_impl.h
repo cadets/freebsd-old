@@ -367,6 +367,7 @@ struct dtrace_hdl {
 	u_int dt_oformat;	/* output format, plain, XML, JSON */
 	char *dt_instance;	/* Current instance name or NULL */
 	boolean_t dt_has_sugar;	/* syntactic sugar used? */
+	boolean_t dt_use_elf;	/* use ELF instead of DOF? */
 };
 
 /*

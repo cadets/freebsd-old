@@ -47,6 +47,11 @@
 
 #include <dt_impl.h>
 #include <dt_string.h>
+#include <dt_elf.h>
+
+extern dt_elf_opt_t dtelf_ctopts[];
+extern dt_elf_opt_t dtelf_rtopts[];
+extern dt_elf_opt_t dtelf_drtopts[];
 
 static int
 dt_opt_agg(dtrace_hdl_t *dtp, const char *arg, uintptr_t option)
@@ -1107,6 +1112,7 @@ int
 dtrace_setopt(dtrace_hdl_t *dtp, const char *opt, const char *val)
 {
 	const dt_option_t *op;
+	dt_elf_opt_t *eop = NULL;
 
 	if (opt == NULL)
 		return (dt_set_errno(dtp, EINVAL));
@@ -1128,6 +1134,32 @@ dtrace_setopt(dtrace_hdl_t *dtp, const char *opt, const char *val)
 		    script_type == DT_SCRIPT_TYPE_HOST);
 
 		return (0);
+	}
+
+	if (dtp->dt_use_elf) {
+		if (dtp->dt_active)
+			return (dt_set_errno(dtp, EDT_ACTIVE));
+
+		for (eop = dtelf_ctopts; eop->dteo_name != NULL; eop++) {
+			if (strcmp(eop->dteo_name, opt) == 0) {
+				eop->dteo_arg = val;
+				eop->dteo_set = 1;
+			}
+		}
+
+		for (eop = dtelf_drtopts; eop->dteo_name != NULL; eop++) {
+			if (strcmp(eop->dteo_name, opt) == 0) {
+				eop->dteo_arg = val;
+				eop->dteo_set = 1;
+			}
+		}
+
+		for (eop = dtelf_rtopts; eop->dteo_name != NULL; eop++) {
+			if (strcmp(eop->dteo_name, opt) == 0) {
+				eop->dteo_arg = val;
+				eop->dteo_set = 1;
+			}
+		}
 	}
 
 	for (op = _dtrace_ctoptions; op->o_name != NULL; op++) {
