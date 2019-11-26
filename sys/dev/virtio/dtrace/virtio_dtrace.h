@@ -85,7 +85,7 @@ struct vtdtr_ctrl_provevent {
 }__attribute__((packed));
 
 struct vtdtr_ctrl_scriptevent {
-	char *d_script
+	char *d_script;
 	struct uuid uuid;
 }__attribute__((packed));
 
