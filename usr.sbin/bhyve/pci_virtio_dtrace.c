@@ -123,7 +123,7 @@ struct pci_vtdtr_ctrl_provevent
 
 struct pci_vtdtr_ctrl_scriptevent
 {
-	char d_script[256];
+	const char d_script[80];
 	struct uuid uuid;
 } __attribute__((packed));
 
@@ -819,7 +819,7 @@ pci_vtdtr_process_script_event(void *xsc, char *d_script)
 
 		// ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
 
-		strcpy(ctrl->uctrl.script_ev.d_script, d_script[80]);
+		strcpy(ctrl->uctrl.script_ev.d_script, d_script);
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
@@ -859,7 +859,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		DPRINTF("Error occured while reading from the pipe. \n");
 	}
 
-	pci_vtdtr_process_script_event()
+	pci_vtdtr_process_script_event(sc, d_script);
 
 	// printf("Read thread: Read from fifo %d. \n", l);
 
