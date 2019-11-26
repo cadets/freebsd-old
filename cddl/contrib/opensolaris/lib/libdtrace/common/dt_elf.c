@@ -44,6 +44,8 @@
 #include <err.h>
 #include <errno.h>
 
+#define DTELF_MAXOPTNAME	64
+
 /*
  * Helper structs
  */
@@ -53,6 +55,13 @@ typedef struct dt_elf_eact_list {
 	dt_elf_ref_t eact_ndx;
 	dt_elf_actdesc_t *eact;
 } dt_elf_eact_list_t;
+
+typedef struct _dt_elf_eopt {
+	char eo_name[DTELF_MAXOPTNAME];
+	uint64_t eo_option;
+	size_t eo_len;
+	char eo_arg[];
+} _dt_elf_eopt_t;
 
 /*
  * dt_elf_state_t: A state struct used during ELF generation and is
@@ -74,7 +83,7 @@ char sec_strtab[] =
 	"\0.shstrtab\0.dtrace_prog\0.dtrace_difo\0.dtrace_actdesc\0"
 	".dtrace_ecbdesc\0.difo_strtab\0.difo_inttab\0"
 	".difo_symtab\0.dtrace_stmtdesc\0.dtrace_predicate\0"
-	".dtrace_opts\0.dtrace_vartab";
+	".dtrace_opts\0.dtrace_vartab\0";
 
 
 #define	DTELF_SHSTRTAB		  1
@@ -141,7 +150,7 @@ dt_elf_opt_t dtelf_ctopts[] = {
 	{ "verbose", 0, NULL, DTRACE_C_DIFV },
 	{ "version", 0, NULL, 0 },
 	{ "zdefs", 0, NULL, DTRACE_C_ZDEFS },
-	{ NULL, NULL, 0 }
+	{ NULL, 0, NULL, 0 }
 };
 
 dt_elf_opt_t dtelf_rtopts[] = {
@@ -164,7 +173,7 @@ dt_elf_opt_t dtelf_rtopts[] = {
 	{ "strsize", 0, NULL, DTRACEOPT_STRSIZE },
 	{ "ustackframes", 0, NULL, DTRACEOPT_USTACKFRAMES },
 	{ "temporal", 0, NULL, DTRACEOPT_TEMPORAL },
-	{ NULL, NULL, 0 }
+	{ NULL, 0, NULL, 0 }
 };
 
 dt_elf_opt_t dtelf_drtopts[] = {
@@ -182,7 +191,7 @@ dt_elf_opt_t dtelf_drtopts[] = {
 	{ "rawbytes", 0, NULL, DTRACEOPT_RAWBYTES },
 	{ "stackindent", 0, NULL, DTRACEOPT_STACKINDENT },
 	{ "switchrate", 0, NULL, DTRACEOPT_SWITCHRATE },
-	{ NULL, NULL, 0 }
+	{ NULL, 0, NULL, 0 }
 };
 
 
@@ -648,6 +657,195 @@ dt_elf_cleanup(void)
 	free(p_el);
 }
 
+static Elf_Scn *
+dt_elf_options(Elf *e, size_t *nsecs)
+{
+	Elf_Scn *scn = NULL;
+	Elf32_Shdr *shdr;
+	Elf_Data *data;
+
+	size_t buflen = 0; /* Current buffer length */
+	size_t len = 0; /* Length of the new entry */
+	size_t bufmaxlen = 1; /* Maximum buffer length */
+	unsigned char *buf = NULL, *obuf = NULL;
+
+	dt_elf_opt_t *op;
+	_dt_elf_eopt_t *eop;
+
+	/*
+	 * Go over the compile-time options and fill them in.
+	 *
+	 * XXX: This may not be necessary for ctopts.
+	 */
+	for (op = dtelf_ctopts; op->dteo_name != NULL; op++) {
+		if (op->dteo_set == 0)
+			continue;
+
+		len = sizeof(_dt_elf_eopt_t) + strlen(op->dteo_arg);
+		eop = malloc(len);
+		(void) strcpy(eop->eo_name, op->dteo_name);
+		eop->eo_len = strlen(op->dteo_arg);
+		(void) strcpy(eop->eo_arg, op->dteo_arg);
+
+		if (strcmp("define", op->dteo_name) == 0 ||
+		    strcmp("incdir", op->dteo_name) == 0 ||
+		    strcmp("undef",  op->dteo_name) == 0)
+			(void) strcpy(
+			    (char *)eop->eo_option, (char *)op->dteo_option);
+		else
+			eop->eo_option = op->dteo_option;
+
+		if (buflen + len >= bufmaxlen) {
+			if ((bufmaxlen << 1) <= bufmaxlen)
+				errx(EXIT_FAILURE,
+				    "buf realloc failed, bufmaxlen exceeded");
+			bufmaxlen <<= 1;
+			obuf = buf;
+
+			buf = malloc(bufmaxlen);
+			if (buf == NULL)
+				errx(EXIT_FAILURE,
+				    "buf realloc failed, %s", strerror(errno));
+
+			if (obuf) {
+				memcpy(buf, obuf, buflen);
+				free(obuf);
+			}
+		}
+
+		memcpy(buf + buflen, eop, len);
+		buflen += len;
+	}
+
+	/*
+	 * Go over runtime options. If they are set, we add them to our data
+	 * buffer which will be in the section that contains all of the options.
+	 */
+	for (op = dtelf_rtopts; op->dteo_name != NULL; op++) {
+		if (op->dteo_set == 0)
+			continue;
+
+		len = sizeof(_dt_elf_eopt_t) + strlen(op->dteo_arg);
+		eop = malloc(len);
+		(void) strcpy(eop->eo_name, op->dteo_name);
+		eop->eo_len = strlen(op->dteo_arg);
+		(void) strcpy(eop->eo_arg, op->dteo_arg);
+
+		if (strcmp("define", op->dteo_name) == 0 ||
+		    strcmp("incdir", op->dteo_name) == 0 ||
+		    strcmp("undef",  op->dteo_name) == 0)
+			(void) strcpy(
+			    (char *)eop->eo_option, (char *)op->dteo_option);
+		else
+			eop->eo_option = op->dteo_option;
+
+		/*
+		 * Have we run out of space in our buffer?
+		 */
+		if (buflen + len >= bufmaxlen) {
+			/*
+			 * Check for overflow. Not great, but will have to do.
+			 */
+			if ((bufmaxlen << 1) <= bufmaxlen)
+				errx(EXIT_FAILURE,
+				    "buf realloc failed, bufmaxlen exceeded");
+			bufmaxlen <<= 1;
+			obuf = buf;
+
+			buf = malloc(bufmaxlen);
+			if (buf == NULL)
+				errx(EXIT_FAILURE,
+				    "buf realloc failed, %s", strerror(errno));
+
+			if (obuf) {
+				memcpy(buf, obuf, buflen);
+				free(obuf);
+			}
+		}
+
+		memcpy(buf + buflen, eop, len);
+		buflen += len;
+	}
+
+	/*
+	 * Go over dynamic runtime options. If they are set, we add them to our data
+	 * buffer which will be in the section that contains all of the options.
+	 */
+	for (op = dtelf_drtopts; op->dteo_name != NULL; op++) {
+		if (op->dteo_set == 0)
+			continue;
+
+		len = sizeof(_dt_elf_eopt_t) + strlen(op->dteo_arg);
+		eop = malloc(len);
+		(void) strcpy(eop->eo_name, op->dteo_name);
+		eop->eo_len = strlen(op->dteo_arg);
+		(void) strcpy(eop->eo_arg, op->dteo_arg);
+
+		if (strcmp("define", op->dteo_name) == 0 ||
+		    strcmp("incdir", op->dteo_name) == 0 ||
+		    strcmp("undef",  op->dteo_name) == 0)
+			(void) strcpy(
+			    (char *)eop->eo_option, (char *)op->dteo_option);
+		else
+			eop->eo_option = op->dteo_option;
+
+		/*
+		 * Have we run out of space in our buffer?
+		 */
+		if (buflen + len >= bufmaxlen) {
+			/*
+			 * Check for overflow. Not great, but will have to do.
+			 */
+			if ((bufmaxlen << 1) <= bufmaxlen)
+				errx(EXIT_FAILURE,
+				    "buf realloc failed, bufmaxlen exceeded");
+			bufmaxlen <<= 1;
+			obuf = buf;
+
+			buf = malloc(bufmaxlen);
+			if (buf == NULL)
+				errx(EXIT_FAILURE,
+				    "buf realloc failed, %s", strerror(errno));
+
+			if (obuf) {
+				memcpy(buf, obuf, buflen);
+				free(obuf);
+			}
+		}
+
+		memcpy(buf + buflen, eop, len);
+		buflen += len;
+	}
+
+	if (buflen == 0)
+		return (NULL);
+
+	if ((scn = elf_newscn(e)) == NULL)
+		errx(EXIT_FAILURE, "elf_newscn(%p) failed with %s",
+		    e, elf_errmsg(-1));
+
+	if ((data = elf_newdata(scn)) == NULL)
+		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
+		    scn, elf_errmsg(-1));
+
+	data->d_align = 8;
+	data->d_buf = buf;
+	data->d_size = buflen;
+	data->d_type = ELF_T_BYTE;
+	data->d_version = EV_CURRENT;
+
+	if ((shdr = elf32_getshdr(scn)) == NULL)
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
+		    elf_errmsg(-1));
+
+	shdr->sh_type = SHT_DTRACE_elf;
+	shdr->sh_name = DTELF_OPTS;
+	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
+	shdr->sh_entsize = 0;
+
+	return (scn);
+}
+
 void
 dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 {
@@ -801,6 +999,9 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 		scn = dt_elf_new_stmt(e, stp->ds_desc, &nsecs);
 	}
 
+	scn = dt_elf_options(e, &nsecs);
+	nsecs++;
+
 	s0hdr->sh_size = nsecs; /* Number of sections */
 
 	if (elf_update(e, ELF_C_NULL) < 0)
@@ -821,7 +1022,6 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	 * TODO: Cleanup of section data (free the pointers).
 	 */
 	//	dt_elf_cleanup();
-
 	(void) elf_end(e);
 	(void) close(fd);
 }
