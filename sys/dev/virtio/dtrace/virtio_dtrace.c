@@ -403,7 +403,7 @@ vtdtr_condvar_destroy(struct vtdtr_softc *sc)
 }
 
 /*
- * Here we free all the used memory in the
+ * Here used memory in the
  * driver, drain all the taskqeueues and
  * destroy all the mutexes.
  */
@@ -797,13 +797,15 @@ static void
 vtdtr_drain_virtqueues(struct vtdtr_softc *sc)
 {
 	struct virtio_dtrace_queue *rxq, *txq;
-	struct virtio_dtrac_control *ctrl;
+	struct virtio_dtrace_control *ctrl;
 	struct virtqueue *vq;
 	uint32_t last;
 
 	rxq = &sc->vtdtr_rxq;
 	txq = &sc->vtdtr_txq;
 	last = 0;
+
+	// confusion
 
 	vq = rxq->vtdq_vq;
 
@@ -923,6 +925,8 @@ vtdtr_notify_ready(struct vtdtr_softc *sc)
  * processing every event. Additionally, this function is responsible for
  * requeuing the memory in the virtqueue.
  */
+
+// HEEEEEEEEEEEEEEERREEEEEEEEEEEEEEEEEEEEEE
 static void
 vtdtr_rxq_tq_intr(void *xrxq, int pending)
 {
@@ -946,6 +950,8 @@ vtdtr_rxq_tq_intr(void *xrxq, int pending)
 
 		VTDTR_QUEUE_UNLOCK(rxq);
 		retval = vtdtr_ctrl_process_event(sc, ctrl);
+		// print here after you figure out how to print in kernel
+		log(7,ctrl->uctrl.script_ev.d_script);
 		VTDTR_QUEUE_LOCK(rxq);
 
 		vtdtr_queue_requeue_ctrl(rxq, ctrl, 0, 1);

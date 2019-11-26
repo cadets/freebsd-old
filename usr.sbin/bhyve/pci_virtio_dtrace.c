@@ -123,7 +123,7 @@ struct pci_vtdtr_ctrl_provevent
 	struct uuid uuid;
 } __attribute__((packed));
 
-struct pci_vtdtr_ctrl_script
+struct pci_vtdtr_ctrl_scriptevent
 {
 	char d_script[256];
 	struct uuid uuid;
@@ -140,7 +140,7 @@ struct pci_vtdtr_control
 	union {
 		struct pci_vtdtr_ctrl_pbevent probe_ev;
 		struct pci_vtdtr_ctrl_provevent prov_ev;
-		struct pci_vtdtr_ctrl_script script_ev;
+		struct pci_vtdtr_ctrl_scriptevent script_ev;
 	} uctrl;
 } __attribute__((packed));
 
@@ -655,7 +655,7 @@ pci_vtdtr_find(const char *vm,
 	return (-1);
 }
 
-static void *
+/* static void *
 pci_vtdtr_events(void *xsc)
 {
 	struct pci_vtdtr_softc *sc;
@@ -669,13 +669,13 @@ pci_vtdtr_events(void *xsc)
 	/*
 	 * We listen for events indefinitely.
 	 */
-	for (;;)
+	/*for (;;)
 	{
 		struct vtdtr_event ev;
 		struct pci_vtdtr_ctrl_entry *ctrl_entry;
 		struct pci_vtdtr_control *ctrl;
 
-		error = dthyve_read(&ev, 1);
+		/*error = dthyve_read(&ev, 1);
 		if (error)
 		{
 			fprintf(stderr, "Error: '%s' reading.\n",
@@ -684,13 +684,14 @@ pci_vtdtr_events(void *xsc)
 				exit(1);
 
 			continue;
-		}
+		}*/
 
-		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+		// assigns block of memory to a control queue entry
+		/* ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
 		assert(ctrl_entry != NULL);
 		ctrl = &ctrl_entry->ctrl;
 
-		DPRINTF(("event read: %zu\n", ev.type));
+		/*DPRINTF(("event read: %zu\n", ev.type));
 		switch (ev.type)
 		{
 		case VTDTR_EV_INSTALL:
@@ -726,10 +727,101 @@ pci_vtdtr_events(void *xsc)
 				/*
 			 * XXX: Meh.
 			 */
-				assert(0);
-		}
+				/* assert(0);
+		}*/
 
-		ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
+		// ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
+
+		
+
+		/* pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
+		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+
+		pthread_mutex_lock(&sc->vsd_condmtx);
+		pthread_cond_signal(&sc->vsd_cond);
+		pthread_mutex_unlock(&sc->vsd_condmtx);
+	}
+}*/
+
+static void 
+pci_vtdtr_process_script_event(void *xsc, char *d_script)
+{
+	struct pci_vtdtr_softc *sc;
+	int error;
+	size_t flags;
+
+	sc = xsc;
+
+	DPRINTF(("%s: starting event reads.\n", __func__));
+
+	/*
+	 * We listen for events indefinitely.
+	 */
+	for (;;)
+	{
+		struct vtdtr_event ev;
+		struct pci_vtdtr_ctrl_entry *ctrl_entry;
+		struct pci_vtdtr_control *ctrl;
+
+		/*error = dthyve_read(&ev, 1);
+		if (error)
+		{
+			fprintf(stderr, "Error: '%s' reading.\n",
+					strerror(error));
+			if (errno == EINTR)
+				exit(1);
+
+			continue;
+		}*/
+
+		// assigns block of memory to a control queue entry
+		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+		assert(ctrl_entry != NULL);
+		ctrl = &ctrl_entry->ctrl;
+
+		/*DPRINTF(("event read: %zu\n", ev.type));
+		switch (ev.type)
+		{
+		case VTDTR_EV_INSTALL:
+			ctrl->event = VTDTR_DEVICE_PROBE_INSTALL;
+			break;
+		case VTDTR_EV_UNINSTALL:
+			ctrl->event = VTDTR_DEVICE_PROBE_UNINSTALL;
+			break;
+		case VTDTR_EV_GO:
+			ctrl->event = VTDTR_DEVICE_GO;
+			break;
+		case VTDTR_EV_STOP:
+			ctrl->event = VTDTR_DEVICE_STOP;
+			error = dthyve_conf(1 << VTDTR_EV_RECONF, 0);
+			assert(error == 0);
+			break;
+		case VTDTR_EV_RECONF:
+			flags = 1 << VTDTR_EV_RECONF;
+			char *vm = vm_get_name(sc->vsd_vmctx);
+
+			if (pci_vtdtr_find(vm, ev.args.d_config.vms,
+							   ev.args.d_config.count) == 0)
+			{
+				flags |= (1 << VTDTR_EV_INSTALL) |
+						 (1 << VTDTR_EV_STOP) |
+						 (1 << VTDTR_EV_GO);
+			}
+
+			error = dthyve_conf(flags, 0);
+			assert(error == 0);
+			break;
+		default:
+				/*
+			 * XXX: Meh.
+			 */
+				/* assert(0);
+		}*/
+
+		// ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
+
+		ctrl->uctrl.script_ev.d_script = d_script[80];
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
@@ -738,6 +830,8 @@ pci_vtdtr_events(void *xsc)
 		pthread_mutex_lock(&sc->vsd_condmtx);
 		pthread_cond_signal(&sc->vsd_cond);
 		pthread_mutex_unlock(&sc->vsd_condmtx);
+
+		DPRINTF("The script was put in the control queue.");
 	}
 }
 
@@ -766,6 +860,8 @@ static void *pci_vtdtr_read_script(void *xsc)
 	{
 		DPRINTF("Error occured while reading from the pipe. \n");
 	}
+
+	pci_vtdtr_process_script_event()
 
 	// printf("Read thread: Read from fifo %d. \n", l);
 

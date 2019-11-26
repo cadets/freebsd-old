@@ -53,6 +53,9 @@
 #define	VIRTIO_DTRACE_GO              0x08 /* Start tracing */
 #define	VIRTIO_DTRACE_STOP            0x09 /* Start tracing */
 
+/* ?? */
+#define VIRTIO_DTRACE_SCRIPT 0x10
+
 struct vtdtr_softc;
 struct uuid;
 
@@ -81,12 +84,18 @@ struct vtdtr_ctrl_provevent {
 	struct uuid uuid;
 }__attribute__((packed));
 
+struct vtdtr_ctrl_scriptevent {
+	char d_script[256];
+	struct uuid uuid;
+}__attribute__((packed));
+
 struct virtio_dtrace_control {
 	uint32_t event;
 
 	union {
 		struct vtdtr_ctrl_pbevent   probe_ev;
 		struct vtdtr_ctrl_provevent prov_ev;
+		struct vtdtr_ctrl_scriptevent script_ev;
 	} uctrl;
 }__attribute__((packed));
 
