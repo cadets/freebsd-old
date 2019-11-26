@@ -89,9 +89,7 @@ __FBSDID("$FreeBSD$");
 #define VTDTR_DEVICE_STOP 0x09
 
 static int pci_vtdtr_debug;
-#define DPRINTF(params)  \
-	/*if (pci_vtdtr_debug) \*/
-	printf params
+#define DPRINTF(params) printf params
 #define WPRINTF(params) printf params
 
 struct pci_vtdtr_probe_create_event
@@ -821,7 +819,7 @@ pci_vtdtr_process_script_event(void *xsc, char *d_script)
 
 		// ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
 
-		ctrl->uctrl.script_ev.d_script = d_script[80];
+		strcpy(ctrl->uctrl.script_ev.d_script, d_script[80]);
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
@@ -835,7 +833,7 @@ pci_vtdtr_process_script_event(void *xsc, char *d_script)
 	}
 }
 
-/*
+/*s
 	Reads scripts provided by user from the named pipe.
 */
 static void *pci_vtdtr_read_script(void *xsc)
