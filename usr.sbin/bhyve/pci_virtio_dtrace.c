@@ -920,7 +920,7 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	if (dthyve_configured())
 	{
 		// error = pthread_create(&reader, NULL, pci_vtdtr_events, sc);
-		DPRINTF("Creating thread in pci_virtio to read script. \n");
+		DPRINTF(("Creating thread in pci_virtio to read script. \n"));
 		error = pthread_create(&reader, NULL, pci_vtdtr_read_script, sc);
 		assert(error == 0);
 	}
