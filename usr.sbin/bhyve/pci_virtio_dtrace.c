@@ -123,7 +123,7 @@ struct pci_vtdtr_ctrl_provevent
 
 struct pci_vtdtr_ctrl_scriptevent
 {
-	const char d_script[80];
+	char *d_script;
 	struct uuid uuid;
 } __attribute__((packed));
 
@@ -743,7 +743,7 @@ pci_vtdtr_events(void *xsc)
 }*/
 
 static void 
-pci_vtdtr_process_script_event(void *xsc, char *d_script)
+pci_vtdtr_process_script_event(struct pci_vtdtr_softc *xsc, char *d_script)
 {
 	struct pci_vtdtr_softc *sc;
 	int error;
@@ -819,7 +819,7 @@ pci_vtdtr_process_script_event(void *xsc, char *d_script)
 
 		// ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
 
-		strcpy(ctrl->uctrl.script_ev.d_script, d_script);
+		ctrl->uctrl.script_ev.d_script = d_script;
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
@@ -846,24 +846,24 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	if ((fd = open(fifo, O_RDONLY)) == -1)
 	{
-		DPRINTF("Failed to open named pipe %s. \n", fifo);
+		DPRINTF(("Failed to open named pipe %s. \n", fifo));
 	}
 
-	static char *d_script;
+	char *d_script;
 	d_script = malloc(sizeof(char) * 80);
 
 	int l;
 
 	if ((l = read(fd, d_script, 80)) == -1)
 	{
-		DPRINTF("Error occured while reading from the pipe. \n");
+		DPRINTF(("Error occured while reading from the pipe. \n"));
 	}
 
 	pci_vtdtr_process_script_event(sc, d_script);
 
 	// printf("Read thread: Read from fifo %d. \n", l);
 
-	DPRINTF("Script is %s. \n", d_script);
+	DPRINTF(("Script is %s. \n", d_script));
 
 	close(fd);
 

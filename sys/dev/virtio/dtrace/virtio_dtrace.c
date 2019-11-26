@@ -410,7 +410,7 @@ vtdtr_condvar_destroy(struct vtdtr_softc *sc)
 static int
 vtdtr_detach(device_t dev)
 {
-	struct vtdtr_softc *sc;
+	struct vtdtr_softc *sc;;
 
 	sc = device_get_softc(dev);
 
