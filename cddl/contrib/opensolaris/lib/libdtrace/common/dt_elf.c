@@ -83,7 +83,7 @@ char sec_strtab[] =
 	"\0.shstrtab\0.dtrace_prog\0.dtrace_difo\0.dtrace_actdesc\0"
 	".dtrace_ecbdesc\0.difo_strtab\0.difo_inttab\0"
 	".difo_symtab\0.dtrace_stmtdesc\0.dtrace_predicate\0"
-	".dtrace_opts\0.dtrace_vartab\0";
+	".dtrace_opts\0.dtrace_vartab";
 
 
 #define	DTELF_SHSTRTAB		  1
