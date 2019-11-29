@@ -101,6 +101,8 @@ char sec_strtab[] =
 
 #define	DTELF_VARIABLE_SIZE	  0
 
+#define	DTELF_PROG_SECIDX	  2
+
 static dt_elf_state_t dtelf_state = {0};
 
 dt_elf_opt_t dtelf_ctopts[] = {
@@ -196,7 +198,7 @@ dt_elf_opt_t dtelf_drtopts[] = {
 
 
 static Elf_Scn *
-dt_elf_new_inttab(Elf *e, dtrace_difo_t *difo, size_t *nsecs)
+dt_elf_new_inttab(Elf *e, dtrace_difo_t *difo)
 {
 	Elf_Scn *scn = NULL;
 	Elf32_Shdr *shdr;
@@ -233,7 +235,7 @@ dt_elf_new_inttab(Elf *e, dtrace_difo_t *difo, size_t *nsecs)
 }
 
 static Elf_Scn *
-dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo, size_t *nsecs)
+dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo)
 {
 	Elf_Scn *scn = NULL;
 	Elf32_Shdr *shdr;
@@ -270,7 +272,7 @@ dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo, size_t *nsecs)
 }
 
 static Elf_Scn *
-dt_elf_new_symtab(Elf *e, dtrace_difo_t *difo, size_t *nsecs)
+dt_elf_new_symtab(Elf *e, dtrace_difo_t *difo)
 {
 	Elf_Scn *scn = NULL;
 	Elf32_Shdr *shdr;
@@ -307,7 +309,7 @@ dt_elf_new_symtab(Elf *e, dtrace_difo_t *difo, size_t *nsecs)
 }
 
 static Elf_Scn *
-dt_elf_new_vartab(Elf *e, dtrace_difo_t *difo, size_t *nsecs)
+dt_elf_new_vartab(Elf *e, dtrace_difo_t *difo)
 {
 	Elf_Scn *scn = NULL;
 	Elf32_Shdr *shdr;
@@ -344,7 +346,7 @@ dt_elf_new_vartab(Elf *e, dtrace_difo_t *difo, size_t *nsecs)
 }
 
 static Elf_Scn *
-dt_elf_new_difo(Elf *e, dtrace_difo_t *difo, size_t *nsecs)
+dt_elf_new_difo(Elf *e, dtrace_difo_t *difo)
 {
 	Elf_Scn *scn;
 	Elf32_Shdr *shdr;
@@ -369,17 +371,10 @@ dt_elf_new_difo(Elf *e, dtrace_difo_t *difo, size_t *nsecs)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		     scn, elf_errmsg(-1));
 
-	edifo->dted_inttab = elf_ndxscn(dt_elf_new_inttab(e, difo, nsecs));
-	(*nsecs)++;
-
-	edifo->dted_strtab = elf_ndxscn(dt_elf_new_strtab(e, difo, nsecs));
-	(*nsecs)++;
-
-	edifo->dted_symtab = elf_ndxscn(dt_elf_new_symtab(e, difo, nsecs));
-	(*nsecs)++;
-
-	edifo->dted_vartab = elf_ndxscn(dt_elf_new_vartab(e, difo, nsecs));
-	(*nsecs)++;
+	edifo->dted_inttab = elf_ndxscn(dt_elf_new_inttab(e, difo));
+	edifo->dted_strtab = elf_ndxscn(dt_elf_new_strtab(e, difo));
+	edifo->dted_symtab = elf_ndxscn(dt_elf_new_symtab(e, difo));
+	edifo->dted_vartab = elf_ndxscn(dt_elf_new_vartab(e, difo));
 
 	edifo->dted_intlen = difo->dtdo_intlen;
 	edifo->dted_strlen = difo->dtdo_strlen;
@@ -413,7 +408,7 @@ dt_elf_new_difo(Elf *e, dtrace_difo_t *difo, size_t *nsecs)
 }
 
 static Elf_Scn *
-dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad, size_t *nsecs)
+dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad)
 {
 	Elf_Scn *scn;
 	Elf32_Shdr *shdr;
@@ -432,9 +427,7 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad, size_t *nsecs)
 		     scn, elf_errmsg(-1));
 
 	if (ad->dtad_difo != NULL) {
-	        eact->dtea_difo = elf_ndxscn(dt_elf_new_difo(e, ad->dtad_difo, nsecs));
-		(*nsecs)++;
-		eact->dtea_difo = 0;
+	        eact->dtea_difo = elf_ndxscn(dt_elf_new_difo(e, ad->dtad_difo));
 	} else
 		eact->dtea_difo = 0;
 
@@ -468,7 +461,7 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad, size_t *nsecs)
 }
 
 static void
-dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt, size_t *nsecs)
+dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt)
 {
 	Elf_Scn *scn;
 	Elf32_Shdr *shdr;
@@ -483,8 +476,7 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt, size_t *nsecs)
 
 	for (ad = stmt->dtsd_action; ad != stmt->dtsd_action_last->dtad_next;
 	    ad = ad->dtad_next) {
-		scn = dt_elf_new_action(e, ad, nsecs);
-		(*nsecs)++;
+		scn = dt_elf_new_action(e, ad);
 
 		if (ead_prev != NULL)
 			ead_prev->dtea_next = elf_ndxscn(scn);
@@ -508,7 +500,7 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt, size_t *nsecs)
 }
 
 static Elf_Scn *
-dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt, size_t *nsecs)
+dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt)
 {
 	Elf_Scn *scn;
 	Elf32_Shdr *shdr;
@@ -559,8 +551,7 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt, size_t *nsecs)
 	 * dtee_pred as a DIFO.
 	 */
 	eecb->dtee_pred = elf_ndxscn(
-	    dt_elf_new_difo(e, ecb->dted_pred.dtpdd_difo, nsecs));
-	(*nsecs)++;
+	    dt_elf_new_difo(e, ecb->dted_pred.dtpdd_difo));
 
 	eecb->dtee_probe.dtep_pdesc = ecb->dted_probe;
 	eecb->dtee_uarg = ecb->dted_uarg;
@@ -584,7 +575,7 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt, size_t *nsecs)
 }
 
 static Elf_Scn *
-dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, size_t *nsecs)
+dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt)
 {
 	Elf_Scn *scn;
 	Elf_Data *data;
@@ -606,10 +597,9 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, size_t *nsecs)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		     scn, elf_errmsg(-1));
 
-	dt_elf_create_actions(e, stmt, nsecs);
+	dt_elf_create_actions(e, stmt);
 
-	estmt->dtes_ecbdesc = elf_ndxscn(dt_elf_new_ecbdesc(e, stmt, nsecs));
-	(*nsecs)++;
+	estmt->dtes_ecbdesc = elf_ndxscn(dt_elf_new_ecbdesc(e, stmt));
 
 	estmt->dtes_action = dtelf_state.s_first_act_scn;
 	estmt->dtes_action_last = dtelf_state.s_last_act_scn;
@@ -630,8 +620,6 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, size_t *nsecs)
 	shdr->sh_name = DTELF_STMTDESC;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
 	shdr->sh_entsize = 0;
-
-	(*nsecs)++;
 
 	return (scn);
 }
@@ -658,7 +646,7 @@ dt_elf_cleanup(void)
 }
 
 static Elf_Scn *
-dt_elf_options(Elf *e, size_t *nsecs)
+dt_elf_options(Elf *e)
 {
 	Elf_Scn *scn = NULL;
 	Elf32_Shdr *shdr;
@@ -857,7 +845,6 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	Elf32_Shdr *shdr, *s0hdr;
 	Elf32_Phdr *phdr;
 	const char *file_name = "/var/ddtrace/tracing_spec.elf";
-	size_t nsecs = 1;
 	dt_stmt_t *stp;
 
 	dtrace_stmtdesc_t *stmt = NULL;
@@ -899,6 +886,7 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	 */
 	ehdr->e_shstrndx = SHN_XINDEX;
 	ehdr->e_shnum = 0;
+	ehdr->e_shoff = 0;
 
 	if ((phdr = elf32_newphdr(e, 1)) == NULL)
 		errx(EXIT_FAILURE, "elf_newphdr(%p, 1) failed with %s",
@@ -925,8 +913,6 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	if ((shdr = elf32_getshdr(scn)) == NULL)
 		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
 		     elf_errmsg(-1));
-
-	nsecs++;
 
 	shdr->sh_type = SHT_STRTAB;
 	shdr->sh_name = DTELF_SHSTRTAB;
@@ -966,8 +952,6 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
 		    elf_errmsg(-1));
 
-	nsecs++;
-
 	shdr->sh_type = SHT_DTRACE_elf;
 	shdr->sh_name = DTELF_PROG;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
@@ -982,7 +966,7 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	/*
 	 * Create a section with the first statement.
 	 */
-	f_scn = dt_elf_new_stmt(e, stmt, &nsecs);
+	f_scn = dt_elf_new_stmt(e, stmt);
 
 	/*
 	 * Here, we populate the DTrace program with a reference to the ELF
@@ -996,17 +980,17 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	 * Iterate over the other statements and create ELF sections with them.
 	 */
 	for (stp = dt_list_next(stp); stp != NULL; stp = dt_list_next(stp)) {
-		scn = dt_elf_new_stmt(e, stp->ds_desc, &nsecs);
+		scn = dt_elf_new_stmt(e, stp->ds_desc);
 	}
 
-	scn = dt_elf_options(e, &nsecs);
-	nsecs++;
-
-	s0hdr->sh_size = nsecs; /* Number of sections */
+	scn = dt_elf_options(e);
 
 	if (elf_update(e, ELF_C_NULL) < 0)
 		errx(EXIT_FAILURE, "elf_update(%p, ELF_C_NULL) failed with %s",
 		    e, elf_errmsg(-1));
+
+	s0hdr->sh_size = ehdr->e_shnum;
+	ehdr->e_shnum = 0;
 
 	phdr->p_type = PT_PHDR;
 	phdr->p_offset = ehdr->e_phoff;
@@ -1029,8 +1013,75 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 dtrace_prog_t *
 dt_elf_to_prog(int fd)
 {
+	Elf *e;
+	Elf_Scn *scn;
+	Elf_Data *data;
+	GElf_Shdr shdr;
+	size_t shstrndx, shnum;
+	char *name;
+	int class;
+	GElf_Ehdr ehdr;
 
-	return (NULL);
+	dtrace_prog_t *prog;
+
+	dt_elf_prog_t *eprog;
+
+	if (elf_version(EV_CURRENT) == EV_NONE)
+		errx(EXIT_FAILURE, "ELF library initialization failed: %s",
+		    elf_errmsg(-1));
+
+	if ((e = elf_begin(fd, ELF_C_READ, NULL)) == NULL)
+		errx(EXIT_FAILURE, "elf_begin() failed with %s", elf_errmsg(-1));
+
+	if (elf_kind(e) != ELF_K_ELF)
+		errx(EXIT_FAILURE, "tracing specification is not an ELF file");
+
+	if (gelf_getehdr(e, &ehdr) == NULL)
+		errx(EXIT_FAILURE, "gelf_getehdr() failed with %s",
+		    elf_errmsg(-1));
+
+	class = gelf_getclass(e);
+	if (class != ELFCLASS32 && class != ELFCLASS64)
+		errx(EXIT_FAILURE, "gelf_getclass() failed with %s",
+		    elf_errmsg(-1));
+
+	if (elf_getshdrstrndx(e, &shstrndx) != 0)
+		errx(EXIT_FAILURE, "elf_getshstrndx() failed with %s",
+		    elf_errmsg(-1));
+
+	if (elf_getshdrnum(e, &shnum) != 0)
+		errx(EXIT_FAILURE, "elf_getshdrnum() failed with %s",
+		    elf_errmsg(-1));
+
+	/*
+	 * Get the program description.
+	 */
+	if ((scn = elf_getscn(e, DTELF_PROG_SECIDX)) == NULL)
+		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
+		    elf_errmsg(-1));
+
+	if (gelf_getshdr(scn, &shdr) != &shdr)
+		errx(EXIT_FAILURE, "gelf_getshdr() failed with %s",
+		     elf_errmsg(-1));
+
+	if ((name = elf_strptr(e, shstrndx, shdr.sh_name)) == NULL)
+		errx(EXIT_FAILURE, "elf_strptr() failed with %s",
+		     elf_errmsg(-1));
+
+	if (strcmp(name, ".dtrace_prog") != 0)
+		errx(EXIT_FAILURE, "section name is not .dtrace_prog (%s)",
+		    name);
+
+	if ((data = elf_getdata(scn, NULL)) == NULL)
+		errx(EXIT_FAILURE, "elf_getdata() failed with %s", elf_errmsg(-1));
+
+
+	assert(data->d_buf != NULL);
+	eprog = data->d_buf;
+
+
+	(void) elf_end(e);
+	return (prog);
 }
 
 

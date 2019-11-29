@@ -705,8 +705,16 @@ exec_prog(const dtrace_cmd_t *dcp)
 
 	if (!g_exec) {
 		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
-		if (g_elf)
+		if (g_elf) {
+			int fd;
+			const char *path = "/var/ddtrace/tracing_spec.elf";
+
 			dt_elf_create(dcp->dc_prog, ELFDATA2LSB);
+			fd = open(path, O_RDONLY);
+			if (fd < 0)
+				errx(EXIT_FAILURE, "fail");
+			(void) dt_elf_to_prog(fd);
+		}
 	} else if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
 		dfatal("failed to enable '%s'", dcp->dc_name);
 	} else {
