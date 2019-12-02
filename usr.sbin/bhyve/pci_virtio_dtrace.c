@@ -832,7 +832,7 @@ pci_vtdtr_process_script_event(struct pci_vtdtr_softc *xsc, char *d_script)
 		pthread_cond_signal(&sc->vsd_cond);
 		pthread_mutex_unlock(&sc->vsd_condmtx);
 
-		DPRINTF(("The script was put in the control queue."));
+		// DPRINTF(("The script was put in the control queue."));
 	
 }
 
