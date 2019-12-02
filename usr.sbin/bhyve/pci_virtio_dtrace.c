@@ -752,13 +752,12 @@ static void *pci_vtdtr_read_script(void *xsc)
 	int fd;
 
 	sc = xsc;
-
-	// blocks until there is a script to be read
-	int move_on = 0;
-	while (!move_on)
+	
+	if((fd = open(fifo, O_RDONLY)) == -1)
 	{
-		if ((fd = open(fifo, O_RDONLY)) != -1)
-			move_on = 1;
+		// TODO: use errno
+		mkfifo(fifo, 0666);
+		fd = open(fifo, O_RDONLY);
 	}
 
 	char *d_script;
