@@ -44,7 +44,11 @@ static void *write_script(void *file_path)
 
     mkfifo(fifo, 0666);
 
-    fd = open(fifo, O_WRONLY);
+    if((fd = open(fifo, O_WRONLY)) == -1) 
+    {
+        mkfifo(fifo, 0666);
+        fd = open(fifo, O_WRONLY);
+    }
 
     int l = write(fd, d_script, file_size + 1);
 

@@ -18,7 +18,8 @@ static void *read_script()
 
     if ((fd = open(fifo, O_RDONLY)) == -1)
     {
-        printf("Read thread: Failed to open named pipe %s. \n", fifo);
+        mkfifo(fifo, 0666);
+        fd = open(fifo, O_RDONLY);
     }
 
     d_script = malloc(sizeof(char) * 80);
@@ -35,7 +36,7 @@ static void *read_script()
     printf("Read thread: Script is %s. \n", d_script);
     close(fd);
     free(d_script);
-
+    unlink(fifo);
     pthread_exit(NULL);
 }
 
