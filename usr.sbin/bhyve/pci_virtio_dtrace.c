@@ -767,8 +767,6 @@ static void *pci_vtdtr_read_script(void *xsc)
 	int error = read(fd, d_script, 80);
 	assert(error != -1);
 
-	// printf("Read thread: Read from fifo %d. \n", l);
-
 	DPRINTF(("Script is %s. \n", d_script));
 
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
