@@ -726,6 +726,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		break;
 	case VIRTIO_DTRACE_SCRIPT:
 		// this should print
+		device_printf(dev, "I have a script event");
 	    device_printf(dev,ctrl->uctrl.script_ev.d_script);
 	default:
 		device_printf(dev, "WARNING: Wrong control event: %x\n", ctrl->event);

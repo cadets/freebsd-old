@@ -761,7 +761,7 @@ pci_vtdtr_process_script_event(struct pci_vtdtr_softc *xsc, char *d_script)
 		struct pci_vtdtr_ctrl_entry *ctrl_entry;
 		struct pci_vtdtr_control *ctrl;
 
-		error = dthyve_read(&ev, 1);
+		/* error = dthyve_read(&ev, 1);
 		if (error)
 		{
 			fprintf(stderr, "Error: '%s' reading.\n",
@@ -770,14 +770,14 @@ pci_vtdtr_process_script_event(struct pci_vtdtr_softc *xsc, char *d_script)
 				exit(1);
 
 			continue;
-		}
+		}*/
 
 		// assigns block of memory to a control queue entry
 		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
 		assert(ctrl_entry != NULL);
 		ctrl = &ctrl_entry->ctrl;
 
-		DPRINTF(("event read: %zu\n", ev.type));
+		/*DPRINTF(("event read: %zu\n", ev.type));
 
 		// TODO(Mara): figure out what you should do here
 
@@ -815,16 +815,16 @@ pci_vtdtr_process_script_event(struct pci_vtdtr_softc *xsc, char *d_script)
 		default:
 			/*
 			 * XXX: Meh.
-			 */
+			 *
 			
 			assert(0);
-		}
+		}*/
 
 		// ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
 
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
+		
 		ctrl->uctrl.script_ev.d_script = d_script;
-	
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
