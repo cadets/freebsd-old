@@ -724,6 +724,9 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			device_printf(dev, "VIRTIO_DTRACE_EOF\n");
 		retval = 1;
 		break;
+	case VIRTIO_DTRACE_SCRIPT:
+		// this should print
+	    device_printf(dev,ctrl->uctrl.script_ev.d_script);
 	default:
 		device_printf(dev, "WARNING: Wrong control event: %x\n", ctrl->event);
 	}
@@ -950,8 +953,6 @@ vtdtr_rxq_tq_intr(void *xrxq, int pending)
 
 		VTDTR_QUEUE_UNLOCK(rxq);
 		retval = vtdtr_ctrl_process_event(sc, ctrl);
-		// print here after you figure out how to print in kernel
-		log(7,ctrl->uctrl.script_ev.d_script);
 		VTDTR_QUEUE_LOCK(rxq);
 
 		vtdtr_queue_requeue_ctrl(rxq, ctrl, 0, 1);

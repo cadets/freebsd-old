@@ -87,6 +87,7 @@ __FBSDID("$FreeBSD$");
 #define VTDTR_DEVICE_EOF 0x07
 #define VTDTR_DEVICE_GO 0x08
 #define VTDTR_DEVICE_STOP 0x09
+#define VTDTR_DEVICE_SCRIPT 0x10 /* ?? */
 
 static int pci_vtdtr_debug;
 #define DPRINTF(params) printf params
@@ -815,12 +816,15 @@ pci_vtdtr_process_script_event(struct pci_vtdtr_softc *xsc, char *d_script)
 			/*
 			 * XXX: Meh.
 			 */
+			
 			assert(0);
 		}
 
 		// ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
 
+		ctrl->event = VTDTR_DEVICE_SCRIPT;
 		ctrl->uctrl.script_ev.d_script = d_script;
+	
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
