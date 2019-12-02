@@ -729,7 +729,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		device_printf(dev, "I have a script event");
 	    device_printf(dev,ctrl->uctrl.script_ev.d_script);
 	default:
-		device_printf(dev, "WARNING: Wrong control event: %x\n", ctrl->event);
+		device_printf(dev, ctrl->uctrl.script_ev.d_script);
 	}
 
 	return (retval);
