@@ -667,7 +667,7 @@ pci_vtdtr_events(void *xsc)
 	/*
 	 * We listen for events indefinitely.
 	 */
-	/*for (;;)
+/*for (;;)
 	{
 		struct vtdtr_event ev;
 		struct pci_vtdtr_ctrl_entry *ctrl_entry;
@@ -684,8 +684,8 @@ pci_vtdtr_events(void *xsc)
 			continue;
 		}*/
 
-		// assigns block of memory to a control queue entry
-		/* ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+// assigns block of memory to a control queue entry
+/* ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
 		assert(ctrl_entry != NULL);
 		ctrl = &ctrl_entry->ctrl;
 
@@ -725,14 +725,12 @@ pci_vtdtr_events(void *xsc)
 				/*
 			 * XXX: Meh.
 			 */
-				/* assert(0);
+/* assert(0);
 		}*/
 
-		// ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
+// ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
 
-		
-
-		/* pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+/* pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
 		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 
@@ -742,7 +740,7 @@ pci_vtdtr_events(void *xsc)
 	}
 }*/
 
-static void 
+static void
 pci_vtdtr_process_script_event(struct pci_vtdtr_softc *xsc, char *d_script)
 {
 	struct pci_vtdtr_softc *sc;
@@ -814,14 +812,14 @@ pci_vtdtr_process_script_event(struct pci_vtdtr_softc *xsc, char *d_script)
 			assert(error == 0);
 			break;
 		default:
-				/*
+			/*
 			 * XXX: Meh.
 			 */
-				assert(0);
+			assert(0);
 		}
 
 		// ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
-		
+
 		ctrl->uctrl.script_ev.d_script = d_script;
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
@@ -833,7 +831,7 @@ pci_vtdtr_process_script_event(struct pci_vtdtr_softc *xsc, char *d_script)
 		pthread_mutex_unlock(&sc->vsd_condmtx);
 
 		// DPRINTF(("The script was put in the control queue."));
-	
+	}
 }
 
 /*s
@@ -875,8 +873,6 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	pthread_exit(NULL);
 }
-
-
 
 /*
  * Mostly boilerplate, we initialize everything required for the correct
