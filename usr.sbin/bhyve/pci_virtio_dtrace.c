@@ -753,16 +753,18 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	sc = xsc;
 
-	if ((fd = open(fifo, O_RDONLY)) == -1)
+	// blocks until there is a script to be read
+	int move_on = 0;
+	while (!move_on)
 	{
-		DPRINTF(("Failed to open named pipe %s. \n", fifo));
+		if ((fd = open(fifo, O_RDONLY)) != -1)
+			move_on = 1;
 	}
-	assert(fd != -1);
 
 	char *d_script;
 	d_script = malloc(sizeof(char) * 80);
 
-	int error = read(fd, d_script,80);
+	int error = read(fd, d_script, 80);
 	assert(error != -1);
 
 	// printf("Read thread: Read from fifo %d. \n", l);
