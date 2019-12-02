@@ -17,6 +17,8 @@
 /*
  * We only have one event at the moment -- possibly others in the future.
  */
+
+// MARA : modify this ???
 struct vtdtr_event {
 	size_t type;
 
