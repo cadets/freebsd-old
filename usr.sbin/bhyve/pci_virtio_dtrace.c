@@ -757,6 +757,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 	while (1)
 	{
 		mkfifo(fifo, 0666);
+		
 		fd = open(fifo, O_RDONLY);
 
 		char *d_script;

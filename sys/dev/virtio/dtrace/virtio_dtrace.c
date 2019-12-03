@@ -744,7 +744,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			device_printf(dev, "VIRTIO_DTRACE_EOF\n");
 		retval = 1;
 		break;
-	case VIRTIO_DTRACE_EVENT:
+	case VIRTIO_DTRACE_SCRIPT_EVENT:
 		device_printf(dev, "I should be here.\n");
 		device_printf(dev, "%s\n", ctrl->uctrl.script_ev.d_script);
 		break;
