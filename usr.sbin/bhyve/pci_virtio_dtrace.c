@@ -752,17 +752,12 @@ static void *pci_vtdtr_read_script(void *xsc)
 	int fd;
 
 	sc = xsc;
-
 	// listen indefinitely for scripts
 
-	for (;;)
+	while (1)
 	{
-		if ((fd = open(fifo, O_RDONLY)) == -1)
-		{
-			// TODO: use errno
-			mkfifo(fifo, 0666);
-			fd = open(fifo, O_RDONLY);
-		}
+		mkfifo(fifo, 0666);
+		fd = open(fifo, O_RDONLY);
 
 		char *d_script;
 		d_script = malloc(sizeof(char) * 80);
@@ -779,7 +774,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		ctrl->uctrl.script_ev.d_script = d_script;
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
 
-		DPRINTF(("Script is %s. Event is %d.\n", ctrl->uctrl.script_ev.d_script, (int)ctrl->event));
+		DPRINTF(("Script is %s.\n", ctrl->uctrl.script_ev.d_script));
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
@@ -791,6 +786,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 		close(fd);
 		free(d_script);
+		free(ctrl_entry);
 		unlink(fifo);
 	}
 }

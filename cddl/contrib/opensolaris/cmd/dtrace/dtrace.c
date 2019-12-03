@@ -1568,15 +1568,7 @@ static void *write_script(void *file_path)
 
 	const char *fifo = "/tmp/fifo";
 
-	
-	if((fd = open(fifo, O_WRONLY)) == -1)
-	{
-		// TODO: use errno
-		// mkfifo only if doesn't exist
-		// otherwise we have a problem
-		mkfifo(fifo, 0666);
-		fd = open(fifo, O_WRONLY);
-	}
+	fd = open(fifo, O_WRONLY);
 
 	int l = write(fd, d_script, file_size + 1);
 
@@ -1584,10 +1576,6 @@ static void *write_script(void *file_path)
 
 	close(fd);
 	free(d_script);
-
-	// delete fifo
-	unlink(fifo);
-
 	pthread_exit(NULL);
 }
 
