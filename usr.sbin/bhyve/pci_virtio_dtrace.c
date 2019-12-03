@@ -87,7 +87,7 @@ __FBSDID("$FreeBSD$");
 #define VTDTR_DEVICE_EOF 0x07
 #define VTDTR_DEVICE_GO 0x08
 #define VTDTR_DEVICE_STOP 0x09
-#define VTDTR_DEVICE_SCRIPT 0x10 
+#define VTDTR_DEVICE_SCRIPT 0x10
 
 static int pci_vtdtr_debug;
 #define DPRINTF(params) printf params
@@ -770,8 +770,6 @@ static void *pci_vtdtr_read_script(void *xsc)
 		int error = read(fd, d_script, 80);
 		// assert(error != -1);
 
-		DPRINTF(("Script is %s. \n", d_script));
-
 		struct pci_vtdtr_ctrl_entry *ctrl_entry;
 		struct pci_vtdtr_control *ctrl;
 		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
@@ -780,6 +778,8 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 		ctrl->uctrl.script_ev.d_script = d_script;
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
+
+		DPRINTF(("Script is %s. Event is %d.\n", ctrl->uctrl.script_ev.d_script, (int)ctrl->event));
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
