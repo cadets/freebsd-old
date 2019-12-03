@@ -11,6 +11,7 @@
 #define VTDTR_EV_GO        0x03
 #define VTDTR_EV_STOP      0x04
 #define VTDTR_EV_RECONF    0x05
+#define VTDTR_EV_SCRIPT    0x06
 
 /*
  * We only have one event at the moment -- possibly others in the future.
@@ -24,9 +25,14 @@ struct vtdtr_event {
 		} p_toggle;
 
 		struct {
+			char *script[80];
+		} d_script;
+
+		struct {
 			char vms[VTDTR_MAXVMS][VTDTR_VMNAMEMAX];
 			size_t count;
 		} d_config;
+
 	} args;
 };
 

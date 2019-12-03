@@ -68,6 +68,7 @@ struct vtdtr_qentry {
 	struct vtdtr_event        *event;
 	STAILQ_ENTRY(vtdtr_qentry) next;
 };
+
 // ucred = user
 /*
  * The queue is kept on a per-ucred basis. We do not want to deal with race

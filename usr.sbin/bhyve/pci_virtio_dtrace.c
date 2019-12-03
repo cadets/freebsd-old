@@ -752,20 +752,24 @@ static void *pci_vtdtr_read_script(void *xsc)
 	int fd;
 
 	sc = xsc;
-	// listen indefinitely for scripts
 
-	while (1)
-	{
+	// TODO: make it listen for scripts indefinitely so it works more than once
+	// (maybe by creating this thread somewhere else)
 		mkfifo(fifo, 0666);
+
+		if((fd = open(fifo, O_RDONLY)) == -1) {
+			printf("%s\n", strerror(errno));
+		}
 		
-		fd = open(fifo, O_RDONLY);
 
 		char *d_script;
 		d_script = malloc(sizeof(char) * 80);
 
-		int error = read(fd, d_script, 80);
-		// assert(error != -1);
-
+		int error;
+		if((error = read(fd, d_script, 80)) == -1) {
+			printf("%s\n", strerror(errno));
+		}
+	
 		struct pci_vtdtr_ctrl_entry *ctrl_entry;
 		struct pci_vtdtr_control *ctrl;
 		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
@@ -789,7 +793,6 @@ static void *pci_vtdtr_read_script(void *xsc)
 		free(d_script);
 		free(ctrl_entry);
 		unlink(fifo);
-	}
 }
 
 /*

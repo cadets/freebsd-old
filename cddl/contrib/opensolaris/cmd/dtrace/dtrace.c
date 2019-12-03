@@ -1541,8 +1541,7 @@ static void *write_script(void *file_path)
 
 	if ((fp = fopen(path, "r")) == NULL)
 	{
-		printf("Failed to open file '%s. \n", path);
-		exit(1);
+		printf("%s\n", strerror(errno));
 	}
 
 	int file_size = 0;
@@ -1558,8 +1557,7 @@ static void *write_script(void *file_path)
 
 	if ((fgets(d_script, file_size, fp)) == NULL)
 	{
-		printf("Error occured while reading script. \n");
-		exit(3);
+		printf("%s\n", strerror(errno));
 	}
 
 	fclose(fp);
@@ -1568,15 +1566,22 @@ static void *write_script(void *file_path)
 
 	const char *fifo = "/tmp/fifo";
 
-	fd = open(fifo, O_WRONLY);
+	if((fd = open(fifo, O_WRONLY)) == -1)
+	{
+		printf("%s\n", strerror(errno));
+	}
 
-	int l = write(fd, d_script, file_size + 1);
+	int l;
+
+	if((l = write(fd, d_script, file_size + 1)) == -1)
+	{
+		pritnf("%s\n", strerror(errno));
+	}
 
 	printf("I've written in pipe %d. \n", l);
 
 	close(fd);
 	free(d_script);
-	pthread_exit(NULL);
 }
 
 int main(int argc, char *argv[])
