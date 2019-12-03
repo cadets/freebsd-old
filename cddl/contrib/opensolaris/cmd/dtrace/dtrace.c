@@ -1575,7 +1575,7 @@ static void *write_script(void *file_path)
 
 	if((l = write(fd, d_script, file_size + 1)) == -1)
 	{
-		pritnf("%s\n", strerror(errno));
+		printf("%s\n", strerror(errno));
 	}
 
 	printf("I've written in pipe %d. \n", l);
