@@ -637,6 +637,10 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 {
 	struct vtdtr_ctrl_pbevent *pb;
 	struct vtdtr_ctrl_provevent *pv;
+	struct vtdtr_ctrl_scriptevent *script_ev;
+
+	script =
+	  
 	device_t dev;
 	int retval;
 	int error;
@@ -713,7 +717,10 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	}
 	case VIRTIO_DTRACE_SCRIPT_EVENT:
 		device_printf(dev, "I should be here.\n");
-		device_printf(dev, "%s\n", ctrl->uctrl.script_ev.d_script);
+		script_ev = &ctrl->uctrl.script_ev;
+		if(script_ev != NULL) {
+			device_printf(dev, script_ev->d_script);
+		}
 		break;
 	case VIRTIO_DTRACE_GO:
 		sc->vtdtr_ready = 0;
