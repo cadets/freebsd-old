@@ -776,7 +776,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		assert(ctrl_entry != NULL);
 		ctrl = &ctrl_entry->ctrl;
 
-		ctrl->uctrl.script_ev.d_script = d_script;
+		ctrl->uctrl.script_ev.d_script = &d_script;
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
 		
 		DPRINTF(("Script is %s.\n", ctrl_entry->ctrl->uctrl.script_ev.d_script));
