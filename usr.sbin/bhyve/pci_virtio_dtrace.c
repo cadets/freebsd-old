@@ -124,7 +124,7 @@ struct pci_vtdtr_ctrl_provevent
 
 struct pci_vtdtr_ctrl_scriptevent
 {
-	char *d_script;
+	char d_script[80];
 	struct uuid uuid;
 } __attribute__((packed));
 
@@ -769,6 +769,9 @@ static void *pci_vtdtr_read_script(void *xsc)
 		if((error = read(fd, d_script, 80)) == -1) {
 			printf("%s\n", strerror(errno));
 		}
+		int len = strlen(d_script);
+
+
 	
 		struct pci_vtdtr_ctrl_entry *ctrl_entry;
 		struct pci_vtdtr_control *ctrl;
@@ -776,10 +779,13 @@ static void *pci_vtdtr_read_script(void *xsc)
 		assert(ctrl_entry != NULL);
 		ctrl = &ctrl_entry->ctrl;
 
-		ctrl->uctrl.script_ev.d_script = &d_script;
+		DPRINTF(("Script is %s.\n",d_script));
+
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
-		
-		DPRINTF(("Script is %s.\n", ctrl_entry->ctrl->uctrl.script_ev.d_script));
+		strncpy(ctrl->uctrl.script_ev.d_script,d_script,len);
+		ctrl->uctrl.script_ev.d_script[len+1] = '\0';
+
+		DPRITNF(("Script %s in control element.\n", ctrl->uctrl.script_ev.d_script));
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
