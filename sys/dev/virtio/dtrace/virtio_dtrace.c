@@ -711,6 +711,10 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		}
 		break;
 	}
+	case VIRTIO_DTRACE_SCRIPT_EVENT:
+		device_printf(dev, "I should be here.\n");
+		device_printf(dev, "%s\n", ctrl->uctrl.script_ev.d_script);
+		break;
 	case VIRTIO_DTRACE_GO:
 		sc->vtdtr_ready = 0;
 
@@ -743,10 +747,6 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		if (debug)
 			device_printf(dev, "VIRTIO_DTRACE_EOF\n");
 		retval = 1;
-		break;
-	case VIRTIO_DTRACE_SCRIPT_EVENT:
-		device_printf(dev, "I should be here.\n");
-		device_printf(dev, "%s\n", ctrl->uctrl.script_ev.d_script);
 		break;
 	default:
 		device_printf(dev, "WARNING: Wrong control event: %x\n", ctrl->event);
@@ -1420,3 +1420,6 @@ vtdtr_advertise_probe_priv(void *xsc, const char *mod, const char *func,
 	cv_signal(&sc->vtdtr_condvar);
 	mtx_unlock(&sc->vtdtr_condmtx);
 }
+
+// TODO(MARA): enque script event using vtdtr enqueue and extract them using a
+// userspace daemon process

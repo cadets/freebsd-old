@@ -778,8 +778,8 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 		ctrl->uctrl.script_ev.d_script = d_script;
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
-
-		DPRINTF(("Script is %s.\n", ctrl->uctrl.script_ev.d_script));
+		
+		DPRINTF(("Script is %s.\n", ctrl_entry->ctrl->uctrl.script_ev.d_script));
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
