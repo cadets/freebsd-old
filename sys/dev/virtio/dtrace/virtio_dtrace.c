@@ -638,9 +638,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	struct vtdtr_ctrl_pbevent *pb;
 	struct vtdtr_ctrl_provevent *pv;
 	struct vtdtr_ctrl_scriptevent *script_ev;
-
-	script =
-	  
+	
 	device_t dev;
 	int retval;
 	int error;
