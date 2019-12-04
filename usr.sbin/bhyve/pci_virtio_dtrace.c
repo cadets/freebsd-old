@@ -779,13 +779,13 @@ static void *pci_vtdtr_read_script(void *xsc)
 		assert(ctrl_entry != NULL);
 		ctrl = &ctrl_entry->ctrl;
 
-		DPRINTF(("Script is %s.\n",d_script));
+		DPRINTF(("Script is %s.\n", d_script));
 
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
-		strncpy(ctrl->uctrl.script_ev.d_script,d_script,len);
+		strncpy(ctrl->uctrl.script_ev.d_script, d_script, len);
 		ctrl->uctrl.script_ev.d_script[len+1] = '\0';
 
-		DPRITNF(("Script %s in control element.\n", ctrl->uctrl.script_ev.d_script));
+		DPRINTF(("Script %s in control element.\n", ctrl->uctrl.script_ev.d_script));
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
