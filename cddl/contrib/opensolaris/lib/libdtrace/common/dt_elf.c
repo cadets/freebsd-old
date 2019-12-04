@@ -77,6 +77,7 @@ typedef struct dt_elf_state {
 	dt_elf_ref_t s_last_act_scn;
 	dt_elf_ref_t s_first_ecbdesc_scn;
 	dt_list_t s_actions;
+	dt_elf_actdesc_t *s_eadprev;
 } dt_elf_state_t;
 
 char sec_strtab[] =
@@ -84,7 +85,6 @@ char sec_strtab[] =
 	".dtrace_ecbdesc\0.difo_strtab\0.difo_inttab\0"
 	".difo_symtab\0.dtrace_stmtdesc\0.dtrace_predicate\0"
 	".dtrace_opts\0.dtrace_vartab";
-
 
 #define	DTELF_SHSTRTAB		  1
 #define	DTELF_PROG		 11
@@ -103,7 +103,8 @@ char sec_strtab[] =
 
 #define	DTELF_PROG_SECIDX	  2
 
-static dt_elf_state_t dtelf_state = {0};
+static dt_elf_state_t *dtelf_state;
+
 
 dt_elf_opt_t dtelf_ctopts[] = {
 	{ "aggpercpu", 0, NULL, DTRACE_A_PERCPU },
@@ -415,6 +416,10 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad)
 	Elf_Data *data;
 	dt_elf_actdesc_t *eact = malloc(sizeof(dt_elf_actdesc_t));
 	dt_elf_eact_list_t *el = malloc(sizeof(dt_elf_eact_list_t));
+
+	assert(eact != NULL);
+	assert(el != NULL);
+
 	memset(eact, 0, sizeof(dt_elf_actdesc_t));
 	memset(el, 0, sizeof(dt_elf_eact_list_t));
 
@@ -456,7 +461,7 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad)
 	el->act = ad;
 	el->eact = eact;
 
-	dt_list_append(&dtelf_state.s_actions, el);
+	dt_list_append(&dtelf_state->s_actions, el);
 	return (scn);
 }
 
@@ -466,37 +471,34 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt)
 	Elf_Scn *scn;
 	Elf32_Shdr *shdr;
 	Elf_Data *data = NULL;
-	dt_elf_actdesc_t *ead_prev = NULL;
 	dtrace_actdesc_t *ad;
 
 	if (stmt->dtsd_action == NULL)
 		return;
 
 	assert(stmt->dtsd_action_last != NULL);
-
 	for (ad = stmt->dtsd_action; ad != stmt->dtsd_action_last->dtad_next;
 	    ad = ad->dtad_next) {
 		scn = dt_elf_new_action(e, ad);
 
-		if (ead_prev != NULL)
-			ead_prev->dtea_next = elf_ndxscn(scn);
+		if (dtelf_state->s_eadprev != NULL)
+			dtelf_state->s_eadprev->dtea_next = elf_ndxscn(scn);
 
 		if ((data = elf_getdata(scn, NULL)) == NULL)
-		    errx(EXIT_FAILURE, "elf_getdata(%p, %p) failed with %s",
-			scn, data, elf_errmsg(-1));
-		ead_prev = data->d_buf;
-		if (ead_prev == NULL)
-			errx(EXIT_FAILURE, "ead_prev == NULL");
+			errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
+			    elf_errmsg(-1), __func__);
+
+		assert(data->d_buf != NULL);
+		dtelf_state->s_eadprev = data->d_buf;
 
 		if (ad == stmt->dtsd_action)
-			dtelf_state.s_first_act_scn = elf_ndxscn(scn);
+			dtelf_state->s_first_act_scn = elf_ndxscn(scn);
 	}
-
 	/*
 	 * We know that this is the last section that we could have
 	 * created, so we simply set the state variable to it.
 	 */
-	dtelf_state.s_last_act_scn = elf_ndxscn(scn);
+	dtelf_state->s_last_act_scn = elf_ndxscn(scn);
 }
 
 static Elf_Scn *
@@ -528,7 +530,7 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt)
 	/*
 	 * Find the corresponding action's section number.
 	 */
-	for (el = dt_list_next(&dtelf_state.s_actions); el != NULL;
+	for (el = dt_list_next(&dtelf_state->s_actions); el != NULL;
 	    el = dt_list_next(el))
 		if (ecb->dted_action == el->act)
 			break;
@@ -575,7 +577,7 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt)
 }
 
 static Elf_Scn *
-dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt)
+dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 {
 	Elf_Scn *scn;
 	Elf_Data *data;
@@ -601,10 +603,13 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt)
 
 	estmt->dtes_ecbdesc = elf_ndxscn(dt_elf_new_ecbdesc(e, stmt));
 
-	estmt->dtes_action = dtelf_state.s_first_act_scn;
-	estmt->dtes_action_last = dtelf_state.s_last_act_scn;
+	estmt->dtes_action = dtelf_state->s_first_act_scn;
+	estmt->dtes_action_last = dtelf_state->s_last_act_scn;
 	estmt->dtes_descattr.dtea_attr = stmt->dtsd_descattr;
 	estmt->dtes_stmtattr.dtea_attr = stmt->dtsd_stmtattr;
+
+	if (pstmt != NULL)
+		pstmt->dtes_next = elf_ndxscn(scn);
 
 	data->d_align = 4;
 	data->d_buf = estmt;
@@ -630,7 +635,7 @@ dt_elf_cleanup(void)
 	dt_elf_eact_list_t *el;
 	dt_elf_eact_list_t *p_el;
 
-	for (el = dt_list_next(&dtelf_state.s_actions);
+	for (el = dt_list_next(&dtelf_state->s_actions);
 	    el != NULL; el = dt_list_next(el)) {
 		if (p_el)
 			free(p_el);
@@ -850,8 +855,10 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	dtrace_stmtdesc_t *stmt = NULL;
 
 	dt_elf_prog_t prog = {0};
+	dt_elf_stmt_t *p_stmt;
 
-	memset(&dtelf_state, 0, sizeof(dt_elf_state_t));
+	dtelf_state = malloc(sizeof(dt_elf_state_t));
+	memset(dtelf_state, 0, sizeof(dt_elf_state_t));
 
 	/*
 	 * Create the directory that contains the ELF file (if needed).
@@ -966,7 +973,11 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	/*
 	 * Create a section with the first statement.
 	 */
-	f_scn = dt_elf_new_stmt(e, stmt);
+	f_scn = dt_elf_new_stmt(e, stmt, NULL);
+	if ((data = elf_getdata(f_scn, NULL)) == NULL)
+		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
+	p_stmt = data->d_buf;
 
 	/*
 	 * Here, we populate the DTrace program with a reference to the ELF
@@ -980,7 +991,11 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	 * Iterate over the other statements and create ELF sections with them.
 	 */
 	for (stp = dt_list_next(stp); stp != NULL; stp = dt_list_next(stp)) {
-		scn = dt_elf_new_stmt(e, stp->ds_desc);
+		scn = dt_elf_new_stmt(e, stp->ds_desc, p_stmt);
+		if ((data = elf_getdata(scn, NULL)) == NULL)
+			errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
+			    elf_errmsg(-1), __func__);
+		p_stmt = data->d_buf;
 	}
 
 	scn = dt_elf_options(e);
@@ -1006,8 +1021,270 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	 * TODO: Cleanup of section data (free the pointers).
 	 */
 	//	dt_elf_cleanup();
+
+	free(dtelf_state);
 	(void) elf_end(e);
 	(void) close(fd);
+}
+
+static void *
+dt_elf_get_table(Elf *e, dt_elf_ref_t tabref)
+{
+	Elf_Scn *scn;
+	Elf_Data *data;
+	uint64_t *table;
+
+	if (tabref == 0)
+		return (NULL);
+
+	if ((scn = elf_getscn(e, tabref)) == NULL)
+		errx(EXIT_FAILURE, "elf_getscn() failed with %s", elf_errmsg(-1));
+
+	if ((data = elf_getdata(scn, NULL)) == NULL)
+		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
+
+	assert(data->d_buf != NULL);
+
+	if (data->d_size == 0)
+		return (NULL);
+
+	table = malloc(data->d_size);
+	memcpy(table, data->d_buf, data->d_size);
+
+	return (table);
+}
+
+static dtrace_difo_t *
+dt_elf_get_difo(Elf *e, dt_elf_ref_t diforef)
+{
+	dtrace_difo_t *difo;
+	dt_elf_difo_t *edifo;
+	Elf_Scn *scn;
+	Elf_Data *data;
+	size_t i;
+
+	if (diforef == 0)
+		return (NULL);
+
+	if ((scn = elf_getscn(e, diforef)) == NULL)
+		errx(EXIT_FAILURE, "elf_getscn() failed with %s", elf_errmsg(-1));
+
+	if ((data = elf_getdata(scn, NULL)) == NULL)
+		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
+
+	assert(data->d_buf != NULL);
+	edifo = data->d_buf;
+
+	difo = malloc(sizeof(dtrace_difo_t));
+	memset(difo, 0, sizeof(dtrace_difo_t));
+
+	difo->dtdo_buf = malloc(edifo->dted_len * sizeof(dif_instr_t));
+	memset(difo->dtdo_buf, 0, sizeof(dif_instr_t) * edifo->dted_len);
+
+	difo->dtdo_inttab = dt_elf_get_table(e, edifo->dted_inttab);
+	difo->dtdo_strtab = dt_elf_get_table(e, edifo->dted_strtab);
+	difo->dtdo_vartab = dt_elf_get_table(e, edifo->dted_vartab);
+	difo->dtdo_symtab = dt_elf_get_table(e, edifo->dted_symtab);
+
+	difo->dtdo_intlen = edifo->dted_intlen;
+	difo->dtdo_strlen = edifo->dted_strlen;
+	difo->dtdo_varlen = edifo->dted_varlen;
+	difo->dtdo_symtab = edifo->dted_symtab;
+
+	difo->dtdo_len = edifo->dted_len;
+
+	difo->dtdo_rtype = edifo->dted_rtype;
+	difo->dtdo_destructive = edifo->dted_destructive;
+
+	for (i = 0; i < edifo->dted_len; i++)
+		difo->dtdo_buf[i] = edifo->dted_buf[i];
+
+	return (difo);
+}
+
+static dtrace_ecbdesc_t *
+dt_elf_get_ecbdesc(Elf *e, dt_elf_ref_t ecbref)
+{
+	Elf_Scn *scn;
+	Elf_Data *data;
+	dt_elf_ecbdesc_t *eecb = NULL;
+	dtrace_ecbdesc_t *ecb = NULL;
+	dt_elf_eact_list_t *el = NULL;
+
+	if ((scn = elf_getscn(e, ecbref)) == NULL)
+		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
+		    elf_errmsg(-1));
+
+	if ((data = elf_getdata(scn, NULL)) == NULL)
+		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
+
+	assert(data->d_buf != NULL);
+	eecb = data->d_buf;
+
+	ecb = malloc(sizeof(dtrace_ecbdesc_t));
+	memset(ecb, 0, sizeof(dtrace_ecbdesc_t));
+
+	for (el = dt_list_next(&dtelf_state->s_actions);
+	    el != NULL; el = dt_list_next(el)) {
+		if (el->eact_ndx == eecb->dtee_action) {
+			ecb->dted_action = el->act;
+			break;
+		}
+	}
+
+	ecb->dted_pred.dtpdd_predicate = NULL;
+	ecb->dted_pred.dtpdd_difo = dt_elf_get_difo(e, eecb->dtee_pred);
+	ecb->dted_probe = eecb->dtee_probe.dtep_pdesc;
+	ecb->dted_uarg = eecb->dtee_uarg;
+}
+
+static void
+dt_elf_add_acts(dtrace_stmtdesc_t *stmt, dt_elf_ref_t fst, dt_elf_ref_t last)
+{
+	dt_elf_eact_list_t *el = NULL;
+	dtrace_actdesc_t *act = NULL;
+	dtrace_actdesc_t *p = NULL;
+	int start = 0;
+
+	assert(stmt != NULL);
+
+	for (el = dt_list_next(&dtelf_state->s_actions);
+	    el != NULL && el->eact_ndx != last; el = dt_list_next(el)) {
+		if (el->eact_ndx == fst) {
+			start = 1;
+			stmt->dtsd_action = el->act;
+			act = el->act;
+		}
+
+		if (start) {
+			if (p)
+				p->dtad_next = act;
+			p = act;
+		}
+	}
+
+	if (el && el->eact_ndx == last) {
+		stmt->dtsd_action_last = el->act;
+		if (p)
+			p->dtad_next = el->act;
+	}
+}
+
+static void
+dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog, dt_elf_stmt_t *estmt)
+{
+	dtrace_stmtdesc_t *stmt;
+	dt_stmt_t *stp;
+
+	assert(estmt != NULL);
+
+	stp = malloc(sizeof(dt_stmt_t));
+	assert(stp != NULL);
+
+	stmt = malloc(sizeof(dtrace_stmtdesc_t));
+	assert(stmt != NULL);
+
+	stp->ds_desc = stmt;
+
+	stmt->dtsd_ecbdesc = dt_elf_get_ecbdesc(e, estmt->dtes_ecbdesc);
+	dt_elf_add_acts(stmt, estmt->dtes_action, estmt->dtes_action_last);
+	stmt->dtsd_descattr = estmt->dtes_descattr.dtea_attr;
+	stmt->dtsd_stmtattr = estmt->dtes_stmtattr.dtea_attr;
+}
+
+static dtrace_actdesc_t *
+dt_elf_alloc_action(Elf *e, Elf_Scn *scn, dtrace_actdesc_t *prev)
+{
+	dtrace_actdesc_t *ad;
+	dt_elf_eact_list_t *el;
+	Elf_Data *data;
+	dt_elf_actdesc_t *ead;
+
+	if ((data = elf_getdata(scn, NULL)) == NULL)
+		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
+
+	assert(data->d_buf != NULL);
+	ead = data->d_buf;
+
+	ad = malloc(sizeof(dtrace_actdesc_t));
+	memset(ad, 0, sizeof(dtrace_actdesc_t));
+
+	ad->dtad_difo = dt_elf_get_difo(e, ead->dtea_difo);
+	ad->dtad_next = NULL; /* Filled in later */
+	ad->dtad_kind = ead->dtea_kind;
+	ad->dtad_ntuple = ead->dtea_ntuple;
+	ad->dtad_arg = ead->dtea_arg;
+	ad->dtad_uarg = ead->dtea_uarg;
+
+	el = malloc(sizeof(dt_elf_eact_list_t));
+	memset(el, 0, sizeof(dt_elf_eact_list_t));
+
+	el->eact_ndx = elf_ndxscn(scn);
+	el->act = ad;
+	el->eact = ead;
+
+	dt_list_append(&dtelf_state->s_actions, el);
+
+	if (prev)
+		prev->dtad_next = ad;
+
+	return (ad);
+}
+
+static void
+dt_elf_alloc_actions(Elf *e, dt_elf_stmt_t *estmt)
+{
+	Elf_Scn *scn;
+	Elf_Data *data;
+	dt_elf_actdesc_t *ead;
+	dt_elf_ref_t fst, actref;
+	dtrace_actdesc_t *prev = NULL;
+
+	fst = estmt->dtes_action;
+
+	for (actref = fst; actref != 0; actref = ead->dtea_next) {
+		if ((scn = elf_getscn(e, actref)) == NULL)
+			errx(EXIT_FAILURE, "elf_getscn() failed with %s", elf_errmsg(-1));
+
+		if ((data = elf_getdata(scn, NULL)) == NULL)
+			errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
+			    elf_errmsg(-1), __func__);
+
+		assert(data->d_buf != NULL);
+
+		ead = data->d_buf;
+		prev = dt_elf_alloc_action(e, scn, prev);
+	}
+}
+
+static void
+dt_elf_get_stmts(Elf *e, dtrace_prog_t *prog, dt_elf_ref_t first_stmt_scn)
+{
+	Elf_Scn *scn;
+	Elf_Data *data;
+	dt_elf_stmt_t *estmt;
+	dt_elf_ref_t scnref;
+
+	for (scnref = first_stmt_scn; scnref != 0; scnref = estmt->dtes_next) {
+		if ((scn = elf_getscn(e, scnref)) == NULL)
+			errx(EXIT_FAILURE, "elf_getscn() failed with %s", elf_errmsg(-1));
+
+		if ((data = elf_getdata(scn, NULL)) == NULL)
+			errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
+			    elf_errmsg(-1), __func__);
+
+		assert(data->d_buf != NULL);
+		estmt = data->d_buf;
+
+		if (first_stmt_scn == scnref)
+			dt_elf_alloc_actions(e, estmt);
+
+		dt_elf_add_stmt(e, prog, estmt);
+	}
 }
 
 dtrace_prog_t *
@@ -1025,6 +1302,9 @@ dt_elf_to_prog(int fd)
 	dtrace_prog_t *prog;
 
 	dt_elf_prog_t *eprog;
+
+	dtelf_state = malloc(sizeof(dt_elf_state_t));
+	memset(dtelf_state, 0, sizeof(dt_elf_state_t));
 
 	if (elf_version(EV_CURRENT) == EV_NONE)
 		errx(EXIT_FAILURE, "ELF library initialization failed: %s",
@@ -1073,14 +1353,21 @@ dt_elf_to_prog(int fd)
 		    name);
 
 	if ((data = elf_getdata(scn, NULL)) == NULL)
-		errx(EXIT_FAILURE, "elf_getdata() failed with %s", elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
 
 
 	assert(data->d_buf != NULL);
 	eprog = data->d_buf;
 
+	prog = malloc(sizeof(dtrace_prog_t));
+	prog->dp_dofversion = eprog->dtep_dofversion;
 
+	dt_elf_get_stmts(e, prog, eprog->dtep_first_stmt);
+
+	free(dtelf_state);
 	(void) elf_end(e);
+
 	return (prog);
 }
 

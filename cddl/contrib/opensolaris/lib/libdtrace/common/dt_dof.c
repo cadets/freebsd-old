@@ -655,19 +655,7 @@ dtrace_dof_create(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, uint_t flags)
 
 	if (dt_dof_reset(dtp, pgp) != 0)
 		return (NULL);
-	for (last = NULL, stp = dt_list_next(&pgp->dp_stmts);
-	     stp != NULL; stp = dt_list_next(stp), last = edp) {
-		dtrace_stmtdesc_t *sdp = stp->ds_desc;
-		dtrace_actdesc_t *ap = sdp->dtsd_action;
-		dtrace_ecbdesc_t *ed;
 
-		for (ap = sdp->dtsd_action; ap != NULL; ap = ap->dtad_next) {
-			dtrace_actdesc_t *ap2;
-			ed = sdp->dtsd_ecbdesc;
-			for (ap2 = ed->dted_action; ap2 != NULL; ap2 = ap2->dtad_next)
-				fprintf(stderr, "(%p, %p, %p)\n", sdp, ap, ap2);
-		}
-	}
 	/*
 	 * Iterate through the statement list computing the maximum number of
 	 * actions and the maximum format string for allocating local buffers.
@@ -677,7 +665,6 @@ dtrace_dof_create(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, uint_t flags)
 
 		dtrace_stmtdesc_t *sdp = stp->ds_desc;
 		dtrace_actdesc_t *ap = sdp->dtsd_action;
-		fprintf(stderr, "MARKER: dtsd_action = %p, dtsd_ecbdesc->dted_action = %p\n", sdp->dtsd_action, sdp->dtsd_ecbdesc->dted_action);
 
 		if (sdp->dtsd_fmtdata != NULL) {
 			i = dtrace_printf_format(dtp,
