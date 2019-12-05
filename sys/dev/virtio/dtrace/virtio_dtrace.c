@@ -55,7 +55,6 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/virtio/virtio.h>
 #include <dev/virtio/virtqueue.h>
-#include <cddl/dev/vtdtr/vtdtr.h>
 
 
 // TODO(MARA): Make this import work
