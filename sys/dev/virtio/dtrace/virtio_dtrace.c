@@ -724,8 +724,8 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		
 		// do we have the lock on ctrl? do we care?
 		len = strlen(ctrl->uctrl.script_ev.d_script);
-		ev.type = VTDTR_EV_SCRIPT;
-		strncpy(ev.args.d_script.script, ctrl->uctrl.script_ev.d_script, len);
+		ev->type = VTDTR_EV_SCRIPT;
+		strncpy(ev->args.d_script.script, ctrl->uctrl.script_ev.d_script, len);
 		vtdtr_enqueue(ev);
 		device_printf(dev, "I've enqueued %s.\n", 
 		ctrl->uctrl.script_ev.d_script);
