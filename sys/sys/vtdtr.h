@@ -25,7 +25,7 @@ struct vtdtr_event {
 		} p_toggle;
 
 		struct {
-			char *script[80];
+			char script[80];
 		} d_script;
 
 		struct {

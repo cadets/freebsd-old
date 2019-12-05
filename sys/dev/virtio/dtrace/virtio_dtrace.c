@@ -713,8 +713,21 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		break;
 	}
 	case VIRTIO_DTRACE_SCRIPT_EVENT:
+		struct vtdtr_event ev;
+		int len;
+	
 		device_printf(dev, "I should be here.\n");
-		device_printf(dev, ctrl->uctrl.script_ev.d_script);
+		device_printf(dev,"Got %s.\n" ctrl->uctrl.script_ev.d_script);
+		ev = malloc(sizeof(struct vtdtr_event));
+		assert(ev != NULL)
+		
+		// do we have the lock on ctrl? do we care?
+		len = strlen(ctrl->uctrl.script_ev.d_script);
+		ev.type = VTDTR_EV_SCRIPT;
+		strncpy(ev.args.d_script.script, ctrl->uctrl.script_ev.d_script, len);
+		vtdtr_enqueue(&ev);
+		device_printf(dev, "I've enqueued %s.\n", 
+		ctrl->uctrl.script_ev.d_script);
 		break;
 	case VIRTIO_DTRACE_GO:
 		sc->vtdtr_ready = 0;
@@ -952,8 +965,6 @@ vtdtr_notify_ready(struct vtdtr_softc *sc)
  * processing every event. Additionally, this function is responsible for
  * requeuing the memory in the virtqueue.
  */
-
-// HEEEEEEEEEEEEEEERREEEEEEEEEEEEEEEEEEEEEE
 static void
 vtdtr_rxq_tq_intr(void *xrxq, int pending)
 {
@@ -1422,5 +1433,4 @@ vtdtr_advertise_probe_priv(void *xsc, const char *mod, const char *func,
 	mtx_unlock(&sc->vtdtr_condmtx);
 }
 
-// TODO(MARA): enque script event using vtdtr enqueue and extract them using a
-// userspace daemon process
+
