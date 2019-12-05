@@ -49,4 +49,6 @@ struct vtdtr_conf
 
 #define VTDTRIOC_CONF _IOW('v', 1, struct vtdtr_conf)
 
+void vtdtr_enqueue(struct vtdtr_event *);
+
 #endif
