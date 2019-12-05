@@ -378,7 +378,7 @@ vtdtr_attach(device_t dev)
 				0, 0, NULL, "vtdtr_communicator");
 
 	/*dtrace_vtdtr_enable((void *)sc);*/
-fail:
+fail: 
 	if (error)
 		vtdtr_detach(dev);
 

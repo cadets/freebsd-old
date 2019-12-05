@@ -40,6 +40,8 @@ struct vtdtr_event
 	} args;
 };
 
+void vtdtr_enqueue(struct vtdtr_event *);
+
 struct vtdtr_conf
 {
 	sbintime_t timeout;
@@ -49,6 +51,6 @@ struct vtdtr_conf
 
 #define VTDTRIOC_CONF _IOW('v', 1, struct vtdtr_conf)
 
-void vtdtr_enqueue(struct vtdtr_event *);
+
 
 #endif
