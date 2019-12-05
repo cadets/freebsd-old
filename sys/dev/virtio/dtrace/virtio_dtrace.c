@@ -53,6 +53,8 @@ __FBSDID("$FreeBSD$");
 #include <machine/resource.h>
 #include <sys/bus.h>
 
+#include <dev/vtdtr/vtdtr.h>
+
 #include <dev/virtio/virtio.h>
 #include <dev/virtio/virtqueue.h>
 
