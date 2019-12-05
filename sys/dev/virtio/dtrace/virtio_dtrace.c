@@ -646,6 +646,10 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	retval = 0;
 	error = 0;
 
+	struct vtdtr_event ev;
+	int len;
+	
+
 	/*
 	 * XXX: Double switch statement... meh.
 	 */
@@ -713,13 +717,10 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		break;
 	}
 	case VIRTIO_DTRACE_SCRIPT_EVENT:
-		struct vtdtr_event ev;
-		int len;
-	
 		device_printf(dev, "I should be here.\n");
-		device_printf(dev,"Got %s.\n" ctrl->uctrl.script_ev.d_script);
-		ev = malloc(sizeof(struct vtdtr_event));
-		assert(ev != NULL)
+		device_printf(dev,"Got %s.\n", ctrl->uctrl.script_ev.d_script);
+		ev = malloc(sizeof(struct vtdtr_event), M_TEMP, M_ZERO);
+		assert(ev != NULL);
 		
 		// do we have the lock on ctrl? do we care?
 		len = strlen(ctrl->uctrl.script_ev.d_script);
