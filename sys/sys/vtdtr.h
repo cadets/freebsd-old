@@ -2,6 +2,7 @@
 #define _SYS_VTDTR_H_
 
 //#include <sys/dtrace.h>
+#include <cddl/dev/vtdtr/vtdtr.h>
 
 
 #define VTDTR_MAXVMS       16
@@ -46,7 +47,7 @@ struct vtdtr_conf {
 };
 
 
-void vtdtr_enqueue(struct vtdtr_event *);
+
 
 #define VTDTRIOC_CONF _IOW('v',1,struct vtdtr_conf)
 
