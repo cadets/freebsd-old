@@ -1,4 +1,4 @@
-// #ifndef _SYS_VTDTR_H_
+#ifndef _SYS_VTDTR_H_
 #define _SYS_VTDTR_H_
 
 //#include <sys/dtrace.h>
@@ -45,9 +45,6 @@ struct vtdtr_conf {
 	size_t event_flags;
 };
 
-// TODO(MARA): put this back in it's own header file
-void vtdtr_enqueue(struct vtdtr_event *);
-
 #define VTDTRIOC_CONF _IOW('v',1,struct vtdtr_conf)
 
-// #endif
+#endif
