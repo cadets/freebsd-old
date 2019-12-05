@@ -650,9 +650,9 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	retval = 0;
 	error = 0;
     
-	// #ifdef VTDTR
+	#ifdef VTDTR
 	struct vtdtr_event *ev;
-	// #endif
+	#endif
 
 	int len;
 	
@@ -726,7 +726,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	case VIRTIO_DTRACE_SCRIPT_EVENT:
 		device_printf(dev, "I should be here.\n");
 		device_printf(dev,"Got %s.\n", ctrl->uctrl.script_ev.d_script);
-		// #ifdef VTDTR
+		#ifdef VTDTR
 		ev = malloc(sizeof(struct vtdtr_event), M_TEMP, M_ZERO);
 		KASSERT(ev != NULL, ("malloc event failed"));
 		
@@ -737,10 +737,10 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		vtdtr_enqueue(ev);
 		device_printf(dev, "I've enqueued %s.\n", 
 		ctrl->uctrl.script_ev.d_script);
-		// #endif 
-		/*#ifndef VTDTR
+		#endif 
+		#ifndef VTDTR
 		device_printf(dev, "We need to enable VTDTR for this to work.");
-		#endif*/
+		#endif
 		break;
 	case VIRTIO_DTRACE_GO:
 		sc->vtdtr_ready = 0;
