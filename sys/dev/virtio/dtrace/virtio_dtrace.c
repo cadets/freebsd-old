@@ -650,9 +650,9 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	retval = 0;
 	error = 0;
     
-	#ifdef VTDTR
+	// #ifdef VTDTR
 	struct vtdtr_event *ev;
-	#endif
+	// #endif
 
 	int len;
 	
