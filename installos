@@ -11,6 +11,6 @@ sr make -j9 installworld > /tmp/log_world
 sr make -j9 installkernel > /tmp/log_kernel
 
 # update vm - not sure if necessary
-sh ~/freebsd/vm_test_scripts/vmmake.sh -x -c CADETS /mnt/mnt/test.img
+sr sh ~/freebsd/vm_test_scripts/vmmake.sh -x -c CADETS /mnt/mnt/test.img
 
 
