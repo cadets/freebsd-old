@@ -49,6 +49,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/sema.h>
 #include <sys/conf.h>
 
+#ifdef VTDTR
+#include <cddl/dev/vtdtr/vtdtr.h>
+#endif
+
 #include <machine/bus.h>
 #include <machine/resource.h>
 #include <sys/bus.h>
@@ -645,8 +649,11 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	dev = sc->vtdtr_dev;
 	retval = 0;
 	error = 0;
-
+    
+	#ifdef VTDTR
 	struct vtdtr_event *ev;
+	#endif
+
 	int len;
 	
 
@@ -719,6 +726,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	case VIRTIO_DTRACE_SCRIPT_EVENT:
 		device_printf(dev, "I should be here.\n");
 		device_printf(dev,"Got %s.\n", ctrl->uctrl.script_ev.d_script);
+		#ifdef VTDTR
 		ev = malloc(sizeof(struct vtdtr_event), M_TEMP, M_ZERO);
 		KASSERT(ev != NULL, ("malloc event failed"));
 		
@@ -729,6 +737,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		vtdtr_enqueue(ev);
 		device_printf(dev, "I've enqueued %s.\n", 
 		ctrl->uctrl.script_ev.d_script);
+		#endif VTDTR
 		break;
 	case VIRTIO_DTRACE_GO:
 		sc->vtdtr_ready = 0;

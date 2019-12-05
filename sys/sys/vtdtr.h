@@ -40,8 +40,6 @@ struct vtdtr_event
 	} args;
 };
 
-void vtdtr_enqueue(struct vtdtr_event *);
-
 struct vtdtr_conf
 {
 	sbintime_t timeout;
