@@ -2,6 +2,8 @@
 #define _SYS_VTDTR_H_
 
 //#include <sys/dtrace.h>
+#include <sys/vtdtr.h>
+
 
 #define VTDTR_MAXVMS       16
 #define VTDTR_VMNAMEMAX    256
@@ -43,6 +45,9 @@ struct vtdtr_conf {
 	size_t max_size;
 	size_t event_flags;
 };
+
+// TODO(MARA): put this back in it's own header file
+void vtdtr_enqueue(struct vtdtr_event *);
 
 #define VTDTRIOC_CONF _IOW('v',1,struct vtdtr_conf)
 
