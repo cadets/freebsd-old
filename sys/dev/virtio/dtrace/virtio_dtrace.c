@@ -646,7 +646,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	retval = 0;
 	error = 0;
 
-	struct vtdtr_event ev;
+	struct vtdtr_event *ev;
 	int len;
 	
 
@@ -720,13 +720,13 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		device_printf(dev, "I should be here.\n");
 		device_printf(dev,"Got %s.\n", ctrl->uctrl.script_ev.d_script);
 		ev = malloc(sizeof(struct vtdtr_event), M_TEMP, M_ZERO);
-		assert(ev != NULL);
+		KASSERT(ev != NULL, ("malloc event failed"));
 		
 		// do we have the lock on ctrl? do we care?
 		len = strlen(ctrl->uctrl.script_ev.d_script);
 		ev.type = VTDTR_EV_SCRIPT;
 		strncpy(ev.args.d_script.script, ctrl->uctrl.script_ev.d_script, len);
-		vtdtr_enqueue(&ev);
+		vtdtr_enqueue(ev);
 		device_printf(dev, "I've enqueued %s.\n", 
 		ctrl->uctrl.script_ev.d_script);
 		break;
