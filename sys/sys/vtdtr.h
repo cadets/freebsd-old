@@ -2,7 +2,6 @@
 #define _SYS_VTDTR_H_
 
 //#include <sys/dtrace.h>
-#include <sys/vtdtr.h>
 
 
 #define VTDTR_MAXVMS       16
