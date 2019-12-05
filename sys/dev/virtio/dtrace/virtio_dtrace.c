@@ -737,7 +737,10 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		vtdtr_enqueue(ev);
 		device_printf(dev, "I've enqueued %s.\n", 
 		ctrl->uctrl.script_ev.d_script);
-		#endif VTDTR
+		#endif 
+		#ifndef VTDTR
+		device_printf(dev, "We need to enable VTDTR for this to work.");
+		#endif
 		break;
 	case VIRTIO_DTRACE_GO:
 		sc->vtdtr_ready = 0;
