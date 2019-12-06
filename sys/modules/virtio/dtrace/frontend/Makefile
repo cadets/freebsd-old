@@ -27,6 +27,8 @@
 
 SYSDIR?=	${SRCTOP}/sys
 
+CFLAGS+= -I${SRCTOP}/sys/cddl/dev/vtdtr
+
 .PATH: ${SYSDIR}/dev/virtio/dtrace/frontend
 
 KMOD=	virtio_dtrace
@@ -40,7 +42,7 @@ CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris \
 		-I${SYSDIR} \
 		-nostdinc
 
-CFLAGS+= -I${SRCTOP}/sys/cddl/dev/vtdtr
+
 
 .include <bsd.kmod.mk>
 
