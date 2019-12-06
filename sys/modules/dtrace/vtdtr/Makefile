@@ -10,7 +10,8 @@ KMOD=		vtdtr
 SRCS=		vtdtr.c	\
 		vnode_if.h
 
-CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris \
+CFLAGS+= -I${SYSDIR}/cddl/dev/vtdtr \
+		-I${SYSDIR}/cddl/compat/opensolaris \
 		-I${SYSDIR}/cddl/contrib/opensolaris/uts/common \
 		-I${SYSDIR}/cddl/contrib/opensolaris/uts/common/dtrace \
 		-I${SYSDIR}
