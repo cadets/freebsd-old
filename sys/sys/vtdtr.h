@@ -2,6 +2,7 @@
 #define _SYS_VTDTR_H_
 
 //#include <sys/dtrace.h>
+#include <sys/types.h>
 
 #define VTDTR_MAXVMS 16
 #define VTDTR_VMNAMEMAX 256
