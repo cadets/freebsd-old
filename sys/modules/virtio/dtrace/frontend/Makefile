@@ -37,12 +37,12 @@ SRCS+=	bus_if.h device_if.h
 
 CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris \
 		-I${SYSDIR}/cddl/contrib/opensolaris/uts/common \
-		- I${SYSDIR}/cddl/dev/vtdtr \
 		-I${SYSDIR} \
 		-nostdinc
+
+CFLAGS+= -I${SRCTOP}/sys/cddl/dev/vtdtr
 
 .include <bsd.kmod.mk>
 
 CFLAGS+=	-include ${SYSDIR}/cddl/compat/opensolaris/sys/debug_compat.h \
-			-include ${SYSDIR}/cddl/dev/vtdtr/vtdtr.h \
 
