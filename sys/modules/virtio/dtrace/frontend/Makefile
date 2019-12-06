@@ -42,5 +42,6 @@ CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris \
 
 .include <bsd.kmod.mk>
 
-CFLAGS+=	-include ${SYSDIR}/cddl/compat/opensolaris/sys/debug_compat.h
+CFLAGS+=	-include ${SYSDIR}/cddl/compat/opensolaris/sys/debug_compat.h \
+			-include ${SYSDIR}/cddl/dev/vtdtr/vtdtr.h \
 

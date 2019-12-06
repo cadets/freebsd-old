@@ -14,6 +14,7 @@ SUBDIR=		dtaudit		\
 		prototype	\
 		sdt		\
 		systrace	\
+		vtdtr     \
 
 .if ${MK_VTDTR} != "no"
 SUBDIR+=	vtdtr

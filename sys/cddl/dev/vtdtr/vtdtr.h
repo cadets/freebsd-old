@@ -7,4 +7,4 @@ void vtdtr_enqueue(struct vtdtr_event *);
 
 #endif
 
-// this is surfaced to virtio
+// this has to be surfaced to virtio
