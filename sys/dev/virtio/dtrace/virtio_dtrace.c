@@ -49,8 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sema.h>
 #include <sys/conf.h>
 
-
-#include <vtdtr.h>
+#include <cddl/dev/vtdtr/vtdtr.h>
 
 
 #include <machine/bus.h>
