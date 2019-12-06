@@ -37,6 +37,7 @@ SRCS+=	bus_if.h device_if.h
 
 CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris \
 		-I${SYSDIR}/cddl/contrib/opensolaris/uts/common \
+		- I${SYSDIR}/cddl/dev/vtdtr \
 		-I${SYSDIR} \
 		-nostdinc
 
