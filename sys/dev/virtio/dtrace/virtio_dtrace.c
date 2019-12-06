@@ -50,7 +50,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/conf.h>
 
 
-#include <vtdtr.h>
+
 
 
 #include <machine/bus.h>
@@ -59,6 +59,8 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/virtio/virtio.h>
 #include <dev/virtio/virtqueue.h>
+
+#include <vtdtr.h>
 
 #include "virtio_dtrace.h"
 #include "virtio_if.h"
