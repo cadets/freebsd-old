@@ -50,7 +50,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/conf.h>
 
 
-#include <cddl/dev/vtdtr/vtdtr.h>
+#include <vtdtr.h>
 
 
 #include <machine/bus.h>
