@@ -3,7 +3,7 @@
 
 #include <sys/vtdtr.h>
 
-void vtdtr_enqueue(struct vtdtr_event *);
+extern void vtdtr_enqueue(struct vtdtr_event *);
 
 #endif
 
