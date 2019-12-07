@@ -41,6 +41,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <err.h>
 
 #include "vtdtr.h"
 
