@@ -203,6 +203,9 @@ MODULE_VERSION(virtio_dtrace, 1);
 MODULE_DEPEND(virtio_dtrace, virtio, 1, 1, 1);
 MODULE_DEPEND(virtio_dtrace, dtrace, 1, 1, 1);
 
+// TODO(Mara): check whether we need this
+MODULE_DEPEND(virtio_dtrace, vtdtr, 1, 1, 1);
+
 static struct virtio_feature_desc vtdtr_feature_desc[] = {
 	{0, NULL}};
 
@@ -735,10 +738,10 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		strncpy(ev->args.d_script.script, ctrl->uctrl.script_ev.d_script, len);
 		vtdtr_enqueue(ev);
 		device_printf(dev, "I've enqueued %s.\n", 
-		ctrl->uctrl.script_ev.d_script);
+		ev->args.d_script.script);
 		// #endif 
 		// #ifndef VTDTR
-		device_printf(dev, "We need to enable VTDTR for this to work.");
+		// device_printf(dev, "We need to enable VTDTR for this to work.");
 		// #endif
 		break;
 	case VIRTIO_DTRACE_GO:

@@ -60,7 +60,7 @@ __FBSDID("$FreeBSD$");
 #define VTDTR_MTX_NAME_SIZE 64
 
 static int debug = 1;
-#define DPRINTF(params) if (debug) printf params
+#define DPRINTF(params) printf params
 
 /*
  * Lets us implement the linked list.
