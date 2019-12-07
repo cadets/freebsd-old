@@ -6,8 +6,8 @@ cd ~/freebsd/freebsd
 
 git pull
 
-sr make -j9 buildworld > /tmp/log_world
+sr make -j9 buildworld > /tmp/log_build_world
 
-sr make -j9 buildkernel > /tmp/log_kernel
+sr make -j9 buildkernel > /tmp/log_build_kernel
 
 

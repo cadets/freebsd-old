@@ -1,0 +1,29 @@
+#!/bin/sh
+#
+#
+# $FreeBSD$
+#
+# Start up for the Virtual DDTrace script reader daemon
+#
+
+# PROVIDE: vm_ddtrace_reader
+# REQURIE: syslogd
+# BEFORE: DAEMON
+# KEYWORD: nojai shutdown
+
+. /etc/rc.subr
+
+name="vm_ddtrace_reader"
+desc="VM DDTrace reader daemon"
+start_cmd="vm_ddtrace_reader_start"
+stop_cmd=":"
+vm_ddtracer_command="usr/sbin/${name}"
+rcvar="vm_ddtrace_reader_enable"
+
+vm_ddtrace_reader_start()
+{
+    ${vm_ddtrace_reader_command}
+}
+
+load_rc_config $name
+run_rc_comman "$1"

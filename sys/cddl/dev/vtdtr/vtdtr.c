@@ -60,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #define VTDTR_MTX_NAME_SIZE 64
 
 static int debug = 1;
+// TODO(MARA): put if block back
 #define DPRINTF(params) printf params
 
 /*

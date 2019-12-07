@@ -6,9 +6,9 @@ cd ~/freebsd/freebsd
 
 sudo mount /dev/da1p2 /mnt
 
-sr make -j9 installworld > /tmp/log_world
+sr make -j9 installworld > /tmp/log_install_world
 
-sr make -j9 installkernel > /tmp/log_kernel
+sr make -j9 installkernel > /tmp/log_install_kernel
 
 # update vm - not sure if necessary
 sr sh ~/freebsd/freebsd/vm_test_scripts/vmmake.sh -x -c CADETS /mnt/mnt/test.img

@@ -1,17 +1,75 @@
-/*
-*/
+/*-
+ * Copyright (c) 2019 (Mara Mihali)
+ * All rights reserved.
+ *
+ * This software was developed by BAE Systems, the University of Cambridge
+ * Computer Laboratory, and Memorial University under DARPA/AFRL contract
+ * FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent Computing
+ * (TC) research program.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ */
+
+// TODO(MARA): cleanup include files
+
+#include <sys/vtdtr.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
- #include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
+#include <errno.h>
+
+#include "vtdtr.h"
 
 int
 main(int argc, char **argv)
 {
-    int vtdtr;
+    int fd;
+    int script_len;
+    char *script;
 
-    vtdtr = open("/dev/vtdtr", O_RDONLY);
+    /* Daemonise first, I think*/
+    if(daemon(0,0) == - 1) {
+        printf("Failed registering vm_ddtrace_reader as a daemon. \n");
+        printf("Daemon error %s\n", strerror(errno));
+    }
+
+    if((fd = open("/dev/vtdtr", O_RDONLY)) == -1)
+    {
+        printf("Error opening device driver %s\n", strerror(errno));
+    }
+
+    script = malloc(sizeof(char) * 80);
+
+    if((script_len = read(fd, script, 80)) == -1)
+    {
+        printf("Error reading from device driver %s\n", strerror(errno));
+    }
+
+    printf("I've read %s. Script is in userspace.\n", script);
+
+    return 0;
 }
