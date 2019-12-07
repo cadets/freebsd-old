@@ -1,5 +1,5 @@
 #-
-# Copyright (c) 2018 (Mara Mihali)
+# Copyright (c) 2019 (Mara Mihali)
 # All rights reserved.
 #
 # This software was developed by BAE Systems, the University of Cambridge
@@ -28,7 +28,23 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
+.include <src.opts.mk>
 
-SUBDIR= vm_ddtrace_reader
+SYSDIR?= ${SRCTOP}/sys
 
-.include <bsd.subdir.mk>
+.PATH : ${SRCTOP}/contrib/vm_ddtrace
+
+PROG= vm_ddtrace_reader
+BINDIR= /usr/sbin
+
+SRCS= vm_ddtrace_reader.c
+MAN=
+
+CFLAGS+= -I${SYSDIR}/cddl/dev/vtdtr \
+		-I${SYSDIR}/cddl/compat/opensolaris \
+		-I${SYSDIR}/cddl/contrib/opensolaris/uts/common \
+		-I${SYSDIR}/cddl/contrib/opensolaris/uts/common/dtrace \
+		-I${SYSDIR}
+
+
+.include <bsd.prog.mk>

@@ -215,6 +215,7 @@ SUBDIR.${MK_USB}+=	usbdump
 SUBDIR.${MK_UTMPX}+=	ac
 SUBDIR.${MK_UTMPX}+=	lastlogin
 SUBDIR.${MK_UTMPX}+=	utx
+SUBDIR.${MK_VM_DDTRACE}+= vm_ddtrace
 SUBDIR.${MK_WIRELESS}+=	ancontrol
 SUBDIR.${MK_WIRELESS}+=	wlandebug
 SUBDIR.${MK_WIRELESS}+=	wpa
