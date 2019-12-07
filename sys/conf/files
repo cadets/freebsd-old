@@ -316,9 +316,8 @@ cddl/contrib/opensolaris/uts/common/dtrace/dtrace_xoroshiro128_plus.c	optional d
 cddl/dev/dtmalloc/dtmalloc.c		optional dtmalloc        | dtraceall compile-with "${CDDL_C}"
 cddl/dev/profile/profile.c		optional dtrace_profile  | dtraceall compile-with "${CDDL_C}"
 cddl/dev/sdt/sdt.c			optional dtrace_sdt      | dtraceall compile-with "${CDDL_C}"
-cddl/dev/fbt/fbt.c			optional dtrace_fbt      | dtraceall compile-with
-"${FBT_C}"
-cddl/dev/vtdtr/vtdtr.c     optional vtdtr    | dtraceall compile-with "${CDDL_C}"
+cddl/dev/fbt/fbt.c			optional dtrace_fbt      | dtraceall compile-with "${FBT_C}"
+cddl/dev/vtdtr/vtdtr.c			optional vtdtr   | dtraceall compile-with "${CDDL_C}"
 cddl/dev/systrace/systrace.c		optional dtrace_systrace | dtraceall compile-with "${CDDL_C}"
 cddl/dev/prototype.c			optional dtrace_prototype | dtraceall compile-with "${CDDL_C}"
 fs/nfsclient/nfs_clkdtrace.c		optional dtnfscl nfscl   | dtraceall nfscl compile-with "${CDDL_C}"
