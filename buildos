@@ -2,7 +2,7 @@
 
 . ~/.bashrc
 
-cd ~/freebsd
+cd ~/freebsd/freebsd
 
 git pull
 
