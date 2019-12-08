@@ -9,7 +9,7 @@
 # PROVIDE: vm_ddtrace_reader
 # REQURIE: syslogd
 # BEFORE: DAEMON
-# KEYWORD: nojai shutdown
+# KEYWORD: nojail shutdown
 
 . /etc/rc.subr
 
@@ -17,7 +17,7 @@ name="vm_ddtrace_reader"
 desc="VM DDTrace reader daemon"
 start_cmd="vm_ddtrace_reader_start"
 stop_cmd=":"
-vm_ddtracer_command="usr/sbin/${name}"
+vm_ddtrace_reader_command="usr/sbin/${name}"
 rcvar="vm_ddtrace_reader_enable"
 
 vm_ddtrace_reader_start()

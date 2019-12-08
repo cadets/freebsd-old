@@ -728,7 +728,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	case VIRTIO_DTRACE_SCRIPT_EVENT:
 		device_printf(dev, "I should be here.\n");
 		device_printf(dev,"Got %s.\n", ctrl->uctrl.script_ev.d_script);
-		// #ifdef VTDTR
+
 		ev = malloc(sizeof(struct vtdtr_event), M_TEMP, M_ZERO);
 		KASSERT(ev != NULL, ("malloc event failed"));
 		
