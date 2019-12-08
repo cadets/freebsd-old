@@ -32,6 +32,11 @@
 
 // TODO(MARA): cleanup include files
 
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+
+#include <sys/param.h>
+
 #include <sys/vtdtr.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -71,6 +76,8 @@ main(int argc, char **argv)
     }
 
     printf("I've read %s. Script is in userspace.\n", script);
+
+   
 
     return 0;
 }
