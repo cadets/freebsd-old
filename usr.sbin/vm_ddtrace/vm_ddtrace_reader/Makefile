@@ -29,21 +29,17 @@
 # SUCH DAMAGE.
 #
 
-SYSDIR?= ${SRCTOP}/sys
-
 .PATH : ${SRCTOP}/contrib/vm_ddtrace
 
 PROG= vm_ddtrace_reader
 BINDIR= /usr/sbin
 
 SRCS= vm_ddtrace_reader.c
-MAN=
 
-CFLAGS+= -I${SYSDIR}/cddl/dev/vtdtr \
-		-I${SYSDIR}/cddl/compat/opensolaris \
-		-I${SYSDIR}/cddl/contrib/opensolaris/uts/common \
-		-I${SYSDIR}/cddl/contrib/opensolaris/uts/common/dtrace \
-		-I${SYSDIR}
-
+CFLAGS+= -I${SRCTOP}/sys/cddl/dev/vtdtr \
+		-I${SRCTOP}/sys/cddl/compat/opensolaris \
+		-I${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common \
+		-I${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common/dtrace \
+		-I${SRCTOP} \
 
 .include <bsd.prog.mk>
