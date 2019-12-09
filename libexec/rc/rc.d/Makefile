@@ -122,7 +122,6 @@ CONFS=	DAEMON \
 	ugidfw \
 	${_utx} \
 	var \
-	vm_ddtrace_reader \
 	watchdogd
 
 .if ${MK_NIS} != "no"
