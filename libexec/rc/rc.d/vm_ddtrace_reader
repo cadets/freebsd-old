@@ -15,16 +15,16 @@
 
 name="vm_ddtrace_reader"
 desc="VM DDTrace reader daemon"
-start_cmd="vm_ddtrace_reader_start"
-stop_cmd=":"
-vm_ddtrace_reader_command="usr/sbin/${name}"
-rcvar="vm_ddtrace_reader_enable"
+# start_cmd="vm_ddtrace_reader_start"
+# stop_cmd=":"
+command="usr/sbin/vm_ddtrace_reader"
+# rcvar="vm_ddtrace_reader_enable"
 
-vm_ddtrace_reader_start()
-{
-    echo "This started."
-    ${vm_ddtrace_reader_command}
-}
+##vm_ddtrace_reader_start()
+# {
+#    echo "This started."
+#   ${vm_ddtrace_reader_command}
+#}
 
 load_rc_config $name
 run_rc_command "$1"
