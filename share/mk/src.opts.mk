@@ -189,7 +189,6 @@ __DEFAULT_YES_OPTIONS = \
     USB \
     UTMPX \
     VI \
-    VM_DDTRACE \
     VT \
     VTDTR \
     WIRELESS \
