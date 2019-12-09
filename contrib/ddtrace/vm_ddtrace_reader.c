@@ -62,6 +62,8 @@ main(int argc, char **argv)
         printf("Failed registering vm_ddtrace_reader as a daemon. \n");
         printf("Daemon error %s\n", strerror(errno));
     }
+    
+    printf("I'm in the daemon.");
 
     if((fd = open("/dev/vtdtr", O_RDONLY)) == -1)
     {
@@ -76,8 +78,19 @@ main(int argc, char **argv)
     }
 
     printf("I've read %s. Script is in userspace.\n", script);
+    close(fd);
+    
+    const char *file_path = "/tmp/vtdtr_log";
+    FILE *fp;
 
-   
+    if((fp = fopen(file_path, "rw")) == NULL) 
+    {
+        printf("%s\n", strerror(errno));
+
+    }
+    fwrite(script, sizeof(char), sizeof(script)/sizeof(char), fp);
+    fclose(fp);
+
 
     return 0;
 } 
