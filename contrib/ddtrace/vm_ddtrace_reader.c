@@ -47,6 +47,8 @@ __FBSDID("$FreeBSD$");
 #include <fcntl.h>
 #include <errno.h>
 #include <err.h>
+#include <unistd.h>
+#include <syslog.h>
 
 #include "vtdtr.h"
 
@@ -57,38 +59,34 @@ main(int argc, char **argv)
     int script_len;
     char *script;
 
-    /* Daemonise first, I think*/
+    const char *file_path = "/tmp/vtdtr_log";
+    FILE *fp;
+
+
+    /* Daemonise first*/
     if(daemon(0,0) == - 1) {
-        printf("Failed registering vm_ddtrace_reader as a daemon. \n");
-        printf("Daemon error %s\n", strerror(errno));
+        syslog(LOG_NOTICE, "Failed registering vm_ddtrace_reader as a daemon. \n");
+        syslog(LOG_NOTICE, "Daemon error %s\n", strerror(errno));
     }
-    
-    printf("I'm in the daemon.");
 
     if((fd = open("/dev/vtdtr", O_RDONLY)) == -1)
     {
-        printf("Error opening device driver %s\n", strerror(errno));
+        syslog(LOG_NOTICE, "Error opening device driver %s\n", strerror(errno));
     }
 
     script = malloc(sizeof(char) * 80);
 
-    if((script_len = read(fd, script, 80)) == -1)
+    while((script_len = read(fd, script, 80)) == -1)
     {
-        printf("Error reading from device driver %s\n", strerror(errno));
+        // TODO(Mara): Improve this
+        sleep(1);
     }
 
-    printf("I've read %s. Script is in userspace.\n", script);
+    syslog(LOG_NOTICE, "I've read %s. Script is in userspace.\n", script);
     close(fd);
+
     
-    const char *file_path = "/tmp/vtdtr_log";
-    FILE *fp;
-
-    if((fp = fopen(file_path, "rw")) == NULL) 
-    {
-        printf("%s\n", strerror(errno));
-
-    }
-    fwrite(script, sizeof(char), sizeof(script)/sizeof(char), fp);
+    fwrite(script, sizeof(char), sizeof(script), fp);
     fclose(fp);
 
 
