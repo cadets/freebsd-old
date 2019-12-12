@@ -36,7 +36,7 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
-
+#include <sys/ioctl.h>
 #include <sys/vtdtr.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -69,20 +69,40 @@ main(int argc, char **argv)
         syslog(LOG_NOTICE, "Daemon error %s\n", strerror(errno));
     }
 
+    syslog(LOG_NOTICE, "Successfully daemonised.\n");
+
     if((fd = open("/dev/vtdtr", O_RDONLY)) == -1)
     {
         syslog(LOG_NOTICE, "Error opening device driver %s\n", strerror(errno));
     }
 
-    script = malloc(sizeof(char) * 80);
+    script = (char *)malloc(sizeof(char) * 80);
 
-    while((script_len = read(fd, script, 80)) == -1)
+    syslog(LOG_NOTICE, "Subscribing to events.. \n");
+
+    static struct vtdtr_conf vtdtr_conf;
+    vtdtr_conf.event_flags = VTDTR_EV_SCRIPT;
+    vtdtr_conf.timeout = 0;
+
+    if((ioctl(fd, VTDTRIOC_CONF, &vtdtr_conf)) != 0) 
     {
-        // TODO(Mara): Improve this
-        sleep(1);
+        syslog(LOG_NOTICE,"Fail to subscribe to script event");
     }
 
-    syslog(LOG_NOTICE, "I've read %s. Script is in userspace.\n", script);
+    syslog(LOG_NOTICE, "Successfully subscribed to events. \n");
+
+    syslog(LOG_NOTICE, "Reading..");
+
+    struct vtdtr_event ev;
+
+    if(read(fd, &ev, sizeof(struct vtdtr_event)) == -1)
+    { 
+        syslog(LOG_NOTICE, "Error reading %s \n", strerror(errno));
+       
+    }
+
+    syslog(LOG_NOTICE, "I've read %s. Script is in userspace.\n", ev.args.d_script);
+    
     close(fd);
 
     
@@ -92,3 +112,4 @@ main(int argc, char **argv)
 
     return 0;
 } 
+
