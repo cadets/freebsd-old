@@ -52,41 +52,44 @@ __FBSDID("$FreeBSD$");
 
 #include "vtdtr.h"
 
-int
-main(int argc, char **argv)
+// TODO(MARA): Cleanup after this works
+
+int main(int argc, char **argv)
 {
     int fd;
     int script_len;
     char *script;
 
-    const char *file_path = "/tmp/vtdtr_log";
-    FILE *fp;
-
+    sys_log(LOG_NOTICE, "In vm_ddtrace_reader.. \n");
 
     /* Daemonise first*/
-    if(daemon(0,0) == - 1) {
-        syslog(LOG_NOTICE, "Failed registering vm_ddtrace_reader as a daemon. \n");
-        syslog(LOG_NOTICE, "Daemon error %s\n", strerror(errno));
+    if (daemon(0, 0) == -1)
+    {
+        syslog(LOG_ERR, "Failed registering vm_ddtrace_reader as a daemon. \n");
+        syslog(LOG_ERR, "Daemon error %s\n", strerror(errno));
+        exit(1);
     }
 
     syslog(LOG_NOTICE, "Successfully daemonised.\n");
 
-    if((fd = open("/dev/vtdtr", O_RDONLY)) == -1)
+    if ((fd = open("/dev/vtdtr", O_RDWR)) == -1)
     {
-        syslog(LOG_NOTICE, "Error opening device driver %s\n", strerror(errno));
+        syslog(LOG_ERR, "Error opening device driver %s\n", strerror(errno));
+        exit(1);
     }
 
     script = (char *)malloc(sizeof(char) * 80);
 
-    syslog(LOG_NOTICE, "Subscribing to events.. \n");
+    syslog(LOG_ERR, "Subscribing to events.. \n");
 
     static struct vtdtr_conf vtdtr_conf;
     vtdtr_conf.event_flags = VTDTR_EV_SCRIPT;
     vtdtr_conf.timeout = 0;
 
-    if((ioctl(fd, VTDTRIOC_CONF, &vtdtr_conf)) != 0) 
+    if ((ioctl(fd, VTDTRIOC_CONF, &vtdtr_conf)) != 0)
     {
-        syslog(LOG_NOTICE,"Fail to subscribe to script event");
+        syslog(LOG_ERR, "Fail to subscribe to script event");
+        exit(1);
     }
 
     syslog(LOG_NOTICE, "Successfully subscribed to events. \n");
@@ -95,21 +98,30 @@ main(int argc, char **argv)
 
     struct vtdtr_event ev;
 
-    if(read(fd, &ev, sizeof(struct vtdtr_event)) == -1)
-    { 
-        syslog(LOG_NOTICE, "Error reading %s \n", strerror(errno));
-       
+    if (read(fd, &ev, sizeof(struct vtdtr_event)) == -1)
+    {
+        syslog(LOG_ERR, "Error %s when attempting to read from device driver \n", strerror(errno));
+        exit(1);
     }
 
     syslog(LOG_NOTICE, "I've read %s. Script is in userspace.\n", ev.args.d_script);
     
-    close(fd);
-
     
+
+    close(fd);
+    const char *file_path = "/tmp/vtdtr_log";
+    FILE *fp;
+
+    syslog(LOG_NOTICE, "Writing script to file %s", file_path); 
+
     fwrite(script, sizeof(char), sizeof(script), fp);
+
+    if(ferror(fp)) {
+        syslog(LOG_ERR, "Error occured while writing in the file");
+        exit(1);
+    }
+
     fclose(fp);
 
-
     return 0;
-} 
-
+}
