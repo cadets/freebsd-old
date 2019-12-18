@@ -83,12 +83,12 @@ int main(int argc, char **argv)
     syslog(LOG_ERR, "Subscribing to events.. \n");
 
     static struct vtdtr_conf vtdtr_conf;
-    vtdtr_conf.event_flags = VTDTR_EV_SCRIPT;
+    vtdtr_conf.event_flags = 1 << VTDTR_EV_SCRIPT;
     vtdtr_conf.timeout = 0;
 
     if ((ioctl(fd, VTDTRIOC_CONF, &vtdtr_conf)) != 0)
     {
-        syslog(LOG_ERR, "Fail to subscribe to script event");
+        syslog(LOG_ERR, "Fail to subscribe to script event in /dev/vtdtr. Error is %s", strerror(errno));
         exit(1);
     }
 
