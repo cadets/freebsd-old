@@ -60,7 +60,7 @@ int main(int argc, char **argv)
     int script_len;
     char *script;
 
-    sys_log(LOG_NOTICE, "In vm_ddtrace_reader.. \n");
+    syslog(LOG_NOTICE, "In vm_ddtrace_reader.. \n");
 
     /* Daemonise first*/
     if (daemon(0, 0) == -1)
