@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 
 #include "vtdtr.h"
 
+// should this have a bigger size??
 #define BITS                8
 #define MAX_BITSHIFT        ((size_t)1 << (sizeof(size_t)*BITS-1))
 #define VTDTR_BITMASK       ((MAX_BITSHIFT - 1) | (MAX_BITSHIFT))
