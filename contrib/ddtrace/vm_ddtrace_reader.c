@@ -60,7 +60,7 @@ int main(int argc, char **argv)
     int script_len;
     char *script;
 
-    syslog(LOG_NOTICE, "In vm_ddtrace_reader.. \n");
+    syslog(LOG_ERR, "In vm_ddtrace_reader.. \n");
 
     /* Daemonise first*/
     if (daemon(0, 0) == -1)
@@ -70,7 +70,7 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    syslog(LOG_NOTICE, "Successfully daemonised.\n");
+    syslog(LOG_ERR, "Successfully daemonised.\n");
 
     if ((fd = open("/dev/vtdtr", O_RDWR)) == -1)
     {
@@ -94,9 +94,9 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    syslog(LOG_NOTICE, "Successfully subscribed to events. \n");
+    syslog(LOG_ERR, "Successfully subscribed to events. \n");
 
-    syslog(LOG_NOTICE, "Reading..");
+    syslog(LOG_ERR, "Reading..");
 
     struct vtdtr_event ev;
 
@@ -106,7 +106,7 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    syslog(LOG_NOTICE, "I've read %s. Script is in userspace.\n", ev.args.d_script);
+    syslog(LOG_ERR, "I've read %s. Script is in userspace.\n", ev.args.d_script);
     
     
 
@@ -114,7 +114,7 @@ int main(int argc, char **argv)
     const char *file_path = "/tmp/vtdtr_log";
     FILE *fp;
 
-    syslog(LOG_NOTICE, "Writing script to file %s", file_path); 
+    syslog(LOG_ERR, "Writing script to file %s", file_path); 
 
     fwrite(script, sizeof(char), sizeof(script), fp);
 
