@@ -60,17 +60,19 @@ int main(int argc, char **argv)
     int script_len;
     char *script;
 
-    syslog(LOG_ERR, "In vm_ddtrace_reader.. \n");
+    syslog(LOG_INFO, "In vm_ddtrace_reader.. \n");
 
     /* Daemonise first*/
-    if (daemon(0, 0) == -1)
+    if (daemon(0, 1) == -1)
     {
         syslog(LOG_ERR, "Failed registering vm_ddtrace_reader as a daemon. \n");
         syslog(LOG_ERR, "Daemon error %s\n", strerror(errno));
         exit(1);
     }
 
-    syslog(LOG_ERR, "Successfully daemonised.\n");
+    printf("See what happens to stdout");
+
+    syslog(LOG_INFO, "Successfully daemonised.\n");
 
     if ((fd = open("/dev/vtdtr", O_RDWR)) == -1)
     {
@@ -80,10 +82,10 @@ int main(int argc, char **argv)
 
     script = (char *)malloc(sizeof(char) * 80);
 
-    syslog(LOG_ERR, "Subscribing to events.. \n");
+    syslog(LOG_INFO, "Subscribing to events.. \n");
 
     static struct vtdtr_conf vtdtr_conf;
-    vtdtr_conf.event_flags = 1 << VTDTR_EV_RECONF;
+    vtdtr_conf.event_flags = 1 << VTDTR_EV_SCRIPT;
     vtdtr_conf.timeout = 0;
 
     // this is configuring the device driver, do we need to do this?
@@ -94,9 +96,9 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    syslog(LOG_ERR, "Successfully subscribed to events. \n");
+    syslog(LOG_INFO, "Successfully subscribed to events. \n");
 
-    syslog(LOG_ERR, "Reading..");
+    syslog(LOG_INFO, "Reading..");
 
     struct vtdtr_event ev;
 
@@ -106,7 +108,7 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    syslog(LOG_ERR, "I've read %s. Script is in userspace.\n", ev.args.d_script);
+    syslog(LOG_INFO, "I've read %s. Script is in userspace.\n", ev.args.d_script);
     
     
 
@@ -114,7 +116,11 @@ int main(int argc, char **argv)
     const char *file_path = "/tmp/vtdtr_log";
     FILE *fp;
 
-    syslog(LOG_ERR, "Writing script to file %s", file_path); 
+    syslog(LOG_INFO, "Writing script to file %s", file_path); 
+
+    if((fp = fopen(file_path, "rw")) == NULL) {
+        syslog(LOG_ERR, "Error opening file");
+    }
 
     fwrite(script, sizeof(char), sizeof(script), fp);
 
