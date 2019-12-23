@@ -60,19 +60,19 @@ int main(int argc, char **argv)
     int script_len;
     char *script;
 
-    syslog(LOG_INFO, "In vm_ddtrace_reader.. \n");
+    syslog(LOG_ERR, "In vm_ddtrace_reader.. \n");
 
     /* Daemonise first*/
-    if (daemon(0, 1) == -1)
+    if (daemon(0, 0) == -1)
     {
         syslog(LOG_ERR, "Failed registering vm_ddtrace_reader as a daemon. \n");
         syslog(LOG_ERR, "Daemon error %s\n", strerror(errno));
         exit(1);
     }
 
-    printf("See what happens to stdout");
+   // printf("See what happens to stdout");
 
-    syslog(LOG_INFO, "Successfully daemonised.\n");
+    syslog(LOG_ERR, "Successfully daemonised.\n");
 
     if ((fd = open("/dev/vtdtr", O_RDWR)) == -1)
     {
@@ -82,23 +82,25 @@ int main(int argc, char **argv)
 
     script = (char *)malloc(sizeof(char) * 80);
 
-    syslog(LOG_INFO, "Subscribing to events.. \n");
+    syslog(LOG_ERR, "Subscribing to events.. \n");
 
-    static struct vtdtr_conf vtdtr_conf;
-    vtdtr_conf.event_flags = 1 << VTDTR_EV_SCRIPT;
-    vtdtr_conf.timeout = 0;
+    struct vtdtr_conf *vtdtr_conf = malloc(sizeof(vtdtr_conf));
+    vtdtr_conf->event_flags = 1 << VTDTR_EV_SCRIPT;
+    vtdtr_conf->timeout = 0;
+
+    syslog(LOG_ERR, "Configurarion has %zd", vtdtr_conf->event_flags);
 
     // this is configuring the device driver, do we need to do this?
     
-    if ((ioctl(fd, VTDTRIOC_CONF, &vtdtr_conf)) != 0)
+    if ((ioctl(fd, VTDTRIOC_CONF, vtdtr_conf)) != 0)
     {
         syslog(LOG_ERR, "Fail to subscribe to script event in /dev/vtdtr. Error is %s", strerror(errno));
         exit(1);
     }
 
-    syslog(LOG_INFO, "Successfully subscribed to events. \n");
+    syslog(LOG_ERR, "Successfully subscribed to events. \n");
 
-    syslog(LOG_INFO, "Reading..");
+    syslog(LOG_ERR, "Reading..");
 
     struct vtdtr_event ev;
 
@@ -108,7 +110,7 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    syslog(LOG_INFO, "I've read %s. Script is in userspace.\n", ev.args.d_script);
+    syslog(LOG_ERR, "I've read %s. Script is in userspace.\n", ev.args.d_script);
     
     
 
@@ -116,7 +118,7 @@ int main(int argc, char **argv)
     const char *file_path = "/tmp/vtdtr_log";
     FILE *fp;
 
-    syslog(LOG_INFO, "Writing script to file %s", file_path); 
+    syslog(LOG_ERR, "Writing script to file %s", file_path); 
 
     if((fp = fopen(file_path, "rw")) == NULL) {
         syslog(LOG_ERR, "Error opening file");
