@@ -85,22 +85,22 @@ int main(int argc, char **argv)
     syslog(LOG_ERR, "Subscribing to events.. \n");
 
     struct vtdtr_conf *vtdtr_conf = malloc(sizeof(vtdtr_conf));
-    vtdtr_conf->event_flags = VTDTR_EV_SCRIPT;
+    vtdtr_conf->event_flags |= (1 << VTDTR_EV_SCRIPT) | (1 << VTDTR_EV_RECONF);
     vtdtr_conf->timeout = 0;
 
-    syslog(LOG_ERR, "Configurarion has %zd", vtdtr_conf->event_flags);
+    syslog(LOG_ERR, "Configurarion has %zd \n", vtdtr_conf->event_flags);
 
     // this is configuring the device driver, do we need to do this?
     
     if ((ioctl(fd, VTDTRIOC_CONF, vtdtr_conf)) != 0)
     {
-        syslog(LOG_ERR, "Fail to subscribe to script event in /dev/vtdtr. Error is %s", strerror(errno));
+        syslog(LOG_ERR, "Fail to subscribe to script event in /dev/vtdtr. Error is %s \n", strerror(errno));
         exit(1);
     }
 
     syslog(LOG_ERR, "Successfully subscribed to events. \n");
 
-    syslog(LOG_ERR, "Reading..");
+    syslog(LOG_ERR, "Reading.. \n");
 
     struct vtdtr_event ev;
 

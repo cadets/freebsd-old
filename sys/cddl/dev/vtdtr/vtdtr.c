@@ -363,7 +363,8 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 	case VTDTRIOC_CONF:
 		// DPRINTF(("received %zd", addr->event_flags));
 		conf = (struct vtdtr_conf *)addr;
-		DPRINTF(("received %zd", conf->event_flags));
+		DPRINTF(("received event flags: %zd \n", conf->event_flags));
+		DPRINTF(("received max size: %zd \n", conf->max_size));
 		tmp.proc = td->td_proc;
 		mtx_lock(&qtree_mtx);
 		q = RB_FIND(vtdtr_qtree, &vtdtr_queue_tree, &tmp);
@@ -378,7 +379,7 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 		 * We just set the default configuration if no configuration has
 		 * been passed in. Eases programming on the consumer side.
 		 */
-		if (conf == NULL)
+		if (conf == NULL) 
 			goto finalize_conf;
 
 		if (conf->max_size != 0)
