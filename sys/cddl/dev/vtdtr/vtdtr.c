@@ -361,9 +361,9 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 
 	switch (cmd) {
 	case VTDTRIOC_CONF:
-		syslog(LOG_ERR, addr->event_flags);
+		DPRINTF(("received %zd", addr->event_flags));
 		conf = (struct vtdtr_conf *)addr;
-		syslog(LOG_ERR, conf->event_flags);
+		DPRINTF(("received %zd", conf->event_flags));
 		tmp.proc = td->td_proc;
 		mtx_lock(&qtree_mtx);
 		q = RB_FIND(vtdtr_qtree, &vtdtr_queue_tree, &tmp);
