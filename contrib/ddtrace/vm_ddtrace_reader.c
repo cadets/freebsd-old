@@ -62,11 +62,8 @@ int main(int argc, char **argv)
     int script_len;
     char *script;
 
-    const char *file_path = "/tmp/vtdtr_log";
     FILE *fp;
-
-
-    if((fp = fopen(file_path, "rw+")) == NULL) {
+    if((fp = fopen("/tmp/log.txt", "w+")) == NULL) {
         printf("Error opening file: %s \n", strerror(errno));
     }
 
