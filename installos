@@ -2,9 +2,17 @@
 
 . ~/.bashrc
 
+export MOUNT_POINT=/mnt
+
 cd ~/freebsd/freebsd
 
-sudo mount /dev/da1p2 /mnt
+if df | grep -qs $MOUNT_POINT| wc -l; then
+	echo "Unmounting /dev/da1p2."
+	sudo umount $MOUNT_POINT
+	echo "Trying to mount again."
+	sudo mount /dev/da1p2 $MOUNT_POINT
+else
+	sudo mount /dev/da1p2 /mnt
 
 sr make -j9 installworld > /tmp/log_install_world
 
