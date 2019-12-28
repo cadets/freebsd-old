@@ -111,6 +111,7 @@ int main(int argc, char **argv)
     fprintf( fp, "Successfully subscribed to events. \n");
 
     fprintf( fp, "Reading.. \n");
+    fflush(fp);
 
     struct vtdtr_event *ev;
     ev = (struct vtdtr_event *) malloc(sizeof(struct vtdtr_event));
@@ -122,9 +123,18 @@ int main(int argc, char **argv)
         fflush(fp);
     }
     
-    fprintf(fp, "%s \n", ev->args.d_script);
+    fprintf(fp, "Got %s \n", ev->args.d_script.script);
+    fflush(fp);
     
     close(fd);
+
+    int len = strlen(ev->args.d_script.script);
+
+    strncpy(ev->args.d_script.script,script,len);
+    fprintf(fp,"Copied script %s", script);
+    fflush(fp);
+
+
     
     fwrite(script, sizeof(char), sizeof(script), fp);
 
@@ -134,6 +144,8 @@ int main(int argc, char **argv)
         exit(1);
     }
 
+    fprintf(fp, "Successfully wrote. Closing log file.");
+    fflush(fp);
     fclose(fp);
 
     return 0;
