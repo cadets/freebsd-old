@@ -65,7 +65,7 @@ int main(int argc, char **argv)
     syslog(LOG_ERR, "In vm_ddtrace_reader.. \n");
 
     /* Daemonise first*/
-    if (daemon(0, 0) == -1)
+    if (daemon(0, 1) == -1)
     {
         syslog(LOG_ERR, "Failed registering vm_ddtrace_reader as a daemon. \n");
         syslog(LOG_ERR, "Daemon error %s\n", strerror(errno));

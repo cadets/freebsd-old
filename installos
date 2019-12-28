@@ -6,19 +6,24 @@ export MOUNT_POINT=/mnt
 
 cd ~/freebsd/freebsd
 
-if df | grep -qs $MOUNT_POINT| wc -l; then
-	echo "Unmounting /dev/da1p2."
+if [ df | grep -qs $MOUNT_POINT| wc -l ]; then
+	echo "Umounting /dev/da1p2."
 	sudo umount $MOUNT_POINT
-	echo "Trying to mount again."
+	echo "Trying to mount again.."
 	sudo mount /dev/da1p2 $MOUNT_POINT
 else
-	sudo mount /dev/da1p2 /mnt
+	echo "Mounting.."
+	sudo mount /dev/da1p2 $MOUNT_POINT
+fi
 
+echo "Installing world.."
 sr make -j9 installworld > /tmp/log_install_world
 
+echo "Installing kernel.."
 sr make -j9 installkernel > /tmp/log_install_kernel
 
 # update vm - not sure if necessary
+echo "Update virtual machine.."
 sr sh ~/freebsd/freebsd/vm_test_scripts/vmmake.sh -x -c CADETS /mnt/mnt/test.img
 
 
