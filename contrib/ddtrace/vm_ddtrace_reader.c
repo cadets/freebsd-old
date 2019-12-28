@@ -53,6 +53,8 @@ __FBSDID("$FreeBSD$");
 #include "vtdtr.h"
 
 // TODO(MARA): Cleanup after this works
+// TODO(MARA): Figure out why syslogd doesn't work in the virtual machine. Is
+// syslogd the best option?
 
 int main(int argc, char **argv)
 {
@@ -84,7 +86,7 @@ int main(int argc, char **argv)
 
     syslog(LOG_ERR, "Subscribing to events.. \n");
 
-    struct vtdtr_conf *vtdtr_conf = malloc(sizeof(vtdtr_conf));
+    struct vtdtr_conf *vtdtr_conf = malloc(sizeof(struct vtdtr_conf));
     vtdtr_conf->event_flags |= (1 << VTDTR_EV_SCRIPT) | (1 << VTDTR_EV_RECONF);
     vtdtr_conf->timeout = 0;
 
@@ -95,6 +97,7 @@ int main(int argc, char **argv)
     if ((ioctl(fd, VTDTRIOC_CONF, vtdtr_conf)) != 0)
     {
         syslog(LOG_ERR, "Fail to subscribe to script event in /dev/vtdtr. Error is %s \n", strerror(errno));
+        printf("Error in ioctl %s\n", strerror(errno));
         exit(1);
     }
 
@@ -102,16 +105,21 @@ int main(int argc, char **argv)
 
     syslog(LOG_ERR, "Reading.. \n");
 
-    struct vtdtr_event ev;
+    printf("READING \n");
 
-    if (read(fd, &ev, sizeof(struct vtdtr_event)) == -1)
+    struct vtdtr_event *ev;
+    ev = (struct vtdtr_event*) malloc(sizeof(struct vtdtr_event));
+
+    if (read(fd, ev, sizeof(struct vtdtr_event)) == -1)
     {
         syslog(LOG_ERR, "Error %s when attempting to read from device driver \n", strerror(errno));
+        printf("Error while reading", strerror(errno));
         exit(1);
     }
 
-    syslog(LOG_ERR, "I've read %s. Script is in userspace.\n", ev.args.d_script);
+    //syslog(LOG_ERR, "I've read %s. Script is in userspace.\n", //ev->args.d_script);
     
+    printf("%s \n", ev->args.d_script);
     
 
     close(fd);
@@ -122,12 +130,14 @@ int main(int argc, char **argv)
 
     if((fp = fopen(file_path, "rw")) == NULL) {
         syslog(LOG_ERR, "Error opening file");
+        printf("error opening file");
     }
 
     fwrite(script, sizeof(char), sizeof(script), fp);
 
     if(ferror(fp)) {
         syslog(LOG_ERR, "Error occured while writing in the file");
+        printf("error writing");
         exit(1);
     }
 
