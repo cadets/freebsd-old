@@ -62,82 +62,78 @@ int main(int argc, char **argv)
     int script_len;
     char *script;
 
-    syslog(LOG_ERR, "In vm_ddtrace_reader.. \n");
+    const char *file_path = "/tmp/vtdtr_log";
+    FILE *fp;
+
+
+    if((fp = fopen(file_path, "rw+")) == NULL) {
+        printf("Error opening file: %s \n", strerror(errno));
+    }
+
+    
+
+    fprintf(fp,"In vm_ddtrace_reader.. \n");
+    fflush(fp);
 
     /* Daemonise first*/
     if (daemon(0, 1) == -1)
     {
-        syslog(LOG_ERR, "Failed registering vm_ddtrace_reader as a daemon. \n");
-        syslog(LOG_ERR, "Daemon error %s\n", strerror(errno));
+        fprintf(fp, "Failed registering vm_ddtrace_reader as a daemon. \n");
+        fprintf(fp, "Daemon error is %s\n", strerror(errno));
+        fflush(fp);
         exit(1);
     }
 
-   // printf("See what happens to stdout");
-
-    syslog(LOG_ERR, "Successfully daemonised.\n");
+    fprintf(fp, "Successfully daemonised.\n");
 
     if ((fd = open("/dev/vtdtr", O_RDWR)) == -1)
     {
-        syslog(LOG_ERR, "Error opening device driver %s\n", strerror(errno));
+        fprintf("Error opening device driver %s\n", strerror(errno));
+        fflush(fp);
         exit(1);
     }
 
     script = (char *)malloc(sizeof(char) * 80);
 
-    syslog(LOG_ERR, "Subscribing to events.. \n");
+    fprintf(fp, "Subscribing to events.. \n");
 
     struct vtdtr_conf *vtdtr_conf = malloc(sizeof(struct vtdtr_conf));
     vtdtr_conf->event_flags |= (1 << VTDTR_EV_SCRIPT) | (1 << VTDTR_EV_RECONF);
     vtdtr_conf->timeout = 0;
 
-    syslog(LOG_ERR, "Configurarion has %zd \n", vtdtr_conf->event_flags);
+    fprintf(fp, "Configurarion has %zd \n", vtdtr_conf->event_flags);
+    fflush(fp);
 
-    // this is configuring the device driver, do we need to do this?
-    
     if ((ioctl(fd, VTDTRIOC_CONF, vtdtr_conf)) != 0)
     {
-        syslog(LOG_ERR, "Fail to subscribe to script event in /dev/vtdtr. Error is %s \n", strerror(errno));
-        printf("Error in ioctl %s\n", strerror(errno));
+        fprintf(fp, "Fail to subscribe to script event in /dev/vtdtr. Error is %s \n", strerror(errno));
+        fflush(fp);
         exit(1);
     }
 
-    syslog(LOG_ERR, "Successfully subscribed to events. \n");
+    fprintf( fp, "Successfully subscribed to events. \n");
 
-    syslog(LOG_ERR, "Reading.. \n");
-
-    printf("READING \n");
+    fprintf( fp, "Reading.. \n");
 
     struct vtdtr_event *ev;
-    ev = (struct vtdtr_event*) malloc(sizeof(struct vtdtr_event));
+    ev = (struct vtdtr_event *) malloc(sizeof(struct vtdtr_event));
 
     if (read(fd, ev, sizeof(struct vtdtr_event)) == -1)
     {
-        syslog(LOG_ERR, "Error %s when attempting to read from device driver \n", strerror(errno));
-        printf("Error while reading", strerror(errno));
+        fprintf(fp, "Error while reading %s", strerror(errno));
         exit(1);
+        fflush(fp);
     }
-
-    //syslog(LOG_ERR, "I've read %s. Script is in userspace.\n", //ev->args.d_script);
     
-    printf("%s \n", ev->args.d_script);
+    fprintf(fp, "%s \n", ev->args.d_script);
     
-
     close(fd);
-    const char *file_path = "/tmp/vtdtr_log";
-    FILE *fp;
-
-    syslog(LOG_ERR, "Writing script to file %s", file_path); 
-
-    if((fp = fopen(file_path, "rw")) == NULL) {
-        syslog(LOG_ERR, "Error opening file");
-        printf("error opening file");
-    }
-
+    
     fwrite(script, sizeof(char), sizeof(script), fp);
 
     if(ferror(fp)) {
-        syslog(LOG_ERR, "Error occured while writing in the file");
-        printf("error writing");
+        fprintf(fp, "Error occured while writing in the file");
+        fflush(fp);
         exit(1);
     }
 
