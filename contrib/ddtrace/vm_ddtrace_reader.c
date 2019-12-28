@@ -85,7 +85,7 @@ int main(int argc, char **argv)
     syslog(LOG_ERR, "Subscribing to events.. \n");
 
     struct vtdtr_conf *vtdtr_conf = malloc(sizeof(vtdtr_conf));
-    vtdtr_conf->event_flags = 1 << VTDTR_EV_SCRIPT;
+    vtdtr_conf->event_flags = VTDTR_EV_SCRIPT;
     vtdtr_conf->timeout = 0;
 
     syslog(LOG_ERR, "Configurarion has %zd", vtdtr_conf->event_flags);
