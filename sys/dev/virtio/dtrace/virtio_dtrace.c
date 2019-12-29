@@ -42,7 +42,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/kthread.h>
 #include <sys/taskqueue.h>
-#include <sys/quevue.h>
+#include <sys/queue.h>
 #include <sys/uuid.h>
 #include <sys/vtdtr.h>
 #include <sys/dtrace.h>
