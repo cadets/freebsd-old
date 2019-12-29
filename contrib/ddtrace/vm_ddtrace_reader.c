@@ -49,7 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <err.h>
 #include <unistd.h>
 #include <syslog.h>
-#include "dtrace.h"
+// #include "dtrace.h"
 #include "vtdtr.h"
 
 /*
