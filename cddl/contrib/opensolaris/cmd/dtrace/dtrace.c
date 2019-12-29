@@ -1729,8 +1729,11 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		if (optind < argc)
+		if (optind < argc) {
 			g_argv[g_argc++] = argv[optind];
+			// TODO(MARA): remove this
+			printf("%s",argv[optind]);
+		}
 	}
 
 	/**

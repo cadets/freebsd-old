@@ -20,6 +20,16 @@
         "utility": "cpp",
         "vtdtr.h": "c",
         "dtrace.h": "c",
-        "dtrace_bsd.h": "c"
+        "dtrace_bsd.h": "c",
+        "dt_impl.h": "c",
+        "dlog.h": "c",
+        "dl_config.h": "c",
+        "libgen.h": "c",
+        "errno.h": "c",
+        "nv.h": "c",
+        "signal.h": "c",
+        "string.h": "c",
+        "unistd.h": "c",
+        "syslog.h": "c"
     }
 }

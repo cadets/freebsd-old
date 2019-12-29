@@ -49,8 +49,52 @@ __FBSDID("$FreeBSD$");
 #include <err.h>
 #include <unistd.h>
 #include <syslog.h>
-
+#include "dtrace.h"
 #include "vtdtr.h"
+
+/*
+int execute_script(char *file_path, FILE *log_fp) {
+
+    FILE *fp;
+    int done = 0, err, ret = 0, script_argc = 1;
+    static dtrace_hdl_t *g_dtp;
+    char **script_argv;
+
+    script_argv = malloc(sizeof(char *) * script_argc);
+    if (script_argv == NULL) {
+        fprintf(log_fp, "Failed to allocate script a")
+    }
+
+    if((fp = fopen(file_path,"w+")) == NULL) {
+        fprintf(log_fp, "Failed to open script file: %s", strerror(errno));
+    }
+
+    if((g_dtp = dtrace_open(3, 0, &err)) == NULL) {
+        fprintf(log_fp, "Failed to initialize dtrace : %s\n", dtrace_errmsg(g_dtp,err));
+        ret = -1;
+        goto destroy_dtrace;
+    }
+
+    dtrace_prog_t * prog;
+    if((prog = dtrace_program_fcompile(g_dtp, fp, )))
+    
+
+    // TODO(MARA): turn options into pragma, ignore for now, assume we have
+    // script in file
+
+    dtrace_program_fcompile();
+    dtrace_program_exec();
+    dtrace_go();
+    dtrace_close();
+
+    destroy_dtrace:
+        dtrace_close(g_dtp);
+    
+    close_file:
+        fclose(fp);
+
+    return ret;
+}*/
 
 // TODO(MARA): Cleanup after this works
 // TODO(MARA): Figure out why syslogd doesn't work in the virtual machine. Is
@@ -69,6 +113,7 @@ int main(int argc, char **argv)
     if((log_fp = fopen("/tmp/log.txt", "w+")) == NULL) {
         printf("Error opening file: %s \n", strerror(errno));
     }
+
 
     
 
@@ -92,8 +137,6 @@ int main(int argc, char **argv)
         fflush(log_fp);
         exit(1);
     }
-
-    script = (char *)malloc(sizeof(char) * 80);
 
     fprintf(log_fp, "Subscribing to events.. \n");
 
@@ -132,26 +175,42 @@ int main(int argc, char **argv)
     close(fd);
 
     int len = strlen(ev->args.d_script.script);
+    script = (char *)malloc(sizeof(char) * 80);
 
     strncpy(script, ev->args.d_script.script, len);
     fprintf(log_fp, "Copied script %s \n.", script);
     fflush(log_fp);
 
-    if((script_fp = fopen("/tmp/script.d", "w+")) == NULL) {
-        fprintf(log_fp, "Error opening script file %s \n.", strerror(errno));
+    char *script_file_path = "/tmp/script.d";
+
+    if((script_fp = fopen(script_file_path, "w+")) == NULL) {
+        fprintf(log_fp, "Error opening script file %s: %s \n.", script_file_path,strerror(errno));
     }
     
     fwrite(script, sizeof(char), sizeof(script), script_fp);
 
     if(ferror(script_fp)) {
-        fprintf(log_fp, "Error occured while writing in the script file.");
+        fprintf(log_fp, "Error occured while writing in the script file. \n");
         fflush(log_fp);
         exit(1);
     }
 
-    fprintf(log_fp, "Successfully wrote. Closing log file.");
+    free(script);
+    free(ev);
+
+    fprintf(log_fp, "Execute script.. \n");
+    fflush(log_fp);
+    
+    /*if((execute_script(script_file_path, log_fp)) != 0){
+        fprintf(log_fp, "Error occured while trying to execute the script: %s \n",
+        strerror(errno));
+    }*/
+
+    fprintf(log_fp, "Successfully wrote. Closing log file. \n");
     fflush(log_fp);
     fclose(log_fp);
+
+
 
     return 0;
 }
