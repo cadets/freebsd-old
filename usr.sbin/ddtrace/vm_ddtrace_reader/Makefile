@@ -37,11 +37,16 @@ BINDIR= /usr/sbin
 SRCS= vm_ddtrace_reader.c
 MAN=
 
+LIBADD+=dtrace
+
 CFLAGS+=-I${SRCTOP}/sys/cddl/dev/vtdtr \
 		-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common \
 		-I${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common/dtrace \
+		-I${SRCTOP}/cddl/compat/opensolaris/include \
+		-I${SRCTOP}/cddl/lib/libdtrace
 		-I${SRCTOP}/cddl/contrib/opensolaris/lib/libdtrace/common \
+		-I${SRCTOP}/sys \
 		-I${SRCTOP}
 
 .include <bsd.prog.mk>
