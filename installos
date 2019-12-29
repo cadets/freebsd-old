@@ -6,7 +6,9 @@ export MOUNT_POINT=/mnt
 
 cd ~/freebsd/freebsd
 
-if [[ df | grep $MOUNT_POINT | wc -l -ne 0 ]]
+a="$( df | grep /mnt | wc -l )"
+
+if [ $a \> 0 ];
 then
 	echo "Umounting /dev/da1p2."
 	sudo umount $MOUNT_POINT
