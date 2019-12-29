@@ -92,7 +92,7 @@ int execute_script(char *file_path, FILE *log_fp) {
     fprintf(log_fp,"Dtrace program successfully compiled \n");
     fflush(fp);
 
-    if(dtrace_prog_exec(dtp, prog, &info) == -1) {
+    if(dtrace_program_exec(dtp, prog, &info) == -1) {
         fprintf(log_fp, "Failed to enable DTrace probes: %s \n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         fflush(fp);
         ret = -1;
