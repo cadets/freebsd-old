@@ -49,57 +49,78 @@ __FBSDID("$FreeBSD$");
 #include <err.h>
 #include <unistd.h>
 #include <syslog.h>
-// #include "dtrace.h"
-#include "vtdtr.h"
+#include <dtrace.h>
+#include <vtdtr.h>
 
-/*
+    
+
+// TODO(MARA): turn options into pragma, ignore for now, assume we have
+// script in file
 int execute_script(char *file_path, FILE *log_fp) {
 
     FILE *fp;
     int done = 0, err, ret = 0, script_argc = 1;
-    static dtrace_hdl_t *g_dtp;
-    char **script_argv;
-
-    script_argv = malloc(sizeof(char *) * script_argc);
-    if (script_argv == NULL) {
-        fprintf(log_fp, "Failed to allocate script a")
-    }
+    static dtrace_hdl_t *dtp;
 
     if((fp = fopen(file_path,"w+")) == NULL) {
         fprintf(log_fp, "Failed to open script file: %s", strerror(errno));
+        fflush(log_fp);
+        ret = -1;
+        return ret;
     }
 
-    if((g_dtp = dtrace_open(3, 0, &err)) == NULL) {
-        fprintf(log_fp, "Failed to initialize dtrace : %s\n", dtrace_errmsg(g_dtp,err));
+    if((dtp = dtrace_open(DTRACE_VERSION, 0, &err)) == NULL) {
+        fprintf(log_fp, "Failed to initialize dtrace : %s\n", dtrace_errmsg(dtp,err));
+        fflush(log_fp);
         ret = -1;
         goto destroy_dtrace;
     }
 
-    dtrace_prog_t * prog;
-    if((prog = dtrace_program_fcompile(g_dtp, fp, )))
-    
+    fprintf(log_fp,"Successfully opened DTrace\n");
+    fflush(log_fp);
 
-    // TODO(MARA): turn options into pragma, ignore for now, assume we have
-    // script in file
+    dtrace_prog_t *prog;
+    dtrace_proginfo_t info;
 
-    dtrace_program_fcompile();
-    dtrace_program_exec();
-    dtrace_go();
-    dtrace_close();
+    if((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | DTRACE_C_CPP, 0, NULL )) == NULL) {
+        fprintf(log_fp, "Failed to compile dtrace program: %s\n", dtrace_errmsg(dtp,dtrace_errno(dtp)));
+        fflush(log_fp);
+        ret = -1;
+        goto destroy_dtrace;
+    }
+
+    fprintf(log_fp,"Dtrace program successfully compiled \n");
+    fflush(fp);
+
+    if(dtrace_prog_exec(dtp, prog, &info) == -1) {
+        fprintf(log_fp, "Failed to enable DTrace probes: %s \n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+        fflush(fp);
+        ret = -1;
+        goto destroy_dtrace;
+    }
+
+    if(dtrace_go(dtp) != 0) {
+        fprintf(log_fp, "Failed to start instrumentation: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+        ret = -1;
+        goto destroy_dtrace;
+    }
+
+    fprintf(log_fp, "All good. :)\n");
+    fflush(fp);
+
 
     destroy_dtrace:
-        dtrace_close(g_dtp);
-    
-    close_file:
+        fprintf(log_fp, "Closing DTrace\n");
+        fflush(log_fp);
+        dtrace_close(dtp);
         fclose(fp);
 
     return ret;
-}*/
+}
 
 // TODO(MARA): Cleanup after this works
 // TODO(MARA): Figure out why syslogd doesn't work in the virtual machine. Is
-// syslogd the best option?
-
+// syslogd the best option? Alternative is implementing better custom logging.
 int main(int argc, char **argv)
 {
     int fd;
@@ -201,10 +222,10 @@ int main(int argc, char **argv)
     fprintf(log_fp, "Execute script.. \n");
     fflush(log_fp);
     
-    /*if((execute_script(script_file_path, log_fp)) != 0){
+    if((execute_script(script_file_path, log_fp)) != 0){
         fprintf(log_fp, "Error occured while trying to execute the script: %s \n",
         strerror(errno));
-    }*/
+    }
 
     fprintf(log_fp, "Successfully wrote. Closing log file. \n");
     fflush(log_fp);
