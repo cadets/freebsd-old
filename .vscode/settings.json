@@ -17,6 +17,9 @@
         "memory": "cpp",
         "ratio": "cpp",
         "tuple": "cpp",
-        "utility": "cpp"
+        "utility": "cpp",
+        "vtdtr.h": "c",
+        "dtrace.h": "c",
+        "dtrace_bsd.h": "c"
     }
 }

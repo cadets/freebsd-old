@@ -62,91 +62,96 @@ int main(int argc, char **argv)
     int script_len;
     char *script;
 
-    FILE *fp;
-    if((fp = fopen("/tmp/log.txt", "w+")) == NULL) {
+    FILE *log_fp;
+    FILE *script_fp;
+
+    // TODO(MARA): syslog in the VM is not working so have a custom one for now
+    if((log_fp = fopen("/tmp/log.txt", "w+")) == NULL) {
         printf("Error opening file: %s \n", strerror(errno));
     }
 
     
 
-    fprintf(fp,"In vm_ddtrace_reader.. \n");
-    fflush(fp);
+    fprintf(log_fp,"In vm_ddtrace_reader.. \n");
+    fflush(log_fp);
 
     /* Daemonise first*/
-    if (daemon(0, 1) == -1)
+    if (daemon(0, 0) == -1)
     {
-        fprintf(fp, "Failed registering vm_ddtrace_reader as a daemon. \n");
-        fprintf(fp, "Daemon error is %s\n", strerror(errno));
-        fflush(fp);
+        fprintf(log_fp, "Failed registering vm_ddtrace_reader as a daemon. \n");
+        fprintf(log_fp, "Daemon error is %s\n", strerror(errno));
+        fflush(log_fp);
         exit(1);
     }
 
-    fprintf(fp, "Successfully daemonised.\n");
+    fprintf(log_fp, "Successfully daemonised.\n");
 
     if ((fd = open("/dev/vtdtr", O_RDWR)) == -1)
     {
         fprintf("Error opening device driver %s\n", strerror(errno));
-        fflush(fp);
+        fflush(log_fp);
         exit(1);
     }
 
     script = (char *)malloc(sizeof(char) * 80);
 
-    fprintf(fp, "Subscribing to events.. \n");
+    fprintf(log_fp, "Subscribing to events.. \n");
 
     struct vtdtr_conf *vtdtr_conf = malloc(sizeof(struct vtdtr_conf));
     vtdtr_conf->event_flags |= (1 << VTDTR_EV_SCRIPT) | (1 << VTDTR_EV_RECONF);
     vtdtr_conf->timeout = 0;
 
-    fprintf(fp, "Configurarion has %zd \n", vtdtr_conf->event_flags);
-    fflush(fp);
+    fprintf(log_fp, "Configurarion has %zd \n", vtdtr_conf->event_flags);
+    fflush(log_fp);
 
     if ((ioctl(fd, VTDTRIOC_CONF, vtdtr_conf)) != 0)
     {
-        fprintf(fp, "Fail to subscribe to script event in /dev/vtdtr. Error is %s \n", strerror(errno));
-        fflush(fp);
+        fprintf(log_fp, "Fail to subscribe to script event in /dev/vtdtr. Error is %s \n", strerror(errno));
+        fflush(log_fp);
         exit(1);
     }
 
-    fprintf( fp, "Successfully subscribed to events. \n");
+    fprintf( log_fp, "Successfully subscribed to events. \n");
 
-    fprintf( fp, "Reading.. \n");
-    fflush(fp);
+    fprintf(log_fp, "Reading.. \n");
+    fflush(log_fp);
 
     struct vtdtr_event *ev;
     ev = (struct vtdtr_event *) malloc(sizeof(struct vtdtr_event));
 
     if (read(fd, ev, sizeof(struct vtdtr_event)) == -1)
     {
-        fprintf(fp, "Error while reading %s", strerror(errno));
+        fprintf(log_fp, "Error while reading %s", strerror(errno));
         exit(1);
-        fflush(fp);
+        fflush(log_fp);
     }
     
-    fprintf(fp, "Got %s \n", ev->args.d_script.script);
-    fflush(fp);
+    fprintf(log_fp, "Got %s \n", ev->args.d_script.script);
+    fflush(log_fp);
     
     close(fd);
 
     int len = strlen(ev->args.d_script.script);
 
-    strncpy(ev->args.d_script.script,script,len);
-    fprintf(fp,"Copied script %s", script);
-    fflush(fp);
+    strncpy(script, ev->args.d_script.script, len);
+    fprintf(log_fp, "Copied script %s \n.", script);
+    fflush(log_fp);
 
-
+    if((script_fp = fopen("/tmp/script.d", "w+")) == NULL) {
+        fprintf(log_fp, "Error opening script file %s \n.", strerror(errno));
+    }
     
-    fwrite(script, sizeof(char), sizeof(script), fp);
+    fwrite(script, sizeof(char), sizeof(script), script_fp);
 
-    if(ferror(fp)) {
-        fprintf(fp, "Error occured while writing in the file");
-        fflush(fp);
+    if(ferror(script_fp)) {
+        fprintf(log_fp, "Error occured while writing in the script file.");
+        fflush(log_fp);
         exit(1);
     }
 
-    fprintf(fp, "Successfully wrote. Closing log file.");
-    fflush(fp);
-    fclose(fp);
+    fprintf(log_fp, "Successfully wrote. Closing log file.");
+    fflush(log_fp);
+    fclose(log_fp);
 
     return 0;
 }
