@@ -689,7 +689,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 
 	// Don't take any action based on unwanted mod/ref behaviour:
 	// checkmodref emits warnings and that's the end of it.
-	(void) dtrace_analyze_program_modref(dcp->dc_prog, checkmodref, stderr);
+	//	(void) dtrace_analyze_program_modref(dcp->dc_prog, checkmodref, stderr);
 	(void) dtrace_dump_actions(dcp->dc_prog);
 
 	if (g_graphfile) {
@@ -896,6 +896,7 @@ static void
 link_elf(dtrace_cmd_t *dcp)
 {
 	int fd;
+	dt_stmt_t *stp;
 
 	assert(g_elf == 1);
 

@@ -201,13 +201,13 @@ dt_elf_opt_t dtelf_drtopts[] = {
 static Elf_Scn *
 dt_elf_new_inttab(Elf *e, dtrace_difo_t *difo)
 {
-	Elf_Scn *scn = NULL;
+	Elf_Scn *scn;
 	Elf32_Shdr *shdr;
 	Elf_Data *data;
-	uint64_t *inttab = difo->dtdo_inttab;
+	uint64_t *inttab;
 
-	if (inttab == NULL)
-		return (scn);
+	if (difo->dtdo_inttab == NULL)
+		return (NULL);
 
 	if ((scn = elf_newscn(e)) == NULL)
 		errx(EXIT_FAILURE, "elf_newscn(%p) failed with %s",
@@ -216,6 +216,12 @@ dt_elf_new_inttab(Elf *e, dtrace_difo_t *difo)
 	if ((data = elf_newdata(scn)) == NULL)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		     scn, elf_errmsg(-1));
+
+	inttab = malloc(sizeof(uint64_t) * difo->dtdo_intlen);
+	if (inttab == NULL)
+		errx(EXIT_FAILURE, "failed to malloc inttab");
+
+	memcpy(inttab, difo->dtdo_inttab, sizeof(uint64_t) * difo->dtdo_intlen);
 
 	data->d_align = 8;
 	data->d_buf = inttab;
@@ -241,10 +247,11 @@ dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo)
 	Elf_Scn *scn = NULL;
 	Elf32_Shdr *shdr;
 	Elf_Data *data;
-	char *strtab = difo->dtdo_strtab;
+	char *c;
+	char *strtab;
 
-	if (strtab == NULL)
-		return (scn);
+	if (difo->dtdo_strtab == NULL)
+		return (NULL);
 
 	if ((scn = elf_newscn(e)) == NULL)
 		errx(EXIT_FAILURE, "elf_newscn(%p) failed with %s",
@@ -254,9 +261,18 @@ dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		     scn, elf_errmsg(-1));
 
+	printf("strtab data = %p\n", data);
+
+	strtab = malloc(difo->dtdo_strlen);
+	if (strtab == NULL)
+		errx(EXIT_FAILURE, "failed to malloc strtab");
+
+	memcpy(strtab, difo->dtdo_strtab, difo->dtdo_strlen);
+
 	data->d_align = 1;
 	data->d_buf = strtab;
 	data->d_size = difo->dtdo_strlen;
+	printf("%s: data->d_size = %d\n", __func__, data->d_size);
 	data->d_type = ELF_T_BYTE;
 	data->d_version = EV_CURRENT;
 
@@ -269,19 +285,30 @@ dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo)
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
 	shdr->sh_entsize = 0;
 
+	printf("%s: difo strtab print\n", __func__);
+	for (c = difo->dtdo_strtab; c < difo->dtdo_strtab + difo->dtdo_strlen; c++)
+		printf("%c", *c);
+	printf("\n");
+
+	printf("%s: normal strtab print\n", __func__);
+	for (c = strtab; c < strtab + difo->dtdo_strlen; c++)
+		printf("%c", *c);
+	printf("\n");
+
+
 	return (scn);
 }
 
 static Elf_Scn *
 dt_elf_new_symtab(Elf *e, dtrace_difo_t *difo)
 {
-	Elf_Scn *scn = NULL;
+	Elf_Scn *scn;
 	Elf32_Shdr *shdr;
 	Elf_Data *data;
-	char *symtab = difo->dtdo_symtab;
+	char *symtab;
 
-	if (symtab == NULL)
-		return (scn);
+	if (difo->dtdo_symtab == NULL)
+		return (NULL);
 
 	if ((scn = elf_newscn(e)) == NULL)
 		errx(EXIT_FAILURE, "elf_newscn(%p) failed with %s",
@@ -290,6 +317,12 @@ dt_elf_new_symtab(Elf *e, dtrace_difo_t *difo)
 	if ((data = elf_newdata(scn)) == NULL)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		     scn, elf_errmsg(-1));
+
+	symtab = malloc(difo->dtdo_symlen);
+	if (symtab == NULL)
+		errx(EXIT_FAILURE, "failed to malloc symtab");
+
+	memcpy(symtab, difo->dtdo_symtab, difo->dtdo_symlen);
 
 	data->d_align = 1;
 	data->d_buf = symtab;
@@ -312,13 +345,13 @@ dt_elf_new_symtab(Elf *e, dtrace_difo_t *difo)
 static Elf_Scn *
 dt_elf_new_vartab(Elf *e, dtrace_difo_t *difo)
 {
-	Elf_Scn *scn = NULL;
+	Elf_Scn *scn;
 	Elf32_Shdr *shdr;
 	Elf_Data *data;
-	dtrace_difv_t *vartab = difo->dtdo_vartab;
+	dtrace_difv_t *vartab;
 
-	if (vartab == NULL)
-		return (scn);
+	if (difo->dtdo_vartab == NULL)
+		return (NULL);
 
 	if ((scn = elf_newscn(e)) == NULL)
 		errx(EXIT_FAILURE, "elf_newscn(%p) failed with %s",
@@ -327,6 +360,14 @@ dt_elf_new_vartab(Elf *e, dtrace_difo_t *difo)
 	if ((data = elf_newdata(scn)) == NULL)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		     scn, elf_errmsg(-1));
+
+	printf("vartab data = %p\n", data);
+
+	vartab = malloc(sizeof(dtrace_difv_t) * difo->dtdo_varlen);
+	if (vartab == NULL)
+		errx(EXIT_FAILURE, "failed to malloc vartab");
+
+	memcpy(vartab, difo->dtdo_vartab, sizeof(dtrace_difv_t) * difo->dtdo_varlen);
 
 	data->d_align = 4;
 	data->d_buf = vartab;
@@ -341,7 +382,7 @@ dt_elf_new_vartab(Elf *e, dtrace_difo_t *difo)
 	shdr->sh_type = SHT_DTRACE_elf;
 	shdr->sh_name = DTELF_DIFOVARTAB;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
-	shdr->sh_entsize = 0;
+	shdr->sh_entsize = sizeof(dtrace_difv_t);
 
 	return (scn);
 }
@@ -360,9 +401,11 @@ dt_elf_new_difo(Elf *e, dtrace_difo_t *difo)
 
 	edifo = malloc(sizeof(dt_elf_difo_t) +
 		       (difo->dtdo_len * sizeof(dif_instr_t)));
+	if (edifo == NULL)
+		errx(EXIT_FAILURE, "failed to malloc edifo");
+
 	memset(edifo, 0, sizeof(dt_elf_difo_t) +
 	    (difo->dtdo_len * sizeof(dif_instr_t)));
-
 
 	if ((scn = elf_newscn(e)) == NULL)
 		errx(EXIT_FAILURE, "elf_newscn(%p) failed with %s",
@@ -403,7 +446,8 @@ dt_elf_new_difo(Elf *e, dtrace_difo_t *difo)
 	shdr->sh_type = SHT_DTRACE_elf;
 	shdr->sh_name = DTELF_DIFO;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
-	shdr->sh_entsize = 0;
+	shdr->sh_entsize = sizeof(dt_elf_difo_t) +
+	    (difo->dtdo_len * sizeof(dif_instr_t));
 
 	return (scn);
 }
@@ -414,11 +458,16 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad)
 	Elf_Scn *scn;
 	Elf32_Shdr *shdr;
 	Elf_Data *data;
-	dt_elf_actdesc_t *eact = malloc(sizeof(dt_elf_actdesc_t));
-	dt_elf_eact_list_t *el = malloc(sizeof(dt_elf_eact_list_t));
+	dt_elf_actdesc_t *eact;
+	dt_elf_eact_list_t *el;
 
-	assert(eact != NULL);
-	assert(el != NULL);
+	eact = malloc(sizeof(dt_elf_actdesc_t));
+	if (eact == NULL)
+		errx(EXIT_FAILURE, "failed to malloc eact");
+
+	el = malloc(sizeof(dt_elf_eact_list_t));
+	if (el == NULL)
+		errx(EXIT_FAILURE, "failed to malloc el");
 
 	memset(eact, 0, sizeof(dt_elf_actdesc_t));
 	memset(el, 0, sizeof(dt_elf_eact_list_t));
@@ -432,7 +481,7 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad)
 		     scn, elf_errmsg(-1));
 
 	if (ad->dtad_difo != NULL) {
-	        eact->dtea_difo = elf_ndxscn(dt_elf_new_difo(e, ad->dtad_difo));
+		eact->dtea_difo = elf_ndxscn(dt_elf_new_difo(e, ad->dtad_difo));
 	} else
 		eact->dtea_difo = 0;
 
@@ -515,6 +564,9 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt)
 		return (NULL);
 
 	eecb = malloc(sizeof(dt_elf_ecbdesc_t));
+	if (eecb == NULL)
+		errx(EXIT_FAILURE, "failed to malloc eecb");
+
 	memset(eecb, 0, sizeof(dt_elf_ecbdesc_t));
 
 	if ((scn = elf_newscn(e)) == NULL)
@@ -542,9 +594,7 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt)
 	 * hard.
 	 */
 	assert(el != NULL);
-
 	eecb->dtee_action = el->eact_ndx;
-	eecb->dtee_action = 0;
 
 	/*
 	 * While the DTrace struct has a number of things associated with it
@@ -571,7 +621,7 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt)
 	shdr->sh_type = SHT_DTRACE_elf;
 	shdr->sh_name = DTELF_ECBDESC;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
-	shdr->sh_entsize = 0;
+	shdr->sh_entsize = sizeof(dt_elf_ecbdesc_t);
 
 	return (scn);
 }
@@ -587,7 +637,10 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 	if (stmt == NULL)
 		return (NULL);
 
-        estmt = malloc(sizeof(dt_elf_stmt_t));
+	estmt = malloc(sizeof(dt_elf_stmt_t));
+	if (estmt == NULL)
+		errx(EXIT_FAILURE, "failed to malloc estmt");
+
 	memset(estmt, 0, sizeof(dt_elf_stmt_t));
 
 
@@ -624,7 +677,7 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 	shdr->sh_type = SHT_DTRACE_elf;
 	shdr->sh_name = DTELF_STMTDESC;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
-	shdr->sh_entsize = 0;
+	shdr->sh_entsize = sizeof(dt_elf_stmt_t);
 
 	return (scn);
 }
@@ -676,16 +729,24 @@ dt_elf_options(Elf *e)
 
 		len = sizeof(_dt_elf_eopt_t) + strlen(op->dteo_arg);
 		eop = malloc(len);
+		if (eop == NULL)
+			errx(EXIT_FAILURE, "failed to malloc eop");
+
 		(void) strcpy(eop->eo_name, op->dteo_name);
 		eop->eo_len = strlen(op->dteo_arg);
 		(void) strcpy(eop->eo_arg, op->dteo_arg);
 
 		if (strcmp("define", op->dteo_name) == 0 ||
 		    strcmp("incdir", op->dteo_name) == 0 ||
-		    strcmp("undef",  op->dteo_name) == 0)
-			(void) strcpy(
-			    (char *)eop->eo_option, (char *)op->dteo_option);
-		else
+		    strcmp("undef",  op->dteo_name) == 0) {
+			size_t l;
+			l = strlcpy(
+			    (char *)eop->eo_option, (char *)op->dteo_option,
+			    sizeof(eop->eo_option));
+			if (l >= sizeof(eop->eo_option))
+				errx(EXIT_FAILURE, "%s is too long to be copied",
+				    op->dteo_option);
+		} else
 			eop->eo_option = op->dteo_option;
 
 		if (buflen + len >= bufmaxlen) {
@@ -720,6 +781,9 @@ dt_elf_options(Elf *e)
 
 		len = sizeof(_dt_elf_eopt_t) + strlen(op->dteo_arg);
 		eop = malloc(len);
+		if (eop == NULL)
+			errx(EXIT_FAILURE, "failed to malloc eop");
+
 		(void) strcpy(eop->eo_name, op->dteo_name);
 		eop->eo_len = strlen(op->dteo_arg);
 		(void) strcpy(eop->eo_arg, op->dteo_arg);
@@ -770,6 +834,9 @@ dt_elf_options(Elf *e)
 
 		len = sizeof(_dt_elf_eopt_t) + strlen(op->dteo_arg);
 		eop = malloc(len);
+		if (eop == NULL)
+			errx(EXIT_FAILURE, "failed to malloc eop");
+
 		(void) strcpy(eop->eo_name, op->dteo_name);
 		eop->eo_len = strlen(op->dteo_arg);
 		(void) strcpy(eop->eo_arg, op->dteo_arg);
@@ -858,6 +925,9 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	dt_elf_stmt_t *p_stmt;
 
 	dtelf_state = malloc(sizeof(dt_elf_state_t));
+	if (dtelf_state == NULL)
+		errx(EXIT_FAILURE, "failed to malloc dtelf_state");
+
 	memset(dtelf_state, 0, sizeof(dt_elf_state_t));
 
 	/*
@@ -1045,11 +1115,16 @@ dt_elf_get_table(Elf *e, dt_elf_ref_t tabref)
 		    elf_errmsg(-1), __func__);
 
 	assert(data->d_buf != NULL);
+	printf("%s: data->d_size = %d\n", __func__, data->d_size);
+	printf("%s: data->d_off = %d\n", __func__, data->d_off);
 
 	if (data->d_size == 0)
 		return (NULL);
 
 	table = malloc(data->d_size);
+	if (table == NULL)
+		errx(EXIT_FAILURE, "failed to malloc table");
+
 	memcpy(table, data->d_buf, data->d_size);
 
 	return (table);
@@ -1063,6 +1138,7 @@ dt_elf_get_difo(Elf *e, dt_elf_ref_t diforef)
 	Elf_Scn *scn;
 	Elf_Data *data;
 	size_t i;
+	char *c;
 
 	if (diforef == 0)
 		return (NULL);
@@ -1078,9 +1154,15 @@ dt_elf_get_difo(Elf *e, dt_elf_ref_t diforef)
 	edifo = data->d_buf;
 
 	difo = malloc(sizeof(dtrace_difo_t));
+	if (difo == NULL)
+		errx(EXIT_FAILURE, "failed to malloc difo");
+
 	memset(difo, 0, sizeof(dtrace_difo_t));
 
 	difo->dtdo_buf = malloc(edifo->dted_len * sizeof(dif_instr_t));
+	if (difo->dtdo_buf == NULL)
+		errx(EXIT_FAILURE, "failed to malloc dtdo_buf");
+
 	memset(difo->dtdo_buf, 0, sizeof(dif_instr_t) * edifo->dted_len);
 
 	difo->dtdo_inttab = dt_elf_get_table(e, edifo->dted_inttab);
@@ -1091,7 +1173,7 @@ dt_elf_get_difo(Elf *e, dt_elf_ref_t diforef)
 	difo->dtdo_intlen = edifo->dted_intlen;
 	difo->dtdo_strlen = edifo->dted_strlen;
 	difo->dtdo_varlen = edifo->dted_varlen;
-	difo->dtdo_symtab = edifo->dted_symtab;
+	difo->dtdo_symlen = edifo->dted_symlen;
 
 	difo->dtdo_len = edifo->dted_len;
 
@@ -1100,6 +1182,12 @@ dt_elf_get_difo(Elf *e, dt_elf_ref_t diforef)
 
 	for (i = 0; i < edifo->dted_len; i++)
 		difo->dtdo_buf[i] = edifo->dted_buf[i];
+
+	printf("%s: strtab print\n", __func__);
+	for (c = difo->dtdo_strtab;
+	    c < difo->dtdo_strtab + difo->dtdo_strlen && c != NULL; c++)
+		printf("%c", *c);
+	printf("\n");
 
 	return (difo);
 }
@@ -1125,6 +1213,9 @@ dt_elf_get_ecbdesc(Elf *e, dt_elf_ref_t ecbref)
 	eecb = data->d_buf;
 
 	ecb = malloc(sizeof(dtrace_ecbdesc_t));
+	if (ecb == NULL)
+		errx(EXIT_FAILURE, "failed to malloc ecb");
+
 	memset(ecb, 0, sizeof(dtrace_ecbdesc_t));
 
 	for (el = dt_list_next(&dtelf_state->s_actions);
@@ -1137,8 +1228,16 @@ dt_elf_get_ecbdesc(Elf *e, dt_elf_ref_t ecbref)
 
 	ecb->dted_pred.dtpdd_predicate = NULL;
 	ecb->dted_pred.dtpdd_difo = dt_elf_get_difo(e, eecb->dtee_pred);
+
 	ecb->dted_probe = eecb->dtee_probe.dtep_pdesc;
+	ecb->dted_probe.dtpd_target[DTRACE_TARGETNAMELEN - 1] = '\0';
+	ecb->dted_probe.dtpd_provider[DTRACE_PROVNAMELEN - 1] = '\0';
+	ecb->dted_probe.dtpd_mod[DTRACE_MODNAMELEN - 1] = '\0';
+	ecb->dted_probe.dtpd_func[DTRACE_FUNCNAMELEN - 1] = '\0';
+	ecb->dted_probe.dtpd_name[DTRACE_NAMELEN - 1] = '\0';
+
 	ecb->dted_uarg = eecb->dtee_uarg;
+	return (ecb);
 }
 
 static void
@@ -1147,30 +1246,21 @@ dt_elf_add_acts(dtrace_stmtdesc_t *stmt, dt_elf_ref_t fst, dt_elf_ref_t last)
 	dt_elf_eact_list_t *el = NULL;
 	dtrace_actdesc_t *act = NULL;
 	dtrace_actdesc_t *p = NULL;
-	int start = 0;
 
 	assert(stmt != NULL);
 
 	for (el = dt_list_next(&dtelf_state->s_actions);
-	    el != NULL && el->eact_ndx != last; el = dt_list_next(el)) {
-		if (el->eact_ndx == fst) {
-			start = 1;
+	    el != NULL; el = dt_list_next(el)) {
+		if (el->eact_ndx == fst)
 			stmt->dtsd_action = el->act;
-			act = el->act;
-		}
 
-		if (start) {
-			if (p)
-				p->dtad_next = act;
-			p = act;
+		if (el->eact_ndx == last) {
+			stmt->dtsd_action_last = el->act;
+			break;
 		}
 	}
 
-	if (el && el->eact_ndx == last) {
-		stmt->dtsd_action_last = el->act;
-		if (p)
-			p->dtad_next = el->act;
-	}
+	assert(el != NULL);
 }
 
 static void
@@ -1181,18 +1271,24 @@ dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog, dt_elf_stmt_t *estmt)
 
 	assert(estmt != NULL);
 
-	stp = malloc(sizeof(dt_stmt_t));
-	assert(stp != NULL);
-
 	stmt = malloc(sizeof(dtrace_stmtdesc_t));
-	assert(stmt != NULL);
-
-	stp->ds_desc = stmt;
+	if (stmt == NULL)
+		errx(EXIT_FAILURE, "failed to malloc stmt");
 
 	stmt->dtsd_ecbdesc = dt_elf_get_ecbdesc(e, estmt->dtes_ecbdesc);
 	dt_elf_add_acts(stmt, estmt->dtes_action, estmt->dtes_action_last);
 	stmt->dtsd_descattr = estmt->dtes_descattr.dtea_attr;
 	stmt->dtsd_stmtattr = estmt->dtes_stmtattr.dtea_attr;
+
+	stp = malloc(sizeof(dt_stmt_t));
+	if (stp == NULL)
+		errx(EXIT_FAILURE, "failed to malloc stp");
+
+	memset(stp, 0, sizeof(dt_stmt_t));
+
+	stp->ds_desc = stmt;
+
+	dt_list_append(&prog->dp_stmts, stp);
 }
 
 static dtrace_actdesc_t *
@@ -1211,6 +1307,9 @@ dt_elf_alloc_action(Elf *e, Elf_Scn *scn, dtrace_actdesc_t *prev)
 	ead = data->d_buf;
 
 	ad = malloc(sizeof(dtrace_actdesc_t));
+	if (ad == NULL)
+		errx(EXIT_FAILURE, "failed to malloc ad");
+
 	memset(ad, 0, sizeof(dtrace_actdesc_t));
 
 	ad->dtad_difo = dt_elf_get_difo(e, ead->dtea_difo);
@@ -1221,6 +1320,9 @@ dt_elf_alloc_action(Elf *e, Elf_Scn *scn, dtrace_actdesc_t *prev)
 	ad->dtad_uarg = ead->dtea_uarg;
 
 	el = malloc(sizeof(dt_elf_eact_list_t));
+	if (el == NULL)
+		errx(EXIT_FAILURE, "failed to malloc el");
+
 	memset(el, 0, sizeof(dt_elf_eact_list_t));
 
 	el->eact_ndx = elf_ndxscn(scn);
@@ -1304,6 +1406,9 @@ dt_elf_to_prog(int fd)
 	dt_elf_prog_t *eprog;
 
 	dtelf_state = malloc(sizeof(dt_elf_state_t));
+	if (dtelf_state == NULL)
+		errx(EXIT_FAILURE, "failed to malloc dtelf_state");
+
 	memset(dtelf_state, 0, sizeof(dt_elf_state_t));
 
 	if (elf_version(EV_CURRENT) == EV_NONE)
@@ -1361,6 +1466,8 @@ dt_elf_to_prog(int fd)
 	eprog = data->d_buf;
 
 	prog = malloc(sizeof(dtrace_prog_t));
+	if (prog == NULL)
+		errx(EXIT_FAILURE, "failed to malloc prog");
 	prog->dp_dofversion = eprog->dtep_dofversion;
 
 	dt_elf_get_stmts(e, prog, eprog->dtep_first_stmt);

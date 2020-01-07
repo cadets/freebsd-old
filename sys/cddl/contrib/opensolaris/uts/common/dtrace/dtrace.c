@@ -13751,7 +13751,6 @@ static void
 dtrace_enabling_matchall(void)
 {
 	dtrace_enabling_t *enab;
-
 	mutex_enter(&cpu_lock);
 	mutex_enter(&dtrace_lock);
 
