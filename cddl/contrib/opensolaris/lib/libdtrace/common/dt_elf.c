@@ -206,6 +206,10 @@ dt_elf_new_inttab(Elf *e, dtrace_difo_t *difo)
 	Elf_Data *data;
 	uint64_t *inttab;
 
+	/*
+	 * If the integer table is NULL, we return a NULL section,
+	 * which will return section index 0 when passed into elf_ndxscn().
+	 */
 	if (difo->dtdo_inttab == NULL)
 		return (NULL);
 
@@ -221,8 +225,19 @@ dt_elf_new_inttab(Elf *e, dtrace_difo_t *difo)
 	if (inttab == NULL)
 		errx(EXIT_FAILURE, "failed to malloc inttab");
 
+	/*
+	 * Populate the temporary buffer that will contain our integer table.
+	 */
 	memcpy(inttab, difo->dtdo_inttab, sizeof(uint64_t) * difo->dtdo_intlen);
 
+	/*
+	 * For the integer table, we require an alignment of 8 and specify it as
+	 * a bunch of bytes (ELF_T_BYTE) because this is a 32-bit ELF file.
+	 *
+	 * In the case that this is parsed on a 32-bit machine, we deal with it
+	 * in the same way that DTrace deals with 64-bit integers in the inttab
+	 * on 32-bit machines.
+	 */
 	data->d_align = 8;
 	data->d_buf = inttab;
 	data->d_size = sizeof(uint64_t) * difo->dtdo_intlen;
@@ -233,6 +248,11 @@ dt_elf_new_inttab(Elf *e, dtrace_difo_t *difo)
 		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
 		     elf_errmsg(-1));
 
+	/*
+	 * The entsize is set to sizeof(uint64_t) because each entry is a 64-bit
+	 * integer, which is fixed-size. According to the ELF specification, we
+	 * have to specify what the size of each entry is if it is fixed-size.
+	 */
 	shdr->sh_type = SHT_DTRACE_elf;
 	shdr->sh_name = DTELF_DIFOINTTAB;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
@@ -250,6 +270,10 @@ dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo)
 	char *c;
 	char *strtab;
 
+	/*
+	 * If the string table is NULL, we return a NULL section,
+	 * which will return section index 0 when passed into elf_ndxscn().
+	 */
 	if (difo->dtdo_strtab == NULL)
 		return (NULL);
 
@@ -267,8 +291,16 @@ dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo)
 	if (strtab == NULL)
 		errx(EXIT_FAILURE, "failed to malloc strtab");
 
+	/*
+	 * Populate the temporary buffer that will contain our string table.
+	 */
 	memcpy(strtab, difo->dtdo_strtab, difo->dtdo_strlen);
 
+	/*
+	 * We don't have any special alignment requirements. Treat this as an
+	 * ordinary string table in ELF (apart from the specification in the
+	 * section header).
+	 */
 	data->d_align = 1;
 	data->d_buf = strtab;
 	data->d_size = difo->dtdo_strlen;
@@ -280,6 +312,9 @@ dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo)
 		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
 		     elf_errmsg(-1));
 
+	/*
+	 * The strings in the string table are not fixed-size, so entsize is set to 0.
+	 */
 	shdr->sh_type = SHT_DTRACE_elf;
 	shdr->sh_name = DTELF_DIFOSTRTAB;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
@@ -299,6 +334,10 @@ dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo)
 	return (scn);
 }
 
+/*
+ * A symbol table in DTrace is just a string table. This subroutine handles yet another
+ * string table with minimal differences from the regular DIFO string table.
+ */
 static Elf_Scn *
 dt_elf_new_symtab(Elf *e, dtrace_difo_t *difo)
 {
@@ -350,6 +389,10 @@ dt_elf_new_vartab(Elf *e, dtrace_difo_t *difo)
 	Elf_Data *data;
 	dtrace_difv_t *vartab;
 
+	/*
+	 * If the variable table is NULL, we return a NULL section,
+	 * which will return section index 0 when passed into elf_ndxscn().
+	 */
 	if (difo->dtdo_vartab == NULL)
 		return (NULL);
 
@@ -367,8 +410,15 @@ dt_elf_new_vartab(Elf *e, dtrace_difo_t *difo)
 	if (vartab == NULL)
 		errx(EXIT_FAILURE, "failed to malloc vartab");
 
+	/*
+	 * Populate the temporary buffer that will contain our variable table.
+	 */
 	memcpy(vartab, difo->dtdo_vartab, sizeof(dtrace_difv_t) * difo->dtdo_varlen);
 
+	/*
+	 * On both 32 and 64-bit architectures, dtrace_difv_t only requires
+	 * an alignment of 4.
+	 */
 	data->d_align = 4;
 	data->d_buf = vartab;
 	data->d_size = difo->dtdo_varlen * sizeof(dtrace_difv_t);
@@ -379,6 +429,9 @@ dt_elf_new_vartab(Elf *e, dtrace_difo_t *difo)
 		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
 		     elf_errmsg(-1));
 
+	/*
+	 * Each entry is of fixed size, so entsize is set to sizeof(dtrace_difv_t).
+	 */
 	shdr->sh_type = SHT_DTRACE_elf;
 	shdr->sh_name = DTELF_DIFOVARTAB;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
@@ -396,14 +449,28 @@ dt_elf_new_difo(Elf *e, dtrace_difo_t *difo)
 	uint64_t i;
 	dt_elf_difo_t *edifo;
 
+	/*
+	 * If the difo is NULL, we return a NULL section,
+	 * which will return section index 0 when passed into elf_ndxscn().
+	 */
 	if (difo == NULL)
 		return (NULL);
 
+	/*
+	 * Each dt_elf_difo_t has a flexible array member at the end of it that
+	 * contains all of the instructions associated with a DIFO. In order to
+	 * avoid creating a separate section that contains the instructions, we
+	 * simply put them at the end of the DIFO.
+	 *
+	 * Here, we allocate the edifo according to how many instructions are present
+	 * in the current DIFO (dtdo_len).
+	 */
 	edifo = malloc(sizeof(dt_elf_difo_t) +
-		       (difo->dtdo_len * sizeof(dif_instr_t)));
+	    (difo->dtdo_len * sizeof(dif_instr_t)));
 	if (edifo == NULL)
 		errx(EXIT_FAILURE, "failed to malloc edifo");
 
+	/* Zero the edifo to achieve determinism */
 	memset(edifo, 0, sizeof(dt_elf_difo_t) +
 	    (difo->dtdo_len * sizeof(dif_instr_t)));
 
@@ -415,11 +482,18 @@ dt_elf_new_difo(Elf *e, dtrace_difo_t *difo)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		     scn, elf_errmsg(-1));
 
+	/*
+	 * From each DIFO table (integer, string, symbol, variable), get the reference
+	 * to the corresponding ELF section that contains it.
+	 */
 	edifo->dted_inttab = elf_ndxscn(dt_elf_new_inttab(e, difo));
 	edifo->dted_strtab = elf_ndxscn(dt_elf_new_strtab(e, difo));
 	edifo->dted_symtab = elf_ndxscn(dt_elf_new_symtab(e, difo));
 	edifo->dted_vartab = elf_ndxscn(dt_elf_new_vartab(e, difo));
 
+	/*
+	 * Fill in the rest of the fields.
+	 */
 	edifo->dted_intlen = difo->dtdo_intlen;
 	edifo->dted_strlen = difo->dtdo_strlen;
 	edifo->dted_symlen = difo->dtdo_symlen;
@@ -429,9 +503,16 @@ dt_elf_new_difo(Elf *e, dtrace_difo_t *difo)
 
 	edifo->dted_len = difo->dtdo_len;
 
+	/*
+	 * Fill in the DIF instructions.
+	 */
 	for (i = 0; i < difo->dtdo_len; i++)
 		edifo->dted_buf[i] = difo->dtdo_buf[i];
 
+	/*
+	 * Because of intlen/strlen/symlen/varlen/etc, we require the section data to
+	 * be 8-byte aligned.
+	 */
 	data->d_align = 8;
 	data->d_buf = edifo;
 	data->d_size = sizeof(dt_elf_difo_t) +
@@ -443,6 +524,10 @@ dt_elf_new_difo(Elf *e, dtrace_difo_t *difo)
 		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
 		     elf_errmsg(-1));
 
+	/*
+	 * This is a section containing just _one_ DIFO. Therefore its size is not
+	 * variable and we specify entsize to be the size of the whole section.
+	 */
 	shdr->sh_type = SHT_DTRACE_elf;
 	shdr->sh_name = DTELF_DIFO;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
@@ -452,6 +537,9 @@ dt_elf_new_difo(Elf *e, dtrace_difo_t *difo)
 	return (scn);
 }
 
+/*
+ * This subroutine is always called with a valid actdesc.
+ */
 static Elf_Scn *
 dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad)
 {
@@ -465,6 +553,10 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad)
 	if (eact == NULL)
 		errx(EXIT_FAILURE, "failed to malloc eact");
 
+	/*
+	 * We will keep the actions in a list in order to
+	 * simplify the code when creating the ECBs.
+	 */
 	el = malloc(sizeof(dt_elf_eact_list_t));
 	if (el == NULL)
 		errx(EXIT_FAILURE, "failed to malloc el");
@@ -485,6 +577,9 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad)
 	} else
 		eact->dtea_difo = 0;
 
+	/*
+	 * Fill in all of the simple struct members.
+	 */
 	eact->dtea_next = 0; /* Filled in later */
 	eact->dtea_kind = ad->dtad_kind;
 	eact->dtea_ntuple = ad->dtad_ntuple;
@@ -501,11 +596,23 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad)
 		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
 		     elf_errmsg(-1));
 
+	/*
+	 * Since actions are of fixed size (because they contain references to a DIFO)
+	 * and other actions, instead of varying in size because they contain the DIFO
+	 * itself, we set entsize to sizeof(dt_elf_actdesc_t). In the future, we may
+	 * consider a section that contains all of the actions, rather than a separate
+	 * section for each action, but this would require some re-engineering of the
+	 * code around ECBs.
+	 */
 	shdr->sh_type = SHT_DTRACE_elf;
 	shdr->sh_name = DTELF_ACTDESC;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
 	shdr->sh_entsize = sizeof(dt_elf_actdesc_t);
 
+	/*
+	 * Fill in the information that we will keep in a list (section index, action,
+	 * ELF representation of an action).
+	 */
 	el->eact_ndx = elf_ndxscn(scn);
 	el->act = ad;
 	el->eact = eact;
@@ -525,9 +632,21 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt)
 	if (stmt->dtsd_action == NULL)
 		return;
 
-	assert(stmt->dtsd_action_last != NULL);
-	for (ad = stmt->dtsd_action; ad != stmt->dtsd_action_last->dtad_next;
-	    ad = ad->dtad_next) {
+	/*
+	 * If we have the first action, then we better have the last action as well.
+	 */
+	if (stmt->dtsd_action_last == NULL)
+		errx(EXIT_FAILURE, "dtsd_action_last is NULL, but dtsd_action is not.");
+
+	/*
+	 * We iterate through the actions, creating a new section with its data filled
+	 * with an ELF representation for each DTrace action we iterate through. We then
+	 * refer to the previous action we created in our list of actions and assign the
+	 * next reference in the ELF file, which constructs the "action list" as known
+	 * in DTrace, but in our ELF file.
+	 */
+	for (ad = stmt->dtsd_action;
+	    ad != stmt->dtsd_action_last->dtad_next && ad != NULL; ad = ad->dtad_next) {
 		scn = dt_elf_new_action(e, ad);
 
 		if (dtelf_state->s_eadprev != NULL)
@@ -537,9 +656,16 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt)
 			errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
 			    elf_errmsg(-1), __func__);
 
-		assert(data->d_buf != NULL);
+		if (data->d_buf == NULL)
+			errx(EXIT_FAILURE, "data->d_buf must not be NULL.");
+
 		dtelf_state->s_eadprev = data->d_buf;
 
+		/*
+		 * If this is the first action, we will save it in order to fill in
+		 * the necessary data in the ELF representation of a D program. It needs
+		 * a reference to the first action.
+		 */
 		if (ad == stmt->dtsd_action)
 			dtelf_state->s_first_act_scn = elf_ndxscn(scn);
 	}
@@ -618,6 +744,9 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt)
 		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
 		     elf_errmsg(-1));
 
+	/*
+	 * Since dt_elf_ecbdesc_t is of fixed size, we set entsize to its size.
+	 */
 	shdr->sh_type = SHT_DTRACE_elf;
 	shdr->sh_name = DTELF_ECBDESC;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
@@ -643,7 +772,6 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 
 	memset(estmt, 0, sizeof(dt_elf_stmt_t));
 
-
 	if ((scn = elf_newscn(e)) == NULL)
 		errx(EXIT_FAILURE, "elf_newscn(%p) failed with %s",
 		     e, elf_errmsg(-1));
@@ -656,6 +784,10 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 
 	estmt->dtes_ecbdesc = elf_ndxscn(dt_elf_new_ecbdesc(e, stmt));
 
+	/*
+	 * Fill in the first and last action for a statement that we've previously
+	 * saved when creating actions.
+	 */
 	estmt->dtes_action = dtelf_state->s_first_act_scn;
 	estmt->dtes_action_last = dtelf_state->s_last_act_scn;
 	estmt->dtes_descattr.dtea_attr = stmt->dtsd_descattr;
@@ -1029,6 +1161,12 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
 		    elf_errmsg(-1));
 
+	/*
+	 * Currently we only have one program that put into the ELF file.
+	 * However, at some point we may wish to have multiple programs. In any
+	 * case, since dt_elf_prog_t is of fixed size, entsize is set to
+	 * sizeof(dt_elf_prog_t).
+	 */
 	shdr->sh_type = SHT_DTRACE_elf;
 	shdr->sh_name = DTELF_PROG;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
