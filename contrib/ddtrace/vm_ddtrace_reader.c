@@ -208,7 +208,7 @@ int main(int argc, char **argv)
 
     char *script_file_path = "/tmp/script.d";
 
-    if((script_fp = fopen(script_file_path, "w+")) == NULL) {
+    /*if((script_fp = fopen(script_file_path, "w+")) == NULL) {
         fprintf(log_fp, "Error opening script file %s: %s \n.", script_file_path,strerror(errno));
     }
     
@@ -222,7 +222,7 @@ int main(int argc, char **argv)
 
     free(script);
     free(ev);
-
+    */
     fprintf(log_fp, "Execute script.. \n");
     fflush(log_fp);
     
