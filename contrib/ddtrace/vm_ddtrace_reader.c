@@ -83,7 +83,7 @@ int execute_script(char *file_path, FILE *log_fp) {
     dtrace_proginfo_t info;
 
     if((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | DTRACE_C_CPP, 0, NULL )) == NULL) {
-        fprintf(log_fp, "Failed to compile dtrace program: %s\n", dtrace_errmsg(dtp,dtrace_errno(dtp)));
+        fprintf(log_fp, "Failed to compile the DTrace program: %s\n", dtrace_errmsg(dtp,dtrace_errno(dtp)));
         fflush(log_fp);
         ret = -1;
         goto destroy_dtrace;
@@ -107,6 +107,8 @@ int execute_script(char *file_path, FILE *log_fp) {
 
     fprintf(log_fp, "All good. :)\n");
     fflush(fp);
+
+    // print??
 
 
     destroy_dtrace:
@@ -195,10 +197,12 @@ int main(int argc, char **argv)
     
     close(fd);
 
-    int len = strlen(ev->args.d_script.script);
-    script = (char *)malloc(sizeof(char) * 80);
+    // int len = strlen(ev->args.d_script.script);
+    int len = 6;
+    script = (char *)malloc(sizeof(char) * len);
 
-    strncpy(script, ev->args.d_script.script, len);
+    strncpy(script, ev->args.d_script.script, len - 1);
+    script[len] = '\n';
     fprintf(log_fp, "Copied script %s \n.", script);
     fflush(log_fp);
 
@@ -223,15 +227,11 @@ int main(int argc, char **argv)
     fflush(log_fp);
     
     if((execute_script(script_file_path, log_fp)) != 0){
-        fprintf(log_fp, "Error occured while trying to execute the script: %s \n",
-        strerror(errno));
+        fprintf(log_fp, "Error occured while trying to execute the script. \n");
     }
 
-    fprintf(log_fp, "Successfully wrote. Closing log file. \n");
+    fprintf(log_fp, "Closing log file. \n");
     fflush(log_fp);
     fclose(log_fp);
-
-
-
     return 0;
 }
