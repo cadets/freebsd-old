@@ -188,8 +188,8 @@ int main(int argc, char **argv)
     if (read(fd, ev, sizeof(struct vtdtr_event)) == -1)
     {
         fprintf(log_fp, "Error while reading %s", strerror(errno));
-        exit(1);
         fflush(log_fp);
+          exit(1);
     }
     
     fprintf(log_fp, "Got %s \n", ev->args.d_script.script);
@@ -210,9 +210,15 @@ int main(int argc, char **argv)
 
     if((script_fp = fopen(script_file_path, "w+")) == NULL) {
         fprintf(log_fp, "Error opening script file %s: %s \n.", script_file_path, strerror(errno));
+        fflush(script_fp);
+        exit(1);
     }
     
-    fwrite(script, sizeof(char), sizeof(script), script_fp);
+    if (fwrite(script, sizeof(char), len - 1, script_fp) != len -1) {
+        fprintf(log_fp, "Haven't written the entire script to file - stop. \n");
+        fflush(log_fp);
+        exit(1);
+    }
 
     if(ferror(script_fp)) {
         fprintf(log_fp, "Error occured while writing in the script file. \n");
