@@ -760,43 +760,55 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	if ((fd = open(fifo, O_RDONLY)) == -1)
 	{
-		printf("Error while opening the pipe: %s\n", strerror(errno));
+		DPRINTF("Error while opening the pipe: %s\n", strerror(errno));
 		exit(1);
 	}
 
-	struct stat sb;
-	if(stat(fifo, &sb) == -1) {
-		printf("Error obtaining file status", strerror(errno));
-		exit(1);
-	}
 
-	printf("Script size is: %lld bytes \n", (long long) sb.st_size);
-
-	int len = 23;
 	char *d_script;
-	d_script = malloc(sizeof(char) * len);
+	char buf[20]; 
 
-	if (read(fd, d_script, len) == -1)
-	{
-		printf("Error while reading script file: %s\n", strerror(errno));
+	int k;
+	if((k = read(fd, buf, sizeof(int))) == -1) {
+		DPRINTF("Error while reading file size: %s\n." strerror(errno));
+		exit(1);
 	}
+
+	int d_script_length;
+	if(memcpy(&d_script_length, buf, sizeof(int)) == NULL) {
+		DPRINTF("Memcpy failed when getting script size: %s\n.", strerror(errno));
+		exit(1);
+	}
+
+	char *content;
+	int content_size = k + d_script_length;
+	content = (char *)malloc(sizeof(char) * content_size);
+	if (read(fd, content, content_size) == -1)
+	{
+		DPRINTF("Error while reading script file: %s\n", strerror(errno));
+		exit(1);
+	}
+
+	d_script = (char *)malloc(sizeof(char) * d_script_length);
+	if(memcpy(d_script, &content[k], d_script_length) == NULL) {
+		DPRINTF("Memcpy failed when getting the script: %s\n", strerror(errno));
+		exit(1);
+	}
+
+	DPRINTF(("Success in getting the script is %s.\n", d_script));
 
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
 	struct pci_vtdtr_control *ctrl;
 	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
 	assert(ctrl_entry != NULL);
 	ctrl = &ctrl_entry->ctrl;
-
-	DPRINTF(("Script is %s.\n", d_script));
-
 	ctrl->event = VTDTR_DEVICE_SCRIPT;
 	strlcpy(ctrl->uctrl.script_ev.d_script, d_script, len);
 
 	DPRINTF(("Script %s in control element.\n", ctrl->uctrl.script_ev.d_script));
 	
 	// char *d_script_fragment = malloc(sizeof(char)* FRAGMENT_LENGTH);
-
-
+	
 	pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 	pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
 	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);

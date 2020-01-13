@@ -1549,6 +1549,7 @@ static void *write_script(void *file_path)
 	fseek(fp, 0L, SEEK_END);
 	file_size = ftell(fp);
 
+
 	printf("Size of file is: %d. \n", file_size);
 
 	rewind(fp);
@@ -1572,13 +1573,20 @@ static void *write_script(void *file_path)
 	}
 
 	int l;
-
-	if((l = write(fd, d_script, file_size + 1)) == -1)
+	if((l = write(fd, &file_size, sizeof(&file_size)) == - 1))
 	{
-		printf("%s\n", strerror(errno));
+		printf("Failed to write file size: %s\n", strerror(errno));
+		exit(1);
+	}
+	
+	int k;
+	if((k = write(fd, d_script, file_size)) == -1)
+	{
+		printf("Failed to write script: %s\n", strerror(errno));
+		exit(1);
 	}
 
-	printf("I've written in pipe %d. \n", l);
+	printf("Wrote %d in pipe.\n", l + k);
 
 	close(fd);
 	free(d_script);
