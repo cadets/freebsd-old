@@ -197,8 +197,8 @@ int main(int argc, char **argv)
     
     close(fd);
 
-    int len = strlen(ev->args.d_script.script);
-    fprintf(log_fp, "Length of the script is %d. \n", len);
+    int len = strlen(ev->args.d_script.script) + 1;
+    fprintf(log_fp, "Length of the script is %d. \n", len - 1);
     fflush(log_fp);
     script = (char *)malloc(sizeof(char) * len);
 

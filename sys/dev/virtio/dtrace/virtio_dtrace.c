@@ -733,8 +733,8 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		KASSERT(ev != NULL, ("malloc event failed"));
 		
 		// do we have the lock on ctrl? do we care?
-		len = strlen(ctrl->uctrl.script_ev.d_script);
-		device_printf(dev, "Length of the script is %d. \n", len);
+		len = strlen(ctrl->uctrl.script_ev.d_script) + 1;
+		device_printf(dev, "Length of the script is %d. \n", len - 1);
 		ev->type = VTDTR_EV_SCRIPT;
 		strlcpy(ev->args.d_script.script, ctrl->uctrl.script_ev.d_script, len);
 		vtdtr_enqueue(ev);
