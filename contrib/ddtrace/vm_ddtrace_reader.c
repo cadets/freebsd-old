@@ -197,20 +197,19 @@ int main(int argc, char **argv)
     
     close(fd);
 
-    int len = strlen(ev->args.d_script.script);
+    int len = strlen(ev->args.d_script.script) + 1;
     fprintf(log_fp, "Length of the script is %d. \n", len);
     fflush(log_fp);
     script = (char *)malloc(sizeof(char) * len);
 
-    strlcpy(script, ev->args.d_script.script, len - 1);
-    script[len] = '\n';
+    strlcpy(script, ev->args.d_script.script, len);
     fprintf(log_fp, "Copied script %s \n.", script);
     fflush(log_fp);
 
     char *script_file_path = "/tmp/script.d";
 
     if((script_fp = fopen(script_file_path, "w+")) == NULL) {
-        fprintf(log_fp, "Error opening script file %s: %s \n.", script_file_path,strerror(errno));
+        fprintf(log_fp, "Error opening script file %s: %s \n.", script_file_path, strerror(errno));
     }
     
     fwrite(script, sizeof(char), sizeof(script), script_fp);
