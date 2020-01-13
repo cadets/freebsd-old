@@ -109,6 +109,8 @@ extern void bbuf_delete(struct bbuf *);
 extern int bbuf_new(struct bbuf **, unsigned char *, size_t, int);
 extern int bbuf_new_auto(struct bbuf **);
 extern int bbuf_bcat(struct bbuf *, unsigned char const * const, size_t);
+extern int bbuf_bcat_aligned(struct bbuf *, unsigned char const * const,
+    size_t, size_t);
 extern int bbuf_scat(struct bbuf *, struct sbuf *);
 extern void bbuf_clear(struct bbuf *);
 extern int bbuf_concat(struct bbuf *, struct bbuf *);
@@ -125,6 +127,7 @@ extern int bbuf_get_int64(struct bbuf * const, int64_t * const);
 extern int bbuf_get_uint64(struct bbuf * const, uint64_t * const);
 extern size_t bbuf_len(struct bbuf *);
 extern size_t bbuf_pos(struct bbuf *);
+extern size_t bbuf_pos_aligned(struct bbuf *, size_t);
 extern int bbuf_put_int8(struct bbuf *, int8_t);
 extern int bbuf_put_int8_at(struct bbuf *, int8_t, size_t);
 extern int bbuf_put_uint8(struct bbuf *, uint8_t);

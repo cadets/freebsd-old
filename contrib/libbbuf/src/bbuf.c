@@ -101,7 +101,7 @@ static int bbuf_extendsize(int);
 
 #ifdef _KERNEL
 static inline void
-bbuf_assert_integrity(const char *func, struct bbuf *self)
+bbuf_assert_integrity(const char *func, struct bbuf const * const self)
 #else
 static inline void
 bbuf_assert_integrity(const char *func __attribute((unused)),
@@ -266,6 +266,32 @@ bbuf_bcat(struct bbuf *self, unsigned char const * const source, size_t len)
 }
 
 int
+bbuf_bcat_aligned(struct bbuf *self, unsigned char const * const source,
+    size_t len, size_t align)
+{
+	int add_len;
+
+	bbuf_assert_integrity(__func__, self);
+
+	if (self->bb_pos + len > self->bb_capacity) {
+
+		if (self->bb_flags & BBUF_AUTOEXTEND) {
+
+			add_len = (self->bb_pos + len) -
+			    self->bb_capacity;
+			if (bbuf_extend(self, add_len) != 0)
+				return -1;
+		} else {
+			return -1;
+		}	
+	}
+
+	bcopy(source, &self->bb_data[roundup(self->bb_pos, align)], len);
+	self->bb_pos = roundup(self->bb_pos, align) + len;
+	return 0;
+}
+
+int
 bbuf_scat(struct bbuf *self, struct sbuf *source)
 {
 	bbuf_assert_integrity(__func__, self);
@@ -348,6 +374,14 @@ bbuf_pos(struct bbuf *self)
 
 	bbuf_assert_integrity(__func__, self);
 	return self->bb_pos;
+}
+
+size_t
+bbuf_pos_aligned(struct bbuf *self, size_t align)
+{
+
+	bbuf_assert_integrity(__func__, self);
+	return roundup(self->bb_pos, align);
 }
 
 int
