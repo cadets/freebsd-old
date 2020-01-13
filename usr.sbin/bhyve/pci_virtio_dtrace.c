@@ -770,7 +770,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	int k;
 	if((k = read(fd, buf, sizeof(int))) == -1) {
-		DPRINTF(("Error while reading file size: %s\n." strerror(errno)));
+		DPRINTF(("Error while reading file size: %s\n.", strerror(errno)));
 		exit(1);
 	}
 
@@ -803,7 +803,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 	assert(ctrl_entry != NULL);
 	ctrl = &ctrl_entry->ctrl;
 	ctrl->event = VTDTR_DEVICE_SCRIPT;
-	strlcpy(ctrl->uctrl.script_ev.d_script, d_script, len);
+	strlcpy(ctrl->uctrl.script_ev.d_script, d_script, d_script_length + 1);
 
 	DPRINTF(("Script %s in control element.\n", ctrl->uctrl.script_ev.d_script));
 	
