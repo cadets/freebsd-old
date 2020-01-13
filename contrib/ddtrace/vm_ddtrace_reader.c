@@ -61,6 +61,11 @@ int execute_script(char *file_path, FILE *log_fp) {
     FILE *fp;
     int done = 0, err, ret = 0, script_argc = 1;
     static dtrace_hdl_t *dtp;
+    char **script_argv;
+
+    // We are just dealing with a file (for now)
+    script_argv = malloc(sizeof(char *) * script_argc);
+    script_argv[0] = "-s";
 
     if((fp = fopen(file_path,"w+")) == NULL) {
         fprintf(log_fp, "Failed to open script file: %s", strerror(errno));
@@ -82,12 +87,21 @@ int execute_script(char *file_path, FILE *log_fp) {
     dtrace_prog_t *prog;
     dtrace_proginfo_t info;
 
-    if((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | DTRACE_C_CPP, 0, NULL )) == NULL) {
+    /*if((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | DTRACE_C_CPP, 0, NULL )) == NULL) {
+        fprintf(log_fp, "Failed to compile the DTrace program: %s\n", dtrace_errmsg(dtp,dtrace_errno(dtp)));
+        fflush(log_fp);
+        ret = -1;
+        goto destroy_dtrace;
+    }*/
+
+    if((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | DTRACE_C_CPP, script_argc, script_argv)) == NULL) {
         fprintf(log_fp, "Failed to compile the DTrace program: %s\n", dtrace_errmsg(dtp,dtrace_errno(dtp)));
         fflush(log_fp);
         ret = -1;
         goto destroy_dtrace;
     }
+
+    
 
     fprintf(log_fp,"Dtrace program successfully compiled \n");
     fflush(fp);
@@ -217,7 +231,7 @@ int main(int argc, char **argv)
     if (fwrite(script, sizeof(char), len - 1, script_fp) != len -1) {
         fprintf(log_fp, "Haven't written the entire script to file - stop. \n");
         fflush(log_fp);
-        exit(1);
+        exit(1); 
     }
 
     if(ferror(script_fp)) {
