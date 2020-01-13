@@ -93,6 +93,8 @@ static int pci_vtdtr_debug;
 #define DPRINTF(params) printf params
 #define WPRINTF(params) printf params
 
+#define FRAGMENT_LENGTH 20 // 1024??
+
 struct pci_vtdtr_probe_create_event
 {
 	char mod[DTRACE_MODNAMELEN];
@@ -742,7 +744,7 @@ pci_vtdtr_events(void *xsc)
 }
 
 /**
-	Reads scripts provided by user from the named pipe and puts it in the
+	Reads scripts provided by the user from the named pipe and puts it in the
 	control queue.
 */
 static void *pci_vtdtr_read_script(void *xsc)
@@ -753,51 +755,60 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	sc = xsc;
 
-	// TODO: make it listen for scripts indefinitely so it works more than once
-	// (maybe by creating this thread somewhere else)
-		mkfifo(fifo, 0666);
+	// TODO(MARA): make it listen for scripts indefinitely so it works more than once (maybe by creating this thread somewhere else)
+	mkfifo(fifo, 0666);
 
-		if((fd = open(fifo, O_RDONLY)) == -1) {
-			printf("%s\n", strerror(errno));
-		}
-		
-		int len = 23;
-		char *d_script;
-		d_script = malloc(sizeof(char) * len);
+	if ((fd = open(fifo, O_RDONLY)) == -1)
+	{
+		printf("Error while opening the pipe: %s\n", strerror(errno));
+		exit(1);
+	}
 
-		int error;
-		if((error = read(fd, d_script,len)) == -1) {
-			printf("%s\n", strerror(errno));
-		}
+	struct stat sb;
+	if(stat(fifo, &sb) == -1) {
+		printf("Error obtaining file status", strerror(errno));
+		exit(1);
+	}
 
-		// TODO(MARA: remove this after DTrace debugging
-		// int len = strlen(d_script);
+	printf("Script size is: %lld bytes \n", (long long) sb.st_size);
+
+	int len = 23;
+	char *d_script;
+	d_script = malloc(sizeof(char) * len);
+
+	if (read(fd, d_script, len) == -1)
+	{
+		printf("Error while reading script file: %s\n", strerror(errno));
+	}
+
+	struct pci_vtdtr_ctrl_entry *ctrl_entry;
+	struct pci_vtdtr_control *ctrl;
+	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+	assert(ctrl_entry != NULL);
+	ctrl = &ctrl_entry->ctrl;
+
+	DPRINTF(("Script is %s.\n", d_script));
+
+	ctrl->event = VTDTR_DEVICE_SCRIPT;
+	strlcpy(ctrl->uctrl.script_ev.d_script, d_script, len);
+
+	DPRINTF(("Script %s in control element.\n", ctrl->uctrl.script_ev.d_script));
 	
-		struct pci_vtdtr_ctrl_entry *ctrl_entry;
-		struct pci_vtdtr_control *ctrl;
-		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
-		assert(ctrl_entry != NULL);
-		ctrl = &ctrl_entry->ctrl;
+	// char *d_script_fragment = malloc(sizeof(char)* FRAGMENT_LENGTH);
 
-		DPRINTF(("Script is %s.\n", d_script));
 
-		ctrl->event = VTDTR_DEVICE_SCRIPT;
-		strlcpy(ctrl->uctrl.script_ev.d_script, d_script, len);
+	pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+	pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
+	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 
-		DPRINTF(("Script %s in control element.\n", ctrl->uctrl.script_ev.d_script));
+	pthread_mutex_lock(&sc->vsd_condmtx);
+	pthread_cond_signal(&sc->vsd_cond);
+	pthread_mutex_unlock(&sc->vsd_condmtx);
 
-		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
-		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
-
-		pthread_mutex_lock(&sc->vsd_condmtx);
-		pthread_cond_signal(&sc->vsd_cond);
-		pthread_mutex_unlock(&sc->vsd_condmtx);
-
-		close(fd);
-		free(d_script);
-		free(ctrl_entry);
-		unlink(fifo);
+	close(fd);
+	free(d_script);
+	free(ctrl_entry);
+	unlink(fifo);
 }
 
 /*

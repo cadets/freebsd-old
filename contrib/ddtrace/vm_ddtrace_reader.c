@@ -52,11 +52,10 @@ __FBSDID("$FreeBSD$");
 #include <dtrace.h>
 #include <vtdtr.h>
 
-    
-
 // TODO(MARA): turn options into pragma, ignore for now, assume we have
 // script in file
-int execute_script(char *file_path, FILE *log_fp) {
+int execute_script(char *file_path, FILE *log_fp)
+{
 
     FILE *fp;
     int done = 0, err, ret = 0, script_argc = 1;
@@ -67,21 +66,23 @@ int execute_script(char *file_path, FILE *log_fp) {
     script_argv = malloc(sizeof(char *) * script_argc);
     script_argv[0] = "-s";
 
-    if((fp = fopen(file_path,"w+")) == NULL) {
+    if ((fp = fopen(file_path, "w+")) == NULL)
+    {
         fprintf(log_fp, "Failed to open script file: %s", strerror(errno));
         fflush(log_fp);
         ret = -1;
         return ret;
     }
 
-    if((dtp = dtrace_open(DTRACE_VERSION, 0, &err)) == NULL) {
-        fprintf(log_fp, "Failed to initialize dtrace : %s\n", dtrace_errmsg(dtp,err));
+    if ((dtp = dtrace_open(DTRACE_VERSION, 0, &err)) == NULL)
+    {
+        fprintf(log_fp, "Failed to initialize dtrace : %s\n", dtrace_errmsg(dtp, err));
         fflush(log_fp);
         ret = -1;
         goto destroy_dtrace;
     }
 
-    fprintf(log_fp,"Successfully opened DTrace\n");
+    fprintf(log_fp, "Successfully opened DTrace\n");
     fflush(log_fp);
 
     dtrace_prog_t *prog;
@@ -94,26 +95,27 @@ int execute_script(char *file_path, FILE *log_fp) {
         goto destroy_dtrace;
     }*/
 
-    if((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | DTRACE_C_CPP, script_argc, script_argv)) == NULL) {
-        fprintf(log_fp, "Failed to compile the DTrace program: %s\n", dtrace_errmsg(dtp,dtrace_errno(dtp)));
+    if ((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | DTRACE_C_CPP, script_argc, script_argv)) == NULL)
+    {
+        fprintf(log_fp, "Failed to compile the DTrace program: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         fflush(log_fp);
         ret = -1;
         goto destroy_dtrace;
     }
 
-    
-
-    fprintf(log_fp,"Dtrace program successfully compiled \n");
+    fprintf(log_fp, "Dtrace program successfully compiled \n");
     fflush(fp);
 
-    if(dtrace_program_exec(dtp, prog, &info) == -1) {
+    if (dtrace_program_exec(dtp, prog, &info) == -1)
+    {
         fprintf(log_fp, "Failed to enable DTrace probes: %s \n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         fflush(fp);
         ret = -1;
         goto destroy_dtrace;
     }
 
-    if(dtrace_go(dtp) != 0) {
+    if (dtrace_go(dtp) != 0)
+    {
         fprintf(log_fp, "Failed to start instrumentation: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         ret = -1;
         goto destroy_dtrace;
@@ -124,12 +126,11 @@ int execute_script(char *file_path, FILE *log_fp) {
 
     // print??
 
-
-    destroy_dtrace:
-        fprintf(log_fp, "Closing DTrace\n");
-        fflush(log_fp);
-        dtrace_close(dtp);
-        fclose(fp);
+destroy_dtrace:
+    fprintf(log_fp, "Closing DTrace\n");
+    fflush(log_fp);
+    dtrace_close(dtp);
+    fclose(fp);
 
     return ret;
 }
@@ -147,14 +148,12 @@ int main(int argc, char **argv)
     FILE *script_fp;
 
     // TODO(MARA): syslog in the VM is not working so have a custom one for now
-    if((log_fp = fopen("/tmp/log.txt", "w+")) == NULL) {
+    if ((log_fp = fopen("/tmp/log.txt", "w+")) == NULL)
+    {
         printf("Error opening file: %s \n", strerror(errno));
     }
 
-
-    
-
-    fprintf(log_fp,"In vm_ddtrace_reader.. \n");
+    fprintf(log_fp, "In vm_ddtrace_reader.. \n");
     fflush(log_fp);
 
     /* Daemonise first*/
@@ -191,24 +190,24 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    fprintf( log_fp, "Successfully subscribed to events. \n");
+    fprintf(log_fp, "Successfully subscribed to events. \n");
 
     fprintf(log_fp, "Reading.. \n");
     fflush(log_fp);
 
     struct vtdtr_event *ev;
-    ev = (struct vtdtr_event *) malloc(sizeof(struct vtdtr_event));
+    ev = (struct vtdtr_event *)malloc(sizeof(struct vtdtr_event));
 
     if (read(fd, ev, sizeof(struct vtdtr_event)) == -1)
     {
         fprintf(log_fp, "Error while reading %s", strerror(errno));
         fflush(log_fp);
-          exit(1);
+        exit(1);
     }
-    
+
     fprintf(log_fp, "Got %s \n", ev->args.d_script.script);
     fflush(log_fp);
-    
+
     close(fd);
 
     int len = strlen(ev->args.d_script.script) + 1;
@@ -222,19 +221,22 @@ int main(int argc, char **argv)
 
     char *script_file_path = "/tmp/script.d";
 
-    if((script_fp = fopen(script_file_path, "w+")) == NULL) {
+    if ((script_fp = fopen(script_file_path, "w+")) == NULL)
+    {
         fprintf(log_fp, "Error opening script file %s: %s \n.", script_file_path, strerror(errno));
         fflush(script_fp);
         exit(1);
     }
-    
-    if (fwrite(script, sizeof(char), len - 1, script_fp) != len -1) {
+
+    if (fwrite(script, sizeof(char), len - 1, script_fp) != len - 1)
+    {
         fprintf(log_fp, "Haven't written the entire script to file - stop. \n");
         fflush(log_fp);
-        exit(1); 
+        exit(1);
     }
 
-    if(ferror(script_fp)) {
+    if (ferror(script_fp))
+    {
         fprintf(log_fp, "Error occured while writing in the script file. \n");
         fflush(log_fp);
         exit(1);
@@ -242,12 +244,12 @@ int main(int argc, char **argv)
 
     free(script);
     free(ev);
-    
 
     fprintf(log_fp, "Execute script.. \n");
     fflush(log_fp);
-    
-    if((execute_script(script_file_path, log_fp)) != 0){
+
+    if ((execute_script(script_file_path, log_fp)) != 0)
+    {
         fprintf(log_fp, "Error occured while trying to execute the script. \n");
     }
 
