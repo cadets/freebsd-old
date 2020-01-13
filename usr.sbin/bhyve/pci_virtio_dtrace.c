@@ -760,7 +760,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	if ((fd = open(fifo, O_RDONLY)) == -1)
 	{
-		DPRINTF("Error while opening the pipe: %s\n", strerror(errno));
+		DPRINTF(("Error while opening the pipe: %s\n", strerror(errno)));
 		exit(1);
 	}
 
@@ -770,13 +770,13 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	int k;
 	if((k = read(fd, buf, sizeof(int))) == -1) {
-		DPRINTF("Error while reading file size: %s\n." strerror(errno));
+		DPRINTF(("Error while reading file size: %s\n." strerror(errno)));
 		exit(1);
 	}
 
 	int d_script_length;
 	if(memcpy(&d_script_length, buf, sizeof(int)) == NULL) {
-		DPRINTF("Memcpy failed when getting script size: %s\n.", strerror(errno));
+		DPRINTF(("Memcpy failed when getting script size: %s\n.", strerror(errno)));
 		exit(1);
 	}
 
@@ -785,13 +785,13 @@ static void *pci_vtdtr_read_script(void *xsc)
 	content = (char *)malloc(sizeof(char) * content_size);
 	if (read(fd, content, content_size) == -1)
 	{
-		DPRINTF("Error while reading script file: %s\n", strerror(errno));
+		DPRINTF(("Error while reading script file: %s\n", strerror(errno)));
 		exit(1);
 	}
 
 	d_script = (char *)malloc(sizeof(char) * d_script_length);
 	if(memcpy(d_script, &content[k], d_script_length) == NULL) {
-		DPRINTF("Memcpy failed when getting the script: %s\n", strerror(errno));
+		DPRINTF(("Memcpy failed when getting the script: %s\n", strerror(errno)));
 		exit(1);
 	}
 
