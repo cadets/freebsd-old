@@ -769,9 +769,10 @@ static void *pci_vtdtr_read_script(void *xsc)
 		if((error = read(fd, d_script, 80)) == -1) {
 			printf("%s\n", strerror(errno));
 		}
-		int len = strlen(d_script);
 
-
+		// TODO(MARA: remove this after DTrace debugging
+		// int len = strlen(d_script);
+		int len = 6;
 	
 		struct pci_vtdtr_ctrl_entry *ctrl_entry;
 		struct pci_vtdtr_control *ctrl;
@@ -782,8 +783,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		DPRINTF(("Script is %s.\n", d_script));
 
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
-		strncpy(ctrl->uctrl.script_ev.d_script, d_script, len);
-		ctrl->uctrl.script_ev.d_script[len+1] = '\0';
+		strlcpy(ctrl->uctrl.script_ev.d_script, d_script, len);
 
 		DPRINTF(("Script %s in control element.\n", ctrl->uctrl.script_ev.d_script));
 
