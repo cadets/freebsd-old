@@ -761,18 +761,17 @@ static void *pci_vtdtr_read_script(void *xsc)
 			printf("%s\n", strerror(errno));
 		}
 		
-
+		int len = 23;
 		char *d_script;
-		d_script = malloc(sizeof(char) * 80);
+		d_script = malloc(sizeof(char) * len);
 
 		int error;
-		if((error = read(fd, d_script, 80)) == -1) {
+		if((error = read(fd, d_script,len)) == -1) {
 			printf("%s\n", strerror(errno));
 		}
 
 		// TODO(MARA: remove this after DTrace debugging
 		// int len = strlen(d_script);
-		int len = 6;
 	
 		struct pci_vtdtr_ctrl_entry *ctrl_entry;
 		struct pci_vtdtr_control *ctrl;

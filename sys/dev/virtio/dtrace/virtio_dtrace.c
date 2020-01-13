@@ -736,7 +736,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		len = strlen(ctrl->uctrl.script_ev.d_script);
 		device_printf(dev, "Length of the script is %d. \n", len);
 		ev->type = VTDTR_EV_SCRIPT;
-		strlcpy(ev->args.d_script.script, ctrl->uctrl.script_ev.d_script, len + 1);
+		strlcpy(ev->args.d_script.script, ctrl->uctrl.script_ev.d_script, len);
 		vtdtr_enqueue(ev);
 		device_printf(dev, "I've enqueued %s.\n", 
 		ev->args.d_script.script);
