@@ -735,12 +735,13 @@ pci_vtdtr_events(void *xsc)
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+		
 
 		pthread_mutex_lock(&sc->vsd_condmtx);
 		pthread_cond_signal(&sc->vsd_cond);
 		pthread_mutex_unlock(&sc->vsd_condmtx);
 	}
+	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 }
 
 /**
@@ -781,6 +782,8 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	int done = 0;
 	int to_read;
+
+	pthread_mutex_lock(&sc->vsd_condmtx);
 	while(!done)
 	{
 		if(script_length > 256) 
@@ -812,22 +815,21 @@ static void *pci_vtdtr_read_script(void *xsc)
 		strlcpy(ctrl->uctrl.script_ev.d_script, d_script, to_read + 1);
 
 		DPRINTF(("Script %s in control element.\n", ctrl->uctrl.script_ev.d_script));
-
-		// char *d_script_fragment = malloc(sizeof(char)* FRAGMENT_LENGTH);
-
+		
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
 		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 
-		pthread_mutex_lock(&sc->vsd_condmtx);
-		pthread_cond_signal(&sc->vsd_cond);
-		pthread_mutex_unlock(&sc->vsd_condmtx);
-
 		free(d_script);
 		free(ctrl_entry);
-		close(fd);
+		
 	}
 
+	
+	pthread_cond_signal(&sc->vsd_cond);
+	pthread_mutex_unlock(&sc->vsd_condmtx);
+
+	close(fd);
 	fclose(reader_stream);
 	unlink(fifo);
 }
