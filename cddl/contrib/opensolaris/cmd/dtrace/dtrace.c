@@ -1553,7 +1553,7 @@ static void *write_script(void *file_path)
 	rewind(fp);
 
 	d_script = malloc(sizeof(char) * file_size);
-	if ((fread(d_script, file_size, fp)) == NULL)
+	if ((fread(d_script, sizeof(char), file_size, fp)) == NULL)
 	{
 		printf("%s\n", strerror(errno));
 	}
