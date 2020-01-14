@@ -561,6 +561,8 @@ pci_vtdtr_run(void *xsc)
 			   pci_vtdtr_cq_empty(sc->vsd_ctrlq))
 		{
 			error = pthread_cond_wait(&sc->vsd_cond, &sc->vsd_condmtx);
+			// TODO(MARA): Remove this
+			printf("I'm here");
 			assert(error == 0);
 		}
 		error = pthread_mutex_unlock(&sc->vsd_condmtx);
@@ -783,7 +785,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 	int done = 0;
 	int to_read;
 
-	pthread_mutex_lock(&sc->vsd_condmtx);
+	
 	while(!done)
 	{
 		if(script_length > 256) 
@@ -825,7 +827,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		
 	}
 
-	
+	pthread_mutex_lock(&sc->vsd_condmtx);
 	pthread_cond_signal(&sc->vsd_cond);
 	pthread_mutex_unlock(&sc->vsd_condmtx);
 

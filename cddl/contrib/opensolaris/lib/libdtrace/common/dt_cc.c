@@ -2454,8 +2454,11 @@ dt_compile(dtrace_hdl_t *dtp, int context, dtrace_probespec_t pspec, void *arg,
 	 * will longjmp back to pcb_jmpbuf to abort.  If parsing succeeds,
 	 * we optionally display the parse tree if debugging is enabled.
 	 */
-	if (yyparse() != 0 || yypcb->pcb_root == NULL)
+	if (yyparse() != 0 || yypcb->pcb_root == NULL) {
+		printf("Error is occuring when parsing. \n");
 		xyerror(D_EMPTY, "empty D program translation unit\n");
+		
+	}
 
 	yybegin(YYS_DONE);
 
@@ -2508,7 +2511,10 @@ dt_compile(dtrace_hdl_t *dtp, int context, dtrace_probespec_t pspec, void *arg,
 
 		if ((dnp = yypcb->pcb_root->dn_list) == NULL &&
 		    !(yypcb->pcb_cflags & DTRACE_C_EMPTY))
+			{
+			printf("Error occurs in the parse tree"); 
 			xyerror(D_EMPTY, "empty D program translation unit\n");
+			}
 
 		if ((yypcb->pcb_prog = dt_program_create(dtp)) == NULL)
 			longjmp(yypcb->pcb_jmpbuf, dtrace_errno(dtp));
