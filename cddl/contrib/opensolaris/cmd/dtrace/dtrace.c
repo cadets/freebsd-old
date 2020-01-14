@@ -1538,58 +1538,61 @@ static void *write_script(void *file_path)
 	char *path = (char *)file_path;
 	FILE *fp;
 	char *d_script;
+	const char *fifo = "/tmp/fifo";
+	int fd;
 
 	if ((fp = fopen(path, "r")) == NULL)
 	{
 		printf("%s\n", strerror(errno));
 	}
 
-	int file_size = 0;
-
+	long file_size;
 	fseek(fp, 0L, SEEK_END);
 	file_size = ftell(fp);
-
-
 	printf("Size of file is: %d. \n", file_size);
-
 	rewind(fp);
 
 	d_script = malloc(sizeof(char) * file_size);
-
 	if ((fgets(d_script, file_size, fp)) == NULL)
 	{
 		printf("%s\n", strerror(errno));
 	}
-
 	fclose(fp);
 
-	int fd;
+	d_script[file_size] = '/0';
 
-	const char *fifo = "/tmp/fifo";
-
-	if((fd = open(fifo, O_WRONLY)) == -1)
+	if ((fd = open(fifo, O_WRONLY)) == -1)
 	{
 		printf("%s\n", strerror(errno));
-	}
-
-	int l;
-	if((l = write(fd, &file_size, sizeof(&file_size)) == - 1))
-	{
-		printf("Failed to write file size: %s\n", strerror(errno));
 		exit(1);
 	}
+
+	FILE *writer_stream;
+	if((writer_stream = fdopen(fd,"w")) == NULL)
+	{
+		printf("Failed to open write stream: %s", strerror(errno));
+		exit(1);
+	}
+
+	int wrote = fwrite(&file_size,sizeof(long),1,writer_stream);
+	if(wrote == -1)
+	{
+		printf("Failed to write size of script to the named pipe: %s", strerror(errno));
+		exit(1);
+	}
+	wrote = fwrite(d_script, sizeof(char), file_size - 1, writer_stream);
+	if(wrote == -1)
+	{
+		printf("Failed to write script to the named pipe: %s", strerror(errno));
+		exit(1);
+	}
+	fflush(writer_stream);
+
 	
-	int k;
-	if((k = write(fd, d_script, file_size)) == -1)
-	{
-		printf("Failed to write script: %s\n", strerror(errno));
-		exit(1);
-	}
-
-	printf("Wrote %d in pipe.\n", l + k);
-
-	close(fd);
 	free(d_script);
+	close(fd);
+	fclose(writer_stream);
+	unlink(fifo);
 }
 
 int main(int argc, char *argv[])
@@ -1747,11 +1750,11 @@ int main(int argc, char *argv[])
 	if (m_mode == -1)
 	{
 		const char *file_path;
-	
+
 		// Assume the script is the last argument, for now.
 		file_path = argv[argc - 1];
 		write_script(file_path);
-	
+
 		printf("I've written the script. \n");
 		return 0;
 	}

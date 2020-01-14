@@ -93,7 +93,7 @@ static int pci_vtdtr_debug;
 #define DPRINTF(params) printf params
 #define WPRINTF(params) printf params
 
-#define FRAGMENT_LENGTH 20 // 1024??
+#define FRAGMENT_LENGTH 256
 
 struct pci_vtdtr_probe_create_event
 {
@@ -126,7 +126,7 @@ struct pci_vtdtr_ctrl_provevent
 
 struct pci_vtdtr_ctrl_scriptevent
 {
-	char d_script[80];
+	char d_script[256];
 	struct uuid uuid;
 } __attribute__((packed));
 
@@ -752,74 +752,83 @@ static void *pci_vtdtr_read_script(void *xsc)
 	struct pci_vtdtr_softc *sc;
 	const char *fifo = "/tmp/fifo";
 	int fd;
+	char *d_script;
+	char *content;
 
 	sc = xsc;
 
 	// TODO(MARA): make it listen for scripts indefinitely so it works more than once (maybe by creating this thread somewhere else)
 	mkfifo(fifo, 0666);
-
 	if ((fd = open(fifo, O_RDONLY)) == -1)
 	{
-		DPRINTF(("Error while opening the pipe: %s\n", strerror(errno)));
+		printf("Failed to open pipe: %s", strerror(errno));
 		exit(1);
 	}
 
-
-	char *d_script;
-	char buf[20]; 
-
-	int k;
-	if((k = read(fd, buf, sizeof(int))) == -1) {
-		DPRINTF(("Error while reading file size: %s\n.", strerror(errno)));
-		exit(1);
-	}
-
-	int d_script_length;
-	if(memcpy(&d_script_length, buf, sizeof(int)) == NULL) {
-		DPRINTF(("Memcpy failed when getting script size: %s\n.", strerror(errno)));
-		exit(1);
-	}
-
-	char *content;
-	int content_size = k + d_script_length;
-	content = (char *)malloc(sizeof(char) * content_size);
-	if (read(fd, content, content_size) == -1)
+	FILE *reader_stream;
+	if ((reader_stream = fdopen(fd, "r")) == NULL)
 	{
-		DPRINTF(("Error while reading script file: %s\n", strerror(errno)));
+		printf("Failed to open read stream: %s", strerror(errno));
+		exit(1);
+	}
+	long script_length;
+	int read = fread(&script_length, sizeof(long), 1, reader_stream);
+	if (read == -1)
+	{
+		printf("Failed to write size of script to the named pipe: %s", strerror(errno));
 		exit(1);
 	}
 
-	d_script = (char *)malloc(sizeof(char) * d_script_length);
-	if(memcpy(d_script, &content[k], d_script_length) == NULL) {
-		DPRINTF(("Memcpy failed when getting the script: %s\n", strerror(errno)));
-		exit(1);
+	int done = 0;
+	int to_read;
+	while(!done)
+	{
+		if(script_length > 256) 
+		{
+			to_read = 256;
+			script_length -= to_read;
+		} else 
+		{
+			to_read = script_length;
+			done = 1;
+		}
+		
+		d_script = (char *)malloc(sizeof(char) * to_read);
+		read = fread(d_script,sizeof(char), to_read, reader_stream);
+		if (read == -1)
+		{
+			printf("Failed to write script to the named pipe: %s", strerror(errno));
+			exit(1);
+		}
+
+		DPRINTF(("Success in getting the script is %s.\n", d_script));
+
+		struct pci_vtdtr_ctrl_entry *ctrl_entry;
+		struct pci_vtdtr_control *ctrl;
+		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+		assert(ctrl_entry != NULL);
+		ctrl = &ctrl_entry->ctrl;
+		ctrl->event = VTDTR_DEVICE_SCRIPT;
+		strlcpy(ctrl->uctrl.script_ev.d_script, d_script, to_read + 1);
+
+		DPRINTF(("Script %s in control element.\n", ctrl->uctrl.script_ev.d_script));
+
+		// char *d_script_fragment = malloc(sizeof(char)* FRAGMENT_LENGTH);
+
+		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
+		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+
+		pthread_mutex_lock(&sc->vsd_condmtx);
+		pthread_cond_signal(&sc->vsd_cond);
+		pthread_mutex_unlock(&sc->vsd_condmtx);
+
+		free(d_script);
+		free(ctrl_entry);
+		close(fd);
 	}
 
-	DPRINTF(("Success in getting the script is %s.\n", d_script));
-
-	struct pci_vtdtr_ctrl_entry *ctrl_entry;
-	struct pci_vtdtr_control *ctrl;
-	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
-	assert(ctrl_entry != NULL);
-	ctrl = &ctrl_entry->ctrl;
-	ctrl->event = VTDTR_DEVICE_SCRIPT;
-	strlcpy(ctrl->uctrl.script_ev.d_script, d_script, d_script_length + 1);
-
-	DPRINTF(("Script %s in control element.\n", ctrl->uctrl.script_ev.d_script));
-	
-	// char *d_script_fragment = malloc(sizeof(char)* FRAGMENT_LENGTH);
-	
-	pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
-	pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
-
-	pthread_mutex_lock(&sc->vsd_condmtx);
-	pthread_cond_signal(&sc->vsd_cond);
-	pthread_mutex_unlock(&sc->vsd_condmtx);
-
-	close(fd);
-	free(d_script);
-	free(ctrl_entry);
+	fclose(reader_stream);
 	unlink(fifo);
 }
 
