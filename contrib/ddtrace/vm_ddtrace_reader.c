@@ -95,7 +95,7 @@ int execute_script(char *file_path, FILE *log_fp)
         goto destroy_dtrace;
     }*/
 
-    if ((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | DTRACE_C_CPP, script_argc, script_argv)) == NULL)
+    if ((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | DTRACE_C_EMPTY, script_argc, script_argv)) == NULL)
     {
         fprintf(log_fp, "Failed to compile the DTrace program: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         fflush(log_fp);
@@ -216,6 +216,7 @@ int main(int argc, char **argv)
     script = (char *)malloc(sizeof(char) * len);
 
     strlcpy(script, ev->args.d_script.script, len);
+    script[len] = '\0';
     fprintf(log_fp, "Copied script %s \n.", script);
     fflush(log_fp);
 
