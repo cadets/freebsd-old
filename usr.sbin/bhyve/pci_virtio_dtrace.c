@@ -759,22 +759,24 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	sc = xsc;
 
+	mkfifo(fifo, 0666);
+	if ((fd = open(fifo, O_RDONLY)) == -1)
+	{
+		printf("Failed to open pipe: %s", strerror(errno));
+		exit(1);
+	}
+	FILE *reader_stream;
+	if ((reader_stream = fdopen(fd, "r")) == NULL)
+	{
+			printf("Failed to open read stream: %s", strerror(errno));
+			exit(1);
+	 }
+
 	for (;;)
 	{
 		// TODO(MARA): make it listen for scripts indefinitely so it works more than once (maybe by creating this thread somewhere else)
-		mkfifo(fifo, 0666);
-		if ((fd = open(fifo, O_RDONLY)) == -1)
-		{
-			printf("Failed to open pipe: %s", strerror(errno));
-			exit(1);
-		}
 
-		FILE *reader_stream;
-		if ((reader_stream = fdopen(fd, "r")) == NULL)
-		{
-			printf("Failed to open read stream: %s", strerror(errno));
-			exit(1);
-		}
+		
 		long script_length;
 		int read = fread(&script_length, sizeof(long), 1, reader_stream);
 		if (read == -1)
@@ -831,10 +833,11 @@ static void *pci_vtdtr_read_script(void *xsc)
 		pthread_cond_signal(&sc->vsd_cond);
 		pthread_mutex_unlock(&sc->vsd_condmtx);
 
-		close(fd);
-		fclose(reader_stream);
-		unlink(fifo);
 	}
+
+	fclose(reader_stream);
+	close(fd);
+	unlink(fifo);
 }
 
 /*
