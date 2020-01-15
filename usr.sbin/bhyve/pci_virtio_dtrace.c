@@ -768,72 +768,67 @@ static void *pci_vtdtr_read_script(void *xsc)
 	FILE *reader_stream;
 	if ((reader_stream = fdopen(fd, "r")) == NULL)
 	{
-			printf("Failed to open read stream: %s", strerror(errno));
-			exit(1);
-	 }
+		printf("Failed to open read stream: %s", strerror(errno));
+		exit(1);
+	}
 
-	for (;;)
+	// TODO(MARA): make it listen for scripts indefinitely so it works more than once (maybe by creating this thread somewhere else)
+
+	long script_length;
+	int read = fread(&script_length, sizeof(long), 1, reader_stream);
+	if (read == -1)
 	{
-		// TODO(MARA): make it listen for scripts indefinitely so it works more than once (maybe by creating this thread somewhere else)
+		printf("Failed to write size of script to the named pipe: %s", strerror(errno));
+		exit(1);
+	}
 
-		
-		long script_length;
-		int read = fread(&script_length, sizeof(long), 1, reader_stream);
+	int done = 0;
+	int to_read;
+
+	while (!done)
+	{
+		if (script_length > 256)
+		{
+			to_read = 256;
+			script_length -= to_read;
+		}
+		else
+		{
+			to_read = script_length;
+			done = 1;
+		}
+
+		d_script = (char *)malloc(sizeof(char) * to_read);
+		read = fread(d_script, sizeof(char), to_read, reader_stream);
 		if (read == -1)
 		{
-			printf("Failed to write size of script to the named pipe: %s", strerror(errno));
+			printf("Failed to write script to the named pipe: %s", strerror(errno));
 			exit(1);
 		}
 
-		int done = 0;
-		int to_read;
+		DPRINTF(("Success in getting the script is %s.\n", d_script));
 
-		while (!done)
-		{
-			if (script_length > 256)
-			{
-				to_read = 256;
-				script_length -= to_read;
-			}
-			else
-			{
-				to_read = script_length;
-				done = 1;
-			}
+		struct pci_vtdtr_ctrl_entry *ctrl_entry;
+		struct pci_vtdtr_control *ctrl;
+		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+		assert(ctrl_entry != NULL);
+		ctrl = &ctrl_entry->ctrl;
+		ctrl->event = VTDTR_DEVICE_SCRIPT;
+		strlcpy(ctrl->uctrl.script_ev.d_script, d_script, to_read + 1);
 
-			d_script = (char *)malloc(sizeof(char) * to_read);
-			read = fread(d_script, sizeof(char), to_read, reader_stream);
-			if (read == -1)
-			{
-				printf("Failed to write script to the named pipe: %s", strerror(errno));
-				exit(1);
-			}
+		DPRINTF(("Script %s in control element.\n", ctrl->uctrl.script_ev.d_script));
 
-			DPRINTF(("Success in getting the script is %s.\n", d_script));
+		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
+		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 
-			struct pci_vtdtr_ctrl_entry *ctrl_entry;
-			struct pci_vtdtr_control *ctrl;
-			ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
-			assert(ctrl_entry != NULL);
-			ctrl = &ctrl_entry->ctrl;
-			ctrl->event = VTDTR_DEVICE_SCRIPT;
-			strlcpy(ctrl->uctrl.script_ev.d_script, d_script, to_read + 1);
-
-			DPRINTF(("Script %s in control element.\n", ctrl->uctrl.script_ev.d_script));
-
-			pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
-			pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-			pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
-
-			free(d_script);
-			free(ctrl_entry);
-		}
-
-		pthread_mutex_lock(&sc->vsd_condmtx);
-		pthread_cond_signal(&sc->vsd_cond);
-		pthread_mutex_unlock(&sc->vsd_condmtx);
-
+		free(d_script);
+		free(ctrl_entry);
 	}
+
+	pthread_mutex_lock(&sc->vsd_condmtx);
+	pthread_cond_signal(&sc->vsd_cond);
+	pthread_mutex_unlock(&sc->vsd_condmtx);
 
 	fclose(reader_stream);
 	close(fd);
