@@ -737,7 +737,6 @@ pci_vtdtr_events(void *xsc)
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-		
 
 		pthread_mutex_lock(&sc->vsd_condmtx);
 		pthread_cond_signal(&sc->vsd_cond);
@@ -760,80 +759,82 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	sc = xsc;
 
-	// TODO(MARA): make it listen for scripts indefinitely so it works more than once (maybe by creating this thread somewhere else)
-	mkfifo(fifo, 0666);
-	if ((fd = open(fifo, O_RDONLY)) == -1)
+	for (;;)
 	{
-		printf("Failed to open pipe: %s", strerror(errno));
-		exit(1);
-	}
-
-	FILE *reader_stream;
-	if ((reader_stream = fdopen(fd, "r")) == NULL)
-	{
-		printf("Failed to open read stream: %s", strerror(errno));
-		exit(1);
-	}
-	long script_length;
-	int read = fread(&script_length, sizeof(long), 1, reader_stream);
-	if (read == -1)
-	{
-		printf("Failed to write size of script to the named pipe: %s", strerror(errno));
-		exit(1);
-	}
-
-	int done = 0;
-	int to_read;
-
-	
-	while(!done)
-	{
-		if(script_length > 256) 
+		// TODO(MARA): make it listen for scripts indefinitely so it works more than once (maybe by creating this thread somewhere else)
+		mkfifo(fifo, 0666);
+		if ((fd = open(fifo, O_RDONLY)) == -1)
 		{
-			to_read = 256;
-			script_length -= to_read;
-		} else 
-		{
-			to_read = script_length;
-			done = 1;
-		}
-		
-		d_script = (char *)malloc(sizeof(char) * to_read);
-		read = fread(d_script,sizeof(char), to_read, reader_stream);
-		if (read == -1)
-		{
-			printf("Failed to write script to the named pipe: %s", strerror(errno));
+			printf("Failed to open pipe: %s", strerror(errno));
 			exit(1);
 		}
 
-		DPRINTF(("Success in getting the script is %s.\n", d_script));
+		FILE *reader_stream;
+		if ((reader_stream = fdopen(fd, "r")) == NULL)
+		{
+			printf("Failed to open read stream: %s", strerror(errno));
+			exit(1);
+		}
+		long script_length;
+		int read = fread(&script_length, sizeof(long), 1, reader_stream);
+		if (read == -1)
+		{
+			printf("Failed to write size of script to the named pipe: %s", strerror(errno));
+			exit(1);
+		}
 
-		struct pci_vtdtr_ctrl_entry *ctrl_entry;
-		struct pci_vtdtr_control *ctrl;
-		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
-		assert(ctrl_entry != NULL);
-		ctrl = &ctrl_entry->ctrl;
-		ctrl->event = VTDTR_DEVICE_SCRIPT;
-		strlcpy(ctrl->uctrl.script_ev.d_script, d_script, to_read + 1);
+		int done = 0;
+		int to_read;
 
-		DPRINTF(("Script %s in control element.\n", ctrl->uctrl.script_ev.d_script));
-		
-		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
-		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+		while (!done)
+		{
+			if (script_length > 256)
+			{
+				to_read = 256;
+				script_length -= to_read;
+			}
+			else
+			{
+				to_read = script_length;
+				done = 1;
+			}
 
-		free(d_script);
-		free(ctrl_entry);
-		
+			d_script = (char *)malloc(sizeof(char) * to_read);
+			read = fread(d_script, sizeof(char), to_read, reader_stream);
+			if (read == -1)
+			{
+				printf("Failed to write script to the named pipe: %s", strerror(errno));
+				exit(1);
+			}
+
+			DPRINTF(("Success in getting the script is %s.\n", d_script));
+
+			struct pci_vtdtr_ctrl_entry *ctrl_entry;
+			struct pci_vtdtr_control *ctrl;
+			ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+			assert(ctrl_entry != NULL);
+			ctrl = &ctrl_entry->ctrl;
+			ctrl->event = VTDTR_DEVICE_SCRIPT;
+			strlcpy(ctrl->uctrl.script_ev.d_script, d_script, to_read + 1);
+
+			DPRINTF(("Script %s in control element.\n", ctrl->uctrl.script_ev.d_script));
+
+			pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+			pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
+			pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+
+			free(d_script);
+			free(ctrl_entry);
+		}
+
+		pthread_mutex_lock(&sc->vsd_condmtx);
+		pthread_cond_signal(&sc->vsd_cond);
+		pthread_mutex_unlock(&sc->vsd_condmtx);
+
+		close(fd);
+		fclose(reader_stream);
+		unlink(fifo);
 	}
-
-	pthread_mutex_lock(&sc->vsd_condmtx);
-	pthread_cond_signal(&sc->vsd_cond);
-	pthread_mutex_unlock(&sc->vsd_condmtx);
-
-	close(fd);
-	fclose(reader_stream);
-	unlink(fifo);
 }
 
 /*
