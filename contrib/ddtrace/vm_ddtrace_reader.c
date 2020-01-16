@@ -95,7 +95,7 @@ int execute_script(char *file_path, FILE *log_fp)
         goto destroy_dtrace;
     }*/
 
-    if ((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | /*DTRACE_C_EMPTY |*/ DTRACE_C_CPP, script_argc, script_argv)) == NULL)
+    if ((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | DTRACE_C_EMPTY | DTRACE_C_CPP, script_argc, script_argv)) == NULL)
     {
         fprintf(log_fp, "Failed to compile the DTrace program: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         fflush(log_fp);
@@ -117,6 +117,14 @@ int execute_script(char *file_path, FILE *log_fp)
     if (dtrace_go(dtp) != 0)
     {
         fprintf(log_fp, "Failed to start instrumentation: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+        ret = -1;
+        goto destroy_dtrace;
+    }
+
+    if(dtrace_printf_create(dtp, NULL) == -1)
+    {
+        fprintf(log_fp, "Failed to print stuff: %s", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+        fflush(fp);
         ret = -1;
         goto destroy_dtrace;
     }
