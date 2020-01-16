@@ -834,9 +834,9 @@ static void *pci_vtdtr_read_script(void *xsc)
 	pthread_cond_signal(&sc->vsd_cond);
 	pthread_mutex_unlock(&sc->vsd_condmtx);
 	
-	fclose(reader_stream);
-	close(fd);
-	unlink(fifo);
+	// fclose(reader_stream);
+	// close(fd);
+	// unlink(fifo);
 }
 
 /*
