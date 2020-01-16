@@ -787,7 +787,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	while (!done)
 	{ 
-		DPRINTF(("Iteration: %d. Done is: %d.\n", ++i, done));
+		
 		if (script_length > 256)
 		{
 			to_read = 256;
@@ -798,6 +798,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 			to_read = script_length;
 			done = 1;
 		}
+		DPRINTF(("Iteration: %d. Done is: %d.\n", ++i, done));
 
 		d_script = (char *)malloc(sizeof(char) * to_read);
 		read = fread(d_script, sizeof(char), to_read, reader_stream);
