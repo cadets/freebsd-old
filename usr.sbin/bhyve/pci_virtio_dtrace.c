@@ -822,9 +822,10 @@ static void *pci_vtdtr_read_script(void *xsc)
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
 		
 
+		pthread_mutex_lock(&sc->vsd_condmtx);
 		pthread_cond_signal(&sc->vsd_cond);
 		pthread_mutex_unlock(&sc->vsd_condmtx);
-		pthread_mutex_lock(&sc->vsd_condmtx);
+		
 
 		free(d_script);
 		free(ctrl_entry);
