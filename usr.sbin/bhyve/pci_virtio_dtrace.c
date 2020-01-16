@@ -784,7 +784,6 @@ static void *pci_vtdtr_read_script(void *xsc)
 	int to_read;
 	int i = 0;
 
-	pthread_mutex_lock(&sc->vsd_condmtx);
 	while (!done)
 	{ 
 		DPRINTF(("Iteration: %d", ++i));
@@ -821,15 +820,17 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+		
+
+		pthread_cond_signal(&sc->vsd_cond);
+		pthread_mutex_unlock(&sc->vsd_condmtx);
+		pthread_mutex_lock(&sc->vsd_condmtx);
 
 		free(d_script);
 		free(ctrl_entry);
 	}
-
-	pthread_cond_signal(&sc->vsd_cond);
-	pthread_mutex_unlock(&sc->vsd_condmtx);
-
+	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+	
 	fclose(reader_stream);
 	close(fd);
 	unlink(fifo);
