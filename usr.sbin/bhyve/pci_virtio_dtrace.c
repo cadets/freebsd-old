@@ -807,7 +807,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 			exit(1);
 		}
 
-		DPRINTF(("Success in getting the script is %s.\n"));
+		DPRINTF(("Success in getting the script.\n"));
 
 		struct pci_vtdtr_ctrl_entry *ctrl_entry;
 		struct pci_vtdtr_control *ctrl;
@@ -817,7 +817,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
 		strlcpy(ctrl->uctrl.script_ev.d_script, d_script, to_read + 1);
 
-		DPRINTF(("Script %s in control element.\n"));
+		DPRINTF(("Script in control element.\n"));
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
