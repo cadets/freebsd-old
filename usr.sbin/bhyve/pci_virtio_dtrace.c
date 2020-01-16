@@ -432,6 +432,7 @@ pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
 {
 
 	STAILQ_INSERT_TAIL(&cq->head, ctrl_entry, entries);
+	DPRINTF(("Succes in enqueing: %s.\n",ctrl_entry->ctrl.uctrl.script_ev.d_script));
 }
 
 static __inline void
@@ -786,7 +787,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	while (!done)
 	{ 
-		DPRINTF(("Iteration: %d", ++i));
+		DPRINTF(("Iteration: %d\n", ++i));
 		if (script_length > 256)
 		{
 			to_read = 256;
@@ -820,13 +821,12 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
+		DPRINTF(("I've enqueued.\n"));
 		
-
 		pthread_mutex_lock(&sc->vsd_condmtx);
 		pthread_cond_signal(&sc->vsd_cond);
 		pthread_mutex_unlock(&sc->vsd_condmtx);
 		
-
 		free(d_script);
 		free(ctrl_entry);
 	}

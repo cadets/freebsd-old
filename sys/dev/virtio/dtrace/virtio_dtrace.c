@@ -725,7 +725,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		}
 		break;
 	}
-	case VIRTIO_DTRACE_SCRIPT_EVENT:
+	/*case VIRTIO_DTRACE_SCRIPT_EVENT:
 		device_printf(dev, "I should be here.\n");
 		device_printf(dev,"Got %s.\n", ctrl->uctrl.script_ev.d_script);
 
@@ -740,7 +740,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		vtdtr_enqueue(ev);
 		device_printf(dev, "I've enqueued %s.\n", 
 		ev->args.d_script.script);
-		break;
+		break;*/
 	case VIRTIO_DTRACE_GO:
 		sc->vtdtr_ready = 0;
 
