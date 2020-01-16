@@ -787,7 +787,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	while (!done)
 	{ 
-		DPRINTF(("Iteration: %d\n", ++i));
+		DPRINTF(("Iteration: %d. Done is: %d.\n", ++i, done));
 		if (script_length > 256)
 		{
 			to_read = 256;
@@ -830,6 +830,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		free(d_script);
 		free(ctrl_entry);
 	}
+	DPRINTF(("I've finished puting pieces of the script in the control queue."));
 	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 	
 	fclose(reader_stream);
