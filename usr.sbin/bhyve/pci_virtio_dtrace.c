@@ -824,15 +824,15 @@ static void *pci_vtdtr_read_script(void *xsc)
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
 		DPRINTF(("I've enqueued.\n"));
 		
-		pthread_mutex_lock(&sc->vsd_condmtx);
-		pthread_cond_signal(&sc->vsd_cond);
-		pthread_mutex_unlock(&sc->vsd_condmtx);
-		
 		free(d_script);
 		free(ctrl_entry);
 	}
-	DPRINTF(("I've finished puting pieces of the script in the control queue."));
+	DPRINTF(("I've finished putting pieces of the script in the control queue."));
 	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+	
+	pthread_mutex_lock(&sc->vsd_condmtx);
+	pthread_cond_signal(&sc->vsd_cond);
+	pthread_mutex_unlock(&sc->vsd_condmtx);
 	
 	fclose(reader_stream);
 	close(fd);
