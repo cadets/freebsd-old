@@ -121,13 +121,15 @@ int execute_script(char *file_path, FILE *log_fp)
         goto destroy_dtrace;
     }
 
-    if(dtrace_printf_create(dtp, NULL) == -1)
+    fflush(fp);
+
+    /*if(dtrace_printf_create(dtp, NULL) == -1)
     {
         fprintf(log_fp, "Failed to print stuff: %s", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         fflush(fp);
         ret = -1;
         goto destroy_dtrace;
-    }
+    }*/
 
     fprintf(log_fp, "All good. :)\n");
     fflush(fp);

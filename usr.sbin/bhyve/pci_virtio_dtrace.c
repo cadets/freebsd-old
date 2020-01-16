@@ -561,8 +561,6 @@ pci_vtdtr_run(void *xsc)
 			   pci_vtdtr_cq_empty(sc->vsd_ctrlq))
 		{
 			error = pthread_cond_wait(&sc->vsd_cond, &sc->vsd_condmtx);
-			// TODO(MARA): Remove this
-			printf("I'm here");
 			assert(error == 0);
 		}
 		error = pthread_mutex_unlock(&sc->vsd_condmtx);
@@ -784,9 +782,12 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	int done = 0;
 	int to_read;
+	int i = 0;
 
+	pthread_mutex_lock(&sc->vsd_condmtx);
 	while (!done)
-	{
+	{ 
+		DPRINTF(("Iteration: %d", ++i));
 		if (script_length > 256)
 		{
 			to_read = 256;
@@ -806,7 +807,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 			exit(1);
 		}
 
-		DPRINTF(("Success in getting the script is %s.\n", d_script));
+		DPRINTF(("Success in getting the script is %s.\n"));
 
 		struct pci_vtdtr_ctrl_entry *ctrl_entry;
 		struct pci_vtdtr_control *ctrl;
@@ -816,7 +817,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
 		strlcpy(ctrl->uctrl.script_ev.d_script, d_script, to_read + 1);
 
-		DPRINTF(("Script %s in control element.\n", ctrl->uctrl.script_ev.d_script));
+		DPRINTF(("Script %s in control element.\n"));
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
@@ -826,7 +827,6 @@ static void *pci_vtdtr_read_script(void *xsc)
 		free(ctrl_entry);
 	}
 
-	pthread_mutex_lock(&sc->vsd_condmtx);
 	pthread_cond_signal(&sc->vsd_cond);
 	pthread_mutex_unlock(&sc->vsd_condmtx);
 
