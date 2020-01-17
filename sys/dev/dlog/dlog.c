@@ -393,6 +393,13 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 			return EFAULT; 
 		}
 
+		/* Check for an invalid topic name. */	
+		if (!dl_topic_validate_name(desc.dltd_name))
+			return EINVAL;
+
+		if (dl_topic_hashmap_contains_key(topic_hashmap, desc.dltd_name))
+			return EFAULT;
+
 		/* Unpack the nvlist of properties used for configuring the
 		 * DLog client instance.
 		 */
@@ -405,10 +412,6 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 			return EFAULT;
 		}
 	
-		/* Check for an invalid topic name. */	
-		if (!dl_topic_validate_name(desc.dltd_name))
-			return EINVAL;
-
 		/* Extract the log path from the properties */
 		path = dnvlist_get_string(props,
 	    		DL_CONF_LOG_PATH, DL_DEFAULT_LOG_PATH);
@@ -417,7 +420,7 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 		max_seg_size = dnvlist_get_number(props,
 	    		DL_CONF_MAX_SEGMENT_SIZE,
 			DL_DEFAULT_MAX_SEGMENT_SIZE);
-
+	
 		/* Construct the new segment and add to the topic. */
 		if (dl_kernel_segment_from_desc(&kseg,
 		    path, desc.dltd_name, max_seg_size,
@@ -445,11 +448,15 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 				DLOGTR0(PRIO_HIGH,
 				    "Failed creating topic instance\n");
 				dl_kernel_segment_delete(kseg);
+				/* Free the nvlist that stores the configuration properties */
+				nvlist_destroy(props);
 				return EFAULT;
 			}
 		} else {
 
 			DLOGTR0(PRIO_HIGH, "Failed creating segment\n");
+			/* Free the nvlist that stores the configuration properties */
+			nvlist_destroy(props);
 			return EFAULT;
 		}
 

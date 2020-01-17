@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018-2019 (Graeme Jenkinson)
+ * Copyright (c) 2018-2020 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -66,6 +66,7 @@ extern int dl_topic_produce_record_to(struct dl_topic *, char *,
 extern int dl_topic_get_message_by_offset(struct dl_topic *, struct dl_bbuf **);
 
 extern void dl_topic_hashmap_clear(struct dl_topic_hashmap *);
+extern bool dl_topic_hashmap_contains_key(struct dl_topic_hashmap *, char *);
 extern void dl_topic_hashmap_delete(struct dl_topic_hashmap *);
 extern void dl_topic_hashmap_foreach(struct dl_topic_hashmap *, dl_topic_callback, void *);
 extern int dl_topic_hashmap_get(struct dl_topic_hashmap *, char const * const, struct dl_topic **);

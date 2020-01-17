@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018-2019 (Graeme Jenkinson)
+ * Copyright (c) 2018-2020 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -240,6 +240,22 @@ dl_topic_hashmap_clear(struct dl_topic_hashmap *self)
 			dl_topic_delete(topic);
 		}
 	}
+}
+
+bool
+dl_topic_hashmap_contains_key(struct dl_topic_hashmap *self, char *k)
+{
+	struct dl_topic *topic;
+	
+	hashmap_assert_integrity(self);
+	DL_ASSERT(k != NULL, ("Key cannot be NULL"));
+
+	if (dl_topic_hashmap_get(self, k, &topic) == 0) {
+
+		return true;
+	}
+
+	return false;
 }
 
 void
