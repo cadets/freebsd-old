@@ -258,6 +258,9 @@ dt_elf_new_inttab(Elf *e, dtrace_difo_t *difo)
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
 	shdr->sh_entsize = sizeof(uint64_t);
 
+	(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
 	return (scn);
 }
 
@@ -330,6 +333,9 @@ dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo)
 		printf("%c", *c);
 	printf("\n");
 
+	(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
 
 	return (scn);
 }
@@ -377,6 +383,10 @@ dt_elf_new_symtab(Elf *e, dtrace_difo_t *difo)
 	shdr->sh_name = DTELF_DIFOSYMTAB;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
 	shdr->sh_entsize = 0;
+
+	(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
 
 	return (scn);
 }
@@ -437,17 +447,22 @@ dt_elf_new_vartab(Elf *e, dtrace_difo_t *difo)
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
 	shdr->sh_entsize = sizeof(dtrace_difv_t);
 
+	(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
+
 	return (scn);
 }
 
 static Elf_Scn *
 dt_elf_new_difo(Elf *e, dtrace_difo_t *difo)
 {
-	Elf_Scn *scn;
+	Elf_Scn *scn, *sscn;
 	Elf32_Shdr *shdr;
-	Elf_Data *data;
+	Elf_Data *data, *sdata;
 	uint64_t i;
 	dt_elf_difo_t *edifo;
+	char *c;
 
 	/*
 	 * If the difo is NULL, we return a NULL section,
@@ -490,6 +505,18 @@ dt_elf_new_difo(Elf *e, dtrace_difo_t *difo)
 	edifo->dted_strtab = elf_ndxscn(dt_elf_new_strtab(e, difo));
 	edifo->dted_symtab = elf_ndxscn(dt_elf_new_symtab(e, difo));
 	edifo->dted_vartab = elf_ndxscn(dt_elf_new_vartab(e, difo));
+
+	if ((sscn = elf_getscn(e, edifo->dted_strtab)) == NULL)
+		errx(EXIT_FAILURE, "elf_getscn()failed with %s", elf_errmsg(-1));
+
+	if ((sdata = elf_getdata(sscn, NULL)) == NULL)
+		errx(EXIT_FAILURE, "elf_getdata() failed with %s", elf_errmsg(-1));
+
+	printf("%s: after getscn strtab print\n", __func__);
+	for (c = sdata->d_buf; c < sdata->d_buf + difo->dtdo_strlen; c++)
+		printf("%c", *c);
+	printf("\n");
+
 
 	/*
 	 * Fill in the rest of the fields.
@@ -534,6 +561,10 @@ dt_elf_new_difo(Elf *e, dtrace_difo_t *difo)
 	shdr->sh_entsize = sizeof(dt_elf_difo_t) +
 	    (difo->dtdo_len * sizeof(dif_instr_t));
 
+	(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
+
 	return (scn);
 }
 
@@ -577,6 +608,33 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad)
 	} else
 		eact->dtea_difo = 0;
 
+	if (eact->dtea_difo) {
+		Elf_Scn *dscn, *sscn;
+		Elf_Data *ddata, *sdata;
+		dt_elf_difo_t *edifo;
+		char *c;
+
+		if ((dscn = elf_getscn(e, eact->dtea_difo)) == NULL)
+			errx(EXIT_FAILURE, "elf_getscn() failed with %s", elf_errmsg(-1));
+
+		if ((ddata = elf_getdata(dscn, NULL)) == NULL)
+			errx(EXIT_FAILURE, "elf_getdata() failed with %s", elf_errmsg(-1));
+
+		edifo = ddata->d_buf;
+
+		if ((sscn = elf_getscn(e, edifo->dted_strtab)) == NULL)
+			errx(EXIT_FAILURE, "elf_getscn()failed with %s", elf_errmsg(-1));
+
+		if ((sdata = elf_getdata(sscn, NULL)) == NULL)
+			errx(EXIT_FAILURE, "elf_getdata() failed with %s", elf_errmsg(-1));
+
+		printf("%s: normal strtab print\n", __func__);
+		for (c = sdata->d_buf; c < sdata->d_buf + edifo->dted_strlen; c++)
+			printf("%c", *c);
+		printf("\n");
+
+	}
+
 	/*
 	 * Fill in all of the simple struct members.
 	 */
@@ -608,6 +666,9 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad)
 	shdr->sh_name = DTELF_ACTDESC;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
 	shdr->sh_entsize = sizeof(dt_elf_actdesc_t);
+	(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
 
 	/*
 	 * Fill in the information that we will keep in a list (section index, action,
@@ -751,6 +812,9 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt)
 	shdr->sh_name = DTELF_ECBDESC;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
 	shdr->sh_entsize = sizeof(dt_elf_ecbdesc_t);
+	(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
 
 	return (scn);
 }
@@ -810,6 +874,9 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 	shdr->sh_name = DTELF_STMTDESC;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
 	shdr->sh_entsize = sizeof(dt_elf_stmt_t);
+	(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
 
 	return (scn);
 }
@@ -1034,6 +1101,9 @@ dt_elf_options(Elf *e)
 	shdr->sh_name = DTELF_OPTS;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
 	shdr->sh_entsize = 0;
+	(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
 
 	return (scn);
 }
@@ -1127,6 +1197,9 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	shdr->sh_name = DTELF_SHSTRTAB;
 	shdr->sh_flags = SHF_STRINGS;
 	shdr->sh_entsize = DTELF_VARIABLE_SIZE;
+	(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
 
 	/*
 	 * For extended numbering
@@ -1137,6 +1210,7 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 
 	s0hdr->sh_size = 0; /* Number of sections -- filled in later! */
 	s0hdr->sh_link = elf_ndxscn(scn); /* .shstrtab index */
+	(void) elf_flagshdr(elf_getscn(e, 0), ELF_C_SET, ELF_F_DIRTY);
 
 	/*
 	 * Second section gives us the necessary information about a DTrace
@@ -1171,6 +1245,9 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	shdr->sh_name = DTELF_PROG;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
 	shdr->sh_entsize = sizeof(dt_elf_prog_t);
+	(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
 
 	/*
 	 * Get the first stmt.
@@ -1213,6 +1290,8 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 		    e, elf_errmsg(-1));
 
 	s0hdr->sh_size = ehdr->e_shnum;
+	(void) elf_flagshdr(elf_getscn(e, 0), ELF_C_SET, ELF_F_DIRTY);
+
 	ehdr->e_shnum = 0;
 
 	phdr->p_type = PT_PHDR;
@@ -1220,6 +1299,7 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	phdr->p_filesz = gelf_fsize(e, ELF_T_PHDR, 1, EV_CURRENT);
 
 	(void) elf_flagphdr(e, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagehdr(e, ELF_C_SET, ELF_F_DIRTY);
 
 	if (elf_update(e, ELF_C_WRITE) < 0)
 		errx(EXIT_FAILURE, "elf_update(%p, ELF_C_WRITE) failed with %s",
