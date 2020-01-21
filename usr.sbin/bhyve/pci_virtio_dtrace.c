@@ -804,7 +804,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		d_script = (char *)malloc(sizeof(char) * to_read);
 		read = fread(d_script, 1, to_read - 1, reader_stream);
 		DPRINTF(("I've read %d", read));
-		
+
 		if (read != to_read)
 		{
 			printf("Failed reading script from the named pipe: %s", strerror(errno));
@@ -844,7 +844,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		// pthread_mutex_unlock(&sc->vsd_condmtx);
 
 		free(d_script);
-		// free(ctrl_entry);
+		free(ctrl_entry);
 		DPRINTF(("I've freed."))
 	}
 
