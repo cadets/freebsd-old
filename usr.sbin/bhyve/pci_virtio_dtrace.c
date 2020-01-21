@@ -802,7 +802,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 		d_script = (char *)malloc(sizeof(char) * to_read);
 		read = fread(d_script, 1, to_read - 1, reader_stream);
-		DPRINTF(("I've read %d", read));
+		DPRINTF(("I've read %d. \n", read));
 
 		if (read != to_read - 1)
 		{
@@ -817,7 +817,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 			unlink(fifo);
 		}
 
-		DPRINTF(("Success in getting the script: %s.\n", d_script));
+		DPRINTF(("Success in getting the script:\n%s.\n", d_script));
 
 		struct pci_vtdtr_ctrl_entry *ctrl_entry;
 		struct pci_vtdtr_control *ctrl;
@@ -826,7 +826,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		ctrl = &ctrl_entry->ctrl;
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
 		copied = strlcpy(ctrl->uctrl.script_ev.d_script, d_script, to_read);
-		DPRINTF(("I've copied %d", copied));
+		DPRINTF(("I've copied %d. \n", copied));
 		if(copied != to_read - 1) {
 			DPRINTF(("Failed copying script in control element: %s. \n", strerror(errno)));
 			exit(1);
@@ -845,11 +845,11 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 		free(d_script);
 		free(ctrl_entry);
-		DPRINTF(("I've freed."));
+		DPRINTF(("I've freed.\n"));
 	}
 
 	DPRINTF(("I've finished putting pieces of the script in the control queue."));
-	
+	exit(0);
 }
 
 /*
