@@ -432,7 +432,7 @@ pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
 {
 
 	STAILQ_INSERT_TAIL(&cq->head, ctrl_entry, entries);
-	DPRINTF(("Succes in enqueing: %s.\n",ctrl_entry->ctrl.uctrl.script_ev.d_script));
+	DPRINTF(("Succes in enqueing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script));
 }
 
 static __inline void
@@ -755,19 +755,20 @@ static void *pci_vtdtr_read_script(void *xsc)
 	int fd;
 	char *d_script;
 	char *content;
+	int copied;
 
 	sc = xsc;
 
 	mkfifo(fifo, 0666);
 	if ((fd = open(fifo, O_RDONLY)) == -1)
 	{
-		printf("Failed to open pipe: %s", strerror(errno));
+		DPRINTF(("Failed to open pipe: %s", strerror(errno)));
 		exit(1);
 	}
 	FILE *reader_stream;
 	if ((reader_stream = fdopen(fd, "r")) == NULL)
 	{
-		printf("Failed to open read stream: %s", strerror(errno));
+		DPRINTF(("Failed to open read stream: %s", strerror(errno)));
 		exit(1);
 	}
 
@@ -786,8 +787,8 @@ static void *pci_vtdtr_read_script(void *xsc)
 	int i = 0;
 
 	while (!done)
-	{ 
-		
+	{
+
 		if (script_length > 256)
 		{
 			to_read = 256;
@@ -801,14 +802,23 @@ static void *pci_vtdtr_read_script(void *xsc)
 		DPRINTF(("Iteration: %d. Done is: %d.\n", ++i, done));
 
 		d_script = (char *)malloc(sizeof(char) * to_read);
-		read = fread(d_script, sizeof(char), to_read, reader_stream);
-		if (read == -1)
+		read = fread(d_script, 1, to_read - 1, reader_stream);
+		DPRINTF(("I've read %d", read));
+		
+		if (read != to_read)
 		{
-			printf("Failed to write script to the named pipe: %s", strerror(errno));
+			printf("Failed reading script from the named pipe: %s", strerror(errno));
 			exit(1);
 		}
 
-		DPRINTF(("Success in getting the script.\n"));
+		if (done)
+		{
+			fclose(reader_stream);
+			close(fd);
+			unlink(fifo);
+		}
+
+		DPRINTF(("Success in getting the script: %s.\n", d_script));
 
 		struct pci_vtdtr_ctrl_entry *ctrl_entry;
 		struct pci_vtdtr_control *ctrl;
@@ -816,27 +826,30 @@ static void *pci_vtdtr_read_script(void *xsc)
 		assert(ctrl_entry != NULL);
 		ctrl = &ctrl_entry->ctrl;
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
-		strlcpy(ctrl->uctrl.script_ev.d_script, d_script, to_read + 1);
+		copied = strlcpy(ctrl->uctrl.script_ev.d_script, d_script, to_read);
+		DPRINTF(("I've copied %d", copied));
+		if(copied != to_read) {
+			printf("Failed copying script in control element: %s", strerror(errno));
+			exit(1);
+		}
+		DPRINTF(("Script in control element: %s.\n", ctrl->uctrl.script_ev.d_script));
 
-		DPRINTF(("Script in control element.\n"));
+		// pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+		// pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
+		// pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+		// DPRINTF(("I've enqueued successfully.\n"));
 
-		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
-		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-		DPRINTF(("I've enqueued.\n"));
-		
+		// pthread_mutex_lock(&sc->vsd_condmtx);
+		// pthread_cond_signal(&sc->vsd_cond);
+		// pthread_mutex_unlock(&sc->vsd_condmtx);
+
 		free(d_script);
-		free(ctrl_entry);
+		// free(ctrl_entry);
+		DPRINTF(("I've freed."))
 	}
+
 	DPRINTF(("I've finished putting pieces of the script in the control queue."));
-	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 	
-	pthread_mutex_lock(&sc->vsd_condmtx);
-	pthread_cond_signal(&sc->vsd_cond);
-	pthread_mutex_unlock(&sc->vsd_condmtx);
-	
-	// fclose(reader_stream);
-	// close(fd);
-	// unlink(fifo);
 }
 
 /*
