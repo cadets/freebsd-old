@@ -806,7 +806,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 		if (read != to_read - 1)
 		{
-			printf("Failed reading script from the named pipe: %s. \n", strerror(errno));
+			printf("Failed reading script from the named pipe:\n%s.\n", strerror(errno));
 			exit(1);
 		}
 
@@ -827,8 +827,9 @@ static void *pci_vtdtr_read_script(void *xsc)
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
 		copied = strlcpy(ctrl->uctrl.script_ev.d_script, d_script, to_read);
 		DPRINTF(("I've copied %d. \n", copied));
-		if(copied != to_read - 1) {
-			DPRINTF(("Failed copying script in control element: %s. \n", strerror(errno)));
+		if (copied != to_read - 1)
+		{
+			DPRINTF(("Failed copying script in control element:\n%s. \n", strerror(errno)));
 			exit(1);
 		}
 		DPRINTF(("Script in control element: %s.\n", ctrl->uctrl.script_ev.d_script));

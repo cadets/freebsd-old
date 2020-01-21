@@ -51,7 +51,6 @@ __FBSDID("$FreeBSD$");
 
 #include <cddl/dev/vtdtr/vtdtr.h>
 
-
 #include <machine/bus.h>
 #include <machine/resource.h>
 #include <sys/bus.h>
@@ -384,7 +383,7 @@ vtdtr_attach(device_t dev)
 				0, 0, NULL, "vtdtr_communicator");
 
 	/*dtrace_vtdtr_enable((void *)sc);*/
-fail: 
+fail:
 	if (error)
 		vtdtr_detach(dev);
 
@@ -651,13 +650,12 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	dev = sc->vtdtr_dev;
 	retval = 0;
 	error = 0;
-    
+
 	// #ifdef VTDTR
 	struct vtdtr_event *ev;
 	// #endif
 
 	int len;
-	
 
 	/*
 	 * XXX: Double switch statement... meh.
@@ -725,22 +723,21 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		}
 		break;
 	}
-	/*case VIRTIO_DTRACE_SCRIPT_EVENT:
+	case VIRTIO_DTRACE_SCRIPT_EVENT:
 		device_printf(dev, "I should be here.\n");
-		device_printf(dev,"Got %s.\n", ctrl->uctrl.script_ev.d_script);
-
+		device_printf(dev, "Got script:\n%s.\n", ctrl->uctrl.script_ev.d_script);
 		ev = malloc(sizeof(struct vtdtr_event), M_TEMP, M_ZERO);
-		KASSERT(ev != NULL, ("malloc event failed"));
-		
-		// do we have the lock on ctrl? do we care?
-		len = strlen(ctrl->uctrl.script_ev.d_script) + 1;
-		device_printf(dev, "Length of the script is %d. \n", len - 1);
+		KASSERT(ev != NULL, ("Malloc event failed.\n"));
+		d_script_length = strlen(ctrl->uctrl.script_ev.d_script);
+		device_printf(dev, "Length of the script is %d. \n", d_script_length);
 		ev->type = VTDTR_EV_SCRIPT;
-		strlcpy(ev->args.d_script.script, ctrl->uctrl.script_ev.d_script, len);
+		int copied = strlcpy(ev->args.d_script.script, ctrl->uctrl.script_ev.d_script, d_script_length);
+		if (copied != d_script_length)
+			device_printf(dev, "Error occured when copying script from control event. \n");
 		vtdtr_enqueue(ev);
-		device_printf(dev, "I've enqueued %s.\n", 
-		ev->args.d_script.script);
-		break;*/
+		device_printf(dev, "I've enqueued %s.\n",
+					  ev->args.d_script.script);
+		break;
 	case VIRTIO_DTRACE_GO:
 		sc->vtdtr_ready = 0;
 
@@ -1444,5 +1441,3 @@ vtdtr_advertise_probe_priv(void *xsc, const char *mod, const char *func,
 	cv_signal(&sc->vtdtr_condvar);
 	mtx_unlock(&sc->vtdtr_condmtx);
 }
-
-
