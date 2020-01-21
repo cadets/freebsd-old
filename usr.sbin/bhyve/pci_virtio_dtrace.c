@@ -762,23 +762,22 @@ static void *pci_vtdtr_read_script(void *xsc)
 	mkfifo(fifo, 0666);
 	if ((fd = open(fifo, O_RDONLY)) == -1)
 	{
-		DPRINTF(("Failed to open pipe: %s", strerror(errno)));
+		DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
 		exit(1);
 	}
+
 	FILE *reader_stream;
 	if ((reader_stream = fdopen(fd, "r")) == NULL)
 	{
-		DPRINTF(("Failed to open read stream: %s", strerror(errno)));
+		DPRINTF(("Failed opening read stream: %s. \n", strerror(errno)));
 		exit(1);
 	}
 
-	// TODO(MARA): make it listen for scripts indefinitely so it works more than once (maybe by creating this thread somewhere else)
-
 	long script_length;
 	int read = fread(&script_length, sizeof(long), 1, reader_stream);
-	if (read == -1)
+	if (read <= 0)
 	{
-		printf("Failed to write size of script to the named pipe: %s", strerror(errno));
+		printf("Failed reading size of script from the named pipe: %s. \n", strerror(errno));
 		exit(1);
 	}
 
@@ -805,9 +804,9 @@ static void *pci_vtdtr_read_script(void *xsc)
 		read = fread(d_script, 1, to_read - 1, reader_stream);
 		DPRINTF(("I've read %d", read));
 
-		if (read != to_read)
+		if (read != to_read - 1)
 		{
-			printf("Failed reading script from the named pipe: %s", strerror(errno));
+			printf("Failed reading script from the named pipe: %s. \n", strerror(errno));
 			exit(1);
 		}
 
@@ -828,8 +827,8 @@ static void *pci_vtdtr_read_script(void *xsc)
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
 		copied = strlcpy(ctrl->uctrl.script_ev.d_script, d_script, to_read);
 		DPRINTF(("I've copied %d", copied));
-		if(copied != to_read) {
-			printf("Failed copying script in control element: %s", strerror(errno));
+		if(copied != to_read - 1) {
+			DPRINTF(("Failed copying script in control element: %s. \n", strerror(errno)));
 			exit(1);
 		}
 		DPRINTF(("Script in control element: %s.\n", ctrl->uctrl.script_ev.d_script));
@@ -842,6 +841,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		// pthread_mutex_lock(&sc->vsd_condmtx);
 		// pthread_cond_signal(&sc->vsd_cond);
 		// pthread_mutex_unlock(&sc->vsd_condmtx);
+		//DPRINTF(("I've signaled there is stuff in the virtual queue"));
 
 		free(d_script);
 		free(ctrl_entry);
