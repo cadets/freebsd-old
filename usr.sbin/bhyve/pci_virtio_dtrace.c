@@ -833,23 +833,23 @@ static void *pci_vtdtr_read_script(void *xsc)
 		}
 		DPRINTF(("Script in control element: %s.\n", ctrl->uctrl.script_ev.d_script));
 
-		// pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
-		// pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-		// pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
-		// DPRINTF(("I've enqueued successfully.\n"));
+		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
+		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+		DPRINTF(("I've enqueued successfully.\n"));
 
-		// pthread_mutex_lock(&sc->vsd_condmtx);
-		// pthread_cond_signal(&sc->vsd_cond);
-		// pthread_mutex_unlock(&sc->vsd_condmtx);
-		//DPRINTF(("I've signaled there is stuff in the virtual queue"));
+		pthread_mutex_lock(&sc->vsd_condmtx);
+		pthread_cond_signal(&sc->vsd_cond);
+		pthread_mutex_unlock(&sc->vsd_condmtx);
+		DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
 
 		free(d_script);
 		free(ctrl_entry);
 		DPRINTF(("I've freed.\n"));
 	}
 
-	DPRINTF(("I've finished putting pieces of the script in the control queue."));
-	exit(0);
+	DPRINTF(("I've finished putting pieces of the script in the control queue.\n"));
+	pthread_exit(NULL);
 }
 
 /*
