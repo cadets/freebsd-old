@@ -839,15 +839,15 @@ static void *pci_vtdtr_read_script(void *xsc)
 		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 		DPRINTF(("I've enqueued successfully.\n"));
 
-		pthread_mutex_lock(&sc->vsd_condmtx);
-		pthread_cond_signal(&sc->vsd_cond);
-		pthread_mutex_unlock(&sc->vsd_condmtx);
-		DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
-
 		free(d_script);
 		free(ctrl_entry);
 		DPRINTF(("I've freed.\n"));
 	}
+
+	pthread_mutex_lock(&sc->vsd_condmtx);
+	pthread_cond_signal(&sc->vsd_cond);
+	pthread_mutex_unlock(&sc->vsd_condmtx);
+	DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
 
 	DPRINTF(("I've finished putting pieces of the script in the control queue.\n"));
 	pthread_exit(NULL);
