@@ -103,6 +103,8 @@ char sec_strtab[] =
 
 #define	DTELF_PROG_SECIDX	  2
 
+#define DTELF_BASESIZE		  8
+
 static dt_elf_state_t *dtelf_state;
 
 
@@ -221,7 +223,7 @@ dt_elf_new_inttab(Elf *e, dtrace_difo_t *difo)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		     scn, elf_errmsg(-1));
 
-	inttab = malloc(sizeof(uint64_t) * difo->dtdo_intlen);
+	inttab = malloc(DTELF_BASESIZE + sizeof(uint64_t) * difo->dtdo_intlen);
 	if (inttab == NULL)
 		errx(EXIT_FAILURE, "failed to malloc inttab");
 
@@ -288,9 +290,7 @@ dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		     scn, elf_errmsg(-1));
 
-	printf("strtab data = %p\n", data);
-
-	strtab = malloc(difo->dtdo_strlen);
+	strtab = malloc(DTELF_BASESIZE + difo->dtdo_strlen);
 	if (strtab == NULL)
 		errx(EXIT_FAILURE, "failed to malloc strtab");
 
@@ -307,7 +307,6 @@ dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo)
 	data->d_align = 1;
 	data->d_buf = strtab;
 	data->d_size = difo->dtdo_strlen;
-	printf("%s: data->d_size = %d\n", __func__, data->d_size);
 	data->d_type = ELF_T_BYTE;
 	data->d_version = EV_CURRENT;
 
@@ -322,16 +321,6 @@ dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo)
 	shdr->sh_name = DTELF_DIFOSTRTAB;
 	shdr->sh_flags = SHF_OS_NONCONFORMING; /* DTrace-specific */
 	shdr->sh_entsize = 0;
-
-	printf("%s: difo strtab print\n", __func__);
-	for (c = difo->dtdo_strtab; c < difo->dtdo_strtab + difo->dtdo_strlen; c++)
-		printf("%c", *c);
-	printf("\n");
-
-	printf("%s: normal strtab print\n", __func__);
-	for (c = strtab; c < strtab + difo->dtdo_strlen; c++)
-		printf("%c", *c);
-	printf("\n");
 
 	(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
 	(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
@@ -363,7 +352,7 @@ dt_elf_new_symtab(Elf *e, dtrace_difo_t *difo)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		     scn, elf_errmsg(-1));
 
-	symtab = malloc(difo->dtdo_symlen);
+	symtab = malloc(DTELF_BASESIZE + difo->dtdo_symlen);
 	if (symtab == NULL)
 		errx(EXIT_FAILURE, "failed to malloc symtab");
 
@@ -414,9 +403,8 @@ dt_elf_new_vartab(Elf *e, dtrace_difo_t *difo)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		     scn, elf_errmsg(-1));
 
-	printf("vartab data = %p\n", data);
-
-	vartab = malloc(sizeof(dtrace_difv_t) * difo->dtdo_varlen);
+	vartab = malloc(DTELF_BASESIZE +
+	    sizeof(dtrace_difv_t) * difo->dtdo_varlen);
 	if (vartab == NULL)
 		errx(EXIT_FAILURE, "failed to malloc vartab");
 
@@ -457,9 +445,9 @@ dt_elf_new_vartab(Elf *e, dtrace_difo_t *difo)
 static Elf_Scn *
 dt_elf_new_difo(Elf *e, dtrace_difo_t *difo)
 {
-	Elf_Scn *scn, *sscn;
+	Elf_Scn *scn;
 	Elf32_Shdr *shdr;
-	Elf_Data *data, *sdata;
+	Elf_Data *data;
 	uint64_t i;
 	dt_elf_difo_t *edifo;
 	char *c;
@@ -505,18 +493,6 @@ dt_elf_new_difo(Elf *e, dtrace_difo_t *difo)
 	edifo->dted_strtab = elf_ndxscn(dt_elf_new_strtab(e, difo));
 	edifo->dted_symtab = elf_ndxscn(dt_elf_new_symtab(e, difo));
 	edifo->dted_vartab = elf_ndxscn(dt_elf_new_vartab(e, difo));
-
-	if ((sscn = elf_getscn(e, edifo->dted_strtab)) == NULL)
-		errx(EXIT_FAILURE, "elf_getscn()failed with %s", elf_errmsg(-1));
-
-	if ((sdata = elf_getdata(sscn, NULL)) == NULL)
-		errx(EXIT_FAILURE, "elf_getdata() failed with %s", elf_errmsg(-1));
-
-	printf("%s: after getscn strtab print\n", __func__);
-	for (c = sdata->d_buf; c < sdata->d_buf + difo->dtdo_strlen; c++)
-		printf("%c", *c);
-	printf("\n");
-
 
 	/*
 	 * Fill in the rest of the fields.
@@ -607,33 +583,6 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad)
 		eact->dtea_difo = elf_ndxscn(dt_elf_new_difo(e, ad->dtad_difo));
 	} else
 		eact->dtea_difo = 0;
-
-	if (eact->dtea_difo) {
-		Elf_Scn *dscn, *sscn;
-		Elf_Data *ddata, *sdata;
-		dt_elf_difo_t *edifo;
-		char *c;
-
-		if ((dscn = elf_getscn(e, eact->dtea_difo)) == NULL)
-			errx(EXIT_FAILURE, "elf_getscn() failed with %s", elf_errmsg(-1));
-
-		if ((ddata = elf_getdata(dscn, NULL)) == NULL)
-			errx(EXIT_FAILURE, "elf_getdata() failed with %s", elf_errmsg(-1));
-
-		edifo = ddata->d_buf;
-
-		if ((sscn = elf_getscn(e, edifo->dted_strtab)) == NULL)
-			errx(EXIT_FAILURE, "elf_getscn()failed with %s", elf_errmsg(-1));
-
-		if ((sdata = elf_getdata(sscn, NULL)) == NULL)
-			errx(EXIT_FAILURE, "elf_getdata() failed with %s", elf_errmsg(-1));
-
-		printf("%s: normal strtab print\n", __func__);
-		for (c = sdata->d_buf; c < sdata->d_buf + edifo->dted_strlen; c++)
-			printf("%c", *c);
-		printf("\n");
-
-	}
 
 	/*
 	 * Fill in all of the simple struct members.
@@ -1333,8 +1282,6 @@ dt_elf_get_table(Elf *e, dt_elf_ref_t tabref)
 		    elf_errmsg(-1), __func__);
 
 	assert(data->d_buf != NULL);
-	printf("%s: data->d_size = %d\n", __func__, data->d_size);
-	printf("%s: data->d_off = %d\n", __func__, data->d_off);
 
 	if (data->d_size == 0)
 		return (NULL);
@@ -1400,12 +1347,6 @@ dt_elf_get_difo(Elf *e, dt_elf_ref_t diforef)
 
 	for (i = 0; i < edifo->dted_len; i++)
 		difo->dtdo_buf[i] = edifo->dted_buf[i];
-
-	printf("%s: strtab print\n", __func__);
-	for (c = difo->dtdo_strtab;
-	    c < difo->dtdo_strtab + difo->dtdo_strlen && c != NULL; c++)
-		printf("%c", *c);
-	printf("\n");
 
 	return (difo);
 }
@@ -1703,3 +1644,4 @@ dtrace_use_elf(dtrace_hdl_t *dtp)
 
 	dtp->dt_use_elf = 1;
 }
+
