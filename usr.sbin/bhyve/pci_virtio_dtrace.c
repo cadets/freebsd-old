@@ -845,7 +845,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 		free(d_script);
 		free(ctrl_entry);
-		DPRINTF(("I've freed."))
+		DPRINTF(("I've freed."));
 	}
 
 	DPRINTF(("I've finished putting pieces of the script in the control queue."));
