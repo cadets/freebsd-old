@@ -728,7 +728,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		device_printf(dev, "Got script:\n%s.\n", ctrl->uctrl.script_ev.d_script);
 		ev = malloc(sizeof(struct vtdtr_event), M_TEMP, M_ZERO);
 		KASSERT(ev != NULL, ("Malloc event failed.\n"));
-		d_script_length = strlen(ctrl->uctrl.script_ev.d_script);
+		int d_script_length = strlen(ctrl->uctrl.script_ev.d_script);
 		device_printf(dev, "Length of the script is %d. \n", d_script_length);
 		ev->type = VTDTR_EV_SCRIPT;
 		int copied = strlcpy(ev->args.d_script.script, ctrl->uctrl.script_ev.d_script, d_script_length);
