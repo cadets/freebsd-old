@@ -1567,7 +1567,7 @@ static void *write_script(void *file_path)
 	{
 		if (ferror(fp))
 		{
-			print("Error occured while reading script file: %s.\n", strerror(errno));
+			printf("Error occured while reading script file: %s.\n", strerror(errno));
 			exit(1);
 		}
 	}
