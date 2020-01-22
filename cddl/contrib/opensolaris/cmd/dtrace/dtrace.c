@@ -1565,7 +1565,7 @@ static void *write_script(void *file_path)
 	d_script = malloc(sizeof(char) * file_size);
 	if ((fread(d_script, sizeof(char), file_size, fp)) != file_size)
 	{
-		print("Error occured while reading script file: %s.\n", strerror(errno));
+		printf("Error occured while reading script file: %s.\n", strerror(errno));
 		exit(1);
 	}
 	fclose(fp);
