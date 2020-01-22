@@ -1562,8 +1562,8 @@ static void *write_script(void *file_path)
 	printf("Size of file is: %d. \n", file_size);
 	rewind(fp);
 
-	d_script = malloc(sizeof(char) * file_size);
-	if ((fread(d_script, sizeof(char), file_size - 1, fp)) != file_size - 1)
+	d_script = malloc(sizeof(char) * (file_size + 1));
+	if ((fread(d_script, sizeof(char), file_size, fp)) != file_size)
 	{
 		if (ferror(fp))
 		{
@@ -1577,7 +1577,9 @@ static void *write_script(void *file_path)
 	}
 	fclose(fp);
 
-	d_script[file_size] = '/0';
+	d_script[file_size + 1] = '/0';
+	printf("D script is: %s\n", d_script);
+
 	if ((fd = open(fifo, O_WRONLY)) == -1)
 	{
 		printf("Error occured while opening fifo: %s\n", strerror(errno));

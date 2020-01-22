@@ -788,18 +788,20 @@ static void *pci_vtdtr_read_script(void *xsc)
 		}
 		DPRINTF(("Iteration: %d. Done is: %d.\n", ++i, done));
 
-		d_script = (char *)malloc(sizeof(char) * fragment_length);
+		d_script = (char *)malloc(sizeof(char) * (fragment_length + 1));
 
-		if ((fread(d_script, 1, fragment_length - 1, reader_stream)) != fragment_length - 1)
+		if ((fread(d_script, sizeof(char), fragment_length, reader_stream)) != fragment_length)
 		{
 			if (ferror(reader_stream))
 			{
 				DPRINTF(("Failed reading script from the named pipe:\n%s.\n", strerror(errno)));
 				exit(1);
 			} else {
-				DPRINTF(("Something went wrong with reading the script, check sizes"));
+				DPRINTF(("Something went wrong with reading the script, check sizes.\n"));
+				exit(1);
 			}
 		}
+		d_script[fragment_length + 1] = '/0'
 
 		if (done)
 		{
@@ -816,8 +818,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		assert(ctrl_entry != NULL);
 		ctrl = &ctrl_entry->ctrl;
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
-		DPRINTF(("I've copied %d. \n", copied));
-		if (strlcpy(ctrl->uctrl.script_ev.d_script, d_script, fragment_length) != fragment_length - 1)
+		if (strlcpy(ctrl->uctrl.script_ev.d_script, d_script, fragment_length + 1) != fragment_length)
 		{
 			DPRINTF(("Failed copying script in control element:\n%s. \n", strerror(errno)));
 			exit(1);
