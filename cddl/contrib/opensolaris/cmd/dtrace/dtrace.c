@@ -1570,7 +1570,7 @@ static void *write_script(void *file_path)
 	}
 	fclose(fp);
 
-	d_script[file_size] = '/0';
+	d_script[file_size] = '\0';
 	if ((fd = open(fifo, O_WRONLY)) == -1)
 	{
 		printf("Error occured while opening fifo: %s\n", strerror(errno));
@@ -1583,7 +1583,7 @@ static void *write_script(void *file_path)
 		exit(1);
 	}
 
-	int sz = fwrite(&file_size, sizeof(long), 1, writer_stream);
+	sz = fwrite(&file_size, sizeof(long), 1, writer_stream);
 	if (sz <= 0)
 	{
 		printf("Failed to write size of script to the named pipe: %s", strerror(errno));
