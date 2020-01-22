@@ -750,14 +750,14 @@ pci_vtdtr_events(void *xsc)
 */
 static void *pci_vtdtr_read_script(void *xsc)
 {
+	FILE *reader_stream;
 	struct pci_vtdtr_softc *sc;
-	const char *fifo = "/tmp/fifo";
-	int fd;
-	char *d_script;
-	char *content;
-	int copied;
+	char *d_script, *fifo, *content;
+	long d_script_length;
+	int copied, done, fd, i, sz, fragment_length;
 
 	sc = xsc;
+	fifo = "/tmp/fifo";
 
 	mkfifo(fifo, 0666);
 	if ((fd = open(fifo, O_RDONLY)) == -1)
@@ -766,49 +766,46 @@ static void *pci_vtdtr_read_script(void *xsc)
 		exit(1);
 	}
 
-	FILE *reader_stream;
 	if ((reader_stream = fdopen(fd, "r")) == NULL)
 	{
 		DPRINTF(("Failed opening read stream: %s. \n", strerror(errno)));
 		exit(1);
 	}
 
-	long script_length;
-	int read = fread(&script_length, sizeof(long), 1, reader_stream);
-	if (read <= 0)
+	sz = fread(&d_script_length, sizeof(long), 1, reader_stream);
+	if (sz <= 0)
 	{
 		printf("Failed reading size of script from the named pipe: %s. \n", strerror(errno));
 		exit(1);
 	}
 
-	int done = 0;
-	int to_read;
-	int i = 0;
-
 	while (!done)
 	{
 
-		if (script_length > 256)
+		if (d_script_length > 256)
 		{
-			to_read = 256;
-			script_length -= to_read;
+			fragment_length = 256;
+			d_script_length -= fragment_length;
 		}
 		else
 		{
-			to_read = script_length;
+			fragment_length = d_script_length;
 			done = 1;
 		}
 		DPRINTF(("Iteration: %d. Done is: %d.\n", ++i, done));
 
-		d_script = (char *)malloc(sizeof(char) * to_read);
-		read = fread(d_script, 1, to_read - 1, reader_stream);
-		DPRINTF(("I've read %d. \n", read));
-
-		if (read != to_read - 1)
+		d_script = (char *)malloc(sizeof(char) * fragment_length);
+		if ((fread(d_script, 1, fragment_length - 1, reader_stream)) != fragment_length - 1)
 		{
-			printf("Failed reading script from the named pipe:\n%s.\n", strerror(errno));
+			DPRINTF(("Failed reading script from the named pipe.\n"));
+			if (ferror(reader_stream))
+			{
+				DPRINTF(("Error is:%s.\n", strerror(errno)));
+						}
+
 			exit(1);
 		}
+		d_script[fragment_length] = '\0';
 
 		if (done)
 		{
@@ -825,9 +822,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		assert(ctrl_entry != NULL);
 		ctrl = &ctrl_entry->ctrl;
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
-		copied = strlcpy(ctrl->uctrl.script_ev.d_script, d_script, to_read);
-		DPRINTF(("I've copied %d. \n", copied));
-		if (copied != to_read - 1)
+		if (strlcpy(ctrl->uctrl.script_ev.d_script, d_script, fragment_length) != fragment_length - 1)
 		{
 			DPRINTF(("Failed copying script in control element:\n%s. \n", strerror(errno)));
 			exit(1);
@@ -839,15 +834,15 @@ static void *pci_vtdtr_read_script(void *xsc)
 		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 		DPRINTF(("I've enqueued successfully.\n"));
 
+		pthread_mutex_lock(&sc->vsd_condmtx);
+		pthread_cond_signal(&sc->vsd_cond);
+		pthread_mutex_unlock(&sc->vsd_condmtx);
+		DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
+
 		free(d_script);
 		free(ctrl_entry);
 		DPRINTF(("I've freed.\n"));
 	}
-
-	pthread_mutex_lock(&sc->vsd_condmtx);
-	pthread_cond_signal(&sc->vsd_cond);
-	pthread_mutex_unlock(&sc->vsd_condmtx);
-	DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
 
 	DPRINTF(("I've finished putting pieces of the script in the control queue.\n"));
 	pthread_exit(NULL);
