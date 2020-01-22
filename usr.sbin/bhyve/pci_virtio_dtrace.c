@@ -750,65 +750,71 @@ pci_vtdtr_events(void *xsc)
 */
 static void *pci_vtdtr_read_script(void *xsc)
 {
-	FILE *reader_stream;
 	struct pci_vtdtr_softc *sc;
-	char *d_script, *fifo_path, *content;
-	long d_script_length;
-	int copied, done, fd, i, read, fragment_length;
+	const char *fifo = "/tmp/fifo";
+	int fd;
+	char *d_script;
+	char *content;
+	int copied;
 
 	sc = xsc;
-	fifo_path = "/tmp/fifo";
 
-	mkfifo(fifo_path, 0666);
-	if ((fd = open(fifo_path, O_RDONLY)) == -1)
+	mkfifo(fifo, 0666);
+	if ((fd = open(fifo, O_RDONLY)) == -1)
 	{
 		DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
 		exit(1);
 	}
 
+	FILE *reader_stream;
 	if ((reader_stream = fdopen(fd, "r")) == NULL)
 	{
 		DPRINTF(("Failed opening read stream: %s. \n", strerror(errno)));
 		exit(1);
 	}
 
-	fread(&d_script_length, sizeof(long), 1, reader_stream);
-	DPRINTF(("Size of script is: %d", d_script_length));
+	long script_length;
+	int read = fread(&script_length, sizeof(long), 1, reader_stream);
+	if (read <= 0)
+	{
+		printf("Failed reading size of script from the named pipe: %s. \n", strerror(errno));
+		exit(1);
+	}
+
+	int done = 0;
+	int to_read;
+	int i = 0;
 
 	while (!done)
 	{
-		if (d_script_length > 256)
+
+		if (script_length > 256)
 		{
-			fragment_length = 256;
-			d_script_length -= fragment_length;
+			to_read = 256;
+			script_length -= to_read;
 		}
 		else
 		{
-			fragment_length = d_script_length;
+			to_read = script_length;
 			done = 1;
 		}
 		DPRINTF(("Iteration: %d. Done is: %d.\n", ++i, done));
 
-		d_script = (char *)malloc(sizeof(char) * (fragment_length + 1));
-		int read;
-		if ((read = fread(d_script, sizeof(char), fragment_length, reader_stream)) != fragment_length)
+		d_script = (char *)malloc(sizeof(char) * to_read);
+		read = fread(d_script, 1, to_read - 1, reader_stream);
+		DPRINTF(("I've read %d. \n", read));
+
+		if (read != to_read - 1)
 		{
-			if (ferror(reader_stream))
-			{
-				DPRINTF(("Failed reading script from the named pipe:\n%s.\n", strerror(errno)));
-				exit(1);
-			} else {
-				DPRINTF(("Something went wrong with reading the script, check sizes: %d.\n", read));
-				exit(1);
-			}
+			printf("Failed reading script from the named pipe:\n%s.\n", strerror(errno));
+			exit(1);
 		}
-		d_script[fragment_length + 1] = '/0';
 
 		if (done)
 		{
 			fclose(reader_stream);
 			close(fd);
-			unlink(fifo_path);
+			unlink(fifo);
 		}
 
 		DPRINTF(("Success in getting the script:\n%s.\n", d_script));
@@ -819,7 +825,9 @@ static void *pci_vtdtr_read_script(void *xsc)
 		assert(ctrl_entry != NULL);
 		ctrl = &ctrl_entry->ctrl;
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
-		if (strlcpy(ctrl->uctrl.script_ev.d_script, d_script, fragment_length + 1) != fragment_length)
+		copied = strlcpy(ctrl->uctrl.script_ev.d_script, d_script, to_read);
+		DPRINTF(("I've copied %d. \n", copied));
+		if (copied != to_read - 1)
 		{
 			DPRINTF(("Failed copying script in control element:\n%s. \n", strerror(errno)));
 			exit(1);
@@ -831,7 +839,6 @@ static void *pci_vtdtr_read_script(void *xsc)
 		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 		DPRINTF(("I've enqueued successfully.\n"));
 
-		/* TODO: figure out what's wrong here */
 		pthread_mutex_lock(&sc->vsd_condmtx);
 		pthread_cond_signal(&sc->vsd_cond);
 		pthread_mutex_unlock(&sc->vsd_condmtx);
