@@ -1535,76 +1535,60 @@ filter_machines(char *filt)
 static void *write_script(void *file_path)
 {
 
-	FILE *fp, *writer_stream;
-	char *d_script, *fifo;
+	char *path = (char *)file_path;
+	FILE *fp;
+	char *d_script;
+	const char *fifo = "/tmp/fifo";
+	int fd;
+
+	if ((fp = fopen(path, "r")) == NULL)
+	{
+		printf("%s\n", strerror(errno));
+	}
+
 	long file_size;
-	int fd, wrote;
-
-	fifo = "/tmp/fifo";
-
-	if ((fp = fopen((char *)file_path, "r")) == NULL)
-	{
-		printf("Error occudred while opening script file: %s\n", strerror(errno));
-	}
-
-	if (fseek(fp, 0L, SEEK_END) == -1)
-	{
-		printf("Error occured in fseek: %s", strerror(errno));
-		exit(1);
-	}
-
-	if ((file_size = ftell(fp)) == -1)
-	{
-		printf("Error occured in ftell: %s", strerror(errno));
-		exit(1);
-	}
-
+	fseek(fp, 0L, SEEK_END);
+	file_size = ftell(fp);
 	printf("Size of file is: %d. \n", file_size);
 	rewind(fp);
 
-	d_script = malloc(sizeof(char) * (file_size + 1));
-	if ((fread(d_script, sizeof(char), file_size, fp)) != file_size)
+	d_script = malloc(sizeof(char) * file_size);
+	if ((fread(d_script, sizeof(char), file_size, fp)) == NULL)
 	{
-		if (ferror(fp))
-		{
-			printf("Error occured while reading script file: %s.\n", strerror(errno));
-			exit(1);
-		} else 
-		{
-			printf("Something went wrong with reading the script, check sizes. \n");
-			exit(1);
-		}
+		printf("%s\n", strerror(errno));
 	}
 	fclose(fp);
 
-	d_script[file_size + 1] = '/0';
-	printf("D script is: %s\n", d_script);
+	d_script[file_size] = '/0';
 
 	if ((fd = open(fifo, O_WRONLY)) == -1)
 	{
-		printf("Error occured while opening fifo: %s\n", strerror(errno));
+		printf("%s\n", strerror(errno));
 		exit(1);
 	}
 
-	if ((writer_stream = fdopen(fd, "w")) == NULL)
+	FILE *writer_stream;
+	if((writer_stream = fdopen(fd,"w")) == NULL)
 	{
 		printf("Failed to open write stream: %s", strerror(errno));
 		exit(1);
 	}
-	fwrite(&file_size, sizeof(long), 1, writer_stream);
 
-	if (fwrite(d_script, sizeof(char), file_size, writer_stream) != file_size)
+	int wrote = fwrite(&file_size,sizeof(long),1,writer_stream);
+	if(wrote == -1)
 	{
-		if (ferror(writer_stream))
-		{
-			printf("Failed to write size of script to the named pipe: %s. \n", strerror(errno));
-			exit(1);
-		} else {
-			printf("Something went wrong with writing the script, check sizes. \n");
-			exit(1);
-		}
+		printf("Failed to write size of script to the named pipe: %s", strerror(errno));
+		exit(1);
 	}
+	wrote = fwrite(d_script, sizeof(char), file_size - 1, writer_stream);
+	if(wrote == -1)
+	{
+		printf("Failed to write script to the named pipe: %s", strerror(errno));
+		exit(1);
+	}
+	fflush(writer_stream);
 
+	
 	free(d_script);
 	close(fd);
 	fclose(writer_stream);

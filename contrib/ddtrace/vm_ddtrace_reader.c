@@ -58,10 +58,9 @@ int execute_script(char *file_path, FILE *log_fp)
 {
 
     FILE *fp;
+    int done = 0, err, ret = 0, script_argc = 1;
     static dtrace_hdl_t *dtp;
     char **script_argv;
-    int done = 0, err, ret = 0, script_argc = 1;
-
 
     // We are just dealing with a file (for now)
     script_argv = malloc(sizeof(char *) * script_argc);
@@ -135,6 +134,8 @@ int execute_script(char *file_path, FILE *log_fp)
     fprintf(log_fp, "All good. :)\n");
     fflush(fp);
 
+    // print??
+
 destroy_dtrace:
     fprintf(log_fp, "Closing DTrace\n");
     fflush(log_fp);
@@ -152,7 +153,9 @@ int main(int argc, char **argv)
     int fd;
     int script_len;
     char *script;
-    FILE *log_fp, *script_fp;
+
+    FILE *log_fp;
+    FILE *script_fp;
 
     // TODO(MARA): syslog in the VM is not working so have a custom one for now
     if ((log_fp = fopen("/tmp/log.txt", "w+")) == NULL)
@@ -250,6 +253,9 @@ int main(int argc, char **argv)
         exit(1);
     }
 
+    free(script);
+    free(ev);
+
     fprintf(log_fp, "Execute script.. \n");
     fflush(log_fp);
 
@@ -258,11 +264,8 @@ int main(int argc, char **argv)
         fprintf(log_fp, "Error occured while trying to execute the script. \n");
     }
 
-    free(script);
-    free(ev);
-
     fprintf(log_fp, "Closing log file. \n");
+    fflush(log_fp);
     fclose(log_fp);
-
     return 0;
 }
