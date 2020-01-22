@@ -1565,6 +1565,7 @@ static void *write_script(void *file_path)
 	d_script = malloc(sizeof(char) * file_size);
 	if ((fread(d_script, sizeof(char), file_size - 1, fp)) != file_size - 1)
 	{
+		printf("Something went wrong with reading.")
 		if (ferror(fp))
 		{
 			printf("Error occured while reading script file: %s.\n", strerror(errno));
@@ -1588,18 +1589,20 @@ static void *write_script(void *file_path)
 
 	if ((fwrite(&file_size, sizeof(long), 1, writer_stream)) != sizeof(long))
 	{
+		printf("Something went wrong with writing");
 		if (ferror(writer_stream))
 		{
-			printf("Failed to write size of script to the named pipe: %s", strerror(errno));
+			printf("Failed to write size of script to the named pipe: %s. \n", strerror(errno));
 			exit(1);
 		}
 	}
 
-	if (fwrite(d_script, 1, file_size, writer_stream) != file_size)
+	if (fwrite(d_script, sizeof(char), file_size, writer_stream) != file_size)
 	{
+		printf("Something went wrong when writing. \n");
 		if (ferror(writer_stream))
 		{
-			printf("Failed to write size of script to the named pipe: %s", strerror(errno));
+			printf("Failed to write size of script to the named pipe: %s. \n", strerror(errno));
 			exit(1);
 		}
 	}
