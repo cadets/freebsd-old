@@ -801,7 +801,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 				exit(1);
 			}
 		}
-		d_script[fragment_length + 1] = '/0'
+		d_script[fragment_length + 1] = '/0';
 
 		if (done)
 		{
