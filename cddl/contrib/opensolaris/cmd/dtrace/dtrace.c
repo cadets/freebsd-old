@@ -1553,7 +1553,7 @@ static void *write_script(void *file_path)
 		exit(1);
 	}
 
-	if((file_size = ftell(fp)) == -1)
+	if ((file_size = ftell(fp)) == -1)
 	{
 		printf("Error occured in ftell: %s", strerror(errno));
 		exit(1);
@@ -1565,10 +1565,13 @@ static void *write_script(void *file_path)
 	d_script = malloc(sizeof(char) * file_size);
 	if ((fread(d_script, sizeof(char), file_size - 1, fp)) != file_size - 1)
 	{
-		printf("Something went wrong with reading.");
 		if (ferror(fp))
 		{
 			printf("Error occured while reading script file: %s.\n", strerror(errno));
+			exit(1);
+		} else 
+		{
+			printf("Something went wrong with reading the script, check sizes. \n");
 			exit(1);
 		}
 	}
@@ -1586,23 +1589,16 @@ static void *write_script(void *file_path)
 		printf("Failed to open write stream: %s", strerror(errno));
 		exit(1);
 	}
+	fwrite(&file_size, sizeof(long), 1, writer_stream);
 
-	if ((fwrite(&file_size, sizeof(long), 1, writer_stream)) != sizeof(long))
+	if (fwrite(d_script, sizeof(char), file_size, writer_stream) != file_size)
 	{
-		printf("Something went wrong with writing");
 		if (ferror(writer_stream))
 		{
 			printf("Failed to write size of script to the named pipe: %s. \n", strerror(errno));
 			exit(1);
-		}
-	}
-
-	if (fwrite(d_script, sizeof(char), file_size, writer_stream) != file_size)
-	{
-		printf("Something went wrong when writing. \n");
-		if (ferror(writer_stream))
-		{
-			printf("Failed to write size of script to the named pipe: %s. \n", strerror(errno));
+		} else {
+			printf("Something went wrong with writing the script, check sizes. \n");
 			exit(1);
 		}
 	}

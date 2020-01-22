@@ -772,14 +772,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		exit(1);
 	}
 
-	if ((fread(&d_script_length, sizeof(long), 1, reader_stream)) != sizeof(long))
-	{	DPRINTF(("Size wasn't read."));
-		if (ferror(reader_stream))
-		{
-			printf("Failed reading size of script from the named pipe: %s. \n", strerror(errno));
-			exit(1);
-		}
-	}
+	fread(&d_script_length, sizeof(long), 1, reader_stream);
 
 	while (!done)
 	{
@@ -799,11 +792,12 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 		if ((fread(d_script, 1, fragment_length - 1, reader_stream)) != fragment_length - 1)
 		{
-			DPRINTF(("Script wasn't read"));
 			if (ferror(reader_stream))
 			{
-				printf("Failed reading script from the named pipe:\n%s.\n", strerror(errno));
+				DPRINTF(("Failed reading script from the named pipe:\n%s.\n", strerror(errno)));
 				exit(1);
+			} else {
+				DPRINTF(("Something went wrong with reading the script, check sizes"));
 			}
 		}
 
