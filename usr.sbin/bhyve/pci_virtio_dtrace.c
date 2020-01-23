@@ -756,10 +756,12 @@ pci_vtdtr_events(void *xsc)
 static void *pci_vtdtr_listen(void *xsc)
 {
 	struct pci_vtdtr_reader_args *args;
+	struct pci_vtdtr_softc *sc;
 	pthread_t reader;
 	char *fifo;
 	int error, fd;
 
+	sc = xsc;
 	fifo = "/tmp/fifo";
 
 	for (;;)
@@ -772,7 +774,7 @@ static void *pci_vtdtr_listen(void *xsc)
 		}
 
 		args = malloc(sizeof(struct pci_vtdtr_reader_args));
-		args->sc = xsc;
+		args->sc = sc;
 		args->fd = fd;
 
 		error = pthread_create(&reader, NULL, pci_vtdtr_read_script, (void *)args);
@@ -790,14 +792,16 @@ static void *pci_vtdtr_listen(void *xsc)
 	Reads scripts provided by the user from the named pipe and puts it in the
 	control queue.
 */
-static void *pci_vtdtr_read_script(void *args)
+static void *pci_vtdtr_read_script(void *xargs)
 {
 	FILE *reader_stream;
 	struct pci_vtdtr_softc *sc;
+	struct pci_vtdtr_reader_args args;
 	char *d_script, *fifo, *content;
 	long d_script_length;
 	int copied, done, fd, i, sz, fragment_length;
 
+	args = xargs;
 	sc = args->sc;
 	fd = args->fd;
 	fifo = "/tmp/fifo";
@@ -814,7 +818,7 @@ static void *pci_vtdtr_read_script(void *args)
 		printf("Failed reading size of script from the named pipe: %s. \n", strerror(errno));
 		exit(1);
 	}
-	DPRINTF(("Size of script is: %d. \n", d_script_length));
+	DPRINTF(("Size of script is: %ld. \n", d_script_length));
 
 	while (!done)
 	{
