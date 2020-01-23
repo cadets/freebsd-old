@@ -782,7 +782,7 @@ static void *pci_vtdtr_listen(void *xsc)
 		error = pthread_join(reader, NULL);
 		assert(error == 0);
 
-		free(args);
+		// free(args);
 		close(fd);
 		unlink(fifo);
 	// }
@@ -880,7 +880,7 @@ static void *pci_vtdtr_read_script(void *xargs)
 		DPRINTF(("I've freed.\n"));
 	}
 
-	free(ctrl_entry);
+	// free(ctrl_entry);
 	fclose(reader_stream);
 	DPRINTF(("I've finished putting pieces of the script in the control queue.\n"));
 	pthread_exit(NULL);
