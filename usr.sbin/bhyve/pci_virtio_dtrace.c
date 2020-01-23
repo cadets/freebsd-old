@@ -176,7 +176,7 @@ struct pci_vtdtr_softc
 
 struct pci_vtdtr_reader_args
 {
-	struct pci_vtdtr_softc sc;
+	struct pci_vtdtr_softc *sc;
 	int fd;
 };
 
@@ -796,7 +796,7 @@ static void *pci_vtdtr_read_script(void *xargs)
 {
 	FILE *reader_stream;
 	struct pci_vtdtr_softc *sc;
-	struct pci_vtdtr_reader_args args;
+	struct pci_vtdtr_reader_args *args;
 	char *d_script, *fifo, *content;
 	long d_script_length;
 	int copied, done, fd, i, sz, fragment_length;
