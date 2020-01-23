@@ -764,9 +764,9 @@ static void *pci_vtdtr_listen(void *xsc)
 	sc = xsc;
 	fifo = "/tmp/fifo";
 
-	// Fix this: for (;;)
-	// {
-		mkfifo(fifo, 0666);
+	for (;;)
+	{
+		//	mkfifo(fifo, 0666);
 		if ((fd = open(fifo, O_RDONLY)) == -1)
 		{
 			DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
@@ -785,7 +785,7 @@ static void *pci_vtdtr_listen(void *xsc)
 		// free(args);
 		close(fd);
 		unlink(fifo);
-	// }
+	}
 }
 
 /**
