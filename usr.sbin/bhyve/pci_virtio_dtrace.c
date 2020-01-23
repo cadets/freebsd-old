@@ -764,8 +764,8 @@ static void *pci_vtdtr_listen(void *xsc)
 	sc = xsc;
 	fifo = "/tmp/fifo";
 
-	for (;;)
-	{
+	// * for (;;)
+	// {
 		mkfifo(fifo, 0666);
 		if ((fd = open(fifo, O_RDONLY)) == -1)
 		{
@@ -785,7 +785,7 @@ static void *pci_vtdtr_listen(void *xsc)
 		free(args);
 		close(fd);
 		unlink(fifo);
-	}
+	// }
 }
 
 /**
