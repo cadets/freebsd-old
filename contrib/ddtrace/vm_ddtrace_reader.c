@@ -52,15 +52,13 @@ __FBSDID("$FreeBSD$");
 #include <dtrace.h>
 #include <vtdtr.h>
 
-// TODO(MARA): turn options into pragma, ignore for now, assume we have
-// script in file
 int execute_script(char *file_path, FILE *log_fp)
 {
 
     FILE *fp;
-    int done = 0, err, ret = 0, script_argc = 1;
     static dtrace_hdl_t *dtp;
     char **script_argv;
+    int done = 0, err, ret = 0, script_argc = 1;
 
     // We are just dealing with a file (for now)
     script_argv = malloc(sizeof(char *) * script_argc);
@@ -103,12 +101,12 @@ int execute_script(char *file_path, FILE *log_fp)
         goto destroy_dtrace;
     }
 
-    fprintf(log_fp, "Dtrace program successfully compiled \n");
+    fprintf(log_fp, "Dtrace program successfully compiled.\n");
     fflush(fp);
 
     if (dtrace_program_exec(dtp, prog, &info) == -1)
     {
-        fprintf(log_fp, "Failed to enable DTrace probes: %s \n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+        fprintf(log_fp, "Failed to enable DTrace probes: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         fflush(fp);
         ret = -1;
         goto destroy_dtrace;
@@ -125,16 +123,14 @@ int execute_script(char *file_path, FILE *log_fp)
 
     /*if(dtrace_printf_create(dtp, NULL) == -1)
     {
-        fprintf(log_fp, "Failed to print stuff: %s", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+        fprintf(log_fp, "Failed to print trace data: %s", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         fflush(fp);
         ret = -1;
         goto destroy_dtrace;
     }*/
 
-    fprintf(log_fp, "All good. :)\n");
+    fprintf(log_fp, "All good.\n");
     fflush(fp);
-
-    // print??
 
 destroy_dtrace:
     fprintf(log_fp, "Closing DTrace\n");
@@ -145,9 +141,10 @@ destroy_dtrace:
     return ret;
 }
 
-// TODO(MARA): Cleanup after this works
-// TODO(MARA): Figure out why syslogd doesn't work in the virtual machine. Is
-// syslogd the best option? Alternative is implementing better custom logging.
+/* TODO(MARA): Figure out why syslogd doesn't work in the virtual machine. Is
+syslogd the best option? Alternative is implementing better custom logging.
+*/
+
 int main(int argc, char **argv)
 {
     int fd;
@@ -157,10 +154,9 @@ int main(int argc, char **argv)
     FILE *log_fp;
     FILE *script_fp;
 
-    // TODO(MARA): syslog in the VM is not working so have a custom one for now
     if ((log_fp = fopen("/tmp/log.txt", "w+")) == NULL)
     {
-        printf("Error opening file: %s \n", strerror(errno));
+        printf("Error opening log file: %s \n", strerror(errno));
     }
 
     fprintf(log_fp, "In vm_ddtrace_reader.. \n");
@@ -220,13 +216,13 @@ int main(int argc, char **argv)
 
     close(fd);
 
-    int len = strlen(ev->args.d_script.script) + 1;
-    fprintf(log_fp, "Length of the script is %d. \n", len - 1);
+    int d_script_length = strlen(ev->args.d_script.script + 1);
+    fprintf(log_fp, "Length of the script is %d. \n", d_script_length - 1);
     fflush(log_fp);
-    script = (char *)malloc(sizeof(char) * len);
+    script = (char *)malloc(sizeof(char) * d_script_length);
 
-    strlcpy(script, ev->args.d_script.script, len);
-    script[len] = '\0';
+    strlcpy(script, ev->args.d_script.script, d_script_length);
+    script[d_script_length] = '\0';
     fprintf(log_fp, "Copied script %s \n.", script);
     fflush(log_fp);
 
@@ -239,7 +235,7 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    if (fwrite(script, sizeof(char), len - 1, script_fp) != len - 1)
+    if (fwrite(script, sizeof(char), d_script_length - 1, script_fp) != d_script_length - 1)
     {
         fprintf(log_fp, "Haven't written the entire script to file - stop. \n");
         fflush(log_fp);
@@ -248,7 +244,7 @@ int main(int argc, char **argv)
 
     if (ferror(script_fp))
     {
-        fprintf(log_fp, "Error occured while writing in the script file. \n");
+        fprintf(log_fp, "Error occured while writing in the script file: %s. \n", strerror(errno));
         fflush(log_fp);
         exit(1);
     }
