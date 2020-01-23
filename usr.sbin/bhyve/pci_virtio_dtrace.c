@@ -756,7 +756,7 @@ pci_vtdtr_events(void *xsc)
 static void *pci_vtdtr_listen(void *xsc)
 {
 	struct pci_vtdtr_reader_args *args;
-	struct pci_vtdtr_softc *sc;
+	struct pci_vtdtr_softc *s
 	pthread_t reader;
 	char *fifo;
 	int error, fd;
@@ -764,7 +764,7 @@ static void *pci_vtdtr_listen(void *xsc)
 	sc = xsc;
 	fifo = "/tmp/fifo";
 
-	// * for (;;)
+	// Fix this: for (;;)
 	// {
 		mkfifo(fifo, 0666);
 		if ((fd = open(fifo, O_RDONLY)) == -1)
@@ -795,6 +795,8 @@ static void *pci_vtdtr_listen(void *xsc)
 static void *pci_vtdtr_read_script(void *xargs)
 {
 	FILE *reader_stream;
+	struct pci_vtdtr_ctrl_entry *ctrl_entry;
+	struct pci_vtdtr_control *ctrl;
 	struct pci_vtdtr_softc *sc;
 	struct pci_vtdtr_reader_args *args;
 	char *d_script, *fifo, *content;
@@ -805,6 +807,9 @@ static void *pci_vtdtr_read_script(void *xargs)
 	sc = args->sc;
 	fd = args->fd;
 	fifo = "/tmp/fifo";
+
+	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+	assert(ctrl_entry != NULL);
 
 	if ((reader_stream = fdopen(fd, "r")) == NULL)
 	{
@@ -836,6 +841,8 @@ static void *pci_vtdtr_read_script(void *xargs)
 		DPRINTF(("Iteration: %d. Done is: %d.\n", ++i, done));
 
 		d_script = (char *)malloc(sizeof(char) * fragment_length);
+		assert(d_script != NULL);
+		
 		if ((fread(d_script, 1, fragment_length - 1, reader_stream)) != fragment_length - 1)
 		{
 			DPRINTF(("Failed reading script from the named pipe.\n"));
@@ -850,10 +857,6 @@ static void *pci_vtdtr_read_script(void *xargs)
 
 		DPRINTF(("Success in getting the script:\n%s.\n", d_script));
 
-		struct pci_vtdtr_ctrl_entry *ctrl_entry;
-		struct pci_vtdtr_control *ctrl;
-		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
-		assert(ctrl_entry != NULL);
 		ctrl = &ctrl_entry->ctrl;
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
 		if (strlcpy(ctrl->uctrl.script_ev.d_script, d_script, fragment_length) != fragment_length - 1)
@@ -874,10 +877,10 @@ static void *pci_vtdtr_read_script(void *xargs)
 		DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
 
 		free(d_script);
-		free(ctrl_entry);
 		DPRINTF(("I've freed.\n"));
 	}
 
+	free(ctrl_entry);
 	fclose(reader_stream);
 	DPRINTF(("I've finished putting pieces of the script in the control queue.\n"));
 	pthread_exit(NULL);
