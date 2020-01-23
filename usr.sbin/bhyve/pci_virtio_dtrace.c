@@ -756,7 +756,7 @@ pci_vtdtr_events(void *xsc)
 static void *pci_vtdtr_listen(void *xsc)
 {
 	struct pci_vtdtr_reader_args *args;
-	struct pci_vtdtr_softc *s
+	struct pci_vtdtr_softc *sc;
 	pthread_t reader;
 	char *fifo;
 	int error, fd;
@@ -842,7 +842,7 @@ static void *pci_vtdtr_read_script(void *xargs)
 
 		d_script = (char *)malloc(sizeof(char) * fragment_length);
 		assert(d_script != NULL);
-		
+
 		if ((fread(d_script, 1, fragment_length - 1, reader_stream)) != fragment_length - 1)
 		{
 			DPRINTF(("Failed reading script from the named pipe.\n"));
