@@ -794,7 +794,7 @@ static void *pci_vtdtr_listen(void *xsc)
 		// close(fd);
 	    //	unlink(fifo);
 	// }
-	pthread_exit(NULL);
+	// pthread_exit(NULL);
 }
 
 /**
@@ -839,9 +839,9 @@ static void *pci_vtdtr_read_script(void *xargs)
 	while (!done)
 	{
 
-		if (d_script_length > 256)
+		if (d_script_length > 20)
 		{
-			fragment_length = 256;
+			fragment_length = 20;
 			d_script_length -= fragment_length;
 		}
 		else
