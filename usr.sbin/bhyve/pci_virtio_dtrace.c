@@ -177,7 +177,7 @@ struct pci_vtdtr_softc
 struct pci_vtdtr_reader_args
 {
 	struct pci_vtdtr_softc *sc;
-	int fd;
+	int file_desc;
 };
 
 static void pci_vtdtr_reset(void *);
@@ -465,6 +465,7 @@ pci_vtdtr_cq_dequeue(struct pci_vtdtr_ctrlq *cq)
 	{
 		STAILQ_REMOVE_HEAD(&cq->head, entries);
 	}
+	DPRINTF(("Succes in dequeing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script));
 
 	return (ctrl_entry);
 }
@@ -585,6 +586,8 @@ pci_vtdtr_run(void *xsc)
 		while (vq_has_descs(vq) && !pci_vtdtr_cq_empty(sc->vsd_ctrlq))
 		{
 			ctrl_entry = pci_vtdtr_cq_dequeue(sc->vsd_ctrlq);
+			DPRINTF(("Result of actually calling dequeueing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script));
+
 			error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 			assert(error == 0);
 
@@ -759,7 +762,7 @@ static void *pci_vtdtr_listen(void *xsc)
 	struct pci_vtdtr_softc *sc;
 	pthread_t reader;
 	char *fifo;
-	int error, fd;
+	int error;
 
 	sc = xsc;
 	fifo = "/tmp/fifo";
@@ -767,15 +770,16 @@ static void *pci_vtdtr_listen(void *xsc)
 	for (;;)
 	{
 		//	mkfifo(fifo, 0666);
+		/**
 		if ((fd = open(fifo, O_RDONLY)) == -1)
 		{
 			DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
 			exit(1);
 		}
-
-		args = malloc(sizeof(struct pci_vtdtr_reader_args));
+		*/
+ 		args = malloc(sizeof(struct pci_vtdtr_reader_args));
 		args->sc = sc;
-		args->fd = fd;
+		args->file_desc = fd;
 
 		error = pthread_create(&reader, NULL, pci_vtdtr_read_script, (void *)args);
 		assert(error == 0);
@@ -783,8 +787,8 @@ static void *pci_vtdtr_listen(void *xsc)
 		assert(error == 0);
 
 		// free(args);
-		close(fd);
-		unlink(fifo);
+		// close(fd);
+	    //	unlink(fifo);
 	}
 }
 
@@ -801,17 +805,19 @@ static void *pci_vtdtr_read_script(void *xargs)
 	struct pci_vtdtr_reader_args *args;
 	char *d_script, *fifo, *content;
 	long d_script_length;
-	int copied, done, fd, i, sz, fragment_length;
+	int copied, done, file_desc, i, sz, fragment_length;
 
 	args = xargs;
 	sc = args->sc;
-	fd = args->fd;
+	file_desc = args->file_desc;
 	fifo = "/tmp/fifo";
 
 	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
 	assert(ctrl_entry != NULL);
+	d_script = (char *)malloc(sizeof(char) * fragment_length);
+	assert(d_script != NULL);
 
-	if ((reader_stream = fdopen(fd, "r")) == NULL)
+	if ((reader_stream = fdopen(file_desc, "r")) == NULL)
 	{
 		DPRINTF(("Failed opening read stream: %s. \n", strerror(errno)));
 		exit(1);
@@ -839,9 +845,6 @@ static void *pci_vtdtr_read_script(void *xargs)
 			done = 1;
 		}
 		DPRINTF(("Iteration: %d. Done is: %d.\n", ++i, done));
-
-		d_script = (char *)malloc(sizeof(char) * fragment_length);
-		assert(d_script != NULL);
 
 		if ((fread(d_script, 1, fragment_length - 1, reader_stream)) != fragment_length - 1)
 		{
@@ -876,7 +879,7 @@ static void *pci_vtdtr_read_script(void *xargs)
 		pthread_mutex_unlock(&sc->vsd_condmtx);
 		DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
 
-		free(d_script);
+		// free(d_script);
 		DPRINTF(("I've freed.\n"));
 	}
 

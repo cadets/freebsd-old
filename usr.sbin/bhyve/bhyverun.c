@@ -1186,8 +1186,14 @@ int main(int argc, char *argv[])
 #ifndef VTDTR
 	if (trace)
 	{
+		char *fifo = "/tmp/fifo"
 		dthyve_init(vmname);
-		mkfifo("/tmp/fifo", 0666);
+		mkfifo(fifo, 0666);
+		if((fd =  open(fifo, O_RDONLY)) == -1)
+		{
+			fprintf(stderr, "Failed opening fifo: %s", strerror(errno));
+		}
+
 	}
 #endif
 
