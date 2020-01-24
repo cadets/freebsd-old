@@ -777,6 +777,10 @@ static void *pci_vtdtr_listen(void *xsc)
 			exit(1);
 		}
 		*/
+
+		// internal note: I might need to open the stream
+		// in the hypervisor as well
+		
  		args = malloc(sizeof(struct pci_vtdtr_reader_args));
 		args->sc = sc;
 		args->file_desc = fd;

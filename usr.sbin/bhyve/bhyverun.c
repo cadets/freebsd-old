@@ -32,6 +32,7 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/types.h>
+#include <sys/stat.h>
 #ifndef WITHOUT_CAPSICUM
 #include <sys/capsicum.h>
 #endif
@@ -47,6 +48,7 @@ __FBSDID("$FreeBSD$");
 #include <capsicum_helpers.h>
 #endif
 #include <stdio.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
 #include <err.h>
@@ -1186,7 +1188,7 @@ int main(int argc, char *argv[])
 #ifndef VTDTR
 	if (trace)
 	{
-		char *fifo = "/tmp/fifo"
+		char *fifo = "/tmp/fifo";
 		dthyve_init(vmname);
 		mkfifo(fifo, 0666);
 		if((fd =  open(fifo, O_RDONLY)) == -1)
