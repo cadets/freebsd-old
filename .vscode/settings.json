@@ -33,6 +33,7 @@
         "syslog.h": "c",
         "capsicum.h": "c",
         "gdb.h": "c",
-        "*.def": "c"
+        "*.def": "c",
+        "bhyverun.h": "c"
     }
 }

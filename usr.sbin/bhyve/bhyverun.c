@@ -164,7 +164,7 @@ typedef int (*vmexit_handler_t)(struct vmctx *, struct vm_exit *, int *vcpu);
 extern int vmexit_task_switch(struct vmctx *, struct vm_exit *, int *vcpu);
 
 char *vmname;
-
+int fd;
 int guest_ncpus;
 uint16_t cores, maxcpus, sockets, threads;
 
