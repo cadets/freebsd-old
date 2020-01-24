@@ -929,6 +929,13 @@ static void *pci_vtdtr_read_script(void *xsc)
 	}
 	DPRINTF(("Size of script is: %d. \n", d_script_length));
 
+	d_script = (char *)malloc(sizeof(char) * fragment_length);
+
+	struct pci_vtdtr_ctrl_entry *ctrl_entry;
+	struct pci_vtdtr_control *ctrl;
+	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+	assert(ctrl_entry != NULL);
+	
 	while (!done)
 	{
 
@@ -944,32 +951,28 @@ static void *pci_vtdtr_read_script(void *xsc)
 		}
 		DPRINTF(("Iteration: %d. Done is: %d.\n", ++i, done));
 
-		d_script = (char *)malloc(sizeof(char) * fragment_length);
 		if ((fread(d_script, 1, fragment_length - 1, reader_stream)) != fragment_length - 1)
 		{
 			DPRINTF(("Failed reading script from the named pipe.\n"));
 			if (ferror(reader_stream))
 			{
 				DPRINTF(("Error is:%s.\n", strerror(errno)));
-						}
+			}
 
 			exit(1);
 		}
 		d_script[fragment_length] = '\0';
 
-		if (done)
+		/*if (done)
 		{
 			fclose(reader_stream);
 			close(fd);
 			unlink(fifo);
-		}
+		}*/
 
 		DPRINTF(("Success in getting the script:\n%s.\n", d_script));
 
-		struct pci_vtdtr_ctrl_entry *ctrl_entry;
-		struct pci_vtdtr_control *ctrl;
-		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
-		assert(ctrl_entry != NULL);
+		
 		ctrl = &ctrl_entry->ctrl;
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
 		if (strlcpy(ctrl->uctrl.script_ev.d_script, d_script, fragment_length) != fragment_length - 1)
@@ -989,15 +992,14 @@ static void *pci_vtdtr_read_script(void *xsc)
 		pthread_mutex_unlock(&sc->vsd_condmtx);
 		DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
 
-		free(d_script);
-		free(ctrl_entry);
+		// free(d_script);
+		// free(ctrl_entry);
 		DPRINTF(("I've freed.\n"));
 	}
 
 	DPRINTF(("I've finished putting pieces of the script in the control queue.\n"));
 	pthread_exit(NULL);
 }
-
 
 /*
  * Mostly boilerplate, we initialize everything required for the correct
