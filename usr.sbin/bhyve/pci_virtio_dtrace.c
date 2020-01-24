@@ -174,12 +174,6 @@ struct pci_vtdtr_softc
 	int vsd_ready;
 };
 
-struct pci_vtdtr_reader_args
-{
-	struct pci_vtdtr_softc *sc;
-	int file_desc;
-};
-
 static void pci_vtdtr_reset(void *);
 static void pci_vtdtr_control_tx(struct pci_vtdtr_softc *,
 								 struct iovec *, int);
@@ -447,6 +441,7 @@ pci_vtdtr_cq_enqueue_front(struct pci_vtdtr_ctrlq *cq,
 {
 
 	STAILQ_INSERT_HEAD(&cq->head, ctrl_entry, entries);
+	DPRINTF(("Succes in enqueing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script));
 }
 
 static __inline int
@@ -488,6 +483,7 @@ pci_vtdtr_fill_desc(struct vqueue_info *vq, struct pci_vtdtr_control *ctrl)
 	len = sizeof(struct pci_vtdtr_control);
 	memcpy(iov.iov_base, ctrl, len);
 
+	DPRINTF(("Succes in putting in virtual queue: %s.\n",(struct pci_vtdtr_control *) iov.iov_base.uctrl.script_ev.d_script));
 	vq_relchain(vq, idx, len);
 }
 
@@ -586,8 +582,6 @@ pci_vtdtr_run(void *xsc)
 		while (vq_has_descs(vq) && !pci_vtdtr_cq_empty(sc->vsd_ctrlq))
 		{
 			ctrl_entry = pci_vtdtr_cq_dequeue(sc->vsd_ctrlq);
-			DPRINTF(("Result of actually calling dequeueing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script));
-
 			error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 			assert(error == 0);
 
@@ -753,150 +747,10 @@ pci_vtdtr_events(void *xsc)
 	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 }
 
-/*
- * Listen for scripts sent from dtrace indefinitely.
- */
-/**
-static void *pci_vtdtr_listen(void *xsc)
-{
-	struct pci_vtdtr_reader_args *args;
-	struct pci_vtdtr_softc *sc;
-	pthread_t reader;
-	char *fifo;
-	int error, fd;
-
-	sc = xsc;
-	fifo = "/tmp/fifo";
-
-	// for (;;)
-	// {
-		mkfifo(fifo, 0666);
-		
-		if ((fd = open(fifo, O_RDONLY)) == -1)
-		{
-			DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
-			exit(1);
-		}
-		
-
-		// internal note: I might need to open the stream
-		// in the hypervisor as well
-		
- 		args = malloc(sizeof(struct pci_vtdtr_reader_args));
-		args->sc = sc;
-		args->file_desc = fd;
-
-		error = pthread_create(&reader, NULL, pci_vtdtr_read_script, (void *)args);
-		assert(error == 0);
-		error = pthread_join(reader, NULL);
-		assert(error == 0);
-
-		// free(args);
-		// close(fd);
-	    //	unlink(fifo);
-	// }
-	// pthread_exit(NULL);
-}
-
 /**
 	Reads scripts provided by the user from the named pipe and puts it in the
 	control queue.
 */
-/**
-static void *pci_vtdtr_read_script(void *xargs)
-{
-	FILE *reader_stream;
-	struct pci_vtdtr_ctrl_entry *ctrl_entry;
-	struct pci_vtdtr_control *ctrl;
-	struct pci_vtdtr_softc *sc;
-	struct pci_vtdtr_reader_args *args;
-	char *d_script, *fifo, *content;
-	long d_script_length;
-	int copied, done, file_desc, i, sz, fragment_length;
-
-	args = xargs;
-	sc = args->sc;
-	file_desc = args->file_desc;
-	fifo = "/tmp/fifo";
-
-	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
-	assert(ctrl_entry != NULL);
-	d_script = (char *)malloc(sizeof(char) * fragment_length);
-	assert(d_script != NULL);
-
-	if ((reader_stream = fdopen(file_desc, "r")) == NULL)
-	{
-		DPRINTF(("Failed opening read stream: %s. \n", strerror(errno)));
-		exit(1);
-	}
-
-	sz = fread(&d_script_length, sizeof(long), 1, reader_stream);
-	if (sz <= 0)
-	{
-		printf("Failed reading size of script from the named pipe: %s. \n", strerror(errno));
-		exit(1);
-	}
-	DPRINTF(("Size of script is: %ld. \n", d_script_length));
-
-	while (!done)
-	{
-
-		if (d_script_length > 20)
-		{
-			fragment_length = 20;
-			d_script_length -= fragment_length;
-		}
-		else
-		{
-			fragment_length = d_script_length;
-			done = 1;
-		}
-		DPRINTF(("Iteration: %d. Done is: %d.\n", ++i, done));
-
-		if ((fread(d_script, 1, fragment_length - 1, reader_stream)) != fragment_length - 1)
-		{
-			DPRINTF(("Failed reading script from the named pipe.\n"));
-			if (ferror(reader_stream))
-			{
-				DPRINTF(("Error is:%s.\n", strerror(errno)));
-			}
-
-			exit(1);
-		}
-		d_script[fragment_length] = '\0';
-
-		DPRINTF(("Success in getting the script:\n%s.\n", d_script));
-
-		ctrl = &ctrl_entry->ctrl;
-		ctrl->event = VTDTR_DEVICE_SCRIPT;
-		if (strlcpy(ctrl->uctrl.script_ev.d_script, d_script, fragment_length) != fragment_length - 1)
-		{
-			DPRINTF(("Failed copying script in control element:\n%s. \n", strerror(errno)));
-			exit(1);
-		}
-		DPRINTF(("Script in control element: %s.\n", ctrl->uctrl.script_ev.d_script));
-
-		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
-		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
-		DPRINTF(("I've enqueued successfully.\n"));
-
-		pthread_mutex_lock(&sc->vsd_condmtx);
-		pthread_cond_signal(&sc->vsd_cond);
-		pthread_mutex_unlock(&sc->vsd_condmtx);
-		DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
-
-		// free(d_script);
-		DPRINTF(("I've freed.\n"));
-	}
-
-	// free(ctrl_entry);
-	fclose(reader_stream);
-	DPRINTF(("I've finished putting pieces of the script in the control queue.\n"));
-	pthread_exit(NULL);
-}
-*/
-
 static void *pci_vtdtr_read_script(void *xsc)
 {
 	FILE *reader_stream;
@@ -907,6 +761,11 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	sc = xsc;
 	fifo = "/tmp/fifo";
+
+	struct pci_vtdtr_ctrl_entry *ctrl_entry;
+	struct pci_vtdtr_control *ctrl;
+	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+	assert(ctrl_entry != NULL);
 
 	mkfifo(fifo, 0666);
 	if ((fd = open(fifo, O_RDONLY)) == -1)
@@ -929,13 +788,6 @@ static void *pci_vtdtr_read_script(void *xsc)
 	}
 	DPRINTF(("Size of script is: %d. \n", d_script_length));
 
-	d_script = (char *)malloc(sizeof(char) * fragment_length);
-
-	struct pci_vtdtr_ctrl_entry *ctrl_entry;
-	struct pci_vtdtr_control *ctrl;
-	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
-	assert(ctrl_entry != NULL);
-	
 	while (!done)
 	{
 
@@ -951,13 +803,14 @@ static void *pci_vtdtr_read_script(void *xsc)
 		}
 		DPRINTF(("Iteration: %d. Done is: %d.\n", ++i, done));
 
+		d_script = (char *)malloc(sizeof(char) * fragment_length);
 		if ((fread(d_script, 1, fragment_length - 1, reader_stream)) != fragment_length - 1)
 		{
 			DPRINTF(("Failed reading script from the named pipe.\n"));
 			if (ferror(reader_stream))
 			{
 				DPRINTF(("Error is:%s.\n", strerror(errno)));
-			}
+						}
 
 			exit(1);
 		}
@@ -992,12 +845,12 @@ static void *pci_vtdtr_read_script(void *xsc)
 		pthread_mutex_unlock(&sc->vsd_condmtx);
 		DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
 
-		// free(d_script);
+		free(d_script);
 		// free(ctrl_entry);
 		DPRINTF(("I've freed.\n"));
 	}
 
-	DPRINTF(("I've finished putting pieces of the script in the control queue.\n"));
+	DPRINTF(("I've finished reading stuff.\n"));
 	pthread_exit(NULL);
 }
 
@@ -1010,7 +863,7 @@ static int
 pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 {
 	struct pci_vtdtr_softc *sc;
-	pthread_t communicator, listener, reader;
+	pthread_t communicator, reader;
 	int error;
 
 	error = 0;
@@ -1047,7 +900,6 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	{
 		// error = pthread_create(&reader, NULL, pci_vtdtr_events, sc);
 		DPRINTF(("Creating thread in pci_virtio to read script. \n"));
-		// error = pthread_create(&listener, NULL, pci_vtdtr_listen, sc);
 		error = pthread_create(&reader, NULL, pci_vtdtr_read_script, sc);
 		assert(error == 0);
 	}

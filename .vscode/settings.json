@@ -30,10 +30,6 @@
         "signal.h": "c",
         "string.h": "c",
         "unistd.h": "c",
-        "syslog.h": "c",
-        "capsicum.h": "c",
-        "gdb.h": "c",
-        "*.def": "c",
-        "bhyverun.h": "c"
+        "syslog.h": "c"
     }
 }
