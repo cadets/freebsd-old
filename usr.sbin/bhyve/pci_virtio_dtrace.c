@@ -483,7 +483,7 @@ pci_vtdtr_fill_desc(struct vqueue_info *vq, struct pci_vtdtr_control *ctrl)
 	len = sizeof(struct pci_vtdtr_control);
 	memcpy(iov.iov_base, ctrl, len);
 
-	DPRINTF(("Succes in putting in virtual queue: %s.\n",((struct pci_vtdtr_control *) iov.iov_base).uctrl.script_ev.d_script));
+	DPRINTF(("Succes in putting in virtual queue: %s.\n",((struct pci_vtdtr_control *) iov.iov_base)->uctrl.script_ev.d_script));
 	vq_relchain(vq, idx, len);
 }
 
