@@ -762,21 +762,21 @@ static void *pci_vtdtr_listen(void *xsc)
 	struct pci_vtdtr_softc *sc;
 	pthread_t reader;
 	char *fifo;
-	int error;
+	int error, fd;
 
 	sc = xsc;
 	fifo = "/tmp/fifo";
 
 	// for (;;)
 	// {
-		//	mkfifo(fifo, 0666);
-		/**
+		mkfifo(fifo, 0666);
+		
 		if ((fd = open(fifo, O_RDONLY)) == -1)
 		{
 			DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
 			exit(1);
 		}
-		*/
+		
 
 		// internal note: I might need to open the stream
 		// in the hypervisor as well
