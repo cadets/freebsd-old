@@ -610,8 +610,6 @@ pci_vtdtr_run(void *xsc)
 			if (pci_vtdtr_cq_empty(sc->vsd_ctrlq) &&
 				vq_has_descs(vq))
 			{
-				error = pthread_cond_wait(&eof_cond, &eof_condmtx);
-				assert(error == 0);
 				pci_vtdtr_fill_eof_desc(vq);
 			}
 			pthread_mutex_lock(&sc->vsd_mtx);
