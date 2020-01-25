@@ -52,6 +52,9 @@ __FBSDID("$FreeBSD$");
 #include <dtrace.h>
 #include <vtdtr.h>
 
+static char *script_path = "/var/dtrace_log/script.d";
+static char *logging_file_path = "/var/dtrace_log/log_file.txt";
+
 // TODO(MARA): turn options into pragma, ignore for now, assume we have
 // script in file
 int execute_script(char *file_path, FILE *log_fp)
@@ -95,7 +98,7 @@ int execute_script(char *file_path, FILE *log_fp)
         goto destroy_dtrace;
     }*/
 
-    if ((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | DTRACE_C_EMPTY | DTRACE_C_CPP, script_argc, script_argv)) == NULL)
+    if ((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | DTRACE_C_DIFV | DTRACE_C_CPP, script_argc, script_argv)) == NULL)
     {
         fprintf(log_fp, "Failed to compile the DTrace program: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         fflush(log_fp);
@@ -158,7 +161,7 @@ int main(int argc, char **argv)
     FILE *script_fp;
 
     // TODO(MARA): syslog in the VM is not working so have a custom one for now
-    if ((log_fp = fopen("/tmp/log.txt", "w+")) == NULL)
+    if ((log_fp = fopen(logging_file_path, "w+")) == NULL)
     {
         printf("Error opening file: %s \n", strerror(errno));
     }
@@ -230,11 +233,9 @@ int main(int argc, char **argv)
     fprintf(log_fp, "Copied script %s \n.", script);
     fflush(log_fp);
 
-    char *script_file_path = "/tmp/script.d";
-
-    if ((script_fp = fopen(script_file_path, "w+")) == NULL)
+    if ((script_fp = fopen(script_path, "w+")) == NULL)
     {
-        fprintf(log_fp, "Error opening script file %s: %s \n.", script_file_path, strerror(errno));
+        fprintf(log_fp, "Error opening script file %s: %s \n.", script_path, strerror(errno));
         fflush(script_fp);
         exit(1);
     }
@@ -259,7 +260,7 @@ int main(int argc, char **argv)
     fprintf(log_fp, "Execute script.. \n");
     fflush(log_fp);
 
-    if ((execute_script(script_file_path, log_fp)) != 0)
+    if ((execute_script(script_path, log_fp)) != 0)
     {
         fprintf(log_fp, "Error occured while trying to execute the script. \n");
     }

@@ -450,7 +450,7 @@ pci_vtdtr_cq_enqueue_front(struct pci_vtdtr_ctrlq *cq,
 {
 
 	STAILQ_INSERT_HEAD(&cq->head, ctrl_entry, entries);
-	fprintf(fp,"Succes in enqueing front: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
+	fprintf(fp, "Succes in enqueing front: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
 }
 
 static __inline int
@@ -469,7 +469,7 @@ pci_vtdtr_cq_dequeue(struct pci_vtdtr_ctrlq *cq)
 	{
 		STAILQ_REMOVE_HEAD(&cq->head, entries);
 	}
-	fprintf(fp,"Succes in dequeing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
+	fprintf(fp, "Succes in dequeing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
 
 	return (ctrl_entry);
 }
@@ -492,7 +492,7 @@ pci_vtdtr_fill_desc(struct vqueue_info *vq, struct pci_vtdtr_control *ctrl)
 	len = sizeof(struct pci_vtdtr_control);
 	memcpy(iov.iov_base, ctrl, len);
 
-	fprintf(fp,"Succes in putting in virtual queue: %s.\n", ((struct pci_vtdtr_control *)iov.iov_base)->uctrl.script_ev.d_script);
+	fprintf(fp, "Succes in putting in virtual queue: %s.\n", ((struct pci_vtdtr_control *)iov.iov_base)->uctrl.script_ev.d_script);
 	vq_relchain(vq, idx, len);
 }
 
@@ -587,14 +587,16 @@ pci_vtdtr_run(void *xsc)
 
 		struct pci_vtdtr_ctrl_entry *var;
 
-		if(scripty == 1) {
+		if (scripty == 1)
+		{
 
-		STAILQ_FOREACH(var, &sc->vsd_ctrlq->head, entries){
-			DPRINTF(("WORKING ??. \n"));
-			fprintf(fp,"El is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
-		}
+			STAILQ_FOREACH(var, &sc->vsd_ctrlq->head, entries)
+			{
+				DPRINTF(("WORKING ??. \n"));
+				fprintf(fp, "El is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
+			}
 
-		exit(1);
+			exit(1);
 		}
 
 		/*
@@ -787,7 +789,6 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
 	struct pci_vtdtr_control *ctrl;
-	
 
 	mkfifo(fifo, 0666);
 	if ((fd = open(fifo, O_RDONLY)) == -1)
@@ -850,7 +851,6 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 		DPRINTF(("Success in getting the script:\n%s.\n", d_script));
 
-		
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
 		if (strlcpy(ctrl->uctrl.script_ev.d_script, d_script, fragment_length) != fragment_length - 1)
 		{
@@ -861,23 +861,20 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-		
+		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 		DPRINTF(("I've enqueued successfully.\n"));
-
-		pthread_mutex_lock(&sc->vsd_condmtx);
-		pthread_cond_signal(&sc->vsd_cond);
-		pthread_mutex_unlock(&sc->vsd_condmtx);
-		DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
 
 		scripty = 1;
 		free(ctrl_entry);
 		DPRINTF(("I've freed.\n"));
 		free(d_script);
 	}
-
+	pthread_mutex_lock(&sc->vsd_condmtx);
+	pthread_cond_signal(&sc->vsd_cond);
+	pthread_mutex_unlock(&sc->vsd_condmtx);
+	DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
 
 	DPRINTF(("I've freed.\n"));
-	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 	DPRINTF(("I've finished reading stuff.\n"));
 	pthread_exit(NULL);
 }
