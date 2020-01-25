@@ -90,6 +90,7 @@ __FBSDID("$FreeBSD$");
 #define VTDTR_DEVICE_SCRIPT 0x10
 
 static FILE *fp;
+static int scripty = 0;
 
 static int pci_vtdtr_debug;
 #define DPRINTF(params) printf params
@@ -580,12 +581,15 @@ pci_vtdtr_run(void *xsc)
 
 		struct pci_vtdtr_ctrl_entry *var;
 
+		if(scripty == 1) {
+
 		STAILQ_FOREACH(var, &sc->vsd_ctrlq->head, entries){
 			DPRINTF(("WORKING ??. \n"));
 			fprintf(fp,"El is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
 		}
 
 		exit(1);
+		}
 
 		/*
 		 * While dealing with the entires, we will fill every single
@@ -858,7 +862,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		pthread_mutex_unlock(&sc->vsd_condmtx);
 		DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
 
-	
+		scripty = 1;
 		// free(ctrl_entry);
 		DPRINTF(("I've freed.\n"));
 		free(d_script);
@@ -884,7 +888,8 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	int error;
 
 	fp = fopen("/tmp/logging.txt", "w");
-
+	scripty = 0;
+	
 	error = 0;
 	sc = calloc(1, sizeof(struct pci_vtdtr_softc));
 	assert(sc != NULL);
