@@ -449,7 +449,7 @@ pci_vtdtr_cq_enqueue_front(struct pci_vtdtr_ctrlq *cq,
 static __inline int
 pci_vtdtr_cq_empty(struct pci_vtdtr_ctrlq *cq)
 {
-
+	fprintf(fp, "In empty. \n")
 	return (STAILQ_EMPTY(&cq->head));
 }
 
@@ -578,6 +578,14 @@ pci_vtdtr_run(void *xsc)
 		assert(error == 0);
 		assert(!pci_vtdtr_cq_empty(sc->vsd_ctrlq));
 
+		struct pci_vtdtr_ctrl_entry var;
+
+		STAILQ_FOREACH(var, &sc->vsd_ctrlq->head, entries){
+			fprintf(fp,"El is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
+		}
+
+	
+
 		/*
 		 * While dealing with the entires, we will fill every single
 		 * entry as long as we have space or entries in the queue.
@@ -585,6 +593,7 @@ pci_vtdtr_run(void *xsc)
 		while (vq_has_descs(vq) && !pci_vtdtr_cq_empty(sc->vsd_ctrlq))
 		{
 			ctrl_entry = pci_vtdtr_cq_dequeue(sc->vsd_ctrlq);
+			fprintf(fp, "Result of returning from dequeue is: %s", ctrl_entry->ctrl.uctrl.script_ev.d_script);
 			error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 			assert(error == 0);
 
