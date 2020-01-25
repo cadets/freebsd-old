@@ -449,7 +449,7 @@ pci_vtdtr_cq_enqueue_front(struct pci_vtdtr_ctrlq *cq,
 static __inline int
 pci_vtdtr_cq_empty(struct pci_vtdtr_ctrlq *cq)
 {
-	fprintf(fp, "In empty. \n")
+	fprintf(fp, "In empty. \n");
 	return (STAILQ_EMPTY(&cq->head));
 }
 
@@ -578,7 +578,7 @@ pci_vtdtr_run(void *xsc)
 		assert(error == 0);
 		assert(!pci_vtdtr_cq_empty(sc->vsd_ctrlq));
 
-		struct pci_vtdtr_ctrl_entry var;
+		struct pci_vtdtr_ctrl_entry *var;
 
 		STAILQ_FOREACH(var, &sc->vsd_ctrlq->head, entries){
 			fprintf(fp,"El is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
