@@ -52,12 +52,14 @@ __FBSDID("$FreeBSD$");
 #include <dtrace.h>
 #include <vtdtr.h>
 
+static char *directory_path = "/var/dtrace_log";
 static char *script_path = "/var/dtrace_log/script.d";
 static char *logging_file_path = "/var/dtrace_log/log_file.txt";
+FILE *log_fp;
 
 // TODO(MARA): turn options into pragma, ignore for now, assume we have
 // script in file
-int execute_script(char *file_path, FILE *log_fp)
+int execute_script()
 {
 
     FILE *fp;
@@ -69,7 +71,7 @@ int execute_script(char *file_path, FILE *log_fp)
     script_argv = malloc(sizeof(char *) * script_argc);
     script_argv[0] = "-s";
 
-    if ((fp = fopen(file_path, "w+")) == NULL)
+    if ((fp = fopen(script_path, "w+")) == NULL)
     {
         fprintf(log_fp, "Failed to open script file: %s", strerror(errno));
         fflush(log_fp);
@@ -157,8 +159,9 @@ int main(int argc, char **argv)
     int script_len;
     char *script;
 
-    FILE *log_fp;
     FILE *script_fp;
+
+    mkdir(directory_path, 0777);
 
     // TODO(MARA): syslog in the VM is not working so have a custom one for now
     if ((log_fp = fopen(logging_file_path, "w+")) == NULL)
@@ -260,7 +263,7 @@ int main(int argc, char **argv)
     fprintf(log_fp, "Execute script.. \n");
     fflush(log_fp);
 
-    if ((execute_script(script_path, log_fp)) != 0)
+    if ((execute_script(script_path)) != 0)
     {
         fprintf(log_fp, "Error occured while trying to execute the script. \n");
     }
