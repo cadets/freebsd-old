@@ -433,9 +433,15 @@ static __inline void
 pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
 					 struct pci_vtdtr_ctrl_entry *ctrl_entry)
 {
+	struct pci_vtdtr_ctrl_entry *aux_ctrl_entry;
+	size_t len;
+
+	aux_ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+	len = sizeof(struct pci_vtdtr_ctrl_entry);
+	memcpy(aux_ctrl_entry, ctrl_entry, len);
 
 	STAILQ_INSERT_TAIL(&cq->head, ctrl_entry, entries);
-	fprintf(fp, "Succes in enqueing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
+	fprintf(fp, "Succes in enqueing: %s.\n", aux_ctrl_entry->ctrl.uctrl.script_ev.d_script);
 }
 
 static __inline void
@@ -781,9 +787,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
 	struct pci_vtdtr_control *ctrl;
-	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
-	assert(ctrl_entry != NULL);
-	ctrl = &ctrl_entry->ctrl;
+	
 
 	mkfifo(fifo, 0666);
 	if ((fd = open(fifo, O_RDONLY)) == -1)
@@ -808,6 +812,9 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	while (!done)
 	{
+		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+		assert(ctrl_entry != NULL);
+		ctrl = &ctrl_entry->ctrl;
 
 		if (d_script_length > 20)
 		{
@@ -863,13 +870,13 @@ static void *pci_vtdtr_read_script(void *xsc)
 		DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
 
 		scripty = 1;
-		// free(ctrl_entry);
+		free(ctrl_entry);
 		DPRINTF(("I've freed.\n"));
 		free(d_script);
 	}
 
 
-
+	DPRINTF(("I've freed.\n"));
 	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 	DPRINTF(("I've finished reading stuff.\n"));
 	pthread_exit(NULL);
@@ -889,7 +896,7 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 
 	fp = fopen("/tmp/logging.txt", "w");
 	scripty = 0;
-	
+
 	error = 0;
 	sc = calloc(1, sizeof(struct pci_vtdtr_softc));
 	assert(sc != NULL);
