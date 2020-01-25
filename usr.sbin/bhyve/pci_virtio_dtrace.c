@@ -580,11 +580,10 @@ pci_vtdtr_run(void *xsc)
 
 		struct pci_vtdtr_ctrl_entry *var;
 
-		STAILQ_FOREACH(var, &sc->vsd_ctrlq->head, entries){
+		/*STAILQ_FOREACH(var, &sc->vsd_ctrlq, entries){
+			DPRINTF(("WORKING ??. \n"));
 			fprintf(fp,"El is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
-		}
-
-	
+		}*/
 
 		/*
 		 * While dealing with the entires, we will fill every single
@@ -778,6 +777,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 	struct pci_vtdtr_control *ctrl;
 	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
 	assert(ctrl_entry != NULL);
+	ctrl = &ctrl_entry->ctrl;
 
 	mkfifo(fifo, 0666);
 	if ((fd = open(fifo, O_RDONLY)) == -1)
@@ -828,16 +828,16 @@ static void *pci_vtdtr_read_script(void *xsc)
 		}
 		d_script[fragment_length] = '\0';
 
-		/*if (done)
+		if (done)
 		{
 			fclose(reader_stream);
 			close(fd);
 			unlink(fifo);
-		}*/
+		}
 
 		DPRINTF(("Success in getting the script:\n%s.\n", d_script));
 
-		ctrl = &ctrl_entry->ctrl;
+		
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
 		if (strlcpy(ctrl->uctrl.script_ev.d_script, d_script, fragment_length) != fragment_length - 1)
 		{
@@ -848,19 +848,23 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+		
 		DPRINTF(("I've enqueued successfully.\n"));
 
-		free(d_script);
+		pthread_mutex_lock(&sc->vsd_condmtx);
+		pthread_cond_signal(&sc->vsd_cond);
+		pthread_mutex_unlock(&sc->vsd_condmtx);
+		DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
+
+	
 		// free(ctrl_entry);
 		DPRINTF(("I've freed.\n"));
+		free(d_script);
 	}
 
-	pthread_mutex_lock(&sc->vsd_condmtx);
-	pthread_cond_signal(&sc->vsd_cond);
-	pthread_mutex_unlock(&sc->vsd_condmtx);
-	DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
 
+
+	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 	DPRINTF(("I've finished reading stuff.\n"));
 	pthread_exit(NULL);
 }
