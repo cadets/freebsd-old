@@ -89,8 +89,7 @@ __FBSDID("$FreeBSD$");
 #define VTDTR_DEVICE_STOP 0x09
 #define VTDTR_DEVICE_SCRIPT 0x10
 
-static pthread_mutex_t eof_condmtx;
-static pthread_cond_t eof_cond;
+static FILE *fp;
 
 static int pci_vtdtr_debug;
 #define DPRINTF(params) printf params
@@ -435,7 +434,7 @@ pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
 {
 
 	STAILQ_INSERT_TAIL(&cq->head, ctrl_entry, entries);
-	DPRINTF(("Succes in enqueing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script));
+	fprintf(fp, "Succes in enqueing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
 }
 
 static __inline void
@@ -444,7 +443,7 @@ pci_vtdtr_cq_enqueue_front(struct pci_vtdtr_ctrlq *cq,
 {
 
 	STAILQ_INSERT_HEAD(&cq->head, ctrl_entry, entries);
-	DPRINTF(("Succes in enqueing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script));
+	fprintf(fp,"Succes in enqueing front: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
 }
 
 static __inline int
@@ -463,7 +462,7 @@ pci_vtdtr_cq_dequeue(struct pci_vtdtr_ctrlq *cq)
 	{
 		STAILQ_REMOVE_HEAD(&cq->head, entries);
 	}
-	DPRINTF(("Succes in dequeing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script));
+	fprintf(fp,"Succes in dequeing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
 
 	return (ctrl_entry);
 }
@@ -486,7 +485,7 @@ pci_vtdtr_fill_desc(struct vqueue_info *vq, struct pci_vtdtr_control *ctrl)
 	len = sizeof(struct pci_vtdtr_control);
 	memcpy(iov.iov_base, ctrl, len);
 
-	DPRINTF(("Succes in putting in virtual queue: %s.\n", ((struct pci_vtdtr_control *)iov.iov_base)->uctrl.script_ev.d_script));
+	fprintf(fp,"Succes in putting in virtual queue: %s.\n", ((struct pci_vtdtr_control *)iov.iov_base)->uctrl.script_ev.d_script);
 	vq_relchain(vq, idx, len);
 }
 
@@ -559,9 +558,6 @@ pci_vtdtr_run(void *xsc)
 		error = pthread_mutex_lock(&sc->vsd_condmtx);
 		assert(error == 0);
 
-		error = pthread_mutex_lock(&eof_condmtx);
-		assert(error == 0);
-
 		/*
 		 * We are safe to proceed if the following conditions are
 		 * satisfied:
@@ -613,7 +609,7 @@ pci_vtdtr_run(void *xsc)
 		{
 			if (pci_vtdtr_cq_empty(sc->vsd_ctrlq) &&
 				vq_has_descs(vq))
-			{	
+			{
 				error = pthread_cond_wait(&eof_cond, &eof_condmtx);
 				assert(error == 0);
 				pci_vtdtr_fill_eof_desc(vq);
@@ -848,21 +844,15 @@ static void *pci_vtdtr_read_script(void *xsc)
 		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 		DPRINTF(("I've enqueued successfully.\n"));
 
-		pthread_mutex_lock(&sc->vsd_condmtx);
-		pthread_cond_signal(&sc->vsd_cond);
-		pthread_mutex_unlock(&sc->vsd_condmtx);
-		DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
-
 		free(d_script);
 		// free(ctrl_entry);
 		DPRINTF(("I've freed.\n"));
 	}
 
-	pthread_mutex_lock(&eof_condmtx);
-	pthread_cond_signal(&eof_cond);
-	pthread_mutex_unlock(&eof_condmtx);
-	DPRINTF(("Signaled to send eof"));
-	
+	pthread_mutex_lock(&sc->vsd_condmtx);
+	pthread_cond_signal(&sc->vsd_cond);
+	pthread_mutex_unlock(&sc->vsd_condmtx);
+	DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
 
 	DPRINTF(("I've finished reading stuff.\n"));
 	pthread_exit(NULL);
@@ -879,6 +869,8 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	struct pci_vtdtr_softc *sc;
 	pthread_t communicator, reader;
 	int error;
+
+	fp = fopen("/tmp/logging.txt", "w");
 
 	error = 0;
 	sc = calloc(1, sizeof(struct pci_vtdtr_softc));
