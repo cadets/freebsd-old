@@ -492,11 +492,6 @@ pci_vtdtr_cq_dequeue(struct pci_vtdtr_ctrlq *cq)
 		STAILQ_REMOVE_HEAD(&cq->head, entries);
 	}
 	fprintf(fp, "Succes in dequeing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
-	fprintf(fp, "Printing in dequeue after dequeuing. \n");
-	STAILQ_FOREACH(var, &cq->head, entries)
-	{
-			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
-	}
 
 	return (ctrl_entry);
 }
