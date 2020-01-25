@@ -434,14 +434,29 @@ pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
 					 struct pci_vtdtr_ctrl_entry *ctrl_entry)
 {
 	struct pci_vtdtr_ctrl_entry *aux_ctrl_entry;
+	struct pci_vtdtr_ctrl_entry *var;
 	size_t len;
 
+	fprinf(fp, "Printing in enqueue before enqueueing. \n");
+	STAILQ_FOREACH(var, &sc->vsd_ctrlq->head, entries)
+	{
+			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
+	}
+
+	/*
 	aux_ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
 	len = sizeof(struct pci_vtdtr_ctrl_entry);
 	memcpy(aux_ctrl_entry, ctrl_entry, len);
+	*/
 
 	STAILQ_INSERT_TAIL(&cq->head, ctrl_entry, entries);
-	fprintf(fp, "Succes in enqueing: %s.\n", aux_ctrl_entry->ctrl.uctrl.script_ev.d_script);
+	fprintf(fp, "Succes in enqueing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
+	
+	fprinf(fp, "Printing in enqueue after enqueueing. \n");
+	STAILQ_FOREACH(var, &sc->vsd_ctrlq->head, entries)
+	{
+			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
+	}
 }
 
 static __inline void
@@ -464,12 +479,24 @@ static struct pci_vtdtr_ctrl_entry *
 pci_vtdtr_cq_dequeue(struct pci_vtdtr_ctrlq *cq)
 {
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
+	struct pci_vtdtr_ctrl_entry *var;
+	
+	fprinf(fp, "Printing in dequeue before dequeuing. \n");
+	STAILQ_FOREACH(var, &sc->vsd_ctrlq->head, entries)
+	{
+			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
+	}
 	ctrl_entry = STAILQ_FIRST(&cq->head);
 	if (ctrl_entry != NULL)
 	{
 		STAILQ_REMOVE_HEAD(&cq->head, entries);
 	}
 	fprintf(fp, "Succes in dequeing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
+	fprinf(fp, "Printing in dequeue after dequeuing. \n");
+	STAILQ_FOREACH(var, &sc->vsd_ctrlq->head, entries)
+	{
+			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
+	}
 
 	return (ctrl_entry);
 }
@@ -585,19 +612,9 @@ pci_vtdtr_run(void *xsc)
 		assert(error == 0);
 		assert(!pci_vtdtr_cq_empty(sc->vsd_ctrlq));
 
-		struct pci_vtdtr_ctrl_entry *var;
+		
 
-		if (scripty == 1)
-		{
-
-			STAILQ_FOREACH(var, &sc->vsd_ctrlq->head, entries)
-			{
-				DPRINTF(("WORKING ??. \n"));
-				fprintf(fp, "El is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
-			}
-
-			exit(1);
-		}
+		
 
 		/*
 		 * While dealing with the entires, we will fill every single
@@ -606,7 +623,7 @@ pci_vtdtr_run(void *xsc)
 		while (vq_has_descs(vq) && !pci_vtdtr_cq_empty(sc->vsd_ctrlq))
 		{
 			ctrl_entry = pci_vtdtr_cq_dequeue(sc->vsd_ctrlq);
-			fprintf(fp, "Result of returning from dequeue is: %s", ctrl_entry->ctrl.uctrl.script_ev.d_script);
+			fprintf(fp, "Result of returning from dequeue is: %s. \n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
 			error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 			assert(error == 0);
 
@@ -789,6 +806,9 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
 	struct pci_vtdtr_control *ctrl;
+	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+	assert(ctrl_entry != NULL);
+	ctrl = &ctrl_entry->ctrl;
 
 	mkfifo(fifo, 0666);
 	if ((fd = open(fifo, O_RDONLY)) == -1)
@@ -813,10 +833,6 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	while (!done)
 	{
-		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
-		assert(ctrl_entry != NULL);
-		ctrl = &ctrl_entry->ctrl;
-
 		if (d_script_length > 20)
 		{
 			fragment_length = 20;
@@ -865,7 +881,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		DPRINTF(("I've enqueued successfully.\n"));
 
 		scripty = 1;
-		free(ctrl_entry);
+		// free(ctrl_entry);
 		DPRINTF(("I've freed.\n"));
 		free(d_script);
 	}
