@@ -89,6 +89,9 @@ __FBSDID("$FreeBSD$");
 #define VTDTR_DEVICE_STOP 0x09
 #define VTDTR_DEVICE_SCRIPT 0x10
 
+static pthread_mutex_t eof_condmtx;
+static pthread_cond_t eof_cond;
+
 static int pci_vtdtr_debug;
 #define DPRINTF(params) printf params
 #define WPRINTF(params) printf params
@@ -483,7 +486,7 @@ pci_vtdtr_fill_desc(struct vqueue_info *vq, struct pci_vtdtr_control *ctrl)
 	len = sizeof(struct pci_vtdtr_control);
 	memcpy(iov.iov_base, ctrl, len);
 
-	DPRINTF(("Succes in putting in virtual queue: %s.\n",((struct pci_vtdtr_control *) iov.iov_base)->uctrl.script_ev.d_script));
+	DPRINTF(("Succes in putting in virtual queue: %s.\n", ((struct pci_vtdtr_control *)iov.iov_base)->uctrl.script_ev.d_script));
 	vq_relchain(vq, idx, len);
 }
 
@@ -555,6 +558,10 @@ pci_vtdtr_run(void *xsc)
 
 		error = pthread_mutex_lock(&sc->vsd_condmtx);
 		assert(error == 0);
+
+		error = pthread_mutex_lock(&eof_condmtx);
+		assert(error == 0);
+
 		/*
 		 * We are safe to proceed if the following conditions are
 		 * satisfied:
@@ -606,7 +613,9 @@ pci_vtdtr_run(void *xsc)
 		{
 			if (pci_vtdtr_cq_empty(sc->vsd_ctrlq) &&
 				vq_has_descs(vq))
-			{
+			{	
+				error = pthread_cond_wait(&eof_cond, &eof_condmtx);
+				assert(error == 0);
 				pci_vtdtr_fill_eof_desc(vq);
 			}
 			pthread_mutex_lock(&sc->vsd_mtx);
@@ -810,7 +819,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 			if (ferror(reader_stream))
 			{
 				DPRINTF(("Error is:%s.\n", strerror(errno)));
-						}
+			}
 
 			exit(1);
 		}
@@ -825,7 +834,6 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 		DPRINTF(("Success in getting the script:\n%s.\n", d_script));
 
-		
 		ctrl = &ctrl_entry->ctrl;
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
 		if (strlcpy(ctrl->uctrl.script_ev.d_script, d_script, fragment_length) != fragment_length - 1)
@@ -840,16 +848,21 @@ static void *pci_vtdtr_read_script(void *xsc)
 		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 		DPRINTF(("I've enqueued successfully.\n"));
 
+		pthread_mutex_lock(&sc->vsd_condmtx);
+		pthread_cond_signal(&sc->vsd_cond);
+		pthread_mutex_unlock(&sc->vsd_condmtx);
+		DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
 
 		free(d_script);
 		// free(ctrl_entry);
 		DPRINTF(("I've freed.\n"));
 	}
 
-	pthread_mutex_lock(&sc->vsd_condmtx);
-	pthread_cond_signal(&sc->vsd_cond);
-	pthread_mutex_unlock(&sc->vsd_condmtx);
-	DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
+	pthread_mutex_lock(&eof_condmtx);
+	pthread_cond_signal(&eof_cond);
+	pthread_mutex_unlock(&eof_condmtx);
+	DPRINTF(("Signaled to send eof"));
+	
 
 	DPRINTF(("I've finished reading stuff.\n"));
 	pthread_exit(NULL);
