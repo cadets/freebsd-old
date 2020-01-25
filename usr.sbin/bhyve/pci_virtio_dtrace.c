@@ -437,7 +437,7 @@ pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
 	struct pci_vtdtr_ctrl_entry *var;
 	size_t len;
 
-	fprinf(fp, "Printing in enqueue before enqueueing. \n");
+	fprintf(fp, "Printing in enqueue before enqueueing. \n");
 	STAILQ_FOREACH(var, &cq->head, entries)
 	{
 			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
@@ -452,7 +452,7 @@ pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
 	STAILQ_INSERT_TAIL(&cq->head, ctrl_entry, entries);
 	fprintf(fp, "Succes in enqueing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
 	
-	fprinf(fp, "Printing in enqueue after enqueueing. \n");
+	fprintf(fp, "Printing in enqueue after enqueueing. \n");
 	STAILQ_FOREACH(var, &cq->head, entries)
 	{
 			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
@@ -481,7 +481,7 @@ pci_vtdtr_cq_dequeue(struct pci_vtdtr_ctrlq *cq)
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
 	struct pci_vtdtr_ctrl_entry *var;
 
-	fprinf(fp, "Printing in dequeue before dequeuing. \n");
+	fprintf(fp, "Printing in dequeue before dequeuing. \n");
 	STAILQ_FOREACH(var, &cq->head, entries)
 	{
 			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
@@ -492,7 +492,7 @@ pci_vtdtr_cq_dequeue(struct pci_vtdtr_ctrlq *cq)
 		STAILQ_REMOVE_HEAD(&cq->head, entries);
 	}
 	fprintf(fp, "Succes in dequeing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
-	fprinf(fp, "Printing in dequeue after dequeuing. \n");
+	fprintf(fp, "Printing in dequeue after dequeuing. \n");
 	STAILQ_FOREACH(var, &cq->head, entries)
 	{
 			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
