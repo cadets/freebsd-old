@@ -580,10 +580,12 @@ pci_vtdtr_run(void *xsc)
 
 		struct pci_vtdtr_ctrl_entry *var;
 
-		/*STAILQ_FOREACH(var, &sc->vsd_ctrlq, entries){
+		STAILQ_FOREACH(var, &sc->vsd_ctrlq->head, entries){
 			DPRINTF(("WORKING ??. \n"));
 			fprintf(fp,"El is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
-		}*/
+		}
+
+		exit(1);
 
 		/*
 		 * While dealing with the entires, we will fill every single
