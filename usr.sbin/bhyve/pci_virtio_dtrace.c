@@ -437,12 +437,6 @@ pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
 	struct pci_vtdtr_ctrl_entry *var;
 	size_t len;
 
-	fprintf(fp, "Printing in enqueue before enqueueing. \n");
-	STAILQ_FOREACH(var, &cq->head, entries)
-	{
-			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
-	}
-
 	/*
 	aux_ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
 	len = sizeof(struct pci_vtdtr_ctrl_entry);
@@ -840,8 +834,8 @@ static void *pci_vtdtr_read_script(void *xsc)
 		}
 		DPRINTF(("Iteration: %d. Done is: %d.\n", ++i, done));
 
-		d_script = (char *)malloc(sizeof(char) * fragment_length);
-		if ((fread(d_script, 1, fragment_length - 1, reader_stream)) != fragment_length - 1)
+		d_script = (char *)malloc(sizeof(char) * (fragment_length + 1));
+		if ((fread(d_script, 1, fragment_length, reader_stream)) != fragment_length)
 		{
 			DPRINTF(("Failed reading script from the named pipe.\n"));
 			if (ferror(reader_stream))
@@ -851,7 +845,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 			exit(1);
 		}
-		d_script[fragment_length] = '\0';
+		d_script[fragment_length + 1] = '\0';
 
 		if (done)
 		{
@@ -863,7 +857,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		DPRINTF(("Success in getting the script:\n%s.\n", d_script));
 
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
-		if (strlcpy(ctrl->uctrl.script_ev.d_script, d_script, fragment_length) != fragment_length - 1)
+		if (strlcpy(ctrl->uctrl.script_ev.d_script, d_script, fragment_length + 1) != fragment_length)
 		{
 			DPRINTF(("Failed copying script in control element:\n%s. \n", strerror(errno)));
 			exit(1);
