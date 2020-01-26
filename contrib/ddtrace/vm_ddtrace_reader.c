@@ -69,7 +69,6 @@ int execute_script()
     char **script_argv;
     int done, err, ret, script_argc;
 
-
     done = 0;
     ret = 0;
     script_argc = 1;
@@ -215,7 +214,6 @@ int main(int argc, char **argv)
     fprintf(log_fp, "Reading.. \n");
     fflush(log_fp);
 
-  
     ev = (struct vtdtr_event *)malloc(sizeof(struct vtdtr_event));
     if (read(fd, ev, sizeof(struct vtdtr_event)) < 0)
     {
@@ -274,6 +272,6 @@ int main(int argc, char **argv)
     fprintf(log_fp, "Closing log file. \n");
     fflush(log_fp);
     fclose(log_fp);
-    
+
     return 0;
 }
