@@ -2455,8 +2455,8 @@ dt_compile(dtrace_hdl_t *dtp, int context, dtrace_probespec_t pspec, void *arg,
 	 * we optionally display the parse tree if debugging is enabled.
 	 */
 	if (yyparse() != 0 || yypcb->pcb_root == NULL) {
-		// xyerror(D_EMPTY, "empty D program translation unit\n");
-		xyerror(D_EMPTY, "Error is occuring when parsing.\n");
+		xyerror(D_EMPTY, "empty D program translation unit\n");
+		// xyerror(D_EMPTY, "Error is occuring when parsing.\n");
 	}
 
 	yybegin(YYS_DONE);
@@ -2511,8 +2511,8 @@ dt_compile(dtrace_hdl_t *dtp, int context, dtrace_probespec_t pspec, void *arg,
 		if ((dnp = yypcb->pcb_root->dn_list) == NULL &&
 		    !(yypcb->pcb_cflags & DTRACE_C_EMPTY))
 			{
-			// xyerror(D_EMPTY, "empty D program translation unit\n");
-			xyerror(D_EMPTY, "Error occurs in the parse tree.\n");
+				xyerror(D_EMPTY, "empty D program translation unit\n");
+				// Error occurs here: xyerror(D_EMPTY, "Error occurs in the parse tree.\n");
 			}
 
 		if ((yypcb->pcb_prog = dt_program_create(dtp)) == NULL)

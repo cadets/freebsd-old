@@ -90,7 +90,6 @@ __FBSDID("$FreeBSD$");
 #define VTDTR_DEVICE_SCRIPT 0x10
 
 static FILE *fp;
-static int scripty = 0;
 
 static int pci_vtdtr_debug;
 #define DPRINTF(params) printf params
@@ -440,16 +439,36 @@ pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
 	/*
 	aux_ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
 	len = sizeof(struct pci_vtdtr_ctrl_entry);
-	memcpy(aux_ctrl_entry, ctrl_entry, len);
+	memcpy(aux_fctrl_entry, ctrl_entry, len);
 	*/
+
+	if (!STAILQ_EMPTY(&cq->head))
+	{
+		fprintf(fp, "Printing in enqueue before enqueueing. \n");
+		STAILQ_FOREACH(var, &cq->head, entries)
+		{
+			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
+		}
+	}
+	else
+	{
+		fprintf(fp, "Control queue empty before enqueing. \n");
+	}
 
 	STAILQ_INSERT_TAIL(&cq->head, ctrl_entry, entries);
 	fprintf(fp, "Succes in enqueing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
-	
-	fprintf(fp, "Printing in enqueue after enqueueing. \n");
-	STAILQ_FOREACH(var, &cq->head, entries)
+
+	if (!STAILQ_EMPTY(&cq->head))
 	{
+		fprintf(fp, "Printing in enqueue after enqueueing. \n");
+		STAILQ_FOREACH(var, &cq->head, entries)
+		{
 			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
+		}
+	}
+	else
+	{
+		fprintf(fp, "Control queue empty after enqueing. \n");
 	}
 }
 
@@ -475,17 +494,39 @@ pci_vtdtr_cq_dequeue(struct pci_vtdtr_ctrlq *cq)
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
 	struct pci_vtdtr_ctrl_entry *var;
 
-	fprintf(fp, "Printing in dequeue before dequeuing. \n");
-	STAILQ_FOREACH(var, &cq->head, entries)
+	if (!STAILQ_EMPTY(&cq->head))
 	{
+		fprintf(fp, "Printing in dequeue before dequeueing. \n");
+		STAILQ_FOREACH(var, &cq->head, entries)
+		{
 			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
+		}
 	}
+	else
+	{
+		fprintf(fp, "Control queue empty before dequeueing. \n");
+	}
+
 	ctrl_entry = STAILQ_FIRST(&cq->head);
 	if (ctrl_entry != NULL)
 	{
 		STAILQ_REMOVE_HEAD(&cq->head, entries);
 	}
+
 	fprintf(fp, "Succes in dequeing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
+
+	if (!STAILQ_EMPTY(&cq->head))
+	{ 
+		fprintf(fp, "Printing in dequeue after dequeueing. \n");
+		STAILQ_FOREACH(var, &cq->head, entries)
+		{
+			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
+		}
+	}
+	else
+	{
+		fprintf(fp, "Control queue empty after dequeueing. \n");
+	}
 
 	return (ctrl_entry);
 }
@@ -600,10 +641,6 @@ pci_vtdtr_run(void *xsc)
 		error = pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		assert(error == 0);
 		assert(!pci_vtdtr_cq_empty(sc->vsd_ctrlq));
-
-		
-
-		
 
 		/*
 		 * While dealing with the entires, we will fill every single
@@ -822,9 +859,9 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	while (!done)
 	{
-		if (d_script_length > 20)
+		if (d_script_length > 30)
 		{
-			fragment_length = 20;
+			fragment_length = 30;
 			d_script_length -= fragment_length;
 		}
 		else
@@ -869,7 +906,6 @@ static void *pci_vtdtr_read_script(void *xsc)
 		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 		DPRINTF(("I've enqueued successfully.\n"));
 
-		scripty = 1;
 		// free(ctrl_entry);
 		DPRINTF(("I've freed.\n"));
 		free(d_script);
@@ -897,7 +933,7 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	int error;
 
 	fp = fopen("/tmp/logging.txt", "w");
-	scripty = 0;
+	assert(fp != NULL);
 
 	error = 0;
 	sc = calloc(1, sizeof(struct pci_vtdtr_softc));

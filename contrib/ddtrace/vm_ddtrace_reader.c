@@ -100,7 +100,7 @@ int execute_script()
         goto destroy_dtrace;
     }*/
 
-    if ((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | DTRACE_C_DIFV | DTRACE_C_CPP, script_argc, script_argv)) == NULL)
+    if ((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_DIFV, script_argc, script_argv)) == NULL)
     {
         fprintf(log_fp, "Failed to compile the DTrace program: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         fflush(log_fp);
