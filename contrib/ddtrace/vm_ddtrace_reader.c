@@ -63,9 +63,16 @@ int execute_script()
 {
 
     FILE *fp;
-    int done = 0, err, ret = 0, script_argc = 1;
-    static dtrace_hdl_t *dtp;
+    dtrace_hdl_t *dtp;
+    dtrace_prog_t *prog;
+    dtrace_proginfo_t info;
     char **script_argv;
+    int done, err, ret, script_argc;
+
+
+    done = 0;
+    ret = 0;
+    script_argc = 1;
 
     // We are just dealing with a file (for now)
     script_argv = malloc(sizeof(char *) * script_argc);
@@ -89,9 +96,6 @@ int execute_script()
 
     fprintf(log_fp, "Successfully opened DTrace\n");
     fflush(log_fp);
-
-    dtrace_prog_t *prog;
-    dtrace_proginfo_t info;
 
     /*if((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | DTRACE_C_CPP, 0, NULL )) == NULL) {
         fprintf(log_fp, "Failed to compile the DTrace program: %s\n", dtrace_errmsg(dtp,dtrace_errno(dtp)));
@@ -155,11 +159,11 @@ destroy_dtrace:
 // syslogd the best option? Alternative is implementing better custom logging.
 int main(int argc, char **argv)
 {
-    int fd;
-    int script_len;
-    char *script;
-
     FILE *script_fp;
+    struct vtdtr_conf *vtdtr_conf;
+    struct vtdtr_event *ev;
+    char *script;
+    int fd, script_len;
 
     mkdir(directory_path, 0777);
 
@@ -192,7 +196,7 @@ int main(int argc, char **argv)
 
     fprintf(log_fp, "Subscribing to events.. \n");
 
-    struct vtdtr_conf *vtdtr_conf = malloc(sizeof(struct vtdtr_conf));
+    vtdtr_conf = malloc(sizeof(struct vtdtr_conf));
     vtdtr_conf->event_flags |= (1 << VTDTR_EV_SCRIPT) | (1 << VTDTR_EV_RECONF);
     vtdtr_conf->timeout = 0;
 
@@ -211,10 +215,9 @@ int main(int argc, char **argv)
     fprintf(log_fp, "Reading.. \n");
     fflush(log_fp);
 
-    struct vtdtr_event *ev;
+  
     ev = (struct vtdtr_event *)malloc(sizeof(struct vtdtr_event));
-
-    if (read(fd, ev, sizeof(struct vtdtr_event)) == -1)
+    if (read(fd, ev, sizeof(struct vtdtr_event)) < 0)
     {
         fprintf(log_fp, "Error while reading %s", strerror(errno));
         fflush(log_fp);
@@ -271,5 +274,6 @@ int main(int argc, char **argv)
     fprintf(log_fp, "Closing log file. \n");
     fflush(log_fp);
     fclose(log_fp);
+    
     return 0;
 }
