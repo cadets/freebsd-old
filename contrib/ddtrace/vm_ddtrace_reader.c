@@ -69,6 +69,7 @@ int execute_script()
     dtrace_proginfo_t info;
     char **script_argv;
     int done, err, ret, script_argc;
+    void *dof;
 
     done = 0;
     ret = 0;
@@ -117,7 +118,6 @@ int execute_script()
         ret = -1;
         goto destroy_dtrace;
     }
-
     fprintf(log_fp, "Dtrace program successfully compiled.\n");
     fflush(log_fp);
 
@@ -128,9 +128,16 @@ int execute_script()
         ret = -1;
         goto destroy_dtrace;
     }
-
     fprintf(log_fp, "Dtrace program successfully executed.\n");
     fflush(log_fp);
+
+    fprintf(log_fp, "Try to create some DOF");
+
+    if((dof = dtrace_dof_create(dtp, prog, DTRACE_D_STRIP)) == NULL)
+    {
+        fprintf(log_fp, "Failed creating DOF: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+    }
+
 
     if (dtrace_go(dtp) != 0)
     {

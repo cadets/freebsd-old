@@ -935,7 +935,7 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	pthread_t communicator, reader;
 	int error;
 
-	fp = fopen("/tmp/logging.txt", "w");
+	fp = fopen("/tmp/logging.txt", "rw");
 	assert(fp != NULL);
 
 	fprintf(fp, "I am actually writing in the logging file.");
