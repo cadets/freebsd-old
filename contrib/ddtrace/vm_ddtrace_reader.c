@@ -60,7 +60,7 @@ FILE *log_fp;
 
 // TODO(MARA): turn options into pragma, ignore for now, assume we have
 // script in file
-int execute_script(char *script)
+int execute_script()
 {
 
     FILE *fp;
@@ -94,6 +94,10 @@ int execute_script(char *script)
         goto destroy_dtrace;
     }
 
+    dtrace_setopt(dtp, "aggsize", "4m");
+    dtrace_setopt(dtp, "bufsize", "4m");
+    dtrace_setopt(dtp, "bufpolicy", "switch");
+
     fprintf(log_fp, "Successfully opened DTrace\n");
     fflush(log_fp);
 
@@ -114,16 +118,19 @@ int execute_script(char *script)
         goto destroy_dtrace;
     }
 
-    fprintf(log_fp, "Dtrace program successfully compiled \n");
-    fflush(fp);
+    fprintf(log_fp, "Dtrace program successfully compiled.\n");
+    fflush(log_fp);
 
     if (dtrace_program_exec(dtp, prog, &info) == -1)
     {
         fprintf(log_fp, "Failed to enable DTrace probes: %s \n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
-        fflush(fp);
+        fflush(log_fp);
         ret = -1;
         goto destroy_dtrace;
     }
+
+    fprintf(log_fp, "Dtrace program successfully executed.\n");
+    fflush(log_fp);
 
     if (dtrace_go(dtp) != 0)
     {
@@ -132,7 +139,8 @@ int execute_script(char *script)
         goto destroy_dtrace;
     }
 
-    fflush(fp);
+    fprintf(log_fp, "Dtrace instrumented - hopefully.");
+    fflush(log_fp);
 
     /*if(dtrace_printf_create(dtp, NULL) == -1)
     {
@@ -143,16 +151,13 @@ int execute_script(char *script)
     }*/
 
     fprintf(log_fp, "All good. :)\n");
-    fflush(fp);
+    fflush(log_fp);
 
-    // print??
 
 destroy_dtrace:
     fprintf(log_fp, "Closing DTrace\n");
     fflush(log_fp);
     dtrace_close(dtp);
-    fclose(fp);
-
     return ret;
 }
 
@@ -265,7 +270,7 @@ int main(int argc, char **argv)
     fprintf(log_fp, "Execute script.. \n");
     fflush(log_fp);
 
-    if ((execute_script(script)) != 0)
+    if ((execute_script()) != 0)
     {
         fprintf(log_fp, "Error occured while trying to execute the script. \n");
     }
