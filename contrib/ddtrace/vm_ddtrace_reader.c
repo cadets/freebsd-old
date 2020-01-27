@@ -55,6 +55,7 @@ __FBSDID("$FreeBSD$");
 static char *directory_path = "/var/dtrace_log";
 static char *script_path = "/var/dtrace_log/script.d";
 static char *logging_file_path = "/var/dtrace_log/log_file.txt";
+static char *script = "dtrace:::BEGIN {i=0;}";
 FILE *log_fp;
 
 // TODO(MARA): turn options into pragma, ignore for now, assume we have
@@ -74,7 +75,7 @@ int execute_script(char *script)
     script_argc = 1;
 
     // We are just dealing with a file (for now)
-    script_argv = malloc(sizeof(char *) * script_argc);
+    /*script_argv = malloc(sizeof(char *) * script_argc);
     script_argv[0] = "-n";
 
     if ((fp = fopen(script_path, "r")) == NULL)
@@ -83,7 +84,7 @@ int execute_script(char *script)
         fflush(log_fp);
         ret = -1;
         return ret;
-    }
+    }*/
 
     if ((dtp = dtrace_open(DTRACE_VERSION, 0, &err)) == NULL)
     {
@@ -103,9 +104,9 @@ int execute_script(char *script)
         goto destroy_dtrace;
     }*/
 
-    fprintf(log_fp,"Script is: %s",script);
+    fprintf(log_fp,"About to compile, script is: %s. \n", script);
 
-    if ((prog = dtrace_program_strcompile(dtp, script, DTRACE_PROBESPEC_NAME,DTRACE_C_DIFV, script_argc, script_argv)) == NULL)
+    if ((prog = dtrace_program_strcompile(dtp, script, DTRACE_PROBESPEC_NAME,DTRACE_C_DIFV, 0, NULL)) == NULL)
     {
         fprintf(log_fp, "Failed to compile the DTrace program: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         fflush(log_fp);
@@ -163,7 +164,6 @@ int main(int argc, char **argv)
     FILE *script_fp;
     struct vtdtr_conf *vtdtr_conf;
     struct vtdtr_event *ev;
-    char *script;
     int fd, script_len;
 
     mkdir(directory_path, 0777);
