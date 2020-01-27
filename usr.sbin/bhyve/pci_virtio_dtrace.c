@@ -441,6 +441,7 @@ pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
 	len = sizeof(struct pci_vtdtr_ctrl_entry);
 	memcpy(aux_fctrl_entry, ctrl_entry, len);
 	*/
+	fprintf(fp, "In enqueue. \n");
 
 	if (!STAILQ_EMPTY(&cq->head))
 	{
@@ -493,6 +494,8 @@ pci_vtdtr_cq_dequeue(struct pci_vtdtr_ctrlq *cq)
 {
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
 	struct pci_vtdtr_ctrl_entry *var;
+
+	fprintf(fp, "In dequeue.")
 
 	if (!STAILQ_EMPTY(&cq->head))
 	{
@@ -934,6 +937,8 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 
 	fp = fopen("/tmp/logging.txt", "w");
 	assert(fp != NULL);
+
+	fprintf(fp, "I am actually writing in the logging file.");
 
 	error = 0;
 	sc = calloc(1, sizeof(struct pci_vtdtr_softc));

@@ -77,7 +77,7 @@ int execute_script()
     script_argv = malloc(sizeof(char *) * script_argc);
     script_argv[0] = "-s";
 
-    if ((fp = fopen(script_path, "w+")) == NULL)
+    if ((fp = fopen(script_path, "r")) == NULL)
     {
         fprintf(log_fp, "Failed to open script file: %s", strerror(errno));
         fflush(log_fp);
