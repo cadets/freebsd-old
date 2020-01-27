@@ -58,6 +58,7 @@ static char *logging_file_path = "/var/dtrace_log/log_file.txt";
 static char *script;
 FILE *log_fp;
 
+/*ARGSUSED*/
 static int
 chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 {
@@ -68,6 +69,7 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
     return (DTRACE_CONSUME_THIS);
 }
 
+/*ARGSUSED*/
 static int
 chew(const dtrace_probedata_t *data, void *arg)
 {
@@ -108,7 +110,7 @@ int dtrace_consumer()
 
     if ((dtp = dtrace_open(DTRACE_VERSION, 0, &err)) == NULL)
     {
-        fprintf(log_fp, "cannot open dtrace library: %s\n", dtrace_errmsg(dtp, err));
+        fprintf(log_fp, "Cannot open dtrace library: %s\n", dtrace_errmsg(dtp, err));
         fflush(log_fp);
         ret = -1;
         goto destroy_dtrace;
@@ -219,7 +221,7 @@ int main(int argc, char **argv)
         printf("Error opening file: %s \n", strerror(errno));
     }
 
-    fprintf(log_fp, "In vm_ddtrace_reader.. \n");
+    fprintf(log_fp, "In vm_ddtrace_consumer.. \n");
     fflush(log_fp);
 
     /* Daemonise first*/

@@ -6,24 +6,24 @@
 # Start up for the Virtual DDTrace script reader daemon
 #
 
-# PROVIDE: vm_ddtrace_reader
+# PROVIDE: vm_ddtrace_consumer
 # REQURIE: syslogd
 # BEFORE: DAEMON
 # KEYWORD: nojail shutdown
 
 . /etc/rc.subr
 
-name="vm_ddtrace_reader"
-desc="VM DDTrace reader daemon"
-# start_cmd="vm_ddtrace_reader_start"
+name="vm_ddtrace_consumer"
+desc="VM DDTrace consumer daemon"
+# start_cmd="vm_ddtrace_consumer_start"
 # stop_cmd=":"
 command="usr/sbin/${name}"
-# rcvar="vm_ddtrace_reader_enable"
+# rcvar="vm_ddtrace_consumer_enable"
 
-##vm_ddtrace_reader_start()
+##vm_ddtrace_consumer_start()
 # {
 #    echo "This started."
-#   ${vm_ddtrace_reader_command}
+#   ${vm_ddtrace_consumer_command}
 #}
 
 load_rc_config $name

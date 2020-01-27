@@ -29,6 +29,6 @@
 # SUCH DAMAGE.
 #
 
-SUBDIR= ddtrace_consumer ddtrace_producer ddtrace_producer_anon vm_ddtrace_reader
+SUBDIR= ddtrace_consumer ddtrace_producer ddtrace_producer_anon vm_ddtrace_consumer
 
 .include <bsd.subdir.mk>

@@ -31,10 +31,10 @@
 
 .PATH : ${SRCTOP}/contrib/ddtrace
 
-PROG= vm_ddtrace_reader
+PROG= vm_ddtrace_consumer
 BINDIR= /usr/sbin
 
-SRCS= vm_ddtrace_reader.c
+SRCS= vm_ddtrace_consumer.c
 MAN=
 
 LIBADD+=dtrace
