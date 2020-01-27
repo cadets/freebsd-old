@@ -862,9 +862,9 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	while (!done)
 	{
-		if (d_script_length > 30)
+		if (d_script_length > 60)
 		{
-			fragment_length = 30;
+			fragment_length = 60;
 			d_script_length -= fragment_length;
 		}
 		else
@@ -935,7 +935,7 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	pthread_t communicator, reader;
 	int error;
 
-	fp = fopen("/tmp/logging.txt", "rw");
+	fp = fopen("/tmp/logging.txt", "w+");
 	assert(fp != NULL);
 
 	fprintf(fp, "I am actually writing in the logging file.");

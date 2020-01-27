@@ -61,6 +61,10 @@ FILE *log_fp;
 static int
 chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 {
+    // A null rec indicates last record has been processed
+     if(rec == NULL) {
+        return (DTRACE_CONSUME_NEXT)
+    }
     return (DTRACE_CONSUME_THIS);
 }
 
@@ -160,27 +164,33 @@ int dtrace_consumer()
 
     if (dtrace_go(dtp) != 0)
     {
-        fprintf(log_fp, "Failed to instrument: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+        fprintf(log_fp, "Failed to start instrumentation: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         ret = -1;
         goto destroy_dtrace;
     }
 
-    fprintf(log_fp, "Dtrace instrumented - hopefully. \n");
+    fprintf(log_fp, "DTrace instrumentation started.\n");
     fflush(log_fp);
 
-    for (int i = 0; i < 10; i++)
+    int done = 0;
+    do
     {
         dtrace_sleep(dtp);
+
         switch (dtrace_work(dtp, log_fp, &con, NULL))
         {
         case DTRACE_WORKSTATUS_DONE:
+            done = 1;
             break;
         case DTRACE_WORKSTATUS_OKAY:
             break;
         default:
-            fprintf(log_fp, "%s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+            fprintf(log_fp, "Processing aborted:%s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+            ret = -1;
+            goto destroy_dtrace;
         }
-    }
+        fflush(log_fp);
+    } while(!done)
 
     // print aggregations
 
