@@ -55,7 +55,7 @@ __FBSDID("$FreeBSD$");
 static char *directory_path = "/var/dtrace_log";
 static char *script_path = "/var/dtrace_log/script.d";
 static char *logging_file_path = "/var/dtrace_log/log_file.txt";
-static char *script = "dtrace:::BEGIN {i=0;}";
+static char *script;
 FILE *log_fp;
 
 // TODO(MARA): turn options into pragma, ignore for now, assume we have
@@ -260,8 +260,7 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    free(script);
-    free(ev);
+    // free(ev);
 
     fprintf(log_fp, "Execute script.. \n");
     fflush(log_fp);
