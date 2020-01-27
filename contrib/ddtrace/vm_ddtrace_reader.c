@@ -86,7 +86,7 @@ int dtrace_consumer()
     script_argc = 1;
 
     con.dc_cosume_probe = chew;
-    con.dc_consumer_rec = chewrec;
+    con.dc_consume_rec = chewrec;
     con.dc_put_buf = NULL;
     con.dc_get_buf = NULL;
 
@@ -178,7 +178,7 @@ int dtrace_consumer()
         case DTRACE_WORKSTATUS_OKAY:
             break;
         default:
-            fprintf(log_fp, "%s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)))
+            fprintf(log_fp, "%s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         }
     }
 
