@@ -85,10 +85,10 @@ int dtrace_consumer()
     ret = 0;
     script_argc = 1;
 
-    con.dc_cosume_probe = chew;
-    con.dc_consume_rec = chewrec;
-    con.dc_put_buf = NULL;
-    con.dc_get_buf = NULL;
+    con.dc_consume_probe = chew;
+	con.dc_consume_rec = chewrec;
+	con.dc_put_buf = NULL; 
+	con.dc_get_buf = NULL;
 
     // You still need to figure out how to fix this
     /*script_argv = malloc(sizeof(char *) * script_argc);
