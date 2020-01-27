@@ -73,6 +73,7 @@ chew(const dtrace_probedata_t *data, void *arg)
 int dtrace_consumer()
 {
 
+    dtrace_consumer_t con;
     dtrace_hdl_t *dtp;
     dtrace_prog_t *prog;
     dtrace_proginfo_t info;
@@ -84,7 +85,12 @@ int dtrace_consumer()
     ret = 0;
     script_argc = 1;
 
-    // We are just dealing with a file (for now)
+    con.dc_cosume_probe = chew;
+    con.dc_consumer_rec = chewrec;
+    con.dc_put_buf = NULL;
+    con.dc_get_buf = NULL;
+
+    // You still need to figure out how to fix this
     /*script_argv = malloc(sizeof(char *) * script_argc);
     script_argv[0] = "-n";
 
@@ -165,7 +171,7 @@ int dtrace_consumer()
     for (int i = 0; i < 10; i++)
     {
         dtrace_sleep(dtp);
-        switch (dtrace_work(dtp, log_fp, chew, chewrec, NULL))
+        switch (dtrace_work(dtp, log_fp, &con, NULL))
         {
         case DTRACE_WORKSTATUS_DONE:
             break;
