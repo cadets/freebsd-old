@@ -58,12 +58,21 @@ static char *logging_file_path = "/var/dtrace_log/log_file.txt";
 static char *script;
 FILE *log_fp;
 
-// TODO(MARA): turn options into pragma, ignore for now, assume we have
-// script in file
-int execute_script()
+static int
+chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
+{
+    return (DTRACE_CONSUME_THIS);
+}
+
+static int
+chew(const dtrace_probedata_t *data, void *arg)
+{
+    return (DTRACE_CONSUME_THIS);
+}
+
+int dtrace_consumer()
 {
 
-    FILE *fp;
     dtrace_hdl_t *dtp;
     dtrace_prog_t *prog;
     dtrace_proginfo_t info;
@@ -89,17 +98,24 @@ int execute_script()
 
     if ((dtp = dtrace_open(DTRACE_VERSION, 0, &err)) == NULL)
     {
-        fprintf(log_fp, "Failed to initialize dtrace : %s\n", dtrace_errmsg(dtp, err));
+        fprintf(log_fp, "cannot open dtrace library: %s\n", dtrace_errmsg(dtp, err));
         fflush(log_fp);
         ret = -1;
         goto destroy_dtrace;
     }
 
-    dtrace_setopt(dtp, "aggsize", "4m");
-    dtrace_setopt(dtp, "bufsize", "4m");
-    dtrace_setopt(dtp, "bufpolicy", "switch");
-
     fprintf(log_fp, "Successfully opened DTrace\n");
+    fflush(log_fp);
+    fprintf(log_fp, "About to compile, script is: %s. \n", script);
+
+    if ((prog = dtrace_program_strcompile(dtp, script, DTRACE_PROBESPEC_NAME, DTRACE_C_DIFV, 0, NULL)) == NULL)
+    {
+        fprintf(log_fp, "Failed to compile dtrace program: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+        fflush(log_fp);
+        ret = -1;
+        goto destroy_dtrace;
+    }
+    fprintf(log_fp, "Dtrace program successfully compiled.\n");
     fflush(log_fp);
 
     /*if((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | DTRACE_C_CPP, 0, NULL )) == NULL) {
@@ -109,57 +125,58 @@ int execute_script()
         goto destroy_dtrace;
     }*/
 
-    fprintf(log_fp,"About to compile, script is: %s. \n", script);
-
-    if ((prog = dtrace_program_strcompile(dtp, script, DTRACE_PROBESPEC_NAME,DTRACE_C_DIFV, 0, NULL)) == NULL)
-    {
-        fprintf(log_fp, "Failed to compile the DTrace program: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
-        fflush(log_fp);
-        ret = -1;
-        goto destroy_dtrace;
-    }
-    fprintf(log_fp, "Dtrace program successfully compiled.\n");
-    fflush(log_fp);
-
     if (dtrace_program_exec(dtp, prog, &info) == -1)
     {
-        fprintf(log_fp, "Failed to enable DTrace probes: %s \n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+        fprintf(log_fp, "Failed to enable probes: %s \n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         fflush(log_fp);
         ret = -1;
         goto destroy_dtrace;
     }
+
     fprintf(log_fp, "Dtrace program successfully executed.\n");
     fflush(log_fp);
 
-    fprintf(log_fp, "Try to create some DOF");
-
-    if((dof = dtrace_dof_create(dtp, prog, DTRACE_D_STRIP)) == NULL)
+    if (dtrace_setopt(dtp, "aggsize", "4m") == -1)
     {
-        fprintf(log_fp, "Failed creating DOF: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+        fprintf(log_fp, "Failed to set aggregations size: %s. \n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
     }
 
+    if (dtrace_setopt(dtp, "bufsize", "4m") == -1)
+    {
+        fprintf(log_fp, "Failed to set buffers size %s. \n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+    }
+
+    /*fprintf(log_fp, "Try to create some DOF.\n");
+    if ((dof = dtrace_dof_create(dtp, prog, DTRACE_D_STRIP)) == NULL)
+    {
+        fprintf(log_fp, "Failed creating DOF: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+    }*/
 
     if (dtrace_go(dtp) != 0)
     {
-        fprintf(log_fp, "Failed to start instrumentation: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+        fprintf(log_fp, "Failed to instrument: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         ret = -1;
         goto destroy_dtrace;
     }
 
-    fprintf(log_fp, "Dtrace instrumented - hopefully.");
+    fprintf(log_fp, "Dtrace instrumented - hopefully. \n");
     fflush(log_fp);
 
-    /*if(dtrace_printf_create(dtp, NULL) == -1)
+    for (int i = 0; i < 10; i++)
     {
-        fprintf(log_fp, "Failed to print stuff: %s", dtrace_errmsg(dtp, dtrace_errno(dtp)));
-        fflush(fp);
-        ret = -1;
-        goto destroy_dtrace;
-    }*/
+        dtrace_sleep(dtp);
+        switch (dtrace_work(dtp, log_fp, chew, chewrec, NULL))
+        {
+        case DTRACE_WORKSTATUS_DONE:
+            break;
+        case DTRACE_WORKSTATUS_OKAY:
+            break;
+        default:
+            fprintf(log_fp, "%s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)))
+        }
+    }
 
-    fprintf(log_fp, "All good. :)\n");
-    fflush(log_fp);
-
+    // print aggregations
 
 destroy_dtrace:
     fprintf(log_fp, "Closing DTrace\n");
@@ -277,7 +294,7 @@ int main(int argc, char **argv)
     fprintf(log_fp, "Execute script.. \n");
     fflush(log_fp);
 
-    if ((execute_script()) != 0)
+    if ((dtrace_consumer()) != 0)
     {
         fprintf(log_fp, "Error occured while trying to execute the script. \n");
     }
