@@ -59,7 +59,7 @@ FILE *log_fp;
 
 // TODO(MARA): turn options into pragma, ignore for now, assume we have
 // script in file
-int execute_script()
+int execute_script(char *script)
 {
 
     FILE *fp;
@@ -75,7 +75,7 @@ int execute_script()
 
     // We are just dealing with a file (for now)
     script_argv = malloc(sizeof(char *) * script_argc);
-    script_argv[0] = "-s";
+    script_argv[0] = "-n";
 
     if ((fp = fopen(script_path, "r")) == NULL)
     {
@@ -103,7 +103,9 @@ int execute_script()
         goto destroy_dtrace;
     }*/
 
-    if ((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_DIFV, script_argc, script_argv)) == NULL)
+    fprintf(log_fp,"Script is: %s",script);
+
+    if ((prog = dtrace_program_strcompile(dtp, script, DTRACE_PROBESPEC_NAME,DTRACE_C_DIFV, script_argc, script_argv)) == NULL)
     {
         fprintf(log_fp, "Failed to compile the DTrace program: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         fflush(log_fp);
@@ -264,7 +266,7 @@ int main(int argc, char **argv)
     fprintf(log_fp, "Execute script.. \n");
     fflush(log_fp);
 
-    if ((execute_script(script_path)) != 0)
+    if ((execute_script(script)) != 0)
     {
         fprintf(log_fp, "Error occured while trying to execute the script. \n");
     }
