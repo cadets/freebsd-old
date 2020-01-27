@@ -495,7 +495,7 @@ pci_vtdtr_cq_dequeue(struct pci_vtdtr_ctrlq *cq)
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
 	struct pci_vtdtr_ctrl_entry *var;
 
-	fprintf(fp, "In dequeue.")
+	fprintf(fp, "In dequeue.");
 
 	if (!STAILQ_EMPTY(&cq->head))
 	{
