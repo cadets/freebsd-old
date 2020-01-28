@@ -903,7 +903,7 @@ link_elf(dtrace_cmd_t *dcp)
 	if ((fd = open(dcp->dc_arg, O_RDONLY)) < 0)
 		fatal("failed to open %s with %s", dcp->dc_arg, strerror(errno));
 
-	if ((dcp->dc_prog = dt_elf_to_prog(fd)) == NULL)
+	if ((dcp->dc_prog = dt_elf_to_prog(g_dtp, fd)) == NULL)
 		fatal("failed to parse the ELF file %s", dcp->dc_arg);
 
 	close(fd);

@@ -1585,6 +1585,8 @@ alloc:
 
 	/*
 	 * Format the global variables based on the kernel module name.
+	 *
+	 * TODO(dstolfa): Add error checking to this.
 	 */
 	snprintf(curthread_str, sizeof(curthread_str), "%s`struct thread *",p);
 	snprintf(intmtx_str, sizeof(intmtx_str), "int(%s`struct mtx *)",p);

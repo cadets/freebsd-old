@@ -327,6 +327,7 @@ dt_aggid_add(dtrace_hdl_t *dtp, dtrace_aggid_t id)
 	int rval;
 
 	while (id >= (max = dtp->dt_maxagg) || dtp->dt_aggdesc == NULL) {
+		printf("should be NULL\n");
 		dtrace_id_t new_max = max ? (max << 1) : 1;
 		size_t nsize = new_max * sizeof (void *);
 		dtrace_aggdesc_t **new_aggdesc;
@@ -347,6 +348,7 @@ dt_aggid_add(dtrace_hdl_t *dtp, dtrace_aggid_t id)
 	}
 
 	if (dtp->dt_aggdesc[id] == NULL) {
+		printf("is not NULL\n");
 		dtrace_aggdesc_t *agg, *nagg;
 
 		if ((agg = malloc(sizeof (dtrace_aggdesc_t))) == NULL)
@@ -392,6 +394,7 @@ dt_aggid_add(dtrace_hdl_t *dtp, dtrace_aggid_t id)
 			}
 		}
 
+		printf("options\n");
 		/*
 		 * If we have a uarg, it's a pointer to the compiler-generated
 		 * statement; we'll use this value to get the name and
@@ -400,6 +403,8 @@ dt_aggid_add(dtrace_hdl_t *dtp, dtrace_aggid_t id)
 		 * is obviously meaningless -- and in this case, we can't
 		 * provide the compiler-generated aggregation information.
 		 */
+		printf("agg = %p\n", agg);
+		printf("agg->dtagd_rec = %p\n", agg->dtagd_rec);
 		if (dtp->dt_options[DTRACEOPT_GRABANON] == DTRACEOPT_UNSET &&
 		    agg->dtagd_rec[0].dtrd_uarg != 0) {
 			dtrace_stmtdesc_t *sdp;
@@ -408,14 +413,19 @@ dt_aggid_add(dtrace_hdl_t *dtp, dtrace_aggid_t id)
 			sdp = (dtrace_stmtdesc_t *)(uintptr_t)
 			    agg->dtagd_rec[0].dtrd_uarg;
 			aid = sdp->dtsd_aggdata;
+			printf("agg->dtagd_name = %p\n");
+			printf("agg->dtagd_varid = %p\n");
+			printf("aid = %p\n", aid);
 			agg->dtagd_name = aid->di_name;
 			agg->dtagd_varid = aid->di_id;
 		} else {
 			agg->dtagd_varid = DTRACE_AGGVARIDNONE;
 		}
 
+		printf("ye\n");
+
 		if ((epid = agg->dtagd_epid) >= dtp->dt_maxprobe ||
-		    dtp->dt_pdesc[epid] == NULL) {
+		    dtp->dt_pdesc[epid] == NULL || dtp->dt_pdesc == NULL) {
 			if ((rval = dt_epid_add(dtp, epid)) != 0) {
 				free(agg);
 				return (rval);
@@ -434,7 +444,11 @@ dt_aggid_lookup(dtrace_hdl_t *dtp, dtrace_aggid_t aggid,
 {
 	int rval;
 
-	if (aggid >= dtp->dt_maxagg || dtp->dt_aggdesc[aggid] == NULL) {
+	printf("aggid = %d\n", aggid);
+	printf("dtp->dt_aggdesc = %p\n", dtp->dt_aggdesc);
+	if (dtp->dt_aggdesc == NULL ||
+	    aggid >= dtp->dt_maxagg ||
+	    dtp->dt_aggdesc[aggid] == NULL) {
 		if ((rval = dt_aggid_add(dtp, aggid)) != 0)
 			return (rval);
 	}

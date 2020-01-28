@@ -806,6 +806,19 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 	estmt->dtes_descattr.dtea_attr = stmt->dtsd_descattr;
 	estmt->dtes_stmtattr.dtea_attr = stmt->dtsd_stmtattr;
 
+	/*
+	 * If this action is an aggregation, we save the aggregation ID
+	 * and name.
+	 *
+	 * NOTE(dstolfa): Making a note here even though not really relevant here.
+	 *
+	 * dt_open calls a sysctl kern.bootfile to find out what the booted kernel
+	 * is. We will abuse the fact that after a make installkernel, this kernel
+	 * actually changes. We will then open that file on shutdown and re-link our
+	 * script, which should, if all goes well, result in a newly linked script
+	 * that runs with the correct type information.
+	 */
+
 	if (pstmt != NULL)
 		pstmt->dtes_next = elf_ndxscn(scn);
 
@@ -1234,6 +1247,20 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 
 	scn = dt_elf_options(e);
 
+	if ((shdr = elf32_getshdr(scn)) == NULL)
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
+		    elf_errmsg(-1));
+
+	shdr->sh_type = SHT_DTRACE_elf;
+	shdr->sh_name = DTELF_OPTS;
+	shdr->sh_flags = SHF_OS_NONCONFORMING;
+	shdr->sh_entsize = 0;
+
+	/*
+	 * Save the options for this program.
+	 */
+	prog.dtep_options = elf_ndxscn(scn);
+
 	if (elf_update(e, ELF_C_NULL) < 0)
 		errx(EXIT_FAILURE, "elf_update(%p, ELF_C_NULL) failed with %s",
 		    e, elf_errmsg(-1));
@@ -1548,8 +1575,36 @@ dt_elf_get_stmts(Elf *e, dtrace_prog_t *prog, dt_elf_ref_t first_stmt_scn)
 	}
 }
 
+static void
+dt_elf_get_options(dtrace_hdl_t *dtp, Elf *e, dt_elf_ref_t eopts)
+{
+	Elf_Scn *scn;
+	Elf_Data *data;
+        uintptr_t eop;
+	_dt_elf_eopt_t *dteop;
+
+	if ((scn = elf_getscn(e, eopts)) == NULL)
+		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
+		    elf_errmsg(-1));
+
+	if ((data = elf_getdata(scn, NULL)) == NULL)
+		errx(EXIT_FAILURE, "elf_getdata() failed with %s",
+		    elf_errmsg(-1));
+
+	/*
+	 * If you remove the uintptr_ts, you will suffer at the hands of
+	 * a compiler developer.
+	 */
+	for (eop = (uintptr_t)data->d_buf;
+	    eop != ((uintptr_t)data->d_buf) + data->d_size;
+	    eop = eop + dteop->eo_len + sizeof(_dt_elf_eopt_t)) {
+		dteop = (_dt_elf_eopt_t *)eop;
+		dtrace_setopt(dtp, dteop->eo_name, dteop->eo_arg);
+	}
+}
+
 dtrace_prog_t *
-dt_elf_to_prog(int fd)
+dt_elf_to_prog(dtrace_hdl_t *dtp, int fd)
 {
 	Elf *e;
 	Elf_Scn *scn;
@@ -1630,6 +1685,8 @@ dt_elf_to_prog(int fd)
 	prog->dp_dofversion = eprog->dtep_dofversion;
 
 	dt_elf_get_stmts(e, prog, eprog->dtep_first_stmt);
+
+	dt_elf_get_options(dtp, e, eprog->dtep_options);
 
 	free(dtelf_state);
 	(void) elf_end(e);
