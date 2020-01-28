@@ -430,7 +430,7 @@ pci_vtdtr_handle_mev(int fd __unused, enum ev_type et __unused, int ne,
 
 static void pci_vtdtr_print_queue(FILE *log_fp, struct pci_vtdtr_ctrlq *cq, char *from)
 {
-	fprintf("%s\n", from);
+	fprintf(log_fp, "%s\n", from);
 
 	struct pci_vtdtr_ctrl_entry *ctrl_entry, *ctrl_entry_temp;
 
