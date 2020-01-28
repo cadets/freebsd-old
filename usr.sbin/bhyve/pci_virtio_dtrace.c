@@ -428,60 +428,38 @@ pci_vtdtr_handle_mev(int fd __unused, enum ev_type et __unused, int ne,
 }
 #endif
 
+static void pci_vtdtr_print_queue(FILE *log_fp, struct pci_vtdtr_ctrlq *cq, char *from)
+{
+	fprintf("%s\n", from);
+
+	struct pci_vtdtr_ctrl_entry *ctrl_entry, *ctrl_entry_temp;
+
+	if (!STAILQ_EMPTY(&cq->head))
+		STAILQ_FOREACH_SAFE(ctrl_entry, &cq->head, entries, ctrl_entry_temp)
+		{
+			fprintf(log_fp, "%s\n" ctrl_entry->ctrl.uctrl.script_ev.d_script);
+		}
+	else
+		fprintf(log_fp, "Control queue is empty. \n");
+
+	fflush(log_fp);
+}
 static __inline void
 pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
 					 struct pci_vtdtr_ctrl_entry *ctrl_entry)
 {
-	struct pci_vtdtr_ctrl_entry *aux_ctrl_entry;
-	struct pci_vtdtr_ctrl_entry *var;
-	size_t len;
-
-	/*
-	aux_ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
-	len = sizeof(struct pci_vtdtr_ctrl_entry);
-	memcpy(aux_fctrl_entry, ctrl_entry, len);
-	*/
-	fprintf(fp, "In enqueue. \n");
-
-	if (!STAILQ_EMPTY(&cq->head))
-	{
-		fprintf(fp, "Printing in enqueue before enqueueing. \n");
-		STAILQ_FOREACH(var, &cq->head, entries)
-		{
-			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
-		}
-	}
-	else
-	{
-		fprintf(fp, "Control queue empty before enqueing. \n");
-	}
-
+	pci_vtdtr_print_queue(fp, cq, "before enqueueing");
 	STAILQ_INSERT_TAIL(&cq->head, ctrl_entry, entries);
-	fprintf(fp, "Succes in enqueing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
-
-	if (!STAILQ_EMPTY(&cq->head))
-	{
-		fprintf(fp, "Printing in enqueue after enqueueing. \n");
-		STAILQ_FOREACH(var, &cq->head, entries)
-		{
-			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
-		}
-	}
-	else
-	{
-		fprintf(fp, "Control queue empty after enqueing. \n");
-	}
-	fflush(fp);
+	pci_vtdtr_print_queue(fp, cq, "after enqueueing");
 }
 
 static __inline void
 pci_vtdtr_cq_enqueue_front(struct pci_vtdtr_ctrlq *cq,
 						   struct pci_vtdtr_ctrl_entry *ctrl_entry)
 {
-
+	pci_vtdtr_print_queue(fp, cq, "before enqueueing front");
 	STAILQ_INSERT_HEAD(&cq->head, ctrl_entry, entries);
-	fprintf(fp, "Succes in enqueing front: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
-	fflush(fp);
+	pci_vtdtr_print_queue(fp, cq, "after enqueueing front");
 }
 
 static __inline int
@@ -495,46 +473,14 @@ pci_vtdtr_cq_empty(struct pci_vtdtr_ctrlq *cq)
 static struct pci_vtdtr_ctrl_entry *
 pci_vtdtr_cq_dequeue(struct pci_vtdtr_ctrlq *cq)
 {
+	pci_vtdtr_print_queue(fp, cq, "before dequeueing");
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
-	struct pci_vtdtr_ctrl_entry *var;
-
-	fprintf(fp, "In dequeue.");
-
-	if (!STAILQ_EMPTY(&cq->head))
-	{
-		fprintf(fp, "Printing in dequeue before dequeueing. \n");
-		STAILQ_FOREACH(var, &cq->head, entries)
-		{
-			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
-		}
-	}
-	else
-	{
-		fprintf(fp, "Control queue empty before dequeueing. \n");
-	}
-
 	ctrl_entry = STAILQ_FIRST(&cq->head);
 	if (ctrl_entry != NULL)
 	{
 		STAILQ_REMOVE_HEAD(&cq->head, entries);
 	}
-
-	fprintf(fp, "Succes in dequeing: %s.\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
-
-	if (!STAILQ_EMPTY(&cq->head))
-	{ 
-		fprintf(fp, "Printing in dequeue after dequeueing. \n");
-		STAILQ_FOREACH(var, &cq->head, entries)
-		{
-			fprintf(fp, "Element is: %s. \n", var->ctrl.uctrl.script_ev.d_script);
-		}
-	}
-	else
-	{
-		fprintf(fp, "Control queue empty after dequeueing. \n");
-	}
-	fflush(fp);
-
+	pci_vtdtr_print_queue(fp, cq, "after dequeueing");
 	return (ctrl_entry);
 }
 
@@ -816,12 +762,12 @@ pci_vtdtr_events(void *xsc)
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
+		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 
 		pthread_mutex_lock(&sc->vsd_condmtx);
 		pthread_cond_signal(&sc->vsd_cond);
 		pthread_mutex_unlock(&sc->vsd_condmtx);
 	}
-	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 }
 
 /**
@@ -835,14 +781,11 @@ static void *pci_vtdtr_read_script(void *xsc)
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
 	struct pci_vtdtr_control *ctrl;
 	char *d_script, *fifo, *content;
-	long d_script_length;
+	size_t d_script_length;
 	int copied, done, fd, i, sz, fragment_length;
 
 	sc = xsc;
 	fifo = "/tmp/fifo";
-	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
-	assert(ctrl_entry != NULL);
-	ctrl = &ctrl_entry->ctrl;
 
 	mkfifo(fifo, 0666);
 	if ((fd = open(fifo, O_RDONLY)) == -1)
@@ -879,7 +822,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		}
 		DPRINTF(("Iteration: %d. Done is: %d.\n", ++i, done));
 
-		d_script = (char *)malloc(sizeof(char) * (fragment_length + 1));
+		d_script = malloc(fragment_length + 1);
 		if ((fread(d_script, 1, fragment_length, reader_stream)) != fragment_length)
 		{
 			DPRINTF(("Failed reading script from the named pipe.\n"));
@@ -901,8 +844,13 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 		DPRINTF(("Success in getting the script:\n%s.\n", d_script));
 
+		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+		assert(ctrl_entry != NULL);
+		memset(ctrl_entry, 0, sizeof(struct pci_vtdtr_ctrl_entry));
+		ctrl = &ctrl_entry->ctrl;
+
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
-		if (strlcpy(ctrl->uctrl.script_ev.d_script, d_script, fragment_length + 1) != fragment_length)
+		if (strlcpy(ctrl->uctrl.script_ev.d_script, d_script, fragment_length + 1) >= fragment_length + 1)
 		{
 			DPRINTF(("Failed copying script in control element:\n%s. \n", strerror(errno)));
 			exit(1);
@@ -914,16 +862,16 @@ static void *pci_vtdtr_read_script(void *xsc)
 		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 		DPRINTF(("I've enqueued successfully.\n"));
 
-		// free(ctrl_entry);
-		DPRINTF(("I've freed.\n"));
 		free(d_script);
+		DPRINTF(("I've freed.\n"));
+		
 	}
+	
 	pthread_mutex_lock(&sc->vsd_condmtx);
 	pthread_cond_signal(&sc->vsd_cond);
 	pthread_mutex_unlock(&sc->vsd_condmtx);
 	DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
 
-	// DPRINTF(("I've freed.\n"));
 	DPRINTF(("I've finished reading stuff.\n"));
 	pthread_exit(NULL);
 }
