@@ -64,7 +64,7 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 {
     // A null rec indicates last record has been processed
      if(rec == NULL) {
-        return (DTRACE_CONSUME_NEXT)
+        return (DTRACE_CONSUME_NEXT);
     }
     return (DTRACE_CONSUME_THIS);
 }
@@ -174,7 +174,6 @@ int dtrace_consumer()
     fprintf(log_fp, "DTrace instrumentation started.\n");
     fflush(log_fp);
 
-    int done = 0;
     do
     {
         dtrace_sleep(dtp);

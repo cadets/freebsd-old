@@ -826,15 +826,14 @@ static void *pci_vtdtr_read_script(void *xsc)
 {
 	FILE *reader_stream;
 	struct pci_vtdtr_softc *sc;
+	struct pci_vtdtr_ctrl_entry *ctrl_entry;
+	struct pci_vtdtr_control *ctrl;
 	char *d_script, *fifo, *content;
 	long d_script_length;
 	int copied, done, fd, i, sz, fragment_length;
 
 	sc = xsc;
 	fifo = "/tmp/fifo";
-
-	struct pci_vtdtr_ctrl_entry *ctrl_entry;
-	struct pci_vtdtr_control *ctrl;
 	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
 	assert(ctrl_entry != NULL);
 	ctrl = &ctrl_entry->ctrl;
