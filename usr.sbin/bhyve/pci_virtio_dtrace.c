@@ -917,7 +917,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 	pthread_mutex_unlock(&sc->vsd_condmtx);
 	DPRINTF(("I've signaled there is stuff in the virtual queue. \n"));
 
-	DPRINTF(("I've freed.\n"));
+	// DPRINTF(("I've freed.\n"));
 	DPRINTF(("I've finished reading stuff.\n"));
 	pthread_exit(NULL);
 }
