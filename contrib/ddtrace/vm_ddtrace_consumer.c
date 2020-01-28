@@ -191,7 +191,7 @@ int dtrace_consumer()
             goto destroy_dtrace;
         }
         fflush(log_fp);
-    } while(!done)
+    } while(!done);
 
     // print aggregations
 
