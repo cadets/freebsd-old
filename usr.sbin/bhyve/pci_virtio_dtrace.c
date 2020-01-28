@@ -937,7 +937,7 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	fp = fopen("/tmp/logging.txt", "w+");
 	assert(fp != NULL);
 
-	fprintf(fp, "I am actually writing in the logging file.");
+	fprintf(fp, "I am actually writing in the logging file. \n");
 
 	error = 0;
 	sc = calloc(1, sizeof(struct pci_vtdtr_softc));
