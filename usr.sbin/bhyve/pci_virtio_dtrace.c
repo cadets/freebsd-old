@@ -437,7 +437,7 @@ static void pci_vtdtr_print_queue(FILE *log_fp, struct pci_vtdtr_ctrlq *cq, char
 	if (!STAILQ_EMPTY(&cq->head))
 		STAILQ_FOREACH_SAFE(ctrl_entry, &cq->head, entries, ctrl_entry_temp)
 		{
-			fprintf(log_fp, "%s\n" ctrl_entry->ctrl.uctrl.script_ev.d_script);
+			fprintf(log_fp, "%s\n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
 		}
 	else
 		fprintf(log_fp, "Control queue is empty. \n");
