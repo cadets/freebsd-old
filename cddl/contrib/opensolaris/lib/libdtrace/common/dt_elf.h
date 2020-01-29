@@ -140,6 +140,7 @@ typedef struct dt_elf_stmt {
 	dt_elf_ref_t dtes_action_last;
 	dt_elf_attribute_t dtes_descattr;
 	dt_elf_attribute_t dtes_stmtattr;
+	dt_elf_ref_t dtes_aggdata;
 	dt_elf_ref_t dtes_next;
 } dt_elf_stmt_t;
 
@@ -155,12 +156,41 @@ typedef struct dt_elf_prog {
 	dt_elf_ref_t dtep_options;
 } dt_elf_prog_t;
 
+/*
+ * dt_elf_opt_t: Information about DTrace options that have been _set_.
+ *
+ * dteo_name:   The name of the option.
+ * dteo_set:    Set or not?
+ * dteo_arg:    The argument related to the option
+ * dteo_option: An integer or a pointer to a string that is option-specific.
+ */
 typedef struct dt_elf_opt {
 	const char *dteo_name;
 	int dteo_set;
 	const char *dteo_arg;
 	uintptr_t dteo_option;
 } dt_elf_opt_t;
+
+/*
+ * dt_elf_ident_t: A serialised version of a dt_ident_t data structure.
+ *                 Currently only used for aggregation data.
+ *
+ * edi_name:  An offset in the identifier name string table that represents
+ *            the name of the identifier (e.g. an aggregation name).
+ * edi_kind:  Identifier kind, as represented in dt_ident.h
+ * edi_flags: Identifier flags, as represented in dt_ident.h
+ * edi_id:    Variable or subroutine ID (see sys/dtrace.h).
+ * edi_attr:  Identifier stability attributes.
+ * edi_vers:  Identifier version number.
+ */
+typedef struct dt_elf_ident {
+	size_t edi_name;
+	ushort_t edi_kind;
+	ushort_t edi_flags;
+	uint_t edi_id;
+	dt_elf_attribute_t edi_attr;
+	uint_t edi_vers;
+} dt_elf_ident_t;
 
 extern dt_elf_opt_t dtelf_ctopts[];
 extern dt_elf_opt_t dtelf_rtopts[];

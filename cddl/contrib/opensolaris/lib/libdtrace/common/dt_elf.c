@@ -67,10 +67,13 @@ typedef struct _dt_elf_eopt {
  * dt_elf_state_t: A state struct used during ELF generation and is
  * context-dependent.
  *
- * s_first_act_scn: The first action of the current stmt.
- * s_last_act_scn:  The last action of the current stmt.
+ * s_first_act_scn:     The first action of the current stmt.
+ * s_last_act_scn:      The last action of the current stmt.
  * s_first_ecbdesc_scn: The first ecbdesc of the current stmt.
- * s_actions: List that contains all the actions inside the ELF file.
+ * s_actions:           List that contains all the actions inside the ELF file.
+ * s_idname_table:      A table containing all of the identifier names.
+ * s_idname_size:       Size of the idname table.
+ * s_idname_offset:     Offset into the next-to-be-added entry in the table.
  */
 typedef struct dt_elf_state {
 	dt_elf_ref_t s_first_act_scn;
@@ -78,13 +81,16 @@ typedef struct dt_elf_state {
 	dt_elf_ref_t s_first_ecbdesc_scn;
 	dt_list_t s_actions;
 	dt_elf_actdesc_t *s_eadprev;
+	char *s_idname_table;
+	size_t s_idname_size;
+	size_t s_idname_offset;
 } dt_elf_state_t;
 
 char sec_strtab[] =
 	"\0.shstrtab\0.dtrace_prog\0.dtrace_difo\0.dtrace_actdesc\0"
 	".dtrace_ecbdesc\0.difo_strtab\0.difo_inttab\0"
 	".difo_symtab\0.dtrace_stmtdesc\0.dtrace_predicate\0"
-	".dtrace_opts\0.dtrace_vartab";
+	".dtrace_opts\0.dtrace_vartab\0.dtrace_stmt_idname_table";
 
 #define	DTELF_SHSTRTAB		  1
 #define	DTELF_PROG		 11
@@ -98,6 +104,7 @@ char sec_strtab[] =
 #define	DTELF_PREDICATE		125
 #define	DTELF_OPTS		143
 #define	DTELF_DIFOVARTAB	156
+#define	DTELF_IDNAMETAB		172
 
 #define	DTELF_VARIABLE_SIZE	  0
 
@@ -312,7 +319,7 @@ dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo)
 
 	if ((shdr = elf32_getshdr(scn)) == NULL)
 		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
-		     elf_errmsg(-1));
+		    elf_errmsg(-1));
 
 	/*
 	 * The strings in the string table are not fixed-size, so entsize is set to 0.
@@ -768,6 +775,76 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt)
 	return (scn);
 }
 
+static size_t
+dt_elf_new_id_name(const char *name)
+{
+	size_t offset, len, osize;
+	int needs_realloc;
+	char *otab;
+
+	len = strlen(name);
+	offset = dtelf_state->s_idname_offset;
+
+	/*
+	 * This makes no sense, so hard fail on it.
+	 */
+	if (offset > dtelf_state->s_idname_size)
+		errx(EXIT_FAILURE, "offset (%zu) > idname_size (%zu)",
+		    offset, dtelf_state->s_idname_size);
+
+	/*
+	 * Save the old size in case we need to realloc;
+	 */
+	osize = dtelf_state->s_idname_size;
+
+	/*
+	 * If we are at the boundary, we have to reallocate the identifier
+	 * name string table in order to add a new entry. We first make sure
+	 * that the size of the table is large enough to accommodate the new
+	 * string we are putting in it. Thus, we increase the size of the
+	 * table over and over (shifting it to the left by 1) until we satisfy
+	 * the condition where the current offset (the next entry to be added)
+	 * added to the length of the string we want to add is less than the
+	 * size of the table.
+	 */
+	while ((offset + len) >= dtelf_state->s_idname_size) {
+		/*
+		 * Save the flag that we need to actually realloc the table.
+		 */
+		needs_realloc = 1;
+
+		/*
+		 * XXX: Need a better way to check this...
+		 */
+		if ((dtelf_state->s_idname_size << 1) <= dtelf_state->s_idname_size)
+			errx(EXIT_FAILURE, "idname string table at max size");
+
+		/*
+		 * Increase the size of the identifier name string table by
+		 * shifting it left by 1
+		 */
+		dtelf_state->s_idname_size <<= 1;
+	}
+
+	if (needs_realloc) {
+		otab = dtelf_state->s_idname_table;
+		dtelf_state->s_idname_table = malloc(dtelf_state->s_idname_size);
+		memcpy(dtelf_state->s_idname_table, otab, osize);
+		free(otab);
+	}
+
+	/*
+	 * Add the new string to the table and bump the offset.
+	 */
+	memcpy(dtelf_state->s_idname_table + offset, name, len);
+	dtelf_state->s_idname_offset += len;
+
+	/*
+	 * Return the old offset where the new string resides.
+	 */
+	return (offset);
+}
+
 static Elf_Scn *
 dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 {
@@ -805,6 +882,37 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 	estmt->dtes_action_last = dtelf_state->s_last_act_scn;
 	estmt->dtes_descattr.dtea_attr = stmt->dtsd_descattr;
 	estmt->dtes_stmtattr.dtea_attr = stmt->dtsd_stmtattr;
+
+	if (stmt->dtsd_aggdata != NULL) {
+		dt_ident_t *aid = (dt_ident_t *)stmt->dtsd_aggdata;
+		Elf_Scn *aid_scn;
+		Elf_Data *aid_data;
+		dt_elf_ident_t *eaid;
+
+		if ((aid_scn = elf_newscn(e)) == NULL)
+			errx(EXIT_FAILURE,
+			    "elf_newscn(%p) failed with %s", e, elf_errmsg(-1));
+
+		if ((aid_data = elf_newdata(scn)) == NULL)
+			errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
+			    scn, elf_errmsg(-1));
+
+		eaid = malloc(sizeof(dt_elf_ident_t));
+		memset(eaid, 0, sizeof(dt_elf_ident_t));\
+
+		eaid->edi_name = dt_elf_new_id_name(aid->di_name);
+		eaid->edi_id = aid->di_id;
+		eaid->edi_kind = aid->di_kind;
+		eaid->edi_flags = aid->di_flags;
+		eaid->edi_attr.dtea_attr = aid->di_attr;
+		eaid->edi_vers = aid->di_vers;
+
+		aid_data->d_buf = eaid;
+		aid_data->d_size = sizeof(dt_elf_ident_t);
+		aid_data->d_align = 8;
+		aid_data->d_type = ELF_T_BYTE;
+		aid_data->d_version = EV_CURRENT;
+	}
 
 	/*
 	 * If this action is an aggregation, we save the aggregation ID
@@ -1095,6 +1203,14 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	memset(dtelf_state, 0, sizeof(dt_elf_state_t));
 
 	/*
+	 * Initialise the identifier name string table.
+	 */
+	dtelf_state->s_idname_size = 1;
+	dtelf_state->s_idname_offset = 1;
+	dtelf_state->s_idname_table = malloc(dtelf_state->s_idname_size);
+	memset(dtelf_state->s_idname_table, 0, dtelf_state->s_idname_size);
+
+	/*
 	 * Create the directory that contains the ELF file (if needed).
 	 */
 	err = mkdir("/var/ddtrace", 0755);
@@ -1261,6 +1377,39 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	 */
 	prog.dtep_options = elf_ndxscn(scn);
 
+	/*
+	 * Make the string table that will hold identifier names.
+	 */
+	if ((scn = elf_newscn(e)) == NULL)
+		errx(EXIT_FAILURE, "elf_newscn(%p) failed with %s",
+		    e, elf_errmsg(-1));
+
+	if ((data = elf_newdata(scn)) == NULL)
+		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
+		    scn, elf_errmsg(-1));
+
+	data->d_buf = dtelf_state->s_idname_table;
+	data->d_size = dtelf_state->s_idname_offset;
+	data->d_align = 1;
+	data->d_version = EV_CURRENT;
+	data->d_type = ELF_T_BYTE;
+
+	if ((shdr = elf32_getshdr(scn)) == NULL)
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
+		    elf_errmsg(-1));
+
+	shdr->sh_type = SHT_STRTAB;
+	shdr->sh_name = DTELF_IDNAMETAB;
+	shdr->sh_flags = SHF_STRINGS;
+	shdr->sh_entsize = DTELF_VARIABLE_SIZE;
+
+	(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
+	(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
+
+	/*
+	 * Update everything before writing.
+	 */
 	if (elf_update(e, ELF_C_NULL) < 0)
 		errx(EXIT_FAILURE, "elf_update(%p, ELF_C_NULL) failed with %s",
 		    e, elf_errmsg(-1));
@@ -1280,11 +1429,6 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	if (elf_update(e, ELF_C_WRITE) < 0)
 		errx(EXIT_FAILURE, "elf_update(%p, ELF_C_WRITE) failed with %s",
 		    e, elf_errmsg(-1));
-
-	/*
-	 * TODO: Cleanup of section data (free the pointers).
-	 */
-	//	dt_elf_cleanup();
 
 	free(dtelf_state);
 	(void) elf_end(e);
