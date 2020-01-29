@@ -53,18 +53,18 @@ typedef struct dt_elf_probedesc {
 /*
  * dt_elf_difo_t: A serialised version of a DIFO.
  *
- * dted_buf: Contains all of the DIF instructions.
- * dted_inttab_le: A reference to a section containing the integer table
- *                 in little-endian format.
- * dted_inttab_be: A reference to a section containing the integer table
- *                 in big-endian format.
- * dted_strtab: A reference to a section containing the string table.
- * dted_vartab: A reference to a section containing the variable table.
- * dted_len: Number of instructions in dted_buf.
- * dted_intlen: Length of the integer table.
- * dted_strlen: Length of the string table.
- * dted_varlen: Length of the variable table.
- * dted_rtype: DIFO return type.
+ * dted_buf:         Contains all of the DIF instructions.
+ * dted_inttab_le:   A reference to a section containing the integer table
+ *                   in little-endian format.
+ * dted_inttab_be:   A reference to a section containing the integer table
+ *                   in big-endian format.
+ * dted_strtab:      A reference to a section containing the string table.
+ * dted_vartab:      A reference to a section containing the variable table.
+ * dted_len:         Number of instructions in dted_buf.
+ * dted_intlen:      Length of the integer table.
+ * dted_strlen:      Length of the string table.
+ * dted_varlen:      Length of the variable table.
+ * dted_rtype:       DIFO return type.
  * dted_destructive: Invoke destructive subroutines?
  */
 typedef struct dt_elf_difo {
@@ -95,12 +95,12 @@ typedef struct dt_elf_difo {
 /*
  * dt_elf_actdesc_t: A serialised version of an action description.
  *
- * dtea_difo: A reference to an ELF section containing the DIFO for this action.
- * dtea_next: A reference to an ELF section with the next action.
- * dtea_kind: The kind of an action.
+ * dtea_difo:   A reference to an ELF section containing the DIFO for this action.
+ * dtea_next:   A reference to an ELF section with the next action.
+ * dtea_kind:   The kind of an action.
  * dtea_ntuple: Number in the tuple.
- * dtea_arg: Action argument.
- * dtea_uarg: User argument.
+ * dtea_arg:    Action argument.
+ * dtea_uarg:   User argument.
  */
 typedef struct dt_elf_actdesc {
 	dt_elf_ref_t dtea_difo;
@@ -115,9 +115,9 @@ typedef struct dt_elf_actdesc {
  * dt_elf_ecbdesc_t: A serialised version of an ecbdesc.
  *
  * dtee_action: A reference to an ELF section containing the first action.
- * dtee_pred: A reference to an ELF section containing a predicate.
- * dtee_probe: A probe description.
- * dtee_uarg: Library argument.
+ * dtee_pred:   A reference to an ELF section containing a predicate.
+ * dtee_probe:  A probe description.
+ * dtee_uarg:   Library argument.
  */
 typedef struct dt_elf_ecbdesc {
 	dt_elf_ref_t dtee_action;
@@ -129,8 +129,8 @@ typedef struct dt_elf_ecbdesc {
 /*
  * dt_elf_stmt_t: A serialised version of a D statement.
  *
- * dtes_ecbdesc: A reference to an ELF section containing the ecbdesc.
- * dtes_action: A reference to an ELF section containing the first action.
+ * dtes_ecbdesc:  A reference to an ELF section containing the ecbdesc.
+ * dtes_action:   A reference to an ELF section containing the first action.
  * dtes_descattr: probedesc attributes.
  * dtes_stmtattr: Statement attributes.
  */
