@@ -58,12 +58,105 @@ static char *logging_file_path = "/var/dtrace_log/log_file.txt";
 static char *script;
 FILE *log_fp;
 
+static int get_script_events()
+{
+    FILE *script_fp;
+    struct vtdtr_conf *vtdtr_conf;
+    struct vtdtr_event *ev;
+    size_t script_len;
+    int fd, last = 0;
+
+    if ((fd = open("/dev/vtdtr", O_RDWR)) == -1)
+    {
+        fprintf("Error opening device driver %s\n", strerror(errno));
+        fflush(log_fp);
+        return -1;
+    }
+
+    fprintf(log_fp, "Subscribing to events.. \n");
+
+    vtdtr_conf = malloc(sizeof(struct vtdtr_conf));
+    vtdtr_conf->event_flags |= (1 << VTDTR_EV_SCRIPT) | (1 << VTDTR_EV_RECONF);
+    vtdtr_conf->timeout = 0;
+
+    if ((ioctl(fd, VTDTRIOC_CONF, vtdtr_conf)) != 0)
+    {
+        fprintf(log_fp, "Failed to subscribe to script event in device driver: %s.\n", strerror(errno));
+        fflush(log_fp);
+        return -1;
+    }
+
+    fprintf(log_fp, "Successfully subscribed to events. \n");
+
+    fprintf(log_fp, "Waiting for script.. \n");
+    fflush(log_fp);
+
+    if ((script_fp = fopen(script_path, "w+")) == NULL)
+    {
+        fprintf(log_fp, "Error opening script file %s: %s \n.", script_path, strerror(errno));
+        fflush(log_fp);
+        return -1;
+    }
+
+    do
+    {
+        ev = malloc(sizeof(struct vtdtr_event));
+        memset(ev, 0, sizeof(struct vtdtr_event));
+
+        if (read(fd, ev, sizeof(struct vtdtr_event)) < 0)
+        {
+            fprintf(log_fp, "Error while reading %s", strerror(errno));
+            fflush(log_fp);
+            return -1;
+        }
+
+        fprintf(log_fp, "Got %s \n", ev->args.d_script.script);
+        fflush(log_fp);
+        int len = strlen(ev->args.d_script.script) + 1;
+        fprintf(log_fp, "Length of the script is %d. \n", len - 1);
+        fflush(log_fp);
+        script = malloc(sizeof(char) * len);
+
+        strlcpy(script, ev->args.d_script.script, len);
+        script[len] = '\0';
+        fprintf(log_fp, "Copied script %s \n.", script);
+        fflush(log_fp);
+
+        if (fwrite(script, 1, len - 1, script_fp) != len - 1)
+        {
+            fprintf(log_fp, "Haven't written the entire script to file - stop. \n");
+            fflush(log_fp);
+            return -1;
+        }
+
+        if (ferror(script_fp))
+        {
+            fprintf(log_fp, "Error occured while writing in the script file. \n");
+            fflush(log_fp);
+            return -1;
+        }
+
+        last = ev->args.d_script.last;
+
+        free(script);
+        free(ev);
+
+    } while (!last);
+
+    close(fd);
+    fflush(script_fp);
+    fclose(script_fp);
+
+    return 0;
+}
+
 /*ARGSUSED*/
 static int
 chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 {
     // A null rec indicates last record has been processed
-     if(rec == NULL) {
+    if (rec == NULL)
+    {
         return (DTRACE_CONSUME_NEXT);
     }
     return (DTRACE_CONSUME_THIS);
@@ -76,7 +169,7 @@ chew(const dtrace_probedata_t *data, void *arg)
     return (DTRACE_CONSUME_THIS);
 }
 
-int dtrace_consumer()
+int dtrace_consume()
 {
 
     FILE *fp;
@@ -93,15 +186,15 @@ int dtrace_consumer()
     script_argc = 1;
 
     con.dc_consume_probe = chew;
-	con.dc_consume_rec = chewrec;
-	con.dc_put_buf = NULL; 
-	con.dc_get_buf = NULL;
+    con.dc_consume_rec = chewrec;
+    con.dc_put_buf = NULL;
+    con.dc_get_buf = NULL;
 
     // You still need to figure out how to fix this
     /*script_argv = malloc(sizeof(char *) * script_argc);
     script_argv[0] = "-n";*/
 
-    if((fp = fopen(script_path, "r+")) == NULL)
+    if ((fp = fopen(script_path, "r+")) == NULL)
     {
         fprintf(log_fp, "Failed to open script file: %s", strerror(errno));
         fflush(log_fp);
@@ -128,16 +221,16 @@ int dtrace_consumer()
         ret = -1;
         goto destroy_dtrace;
     } */
- 
 
-    if((prog = dtrace_program_fcompile(dtp, fp, 0, 0, NULL )) == NULL) {
-        fprintf(log_fp, "Failed to compile the DTrace program: %s\n", dtrace_errmsg(dtp,dtrace_errno(dtp)));
+    if ((prog = dtrace_program_fcompile(dtp, fp, 0, 0, NULL)) == NULL)
+    {
+        fprintf(log_fp, "Failed to compile the DTrace program: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         fflush(log_fp);
         ret = -1;
         goto destroy_dtrace;
     }
     fprintf(log_fp, "Dtrace program successfully compiled.\n");
-    fflush(log_fp); 
+    fflush(log_fp);
 
     if (dtrace_program_exec(dtp, prog, &info) == -1)
     {
@@ -193,7 +286,7 @@ int dtrace_consumer()
             goto destroy_dtrace;
         }
         fflush(log_fp);
-    } while(!done);
+    } while (!done);
 
     // print aggregations
 
@@ -206,11 +299,6 @@ destroy_dtrace:
 
 int main(int argc, char **argv)
 {
-    FILE *script_fp;
-    struct vtdtr_conf *vtdtr_conf;
-    struct vtdtr_event *ev;
-    size_t script_len;
-    int fd;
 
     mkdir(directory_path, 0777);
 
@@ -232,88 +320,20 @@ int main(int argc, char **argv)
     }
 
     fprintf(log_fp, "Successfully daemonised.\n");
+    fprintf(log_fp, "Waiting for script..\n");
+    fflush(log_fp);
 
-    if ((fd = open("/dev/vtdtr", O_RDWR)) == -1)
+    if (get_script_events() != 0)
     {
-        fprintf("Error opening device driver %s\n", strerror(errno));
+        fprintf(log_fp, "Error occured while retrieving and assembling the script");
         fflush(log_fp);
         exit(1);
     }
 
-    fprintf(log_fp, "Subscribing to events.. \n");
-
-    vtdtr_conf = malloc(sizeof(struct vtdtr_conf));
-    vtdtr_conf->event_flags |= (1 << VTDTR_EV_SCRIPT) | (1 << VTDTR_EV_RECONF);
-    vtdtr_conf->timeout = 0;
-
-    fprintf(log_fp, "Configurarion has %zd \n", vtdtr_conf->event_flags);
+    fprintf(log_fp, "Start DTrace instrumentation.. \n");
     fflush(log_fp);
 
-    if ((ioctl(fd, VTDTRIOC_CONF, vtdtr_conf)) != 0)
-    {
-        fprintf(log_fp, "Fail to subscribe to script event in /dev/vtdtr. Error is %s \n", strerror(errno));
-        fflush(log_fp);
-        exit(1);
-    }
-
-    fprintf(log_fp, "Successfully subscribed to events. \n");
-
-    fprintf(log_fp, "Reading.. \n");
-    fflush(log_fp);
-
-    ev = (struct vtdtr_event *)malloc(sizeof(struct vtdtr_event));
-    if (read(fd, ev, sizeof(struct vtdtr_event)) < 0)
-    {
-        fprintf(log_fp, "Error while reading %s", strerror(errno));
-        fflush(log_fp);
-        exit(1);
-    }
-
-    fprintf(log_fp, "Got %s \n", ev->args.d_script.script);
-    fflush(log_fp);
-
-    close(fd);
-
-    int len = strlen(ev->args.d_script.script) + 1;
-    fprintf(log_fp, "Length of the script is %d. \n", len - 1);
-    fflush(log_fp);
-    script = (char *)malloc(sizeof(char) * len);
-
-    strlcpy(script, ev->args.d_script.script, len);
-    script[len] = '\0';
-    fprintf(log_fp, "Copied script %s \n.", script);
-    fflush(log_fp);
-
-    if ((script_fp = fopen(script_path, "w+")) == NULL)
-    {
-        fprintf(log_fp, "Error opening script file %s: %s \n.", script_path, strerror(errno));
-        fflush(log_fp);
-        exit(1);
-    }
-
-    if (fwrite(script, 1, len - 1, script_fp) != len - 1)
-    {
-        fprintf(log_fp, "Haven't written the entire script to file - stop. \n");
-        fflush(log_fp);
-        exit(1);
-    }
-
-
-    if (ferror(script_fp))
-    {
-        fprintf(log_fp, "Error occured while writing in the script file. \n");
-        fflush(log_fp);
-        exit(1);
-    }
-
-    // free(ev);
-    fflush(script_fp);
-    fclose(script_fp);
-
-    fprintf(log_fp, "Execute script.. \n");
-    fflush(log_fp);
-
-    if ((dtrace_consumer()) != 0)
+    if ((dtrace_consume()) != 0)
     {
         fprintf(log_fp, "Error occured while trying to execute the script. \n");
     }

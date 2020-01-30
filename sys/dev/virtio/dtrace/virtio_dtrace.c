@@ -736,6 +736,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			device_printf(dev, "Length of the script is %d. \n", d_script_length);
 
 		ev->type = VTDTR_EV_SCRIPT;
+		ev->args.d_script.last = ctrl->uctrl.script_ev.last;
 		if ((strlcpy(ev->args.d_script.script, ctrl->uctrl.script_ev.d_script, d_script_length + 1)) != d_script_length)
 			device_printf(dev, "Error occured when copying script from control event. \n");
 		vtdtr_enqueue(ev);

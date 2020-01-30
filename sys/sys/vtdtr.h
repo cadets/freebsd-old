@@ -29,7 +29,8 @@ struct vtdtr_event
 
 		struct
 		{
-			char script[80];
+			int last;
+			char script[512];
 		} d_script;
 
 		struct

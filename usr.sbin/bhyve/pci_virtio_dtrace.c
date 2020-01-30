@@ -127,8 +127,9 @@ struct pci_vtdtr_ctrl_provevent
 } __attribute__((packed));
 
 struct pci_vtdtr_ctrl_scriptevent
-{
-	char d_script[256];
+{	
+	int lastF;
+	char d_script[512];
 	struct uuid uuid;
 } __attribute__((packed));
 
@@ -850,11 +851,14 @@ static void *pci_vtdtr_read_script(void *xsc)
 		ctrl = &ctrl_entry->ctrl;
 
 		ctrl->event = VTDTR_DEVICE_SCRIPT;
+
 		if (strlcpy(ctrl->uctrl.script_ev.d_script, d_script, fragment_length + 1) >= fragment_length + 1)
 		{
 			DPRINTF(("Failed copying script in control element:\n%s. \n", strerror(errno)));
 			exit(1);
 		}
+		ctrl->uctrl.script_ev.last = done;
+
 		DPRINTF(("Script in control element: %s.\n", ctrl->uctrl.script_ev.d_script));
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
