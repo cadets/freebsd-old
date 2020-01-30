@@ -58,7 +58,8 @@ static char *logging_file_path = "/var/dtrace_log/log_file.txt";
 static char *script;
 FILE *log_fp;
 
-static int get_script_events()
+static int 
+get_script_events()
 {
     FILE *script_fp;
     struct vtdtr_conf *vtdtr_conf;

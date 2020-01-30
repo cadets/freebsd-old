@@ -127,7 +127,7 @@ struct pci_vtdtr_ctrl_provevent
 } __attribute__((packed));
 
 struct pci_vtdtr_ctrl_scriptevent
-{	
+{
 	int last;
 	char d_script[512];
 	struct uuid uuid;
@@ -195,7 +195,7 @@ static void pci_vtdtr_cq_enqueue_front(struct pci_vtdtr_ctrlq *,
 static int pci_vtdtr_cq_empty(struct pci_vtdtr_ctrlq *);
 static struct pci_vtdtr_ctrl_entry *pci_vtdtr_cq_dequeue(
 	struct pci_vtdtr_ctrlq *);
-static void pci_vtdtr_fill_desc(struct vqueue_info *,
+static int pci_vtdtr_fill_desc(struct vqueue_info *,
 								struct pci_vtdtr_control *);
 static void pci_vtdtr_poll(struct vqueue_info *, int);
 static void pci_vtdtr_notify_ready(struct pci_vtdtr_softc *);
@@ -489,7 +489,7 @@ pci_vtdtr_cq_dequeue(struct pci_vtdtr_ctrlq *cq)
  * In this function we fill the descriptor that was provided to us by the guest.
  * No allocation is needed, since we memcpy everything.
  */
-static void
+static int
 pci_vtdtr_fill_desc(struct vqueue_info *vq, struct pci_vtdtr_control *ctrl)
 {
 	struct iovec iov;
@@ -501,10 +501,19 @@ pci_vtdtr_fill_desc(struct vqueue_info *vq, struct pci_vtdtr_control *ctrl)
 	assert(n == 1);
 
 	len = sizeof(struct pci_vtdtr_control);
-	memcpy(iov.iov_base, ctrl, len);
 
+	/* 
+	* Since each iovec has a different length we need to check we
+	* can copy the control queue element in the current iovec. Otherwise, 
+	* we return -1 and the element will be enqueued again in the control queue.
+	*/
+	if (iov.iov_len < len)
+		return -1;
+
+	memcpy(iov.iov_base, ctrl, len);
 	fprintf(fp, "Succes in putting in virtual queue: %s.\n", ((struct pci_vtdtr_control *)iov.iov_base)->uctrl.script_ev.d_script);
 	vq_relchain(vq, idx, len);
+	return 0;
 }
 
 static void
@@ -605,17 +614,34 @@ pci_vtdtr_run(void *xsc)
 		{
 			ctrl_entry = pci_vtdtr_cq_dequeue(sc->vsd_ctrlq);
 			fprintf(fp, "Result of returning from dequeue is: %s. \n", ctrl_entry->ctrl.uctrl.script_ev.d_script);
-			error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
-			assert(error == 0);
+			// error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+			// assert(error == 0);
 
 			if (ready_flag &&
 				ctrl_entry->ctrl.event != VTDTR_DEVICE_READY)
 				ready_flag = 0;
 
-			pci_vtdtr_fill_desc(vq, &ctrl_entry->ctrl);
-			fflush(fp);
-			free(ctrl_entry);
-			nent++;
+			error = pci_vtdtr_fill_desc(vq, &ctrl_entry->ctrl);
+
+			/*
+			* If the size of the iovec element is not large enough to enqueue
+			* the control queue entry in the virtual queue, enqueue back to
+			* front of control queue and try again.
+			*/
+			if (!error)
+			{
+				free(ctrl_entry);
+				nent++;
+			}
+			else
+			{
+				WPRINTF(("Warning: not enough space to enqueue event in virtual queue, trying again."));
+				pci_vtdtr_cq_enqueue_front(sc->vsd_ctrlq, ctrl_entry);
+			}
+
+			error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+			assert(error == 0);
+
 			error = pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 			assert(error == 0);
 		}
@@ -811,9 +837,9 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 	while (!done)
 	{
-		if (d_script_length > 60)
+		if (d_script_length > VTDTR_RINGSZ - 1)
 		{
-			fragment_length = 60;
+			fragment_length = VTDTR_RINGSZ - 1;
 			d_script_length -= fragment_length;
 		}
 		else
@@ -868,9 +894,8 @@ static void *pci_vtdtr_read_script(void *xsc)
 
 		free(d_script);
 		DPRINTF(("I've freed.\n"));
-		
 	}
-	
+
 	pthread_mutex_lock(&sc->vsd_condmtx);
 	pthread_cond_signal(&sc->vsd_cond);
 	pthread_mutex_unlock(&sc->vsd_condmtx);
