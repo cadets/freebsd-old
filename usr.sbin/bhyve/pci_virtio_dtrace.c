@@ -842,9 +842,10 @@ static void *pci_vtdtr_listen(void *xsc)
 	Reads scripts provided by the user from the named pipe and puts it in the
 	control queue.
 */
-static void *pci_vtdtr_read_script(void *args)
+static void *pci_vtdtr_read_script(void *xargs)
 {
 	FILE *reader_stream;
+	struct pci_vtdtr_reader_args *args;
 	struct pci_vtdtr_softc *sc;
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
 	struct pci_vtdtr_control *ctrl;
@@ -861,7 +862,7 @@ static void *pci_vtdtr_read_script(void *args)
 		DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
 		exit(1);
 	}*/
-
+	args = xargs;
 	sc = args->sc;
 	fd = args->fd;
 
@@ -1000,7 +1001,7 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	{
 		// error = pthread_create(&reader, NULL, pci_vtdtr_events, sc);
 		DPRINTF(("Creating thread in pci_virtio to read script. \n"));
-		error = pthread_create(&reader, NULL, pci_vtdtr_listen, sc);
+		error = pthread_create(&listener, NULL, pci_vtdtr_listen, sc);
 		assert(error == 0);
 	}
 
