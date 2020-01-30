@@ -128,7 +128,7 @@ struct pci_vtdtr_ctrl_provevent
 
 struct pci_vtdtr_ctrl_scriptevent
 {	
-	int lastF;
+	int last;
 	char d_script[512];
 	struct uuid uuid;
 } __attribute__((packed));
@@ -807,7 +807,7 @@ static void *pci_vtdtr_read_script(void *xsc)
 		printf("Failed reading size of script from the named pipe: %s. \n", strerror(errno));
 		exit(1);
 	}
-	DPRINTF(("Size of script is: %d. \n", d_script_length));
+	DPRINTF(("Size of script is: %zu. \n", d_script_length));
 
 	while (!done)
 	{
