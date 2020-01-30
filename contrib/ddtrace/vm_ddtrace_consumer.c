@@ -169,7 +169,7 @@ chew(const dtrace_probedata_t *data, void *arg)
     return (DTRACE_CONSUME_THIS);
 }
 
-int dtrace_consume()
+int dtrace_consumer()
 {
 
     FILE *fp;
@@ -333,7 +333,7 @@ int main(int argc, char **argv)
     fprintf(log_fp, "Start DTrace instrumentation.. \n");
     fflush(log_fp);
 
-    if ((dtrace_consume()) != 0)
+    if ((dtrace_consumer()) != 0)
     {
         fprintf(log_fp, "Error occured while trying to execute the script. \n");
     }
