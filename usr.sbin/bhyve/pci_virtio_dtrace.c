@@ -97,7 +97,7 @@ static int pci_vtdtr_debug;
 
 struct pci_vtdtr_reader_args
 {
-	struct pci_vtdtr_softc sc;
+	struct pci_vtdtr_softc *sc;
 	int fd;
 };
 
@@ -817,7 +817,7 @@ static void *pci_vtdtr_listen(void *xsc)
 	for (;;)
 	{
 		
-		if ((fd = openat(fifo, O_RDONLY)) == -1)
+		if ((fd = openat(tmp_fd, "fifo", O_RDONLY)) == -1)
 		{
 			DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
 			exit(1);

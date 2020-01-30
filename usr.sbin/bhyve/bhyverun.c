@@ -164,6 +164,7 @@ extern int vmexit_task_switch(struct vmctx *, struct vm_exit *, int *vcpu);
 
 char *vmname;
 
+int tmp_fd;
 int guest_ncpus;
 uint16_t cores, maxcpus, sockets, threads;
 
@@ -1120,8 +1121,10 @@ main(int argc, char *argv[])
 	vmname = argv[0];
 
 #ifndef VTDTR
-	if (trace)
+	if (trace) {
 		dthyve_init(vmname);
+		tmp_fd = open("/tmp/", O_RDONLY);
+	}
 #endif
 
 	ctx = do_open(vmname);
