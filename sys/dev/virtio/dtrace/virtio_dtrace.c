@@ -644,6 +644,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	struct vtdtr_ctrl_provevent *pv;
 
 	device_t dev;
+	size_t d_script_length;
 	int retval;
 	int error;
 
@@ -729,7 +730,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 
 		ev = malloc(sizeof(struct vtdtr_event), M_TEMP, M_ZERO);
 		KASSERT(ev != NULL, ("Malloc event failed.\n"));
-		int d_script_length = strlen(ctrl->uctrl.script_ev.d_script);
+		d_script_length = strlen(ctrl->uctrl.script_ev.d_script);
 
 		if (debug)
 			device_printf(dev, "Length of the script is %d. \n", d_script_length);

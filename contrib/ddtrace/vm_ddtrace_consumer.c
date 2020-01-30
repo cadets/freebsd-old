@@ -79,6 +79,7 @@ chew(const dtrace_probedata_t *data, void *arg)
 int dtrace_consumer()
 {
 
+    FILE *fp;
     dtrace_consumer_t con;
     dtrace_hdl_t *dtp;
     dtrace_prog_t *prog;
@@ -98,15 +99,15 @@ int dtrace_consumer()
 
     // You still need to figure out how to fix this
     /*script_argv = malloc(sizeof(char *) * script_argc);
-    script_argv[0] = "-n";
+    script_argv[0] = "-n";*/
 
-    if ((fp = fopen(script_path, "r")) == NULL)
+    if((fp = fopen(script_path, "r+")) == NULL)
     {
         fprintf(log_fp, "Failed to open script file: %s", strerror(errno));
         fflush(log_fp);
         ret = -1;
         return ret;
-    }*/
+    }
 
     if ((dtp = dtrace_open(DTRACE_VERSION, 0, &err)) == NULL)
     {
@@ -120,22 +121,23 @@ int dtrace_consumer()
     fflush(log_fp);
     fprintf(log_fp, "About to compile, script is: %s. \n", script);
 
-    if ((prog = dtrace_program_strcompile(dtp, script, DTRACE_PROBESPEC_NAME, DTRACE_C_DIFV, 0, NULL)) == NULL)
+    /* if ((prog = dtrace_program_strcompile(dtp, script, DTRACE_PROBESPEC_NAME, DTRACE_C_DIFV, 0, NULL)) == NULL)
     {
         fprintf(log_fp, "Failed to compile dtrace program: %s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         fflush(log_fp);
         ret = -1;
         goto destroy_dtrace;
-    }
-    fprintf(log_fp, "Dtrace program successfully compiled.\n");
-    fflush(log_fp);
+    } */
+ 
 
-    /*if((prog = dtrace_program_fcompile(dtp, fp, DTRACE_C_PSPEC | DTRACE_C_CPP, 0, NULL )) == NULL) {
+    if((prog = dtrace_program_fcompile(dtp, fp, 0, 0, NULL )) == NULL) {
         fprintf(log_fp, "Failed to compile the DTrace program: %s\n", dtrace_errmsg(dtp,dtrace_errno(dtp)));
         fflush(log_fp);
         ret = -1;
         goto destroy_dtrace;
-    }*/
+    }
+    fprintf(log_fp, "Dtrace program successfully compiled.\n");
+    fflush(log_fp); 
 
     if (dtrace_program_exec(dtp, prog, &info) == -1)
     {
@@ -202,19 +204,16 @@ destroy_dtrace:
     return ret;
 }
 
-// TODO(MARA): Cleanup after this works
-// TODO(MARA): Figure out why syslogd doesn't work in the virtual machine. Is
-// syslogd the best option? Alternative is implementing better custom logging.
 int main(int argc, char **argv)
 {
     FILE *script_fp;
     struct vtdtr_conf *vtdtr_conf;
     struct vtdtr_event *ev;
-    int fd, script_len;
+    size_t script_len;
+    int fd;
 
     mkdir(directory_path, 0777);
 
-    // TODO(MARA): syslog in the VM is not working so have a custom one for now
     if ((log_fp = fopen(logging_file_path, "w+")) == NULL)
     {
         printf("Error opening file: %s \n", strerror(errno));
@@ -288,16 +287,17 @@ int main(int argc, char **argv)
     if ((script_fp = fopen(script_path, "w+")) == NULL)
     {
         fprintf(log_fp, "Error opening script file %s: %s \n.", script_path, strerror(errno));
-        fflush(script_fp);
+        fflush(log_fp);
         exit(1);
     }
 
-    if (fwrite(script, sizeof(char), len - 1, script_fp) != len - 1)
+    if (fwrite(script, 1, len - 1, script_fp) != len - 1)
     {
         fprintf(log_fp, "Haven't written the entire script to file - stop. \n");
         fflush(log_fp);
         exit(1);
     }
+
 
     if (ferror(script_fp))
     {
@@ -307,6 +307,8 @@ int main(int argc, char **argv)
     }
 
     // free(ev);
+    fflush(script_fp);
+    fclose(script_fp);
 
     fprintf(log_fp, "Execute script.. \n");
     fflush(log_fp);
