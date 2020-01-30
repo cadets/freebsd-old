@@ -952,7 +952,7 @@ do_open(const char *vmname)
 	}
 
 #ifndef WITHOUT_CAPSICUM
-	cap_rights_init(&rights, CAP_IOCTL, CAP_MMAP_RW);
+	cap_rights_init(&rights, CAP_IOCTL, CAP_MMAP_RW, CAP_READ);
 	if (cap_rights_limit(vm_get_device_fd(ctx), &rights) == -1 &&
 	    errno != ENOSYS)
 		errx(EX_OSERR, "Unable to apply rights for sandbox");

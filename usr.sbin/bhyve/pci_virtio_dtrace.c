@@ -95,7 +95,11 @@ static int pci_vtdtr_debug;
 #define DPRINTF(params) printf params
 #define WPRINTF(params) printf params
 
-#define FRAGMENT_LENGTH 256
+struct pci_vtdtr_reader_args
+{
+	struct pci_vtdtr_softc sc;
+	int fd;
+};
 
 struct pci_vtdtr_probe_create_event
 {
@@ -797,11 +801,48 @@ pci_vtdtr_events(void *xsc)
 	}
 }
 
+/*
+ * Listen for scripts sent from dtrace indefinitely.
+ */
+static void *pci_vtdtr_listen(void *xsc)
+{
+	struct pci_vtdtr_reader_args *args;
+	pthread_t reader;
+	char *fifo;
+	int error, fd;
+
+	fifo = "/tmp/fifo";
+	mkfifo(fifo, 0666);
+
+	for (;;)
+	{
+		
+		if ((fd = openat(fifo, O_RDONLY)) == -1)
+		{
+			DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
+			exit(1);
+		}
+
+		args = malloc(sizeof(struct pci_vtdtr_reader_args));
+		args->sc = xsc;
+		args->fd = fd;
+
+		error = pthread_create(&reader, NULL, pci_vtdtr_read_script, (void *)args);
+		assert(error == 0);
+		error = pthread_join(reader, NULL);
+		assert(error == 0);
+
+		free(args);
+		close(fd);
+		//unlink(fifo);
+	}
+}
+
 /**
 	Reads scripts provided by the user from the named pipe and puts it in the
 	control queue.
 */
-static void *pci_vtdtr_read_script(void *xsc)
+static void *pci_vtdtr_read_script(void *args)
 {
 	FILE *reader_stream;
 	struct pci_vtdtr_softc *sc;
@@ -811,15 +852,18 @@ static void *pci_vtdtr_read_script(void *xsc)
 	size_t d_script_length;
 	int copied, done, fd, i, sz, fragment_length;
 
-	sc = xsc;
-	fifo = "/tmp/fifo";
+	// sc = xsc;
+	// fifo = "/tmp/fifo";
 
-	mkfifo(fifo, 0666);
-	if ((fd = open(fifo, O_RDONLY)) == -1)
+	//mkfifo(fifo, 0666);
+	/*if ((fd = openat(fifo, O_RDONLY)) == -1)
 	{
 		DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
 		exit(1);
-	}
+	}*/
+
+	sc = args->sc;
+	fd = args->fd;
 
 	if ((reader_stream = fdopen(fd, "r")) == NULL)
 	{
@@ -865,8 +909,8 @@ static void *pci_vtdtr_read_script(void *xsc)
 		if (done)
 		{
 			fclose(reader_stream);
-			close(fd);
-			unlink(fifo);
+			// close(fd);
+			// unlink(fifo);
 		}
 
 		DPRINTF(("Success in getting the script:\n%s.\n", d_script));
@@ -914,7 +958,7 @@ static int
 pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 {
 	struct pci_vtdtr_softc *sc;
-	pthread_t communicator, reader;
+	pthread_t communicator, listener; // reader;
 	int error;
 
 	fp = fopen("/tmp/logging.txt", "w+");
@@ -956,7 +1000,7 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	{
 		// error = pthread_create(&reader, NULL, pci_vtdtr_events, sc);
 		DPRINTF(("Creating thread in pci_virtio to read script. \n"));
-		error = pthread_create(&reader, NULL, pci_vtdtr_read_script, sc);
+		error = pthread_create(&reader, NULL, pci_vtdtr_listen, sc);
 		assert(error == 0);
 	}
 

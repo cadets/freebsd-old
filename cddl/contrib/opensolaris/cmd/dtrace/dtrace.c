@@ -1545,6 +1545,7 @@ static void *write_script(void *file_path)
 	if ((fp = fopen((char *)file_path, "r")) == NULL)
 	{
 		printf("Error occudred while opening script file: %s\n", strerror(errno));
+		exit(1);
 	}
 
 	if (fseek(fp, 0L, SEEK_END) == -1)
@@ -1623,8 +1624,7 @@ int main(int argc, char *argv[])
 
 	g_ofp = stdout;
 
-	// TODO: remove m_mode and refactor
-	int done = 0, mode = 0, m_mode = 0;
+	int done = 0, mode = 0, h_mode = 0;
 	int err, i, c;
 	char *p, **v;
 	struct ps_prochandle *P;
@@ -1742,8 +1742,7 @@ int main(int argc, char *argv[])
 				mode++;
 				break;
 			case 'Y':
-				// TODO: something better
-				m_mode = -1;
+				h_mode = 1;
 				break;
 
 			default:
@@ -1756,14 +1755,13 @@ int main(int argc, char *argv[])
 			g_argv[g_argc++] = argv[optind];
 	}
 
-	/**
-	 * We are passing a script to virtio via fifo. 
+	/*
+	 * Open fifo to pass the script to VirtIO PCI emulated device in order to be
+	 * sent to the guest where instrumentation will actually.
 	*/
-	if (m_mode == -1)
+	if (h_mode == 1)
 	{
 		const char *file_path;
-
-		// Assume the script is the last argument, for now.
 		file_path = argv[argc - 1];
 		write_script(file_path);
 
