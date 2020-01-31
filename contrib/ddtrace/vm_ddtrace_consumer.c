@@ -58,7 +58,7 @@ static char *logging_file_path = "/var/dtrace_log/log_file.txt";
 static char *script;
 FILE *log_fp;
 
-static int 
+static int
 get_script_events()
 {
     FILE *script_fp;
@@ -179,8 +179,10 @@ int dtrace_consumer()
     dtrace_prog_t *prog;
     dtrace_proginfo_t info;
     char **script_argv;
-    int done, err, ret, script_argc;
+    int dlog, done, err, ret, script_argc;
     void *dof;
+    // what do I put in here?
+    char ddtracearg[13];
 
     done = 0;
     ret = 0;
@@ -191,9 +193,12 @@ int dtrace_consumer()
     con.dc_put_buf = NULL;
     con.dc_get_buf = NULL;
 
-    // You still need to figure out how to fix this
-    /*script_argv = malloc(sizeof(char *) * script_argc);
-    script_argv[0] = "-n";*/
+    dlog = open("/dev/dlog", O_RDRW);
+    if(dlog == -1) {
+        fprintf("log_fp", "Failed to open dlog: %s", strerror(errno));
+        ret = -1;
+        return ret;
+    }
 
     if ((fp = fopen(script_path, "r+")) == NULL)
     {
@@ -208,6 +213,33 @@ int dtrace_consumer()
         fprintf(log_fp, "Cannot open dtrace library: %s\n", dtrace_errmsg(dtp, err));
         fflush(log_fp);
         ret = -1;
+        goto destroy_dtrace;
+    }
+
+    sprintf(ddtracearg, "%d", dlog);
+
+    if (dtrace_setopt(dtp, "aggsize", "4m") != 0)
+    {
+        fprintf(log_fp, "Failed to set aggregations size: %s. \n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+        goto destroy_dtrace;
+    }
+
+    if (dtrace_setopt(dtp, "bufsize", "4m") != 0)
+    {
+        fprintf(log_fp, "Failed to set buffers size %s. \n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+        goto destroy_dtrace;
+    }
+
+    if(dtrace_setopt(dtp, "bufpolicy", "switch") != 0)
+    {
+        fprintf(log_fp, "Failed to set bufpolicy to switch %s. \n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+        goto destroy_dtrace;
+    }
+
+
+    if (dtrace_setopt(dtp, "ddtracearg", ddtracearg) != 0)
+    {
+        fprintf(log_fp, "Failed to set ddtracearg: %s. \n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         goto destroy_dtrace;
     }
 
@@ -244,16 +276,7 @@ int dtrace_consumer()
     fprintf(log_fp, "Dtrace program successfully executed.\n");
     fflush(log_fp);
 
-    if (dtrace_setopt(dtp, "aggsize", "4m") == -1)
-    {
-        fprintf(log_fp, "Failed to set aggregations size: %s. \n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
-    }
-
-    if (dtrace_setopt(dtp, "bufsize", "4m") == -1)
-    {
-        fprintf(log_fp, "Failed to set buffers size %s. \n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
-    }
-
+    
     /*fprintf(log_fp, "Try to create some DOF.\n");
     if ((dof = dtrace_dof_create(dtp, prog, DTRACE_D_STRIP)) == NULL)
     {

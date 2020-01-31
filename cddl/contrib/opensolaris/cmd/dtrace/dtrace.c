@@ -1605,7 +1605,7 @@ static void *write_script(void *file_path)
 	free(d_script);
 	close(fd);
 	fclose(writer_stream);
-	// unlink(fifo);
+	//unlink(fifo);
 }
 
 int main(int argc, char *argv[])

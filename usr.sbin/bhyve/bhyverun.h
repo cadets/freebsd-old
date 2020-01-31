@@ -35,7 +35,11 @@
 #define	VMEXIT_ABORT		(-1)
 
 struct vmctx;
-extern int tmp_fd;
+
+#ifndef VTDTR
+    extern int tmp_fd;
+#endif
+
 extern int guest_ncpus;
 extern char *guest_uuid_str;
 extern char *vmname;
