@@ -445,8 +445,9 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 					"Error producing format metadata to DLog\n");
 			return -1;
 		}
-	}
+	
 #endif
+	}
 
 	mutex_exit(&dtrace_lock);
 
