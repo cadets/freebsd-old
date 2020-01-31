@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <syslog.h>
 #include <dtrace.h>
 #include <vtdtr.h>
+#include <fcntl.h>
 
 static char *directory_path = "/var/dtrace_log";
 static char *script_path = "/var/dtrace_log/script.d";
@@ -69,7 +70,7 @@ get_script_events()
 
     if ((fd = open("/dev/vtdtr", O_RDWR)) == -1)
     {
-        fprintf("Error opening device driver %s\n", strerror(errno));
+        fprintf(log_fp, "Error opening device driver %s\n", strerror(errno));
         fflush(log_fp);
         return -1;
     }

@@ -411,7 +411,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 
 	mutex_enter(&dtrace_lock);
 
-#ifdef 0
+#if 0
 	if (dlog_produce(hdl, DDTRACE_NFORMAT_KEY,
 					 (unsigned char *)&state->dts_nformats, sizeof(int)) != 0)
 	{
@@ -436,7 +436,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		DL_ASSERT(fmt_str != NULL, ("Format string cannor be NULL"));
 		fmt_len = strlen(fmt_str) + 1;
 
-#ifdef 0
+#if 0
 		/* Persit the format string to dlog. */
 		if (dlog_produce(hdl, DDTRACE_FORMAT_KEY, fmt_str, fmt_len) != 0)
 		{
@@ -461,7 +461,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	 * to monotonical increase for 1?
 	 */
 
-#ifdef 0
+#if 0
 	if (dlog_produce(hdl, DDTRACE_NPROBE_KEY,
 					 (unsigned char *)&dtrace_nprobes, sizeof(int)) != 0)
 	{
@@ -517,7 +517,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 						  DTRACE_FUNCNAMELEN - 1);
 			(void)strncpy(pdesc.dtpd_name, probe->dtpr_name,
 						  DTRACE_NAMELEN - 1);
-#ifdef 0
+#if 0
 			if (dlog_produce(hdl, DDTRACE_PROBE_KEY,
 							 (unsigned char *)&pdesc,
 							 sizeof(dtrace_probedesc_t)) != 0)
@@ -571,7 +571,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 					  sizeof(dtrace_recdesc_t));
 				dest += sizeof(dtrace_recdesc_t);
 			}
-#ifdef 0
+#if 0
 			/* Persist the EPROBE metadata to dlog. */
 			if (dlog_produce(hdl, DDTRACE_EPROBE_KEY, buf, size) != 0)
 			{
@@ -653,7 +653,7 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 					   "than log MTU %d\n",
 					   dtrace_epid2size(state, epid), DL_MTU));
 
-#ifdef 0
+#if 0
 			if (dlog_produce(hdl,
 							 DDTRACE_KEY,
 							 &desc->dtbd_data[msg_start], msg_size) != 0)
@@ -685,7 +685,7 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 			 */
 			if (msg_size == desc->dtbd_size)
 			{
-#ifdef 0
+#if 0
 				if (dlog_produce(hdl,
 								 DDTRACE_KEY,
 								 &desc->dtbd_data[msg_start],
