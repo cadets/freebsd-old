@@ -31,6 +31,9 @@
         "string.h": "c",
         "unistd.h": "c",
         "syslog.h": "c",
-        "*.def": "cpp"
+        "*.def": "cpp",
+        "complex": "cpp",
+        "valarray": "cpp",
+        "cmath": "cpp"
     }
 }

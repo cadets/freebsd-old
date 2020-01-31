@@ -608,7 +608,8 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	DL_ASSERT(desc->dtbd_size != 0,
 			  ("ddtrace_persist_trace called with empty buffer."));
 	
-	DLOGTR1(PRIO_LOW, "I'm here %d", desc->dtbd_size);
+	printf("I'm here %d", desc->dtbd_size);
+
 	return;
 
 	while (size < desc->dtbd_size)
@@ -721,6 +722,8 @@ ddtrace_open(void *arg, struct dtrace_state *state)
 	dtrace_dist_t *dist = (dtrace_dist_t *)arg;
 	uint32_t hash;
 	int rc;
+
+	printf("I've open ddtrace");
 
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL."));
 	DL_ASSERT(dist != NULL, ("DTrace client instance cannot be NULL."));
