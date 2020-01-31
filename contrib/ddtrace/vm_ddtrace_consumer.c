@@ -51,7 +51,6 @@ __FBSDID("$FreeBSD$");
 #include <syslog.h>
 #include <dtrace.h>
 #include <vtdtr.h>
-#include <fcntl.h>
 
 static char *directory_path = "/var/dtrace_log";
 static char *script_path = "/var/dtrace_log/script.d";
@@ -194,9 +193,9 @@ int dtrace_consumer()
     con.dc_put_buf = NULL;
     con.dc_get_buf = NULL;
 
-    dlog = open("/dev/dlog", O_RDRW);
+    dlog = open("/dev/dlog", O_RDWR);
     if(dlog == -1) {
-        fprintf("log_fp", "Failed to open dlog: %s", strerror(errno));
+        fprintf(log_fp, "Failed to open dlog: %s", strerror(errno));
         ret = -1;
         return ret;
     }

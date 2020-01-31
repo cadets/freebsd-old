@@ -607,7 +607,7 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	DL_ASSERT(desc->dtbd_size != 0,
 			  ("ddtrace_persist_trace called with empty buffer."));
 	
-	DLOGTR0(PRIO_LOW, "I'm here %d", desc->dtbd_size);
+	DLOGTR1(PRIO_LOW, "I'm here %d", desc->dtbd_size);
 	return;
 
 	while (size < desc->dtbd_size)
