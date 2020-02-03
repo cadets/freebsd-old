@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <dtrace.h>
 #include <vtdtr.h>
 #include <dl_config.h>
+#include <dlog.h>
 
 static char *directory_path = "/var/dtrace_log";
 static char *script_path = "/var/dtrace_log/script.d";
@@ -180,6 +181,7 @@ int dtrace_consumer()
     dtrace_prog_t *prog;
     dtrace_proginfo_t info;
     nvlist_t *props;
+    size_t packed_len;
     char **script_argv;
     char *topic_name;
     int dlog, done, err, ret, rc, script_argc;
