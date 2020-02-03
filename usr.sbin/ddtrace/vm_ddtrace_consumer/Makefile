@@ -46,6 +46,7 @@ CFLAGS+=-I${SRCTOP}/sys/cddl/dev/vtdtr \
 		-I${SRCTOP}/cddl/compat/opensolaris/include \
 		-I${SRCTOP}/cddl/lib/libdtrace \
 		-I${SRCTOP}/cddl/contrib/opensolaris/lib/libdtrace/common \
+		-I${SRCTOP}/cddl/contrib/opensolaris/lib/libctf/common \
 		-I${SRCTOP}/sys \
 		-I${SRCTOP}/contrib/dlog/src \
 		-I${SRCTOP}/sys/dev/dlog \
