@@ -193,7 +193,7 @@ int dtrace_consumer()
     done = 0;
     ret = 0;
     script_argc = 1;
-    topic_name = "NOTUSED";
+    topic_name = "test";
 
     if ((fp = fopen(script_path, "r+")) == NULL)
     {
@@ -212,7 +212,7 @@ int dtrace_consumer()
     }
 
     props = nvlist_create(0);
-    nvlist_add_string(props, DL_CONF_TOPIC, topic_name);
+    nvlist_add_string(props, DL_DEFAULT_TOPIC, topic_name);
 
     client_conf = (struct dl_client_config_desc *)malloc(
         sizeof(struct dl_client_config_desc));
