@@ -50,7 +50,7 @@ __FBSDID("$FreeBSD$");
 #include <syslog.h>
 #include <dtrace.h>
 #include <vtdtr.h>
-#include "dl_config.h"
+#include <dl_config.h>
 
 static char *directory_path = "/var/dtrace_log";
 static char *script_path = "/var/dtrace_log/script.d";

@@ -47,6 +47,7 @@ CFLAGS+=-I${SRCTOP}/sys/cddl/dev/vtdtr \
 		-I${SRCTOP}/cddl/lib/libdtrace \
 		-I${SRCTOP}/cddl/contrib/opensolaris/lib/libdtrace/common \
 		-I${SRCTOP}/sys \
+		-I${SRCTOP}/contrib \
 		-I${SRCTOP}
 
 .include <bsd.prog.mk>
