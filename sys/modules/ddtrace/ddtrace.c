@@ -723,8 +723,6 @@ ddtrace_open(void *arg, struct dtrace_state *state)
 	uint32_t hash;
 	int rc;
 
-	printf("I've open ddtrace");
-
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL."));
 	DL_ASSERT(dist != NULL, ("DTrace client instance cannot be NULL."));
 

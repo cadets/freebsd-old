@@ -30,8 +30,7 @@
  *
  */
 
-// TODO(MARA): cleanup include files
-
+#include <sys/nv.h>
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
@@ -51,6 +50,7 @@ __FBSDID("$FreeBSD$");
 #include <syslog.h>
 #include <dtrace.h>
 #include <vtdtr.h>
+#include "dl_config.h"
 
 static char *directory_path = "/var/dtrace_log";
 static char *script_path = "/var/dtrace_log/script.d";
@@ -174,12 +174,15 @@ int dtrace_consumer()
 {
 
     FILE *fp;
+    struct dl_client_config_desc *client_conf;
     dtrace_consumer_t con;
     dtrace_hdl_t *dtp;
     dtrace_prog_t *prog;
     dtrace_proginfo_t info;
+    nvlist_t *props;
     char **script_argv;
-    int dlog, done, err, ret, script_argc;
+    char *topic_name;
+    int dlog, done, err, ret, rc, script_argc;
     void *dof;
     // what do I put in here?
     char ddtracearg[13];
@@ -187,18 +190,7 @@ int dtrace_consumer()
     done = 0;
     ret = 0;
     script_argc = 1;
-
-    con.dc_consume_probe = chew;
-    con.dc_consume_rec = chewrec;
-    con.dc_put_buf = NULL;
-    con.dc_get_buf = NULL;
-
-    dlog = open("/dev/dlog", O_RDWR);
-    if(dlog == -1) {
-        fprintf(log_fp, "Failed to open dlog: %s", strerror(errno));
-        ret = -1;
-        return ret;
-    }
+    topic_name = "NOTUSED";
 
     if ((fp = fopen(script_path, "r+")) == NULL)
     {
@@ -207,6 +199,46 @@ int dtrace_consumer()
         ret = -1;
         return ret;
     }
+
+    dlog = open("/dev/dlog", O_RDWR);
+    if (dlog == -1)
+    {
+        fprintf(log_fp, "Failed to open dlog: %s", strerror(errno));
+        ret = -1;
+        return ret;
+    }
+
+    props = nvlist_create(0);
+    nvlist_add_string(props, DL_CONF_TOPIC, topic_name);
+
+    client_conf = (struct dl_client_config_desc *)malloc(
+        sizeof(struct dl_client_config_desc));
+    if (client_conf == NULL)
+    {
+
+        fprintf(log_fp, "Failed to allocate client config: %s\n",
+                strerror(errno));
+        ret = -1;
+        return ret;
+    }
+
+    client_conf->dlcc_packed_nvlist = nvlist_pack(props, &packed_len);
+    client_conf->dlcc_packed_nvlist_len = packed_len;
+
+    rc = ioctl(dlog, DLOGIOC_PRODUCER, &client_conf);
+    if (rc != 0)
+    {
+
+        fprintf(log_fp, "failed to create DLog producer: %s\n",
+                strerror(errno));
+        ret = -1;
+        return ret;
+    }
+
+    con.dc_consume_probe = chew;
+    con.dc_consume_rec = chewrec;
+    con.dc_put_buf = NULL;
+    con.dc_get_buf = NULL;
 
     if ((dtp = dtrace_open(DTRACE_VERSION, 0, &err)) == NULL)
     {
@@ -217,6 +249,7 @@ int dtrace_consumer()
     }
 
     sprintf(ddtracearg, "%d", dlog);
+    (void)dtrace_setopt(dtp, "ddtracearg", ddtracearg);
 
     if (dtrace_setopt(dtp, "aggsize", "4m") != 0)
     {
@@ -230,12 +263,11 @@ int dtrace_consumer()
         goto destroy_dtrace;
     }
 
-    if(dtrace_setopt(dtp, "bufpolicy", "switch") != 0)
+    if (dtrace_setopt(dtp, "bufpolicy", "switch") != 0)
     {
         fprintf(log_fp, "Failed to set bufpolicy to switch %s. \n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
         goto destroy_dtrace;
     }
-
 
     if (dtrace_setopt(dtp, "ddtracearg", ddtracearg) != 0)
     {
@@ -276,7 +308,6 @@ int dtrace_consumer()
     fprintf(log_fp, "Dtrace program successfully executed.\n");
     fflush(log_fp);
 
-    
     /*fprintf(log_fp, "Try to create some DOF.\n");
     if ((dof = dtrace_dof_create(dtp, prog, DTRACE_D_STRIP)) == NULL)
     {
