@@ -1,3 +1,4 @@
+
 /*-
  * Copyright (c) 2006,2008,2011 Joseph Koshy
  * All rights reserved.
@@ -87,11 +88,13 @@ elf_getdata(Elf_Scn *s, Elf_Data *ed)
 		sh_align  = s->s_shdr.s_shdr64.sh_addralign;
 	}
 
+	printf("reached the first marker\n");
 	if (sh_type == SHT_NULL) {
 		LIBELF_SET_ERROR(SECTION, 0);
 		return (NULL);
 	}
 
+	printf("reached the second marker\n");
 	if ((elftype = _libelf_xlate_shtype(sh_type)) < ELF_T_FIRST ||
 	    elftype > ELF_T_LAST || (sh_type != SHT_NOBITS &&
 	    (sh_offset > e->e_rawsize || sh_size > e->e_rawsize - sh_offset))) {
@@ -105,11 +108,13 @@ elf_getdata(Elf_Scn *s, Elf_Data *ed)
 		return (NULL);
 	}
 
+	printf("reached the third marker\n");
 	if (sh_size % fsz) {
 		LIBELF_SET_ERROR(SECTION, 0);
 		return (NULL);
 	}
 
+	printf("past all of them\n");
 	if (sh_size / fsz > SIZE_MAX) {
 		LIBELF_SET_ERROR(RANGE, 0);
 		return (NULL);

@@ -90,7 +90,8 @@ char sec_strtab[] =
 	"\0.shstrtab\0.dtrace_prog\0.dtrace_difo\0.dtrace_actdesc\0"
 	".dtrace_ecbdesc\0.difo_strtab\0.difo_inttab\0"
 	".difo_symtab\0.dtrace_stmtdesc\0.dtrace_predicate\0"
-	".dtrace_opts\0.dtrace_vartab\0.dtrace_stmt_idname_table";
+	".dtrace_opts\0.dtrace_vartab\0.dtrace_stmt_idname_table\0"
+	".dtrace_ident";
 
 #define	DTELF_SHSTRTAB		  1
 #define	DTELF_PROG		 11
@@ -104,7 +105,8 @@ char sec_strtab[] =
 #define	DTELF_PREDICATE		125
 #define	DTELF_OPTS		143
 #define	DTELF_DIFOVARTAB	156
-#define	DTELF_IDNAMETAB		172
+#define	DTELF_IDNAMETAB		171
+#define	DTELF_IDENT		197
 
 #define	DTELF_VARIABLE_SIZE	  0
 
@@ -837,6 +839,8 @@ dt_elf_new_id_name(const char *name)
 	 * Add the new string to the table and bump the offset.
 	 */
 	memcpy(dtelf_state->s_idname_table + offset, name, len);
+	printf("name = %s\n", name);
+	dtelf_state->s_idname_table[offset + len - 1] = '\0';
 	dtelf_state->s_idname_offset += len;
 
 	/*
@@ -912,6 +916,19 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 		aid_data->d_align = 8;
 		aid_data->d_type = ELF_T_BYTE;
 		aid_data->d_version = EV_CURRENT;
+
+		if ((shdr = elf32_getshdr(aid_scn)) == NULL)
+			errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
+			    elf_errmsg(-1));
+
+		shdr->sh_type = SHT_DTRACE_elf;
+		shdr->sh_name = DTELF_IDENT;
+		shdr->sh_flags = SHF_OS_NONCONFORMING;
+		shdr->sh_entsize = sizeof(dt_elf_ident_t);
+
+		(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
+		(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
+		(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
 	}
 
 	/*
@@ -1269,7 +1286,7 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 
 	if ((shdr = elf32_getshdr(scn)) == NULL)
 		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
-		     elf_errmsg(-1));
+		    elf_errmsg(-1));
 
 	shdr->sh_type = SHT_STRTAB;
 	shdr->sh_name = DTELF_SHSTRTAB;
@@ -1593,6 +1610,41 @@ dt_elf_add_acts(dtrace_stmtdesc_t *stmt, dt_elf_ref_t fst, dt_elf_ref_t last)
 	assert(el != NULL);
 }
 
+static void *
+dt_elf_get_eaid(Elf *e, dt_elf_ref_t aidref)
+{
+	dt_ident_t *aid;
+	Elf_Scn *scn;
+	Elf_Data *data;
+	dt_elf_ident_t *eaid;
+
+	if ((scn = elf_getscn(e, aidref)) == NULL)
+		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
+		    elf_errmsg(-1));
+
+	if ((data = elf_getdata(scn, NULL)) == NULL)
+		errx(EXIT_FAILURE, "elf_getdata() failed with %s",
+		    elf_errmsg(-1));
+
+	eaid = data->d_buf;
+	if (eaid == NULL)
+		errx(EXIT_FAILURE, "eaid is NULL");
+
+	aid = malloc(sizeof(dt_ident_t));
+	if (aid == NULL)
+		errx(EXIT_FAILURE, "aid is NULL");
+
+	aid->di_name = strdup(dtelf_state->s_idname_table + eaid->edi_name);
+	printf("aid->di_name = %s\n", aid->di_name);
+	aid->di_id = eaid->edi_id;
+	aid->di_kind = eaid->edi_kind;
+	aid->di_flags = eaid->edi_flags;
+	aid->di_attr = eaid->edi_attr.dtea_attr;
+	aid->di_vers = eaid->edi_vers;
+
+	return ((void *)aid);
+}
+
 static void
 dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog, dt_elf_stmt_t *estmt)
 {
@@ -1609,6 +1661,7 @@ dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog, dt_elf_stmt_t *estmt)
 	dt_elf_add_acts(stmt, estmt->dtes_action, estmt->dtes_action_last);
 	stmt->dtsd_descattr = estmt->dtes_descattr.dtea_attr;
 	stmt->dtsd_stmtattr = estmt->dtes_stmtattr.dtea_attr;
+	stmt->dtsd_aggdata = dt_elf_get_eaid(e, estmt->dtes_aggdata);
 
 	stp = malloc(sizeof(dt_stmt_t));
 	if (stp == NULL)
@@ -1751,7 +1804,7 @@ dtrace_prog_t *
 dt_elf_to_prog(dtrace_hdl_t *dtp, int fd)
 {
 	Elf *e;
-	Elf_Scn *scn;
+	Elf_Scn *scn = NULL;
 	Elf_Data *data;
 	GElf_Shdr shdr;
 	size_t shstrndx, shnum;
@@ -1795,6 +1848,43 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd)
 	if (elf_getshdrnum(e, &shnum) != 0)
 		errx(EXIT_FAILURE, "elf_getshdrnum() failed with %s",
 		    elf_errmsg(-1));
+
+	/*
+	 * Parse in the identifier name string table.
+	 */
+	while ((scn = elf_nextscn(e, scn)) != NULL) {
+		static const char idtab_name[] = ".dtrace_stmt_idname_table";
+		printf("scn = %p\n", scn);
+
+		if (gelf_getshdr(scn, &shdr) != &shdr)
+			errx(EXIT_FAILURE, "gelf_getshdr() failed with %s",
+			    elf_errmsg(-1));
+		printf("scn = %p\n", scn);
+
+		if ((name = elf_strptr(e, shstrndx, shdr.sh_name)) == NULL)
+			errx(EXIT_FAILURE, "elf_strptr() failed with %s",
+			    elf_errmsg(-1));
+		printf("scn = %p\n", scn);
+
+		printf("name = %s\n", name);
+		printf("idtab_name = %s\n", idtab_name);
+		if (strncmp(name, idtab_name, sizeof(idtab_name)) == 0) {
+			printf("scn = %p\n", scn);
+			printf("inside\n");
+			if ((data = elf_getdata(scn, NULL)) == NULL)
+				errx(EXIT_FAILURE, "elf_getdata() failed with %s",
+				    elf_errmsg(-1));
+
+			/*
+			 * We fill in the global state. We don't actually need
+			 * to copy it over as we're only going to use it while
+			 * parsing ELF, not afterwards.
+			 */
+			dtelf_state->s_idname_table = data->d_buf;
+			dtelf_state->s_idname_size = data->d_size;
+			break;
+		}
+	}
 
 	/*
 	 * Get the program description.
