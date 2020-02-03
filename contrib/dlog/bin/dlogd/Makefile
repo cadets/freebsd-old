@@ -36,34 +36,33 @@ MK_AUTO_OBJ:= yes
 
 PROGS= dlogd
 BINDIR= bin
-
+	
 DLOG_SRCS= dl_bbuf.c \
 	dl_config.c \
 	dl_correlation_id.c \
-	dl_fetch_request.c \
-	dl_fetch_response.c \
 	dl_index.c \
-	dl_list_offset_request.c \
-	dl_list_offset_response.c \
+	dl_metadata_request.c \
 	dl_message_set.c \
+	dl_new.c \
 	dl_offset.c \
 	dl_poll_reactor.c \
 	dl_primitive_types.c \
-	dl_producer.c \
 	dl_produce_request.c \
 	dl_produce_response.c \
+	dl_producer.c \
+	dl_producer_stats.c \
 	dl_request.c \
 	dl_request_queue.c \
 	dl_record.c \
 	dl_record_batch.c \
 	dl_record_header.c \
-	dl_response.c \
-	dl_user_segment.c \
+	dl_response_header.c \
 	dl_segment.c \
 	dl_topic.c \
 	dl_transport.c \
 	dl_sock_transport.c \
 	dl_tls_transport.c \
+	dl_user_segment.c \
 	dl_utils.c \
 	lookup3.c
 
@@ -79,17 +78,25 @@ LDADD+=-lssl
 LDADD+=-lutil
 LDADD+=-lz
 LDADD+=-lucl
+LDADD+=-ltcmalloc
 
 CFLAGS+=-DNDEBUG
+CFLAGS+=-DHEAPPROFILE
 CFLAGS+=-g
+CFLAGS+=-Wall
+CFLAGS+=-Werror
 CFLAGS+=-Wunused-variable
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
 CFLAGS+=-L/usr/local/lib
 CFLAGS+=-I/usr/local/include
 CFLAGS+=-I../../src
 CFLAGS+=-I.
-#CFLAGS+=-O1
+# Sanitizer
+CFLAGS+=-O0
 #CFLAGS+=-fsanitize=address
-#CFLAGS+=-fno-omit-frame-pointer
+#CFLAGS+=-fsanitize=thread
+CFLAGS+=-fsanitize=undefined
+CFLAGS+=-fno-omit-frame-pointer
+CFLAGS+=-fno-optimize-sibling-calls
 
 .include <bsd.progs.mk>

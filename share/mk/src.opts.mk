@@ -90,7 +90,6 @@ __DEFAULT_YES_OPTIONS = \
     DIALOG \
     DICT \
     DDTRACE \
-    DLOG \
     DMAGENT \
     DYNAMICROOT \
     EE \

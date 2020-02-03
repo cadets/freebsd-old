@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -49,9 +49,7 @@
 
 #include "dl_bbuf.h"
 #include "dl_protocol.h"
-#include "dl_response.h"
 
-struct dl_response;
 
 SLIST_HEAD(dl_list_offset_response_topics, dl_list_offset_response_topic);
 
@@ -74,11 +72,11 @@ struct dl_list_offset_response {
 	int32_t dlor_ntopics;
 };
 
-extern int dl_list_offset_response_new(struct dl_response **, 
+extern int dl_list_offset_response_new(struct dl_list_offset_response **, 
     const int32_t, struct sbuf *, int16_t, int64_t, int64_t);
 extern void dl_list_offset_response_delete(struct dl_list_offset_response *); 
 
-extern int dl_list_offset_response_decode(struct dl_response **,
+extern int dl_list_offset_response_decode(struct dl_list_offset_response **,
     struct dl_bbuf *);
 extern int32_t dl_list_offset_response_encode(struct dl_list_offset_response *,
     struct dl_bbuf *);

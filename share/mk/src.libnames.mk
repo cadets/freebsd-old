@@ -15,6 +15,7 @@ __<src.libnames.mk>__:
 _PRIVATELIBS=	\
 		atf_c \
 		atf_cxx \
+		bbuf \
 		bsdstat \
 		devdctl \
 		event \

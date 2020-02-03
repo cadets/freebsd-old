@@ -58,13 +58,20 @@ struct dl_bbuf;
 extern void dl_bbuf_delete(struct dl_bbuf *);
 extern int dl_bbuf_new(struct dl_bbuf **, unsigned char *, size_t, int);
 extern int dl_bbuf_new_auto(struct dl_bbuf **);
-extern int dl_bbuf_bcat(struct dl_bbuf *, unsigned char const * const, size_t);
-extern int dl_bbuf_scat(struct dl_bbuf *, struct sbuf *);
+
 extern void dl_bbuf_clear(struct dl_bbuf *);
 extern int dl_bbuf_concat(struct dl_bbuf *, struct dl_bbuf *);
 extern unsigned char * dl_bbuf_data(struct dl_bbuf *);
 extern dl_bbuf_flags dl_bbuf_get_flags(struct dl_bbuf const *);
 extern int dl_bbuf_flip(struct dl_bbuf *);
+extern size_t dl_bbuf_len(struct dl_bbuf *);
+extern size_t dl_bbuf_pos(struct dl_bbuf *);
+extern size_t dl_bbuf_set_pos(struct dl_bbuf *, size_t);
+
+extern int dl_bbuf_bcat(struct dl_bbuf *, unsigned char const * const,
+    size_t);
+extern int dl_bbuf_scat(struct dl_bbuf *, struct sbuf *);
+
 extern int dl_bbuf_get_int8(struct dl_bbuf * const, int8_t * const);
 extern int dl_bbuf_get_uint8(struct dl_bbuf * const, uint8_t * const);
 extern int dl_bbuf_get_int16(struct dl_bbuf * const, int16_t * const);
@@ -73,18 +80,30 @@ extern int dl_bbuf_get_int32(struct dl_bbuf * const, int32_t * const);
 extern int dl_bbuf_get_uint32(struct dl_bbuf * const, uint32_t * const);
 extern int dl_bbuf_get_int64(struct dl_bbuf * const, int64_t * const);
 extern int dl_bbuf_get_uint64(struct dl_bbuf * const, uint64_t * const);
-extern size_t dl_bbuf_len(struct dl_bbuf *);
-extern size_t dl_bbuf_pos(struct dl_bbuf *);
+extern int dl_bbuf_get_varint(struct dl_bbuf * const, uint32_t * const);
+extern int dl_bbuf_get_varlong(struct dl_bbuf * const, uint64_t * const);
+
 extern int dl_bbuf_put_int8(struct dl_bbuf *, int8_t);
 extern int dl_bbuf_put_int8_at(struct dl_bbuf *, int8_t, size_t);
 extern int dl_bbuf_put_uint8(struct dl_bbuf *, uint8_t);
 extern int dl_bbuf_put_uint8_at(struct dl_bbuf *, uint8_t, size_t);
 extern int dl_bbuf_put_int16(struct dl_bbuf *, int16_t);
+extern int dl_bbuf_put_int16_as_varint(struct dl_bbuf *, int16_t);
 extern int dl_bbuf_put_int16_at(struct dl_bbuf *, int16_t, size_t);
+extern int dl_bbuf_put_uint16(struct dl_bbuf *, uint16_t);
+extern int dl_bbuf_put_uint16_as_varint(struct dl_bbuf *, uint16_t);
+extern int dl_bbuf_put_uint16_at(struct dl_bbuf *, uint16_t, size_t);
 extern int dl_bbuf_put_int32(struct dl_bbuf *, int32_t);
 extern int dl_bbuf_put_int32_as_varint(struct dl_bbuf *, int32_t);
 extern int dl_bbuf_put_int32_at(struct dl_bbuf *, int32_t, size_t);
+extern int dl_bbuf_put_uint32(struct dl_bbuf *, int32_t);
+extern int dl_bbuf_put_uint32_as_varint(struct dl_bbuf *, uint32_t);
+extern int dl_bbuf_put_uint32_at(struct dl_bbuf *, int32_t, size_t);
 extern int dl_bbuf_put_int64(struct dl_bbuf *, int64_t);
+extern int dl_bbuf_put_int64_as_varint(struct dl_bbuf *, int64_t);
 extern int dl_bbuf_put_int64_at(struct dl_bbuf *, int64_t, size_t);
+extern int dl_bbuf_put_unt64(struct dl_bbuf *, uint64_t);
+extern int dl_bbuf_put_uint64_as_varint(struct dl_bbuf *, uint64_t);
+extern int dl_bbuf_put_unt64_at(struct dl_bbuf *, uint64_t, size_t);
 
 #endif

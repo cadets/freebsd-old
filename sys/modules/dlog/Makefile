@@ -33,21 +33,22 @@
 
 KMOD=dlog
 
-SRCS= dlog_client.c \
-	dl_bbuf.c \
+SRCS= dl_bbuf.c \
 	dl_utils.c \
 	dl_message_set.c \
+	dl_new.c \
 	dl_primitive_types.c \
-	dl_produce_request.c \
-	dl_produce_response.c \
-	dl_request.c \
-	dl_response.c \
+	dl_record.c \
+	dl_record_batch.c \
+	dl_record_header.c \
 	dl_segment.c \
 	dl_kernel_segment.c \
 	dl_topic.c \
 	dlog.c \
+	dlog_client.c \
 	lookup3.c \
-	vnode_if.h
+	vnode_if.h \
+	dlog.h
 
 CFLAGS+=-D_KERNEL
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers

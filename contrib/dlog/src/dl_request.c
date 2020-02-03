@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,11 +34,7 @@
  *
  */
 
-#ifdef _KERNEL
 #include <sys/types.h>
-#else
-#include <stddef.h>
-#endif
 
 #include "dl_assert.h"
 #include "dl_memory.h"
@@ -46,12 +42,22 @@
 #include "dl_request.h"
 #include "dl_utils.h"
 
-static int dl_request_header_decode(struct dl_request * const,
-    struct dl_bbuf * const);
-static int dl_request_header_encode(struct dl_request const * const,
-    struct dl_bbuf * const);
-	
-static int
+static int dl_request_ctor(void *, va_list * app); 
+
+static const struct dl_request_class TYPE = {
+	{
+		sizeof(struct dl_request),
+		dl_request_ctor,
+		NULL,
+		NULL
+	},
+	dl_request_encode,
+	NULL
+};
+
+const void *DL_REQUEST = &TYPE;
+
+int
 dl_request_header_decode(struct dl_request * const request,
     struct dl_bbuf * const source)
 {
@@ -64,10 +70,10 @@ dl_request_header_decode(struct dl_request * const request,
 
 	/* Decode the Request APIKey. */
 	rc |= DL_DECODE_API_KEY(source, &request->dlrqm_api_key);
-	
+
 	/* Decode the Request APIVersion and check it is supported. */
 	rc |= DL_DECODE_API_VERSION(source, &api_version);
-	if (api_version != 0 && api_version != 1) {
+	if (api_version < DLOG_API_V3) {
 
 		DLOGTR1(PRIO_HIGH, "Unsupported API version %d\n", api_version);
 		return -1;
@@ -101,7 +107,7 @@ dl_request_header_decode(struct dl_request * const request,
  * CorrelationId
  * ClientId
  */
-static int
+int
 dl_request_header_encode(struct dl_request const * const request,
     struct dl_bbuf * const target)
 {
@@ -141,99 +147,56 @@ dl_request_header_encode(struct dl_request const * const request,
  * Request constructor.
  */
 int
-dl_request_new(struct dl_request **self, const int16_t api_key,
-    const int32_t correlation_id, struct sbuf *client_id)
+dl_request_ctor(void *_self, va_list *ap)
 {
-	struct dl_request *request;
+	struct dl_request *self = (struct dl_request *) _self;
 
 	DL_ASSERT(self != NULL, ("Request cannot be NULL."));
-	DL_ASSERT(api_key == DL_PRODUCE_API_KEY ||
-	    api_key == DL_FETCH_API_KEY || api_key== DL_OFFSET_API_KEY,
-	    ("Invalid ApiKey."));
 
-	request = (struct dl_request *) dlog_alloc(sizeof(struct dl_request));
-#ifdef _KERNEL
-	DL_ASSERT(request != NULL, ("Allocation for Request failed"));
-#else
-	if (request == NULL) {
-		DLOGTR0(PRIO_HIGH, "Allocation for Request failed\n");
-		return -1;
-	}
-#endif
-	request->dlrqm_api_key = api_key;
-	request->dlrqm_correlation_id = correlation_id;
-	request->dlrqm_client_id = client_id;
+	self->dlrqm_api_key = va_arg(*ap, int);
+	self->dlrqm_correlation_id = va_arg(*ap, int);
+	self->dlrqm_client_id = va_arg(*ap, struct sbuf *);
 
-	/* Request successfully constructed. */
-	*self = request;
 	return 0;
 }
 
-/**
- * Request destructor.
- */
-void
-dl_request_delete(struct dl_request * const self)
-{
-
-	DL_ASSERT(self != NULL, ("Request cannot be NULL."));
-	DL_ASSERT(self->dlrqm_api_key == DL_PRODUCE_API_KEY ||
-	    self->dlrqm_api_key == DL_FETCH_API_KEY ||
-	    self->dlrqm_api_key== DL_OFFSET_API_KEY, ("Invalid ApiKey."));
-
-	switch (self->dlrqm_api_key) {
-	case DL_PRODUCE_API_KEY:
-		dl_produce_request_delete(self->dlrqm_produce_request);
-		break;
-#ifndef _KERNEL
-	case DL_FETCH_API_KEY:
-		dl_fetch_request_delete(self->dlrqm_fetch_request);
-		break;
-	case DL_OFFSET_API_KEY:
-		dl_list_offset_request_delete(self->dlrqm_offset_request);
-		break;
-#endif
-	}
-	
-	dlog_free(self);	
-}
-
+#ifdef MOVE_TO_FACTORY
 int
 dl_request_decode(struct dl_request ** const self,
     struct dl_bbuf * const source)
 {
 	struct dl_request *request;
+	int32_t req_size;
 	int rc;
 
 	DL_ASSERT(self != NULL, ("Request buffer cannot be NULL"));
 	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL"));
 
 	request = (struct dl_request *) dlog_alloc(sizeof(struct dl_request));
-#ifdef _KERNEL
 	DL_ASSERT(request != NULL, ("Allocation for Request failed"));
-#else
 	if (request == NULL)
 		goto err_request;
-#endif
+
+	/* Encode a placeholder for the total request size. */	
+	rc = DL_DECODE_REQUEST_SIZE(source, &req_size);
+
 	/* Decode the Request Header into the buffer. */
 	if (dl_request_header_decode(request, source) == 0) {
-	
+			
 		/* Decode the Request Body into the buffer. */
 		switch (request->dlrqm_api_key) {
 		case DL_PRODUCE_API_KEY:
 			rc = dl_produce_request_decode(
-			    &request->dlrqm_produce_request, source);
+		    	    &request, source);
 			break;
-#ifndef _KERNEL
 		case DL_FETCH_API_KEY:
-			    rc = dl_fetch_request_decode(
-				&request->dlrqm_fetch_request, source);
+			rc = dl_fetch_request_decode(
+			    &request, source);
 			break;
 		case DL_OFFSET_API_KEY:
-			    rc = dl_list_offset_request_decode(
-				&request->dlrqm_offset_request, source);
+			rc = dl_list_offset_request_decode(
+			    &request, source);
 			break;
-#endif
 		default:
 			DLOGTR1(PRIO_HIGH, "Invalid api key %d\n",
 			    request->dlrqm_api_key);
@@ -241,7 +204,7 @@ dl_request_decode(struct dl_request ** const self,
 		}
 
 		if (rc != 0) {
-			dlog_free(request);
+			dl_delete(request);
 			goto err_request;
 		}
 
@@ -255,6 +218,7 @@ err_request:
 	*self = NULL;
 	return -1;
 }
+#endif
 
 /**
  * Encode the Request.
@@ -263,11 +227,12 @@ err_request:
  *
  */
 int
-dl_request_encode(struct dl_request const *request, struct dl_bbuf **target)
+dl_request_encode(void *self, struct dl_bbuf **target)
 {
+	const struct dl_request_class **class = self;
 	int rc = 0;
 
-	DL_ASSERT(request != NULL, ("Request cannot be NULL"));
+	DL_ASSERT(self!= NULL, ("Request cannot be NULL"));
 	DL_ASSERT(target != NULL, ("Target buffer cannot be NULL"));
 
 	/* Allocate and initialise a buffer to encode the request.
@@ -282,37 +247,20 @@ dl_request_encode(struct dl_request const *request, struct dl_bbuf **target)
 		rc |= DL_ENCODE_REQUEST_SIZE(*target, -1);
 	
 		/* Encode the Request Header. */
-		if (dl_request_header_encode(request, *target) == 0) {
-	
-			/* Encode the Request Body. */
-			switch (request->dlrqm_api_key) {
-			case DL_PRODUCE_API_KEY:
-				return dl_produce_request_encode(
-				    request->dlrqm_produce_request,
+		if (dl_request_header_encode(self, *target) == 0) {
+
+			if (self != NULL && *class != NULL &&
+			    (*class)->dlr_encode_into) {	
+
+				return (* class)->dlr_encode_into(self,
 				    *target);
-				break;
-#ifndef _KERNEL
-			case DL_FETCH_API_KEY:
-				return dl_fetch_request_encode(
-				    request->dlrqm_fetch_request,
-				    *target);
-				break;
-			case DL_OFFSET_API_KEY:
-				return dl_list_offset_request_encode(
-				    request->dlrqm_offset_request,
-				    *target);
-				break;
-#endif
-			default:
-				DLOGTR1(PRIO_HIGH, "Invalid api key %d\n",
-				    request->dlrqm_api_key);
-				return -1;
 			}
 		}
-		DLOGTR0(PRIO_HIGH, "Failed encoding request header.\n");
+
+		DLOGTR0(PRIO_HIGH, "Failed encoding request header\n");
 		return -1;
 	}
 
-	DLOGTR0(PRIO_HIGH, "Failed instantiating buffer to encode request.\n");
+	DLOGTR0(PRIO_HIGH, "Failed instantiating buffer to encode request\n");
 	return -1;
 }

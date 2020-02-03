@@ -79,6 +79,7 @@ dl_decode_string(struct dl_bbuf *source, struct sbuf **target)
 			dl_bbuf_get_int8(source, &temp[i]);
 		*target = sbuf_new(NULL, NULL, slen + 1, SBUF_FIXEDLEN);
 		sbuf_bcat(*target, temp, slen);
+		sbuf_finish(*target);
 		dlog_free(temp);
 	}
 	return 0;

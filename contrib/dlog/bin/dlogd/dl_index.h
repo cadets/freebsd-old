@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -40,14 +40,25 @@
 #include <sys/types.h>
 #include <sys/sbuf.h>
 
-struct dl_index;
-struct dl_segment;
+#include "dl_user_segment.h"
 
-extern int dl_index_new(struct dl_index **, int, int64_t, struct sbuf *);
+struct dl_user_segment;
+
+struct dl_index;
+
+struct dl_index_record {
+	off_t dlir_poffset; /* Physical offset into the log. */
+	uint64_t dlir_offset; /* Log offset */
+};
+
+extern int dl_index_new(struct dl_index **, struct dl_user_segment *, char *, char *);
 extern void dl_index_delete(struct dl_index *);
 
-extern int dl_index_update(struct dl_index *, off_t); 
-extern off_t dl_index_lookup(struct dl_index *, uint32_t, off_t *); 
-extern off_t dl_index_get_last(struct dl_index *);
+extern void dl_index_updated(struct dl_index const * const);
+extern void dl_index_update(struct dl_index const * const);
+extern void dl_index_error(struct dl_index const * const);
+
+extern int dl_index_lookup(struct dl_index *, uint64_t, struct dl_index_record *); 
+extern void dl_index_set_producer(struct dl_index *, struct dl_producer *);
 
 #endif

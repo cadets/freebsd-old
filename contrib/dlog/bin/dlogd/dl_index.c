@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,14 +34,19 @@
  *
  */
 
-#include <sys/nv.h>
+#include <sys/dnv.h>
+#include <sys/event.h>
+#include <sys/param.h>
 #include <sys/types.h>
 #include <sys/uio.h>
 
 #include <errno.h>
+#include <dirent.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <string.h>
 #include <strings.h>
 #include <unistd.h>
 
@@ -49,22 +54,25 @@
 #include "dl_config.h"
 #include "dl_index.h"
 #include "dl_memory.h"
+#include "dl_poll_reactor.h"
 #include "dl_primitive_types.h"
 #include "dl_segment.h"
 #include "dl_user_segment.h"
 #include "dl_utils.h"
 
-struct dl_index {
-	off_t dli_last; /* The last offset in the log indexed. */
-	pthread_mutex_t dli_mtx; /* Lock for updating/lookup of index. */
-	int dli_idx_fd; /* File descriptor of index. */
-	int dli_log_fd; /* File descriptor of the log. */
-	int dli_debug_level;
-};
+typedef uint32_t dl_index_state;
 
-struct dl_index_record {
-	off_t dlir_poffset; /* Physical offset into log of dlir_offset. */
-	uint32_t dlir_offset; /* Log offset */
+struct dl_index {
+	struct dl_event_handler dli_idx_hdlr;
+	struct dl_user_segment *dli_useg;
+	struct dl_producer *dli_producer;
+	off_t dli_last; /* The last offset in the log indexed */
+	pthread_t dli_tid; /* Update thread tid */
+	dl_index_state dli_state;
+	uint64_t dli_base_offset; /* Base offset of log segment */
+	int dli_debug_lvl;
+	int dli_fd; /* File descriptor of index */
+	int dli_kq; /* File descriptor of kqueue monitoring the index */ 
 };
 
 /* The size of the index record. */
@@ -72,106 +80,105 @@ struct dl_index_record {
     (sizeof(((struct dl_index_record *) 0)->dlir_poffset) + \
     sizeof(((struct dl_index_record *) 0)->dlir_offset))
 
-/* Number of digits in base 10 required to represent a 32-bit number. */
-#define DL_INDEX_DIGITS 20
-
 /* dlogd properties. */
 extern nvlist_t *dlogd_props;
 
-static int dl_index_lookup_by_file_offset(struct dl_index *, off_t,
+const static uint32_t DLI_INITIAL = 0;
+const static uint32_t DLI_IDLE = 1;
+const static uint32_t DLI_UPDATING = 2;
+const static uint32_t DLI_FINAL = 3;
+
+static char const * const DLI_STATE_NAME[] =
+    {"INITIAL", "IDLE", "UPDATING", "FINAL" };
+
+/* Number of digits in base 10 required to represent a 32-bit number. */
+static const int DL_INDEX_DIGITS = 20;
+static const char * const DL_INDEX_FMT = "%s/%.*ld.index";
+/* Maximum number of indexes created before issuing callback to Producer. */
+static const uint32_t DL_INDEX_PRODUCE_CNT = 100;
+
+static void dl_index_idle(struct dl_index * const self);
+static void dl_index_updating(struct dl_index * const self);
+static void dl_index_final(struct dl_index * const self);
+
+static dl_event_handler_handle dl_index_get_idx_fd(void *);
+static void dl_index_idx_handler(void *, int, int);
+
+static void *dl_update_thread(void *vargp);
+
+static int dl_index_lookup_by_poffset(struct dl_index *, off_t,
     struct dl_index_record *);
-static int dl_index_update_locked(struct dl_index *, off_t);
 
 static inline void 
-dl_index_check_integrity(struct dl_index const * const self)
+assert_integrity(struct dl_index const * const self)
 {
 
-	DL_ASSERT(self != NULL, ("Index instance cannot be NULL."));
-	DL_ASSERT(self->dli_last != -1,
-	    ("Index log offset cannot be invalid (-1)."));
-	DL_ASSERT(self->dli_idx_fd  != -1,
-	    ("Index file descriptor cannot be invalid (-1)."));
-	DL_ASSERT(self->dli_log_fd != -1,
-	    ("Index log file descriptor cannot be invalid (-1)."));
+	DL_ASSERT(self != NULL, ("Index instance cannot be NULL"));
+	DL_ASSERT(self->dli_useg != NULL, ("Index UserSegment cannot be NULL"));
 }
 
-static int 
-dl_index_lookup_by_file_offset(struct dl_index *self, off_t offset,
-    struct dl_index_record *record)
+static dl_event_handler_handle
+dl_index_get_idx_fd(void *instance)
 {
-	struct dl_bbuf *idx_buf;
+	struct dl_index const * const s = instance;
+
+	assert_integrity(s);
+	return s->dli_kq;
+}
+
+static void
+dl_index_idx_handler(void *instance, int fd __attribute((unused)),
+    int revents __attribute((unused)))
+{
+	struct dl_index const * const s = instance;
+	struct kevent event;
 	int rc;
-	unsigned char tmp_record[DL_INDEX_RECORD_SIZE];
 
-	dl_index_check_integrity(self);
+	assert_integrity(s);
+			
+	rc = kevent(s->dli_kq, 0, 0, &event, 1, 0);
+	if (rc == -1) {
 
-	pthread_mutex_lock(&self->dli_mtx);
+		DLOGTR2(PRIO_HIGH, "Error reading kqueue event %d %d\n.",
+		    rc, errno);
+	} else {
 
-	rc = pread(self->dli_idx_fd, &tmp_record, DL_INDEX_RECORD_SIZE, offset);
-	if (rc == 0) {
+		if (event.fflags & NOTE_DELETE) {
 
-		/* EOF */
-		goto err_index_lookup;	
-	} else if (rc < 0) {
-
-		DLOGTR1(PRIO_HIGH,
-		    "Failed to read from index file %d\n", errno);
-		goto err_index_lookup;	
+			DLOGTR0(PRIO_HIGH, "IndexSegment file deleted\n");
+		}
 	}
-	DL_ASSERT(rc == DL_INDEX_RECORD_SIZE,
-	    ("Failed to read index record size"));
-
-	/* Data in the index is stored in big-endian format for
-	 * compatibility with the Kafka log format.
-	 * The data read from the dindex is used as an external buffer
-	 * from a bbuf instance, this allows the values of the relative
-	 * and physical offset to be read.
-	 */
-	rc = dl_bbuf_new(&idx_buf, tmp_record, DL_INDEX_RECORD_SIZE,
-	    DL_BBUF_BIGENDIAN);
-	if (rc != 0) {
-
-		DLOGTR1(PRIO_HIGH,
-		    "Failed to create bbuf from record index %d\n", rc);
-		goto err_index_lookup;	
-	}
-
-	rc |= dl_bbuf_get_uint32(idx_buf, &record->dlir_offset);
-	rc |= dl_bbuf_get_int64(idx_buf, &record->dlir_poffset);
-	DL_ASSERT(rc == 0, ("dl_bbuf operations failed on index record."));
-	dl_bbuf_delete(idx_buf);
-	pthread_mutex_unlock(&self->dli_mtx);
-
-	return 0;
-
-err_index_lookup:
-	pthread_mutex_unlock(&self->dli_mtx);
-	return -1;
 }
 
-static int
-dl_index_update_locked(struct dl_index *self, off_t log_end)
+static void *
+dl_update_thread(void *vargp)
 {
-	struct iovec index_bufs[2];
-	off_t tmp_poffset;
+	struct dl_index *self = (struct dl_index *)vargp;
+	struct iovec index_iov[2];
+	off_t log_end, tmp_poffset;
 	uint64_t offset;
 	uint32_t size;
-	int rc, idx_cnt = 0;
-		
-	dl_index_check_integrity(self);
+	int iocnt = sizeof(index_iov)/sizeof(struct iovec);
+	int idx_cnt = 0, rc;
+	int log;
+	
+	assert_integrity(self);
+
+	log = dl_user_segment_get_log(self->dli_useg);
 
 	/* Create the index. */
+	log_end = lseek(log, 0, SEEK_END);
+
 	while (self->dli_last < log_end) {
 
 		/* Read the offset of the log entry and size. */
-		index_bufs[0].iov_base = &offset;
-		index_bufs[0].iov_len = sizeof(offset);
+		index_iov[0].iov_base = &offset;
+		index_iov[0].iov_len = sizeof(offset);
 
-		index_bufs[1].iov_base = &size;
-		index_bufs[1].iov_len = sizeof(size);
+		index_iov[1].iov_base = &size;
+		index_iov[1].iov_len = sizeof(size);
 
-		rc = preadv(self->dli_log_fd, index_bufs,
-		    sizeof(index_bufs)/sizeof(struct iovec), self->dli_last);	
+		rc = preadv(log, index_iov, iocnt, self->dli_last);
 		if (rc == 0) {
 
 			/* EOF */
@@ -198,16 +205,15 @@ dl_index_update_locked(struct dl_index *self, off_t log_end)
 		   ("Number of bytes read from log"));
 
 		/* Write the index for the log entry. */
-		index_bufs[0].iov_base = &offset;
-		index_bufs[0].iov_len = sizeof(offset);
+		index_iov[0].iov_base = &offset;
+		index_iov[0].iov_len = sizeof(offset);
 
 		tmp_poffset = htobe64(self->dli_last);
-		index_bufs[1].iov_base = &tmp_poffset;
-		index_bufs[1].iov_len = sizeof(tmp_poffset);
+		index_iov[1].iov_base = &tmp_poffset;
+		index_iov[1].iov_len = sizeof(tmp_poffset);
 
-		rc = pwritev(self->dli_idx_fd, index_bufs,
-			sizeof(index_bufs)/sizeof(struct iovec),
-			be32toh(offset) * DL_INDEX_RECORD_SIZE); 
+		//rc = writev(self->dli_update_seg->dlis_idx_fd, index_iov, iocnt);
+		rc = writev(self->dli_fd, index_iov, iocnt);
 		if (rc == -1) {
 
 			DLOGTR1(PRIO_HIGH,
@@ -215,161 +221,441 @@ dl_index_update_locked(struct dl_index *self, off_t log_end)
 			break;
 		}
 
-		/* Sync the updated index file to disk. */
-		fsync(self->dli_idx_fd);
-	
 		/* Advance the index offset into the log by the processed
 		 * entry.
 		 */
 		self->dli_last += (off_t) (sizeof(offset) + sizeof(size)
 		    + be32toh(size));
 
-		/* Increment the count of new indexs that were created. */
+		/* Increment the count of new indexes that were created. */
 		idx_cnt++;
+
+		/* Issue callback to Producer on indexing log records. */
+		 if (idx_cnt % DL_INDEX_PRODUCE_CNT == 0) {
+		 }
+		 /*
+
+			if (self->dli_debug_lvl > 0) {
+				DLOGTR1(PRIO_LOW,
+			    	    "%d new log indexes added\n", idx_cnt);
+		 	}
+
+			dl_producer_produce(self->dli_producer, idx_cnt);
+			idx_cnt = 0;
+		 } */
 	}
 
-	return idx_cnt;
+	if (idx_cnt > 0) {
+		if (self->dli_debug_lvl > 0)
+			DLOGTR1(PRIO_LOW, "%d new log indexes added\n", idx_cnt);
+
+		/* Issue callback to Producer on indexing log records. */
+		dl_producer_produce(self->dli_producer, idx_cnt);
+	}
+
+	/* self-trigger the updated() event. */
+	dl_index_updated(self);
+
+	pthread_exit(NULL);
+}
+
+static void
+dl_index_idle(struct dl_index * const self)
+{
+
+	assert_integrity(self);
+
+	self->dli_state = DLI_IDLE;
+
+	if (self->dli_debug_lvl > 0) {
+		DLOGTR2(PRIO_LOW, "Index state = %s (%d)\n",
+	    	    DLI_STATE_NAME[self->dli_state], self->dli_state);
+	}
+}
+
+static void
+dl_index_updating(struct dl_index * const self)
+{
+	int rc;
+
+	assert_integrity(self);
+
+	self->dli_state = DLI_UPDATING;
+
+	if (self->dli_debug_lvl > 0) {
+		DLOGTR2(PRIO_LOW, "Index state = %s (%d)\n",
+	    	    DLI_STATE_NAME[self->dli_state], self->dli_state);
+	}
+
+	/* Start the thread to update the index. */ 
+	rc = pthread_create(&self->dli_tid, NULL,
+		dl_update_thread, self);
+	if (rc != 0) {
+
+		DLOGTR1(PRIO_HIGH,
+			"Failed creating updating thread: %d\n", rc);
+			dl_index_error(self);
+	}
+	pthread_detach(self->dli_tid);
+}
+
+static void
+dl_index_final(struct dl_index * const self)
+{
+
+	assert_integrity(self);
+
+	self->dli_state = DLI_FINAL;
+
+	if (self->dli_debug_lvl > 0) {
+		DLOGTR2(PRIO_LOW, "Index state = %s (%d)\n",
+	    	    DLI_STATE_NAME[self->dli_state], self->dli_state);
+	}
+}
+
+static int 
+dl_index_lookup_by_poffset(struct dl_index *self, off_t offset,
+    struct dl_index_record *record)
+{
+	struct dl_bbuf *idx_buf;
+	int rc, size;
+	unsigned char raw_record[DL_INDEX_RECORD_SIZE];
+
+	assert_integrity(self);
+	DL_ASSERT(record != NULL, ("IndexRecord cannot be NULL"));
+
+	size = pread(self->dli_fd, &raw_record, DL_INDEX_RECORD_SIZE,
+	    offset);
+	if (size == 0) {
+
+		/* EOF */
+		return 0;	
+	} else if (size == -1) {
+
+		DLOGTR1(PRIO_HIGH,
+		    "Failed to read from index file %d\n", errno);
+		return -1;
+	} else {
+		DL_ASSERT(size == DL_INDEX_RECORD_SIZE,
+		    ("Failed to read index record size"));
+
+		/* Data in the index is stored in big-endian format for
+		* compatibility with the Kafka log format.
+		* The data read from the dindex is used as an external buffer
+		* from a bbuf instance, this allows the values of the relative
+		* and physical offset to be read.
+		*/
+		rc = dl_bbuf_new(&idx_buf, raw_record, DL_INDEX_RECORD_SIZE,
+		    DL_BBUF_BIGENDIAN);
+		rc |= dl_bbuf_get_uint64(idx_buf, &record->dlir_offset);
+		rc |= dl_bbuf_get_int64(idx_buf, &record->dlir_poffset);
+		DL_ASSERT(rc == 0, ("dl_bbuf operations failed on index record."));
+
+		dl_bbuf_delete(idx_buf);
+
+		if (rc == 0)
+			return size;
+		
+		return -1;
+	}
 }
 
 int
-dl_index_new(struct dl_index **self, int log, int64_t offset,
-    struct sbuf *part_name)
+dl_index_new(struct dl_index **self, struct dl_user_segment *useg,
+    char *path, char *topic_name)
 {
 	struct dl_index *idx;
-	struct sbuf *idx_name;
 	struct dl_index_record record;
+	struct kevent idx_ev;
+	struct sbuf sb;
 	off_t idx_end;
+	int64_t base_offset;
+	char *name;
 	int rc;
 
-	DL_ASSERT(self != NULL, ("Index instance cannot be NULL."));
+	DL_ASSERT(self != NULL, ("Index instance cannot be NULL"));
+	DL_ASSERT(useg != NULL, ("Index UserSegment cannot be NULL"));
+	DL_ASSERT(path != NULL, ("Index path cannot be NULL"));
+	DL_ASSERT(topic_name != NULL, ("Index instance topic name cannot be NULL"));
 
 	idx = (struct dl_index *) dlog_alloc(sizeof(struct dl_index));
+	DL_ASSERT(idx != NULL, ("Failed to allocate Index instance."));
 	if (idx == NULL) {
 
-		DLOGTR0(PRIO_HIGH, "Failed instantiating dl_index.\n");
-		*self = NULL;
-		return -1;
+		goto err_index_ctor;
 	}
 
 	bzero(idx, sizeof(struct dl_index));
 
-	idx_name = sbuf_new_auto();
-	sbuf_printf(idx_name, "%s/%.*ld.index",
-	    sbuf_data(part_name), DL_INDEX_DIGITS, offset);
-	sbuf_finish(idx_name);
-	idx->dli_idx_fd = open(sbuf_data(idx_name),
-	    O_RDWR | O_APPEND | O_CREAT, 0666);
-	if (idx->dli_idx_fd == -1) {
+	/* Read the configured debug level */
+	idx->dli_debug_lvl = dnvlist_get_number(dlogd_props,
+	    DL_CONF_DEBUG_LEVEL, DL_DEFAULT_DEBUG_LEVEL);
+	idx->dli_state = DLI_INITIAL;
+	idx->dli_useg = useg;
 
-		DLOGTR1(PRIO_HIGH,
-		    "Failed instantiating dl_index %d.\n", errno);
-		sbuf_delete(idx_name);
-		dlog_free(idx);
-		*self = NULL;
-		return -1;
+	/* Create the name of the IndexSegment file: 000...000.index */
+	base_offset = dl_segment_get_base_offset(
+	    (struct dl_segment *) useg);
+
+	/* Allocate a buffer for the Index filepath.
+	 * The formatted filepath is written into the allocated buffer
+	 * using an sbuf().
+	 */
+	name = dlog_alloc(MAXPATHLEN);
+	DL_ASSERT(name != NULL, ("Allocating temp buffer for filepath failed"));
+	if (name == NULL) {
+
+		DLOGTR0(PRIO_HIGH, "Failed formatting the Index filepath\n");
+		goto err_index_free;
 	}
-	sbuf_delete(idx_name);
-	idx->dli_log_fd = log;
 
-	rc = pthread_mutex_init(&idx->dli_mtx, NULL);
-	if (rc != 0) {
+	(void) sbuf_new(&sb, name, MAXPATHLEN, SBUF_FIXEDLEN);
+	sbuf_printf(&sb, DL_INDEX_FMT, path, DL_INDEX_DIGITS,
+	    base_offset);
+	if (sbuf_error(&sb) != 0) {
 
-		DLOGTR1(PRIO_HIGH,
-		    "Failed instantiating dl_index %d.\n", errno);
-		sbuf_delete(idx_name);
-		dlog_free(idx);
-		*self = NULL;
-		return -1;
+		DLOGTR0(PRIO_HIGH, "Failed formatting the Index filepath\n");
+		sbuf_finish(&sb);
+		sbuf_delete(&sb);
+		dlog_free(name);
+		goto err_index_free;
 	}
+
+	sbuf_finish(&sb);
+	sbuf_delete(&sb);
+
+	/* Open the IndexSegment file. */
+	idx->dli_fd = open(name, O_RDWR | O_CREAT, 0666);
+	if (idx->dli_fd == -1) {
+
+		DLOGTR2(PRIO_HIGH,
+		    "Failed opening IndexSegment %s: %d.\n",
+		    name, errno);
+		dlog_free(name);
+		goto err_index_free;
+	}
+
+	/* Free the buffer holding the Index filepath. */
+	dlog_free(name);
+
+	/* Register kq event to monitor deletion of the
+	 * IndexSegment file.
+	 */
+	idx->dli_kq = kqueue();
+	if (idx->dli_kq == -1) {
+
+		DLOGTR0(PRIO_HIGH, "Failed initializing Index kqueue\n");
+		goto err_index_path;
+	}
+
+	/* Initialise a kevent to monitor deletes of the IndexSegment file. */
+	EV_SET(&idx_ev, idx->dli_fd, EVFILT_VNODE, EV_ADD | EV_CLEAR,
+	    NOTE_DELETE, 0, NULL);
+	rc = kevent(idx->dli_kq, &idx_ev, 1, NULL, 0, NULL);
+	if (rc == -1) {
+
+		DLOGTR0(PRIO_HIGH, "Failed initializing Index kevent\n");
+		goto err_index_kqueue;
+	}	
+
+	idx->dli_idx_hdlr.dleh_instance = idx;
+	idx->dli_idx_hdlr.dleh_get_handle = dl_index_get_idx_fd;
+	idx->dli_idx_hdlr.dleh_handle_event = dl_index_idx_handler;
+
+	dl_poll_reactor_register(&idx->dli_idx_hdlr, POLLIN | POLLERR);
+	
+	idx->dli_base_offset = base_offset;
+	idx->dli_useg = useg;
 
 	/* Read the last value out of the index. */
-	idx_end = lseek(idx->dli_idx_fd, 0, SEEK_END);
+	idx_end = lseek(idx->dli_fd, 0, SEEK_END);
 	if (idx_end == 0) {
 
 		DLOGTR0(PRIO_LOW, "New index file created\n");
 		idx->dli_last = 0;
 	} else {
-		rc = dl_index_lookup_by_file_offset(idx,
+		rc = dl_index_lookup_by_poffset(idx,
 		    (idx_end - DL_INDEX_RECORD_SIZE), &record);
-		if (rc == -1) {
+		if (rc <= 0) {
 
 			DLOGTR1(PRIO_HIGH,
 			    "Failed to read from index file %d\n", errno);
-			return -1;
+			idx->dli_last = 0;
+		} else {
+			idx->dli_last = record.dlir_poffset;
 		}
-		idx->dli_last = record.dlir_poffset;
-	}
-	DLOGTR1(PRIO_LOW, "Log offset at which last index is found  (%ld)\n",
-	    idx->dli_last);
-
-	/* Read the configured debug level */
-	if (nvlist_exists_string(dlogd_props, DL_CONF_CLIENTID)) {
-		idx->dli_debug_level = nvlist_get_number(dlogd_props,
-		    DL_CONF_DEBUG_LEVEL);
-	} else {
-		idx->dli_debug_level = DL_DEFAULT_DEBUG_LEVEL;
 	}
 
-	dl_index_check_integrity(idx);
+	if (idx->dli_debug_lvl > 1) {
+		DLOGTR1(PRIO_LOW,
+		    "Log offset at which last index is found (%ld)\n",
+		    idx->dli_last);
+	}
+	
+	assert_integrity(idx);
 	*self = idx;
+
+	/* Synchnronously create the Index in the idle state. */
+	dl_index_updating(*self);
 	return 0;
+
+err_index_kqueue:
+	 /* Close file descriptor of kqueue monitoring the index */ 
+	close(idx->dli_kq);
+
+err_index_path:
+	/* Clsoe file descriptor of index */
+	close(idx->dli_fd);
+
+err_index_free:
+	/* Free the Index instnace. */
+	dlog_free(idx);
+
+err_index_ctor:
+	DLOGTR0(PRIO_HIGH, "Failed instantiating Index\n");
+
+	*self = NULL;
+	return -1;
 }
 
 void
 dl_index_delete(struct dl_index *self)
 {
 
-	dl_index_check_integrity(self);
+	assert_integrity(self);
 
-	pthread_mutex_destroy(&self->dli_mtx);
-	close(self->dli_idx_fd);
+	/* Transition to the final state. */
+	dl_index_final(self);
+	
+	/* Stop the index thread. */
+	pthread_cancel(self->dli_tid);
+	pthread_join(self->dli_tid, NULL);
+	
+	dl_poll_reactor_unregister(&self->dli_idx_hdlr);
+
+	/* Close file descriptor of kqueue monitoring the index */ 
+	close(self->dli_kq);
+
+	/* Close file descriptor of index */
+	close(self->dli_fd);
+
+	/* Free the Index instnace. */
 	dlog_free(self);
 }
 
-int
-dl_index_update(struct dl_index *self, off_t log_end)
+void
+dl_index_error(struct dl_index const * const self)
 {
-	int idx_cnt = 0;
-	
-	dl_index_check_integrity(self);
-	
-	/* Update the index reuting a count of the new indexes created. */
-	pthread_mutex_lock(&self->dli_mtx);
-	idx_cnt = dl_index_update_locked(self, log_end);
-	pthread_mutex_unlock(&self->dli_mtx);
 
-	return idx_cnt;
-}
+	assert_integrity(self);
 
-off_t
-dl_index_lookup(struct dl_index *self, uint32_t offset, off_t *offset_loc)
-{
-	int rc;
-	struct dl_index_record record;
+	switch(self->dli_state) {
+	case DLI_IDLE: /* idle -> final */
+		/* FALLTHROUGH */
+	case DLI_UPDATING: /* updating -> final */
+		/* FALLTHROUGH */
+		if (self->dli_debug_lvl > 1)
+			DLOGTR1(PRIO_LOW,
+			    "Index event = error(): %s->FINAL\n",
+			    DLI_STATE_NAME[self->dli_state]);
 
-	dl_index_check_integrity(self);
-
-	rc = dl_index_lookup_by_file_offset(self,
-	    (offset * DL_INDEX_RECORD_SIZE), &record);
-	if (rc == -1) {
-
-		return -1;
+		dl_index_final(self);
+		break;
+	case DLI_INITIAL: /* CANNOT HAPPEN */
+		/* FALLTHROUGH */
+	case DLI_FINAL:
+		/* FALLTHROUGH */
+	default:
+		DL_ASSERT(0, ("Invalid indexstate = %d",
+		    self->dli_state));
+		break;
 	}
-
-	*offset_loc = record.dlir_poffset;
-	return 0;
 }
 
-off_t
-dl_index_get_last(struct dl_index *self)
+void
+dl_index_updated(struct dl_index const * const self)
 {
-	off_t last;
 
-	dl_index_check_integrity(self);
+	assert_integrity(self);
 
-	pthread_mutex_lock(&self->dli_mtx);
-	last = self->dli_last;
-	pthread_mutex_unlock(&self->dli_mtx);
-	return last;
+	switch(self->dli_state) {
+	case DLI_UPDATING: /* updating->idle */
+		dl_index_idle(self);
+		break;
+	case DLI_IDLE: /* CANNOT HAPPEN */
+		/* FALLTHROUGH */
+	case DLI_INITIAL: /* CANNOT HAPPEN */
+		/* FALLTHROUGH */
+	case DLI_FINAL:
+		/* FALLTHROUGH */
+	default:
+		DL_ASSERT(0, ("Invalid index state = %d",
+		    self->dli_state));
+		break;
+	}
 }
 
+void
+dl_index_update(struct dl_index const * const self)
+{
+
+	assert_integrity(self);
+
+	switch(self->dli_state) {
+	case DLI_IDLE: /* idle -> updating */
+		dl_index_updating(self);
+		break;
+	case DLI_UPDATING:
+		/* IGNORE */
+		break;
+	case DLI_INITIAL: /* CANNOT HAPPEN */
+		/* FALLTHROUGH */
+	case DLI_FINAL:
+		/* FALLTHROUGH */
+	default:
+		DL_ASSERT(0, ("Invalid index state = %d",
+		    self->dli_state));
+		break;
+	}
+}
+
+int
+dl_index_lookup(struct dl_index *self, uint64_t offset,
+    struct dl_index_record *record)
+{
+	uint32_t rel_offset;
+	int rc;
+
+	assert_integrity(self);
+	DL_ASSERT(record != NULL, ("IndexRecord cannot be NULL"));
+
+	rel_offset = offset - 
+	    dl_segment_get_base_offset((struct dl_segment *) self->dli_useg);
+
+	rc = dl_index_lookup_by_poffset(self,
+	    (rel_offset * DL_INDEX_RECORD_SIZE), record);
+	DL_ASSERT(rc == 0, ("Lookup of offset %zu in index failed", offset));
+	if (rc == 0) {
+
+		if (self->dli_debug_lvl > 1)
+			DLOGTR1(PRIO_LOW,
+			    "Log entry for offset %zu not indexed\n", offset);
+		return -1;
+	} else if (rc == -1) {
+
+		DLOGTR1(PRIO_LOW,
+		    "Failed looking up index for offset %zu\n", offset);
+		return -1;
+	} else {
+
+		return 0;
+	}
+}
+
+void
+dl_index_set_producer(struct dl_index *self, struct dl_producer *producer)
+{
+
+	assert_integrity(self);
+	self->dli_producer = producer;
+}

@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -40,67 +40,44 @@
 #include <sys/types.h>
 #include <sys/queue.h>
 #include <sys/sbuf.h>
-#include <sys/proc.h>
-
-#ifdef _KERNEL
-#include <sys/param.h>
-#include <sys/lock.h>
-#include <sys/sx.h>
-#include <sys/kthread.h>
-#else
-#include <pthread.h>
-#endif
 
 #include "dl_bbuf.h"
+#include "dl_new.h"
 #include "dl_offset.h"
 
 SLIST_HEAD(dl_segments, dl_segment);
 
-typedef void (* dls_lock)(struct dl_segment *);
-typedef void (* dls_unlock)(struct dl_segment *);
-typedef int (* dls_get_message_by_offset)(struct dl_segment *, int,
-    struct dl_bbuf **);
-typedef int (* dls_insert_message)(struct dl_segment *, struct dl_bbuf *);
-typedef void (* dls_delete)(struct dl_segment *);
-typedef uint32_t (* dls_get_offset)(struct dl_segment *);
+/* Number of digits in base 10 required to represent a 32-bit number. */
+#define DL_LOG_DIGITS 20
+
+struct dl_segment_class {
+	struct dl_class dlr_class;
+	int (* dls_get_message_by_offset)(struct dl_segment *, int,
+	struct dl_bbuf **);
+	int (* dls_insert_message)(struct dl_segment *, struct dl_bbuf *);
+	int (* dls_sync)(struct dl_segment *);
+	uint32_t (* dls_get_offset)(struct dl_segment *);
+};
 
 struct dl_segment {
+	struct dl_segment_class *dls_class;
 	SLIST_ENTRY(dl_segment) dls_entries;
-	volatile u_int64_t base_offset; 	/* Start offset of the segment. */
-	u_int32_t segment_size; /* Number of offsets in the segment */
-	off_t last_sync_pos;
-	dls_insert_message dls_insert_fcn;
-	dls_get_message_by_offset dls_get_fcn;
-	dls_get_offset dls_get_offset_fcn;
-	dls_lock dls_lock_fcn;
-	dls_unlock dls_unlock_fcn;
-	dls_delete dls_delete_fcn;
-	union {
-		struct dl_user_segment *dls_user;
-		struct dl_kernel_segment *dls_kernel;
-	};
+	volatile uint64_t dls_base_offset; 	/* Start offset of the segment. */
+	off_t dls_last_sync_pos;
 };
 
-struct dl_segment_desc {
-	u_int32_t dlsd_offset; /* Offset within the log swgment. */
-	u_int64_t dlsd_base_offset; /* Start offset of the log. */
-	u_int32_t dlsd_seg_size;
-	int dlsd_log; /* Segement's log file descriptor. */
-};
+extern const void *DL_SEGMENT;
 
-extern void dl_segment_delete(struct dl_segment *);
-extern int dl_segment_new(struct dl_segment**, uint32_t, uint32_t,
-    dls_insert_message, dls_get_message_by_offset, dls_get_offset,
-    dls_lock, dls_unlock, dls_delete);
-extern u_int64_t dl_segment_get_base_offset(struct dl_segment *);
+extern uint64_t dl_segment_get_base_offset(struct dl_segment *);
+extern void dl_segment_set_base_offset(struct dl_segment *, uint64_t);
 extern off_t dl_segment_get_last_sync_pos(struct dl_segment *);
 extern void dl_segment_set_last_sync_pos(struct dl_segment *, off_t);
-extern int dl_segment_get_message_by_offset(struct dl_segment *, int ,
+
+extern int dl_segment_get_message_by_offset(void *, int,
     struct dl_bbuf **);
-extern int dl_segment_insert_message(struct dl_segment *,
-    struct dl_bbuf *);
-extern void dl_segment_lock(struct dl_segment *);
-extern void dl_segment_unlock(struct dl_segment *);
-extern int dl_segment_get_offset(struct dl_segment *);
+extern int dl_segment_get_offset(void *);
+extern int dl_segment_insert_message(void *, struct dl_bbuf *);
+extern int dl_segment_sync(void *);
+extern int dl_segment_get_log(void *);
 
 #endif

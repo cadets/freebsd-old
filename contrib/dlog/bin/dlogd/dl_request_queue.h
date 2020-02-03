@@ -42,6 +42,7 @@
 #include <sys/types.h>
 
 #include "dl_bbuf.h"
+#include "dl_producer_stats.h"
 
 struct dl_request_element {
 	STAILQ_ENTRY(dl_request_element) dlrq_entries;
@@ -55,13 +56,6 @@ struct dl_request_element {
 		int16_t dlrq_api_key;
 		uint8_t dlrq_retries;
 	};
-};
-
-/* Request queue stats. */
-struct dl_request_q_stats {
-	int dlrq_capacity;
-	int dlrq_requests;
-	int dlrq_unackd;
 };
 
 struct dl_request_q;
@@ -81,7 +75,7 @@ extern int dl_request_q_peek_unackd(struct dl_request_q *,
     struct dl_request_element **);
 
 extern int dl_request_q_new(struct dl_request_q **,
-    struct dl_request_q_stats *, uint32_t);
+    struct dl_producer_stats *, uint32_t);
 extern void dl_request_q_delete(struct dl_request_q *);
 
 extern void dl_request_q_lock(struct dl_request_q *);

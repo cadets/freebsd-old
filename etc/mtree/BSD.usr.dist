@@ -9,6 +9,8 @@
     ..
     include
         private
+            bbuf
+            ..
             bsdstat
             ..
             event
