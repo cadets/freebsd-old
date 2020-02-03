@@ -38,6 +38,8 @@ SRCS= vm_ddtrace_consumer.c
 MAN=
 
 LIBADD+=dtrace
+LIBADD+=nv
+
 
 CFLAGS+=-I${SRCTOP}/sys/cddl/dev/vtdtr \
 		-I${SRCTOP}/sys/cddl/compat/opensolaris \

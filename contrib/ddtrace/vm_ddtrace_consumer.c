@@ -30,7 +30,7 @@
  *
  */
 
-#include <sys/nv.h>
+
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
@@ -39,6 +39,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/vtdtr.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/nv.h>
 
 #include <stdlib.h>
 #include <stdio.h>
