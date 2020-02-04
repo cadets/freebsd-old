@@ -1153,7 +1153,7 @@ vtdtr_cq_init(struct vtdtr_ctrlq *cq)
 	cq->n_entries = 0;
 }
 
-__inline void
+static __inline void
 vtdtr_cq_enqueue(struct vtdtr_ctrlq *cq,
 				 struct vtdtr_ctrl_entry *ctrl_entry)
 {
