@@ -226,6 +226,8 @@ dlog_client_open(struct dlog_handle **self,
 	unsigned short portnumber;
 	struct dl_topic *topic;
 	const char *topic_name;
+
+	topic = NULL;
 	
 	DL_ASSERT(config != NULL, ("Client configuration cannot be NULL"));
 	DLOGTR0(PRIO_NORMAL, "Opening the Dlog client...\n");
@@ -237,15 +239,17 @@ dlog_client_open(struct dlog_handle **self,
 		topic_name = nvlist_get_string(props, DL_CONF_TOPIC);
 	}
 
+#if 0
 	/* Lookup the topic in the topic hashmap. */
 	if (dl_topic_hashmap_get(topic_name, &topic) != 0) {
 
 		/* The specified topic was not found in the topic hashmap. */
 		DLOGTR1(PRIO_NORMAL, "Topic %s has not been created\n",
-		    topic_name);
+		    topic_name); 
 		*self = NULL;
 		return -1;
 	}
+#endif
 
 	handle = (struct dlog_handle *) dlog_alloc(sizeof(struct dlog_handle));
 #ifdef _KERNEL
@@ -265,6 +269,7 @@ dlog_client_open(struct dlog_handle **self,
 	/* Associate the topic with this client handle. */
 	handle->dlh_topic = topic;
 
+#if 0
 	if (!nvlist_exists_string(props, DL_CONF_BROKER)) {
 		hostname = DL_DEFAULT_BROKER;
 	} else {
@@ -277,6 +282,7 @@ dlog_client_open(struct dlog_handle **self,
 		portnumber = (unsigned short) nvlist_get_number(props,
 		    DL_CONF_BROKER_PORT);
 	}
+#endif
 
 	/* Increment the SYSCTL count of open handles */
 	dlog_nopen++;

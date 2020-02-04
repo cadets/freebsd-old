@@ -193,7 +193,7 @@ int dtrace_consumer()
     done = 0;
     ret = 0;
     script_argc = 1;
-    topic_name = "test-topic";
+    topic_name = "cadets-trace";
 
     if ((fp = fopen(script_path, "r+")) == NULL)
     {
