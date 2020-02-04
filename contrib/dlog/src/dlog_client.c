@@ -238,6 +238,7 @@ dlog_client_open(struct dlog_handle **self,
 	}
 
 	/* Lookup the topic in the topic hashmap. */
+
 	if (dl_topic_hashmap_get(topic_name, &topic) != 0) {
 
 		/* The specified topic was not found in the topic hashmap. */
