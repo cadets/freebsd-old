@@ -58,6 +58,8 @@
 #include <sys/eventhandler.h>
 #include <sys/vtdtr.h>
 
+#include <cddl/dev/vtdtr/vtdtr.h>
+
 #include <dtrace.h>
 #include <dtrace_impl.h>
 
