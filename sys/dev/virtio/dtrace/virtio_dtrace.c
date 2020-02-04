@@ -139,12 +139,11 @@ static int vtdtr_alloc_virtqueues(struct vtdtr_softc *);
 static void vtdtr_stop(struct vtdtr_softc *);
 static void vtdtr_drain_virtqueues(struct vtdtr_softc *);
 static int vtdtr_queue_populate(struct virtio_dtrace_queue *);
-static int vtdtr_queue_enqueue_ctrl(struct virtio_dtrace_queue *,
-									struct virtio_dtrace_control *, int, int);
 static void vtdtr_queue_requeue_ctrl(struct virtio_dtrace_queue *,
 									 struct virtio_dtrace_control *, int, int);
 static int vtdtr_queue_new_ctrl(struct virtio_dtrace_queue *);
-
+static int vtdtr_queue_enqueue_ctrl(struct virtio_dtrace_queue *,
+									struct virtio_dtrace_control *, int, int);
 static int vtdtr_enable_interrupts(struct vtdtr_softc *);
 static void vtdtr_disable_interrupts(struct vtdtr_softc *);
 static int vtdtr_ctrl_process_event(struct vtdtr_softc *,
@@ -1154,7 +1153,7 @@ vtdtr_cq_init(struct vtdtr_ctrlq *cq)
 	cq->n_entries = 0;
 }
 
-static __inline void
+__inline void
 vtdtr_cq_enqueue(struct vtdtr_ctrlq *cq,
 				 struct vtdtr_ctrl_entry *ctrl_entry)
 {

@@ -56,6 +56,7 @@
 #include <sys/sysctl.h>
 #include <fs/devfs/devfs_int.h>
 #include <sys/eventhandler.h>
+#include <sys/vtdtr.h>
 
 #include <dtrace.h>
 #include <dtrace_impl.h>
@@ -607,10 +608,17 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 			  ("ddtrace_persist_trace called with NULL buffer."));
 	DL_ASSERT(desc->dtbd_size != 0,
 			  ("ddtrace_persist_trace called with empty buffer."));
-	
-	printf("I'm here %d", desc->dtbd_size);
 
 	return;
+	
+	size = desc->dtbd_size;
+	struct vtdtr_event *ev;
+	ev = malloc(sizeof(vtdtr_event), M_TEMP, M_ZERO);
+	ev->type = VTDTR_EV_SCRIPT;
+	size_t sz =strlcpy(ev->args.d_script.script, desc->dtbd_data, size + 1);
+	DLOGTR0(PRIO_LOG, "I've copied %zu. \n", sz);
+	vtdtr_event(ev);
+	
 
 	while (size < desc->dtbd_size)
 	{
