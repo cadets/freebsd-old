@@ -75,7 +75,9 @@ struct dtrace_ecb;
 struct dtrace_predicate;
 struct dtrace_action;
 struct dtrace_provider;
+struct dtrace_dist;
 struct dtrace_state;
+struct dtvirt_args;
 
 typedef struct dtrace_probe dtrace_probe_t;
 typedef struct dtrace_ecb dtrace_ecb_t;
@@ -84,6 +86,7 @@ typedef struct dtrace_action dtrace_action_t;
 typedef struct dtrace_provider dtrace_provider_t;
 typedef struct dtrace_meta dtrace_meta_t;
 typedef struct dtrace_state dtrace_state_t;
+typedef struct dtrace_dist dtrace_dist_t;
 typedef uint32_t dtrace_optid_t;
 typedef uint32_t dtrace_specid_t;
 typedef uint64_t dtrace_genid_t;
@@ -941,6 +944,8 @@ typedef struct dtrace_mstate {
 	uint32_t dtms_access;			/* memory access rights */
 	dtrace_difo_t *dtms_difo;		/* current dif object */
 	file_t *dtms_getf;			/* cached rval of getf() */
+	void *dtms_biscuit;			/* current VM biscuit */
+	struct dtvirt_args *dtms_dtvargs;	/* VM args */
 } dtrace_mstate_t;
 
 #define	DTRACE_COND_OWNER	0x1
@@ -1136,6 +1141,7 @@ struct dtrace_state {
 	int dts_necbs;				/* total number of ECBs */
 	dtrace_ecb_t **dts_ecbs;		/* array of ECBs */
 	dtrace_epid_t dts_epid;			/* next EPID to allocate */
+	dtrace_machine_filter_t dts_filter;		/* probe filter */
 	size_t dts_needed;			/* greatest needed space */
 	struct dtrace_state *dts_anon;		/* anon. state, if grabbed */
 	dtrace_activity_t dts_activity;		/* current activity */
@@ -1175,6 +1181,14 @@ struct dtrace_state {
 	size_t dts_nretained;			/* number of retained enabs */
 	int dts_getf;				/* number of getf() calls */
 	uint64_t dts_rstate[NCPU][2];		/* per-CPU random state */
+	dof_hdr_t *dts_dof;			/* DOF used by distributed dtrace */
+};
+
+struct dtrace_dist {
+	dtrace_dops_t dtd_ops;			/* konsumer operations */
+	char *dtd_name;				/* konsumer name */
+	void *dtd_arg;				/* konsumer argument */
+	struct dtrace_dist *dtd_next;		/* next konsumer */
 };
 
 struct dtrace_provider {
@@ -1320,6 +1334,11 @@ extern uint_t dtrace_getfprs(void);
 extern void dtrace_copy(uintptr_t, uintptr_t, size_t);
 extern void dtrace_copystr(uintptr_t, uintptr_t, size_t, volatile uint16_t *);
 #endif
+
+void dtrace_buffer_switch(dtrace_buffer_t *);
+size_t dtrace_epid2size(dtrace_state_t *, dtrace_epid_t);
+dof_hdr_t * dtrace_dof_create(dtrace_state_t *);
+void dtrace_dof_destroy(dof_hdr_t *);
 
 /*
  * DTrace Assertions

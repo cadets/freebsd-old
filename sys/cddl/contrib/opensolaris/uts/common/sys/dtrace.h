@@ -83,6 +83,10 @@ typedef int model_t;
 #define	DTRACE_METAPROVNONE	0	/* invalid meta-provider identifier */
 #define	DTRACE_ARGNONE		-1	/* invalid argument index */
 
+#define	DTRACEFILT_MAX		16
+#define	DTRACE_MAXFILTNAME	256
+
+#define	DTRACE_KONNAMELEN	64
 #define	DTRACE_PROVNAMELEN	64
 #define	DTRACE_MODNAMELEN	64
 #define	DTRACE_FUNCNAMELEN	192
@@ -98,6 +102,7 @@ typedef int64_t dtrace_aggvarid_t;	/* aggregation variable identifier */
 typedef uint16_t dtrace_actkind_t;	/* action kind */
 typedef int64_t dtrace_optval_t;	/* option value */
 typedef uint32_t dtrace_cacheid_t;	/* predicate cache identifier */
+struct dtvirt_args;
 
 typedef enum dtrace_probespec {
 	DTRACE_PROBESPEC_NONE = -1,
@@ -202,6 +207,16 @@ typedef enum dtrace_probespec {
 #define	DIF_OP_RLDX	77		/* rldx  [r1], rd */
 #define	DIF_OP_XLATE	78		/* xlate xlrindex, rd */
 #define	DIF_OP_XLARG	79		/* xlarg xlrindex, rd */
+/*
+ * XXX(dstolfa): Should we be passing in which hypercall?
+ */
+#define DIF_OP_HYPERCALL 80		/* hcall */
+#define DIF_OP_SCMP_HH   81
+#define DIF_OP_SCMP_GH   82
+#define DIF_OP_SCMP_GG   83
+#define DIF_OP_SCMP_HG   84
+#define	DIF_OP_PUSHTR_G  85
+#define	DIF_OP_PUSHTR_H  86
 
 #define	DIF_INTOFF_MAX		0xffff	/* highest integer table offset */
 #define	DIF_STROFF_MAX		0xffff	/* highest string table offset */
@@ -216,6 +231,21 @@ typedef enum dtrace_probespec {
 #define	DIF_VAR_OTHER_MIN	0x0100	/* lowest numbered scalar or assc */
 #define	DIF_VAR_OTHER_UBASE	0x0500	/* lowest user-defined scalar or assc */
 #define	DIF_VAR_OTHER_MAX	0xffff	/* highest numbered scalar or assc */
+
+#define	DIF_VAR_ARRAY_GMIN	0x0150 /* lowest numbered guest array */
+#define	DIF_VAR_ARRAY_GMAX	0x024f /* highest numbered guest array */
+
+#define	DIF_VAR_OTHER_GMIN	0x0150 /* lowest numbered guest builtin */
+#define	DIF_VAR_OTHER_GMAX	0x0300 /* highest numbered guest builtin */
+
+#define	DIF_VAR_ARRAY_HMIN	0x0300 /* lowest numbered host array */
+#define	DIF_VAR_ARRAY_HMAX	0x024f /* highest numbered host array */
+
+#define	DIF_VAR_OTHER_HMIN	0x0400 /* lowest numbered host builtin */
+#define	DIF_VAR_OTHER_HMAX	0x0450 /* highest numbered host builtin */
+
+#define	DIF_VAR_HOSTVAR_OFFS	0x300   /* offset to the host variables */
+#define	DIF_VAR_GUESTVAR_OFFS	0x150   /* offset to the guest variables */
 
 #define	DIF_VAR_ARGS		0x0000	/* arguments array */
 #define	DIF_VAR_REGS		0x0001	/* registers array */
@@ -256,10 +286,97 @@ typedef enum dtrace_probespec {
 #define	DIF_VAR_EXECARGS	0x0121	/* process arguments */
 #define	DIF_VAR_JID		0x0122	/* process jail id */
 #define	DIF_VAR_JAILNAME	0x0123	/* process jail name */
+#define	DIF_VAR_VMNAME		0x0124	/* current VM name */
 
 #ifndef illumos
-#define	DIF_VAR_CPU		0x0200
+#define	DIF_VAR_CPU		0x014f
 #endif
+
+#define	DIF_VAR_GARGS		0x0150 /* common across h/g */
+#define	DIF_VAR_GREGS		0x0151 /* guest regs */
+#define	DIF_VAR_GUREGS		0x0152 /* guest uregs */
+#define	DIF_VAR_GCURTHREAD	0x0250 /* guest curthread */
+#define	DIF_VAR_GTIMESTAMP	0x0251 /* common across h/g */
+#define	DIF_VAR_GVTIMESTAMP	0x0252 /* common across h/g */
+#define	DIF_VAR_GIPL		0x0253 /* not supported */
+#define	DIF_VAR_GEPID		0x0254 /* guest epid */
+#define	DIF_VAR_GPRID		0x0255 /* common across h/g */
+#define	DIF_VAR_GARG0		0x0256 /* common across h/g */
+#define	DIF_VAR_GARG1		0x0257 /* common across h/g */
+#define	DIF_VAR_GARG2		0x0258 /* common across h/g */
+#define	DIF_VAR_GARG3		0x0259 /* common across h/g */
+#define	DIF_VAR_GARG4		0x025a /* common across h/g */
+#define	DIF_VAR_GARG5		0x025b /* common across h/g */
+#define	DIF_VAR_GARG6		0x025c /* common across h/g */
+#define	DIF_VAR_GARG7		0x025d /* common across h/g */
+#define	DIF_VAR_GARG8		0x025e /* common across h/g */
+#define	DIF_VAR_GARG9		0x025f /* common across h/g */
+#define	DIF_VAR_GSTACKDEPTH	0x0260 /* guest stackdepth */
+#define	DIF_VAR_GCALLER		0x0261 /* guest caller */
+#define	DIF_VAR_GPROBEPROV	0x0262 /* common across h/g */
+#define	DIF_VAR_GPROBEMOD	0x0263 /* common across h/g */
+#define	DIF_VAR_GPROBEFUNC	0x0264 /* common across h/g */
+#define	DIF_VAR_GPROBENAME	0x0265 /* common across h/g */
+#define	DIF_VAR_GPID		0x0266 /* guest pid */
+#define	DIF_VAR_GTID		0x0267 /* guest tid */
+#define	DIF_VAR_GEXECNAME	0x0268 /* guest execname */
+#define	DIF_VAR_GZONENAME	0x0269 /* guest zonename */
+#define	DIF_VAR_GWALLTIMESTAMP	0x026a /* common across h/g */
+#define	DIF_VAR_GUSTACKDEPTH	0x026b /* guest ustackdepth */
+#define	DIF_VAR_GUCALLER	0x026c /* guest ucaller */
+#define	DIF_VAR_GPPID		0x026d /* guest ppid */
+#define	DIF_VAR_GUID		0x026e /* guest uid */
+#define	DIF_VAR_GGID		0x026f /* guest gid */
+#define	DIF_VAR_GERRNO		0x0270 /* guest errno */
+#define	DIF_VAR_GEXECARGS	0x0271 /* guest execargs */
+#define	DIF_VAR_GJID		0x0272	/* process jail id */
+#define	DIF_VAR_GJAILNAME	0x0273	/* process jail name */
+#define	DIF_VAR_GVMNAME		0x0274	/* current VM name */
+
+#define	DIF_VAR_GCPU		0x029f /* guest cpu */
+
+#define	DIF_VAR_HARGS		0x0300 /* common across h/g */
+#define	DIF_VAR_HREGS		0x0301 /* host regs */
+#define	DIF_VAR_HUREGS		0x0302 /* host uregs */
+#define	DIF_VAR_HCURTHREAD	0x0400 /* host curthread */
+#define	DIF_VAR_HTIMESTAMP	0x0401 /* common across h/g */
+#define	DIF_VAR_HVTIMESTAMP	0x0402 /* common across h/g */
+#define	DIF_VAR_HIPL		0x0403 /* not supported */
+#define	DIF_VAR_HEPID		0x0404 /* host epid */
+#define	DIF_VAR_HPRID		0x0405 /* common across h/g */
+#define	DIF_VAR_HARG0		0x0406 /* common across h/g */
+#define	DIF_VAR_HARG1		0x0407 /* common across h/g */
+#define	DIF_VAR_HARG2		0x0408 /* common across h/g */
+#define	DIF_VAR_HARG3		0x0409 /* common across h/g */
+#define	DIF_VAR_HARG4		0x040a /* common across h/g */
+#define	DIF_VAR_HARG5		0x040b /* common across h/g */
+#define	DIF_VAR_HARG6		0x040c /* common across h/g */
+#define	DIF_VAR_HARG7		0x040d /* common across h/g */
+#define	DIF_VAR_HARG8		0x040e /* common across h/g */
+#define	DIF_VAR_HARG9		0x040f /* common across h/g */
+#define	DIF_VAR_HSTACKDEPTH	0x0410 /* host stack depth */
+#define	DIF_VAR_HCALLER		0x0411 /* host caller */
+#define	DIF_VAR_HPROBEPROV	0x0412 /* common across h/g */
+#define	DIF_VAR_HPROBEMOD	0x0413 /* common across h/g */
+#define	DIF_VAR_HPROBEFUNC	0x0414 /* common across h/g */
+#define	DIF_VAR_HPROBENAME	0x0415 /* common across h/g */
+#define	DIF_VAR_HPID		0x0416 /* host pid */
+#define	DIF_VAR_HTID		0x0417 /* host tid */
+#define	DIF_VAR_HEXECNAME	0x0418 /* host execname */
+#define	DIF_VAR_HZONENAME	0x0419 /* host zonename */
+#define	DIF_VAR_HWALLTIMESTAMP	0x041a /* common across h/g */
+#define	DIF_VAR_HUSTACKDEPTH	0x041b /* host ustackdepth */
+#define DIF_VAR_HUCALLER	0x041c /* host ucaller */
+#define	DIF_VAR_HPPID		0x041d /* host ppid */
+#define	DIF_VAR_HUID		0x041e /* host uid */
+#define	DIF_VAR_HGID		0x041f /* host gid */
+#define	DIF_VAR_HERRNO		0x0420 /* host errno */
+#define	DIF_VAR_HEXECARGS	0x0421 /* host execargs */
+#define	DIF_VAR_HJID		0x0422	/* process jail id */
+#define	DIF_VAR_HJAILNAME	0x0423	/* process jail name */
+#define	DIF_VAR_HVMNAME		0x0424	/* current VM name */
+
+#define	DIF_VAR_HCPU		0x044f /* host cpu */
 
 #define	DIF_SUBR_RAND			0
 #define	DIF_SUBR_MUTEX_OWNED		1
@@ -315,7 +432,14 @@ typedef enum dtrace_probespec {
 #define	DIF_SUBR_GETF			51
 #define	DIF_SUBR_JSON			52
 #define	DIF_SUBR_STRTOLL		53
-#define	DIF_SUBR_MAX			53	/* max subroutine value */
+#define	DIF_SUBR_RANDOM			54
+#define	DIF_SUBR_UUIDTOSTR		55
+#define	DIF_SUBR_PTINFO			56
+#define	DIF_SUBR_STRJOIN_HH		57
+#define	DIF_SUBR_STRJOIN_HG		58
+#define	DIF_SUBR_STRJOIN_GH		59
+#define	DIF_SUBR_STRJOIN_GG		60
+#define	DIF_SUBR_MAX			60	/* max subroutine value */
 
 typedef uint32_t dif_instr_t;
 
@@ -378,6 +502,8 @@ typedef struct dtrace_diftype {
 
 #define	DIF_TF_BYREF		0x1	/* type is passed by reference */
 #define	DIF_TF_BYUREF		0x2	/* user type is passed by reference */
+#define DIF_TF_GUEST		0x4	/* this is a guest address */
+#define DIF_TF_BMASK		0x3	/* bitmask of relevant flags for variables */
 
 /*
  * A DTrace Intermediate Format variable record is used to describe each of the
@@ -497,6 +623,18 @@ typedef struct dtrace_difv {
 
 #define	DTRACEACT_ISAGG(x)		\
 	(DTRACEACT_CLASS(x) == DTRACEACT_AGGREGATION)
+
+/*
+ * DTrace-Virt functionality.
+ */
+#define DTRACEACT_VIRT      0x0800
+#define DTRACEVT_HYPERCALL (DTRACEACT_VIRT + 1)
+
+#define	DTRACEACT_ISVIRT(x)		\
+	(DTRACEACT_CLASS(x) == DTRACEACT_VIRT)
+
+_Static_assert(DTRACEACT_ISVIRT(DTRACEVT_HYPERCALL) != 0,
+    "DTRACEVT_HYPERCALL has to be of class DTRACEACT_VIRT");
 
 #define	DTRACE_QUANTIZE_NBUCKETS	\
 	(((sizeof (uint64_t) * NBBY) - 1) * 2 + 1)
@@ -1052,7 +1190,9 @@ typedef struct dtrace_fmtdesc {
 #define	DTRACEOPT_AGGPACK	29	/* packed aggregation output */
 #define	DTRACEOPT_AGGZOOM	30	/* zoomed aggregation scaling */
 #define	DTRACEOPT_ZONE		31	/* zone in which to enable probes */
-#define	DTRACEOPT_MAX		32	/* number of options */
+#define DTRACEOPT_OFORMAT	32	/* output format (JSON, XML, etc.) */
+#define	DTRACEOPT_DDTRACEARG	33	/* opaque DDTrace argument */
+#define	DTRACEOPT_MAX		34	/* number of options */
 
 #define	DTRACEOPT_UNSET		(dtrace_optval_t)-2	/* unset option */
 
@@ -1269,6 +1409,11 @@ typedef struct dtrace_providerdesc {
 	dtrace_ppriv_t dtvd_priv;		/* privileges required */
 } dtrace_providerdesc_t;
 
+typedef struct dtrace_machine_filter {
+	char	dtfl_entries[DTRACEFILT_MAX][DTRACE_MAXFILTNAME];
+	size_t	dtfl_count;
+} dtrace_machine_filter_t;
+
 /*
  * DTrace Pseudodevice Interface
  *
@@ -1331,6 +1476,8 @@ typedef struct {
 							/* get DOF */
 #define	DTRACEIOC_REPLICATE	_IOW('x',18,dtrace_repldesc_t)	
 							/* replicate enab */
+#define	DTRACEIOC_FILTER	_IOW('x',19,dtrace_machine_filter_t)
+							/* apply filter */
 #endif
 
 /*
@@ -2122,6 +2269,14 @@ typedef struct dof_helper {
  *   instrument the kernel arbitrarily should be sure to not instrument these
  *   routines.
  */
+ 
+struct dtrace_state;
+
+typedef struct dtrace_dops {
+	void (*dtdops_open)(void *, struct dtrace_state *);
+	void (*dtdops_close)(void *, struct dtrace_state *);
+} dtrace_dops_t;
+
 typedef struct dtrace_pops {
 	void (*dtps_provide)(void *arg, dtrace_probedesc_t *spec);
 	void (*dtps_provide_module)(void *arg, modctl_t *mp);
@@ -2143,8 +2298,12 @@ typedef struct dtrace_pops {
 #define	DTRACE_MODE_NOPRIV_RESTRICT		0x20
 #define	DTRACE_MODE_LIMITEDPRIV_RESTRICT	0x40
 
+typedef uintptr_t	dtrace_dist_id_t;
 typedef uintptr_t	dtrace_provider_id_t;
 
+extern int dtrace_dist_register(const char *, const dtrace_dops_t *,
+    void *, dtrace_dist_id_t *);
+extern int dtrace_dist_unregister(dtrace_dist_id_t *);
 extern int dtrace_register(const char *, const dtrace_pattr_t *, uint32_t,
     cred_t *, const dtrace_pops_t *, void *, dtrace_provider_id_t *);
 extern int dtrace_unregister(dtrace_provider_id_t);
@@ -2157,6 +2316,14 @@ extern dtrace_id_t dtrace_probe_create(dtrace_provider_id_t, const char *,
 extern void *dtrace_probe_arg(dtrace_provider_id_t, dtrace_id_t);
 extern void dtrace_probe(dtrace_id_t, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4);
+extern void dtrace_ns_probe(void *, dtrace_id_t, struct dtvirt_args *);
+extern void (*dtrace_provide_all_probes)(void);
+extern int (*dtrace_probeid_enable)(dtrace_id_t id);
+extern int (*dtrace_virtstate_create)(void);
+extern void (*dtrace_virtstate_destroy)(void);
+extern int (*dtrace_virtstate_go)(void);
+extern int (*dtrace_virtstate_stop)(void);
+
 
 /*
  * DTrace Meta Provider API
@@ -2395,6 +2562,9 @@ extern int dtrace_mach_aframes(void);
 extern int dtrace_instr_size(uchar_t *instr);
 extern int dtrace_instr_size_isa(uchar_t *, model_t, int *);
 extern void dtrace_invop_callsite(void);
+
+struct vm_guest_paging;
+extern int dtrace_gla2hva(struct vm_guest_paging *, uint64_t gla, uint64_t *);
 #endif
 extern void dtrace_invop_add(int (*)(uintptr_t, struct trapframe *, uintptr_t));
 extern void dtrace_invop_remove(int (*)(uintptr_t, struct trapframe *,
