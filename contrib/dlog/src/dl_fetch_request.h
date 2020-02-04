@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -37,48 +37,18 @@
 #ifndef _DL_FETCH_REQUEST_H
 #define _DL_FETCH_REQUEST_H
 
-#include <sys/queue.h>
 #include <sys/types.h>
-#ifdef _KERNEL
 #include <sys/sbuf.h>
-#else
-#include <stdint.h>
-#include <sys/sbuf.h>
-#endif
 
 #include "dl_bbuf.h"
 
-struct dl_request;
+struct dl_fetch_request;
 
-SLIST_HEAD(dl_fetch_request_q, dl_fetch_request_topic);
-
-struct dl_fetch_request_partition {
-	int64_t dlfrp_fetch_offset;
-	int32_t dlfrp_max_bytes;
-	int32_t dlfrp_partition;
-};
-
-struct dl_fetch_request_topic {
-	SLIST_ENTRY(dl_fetch_request_topic) dlfrt_entries;
-	struct sbuf *dlfrt_topic_name;
-	int32_t dlfrt_npartitions;
-	struct dl_fetch_request_partition dlfrt_partitions[];
-};
-
-struct dl_fetch_request {
-	struct dl_fetch_request_q dlfr_topics;
-	int32_t dlfr_ntopics;
-	int32_t dlfr_replica_id;
-	int32_t dlfr_max_wait_time;
-	int32_t dlfr_min_bytes;
-};
-
-extern int dl_fetch_request_new(struct dl_request **, const int32_t,
-    struct sbuf *, struct sbuf *, const int32_t, const int32_t,
+extern int dl_fetch_request_new(struct dl_fetch_request **, const int32_t,
+    struct sbuf *, const int32_t, const int32_t, struct sbuf *,
     const int64_t, const int32_t);
 extern void dl_fetch_request_delete(struct dl_fetch_request *);
 
 extern int dl_fetch_request_decode(struct dl_fetch_request **, struct dl_bbuf *);
-extern int dl_fetch_request_encode(struct dl_fetch_request *, struct dl_bbuf *);
 
 #endif

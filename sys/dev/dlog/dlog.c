@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -47,13 +47,18 @@
 #include <sys/mount.h>
 #include <sys/sysctl.h>
 #include <sys/vnode.h>
+#include <sys/proc.h>
+#include <sys/lock.h>
+#include <sys/sx.h>
+#include <sys/kthread.h>
+
+#include "dlog.h"
 
 #include "dl_assert.h"
 #include "dl_config.h"
 #include "dl_memory.h"
 #include "dl_topic.h"
 #include "dl_utils.h"
-#include "dlog.h"
 #include "dlog_client.h"
 #include "dl_kernel_segment.h"
 
@@ -104,6 +109,16 @@ static struct cdevsw dlog_cdevsw = {
 };
 static struct cdev *dlog_dev;
 
+static struct cdevsw topic_cdevsw = {
+	.d_version = D_VERSION,
+	.d_open = dlog_open,
+	.d_close = dlog_close,
+	.d_ioctl = dlog_ioctl,
+	.d_read = dlog_read,
+	.d_name = DLOG_NAME,
+};
+static struct cdev *topic_dev;
+
 static struct proc *dlog_client_proc;
 
 static struct mtx dlog_mtx;
@@ -113,7 +128,56 @@ static int dlog_exit = 0;
 static eventhandler_tag dlog_pre_sync = NULL;
 
 static struct sysctl_ctx_list clist;
-static struct sysctl_oid *oidp;
+static struct sysctl_oid *dlog_oipd;
+
+struct dl_topic_hashmap *topic_hashmap;
+
+static void
+dlog_sync_topic(struct dl_topic *topic, void *arg __attribute((unused)))
+{
+	struct dl_segment *s;
+
+	DL_ASSERT(topic != NULL, ("Topic instance cannot be NULL."));
+
+	s = dl_topic_get_active_segment(topic);
+	DL_ASSERT(s != NULL, ("Segment instance cannot be NULL."));
+	if (dl_segment_sync(s) != 0) {
+
+		DLOGTR1(PRIO_NORMAL, "Failed syncing topic %s\n",
+		    dl_topic_get_name(topic));
+	}
+}
+
+static void
+dlog_topic_to_desc(struct dl_topic *topic, void *arg)
+{
+	struct dl_topic_desc **pdesc = (struct dl_topic_desc **) arg;
+	struct dl_topic_desc *desc = *pdesc, *tmp;
+	int rc;
+
+	DL_ASSERT(desc == 0, ("Topic desc cannot be NULL"));
+
+	rc = dl_topic_as_desc(topic, &tmp);
+	DL_ASSERT(rc == 0, ("Failed coverting Topic to description"));
+	if (rc == 0) {
+
+		/* Copy the Topic description into the output. */
+		bcopy(tmp, desc, sizeof(struct dl_topic_desc));
+		dlog_free(tmp);
+
+		/* Advance the output pointer. */
+		++(*pdesc);
+	}
+}
+
+static void
+dlog_topic_count(struct dl_topic *topic, void *arg)
+{
+	size_t *count = (size_t *)arg;
+			
+	/* Increment the count of topics.*/	
+	*count = *count + 1;
+}
 
 static int 
 dlog_init()
@@ -122,10 +186,9 @@ dlog_init()
 	int rc, e;
 
 	/* Allocate the topic hashmap. */
-	topic_hashmap = dl_topic_hashmap_new(10, &topic_hashmask);
-	DL_ASSERT(topic_hashmap != NULL,
-	    ("DLog failed instiating new topic hashmap."));
-	if (topic_hashmap == NULL)
+	rc = dl_topic_hashmap_new(&topic_hashmap, 10);
+	DL_ASSERT(rc == 0, ("DLog failed instiating new topic hashmap."));
+	if (rc != 0)
 		return -1;
 
 	mtx_init(&dlog_mtx, "dlog mtx", DLOG_NAME, MTX_DEF);
@@ -184,7 +247,7 @@ dlog_fini()
 static void
 dlog_sync(void)
 {
-	struct dl_segment *s;
+	struct dl_kernel_segment *s;
 	struct dl_topic *topic, *tmp;
 	struct mount *mp;
 	int t, rc, error;
@@ -197,31 +260,19 @@ dlog_sync(void)
 	cv_broadcast(&dlog_cv);
 
 	/* Attempt to stop the DLog process. */
-	rc = tsleep(dlog_client_proc, 0, "DLog terminating...",
-	    60 * hz / 9);
+	rc = tsleep(dlog_client_proc, 0, "DLog terminating...", 60 * hz / 9);
 	DL_ASSERT(rc == 0, ("Failed to stop %s process.", DLOG_NAME));
 
-	DLOGTR1(PRIO_NORMAL, "%s process stopped successfully\n",
-	    DLOG_NAME);
+	DLOGTR1(PRIO_NORMAL, "%s process stopped successfully\n", DLOG_NAME);
 	cv_destroy(&dlog_cv);
 	mtx_destroy(&dlog_mtx);
 
-	for (t = 0; t < topic_hashmask + 1 ; t++) {
-		LIST_FOREACH_SAFE(topic, &topic_hashmap[t],
-		    dlt_entries, tmp) {
+	/* Sync all the topics. */ 
+	dl_topic_hashmap_foreach(topic_hashmap, dlog_sync_topic, NULL);
 
-			s = dl_topic_get_active_segment(topic);
-			if (dl_kernel_segment_sync(s) != 0) {
-				DLOGTR1(PRIO_NORMAL,
-				    "Failed to sync topic %s\n",
-				    sbuf_data(topic->dlt_name));
-			}
+	/* Delete all the topics. */
+	dl_topic_hashmap_clear(topic_hashmap);
 
-			LIST_REMOVE(topic, dlt_entries);
-			dl_topic_delete(topic);
-		}
-	}
-	
 	/* Delete the topic hash map. */
 	dl_topic_hashmap_delete(topic_hashmap);
 
@@ -236,9 +287,10 @@ dlog_event_handler(struct module *module, int event, void *arg)
 	switch(event) {
 	case MOD_LOAD:
 		DLOGTR0(PRIO_LOW, "Loading DLog kernel module\n");
+
 		sysctl_ctx_init(&clist);
-		oidp = SYSCTL_ADD_ROOT_NODE(&clist, OID_AUTO, "dlog",
-		    CTLFLAG_RW, 0, "distributed log (dlog)");
+		dlog_oipd = SYSCTL_ADD_ROOT_NODE(&clist, OID_AUTO, DLOG_NAME,
+		    CTLFLAG_RW, 0, "Distributed log (dlog)");
 
 		if (dlog_init() != 0)
 			e = EFAULT;
@@ -248,7 +300,6 @@ dlog_event_handler(struct module *module, int event, void *arg)
 
 		dlog_fini();
 		sysctl_ctx_free(&clist);
-
 		break;
 	default:
 		e = EOPNOTSUPP;
@@ -312,168 +363,234 @@ static int
 dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
     struct thread *td)
 {
-	struct dl_client_config *conf;
-	struct dl_client_config_desc conf_desc;
-	struct dl_client_config_desc **pconf_desc =
-	    (struct dl_client_config_desc **) addr;
-	struct dlog_handle *handle;
-	nvlist_t *props;
-	void *packed_nvlist;
-	struct dl_topic_desc **ptp_desc =
-	    (struct dl_topic_desc **) addr;
-	struct dl_topic_desc tp_desc;	
-	struct sbuf *tp_name;
-	struct dl_topic *t, *t_tmp;
-	uint32_t h;
 
 	switch(cmd) {
-	case DLOGIOC_ADDTOPICPART:
-		DLOGTR0(PRIO_LOW, "Adding new Topic/Partition.\n");
+	case DLOGIOC_ADDTOPICPART: {
+		struct dl_kernel_segment *kseg;
+		struct dl_topic *topic;
+		struct dl_topic_desc **pdesc =
+		    (struct dl_topic_desc **) addr;
+		struct dl_topic_desc desc;	
+		nvlist_t *props;
+		void *packed_nvlist;
+		char *path;
+		uint64_t max_seg_size;
 
 		/* Copyin the description of the new topic. */
-		if (copyin((void *) *ptp_desc, &tp_desc,
-		    sizeof(struct dl_topic_desc)) != 0)
+		if (copyin((void *) *pdesc, &desc, sizeof(desc)) != 0)
 			return EFAULT; 
-		
-		if (tp_desc.dltd_name == NULL)
-			return EINVAL;
 	
-		/* Copyin the topic name into a new sbuf. */	
-		tp_name = sbuf_new_auto();
-		DL_ASSERT(tp_name != NULL,
-		    ("Failed creating sbuf instance.")); 
-		if (sbuf_copyin(tp_name, tp_desc.dltd_name,
-		    strlen(tp_desc.dltd_name)) == -1) {
-
-			sbuf_delete(tp_name);
-			return EFAULT;
-		}
-		sbuf_finish(tp_name);
-		
-		/* Lookup the topic in the topic hashmap. */
-		h = hashlittle(sbuf_data(tp_name), sbuf_len(tp_name), 0);
-		DLOGTR4(PRIO_LOW, "topic %s (%zu) hashes to %u (%zu)\n",
-		    sbuf_data(tp_name), sbuf_len(tp_name), h,
-		    h & topic_hashmask);
-
-		LIST_FOREACH(t, &topic_hashmap[h & topic_hashmask],
-		    dlt_entries) {
-			if (strcmp(sbuf_data(tp_name),
-			    sbuf_data(t->dlt_name)) == 0) {
-
-				DLOGTR1(PRIO_HIGH,
-				    "Topic %s is already present\n",
-				    sbuf_data(tp_name));
-				sbuf_delete(tp_name);
-				return 0;
-			}
-		}
-
-		/* Construct the new topic and add to the topic hashmap. */
-		if (dl_topic_from_desc(&t, tp_name,
-		    &tp_desc.dltd_active_seg) == 0) {
-
-			LIST_INSERT_HEAD(&topic_hashmap[h & topic_hashmask], t,
-			    dlt_entries); 
-			SYSCTL_ADD_STRING(&clist, SYSCTL_CHILDREN(oidp),
-			    OID_AUTO, "Topic", CTLFLAG_RD, sbuf_data(tp_name),
-			    sbuf_len(tp_name), "Topic name");
-		} else {
-			sbuf_delete(tp_name);
-			return -1;
-		}
-		sbuf_delete(tp_name);
-
-		break;
-	case DLOGIOC_DELTOPICPART:
-		DLOGTR0(PRIO_LOW, "Deleting Topic/Partition.\n");
-
-		/* Copyin the description of the new topic. */
-		if (copyin((void *) *ptp_desc, &tp_desc,
-		    sizeof(struct dl_topic_desc)) != 0)
-			return EFAULT; 
-		
-		if (tp_desc.dltd_name == NULL)
-			return EINVAL;
-	
-		/* Copyin the topic name into a new sbuf. */	
-		tp_name = sbuf_new_auto();
-		DL_ASSERT(tp_name != NULL,
-		    ("Failed creating sbuf instance.")); 
-		if (sbuf_copyin(tp_name, tp_desc.dltd_name,
-		    strlen(tp_desc.dltd_name)) == -1) {
-
-			sbuf_delete(tp_name);
-			return EFAULT;
-		}
-		sbuf_finish(tp_name);
-		
-		/* Lookup the topic in the topic hashmap. */
-		h = hashlittle(sbuf_data(tp_name), sbuf_len(tp_name), 0);
-		DLOGTR4(PRIO_LOW, "topic %s (%zu) hashes to %u (%zu)\n",
-		    sbuf_data(tp_name), sbuf_len(tp_name), h,
-		    h & topic_hashmask);
-
-		LIST_FOREACH_SAFE(t, &topic_hashmap[h & topic_hashmask],
-		    dlt_entries, t_tmp) {
-			if (strcmp(sbuf_data(tp_name),
-			    sbuf_data(t->dlt_name)) == 0) {
-
-				DLOGTR1(PRIO_HIGH, "Topic %s found\n",
-				    sbuf_data(tp_name));
-
-				LIST_REMOVE(t, dlt_entries);
-				dl_topic_delete(t);
-				sbuf_delete(tp_name);
-
-				/* TODO: sysctl_remove_oid */
-				return 0;
-			}
-		}
-		
-		DLOGTR1(PRIO_HIGH, "Topic %s not found\n",
-		    sbuf_data(tp_name));
-		sbuf_delete(tp_name);
-
-		break;
-	case DLOGIOC_PRODUCER:
-		DLOGTR0(PRIO_LOW, "Configuring DLog producer.\n");
-
-		/* Copyin the description of the client configuration. */
-		if (copyin((void *) *pconf_desc, &conf_desc,
-		    sizeof(struct dl_client_config_desc)) != 0)
-			return EFAULT; 
-
-		packed_nvlist = dlog_alloc(conf_desc.dlcc_packed_nvlist_len);
+		packed_nvlist = dlog_alloc(desc.dltd_conf.dlcc_packed_nvlist_len);
 		DL_ASSERT(packed_nvlist != NULL,
 		    ("Failed allocating memory for the nvlist.")); 
 
-		if (copyin(conf_desc.dlcc_packed_nvlist, packed_nvlist,
-		    conf_desc.dlcc_packed_nvlist_len) != 0)
+		if (copyin(desc.dltd_conf.dlcc_packed_nvlist, packed_nvlist,
+		    desc.dltd_conf.dlcc_packed_nvlist_len) != 0) {
+
+			dlog_free(packed_nvlist);
+			DLOGTR0(PRIO_HIGH,
+			    "Failed copying in Producer properties\n");
 			return EFAULT; 
+		}
+
+		/* Check for an invalid topic name. */	
+		if (!dl_topic_validate_name(desc.dltd_name))
+			return EINVAL;
+
+		if (dl_topic_hashmap_contains_key(topic_hashmap, desc.dltd_name))
+			return EFAULT;
 
 		/* Unpack the nvlist of properties used for configuring the
 		 * DLog client instance.
 		 */
 		props = nvlist_unpack(packed_nvlist,
-		    conf_desc.dlcc_packed_nvlist_len, 0); 
+		    desc.dltd_conf.dlcc_packed_nvlist_len, 0); 
 		dlog_free(packed_nvlist);
-		if (props == NULL)
+		if (props == NULL) {
+			DLOGTR0(PRIO_HIGH,
+			    "Failed creating Topic properties\n");
+			return EFAULT;
+		}
+	
+		/* Extract the log path from the properties */
+		path = dnvlist_get_string(props,
+	    		DL_CONF_LOG_PATH, DL_DEFAULT_LOG_PATH);
+
+		/* Extract the maximum log segment size from the properties */
+		max_seg_size = dnvlist_get_number(props,
+	    		DL_CONF_MAX_SEGMENT_SIZE,
+			DL_DEFAULT_MAX_SEGMENT_SIZE);
+	
+		/* Construct the new segment and add to the topic. */
+		if (dl_kernel_segment_from_desc(&kseg,
+		    path, desc.dltd_name, max_seg_size,
+		    &desc.dltd_active_seg) == 0) {
+
+			if (dl_topic_new(&topic, desc.dltd_name,
+			    props, (struct dl_segment *) kseg) == 0) {
+
+				if (dl_topic_hashmap_put_if_absent(
+				    topic_hashmap, desc.dltd_name,
+				    topic) == 0) {
+
+					DLOGTR1(PRIO_LOW,
+					    "Added new Topic/Partition: %s\n",
+		    			    desc.dltd_name);
+				} else {
+
+					DLOGTR0(PRIO_HIGH,
+					    "Failed adding topic to hashmap\n");
+					dl_topic_delete(topic);
+					dl_kernel_segment_delete(kseg);
+					return EFAULT;
+				}	
+			} else {
+				DLOGTR0(PRIO_HIGH,
+				    "Failed creating topic instance\n");
+				dl_kernel_segment_delete(kseg);
+				/* Free the nvlist that stores the configuration properties */
+				nvlist_destroy(props);
+				return EFAULT;
+			}
+		} else {
+
+			DLOGTR0(PRIO_HIGH, "Failed creating segment\n");
+			/* Free the nvlist that stores the configuration properties */
+			nvlist_destroy(props);
+			return EFAULT;
+		}
+
+		return 0;
+	}
+	case DLOGIOC_DELTOPICPART: {
+		struct dl_topic_desc **pdesc =
+		    (struct dl_topic_desc **) addr;
+		struct dl_topic_desc desc;	
+
+		/* Copyin the description of the new topic. */
+		if (copyin((void *) *pdesc, &desc, sizeof(desc)) != 0)
+			return EFAULT; 
+	
+		/* Check for an invalid topic name. */	
+		if (!dl_topic_validate_name(desc.dltd_name))
 			return EINVAL;
+	
+		/* Delete the topic. */	
+		if (dl_topic_hashmap_remove(topic_hashmap,
+		    desc.dltd_name) == -1) {
+
+			DLOGTR1(PRIO_NORMAL,
+			    "Failed deleting Topic/Partition %s (not found)\n",
+		    	    desc.dltd_name);
+		} else {
+
+			DLOGTR1(PRIO_LOW, "Deleted Topic/Partition: %s\n",
+		    	    desc.dltd_name);
+		}
+
+		return 0;
+	}
+	case DLOGIOC_GETTOPICS: {
+		struct dl_topics_desc **pdesc =
+		    (struct dl_topics_desc **) addr;
+		struct dl_topics_desc desc, *tmp_desc;
+		struct dl_topic_desc *tmp;
+		size_t ntopics, count = 0;
+
+		/* Copyin the description of the new topic. */
+		if (copyin((void *) *pdesc, &desc, sizeof(desc)) != 0)
+			return EFAULT; 
+
+		ntopics = desc.dltsd_ntopics;
+		DLOGTR1(PRIO_LOW, "Getting %zu Topic(s)\n", ntopics);
+
+		/* Return a topic description for each topic in the hashmap. */ 
+		dl_topic_hashmap_foreach(topic_hashmap, dlog_topic_count,
+		    &count);
+			
+		DLOGTR1(PRIO_LOW, "No. of Topic/Partitions = %zu\n", count);
+
+		/* Allocate a temporary TopicsDesc instance capable of
+		 * holding all descriptions of all of the topics.
+		 */
+		tmp_desc = (struct dl_topics_desc *) dlog_alloc(
+		    sizeof(struct dl_topics_desc) +
+		    (count * sizeof(struct dl_topic_desc)));
+		DL_ASSERT(desc != NULL,
+		    ("Failed to allocate temporary TopicsDesc instance"));
+
+		/* Copy the description of each topic into the allocated
+		 * TopicsDesc.
+		 */
+		tmp = tmp_desc->dltsd_topic_desc;
+		dl_topic_hashmap_foreach(topic_hashmap, dlog_topic_to_desc,
+		    &tmp);
+		
+		/* Return the smallest of the request number of topics and
+		 * the actual number of topics.
+		 */
+		tmp_desc->dltsd_ntopics = count < ntopics ? count : ntopics;
+
+		/* Copyout the description of the Topics. */
+		if (copyout(tmp_desc, (void *) *pdesc,
+		    sizeof(struct dl_topics_desc) +
+		    (tmp_desc->dltsd_ntopics * sizeof(struct dl_topic_desc))) != 0) {
+
+			dlog_free(tmp_desc);
+			return EFAULT; 
+		}
+
+		dlog_free(tmp_desc);
+		return 0;
+	}
+	case DLOGIOC_PRODUCER: {
+		struct dl_client_config_desc desc;
+		struct dl_client_config_desc **pdesc =
+		    (struct dl_client_config_desc **) addr;
+		struct dlog_handle *handle;
+		nvlist_t *props;
+		void *packed_nvlist;
+
+		/* Copyin the description of the client configuration. */
+		if (copyin((void *) *pdesc, &desc, sizeof(desc)) != 0)
+			return EFAULT; 
+
+		DLOGTR0(PRIO_LOW, "Configuring DLog producer.\n");
+
+		packed_nvlist = dlog_alloc(desc.dlcc_packed_nvlist_len);
+		DL_ASSERT(packed_nvlist != NULL,
+		    ("Failed allocating memory for the nvlist.")); 
+
+		if (copyin(desc.dlcc_packed_nvlist, packed_nvlist,
+		    desc.dlcc_packed_nvlist_len) != 0) {
+
+			dlog_free(packed_nvlist);
+			DLOGTR0(PRIO_HIGH,
+			    "Failed copying in Producer properties\n");
+			return EFAULT; 
+		}
+
+		/* Unpack the nvlist of properties used for configuring the
+		 * DLog client instance.
+		 */
+		props = nvlist_unpack(packed_nvlist,
+		    desc.dlcc_packed_nvlist_len, 0); 
+		dlog_free(packed_nvlist);
+		if (props == NULL) {
+			DLOGTR0(PRIO_HIGH,
+			    "Failed creating Producer properties\n");
+			return EFAULT;
+		}
 
 		/* Open the DLog client with the specified properties. */
-		conf = (struct dl_client_config *) dlog_alloc(
-		    sizeof(struct dl_client_config));
-		DL_ASSERT(conf != NULL,
-		    ("Failed allocating DLog client configuration."));
-		conf->dlcc_props = props;
-
-		if (dlog_client_open(&handle, conf) != 0) {
+		if (dlog_client_open(&handle, props) != 0) {
 
 			DLOGTR0(PRIO_HIGH, "Error opening Dlog client.\n");
-			dlog_free(conf);
-			return -1;
+			return EFAULT;
 		}
+
+		/* Free the nvlist that stores the configuration properties */
+		nvlist_destroy(props);
 
 		/* Associate the the DLog client handle with the device file. */
 		if (devfs_set_cdevpriv(handle, dl_client_close) != 0) {
@@ -481,14 +598,14 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 			DLOGTR0(PRIO_HIGH,
 			    "Error associating the DLog client handle.\n");
 			dlog_client_close(handle);
-			dlog_free(conf);
-			return -1;
+			return EFAULT;
 		}
-		break;
-	default:
-		return -1;
+
+		return 0;
 	}
-	return 0;
+	default:
+		return ENOTTY;
+	}
 }
 
 static void
@@ -496,10 +613,8 @@ dl_client_close(void *arg)
 {
 	struct dlog_handle *handle = (struct dlog_handle *) arg;
 
-	//DL_ASSERT(handle != NULL, ("DLog client handle cannot be NULL."));
-
 	DLOGTR0(PRIO_LOW, "Closing DLog producer.\n");
-	//dlog_client_close(handle);
+	dlog_client_close(handle);
 }
 
 

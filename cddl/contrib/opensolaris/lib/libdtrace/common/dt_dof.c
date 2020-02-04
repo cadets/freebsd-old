@@ -40,7 +40,7 @@
 #include <limits.h>
 
 #include <dt_impl.h>
-#include <dt_strtab.h>
+//#include <dt_strtab.h>
 #include <dt_program.h>
 #include <dt_provider.h>
 #include <dt_xlator.h>

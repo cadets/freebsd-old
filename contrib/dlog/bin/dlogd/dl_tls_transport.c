@@ -54,6 +54,7 @@
 #include "dl_bbuf.h"
 #include "dl_config.h"
 #include "dl_poll_reactor.h"
+#include "dl_producer_stats.h"
 #include "dl_primitive_types.h"
 #include "dl_memory.h"
 #include "dl_transport.h"
@@ -342,7 +343,8 @@ retry_read_msg:
 		dl_bbuf_flip(*target);
 
 		/* Update the Producer statistics. */
-		dl_producer_stats_bytes_received(self->dlt_producer, msg_size);
+		dlps_set_bytes_received(
+		    dl_producer_get_stats(self->dlt_producer), msg_size);
 		return msg_size;
 	}
 }
@@ -404,7 +406,7 @@ retry_flush:
 	}
 
 	/* Update the Producer statistics. */
-	dl_producer_stats_bytes_sent(self->dlt_producer,
+	dlps_set_bytes_sent(dl_producer_get_stats(self->dlt_producer),
 	    dl_bbuf_pos(buffer));
 
 	return dl_bbuf_pos(buffer);
@@ -427,7 +429,8 @@ dl_tls_transport_hdlr(void *instance, int fd, int revents)
 			DLOGTR0(PRIO_LOW, "Connection refused\n");
 		}
 		
-		dl_producer_stats_tcp_connect(self->dlt_producer, false);
+		dlps_set_tcp_connect(
+		    dl_producer_get_stats(self->dlt_producer), false);
 		dl_producer_down(self->dlt_producer);
 		return;
 	}
@@ -455,8 +458,8 @@ dl_tls_transport_hdlr(void *instance, int fd, int revents)
 		} else {
 
 			/* Server disconnected. */
-			dl_producer_stats_tcp_connect(self->dlt_producer,
-			    false);
+			dlps_set_tcp_connect(
+		    	    dl_producer_get_stats(self->dlt_producer), false);
 			dl_producer_down(self->dlt_producer);
 			return;
 
@@ -469,7 +472,8 @@ dl_tls_transport_hdlr(void *instance, int fd, int revents)
 		if (rc == 0) {
 			if (err == 0) {
 				DLOGTR0(PRIO_LOW, "TCP Connected\n");
-				dl_producer_stats_tcp_connect(self->dlt_producer,
+				dlps_set_tcp_connect(
+		    		    dl_producer_get_stats(self->dlt_producer),
 				    true);
 
 				/* Perform the SSL handshake.
@@ -496,8 +500,9 @@ dl_tls_transport_hdlr(void *instance, int fd, int revents)
 					    &self->dlt_event_hdlr,
 					    POLLIN|POLLHUP|POLLERR);
 
-					dl_producer_stats_tls_connect(
-					    self->dlt_producer, true);
+					dlps_set_tls_connect(
+					    dl_producer_get_stats(self->dlt_producer),
+					    true);
 					dl_producer_up(self->dlt_producer);
 				} else if (rc == -1 &&
 				    BIO_should_retry(
@@ -509,14 +514,15 @@ dl_tls_transport_hdlr(void *instance, int fd, int revents)
 				} else {
 					DLOGTR0(PRIO_HIGH,
 					    "Error establishing TLS handshake\n");
-					dl_producer_stats_tcp_connect(
-					    self->dlt_producer, false);
+					dlps_set_tcp_connect(
+					    dl_producer_get_stats(self->dlt_producer),
+					    false);
 					dl_producer_down(self->dlt_producer);
 				}
 			} 
 		} else {
-			dl_producer_stats_tcp_connect(self->dlt_producer,
-			    false);
+			dlps_set_tcp_connect(
+			    dl_producer_get_stats(self->dlt_producer), false);
 			dl_producer_down(self->dlt_producer);
 		}
 	}

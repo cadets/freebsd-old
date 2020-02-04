@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -37,47 +37,18 @@
 #ifndef _DL_LIST_OFFSET_REQUEST_H
 #define _DL_LIST_OFFSET_REQUEST_H
 
-#include <sys/queue.h>
 #include <sys/types.h>
-#ifdef _KERNEL
 #include <sys/sbuf.h>
-#else
-#include <sys/sbuf.h>
-#include <stdint.h>
-#endif
 
 #include "dl_bbuf.h"
-#include "dl_request.h"
 
-struct dl_request;
+struct dl_list_offset_request;
 
-SLIST_HEAD(dl_list_offset_request_topics, dl_list_offset_request_topic);
-
-struct dl_list_offset_request_partition {
-	int32_t dlorp_partition;
-	int64_t dlorp_time;
-};
-
-struct dl_list_offset_request_topic {
-	SLIST_ENTRY(dl_list_offset_request_topic) dlort_entries;
-	struct sbuf *dlort_topic_name;
-	int32_t dlort_npartitions;
-	struct dl_list_offset_request_partition dlort_partitions[1];
-};
-
-struct dl_list_offset_request {
-	struct dl_list_offset_request_topics dlor_topics;
-	int32_t dlor_ntopics;
-	int32_t dlor_replica_id;
-};
-
-extern int dl_list_offset_request_new(struct dl_request **, int32_t,
+extern int dl_list_offset_request_new(struct dl_list_offset_request **, int32_t,
     struct sbuf *, struct sbuf *, int64_t);
 extern void dl_list_offset_request_delete(struct dl_list_offset_request *);
 
 extern int dl_list_offset_request_decode(struct dl_list_offset_request **, 
     struct dl_bbuf  * const);
-extern int dl_list_offset_request_encode(struct dl_list_offset_request *,
-    struct dl_bbuf *);
 
 #endif

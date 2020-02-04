@@ -159,7 +159,7 @@ dl_transport_send_request(const struct dl_transport *self,
 	return self->dlt_send_request_fcn(self, buffer);
 }
 
-	int
+int
 dl_transport_factory_get_inst(struct dl_transport **self,
     struct dl_producer *producer)
 {

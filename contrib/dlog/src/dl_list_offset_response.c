@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -46,48 +46,35 @@
 #include "dl_memory.h"
 #include "dl_primitive_types.h"
 #include "dl_protocol.h"
-#include "dl_response.h"
 #include "dl_utils.h"
 
 int
-dl_list_offset_response_new(struct dl_response **self,
+dl_list_offset_response_new(struct dl_list_offset_response **self,
     const int32_t correlation_id, struct sbuf *topic_name, int16_t error_code,
     int64_t time, int64_t offset)
 {
-	struct dl_list_offset_response *offset_response;
+	struct dl_list_offset_response *response;
 	struct dl_list_offset_response_topic *response_topic;
-	struct dl_response *response;
 	int rc;
 	
 	DL_ASSERT(self != NULL, ("ListOffsetRequest instance cannot be NULL."));
 	DL_ASSERT(topic_name != NULL,
 	    ("ListOffsetResponse topic name cannot be NULL."));
 
-	/* Construct the Response. */
-	rc = dl_response_new(&response, DL_OFFSET_API_KEY, correlation_id);
-#ifdef _KERNEL
-	DL_ASSERT(rc == 0, ("Failed to allocate Request."));
-#else
-	if (rc != 0)
-		goto err_response_ctor;
-#endif
-
 	/* Construct the ListOffsetResponse. */
-	offset_response = response->dlrs_offset_response =
-	    (struct dl_list_offset_response *) dlog_alloc(
+	response = (struct dl_list_offset_response *) dlog_alloc(
 	    sizeof(struct dl_list_offset_response));
 #ifdef _KERNEL
-	DL_ASSERT(offset_response != NULL, ("Failed to allocate Request."));
+	DL_ASSERT(response != NULL, ("Failed to allocate Request."));
 #else
-	if (offset_response == NULL) {
+	if (response == NULL) {
 
-		dl_response_delete(response);
 		goto err_response_ctor;
 	}
 #endif
 	
-	SLIST_INIT(&offset_response->dlor_topics);
-	offset_response->dlor_ntopics = 1;
+	SLIST_INIT(&response->dlor_topics);
+	response->dlor_ntopics = 1;
 
 	response_topic = (struct dl_list_offset_response_topic *) dlog_alloc(
 	    sizeof(struct dl_list_offset_response_topic));	    
@@ -97,8 +84,7 @@ dl_list_offset_response_new(struct dl_response **self,
 #else
 	if (response_topic == NULL ) {
 
-		dl_list_offset_response_delete(offset_response);
-		dl_response_delete(response);
+		dlog_free(response);
 		goto err_response_ctor;
 	}
 #endif	
@@ -110,7 +96,7 @@ dl_list_offset_response_new(struct dl_response **self,
 	response_topic->dlort_partitions[0].dlorp_timestamp = time;
 	response_topic->dlort_partitions[0].dlorp_offset = offset;
 	
-	SLIST_INSERT_HEAD(&offset_response->dlor_topics, response_topic,
+	SLIST_INSERT_HEAD(&response->dlor_topics, response_topic,
 	    dlort_entries);
 
 	*self = response;
@@ -145,51 +131,37 @@ dl_list_offset_response_delete(struct dl_list_offset_response *self)
 }	
 
 int
-dl_list_offset_response_decode(struct dl_response **self,
+dl_list_offset_response_decode(struct dl_list_offset_response **self,
     struct dl_bbuf *source)
 {
-	struct dl_list_offset_response *offset_response;
+	struct dl_list_offset_response *response;
 	struct dl_list_offset_response_partition *response_part;
 	struct dl_list_offset_response_topic *response_topic;
-	struct dl_response *response;
 	struct sbuf *topic_name = NULL;
 	int32_t topic_it, part, nparts;
 	int rc = 0;
      
+	DL_ASSERT(self != NULL, ("ListOffsetRequest instance cannot be NULL."));
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
 
-	/* Construct the Response. */
-	// TODO: what to do about the correlation id, this boils down to
-	// whether there is a necessary split between the header and payload
-	rc = dl_response_new(&response, DL_PRODUCE_API_KEY, 0);
-#ifdef _KERNEL
-	DL_ASSERT(rc == 0, ("Failed instatiate Response.\n"));
-#else
-	if (rc != 0)
-		goto err_list_offset_response;
-#endif
-
 	/* Construct the ListOffsetResponse. */
-	response->dlrs_offset_response = offset_response =
-	    (struct dl_list_offset_response *) dlog_alloc(
+	response = (struct dl_list_offset_response *) dlog_alloc(
 		sizeof(struct dl_list_offset_response));
 #ifdef _KERNEL
 	DL_ASSERT(response != NULL,
 	    ("Failed to allocate ListOffsetResponse.\n"));
 #else
 	if (response == NULL) {
-		dl_response_delete(response);
 		goto err_list_offset_response;
 	}
 #endif
 
-	SLIST_INIT(&offset_response->dlor_topics);
+	SLIST_INIT(&response->dlor_topics);
 
         /* Decode the [topic_data] array. */
-	rc |= dl_bbuf_get_int32(source, &offset_response->dlor_ntopics);
+	rc |= dl_bbuf_get_int32(source, &response->dlor_ntopics);
 	
-	for (topic_it = 0; topic_it < offset_response->dlor_ntopics;
-	    topic_it++) {
+	for (topic_it = 0; topic_it < response->dlor_ntopics; topic_it++) {
 
 		/* Decode the TopicName */
 		rc |= DL_DECODE_TOPIC_NAME(source, &topic_name);
@@ -226,7 +198,7 @@ dl_list_offset_response_decode(struct dl_response **self,
 			    &response_part->dlorp_offset);
 		}
 
-		SLIST_INSERT_HEAD(&offset_response->dlor_topics,
+		SLIST_INSERT_HEAD(&response->dlor_topics,
 		    response_topic, dlort_entries);
 	}
 

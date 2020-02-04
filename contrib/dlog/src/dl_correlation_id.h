@@ -43,6 +43,6 @@ extern int dl_correlation_id_new(struct dl_correlation_id **);
 extern void dl_correlation_id_delete(struct dl_correlation_id *);
 
 extern int32_t dl_correlation_id_val(struct dl_correlation_id *);
-extern int32_t dl_correlation_id_inc(struct dl_correlation_id *);
+extern void dl_correlation_id_inc(struct dl_correlation_id *);
 
 #endif

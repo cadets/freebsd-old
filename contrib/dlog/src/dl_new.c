@@ -1,6 +1,5 @@
 /*-
- * Copyright (c) 2017 (Ilia Shumailov)
- * Copyright (c) 2017-2019 (Graeme Jenkinson)
+ * Copyright (c) 2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -35,23 +34,58 @@
  *
  */
 
-#ifndef _DLOG_CLIENT_H
-#define _DLOG_CLIENT_H
-
-#include <sys/types.h>
-
-#include "dl_config.h"
-
-struct dlog_handle;
-
-extern int dlog_client_open(struct dlog_handle **, 
-    struct dl_client_config const * const);
-extern void dlog_client_close(struct dlog_handle *);
-
-extern int dlog_fetch(struct dlog_handle *, struct sbuf *, 
-    const int32_t, const int32_t,  const int64_t, const int32_t);
-extern int dlog_list_offset(struct dlog_handle *, struct sbuf *, int64_t);
-extern int dlog_produce(struct dlog_handle *, char *, unsigned char *, size_t); 
-extern int dlog_produce_no_key(struct dlog_handle *, unsigned char *, size_t); 
-
+#ifndef _KERNEL
+#include <stdlib.h>
 #endif
+
+#include "dl_assert.h"
+#include "dl_memory.h"
+#include "dl_new.h"
+
+int
+dl_new(void **self, const void *_class, ...)
+{
+	const struct dl_class *class = _class;
+	void *inst;
+
+	DL_ASSERT(self != NULL, ("Object to instatiate cannot be NULL"));
+
+	inst = dlog_alloc(class->dl_size);
+	DL_ASSERT(inst != NULL, ("Failed to allocate %u bytes", class->dl_size));
+	if (inst == NULL )
+		return -1;
+
+	* (const struct dl_class **) inst = class;
+	
+	if (class->dl_ctor) {
+
+		va_list ap;
+
+		va_start(ap, _class);
+		class->dl_ctor(inst, &ap);
+		va_end(ap);
+	}
+
+	*self = inst;
+	return 0;
+}
+
+void
+dl_delete(void *self)
+{
+	const struct dl_class **class = self;
+	
+	if (self != NULL && *class != NULL && (*class)->dl_dtor != NULL)
+		(* class)->dl_dtor(self);
+
+	dlog_free(self);
+}
+
+void
+dl_to_string(void *self)
+{
+	const struct dl_class **class = self;
+		
+	if (self != NULL && *class != NULL && (*class)->dl_to_string)
+		(* class)->dl_to_string(self);
+}

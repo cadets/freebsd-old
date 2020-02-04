@@ -49,6 +49,7 @@ extern void dl_record_batch_delete(struct dl_record_batch *);
 
 extern int dl_record_batch_add_record(struct dl_record_batch *,
     struct dl_record *);
+extern size_t dl_record_batch_get_size(struct dl_record_batch *);
 
 extern int dl_record_batch_decode(struct dl_record_batch **,
     struct dl_bbuf *);

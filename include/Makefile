@@ -91,6 +91,10 @@ INCS+=		iconv.h
 LSUBDIRS+=	dev/usb
 .endif
 
+.if ${MK_DLOG} != "no"
+LSUBDIRS+=	dev/dlog
+.endif
+
 .if ${MACHINE_ARCH} == "powerpc" || ${MACHINE_ARCH} == "powerpc64"
 _dev_powermac_nvram=	dev/powermac_nvram
 .endif

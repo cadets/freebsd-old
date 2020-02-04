@@ -34,8 +34,6 @@
  *
  */
 
-#include <sys/ioctl.h>
-#include <sys/ioccom.h>
 #include <sys/nv.h>
 #include <sys/dnv.h>
 #include <sys/queue.h>
@@ -43,6 +41,10 @@
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/sysctl.h>
+
+#ifdef HEAPPROFILE
+#include <gperftools/heap-profiler.h>
+#endif
 
 #include <err.h>
 #include <errno.h>
@@ -56,25 +58,24 @@
 #include <unistd.h>
 #include <malloc_np.h>
 
-#include "dlog.h"
 #include "dl_assert.h"
+
 #include "dl_config.h"
 #include "dl_memory.h"
 #include "dl_poll_reactor.h"
 #include "dl_producer.h"
-#include "dl_response.h"
 #include "dl_topic.h"
 #include "dl_transport.h"
+#include "dl_user_segment.h"
 #include "dl_utils.h"
 
 extern uint32_t hashlittle(const void *, size_t, uint32_t);
 
 static char const * const DLOGD_PIDFILE = "/var/run/dlogd.pid";
 static char const * const DLOGD_DEFAULT_CONFIG = "/etc/dlogd/dlogd.cfg";
-static char const * const DLOG_DEV = "/dev/dlog";
 
-struct dl_producer_elem {
-	LIST_ENTRY(dl_producer_elem) dlp_entries;
+struct dl_producer_wagon {
+	LIST_ENTRY(dl_producer_wagon) dlp_entries;
 	struct dl_producer *dlp_inst;
 };
 
@@ -89,9 +90,8 @@ nvlist_t *dlogd_props;
 
 static int stop  = 0;
 static char const* dlogd_name;
-static LIST_HEAD(dl_producers, dl_producer_elem) *producers;
+static LIST_HEAD(dl_producers, dl_producer_wagon) *producers;
 static unsigned long hashmask;
-static int dlog;
 
 static void
 dlogd_stop(int sig __attribute__((unused)))
@@ -113,15 +113,6 @@ setup_daemon(void)
 	long hashsize;
 	int nelements;
 
-	/* Open the DLog device */
-	dlog = open(DLOG_DEV, O_RDWR);
-	if (dlog == -1)  {
-
-		DLOGTR2(PRIO_LOW, "Error opening %s (%d)\n", DLOG_DEV,
-		    errno);
-		return -1;
-	}
-
 	/* Create the hashmap to store producers for the topics managed by the
 	 * dlog daemon.
 	 */
@@ -135,8 +126,8 @@ setup_daemon(void)
 	    (unsigned long) hashsize * sizeof(*producers));
 	if (producers == NULL) {
 
-		DLOGTR2(PRIO_LOW, "Error opening %s (%d)\n", DLOG_DEV,
-		    errno);
+		DLOGTR1(PRIO_LOW,
+		    "Error allocating Producers hashmap (%d)\n", errno);
 		return -1;
 	}
 
@@ -151,65 +142,40 @@ static int
 dlogd_manage_topic(char * topic_name, char *hostname, int64_t port)
 {
 	struct dl_producer *producer;
-	struct dl_producer_elem *elem;
-	struct dl_topic_desc *topic_desc;
-	struct dl_topic *topic;
-	char *log_path;
+	struct dl_producer_wagon *wagon;
 	uint32_t h;
 	int rc;
 
-	/* Get the comnfigured log path from the properties. */
-	log_path = dnvlist_get_string(dlogd_props, DL_CONF_LOG_PATH, DL_DEFAULT_LOG_PATH);
+	/* Allocate a list element to store the Producer. */
+	wagon = (struct dl_producer_wagon *) dlog_alloc(
+	    sizeof(struct dl_producer_wagon));
+	DL_ASSERT(wagon != NULL, ("Failed to instantiate ProducerElement"));
+	if (wagon == NULL)
+		goto err_manage_topic;	
 
-	/* Preallocate an initial segment file for the topic and add
-	 * to the hashmap.
-	 */
-	rc = dl_topic_new(&topic, topic_name, log_path);
-	if (rc == 0) {
+	rc = dl_producer_new(&producer, topic_name, hostname, port,
+		dlogd_props); 
+	if (rc != 0) {
 
-		rc = dl_topic_as_desc(topic, &topic_desc);	
-		if (rc == 0) {
-			rc = ioctl(dlog, DLOGIOC_ADDTOPICPART,
-				&topic_desc);	
-			if (rc == 0) {
-				rc = dl_producer_new(&producer, topic,
-					log_path, hostname, port, dlogd_props); 
-				if (rc == 0) {
-					elem = (struct dl_producer_elem *) dlog_alloc(sizeof(struct dl_producer_elem));
-					elem->dlp_inst = producer;
-
-					h = hashlittle(topic_name,
-						strlen(topic_name), 0);
-					LIST_INSERT_HEAD(
-					    &producers[h & hashmask],
-					    elem, dlp_entries); 
-				} else {
-					ioctl(dlog, DLOGIOC_DELTOPICPART,
-					    &topic_desc);	
-				}
-			
-				dlog_free(topic_desc);
-			} else {
-				DLOGTR1(PRIO_HIGH,
-					"Failed to configure topic %s\n",
-					topic_name);
-				dlog_free(topic_desc);
-				dl_topic_delete(topic);
-				return -1;
-			}
-		} else {
-			DLOGTR1(PRIO_HIGH,
-				"Failed to create topic %s\n", topic_name);
-			dl_topic_delete(topic);
-			return -1;
-		}
-	} else {
 		DLOGTR1(PRIO_HIGH, "Failed to create topic %s\n",
-		    topic_name);
-		return -1;
-	}
+			topic_name);
+		goto err_manage_topic_free_wagon;
+	} 
+
+	/* Add the new Producer to those managed by dlogd. */
+	wagon->dlp_inst = producer;
+
+	h = hashlittle(topic_name, strlen(topic_name), 0);
+	LIST_INSERT_HEAD(&producers[h & hashmask], wagon, dlp_entries); 
 
 	return 0;
+
+err_manage_topic_free_wagon:	
+	dlog_free(wagon);
+
+err_manage_topic:	
+	DLOGTR0(PRIO_HIGH, "Failed to manage topic\n");
+	return -1;
 }
 
 int
@@ -217,7 +183,7 @@ main(int argc, char *argv[])
 {
 	char const *conf_file = DLOGD_DEFAULT_CONFIG;
 	char *topic_name, *hostname;
-	struct dl_producer_elem *p, *p_tmp;	
+	struct dl_producer_wagon *p, *p_tmp;	
 	struct dl_topic *topic_tmp;
 	nvlist_t *topics, *topic;
 	void *cookie = NULL;
@@ -299,8 +265,8 @@ main(int argc, char *argv[])
 			if (nvlist_exists_nvlist(topics, topic_name)) {
 				topic = nvlist_get_nvlist(topics, topic_name);
 
-				hostname = dnvlist_get_string(topic, DL_CONF_BROKER,
-				    DL_DEFAULT_BROKER);
+				hostname = dnvlist_get_string(topic,
+				    DL_CONF_BROKER, DL_DEFAULT_BROKER);
 
 				port = dnvlist_get_number(topic,
 				    DL_CONF_BROKER_PORT, DL_DEFAULT_BROKER_PORT);
@@ -328,13 +294,16 @@ main(int argc, char *argv[])
 	signal(SIGPIPE, dlogd_ignore_sigpipe);
 	
 	/* Handle any events registered for the configured topics/producers. */
+#ifdef HEAPPROFILE
+	HeapProfilerStart("dlogd");
+#endif
 	while (stop == 0) {
 
 		dl_poll_reactor_handle_events();
 	}
-
-	/* Destroy the nvlist used to store producer configuration. */
-	nvlist_destroy(dlogd_props);
+#ifdef HEAPPROFILE
+	HeapProfilerStop("dlogd");
+#endif
 
 	/* Delete all of the producers */
 	DLOGTR0(PRIO_LOW, "Deleting the producers.\n");
@@ -349,13 +318,14 @@ main(int argc, char *argv[])
 			
 			DLOGTR1(PRIO_LOW,
 			    "Deleting the topic %s producer.\n",
-			    sbuf_data(dl_topic_get_name(topic_tmp)));
-				
+			    dl_topic_get_name(topic_tmp));
+			    
 			/* Destroy the nvlist used to store the topic details. */
 			if (nvlist_exists_nvlist(topics,
-			    sbuf_data(dl_topic_get_name(topic_tmp)))) {
-				    topic = nvlist_take_nvlist(topics,
-			    		sbuf_data(dl_topic_get_name(topic_tmp)));
+			    dl_topic_get_name(topic_tmp))) {
+
+				topic = nvlist_take_nvlist(topics,
+				    dl_topic_get_name(topic_tmp));
 				nvlist_destroy(topic);
 			}
 	
@@ -367,19 +337,15 @@ main(int argc, char *argv[])
 		}
 	}
 	
+	/* Destroy the nvlist used to store producer configuration. */
+	nvlist_destroy(dlogd_props);
+
 	/* Destroy the nvlist used to store configured topics. */
 	nvlist_destroy(topics);
 
 	/* Delete the producer hashmap */
 	DLOGTR0(PRIO_LOW, "Deleting the producer hashmap.\n");
 	dlog_free(producers);
-
-	/* Close the distibuted log. */	
-	DLOGTR0(PRIO_LOW, "Closing distributed log.\n");
-	rc = close(dlog);
-	if (rc != 0)
-		DLOGTR1(PRIO_HIGH, "Error closing distributed log %d\n",
-		    errno);
 
 	if (dlogd_debug > 0)
 		closelog();
