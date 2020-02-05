@@ -125,17 +125,17 @@ struct vtdtr_traceq {
 	STAILQ_HEAD(, vtdtr_trace_entry) head;
 	struct mtx mtx;
 
-}
+};
 
 struct vtdtr_trace_entry {
 	struct vtdtr_trace trace;
 	STAILQ_ENTRY(vtdtr_trace_entry) entries;
-}
+};
 
 struct vtdtr_trace {
 	size_t size;
 	char *data;
-}
+};
 
 // return trace queue pointer
 struct vtdtr_traceq *virtio_dtrace_device_register(void);
