@@ -37,6 +37,7 @@
 #define	_SYS_MBUF_H_
 
 /* XXX: These includes suck. Sorry! */
+#include <sys/mbufid.h>
 #include <sys/queue.h>
 #ifdef _KERNEL
 #include <sys/systm.h>
@@ -181,6 +182,8 @@ struct pkthdr {
 		uintptr_t unintptr[1];
 		void	*ptr;
 	} PH_per;
+
+	mbufid_t	 mbufid;	/* unique chain ID */
 
 	/* Layer specific non-persistent local storage for reassembly, etc. */
 	union {

@@ -58,12 +58,15 @@ __FBSDID("$FreeBSD$");
 #include <machine/pcb.h>
 #include <machine/smp.h>
 #include <machine/md_var.h>
+#include <machine/bhyve_hypercall.h>
 #include <x86/psl.h>
 #include <x86/apicreg.h>
 
 #include <machine/vmm.h>
 #include <machine/vmm_dev.h>
 #include <machine/vmm_instruction_emul.h>
+
+#include <dtvirt.h>
 
 #include "vmm_ioport.h"
 #include "vmm_ktr.h"
@@ -171,6 +174,7 @@ struct vm {
 	uint16_t	cores;			/* (o) num of cores/socket */
 	uint16_t	threads;		/* (o) num of threads/core */
 	uint16_t	maxcpus;		/* (o) max pluggable cpus */
+	uint16_t	id;			/* (i) the VM id */
 };
 
 static int vmm_initialized;
@@ -211,6 +215,7 @@ static struct vmm_ops *ops;
 SDT_PROVIDER_DEFINE(vmm);
 
 static MALLOC_DEFINE(M_VM, "vm", "vm");
+static MALLOC_DEFINE(M_DTVM, "dtvm", "dtvm");
 
 /* statistics */
 static VMM_STAT(VCPU_TOTAL_RUNTIME, "vcpu total runtime");
@@ -235,9 +240,134 @@ SYSCTL_INT(_hw_vmm, OID_AUTO, trace_guest_exceptions, CTLFLAG_RDTUN,
     &trace_guest_exceptions, 0,
     "Trap into hypervisor on all guest exceptions and reflect them back");
 
+int hypercalls_enabled = 0;
+SYSCTL_INT(_hw_vmm, OID_AUTO, hypercalls_enabled, CTLFLAG_RWTUN,
+    &hypercalls_enabled, 0,
+    "Enable hypercalls on all guests");
+
+static struct unrhdr *vm_arena;
+static struct mtx vm_unrmtx;
+MTX_SYSINIT(vm_unrmtx, &vm_unrmtx, "Unique resource identifier", MTX_DEF);
+
+/*
+int	(*vmmdt_hook_add)(const char *, int);
+int	(*vmmdt_hook_rm)(const char *, int);
+void	(*vmmdt_hook_enable)(const char *, int);
+void	(*vmmdt_hook_disable)(const char *, int);
+void	(*vmmdt_hook_fire_probe)(const char *, struct hypercall_args *);
+uint64_t (*vmmdt_hook_valueof)(const char *, int, int);
+void	(*vmmdt_hook_setargs)(const char *, int, const uint64_t[VMMDT_MAXARGS]);
+*/
+
+/*
+ * The maximum amount of arguments currently supproted
+ * through the hypercall functionality in the VMM.
+ * Everything higher than HYPERCALL_MAX_ARGS will be
+ * discarded.
+ */
+#define	HYPERCALL_MAX_ARGS	6
+
+typedef int (*hc_handler_t)(uint64_t, struct vm *, int,
+    struct vm_exit *, bool *);
+typedef int64_t (*hc_dispatcher_t)(struct vm *, int,
+    uintptr_t *, struct vm_guest_paging *);
+
+/*
+ * The default hypervisor mode used is BHYVE_MODE.
+ */
+int hypervisor_mode = BHYVE_MODE;
+
+static int bhyve_handle_hypercall(uint64_t hcid, struct vm *vm,
+    int vcpuid, struct vm_exit *vmexit, bool *retu);
+
+/*
+ * Hypercall handlers based on the hypervisor mode.
+ * The naming convention should include a prefix of
+ * the mode that the corresponding handler is bound
+ * to. This should be kept in sync with the global
+ * variable hc_dispatcher(see below).
+ */
+hc_handler_t hc_handler[VMM_MAX_MODES] = {
+	[BHYVE_MODE] = bhyve_handle_hypercall
+};
+
+static int hypercall_copy_arg(struct vm *, int, uint64_t,
+    uintptr_t, uint64_t, struct vm_guest_paging *, void *);
+
+static int64_t hc_handle_prototype(struct vm *, int,
+    uintptr_t *, struct vm_guest_paging *);
+
+static int64_t hc_handle_dtrace_probe(struct vm *, int,
+    uintptr_t *, struct vm_guest_paging *);
+
+/*
+ * Each hypercall mode implements different hypercalls
+ * with differently mapped hypercall numbers. If the
+ * hypercall is not implemented it should be kept as
+ * NULL. It is not necessary to add an entry to this
+ * table, as the hypercall will automatically be
+ * assigned as NULL. This will return the error to
+ * the guest without exception. Keep in sync with
+ * hc_handler(see above) and ring_plevel(see below).
+ */
+hc_dispatcher_t hc_dispatcher[VMM_MAX_MODES][HYPERCALL_INDEX_MAX] = {
+	[BHYVE_MODE] = {
+		[HYPERCALL_PROTOTYPE]    = hc_handle_prototype,
+		[HYPERCALL_DTRACE_PROBE] = hc_handle_dtrace_probe,
+	}
+};
+
+/*
+ * Each of the hypercalls can only be called from well
+ * defined protection rings. Each hypercall should be
+ * assigned a minimal possible ring that is required
+ * for correct operation of the hypercall. This should
+ * be kept in snyc with hc_dispatcher(see above).
+ */
+static int8_t ring_plevel[VMM_MAX_MODES][HYPERCALL_INDEX_MAX] = {
+	[BHYVE_MODE] = {
+		[HYPERCALL_PROTOTYPE]    = 0,
+		[HYPERCALL_DTRACE_PROBE] = 0
+	}
+};
+
 static void vm_free_memmap(struct vm *vm, int ident);
 static bool sysmem_mapping(struct vm *vm, struct mem_map *mm);
 static void vcpu_notify_event_locked(struct vcpu *vcpu, bool lapic_intr);
+
+static lwpid_t vmm_priv_gettid(void *);
+static uint16_t vmm_priv_getid(void *);
+static const char *vmm_priv_getname(void *);
+
+static int
+sysctl_vmm_hypervisor_mode(SYSCTL_HANDLER_ARGS)
+{
+	int error;
+	char buf[HV_MAX_NAMELEN];
+
+	if (hypervisor_mode == BHYVE_MODE) {
+		strlcpy(buf, "bhyve", sizeof(buf));
+	} else {
+		strlcpy(buf, "undefined", sizeof(buf));
+	}
+
+	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+
+	if (strcmp(buf, "bhyve") == 0) {
+		hypervisor_mode = BHYVE_MODE;
+	} else {
+		/*
+		 * Disallow undefined data
+		 */
+		hypervisor_mode = BHYVE_MODE;
+	}
+
+	return (0);
+}
+SYSCTL_PROC(_hw_vmm, OID_AUTO, hv_mode, CTLTYPE_STRING | CTLFLAG_RDTUN,
+    NULL, 0, sysctl_vmm_hypervisor_mode, "A", NULL);
 
 #ifdef KTR
 static const char *
@@ -366,6 +496,10 @@ vmm_handler(module_t mod, int what, void *arg)
 	case MOD_LOAD:
 		vmmdev_init();
 		error = vmm_init();
+		vmm_gettid = vmm_priv_gettid;
+		vmm_getid = vmm_priv_getid;
+		vmm_getname = vmm_priv_getname;
+		vm_arena = new_unrhdr(1, UINT16_MAX, &vm_unrmtx);
 		if (error == 0)
 			vmm_initialized = 1;
 		break;
@@ -374,6 +508,7 @@ vmm_handler(module_t mod, int what, void *arg)
 		if (error == 0) {
 			vmm_resume_p = NULL;
 			iommu_cleanup();
+			delete_unrhdr(vm_arena);
 			if (vmm_ipinum != IPI_AST)
 				lapic_ipi_free(vmm_ipinum);
 			error = VMM_CLEANUP();
@@ -406,6 +541,7 @@ static moduledata_t vmm_kmod = {
  */
 DECLARE_MODULE(vmm, vmm_kmod, SI_SUB_SMP + 1, SI_ORDER_ANY);
 MODULE_VERSION(vmm, 1);
+MODULE_DEPEND(vmm, dtvirt, 1, 1, 1);
 
 static void
 vm_init(struct vm *vm, bool create)
@@ -462,6 +598,7 @@ vm_create(const char *name, struct vm **retvm)
 	strcpy(vm->name, name);
 	vm->vmspace = vmspace;
 	mtx_init(&vm->rendezvous_mtx, "vm rendezvous lock", 0, MTX_DEF);
+	vm->id = alloc_unr(vm_arena);
 
 	vm->sockets = 1;
 	vm->cores = cores_per_package;	/* XXX backwards compatibility */
@@ -485,8 +622,16 @@ vm_get_topology(struct vm *vm, uint16_t *sockets, uint16_t *cores,
 }
 
 uint16_t
+vm_get_id(struct vm *vm)
+{
+
+	return (vm->id);
+}
+
+uint16_t
 vm_get_maxcpus(struct vm *vm)
 {
+
 	return (vm->maxcpus);
 }
 
@@ -552,6 +697,7 @@ vm_cleanup(struct vm *vm, bool destroy)
 
 		VMSPACE_FREE(vm->vmspace);
 		vm->vmspace = NULL;
+		free_unr(vm_arena, vm->id);
 	}
 }
 
@@ -1578,6 +1724,190 @@ vm_handle_reqidle(struct vm *vm, int vcpuid, bool *retu)
 	return (0);
 }
 
+static __inline int64_t
+hypercall_dispatch(uint64_t hcid, struct vm *vm, int vcpuid,
+    uintptr_t *args, struct vm_guest_paging *paging)
+{
+	/*
+	 * Do not allow hypercalls that aren't implemented.
+	 */
+	if (hc_dispatcher[hypervisor_mode][hcid] == NULL) {
+		return (HYPERCALL_RET_NOT_IMPL);
+	}
+	return (hc_dispatcher[hypervisor_mode][hcid](vm, vcpuid, args, paging));
+}
+
+static __inline int
+hypercall_handle(uint64_t hcid, struct vm *vm, int vcpuid,
+    struct vm_exit *vmexit, bool *retu)
+{
+	return (hc_handler[hypervisor_mode](hcid, vm, vcpuid, vmexit, retu));
+}
+
+/*
+ * The hypercall_copy_arg function assumes that appropriate
+ * checks have been made before calling the function.
+ */
+static int
+hypercall_copy_arg(struct vm *vm, int vcpuid, uint64_t ds_base,
+    uintptr_t arg, uint64_t arg_len, struct vm_guest_paging *paging, void *dst)
+{
+	struct vm_copyinfo copyinfo[2];
+	uint64_t gla;
+	int error, fault;
+
+	if (arg == 0) {
+		return (HYPERCALL_RET_ERROR);
+	}
+
+	gla = ds_base + arg;
+	error = vm_copy_setup(vm, vcpuid, paging, gla, arg_len,
+	    PROT_READ, copyinfo, nitems(copyinfo), &fault);
+	if (error || fault) {
+		return (error);
+	}
+
+	vm_copyin(vm, vcpuid, copyinfo, dst, arg_len);
+	vm_copy_teardown(vm, vcpuid, copyinfo, nitems(copyinfo));
+
+	return (0);
+}
+
+static int
+bhyve_handle_hypercall(uint64_t hcid, struct vm *vm, int vcpuid,
+    struct vm_exit *vmexit, bool *retu)
+{
+	struct vm_guest_paging *paging;
+	uint64_t args[HYPERCALL_MAX_ARGS] = { 0 };
+	int64_t retval;
+	int error, handled, i;
+
+	/*
+	 * The SystemV ABI specifies a calling convetion that
+	 * uses the registers %rdi, %rsi, %rdx, %rcx, %r8 and %r9
+	 * for INTEGER and POINTER class parameter passing.
+	 */
+	int arg_regs[HYPERCALL_MAX_ARGS] = {
+		[0] = VM_REG_GUEST_RDI,
+		[1] = VM_REG_GUEST_RSI,
+		[2] = VM_REG_GUEST_RDX,
+		[3] = VM_REG_GUEST_RCX,
+		[4] = VM_REG_GUEST_R8,
+		[5] = VM_REG_GUEST_R9
+	};
+
+	handled = 0;
+	paging = &vmexit->u.hypercall.paging;
+
+	for (i = 0; i < HYPERCALL_MAX_ARGS; i++) {
+		error = vm_get_register(vm, vcpuid, arg_regs[i], &args[i]);
+		KASSERT(error == 0, ("%s: error %d getting RBX",
+		    __func__, error));
+	}
+
+	/*
+	 * From this point on, all the arguments passed in from the
+	 * guest are contained in the args array.
+	 */
+	retval = hypercall_dispatch(hcid, vm, vcpuid, args, paging);
+	error = vm_set_register(vm, vcpuid, VM_REG_GUEST_RAX, retval);
+	KASSERT(error == 0, ("%s: error %d setting RAX",
+	    __func__, error));
+	return (0);
+}
+
+static int
+vm_handle_hypercall(struct vm *vm, int vcpuid, struct vm_exit *vmexit, bool *retu)
+{
+	struct seg_desc cs_desc;
+	uint64_t hcid;
+	int error;
+
+	error = vm_get_register(vm, vcpuid, VM_REG_GUEST_RAX, &hcid);
+	KASSERT(error == 0, ("%s: error %d getting RAX",
+	    __func__, error));
+
+	/*
+	 * Ensure that the hypercall called by the guest never exceed
+	 * the maximum number of hypercalls defined.
+	 */
+	if (hcid >= HYPERCALL_INDEX_MAX) {
+		error = vm_set_register(vm, vcpuid, VM_REG_GUEST_RAX, HYPERCALL_RET_ERROR);
+		KASSERT(error == 0, ("%s: error %d setting RAX",
+		    __func__, error));
+		return (0);
+	}
+
+	error = vm_get_seg_desc(vm, vcpuid, VM_REG_GUEST_CS, &cs_desc);
+	KASSERT(error == 0, ("%s: error %d getting CS descriptor",
+	    __func__, error));
+
+	/*
+	 * The check ensures that each of the hypercalls that is called
+	 * from the guest is called from the correct protection ring.
+	 */
+	if (SEG_DESC_DPL(cs_desc.access) != ring_plevel[hypervisor_mode][hcid]) {
+		error = vm_set_register(vm, vcpuid, VM_REG_GUEST_RAX, HYPERCALL_RET_ERROR);
+		KASSERT(error == 0, ("%s: error %d setting RAX",
+		    __func__, error));
+		return (0);
+	}
+
+	return (hypercall_handle(hcid, vm, vcpuid, vmexit, retu));
+}
+
+static __inline int64_t
+hc_handle_prototype(struct vm *vm, int vcpuid,
+    uintptr_t *args, struct vm_guest_paging *paging)
+{
+	return (HYPERCALL_RET_SUCCESS);
+}
+
+static int64_t
+hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
+    uintptr_t *args, struct vm_guest_paging *paging)
+{
+	struct vm_biscuit *biscuit = malloc(sizeof(
+	    struct vm_biscuit), M_VM, M_ZERO | M_WAITOK);
+	struct seg_desc ds_desc;
+	uintptr_t dt_probe_args[5];
+	struct dtvirt_args dtv_args;
+	char *execargs = NULL;
+	int err;
+
+	biscuit->vm = vm;
+	biscuit->paging = paging;
+	paging->pmap = vmspace_pmap(vm->vmspace);
+	biscuit->vcpuid = vcpuid;
+	biscuit->tid = args[2];
+	err = 0;
+	memset(dt_probe_args, 0, sizeof(uintptr_t) * 5);
+
+	err = vm_get_seg_desc(vm, vcpuid, VM_REG_GUEST_DS, &ds_desc);
+	KASSERT(err == 0, ("%s: error %d getting DS descriptor",
+	    __func__, err));
+
+	err = hypercall_copy_arg(vm, vcpuid, ds_desc.base,
+	    args[1], sizeof(struct dtvirt_args), paging, &dtv_args);
+	KASSERT(err == 0, ("%s: error %d copying the arguments",
+	    __func__, err));
+
+	execargs = dtv_args.dtv_execargs;
+	dtv_args.dtv_execargs = malloc(dtv_args.dtv_execargs_len, M_VM, M_WAITOK);
+	if (dtv_args.dtv_execargs != NULL) {
+		err = hypercall_copy_arg(vm, vcpuid, ds_desc.base,
+		    (uintptr_t) execargs,
+		    dtv_args.dtv_execargs_len, paging,
+		    dtv_args.dtv_execargs);
+		KASSERT(err == 0, ("%s: error %d copying execargs",
+		    __func__, err));
+	}
+
+	dtvirt_probe(biscuit, (int)args[0], &dtv_args);
+
+	return (HYPERCALL_RET_SUCCESS);
+}
+
 int
 vm_suspend(struct vm *vm, enum vm_suspend_how how)
 {
@@ -1756,6 +2086,9 @@ restart:
 		case VM_EXITCODE_MWAIT:
 		case VM_EXITCODE_VMINSN:
 			vm_inject_ud(vm, vcpuid);
+			break;
+		case VM_EXITCODE_HYPERCALL:
+			error = vm_handle_hypercall(vm, vcpuid, vme, &retu);
 			break;
 		default:
 			retu = true;	/* handled in userland */
@@ -2103,6 +2436,15 @@ vm_inject_pf(void *vmarg, int vcpuid, int error_code, uint64_t cr2)
 	KASSERT(error == 0, ("vm_set_register(cr2) error %d", error));
 
 	vm_inject_fault(vm, vcpuid, IDT_PF, 1, error_code);
+}
+
+static __inline void
+vm_inject_bp(void *vm, int vcpuid)
+{
+	int error;
+	error = vm_inject_exception(vm, vcpuid, IDT_BP, 0, 0, 0);
+	KASSERT(error == 0, ("vm_inject_bp error %d", error));
+
 }
 
 static VMM_STAT(VCPU_NMI_COUNT, "number of NMIs delivered to vcpu");
@@ -2698,6 +3040,30 @@ vm_copyout(struct vm *vm, int vcpuid, const void *kaddr,
 		src += copyinfo[idx].len;
 		idx++;
 	}
+}
+
+static lwpid_t
+vmm_priv_gettid(void *xbiscuit)
+{
+
+	struct vm_biscuit *biscuit = xbiscuit;
+	return (biscuit->tid);
+}
+
+static uint16_t
+vmm_priv_getid(void *xbiscuit)
+{
+
+	struct vm_biscuit *biscuit = xbiscuit;
+	return (biscuit->vm->id);
+}
+
+static const char *
+vmm_priv_getname(void *xbiscuit)
+{
+
+	struct vm_biscuit *biscuit = xbiscuit;
+	return (biscuit->vm->name);
 }
 
 /*

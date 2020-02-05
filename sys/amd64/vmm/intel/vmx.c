@@ -268,6 +268,9 @@ SDT_PROBE_DEFINE3(vmm, vmx, exit, monitor,
 SDT_PROBE_DEFINE3(vmm, vmx, exit, mwait,
     "struct vmx *", "int", "struct vm_exit *");
 
+SDT_PROBE_DEFINE4(vmm, vmx, exit, hypercall,
+    "struct vmx *", "int", "struct vm_exit *", "int");
+
 SDT_PROBE_DEFINE3(vmm, vmx, exit, vminsn,
     "struct vmx *", "int", "struct vm_exit *");
 
@@ -2659,6 +2662,16 @@ vmx_exit_process(struct vmx *vmx, int vcpu, struct vm_exit *vmexit)
 		vmexit->exitcode = VM_EXITCODE_MWAIT;
 		break;
 	case EXIT_REASON_VMCALL:
+		SDT_PROBE4(vmm, vmx, exit, hypercall,
+		    vmx, vcpu, vmexit, hypercalls_enabled);
+		if (hypercalls_enabled == 0) {
+			vm_inject_ud(vmx->vm, vcpu);
+			handled = HANDLED;
+		} else {
+			vmexit->exitcode = VM_EXITCODE_HYPERCALL;
+			vmx_paging_info(&vmexit->u.hypercall.paging);
+		}
+		break;
 	case EXIT_REASON_VMCLEAR:
 	case EXIT_REASON_VMLAUNCH:
 	case EXIT_REASON_VMPTRLD:

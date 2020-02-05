@@ -83,6 +83,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/conf.h>
 #include <sys/cpuset.h>
 
+#include <sys/ddtrace.h>
+
 #include <machine/cpu.h>
 
 #include <security/audit/audit.h>
@@ -97,6 +99,12 @@ __FBSDID("$FreeBSD$");
 
 #include <ddb/ddb.h>
 #include <ddb/db_sym.h>
+
+SDT_PROVIDER_DEFINE(ddtrace);
+
+SDT_PROBE_DEFINE1(ddtrace, , tag, gen, "mbufid_t *");
+SDT_PROBE_DEFINE1(ddtrace, , tag, recv, "mbufid_t *");
+
 
 void mi_startup(void);				/* Should be elsewhere */
 

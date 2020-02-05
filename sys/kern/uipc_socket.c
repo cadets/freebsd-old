@@ -127,6 +127,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/ktls.h>
 #include <sys/event.h>
 #include <sys/eventhandler.h>
+#include <sys/msgid.h>
 #include <sys/poll.h>
 #include <sys/proc.h>
 #include <sys/protosw.h>
@@ -145,8 +146,11 @@ __FBSDID("$FreeBSD$");
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
+#include <sys/ddtrace.h>
+
 #include <net/vnet.h>
 
+#include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
 
 #include <vm/uma.h>
@@ -1375,6 +1379,16 @@ sosend_dgram(struct socket *so, struct sockaddr *addr, struct uio *uio,
 		space -= resid - uio->uio_resid;
 		resid = uio->uio_resid;
 	}
+
+#ifdef KDTRACE_HOOKS
+	{
+		M_ASSERTPKTHDR(top);
+		mbufid_generate(&top->m_pkthdr.mbufid);
+		mbufid_assert_sanity(&top->m_pkthdr.mbufid);
+		AUDIT_RET_MBUFID(&top->m_pkthdr.mbufid);
+	}
+#endif
+
 	KASSERT(resid == 0, ("sosend_dgram: resid != 0"));
 	/*
 	 * XXXRW: Frobbing SO_DONTROUTE here is even worse without sblock
@@ -1612,6 +1626,15 @@ restart:
 				space -= resid - uio->uio_resid;
 				resid = uio->uio_resid;
 			}
+
+#ifdef KDTRACE_HOOKS
+			if (so->so_type == SOCK_DGRAM) {
+				M_ASSERTPKTHDR(top);
+				mbufid_generate(&top->m_pkthdr.mbufid);
+				mbufid_assert_sanity(&top->m_pkthdr.mbufid);
+				AUDIT_RET_MBUFID(&top->m_pkthdr.mbufid);
+			}
+#endif
 			if (dontroute) {
 				SOCK_LOCK(so);
 				so->so_options |= SO_DONTROUTE;
@@ -2048,6 +2071,14 @@ dontblock:
 			len = so->so_oobmark - offset;
 		if (len > m->m_len - moff)
 			len = m->m_len - moff;
+
+#ifdef KDTRACE_HOOKS
+		if (so->so_type == SOCK_DGRAM) {
+			M_ASSERTPKTHDR(m);
+			AUDIT_RET_MBUFID(&m->m_pkthdr.mbufid);
+		}
+#endif
+
 		/*
 		 * If mp is set, just pass back the mbufs.  Otherwise copy
 		 * them out via the uio, then free.  Sockbuf must be
@@ -2609,6 +2640,14 @@ soreceive_dgram(struct socket *so, struct sockaddr **psa, struct uio *uio,
 	}
 	KASSERT(m == NULL || m->m_type == MT_DATA,
 	    ("soreceive_dgram: !data"));
+
+	{
+		M_ASSERTPKTHDR(m);
+		AUDIT_RET_MBUFID(&m->m_pkthdr.mbufid);
+	}
+
+	SDT_PROBE1(ddtrace, , tag, recv, &m->m_pkthdr.mbufid);
+
 	while (m != NULL && uio->uio_resid > 0) {
 		len = uio->uio_resid;
 		if (len > m->m_len)

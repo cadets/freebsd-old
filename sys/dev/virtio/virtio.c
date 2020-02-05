@@ -69,6 +69,7 @@ static struct virtio_ident {
 	{ VIRTIO_ID_INPUT,		"Input" 			},
 	{ VIRTIO_ID_VSOCK,		"VSOCK Transport" 		},
 	{ VIRTIO_ID_CRYPTO,		"Crypto" 			},
+	{ VIRTIO_ID_DTRACE,		"DTrace"			},
 
 	{ 0, NULL }
 };

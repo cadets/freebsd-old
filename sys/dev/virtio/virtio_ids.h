@@ -41,6 +41,7 @@
 #define VIRTIO_ID_RPMSG		7
 #define VIRTIO_ID_SCSI		8
 #define VIRTIO_ID_9P		9
+#define	VIRTIO_ID_DTRACE	10
 #define VIRTIO_ID_RPROC_SERIAL	11
 #define VIRTIO_ID_CAIF		12
 #define VIRTIO_ID_GPU		16
