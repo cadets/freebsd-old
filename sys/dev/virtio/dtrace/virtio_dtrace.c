@@ -280,7 +280,7 @@ int vtdtr_tq_empty(struct vtdtr_traceq *tq)
 
 void vtdtr_tq_enqueue(struct vtdtr_traceq *tq, struct vtdtr_trace_entry *trc_entry)
 {
-	STAILQ_INSERT_TAIL(&tq->head, trace_entry, entries);
+	STAILQ_INSERT_TAIL(&tq->head, trc_entry, entries);
 }
 
 void vtdtr_tq_init(struct vtdtr_traceq *tq)
@@ -1291,7 +1291,7 @@ vtdtr_listen(void *xsc)
 	int error;
 
 	sc = xsc;
-	cq = &sc->vtdtr_ctrlq;
+	cq = sc->vtdtr_ctrlq;
 	dev = sc->vtdtr_dev;
 
 	for(;;)
