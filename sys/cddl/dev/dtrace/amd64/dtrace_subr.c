@@ -45,6 +45,7 @@
 #include <machine/frame.h>
 #include <machine/psl.h>
 #include <machine/trap.h>
+#include <machine/vmm.h>
 #include <vm/pmap.h>
 
 extern void dtrace_getnanotime(struct timespec *tsp);
@@ -465,3 +466,5 @@ dtrace_trap(struct trapframe *frame, u_int type)
 	/* Handle the trap in the usual way. */
 	return (0);
 }
+
+#include "dtrace_vm_subr.c"
