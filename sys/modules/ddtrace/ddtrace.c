@@ -67,6 +67,7 @@
 #include "dl_protocol.h"
 #include "dl_utils.h"
 
+// solve dependency problem
 // extern hrtime_t dtrace_gethrtime(void);
 
 struct client

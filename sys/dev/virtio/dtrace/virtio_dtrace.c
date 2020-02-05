@@ -1287,6 +1287,7 @@ vtdtr_listen(void *xsc)
 {
 	struct vtdtr_ctrlq *cq;
 	struct vtdtr_softc *sc;
+	struct vtdtr_trace_entry *trc_entry;
 	device_t dev;
 	int error;
 
@@ -1300,6 +1301,8 @@ vtdtr_listen(void *xsc)
 		if(!vtdtr_tq_empty(tq))
 		{
 			device_printf(dev, "actually enqueued");
+			trc_entry = vtdtr_tq_dequeue(tq);
+			device_printf(dev,"trace data: %s", trc_entry->trace.data);
 		}
 		mtx_unlock(&tq->mtx);
 	}
