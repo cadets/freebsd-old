@@ -52,9 +52,8 @@ CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris \
 
 CFLAGS+=	-DSMP
 
-.if ${MK_VTDTR} != "no"
+# Add VTDTR.
 CFLAGS+=	-DVTDTR
-.endif
 
 EXPORT_SYMS=	dtrace_register \
 		dtrace_unregister \

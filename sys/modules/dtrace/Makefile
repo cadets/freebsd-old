@@ -14,10 +14,7 @@ SUBDIR=		dtaudit		\
 		prototype	\
 		sdt		\
 		systrace	\
-
-.if ${MK_VTDTR} != "no"
-SUBDIR+=	vtdtr
-.endif
+		vtdtr
 
 .if ${MACHINE_CPUARCH} == "amd64" || ${MACHINE_CPUARCH} == "i386"
 SUBDIR+=	fasttrap fbt systrace_linux
