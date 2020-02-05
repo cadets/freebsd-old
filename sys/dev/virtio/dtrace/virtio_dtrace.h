@@ -143,7 +143,7 @@ struct vtdtr_traceq {
 struct vtdtr_traceq *virtio_dtrace_device_register(void);
 
 // enqueue trace elements
-void vtdtr_tq_enqueue(struct vtdtr_traceq, struct vtdtr_trace_entry);
+void vtdtr_tq_enqueue(struct vtdtr_traceq *, struct vtdtr_trace_entry *);
 
 
 // name only to be used by stdl start with _
