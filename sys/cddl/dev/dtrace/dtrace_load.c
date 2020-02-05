@@ -92,6 +92,7 @@ dtrace_load(void *dummy)
 	 */
 	mutex_init(&dtrace_lock,"dtrace probe state", MUTEX_DEFAULT, NULL);
 	mutex_init(&dtrace_provider_lock,"dtrace provider state", MUTEX_DEFAULT, NULL);
+	mutex_init(&dtrace_dist_lock,"dtrace dist state", MUTEX_DEFAULT, NULL);
 	mutex_init(&dtrace_meta_lock,"dtrace meta-provider state", MUTEX_DEFAULT, NULL);
 #ifdef DEBUG
 	mutex_init(&dtrace_errlock,"dtrace error lock", MUTEX_DEFAULT, NULL);
@@ -167,4 +168,10 @@ dtrace_load(void *dummy)
 	    "dtrace/dtrace");
 	helper_dev = make_dev(&helper_cdevsw, 0, UID_ROOT, GID_WHEEL, 0660,
 	    "dtrace/helper");
+	dtrace_provide_all_probes = dtrace_priv_provide_all_probes;
+	dtrace_probeid_enable = dtrace_priv_probeid_enable;
+	dtrace_virtstate_create = dtrace_priv_virtstate_create;
+	dtrace_virtstate_destroy = dtrace_priv_virtstate_destroy;
+	dtrace_virtstate_go = dtrace_priv_virtstate_go;
+	dtrace_virtstate_stop = dtrace_priv_virtstate_stop;
 }

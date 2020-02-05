@@ -416,6 +416,10 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		if ((dof = dtrace_dof_copyin((uintptr_t) p->dof, &rval)) == NULL)
 			return (EINVAL);
 
+		printf("filesz = %lu\n", dof->dofh_filesz);
+		state->dts_dof = kmem_alloc(dof->dofh_filesz, KM_SLEEP);
+		bcopy(dof, state->dts_dof, dof->dofh_filesz);
+
 		mutex_enter(&cpu_lock);
 		mutex_enter(&dtrace_lock);
 		vstate = &state->dts_vstate;
@@ -572,12 +576,20 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		return (0);
 	}
 	case DTRACEIOC_GO: {
+#ifdef VTDTR
+		struct vtdtr_event e;
+#endif
 		int rval;
 		processorid_t *cpuid = (processorid_t *) addr;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_GO\n",__func__,__LINE__);
 
 		rval = dtrace_state_go(state, cpuid);
+
+#ifdef VTDTR
+		e.type = VTDTR_EV_GO;
+		vtdtr_enqueue(&e);
+#endif
 
 		return (rval);
 	}
@@ -830,6 +842,9 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		return (0);
 	}
 	case DTRACEIOC_STOP: {
+#ifdef VTDTR
+		struct vtdtr_event e;
+#endif
 		int rval;
 		processorid_t *cpuid = (processorid_t *) addr;
 
@@ -839,7 +854,88 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		rval = dtrace_state_stop(state, cpuid);
 		mutex_exit(&dtrace_lock);
 
+#ifdef VTDTR
+		e.type = VTDTR_EV_STOP;
+		vtdtr_enqueue(&e);
+#endif
+
 		return (rval);
+	}
+	case DTRACEIOC_FILTER: {
+#ifdef VTDTR
+		struct vtdtr_event e;
+#endif
+
+		dtrace_machine_filter_t *in = (dtrace_machine_filter_t *) addr;
+		dtrace_machine_filter_t *cur = &state->dts_filter;
+		size_t i, j;
+
+		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_FILTER\n",__func__,__LINE__);
+		mutex_enter(&dtrace_lock);
+
+		/*
+		 * Check for overflows.
+		 */
+		if (in->dtfl_count >= DTRACEFILT_MAX)
+			return (EINVAL);
+
+		if (cur->dtfl_count >= DTRACEFILT_MAX)
+			return (EINVAL);
+
+		/*
+		 * Iterate over the input filter.
+		 */
+		for (i = 0; i < in->dtfl_count; i++) {
+			char *entry;
+			uint8_t found;
+			size_t n;
+
+			entry = in->dtfl_entries[i];
+			found = 0;
+
+			/*
+			 * Iterate over the filters currently applied.
+			 */
+			for (j = 0; j < cur->dtfl_count; j++) {
+				/*
+				 * If we found the entry we want to filter in
+				 * the already applied filter list, break out of
+				 * the loop.
+				 */
+				if (strcmp(entry, cur->dtfl_entries[j]) == 0) {
+					found = 1;
+					break;
+				}
+			}
+
+			/*
+			 * If we haven't found it and we have room, copy over
+			 * the filter to the filter array and check for
+			 * overflow.
+			 */
+			if (found == 0) {
+				if (cur->dtfl_count < DTRACEFILT_MAX) {
+					n = strlcpy(
+					    cur->dtfl_entries[cur->dtfl_count++],
+					    entry, DTRACE_MAXFILTNAME);
+					if (n >= DTRACE_MAXFILTNAME)
+						return (EOVERFLOW);
+				} else
+					return (EDOOFUS);
+			}
+		}
+
+#ifdef VTDTR
+		e.type = VTDTR_EV_RECONF;
+		e.args.d_config.count = cur->dtfl_count;
+		memcpy(e.args.d_config.vms, cur->dtfl_entries,
+		    DTRACEFILT_MAX*DTRACE_MAXFILTNAME);
+		vtdtr_enqueue(&e);
+#endif
+
+		mutex_exit(&dtrace_lock);
+
+		return (0);
 	}
 	default:
 		error = ENOTTY;
