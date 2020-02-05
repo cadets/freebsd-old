@@ -67,7 +67,7 @@
 #include "dl_protocol.h"
 #include "dl_utils.h"
 
-extern hrtime_t dtrace_gethrtime(void);
+// extern hrtime_t dtrace_gethrtime(void);
 
 struct client
 {
@@ -370,7 +370,7 @@ ddtrace_thread(void *arg)
 		nanouptime(&curtime);
 		k->ddtrace_state->dts_alive = INT64_MAX;
 		dtrace_membar_producer();
-		k->ddtrace_state->dts_alive = dtrace_gethrtime();
+		//k->ddtrace_state->dts_alive = dtrace_gethrtime();
 
 		/* Switch the buffer and write the contents to DLog. */
 		ddtrace_buffer_switch(k->ddtrace_state,
