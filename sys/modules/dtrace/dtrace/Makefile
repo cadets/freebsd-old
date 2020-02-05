@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+.include <src.opts.mk>
+
 SYSDIR?=	${SRCTOP}/sys
 
 ARCHDIR=	${MACHINE_CPUARCH}
@@ -22,6 +24,7 @@ SRCS+=		dis_tables.c \
 		instr_size.c
 CFLAGS+=	-I${SYSDIR}/cddl/contrib/opensolaris/uts/intel \
 		-I${SYSDIR}/cddl/dev/dtrace/x86
+CFLAGS+= -I${SRCTOP}/sys/cddl/dev/dtvirt
 .endif
 
 SRCS+=		bus_if.h device_if.h vnode_if.h
@@ -49,8 +52,21 @@ CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris \
 
 CFLAGS+=	-DSMP
 
+.if ${MK_VTDTR} != "no"
+CFLAGS+=	-DVTDTR
+.endif
+
 EXPORT_SYMS=	dtrace_register \
 		dtrace_unregister \
+		dtrace_probe_lookup \
+		dtrace_provide_all_probes \
+		dtrace_probeid_enable \
+		dtrace_probeid_disable \
+		dtrace_konsumer_register \
+		dtrace_konsumer_unregister \
+		dtrace_xcall \
+		dtrace_buffer_switch \
+		dtrace_epid2size \
 		dtrace_probe_lookup
 
 dtrace_asm.o:  assym.inc
