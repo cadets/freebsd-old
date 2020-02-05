@@ -56,7 +56,7 @@
 #include <sys/sysctl.h>
 #include <fs/devfs/devfs_int.h>
 #include <sys/eventhandler.h>
-#include <sys/dev/virtio/dtrace/virtio_dtrace.h>
+#include <dev/virtio/dtrace/virtio_dtrace.h>
 
 #include <dtrace.h>
 #include <dtrace_impl.h>
