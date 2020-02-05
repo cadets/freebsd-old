@@ -416,7 +416,6 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		if ((dof = dtrace_dof_copyin((uintptr_t) p->dof, &rval)) == NULL)
 			return (EINVAL);
 
-		printf("filesz = %lu\n", dof->dofh_filesz);
 		state->dts_dof = kmem_alloc(dof->dofh_filesz, KM_SLEEP);
 		bcopy(dof, state->dts_dof, dof->dofh_filesz);
 
