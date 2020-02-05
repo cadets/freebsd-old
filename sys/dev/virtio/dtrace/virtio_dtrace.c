@@ -92,6 +92,7 @@ struct vtdtr_softc
 	struct vtdtr_ctrlq *vtdtr_ctrlq;
 
 	struct thread *vtdtr_commtd;
+	struct thread *vtdtr_listd;
 
 	struct sema vtdtr_exit;
 
@@ -124,6 +125,8 @@ SYSCTL_U32(_dev_vtdtr, OID_AUTO, debug, CTLFLAG_RWTUN, &debug, 0,
 		   "Enable debugging of virtio-dtrace");
 
 static int vstate = 0;
+
+struct vtdtr_traceq *tq;
 
 static int vtdtr_modevent(module_t, int, void *);
 static void vtdtr_cleanup(void);
@@ -262,6 +265,40 @@ vtdtr_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
+struct vtdtr_traceq*
+virtio_dtrace_device_register()
+{
+	KASSERT(tq != NULL);
+	return tq;
+}
+
+int vtdtr_tq_empty(struct vtdtr_traceq *tq)
+{
+	return STAILQ_EMPTY(&tq->head);
+}
+
+void vtdtr_tq_enqueue(struct vtdtr_traceq *tq, struct vtdtr_trace_entry *trc_entry)
+{
+	STAILQ_INSERT_TAIL(&tq->head, trace_entry, entries);
+}
+
+void vtdtr_tq_init(struct vtdtr_traceq *tq)
+{
+	STAILQ_INIT(&tq->head);
+}
+
+struct vtdtr_trace_entry * vtdtr_tq_dequeue(struct vtdtr_traceq *tq)
+{
+	struct vtdtr_trace_entry *trc_entry;
+	trc_entry = STAILQ_FIRST(&tq->head);
+	if(trc_entry != NULL)
+	{
+		STAILQ_REMOVE_HEAD(&tq->head, entries);
+	}
+
+	return trc_entry;
+}
+
 /*
  * Here we initialize the device. This is largely boilerplate. Here we
  * initialize all of the necessary mutexes, condition variables, threads, the
@@ -290,6 +327,15 @@ vtdtr_attach(device_t dev)
 	vtdtr_destroy_prov = vtdtr_destroy_prov_priv;
 	vtdtr_advertise_probe = vtdtr_advertise_probe_priv;
 	*/
+	tq = malloc(sizeof(struct vtdtr_traceq), M_DEVBUF, M_NOWAIT | M_ZERO);
+	
+	if(tq == NULL)
+	{
+		error = ENOMEM;
+		device_printf(dev, "cannot allocate memory for the trace queue");
+		goto fail;
+	}
+	vtdtr_tq_init(tq);
 
 	sc->vtdtr_ctrlq = malloc(sizeof(struct vtdtr_ctrlq),
 							 M_DEVBUF, M_NOWAIT | M_ZERO);
@@ -361,6 +407,8 @@ vtdtr_attach(device_t dev)
 
 	sc->vtdtr_commtd = malloc(sizeof(struct thread), M_VTDTR,
 							  M_NOWAIT | M_ZERO);
+	sc->vtdtr_listd = malloc(sizeof(struct thread), M_VTDTR,
+							  M_NOWAIT | M_ZERO);
 
 	if (sc->vtdtr_commtd == NULL)
 	{
@@ -369,6 +417,14 @@ vtdtr_attach(device_t dev)
 						   " for the communicator thread");
 		goto fail;
 	}
+
+	if(sc->vtdtr_listd == NULL)
+	{
+		error = ENOMEM;
+		device_printf(dev, "cannot allocate memory"
+						   " for the trace listener thread");
+	}
+	
 	cv_init(&sc->vtdtr_condvar, "Virtio DTrace CV");
 	mtx_init(&sc->vtdtr_condmtx, "vtdtrcondmtx", NULL, MTX_DEF);
 	sema_init(&sc->vtdtr_exit, 0, "vtdtrexitsema");
@@ -378,8 +434,9 @@ vtdtr_attach(device_t dev)
 	vtdtr_start_taskqueues(sc);
 	sc->vtdtr_ready = 0;
 	vtdtr_notify_ready(sc);
-	kthread_add(vtdtr_run, sc, NULL, &sc->vtdtr_commtd,
+	kthread_add(vtdtr_run, sc, NULL, &sc->vtdtr_commtd, 
 				0, 0, NULL, "vtdtr_communicator");
+	kthread_add(vtdtr_listen, sc, NULL, &sc->vtdtr_listd, 0, 0, NULL, "vtdtr_trace_listener");
 
 	/*dtrace_vtdtr_enable((void *)sc);*/
 fail:
@@ -1222,6 +1279,27 @@ vtdtr_poll(struct virtio_dtrace_queue *q)
 	virtqueue_notify(vq);
 	virtqueue_poll(vq, NULL);
 	VTDTR_QUEUE_UNLOCK(q);
+}
+
+static void
+vtdtr_listen(void *xsc)
+{
+	struct vtdtr_ctrlq *cq;
+	struct vtdtr_softc *sc;
+	int error;
+
+	sc = xsc;
+	cq = &sc->vtdtr_ctrlq;
+
+	for(;;)
+	{
+		mtx_lock(&tq->mtx);
+		if(!vtdtr_tq_empty(tq)))
+		{
+			device_printf(dev, "actually enqueued");
+		}
+		mtx_unlock(&tq->mtx);
+	}
 }
 
 /*

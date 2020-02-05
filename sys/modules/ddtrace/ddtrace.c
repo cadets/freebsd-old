@@ -56,9 +56,7 @@
 #include <sys/sysctl.h>
 #include <fs/devfs/devfs_int.h>
 #include <sys/eventhandler.h>
-#include <sys/vtdtr.h>
-
-#include <cddl/dev/vtdtr/vtdtr.h>
+#include <virtio_dtrace.h>
 
 #include <dtrace.h>
 #include <dtrace_impl.h>
@@ -448,7 +446,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 					"Error producing format metadata to DLog\n");
 			return -1;
 		}
-	
+
 #endif
 	}
 
@@ -611,16 +609,23 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	DL_ASSERT(desc->dtbd_size != 0,
 			  ("ddtrace_persist_trace called with empty buffer."));
 
+	struct vtdtr_traceq *tq;
+	tq = virtio_dtrace_device_register();
+	DL_ASSERT(tq != NULL, ("vtdtr_traceq was not initialised"));
+	
+	struct vtdtr_trace_entry *trc_entry;
+	struct vtdtr_trace *trc;
+
+	trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
+	trc = &trc_entry->trace;
+	trc->size = desc->dtbd_size;
+	trc->data = desc->dtbd_data;
+
+	mtx_lock(&tq->mtx);
+	vtdtr_tq_enqueue(tq, trc_entry);
+	mtx_unlock(&tq->mtx);
+
 	return;
-	
-	size = desc->dtbd_size;
-	struct vtdtr_event *ev;
-	ev = malloc(sizeof(vtdtr_event), M_TEMP, M_ZERO);
-	ev->type = VTDTR_EV_SCRIPT;
-	size_t sz =strlcpy(ev->args.d_script.script, desc->dtbd_data, size + 1);
-	DLOGTR0(PRIO_LOG, "I've copied %zu. \n", sz);
-	vtdtr_event(ev);
-	
 
 	while (size < desc->dtbd_size)
 	{

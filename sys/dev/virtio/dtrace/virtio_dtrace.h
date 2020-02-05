@@ -121,6 +121,29 @@ struct vtdtr_ctrlq {
 	size_t                               n_entries;
 };
 
+struct vtdtr_traceq {
+	STAILQ_HEAD(, vtdtr_trace_entry) head;
+	struct mtx mtx;
+
+}
+
+struct vtdtr_trace_entry {
+	struct vtdtr_trace trace;
+	STAILQ_ENTRY(vtdtr_trace_entry) entries;
+}
+
+struct vtdtr_trace {
+	size_t size;
+	char *data;
+}
+
+// return trace queue pointer
+struct vtdtr_traceq *virtio_dtrace_device_register(void);
+
+// enqueue trace elements
+void *vtdtr_tq_enqueue(struct vtdtr_traceq, struct vtdtr_trace_entry);
+
+
 // name only to be used by stdl start with _
 #define	VTDTR_QUEUE_LOCK(__q)   mtx_lock(&((__q)->vtdq_mtx))
 #define	VTDTR_QUEUE_UNLOCK(__q) mtx_unlock(&((__q)->vtdq_mtx))
