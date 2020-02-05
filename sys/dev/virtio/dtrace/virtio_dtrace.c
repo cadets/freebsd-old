@@ -437,7 +437,7 @@ vtdtr_attach(device_t dev)
 	vtdtr_notify_ready(sc);
 	kthread_add(vtdtr_run, sc, NULL, &sc->vtdtr_commtd, 
 				0, 0, NULL, "vtdtr_communicator");
-	kthread_add(vtdtr_listen, sc, NULL, &sc->vtdtr_listd, 0, 0, NULL, "vtdtr_trace_listener");
+	// kthread_add(vtdtr_listen, sc, NULL, &sc->vtdtr_listd, 0, 0, NULL, "vtdtr_trace_listener");
 
 	/*dtrace_vtdtr_enable((void *)sc);*/
 fail:

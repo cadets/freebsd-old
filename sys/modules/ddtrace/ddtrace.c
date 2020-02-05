@@ -610,9 +610,11 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	DL_ASSERT(desc->dtbd_size != 0,
 			  ("ddtrace_persist_trace called with empty buffer."));
 
+	DLOGTR0(PRIO_LOG, "Persisting trace data. \n");
+
 	struct vtdtr_traceq *tq;
 	tq = virtio_dtrace_device_register();
-	DL_ASSERT(tq != NULL, ("vtdtr_traceq was not initialised"));
+	DL_ASSERT(tq != NULL, ("vtdtr_traceq was not initialised.\n"));
 	
 	struct vtdtr_trace_entry *trc_entry;
 	struct vtdtr_trace *trc;
@@ -622,12 +624,14 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	trc->size = desc->dtbd_size;
 	trc->data = desc->dtbd_data;
 
-	DLOGTR1(PRIO_LOG, "Trace data size is: %zu. Copied: %zu", desc->dtbd_size, trc->size);
-	DLOGTR1(PRIO_LOG, "Trace data is: %s. Copied: %s", desc->dtbd_data, trc->data);
+	DLOGTR1(PRIO_LOG, "Trace data size is: %zu. Trace data is: %s. \n", desc->dtbd_size, desc->dtbd_data);
+	DLOGTR1(PRIO_LOG, "Copied size: %zu. Copied trace data: %s", desc->dtbd_size, desc->dtbd_data);
 
 	mtx_lock(&tq->mtx);
 	vtdtr_tq_enqueue(tq, trc_entry);
 	mtx_unlock(&tq->mtx);
+
+	DLOGTR0(PRIO_LOG, "Successfully enqueued trace data.");
 
 #if 0
 	while (size < desc->dtbd_size)
