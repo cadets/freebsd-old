@@ -39,5 +39,6 @@ CFLAGS+=-I${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common/sys
 CFLAGS+=-I${SRCTOP}/sys/dev
 CFLAGS+=-I${SRCTOP}/sys
 CFLAGS+=-I${SRCTOP}/contrib/dlog/src
+CFLAGS+=-I${SRCTOP}
 
 .include <bsd.kmod.mk>
