@@ -103,7 +103,7 @@ struct virtio_dtrace_control {
 	uint32_t event;
 
 	union {
-		struct vtdtr_ctrl_pbevent   probe_xev;
+		struct vtdtr_ctrl_pbevent   probe_ev;
 		struct vtdtr_ctrl_provevent prov_ev;
 		struct vtdtr_ctrl_scriptevent script_ev;
 		struct vtdtr_ctrl_trcevent trace_ev;

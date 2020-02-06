@@ -620,7 +620,7 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	DL_ASSERT(tq != NULL, ("vtdtr_traceq was not initialised.\n"));
 	
 	struct vtdtr_trace_entry *trc_entry;
-	struct vtdtr_trace *trc;
+	struct virtio_dtrace_trace *trc;
 
 	trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 	trc = &trc_entry->trace;
@@ -629,9 +629,9 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	trc->dtbd_errors = desc->dtbd_errors;
 	trc->dtbd_drops = desc->dtbd_drops;
 	trc->dtbd_data = desc->dtbd_data;
-	trc->dtbd_errors = desc->dtbd_oldest;
+	trc->dtbd_oldest = desc->dtbd_oldest;
 
-	DLOGTR2(PRIO_LOW, "Trace data size is: %zu. Copied trace data size: %zu. \n", desc->dtbd_size, trc->size);
+	DLOGTR2(PRIO_LOW, "Trace data size is: %zu. Copied trace data size: %zu. \n", desc->dtbd_size, trc->dtbd_size);
 	DL_ASSERT(trc->dtbd_data != NULL, "Cannot enqueue trace entry with NULL trace data buffer");
 	mtx_lock(&tq->mtx);
 	vtdtr_tq_enqueue(tq, trc_entry);
