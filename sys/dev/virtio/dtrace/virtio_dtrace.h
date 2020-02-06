@@ -144,7 +144,7 @@ struct vtdtr_ctrlq {
 };
 
 struct vtdtr_trace_entry {
-	struct vtdtr_trace trace;
+	struct virtio_dtrace_trace trace;
 	STAILQ_ENTRY(vtdtr_trace_entry) entries;
 };
 
