@@ -371,6 +371,7 @@ ddtrace_thread(void *arg)
 		nanouptime(&curtime);
 		k->ddtrace_state->dts_alive = INT64_MAX;
 		dtrace_membar_producer();
+		// TODO(MARA): solve this hack
 		k->ddtrace_state->dts_alive = (hrtime_t) dtrace_gethrtime();
 
 		/* Switch the buffer and write the contents to DLog. */
@@ -624,8 +625,8 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	trc->size = desc->dtbd_size;
 	trc->data = desc->dtbd_data;
 
-	DLOGTR1(PRIO_LOG, "Trace data size is: %zu. Trace data is: %s. \n", desc->dtbd_size, desc->dtbd_data);
-	DLOGTR1(PRIO_LOG, "Copied size: %zu. Copied trace data: %s", desc->dtbd_size, desc->dtbd_data);
+	DLOGTR2(PRIO_LOG, "Trace data size is: %zu. Trace data is: %s. \n", desc->dtbd_size, desc->dtbd_data);
+	DLOGTR2(PRIO_LOG, "Copied size: %zu. Copied trace data: %s", desc->dtbd_size, desc->dtbd_data);
 
 	mtx_lock(&tq->mtx);
 	vtdtr_tq_enqueue(tq, trc_entry);
