@@ -1287,16 +1287,18 @@ vtdtr_consume_trace(void *xsc)
 {
 	struct vtdtr_ctrlq *cq;
 	struct vtdtr_softc *sc;
-	struct vtdtr_trace_entry *trc_entry;
 	struct vtdtr_ctrl_entry *ctrl_entry;
+	struct vtdtr_trace_entry *trc_entry;
 	struct virtio_dtrace_control *ctrl;
+	struct virtio_dtrace_trace *trc;
+	struct vtdtr_ctrl_trcevent *ctrl_trc_ev;
 	device_t dev;
+	size_t trc_buf_len;
 	int error;
 
 	sc = xsc;
 	cq = sc->vtdtr_ctrlq;
 	dev = sc->vtdtr_dev;
-
 	for(;;)
 	{
 		mtx_lock(&tq->mtx);
@@ -1304,14 +1306,33 @@ vtdtr_consume_trace(void *xsc)
 		{
 			device_printf(dev, "Actually enqueued. \n");
 			trc_entry = vtdtr_tq_dequeue(tq);
+			trc = &trc_entry->trace;
 			device_printf(dev,"Trace data size: %zu", trc_entry->trace.dtbd_size);
 			KASSERT(trc_entry->trace.dtbd_data != NULL, "Trace data buffer cannot be NULL.");
+			
 			ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
+			KASSERT(ctrl_entry != NULL, "Failed allocating memory for control entry.");
+			
 		    ctrl = &ctrl_entry->ctrl;
 			ctrl->event = VIRTIO_DTRACE_TRACE;
+			
+			ctrl_trc_ev =&ctrl->uctrl.trace_ev;
+			ctrl_trc_ev->dtbd_size =  trc->dtbd_size;
+			ctrl_trc_ev->dtbd_cpu = trc->dtbd_cpu;
+			ctrl_trc_ev->dtbd_errors = trc->dtbd_errors;
+			ctrl_trc_ev->dtbd_drops = trc->dtbd_drops;
+			ctrl_trc_ev->dtbd_oldest = trc->dtbd_oldest;
+			
+			trc_buf_len = strlen(trc->dtbd_data);
+			size_t cp = strlcpy(ctrl_trc_ev->dtbd_data, trc->dtbd_data, trc_buf_len + 1);
+			KASSERT(cp == trc_buf_len, "Error occured while copying trace buffer data");
+			
+			mtx_lock(&sc->vtdtr_ctrlq->mtx);
+			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
+			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
+
 			mtx_unlock(&tq->mtx);
 			kthread_exit();
-
 		}
 		
 	}

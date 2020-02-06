@@ -622,6 +622,8 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	DL_ASSERT(tq != NULL, ("vtdtr_traceq was not initialised.\n"));
 	
 	trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
+	DL_ASSERT(trc_entry != NULL, "Failed allocating memory for trace entry.");
+	
 	trc = &trc_entry->trace;
 	trc->dtbd_size = desc->dtbd_size;
 	trc->dtbd_cpu = desc->dtbd_cpu;
@@ -630,13 +632,17 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	trc->dtbd_data = desc->dtbd_data;
 	trc->dtbd_oldest = desc->dtbd_oldest;
 
+	printf("Allocated fields.");
+
 	DLOGTR2(PRIO_LOW, "Trace data size is: %zu. Copied trace data size: %zu. \n", desc->dtbd_size, trc->dtbd_size);
 	DL_ASSERT(trc->dtbd_data != NULL, "Cannot enqueue trace entry with NULL trace data buffer");
+	
 	mtx_lock(&tq->mtx);
 	vtdtr_tq_enqueue(tq, trc_entry);
+	DLOGTR0(PRIO_LOW, "Successfully enqueued trace data, unlocking queue.");
+	printf("Successfully enqueued trace data, unlocking queue.");
 	mtx_unlock(&tq->mtx);
-
-	DLOGTR0(PRIO_LOW, "Successfully enqueued trace data.");
+	
 
 #if 0
 	while (size < desc->dtbd_size)
