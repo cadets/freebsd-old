@@ -625,8 +625,8 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	trc->size = desc->dtbd_size;
 	trc->data = desc->dtbd_data;
 
-	DLOGTR2(PRIO_LOG, "Trace data size is: %zu. Trace data is: %s. \n", desc->dtbd_size, desc->dtbd_data);
-	DLOGTR2(PRIO_LOG, "Copied size: %zu. Copied trace data: %s", desc->dtbd_size, desc->dtbd_data);
+	DLOGTR2(PRIO_LOG, "Trace data size is: %zu. Copied trace data size: %zu. \n", desc->dtbd_size, trc->size);
+	// DLOGTR2(PRIO_LOG, "Copied size: %zu. Copied trace data: %s", desc->dtbd_size, desc->dtbd_data);
 
 	mtx_lock(&tq->mtx);
 	vtdtr_tq_enqueue(tq, trc_entry);

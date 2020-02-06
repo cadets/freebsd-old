@@ -1302,9 +1302,11 @@ vtdtr_listen(void *xsc)
 		{
 			device_printf(dev, "actually enqueued");
 			trc_entry = vtdtr_tq_dequeue(tq);
-			device_printf(dev,"trace data: %s", trc_entry->trace.data);
+			device_printf(dev,"trace data: %zu", trc_entry->trace.size);
+			mtx_unlock(&tq->mtx);
+			kthread_exit();
 		}
-		mtx_unlock(&tq->mtx);
+		
 	}
 }
 
