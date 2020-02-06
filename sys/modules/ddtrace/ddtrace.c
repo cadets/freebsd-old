@@ -602,6 +602,9 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 					  dtrace_bufdesc_t *desc)
 {
 	dtrace_epid_t epid;
+	struct vtdtr_traceq *tq;
+	struct vtdtr_trace_entry *trc_entry;
+	struct virtio_dtrace_trace *trc;
 	size_t msg_start = 0, msg_size = 0, size = 0;
 
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL."));
@@ -615,13 +618,9 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 
 	DLOGTR0(PRIO_LOW, "Persisting trace data. \n");
 
-	struct vtdtr_traceq *tq;
 	tq = virtio_dtrace_device_register();
 	DL_ASSERT(tq != NULL, ("vtdtr_traceq was not initialised.\n"));
 	
-	struct vtdtr_trace_entry *trc_entry;
-	struct virtio_dtrace_trace *trc;
-
 	trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 	trc = &trc_entry->trace;
 	trc->dtbd_size = desc->dtbd_size;
