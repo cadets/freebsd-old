@@ -323,9 +323,11 @@ ddtrace_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 		/* If the buffer contains records persist them to the
 		 * distributed log.
 		 */
-		DLOGTR0(PRIO_LOW, "About to persist trace data. \n");
-		if (desc.dtbd_size != 0)
+		
+		if (desc.dtbd_size != 0) {
+			DLOGTR0(PRIO_LOW, "About to persist trace data");
 			ddtrace_persist_trace(state, handle, &desc);
+		}
 	}
 }
 
@@ -622,11 +624,14 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 
 	trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 	trc = &trc_entry->trace;
-	trc->size = desc->dtbd_size;
-	trc->data = desc->dtbd_data;
+	trc->dtbd_size = desc->dtbd_size;
+	trc->dtbd_cpu = desc->dtbd_cpu;
+	trc->dtbd_errors = desc->dtbd_errors;
+	trc->dtbd_drops = desc->dtbd_drops;
+	trc->dtbd_data = desc->dtbd_data;
+	trc->dtbd_errors = desc->dtbd_oldest;
 
 	DLOGTR2(PRIO_LOW, "Trace data size is: %zu. Copied trace data size: %zu. \n", desc->dtbd_size, trc->size);
-	// DLOGTR2(PRIO_LOW, "Copied size: %zu. Copied trace data: %s", desc->dtbd_size, desc->dtbd_data);
 
 	mtx_lock(&tq->mtx);
 	vtdtr_tq_enqueue(tq, trc_entry);

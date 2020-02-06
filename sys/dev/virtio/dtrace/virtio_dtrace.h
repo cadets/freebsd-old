@@ -52,7 +52,8 @@
 #define	VIRTIO_DTRACE_EOF             0x07 /* EOF Signal */
 #define	VIRTIO_DTRACE_GO              0x08 /* Start tracing */
 #define	VIRTIO_DTRACE_STOP            0x09 /* Start tracing */
-#define VIRTIO_DTRACE_SCRIPT_EVENT 	 0x10
+#define VIRTIO_DTRACE_SCRIPT 	      0x10
+#define VIRTIO_DTRACE_TRACE           0x11
 
 struct vtdtr_softc;
 struct uuid;
@@ -88,14 +89,35 @@ struct vtdtr_ctrl_scriptevent {
 	struct uuid uuid;
 }__attribute__((packed));
 
+struct vtdtr_ctrl_trcevent {
+	uint64_t dtbd_size;
+	uint32_t dtbd_cpu;
+	uint32_t dtbd_errors;
+	uint32_t dtbd_drops;
+	char dtbd_data[512];
+	uint64_t dtbd_oldest;
+	struct uuid uuid;
+}__attribute__((packed));
+
 struct virtio_dtrace_control {
 	uint32_t event;
 
 	union {
-		struct vtdtr_ctrl_pbevent   probe_ev;
+		struct vtdtr_ctrl_pbevent   probe_xev;
 		struct vtdtr_ctrl_provevent prov_ev;
 		struct vtdtr_ctrl_scriptevent script_ev;
+		struct vtdtr_ctrl_trcevent trace_ev;
 	} uctrl;
+}__attribute__((packed));
+
+struct virtio_dtrace_trace {
+	uint64_t dtbd_size;
+	uint32_t dtbd_cpu;
+	uint32_t dtbd_errors;
+	uint32_t dtbd_drops;
+	char *dtbd_data;
+	uint64_t dtbd_oldest;
+
 }__attribute__((packed));
 
 struct virtio_dtrace_queue {
@@ -121,11 +143,6 @@ struct vtdtr_ctrlq {
 	size_t                               n_entries;
 };
 
-struct vtdtr_trace {
-	size_t size;
-	char *data;
-};
-
 struct vtdtr_trace_entry {
 	struct vtdtr_trace trace;
 	STAILQ_ENTRY(vtdtr_trace_entry) entries;
@@ -135,7 +152,7 @@ struct vtdtr_trace_entry {
 struct vtdtr_traceq {
 	STAILQ_HEAD(, vtdtr_trace_entry) head;
 	struct mtx mtx;
-
+	size_t n_entries;
 };
 
 

@@ -175,7 +175,7 @@ static size_t vtdtr_cq_count(struct vtdtr_ctrlq *);
 static struct vtdtr_ctrl_entry *vtdtr_cq_dequeue(struct vtdtr_ctrlq *);
 static void vtdtr_notify(struct virtio_dtrace_queue *);
 static void vtdtr_poll(struct virtio_dtrace_queue *);
-static void vtdtr_listen(void *);
+static void vtdtr_consume_trace(void *);
 static void vtdtr_run(void *);
 static void vtdtr_advertise_prov_priv(void *, const char *, struct uuid *);
 static void vtdtr_destroy_prov_priv(void *, struct uuid *);
@@ -437,7 +437,7 @@ vtdtr_attach(device_t dev)
 	vtdtr_notify_ready(sc);
 	kthread_add(vtdtr_run, sc, NULL, &sc->vtdtr_commtd, 
 				0, 0, NULL, "vtdtr_communicator");
-	// kthread_add(vtdtr_listen, sc, NULL, &sc->vtdtr_listd, 0, 0, NULL, "vtdtr_trace_listener");
+	kthread_add(vtdtr_consume_trace, sc, NULL, &sc->vtdtr_listd, 0, 0, NULL, "vtdtr_trace_data_consumer");
 
 	/*dtrace_vtdtr_enable((void *)sc);*/
 fail:
@@ -781,7 +781,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		}
 		break;
 	}
-	case VIRTIO_DTRACE_SCRIPT_EVENT:
+	case VIRTIO_DTRACE_SCRIPT:
 		if (debug)
 			device_printf(dev, "Got script:\n%s.\n", ctrl->uctrl.script_ev.d_script);
 
@@ -1283,11 +1283,13 @@ vtdtr_poll(struct virtio_dtrace_queue *q)
 }
 
 static void
-vtdtr_listen(void *xsc)
+vtdtr_consume_trace(void *xsc)
 {
 	struct vtdtr_ctrlq *cq;
 	struct vtdtr_softc *sc;
 	struct vtdtr_trace_entry *trc_entry;
+	struct vtdtr_ctrl_entry *ctrl_entry;
+	struct virtio_dtrace_control *ctrl;
 	device_t dev;
 	int error;
 
@@ -1300,11 +1302,16 @@ vtdtr_listen(void *xsc)
 		mtx_lock(&tq->mtx);
 		if(!vtdtr_tq_empty(tq))
 		{
-			device_printf(dev, "actually enqueued");
+			device_printf(dev, "Actually enqueued. \n");
 			trc_entry = vtdtr_tq_dequeue(tq);
-			device_printf(dev,"trace data: %zu", trc_entry->trace.size);
+			device_printf(dev,"Trace data size: %zu", trc_entry->trace.size);
+			
+			ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry));
+		    ctrl = &ctrl_entry->ctrl;
+			ctrl->event = VIRTIO_DTRACE_TRACE;
 			mtx_unlock(&tq->mtx);
 			kthread_exit();
+
 		}
 		
 	}
