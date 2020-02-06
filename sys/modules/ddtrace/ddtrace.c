@@ -67,8 +67,7 @@
 #include "dl_protocol.h"
 #include "dl_utils.h"
 
-// solve dependency problem
-// extern hrtime_t dtrace_gethrtime(void);
+extern hrtime_t dtrace_gethrtime(void);
 
 struct client
 {
@@ -324,6 +323,7 @@ ddtrace_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 		/* If the buffer contains records persist them to the
 		 * distributed log.
 		 */
+		DLOGTR0(PRIO_LOG, "About to persist trace data. \n");
 		if (desc.dtbd_size != 0)
 			ddtrace_persist_trace(state, handle, &desc);
 	}
@@ -371,7 +371,7 @@ ddtrace_thread(void *arg)
 		nanouptime(&curtime);
 		k->ddtrace_state->dts_alive = INT64_MAX;
 		dtrace_membar_producer();
-		//k->ddtrace_state->dts_alive = dtrace_gethrtime();
+		k->ddtrace_state->dts_alive = dtrace_gethrtime();
 
 		/* Switch the buffer and write the contents to DLog. */
 		ddtrace_buffer_switch(k->ddtrace_state,

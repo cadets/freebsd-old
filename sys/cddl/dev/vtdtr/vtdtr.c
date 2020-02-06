@@ -234,9 +234,6 @@ vtdtr_enqueue(struct vtdtr_event *e)
 		mtx_unlock(&q->mtx);
 	}
 	mtx_unlock(&qtree_mtx);
-
-	// TODO(Mara): Remove this
-	DPRINTF(("Successfully enqueued %s\n",e->args.d_script.script));
 }
 
 /*
