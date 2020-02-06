@@ -1304,7 +1304,7 @@ vtdtr_consume_trace(void *xsc)
 		{
 			device_printf(dev, "Actually enqueued. \n");
 			trc_entry = vtdtr_tq_dequeue(tq);
-			device_printf(dev,"Trace data size: %zu", trc_entry->trace.size);
+			device_printf(dev,"Trace data size: %zu", trc_entry->trace.dtbd_size);
 			KASSERT(trc_entry->trace.dtbd_data != NULL, "Trace data buffer cannot be NULL.");
 			ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 		    ctrl = &ctrl_entry->ctrl;
