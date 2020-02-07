@@ -97,7 +97,7 @@ struct vtdtr_softc
 	struct sema vtdtr_exit;
 
 	/*
-	 * We need to keep track of all the enabled probes in the
+	 * We need to keep track of all the enabsled probes in the
 	 * driver in order to act as a bridge between the guest DTrace
 	 * and host DTrace. The driver is the one asking to install
 	 * or uninstall the probes on the guest, as instructed by host.
@@ -359,7 +359,7 @@ vtdtr_attach(device_t dev)
 	vtdtr_cq_init(sc->vtdtr_ctrlq);
 
 	sc->vtdtr_probelist = malloc(sizeof(struct vtdtr_probelist),
-								 M_VTDTR, M_NOWAIT | M_ZERO);
+								 M_DEVBUF, M_NOWAIT | M_ZERO);
 	if (sc->vtdtr_probelist == NULL)
 	{
 		error = ENOMEM;
@@ -866,7 +866,7 @@ vtdtr_destroy_probelist(struct vtdtr_softc *sc)
 	{
 		tmp = LIST_FIRST(&list->head);
 		LIST_REMOVE(tmp, vtdprobe_next);
-		free(tmp, M_VTDTR);
+		free(tmp, M_DEVBUF);
 	}
 	mtx_unlock(&list->mtx);
 }
@@ -1318,11 +1318,12 @@ vtdtr_consume_trace(void *xsc)
 
 			ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 			KASSERT(ctrl_entry != NULL, "Failed allocating memory for control entry.");
+			memeset(ctrl_entry, 0, sizeof(struct vtdtr_ctrl_entry));
 
 			ctrl = &ctrl_entry->ctrl;
 			ctrl->event = VIRTIO_DTRACE_TRACE;
-
 			ctrl_trc_ev = &ctrl->uctrl.trace_ev;
+
 			ctrl_trc_ev->dtbd_size = trc->dtbd_size;
 			ctrl_trc_ev->dtbd_cpu = trc->dtbd_cpu;
 			ctrl_trc_ev->dtbd_errors = trc->dtbd_errors;
@@ -1337,6 +1338,9 @@ vtdtr_consume_trace(void *xsc)
 				KASSERT(cp == trc_buf_len, "Error occured while copying trace buffer data");
 			}
 
+			device_printf(dev, "I've filled fields in control entry, freeing trace entry");
+			free(trc_entry, M_DEVBUF);
+
 			mtx_lock(&sc->vtdtr_ctrlq->mtx);
 			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
@@ -1346,6 +1350,7 @@ vtdtr_consume_trace(void *xsc)
 			mtx_lock(&sc->vtdtr_condmtx);
 			cv_signal(&sc->vtdtr_condvar);
 			mtx_unlock(&sc->vtdtr_condmtx);
+
 		}
 		mtx_unlock(&tq->mtx);
 	}
@@ -1378,7 +1383,7 @@ vtdtr_run(void *xsc)
 
 	ctrls = malloc(sizeof(struct virtio_dtrace_control) *
 					   vq_size,
-				   M_VTDTR, M_NOWAIT | M_ZERO);
+				   M_DEVBUF, M_NOWAIT | M_ZERO);
 	if (ctrls == NULL)
 	{
 		panic("No memory for vtdtr_run()");
@@ -1412,7 +1417,7 @@ vtdtr_run(void *xsc)
 
 		if (sc->vtdtr_shutdown == 1)
 		{
-			free(ctrls, M_VTDTR);
+			free(ctrls, M_DEVBUF);
 			sema_post(&sc->vtdtr_exit);
 			kthread_exit();
 		}
