@@ -1339,10 +1339,10 @@ vtdtr_consume_trace(void *xsc)
 
 			mtx_unlock(&tq->mtx); */
 
-			// TODO: Remove this after things work
-			mtx_unlock(&tq->mtx);
+			// TODO: Remove this after things work			
 			kthread_exit();
 		}
+		mtx_unlock(&tq->mtx);
 	}
 }
 
