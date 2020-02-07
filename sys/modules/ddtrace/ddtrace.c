@@ -342,7 +342,7 @@ ddtrace_thread(void *arg)
 	ddtrace_assert_integrity(__func__, k);
 	
 	tq = virtio_dtrace_device_register();
-	mutex_lock(&tq->mtx);
+	mtx_lock(&tq->mtx);
 
 	/* Write the metadata to the log before processing the trace
 	 * buffers.
@@ -393,7 +393,7 @@ ddtrace_thread(void *arg)
 	ddtrace_buffer_switch(k->ddtrace_state,
 						  k->ddtrace_dlog_handle, tq);
 	
-	mutex_unlock(&tq->mtx);
+	mtx_unlock(&tq->mtx);
 
 	DLOGTR0(PRIO_NORMAL, "DDTrace thread exited successfully.\n");
 	kthread_exit();
