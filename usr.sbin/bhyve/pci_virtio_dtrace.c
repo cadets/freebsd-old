@@ -330,8 +330,9 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		break;
 #endif
 	case VTDTR_DEVICE_TRACE:
-		DPRINTF(("I've received trace data. Trace data size is: %zu.", ctrl->uctrl.trc_ev.dtbd_size));
-		DPRINTF(("About to open pipe to send trace data"));
+		printf("here");
+		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
+		DPRINTF(("About to open pipe to send trace data. \n"));
 		break;
 	case VTDTR_DEVICE_EOF:
 		retval = 1;
@@ -385,6 +386,7 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 	while (vq_has_descs(vq))
 	{
 		n = vq_getchain(vq, &idx, iov, 1, flags);
+		DPRINTF(("About to process elements from the receive queue. \n"))
 		retval = pci_vtdtr_control_rx(sc, iov, 1);
 		vq_relchain(vq, idx, sizeof(struct pci_vtdtr_control));
 		if (retval == 1)
