@@ -412,9 +412,9 @@ vtdtr_attach(device_t dev)
 		goto fail;
 	}
 
-	sc->vtdtr_commtd = malloc(sizeof(struct thread), M_VTDTR,
+	sc->vtdtr_commtd = malloc(sizeof(struct thread), M_DEVBUF,
 							  M_NOWAIT | M_ZERO);
-	sc->vtdtr_listd = malloc(sizeof(struct thread), M_VTDTR,
+	sc->vtdtr_listd = malloc(sizeof(struct thread), M_DEVBUF,
 							 M_NOWAIT | M_ZERO);
 
 	if (sc->vtdtr_commtd == NULL)
@@ -1310,13 +1310,13 @@ vtdtr_consume_trace(void *xsc)
 		mtx_lock(&tq->mtx);
 		if (!vtdtr_tq_empty(tq))
 		{
-			device_printf(dev, "Actually enqueued. \n");
+			device_printf(dev, "Actually enqueued in ddtrace. \n");
 			trc_entry = vtdtr_tq_dequeue(tq);
 			trc = &trc_entry->trace;
-			device_printf(dev, "Trace data size: %zu", trc->dtbd_size);
+			device_printf(dev, "Trace data size: %zu. \n", trc->dtbd_size);
 			KASSERT(trc->dtbd_data != NULL, "Trace data buffer cannot be NULL.");
 
-			/* ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
+			ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 			KASSERT(ctrl_entry != NULL, "Failed allocating memory for control entry.");
 
 			ctrl = &ctrl_entry->ctrl;
@@ -1328,22 +1328,26 @@ vtdtr_consume_trace(void *xsc)
 			ctrl_trc_ev->dtbd_errors = trc->dtbd_errors;
 			ctrl_trc_ev->dtbd_drops = trc->dtbd_drops;
 			ctrl_trc_ev->dtbd_oldest = trc->dtbd_oldest;
-
-			trc_buf_len = strlen(trc->dtbd_data);
-			size_t cp = strlcpy(ctrl_trc_ev->dtbd_data, trc->dtbd_data, trc_buf_len + 1);
-			KASSERT(cp == trc_buf_len, "Error occured while copying trace buffer data");
+			KASSERT(ctrl_trc_ev->dtbd_size == trc->dtbd_size, "Failed copying into fields");
+			
+			if(ctrl_trc_ev->dtbd_size < 512)
+			{
+				trc_buf_len = strlen(trc->dtbd_data);
+				size_t cp = strlcpy(ctrl_trc_ev->dtbd_data, trc->dtbd_data, trc_buf_len + 1);
+				KASSERT(cp == trc_buf_len, "Error occured while copying trace buffer data");
+			}
 
 			mtx_lock(&sc->vtdtr_ctrlq->mtx);
 			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
-			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
+			mtx_unlock(&sc->vtdtr_ctrlq->mtx);	
 
-			mtx_unlock(&tq->mtx); */
-
-			// TODO: Remove this after things work			
-			kthread_exit();
+			mtx_lock(&sc->vtdtr_condmtx);
+			cv_signal(&sc->vtdtr_condvar);
+			mtx_unlock(&sc->vtdtr_condmtx);
 		}
 		mtx_unlock(&tq->mtx);
 	}
+	kthread_exit();
 }
 
 /*

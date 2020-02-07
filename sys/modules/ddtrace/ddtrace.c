@@ -632,20 +632,13 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	trc->dtbd_data = desc->dtbd_data;
 	trc->dtbd_oldest = desc->dtbd_oldest;
 
-	printf("Allocated fields.");
-
-	/* DLOGTR2(PRIO_LOW, "Trace data size is: %zu. Copied trace data size: %zu. \n", desc->dtbd_size, trc->dtbd_size);
+	DLOGTR2(PRIO_LOW, "Trace data size is: %zu. Copied trace data size: %zu. \n", desc->dtbd_size, trc->dtbd_size);
 	DL_ASSERT(trc->dtbd_data != NULL, "Cannot enqueue trace entry with NULL
-	trace data buffer");*/
-	
-	printf("Trace data size is: %zu. Copied trace data size: %zu. \n", desc->dtbd_size, trc->dtbd_size);
-	
+	trace data buffer");	
 	mtx_lock(&tq->mtx);
 	vtdtr_tq_enqueue(tq, trc_entry);
-	/*DLOGTR0(PRIO_LOW, "Successfully enqueued trace data, unlocking queue.");
-	DL_ASSERT(tq->n_entries != 0, "Failed enqueueing.");*/
-	printf("Successfully enqueued trace data, unlocking queue.");
-	printf("Number of entries in queue: %d", tq->n_entries);
+	DLOGTR0(PRIO_LOW, "Successfully enqueued trace data, unlocking queue. \n");
+	DL_ASSERT(tq->n_entries != 0, "Failed enqueueing, number of entries cannot be 0.");
 	mtx_unlock(&tq->mtx);
 	
 
