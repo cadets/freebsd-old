@@ -641,6 +641,7 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	vtdtr_tq_enqueue(tq, trc_entry);
 	DLOGTR0(PRIO_LOW, "Successfully enqueued trace data, unlocking queue.");
 	printf("Successfully enqueued trace data, unlocking queue.");
+	DL_ASSERT(tq->n_entries != 0, "Failed enqueueing.")
 	mtx_unlock(&tq->mtx);
 	
 

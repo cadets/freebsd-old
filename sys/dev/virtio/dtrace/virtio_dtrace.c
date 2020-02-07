@@ -281,11 +281,13 @@ int vtdtr_tq_empty(struct vtdtr_traceq *tq)
 void vtdtr_tq_enqueue(struct vtdtr_traceq *tq, struct vtdtr_trace_entry *trc_entry)
 {
 	STAILQ_INSERT_TAIL(&tq->head, trc_entry, entries);
+	tq->n_entries ++;
 }
 
 void vtdtr_tq_init(struct vtdtr_traceq *tq)
 {
 	STAILQ_INIT(&tq->head);
+	tq->n_entries = 0;
 }
 
 struct vtdtr_trace_entry *vtdtr_tq_dequeue(struct vtdtr_traceq *tq)
@@ -295,6 +297,7 @@ struct vtdtr_trace_entry *vtdtr_tq_dequeue(struct vtdtr_traceq *tq)
 	if (trc_entry != NULL)
 	{
 		STAILQ_REMOVE_HEAD(&tq->head, entries);
+		tq->n_entries --;
 	}
 
 	return trc_entry;
@@ -336,7 +339,10 @@ vtdtr_attach(device_t dev)
 		device_printf(dev, "cannot allocate memory for the trace queue");
 		goto fail;
 	}
+	mtx_init(&tq->mtx, "vtdtrtqmtx", NULL, MTX_DEF);
+	
 	vtdtr_tq_init(tq);
+
 
 	sc->vtdtr_ctrlq = malloc(sizeof(struct vtdtr_ctrlq),
 							 M_DEVBUF, M_NOWAIT | M_ZERO);
@@ -1334,6 +1340,7 @@ vtdtr_consume_trace(void *xsc)
 			mtx_unlock(&tq->mtx); */
 
 			// TODO: Remove this after things work
+			mtx_unlock(&tq->mtx);
 			kthread_exit();
 		}
 	}
