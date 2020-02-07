@@ -266,7 +266,7 @@ vtdtr_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
-struct vtdtr_traceq*
+struct vtdtr_traceq *
 virtio_dtrace_device_register()
 {
 	KASSERT(tq != NULL, "trace queue not initialised");
@@ -288,11 +288,11 @@ void vtdtr_tq_init(struct vtdtr_traceq *tq)
 	STAILQ_INIT(&tq->head);
 }
 
-struct vtdtr_trace_entry * vtdtr_tq_dequeue(struct vtdtr_traceq *tq)
+struct vtdtr_trace_entry *vtdtr_tq_dequeue(struct vtdtr_traceq *tq)
 {
 	struct vtdtr_trace_entry *trc_entry;
 	trc_entry = STAILQ_FIRST(&tq->head);
-	if(trc_entry != NULL)
+	if (trc_entry != NULL)
 	{
 		STAILQ_REMOVE_HEAD(&tq->head, entries);
 	}
@@ -329,8 +329,8 @@ vtdtr_attach(device_t dev)
 	vtdtr_advertise_probe = vtdtr_advertise_probe_priv;
 	*/
 	tq = malloc(sizeof(struct vtdtr_traceq), M_DEVBUF, M_NOWAIT | M_ZERO);
-	
-	if(tq == NULL)
+
+	if (tq == NULL)
 	{
 		error = ENOMEM;
 		device_printf(dev, "cannot allocate memory for the trace queue");
@@ -409,7 +409,7 @@ vtdtr_attach(device_t dev)
 	sc->vtdtr_commtd = malloc(sizeof(struct thread), M_VTDTR,
 							  M_NOWAIT | M_ZERO);
 	sc->vtdtr_listd = malloc(sizeof(struct thread), M_VTDTR,
-							  M_NOWAIT | M_ZERO);
+							 M_NOWAIT | M_ZERO);
 
 	if (sc->vtdtr_commtd == NULL)
 	{
@@ -419,7 +419,7 @@ vtdtr_attach(device_t dev)
 		goto fail;
 	}
 
-	if(sc->vtdtr_listd == NULL)
+	if (sc->vtdtr_listd == NULL)
 	{
 		error = ENOMEM;
 		device_printf(dev, "cannot allocate memory"
@@ -435,7 +435,7 @@ vtdtr_attach(device_t dev)
 	vtdtr_start_taskqueues(sc);
 	sc->vtdtr_ready = 0;
 	vtdtr_notify_ready(sc);
-	kthread_add(vtdtr_run, sc, NULL, &sc->vtdtr_commtd, 
+	kthread_add(vtdtr_run, sc, NULL, &sc->vtdtr_commtd,
 				0, 0, NULL, "vtdtr_communicator");
 	kthread_add(vtdtr_consume_trace, sc, NULL, &sc->vtdtr_listd, 0, 0, NULL, "vtdtr_trace_data_consumer");
 
@@ -1299,42 +1299,43 @@ vtdtr_consume_trace(void *xsc)
 	sc = xsc;
 	cq = sc->vtdtr_ctrlq;
 	dev = sc->vtdtr_dev;
-	for(;;)
+	for (;;)
 	{
 		mtx_lock(&tq->mtx);
-		if(!vtdtr_tq_empty(tq))
+		if (!vtdtr_tq_empty(tq))
 		{
 			device_printf(dev, "Actually enqueued. \n");
 			trc_entry = vtdtr_tq_dequeue(tq);
 			trc = &trc_entry->trace;
-			device_printf(dev,"Trace data size: %zu", trc_entry->trace.dtbd_size);
-			KASSERT(trc_entry->trace.dtbd_data != NULL, "Trace data buffer cannot be NULL.");
-			
-			ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
+			device_printf(dev, "Trace data size: %zu", trc->dtbd_size);
+			KASSERT(trc->dtbd_data != NULL, "Trace data buffer cannot be NULL.");
+
+			/* ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 			KASSERT(ctrl_entry != NULL, "Failed allocating memory for control entry.");
-			
-		    ctrl = &ctrl_entry->ctrl;
+
+			ctrl = &ctrl_entry->ctrl;
 			ctrl->event = VIRTIO_DTRACE_TRACE;
-			
-			ctrl_trc_ev =&ctrl->uctrl.trace_ev;
-			ctrl_trc_ev->dtbd_size =  trc->dtbd_size;
+
+			ctrl_trc_ev = &ctrl->uctrl.trace_ev;
+			ctrl_trc_ev->dtbd_size = trc->dtbd_size;
 			ctrl_trc_ev->dtbd_cpu = trc->dtbd_cpu;
 			ctrl_trc_ev->dtbd_errors = trc->dtbd_errors;
 			ctrl_trc_ev->dtbd_drops = trc->dtbd_drops;
 			ctrl_trc_ev->dtbd_oldest = trc->dtbd_oldest;
-			
+
 			trc_buf_len = strlen(trc->dtbd_data);
 			size_t cp = strlcpy(ctrl_trc_ev->dtbd_data, trc->dtbd_data, trc_buf_len + 1);
 			KASSERT(cp == trc_buf_len, "Error occured while copying trace buffer data");
-			
+
 			mtx_lock(&sc->vtdtr_ctrlq->mtx);
 			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 
-			mtx_unlock(&tq->mtx);
+			mtx_unlock(&tq->mtx); */
+
+			// TODO: Remove this after things work
 			kthread_exit();
 		}
-		
 	}
 }
 
