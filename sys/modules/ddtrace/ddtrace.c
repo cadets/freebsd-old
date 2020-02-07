@@ -635,7 +635,7 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 
 	DLOGTR2(PRIO_LOW, "Trace ddata size is: %zu. Copied trace data size: %zu. \n", desc->dtbd_size, trc->dtbd_size);
 
-	mtx_lock(&tq->mtx)
+	mtx_lock(&tq->mtx);
 	vtdtr_tq_enqueue(tq, trc_entry);
 	DLOGTR0(PRIO_LOW, "Successfully enqueued trace data, unlocking queue. \n");
 	DL_ASSERT(tq->n_entries != 0, "Failed enqueueing, number of entries cannot be 0.");
