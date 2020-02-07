@@ -1446,6 +1446,7 @@ vtdtr_run(void *xsc)
 			vtdtr_fill_desc(txq, &ctrls[nent]);
 			free(ctrl_entry, M_DEVBUF);
 			nent++;
+			device_printf(dev, "I've put an event in the virtual queue");
 			mtx_lock(&sc->vtdtr_ctrlq->mtx);
 		}
 
