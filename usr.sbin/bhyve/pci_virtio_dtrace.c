@@ -386,7 +386,7 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 	while (vq_has_descs(vq))
 	{
 		n = vq_getchain(vq, &idx, iov, 1, flags);
-		DPRINTF(("About to process elements from the receive queue. \n"))
+		DPRINTF(("About to process elements from the receive queue. \n"));
 		retval = pci_vtdtr_control_rx(sc, iov, 1);
 		vq_relchain(vq, idx, sizeof(struct pci_vtdtr_control));
 		if (retval == 1)
