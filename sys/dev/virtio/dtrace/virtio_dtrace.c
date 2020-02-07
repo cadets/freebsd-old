@@ -1318,7 +1318,7 @@ vtdtr_consume_trace(void *xsc)
 
 			ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 			KASSERT(ctrl_entry != NULL, "Failed allocating memory for control entry.");
-			memeset(ctrl_entry, 0, sizeof(struct vtdtr_ctrl_entry));
+			memset(ctrl_entry, 0, sizeof(struct vtdtr_ctrl_entry));
 
 			ctrl = &ctrl_entry->ctrl;
 			ctrl->event = VIRTIO_DTRACE_TRACE;
@@ -1347,12 +1347,12 @@ vtdtr_consume_trace(void *xsc)
 
 			device_printf(dev, "Successfully enqueued in the control queue. \n");	
 
-			mtx_lock(&sc->vtdtr_condmtx);
-			cv_signal(&sc->vtdtr_condvar);
-			mtx_unlock(&sc->vtdtr_condmtx);
-
 		}
 		mtx_unlock(&tq->mtx);
+
+		mtx_lock(&sc->vtdtr_condmtx);
+		cv_signal(&sc->vtdtr_condvar);
+		mtx_unlock(&sc->vtdtr_condmtx);
 	}
 	kthread_exit();
 }
