@@ -329,6 +329,7 @@ ddtrace_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 			ddtrace_persist_trace(state, handle, &desc);
 		}
 	}
+
 }
 
 static void
@@ -632,9 +633,9 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	trc->dtbd_data = desc->dtbd_data;
 	trc->dtbd_oldest = desc->dtbd_oldest;
 
-	DLOGTR2(PRIO_LOW, "Trace data size is: %zu. Copied trace data size: %zu. \n", desc->dtbd_size, trc->dtbd_size);
+	DLOGTR2(PRIO_LOW, "Trace ddata size is: %zu. Copied trace data size: %zu. \n", desc->dtbd_size, trc->dtbd_size);
 
-	mtx_lock(&tq->mtx);
+	mtx_lock(&tq->mtx)
 	vtdtr_tq_enqueue(tq, trc_entry);
 	DLOGTR0(PRIO_LOW, "Successfully enqueued trace data, unlocking queue. \n");
 	DL_ASSERT(tq->n_entries != 0, "Failed enqueueing, number of entries cannot be 0.");

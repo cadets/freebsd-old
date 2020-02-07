@@ -1308,7 +1308,7 @@ vtdtr_consume_trace(void *xsc)
 	for (;;)
 	{
 		mtx_lock(&tq->mtx);
-		if (!vtdtr_tq_empty(tq))
+		while (!vtdtr_tq_empty(tq))
 		{
 			device_printf(dev, "Actually enqueued in ddtrace. \n");
 			trc_entry = vtdtr_tq_dequeue(tq);
@@ -1339,7 +1339,9 @@ vtdtr_consume_trace(void *xsc)
 
 			mtx_lock(&sc->vtdtr_ctrlq->mtx);
 			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
-			mtx_unlock(&sc->vtdtr_ctrlq->mtx);	
+			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
+
+			device_printf(dev, "Successfully enqueued in the control queue. \n");	
 
 			mtx_lock(&sc->vtdtr_condmtx);
 			cv_signal(&sc->vtdtr_condvar);

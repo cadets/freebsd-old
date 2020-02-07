@@ -52,8 +52,8 @@
 #define	VIRTIO_DTRACE_EOF             0x07 /* EOF Signal */
 #define	VIRTIO_DTRACE_GO              0x08 /* Start tracing */
 #define	VIRTIO_DTRACE_STOP            0x09 /* Start tracing */
-#define VIRTIO_DTRACE_SCRIPT 	      0x10
-#define VIRTIO_DTRACE_TRACE           0x11
+#define VIRTIO_DTRACE_SCRIPT 	      0x10 /* Received script from host */
+#define VIRTIO_DTRACE_TRACE           0x11 /* Send trace data to host */
 
 struct vtdtr_softc;
 struct uuid;

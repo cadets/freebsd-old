@@ -88,6 +88,7 @@ __FBSDID("$FreeBSD$");
 #define VTDTR_DEVICE_GO 0x08
 #define VTDTR_DEVICE_STOP 0x09
 #define VTDTR_DEVICE_SCRIPT 0x10
+#define VTDTR_DEVICE_TRACE 0x11
 
 static FILE *fp;
 
@@ -137,6 +138,16 @@ struct pci_vtdtr_ctrl_scriptevent
 	struct uuid uuid;
 } __attribute__((packed));
 
+struct pci_vtdtr_ctrl_trcevent{
+	uint64_t dtbd_size;
+	uint32_t dtbd_cpu;
+	uint32_t dtbd_errors;
+	uint32_t dtbd_drops;
+	char dtbd_data[512];
+	uint64_t dtbd_oldest;
+	struct uuid uuid;
+} __attribute__((packed));
+
 /** these are the types of elements that can be in the control queue, 
  * which is drained by putting it's content into the virtual queue and
  * sending events.
@@ -149,6 +160,7 @@ struct pci_vtdtr_control
 		struct pci_vtdtr_ctrl_pbevent probe_ev;
 		struct pci_vtdtr_ctrl_provevent prov_ev;
 		struct pci_vtdtr_ctrl_scriptevent script_ev;
+		struct pci_vtdtr_ctrl_trcevent trc_ev;
 	} uctrl;
 } __attribute__((packed));
 
@@ -200,7 +212,7 @@ static int pci_vtdtr_cq_empty(struct pci_vtdtr_ctrlq *);
 static struct pci_vtdtr_ctrl_entry *pci_vtdtr_cq_dequeue(
 	struct pci_vtdtr_ctrlq *);
 static int pci_vtdtr_fill_desc(struct vqueue_info *,
-								struct pci_vtdtr_control *);
+							   struct pci_vtdtr_control *);
 static void pci_vtdtr_poll(struct vqueue_info *, int);
 static void pci_vtdtr_notify_ready(struct pci_vtdtr_softc *);
 static void pci_vtdtr_fill_eof_desc(struct vqueue_info *);
@@ -317,6 +329,10 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	case VTDTR_DEVICE_PROBE_UNINSTALL:
 		break;
 #endif
+	case VTDTR_DEVICE_TRACE:
+		DPRINTF(("I've received trace data. Trace data size is: %zu.", ctrl->uctrl.trc_ev.dtbd_size));
+		DPRINTF(("About to open pipe to send trace data"));
+		break;
 	case VTDTR_DEVICE_EOF:
 		retval = 1;
 		break;
@@ -816,7 +832,7 @@ static void *pci_vtdtr_listen(void *xsc)
 
 	for (;;)
 	{
-		
+
 		if ((fd = openat(tmp_fd, "fifo", O_RDONLY)) == -1)
 		{
 			DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
