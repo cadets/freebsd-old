@@ -205,6 +205,42 @@ dt_as_undef(const dt_ident_t *idp, uint_t offset)
 	    "0x%x)\n", kind, dts->dts_object, mark, dts->dts_name, offset);
 }
 
+static int
+dt_as_is_host(dtrace_difo_t *dp)
+{
+	int set = 0, i;
+
+	if (script_type == DT_SCRIPT_TYPE_GUEST)
+		set = 1;
+
+	for (i = dp->dtdo_len - 1; i >= 0; i--) {
+		dif_instr_t instr = dp->dtdo_buf[i];
+		uint_t op = DIF_INSTR_OP(instr);
+		uchar_t reg_to_infer;
+
+		if (op == DIF_OP_RET) {
+			reg_to_infer = DIF_INSTR_RD(instr);
+			continue;
+		}
+
+		if (DIF_INSTR_RD(instr) == reg_to_infer) {
+			if (op == DIF_OP_SETS ||
+			    op == DIF_OP_CALL)
+				return (1);
+			else if (op == DIF_OP_LDGS) {
+				uint64_t var = DIF_INSTR_VAR(instr);
+				if (var == DIF_VAR_VMNAME  ||
+				    var == DIF_VAR_GVMNAME ||
+				    var == DIF_VAR_HVMNAME)
+					return (1);
+			} else
+				return (0);
+		}
+	}
+
+	return (0);
+}
+
 dtrace_difo_t *
 dt_as(dt_pcb_t *pcb)
 {
@@ -320,6 +356,11 @@ dt_as(dt_pcb_t *pcb)
 	 * label to the index of the final instruction in the buffer and noting
 	 * any other instruction-specific DIFO flags such as dtdo_destructive.
 	 */
+	if (dt_as_is_host(dp))
+		dp->dtdo_rtype.dtdt_flags &= ~DIF_TF_GUEST;
+	else
+		dp->dtdo_rtype.dtdt_flags |= DIF_TF_GUEST;
+
 	for (i = 0; i < dp->dtdo_len; i++) {
 		dif_instr_t instr = dp->dtdo_buf[i];
 		uint_t op = DIF_INSTR_OP(instr);

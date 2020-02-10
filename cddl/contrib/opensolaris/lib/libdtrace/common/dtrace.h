@@ -34,6 +34,7 @@
 
 #include <sys/dtrace.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <gelf.h>
 #include <libproc.h>
@@ -177,6 +178,67 @@ extern int dtrace_stmt_iter(dtrace_hdl_t *, dtrace_prog_t *,
 extern void dtrace_stmt_destroy(dtrace_hdl_t *, dtrace_stmtdesc_t *);
 
 /*
+ * DTrace Program Analysis Interface
+ */
+
+/*
+ * DTrace actions can reference or modify variables (global, thread-local or
+ * clause-local), external memory or internal state (in a dtrace_state_t).
+ */
+
+#define	DTRACE_MODREF_GLOBAL_MOD	0x01
+#define	DTRACE_MODREF_GLOBAL_REF	0x02
+#define	DTRACE_MODREF_THREAD_LOCAL_MOD	0x04
+#define	DTRACE_MODREF_THREAD_LOCAL_REF	0x08
+#define	DTRACE_MODREF_CLAUSE_LOCAL_MOD	0x10
+#define	DTRACE_MODREF_CLAUSE_LOCAL_REF	0x20
+#define	DTRACE_MODREF_MEMORY_MOD	0x40
+#define	DTRACE_MODREF_MEMORY_REF	0x80
+#define	DTRACE_MODREF_STATE_MOD		0x100
+#define	DTRACE_MODREF_STATE_REF		0x200
+
+#define	DTRACE_MODREF_ANY_MOD ( \
+	DTRACE_MODREF_GLOBAL_MOD \
+	| DTRACE_MODREF_THREAD_LOCAL_MOD \
+	| DTRACE_MODREF_CLAUSE_LOCAL_MOD \
+	| DTRACE_MODREF_MEMORY_MOD \
+	| DTRACE_MODREF_STATE_MOD \
+	)
+
+#define	DTRACE_MODREF_ANY_REF ( \
+	DTRACE_MODREF_GLOBAL_REF \
+	| DTRACE_MODREF_THREAD_LOCAL_REF \
+	| DTRACE_MODREF_CLAUSE_LOCAL_REF \
+	| DTRACE_MODREF_MEMORY_REF \
+	| DTRACE_MODREF_STATE_REF \
+	)
+
+#define	DTRACE_MODREF_ALL ( \
+	DTRACE_MODREF_ANY_MOD | DTRACE_MODREF_ANY_REF)
+
+/*
+ * A callback function that checks for conformance with mod/ref policies.
+ *
+ * `modref` is the mod/ref behaviour of a DTrace action and `cumulative_modref`
+ * is the accumulated mod/ref behaviour of the program up to (but not including)
+ * the action in question. The probe description and `FILE*` parameters can be
+ * used for reporting error details.
+ *
+ * This callback should return `true` iff `modref` is acceptable.
+ */
+typedef bool dtrace_modref_check_f(int modref, int cumulative_modref,
+	const dtrace_probedesc_t *, FILE *output);
+
+/* Analyze the mod/ref behaviour of a DTrace program */
+extern bool dtrace_analyze_program_modref(dtrace_prog_t *,
+	dtrace_modref_check_f *, FILE *output);
+
+extern int dtrace_dump_actions(dtrace_prog_t *);
+/* Output GraphViz .dot representation of a DTrace program's actions. */
+extern void dtrace_graph_program(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, FILE *);
+
+
+/*
  * DTrace Data Consumption Interface
  */
 typedef enum {
@@ -199,20 +261,30 @@ typedef struct dtrace_probedata {
 	dtrace_flowkind_t dtpda_flow;		/* flow kind */
 	const char *dtpda_prefix;		/* recommended flow prefix */
 	int dtpda_indent;			/* recommended flow indent */
+	uint64_t dtpda_timestamp;		/* hrtime of snapshot */
 } dtrace_probedata_t;
 
 typedef int dtrace_consume_probe_f(const dtrace_probedata_t *, void *);
 typedef int dtrace_consume_rec_f(const dtrace_probedata_t *,
     const dtrace_recdesc_t *, void *);
+typedef void dtrace_put_buf_f(dtrace_hdl_t *, dtrace_bufdesc_t *);
+typedef int dtrace_get_buf_f(dtrace_hdl_t *, int, dtrace_bufdesc_t **);
 
-extern int dtrace_consume(dtrace_hdl_t *, FILE *,
-    dtrace_consume_probe_f *, dtrace_consume_rec_f *, void *);
+typedef struct dtrace_consumer {
+	dtrace_consume_probe_f *dc_consume_probe;
+	dtrace_consume_rec_f *dc_consume_rec;
+	dtrace_put_buf_f *dc_put_buf;
+	dtrace_get_buf_f *dc_get_buf;
+} dtrace_consumer_t;
+
+extern int dtrace_consume(dtrace_hdl_t *, FILE *, dtrace_consumer_t *, void *);
 
 #define	DTRACE_STATUS_NONE	0	/* no status; not yet time */
 #define	DTRACE_STATUS_OKAY	1	/* status okay */
 #define	DTRACE_STATUS_EXITED	2	/* exit() was called; tracing stopped */
 #define	DTRACE_STATUS_FILLED	3	/* fill buffer filled; tracing stoped */
 #define	DTRACE_STATUS_STOPPED	4	/* tracing already stopped */
+#define	DTRACE_STATUS_INACTIVE	5	/* tracing not started */
 
 extern int dtrace_status(dtrace_hdl_t *);
 
@@ -270,7 +342,9 @@ typedef enum {
 } dtrace_workstatus_t;
 
 extern dtrace_workstatus_t dtrace_work(dtrace_hdl_t *, FILE *,
-    dtrace_consume_probe_f *, dtrace_consume_rec_f *, void *);
+    dtrace_consumer_t *, void *);
+extern dtrace_workstatus_t dtrace_work_detached(dtrace_hdl_t *, FILE *,
+    dtrace_consumer_t *, void *);
 
 /*
  * DTrace Handler Interface
@@ -526,6 +600,8 @@ extern int dtrace_type_fcompile(dtrace_hdl_t *,
 
 extern struct dt_node *dt_compile_sugar(dtrace_hdl_t *,
     struct dt_node *);
+
+extern int dt_filter(dtrace_hdl_t *, dtrace_machine_filter_t *);
 
 
 /*

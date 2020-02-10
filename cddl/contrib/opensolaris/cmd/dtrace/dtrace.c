@@ -76,7 +76,7 @@ typedef struct dtrace_cmd {
 #define	E_USAGE		2
 
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:n:o:p:P:qs:SU:vVwx:X:Z";
+	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:M:n:o:p:P:qs:SU:vVwx:X:Z";
 
 static char **g_argv;
 static int g_argc;
@@ -101,9 +101,11 @@ static int g_cflags;
 static int g_oflags;
 static int g_verbose;
 static int g_exec = 1;
+static const char *g_graphfile = NULL;
 static int g_mode = DMODE_EXEC;
 static int g_status = E_SUCCESS;
 static int g_grabanon = 0;
+
 static const char *g_ofile = NULL;
 static FILE *g_ofp;
 static dtrace_hdl_t *g_dtp;
@@ -124,15 +126,20 @@ static const char *g_etc[] =  {
 NULL };
 #endif
 
+#if !defined(illumos) && defined(NEED_ERRLOC)
+void dt_get_errloc(dtrace_hdl_t *, char **, int *);
+#endif /* !illumos && NEED_ERRLOC */
+
 static int
 usage(FILE *fp)
 {
 	static const char predact[] = "[[ predicate ] action ]";
 
 	(void) fprintf(fp, "Usage: %s [-32|-64] [-aACeFGhHlqSvVwZ] "
-	    "[-b bufsz] [-c cmd] [-D name[=def]]\n\t[-I path] [-L path] "
-	    "[-o output] [-p pid] [-s script] [-U name]\n\t"
+	    "[-b bufsz] [-c cmd] [-D name[=def]]\n\t[-g gv_output] [-I path] "
+	    "[-L path] [-o output] [-p pid] [-s script] [-U name]\n\t"
 	    "[-x opt[=val]] [-X a|c|s|t]\n\n"
+	    "\t[-M [ vm1,vm2,vm3,... ]\n"
 	    "\t[-P provider %s]\n"
 	    "\t[-m [ provider: ] module %s]\n"
 	    "\t[-f [[ provider: ] module: ] func %s]\n"
@@ -156,12 +163,14 @@ usage(FILE *fp)
 	    "\t-f  enable or list probes matching the specified function name\n"
 	    "\t-F  coalesce trace output by function\n"
 	    "\t-G  generate an ELF file containing embedded dtrace program\n"
+	    "\t-g  output GraphViz Dot representation of script actions\n"
 	    "\t-h  generate a header file with definitions for static probes\n"
 	    "\t-H  print included files when invoking preprocessor\n"
 	    "\t-i  enable or list probes matching the specified probe id\n"
 	    "\t-I  add include directory to preprocessor search path\n"
 	    "\t-l  list probes matching specified criteria\n"
 	    "\t-L  add library directory to library search path\n"
+	    "\t-M  specify virtual-machine filters\n"
 	    "\t-m  enable or list probes matching the specified module name\n"
 	    "\t-n  enable or list probes matching the specified probe name\n"
 	    "\t-o  set output file\n"
@@ -616,6 +625,38 @@ info_stmt(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	return (0);
 }
 
+static bool
+checkmodref(int action_modref, int cumulative_modref,
+	     const dtrace_probedesc_t *dp, FILE *output)
+{
+
+	if ((cumulative_modref & DTRACE_MODREF_ANY_MOD) == 0) {
+		// We don't care about pre-modification behaviour.
+		return (true);
+	}
+
+	if (action_modref & DTRACE_MODREF_ANY_REF) {
+		fprintf(output, "ref-after-mod in %s:%s:%s:%s:",
+			dp->dtpd_provider, dp->dtpd_mod, dp->dtpd_func,
+			dp->dtpd_name);
+		if (action_modref & DTRACE_MODREF_GLOBAL_REF)
+			fprintf(output, " global");
+		if (action_modref & DTRACE_MODREF_THREAD_LOCAL_REF)
+			fprintf(output, " thread");
+		if (action_modref & DTRACE_MODREF_CLAUSE_LOCAL_REF)
+			fprintf(output, " clause");
+		if (action_modref & DTRACE_MODREF_MEMORY_REF)
+			fprintf(output, " external");
+		if (action_modref & DTRACE_MODREF_STATE_REF)
+			fprintf(output, " internal");
+		fprintf(output, "\n");
+
+		return (false);
+	}
+
+	return (true);
+}
+
 /*
  * Execute the specified program by enabling the corresponding instrumentation.
  * If -e has been specified, we get the program info but do not enable it.  If
@@ -626,6 +667,23 @@ exec_prog(const dtrace_cmd_t *dcp)
 {
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_proginfo_t dpi;
+
+	// Don't take any action based on unwanted mod/ref behaviour:
+	// checkmodref emits warnings and that's the end of it.
+	(void) dtrace_analyze_program_modref(dcp->dc_prog, checkmodref, stderr);
+	(void) dtrace_dump_actions(dcp->dc_prog);
+
+	if (g_graphfile) {
+		FILE *graph_file = fopen(g_graphfile, "w");
+		if (graph_file == NULL) {
+			fprintf(stderr, "Failed to open %s for writing\n",
+				g_graphfile);
+			return;
+		}
+
+		dtrace_graph_program(g_dtp, dcp->dc_prog, graph_file);
+		fclose(graph_file);
+	}
 
 	if (!g_exec) {
 		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
@@ -1301,6 +1359,44 @@ installsighands(void)
 #endif
 }
 
+static void
+filter_machines(char *filt)
+{
+	dtrace_machine_filter_t out;
+	char *list = strdup(filt);
+	char *f, *token;
+	size_t n, i;
+	int error;
+
+	memset(&out, 0, sizeof(dtrace_machine_filter_t));
+	f = NULL;
+	token = NULL;
+	error = 0;
+	n = 0;
+
+	if (filt == NULL)
+		return;
+
+	f = list;
+	while ((token = strsep(&f, ",")) != NULL) {
+		if (out.dtfl_count >= DTRACEFILT_MAX)
+			dfatal("Too many arguments\n");
+	        n = strlcpy((char*) &out.dtfl_entries[out.dtfl_count++],
+		    token, DTRACE_MAXFILTNAME);
+		if (n >= DTRACE_MAXFILTNAME)
+			dfatal("Name too long: %s", token);
+	}
+
+	if (out.dtfl_count > 0) {
+		error = dt_filter(g_dtp, &out);
+	}
+
+	if (error)
+		dfatal("Can't filter: %d\n", error);
+
+	free(list);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -1308,6 +1404,13 @@ main(int argc, char *argv[])
 	dtrace_status_t status[2];
 	dtrace_optval_t opt;
 	dtrace_cmd_t *dcp;
+	char *machine_filter;
+	dtrace_consumer_t con;
+
+	con.dc_consume_probe = chew;
+	con.dc_consume_rec = chewrec;
+	con.dc_get_buf = NULL;
+	con.dc_put_buf = NULL;
 
 	g_ofp = stdout;
 	int done = 0, mode = 0;
@@ -1315,6 +1418,8 @@ main(int argc, char *argv[])
 	char *p, **v;
 	struct ps_prochandle *P;
 	pid_t pid;
+
+	machine_filter = NULL;
 
 	g_pname = basename(argv[0]);
 
@@ -1378,6 +1483,10 @@ main(int argc, char *argv[])
 				done = 1;
 				break;
 
+			case 'g':
+				g_graphfile = optarg;
+				break;
+
 			case 'h':
 				g_mode = DMODE_HEADER;
 				g_oflags |= DTRACE_O_NODEV;
@@ -1392,6 +1501,10 @@ main(int argc, char *argv[])
 				g_cflags |= DTRACE_C_ZDEFS; /* -G implies -Z */
 				g_exec = 0;
 				mode++;
+				break;
+
+			case 'M':
+				machine_filter = strdup(optarg);
 				break;
 
 			case 'l':
@@ -1521,6 +1634,11 @@ main(int argc, char *argv[])
 		g_argc = 1;
 	} else if (g_mode == DMODE_ANON)
 		(void) dtrace_setopt(g_dtp, "linkmode", "primary");
+
+	if (machine_filter != NULL) {
+		filter_machines(machine_filter);
+		free(machine_filter);
+	}
 
 	/*
 	 * Now that we have libdtrace open, make a second pass through argv[]
@@ -1984,7 +2102,7 @@ main(int argc, char *argv[])
 				dfatal("couldn't stop tracing");
 		}
 
-		switch (dtrace_work(g_dtp, g_ofp, chew, chewrec, NULL)) {
+		switch (dtrace_work(g_dtp, g_ofp, &con, NULL)) {
 		case DTRACE_WORKSTATUS_DONE:
 			done = 1;
 			break;
@@ -1997,6 +2115,7 @@ main(int argc, char *argv[])
 
 		if (g_ofp != NULL && fflush(g_ofp) == EOF)
 			clearerr(g_ofp);
+
 	} while (!done);
 
 	oprintf("\n");

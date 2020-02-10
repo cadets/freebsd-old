@@ -72,6 +72,8 @@ struct dt_arg;			/* see below */
 struct dt_provider;		/* see <dt_provider.h> */
 struct dt_xlator;		/* see <dt_xlator.h> */
 
+extern int dt_subr_h2g[DIF_SUBR_MAX+1];
+
 typedef struct dt_intrinsic {
 	const char *din_name;	/* string name of the intrinsic type */
 	ctf_encoding_t din_data; /* integer or floating-point CTF encoding */
@@ -362,6 +364,7 @@ struct dtrace_hdl {
 	int dt_indent;		/* recommended flow indent */
 	dtrace_epid_t dt_last_epid;	/* most recently consumed EPID */
 	uint64_t dt_last_timestamp;	/* most recently consumed timestamp */
+	char *dt_instance;	/* Current instance name or NULL */
 	boolean_t dt_has_sugar;	/* syntactic sugar used? */
 };
 
@@ -740,6 +743,11 @@ extern uint_t _dtrace_pidlrulim;	/* number of proc handles to cache */
 extern int _dtrace_debug;		/* debugging messages enabled */
 extern size_t _dtrace_bufsize;		/* default dt_buf_create() size */
 extern int _dtrace_argmax;		/* default maximum probe arguments */
+
+
+#define DT_SCRIPT_TYPE_GUEST	0x1
+#define DT_SCRIPT_TYPE_HOST	0x2
+extern int script_type;		/* default script type */
 
 extern const char *_dtrace_libdir;	/* default library directory */
 extern const char *_dtrace_moddir;	/* default kernel module directory */
