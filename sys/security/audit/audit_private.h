@@ -51,6 +51,8 @@
 
 #include <sys/caprights.h>
 #include <sys/ipc.h>
+#include <sys/mbufid.h>
+#include <sys/smp.h>
 #include <sys/socket.h>
 #include <sys/ucred.h>
 
@@ -97,6 +99,12 @@ extern int			audit_arge;
 #define	AR_PRESELECT_USER_PIPE	0x00008000U
 
 #define	AR_PRESELECT_DTRACE	0x00010000U
+
+/*
+ * When collecting MAC labels, limit individual label lengths to this number
+ * of 8-byte characters (including terminating nul).
+ */
+#define	AUDIT_MAC_LABEL_MAX	64
 
 /*
  * Audit data is generated as a stream of struct audit_record structures,
@@ -179,6 +187,7 @@ struct audit_record {
 	struct timespec		ar_starttime;
 	struct timespec		ar_endtime;
 	u_int64_t		ar_valid_arg;  /* Bitmask of valid arguments */
+	u_int64_t		ar_valid_ret;/* Bitmask of valid return vals. */
 
 	/* Audit subject information. */
 	struct xucred		ar_subj_cred;
@@ -188,6 +197,11 @@ struct audit_record {
 	uid_t			ar_subj_auid; /* Audit user ID */
 	pid_t			ar_subj_asid; /* Audit session ID */
 	pid_t			ar_subj_pid;
+#ifdef KDTRACE_HOOKS
+	lwpid_t			ar_subj_tid;
+	cpuid_t			ar_subj_cpuid;
+#endif
+	char			ar_subj_mac[AUDIT_MAC_LABEL_MAX];
 	struct au_tid		ar_subj_term;
 	struct au_tid_addr	ar_subj_term_addr;
 	struct au_mask		ar_subj_amask;
@@ -245,6 +259,14 @@ struct audit_record {
 	cap_rights_t		ar_arg_rights;
 	uint32_t		ar_arg_fcntl_rights;
 	char			ar_jailname[MAXHOSTNAMELEN];
+
+#ifdef KDTRACE_HOOKS
+	int			ar_ret_fd1;
+	int			ar_ret_fd2;
+	msgid_t			ar_ret_msgid;
+	mbufid_t		ar_ret_mbufid;
+#endif
+	int			ar_ret_svipc_id;
 };
 
 /*
@@ -310,12 +332,26 @@ struct audit_record {
 #define	ARG_NONE		0x0000000000000000ULL
 #define	ARG_ALL			0xFFFFFFFFFFFFFFFFULL
 
+/* XXXRW: Re-order before upstreaming. */
+#define	RET_MSGID		0x0000000000000004ULL
+#define	RET_SVIPC_ID		0x0000000000000008ULL
+#define	RET_FD1			0x0000000000000010ULL
+#define	RET_FD2			0x0000000000000020ULL
+
 #define	ARG_IS_VALID(kar, arg)	((kar)->k_ar.ar_valid_arg & (arg))
 #define	ARG_SET_VALID(kar, arg) do {					\
 	(kar)->k_ar.ar_valid_arg |= (arg);				\
 } while (0)
 #define	ARG_CLEAR_VALID(kar, arg) do {					\
 	(kar)->k_ar.ar_valid_arg &= ~(arg);				\
+} while (0)
+
+#define	RET_IS_VALID(kar, ret)	((kar)->k_ar.ar_valid_ret & (ret))
+#define	RET_SET_VALID(kar, ret) do {					\
+	(kar)->k_ar.ar_valid_ret |= (ret);				\
+} while (0)
+#define	RET_CLEAR_VALID(kar, ret) do {					\
+	(kar)->k_ar.ar_valid_ret &= ~(ret);				\
 } while (0)
 
 /*

@@ -44,7 +44,11 @@ __FBSDID("$FreeBSD$");
 #include "opt_ddb.h"
 #include "opt_netgraph.h"
 
+#include <sys/types.h>
 #include <sys/param.h>
+#include <sys/lock.h>
+#include <sys/rwlock.h>
+#include <sys/systm.h>
 #include <sys/conf.h>
 #include <sys/eventhandler.h>
 #include <sys/fcntl.h>
@@ -64,6 +68,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/uio.h>
 #include <sys/sysent.h>
 #include <sys/systm.h>
+#include <sys/mbufid.h>
 
 #include <sys/event.h>
 #include <sys/file.h>
@@ -96,6 +101,7 @@ __FBSDID("$FreeBSD$");
 
 #include <net80211/ieee80211_freebsd.h>
 
+#include <security/audit/audit.h>
 #include <security/mac/mac_framework.h>
 
 MALLOC_DEFINE(M_BPF, "BPF", "BPF data");
@@ -1241,6 +1247,9 @@ bpfwrite(struct cdev *dev, struct uio *uio, int ioflag)
 	} else
 		mc = NULL;
 
+	mbufid_generate(&m->m_pkthdr.mbufid);
+	mbufid_assert_sanity(&m->m_pkthdr.mbufid);
+	AUDIT_RET_MBUFID(&m->m_pkthdr.mbufid);
 	m->m_pkthdr.len -= hlen;
 	m->m_len -= hlen;
 	m->m_data += hlen;	/* XXX */

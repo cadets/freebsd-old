@@ -4869,6 +4869,7 @@ security/audit/bsm_errno.c	optional audit
 security/audit/bsm_fcntl.c	optional audit
 security/audit/bsm_socket_type.c	optional audit
 security/audit/bsm_token.c	optional audit
+security/audit/audit_ret.c	optional audit
 security/mac/mac_audit.c	optional mac audit
 security/mac/mac_cred.c		optional mac
 security/mac/mac_framework.c	optional mac

@@ -241,6 +241,7 @@ enum {
 	IOCNUM_GET_CAPABILITY = 3,
 	IOCNUM_SUSPEND = 4,
 	IOCNUM_REINIT = 5,
+	IOCNUM_GET_ID = 6,
 
 	/* memory apis */
 	IOCNUM_MAP_MEMORY = 10,			/* deprecated */
@@ -422,4 +423,6 @@ enum {
 	_IOR('v', IOCNUM_RTC_GETTIME, struct vm_rtc_time)
 #define	VM_RESTART_INSTRUCTION \
 	_IOW('v', IOCNUM_RESTART_INSTRUCTION, int)
+#define	VM_GET_IDENTIFIER \
+	_IOW('v', IOCNUM_GET_ID, int16_t)
 #endif
