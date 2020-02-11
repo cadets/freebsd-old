@@ -327,7 +327,7 @@ void vtdtr_cq_print(struct vtdtr_ctrlq *cq, char *from)
 	if (!STAILQ_EMPTY(&tq->head))
 		STAILQ_FOREACH_SAFE(ctrl_entry, &cq->head, entries, ctrl_entry_temp)
 		{
-			printf(" %d \n", ctrl_entry->trace.dtbd_size);
+			printf("%d \n", ctrl_entry->uctrl.trc_ev.dtbd_size);
 		}
 	else
 		printf("Trace queue is empty. \n");
