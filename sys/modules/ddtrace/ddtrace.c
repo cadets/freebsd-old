@@ -92,7 +92,7 @@ static void ddtrace_thread(void *);
 static void ddtrace_buffer_switch(dtrace_state_t *, struct dlog_handle *, struct vtdtr_traceq *);
 static int ddtrace_persist_metadata(dtrace_state_t *, struct dlog_handle *);
 static void ddtrace_persist_trace(dtrace_state_t *, struct dlog_handle *,
-								  dtrace_bufdesc_t *, struct vtdtr_traceq *);
+								  dtrace_bufdesc_t *);
 
 static void ddtrace_open(void *, struct dtrace_state *);
 static void ddtrace_close(void *, struct dtrace_state *);
@@ -323,13 +323,13 @@ ddtrace_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle, struct 
 		/* If the buffer contains records persist them to the
 		 * distributed log.
 		 */
-		
-		if (desc.dtbd_size != 0) {
+
+		if (desc.dtbd_size != 0)
+		{
 			DLOGTR0(PRIO_LOW, "About to persist trace data");
-			ddtrace_persist_trace(state, handle, &desc, tq);
+			ddtrace_persist_trace(state, handle, &desc);
 		}
 	}
-
 }
 
 static void
@@ -337,11 +337,8 @@ ddtrace_thread(void *arg)
 {
 	struct client *k = (struct client *)arg;
 	struct timespec curtime;
-	struct vtdtr_traceq *tq;
 
 	ddtrace_assert_integrity(__func__, k);
-	
-	tq = virtio_dtrace_device_register();;
 
 	/* Write the metadata to the log before processing the trace
 	 * buffers.
@@ -378,7 +375,7 @@ ddtrace_thread(void *arg)
 		k->ddtrace_state->dts_alive = INT64_MAX;
 		dtrace_membar_producer();
 		// TODO(MARA): solve this hack
-		k->ddtrace_state->dts_alive = (hrtime_t) dtrace_gethrtime();
+		k->ddtrace_state->dts_alive = (hrtime_t)dtrace_gethrtime();
 
 		/* Switch the buffer and write the contents to DLog. */
 		ddtrace_buffer_switch(k->ddtrace_state,
@@ -603,13 +600,15 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 
 static void
 ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
-					  dtrace_bufdesc_t *desc, struct vtdtr_traceq *tq)
+					  dtrace_bufdesc_t *desc)
 {
 	dtrace_epid_t epid;
-	// struct vtdtr_traceq *tq;
+	struct vtdtr_traceq *tq;
 	struct vtdtr_trace_entry *trc_entry;
 	struct virtio_dtrace_trace *trc;
 	size_t msg_start = 0, msg_size = 0, size = 0;
+
+	tq = virtio_dtrace_device_register();
 
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL."));
 	DL_ASSERT(hdl != NULL, ("DLog handle cannot be NULL."));
@@ -622,13 +621,12 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 
 	DLOGTR0(PRIO_LOW, "Persisting trace data. \n");
 
-	
 	DL_ASSERT(tq != NULL, ("vtdtr_traceq was not initialised.\n"));
-	
+
 	trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 	DL_ASSERT(trc_entry != NULL, "Failed allocating memory for trace entry.");
 	memset(trc_entry, 0, sizeof(struct vtdtr_trace_entry));
-	
+
 	trc = &trc_entry->trace;
 	trc->dtbd_size = desc->dtbd_size;
 	trc->dtbd_cpu = desc->dtbd_cpu;
@@ -639,12 +637,15 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 
 	DLOGTR2(PRIO_LOW, "Trace ddata size is: %zu. Copied trace data size: %zu. \n", desc->dtbd_size, trc->dtbd_size);
 
+
 	mtx_lock(&tq->mtx);
+	vtdtr_tq_print(tq, "In ddtrace, before enqueue");
 	vtdtr_tq_enqueue(tq, trc_entry);
+	vtdtr_tq_print(tq, "In ddtrace, after enqueue");
+
 	DLOGTR0(PRIO_LOW, "Successfully enqueued trace data, unlocking queue. \n");
 	DL_ASSERT(tq->n_entries != 0, "Failed enqueueing, number of entries cannot be 0.");
 	mtx_unlock(&tq->mtx);
-	
 
 #if 0
 	while (size < desc->dtbd_size)

@@ -281,7 +281,7 @@ int vtdtr_tq_empty(struct vtdtr_traceq *tq)
 void vtdtr_tq_enqueue(struct vtdtr_traceq *tq, struct vtdtr_trace_entry *trc_entry)
 {
 	STAILQ_INSERT_TAIL(&tq->head, trc_entry, entries);
-	tq->n_entries ++;
+	tq->n_entries++;
 }
 
 void vtdtr_tq_init(struct vtdtr_traceq *tq)
@@ -297,10 +297,40 @@ struct vtdtr_trace_entry *vtdtr_tq_dequeue(struct vtdtr_traceq *tq)
 	if (trc_entry != NULL)
 	{
 		STAILQ_REMOVE_HEAD(&tq->head, entries);
-		tq->n_entries --;
+		tq->n_entries--;
 	}
 
 	return trc_entry;
+}
+
+void vtdtr_tq_print(struct vtdtr_traceq *tq, char *from)
+{
+	device_printf("%s", from);
+
+	struct vtdtr_trace_entry *trc_entry, *trc_entry_temp;
+
+	if (!STAILQ_EMPTY(&tq->head))
+		STAILQ_FOREACH_SAFE(trc_entry, &tq->head, entries, trc_entry_temp)
+		{
+			device_printf(dev, " %d \n", trc_entry->trace.dtbd_size);
+		}
+	else
+		device_printf("Trace queue is empty. \n");
+}
+
+void vtdtr_cq_print(struct vtdtr_ctrlq *cq, char *from)
+{
+	device_printf("%s", from);
+
+	struct vtdtr_ctrl_entry *ctrl_entry, *ctrl_entry_temp;
+
+	if (!STAILQ_EMPTY(&tq->head))
+		STAILQ_FOREACH_SAFE(ctrl_entry, &cq->head, entries, ctrl_entry_temp)
+		{
+			device_printf(dev, " %d \n", ctrl_entry->trace.dtbd_size);
+		}
+	else
+		device_printf("Trace queue is empty. \n");
 }
 
 /*
@@ -340,9 +370,8 @@ vtdtr_attach(device_t dev)
 		goto fail;
 	}
 	mtx_init(&tq->mtx, "vtdtrtqmtx", NULL, MTX_DEF);
-	
-	vtdtr_tq_init(tq);
 
+	vtdtr_tq_init(tq);
 
 	sc->vtdtr_ctrlq = malloc(sizeof(struct vtdtr_ctrlq),
 							 M_DEVBUF, M_NOWAIT | M_ZERO);
@@ -1311,7 +1340,11 @@ vtdtr_consume_trace(void *xsc)
 		while (!vtdtr_tq_empty(tq))
 		{
 			device_printf(dev, "Actually enqueued in ddtrace. \n");
+
+			vtdtr_tq_print(tq, "In virtio_dtrace, before dequeue.");
 			trc_entry = vtdtr_tq_dequeue(tq);
+			vtdtr_tq_print(tq, "In virtio_dtrace, after dequeue.");
+
 			trc = &trc_entry->trace;
 			device_printf(dev, "Trace data size: %zu. \n", trc->dtbd_size);
 			KASSERT(trc->dtbd_data != NULL, "Trace data buffer cannot be NULL.");
@@ -1330,29 +1363,30 @@ vtdtr_consume_trace(void *xsc)
 			ctrl_trc_ev->dtbd_drops = trc->dtbd_drops;
 			ctrl_trc_ev->dtbd_oldest = trc->dtbd_oldest;
 			KASSERT(ctrl_trc_ev->dtbd_size == trc->dtbd_size, "Failed copying into fields");
-			
-			if(ctrl_trc_ev->dtbd_size < 512)
+
+			if (ctrl_trc_ev->dtbd_size < 512)
 			{
 				trc_buf_len = strlen(trc->dtbd_data);
 				size_t cp = strlcpy(ctrl_trc_ev->dtbd_data, trc->dtbd_data, trc_buf_len + 1);
 				KASSERT(cp == trc_buf_len, "Error occured while copying trace buffer data");
 			}
 
+			mtx_lock(&sc->vtdtr_ctrlq->mtx);
+			vtdtr_cq_print(sc->vtdtr_ctrlq, "In virtio_dtrace, before enqueue.");
+			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
+			vtdtr_cq_print(sc->vtdtr_ctrlq, "In virtio_dtrace, after enqueue.");
+
+			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
+
+			device_printf(dev, "Successfully enqueued in the control queue. \n");
 			device_printf(dev, "I've filled fields in control entry, freeing trace entry");
 			free(trc_entry, M_DEVBUF);
 
-			mtx_lock(&sc->vtdtr_ctrlq->mtx);
-			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
-			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
-
-			device_printf(dev, "Successfully enqueued in the control queue. \n");	
-
+			mtx_lock(&sc->vtdtr_condmtx);
+			cv_signal(&sc->vtdtr_condvar);
+			mtx_unlock(&sc->vtdtr_condmtx);
 		}
 		mtx_unlock(&tq->mtx);
-
-		mtx_lock(&sc->vtdtr_condmtx);
-		cv_signal(&sc->vtdtr_condvar);
-		mtx_unlock(&sc->vtdtr_condmtx);
 	}
 	kthread_exit();
 }
@@ -1451,7 +1485,7 @@ vtdtr_run(void *xsc)
 			vtdtr_fill_desc(txq, &ctrls[nent]);
 			free(ctrl_entry, M_DEVBUF);
 			nent++;
-			device_printf(dev, "I've put an event in the virtual queue");
+			device_printf(dev, "I've put an event in the virtual queue. \n");
 			mtx_lock(&sc->vtdtr_ctrlq->mtx);
 		}
 

@@ -330,9 +330,11 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		break;
 #endif
 	case VTDTR_DEVICE_TRACE:
-		printf("here");
 		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
-		DPRINTF(("About to open pipe to send trace data. \n"));
+		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+		pci_vtdtr_cq_enqueue(&sc->vsd_ctrlq, ctrl);
+		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+		DPRINTF(("About to open pipe to send trace data.\n"));
 		break;
 	case VTDTR_DEVICE_EOF:
 		retval = 1;
