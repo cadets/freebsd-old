@@ -305,32 +305,32 @@ struct vtdtr_trace_entry *vtdtr_tq_dequeue(struct vtdtr_traceq *tq)
 
 void vtdtr_tq_print(struct vtdtr_traceq *tq, char *from)
 {
-	device_printf("%s", from);
+	printf("%s", from);
 
 	struct vtdtr_trace_entry *trc_entry, *trc_entry_temp;
 
 	if (!STAILQ_EMPTY(&tq->head))
 		STAILQ_FOREACH_SAFE(trc_entry, &tq->head, entries, trc_entry_temp)
 		{
-			device_printf(dev, " %d \n", trc_entry->trace.dtbd_size);
+			printf(" %d \n", trc_entry->trace.dtbd_size);
 		}
 	else
-		device_printf("Trace queue is empty. \n");
+		printf("Trace queue is empty. \n");
 }
 
 void vtdtr_cq_print(struct vtdtr_ctrlq *cq, char *from)
 {
-	device_printf("%s", from);
+	printf("%s", from);
 
 	struct vtdtr_ctrl_entry *ctrl_entry, *ctrl_entry_temp;
 
 	if (!STAILQ_EMPTY(&tq->head))
 		STAILQ_FOREACH_SAFE(ctrl_entry, &cq->head, entries, ctrl_entry_temp)
 		{
-			device_printf(dev, " %d \n", ctrl_entry->trace.dtbd_size);
+			printf(" %d \n", ctrl_entry->trace.dtbd_size);
 		}
 	else
-		device_printf("Trace queue is empty. \n");
+		printf("Trace queue is empty. \n");
 }
 
 /*
