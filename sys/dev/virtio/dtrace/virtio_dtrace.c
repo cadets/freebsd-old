@@ -1387,7 +1387,6 @@ vtdtr_consume_trace(void *xsc)
 		}
 		mtx_unlock(&tq->mtx);
 	}
-	kthread_exit();
 }
 
 /*
