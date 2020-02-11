@@ -89,7 +89,7 @@ MALLOC_DEFINE(M_DDTRACE, "ddtrace", "DDTrace memory");
 static int ddtrace_event_handler(struct module *, int, void *);
 static void ddtrace_thread(void *);
 
-static void ddtrace_buffer_switch(dtrace_state_t *, struct dlog_handle *, struct vtdtr_traceq *);
+static void ddtrace_buffer_switch(dtrace_state_t *, struct dlog_handle *);
 static int ddtrace_persist_metadata(dtrace_state_t *, struct dlog_handle *);
 static void ddtrace_persist_trace(dtrace_state_t *, struct dlog_handle *,
 								  dtrace_bufdesc_t *);
@@ -260,7 +260,7 @@ ddtrace_stop(struct clients *ddtrace_hashtbl)
 }
 
 static void
-ddtrace_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle, struct vtdtr_traceq *tq)
+ddtrace_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 {
 	caddr_t cached;
 	dtrace_bufdesc_t desc;
@@ -379,7 +379,7 @@ ddtrace_thread(void *arg)
 
 		/* Switch the buffer and write the contents to DLog. */
 		ddtrace_buffer_switch(k->ddtrace_state,
-							  k->ddtrace_dlog_handle, tq);
+							  k->ddtrace_dlog_handle);
 	}
 
 	/* Switch the buffer and write the contetnts to DLog before exiting.
@@ -387,7 +387,7 @@ ddtrace_thread(void *arg)
 	 * empty buffer on termination.
 	 */
 	ddtrace_buffer_switch(k->ddtrace_state,
-						  k->ddtrace_dlog_handle, tq);
+						  k->ddtrace_dlog_handle);
 
 	DLOGTR0(PRIO_NORMAL, "DDTrace thread exited successfully.\n");
 	kthread_exit();

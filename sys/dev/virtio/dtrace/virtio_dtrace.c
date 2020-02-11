@@ -1375,7 +1375,6 @@ vtdtr_consume_trace(void *xsc)
 			vtdtr_cq_print(sc->vtdtr_ctrlq, "In virtio_dtrace, before enqueue.");
 			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 			vtdtr_cq_print(sc->vtdtr_ctrlq, "In virtio_dtrace, after enqueue.");
-
 			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 
 			device_printf(dev, "Successfully enqueued in the control queue. \n");
