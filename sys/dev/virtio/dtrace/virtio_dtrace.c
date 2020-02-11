@@ -324,13 +324,13 @@ void vtdtr_cq_print(struct vtdtr_ctrlq *cq, char *from)
 
 	struct vtdtr_ctrl_entry *ctrl_entry, *ctrl_entry_temp;
 
-	if (!STAILQ_EMPTY(&tq->head))
+	if (!STAILQ_EMPTY(&cq->head))
 		STAILQ_FOREACH_SAFE(ctrl_entry, &cq->head, entries, ctrl_entry_temp)
 		{
 			printf("%d \n", ctrl_entry->ctrl.uctrl.trace_ev.dtbd_size);
 		}
 	else
-		printf("Trace queue is empty. \n");
+		printf("Control queue is empty. \n");
 }
 
 /*
