@@ -341,8 +341,7 @@ ddtrace_thread(void *arg)
 
 	ddtrace_assert_integrity(__func__, k);
 	
-	tq = virtio_dtrace_device_register();
-	mtx_lock(&tq->mtx);
+	tq = virtio_dtrace_device_register();;
 
 	/* Write the metadata to the log before processing the trace
 	 * buffers.
@@ -392,8 +391,6 @@ ddtrace_thread(void *arg)
 	 */
 	ddtrace_buffer_switch(k->ddtrace_state,
 						  k->ddtrace_dlog_handle, tq);
-	
-	mtx_unlock(&tq->mtx);
 
 	DLOGTR0(PRIO_NORMAL, "DDTrace thread exited successfully.\n");
 	kthread_exit();
@@ -642,11 +639,11 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 
 	DLOGTR2(PRIO_LOW, "Trace ddata size is: %zu. Copied trace data size: %zu. \n", desc->dtbd_size, trc->dtbd_size);
 
-	// mtx_lock(&tq->mtx);
+	mtx_lock(&tq->mtx);
 	vtdtr_tq_enqueue(tq, trc_entry);
 	DLOGTR0(PRIO_LOW, "Successfully enqueued trace data, unlocking queue. \n");
 	DL_ASSERT(tq->n_entries != 0, "Failed enqueueing, number of entries cannot be 0.");
-	// mtx_unlock(&tq->mtx);
+	mtx_unlock(&tq->mtx);
 	
 
 #if 0
