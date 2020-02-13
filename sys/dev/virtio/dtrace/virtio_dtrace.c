@@ -1385,6 +1385,7 @@ vtdtr_consume_trace(void *xsc)
 			cv_signal(&sc->vtdtr_condvar);
 			mtx_unlock(&sc->vtdtr_condmtx);
 			device_printf(dev, "Successfully signalled there are entries in the control queue.");
+			KASSERT(!vtdtr_cq_empty(&sc->vtdtr_ctrlq), "Control queue can't be empty at this point");
 		}
 		mtx_unlock(&tq->mtx);
 	}
@@ -1438,11 +1439,14 @@ vtdtr_run(void *xsc)
 		 * or if we are
 		 * (3) Shutting down
 		 */
+
 		while ((vtdtr_cq_empty(sc->vtdtr_ctrlq) ||
 				!sc->vtdtr_host_ready) &&
 			   (!sc->vtdtr_shutdown))
 		{
+			device_printf(dev, "Is control queue empty? %d \n", vtdtr_cq_empty(sc->vtdtr_ctrlq));
 			cv_wait(&sc->vtdtr_condvar, &sc->vtdtr_condmtx);
+			device_printf("I've finished waiting. \n");
 		}
 		device_printf(dev, "There are entries in the control queue and the conditional variable was signaled. \n");
 			mtx_unlock(&sc->vtdtr_condmtx);
