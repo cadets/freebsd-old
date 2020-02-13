@@ -1446,7 +1446,7 @@ vtdtr_run(void *xsc)
 		{
 			device_printf(dev, "Is control queue empty? %d \n", vtdtr_cq_empty(sc->vtdtr_ctrlq));
 			cv_wait(&sc->vtdtr_condvar, &sc->vtdtr_condmtx);
-			device_printf("I've finished waiting. \n");
+			device_printf(dev,"I've finished waiting. \n");
 		}
 		device_printf(dev, "There are entries in the control queue and the conditional variable was signaled. \n");
 			mtx_unlock(&sc->vtdtr_condmtx);
