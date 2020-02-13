@@ -1445,7 +1445,7 @@ vtdtr_run(void *xsc)
 			   (!sc->vtdtr_shutdown))
 		{
 			device_printf(dev, "Is control queue empty? %d \n", vtdtr_cq_empty(sc->vtdtr_ctrlq));
-			device_printf(dev, "vtdtr_shutdown: %d host_ready: %d", sc->vtdtr_host_ready,sc->vtdtr_shutdown)
+			device_printf(dev, "vtdtr_shutdown: %d host_ready: %d", sc->vtdtr_host_ready,sc->vtdtr_shutdown);
 			cv_wait(&sc->vtdtr_condvar, &sc->vtdtr_condmtx);
 			device_printf(dev,"I've finished waiting. \n");
 		}
