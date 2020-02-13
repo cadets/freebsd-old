@@ -1444,7 +1444,7 @@ vtdtr_run(void *xsc)
 		{
 			cv_wait(&sc->vtdtr_condvar, &sc->vtdtr_condmtx);
 		}
-		device_printf(dev, "There are entries in the control queue and the conditional variable was signaled. \n")
+		device_printf(dev, "There are entries in the control queue and the conditional variable was signaled. \n");
 			mtx_unlock(&sc->vtdtr_condmtx);
 
 		kthread_suspend_check();
