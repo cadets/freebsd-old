@@ -26,6 +26,7 @@ SRCS=	\
 	ctl_util.c		\
 	ctl_scsi_all.c		\
 	dbgport.c		\
+	dthyve.c		\
 	fwctl.c			\
 	gdb.c			\
 	hda_codec.c		\
@@ -48,6 +49,7 @@ SRCS=	\
 	pci_passthru.c		\
 	pci_virtio_block.c	\
 	pci_virtio_console.c	\
+	pci_virtio_dtrace.c	\
 	pci_virtio_net.c	\
 	pci_virtio_rnd.c	\
 	pci_virtio_scsi.c	\
@@ -71,6 +73,9 @@ SRCS=	\
 	spinup_ap.c		\
 	iov.c
 
+LDFLAGS+= -l dtrace -l proc -l ctf -l elf -l z -l rtld_db -l pthread -l util
+
+
 .PATH:  ${BHYVE_SYSDIR}/sys/amd64/vmm
 SRCS+=	vmm_instruction_emul.c
 
@@ -91,6 +96,7 @@ LIBADD+=	crypto
 CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/e1000
 CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/mii
 CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/usb/controller
+CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/virtio/dtrace
 
 .ifdef GDB_LOG
 CFLAGS+=-DGDB_LOG

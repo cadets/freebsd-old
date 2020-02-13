@@ -1,7 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
- *
- * Copyright (C) 1999-2000 by Maksim Yevmenkin <m_evmenkin@yahoo.com>
+ * Copyright (c) 2017 Domagoj Stolfa <domagoj.stolfa@gmail.com>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,52 +23,38 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * BASED ON:
- * -------------------------------------------------------------------------
- *
- * Copyright (c) 1988, Julian Onions <jpo@cs.nott.ac.uk>
- * Nottingham University 1987.
- */
-
-/*
  * $FreeBSD$
- * $Id: if_tap.h,v 0.7 2000/07/12 04:12:51 max Exp $
  */
 
-#ifndef _NET_IF_TAP_H_
-#define _NET_IF_TAP_H_
+#ifndef _DTHYVE_H_
+#define _DTHYVE_H_
 
-#include <net/if_tun.h>
+#include <sys/types.h>
+#include <sys/vtdtr.h>
 
-/* maximum receive packet size (hard limit) */
-#define	TAPMRU		65535
+#ifndef VTDTR
+struct vtdtr_event;
 
-#define	tapinfo		tuninfo
+void dthyve_init(const char *);
+int dthyve_conf(size_t, sbintime_t);
+int dthyve_configured(void);
+int dthyve_read(struct vtdtr_event *, size_t);
+void dthyve_destroy(void);
+#endif
 
-/*
- * ioctl's for get/set debug; these are aliases of TUN* ioctls, see net/if_tun.h
- * for details.
- */
-#define	TAPSDEBUG		TUNSDEBUG
-#define	TAPGDEBUG		TUNGDEBUG
-#define	TAPSIFINFO		TUNSIFINFO
-#define	TAPGIFINFO		TUNGIFINFO
-#define	TAPGIFNAME		TUNGIFNAME
-#define	TAPSVNETHDR		_IOW('t', 91, int)
-#define	TAPGVNETHDR		_IOR('t', 94, int)
-#define	TAPSTAGGING	       	TUNSTAGGING
-/* VMware ioctl's */
-#define VMIO_SIOCSIFFLAGS	_IOWINT('V', 0)
-#define VMIO_SIOCSKEEP		_IO('V', 1)
-#define VMIO_SIOCSIFBR		_IO('V', 2)
-#define VMIO_SIOCSLADRF		_IO('V', 3)
+#ifdef VTDTR
+#ifdef DTVIRT
 
-/* XXX -- unimplemented */
-#define VMIO_SIOCSETMACADDR	_IO('V', 4)
+struct uuid;
 
-/* XXX -- not used? */
-#define VMIO_SIOCPORT		_IO('V', 5)
-#define VMIO_SIOCBRIDGE		_IO('V', 6)
-#define VMIO_SIOCNETIF		_IO('V', 7)
+int	dthyve_open(void);
+int	dthyve_register_provider(struct uuid *, const char *, const char *);
+int	dthyve_unregister_provider(struct uuid *);
+int	dthyve_probe_create(struct uuid *, const char *,
+    const char *, const char *, char types[10][128]);
+void	dthyve_cleanup(void);
 
-#endif /* !_NET_IF_TAP_H_ */
+#endif /* DTVIRT */
+#endif
+
+#endif /* _DTHYVE_H_ */
