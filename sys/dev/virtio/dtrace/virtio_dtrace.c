@@ -1372,7 +1372,7 @@ vtdtr_consume_trace(void *xsc)
 			}
 
 			mtx_lock(&sc->vtdtr_ctrlq->mtx);
-			vtdtr_cq_print(sc->vtdtr_ctrlq, "In virtio_dtrace, before enqueue.");
+			vtdtr_cq_print(sc->vtdtr_ctrlq, "In virtio_dtrace, before enqueue.");;
 			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 			vtdtr_cq_print(sc->vtdtr_ctrlq, "In virtio_dtrace, after enqueue.");
 			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
@@ -1384,7 +1384,7 @@ vtdtr_consume_trace(void *xsc)
 			mtx_lock(&sc->vtdtr_condmtx);
 			cv_signal(&sc->vtdtr_condvar);
 			mtx_unlock(&sc->vtdtr_condmtx);
-			device_printf(dev, "Successfully signalled there are entries in the control queue.")
+			device_printf(dev, "Successfully signalled there are entries in the control queue.");
 		}
 		mtx_unlock(&tq->mtx);
 	}
@@ -1478,7 +1478,7 @@ vtdtr_run(void *xsc)
 		{
 			ctrl_entry = vtdtr_cq_dequeue(sc->vtdtr_ctrlq);
 			if (ctrl_entry->ctrl.event == VIRTIO_DTRACE_TRACE)
-				device_printf(dev, "Dequeued from the control queue %d", ctrl_entry->ctrl.uctrl.trace_ev.);
+				device_printf(dev, "Dequeued from the control queue %d", ctrl_entry->ctrl.uctrl.trace_ev.dtbd_size);
 			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 			memcpy(&ctrls[nent], &ctrl_entry->ctrl,
 				   sizeof(struct virtio_dtrace_control));
