@@ -1384,6 +1384,7 @@ vtdtr_consume_trace(void *xsc)
 			mtx_lock(&sc->vtdtr_condmtx);
 			cv_signal(&sc->vtdtr_condvar);
 			mtx_unlock(&sc->vtdtr_condmtx);
+			device_printf(dev, "Successfully signalled there are entries in the control queue.")
 		}
 		mtx_unlock(&tq->mtx);
 	}
@@ -1443,7 +1444,8 @@ vtdtr_run(void *xsc)
 		{
 			cv_wait(&sc->vtdtr_condvar, &sc->vtdtr_condmtx);
 		}
-		mtx_unlock(&sc->vtdtr_condmtx);
+		device_printf(dev, "There are entries in the control queue and the conditional variable was signaled. \n")
+			mtx_unlock(&sc->vtdtr_condmtx);
 
 		kthread_suspend_check();
 
@@ -1470,10 +1472,13 @@ vtdtr_run(void *xsc)
 		 * processed.
 		 */
 		mtx_lock(&sc->vtdtr_ctrlq->mtx);
+		device_printf(dev, "Acquired control queue mutex. About to try enqueuing in the control queue. \n");
 		while (!virtqueue_full(vq) &&
 			   !vtdtr_cq_empty(sc->vtdtr_ctrlq))
 		{
 			ctrl_entry = vtdtr_cq_dequeue(sc->vtdtr_ctrlq);
+			if (ctrl_entry->ctrl.event == VIRTIO_DTRACE_TRACE)
+				device_printf(dev, "Dequeued from the control queue %d", ctrl_entry->ctrl.uctrl.trace_ev.);
 			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 			memcpy(&ctrls[nent], &ctrl_entry->ctrl,
 				   sizeof(struct virtio_dtrace_control));
@@ -1483,6 +1488,8 @@ vtdtr_run(void *xsc)
 			vtdtr_fill_desc(txq, &ctrls[nent]);
 			free(ctrl_entry, M_DEVBUF);
 			nent++;
+			// check size of control element
+			//
 			device_printf(dev, "I've put an event in the virtual queue. \n");
 			mtx_lock(&sc->vtdtr_ctrlq->mtx);
 		}
