@@ -1488,7 +1488,7 @@ vtdtr_run(void *xsc)
 			memcpy(&ctrls[nent], &ctrl_entry->ctrl,
 				   sizeof(struct virtio_dtrace_control));
 			if (ready_flag &&
-				ctrls[nent].event != VIRTIO_DTRACE_DEVICE_READY && ctrls[nent].event != VIRTIO_DTRACE_TRACE)
+				ctrls[nent].event != VIRTIO_DTRACE_DEVICE_READY)
 				ready_flag = 0;
 			vtdtr_fill_desc(txq, &ctrls[nent]);
 			free(ctrl_entry, M_DEVBUF);
