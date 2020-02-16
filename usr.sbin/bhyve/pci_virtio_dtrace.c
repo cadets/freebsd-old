@@ -333,10 +333,13 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(&sc->vsd_ctrlq, ctrl);
-		DPRINTF(("Host status: %d", sc->vsd_ready));
+		DPRINTF(("Host status: %d\n", sc->vsd_ready));
 		pci_vtdtr_notify_ready(sc);
 		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
-		DPRINTF(("About to open pipe to send trace data.\n"));
+
+		pthread_mutex_lock(&sc->vsd_condmtx);
+		pthread_cond_signal(&sc->vsd_cond);
+		pthread_mutex_unlock(&sc->vsd_condmtx);
 		break;
 	case VTDTR_DEVICE_EOF:
 		retval = 1;

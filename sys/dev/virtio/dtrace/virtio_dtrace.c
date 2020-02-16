@@ -1445,12 +1445,11 @@ vtdtr_run(void *xsc)
 			   (!sc->vtdtr_shutdown))
 		{
 			device_printf(dev, "Is control queue empty? %d \n", vtdtr_cq_empty(sc->vtdtr_ctrlq));
-			device_printf(dev, "vtdtr_shutdown: %d host_ready: %d", sc->vtdtr_host_ready,sc->vtdtr_shutdown);
+			device_printf(dev, "vtdtr_host_ready: %d, vtdtr_shutdown: %d", sc->vtdtr_host_ready,sc->vtdtr_shutdown);
 			cv_wait(&sc->vtdtr_condvar, &sc->vtdtr_condmtx);
 			device_printf(dev,"I've finished waiting. \n");
 		}
-		device_printf(dev, "There are entries in the control queue and the conditional variable was signaled. \n");
-			mtx_unlock(&sc->vtdtr_condmtx);
+		mtx_unlock(&sc->vtdtr_condmtx);
 
 		kthread_suspend_check();
 
@@ -1483,7 +1482,7 @@ vtdtr_run(void *xsc)
 		{
 			ctrl_entry = vtdtr_cq_dequeue(sc->vtdtr_ctrlq);
 			if (ctrl_entry->ctrl.event == VIRTIO_DTRACE_TRACE)
-				device_printf(dev, "Dequeued from the control queue %d", ctrl_entry->ctrl.uctrl.trace_ev.dtbd_size);
+				device_printf(dev, "Dequeued from the control queue %d.\n", ctrl_entry->ctrl.uctrl.trace_ev.dtbd_size);
 			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 			memcpy(&ctrls[nent], &ctrl_entry->ctrl,
 				   sizeof(struct virtio_dtrace_control));
