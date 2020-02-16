@@ -334,8 +334,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(&sc->vsd_ctrlq, ctrl);
 		DPRINTF(("Host status: %d", sc->vsd_ready));
-		if(sc->vsd_ready == 0)
-			pci_vtdtr_notify_ready(sc);
+		pci_vtdtr_notify_ready(sc);
 		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 		DPRINTF(("About to open pipe to send trace data.\n"));
 		break;
