@@ -1384,11 +1384,11 @@ vtdtr_consume_trace(void *xsc)
 			device_printf(dev, "I've filled fields in control entry, freeing trace entry");
 			free(trc_entry, M_DEVBUF);
 
-			// (MARA): you've also added this
-			/*mtx_lock(&sc->vtdtr_mtx);
+			// I've added this
+			mtx_lock(&sc->vtdtr_mtx);
 			vtdtr_notify_ready(sc);
 			mtx_unlock(&sc->vtdtr_mtx);
-			*/
+
 
 			mtx_lock(&sc->vtdtr_condmtx);
 			cv_signal(&sc->vtdtr_condvar);
