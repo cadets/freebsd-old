@@ -395,7 +395,7 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 	}
 
 	pthread_mutex_lock(&sc->vsd_mtx);
-	if (sc->vsd_ready == 0)
+	//if (sc->vsd_ready == 0)
 		pci_vtdtr_notify_ready(sc);
 	pthread_mutex_unlock(&sc->vsd_mtx);
 

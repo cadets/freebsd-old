@@ -758,7 +758,9 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	case VIRTIO_DTRACE_DEVICE_READY:
 		if (debug)
 			device_printf(dev, "VIRTIO_DTRACE_DEVICE_READY\n");
+		mtx_lock(&sc->vtdtr_mtx);	
 		sc->vtdtr_host_ready = 1;
+		mtx_unlock(&sc->vtdtr_mtx);
 		break;
 	case VIRTIO_DTRACE_REGISTER:
 		if (debug)
@@ -1381,8 +1383,10 @@ vtdtr_consume_trace(void *xsc)
 			device_printf(dev, "I've filled fields in control entry, freeing trace entry");
 			free(trc_entry, M_DEVBUF);
 
+			mtx_lock(&sc->vtdtr_mtx);
 			vtdtr_notify_ready(sc);
-			
+			mtx_unlock(&sc->vtdtr_mtx);
+
 			mtx_lock(&sc->vtdtr_condmtx);
 			cv_signal(&sc->vtdtr_condvar);
 			mtx_unlock(&sc->vtdtr_condmtx);
