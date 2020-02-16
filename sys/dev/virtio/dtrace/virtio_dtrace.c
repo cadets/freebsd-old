@@ -1372,7 +1372,7 @@ vtdtr_consume_trace(void *xsc)
 			}
 
 			mtx_lock(&sc->vtdtr_ctrlq->mtx);
-			vtdtr_cq_print(sc->vtdtr_ctrlq, "In virtio_dtrace, before enqueue.");;
+			vtdtr_cq_print(sc->vtdtr_ctrlq, "In virtio_dtrace, before enqueue.");
 			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 			vtdtr_cq_print(sc->vtdtr_ctrlq, "In virtio_dtrace, after enqueue.");
 			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
@@ -1381,11 +1381,12 @@ vtdtr_consume_trace(void *xsc)
 			device_printf(dev, "I've filled fields in control entry, freeing trace entry");
 			free(trc_entry, M_DEVBUF);
 
+			vtdtr_notify_ready(sc);
+			
 			mtx_lock(&sc->vtdtr_condmtx);
 			cv_signal(&sc->vtdtr_condvar);
 			mtx_unlock(&sc->vtdtr_condmtx);
-			device_printf(dev, "Successfully signalled there are entries in the control queue.");
-			KASSERT(!vtdtr_cq_empty(&sc->vtdtr_ctrlq), "Control queue can't be empty at this point");
+			device_printf(dev, "Successfully signalled there are entries in the control queue.\n");
 		}
 		mtx_unlock(&tq->mtx);
 	}
