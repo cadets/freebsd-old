@@ -331,11 +331,14 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 #endif
 	case VTDTR_DEVICE_TRACE:
 		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
-		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
-		pci_vtdtr_cq_enqueue(&sc->vsd_ctrlq, ctrl);
+	
 		DPRINTF(("Host status: %d\n", sc->vsd_ready));
+		
+		// Here we send a READY event to the guest to make it
+		// keep sending us things
+		pthread_mutex_lock(sc->vsd_mtx);
 		pci_vtdtr_notify_ready(sc);
-		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+		pthread_mutex_unlock(&sc->vsd_mtx);
 
 		pthread_mutex_lock(&sc->vsd_condmtx);
 		pthread_cond_signal(&sc->vsd_cond);
