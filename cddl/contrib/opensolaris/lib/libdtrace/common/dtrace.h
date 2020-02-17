@@ -111,31 +111,6 @@ typedef struct dtrace_proginfo {
 	uint_t dpi_speculations; /* number of speculations specified in prog */
 } dtrace_proginfo_t;
 
-struct dtrace_trc_data {
-	uint64_t dtbd_size;
-	uint32_t dtbd_cpu;
-	uint32_t dtbd_errors;
-	uint32_t dtbd_drops;
-	char dtbd_data[512];
-	uint64_t dtbd_oldest;
-};
-
-struct dtrace_trc_entry {
-	struct dtrace_trc_data data;
-	STAILQ_ENTRY(dtrace_trc_entry) 
-	entries;
-};
-
-struct dtrace_traceq {
-	STAILQ_HEAD(, dtrace_trc_entry) 
-	head;
-	pthread_mutex_t mtx;
-};
-
-extern void dtrace_tq_enqueue(struct dtrace_traceq *, struct dtrace_traceq *);
-extern int dtrace_tq_empty(struct dtrace_traceq *);
-extern struct dtrace_trc_entry dtrace_tq_dequeue(struct dtrace_traceq);
-extern void dtrace_tq_init(struct dtrace_traceq *tq);
 
 
 

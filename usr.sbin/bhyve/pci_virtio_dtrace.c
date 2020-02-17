@@ -63,6 +63,7 @@ __FBSDID("$FreeBSD$");
 #include "bhyverun.h"
 #include "pci_emul.h"
 #include "virtio.h"
+#include "pci_virtio_dtrace.h"
 
 #define VTDTR_RINGSZ 512
 #define VTDTR_MAXQ 2

@@ -45,6 +45,7 @@
 #include <signal.h>
 #include <pthread.h>
 #include <fcntl.h>
+#include <pci_virtio_dtrace.h>
 
 #ifdef illumos
 #include <alloca.h>
