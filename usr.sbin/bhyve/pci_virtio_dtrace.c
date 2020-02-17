@@ -57,6 +57,8 @@ __FBSDID("$FreeBSD$");
 
 #include <vmmapi.h>
 
+#include <dtrace.h>
+
 #include "dthyve.h"
 #include "bhyverun.h"
 #include "pci_emul.h"
@@ -331,8 +333,10 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 #endif
 	case VTDTR_DEVICE_TRACE:
 		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
-	
 		DPRINTF(("Host status: %d\n", sc->vsd_ready));
+		struct dtrace_trc_entry *dt_trc_entry = malloc(sizeof(struct dtrace_trc_entry));
+		memset(dt_trc_entry, 0, sizeof(struct dtrace_trc_entry));
+		assert(dt_trc_entry != NULL);
 		break;
 	case VTDTR_DEVICE_EOF:
 		DPRINTF(("Received VTDTR_DEVICE_EOF. \n"));
