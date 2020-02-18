@@ -424,6 +424,9 @@ typedef struct {
 #define	SHT_GROUP		17	/* Section group. */
 #define	SHT_SYMTAB_SHNDX	18	/* Section indexes (see SHN_XINDEX). */
 #define	SHT_LOOS		0x60000000	/* First of OS specific semantics */
+#define	SHT_LODTRACE		0x6eeeeee0	/* Start of DTrace-specific semantics */
+#define	SHT_DTRACE_elf		0x6eeeeee0	/* DTrace executable ELF */
+#define	SHT_HIDTRACE		0x6eeeeeef	/* Last of DTrace-specific semantics */
 #define	SHT_LOSUNW		0x6ffffff4
 #define	SHT_SUNW_dof		0x6ffffff4
 #define	SHT_SUNW_cap		0x6ffffff5
