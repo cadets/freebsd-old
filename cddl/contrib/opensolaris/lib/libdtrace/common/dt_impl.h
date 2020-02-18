@@ -366,6 +366,7 @@ struct dtrace_hdl {
 	uint64_t dt_last_timestamp;	/* most recently consumed timestamp */
 	char *dt_instance;	/* Current instance name or NULL */
 	boolean_t dt_has_sugar;	/* syntactic sugar used? */
+	boolean_t dt_use_elf;	/* use ELF instead of DOF? */
 };
 
 /*

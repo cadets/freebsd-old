@@ -123,6 +123,8 @@ dt_node_t *yypragma;	/* lex token list for control lines */
 char yyintprefix;	/* int token macro prefix (+/-) */
 char yyintsuffix[4];	/* int token suffix string [uU][lL] */
 int yyintdecimal;	/* int token format flag (1=decimal, 0=octal/hex) */
+char dt_target_ctx[DTRACE_TARGETNAMELEN];
+			/* instrumentation target context */
 
 static const char *
 opstr(int op)
@@ -1916,6 +1918,7 @@ dt_node_op1(int op, dt_node_t *cp)
 	assert(op <= USHRT_MAX);
 	dnp->dn_op = (ushort_t)op;
 	dnp->dn_child = cp;
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
 
 	return (dnp);
 }
@@ -2120,6 +2123,7 @@ dt_node_op2(int op, dt_node_t *lp, dt_node_t *rp)
 	dnp->dn_op = (ushort_t)op;
 	dnp->dn_left = lp;
 	dnp->dn_right = rp;
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
 
 	return (dnp);
 }
@@ -2137,6 +2141,7 @@ dt_node_op3(dt_node_t *expr, dt_node_t *lp, dt_node_t *rp)
 	dnp->dn_expr = expr;
 	dnp->dn_left = lp;
 	dnp->dn_right = rp;
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
 
 	return (dnp);
 }
@@ -2156,6 +2161,8 @@ dt_node_statement(dt_node_t *expr)
 		dnp = dt_node_alloc(DT_NODE_DEXPR);
 
 	dnp->dn_expr = expr;
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
+
 	return (dnp);
 }
 
@@ -2166,6 +2173,7 @@ dt_node_if(dt_node_t *pred, dt_node_t *acts, dt_node_t *else_acts)
 	dnp->dn_conditional = pred;
 	dnp->dn_body = acts;
 	dnp->dn_alternate_body = else_acts;
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
 
 	return (dnp);
 }
@@ -2194,6 +2202,8 @@ dt_node_pdesc_by_name(char *spec)
 
 	free(dnp->dn_spec);
 	dnp->dn_spec = NULL;
+
+	strncpy(dt_target_ctx, dnp->dn_desc->dtpd_target, DTRACE_TARGETNAMELEN);
 
 	return (dnp);
 }

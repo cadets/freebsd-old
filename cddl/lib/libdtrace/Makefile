@@ -14,6 +14,7 @@ SRCS=		dt_aggregate.c \
 		dt_decl.c \
 		dt_dis.c \
 		dt_dof.c \
+		dt_elf.c \
 		dt_error.c \
 		dt_errtags.c \
 		dt_grammar.y \

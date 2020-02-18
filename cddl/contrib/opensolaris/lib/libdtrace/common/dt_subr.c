@@ -55,6 +55,7 @@ static const struct {
 	size_t dtps_offset;
 	size_t dtps_len;
 } dtrace_probespecs[] = {
+	{ offsetof(dtrace_probedesc_t, dtpd_target),	DTRACE_TARGETNAMELEN },
 	{ offsetof(dtrace_probedesc_t, dtpd_provider),	DTRACE_PROVNAMELEN },
 	{ offsetof(dtrace_probedesc_t, dtpd_mod),	DTRACE_MODNAMELEN },
 	{ offsetof(dtrace_probedesc_t, dtpd_func),	DTRACE_FUNCNAMELEN },

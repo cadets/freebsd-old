@@ -57,6 +57,7 @@
 #include <sys/mman.h>
 #endif
 #include <assert.h>
+#include <sys/ipc.h>
 
 #include <dt_impl.h>
 #include <dt_provider.h>

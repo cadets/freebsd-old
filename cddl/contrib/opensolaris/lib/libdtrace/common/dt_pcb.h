@@ -65,6 +65,7 @@ typedef struct dt_pcb {
 	dt_idhash_t *pcb_pragmas; /* current hash table of pending pragmas */
 	dt_inttab_t *pcb_inttab; /* integer table for constant references */
 	dt_strtab_t *pcb_strtab; /* string table for string references */
+	dt_strtab_t *pcb_symtab; /* string table for unresolved symbols */
 	dt_regset_t *pcb_regs;	/* register set for code generation */
 	dt_irlist_t pcb_ir;	/* list of unrelocated IR instructions */
 	uint_t pcb_asvidx;	/* assembler vartab index (see dt_as.c) */
@@ -95,6 +96,7 @@ typedef struct dt_pcb {
 
 extern void dt_pcb_push(dtrace_hdl_t *, dt_pcb_t *);
 extern void dt_pcb_pop(dtrace_hdl_t *, int);
+extern void dt_pcb_dump(dt_pcb_t *, int);
 
 #ifdef	__cplusplus
 }

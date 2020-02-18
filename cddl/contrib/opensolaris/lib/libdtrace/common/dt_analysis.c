@@ -272,12 +272,12 @@ dtrace_dump_actions(dtrace_prog_t *pgp)
 		last = edp;
 		descp = &edp->dted_probe;
 
-		fprintf(stderr, "%s:%s:%s:%s ==>\n", descp->dtpd_provider,
-		    descp->dtpd_mod, descp->dtpd_func, descp->dtpd_name);
+		fprintf(stderr, "%s:%s:%s:%s:%s ==>\n", descp->dtpd_target,
+		    descp->dtpd_provider, descp->dtpd_mod,
+		    descp->dtpd_func, descp->dtpd_name);
 
-		for (ap = edp->dted_action; ap; ap = ap->dtad_next) {
+		for (ap = edp->dted_action; ap; ap = ap->dtad_next)
 			dump_action(ap);
-		}
 
 		fprintf(stderr, "\n");
 	}

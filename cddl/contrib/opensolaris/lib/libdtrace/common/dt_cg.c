@@ -186,6 +186,21 @@ dt_cg_setx(dt_irlist_t *dlp, int reg, uint64_t x)
 	dt_cg_xsetx(dlp, NULL, DT_LBL_NONE, reg, x);
 }
 
+static void
+dt_cg_usetx(dt_irlist_t *dlp, int reg, char *sym)
+{
+	ssize_t symoff = dt_strtab_insert(yypcb->pcb_symtab, sym);
+	dif_instr_t instr = DIF_INSTR_USETX((uint_t)symoff, reg);
+
+	if (symoff == -1L)
+		longjmp(yypcb->pcb_jmpbuf, EDT_NOMEM);
+
+	if (symoff > DIF_STROFF_MAX)
+		longjmp(yypcb->pcb_jmpbuf, EDT_STR2BIG);
+
+	dt_irlist_append(dlp, dt_cg_node_alloc(DT_LBL_NONE, instr));
+}
+
 /*
  * When loading bit-fields, we want to convert a byte count in the range
  * 1-8 to the closest power of 2 (e.g. 3->4, 5->8, etc).  The clp2() function
@@ -254,6 +269,13 @@ dt_cg_load(dt_node_t *dnp, ctf_file_t *ctfp, ctf_id_t type)
 		size |= 0x10;
 
 	return (ops[size]);
+}
+
+static uint_t
+dt_cg_uload(dt_node_t *dnp, uint_t ubit)
+{
+
+	return (ubit ? DIF_OP_UULOAD : DIF_OP_ULOAD);
 }
 
 static void
@@ -1607,7 +1629,7 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 
 	dif_instr_t instr;
 	dt_ident_t *idp;
-	ssize_t stroff;
+	ssize_t stroff, symoff;
 	uint_t op;
 
 	switch (dnp->dn_op) {
@@ -1823,6 +1845,7 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 			int reg;
 			idp = dt_node_resolve(dnp->dn_child, DT_IDENT_XLPTR);
 			assert(idp != NULL);
+
 			reg = dt_cg_xlate_expand(dnp, idp, dlp, drp);
 
 			dt_regset_free(drp, dnp->dn_child->dn_reg);
@@ -1920,7 +1943,8 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		break;
 
 	case DT_TOK_PTR:
-	case DT_TOK_DOT:
+	case DT_TOK_DOT: {
+		int reg;
 		assert(dnp->dn_right->dn_kind == DT_NODE_IDENT);
 		dt_cg_node(dnp->dn_left, dlp, drp);
 
@@ -1958,6 +1982,51 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 			break;
 		}
 
+		/*
+		 * Generate an USETX instruction with the current symbol
+		 * that we will resolve later on in the linking process.
+		 */
+		reg = dt_regset_alloc(drp);
+		dt_cg_usetx(dlp, reg, dnp->dn_right->dn_string);
+		instr = DIF_INSTR_FMT(DIF_OP_ADD,
+		    dnp->dn_left->dn_reg, reg, dnp->dn_left->dn_reg);
+
+		dt_irlist_append(dlp,
+		    dt_cg_node_alloc(DT_LBL_NONE, instr));
+
+		dt_regset_free(drp, reg);
+
+		/*
+		 * In the case that this is specified as a userland _value_,
+		 * we will generate an unresolved load instruction, and leave
+		 * it up to the linker to figure out if this is supposed to be
+		 * an 8/16/32/64-byte signed/unsigned load. In the case of a
+		 * reference, we simply add onto the register in order to have
+		 * a pointer to the data.
+		 *
+		 * An example of a userland value would be:
+		 *                        ((userland type)arg0)->foo.
+		 */
+		if (!(dnp->dn_flags & DT_NF_REF)) {
+			uint_t ubit = dnp->dn_flags & DT_NF_USERLAND;
+			dnp->dn_flags |=
+			    (dnp->dn_left->dn_flags & DT_NF_USERLAND);
+
+			instr = DIF_INSTR_LOAD(dt_cg_uload(dnp,
+			    dnp->dn_flags & DT_NF_USERLAND),
+			    dnp->dn_left->dn_reg, dnp->dn_left->dn_reg);
+
+			dnp->dn_flags &= ~DT_NF_USERLAND;
+			dnp->dn_flags |= ubit;
+
+			dt_irlist_append(dlp,
+			    dt_cg_node_alloc(DT_LBL_NONE, instr));
+
+		}
+
+		dnp->dn_reg = dnp->dn_left->dn_reg;
+		break;
+#ifdef DONOTDOTHIS
 		ctfp = dnp->dn_left->dn_ctfp;
 		type = ctf_type_resolve(ctfp, dnp->dn_left->dn_type);
 
@@ -2018,8 +2087,9 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		}
 
 		dnp->dn_reg = dnp->dn_left->dn_reg;
+#endif
 		break;
-
+	}
 	case DT_TOK_STRING:
 		dnp->dn_reg = dt_regset_alloc(drp);
 
@@ -2209,6 +2279,9 @@ dt_cg(dt_pcb_t *pcb, dt_node_t *dnp)
 		dt_strtab_destroy(pcb->pcb_strtab);
 
 	if ((pcb->pcb_strtab = dt_strtab_create(BUFSIZ)) == NULL)
+		longjmp(pcb->pcb_jmpbuf, EDT_NOMEM);
+
+	if ((pcb->pcb_symtab = dt_strtab_create(BUFSIZ)) == NULL)
 		longjmp(pcb->pcb_jmpbuf, EDT_NOMEM);
 
 	dt_irlist_destroy(&pcb->pcb_ir);

@@ -36,6 +36,7 @@
 #include <dt_impl.h>
 #include <dt_parser.h>
 #include <dt_as.h>
+#include <libelf.h>
 
 void
 dt_irlist_create(dt_irlist_t *dlp)
@@ -58,6 +59,14 @@ dt_irlist_destroy(dt_irlist_t *dlp)
 void
 dt_irlist_append(dt_irlist_t *dlp, dt_irnode_t *dip)
 {
+	/*
+	 * In the case that dlp->dl_last is NULL, di_prev is set to NULL
+	 * as it is the very first entry in the irlist. If it  is not NULL,
+	 * we simply append this instruction in the irlist, so its di_prev
+	 * ought to be the current last element.
+	 */
+	dip->di_prev = dlp->dl_last;
+
 	if (dlp->dl_last != NULL)
 		dlp->dl_last->di_next = dip;
 	else
@@ -240,6 +249,70 @@ dt_as_is_host(dtrace_difo_t *dp)
 
 	return (0);
 }
+
+/*
+ * The high level goal of this subroutine is to resolve unresolved symbols
+ * that were generated during the code generation stage.
+ *
+ * We assume that:
+ *  (i)   A symbol table is populated correctly
+ *  (ii)  A type cast table is populated correctly
+ *  (iii) We have all the instructions in an irlist and they are for this target
+ *
+ * The idea is to find the type of where the data originates (usually a built-in)
+ * variable. We then want to go through all the relocations (usetx, uload,
+ * uuload) and resolve the symbol for the correct type. We find the 'correct type'
+ * by tracking the information through the registers.
+ *
+ * In order to make this simpler, we start by iterating through the instructions
+ * from the last instruction. Any time we see a uload/uuload, we add it to a list
+ * of instructions to be resolved. We then expect an add to be there just before
+ * the load, so we save the 2 registers and perform and additional check for %rd
+ * to make sure it's the one we saw in uload/uuload. However, in the case of a
+ * reference, there will be no uload/uuload, in which case we simply save the
+ * registers. Somewhere before the add, we expect to see a usetx. We simply add
+ * this instruction to the list of instructions that need to be resolved. Once
+ * we reach the first instruction, we expect to have seen all the built-in
+ * variables where initial data originates, so we start our resolution pass.
+ */
+#ifdef NOTYET
+void
+dt_resolve_syms(dt_irlist_t *dlp)
+{
+	dt_irnode_t *cur;
+	dif_instr_t instr;
+	uint16_t sym;
+	uint8_t rd, r1, r2, rs;
+
+	for (cur = dl_last; cur != dl_list; cur = cur->di_prev) {
+		instr = cur->di_instr;
+		switch (DIF_INSTR_OP(instr)) {
+		case DIF_OP_USETX:
+			rd = DIF_INSTR_RD(instr);
+			sym = DIF_INSTR_SYMBOL(instr);
+
+			break;
+		case DIF_OP_ULOAD:
+		case DIF_OP_UULOAD:
+			rd = DIF_INSTR_RD(instr);
+			rs = DIF_INSTR_RS(instr);
+
+			rp[0] = rs;
+			break;
+		case DIF_OP_ADD:
+			rd = DIF_INSTR_RD(instr);
+			r1 = DIF_INSTR_R1(instr);
+			r2 = DIF_INSTR_R2(instr);
+
+			if (rd == rp[0]) {
+				rp[1] = r1;
+				rp[2] = r2;
+			}
+			break;
+		}
+	}
+}
+#endif
 
 dtrace_difo_t *
 dt_as(dt_pcb_t *pcb)
@@ -515,6 +588,15 @@ dt_as(dt_pcb_t *pcb)
 		dp->dtdo_strlen = (uint32_t)n;
 	}
 
+	if ((n = dt_strtab_size(pcb->pcb_symtab)) != 0) {
+		if ((dp->dtdo_symtab = dt_alloc(dtp, n)) == NULL)
+			longjmp(pcb->pcb_jmpbuf, EDT_NOMEM);
+
+		(void) dt_strtab_write(pcb->pcb_symtab,
+		    (dt_strtab_write_f *)dt_copystr, pcb);
+		dp->dtdo_symlen = (uint32_t)n;
+	}
+
 	/*
 	 * Allocate memory for the compiled integer table and then copy the
 	 * integer constants from the table into the final integer buffer.
@@ -539,6 +621,7 @@ dt_as(dt_pcb_t *pcb)
 
 	if (pcb->pcb_cflags & DTRACE_C_DIFV)
 		dt_dis(dp, stderr);
+
 
 	return (dp);
 }

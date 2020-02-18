@@ -31,6 +31,8 @@
 
 #include <sys/types.h>
 
+#define	DT_SYMTAB_MAXOFF 0xFFFFFFFF
+
 #ifdef	__cplusplus
 extern "C" {
 #endif

@@ -33,6 +33,7 @@
 #include <sys/wait.h>
 
 #include <dtrace.h>
+#include <dt_elf.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -43,6 +44,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <signal.h>
+#include <assert.h>
 #ifdef illumos
 #include <alloca.h>
 #endif
@@ -76,7 +78,7 @@ typedef struct dtrace_cmd {
 #define	E_USAGE		2
 
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:ef:FGhHi:I:lL:m:M:n:o:p:P:qs:SU:vVwx:X:Z";
+	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:M:n:o:p:P:qs:SU:vVwx:y:X:Z";
 
 static char **g_argv;
 static int g_argc;
@@ -101,6 +103,7 @@ static int g_cflags;
 static int g_oflags;
 static int g_verbose;
 static int g_exec = 1;
+static int g_elf = 0;
 static const char *g_graphfile = NULL;
 static int g_mode = DMODE_EXEC;
 static int g_status = E_SUCCESS;
@@ -160,6 +163,7 @@ usage(FILE *fp)
 	    "\t-C  run cpp(1) preprocessor on script files\n"
 	    "\t-D  define symbol when invoking preprocessor\n"
 	    "\t-e  exit after compiling request but prior to enabling probes\n"
+	    "\t-E  generate an ELF file instead of a DOF file\n"
 	    "\t-f  enable or list probes matching the specified function name\n"
 	    "\t-F  coalesce trace output by function\n"
 	    "\t-G  generate an ELF file containing embedded dtrace program\n"
@@ -687,6 +691,8 @@ exec_prog(const dtrace_cmd_t *dcp)
 
 	if (!g_exec) {
 		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
+		if (g_elf)
+			dt_elf_create(dcp->dc_prog, ELFDATA2LSB);
 	} else if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
 		dfatal("failed to enable '%s'", dcp->dc_name);
 	} else {
@@ -868,6 +874,26 @@ compile_file(dtrace_cmd_t *dcp)
 	(void) fclose(fp);
 
 	dcp->dc_desc = "script";
+	dcp->dc_name = dcp->dc_arg;
+}
+
+static void
+link_elf(dtrace_cmd_t *dcp)
+{
+	int fd;
+	dt_stmt_t *stp;
+
+	assert(g_elf == 1);
+
+	if ((fd = open(dcp->dc_arg, O_RDONLY)) < 0)
+		fatal("failed to open %s with %s", dcp->dc_arg, strerror(errno));
+
+	if ((dcp->dc_prog = dt_elf_to_prog(g_dtp, fd)) == NULL)
+		fatal("failed to parse the ELF file %s", dcp->dc_arg);
+
+	close(fd);
+
+	dcp->dc_desc = "ELF file";
 	dcp->dc_name = dcp->dc_arg;
 }
 
@@ -1483,6 +1509,12 @@ main(int argc, char *argv[])
 				done = 1;
 				break;
 
+			case 'E':
+				g_elf = 1;
+				g_exec = 0; /* For now... */
+				done = 1;
+				break;
+
 			case 'g':
 				g_graphfile = optarg;
 				break;
@@ -1600,6 +1632,9 @@ main(int argc, char *argv[])
 		fatal("failed to initialize dtrace: %s\n",
 		    dtrace_errmsg(NULL, err));
 	}
+
+	if (g_elf)
+		dtrace_use_elf(g_dtp);
 
 #if defined(__i386__)
 	/* XXX The 32-bit seems to need more buffer space by default -sson */
@@ -1768,6 +1803,14 @@ main(int argc, char *argv[])
 
 				if (dtrace_setopt(g_dtp, optarg, p) != 0)
 					dfatal("failed to set -x %s", optarg);
+				break;
+
+			case 'y':
+				dcp = &g_cmdv[g_cmdc++];
+				dcp->dc_func = link_elf;
+				dcp->dc_spec = DTRACE_PROBESPEC_NONE;
+				dcp->dc_arg = optarg;
+				g_elf = 1;
 				break;
 
 			case 'X':
