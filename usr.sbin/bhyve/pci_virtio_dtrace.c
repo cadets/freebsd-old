@@ -1025,7 +1025,7 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	STAILQ_INIT(&sc->vsd_ctrlq->head);
 	tq = calloc(1,sizeof(struct pci_vtdtr_traceq));
 	assert(tq != NULL);
-	STAILQ_INIT(tq);
+	STAILQ_INIT(&tq->head);
 
 	vi_softc_linkup(&sc->vsd_vs, &vtdtr_vi_consts,
 					sc, pci_inst, sc->vsd_queues);
