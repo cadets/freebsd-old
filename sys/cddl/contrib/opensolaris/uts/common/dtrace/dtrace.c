@@ -18826,6 +18826,7 @@ dtrace_ioctl(dev_t dev, int cmd, intptr_t arg, int md, cred_t *cr, int *rv)
 		caddr_t cached;
 		dtrace_buffer_t *buf;
 
+		// this will copy arg to desc - arg userspace and desc kernelspace
 		if (copyin((void *)arg, &desc, sizeof (desc)) != 0)
 			return (EFAULT);
 

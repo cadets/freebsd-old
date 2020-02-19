@@ -1609,6 +1609,7 @@ static void *write_script(void *file_path)
 	//unlink(fifo);
 }
 
+
 int main(int argc, char *argv[])
 {
 	dtrace_bufdesc_t buf;
@@ -1766,7 +1767,6 @@ int main(int argc, char *argv[])
 		file_path = argv[argc - 1];
 		write_script(file_path);
 
-		printf("I've written the script. \n");
 		return 0;
 	}
 

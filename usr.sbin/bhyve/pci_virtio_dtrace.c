@@ -57,8 +57,6 @@ __FBSDID("$FreeBSD$");
 
 #include <vmmapi.h>
 
-#include <dtrace.h>
-
 #include "dthyve.h"
 #include "bhyverun.h"
 #include "pci_emul.h"
@@ -333,11 +331,19 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		break;
 #endif
 	case VTDTR_DEVICE_TRACE:
+		sc->vsd_ready = 0;
 		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
 		DPRINTF(("Host status: %d\n", sc->vsd_ready));
 		struct dtrace_trc_entry *dt_trc_entry = malloc(sizeof(struct dtrace_trc_entry));
 		memset(dt_trc_entry, 0, sizeof(struct dtrace_trc_entry));
 		assert(dt_trc_entry != NULL);
+		dtrace_bufdesc_t *buf = &dt_trc_entry->buf;
+		buf->dtbd_size = ctrl->uctrl.trc_ev.dtbd_size;
+		buf->dtbd_cpu = ctrl->uctrl.trc_ev.dtbd_cpu;
+		buf->dtbd_errors = ctrl->uctrl.trc_ev.dtbd_errors;
+		buf->dtbd_drops = ctrl->uctrl.trc_ev.dtbd_drops;
+		buf->dtbd_oldest = ctrl->uctrl.trc_ev.dtbd_oldest;
+		DPRINTF(("I've put the trace data fields in the bufdesc: %d", buf->dtbd_size));
 		break;
 	case VTDTR_DEVICE_EOF:
 		DPRINTF(("Received VTDTR_DEVICE_EOF. \n"));
@@ -400,7 +406,7 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 	}
 
 	pthread_mutex_lock(&sc->vsd_mtx);
-	//if (sc->vsd_ready == 0)
+	if (sc->vsd_ready == 0)
 		pci_vtdtr_notify_ready(sc);
 	pthread_mutex_unlock(&sc->vsd_mtx);
 
