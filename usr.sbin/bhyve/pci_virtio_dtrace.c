@@ -337,13 +337,12 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		struct dtrace_trc_entry *dt_trc_entry = malloc(sizeof(struct dtrace_trc_entry));
 		memset(dt_trc_entry, 0, sizeof(struct dtrace_trc_entry));
 		assert(dt_trc_entry != NULL);
-		dtrace_bufdesc_t *buf = &dt_trc_entry->buf;
-		buf->dtbd_size = ctrl->uctrl.trc_ev.dtbd_size;
-		buf->dtbd_cpu = ctrl->uctrl.trc_ev.dtbd_cpu;
-		buf->dtbd_errors = ctrl->uctrl.trc_ev.dtbd_errors;
-		buf->dtbd_drops = ctrl->uctrl.trc_ev.dtbd_drops;
-		buf->dtbd_oldest = ctrl->uctrl.trc_ev.dtbd_oldest;
-		DPRINTF(("I've put the trace data fields in the bufdesc: %d", buf->dtbd_size));
+		dt_trc_entry->data.dtbd_size = ctrl->uctrl.trc_ev.dtbd_size;
+		dt_trc_entry->data.dtbd_cpu = ctrl->uctrl.trc_ev.dtbd_cpu;
+		dt_trc_entry->data.dtbd_errors = ctrl->uctrl.trc_ev.dtbd_errors;
+		dt_trc_entry->data.dtbd_drops = ctrl->uctrl.trc_ev.dtbd_drops;
+		dt_trc_entry->data.dtbd_oldest = ctrl->uctrl.trc_ev.dtbd_oldest;
+		DPRINTF(("Yay: %d", dt_trc_entry->data.dtbd_size));
 		break;
 	case VTDTR_DEVICE_EOF:
 		DPRINTF(("Received VTDTR_DEVICE_EOF. \n"));

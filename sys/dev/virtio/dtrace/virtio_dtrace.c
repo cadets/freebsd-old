@@ -284,7 +284,7 @@ void vtdtr_tq_enqueue(struct vtdtr_traceq *tq, struct vtdtr_trace_entry *trc_ent
 	tq->n_entries++;
 }
 
-void vtdtr_tq_init(struct vtdtr_tsraceq *tq)
+void vtdtr_tq_init(struct vtdtr_traceq *tq)
 {
 	STAILQ_INIT(&tq->head);
 	tq->n_entries = 0;
