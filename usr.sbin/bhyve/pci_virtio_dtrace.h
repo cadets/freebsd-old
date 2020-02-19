@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <pthread.h>
 
-struct dtrace_trc_data {
+struct pci_vtdtr_trc_data {
 	uint64_t dtbd_size;
 	uint32_t dtbd_cpu;
 	uint32_t dtbd_errors;
@@ -14,21 +14,21 @@ struct dtrace_trc_data {
 	uint64_t dtbd_oldest;
 };
 
-struct dtrace_trc_entry {
-	struct dtrace_trc_data data;
-	STAILQ_ENTRY(dtrace_trc_entry) 
+struct pci_vtdtr_trc_entry {
+	struct pci_vtdtr_trc_data data;
+	STAILQ_ENTRY(pci_vtdtr_trc_entry) 
 	entries;
 };
 
-struct dtrace_traceq {
-	STAILQ_HEAD(, dtrace_trc_entry) 
+struct pci_vtdtr_traceq {
+	STAILQ_HEAD(, pci_vtdtr_trc_entry) 
 	head;
 	pthread_mutex_t mtx;
 };
 
-void pci_vtdtr_tq_enqueue(struct dtrace_traceq *, struct dtrace_traceq *);
-int pci_vtdtr_tq_empty(struct dtrace_traceq *);
-struct dtrace_trc_entry pci_vtdtr_tq_dequeue(struct dtrace_traceq);
-void pci_vtdtr_tq_init(struct dtrace_traceq *tq);
+void pci_vtdtr_tq_enqueue(struct pci_vtdtr_traceq *, struct pci_vtdtr_traceq *);
+int pci_vtdtr_tq_empty(struct pci_vtdtr_traceq *);
+struct pci_vtdtr_trc_entry pci_vtdtr_tq_dequeue(struct pci_vtdtr_traceq);
+void pci_vtdtr_tq_init(struct pci_vtdtr_traceq *tq);
 
 #endif

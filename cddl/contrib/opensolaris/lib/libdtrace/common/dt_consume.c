@@ -2744,7 +2744,7 @@ dt_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 	buf->dtbd_size = size;
 	buf->dtbd_cpu = cpu;
 
-#ifdef illumos
+/* #ifdef illumos
 	if (dt_ioctl(dtp, DTRACEIOC_BUFSNAP, buf) == -1) {
 #else
 	if (dt_ioctl(dtp, DTRACEIOC_BUFSNAP, &buf) == -1) {
@@ -2754,7 +2754,7 @@ dt_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 		 * CPU was unconfigured -- this is okay.  Any other
 		 * error, however, is unexpected.
 		 */
-		if (errno == ENOENT) {
+/*		if (errno == ENOENT) {
 			*bufp = NULL;
 			rval = 0;
 		} else
@@ -2763,6 +2763,7 @@ dt_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 		dt_put_buf(dtp, buf);
 		return (rval);
 	}
+*/
 
 	error = dt_unring_buf(dtp, buf);
 	if (error != 0) {
@@ -3017,6 +3018,8 @@ dtrace_consume(dtrace_hdl_t *dtp, FILE *fp, dtrace_consumer_t *dc, void *arg)
 	if (dc->dc_get_buf == NULL)
 		dc->dc_get_buf = (dtrace_get_buf_f *)dt_get_buf;
 
+	//rewrite this :)
+
 	if (dtp->dt_options[DTRACEOPT_TEMPORAL] == DTRACEOPT_UNSET) {
 		/*
 		 * The output will not be in the order it was traced.  Rather,
@@ -3042,7 +3045,7 @@ dtrace_consume(dtrace_hdl_t *dtp, FILE *fp, dtrace_consumer_t *dc, void *arg)
 			 */
 			if (dtp->dt_stopped && (i == dtp->dt_endedon))
 				continue;
-
+			// we dequeue from backend
 			if (dc->dc_get_buf(dtp, i, &buf) != 0)
 				return (-1);
 			if (buf == NULL)

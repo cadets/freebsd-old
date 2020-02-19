@@ -194,6 +194,8 @@ struct pci_vtdtr_softc
 	int vsd_ready;
 };
 
+struct pci_vtdtr_traceq *tq;
+
 static void pci_vtdtr_reset(void *);
 static void pci_vtdtr_control_tx(struct pci_vtdtr_softc *,
 								 struct iovec *, int);
@@ -224,6 +226,7 @@ static void pci_vtdtr_handle_mev(int, enum ev_type, int, void *);
 static void pci_vtdtr_reset_queue(struct pci_vtdtr_softc *);
 static int pci_vtdtr_init(struct vmctx *, struct pci_devinst *, char *);
 static void *pci_vtdtr_read_script(void *);
+
 
 static struct virtio_consts vtdtr_vi_consts = {
 	"vtdtr",		 /* name */
@@ -334,15 +337,16 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		sc->vsd_ready = 0;
 		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
 		DPRINTF(("Host status: %d\n", sc->vsd_ready));
-		struct dtrace_trc_entry *dt_trc_entry = malloc(sizeof(struct dtrace_trc_entry));
-		memset(dt_trc_entry, 0, sizeof(struct dtrace_trc_entry));
-		assert(dt_trc_entry != NULL);
-		dt_trc_entry->data.dtbd_size = ctrl->uctrl.trc_ev.dtbd_size;
-		dt_trc_entry->data.dtbd_cpu = ctrl->uctrl.trc_ev.dtbd_cpu;
-		dt_trc_entry->data.dtbd_errors = ctrl->uctrl.trc_ev.dtbd_errors;
-		dt_trc_entry->data.dtbd_drops = ctrl->uctrl.trc_ev.dtbd_drops;
-		dt_trc_entry->data.dtbd_oldest = ctrl->uctrl.trc_ev.dtbd_oldest;
-		DPRINTF(("Yay: %d", dt_trc_entry->data.dtbd_size));
+		struct pci_vtdtr_trc_entry *trc_entry = malloc(sizeof(struct pci_vtdtr_trc_entry));
+		memset(trc_entry, 0, sizeof(struct pci_vtdtr_trc_entry));
+		assert(trc_entry != NULL);
+		trc_entry->data.dtbd_size = ctrl->uctrl.trc_ev.dtbd_size;
+		trc_entry->data.dtbd_cpu = ctrl->uctrl.trc_ev.dtbd_cpu;
+		trc_entry->data.dtbd_errors = ctrl->uctrl.trc_ev.dtbd_errors;
+		trc_entry->data.dtbd_drops = ctrl->uctrl.trc_ev.dtbd_drops;
+		trc_entry->data.dtbd_oldest = ctrl->uctrl.trc_ev.dtbd_oldest;
+		DPRINTF(("Yay: %d, cpu: %d \n", trc_entry->data.dtbd_size, trc_entry->data.dtbd_cpu));
+		pci_vtdtr_tq_enqueue(tq, trc_entry);
 		break;
 	case VTDTR_DEVICE_EOF:
 		DPRINTF(("Received VTDTR_DEVICE_EOF. \n"));
@@ -516,6 +520,23 @@ pci_vtdtr_cq_dequeue(struct pci_vtdtr_ctrlq *cq)
 	}
 	pci_vtdtr_print_queue(fp, cq, "after dequeueing");
 	return (ctrl_entry);
+}
+
+void pci_vtdtr_tq_enqueue(struct pci_vtdtr_traceq *tq, struct pci_vtdtr_trc_entry *trc_entry)
+{
+	STAILQ_INSERT_HEAD(&tq->head, trc_entry, entries);
+}
+
+struct pci_vtdtr_trc_entry pci_vtdtr_tq_dequeue(struct pci_vtdtr_traceq *tq)
+{
+	struct pci_vtdtr_trc_entry *trc_entry;
+	trc_entry = STAILQ_FIRST(&tq->head);
+	if (trc_entry != NULL)
+	{
+		STAILQ_REMOVE_HEAD(&tq->head, entries);
+	}
+	return (trc_entry);
+
 }
 
 /*
@@ -1002,6 +1023,9 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	sc->vsd_ctrlq = calloc(1, sizeof(struct pci_vtdtr_ctrlq));
 	assert(sc->vsd_ctrlq != NULL);
 	STAILQ_INIT(&sc->vsd_ctrlq->head);
+	tq = calloc(1,sizeof(struct pci_vtdtr_traceq));
+	assert(tq != NULL);
+	STAILQ_INIT(tq);
 
 	vi_softc_linkup(&sc->vsd_vs, &vtdtr_vi_consts,
 					sc, pci_inst, sc->vsd_queues);
