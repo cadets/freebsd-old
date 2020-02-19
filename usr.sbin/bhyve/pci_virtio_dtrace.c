@@ -527,7 +527,7 @@ void pci_vtdtr_tq_enqueue(struct pci_vtdtr_traceq *tq, struct pci_vtdtr_trc_entr
 	STAILQ_INSERT_HEAD(&tq->head, trc_entry, entries);
 }
 
-struct pci_vtdtr_trc_entry pci_vtdtr_tq_dequeue(struct pci_vtdtr_traceq *tq)
+struct pci_vtdtr_trc_entry * pci_vtdtr_tq_dequeue(struct pci_vtdtr_traceq *tq)
 {
 	struct pci_vtdtr_trc_entry *trc_entry;
 	trc_entry = STAILQ_FIRST(&tq->head);
