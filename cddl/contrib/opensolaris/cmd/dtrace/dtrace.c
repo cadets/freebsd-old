@@ -1766,7 +1766,7 @@ int main(int argc, char *argv[])
 		const char *file_path;
 		file_path = argv[argc - 1];
 		write_script(file_path);
-		return;
+		return 0;
 	}
 
 	if (mode > 1)
