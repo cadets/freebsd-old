@@ -334,7 +334,9 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		break;
 #endif
 	case VTDTR_DEVICE_TRACE:
-		sc->vsd_ready = 0;
+		pthread_mutex_lock(&sc->vsd_mtx);
+		sc->vsd_ready = 1;
+		pthread_mutex_unlock(&sc->vsd_mtx);
 		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
 		DPRINTF(("Host status: %d\n", sc->vsd_ready));
 		struct pci_vtdtr_trc_entry *trc_entry = malloc(sizeof(struct pci_vtdtr_trc_entry));
@@ -527,7 +529,7 @@ void pci_vtdtr_tq_enqueue(struct pci_vtdtr_traceq *tq, struct pci_vtdtr_trc_entr
 	STAILQ_INSERT_HEAD(&tq->head, trc_entry, entries);
 }
 
-struct pci_vtdtr_trc_entry * pci_vtdtr_tq_dequeue(struct pci_vtdtr_traceq *tq)
+struct pci_vtdtr_trc_entry* pci_vtdtr_tq_dequeue(struct pci_vtdtr_traceq *tq)
 {
 	struct pci_vtdtr_trc_entry *trc_entry;
 	trc_entry = STAILQ_FIRST(&tq->head);

@@ -26,6 +26,8 @@ struct pci_vtdtr_traceq {
 	pthread_mutex_t mtx;
 };
 
+extern struct pci_vtdtr_traceq *tq;
+
 void pci_vtdtr_tq_enqueue(struct pci_vtdtr_traceq *, struct pci_vtdtr_trc_entry *);
 int pci_vtdtr_tq_empty(struct pci_vtdtr_traceq *);
 struct pci_vtdtr_trc_entry* pci_vtdtr_tq_dequeue(struct pci_vtdtr_traceq *);
