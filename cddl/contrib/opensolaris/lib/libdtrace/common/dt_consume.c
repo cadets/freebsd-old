@@ -43,7 +43,6 @@
 #ifndef illumos
 #include <libproc_compat.h>
 #endif
-#include <pci_virtio_dtrace.h>
 #include <libxo/xo.h>
 
 #define	DT_MASK_LO 0x00000000FFFFFFFFULL
@@ -3018,170 +3017,158 @@ dtrace_consume(dtrace_hdl_t *dtp, FILE *fp, dtrace_consumer_t *dc, void *arg)
 	if (dc->dc_get_buf == NULL)
 		dc->dc_get_buf = (dtrace_get_buf_f *)dt_get_buf;
 
-	/*
-	 * Since we are getting everything from ddtrace, ordering is not a priority
-	 * (at least right now). We need to get the number of cpus from the guest 
-	 * since it might be different than the host.
-	 * We get the trace entry, turn it into bufdata and then
-	 * we need to call consume cpu (need metadata here) and put_buf(which) will
-	 * free the buffer so we can move on to the next one.
-	 */
-	struct pci_vtdtr_trc_entry *trc_entry = pci_vtdtr_tq_dequeue(tq);
+	if (dtp->dt_options[DTRACEOPT_TEMPORAL] == DTRACEOPT_UNSET) {
+		/*
+		 * The output will not be in the order it was traced.  Rather,
+		 * we will consume all of the data from each CPU's buffer in
+		 * turn.  We apply special handling for the records from BEGIN
+		 * and END probes so that they are consumed first and last,
+		 * respectively.
+		 *
+		 * If we have just begun, we want to first process the CPU that
+		 * executed the BEGIN probe (if any).
+		 */
+		if (dtp->dt_active && dtp->dt_beganon != -1 &&
+		    (rval = dt_consume_begin(dtp, fp, dc, arg)) != 0)
+			return (rval);
 
-	printf("I'm here, let's see what crashes: %d", trc_entry->data.dtbd_size);
+		for (i = 0; i < max_ncpus; i++) {
+			dtrace_bufdesc_t *buf;
 
-	// if (dtp->dt_options[DTRACEOPT_TEMPORAL] == DTRACEOPT_UNSET) {
-	// 	/*
-	// 	 * The output will not be in the order it was traced.  Rather,
-	// 	 * we will consume all of the data from each CPU's buffer in
-	// 	 * turn.  We apply special handling for the records from BEGIN
-	// 	 * and END probes so that they are consumed first and last,
-	// 	 * respectively.
-	// 	 *
-	// 	 * If we have just begun, we want to first process the CPU that
-	// 	 * executed the BEGIN probe (if any).
-	// 	 */
-	// 	if (dtp->dt_active && dtp->dt_beganon != -1 &&
-	// 	    (rval = dt_consume_begin(dtp, fp, dc, arg)) != 0)
-	// 		return (rval);
+			/*
+			 * If we have stopped, we want to process the CPU on
+			 * which the END probe was processed only _after_ we
+			 * have processed everything else.
+			 */
+			if (dtp->dt_stopped && (i == dtp->dt_endedon))
+				continue;
+			// we dequeue from backend
+			if (dc->dc_get_buf(dtp, i, &buf) != 0)
+				return (-1);
+			if (buf == NULL)
+				continue;
 
-	// 	for (i = 0; i < max_ncpus; i++) {
-	// 		dtrace_bufdesc_t *buf;
+			dtp->dt_flow = 0;
+			dtp->dt_indent = 0;
+			dtp->dt_prefix = NULL;
+			rval = dt_consume_cpu(dtp, fp, i,
+			    buf, B_FALSE, dc, arg);
+			dc->dc_put_buf(dtp, buf);
+			if (rval != 0)
+				return (rval);
+		}
+		if (dtp->dt_stopped) {
+			dtrace_bufdesc_t *buf;
 
-	// 		/*
-	// 		 * If we have stopped, we want to process the CPU on
-	// 		 * which the END probe was processed only _after_ we
-	// 		 * have processed everything else.
-	// 		 */
-	// 		if (dtp->dt_stopped && (i == dtp->dt_endedon))
-	// 			continue;
-	// 		// we dequeue from backend
-	// 		if (dc->dc_get_buf(dtp, i, &buf) != 0)
-	// 			return (-1);
-	// 		if (buf == NULL)
-	// 			continue;
+			if (dc->dc_get_buf(dtp, dtp->dt_endedon, &buf) != 0)
+				return (-1);
+			if (buf == NULL)
+				return (0);
 
-	// 		dtp->dt_flow = 0;
-	// 		dtp->dt_indent = 0;
-	// 		dtp->dt_prefix = NULL;
-	// 		rval = dt_consume_cpu(dtp, fp, i,
-	// 		    buf, B_FALSE, dc, arg);
-	// 		dc->dc_put_buf(dtp, buf);
-	// 		if (rval != 0)
-	// 			return (rval);
-	// 	}
-	// 	if (dtp->dt_stopped) {
-	// 		dtrace_bufdesc_t *buf;
+			rval = dt_consume_cpu(dtp, fp, dtp->dt_endedon,
+			    buf, B_FALSE, dc, arg);
+			dc->dc_put_buf(dtp, buf);
+			return (rval);
+		}
+	} else {
+		/*
+		 * The output will be in the order it was traced (or for
+		 * speculations, when it was committed).  We retrieve a buffer
+		 * from each CPU and put it into a priority queue, which sorts
+		 * based on the first entry in the buffer.  This is sufficient
+		 * because entries within a buffer are already sorted.
+		 *
+		 * We then consume records one at a time, always consuming the
+		 * oldest record, as determined by the priority queue.  When
+		 * we reach the end of the time covered by these buffers,
+		 * we need to stop and retrieve more records on the next pass.
+		 * The kernel tells us the time covered by each buffer, in
+		 * dtbd_timestamp.  The first buffer's timestamp tells us the
+		 * time covered by all buffers, as subsequently retrieved
+		 * buffers will cover to a more recent time.
+		 */
 
-	// 		if (dc->dc_get_buf(dtp, dtp->dt_endedon, &buf) != 0)
-	// 			return (-1);
-	// 		if (buf == NULL)
-	// 			return (0);
+		uint64_t *drops = alloca(max_ncpus * sizeof (uint64_t));
+		uint64_t first_timestamp = 0;
+		uint_t cookie = 0;
+		dtrace_bufdesc_t *buf;
 
-	// 		rval = dt_consume_cpu(dtp, fp, dtp->dt_endedon,
-	// 		    buf, B_FALSE, dc, arg);
-	// 		dc->dc_put_buf(dtp, buf);
-	// 		return (rval);
-	// 	}
-	// } else {
-	// 	/*
-	// 	 * The output will be in the order it was traced (or for
-	// 	 * speculations, when it was committed).  We retrieve a buffer
-	// 	 * from each CPU and put it into a priority queue, which sorts
-	// 	 * based on the first entry in the buffer.  This is sufficient
-	// 	 * because entries within a buffer are already sorted.
-	// 	 *
-	// 	 * We then consume records one at a time, always consuming the
-	// 	 * oldest record, as determined by the priority queue.  When
-	// 	 * we reach the end of the time covered by these buffers,
-	// 	 * we need to stop and retrieve more records on the next pass.
-	// 	 * The kernel tells us the time covered by each buffer, in
-	// 	 * dtbd_timestamp.  The first buffer's timestamp tells us the
-	// 	 * time covered by all buffers, as subsequently retrieved
-	// 	 * buffers will cover to a more recent time.
-	// 	 */
+		bzero(drops, max_ncpus * sizeof (uint64_t));
 
-	// 	uint64_t *drops = alloca(max_ncpus * sizeof (uint64_t));
-	// 	uint64_t first_timestamp = 0;
-	// 	uint_t cookie = 0;
-	// 	dtrace_bufdesc_t *buf;
+		if (dtp->dt_bufq == NULL) {
+			dtp->dt_bufq = dt_pq_init(dtp, max_ncpus * 2,
+			    dt_buf_oldest, NULL);
+			if (dtp->dt_bufq == NULL) /* ENOMEM */
+				return (-1);
+		}
 
-	// 	bzero(drops, max_ncpus * sizeof (uint64_t));
+		/* Retrieve data from each CPU. */
+		(void) dtrace_getopt(dtp, "bufsize", &size);
+		for (i = 0; i < max_ncpus; i++) {
+			dtrace_bufdesc_t *buf;
 
-	// 	if (dtp->dt_bufq == NULL) {
-	// 		dtp->dt_bufq = dt_pq_init(dtp, max_ncpus * 2,
-	// 		    dt_buf_oldest, NULL);
-	// 		if (dtp->dt_bufq == NULL) /* ENOMEM */
-	// 			return (-1);
-	// 	}
+			if (dt_get_buf(dtp, i, &buf) != 0)
+				return (-1);
+			if (buf != NULL) {
+				if (first_timestamp == 0)
+					first_timestamp = buf->dtbd_timestamp;
+				assert(buf->dtbd_timestamp >= first_timestamp);
 
-	// 	/* Retrieve data from each CPU. */
-	// 	(void) dtrace_getopt(dtp, "bufsize", &size);
-	// 	for (i = 0; i < max_ncpus; i++) {
-	// 		dtrace_bufdesc_t *buf;
+				dt_pq_insert(dtp->dt_bufq, buf);
+				drops[i] = buf->dtbd_drops;
+				buf->dtbd_drops = 0;
+			}
+		}
 
-	// 		if (dt_get_buf(dtp, i, &buf) != 0)
-	// 			return (-1);
-	// 		if (buf != NULL) {
-	// 			if (first_timestamp == 0)
-	// 				first_timestamp = buf->dtbd_timestamp;
-	// 			assert(buf->dtbd_timestamp >= first_timestamp);
+		/* Consume records. */
+		for (;;) {
+			dtrace_bufdesc_t *buf = dt_pq_pop(dtp->dt_bufq);
+			uint64_t timestamp;
 
-	// 			dt_pq_insert(dtp->dt_bufq, buf);
-	// 			drops[i] = buf->dtbd_drops;
-	// 			buf->dtbd_drops = 0;
-	// 		}
-	// 	}
+			if (buf == NULL)
+				break;
 
-	// 	/* Consume records. */
-	// 	for (;;) {
-	// 		dtrace_bufdesc_t *buf = dt_pq_pop(dtp->dt_bufq);
-	// 		uint64_t timestamp;
+			timestamp = dt_buf_oldest(buf, dtp);
+			assert(timestamp >= dtp->dt_last_timestamp);
+			dtp->dt_last_timestamp = timestamp;
 
-	// 		if (buf == NULL)
-	// 			break;
+			if (timestamp == buf->dtbd_timestamp) {
+				/*
+				 * We've reached the end of the time covered
+				 * by this buffer.  If this is the oldest
+				 * buffer, we must do another pass
+				 * to retrieve more data.
+				 */
+				dc->dc_put_buf(dtp, buf);
+				if (timestamp == first_timestamp &&
+				    !dtp->dt_stopped)
+					break;
+				continue;
+			}
 
-	// 		timestamp = dt_buf_oldest(buf, dtp);
-	// 		assert(timestamp >= dtp->dt_last_timestamp);
-	// 		dtp->dt_last_timestamp = timestamp;
+			if ((rval = dt_consume_cpu(dtp, fp,
+			    buf->dtbd_cpu, buf, B_TRUE, dc, arg)) != 0)
+				return (rval);
+			dt_pq_insert(dtp->dt_bufq, buf);
+		}
 
-	// 		if (timestamp == buf->dtbd_timestamp) {
-	// 			/*
-	// 			 * We've reached the end of the time covered
-	// 			 * by this buffer.  If this is the oldest
-	// 			 * buffer, we must do another pass
-	// 			 * to retrieve more data.
-	// 			 */
-	// 			dc->dc_put_buf(dtp, buf);
-	// 			if (timestamp == first_timestamp &&
-	// 			    !dtp->dt_stopped)
-	// 				break;
-	// 			continue;
-	// 		}
+		/* Consume drops. */
+		for (i = 0; i < max_ncpus; i++) {
+			if (drops[i] != 0) {
+				int error = dt_handle_cpudrop(dtp, i,
+				    DTRACEDROP_PRINCIPAL, drops[i]);
+				if (error != 0)
+					return (error);
+			}
+		}
 
-	// 		if ((rval = dt_consume_cpu(dtp, fp,
-	// 		    buf->dtbd_cpu, buf, B_TRUE, dc, arg)) != 0)
-	// 			return (rval);
-	// 		dt_pq_insert(dtp->dt_bufq, buf);
-	// 	}
-
-	// 	/* Consume drops. */
-	// 	for (i = 0; i < max_ncpus; i++) {
-	// 		if (drops[i] != 0) {
-	// 			int error = dt_handle_cpudrop(dtp, i,
-	// 			    DTRACEDROP_PRINCIPAL, drops[i]);
-	// 			if (error != 0)
-	// 				return (error);
-	// 		}
-	// 	}
-
-	// 	/*
-	// 	 * Reduce memory usage by re-allocating smaller buffers
-	// 	 * for the "remnants".
-	// 	 */
-	// 	while (buf = dt_pq_walk(dtp->dt_bufq, &cookie))
-	// 		dt_realloc_buf(dtp, buf, buf->dtbd_size);
-	// }
+		/*
+		 * Reduce memory usage by re-allocating smaller buffers
+		 * for the "remnants".
+		 */
+		while (buf = dt_pq_walk(dtp->dt_bufq, &cookie))
+			dt_realloc_buf(dtp, buf, buf->dtbd_size);
+	}
 
 	return (0);
 }

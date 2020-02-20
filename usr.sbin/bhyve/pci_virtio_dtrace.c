@@ -348,7 +348,9 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		trc_entry->data.dtbd_drops = ctrl->uctrl.trc_ev.dtbd_drops;
 		trc_entry->data.dtbd_oldest = ctrl->uctrl.trc_ev.dtbd_oldest;
 		DPRINTF(("Yay: %d, cpu: %d \n", trc_entry->data.dtbd_size, trc_entry->data.dtbd_cpu));
+		pthread_mutex_lock(&tq->mtx);
 		pci_vtdtr_tq_enqueue(tq, trc_entry);
+		pthread_mutex_unlock(&tq->mtx);
 		break;
 	case VTDTR_DEVICE_EOF:
 		DPRINTF(("Received VTDTR_DEVICE_EOF. \n"));
@@ -539,6 +541,12 @@ struct pci_vtdtr_trc_entry* pci_vtdtr_tq_dequeue(struct pci_vtdtr_traceq *tq)
 	}
 	return (trc_entry);
 
+}
+
+ int
+pci_vtdtr_tq_empty(struct pci_vtdtr_traceq *tq)
+{
+	return (STAILQ_EMPTY(&tq->head));
 }
 
 /*
