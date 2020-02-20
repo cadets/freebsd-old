@@ -75,6 +75,7 @@ CFLAGS+=	-I${.OBJDIR} -I${.CURDIR} \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libctf/common \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libdtrace/common \
 		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common
+		-I${SRCTOP}/usr.sbin/bhyve
 
 CFLAGS+=	-g
 
@@ -113,7 +114,6 @@ CFLAGS+=	-I${OPENSOLARIS_SYS_DISTDIR}/uts/sparc
 # temporary hack
 CFLAGS+=	-I${OPENSOLARIS_SYS_DISTDIR}/uts/intel
 .endif
-CFLAGS+=	-I${SRCTOP}/usr.sbin/bhyve
 .if ${MACHINE_ARCH} == "i386" || ${MACHINE_ARCH} == "amd64"
 SRCS+=		dis_tables.c
 DSRCS+=		regs_x86.d
