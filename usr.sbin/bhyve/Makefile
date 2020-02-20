@@ -87,7 +87,7 @@ CFLAGS+=-DINET6
 .if ${MK_OPENSSL} == "no"
 CFLAGS+=-DNO_OPENSSL
 .else
-LIBADD+=	crypto
+LIBADD+=	crypto dtrace
 .endif
 
 CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/e1000
