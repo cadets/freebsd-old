@@ -57,7 +57,7 @@ __FBSDID("$FreeBSD$");
 
 #include <vmmapi.h>
 
-#include <dt_queue.h>
+#include <cddl/contrib/opensolaris/cmd/dtrace/dt_queue.h>
 
 #include "dthyve.h"
 #include "bhyverun.h"
