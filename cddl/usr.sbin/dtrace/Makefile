@@ -23,7 +23,7 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 #CFLAGS+=	-DNEED_ERRLOC
 #YFLAGS+=	-d
 
-LIBADD=	dtrace ctf elf proc xo 
+LIBADD=	dtrace ctf elf proc xo bhyve
 
 .if ${MK_DTRACE_TESTS} != "no"
 SUBDIR+=	tests
