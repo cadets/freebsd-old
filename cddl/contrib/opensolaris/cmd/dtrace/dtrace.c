@@ -45,7 +45,7 @@
 #include <signal.h>
 #include <pthread.h>
 #include <fcntl.h>
-#include <usr.sbin/bhyve/pci_virtio_dtrace.h>
+#include <pci_virtio_dtrace.h>
 
 #ifdef illumos
 #include <alloca.h>
