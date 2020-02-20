@@ -45,7 +45,6 @@
 #include <signal.h>
 #include <pthread.h>
 #include <fcntl.h>
-#include "pci_virtio_dtrace.h"
 
 #ifdef illumos
 #include <alloca.h>
@@ -1765,16 +1764,17 @@ int main(int argc, char *argv[])
 		const char *file_path;
 		file_path = argv[argc - 1];
 		write_script(file_path);
-		while (1)
-		{
-			pthread_mutex_lock(&tq->mtx);
-			while (!pci_vtdtr_tq_empty(tq))
-			{
-				struct pci_vtdtr_trc_entry *trc_entry = pci_vtdtr_tq_dequeue(tq);
-				printf("Back in dtrace command line: %d ", trc_entry->data.dtbd_size);
-			}
-			pthread_mutex_unlock(&tq->mtx);
-		}
+	// 	while (1)
+	// 	{
+	// 		pthread_mutex_lock(&tq->mtx);
+	// 		while (!pci_vtdtr_tq_empty(tq))
+	// 		{
+	// 			struct pci_vtdtr_trc_entry *trc_entry = pci_vtdtr_tq_dequeue(tq);
+	// 			printf("Back in dtrace command line: %d ", trc_entry->data.dtbd_size);
+	// 		}
+	// 		pthread_mutex_unlock(&tq->mtx);
+	// 	}
+	// 
 	}
 
 	if (mode > 1)

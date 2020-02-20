@@ -57,11 +57,12 @@ __FBSDID("$FreeBSD$");
 
 #include <vmmapi.h>
 
+#include <dt_queue.h>
+
 #include "dthyve.h"
 #include "bhyverun.h"
 #include "pci_emul.h"
 #include "virtio.h"
-#include "pci_virtio_dtrace.h"
 
 #define VTDTR_RINGSZ 512
 #define VTDTR_MAXQ 2
@@ -194,7 +195,6 @@ struct pci_vtdtr_softc
 	int vsd_ready;
 };
 
-struct pci_vtdtr_traceq *tq;
 
 static void pci_vtdtr_reset(void *);
 static void pci_vtdtr_control_tx(struct pci_vtdtr_softc *,
@@ -339,6 +339,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		pthread_mutex_unlock(&sc->vsd_mtx);
 		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
 		DPRINTF(("Host status: %d\n", sc->vsd_ready));
+		pci_vtdtr_write_trace_data(ctrl);
+
 		struct pci_vtdtr_trc_entry *trc_entry = malloc(sizeof(struct pci_vtdtr_trc_entry));
 		memset(trc_entry, 0, sizeof(struct pci_vtdtr_trc_entry));
 		assert(trc_entry != NULL);
@@ -526,28 +528,6 @@ pci_vtdtr_cq_dequeue(struct pci_vtdtr_ctrlq *cq)
 	return (ctrl_entry);
 }
 
-void pci_vtdtr_tq_enqueue(struct pci_vtdtr_traceq *tq, struct pci_vtdtr_trc_entry *trc_entry)
-{
-	STAILQ_INSERT_HEAD(&tq->head, trc_entry, entries);
-}
-
-struct pci_vtdtr_trc_entry* pci_vtdtr_tq_dequeue(struct pci_vtdtr_traceq *tq)
-{
-	struct pci_vtdtr_trc_entry *trc_entry;
-	trc_entry = STAILQ_FIRST(&tq->head);
-	if (trc_entry != NULL)
-	{
-		STAILQ_REMOVE_HEAD(&tq->head, entries);
-	}
-	return (trc_entry);
-
-}
-
- int
-pci_vtdtr_tq_empty(struct pci_vtdtr_traceq *tq)
-{
-	return (STAILQ_EMPTY(&tq->head));
-}
 
 /*
  * In this function we fill the descriptor that was provided to us by the guest.
@@ -877,7 +857,7 @@ static void *pci_vtdtr_listen(void *xsc)
 	for (;;)
 	{
 
-		if ((fd = openat(tmp_fd, "fifo", O_RDONLY)) == -1)
+		if ((fd = opeat(tmp_fd, "fifo", O_RDONLY)) == -1)
 		{
 			DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
 			exit(1);
@@ -1033,9 +1013,7 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	sc->vsd_ctrlq = calloc(1, sizeof(struct pci_vtdtr_ctrlq));
 	assert(sc->vsd_ctrlq != NULL);
 	STAILQ_INIT(&sc->vsd_ctrlq->head);
-	tq = calloc(1,sizeof(struct pci_vtdtr_traceq));
-	assert(tq != NULL);
-	STAILQ_INIT(&tq->head);
+
 
 	vi_softc_linkup(&sc->vsd_vs, &vtdtr_vi_consts,
 					sc, pci_inst, sc->vsd_queues);

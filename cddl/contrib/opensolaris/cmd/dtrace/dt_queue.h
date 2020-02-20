@@ -1,6 +1,6 @@
 
-#ifndef _PCI_VIRTIO_DTRACE_H
-#define _PCI_VIRTIO_DTRACE_H
+#ifndef _DT_QUEUE_H
+#define _DT_QUEUE_H
 #include <sys/queue.h>
 #include <stdint.h>
 #include <pthread.h>
@@ -26,7 +26,7 @@ struct pci_vtdtr_traceq {
 	pthread_mutex_t mtx;
 };
 
-extern struct pci_vtdtr_traceq *tq;
+struct pci_vtdtr_traceq *tq;
 
 void pci_vtdtr_tq_enqueue(struct pci_vtdtr_traceq *, struct pci_vtdtr_trc_entry *);
 int pci_vtdtr_tq_empty(struct pci_vtdtr_traceq *);

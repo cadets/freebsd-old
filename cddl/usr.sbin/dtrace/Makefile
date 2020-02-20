@@ -5,7 +5,7 @@
 .PATH: ${SRCTOP}/cddl/contrib/opensolaris/cmd/dtrace
 
 PROG=		dtrace
-SRCS=		dtrace.c pci_virtio_dtrace.c
+SRCS=		dtrace.c dt_queue.c
 BINDIR?=	/usr/sbin
 
 WARNS?=		1
@@ -17,7 +17,6 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libproc/common \
 		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common \
 		-I${OPENSOLARIS_SYS_DISTDIR}/compat \
-		-I${SRCTOP}/usr.sbin/bhyve
 
 # Optional debugging stuff...
 #CFLAGS+=	-DNEED_ERRLOC
