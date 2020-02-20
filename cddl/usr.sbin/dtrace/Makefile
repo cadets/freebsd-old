@@ -5,7 +5,7 @@
 .PATH: ${SRCTOP}/cddl/contrib/opensolaris/cmd/dtrace
 
 PROG=		dtrace
-SRCS=		dtrace.c
+SRCS=		dtrace.c pci_virtio_dtrace.c
 BINDIR?=	/usr/sbin
 
 WARNS?=		1
@@ -23,7 +23,7 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 #CFLAGS+=	-DNEED_ERRLOC
 #YFLAGS+=	-d
 
-LIBADD=	dtrace ctf elf proc xo bhyve
+LIBADD=	dtrace ctf elf proc xo 
 
 .if ${MK_DTRACE_TESTS} != "no"
 SUBDIR+=	tests
