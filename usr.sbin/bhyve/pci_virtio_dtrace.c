@@ -857,7 +857,7 @@ static void *pci_vtdtr_listen(void *xsc)
 	for (;;)
 	{
 
-		if ((fd = opeat(tmp_fd, "fifo", O_RDONLY)) == -1)
+		if ((fd = openat(tmp_fd, "fifo", O_RDONLY)) == -1)
 		{
 			DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
 			exit(1);
