@@ -339,7 +339,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		pthread_mutex_unlock(&sc->vsd_mtx);
 		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
 		DPRINTF(("Host status: %d\n", sc->vsd_ready));
-		pci_vtdtr_write_trace_data(ctrl);
 
 		struct pci_vtdtr_trc_entry *trc_entry = malloc(sizeof(struct pci_vtdtr_trc_entry));
 		memset(trc_entry, 0, sizeof(struct pci_vtdtr_trc_entry));
