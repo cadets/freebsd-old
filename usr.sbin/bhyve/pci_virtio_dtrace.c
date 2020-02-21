@@ -339,13 +339,18 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
 		DPRINTF(("Host status: %d\n", sc->vsd_ready));
 		struct pci_vtdtr_ctrl_trcevent *trc_ev = &ctrl->uctrl.trc_ev;
-		
-		int sz = fwrite(&trc_ev->dtbd_data, sizeof(uint64_t),1,trace_writer_stream);
+		int fd;
+		if ((fd = openat(tmp_fd, "trace_fifo", O_WRONLY)) == -1)
+		{
+			DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
+			exit(1);
+		}
+		int sz = write(fd,&trc_ev->dtbd_data,sizeof(uint64_t));
 		if(sz <= 0)
 		{
 			DPRINTF(("Failed writing trace data."));
 		}
-
+		close(fd);
 		break;
 	case VTDTR_DEVICE_EOF:
 		DPRINTF(("Received VTDTR_DEVICE_EOF. \n"));
@@ -982,29 +987,6 @@ static void *pci_vtdtr_read_script(void *xargs)
 	DPRINTF(("I've finished reading stuff.\n"));
 	pthread_exit(NULL);
 }
-
-static int
-pci_vtdtr_trace_fifo_init()
-{
-	int write_fd;
-	char *trc_fifo;
-
-	*trc_fifo = "/tmp/write_fifo";
-
-	mkfifo(trc_fifo, 0666);
-	if((write_fd = open(trc_fifo, O_WRONLY)))
-	{
-		DPRINTF(("Failed to open pipe for writing: %s. \n", strerror(errno)));
-		exit(1);
-	}
-
-	if((trace_writer_stream = fdopen(write_fd, "w")) == NULL)
-	{
-		DPRINTF(("Failed opening trace writer stream: %s. \n", strerror(errno)));
-		exit(1);
-	}
-}
-
 
 
 /*

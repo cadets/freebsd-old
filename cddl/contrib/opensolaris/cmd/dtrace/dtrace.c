@@ -1615,7 +1615,9 @@ static void read_trace_data()
 	int fd, sz;
 	uint64_t size;
 
-	*trc_fifo = "/tmp/write_fifo";
+	*trc_fifo = "/tmp/trace_fifo";
+
+	mkfifo(trc_fifo, 0666);
 
 	if((fd = open(trc_fifo, O_RDONLY)))
 	{
@@ -1632,6 +1634,8 @@ static void read_trace_data()
 	sz = fread(&size, sizeof(uint64_t), 1, trace_reader_stream);
 	assert(sz > 0);
 	printf("Yay: %zu", size);
+	fclose(trace_reader_stream);
+	close(fd);
 
 }
 
@@ -1793,6 +1797,7 @@ int main(int argc, char *argv[])
 		write_script(file_path);
 		read_trace_data();
 	}
+
 
 	if (mode > 1)
 	{
