@@ -1632,7 +1632,6 @@ static void read_trace_data()
 	}
 
 	sz = fread(&size, sizeof(uint64_t), 1, trace_reader_stream);
-	assert(sz > 0);
 	printf("Yay: %zu", size);
 	fclose(trace_reader_stream);
 	close(fd);
