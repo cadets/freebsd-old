@@ -1617,6 +1617,8 @@ static void read_trace_data()
 
 	trc_fifo = "/var/log/trace_fifo";
 
+	printf("About to read trace data. \n");
+	
 	int err = mkfifo(trc_fifo, 0666);
 	if(err)
 	{
