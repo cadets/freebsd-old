@@ -1043,8 +1043,6 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 		DPRINTF(("Creating thread in pci_virtio to read script. \n"));
 		error = pthread_create(&listener, NULL, pci_vtdtr_listen, sc);
 		assert(error == 0);
-		error = pci_vtdtr_trace_fifo_init();
-		assert(error == 0);
 	}
 
 
