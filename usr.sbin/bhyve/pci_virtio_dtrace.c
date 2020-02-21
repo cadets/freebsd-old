@@ -342,10 +342,10 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		int fd;
 		if ((fd = openat(tmp_fd, "trace_fifo", O_WRONLY)) == -1)
 		{
-			DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
+			DPRINTF(("Failed to open trace write pipe: %s. \n", strerror(errno)));
 			exit(1);
 		}
-		int sz = write(fd,&trc_ev->dtbd_data,sizeof(uint64_t));
+		int sz = write(fd, &trc_ev->dtbd_data, sizeof(uint64_t));
 		if(sz <= 0)
 		{
 			DPRINTF(("Failed writing trace data."));

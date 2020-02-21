@@ -1615,7 +1615,7 @@ static void read_trace_data()
 	int fd, sz;
 	uint64_t size;
 
-	*trc_fifo = "/tmp/trace_fifo";
+	trc_fifo = "/tmp/trace_fifo";
 
 	mkfifo(trc_fifo, 0666);
 
