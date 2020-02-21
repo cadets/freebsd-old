@@ -340,7 +340,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		DPRINTF(("Host status: %d\n", sc->vsd_ready));
 		struct pci_vtdtr_ctrl_trcevent *trc_ev = &ctrl->uctrl.trc_ev;
 		int fd;
-		if ((fd = openat(tmp_fd, "trace_fifo", O_WRONLY)) == -1)
+		if ((fd = openat(wr_fd, "trace_fifo", O_WRONLY)) == -1)
 		{
 			DPRINTF(("Failed to open trace write pipe: %s. \n", strerror(errno)));
 			exit(1);
@@ -860,7 +860,7 @@ static void *pci_vtdtr_listen(void *xsc)
 	for (;;)
 	{
 
-		if ((fd = openat(tmp_fd, "fifo", O_RDONLY)) == -1)
+		if ((fd = openat(rd_fd, "fifo", O_RDONLY)) == -1)
 		{
 			DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
 			exit(1);

@@ -37,7 +37,8 @@
 struct vmctx;
 
 #ifndef VTDTR
-    extern int tmp_fd;
+    extern int rd_fd;
+    extern int wr_fd;
 #endif
 
 extern int guest_ncpus;
