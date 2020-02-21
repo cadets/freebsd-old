@@ -5,7 +5,7 @@
 .PATH: ${SRCTOP}/cddl/contrib/opensolaris/cmd/dtrace
 
 PROG=		dtrace
-SRCS=		dtrace.c dt_queue.c
+SRCS=		dtrace.c
 BINDIR?=	/usr/sbin
 
 WARNS?=		1

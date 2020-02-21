@@ -1608,6 +1608,33 @@ static void *write_script(void *file_path)
 	//unlink(fifo);
 }
 
+static void read_trace_data()
+{
+	FILE *trace_reader_stream;
+	char *trc_fifo;
+	int fd, sz;
+	uint64_t size;
+
+	*trc_fifo = "/tmp/write_fifo";
+
+	if((fd = open(trc_fifo, O_RDONLY)))
+	{
+		printf("Failed to open trace pipe for reading: %s. \n", strerror(errno));
+		exit(1);
+	}
+
+	if((trace_reader_stream = fdopen(fd, "r")) == NULL)
+	{
+		printf("Failed opening trace reader stream: %s. \n", strerror(errno));
+		exit(1);
+	}
+
+	sz = fread(&size, sizeof(uint64_t), 1, trace_reader_stream);
+	assert(sz > 0);
+	printf("Yay: %zu", size);
+
+}
+
 int main(int argc, char *argv[])
 {
 	dtrace_bufdesc_t buf;
@@ -1764,17 +1791,7 @@ int main(int argc, char *argv[])
 		const char *file_path;
 		file_path = argv[argc - 1];
 		write_script(file_path);
-	// 	while (1)
-	// 	{
-	// 		pthread_mutex_lock(&tq->mtx);
-	// 		while (!pci_vtdtr_tq_empty(tq))
-	// 		{
-	// 			struct pci_vtdtr_trc_entry *trc_entry = pci_vtdtr_tq_dequeue(tq);
-	// 			printf("Back in dtrace command line: %d ", trc_entry->data.dtbd_size);
-	// 		}
-	// 		pthread_mutex_unlock(&tq->mtx);
-	// 	}
-	// 
+		read_trace_data();
 	}
 
 	if (mode > 1)

@@ -93,6 +93,7 @@ __FBSDID("$FreeBSD$");
 #define VTDTR_DEVICE_TRACE 0x11
 
 static FILE *fp;
+static FILE *trace_writer_stream
 
 static int pci_vtdtr_debug;
 #define DPRINTF(params) printf params
@@ -339,17 +340,14 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		pthread_mutex_unlock(&sc->vsd_mtx);
 		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
 		DPRINTF(("Host status: %d\n", sc->vsd_ready));
+		struct pci_vtdtr_ctrl_trcevent *trc_ev = &ctrl->uctrl.trc_ev;
+		
+		sz = fwrite(&trc_ev->dtbd_data, sizeof(uint64_t),1,trace_writer_stream);
+		if(sz <= 0)
+		{
+			DPRINTF(("Failed writing trace data."));
+		}
 
-		struct pci_vtdtr_trc_entry *trc_entry = malloc(sizeof(struct pci_vtdtr_trc_entry));
-		memset(trc_entry, 0, sizeof(struct pci_vtdtr_trc_entry));
-		assert(trc_entry != NULL);
-		trc_entry->data.dtbd_size = ctrl->uctrl.trc_ev.dtbd_size;
-		trc_entry->data.dtbd_cpu = ctrl->uctrl.trc_ev.dtbd_cpu;
-		trc_entry->data.dtbd_errors = ctrl->uctrl.trc_ev.dtbd_errors;
-		trc_entry->data.dtbd_drops = ctrl->uctrl.trc_ev.dtbd_drops;
-		trc_entry->data.dtbd_oldest = ctrl->uctrl.trc_ev.dtbd_oldest;
-		DPRINTF(("Yay: %d, cpu: %d \n", trc_entry->data.dtbd_size, trc_entry->data.dtbd_cpu));
-	
 		break;
 	case VTDTR_DEVICE_EOF:
 		DPRINTF(("Received VTDTR_DEVICE_EOF. \n"));
@@ -987,6 +985,30 @@ static void *pci_vtdtr_read_script(void *xargs)
 	pthread_exit(NULL);
 }
 
+static int
+pci_vtdtr_trace_fifo_init()
+{
+	int write_fd;
+	char *trc_fifo;
+
+	*trc_fifo = "/tmp/write_fifo";
+
+	mkfifo(trc_fifo, 0666);
+	if((write_fd = open(trc_fifo, O_WRONLY)))
+	{
+		DPRINTF(("Failed to open pipe for writing: %s. \n", strerror(errno)));
+		exit(1);
+	}
+
+	if((trace_writer_stream = fdopen(write_fd, "w")) == NULL)
+	{
+		DPRINTF(("Failed opening trace writer stream: %s. \n", strerror(errno)));
+		exit(1);
+	}
+}
+
+
+
 /*
  * Mostly boilerplate, we initialize everything required for the correct
  * operation of the emulated PCI device, do error checking and finally dispatch
@@ -1041,7 +1063,10 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 		DPRINTF(("Creating thread in pci_virtio to read script. \n"));
 		error = pthread_create(&listener, NULL, pci_vtdtr_listen, sc);
 		assert(error == 0);
+		error = pci_vtdtr_trace_fifo_init();
+		assert(error == 0);
 	}
+
 
 	if (vi_intr_init(&sc->vsd_vs, 1, fbsdrun_virtio_msix()))
 		return (1);
