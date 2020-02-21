@@ -1615,7 +1615,7 @@ static void read_trace_data()
 	int fd, sz;
 	uint64_t size;
 
-	trc_fifo = "/tmp/trace_fifo";
+	trc_fifo = "/var/log/trace_fifo";
 
 	int err = mkfifo(trc_fifo, 0666);
 	if(err)
