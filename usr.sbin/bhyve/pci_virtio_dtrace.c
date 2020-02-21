@@ -91,7 +91,7 @@ __FBSDID("$FreeBSD$");
 #define VTDTR_DEVICE_TRACE 0x11
 
 static FILE *fp;
-static FILE *trace_writer_stream
+static FILE *trace_writer_stream;
 
 static int pci_vtdtr_debug;
 #define DPRINTF(params) printf params
@@ -340,7 +340,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		DPRINTF(("Host status: %d\n", sc->vsd_ready));
 		struct pci_vtdtr_ctrl_trcevent *trc_ev = &ctrl->uctrl.trc_ev;
 		
-		sz = fwrite(&trc_ev->dtbd_data, sizeof(uint64_t),1,trace_writer_stream);
+		int sz = fwrite(&trc_ev->dtbd_data, sizeof(uint64_t),1,trace_writer_stream);
 		if(sz <= 0)
 		{
 			DPRINTF(("Failed writing trace data."));
