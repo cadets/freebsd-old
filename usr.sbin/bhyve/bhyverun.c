@@ -1123,7 +1123,7 @@ main(int argc, char *argv[])
 #ifndef VTDTR
 	if (trace) {
 		dthyve_init(vmname);
-		tmp_fd = open("/tmp/", O_RDONLY);
+		tmp_fd = open("/tmp/", O_RDWR);
 	}
 #endif
 

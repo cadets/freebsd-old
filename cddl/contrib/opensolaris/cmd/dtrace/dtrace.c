@@ -1617,7 +1617,12 @@ static void read_trace_data()
 
 	trc_fifo = "/tmp/trace_fifo";
 
-	mkfifo(trc_fifo, 0666);
+	int error = mkfifo(trc_fifo, 0666);
+	if(error)
+	{
+		printf("Failed to mkfifo: %s", strerror(errno));
+		exit(1);
+	}
 
 	if((fd = open(trc_fifo, O_RDONLY)))
 	{
