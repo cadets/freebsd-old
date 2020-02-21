@@ -1124,7 +1124,7 @@ main(int argc, char *argv[])
 	if (trace) {
 		dthyve_init(vmname);
 		rd_fd = open("/tmp/", O_RDONLY);
-		wr_fd = open("/var/log", O_WRONLY);
+		wr_fd = open("/var/log/", O_WRONLY);
 	}
 #endif
 
