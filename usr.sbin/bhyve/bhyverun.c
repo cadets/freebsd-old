@@ -164,7 +164,7 @@ extern int vmexit_task_switch(struct vmctx *, struct vm_exit *, int *vcpu);
 
 char *vmname;
 
-int dir_fd, wr_fd;
+int dir_fd;
 int guest_ncpus;
 uint16_t cores, maxcpus, sockets, threads;
 
