@@ -340,7 +340,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		DPRINTF(("Host status: %d\n", sc->vsd_ready));
 		FILE *trace_stream;
 		int fd;
-		if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY | O_APPEND)) == -1)
+		if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY)) == -1)
 		{
 			DPRINTF(("Failed to open trace write pipe: %s. \n", strerror(errno)));
 			exit(1);
@@ -349,7 +349,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		{
 			DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno)));
 			exit(1);
-		}
+		} 
 		DPRINTF(("Successfully opened everything."));
 
 		int sz;
@@ -360,7 +360,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		}
 		printf("%d", sz);
 		fflush(trace_stream);
-
 		fclose(trace_stream);
 		close(fd);
 		break;

@@ -1626,8 +1626,7 @@ static void read_trace_data()
 		exit(1);
 	}
 
-	for (;;)
-	{
+
 		// This should block until we have trace data
 		if ((fd = open(trc_fifo, O_RDONLY)) == -1)
 		{
@@ -1635,15 +1634,15 @@ static void read_trace_data()
 			exit(1);
 		}
 
-		if ((trace_stream = fdopen(fd, "r")) == NULL)
+		/* if ((trace_stream = fdopen(fd, "r")) == NULL)
 		{
 			printf("Failed opening trace reader stream: %s. \n", strerror(errno));
 			exit(1);
-		}
+		}*/
 		printf("open() were called");
 
 		printf("About to read trace data. \n");
-		sz = fread(&size, sizeof(uint64_t), 1, trace_stream);
+		sz = read(fd, &size, sizeof(uint64_t));
 		if(sz <= 0)
 		{
 			printf("Failed reading trace data: %s. \n", strerror(errno));
@@ -1651,9 +1650,9 @@ static void read_trace_data()
 		}
 		printf("Read: %d", sz);
 		printf("Yay: %d", size);
-		fclose(trace_stream);
+		// fclose(trace_stream);
 		close(fd);
-	}
+		unlink(trc_fifo);
 }
 
 int main(int argc, char *argv[])
