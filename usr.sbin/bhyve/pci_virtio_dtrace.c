@@ -339,17 +339,26 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
 		DPRINTF(("Host status: %d\n", sc->vsd_ready));
 		struct pci_vtdtr_ctrl_trcevent *trc_ev = &ctrl->uctrl.trc_ev;
+		FILE *trace_stream;
 		int fd;
 		if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY | O_APPEND)) == -1)
 		{
 			DPRINTF(("Failed to open trace write pipe: %s. \n", strerror(errno)));
 			exit(1);
 		}
-		int sz = write(fd, &trc_ev->dtbd_data, sizeof(uint64_t));
+		if((trace_stream = fdopen(fd, "w")) == NULL)
+		{
+			DPRINTF("Failed opening trace stream: %s. \n", strerror(errno));
+			exit(1);
+		}
+
+		int sz = fwrite(&trc_ev->dtbd_size, sizeof(uint64_t), 1, trace_stream);
 		if(sz <= 0)
 		{
 			DPRINTF(("Failed writing trace data: %s", strerror(errno)));
 		}
+
+		fclose(trace_stream);
 		close(fd);
 		break;
 	case VTDTR_DEVICE_EOF:

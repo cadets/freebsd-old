@@ -1642,7 +1642,12 @@ static void read_trace_data()
 		}
 
 		sz = fread(&size, sizeof(uint64_t), 1, trace_reader_stream);
-		printf("Yay: %zu", size);
+		if(sz <= 0)
+		{
+			printf("Failed reading trace data: %s. \n", strerror(errno));
+			exit(1);
+		}
+		printf("Yay: %d", size);
 		fclose(trace_reader_stream);
 		close(fd);
 	}
