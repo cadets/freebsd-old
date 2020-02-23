@@ -340,15 +340,15 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		DPRINTF(("Host status: %d\n", sc->vsd_ready));
 		struct pci_vtdtr_ctrl_trcevent *trc_ev = &ctrl->uctrl.trc_ev;
 		int fd;
-		if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY)) == -1)
+		if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY | O_APPEND)) == -1)
 		{
 			DPRINTF(("Failed to open trace write pipe: %s. \n", strerror(errno)));
 			exit(1);
 		}
-		int sz = pwrite(fd, &trc_ev->dtbd_data, sizeof(uint64_t), 0);
+		int sz = write(fd, &trc_ev->dtbd_data, sizeof(uint64_t));
 		if(sz <= 0)
 		{
-			DPRINTF(("Failed writing trace data."));
+			DPRINTF(("Failed writing trace data: %s", strerror(errno)));
 		}
 		close(fd);
 		break;
