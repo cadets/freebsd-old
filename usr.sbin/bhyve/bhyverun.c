@@ -1123,8 +1123,8 @@ main(int argc, char *argv[])
 #ifndef VTDTR
 	if (trace) {
 		dthyve_init(vmname);
-		rd_fd = open("/tmp/", O_RDONLY);
-		wr_fd = open("/var/log/", O_WRONLY);
+		rd_fd = open("/tmp/in/", O_RDONLY);
+		wr_fd = open("/tmp/out/", O_WRONLY);
 	}
 #endif
 

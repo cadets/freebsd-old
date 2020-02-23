@@ -1615,10 +1615,10 @@ static void read_trace_data()
 	int fd, sz;
 	uint64_t size;
 
-	trc_fifo = "/var/log/trace_fifo";
+	trc_fifo = "/tmp/out/trace_fifo";
 
 	printf("About to read trace data. \n");
-	
+
 	int err = mkfifo(trc_fifo, 0666);
 	if(err)
 	{
