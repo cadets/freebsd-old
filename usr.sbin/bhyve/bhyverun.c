@@ -164,7 +164,7 @@ extern int vmexit_task_switch(struct vmctx *, struct vm_exit *, int *vcpu);
 
 char *vmname;
 
-int rd_fd, wr_fd;
+int dir_fd, wr_fd;
 int guest_ncpus;
 uint16_t cores, maxcpus, sockets, threads;
 
@@ -953,7 +953,7 @@ do_open(const char *vmname)
 	}
 
 #ifndef WITHOUT_CAPSICUM
-	cap_rights_init(&rights, CAP_IOCTL, CAP_MMAP_RW, CAP_READ, CAP_WRITE);
+	cap_rights_init(&rights, CAP_IOCTL, CAP_MMAP_RW, CAP_READ, CAP_PWRITE, CAP_FEXECVE);
 	if (cap_rights_limit(vm_get_device_fd(ctx), &rights) == -1 &&
 	    errno != ENOSYS)
 		errx(EX_OSERR, "Unable to apply rights for sandbox");
@@ -1123,12 +1123,9 @@ main(int argc, char *argv[])
 #ifndef VTDTR
 	if (trace) {
 		dthyve_init(vmname);
-		rd_fd = open("/tmp/", O_RDONLY);
+		dir_fd = open("/tmp/", O_RDONLY);
 		printf("%s", strerror(errno));
-		assert(rd_fd != -1);
-		wr_fd = open("/tmp/", O_WRONLY);
-		printf("%s", strerror(errno));
-		assert(wr_fd != -1);
+		assert(dir_fd != -1);
 	}
 #endif
 
