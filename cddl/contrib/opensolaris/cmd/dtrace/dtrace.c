@@ -1617,7 +1617,7 @@ static void read_trace_data()
 
 	trc_fifo = "/tmp/trace_fifo";
 
-	printf("About to read trace data. \n");
+	
 
 	int err = mkfifo(trc_fifo, 0666);
 	if (err)
@@ -1640,13 +1640,16 @@ static void read_trace_data()
 			printf("Failed opening trace reader stream: %s. \n", strerror(errno));
 			exit(1);
 		}
+		printf("open() were called");
 
+		printf("About to read trace data. \n");
 		sz = fread(&size, sizeof(uint64_t), 1, trace_reader_stream);
 		if(sz <= 0)
 		{
 			printf("Failed reading trace data: %s. \n", strerror(errno));
 			exit(1);
 		}
+		printf("Read: %d", sz)
 		printf("Yay: %d", size);
 		fclose(trace_reader_stream);
 		close(fd);

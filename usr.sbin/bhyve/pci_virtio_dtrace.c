@@ -338,7 +338,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		pthread_mutex_unlock(&sc->vsd_mtx);
 		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
 		DPRINTF(("Host status: %d\n", sc->vsd_ready));
-		struct pci_vtdtr_ctrl_trcevent *trc_ev = &ctrl->uctrl.trc_ev;
 		FILE *trace_stream;
 		int fd;
 		if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY | O_APPEND)) == -1)
@@ -351,12 +350,15 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno)));
 			exit(1);
 		}
+		DPRINTF(("Successfully opened everything."));
 
-		int sz = fwrite(&trc_ev->dtbd_size, sizeof(uint64_t), 1, trace_stream);
+		int sz;
+		sz = fwrite(&ctrl->uctrl.trc_ev.dtbd_size, sizeof(uint64_t), 1, trace_stream);
 		if(sz <= 0)
 		{
 			DPRINTF(("Failed writing trace data: %s", strerror(errno)));
 		}
+		printf("%d", sz);
 
 		fclose(trace_stream);
 		close(fd);
