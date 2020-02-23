@@ -1629,7 +1629,7 @@ static void read_trace_data()
 	for (;;)
 	{
 		// This should block until we have trace data
-		if ((fd = open(trc_fifo, O_RDONLY)))
+		if ((fd = open(trc_fifo, O_RDONLY)) == -1)
 		{
 			printf("Failed to open trace pipe for reading: %s. \n", strerror(errno));
 			exit(1);
