@@ -1649,7 +1649,7 @@ static void read_trace_data()
 			printf("Failed reading trace data: %s. \n", strerror(errno));
 			exit(1);
 		}
-		printf("Read: %d", sz)
+		printf("Read: %d", sz);
 		printf("Yay: %d", size);
 		fclose(trace_reader_stream);
 		close(fd);
