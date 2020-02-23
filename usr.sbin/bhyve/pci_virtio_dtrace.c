@@ -359,6 +359,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			DPRINTF(("Failed writing trace data: %s", strerror(errno)));
 		}
 		printf("%d", sz);
+		fflush(trace_stream);
 
 		fclose(trace_stream);
 		close(fd);

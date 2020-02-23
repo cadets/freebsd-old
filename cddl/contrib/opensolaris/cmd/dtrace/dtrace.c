@@ -1610,7 +1610,7 @@ static void *write_script(void *file_path)
 
 static void read_trace_data()
 {
-	FILE *trace_reader_stream;
+	FILE *trace_stream;
 	char *trc_fifo;
 	int fd, sz;
 	uint64_t size;
@@ -1635,7 +1635,7 @@ static void read_trace_data()
 			exit(1);
 		}
 
-		if ((trace_reader_stream = fdopen(fd, "r")) == NULL)
+		if ((trace_stream = fdopen(fd, "r")) == NULL)
 		{
 			printf("Failed opening trace reader stream: %s. \n", strerror(errno));
 			exit(1);
@@ -1643,7 +1643,7 @@ static void read_trace_data()
 		printf("open() were called");
 
 		printf("About to read trace data. \n");
-		sz = fread(&size, sizeof(uint64_t), 1, trace_reader_stream);
+		sz = fread(&size, sizeof(uint64_t), 1, trace_stream);
 		if(sz <= 0)
 		{
 			printf("Failed reading trace data: %s. \n", strerror(errno));
@@ -1651,7 +1651,7 @@ static void read_trace_data()
 		}
 		printf("Read: %d", sz);
 		printf("Yay: %d", size);
-		fclose(trace_reader_stream);
+		fclose(trace_stream);
 		close(fd);
 	}
 }
