@@ -348,7 +348,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		}
 		if((trace_stream = fdopen(fd, "w")) == NULL)
 		{
-			DPRINTF("Failed opening trace stream: %s. \n", strerror(errno));
+			DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno));
 			exit(1);
 		}
 
