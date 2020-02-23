@@ -849,7 +849,7 @@ static void *pci_vtdtr_listen(void *xsc)
 	char *fifo;
 	int error, fd;
 
-	fifo = "/tmp/in/input_fifo";
+	fifo = "/tmp/fifo";
 	int err = mkfifo(fifo, 0666);
 
 	if(err)

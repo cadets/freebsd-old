@@ -1615,34 +1615,37 @@ static void read_trace_data()
 	int fd, sz;
 	uint64_t size;
 
-	trc_fifo = "/tmp/out/trace_fifo";
+	trc_fifo = "/tmp/trace_fifo";
 
 	printf("About to read trace data. \n");
 
 	int err = mkfifo(trc_fifo, 0666);
-	if(err)
+	if (err)
 	{
 		printf("Failed to mkfifo: %s", strerror(errno));
 		exit(1);
 	}
 
-	if((fd = open(trc_fifo, O_RDONLY)))
+	for (;;)
 	{
-		printf("Failed to open trace pipe for reading: %s. \n", strerror(errno));
-		exit(1);
+		// This should block until we have trace data
+		if ((fd = open(trc_fifo, O_RDONLY)))
+		{
+			printf("Failed to open trace pipe for reading: %s. \n", strerror(errno));
+			exit(1);
+		}
+
+		if ((trace_reader_stream = fdopen(fd, "r")) == NULL)
+		{
+			printf("Failed opening trace reader stream: %s. \n", strerror(errno));
+			exit(1);
+		}
+
+		sz = fread(&size, sizeof(uint64_t), 1, trace_reader_stream);
+		printf("Yay: %zu", size);
+		fclose(trace_reader_stream);
+		close(fd);
 	}
-
-	if((trace_reader_stream = fdopen(fd, "r")) == NULL)
-	{
-		printf("Failed opening trace reader stream: %s. \n", strerror(errno));
-		exit(1);
-	}
-
-	sz = fread(&size, sizeof(uint64_t), 1, trace_reader_stream);
-	printf("Yay: %zu", size);
-	fclose(trace_reader_stream);
-	close(fd);
-
 }
 
 int main(int argc, char *argv[])
@@ -1802,9 +1805,7 @@ int main(int argc, char *argv[])
 		file_path = argv[argc - 1];
 		write_script(file_path);
 		read_trace_data();
-
 	}
-
 
 	if (mode > 1)
 	{

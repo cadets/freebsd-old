@@ -1367,6 +1367,7 @@ vtdtr_consume_trace(void *xsc)
 			ctrl_trc_ev->dtbd_oldest = trc->dtbd_oldest;
 			KASSERT(ctrl_trc_ev->dtbd_size == trc->dtbd_size, "Failed copying into fields");
 
+			// TODO split into two events if bigger than 512
 			if (ctrl_trc_ev->dtbd_size < 512)
 			{
 				trc_buf_len = strlen(trc->dtbd_data);
