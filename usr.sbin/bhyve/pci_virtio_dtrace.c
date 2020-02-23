@@ -852,7 +852,7 @@ static void *pci_vtdtr_listen(void *xsc)
 	fifo = "/tmp/in/input_fifo";
 	int err = mkfifo(fifo, 0666);
 
-	if(err )
+	if(err)
 	{
 		DPRINTF(("Failed to make fifo: %s", strerror(errno)));
 	}

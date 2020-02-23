@@ -1124,7 +1124,9 @@ main(int argc, char *argv[])
 	if (trace) {
 		dthyve_init(vmname);
 		rd_fd = open("/tmp/in/", O_RDONLY);
+		assert(rd_fd != -1);
 		wr_fd = open("/tmp/out/", O_WRONLY);
+		assert(wr_fd != -1);
 	}
 #endif
 

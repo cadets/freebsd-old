@@ -1802,6 +1802,7 @@ int main(int argc, char *argv[])
 		file_path = argv[argc - 1];
 		write_script(file_path);
 		read_trace_data();
+
 	}
 
 
