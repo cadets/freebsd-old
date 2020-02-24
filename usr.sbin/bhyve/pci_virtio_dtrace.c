@@ -91,7 +91,6 @@ __FBSDID("$FreeBSD$");
 #define VTDTR_DEVICE_TRACE 0x11
 
 static FILE *fp;
-static FILE *trace_writer_stream;
 
 static int pci_vtdtr_debug;
 #define DPRINTF(params) printf params
@@ -139,13 +138,15 @@ struct pci_vtdtr_ctrl_scriptevent
 	struct uuid uuid;
 } __attribute__((packed));
 
-struct pci_vtdtr_ctrl_trcevent{
+struct pci_vtdtr_ctrl_trcevent
+{
 	uint64_t dtbd_size;
 	uint32_t dtbd_cpu;
 	uint32_t dtbd_errors;
 	uint32_t dtbd_drops;
 	char dtbd_data[512];
 	uint64_t dtbd_oldest;
+	uint64_t dtbd_timestamp;
 	struct uuid uuid;
 } __attribute__((packed));
 
@@ -194,7 +195,6 @@ struct pci_vtdtr_softc
 	int vsd_ready;
 };
 
-
 static void pci_vtdtr_reset(void *);
 static void pci_vtdtr_control_tx(struct pci_vtdtr_softc *,
 								 struct iovec *, int);
@@ -225,7 +225,6 @@ static void pci_vtdtr_handle_mev(int, enum ev_type, int, void *);
 static void pci_vtdtr_reset_queue(struct pci_vtdtr_softc *);
 static int pci_vtdtr_init(struct vmctx *, struct pci_devinst *, char *);
 static void *pci_vtdtr_read_script(void *);
-
 
 static struct virtio_consts vtdtr_vi_consts = {
 	"vtdtr",		 /* name */
@@ -270,9 +269,12 @@ static int
 pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 {
 	struct pci_vtdtr_control *ctrl;
+	struct pci_vtdtr_ctrl_trcevent *trc_ev;
+	FILE *trace_stream;
+
 	//struct pci_vtdtr_ctrl_provevent *pv_ev;
 	//struct pci_vtdtr_ctrl_pbevent *pb_ev;
-	int retval; // error;
+	int fd, sz, retval; // error;
 
 	assert(niov == 1);
 	retval = 0;
@@ -334,31 +336,37 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 #endif
 	case VTDTR_DEVICE_TRACE:
 		pthread_mutex_lock(&sc->vsd_mtx);
-		sc->vsd_ready = 1;
+		sc->vsd_ready = 0;
 		pthread_mutex_unlock(&sc->vsd_mtx);
 		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
-		DPRINTF(("Host status: %d\n", sc->vsd_ready));
-		FILE *trace_stream;
-		int fd;
+		trc_ev = &ctrl->uctrl.trc_ev;
+
 		if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY)) == -1)
 		{
 			DPRINTF(("Failed to open trace write pipe: %s. \n", strerror(errno)));
 			exit(1);
 		}
-		if((trace_stream = fdopen(fd, "w")) == NULL)
+		if ((trace_stream = fdopen(fd, "w")) == NULL)
 		{
 			DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno)));
 			exit(1);
-		} 
+		}
 		DPRINTF(("Successfully opened everything."));
 
-		int sz;
-		sz = fwrite(&ctrl->uctrl.trc_ev.dtbd_size, sizeof(uint64_t), 1, trace_stream);
-		if(sz <= 0)
-		{
-			DPRINTF(("Failed writing trace data: %s", strerror(errno)));
-		}
-		printf("%d", sz);
+		sz = fwrite(&trc_ev->dtbd_size, sizeof(uint64_t), 1, trace_stream);
+		assert(sz > 0);
+		sz = fwrite(&trc_ev->dtbd_cpu, sizeof(uint32_t), 1, trace_stream);
+		assert(sz > 0);
+		sz = fwrite(&trc_ev->dtbd_errors, sizeof(uint32_t), 1, trace_stream);
+		assert(sz > 0);
+		sz = fwrite(&trc_ev->dtbd_drops, sizeof(uint64_t), 1, trace_stream);
+		assert(sz > 0);
+		sz = fwrite(&trc_ev->dtbd_oldest, sizeof(uint64_t), 1, trace_stream);
+		assert(sz > 0);
+		sz = fwrite(&trc_ev->dtbd_timestamp, sizeof(uint64_t), 1, trace_stream);
+		assert (sz > 0);
+		sz = fwrite(&trc_ev->dtbd_data, 1, trc_ev->dtbd_size, trace_stream);
+		assert(sz > trc_ev->dtbd_size);
 		fflush(trace_stream);
 		fclose(trace_stream);
 		close(fd);
@@ -536,7 +544,6 @@ pci_vtdtr_cq_dequeue(struct pci_vtdtr_ctrlq *cq)
 	pci_vtdtr_print_queue(fp, cq, "after dequeueing");
 	return (ctrl_entry);
 }
-
 
 /*
  * In this function we fill the descriptor that was provided to us by the guest.
@@ -863,7 +870,7 @@ static void *pci_vtdtr_listen(void *xsc)
 	fifo = "/tmp/fifo";
 	int err = mkfifo(fifo, 0666);
 
-	if(err)
+	if (err)
 	{
 		DPRINTF(("Failed to make fifo: %s", strerror(errno)));
 	}
@@ -1004,7 +1011,6 @@ static void *pci_vtdtr_read_script(void *xargs)
 	pthread_exit(NULL);
 }
 
-
 /*
  * Mostly boilerplate, we initialize everything required for the correct
  * operation of the emulated PCI device, do error checking and finally dispatch
@@ -1028,7 +1034,6 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	sc->vsd_ctrlq = calloc(1, sizeof(struct pci_vtdtr_ctrlq));
 	assert(sc->vsd_ctrlq != NULL);
 	STAILQ_INIT(&sc->vsd_ctrlq->head);
-
 
 	vi_softc_linkup(&sc->vsd_vs, &vtdtr_vi_consts,
 					sc, pci_inst, sc->vsd_queues);
@@ -1060,7 +1065,6 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 		error = pthread_create(&listener, NULL, pci_vtdtr_listen, sc);
 		assert(error == 0);
 	}
-
 
 	if (vi_intr_init(&sc->vsd_vs, 1, fbsdrun_virtio_msix()))
 		return (1);

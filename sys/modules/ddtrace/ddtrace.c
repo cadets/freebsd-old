@@ -634,6 +634,7 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	trc->dtbd_drops = desc->dtbd_drops;
 	trc->dtbd_data = desc->dtbd_data;
 	trc->dtbd_oldest = desc->dtbd_oldest;
+	trc->dtbd_timestamp = desc->dtbd_timestamp;
 
 	DLOGTR2(PRIO_LOW, "Trace ddata size is: %zu. Copied trace data size: %zu. \n", desc->dtbd_size, trc->dtbd_size);
 

@@ -1614,10 +1614,9 @@ static void read_trace_data()
 	char *trc_fifo;
 	int fd, sz;
 	uint64_t size;
+	dtrace_bufdesc_t buf;
 
 	trc_fifo = "/tmp/trace_fifo";
-
-	
 
 	int err = mkfifo(trc_fifo, 0666);
 	if (err)
@@ -1626,7 +1625,8 @@ static void read_trace_data()
 		exit(1);
 	}
 
-
+	// for (;;)
+	// {
 		// This should block until we have trace data
 		if ((fd = open(trc_fifo, O_RDONLY)) == -1)
 		{
@@ -1639,20 +1639,34 @@ static void read_trace_data()
 			printf("Failed opening trace reader stream: %s. \n", strerror(errno));
 			exit(1);
 		}*/
-		printf("open() were called");
+		printf("open() were called.\n");
 
 		printf("About to read trace data. \n");
-		sz = read(fd, &size, sizeof(uint64_t));
-		if(sz <= 0)
-		{
-			printf("Failed reading trace data: %s. \n", strerror(errno));
-			exit(1);
-		}
-		printf("Read: %d", sz);
-		printf("Yay: %d", size);
+		sz = read(fd, &buf.dtbd_size, sizeof(uint64_t));
+		assert(sz > 0);
+		printf("Size: %d\n", buf.dtbd_size);
+		sz = read(fd, &buf.dtbd_cpu, sizeof(uint32_t));
+		assert(sz > 0);
+		printf("Cpu: %d\n", buf.dtbd_errors);
+		sz = read(fd, &buf.dtbd_errors, sizeof(uint32_t));
+		assert(sz > 0);
+		printf("Errors: %d\n", buf.dtbd_errors);
+		sz = read(fd, &buf.dtbd_drops, sizeof(uint64_t));
+		assert(sz > 0);
+		printf("Drops: %d\n", buf.dtbd_drops);	
+		sz = read(fd, &buf.dtbd_oldest, sizeof(uint64_t));
+		assert(sz > 0);
+		printf("Oldest: %d\n", buf.dtbd_oldest);
+		sz = read(fd, &buf.dtbd_timestamp, sizeof(uint64_t));
+		assert(sz > 0);
+		printf("Timestamp: %d\n", buf.dtbd_timestamp);
+
+		// TODO: add data
+
 		// fclose(trace_stream);
 		close(fd);
 		unlink(trc_fifo);
+	// }
 }
 
 int main(int argc, char *argv[])

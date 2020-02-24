@@ -96,6 +96,7 @@ struct vtdtr_ctrl_trcevent {
 	uint32_t dtbd_drops;
 	char dtbd_data[512];
 	uint64_t dtbd_oldest;
+	uint64_t dtbd_timestamp;
 	struct uuid uuid;
 }__attribute__((packed));
 
@@ -117,6 +118,7 @@ struct virtio_dtrace_trace {
 	uint32_t dtbd_drops;
 	char *dtbd_data;
 	uint64_t dtbd_oldest;
+	uint64_t dtbd_timestamp;
 
 }__attribute__((packed));
 
