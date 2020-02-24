@@ -1663,7 +1663,7 @@ static void read_trace_data()
 		buf.dtbd_data = malloc(buf.dtbd_size);
 		sz = read(fd, buf.dtbd_data, buf.dtbd_size);
 		assert(sz == buf.dtbd_size);
-
+		printf("Data: %s\n", buf.dtbd_data);
 
 		// fclose(trace_stream);
 		close(fd);
@@ -1819,8 +1819,8 @@ int main(int argc, char *argv[])
 	}
 
 	/*
-	 * Open fifo to pass the script to VirtIO PCI emulated device in order to be
-	 * sent to the guest where instrumentation will actually.
+	 * We are tracing a guest and assume that we've done everything up to
+	 * dtrace_work which prints trace data
 	*/
 	if (h_mode == 1)
 	{
@@ -1828,6 +1828,9 @@ int main(int argc, char *argv[])
 		file_path = argv[argc - 1];
 		write_script(file_path);
 		read_trace_data();
+		process_trace_data();
+		// no need to close dtrace since we don't even open it here 
+		return (g_status);
 	}
 
 	if (mode > 1)
