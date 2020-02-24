@@ -45,7 +45,7 @@
 #include <signal.h>
 #include <pthread.h>
 #include <fcntl.h>
-
+#include <assert.h>
 #ifdef illumos
 #include <alloca.h>
 #endif
