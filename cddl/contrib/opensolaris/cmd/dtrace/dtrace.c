@@ -1660,8 +1660,9 @@ static void read_trace_data()
 		sz = read(fd, &buf.dtbd_timestamp, sizeof(uint64_t));
 		assert(sz > 0);
 		printf("Timestamp: %d\n", buf.dtbd_timestamp);
-
-		// TODO: add data
+		sz = read(fd, &buf.dtbd_data, buf.dtbd_size);
+		assert(sz == buf.dtbd_size);
+		printf("Data: %s\n", buf.dtbd_data);
 
 		// fclose(trace_stream);
 		close(fd);

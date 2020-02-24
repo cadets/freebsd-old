@@ -366,7 +366,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		sz = fwrite(&trc_ev->dtbd_timestamp, sizeof(uint64_t), 1, trace_stream);
 		assert (sz > 0);
 		sz = fwrite(&trc_ev->dtbd_data, 1, trc_ev->dtbd_size, trace_stream);
-		assert(sz > trc_ev->dtbd_size);
+		assert(sz == trc_ev->dtbd_size);
 		fflush(trace_stream);
 		fclose(trace_stream);
 		close(fd);
