@@ -1661,9 +1661,9 @@ static void read_trace_data()
 		assert(sz > 0);
 		printf("Timestamp: %d\n", buf.dtbd_timestamp);
 		buf.dtbd_data = malloc(buf.dtbd_size);
-		sz = read(fd, &buf.dtbd_data, buf.dtbd_size);
+		sz = read(fd, buf.dtbd_data, buf.dtbd_size);
 		assert(sz == buf.dtbd_size);
-		printf("Data: %s\n", buf.dtbd_data);
+
 
 		// fclose(trace_stream);
 		close(fd);
