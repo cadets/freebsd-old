@@ -1563,7 +1563,7 @@ static void *write_script(void *file_path)
 	printf("Size of file is: %d. \n", file_size);
 	rewind(fp);
 
-	d_script = malloc(sizeof(char) * (file_size + 1));
+	d_script = malloc(file_size + 1);
 	if ((fread(d_script, sizeof(char), file_size, fp)) != file_size)
 	{
 		printf("Error occured while reading script file: %s.\n", strerror(errno));
@@ -1660,6 +1660,7 @@ static void read_trace_data()
 		sz = read(fd, &buf.dtbd_timestamp, sizeof(uint64_t));
 		assert(sz > 0);
 		printf("Timestamp: %d\n", buf.dtbd_timestamp);
+		buf.dtbd_data = malloc(buf.dtbd_size);
 		sz = read(fd, &buf.dtbd_data, buf.dtbd_size);
 		assert(sz == buf.dtbd_size);
 		printf("Data: %s\n", buf.dtbd_data);
