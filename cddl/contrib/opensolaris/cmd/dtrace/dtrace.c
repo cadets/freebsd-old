@@ -1562,7 +1562,7 @@ struct dtrace_guest_entry *dtrace_gtq_dequeue(struct dtrace_guestq *gtq)
 	{
 		STAILQ_REMOVE_HEAD(&gtq->head, entries);
 	}
-	printf("Dequeued trace element of size: %d",trc_entry->desc->dtbd_size);
+	printf("Dequeued trace element of size: %d",trc_entry->desc.dtbd_size);
 
 	return (trc_entry);
 }
