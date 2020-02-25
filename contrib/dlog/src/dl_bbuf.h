@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2019-2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2020 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -67,6 +67,8 @@ extern int dl_bbuf_flip(struct dl_bbuf *);
 extern size_t dl_bbuf_len(struct dl_bbuf *);
 extern size_t dl_bbuf_pos(struct dl_bbuf *);
 extern size_t dl_bbuf_set_pos(struct dl_bbuf *, size_t);
+
+extern int dl_bbuf_error(struct dl_bbuf *);
 
 extern int dl_bbuf_bcat(struct dl_bbuf *, unsigned char const * const,
     size_t);
