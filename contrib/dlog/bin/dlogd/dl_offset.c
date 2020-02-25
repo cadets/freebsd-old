@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2020 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -35,6 +35,8 @@
  */
 
 #include <sys/file.h>
+#include <sys/mman.h>
+#include <sys/param.h>
 
 #include <errno.h>
 #include <pthread.h>
@@ -48,12 +50,14 @@
 
 struct dl_offset {
 	pthread_mutex_t dlo_mtx; /* Mutex protecting the dlo_value */
-	uint32_t dlo_value; /* Offset value (32bit value so atomic) */
-	int dlo_fd; /* File descriptor used to persist the Offset */
+	uint32_t *dlo_value; /* Offset value (32bit value so atomic) */
 };
 
+static const int OFFSET_PERMS = 0600;
+static char const * const OFFSET_FMT= "%s/offset";
+
 static inline void
-dl_offset_assert_intergity(struct dl_offset *offset)
+assert_integrity(struct dl_offset *offset)
 {
 
 	DL_ASSERT(offset != NULL, ("Offset instance cannot be NULL"));
@@ -62,94 +66,83 @@ dl_offset_assert_intergity(struct dl_offset *offset)
 }
 
 int
-dl_offset_new(struct dl_offset **self, char *path_name)
+dl_offset_new(struct dl_offset const **self, char *path_name)
 {
 	struct dl_offset *offset;
-	struct sbuf *offset_name;
-	int32_t offset_val;
+	struct sbuf offset_name;
 	int fd, rc;
-	
-	DL_ASSERT(self != NULL, ("Offset instance cannot be NULL"));
-	DL_ASSERT(path_name != NULL, ("Offset file path name cannot be NULL"));
+	char name[MAXPATHLEN];
 
+	/* Validate the method's preconditions */	
+	if (self == NULL || path_name == NULL) {
+		
+		DL_ASSERT(true,
+		    ("Invalid parameter passed to Offset constructor"));
+		DLOGTR0(PRIO_HIGH, 
+		    "Invalid parameter passed to Offset constructor\n");
+		return -1;
+	}
+
+	/* Allocate the Offset instance. */
 	offset = (struct dl_offset *) dlog_alloc(sizeof(struct dl_offset));
 	if (offset == NULL) {
 		
-		DLOGTR0(PRIO_LOW,
-		    "Failed allocating memory for Offset instance\n");
 		goto err_offset_ctor;
 	}
 
 	bzero(offset, sizeof(struct dl_offset));
 
 	/* Construct the path for the Offset file */
-	offset_name = sbuf_new_auto();
-	sbuf_printf(offset_name, "%s/offset", path_name);
-	sbuf_finish(offset_name);
+	(void) sbuf_new(&offset_name, name, MAXPATHLEN, SBUF_FIXEDLEN);
+	sbuf_printf(&offset_name, OFFSET_FMT, path_name);
+	sbuf_finish(&offset_name);
+	if (sbuf_error(&offset_name) != 0) {
 
-	fd = open(sbuf_data(offset_name), O_RDWR | O_CREAT, 0666);
+		sbuf_delete(&offset_name);
+		goto err_offset_ctor;
+	}
+	sbuf_delete(&offset_name);
+
+	fd = open(name, O_RDWR | O_CREAT, OFFSET_PERMS);
 	if (fd == -1) {
 
 		DLOGTR0(PRIO_LOW,
 		    "Failed opening file to perist Offset value\n");
-		sbuf_delete(offset_name);
-		goto err_offset_alloc_ctor;
-	}
-	sbuf_delete(offset_name);
-
-	/* Attempt to apply an advisory lock the offset file;
-	 * if a lock is present, exit.
-	 */
-	rc = flock(fd, LOCK_EX | LOCK_NB);
-        if (rc == -1) {
-
-		DLOGTR0(PRIO_LOW,
-		    "Failed locking file to perist Offset value\n");
-		goto err_offset_open_ctor;
+		goto err_offset_free;
 	}
 
-	/* Read the offset value from the file. */
-	rc = pread(fd, &offset_val, sizeof(offset_val), 0);
-	if (rc == -1) {
+	/* Truncate the file to the size of the dlo_value */
+	ftruncate(fd, sizeof(*offset->dlo_value));
 
-		DLOGTR0(PRIO_HIGH,
-		    "Failed reading offset value from the file.\n"); 
-		goto err_offset_open_ctor;
-	} else if (rc == 0) {
-		/* EOF - set the offset value to zero */
+	offset->dlo_value =(uint32_t *) mmap(
+	    NULL, sizeof(*offset->dlo_value),
+	    PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (offset->dlo_value == NULL)  {
 
-		offset->dlo_value = 0;
-		rc = pwrite(fd, &offset->dlo_value,
-		    sizeof(offset->dlo_value), 0);
-		if (rc == -1) {
-
-			DLOGTR0(PRIO_LOW,
-			    "Failed writing Offset value to file\n");
-			goto err_offset_open_ctor;
-		}
-	} else {
-		/* Set the offset value to the value read from the file. */
-		offset->dlo_value = offset_val;
+		DLOGTR1(PRIO_HIGH,
+		    "Failed mapping Offset file %d\n", errno);
+		goto err_offset_close;
 	}
-
-	offset->dlo_fd = fd;
+	
 	rc = pthread_mutex_init(&offset->dlo_mtx, NULL);
 	if (rc != 0) {
 
 		DLOGTR0(PRIO_LOW, "Failed initializing Offset mutex\n");
-		goto err_offset_open_ctor;
+		munmap(offset->dlo_value, sizeof(*offset->dlo_value));
+		goto err_offset_free;
 	}
 
-	dl_offset_assert_intergity(offset);
+	/* Validate the method's postconditions */	
+	assert_integrity(offset);
 
 	*self = offset;
 	return 0;
 
 
-err_offset_open_ctor:
-	close(offset->dlo_fd);
+err_offset_close:
+	close(fd);
 
-err_offset_alloc_ctor:
+err_offset_free:
 	dlog_free(offset);
 	
 err_offset_ctor:
@@ -160,67 +153,62 @@ err_offset_ctor:
 }
 
 void
-dl_offset_delete(struct dl_offset *self)
+dl_offset_delete(struct dl_offset const *self)
 {
-	int rc;
 
-	dl_offset_assert_intergity(self);
+	assert_integrity(self);
 
-	/* Unlock and close the file backing the offset. */
-	rc = flock(self->dlo_fd, LOCK_UN);
-	if (rc != 0) {
+	/* Close and unmap the Offset file. */
+	msync(self->dlo_value, sizeof(*self->dlo_value), MS_SYNC);
+	munmap(self->dlo_value, sizeof(*self->dlo_value));
 
-		DLOGTR1(PRIO_HIGH, "Failed unlocking Offset file (%d)\n",
-		    errno);
-	}
-	close(self->dlo_fd);
-
-	/* Destroy the mutex used to prtect the Offset value. */
+	/* Destroy the mutex used to protect the Offset value. */
 	pthread_mutex_destroy(&self->dlo_mtx);
 
 	/* Free the memory for the Offset instance. */
 	dlog_free(self);
 }
 
-int
-dl_offset_inc(struct dl_offset *self)
+
+uint32_t
+dl_offset_get_val(struct dl_offset const * const self)
 {
+	uint32_t value = 0;
 	int rc;
 
-	dl_offset_assert_intergity(self);
+	assert_integrity(self);
 
 	rc = pthread_mutex_lock(&self->dlo_mtx);
 	DL_ASSERT(rc == 0, ("Failed locking Offset mutex"));
-	/* Increment the Offset value and sync this new value to disk. */
-	self->dlo_value++;
-	rc = pwrite(self->dlo_fd, &self->dlo_value,
-	    sizeof(self->dlo_value), 0);
-	if (rc == -1) {
+	if (rc == 0) {
 
-		DLOGTR0(PRIO_LOW, "Failed writing Offset value to file\n");
-		/* Restore the original Offset value. */
-		self->dlo_value--;
+		value = *self->dlo_value;
+
+		rc = pthread_mutex_unlock(&self->dlo_mtx);
+		DL_ASSERT(rc == 0, ("Failed unlocking Offset mutex"));
 	}
-	rc = fsync(self->dlo_fd);
-	DL_ASSERT(rc == 0, ("Failed syncing Offset file"));
-	rc = pthread_mutex_unlock(&self->dlo_mtx);
-	DL_ASSERT(rc == 0, ("Failed unlocking Offset mutex"));
-
-	return 0;
+	return value;
 }
 
-int32_t
-dl_offset_get_val(struct dl_offset *self)
+int
+dl_offset_inc(struct dl_offset const *self)
 {
-	uint32_t value;
 	int rc;
 
-	dl_offset_assert_intergity(self);
+	assert_integrity(self);
 
 	rc = pthread_mutex_lock(&self->dlo_mtx);
 	DL_ASSERT(rc == 0, ("Failed locking Offset mutex"));
-	value = self->dlo_value;
-	rc = pthread_mutex_unlock(&self->dlo_mtx);
-	DL_ASSERT(rc == 0, ("Failed unlocking Offset mutex"));
-	return value;
+	if (rc == 0) {
+		/* Increment the Offset value and sync this new value to disk. */
+		(* self->dlo_value)++;
+	
+		rc = msync(self->dlo_value, sizeof(self->dlo_value), MS_SYNC);
+		DL_ASSERT(rc == 0, ("Failed syncing Offset file"));
+
+		rc = pthread_mutex_unlock(&self->dlo_mtx);
+		DL_ASSERT(rc == 0, ("Failed unlocking Offset mutex"));
+	}
+
+	return 0;
 }

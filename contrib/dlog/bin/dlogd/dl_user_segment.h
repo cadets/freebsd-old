@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018-2019 (Graeme Jenkinson)
+ * Copyright (c) 2018-2020 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -45,17 +45,16 @@
 struct dl_user_segment;
 
 extern int dl_user_segment_new(struct dl_user_segment **,
-    uint64_t, char *, char *);
+    struct dl_producer *, uint64_t, char *, char *);
 extern int dl_user_segment_new_default(struct dl_user_segment **,
-    char *);
+    struct dl_producer *, char *);
 extern int dl_user_segment_new_default_base(struct dl_user_segment **,
-    uint64_t, char *);
+    struct dl_producer *, uint64_t, char *);
 extern void dl_user_segment_delete(struct dl_user_segment *);
 
-extern struct dl_index * dl_user_segment_get_index(struct dl_user_segment *);
-extern void dl_user_segment_set_index(struct dl_user_segment *, struct dl_index *);
-extern int dl_user_segment_get_log(struct dl_user_segment *);
-extern struct dl_offset * dl_user_segment_get_offset(struct dl_user_segment *);
-extern void dl_user_segment_indexed(struct dl_user_segment *);
+extern int dl_user_segment_get_fd(
+    struct dl_user_segment const * const);
+extern struct dl_offset * dl_user_segment_get_offset(
+    struct dl_user_segment const * const);
 
 #endif

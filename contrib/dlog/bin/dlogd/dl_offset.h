@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2020 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -37,14 +37,14 @@
 #ifndef _DL_OFFSET_H
 #define _DL_OFFSET_H
 
-#include <sys/sbuf.h>
 #include <sys/types.h>
 
 struct dl_offset;
 
-int dl_offset_new(struct dl_offset **, char *);
-int dl_offset_inc(struct dl_offset *);
-void dl_offset_delete(struct dl_offset *);
-int32_t dl_offset_get_val(struct dl_offset *);
+int dl_offset_new(struct dl_offset const **, char *);
+void dl_offset_delete(struct dl_offset const *);
+
+uint32_t dl_offset_get_val(struct dl_offset const * const );
+int dl_offset_inc(struct dl_offset const *);
 
 #endif

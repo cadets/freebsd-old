@@ -101,9 +101,14 @@ dl_record_new(struct dl_record ** self, char *key,
 #endif
 	record->dlr_timestamp_delta = 0;
 	record->dlr_offset_delta = 0;
-	record->dlr_key = sbuf_new_auto();
-	sbuf_cpy(record->dlr_key, key);
-	sbuf_finish(record->dlr_key);
+	if (key != NULL) {
+		record->dlr_key = sbuf_new_auto();
+		sbuf_cpy(record->dlr_key, key);
+		sbuf_finish(record->dlr_key);
+	} else {
+
+		record->dlr_key = NULL;
+	}
 	record->dlr_value_len = value_len;
 	record->dlr_value = value;
 	STAILQ_INIT(&record->dlr_headers);
@@ -246,14 +251,18 @@ dl_record_encode_into(struct dl_record const *self, struct dl_bbuf *target)
 		DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
 
-		/* Encode the KeyLen */
-		rc |= DL_ENCODE_KEY_LEN(record, sbuf_len(self->dlr_key));
+		if (self->dlr_key != NULL) {
+			/* Encode the KeyLen */
+			rc |= DL_ENCODE_KEY_LEN(record, sbuf_len(self->dlr_key));
 
-		/* Encode the Key */
-		rc |= dl_bbuf_scat(record, self->dlr_key);
+			/* Encode the Key */
+			rc |= dl_bbuf_scat(record, self->dlr_key);
 #ifdef _KERNEL
-		DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+			DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
+		} else {
+			dl_bbuf_put_int32_as_varint(record, -1);
+		}
 
 		/* Encode the ValueLen */
 		rc |= DL_ENCODE_VALUE_LEN(record, self->dlr_value_len);

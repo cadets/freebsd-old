@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018-2019 (Graeme Jenkinson)
+ * Copyright (c) 2018-2020 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -81,11 +81,10 @@
 typedef uint32_t dl_producer_state;
 
 struct dl_producer {
+	LIST_ENTRY(dl_producer) dlp_entries;
 	struct dl_producer_stats *dlp_stats;
-	LIST_ENTRY(dl_prodcuer) dlp_entries;
 	struct dl_correlation_id *dlp_cid;
 	struct dl_event_handler dlp_ktimer_hdlr;
-	struct dl_index *dlp_idx;
 	struct dl_request_q *dlp_requests;
 	struct dl_topic *dlp_topic;
 	struct dl_transport *dlp_transport;
@@ -95,14 +94,14 @@ struct dl_producer {
 	pthread_t dlp_produce_tid;
 	pthread_t dlp_resender_tid;
 	struct sbuf *dlp_broker;
-	struct sbuf *dlp_name;
-	uint32_t dlp_produce_cnt;
+	struct sbuf *dlp_clientid;
 	int dlp_broker_port;
 	int dlp_ktimer;
 	int dlp_reconn_ms;
 	int dlp_resend_timeout;
 	int dlp_resend_period;
 	int dlp_debug_level;
+	bool dlp_produce;
 	bool dlp_resend;
 };
 
@@ -115,7 +114,7 @@ const static uint32_t DLP_CONNECTING = 5;
 const static uint32_t DLP_FINAL = 6;
 
 static void dl_producer_idle(struct dl_producer * const self);
-static void dl_producer_syncing(struct dl_producer * const self, uint32_t);
+static void dl_producer_syncing(struct dl_producer * const self);
 static void dl_producer_offline(struct dl_producer * const self);
 static void dl_producer_online(struct dl_producer * const self);
 static void dl_producer_connecting(struct dl_producer * const self);
@@ -127,8 +126,6 @@ static void dl_producer_timer_handler(void *instance, int, int);
 static void *dlp_produce_thread(void *vargp);
 static void *dlp_resender_thread(void *vargp);
 
-static bool is_log_rotated(struct dl_producer *);
-
 static char const * const DLP_STATE_NAME[] =
     {"INITIAL", "IDLE", "SYNCING", "OFFLINE", "ONLINE", "CONNECTING", "FINAL" };
 static const int RECONNECT_TIMEOUT_EVENT = (0x01 << 0);
@@ -139,62 +136,32 @@ static inline void
 assert_integrity(struct dl_producer const * const self)
 {
 
-	DL_ASSERT(self != NULL, ("Producer instance cannot be NULL."));
+	DL_ASSERT(self != NULL, ("Producer instance cannot be NULL"));
 	DL_ASSERT(self->dlp_cid != NULL,
-	    ("Producer correlation id cannot be NULL."));
+	    ("Producer correlation id cannot be NULL"));
 	DL_ASSERT(self->dlp_requests != NULL,
-	    ("Producer request queue cannot be NULL."));
+	    ("Producer request queue cannot be NULL"));
 	DL_ASSERT(self->dlp_topic != NULL,
-	    ("Producer topic cannot be NULL."));
-	DL_ASSERT(self->dlp_name != NULL,
-	    ("Producer instance cannot be NULL."));
+	    ("Producer topic cannot be NULL"));
+	DL_ASSERT(self->dlp_props != NULL,
+	    ("Producer properties cannot be NULL"));
+	DL_ASSERT(self->dlp_broker != NULL,
+	    ("Producer broker name cannot be NULL"));
+	DL_ASSERT(self->dlp_clientid != NULL,
+	    ("Producer instance cannot be NULL"));
 }
 
-static bool
-is_log_rotated(struct dl_producer *self)
+static inline void
+check_integrity(struct dl_producer const * const self)
 {
-	struct dl_offset *offset;
-	struct dl_segment *seg;
-	struct sbuf sb;
-	struct stat st;
-	char name[MAXPATHLEN], *topic, *path;
 
-	/* Get the name of the topic produce to. */	
-	topic = dl_topic_get_name(self->dlp_topic);
-	DL_ASSERT(topic != NULL, ("Topic's name cannot be NULL"));
+	if (self == NULL || self->dlp_cid == NULL ||
+  	    self->dlp_requests == NULL || self->dlp_topic == NULL ||
+	    self->dlp_props == NULL || self->dlp_broker == NULL ||
+	    self->dlp_clientid == NULL) {
 
-	/* Get the topic's active segment. */
-	seg = dl_topic_get_active_segment(self->dlp_topic);
-	DL_ASSERT(seg != NULL, ("Topic's active segment cannot be NULL"));
-				
-	offset = dl_user_segment_get_offset((struct dl_user_segment *) seg);
-	DL_ASSERT(seg != NULL, ("Active segment's offset cannot be NULL"));
-		
-	/* Construct filepath for log segment based on the offset. */
-	path = dnvlist_get_string(self->dlp_props,
-	    DL_CONF_LOG_PATH, DL_DEFAULT_LOG_PATH);
-
-	(void) sbuf_new(&sb, name, MAXPATHLEN, SBUF_FIXEDLEN);
-	sbuf_printf(&sb, "%s/%s/%.*ld.log", path, topic,
-	    DL_LOG_DIGITS, (uint64_t) dl_offset_get_val(offset));
-	if (sbuf_error(&sb) == 0) {
-
-		DLOGTR1(PRIO_HIGH,
-		    "UserSegment file path %s overflow MAXPATHLEN\n", name);
-		sbuf_finish(&sb);
-		sbuf_delete(&sb);
-		return false;
+	    DL_ASSERT(true, ("Producer instance invalid"));
 	}
-
-	/* If a log file with the new offfset exists
-	 * rotate the current log segment.
-	 */
-	if (stat(name, &st) == 0) {
-
-		return true;
-	}
-
-	return false;
 }
 
 static dl_event_handler_handle
@@ -249,6 +216,7 @@ dlp_resender_thread(void *vargp)
 	struct timeval tv, tdiff;
 	int rc;
 
+	/* Validate the method's preconditions. */
 	assert_integrity(self);
 
 	if (self->dlp_debug_level > 0)
@@ -318,17 +286,19 @@ resender_sleep:
 
 	if (self->dlp_debug_level > 0)
 		DLOGTR0(PRIO_LOW, "Resender thread stopped.\n");
+
 	pthread_exit(NULL);
 }
 
 static void *
 dlp_produce_thread(void *vargp)
 {
-	struct dl_producer *self = (struct dl_producer *)vargp;
+	struct dl_producer *self = (struct dl_producer *) vargp;
 	struct dl_request_element *request;
 	ssize_t nbytes;
 	int cancel_state;
 
+	/* Validate the method's preconditions. */
 	assert_integrity(self);
 
 	if (self->dlp_debug_level > 1)
@@ -376,13 +346,14 @@ dlp_produce_thread(void *vargp)
 					    dl_bbuf_pos(request->dlrq_buffer));
 			}
 		}
-		DL_ASSERT(1,
+		DL_ASSERT(true,
 		    ("Failed dequeuing request; this cannot fail "
 		    "as it is simply moving an item in the list."));
 	}
 
 	if (self->dlp_debug_level > 1)
 		DLOGTR0(PRIO_LOW, "Produce thread stopped.\n");
+
 	pthread_exit(NULL);
 }
 
@@ -390,7 +361,7 @@ static void *
 dlp_enqueue_thread(void *vargp)
 {
 	struct dl_bbuf *buffer, *msg_buffer;
-	struct dl_producer *self = (struct dl_producer *)vargp;
+	struct dl_producer *self = (struct dl_producer *) vargp;
 	struct dl_topic *topic = self->dlp_topic;
 	struct dl_offset *offset;
 	struct dl_produce_request *message;
@@ -398,6 +369,7 @@ dlp_enqueue_thread(void *vargp)
 	char *topic_name;
 	int rc;
 
+	/* Validate the method's preconditions. */
 	assert_integrity(self);
 
 	if (self->dlp_debug_level > 1)
@@ -413,15 +385,16 @@ dlp_enqueue_thread(void *vargp)
 				
 	offset = dl_user_segment_get_offset((struct dl_user_segment *) seg);
 	DL_ASSERT(seg != NULL, ("Active segment's offset cannot be NULL"));
-			
-	while (self->dlp_produce_cnt--) {
+
+	while(true) {
+
 		if (dl_topic_get_message_by_offset(self->dlp_topic,
 	            &msg_buffer) == 0) {
 
 			/* Instantiate a new ProduceRequest */
 			if (dl_produce_request_new_nomsg(&message,
 			    dl_correlation_id_val(self->dlp_cid),
-			    self->dlp_name, DL_DEFAULT_ACKS, DL_DEFAULT_ACK_TIMEOUT,
+			    self->dlp_clientid, DL_DEFAULT_ACKS, DL_DEFAULT_ACK_TIMEOUT,
 			    topic_name) == 0) {
 
 				rc = dl_request_encode(message, &buffer);
@@ -503,77 +476,10 @@ dlp_enqueue_thread(void *vargp)
 				break;
 			}
 		} else {
-			DLOGTR0(PRIO_HIGH, "Failed getting message\n");
+			DLOGTR0(PRIO_LOW, "Failed getting message\n");
+			break;
 		}
-	}
-
-	/* Check whether the log file has rotated. */
-	if (is_log_rotated(self)) {
-
-		//struct dl_user_segment *old_seg, *new_seg;
-		struct dl_user_segment *new_seg;
-		struct sbuf sb;
-		uint64_t offset_val;
-		char *path;
-		char name[MAXPATHLEN];
-
-		/* Construct filepath for new log segment */
-		offset_val = dl_segment_get_offset(seg);
-			
-		path = dnvlist_get_string(self->dlp_props,
-		DL_CONF_LOG_PATH, DL_DEFAULT_LOG_PATH);
-
-		(void) sbuf_new(&sb, name, MAXPATHLEN, SBUF_FIXEDLEN);
-		sbuf_printf(&sb, "%s/%s/%.*ld.log", path, topic_name,
-		    DL_LOG_DIGITS, offset_val);
-		if (sbuf_error(&sb) == 0) {
-
-			DLOGTR1(PRIO_HIGH,
-			    "UserSegment file path %s overflow MAXPATHLEN\n",
-			    name);
-			sbuf_finish(&sb);
-			sbuf_delete(&sb);
-		} else {
-
-			sbuf_finish(&sb);
-			sbuf_delete(&sb);
-
-			/* Construct a new userspace segment. */
-			DLOGTR1(PRIO_LOW,
-			    "Rotating log segment new base offset = %lu\n",
-			    offset_val);
-			rc = dl_user_segment_new_default_base(&new_seg,
-			    offset_val, topic_name);
-			if (rc != 0) {
-
-				DLOGTR0(PRIO_HIGH, "Failed creating new user space segment\n");
-			} else {
-				/* Swap the current active segment */
-				//old_seg = (struct dl_user_segment *)
-				 //   dl_topic_get_active_segment(
-				 //   self->dlp_topic);
-
-				dl_topic_set_active_segment(
-					self->dlp_topic,
-					(struct dl_segment *) new_seg);
-
-				/* Associate the Producer with the Index. */
-				//dl_index_set_producer(self->dlp_idx, self);
-
-				/* Associate the Topic Segment with the Index. */
-				//dl_user_segment_set_index(new_seg,
-				//    self->dlp_idx);
-			
-				/* Associate the Producer with the Index. */
-				dl_index_set_producer(
-				    dl_user_segment_get_index(new_seg),
-				    self);
-
-				/* Delete the old log segment */
-				dl_user_segment_delete(
-				    (struct dl_user_segment *) seg);
-			}
-		}
+		//getchar();
 	}
 	
 	/* Self-trigger syncd() event. */
@@ -590,6 +496,7 @@ dl_producer_connecting(struct dl_producer * const self)
 {
 	int rc;
 
+	/* Validate the method's preconditions. */
 	assert_integrity(self);
 
 	self->dlp_state = DLP_CONNECTING;
@@ -598,8 +505,8 @@ dl_producer_connecting(struct dl_producer * const self)
 	dlps_set_state(self->dlp_stats, DLP_CONNECTING);
 
 	if (self->dlp_debug_level > 0)
-		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
-	    	    DLP_STATE_NAME[self->dlp_state], self->dlp_state);
+		DLOGTR1(PRIO_LOW, "Producer state = %s\n",
+	    	    DLP_STATE_NAME[self->dlp_state]);
 
 	rc = dl_transport_factory_get_inst(&self->dlp_transport, self);
 	if (rc == 0) {
@@ -629,7 +536,10 @@ dl_producer_connecting(struct dl_producer * const self)
 static void
 dl_producer_idle(struct dl_producer * const self)
 {
+	struct dl_offset *offset;
+	struct dl_segment *seg;
 
+	/* Validate the method's preconditions. */
 	assert_integrity(self);
 	DL_ASSERT(self->dlp_transport != NULL,
 	    ("Producer transport cannot be NULL."));
@@ -640,18 +550,34 @@ dl_producer_idle(struct dl_producer * const self)
 	dlps_set_state(self->dlp_stats, DLP_IDLE);
 
 	if (self->dlp_debug_level > 0)
-		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
-	    	    DLP_STATE_NAME[self->dlp_state], self->dlp_state);
+		DLOGTR1(PRIO_LOW, "Producer state = %s\n",
+	    	    DLP_STATE_NAME[self->dlp_state]);
+
+	/* Check whether any records where produced whilst the
+	 * Producer was offline.
+	 */
+	/* Get the topic's active segment. */
+	seg = dl_topic_get_active_segment(self->dlp_topic);
+	DL_ASSERT(seg != NULL, ("Topic's active segment cannot be NULL"));
+				
+	offset = dl_user_segment_get_offset((struct dl_user_segment *) seg);
+	DL_ASSERT(seg != NULL, ("Active segment's offset cannot be NULL"));
+	if (self->dlp_produce) {
+
+		self->dlp_produce = false;
+		dl_producer_produce(self);
+	}
 }
 
 static void
-dl_producer_syncing(struct dl_producer * const self, uint32_t cnt)
+dl_producer_syncing(struct dl_producer * const self)
 {
 	int rc;
 
+	/* Validate the method's preconditions. */
 	assert_integrity(self);
 	DL_ASSERT(self->dlp_transport != NULL,
-	    ("Producer transport cannot be NULL."));
+	    ("Producer transport cannot be NULL"));
 
 	self->dlp_state = DLP_SYNCING;
 
@@ -659,8 +585,8 @@ dl_producer_syncing(struct dl_producer * const self, uint32_t cnt)
 	dlps_set_state(self->dlp_stats, DLP_SYNCING);
 
 	if (self->dlp_debug_level > 0)
-		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
-	    	    DLP_STATE_NAME[self->dlp_state], self->dlp_state);
+		DLOGTR1(PRIO_LOW, "Producer state = %s\n",
+	    	    DLP_STATE_NAME[self->dlp_state]);
 
 	/* Connection is up, reset the reconnect timeout */
 	self->dlp_reconn_ms = DLP_MINRECONN_MS;
@@ -668,8 +594,6 @@ dl_producer_syncing(struct dl_producer * const self, uint32_t cnt)
 	/* Start the thread to enqueue log entries for syncing
 	 * with the distributed broker.
 	 */
-	self->dlp_produce_cnt = cnt;
-
 	rc = pthread_create(&self->dlp_enqueue_tid, NULL,
 	    dlp_enqueue_thread, self);
 	if (rc != 0) {
@@ -685,6 +609,7 @@ dl_producer_offline(struct dl_producer * const self)
 {
 	struct kevent kev;
 
+	/* Validate the method's preconditions. */
 	assert_integrity(self);
 
 	self->dlp_state = DLP_OFFLINE;
@@ -693,8 +618,8 @@ dl_producer_offline(struct dl_producer * const self)
 	dlps_set_state(self->dlp_stats, DLP_OFFLINE);
 
 	if (self->dlp_debug_level > 0)
-		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
-	    	    DLP_STATE_NAME[self->dlp_state], self->dlp_state);
+		DLOGTR1(PRIO_LOW, "Producer state = %s\n",
+	    	    DLP_STATE_NAME[self->dlp_state]);
 
         /* Stop the produce and resender threads */
 	if (self->dlp_resend) {
@@ -729,6 +654,7 @@ dl_producer_online(struct dl_producer * const self)
 {
 	int rc;
 
+	/* Validate the method's preconditions. */
 	assert_integrity(self);
 
 	self->dlp_state = DLP_ONLINE;
@@ -737,8 +663,8 @@ dl_producer_online(struct dl_producer * const self)
 	dlps_set_state(self->dlp_stats, DLP_ONLINE);
 
 	if (self->dlp_debug_level > 0)
-		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
-	    	    DLP_STATE_NAME[self->dlp_state], self->dlp_state);
+		DLOGTR1(PRIO_LOW, "Producer state = %s\n",
+	    	    DLP_STATE_NAME[self->dlp_state]);
 
 	/* Start the thread to syncing log entries with the
 	 * distributed broker.
@@ -770,11 +696,11 @@ dl_producer_online(struct dl_producer * const self)
 	dl_producer_up(self);
 }
 
-
 static void
 dl_producer_final(struct dl_producer * const self)
 {
 
+	/* Validate the method's preconditions. */
 	assert_integrity(self);
 
 	self->dlp_state = DLP_FINAL;
@@ -783,8 +709,8 @@ dl_producer_final(struct dl_producer * const self)
 	dlps_set_state(self->dlp_stats, DLP_FINAL);
 
 	if (self->dlp_debug_level > 0) {
-		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
-	    	    DLP_STATE_NAME[self->dlp_state], self->dlp_state);
+		DLOGTR1(PRIO_LOW, "Producer state = %s\n",
+	    	    DLP_STATE_NAME[self->dlp_state]);
 	}
 }
 
@@ -794,16 +720,19 @@ dl_producer_new(struct dl_producer **self, char *topic_name,
 {
 	struct dl_producer *producer;
 	struct dl_user_segment *segment;
-	//struct kevent klog_ev;
 	char *client_id;
-	//char *path;
 	int requestq_len, rc;
 
-	DL_ASSERT(self != NULL, ("Producer instance cannot be NULL"));
-	DL_ASSERT(topic_name != NULL, ("Producer topic name cannot be NULL"));
-	DL_ASSERT(hostname != NULL, ("Producer hostname cannot be NULL"));
-	DL_ASSERT(props != NULL, ("Producer properties cannot be NULL"));
+	/* Validate the method's preconditions. */
+	if (self == NULL || topic_name == NULL || hostname == NULL ||
+	    props == NULL) {
 
+		DLOGTR0(PRIO_HIGH,
+		    "Invalid parameters passed to Producer constructor\n");
+		return -1;
+	}
+
+	/* Allocate the Producer instance. */
 	producer = (struct dl_producer *) dlog_alloc(
 	    sizeof(struct dl_producer));
 	DL_ASSERT(producer != NULL,
@@ -818,16 +747,16 @@ dl_producer_new(struct dl_producer **self, char *topic_name,
 	if (dl_producer_stats_new(&producer->dlp_stats, topic_name)) {
 
 		DLOGTR1(PRIO_HIGH,
-		    "Failed to instatiate ProducerStats instance %d.\n", errno);
+		    "Failed to instatiate ProducerStats instance %d\n", errno);
 		goto err_producer_free;
 	}
 
 	/* Construct a new userspace segment. */
-	rc = dl_user_segment_new_default(&segment, topic_name);
+	rc = dl_user_segment_new_default(&segment, producer, topic_name);
 	if (rc != 0) {
 
 		DLOGTR0(PRIO_HIGH, "Failed creating new user space segment\n");
-		goto err_producer_stats;	
+		goto err_producer_stats_free;	
 	}
 
 	/* Prelocate an initial segment file for the topic and add
@@ -838,49 +767,32 @@ dl_producer_new(struct dl_producer **self, char *topic_name,
 	if (rc != 0) {
 	
 		DLOGTR1(PRIO_HIGH, "Failed instantiating topic %s\n", topic_name);
-		/* Free the Producer topic USerSegment instance. */
+		/* Free the Producer topic UserSegment instance. */
 		dl_user_segment_delete(segment);
-		goto err_producer_stats;	
+		goto err_producer_stats_free;	
 	}
-
-	/* Create a new Index of the log segment. */
-	/*
-	path = dnvlist_get_string(props,
-	    DL_CONF_LOG_PATH, DL_DEFAULT_LOG_PATH);
-
-	rc = dl_index_new(&producer->dlp_idx, segment, path, topic_name);
-	if (rc != 0) {
-
-		DLOGTR0(PRIO_LOW, "Failed instatiating index\n");
-		goto err_producer_topic;
-	}	
-	*/
-
-	/* Associate the Producer with the Index. */
-	dl_index_set_producer(dl_user_segment_get_index(segment),
-	    producer);
-
-	//dl_index_set_producer(producer->dlp_idx, producer);
-
-	/* Associate the Topic Segment with the Index. */
-	//dl_user_segment_set_index(segment, producer->dlp_idx);
 
 	/* Take a defensive copy of the client id. */
-	producer->dlp_name = sbuf_new_auto();
+	producer->dlp_clientid = sbuf_new_auto();
 	client_id = dnvlist_get_string(props, DL_CONF_CLIENTID,
 	    DL_DEFAULT_CLIENTID);
-	sbuf_cpy(producer->dlp_name, client_id);
-	sbuf_finish(producer->dlp_name);
-	if (sbuf_error(producer->dlp_name) != 0) {
+	sbuf_cpy(producer->dlp_clientid, client_id);
+	sbuf_finish(producer->dlp_clientid);
+	if (sbuf_error(producer->dlp_clientid) != 0) {
 
+		sbuf_delete(producer->dlp_clientid);
+		goto err_producer_topic_free;
 	}
 
-	/* Take defensive copy of the hostname. */
+	/* Take defensive copy of the broker hostname. */
 	producer->dlp_broker = sbuf_new_auto();
 	sbuf_cpy(producer->dlp_broker, hostname);
 	sbuf_finish(producer->dlp_broker);
 	if (sbuf_error(producer->dlp_broker) != 0) {
 
+		sbuf_delete(producer->dlp_broker);
+		sbuf_delete(producer->dlp_clientid);
+		goto err_producer_topic_free;
 	}
 
 	producer->dlp_broker_port = port;
@@ -891,24 +803,27 @@ dl_producer_new(struct dl_producer **self, char *topic_name,
 	   producer->dlp_stats, requestq_len);
 	if (rc != 0) {
 
-		dlog_free(producer);
-		sbuf_delete(producer->dlp_name);
-		goto err_producer_topic;
+		sbuf_delete(producer->dlp_broker);
+		sbuf_delete(producer->dlp_clientid);
+		goto err_producer_topic_free;
 	}
 
 	rc = dl_correlation_id_new(&producer->dlp_cid);
 	if (rc != 0) {
 
-		dlog_free(producer);
-		sbuf_delete(producer->dlp_name);
-		dl_request_q_delete(producer->dlp_requests);
-		goto err_producer_ctor;
+		sbuf_delete(producer->dlp_broker);
+		sbuf_delete(producer->dlp_clientid);
+		goto err_producer_req_free;
 	}
-	
+
+	/* Create kqueue for managming reconnection with the broker. */	
 	producer->dlp_ktimer = kqueue();
 	if (producer->dlp_ktimer == -1) {
 
 		DLOGTR1(PRIO_LOW, "Failed creating kqueue(): %d\n", errno);
+		sbuf_delete(producer->dlp_broker);
+		sbuf_delete(producer->dlp_clientid);
+		goto err_producer_corr_id_free;
 	}
 
 	producer->dlp_reconn_ms = DLP_MINRECONN_MS;
@@ -937,27 +852,32 @@ dl_producer_new(struct dl_producer **self, char *topic_name,
 	producer->dlp_state = DLP_INITIAL;
 
 	/* Update the producer statistics */
-	dlps_set_topic_name(producer->dlp_stats, topic_name);
 	dlps_set_state(producer->dlp_stats, DLP_INITIAL);
 	dlps_set_resend(producer->dlp_stats, producer->dlp_resend);
 	dlps_set_resend_timeout(producer->dlp_stats, producer->dlp_resend_timeout);
-	
+
 	*self = producer;
+
+	/* Verfiy the method's post-conditions. */
 	assert_integrity(*self);
 
 	/* Synchnronously create the Producer in the connecting state. */
 	dl_producer_connecting(*self);
 	return 0;
+		
+err_producer_corr_id_free:
+	/* Free the Producer correlation id instance. */
+	dl_correlation_id_delete(producer->dlp_cid);
 
-//err_producer_index:
-	/* Free the Producer index instance. */
-//	dl_index_delete(producer->dlp_idx);
+err_producer_req_free:
+	/* Free the Producer request queue instance. */
+	dl_request_q_delete(producer->dlp_requests);
 
-err_producer_topic:
+err_producer_topic_free:
 	/* Free the Producer topic instance. */
 	dl_topic_delete(producer->dlp_topic);
 
-err_producer_stats:
+err_producer_stats_free:
 	/* Close and unmap the stats file. */
 	dl_producer_stats_delete(producer->dlp_stats);
 
@@ -976,16 +896,13 @@ void
 dl_producer_delete(struct dl_producer *self)
 {
 
-	assert_integrity(self);
+	/* Validate the method's preconditions. */
+	check_integrity(self);
 
-        /* Stop the enque, produce and resender threads */
-	if (self->dlp_resend) {
-		pthread_cancel(self->dlp_resender_tid);
-		pthread_join(self->dlp_resender_tid, NULL);
-	}
-	pthread_cancel(self->dlp_produce_tid);
-	pthread_join(self->dlp_produce_tid, NULL);
+	/* Self-trigger the down event */
+	dl_producer_down(self);
 
+        /* Stop the enque thread */
 	pthread_cancel(self->dlp_enqueue_tid);
 	pthread_join(self->dlp_enqueue_tid, NULL);
 
@@ -1008,12 +925,8 @@ dl_producer_delete(struct dl_producer *self)
 	sbuf_delete(self->dlp_broker);
 
 	/* Delete the producer name */
-	sbuf_delete(self->dlp_name);
+	sbuf_delete(self->dlp_clientid);
 
-	/* Delete the producer transport */
-	if (self->dlp_transport != NULL)
-		 dl_transport_delete(self->dlp_transport);
-	
 	/* Delete the topic managed by the producer. */
 	dl_topic_delete(self->dlp_topic);
 
@@ -1027,7 +940,8 @@ struct dl_producer_stats *
 dl_producer_get_stats(struct dl_producer *self)
 {
 
-	assert_integrity(self);
+	/* Validate the method's preconditions. */
+	check_integrity(self);
 	return self->dlp_stats;
 }
 
@@ -1035,7 +949,8 @@ struct dl_topic *
 dl_producer_get_topic(struct dl_producer *self)
 {
 
-	assert_integrity(self);
+	/* Validate the method's preconditions. */
+	check_integrity(self);
 	return self->dlp_topic;
 }
 
@@ -1047,7 +962,8 @@ dl_producer_response(struct dl_producer *self, struct dl_bbuf *buffer)
 	struct dl_response_header *hdr;
 	struct dl_produce_response *response;
 	
-	assert_integrity(self);
+	/* Validate the method's preconditions. */
+	check_integrity(self);
 	DL_ASSERT(buffer != NULL, ("Response buffer cannot be NULL"));
 
 	/* Deserialise the response header. */
@@ -1158,10 +1074,11 @@ dl_producer_response(struct dl_producer *self, struct dl_bbuf *buffer)
 	return 0;
 }
 void
-dl_producer_produce(struct dl_producer * const self, uint32_t cnt)
+dl_producer_produce(struct dl_producer * const self)
 {
 
-	assert_integrity(self);
+	/* Validate the method's preconditions. */
+	check_integrity(self);
 
 	switch(self->dlp_state) {
 	case DLP_IDLE: /* idle -> syncing */
@@ -1170,19 +1087,20 @@ dl_producer_produce(struct dl_producer * const self, uint32_t cnt)
 			    "Producer event = produce(): %s->SYNCING\n",
 			    DLP_STATE_NAME[self->dlp_state]);
 
-		dl_producer_syncing(self, cnt);
+		dl_producer_syncing(self);
 		break;
-	case DLP_CONNECTING: /* IGNORE */
+	case DLP_CONNECTING:
 		/* FALLTHROUGH */
 	case DLP_ONLINE:
 		/* FALLTHROUGH */
 	case DLP_OFFLINE:
 		/* FALLTHROUGH */
+		self->dlp_produce = true;
+		break;
 	case DLP_SYNCING:
 		if (self->dlp_debug_level > 1)
 			DLOGTR0(PRIO_LOW, "Ignoring event = produce()\n");
-
-		self->dlp_produce_cnt += cnt;
+		/* IGNORE */
 		break;
 	case DLP_INITIAL: /* CANNOT HAPPEN */
 		/* FALLTHROUGH */
@@ -1198,7 +1116,8 @@ void
 dl_producer_up(struct dl_producer const * const self)
 {
 
-	assert_integrity(self);
+	/* Validate the method's preconditions. */
+	check_integrity(self);
 
 	switch(self->dlp_state) {
 	case DLP_CONNECTING: /* connecting -> online */
@@ -1210,7 +1129,8 @@ dl_producer_up(struct dl_producer const * const self)
 		dl_producer_online(self);
 		break;
 	case DLP_ONLINE: /* online -> idle*/
-		dl_producer_idle(self);
+		//dl_producer_idle(self);
+		dl_producer_syncing(self);
 		break;
 	case DLP_IDLE: /* IGNORE */
 		/* FALLTHROUGH */
@@ -1234,7 +1154,8 @@ void
 dl_producer_down(struct dl_producer const * const self)
 {
 
-	assert_integrity(self);
+	/* Validate the method's preconditions. */
+	check_integrity(self);
 
 	switch(self->dlp_state) {
 	case DLP_CONNECTING: /* connecting -> offline */
@@ -1270,7 +1191,8 @@ void
 dl_producer_syncd(struct dl_producer const * const self)
 {
 
-	assert_integrity(self);
+	/* Validate the method's preconditions. */
+	check_integrity(self);
 
 	switch(self->dlp_state) {
 	case DLP_SYNCING: /* syncing->idle */
@@ -1304,7 +1226,8 @@ void
 dl_producer_reconnect(struct dl_producer const * const self)
 {
 
-	assert_integrity(self);
+	/* Validate the method's preconditions. */
+	check_integrity(self);
 
 	switch(self->dlp_state) {
 	case DLP_OFFLINE: /* offline -> connecting */
@@ -1338,7 +1261,8 @@ void
 dl_producer_error(struct dl_producer const * const self)
 {
 
-	assert_integrity(self);
+	/* Validate the method's preconditions. */
+	check_integrity(self);
 
 	switch(self->dlp_state) {
 	case DLP_SYNCING: /* syncing -> final */

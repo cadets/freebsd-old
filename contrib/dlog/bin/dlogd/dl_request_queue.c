@@ -67,7 +67,7 @@ struct dl_request_q {
 extern nvlist_t *dlogd_props;
 
 static inline void
-dlrq_check_integrity(struct dl_request_q *self)
+assert_integrity(struct dl_request_q *self)
 {
 
 	DL_ASSERT(self != NULL, ("Request queue inst cannot be NULL."));
@@ -78,7 +78,7 @@ dl_request_q_stats_request_items(struct dl_request_q *self)
 {
 	int sval, rc = 0;
 
-	dlrq_check_integrity(self);
+	assert_integrity(self);
 	rc = pthread_mutex_lock(&self->dlrq_mtx);		
 	sem_getvalue(&self->dlrq_request_items, &sval);
 	dlps_set_queue_requests(self->dlrq_stats, sval);
@@ -90,7 +90,7 @@ dl_request_q_stats_unackd_items(struct dl_request_q *self)
 {
 	int sval, rc = 0;
 
-	dlrq_check_integrity(self);
+	assert_integrity(self);
 	rc = pthread_mutex_lock(&self->dlrq_mtx);		
 	sem_getvalue(&self->dlrq_unackd_items, &sval);
 	dlps_set_queue_unackd(self->dlrq_stats, sval);
@@ -104,7 +104,7 @@ dl_request_q_dequeue(struct dl_request_q *self,
 	struct timeval now, tdiff;
 	int rc = 0;
 
-	dlrq_check_integrity(self);
+	assert_integrity(self);
 	DL_ASSERT(elem != NULL,
 	    ("Request element instance cannot be NULL."));
 
@@ -155,7 +155,7 @@ dl_request_q_dequeue_unackd(struct dl_request_q *self,
 {
 	int rc = 0, ret = -1;
 
-	dlrq_check_integrity(self);
+	assert_integrity(self);
 	DL_ASSERT(elem != NULL,
 	    ("Request element instance cannot be NULL."));
 
@@ -197,7 +197,7 @@ dl_request_q_enqueue(struct dl_request_q *self,
 {
 	int rc = 0, spaces;
 
-	dlrq_check_integrity(self);
+	assert_integrity(self);
 	DL_ASSERT(request != NULL, ("Request instance cannot be NULL"));
 
 	rc = sem_wait(&self->dlrq_spaces);
@@ -232,7 +232,7 @@ dl_request_q_enqueue_new(struct dl_request_q *self, struct dl_bbuf *buffer,
 {
 	struct dl_request_element *request;
 	
-	dlrq_check_integrity(self);
+	assert_integrity(self);
 	DL_ASSERT(buffer != NULL, ("RequestQueue element buffer cannot be NULL"));
 
 	/* Allocate a new request; this stores the encoded request
@@ -269,7 +269,7 @@ int
 dl_request_q_capacity(struct dl_request_q *self, int *sval)
 {
 
-	dlrq_check_integrity(self);
+	assert_integrity(self);
 	return sem_getvalue(&self->dlrq_spaces, sval);
 }
 
@@ -278,7 +278,7 @@ dl_request_q_peek(struct dl_request_q *self, struct dl_request_element **elem)
 {
 	int rc, ret, sval;
 
-	dlrq_check_integrity(self);
+	assert_integrity(self);
 	
 	rc = pthread_mutex_lock(&self->dlrq_mtx);		
 	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
@@ -306,7 +306,7 @@ dl_request_q_peek_unackd(struct dl_request_q *self, struct dl_request_element **
 {
 	int rc, ret, sval;
 
-	dlrq_check_integrity(self);
+	assert_integrity(self);
 	
 	rc = pthread_mutex_lock(&self->dlrq_mtx);		
 	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
@@ -406,7 +406,7 @@ dl_request_q_new(struct dl_request_q **self,
 		goto err_queue_ctor;
 	}
 
-	dlrq_check_integrity(queue);
+	assert_integrity(queue);
 	*self = queue;
 	return 0;
 
@@ -421,7 +421,7 @@ void
 dl_request_q_delete(struct dl_request_q *self)
 {
 
-	dlrq_check_integrity(self);
+	assert_integrity(self);
 
 	pthread_mutex_destroy(&self->dlrq_mtx);
 	sem_destroy(&self->dlrq_spaces);
@@ -434,7 +434,7 @@ void
 dl_request_q_lock(struct dl_request_q *self) __attribute((no_thread_safety_analysis))
 {
 
-	dlrq_check_integrity(self);
+	assert_integrity(self);
 	pthread_mutex_lock(&self->dlrq_mtx);
 }
 
@@ -442,7 +442,7 @@ void
 dl_request_q_unlock(struct dl_request_q *self) __attribute((no_thread_safety_analysis))
 {
 
-	dlrq_check_integrity(self);
+	assert_integrity(self);
 	pthread_mutex_unlock(&self->dlrq_mtx);
 }
 

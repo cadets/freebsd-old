@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2019 (Graeme Jenkinson)
+ * Copyright (c) 2019-2020 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -38,51 +38,49 @@
 #define _DL_PRODUCER_STATS_H
 
 #include <sys/types.h>
-#include <sys/sbuf.h>
 
 #include <stdbool.h>
 
 struct dl_producer_stats;
 
-extern int dl_producer_stats_new(struct dl_producer_stats **, char *);
-extern void dl_producer_stats_delete(struct dl_producer_stats *);
+extern int dl_producer_stats_new(struct dl_producer_stats const **, char *);
+extern void dl_producer_stats_delete(struct dl_producer_stats const *);
 
-extern void dlps_set_rtt(struct dl_producer_stats *, int32_t);
-extern void dlps_set_received_cid(struct dl_producer_stats *, int32_t);
-extern void dlps_set_received_error(struct dl_producer_stats *, bool);
-extern void dlps_set_received_timestamp(struct dl_producer_stats *);
-extern void dlps_set_sent_cid(struct dl_producer_stats *, int32_t);
-extern void dlps_set_sent_error(struct dl_producer_stats *, bool);
-extern void dlps_set_sent_timestamp(struct dl_producer_stats *);
-extern void dlps_set_state(struct dl_producer_stats *, int32_t state);
-extern void dlps_set_topic_name(struct dl_producer_stats *, char *);
-extern void dlps_set_resend(struct dl_producer_stats *, bool);
-extern void dlps_set_resend_timeout(struct dl_producer_stats *, int);
-extern void dlps_set_tcp_connect(struct dl_producer_stats *, bool);
-extern void dlps_set_tls_connect(struct dl_producer_stats *, bool);
-extern void dlps_set_bytes_sent(struct dl_producer_stats *, int32_t);
-extern void dlps_set_bytes_received(struct dl_producer_stats *, int32_t);
-extern void dlps_set_queue_capacity(struct dl_producer_stats *, int);
-extern void dlps_set_queue_requests(struct dl_producer_stats *, int);
-extern void dlps_set_queue_unackd(struct dl_producer_stats *, int);
+extern void dlps_set_bytes_sent(struct dl_producer_stats const *, const int32_t);
+extern void dlps_set_bytes_received(struct dl_producer_stats const *, const int32_t);
+extern void dlps_set_received_cid(struct dl_producer_stats const *, const int32_t);
+extern void dlps_set_received_error(struct dl_producer_stats const *, const bool);
+extern void dlps_set_received_timestamp(struct dl_producer_stats const *);
+extern void dlps_set_resend(struct dl_producer_stats const *, const bool);
+extern void dlps_set_resend_timeout(struct dl_producer_stats const *, const int);
+extern void dlps_set_rtt(struct dl_producer_stats const *, const int32_t);
+extern void dlps_set_sent_cid(struct dl_producer_stats const *, const int32_t);
+extern void dlps_set_sent_error(struct dl_producer_stats const *, const bool);
+extern void dlps_set_sent_timestamp(struct dl_producer_stats const *);
+extern void dlps_set_state(struct dl_producer_stats const *, const int32_t);
+extern void dlps_set_tcp_connect(struct dl_producer_stats const *, const bool);
+extern void dlps_set_tls_connect(struct dl_producer_stats const *, const bool);
+extern void dlps_set_queue_capacity(struct dl_producer_stats const *, const int);
+extern void dlps_set_queue_requests(struct dl_producer_stats const *, const int);
+extern void dlps_set_queue_unackd(struct dl_producer_stats const *, const int);
 
-extern int32_t dlps_get_rtt(struct dl_producer_stats *);
-extern int32_t dlps_get_received_cid(struct dl_producer_stats *);
-extern bool dlps_get_received_error(struct dl_producer_stats *);
-extern time_t dlps_get_received_timestamp(struct dl_producer_stats *);
-extern int32_t dlps_get_sent_cid(struct dl_producer_stats *);
-extern bool dlps_get_sent_error(struct dl_producer_stats *);
-extern time_t dlps_get_sent_timestamp(struct dl_producer_stats *);
-extern int32_t dlps_get_state(struct dl_producer_stats *);
-extern char * dlps_get_topic_name(struct dl_producer_stats *);
-extern bool dlps_get_resend(struct dl_producer_stats *);
-extern int dlps_get_resend_timeout(struct dl_producer_stats *);
-extern bool dlps_get_tcp_connect(struct dl_producer_stats *);
-extern bool dlps_get_tls_connect(struct dl_producer_stats *);
-extern int32_t dlps_get_bytes_sent(struct dl_producer_stats *);
-extern int32_t dlps_get_bytes_received(struct dl_producer_stats *);
-extern int dlps_get_queue_capacity(struct dl_producer_stats *);
-extern int dlps_get_queue_requests(struct dl_producer_stats *);
-extern int dlps_get_queue_unackd(struct dl_producer_stats *);
+extern int32_t dlps_get_bytes_sent(struct dl_producer_stats const * const);
+extern int32_t dlps_get_bytes_received(struct dl_producer_stats const * const);
+extern int32_t dlps_get_received_cid(struct dl_producer_stats const * const);
+extern bool dlps_get_received_error(struct dl_producer_stats const * const);
+extern time_t dlps_get_received_timestamp(struct dl_producer_stats const * const);
+extern bool dlps_get_resend(struct dl_producer_stats const * const);
+extern int dlps_get_resend_timeout(struct dl_producer_stats const * const);
+extern int32_t dlps_get_rtt(struct dl_producer_stats const * const);
+extern int32_t dlps_get_sent_cid(struct dl_producer_stats const * const);
+extern bool dlps_get_sent_error(struct dl_producer_stats const * const);
+extern time_t dlps_get_sent_timestamp(struct dl_producer_stats const * const);
+extern int32_t dlps_get_state(struct dl_producer_stats const * const);
+extern char * dlps_get_topic_name(struct dl_producer_stats const * const);
+extern bool dlps_get_tcp_connect(struct dl_producer_stats const * const);
+extern bool dlps_get_tls_connect(struct dl_producer_stats const * const);
+extern int dlps_get_queue_capacity(struct dl_producer_stats const * const);
+extern int dlps_get_queue_requests(struct dl_producer_stats const * const);
+extern int dlps_get_queue_unackd(struct dl_producer_stats const * const);
 
 #endif

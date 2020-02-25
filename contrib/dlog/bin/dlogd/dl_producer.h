@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2019 (Graeme Jenkinson)
+ * Copyright (c) 2019-2020 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -37,25 +37,25 @@
 #ifndef _DL_PRODUCER_H
 #define _DL_PRODUCER_H
 
+#include <sys/types.h>
 #include <sys/nv.h>
 
-#include <stdbool.h>
-
 #include "dl_bbuf.h"
+#include "dl_producer_stats.h"
 #include "dl_protocol.h"
 #include "dl_topic.h"
 
 struct dl_producer;
 
-extern int dl_producer_new(struct dl_producer **, char *topic_name,
-    char *, int, nvlist_t *);
+extern int dl_producer_new(struct dl_producer **, char *, char *, int,
+    nvlist_t *);
 extern void dl_producer_delete(struct dl_producer *);
 
 extern struct dl_producer_stats * dl_producer_get_stats(struct dl_producer *); 
 extern struct dl_topic * dl_producer_get_topic(struct dl_producer *); 
 extern int dl_producer_response(struct dl_producer *, struct dl_bbuf *);
 
-extern void dl_producer_produce(struct dl_producer * const, uint32_t);
+extern void dl_producer_produce(struct dl_producer * const);
 extern void dl_producer_up(struct dl_producer const * const);
 extern void dl_producer_down(struct dl_producer const * const);
 extern void dl_producer_syncd(struct dl_producer const * const);
