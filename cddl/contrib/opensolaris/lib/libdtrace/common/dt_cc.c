@@ -695,7 +695,8 @@ dt_action_trace(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 		    "%s( ) may not be applied to a translated pointer\n", act);
 	}
 
-	if (dnp->dn_args->dn_kind == DT_NODE_AGG) {
+	if ((!isprintf && dnp->dn_args->dn_kind == DT_NODE_AGG) ||
+	    (isprintf && dnp->dn_args->dn_list->dn_kind == DT_NODE_AGG)) {
 		dnerror(dnp->dn_args, istrace ? D_TRACE_AGG :
 		    isprintf ? D_PRINTF_AGG_CONV : D_PRINT_AGG,
 		    "%s( ) may not be applied to an aggregation%s\n", act,
