@@ -476,13 +476,11 @@ dl_bbuf_get_int16(struct dl_bbuf * const self, int16_t * const value)
 	    (self->dlb_pos + sizeof(int16_t)) <= self->dlb_limit) {
 
 		if (self->dlb_flags & DL_BBUF_BIGENDIAN) {
-			*value =
-			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0));
+			*value = ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8);
+			*value |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0);
 		} else {
-			*value =
-			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 0) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8)); 
+			*value = ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0);
+			*value |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8); 
 		}
 		return 0;
 	}
@@ -506,13 +504,11 @@ dl_bbuf_get_uint16(struct dl_bbuf * const self, uint16_t * const value)
 	    (self->dlb_pos + sizeof(uint16_t)) <= self->dlb_limit) {
 
 		if (self->dlb_flags & DL_BBUF_BIGENDIAN) {
-			*value =
-			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0));
+			*value = ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8);
+			*value |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0);
 		} else {
-			*value =
-			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 0) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8)); 
+			*value = ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0);
+			*value |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8); 
 		}
 		return 0;
 	}
@@ -536,17 +532,15 @@ dl_bbuf_get_int32(struct dl_bbuf * const self, int32_t * const value)
 	    (self->dlb_pos + sizeof(int32_t)) <= self->dlb_limit) {
 
 		if (self->dlb_flags & DL_BBUF_BIGENDIAN) {
-			*value =
-			    ((((uint32_t) self->dlb_data[self->dlb_pos++] & 0xFF) << 24) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0));
+			*value = (((uint32_t) self->dlb_data[self->dlb_pos++] & 0xFF) << 24);
+			*value |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16);
+			*value |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8);
+			*value |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0);
 		} else {
-			*value =
-			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 0) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24));
+			*value = ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0);
+			*value |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8);
+			*value |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16);
+			*value |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24);
 		}
 		return 0;
 	}
@@ -570,17 +564,15 @@ dl_bbuf_get_uint32(struct dl_bbuf * const self, uint32_t * const value)
 	    (self->dlb_pos + sizeof(uint32_t)) <= self->dlb_limit) {
 
 		if (self->dlb_flags & DL_BBUF_BIGENDIAN) {
-			*value =
-			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 24) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0));
+			*value = ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24);
+			*value |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16);
+			*value |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8);
+			*value |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0);
 		} else {
-			*value =
-			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 0) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24));
+			*value = ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0);
+			*value |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8);
+			*value |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16);
+			*value |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24);
 		}
 		return 0;
 	}
@@ -605,29 +597,25 @@ dl_bbuf_get_int64(struct dl_bbuf * const self, int64_t * const value)
 	    (self->dlb_pos + sizeof(int64_t)) <= self->dlb_limit) {
 
 		if (self->dlb_flags & DL_BBUF_BIGENDIAN) {
-			h =
-			    ((((uint32_t) self->dlb_data[self->dlb_pos++] & 0xFF) << 24) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0));
-			l = 
-			    ((((uint32_t) self->dlb_data[self->dlb_pos++] & 0xFF) << 24) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0));
+			h = (((uint32_t) self->dlb_data[self->dlb_pos++] & 0xFF) << 24);
+			h |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16);
+			h |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8);
+			h |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0);
+			l = (((uint32_t) self->dlb_data[self->dlb_pos++] & 0xFF) << 24);
+			l |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16);
+			l |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8);
+			l |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0);
 			*value = (((uint64_t) h) << 32L) |
 			    (((uint64_t) l) & 0xFFFFFFFFL);
 		} else {
-			l =
-			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 0) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24));
-			h =
-			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 0) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24));
+			l = ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0);
+			l |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8);
+			l |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16);
+			l |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24);
+			h = ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0);
+			h |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8);
+			h |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16);
+			h |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24);
 			*value = (((uint64_t) h) << 32L) |
 			    (((uint64_t) l) & 0xFFFFFFFFL);
 		}
@@ -654,29 +642,25 @@ dl_bbuf_get_uint64(struct dl_bbuf * const self, uint64_t * const value)
 	    (self->dlb_pos + sizeof(uint64_t)) <= self->dlb_limit) {
 
 		if (self->dlb_flags & DL_BBUF_BIGENDIAN) {
-			h =
-			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 24) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0));
-			l = 
-			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 24) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0));
+			h = ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24);
+			h |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16);
+			h |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8);
+			h |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0);
+			l = ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24);
+			l |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16);
+			l |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8);
+			l |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0);
 			*value = (((uint64_t) h) << 32L) |
 			    (((long) l) & 0xFFFFFFFFL);
 		} else {
-			l =
-			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 0) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24));
-			h =
-			    (((self->dlb_data[self->dlb_pos++] & 0xFF) << 0) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16) |
-			    ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24));
+			l = ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0);
+			l |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8);
+			l |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16);
+			l |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24);
+			h = ((self->dlb_data[self->dlb_pos++] & 0xFF) << 0);
+			h |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 8);
+			h |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 16);
+			h |= ((self->dlb_data[self->dlb_pos++] & 0xFF) << 24);
 			*value = (((uint64_t) h) << 32L) |
 			    (((uint64_t) l) & 0xFFFFFFFFL);
 		}
