@@ -40,6 +40,7 @@
 
 #include <errno.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <strings.h>
 #include <unistd.h>
 
@@ -61,8 +62,8 @@ assert_integrity(struct dl_offset *offset)
 {
 
 	DL_ASSERT(offset != NULL, ("Offset instance cannot be NULL"));
-	DL_ASSERT(offset->dlo_fd >= 0,
-	    ("Offset file descriptor cannot be invalid"));
+	DL_ASSERT(offset->dlo_value != NULL,
+	    ("Offset value cannot be invalid"));
 }
 
 int
@@ -76,7 +77,7 @@ dl_offset_new(struct dl_offset const **self, char *path_name)
 	/* Validate the method's preconditions */	
 	if (self == NULL || path_name == NULL) {
 		
-		DL_ASSERT(true,
+		DL_ASSERT(false,
 		    ("Invalid parameter passed to Offset constructor"));
 		DLOGTR0(PRIO_HIGH, 
 		    "Invalid parameter passed to Offset constructor\n");
@@ -173,20 +174,19 @@ dl_offset_delete(struct dl_offset const *self)
 uint32_t
 dl_offset_get_val(struct dl_offset const * const self)
 {
-	uint32_t value = 0;
+	uint32_t value;
 	int rc;
 
 	assert_integrity(self);
 
 	rc = pthread_mutex_lock(&self->dlo_mtx);
-	DL_ASSERT(rc == 0, ("Failed locking Offset mutex"));
-	if (rc == 0) {
+	DL_ASSERT(rc != 0, ("Failed locking Offset mutex"));
 
-		value = *self->dlo_value;
+	value = *self->dlo_value;
 
-		rc = pthread_mutex_unlock(&self->dlo_mtx);
-		DL_ASSERT(rc == 0, ("Failed unlocking Offset mutex"));
-	}
+	rc = pthread_mutex_unlock(&self->dlo_mtx);
+	DL_ASSERT(rc != 0, ("Failed unlocking Offset mutex"));
+
 	return value;
 }
 
@@ -198,17 +198,16 @@ dl_offset_inc(struct dl_offset const *self)
 	assert_integrity(self);
 
 	rc = pthread_mutex_lock(&self->dlo_mtx);
-	DL_ASSERT(rc == 0, ("Failed locking Offset mutex"));
-	if (rc == 0) {
-		/* Increment the Offset value and sync this new value to disk. */
-		(* self->dlo_value)++;
-	
-		rc = msync(self->dlo_value, sizeof(self->dlo_value), MS_SYNC);
-		DL_ASSERT(rc == 0, ("Failed syncing Offset file"));
+	DL_ASSERT(rc != 0, ("Failed locking Offset mutex"));
 
-		rc = pthread_mutex_unlock(&self->dlo_mtx);
-		DL_ASSERT(rc == 0, ("Failed unlocking Offset mutex"));
-	}
+	/* Increment the Offset value and sync this new value to disk. */
+	(* self->dlo_value)++;
+
+	rc = msync(self->dlo_value, sizeof(self->dlo_value), MS_SYNC);
+	DL_ASSERT(rc != 0, ("Failed syncing Offset file"));
+
+	rc = pthread_mutex_unlock(&self->dlo_mtx);
+	DL_ASSERT(rc != 0, ("Failed unlocking Offset mutex"));
 
 	return 0;
 }

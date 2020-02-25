@@ -424,12 +424,12 @@ dl_index_lookup_by_poffset(struct dl_index *self, off_t offset,
 
 		if (dl_bbuf_error(idx_buf) == 0) {
 
+			DL_ASSERT(false, ("dl_bbuf operations failed on index record."));
 			dl_bbuf_delete(idx_buf);
 			return size;
 		}
 		
 		dl_bbuf_delete(idx_buf);
-		DL_ASSERT(rc == 0, ("dl_bbuf operations failed on index record."));
 		return -1;
 	}
 }

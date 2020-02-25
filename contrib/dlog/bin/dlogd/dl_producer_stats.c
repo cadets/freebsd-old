@@ -99,7 +99,7 @@ check_integrity(struct dl_producer_stats const * const self)
 }
 
 int
-dl_producer_stats_new(struct dl_producer_stats const **self,
+dl_producer_stats_new(struct dl_producer_stats **self,
     char *topic_name)
 {
 	struct dl_producer_stats *stats;
@@ -174,7 +174,7 @@ err_producer_stats:
 }
 
 void
-dl_producer_stats_delete(struct dl_producer_stats const *self)
+dl_producer_stats_delete(struct dl_producer_stats *self)
 {
 
 	check_integrity(self);

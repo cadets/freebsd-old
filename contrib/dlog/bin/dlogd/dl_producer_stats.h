@@ -43,8 +43,8 @@
 
 struct dl_producer_stats;
 
-extern int dl_producer_stats_new(struct dl_producer_stats const **, char *);
-extern void dl_producer_stats_delete(struct dl_producer_stats const *);
+extern int dl_producer_stats_new(struct dl_producer_stats **, char *);
+extern void dl_producer_stats_delete(struct dl_producer_stats *);
 
 extern void dlps_set_bytes_sent(struct dl_producer_stats const *, const int32_t);
 extern void dlps_set_bytes_received(struct dl_producer_stats const *, const int32_t);

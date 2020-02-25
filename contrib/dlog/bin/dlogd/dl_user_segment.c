@@ -461,47 +461,43 @@ insert_message(struct dl_segment *segment, struct dl_bbuf *buffer)
 
 	rc = pthread_mutex_lock(&self->dlus_lock);
 	DL_ASSERT(rc == 0, ("Failed locking UserSegmetn mutex"));
-	if (rc == 0) {
 
-		/* Update the log file. */
-		dl_bbuf_new(&metadata, NULL, sizeof(uint32_t),
-		    DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN);
-		dl_bbuf_put_int32(metadata, dl_offset_get_val(self->dlus_offset));
-		if (dl_bbuf_error(metadata) != 0) {
-		
-			goto err_insert_message;
-		}
-
-		log_bufs[0].iov_base = dl_bbuf_data(metadata);
-		log_bufs[0].iov_len = dl_bbuf_pos(metadata);
-		
-		log_bufs[1].iov_base = dl_bbuf_data(buffer);
-		log_bufs[1].iov_len = dl_bbuf_pos(buffer);
-
-		/* TODO: The Kafka log format should also include a timestamp */
-
-		rc = writev(self->dlus_log, log_bufs,
-		    sizeof(log_bufs)/sizeof(struct iovec));	
-		if (rc == -1) {
-
-			DLOGTR1(PRIO_LOW,
-			    "UserSegment insert message failed writev (%d)\n", errno);
-			goto err_insert_message;
-		}
-		
-		/* Delete the buffer holding the log metadata */
-		dl_bbuf_delete(metadata);
-
-		/* Update the offset. */
-		dl_offset_inc(self->dlus_offset);
-
-		rc = pthread_mutex_unlock(&self->dlus_lock);
-		DL_ASSERT(rc == 0, ("Failed unlocking UserSegment mutex"));
-
-		return 0;
+	/* Update the log file. */
+	dl_bbuf_new(&metadata, NULL, sizeof(uint32_t),
+		DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN);
+	dl_bbuf_put_int32(metadata, dl_offset_get_val(self->dlus_offset));
+	if (dl_bbuf_error(metadata) != 0) {
+	
+		goto err_insert_message;
 	}
 
-	return -1;
+	log_bufs[0].iov_base = dl_bbuf_data(metadata);
+	log_bufs[0].iov_len = dl_bbuf_pos(metadata);
+	
+	log_bufs[1].iov_base = dl_bbuf_data(buffer);
+	log_bufs[1].iov_len = dl_bbuf_pos(buffer);
+
+	/* TODO: The Kafka log format should also include a timestamp */
+
+	rc = writev(self->dlus_log, log_bufs,
+		sizeof(log_bufs)/sizeof(struct iovec));	
+	if (rc == -1) {
+
+		DLOGTR1(PRIO_LOW,
+			"UserSegment insert message failed writev (%d)\n", errno);
+		goto err_insert_message;
+	}
+	
+	/* Delete the buffer holding the log metadata */
+	dl_bbuf_delete(metadata);
+
+	/* Update the offset. */
+	dl_offset_inc(self->dlus_offset);
+
+	rc = pthread_mutex_unlock(&self->dlus_lock);
+	DL_ASSERT(rc == 0, ("Failed unlocking UserSegment mutex"));
+
+	return 0;
 
 err_insert_message:
 	/* Delete the buffer holding the log metadata */
