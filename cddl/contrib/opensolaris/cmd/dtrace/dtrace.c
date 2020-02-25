@@ -1709,10 +1709,12 @@ static void *read_trace_data(void *xgtq)
 		buf->dtbd_data = malloc(buf->dtbd_size);
 		sz = read(fd, buf->dtbd_data, buf->dtbd_size);
 		assert(sz == buf->dtbd_size);
+		fflush(stdout);
+
 		trc_entry->desc = buf;
 		dtrace_gtq_enqueue(gtq, trc_entry);
 		printf("Successfully enqueued trace element");
-	
+		fflush(stdout);
 
 		// TODO: discover what happens if you actually print this
 		// since assertion doesn't fail we should be okay
@@ -1893,7 +1895,12 @@ int main(int argc, char *argv[])
 		write_script(file_path);
 		STAILQ_INIT(&gtq->head);
 		printf("Guest queue successfully initialised");
-		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data,gtq);
+		fflush(stdout);
+		printf("Creating thread to read trace data");
+		fflush(stdout);
+		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data, gtq);
+		printf("about to process trace data");
+		fflush(stdout);
 		process_trace_data();
 		// no need to close dtrace since we don't even open it here
 		return (g_status);
