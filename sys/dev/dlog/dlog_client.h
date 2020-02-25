@@ -47,7 +47,6 @@
 struct dlog_handle;
 
 extern int dlog_client_open(struct dlog_handle **, nvlist_t const * const); 
-    //struct dl_client_config const * const);
 extern void dlog_client_close(struct dlog_handle *);
 
 extern int dlog_produce(struct dlog_handle *, char *, unsigned char *, size_t); 

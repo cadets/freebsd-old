@@ -87,9 +87,10 @@ __DEFAULT_YES_OPTIONS = \
     CUSE \
     CXX \
     CXGBETOOL \
+    DDTRACE \
     DIALOG \
     DICT \
-    DDTRACE \
+    DLOG \
     DMAGENT \
     DYNAMICROOT \
     EE \
