@@ -1889,7 +1889,7 @@ int main(int argc, char *argv[])
 	if (h_mode == 1)
 	{	
 		struct dtrace_guestq *gtq;
-		pthread_t trace_reader;
+		pthread_t *trace_reader;
 		const char *file_path;
 		file_path = argv[argc - 1];
 		write_script(file_path);
@@ -1900,7 +1900,7 @@ int main(int argc, char *argv[])
 		printf("Guest queue successfully initialised");
 		fflush(stdout);
 		printf("Creating thread to read trace data");
-		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data, gtq);
+		trace_reader = pthread_create(trace_reader, NULL, read_trace_data, gtq);
 		printf("about to process trace data");
 		fflush(stdout);
 		process_trace_data();
