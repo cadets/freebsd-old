@@ -112,7 +112,7 @@ char sec_strtab[] =
 
 #define	DTELF_PROG_SECIDX	  2
 
-#define DTELF_BASESIZE		  8
+#define DTELF_BASESIZE		  0
 
 static dt_elf_state_t *dtelf_state;
 
@@ -665,7 +665,8 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt)
 	 * in DTrace, but in our ELF file.
 	 */
 	for (ad = stmt->dtsd_action;
-	    ad != stmt->dtsd_action_last->dtad_next && ad != NULL; ad = ad->dtad_next) {
+	    ad != stmt->dtsd_action_last->dtad_next && ad != NULL;
+	    ad = ad->dtad_next) {
 		scn = dt_elf_new_action(e, ad);
 
 		if (dtelf_state->s_eadprev != NULL)
@@ -839,7 +840,6 @@ dt_elf_new_id_name(const char *name)
 	 * Add the new string to the table and bump the offset.
 	 */
 	memcpy(dtelf_state->s_idname_table + offset, name, len);
-	printf("name = %s\n", name);
 	dtelf_state->s_idname_table[offset + len - 1] = '\0';
 	dtelf_state->s_idname_offset += len;
 
@@ -886,6 +886,7 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 	estmt->dtes_action_last = dtelf_state->s_last_act_scn;
 	estmt->dtes_descattr.dtea_attr = stmt->dtsd_descattr;
 	estmt->dtes_stmtattr.dtea_attr = stmt->dtsd_stmtattr;
+	estmt->dtes_aggdata = 0;
 
 	if (stmt->dtsd_aggdata != NULL) {
 		dt_ident_t *aid = (dt_ident_t *)stmt->dtsd_aggdata;
@@ -929,6 +930,8 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 		(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
 		(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
 		(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
+
+		estmt->dtes_aggdata = elf_ndxscn(aid_scn);
 	}
 
 	/*
@@ -998,8 +1001,10 @@ dt_elf_options(Elf *e)
 
 	size_t buflen = 0; /* Current buffer length */
 	size_t len = 0; /* Length of the new entry */
-	size_t bufmaxlen = 1; /* Maximum buffer length */
+	size_t bufmaxlen = 0; /* Maximum buffer length */
+	size_t l;
 	unsigned char *buf = NULL, *obuf = NULL;
+	int needs_realloc = 0;
 
 	dt_elf_opt_t *op;
 	_dt_elf_eopt_t *eop;
@@ -1013,44 +1018,69 @@ dt_elf_options(Elf *e)
 		if (op->dteo_set == 0)
 			continue;
 
-		len = sizeof(_dt_elf_eopt_t) + strlen(op->dteo_arg);
+		len = sizeof(_dt_elf_eopt_t) + strlen(op->dteo_arg) + 1;
 		eop = malloc(len);
 		if (eop == NULL)
 			errx(EXIT_FAILURE, "failed to malloc eop");
 
-		(void) strcpy(eop->eo_name, op->dteo_name);
-		eop->eo_len = strlen(op->dteo_arg);
-		(void) strcpy(eop->eo_arg, op->dteo_arg);
+		l = strlcpy(eop->eo_name, op->dteo_name, sizeof(eop->eo_name));
+		if (l >= sizeof(eop->eo_name))
+			errx(EXIT_FAILURE, "%s is too long to be copied",
+			    op->dteo_name);
+
+		eop->eo_len = strlen(op->dteo_arg) + 1;
+
+		l = strlcpy(eop->eo_arg, op->dteo_arg, eop->eo_len);
+		if (l >= eop->eo_len)
+			errx(EXIT_FAILURE, "%s is too long to be copied",
+			    op->dteo_arg);
+
 
 		if (strcmp("define", op->dteo_name) == 0 ||
 		    strcmp("incdir", op->dteo_name) == 0 ||
 		    strcmp("undef",  op->dteo_name) == 0) {
-			size_t l;
-			l = strlcpy(
-			    (char *)eop->eo_option, (char *)op->dteo_option,
-			    sizeof(eop->eo_option));
+			l = strlcpy((char *)eop->eo_option,
+			    (char *)op->dteo_option, sizeof(eop->eo_option));
 			if (l >= sizeof(eop->eo_option))
 				errx(EXIT_FAILURE, "%s is too long to be copied",
 				    op->dteo_option);
 		} else
 			eop->eo_option = op->dteo_option;
 
-		if (buflen + len >= bufmaxlen) {
+		/*
+		 * Have we run out of space in our buffer?
+		 */
+		while (buflen + len >= bufmaxlen) {
+			if (bufmaxlen == 0)
+				bufmaxlen = 1;
+
+			needs_realloc = 1;
+			/*
+			 * Check for overflow. Not great, but will have to do.
+			 */
 			if ((bufmaxlen << 1) <= bufmaxlen)
 				errx(EXIT_FAILURE,
-				    "buf realloc failed, bufmaxlen exceeded");
+				     "buf realloc failed, bufmaxlen exceeded");
 			bufmaxlen <<= 1;
+		}
+
+		if (buf == NULL || needs_realloc) {
+			/*
+			 * Save the old buffer.
+			 */
 			obuf = buf;
 
 			buf = malloc(bufmaxlen);
 			if (buf == NULL)
 				errx(EXIT_FAILURE,
-				    "buf realloc failed, %s", strerror(errno));
+				     "buf realloc failed, %s", strerror(errno));
 
 			if (obuf) {
 				memcpy(buf, obuf, buflen);
 				free(obuf);
 			}
+
+			needs_realloc = 0;
 		}
 
 		memcpy(buf + buflen, eop, len);
@@ -1065,27 +1095,42 @@ dt_elf_options(Elf *e)
 		if (op->dteo_set == 0)
 			continue;
 
-		len = sizeof(_dt_elf_eopt_t) + strlen(op->dteo_arg);
+		len = sizeof(_dt_elf_eopt_t) + strlen(op->dteo_arg) + 1;
 		eop = malloc(len);
 		if (eop == NULL)
 			errx(EXIT_FAILURE, "failed to malloc eop");
 
-		(void) strcpy(eop->eo_name, op->dteo_name);
-		eop->eo_len = strlen(op->dteo_arg);
-		(void) strcpy(eop->eo_arg, op->dteo_arg);
+		l = strlcpy(eop->eo_name, op->dteo_name, sizeof(eop->eo_name));
+		if (l >= sizeof(eop->eo_name))
+			errx(EXIT_FAILURE, "%s is too long to be copied",
+			    op->dteo_name);
+
+		eop->eo_len = strlen(op->dteo_arg) + 1;
+
+		l = strlcpy(eop->eo_arg, op->dteo_arg, eop->eo_len);
+		if (l >= eop->eo_len)
+			errx(EXIT_FAILURE, "%s is too long to be copied",
+			    op->dteo_arg);
 
 		if (strcmp("define", op->dteo_name) == 0 ||
 		    strcmp("incdir", op->dteo_name) == 0 ||
-		    strcmp("undef",  op->dteo_name) == 0)
-			(void) strcpy(
-			    (char *)eop->eo_option, (char *)op->dteo_option);
-		else
+		    strcmp("undef",  op->dteo_name) == 0) {
+		        l = strlcpy((char *)eop->eo_option,
+			    (char *)op->dteo_option, sizeof(eop->eo_option));
+			if (l >= sizeof(eop->eo_option))
+				errx(EXIT_FAILURE, "%s is too long to be copied",
+				    op->dteo_option);
+		} else
 			eop->eo_option = op->dteo_option;
 
 		/*
 		 * Have we run out of space in our buffer?
 		 */
-		if (buflen + len >= bufmaxlen) {
+		while (buflen + len >= bufmaxlen) {
+			if (bufmaxlen == 0)
+				bufmaxlen = 1;
+
+			needs_realloc = 1;
 			/*
 			 * Check for overflow. Not great, but will have to do.
 			 */
@@ -1093,6 +1138,12 @@ dt_elf_options(Elf *e)
 				errx(EXIT_FAILURE,
 				    "buf realloc failed, bufmaxlen exceeded");
 			bufmaxlen <<= 1;
+		}
+
+		if (buf == NULL || needs_realloc) {
+			/*
+			 * Save the old buffer.
+			 */
 			obuf = buf;
 
 			buf = malloc(bufmaxlen);
@@ -1104,6 +1155,8 @@ dt_elf_options(Elf *e)
 				memcpy(buf, obuf, buflen);
 				free(obuf);
 			}
+
+			needs_realloc = 0;
 		}
 
 		memcpy(buf + buflen, eop, len);
@@ -1118,45 +1171,68 @@ dt_elf_options(Elf *e)
 		if (op->dteo_set == 0)
 			continue;
 
-		len = sizeof(_dt_elf_eopt_t) + strlen(op->dteo_arg);
+		len = sizeof(_dt_elf_eopt_t) + strlen(op->dteo_arg) + 1;
 		eop = malloc(len);
 		if (eop == NULL)
 			errx(EXIT_FAILURE, "failed to malloc eop");
 
-		(void) strcpy(eop->eo_name, op->dteo_name);
-		eop->eo_len = strlen(op->dteo_arg);
-		(void) strcpy(eop->eo_arg, op->dteo_arg);
+		l = strlcpy(eop->eo_name, op->dteo_name, sizeof(eop->eo_name));
+		if (l >= sizeof(eop->eo_name))
+			errx(EXIT_FAILURE, "%s is too long to be copied",
+			    op->dteo_name);
+
+		eop->eo_len = strlen(op->dteo_arg) + 1;
+
+		l = strlcpy(eop->eo_arg, op->dteo_arg, eop->eo_len);
+		if (l >= eop->eo_len)
+			errx(EXIT_FAILURE, "%s is too long to be copied",
+			    op->dteo_arg);
 
 		if (strcmp("define", op->dteo_name) == 0 ||
 		    strcmp("incdir", op->dteo_name) == 0 ||
-		    strcmp("undef",  op->dteo_name) == 0)
-			(void) strcpy(
-			    (char *)eop->eo_option, (char *)op->dteo_option);
-		else
+		    strcmp("undef",  op->dteo_name) == 0) {
+			l = strlcpy((char *)eop->eo_option,
+			    (char *)op->dteo_option, sizeof(eop->eo_option));
+			if (l >= sizeof(eop->eo_option))
+				errx(EXIT_FAILURE, "%s is too long to be copied",
+				    op->dteo_option);
+		} else
 			eop->eo_option = op->dteo_option;
 
 		/*
 		 * Have we run out of space in our buffer?
 		 */
-		if (buflen + len >= bufmaxlen) {
+		while (buflen + len >= bufmaxlen) {
+			if (bufmaxlen == 0)
+				bufmaxlen = 1;
+
+			needs_realloc = 1;
 			/*
 			 * Check for overflow. Not great, but will have to do.
 			 */
 			if ((bufmaxlen << 1) <= bufmaxlen)
 				errx(EXIT_FAILURE,
-				    "buf realloc failed, bufmaxlen exceeded");
+				     "buf realloc failed, bufmaxlen exceeded");
 			bufmaxlen <<= 1;
+		}
+
+		if (buf == NULL || needs_realloc) {
+			/*
+			 * Save the old buffer.
+			 */
 			obuf = buf;
 
 			buf = malloc(bufmaxlen);
 			if (buf == NULL)
 				errx(EXIT_FAILURE,
-				    "buf realloc failed, %s", strerror(errno));
+				     "buf realloc failed, %s", strerror(errno));
 
 			if (obuf) {
 				memcpy(buf, obuf, buflen);
 				free(obuf);
 			}
+
+			needs_realloc = 0;
 		}
 
 		memcpy(buf + buflen, eop, len);
@@ -1618,6 +1694,9 @@ dt_elf_get_eaid(Elf *e, dt_elf_ref_t aidref)
 	Elf_Data *data;
 	dt_elf_ident_t *eaid;
 
+	if (aidref == 0)
+		return (NULL);
+
 	if ((scn = elf_getscn(e, aidref)) == NULL)
 		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
 		    elf_errmsg(-1));
@@ -1635,7 +1714,6 @@ dt_elf_get_eaid(Elf *e, dt_elf_ref_t aidref)
 		errx(EXIT_FAILURE, "aid is NULL");
 
 	aid->di_name = strdup(dtelf_state->s_idname_table + eaid->edi_name);
-	printf("aid->di_name = %s\n", aid->di_name);
 	aid->di_id = eaid->edi_id;
 	aid->di_kind = eaid->edi_kind;
 	aid->di_flags = eaid->edi_flags;
@@ -1657,6 +1735,8 @@ dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog, dt_elf_stmt_t *estmt)
 	if (stmt == NULL)
 		errx(EXIT_FAILURE, "failed to malloc stmt");
 
+	memset(stmt, 0, sizeof(dtrace_stmtdesc_t));
+
 	stmt->dtsd_ecbdesc = dt_elf_get_ecbdesc(e, estmt->dtes_ecbdesc);
 	dt_elf_add_acts(stmt, estmt->dtes_action, estmt->dtes_action_last);
 	stmt->dtsd_descattr = estmt->dtes_descattr.dtea_attr;
@@ -1670,7 +1750,6 @@ dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog, dt_elf_stmt_t *estmt)
 	memset(stp, 0, sizeof(dt_stmt_t));
 
 	stp->ds_desc = stmt;
-
 	dt_list_append(&prog->dp_stmts, stp);
 }
 
@@ -1854,23 +1933,15 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd)
 	 */
 	while ((scn = elf_nextscn(e, scn)) != NULL) {
 		static const char idtab_name[] = ".dtrace_stmt_idname_table";
-		printf("scn = %p\n", scn);
-
 		if (gelf_getshdr(scn, &shdr) != &shdr)
 			errx(EXIT_FAILURE, "gelf_getshdr() failed with %s",
 			    elf_errmsg(-1));
-		printf("scn = %p\n", scn);
 
 		if ((name = elf_strptr(e, shstrndx, shdr.sh_name)) == NULL)
 			errx(EXIT_FAILURE, "elf_strptr() failed with %s",
 			    elf_errmsg(-1));
-		printf("scn = %p\n", scn);
 
-		printf("name = %s\n", name);
-		printf("idtab_name = %s\n", idtab_name);
 		if (strncmp(name, idtab_name, sizeof(idtab_name)) == 0) {
-			printf("scn = %p\n", scn);
-			printf("inside\n");
 			if ((data = elf_getdata(scn, NULL)) == NULL)
 				errx(EXIT_FAILURE, "elf_getdata() failed with %s",
 				    elf_errmsg(-1));
@@ -1909,13 +1980,14 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd)
 		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
 		    elf_errmsg(-1), __func__);
 
-
 	assert(data->d_buf != NULL);
 	eprog = data->d_buf;
 
 	prog = malloc(sizeof(dtrace_prog_t));
 	if (prog == NULL)
 		errx(EXIT_FAILURE, "failed to malloc prog");
+
+	memset(prog, 0, sizeof(dtrace_prog_t));
 	prog->dp_dofversion = eprog->dtep_dofversion;
 
 	dt_elf_get_stmts(e, prog, eprog->dtep_first_stmt);
