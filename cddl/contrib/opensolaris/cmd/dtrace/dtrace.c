@@ -73,7 +73,7 @@ typedef struct dtrace_cmd
 
 struct dtrace_guest_entry
 {
-	dtrace_bufdesc_t *desc;
+	dtrace_bufdesc_t desc;
 	STAILQ_ENTRY(dtrace_guest_entry)
 	entries;
 };
@@ -1551,7 +1551,7 @@ filter_machines(char *filt)
 static void dtrace_gtq_enqueue(struct dtrace_guestq *gtq, struct dtrace_guest_entry *trc_entry)
 {
 	STAILQ_INSERT_TAIL(&gtq->head, trc_entry, entries);
-	printf(" Enqueued trace element. \n");
+	printf("Enqueued trace element. \n");
 }
 
 struct dtrace_guest_entry *dtrace_gtq_dequeue(struct dtrace_guestq *gtq)
@@ -1665,11 +1665,9 @@ static void *read_trace_data(void *xgtq)
 	printf("About to process trace data. \n");
 	for (;;)
 	{
-		dtrace_bufdesc_t *buf;
+		dtrace_bufdesc_t buf;
 		struct dtrace_guest_entry *trc_entry;
 
-		buf = malloc(sizeof(dtrace_bufdesc_t));
-		assert(buf != NULL);
 		trc_entry = malloc(sizeof(struct dtrace_guest_entry));
 		assert(trc_entry != NULL);
 
@@ -1688,27 +1686,27 @@ static void *read_trace_data(void *xgtq)
 		printf("open() were called.\n");
 
 		printf("About to read trace data. \n");
-		sz = read(fd, &buf->dtbd_size, sizeof(uint64_t));
+		sz = read(fd, &buf.dtbd_size, sizeof(uint64_t));
 		assert(sz > 0);
-		printf("Size: %d\n", buf->dtbd_size);
-		sz = read(fd, &buf->dtbd_cpu, sizeof(uint32_t));
+		printf("Size: %d\n", buf.dtbd_size);
+		sz = read(fd, &buf.dtbd_cpu, sizeof(uint32_t));
 		assert(sz > 0);
-		printf("Cpu: %d\n", buf->dtbd_errors);
-		sz = read(fd, &buf->dtbd_errors, sizeof(uint32_t));
+		printf("Cpu: %d\n", buf.dtbd_errors);
+		sz = read(fd, &buf.dtbd_errors, sizeof(uint32_t));
 		assert(sz > 0);
-		printf("Errors: %d\n", buf->dtbd_errors);
-		sz = read(fd, &buf->dtbd_drops, sizeof(uint64_t));
+		printf("Errors: %d\n", buf.dtbd_errors);
+		sz = read(fd, &buf.dtbd_drops, sizeof(uint64_t));
 		assert(sz > 0);
-		printf("Drops: %d\n", buf->dtbd_drops);
-		sz = read(fd, &buf->dtbd_oldest, sizeof(uint64_t));
+		printf("Drops: %d\n", buf.dtbd_drops);
+		sz = read(fd, &buf.dtbd_oldest, sizeof(uint64_t));
 		assert(sz > 0);
-		printf("Oldest: %d\n", buf->dtbd_oldest);
-		sz = read(fd, &buf->dtbd_timestamp, sizeof(uint64_t));
+		printf("Oldest: %d\n", buf.dtbd_oldest);
+		sz = read(fd, &buf.dtbd_timestamp, sizeof(uint64_t));
 		assert(sz > 0);
-		printf("Timestamp: %d\n", buf->dtbd_timestamp);
-		buf->dtbd_data = malloc(buf->dtbd_size);
-		sz = read(fd, buf->dtbd_data, buf->dtbd_size);
-		assert(sz == buf->dtbd_size);
+		printf("Timestamp: %d\n", buf.dtbd_timestamp);
+		buf.dtbd_data = malloc(buf.dtbd_size);
+		sz = read(fd, buf.dtbd_data, buf.dtbd_size);
+		assert(sz == buf.dtbd_size);
 		fflush(stdout);
 
 		trc_entry->desc = buf;
@@ -1882,6 +1880,8 @@ int main(int argc, char *argv[])
 			g_argv[g_argc++] = argv[optind];
 	}
 
+	setbuf(stdout, NULL);
+
 	/*
 	 * We are tracing a guest and assume that we've done everything up to
 	 * dtrace_work which prints trace data
@@ -1893,6 +1893,9 @@ int main(int argc, char *argv[])
 		const char *file_path;
 		file_path = argv[argc - 1];
 		write_script(file_path);
+		fflush(stdout);
+		gtq = calloc(1, sizeof(struct dtrace_guestq));
+		assert(gtq != NULL);
 		STAILQ_INIT(&gtq->head);
 		printf("Guest queue successfully initialised");
 		fflush(stdout);
