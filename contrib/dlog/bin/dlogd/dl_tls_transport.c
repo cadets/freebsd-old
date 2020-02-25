@@ -91,7 +91,7 @@ static int dl_tls_transport_send_request(struct dl_transport *,
     struct dl_bbuf const *);
 
 static inline void
-dl_tls_transport_check_integrity(struct dl_tls_transport *self)
+assert_integrity(struct dl_tls_transport *self)
 {
 
 	DL_ASSERT(self != NULL, ("Transport instance cannot be NULL"));
@@ -123,11 +123,29 @@ dl_tls_transport_init(void)
 static void
 dl_tls_transport_delete(struct dl_transport *self)
 {
+	int rc;
+	SSL *ssl;
 
-	dl_tls_transport_check_integrity(self->dlt_tls);
+	assert_integrity(self->dlt_tls);
 
 	dl_poll_reactor_unregister(&self->dlt_event_hdlr);
-	BIO_ssl_shutdown(self->dlt_tls->dlt_tls_bio);
+
+	/* Uni-directional shutdown */
+	BIO_get_ssl(self->dlt_tls->dlt_tls_bio, &ssl);
+
+	rc = SSL_shutdown(ssl);
+	while (rc < 0) {
+
+		SSL_get_error(ssl, rc);
+		/* Blocking sockets require no action */
+		rc = SSL_shutdown(ssl);
+	}
+
+	if (rc == 0) {
+		/* Complete bi-directional shutdown */
+		rc = SSL_shutdown(ssl);
+	}
+
 	SSL_CTX_free(self->dlt_tls->dlt_tls_ctx);
 	dlog_free(self->dlt_tls);
 }
@@ -140,7 +158,7 @@ dl_tls_transport_connect(struct dl_transport *self,
 	SSL *ssl;
 	int rc, fd, flags;
 
-	dl_tls_transport_check_integrity(self->dlt_tls);
+	assert_integrity(self->dlt_tls);
 	DL_ASSERT(hostname != NULL, "Hostname to connect to cannot be NULL");
 
 	self->dlt_tls->dlt_tls_bio = BIO_new_ssl_connect(
@@ -156,10 +174,6 @@ dl_tls_transport_connect(struct dl_transport *self,
 	/* Disbale NAGLE - send small messages immediately. */
 	flags = 1;
 	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
-
-//	flags = 65535;
-//	setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (void *)&flags, sizeof(flags));
-//	setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (void *)&flags, sizeof(flags));
 
 	/* Configure the hostname and port to connect to.
 	 * (Note: These functions always return 1).
@@ -224,7 +238,7 @@ dl_tls_transport_read_msg(struct dl_transport *self,
 	int32_t msg_size;
 	int fd, rc, total = 0;
 	
-	dl_tls_transport_check_integrity(self->dlt_tls);
+	assert_integrity(self->dlt_tls);
 	DL_ASSERT(self->dlt_tls->dlt_tls_bio != NULL,
 	    ("Transport TSL bio cannot be NULL"));
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
@@ -271,7 +285,6 @@ retry_read_length:
 		 * endianess.
 		 */
 		msg_size = be32toh(msg_size);
-		//DLOGTR1(PRIO_LOW, "Reading %d bytes...\n", msg_size);
 
 		buffer = dlog_alloc(sizeof(unsigned char) * msg_size);
 		if (buffer == NULL) {
@@ -329,9 +342,6 @@ retry_read_msg:
 			} else {
 
 				total += rc;
-				//DLOGTR2(PRIO_LOW,
-				//    "\tRead %d characters; expected %d\n",
-			//	    rc, msg_size);
 				rc = dl_bbuf_bcat(*target, buffer, rc);
 			}
 		}
@@ -356,7 +366,7 @@ dl_tls_transport_send_request(struct dl_transport *self,
 	struct pollfd fds;
 	int fd, rc;
 
-	dl_tls_transport_check_integrity(self->dlt_tls);
+	assert_integrity(self->dlt_tls);
 	DL_ASSERT(buffer != NULL, "Buffer to send cannot be NULL");
 
 	rc = BIO_write(self->dlt_tls->dlt_tls_bio, dl_bbuf_data(buffer),
@@ -420,7 +430,7 @@ dl_tls_transport_hdlr(void *instance, int fd, int revents)
 	socklen_t len = sizeof(int);
 	int rc, err = 0;
 	
-	dl_tls_transport_check_integrity(self->dlt_tls);
+	assert_integrity(self->dlt_tls);
 
 	if (revents & (POLLHUP | POLLERR)) {
 
@@ -533,7 +543,7 @@ dl_tls_get_transport_fd(void *instance)
 {
 	struct dl_transport const * const self = instance;
 
-	dl_tls_transport_check_integrity(self->dlt_tls);
+	assert_integrity(self->dlt_tls);
 	return dl_transport_get_fd(self);
 }
 
@@ -542,7 +552,7 @@ dl_tls_transport_get_fd(struct dl_transport *self)
 {
 	int fd;
 
-	dl_tls_transport_check_integrity(self->dlt_tls);
+	assert_integrity(self->dlt_tls);
 	DL_ASSERT(self->dlt_tls->dlt_tls_bio != NULL,
 	    ("Transport TSL bio cannot be NULL"));
 	
@@ -662,7 +672,7 @@ dl_tls_transport_new(struct dl_transport **self, struct dl_producer *producer)
 		goto err_tls_ctx_free;
 	}
 
-	dl_tls_transport_check_integrity(tls);
+	assert_integrity(tls);
 	*self = transport;
 	return 0;
 
