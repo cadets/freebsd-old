@@ -1644,7 +1644,7 @@ static void *write_script(void *file_path)
 	//unlink(fifo);
 }
 
-static void *read_trace_data(void *gtq)
+static void *read_trace_data(void *xgtq)
 {
 	struct dtrace_guestq *gtq;
 	FILE *trace_stream;
@@ -1653,7 +1653,7 @@ static void *read_trace_data(void *gtq)
 	uint64_t size;
 
 	trc_fifo = "/tmp/trace_fifo";
-	gtq = (struct dtrace_guestq *) gtq;
+	gtq = (struct dtrace_guestq *) xgtq;
 
 	int err = mkfifo(trc_fifo, 0666);
 	if (err)
@@ -1888,7 +1888,7 @@ int main(int argc, char *argv[])
 		file_path = argv[argc - 1];
 		write_script(file_path);
 		STAILQ_INIT(&gtq->head);
-		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data, NULL);
+		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data,(void *) gtq);
 		process_trace_data();
 		// no need to close dtrace since we don't even open it here
 		return (g_status);
