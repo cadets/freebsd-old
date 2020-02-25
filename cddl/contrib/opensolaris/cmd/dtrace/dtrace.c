@@ -1894,13 +1894,12 @@ int main(int argc, char *argv[])
 		file_path = argv[argc - 1];
 		write_script(file_path);
 		fflush(stdout);
-		gtq = calloc(1, sizeof(struct dtrace_guestq));
+		gtq = malloc(sizeof(struct dtrace_guestq));
 		assert(gtq != NULL);
 		STAILQ_INIT(&gtq->head);
 		printf("Guest queue successfully initialised");
 		fflush(stdout);
 		printf("Creating thread to read trace data");
-		fflush(stdout);
 		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data, gtq);
 		printf("about to process trace data");
 		fflush(stdout);
