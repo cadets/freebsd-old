@@ -31,6 +31,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/queue.h>
 
 #include <dtrace.h>
 #include <stdlib.h>
@@ -69,6 +70,21 @@ typedef struct dtrace_cmd
 	dtrace_prog_t *dc_prog;				  /* program compiled from arg */
 	char dc_ofile[PATH_MAX];			  /* derived output file name */
 } dtrace_cmd_t;
+
+struct dtrace_guest_entry
+{
+	dtrace_bufdesc_t *desc;
+	STAILQ_ENTRY(dtrace_guest_entry)
+	entries;
+};
+
+
+struct dtrace_guestq
+{
+	STAILQ_HEAD(, dtrace_guest_entry)
+	head;
+	pthread_mutex_t mtx;
+};
 
 #define DMODE_VERS 0   /* display version information and exit (-V) */
 #define DMODE_EXEC 1   /* compile program for enabling (-a/e/E) */
@@ -1532,6 +1548,26 @@ filter_machines(char *filt)
 	free(list);
 }
 
+static void dtrace_gtq_enqueue(struct dtrace_guestq *gtq, struct dtrace_guest_entry *trc_entry)
+{
+	STAILQ_INSERT_TAIL(&gtq->head, trc_entry, entries);
+	printf(" Enqueued trace element. \n");
+}
+
+static void dtrace_gtq_dequeue(struct dtrace_guestq *gtq)
+{
+	struct dtrace_guest_entry *trc_entry;
+	trc_entry = STAILQ_FIRST(&gtq->head);
+	if(trc_entry != NULL)
+	{
+		STAILQ_REMOVE_HEAD(&gtq->head, entries);
+	}
+	printf("Dequeued trace element of size: %d",trc_entry->desc.dtbd_size);
+
+	return (trc_entry);
+}
+
+
 static void *write_script(void *file_path)
 {
 
@@ -1608,15 +1644,16 @@ static void *write_script(void *file_path)
 	//unlink(fifo);
 }
 
-static void read_trace_data()
+static void *read_trace_data(void *gtq)
 {
+	struct dtrace_guestq gtq;
 	FILE *trace_stream;
 	char *trc_fifo;
 	int fd, sz;
 	uint64_t size;
-	dtrace_bufdesc_t buf;
 
 	trc_fifo = "/tmp/trace_fifo";
+	gtq = (struct dtrace_guestq *) gtq;
 
 	int err = mkfifo(trc_fifo, 0666);
 	if (err)
@@ -1625,8 +1662,14 @@ static void read_trace_data()
 		exit(1);
 	}
 
-	// for (;;)
-	// {
+	for (;;)
+	{
+		dtrace_bufdesc_t *buf;
+		struct dtrace_guest_entry *trc_entry;
+
+		buf = malloc(sizeof(dtrace_bufdesc_t));
+		trc_entry = malloc(sizeof(struct dtrace_guest_entry));
+
 		// This should block until we have trace data
 		if ((fd = open(trc_fifo, O_RDONLY)) == -1)
 		{
@@ -1642,33 +1685,48 @@ static void read_trace_data()
 		printf("open() were called.\n");
 
 		printf("About to read trace data. \n");
-		sz = read(fd, &buf.dtbd_size, sizeof(uint64_t));
+		sz = read(fd, &buf->dtbd_size, sizeof(uint64_t));
 		assert(sz > 0);
-		printf("Size: %d\n", buf.dtbd_size);
-		sz = read(fd, &buf.dtbd_cpu, sizeof(uint32_t));
+		printf("Size: %d\n", buf->dtbd_size);
+		sz = read(fd, &buf->dtbd_cpu, sizeof(uint32_t));
 		assert(sz > 0);
-		printf("Cpu: %d\n", buf.dtbd_errors);
-		sz = read(fd, &buf.dtbd_errors, sizeof(uint32_t));
+		printf("Cpu: %d\n", buf->dtbd_errors);
+		sz = read(fd, &buf->dtbd_errors, sizeof(uint32_t));
 		assert(sz > 0);
-		printf("Errors: %d\n", buf.dtbd_errors);
-		sz = read(fd, &buf.dtbd_drops, sizeof(uint64_t));
+		printf("Errors: %d\n", buf->dtbd_errors);
+		sz = read(fd, &buf->dtbd_drops, sizeof(uint64_t));
 		assert(sz > 0);
-		printf("Drops: %d\n", buf.dtbd_drops);	
-		sz = read(fd, &buf.dtbd_oldest, sizeof(uint64_t));
+		printf("Drops: %d\n", buf->dtbd_drops);
+		sz = read(fd, &buf->dtbd_oldest, sizeof(uint64_t));
 		assert(sz > 0);
-		printf("Oldest: %d\n", buf.dtbd_oldest);
-		sz = read(fd, &buf.dtbd_timestamp, sizeof(uint64_t));
+		printf("Oldest: %d\n", buf->dtbd_oldest);
+		sz = read(fd, &buf->dtbd_timestamp, sizeof(uint64_t));
 		assert(sz > 0);
-		printf("Timestamp: %d\n", buf.dtbd_timestamp);
-		buf.dtbd_data = malloc(buf.dtbd_size);
-		sz = read(fd, buf.dtbd_data, buf.dtbd_size);
-		assert(sz == buf.dtbd_size);
-		printf("Data: %s\n", buf.dtbd_data);
+		printf("Timestamp: %d\n", buf->dtbd_timestamp);
+		buf->dtbd_data = malloc(buf->dtbd_size);
+		sz = read(fd, buf->dtbd_data, buf->dtbd_size);
+		assert(sz == buf->dtbd_size);
+		trc_entry->desc = buf;
+		dtrace_gtq_enqueue(gtq, trc_entry);
+	
+
+		// TODO: discover what happens if you actually print this
+		// since assertion doesn't fail we should be okay
+		// printf("Data: %s\n", buf.dtbd_data);
 
 		// fclose(trace_stream);
 		close(fd);
-		unlink(trc_fifo);
-	// }
+		// unlink(trc_fifo);
+	}
+	pthread_exit(NULL);
+}
+
+static void process_trace_data()
+{
+	for(;;)
+	{
+
+	}
 }
 
 int main(int argc, char *argv[])
@@ -1823,13 +1881,16 @@ int main(int argc, char *argv[])
 	 * dtrace_work which prints trace data
 	*/
 	if (h_mode == 1)
-	{
+	{	
+		struct dtrace_guestq *gtq;
+		pthread_t trace_reader;
 		const char *file_path;
 		file_path = argv[argc - 1];
 		write_script(file_path);
-		read_trace_data();
+		STAILQ_INIT(&gtq->head);
+		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data, NULL);
 		process_trace_data();
-		// no need to close dtrace since we don't even open it here 
+		// no need to close dtrace since we don't even open it here
 		return (g_status);
 	}
 
