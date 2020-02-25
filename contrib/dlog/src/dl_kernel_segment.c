@@ -183,7 +183,8 @@ dl_kernel_segment_ctor(void *_super, va_list *ap)
 {
 	struct dl_kernel_segment *self = (struct dl_kernel_segment *) _super;
 	struct dl_segment *super = (struct dl_segment *) _super;
-	struct nameidata path_nd, base_nd;
+	struct nameidata path_nd;
+	struct nameidata nd;
 	struct sbuf sb;
 	struct thread *td = curthread;
 	struct vattr vattr;
@@ -216,6 +217,9 @@ dl_kernel_segment_ctor(void *_super, va_list *ap)
 		NDFREE(&path_nd, NDF_ONLY_PNBUF);
 		goto err_kseg_ctor;
 	}
+	DL_ASSERT(path_nd.vp != NULL,
+	    ("KernelSegment file path (%s) vnode is NULL", path));
+	vrele(path_nd.ni_vp);
 	NDFREE(&path_nd, NDF_ONLY_PNBUF);
 
 	(void) sbuf_new(&sb, self->dlks_base_name, MAXPATHLEN, SBUF_FIXEDLEN);
@@ -232,7 +236,9 @@ dl_kernel_segment_ctor(void *_super, va_list *ap)
 	sbuf_finish(&sb);
 	sbuf_delete(&sb);
 	
-	struct nameidata nd;
+	/* Create the directory for the KernelSegment file (
+	 * if not already present).
+	 */
 	NDINIT(&nd, LOOKUP, NOFOLLOW, UIO_SYSSPACE, self->dlks_base_name, td);
 	if (namei(&nd) != 0) {	
 
@@ -244,9 +250,12 @@ dl_kernel_segment_ctor(void *_super, va_list *ap)
 			    "Failed KernelSegment file path is invalid: %s\n", path);
 			goto err_kseg_ctor;
 		}
+	} else {
+		DL_ASSERT(path_nd.vp != NULL,
+		("KernelSegment base path (%s) vnode is NULL", path));
+		vrele(nd.ni_vp);
 	}
 	NDFREE(&nd, NDF_ONLY_PNBUF);
-	vrele(nd.ni_vp);
 
 	/* Create the KernelSegment file. */
 	rc = create_segment_file(&self->dlks_vp, self->dlks_base_name,
