@@ -1554,7 +1554,7 @@ static void dtrace_gtq_enqueue(struct dtrace_guestq *gtq, struct dtrace_guest_en
 	printf(" Enqueued trace element. \n");
 }
 
-static void dtrace_gtq_dequeue(struct dtrace_guestq *gtq)
+struct dtrace_guest_entry *dtrace_gtq_dequeue(struct dtrace_guestq *gtq)
 {
 	struct dtrace_guest_entry *trc_entry;
 	trc_entry = STAILQ_FIRST(&gtq->head);
@@ -1562,7 +1562,7 @@ static void dtrace_gtq_dequeue(struct dtrace_guestq *gtq)
 	{
 		STAILQ_REMOVE_HEAD(&gtq->head, entries);
 	}
-	printf("Dequeued trace element of size: %d",trc_entry->desc.dtbd_size);
+	printf("Dequeued trace element of size: %d",trc_entry->desc->dtbd_size);
 
 	return (trc_entry);
 }
@@ -1646,7 +1646,7 @@ static void *write_script(void *file_path)
 
 static void *read_trace_data(void *gtq)
 {
-	struct dtrace_guestq gtq;
+	struct dtrace_guestq *gtq;
 	FILE *trace_stream;
 	char *trc_fifo;
 	int fd, sz;
