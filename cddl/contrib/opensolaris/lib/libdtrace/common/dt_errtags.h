@@ -140,6 +140,7 @@ typedef enum {
 	D_PRINTF_ARG_EXTRA,		/* extra arguments specified */
 	D_PRINTF_ARG_FMT,		/* format string is not a constant */
 	D_PRINTF_FMT_EMPTY,		/* format string is empty */
+	D_PRINTF_VOID,			/* no arguments to printf (ELF mode) */
 	D_DECL_CHARATTR,		/* bad attributes for char decl */
 	D_DECL_VOIDATTR,		/* bad attributes for void decl */
 	D_DECL_SIGNINT,			/* sign/unsign with non-integer decl */

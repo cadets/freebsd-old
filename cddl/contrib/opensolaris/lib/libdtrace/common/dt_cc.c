@@ -665,27 +665,64 @@ dt_action_trace(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 {
 	int ctflib;
 
-	dtrace_actdesc_t *ap = dt_stmt_action(dtp, sdp);
+	dtrace_actdesc_t *ap;
+	dt_node_t *anp;
+	boolean_t isprintf = (dnp->dn_ident->di_id == DT_ACT_PRINTF);
 	boolean_t istrace = (dnp->dn_ident->di_id == DT_ACT_TRACE);
-	const char *act = istrace ?  "trace" : "print";
+	const char *act = istrace ?  "trace" :  isprintf ? "printf" : "print";
+
+	/*
+	 * We should never end up in this function with a printf if
+	 * dt_use_elf is not set in the handle.
+	 */
+	if (isprintf)
+		assert(dtp->dt_use_elf);
 
 	if (dt_node_is_void(dnp->dn_args)) {
-		dnerror(dnp->dn_args, istrace ? D_TRACE_VOID : D_PRINT_VOID,
+		dnerror(dnp->dn_args, istrace ? D_TRACE_VOID :
+		    isprintf ? D_PRINTF_VOID : D_PRINT_VOID,
 		    "%s( ) may not be applied to a void expression\n", act);
 	}
 
+	if (isprintf && dnp->dn_args->dn_list == NULL) {
+		dnerror(dnp->dn_args->dn_list, D_PRINTF_VOID,
+		    "%s( ) may not be called without non-format arguments", act);
+	}
+
 	if (dt_node_resolve(dnp->dn_args, DT_IDENT_XLPTR) != NULL) {
-		dnerror(dnp->dn_args, istrace ? D_TRACE_DYN : D_PRINT_DYN,
+		dnerror(dnp->dn_args, istrace ? D_TRACE_DYN :
+		    isprintf ? D_PRINTF_DYN_TYPE : D_PRINT_DYN,
 		    "%s( ) may not be applied to a translated pointer\n", act);
 	}
 
 	if (dnp->dn_args->dn_kind == DT_NODE_AGG) {
-		dnerror(dnp->dn_args, istrace ? D_TRACE_AGG : D_PRINT_AGG,
+		dnerror(dnp->dn_args, istrace ? D_TRACE_AGG :
+		    isprintf ? D_PRINTF_AGG_CONV : D_PRINT_AGG,
 		    "%s( ) may not be applied to an aggregation%s\n", act,
 		    istrace ? "" : " -- did you mean printa()?");
 	}
 
-	dt_cg(yypcb, dnp->dn_args);
+	/*
+	 * Sanity check.
+	 */
+	assert(isprintf ^ istrace == 1);
+
+	/*
+	 * If we have a printf action, and we are making an ELF file,
+	 * then we simply iterate over the list of arguments in a printf
+	 * and produce a "trace" action for every single one. The "trace"
+	 * action is really just a DIFO that returns the value we wish to
+	 * trace. We ignore the format string in this case.
+	 */
+	if (isprintf) {
+		for (anp = dnp->dn_args->dn_list;
+		    anp != NULL; anp = anp->dn_list) {
+			ap = dt_stmt_action(dtp, sdp);
+			dt_cg(yypcb, anp);
+			ap->dtad_difo = dt_as(yypcb);
+			ap->dtad_kind = DTRACEACT_DIFEXPR;
+		}
+	}
 
 	/*
 	 * The print() action behaves identically to trace(), except that it
@@ -733,8 +770,16 @@ dt_action_trace(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 		}
 	}
 
-	ap->dtad_difo = dt_as(yypcb);
-	ap->dtad_kind = DTRACEACT_DIFEXPR;
+	/*
+	 * Finally, if the action is really just a trace() action, we produce
+	 * a DIFO that contains whatever we want to trace and return.
+	 */
+	if (istrace) {
+		ap = dt_stmt_action(dtp, sdp);
+		dt_cg(yypcb, dnp->dn_args);
+		ap->dtad_difo = dt_as(yypcb);
+		ap->dtad_kind = DTRACEACT_DIFEXPR;
+	}
 }
 
 static void
@@ -1124,7 +1169,11 @@ dt_compile_fun(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 		dt_action_printa(dtp, dnp->dn_expr, sdp);
 		break;
 	case DT_ACT_PRINTF:
-		dt_action_printflike(dtp, dnp->dn_expr, sdp, DTRACEACT_PRINTF);
+		if (dtp->dt_use_elf)
+			dt_action_trace(dtp, dnp->dn_expr, sdp);
+		else
+			dt_action_printflike(dtp, dnp->dn_expr,
+			    sdp, DTRACEACT_PRINTF);
 		break;
 	case DT_ACT_PRINTM:
 		dt_action_printm(dtp, dnp->dn_expr, sdp);
