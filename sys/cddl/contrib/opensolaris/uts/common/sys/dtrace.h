@@ -1102,8 +1102,8 @@ typedef struct dtrace_bufdesc {
  */
 typedef struct dtrace_rechdr {
 	dtrace_epid_t dtrh_epid;		/* enabled probe id */
-	uint32_t dtrh_timestamp_hi;		/* high bits of hrtime_t */
-	uint32_t dtrh_timestamp_lo;		/* low bits of hrtime_t */
+	uint32_t dtrh_timestamp_lo;		/* high bits of hrtime_t */
+	uint32_t dtrh_timestamp_hi;		/* low bits of hrtime_t */
 } dtrace_rechdr_t;
 
 #define	DTRACE_RECORD_LOAD_TIMESTAMP(dtrh)			\
@@ -1111,8 +1111,8 @@ typedef struct dtrace_rechdr {
 	((uint64_t)(dtrh)->dtrh_timestamp_hi << 32))
 
 #define	DTRACE_RECORD_STORE_TIMESTAMP(dtrh, hrtime) {		\
-	(dtrh)->dtrh_timestamp_lo = (uint32_t)hrtime;		\
-	(dtrh)->dtrh_timestamp_hi = hrtime >> 32;		\
+	(dtrh)->dtrh_timestamp_lo = (uint32_t) (hrtime & 0xFFFFFFFFL);			\
+	(dtrh)->dtrh_timestamp_hi = (uint32_t) ((hrtime & 0xFFFFFFFF00000000L) >> 32);	\
 }
 
 /*

@@ -7431,8 +7431,13 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		return;
 	}
 
-	now = mstate.dtms_timestamp = dtrace_gethrtime();
+	now = dtrace_gethrtime();
+	mstate.dtms_timestamp = dtrace_gethrtime();
 	mstate.dtms_present = DTRACE_MSTATE_TIMESTAMP;
+
+	mstate.dtms_walltimestamp = dtrace_gethrestime();
+	mstate.dtms_present = DTRACE_MSTATE_TIMESTAMP;
+
 	vtime = dtrace_vtime_references != 0;
 
 	if (vtime && curthread->t_dtrace_start)
@@ -7614,8 +7619,9 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			ASSERT3U(ecb->dte_size, >=, sizeof (dtrace_rechdr_t));
 			dtrh.dtrh_epid = ecb->dte_epid;
 			DTRACE_RECORD_STORE_TIMESTAMP(&dtrh,
-			    mstate.dtms_timestamp);
-			*((dtrace_rechdr_t *)(tomax + offs)) = dtrh;
+			   mstate.dtms_walltimestamp);
+
+			DTRACE_STORE(dtrace_rechdr_t, tomax, offs, dtrh);
 		}
 
 		mstate.dtms_epid = ecb->dte_epid;
