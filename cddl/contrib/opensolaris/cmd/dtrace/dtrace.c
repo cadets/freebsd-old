@@ -1653,7 +1653,7 @@ static void *read_trace_data(void *xgtq)
 	uint64_t size;
 
 	trc_fifo = "/tmp/trace_fifo";
-	gtq = (struct dtrace_guestq *) xgtq;
+	gtq = xgtq;
 
 	int err = mkfifo(trc_fifo, 0666);
 	if (err)
@@ -1662,13 +1662,16 @@ static void *read_trace_data(void *xgtq)
 		exit(1);
 	}
 
+	printf("About to process trace data. \n");
 	for (;;)
 	{
 		dtrace_bufdesc_t *buf;
 		struct dtrace_guest_entry *trc_entry;
 
 		buf = malloc(sizeof(dtrace_bufdesc_t));
+		assert(buf != NULL);
 		trc_entry = malloc(sizeof(struct dtrace_guest_entry));
+		assert(trc_entry != NULL);
 
 		// This should block until we have trace data
 		if ((fd = open(trc_fifo, O_RDONLY)) == -1)
@@ -1708,6 +1711,7 @@ static void *read_trace_data(void *xgtq)
 		assert(sz == buf->dtbd_size);
 		trc_entry->desc = buf;
 		dtrace_gtq_enqueue(gtq, trc_entry);
+		printf("Successfully enqueued trace element");
 	
 
 		// TODO: discover what happens if you actually print this
@@ -1888,7 +1892,8 @@ int main(int argc, char *argv[])
 		file_path = argv[argc - 1];
 		write_script(file_path);
 		STAILQ_INIT(&gtq->head);
-		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data,(void *) gtq);
+		printf("Guest queue successfully initialised");
+		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data,gtq);
 		process_trace_data();
 		// no need to close dtrace since we don't even open it here
 		return (g_status);
