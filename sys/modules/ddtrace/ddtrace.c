@@ -351,7 +351,7 @@ ddtrace_thread(void *arg)
 	    k->ddtrace_dlog_handle) != 0) {
 
 		DLOGTR0(PRIO_HIGH, "Failed persisting metadata.\n");
-		return;
+		kthread_exit();
 	}
 
 	/* Process the trace buffers. */
