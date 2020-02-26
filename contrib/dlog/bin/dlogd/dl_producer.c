@@ -62,7 +62,6 @@
 #include "dl_correlation_id.h"
 #include "dl_config.h"
 #include "dl_event_handler.h"
-#include "dl_index.h"
 #include "dl_memory.h"
 #include "dl_new.h"
 #include "dl_poll_reactor.h"
@@ -751,27 +750,6 @@ dl_producer_new(struct dl_producer **self, char *topic_name,
 		goto err_producer_free;
 	}
 
-	/* Construct a new userspace segment. */
-	rc = dl_user_segment_new_default(&segment, producer, topic_name);
-	if (rc != 0) {
-
-		DLOGTR0(PRIO_HIGH, "Failed creating new user space segment\n");
-		goto err_producer_stats_free;	
-	}
-
-	/* Prelocate an initial segment file for the topic and add
-	 * to the hashmap.
-	 */
-	rc = dl_topic_new(&producer->dlp_topic, topic_name,
-	    props, (struct dl_segment *) segment);
-	if (rc != 0) {
-	
-		DLOGTR1(PRIO_HIGH, "Failed instantiating topic %s\n", topic_name);
-		/* Free the Producer topic UserSegment instance. */
-		dl_user_segment_delete(segment);
-		goto err_producer_stats_free;	
-	}
-
 	/* Take a defensive copy of the client id. */
 	producer->dlp_clientid = sbuf_new_auto();
 	client_id = dnvlist_get_string(props, DL_CONF_CLIENTID,
@@ -855,14 +833,36 @@ dl_producer_new(struct dl_producer **self, char *topic_name,
 	dlps_set_state(producer->dlp_stats, DLP_INITIAL);
 	dlps_set_resend(producer->dlp_stats, producer->dlp_resend);
 	dlps_set_resend_timeout(producer->dlp_stats, producer->dlp_resend_timeout);
+	
+	/* Synchnronously create the Producer in the connecting state. */
+	dl_producer_connecting(producer);
+
+	/* Construct a new userspace segment. */
+	rc = dl_user_segment_new_default(&segment, producer, topic_name);
+	if (rc != 0) {
+
+		DLOGTR0(PRIO_HIGH, "Failed creating new user space segment\n");
+		goto err_producer_stats_free;	
+	}
+
+	/* Prelocate an initial segment file for the topic and add
+	 * to the hashmap.
+	 */
+	rc = dl_topic_new(&producer->dlp_topic, topic_name,
+	    props, (struct dl_segment *) segment);
+	if (rc != 0) {
+	
+		DLOGTR1(PRIO_HIGH, "Failed instantiating topic %s\n", topic_name);
+		/* Free the Producer topic UserSegment instance. */
+		dl_user_segment_delete(segment);
+		goto err_producer_stats_free;	
+	}
 
 	*self = producer;
 
 	/* Verfiy the method's post-conditions. */
 	assert_integrity(*self);
 
-	/* Synchnronously create the Producer in the connecting state. */
-	dl_producer_connecting(*self);
 	return 0;
 		
 err_producer_corr_id_free:
