@@ -336,7 +336,6 @@ dl_user_segment_ctor(void *_super, va_list *ap)
 		goto err_user_seg_offset;
 	}	
 
-
 	rc = pthread_mutex_init(&self->dlus_lock, NULL);
 	if (rc != 0) {
 
