@@ -1742,7 +1742,8 @@ static void process_trace_data(struct dtrace_guestq *gtq)
 	{	
 		pthread_mutex_lock(&gtq->mtx);
 		while(!dtrace_gtq_empty(gtq)) {
-		trc_entry = dtrace_gtq_dequeue(gtq);
+		trc_entry = dtrace_gtq_dequeue(gtq); 
+		// process data
 		printf("Dequeued trace data of size: %d. \n");
 		}
 		pthread_mutex_unlock(&gtq->mtx);
