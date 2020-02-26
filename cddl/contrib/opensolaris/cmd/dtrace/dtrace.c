@@ -1879,9 +1879,7 @@ int main(int argc, char *argv[])
 		if (optind < argc)
 			g_argv[g_argc++] = argv[optind];
 	}
-
-	setbuf(stdout, NULL);
-
+	
 	/*
 	 * We are tracing a guest and assume that we've done everything up to
 	 * dtrace_work which prints trace data
