@@ -220,10 +220,11 @@ dl_kernel_segment_ctor(void *_super, va_list *ap)
 			    "Failed KernelSegment file path is invalid: %s\n", path);
 			goto err_kseg_ctor;
 		}
+	} else {
+		DL_ASSERT(path_nd.vp != NULL,
+		("KernelSegment file path (%s) vnode is NULL", path));
+		vrele(path_nd.ni_vp);
 	}
-	DL_ASSERT(path_nd.vp != NULL,
-	    ("KernelSegment file path (%s) vnode is NULL", path));
-	vrele(path_nd.ni_vp);
 	NDFREE(&path_nd, NDF_ONLY_PNBUF);
 
 	(void) sbuf_new(&sb, self->dlks_base_name, MAXPATHLEN, SBUF_FIXEDLEN);
