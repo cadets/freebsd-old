@@ -355,7 +355,7 @@ dlks_insert_message(struct dl_segment *super, struct dl_bbuf *buffer)
 	bzero(&u, sizeof(struct uio));
 	u.uio_iov = log_bufs;
 	u.uio_iovcnt = 1;
-	u.uio_offset = -1;
+	u.uio_offset = 0;
         u.uio_resid = log_bufs[0].iov_len;
         u.uio_segflg  = UIO_SYSSPACE;
         u.uio_rw = UIO_WRITE;
