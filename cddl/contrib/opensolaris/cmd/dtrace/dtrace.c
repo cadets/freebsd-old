@@ -1894,7 +1894,7 @@ int main(int argc, char *argv[])
 		write_script(file_path);
 		STAILQ_INIT(&gtq->head);
 		printf("Guest queue successfully initialised");
-		// trace_reader = pthread_create(&trace_reader, NULL, read_trace_data,gtq);
+		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data,gtq);
 		process_trace_data();
 		// no need to close dtrace since we don't even open it here
 		return (g_status);

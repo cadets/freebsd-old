@@ -10,6 +10,7 @@ BINDIR?=	/usr/sbin
 
 WARNS?=		1
 
+LDFLAGS+= -pthread
 CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${SRCTOP}/cddl/compat/opensolaris/include \
 		-I${OPENSOLARIS_USR_DISTDIR}/head \
