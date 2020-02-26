@@ -1670,8 +1670,8 @@ static void *read_trace_data(void *xgtq)
 	}
 
 	printf("About to process trace data. \n");
-	// for (;;)
-	// {
+	for (;;)
+	{
 		
 
 		buf = malloc(sizeof(dtrace_bufdesc_t));
@@ -1730,7 +1730,7 @@ static void *read_trace_data(void *xgtq)
 		// fclose(trace_stream);
 		close(fd);
 		// unlink(trc_fifo);
-	// }
+	}
 	pthread_exit(NULL);
 }
 
@@ -1743,8 +1743,8 @@ static void process_trace_data(struct dtrace_guestq *gtq)
 		pthread_mutex_lock(&gtq->mtx);
 		while(!dtrace_gtq_empty(gtq)) {
 		trc_entry = dtrace_gtq_dequeue(gtq); 
+		printf("Dequeued trace data of size: %d. \n", trc_entry->desc->dtbd_size);
 		// process data
-		printf("Dequeued trace data of size: %d. \n");
 		}
 		pthread_mutex_unlock(&gtq->mtx);
 
