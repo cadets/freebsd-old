@@ -1647,13 +1647,15 @@ static void *write_script(void *file_path)
 static void *read_trace_data(void *xgtq)
 {
 	struct dtrace_guestq *gtq;
+	struct dtrace_guest_entry *trc_entry;
+	dtrace_bufdesc_t *buf
 	FILE *trace_stream;
 	char *trc_fifo;
 	int fd, sz;
 	uint64_t size;
 
 	trc_fifo = "/tmp/trace_fifo";
-	gtq = xgtq;
+	gtq = (struct dtrace_guestq *) xgtq;
 
 	int err = mkfifo(trc_fifo, 0666);
 	if (err)
@@ -1663,15 +1665,15 @@ static void *read_trace_data(void *xgtq)
 	}
 
 	printf("About to process trace data. \n");
-	for (;;)
-	{
-		dtrace_bufdesc_t *buf;
-		struct dtrace_guest_entry *trc_entry;
+	// for (;;)
+	// {
+		
 
 		buf = malloc(sizeof(dtrace_bufdesc_t));
 		assert(buf != NULL);
 		trc_entry = malloc(sizeof(struct dtrace_guest_entry));
 		assert(trc_entry != NULL);
+		memset(trc_entry, 0, sizeof(struct dtrace_guest_entry));
 
 		// This should block until we have trace data
 		if ((fd = open(trc_fifo, O_RDONLY)) == -1)
@@ -1685,7 +1687,7 @@ static void *read_trace_data(void *xgtq)
 			printf("Failed opening trace reader stream: %s. \n", strerror(errno));
 			exit(1);
 		}*/
-		printf("open() were called.\n");
+		printf("open() was called.\n");
 
 		printf("About to read trace data. \n");
 		sz = read(fd, &buf->dtbd_size, sizeof(uint64_t));
@@ -1721,7 +1723,7 @@ static void *read_trace_data(void *xgtq)
 		// fclose(trace_stream);
 		close(fd);
 		// unlink(trc_fifo);
-	}
+	// }
 	pthread_exit(NULL);
 }
 
@@ -1880,6 +1882,9 @@ int main(int argc, char *argv[])
 			g_argv[g_argc++] = argv[optind];
 	}
 
+	// Stop buffering for debugging purposes
+	setbuf(stdout, NULL);
+
 	/*
 	 * We are tracing a guest and assume that we've done everything up to
 	 * dtrace_work which prints trace data
@@ -1894,7 +1899,7 @@ int main(int argc, char *argv[])
 		write_script(file_path);
 		STAILQ_INIT(&gtq->head);
 		printf("Guest queue successfully initialised");
-		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data,gtq);
+		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data,(void *) gtq);
 		process_trace_data();
 		// no need to close dtrace since we don't even open it here
 		return (g_status);
