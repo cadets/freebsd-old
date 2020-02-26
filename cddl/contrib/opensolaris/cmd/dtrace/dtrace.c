@@ -1548,6 +1548,11 @@ filter_machines(char *filt)
 	free(list);
 }
 
+static int dtrace_gtq_empty(struct dtrace_guestq *gtq)
+{
+	return(STAILQ_EMPTY(&gtq->head));
+}
+
 static void dtrace_gtq_enqueue(struct dtrace_guestq *gtq, struct dtrace_guest_entry *trc_entry)
 {
 	STAILQ_INSERT_TAIL(&gtq->head, trc_entry, entries);
@@ -1712,7 +1717,9 @@ static void *read_trace_data(void *xgtq)
 		sz = read(fd, buf->dtbd_data, buf->dtbd_size);
 		assert(sz == buf->dtbd_size);
 		trc_entry->desc = buf;
+		pthread_mutex_lock(&gtq->mtx);
 		dtrace_gtq_enqueue(gtq, trc_entry);
+		pthread_mutex_unlock(&gtq->mtx);
 		printf("Successfully enqueued trace element");
 	
 
@@ -1727,10 +1734,18 @@ static void *read_trace_data(void *xgtq)
 	pthread_exit(NULL);
 }
 
-static void process_trace_data()
+static void process_trace_data(struct dtrace_guestq *gtq)
 {
+	printf("Waiting to process trace data.. \n");
+	struct dtrace_guest_entry *trc_entry;
 	for(;;)
-	{
+	{	
+		pthread_mutex_lock(&gtq->mtx);
+		while(!dtrace_gtq_empty(gtq)) {
+		trc_entry = dtrace_gtq_dequeue(gtq);
+		printf("Dequeued trace data of size: %d. \n");
+		}
+		pthread_mutex_unlock(&gtq->mtx);
 
 	}
 }
@@ -1899,10 +1914,11 @@ int main(int argc, char *argv[])
 		write_script(file_path);
 		STAILQ_INIT(&gtq->head);
 		printf("Guest queue successfully initialised");
+		printf("Initialising trace reading thread");
 		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data,(void *) gtq);
-		process_trace_data();
+		process_trace_data(gtq);
 		// no need to close dtrace since we don't even open it here
-		return (g_status);
+		exit(g_status);
 	}
 
 	if (mode > 1)
