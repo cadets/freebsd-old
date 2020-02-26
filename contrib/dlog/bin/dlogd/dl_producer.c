@@ -834,8 +834,7 @@ dl_producer_new(struct dl_producer **self, char *topic_name,
 	dlps_set_resend(producer->dlp_stats, producer->dlp_resend);
 	dlps_set_resend_timeout(producer->dlp_stats, producer->dlp_resend_timeout);
 	
-	/* Synchnronously create the Producer in the connecting state. */
-	dl_producer_connecting(producer);
+	producer->dlp_state = DLP_CONNECTING;
 
 	/* Construct a new userspace segment. */
 	rc = dl_user_segment_new_default(&segment, producer, topic_name);
@@ -857,6 +856,9 @@ dl_producer_new(struct dl_producer **self, char *topic_name,
 		dl_user_segment_delete(segment);
 		goto err_producer_stats_free;	
 	}
+	
+	/* Synchnronously create the Producer in the connecting state. */
+	dl_producer_connecting(producer);
 
 	*self = producer;
 
