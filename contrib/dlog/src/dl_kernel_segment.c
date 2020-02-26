@@ -212,10 +212,14 @@ dl_kernel_segment_ctor(void *_super, va_list *ap)
 	NDINIT(&path_nd, LOOKUP, NOFOLLOW, UIO_SYSSPACE, path, td);
 	if (namei(&path_nd) == -1 || path_nd.ni_vp == NULL) {
 
-		DLOGTR1(PRIO_HIGH,
-		    "Failed KernelSegment file path is invalid: %s\n", path);
-		NDFREE(&path_nd, NDF_ONLY_PNBUF);
-		goto err_kseg_ctor;
+		if (kern_mkdirat(td, 0, path, UIO_SYSSPACE,
+		    S_IRUSR | S_IWUSR) != 0) {
+
+			NDFREE(&path_nd, NDF_ONLY_PNBUF);
+			DLOGTR1(PRIO_HIGH,
+			    "Failed KernelSegment file path is invalid: %s\n", path);
+			goto err_kseg_ctor;
+		}
 	}
 	DL_ASSERT(path_nd.vp != NULL,
 	    ("KernelSegment file path (%s) vnode is NULL", path));
@@ -245,14 +249,14 @@ dl_kernel_segment_ctor(void *_super, va_list *ap)
 		if (kern_mkdirat(td, 0, self->dlks_base_name, UIO_SYSSPACE,
 		    S_IRUSR | S_IWUSR) != 0) {
 
-
+			NDFREE(&nd, NDF_ONLY_PNBUF);
 			DLOGTR1(PRIO_HIGH,
 			    "Failed KernelSegment file path is invalid: %s\n", path);
 			goto err_kseg_ctor;
 		}
 	} else {
 		DL_ASSERT(path_nd.vp != NULL,
-		("KernelSegment base path (%s) vnode is NULL", path));
+		    ("KernelSegment base path (%s) vnode is NULL", path));
 		vrele(nd.ni_vp);
 	}
 	NDFREE(&nd, NDF_ONLY_PNBUF);
