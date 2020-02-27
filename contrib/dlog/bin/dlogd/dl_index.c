@@ -422,7 +422,7 @@ dl_index_lookup_by_poffset(struct dl_index *self, off_t offset,
 		dl_bbuf_get_uint64(idx_buf, &record->dlir_offset);
 		dl_bbuf_get_int64(idx_buf, &record->dlir_poffset);
 
-		if (dl_bbuf_error(idx_buf) == 0) {
+		if (dl_bbuf_error(idx_buf) != 0) {
 
 			DL_ASSERT(false, ("dl_bbuf operations failed on index record."));
 			dl_bbuf_delete(idx_buf);
