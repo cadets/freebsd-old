@@ -87,7 +87,6 @@ struct dl_producer {
 	struct dl_request_q *dlp_requests;
 	struct dl_topic *dlp_topic;
 	struct dl_transport *dlp_transport;
-	nvlist_t *dlp_props;
 	dl_producer_state dlp_state;
 	pthread_t dlp_enqueue_tid;
 	pthread_t dlp_produce_tid;
@@ -142,8 +141,6 @@ assert_integrity(struct dl_producer const * const self)
 	    ("Producer request queue cannot be NULL"));
 	DL_ASSERT(self->dlp_topic != NULL,
 	    ("Producer topic cannot be NULL"));
-	DL_ASSERT(self->dlp_props != NULL,
-	    ("Producer properties cannot be NULL"));
 	DL_ASSERT(self->dlp_broker != NULL,
 	    ("Producer broker name cannot be NULL"));
 	DL_ASSERT(self->dlp_clientid != NULL,
@@ -156,10 +153,9 @@ check_integrity(struct dl_producer const * const self)
 
 	if (self == NULL || self->dlp_cid == NULL ||
   	    self->dlp_requests == NULL || self->dlp_topic == NULL ||
-	    self->dlp_props == NULL || self->dlp_broker == NULL ||
-	    self->dlp_clientid == NULL) {
+	    self->dlp_broker == NULL || self->dlp_clientid == NULL) {
 
-	    DL_ASSERT(true, ("Producer instance invalid"));
+		DL_ASSERT(true, ("Producer instance invalid"));
 	}
 }
 
@@ -818,7 +814,6 @@ dl_producer_new(struct dl_producer **self, char *topic_name,
 	producer->dlp_debug_level = dnvlist_get_number(props,
 	    DL_CONF_DEBUG_LEVEL, DL_DEFAULT_DEBUG_LEVEL);
 
-	producer->dlp_props = props;
 	producer->dlp_transport = NULL;
 
 	producer->dlp_resend = dnvlist_get_bool(props, DL_CONF_TORESEND,
@@ -859,6 +854,12 @@ dl_producer_new(struct dl_producer **self, char *topic_name,
 	
 	/* Synchnronously create the Producer in the connecting state. */
 	dl_producer_connecting(producer);
+
+	/* Trigger update of the index.
+	 * This ensures that when the log is updated without dlogd
+	 * running these entries are indexed.
+	 */
+	dl_index_update(dl_user_segment_get_index(segment));
 
 	*self = producer;
 

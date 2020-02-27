@@ -613,7 +613,7 @@ dl_index_new(struct dl_index **self, struct dl_user_segment *useg,
 	*self = idx;
 
 	/* Synchnronously create the Index in the idle state. */
-	dl_index_updating(*self);
+	dl_index_idle(*self);
 	return 0;
 
 err_poll_reactor:

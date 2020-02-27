@@ -655,18 +655,26 @@ sync_log(struct dl_segment *segment)
 	return fsync(self->dlus_log);
 }
 
-struct dl_offset * 
-dl_user_segment_get_offset(struct dl_user_segment const * const self)
-{
-
-	assert_integrity(self);
-	return self->dlus_offset;
-}
-
 extern int
 dl_user_segment_get_fd(struct dl_user_segment const * const self)
 {
 
 	assert_integrity(self);
 	return self->dlus_log;
+}
+
+struct dl_index * 
+dl_user_segment_get_index(struct dl_user_segment const * const self)
+{
+
+	assert_integrity(self);
+	return self->dlus_idx;
+}
+
+struct dl_offset * 
+dl_user_segment_get_offset(struct dl_user_segment const * const self)
+{
+
+	assert_integrity(self);
+	return self->dlus_offset;
 }
