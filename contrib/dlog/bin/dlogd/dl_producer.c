@@ -789,7 +789,28 @@ dl_producer_new(struct dl_producer **self, char *topic_name,
 		sbuf_delete(producer->dlp_clientid);
 		goto err_producer_req_free;
 	}
+	
+	/* Construct a new userspace segment. */
+	rc = dl_user_segment_new_default(&segment, producer, topic_name);
+	if (rc != 0) {
 
+		DLOGTR0(PRIO_HIGH, "Failed creating new user space segment\n");
+		goto err_producer_stats_free;	
+	}
+
+	/* Prelocate an initial segment file for the topic and add
+	 * to the hashmap.
+	 */
+	rc = dl_topic_new(&producer->dlp_topic, topic_name,
+	    props, (struct dl_segment *) segment);
+	if (rc != 0) {
+	
+		DLOGTR1(PRIO_HIGH, "Failed instantiating topic %s\n", topic_name);
+		/* Free the Producer topic UserSegment instance. */
+		dl_user_segment_delete(segment);
+		goto err_producer_stats_free;	
+	}
+	
 	/* Create kqueue for managming reconnection with the broker. */	
 	producer->dlp_ktimer = kqueue();
 	if (producer->dlp_ktimer == -1) {
@@ -828,30 +849,7 @@ dl_producer_new(struct dl_producer **self, char *topic_name,
 	dlps_set_state(producer->dlp_stats, DLP_INITIAL);
 	dlps_set_resend(producer->dlp_stats, producer->dlp_resend);
 	dlps_set_resend_timeout(producer->dlp_stats, producer->dlp_resend_timeout);
-	
-	producer->dlp_state = DLP_CONNECTING;
 
-	/* Construct a new userspace segment. */
-	rc = dl_user_segment_new_default(&segment, producer, topic_name);
-	if (rc != 0) {
-
-		DLOGTR0(PRIO_HIGH, "Failed creating new user space segment\n");
-		goto err_producer_stats_free;	
-	}
-
-	/* Prelocate an initial segment file for the topic and add
-	 * to the hashmap.
-	 */
-	rc = dl_topic_new(&producer->dlp_topic, topic_name,
-	    props, (struct dl_segment *) segment);
-	if (rc != 0) {
-	
-		DLOGTR1(PRIO_HIGH, "Failed instantiating topic %s\n", topic_name);
-		/* Free the Producer topic UserSegment instance. */
-		dl_user_segment_delete(segment);
-		goto err_producer_stats_free;	
-	}
-	
 	/* Synchnronously create the Producer in the connecting state. */
 	dl_producer_connecting(producer);
 
