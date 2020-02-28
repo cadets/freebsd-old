@@ -142,6 +142,9 @@ is_log_rotated(struct dl_user_segment *self)
 	/* Validate the method's preconditions. */
 	assert_integrity(self);
 
+	/* Check if the */ 
+	//if (offset == (uint64_t) dl_offset
+
 	/* Construct filepath for log segment based on the offset. */
 	(void) sbuf_new(&sb, name, MAXPATHLEN, SBUF_FIXEDLEN);
 	sbuf_printf(&sb, "%s/%.*ld.log", self->dlus_path,
@@ -156,10 +159,10 @@ is_log_rotated(struct dl_user_segment *self)
 	}
 	sbuf_delete(&sb);
 
-	/* If a log file with the new offfset exists
+	/* If a log file with the new offset exists
 	 * rotate the current log segment.
 	 */
-	if (stat(name, &st) == 0) {
+	if (stat(name, &st) == 0 && st.st_size != 0) {
 
 		return true;
 	}
