@@ -426,11 +426,11 @@ dl_index_lookup_by_poffset(struct dl_index *self, off_t offset,
 
 			DL_ASSERT(false, ("dl_bbuf operations failed on index record."));
 			dl_bbuf_delete(idx_buf);
-			return size;
+			return -1;
 		}
 		
 		dl_bbuf_delete(idx_buf);
-		return -1;
+		return size;
 	}
 }
 
@@ -823,7 +823,7 @@ dl_index_lookup(struct dl_index *self, uint64_t offset,
 
 	rc = dl_index_lookup_by_poffset(self,
 	    (rel_offset * DL_INDEX_RECORD_SIZE), record);
-	DL_ASSERT(rc == 0, ("Lookup of offset %lu in index failed", offset));
+	//DL_ASSERT(rc == 0, ("Lookup of offset %lu in index failed", offset));
 	if (rc == 0) {
 
 		if (self->dli_debug_lvl > 1)
