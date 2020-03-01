@@ -1391,29 +1391,34 @@ vtdtr_consume_trace(void *xsc)
 				{
 				case NFORMAT:
 					ctrl_mtd_ev->umtd.dts_nformats = mtd->umtd.dts_nformats;
+					device_printf(dev, "Put NFORMAT in control entry: %d. \n", ctrl_mtd_ev->umtd.dts_nformats);
 					break;
 				case FORMAT_STRING:
 					fmt_len = strlen(mtd->umtd.dts_fmtstr);
+					device_printf(dev, "Format string length is: %d. \n", fmt_len);
 					// TODO: format strings might be (unlikely) longer
 					if(fmt_len < 512)
 					{
 						cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dtrace_epdesc_buf, fmt_len + 1);
 						KASSERT(cp == fmt_len, "Error occurred while copying format string");
+						device_printf(dev, "Successfully added format string to control entry.\n");
 					} else {
 						device_printf(dev, "Format string doesn't fit in control element");
 					}
+
 					break;
 				case NPROBES:
 					ctrl_mtd_ev->umtd.dtrace_nprobes = mtd->umtd.dtrace_nprobes;
+					device_printf(dev, "Number of probes is: %d. \n", ctrl_mtd_ev->umtd.dtrace_nprobes);
 					break;
 				case PROBE_DESCRIPTION:
-					// Assume probe description fits in control event
 					pbdesc_len = sizeof(dtrace_probedesc_t);
 					device_printf("Size of probe description is: %d", pbdesc_len);
 					if(pbdesc_len < 512) 
 					{
 						cp = strlcpy(ctrl_mtd_ev->umtd.pdesc, mtd->umtd.dtrace_pdesc, pbdesc_len + 1);
 						KASSERT(cp == pdesc_len, "Error occured while copying probe description");
+						device_printf(dev, "Successfully added the probe description to the control entry. \n");
 					} else {
 						// split
 						device_printf(dev, "Probedesc doesn't fit in control element");
@@ -1421,15 +1426,16 @@ vtdtr_consume_trace(void *xsc)
 					break;
 				case EPROBE_DESCRIPTION:
 					// Where things get serious
-					epdesc_len = strlen(mtd->umtd.dtrace_epdesc_buf);
-					if(epdesc_len < 512)
-					{
-						cp = strlcpy(ctrl_mtd_ev->umtd.dtrace_epdesc_buf,mtd->umtd.dtrace_epdesc_buf, epdesc_len + 1);
-						KASSERT(cp == epdesc_len, "Error occurred while copying enabled probe description");
-					} else {
-						// split and pass more control entries
-						device_printf(dev, "Eprobedesc doesn't fit in control element");
-					}
+					// epdesc_len = strlen(mtd->umtd.dtrace_epdesc_buf);
+					// if(epdesc_len < 512)
+					// {
+					// 	cp = strlcpy(ctrl_mtd_ev->umtd.dtrace_epdesc_buf,mtd->umtd.dtrace_epdesc_buf, epdesc_len + 1);
+					// 	KASSERT(cp == epdesc_len, "Error occurred while copying enabled probe description");
+					// } else {
+					// 	// split and pass more control entries
+					// 	device_printf(dev, "Eprobedesc doesn't fit in control element");
+					// }
+					device_printf(dev, "Here getting eprobe description should happen");
 					break;
 				default:
 					device_printf(dev, "WARNING: Wrong metadata event.");
