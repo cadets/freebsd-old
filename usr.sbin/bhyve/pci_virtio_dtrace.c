@@ -421,7 +421,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		{
 		case NFORMAT:
 			sz = fwrite(&mtd_ev->umtd.dts_nformats, 1, sizeof(int), trace_stream);
-			assert(sz > 0)
+			assert(sz > 0);
 			break;
 		case FORMAT_STRING:
 			fmt_len = sizeof(mtd_ev->umtd.dts_fmtstr);
@@ -433,9 +433,9 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			assert(sz > 0);
 			break;
 		case PROBE_DESCRIPTION:
-			sz = fwrite(&mtd_ev->umtd.dt_pdesc, 1, sizeof(dtrace_probedesc_t), trace_stream);
-			assert(sz == sizeof(dtrace_probedesc_t));
-			break;
+			// sz = fwrite(&mtd_ev->umtd.dt_pdesc, 1, sizeof(dtrace_probedesc_t), trace_stream);
+			// assert(sz == sizeof(dtrace_probedesc_t));
+			// break;
 		case EPROBE_DESCRIPTION: 
 			// epdesc_len = sizeof(mtd_ev->umtd.dt_epdesc_buf);
 			// sz = fwrite(&mtd_ev->umtd.dt_epdesc_buf, 1, epdesc_len, trace_stream);
