@@ -1398,7 +1398,7 @@ vtdtr_consume_trace(void *xsc)
 					if(fmt_len < 512)
 					{
 						cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dtrace_epdesc_buf);
-						KASSERT(cp == fmt_len, "Error occurred while copying format string")
+						KASSERT(cp == fmt_len, "Error occurred while copying format string");
 					}
 					break;
 				case NPROBES:

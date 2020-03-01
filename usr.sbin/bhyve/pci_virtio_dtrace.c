@@ -57,6 +57,8 @@ __FBSDID("$FreeBSD$");
 
 #include <vmmapi.h>
 
+#include <dtrace.h>
+
 #include "dthyve.h"
 #include "bhyverun.h"
 #include "pci_emul.h"
@@ -186,7 +188,6 @@ struct pci_vtdtr_control
 		struct pci_vtdtr_ctrl_scriptevent script_ev;
 		struct pci_vtdtr_ctrl_trcevent trc_ev;
 		struct pci_vtdtr_ctrl_metaevent mtd_ev;
-		struct
 	} uctrl;
 } __attribute__((packed));
 

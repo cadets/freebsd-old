@@ -31,6 +31,7 @@
 
 #include <sys/queue.h>
 #include <sys/dtrace_bsd.h>
+#include <dtrace.h>
 
 /*
  * The events related to probe installation and uninstallation are presently
@@ -125,7 +126,7 @@ struct vtdtr_ctrl_metaevent {
 		char dts_fmtstr[512];
 		int dtrace_nprobes;
 		dtrace_probedesc_t pdesc;
-		void dtrace_epdesc_buf[512]; /* this is so bad */
+		char dtrace_epdesc_buf[512]; /* this is so bad */
 	} umtd;
 	struct uuid uuid;
 }__attribute__((packed));
@@ -161,7 +162,7 @@ struct virtio_dtrace_metadata {
 		char *dts_fmtstr; /* format string */
 		int dtrace_nprobes; /* number of probes */
 		dtrace_probedesc_t *dtrace_pdesc; /* one probe description */
-		void *dtrace_epdesc_buf; /* enabled probe description buffer */
+		char *dtrace_epdesc_buf; /* enabled probe description buffer */
 	} umtd;
 
 }__attribute__((packed));
