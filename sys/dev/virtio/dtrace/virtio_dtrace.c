@@ -1397,17 +1397,16 @@ vtdtr_consume_trace(void *xsc)
 					device_printf(dev, "Put NFORMAT in control entry: %d. \n", ctrl_mtd_ev->umtd.dts_nformats);
 					break;
 				case FORMAT_STRING:
-					// fmt_len = strlen(mtd->umtd.dts_fmtstr);
-					// device_printf(dev, "Format string length is: %d. \n", fmt_len);
-					// // TODO: format strings might be (unlikely) longer
-					// if(fmt_len < 512)
-					// {
-					// 	cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dtrace_epdesc_buf, fmt_len + 1);
-					// 	KASSERT(cp == fmt_len, "Error occurred while copying format string");
-					// 	device_printf(dev, "Successfully added format string to control entry.\n");
-					// } else {
-					// 	device_printf(dev, "Format string doesn't fit in control element");
-					// }
+					fmt_len = strlen(mtd->umtd.dts_fmtstr);
+					device_printf(dev, "Format string length is: %d. \n", fmt_len);
+					if(fmt_len < 512)
+					{
+						cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dtrace_epdesc_buf, fmt_len + 1);
+						KASSERT(cp == fmt_len, "Error occurred while copying format string");
+						device_printf(dev, "Successfully added format string to control entry: %s.\n", ctrl_mtd_ev->umtd.dts_fmtstr);
+					} else {
+						device_printf(dev, "Format string doesn't fit in control element");
+					}
 					device_printf(dev, "Getting format strings should happen here");
 					break;
 				case NPROBES:

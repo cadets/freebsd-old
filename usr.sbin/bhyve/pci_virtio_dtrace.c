@@ -397,6 +397,9 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		close(fd);
 		break;
 	case VTDTR_DEVICE_METADATA:
+		pthread_mutex_lock(&sc->vsd_mtx);
+		sc->vsd_ready = 0;
+		pthread_mutex_unlock(&sc->vsd_mtx);
 		DPRINTF(("I've received metadata. \n"));
 	// 	mtd_ev = &ctrl->uctrl.mtd_ev;
 	// 	if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY)) == -1)
