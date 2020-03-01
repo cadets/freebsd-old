@@ -1385,6 +1385,7 @@ vtdtr_consume_trace(void *xsc)
 			case DDTRACE_METADATA:
 				device_printf(dev, "About to enqueue metadata. \n");
 				mtd = &trc_entry->uentry.metadata;
+				ctrl = &ctrl_entry->ctrl;
 				ctrl->event = VIRTIO_DTRACE_METADATA;
 				ctrl_mtd_ev = &ctrl->uctrl.meta_ev;
 				ctrl_mtd_ev->type = mtd->type;
