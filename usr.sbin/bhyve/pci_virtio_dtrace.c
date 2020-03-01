@@ -442,7 +442,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			// assert(sz == epdesc_len);
 			break;
 		default:
-			WPRINTF(("WARNING: Wrong metadata event. "))
+			WPRINTF(("WARNING: Wrong metadata event. "));
 			break;
 		}
 
