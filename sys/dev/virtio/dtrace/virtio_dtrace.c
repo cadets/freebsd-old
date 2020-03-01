@@ -1430,15 +1430,15 @@ vtdtr_consume_trace(void *xsc)
 					break;
 				case EPROBE_DESCRIPTION:
 					// Where things get serious
-					// epdesc_len = strlen(mtd->umtd.dtrace_epdesc_buf);
-					// if(epdesc_len < 512)
-					// {
-					// 	cp = strlcpy(ctrl_mtd_ev->umtd.dtrace_epdesc_buf,mtd->umtd.dtrace_epdesc_buf, epdesc_len + 1);
-					// 	KASSERT(cp == epdesc_len, "Error occurred while copying enabled probe description");
-					// } else {
-					// 	// split and pass more control entries
-					// 	device_printf(dev, "Eprobedesc doesn't fit in control element");
-					// }
+					epdesc_len = strlen(mtd->umtd.dtrace_epdesc_buf);
+					if(epdesc_len < 512)
+					{
+						cp = strlcpy(ctrl_mtd_ev->umtd.dtrace_epdesc_buf,mtd->umtd.dtrace_epdesc_buf, epdesc_len + 1);
+						KASSERT(cp == epdesc_len, "Error occurred while copying enabled probe description");
+					} else {
+						// split and pass more control entries
+						device_printf(dev, "Eprobedesc doesn't fit in control element");
+					}
 					device_printf(dev, "Here getting eprobe description should happen");
 					break;
 				default:
@@ -1447,7 +1447,7 @@ vtdtr_consume_trace(void *xsc)
 				}
 				break;
 			default:
-				device_printf(dev, "WARNING: Wrong trace event.");
+				device_printf(dev, "WARNING: Wrong trace queue event.");
 				break;
 			}
 

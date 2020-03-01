@@ -420,26 +420,31 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		switch(mtd_ev->type)
 		{
 		case NFORMAT:
-			sz = fwrite(&mtd_ev->umtd.dts_nformats, 1, sizeof(int), trace_stream);
-			assert(sz > 0);
+			// sz = fwrite(&mtd_ev->umtd.dts_nformats, 1, sizeof(int), trace_stream);
+			// assert(sz > 0);
+			DPRINTF(("Got NFORMAT. \n"));
 			break;
 		case FORMAT_STRING:
-			fmt_len = sizeof(mtd_ev->umtd.dts_fmtstr);
-			sz = fwrite(&mtd_ev->umtd.dts_fmtstr, 1, fmt_len, trace_stream);
-			assert(sz == fmt_len);
+			// fmt_len = sizeof(mtd_ev->umtd.dts_fmtstr);
+			// sz = fwrite(&mtd_ev->umtd.dts_fmtstr, 1, fmt_len, trace_stream);
+			// assert(sz == fmt_len);
+			DPRINTF(("Got FORMAT_STRING. \n"));
 			break;
 		case NPROBES:
-			sz = fwrite(&mtd_ev->umtd.dt_nprobes, 1, sizeof(int), trace_stream);
-			assert(sz > 0);
+			// sz = fwrite(&mtd_ev->umtd.dt_nprobes, 1, sizeof(int), trace_stream);
+			// assert(sz > 0);
+			DPRINTF(("Got NPROBES. \n"));
 			break;
 		case PROBE_DESCRIPTION:
 			// sz = fwrite(&mtd_ev->umtd.dt_pdesc, 1, sizeof(dtrace_probedesc_t), trace_stream);
 			// assert(sz == sizeof(dtrace_probedesc_t));
-			// break;
+			DPRINTF(("Got PROBE_DESCRIPTION. \n"));
+			break;
 		case EPROBE_DESCRIPTION: 
 			// epdesc_len = sizeof(mtd_ev->umtd.dt_epdesc_buf);
 			// sz = fwrite(&mtd_ev->umtd.dt_epdesc_buf, 1, epdesc_len, trace_stream);
 			// assert(sz == epdesc_len);
+			DPRINTF(("Got EPROBE_DESCRIPTION. \n"));
 			break;
 		default:
 			WPRINTF(("WARNING: Wrong metadata event. "));
