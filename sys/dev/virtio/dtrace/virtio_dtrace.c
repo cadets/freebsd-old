@@ -1410,9 +1410,9 @@ vtdtr_consume_trace(void *xsc)
 					// Assume probe description fits in control event
 					pbdesc_len = sizeof(dtrace_probedesc_t);
 					device_printf("Size of probe description is: %d", pbdesc_len);
-					if(pdesc_len < 512) 
+					if(pbdesc_len < 512) 
 					{
-					memcpy(&ctrl_mtd_ev->umtd.pdesc, &mtd->umtd.dtrace_pdesc, pbdesc_len));
+					memcpy(&ctrl_mtd_ev->umtd.pdesc, &mtd->umtd.dtrace_pdesc, pbdesc_len);
 					} else {
 						// split
 						device_printf(dev, "Probedesc doesn't fit in control element");
