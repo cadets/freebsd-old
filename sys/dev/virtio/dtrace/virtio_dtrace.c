@@ -1412,7 +1412,8 @@ vtdtr_consume_trace(void *xsc)
 					device_printf("Size of probe description is: %d", pbdesc_len);
 					if(pbdesc_len < 512) 
 					{
-					memcpy(&ctrl_mtd_ev->umtd.pdesc, &mtd->umtd.dtrace_pdesc, pbdesc_len);
+						cp = strlcpy(ctrl_mtd_ev->umtd.pdesc, mtd->umtd.dtrace_pdesc, pbdesc_len + 1);
+						KASSERT(cp == pdesc_len, "Error occured while copying probe description");
 					} else {
 						// split
 						device_printf(dev, "Probedesc doesn't fit in control element");
@@ -1423,7 +1424,7 @@ vtdtr_consume_trace(void *xsc)
 					epdesc_len = strlen(mtd->umtd.dtrace_epdesc_buf);
 					if(epdesc_len < 512)
 					{
-						strlcpy(&ctrl_mtd_ev->umtd.dtrace_epdesc_buf, &mtd->umtd.dtrace_epdesc_buf, epdesc_len + 1);
+						cp = strlcpy(ctrl_mtd_ev->umtd.dtrace_epdesc_buf,mtd->umtd.dtrace_epdesc_buf, epdesc_len + 1);
 						KASSERT(cp == epdesc_len, "Error occurred while copying enabled probe description");
 					} else {
 						// split and pass more control entries
