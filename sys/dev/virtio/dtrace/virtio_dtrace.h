@@ -161,7 +161,7 @@ struct virtio_dtrace_metadata {
 		int dts_nformats; /* number of format strings */
 		char *dts_fmtstr; /* format string */
 		int dtrace_nprobes; /* number of probes */
-		char *dtrace_pdesc; /* one probe description */
+		dtrace_probespec_t *dtrace_pdesc; /* one probe description */
 		char *dtrace_epdesc_buf; /* enabled probe description buffer */
 	} umtd;
 

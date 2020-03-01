@@ -576,8 +576,8 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		
 			mtd = &trc_entry->uentry.metadata;
 			mtd->type = PROBE_DESCRIPTION;
-			mtd->umtd.dtrace_pdesc = (unsigned char *)pdesc;
-			printf("Probe description size: %d", sizeof(mtd->umtd.dtrace_pdesc));
+			mtd->umtd.dtrace_pdesc = pdesc;
+			printf("Probe description size: %d", strlen(mtd->umtd.dtrace_pdesc));
 
 			mtx_lock(&tq->mtx);
 			vtdtr_tq_enqueue(tq, trc_entry);
