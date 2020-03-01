@@ -551,23 +551,23 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 
 			pdesc = malloc(sizeof(dtrace_probedesc_t), M_DEVBUF, M_NOWAIT | M_ZERO);
 			bzero(pdesc, sizeof(dtrace_probedesc_t));
-			pdesc.dtpd_provider[DTRACE_PROVNAMELEN - 1] = '\0';
-			pdesc.dtpd_mod[DTRACE_MODNAMELEN - 1] = '\0';
-			pdesc.dtpd_func[DTRACE_FUNCNAMELEN - 1] = '\0';
-			pdesc.dtpd_name[DTRACE_NAMELEN - 1] = '\0';
+			pdesc->dtpd_provider[DTRACE_PROVNAMELEN - 1] = '\0';
+			pdesc->dtpd_mod[DTRACE_MODNAMELEN - 1] = '\0';
+			pdesc->dtpd_func[DTRACE_FUNCNAMELEN - 1] = '\0';
+			pdesc->dtpd_name[DTRACE_NAMELEN - 1] = '\0';
 
 			/* Construct the probe description and
 			 * persist the metadata to dlog.
 			 */
-			pdesc.dtpd_id = epid; // TODO: temporary fix
-			(void)strncpy(pdesc.dtpd_provider,
+			pdesc->dtpd_id = epid; // TODO: temporary fix
+			(void)strncpy(pdesc->dtpd_provider,
 						  probe->dtpr_provider->dtpv_name,
 						  DTRACE_PROVNAMELEN - 1);
-			(void)strncpy(pdesc.dtpd_mod, probe->dtpr_mod,
+			(void)strncpy(pdesc->dtpd_mod, probe->dtpr_mod,
 						  DTRACE_MODNAMELEN - 1);
-			(void)strncpy(pdesc.dtpd_func, probe->dtpr_func,
+			(void)strncpy(pdesc->dtpd_func, probe->dtpr_func,
 						  DTRACE_FUNCNAMELEN - 1);
-			(void)strncpy(pdesc.dtpd_name, probe->dtpr_name,
+			(void)strncpy(pdesc->dtpd_name, probe->dtpr_name,
 						  DTRACE_NAMELEN - 1);
 
 			trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
