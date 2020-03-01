@@ -1419,7 +1419,7 @@ vtdtr_consume_trace(void *xsc)
 					device_printf("Size of probe description is: %d", pbdesc_len);
 					if(pbdesc_len < 512) 
 					{
-						cp = strlcpy(ctrl_mtd_ev->umtd.pdesc, mtd->umtd.dtrace_pdesc, pbdesc_len + 1);
+						cp = strlcpy(ctrl_mtd_ev->umtd.pdesc,(char *) mtd->umtd.dtrace_pdesc, pbdesc_len + 1);
 						KASSERT(cp == pbdesc_len, "Error occured while copying probe description");
 						device_printf(dev, "Successfully added the probe description to the control entry. \n");
 					} else {
