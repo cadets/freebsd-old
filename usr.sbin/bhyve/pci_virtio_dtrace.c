@@ -446,8 +446,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	// 	fflush(trace_stream);
 	// 	fclose(trace_stream);
 	// 	close(fd)
-	// 	break;
-	// case VTDTR_DEVICE_EOF:
+		break;
+	case VTDTR_DEVICE_EOF:
 		DPRINTF(("Received VTDTR_DEVICE_EOF. \n"));
 		retval = 1;
 		break;

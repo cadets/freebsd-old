@@ -1383,6 +1383,7 @@ vtdtr_consume_trace(void *xsc)
 				}
 				break;
 			case DDTRACE_METADATA:
+				device_printf("About to enqueue metadata. \n");
 				mtd = &trc_entry->uentry.metadata;
 				ctrl->event = VIRTIO_DTRACE_METADATA;
 				ctrl_mtd_ev = &ctrl->uctrl.meta_ev;
@@ -1390,39 +1391,42 @@ vtdtr_consume_trace(void *xsc)
 				switch (mtd->type)
 				{
 				case NFORMAT:
+					device_printf(dev, "About to.\n");
 					ctrl_mtd_ev->umtd.dts_nformats = mtd->umtd.dts_nformats;
 					device_printf(dev, "Put NFORMAT in control entry: %d. \n", ctrl_mtd_ev->umtd.dts_nformats);
 					break;
 				case FORMAT_STRING:
-					fmt_len = strlen(mtd->umtd.dts_fmtstr);
-					device_printf(dev, "Format string length is: %d. \n", fmt_len);
-					// TODO: format strings might be (unlikely) longer
-					if(fmt_len < 512)
-					{
-						cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dtrace_epdesc_buf, fmt_len + 1);
-						KASSERT(cp == fmt_len, "Error occurred while copying format string");
-						device_printf(dev, "Successfully added format string to control entry.\n");
-					} else {
-						device_printf(dev, "Format string doesn't fit in control element");
-					}
-
+					// fmt_len = strlen(mtd->umtd.dts_fmtstr);
+					// device_printf(dev, "Format string length is: %d. \n", fmt_len);
+					// // TODO: format strings might be (unlikely) longer
+					// if(fmt_len < 512)
+					// {
+					// 	cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dtrace_epdesc_buf, fmt_len + 1);
+					// 	KASSERT(cp == fmt_len, "Error occurred while copying format string");
+					// 	device_printf(dev, "Successfully added format string to control entry.\n");
+					// } else {
+					// 	device_printf(dev, "Format string doesn't fit in control element");
+					// }
+					device_printf(dev, "Getting format strings should happen here");
 					break;
 				case NPROBES:
+					device_printf(dev, "About to.\n");
 					ctrl_mtd_ev->umtd.dtrace_nprobes = mtd->umtd.dtrace_nprobes;
 					device_printf(dev, "Number of probes is: %d. \n", ctrl_mtd_ev->umtd.dtrace_nprobes);
 					break;
 				case PROBE_DESCRIPTION:
-					pbdesc_len = sizeof(dtrace_probedesc_t);
-					device_printf("Size of probe description is: %d", pbdesc_len);
-					if(pbdesc_len < 512) 
-					{
-						cp = strlcpy(ctrl_mtd_ev->umtd.pdesc, mtd->umtd.dtrace_pdesc, pbdesc_len + 1);
-						KASSERT(cp == pdesc_len, "Error occured while copying probe description");
-						device_printf(dev, "Successfully added the probe description to the control entry. \n");
-					} else {
-						// split
-						device_printf(dev, "Probedesc doesn't fit in control element");
-					}
+					// pbdesc_len = sizeof(dtrace_probedesc_t);
+					// device_printf("Size of probe description is: %d", pbdesc_len);
+					// if(pbdesc_len < 512) 
+					// {
+					// 	cp = strlcpy(ctrl_mtd_ev->umtd.pdesc, mtd->umtd.dtrace_pdesc, pbdesc_len + 1);
+					// 	KASSERT(cp == pdesc_len, "Error occured while copying probe description");
+					// 	device_printf(dev, "Successfully added the probe description to the control entry. \n");
+					// } else {
+					// 	// split
+					// 	device_printf(dev, "Probedesc doesn't fit in control element");
+					// }
+					device_printf(dev, "Probe description here");
 					break;
 				case EPROBE_DESCRIPTION:
 					// Where things get serious

@@ -467,7 +467,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		
 		mtd = &trc_entry->uentry.metadata;
 		mtd->type = FORMAT_STRING;
-		mtd->umtd.dts_fmtstr = fmt_str;
+		// mtd->umtd.dts_fmtstr = fmt_str;
 
 		mtx_lock(&tq->mtx);
 		vtdtr_tq_enqueue(tq, trc_entry);
@@ -570,7 +570,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		
 			mtd = &trc_entry->uentry.metadata;
 			mtd->type = PROBE_DESCRIPTION;
-			mtd->umtd.dtrace_pdesc = &pdesc;
+			// mtd->umtd.dtrace_pdesc = &pdesc;
 
 #if 0
 			if (dlog_produce(hdl, DDTRACE_PROBE_KEY,
