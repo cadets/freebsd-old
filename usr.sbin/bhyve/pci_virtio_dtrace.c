@@ -168,7 +168,7 @@ struct pci_vtdtr_ctrl_metaevent
 		char dts_fmtstr[512];
 		int dt_nprobes;
 		dtrace_probedesc_t dt_pdesc;
-		void dt_epdesc_buf[512];
+		char dt_epdesc_buf[512];
 	} umtd;
 	struct uuid uuid;
 }__attribute__((packed));
