@@ -403,7 +403,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	dtrace_ecb_t *ecb;
 	dtrace_eprobedesc_t epdesc;
 	dtrace_probe_t *probe;
-	dtrace_probedesc_t pdesc;
+	dtrace_probedesc_t *pdesc;
 	char *fmt_str;
 	size_t size;
 	uintptr_t dest;
@@ -549,7 +549,8 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		if ((probe = dtrace_probes[ecb->dte_probe->dtpr_id - 1]) != NULL)
 		{   
 
-			bzero(&pdesc, sizeof(dtrace_probedesc_t));
+			pdesc = malloc(sizeof(dtrace_probedesc_t), M_DEVBUF, M_NOWAIT | M_ZERO);
+			bzero(pdesc, sizeof(dtrace_probedesc_t));
 			pdesc.dtpd_provider[DTRACE_PROVNAMELEN - 1] = '\0';
 			pdesc.dtpd_mod[DTRACE_MODNAMELEN - 1] = '\0';
 			pdesc.dtpd_func[DTRACE_FUNCNAMELEN - 1] = '\0';
@@ -575,7 +576,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		
 			mtd = &trc_entry->uentry.metadata;
 			mtd->type = PROBE_DESCRIPTION;
-			mtd->umtd.dtrace_pdesc = (unsigned char  *)&pdesc;
+			mtd->umtd.dtrace_pdesc = (unsigned char  *)pdesc;
 			DLOGTR1(PRIO_LOW, "Probe description size: %d", strlen(mtd->umtd.dtrace_pdesc));
 
 			mtx_lock(&tq->mtx);
