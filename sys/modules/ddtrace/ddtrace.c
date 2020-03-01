@@ -571,7 +571,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		
 			mtd = &trc_entry->uentry.metadata;
 			mtd->type = PROBE_DESCRIPTION;
-			memcpy(mtd->umtd.dtrace_pdesc, &pdesc, sizeof(dtrace_probedesc_t));
+			mtd->umtd.dtrace_pdesc = &pdesc;
 
 #if 0
 			if (dlog_produce(hdl, DDTRACE_PROBE_KEY,

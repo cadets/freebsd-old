@@ -1415,17 +1415,17 @@ vtdtr_consume_trace(void *xsc)
 					device_printf(dev, "Number of probes is: %d. \n", ctrl_mtd_ev->umtd.dtrace_nprobes);
 					break;
 				case PROBE_DESCRIPTION:
-					// pbdesc_len = sizeof(dtrace_probedesc_t);
-					// device_printf("Size of probe description is: %d", pbdesc_len);
-					// if(pbdesc_len < 512) 
-					// {
-					// 	cp = strlcpy(ctrl_mtd_ev->umtd.pdesc, mtd->umtd.dtrace_pdesc, pbdesc_len + 1);
-					// 	KASSERT(cp == pdesc_len, "Error occured while copying probe description");
-					// 	device_printf(dev, "Successfully added the probe description to the control entry. \n");
-					// } else {
-					// 	// split
-					// 	device_printf(dev, "Probedesc doesn't fit in control element");
-					// }
+					pbdesc_len = sizeof(dtrace_probedesc_t);
+					device_printf("Size of probe description is: %d", pbdesc_len);
+					if(pbdesc_len < 512) 
+					{
+						cp = strlcpy(ctrl_mtd_ev->umtd.pdesc, mtd->umtd.dtrace_pdesc, pbdesc_len + 1);
+						KASSERT(cp == pbdesc_len, "Error occured while copying probe description");
+						device_printf(dev, "Successfully added the probe description to the control entry. \n");
+					} else {
+						// split
+						device_printf(dev, "Probedesc doesn't fit in control element");
+					}
 					device_printf(dev, "Probe description here");
 					break;
 				case EPROBE_DESCRIPTION:
