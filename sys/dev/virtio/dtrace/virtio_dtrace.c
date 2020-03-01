@@ -1399,6 +1399,8 @@ vtdtr_consume_trace(void *xsc)
 					{
 						cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dtrace_epdesc_buf, fmt_len + 1);
 						KASSERT(cp == fmt_len, "Error occurred while copying format string");
+					} else {
+						device_printf(dev, "Format string doesn't fit in control element");
 					}
 					break;
 				case NPROBES:
@@ -1408,7 +1410,13 @@ vtdtr_consume_trace(void *xsc)
 					// Assume probe description fits in control event
 					pbdesc_len = sizeof(dtrace_probedesc_t);
 					device_printf("Size of probe description is: %d", pbdesc_len);
+					if(pdesc_len < 512) 
+					{
 					memcpy(&ctrl_mtd_ev->umtd.pdesc, &mtd->umtd.dtrace_pdesc, pbdesc_len));
+					} else {
+						// split
+						device_printf(dev, "Probedesc doesn't fit in control element");
+					}
 					break;
 				case EPROBE_DESCRIPTION:
 					// Where things get serious
@@ -1419,6 +1427,7 @@ vtdtr_consume_trace(void *xsc)
 						KASSERT(cp == epdesc_len, "Error occurred while copying enabled probe description");
 					} else {
 						// split and pass more control entries
+						device_printf(dev, "Eprobedesc doesn't fit in control element");
 					}
 					break;
 				default:
