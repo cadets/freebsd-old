@@ -550,7 +550,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		{   
 
 			pdesc = malloc(sizeof(dtrace_probedesc_t), M_DEVBUF, M_NOWAIT | M_ZERO);
-			bzero(pdesc, sizeof(dtrace_probedesc_t));
+			memset(pdesc, 0, sizeof(dtrace_probedesc_t));
 			pdesc->dtpd_provider[DTRACE_PROVNAMELEN - 1] = '\0';
 			pdesc->dtpd_mod[DTRACE_MODNAMELEN - 1] = '\0';
 			pdesc->dtpd_func[DTRACE_FUNCNAMELEN - 1] = '\0';
@@ -576,8 +576,8 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		
 			mtd = &trc_entry->uentry.metadata;
 			mtd->type = PROBE_DESCRIPTION;
-			mtd->umtd.dtrace_pdesc = (unsigned char  *)pdesc;
-			DLOGTR1(PRIO_LOW, "Probe description size: %d", strlen(mtd->umtd.dtrace_pdesc));
+			mtd->umtd.dtrace_pdesc = (unsigned char *)pdesc;
+			printf("Probe description size: %d", sizeof(mtd->umtd.dtrace_pdesc));
 
 			mtx_lock(&tq->mtx);
 			vtdtr_tq_enqueue(tq, trc_entry);
@@ -619,7 +619,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 			size = sizeof(dtrace_eprobedesc_t) +
 				   (epdesc.dtepd_nrecs * sizeof(dtrace_recdesc_t));
 
-			buf = malloc(size, M_DDTRACE, M_NOWAIT);
+			buf = malloc(size, M_DEVBUF, M_NOWAIT | M_ZERO);
 			dest = (uintptr_t)buf;
 
 			bcopy(&epdesc, (void *)dest, sizeof(epdesc));
@@ -661,7 +661,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 			vtdtr_tq_enqueue(tq, trc_entry);
 			mtx_unlock(&tq->mtx);
 
-			free(buf, M_DDTRACE);
+			// free(buf, M_DEVBUF);
 		}
 	}
 	mutex_exit(&dtrace_lock);

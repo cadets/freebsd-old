@@ -1415,7 +1415,7 @@ vtdtr_consume_trace(void *xsc)
 					device_printf(dev, "Number of probes is: %d. \n", ctrl_mtd_ev->umtd.dtrace_nprobes);
 					break;
 				case PROBE_DESCRIPTION:
-					pbdesc_len = strlen(mtd->umtd.dtrace_pdesc);
+					pbdesc_len = sizeof(mtd->umtd.dtrace_pdesc);
 					device_printf("Size of probe description is: %d", pbdesc_len);
 					// if(pbdesc_len < 512) 
 					// {
