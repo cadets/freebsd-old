@@ -417,7 +417,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		DPRINTF(("Successfully opened everything."));
 		
 		// Making a (big) assumption here that things will come in order :-?
-		switch(mtd->type)
+		switch(mtd_ev->type)
 		{
 		case NFORMAT:
 			sz = fwrite(&mtd_ev->umtd.dts_nformats, 1, sizeof(int), trace_stream);
@@ -448,7 +448,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 
 		fflush(trace_stream);
 		fclose(trace_stream);
-		close(fd)
+		close(fd);
 		break;
 	case VTDTR_DEVICE_EOF:
 		DPRINTF(("Received VTDTR_DEVICE_EOF. \n"));

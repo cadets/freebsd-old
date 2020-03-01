@@ -429,7 +429,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	mtd = &trc_entry->uentry.metadata;
 	mtd->type = NFORMAT;
 	mtd->umtd.dts_nformats = state->dts_nformats;
-	DLOGTR0("Make sure they're there: %d %d", mtd->umtd.dts_nformats, state->dts_nformats);
+	DLOGTR1("Make sure they're there: %d %d", mtd->umtd.dts_nformats, state->dts_nformats);
 	mtx_lock(&tq->mtx);
 	vtdtr_tq_enqueue(tq, trc_entry);
 	mtx_unlock(&tq->mtx);
