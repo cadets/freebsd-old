@@ -396,6 +396,9 @@ ddtrace_thread(void *arg)
 static int
 ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 {
+	struct vtdtr_traceq *tq;
+	struct vtdtr_trace_entry *trc_entry;
+	struct virtio_dtrace_metadata *mtd;
 	dtrace_action_t *act;
 	dtrace_ecb_t *ecb;
 	dtrace_eprobedesc_t epdesc;
@@ -415,7 +418,22 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	 */
 	DLOGTR0(PRIO_LOW, "Persisting dtrace format string metadata\n");
 
+	tq = virtio_dtrace_device_register();
+	DL_ASSERT(tq != NULL, ("vtdtr_traceq was not initialised."));
 	mutex_enter(&dtrace_lock);
+
+	trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
+	DL_ASSERT(trc_entry != NULL, "Failed allocating memory for trace entry");
+	trc_entry->type = DDTRACE_METADATA;
+
+	mtd = &trc_entry->uentry.metadata;
+	mtd->type = NFORMAT;
+	mtd->umtd.dts_nformats = state->dts_nformats;
+	
+	mtx_lock(&tq->mtx);
+	vtdtr_tq_enqueue(tq, trc_entry);
+	mtx_unlock(&tq->mtx);
+
 
 #if 0
 	if (dlog_produce(hdl, DDTRACE_NFORMAT_KEY,
@@ -427,6 +445,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		return -1;
 	}
 #endif
+	
 
 	for (int fmt = 1; fmt <= state->dts_nformats; fmt++)
 	{
@@ -439,8 +458,20 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		DL_ASSERT(state->dts_formats != NULL,
 				  ("Format array cannot be NULL"));
 		fmt_str = state->dts_formats[fmt - 1];
-		DL_ASSERT(fmt_str != NULL, ("Format string cannor be NULL"));
+		DL_ASSERT(fmt_str != NULL, ("Format string cannot be NULL"));
 		fmt_len = strlen(fmt_str) + 1;
+		trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
+		DL_ASSERT(trc_entry != NULL, "Failed allocating memory for the trace entry");
+		trc_entry->type = DDTRACE_METADATA;
+
+		
+		mtd = &trc_entry->uentry.metadata;
+		mtd->type = FORMAT_STRING;
+		mtd->umtd.dts_fmtstr = fmt_str;
+
+		mtx_lock(&tq->mtx);
+		vtdtr_tq_enqueue(tq, trc_entry);
+		mtx_unlock(&tq->mtx);
 
 #if 0
 		/* Persit the format string to dlog. */
@@ -478,7 +509,15 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		return -1;
 	}
 #endif
+	trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
+	DL_ASSERT(trc_entry != NULL, "Failed allocating memory for trace entry");
+	trc_entry->type = DDTRACE_METADATA;
 
+	mtd = &trc_entry->uentry.metadata;
+	mtd->type = NPROBES;
+	mtd->umtd.dtrace_nprobes = dtrace_nprobes;
+	
+		
 	mutex_enter(&dtrace_lock);
 	DL_ASSERT(state->dts_necbs > 0 && state->dts_ecbs != NULL,
 			  ("dtrace ecb state is invalid"));
@@ -524,6 +563,15 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 						  DTRACE_FUNCNAMELEN - 1);
 			(void)strncpy(pdesc.dtpd_name, probe->dtpr_name,
 						  DTRACE_NAMELEN - 1);
+
+			trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
+			DL_ASSERT(trc_entry != NULL, "Failed allocating memory for trace entry");
+			trc_entry->type = DDTRACE_METADATA;
+		
+			mtd = &trc_entry->uentry.metadata;
+			mtd->type = PROBE_DESCRIPTION;
+			mtd->umtd.dtrace_pdesc = &pdesc;
+
 #if 0
 			if (dlog_produce(hdl, DDTRACE_PROBE_KEY,
 							 (unsigned char *)&pdesc,
@@ -590,6 +638,14 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 			}
 #endif
 
+			trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
+			DL_ASSERT(trc_entry != NULL, "Failed allocating memory for trace entry");
+			trc_entry->type = DDTRACE_METADATA;
+		
+			mtd = &trc_entry->uentry.metadata;
+			mtd->type = EPROBE_DESCRIPTION;
+			mtd->umtd.dtrace_eprobe_buf = buf;
+
 			free(buf, M_DDTRACE);
 		}
 	}
@@ -621,13 +677,13 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 
 	DLOGTR0(PRIO_LOW, "Persisting trace data. \n");
 
-	DL_ASSERT(tq != NULL, ("vtdtr_traceq was not initialised.\n"));
+	DL_ASSERT(tq != NULL, ("vtdtr_traceq was not initialised."));
 
 	trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 	DL_ASSERT(trc_entry != NULL, "Failed allocating memory for trace entry.");
-	memset(trc_entry, 0, sizeof(struct vtdtr_trace_entry));
+	trc_entry->type = DDTRACE_DATA;
 
-	trc = &trc_entry->trace;
+	trc = &trc_entry->uentry.trace;
 	trc->dtbd_size = desc->dtbd_size;
 	trc->dtbd_cpu = desc->dtbd_cpu;
 	trc->dtbd_errors = desc->dtbd_errors;

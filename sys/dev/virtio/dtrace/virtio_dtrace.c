@@ -176,6 +176,9 @@ static struct vtdtr_ctrl_entry *vtdtr_cq_dequeue(struct vtdtr_ctrlq *);
 static void vtdtr_notify(struct virtio_dtrace_queue *);
 static void vtdtr_poll(struct virtio_dtrace_queue *);
 static void vtdtr_consume_trace(void *);
+static struct virtio_dtrace_control *vtdtr_consume_metadata(
+	struct vtdtr_softc *,
+	struct virtio_dtrace_metadata *);
 static void vtdtr_run(void *);
 static void vtdtr_advertise_prov_priv(void *, const char *, struct uuid *);
 static void vtdtr_destroy_prov_priv(void *, struct uuid *);
@@ -312,7 +315,7 @@ void vtdtr_tq_print(struct vtdtr_traceq *tq, char *from)
 	if (!STAILQ_EMPTY(&tq->head))
 		STAILQ_FOREACH_SAFE(trc_entry, &tq->head, entries, trc_entry_temp)
 		{
-			printf(" %d \n", trc_entry->trace.dtbd_size);
+			printf(" %d \n", trc_entry->uentry.trace.dtbd_size);
 		}
 	else
 		printf("Trace queue is empty. \n");
@@ -759,7 +762,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		if (debug)
 			device_printf(dev, "VIRTIO_DTRACE_DEVICE_READY\n");
 		// (MARA): you've added this mutexes
-		mtx_lock(&sc->vtdtr_mtx);	
+		mtx_lock(&sc->vtdtr_mtx);
 		sc->vtdtr_host_ready = 1;
 		mtx_unlock(&sc->vtdtr_mtx);
 		break;
@@ -1329,9 +1332,12 @@ vtdtr_consume_trace(void *xsc)
 	struct vtdtr_trace_entry *trc_entry;
 	struct virtio_dtrace_control *ctrl;
 	struct virtio_dtrace_trace *trc;
+	struct virtio_dtrace_metadata *mtd;
 	struct vtdtr_ctrl_trcevent *ctrl_trc_ev;
+	struct vtdtr_ctrl_metaevent *ctrl_mtd_ev;
 	device_t dev;
-	size_t trc_buf_len;
+	size_t trc_buf_len, epdesc_len, fmt_len;
+	size_t cp;
 	int error;
 
 	sc = xsc;
@@ -1344,42 +1350,90 @@ vtdtr_consume_trace(void *xsc)
 		{
 			device_printf(dev, "Actually enqueued in ddtrace. \n");
 
-			vtdtr_tq_print(tq, "In virtio_dtrace, before dequeue.");
+			// vtdtr_tq_print(tq, "In virtio_dtrace, before dequeue.");
 			trc_entry = vtdtr_tq_dequeue(tq);
-			vtdtr_tq_print(tq, "In virtio_dtrace, after dequeue.");
-
-			trc = &trc_entry->trace;
-			device_printf(dev, "Trace data size: %zu. \n", trc->dtbd_size);
-			KASSERT(trc->dtbd_data != NULL, "Trace data buffer cannot be NULL.");
+			// vtdtr_tq_print(tq, "In virtio_dtrace, after dequeue.");
 
 			ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 			KASSERT(ctrl_entry != NULL, "Failed allocating memory for control entry.");
 			memset(ctrl_entry, 0, sizeof(struct vtdtr_ctrl_entry));
 
-			ctrl = &ctrl_entry->ctrl;
-			ctrl->event = VIRTIO_DTRACE_TRACE;
-			ctrl_trc_ev = &ctrl->uctrl.trace_ev;
-
-			ctrl_trc_ev->dtbd_size = trc->dtbd_size;
-			ctrl_trc_ev->dtbd_cpu = trc->dtbd_cpu;
-			ctrl_trc_ev->dtbd_errors = trc->dtbd_errors;
-			ctrl_trc_ev->dtbd_drops = trc->dtbd_drops;
-			ctrl_trc_ev->dtbd_oldest = trc->dtbd_oldest;
-			ctrl_trc_ev->dtbd_timestamp = trc->dtbd_timestamp;
-			KASSERT(ctrl_trc_ev->dtbd_size == trc->dtbd_size, "Failed copying into fields");
-
-			// TODO split into two events if bigger than 512
-			if (ctrl_trc_ev->dtbd_size < 512)
+			switch (trc_entry->type)
 			{
-				trc_buf_len = strlen(trc->dtbd_data);
-				size_t cp = strlcpy(ctrl_trc_ev->dtbd_data, trc->dtbd_data, trc_buf_len + 1);
-				KASSERT(cp == trc_buf_len, "Error occured while copying trace buffer data");
+			case DDTRACE_TRACE:
+				trc = &trc_entry->uentry.trace;
+				device_printf(dev, "Trace data size: %zu. \n", trc->dtbd_size);
+				KASSERT(trc->dtbd_data != NULL, "Trace data buffer cannot be NULL.");
+
+				ctrl = &ctrl_entry->ctrl;
+				ctrl->event = VIRTIO_DTRACE_TRACE;
+				ctrl_trc_ev = &ctrl->uctrl.trace_ev;
+
+				ctrl_trc_ev->dtbd_size = trc->dtbd_size;
+				ctrl_trc_ev->dtbd_cpu = trc->dtbd_cpu;
+				ctrl_trc_ev->dtbd_errors = trc->dtbd_errors;
+				ctrl_trc_ev->dtbd_drops = trc->dtbd_drops;
+				ctrl_trc_ev->dtbd_oldest = trc->dtbd_oldest;
+				ctrl_trc_ev->dtbd_timestamp = trc->dtbd_timestamp;
+				KASSERT(ctrl_trc_ev->dtbd_size == trc->dtbd_size, "Failed copying into fields");
+
+				// TODO split into two events if bigger than 512
+				if (ctrl_trc_ev->dtbd_size < 512)
+				{
+					trc_buf_len = strlen(trc->dtbd_data);
+					size_t cp = strlcpy(ctrl_trc_ev->dtbd_data, trc->dtbd_data, trc_buf_len + 1);
+					KASSERT(cp == trc_buf_len, "Error occured while copying trace buffer data");
+				}
+				break;
+			case DDTRACE_METADATA:
+				mtd = &trc_entry->uentry.metadata;
+				ctrl->event = VIRTIO_DTRACE_METADATA;
+				ctrl_mtd_ev = &ctrl->uctrl.meta_ev;
+				ctrl_mtd_ev->type = mtd->type;
+				switch (mtd->type)
+				{
+				case NFORMAT:
+					ctrl_mtd_ev->umtd.dts_nformats = mtd->umtd.dts_nformats;
+					break;
+				case FORMAT_STRING:
+					fmt_len = strlen(mtd->umtd.dts_fmtstr);
+					// TODO: format strings might be (unlikely) longer
+					if(fmt_len < 512)
+					{
+						cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dtrace_epdesc_buf);
+						KASSERT(cp == fmt_len, "Error occurred while copying format string")
+					}
+					break;
+				case NPROBES:
+					ctrl_mtd_ev->umtd.dtrace_nprobes = mtd->umtd.dtrace_nprobes;
+					break;
+				case PROBE_DESCRIPTION:
+					// Assume probe description fits in control event
+					memcpy(&ctrl_mtd_ev->umtd.pdesc, &mtd->umtd.dtrace_pdesc, sizeof(dtrace_probedesc_t));
+					break;
+				case EPROBE_DESCRIPTION:
+					// Where things get serious
+					epdesc_len = sizeof(mtd->umtd.dtrace_epdesc_buf);
+					if(epdesc_len < 512)
+					{
+						memcpy(&ctrl_mtd_ev->umtd.dtrace_epdesc_buf, &mtd->umtd.dtrace_epdesc_buf);
+						KASSERT(cp == epdesc_len, "Error occurred while copying enabled probe description");
+					} else {
+						// split and pass more control entries
+					}
+					break;
+				default:
+					device_printf("WARNING: Wrong metadata event.");
+					break;
+				}
+				break;
+			default:
+				device_printf("WARNING: Wrong trace event.");
+				break;
 			}
 
 			mtx_lock(&sc->vtdtr_ctrlq->mtx);
-			vtdtr_cq_print(sc->vtdtr_ctrlq, "In virtio_dtrace, before enqueue.");
 			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
-			vtdtr_cq_print(sc->vtdtr_ctrlq, "In virtio_dtrace, after enqueue.");
 			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 
 			device_printf(dev, "Successfully enqueued in the control queue. \n");
@@ -1389,7 +1443,6 @@ vtdtr_consume_trace(void *xsc)
 			mtx_lock(&sc->vtdtr_mtx);
 			vtdtr_notify_ready(sc);
 			mtx_unlock(&sc->vtdtr_mtx);
-
 
 			mtx_lock(&sc->vtdtr_condmtx);
 			cv_signal(&sc->vtdtr_condvar);
@@ -1454,9 +1507,9 @@ vtdtr_run(void *xsc)
 			   (!sc->vtdtr_shutdown))
 		{
 			device_printf(dev, "Is control queue empty? %d \n", vtdtr_cq_empty(sc->vtdtr_ctrlq));
-			device_printf(dev, "vtdtr_host_ready: %d, vtdtr_shutdown: %d", sc->vtdtr_host_ready,sc->vtdtr_shutdown);
+			device_printf(dev, "vtdtr_host_ready: %d, vtdtr_shutdown: %d", sc->vtdtr_host_ready, sc->vtdtr_shutdown);
 			cv_wait(&sc->vtdtr_condvar, &sc->vtdtr_condmtx);
-			device_printf(dev,"I've finished waiting. \n");
+			device_printf(dev, "I've finished waiting. \n");
 		}
 		mtx_unlock(&sc->vtdtr_condmtx);
 
