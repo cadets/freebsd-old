@@ -429,7 +429,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	mtd = &trc_entry->uentry.metadata;
 	mtd->type = NFORMAT;
 	mtd->umtd.dts_nformats = state->dts_nformats;
-	
+	DLOGTR0("Make sure they're there: %d %d", mtd->umtd.dts_nformats, state->dts_nformats);
 	mtx_lock(&tq->mtx);
 	vtdtr_tq_enqueue(tq, trc_entry);
 	mtx_unlock(&tq->mtx);
@@ -516,7 +516,11 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	mtd = &trc_entry->uentry.metadata;
 	mtd->type = NPROBES;
 	mtd->umtd.dtrace_nprobes = dtrace_nprobes;
-	DLOGTR1(PRIO_LOW, "Confusion about dtrace_nprobes: %d", dtrace_nprobes);
+	DLOGTR1(PRIO_LOW, "Confusion about dtrace_nprobes: %d %d.\n", dtrace_nprobes);
+	
+	mtx_lock(&tq->mtx);
+	vtdtr_tq_enqueue(tq, trc_entry);
+	mtx_unlock(&tq->mtx);
 	
 		
 	mutex_enter(&dtrace_lock);
@@ -572,6 +576,10 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 			mtd = &trc_entry->uentry.metadata;
 			mtd->type = PROBE_DESCRIPTION;
 			mtd->umtd.dtrace_pdesc = &pdesc;
+
+			mtx_lock(&tq->mtx);
+			vtdtr_tq_enqueue(tq, trc_entry);
+			mtx_unlock(&tq->mtx);
 
 #if 0
 			if (dlog_produce(hdl, DDTRACE_PROBE_KEY,
