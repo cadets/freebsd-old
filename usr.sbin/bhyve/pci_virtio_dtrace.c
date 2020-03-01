@@ -58,8 +58,6 @@ __FBSDID("$FreeBSD$");
 
 #include <vmmapi.h>
 
-#include <dtrace.h>
-
 #include "dthyve.h"
 #include "bhyverun.h"
 #include "pci_emul.h"
