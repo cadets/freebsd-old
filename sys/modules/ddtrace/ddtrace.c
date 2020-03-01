@@ -644,7 +644,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		
 			mtd = &trc_entry->uentry.metadata;
 			mtd->type = EPROBE_DESCRIPTION;
-			mtd->umtd.dtrace_eprobe_buf = buf;
+			mtd->umtd.dtrace_epdesc_buf = buf;
 
 			free(buf, M_DDTRACE);
 		}

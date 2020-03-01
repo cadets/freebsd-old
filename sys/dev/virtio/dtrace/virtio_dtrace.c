@@ -1397,7 +1397,7 @@ vtdtr_consume_trace(void *xsc)
 					// TODO: format strings might be (unlikely) longer
 					if(fmt_len < 512)
 					{
-						cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dtrace_epdesc_buf);
+						cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dtrace_epdesc_buf, fmt_len + 1);
 						KASSERT(cp == fmt_len, "Error occurred while copying format string");
 					}
 					break;
@@ -1410,22 +1410,22 @@ vtdtr_consume_trace(void *xsc)
 					break;
 				case EPROBE_DESCRIPTION:
 					// Where things get serious
-					epdesc_len = sizeof(mtd->umtd.dtrace_epdesc_buf);
+					epdesc_len = strlen(mtd->umtd.dtrace_epdesc_buf);
 					if(epdesc_len < 512)
 					{
-						memcpy(&ctrl_mtd_ev->umtd.dtrace_epdesc_buf, &mtd->umtd.dtrace_epdesc_buf);
+						strlcpy(&ctrl_mtd_ev->umtd.dtrace_epdesc_buf, &mtd->umtd.dtrace_epdesc_buf, epdesc_len + 1);
 						KASSERT(cp == epdesc_len, "Error occurred while copying enabled probe description");
 					} else {
 						// split and pass more control entries
 					}
 					break;
 				default:
-					device_printf("WARNING: Wrong metadata event.");
+					device_printf(dev, "WARNING: Wrong metadata event.");
 					break;
 				}
 				break;
 			default:
-				device_printf("WARNING: Wrong trace event.");
+				device_printf(dev, "WARNING: Wrong trace event.");
 				break;
 			}
 
