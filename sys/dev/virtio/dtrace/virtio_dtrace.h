@@ -31,7 +31,7 @@
 
 #include <sys/queue.h>
 #include <sys/dtrace_bsd.h>
-#include <dtrace.h>
+#include <sys/dtrace.h>
 
 /*
  * The events related to probe installation and uninstallation are presently

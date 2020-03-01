@@ -40,6 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/ucred.h>
 #include <sys/dtrace_bsd.h>
+#include <sys/dtrace.h>
 #include <sys/vtdtr.h>
 #include <sys/stat.h>
 
