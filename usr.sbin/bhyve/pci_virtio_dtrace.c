@@ -40,7 +40,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/ucred.h>
 #include <sys/dtrace_bsd.h>
-#include <sys/dtrace.h>
 #include <sys/vtdtr.h>
 #include <sys/stat.h>
 
@@ -167,7 +166,7 @@ struct pci_vtdtr_ctrl_metaevent
 		int dts_nformats;
 		char dts_fmtstr[512];
 		int dt_nprobes;
-		struct dtrace_probedesc dt_pdesc;
+		char dt_pdesc[512];
 		char dt_epdesc_buf[512];
 	} umtd;
 	struct uuid uuid;

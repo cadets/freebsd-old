@@ -125,7 +125,7 @@ struct vtdtr_ctrl_metaevent {
 		int dts_nformats;
 		char dts_fmtstr[512];
 		int dtrace_nprobes;
-		dtrace_probedesc_t pdesc;
+		char pdesc[512];
 		char dtrace_epdesc_buf[512]; /* this is so bad */
 	} umtd;
 	struct uuid uuid;
@@ -161,7 +161,7 @@ struct virtio_dtrace_metadata {
 		int dts_nformats; /* number of format strings */
 		char *dts_fmtstr; /* format string */
 		int dtrace_nprobes; /* number of probes */
-		dtrace_probedesc_t *dtrace_pdesc; /* one probe description */
+		char *dtrace_pdesc; /* one probe description */
 		char *dtrace_epdesc_buf; /* enabled probe description buffer */
 	} umtd;
 

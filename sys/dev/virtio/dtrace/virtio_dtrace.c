@@ -1333,7 +1333,7 @@ vtdtr_consume_trace(void *xsc)
 	struct vtdtr_ctrl_trcevent *ctrl_trc_ev;
 	struct vtdtr_ctrl_metaevent *ctrl_mtd_ev;
 	device_t dev;
-	size_t trc_buf_len, epdesc_len, fmt_len;
+	size_t trc_buf_len, epdesc_len, pbdesc_len, fmt_len;
 	size_t cp;
 	int error;
 
@@ -1406,7 +1406,9 @@ vtdtr_consume_trace(void *xsc)
 					break;
 				case PROBE_DESCRIPTION:
 					// Assume probe description fits in control event
-					memcpy(&ctrl_mtd_ev->umtd.pdesc, &mtd->umtd.dtrace_pdesc, sizeof(dtrace_probedesc_t));
+					pbdesc_len = sizeof(dtrace_probedesc_t);
+					device_printf("Size of probe description is: %d", pbdesc_len);
+					memcpy(&ctrl_mtd_ev->umtd.pdesc, &mtd->umtd.dtrace_pdesc, pbdesc_len));
 					break;
 				case EPROBE_DESCRIPTION:
 					// Where things get serious
