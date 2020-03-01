@@ -403,7 +403,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	dtrace_ecb_t *ecb;
 	dtrace_eprobedesc_t epdesc;
 	dtrace_probe_t *probe;
-	dtrace_probedesc_t *pdesc;
+	dtrace_probedesc_t pdesc;
 	char *fmt_str;
 	size_t size;
 	uintptr_t dest;
@@ -547,38 +547,35 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		 * implementation.
 		 */
 		if ((probe = dtrace_probes[ecb->dte_probe->dtpr_id - 1]) != NULL)
-		{
+		{   
 
-			// bzero(&pdesc, sizeof(dtrace_probedesc_t));
-			
+			bzero(&pdesc, sizeof(dtrace_probedesc_t));
+			pdesc.dtpd_provider[DTRACE_PROVNAMELEN - 1] = '\0';
+			pdesc.dtpd_mod[DTRACE_MODNAMELEN - 1] = '\0';
+			pdesc.dtpd_func[DTRACE_FUNCNAMELEN - 1] = '\0';
+			pdesc.dtpd_name[DTRACE_NAMELEN - 1] = '\0';
+
+			/* Construct the probe description and
+			 * persist the metadata to dlog.
+			 */
+			pdesc.dtpd_id = epid; // TODO: temporary fix
+			(void)strncpy(pdesc.dtpd_provider,
+						  probe->dtpr_provider->dtpv_name,
+						  DTRACE_PROVNAMELEN - 1);
+			(void)strncpy(pdesc.dtpd_mod, probe->dtpr_mod,
+						  DTRACE_MODNAMELEN - 1);
+			(void)strncpy(pdesc.dtpd_func, probe->dtpr_func,
+						  DTRACE_FUNCNAMELEN - 1);
+			(void)strncpy(pdesc.dtpd_name, probe->dtpr_name,
+						  DTRACE_NAMELEN - 1);
+
 			trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 			DL_ASSERT(trc_entry != NULL, "Failed allocating memory for trace entry");
 			trc_entry->type = DDTRACE_METADATA;
 		
 			mtd = &trc_entry->uentry.metadata;
 			mtd->type = PROBE_DESCRIPTION;
-			pdesc = &mtd->umtd.dtrace_pdesc;
-			DL_ASSERT(pdesc != NULL, "Invalid pointer to probe description");
-
-			
-			pdesc->dtpd_provider[DTRACE_PROVNAMELEN - 1] = '\0';
-			pdesc->dtpd_mod[DTRACE_MODNAMELEN - 1] = '\0';
-			pdesc->dtpd_func[DTRACE_FUNCNAMELEN - 1] = '\0';
-			pdesc->dtpd_name[DTRACE_NAMELEN - 1] = '\0';
-
-			/* Construct the probe description and
-			 * persist the metadata to dlog.
-			 */
-			pdesc->dtpd_id = epid; // TODO: temporary fix
-			(void)strncpy(pdesc->dtpd_provider,
-						  probe->dtpr_provider->dtpv_name,
-						  DTRACE_PROVNAMELEN - 1);
-			(void)strncpy(pdesc->dtpd_mod, probe->dtpr_mod,
-						  DTRACE_MODNAMELEN - 1);
-			(void)strncpy(pdesc->dtpd_func, probe->dtpr_func,
-						  DTRACE_FUNCNAMELEN - 1);
-			(void)strncpy(pdesc->dtpd_name, probe->dtpr_name,
-						  DTRACE_NAMELEN - 1);
+			mtd->umtd.dtrace_pdesc = (unsigned char  *)&pdesc;
 
 			mtx_lock(&tq->mtx);
 			vtdtr_tq_enqueue(tq, trc_entry);
@@ -656,11 +653,11 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		
 			mtd = &trc_entry->uentry.metadata;
 			mtd->type = EPROBE_DESCRIPTION;
-			mtd->umtd.dtrace_epdesc_buf = (char *)buf;
+			// mtd->umtd.dtrace_epdesc_buf = (char *)buf;
 
-			/* mtx_lock(&tq->mtx);
+			mtx_lock(&tq->mtx);
 			vtdtr_tq_enqueue(tq, trc_entry);
-			mtx_unlock(&tq->mtx);*/
+			mtx_unlock(&tq->mtx);
 
 			free(buf, M_DDTRACE);
 		}
