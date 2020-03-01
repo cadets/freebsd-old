@@ -176,9 +176,6 @@ static struct vtdtr_ctrl_entry *vtdtr_cq_dequeue(struct vtdtr_ctrlq *);
 static void vtdtr_notify(struct virtio_dtrace_queue *);
 static void vtdtr_poll(struct virtio_dtrace_queue *);
 static void vtdtr_consume_trace(void *);
-static struct virtio_dtrace_control *vtdtr_consume_metadata(
-	struct vtdtr_softc *,
-	struct virtio_dtrace_metadata *);
 static void vtdtr_run(void *);
 static void vtdtr_advertise_prov_priv(void *, const char *, struct uuid *);
 static void vtdtr_destroy_prov_priv(void *, struct uuid *);
