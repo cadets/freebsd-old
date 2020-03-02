@@ -297,7 +297,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	struct pci_vtdtr_control *ctrl;
 	struct pci_vtdtr_ctrl_trcevent *trc_ev;
 	struct pci_vtdtr_ctrl_metaevent *mtd_ev;
-	FILE *trace_stream;
+	FILE *trace_stream, *meta_stream;
 
 	//struct pci_vtdtr_ctrl_provevent *pv_ev;
 	//struct pci_vtdtr_ctrl_pbevent *pb_ev;
@@ -405,58 +405,59 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		pthread_mutex_unlock(&sc->vsd_mtx);
 		DPRINTF(("I've received metadata. \n"));
 		mtd_ev = &ctrl->uctrl.mtd_ev;
-		// if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY)) == -1)
-		// {
-		// 	DPRINTF(("Failed to open trace write pipe: %s. \n", strerror(errno)));
-		// 	exit(1);
-		// }
+		if ((fd = openat(dir_fd, "meta_fifo", O_WRONLY)) == -1)
+		{
+			DPRINTF(("Failed to open trace write pipe: %s. \n", strerror(errno)));
+			exit(1);
+		}
 
-		// if ((trace_stream = fdopen(fd, "w")) == NULL)
-		// {
-		// 	DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno)));
-		// 	exit(1);
-		// }
+		if ((meta_stream = fdopen(fd, "w")) == NULL)
+		{
+			DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno)));
+			exit(1);
+		}
 
-		// DPRINTF(("Successfully opened everything."));
+		DPRINTF(("Successfully opened everything."));
 		
-		// Making a (big) assumption here that things will come in order :-?
 		switch(mtd_ev->type)
 		{
 		case NFORMAT:
-			// sz = fwrite(&mtd_ev->umtd.dts_nformats, 1, sizeof(int), trace_stream);
-			// assert(sz > 0);
 			DPRINTF(("Got NFORMAT. \n"));
+			sz = fwrite(&mtd_ev->umtd.dts_nformats, 1, sizeof(int), meta_stream);
+			assert(sz > 0);
 			break;
 		case FORMAT_STRING:
-			// fmt_len = sizeof(mtd_ev->umtd.dts_fmtstr);
-			// sz = fwrite(&mtd_ev->umtd.dts_fmtstr, 1, fmt_len, trace_stream);
-			// assert(sz == fmt_len);
 			DPRINTF(("Got FORMAT_STRING. \n"));
+			fmt_len = strlen(mtd_ev->umtd.dts_fmtstr);
+			sz = fwrite(&mtd_ev->umtd.dts_fmtstr, 1, fmt_len, meta_stream);
+			assert(sz == fmt_len);
 			break;
 		case NPROBES:
-			// sz = fwrite(&mtd_ev->umtd.dt_nprobes, 1, sizeof(int), trace_stream);
-			// assert(sz > 0);
 			DPRINTF(("Got NPROBES. \n"));
+			sz = fwrite(&mtd_ev->umtd.dt_nprobes, 1, sizeof(int), meta_stream);
+			assert(sz > 0);
 			break;
 		case PROBE_DESCRIPTION:
-			// sz = fwrite(&mtd_ev->umtd.dt_pdesc, 1, sizeof(dtrace_probedesc_t), trace_stream);
-			// assert(sz == sizeof(dtrace_probedesc_t));
 			DPRINTF(("Got PROBE_DESCRIPTION. \n"));
+			sz = fwrite(&mtd_ev->umtd.dt_pdesc, 1, sizeof(dtrace_probedesc_t), meta_stream);
+			assert(sz == sizeof(dtrace_probedesc_t));
 			break;
 		case EPROBE_DESCRIPTION: 
-			// epdesc_len = sizeof(mtd_ev->umtd.dt_epdesc_buf);
-			// sz = fwrite(&mtd_ev->umtd.dt_epdesc_buf, 1, epdesc_len, trace_stream);
-			// assert(sz == epdesc_len);
 			DPRINTF(("Got EPROBE_DESCRIPTION. \n"));
+			epdesc_len = mtd_ev->umtd.dt_epdesc.buf_size;
+			sz = fwrite(&mtd_ev->umtd.dt_epdesc.buf_size, 1, sizeof(size_t), meta_stream);
+			assert(sz > 0);
+			sz = fwrite(&mtd_ev->umtd.dt_epdesc.buf, 1, epdesc_len, meta_stream);
+			assert(sz == epdesc_len);
 			break;
 		default:
 			WPRINTF(("WARNING: Wrong metadata event. "));
 			break;
 		}
 
-		/*fflush(trace_stream);
-		fclose(trace_stream);
-		close(fd);*/
+		fflush(meta_stream);
+		fclose(meta_stream);
+		close(fd);
 		break;
 	case VTDTR_DEVICE_EOF:
 		DPRINTF(("Received VTDTR_DEVICE_EOF. \n"));

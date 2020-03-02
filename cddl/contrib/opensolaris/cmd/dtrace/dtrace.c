@@ -78,7 +78,6 @@ struct dtrace_guest_entry
 	entries;
 };
 
-
 struct dtrace_guestq
 {
 	STAILQ_HEAD(, dtrace_guest_entry)
@@ -1550,7 +1549,7 @@ filter_machines(char *filt)
 
 static int dtrace_gtq_empty(struct dtrace_guestq *gtq)
 {
-	return(STAILQ_EMPTY(&gtq->head));
+	return (STAILQ_EMPTY(&gtq->head));
 }
 
 static void dtrace_gtq_enqueue(struct dtrace_guestq *gtq, struct dtrace_guest_entry *trc_entry)
@@ -1563,15 +1562,14 @@ struct dtrace_guest_entry *dtrace_gtq_dequeue(struct dtrace_guestq *gtq)
 {
 	struct dtrace_guest_entry *trc_entry;
 	trc_entry = STAILQ_FIRST(&gtq->head);
-	if(trc_entry != NULL)
+	if (trc_entry != NULL)
 	{
 		STAILQ_REMOVE_HEAD(&gtq->head, entries);
 	}
-	printf("Dequeued trace element of size: %d",trc_entry->desc->dtbd_size);
+	printf("Dequeued trace element of size: %d", trc_entry->desc->dtbd_size);
 
 	return (trc_entry);
 }
-
 
 static void *write_script(void *file_path)
 {
@@ -1651,7 +1649,35 @@ static void *write_script(void *file_path)
 
 static void read_trace_metadata()
 {
-	
+	FILE *meta_stream;
+	char *meta_fifo;
+	int fd, sz, nprobes, nfmt;
+
+	meta_fifo = "/tmp/meta_fifo";
+	int err = mkfifo(meta_fifo, 0666);
+	if (err)
+	{
+		printf("Failed to mkfifo: %s", strerror(errno));
+		exit(1);
+	}
+
+	if ((fd = open(meta_fifo, O_RDONLY)) == -1)
+	{
+		printf("Failed to open trace pipe for reading: %s. \n", strerror(errno));
+		exit(1);
+	}
+	printf("open() was called. \n");
+	printf("About to read metadata");
+	sz = read(fd, &nfmt, sizeof(int));
+	assert(sz > 0);
+	printf("NFORMAT: %d\n", nfmt);
+	if(nfmt > 0){
+		// read formats
+	}
+	sz = read(fd, &nprobes, sizeof(int));
+	assert(sz > 0);
+	printf("NPROBES: %d\n", nprobes);	
+
 }
 
 static void *read_trace_data(void *xgtq)
@@ -1665,7 +1691,7 @@ static void *read_trace_data(void *xgtq)
 	uint64_t size;
 
 	trc_fifo = "/tmp/trace_fifo";
-	gtq = (struct dtrace_guestq *) xgtq;
+	gtq = (struct dtrace_guestq *)xgtq;
 
 	int err = mkfifo(trc_fifo, 0666);
 	if (err)
@@ -1674,10 +1700,9 @@ static void *read_trace_data(void *xgtq)
 		exit(1);
 	}
 
-	printf("About to process trace data. \n");
+	printf("About to read trace data. \n");
 	for (;;)
 	{
-		
 
 		buf = malloc(sizeof(dtrace_bufdesc_t));
 		assert(buf != NULL);
@@ -1726,7 +1751,6 @@ static void *read_trace_data(void *xgtq)
 		dtrace_gtq_enqueue(gtq, trc_entry);
 		pthread_mutex_unlock(&gtq->mtx);
 		printf("Successfully enqueued trace element");
-	
 
 		// TODO: discover what happens if you actually print this
 		// since assertion doesn't fail we should be okay
@@ -1743,16 +1767,16 @@ static void process_trace_data(struct dtrace_guestq *gtq)
 {
 	printf("Waiting to process trace data.. \n");
 	struct dtrace_guest_entry *trc_entry;
-	for(;;)
-	{	
+	for (;;)
+	{
 		pthread_mutex_lock(&gtq->mtx);
-		while(!dtrace_gtq_empty(gtq)) {
-		trc_entry = dtrace_gtq_dequeue(gtq); 
-		printf("Dequeued trace data of size: %d. \n", trc_entry->desc->dtbd_size);
-		// process data
+		while (!dtrace_gtq_empty(gtq))
+		{
+			trc_entry = dtrace_gtq_dequeue(gtq);
+			printf("Dequeued trace data of size: %d. \n", trc_entry->desc->dtbd_size);
+			// process data
 		}
 		pthread_mutex_unlock(&gtq->mtx);
-
 	}
 }
 
@@ -1911,7 +1935,7 @@ int main(int argc, char *argv[])
 	 * dtrace_work which prints trace data
 	*/
 	if (h_mode == 1)
-	{	
+	{
 		struct dtrace_guestq *gtq;
 		pthread_t trace_reader;
 		const char *file_path;
@@ -1922,7 +1946,7 @@ int main(int argc, char *argv[])
 		printf("Guest queue successfully initialised");
 		printf("Initialising trace reading thread");
 		// read_trace_metadata();
-		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data,(void *) gtq);
+		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data, (void *)gtq);
 		process_trace_data(gtq);
 		// no need to close dtrace since we don't even open it here
 		exit(g_status);
