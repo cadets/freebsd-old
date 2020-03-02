@@ -1419,7 +1419,7 @@ vtdtr_consume_trace(void *xsc)
 					device_printf(dev, "Probe description here, hopefully. \n");
 					break;
 				case EPROBE_DESCRIPTION:
-					memcpy(ctrl_mtd_ev->umtd.dtrace_epdesc_buf, mtd->umtd.dtrace_epdesc_buf, sizeof(dtrace_eprobedesc_t));
+					// memcpy(ctrl_mtd_ev->umtd.dtrace_epdesc_buf, mtd->umtd.dtrace_epdesc_buf, sizeof(mtd->umtd.dtrace_epdesc_buf));
 					device_printf(dev, "Here getting eprobe description should happen");
 					break;
 				default:
