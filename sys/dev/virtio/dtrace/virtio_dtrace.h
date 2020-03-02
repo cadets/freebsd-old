@@ -168,7 +168,7 @@ struct virtio_dtrace_metadata {
 		struct{
 			size_t buf_size;
 			char *buf; /* enabled probe description buffer */
-		} dtrace_epdesc;
+		} dt_epdesc;
 	} umtd;
 
 }__attribute__((packed));

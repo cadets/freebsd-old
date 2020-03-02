@@ -1401,7 +1401,7 @@ vtdtr_consume_trace(void *xsc)
 					device_printf(dev, "Format string length is: %d. \n", fmt_len);
 					if(fmt_len < 512)
 					{
-						cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dtrace_epdesc_buf, fmt_len + 1);
+						cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dts_fmtstr, fmt_len + 1);
 						KASSERT(cp == fmt_len, "Error occurred while copying format string");
 						device_printf(dev, "Successfully added format string to control entry: %s.\n", ctrl_mtd_ev->umtd.dts_fmtstr);
 					} else {
@@ -1422,7 +1422,7 @@ vtdtr_consume_trace(void *xsc)
 					// memcpy(ctrl_mtd_ev->umtd.dtrace_epdesc_buf,
 					// mtd->umtd.dtrace_epdesc_buf,
 					// sizeof(mtd->umtd.dtrace_epdesc_buf));
-					ctrl_mtd_ev->umtd.dt_epdesc.buf_size = mtd->umtd.dtrace_epdesc.buf_size;
+					ctrl_mtd_ev->umtd.dt_epdesc.buf_size = mtd->umtd.dt_epdesc.buf_size;
 					device_printf(dev, "Here getting eprobe description should happen. Size: %d", ctrl_mtd_ev->umtd.dt_epdesc.buf_size);
 					break;
 				default:
