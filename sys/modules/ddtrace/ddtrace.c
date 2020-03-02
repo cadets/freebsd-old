@@ -576,8 +576,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		
 			mtd = &trc_entry->uentry.metadata;
 			mtd->type = PROBE_DESCRIPTION;
-			mtd->umtd.dtrace_pdesc = pdesc;
-			printf("Probe description size: %d", strlen(mtd->umtd.dtrace_pdesc));
+			memcpy(mtd->umtd.dtrace_pdesc, pdesc, sizeof(dtrace_probedesc_t));
 
 			mtx_lock(&tq->mtx);
 			vtdtr_tq_enqueue(tq, trc_entry);
@@ -622,7 +621,8 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 			buf = malloc(size, M_DEVBUF, M_NOWAIT | M_ZERO);
 			dest = (uintptr_t)buf;
 
-			bcopy(&epdesc, (void *)dest, sizeof(epdesc));
+			// bcopy(&epdesc, (void *)dest, sizeof(epdesc));
+			memcpy(&epdesc, dest, sizeof(epdesc));
 			dest += offsetof(dtrace_eprobedesc_t, dtepd_rec[0]);
 
 			for (act = ecb->dte_action; act != NULL; act = act->dta_next)
@@ -633,8 +633,9 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 				if (nrecs-- == 0)
 					break;
 
-				bcopy(&act->dta_rec, (void *)dest,
-					  sizeof(dtrace_recdesc_t));
+				// bcopy(&act->dta_rec, (void *)dest,
+				// 	  sizeof(dtrace_recdesc_t));
+				memcpy(&act->dta_rec, dest, sizeof(dtrace_recdesc_t));
 				dest += sizeof(dtrace_recdesc_t);
 			}
 #if 0

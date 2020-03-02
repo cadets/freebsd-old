@@ -402,19 +402,19 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		pthread_mutex_unlock(&sc->vsd_mtx);
 		DPRINTF(("I've received metadata. \n"));
 		mtd_ev = &ctrl->uctrl.mtd_ev;
-		if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY)) == -1)
-		{
-			DPRINTF(("Failed to open trace write pipe: %s. \n", strerror(errno)));
-			exit(1);
-		}
+		// if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY)) == -1)
+		// {
+		// 	DPRINTF(("Failed to open trace write pipe: %s. \n", strerror(errno)));
+		// 	exit(1);
+		// }
 
-		if ((trace_stream = fdopen(fd, "w")) == NULL)
-		{
-			DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno)));
-			exit(1);
-		}
+		// if ((trace_stream = fdopen(fd, "w")) == NULL)
+		// {
+		// 	DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno)));
+		// 	exit(1);
+		// }
 
-		DPRINTF(("Successfully opened everything."));
+		// DPRINTF(("Successfully opened everything."));
 		
 		// Making a (big) assumption here that things will come in order :-?
 		switch(mtd_ev->type)
@@ -451,9 +451,9 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			break;
 		}
 
-		fflush(trace_stream);
+		/*fflush(trace_stream);
 		fclose(trace_stream);
-		close(fd);
+		close(fd);*/
 		break;
 	case VTDTR_DEVICE_EOF:
 		DPRINTF(("Received VTDTR_DEVICE_EOF. \n"));

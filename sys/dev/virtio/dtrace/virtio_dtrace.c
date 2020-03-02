@@ -1415,29 +1415,11 @@ vtdtr_consume_trace(void *xsc)
 					device_printf(dev, "Number of probes is: %d. \n", ctrl_mtd_ev->umtd.dtrace_nprobes);
 					break;
 				case PROBE_DESCRIPTION:
-					memcpy(ctrl_mtd_ev->umtd.pdesc,mtd->umtd.dtrace_pdesc,sizeof(dtrace_probedesc_t));
-					device_printf(dev, "Did this work?");
-					// if(pbdesc_len < 512) 
-					// {
-					// 	memcpy(&ctrl_mtd_ev->umtd.pdesc, mtd->umtd.dtrace_pdesc, pbdesc_len);
-					// 	device_printf(dev, "Successfully added the probe description to the control entry. \n");
-					// } else {
-					// 	// split
-					// 	device_printf(dev, "Probedesc doesn't fit in control element");
-					// }
-					device_printf(dev, "Probe description here");
+					memcpy(ctrl_mtd_ev->umtd.pdesc,mtd->umtd.dtrace_pdesc,sizeof(mtd->umtd.dtrace_pdesc));
+					device_printf(dev, "Probe description here, hopefully. \n");
 					break;
 				case EPROBE_DESCRIPTION:
-					// // Where things get serious
-					// epdesc_len = strlen(mtd->umtd.dtrace_epdesc_buf);
-					// if(epdesc_len < 512)
-					// {
-					// 	cp = strlcpy(ctrl_mtd_ev->umtd.dtrace_epdesc_buf,mtd->umtd.dtrace_epdesc_buf, epdesc_len + 1);
-					// 	KASSERT(cp == epdesc_len, "Error occurred while copying enabled probe description");
-					// } else {
-					// 	// split and pass more control entries
-					// 	device_printf(dev, "Eprobedesc doesn't fit in control element");
-					// }
+					memcpy(ctrl_mtd_ev->umtd.dtrace_epdesc_buf, mtd->umtd.dtrace_epdesc_buf, sizeof(mtd->umtd.dtrace_epdesc_buf));
 					device_printf(dev, "Here getting eprobe description should happen");
 					break;
 				default:
