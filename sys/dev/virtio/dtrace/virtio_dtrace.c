@@ -1415,11 +1415,11 @@ vtdtr_consume_trace(void *xsc)
 					device_printf(dev, "Number of probes is: %d. \n", ctrl_mtd_ev->umtd.dtrace_nprobes);
 					break;
 				case PROBE_DESCRIPTION:
-					memcpy(ctrl_mtd_ev->umtd.pdesc,mtd->umtd.dtrace_pdesc,sizeof(mtd->umtd.dtrace_pdesc));
+					memcpy(ctrl_mtd_ev->umtd.pdesc,mtd->umtd.dtrace_pdesc,sizeof(dtrace_probedesc_t));
 					device_printf(dev, "Probe description here, hopefully. \n");
 					break;
 				case EPROBE_DESCRIPTION:
-					memcpy(ctrl_mtd_ev->umtd.dtrace_epdesc_buf, mtd->umtd.dtrace_epdesc_buf, sizeof(mtd->umtd.dtrace_epdesc_buf));
+					memcpy(ctrl_mtd_ev->umtd.dtrace_epdesc_buf, mtd->umtd.dtrace_epdesc_buf, sizeof(dtrace_eprobedesc_t));
 					device_printf(dev, "Here getting eprobe description should happen");
 					break;
 				default:

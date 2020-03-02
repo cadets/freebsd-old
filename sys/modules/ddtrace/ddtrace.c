@@ -401,7 +401,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	struct virtio_dtrace_metadata *mtd;
 	dtrace_action_t *act;
 	dtrace_ecb_t *ecb;
-	dtrace_eprobedesc_t epdesc;
+	dtrace_eprobedesc_t *epdesc;
 	dtrace_probe_t *probe;
 	dtrace_probedesc_t *pdesc;
 	char *fmt_str;
@@ -595,19 +595,20 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 			}
 #endif
 
-			epdesc.dtepd_epid = epid;
-			epdesc.dtepd_probeid = ecb->dte_probe->dtpr_id;
-			epdesc.dtepd_uarg = ecb->dte_uarg;
-			epdesc.dtepd_size = ecb->dte_size;
-			epdesc.dtepd_nrecs = 0;
+			epdesc = malloc(sizeof(dtrace_eprobedesc_t), M_DEVBUF, M_NOWAIT | M_ZERO);
+			epdesc->dtepd_epid = epid;
+			epdesc->dtepd_probeid = ecb->dte_probe->dtpr_id;
+			epdesc->dtepd_uarg = ecb->dte_uarg;
+			epdesc->dtepd_size = ecb->dte_size;
+			epdesc->dtepd_nrecs = 0;
 			for (act = ecb->dte_action; act != NULL; act = act->dta_next)
 			{
 				if (DTRACEACT_ISAGG(act->dta_kind) || act->dta_intuple)
 					continue;
 
-				epdesc.dtepd_nrecs++;
+				epdesc->dtepd_nrecs++;
 			}
-			nrecs = epdesc.dtepd_nrecs;
+			nrecs = epdesc->dtepd_nrecs;
 
 			/*
 			 * now that we have the size, we need to allocate a temporary
@@ -616,13 +617,13 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 			 * across the copyout(), below.
 			 */
 			size = sizeof(dtrace_eprobedesc_t) +
-				   (epdesc.dtepd_nrecs * sizeof(dtrace_recdesc_t));
+				   (epdesc->dtepd_nrecs * sizeof(dtrace_recdesc_t));
 
 			buf = malloc(size, M_DEVBUF, M_NOWAIT | M_ZERO);
 			dest = (uintptr_t)buf;
 
 			// bcopy(&epdesc, (void *)dest, sizeof(epdesc));
-			memcpy(&epdesc, dest, sizeof(epdesc));
+			memcpy((void *)dest, epdesc, sizeof(dtrace_eprobedesc_t));
 			dest += offsetof(dtrace_eprobedesc_t, dtepd_rec[0]);
 
 			for (act = ecb->dte_action; act != NULL; act = act->dta_next)
@@ -635,7 +636,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 
 				// bcopy(&act->dta_rec, (void *)dest,
 				// 	  sizeof(dtrace_recdesc_t));
-				memcpy(dest, &act->dta_rec, sizeof(dtrace_recdesc_t));
+				memcpy((void *)dest, &act->dta_rec, sizeof(dtrace_recdesc_t));
 				dest += sizeof(dtrace_recdesc_t);
 			}
 #if 0
