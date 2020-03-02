@@ -439,8 +439,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			break;
 		case PROBE_DESCRIPTION:
 			DPRINTF(("Got PROBE_DESCRIPTION. \n"));
-			sz = fwrite(&mtd_ev->umtd.dt_pdesc, 1, sizeof(dtrace_probedesc_t), meta_stream);
-			assert(sz == sizeof(dtrace_probedesc_t));
+			// sz = fwrite(&mtd_ev->umtd.dt_pdesc, 1, sizeof(dtrace_probedesc_t), meta_stream);
+			// assert(sz == sizeof(dtrace_probedesc_t));
 			break;
 		case EPROBE_DESCRIPTION: 
 			DPRINTF(("Got EPROBE_DESCRIPTION. \n"));
