@@ -657,8 +657,8 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		
 			mtd = &trc_entry->uentry.metadata;
 			mtd->type = EPROBE_DESCRIPTION;
-			mtd->umtd.dtrace_epdesc.buf_size = size;
-			memcpy(mtd->umtd.dtrace_epdesc.buf, buf, size);
+			mtd->umtd.dt_epdesc.buf_size = size;
+			memcpy(mtd->umtd.dt_epdesc.buf, buf, size);
 
 			mtx_lock(&tq->mtx);
 			vtdtr_tq_enqueue(tq, trc_entry);
