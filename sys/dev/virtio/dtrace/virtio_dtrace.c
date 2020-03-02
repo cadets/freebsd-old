@@ -1419,8 +1419,11 @@ vtdtr_consume_trace(void *xsc)
 					device_printf(dev, "Probe description here, hopefully. \n");
 					break;
 				case EPROBE_DESCRIPTION:
-					// memcpy(ctrl_mtd_ev->umtd.dtrace_epdesc_buf, mtd->umtd.dtrace_epdesc_buf, sizeof(mtd->umtd.dtrace_epdesc_buf));
-					device_printf(dev, "Here getting eprobe description should happen");
+					// memcpy(ctrl_mtd_ev->umtd.dtrace_epdesc_buf,
+					// mtd->umtd.dtrace_epdesc_buf,
+					// sizeof(mtd->umtd.dtrace_epdesc_buf));
+					ctrl_mtd_ev->umtd.dt_epdesc.buf_size = mtd->umtd.dtrace_epdesc.buf_size;
+					device_printf(dev, "Here getting eprobe description should happen. Size: %d", ctrl_mtd_ev->umtd.dt_epdesc.buf_size);
 					break;
 				default:
 					device_printf(dev, "WARNING: Wrong metadata event.");
