@@ -576,8 +576,8 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		
 			mtd = &trc_entry->uentry.metadata;
 			mtd->type = PROBE_DESCRIPTION;
-			memcpy(mtd->umtd.dtrace_pdesc, pdesc, sizeof(dtrace_probedesc_t));
-
+			mtd->umtd.dtrace_pdesc = pdesc;
+			printf("memcpy pdesc. \n");
 			mtx_lock(&tq->mtx);
 			vtdtr_tq_enqueue(tq, trc_entry);
 			mtx_unlock(&tq->mtx);
@@ -624,6 +624,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 
 			// bcopy(&epdesc, (void *)dest, sizeof(epdesc));
 			memcpy((void *)dest, epdesc, sizeof(dtrace_eprobedesc_t));
+			printf("memcpy epdesc. \n");
 			dest += offsetof(dtrace_eprobedesc_t, dtepd_rec[0]);
 
 			for (act = ecb->dte_action; act != NULL; act = act->dta_next)
@@ -637,6 +638,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 				// bcopy(&act->dta_rec, (void *)dest,
 				// 	  sizeof(dtrace_recdesc_t));
 				memcpy((void *)dest, &act->dta_rec, sizeof(dtrace_recdesc_t));
+				printf("memcpy recdesc.\n");
 				dest += sizeof(dtrace_recdesc_t);
 			}
 #if 0
@@ -658,7 +660,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 			mtd = &trc_entry->uentry.metadata;
 			mtd->type = EPROBE_DESCRIPTION;
 			mtd->umtd.dt_epdesc.buf_size = size;
-			memcpy(mtd->umtd.dt_epdesc.buf, buf, size);
+			mtd->umtd.dt_epdesc.buf = buf;
 
 			mtx_lock(&tq->mtx);
 			vtdtr_tq_enqueue(tq, trc_entry);
