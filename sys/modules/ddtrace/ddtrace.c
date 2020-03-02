@@ -635,7 +635,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 
 				// bcopy(&act->dta_rec, (void *)dest,
 				// 	  sizeof(dtrace_recdesc_t));
-				memcpy(&act->dta_rec, dest, sizeof(dtrace_recdesc_t));
+				memcpy(dest, &act->dta_rec, sizeof(dtrace_recdesc_t));
 				dest += sizeof(dtrace_recdesc_t);
 			}
 #if 0
