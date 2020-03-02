@@ -1945,7 +1945,7 @@ int main(int argc, char *argv[])
 		STAILQ_INIT(&gtq->head);
 		printf("Guest queue successfully initialised");
 		printf("Initialising trace reading thread");
-		// read_trace_metadata();
+		read_trace_metadata();
 		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data, (void *)gtq);
 		process_trace_data(gtq);
 		// no need to close dtrace since we don't even open it here
