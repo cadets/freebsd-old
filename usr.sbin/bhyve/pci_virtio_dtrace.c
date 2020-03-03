@@ -91,13 +91,12 @@ __FBSDID("$FreeBSD$");
 #define VTDTR_DEVICE_TRACE 0x11
 #define VTDTR_DEVICE_METADATA 0x12
 
-#define NFORMAT				        0x00
-#define FORMAT_STRING 				0x01
-#define NPROBES						0x02
-#define NPDESC						0x03
-#define PROBE_DESCRIPTION			0x04
-#define	EPROBE_DESCRIPTION 			0x05
-
+#define NFORMAT 0x00
+#define FORMAT_STRING 0x01
+#define NPROBES 0x02
+#define NPDESC 0x03
+#define PROBE_DESCRIPTION 0x04
+#define EPROBE_DESCRIPTION 0x05
 
 static FILE *fp;
 FILE *trace_stream, *meta_stream;
@@ -169,17 +168,19 @@ struct pci_vtdtr_ctrl_metaevent
 		char dts_fmtstr[512];
 		int dt_nprobes;
 		int dt_npdescs;
-		struct {
+		struct
+		{
 			size_t buf_size;
 			char buf[512];
 		} dt_pdesc;
-		struct {
+		struct
+		{
 			size_t buf_size;
 			char buf[512];
 		} dt_epdesc;
 	} umtd;
 	struct uuid uuid;
-}__attribute__((packed));
+} __attribute__((packed));
 
 /** These are the types of elements that can be in the control queue, 
  * which is drained by putting it's content into the virtual queue and
@@ -303,7 +304,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	struct pci_vtdtr_control *ctrl;
 	struct pci_vtdtr_ctrl_trcevent *trc_ev;
 	struct pci_vtdtr_ctrl_metaevent *mtd_ev;
-	
 
 	//struct pci_vtdtr_ctrl_provevent *pv_ev;
 	//struct pci_vtdtr_ctrl_pbevent *pb_ev;
@@ -398,7 +398,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		sz = fwrite(&trc_ev->dtbd_oldest, sizeof(uint64_t), 1, trace_stream);
 		assert(sz > 0);
 		sz = fwrite(&trc_ev->dtbd_timestamp, sizeof(uint64_t), 1, trace_stream);
-		assert (sz > 0);
+		assert(sz > 0);
 		sz = fwrite(&trc_ev->dtbd_data, 1, trc_ev->dtbd_size, trace_stream);
 		assert(sz == trc_ev->dtbd_size);
 		fflush(trace_stream);
@@ -413,8 +413,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		mtd_ev = &ctrl->uctrl.mtd_ev;
 
 		DPRINTF(("Successfully opened everything."));
-		
-		switch(mtd_ev->type)
+
+		switch (mtd_ev->type)
 		{
 		case NFORMAT:
 			DPRINTF(("Got NFORMAT: %d. \n", mtd_ev->umtd.dts_nformats));
@@ -445,7 +445,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			sz = fwrite(&mtd_ev->umtd.dt_pdesc.buf, 1, pdesc_len, meta_stream);
 			assert(sz == mtd_ev->umtd.dt_pdesc.buf_size);
 			break;
-		case EPROBE_DESCRIPTION: 
+		case EPROBE_DESCRIPTION:
 			epdesc_len = mtd_ev->umtd.dt_epdesc.buf_size;
 			assert(epdesc_len > 0);
 			DPRINTF(("Got EPROBE_DESCRIPTION: %d. \n", epdesc_len));
@@ -458,7 +458,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			WPRINTF(("WARNING: Wrong metadata event. "));
 			break;
 		}
-
 		fflush(meta_stream);
 		break;
 	case VTDTR_DEVICE_EOF:
@@ -503,11 +502,13 @@ static void
 pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 {
 	struct pci_vtdtr_softc *sc;
+	struct pci_vtdtr_control *ctrl;
 	struct iovec iov[1];
 	uint16_t idx;
 	uint16_t flags[8];
 	int n;
 	int retval;
+	int open = 0;
 
 	sc = xsc;
 
@@ -515,6 +516,29 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 	{
 		n = vq_getchain(vq, &idx, iov, 1, flags);
 		DPRINTF(("About to process elements from the receive queue. \n"));
+		ctrl = (struct pci_vtdtr_control *)iov->iov_base;
+		if (ctrl->event == VTDTR_DEVICE_METADATA && !open)
+		{
+			if ((fd = openat(dir_fd, "meta_fifo", O_WRONLY | O_NONBLOCK)) == -1)
+			{
+				DPRINTF(("Failed to open trace write pipe: %s. \n", strerror(errno)));
+				exit(1);
+			}
+
+			if ((meta_stream = fdopen(fd, "w")) == NULL)
+			{
+				DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno)));
+				exit(1);
+			}
+			open = 1
+		}
+		if(ctrl->event == VTDTR_DEVICE_TRACE && open)
+		{
+			open = 0;
+			fflush(meta_stream);
+			fclose(meta_stream);
+			close(fd);
+		}
 		retval = pci_vtdtr_control_rx(sc, iov, 1);
 		vq_relchain(vq, idx, sizeof(struct pci_vtdtr_control));
 		if (retval == 1)
@@ -1117,18 +1141,6 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	assert(fp != NULL);
 
 	fprintf(fp, "I am actually writing in the logging file. \n");
-
-	if ((fd = openat(dir_fd, "meta_fifo", O_WRONLY | O_NONBLOCK)) == -1)
-	{
-		DPRINTF(("Failed to open trace write pipe: %s. \n", strerror(errno)));
-		exit(1);
-	}
-
-	if ((meta_stream = fdopen(fd, "w")) == NULL)
-	{
-		DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno)));
-		exit(1);
-	}
 
 	error = 0;
 	sc = calloc(1, sizeof(struct pci_vtdtr_softc));
