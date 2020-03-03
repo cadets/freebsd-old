@@ -516,7 +516,6 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	mtd = &trc_entry->uentry.metadata;
 	mtd->type = NPROBES;
 	mtd->umtd.dtrace_nprobes = dtrace_nprobes;
-	DLOGTR1(PRIO_LOW, "Confusion about dtrace_nprobes: %d %d.\n", dtrace_nprobes);
 	
 	mtx_lock(&tq->mtx);
 	vtdtr_tq_enqueue(tq, trc_entry);
@@ -527,6 +526,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	DL_ASSERT(state->dts_necbs > 0 && state->dts_ecbs != NULL,
 			  ("dtrace ecb state is invalid"));
 
+	printf("Epid: %d", state->dts_epid);
 	/* Loop over enabled probes identifiers  to see how many we 
 	 * are actually sending back to the host.
 	 */
@@ -548,16 +548,19 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		if ((probe = dtrace_probes[ecb->dte_probe->dtpr_id - 1]) != NULL)
 		{
 			npdescs ++;
-		}
+		}		
 	}
 
-	printf(" Number of probes description is; %d", npdescs);
 	
+
 	trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 	DL_ASSERT(trc_entry != NULL, "Failed allocating memory for trace entry");
 	mtd = &trc_entry->uentry.metadata;
 	mtd->type = NPDESC;
 	mtd->umtd.dt_npdescs = npdescs;
+
+	printf(" Number of probes description is: %d", mtd->umtd.dt_npdescs);
+	
 
 	mtx_lock(&tq->mtx);
 	vtdtr_tq_enqueue(tq, trc_entry);
@@ -665,7 +668,6 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 
 			// bcopy(&epdesc, (void *)dest, sizeof(epdesc));
 			memcpy((void *)dest, epdesc, sizeof(dtrace_eprobedesc_t));
-			printf("memcpy epdesc. \n");
 			dest += offsetof(dtrace_eprobedesc_t, dtepd_rec[0]);
 
 			for (act = ecb->dte_action; act != NULL; act = act->dta_next)
@@ -679,7 +681,6 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 				// bcopy(&act->dta_rec, (void *)dest,
 				// 	  sizeof(dtrace_recdesc_t));
 				memcpy((void *)dest, &act->dta_rec, sizeof(dtrace_recdesc_t));
-				printf("memcpy recdesc.\n");
 				dest += sizeof(dtrace_recdesc_t);
 			}
 #if 0
@@ -707,6 +708,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 			vtdtr_tq_enqueue(tq, trc_entry);
 			mtx_unlock(&tq->mtx);
 
+			free(epdesc, M_DEVBUF);
 			// free(buf, M_DEVBUF);
 		}
 	}

@@ -1655,7 +1655,7 @@ static void *write_script(void *file_path)
 	free(d_script);
 	close(fd);
 	fclose(writer_stream);
-	//unlink(fifo);
+	// unlink(fifo);
 }
 
 static void read_trace_metadata()
@@ -1678,7 +1678,7 @@ static void read_trace_metadata()
 		exit(1);
 	}
 	printf("open() was called. \n");
-	printf("About to read metadata");
+	printf("About to read metadata. \n");
 	sz = read(fd, &nfmt, sizeof(int));
 	printf("NFORMAT: %d\n", nfmt);
 	if(nfmt > 0){
@@ -1958,11 +1958,11 @@ int main(int argc, char *argv[])
 		gtq = malloc(sizeof(struct dtrace_guestq));
 		write_script(file_path);
 		STAILQ_INIT(&gtq->head);
-		printf("Guest queue successfully initialised");
-		printf("Initialising trace reading thread");
+		printf("Guest queue successfully initialised. \n");
+		printf("Initialising trace reading thread. \n");
 		read_trace_metadata();
-		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data, (void *)gtq);
-		process_trace_data(gtq);
+		// trace_reader = pthread_create(&trace_reader, NULL, read_trace_data, (void *)gtq);
+		// process_trace_data(gtq);
 		// no need to close dtrace since we don't even open it here
 		exit(g_status);
 	}

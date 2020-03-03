@@ -427,7 +427,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		switch(mtd_ev->type)
 		{
 		case NFORMAT:
-			DPRINTF(("Got NFORMAT. \n"));
+			DPRINTF(("Got NFORMAT: %d. \n", mtd_ev->umtd.dts_nformats));
 			sz = fwrite(&mtd_ev->umtd.dts_nformats, 1, sizeof(int), meta_stream);
 			break;
 		case FORMAT_STRING:
@@ -437,11 +437,11 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			assert(sz == fmt_len);
 			break;
 		case NPROBES:
-			DPRINTF(("Got NPROBES. \n"));
+			DPRINTF(("Got NPROBES: %d. \n", mtd_ev->umtd.dt_nprobes));
 			sz = fwrite(&mtd_ev->umtd.dt_nprobes, 1, sizeof(int), meta_stream);
 			break;
 		case NPDESC:
-			DPRINTF(("GOT NPDESC. \n"));
+			DPRINTF(("GOT NPDESC: %d. \n", mtd_ev->umtd.dt_npdescs));
 			sz = fwrite(&mtd_ev->umtd.dt_npdescs, 1, sizeof(int), meta_stream);
 			break;
 		case PROBE_DESCRIPTION:
