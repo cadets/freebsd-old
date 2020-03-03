@@ -530,7 +530,7 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 				DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno)));
 				exit(1);
 			}
-			open = 1
+			open = 1;
 		}
 		if(ctrl->event == VTDTR_DEVICE_TRACE && open)
 		{
