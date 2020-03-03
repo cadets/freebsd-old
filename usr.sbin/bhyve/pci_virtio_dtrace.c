@@ -443,6 +443,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		case NPDESC:
 			DPRINTF(("GOT NPDESC: %d. \n", mtd_ev->umtd.dt_npdescs));
 			sz = fwrite(&mtd_ev->umtd.dt_npdescs, 1, sizeof(mtd_ev->umtd.dt_npdescs), meta_stream);
+			DPRINTF("I've written: %d", sz);
+			fflush(meta_stream);
 			break;
 		case PROBE_DESCRIPTION:
 			pdesc_len = mtd_ev->umtd.dt_pdesc.buf_size;
