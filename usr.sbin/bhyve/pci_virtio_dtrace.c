@@ -99,7 +99,7 @@ __FBSDID("$FreeBSD$");
 #define EPROBE_DESCRIPTION 0x05
 
 static FILE *fp;
-FILE *trace_stream, *meta_stream;
+FILE *meta_stream;
 static int pci_vtdtr_debug;
 
 #define DPRINTF(params) printf params
@@ -304,6 +304,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	struct pci_vtdtr_control *ctrl;
 	struct pci_vtdtr_ctrl_trcevent *trc_ev;
 	struct pci_vtdtr_ctrl_metaevent *mtd_ev;
+	FILE *trace_stream;
 
 	//struct pci_vtdtr_ctrl_provevent *pv_ev;
 	//struct pci_vtdtr_ctrl_pbevent *pb_ev;
@@ -532,13 +533,7 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 			}
 			open = 1;
 		}
-		if(ctrl->event == VTDTR_DEVICE_TRACE && open)
-		{
-			open = 0;
-			fflush(meta_stream);
-			fclose(meta_stream);
-			close(fd);
-		}
+	
 		retval = pci_vtdtr_control_rx(sc, iov, 1);
 		vq_relchain(vq, idx, sizeof(struct pci_vtdtr_control));
 		if (retval == 1)
