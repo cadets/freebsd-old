@@ -1679,19 +1679,25 @@ static void read_trace_metadata()
 	}
 	printf("open() was called. \n");
 	printf("About to read metadata. \n");
-	sz = read(fd, &nfmt, sizeof(int));
+	sz = read(fd, &nfmt, 4);
+	assert(sz > 0);
 	printf("NFORMAT: %d\n", nfmt);
 	if(nfmt > 0){
 		// read formats
 	}
-	sz = read(fd, &nprobes, sizeof(nprobes));
+	sz = read(fd, &nprobes, 4);
+	assert(sz > 0);
 	printf("NPROBES: %d\n", nprobes);
-	sz = read(fd, &npdesc, sizeof(npdesc));
+	printf("I've read %d", sz);
+	sz = read(fd, &npdesc, 4);
+	assert(sz > 0);
+	printf("I've read %d", sz);
 	printf("NPDESC: %d\n", npdesc);
 	if(npdesc > 0)
 	{
 		// read probes and eprobes
 	}	
+	close(fd);
 
 }
 

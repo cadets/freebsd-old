@@ -429,6 +429,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		case NFORMAT:
 			DPRINTF(("Got NFORMAT: %d. \n", mtd_ev->umtd.dts_nformats));
 			sz = fwrite(&mtd_ev->umtd.dts_nformats, 1, sizeof(int), meta_stream);
+			assert(sz > 0);
 			break;
 		case FORMAT_STRING:
 			DPRINTF(("Got FORMAT_STRING. \n"));
@@ -439,21 +440,25 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		case NPROBES:
 			DPRINTF(("Got NPROBES: %d. \n", mtd_ev->umtd.dt_nprobes));
 			sz = fwrite(&mtd_ev->umtd.dt_nprobes, 1, sizeof(int), meta_stream);
+			assert(sz > 0);
 			break;
 		case NPDESC:
 			DPRINTF(("GOT NPDESC: %d. \n", mtd_ev->umtd.dt_npdescs));
 			sz = fwrite(&mtd_ev->umtd.dt_npdescs, 1, sizeof(mtd_ev->umtd.dt_npdescs), meta_stream);
 			DPRINTF(("I've written: %d", sz));
+			assert(sz > 0);
 			fflush(meta_stream);
 			break;
 		case PROBE_DESCRIPTION:
 			pdesc_len = mtd_ev->umtd.dt_pdesc.buf_size;
+			assert(pdesc_len > 0);
 			DPRINTF(("Got PROBE_DESCRIPTION: %d. \n", pdesc_len));
 			sz = fwrite(&mtd_ev->umtd.dt_pdesc.buf, 1, pdesc_len, meta_stream);
 			assert(sz == mtd_ev->umtd.dt_pdesc.buf_size);
 			break;
 		case EPROBE_DESCRIPTION: 
 			epdesc_len = mtd_ev->umtd.dt_epdesc.buf_size;
+			assert(epdesc_len > 0);
 			DPRINTF(("Got EPROBE_DESCRIPTION: %d. \n", epdesc_len));
 			sz = fwrite(&mtd_ev->umtd.dt_epdesc.buf_size, 1, sizeof(size_t), meta_stream);
 			assert(sz > 0);
