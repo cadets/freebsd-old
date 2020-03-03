@@ -100,8 +100,9 @@ __FBSDID("$FreeBSD$");
 
 
 static FILE *fp;
-
+FILE *trace_stream, *meta_stream;
 static int pci_vtdtr_debug;
+
 #define DPRINTF(params) printf params
 #define WPRINTF(params) printf params
 
@@ -302,7 +303,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	struct pci_vtdtr_control *ctrl;
 	struct pci_vtdtr_ctrl_trcevent *trc_ev;
 	struct pci_vtdtr_ctrl_metaevent *mtd_ev;
-	FILE *trace_stream, *meta_stream;
+	
 
 	//struct pci_vtdtr_ctrl_provevent *pv_ev;
 	//struct pci_vtdtr_ctrl_pbevent *pb_ev;
@@ -410,17 +411,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		pthread_mutex_unlock(&sc->vsd_mtx);
 		DPRINTF(("I've received metadata. \n"));
 		mtd_ev = &ctrl->uctrl.mtd_ev;
-		if ((fd = openat(dir_fd, "meta_fifo", O_WRONLY)) == -1)
-		{
-			DPRINTF(("Failed to open trace write pipe: %s. \n", strerror(errno)));
-			exit(1);
-		}
-
-		if ((meta_stream = fdopen(fd, "w")) == NULL)
-		{
-			DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno)));
-			exit(1);
-		}
 
 		DPRINTF(("Successfully opened everything."));
 		
@@ -447,7 +437,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			sz = fwrite(&mtd_ev->umtd.dt_npdescs, 1, sizeof(mtd_ev->umtd.dt_npdescs), meta_stream);
 			DPRINTF(("I've written: %d", sz));
 			assert(sz > 0);
-			fflush(meta_stream);
 			break;
 		case PROBE_DESCRIPTION:
 			pdesc_len = mtd_ev->umtd.dt_pdesc.buf_size;
@@ -471,8 +460,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		}
 
 		fflush(meta_stream);
-		fclose(meta_stream);
-		close(fd);
 		break;
 	case VTDTR_DEVICE_EOF:
 		DPRINTF(("Received VTDTR_DEVICE_EOF. \n"));
@@ -1124,12 +1111,24 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 {
 	struct pci_vtdtr_softc *sc;
 	pthread_t communicator, listener; // reader;
-	int error;
+	int error, fd;
 
 	fp = fopen("/tmp/logging.txt", "w+");
 	assert(fp != NULL);
 
 	fprintf(fp, "I am actually writing in the logging file. \n");
+
+	if ((fd = openat(dir_fd, "meta_fifo", O_WRONLY | O_NONBLOCK)) == -1)
+	{
+		DPRINTF(("Failed to open trace write pipe: %s. \n", strerror(errno)));
+		exit(1);
+	}
+
+	if ((meta_stream = fdopen(fd, "w")) == NULL)
+	{
+		DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno)));
+		exit(1);
+	}
 
 	error = 0;
 	sc = calloc(1, sizeof(struct pci_vtdtr_softc));
