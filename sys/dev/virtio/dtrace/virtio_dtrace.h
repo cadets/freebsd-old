@@ -63,8 +63,9 @@
 #define NFORMAT				        0x00
 #define FORMAT_STRING 				0x01
 #define NPROBES						0x02
-#define PROBE_DESCRIPTION			0x03
-#define	EPROBE_DESCRIPTION 			0x04
+#define NPDESC						0x03
+#define PROBE_DESCRIPTION			0x04
+#define	EPROBE_DESCRIPTION 			0x05
 
 /**
  *	Type of data put in the trace queue 
@@ -125,7 +126,11 @@ struct vtdtr_ctrl_metaevent {
 		int dts_nformats;
 		char dts_fmtstr[512];
 		int dtrace_nprobes;
-		char pdesc[512];
+		int dt_npdescs;
+		struct {
+			size_t buf_size;
+			char buf[512];
+		} dt_pdesc;
 		struct {
 			size_t buf_size;
 			char buf[512];
@@ -164,7 +169,11 @@ struct virtio_dtrace_metadata {
 		int dts_nformats; /* number of format strings */
 		char *dts_fmtstr; /* format string */
 		int dtrace_nprobes; /* number of probes */
-		char *dtrace_pdesc; /* one probe description */
+		int dt_npdescs;
+		struct {
+			size_t buf_size;
+			char *buf; /* probe description buffer */
+		} dt_pdesc;
 		struct{
 			size_t buf_size;
 			char *buf; /* enabled probe description buffer */

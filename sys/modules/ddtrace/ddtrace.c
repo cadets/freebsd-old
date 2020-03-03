@@ -408,7 +408,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	size_t size;
 	uintptr_t dest;
 	void *buf;
-	int fmt_len, nrecs;
+	int fmt_len, nrecs, npdescs = 0;
 
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL."));
 	DL_ASSERT(hdl != NULL, ("DLog handle cannot be NULL."));
@@ -526,6 +526,46 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	mutex_enter(&dtrace_lock);
 	DL_ASSERT(state->dts_necbs > 0 && state->dts_ecbs != NULL,
 			  ("dtrace ecb state is invalid"));
+
+	/* Loop over enabled probes identifiers  to see how many we 
+	 * are actually sending back to the host.
+	 */
+	for(dtrace_epid_t epid = 1; epid <= state->dts_epid; epid++)
+	{
+		DLOGTR1(PRIO_LOW, "Persisting dtrace eprobe (%d) metadata\n",
+				epid);
+
+		DL_ASSERT(state->dts_necbs > 0 && state != NULL,
+				  ("DTace ECB state is invalid"));
+		DL_ASSERT((ecb = state->dts_ecbs[epid - 1]) == NULL ||
+					  ecb->dte_epid == epid,
+				  ("DTrace ECBS state is inconsistent"));
+
+		ecb = state->dts_ecbs[epid - 1];
+		if (ecb == NULL || ecb->dte_probe == NULL)
+			continue;
+
+		if ((probe = dtrace_probes[ecb->dte_probe->dtpr_id - 1]) != NULL)
+		{
+			npdescs ++;
+		}
+	}
+
+	printf(" Number of probes description is; %d", npdescs);
+	
+	trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
+	DL_ASSERT(trc_entry != NULL, "Failed allocating memory for trace entry");
+	mtd = &trc_entry->uentry.metadata;
+	mtd->type = NPDESC;
+	mtd->umtd.dt_npdescs = npdescs;
+
+	mtx_lock(&tq->mtx);
+	vtdtr_tq_enqueue(tq, trc_entry);
+	mtx_unlock(&tq->mtx);
+
+
+	/* Then loop again and actually send them.
+	 */
 	for (dtrace_epid_t epid = 1; epid <= state->dts_epid; epid++)
 	{
 
@@ -576,8 +616,9 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		
 			mtd = &trc_entry->uentry.metadata;
 			mtd->type = PROBE_DESCRIPTION;
-			mtd->umtd.dtrace_pdesc = pdesc;
-			printf("memcpy pdesc. \n");
+			mtd->umtd.dt_pdesc.buf = pdesc;
+			mtd->umtd.dt_pdesc.buf_size = sizeof(dtrace_probedesc_t);
+
 			mtx_lock(&tq->mtx);
 			vtdtr_tq_enqueue(tq, trc_entry);
 			mtx_unlock(&tq->mtx);

@@ -71,6 +71,17 @@ typedef struct dtrace_cmd
 	char dc_ofile[PATH_MAX];			  /* derived output file name */
 } dtrace_cmd_t;
 
+typedef struct dtrace_metadata
+{
+	 int dt_nformats;
+	 char **dt_formats;
+	 int dt_nprobes;
+	 int dt_npdesc;
+	 dtrace_probedesc_t **dt_pdescs;
+	 dtrace_eprobedesc_t **dt_epdesc;
+
+} dtrace_metadata_t;
+
 struct dtrace_guest_entry
 {
 	dtrace_bufdesc_t *desc;
@@ -1651,7 +1662,7 @@ static void read_trace_metadata()
 {
 	FILE *meta_stream;
 	char *meta_fifo;
-	int fd, sz, nprobes, nfmt;
+	int fd, sz, nprobes, nfmt, npdesc;
 
 	meta_fifo = "/tmp/meta_fifo";
 	int err = mkfifo(meta_fifo, 0666);
@@ -1669,14 +1680,14 @@ static void read_trace_metadata()
 	printf("open() was called. \n");
 	printf("About to read metadata");
 	sz = read(fd, &nfmt, sizeof(int));
-	assert(sz > 0);
 	printf("NFORMAT: %d\n", nfmt);
 	if(nfmt > 0){
 		// read formats
 	}
 	sz = read(fd, &nprobes, sizeof(int));
-	assert(sz > 0);
-	printf("NPROBES: %d\n", nprobes);	
+	printf("NPROBES: %d\n", nprobes);
+	sz = read(fd, &npdesc, sizeof(int));
+	printf("NPDESC: %d\n", npdesc);	
 
 }
 

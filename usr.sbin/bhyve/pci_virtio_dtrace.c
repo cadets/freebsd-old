@@ -42,7 +42,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/dtrace_bsd.h>
 #include <sys/vtdtr.h>
 #include <sys/stat.h>
-
+#include <sys/dtrace.h>
 #include <machine/vmm.h>
 
 #include <stdio.h>
@@ -94,8 +94,9 @@ __FBSDID("$FreeBSD$");
 #define NFORMAT				        0x00
 #define FORMAT_STRING 				0x01
 #define NPROBES						0x02
-#define PROBE_DESCRIPTION			0x03
-#define	EPROBE_DESCRIPTION 			0x04
+#define NPDESC						0x03
+#define PROBE_DESCRIPTION			0x04
+#define	EPROBE_DESCRIPTION 			0x05
 
 
 static FILE *fp;
@@ -166,7 +167,11 @@ struct pci_vtdtr_ctrl_metaevent
 		int dts_nformats;
 		char dts_fmtstr[512];
 		int dt_nprobes;
-		char dt_pdesc[512];
+		int dt_npdescs;
+		struct {
+			size_t buf_size;
+			char buf[512];
+		} dt_pdesc;
 		struct {
 			size_t buf_size;
 			char buf[512];
@@ -301,8 +306,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 
 	//struct pci_vtdtr_ctrl_provevent *pv_ev;
 	//struct pci_vtdtr_ctrl_pbevent *pb_ev;
-	int fd, retval; // error;
-	size_t sz, fmt_len, epdesc_len;
+	int fd, npdesc, retval; // error;
+	size_t sz, fmt_len, pdesc_len, epdesc_len;
 
 	assert(niov == 1);
 	retval = 0;
@@ -424,7 +429,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		case NFORMAT:
 			DPRINTF(("Got NFORMAT. \n"));
 			sz = fwrite(&mtd_ev->umtd.dts_nformats, 1, sizeof(int), meta_stream);
-			assert(sz > 0);
 			break;
 		case FORMAT_STRING:
 			DPRINTF(("Got FORMAT_STRING. \n"));
@@ -435,12 +439,16 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		case NPROBES:
 			DPRINTF(("Got NPROBES. \n"));
 			sz = fwrite(&mtd_ev->umtd.dt_nprobes, 1, sizeof(int), meta_stream);
-			assert(sz > 0);
+			break;
+		case NPDESC:
+			DPRINTF(("GOT NPDESC. \n"));
+			sz = fwrite(&mtd_ev->umtd.dt_npdescs, 1, sizeof(int), meta_stream);
 			break;
 		case PROBE_DESCRIPTION:
 			DPRINTF(("Got PROBE_DESCRIPTION. \n"));
-			// sz = fwrite(&mtd_ev->umtd.dt_pdesc, 1, sizeof(dtrace_probedesc_t), meta_stream);
-			// assert(sz == sizeof(dtrace_probedesc_t));
+			pdesc_len = mtd_ev->umtd.dt_pdesc.buf_size;
+			sz = fwrite(&mtd_ev->umtd.dt_pdesc.buf, 1, pdesc_len, meta_stream);
+			assert(sz == mtd_ev->umtd.dt_pdesc.buf_size);
 			break;
 		case EPROBE_DESCRIPTION: 
 			DPRINTF(("Got EPROBE_DESCRIPTION. \n"));

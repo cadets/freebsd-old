@@ -1410,12 +1410,17 @@ vtdtr_consume_trace(void *xsc)
 					device_printf(dev, "Getting format strings should happen here");
 					break;
 				case NPROBES:
-					device_printf(dev, "About to.\n");
 					ctrl_mtd_ev->umtd.dtrace_nprobes = mtd->umtd.dtrace_nprobes;
 					device_printf(dev, "Number of probes is: %d. \n", ctrl_mtd_ev->umtd.dtrace_nprobes);
 					break;
+				case NPDESC:
+					ctrl_mtd_ev->umtd.dt_npdescs = mtd->umtd.dt_npdescs;
+					device_printf(dev, "Number of probes descriptions is: %d. \n",ctrl_mtd_ev->umtd.dt_npdescs);
+					break;
 				case PROBE_DESCRIPTION:
-					memcpy(ctrl_mtd_ev->umtd.pdesc,mtd->umtd.dtrace_pdesc,sizeof(dtrace_probedesc_t));
+					ctrl_mtd_ev->umtd.dt_pdesc.buf_size = mtd->umtd.dt_pdesc.buf_size;
+					KASSERT(ctrl_mtd_ev->umtd.dt_pdesc.buf_size != sizeof(dtrace_probedesc_t), "Probe description size is invalid");
+					memcpy(ctrl_mtd_ev->umtd.dt_pdesc.buf,mtd->umtd.dt_pdesc.buf, ctrl_mtd_ev->umtd.dt_pdesc.buf_size);
 					device_printf(dev, "Probe description here, hopefully. \n");
 					break;
 				case EPROBE_DESCRIPTION:
