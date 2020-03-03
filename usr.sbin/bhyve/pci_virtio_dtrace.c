@@ -442,17 +442,17 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			break;
 		case NPDESC:
 			DPRINTF(("GOT NPDESC: %d. \n", mtd_ev->umtd.dt_npdescs));
-			sz = fwrite(&mtd_ev->umtd.dt_npdescs, 1, sizeof(int), meta_stream);
+			sz = fwrite(&mtd_ev->umtd.dt_npdescs, 1, sizeof(mtd_ev->umtd.dt_npdescs), meta_stream);
 			break;
 		case PROBE_DESCRIPTION:
-			DPRINTF(("Got PROBE_DESCRIPTION. \n"));
 			pdesc_len = mtd_ev->umtd.dt_pdesc.buf_size;
+			DPRINTF(("Got PROBE_DESCRIPTION: %d. \n", pdesc_len));
 			sz = fwrite(&mtd_ev->umtd.dt_pdesc.buf, 1, pdesc_len, meta_stream);
 			assert(sz == mtd_ev->umtd.dt_pdesc.buf_size);
 			break;
 		case EPROBE_DESCRIPTION: 
-			DPRINTF(("Got EPROBE_DESCRIPTION. \n"));
 			epdesc_len = mtd_ev->umtd.dt_epdesc.buf_size;
+			DPRINTF(("Got EPROBE_DESCRIPTION: %d. \n", epdesc_len));
 			sz = fwrite(&mtd_ev->umtd.dt_epdesc.buf_size, 1, sizeof(size_t), meta_stream);
 			assert(sz > 0);
 			sz = fwrite(&mtd_ev->umtd.dt_epdesc.buf, 1, epdesc_len, meta_stream);

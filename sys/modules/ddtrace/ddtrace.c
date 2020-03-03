@@ -526,13 +526,39 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	DL_ASSERT(state->dts_necbs > 0 && state->dts_ecbs != NULL,
 			  ("dtrace ecb state is invalid"));
 
+	npdesc = 0;
+	for (dtrace_epid_t epid = 1; epid <= state->dts_epid; epid++)
+	{
+
+		DLOGTR1(PRIO_LOW, "Persisting dtrace eprobe (%d) metadata\n",
+				epid);
+
+		DL_ASSERT(state->dts_necbs > 0 && state != NULL,
+				  ("DTace ECB state is invalid"));
+		DL_ASSERT((ecb = state->dts_ecbs[epid - 1]) == NULL ||
+					  ecb->dte_epid == epid,
+				  ("DTrace ECBS state is inconsistent"));
+
+		ecb = state->dts_ecbs[epid - 1];
+		if (ecb == NULL || ecb->dte_probe == NULL)
+			continue;
+
+		if ((probe = dtrace_probes[ecb->dte_probe->dtpr_id - 1]) != NULL)
+		{
+			npdesc ++;
+		}
+	}
+
+	printf("Calculated: %d", npdesc);
+
 	trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 	DL_ASSERT(trc_entry != NULL, "Failed allocating memory for trace entry");
 	trc_entry->type = DDTRACE_METADATA;
 	
 	mtd = &trc_entry->uentry.metadata;
 	mtd->type = NPDESC;
-	mtd->umtd.dt_npdescs = state->dts_epid;
+	mtd->umtd.dt_npdescs = npdesc;
+
 
 	printf(" Number of probes description is: %d", mtd->umtd.dt_npdescs);
 	
@@ -541,7 +567,6 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	vtdtr_tq_enqueue(tq, trc_entry);
 	mtx_unlock(&tq->mtx);
 
-	npdesc = 0;
 	/* Then loop again and actually send them.
 	 */
 	for (dtrace_epid_t epid = 1; epid <= state->dts_epid; epid++)
@@ -566,7 +591,6 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		 */
 		if ((probe = dtrace_probes[ecb->dte_probe->dtpr_id - 1]) != NULL)
 		{   
-			npdesc ++;
 			pdesc = malloc(sizeof(dtrace_probedesc_t), M_DEVBUF, M_NOWAIT | M_ZERO);
 			memset(pdesc, 0, sizeof(dtrace_probedesc_t));
 			pdesc->dtpd_provider[DTRACE_PROVNAMELEN - 1] = '\0';
@@ -687,7 +711,6 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 			// free(buf, M_DEVBUF);
 		}
 	}
-	printf("Print npdesc again here %d. \n",npdesc);
 	mutex_exit(&dtrace_lock);
 
 	return 0;

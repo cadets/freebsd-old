@@ -1662,7 +1662,7 @@ static void read_trace_metadata()
 {
 	FILE *meta_stream;
 	char *meta_fifo;
-	int fd, sz, nprobes, nfmt, npdesc;
+	int fd, sz, nprobes = 0, nfmt, npdesc = 0;
 
 	meta_fifo = "/tmp/meta_fifo";
 	int err = mkfifo(meta_fifo, 0666);
@@ -1684,9 +1684,9 @@ static void read_trace_metadata()
 	if(nfmt > 0){
 		// read formats
 	}
-	sz = read(fd, &nprobes, sizeof(int));
+	sz = read(fd, &nprobes, sizeof(nprobes));
 	printf("NPROBES: %d\n", nprobes);
-	sz = read(fd, &npdesc, sizeof(int));
+	sz = read(fd, &npdesc, sizeof(npdesc));
 	printf("NPDESC: %d\n", npdesc);
 	if(npdesc > 0)
 	{
@@ -1961,6 +1961,7 @@ int main(int argc, char *argv[])
 		printf("Guest queue successfully initialised. \n");
 		printf("Initialising trace reading thread. \n");
 		read_trace_metadata();
+		sleep(1000000);
 		// trace_reader = pthread_create(&trace_reader, NULL, read_trace_data, (void *)gtq);
 		// process_trace_data(gtq);
 		// no need to close dtrace since we don't even open it here
