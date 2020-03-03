@@ -1392,7 +1392,6 @@ vtdtr_consume_trace(void *xsc)
 				switch (mtd->type)
 				{
 				case NFORMAT:
-					device_printf(dev, "About to.\n");
 					ctrl_mtd_ev->umtd.dts_nformats = mtd->umtd.dts_nformats;
 					device_printf(dev, "Put NFORMAT in control entry: %d. \n", ctrl_mtd_ev->umtd.dts_nformats);
 					break;
@@ -1407,7 +1406,6 @@ vtdtr_consume_trace(void *xsc)
 					} else {
 						device_printf(dev, "Format string doesn't fit in control element");
 					}
-					device_printf(dev, "Getting format strings should happen here");
 					break;
 				case NPROBES:
 					ctrl_mtd_ev->umtd.dtrace_nprobes = mtd->umtd.dtrace_nprobes;
