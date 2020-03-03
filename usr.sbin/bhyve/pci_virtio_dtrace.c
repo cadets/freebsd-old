@@ -508,7 +508,7 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 	uint16_t flags[8];
 	int n;
 	int retval;
-	int open = 0;
+	int fd, open = 0;
 
 	sc = xsc;
 
