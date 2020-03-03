@@ -1687,7 +1687,11 @@ static void read_trace_metadata()
 	sz = read(fd, &nprobes, sizeof(int));
 	printf("NPROBES: %d\n", nprobes);
 	sz = read(fd, &npdesc, sizeof(int));
-	printf("NPDESC: %d\n", npdesc);	
+	printf("NPDESC: %d\n", npdesc);
+	if(npdesc > 0)
+	{
+		// read probes and eprobes
+	}	
 
 }
 
