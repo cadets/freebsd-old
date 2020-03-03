@@ -195,6 +195,8 @@ int dtrace_consumer()
     script_argc = 1;
     topic_name = "cadets-trace";
 
+    // TODO load ddtrace module from here
+
     if ((fp = fopen(script_path, "r+")) == NULL)
     {
         fprintf(log_fp, "Failed to open script file: %s", strerror(errno));
