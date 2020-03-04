@@ -1729,8 +1729,10 @@ static void read_trace_metadata(dtrace_metadata_t *mtd)
 			assert(sz == epbuf_sz);
 			mtd->dt_epdesc[i] = epdesc;
 		}
+		printf("Out of the for loop. Life is good. /n");
 	}
 	close(fd);
+	printf("Successfully closed file descriptor");
 
 }
 
@@ -2002,7 +2004,6 @@ int main(int argc, char *argv[])
 		printf("Initialising trace reading thread. \n");
 		read_trace_metadata(dt_mtd);
 		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data, (void *)gtq);
-		sleep(1000000);
 		// process_trace_data(gtq);
 		// no need to close dtrace since we don't even open it here
 		exit(g_status);
