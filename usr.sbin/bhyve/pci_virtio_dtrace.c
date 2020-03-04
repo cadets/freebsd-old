@@ -533,13 +533,7 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 				exit(1);
 			}
 			open = 1;
-		} else if (ctrl->event == VTDTR_DEVICE_TRACE && open)
-		{
-			fflush(meta_stream);
-			fclose(meta_stream);
-			close(fd);
-		}
-	
+		} 
 		retval = pci_vtdtr_control_rx(sc, iov, 1);
 		vq_relchain(vq, idx, sizeof(struct pci_vtdtr_control));
 		if (retval == 1)

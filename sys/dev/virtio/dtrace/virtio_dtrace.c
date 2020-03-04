@@ -1417,8 +1417,8 @@ vtdtr_consume_trace(void *xsc)
 					break;
 				case PROBE_DESCRIPTION:
 					ctrl_mtd_ev->umtd.dt_pdesc.buf_size = mtd->umtd.dt_pdesc.buf_size;
-					KASSERT(ctrl_mtd_ev->umtd.dt_pdesc.buf_size != sizeof(dtrace_probedesc_t), "Probe description size is invalid");
-					memcpy(ctrl_mtd_ev->umtd.dt_pdesc.buf,mtd->umtd.dt_pdesc.buf, ctrl_mtd_ev->umtd.dt_pdesc.buf_size);
+					KASSERT(ctrl_mtd_ev->umtd.dt_pdesc.buf_size == sizeof(dtrace_probedesc_t), "Probe description size is invalid");
+					memcpy(ctrl_mtd_ev->umtd.dt_pdesc.buf,mtd->umtd.dt_pdesc.buf, sizeof(dtrace_probedesc_t));
 					device_printf(dev, "Probe description here, hopefully. \n");
 					break;
 				case EPROBE_DESCRIPTION:

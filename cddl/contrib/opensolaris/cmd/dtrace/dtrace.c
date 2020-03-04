@@ -1679,8 +1679,10 @@ static void read_trace_metadata(dtrace_metadata_t *mtd)
 		printf("Failed to open trace pipe for reading: %s. \n", strerror(errno));
 		exit(1);
 	}
+
 	printf("open() was called. \n");
 	printf("About to read metadata. \n");
+
 	sz = read(fd, &mtd->dt_nformats, sizeof(int));
 	assert(sz > 0);
 	printf("NFORMAT: %d\n", mtd ->dt_nformats);
@@ -1703,15 +1705,22 @@ static void read_trace_metadata(dtrace_metadata_t *mtd)
 		 * actual memory in the for loop.
 		 */
 		mtd->dt_pdescs = malloc(mtd->dt_npdesc * sizeof(dtrace_probedesc_t *));
+		
+		assert(mtd->dt_pdescs != NULL);
 		mtd->dt_epdesc = malloc(mtd->dt_npdesc * sizeof(dtrace_eprobedesc_t *));
+		assert(mtd->dt_epdesc != NULL);
+
+		printf("Allocated buffer. \n");
 		
 		for(int i = 0; i < mtd->dt_npdesc; i ++)
 		{   epbuf_sz = 0;
 			mtd->dt_pdescs[i] = malloc(sizeof(dtrace_probedesc_t));
 			sz = read(fd, mtd->dt_pdescs[i], sizeof(dtrace_probedesc_t));
 			assert(sz == sizeof(dtrace_probedesc_t));
+			printf("Got probes. \n");
 			sz = read(fd, &epbuf_sz, sizeof(size_t));
 			assert(sz > 0);
+			printf("EPROBE buffer size is: %d.\n", epbuf_sz);
 			mtd->dt_epdesc[i] = malloc(epbuf_sz);
 			sz = read(fd, mtd->dt_epdesc[i], epbuf_sz);
 			assert(sz == epbuf_sz);
