@@ -1658,8 +1658,9 @@ static void *write_script(void *file_path)
 	// unlink(fifo);
 }
 
-static void read_trace_metadata(dtrace_metadata_t *mtd)
+static dtrace_metadata_t *read_trace_metadata()
 {
+	dtrace_metadata_t *mtd;
 	dtrace_probedesc_t *pdesc;
 	dtrace_eprobedesc_t *epdesc;
 	FILE *meta_stream;
@@ -1687,7 +1688,7 @@ static void read_trace_metadata(dtrace_metadata_t *mtd)
 
 	sz = read(fd, &mtd->dt_nformats, sizeof(int));
 	assert(sz > 0);
-	printf("NFORMAT: %d\n", mtd ->dt_nformats);
+	printf("NFORMAT: %d\n", mtd->dt_nformats);
 	if(mtd->dt_nformats > 0){
 		// read formats
 	}
@@ -1733,7 +1734,7 @@ static void read_trace_metadata(dtrace_metadata_t *mtd)
 	}
 	close(fd);
 	printf("Successfully closed file descriptor");
-
+	return(mtd);
 }
 
 static void *read_trace_data(void *xgtq)
@@ -1816,7 +1817,6 @@ static void *read_trace_data(void *xgtq)
 		close(fd);
 		// unlink(trc_fifo);
 	}
-	pthread_exit(NULL);
 }
 
 static void process_trace_data(struct dtrace_guestq *gtq)
@@ -1844,6 +1844,11 @@ int main(int argc, char *argv[])
 	dtrace_cmd_t *dcp;
 	char *machine_filter;
 	dtrace_consumer_t con;
+
+	struct dtrace_guestq *gtq;
+	dtrace_metadata_t *mtd;
+	pthread_t trace_reader;
+	const char *file_path;
 
 	con.dc_consume_probe = chew;
 	con.dc_consume_rec = chewrec;
@@ -1992,22 +1997,18 @@ int main(int argc, char *argv[])
 	*/
 	if (h_mode == 1)
 	{
-		struct dtrace_guestq *gtq;
-		dtrace_metadata_t *dt_mtd;
-		pthread_t trace_reader;
-		const char *file_path;
+	
 		file_path = argv[argc - 1];
 		gtq = malloc(sizeof(struct dtrace_guestq));
 		write_script(file_path);
 		STAILQ_INIT(&gtq->head);
 		printf("Guest queue successfully initialised. \n");
-		read_trace_metadata(dt_mtd);
-		printf("Successfully read metadata");
-		printf("Initialising trace reading thread. \n");
-		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data, (void *)gtq);
-		// process_trace_data(gtq);
-		// no need to close dtrace since we don't even open it here
-		exit(g_status);
+		mtd  = read_trace_metadata();
+		printf("Successfully read metadata. \n");
+		printf("About to read trace data. \n");
+		read_trace_data((void *) gtq);
+		printf("Successfully read trace data. Exiting .. \n");
+		exit(0);
 	}
 
 	if (mode > 1)
@@ -2082,6 +2083,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
+// We let it go up until here then call something to process buffer data
 	/*
 	 * Open libdtrace.  If we are not actually going to be enabling any
 	 * instrumentation attempt to reopen libdtrace using DTRACE_O_NODEV.
