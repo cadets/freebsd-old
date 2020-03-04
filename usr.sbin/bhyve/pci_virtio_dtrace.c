@@ -42,8 +42,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/dtrace_bsd.h>
 #include <sys/vtdtr.h>
 #include <sys/stat.h>
-#include <sys/dtrace.h>
 #include <machine/vmm.h>
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -54,6 +54,7 @@ __FBSDID("$FreeBSD$");
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <dt_impl.h>
 
 #include <vmmapi.h>
 
@@ -443,8 +444,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			pdesc_len = mtd_ev->umtd.dt_pdesc.buf_size;
 			assert(pdesc_len > 0);
 			DPRINTF(("Got PROBE_DESCRIPTION: %d. \n", pdesc_len));
-			sz = fwrite(&mtd_ev->umtd.dt_pdesc.buf, 1, pdesc_len, meta_stream);
-			assert(sz == mtd_ev->umtd.dt_pdesc.buf_size);
+			sz = fwrite(&mtd_ev->umtd.dt_pdesc.buf, 1, sizeof(dtrace_probedesc_t), meta_stream);
+			assert(sz == sizeof(dtrace_probedesc_t));
 			break;
 		case EPROBE_DESCRIPTION:
 			epdesc_len = mtd_ev->umtd.dt_epdesc.buf_size;

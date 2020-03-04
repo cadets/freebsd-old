@@ -94,8 +94,10 @@ CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/e1000
 CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/mii
 CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/usb/controller
 CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/virtio/dtrace
-CFLAGS+= -I${BHYVE_SYSDIR}/sys/cddl/contrib/opensolaris/uts/common
-
+CFLAGS+=-I${BHYVE_SYSDIR}/cddl/contrib/opensolaris/lib/libctf/common
+CFLAGS+=-I${BHYVE_SYSDIR}/sys/cddl/compat/opensolaris
+CFLAGS+=-I${BHYVE_SYSDIR}/sys/cddl/contrib/opensolaris/uts/common
+CFLAGS+=-I${BHYVE_SYSDIR}/cddl/contrib/opensolaris/lib/libdtrace/common
 
 .ifdef GDB_LOG
 CFLAGS+=-DGDB_LOG
