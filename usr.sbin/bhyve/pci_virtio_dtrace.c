@@ -520,15 +520,16 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 		ctrl = (struct pci_vtdtr_control *)iov->iov_base;
 		if (ctrl->event == VTDTR_DEVICE_METADATA && !open)
 		{
-			if ((fd = openat(dir_fd, "meta_fifo", O_WRONLY | O_NONBLOCK)) == -1)
+			
+			if ((fd = openat(dir_fd, "meta_fifo", O_WRONLY)) == -1)
 			{
-				DPRINTF(("Failed to open trace write pipe: %s. \n", strerror(errno)));
+				DPRINTF(("Failed to open metadata write pipe: %s. \n", strerror(errno)));
 				exit(1);
 			}
 
 			if ((meta_stream = fdopen(fd, "w")) == NULL)
 			{
-				DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno)));
+				DPRINTF(("Failed opening metadata stream: %s. \n", strerror(errno)));
 				exit(1);
 			}
 			open = 1;
