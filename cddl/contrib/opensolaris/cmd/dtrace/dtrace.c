@@ -1726,7 +1726,7 @@ static dtrace_metadata_t *read_trace_metadata()
 			assert(sz > 0);
 			printf("EPROBE buffer size is: %d.\n", epbuf_sz);
 			epdesc = malloc(sizeof(dtrace_eprobedesc_t));
-			print("Eprobedesc size is %d, buf_size is %d", sizeof(dtrace_eprobedesc_t), epbuf_sz);
+			printf("Eprobedesc size is %d, buf_size is %d", sizeof(dtrace_eprobedesc_t), epbuf_sz); 
 			sz = read(fd, epdesc, epbuf_sz);
 			assert(sz == epbuf_sz);
 			mtd->dt_epdescs[i] = epdesc;
