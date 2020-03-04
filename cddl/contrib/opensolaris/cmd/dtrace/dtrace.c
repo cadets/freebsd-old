@@ -1658,11 +1658,13 @@ static void *write_script(void *file_path)
 	// unlink(fifo);
 }
 
-static void read_trace_metadata()
+static void read_trace_metadata(dtrace_metadata_t *mtd)
 {
 	FILE *meta_stream;
 	char *meta_fifo;
-	int fd, sz, nprobes = 0, nfmt, npdesc = 0;
+	int fd, sz, epbuf_sz = 0, nrecs = 0;
+
+	mtd = malloc(sizeof(dtrace_metadata_t));
 
 	meta_fifo = "/tmp/meta_fifo";
 	int err = mkfifo(meta_fifo, 0666);
@@ -1679,24 +1681,42 @@ static void read_trace_metadata()
 	}
 	printf("open() was called. \n");
 	printf("About to read metadata. \n");
-	sz = read(fd, &nfmt, 4);
+	sz = read(fd, &mtd->dt_nformats, sizeof(int));
 	assert(sz > 0);
-	printf("NFORMAT: %d\n", nfmt);
-	if(nfmt > 0){
+	printf("NFORMAT: %d\n", mtd ->dt_nformats);
+	if(mtd->dt_nformats > 0){
 		// read formats
 	}
-	sz = read(fd, &nprobes, 4);
+	sz = read(fd, &mtd->dt_nprobes, sizeof(int));
 	assert(sz > 0);
-	printf("NPROBES: %d\n", nprobes);
-	printf("I've read %d", sz);
-	sz = read(fd, &npdesc, 4);
+	printf("NPROBES: %d\n", mtd->dt_nprobes);
+	printf("I've read %d\n", sz);
+	sz = read(fd, &mtd->dt_npdesc, sizeof(int));
 	assert(sz > 0);
-	printf("I've read %d", sz);
-	printf("NPDESC: %d\n", npdesc);
-	if(npdesc > 0)
-	{
-		// read probes and eprobes
-	}	
+	printf("I've read %d\n", sz);
+	printf("NPDESC: %d\n", mtd->dt_npdesc);
+	if(mtd->dt_npdesc > 0)
+	{	
+		/* 
+		 * initialize arrays so we can continue reading:
+		 * allocate npdesc pointers to structs so that we only allocate the    *
+		 * actual memory in the for loop.
+		 */
+		mtd->dt_pdescs = malloc(mtd->dt_npdesc * sizeof(dtrace_probedesc_t *));
+		mtd->dt_epdesc = malloc(mtd->dt_npdesc * sizeof(dtrace_eprobedesc_t *));
+		
+		for(int i = 0; i < mtd->dt_npdesc; i ++)
+		{   epbuf_sz = 0;
+			mtd->dt_pdescs[i] = malloc(sizeof(dtrace_probedesc_t));
+			sz = read(fd, mtd->dt_pdescs[i], sizeof(dtrace_probedesc_t));
+			assert(sz == sizeof(dtrace_probedesc_t));
+			sz = read(fd, &epbuf_sz, sizeof(size_t));
+			assert(sz > 0);
+			mtd->dt_epdesc[i] = malloc(epbuf_sz);
+			sz = read(fd, mtd->dt_epdesc[i], epbuf_sz);
+			assert(sz == epbuf_sz);
+		}
+	}
 	close(fd);
 
 }
@@ -1958,6 +1978,7 @@ int main(int argc, char *argv[])
 	if (h_mode == 1)
 	{
 		struct dtrace_guestq *gtq;
+		dtrace_metadata_t *dt_mtd;
 		pthread_t trace_reader;
 		const char *file_path;
 		file_path = argv[argc - 1];
@@ -1966,7 +1987,7 @@ int main(int argc, char *argv[])
 		STAILQ_INIT(&gtq->head);
 		printf("Guest queue successfully initialised. \n");
 		printf("Initialising trace reading thread. \n");
-		read_trace_metadata();
+		read_trace_metadata(dt_mtd);
 		trace_reader = pthread_create(&trace_reader, NULL, read_trace_data, (void *)gtq);
 		sleep(1000000);
 		// process_trace_data(gtq);
