@@ -1660,6 +1660,8 @@ static void *write_script(void *file_path)
 
 static void read_trace_metadata(dtrace_metadata_t *mtd)
 {
+	dtrace_probedesc_t *pdesc;
+	dtrace_eprobedesc_t *epdesc;
 	FILE *meta_stream;
 	char *meta_fifo;
 	int fd, sz, epbuf_sz = 0, nrecs = 0;
@@ -1705,7 +1707,7 @@ static void read_trace_metadata(dtrace_metadata_t *mtd)
 		 * actual memory in the for loop.
 		 */
 		mtd->dt_pdescs = malloc(mtd->dt_npdesc * sizeof(dtrace_probedesc_t *));
-		
+
 		assert(mtd->dt_pdescs != NULL);
 		mtd->dt_epdesc = malloc(mtd->dt_npdesc * sizeof(dtrace_eprobedesc_t *));
 		assert(mtd->dt_epdesc != NULL);
@@ -1714,16 +1716,18 @@ static void read_trace_metadata(dtrace_metadata_t *mtd)
 		
 		for(int i = 0; i < mtd->dt_npdesc; i ++)
 		{   epbuf_sz = 0;
-			mtd->dt_pdescs[i] = malloc(sizeof(dtrace_probedesc_t));
-			sz = read(fd, mtd->dt_pdescs[i], sizeof(dtrace_probedesc_t));
+			pdesc = malloc(sizeof(dtrace_probedesc_t));
+			sz = read(fd, pdesc, sizeof(dtrace_probedesc_t));
 			assert(sz == sizeof(dtrace_probedesc_t));
+			mtd->dt_pdescs[i] = pdesc;
 			printf("Got probes. \n");
 			sz = read(fd, &epbuf_sz, sizeof(size_t));
 			assert(sz > 0);
 			printf("EPROBE buffer size is: %d.\n", epbuf_sz);
-			mtd->dt_epdesc[i] = malloc(epbuf_sz);
-			sz = read(fd, mtd->dt_epdesc[i], epbuf_sz);
+			epdesc = malloc(sizeof(epbuf_sz));
+			sz = read(fd, epdesc, epbuf_sz);
 			assert(sz == epbuf_sz);
+			mtd->dt_epdesc[i] = epdesc;
 		}
 	}
 	close(fd);
