@@ -78,7 +78,7 @@ typedef struct dtrace_metadata
 	 int dt_nprobes;
 	 int dt_npdesc;
 	 dtrace_probedesc_t **dt_pdescs;
-	 dtrace_eprobedesc_t **dt_epdesc;
+	 dtrace_eprobedesc_t **dt_epdescs;
 
 } dtrace_metadata_t;
 
@@ -1710,8 +1710,8 @@ static dtrace_metadata_t *read_trace_metadata()
 		mtd->dt_pdescs = malloc(mtd->dt_npdesc * sizeof(dtrace_probedesc_t *));
 
 		assert(mtd->dt_pdescs != NULL);
-		mtd->dt_epdesc = malloc(mtd->dt_npdesc * sizeof(dtrace_eprobedesc_t *));
-		assert(mtd->dt_epdesc != NULL);
+		mtd->dt_epdescs = malloc(mtd->dt_npdesc * sizeof(dtrace_eprobedesc_t *));
+		assert(mtd->dt_epdescs != NULL);
 
 		printf("Allocated buffer. \n");
 		
@@ -1725,12 +1725,13 @@ static dtrace_metadata_t *read_trace_metadata()
 			sz = read(fd, &epbuf_sz, sizeof(size_t));
 			assert(sz > 0);
 			printf("EPROBE buffer size is: %d.\n", epbuf_sz);
-			epdesc = malloc(sizeof(epbuf_sz));
+			epdesc = malloc(sizeof(dtrace_eprobedesc_t));
+			print("Eprobedesc size is %d, buf_size is %d", sizeof(dtrace_eprobedesc_t), epbuf_sz);
 			sz = read(fd, epdesc, epbuf_sz);
 			assert(sz == epbuf_sz);
-			mtd->dt_epdesc[i] = epdesc;
+			mtd->dt_epdescs[i] = epdesc;
 		}
-		printf("Out of the for loop. Life is good. \n");
+		printf("Out of the for loop.");
 	}
 	close(fd);
 	printf("Successfully closed file descriptor");
@@ -2006,7 +2007,7 @@ int main(int argc, char *argv[])
 		mtd  = read_trace_metadata();
 		printf("Successfully read metadata. \n");
 		printf("About to read trace data. \n");
-		read_trace_data((void *) gtq);
+		pthread_create(&trace_reader, NULL, read_trace_data,(void *) gtq);
 		printf("Successfully read trace data. Exiting .. \n");
 		exit(0);
 	}
