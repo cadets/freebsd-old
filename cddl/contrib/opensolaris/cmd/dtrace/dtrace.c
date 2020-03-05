@@ -1734,6 +1734,7 @@ static dtrace_metadata_t *read_trace_metadata()
 			buf = malloc(epbuf_sz);
 			sz = read(fd, buf, epbuf_sz);
 			assert(sz == epbuf_sz);
+			free(buf);
 		}
 		printf("Out of the for loop.");
 	}
