@@ -1664,7 +1664,7 @@ static dtrace_metadata_t *read_trace_metadata()
 	dtrace_probedesc_t *pdesc;
 	dtrace_eprobedesc_t *epdesc;
 	FILE *meta_stream;
-	char *meta_fifo;
+	char *meta_fifo, *buf;
 	int fd, sz, epbuf_sz = 0, nrecs = 0;
 
 	mtd = malloc(sizeof(dtrace_metadata_t));
@@ -1727,9 +1727,13 @@ static dtrace_metadata_t *read_trace_metadata()
 			printf("EPROBE buffer size is: %d.\n", epbuf_sz);
 			epdesc = malloc(sizeof(dtrace_eprobedesc_t));
 			printf("Eprobedesc size is %d, buf_size is %d", sizeof(dtrace_eprobedesc_t), epbuf_sz); 
-			sz = read(fd, epdesc, epbuf_sz);
+			sz = read(fd, epdesc, sizeof(dtrace_eprobedesc_t));
 			assert(sz == epbuf_sz);
 			mtd->dt_epdescs[i] = epdesc;
+			epbuf_sz -= sizeof(dtrace_eprobedesc_t);
+			buf = malloc(epbuf_sz);
+			sz = read(fd, buf, epbuf_sz);
+			assert(sz == epbuf_sz);
 		}
 		printf("Out of the for loop.");
 	}
