@@ -219,9 +219,14 @@ typedef enum dtrace_probespec {
 #define DIF_OP_SCMP_HG   84
 #define	DIF_OP_PUSHTR_G  85
 #define	DIF_OP_PUSHTR_H  86
+
+/*
+ * Relocations
+ */
 #define	DIF_OP_USETX     87
 #define	DIF_OP_ULOAD     88
 #define	DIF_OP_UULOAD    89
+#define	DIF_OP_TYPECAST  90
 
 #define	DIF_INTOFF_MAX		0xffff	/* highest integer table offset */
 #define	DIF_STROFF_MAX		0xffff	/* highest string table offset */
@@ -472,7 +477,8 @@ typedef uint32_t dif_instr_t;
 #define	DIF_INSTR_LOAD(op, r1, d)	(DIF_INSTR_FMT(op, r1, 0, d))
 #define	DIF_INSTR_STORE(op, r1, d)	(DIF_INSTR_FMT(op, r1, 0, d))
 #define	DIF_INSTR_SETX(i, d)		((DIF_OP_SETX << 24) | ((i) << 8) | (d))
-#define	DIF_INSTR_USETX(i, d)		((DIF_OP_USETX << 24) | ((i) << 8) | (d))
+#define	DIF_INSTR_USETX(ref, d)		((DIF_OP_USETX << 24) | ((ref) << 8) | (d))
+#define	DIF_INSTR_TYPECAST(ref, d)	((DIF_OP_TYPECAST << 24) | ((ref) << 8) | (d))
 #define	DIF_INSTR_SETS(s, d)		((DIF_OP_SETS << 24) | ((s) << 8) | (d))
 #define	DIF_INSTR_RET(d)		(DIF_INSTR_FMT(DIF_OP_RET, 0, 0, d))
 #define	DIF_INSTR_NOP			(DIF_OP_NOP << 24)

@@ -144,9 +144,9 @@ dt_copyvar(dt_idhash_t *dhp, dt_ident_t *idp, void *data)
 }
 
 static ssize_t
-dt_copystr(const char *s, size_t n, size_t off, dt_pcb_t *pcb)
+dt_copystr(const char *s, size_t n, size_t off, char *dst)
 {
-	bcopy(s, pcb->pcb_difo->dtdo_strtab + off, n);
+	memcpy(dst + off, s, n);
 	return (n);
 }
 
@@ -584,7 +584,7 @@ dt_as(dt_pcb_t *pcb)
 			longjmp(pcb->pcb_jmpbuf, EDT_NOMEM);
 
 		(void) dt_strtab_write(pcb->pcb_strtab,
-		    (dt_strtab_write_f *)dt_copystr, pcb);
+		    (dt_strtab_write_f *)dt_copystr, dp->dtdo_strtab);
 		dp->dtdo_strlen = (uint32_t)n;
 	}
 
@@ -593,7 +593,7 @@ dt_as(dt_pcb_t *pcb)
 			longjmp(pcb->pcb_jmpbuf, EDT_NOMEM);
 
 		(void) dt_strtab_write(pcb->pcb_symtab,
-		    (dt_strtab_write_f *)dt_copystr, pcb);
+		    (dt_strtab_write_f *)dt_copystr, dp->dtdo_symtab);
 		dp->dtdo_symlen = (uint32_t)n;
 	}
 

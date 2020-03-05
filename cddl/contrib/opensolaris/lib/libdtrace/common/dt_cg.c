@@ -563,6 +563,8 @@ dt_cg_typecast(const dt_node_t *src, const dt_node_t *dst,
 {
 	size_t srcsize = dt_node_type_size(src);
 	size_t dstsize = dt_node_type_size(dst);
+	char typename[DT_TYPE_NAMELEN] = {0};
+	ssize_t typeref = 0;
 
 	dif_instr_t instr;
 	int rg;
@@ -576,6 +578,7 @@ dt_cg_typecast(const dt_node_t *src, const dt_node_t *dst,
 		return; /* nothing to do in this case */
 
 	rg = dt_regset_alloc(drp);
+	dt_node_type_name(dst, typename, sizeof(typename));
 
 	if (dstsize > srcsize) {
 		int n = sizeof (uint64_t) * NBBY - srcsize * NBBY;
@@ -615,6 +618,26 @@ dt_cg_typecast(const dt_node_t *src, const dt_node_t *dst,
 		    DIF_OP_SRA : DIF_OP_SRL, dst->dn_reg, rg, dst->dn_reg);
 		dt_irlist_append(dlp, dt_cg_node_alloc(DT_LBL_NONE, instr));
 	}
+
+	/*
+	 * Insert the type name into the symbol table and get the reference
+	 * to it.
+	 */
+	typeref = dt_strtab_insert(yypcb->pcb_symtab, typename);
+
+	if (typeref == -1L)
+		longjmp(yypcb->pcb_jmpbuf, EDT_NOMEM);
+
+	if (typeref > DIF_STROFF_MAX)
+		longjmp(yypcb->pcb_jmpbuf, EDT_STR2BIG);
+
+	/*
+	 * Create a relocation here that tells us the register we just
+	 * saved the value into has been cast into a new type, and
+	 * reference the type it is.
+	 */
+	instr = DIF_INSTR_TYPECAST(typeref, dst->dn_reg);
+	dt_irlist_append(dlp, dt_cg_node_alloc(DT_LBL_NONE, instr));
 
 	dt_regset_free(drp, rg);
 }
@@ -1936,12 +1959,23 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		dnp->dn_reg = dnp->dn_right->dn_reg;
 		break;
 
-	case DT_TOK_LPAR:
+	case DT_TOK_LPAR: {
+		char buf[DT_TYPE_NAMELEN] = {0};
 		dt_cg_node(dnp->dn_right, dlp, drp);
 		dnp->dn_reg = dnp->dn_right->dn_reg;
+
+		/*
+		 * Get the type name of what we're casting it to.
+		 * In this case, this must be a pointer type.
+		 *
+		 * XXX(dstolfa): I am not aware of the possibility to cast
+		 * one struct to another without pointers, so we won't deal
+		 * with this case yet.
+		 */
+		dt_node_type_name(dnp->dn_right, buf, sizeof(buf));
 		dt_cg_typecast(dnp->dn_right, dnp, dlp, drp);
 		break;
-
+	}
 	case DT_TOK_PTR:
 	case DT_TOK_DOT: {
 		int reg;
