@@ -549,7 +549,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 		}
 	}
 
-	printf("Calculated: %d", npdesc);
+	printf("Calculated number of enabled probes: %d", npdesc);
 
 	trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 	DL_ASSERT(trc_entry != NULL, "Failed allocating memory for trace entry");
@@ -567,8 +567,7 @@ ddtrace_persist_metadata(dtrace_state_t *state, struct dlog_handle *hdl)
 	vtdtr_tq_enqueue(tq, trc_entry);
 	mtx_unlock(&tq->mtx);
 
-	/* Then loop again and actually send them.
-	 */
+
 	for (dtrace_epid_t epid = 1; epid <= state->dts_epid; epid++)
 	{
 

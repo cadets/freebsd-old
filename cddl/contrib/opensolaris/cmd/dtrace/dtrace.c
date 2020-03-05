@@ -1668,6 +1668,7 @@ static dtrace_metadata_t *read_trace_metadata()
 	int fd, sz, epbuf_sz = 0, nrecs = 0;
 
 	mtd = malloc(sizeof(dtrace_metadata_t));
+	assert(mtd != NULL);
 
 	meta_fifo = "/tmp/meta_fifo";
 	int err = mkfifo(meta_fifo, 0666);
@@ -1686,20 +1687,26 @@ static dtrace_metadata_t *read_trace_metadata()
 	printf("open() was called. \n");
 	printf("About to read metadata. \n");
 
+	// TODO: integrate this in dtp after it works
+
 	sz = read(fd, &mtd->dt_nformats, sizeof(int));
 	assert(sz > 0);
 	printf("NFORMAT: %d\n", mtd->dt_nformats);
+	
 	if(mtd->dt_nformats > 0){
 		// read formats
 	}
+
 	sz = read(fd, &mtd->dt_nprobes, sizeof(int));
 	assert(sz > 0);
 	printf("NPROBES: %d\n", mtd->dt_nprobes);
 	printf("I've read %d\n", sz);
+
 	sz = read(fd, &mtd->dt_npdesc, sizeof(int));
 	assert(sz > 0);
 	printf("I've read %d\n", sz);
 	printf("NPDESC: %d\n", mtd->dt_npdesc);
+
 	if(mtd->dt_npdesc > 0)
 	{	
 		/* 
@@ -1707,10 +1714,9 @@ static dtrace_metadata_t *read_trace_metadata()
 		 * allocate npdesc pointers to structs so that we only allocate the    *
 		 * actual memory in the for loop.
 		 */
-		mtd->dt_pdescs = malloc(mtd->dt_npdesc * sizeof(dtrace_probedesc_t *));
-
+		mtd->dt_pdescs = calloc(1, mtd->dt_npdesc * sizeof(dtrace_probedesc_t *));
 		assert(mtd->dt_pdescs != NULL);
-		mtd->dt_epdescs = malloc(mtd->dt_npdesc * sizeof(dtrace_eprobedesc_t *));
+		mtd->dt_epdescs = calloc(1, mtd->dt_npdesc * sizeof(dtrace_eprobedesc_t *));
 		assert(mtd->dt_epdescs != NULL);
 
 		printf("Allocated buffer. \n");
@@ -1718,23 +1724,31 @@ static dtrace_metadata_t *read_trace_metadata()
 		for(int i = 0; i < mtd->dt_npdesc; i ++)
 		{   epbuf_sz = 0;
 			pdesc = malloc(sizeof(dtrace_probedesc_t));
+			assert(pdesc != NULL);
+			memset(pdesc, 0, sizeof(dtrace_probedesc_t));
+
 			sz = read(fd, pdesc, sizeof(dtrace_probedesc_t));
 			assert(sz == sizeof(dtrace_probedesc_t));
 			mtd->dt_pdescs[i] = pdesc;
-			printf("Got probes. \n");
+			printf("Got probe. \n");
+
 			sz = read(fd, &epbuf_sz, sizeof(size_t));
 			assert(sz > 0);
 			printf("EPROBE buffer size is: %d.\n", epbuf_sz);
 			epdesc = malloc(sizeof(dtrace_eprobedesc_t));
-			printf("Eprobedesc size is %d, buf_size is %d", sizeof(dtrace_eprobedesc_t), epbuf_sz); 
+			assert(epdesc != NULL);
+			memset(epdesc, 0, sizeof(dtrace_eprobedesc_t));
+			printf("Eprobedesc size is %d, buf_size is %d. \n", sizeof(dtrace_eprobedesc_t), epbuf_sz); 
 			sz = read(fd, epdesc, sizeof(dtrace_eprobedesc_t));
 			assert(sz == sizeof(dtrace_eprobedesc_t));
 			mtd->dt_epdescs[i] = epdesc;
+
 			epbuf_sz -= sizeof(dtrace_eprobedesc_t);
-			buf = malloc(epbuf_sz);
+			buf = malloc(epbuf_sz); // records
+			assert(buf != NULL);
+			memset(buf, 0, epbuf_sz);
 			sz = read(fd, buf, epbuf_sz);
 			assert(sz == epbuf_sz);
-			free(buf);
 		}
 		printf("Out of the for loop.");
 	}
@@ -1819,9 +1833,7 @@ static void *read_trace_data(void *xgtq)
 		// since assertion doesn't fail we should be okay
 		// printf("Data: %s\n", buf.dtbd_data);
 
-		// fclose(trace_stream);
 		close(fd);
-		// unlink(trc_fifo);
 	}
 }
 
@@ -1997,10 +2009,7 @@ int main(int argc, char *argv[])
 	// Stop buffering for debugging purposes
 	setbuf(stdout, NULL);
 
-	/*
-	 * We are tracing a guest and assume that we've done everything up to
-	 * dtrace_work which prints trace data
-	*/
+
 	if (h_mode == 1)
 	{
 	
@@ -2009,11 +2018,15 @@ int main(int argc, char *argv[])
 		write_script(file_path);
 		STAILQ_INIT(&gtq->head);
 		printf("Guest queue successfully initialised. \n");
+		
 		mtd  = read_trace_metadata();
 		printf("Successfully read metadata. \n");
 		printf("About to read trace data. \n");
 		pthread_create(&trace_reader, NULL, read_trace_data,(void *) gtq);
-		printf("Successfully read trace data. Exiting .. \n");
+
+		process_trace_data(gtq);
+		printf("Successfully processed trace data. Exiting .. \n");
+
 		exit(0);
 	}
 
