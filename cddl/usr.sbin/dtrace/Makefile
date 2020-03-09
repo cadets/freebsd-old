@@ -9,7 +9,6 @@ SRCS=		dtrace.c
 BINDIR?=	/usr/sbin
 
 WARNS?=		1
-ASAN_FLAGS = -fsanitize=address
 
 LDFLAGS+= -pthread
 CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
@@ -19,6 +18,9 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libproc/common \
 		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common \
 		-I${OPENSOLARIS_SYS_DISTDIR}/compat \
+
+CFLAGS+=-fsanitize=address
+CFLAGS+=-fno-omit-frame-pointer
 
 # Optional debugging stuff...
 #CFLAGS+=	-DNEED_ERRLOC
