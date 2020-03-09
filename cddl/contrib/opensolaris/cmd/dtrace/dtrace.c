@@ -1621,7 +1621,7 @@ static void *write_script(void *file_path)
 	}
 	fclose(fp);
 
-	d_script[file_size + 1] = '\0';
+	d_script[file_size] = '\0';
 	if ((fd = open(fifo, O_WRONLY)) == -1)
 	{
 		printf("Error occured while opening fifo: %s\n", strerror(errno));
@@ -1794,11 +1794,6 @@ static void *read_trace_data(void *xgtq)
 			exit(1);
 		}
 
-		/* if ((trace_stream = fdopen(fd, "r")) == NULL)
-		{
-			printf("Failed opening trace reader stream: %s. \n", strerror(errno));
-			exit(1);
-		}*/
 		printf("open() was called.\n");
 
 		printf("About to read trace data. \n");
