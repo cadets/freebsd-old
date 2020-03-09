@@ -19,8 +19,8 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common \
 		-I${OPENSOLARIS_SYS_DISTDIR}/compat \
 
-CFLAGS+=-fsanitize=address
-CFLAGS+=-fno-omit-frame-pointer
+#CFLAGS+=-fsanitize=address
+#CFLAGS+=-fno-omit-frame-pointer
 
 # Optional debugging stuff...
 #CFLAGS+=	-DNEED_ERRLOC
