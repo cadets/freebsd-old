@@ -1665,7 +1665,8 @@ static dtrace_metadata_t *read_trace_metadata()
 	dtrace_eprobedesc_t *epdesc;
 	FILE *meta_stream;
 	char *meta_fifo, *buf;
-	int fd, sz, epbuf_sz = 0, nrecs = 0;
+	int fd, sz, nrecs = 0;
+	size_t epbuf_sz = 0;
 
 	mtd = malloc(sizeof(dtrace_metadata_t));
 	assert(mtd != NULL);
