@@ -9,6 +9,7 @@ SRCS=		dtrace.c
 BINDIR?=	/usr/sbin
 
 WARNS?=		1
+ASAN_FLAGS = -fsanitize=address
 
 LDFLAGS+= -pthread
 CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
