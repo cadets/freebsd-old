@@ -1667,22 +1667,8 @@ dt_compile_one_clause(dtrace_hdl_t *dtp, dt_node_t *cnp, dt_node_t *pnp)
 	if (DT_TREEDUMP_PASS(dtp, 2))
 		dt_node_printr(cnp, stderr, 0);
 
-	/*
-	 * TODO(dstolfa): Make sure that this contains the target of
-	 * instrumentation. If so, we can easily allocate the irlist
-	 * to the correct target and not worry too much about it.
-	 * This may have interesting implications about variable use
-	 * and how they are localised. This may also be desirable.
-	 */
 	if ((edp = dt_ecbdesc_create(dtp, pnp->dn_desc)) == NULL)
 		longjmp(yypcb->pcb_jmpbuf, EDT_NOMEM);
-
-	printf("%s: %s:%s:%s:%s:%s\n", __func__,
-	       pnp->dn_desc->dtpd_target,
-	       pnp->dn_desc->dtpd_provider,
-	       pnp->dn_desc->dtpd_mod,
-	       pnp->dn_desc->dtpd_func,
-	       pnp->dn_desc->dtpd_name);
 
 	assert(yypcb->pcb_ecbdesc == NULL);
 	yypcb->pcb_ecbdesc = edp;

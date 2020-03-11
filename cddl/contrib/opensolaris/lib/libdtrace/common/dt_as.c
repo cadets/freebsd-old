@@ -255,9 +255,9 @@ dt_as_is_host(dtrace_difo_t *dp)
  * that were generated during the code generation stage.
  *
  * We assume that:
- *  (i)   A symbol table is populated correctly
- *  (ii)  A type cast table is populated correctly
- *  (iii) We have all the instructions in an irlist and they are for this target
+ *  (i)  A symbol table is populated correctly;
+ *  (ii) We have all the instructions in an irlist and they are meant to
+ *       be executed on this target machine.
  *
  * The idea is to find the type of where the data originates (usually a built-in)
  * variable. We then want to go through all the relocations (usetx, uload,
@@ -292,13 +292,19 @@ dt_resolve_syms(dt_irlist_t *dlp)
 			sym = DIF_INSTR_SYMBOL(instr);
 
 			break;
+		/*
+		 * In the case of a uload/uuload relocation, we save the
+		 * instruction in a list of relocations that we'll have to apply
+		 * later on.
+		 */
 		case DIF_OP_ULOAD:
 		case DIF_OP_UULOAD:
-			rd = DIF_INSTR_RD(instr);
-			rs = DIF_INSTR_RS(instr);
+			dt_list_append(&relo_list, cur);
 
-			rp[0] = rs;
+			rs = DIF_INSTR_RS(instr);
+			rd = DIF_INSTR_RD(instr);
 			break;
+
 		case DIF_OP_ADD:
 			rd = DIF_INSTR_RD(instr);
 			r1 = DIF_INSTR_R1(instr);
@@ -308,6 +314,7 @@ dt_resolve_syms(dt_irlist_t *dlp)
 				rp[1] = r1;
 				rp[2] = r2;
 			}
+
 			break;
 		}
 	}

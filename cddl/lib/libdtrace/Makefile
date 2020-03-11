@@ -39,6 +39,7 @@ SRCS=		dt_aggregate.c \
 		dt_printf.c \
 		dt_proc.c \
 		dt_program.c \
+		dt_prog_link.c \
 		dt_provider.c \
 		dt_regset.c \
 		dt_string.c \
