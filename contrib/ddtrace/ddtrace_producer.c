@@ -188,6 +188,7 @@ main(int argc, char *argv[])
 
 	sprintf(ddtracearg, "%d", dlog);
 	(void) dtrace_setopt(g_dtp, "ddtracearg", ddtracearg);
+	(void) dtrace_setopt(g_dtp, "ddtracetime", "1");
 #ifndef NDEBUG
 	printf("%s: dtrace options set\n", g_pname);
 #endif
