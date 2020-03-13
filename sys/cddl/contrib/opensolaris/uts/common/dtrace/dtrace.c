@@ -7617,23 +7617,26 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		ASSERT(tomax != NULL);
 
 		if (ecb->dte_size != 0) {
-			dtrace_rechdr_t dtrh;
 			if (!(mstate.dtms_present & DTRACE_MSTATE_TIMESTAMP)) {
 				mstate.dtms_timestamp = dtrace_gethrtime();
 				mstate.dtms_present |= DTRACE_MSTATE_TIMESTAMP;
 			}
 			ASSERT3U(ecb->dte_size, >=, sizeof (dtrace_rechdr_t));
-			dtrh.dtrh_epid = ecb->dte_epid;
 
 			if (ecb->dte_state->dts_options[DTRACEOPT_DDTRACETIME] == DTRACEOPT_UNSET) {
-				DTRACE_RECORD_STORE_TIMESTAMP(&dtrh,
-			   	   mstate.dtms_timestamp);
+				ddtrace_rechdr_t dtrh;
+			
+				dtrh.dtrh_epid = ecb->dte_epid;
+				dtrh.dtrh_timestamp = mstate.dtms_timestamp;
+				DTRACE_STORE(ddtrace_rechdr_t, tomax, offs, dtrh);
 			} else {
+				dtrace_rechdr_t dtrh;
+
+				dtrh.dtrh_epid = ecb->dte_epid;
 				DTRACE_RECORD_STORE_TIMESTAMP(&dtrh,
 			   	   mstate.dtms_walltimestamp);
+				DTRACE_STORE(dtrace_rechdr_t, tomax, offs, dtrh);
 			}
-
-			DTRACE_STORE(dtrace_rechdr_t, tomax, offs, dtrh);
 		}
 
 		mstate.dtms_epid = ecb->dte_epid;
@@ -11252,7 +11255,11 @@ dtrace_ecb_add(dtrace_state_t *state, dtrace_probe_t *probe)
 	 * The default size is the size of the default action: recording
 	 * the header.
 	 */
-	ecb->dte_size = ecb->dte_needed = sizeof (dtrace_rechdr_t);
+	if (ecb->dte_state->dts_options[DTRACEOPT_DDTRACETIME] == DTRACEOPT_UNSET) {
+		ecb->dte_size = ecb->dte_needed = sizeof (dtrace_rechdr_t);
+	} else {
+		ecb->dte_size = ecb->dte_needed = sizeof (ddtrace_rechdr_t);
+	}
 	ecb->dte_alignment = sizeof (dtrace_epid_t);
 
 	epid = state->dts_epid++;

@@ -1107,6 +1107,11 @@ typedef struct dtrace_rechdr {
 	uint32_t dtrh_timestamp_hi;		/* low bits of hrtime_t */
 } dtrace_rechdr_t;
 
+typedef struct ddtrace_rechdr {
+	dtrace_epid_t dtrh_epid;		/* enabled probe id */
+	uint64_t dtrh_timestamp;		/* hrestime() */
+} ddtrace_rechdr_t;
+
 #define	DTRACE_RECORD_LOAD_TIMESTAMP(dtrh)			\
 	((dtrh)->dtrh_timestamp_lo +				\
 	((uint64_t)(dtrh)->dtrh_timestamp_hi << 32))
