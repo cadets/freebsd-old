@@ -60,6 +60,8 @@
 
 #include <libxo/xo.h>
 
+#include<dt_impl.h>
+
 typedef struct dtrace_cmd
 {
 	void (*dc_func)(struct dtrace_cmd *); /* function to compile arg */
