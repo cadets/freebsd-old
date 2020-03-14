@@ -12,7 +12,7 @@ WARNS?=		1
 
 LDFLAGS+= -pthread
 CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
-		-I${SRCTOP}/cddl/contrib/opensolaris/lib/libctf/common
+		-I${SRCTOP}/cddl/contrib/opensolaris/lib/libctf/common \
 		-I${SRCTOP}/cddl/compat/opensolaris/include \
 		-I${OPENSOLARIS_USR_DISTDIR}/head \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libdtrace/common \
