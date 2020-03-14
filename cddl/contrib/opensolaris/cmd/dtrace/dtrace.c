@@ -1658,15 +1658,18 @@ static void *write_script(void *file_path)
 	// unlink(fifo);
 }
 
-static dtrace_metadata_t *read_trace_metadata()
+static dtrace_metadata_t *read_trace_metadata(dtrace_hdl_t *dtp)
 {
 	dtrace_metadata_t *mtd;
-	dtrace_probedesc_t *pdesc;
-	dtrace_eprobedesc_t *epdesc;
+	dtrace_probedesc_t *probe;
+	dtrace_eprobedesc_t *eprobe;
 	FILE *meta_stream;
 	char *meta_fifo, *buf;
 	int fd, sz, nrecs = 0;
 	size_t epbuf_sz = 0;
+
+	int maxformat, npid;
+	char *fmt;
 
 	mtd = malloc(sizeof(dtrace_metadata_t));
 	assert(mtd != NULL);
@@ -1688,11 +1691,12 @@ static dtrace_metadata_t *read_trace_metadata()
 	printf("open() was called. \n");
 	printf("About to read metadata. \n");
 
-	// TODO: integrate this in dtp after it works
 
-	sz = read(fd, &mtd->dt_nformats, sizeof(int));
+	sz = read(fd, &maxformat, sizeof(int));
 	assert(sz > 0);
-	printf("NFORMAT: %d\n", mtd->dt_nformats);
+	printf("NFORMAT: %d\n", maxformat);
+
+	dtp->dt_maxformat = dtp->dt_maxstrdata = maxformat;
 	
 	if(mtd->dt_nformats > 0){
 		// read formats
@@ -1850,6 +1854,34 @@ static void process_trace_data(struct dtrace_guestq *gtq)
 	}
 }
 
+static int dtrace_guest_start(char *script_file)
+{
+	struct dtrace_guestq *gtq;
+	dtrace_metadata_t *mtd;
+	pthread_t trace_reader;
+	int err;
+
+	gtq = malloc(sizeof(struct dtrace_guestq));
+	assert(gtq != NULL);
+
+	write_script(script_file);
+	STAILQ_INIT(&gtq->head);
+	printf("Guest queue successfully initialised. \n");
+	if((g_dtp = dtrace_open(DTRACE_VERSION, 0, &err)) != NULL)
+	{
+		fatal("Failed to initialize dtrace: %s\n", dtrace_errmsg(NULL, err));
+	}
+	mtd  = read_trace_metadata(g_dtp);
+	printf("Successfully read metadata. \n");
+
+	printf("About to read trace data. \n");
+	pthread_create(&trace_reader, NULL, read_trace_data,(void *) gtq);
+
+	process_trace_data(gtq);
+	printf("Successfully processed trace data. Exiting .. \n");
+
+}
+
 int main(int argc, char *argv[])
 {
 	dtrace_bufdesc_t buf;
@@ -1859,10 +1891,7 @@ int main(int argc, char *argv[])
 	char *machine_filter;
 	dtrace_consumer_t con;
 
-	struct dtrace_guestq *gtq;
-	dtrace_metadata_t *mtd;
-	pthread_t trace_reader;
-	const char *file_path;
+	
 
 	con.dc_consume_probe = chew;
 	con.dc_consume_rec = chewrec;
@@ -2008,22 +2037,7 @@ int main(int argc, char *argv[])
 
 	if (h_mode == 1)
 	{
-	
-		file_path = argv[argc - 1];
-		gtq = malloc(sizeof(struct dtrace_guestq));
-		write_script(file_path);
-		STAILQ_INIT(&gtq->head);
-		printf("Guest queue successfully initialised. \n");
-		
-		mtd  = read_trace_metadata();
-		printf("Successfully read metadata. \n");
-		printf("About to read trace data. \n");
-		pthread_create(&trace_reader, NULL, read_trace_data,(void *) gtq);
-
-		process_trace_data(gtq);
-		printf("Successfully processed trace data. Exiting .. \n");
-
-		exit(0);
+		dtrace_guest_start(argv[argc - 1]);
 	}
 
 	if (mode > 1)
