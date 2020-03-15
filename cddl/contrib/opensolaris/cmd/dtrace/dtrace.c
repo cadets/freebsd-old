@@ -1848,10 +1848,10 @@ static int dtrace_guest_start(char *script_file)
 	write_script(script_file);
 	STAILQ_INIT(&gtq->head);
 	printf("Guest queue successfully initialised. \n");
-	if((g_dtp = dtrace_open(DTRACE_VERSION, 0, &err)) == NULL)
-	{
-		fatal("Failed to initialize dtrace: %s\n", dtrace_errmsg(NULL, err));
-	}
+	// if((g_dtp = dtrace_open(DTRACE_VERSION, 0, &err)) == NULL)
+	// {
+	// 	fatal("Failed to initialize dtrace: %s\n", dtrace_errmsg(NULL, err));
+	// }
 	
 	read_trace_metadata(g_dtp);
 	printf("Successfully read metadata. \n");
