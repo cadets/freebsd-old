@@ -1684,7 +1684,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 	sz = read(fd, &maxformat, sizeof(int));
 	assert(sz > 0);
 	printf("NFORMAT: %d\n", maxformat);
-	// dtp->dt_maxformat = dtp->dt_maxstrdata = maxformat;
+	dtp->dt_maxformat = dtp->dt_maxstrdata = maxformat;
 	
 	if(maxformat > 0){
 		// read formats
