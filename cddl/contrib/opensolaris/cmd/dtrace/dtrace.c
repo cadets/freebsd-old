@@ -1719,7 +1719,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 		{   epbuf_sz = 0;
 			probe = malloc(sizeof(dtrace_probedesc_t));
 			assert(probe != NULL);
-			memset(pdesc, 0, sizeof(dtrace_probedesc_t));
+			memset(probe, 0, sizeof(dtrace_probedesc_t));
 
 			sz = read(fd, probe, sizeof(dtrace_probedesc_t));
 			assert(sz == sizeof(dtrace_probedesc_t));
@@ -1733,7 +1733,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 			eprobe = malloc(epbuf_sz + 1);
 			assert(eprobe != NULL);
 			memset(eprobe, 0, sizeof(dtrace_eprobedesc_t));
-			printf("Eprobedesc size is %d, buf_size is %d. \n", sizeof(dtrace_eprobedesc_t), epbuf_sz); 
+			printf("Eprobedesc size is %zu, buf_size is %zu. \n", sizeof(dtrace_eprobedesc_t), epbuf_sz); 
 			sz = read(fd, eprobe, epbuf_sz);
 			assert(sz == epbuf_sz);
 		 }
