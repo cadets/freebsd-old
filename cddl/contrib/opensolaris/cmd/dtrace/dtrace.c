@@ -73,17 +73,6 @@ typedef struct dtrace_cmd
 	char dc_ofile[PATH_MAX];			  /* derived output file name */
 } dtrace_cmd_t;
 
-typedef struct dtrace_metadata
-{
-	 int dt_nformats;
-	 char **dt_formats;
-	 int dt_nprobes;
-	 int dt_npdesc;
-	 dtrace_probedesc_t **dt_pdescs;
-	 dtrace_eprobedesc_t **dt_epdescs;
-
-} dtrace_metadata_t;
-
 struct dtrace_guest_entry
 {
 	dtrace_bufdesc_t *desc;
@@ -1660,9 +1649,11 @@ static void *write_script(void *file_path)
 	// unlink(fifo);
 }
 
-static dtrace_metadata_t *read_trace_metadata(dtrace_hdl_t *dtp)
+static void *read_trace_metadata(dtrace_hdl_t *dtp)
 {
 	dtrace_metadata_t *mtd;
+	dtrace_probedesc_t **pdescs;
+	dtrace_eprobedesc_t **epdescs;
 	dtrace_probedesc_t *probe;
 	dtrace_eprobedesc_t *eprobe;
 	FILE *meta_stream;
@@ -1670,7 +1661,7 @@ static dtrace_metadata_t *read_trace_metadata(dtrace_hdl_t *dtp)
 	int fd, sz, nrecs = 0;
 	size_t epbuf_sz = 0;
 
-	int maxformat, npid;
+	int maxformat, maxnpid, npdesc;
 	char *fmt;
 
 	mtd = malloc(sizeof(dtrace_metadata_t));
@@ -1697,71 +1688,64 @@ static dtrace_metadata_t *read_trace_metadata(dtrace_hdl_t *dtp)
 	sz = read(fd, &maxformat, sizeof(int));
 	assert(sz > 0);
 	printf("NFORMAT: %d\n", maxformat);
-
 	dtp->dt_maxformat = dtp->dt_maxstrdata = maxformat;
 	
 	if(mtd->dt_nformats > 0){
 		// read formats
 	}
 
-	sz = read(fd, &mtd->dt_nprobes, sizeof(int));
+	sz = read(fd, &maxnpid, sizeof(int));
 	assert(sz > 0);
-	printf("NPROBES: %d\n", mtd->dt_nprobes);
+	printf("NPROBES: %d\n", maxnpid);
 	printf("I've read %d\n", sz);
 
-	sz = read(fd, &mtd->dt_npdesc, sizeof(int));
+	sz = read(fd, &npdesc, sizeof(int));
 	assert(sz > 0);
 	printf("I've read %d\n", sz);
-	printf("NPDESC: %d\n", mtd->dt_npdesc);
+	printf("NPDESC: %d\n", npdesc);
 
-	if(mtd->dt_npdesc > 0)
+	if(npdesc > 0)
 	{	
 		/* 
 		 * initialize arrays so we can continue reading:
 		 * allocate npdesc pointers to structs so that we only allocate the    *
 		 * actual memory in the for loop.
 		 */
-		mtd->dt_pdescs = calloc(1, mtd->dt_npdesc * sizeof(dtrace_probedesc_t *));
-		assert(mtd->dt_pdescs != NULL);
-		mtd->dt_epdescs = calloc(1, mtd->dt_npdesc * sizeof(dtrace_eprobedesc_t *));
-		assert(mtd->dt_epdescs != NULL);
+		pdescs = calloc(1, npdesc * sizeof(dtrace_probedesc_t *));
+		assert(pdescs != NULL);
+		
+		epdescs = calloc(1, npdesc * sizeof(dtrace_eprobedesc_t *));
+		assert(epdescs != NULL);
 
 		printf("Allocated buffer. \n");
 		
-		for(int i = 0; i < mtd->dt_npdesc; i ++)
+		for(int i = 0; i < npdesc; i ++)
 		{   epbuf_sz = 0;
-			pdesc = malloc(sizeof(dtrace_probedesc_t));
-			assert(pdesc != NULL);
+			probe = malloc(sizeof(dtrace_probedesc_t));
+			assert(probe != NULL);
 			memset(pdesc, 0, sizeof(dtrace_probedesc_t));
 
-			sz = read(fd, pdesc, sizeof(dtrace_probedesc_t));
+			sz = read(fd, probe, sizeof(dtrace_probedesc_t));
 			assert(sz == sizeof(dtrace_probedesc_t));
-			mtd->dt_pdescs[i] = pdesc;
+			pdescs[i] = probe;
 			printf("Got probe. \n");
 
 			sz = read(fd, &epbuf_sz, sizeof(size_t));
 			assert(sz > 0);
 			printf("EPROBE buffer size is: %d.\n", epbuf_sz);
-			epdesc = malloc(sizeof(dtrace_eprobedesc_t));
-			assert(epdesc != NULL);
-			memset(epdesc, 0, sizeof(dtrace_eprobedesc_t));
+			
+			eprobe = malloc(epbuf_sz + 1);
+			assert(eprobe != NULL);
+			memset(eprobe, 0, sizeof(dtrace_eprobedesc_t));
 			printf("Eprobedesc size is %d, buf_size is %d. \n", sizeof(dtrace_eprobedesc_t), epbuf_sz); 
-			sz = read(fd, epdesc, sizeof(dtrace_eprobedesc_t));
-			assert(sz == sizeof(dtrace_eprobedesc_t));
-			mtd->dt_epdescs[i] = epdesc;
-
-			epbuf_sz -= sizeof(dtrace_eprobedesc_t);
-			buf = malloc(epbuf_sz); // records
-			assert(buf != NULL);
-			memset(buf, 0, epbuf_sz);
-			sz = read(fd, buf, epbuf_sz);
+			sz = read(fd, eprobe, epbuf_sz);
 			assert(sz == epbuf_sz);
-		}
+		 }
+
 		printf("Out of the for loop.");
 	}
 	close(fd);
 	printf("Successfully closed file descriptor");
-	return(mtd);
 }
 
 static void *read_trace_data(void *xgtq)
@@ -1873,7 +1857,8 @@ static int dtrace_guest_start(char *script_file)
 	{
 		fatal("Failed to initialize dtrace: %s\n", dtrace_errmsg(NULL, err));
 	}
-	mtd  = read_trace_metadata(g_dtp);
+	
+	read_trace_metadata(g_dtp);
 	printf("Successfully read metadata. \n");
 
 	printf("About to read trace data. \n");
