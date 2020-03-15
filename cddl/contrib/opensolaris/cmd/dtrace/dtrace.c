@@ -1651,7 +1651,6 @@ static void *write_script(void *file_path)
 
 static void *read_trace_metadata(dtrace_hdl_t *dtp)
 {
-	dtrace_metadata_t *mtd;
 	dtrace_probedesc_t **pdescs;
 	dtrace_eprobedesc_t **epdescs;
 	dtrace_probedesc_t *probe;
@@ -1663,9 +1662,6 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 
 	int maxformat, maxnpid, npdesc;
 	char *fmt;
-
-	mtd = malloc(sizeof(dtrace_metadata_t));
-	assert(mtd != NULL);
 
 	meta_fifo = "/tmp/meta_fifo";
 	int err = mkfifo(meta_fifo, 0666);
@@ -1690,7 +1686,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 	printf("NFORMAT: %d\n", maxformat);
 	dtp->dt_maxformat = dtp->dt_maxstrdata = maxformat;
 	
-	if(mtd->dt_nformats > 0){
+	if(maxformat > 0){
 		// read formats
 	}
 
@@ -1843,7 +1839,6 @@ static void process_trace_data(struct dtrace_guestq *gtq)
 static int dtrace_guest_start(char *script_file)
 {
 	struct dtrace_guestq *gtq;
-	dtrace_metadata_t *mtd;
 	pthread_t trace_reader;
 	int err;
 
