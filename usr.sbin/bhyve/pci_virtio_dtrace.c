@@ -425,6 +425,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		case FORMAT_STRING:
 			DPRINTF(("Got FORMAT_STRING. \n"));
 			fmt_len = strlen(mtd_ev->umtd.dts_fmtstr);
+			sz = fwrite(&fmt_len, 1, sizeof(size_t), meta_stream);
+			assert(sz > 0);
 			sz = fwrite(&mtd_ev->umtd.dts_fmtstr, 1, fmt_len, meta_stream);
 			assert(sz == fmt_len);
 			break;

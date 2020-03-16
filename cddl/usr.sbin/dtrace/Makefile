@@ -12,7 +12,7 @@ WARNS?=		1
 
 LDFLAGS+= -pthread
 CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
-		-I${SRCTOP}/cddl/contrib/opensolaris/lib/libctf/common \
+		-I${SRCTOP}/cddl/contrib/opensolaris/lib/libctf/common
 		-I${SRCTOP}/cddl/compat/opensolaris/include \
 		-I${OPENSOLARIS_USR_DISTDIR}/head \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libdtrace/common \
@@ -20,8 +20,8 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common \
 		-I${OPENSOLARIS_SYS_DISTDIR}/compat \
 
-CFLAGS+=-fsanitize=address
-CFLAGS+=-fno-omit-frame-pointer
+#CFLAGS+=-fsanitize=address
+#CFLAGS+=-fno-omit-frame-pointer
 
 # Optional debugging stuff...
 #CFLAGS+=	-DNEED_ERRLOC
