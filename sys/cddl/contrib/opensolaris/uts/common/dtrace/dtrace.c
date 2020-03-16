@@ -7603,14 +7603,8 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			}
 		}
 
-		if (ecb->dte_state->dts_options[DTRACEOPT_DDTRACETIME] == DTRACEOPT_UNSET) {
-			offs = dtrace_buffer_reserve(buf, ecb->dte_needed,
-			   ecb->dte_alignment, state, &mstate);
-		} else { 
-			offs = dtrace_buffer_reserve(buf, ecb->dte_needed,
-			   sizeof(uint64_t), state, &mstate);
-		}
-		if (offs < 0)
+		if ((offs = dtrace_buffer_reserve(buf, ecb->dte_needed,
+		   ecb->dte_alignment, state, &mstate)) < 0)
 			continue;
 
 		tomax = buf->dtb_tomax;
@@ -7621,17 +7615,18 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 				mstate.dtms_timestamp = dtrace_gethrtime();
 				mstate.dtms_present |= DTRACE_MSTATE_TIMESTAMP;
 			}
-			ASSERT3U(ecb->dte_size, >=, sizeof (dtrace_rechdr_t));
 
 			if (ecb->dte_state->dts_options[DTRACEOPT_DDTRACETIME] == DTRACEOPT_UNSET) {
 				ddtrace_rechdr_t dtrh;
 			
+				ASSERT3U(ecb->dte_size, >=, sizeof (ddtrace_rechdr_t));
 				dtrh.dtrh_epid = ecb->dte_epid;
 				dtrh.dtrh_timestamp = mstate.dtms_timestamp;
 				DTRACE_STORE(ddtrace_rechdr_t, tomax, offs, dtrh);
 			} else {
 				dtrace_rechdr_t dtrh;
 
+				ASSERT3U(ecb->dte_size, >=, sizeof (dtrace_rechdr_t));
 				dtrh.dtrh_epid = ecb->dte_epid;
 				DTRACE_RECORD_STORE_TIMESTAMP(&dtrh,
 			   	   mstate.dtms_walltimestamp);
@@ -11255,12 +11250,13 @@ dtrace_ecb_add(dtrace_state_t *state, dtrace_probe_t *probe)
 	 * The default size is the size of the default action: recording
 	 * the header.
 	 */
-	if (ecb->dte_state->dts_options[DTRACEOPT_DDTRACETIME] == DTRACEOPT_UNSET) {
+	if (state->dts_options[DTRACEOPT_DDTRACETIME] == DTRACEOPT_UNSET) {
 		ecb->dte_size = ecb->dte_needed = sizeof (dtrace_rechdr_t);
+		ecb->dte_alignment = sizeof (dtrace_epid_t);
 	} else {
 		ecb->dte_size = ecb->dte_needed = sizeof (ddtrace_rechdr_t);
+		ecb->dte_alignment = sizeof (uint64_t);
 	}
-	ecb->dte_alignment = sizeof (dtrace_epid_t);
 
 	epid = state->dts_epid++;
 
@@ -11365,8 +11361,13 @@ dtrace_ecb_resize(dtrace_ecb_t *ecb)
 	 * If we record anything, we always record the dtrace_rechdr_t.  (And
 	 * we always record it first.)
 	 */
-	ecb->dte_size = sizeof (dtrace_rechdr_t);
-	ecb->dte_alignment = sizeof (dtrace_epid_t);
+	if (ecb->dte_state->dts_options[DTRACEOPT_DDTRACETIME] == DTRACEOPT_UNSET) {
+		ecb->dte_size = sizeof (dtrace_rechdr_t);
+		ecb->dte_alignment = sizeof (dtrace_epid_t);
+	} else {
+		ecb->dte_size = sizeof (ddtrace_rechdr_t);
+		ecb->dte_alignment = sizeof (uint64_t);
+	}
 
 	for (act = ecb->dte_action; act != NULL; act = act->dta_next) {
 		dtrace_recdesc_t *rec = &act->dta_rec;
@@ -11431,19 +11432,34 @@ dtrace_ecb_resize(dtrace_ecb_t *ecb)
 			ecb->dte_needed = MAX(ecb->dte_needed, ecb->dte_size);
 		}
 	}
+	if (ecb->dte_state->dts_options[DTRACEOPT_DDTRACETIME] == DTRACEOPT_UNSET) {
+		if ((act = ecb->dte_action) != NULL &&
+		!(act->dta_kind == DTRACEACT_SPECULATE && act->dta_next == NULL) &&
+		ecb->dte_size == sizeof (dtrace_rechdr_t)) {
+			/*
+			* If the size is still sizeof (dtrace_rechdr_t), then all
+			* actions store no data; set the size to 0.
+			*/
+			ecb->dte_size = 0;
+		}
 
-	if ((act = ecb->dte_action) != NULL &&
-	    !(act->dta_kind == DTRACEACT_SPECULATE && act->dta_next == NULL) &&
-	    ecb->dte_size == sizeof (dtrace_rechdr_t)) {
-		/*
-		 * If the size is still sizeof (dtrace_rechdr_t), then all
-		 * actions store no data; set the size to 0.
-		 */
-		ecb->dte_size = 0;
+		ecb->dte_size = P2ROUNDUP(ecb->dte_size, sizeof (dtrace_epid_t));
+		ecb->dte_needed = P2ROUNDUP(ecb->dte_needed, (sizeof (dtrace_epid_t)));
+	} else {
+		if ((act = ecb->dte_action) != NULL &&
+		!(act->dta_kind == DTRACEACT_SPECULATE && act->dta_next == NULL) &&
+		ecb->dte_size == sizeof (ddtrace_rechdr_t)) {
+			/*
+			* If the size is still sizeof (dtrace_rechdr_t), then all
+			* actions store no data; set the size to 0.
+			*/
+			ecb->dte_size = 0;
+		}
+
+		ecb->dte_size = P2ROUNDUP(ecb->dte_size, sizeof (uint64_t));
+		ecb->dte_needed = P2ROUNDUP(ecb->dte_needed, (sizeof (uint64_t)));
 	}
 
-	ecb->dte_size = P2ROUNDUP(ecb->dte_size, sizeof (dtrace_epid_t));
-	ecb->dte_needed = P2ROUNDUP(ecb->dte_needed, (sizeof (dtrace_epid_t)));
 	ecb->dte_state->dts_needed = MAX(ecb->dte_state->dts_needed,
 	    ecb->dte_needed);
 	return (0);
