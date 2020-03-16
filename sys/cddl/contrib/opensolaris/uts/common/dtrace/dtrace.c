@@ -7617,13 +7617,6 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			}
 
 			if (ecb->dte_state->dts_options[DTRACEOPT_DDTRACETIME] == DTRACEOPT_UNSET) {
-				ddtrace_rechdr_t dtrh;
-			
-				ASSERT3U(ecb->dte_size, >=, sizeof (ddtrace_rechdr_t));
-				dtrh.dtrh_epid = ecb->dte_epid;
-				dtrh.dtrh_timestamp = mstate.dtms_timestamp;
-				DTRACE_STORE(ddtrace_rechdr_t, tomax, offs, dtrh);
-			} else {
 				dtrace_rechdr_t dtrh;
 
 				ASSERT3U(ecb->dte_size, >=, sizeof (dtrace_rechdr_t));
@@ -7631,6 +7624,13 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 				DTRACE_RECORD_STORE_TIMESTAMP(&dtrh,
 			   	   mstate.dtms_walltimestamp);
 				DTRACE_STORE(dtrace_rechdr_t, tomax, offs, dtrh);
+			} else {
+				ddtrace_rechdr_t dtrh;
+			
+				ASSERT3U(ecb->dte_size, >=, sizeof (ddtrace_rechdr_t));
+				dtrh.dtrh_epid = ecb->dte_epid;
+				dtrh.dtrh_timestamp = mstate.dtms_timestamp;
+				DTRACE_STORE(ddtrace_rechdr_t, tomax, offs, dtrh);
 			}
 		}
 
