@@ -1692,7 +1692,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 		dtp->dt_strdata = calloc(1,maxformat * sizeof(char *));
 		assert(dtp->dt_strdata != NULL);
 
-		formats = calloc(1, maxformat * szieof(char *));
+		formats = calloc(1, maxformat * sizeof(char *));
 		assert(formats != 0);
 
 		for(int i = 0; i < maxformat; i ++)
