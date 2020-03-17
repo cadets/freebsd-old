@@ -1377,8 +1377,8 @@ vtdtr_consume_trace(void *xsc)
 				// TODO split into two events if bigger than 512
 				if (ctrl_trc_ev->dtbd_size < 512)
 				{
-					cp = strlcpy(ctrl_trc_ev->dtbd_data, trc->dtbd_data, ctrl_trc_ev->dtbd_size + 1);
-					KASSERT(cp == ctrl_trc_ev->dtbd_size , "Error occured while copying trace buffer data");
+					cp = strlcpy(ctrl_trc_ev->dtbd_data, trc->dtbd_data, (size_t)(ctrl_trc_ev->dtbd_size + 1));
+					KASSERT(cp == (size_t)ctrl_trc_ev->dtbd_size , "Error occured while copying trace buffer data");
 				}
 				break;
 			case DDTRACE_METADATA:
