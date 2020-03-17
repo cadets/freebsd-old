@@ -159,7 +159,11 @@ static const char *g_etc[] = {
 void dt_get_errloc(dtrace_hdl_t *, char **, int *);
 #endif /* !illumos && NEED_ERRLOC */
 
-static int
+extern int
+dt_consume_cpu(dtrace_hdl_t *dtp, FILE *fp, int cpu,
+    dtrace_bufdesc_t *buf, boolean_t just_one,
+    dtrace_consumer_t *dc, void *arg);
+
 usage(FILE *fp)
 {
 	static const char predact[] = "[[ predicate ] action ]";
@@ -1756,25 +1760,25 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 			// this can be DIF(DTrace Intermediate Format), anonymous or printf
 
 			// an enabled probe can produce more records
-			// for(int i = 0; i < eprobe->dtepd_nrecs; i ++)
-			// {
-			// 	dtrace_recdesc_t *rec = eprobe->dtepd_rec[i];
+			for(int i = 0; i < eprobe->dtepd_nrecs; i ++)
+			{
+				dtrace_recdesc_t *rec = eprobe->dtepd_rec[i];
 
-			// 	switch(rec->dtrd_action) {
-			// 		case DTRACEACT_DIFEXPR:
-			// 			dtp->dt_strdata[rec->dtrd_format - 1] =
-			// 			     formats[rec->dtrd_format - 1];
-			// 			break;
-			// 		case DTRACEACT_PRINTA:
-			// 			dtp->dt_formats[rec->dtrd_format - 1] = 
-			// 				 dtrace_printa_create(dtp, formats[rec->dtrd_format-1]);
-			// 			break;
-			// 		default:
-			// 			dtp->dt_formats[rec->dtrd_format - 1] = 				 dtrace_printf_create(dtp, formats
-			// 			     [rec->dtrd_format -1]);
-			// 			break;
-			// 	}
-			// }
+				switch(rec->dtrd_action) {
+					case DTRACEACT_DIFEXPR:
+						dtp->dt_strdata[rec->dtrd_format - 1] =
+						     formats[rec->dtrd_format - 1];
+						break;
+					case DTRACEACT_PRINTA:
+						dtp->dt_formats[rec->dtrd_format - 1] = 
+							 dtrace_printa_create(dtp, formats[rec->dtrd_format-1]);
+						break;
+					default:
+						dtp->dt_formats[rec->dtrd_format - 1] = 				 dtrace_printf_create(dtp, formats
+						     [rec->dtrd_format -1]);
+						break;
+				}
+			}
 
 		 }
 
@@ -1864,6 +1868,15 @@ static void process_trace_data(struct dtrace_guestq *gtq)
 	struct dtrace_bufdesc_t *buf;
 	dtrace_consumer_t con;
 	struct dtrace_guest_entry *trc_entry;
+
+	// hope we can use the functions defined here
+	con.dc_consume_probe = chew;
+	con.dc_consume_rec = chewrec;
+
+	// we don't get anything from the host's kernel
+	con.dc_put_buf = NULL;
+	con.dc_get_buf = NULL;
+
 	for (;;)
 	{
 		pthread_mutex_lock(&gtq->mtx);
@@ -1873,15 +1886,8 @@ static void process_trace_data(struct dtrace_guestq *gtq)
 			printf("Dequeued trace data of size: %d. \n", trc_entry->desc->dtbd_size);
 			buf = trc_entry->desc;
 
-			// hope we can use the functions defined here
-			con.dc_consume_probe = chew;
-			con.dc_consume_rec = chewrec;
-
-			// we don't get anything from the host's kernel
-			con.dc_put_buf = NULL;
-			con.dc_get_buf = NULL;
-
-			// dt_consume_cpu(dtp, NULL, 0, buf, false, &con, NULL);
+			printf("About to consume snapshot.")
+			dt_consume_cpu(dtp, NULL, 0, buf, false, &con, NULL);
 
 		}
 		pthread_mutex_unlock(&gtq->mtx);
