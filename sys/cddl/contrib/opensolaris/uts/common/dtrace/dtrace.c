@@ -7435,9 +7435,6 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	mstate.dtms_timestamp = dtrace_gethrtime();
 	mstate.dtms_present = DTRACE_MSTATE_TIMESTAMP;
 
-	mstate.dtms_walltimestamp = dtrace_gethrestime();
-	mstate.dtms_present = DTRACE_MSTATE_TIMESTAMP;
-
 	vtime = dtrace_vtime_references != 0;
 
 	if (vtime && curthread->t_dtrace_start)
@@ -7611,25 +7608,30 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		ASSERT(tomax != NULL);
 
 		if (ecb->dte_size != 0) {
-			if (!(mstate.dtms_present & DTRACE_MSTATE_TIMESTAMP)) {
-				mstate.dtms_timestamp = dtrace_gethrtime();
-				mstate.dtms_present |= DTRACE_MSTATE_TIMESTAMP;
-			}
-
 			if (ecb->dte_state->dts_options[DTRACEOPT_DDTRACETIME] == DTRACEOPT_UNSET) {
 				dtrace_rechdr_t dtrh;
+
+				if (!(mstate.dtms_present & DTRACE_MSTATE_TIMESTAMP)) {
+					mstate.dtms_timestamp = dtrace_gethrtime();
+					mstate.dtms_present |= DTRACE_MSTATE_TIMESTAMP;
+				}
 
 				ASSERT3U(ecb->dte_size, >=, sizeof (dtrace_rechdr_t));
 				dtrh.dtrh_epid = ecb->dte_epid;
 				DTRACE_RECORD_STORE_TIMESTAMP(&dtrh,
-			   	   mstate.dtms_walltimestamp);
+			   	   mstate.dtms_timestamp);
 				DTRACE_STORE(dtrace_rechdr_t, tomax, offs, dtrh);
 			} else {
 				ddtrace_rechdr_t dtrh;
+
+				if (!(mstate.dtms_present & DTRACE_MSTATE_WALLTIMESTAMP)) {
+					mstate.dtms_walltimestamp = dtrace_gethrestime();
+					mstate.dtms_present |= DTRACE_MSTATE_WALLTIMESTAMP;
+				}
 			
 				ASSERT3U(ecb->dte_size, >=, sizeof (ddtrace_rechdr_t));
 				dtrh.dtrh_epid = ecb->dte_epid;
-				dtrh.dtrh_timestamp = mstate.dtms_timestamp;
+				dtrh.dtrh_timestamp = mstate.dtms_walltimestamp;
 				DTRACE_STORE(ddtrace_rechdr_t, tomax, offs, dtrh);
 			}
 		}
@@ -11255,7 +11257,7 @@ dtrace_ecb_add(dtrace_state_t *state, dtrace_probe_t *probe)
 		ecb->dte_alignment = sizeof (dtrace_epid_t);
 	} else {
 		ecb->dte_size = ecb->dte_needed = sizeof (ddtrace_rechdr_t);
-		ecb->dte_alignment = sizeof (uint64_t);
+		ecb->dte_alignment = sizeof (((ddtrace_rechdr_t *)0)->dtrh_timestamp);
 	}
 
 	epid = state->dts_epid++;
@@ -11366,7 +11368,7 @@ dtrace_ecb_resize(dtrace_ecb_t *ecb)
 		ecb->dte_alignment = sizeof (dtrace_epid_t);
 	} else {
 		ecb->dte_size = sizeof (ddtrace_rechdr_t);
-		ecb->dte_alignment = sizeof (uint64_t);
+		ecb->dte_alignment = sizeof (((ddtrace_rechdr_t *)0)->dtrh_timestamp);
 	}
 
 	for (act = ecb->dte_action; act != NULL; act = act->dta_next) {
@@ -11434,8 +11436,8 @@ dtrace_ecb_resize(dtrace_ecb_t *ecb)
 	}
 	if (ecb->dte_state->dts_options[DTRACEOPT_DDTRACETIME] == DTRACEOPT_UNSET) {
 		if ((act = ecb->dte_action) != NULL &&
-		!(act->dta_kind == DTRACEACT_SPECULATE && act->dta_next == NULL) &&
-		ecb->dte_size == sizeof (dtrace_rechdr_t)) {
+		   !(act->dta_kind == DTRACEACT_SPECULATE && act->dta_next == NULL) &&
+		   ecb->dte_size == sizeof (dtrace_rechdr_t)) {
 			/*
 			* If the size is still sizeof (dtrace_rechdr_t), then all
 			* actions store no data; set the size to 0.
@@ -11447,17 +11449,19 @@ dtrace_ecb_resize(dtrace_ecb_t *ecb)
 		ecb->dte_needed = P2ROUNDUP(ecb->dte_needed, (sizeof (dtrace_epid_t)));
 	} else {
 		if ((act = ecb->dte_action) != NULL &&
-		!(act->dta_kind == DTRACEACT_SPECULATE && act->dta_next == NULL) &&
-		ecb->dte_size == sizeof (ddtrace_rechdr_t)) {
+		   !(act->dta_kind == DTRACEACT_SPECULATE && act->dta_next == NULL) &&
+		   ecb->dte_size == sizeof (ddtrace_rechdr_t)) {
 			/*
-			* If the size is still sizeof (dtrace_rechdr_t), then all
+			* If the size is still sizeof (ddtrace_rechdr_t), then all
 			* actions store no data; set the size to 0.
 			*/
 			ecb->dte_size = 0;
 		}
 
-		ecb->dte_size = P2ROUNDUP(ecb->dte_size, sizeof (uint64_t));
-		ecb->dte_needed = P2ROUNDUP(ecb->dte_needed, (sizeof (uint64_t)));
+		ecb->dte_size = P2ROUNDUP(ecb->dte_size,
+		    sizeof (((ddtrace_rechdr_t *)0)->dtrh_timestamp);
+		ecb->dte_needed = P2ROUNDUP(ecb->dte_needed,
+		    sizeof (((ddtrace_rechdr_t *)0)->dtrh_timestamp);
 	}
 
 	ecb->dte_state->dts_needed = MAX(ecb->dte_state->dts_needed,
