@@ -1695,7 +1695,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 		formats = calloc(1, maxformat * szieof(char *));
 		assert(formats != 0);
 
-		for(i = 0; i < maxformat; i ++)
+		for(int i = 0; i < maxformat; i ++)
 		{
 			sz = read(fd, &fmt_len, sizeof(size_t));
 			assert(sz > 0);
@@ -1714,7 +1714,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 	printf("I've read %d\n", sz);
 
 	dtp->dt_maxprobe = maxnpid;
-	dtp->dt_pdesc = calloc(1, maxnpid * sizeof(dtrace_peobedesc_t *));
+	dtp->dt_pdesc = calloc(1, maxnpid * sizeof(dtrace_probedesc_t *));
 	assert(dtp->dt_pdesc != NULL);
 
 	// because you can't have more enabled probes than this and apparently we 
@@ -1774,7 +1774,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 			// 			     [rec->dtrd_format -1]);
 			// 			break;
 			// 	}
-			}
+			// }
 
 		 }
 
@@ -1877,7 +1877,7 @@ static void process_trace_data(struct dtrace_guestq *gtq)
 			con.dc_consume_probe = chew;
 			con.dc_consume_rec = chewrec;
 
-			// we don't anything from kernel
+			// we don't get anything from the host's kernel
 			con.dc_put_buf = NULL;
 			con.dc_get_buf = NULL;
 
