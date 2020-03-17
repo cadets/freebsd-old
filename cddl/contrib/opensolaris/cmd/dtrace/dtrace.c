@@ -1862,7 +1862,7 @@ static void *read_trace_data(void *xgtq)
 	}
 }
 
-static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t dtp)
+static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t *dtp)
 {
 	printf("Waiting to process trace data.. \n");
 	dtrace_bufdesc_t *buf;
