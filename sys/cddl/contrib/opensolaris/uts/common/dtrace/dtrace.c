@@ -11459,9 +11459,9 @@ dtrace_ecb_resize(dtrace_ecb_t *ecb)
 		}
 
 		ecb->dte_size = P2ROUNDUP(ecb->dte_size,
-		    sizeof (((ddtrace_rechdr_t *)0)->dtrh_timestamp);
+		    sizeof (((ddtrace_rechdr_t *)0)->dtrh_timestamp));
 		ecb->dte_needed = P2ROUNDUP(ecb->dte_needed,
-		    sizeof (((ddtrace_rechdr_t *)0)->dtrh_timestamp);
+		    sizeof (((ddtrace_rechdr_t *)0)->dtrh_timestamp));
 	}
 
 	ecb->dte_state->dts_needed = MAX(ecb->dte_state->dts_needed,
