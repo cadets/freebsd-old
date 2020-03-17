@@ -1917,7 +1917,7 @@ static int dtrace_guest_start(char *script_file)
 	printf("About to read trace data. \n");
 	pthread_create(&trace_reader, NULL, read_trace_data,(void *) gtq);
 
-	process_trace_data(gtq);
+	process_trace_data(gtq, g_dtp);
 	printf("Successfully processed trace data. Exiting .. \n");
 
 }
