@@ -78,7 +78,7 @@ struct dtrace_guest_entry
 	dtrace_bufdesc_t *desc;
 	STAILQ_ENTRY(dtrace_guest_entry)
 	entries;
-};
+} dtrace_guest_entry_t;
 
 struct dtrace_guestq
 {
@@ -1762,7 +1762,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 			// an enabled probe can produce more records
 			for(int i = 0; i < eprobe->dtepd_nrecs; i ++)
 			{
-				dtrace_recdesc_t *rec = eprobe->dtepd_rec[i];
+				dtrace_recdesc_t *rec = &eprobe->dtepd_rec[i];
 
 				switch(rec->dtrd_action) {
 					case DTRACEACT_DIFEXPR:
@@ -1862,10 +1862,10 @@ static void *read_trace_data(void *xgtq)
 	}
 }
 
-static void process_trace_data(struct dtrace_guestq *gtq)
+static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t dtp)
 {
 	printf("Waiting to process trace data.. \n");
-	struct dtrace_bufdesc_t *buf;
+	dtrace_bufdesc_t *buf;
 	dtrace_consumer_t con;
 	struct dtrace_guest_entry *trc_entry;
 
@@ -1886,7 +1886,7 @@ static void process_trace_data(struct dtrace_guestq *gtq)
 			printf("Dequeued trace data of size: %d. \n", trc_entry->desc->dtbd_size);
 			buf = trc_entry->desc;
 
-			printf("About to consume snapshot.")
+			printf("About to consume snapshot.");
 			dt_consume_cpu(dtp, NULL, 0, buf, false, &con, NULL);
 
 		}
