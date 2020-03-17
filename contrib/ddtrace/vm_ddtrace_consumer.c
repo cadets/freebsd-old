@@ -329,24 +329,24 @@ int dtrace_consumer()
     fprintf(log_fp, "DTrace instrumentation started.\n");
     fflush(log_fp);
 
-    // do
-    // {
-    //     dtrace_sleep(dtp);
+    do
+    {
+        dtrace_sleep(dtp);
 
-    //     switch (dtrace_work(dtp, log_fp, &con, NULL))
-    //     {
-    //     case DTRACE_WORKSTATUS_DONE:
-    //         done = 1;
-    //         break;
-    //     case DTRACE_WORKSTATUS_OKAY:
-    //         break;
-    //     default:
-    //         fprintf(log_fp, "Processing aborted:%s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
-    //         ret = -1;
-    //         goto destroy_dtrace;
-    //     }
-    //     fflush(log_fp);
-    // } while (!done);
+        switch (dtrace_work(dtp, log_fp, &con, NULL))
+        {
+        case DTRACE_WORKSTATUS_DONE:
+            done = 1;
+            break;
+        case DTRACE_WORKSTATUS_OKAY:
+            break;
+        default:
+            fprintf(log_fp, "Processing aborted:%s\n", dtrace_errmsg(dtp, dtrace_errno(dtp)));
+            ret = -1;
+            goto destroy_dtrace;
+        }
+        fflush(log_fp);
+    } while (!done);
 
  //   print aggregations
 
