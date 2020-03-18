@@ -1760,27 +1760,33 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 			// this can be DIF(DTrace Intermediate Format), anonymous or printf
 
 			// an enabled probe can produce more records
-			
+
 			printf("Number of records: %d. \n", eprobe->dtepd_nrecs);
-			// for(int i = 0; i < eprobe->dtepd_nrecs; i ++)
-			// {
-			// 	dtrace_recdesc_t *rec = &eprobe->dtepd_rec[i];
-			// 	printf("Got record description.");
-			// 	switch(rec->dtrd_action) {
-			// 		case DTRACEACT_DIFEXPR:
-			// 			dtp->dt_strdata[rec->dtrd_format - 1] =
-			// 			     formats[rec->dtrd_format - 1];
-			// 			break;
-			// 		case DTRACEACT_PRINTA:
-			// 			dtp->dt_formats[rec->dtrd_format - 1] = 
-			// 				 dtrace_printa_create(dtp, formats[rec->dtrd_format-1]);
-			// 			break;
-			// 		default:
-			// 			dtp->dt_formats[rec->dtrd_format - 1] = 				 dtrace_printf_create(dtp, formats
-			// 			     [rec->dtrd_format -1]);
-			// 			break;
-			// 	}
-			// }
+
+			// only call printf create if we receive format strings
+			// I think
+			if(maxformat > 0)
+			{
+				for(int i = 0; i < eprobe->dtepd_nrecs; i ++)
+				{
+						dtrace_recdesc_t *rec = &eprobe->dtepd_rec[i];
+
+						switch(rec->dtrd_action) {
+							case DTRACEACT_DIFEXPR:
+							dtp->dt_strdata[rec->dtrd_format - 1] =
+						    	 formats[rec->dtrd_format - 1];
+							break;
+						case DTRACEACT_PRINTA:
+							dtp->dt_formats[rec->dtrd_format - 1] = 
+							 dtrace_printa_create(dtp, formats[rec->dtrd_format-1]);
+							break;
+						default:
+							dtp->dt_formats[rec->dtrd_format - 1] = 				 dtrace_printf_create(dtp, formats
+						     [rec->dtrd_format -1]);
+							break;
+						}
+				}
+			}
 
 		 }
 
@@ -1850,6 +1856,7 @@ static void *read_trace_data(void *xgtq)
 		buf->dtbd_data = calloc(1, buf->dtbd_size);
 		sz = read(fd, buf->dtbd_data, buf->dtbd_size);
 		assert(sz == buf->dtbd_size);
+		assert(buf->dtbd_data != NULL);
 		trc_entry->desc = buf;
 		pthread_mutex_lock(&gtq->mtx);
 		dtrace_gtq_enqueue(gtq, trc_entry);
