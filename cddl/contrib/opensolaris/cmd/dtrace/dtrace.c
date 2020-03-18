@@ -1714,7 +1714,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 
 	sz = read(fd, &maxnpid, sizeof(int));
 	assert(sz > 0);
-	printf("NPROBES: %d\n. Aka maximum number of probes.", maxnpid);
+	printf("NPROBES: %d. Aka maximum number of probes. \n", maxnpid);
 	printf("I've read %d\n", sz);
 
 	dtp->dt_maxprobe = maxnpid;
@@ -1729,7 +1729,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 	sz = read(fd, &npdesc, sizeof(int));
 	assert(sz > 0);
 	printf("I've read %d\n", sz);
-	printf("NPDESC: %d\n. Aka how many enabled probes there are.", npdesc);
+	printf("NPDESC: %d. Aka how many enabled probes there are. \n", npdesc);
 
 	if(npdesc > 0)
 	{	
@@ -1760,25 +1760,27 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 			// this can be DIF(DTrace Intermediate Format), anonymous or printf
 
 			// an enabled probe can produce more records
-			for(int i = 0; i < eprobe->dtepd_nrecs; i ++)
-			{
-				dtrace_recdesc_t *rec = &eprobe->dtepd_rec[i];
-
-				switch(rec->dtrd_action) {
-					case DTRACEACT_DIFEXPR:
-						dtp->dt_strdata[rec->dtrd_format - 1] =
-						     formats[rec->dtrd_format - 1];
-						break;
-					case DTRACEACT_PRINTA:
-						dtp->dt_formats[rec->dtrd_format - 1] = 
-							 dtrace_printa_create(dtp, formats[rec->dtrd_format-1]);
-						break;
-					default:
-						dtp->dt_formats[rec->dtrd_format - 1] = 				 dtrace_printf_create(dtp, formats
-						     [rec->dtrd_format -1]);
-						break;
-				}
-			}
+			
+			printf("Number of records: %d. \n", eprobe->dtepd_nrecs);
+			// for(int i = 0; i < eprobe->dtepd_nrecs; i ++)
+			// {
+			// 	dtrace_recdesc_t *rec = &eprobe->dtepd_rec[i];
+			// 	printf("Got record description.");
+			// 	switch(rec->dtrd_action) {
+			// 		case DTRACEACT_DIFEXPR:
+			// 			dtp->dt_strdata[rec->dtrd_format - 1] =
+			// 			     formats[rec->dtrd_format - 1];
+			// 			break;
+			// 		case DTRACEACT_PRINTA:
+			// 			dtp->dt_formats[rec->dtrd_format - 1] = 
+			// 				 dtrace_printa_create(dtp, formats[rec->dtrd_format-1]);
+			// 			break;
+			// 		default:
+			// 			dtp->dt_formats[rec->dtrd_format - 1] = 				 dtrace_printf_create(dtp, formats
+			// 			     [rec->dtrd_format -1]);
+			// 			break;
+			// 	}
+			// }
 
 		 }
 
