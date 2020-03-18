@@ -79,6 +79,9 @@ main(int argc, char *argv[])
 	int c, dlog, done = 0, err, ret = 0, rc, script_argc = 0;
 	char ddtracearg[13];
 	char **script_argv;
+	dtrace_enable_io_t args;
+	void *dof;
+	int error, r;
 
 	g_pname = basename(argv[0]); 	
 
@@ -207,6 +210,26 @@ main(int argc, char *argv[])
 #ifndef NDEBUG
 	fprintf(stdout, "%s: dtrace program compiled\n", g_pname);
 #endif
+
+	/* Set the runtime options before the enbalings are matched.
+	 * This ensures that resizing of the ECB takes into
+	 * account whether the ddtracetime option is set.
+	 */
+	if ((dof = dtrace_getopt_dof(g_dtp)) == NULL)
+		return (-1); /* dt_errno has been set for us */
+
+	args.dof = dof;
+	args.n_matched = 0;
+	r = dt_ioctl(g_dtp, DTRACEIOC_ENABLE, &args);
+	error = errno;
+	dtrace_dof_destroy(g_dtp, dof);
+
+	if (r == -1 && (error != ENOTTY || g_dtp->dt_vector == NULL)) {
+
+		fprintf(stderr, "failed to enable set dtrace options\n");
+		ret = -1;
+		goto destroy_dtrace;
+	}
 
 	if (dtrace_program_exec(g_dtp, prog, &info) == -1) {
 

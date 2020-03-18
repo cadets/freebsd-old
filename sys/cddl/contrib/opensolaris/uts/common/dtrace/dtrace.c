@@ -11252,13 +11252,8 @@ dtrace_ecb_add(dtrace_state_t *state, dtrace_probe_t *probe)
 	 * The default size is the size of the default action: recording
 	 * the header.
 	 */
-	if (state->dts_options[DTRACEOPT_DDTRACETIME] == DTRACEOPT_UNSET) {
-		ecb->dte_size = ecb->dte_needed = sizeof (dtrace_rechdr_t);
-		ecb->dte_alignment = sizeof (dtrace_epid_t);
-	} else {
-		ecb->dte_size = ecb->dte_needed = sizeof (ddtrace_rechdr_t);
-		ecb->dte_alignment = sizeof (((ddtrace_rechdr_t *)0)->dtrh_timestamp);
-	}
+	ecb->dte_size = ecb->dte_needed = sizeof (dtrace_rechdr_t);
+	ecb->dte_alignment = sizeof (dtrace_epid_t);
 
 	epid = state->dts_epid++;
 
@@ -17946,9 +17941,6 @@ dtrace_ioctl(dev_t dev, int cmd, intptr_t arg, int md, cred_t *cr, int *rv)
 
 		mutex_exit(&cpu_lock);
 		mutex_exit(&dtrace_lock);
-		//where to destroy dof STOP
-		//dtrace_dof_destroy(dof);
-
 		return (err);
 	}
 
