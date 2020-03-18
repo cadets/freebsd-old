@@ -189,6 +189,15 @@ dtrace_go(dtrace_hdl_t *dtp)
 	if (dtp->dt_active)
 		return (dt_set_errno(dtp, EINVAL));
 
+	if ((dof = dtrace_getopt_dof(dtp)) == NULL)
+		return (-1); /* dt_errno has been set for us */
+
+	args.dof = dof;
+	args.n_matched = 0;
+	r = dt_ioctl(dtp, DTRACEIOC_ENABLE, &args);
+	error = errno;
+	dtrace_dof_destroy(dtp, dof);
+
 	/*
 	 * If a dtrace:::ERROR program and callback are registered, enable the
 	 * program before we start tracing.  If this fails for a vector open
@@ -200,15 +209,6 @@ dtrace_go(dtrace_hdl_t *dtp)
 	    dtrace_program_exec(dtp, dtp->dt_errprog, NULL) == -1 && (
 	    dtp->dt_errno != ENOTTY || dtp->dt_vector == NULL))
 		return (-1); /* dt_errno has been set for us */
-
-	if ((dof = dtrace_getopt_dof(dtp)) == NULL)
-		return (-1); /* dt_errno has been set for us */
-
-	args.dof = dof;
-	args.n_matched = 0;
-	r = dt_ioctl(dtp, DTRACEIOC_ENABLE, &args);
-	error = errno;
-	dtrace_dof_destroy(dtp, dof);
 
 	if (r == -1 && (error != ENOTTY || dtp->dt_vector == NULL))
 		return (dt_set_errno(dtp, error));
