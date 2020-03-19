@@ -1857,6 +1857,7 @@ static void *read_trace_data(void *xgtq)
 		sz = read(fd, buf->dtbd_data, buf->dtbd_size);
 		assert(sz == buf->dtbd_size);
 		assert(buf->dtbd_data != NULL);
+
 		trc_entry->desc = buf;
 		pthread_mutex_lock(&gtq->mtx);
 		dtrace_gtq_enqueue(gtq, trc_entry);
@@ -1865,7 +1866,7 @@ static void *read_trace_data(void *xgtq)
 
 		// TODO: discover what happens if you actually print this
 		// since assertion doesn't fail we should be okay
-		// printf("Data: %s\n", buf.dtbd_data);
+		// printf("Data: %s\n", buf.dtbd_data); 
 
 		close(fd);
 	}
@@ -1897,6 +1898,8 @@ static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t *dtp)
 
 			printf("About to consume snapshot.");
 			dt_consume_cpu(dtp, NULL, 0, buf, false, &con, NULL);
+			
+			free(trc_entry);
 
 		}
 		pthread_mutex_unlock(&gtq->mtx);

@@ -121,6 +121,7 @@ __EOF__
     rcconf=etc/rc.conf
     cat > ${destdir}/$rcconf <<__EOF__
 ifconfig_vtnet0="DHCP"
+ifconfig_em0=""
 ipv6_activate_all_interfaces="YES"
 ipv6_cpe_wanif="vtnet0"
 sendmail_enable="NONE"
@@ -144,6 +145,8 @@ __EOF__
     echo 'fdescfs_load="YES"' >> ${destdir}/boot/loader.conf
     echo 'vmm_load="YES"' >> ${destdir}/boot/loader.conf
     echo 'dtraceall_load="YES"' >> ${destdir}/boot/loader.conf
+    echo 'dlog_load="YES"' >> ${destdir}/boot/loader.conf
+    echo 'ddtrace_load="YES"' >> ${destdir}/boot/loader.conf
 }
 
 #
