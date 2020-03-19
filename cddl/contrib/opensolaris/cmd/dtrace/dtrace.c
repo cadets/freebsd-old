@@ -1260,6 +1260,7 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 		 * We have processed the final record; output the newline if
 		 * we're not in quiet mode.
 		 */
+		printf("Record is null.");
 		if (!g_quiet && !g_oformat)
 			oprintf("\n");
 
@@ -1275,6 +1276,7 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 		return (DTRACE_CONSUME_NEXT);
 	}
 
+	printf("I am consuming this.")
 	return (DTRACE_CONSUME_THIS);
 }
 
