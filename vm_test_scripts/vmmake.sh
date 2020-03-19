@@ -120,8 +120,7 @@ __EOF__
 
     rcconf=etc/rc.conf
     cat > ${destdir}/$rcconf <<__EOF__
-ifconfig_vtnet0="DHCP"
-ifconfig_em0="SYNCDHCP"
+ifconfig_vtnet0="SYNCDHCP"
 ipv6_activate_all_interfaces="YES"
 ipv6_cpe_wanif="vtnet0"
 sendmail_enable="NONE"
