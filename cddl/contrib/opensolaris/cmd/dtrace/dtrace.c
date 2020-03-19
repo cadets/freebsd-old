@@ -1276,7 +1276,7 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 		return (DTRACE_CONSUME_NEXT);
 	}
 
-	printf("I am consuming this.")
+	printf("I am consuming this.");
 	return (DTRACE_CONSUME_THIS);
 }
 
