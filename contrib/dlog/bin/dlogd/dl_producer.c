@@ -474,7 +474,6 @@ dlp_enqueue_thread(void *vargp)
 			DLOGTR0(PRIO_LOW, "Failed getting message\n");
 			break;
 		}
-		//getchar();
 	}
 	
 	/* Self-trigger syncd() event. */
@@ -1035,7 +1034,7 @@ dl_producer_response(struct dl_producer *self, struct dl_bbuf *buffer)
 								    self->dlp_stats, false);
 
 								if (self->dlp_debug_level > 1)
-									DLOGTR3(PRIO_HIGH,
+									DLOGTR3(PRIO_LOW,
 								   	    "ProduceRequest offset %ld to partition %d successful %d\n",
 								    	    part.dlprp_offset,
 								    	    part.dlprp_partition,
