@@ -63,6 +63,7 @@ extern int dl_config_new(char *, int);
 #define DL_CONF_ACK_TIMEOUT "ack_timeout"
 #define DL_CONF_MSG_VERSION "msg_ver"
 #define DL_CONF_MAX_SEGMENT_SIZE "max_seg_size"
+#define DL_CONF_FROM_BEGINNING "from_beginning" 
 
 #define DL_DEFAULT_CLIENTID "dlog"
 #define DL_DEFAULT_BROKER "127.0.0.1"
@@ -84,5 +85,6 @@ extern int dl_config_new(char *, int);
 #define DL_DEFAULT_ACK_TIMEOUT 5000 
 #define DL_DEFAULT_MSG_VERSION 2
 #define DL_DEFAULT_MAX_SEGMENT_SIZE 10 * 1024 * 1024
+#define DL_DEFAULT_FROM_BEGINNING false
 
 #endif

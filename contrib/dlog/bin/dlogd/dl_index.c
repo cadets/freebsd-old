@@ -823,7 +823,6 @@ dl_index_lookup(struct dl_index *self, uint64_t offset,
 
 	rc = dl_index_lookup_by_poffset(self,
 	    (rel_offset * DL_INDEX_RECORD_SIZE), record);
-	//DL_ASSERT(rc == 0, ("Lookup of offset %lu in index failed", offset));
 	if (rc == 0) {
 
 		if (self->dli_debug_lvl > 1)

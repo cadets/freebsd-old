@@ -221,8 +221,7 @@ dl_user_segment_ctor(void *_super, va_list *ap)
 	struct kevent log_evs[2];
 	struct sbuf log_sb, path_sb;
 	struct stat st;
-	char log_name[MAXPATHLEN];
-	char *topic_name, *log_file_name = NULL;
+	char *log_name, *topic_name, *log_file_name;
 	DIR *dir;
 	struct dirent *ent;
 	uint64_t offset_val;
@@ -263,8 +262,14 @@ dl_user_segment_ctor(void *_super, va_list *ap)
 		    self->dlus_path, errno);
 		goto err_user_seg_ctor;
 	}
-
-	rc = dl_offset_new(&self->dlus_offset, self->dlus_path);
+	
+	if (dnvlist_get_bool(dlogd_props, DL_CONF_FROM_BEGINNING,
+	    DL_DEFAULT_FROM_BEGINNING)){
+		rc = dl_offset_from_beginning_new(&self->dlus_offset,
+		    self->dlus_path);
+	} else {
+		rc = dl_offset_new(&self->dlus_offset, self->dlus_path);
+	}
 	if (rc != 0) {
 
 		DLOGTR0(PRIO_HIGH, "Failed instatiating UserSegment offset\n");
@@ -283,6 +288,8 @@ dl_user_segment_ctor(void *_super, va_list *ap)
 	}
 
 	offset_val = dl_offset_get_val(self->dlus_offset);
+
+	log_file_name = alloca(MAXPATHLEN);
 	while((ent = readdir(dir)) != NULL) {
 
 		if (ent->d_type == DT_REG &&
@@ -296,7 +303,7 @@ dl_user_segment_ctor(void *_super, va_list *ap)
 				if (offset_val >= tmp && tmp >= super->dls_base_offset) {
 
 					super->dls_base_offset = tmp;
-					log_file_name = ent->d_name;
+					strncpy(log_file_name, ent->d_name, MAXPATHLEN);
 				}
 			}
 		}
@@ -312,6 +319,8 @@ dl_user_segment_ctor(void *_super, va_list *ap)
 	}
 
 	/* Open the specified log segment.*/
+	log_name = alloca(MAXPATHLEN);
+
 	(void) sbuf_new(&log_sb, log_name, MAXPATHLEN, SBUF_FIXEDLEN);
 	sbuf_printf(&log_sb, "%s/%s", self->dlus_path, log_file_name);
 	sbuf_finish(&log_sb);
@@ -462,7 +471,7 @@ insert_message(struct dl_segment *segment, struct dl_bbuf *buffer)
 	    dl_bbuf_pos(buffer));
 
 	rc = pthread_mutex_lock(&self->dlus_lock);
-	DL_ASSERT(rc == 0, ("Failed locking UserSegmetn mutex"));
+	DL_ASSERT(rc == 0, ("Failed locking UserSegment mutex"));
 
 	/* Update the log file. */
 	dl_bbuf_new(&metadata, NULL, sizeof(uint32_t),

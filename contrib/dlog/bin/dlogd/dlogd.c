@@ -194,9 +194,12 @@ main(int argc, char *argv[])
 
 	dlogd_name = basename(argv[0]); 	
 
+	/* Create a new nvlist to store dlogd configuration. */
+	dlogd_props = nvlist_create(0);
+
 	/* Parse the dlogd command line arguments */
 	opterr = 0;
-	while ((c = getopt(argc, argv, "dc:")) != -1) {
+	while ((c = getopt(argc, argv, "dc:f")) != -1) {
 		switch(c) {
 		case 'c':
 			/* Configuration file option */
@@ -205,6 +208,10 @@ main(int argc, char *argv[])
 		case 'd':
 			/* Debug option */
 			dlogd_debug++;
+			break;
+		case 'f':
+			nvlist_add_bool(dlogd_props, DL_CONF_FROM_BEGINNING,
+			    true);
 			break;
 		case '?':
 		default:
