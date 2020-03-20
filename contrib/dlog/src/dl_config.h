@@ -79,7 +79,7 @@ extern int dl_config_new(char *, int);
 #define DL_DEFAULT_DEBUG_LEVEL 0
 #define DL_DEFAULT_REQUEST_QUEUE_LEN 100
 #define DL_DEFAULT_NELEMENTS 10
-#define DL_DEFAULT_LOG_PATH "/var/db/dlogd"
+#define DL_DEFAULT_LOG_PATH "/var/db/dlog"
 #define DL_DEFAULT_ACKS DL_LEADER_ACKS
 #define DL_DEFAULT_ACK_TIMEOUT 5000 
 #define DL_DEFAULT_MSG_VERSION 2
