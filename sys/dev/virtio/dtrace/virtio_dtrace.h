@@ -73,6 +73,8 @@
 #define DDTRACE_TRACE	        	0x00
 #define DDTRACE_METADATA			0x01
 
+#define VTDTR_RINGSZ
+
 struct vtdtr_softc;
 struct uuid;
 
@@ -108,6 +110,8 @@ struct vtdtr_ctrl_scriptevent {
 }__attribute__((packed));
 
 struct vtdtr_ctrl_trcevent {
+	int first_chunk;
+	int last_chunk;
 	uint64_t dtbd_size;
 	uint32_t dtbd_cpu;
 	uint32_t dtbd_errors;

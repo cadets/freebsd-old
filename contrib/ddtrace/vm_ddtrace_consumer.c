@@ -67,7 +67,6 @@ static int g_intr, g_status = 0;
 static void
 intr(int signo)
 {
-
     g_intr = 1;
 }
 
@@ -329,7 +328,7 @@ int main(int argc, char **argv)
     /* Daemonise first*/
     if (daemon(0, 0) == -1)
     {
-        fprintf(log_fp, "Failed registering vm_ddtrace_reader as a daemon. \n");
+        fprintf(log_fp, "Failed registering  vm_ddtrace_consumer as a daemon. \n");
         fprintf(log_fp, "Daemon error is %s\n", strerror(errno));
         fflush(log_fp);
         exit(1);

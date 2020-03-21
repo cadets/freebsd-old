@@ -44,7 +44,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/stat.h>
 #include <machine/vmm.h>
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -149,6 +148,8 @@ struct pci_vtdtr_ctrl_scriptevent
 
 struct pci_vtdtr_ctrl_trcevent
 {
+	int first_chunk;
+	int last_chunk;
 	uint64_t dtbd_size;
 	uint32_t dtbd_cpu;
 	uint32_t dtbd_errors;
@@ -305,11 +306,14 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	struct pci_vtdtr_ctrl_trcevent *trc_ev;
 	struct pci_vtdtr_ctrl_metaevent *mtd_ev;
 	FILE *trace_stream;
+	char *data;
+	uintptr_t dest;
 
 	//struct pci_vtdtr_ctrl_provevent *pv_ev;
 	//struct pci_vtdtr_ctrl_pbevent *pb_ev;
 	int fd, npdesc, retval; // error;
 	size_t sz, fmt_len, pdesc_len, epdesc_len;
+	uint64_t data_sz;
 
 	assert(niov == 1);
 	retval = 0;
@@ -387,21 +391,45 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			exit(1);
 		}
 		DPRINTF(("Successfully opened everything."));
+		if (trc_ev->first_chunk == 1)
+		{
+			sz = fwrite(&trc_ev->dtbd_size, sizeof(uint64_t), 1, trace_stream);
+			assert(sz > 0);
+			sz = fwrite(&trc_ev->dtbd_cpu, sizeof(uint32_t), 1, trace_stream);
+			assert(sz > 0);
+			sz = fwrite(&trc_ev->dtbd_errors, sizeof(uint32_t), 1, trace_stream);
+			assert(sz > 0);
+			sz = fwrite(&trc_ev->dtbd_drops, sizeof(uint64_t), 1, trace_stream);
+			assert(sz > 0);
+			sz = fwrite(&trc_ev->dtbd_oldest, sizeof(uint64_t), 1, trace_stream);
+			assert(sz > 0);
+			sz = fwrite(&trc_ev->dtbd_timestamp, sizeof(uint64_t), 1, trace_stream);
+			assert(sz > 0);
 
-		sz = fwrite(&trc_ev->dtbd_size, sizeof(uint64_t), 1, trace_stream);
-		assert(sz > 0);
-		sz = fwrite(&trc_ev->dtbd_cpu, sizeof(uint32_t), 1, trace_stream);
-		assert(sz > 0);
-		sz = fwrite(&trc_ev->dtbd_errors, sizeof(uint32_t), 1, trace_stream);
-		assert(sz > 0);
-		sz = fwrite(&trc_ev->dtbd_drops, sizeof(uint64_t), 1, trace_stream);
-		assert(sz > 0);
-		sz = fwrite(&trc_ev->dtbd_oldest, sizeof(uint64_t), 1, trace_stream);
-		assert(sz > 0);
-		sz = fwrite(&trc_ev->dtbd_timestamp, sizeof(uint64_t), 1, trace_stream);
-		assert(sz > 0);
-		sz = fwrite(&trc_ev->dtbd_data, 1, trc_ev->dtbd_size, trace_stream);
-		assert(sz == trc_ev->dtbd_size);
+			data_sz = trc_ev->dtbd_size;
+			data = calloc(1, data_sz);
+			dest = (uintptr_t)data;
+			assert(data != NULL);
+		}
+		if(data_sz > VTDTR_RINGSZ) 
+		{
+			memcpy((char *)dest, trc_ev->dtbd_data, VTDTR_RINGSZ);
+			data_sz -= VTDTR_RINGSZ;
+			dest += VTDTR_RINGSZ;
+		}
+		else 
+		{
+			memcpy((char *)dest, trc_ev->dtbd_data, data_sz);
+			dest += data_sz;
+		}
+			
+		if (trc_ev->last_chunk == 1)
+		{
+
+			sz = fwrite(data, 1, trc_ev->dtbd_size, trace_stream);
+			assert(sz == trc_ev->dtbd_size);
+			free(data);
+		} 
 		fflush(trace_stream);
 		fclose(trace_stream);
 		close(fd);
@@ -522,7 +550,7 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 		ctrl = (struct pci_vtdtr_control *)iov->iov_base;
 		if (ctrl->event == VTDTR_DEVICE_METADATA && !open)
 		{
-			
+
 			if ((fd = openat(dir_fd, "meta_fifo", O_WRONLY)) == -1)
 			{
 				DPRINTF(("Failed to open metadata write pipe: %s. \n", strerror(errno)));
@@ -535,7 +563,9 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 				exit(1);
 			}
 			open = 1;
-		} else if(ctrl->event == VTDTR_DEVICE_TRACE && open) {
+		}
+		else if (ctrl->event == VTDTR_DEVICE_TRACE && open)
+		{
 			fflush(meta_stream);
 			fclose(meta_stream);
 			close(fd);

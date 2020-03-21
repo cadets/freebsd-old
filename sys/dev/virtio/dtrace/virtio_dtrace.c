@@ -1334,8 +1334,11 @@ vtdtr_consume_trace(void *xsc)
 	struct vtdtr_ctrl_metaevent *ctrl_mtd_ev;
 	device_t dev;
 	size_t trc_buf_len, epdesc_len, pbdesc_len, fmt_len;
-	size_t cp;
+	size_t cp, to_send;
 	int error;
+
+	uintptr_t data;
+	uint64_t data_sz;
 
 	sc = xsc;
 	cq = sc->vtdtr_ctrlq;
@@ -1374,89 +1377,126 @@ vtdtr_consume_trace(void *xsc)
 				ctrl_trc_ev->dtbd_timestamp = trc->dtbd_timestamp;
 				KASSERT(ctrl_trc_ev->dtbd_size == trc->dtbd_size, "Failed copying into fields");
 
-				// TODO split into two events if bigger than 512
-				if (ctrl_trc_ev->dtbd_size < 512)
+				data = (uintptr_t)trc->dtbd_data;
+				data_sz = trc->dtbd_size;
+				to_send = (data_sz > VTDTR_RINGSZ) ? VTDTR_RINGSZ : data_sz;
+				data_sz -= VTDTR_RINGSZ;
+				ctrl_trc_ev->first_chunk = 1;
+				ctrl_trc_ev->last_chunk = (data_sz > 0) ? 0 : 1;
+
+				cp = strlcpy(ctrl_trc_ev->dtbd_data, (char *)data, to_send + 1)
+					KASSERT(cp == to_send, "Failed to copy script fragment");
+				data += to_send;
+
+				mtx_lock(&sc->vtdtr_ctrlq->mtx);
+				vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
+				mtx_unlock(&sc->vtdtr_ctrlq->mtx);
+
+				device_printf(dev, "Successfully enqueued in the control queue. \n");
+
+				while (data_sz > 0)
 				{
-					cp = strlcpy(ctrl_trc_ev->dtbd_data, trc->dtbd_data, (size_t)(ctrl_trc_ev->dtbd_size + 1));
-					KASSERT(cp == (size_t)ctrl_trc_ev->dtbd_size , "Error occured while copying trace buffer data");
+					ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
+					KASSERT(ctrl_entry != NULL, "Failed allocating memory for control entry.");
+					memset(ctrl_entry, 0, sizeof(struct vtdtr_ctrl_entry));
+
+					ctrl = &ctrl_entry->ctrl;
+					ctrl->event = VIRTIO_DTRACE_TRACE;
+					ctrl_trc_ev = &ctrl->uctrl.trace_ev;
+					ctrl_trc_ev->first_chunk = 0;
+
+					to_send = (data_sz > VTDTR_RINGSZ) ? VTDTR_RINGSZ : data_sz;
+					data_sz -= VTDTR_RINGSZ;
+					ctrl_trc_ev->last_chunk = (data_sz > 0) ? 0 : 1;
+					cp = strlcpy(ctrl_trc_ev->dtbd_data, (char *)data, to_send + 1)
+						KASSERT(cp == to_send, "Failed to copy script fragment");
+					data += to_send;
+
+					mtx_lock(&sc->vtdtr_ctrlq->mtx);
+					vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
+					mtx_unlock(&sc->vtdtr_ctrlq->mtx);
+
+					device_printf(dev, "Successfully enqueued in the control queue. \n");
+				}
+			
+			break;
+		case DDTRACE_METADATA:
+			device_printf(dev, "About to enqueue metadata. \n");
+			mtd = &trc_entry->uentry.metadata;
+			ctrl = &ctrl_entry->ctrl;
+			ctrl->event = VIRTIO_DTRACE_METADATA;
+			ctrl_mtd_ev = &ctrl->uctrl.meta_ev;
+			ctrl_mtd_ev->type = mtd->type;
+			switch (mtd->type)
+			{
+			case NFORMAT:
+				ctrl_mtd_ev->umtd.dts_nformats = mtd->umtd.dts_nformats;
+				device_printf(dev, "Put NFORMAT in control entry: %d. \n", ctrl_mtd_ev->umtd.dts_nformats);
+				break;
+			case FORMAT_STRING:
+				fmt_len = strlen(mtd->umtd.dts_fmtstr);
+				device_printf(dev, "Format string length is: %d. \n", fmt_len);
+				if (fmt_len < 512)
+				{
+					cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dts_fmtstr, fmt_len + 1);
+					KASSERT(cp == fmt_len, "Error occurred while copying format string");
+					device_printf(dev, "Successfully added format string to control entry: %s.\n", ctrl_mtd_ev->umtd.dts_fmtstr);
+				}
+				else
+				{
+					device_printf(dev, "Format string doesn't fit in control element");
 				}
 				break;
-			case DDTRACE_METADATA:
-				device_printf(dev, "About to enqueue metadata. \n");
-				mtd = &trc_entry->uentry.metadata;
-				ctrl = &ctrl_entry->ctrl;
-				ctrl->event = VIRTIO_DTRACE_METADATA;
-				ctrl_mtd_ev = &ctrl->uctrl.meta_ev;
-				ctrl_mtd_ev->type = mtd->type;
-				switch (mtd->type)
-				{
-				case NFORMAT:
-					ctrl_mtd_ev->umtd.dts_nformats = mtd->umtd.dts_nformats;
-					device_printf(dev, "Put NFORMAT in control entry: %d. \n", ctrl_mtd_ev->umtd.dts_nformats);
-					break;
-				case FORMAT_STRING:
-					fmt_len = strlen(mtd->umtd.dts_fmtstr);
-					device_printf(dev, "Format string length is: %d. \n", fmt_len);
-					if(fmt_len < 512)
-					{
-						cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dts_fmtstr, fmt_len + 1);
-						KASSERT(cp == fmt_len, "Error occurred while copying format string");
-						device_printf(dev, "Successfully added format string to control entry: %s.\n", ctrl_mtd_ev->umtd.dts_fmtstr);
-					} else {
-						device_printf(dev, "Format string doesn't fit in control element");
-					}
-					break;
-				case NPROBES:
-					ctrl_mtd_ev->umtd.dtrace_nprobes = mtd->umtd.dtrace_nprobes;
-					device_printf(dev, "Number of probes is: %d. \n", ctrl_mtd_ev->umtd.dtrace_nprobes);
-					break;
-				case NPDESC:
-					ctrl_mtd_ev->umtd.dt_npdescs = mtd->umtd.dt_npdescs;
-					device_printf(dev, "Number of probes descriptions is: %d. \n",ctrl_mtd_ev->umtd.dt_npdescs);
-					break;
-				case PROBE_DESCRIPTION:
-					ctrl_mtd_ev->umtd.dt_pdesc.buf_size = mtd->umtd.dt_pdesc.buf_size;
-					KASSERT(ctrl_mtd_ev->umtd.dt_pdesc.buf_size == sizeof(dtrace_probedesc_t), "Probe description size is invalid");
-					memcpy(ctrl_mtd_ev->umtd.dt_pdesc.buf,mtd->umtd.dt_pdesc.buf, sizeof(dtrace_probedesc_t));
-					device_printf(dev, "Probe description here, hopefully. \n");
-					break;
-				case EPROBE_DESCRIPTION:
-					ctrl_mtd_ev->umtd.dt_epdesc.buf_size = mtd->umtd.dt_epdesc.buf_size;
-					memcpy(ctrl_mtd_ev->umtd.dt_epdesc.buf,
-					mtd->umtd.dt_epdesc.buf,
-					mtd->umtd.dt_epdesc.buf_size);
-					device_printf(dev, "Here getting eprobe description should happen. Size: %d", ctrl_mtd_ev->umtd.dt_epdesc.buf_size);
-					break;
-				default:
-					device_printf(dev, "WARNING: Wrong metadata event.");
-					break;
-				}
+			case NPROBES:
+				ctrl_mtd_ev->umtd.dtrace_nprobes = mtd->umtd.dtrace_nprobes;
+				device_printf(dev, "Number of probes is: %d. \n", ctrl_mtd_ev->umtd.dtrace_nprobes);
+				break;
+			case NPDESC:
+				ctrl_mtd_ev->umtd.dt_npdescs = mtd->umtd.dt_npdescs;
+				device_printf(dev, "Number of probes descriptions is: %d. \n", ctrl_mtd_ev->umtd.dt_npdescs);
+				break;
+			case PROBE_DESCRIPTION:
+				ctrl_mtd_ev->umtd.dt_pdesc.buf_size = mtd->umtd.dt_pdesc.buf_size;
+				KASSERT(ctrl_mtd_ev->umtd.dt_pdesc.buf_size == sizeof(dtrace_probedesc_t), "Probe description size is invalid");
+				memcpy(ctrl_mtd_ev->umtd.dt_pdesc.buf, mtd->umtd.dt_pdesc.buf, sizeof(dtrace_probedesc_t));
+				device_printf(dev, "Probe description here, hopefully. \n");
+				break;
+			case EPROBE_DESCRIPTION:
+				ctrl_mtd_ev->umtd.dt_epdesc.buf_size = mtd->umtd.dt_epdesc.buf_size;
+				memcpy(ctrl_mtd_ev->umtd.dt_epdesc.buf,
+					   mtd->umtd.dt_epdesc.buf,
+					   mtd->umtd.dt_epdesc.buf_size);
+				device_printf(dev, "Here getting eprobe description should happen. Size: %d", ctrl_mtd_ev->umtd.dt_epdesc.buf_size);
 				break;
 			default:
-				device_printf(dev, "WARNING: Wrong trace queue event.");
+				device_printf(dev, "WARNING: Wrong metadata event.");
 				break;
 			}
-
 			mtx_lock(&sc->vtdtr_ctrlq->mtx);
 			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
-
 			device_printf(dev, "Successfully enqueued in the control queue. \n");
-			device_printf(dev, "I've filled fields in control entry, freeing trace entry");
-			free(trc_entry, M_DEVBUF);
-
-			// Try removing this at some point 
-			mtx_lock(&sc->vtdtr_mtx);
-			vtdtr_notify_ready(sc);
-			mtx_unlock(&sc->vtdtr_mtx);
-
-			mtx_lock(&sc->vtdtr_condmtx);
-			cv_signal(&sc->vtdtr_condvar);
-			mtx_unlock(&sc->vtdtr_condmtx);
-			device_printf(dev, "Successfully signalled there are entries in the control queue.\n");
+			break;
+		default:
+			device_printf(dev, "WARNING: Wrong trace queue event.");
+			break;
 		}
-		mtx_unlock(&tq->mtx);
+
+		device_printf(dev, "I've filled fields in control entry, freeing trace entry");
+		free(trc_entry, M_DEVBUF);
+
+		// Try removing this at some point 
+		mtx_lock(&sc->vtdtr_mtx);
+		vtdtr_notify_ready(sc);
+		mtx_unlock(&sc->vtdtr_mtx);
+
+		mtx_lock(&sc->vtdtr_condmtx);
+		cv_signal(&sc->vtdtr_condvar);
+		mtx_unlock(&sc->vtdtr_condmtx);
+		device_printf(dev, "Successfully signalled there are entries in the control queue.\n");
 	}
+	mtx_unlock(&tq->mtx);
+}
 }
 
 /*
