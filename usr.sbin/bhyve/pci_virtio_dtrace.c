@@ -408,8 +408,10 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 
 			data_sz = trc_ev->dtbd_size;
 			data = calloc(1, data_sz);
-			dest = (uintptr_t)data;
 			assert(data != NULL);
+			
+			dest = (uintptr_t)data;
+			
 		}
 		if(data_sz > VTDTR_RINGSZ) 
 		{

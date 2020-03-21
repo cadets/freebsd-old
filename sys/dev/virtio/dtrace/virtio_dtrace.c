@@ -1385,7 +1385,7 @@ vtdtr_consume_trace(void *xsc)
 				ctrl_trc_ev->last_chunk = (data_sz > 0) ? 0 : 1;
 
 				cp = strlcpy(ctrl_trc_ev->dtbd_data, (char *)data, to_send + 1)
-					KASSERT(cp == to_send, "Failed to copy script fragment");
+				KASSERT(cp == to_send, "Failed to copy script fragment");
 				data += to_send;
 
 				mtx_lock(&sc->vtdtr_ctrlq->mtx);
@@ -1409,7 +1409,7 @@ vtdtr_consume_trace(void *xsc)
 					data_sz -= VTDTR_RINGSZ;
 					ctrl_trc_ev->last_chunk = (data_sz > 0) ? 0 : 1;
 					cp = strlcpy(ctrl_trc_ev->dtbd_data, (char *)data, to_send + 1)
-						KASSERT(cp == to_send, "Failed to copy script fragment");
+					KASSERT(cp == to_send, "Failed to copy script fragment");
 					data += to_send;
 
 					mtx_lock(&sc->vtdtr_ctrlq->mtx);
