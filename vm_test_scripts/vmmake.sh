@@ -246,7 +246,7 @@ fi
 
 if [ $MKSRC -eq 1 ]; then
     echo "Installing source..."
-    cp -R $SRCDIR/* $DESTDIR/usr/src
+    cp -v -R $SRCDIR/* $DESTDIR/root
 fi
 
 makefs -B little -f $NUMFILES -o label=VM -M $PARTSIZE -S $SECTORSIZE \
