@@ -100,6 +100,7 @@ install_config()
 
     destdir=$1
     kernconfig=$2
+    srcdir=$3
 
     fstab=etc/fstab
     cat > ${destdir}/$fstab <<__EOF__
@@ -146,6 +147,9 @@ __EOF__
     echo 'dtraceall_load="YES"' >> ${destdir}/boot/loader.conf
     echo 'dlog_load="YES"' >> ${destdir}/boot/loader.conf
     echo 'ddtrace_load="YES"' >> ${destdir}/boot/loader.conf
+
+    echo "${srcdir}"
+    cp -v -R ${srcdir}/* ${destdir}/usr/src/
 }
 
 #
@@ -238,7 +242,7 @@ make -j $(sysctl -n hw.ncpu) -s -DNO_ROOT DESTDIR=$DESTDIR KERNCONF=$KERNCONFIG 
     MACHINE=$ARCH TARGET_ARCH=$ARCH \
     DISTDIR= installworld installkernel distribution
 
-install_config $DESTDIR $KERNCONFIG
+install_config $DESTDIR $KERNCONFIG $SRCDIR
 
 if [ -z "$NUMFILES" ]; then
     NUMFILES=$(cat ${DESTDIR}/METALOG | wc -l)
@@ -246,7 +250,7 @@ fi
 
 if [ $MKSRC -eq 1 ]; then
     echo "Installing source..."
-    cp -v -R $SRCDIR/* $DESTDIR/root
+    cp -v -R $SRCDIR/* $DESTDIR/usr/src/
 fi
 
 makefs -B little -f $NUMFILES -o label=VM -M $PARTSIZE -S $SECTORSIZE \
