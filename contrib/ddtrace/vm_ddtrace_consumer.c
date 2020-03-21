@@ -324,6 +324,13 @@ int main(int argc, char **argv)
 {
 
     mkdir(directory_path, 0777);
+    if ((log_fp = fopen(logging_file_path, "a+")) == NULL)
+    {
+            printf("Error opening file: %s \n", strerror(errno));
+    }
+
+    fprintf(log_fp, "In vm_ddtrace_consumer.. \n");
+    fflush(log_fp);
 
     /* Daemonise first*/
     if (daemon(0, 0) == -1)
@@ -340,32 +347,29 @@ int main(int argc, char **argv)
 
     for (;;)
     {
-        if ((log_fp = fopen(logging_file_path, "a+")) == NULL)
-        {
-            printf("Error opening file: %s \n", strerror(errno));
-        }
-
-        fprintf(log_fp, "In vm_ddtrace_consumer.. \n");
-        fflush(log_fp);
         if (get_script_events() != 0)
         {
             fprintf(log_fp, "Error occured while retrieving and assembling the script");
             fflush(log_fp);
             exit(1);
+            break;
         }
 
-        fprintf(log_fp, "Start DTrace instrumentation.. \n");
+        fprintf(log_fp, "Start DTrace consumer.. \n");
         fflush(log_fp);
 
         if ((vm_dtrace_consumer()) != 0)
         {
             fprintf(log_fp, "Error occured while trying to execute the script. \n");
+            break;
         }
-
-        fprintf(log_fp, "Closing log file. \n");
+        fprintf(log_fp, "DTrace consumer finished.. \n");
         fflush(log_fp);
-        fclose(log_fp);
     }
+
+    fprintf(log_fp, "Closing log file. \n");
+    fflush(log_fp);
+    fclose(log_fp);
 
     return 0;
 }
