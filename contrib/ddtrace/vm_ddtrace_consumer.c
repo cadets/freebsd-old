@@ -30,7 +30,6 @@
  *
  */
 
-
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
@@ -68,12 +67,11 @@ static int g_intr, g_status = 0;
 static void
 intr(int signo)
 {
-    
+
     g_intr = 1;
 }
 
-
-static int 
+static int
 get_script_events()
 {
     FILE *script_fp;
@@ -166,7 +164,7 @@ get_script_events()
     return 0;
 }
 
-static int 
+static int
 vm_dtrace_consumer()
 {
 
@@ -291,7 +289,7 @@ vm_dtrace_consumer()
     act.sa_flags = 0;
     act.sa_handler = intr;
     sigaction(SIGINT, &act, NULL);
-	sigaction(SIGTERM, &act, NULL);
+    sigaction(SIGTERM, &act, NULL);
 
     if (dtrace_go(g_dtp) != 0)
     {
@@ -305,16 +303,16 @@ vm_dtrace_consumer()
 
     do
     {
-       if(!g_intr && !done) { 
+        if (!g_intr && !done)
+        {
             dtrace_sleep(g_dtp);
-       }
+        }
 
-       if(g_intr) {
-          done = 1;
-       }
+        if (g_intr)
+        {
+            done = 1;
+        }
     } while (!done);
-
-
 
 destroy_dtrace:
     fprintf(log_fp, "Closing DTrace...\n");
@@ -328,14 +326,6 @@ int main(int argc, char **argv)
 
     mkdir(directory_path, 0777);
 
-    if ((log_fp = fopen(logging_file_path, "w+")) == NULL)
-    {
-        printf("Error opening file: %s \n", strerror(errno));
-    }
-
-    fprintf(log_fp, "In vm_ddtrace_consumer.. \n");
-    fflush(log_fp);
-
     /* Daemonise first*/
     if (daemon(0, 0) == -1)
     {
@@ -346,27 +336,37 @@ int main(int argc, char **argv)
     }
 
     fprintf(log_fp, "Successfully daemonised.\n");
-    fprintf(log_fp, "Waiting for script..\n");
+    fprintf(log_fp, "Waiting for scripts..\n");
     fflush(log_fp);
 
-    if (get_script_events() != 0)
+    for (;;)
     {
-        fprintf(log_fp, "Error occured while retrieving and assembling the script");
+        if ((log_fp = fopen(logging_file_path, "a+")) == NULL)
+        {
+            printf("Error opening file: %s \n", strerror(errno));
+        }
+
+        fprintf(log_fp, "In vm_ddtrace_consumer.. \n");
         fflush(log_fp);
-        exit(1);
+        if (get_script_events() != 0)
+        {
+            fprintf(log_fp, "Error occured while retrieving and assembling the script");
+            fflush(log_fp);
+            exit(1);
+        }
+
+        fprintf(log_fp, "Start DTrace instrumentation.. \n");
+        fflush(log_fp);
+
+        if ((vm_dtrace_consumer()) != 0)
+        {
+            fprintf(log_fp, "Error occured while trying to execute the script. \n");
+        }
+
+        fprintf(log_fp, "Closing log file. \n");
+        fflush(log_fp);
+        fclose(log_fp);
     }
-
-    fprintf(log_fp, "Start DTrace instrumentation.. \n");
-    fflush(log_fp);
-
-    if ((vm_dtrace_consumer()) != 0)
-    {
-        fprintf(log_fp, "Error occured while trying to execute the script. \n");
-    }
-
-    fprintf(log_fp, "Closing log file. \n");
-    fflush(log_fp);
-    fclose(log_fp);
 
     return 0;
 }

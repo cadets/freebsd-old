@@ -14,17 +14,12 @@
 . /etc/rc.subr
 
 name="vm_ddtrace_consumer"
-desc="VM DDTrace consumer daemon"
-# start_cmd="vm_ddtrace_consumer_start"
-# stop_cmd=":"
-command="usr/sbin/${name}"
-# rcvar="vm_ddtrace_consumer_enable"
+rcvar=${name}_enable
 
-##vm_ddtrace_consumer_start()
-# {
-#    echo "This started."
-#   ${vm_ddtrace_consumer_command}
-#}
+desc="VM DDTrace consumer daemon"
+
+command="usr/sbin/${name}"
+
 
 load_rc_config $name
 run_rc_command "$1"
