@@ -54,6 +54,8 @@ __FBSDID("$FreeBSD$");
 #include <dlog.h>
 #include <signal.h>
 
+#define DAEMON_LOG(fmt) log fmt
+
 static char *directory_path = "/var/dtrace_log";
 static char *script_path = "/var/dtrace_log/script.d";
 static char *logging_file_path = "/var/dtrace_log/log_file.txt";
@@ -62,6 +64,13 @@ FILE *log_fp;
 
 static dtrace_hdl_t *g_dtp;
 static int g_intr, g_status = 0;
+
+static void
+log(char *fmt)
+{
+    fprintf(log_fp, fmt);
+    fflush(log_fp);
+}
 
 /*ARGSUSED*/
 static void
@@ -345,14 +354,14 @@ int main(int argc, char **argv)
     fprintf(log_fp, "Waiting for scripts..\n");
     fflush(log_fp);
 
-    for (;;)
-    {
+    // for (;;)
+    // {
         if (get_script_events() != 0)
         {
             fprintf(log_fp, "Error occured while retrieving and assembling the script");
             fflush(log_fp);
             exit(1);
-            break;
+            // break;
         }
 
         fprintf(log_fp, "Start DTrace consumer.. \n");
@@ -361,11 +370,12 @@ int main(int argc, char **argv)
         if ((vm_dtrace_consumer()) != 0)
         {
             fprintf(log_fp, "Error occured while trying to execute the script. \n");
-            break;
+            exit(1);
+            // break;
         }
         fprintf(log_fp, "DTrace consumer finished.. \n");
         fflush(log_fp);
-    }
+   // }
 
     fprintf(log_fp, "Closing log file. \n");
     fflush(log_fp);

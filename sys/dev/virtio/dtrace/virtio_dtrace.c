@@ -1334,11 +1334,11 @@ vtdtr_consume_trace(void *xsc)
 	struct vtdtr_ctrl_metaevent *ctrl_mtd_ev;
 	device_t dev;
 	size_t trc_buf_len, epdesc_len, pbdesc_len, fmt_len;
-	size_t cp, to_send;
+	size_t cp;
 	int error;
 
 	uintptr_t data;
-	uint64_t data_sz;
+	uint64_t data_sz, to_send;
 
 	sc = xsc;
 	cq = sc->vtdtr_ctrlq;
@@ -1379,23 +1379,29 @@ vtdtr_consume_trace(void *xsc)
 
 				data = (uintptr_t)trc->dtbd_data;
 				data_sz = trc->dtbd_size;
+				KASSERT(data_sz == ctrl_trc_ev->dtbd_size, "Invalid trace buffer size");
+				device_printf(dev, "Data size is (before anything): %d. \n");
 				to_send = (data_sz > VTDTR_RINGSZ) ? VTDTR_RINGSZ : data_sz;
-				data_sz -= VTDTR_RINGSZ;
 				ctrl_trc_ev->first_chunk = 1;
-				ctrl_trc_ev->last_chunk = (data_sz > 0) ? 0 : 1;
-
+				ctrl_trc_ev->last_chunk = (data_sz > VTDTR_RINGSZ) ? 0 : 1;
+				device_printf(dev, "Is first chunk: %d?\n", ctrl_trc_ev->first_chunk);
+				device_printf(dev, "Is last chunk: %d?\n", ctrl_trc_ev->last_chunk);
+				device_printf(dev, "Will send: %d");
+				data_sz -= to_send;
+				
 				cp = strlcpy(ctrl_trc_ev->dtbd_data, (char *)data, to_send + 1);
 				KASSERT(cp == to_send, "Failed to copy script fragment");
-				data += to_send;
 
 				mtx_lock(&sc->vtdtr_ctrlq->mtx);
 				vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 				mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 
 				device_printf(dev, "Successfully enqueued in the control queue. \n");
-
+				device_printf(dev, "Data size is (outside for loop): %d. \n");
 				while (data_sz > 0)
 				{
+					device_printf(dev, "Data size is (in for loop): %d. \n");
+					data += to_send;
 					ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 					KASSERT(ctrl_entry != NULL, "Failed allocating memory for control entry.");
 					memset(ctrl_entry, 0, sizeof(struct vtdtr_ctrl_entry));
@@ -1404,19 +1410,30 @@ vtdtr_consume_trace(void *xsc)
 					ctrl->event = VIRTIO_DTRACE_TRACE;
 					ctrl_trc_ev = &ctrl->uctrl.trace_ev;
 					ctrl_trc_ev->first_chunk = 0;
-
+					ctrl_trc_ev->last_chunk = (data_sz > VTDTR_RINGSZ) ? 0 : 1;
+					device_printf(dev, "Is first chunk: %d?\n", ctrl_trc_ev->first_chunk);
+					device_printf(dev, "Is last chunk: %d?\n", ctrl_trc_ev->last_chunk);
 					to_send = (data_sz > VTDTR_RINGSZ) ? VTDTR_RINGSZ : data_sz;
-					data_sz -= VTDTR_RINGSZ;
-					ctrl_trc_ev->last_chunk = (data_sz > 0) ? 0 : 1;
+					data_sz -= to_send;
+					device_printf(dev, "Is last chunk: %d?", ctrl_trc_ev->last_chunk);
 					cp = strlcpy(ctrl_trc_ev->dtbd_data, (char *)data, to_send + 1);
-					KASSERT(cp == to_send, "Failed to copy script fragment");
-					data += to_send;
+					KASSERT(cp == (size_t)to_send, "Failed to copy script fragment");
 
 					mtx_lock(&sc->vtdtr_ctrlq->mtx);
 					vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 					mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 
 					device_printf(dev, "Successfully enqueued in the control queue. \n");
+					
+						// Try removing this at some point 
+				mtx_lock(&sc->vtdtr_mtx);
+				vtdtr_notify_ready(sc);
+				mtx_unlock(&sc->vtdtr_mtx);
+
+				mtx_lock(&sc->vtdtr_condmtx);
+				cv_signal(&sc->vtdtr_condvar);
+				mtx_unlock(&sc->vtdtr_condmtx);
+				device_printf(dev, "Successfully signalled there are entries in the control queue.\n");
 				}
 			
 			break;
@@ -1476,6 +1493,16 @@ vtdtr_consume_trace(void *xsc)
 			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 			device_printf(dev, "Successfully enqueued in the control queue. \n");
+
+			// Try removing this at some point 
+			mtx_lock(&sc->vtdtr_mtx);
+			vtdtr_notify_ready(sc);
+			mtx_unlock(&sc->vtdtr_mtx);
+
+			mtx_lock(&sc->vtdtr_condmtx);
+			cv_signal(&sc->vtdtr_condvar);
+			mtx_unlock(&sc->vtdtr_condmtx);
+			device_printf(dev, "Successfully signalled there are entries in the control queue.\n");
 			break;
 		default:
 			device_printf(dev, "WARNING: Wrong trace queue event.");
@@ -1484,16 +1511,6 @@ vtdtr_consume_trace(void *xsc)
 
 		device_printf(dev, "I've filled fields in control entry, freeing trace entry");
 		free(trc_entry, M_DEVBUF);
-
-		// Try removing this at some point 
-		mtx_lock(&sc->vtdtr_mtx);
-		vtdtr_notify_ready(sc);
-		mtx_unlock(&sc->vtdtr_mtx);
-
-		mtx_lock(&sc->vtdtr_condmtx);
-		cv_signal(&sc->vtdtr_condvar);
-		mtx_unlock(&sc->vtdtr_condmtx);
-		device_printf(dev, "Successfully signalled there are entries in the control queue.\n");
 	}
 	mtx_unlock(&tq->mtx);
 }

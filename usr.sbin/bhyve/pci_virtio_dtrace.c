@@ -391,6 +391,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			exit(1);
 		}
 		DPRINTF(("Successfully opened everything."));
+		DPRINTF(("First chunk is: %d, last chunk is:%d", trc_ev->first_chunk, trc_ev->last_chunk));
 		if (trc_ev->first_chunk == 1)
 		{
 			sz = fwrite(&trc_ev->dtbd_size, sizeof(uint64_t), 1, trace_stream);
@@ -407,23 +408,27 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			assert(sz > 0);
 
 			data_sz = trc_ev->dtbd_size;
+			assert(data_sz == trc_ev->dtbd_size);
 			data = calloc(1, data_sz);
 			assert(data != NULL);
 			
 			dest = (uintptr_t)data;
 			
 		}
+		DPRINTF(("Data size is before if: %d. \n", data_sz));
 		if(data_sz > VTDTR_RINGSZ) 
 		{
-			memcpy((char *)dest, trc_ev->dtbd_data, VTDTR_RINGSZ);
+			strlcpy((char *)dest, trc_ev->dtbd_data, VTDTR_RINGSZ + 1);
 			data_sz -= VTDTR_RINGSZ;
 			dest += VTDTR_RINGSZ;
 		}
 		else 
 		{
-			memcpy((char *)dest, trc_ev->dtbd_data, data_sz);
+			strlcpy((char *)dest, trc_ev->dtbd_data, data_sz + 1);
 			dest += data_sz;
+			data_sz = 0;
 		}
+		DPRINTF(("Data size is after if: %d.\n"));
 			
 		if (trc_ev->last_chunk == 1)
 		{
