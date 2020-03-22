@@ -1380,7 +1380,7 @@ vtdtr_consume_trace(void *xsc)
 				data = (uintptr_t)trc->dtbd_data;
 				data_sz = trc->dtbd_size;
 				KASSERT(data_sz == ctrl_trc_ev->dtbd_size, "Invalid trace buffer size");
-				device_printf(dev, "Data size is (before anything): %d. \n");
+				device_printf(dev, "Data size is (before anything): %d. \n", data_sz);
 				to_send = (data_sz > VTDTR_RINGSZ) ? VTDTR_RINGSZ : data_sz;
 				ctrl_trc_ev->first_chunk = 1;
 				ctrl_trc_ev->last_chunk = (data_sz > VTDTR_RINGSZ) ? 0 : 1;
@@ -1395,6 +1395,16 @@ vtdtr_consume_trace(void *xsc)
 				mtx_lock(&sc->vtdtr_ctrlq->mtx);
 				vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 				mtx_unlock(&sc->vtdtr_ctrlq->mtx);
+
+				// Try removing this at some point 
+				mtx_lock(&sc->vtdtr_mtx);
+				vtdtr_notify_ready(sc);
+				mtx_unlock(&sc->vtdtr_mtx);
+
+				mtx_lock(&sc->vtdtr_condmtx);
+				cv_signal(&sc->vtdtr_condvar);
+				mtx_unlock(&sc->vtdtr_condmtx);
+				device_printf(dev, "Successfully signalled there are entries in the control queue.\n");
 
 				device_printf(dev, "Successfully enqueued in the control queue. \n");
 				device_printf(dev, "Data size is (outside for loop): %d. \n");
@@ -1425,15 +1435,15 @@ vtdtr_consume_trace(void *xsc)
 
 					device_printf(dev, "Successfully enqueued in the control queue. \n");
 					
-						// Try removing this at some point 
-				mtx_lock(&sc->vtdtr_mtx);
-				vtdtr_notify_ready(sc);
-				mtx_unlock(&sc->vtdtr_mtx);
+					// Try removing this at some point 
+					mtx_lock(&sc->vtdtr_mtx);
+					vtdtr_notify_ready(sc);
+					mtx_unlock(&sc->vtdtr_mtx);
 
-				mtx_lock(&sc->vtdtr_condmtx);
-				cv_signal(&sc->vtdtr_condvar);
-				mtx_unlock(&sc->vtdtr_condmtx);
-				device_printf(dev, "Successfully signalled there are entries in the control queue.\n");
+					mtx_lock(&sc->vtdtr_condmtx);
+					cv_signal(&sc->vtdtr_condvar);
+					mtx_unlock(&sc->vtdtr_condmtx);
+					device_printf(dev, "Successfully signalled there are entries in the control queue.\n");
 				}
 			
 			break;
