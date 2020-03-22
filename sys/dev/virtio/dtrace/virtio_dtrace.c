@@ -1402,10 +1402,10 @@ vtdtr_consume_trace(void *xsc)
 				device_printf(dev, "Successfully signalled there are entries in the control queue.\n");
 
 				device_printf(dev, "Successfully enqueued in the control queue. \n");
-				device_printf(dev, "Data size is (outside for loop): %d. \n");
+				device_printf(dev, "Data size is (outside for loop): %d. \n", data_sz);
 				while (data_sz > 0)
 				{
-					device_printf(dev, "Data size is (in for loop): %d. \n");
+					device_printf(dev, "Data size is (in for loop): %d. \n", data_sz);
 					data += to_send;
 					ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 					KASSERT(ctrl_entry != NULL, "Failed allocating memory for control entry.");
