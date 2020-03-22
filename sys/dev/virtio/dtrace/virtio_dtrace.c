@@ -1396,11 +1396,6 @@ vtdtr_consume_trace(void *xsc)
 				vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 				mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 
-				// Try removing this at some point 
-				mtx_lock(&sc->vtdtr_mtx);
-				vtdtr_notify_ready(sc);
-				mtx_unlock(&sc->vtdtr_mtx);
-
 				mtx_lock(&sc->vtdtr_condmtx);
 				cv_signal(&sc->vtdtr_condvar);
 				mtx_unlock(&sc->vtdtr_condmtx);
@@ -1434,11 +1429,6 @@ vtdtr_consume_trace(void *xsc)
 					mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 
 					device_printf(dev, "Successfully enqueued in the control queue. \n");
-					
-					// Try removing this at some point 
-					mtx_lock(&sc->vtdtr_mtx);
-					vtdtr_notify_ready(sc);
-					mtx_unlock(&sc->vtdtr_mtx);
 
 					mtx_lock(&sc->vtdtr_condmtx);
 					cv_signal(&sc->vtdtr_condvar);
@@ -1503,11 +1493,6 @@ vtdtr_consume_trace(void *xsc)
 			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 			device_printf(dev, "Successfully enqueued in the control queue. \n");
-
-			// Try removing this at some point 
-			mtx_lock(&sc->vtdtr_mtx);
-			vtdtr_notify_ready(sc);
-			mtx_unlock(&sc->vtdtr_mtx);
 
 			mtx_lock(&sc->vtdtr_condmtx);
 			cv_signal(&sc->vtdtr_condvar);
