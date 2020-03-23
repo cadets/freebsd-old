@@ -1756,14 +1756,10 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 			assert(sz == epbuf_sz);
 			dtp->dt_edesc[eprobe->dtepd_epid] = eprobe;
 
-			// handle record descriptions which describe the actual structure
-			// of trace data and hence the manner in which to print them - this 
-			// is part of the eprobe description
-			// this can be DIF(DTrace Intermediate Format), anonymous or printf
-
 			// an enabled probe can produce more records
 
 			printf("Number of records: %d. \n", eprobe->dtepd_nrecs);
+			assert(eprobe->dtepd_rec != NULL);
 
 			// only call printf create if we receive format strings
 			// I think
