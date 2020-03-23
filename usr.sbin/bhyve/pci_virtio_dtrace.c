@@ -420,7 +420,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			sz = fwrite(data, 1, VTDTR_RINGSZ, trace_stream);
 			assert(sz == VTDTR_RINGSZ);
 			data_sz -= VTDTR_RINGSZ;
-			memset(data, 0, VTDTR_RINGSZ + 1)
+			memset(data, 0, VTDTR_RINGSZ + 1);
 		}
 		else 
 		{
@@ -428,7 +428,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			sz = fwrite(data, 1, data_sz, trace_stream);
 			assert(sz == data_sz);
 			data_sz = 0;
-			memset(data, 0, VTDTR_RINGSZ + 1)
+			memset(data, 0, VTDTR_RINGSZ + 1);
 		}
 		DPRINTF(("Data size is after if: %d.\n", data_sz));
 			
