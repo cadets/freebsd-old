@@ -25,8 +25,8 @@ sr make -j9 installworld > /tmp/log_install_world
 echo "Installing kernel..."
 sr make -j9 installkernel > /tmp/log_install_kernel
 
-# update vm - not sure if necessary
+# to add source: -k /home/mm2260/freebsd/freebsd
 echo "Update virtual machine with source..."
-sr sh ~/freebsd/freebsd/vm_test_scripts/vmmake.sh -k /home/mm2260/freebsd/freebsd -x -c CADETS /mnt/mnt/test.img > /dev/null
+sr sh ~/freebsd/freebsd/vm_test_scripts/vmmake.sh -x -c CADETS /mnt/mnt/test.img > /dev/null
 
 
