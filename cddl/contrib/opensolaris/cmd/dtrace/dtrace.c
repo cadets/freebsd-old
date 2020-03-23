@@ -1806,7 +1806,8 @@ static void *read_trace_data(void *xgtq)
 	FILE *trace_stream;
 	char *trc_fifo;
 	int fd, sz;
-	uint64_t size;
+	uint64_t size, chunk;
+	uintptr_t dest;
 
 	trc_fifo = "/tmp/trace_fifo";
 	gtq = (struct dtrace_guestq *)xgtq;
@@ -1855,10 +1856,19 @@ static void *read_trace_data(void *xgtq)
 		sz = read(fd, &buf->dtbd_timestamp, sizeof(uint64_t));
 		assert(sz > 0);
 		printf("Timestamp: %d\n", buf->dtbd_timestamp);
-		buf->dtbd_data = calloc(1, buf->dtbd_size);
-		sz = read(fd, buf->dtbd_data, buf->dtbd_size);
-		assert(sz == buf->dtbd_size);
-		assert(buf->dtbd_data != NULL);
+		buf->dtbd_data = calloc(1, buf->dtbd_size + 1);
+		dest = (uintptr_t) buf->dtbd_data;
+		size = buf->dtbd_size;
+
+		while(size > 0) {
+
+			chunk = (size > 512) ? 512 : size;
+			size -= chunk;
+			sz = read(fd, dest, chunk);
+			assert(sz == chunk);
+			dest += chunk;
+		}
+		
 
 		trc_entry->desc = buf;
 		pthread_mutex_lock(&gtq->mtx);

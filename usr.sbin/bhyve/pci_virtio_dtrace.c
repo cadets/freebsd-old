@@ -409,34 +409,34 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 
 			data_sz = trc_ev->dtbd_size;
 			assert(data_sz == trc_ev->dtbd_size);
-			data = calloc(1, data_sz);
+			data = calloc(1, VTDTR_RINGSZ + 1);
 			assert(data != NULL);
-			
-			dest = (uintptr_t)data;
 			
 		}
 		DPRINTF(("Data size is before if: %d. \n", data_sz));
 		if(data_sz > VTDTR_RINGSZ) 
 		{
-			strlcpy((char *)dest, trc_ev->dtbd_data, VTDTR_RINGSZ + 1);
+			strlcpy(data, trc_ev->dtbd_data, VTDTR_RINGSZ + 1);
+			sz = fwrite(data, 1, VTDTR_RINGSZ, trace_stream);
+			assert(sz == VTDTR_RINGSZ);
 			data_sz -= VTDTR_RINGSZ;
-			dest += VTDTR_RINGSZ;
+			memset(data, 0, VTDTR_RINGSZ + 1)
 		}
 		else 
 		{
-			strlcpy((char *)dest, trc_ev->dtbd_data, data_sz + 1);
-			dest += data_sz;
+			strlcpy(data, trc_ev->dtbd_data, data_sz + 1);
+			sz = fwrite(data, 1, data_sz, trace_stream);
+			assert(sz == data_sz);
 			data_sz = 0;
+			memset(data, 0, VTDTR_RINGSZ + 1)
 		}
-		DPRINTF(("Data size is after if: %d.\n"));
+		DPRINTF(("Data size is after if: %d.\n", data_sz));
 			
 		if (trc_ev->last_chunk == 1)
 		{
-
-			sz = fwrite(data, 1, trc_ev->dtbd_size, trace_stream);
-			assert(sz == trc_ev->dtbd_size);
 			free(data);
 		} 
+		
 		fflush(trace_stream);
 		fclose(trace_stream);
 		close(fd);
