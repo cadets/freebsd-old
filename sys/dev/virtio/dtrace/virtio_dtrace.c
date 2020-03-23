@@ -1404,7 +1404,7 @@ vtdtr_consume_trace(void *xsc)
 				mtx_lock(&sc->vtdtr_condmtx);
 				cv_signal(&sc->vtdtr_condvar);
 				mtx_unlock(&sc->vtdtr_condmtx);
-				device_printf(dev, "Successfully signalled there are entries in the control queue.\n")
+				device_printf(dev, "Successfully signalled there are entries in the control queue.\n");
 
 				device_printf(dev, "Successfully enqueued in the control queue. \n");
 				device_printf(dev, "Data size is (outside for loop): %d. \n", data_sz);
