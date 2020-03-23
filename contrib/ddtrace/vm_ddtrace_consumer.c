@@ -97,7 +97,7 @@ get_script_events()
         return -1;
     }
 
-    DAEMON_LOG((log_fp, "Subscribing to events.. \n")));
+    DAEMON_LOG((log_fp, "Subscribing to events.. \n"));
 
     vtdtr_conf = malloc(sizeof(struct vtdtr_conf));
     vtdtr_conf->event_flags |= (1 << VTDTR_EV_SCRIPT) | (1 << VTDTR_EV_RECONF);
