@@ -1381,12 +1381,12 @@ vtdtr_consume_trace(void *xsc)
 				data_sz = trc->dtbd_size;
 				KASSERT(data_sz == ctrl_trc_ev->dtbd_size, "Invalid trace buffer size");
 				device_printf(dev, "Data size is (before anything): %d. \n", data_sz);
+				device_printf(dev, "Will send: %d", to_send);
 				to_send = (data_sz > VTDTR_RINGSZ) ? VTDTR_RINGSZ : data_sz;
 				ctrl_trc_ev->first_chunk = 1;
 				ctrl_trc_ev->last_chunk = (data_sz > VTDTR_RINGSZ) ? 0 : 1;
 				device_printf(dev, "Is first chunk: %d?\n", ctrl_trc_ev->first_chunk);
 				device_printf(dev, "Is last chunk: %d?\n", ctrl_trc_ev->last_chunk);
-				device_printf(dev, "Will send: %d", to_send);
 				data_sz -= to_send;
 				
 				cp = strlcpy(ctrl_trc_ev->dtbd_data, (char *)data, to_send + 1);
@@ -1396,6 +1396,10 @@ vtdtr_consume_trace(void *xsc)
 				vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 				mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 				device_printf(dev, "Successfully enqueued in the control queue. \n");
+
+				mtx_lock(&sc->vtdtr_mtx);	
+				vtdtr_notify_ready(sc);	
+				mtx_unlock(&sc->vtdtr_mtx);	
 
 				mtx_lock(&sc->vtdtr_condmtx);
 				cv_signal(&sc->vtdtr_condvar);
@@ -1428,8 +1432,11 @@ vtdtr_consume_trace(void *xsc)
 					mtx_lock(&sc->vtdtr_ctrlq->mtx);
 					vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 					mtx_unlock(&sc->vtdtr_ctrlq->mtx);
-
 					device_printf(dev, "Successfully enqueued in the control queue. \n");
+
+					mtx_lock(&sc->vtdtr_mtx);	
+					vtdtr_notify_ready(sc);	
+					mtx_unlock(&sc->vtdtr_mtx);	
 
 					mtx_lock(&sc->vtdtr_condmtx);
 					cv_signal(&sc->vtdtr_condvar);
@@ -1494,6 +1501,10 @@ vtdtr_consume_trace(void *xsc)
 			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 			device_printf(dev, "Successfully enqueued in the control queue. \n");
+
+			mtx_lock(&sc->vtdtr_mtx);	
+			vtdtr_notify_ready(sc);	
+			mtx_unlock(&sc->vtdtr_mtx);	
 
 			mtx_lock(&sc->vtdtr_condmtx);
 			cv_signal(&sc->vtdtr_condvar);
