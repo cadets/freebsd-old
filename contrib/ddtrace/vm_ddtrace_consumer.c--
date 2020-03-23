@@ -93,11 +93,11 @@ get_script_events()
 
     if ((fd = open("/dev/vtdtr", O_RDWR)) == -1)
     {
-        DAEMON_LOG((log_fp, "Error opening device driver %s\n", strerror(errno)));
+        DAEMON_LOG(((log_fp, "Error opening device driver %s\n", strerror(errno))));
         return -1;
     }
 
-    DAEMON_LOG((log_fp, "Subscribing to events.. \n")));
+    DAEMON_LOG(((log_fp, "Subscribing to events.. \n")));
 
     vtdtr_conf = malloc(sizeof(struct vtdtr_conf));
     vtdtr_conf->event_flags |= (1 << VTDTR_EV_SCRIPT) | (1 << VTDTR_EV_RECONF);
@@ -105,17 +105,17 @@ get_script_events()
 
     if ((ioctl(fd, VTDTRIOC_CONF, vtdtr_conf)) != 0)
     {
-        DAEMON_LOG((log_fp, "Failed to subscribe to script event in device driver: %s.\n", strerror(errno)));
+        DAEMON_LOG(((log_fp, "Failed to subscribe to script event in device driver: %s.\n", strerror(errno))));
         return -1;
     }
 
-    DAEMON_LOG((log_fp, "Successfully subscribed to events. \n"));
+    DAEMON_LOG(((log_fp, "Successfully subscribed to events. \n")));
 
-    DAEMON_LOG((log_fp, "Waiting for script.. \n"));
+    DAEMON_LOG(((log_fp, "Waiting for script.. \n")));
 
     if ((script_fp = fopen(script_path, "w+")) == NULL)
     {
-        DAEMON_LOG((log_fp, "Error opening script file %s: %s \n.", script_path, strerror(errno)));
+        DAEMON_LOG(((log_fp, "Error opening script file %s: %s \n.", script_path, strerror(errno))));
         return -1;
     }
 
