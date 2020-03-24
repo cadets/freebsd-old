@@ -61,7 +61,8 @@ __FBSDID("$FreeBSD$");
 #include "pci_emul.h"
 #include "virtio.h"
 
-#define VTDTR_RINGSZ 512
+#define VTDTR_RINGSZ 1000000
+#define FRAGMENTSZ 512
 #define VTDTR_MAXQ 2
 
 /*
@@ -409,18 +410,18 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 
 			data_sz = trc_ev->dtbd_size;
 			assert(data_sz == trc_ev->dtbd_size);
-			data = calloc(1, VTDTR_RINGSZ + 1);
+			data = calloc(1, FRAGMENTSZ + 1);
 			assert(data != NULL);
 			
 		}
 		DPRINTF(("Data size is before if: %d. \n", data_sz));
-		if(data_sz > VTDTR_RINGSZ) 
+		if(data_sz > FRAGMENTSZ) 
 		{
-			strlcpy(data, trc_ev->dtbd_data, VTDTR_RINGSZ + 1);
-			sz = fwrite(data, 1, VTDTR_RINGSZ, trace_stream);
-			assert(sz == VTDTR_RINGSZ);
-			data_sz -= VTDTR_RINGSZ;
-			memset(data, 0, VTDTR_RINGSZ + 1);
+			strlcpy(data, trc_ev->dtbd_data, FRAGMENTSZ + 1);
+			sz = fwrite(data, 1, FRAGMENTSZ, trace_stream);
+			assert(sz == FRAGMENTSZ);
+			data_sz -= FRAGMENTSZ;
+			memset(data, 0, FRAGMENTSZ + 1);
 		}
 		else 
 		{
@@ -428,7 +429,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			sz = fwrite(data, 1, data_sz, trace_stream);
 			assert(sz == data_sz);
 			data_sz = 0;
-			memset(data, 0, VTDTR_RINGSZ + 1);
+			memset(data, 0, FRAGMENTSZ + 1);
 		}
 		DPRINTF(("Data size is after if: %d.\n", data_sz));
 			
@@ -1095,9 +1096,9 @@ static void *pci_vtdtr_read_script(void *xargs)
 
 	while (!done)
 	{
-		if (d_script_length > VTDTR_RINGSZ - 1)
+		if (d_script_length > FRAGMENTSZ - 1)
 		{
-			fragment_length = VTDTR_RINGSZ - 1;
+			fragment_length = FRAGMENTSZ - 1;
 			d_script_length -= fragment_length;
 		}
 		else

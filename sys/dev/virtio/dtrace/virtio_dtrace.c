@@ -1381,10 +1381,10 @@ vtdtr_consume_trace(void *xsc)
 				data_sz = trc->dtbd_size;
 				KASSERT(data_sz == ctrl_trc_ev->dtbd_size, "Invalid trace buffer size");
 				device_printf(dev, "Data size is (before anything): %d. \n", data_sz);
+				to_send = (data_sz > FRAGMENTSZ) ? FRAGMENTSZ : data_sz;
 				device_printf(dev, "Will send: %d", to_send);
-				to_send = (data_sz > VTDTR_RINGSZ) ? VTDTR_RINGSZ : data_sz;
 				ctrl_trc_ev->first_chunk = 1;
-				ctrl_trc_ev->last_chunk = (data_sz > VTDTR_RINGSZ) ? 0 : 1;
+				ctrl_trc_ev->last_chunk = (data_sz > FRAGMENTSZ) ? 0 : 1;
 				device_printf(dev, "Is first chunk: %d?\n", ctrl_trc_ev->first_chunk);
 				device_printf(dev, "Is last chunk: %d?\n", ctrl_trc_ev->last_chunk);
 				data_sz -= to_send;
@@ -1420,10 +1420,11 @@ vtdtr_consume_trace(void *xsc)
 					ctrl->event = VIRTIO_DTRACE_TRACE;
 					ctrl_trc_ev = &ctrl->uctrl.trace_ev;
 					ctrl_trc_ev->first_chunk = 0;
-					ctrl_trc_ev->last_chunk = (data_sz > VTDTR_RINGSZ) ? 0 : 1;
+					ctrl_trc_ev->last_chunk = (data_sz > FRAGMENTSZ) ? 0 : 1;
 					device_printf(dev, "Is first chunk: %d?\n", ctrl_trc_ev->first_chunk);
 					device_printf(dev, "Is last chunk: %d?\n", ctrl_trc_ev->last_chunk);
-					to_send = (data_sz > VTDTR_RINGSZ) ? VTDTR_RINGSZ : data_sz;
+					to_send = (data_sz > FRAGMENTSZ) ? FRAGMENTSZ : data_sz;
+					device_printf(dev, "Will send: %d", to_send);
 					data_sz -= to_send;
 					device_printf(dev, "Is last chunk: %d?", ctrl_trc_ev->last_chunk);
 					cp = strlcpy(ctrl_trc_ev->dtbd_data, (char *)data, to_send + 1);
