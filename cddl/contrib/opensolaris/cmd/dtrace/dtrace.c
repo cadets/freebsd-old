@@ -1872,7 +1872,7 @@ static void *read_trace_data(void *xgtq)
 			printf("Error occudred while opening script file: %s\n", strerror(errno));
 			exit(1);
 		}		
-		fwrtie(buf->dtbd_data, buf->dtbd_size, 1, fp);
+		fwrite(buf->dtbd_data, buf->dtbd_size, 1, fp);
 		fflush(fp);
 		fclose(fp);
 
