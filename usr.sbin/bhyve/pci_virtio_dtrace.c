@@ -61,8 +61,8 @@ __FBSDID("$FreeBSD$");
 #include "pci_emul.h"
 #include "virtio.h"
 
-#define VTDTR_RINGSZ 8192
-#define FRAGMENTSZ 512
+#define VTDTR_RINGSZ 1048576
+#define FRAGMENTSZ 1000000
 #define VTDTR_MAXQ 2
 
 /*
@@ -98,8 +98,7 @@ __FBSDID("$FreeBSD$");
 #define PROBE_DESCRIPTION 0x04
 #define EPROBE_DESCRIPTION 0x05
 
-static FILE *fp;
-FILE *meta_stream;
+static FILE *fp, meta_stream, trace_stream;
 static int pci_vtdtr_debug;
 
 #define DPRINTF(params) printf params
@@ -143,7 +142,7 @@ struct pci_vtdtr_ctrl_provevent
 struct pci_vtdtr_ctrl_scriptevent
 {
 	int last;
-	char d_script[512];
+	char d_script[FRAGMENTSZ];
 	struct uuid uuid;
 } __attribute__((packed));
 
@@ -155,7 +154,7 @@ struct pci_vtdtr_ctrl_trcevent
 	uint32_t dtbd_cpu;
 	uint32_t dtbd_errors;
 	uint32_t dtbd_drops;
-	char dtbd_data[512];
+	char dtbd_data[FRAGMENTSZ];
 	uint64_t dtbd_oldest;
 	uint64_t dtbd_timestamp;
 	struct uuid uuid;
@@ -167,18 +166,18 @@ struct pci_vtdtr_ctrl_metaevent
 
 	union {
 		int dts_nformats;
-		char dts_fmtstr[512];
+		char dts_fmtstr[FRAGMENTSZ];
 		int dt_nprobes;
 		int dt_npdescs;
 		struct
 		{
 			size_t buf_size;
-			char buf[512];
+			char buf[FRAGMENTSZ];
 		} dt_pdesc;
 		struct
 		{
 			size_t buf_size;
-			char buf[512];
+			char buf[FRAGMENTSZ];
 		} dt_epdesc;
 	} umtd;
 	struct uuid uuid;
@@ -306,7 +305,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	struct pci_vtdtr_control *ctrl;
 	struct pci_vtdtr_ctrl_trcevent *trc_ev;
 	struct pci_vtdtr_ctrl_metaevent *mtd_ev;
-	FILE *trace_stream;
 	char *data;
 	uintptr_t dest;
 
@@ -380,17 +378,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		pthread_mutex_unlock(&sc->vsd_mtx);
 		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
 		trc_ev = &ctrl->uctrl.trc_ev;
-		if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY)) == -1)
-		{
-			DPRINTF(("Failed to open trace write pipe: %s. \n", strerror(errno)));
-			exit(1);
-		}
-
-		if ((trace_stream = fdopen(fd, "w")) == NULL)
-		{
-			DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno)));
-			exit(1);
-		}
 		DPRINTF(("Successfully opened everything."));
 		DPRINTF(("First chunk is: %d, last chunk is:%d", trc_ev->first_chunk, trc_ev->last_chunk));
 		if (trc_ev->first_chunk == 1)
@@ -437,10 +424,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		{
 			free(data);
 		} 
-		
-		fflush(trace_stream);
-		fclose(trace_stream);
-		close(fd);
 		break;
 	case VTDTR_DEVICE_METADATA:
 		pthread_mutex_lock(&sc->vsd_mtx);
@@ -547,16 +530,16 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 	uint16_t flags[8];
 	int n;
 	int retval;
-	int fd, open = 0;
+	int fd, meta_open = 0, trace_open = 0;
 
 	sc = xsc;
 
 	while (vq_has_descs(vq))
-	{
+	{ 
 		n = vq_getchain(vq, &idx, iov, 1, flags);
 		DPRINTF(("About to process elements from the receive queue. \n"));
 		ctrl = (struct pci_vtdtr_control *)iov->iov_base;
-		if (ctrl->event == VTDTR_DEVICE_METADATA && !open)
+		if (ctrl->event == VTDTR_DEVICE_METADATA && !meta_open)
 		{
 
 			if ((fd = openat(dir_fd, "meta_fifo", O_WRONLY)) == -1)
@@ -570,13 +553,33 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 				DPRINTF(("Failed opening metadata stream: %s. \n", strerror(errno)));
 				exit(1);
 			}
-			open = 1;
-		}
-		else if (ctrl->event == VTDTR_DEVICE_TRACE && open)
+			meta_open = 1;
+		} else if (ctrl->event != VTDTR_DEVICE_METADATA && meta_open)
 		{
 			fflush(meta_stream);
 			fclose(meta_stream);
 			close(fd);
+			meta_open = 0;
+		} else if(ctrl->event == VTDTR_DEVICE_TRACE && !trace_open)
+		{
+			if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY)) == -1)
+			{
+				DPRINTF(("Failed to open metadata write pipe: %s. \n", strerror(errno)));
+				exit(1);
+			}
+
+			if ((trace_stream = fdopen(fd, "w")) == NULL)
+			{
+				DPRINTF(("Failed opening metadata stream: %s. \n", strerror(errno)));
+				exit(1);
+			}
+			trace_open = 1;
+		} else if(ctrl->event != VTDTR_DEVICE_TRACE && trace_open)
+		{
+			fflush(trace_stream);
+			fclose(trace_stream);
+			close(fd);
+			trace_open = 0;
 		}
 		retval = pci_vtdtr_control_rx(sc, iov, 1);
 		vq_relchain(vq, idx, sizeof(struct pci_vtdtr_control));

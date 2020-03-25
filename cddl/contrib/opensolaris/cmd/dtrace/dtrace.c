@@ -87,6 +87,8 @@ struct dtrace_guestq
 	pthread_mutex_t mtx;
 };
 
+#define FRAGMENTSZ 1000000
+
 #define DMODE_VERS 0   /* display version information and exit (-V) */
 #define DMODE_EXEC 1   /* compile program for enabling (-a/e/E) */
 #define DMODE_ANON 2   /* compile program for anonymous tracing (-A) */
@@ -1858,36 +1860,30 @@ static void *read_trace_data(void *xgtq)
 
 		while(size > 0) {
 
-			chunk = (size > 512) ? 512 : size;
+			chunk = (size > FRAGMENTSZ) ? FRAGMENTSZ : size;
 			size -= chunk;
 			sz = read(fd, dest, chunk);
+			printf("I've read: %d. Chunk is: %d", sz, chunk);
 			assert(sz == chunk);
 			dest += chunk;
 		}
 
 		FILE *fp;
-		char *file_path = "tmp/trace_data";
-		if ((fp = fopen((char *) file_path, "r")) == NULL)
+		char *file_path = "/tmp/trace_data";
+		if ((fp = fopen((char *) file_path, "w+")) == NULL)
 		{
-			printf("Error occudred while opening script file: %s\n", strerror(errno));
+			printf("Error occured while opening script file: %s\n", strerror(errno));
 			exit(1);
 		}		
 		fwrite(buf->dtbd_data, buf->dtbd_size, 1, fp);
 		fflush(fp);
 		fclose(fp);
 
-		
-		
-
 		trc_entry->desc = buf;
 		pthread_mutex_lock(&gtq->mtx);
 		dtrace_gtq_enqueue(gtq, trc_entry);
 		pthread_mutex_unlock(&gtq->mtx);
 		printf("Successfully enqueued trace element");
-
-		// TODO: discover what happens if you actually print this
-		// since assertion doesn't fail we should be okay
-		// printf("Data: %s\n", buf.dtbd_data); 
 
 		close(fd);
 	}

@@ -73,7 +73,7 @@
 #define DDTRACE_TRACE	        	0x00
 #define DDTRACE_METADATA			0x01
 
-#define FRAGMENTSZ            		512
+#define FRAGMENTSZ            		1000000
 
 struct vtdtr_softc;
 struct uuid;
@@ -105,7 +105,7 @@ struct vtdtr_ctrl_provevent {
 
 struct vtdtr_ctrl_scriptevent {
 	int last;
-	char d_script[512];
+	char d_script[FRAGMENTSZ];
 	struct uuid uuid;
 }__attribute__((packed));
 
@@ -116,7 +116,7 @@ struct vtdtr_ctrl_trcevent {
 	uint32_t dtbd_cpu;
 	uint32_t dtbd_errors;
 	uint32_t dtbd_drops;
-	char dtbd_data[512];
+	char dtbd_data[FRAGMENTSZ];
 	uint64_t dtbd_oldest;
 	uint64_t dtbd_timestamp;
 	struct uuid uuid;
@@ -128,16 +128,16 @@ struct vtdtr_ctrl_metaevent {
 
 	union {
 		int dts_nformats;
-		char dts_fmtstr[512];
+		char dts_fmtstr[FRAGMENTSZ];
 		int dtrace_nprobes;
 		int dt_npdescs;
 		struct {
 			size_t buf_size;
-			char buf[512];
+			char buf[FRAGMENTSZ];
 		} dt_pdesc;
 		struct {
 			size_t buf_size;
-			char buf[512];
+			char buf[FRAGMENTSZ];
 		} dt_epdesc;
 	} umtd;
 	struct uuid uuid;

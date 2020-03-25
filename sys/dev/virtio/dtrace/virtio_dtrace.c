@@ -1462,7 +1462,7 @@ vtdtr_consume_trace(void *xsc)
 			case FORMAT_STRING:
 				fmt_len = strlen(mtd->umtd.dts_fmtstr);
 				device_printf(dev, "Format string length is: %d. \n", fmt_len);
-				if (fmt_len < 512)
+				if (fmt_len < FRAGMENTSZ)
 				{
 					cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dts_fmtstr, fmt_len + 1);
 					KASSERT(cp == fmt_len, "Error occurred while copying format string");
