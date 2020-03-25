@@ -150,7 +150,7 @@ struct pci_vtdtr_ctrl_trcevent
 {
 	int first_chunk;
 	int last_chunk;
-	uint64_t chunk_sz
+	uint64_t chunk_sz;
 	uint64_t dtbd_size;
 	uint32_t dtbd_cpu;
 	uint32_t dtbd_errors;
@@ -402,7 +402,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		 assert(sz > 0);
 		 sz = fwrite(trc_ev->dtbd_data, trc_ev->chunk_sz, 1, trace_stream);
 		assert(sz == trc_ev->chunk_sz);
-					
+
 		fflush(trace_stream);
 		break;
 	case VTDTR_DEVICE_METADATA:
