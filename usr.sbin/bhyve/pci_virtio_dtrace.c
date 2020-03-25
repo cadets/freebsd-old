@@ -98,7 +98,7 @@ __FBSDID("$FreeBSD$");
 #define PROBE_DESCRIPTION 0x04
 #define EPROBE_DESCRIPTION 0x05
 
-static FILE *fp, meta_stream, trace_stream;
+static FILE *fp, *meta_stream, *trace_stream;
 static int pci_vtdtr_debug;
 
 #define DPRINTF(params) printf params
