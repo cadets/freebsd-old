@@ -61,8 +61,8 @@ __FBSDID("$FreeBSD$");
 #include "pci_emul.h"
 #include "virtio.h"
 
-#define VTDTR_RINGSZ 524288
-#define FRAGMENTSZ 262144
+#define VTDTR_RINGSZ 8192
+#define FRAGMENTSZ 8000
 #define VTDTR_MAXQ 2
 
 /*

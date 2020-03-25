@@ -87,7 +87,7 @@ struct dtrace_guestq
 	pthread_mutex_t mtx;
 };
 
-#define FRAGMENTSZ 524288
+#define FRAGMENTSZ 8000
 
 #define DMODE_VERS 0   /* display version information and exit (-V) */
 #define DMODE_EXEC 1   /* compile program for enabling (-a/e/E) */
