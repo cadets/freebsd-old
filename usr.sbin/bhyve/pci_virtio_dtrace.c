@@ -424,6 +424,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		{
 			free(data);
 		} 
+		fflush(trace_stream);
 		break;
 	case VTDTR_DEVICE_METADATA:
 		pthread_mutex_lock(&sc->vsd_mtx);
@@ -589,7 +590,7 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 				}
 				trace_open = 1;
 			}
-		}
+		} 
 		retval = pci_vtdtr_control_rx(sc, iov, 1);
 		vq_relchain(vq, idx, sizeof(struct pci_vtdtr_control));
 		if (retval == 1)
