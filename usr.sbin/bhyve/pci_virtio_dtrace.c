@@ -540,46 +540,55 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 		DPRINTF(("About to process elements from the receive queue. \n"));
 		ctrl = (struct pci_vtdtr_control *)iov->iov_base;
 		if (ctrl->event == VTDTR_DEVICE_METADATA && !meta_open)
-		{
-
-			if ((fd = openat(dir_fd, "meta_fifo", O_WRONLY)) == -1)
+		{	
+			if(trace_open)
 			{
+				fflush(trace_stream);
+				fclose(trace_stream);
+				close(fd);
+				trace_open = 0;
+			}
+
+			if(!meta_open)
+			{
+				if ((fd = openat(dir_fd, "meta_fifo", O_WRONLY)) == -1)
+				{
+					DPRINTF(("Failed to open metadata write pipe: %s. \n", strerror(errno)));
+					exit(1);
+				}
+
+				if ((meta_stream = fdopen(fd, "w")) == NULL)
+				{
+					DPRINTF(("Failed opening metadata stream: %s. \n", strerror	(errno)));
+					exit(1);
+				}
+				meta_open = 1;
+			}
+		} else if (ctrl->event == VTDTR_DEVICE_TRACE) {
+			
+			if(meta_open)
+			{
+				fflush(meta_stream);
+				fclose(meta_stream);
+				close(fd);
+				meta_open = 0;
+			}
+
+			if(!trace_open)
+			{
+				if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY)) == -1)
+				{
 				DPRINTF(("Failed to open metadata write pipe: %s. \n", strerror(errno)));
 				exit(1);
-			}
+				}
 
-			if ((meta_stream = fdopen(fd, "w")) == NULL)
-			{
+				if ((trace_stream = fdopen(fd, "w")) == NULL)
+				{
 				DPRINTF(("Failed opening metadata stream: %s. \n", strerror(errno)));
 				exit(1);
+				}
+				trace_open = 1;
 			}
-			meta_open = 1;
-		} else if (ctrl->event != VTDTR_DEVICE_METADATA && meta_open)
-		{
-			fflush(meta_stream);
-			fclose(meta_stream);
-			close(fd);
-			meta_open = 0;
-		} else if(ctrl->event == VTDTR_DEVICE_TRACE && !trace_open)
-		{
-			if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY)) == -1)
-			{
-				DPRINTF(("Failed to open metadata write pipe: %s. \n", strerror(errno)));
-				exit(1);
-			}
-
-			if ((trace_stream = fdopen(fd, "w")) == NULL)
-			{
-				DPRINTF(("Failed opening metadata stream: %s. \n", strerror(errno)));
-				exit(1);
-			}
-			trace_open = 1;
-		} else if(ctrl->event != VTDTR_DEVICE_TRACE && trace_open)
-		{
-			fflush(trace_stream);
-			fclose(trace_stream);
-			close(fd);
-			trace_open = 0;
 		}
 		retval = pci_vtdtr_control_rx(sc, iov, 1);
 		vq_relchain(vq, idx, sizeof(struct pci_vtdtr_control));
