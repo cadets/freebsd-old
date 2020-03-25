@@ -112,6 +112,7 @@ struct vtdtr_ctrl_scriptevent {
 struct vtdtr_ctrl_trcevent {
 	int first_chunk;
 	int last_chunk;
+	uint64_t chunk_sz;
 	uint64_t dtbd_size;
 	uint32_t dtbd_cpu;
 	uint32_t dtbd_errors;

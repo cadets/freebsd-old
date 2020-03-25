@@ -150,6 +150,7 @@ struct pci_vtdtr_ctrl_trcevent
 {
 	int first_chunk;
 	int last_chunk;
+	uint64_t chunk_sz
 	uint64_t dtbd_size;
 	uint32_t dtbd_cpu;
 	uint32_t dtbd_errors;
@@ -394,36 +395,14 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			assert(sz > 0);
 			sz = fwrite(&trc_ev->dtbd_timestamp, sizeof(uint64_t), 1, trace_stream);
 			assert(sz > 0);
-
-			data_sz = trc_ev->dtbd_size;
-			assert(data_sz == trc_ev->dtbd_size);
-			data = calloc(1, FRAGMENTSZ + 1);
-			assert(data != NULL);
 			
 		}
-		DPRINTF(("Data size is before if: %d. \n", data_sz));
-		if(data_sz > FRAGMENTSZ) 
-		{
-			strlcpy(data, trc_ev->dtbd_data, FRAGMENTSZ + 1);
-			sz = fwrite(data, 1, FRAGMENTSZ, trace_stream);
-			assert(sz == FRAGMENTSZ);
-			data_sz -= FRAGMENTSZ;
-			memset(data, 0, FRAGMENTSZ + 1);
-		}
-		else 
-		{
-			strlcpy(data, trc_ev->dtbd_data, data_sz + 1);
-			sz = fwrite(data, 1, data_sz, trace_stream);
-			assert(sz == data_sz);
-			data_sz = 0;
-			memset(data, 0, FRAGMENTSZ + 1);
-		}
-		DPRINTF(("Data size is after if: %d.\n", data_sz));
-			
-		if (trc_ev->last_chunk == 1)
-		{
-			free(data);
-		} 
+		 
+		 sz = fwrite(&trc_ev->chunk_sz, sizeof(uint64_t), 1, trace_stream);
+		 assert(sz > 0);
+		 sz = fwrite(trc_ev->dtbd_data, trc_ev->chunk_sz, 1, trace_stream);
+		assert(sz == trc_ev->chunk_sz);
+					
 		fflush(trace_stream);
 		break;
 	case VTDTR_DEVICE_METADATA:

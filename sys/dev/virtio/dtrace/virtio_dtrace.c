@@ -1389,8 +1389,10 @@ vtdtr_consume_trace(void *xsc)
 				device_printf(dev, "Is last chunk: %d?\n", ctrl_trc_ev->last_chunk);
 				data_sz -= to_send;
 				
+				ctrl_trc_ev->chunk_sz = to_send;
 				cp = strlcpy(ctrl_trc_ev->dtbd_data, (char *)data, to_send + 1);
 				KASSERT(cp == to_send, "Failed to copy script fragment");
+				
 
 				mtx_lock(&sc->vtdtr_ctrlq->mtx);
 				vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
@@ -1427,6 +1429,8 @@ vtdtr_consume_trace(void *xsc)
 					device_printf(dev, "Will send: %d", to_send);
 					data_sz -= to_send;
 					device_printf(dev, "Is last chunk: %d?", ctrl_trc_ev->last_chunk);
+
+					ctrl_trc_ev->chunk_sz = to_send;
 					cp = strlcpy(ctrl_trc_ev->dtbd_data, (char *)data, to_send + 1);
 					KASSERT(cp == (size_t)to_send, "Failed to copy script fragment");
 

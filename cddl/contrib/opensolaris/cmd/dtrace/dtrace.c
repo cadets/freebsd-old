@@ -1860,10 +1860,11 @@ static void *read_trace_data(void *xgtq)
 
 		while(size > 0) {
 
-			chunk = (size > FRAGMENTSZ) ? FRAGMENTSZ : size;
+			sz = read(fd, chunk, sizeof(uint64_t));
+			assert(sz > 0);
 			size -= chunk;
 			sz = read(fd, dest, chunk);
-			printf("I've read: %d. Chunk is: %d", sz, chunk);
+			printf("I've read: %d. Chunk is: %d \n", sz, chunk);
 			assert(sz == chunk);
 			dest += chunk;
 		}
@@ -1875,7 +1876,7 @@ static void *read_trace_data(void *xgtq)
 			printf("Error occured while opening script file: %s\n", strerror(errno));
 			exit(1);
 		}		
-		fwrite(buf->dtbd_data, buf->dtbd_size, 1, fp);
+		fwrite(buf->dtbd_data, 1, buf->dtbd_size, fp);
 		fflush(fp);
 		fclose(fp);
 
