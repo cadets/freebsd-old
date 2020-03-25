@@ -73,7 +73,7 @@
 #define DDTRACE_TRACE	        	0x00
 #define DDTRACE_METADATA			0x01
 
-#define FRAGMENTSZ            		1000000
+#define FRAGMENTSZ            		52488
 
 struct vtdtr_softc;
 struct uuid;
