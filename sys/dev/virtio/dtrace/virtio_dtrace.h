@@ -117,7 +117,7 @@ struct vtdtr_ctrl_trcevent {
 	uint32_t dtbd_cpu;
 	uint32_t dtbd_errors;
 	uint32_t dtbd_drops;
-	char dtbd_data[FRAGMENTSZ];
+	char dtbd_chunk[FRAGMENTSZ];
 	uint64_t dtbd_oldest;
 	uint64_t dtbd_timestamp;
 	struct uuid uuid;

@@ -155,7 +155,7 @@ struct pci_vtdtr_ctrl_trcevent
 	uint32_t dtbd_cpu;
 	uint32_t dtbd_errors;
 	uint32_t dtbd_drops;
-	char dtbd_data[FRAGMENTSZ];
+	char dtbd_chunk[FRAGMENTSZ];
 	uint64_t dtbd_oldest;
 	uint64_t dtbd_timestamp;
 	struct uuid uuid;
@@ -400,7 +400,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		DPRINTF(("Chunk size is: %d. \n", trc_ev->chunk_sz));
 		sz = fwrite(&trc_ev->chunk_sz, sizeof(uint64_t), 1, trace_stream);
 		assert(sz > 0);
-		sz = fwrite(trc_ev->dtbd_data, trc_ev->chunk_sz, 1, trace_stream);
+		sz = fwrite(&trc_ev->dtbd_chunk, trc_ev->chunk_sz, 1, trace_stream);
 		assert(sz == trc_ev->chunk_sz);
 		fflush(trace_stream);
 		break;
