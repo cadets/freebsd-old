@@ -400,8 +400,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		DPRINTF(("Chunk size is: %d. \n", trc_ev->chunk_sz));
 		sz = fwrite(&trc_ev->chunk_sz, sizeof(uint64_t), 1, trace_stream);
 		assert(sz > 0);
-		sz = fwrite(&trc_ev->dtbd_chunk, trc_ev->chunk_sz, 1, trace_stream);
-		DPRINTF(("I've written: %d", sz));
+		sz = fwrite(&trc_ev->dtbd_chunk, 1, trc_ev->chunk_sz, trace_stream);
+		DPRINTF(("I've written: %d. \n", sz));
 		assert(sz == trc_ev->chunk_sz);
 		fflush(trace_stream);
 		break;
@@ -412,7 +412,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		DPRINTF(("I've received metadata. \n"));
 		mtd_ev = &ctrl->uctrl.mtd_ev;
 
-		DPRINTF(("Successfully opened everything."));
+		DPRINTF(("Successfully opened everything.\n"));
 
 		switch (mtd_ev->type)
 		{
