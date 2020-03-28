@@ -400,7 +400,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		DPRINTF(("Chunk size is: %d. \n", trc_ev->chunk_sz));
 		sz = fwrite(&trc_ev->chunk_sz, sizeof(uint64_t), 1, trace_stream);
 		assert(sz > 0);
-		sz = fwrite(&trc_ev->dtbd_chunk, 1, trc_ev->chunk_sz, trace_stream);
+		sz = fwrite(&trc_ev->dtbd_chunk, trc_ev->chunk_sz, 1, trace_stream);
 		DPRINTF(("I've written: %d", sz));
 		assert(sz == trc_ev->chunk_sz);
 		fflush(trace_stream);
@@ -426,7 +426,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			fmt_len = strlen(mtd_ev->umtd.dts_fmtstr);
 			sz = fwrite(&fmt_len, sizeof(size_t), 1, meta_stream);
 			assert(sz > 0);
-			sz = fwrite(&mtd_ev->umtd.dts_fmtstr, fmt_len, 1, meta_stream);
+			sz = fwrite(&mtd_ev->umtd.dts_fmtstr, 1, fmt_len, meta_stream);
 			assert(sz == fmt_len);
 			break;
 		case NPROBES:
@@ -444,7 +444,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			pdesc_len = mtd_ev->umtd.dt_pdesc.buf_size;
 			assert(pdesc_len > 0);
 			DPRINTF(("Got PROBE_DESCRIPTION: %d. \n", pdesc_len));
-			sz = fwrite(&mtd_ev->umtd.dt_pdesc.buf, pdesc_len, 1, meta_stream);
+			sz = fwrite(&mtd_ev->umtd.dt_pdesc.buf, 1, pdesc_len, meta_stream);
 			assert(sz == pdesc_len);
 			break;
 		case EPROBE_DESCRIPTION:
@@ -453,7 +453,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			DPRINTF(("Got EPROBE_DESCRIPTION: %d. \n", epdesc_len));
 			sz = fwrite(&mtd_ev->umtd.dt_epdesc.buf_size, sizeof(size_t), 1, meta_stream);
 			assert(sz > 0);
-			sz = fwrite(&mtd_ev->umtd.dt_epdesc.buf, epdesc_len, 1, meta_stream);
+			sz = fwrite(&mtd_ev->umtd.dt_epdesc.buf, 1, epdesc_len, meta_stream);
 			assert(sz == epdesc_len);
 			break;
 		default:
