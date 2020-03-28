@@ -1390,6 +1390,7 @@ vtdtr_consume_trace(void *xsc)
 				data_sz -= to_send;
 				
 				ctrl_trc_ev->chunk_sz = to_send;
+				device_printf(dev, "Chunk size is: %d. \n", ctrl_trc_ev->chunk_sz);
 				cp = strlcpy(ctrl_trc_ev->dtbd_data, (char *)data, to_send + 1);
 				KASSERT(cp == to_send, "Failed to copy script fragment");
 				
@@ -1431,6 +1432,7 @@ vtdtr_consume_trace(void *xsc)
 					device_printf(dev, "Is last chunk: %d?", ctrl_trc_ev->last_chunk);
 
 					ctrl_trc_ev->chunk_sz = to_send;
+					device_printf(dev, "Chunk size is: %d. \n", ctrl_trc_ev->chunk_sz);
 					cp = strlcpy(ctrl_trc_ev->dtbd_data, (char *)data, to_send + 1);
 					KASSERT(cp == (size_t)to_send, "Failed to copy script fragment");
 

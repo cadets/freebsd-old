@@ -395,14 +395,13 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			assert(sz > 0);
 			sz = fwrite(&trc_ev->dtbd_timestamp, sizeof(uint64_t), 1, trace_stream);
 			assert(sz > 0);
-			
 		}
-		 
-		 sz = fwrite(&trc_ev->chunk_sz, sizeof(uint64_t), 1, trace_stream);
-		 assert(sz > 0);
-		 sz = fwrite(trc_ev->dtbd_data, trc_ev->chunk_sz, 1, trace_stream);
-		assert(sz == trc_ev->chunk_sz);
 
+		DPRINTF(("Chunk size is: %d. \n", trc_ev->chunk_sz));
+		sz = fwrite(&trc_ev->chunk_sz, sizeof(uint64_t), 1, trace_stream);
+		assert(sz > 0);
+		sz = fwrite(trc_ev->dtbd_data, trc_ev->chunk_sz, 1, trace_stream);
+		assert(sz == trc_ev->chunk_sz);
 		fflush(trace_stream);
 		break;
 	case VTDTR_DEVICE_METADATA:
@@ -515,13 +514,13 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 	sc = xsc;
 
 	while (vq_has_descs(vq))
-	{ 
+	{
 		n = vq_getchain(vq, &idx, iov, 1, flags);
 		DPRINTF(("About to process elements from the receive queue. \n"));
 		ctrl = (struct pci_vtdtr_control *)iov->iov_base;
 		if (ctrl->event == VTDTR_DEVICE_METADATA && !meta_open)
-		{	
-			if(trace_open)
+		{
+			if (trace_open)
 			{
 				fflush(trace_stream);
 				fclose(trace_stream);
@@ -529,7 +528,7 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 				trace_open = 0;
 			}
 
-			if(!meta_open)
+			if (!meta_open)
 			{
 				if ((fd = openat(dir_fd, "meta_fifo", O_WRONLY)) == -1)
 				{
@@ -539,14 +538,16 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 
 				if ((meta_stream = fdopen(fd, "w")) == NULL)
 				{
-					DPRINTF(("Failed opening metadata stream: %s. \n", strerror	(errno)));
+					DPRINTF(("Failed opening metadata stream: %s. \n", strerror(errno)));
 					exit(1);
 				}
 				meta_open = 1;
 			}
-		} else if (ctrl->event == VTDTR_DEVICE_TRACE) {
-			
-			if(meta_open)
+		}
+		else if (ctrl->event == VTDTR_DEVICE_TRACE)
+		{
+
+			if (meta_open)
 			{
 				fflush(meta_stream);
 				fclose(meta_stream);
@@ -554,22 +555,22 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 				meta_open = 0;
 			}
 
-			if(!trace_open)
+			if (!trace_open)
 			{
 				if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY)) == -1)
 				{
-				DPRINTF(("Failed to open metadata write pipe: %s. \n", strerror(errno)));
-				exit(1);
+					DPRINTF(("Failed to open metadata write pipe: %s. \n", strerror(errno)));
+					exit(1);
 				}
 
 				if ((trace_stream = fdopen(fd, "w")) == NULL)
 				{
-				DPRINTF(("Failed opening metadata stream: %s. \n", strerror(errno)));
-				exit(1);
+					DPRINTF(("Failed opening metadata stream: %s. \n", strerror(errno)));
+					exit(1);
 				}
 				trace_open = 1;
 			}
-		} 
+		}
 		retval = pci_vtdtr_control_rx(sc, iov, 1);
 		vq_relchain(vq, idx, sizeof(struct pci_vtdtr_control));
 		if (retval == 1)

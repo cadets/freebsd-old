@@ -1860,7 +1860,7 @@ static void *read_trace_data(void *xgtq)
 
 		while(size > 0) {
 
-			sz = read(fd, chunk, sizeof(uint64_t));
+			sz = read(fd, &chunk, sizeof(uint64_t));
 			assert(sz > 0);
 			size -= chunk;
 			sz = read(fd, dest, chunk);
