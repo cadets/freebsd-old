@@ -1817,7 +1817,7 @@ static void *read_trace_data(void *xgtq)
 		exit(1);
 	}
 
-	printf("About to read trace data. \n");
+	printf("About to read trace data, before for. \n");
 	for (;;)
 	{
 
@@ -1835,7 +1835,7 @@ static void *read_trace_data(void *xgtq)
 
 		printf("open() was called.\n");
 
-		printf("About to read trace data. \n");
+		printf("About to read trace data, after for. \n");
 		sz = read(fd, &buf->dtbd_size, sizeof(uint64_t));
 		assert(sz > 0);
 		printf("Size: %d\n", buf->dtbd_size);
@@ -1879,6 +1879,7 @@ static void *read_trace_data(void *xgtq)
 		fwrite(buf->dtbd_data, 1, buf->dtbd_size, fp);
 		fflush(fp);
 		fclose(fp);
+		printf("I've written trace data in file. \n");
 
 		trc_entry->desc = buf;
 		pthread_mutex_lock(&gtq->mtx);
