@@ -1392,6 +1392,7 @@ vtdtr_consume_trace(void *xsc)
 				ctrl_trc_ev->chunk_sz = to_send;
 				device_printf(dev, "Chunk size is: %d. \n", ctrl_trc_ev->chunk_sz);
 				cp = strlcpy(ctrl_trc_ev->dtbd_chunk, (char *)data, to_send + 1);
+				KASSERT(ctrl_trc_ev->dtbd_chunk != NULL, "Data is NULL");
 				KASSERT(cp == to_send, "Failed to copy script fragment");
 				
 
