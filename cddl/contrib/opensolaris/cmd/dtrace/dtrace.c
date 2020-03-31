@@ -1803,7 +1803,7 @@ static void *read_trace_data(void *xgtq)
 {
 	struct dtrace_guestq *gtq;
 	struct dtrace_guest_entry *trc_entry;
-	dtrace_bufdesc_t *buf
+	dtrace_bufdesc_t *buf;
 	time_t timing;
 	FILE *trace_stream;
 	char *trc_fifo;

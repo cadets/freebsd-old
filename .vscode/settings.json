@@ -34,6 +34,7 @@
         "*.def": "cpp",
         "complex": "cpp",
         "valarray": "cpp",
-        "cmath": "cpp"
+        "cmath": "cpp",
+        "time.h": "c"
     }
 }
