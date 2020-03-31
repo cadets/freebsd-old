@@ -53,14 +53,17 @@ __FBSDID("$FreeBSD$");
 #include <dl_config.h>
 #include <dlog.h>
 #include <signal.h>
+#include <time.h>
 
-#define DAEMON_LOG(fmt) log fmt
+static int daemon_debug;
+#define DAEMON_LOG(params) if (daemon_debug) log params
 
 static char *directory_path = "/var/dtrace_log";
 static char *script_path = "/var/dtrace_log/script.d";
 static char *logging_file_path = "/var/dtrace_log/log_file.txt";
 static char *script;
 FILE *log_fp;
+
 
 static dtrace_hdl_t *g_dtp;
 static int g_intr, g_status = 0;
@@ -319,7 +322,8 @@ int main(int argc, char **argv)
     mkdir(directory_path, 0777);
     if ((log_fp = fopen(logging_file_path, "a+")) == NULL)
     {
-            printf("Error opening file: %s \n", strerror(errno));
+            DAEMON_LOG(("Error opening file: %s \n", strerror(errno)));
+            exit(1);
     }
 
     DAEMON_LOG((log_fp, "In vm_ddtrace_consumer.. \n"));

@@ -1664,6 +1664,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 	dtrace_probedesc_t *probe;
 	dtrace_eprobedesc_t *eprobe;
 	FILE *meta_stream;
+	time_t timing;
 	char *meta_fifo, *buf, *fmt, **formats;
 	int fd, sz, nrecs = 0;
 	size_t epbuf_sz = 0, fmt_len = 0;
@@ -1792,6 +1793,8 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 
 		printf("Out of the for loop.");
 	}
+	timing = time(NULL);
+	printf("Finished getting metadata: %ld s \n", timing);
 	close(fd);
 	printf("Successfully closed file descriptor");
 }
@@ -1800,7 +1803,8 @@ static void *read_trace_data(void *xgtq)
 {
 	struct dtrace_guestq *gtq;
 	struct dtrace_guest_entry *trc_entry;
-	dtrace_bufdesc_t *buf;
+	dtrace_bufdesc_t *buf
+	time_t timing;
 	FILE *trace_stream;
 	char *trc_fifo;
 	int fd, sz;
@@ -1868,6 +1872,8 @@ static void *read_trace_data(void *xgtq)
 			assert(sz == chunk);
 			dest += chunk;
 		}
+		timing = time(NULL);
+		printf("Got one bufdesc: %ld s \n", timing);
 
 		FILE *fp;
 		char *file_path = "/tmp/trace_data";
@@ -1897,6 +1903,7 @@ static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t *dtp)
 	dtrace_bufdesc_t *buf;
 	dtrace_consumer_t con;
 	struct dtrace_guest_entry *trc_entry;
+	time_t timing;
 
 	// hope we can use the functions defined here
 	con.dc_consume_probe = chew;
@@ -1921,6 +1928,8 @@ static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t *dtp)
 			free(trc_entry);
 
 		}
+		timing = time(NULL);
+		printf("Finished processing one bufdesc: %ld s \n", timing);
 		pthread_mutex_unlock(&gtq->mtx);
 	}
 }
@@ -1963,6 +1972,7 @@ int main(int argc, char *argv[])
 	dtrace_consumer_t con;
 
 	
+	
 
 	con.dc_consume_probe = chew;
 	con.dc_consume_rec = chewrec;
@@ -1976,6 +1986,10 @@ int main(int argc, char *argv[])
 	char *p, **v;
 	struct ps_prochandle *P;
 	pid_t pid;
+	time_t timing;
+
+	timing = time(NULL);
+	printf("Start process: %ld s\n", timing);
 
 	machine_filter = NULL;
 

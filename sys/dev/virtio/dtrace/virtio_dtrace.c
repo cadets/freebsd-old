@@ -48,6 +48,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/dtrace.h>
 #include <sys/sema.h>
 #include <sys/conf.h>
+#include <sys/time.h>
 
 #include <cddl/dev/vtdtr/vtdtr.h>
 
@@ -126,7 +127,8 @@ SYSCTL_U32(_dev_vtdtr, OID_AUTO, debug, CTLFLAG_RWTUN, &debug, 0,
 
 static int vstate = 0;
 
-struct vtdtr_traceq *tq;
+static struct vtdtr_traceq *tq;
+static struct timeval tval;
 
 static int vtdtr_modevent(module_t, int, void *);
 static void vtdtr_cleanup(void);
@@ -820,6 +822,8 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		break;
 	}
 	case VIRTIO_DTRACE_SCRIPT:
+		gettimeofday(&tval, NULL);
+		device_printf("Got a script event in %ld s. \n", tval.tv_sec);
 		if (debug)
 			device_printf(dev, "Got script:\n%s.\n", ctrl->uctrl.script_ev.d_script);
 
@@ -1349,7 +1353,8 @@ vtdtr_consume_trace(void *xsc)
 		while (!vtdtr_tq_empty(tq))
 		{
 			device_printf(dev, "Actually enqueued in ddtrace. \n");
-
+			gettimeofday(&tval, NULL);
+			device_printf("Got a metadata/trace event in %ld s. \n", tval.tv_sec);
 			// vtdtr_tq_print(tq, "In virtio_dtrace, before dequeue.");
 			trc_entry = vtdtr_tq_dequeue(tq);
 			// vtdtr_tq_print(tq, "In virtio_dtrace, after dequeue.");

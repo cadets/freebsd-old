@@ -148,8 +148,8 @@ __EOF__
     echo 'dlog_load="YES"' >> ${destdir}/boot/loader.conf
     echo 'ddtrace_load="YES"' >> ${destdir}/boot/loader.conf
 
-    # echo "${srcdir}"
-    # cp -v -R ${srcdir}/* ${destdir}/usr/src/
+    echo "${srcdir}"
+    cp -v -R ${srcdir}/* ${destdir}/usr/src/
 }
 
 #

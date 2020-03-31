@@ -56,6 +56,7 @@
 #include <sys/sysctl.h>
 #include <fs/devfs/devfs_int.h>
 #include <sys/eventhandler.h>
+#include <sys/time.h>
 #include <dev/virtio/dtrace/virtio_dtrace.h>
 
 #include <dtrace.h>
@@ -124,6 +125,7 @@ static moduledata_t ddtrace_conf = {
 static const int DDTRACE_NHASH_BUCKETS = 16;
 static struct clients *ddtrace_hashtbl = NULL;
 static u_long ddtrace_hashmask;
+static struct timeval tval;
 
 SYSCTL_NODE(_kern, OID_AUTO, ddtrace, CTLFLAG_RW, 0, "DDTrace");
 
