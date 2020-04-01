@@ -35,9 +35,15 @@
 #include <dt_list.h>
 
 typedef struct dt_relo {
-	dif_instr_t *dr_buf;		/* Instruction buffer */
 	size_t dr_uidx;			/* Index of the use site */
-	size_t dr_didx[2];		/* Index of the defn site */
+	size_t dr_didx[2];		/* Index of the defn sites */
+	struct dt_relo *dr_drel[2];	/* Pointer to the defn site */
+	int dr_type;			/* D type */
+	ctf_id_t dr_ctfid;		/* CTF type */
+	size_t dr_sym;			/* symbol offset in symtab */
+	dtrace_difo_t *dr_difo;		/* DIFO for this relocation */
+#define dr_buf dr_difo->dtdo_buf
+	ctf_membinfo_t *dr_mip;		/* CTF member info (type, offs) */
 } dt_relo_t;
 
 typedef struct dt_rl_entry {

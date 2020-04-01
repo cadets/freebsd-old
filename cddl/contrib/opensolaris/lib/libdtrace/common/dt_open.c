@@ -1582,14 +1582,20 @@ alloc:
 
 	/*
 	 * Format the global variables based on the kernel module name.
-	 *
-	 * TODO(dstolfa): Add error checking to this.
 	 */
 	snprintf(curthread_str, sizeof(curthread_str), "%s`struct thread *",p);
 	snprintf(intmtx_str, sizeof(intmtx_str), "int(%s`struct mtx *)",p);
 	snprintf(threadmtx_str, sizeof(threadmtx_str), "struct thread *(%s`struct mtx *)",p);
 	snprintf(rwlock_str, sizeof(rwlock_str), "int(%s`struct rwlock *)",p);
 	snprintf(sxlock_str, sizeof(sxlock_str), "int(%s`struct sx *)",p);
+
+	/*
+	 * Full name for the subr/global variable types used in the linker.
+	 */
+	snprintf(thread_str, sizeof(thread_str), "%s`struct thread *",p);
+	snprintf(mtx_str, sizeof(mtx_str), "%s`struct mtx *",p);
+	snprintf(rw_str, sizeof(rw_str), "%s`struct rwlock *",p);
+	snprintf(sx_str, sizeof(sx_str), "%s`struct sx *",p);
 	}
 #endif
 
