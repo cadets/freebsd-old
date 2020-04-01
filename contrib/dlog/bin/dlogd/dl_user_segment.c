@@ -98,6 +98,7 @@ static int insert_message(struct dl_segment *, struct dl_bbuf *);
 static uint32_t get_offset(struct dl_segment *);
 static int sync_log(struct dl_segment *);
 static bool is_log_rotated(struct dl_user_segment *);
+static bool rotate_log(struct dl_user_segment *);
 
 static char const * const DL_DEFAULT_PARTITION = "0";
 static const uint64_t DL_DEFAULT_BASE = 0;
@@ -135,6 +136,7 @@ static bool
 is_log_rotated(struct dl_user_segment *self)
 {
 	struct dl_offset *offset = self->dlus_offset;
+	struct dl_segment *super= (struct dl_segment *) self;
 	struct sbuf sb;
 	struct stat st;
 	char name[MAXPATHLEN];
@@ -142,8 +144,8 @@ is_log_rotated(struct dl_user_segment *self)
 	/* Validate the method's preconditions. */
 	assert_integrity(self);
 
-	/* Check if the */ 
-	//if (offset == (uint64_t) dl_offset
+	 if (super->dls_base_offset == dl_offset_get_val(self->dlus_offset))
+		return false;
 
 	/* Construct filepath for log segment based on the offset. */
 	(void) sbuf_new(&sb, name, MAXPATHLEN, SBUF_FIXEDLEN);
@@ -162,7 +164,7 @@ is_log_rotated(struct dl_user_segment *self)
 	/* If a log file with the new offset exists
 	 * rotate the current log segment.
 	 */
-	if (stat(name, &st) == 0 && st.st_size != 0) {
+	if (stat(name, &st) == 0) {
 
 		return true;
 	}
@@ -170,11 +172,83 @@ is_log_rotated(struct dl_user_segment *self)
 	return false;
 }
 
+static bool
+rotate_log(struct dl_user_segment *self)
+{
+	struct sbuf sb;
+	int rc;
+	char name[MAXPATHLEN];
+	struct dl_index *idx;
+	int log_fd;
+
+	/* Validate the method's preconditions. */
+	assert_integrity(self);
+
+	DLOGTR0(PRIO_LOW, "Log file rotated by kernel\n");
+
+	/* Construct filepath for new log segment */
+	(void) sbuf_new(&sb, name, MAXPATHLEN, SBUF_FIXEDLEN);
+	sbuf_printf(&sb, "%s/%.*ld.log", self->dlus_path,
+	    DL_LOG_DIGITS, (uint64_t) dl_offset_get_val(self->dlus_offset));
+	sbuf_finish(&sb);
+	if (sbuf_error(&sb) != 0) {
+
+		DLOGTR1(PRIO_HIGH,
+		    "UserSegment file path %s overflow MAXPATHLEN\n", name);
+		sbuf_delete(&sb);
+		return -1;
+	} 
+	sbuf_delete(&sb);
+	
+	DLOGTR1(PRIO_LOW, "Rotating log segment new base offset = %lu\n",
+	    (uint64_t) dl_offset_get_val(self->dlus_offset));
+
+	/* Construct a new userspace log segment. */
+	log_fd = open(name, USEG_FLAGS, USEG_PERMS);
+	if (self->dlus_log == -1) {
+
+		DLOGTR1(PRIO_HIGH, "Failed opening UserSegment file: %s\n",
+		    name);
+		return -1;
+	}
+
+	/* Update the log segment's file descriptor */
+	close(self->dlus_log);
+	self->dlus_log = log_fd;
+
+	/* Update the log segments base offset */
+	dl_segment_set_base_offset((struct dl_segment * ) self,
+	    dl_offset_get_val(self->dlus_offset));
+
+	/* Update the log segment's index. */
+	rc = dl_index_new(&idx, self, self->dlus_producer, self->dlus_path);
+	if (rc != 0) {
+
+		DLOGTR0(PRIO_LOW, "Failed instatiating index\n");
+		close(log_fd);
+		return -1;
+	}
+
+	/* Update the log segment's index */
+	dl_index_delete(self->dlus_idx);
+	self->dlus_idx = idx;
+
+	/* Update the handler */
+	dl_poll_reactor_unregister(&self->dlus_log_hdlr);
+	dl_poll_reactor_register(&self->dlus_log_hdlr, POLLIN | POLLERR);
+	
+	/* Validate the method's postconditions. */
+	assert_integrity(self);
+
+	return true;
+}
+
 static dl_event_handler_handle
 get_log_fd(void *instance)
 {
 	struct dl_user_segment const * const self = instance;
 
+	/* Validate the method's preconditions. */
 	assert_integrity(self);
 	return self->dlus_kq;
 }
@@ -188,6 +262,7 @@ log_handler(void *instance, int fd __attribute((unused)),
 	int nevents = sizeof(events)/sizeof(struct kevent);
 	int rc;
 
+	/* Validate the method's preconditions. */
 	assert_integrity(self);
 
 	rc = kevent(self->dlus_kq, 0, 0, events, nevents, 0);
@@ -221,12 +296,14 @@ dl_user_segment_ctor(void *_super, va_list *ap)
 	struct kevent log_evs[2];
 	struct sbuf log_sb, path_sb;
 	struct stat st;
-	char *log_name, *topic_name, *log_file_name;
+	char *topic_name;
 	DIR *dir;
 	struct dirent *ent;
 	uint64_t offset_val;
 	int nevents = sizeof(log_evs)/sizeof(struct kevent);
 	int rc;
+	char log_name[MAXPATHLEN];
+	char log_file_name[MAXPATHLEN] = "";
 
 	DL_ASSERT(self != NULL, ("Segment instance cannot be NULL"));
 
@@ -289,7 +366,6 @@ dl_user_segment_ctor(void *_super, va_list *ap)
 
 	offset_val = dl_offset_get_val(self->dlus_offset);
 
-	log_file_name = alloca(MAXPATHLEN);
 	while((ent = readdir(dir)) != NULL) {
 
 		if (ent->d_type == DT_REG &&
@@ -311,7 +387,7 @@ dl_user_segment_ctor(void *_super, va_list *ap)
 
 	closedir(dir);
 
-	if (log_file_name == NULL) {
+	if (strcmp(log_file_name, "") == 0) {
 
 		DLOGTR1(PRIO_LOW, "No log segment found in path %s\n",
 		    self->dlus_path);
@@ -319,8 +395,6 @@ dl_user_segment_ctor(void *_super, va_list *ap)
 	}
 
 	/* Open the specified log segment.*/
-	log_name = alloca(MAXPATHLEN);
-
 	(void) sbuf_new(&log_sb, log_name, MAXPATHLEN, SBUF_FIXEDLEN);
 	sbuf_printf(&log_sb, "%s/%s", self->dlus_path, log_file_name);
 	sbuf_finish(&log_sb);
@@ -402,15 +476,23 @@ dl_user_segment_dtor(void *_super)
 	if (((const struct dl_class *) DL_SEGMENT)->dl_dtor != NULL)
 		((const struct dl_class *) DL_SEGMENT)->dl_dtor(_super);
 
-	dl_poll_reactor_unregister(&self->dlus_log_hdlr);
-
+	/* Delete the index */
 	dl_index_delete(self->dlus_idx);
 
-	pthread_mutex_destroy(&self->dlus_lock);
-
+	/* Delete the offset */	
 	dl_offset_delete(self->dlus_offset);
 
+	/* Close the user segment log file */
 	close(self->dlus_log);
+	
+	/* Delete the mutex */
+	pthread_mutex_destroy(&self->dlus_lock);
+
+	/* Close file descriptor of kqueue monitoring the index */ 
+	close(self->dlus_kq);
+
+	/* Unregister the event handler */
+	dl_poll_reactor_unregister(&self->dlus_log_hdlr);
 }
 
 void
@@ -533,7 +615,7 @@ get_message_by_offset(struct dl_segment *segment, int offset,
 	int rc;
 
 	assert_integrity(self);
-	
+
 retry:	
 	rc = dl_index_lookup(self->dlus_idx, offset, &record);
 	if (rc == 0) {
@@ -585,60 +667,7 @@ retry:
 
 	if (is_log_rotated(self)) {
 
-		struct sbuf sb;
-		char name[MAXPATHLEN];
-
-		DLOGTR0(PRIO_LOW, "Log file rotated by kernel\n");
-
-		/* Construct filepath for new log segment */
-		(void) sbuf_new(&sb, name, MAXPATHLEN, SBUF_FIXEDLEN);
-		sbuf_printf(&sb, "%s/%.*ld.log", self->dlus_path,
-		    DL_LOG_DIGITS, (uint64_t) dl_offset_get_val(self->dlus_offset));
-		sbuf_finish(&sb);
-		if (sbuf_error(&sb) != 0) {
-
-			DLOGTR1(PRIO_HIGH,
-			    "UserSegment file path %s overflow MAXPATHLEN\n",
-			    name);
-			sbuf_delete(&sb);
-			return -1;
-		} else {
-			struct dl_index *idx;
-			int log_fd;
-
-			sbuf_delete(&sb);
-			
-			DLOGTR1(PRIO_LOW,
-			    "Rotating log segment new base offset = %lu\n",
-			    (uint64_t) dl_offset_get_val(self->dlus_offset));
-
-			/* Construct a new userspace segment. */
-			log_fd = open(name, USEG_FLAGS, USEG_PERMS);
-			if (self->dlus_log == -1) {
-
-				DLOGTR1(PRIO_HIGH,
-				    "Failed opening UserSegment file: %s\n",
-				    name);
-				return -1;
-			}
-			close(self->dlus_log);
-			self->dlus_log = log_fd;
-
-			dl_segment_set_base_offset((struct dl_segment * ) self,
-			    dl_offset_get_val(self->dlus_offset));
-
-			/* Update the log segment's index. */
-			rc = dl_index_new(&idx, self, self->dlus_producer,
-			    self->dlus_path);
-			if (rc != 0) {
-
-				DLOGTR0(PRIO_LOW,
-				    "Failed instatiating index\n");
-				return -1;
-			}
-
-			dl_index_delete(self->dlus_idx);
-			self->dlus_idx = idx;
+		if (rotate_log(self)) {
 
 			goto retry;
 		}

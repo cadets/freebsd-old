@@ -35,6 +35,7 @@
 
 #include <sys/queue.h>
 
+#include <errno.h>
 #include <poll.h>
 #include <strings.h>
 #include <stddef.h>
@@ -103,7 +104,7 @@ dl_find_handler(const int fd)
 	return NULL;
 }
 
-/** Add a copy of the given handler to the first free position in
+/* Add a copy of the given handler to the first free position in
  * registeredHandlers.
  */
 static void
@@ -129,11 +130,11 @@ dl_add_to_registry(struct dl_event_handler const * const handler, int events)
 static void
 dl_remove_from_registry(struct dl_event_handler const * const handler)
 {
-	struct dl_handler_registry *registry;
+	struct dl_handler_registry *registry, *tmp;
 
 	DL_ASSERT(handler != NULL, ("dl_event_handler cannot be NULL."));
 	
-	STAILQ_FOREACH(registry, &handlers, dlh_entries) {
+	STAILQ_FOREACH_SAFE(registry, &handlers, dlh_entries, tmp) {
 
 		if (registry->dlh_handler == handler) {
 
@@ -187,6 +188,7 @@ dl_poll_reactor_handle_events(void)
 	nhandles = dl_build_poll_array(fds);
 
 	/* Invoke the synchronous event demultiplexer. */
+retry:
 	if (poll(fds, nhandles, -1) > 0) {
 		/** 
 		 * Identify all signalled handles and invoke the event handler
@@ -194,6 +196,10 @@ dl_poll_reactor_handle_events(void)
 		 */
 		dl_dispatch_signalled_handles(fds, nhandles);
 	} else {
+		if (errno == EINTR) {
+		       goto retry;
+		}
+
 		DLOGTR0(PRIO_LOW, "Poll failure\n");
 	}
 }
