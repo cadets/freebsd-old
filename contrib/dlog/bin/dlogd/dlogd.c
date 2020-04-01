@@ -100,13 +100,6 @@ dlogd_stop(int sig __attribute__((unused)))
 	stop = 1;
 }
 
-static void
-dlogd_ignore_sigpipe(int sig __attribute__((unused)))
-{
-
-	DLOGTR0(PRIO_LOW, "Kafka closed read end of connection\n");
-}
-
 static int 
 setup_daemon(void)
 {
@@ -186,6 +179,8 @@ main(int argc, char *argv[])
 	struct dl_producer_wagon *p, *p_tmp;	
 	struct dl_topic *topic_tmp;
 	nvlist_t *topics, *topic;
+	struct sigaction s;
+	sigset_t sigset, oldset;
 	void *cookie = NULL;
 	int64_t port;
 	struct pidfh *pfh;
@@ -262,6 +257,16 @@ main(int argc, char *argv[])
 		errx(EXIT_FAILURE, "Failed setting up dlogd as daemon\n");
 	}
 
+	/* Block the SIGINT/SIGTERM signals.
+	 * The threads will inherit the signal mask.
+    	 * This will avoid them catching SIGINT instead of this thread.
+	 */
+   	sigemptyset(&sigset);
+    	sigaddset(&sigset, SIGINT);
+    	sigaddset(&sigset, SIGTERM);
+    	pthread_sigmask(SIG_BLOCK, &sigset, &oldset);
+
+
 	/* Iterate over the configured topics. */
 	topics = nvlist_take_nvlist(dlogd_props, DL_CONF_TOPICS);
 	while ((topic_name = nvlist_next(topics, &type, &cookie)) != NULL) {
@@ -295,11 +300,15 @@ main(int argc, char *argv[])
 	}
 
 	/* Register signal handler to terminate dlogd */
-	signal(SIGINT, dlogd_stop);
+	s.sa_handler = dlogd_stop;
+	sigemptyset(&s.sa_mask);
+	s.sa_flags = SA_RESTART;
+	sigaction(SIGINT, &s, NULL);
+	sigaction(SIGTERM, &s, NULL);
+		
+	/* Restore the old signal mask only for this thread. */
+    	pthread_sigmask(SIG_SETMASK, &oldset, NULL);
 
-	/* Register signal handler to ignore sigpipe */
-	signal(SIGPIPE, dlogd_ignore_sigpipe);
-	
 	/* Handle any events registered for the configured topics/producers. */
 #ifdef HEAPPROFILE
 	HeapProfilerStart("dlogd");
