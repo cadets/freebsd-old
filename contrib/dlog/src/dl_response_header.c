@@ -113,7 +113,6 @@ dl_response_header_decode(struct dl_response_header **self,
     struct dl_bbuf *source)
 {
 	struct dl_response_header *header;
-	int rc = 0;
 
 	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL"));
 
@@ -129,8 +128,9 @@ dl_response_header_decode(struct dl_response_header **self,
 	}
 #endif
 	/* Decode the CorrelationId */	
-	rc = DL_DECODE_CORRELATION_ID(source, &header->dlrh_correlation_id);
-	if (rc == 0) {
+	DL_DECODE_CORRELATION_ID(source, &header->dlrh_correlation_id);
+
+	if (dl_bbuf_error(source) == 0) {
 		/* Successfully decoded the Response header. */
 		*self =  header;
 		return 0;
