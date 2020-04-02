@@ -1287,14 +1287,14 @@ dl_producer_syncd(struct dl_producer const * const self)
 
 		dl_producer_idle(self);
 		break;
+	case DLP_CONNECTING:
+		/* FALLTHROUGH */
+	case DLP_ONLINE:
+		/* FALLTHROUGH */
 	case DLP_OFFLINE:
 		/* IGNORE */
 		break;
 	case DLP_IDLE: /* CANNOT HAPPEN */
-		/* FALLTHROUGH */
-	case DLP_CONNECTING:
-		/* FALLTHROUGH */
-	case DLP_ONLINE:
 		/* FALLTHROUGH */
 	case DLP_INITIAL:
 		/* FALLTHROUGH */
