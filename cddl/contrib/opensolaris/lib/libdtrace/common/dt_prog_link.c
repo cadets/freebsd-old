@@ -1667,21 +1667,189 @@ dt_infer_type(dt_relo_t *r)
 			break;
 
 		case DIF_SUBR_BCOPY:
+			/*
+			 * We expect a "void *" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "bcopy() first argument is NULL");
+
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "void *") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "void *");
+				return (-1);
+			}
+
+			/*
+			 * We expect a "void *" as a second argument.
+			 */
+			sl = dt_list_next(sl);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "bcopy() second argument is NULL");
+
+			arg1 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg1->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "void *") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "void *");
+				return (-1);
+			}
+
+			/*
+			 * We expect a "size_t" as a third argument.
+			 */
+			sl = dt_list_next(sl);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "bcopy() third argument is NULL");
+
+			arg2 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg2->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg2->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "size_t") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "size_t");
+				return (-1);
+			}
+
 			break;
+
 		case DIF_SUBR_COPYINTO:
+			/*
+			 * We expect a "uintptr_t" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "copyinto() first argument is NULL");
+
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "uintptr_t") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "uintptr_t");
+				return (-1);
+			}
+
+			/*
+			 * We expect a "size_t" as a second argument.
+			 */
+			sl = dt_list_next(sl);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "copyinto() second argument is NULL");
+
+			arg1 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg1->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "size_t") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "size_t");
+				return (-1);
+			}
+
+			/*
+			 * We expect a "void *" as a third argument.
+			 */
+			sl = dt_list_next(sl);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "copyinto() third argument is NULL");
+
+			arg2 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg2->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg2->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "void *") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "void *");
+				return (-1);
+			}
+
+
 			break;
 
 		case DIF_SUBR_MSGDSIZE:
-			r->dr_ctfid = ctf_lookup_by_name(ctf_file, "size_t");
-			if (r->dr_ctfid == CTF_ERR)
+		case DIF_SUBR_MSGSIZE:
+			/*
+			 * We expect a "mblk_t *" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
 				errx(EXIT_FAILURE,
-				    "failed to get type size_t: %s",
+				    "msg(d)size() first argument is NULL");
+
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
-			r->dr_type = DIF_TYPE_CTF;
-			break;
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "mblk_t *") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "mblk_t *");
+				return (-1);
+			}
 
-		case DIF_SUBR_MSGSIZE:
 			r->dr_ctfid = ctf_lookup_by_name(ctf_file, "size_t");
 			if (r->dr_ctfid == CTF_ERR)
 				errx(EXIT_FAILURE,
