@@ -719,9 +719,24 @@ dt_infer_type(dt_relo_t *r)
 		 * relation.
 		 *
 		 *  %r1 : t1    %r2 : uint64_t | sym    uint64_t <: t1
-		 *    sym in range(symtab)    symtab(sym) = symname
 		 * ----------------------------------------------------
 		 *        opcode %r1, %r2, %r3 => %r3 : t1 | sym
+		 *
+		 * N.B.: We allow this rule to work with a whole bunch of
+		 *       arithmetic operations, not only add. This is simply
+		 *       because we can't possibly infer all ways that one could
+		 *       arrive at a given struct member, so we simply assume
+		 *       that the calculation is correct. For example, we could
+		 *       have something that looks like:
+		 *
+		 *  usetx %r1, sym
+		 *  sll %r1, %r2, %r1
+		 *  srl %r1, %r2, %r1
+		 *
+		 * where the first %r1 would be of type uint64_t | sym.
+		 * Following that, sll %r1, %r2, %r1 => %r1 : uint64_t | sym
+		 * and srl %r1, %r2, %r1 => %r1 : uint64_t | sym, still knowing
+		 * that this type originates from a symbol.
 		 */
 
 		/*
@@ -844,7 +859,10 @@ dt_infer_type(dt_relo_t *r)
 		 */
 		r->dr_ctfid = dr1->dr_ctfid;
 		r->dr_type = dr1->dr_type;
-		break;
+		r->dr_mip = dr1->dr_mip;
+		r->dr_sym = dr1->sym;
+
+		return (r->dr_type);
 
 	case DIF_OP_LDSB:
 	case DIF_OP_RLDSB:
@@ -989,6 +1007,9 @@ dt_infer_type(dt_relo_t *r)
 
 		r->dr_ctfid = dr1->dr_ctfid;
 		r->dr_type = dr1->dr_type;
+		r->dr_mip = dr1->dr_mip;
+		r->dr_sym = dr1->sym;
+
 		return (r->dr_type);
 
 	case DIF_OP_STGS:
@@ -1005,6 +1026,9 @@ dt_infer_type(dt_relo_t *r)
 
 		r->dr_ctfid = dr1->dr_ctfid;
 		r->dr_type = dr1->dr_type;
+		r->dr_mip = dr1->dr_mip;
+		r->dr_sym = dr1->sym;
+
 		return (r->dr_type);
 
 	case DIF_OP_LDTA:
