@@ -1439,14 +1439,6 @@ dt_infer_type(dt_relo_t *r)
 			r->dr_type = DIF_TYPE_STRING;
 			break;
 
-		case DIF_SUBR_STRSTR:
-			r->dr_type = DIF_TYPE_STRING;
-			break;
-
-		case DIF_SUBR_STRTOK:
-			r->dr_type = DIF_TYPE_STRING;
-			break;
-
 		case DIF_SUBR_SUBSTR:
 			r->dr_type = DIF_TYPE_STRING;
 			break;
@@ -1608,10 +1600,62 @@ dt_infer_type(dt_relo_t *r)
 			r->dr_type = DIF_TYPE_CTF;
 			break;
 
+		case DIF_SUBR_STRTOK:
+		case DIF_SUBR_STRSTR:
 		case DIF_SUBR_STRJOIN_HH:
 		case DIF_SUBR_STRJOIN_HG:
 		case DIF_SUBR_STRJOIN_GH:
 		case DIF_SUBR_STRJOIN_GG:
+			/*
+			 * We expect a "const char *" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "strjoin/tok/str() first argument is NULL");
+
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "const char *") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "const char *");
+				return (-1);
+			}
+
+			/*
+			 * We expect a "const char *" as the second argument.
+			 */
+			sl = dt_list_next(sl);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "strjoin/tok/str() second argument is NULL");
+
+			arg1 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg1->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "const char *") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "const char *");
+				return (-1);
+			}
+
 			r->dr_type = DIF_TYPE_STRING;
 			break;
 		default:
