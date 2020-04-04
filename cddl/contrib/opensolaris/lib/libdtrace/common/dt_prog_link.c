@@ -1337,7 +1337,7 @@ dt_infer_type(dt_relo_t *r)
 			sl = dt_list_next(&r->dr_stacklist);
 			if (sl == NULL || sl->dsl_rel == NULL)
 				errx(EXIT_FAILURE,
-				    "copyin() first argument is NULL");
+				    "copyinstr() first argument is NULL");
 
 			arg0 = sl->dsl_rel;
 
@@ -1363,7 +1363,7 @@ dt_infer_type(dt_relo_t *r)
 			if (sl != NULL) {
 				if (sl->dsl_rel == NULL)
 					errx(EXIT_FAILURE,
-					    "copyinst() dsl_rel is NULL");
+					    "copyinstr() dsl_rel is NULL");
 
 				arg1 = sl->dsl_rel;
 
@@ -1380,7 +1380,7 @@ dt_infer_type(dt_relo_t *r)
 				 */
 				if (strcmp(buf, "size_t") != 0) {
 					fprintf(stderr, "%s and %s are not the same",
-						buf, "size_t");
+					    buf, "size_t");
 					return (-1);
 				}
 			}
@@ -1398,6 +1398,31 @@ dt_infer_type(dt_relo_t *r)
 			break;
 
 		case DIF_SUBR_PROGENYOF:
+			/*
+			 * We expect a "pid_t" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "progenyof() first argument is NULL");
+
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "pid_t") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "pid_t");
+				return (-1);
+			}
+
 			r->dr_ctfid = ctf_lookup_by_name(ctf_file, "int");
 			if (r->dr_ctfid == CTF_ERR)
 				errx(EXIT_FAILURE, "failed to get type int: %s",
@@ -1407,6 +1432,31 @@ dt_infer_type(dt_relo_t *r)
 			break;
 
 		case DIF_SUBR_STRLEN:
+			/*
+			 * We expect a "const char *" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "strlen() first argument is NULL");
+
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "const char *") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "const char *");
+				return (-1);
+			}
+
 			r->dr_ctfid = ctf_lookup_by_name(ctf_file, "size_t");
 			if (r->dr_ctfid == CTF_ERR)
 				errx(EXIT_FAILURE,
@@ -1417,11 +1467,196 @@ dt_infer_type(dt_relo_t *r)
 			break;
 
 		case DIF_SUBR_COPYOUT:
+			/*
+			 * We expect a "void *" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "copyout() first argument is NULL");
+
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "void *") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "void *");
+				return (-1);
+			}
+
+			/*
+			 * We expect a "uintptr_t" as a second argument.
+			 */
+			sl = dt_list_next(sl);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "copyout() second argument is NULL");
+
+			arg1 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg1->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "uintptr_t") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "uintptr_t");
+				return (-1);
+			}
+
+			/*
+			 * We expect a "size_t" as a third argument.
+			 */
+			sl = dt_list_next(sl);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "copyout() third argument is NULL");
+
+			arg2 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg2->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg2->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "size_t") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "size_t");
+				return (-1);
+			}
+
+			/*
+			 * copyout returns void, so there is no point in setting
+			 * the type to anything.
+			 */
 			break;
+
 		case DIF_SUBR_COPYOUTSTR:
+			/*
+			 * We expect a "char *" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "copyoutstr() first argument is NULL");
+
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "char *") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "char *");
+				return (-1);
+			}
+
+			/*
+			 * We expect a "uintptr_t" as a second argument.
+			 */
+			sl = dt_list_next(sl);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "copyoutstr() second argument is NULL");
+
+			arg1 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg1->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "uintptr_t") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "uintptr_t");
+				return (-1);
+			}
+
+			/*
+			 * We expect a "size_t" as a third argument.
+			 */
+			sl = dt_list_next(sl);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "copyoutstr() third argument is NULL");
+
+			arg2 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg2->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg2->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "size_t") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "size_t");
+				return (-1);
+			}
+
+			/*
+			 * copyout returns void, so there is no point in setting
+			 * the type to anything.
+			 */
+
 			break;
 
 		case DIF_SUBR_ALLOCA:
+			/*
+			 * We expect a "size_t" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "alloca() first argument is NULL");
+
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "size_t") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "size_t");
+				return (-1);
+			}
+
 			r->dr_ctfid = ctf_lookup_by_name(ctf_file, "void *");
 			if (r->dr_ctfid == CTF_ERR)
 				errx(EXIT_FAILURE,
