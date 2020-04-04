@@ -1037,6 +1037,25 @@ dt_infer_type(dt_relo_t *r)
 			if ((t = dt_infer_type(sl->dsl_rel)) == -1)
 				return (-1);
 
+		/*
+		 * We don't care if there are more things on the stack than
+		 * the arguments we need, because they will simply not be used.
+		 *
+		 * Therefore, the transformation where we have
+		 *
+		 *     foo(a, b);
+		 *     bar(a, b, c);
+		 *
+		 * which results in
+		 *
+		 *     push a
+		 *     push b
+		 *     push c
+		 *     call foo
+		 *     call bar
+		 *
+		 * is perfectly valid, so we shouldn't fail to type check this.
+		 */
 		switch (subr) {
 		case DIF_SUBR_RAND:
 			r->dr_ctfid = ctf_lookup_by_name(ctf_file, "uint64_t");
@@ -1054,6 +1073,10 @@ dt_infer_type(dt_relo_t *r)
 			 * We expect a "struct mtx *" as an argument.
 			 */
 			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "mutex_owned/type() first argument is NULL");
+
 			arg0 = sl->dsl_rel;
 
 			if (ctf_type_name(ctf_file,
@@ -1084,6 +1107,10 @@ dt_infer_type(dt_relo_t *r)
 			 * We expect a "struct mtx *" as an argument.
 			 */
 			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "mutex_owner() first argument is NULL");
+
 			arg0 = sl->dsl_rel;
 
 			if (ctf_type_name(ctf_file,
@@ -1122,6 +1149,10 @@ dt_infer_type(dt_relo_t *r)
 			 * We expect a "struct rwlock *" as an argument.
 			 */
 			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "rw_read_held() first argument is NULL");
+
 			arg0 = sl->dsl_rel;
 
 			if (ctf_type_name(ctf_file,
@@ -1152,6 +1183,10 @@ dt_infer_type(dt_relo_t *r)
 			 * We expect a "struct rwlock *" as an argument.
 			 */
 			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "rw_write_held() first argument is NULL");
+
 			arg0 = sl->dsl_rel;
 
 			if (ctf_type_name(ctf_file,
@@ -1182,6 +1217,10 @@ dt_infer_type(dt_relo_t *r)
 			 * We expect a "struct rwlock *" as an argument.
 			 */
 			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "rw_iswriter() first argument is NULL");
+
 			arg0 = sl->dsl_rel;
 
 			if (ctf_type_name(ctf_file,
@@ -1212,6 +1251,10 @@ dt_infer_type(dt_relo_t *r)
 			 * We expect a "uintptr_t" as an argument.
 			 */
 			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "copyin() first argument is NULL");
+
 			arg0 = sl->dsl_rel;
 
 			if (ctf_type_name(ctf_file,
@@ -1233,6 +1276,10 @@ dt_infer_type(dt_relo_t *r)
 			 * We expect a "size_t" as the second argument.
 			 */
 			sl = dt_list_next(sl);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "copyin() second argument is NULL");
+
 			arg1 = sl->dsl_rel;
 
 			if (ctf_type_name(ctf_file,
