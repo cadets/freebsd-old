@@ -510,6 +510,12 @@ dt_infer_type(dt_relo_t *r)
 	symrelo = NULL;
 	other = NULL;
 
+	/*
+	 * If we already have the type, we just return it.
+	 */
+	if (r->dr_type != 0)
+		return (r->dr_type);
+
 	if (dr1 != NULL) {
 		type1 = dt_infer_type(dr1);
 		if (type1 != DIF_TYPE_CTF && type1 != DIF_TYPE_STRING)
@@ -1017,6 +1023,20 @@ dt_infer_type(dt_relo_t *r)
 		 * TODO: Add type-checking for things on the stack.
 		 *       getmajor/getminor?
 		 */
+		/*
+		 * Infer each of the stack types. We should at this point have:
+		 *  (1) the D type (CTF or string)
+		 *  (2) the CTF id if it's a CTF type
+		 *
+		 * which we can use to compare the CTF type ID with the expected
+		 * type for a subroutine, ensuring that proper arguments are
+		 * being passed through to the subroutines.
+		 */
+		for (sl = dt_list_next(&r->dr_stacklist); sl != NULL;
+		    sl = dt_list_next(sl))
+			if ((t = dt_infer_type(sl->dsl_rel)) == -1)
+				return (-1);
+
 		switch (subr) {
 		case DIF_SUBR_RAND:
 			r->dr_ctfid = ctf_lookup_by_name(ctf_file, "uint64_t");
@@ -1030,6 +1050,27 @@ dt_infer_type(dt_relo_t *r)
 		case DIF_SUBR_MUTEX_OWNED:
 		case DIF_SUBR_MUTEX_TYPE_ADAPTIVE:
 		case DIF_SUBR_MUTEX_TYPE_SPIN:
+			/*
+			 * We expect a "struct mtx *" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, mtx_str) != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, mtx_str);
+				return (-1);
+			}
+
 			r->dr_ctfid = ctf_lookup_by_name(ctf_file, "int");
 			if (r->dr_ctfid == CTF_ERR)
 				errx(EXIT_FAILURE, "failed to get type int: %s",
@@ -1039,6 +1080,27 @@ dt_infer_type(dt_relo_t *r)
 			break;
 
 		case DIF_SUBR_MUTEX_OWNER:
+			/*
+			 * We expect a "struct mtx *" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				         " %ld: %s", arg0->dr_ctfid,
+				         ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, mtx_str) != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, mtx_str);
+				return (-1);
+			}
+
 #ifdef __FreeBSD__
 			r->dr_ctfid = ctf_lookup_by_name(ctf_file, thread_str);
 #elif defined(illumos)
@@ -1056,6 +1118,27 @@ dt_infer_type(dt_relo_t *r)
 			break;
 
 		case DIF_SUBR_RW_READ_HELD:
+			/*
+			 * We expect a "struct rwlock *" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, rw_str) != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, rw_str);
+				return (-1);
+			}
+
 			r->dr_ctfid = ctf_lookup_by_name(ctf_file, "int");
 			if (r->dr_ctfid == CTF_ERR)
 				errx(EXIT_FAILURE, "failed to get type int: %s",
@@ -1065,6 +1148,27 @@ dt_infer_type(dt_relo_t *r)
 			break;
 
 		case DIF_SUBR_RW_WRITE_HELD:
+			/*
+			 * We expect a "struct rwlock *" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, rw_str) != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, rw_str);
+				return (-1);
+			}
+
 			r->dr_ctfid = ctf_lookup_by_name(ctf_file, "int");
 			if (r->dr_ctfid == CTF_ERR)
 				errx(EXIT_FAILURE, "failed to get type int: %s",
@@ -1074,6 +1178,27 @@ dt_infer_type(dt_relo_t *r)
 			break;
 
 		case DIF_SUBR_RW_ISWRITER:
+			/*
+			 * We expect a "struct rwlock *" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, rw_str) != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, rw_str);
+				return (-1);
+			}
+
 			r->dr_ctfid = ctf_lookup_by_name(ctf_file, "int");
 			if (r->dr_ctfid == CTF_ERR)
 				errx(EXIT_FAILURE, "failed to get type int: %s",
@@ -1083,6 +1208,48 @@ dt_infer_type(dt_relo_t *r)
 			break;
 
 		case DIF_SUBR_COPYIN:
+			/*
+			 * We expect a "uintptr_t" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "uintptr_t") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "uintptr_t");
+				return (-1);
+			}
+
+			/*
+			 * We expect a "size_t" as the second argument.
+			 */
+			sl = dt_list_next(sl);
+			arg1 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg1->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "size_t") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "size_t");
+				return (-1);
+			}
+
 			r->dr_ctfid = ctf_lookup_by_name(ctf_file, "void *");
 			if (r->dr_ctfid == CTF_ERR)
 				errx(EXIT_FAILURE,
