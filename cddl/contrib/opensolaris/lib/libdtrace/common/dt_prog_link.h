@@ -44,11 +44,18 @@ typedef struct dt_relo {
 	dtrace_difo_t *dr_difo;		/* DIFO for this relocation */
 #define dr_buf dr_difo->dtdo_buf
 	ctf_membinfo_t *dr_mip;		/* CTF member info (type, offs) */
+	dt_list_t dr_stacklist;		/* List of push instructions
+					 * if the instruction uses the stack */
 } dt_relo_t;
 
 typedef struct dt_rl_entry {
 	dt_list_t drl_list;
 	dt_relo_t *drl_rel;
 } dt_rl_entry_t;
+
+typedef struct dt_stacklist {
+	dt_list_t dsl_list;
+	dt_relo_t *dsl_rel;
+} dt_stacklist_t;
 
 #endif

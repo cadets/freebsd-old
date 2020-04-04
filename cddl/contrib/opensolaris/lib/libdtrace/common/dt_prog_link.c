@@ -40,18 +40,20 @@
 
 static ctf_file_t *ctf_file;
 static dt_list_t relo_list;
+static dt_rl_entry_t *relo_last = NULL;
 
-typedef struct dt_rvar {
-	int			rv_kind;
-#define DT_RVAR_REG	1
-#define DT_RVAR_VAR	2
+typedef struct dt_rkind {
+	int			r_kind;
+#define DT_RKIND_REG	1
+#define DT_RKIND_VAR	2
+#define DT_RKIND_STACK	3
 	union {
 		uint8_t		rd;
 		uint16_t	var;
 	} u;
-#define rv_rd	u.rd
-#define rv_var	u.var
-} dt_rvar_t;
+#define r_rd	u.rd
+#define r_var	u.var
+} dt_rkind_t;
 
 static dt_relo_t *
 dt_relo_alloc(dtrace_difo_t *difo, uint_t idx)
@@ -344,11 +346,123 @@ dt_update_relocations_reg(dtrace_difo_t *difo, uint8_t rd, dt_relo_t *currelo)
 			}
 		}
 	}
+}
 
+static int
+dt_usite_uses_stack(dt_relo_t *relo)
+{
+	dif_instr_t instr;
+	uint8_t op;
+
+	instr = relo->dr_buf[relo->dr_uidx];
+	op = DIF_INSTR_OP(instr);
+
+	switch (op) {
+	case DIF_OP_CALL:
+	case DIF_OP_LDGAA:
+	case DIF_OP_LDTAA:
+	case DIF_OP_STTS:
+	case DIF_OP_LDTS:
+	case DIF_OP_STGAA:
+	case DIF_OP_STTAA:
+		return (1);
+
+	default: break;
+	}
+
+	return (0);
 }
 
 static void
-dt_update_relocations(dtrace_difo_t *difo, dt_rvar_t *rvar, dt_relo_t *currelo)
+dt_update_relocations_stack(dtrace_difo_t *difo, dt_relo_t *currelo)
+{
+	dt_relo_t *relo;
+	dt_rl_entry_t *rl;
+	int id1, id2, n_pushes;
+	uint_t idx;
+	dt_stacklist_t *sl;
+
+	idx = 0;
+	rl = NULL;
+	relo = NULL;
+	sl = NULL;
+	n_pushes = 1;
+
+	assert(currelo != NULL);
+	idx = currelo->dr_uidx;
+
+	/*
+	 * Every time we find a relocation that uses the stack and is after
+	 * the current instruction (a push instruction), but is not preceded
+	 * by a popts or a flushts, we will add this relocation onto the list
+	 * of pushes in the instruction that uses the stack.
+	 *
+	 * N.B.: We are actually starting from the _first_ instruction here
+	 *       because our list is built up from bottom-up, rather than
+	 *       top-down because most passes are done bottom-up except for
+	 *       this one.
+	 */
+	for (rl = relo_last; rl != NULL; rl = dt_list_prev(rl)) {
+		relo = rl->drl_rel;
+
+		if (relo->dr_buf != difo->dtdo_buf)
+			continue;
+
+		if (n_pushes < 1)
+			errx(EXIT_FAILURE, "n_pushes is %d", n_pushes);
+
+		op = DIF_INSTR_OP(relo->dr_buf[relo->dr_uidx]);
+
+		/*
+		 * If we popts or flushts after the first push, we don't want
+		 * to go through the rest of the relocations because this push
+		 * becomes meaningless.
+		 */
+
+		if (op == DIF_OP_FLUSHTS)
+			break;
+
+		if (n_pushes == 1 && op == DIF_OP_POPTS)
+			break;
+
+		/*
+		 * If we have more pushes and we encounter a popts, we
+		 * just decrement the number of pushes and keep going.
+		 */
+		if (n_pushes > 1 && op == DIF_OP_POPTS) {
+			n_pushes--;
+			continue;
+		}
+
+		/*
+		 * If the current instruction is a push, we just increment the
+		 * number of pushes and keep going.
+		 */
+		if (op == DIF_OP_PUSHTV || op == DIF_OP_PUSHTR) {
+			n_pushes++;
+			continue;
+		}
+
+		/*
+		 * Does the current relocation use the stack?
+		 */
+		if (dt_usite_uses_stack(relo)) {
+			sl = malloc(sizeof(dt_stacklist_t));
+			memset(sl, 0, sizeof(dt_stacklist_t));
+
+			/*
+			 * N.B.: This list is built up to be an argument list
+			 *       so that arg0 is the first one in the list and
+			 *       argn the last one.
+			 */
+			sl->dsl_rel = currelo;
+			dt_list_append(relo->dr_stacklist, sl);
+		}
+	}
+}
+
+static void
+dt_update_relocations(dtrace_difo_t *difo, dt_rkind_t *rkind, dt_relo_t *currelo)
 {
 	uint8_t rd;
 	uint16_t var;
@@ -356,14 +470,16 @@ dt_update_relocations(dtrace_difo_t *difo, dt_rvar_t *rvar, dt_relo_t *currelo)
 	rd = 0;
 	var = 0;
 
-	if (rvar->rv_kind == DT_RVAR_REG) {
-		rd = rvar->rv_rd;
+	if (rkind->r_kind == DT_RKIND_REG) {
+		rd = rkind->r_rd;
 		dt_update_relocations_reg(difo, rd, currelo);
-	} else if (rvar->rv_kind == DT_RVAR_VAR) {
-		var = rvar->rv_var;
+	} else if (rkind->r_kind == DT_RKIND_VAR) {
+		var = rkind->r_var;
 		dt_update_relocations_var(difo, var, currelo);
-	} else
-		errx(EXIT_FAILURE, "rv_kind is unknown (%d)", rvar->rv_kind);
+	} else if (rkind->r_kind == DT_RKIND_STACK)
+		dt_update_relocations_stack(difo, currelo);
+	else
+		errx(EXIT_FAILURE, "r_kind is unknown (%d)", rkind->r_kind);
 }
 
 static int
@@ -1356,12 +1472,12 @@ dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	uint_t i = 0, idx = 0;
 	dt_relo_t *relo = NULL;
 	dt_rl_entry_t *rl = NULL;
-	dt_rvar_t rvar;
+	dt_rkind_t rkind;
 	dif_instr_t instr = 0;
 	uint8_t opcode = 0;
 	uint8_t rd = 0;
 
-	memset(&rvar, 0, sizeof(dt_rvar_t));
+	memset(&rkind, 0, sizeof(dt_rkind_t));
 	/*
 	 * A DIFO without instructions makes no sense.
 	 */
@@ -1465,12 +1581,13 @@ dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 
 			rl->drl_rel = relo;
 			dt_list_append(&relo_list, rl);
+			relo_last = rl;
 
 			rd = DIF_INSTR_RD(instr);
 
-			rvar.rv_kind = DT_RVAR_REG;
-			rvar.rv_rd = rd;
-			dt_update_relocations(difo, &rvar, relo);
+		        rkind.r_kind = DT_RKIND_REG;
+		        rkind.r_rd = rd;
+			dt_update_relocations(difo, &rkind, relo);
 			break;
 
 		case DIF_OP_STGS:
@@ -1484,13 +1601,37 @@ dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 
 			rl->drl_rel = relo;
 			dt_list_append(&relo_list, rl);
+			relo_last = rl;
 
 			var = DIF_INSTR_VAR(instr);
 
-			rvar.rv_kind = DT_RVAR_VAR;
-			rvar.rv_var = var;
-			dt_update_relocations(difo, &rvar, relo);
+			rkind.r_kind = DT_RKIND_VAR;
+			rkind.r_var = var;
+			dt_update_relocations(difo, &rkind, relo);
 			break;
+
+		case DIF_OP_PUSHTR:
+		case DIF_OP_PUSHTR_G:
+		case DIF_OP_PUSHTR_H:
+		case DIF_OP_PUSHTV:
+			/*
+			 * Here we need to do an update pass based on the stack.
+			 *
+			 * We want to find all instructions that use the stack
+			 * and add a reference to this relocation, as it will
+			 * help us later on when we need to type-check arrays
+			 * and subroutines.
+			 */
+			relo = dt_relo_alloc(difo, idx);
+			rl = malloc(sizeof(dt_rl_entry_t));
+			memset(rl, 0, sizeof(dt_rl_entry_t));
+
+			rl->drl_rel = relo;
+			dt_list_append(&relo_list, rl);
+			relo_last = rl;
+
+			rkind.r_kind = DT_RKIND_STACK;
+			dt_update_relocations(difo, &rkind, relo);
 
 		/* Everything else */
 		default:
@@ -1525,6 +1666,12 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	if (err != 0)
 		errx(EXIT_FAILURE, "failed opening bootfile(%s): %s",
 		    bootfile, ctf_errmsg(ctf_errno(ctf_file)));
+
+	/*
+	 * Zero out the relo list.
+	 */
+	memset(&relo_list, 0, sizeof(dt_list_t));
+
 	/*
 	 * Go over all the statements in a D program
 	 */
