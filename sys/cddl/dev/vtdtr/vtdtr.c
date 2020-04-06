@@ -72,7 +72,6 @@ struct vtdtr_qentry {
 	STAILQ_ENTRY(vtdtr_qentry) next;
 };
 
-// ucred = user
 /*
  * The queue is kept on a per-ucred basis. We do not want to deal with race
  * conditions in the kernel and instead leave it up to the user to handle in
