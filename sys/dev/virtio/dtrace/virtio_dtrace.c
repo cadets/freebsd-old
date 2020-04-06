@@ -126,7 +126,7 @@ SYSCTL_U32(_dev_vtdtr, OID_AUTO, debug, CTLFLAG_RWTUN, &debug, 0,
 		   "Enable debugging of virtio-dtrace");
 
 static int vstate = 0;
-struct timeval tv;
+
 
 static struct vtdtr_traceq *tq;
 
@@ -736,6 +736,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 {
 	struct vtdtr_ctrl_pbevent *pb;
 	struct vtdtr_ctrl_provevent *pv;
+	struct timeval tv;
 
 	device_t dev;
 	size_t d_script_length;
@@ -1335,10 +1336,13 @@ vtdtr_consume_trace(void *xsc)
 	struct virtio_dtrace_metadata *mtd;
 	struct vtdtr_ctrl_trcevent *ctrl_trc_ev;
 	struct vtdtr_ctrl_metaevent *ctrl_mtd_ev;
+	struct timeval tv;
+	
 	device_t dev;
 	size_t trc_buf_len, epdesc_len, pbdesc_len, fmt_len;
 	size_t cp;
 	int error;
+	
 
 	uintptr_t data;
 	uint64_t data_sz, to_send;
