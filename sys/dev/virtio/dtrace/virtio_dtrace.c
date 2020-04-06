@@ -821,7 +821,6 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		break;
 	}
 	case VIRTIO_DTRACE_SCRIPT:
-		device_printf("Got a script event in %ld s. \n", tval.tv_sec);
 		if (debug)
 			device_printf(dev, "Got script:\n%s.\n", ctrl->uctrl.script_ev.d_script);
 
