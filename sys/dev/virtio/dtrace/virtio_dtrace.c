@@ -126,6 +126,7 @@ SYSCTL_U32(_dev_vtdtr, OID_AUTO, debug, CTLFLAG_RWTUN, &debug, 0,
 		   "Enable debugging of virtio-dtrace");
 
 static int vstate = 0;
+struct timeval tv;
 
 static struct vtdtr_traceq *tq;
 
@@ -821,8 +822,9 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		break;
 	}
 	case VIRTIO_DTRACE_SCRIPT:
+		microtime(&tv);
 		if (debug)
-			device_printf(dev, "Got script:\n%s.\n", ctrl->uctrl.script_ev.d_script);
+			device_printf(dev, "Got script:\n%s. at %ld \n", ctrl->uctrl.script_ev.d_script, tv.tv_sec);
 
 		ev = malloc(sizeof(struct vtdtr_event), M_TEMP, M_ZERO);
 		KASSERT(ev != NULL, ("Malloc event failed.\n"));
@@ -1349,8 +1351,9 @@ vtdtr_consume_trace(void *xsc)
 		mtx_lock(&tq->mtx);
 		while (!vtdtr_tq_empty(tq))
 		{
+			microtime(&tv);
 			device_printf(dev, "Actually enqueued in ddtrace. \n");
-			device_printf("Got a metadata/trace event in %ld s. \n", tval.tv_sec);
+			device_printf("Got a metadata/trace event in %ld s. \n", tv.tv_sec);
 			// vtdtr_tq_print(tq, "In virtio_dtrace, before dequeue.");
 			trc_entry = vtdtr_tq_dequeue(tq);
 			// vtdtr_tq_print(tq, "In virtio_dtrace, after dequeue.");
