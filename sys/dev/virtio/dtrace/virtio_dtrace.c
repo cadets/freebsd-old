@@ -1337,7 +1337,7 @@ vtdtr_consume_trace(void *xsc)
 	struct vtdtr_ctrl_trcevent *ctrl_trc_ev;
 	struct vtdtr_ctrl_metaevent *ctrl_mtd_ev;
 	struct timeval tv;
-	
+
 	device_t dev;
 	size_t trc_buf_len, epdesc_len, pbdesc_len, fmt_len;
 	size_t cp;
@@ -1357,7 +1357,7 @@ vtdtr_consume_trace(void *xsc)
 		{
 			microtime(&tv);
 			device_printf(dev, "Actually enqueued in ddtrace. \n");
-			device_printf("Got a metadata/trace event in %ld s. \n", tv.tv_sec);
+			// device_printf("Got a metadata/trace event in %ld s. \n", tv.tv_sec);
 			// vtdtr_tq_print(tq, "In virtio_dtrace, before dequeue.");
 			trc_entry = vtdtr_tq_dequeue(tq);
 			// vtdtr_tq_print(tq, "In virtio_dtrace, after dequeue.");
