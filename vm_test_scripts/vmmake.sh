@@ -149,7 +149,7 @@ __EOF__
     echo 'ddtrace_load="YES"' >> ${destdir}/boot/loader.conf
 
     echo "${srcdir}"
-    cp -v -R ${srcdir}/* ${destdir}/usr/src/
+    cp -R ${srcdir}/* ${destdir}/usr/src
 }
 
 #
@@ -250,7 +250,7 @@ fi
 
 if [ $MKSRC -eq 1 ]; then
     echo "Installing source..."
-    # cp -v -R $SRCDIR/* $DESTDIR/usr/src/
+    # cp -R $SRCDIR/* $DESTDIR/usr/src/
 fi
 
 makefs -B little -f $NUMFILES -o label=VM -M $PARTSIZE -S $SECTORSIZE \
