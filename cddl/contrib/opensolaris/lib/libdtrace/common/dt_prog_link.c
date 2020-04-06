@@ -2579,10 +2579,111 @@ dt_infer_type(dt_relo_t *r)
 			break;
 
 		case DIF_SUBR_MEMSTR:
+			/*
+			 * We expect a "void *" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "memstr() first argument is NULL");
+
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "void *") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "void *");
+				return (-1);
+			}
+
+			/*
+			 * We expect a "char" as a second argument.
+			 */
+			sl = dt_list_next(sl);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "memstr() second argument is NULL");
+
+			arg1 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg1->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "char") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "char");
+				return (-1);
+			}
+
+			/*
+			 * We expect a "size_t" as a third argument.
+			 */
+			sl = dt_list_next(sl);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "memstr() second argument is NULL");
+
+			arg2 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg2->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg2->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "size_t") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "size_t");
+				return (-1);
+			}
+
+
 			r->dr_type = DIF_TYPE_STRING;
 			break;
 
 		case DIF_SUBR_GETF:
+			/*
+			 * We expect a "int" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "getf() first argument is NULL");
+
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "int") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "int");
+				return (-1);
+			}
+
 			r->dr_ctfid = ctf_lookup_by_name(ctf_file, "file_t *");
 			if (r->dr_ctfid == CTF_ERR)
 				errx(EXIT_FAILURE,
@@ -2592,11 +2693,61 @@ dt_infer_type(dt_relo_t *r)
 			r->dr_type = DIF_TYPE_CTF;
 			break;
 
-		case DIF_SUBR_JSON:
-			r->dr_type = DIF_TYPE_STRING;
-			break;
-
 		case DIF_SUBR_STRTOLL:
+			/*
+			 * We expect a "const char *" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "strtoll() first argument is NULL");
+
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "const char *") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "const char *");
+				return (-1);
+			}
+
+			/*
+			 * Check if the second (optional) argument is present
+			 */
+			sl = dt_list_next(sl);
+			if (sl != NULL) {
+				if (sl->dsl_rel == NULL)
+					errx(EXIT_FAILURE,
+					    "strtoll() dsl_rel is NULL");
+
+				arg1 = sl->dsl_rel;
+
+				if (ctf_type_name(ctf_file,
+				    arg1->dr_ctfid,
+				    buf, sizeof(buf)) != (char *)buf)
+					errx(EXIT_FAILURE,
+					    "failed at getting type name"
+					    " %ld: %s", arg1->dr_ctfid,
+					    ctf_errmsg(ctf_errno(ctf_file)));
+
+				/*
+				 * If the argument type is wrong, fail to type check.
+				 */
+				if (strcmp(buf, "int") != 0) {
+					fprintf(stderr, "%s and %s are not the same",
+					    buf, "int");
+					return (-1);
+				}
+			}
+
 			r->dr_ctfid = ctf_lookup_by_name(ctf_file, "int64_t");
 			if (r->dr_ctfid == CTF_ERR)
 				errx(EXIT_FAILURE,
@@ -2617,6 +2768,31 @@ dt_infer_type(dt_relo_t *r)
 			break;
 
 		case DIF_SUBR_PTINFO:
+			/*
+			 * We expect a "uintptr_t" as an argument.
+			 */
+			sl = dt_list_next(&r->dr_stacklist);
+			if (sl == NULL || sl->dsl_rel == NULL)
+				errx(EXIT_FAILURE,
+				    "ptinfo() first argument is NULL");
+
+			arg0 = sl->dsl_rel;
+
+			if (ctf_type_name(ctf_file,
+			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "uintptr_t") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "uintptr_t");
+				return (-1);
+			}
+
 			r->dr_ctfid = ctf_lookup_by_name(ctf_file, "void *");
 			if (r->dr_ctfid == CTF_ERR)
 				errx(EXIT_FAILURE,
@@ -2633,13 +2809,14 @@ dt_infer_type(dt_relo_t *r)
 		case DIF_SUBR_STRJOIN_HG:
 		case DIF_SUBR_STRJOIN_GH:
 		case DIF_SUBR_STRJOIN_GG:
+		case DIF_SUBR_JSON:
 			/*
 			 * We expect a "const char *" as an argument.
 			 */
 			sl = dt_list_next(&r->dr_stacklist);
 			if (sl == NULL || sl->dsl_rel == NULL)
 				errx(EXIT_FAILURE,
-				    "strjoin/tok/str() first argument is NULL");
+				    "str/json() first argument is NULL");
 
 			arg0 = sl->dsl_rel;
 
@@ -2664,7 +2841,7 @@ dt_infer_type(dt_relo_t *r)
 			sl = dt_list_next(sl);
 			if (sl == NULL || sl->dsl_rel == NULL)
 				errx(EXIT_FAILURE,
-				    "strjoin/tok/str() second argument is NULL");
+				    "str/json() second argument is NULL");
 
 			arg1 = sl->dsl_rel;
 
