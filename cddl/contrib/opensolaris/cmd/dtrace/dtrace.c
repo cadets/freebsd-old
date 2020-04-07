@@ -1793,8 +1793,8 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 
 		printf("Out of the for loop.");
 	}
-	timing = time(NULL);
-	printf("Finished getting metadata: %ld s \n", timing);
+	// timing = time(NULL);
+	// printf("Finished getting metadata: %ld s \n", timing);
 	close(fd);
 	printf("Successfully closed file descriptor");
 }
@@ -1872,8 +1872,8 @@ static void *read_trace_data(void *xgtq)
 			assert(sz == chunk);
 			dest += chunk;
 		}
-		timing = time(NULL);
-		printf("Got one bufdesc: %ld s \n", timing);
+		// timing = time(NULL);
+		// printf("Got one bufdesc: %ld s \n", timing);
 
 		FILE *fp;
 		char *file_path = "/tmp/trace_data";
@@ -1924,12 +1924,10 @@ static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t *dtp)
 
 			printf("About to consume snapshot.");
 			dt_consume_cpu(dtp, NULL, 0, buf, false, &con, NULL);
-			
+			timing = time(NULL);
+			printf("Finished processing one bufdesc: %ld s \n", timing);
 			free(trc_entry);
-
 		}
-		timing = time(NULL);
-		printf("Finished processing one bufdesc: %ld s \n", timing);
 		pthread_mutex_unlock(&gtq->mtx);
 	}
 }
