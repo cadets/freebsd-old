@@ -387,6 +387,7 @@ typedef enum dtrace_probespec {
 #define	DIF_VAR_HVMNAME		0x0424	/* current VM name */
 
 #define	DIF_VAR_HCPU		0x044f /* host cpu */
+#define	DIF_VAR_MAX		0x0450
 
 #define	DIF_SUBR_RAND			0
 #define	DIF_SUBR_MUTEX_OWNED		1
