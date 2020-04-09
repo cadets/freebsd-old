@@ -1806,7 +1806,7 @@ static void *read_trace_data(void *xgtq)
 	struct dtrace_guest_entry *trc_entry;
 	dtrace_bufdesc_t *buf;
 	time_t timing;
-	FILE *trace_stream;
+	FILE *fp;
 	char *trc_fifo;
 	uint64_t size, chunk, sz;
 	uintptr_t dest;
@@ -1828,30 +1828,37 @@ static void *read_trace_data(void *xgtq)
 
 		if ((fd = open(trc_fifo, O_RDONLY)) == -1)
 		{
-		printf("Failed to open trace pipe for reading: %s. \n", strerror(errno));
-		exit(1);
+			printf("Failed to open trace pipe for reading: %s. \n", strerror(errno));
+			exit(1);
 		}
+
+		if ((fp = fdopen(fd, "r")) == NULL)
+		{
+			DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno)));
+			exit(1);
+		}
+
 		buf = calloc(1, sizeof(dtrace_bufdesc_t));
 		assert(buf != NULL);
 		trc_entry = calloc(1, sizeof(struct dtrace_guest_entry));
 		assert(trc_entry != NULL);
 
-		sz = read(fd, &buf->dtbd_size, sizeof(uint64_t));
+		sz = fread(&buf->dtbd_size, sizeof(uint64_t), 1, fp);
 		assert(sz > 0);
 		printf("Size: %d\n", buf->dtbd_size);
-		sz = read(fd, &buf->dtbd_cpu, sizeof(uint32_t));
+		sz = fread(&buf->dtbd_cpu, sizeof(uint32_t), 1 , fp);
 		assert(sz > 0);
 		printf("Cpu: %d\n", buf->dtbd_errors);
-		sz = read(fd, &buf->dtbd_errors, sizeof(uint32_t));
+		sz = fread(&buf->dtbd_errors, sizeof(uint32_t), 1, fp);
 		assert(sz > 0);
 		printf("Errors: %d\n", buf->dtbd_errors);
-		sz = read(fd, &buf->dtbd_drops, sizeof(uint64_t));
+		sz = fread(&buf->dtbd_drops, sizeof(uint64_t), 1, fp);
 		assert(sz > 0);
 		printf("Drops: %d\n", buf->dtbd_drops);
-		sz = read(fd, &buf->dtbd_oldest, sizeof(uint64_t));
+		sz = fread(&buf->dtbd_oldest, sizeof(uint64_t), 1 ,fp);
 		assert(sz > 0);
 		printf("Oldest: %d\n", buf->dtbd_oldest);
-		sz = read(fd, &buf->dtbd_timestamp, sizeof(uint64_t));
+		sz = fread(&buf->dtbd_timestamp, sizeof(uint64_t), 1, fp);
 		assert(sz > 0);
 		printf("Timestamp: %d\n", buf->dtbd_timestamp);
 		buf->dtbd_data = calloc(1, buf->dtbd_size + 1);
@@ -1860,10 +1867,10 @@ static void *read_trace_data(void *xgtq)
 
 		while (size > 0)
 		{
-			sz = read(fd, &chunk, sizeof(uint64_t));
+			sz = fread(&chunk, sizeof(uint64_t), 1, fp);
 			assert(sz > 0);
 			size -= chunk;
-			sz = read(fd, dest, chunk);
+			sz = fread(dest, 1, chunk, fp);
 			printf("I've read: %d. Chunk is: %d \n", sz, chunk);
 			assert(sz == chunk);
 			dest += chunk;
@@ -1876,7 +1883,6 @@ static void *read_trace_data(void *xgtq)
 		printf("Successfully enqueued trace element");
 
 		close(fd);
-
 	}
 }
 
