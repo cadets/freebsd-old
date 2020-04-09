@@ -1834,7 +1834,7 @@ static void *read_trace_data(void *xgtq)
 
 		if ((fp = fdopen(fd, "r")) == NULL)
 		{
-			DPRINTF(("Failed opening trace stream: %s. \n", strerror(errno)));
+			printf("Failed opening trace stream: %s. \n", strerror(errno));
 			exit(1);
 		}
 
