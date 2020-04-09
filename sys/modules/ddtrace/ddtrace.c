@@ -759,11 +759,8 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 
 
 	mtx_lock(&tq->mtx);
-	vtdtr_tq_print(tq, "In ddtrace, before enqueue");
 	vtdtr_tq_enqueue(tq, trc_entry);
-	vtdtr_tq_print(tq, "In ddtrace, after enqueue");
 
-	DLOGTR0(PRIO_LOW, "Successfully enqueued trace data, unlocking queue. \n");
 	DL_ASSERT(tq->n_entries != 0, "Failed enqueueing, number of entries cannot be 0.");
 	mtx_unlock(&tq->mtx);
 
