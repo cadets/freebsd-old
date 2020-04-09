@@ -1823,20 +1823,20 @@ static void *read_trace_data(void *xgtq)
 		exit(1);
 	}
 
+	if ((fd = open(trc_fifo, O_RDONLY)) == -1)
+	{
+		printf("Failed to open trace pipe for reading: %s. \n", strerror(errno));
+		exit(1);
+	}
+
+	if ((fp = fdopen(fd, "r")) == NULL)
+	{
+		printf("Failed opening trace stream: %s. \n", strerror(errno));
+		exit(1);
+	}
+
 	for (;;)
 	{
-
-		if ((fd = open(trc_fifo, O_RDONLY)) == -1)
-		{
-			printf("Failed to open trace pipe for reading: %s. \n", strerror(errno));
-			exit(1);
-		}
-
-		if ((fp = fdopen(fd, "r")) == NULL)
-		{
-			printf("Failed opening trace stream: %s. \n", strerror(errno));
-			exit(1);
-		}
 
 		buf = calloc(1, sizeof(dtrace_bufdesc_t));
 		assert(buf != NULL);
@@ -1846,7 +1846,7 @@ static void *read_trace_data(void *xgtq)
 		sz = fread(&buf->dtbd_size, sizeof(uint64_t), 1, fp);
 		assert(sz > 0);
 		printf("Size: %d\n", buf->dtbd_size);
-		sz = fread(&buf->dtbd_cpu, sizeof(uint32_t), 1 , fp);
+		sz = fread(&buf->dtbd_cpu, sizeof(uint32_t), 1, fp);
 		assert(sz > 0);
 		printf("Cpu: %d\n", buf->dtbd_errors);
 		sz = fread(&buf->dtbd_errors, sizeof(uint32_t), 1, fp);
@@ -1855,7 +1855,7 @@ static void *read_trace_data(void *xgtq)
 		sz = fread(&buf->dtbd_drops, sizeof(uint64_t), 1, fp);
 		assert(sz > 0);
 		printf("Drops: %d\n", buf->dtbd_drops);
-		sz = fread(&buf->dtbd_oldest, sizeof(uint64_t), 1 ,fp);
+		sz = fread(&buf->dtbd_oldest, sizeof(uint64_t), 1, fp);
 		assert(sz > 0);
 		printf("Oldest: %d\n", buf->dtbd_oldest);
 		sz = fread(&buf->dtbd_timestamp, sizeof(uint64_t), 1, fp);
@@ -1882,9 +1882,10 @@ static void *read_trace_data(void *xgtq)
 		dtrace_gtq_enqueue(gtq, trc_entry);
 		pthread_mutex_unlock(&gtq->mtx);
 		printf("Successfully enqueued trace element");
-
-		close(fd);
 	}
+
+	fclose(fp);
+	close(fd);
 }
 
 static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t *dtp)
@@ -1915,7 +1916,7 @@ static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t *dtp)
 			dt_consume_cpu(dtp, NULL, 0, buf, false, &con, NULL);
 			// timing = time(NULL);
 			// printf("Finished processing one bufdesc: %ld s \n", timing);
-			
+
 			free(trc_entry->desc->dtbd_data);
 			free(trc_entry->desc);
 			free(trc_entry);
