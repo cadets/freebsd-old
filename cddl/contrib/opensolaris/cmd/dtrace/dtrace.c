@@ -1823,59 +1823,64 @@ static void *read_trace_data(void *xgtq)
 		exit(1);
 	}
 
-	if ((fd = open(trc_fifo, O_RDONLY)) == -1)
-	{
-		printf("Failed to open trace pipe for reading: %s. \n", strerror(errno));
-		exit(1);
-	}
-
 	for (;;)
 	{
 
-		buf = calloc(1, sizeof(dtrace_bufdesc_t));
-		assert(buf != NULL);
-		trc_entry = calloc(1, sizeof(struct dtrace_guest_entry));
-		assert(trc_entry != NULL);
-
-		sz = read(fd, &buf->dtbd_size, sizeof(uint64_t));
-		assert(sz > 0);
-		printf("Size: %d\n", buf->dtbd_size);
-		sz = read(fd, &buf->dtbd_cpu, sizeof(uint32_t));
-		assert(sz > 0);
-		printf("Cpu: %d\n", buf->dtbd_errors);
-		sz = read(fd, &buf->dtbd_errors, sizeof(uint32_t));
-		assert(sz > 0);
-		printf("Errors: %d\n", buf->dtbd_errors);
-		sz = read(fd, &buf->dtbd_drops, sizeof(uint64_t));
-		assert(sz > 0);
-		printf("Drops: %d\n", buf->dtbd_drops);
-		sz = read(fd, &buf->dtbd_oldest, sizeof(uint64_t));
-		assert(sz > 0);
-		printf("Oldest: %d\n", buf->dtbd_oldest);
-		sz = read(fd, &buf->dtbd_timestamp, sizeof(uint64_t));
-		assert(sz > 0);
-		printf("Timestamp: %d\n", buf->dtbd_timestamp);
-		buf->dtbd_data = calloc(1, buf->dtbd_size + 1);
-		dest = (uintptr_t)buf->dtbd_data;
-		size = buf->dtbd_size;
-
-		while (size > 0)
+		if ((fd = open(trc_fifo, O_RDONLY)) == -1)
 		{
-			sz = read(fd, &chunk, sizeof(uint64_t));
-			assert(sz > 0);
-			size -= chunk;
-			sz = read(fd, dest, chunk);
-			printf("I've read: %d. Chunk is: %d \n", sz, chunk);
-			assert(sz == chunk);
-			dest += chunk;
+		printf("Failed to open trace pipe for reading: %s. \n", strerror(errno));
+		exit(1);
 		}
+		// buf = calloc(1, sizeof(dtrace_bufdesc_t));
+		// assert(buf != NULL);
+		// trc_entry = calloc(1, sizeof(struct dtrace_guest_entry));
+		// assert(trc_entry != NULL);
 
-		trc_entry->desc = buf;
-		pthread_mutex_lock(&gtq->mtx);
-		dtrace_gtq_enqueue(gtq, trc_entry);
-		pthread_mutex_unlock(&gtq->mtx);
-		printf("Successfully enqueued trace element");
+		// sz = read(fd, &buf->dtbd_size, sizeof(uint64_t));
+		// assert(sz > 0);
+		// printf("Size: %d\n", buf->dtbd_size);
+		// sz = read(fd, &buf->dtbd_cpu, sizeof(uint32_t));
+		// assert(sz > 0);
+		// printf("Cpu: %d\n", buf->dtbd_errors);
+		// sz = read(fd, &buf->dtbd_errors, sizeof(uint32_t));
+		// assert(sz > 0);
+		// printf("Errors: %d\n", buf->dtbd_errors);
+		// sz = read(fd, &buf->dtbd_drops, sizeof(uint64_t));
+		// assert(sz > 0);
+		// printf("Drops: %d\n", buf->dtbd_drops);
+		// sz = read(fd, &buf->dtbd_oldest, sizeof(uint64_t));
+		// assert(sz > 0);
+		// printf("Oldest: %d\n", buf->dtbd_oldest);
+		// sz = read(fd, &buf->dtbd_timestamp, sizeof(uint64_t));
+		// assert(sz > 0);
+		// printf("Timestamp: %d\n", buf->dtbd_timestamp);
+		// buf->dtbd_data = calloc(1, buf->dtbd_size + 1);
+		// dest = (uintptr_t)buf->dtbd_data;
+		// size = buf->dtbd_size;
 
+		// while (size > 0)
+		// {
+		// 	sz = read(fd, &chunk, sizeof(uint64_t));
+		// 	assert(sz > 0);
+		// 	size -= chunk;
+		// 	sz = read(fd, dest, chunk);
+		// 	printf("I've read: %d. Chunk is: %d \n", sz, chunk);
+		// 	assert(sz == chunk);
+		// 	dest += chunk;
+		// }
+
+		// trc_entry->desc = buf;
+		// pthread_mutex_lock(&gtq->mtx);
+		// dtrace_gtq_enqueue(gtq, trc_entry);
+		// pthread_mutex_unlock(&gtq->mtx);
+		// printf("Successfully enqueued trace element");
+
+		char *buf;
+		size = 32000;
+		buf = malloc(size);
+		sz = read(fd, buf, size);
+		printf("Read: %d", sz);
+		free(buf);
 		close(fd);
 	}
 }
