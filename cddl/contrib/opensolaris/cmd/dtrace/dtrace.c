@@ -1823,6 +1823,7 @@ static void *read_trace_data(void *xgtq)
 		exit(1);
 	}
 
+	char *buf;
 	size = 33000;
 	buf = malloc(size);
 
@@ -1878,12 +1879,11 @@ static void *read_trace_data(void *xgtq)
 		// pthread_mutex_unlock(&gtq->mtx);
 		// printf("Successfully enqueued trace element");
 
-		char *buf;
 		sz = read(fd, buf, size);
-		printf("Read: %d", sz);
+		printf("Read: %d. Error: %s", sz, strerror(errno));
+		close(fd);
 	}
 	free(buf);
-	close(fd);
 }
 
 static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t *dtp)
