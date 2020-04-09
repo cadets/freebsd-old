@@ -397,9 +397,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			assert(sz > 0);
 		}
 
-		DPRINTF(("Chunk size is: %d. \n", trc_ev->chunk_sz));
-		sz = fwrite(&trc_ev->chunk_sz, sizeof(uint64_t), 1, trace_stream);
-		assert(sz > 0);
 		sz = fwrite(&trc_ev->dtbd_chunk, 1, trc_ev->chunk_sz, trace_stream);
 		DPRINTF(("I've written: %d. \n", sz));
 		assert(sz == trc_ev->chunk_sz);

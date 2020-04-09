@@ -87,7 +87,7 @@ struct dtrace_guestq
 	pthread_mutex_t mtx;
 };
 
-#define FRAGMENTSZ 8000
+#define FRAGMENTSZ 32000
 
 #define DMODE_VERS 0   /* display version information and exit (-V) */
 #define DMODE_EXEC 1   /* compile program for enabling (-a/e/E) */
@@ -1864,16 +1864,15 @@ static void *read_trace_data(void *xgtq)
 		buf->dtbd_data = calloc(1, buf->dtbd_size + 1);
 		dest = (uintptr_t)buf->dtbd_data;
 		size = buf->dtbd_size;
-
+		chunk = (size > FRAGMENTSZ) ? FRAGMENTSZ : size;
 		while (size > 0)
 		{
-			sz = fread(&chunk, sizeof(uint64_t), 1, fp);
-			assert(sz > 0);
 			size -= chunk;
 			sz = fread(dest, 1, chunk, fp);
 			printf("I've read: %d. Chunk is: %d \n", sz, chunk);
 			assert(sz == chunk);
 			dest += chunk;
+			chunk = (size > FRAGMENTSZ) ? FRAGMENTSZ : size;
 		}
 
 		trc_entry->desc = buf;
