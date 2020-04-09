@@ -1863,6 +1863,7 @@ static void *read_trace_data(void *xgtq)
 		printf("Timestamp: %d\n", buf->dtbd_timestamp);
 		buf->dtbd_data = calloc(1, buf->dtbd_size + 1);
 		assert(buf->dtbd_data != NULL);
+
 		dest = (uintptr_t)buf->dtbd_data;
 		size = buf->dtbd_size;
 		chunk = (size > FRAGMENTSZ) ? FRAGMENTSZ : size;
@@ -1911,12 +1912,14 @@ static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t *dtp)
 			printf("Dequeued trace data of size: %d. \n", trc_entry->desc->dtbd_size);
 			buf = trc_entry->desc;
 
-			printf("About to consume snapshot.");
 			dt_consume_cpu(dtp, NULL, 0, buf, false, &con, NULL);
-			timing = time(NULL);
-			printf("Finished processing one bufdesc: %ld s \n", timing);
+			// timing = time(NULL);
+			// printf("Finished processing one bufdesc: %ld s \n", timing);
+			
 			free(trc_entry->desc->dtbd_data);
+			free(trc_entry->desc);
 			free(trc_entry);
+			printf("freed. \n");
 		}
 		pthread_mutex_unlock(&gtq->mtx);
 	}

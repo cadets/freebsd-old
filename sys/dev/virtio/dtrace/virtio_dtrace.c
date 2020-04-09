@@ -1356,8 +1356,7 @@ vtdtr_consume_trace(void *xsc)
 		mtx_lock(&tq->mtx);
 		while (!vtdtr_tq_empty(tq))
 		{
-			microtime(&tv);
-			device_printf(dev, "Actually enqueued in ddtrace. \n");
+			// microtime(&tv);
 			// device_printf("Got a metadata/trace event in %ld s. \n", tv.tv_sec);
 			// vtdtr_tq_print(tq, "In virtio_dtrace, before dequeue.");
 			trc_entry = vtdtr_tq_dequeue(tq);
@@ -1408,14 +1407,11 @@ vtdtr_consume_trace(void *xsc)
 				mtx_lock(&sc->vtdtr_ctrlq->mtx);
 				vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 				mtx_unlock(&sc->vtdtr_ctrlq->mtx);
-				device_printf(dev, "Successfully enqueued in the control queue. \n");
 
 				mtx_lock(&sc->vtdtr_condmtx);
 				cv_signal(&sc->vtdtr_condvar);
 				mtx_unlock(&sc->vtdtr_condmtx);
-				device_printf(dev, "Successfully signalled there are entries in the control queue.\n");
 
-				device_printf(dev, "Successfully enqueued in the control queue. \n");
 				device_printf(dev, "Data size is (outside for loop): %d. \n", data_sz);
 				while (data_sz > 0)
 				{
@@ -1445,18 +1441,14 @@ vtdtr_consume_trace(void *xsc)
 					mtx_lock(&sc->vtdtr_ctrlq->mtx);
 					vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 					mtx_unlock(&sc->vtdtr_ctrlq->mtx);
-					device_printf(dev, "Successfully enqueued in the control queue. \n");
-
 
 					mtx_lock(&sc->vtdtr_condmtx);
 					cv_signal(&sc->vtdtr_condvar);
 					mtx_unlock(&sc->vtdtr_condmtx);
-					device_printf(dev, "Successfully signalled there are entries in the control queue.\n");
 				}
 			
 			break;
 		case DDTRACE_METADATA:
-			device_printf(dev, "About to enqueue metadata. \n");
 			mtd = &trc_entry->uentry.metadata;
 			ctrl = &ctrl_entry->ctrl;
 			ctrl->event = VIRTIO_DTRACE_METADATA;
@@ -1510,12 +1502,10 @@ vtdtr_consume_trace(void *xsc)
 			mtx_lock(&sc->vtdtr_ctrlq->mtx);
 			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
-			device_printf(dev, "Successfully enqueued in the control queue. \n");
 
 			mtx_lock(&sc->vtdtr_condmtx);
 			cv_signal(&sc->vtdtr_condvar);
 			mtx_unlock(&sc->vtdtr_condmtx);
-			device_printf(dev, "Successfully signalled there are entries in the control queue.\n");
 			break;
 		default:
 			device_printf(dev, "WARNING: Wrong trace queue event.");

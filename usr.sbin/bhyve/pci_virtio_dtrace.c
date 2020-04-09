@@ -379,7 +379,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		pthread_mutex_unlock(&sc->vsd_mtx);
 		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
 		trc_ev = &ctrl->uctrl.trc_ev;
-		DPRINTF(("Successfully opened everything."));
 		DPRINTF(("First chunk is: %d, last chunk is:%d", trc_ev->first_chunk, trc_ev->last_chunk));
 		if (trc_ev->first_chunk == 1)
 		{
@@ -408,8 +407,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		pthread_mutex_unlock(&sc->vsd_mtx);
 		DPRINTF(("I've received metadata. \n"));
 		mtd_ev = &ctrl->uctrl.mtd_ev;
-
-		DPRINTF(("Successfully opened everything.\n"));
 
 		switch (mtd_ev->type)
 		{
@@ -513,7 +510,6 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 	while (vq_has_descs(vq))
 	{
 		n = vq_getchain(vq, &idx, iov, 1, flags);
-		DPRINTF(("About to process elements from the receive queue. \n"));
 		ctrl = (struct pci_vtdtr_control *)iov->iov_base;
 		if (ctrl->event == VTDTR_DEVICE_METADATA && !meta_open)
 		{
