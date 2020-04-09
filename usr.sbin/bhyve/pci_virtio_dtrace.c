@@ -687,7 +687,6 @@ pci_vtdtr_fill_desc(struct vqueue_info *vq, struct pci_vtdtr_control *ctrl)
 		return -1;
 
 	memcpy(iov.iov_base, ctrl, len);
-	fprintf(fp, "Succes in putting in virtual queue: %s.\n", ((struct pci_vtdtr_control *)iov.iov_base)->uctrl.script_ev.d_script);
 	vq_relchain(vq, idx, len);
 	return 0;
 }
@@ -781,7 +780,6 @@ pci_vtdtr_run(void *xsc)
 		assert(error == 0);
 		assert(!pci_vtdtr_cq_empty(sc->vsd_ctrlq));
 
-		fflush(fp);
 		/*
 		 * While dealing with the entires, we will fill every single
 		 * entry as long as we have space or entries in the queue.
