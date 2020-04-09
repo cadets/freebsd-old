@@ -60,7 +60,7 @@
 
 #include <libxo/xo.h>
 
-#include<dt_impl.h>
+#include <dt_impl.h>
 
 typedef struct dtrace_cmd
 {
@@ -163,8 +163,8 @@ void dt_get_errloc(dtrace_hdl_t *, char **, int *);
 
 extern int
 dt_consume_cpu(dtrace_hdl_t *dtp, FILE *fp, int cpu,
-    dtrace_bufdesc_t *buf, boolean_t just_one,
-    dtrace_consumer_t *dc, void *arg);
+			   dtrace_bufdesc_t *buf, boolean_t just_one,
+			   dtrace_consumer_t *dc, void *arg);
 
 usage(FILE *fp)
 {
@@ -1688,23 +1688,23 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 	printf("open() was called. \n");
 	printf("About to read metadata. \n");
 
-
 	sz = read(fd, &maxformat, sizeof(int));
 	assert(sz > 0);
 	printf("NFORMAT: %d\n", maxformat);
 	dtp->dt_maxformat = dtp->dt_maxstrdata = maxformat;
-	
-	if(maxformat > 0){
+
+	if (maxformat > 0)
+	{
 		dtp->dt_formats = calloc(1, maxformat * sizeof(void *));
 		assert(dtp->dt_formats != NULL);
 
-		dtp->dt_strdata = calloc(1,maxformat * sizeof(char *));
+		dtp->dt_strdata = calloc(1, maxformat * sizeof(char *));
 		assert(dtp->dt_strdata != NULL);
 
 		formats = calloc(1, maxformat * sizeof(char *));
 		assert(formats != 0);
 
-		for(int i = 0; i < maxformat; i ++)
+		for (int i = 0; i < maxformat; i++)
 		{
 			sz = read(fd, &fmt_len, sizeof(size_t));
 			assert(sz > 0);
@@ -1726,7 +1726,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 	dtp->dt_pdesc = calloc(1, maxnpid * sizeof(dtrace_probedesc_t *));
 	assert(dtp->dt_pdesc != NULL);
 
-	// because you can't have more enabled probes than this and apparently we 
+	// because you can't have more enabled probes than this and apparently we
 	// malloc for all of them
 	dtp->dt_edesc = calloc(1, maxnpid * sizeof(dtrace_eprobedesc_t *));
 	assert(dtp->dt_edesc != NULL);
@@ -1736,11 +1736,12 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 	printf("I've read %d\n", sz);
 	printf("NPDESC: %d. Aka how many enabled probes there are. \n", npdesc);
 
-	if(npdesc > 0)
-	{	
-		
-		for(int i = 0; i < npdesc; i ++)
-		{   epbuf_sz = 0;
+	if (npdesc > 0)
+	{
+
+		for (int i = 0; i < npdesc; i++)
+		{
+			epbuf_sz = 0;
 			probe = calloc(1, sizeof(dtrace_probedesc_t));
 			assert(probe != NULL);
 
@@ -1752,7 +1753,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 			sz = read(fd, &epbuf_sz, sizeof(size_t));
 			assert(sz > 0);
 			printf("EPROBE buffer size is: %d.\n", epbuf_sz);
-			
+
 			eprobe = calloc(1, epbuf_sz);
 			assert(eprobe != NULL);
 			sz = read(fd, eprobe, epbuf_sz);
@@ -1766,30 +1767,30 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 
 			// only call printf create if we receive format strings
 			// I think
-			if(maxformat > 0)
+			if (maxformat > 0)
 			{
-				for(int i = 0; i < eprobe->dtepd_nrecs; i ++)
+				for (int i = 0; i < eprobe->dtepd_nrecs; i++)
 				{
-						dtrace_recdesc_t *rec = &eprobe->dtepd_rec[i];
+					dtrace_recdesc_t *rec = &eprobe->dtepd_rec[i];
 
-						switch(rec->dtrd_action) {
-							case DTRACEACT_DIFEXPR:
-							dtp->dt_strdata[rec->dtrd_format - 1] =
-						    	 formats[rec->dtrd_format - 1];
-							break;
-						case DTRACEACT_PRINTA:
-							dtp->dt_formats[rec->dtrd_format - 1] = 
-							 dtrace_printa_create(dtp, formats[rec->dtrd_format-1]);
-							break;
-						default:
-							dtp->dt_formats[rec->dtrd_format - 1] = 				 dtrace_printf_create(dtp, formats
-						     [rec->dtrd_format -1]);
-							break;
-						}
+					switch (rec->dtrd_action)
+					{
+					case DTRACEACT_DIFEXPR:
+						dtp->dt_strdata[rec->dtrd_format - 1] =
+							formats[rec->dtrd_format - 1];
+						break;
+					case DTRACEACT_PRINTA:
+						dtp->dt_formats[rec->dtrd_format - 1] =
+							dtrace_printa_create(dtp, formats[rec->dtrd_format - 1]);
+						break;
+					default:
+						dtp->dt_formats[rec->dtrd_format - 1] = dtrace_printf_create(dtp, formats
+																							  [rec->dtrd_format - 1]);
+						break;
+					}
 				}
 			}
-
-		 }
+		}
 
 		printf("Out of the for loop.");
 	}
@@ -1807,9 +1808,10 @@ static void *read_trace_data(void *xgtq)
 	time_t timing;
 	FILE *trace_stream;
 	char *trc_fifo;
-	int fd, sz;
-	uint64_t size, chunk;
+	uint64_t size, chunk, sz;
 	uintptr_t dest;
+
+	int fd;
 
 	trc_fifo = "/tmp/trace_fifo";
 	gtq = (struct dtrace_guestq *)xgtq;
@@ -1821,7 +1823,12 @@ static void *read_trace_data(void *xgtq)
 		exit(1);
 	}
 
-	printf("About to read trace data, before for. \n");
+	if ((fd = open(trc_fifo, O_RDONLY)) == -1)
+	{
+		printf("Failed to open trace pipe for reading: %s. \n", strerror(errno));
+		exit(1);
+	}
+
 	for (;;)
 	{
 
@@ -1830,16 +1837,6 @@ static void *read_trace_data(void *xgtq)
 		trc_entry = calloc(1, sizeof(struct dtrace_guest_entry));
 		assert(trc_entry != NULL);
 
-		// This should block until we have trace data
-		if ((fd = open(trc_fifo, O_RDONLY)) == -1)
-		{
-			printf("Failed to open trace pipe for reading: %s. \n", strerror(errno));
-			exit(1);
-		}
-
-		printf("open() was called.\n");
-
-		printf("About to read trace data, after for. \n");
 		sz = read(fd, &buf->dtbd_size, sizeof(uint64_t));
 		assert(sz > 0);
 		printf("Size: %d\n", buf->dtbd_size);
@@ -1859,11 +1856,11 @@ static void *read_trace_data(void *xgtq)
 		assert(sz > 0);
 		printf("Timestamp: %d\n", buf->dtbd_timestamp);
 		buf->dtbd_data = calloc(1, buf->dtbd_size + 1);
-		dest = (uintptr_t) buf->dtbd_data;
+		dest = (uintptr_t)buf->dtbd_data;
 		size = buf->dtbd_size;
 
-		while(size > 0) {
-
+		while (size > 0)
+		{
 			sz = read(fd, &chunk, sizeof(uint64_t));
 			assert(sz > 0);
 			size -= chunk;
@@ -1872,20 +1869,6 @@ static void *read_trace_data(void *xgtq)
 			assert(sz == chunk);
 			dest += chunk;
 		}
-		// timing = time(NULL);
-		// printf("Got one bufdesc: %ld s \n", timing);
-
-		FILE *fp;
-		char *file_path = "/tmp/trace_data";
-		if ((fp = fopen((char *) file_path, "w+")) == NULL)
-		{
-			printf("Error occured while opening script file: %s\n", strerror(errno));
-			exit(1);
-		}		
-		fwrite(buf->dtbd_data, 1, buf->dtbd_size, fp);
-		fflush(fp);
-		fclose(fp);
-		printf("I've written trace data in file. \n");
 
 		trc_entry->desc = buf;
 		pthread_mutex_lock(&gtq->mtx);
@@ -1944,20 +1927,19 @@ static int dtrace_guest_start(char *script_file)
 	write_script(script_file);
 	STAILQ_INIT(&gtq->head);
 	printf("Guest queue successfully initialised. \n");
-	if((g_dtp = dtrace_open(DTRACE_VERSION, 0, &err)) == NULL)
+	if ((g_dtp = dtrace_open(DTRACE_VERSION, 0, &err)) == NULL)
 	{
 		fatal("Failed to initialize dtrace: %s\n", dtrace_errmsg(NULL, err));
 	}
-	
+
 	read_trace_metadata(g_dtp);
 	printf("Successfully read metadata. \n");
 
 	printf("About to read trace data. \n");
-	pthread_create(&trace_reader, NULL, read_trace_data,(void *) gtq);
+	pthread_create(&trace_reader, NULL, read_trace_data, (void *)gtq);
 
 	process_trace_data(gtq, g_dtp);
 	printf("Successfully processed trace data. Exiting .. \n");
-
 }
 
 int main(int argc, char *argv[])
@@ -1968,9 +1950,6 @@ int main(int argc, char *argv[])
 	dtrace_cmd_t *dcp;
 	char *machine_filter;
 	dtrace_consumer_t con;
-
-	
-	
 
 	con.dc_consume_probe = chew;
 	con.dc_consume_rec = chewrec;
@@ -2117,7 +2096,6 @@ int main(int argc, char *argv[])
 	// Stop buffering for debugging purposes
 	setbuf(stdout, NULL);
 
-
 	if (h_mode == 1)
 	{
 		dtrace_guest_start(argv[argc - 1]);
@@ -2195,7 +2173,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-// We let it go up until here then call something to process buffer data
+	// We let it go up until here then call something to process buffer data
 	/*
 	 * Open libdtrace.  If we are not actually going to be enabling any
 	 * instrumentation attempt to reopen libdtrace using DTRACE_O_NODEV.
@@ -2806,4 +2784,3 @@ int main(int argc, char *argv[])
 
 	return (g_status);
 }
-

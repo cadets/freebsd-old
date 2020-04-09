@@ -823,6 +823,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		break;
 	}
 	case VIRTIO_DTRACE_SCRIPT:
+		sc->vtdtr_ready = 0;
 		microtime(&tv);
 		if (debug)
 			device_printf(dev, "Got script:\n%s. at %ld \n", ctrl->uctrl.script_ev.d_script, tv.tv_sec);
@@ -1409,10 +1410,6 @@ vtdtr_consume_trace(void *xsc)
 				mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 				device_printf(dev, "Successfully enqueued in the control queue. \n");
 
-				mtx_lock(&sc->vtdtr_mtx);	
-				vtdtr_notify_ready(sc);	
-				mtx_unlock(&sc->vtdtr_mtx);	
-
 				mtx_lock(&sc->vtdtr_condmtx);
 				cv_signal(&sc->vtdtr_condvar);
 				mtx_unlock(&sc->vtdtr_condmtx);
@@ -1450,9 +1447,6 @@ vtdtr_consume_trace(void *xsc)
 					mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 					device_printf(dev, "Successfully enqueued in the control queue. \n");
 
-					mtx_lock(&sc->vtdtr_mtx);	
-					vtdtr_notify_ready(sc);	
-					mtx_unlock(&sc->vtdtr_mtx);	
 
 					mtx_lock(&sc->vtdtr_condmtx);
 					cv_signal(&sc->vtdtr_condvar);
@@ -1518,10 +1512,6 @@ vtdtr_consume_trace(void *xsc)
 			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 			device_printf(dev, "Successfully enqueued in the control queue. \n");
 
-			mtx_lock(&sc->vtdtr_mtx);	
-			vtdtr_notify_ready(sc);	
-			mtx_unlock(&sc->vtdtr_mtx);	
-
 			mtx_lock(&sc->vtdtr_condmtx);
 			cv_signal(&sc->vtdtr_condvar);
 			mtx_unlock(&sc->vtdtr_condmtx);
@@ -1531,8 +1521,8 @@ vtdtr_consume_trace(void *xsc)
 			device_printf(dev, "WARNING: Wrong trace queue event.");
 			break;
 		}
-
-		device_printf(dev, "I've filled fields in control entry, freeing trace entry");
+		
+		vtdtr_notify_ready(sc);
 		free(trc_entry, M_DEVBUF);
 	}
 	mtx_unlock(&tq->mtx);
@@ -1592,10 +1582,7 @@ vtdtr_run(void *xsc)
 				!sc->vtdtr_host_ready) &&
 			   (!sc->vtdtr_shutdown))
 		{
-			device_printf(dev, "Is control queue empty? %d \n", vtdtr_cq_empty(sc->vtdtr_ctrlq));
-			device_printf(dev, "vtdtr_host_ready: %d, vtdtr_shutdown: %d", sc->vtdtr_host_ready, sc->vtdtr_shutdown);
 			cv_wait(&sc->vtdtr_condvar, &sc->vtdtr_condmtx);
-			device_printf(dev, "I've finished waiting. \n");
 		}
 		mtx_unlock(&sc->vtdtr_condmtx);
 
@@ -1624,13 +1611,10 @@ vtdtr_run(void *xsc)
 		 * processed.
 		 */
 		mtx_lock(&sc->vtdtr_ctrlq->mtx);
-		device_printf(dev, "Acquired control queue mutex. About to try enqueuing in the control queue. \n");
 		while (!virtqueue_full(vq) &&
 			   !vtdtr_cq_empty(sc->vtdtr_ctrlq))
 		{
 			ctrl_entry = vtdtr_cq_dequeue(sc->vtdtr_ctrlq);
-			if (ctrl_entry->ctrl.event == VIRTIO_DTRACE_TRACE)
-				device_printf(dev, "Dequeued from the control queue %d.\n", ctrl_entry->ctrl.uctrl.trace_ev.dtbd_size);
 			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 			memcpy(&ctrls[nent], &ctrl_entry->ctrl,
 				   sizeof(struct virtio_dtrace_control));
@@ -1642,7 +1626,6 @@ vtdtr_run(void *xsc)
 			nent++;
 			// check size of control element
 			//
-			device_printf(dev, "I've put an event in the virtual queue. \n");
 			mtx_lock(&sc->vtdtr_ctrlq->mtx);
 		}
 

@@ -61,8 +61,8 @@ __FBSDID("$FreeBSD$");
 #include "pci_emul.h"
 #include "virtio.h"
 
-#define VTDTR_RINGSZ 8192
-#define FRAGMENTSZ 8000
+#define VTDTR_RINGSZ 32768
+#define FRAGMENTSZ 32000
 #define VTDTR_MAXQ 2
 
 /*
@@ -463,7 +463,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		fflush(meta_stream);
 		break;
 	case VTDTR_DEVICE_EOF:
-		DPRINTF(("Received VTDTR_DEVICE_EOF. \n"));
 		retval = 1;
 		break;
 	default:
