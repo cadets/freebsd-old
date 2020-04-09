@@ -1875,6 +1875,8 @@ static void *read_trace_data(void *xgtq)
 		pthread_mutex_unlock(&gtq->mtx);
 		printf("Successfully enqueued trace element");
 
+		close(fd);
+
 	}
 }
 
