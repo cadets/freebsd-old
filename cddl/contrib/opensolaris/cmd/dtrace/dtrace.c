@@ -1880,7 +1880,7 @@ static void *read_trace_data(void *xgtq)
 		// printf("Successfully enqueued trace element");
 
 		sz = read(fd, buf, size);
-		printf("Read: %d. Error: %s", sz, strerror(errno));
+		printf("Read: %d. Error: %s. \n", sz, strerror(errno));
 		close(fd);
 	}
 	free(buf);
