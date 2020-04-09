@@ -1862,6 +1862,7 @@ static void *read_trace_data(void *xgtq)
 		assert(sz > 0);
 		printf("Timestamp: %d\n", buf->dtbd_timestamp);
 		buf->dtbd_data = calloc(1, buf->dtbd_size + 1);
+		assert(buf->dtbd_data != NULL);
 		dest = (uintptr_t)buf->dtbd_data;
 		size = buf->dtbd_size;
 		chunk = (size > FRAGMENTSZ) ? FRAGMENTSZ : size;
@@ -1914,6 +1915,7 @@ static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t *dtp)
 			dt_consume_cpu(dtp, NULL, 0, buf, false, &con, NULL);
 			timing = time(NULL);
 			printf("Finished processing one bufdesc: %ld s \n", timing);
+			free(trc_entry->desc->dtbd_data);
 			free(trc_entry);
 		}
 		pthread_mutex_unlock(&gtq->mtx);
