@@ -1823,6 +1823,9 @@ static void *read_trace_data(void *xgtq)
 		exit(1);
 	}
 
+	size = 33000;
+	buf = malloc(size);
+
 	for (;;)
 	{
 
@@ -1876,13 +1879,11 @@ static void *read_trace_data(void *xgtq)
 		// printf("Successfully enqueued trace element");
 
 		char *buf;
-		size = 32000;
-		buf = malloc(size);
 		sz = read(fd, buf, size);
 		printf("Read: %d", sz);
-		free(buf);
-		close(fd);
 	}
+	free(buf);
+	close(fd);
 }
 
 static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t *dtp)
