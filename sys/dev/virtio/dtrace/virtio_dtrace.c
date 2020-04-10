@@ -761,10 +761,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	case VIRTIO_DTRACE_DEVICE_READY:
 		if (debug)
 			device_printf(dev, "VIRTIO_DTRACE_DEVICE_READY\n");
-		// (MARA): you've added this mutexes
-		mtx_lock(&sc->vtdtr_mtx);
 		sc->vtdtr_host_ready = 1;
-		mtx_unlock(&sc->vtdtr_mtx);
 		break;
 	case VIRTIO_DTRACE_REGISTER:
 		if (debug)
