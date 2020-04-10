@@ -61,8 +61,8 @@ __FBSDID("$FreeBSD$");
 #include "pci_emul.h"
 #include "virtio.h"
 
-#define VTDTR_RINGSZ 32768
-#define FRAGMENTSZ 32000
+#define VTDTR_RINGSZ 4096
+#define FRAGMENTSZ 4000
 #define VTDTR_MAXQ 2
 
 /*
@@ -99,9 +99,12 @@ __FBSDID("$FreeBSD$");
 #define EPROBE_DESCRIPTION 0x05
 
 static FILE *fp, *meta_stream, *trace_stream;
-static int pci_vtdtr_debug;
 
-#define DPRINTF(params) printf params
+/*
+* Debug printf
+*/
+static int pci_vtdtr_debug = 0;
+#define DPRINTF(params)  if (pci_vtdtr_debug) printf params
 #define WPRINTF(params) printf params
 
 struct pci_vtdtr_reader_args
@@ -525,13 +528,13 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 			{
 				if ((fd = openat(dir_fd, "meta_fifo", O_WRONLY)) == -1)
 				{
-					DPRINTF(("Failed to open metadata write pipe: %s. \n", strerror(errno)));
+					WPRINTF(("Failed to open metadata write pipe: %s. \n", strerror(errno)));
 					exit(1);
 				}
 
 				if ((meta_stream = fdopen(fd, "w")) == NULL)
 				{
-					DPRINTF(("Failed opening metadata stream: %s. \n", strerror(errno)));
+					WPRINTF(("Failed opening metadata stream: %s. \n", strerror(errno)));
 					exit(1);
 				}
 				meta_open = 1;
@@ -981,11 +984,11 @@ static void *pci_vtdtr_listen(void *xsc)
 	int error, fd;
 
 	fifo = "/tmp/fifo";
-	int err = mkfifo(fifo, 0666);
+	error = mkfifo(fifo, 0666);
 
-	if (err)
+	if (error)
 	{
-		DPRINTF(("Failed to make fifo: %s", strerror(errno)));
+		WPRINTF(("Failed to make fifo: %s", strerror(errno)));
 	}
 
 	for (;;)
@@ -993,7 +996,7 @@ static void *pci_vtdtr_listen(void *xsc)
 
 		if ((fd = openat(dir_fd, "fifo", O_RDONLY)) == -1)
 		{
-			DPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
+			WPRINTF(("Failed to open pipe: %s. \n", strerror(errno)));
 			exit(1);
 		}
 
@@ -1033,14 +1036,14 @@ static void *pci_vtdtr_read_script(void *xargs)
 
 	if ((reader_stream = fdopen(fd, "r")) == NULL)
 	{
-		DPRINTF(("Failed opening read stream: %s. \n", strerror(errno)));
+		WPRINTF(("Failed opening read stream: %s. \n", strerror(errno)));
 		exit(1);
 	}
 
 	sz = fread(&d_script_length, sizeof(long), 1, reader_stream);
 	if (sz <= 0)
 	{
-		printf("Failed reading size of script from the named pipe: %s. \n", strerror(errno));
+		WPRINTF(("Failed reading size of script from the named pipe: %s. \n", strerror(errno)));
 		exit(1);
 	}
 	DPRINTF(("Size of script is: %zu. \n", d_script_length));

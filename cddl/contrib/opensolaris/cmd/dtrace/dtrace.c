@@ -87,7 +87,7 @@ struct dtrace_guestq
 	pthread_mutex_t mtx;
 };
 
-#define FRAGMENTSZ 32000
+#define FRAGMENTSZ 4000
 
 #define DMODE_VERS 0   /* display version information and exit (-V) */
 #define DMODE_EXEC 1   /* compile program for enabling (-a/e/E) */
@@ -1663,7 +1663,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 	dtrace_eprobedesc_t **epdescs;
 	dtrace_probedesc_t *probe;
 	dtrace_eprobedesc_t *eprobe;
-	FILE *meta_stream;
+	FILE *fp;
 	time_t timing;
 	char *meta_fifo, *buf, *fmt, **formats;
 	int fd, sz, nrecs = 0;
@@ -1681,14 +1681,18 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 
 	if ((fd = open(meta_fifo, O_RDONLY)) == -1)
 	{
-		printf("Failed to open trace pipe for reading: %s. \n", strerror(errno));
+		printf("Failed to open meta pipe for reading: %s. \n", strerror(errno));
 		exit(1);
 	}
 
-	printf("open() was called. \n");
-	printf("About to read metadata. \n");
 
-	sz = read(fd, &maxformat, sizeof(int));
+	if ((fp = fdopen(fd, "r")) == NULL)
+	{
+		printf("Failed opening meta stream: %s. \n", strerror(errno));
+		exit(1);
+	}
+
+	sz = fread(&maxformat, sizeof(int), 1, fp);
 	assert(sz > 0);
 	printf("NFORMAT: %d\n", maxformat);
 	dtp->dt_maxformat = dtp->dt_maxstrdata = maxformat;
@@ -1706,18 +1710,18 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 
 		for (int i = 0; i < maxformat; i++)
 		{
-			sz = read(fd, &fmt_len, sizeof(size_t));
+			sz = fread(&fmt_len, sizeof(size_t), 1 , fp);
 			assert(sz > 0);
 			printf("FORMAT STRING length: %s. \n", fmt_len);
 			fmt = calloc(1, sizeof(fmt_len + 1));
-			sz = read(fd, fmt, fmt_len);
+			sz = fread(fmt, 1, fmt_len, fp);
 			assert(sz == fmt_len);
 			printf("FORMAT STRING: %s. \n", fmt);
 			formats[i] = fmt;
 		}
 	}
 
-	sz = read(fd, &maxnpid, sizeof(int));
+	sz = fread(&maxnpid, sizeof(int), 1, fp);
 	assert(sz > 0);
 	printf("NPROBES: %d. Aka maximum number of probes. \n", maxnpid);
 	printf("I've read %d\n", sz);
@@ -1731,7 +1735,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 	dtp->dt_edesc = calloc(1, maxnpid * sizeof(dtrace_eprobedesc_t *));
 	assert(dtp->dt_edesc != NULL);
 
-	sz = read(fd, &npdesc, sizeof(int));
+	sz = fread(&npdesc, sizeof(int), 1, fp);
 	assert(sz > 0);
 	printf("I've read %d\n", sz);
 	printf("NPDESC: %d. Aka how many enabled probes there are. \n", npdesc);
@@ -1745,18 +1749,18 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 			probe = calloc(1, sizeof(dtrace_probedesc_t));
 			assert(probe != NULL);
 
-			sz = read(fd, probe, sizeof(dtrace_probedesc_t));
+			sz = fread(probe, sizeof(dtrace_probedesc_t), 1, fp);
 			assert(sz == sizeof(dtrace_probedesc_t));
 			dtp->dt_pdesc[probe->dtpd_id] = probe;
 			printf("Got probe. \n");
 
-			sz = read(fd, &epbuf_sz, sizeof(size_t));
+			sz = fread(&epbuf_sz, sizeof(size_t), 1, fp);
 			assert(sz > 0);
 			printf("EPROBE buffer size is: %d.\n", epbuf_sz);
 
 			eprobe = calloc(1, epbuf_sz);
 			assert(eprobe != NULL);
-			sz = read(fd, eprobe, epbuf_sz);
+			sz = fread(eprobe, 1, epbuf_sz, fp);
 			assert(sz == epbuf_sz);
 			dtp->dt_edesc[eprobe->dtepd_epid] = eprobe;
 
@@ -1791,13 +1795,11 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 				}
 			}
 		}
-
-		printf("Out of the for loop.");
 	}
 	// timing = time(NULL);
 	// printf("Finished getting metadata: %ld s \n", timing);
+	fclose(fp);
 	close(fd);
-	printf("Successfully closed file descriptor");
 }
 
 static void *read_trace_data(void *xgtq)
@@ -1881,7 +1883,6 @@ static void *read_trace_data(void *xgtq)
 		pthread_mutex_lock(&gtq->mtx);
 		dtrace_gtq_enqueue(gtq, trc_entry);
 		pthread_mutex_unlock(&gtq->mtx);
-		printf("Successfully enqueued trace element");
 	}
 
 	fclose(fp);
@@ -1890,7 +1891,6 @@ static void *read_trace_data(void *xgtq)
 
 static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t *dtp)
 {
-	printf("Waiting to process trace data.. \n");
 	dtrace_bufdesc_t *buf;
 	dtrace_consumer_t con;
 	struct dtrace_guest_entry *trc_entry;
@@ -1920,7 +1920,6 @@ static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t *dtp)
 			free(trc_entry->desc->dtbd_data);
 			free(trc_entry->desc);
 			free(trc_entry);
-			printf("freed. \n");
 		}
 		pthread_mutex_unlock(&gtq->mtx);
 	}

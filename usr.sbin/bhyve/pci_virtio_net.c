@@ -648,7 +648,7 @@ pci_vtnet_proctx(struct pci_vtnet_softc *sc, struct vqueue_info *vq)
 		tlen += iov[i].iov_len;
 	}
 
-	DPRINTF(("virtio: packet send, %d bytes, %d segs\n\r", plen, n));
+	// DPRINTF(("virtio: packet send, %d bytes, %d segs\n\r", plen, n));
 	sc->pci_vtnet_tx(sc, &iov[1], n - 1, plen);
 
 
