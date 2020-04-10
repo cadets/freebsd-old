@@ -1486,14 +1486,13 @@ vtdtr_consume_trace(void *xsc)
 				ctrl_mtd_ev->umtd.dt_pdesc.buf_size = mtd->umtd.dt_pdesc.buf_size;
 				KASSERT(ctrl_mtd_ev->umtd.dt_pdesc.buf_size == sizeof(dtrace_probedesc_t), "Probe description size is invalid");
 				memcpy(ctrl_mtd_ev->umtd.dt_pdesc.buf, mtd->umtd.dt_pdesc.buf, sizeof(dtrace_probedesc_t));
-				device_printf(dev, "Probe description here, hopefully. \n");
 				break;
 			case EPROBE_DESCRIPTION:
 				ctrl_mtd_ev->umtd.dt_epdesc.buf_size = mtd->umtd.dt_epdesc.buf_size;
 				memcpy(ctrl_mtd_ev->umtd.dt_epdesc.buf,
 					   mtd->umtd.dt_epdesc.buf,
 					   mtd->umtd.dt_epdesc.buf_size);
-				device_printf(dev, "Here getting eprobe description should happen. Size: %d", ctrl_mtd_ev->umtd.dt_epdesc.buf_size);
+				device_printf(dev, "Eprobe description size: %d", ctrl_mtd_ev->umtd.dt_epdesc.buf_size);
 				break;
 			default:
 				device_printf(dev, "WARNING: Wrong metadata event.");

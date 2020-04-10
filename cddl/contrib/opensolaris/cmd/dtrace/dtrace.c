@@ -1750,7 +1750,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 			assert(probe != NULL);
 
 			sz = fread(probe, sizeof(dtrace_probedesc_t), 1, fp);
-			assert(sz == sizeof(dtrace_probedesc_t));
+			assert(sz > 0);
 			dtp->dt_pdesc[probe->dtpd_id] = probe;
 			printf("Got probe. \n");
 
