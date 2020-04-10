@@ -1724,7 +1724,6 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 	sz = fread(&maxnpid, sizeof(int), 1, fp);
 	assert(sz > 0);
 	printf("NPROBES: %d. Aka maximum number of probes. \n", maxnpid);
-	printf("I've read %d\n", sz);
 
 	dtp->dt_maxprobe = maxnpid;
 	dtp->dt_pdesc = calloc(1, maxnpid * sizeof(dtrace_probedesc_t *));
@@ -1737,7 +1736,6 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 
 	sz = fread(&npdesc, sizeof(int), 1, fp);
 	assert(sz > 0);
-	printf("I've read %d\n", sz);
 	printf("NPDESC: %d. Aka how many enabled probes there are. \n", npdesc);
 
 	if (npdesc > 0)
@@ -1873,7 +1871,6 @@ static void *read_trace_data(void *xgtq)
 		{
 			size -= chunk;
 			sz = fread(dest, 1, chunk, fp);
-			printf("I've read: %d. Chunk is: %d \n", sz, chunk);
 			assert(sz == chunk);
 			dest += chunk;
 			chunk = (size > FRAGMENTSZ) ? FRAGMENTSZ : size;
