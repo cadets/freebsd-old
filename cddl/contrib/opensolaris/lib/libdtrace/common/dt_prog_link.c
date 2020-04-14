@@ -38,6 +38,10 @@
 #include <assert.h>
 #include <err.h>
 
+#ifndef illumos
+#include <sys/sysctl.h>
+#endif
+
 static ctf_file_t *ctf_file;
 static dt_list_t relo_list;
 static dt_rl_entry_t *relo_last = NULL;
@@ -54,6 +58,15 @@ typedef struct dt_rkind {
 #define r_rd	u.rd
 #define r_var	u.var
 } dt_rkind_t;
+
+static int
+dt_type_compare(dt_relo_t *dr1, dt_relo_t *dr2)
+{
+	/*
+	 * TODO: Implement comparison
+	 */
+	return (-1);
+}
 
 static dt_relo_t *
 dt_relo_alloc(dtrace_difo_t *difo, uint_t idx)
@@ -380,6 +393,7 @@ dt_update_relocations_stack(dtrace_difo_t *difo, dt_relo_t *currelo)
 	dt_rl_entry_t *rl;
 	int id1, id2, n_pushes;
 	uint_t idx;
+	uint8_t op;
 	dt_stacklist_t *sl;
 
 	idx = 0;
@@ -387,6 +401,7 @@ dt_update_relocations_stack(dtrace_difo_t *difo, dt_relo_t *currelo)
 	relo = NULL;
 	sl = NULL;
 	n_pushes = 1;
+	op = 0;
 
 	assert(currelo != NULL);
 	idx = currelo->dr_uidx;
@@ -456,7 +471,7 @@ dt_update_relocations_stack(dtrace_difo_t *difo, dt_relo_t *currelo)
 			 *       argn the last one.
 			 */
 			sl->dsl_rel = currelo;
-			dt_list_append(relo->dr_stacklist, sl);
+			dt_list_append(&relo->dr_stacklist, sl);
 		}
 	}
 }
@@ -727,7 +742,7 @@ dt_builtin_type(dt_relo_t *r, uint16_t var)
 		r->dr_type = DIF_TYPE_CTF;
 		break;
 	default:
-		errx(EXIT_FAILURE, "variable %lx does not exist", var);
+		errx(EXIT_FAILURE, "variable %x does not exist", var);
 	}
 }
 
@@ -735,20 +750,24 @@ static int
 dt_infer_type(dt_relo_t *r)
 {
 	dt_relo_t *dr1, *dr2, *tc_r, *symrelo, *other;
-	int type1, type2, res;
+	int type1, type2, res, i, t;
 	char buf[4096] = {0}, symname[4096] = {0};
 	ctf_membinfo_t *mip;
 	size_t l;
+	uint16_t var;
 	dtrace_difo_t *difo;
 	dif_instr_t instr;
 	uint8_t opcode;
-	uint16_t sym;
+	uint16_t sym, subr;
+	dt_stacklist_t *sl;
+	dt_relo_t *arg0, *arg1, *arg2, *arg3, *arg4, *arg5, *arg6, *arg7, *arg8;
 
 	dr1 = r->dr_drel[0];
 	dr2 = r->dr_drel[1];
 	type1 = -1;
 	type2 = -1;
 	mip = NULL;
+	sl = NULL;
 	l = 0;
 	difo = r->dr_difo;
 	instr = 0;
@@ -758,6 +777,11 @@ dt_infer_type(dt_relo_t *r)
 	tc_r = NULL;
 	symrelo = NULL;
 	other = NULL;
+	var = 0;
+	i = 0;
+	subr = 0;
+	arg0 = arg1 = arg2 = arg3 = arg4 = arg5 = arg6 = arg7 = arg8 = NULL;
+	t = 0;
 
 	/*
 	 * If we already have the type, we just return it.
@@ -1109,7 +1133,7 @@ dt_infer_type(dt_relo_t *r)
 		r->dr_ctfid = dr1->dr_ctfid;
 		r->dr_type = dr1->dr_type;
 		r->dr_mip = dr1->dr_mip;
-		r->dr_sym = dr1->sym;
+		r->dr_sym = dr1->dr_sym;
 
 		return (r->dr_type);
 
@@ -1254,7 +1278,7 @@ dt_infer_type(dt_relo_t *r)
 		var = DIF_INSTR_VAR(instr);
 
 		if (dr1 == NULL) {
-			if (op == DIF_OP_LDGS && var < DIF_VAR_MAX) {
+			if (opcode == DIF_OP_LDGS && var < DIF_VAR_MAX) {
 				dt_builtin_type(r, var);
 				return (r->dr_type);
 			}
@@ -1265,7 +1289,7 @@ dt_infer_type(dt_relo_t *r)
 		r->dr_ctfid = dr1->dr_ctfid;
 		r->dr_type = dr1->dr_type;
 		r->dr_mip = dr1->dr_mip;
-		r->dr_sym = dr1->sym;
+		r->dr_sym = dr1->dr_sym;
 
 		return (r->dr_type);
 
@@ -1287,7 +1311,7 @@ dt_infer_type(dt_relo_t *r)
 			 * If we are doing a STGS, and the variable is a builtin
 			 * variable, we fail to type-check the instruction.
 			 */
-			if (op == DIF_OP_STGS)
+			if (opcode == DIF_OP_STGS)
 				for (i = 0; i < DIF_VAR_MAX; i++)
 					if (var == i)
 						return (-1);
@@ -1298,7 +1322,7 @@ dt_infer_type(dt_relo_t *r)
 		r->dr_ctfid = dr1->dr_ctfid;
 		r->dr_type = dr1->dr_type;
 		r->dr_mip = dr1->dr_mip;
-		r->dr_sym = dr1->sym;
+		r->dr_sym = dr1->dr_sym;
 
 		return (r->dr_type);
 
@@ -1656,7 +1680,7 @@ dt_infer_type(dt_relo_t *r)
 				}
 			}
 
-			r->dr_type = DIF_TYPE_STRING
+			r->dr_type = DIF_TYPE_STRING;
 			break;
 
 		case DIF_SUBR_SPECULATION:
@@ -3137,7 +3161,7 @@ dt_infer_type(dt_relo_t *r)
 			return (-1);
 		}
 
-		return (r->d_type);
+		return (r->dr_type);
 
 	case DIF_OP_LDGAA:
 	case DIF_OP_LDTAA:
@@ -3233,6 +3257,7 @@ dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	dif_instr_t instr = 0;
 	uint8_t opcode = 0;
 	uint8_t rd = 0;
+	uint16_t var = 0;
 
 	memset(&rkind, 0, sizeof(dt_rkind_t));
 	/*

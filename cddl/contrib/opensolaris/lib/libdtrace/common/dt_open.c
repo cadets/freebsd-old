@@ -168,11 +168,15 @@ const dt_version_t _dtrace_versions[] = {
  * Global variables that are formatted on FreeBSD based on the kernel file name.
  */
 #ifndef illumos
-static char	curthread_str[MAXPATHLEN];
-static char	intmtx_str[MAXPATHLEN];
-static char	threadmtx_str[MAXPATHLEN];
-static char	rwlock_str[MAXPATHLEN];
-static char	sxlock_str[MAXPATHLEN];
+char	curthread_str[MAXPATHLEN];
+char	intmtx_str[MAXPATHLEN];
+char	threadmtx_str[MAXPATHLEN];
+char	rwlock_str[MAXPATHLEN];
+char	sxlock_str[MAXPATHLEN];
+char    thread_str[MAXPATHLEN];
+char	mtx_str[MAXPATHLEN];
+char	rw_str[MAXPATHLEN];
+char	sx_str[MAXPATHLEN];
 #endif
 
 int dt_subr_h2g[DIF_SUBR_MAX+1] = {

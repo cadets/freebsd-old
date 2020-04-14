@@ -66,6 +66,18 @@ typedef struct dtrace_prog dtrace_prog_t;
 typedef struct dtrace_vector dtrace_vector_t;
 typedef struct dtrace_aggdata dtrace_aggdata_t;
 
+#ifndef illumos
+extern char	curthread_str[MAXPATHLEN];
+extern char	intmtx_str[MAXPATHLEN];
+extern char	threadmtx_str[MAXPATHLEN];
+extern char	rwlock_str[MAXPATHLEN];
+extern char	sxlock_str[MAXPATHLEN];
+extern char     thread_str[MAXPATHLEN];
+extern char	mtx_str[MAXPATHLEN];
+extern char	rw_str[MAXPATHLEN];
+extern char	sx_str[MAXPATHLEN];
+#endif
+
 #define	DTRACE_O_NODEV		0x01	/* do not open dtrace(7D) device */
 #define	DTRACE_O_NOSYS		0x02	/* do not load /system/object modules */
 #define	DTRACE_O_LP64		0x04	/* force D compiler to be LP64 */
