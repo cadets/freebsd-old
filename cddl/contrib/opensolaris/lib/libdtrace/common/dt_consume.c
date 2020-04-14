@@ -2743,7 +2743,7 @@ dt_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 	buf->dtbd_size = size;
 	buf->dtbd_cpu = cpu;
 
-/* #ifdef illumos
+ #ifdef illumos
 	if (dt_ioctl(dtp, DTRACEIOC_BUFSNAP, buf) == -1) {
 #else
 	if (dt_ioctl(dtp, DTRACEIOC_BUFSNAP, &buf) == -1) {
@@ -2753,7 +2753,7 @@ dt_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 		 * CPU was unconfigured -- this is okay.  Any other
 		 * error, however, is unexpected.
 		 */
-/*		if (errno == ENOENT) {
+	if (errno == ENOENT) {
 			*bufp = NULL;
 			rval = 0;
 		} else
@@ -2762,7 +2762,6 @@ dt_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 		dt_put_buf(dtp, buf);
 		return (rval);
 	}
-*/
 
 	error = dt_unring_buf(dtp, buf);
 	if (error != 0) {
@@ -2905,7 +2904,7 @@ dt_consume_begin(dtrace_hdl_t *dtp, FILE *fp, dtrace_consumer_t *dc, void *arg)
 	begin_dc.dc_consume_probe = dt_consume_begin_probe;
 	begin_dc.dc_consume_rec = dt_consume_begin_record;
 	begin_dc.dc_put_buf = dc->dc_put_buf;
-	begin_dc.dc_get_buf - dc->dc_get_buf;
+	begin_dc.dc_get_buf = dc->dc_get_buf;
 
 	rval = dt_consume_cpu(dtp, fp, cpu, buf, B_FALSE, &begin_dc, &begin);
 

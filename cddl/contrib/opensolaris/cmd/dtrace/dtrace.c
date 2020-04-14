@@ -2100,9 +2100,6 @@ int main(int argc, char *argv[])
 			g_argv[g_argc++] = argv[optind];
 	}
 
-	// Stop buffering for debugging purposes
-	setbuf(stdout, NULL);
-
 	if (h_mode == 1)
 	{
 		dtrace_guest_start(argv[argc - 1]);

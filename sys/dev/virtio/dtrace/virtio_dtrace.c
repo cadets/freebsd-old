@@ -121,7 +121,7 @@ static uint32_t num_dtprobes;
 SYSCTL_U32(_dev_vtdtr, OID_AUTO, nprobes, CTLFLAG_RD, &num_dtprobes, 0,
 		   "Number of installed probes through virtio-dtrace");
 
-static uint32_t debug = 1;
+static uint32_t debug = 0;
 SYSCTL_U32(_dev_vtdtr, OID_AUTO, debug, CTLFLAG_RWTUN, &debug, 0,
 		   "Enable debugging of virtio-dtrace");
 
@@ -1367,7 +1367,7 @@ vtdtr_consume_trace(void *xsc)
 			{
 			case DDTRACE_TRACE:
 				trc = &trc_entry->uentry.trace;
-				device_printf(dev, "Trace data size: %zu. \n", trc->dtbd_size);
+				// device_printf(dev, "Trace data size: %zu. \n", trc->dtbd_size);
 				KASSERT(trc->dtbd_data != NULL, "Trace data buffer cannot be NULL.");
 
 				ctrl = &ctrl_entry->ctrl;

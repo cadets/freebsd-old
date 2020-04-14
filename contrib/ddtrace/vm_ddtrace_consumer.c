@@ -322,7 +322,7 @@ int main(int argc, char **argv)
     mkdir(directory_path, 0777);
     if ((log_fp = fopen(logging_file_path, "a+")) == NULL)
     {
-            DAEMON_LOG(("Error opening file: %s \n", strerror(errno)));
+            printf("Error printing logging file: %s \n", strerror(errno));
             exit(1);
     }
 
