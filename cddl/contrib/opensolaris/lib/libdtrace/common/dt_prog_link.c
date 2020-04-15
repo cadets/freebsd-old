@@ -59,12 +59,158 @@ typedef struct dt_rkind {
 #define r_var	u.var
 } dt_rkind_t;
 
+#define DTC_BOTTOM	-1
+#define DTC_INT		 0
+#define DTC_STRUCT	 1
+#define DTC_STRING	 2
+
+static int
+dt_get_class(char *buf)
+{
+	size_t len;
+
+	len = strlen(buf);
+
+	if (len > sizeof("struct") &&
+	    strncmp(buf, "struct", sizeof("struct")) == 0 &&
+	    buf[len - 1] == '*')
+		return (DTC_STRUCT);
+
+	if (strcmp(buf, "char") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "signed char") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "unsigned char") == 0)
+		return (DTC_INT);
+
+	if (strcmp(buf, "short") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "short int") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "signed short") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "signed short int") == 0)
+		return (DTC_INT);
+
+	if (strcmp(buf, "unsigned short") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "unsigned short int") == 0)
+		return (DTC_INT);
+
+	if (strcmp(buf, "int") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "signed") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "signed int") == 0)
+		return (DTC_INT);
+
+	if (strcmp(buf, "unsigned") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "unsigned int") == 0)
+		return (DTC_INT);
+
+	if (strcmp(buf, "long") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "long int") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "signed long") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "signed long int") == 0)
+		return (DTC_INT);
+
+	if (strcmp(buf, "unsigned long") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "unsigned long int") == 0)
+		return (DTC_INT);
+
+	if (strcmp(buf, "long long") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "long long int") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "signed long long") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "signed long long int") == 0)
+		return (DTC_INT);
+
+	if (strcmp(buf, "unsigned long long") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "unsigned long long int") == 0)
+		return (DTC_INT);
+
+	if (strcmp(buf, "size_t") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "ssize_t") == 0)
+		return (DTC_INT);
+
+	if (strcmp(buf, "uint8_t") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "uint16_t") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "uint32_t") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "uint64_t") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "uintmax_t") == 0)
+		return (DTC_INT);
+
+	if (strcmp(buf, "int8_t") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "int16_t") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "int32_t") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "int64_t") == 0)
+		return (DTC_INT);
+	if (strcmp(buf, "intmax_t") == 0)
+		return (DTC_INT);
+
+	return (DTC_BOTTOM);
+}
+
 static int
 dt_type_compare(dt_relo_t *dr1, dt_relo_t *dr2)
 {
-	/*
-	 * TODO: Implement comparison
-	 */
+	char buf1[4096] = {0};
+	char buf2[4096] = {0};
+	int class1, class2;
+
+	class1 = 0;
+	class2 = 0;
+
+	if (dr1->dr_type == DIF_TYPE_CTF)
+		if (ctf_type_name(ctf_file, dr1->dr_ctfid, buf1,
+		    sizeof(buf1)) != ((char *)buf1))
+			errx(EXIT_FAILURE,
+			    "failed at getting type name %ld: %s",
+			    dr1->dr_ctfid,
+			    ctf_errmsg(ctf_errno(ctf_file)));
+
+	if (dr2->dr_type == DIF_TYPE_CTF)
+		if (ctf_type_name(ctf_file, dr2->dr_ctfid, buf2,
+		    sizeof(buf2)) != ((char *)buf2))
+			errx(EXIT_FAILURE,
+			    "failed at getting type name %ld: %s",
+			    dr2->dr_ctfid,
+			    ctf_errmsg(ctf_errno(ctf_file)));
+
+	class1 = dr1->dr_type == DIF_TYPE_CTF ? dt_get_class(buf1) : DTC_STRING;
+	class2 = dr2->dr_type == DIF_TYPE_CTF ? dt_get_class(buf2) : DTC_STRING;
+
+	if (class1 == DTC_BOTTOM)
+		errx(EXIT_FAILURE, "class1 is bottom because of %s", buf1);
+
+	if (class2 == DTC_BOTTOM)
+		errx(EXIT_FAILURE, "class2 is bottom because of %s", buf2);
+
+	if (class1 == DTC_STRING && class2 == DTC_INT)
+		return (1);
+
+	if (class1 == DTC_STRUCT && class2 == DTC_INT)
+		return (1);
+
+	if (class1 == DTC_INT && (class2 == DTC_STRUCT || class2 == DTC_STRING))
+		return (2);
+
 	return (-1);
 }
 
@@ -1435,8 +1581,8 @@ dt_infer_type(dt_relo_t *r)
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
 				errx(EXIT_FAILURE, "failed at getting type name"
-				         " %ld: %s", arg0->dr_ctfid,
-				         ctf_errmsg(ctf_errno(ctf_file)));
+				    " %ld: %s", arg0->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
 
 			/*
 			 * If the argument type is wrong, fail to type check.
