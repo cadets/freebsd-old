@@ -557,13 +557,11 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 				if ((fd = openat(dir_fd, "trace_fifo", O_WRONLY)) == -1)
 				{
 					DPRINTF(("Failed to open metadata write pipe: %s. \n", strerror(errno)));
-					exit(1);
 				}
 
 				if ((trace_stream = fdopen(fd, "w")) == NULL)
 				{
 					DPRINTF(("Failed opening metadata stream: %s. \n", strerror(errno)));
-					exit(1);
 				}
 				trace_open = 1;
 			}
