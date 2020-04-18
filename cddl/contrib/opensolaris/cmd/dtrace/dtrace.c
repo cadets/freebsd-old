@@ -1745,26 +1745,26 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 		{
 			epbuf_sz = 0;
 			probe = calloc(1, sizeof(dtrace_probedesc_t));
-			assert(probe != NULL);
+			// assert(probe != NULL);
 
 			sz = fread(probe, sizeof(dtrace_probedesc_t), 1, fp);
-			assert(sz > 0);
+			// assert(sz > 0);
 			dtp->dt_pdesc[probe->dtpd_id] = probe;
-			printf("Got probe. \n");
+			// printf("Got probe. \n");
 
 			sz = fread(&epbuf_sz, sizeof(size_t), 1, fp);
-			assert(sz > 0);
-			printf("EPROBE buffer size is: %d.\n", epbuf_sz);
+			// assert(sz > 0);
+			// printf("EPROBE buffer size is: %d.\n", epbuf_sz);
 
 			eprobe = calloc(1, epbuf_sz);
 			assert(eprobe != NULL);
 			sz = fread(eprobe, 1, epbuf_sz, fp);
-			assert(sz == epbuf_sz);
+			// assert(sz == epbuf_sz);
 			dtp->dt_edesc[eprobe->dtepd_epid] = eprobe;
 
 			// an enabled probe can produce more records
 
-			printf("Number of records: %d. \n", eprobe->dtepd_nrecs);
+			// printf("Number of records: %d. \n", eprobe->dtepd_nrecs);
 			assert(eprobe->dtepd_rec != NULL);
 
 			// only call printf create if we receive format strings
@@ -1844,25 +1844,31 @@ static void *read_trace_data(void *xgtq)
 		assert(trc_entry != NULL);
 
 		sz = fread(&buf->dtbd_size, sizeof(uint64_t), 1, fp);
-		assert(sz > 0);
-		printf("Size: %d\n", buf->dtbd_size);
+		// assert(sz > 0);
+		// printf("Size: %d\n", buf->dtbd_size);
+		
 		sz = fread(&buf->dtbd_cpu, sizeof(uint32_t), 1, fp);
-		assert(sz > 0);
-		printf("Cpu: %d\n", buf->dtbd_errors);
+		// assert(sz > 0);
+		// printf("Cpu: %d\n", buf->dtbd_errors);
+		
 		sz = fread(&buf->dtbd_errors, sizeof(uint32_t), 1, fp);
-		assert(sz > 0);
-		printf("Errors: %d\n", buf->dtbd_errors);
+		// assert(sz > 0);
+		// printf("Errors: %d\n", buf->dtbd_errors);
+		
 		sz = fread(&buf->dtbd_drops, sizeof(uint64_t), 1, fp);
-		assert(sz > 0);
-		printf("Drops: %d\n", buf->dtbd_drops);
+		// assert(sz > 0);
+		// printf("Drops: %d\n", buf->dtbd_drops);
+		
 		sz = fread(&buf->dtbd_oldest, sizeof(uint64_t), 1, fp);
-		assert(sz > 0);
-		printf("Oldest: %d\n", buf->dtbd_oldest);
+		// assert(sz > 0);
+		// printf("Oldest: %d\n", buf->dtbd_oldest);
+		
 		sz = fread(&buf->dtbd_timestamp, sizeof(uint64_t), 1, fp);
-		assert(sz > 0);
-		printf("Timestamp: %d\n", buf->dtbd_timestamp);
+		// assert(sz > 0);
+		// printf("Timestamp: %d\n", buf->dtbd_timestamp);
+		
 		buf->dtbd_data = calloc(1, buf->dtbd_size + 1);
-		assert(buf->dtbd_data != NULL);
+		// assert(buf->dtbd_data != NULL);
 
 		dest = (uintptr_t)buf->dtbd_data;
 		size = buf->dtbd_size;
@@ -1871,7 +1877,7 @@ static void *read_trace_data(void *xgtq)
 		{
 			size -= chunk;
 			sz = fread(dest, 1, chunk, fp);
-			assert(sz == chunk);
+			// assert(sz == chunk);
 			dest += chunk;
 			chunk = (size > FRAGMENTSZ) ? FRAGMENTSZ : size;
 		}
@@ -1907,7 +1913,7 @@ static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t *dtp)
 		while (!dtrace_gtq_empty(gtq))
 		{
 			trc_entry = dtrace_gtq_dequeue(gtq);
-			printf("Dequeued trace data of size: %d. \n", trc_entry->desc->dtbd_size);
+			// printf("Dequeued trace data of size: %d. \n", trc_entry->desc->dtbd_size);
 			buf = trc_entry->desc;
 
 			dt_consume_cpu(dtp, NULL, 0, buf, false, &con, NULL);
@@ -1940,13 +1946,13 @@ static int dtrace_guest_start(char *script_file)
 	}
 
 	read_trace_metadata(g_dtp);
-	printf("Successfully read metadata. \n");
+	// printf("Successfully read metadata. \n");
 
-	printf("About to read trace data. \n");
+	// printf("About to read trace data. \n");
 	pthread_create(&trace_reader, NULL, read_trace_data, (void *)gtq);
 
 	process_trace_data(gtq, g_dtp);
-	printf("Successfully processed trace data. Exiting .. \n");
+	// printf("Successfully processed trace data. Exiting .. \n");
 }
 
 int main(int argc, char *argv[])

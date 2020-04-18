@@ -357,10 +357,7 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 
 	switch (cmd) {
 	case VTDTRIOC_CONF:
-		// DPRINTF(("received %zd", addr->event_flags));
 		conf = (struct vtdtr_conf *)addr;
-		DPRINTF(("received event flags: %zd \n", conf->event_flags));
-		DPRINTF(("received max size: %zd \n", conf->max_size));
 		tmp.proc = td->td_proc;
 		mtx_lock(&qtree_mtx);
 		q = RB_FIND(vtdtr_qtree, &vtdtr_queue_tree, &tmp);

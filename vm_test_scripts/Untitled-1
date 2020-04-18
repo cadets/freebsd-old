@@ -1,0 +1,14 @@
+#!/bin/csh
+
+setenv WERROR
+setenv NO_WERROR
+setenv KERNCONF CADETS
+setenv MAKEOBJDIRPREFIX /obj
+
+cd /usr/src
+2>&1
+
+make -j4 cleanuniverse
+TIMEFORMAT=%R # Just real time
+
+/usr/bin/time -p make -j4 buildkernel 

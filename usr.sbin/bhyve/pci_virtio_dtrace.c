@@ -63,6 +63,7 @@ __FBSDID("$FreeBSD$");
 
 #define VTDTR_RINGSZ 32768
 #define FRAGMENTSZ 32000
+#define SCRIPTSZ 512
 #define VTDTR_MAXQ 2
 
 /*
@@ -145,7 +146,7 @@ struct pci_vtdtr_ctrl_provevent
 struct pci_vtdtr_ctrl_scriptevent
 {
 	int last;
-	char d_script[FRAGMENTSZ];
+	char d_script[SCRIPTSZ];
 	struct uuid uuid;
 } __attribute__((packed));
 
@@ -1050,9 +1051,9 @@ static void *pci_vtdtr_read_script(void *xargs)
 
 	while (!done)
 	{
-		if (d_script_length > FRAGMENTSZ - 1)
+		if (d_script_length > SCRIPTSZ - 1)
 		{
-			fragment_length = FRAGMENTSZ - 1;
+			fragment_length = SCRIPTSZ - 1;
 			d_script_length -= fragment_length;
 		}
 		else

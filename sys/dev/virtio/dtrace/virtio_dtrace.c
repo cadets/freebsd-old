@@ -1455,16 +1455,16 @@ vtdtr_consume_trace(void *xsc)
 			{
 			case NFORMAT:
 				ctrl_mtd_ev->umtd.dts_nformats = mtd->umtd.dts_nformats;
-				device_printf(dev, "Put NFORMAT in control entry: %d. \n", ctrl_mtd_ev->umtd.dts_nformats);
+				// device_printf(dev, "Put NFORMAT in control entry: %d. \n", ctrl_mtd_ev->umtd.dts_nformats);
 				break;
 			case FORMAT_STRING:
 				fmt_len = strlen(mtd->umtd.dts_fmtstr);
-				device_printf(dev, "Format string length is: %d. \n", fmt_len);
+				//device_printf(dev, "Format string length is: %d. \n", fmt_len);
 				if (fmt_len < FRAGMENTSZ)
 				{
 					cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dts_fmtstr, fmt_len + 1);
 					KASSERT(cp == fmt_len, "Error occurred while copying format string");
-					device_printf(dev, "Successfully added format string to control entry: %s.\n", ctrl_mtd_ev->umtd.dts_fmtstr);
+					//device_printf(dev, "Successfully added format string to control entry: %s.\n", ctrl_mtd_ev->umtd.dts_fmtstr);
 				}
 				else
 				{
@@ -1473,11 +1473,11 @@ vtdtr_consume_trace(void *xsc)
 				break;
 			case NPROBES:
 				ctrl_mtd_ev->umtd.dtrace_nprobes = mtd->umtd.dtrace_nprobes;
-				device_printf(dev, "Number of probes is: %d. \n", ctrl_mtd_ev->umtd.dtrace_nprobes);
+				// device_printf(dev, "Number of probes is: %d. \n", ctrl_mtd_ev->umtd.dtrace_nprobes);
 				break;
 			case NPDESC:
 				ctrl_mtd_ev->umtd.dt_npdescs = mtd->umtd.dt_npdescs;
-				device_printf(dev, "Number of probes descriptions is: %d. \n", ctrl_mtd_ev->umtd.dt_npdescs);
+				//device_printf(dev, "Number of probes descriptions is: %d. \n", ctrl_mtd_ev->umtd.dt_npdescs);
 				break;
 			case PROBE_DESCRIPTION:
 				ctrl_mtd_ev->umtd.dt_pdesc.buf_size = mtd->umtd.dt_pdesc.buf_size;
@@ -1489,7 +1489,7 @@ vtdtr_consume_trace(void *xsc)
 				memcpy(ctrl_mtd_ev->umtd.dt_epdesc.buf,
 					   mtd->umtd.dt_epdesc.buf,
 					   mtd->umtd.dt_epdesc.buf_size);
-				device_printf(dev, "Eprobe description size: %d", ctrl_mtd_ev->umtd.dt_epdesc.buf_size);
+				// device_printf(dev, "Eprobe description size: %d", ctrl_mtd_ev->umtd.dt_epdesc.buf_size);
 				break;
 			default:
 				device_printf(dev, "WARNING: Wrong metadata event.");
