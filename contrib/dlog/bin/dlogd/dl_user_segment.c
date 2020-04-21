@@ -202,6 +202,11 @@ rotate_log(struct dl_user_segment *self)
 	
 	DLOGTR1(PRIO_LOW, "Rotating log segment new base offset = %lu\n",
 	    (uint64_t) dl_offset_get_val(self->dlus_offset));
+	
+	/* Unregister the handler whilst the rotation of the log is in
+	 * progress.
+	 */
+	dl_poll_reactor_unregister(&self->dlus_log_hdlr);
 
 	/* Construct a new userspace log segment. */
 	log_fd = open(name, USEG_FLAGS, USEG_PERMS);
@@ -234,7 +239,6 @@ rotate_log(struct dl_user_segment *self)
 	self->dlus_idx = idx;
 
 	/* Update the handler */
-	dl_poll_reactor_unregister(&self->dlus_log_hdlr);
 	dl_poll_reactor_register(&self->dlus_log_hdlr, POLLIN | POLLERR);
 	
 	/* Validate the method's postconditions. */
@@ -476,6 +480,14 @@ dl_user_segment_dtor(void *_super)
 	if (((const struct dl_class *) DL_SEGMENT)->dl_dtor != NULL)
 		((const struct dl_class *) DL_SEGMENT)->dl_dtor(_super);
 
+	/* Close file descriptor of kqueue monitoring the index,
+	 * (this removes all monitored events)
+	 */ 
+	close(self->dlus_kq);
+
+	/* Unregister the event handler */
+	dl_poll_reactor_unregister(&self->dlus_log_hdlr);
+
 	/* Delete the index */
 	dl_index_delete(self->dlus_idx);
 
@@ -487,12 +499,6 @@ dl_user_segment_dtor(void *_super)
 	
 	/* Delete the mutex */
 	pthread_mutex_destroy(&self->dlus_lock);
-
-	/* Close file descriptor of kqueue monitoring the index */ 
-	close(self->dlus_kq);
-
-	/* Unregister the event handler */
-	dl_poll_reactor_unregister(&self->dlus_log_hdlr);
 }
 
 void

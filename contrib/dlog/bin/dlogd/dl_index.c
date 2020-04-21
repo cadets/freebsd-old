@@ -179,6 +179,7 @@ dl_update_thread(void *vargp)
 
 	/* Create the index. */
 	while (true) {
+
 		/* Wait for signal before resuming enqueuing log records */
 		while (__atomic_load_n(&self->dli_state, __ATOMIC_ACQUIRE) != DLI_UPDATING) {
 			pthread_mutex_lock(&self->dli_update_mtx);
@@ -795,13 +796,14 @@ dl_index_restored(struct dl_index const * const self)
 	case DLI_RECREATE: /* recreate->idle */
 		dl_index_updating(self);
 		break;
+	case DLI_FINAL:
+		/* IGNORE */
+		break;
 	case DLI_INITIAL:
 		/* FALLTHROUGH */
 	case DLI_IDLE:
 		/* FALLTHROUGH */
 	case DLI_UPDATING:
-		/* FALLTHROUGH */
-	case DLI_FINAL:
 		/* FALLTHROUGH */
 	default:
 		/* CANNOT HAPPEN */
@@ -822,13 +824,14 @@ dl_index_updated(struct dl_index const * const self)
 	case DLI_UPDATING: /* updating->idle */
 		dl_index_idle(self);
 		break;
+	case DLI_FINAL:
+		/* IGNORE */
+		break;
 	case DLI_IDLE: /* CANNOT HAPPEN */
 		/* FALLTHROUGH */
 	case DLI_RECREATE:
 		/* FALLTHROUGH */
 	case DLI_INITIAL:
-		/* FALLTHROUGH */
-	case DLI_FINAL:
 		/* FALLTHROUGH */
 	default:
 		/* CANNOT HAPPEN */
