@@ -984,7 +984,6 @@ dl_producer_delete(struct dl_producer *self)
 	/* Delete the topic managed by the producer. */
 	dl_topic_delete(self->dlp_topic);
 
-
 	/* Unregister any poll reactor handlers */
 	dl_poll_reactor_unregister(&self->dlp_ktimer_hdlr);
 
