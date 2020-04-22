@@ -140,6 +140,9 @@ static int g_grabanon = 0;
 static const char *g_ofile = NULL;
 static FILE *g_ofp;
 static dtrace_hdl_t *g_dtp;
+
+static int done;
+static time_t ts;
 #ifdef illumos
 static char *g_etcfile = "/etc/system";
 static const char *g_etcbegin = "* vvvv Added by DTrace";
@@ -1286,6 +1289,12 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 static int
 chew(const dtrace_probedata_t *data, void *arg)
 {
+	if(done == 0)
+	{
+		ts = time(NULL);
+		printf("Time of first data is: %ld s", ts);
+		done = 1;
+	}
 	dtrace_probedesc_t *pd = data->dtpda_pdesc;
 	processorid_t cpu = data->dtpda_cpu;
 	static int heading;

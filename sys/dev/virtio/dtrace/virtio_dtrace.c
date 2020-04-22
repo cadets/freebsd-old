@@ -821,10 +821,6 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	}
 	case VIRTIO_DTRACE_SCRIPT:
 		sc->vtdtr_ready = 0;
-		microtime(&tv);
-		if (debug)
-			device_printf(dev, "Got script:\n%s. at %ld \n", ctrl->uctrl.script_ev.d_script, tv.tv_sec);
-
 		ev = malloc(sizeof(struct vtdtr_event), M_TEMP, M_ZERO);
 		KASSERT(ev != NULL, ("Malloc event failed.\n"));
 		d_script_length = strlen(ctrl->uctrl.script_ev.d_script);
