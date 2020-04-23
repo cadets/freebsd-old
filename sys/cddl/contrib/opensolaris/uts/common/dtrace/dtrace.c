@@ -155,7 +155,7 @@
 #include "dtrace_xoroshiro128_plus.h"
 #include "dtrace_uuid.h"
 
-static struct timeval tv1, tv2;
+struct timespec tv1, tv2;
 /*
  * DTrace Tunable Variables
  *
@@ -7908,8 +7908,8 @@ dtrace_probe_enter(dtrace_id_t id)
 {
 	dtrace_icookie_t cookie;
 
-	microtime(&tv1);
-	printf("Start time: %ld \n",tv.tv_sec);
+	nanouptime(&tv1);
+	printf("End time %ld %ld\n", tv1.tv_sec, tv1.tv_nsec);
 
 	cookie = dtrace_interrupt_disable();
 
@@ -7935,8 +7935,9 @@ static void
 dtrace_probe_exit(dtrace_icookie_t cookie)
 {
 	curthread->t_dtrace_inprobe = 0;
-	microtime(&tv2);
-	printf("End time %ld \n", tv2.tv_sec);
+	printf("I am hereeee");
+	nanouptime(&tv2);
+	printf("End time %ld %ld\n", tv2.tv_sec, tv2.tv_nsec);
 
 	dtrace_interrupt_enable(cookie);
 	
