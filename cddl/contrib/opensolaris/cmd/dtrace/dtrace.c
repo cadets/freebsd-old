@@ -1994,7 +1994,7 @@ int main(int argc, char *argv[])
 		printf("%s \n", strerror(errno));
 		exit(1);
 	}
-	fprintf(logging_fp, "Writing \n");
+	assert(logging_fp != NULL);
 
 	con.dc_consume_probe = chew;
 	con.dc_consume_rec = chewrec;
