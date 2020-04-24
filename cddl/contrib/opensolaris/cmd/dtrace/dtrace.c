@@ -1293,9 +1293,7 @@ chew(const dtrace_probedata_t *data, void *arg)
 	if(idx <= 100)
 	{
 		ts = time(NULL);
-		printf("%ld\n", ts);
-		fprintf(logging_fp, "%ld \n", ts);
-		fflush(logging_fp);
+		fprintf(logging_fp, "%ld \n", &ts);
 		idx ++;
 	}
 	if(idx == 100)
@@ -1305,7 +1303,7 @@ chew(const dtrace_probedata_t *data, void *arg)
 		fclose(logging_fp);
 		exit(0);
 	}
-	
+
 	dtrace_probedesc_t *pd = data->dtpda_pdesc;
 	processorid_t cpu = data->dtpda_cpu;
 	static int heading;
@@ -1995,6 +1993,7 @@ int main(int argc, char *argv[])
 		printf("%s \n", strerror(errno));
 		exit(1);
 	}
+	fprintf(logging_fp, "Writing \n");
 
 	con.dc_consume_probe = chew;
 	con.dc_consume_rec = chewrec;
