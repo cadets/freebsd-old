@@ -139,7 +139,7 @@ static int g_grabanon = 0;
 
 static const char *g_ofile = NULL;
 static FILE *g_ofp;
-static FILE *fp;
+static FILE *logging_fp;
 static dtrace_hdl_t *g_dtp;
 
 static int done, idx = 0;
@@ -1261,21 +1261,6 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 	dtrace_actkind_t act;
 	uintptr_t addr;
 
-	if(idx <= 100)
-	{
-		ts = time(NULL);
-		fprintf(fp, "%ld \n", ts);
-		fflush(fp);
-		idx ++;
-	}
-	if(idx == 100)
-	{
-		printf("FINISHED");
-		fflush(fp);
-		fclose(fp);
-		exit(0);
-	}
-
 	if (rec == NULL)
 	{
 		/*
@@ -1305,6 +1290,21 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 static int
 chew(const dtrace_probedata_t *data, void *arg)
 {
+	if(idx <= 100)
+	{
+		ts = time(NULL);
+		printf("%ld\n", ts);
+		fprintf(logging_fp, "%ld \n", ts);
+		fflush(logging_fp);
+		idx ++;
+	}
+	if(idx == 100)
+	{
+		printf("FINISHED");
+		fflush(logging_fp);
+		fclose(logging_fp);
+		exit(0);
+	}
 	
 	dtrace_probedesc_t *pd = data->dtpda_pdesc;
 	processorid_t cpu = data->dtpda_cpu;
@@ -1990,7 +1990,7 @@ int main(int argc, char *argv[])
 	dtrace_consumer_t con;
 
 	printf("Opening log file. \n");
-	if((fp = fopen("/tmp/log.txt", "a+") == NULL))
+	if((logging_fp = fopen("/tmp/log.txt", "a+") == NULL))
 	{
 		printf("%s \n", strerror(errno));
 		exit(1);
