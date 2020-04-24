@@ -139,9 +139,10 @@ static int g_grabanon = 0;
 
 static const char *g_ofile = NULL;
 static FILE *g_ofp;
+static FILE *fp;
 static dtrace_hdl_t *g_dtp;
 
-static int done;
+static int done, idx = 0;
 static time_t ts;
 #ifdef illumos
 static char *g_etcfile = "/etc/system";
@@ -950,6 +951,7 @@ compile_file(dtrace_cmd_t *dcp)
 	char *arg0;
 	FILE *fp;
 
+
 	if ((fp = fopen(dcp->dc_arg, "r")) == NULL)
 		fatal("failed to open %s", dcp->dc_arg);
 
@@ -1259,6 +1261,18 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 	dtrace_actkind_t act;
 	uintptr_t addr;
 
+	if(idx <= 100)
+	{
+		ts = time(NULL);
+		fprintf(fp, "%ld \n", ts);
+		idx ++;
+	}
+	if(idx == 100)
+	{
+		printf("FINISHED");
+		exit(0);
+	}
+
 	if (rec == NULL)
 	{
 		/*
@@ -1288,12 +1302,7 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 static int
 chew(const dtrace_probedata_t *data, void *arg)
 {
-	if(done == 0)
-	{
-		ts = time(NULL);
-		printf("Chewiing first data is: %ld s", ts);
-		done = 1;
-	}
+	
 	dtrace_probedesc_t *pd = data->dtpda_pdesc;
 	processorid_t cpu = data->dtpda_cpu;
 	static int heading;
@@ -1976,6 +1985,13 @@ int main(int argc, char *argv[])
 	dtrace_cmd_t *dcp;
 	char *machine_filter;
 	dtrace_consumer_t con;
+
+	printf("Opening log file. \n");
+	if((fp = fopen("/tmp/log.txt", "a+") == NULL))
+	{
+		printf("%s \n", strerror(errno));
+		exit(1);
+	}
 
 	con.dc_consume_probe = chew;
 	con.dc_consume_rec = chewrec;
