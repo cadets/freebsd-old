@@ -1807,7 +1807,6 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 	}
 	ts2 = time(NULL);
 	printf("Finished getting metadata: %ld s \n", ts2);
-	
 	fclose(fp);
 	close(fd);
 }
@@ -1817,7 +1816,6 @@ static void *read_trace_data(void *xgtq)
 	struct dtrace_guestq *gtq;
 	struct dtrace_guest_entry *trc_entry;
 	dtrace_bufdesc_t *buf;
-	time_t timing;
 	FILE *fp;
 	char *trc_fifo;
 	uint64_t size, chunk, sz;
@@ -1950,6 +1948,9 @@ static int dtrace_guest_start(char *script_file)
 	assert(gtq != NULL);
 
 	write_script(script_file);
+	time_t timing;
+	timing = time(NULL);
+	printf("Sent script: %ld ", timing);
 	STAILQ_INIT(&gtq->head);
 	printf("Guest queue successfully initialised. \n");
 	if ((g_dtp = dtrace_open(DTRACE_VERSION, 0, &err)) == NULL)
@@ -1969,10 +1970,6 @@ static int dtrace_guest_start(char *script_file)
 
 int main(int argc, char *argv[])
 {
-	time_t timing;
-	timing = time(NULL);
-	printf("Start process: %ld s\n", timing);
-
 	dtrace_bufdesc_t buf;
 	dtrace_status_t status[2];
 	dtrace_optval_t opt;
