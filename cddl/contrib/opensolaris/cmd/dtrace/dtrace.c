@@ -1293,8 +1293,7 @@ chew(const dtrace_probedata_t *data, void *arg)
 	if(idx <= 100)
 	{
 		ts = time(NULL);
-		fwrite(&ts, sizeof(long), 1, logging_fp);
-		fwrite(space, 1, 1, logging_fp);
+		fprintf(logging_fp,"%ld\n",&ts);
 		idx ++;
 	}
 	if(idx == 100)
