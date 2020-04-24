@@ -1265,7 +1265,6 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 		 * We have processed the final record; output the newline if
 		 * we're not in quiet mode.
 		 */
-		printf("Record is null.");
 		if (!g_quiet && !g_oformat)
 			oprintf("\n");
 
@@ -1292,7 +1291,7 @@ chew(const dtrace_probedata_t *data, void *arg)
 	if(done == 0)
 	{
 		ts = time(NULL);
-		printf("Time of first data is: %ld s", ts);
+		printf("Chewiing first data is: %ld s", ts);
 		done = 1;
 	}
 	dtrace_probedesc_t *pd = data->dtpda_pdesc;
@@ -1668,12 +1667,12 @@ static void *write_script(void *file_path)
 
 static void *read_trace_metadata(dtrace_hdl_t *dtp)
 {
+	time_t ts1, ts2;
 	dtrace_probedesc_t **pdescs;
 	dtrace_eprobedesc_t **epdescs;
 	dtrace_probedesc_t *probe;
 	dtrace_eprobedesc_t *eprobe;
 	FILE *fp;
-	time_t timing;
 	char *meta_fifo, *buf, *fmt, **formats;
 	int fd, sz, nrecs = 0;
 	size_t epbuf_sz = 0, fmt_len = 0;
@@ -1703,7 +1702,10 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 
 	sz = fread(&maxformat, sizeof(int), 1, fp);
 	assert(sz > 0);
-	printf("NFORMAT: %d\n", maxformat);
+
+	ts1 = time(NULL);
+	printf("Start getting metadata: %ld s \n", ts1);
+
 	dtp->dt_maxformat = dtp->dt_maxstrdata = maxformat;
 
 	if (maxformat > 0)
@@ -1803,8 +1805,9 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 			}
 		}
 	}
-	// timing = time(NULL);
-	// printf("Finished getting metadata: %ld s \n", timing);
+	ts2 = time(NULL);
+	printf("Finished getting metadata: %ld s \n", ts2);
+	
 	fclose(fp);
 	close(fd);
 }
@@ -1966,6 +1969,10 @@ static int dtrace_guest_start(char *script_file)
 
 int main(int argc, char *argv[])
 {
+	time_t timing;
+	timing = time(NULL);
+	printf("Start process: %ld s\n", timing);
+
 	dtrace_bufdesc_t buf;
 	dtrace_status_t status[2];
 	dtrace_optval_t opt;
@@ -1985,10 +1992,6 @@ int main(int argc, char *argv[])
 	char *p, **v;
 	struct ps_prochandle *P;
 	pid_t pid;
-	time_t timing;
-
-	timing = time(NULL);
-	printf("Start process: %ld s\n", timing);
 
 	machine_filter = NULL;
 
