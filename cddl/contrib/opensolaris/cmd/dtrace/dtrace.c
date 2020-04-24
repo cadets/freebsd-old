@@ -1289,11 +1289,12 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 /*ARGSUSED*/
 static int
 chew(const dtrace_probedata_t *data, void *arg)
-{
+{	char *space =" ";
 	if(idx <= 100)
 	{
 		ts = time(NULL);
-		fprintf(logging_fp, "%ld \n", &ts);
+		fwrite(&ts, sizeof(long), 1, logging_fp);
+		fwrite(space, 1, 1, logging_fp);
 		idx ++;
 	}
 	if(idx == 100)
