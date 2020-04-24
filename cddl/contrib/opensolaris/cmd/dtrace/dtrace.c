@@ -1265,11 +1265,14 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 	{
 		ts = time(NULL);
 		fprintf(fp, "%ld \n", ts);
+		fflush(fp);
 		idx ++;
 	}
 	if(idx == 100)
 	{
 		printf("FINISHED");
+		fflush(fp);
+		fclose(fp);
 		exit(0);
 	}
 
