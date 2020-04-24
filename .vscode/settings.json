@@ -35,6 +35,10 @@
         "complex": "cpp",
         "valarray": "cpp",
         "cmath": "cpp",
-        "time.h": "c"
+        "time.h": "c",
+        "thread": "cpp",
+        "future": "cpp",
+        "rope": "cpp",
+        "*.tcc": "cpp"
     }
 }

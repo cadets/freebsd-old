@@ -339,13 +339,15 @@ int main(int argc, char **argv)
     DAEMON_LOG((log_fp, "Successfully daemonised.\n"));
     DAEMON_LOG((log_fp, "Waiting for scripts..\n"));
 
-    // for (;;)
-    // {
+    for (;;)
+    {
+        DAEMON_LOG((log_fp, "Listening for D scripts"));
+        
         if (get_script_events() != 0)
         {
             DAEMON_LOG((log_fp, "Error occured while retrieving and assembling the script"));
             exit(1);
-            // break;
+            break;
         }
 
         DAEMON_LOG((log_fp, "Start DTrace consumer.. \n"));
@@ -354,10 +356,10 @@ int main(int argc, char **argv)
         {
             DAEMON_LOG((log_fp, "Error occured while trying to execute the script. \n"));
             exit(1);
-            // break;
+            break;
         }
         DAEMON_LOG((log_fp, "DTrace consumer finished.. \n"));
-   // }
+   }
 
     DAEMON_LOG((log_fp, "Closing log file. \n"));
     fclose(log_fp);
