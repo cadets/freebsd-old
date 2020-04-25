@@ -1290,21 +1290,21 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 static int
 chew(const dtrace_probedata_t *data, void *arg)
 {	
-	if(idx <= 100)
-	{
-		ts = time(NULL);
-		printf("Record time: %ld \n", ts);
-		fprintf(logging_fp,"%ld\n", ts);
-		fflush(logging_fp);
-		idx ++;
-	}
-	if(idx == 100)
-	{
-		printf("FINISHED");
-		fflush(logging_fp);
-		fclose(logging_fp);
-		exit(0);
-	}
+	// if(idx <= 100)
+	// {
+	// 	ts = time(NULL);
+	// 	printf("Record time: %ld \n", ts);
+	// 	fprintf(logging_fp,"%ld\n", ts);
+	// 	fflush(logging_fp);
+	// 	idx ++;
+	// }
+	// if(idx == 100)
+	// {
+	// 	printf("FINISHED");
+	// 	fflush(logging_fp);
+	// 	fclose(logging_fp);
+	// 	exit(0);
+	// }
 
 	dtrace_probedesc_t *pd = data->dtpda_pdesc;
 	processorid_t cpu = data->dtpda_cpu;

@@ -7909,7 +7909,7 @@ dtrace_probe_enter(dtrace_id_t id)
 	dtrace_icookie_t cookie;
 
 	// nanouptime(&tv1);
-	// printf("End time %ld %ld\n", tv1.tv_sec, tv1.tv_nsec);
+	// printf("Start time %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
 	cookie = dtrace_interrupt_disable();
 
 	/*
@@ -7934,9 +7934,8 @@ static void
 dtrace_probe_exit(dtrace_icookie_t cookie)
 {
 	curthread->t_dtrace_inprobe = 0;
-	// printf("I am hereeee");
 	// nanouptime(&tv2);
-	// printf("End time %ld %ld\n", tv2.tv_sec, tv2.tv_nsec);
+	// printf("End time %ld s %ld ns\n", tv2.tv_sec, tv2.tv_nsec);
 	dtrace_interrupt_enable(cookie);
 	
 }
