@@ -1989,13 +1989,13 @@ int main(int argc, char *argv[])
 	char *machine_filter;
 	dtrace_consumer_t con;
 
-	printf("Opening log file. \n");
-	if((logging_fp = fopen("/tmp/log.txt", "a+")) == NULL)
-	{
-		printf("%s \n", strerror(errno));
-		exit(1);
-	}
-	assert(logging_fp != NULL);
+	// printf("Opening log file. \n");
+	// if((logging_fp = fopen("/tmp/log.txt", "a+")) == NULL)
+	// {
+	// 	printf("%s \n", strerror(errno));
+	// 	exit(1);
+	// }
+	// assert(logging_fp != NULL);
 
 	con.dc_consume_probe = chew;
 	con.dc_consume_rec = chewrec;
