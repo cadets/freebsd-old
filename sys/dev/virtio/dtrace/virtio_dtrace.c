@@ -724,8 +724,8 @@ vtdtr_queue_enqueue_ctrl(struct virtio_dtrace_queue *q,
 
 	if(ctrl->event == "VIRTIO_DTRACE_TRACE" || ctrl->event == "VIRTIO_DTRACE_METADATA")
 	{
-	nanouptime(&tv1);
-	printf("Time of send %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
+		nanouptime(&tv1);
+		printf("Time of send %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
 	}
 	error = virtqueue_enqueue(vq, ctrl, &sg, readable, writable);
 
