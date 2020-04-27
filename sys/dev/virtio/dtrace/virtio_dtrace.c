@@ -129,6 +129,7 @@ static int vstate = 0;
 
 
 static struct vtdtr_traceq *tq;
+struct timespec tv1;
 
 static int vtdtr_modevent(module_t, int, void *);
 static void vtdtr_cleanup(void);
@@ -721,6 +722,11 @@ vtdtr_queue_enqueue_ctrl(struct virtio_dtrace_queue *q,
 	KASSERT(error == 0, ("%s: error %d adding control to sglist",
 						 __func__, error));
 
+	if(ctrl->event == "VIRTIO_DTRACE_TRACE" || ctrl->event == "VIRTIO_DTRACE_METADATA")
+	{
+	nanouptime(&tv1);
+	printf("Time of send %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
+	}
 	error = virtqueue_enqueue(vq, ctrl, &sg, readable, writable);
 
 	return (error);
