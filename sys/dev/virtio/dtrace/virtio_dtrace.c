@@ -760,31 +760,31 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	switch (ctrl->event)
 	{
 	case VIRTIO_DTRACE_DEVICE_READY:
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_DEVICE_READY\n");
+		// if (debug)
+			// device_printf(dev, "VIRTIO_DTRACE_DEVICE_READY\n");
 		sc->vtdtr_host_ready = 1;
 		break;
 	case VIRTIO_DTRACE_REGISTER:
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_REGISTER\n");
+		// if (debug)
+			// device_printf(dev, "VIRTIO_DTRACE_REGISTER\n");
 		sc->vtdtr_ready = 0;
 		pv = &ctrl->uctrl.prov_ev;
 		break;
 	case VIRTIO_DTRACE_UNREGISTER:
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_UNREGISTER\n");
+		// if (debug)
+		//	device_printf(dev, "VIRTIO_DTRACE_UNREGISTER\n");
 		sc->vtdtr_ready = 0;
 		pv = &ctrl->uctrl.prov_ev;
 		break;
 	case VIRTIO_DTRACE_DESTROY:
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_DESTROY\n");
+		// if (debug)
+		// 	device_printf(dev, "VIRTIO_DTRACE_DESTROY\n");
 		sc->vtdtr_ready = 0;
 		break;
 	case VIRTIO_DTRACE_PROBE_CREATE:
 		pb = &ctrl->uctrl.probe_ev;
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_PROBE_CREATE: %d\n", pb->probe);
+		// if (debug)
+		// 	device_printf(dev, "VIRTIO_DTRACE_PROBE_CREATE: %d\n", pb->probe);
 		sc->vtdtr_ready = 0;
 		break;
 	case VIRTIO_DTRACE_PROBE_INSTALL:
@@ -792,8 +792,8 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		sc->vtdtr_ready = 0;
 		pb = &ctrl->uctrl.probe_ev;
 
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_PROBE_INSTALL: %d\n", pb->probe);
+		// if (debug)
+		//	device_printf(dev, "VIRTIO_DTRACE_PROBE_INSTALL: %d\n", pb->probe);
 		if (vstate == 0)
 		{
 			error = dtrace_virtstate_create();
@@ -826,8 +826,8 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		KASSERT(ev != NULL, ("Malloc event failed.\n"));
 		d_script_length = strlen(ctrl->uctrl.script_ev.d_script);
 
-		if (debug)
-			device_printf(dev, "Length of the script is %d. \n", d_script_length);
+		// if (debug)
+		//	device_printf(dev, "Length of the script is %d. \n", d_script_length);
 
 		ev->type = VTDTR_EV_SCRIPT;
 		ev->args.d_script.last = ctrl->uctrl.script_ev.last;
@@ -835,15 +835,15 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			device_printf(dev, "Error occured when copying script from control event. \n");
 		vtdtr_enqueue(ev);
 
-		if (debug)
-			device_printf(dev, "I've enqueued %s.\n",
-						  ev->args.d_script.script);
+		// if (debug)
+		// device_printf(dev, "I've enqueued %s.\n",
+		//				  ev->args.d_script.script);
 		break;
 	case VIRTIO_DTRACE_GO:
 		sc->vtdtr_ready = 0;
 
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_GO\n");
+		// if (debug)
+		// 	device_printf(dev, "VIRTIO_DTRACE_GO\n");
 
 		error = dtrace_virtstate_go();
 		if (error)
@@ -855,8 +855,8 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		sc->vtdtr_ready = 0;
 		KASSERT(vstate == 1, ("vstate must exist\n"));
 
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_STOP\n");
+		// if (debug)
+		// 	device_printf(dev, "VIRTIO_DTRACE_STOP\n");
 
 		error = dtrace_virtstate_stop();
 		if (error)
@@ -868,8 +868,8 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		vstate = 0;
 		break;
 	case VIRTIO_DTRACE_EOF:
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_EOF\n");
+		// if (debug)
+		// 	device_printf(dev, "VIRTIO_DTRACE_EOF\n");
 		retval = 1;
 		break;
 	default:
@@ -1605,10 +1605,10 @@ vtdtr_run(void *xsc)
 				ctrls[nent].event != VIRTIO_DTRACE_DEVICE_READY)
 				ready_flag = 0;
 			
-			if(ctrl_entry->ctrl.event == "VIRTIO_DTRACE_TRACE")
+			if(ctrl_entry->ctrl.event == VIRTIO_DTRACE_TRACE)
 			{
 				nanouptime(&tv1);
-				printf("Time of send %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
+				device_printf(dev, "Time of send %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
 			}
 			vtdtr_fill_desc(txq, &ctrls[nent]);
 			free(ctrl_entry, M_DEVBUF);
