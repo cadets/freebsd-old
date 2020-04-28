@@ -1605,7 +1605,7 @@ vtdtr_run(void *xsc)
 				ctrls[nent].event != VIRTIO_DTRACE_DEVICE_READY)
 				ready_flag = 0;
 			
-			if(ctrl->event == "VIRTIO_DTRACE_TRACE" || ctrl->event == "VIRTIO_DTRACE_METADATA")
+			if(ctrl_entry->event == "VIRTIO_DTRACE_TRACE" || ctrl_entry->event == "VIRTIO_DTRACE_METADATA")
 			{
 				nanouptime(&tv1);
 				printf("Time of send %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
