@@ -1291,21 +1291,9 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 static int
 chew(const dtrace_probedata_t *data, void *arg)
 {	
-	if(idx <= 100)
-	{
-		gettimeofday(&ts, NULL);
-		printf("Record time: %ld s %ld us \n", ts.tv_sec, ts.tv_usec);
-		fprintf(logging_fp,"%ld\n", ts);
-		fflush(logging_fp);
-		idx ++;
-	}
-	if(idx == 100)
-	{
-		printf("FINISHED");
-		fflush(logging_fp);
-		fclose(logging_fp);
-		exit(0);
-	}
+	gettimeofday(&ts, NULL);
+	printf("Record time: %ld s %ld us \n", ts.tv_sec, ts.tv_usec);
+
 
 	dtrace_probedesc_t *pd = data->dtpda_pdesc;
 	processorid_t cpu = data->dtpda_cpu;
@@ -1990,13 +1978,13 @@ int main(int argc, char *argv[])
 	char *machine_filter;
 	dtrace_consumer_t con;
 
-	printf("Opening log file. \n");
-	if((logging_fp = fopen("/tmp/log.txt", "a+")) == NULL)
-	{
-		printf("%s \n", strerror(errno));
-		exit(1);
-	}
-	assert(logging_fp != NULL);
+	// printf("Opening log file. \n");
+	// if((logging_fp = fopen("/tmp/log.txt", "a+")) == NULL)
+	// {
+	// 	printf("%s \n", strerror(errno));
+	// 	exit(1);
+	// }
+	// assert(logging_fp != NULL);
 
 	con.dc_consume_probe = chew;
 	con.dc_consume_rec = chewrec;
