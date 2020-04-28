@@ -121,7 +121,7 @@ static uint32_t num_dtprobes;
 SYSCTL_U32(_dev_vtdtr, OID_AUTO, nprobes, CTLFLAG_RD, &num_dtprobes, 0,
 		   "Number of installed probes through virtio-dtrace");
 
-static uint32_t debug = 0;
+static uint32_t debug = 1;
 SYSCTL_U32(_dev_vtdtr, OID_AUTO, debug, CTLFLAG_RWTUN, &debug, 0,
 		   "Enable debugging of virtio-dtrace");
 
