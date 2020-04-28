@@ -1605,11 +1605,11 @@ vtdtr_run(void *xsc)
 				ctrls[nent].event != VIRTIO_DTRACE_DEVICE_READY)
 				ready_flag = 0;
 			
-			if(ctrl_entry->ctrl.event == VIRTIO_DTRACE_TRACE)
-			{
-				nanouptime(&tv1);
-				device_printf(dev, "Time of send %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
-			}
+			// if(ctrl_entry->ctrl.event == VIRTIO_DTRACE_TRACE)
+			// {
+			// 	nanouptime(&tv1);
+			// 	device_printf(dev, "Time of send %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
+			// }
 			vtdtr_fill_desc(txq, &ctrls[nent]);
 			free(ctrl_entry, M_DEVBUF);
 			nent++;
