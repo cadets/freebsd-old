@@ -61,6 +61,7 @@
 #include <libxo/xo.h>
 
 #include <dt_impl.h>
+#include <sys/time.h>
 
 typedef struct dtrace_cmd
 {
@@ -143,7 +144,7 @@ static FILE *logging_fp;
 static dtrace_hdl_t *g_dtp;
 
 static int done, idx = 0;
-static time_t ts;
+static struct timeval ts;
 #ifdef illumos
 static char *g_etcfile = "/etc/system";
 static const char *g_etcbegin = "* vvvv Added by DTrace";
@@ -1679,7 +1680,7 @@ static void *write_script(void *file_path)
 
 static void *read_trace_metadata(dtrace_hdl_t *dtp)
 {
-	time_t ts1, ts2;
+	struct timeval ts1, ts2;
 	dtrace_probedesc_t **pdescs;
 	dtrace_eprobedesc_t **epdescs;
 	dtrace_probedesc_t *probe;
@@ -1715,8 +1716,8 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 	sz = fread(&maxformat, sizeof(int), 1, fp);
 	assert(sz > 0);
 
-	ts1 = time(NULL);
-	printf("Start getting metadata: %ld s \n", ts1);
+	gettimeofday(&ts1, NULL);
+	printf("Start getting metadata: %ld %ld s \n", ts1.tv_sec, ts1.tv_usec);
 
 	dtp->dt_maxformat = dtp->dt_maxstrdata = maxformat;
 
@@ -1817,8 +1818,8 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 			}
 		}
 	}
-	ts2 = time(NULL);
-	printf("Finished getting metadata: %ld s \n", ts2);
+	gettimeofday(&ts2, NULL);
+	printf("Finished getting metadata: %ld s %ld us\n", ts2.tv_sec, ts2.tv_usec);
 	fclose(fp);
 	close(fd);
 }
@@ -1919,7 +1920,7 @@ static void process_trace_data(struct dtrace_guestq *gtq, dtrace_hdl_t *dtp)
 	dtrace_bufdesc_t *buf;
 	dtrace_consumer_t con;
 	struct dtrace_guest_entry *trc_entry;
-	time_t timing;
+	struct timeval timing;
 
 	// hope we can use the functions defined here
 	con.dc_consume_probe = chew;
@@ -1960,9 +1961,9 @@ static int dtrace_guest_start(char *script_file)
 	assert(gtq != NULL);
 
 	write_script(script_file);
-	time_t timing;
-	timing = time(NULL);
-	printf("Sent script: %ld ", timing);
+	struct timeval timing;
+	gettimeofday(&timing, NULL);
+	printf("Sent script: %ld s %ld us ", timing.tv_sec, timing.tv_usec);
 	STAILQ_INIT(&gtq->head);
 	printf("Guest queue successfully initialised. \n");
 	if ((g_dtp = dtrace_open(DTRACE_VERSION, 0, &err)) == NULL)
