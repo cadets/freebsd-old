@@ -1573,7 +1573,7 @@ static int dtrace_gtq_empty(struct dtrace_guestq *gtq)
 
 static void dtrace_gtq_enqueue(struct dtrace_guestq *gtq, struct dtrace_guest_entry *trc_entry)
 {
-	STAILQ_INSERT_TAIL(&gtq->head, trc_entry, entries);
+	STAILQ_INSERT_TAIL(&gtq->head, trc_entry, entries) ;
 }
 
 struct dtrace_guest_entry *dtrace_gtq_dequeue(struct dtrace_guestq *gtq)
@@ -1584,7 +1584,6 @@ struct dtrace_guest_entry *dtrace_gtq_dequeue(struct dtrace_guestq *gtq)
 	{
 		STAILQ_REMOVE_HEAD(&gtq->head, entries);
 	}
-	printf("Dequeued trace element of size: %d", trc_entry->desc->dtbd_size);
 
 	return (trc_entry);
 }
