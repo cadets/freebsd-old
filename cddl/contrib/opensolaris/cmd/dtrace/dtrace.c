@@ -1574,7 +1574,6 @@ static int dtrace_gtq_empty(struct dtrace_guestq *gtq)
 static void dtrace_gtq_enqueue(struct dtrace_guestq *gtq, struct dtrace_guest_entry *trc_entry)
 {
 	STAILQ_INSERT_TAIL(&gtq->head, trc_entry, entries);
-	printf(" Enqueued trace element. \n");
 }
 
 struct dtrace_guest_entry *dtrace_gtq_dequeue(struct dtrace_guestq *gtq)

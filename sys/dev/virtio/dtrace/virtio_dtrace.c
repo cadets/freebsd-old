@@ -1365,7 +1365,7 @@ vtdtr_consume_trace(void *xsc)
 			case DDTRACE_TRACE:
 				trc = &trc_entry->uentry.trace;
 				// device_printf(dev, "Trace data size: %zu. \n", trc->dtbd_size);
-				device_printf(dev, "%s", trc->dtbd_data);
+				// device_printf(dev, "%s", trc->dtbd_data);
 				KASSERT(trc->dtbd_data != NULL, "Trace data buffer cannot be NULL.");
 
 				ctrl = &ctrl_entry->ctrl;
