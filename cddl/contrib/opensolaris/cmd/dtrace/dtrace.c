@@ -1616,7 +1616,6 @@ static void *write_script(void *file_path)
 		exit(1);
 	}
 
-	printf("Size of file is: %d. \n", file_size);
 	rewind(fp);
 
 	d_script = malloc(file_size + 1);
