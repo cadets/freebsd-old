@@ -1291,8 +1291,8 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 static int
 chew(const dtrace_probedata_t *data, void *arg)
 {	
-	// gettimeofday(&ts, NULL);
-	// printf("Record time: %ld s %ld us \n", ts.tv_sec, ts.tv_usec);
+	gettimeofday(&ts, NULL);
+	printf("Record time: %ld s %ld us \n", ts.tv_sec, ts.tv_usec);
 
 
 	dtrace_probedesc_t *pd = data->dtpda_pdesc;
