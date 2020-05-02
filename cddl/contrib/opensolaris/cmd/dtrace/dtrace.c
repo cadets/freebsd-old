@@ -1371,7 +1371,7 @@ chew(const dtrace_probedata_t *data, void *arg)
 
 		oprintf("%3d %-41s ", cpu, name);
 	}
-
+	printf("\n");
 	return (DTRACE_CONSUME_THIS);
 }
 
