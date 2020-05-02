@@ -1365,6 +1365,7 @@ vtdtr_consume_trace(void *xsc)
 			case DDTRACE_TRACE:
 				trc = &trc_entry->uentry.trace;
 				// device_printf(dev, "Trace data size: %zu. \n", trc->dtbd_size);
+				device_printf(dev, "%s", trc->dtbd_data);
 				KASSERT(trc->dtbd_data != NULL, "Trace data buffer cannot be NULL.");
 
 				ctrl = &ctrl_entry->ctrl;
@@ -1396,7 +1397,7 @@ vtdtr_consume_trace(void *xsc)
 				cp = strlcpy(ctrl_trc_ev->dtbd_chunk, (char *)data, to_send + 1);
 				KASSERT(ctrl_trc_ev->dtbd_chunk != NULL, "Data is NULL");
 				KASSERT(cp == to_send, "Failed to copy script fragment");
-				
+				//device_printf(dev, "%s", ctrl_trc_ev->dtbd_chunk);
 
 				mtx_lock(&sc->vtdtr_ctrlq->mtx);
 				vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);

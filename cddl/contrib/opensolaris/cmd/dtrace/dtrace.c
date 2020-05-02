@@ -1283,7 +1283,7 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 		return (DTRACE_CONSUME_NEXT);
 	}
 
-	printf("I am consuming this.");
+	// printf("I am consuming this.");
 	return (DTRACE_CONSUME_THIS);
 }
 
@@ -1291,8 +1291,8 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 static int
 chew(const dtrace_probedata_t *data, void *arg)
 {	
-	gettimeofday(&ts, NULL);
-	printf("Record time: %ld s %ld us \n", ts.tv_sec, ts.tv_usec);
+	// gettimeofday(&ts, NULL);
+	// printf("Record time: %ld s %ld us \n", ts.tv_sec, ts.tv_usec);
 
 
 	dtrace_probedesc_t *pd = data->dtpda_pdesc;
@@ -1704,8 +1704,8 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 	sz = fread(&maxformat, sizeof(int), 1, fp);
 	assert(sz > 0);
 
-	gettimeofday(&ts1, NULL);
-	printf("Start getting metadata: %ld %ld s \n", ts1.tv_sec, ts1.tv_usec);
+	// gettimeofday(&ts1, NULL);
+	// printf("Start getting metadata: %ld %ld s \n", ts1.tv_sec, ts1.tv_usec);
 
 	dtp->dt_maxformat = dtp->dt_maxstrdata = maxformat;
 
@@ -1735,7 +1735,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 
 	sz = fread(&maxnpid, sizeof(int), 1, fp);
 	assert(sz > 0);
-	printf("NPROBES: %d. Aka maximum number of probes. \n", maxnpid);
+	// printf("NPROBES: %d. Aka maximum number of probes. \n", maxnpid);
 
 	dtp->dt_maxprobe = maxnpid;
 	dtp->dt_pdesc = calloc(1, maxnpid * sizeof(dtrace_probedesc_t *));
@@ -1748,7 +1748,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 
 	sz = fread(&npdesc, sizeof(int), 1, fp);
 	assert(sz > 0);
-	printf("NPDESC: %d. Aka how many enabled probes there are. \n", npdesc);
+	printf("dtrace: script matched %d probes \n", npdesc);
 
 	if (npdesc > 0)
 	{
@@ -1806,8 +1806,8 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 			}
 		}
 	}
-	gettimeofday(&ts2, NULL);
-	printf("Finished getting metadata: %ld s %ld us\n", ts2.tv_sec, ts2.tv_usec);
+	// gettimeofday(&ts2, NULL);
+	// printf("Finished getting metadata: %ld s %ld us\n", ts2.tv_sec, ts2.tv_usec);
 	fclose(fp);
 	close(fd);
 }
@@ -1951,9 +1951,9 @@ static int dtrace_guest_start(char *script_file)
 	write_script(script_file);
 	struct timeval timing;
 	gettimeofday(&timing, NULL);
-	printf("Sent script: %ld s %ld us ", timing.tv_sec, timing.tv_usec);
+	// printf("Sent script: %ld s %ld us ", timing.tv_sec, timing.tv_usec);
 	STAILQ_INIT(&gtq->head);
-	printf("Guest queue successfully initialised. \n");
+	// printf("Guest queue successfully initialised. \n");
 	if ((g_dtp = dtrace_open(DTRACE_VERSION, 0, &err)) == NULL)
 	{
 		fatal("Failed to initialize dtrace: %s\n", dtrace_errmsg(NULL, err));
