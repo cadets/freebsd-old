@@ -1295,16 +1295,15 @@ chew(const dtrace_probedata_t *data, void *arg)
 	dtrace_probedesc_t *pd = data->dtpda_pdesc;
 	processorid_t cpu = data->dtpda_cpu;
 	static int heading;
-	if (idx <= 1000)
+	if (idx <= 500)
 	{
 		gettimeofday(&ts, NULL);
 		printf("Record time: %ld s %ld us \n", ts.tv_sec, ts.tv_usec);
-		printf("Record time: %ld \n", ts);
-		fprintf(logging_fp, "%ld\n", ts);
+		fprintf(logging_fp, "%ld s %ld us\n", ts.tv_sec, ts.tv_usec);
 		fflush(logging_fp);
 		idx++;
 	}
-	if (idx == 1000)
+	if (idx == 500)
 	{
 		printf("FINISHED");
 		fflush(logging_fp);
