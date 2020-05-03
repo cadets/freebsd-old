@@ -952,7 +952,6 @@ compile_file(dtrace_cmd_t *dcp)
 	char *arg0;
 	FILE *fp;
 
-
 	if ((fp = fopen(dcp->dc_arg, "r")) == NULL)
 		fatal("failed to open %s", dcp->dc_arg);
 
@@ -1290,15 +1289,28 @@ chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
 /*ARGSUSED*/
 static int
 chew(const dtrace_probedata_t *data, void *arg)
-{	
+{
 	gettimeofday(&ts, NULL);
 	printf("Record time: %ld s %ld us \n", ts.tv_sec, ts.tv_usec);
-
 
 	dtrace_probedesc_t *pd = data->dtpda_pdesc;
 	processorid_t cpu = data->dtpda_cpu;
 	static int heading;
-
+	if (idx <= 1000)
+	{
+		ts = time(NULL);
+		printf("Record time: %ld \n", ts);
+		fprintf(logging_fp, "%ld\n", ts);
+		fflush(logging_fp);
+		idx++;
+	}
+	if (idx == 1000)
+	{
+		printf("FINISHED");
+		fflush(logging_fp);
+		fclose(logging_fp);
+		exit(0);
+	}
 	if (g_impatient)
 	{
 		g_newline = 0;
@@ -1573,7 +1585,7 @@ static int dtrace_gtq_empty(struct dtrace_guestq *gtq)
 
 static void dtrace_gtq_enqueue(struct dtrace_guestq *gtq, struct dtrace_guest_entry *trc_entry)
 {
-	STAILQ_INSERT_TAIL(&gtq->head, trc_entry, entries) ;
+	STAILQ_INSERT_TAIL(&gtq->head, trc_entry, entries);
 }
 
 struct dtrace_guest_entry *dtrace_gtq_dequeue(struct dtrace_guestq *gtq)
@@ -1691,7 +1703,6 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 		exit(1);
 	}
 
-
 	if ((fp = fdopen(fd, "r")) == NULL)
 	{
 		printf("Failed opening meta stream: %s. \n", strerror(errno));
@@ -1719,7 +1730,7 @@ static void *read_trace_metadata(dtrace_hdl_t *dtp)
 
 		for (int i = 0; i < maxformat; i++)
 		{
-			sz = fread(&fmt_len, sizeof(size_t), 1 , fp);
+			sz = fread(&fmt_len, sizeof(size_t), 1, fp);
 			assert(sz > 0);
 			printf("FORMAT STRING length: %s. \n", fmt_len);
 			fmt = calloc(1, sizeof(fmt_len + 1));
@@ -1854,27 +1865,27 @@ static void *read_trace_data(void *xgtq)
 		sz = fread(&buf->dtbd_size, sizeof(uint64_t), 1, fp);
 		// assert(sz > 0);
 		// printf("Size: %d\n", buf->dtbd_size);
-		
+
 		sz = fread(&buf->dtbd_cpu, sizeof(uint32_t), 1, fp);
 		// assert(sz > 0);
 		// printf("Cpu: %d\n", buf->dtbd_errors);
-		
+
 		sz = fread(&buf->dtbd_errors, sizeof(uint32_t), 1, fp);
 		// assert(sz > 0);
 		// printf("Errors: %d\n", buf->dtbd_errors);
-		
+
 		sz = fread(&buf->dtbd_drops, sizeof(uint64_t), 1, fp);
 		// assert(sz > 0);
 		// printf("Drops: %d\n", buf->dtbd_drops);
-		
+
 		sz = fread(&buf->dtbd_oldest, sizeof(uint64_t), 1, fp);
 		// assert(sz > 0);
 		// printf("Oldest: %d\n", buf->dtbd_oldest);
-		
+
 		sz = fread(&buf->dtbd_timestamp, sizeof(uint64_t), 1, fp);
 		// assert(sz > 0);
 		// printf("Timestamp: %d\n", buf->dtbd_timestamp);
-		
+
 		buf->dtbd_data = calloc(1, buf->dtbd_size + 1);
 		// assert(buf->dtbd_data != NULL);
 
@@ -1975,13 +1986,13 @@ int main(int argc, char *argv[])
 	char *machine_filter;
 	dtrace_consumer_t con;
 
-	// printf("Opening log file. \n");
-	// if((logging_fp = fopen("/tmp/log.txt", "a+")) == NULL)
-	// {
-	// 	printf("%s \n", strerror(errno));
-	// 	exit(1);
-	// }
-	// assert(logging_fp != NULL);
+	printf("Opening log file. \n");
+	if ((logging_fp = fopen("/tmp/log.txt", "a+")) == NULL)
+	{
+		printf("%s \n", strerror(errno));
+		exit(1);
+	}
+	assert(logging_fp != NULL);
 
 	con.dc_consume_probe = chew;
 	con.dc_consume_rec = chewrec;
