@@ -675,7 +675,6 @@ exec_prog(const dtrace_cmd_t *dcp)
 	// Don't take any action based on unwanted mod/ref behaviour:
 	// checkmodref emits warnings and that's the end of it.
 	(void) dtrace_analyze_program_modref(dcp->dc_prog, checkmodref, stderr);
-	(void) dtrace_dump_actions(dcp->dc_prog);
 
 	if (g_graphfile) {
 		FILE *graph_file = fopen(g_graphfile, "w");
@@ -691,15 +690,21 @@ exec_prog(const dtrace_cmd_t *dcp)
 
 	if (!g_exec) {
 		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
+		(void) dtrace_dump_actions(dcp->dc_prog);
 		if (g_elf)
 			dt_elf_create(dcp->dc_prog, ELFDATA2LSB);
-	} else if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
-		dfatal("failed to enable '%s'", dcp->dc_name);
-	} else {
-		notice("%s '%s' matched %u probe%s\n",
-		    dcp->dc_desc, dcp->dc_name,
-		    dpi.dpi_matches, dpi.dpi_matches == 1 ? "" : "s");
-	}
+	} else if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) == 0) {
+		(void) dtrace_dump_actions(dcp->dc_prog);
+		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
+			dfatal("failed to enable '%s'", dcp->dc_name);
+		} else {
+			notice("%s '%s' matched %u probe%s\n",
+			    dcp->dc_desc, dcp->dc_name,
+			    dpi.dpi_matches, dpi.dpi_matches == 1 ? "" : "s");
+		}
+	} else
+		dfatal("failed to apply relocations");
+
 
 	if (g_verbose) {
 		oprintf("\nStability attributes for %s %s:\n",

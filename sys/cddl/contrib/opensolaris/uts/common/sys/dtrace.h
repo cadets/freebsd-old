@@ -1039,6 +1039,7 @@ typedef struct dtrace_difo {
 	uint_t dtdo_xlmlen;		/* length of translator table */
 	char *dtdo_symtab;		/* symbol table (optional) */
 	uint64_t dtdo_symlen;		/* length of symbol table */
+	char **dtdo_types;		/* array of types (dtdo_len size) */
 #endif
 } dtrace_difo_t;
 

@@ -139,8 +139,8 @@ dt_cg_resolve_addr_type(dt_node_t *dnp)
  * reference to a forward declaration tag, search the entire type space for
  * the actual definition and then call ctf_member_info on the result.
  */
-static ctf_file_t *
-dt_cg_membinfo(ctf_file_t *fp, ctf_id_t type, const char *s, ctf_membinfo_t *mp)
+ctf_file_t *
+dt_lib_membinfo(ctf_file_t *fp, ctf_id_t type, const char *s, ctf_membinfo_t *mp)
 {
 	while (ctf_type_kind(fp, type) == CTF_K_FORWARD) {
 		char n[DT_TYPE_NAMELEN];
@@ -438,7 +438,7 @@ dt_cg_field_set(dt_node_t *src, dt_irlist_t *dlp,
 		type = ctf_type_resolve(fp, type);
 	}
 
-	if ((fp = dt_cg_membinfo(ofp = fp, type,
+	if ((fp = dt_lib_membinfo(ofp = fp, type,
 	    dst->dn_right->dn_string, &m)) == NULL) {
 		yypcb->pcb_hdl->dt_ctferr = ctf_errno(ofp);
 		longjmp(yypcb->pcb_jmpbuf, EDT_CTF);
@@ -2069,7 +2069,7 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 			type = ctf_type_resolve(ctfp, type);
 		}
 
-		if ((ctfp = dt_cg_membinfo(octfp = ctfp, type,
+		if ((ctfp = dt_lib_membinfo(octfp = ctfp, type,
 		    dnp->dn_right->dn_string, &m)) == NULL) {
 			yypcb->pcb_hdl->dt_ctferr = ctf_errno(octfp);
 			longjmp(yypcb->pcb_jmpbuf, EDT_CTF);

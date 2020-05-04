@@ -38,55 +38,77 @@
 
 /*ARGSUSED*/
 static void
-dt_dis_log(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_log(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
-	(void) fprintf(fp, "%-4s %%r%u, %%r%u, %%r%u", name,
-	    DIF_INSTR_R1(in), DIF_INSTR_R2(in), DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s %%r%u, %%r%u, %%r%u => %%r%u : %s", name,
+		    DIF_INSTR_R1(in), DIF_INSTR_R2(in), DIF_INSTR_RD(in),
+		    DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s %%r%u, %%r%u, %%r%u", name,
+		    DIF_INSTR_R1(in), DIF_INSTR_R2(in), DIF_INSTR_RD(in));
 }
 
 /*ARGSUSED*/
 static void
 dt_dis_branch(const dtrace_difo_t *dp, const char *name,
-	dif_instr_t in, FILE *fp)
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	(void) fprintf(fp, "%-4s %u", name, DIF_INSTR_LABEL(in));
 }
 
 /*ARGSUSED*/
 static void
-dt_dis_load(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_load(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
-	(void) fprintf(fp, "%-4s [%%r%u], %%r%u", name,
-	    DIF_INSTR_R1(in), DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s [%%r%u], %%r%u => %%r%u : %s", name,
+		    DIF_INSTR_R1(in), DIF_INSTR_RD(in), DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s [%%r%u], %%r%u", name,
+		    DIF_INSTR_R1(in), DIF_INSTR_RD(in));
 }
 
 /*ARGSUSED*/
 static void
 dt_dis_store(const dtrace_difo_t *dp, const char *name,
-	dif_instr_t in, FILE *fp)
+    dif_instr_t in, const char *type, FILE *fp)
 {
-	(void) fprintf(fp, "%-4s %%r%u, [%%r%u]", name,
-	    DIF_INSTR_R1(in), DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s %%r%u, [%%r%u] => %%r%u : %s", name,
+		    DIF_INSTR_R1(in), DIF_INSTR_RD(in), DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s %%r%u, [%%r%u]", name,
+		    DIF_INSTR_R1(in), DIF_INSTR_RD(in));
 }
 
 /*ARGSUSED*/
 static void
-dt_dis_str(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_str(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	(void) fprintf(fp, "%s", name);
 }
 
 /*ARGSUSED*/
 static void
-dt_dis_r1rd(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_r1rd(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
-	(void) fprintf(fp, "%-4s %%r%u, %%r%u", name,
-	    DIF_INSTR_R1(in), DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s %%r%u, %%r%u => %%r%u : %s", name,
+		    DIF_INSTR_R1(in), DIF_INSTR_RD(in), DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s %%r%u, %%r%u", name,
+		    DIF_INSTR_R1(in), DIF_INSTR_RD(in));
 }
 
 /*ARGSUSED*/
 static void
-dt_dis_cmp(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_cmp(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	(void) fprintf(fp, "%-4s %%r%u, %%r%u", name,
 	    DIF_INSTR_R1(in), DIF_INSTR_R2(in));
@@ -94,7 +116,8 @@ dt_dis_cmp(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
 
 /*ARGSUSED*/
 static void
-dt_dis_tst(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_tst(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	(void) fprintf(fp, "%-4s %%r%u", name, DIF_INSTR_R1(in));
 }
@@ -128,51 +151,72 @@ dt_dis_scope(const char *name)
 }
 
 static void
-dt_dis_lda(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_lda(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	uint_t var = DIF_INSTR_R1(in);
 	const char *vname;
 
-	(void) fprintf(fp, "%-4s DT_VAR(%u), %%r%u, %%r%u", name,
-	    var, DIF_INSTR_R2(in), DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s DT_VAR(%u), %%r%u, %%r%u => %%r%u : %s",
+		    name, var, DIF_INSTR_R2(in), DIF_INSTR_RD(in),
+		    DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s DT_VAR(%u), %%r%u, %%r%u",
+		    name, var, DIF_INSTR_R2(in), DIF_INSTR_RD(in));
 
 	if ((vname = dt_dis_varname(dp, var, dt_dis_scope(name))) != NULL)
 		(void) fprintf(fp, "\t\t\t! DT_VAR(%u) = \"%s\"", var, vname);
 }
 
 static void
-dt_dis_ldv(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_ldv(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	uint_t var = DIF_INSTR_VAR(in);
 	const char *vname;
 
-	(void) fprintf(fp, "%-4s DT_VAR(%u), %%r%u",
-	    name, var, DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s DT_VAR(%u), %%r%u => %%r%u : %s",
+		    name, var, DIF_INSTR_RD(in), DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s DT_VAR(%u), %%r%u",
+		    name, var, DIF_INSTR_RD(in));
 
 	if ((vname = dt_dis_varname(dp, var, dt_dis_scope(name))) != NULL)
 		(void) fprintf(fp, "\t\t\t! DT_VAR(%u) = \"%s\"", var, vname);
 }
 
 static void
-dt_dis_stv(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_stv(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	uint_t var = DIF_INSTR_VAR(in);
 	const char *vname;
 
-	(void) fprintf(fp, "%-4s %%r%u, DT_VAR(%u)",
-	    name, DIF_INSTR_RS(in), var);
+	if (type)
+		(void) fprintf(fp, "%-4s %%r%u, DT_VAR(%u) => %u : %s",
+		    name, DIF_INSTR_RS(in), var, var, type);
+	else
+		(void) fprintf(fp, "%-4s %%r%u, DT_VAR(%u)",
+		    name, DIF_INSTR_RS(in), var);
 
 	if ((vname = dt_dis_varname(dp, var, dt_dis_scope(name))) != NULL)
 		(void) fprintf(fp, "\t\t\t! DT_VAR(%u) = \"%s\"", var, vname);
 }
 
 static void
-dt_dis_setx(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_setx(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	uint_t intptr = DIF_INSTR_INTEGER(in);
 
-	(void) fprintf(fp, "%-4s DT_INTEGER[%u], %%r%u", name,
-	    intptr, DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s DT_INTEGER[%u], %%r%u => %%r%u : %s", name,
+		    intptr, DIF_INSTR_RD(in), DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s DT_INTEGER[%u], %%r%u", name,
+		    intptr, DIF_INSTR_RD(in));
 
 	if (intptr < dp->dtdo_intlen) {
 		(void) fprintf(fp, "\t\t\t! 0x%llx",
@@ -181,12 +225,17 @@ dt_dis_setx(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
 }
 
 static void
-dt_dis_sym(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_sym(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	uint_t symptr = DIF_INSTR_SYMBOL(in);
 
-	(void) fprintf(fp, "%-4s DT_SYMBOL[%u], %%r%u", name,
-	    symptr, DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s DT_SYMBOL[%u], %%r%u => %%r%u : %s", name,
+		    symptr, DIF_INSTR_RD(in), DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s DT_SYMBOL[%u], %%r%u", name,
+		    symptr, DIF_INSTR_RD(in));
 
 	if (symptr < dp->dtdo_symlen) {
 		(void) fprintf(fp, "\t\t! \"%s\"",
@@ -195,12 +244,17 @@ dt_dis_sym(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
 }
 
 static void
-dt_dis_sets(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_sets(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	uint_t strptr = DIF_INSTR_STRING(in);
 
-	(void) fprintf(fp, "%-4s DT_STRING[%u], %%r%u", name,
-	    strptr, DIF_INSTR_RD(in));
+	if (type)
+		(void) fprintf(fp, "%-4s DT_STRING[%u], %%r%u => %%r%u : %s", name,
+		    strptr, DIF_INSTR_RD(in), DIF_INSTR_RD(in), type);
+	else
+		(void) fprintf(fp, "%-4s DT_STRING[%u], %%r%u", name,
+		    strptr, DIF_INSTR_RD(in));
 
 	if (strptr < dp->dtdo_strlen)
 		(void) fprintf(fp, "\t\t\t! \"%s\"", dp->dtdo_strtab + strptr);
@@ -208,25 +262,32 @@ dt_dis_sets(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
 
 /*ARGSUSED*/
 static void
-dt_dis_ret(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_ret(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	(void) fprintf(fp, "%-4s %%r%u", name, DIF_INSTR_RD(in));
 }
 
 /*ARGSUSED*/
 static void
-dt_dis_call(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+dt_dis_call(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	uint_t subr = DIF_INSTR_SUBR(in);
 
-	(void) fprintf(fp, "%-4s DIF_SUBR(%u), %%r%u\t\t! %s",
-	    name, subr, DIF_INSTR_RD(in), dtrace_subrstr(NULL, subr));
+	if (type)
+		(void) fprintf(fp, "%-4s DIF_SUBR(%u), %%r%u => %%r%u : %s\t\t! %s",
+		    name, subr, DIF_INSTR_RD(in), DIF_INSTR_RD(in),
+		    type, dtrace_subrstr(NULL, subr));
+	else
+		(void) fprintf(fp, "%-4s DIF_SUBR(%u), %%r%u\t\t! %s",
+		    name, subr, DIF_INSTR_RD(in), dtrace_subrstr(NULL, subr));
 }
 
 /*ARGSUSED*/
 static void
-dt_dis_pushts(const dtrace_difo_t *dp,
-    const char *name, dif_instr_t in, FILE *fp)
+dt_dis_pushts(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *_type, FILE *fp)
 {
 	static const char *const tnames[] = { "D type", "string" };
 	uint_t type = DIF_INSTR_TYPE(in);
@@ -249,8 +310,8 @@ dt_dis_pushts(const dtrace_difo_t *dp,
 }
 
 static void
-dt_dis_xlate(const dtrace_difo_t *dp,
-    const char *name, dif_instr_t in, FILE *fp)
+dt_dis_xlate(const dtrace_difo_t *dp, const char *name,
+    dif_instr_t in, const char *type, FILE *fp)
 {
 	uint_t xlr = DIF_INSTR_XLREF(in);
 
@@ -367,7 +428,7 @@ dt_dis(const dtrace_difo_t *dp, FILE *fp)
 	static const struct opent {
 		const char *op_name;
 		void (*op_func)(const dtrace_difo_t *, const char *,
-		    dif_instr_t, FILE *);
+		    dif_instr_t, const char *, FILE *);
 	} optab[] = {
 		{ "(illegal opcode)", dt_dis_str },
 		{ "or", dt_dis_log },			/* DIF_OP_OR */
@@ -476,13 +537,15 @@ dt_dis(const dtrace_difo_t *dp, FILE *fp)
 	for (i = 0; i < dp->dtdo_len; i++) {
 		dif_instr_t instr = dp->dtdo_buf[i];
 		dif_instr_t opcode = DIF_INSTR_OP(instr);
+		const char *type = dp->dtdo_types == NULL ?
+		    NULL : dp->dtdo_types[i];
 
 		if (opcode >= sizeof (optab) / sizeof (optab[0]))
 			opcode = 0; /* force invalid opcode message */
 
 		op = &optab[opcode];
 		(void) fprintf(fp, "%02lu: %08x    ", i, instr);
-		op->op_func(dp, op->op_name, instr, fp);
+		op->op_func(dp, op->op_name, instr, type, fp);
 		(void) fprintf(fp, "\n");
 	}
 

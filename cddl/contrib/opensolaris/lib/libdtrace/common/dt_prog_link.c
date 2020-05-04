@@ -44,6 +44,7 @@
 
 static ctf_file_t *ctf_file;
 static dt_list_t relo_list;
+static dt_list_t bb_list;
 static dt_rl_entry_t *relo_last = NULL;
 
 typedef struct dt_rkind {
@@ -71,8 +72,8 @@ dt_get_class(char *buf)
 
 	len = strlen(buf);
 
-	if (len > sizeof("struct") &&
-	    strncmp(buf, "struct", sizeof("struct")) == 0 &&
+	if (len > strlen("struct") &&
+	    strncmp(buf, "struct", strlen("struct")) == 0 &&
 	    buf[len - 1] == '*')
 		return (DTC_STRUCT);
 
@@ -210,6 +211,13 @@ dt_type_compare(dt_relo_t *dr1, dt_relo_t *dr2)
 
 	if (class1 == DTC_INT && (class2 == DTC_STRUCT || class2 == DTC_STRING))
 		return (2);
+
+	/*
+	 * If the types are of the same class, we return the the first type
+	 * by convention.
+	 */
+	if (class1 == DTC_INT && class2 == DTC_INT)
+		return (1);
 
 	return (-1);
 }
@@ -442,6 +450,7 @@ dt_update_relocations_reg(dtrace_difo_t *difo, uint8_t rd, dt_relo_t *currelo)
 	dt_relo_t *relo;
 	dt_rl_entry_t *rl;
 	int id1, id2;
+	int has_branch;
 	uint_t idx;
 
 	idx = 0;
@@ -449,6 +458,7 @@ dt_update_relocations_reg(dtrace_difo_t *difo, uint8_t rd, dt_relo_t *currelo)
 	id2 = 0;
 	rl = NULL;
 	relo = NULL;
+	has_branch = 0;
 
 	assert(currelo != NULL);
 	idx = currelo->dr_uidx;
@@ -458,12 +468,27 @@ dt_update_relocations_reg(dtrace_difo_t *difo, uint8_t rd, dt_relo_t *currelo)
 	 * a register we are currently defining, we fill in the relocation
 	 * with the definition index. Any changes to the instruction that
 	 * are necessary as a result will be applied later on.
+	 *
+	 * TODO: When we have branching behaviour and we are scanning the
+	 *       instructions from top-down, we need to account for the
+	 *       fact that an instruction has more definitions (due to
+	 *       many possible branches existing). We need to do a couple
+	 *       of things:
+	 *        (1) dr_didx should be an array
+	 *        (2) when we encounter a branch, and there is no redefinition
+	 *            of the current register we are looking at along the way
+	 *            we jump to the branching target and look for any use site
+	 *            that does not have a preceding definition of the same
+	 *            register
 	 */
 	for (rl = dt_list_next(&relo_list);
 	    rl != NULL; rl = dt_list_next(rl)) {
 		relo = rl->drl_rel;
 
 		if (relo->dr_buf != difo->dtdo_buf)
+			continue;
+
+		if (relo == currelo)
 			continue;
 
 		/*
@@ -477,7 +502,7 @@ dt_update_relocations_reg(dtrace_difo_t *difo, uint8_t rd, dt_relo_t *currelo)
 		 * relocation match rd.
 		 */
 		if (dt_usite_contains_reg(relo, rd, &id1, &id2)) {
-			assert(id1 == 0 || id2 == 1);
+			assert(id1 == 1 || id1 == 0 || id2 == 1 || id2 == 0);
 
 			/*
 			 * If the first register in the instruction is in fact
@@ -533,13 +558,15 @@ dt_usite_uses_stack(dt_relo_t *relo)
 }
 
 static void
-dt_update_relocations_stack(dtrace_difo_t *difo, dt_relo_t *currelo)
+dt_update_relocations_stack(dtrace_difo_t *difo,
+    dt_relo_t *currelo)
 {
 	dt_relo_t *relo;
 	dt_rl_entry_t *rl;
 	int id1, id2, n_pushes;
 	uint_t idx;
 	uint8_t op;
+	size_t toidx;
 	dt_stacklist_t *sl;
 
 	idx = 0;
@@ -548,6 +575,7 @@ dt_update_relocations_stack(dtrace_difo_t *difo, dt_relo_t *currelo)
 	sl = NULL;
 	n_pushes = 1;
 	op = 0;
+	toidx = 0;
 
 	assert(currelo != NULL);
 	idx = currelo->dr_uidx;
@@ -579,7 +607,6 @@ dt_update_relocations_stack(dtrace_difo_t *difo, dt_relo_t *currelo)
 		 * to go through the rest of the relocations because this push
 		 * becomes meaningless.
 		 */
-
 		if (op == DIF_OP_FLUSHTS)
 			break;
 
@@ -617,13 +644,16 @@ dt_update_relocations_stack(dtrace_difo_t *difo, dt_relo_t *currelo)
 			 *       argn the last one.
 			 */
 			sl->dsl_rel = currelo;
+			sl->dsl_kind = DT_SL_REL;
 			dt_list_append(&relo->dr_stacklist, sl);
 		}
 	}
+
 }
 
 static void
-dt_update_relocations(dtrace_difo_t *difo, dt_rkind_t *rkind, dt_relo_t *currelo)
+dt_update_relocations(dtrace_difo_t *difo,
+    dt_rkind_t *rkind, dt_relo_t *currelo)
 {
 	uint8_t rd;
 	uint16_t var;
@@ -907,6 +937,8 @@ dt_infer_type(dt_relo_t *r)
 	uint16_t sym, subr;
 	dt_stacklist_t *sl;
 	dt_relo_t *arg0, *arg1, *arg2, *arg3, *arg4, *arg5, *arg6, *arg7, *arg8;
+	ctf_file_t *octfp = NULL;
+	ctf_id_t type = 0;
 
 	dr1 = r->dr_drel[0];
 	dr2 = r->dr_drel[1];
@@ -932,23 +964,27 @@ dt_infer_type(dt_relo_t *r)
 	/*
 	 * If we already have the type, we just return it.
 	 */
-	if (r->dr_type != 0)
+	if (r->dr_type != -1)
 		return (r->dr_type);
+
+	instr = r->dr_buf[r->dr_uidx];
+	opcode = DIF_INSTR_OP(instr);
 
 	if (dr1 != NULL) {
 		type1 = dt_infer_type(dr1);
-		if (type1 != DIF_TYPE_CTF && type1 != DIF_TYPE_STRING)
+		if (type1 != DIF_TYPE_CTF && type1 != DIF_TYPE_STRING) {
+			fprintf(stderr, "type1 could not be inferred\n");
 			return (-1);
+		}
 	}
 
 	if (dr2 != NULL) {
 		type2 = dt_infer_type(dr2);
-		if (type2 != DIF_TYPE_CTF && type2 != DIF_TYPE_STRING)
+		if (type2 != DIF_TYPE_CTF && type2 != DIF_TYPE_STRING) {
+			fprintf(stderr, "type2 could not be inferred\n");
 			return (-1);
+		}
 	}
-
-	instr = r->dr_buf[r->dr_uidx];
-	opcode = DIF_INSTR_OP(instr);
 
 	/*
 	 * It seems like we might need a poset of types, knowing what to cast to
@@ -1007,14 +1043,18 @@ dt_infer_type(dt_relo_t *r)
 		/*
 		 * We only need one type here (the first one).
 		 */
-		if (dr1 == NULL)
+		if (dr1 == NULL) {
+			fprintf(stderr, "uload/uuload dr1 is NULL\n");
 			return (-1);
+		}
 
 		/*
 		 * If there is no symbol here, we can't do anything.
 		 */
-		if (dr1->dr_sym == 0)
+		if (dr1->dr_sym == 0) {
+			fprintf(stderr, "uload/uuload dr1 symbol is empty\n");
 			return (-1);
+		}
 
 		/*
 		 * sym in range(symtab)
@@ -1045,14 +1085,22 @@ dt_infer_type(dt_relo_t *r)
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
 
+		if (dt_get_class(buf) != DTC_STRUCT)
+			return (-1);
+
 		/*
 		 * Figure out t2 = type_at(t1, symname)
 		 */
 		mip = malloc(sizeof(ctf_membinfo_t));
 		memset(mip, 0, sizeof(ctf_membinfo_t));
 
-		if (ctf_member_info(
-		    ctf_file, dr1->dr_ctfid, symname, mip) != 0)
+		/*
+		 * Get the non-pointer type. This should NEVER fail.
+		 */
+		type = ctf_type_reference(ctf_file, dr1->dr_ctfid);
+
+		if (dt_lib_membinfo(
+		    octfp = ctf_file, type, symname, mip) == 0)
 			errx(EXIT_FAILURE, "failed to get member info"
 			    " for %s(%s): %s",
 			    buf, symname,
@@ -1072,8 +1120,11 @@ dt_infer_type(dt_relo_t *r)
 		 */
 
 		sym = DIF_INSTR_SYMBOL(instr);
-		if (sym >= difo->dtdo_symlen)
+		if (sym >= difo->dtdo_symlen) {
+			fprintf(stderr, "usetx: sym (%u) >= symlen (%zu)\n",
+			    sym, difo->dtdo_symlen);
 			return (-1);
+		}
 
 		r->dr_ctfid = ctf_lookup_by_name(ctf_file, "uint64_t");
 		if (r->dr_ctfid == CTF_ERR)
@@ -1091,8 +1142,11 @@ dt_infer_type(dt_relo_t *r)
 		 */
 
 		sym = DIF_INSTR_SYMBOL(instr);
-		if (sym >= difo->dtdo_symlen)
+		if (sym >= difo->dtdo_symlen) {
+			fprintf(stderr, "typecast: sym (%u) >= symlen (%zu)\n",
+			    sym, difo->dtdo_symlen);
 			return (-1);
+		}
 
 		l = strlcpy(symname, difo->dtdo_symtab + sym, sizeof(symname));
 		if (l >= sizeof(symname))
@@ -1161,16 +1215,21 @@ dt_infer_type(dt_relo_t *r)
 		/*
 		 * Nonsense. We need both types.
 		 */
-		if (dr1 == NULL)
+		if (dr1 == NULL) {
+			fprintf(stderr, "r1r2: dr1 is NULL\n");
 			return (-1);
-		if (dr2 == NULL)
+		}
+
+		if (dr2 == NULL) {
+			fprintf(stderr, "r1r2: dr2 is NULL\n");
 			return (-1);
+		}
 
 		/*
 		 * If we have no type with a symbol associated with it,
 		 * we apply the first typing rule.
 		 */
-		if (dr1->dr_sym != 0 || dr2->dr_sym != 0) {
+		if (dr1->dr_sym == 0 && dr2->dr_sym == 0) {
 			/*
 			 * Check which type is "bigger".
 			 */
@@ -1181,8 +1240,11 @@ dt_infer_type(dt_relo_t *r)
 				tc_r = dr1;
 			else if (res == 2)
 				tc_r = dr2;
-			else
+			else {
+				fprintf(stderr,
+				    "r1r2 nosym: types can not be compared\n");
 				return (-1);
+			}
 
 			/*
 			 * We don't have to sanity check these because we do it
@@ -1214,8 +1276,11 @@ dt_infer_type(dt_relo_t *r)
 			res = dt_type_compare(symrelo, other);
 			assert(res == 1 || res == 2 || res == -1);
 
-			if (res == -1)
+			if (res == -1) {
+				fprintf(stderr,
+				    "r1r2 sym: types can not be compared\n");
 				return (-1);
+			}
 
 			/*
 			 * Get the type name of the other relocation
@@ -1269,8 +1334,10 @@ dt_infer_type(dt_relo_t *r)
 		 * N.B.: We don't need to check that type1 is sane, because
 		 *       if dr1 is not NULL, then we'll have checked it already.
 		 */
-		if (dr1 == NULL)
+		if (dr1 == NULL) {
+			fprintf(stderr, "mov/not: dr1 is NULL\n");
 			return (-1);
+		}
 
 		/*
 		 * We don't have to sanity check here because we do it in every
@@ -1429,6 +1496,7 @@ dt_infer_type(dt_relo_t *r)
 				return (r->dr_type);
 			}
 
+			fprintf(stderr, "ld*: dr1 is NULL\n");
 			return (-1);
 		}
 
@@ -1457,6 +1525,7 @@ dt_infer_type(dt_relo_t *r)
 			 * If we are doing a STGS, and the variable is a builtin
 			 * variable, we fail to type-check the instruction.
 			 */
+			fprintf(stderr, "st*: dr1 is NULL\n");
 			if (opcode == DIF_OP_STGS)
 				for (i = 0; i < DIF_VAR_MAX; i++)
 					if (var == i)
@@ -1499,8 +1568,11 @@ dt_infer_type(dt_relo_t *r)
 		 */
 		for (sl = dt_list_next(&r->dr_stacklist); sl != NULL;
 		    sl = dt_list_next(sl))
-			if ((t = dt_infer_type(sl->dsl_rel)) == -1)
+			if ((t = dt_infer_type(sl->dsl_rel)) == -1) {
+				fprintf(stderr,
+				    "stack type could not be inferred\n");
 				return (-1);
+			}
 
 		/*
 		 * We don't care if there are more things on the stack than
@@ -3331,6 +3403,8 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	uint_t opcode = 0;
 	uint_t rd = 0;
 	int type = -1;
+	char buf[4096] = {0};
+
 
 	/*
 	 * A DIFO without instructions makes no sense.
@@ -3358,6 +3432,9 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	if (difo->dtdo_symtab == NULL)
 		return (0);
 
+	difo->dtdo_types = malloc(sizeof(char *) * difo->dtdo_len);
+	i = difo->dtdo_len - 1;
+
 	for (rl = dt_list_next(&relo_list);
 	    rl != NULL; rl = dt_list_next(rl)) {
 		relo = rl->drl_rel;
@@ -3365,29 +3442,408 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		if (relo->dr_buf == NULL)
 			continue;
 
+		if (relo->dr_buf != difo->dtdo_buf)
+			continue;
+
 		instr = relo->dr_buf[relo->dr_uidx];
 		opcode = DIF_INSTR_OP(instr);
-		/*
-		 * Perhaps get the used registers based on the instruction
-		 * (in this case I think we only care about relocations),
-		 * and then go through the definitions, putting the instructions
-		 * whose type needs to be inferred on the stack. Once we reach
-		 * and instruction whose type we can infer on the spot, we pop
-		 * instruction by instruction off the stack and fill in the type
-		 * until there are no more instructions. After we are done with
-		 * that one pass, we keep going through the rest of the instructions
-		 * and inferring the type whenever necessary.
-		 */
-		switch (opcode) {
-		case DIF_OP_ULOAD:
-		case DIF_OP_UULOAD:
-			type = dt_infer_type(relo);
-		        assert(type == DIF_TYPE_CTF || type == DIF_TYPE_STRING);
 
-		}
+		type = dt_infer_type(relo);
+		assert(type == -1 ||
+		    type == DIF_TYPE_CTF || type == DIF_TYPE_STRING);
+
+		if (type == -1)
+			errx(EXIT_FAILURE, "failed to infer a type");
+
+		if (type == DIF_TYPE_CTF) {
+			if (ctf_type_name(ctf_file,
+			    relo->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
+				errx(EXIT_FAILURE, "failed at getting type name"
+				    " %ld: %s", relo->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+			difo->dtdo_types[relo->dr_uidx] = strdup(buf);
+		} else
+			difo->dtdo_types[relo->dr_uidx] = strdup("string");
 	}
 
 	return (0);
+}
+
+static void
+dt_get_rkind(dif_instr_t instr, dt_rkind_t *rkind)
+{
+	uint8_t opcode;
+
+	opcode = 0;
+	memset(rkind, 0, sizeof(dt_rkind_t));
+
+	opcode = DIF_INSTR_OP(instr);
+
+	switch (opcode) {
+	case DIF_OP_ULOAD:
+	case DIF_OP_UULOAD:
+	case DIF_OP_USETX:
+	case DIF_OP_TYPECAST:
+	case DIF_OP_OR:
+	case DIF_OP_XOR:
+	case DIF_OP_AND:
+	case DIF_OP_SLL:
+	case DIF_OP_SRL:
+	case DIF_OP_ADD:
+	case DIF_OP_SUB:
+	case DIF_OP_MUL:
+	case DIF_OP_SDIV:
+	case DIF_OP_UDIV:
+	case DIF_OP_SREM:
+	case DIF_OP_UREM:
+	case DIF_OP_NOT:
+	case DIF_OP_MOV:
+	case DIF_OP_LDSB:
+	case DIF_OP_LDSH:
+	case DIF_OP_LDSW:
+	case DIF_OP_LDUB:
+	case DIF_OP_LDUH:
+	case DIF_OP_LDUW:
+	case DIF_OP_LDX:
+	case DIF_OP_SETX:
+	case DIF_OP_SETS:
+	case DIF_OP_LDGA:
+	case DIF_OP_LDGS:
+	case DIF_OP_LDTA:
+	case DIF_OP_LDTS:
+	case DIF_OP_SRA:
+	case DIF_OP_CALL:
+	case DIF_OP_LDGAA:
+	case DIF_OP_LDTAA:
+	case DIF_OP_LDLS:
+	case DIF_OP_ALLOCS:
+	case DIF_OP_COPYS:
+	case DIF_OP_ULDSB:
+	case DIF_OP_ULDSH:
+	case DIF_OP_ULDSW:
+	case DIF_OP_ULDUB:
+	case DIF_OP_ULDUH:
+	case DIF_OP_ULDUW:
+	case DIF_OP_ULDX:
+	case DIF_OP_RLDSB:
+	case DIF_OP_RLDSH:
+	case DIF_OP_RLDSW:
+	case DIF_OP_RLDUB:
+	case DIF_OP_RLDUH:
+	case DIF_OP_RLDUW:
+	case DIF_OP_RLDX:
+		rkind->r_kind = DT_RKIND_REG;
+		rkind->r_rd = DIF_INSTR_RD(instr);
+		break;
+
+	case DIF_OP_STGS:
+	case DIF_OP_STGAA:
+	case DIF_OP_STTAA:
+	case DIF_OP_STTS:
+	case DIF_OP_STLS:
+		rkind->r_kind = DT_RKIND_VAR;
+		rkind->r_var = DIF_INSTR_VAR(instr);
+		break;
+
+	case DIF_OP_PUSHTR:
+	case DIF_OP_PUSHTR_G:
+	case DIF_OP_PUSHTR_H:
+	case DIF_OP_PUSHTV:
+		rkind->r_kind = DT_RKIND_STACK;
+
+	default:
+		break;
+	}
+}
+
+/*
+ * Determine what instructions clobber relevant state in the DTrace
+ * abstract machine. This includes registers, the stack or a variable.
+ */
+static int
+dt_clobbers(dif_instr_t instr)
+{
+	uint8_t opcode;
+
+	opcode = DIF_INSTR_OP(instr);
+	switch(opcode) {
+	case DIF_OP_ULOAD:
+	case DIF_OP_UULOAD:
+	case DIF_OP_USETX:
+	case DIF_OP_TYPECAST:
+	case DIF_OP_OR:
+	case DIF_OP_XOR:
+	case DIF_OP_AND:
+	case DIF_OP_SLL:
+	case DIF_OP_SRL:
+	case DIF_OP_ADD:
+	case DIF_OP_SUB:
+	case DIF_OP_MUL:
+	case DIF_OP_SDIV:
+	case DIF_OP_UDIV:
+	case DIF_OP_SREM:
+	case DIF_OP_UREM:
+	case DIF_OP_NOT:
+	case DIF_OP_MOV:
+	case DIF_OP_LDSB:
+	case DIF_OP_LDSH:
+	case DIF_OP_LDSW:
+	case DIF_OP_LDUB:
+	case DIF_OP_LDUH:
+	case DIF_OP_LDUW:
+	case DIF_OP_LDX:
+	case DIF_OP_SETX:
+	case DIF_OP_SETS:
+	case DIF_OP_LDGA:
+	case DIF_OP_LDGS:
+	case DIF_OP_LDTA:
+	case DIF_OP_LDTS:
+	case DIF_OP_SRA:
+	case DIF_OP_CALL:
+	case DIF_OP_LDGAA:
+	case DIF_OP_LDTAA:
+	case DIF_OP_LDLS:
+	case DIF_OP_ALLOCS:
+	case DIF_OP_COPYS:
+	case DIF_OP_ULDSB:
+	case DIF_OP_ULDSH:
+	case DIF_OP_ULDSW:
+	case DIF_OP_ULDUB:
+	case DIF_OP_ULDUH:
+	case DIF_OP_ULDUW:
+	case DIF_OP_ULDX:
+	case DIF_OP_RLDSB:
+	case DIF_OP_RLDSH:
+	case DIF_OP_RLDSW:
+	case DIF_OP_RLDUB:
+	case DIF_OP_RLDUH:
+	case DIF_OP_RLDUW:
+	case DIF_OP_RLDX:
+	case DIF_OP_STGS:
+	case DIF_OP_STGAA:
+	case DIF_OP_STTAA:
+	case DIF_OP_STTS:
+	case DIF_OP_STLS:
+	case DIF_OP_PUSHTR:
+	case DIF_OP_PUSHTR_G:
+	case DIF_OP_PUSHTR_H:
+	case DIF_OP_PUSHTV:
+		return (1);
+	}
+
+	return (0);
+}
+
+static int
+dt_is_relo(dif_instr_t instr)
+{
+
+	uint8_t op = DIF_INSTR_OP(instr);
+	return (dt_clobbers(instr) || (op >= DIF_OP_BA && op <= DIF_OP_BLEU));
+}
+
+static dt_basic_block_t *
+dt_alloc_bb(dtrace_difo_t *difo)
+{
+	dt_basic_block_t *bb;
+
+	bb = malloc(sizeof(dt_basic_block_t));
+	if (bb == NULL)
+		return (NULL);
+
+	memset(bb, 0, sizeof(dt_basic_block_t));
+	bb->dtbb_difo = difo;
+
+	return (bb);
+}
+
+static dt_bb_entry_t *
+dt_alloc_bb_e(dtrace_difo_t *difo)
+{
+	dt_bb_entry_t *bb_e;
+
+	bb_e = malloc(sizeof(dt_bb_entry_t));
+	if (bb_e == NULL)
+		errx(EXIT_FAILURE, "failed to allocate the BB list entry");
+
+	memset(bb_e, 0, sizeof(dt_bb_entry_t));
+
+	bb_e->dtbe_bb = dt_alloc_bb(difo);
+	if (bb_e->dtbe_bb == NULL)
+		errx(EXIT_FAILURE, "failed to allocate the basic block");
+
+	return (bb_e);
+}
+
+static void
+dt_compute_bb(dtrace_difo_t *difo)
+{
+	dt_basic_block_t *bb;
+	dt_bb_entry_t *bb_e;
+	int *leaders;
+	uint16_t lbl;
+	dif_instr_t instr;
+	uint8_t opcode;
+	int i;
+
+	bb = NULL;
+	bb_e = NULL;
+	leaders = NULL;
+	i = 0;
+	lbl = 0;
+	instr = 0;
+	opcode = 0;
+
+	leaders = malloc(sizeof(int) * difo->dtdo_len);
+	memset(leaders, 0, sizeof(int) * difo->dtdo_len);
+
+	/*
+	 * First instruction is a leader.
+	 */
+	leaders[0] = 1;
+
+	/*
+	 * Compute the leaders.
+	 */
+	for (i = 0; i < difo->dtdo_len; i++) {
+		instr = difo->dtdo_buf[i];
+		opcode = DIF_INSTR_OP(instr);
+
+		if (opcode >= DIF_OP_BA && opcode <= DIF_OP_BLEU) {
+			lbl = DIF_INSTR_LABEL(instr);
+			if (lbl >= difo->dtdo_len)
+				errx(EXIT_FAILURE, "lbl (%hu) branching outside"
+				    " of code length (%zu)",
+				    lbl, difo->dtdo_len);
+
+			/*
+			 * We have a valid label. Any DIFO which does not end
+			 * with a ret instruction is not valid, so we check if
+			 * position i + 1 is a valid instruction.
+			 */
+			if (i + 1 >= difo->dtdo_len)
+				errx(EXIT_FAILURE, "malformed DIFO");
+
+			leaders[i + 1] = 1;
+			leaders[lbl] = 1;
+
+			printf("insns %d and %hu are leaders\n", i + 1, lbl);
+		}
+	}
+
+	/*
+	 * For each leader we encounter, we compute the set of all instructions
+	 * that fit into the current basic block.
+	 */
+	for (i = 0; i < difo->dtdo_len; i++) {
+		if (leaders[i] == 1) {
+			/*
+			 * We've encountered a leader, we don't actually need
+			 * to copy any instructions over, as we already have
+			 * them in a DIFO (and we will be changing said
+			 * instructions in the DIFO itself). Instead, we just
+			 * observe that we will always have had a basic block
+			 * allocated in our bb pointer and simply save the end
+			 * instruction as the instruction before the leader and
+			 * allocate a new basic block with the leader as the
+			 * starting instruction.
+			 */
+			if (bb != NULL)
+				bb->dtbb_end = i - 1;
+
+			bb_e = dt_alloc_bb_e(difo);
+			bb = bb_e->dtbe_bb;
+
+			bb->dtbb_start = i;
+
+			dt_list_append(&bb_list, bb_e);
+		}
+	}
+
+	/*
+	 * We will always have allocated a new basic block without the end
+	 * instruction, because in the case of no branches we will simply have
+	 * the first basic block, whereas with branches we will have the case
+	 * of a target near the end, with no branches in between there and the
+	 * ret instruction.
+	 */
+	bb->dtbb_end = difo->dtdo_len - 1;
+}
+
+static void
+dt_compute_cfg(dtrace_difo_t *difo)
+{
+	dt_basic_block_t *bb1, *bb2;
+	dt_bb_entry_t *bb_e1, *bb_e2, *bb_new1, *bb_new2;
+	int lbl;
+	uint8_t opcode;
+	dif_instr_t instr;
+
+	bb1 = bb2 = NULL;
+	bb_e1 = bb_e2 = bb_new1 = bb_new2 = NULL;
+	lbl = -1;
+	opcode = 0;
+	instr = 0;
+
+	for (bb_e1 = dt_list_next(&bb_list); bb_e1; bb_e1 = dt_list_next(bb_e1)) {
+		bb1 = bb_e1->dtbe_bb;
+		if (bb1 == NULL)
+			errx(EXIT_FAILURE, "bb1 should not be NULL");
+
+		if (bb1->dtbb_difo != difo)
+			continue;
+
+		instr = bb1->dtbb_buf[bb1->dtbb_end];
+		opcode = DIF_INSTR_OP(instr);
+
+		if (opcode >= DIF_OP_BA && opcode <= DIF_OP_BLEU)
+			lbl = DIF_INSTR_LABEL(instr);
+
+		for (bb_e2 = dt_list_next(&bb_list); bb_e2;
+		    bb_e2 = dt_list_next(bb_e2)) {
+			bb2 = bb_e2->dtbe_bb;
+			if (bb2 == NULL)
+				errx(EXIT_FAILURE, "bb2 should not be NULL");
+
+			if (bb1 == bb2)
+				continue;
+
+			if (bb2->dtbb_difo != difo)
+				continue;
+
+			if (lbl != -1 && bb2->dtbb_end == lbl) {
+				bb_new1 = dt_alloc_bb_e(difo);
+				memcpy(bb_new1, bb_e2, sizeof(dt_bb_entry_t));
+
+				bb_new2 = dt_alloc_bb_e(difo);
+				memcpy(bb_new2, bb_e1, sizeof(dt_bb_entry_t));
+
+				dt_list_append(&bb1->dtbb_children, bb_new1);
+				dt_list_append(&bb2->dtbb_parents, bb_new2);
+				printf("bb1 (%p) -> bb2 (%p):\n", bb1, bb2);
+				printf("\t(%zu, %zu) ===> (%zu, %zu)\n",
+				       bb1->dtbb_start, bb1->dtbb_end,
+				       bb2->dtbb_start, bb2->dtbb_end);
+			}
+
+			if (bb1->dtbb_end + 1 == bb2->dtbb_start) {
+				bb_new1 = dt_alloc_bb_e(difo);
+				memcpy(bb_new1, bb_e2, sizeof(dt_bb_entry_t));
+
+				bb_new2 = dt_alloc_bb_e(difo);
+				memcpy(bb_new2, bb_e1, sizeof(dt_bb_entry_t));
+
+				dt_list_append(&bb1->dtbb_children, bb_new1);
+				dt_list_append(&bb2->dtbb_parents, bb_new2);
+				printf("bb1 (%p) -> bb2 (%p):\n", bb1, bb2);
+				printf("\t(%zu, %zu) ===> (%zu, %zu)\n",
+				       bb1->dtbb_start, bb1->dtbb_end,
+				       bb2->dtbb_start, bb2->dtbb_end);
+			}
+		}
+	}
+
+	exit(0);
 }
 
 /*
@@ -3404,6 +3860,7 @@ dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	uint8_t opcode = 0;
 	uint8_t rd = 0;
 	uint16_t var = 0;
+	int *leaders = NULL;
 
 	memset(&rkind, 0, sizeof(dt_rkind_t));
 	/*
@@ -3432,6 +3889,19 @@ dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	if (difo->dtdo_symtab == NULL)
 		return (0);
 
+	leaders = malloc(sizeof(int) * difo->dtdo_len);
+	memset(leaders, 0, sizeof(int) * difo->dtdo_len);
+
+	/*
+	 * Compute the basic blocks
+	 */
+	dt_compute_bb(difo);
+
+	/*
+	 * Compute control flow
+	 */
+	dt_compute_cfg(difo);
+
 	/*
 	 * Go over all the instructions, starting from the last one. For
 	 * simplicity sake, we calculate the index inside the loop instead
@@ -3442,67 +3912,7 @@ dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		idx = difo->dtdo_len - 1 - i;
 		instr = difo->dtdo_buf[idx];
 
-		opcode = DIF_INSTR_OP(instr);
-
-		switch (opcode) {
-		/*
-		 * Actual relocations
-		 */
-		case DIF_OP_ULOAD:
-		case DIF_OP_UULOAD:
-		case DIF_OP_USETX:
-		case DIF_OP_TYPECAST:
-		/*
-		 * Potential information necessary to apply relocations
-		 */
-		case DIF_OP_OR:
-		case DIF_OP_XOR:
-		case DIF_OP_AND:
-		case DIF_OP_SLL:
-		case DIF_OP_SRL:
-		case DIF_OP_ADD:
-		case DIF_OP_SUB:
-		case DIF_OP_MUL:
-		case DIF_OP_SDIV:
-		case DIF_OP_UDIV:
-		case DIF_OP_SREM:
-		case DIF_OP_UREM:
-		case DIF_OP_NOT:
-		case DIF_OP_MOV:
-		case DIF_OP_LDSB:
-		case DIF_OP_LDSH:
-		case DIF_OP_LDSW:
-		case DIF_OP_LDUB:
-		case DIF_OP_LDUH:
-		case DIF_OP_LDUW:
-		case DIF_OP_LDX:
-		case DIF_OP_SETX:
-		case DIF_OP_SETS:
-		case DIF_OP_LDGA:
-		case DIF_OP_LDGS:
-		case DIF_OP_LDTA:
-		case DIF_OP_LDTS:
-		case DIF_OP_SRA:
-		case DIF_OP_CALL:
-		case DIF_OP_LDGAA:
-		case DIF_OP_LDTAA:
-		case DIF_OP_LDLS:
-		case DIF_OP_ALLOCS:
-		case DIF_OP_COPYS:
-		case DIF_OP_ULDSB:
-		case DIF_OP_ULDSH:
-		case DIF_OP_ULDSW:
-		case DIF_OP_ULDUB:
-		case DIF_OP_ULDUH:
-		case DIF_OP_ULDUW:
-		case DIF_OP_ULDX:
-		case DIF_OP_RLDSB:
-		case DIF_OP_RLDSH:
-		case DIF_OP_RLDSW:
-		case DIF_OP_RLDUB:
-		case DIF_OP_RLDUH:
-		case DIF_OP_RLDUW:
-		case DIF_OP_RLDX:
+		if (dt_is_relo(instr)) {
 			relo = dt_relo_alloc(difo, idx);
 			rl = malloc(sizeof(dt_rl_entry_t));
 			memset(rl, 0, sizeof(dt_rl_entry_t));
@@ -3511,59 +3921,8 @@ dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 			dt_list_append(&relo_list, rl);
 			relo_last = rl;
 
-			rd = DIF_INSTR_RD(instr);
-
-		        rkind.r_kind = DT_RKIND_REG;
-		        rkind.r_rd = rd;
+			dt_get_rkind(instr, &rkind);
 			dt_update_relocations(difo, &rkind, relo);
-			break;
-
-		case DIF_OP_STGS:
-		case DIF_OP_STGAA:
-		case DIF_OP_STTAA:
-		case DIF_OP_STTS:
-		case DIF_OP_STLS:
-			relo = dt_relo_alloc(difo, idx);
-			rl = malloc(sizeof(dt_rl_entry_t));
-			memset(rl, 0, sizeof(dt_rl_entry_t));
-
-			rl->drl_rel = relo;
-			dt_list_append(&relo_list, rl);
-			relo_last = rl;
-
-			var = DIF_INSTR_VAR(instr);
-
-			rkind.r_kind = DT_RKIND_VAR;
-			rkind.r_var = var;
-			dt_update_relocations(difo, &rkind, relo);
-			break;
-
-		case DIF_OP_PUSHTR:
-		case DIF_OP_PUSHTR_G:
-		case DIF_OP_PUSHTR_H:
-		case DIF_OP_PUSHTV:
-			/*
-			 * Here we need to do an update pass based on the stack.
-			 *
-			 * We want to find all instructions that use the stack
-			 * and add a reference to this relocation, as it will
-			 * help us later on when we need to type-check arrays
-			 * and subroutines.
-			 */
-			relo = dt_relo_alloc(difo, idx);
-			rl = malloc(sizeof(dt_rl_entry_t));
-			memset(rl, 0, sizeof(dt_rl_entry_t));
-
-			rl->drl_rel = relo;
-			dt_list_append(&relo_list, rl);
-			relo_last = rl;
-
-			rkind.r_kind = DT_RKIND_STACK;
-			dt_update_relocations(difo, &rkind, relo);
-
-		/* Everything else */
-		default:
-			break;
 		}
 	}
 
@@ -3596,9 +3955,10 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		    bootfile, ctf_errmsg(ctf_errno(ctf_file)));
 
 	/*
-	 * Zero out the relo list.
+	 * Zero out the relo list and basic block list.
 	 */
 	memset(&relo_list, 0, sizeof(dt_list_t));
+	memset(&bb_list, 0, sizeof(dt_list_t));
 
 	/*
 	 * Go over all the statements in a D program
@@ -3626,7 +3986,7 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		 * DIFO (if it exists).
 		 */
 		for (ad = sdp->dtsd_action;
-		    ad != sdp->dtsd_action_last; ad = ad->dtad_next) {
+		    ad != sdp->dtsd_action_last->dtad_next; ad = ad->dtad_next) {
 			if (ad->dtad_difo == NULL)
 				continue;
 

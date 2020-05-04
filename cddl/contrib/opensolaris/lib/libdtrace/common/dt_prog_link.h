@@ -55,7 +55,24 @@ typedef struct dt_rl_entry {
 
 typedef struct dt_stacklist {
 	dt_list_t dsl_list;
+	int dsl_kind;
+#define DT_SL_SPLIT	1
+#define DT_SL_REL	2
 	dt_relo_t *dsl_rel;
 } dt_stacklist_t;
+
+typedef struct dt_basic_block {
+	dtrace_difo_t *dtbb_difo;
+#define dtbb_buf dtbb_difo->dtdo_buf
+	size_t dtbb_start;
+	size_t dtbb_end;
+	dt_list_t dtbb_children;
+	dt_list_t dtbb_parents;
+} dt_basic_block_t;
+
+typedef struct dt_bb_entry {
+	dt_list_t dtbe_list;
+	dt_basic_block_t *dtbe_bb;
+} dt_bb_entry_t;
 
 #endif
