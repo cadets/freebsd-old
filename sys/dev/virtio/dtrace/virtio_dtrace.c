@@ -1382,10 +1382,6 @@ vtdtr_consume_trace(void *xsc)
 
 				data = (uintptr_t)trc->dtbd_data;
 				data_sz = trc->dtbd_size;
-				for(int i = 0; i < trc->dtbd_size; i ++)
-				{
-					printf("%x", trc->dtbd_data[i]);
-				}
 				KASSERT(data_sz == ctrl_trc_ev->dtbd_size, "Invalid trace buffer size");
 				// device_printf(dev, "Data size is (before anything): %d. \n", data_sz);
 				to_send = (data_sz > FRAGMENTSZ) ? FRAGMENTSZ : data_sz;
@@ -1437,7 +1433,10 @@ vtdtr_consume_trace(void *xsc)
 					// device_printf(dev, "Chunk size is: %d. \n", ctrl_trc_ev->chunk_sz);
 					cp = strlcpy(ctrl_trc_ev->dtbd_chunk, (char *)data, to_send + 1);
 					KASSERT(cp == (size_t)to_send, "Failed to copy script fragment");
-					printf("In while \n");
+					for(int i = 0; i < ctrl_trc_ev->chunk_sz; i ++)
+					{
+						printf("%x", ctrl_trc_ev->dtbd_chunk[i]);
+					}
 
 					mtx_lock(&sc->vtdtr_ctrlq->mtx);
 					vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
