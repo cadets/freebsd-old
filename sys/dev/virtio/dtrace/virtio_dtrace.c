@@ -1395,7 +1395,6 @@ vtdtr_consume_trace(void *xsc)
 				ctrl_trc_ev->chunk_sz = to_send;
 				// device_printf(dev, "Chunk size is: %d. \n", ctrl_trc_ev->chunk_sz);
 				memcpy(ctrl_trc_ev->dtbd_chunk, data, to_send);
-				KASSERT(cp == to_send, "Failed to copy script fragment");
 				//device_printf(dev, "%s", ctrl_trc_ev->dtbd_chunk);
 
 				mtx_lock(&sc->vtdtr_ctrlq->mtx);
@@ -1425,7 +1424,6 @@ vtdtr_consume_trace(void *xsc)
 
 					ctrl_trc_ev->chunk_sz = to_send;
 					memcpy(ctrl_trc_ev->dtbd_chunk, data, to_send);
-					KASSERT(cp == (size_t)to_send, "Failed to copy script fragment");
 				
 					mtx_lock(&sc->vtdtr_ctrlq->mtx);
 					vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
