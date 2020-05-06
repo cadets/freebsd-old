@@ -38,6 +38,8 @@ typedef struct dt_relo {
 	size_t dr_uidx;			/* Index of the use site */
 	size_t dr_didx[2];		/* Index of the defn sites */
 	struct dt_relo *dr_drel[2];	/* Pointer to the defn site */
+	dt_list_t dr_r1defs;
+	dt_list_t dr_r2defs;
 	int dr_type;			/* D type */
 	ctf_id_t dr_ctfid;		/* CTF type */
 	size_t dr_sym;			/* symbol offset in symtab */
@@ -66,6 +68,8 @@ typedef struct dt_basic_block {
 #define dtbb_buf dtbb_difo->dtdo_buf
 	size_t dtbb_start;
 	size_t dtbb_end;
+	size_t dtbb_idx;
+#define	DT_BB_MAX	8192
 	dt_list_t dtbb_children;
 	dt_list_t dtbb_parents;
 } dt_basic_block_t;

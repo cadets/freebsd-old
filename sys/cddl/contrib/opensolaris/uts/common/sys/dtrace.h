@@ -1004,6 +1004,7 @@ typedef struct dof_xlref {
 	uint32_t dofxr_argn;		/* index of argument for DIF_OP_XLARG */
 } dof_xlref_t;
 
+struct dt_basic_block;
 /*
  * DTrace Intermediate Format Object (DIFO)
  *
@@ -1040,6 +1041,7 @@ typedef struct dtrace_difo {
 	char *dtdo_symtab;		/* symbol table (optional) */
 	uint64_t dtdo_symlen;		/* length of symbol table */
 	char **dtdo_types;		/* array of types (dtdo_len size) */
+	struct dt_basic_block *dtdo_bb;	/* first basic block */
 #endif
 } dtrace_difo_t;
 

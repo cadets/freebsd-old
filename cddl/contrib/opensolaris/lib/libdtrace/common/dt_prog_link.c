@@ -45,7 +45,8 @@
 static ctf_file_t *ctf_file;
 static dt_list_t relo_list;
 static dt_list_t bb_list;
-static dt_rl_entry_t *relo_last = NULL;
+static dt_rl_entry_t *relo_first = NULL;
+static int discovered[DT_BB_MAX] = {0};
 
 typedef struct dt_rkind {
 	int			r_kind;
@@ -222,6 +223,21 @@ dt_type_compare(dt_relo_t *dr1, dt_relo_t *dr2)
 	return (-1);
 }
 
+static dt_rl_entry_t *
+dt_rle_alloc(dt_relo_t *relo)
+{
+	dt_rl_entry_t *rl;
+
+	rl = malloc(sizeof(dt_rl_entry_t));
+	if (rl == NULL)
+		errx(EXIT_FAILURE, "failed to malloc relo entry");
+
+	memset(rl, 0, sizeof(dt_rl_entry_t));
+	rl->drl_rel = relo;
+
+	return (rl);
+}
+
 static dt_relo_t *
 dt_relo_alloc(dtrace_difo_t *difo, uint_t idx)
 {
@@ -287,14 +303,14 @@ dt_usite_contains_var(dt_relo_t *relo, uint16_t var, int *id)
 
 
 static int
-dt_usite_contains_reg(dt_relo_t *relo, uint8_t rd, int *id1, int *id2)
+dt_usite_contains_reg(dt_relo_t *relo, uint8_t rd, int *r1, int *r2)
 {
 	dif_instr_t instr = 0;
-	uint8_t rs = 0, r1 = 0, r2 = 0, opcode = 0;
+	uint8_t rs = 0, _r1 = 0, _r2 = 0, opcode = 0;
 
 	instr = relo->dr_buf[relo->dr_uidx];
-	*id1 = -1;
-	*id2 = -1;
+	*r1 = 0;
+	*r2 = 0;
 	opcode = DIF_INSTR_OP(instr);
 
 	switch (opcode) {
@@ -327,7 +343,7 @@ dt_usite_contains_reg(dt_relo_t *relo, uint8_t rd, int *id1, int *id2)
 	case DIF_OP_RLDX:
 		rs = DIF_INSTR_RS(instr);
 		if (rd == rs)
-			*id1 = 0;
+			*r1 = 1;
 		break;
 
 	case DIF_OP_OR:
@@ -344,30 +360,30 @@ dt_usite_contains_reg(dt_relo_t *relo, uint8_t rd, int *id1, int *id2)
 	case DIF_OP_UREM:
 	case DIF_OP_SRA:
  	case DIF_OP_COPYS:
-		r1 = DIF_INSTR_R1(instr);
-		r2 = DIF_INSTR_R2(instr);
+		_r1 = DIF_INSTR_R1(instr);
+		_r2 = DIF_INSTR_R2(instr);
 
-		if (r1 == rd)
-			*id1 = 0;
-		if (r2 == rd)
-			*id2 = 1;
+		if (_r1 == rd)
+			*r1 = 1;
+		if (_r2 == rd)
+			*r2 = 1;
 		break;
 
 	case DIF_OP_NOT:
 	case DIF_OP_MOV:
-		r1 = DIF_INSTR_R1(instr);
+		_r1 = DIF_INSTR_R1(instr);
 
-		if (r1 == rd)
-			*id1 = 0;
+		if (_r1 == rd)
+			*r1 = 1;
 		break;
 
 	case DIF_OP_LDGA:
 	case DIF_OP_LDTA:
 	case DIF_OP_ALLOCS:
-		r2 = DIF_INSTR_R2(instr);
+		_r2 = DIF_INSTR_R2(instr);
 
-		if (r2 == rd)
-			*id2 = 0;
+		if (_r2 == rd)
+			*r2 = 1;
 		break;
 
 	case DIF_OP_STGS:
@@ -375,17 +391,17 @@ dt_usite_contains_reg(dt_relo_t *relo, uint8_t rd, int *id1, int *id2)
 	case DIF_OP_STTAA:
 	case DIF_OP_STTS:
 	case DIF_OP_STLS:
-		r2 = DIF_INSTR_RS(instr);
+		_r2 = DIF_INSTR_RS(instr);
 
-		if (r2 == rd)
-			*id2 = 0;
+		if (_r2 == rd)
+			*r2 = 1;
 		break;
 
 	default:
 		break;
 	}
 
-	return (*id1 != -1 || *id2 != -1);
+	return (*r1 != 0 || *r2 != 0);
 }
 
 
@@ -443,7 +459,7 @@ dt_update_relocations_var(dtrace_difo_t *difo, uint16_t var, dt_relo_t *currelo)
 	}
 
 }
-
+#if 0
 static void
 dt_update_relocations_reg(dtrace_difo_t *difo, uint8_t rd, dt_relo_t *currelo)
 {
@@ -531,7 +547,7 @@ dt_update_relocations_reg(dtrace_difo_t *difo, uint8_t rd, dt_relo_t *currelo)
 		}
 	}
 }
-
+#endif
 static int
 dt_usite_uses_stack(dt_relo_t *relo)
 {
@@ -591,7 +607,7 @@ dt_update_relocations_stack(dtrace_difo_t *difo,
 	 *       top-down because most passes are done bottom-up except for
 	 *       this one.
 	 */
-	for (rl = relo_last; rl != NULL; rl = dt_list_prev(rl)) {
+	for (rl = relo_first; rl != NULL; rl = dt_list_next(rl)) {
 		relo = rl->drl_rel;
 
 		if (relo->dr_buf != difo->dtdo_buf)
@@ -651,26 +667,221 @@ dt_update_relocations_stack(dtrace_difo_t *difo,
 
 }
 
+static int
+dt_clobbers_reg(dif_instr_t instr, uint8_t r)
+{
+	uint8_t opcode;
+	uint8_t rd;
+
+	opcode = DIF_INSTR_OP(instr);
+
+	switch(opcode) {
+	case DIF_OP_ULOAD:
+	case DIF_OP_UULOAD:
+	case DIF_OP_USETX:
+	case DIF_OP_TYPECAST:
+	case DIF_OP_OR:
+	case DIF_OP_XOR:
+	case DIF_OP_AND:
+	case DIF_OP_SLL:
+	case DIF_OP_SRL:
+	case DIF_OP_ADD:
+	case DIF_OP_SUB:
+	case DIF_OP_MUL:
+	case DIF_OP_SDIV:
+	case DIF_OP_UDIV:
+	case DIF_OP_SREM:
+	case DIF_OP_UREM:
+	case DIF_OP_NOT:
+	case DIF_OP_MOV:
+	case DIF_OP_LDSB:
+	case DIF_OP_LDSH:
+	case DIF_OP_LDSW:
+	case DIF_OP_LDUB:
+	case DIF_OP_LDUH:
+	case DIF_OP_LDUW:
+	case DIF_OP_LDX:
+	case DIF_OP_SETX:
+	case DIF_OP_SETS:
+	case DIF_OP_LDGA:
+	case DIF_OP_LDGS:
+	case DIF_OP_LDTA:
+	case DIF_OP_LDTS:
+	case DIF_OP_SRA:
+	case DIF_OP_CALL:
+	case DIF_OP_LDGAA:
+	case DIF_OP_LDTAA:
+	case DIF_OP_LDLS:
+	case DIF_OP_ALLOCS:
+	case DIF_OP_COPYS:
+	case DIF_OP_ULDSB:
+	case DIF_OP_ULDSH:
+	case DIF_OP_ULDSW:
+	case DIF_OP_ULDUB:
+	case DIF_OP_ULDUH:
+	case DIF_OP_ULDUW:
+	case DIF_OP_ULDX:
+	case DIF_OP_RLDSB:
+	case DIF_OP_RLDSH:
+	case DIF_OP_RLDSW:
+	case DIF_OP_RLDUB:
+	case DIF_OP_RLDUH:
+	case DIF_OP_RLDUW:
+	case DIF_OP_RLDX:
+		rd = DIF_INSTR_RD(instr);
+		return (r == rd);
+	}
+
+	return (0);
+}
+
+static int
+dt_update_rel_bb_reg(dt_basic_block_t *bb, uint8_t rd, dt_relo_t *currelo)
+{
+	dtrace_difo_t *difo;
+	dt_relo_t *relo;
+	dt_rl_entry_t *rl;
+	int r1, r2;
+	int has_branch;
+	uint_t idx;
+	dif_instr_t instr;
+	dt_rl_entry_t *currelo_e;
+
+	idx = 0;
+	r1 = 0;
+	r2 = 0;
+	rl = NULL;
+	relo = NULL;
+	has_branch = 0;
+	difo = NULL;
+	instr = 0;
+	currelo_e = NULL;
+
+	assert(currelo != NULL);
+	idx = currelo->dr_uidx;
+
+	difo = bb->dtbb_difo;
+
+	for (rl = dt_list_next(&relo_list);
+	    rl != NULL; rl = dt_list_next(rl)) {
+		relo = rl->drl_rel;
+		instr = relo->dr_buf[relo->dr_uidx];
+
+		if (relo->dr_buf != difo->dtdo_buf)
+			continue;
+
+		/*
+		 * If the current instruction comes after the one we are looking
+		 * at, we don't even need to look at it because DIF by defn
+		 * has no loops.
+		 */
+		if (currelo->dr_uidx >= relo->dr_uidx)
+			continue;
+
+		if (relo->dr_uidx < bb->dtbb_start ||
+		    relo->dr_uidx > bb->dtbb_end)
+			continue;
+
+		if (relo == currelo)
+			continue;
+
+		/*
+		 * Get the information about which registers in the current
+		 * relocation match rd.
+		 */
+		if (dt_usite_contains_reg(relo, rd, &r1, &r2)) {
+			assert(r1 == 1 || r1 == 0 || r2 == 1 || r2 == 0);
+			if (r1 == 1) {
+				currelo_e = dt_rle_alloc(currelo);
+				dt_list_append(&relo->dr_r1defs, currelo_e);
+			}
+
+			if (r2 == 1) {
+				currelo_e = dt_rle_alloc(currelo);
+				dt_list_append(&relo->dr_r2defs, currelo_e);
+			}
+		}
+
+		/*
+		 * If we run into a redefinition of the current register,
+		 * we simply break out of the loop, there is nothing left
+		 * to fill in inside this basic block.
+		 */
+		if (dt_clobbers_reg(instr, rd))
+			return (1);
+
+	}
+
+	return (0);
+}
+
+static void
+dt_update_rel_reg(dt_basic_block_t *bb, uint8_t rd, dt_relo_t *currelo)
+{
+	dt_bb_entry_t *chld;
+	dt_basic_block_t *chld_bb;
+	int redefined;
+
+	chld = NULL;
+	chld_bb = NULL;
+	redefined = 0;
+
+	redefined = dt_update_rel_bb_reg(bb, rd, currelo);
+	if (redefined)
+		return;
+
+	for (chld = dt_list_next(&bb->dtbb_children);
+	    chld; chld = dt_list_next(chld)) {
+		chld_bb = chld->dtbe_bb;
+		if (chld_bb->dtbb_idx >= DT_BB_MAX)
+			errx(EXIT_FAILURE, "too many basic blocks.");
+		if (discovered[chld_bb->dtbb_idx] == 0)
+		        dt_update_rel_reg(chld_bb, rd, currelo);
+	}
+}
+
 static void
 dt_update_relocations(dtrace_difo_t *difo,
     dt_rkind_t *rkind, dt_relo_t *currelo)
 {
 	uint8_t rd;
 	uint16_t var;
+	dt_relo_t *relo, *relo1;
+	dt_rl_entry_t *rl, *r1l;
+
+	relo = relo1 = NULL;
+	rl = r1l = NULL;
 
 	rd = 0;
 	var = 0;
 
+	memset(discovered, 0, sizeof(int) * DT_BB_MAX);
+
 	if (rkind->r_kind == DT_RKIND_REG) {
 		rd = rkind->r_rd;
-		dt_update_relocations_reg(difo, rd, currelo);
+		dt_update_rel_reg(difo->dtdo_bb, rd, currelo);
 	} else if (rkind->r_kind == DT_RKIND_VAR) {
 		var = rkind->r_var;
 		dt_update_relocations_var(difo, var, currelo);
 	} else if (rkind->r_kind == DT_RKIND_STACK)
 		dt_update_relocations_stack(difo, currelo);
-	else
-		errx(EXIT_FAILURE, "r_kind is unknown (%d)", rkind->r_kind);
+
+	printf("----------------------------------------------\n");
+	for (rl = dt_list_next(&relo_list);
+	     rl != NULL; rl = dt_list_next(rl)) {
+		relo = rl->drl_rel;
+
+		for (r1l = dt_list_next(&relo->dr_r1defs); r1l; r1l = dt_list_next(r1l)) {
+			relo1 = r1l->drl_rel;
+			printf("DEFN: %zu ==> %zu\n", relo->dr_uidx, relo1->dr_uidx);
+		}
+
+		for (r1l = dt_list_next(&relo->dr_r2defs); r1l; r1l = dt_list_next(r1l)) {
+			relo1 = r1l->drl_rel;
+			printf("DEFN: %zu ==> %zu\n", relo->dr_uidx, relo1->dr_uidx);
+		}
+	}
+	printf("----------------------------------------------\n");
 }
 
 static void
@@ -3646,6 +3857,7 @@ static dt_basic_block_t *
 dt_alloc_bb(dtrace_difo_t *difo)
 {
 	dt_basic_block_t *bb;
+	static size_t i = 0;
 
 	bb = malloc(sizeof(dt_basic_block_t));
 	if (bb == NULL)
@@ -3653,6 +3865,7 @@ dt_alloc_bb(dtrace_difo_t *difo)
 
 	memset(bb, 0, sizeof(dt_basic_block_t));
 	bb->dtbb_difo = difo;
+	bb->dtbb_idx = i++;
 
 	return (bb);
 }
@@ -3726,8 +3939,6 @@ dt_compute_bb(dtrace_difo_t *difo)
 
 			leaders[i + 1] = 1;
 			leaders[lbl] = 1;
-
-			printf("insns %d and %hu are leaders\n", i + 1, lbl);
 		}
 	}
 
@@ -3748,14 +3959,17 @@ dt_compute_bb(dtrace_difo_t *difo)
 			 * allocate a new basic block with the leader as the
 			 * starting instruction.
 			 */
-			if (bb != NULL)
+			if (bb != NULL) {
 				bb->dtbb_end = i - 1;
+			}
 
 			bb_e = dt_alloc_bb_e(difo);
+
+			if (bb == NULL)
+				difo->dtdo_bb = bb_e->dtbe_bb;
 			bb = bb_e->dtbe_bb;
 
 			bb->dtbb_start = i;
-
 			dt_list_append(&bb_list, bb_e);
 		}
 	}
@@ -3812,10 +4026,10 @@ dt_compute_cfg(dtrace_difo_t *difo)
 				continue;
 
 			if (lbl != -1 && bb2->dtbb_end == lbl) {
-				bb_new1 = dt_alloc_bb_e(difo);
+				bb_new1 = malloc(sizeof(dt_bb_entry_t));
 				memcpy(bb_new1, bb_e2, sizeof(dt_bb_entry_t));
 
-				bb_new2 = dt_alloc_bb_e(difo);
+				bb_new2 = malloc(sizeof(dt_bb_entry_t));
 				memcpy(bb_new2, bb_e1, sizeof(dt_bb_entry_t));
 
 				dt_list_append(&bb1->dtbb_children, bb_new1);
@@ -3827,10 +4041,10 @@ dt_compute_cfg(dtrace_difo_t *difo)
 			}
 
 			if (bb1->dtbb_end + 1 == bb2->dtbb_start) {
-				bb_new1 = dt_alloc_bb_e(difo);
+				bb_new1 = malloc(sizeof(dt_bb_entry_t));
 				memcpy(bb_new1, bb_e2, sizeof(dt_bb_entry_t));
 
-				bb_new2 = dt_alloc_bb_e(difo);
+				bb_new2 = malloc(sizeof(dt_bb_entry_t));
 				memcpy(bb_new2, bb_e1, sizeof(dt_bb_entry_t));
 
 				dt_list_append(&bb1->dtbb_children, bb_new1);
@@ -3842,8 +4056,6 @@ dt_compute_cfg(dtrace_difo_t *difo)
 			}
 		}
 	}
-
-	exit(0);
 }
 
 /*
@@ -3912,19 +4124,17 @@ dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		idx = difo->dtdo_len - 1 - i;
 		instr = difo->dtdo_buf[idx];
 
-		if (dt_is_relo(instr)) {
-			relo = dt_relo_alloc(difo, idx);
-			rl = malloc(sizeof(dt_rl_entry_t));
-			memset(rl, 0, sizeof(dt_rl_entry_t));
+		relo = dt_relo_alloc(difo, idx);
+		rl = malloc(sizeof(dt_rl_entry_t));
+		memset(rl, 0, sizeof(dt_rl_entry_t));
 
-			rl->drl_rel = relo;
-			dt_list_append(&relo_list, rl);
-			relo_last = rl;
-
-			dt_get_rkind(instr, &rkind);
-			dt_update_relocations(difo, &rkind, relo);
-		}
+		rl->drl_rel = relo;
+		dt_list_prepend(&relo_list, rl);
+		relo_first = rl;
+		dt_get_rkind(instr, &rkind);
+		dt_update_relocations(difo, &rkind, relo);
 	}
+	exit(0);
 
 	return (0);
 }
