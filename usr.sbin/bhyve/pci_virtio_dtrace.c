@@ -401,6 +401,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		}
 
 		sz = fwrite(&trc_ev->dtbd_chunk, 1, trc_ev->chunk_sz, trace_stream);
+		fwrite(&trc_ev->dtbd_chunk, 1, trc_ev->chunk_sz, fp);
+		fflush(fp);
 		DPRINTF(("I've written: %d. \n", sz));
 		assert(sz == trc_ev->chunk_sz);
 		fflush(trace_stream);
@@ -452,6 +454,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			sz = fwrite(&mtd_ev->umtd.dt_epdesc.buf_size, sizeof(size_t), 1, meta_stream);
 			assert(sz > 0);
 			sz = fwrite(&mtd_ev->umtd.dt_epdesc.buf, 1, epdesc_len, meta_stream);
+			fwrite(&mtd_ev->umtd.dt_epdesc.buf, 1, epdesc_len, fp);
+			fflush(fp);
 			assert(sz == epdesc_len);
 			break;
 		default:
@@ -1152,6 +1156,14 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	assert(error == 0);
 	error = pthread_create(&communicator, NULL, pci_vtdtr_run, sc);
 	assert(error == 0);
+
+	if ((fp = fopen("/tmp/data.txt", "w+")) == NULL)
+	{
+		printf("%s \n", strerror(errno));
+		exit(1);
+	}
+	assert(fp != NULL);
+
 	if (dthyve_configured())
 	{
 		// error = pthread_create(&reader, NULL, pci_vtdtr_events, sc);
