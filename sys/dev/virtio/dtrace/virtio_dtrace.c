@@ -1394,10 +1394,6 @@ vtdtr_consume_trace(void *xsc)
 				
 				ctrl_trc_ev->chunk_sz = to_send;
 				// device_printf(dev, "Chunk size is: %d. \n", ctrl_trc_ev->chunk_sz);
-				for(int i = 0; i < ctrl_trc_ev->chunk_sz; i ++)
-				{
-						printf("%x", data[i]);
-				}
 				cp = strlcpy(ctrl_trc_ev->dtbd_chunk, data, to_send + 1);
 				KASSERT(ctrl_trc_ev->dtbd_chunk != NULL, "Data is NULL");
 				KASSERT(cp == to_send, "Failed to copy script fragment");
@@ -1426,15 +1422,10 @@ vtdtr_consume_trace(void *xsc)
 					ctrl_trc_ev = &ctrl->uctrl.trace_ev;
 					ctrl_trc_ev->first_chunk = 0;
 					ctrl_trc_ev->last_chunk = (data_sz > FRAGMENTSZ) ? 0 : 1;
-					// device_printf(dev, "Is first chunk: %d?\n", ctrl_trc_ev->first_chunk);
-					// device_printf(dev, "Is last chunk: %d?\n", ctrl_trc_ev->last_chunk);
 					to_send = (data_sz > FRAGMENTSZ) ? FRAGMENTSZ : data_sz;
-					// device_printf(dev, "Will send: %d", to_send);
 					data_sz -= to_send;
-					// device_printf(dev, "Is last chunk: %d?", ctrl_trc_ev->last_chunk);
 
 					ctrl_trc_ev->chunk_sz = to_send;
-					// device_printf(dev, "Chunk size is: %d. \n", ctrl_trc_ev->chunk_sz);
 					cp = strlcpy(ctrl_trc_ev->dtbd_chunk, data, to_send + 1);
 					KASSERT(cp == (size_t)to_send, "Failed to copy script fragment");
 					for(int i = 0; i < ctrl_trc_ev->chunk_sz; i ++)
