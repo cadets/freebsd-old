@@ -1339,7 +1339,7 @@ vtdtr_consume_trace(void *xsc)
 	int error;
 	
 
-	uintptr_t data;
+	char *data;
 	uint64_t data_sz, to_send;
 
 	sc = xsc;
@@ -1380,7 +1380,7 @@ vtdtr_consume_trace(void *xsc)
 				ctrl_trc_ev->dtbd_timestamp = trc->dtbd_timestamp;
 				KASSERT(ctrl_trc_ev->dtbd_size == trc->dtbd_size, "Failed copying into fields");
 
-				data = (uintptr_t)trc->dtbd_data;
+				data = trc->dtbd_data;
 				data_sz = trc->dtbd_size;
 				KASSERT(data_sz == ctrl_trc_ev->dtbd_size, "Invalid trace buffer size");
 				// device_printf(dev, "Data size is (before anything): %d. \n", data_sz);
@@ -1394,7 +1394,11 @@ vtdtr_consume_trace(void *xsc)
 				
 				ctrl_trc_ev->chunk_sz = to_send;
 				// device_printf(dev, "Chunk size is: %d. \n", ctrl_trc_ev->chunk_sz);
-				cp = strlcpy(ctrl_trc_ev->dtbd_chunk, (char *)data, to_send + 1);
+				for(int i = 0; i < ctrl_trc_ev->chunk_sz; i ++)
+				{
+						printf("%x", data[i]);
+				}
+				cp = strlcpy(ctrl_trc_ev->dtbd_chunk, data, to_send + 1);
 				KASSERT(ctrl_trc_ev->dtbd_chunk != NULL, "Data is NULL");
 				KASSERT(cp == to_send, "Failed to copy script fragment");
 				//device_printf(dev, "%s", ctrl_trc_ev->dtbd_chunk);
@@ -1431,11 +1435,11 @@ vtdtr_consume_trace(void *xsc)
 
 					ctrl_trc_ev->chunk_sz = to_send;
 					// device_printf(dev, "Chunk size is: %d. \n", ctrl_trc_ev->chunk_sz);
-					cp = strlcpy(ctrl_trc_ev->dtbd_chunk, (char *)data, to_send + 1);
+					cp = strlcpy(ctrl_trc_ev->dtbd_chunk, data, to_send + 1);
 					KASSERT(cp == (size_t)to_send, "Failed to copy script fragment");
 					for(int i = 0; i < ctrl_trc_ev->chunk_sz; i ++)
 					{
-						printf("%x", ctrl_trc_ev->dtbd_chunk[i]);
+						printf("%x", data[i]);
 					}
 
 					mtx_lock(&sc->vtdtr_ctrlq->mtx);
