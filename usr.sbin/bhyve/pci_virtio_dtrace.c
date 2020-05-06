@@ -233,6 +233,7 @@ struct pci_vtdtr_softc
 	int vsd_guest_ready;
 	int vsd_ready;
 };
+static struct timeval ts;
 
 static void pci_vtdtr_reset(void *);
 static void pci_vtdtr_control_tx(struct pci_vtdtr_softc *,
@@ -402,6 +403,9 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 
 		sz = fwrite(&trc_ev->dtbd_chunk, 1, trc_ev->chunk_sz, trace_stream);
 		fwrite(&trc_ev->dtbd_chunk, 1, trc_ev->chunk_sz, fp);
+		gettimeofday(&ts, NULL);
+		printf("Record time: %ld s %ld us \n", ts.tv_sec, ts.tv_usec);
+		fprintf(fp, "%ld s %ld us\n", ts.tv_sec, ts.tv_usec);
 		fflush(fp);
 		DPRINTF(("I've written: %d. \n", sz));
 		assert(sz == trc_ev->chunk_sz);
@@ -454,8 +458,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			sz = fwrite(&mtd_ev->umtd.dt_epdesc.buf_size, sizeof(size_t), 1, meta_stream);
 			assert(sz > 0);
 			sz = fwrite(&mtd_ev->umtd.dt_epdesc.buf, 1, epdesc_len, meta_stream);
-			fwrite(&mtd_ev->umtd.dt_epdesc.buf, 1, epdesc_len, fp);
-			fflush(fp);
 			assert(sz == epdesc_len);
 			break;
 		default:
