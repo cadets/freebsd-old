@@ -99,7 +99,7 @@ __FBSDID("$FreeBSD$");
 #define PROBE_DESCRIPTION 0x04
 #define EPROBE_DESCRIPTION 0x05
 
-static FILE *fp, *meta_stream, *trace_stream;
+static FILE *fp, *time_fp, *meta_stream, *trace_stream;
 
 /*
 * Debug printf
@@ -402,11 +402,9 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		}
 
 		sz = fwrite(&trc_ev->dtbd_chunk, 1, trc_ev->chunk_sz, trace_stream);
-		fwrite(&trc_ev->dtbd_chunk, 1, trc_ev->chunk_sz, fp);
 		gettimeofday(&ts, NULL);
-		printf("Record time: %ld s %ld us \n", ts.tv_sec, ts.tv_usec);
-		fprintf(fp, "%ld s %ld us\n", ts.tv_sec, ts.tv_usec);
-		fflush(fp);
+		fprintf(time_fp, "%ld s %ld us for size %d \n", ts.tv_sec, ts.tv_usec, trc_ev->chunk_sz);
+		fflush(time_fp);
 		DPRINTF(("I've written: %d. \n", sz));
 		assert(sz == trc_ev->chunk_sz);
 		fflush(trace_stream);
@@ -1160,6 +1158,12 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	assert(error == 0);
 
 	if ((fp = fopen("/tmp/data.txt", "w+")) == NULL)
+	{
+		printf("%s \n", strerror(errno));
+		exit(1);
+	}
+
+	if ((time_fp = fopen("/tmp/timing.txt", "w+")) == NULL)
 	{
 		printf("%s \n", strerror(errno));
 		exit(1);
