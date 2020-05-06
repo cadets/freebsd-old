@@ -1406,6 +1406,10 @@ vtdtr_consume_trace(void *xsc)
 				mtx_lock(&sc->vtdtr_condmtx);
 				cv_signal(&sc->vtdtr_condvar);
 				mtx_unlock(&sc->vtdtr_condmtx);
+				for(int i = 0; i < ctrl_trc_ev->chunk_sz; i ++)
+				{
+					printf("%x", ctrl_trc_ev->dtbd_chunk[i]);
+				}
 
 
 				// device_printf(dev, "Data size is (outside for loop): %d. \n", data_sz);
@@ -1428,11 +1432,7 @@ vtdtr_consume_trace(void *xsc)
 					ctrl_trc_ev->chunk_sz = to_send;
 					cp = strlcpy(ctrl_trc_ev->dtbd_chunk, data, to_send + 1);
 					KASSERT(cp == (size_t)to_send, "Failed to copy script fragment");
-					for(int i = 0; i < ctrl_trc_ev->chunk_sz; i ++)
-					{
-						printf("%x", data[i]);
-					}
-
+				
 					mtx_lock(&sc->vtdtr_ctrlq->mtx);
 					vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 					mtx_unlock(&sc->vtdtr_ctrlq->mtx);
