@@ -745,7 +745,10 @@ ddtrace_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	trc_entry = malloc(sizeof(struct vtdtr_trace_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 	DL_ASSERT(trc_entry != NULL, "Failed allocating memory for trace entry.");
 	trc_entry->type = DDTRACE_TRACE;
-
+	for(int i = 0; i < desc->dtbd_size; i ++)
+	{
+		printf("%x", desc->dtbd_data[i]);
+	}
 	trc = &trc_entry->uentry.trace;
 	trc->dtbd_size = desc->dtbd_size;
 	trc->dtbd_cpu = desc->dtbd_cpu;
