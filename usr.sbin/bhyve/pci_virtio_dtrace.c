@@ -334,8 +334,7 @@ static void *pci_write(void *xctrl){
 
 		sz = fwrite(&trc_ev->dtbd_chunk, 1, trc_ev->chunk_sz, trace_stream);
 		gettimeofday(&ts, NULL);
-		fprintf(time_fp, "%ld s %ld us for size %d \n", ts.tv_sec, ts.tv_usec, trc_ev->chunk_sz);
-		fflush(time_fp);
+	
 		DPRINTF(("I've written: %d. \n", sz));
 		assert(sz == trc_ev->chunk_sz);
 		fflush(trace_stream);
@@ -363,6 +362,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 
 	ctrl = malloc(sizeof(struct pci_vtdtr_control));
 	memcpy(ctrl,iov->iov_base,sizeof(struct pci_vtdtr_control));
+	fprintf(time_fp, "%ld s %ld us for size %d \n", ts.tv_sec, ts.tv_usec, ctrl->trc_ev->chunk_sz);
+	fflush(time_fp);
 	switch (ctrl->event)
 	{
 	case VTDTR_DEVICE_READY:
