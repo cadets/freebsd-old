@@ -100,6 +100,7 @@ __FBSDID("$FreeBSD$");
 #define EPROBE_DESCRIPTION 0x05
 
 static FILE *fp, *time_fp, *meta_stream, *trace_stream;
+struct pci_mq *mq;
 
 /*
 * Debug printf
@@ -220,6 +221,13 @@ struct pci_vtdtr_ctrlq
 	pthread_mutex_t mtx;
 };
 
+struct pci_mq
+{
+	STAILQ_HEAD(, pci_vtdtr_control)
+	head;
+	pthread_mutex_t mtx;
+}
+
 struct pci_vtdtr_softc
 {
 	struct virtio_softc vsd_vs;
@@ -292,6 +300,24 @@ pci_vtdtr_reset(void *xsc)
 	vi_reset_dev(&sc->vsd_vs);
 	pthread_mutex_unlock(&sc->vsd_mtx);
 }
+static __inline void
+pci_vtdtr_mq_enqueue(struct pci_mq *mq,
+					 struct pci_vtdtr_control *ctrl)
+{
+	STAILQ_INSERT_TAIL(&mq->head, ctrl, entries);
+}
+
+static void
+pci_vtdtr_mq_dequeue(struct pci_mq *mq)
+{
+	struct pci_vtdtr_control *ctrl;
+	ctrl = STAILQ_FIRST(&mq->head);
+	if (ctrl != NULL)
+	{
+		STAILQ_REMOVE_HEAD(&cq->head, entries);
+	}
+	free(ctrl);
+}
 
 static void
 pci_vtdtr_control_tx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
@@ -313,33 +339,15 @@ static void *pci_write(void *xctrl){
 	struct pci_vtdtr_ctrl_trcevent *trc_ev;
 	ctrl = (struct pci_vtdtr_control *)xctrl;
 	size_t sz;
-	DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
-		trc_ev = &ctrl->uctrl.trc_ev;
-		DPRINTF(("First chunk is: %d, last chunk is:%d", trc_ev->first_chunk, trc_ev->last_chunk));
-		if (trc_ev->first_chunk == 1)
-		{
-			sz = fwrite(&trc_ev->dtbd_size, sizeof(uint64_t), 1, trace_stream);
-			assert(sz > 0);
-			sz = fwrite(&trc_ev->dtbd_cpu, sizeof(uint32_t), 1, trace_stream);
-			assert(sz > 0);
-			sz = fwrite(&trc_ev->dtbd_errors, sizeof(uint32_t), 1, trace_stream); 
-			assert(sz > 0);
-			sz = fwrite(&trc_ev->dtbd_drops, sizeof(uint64_t), 1, trace_stream);
-			assert(sz > 0);
-			sz = fwrite(&trc_ev->dtbd_oldest, sizeof(uint64_t), 1, trace_stream);
-			assert(sz > 0);
-			sz = fwrite(&trc_ev->dtbd_timestamp, sizeof(uint64_t), 1, trace_stream);
-			assert(sz > 0);
-		}
-
-		sz = fwrite(&trc_ev->dtbd_chunk, 1, trc_ev->chunk_sz, trace_stream);
-		gettimeofday(&ts, NULL);
-	
-		DPRINTF(("I've written: %d. \n", sz));
-		assert(sz == trc_ev->chunk_sz);
-		fflush(trace_stream);
-
-		free(ctrl);
+	for(;;)
+	{
+	pthread_mutex_lock(mq->mtx);
+	while(!pci_mq_empty(mq))
+	{
+		pci_vtdtr_mq_dequeue(mq);
+	}
+	pthread_mutex_lock(mq->mtx);
+	}
 }
 static int
 pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
@@ -349,7 +357,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	struct pci_vtdtr_ctrl_metaevent *mtd_ev;
 	char *data;
 	uintptr_t dest;
-	pthread_t saviour;
 
 	//struct pci_vtdtr_ctrl_provevent *pv_ev;
 	//struct pci_vtdtr_ctrl_pbevent *pb_ev;
@@ -362,11 +369,12 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	ctrl = calloc(1,sizeof(struct pci_vtdtr_control));
 	assert(ctrl != NULL);
 	memcpy(ctrl, iov->iov_base, sizeof(struct pci_vtdtr_control));
-	if(ctrl->event == VTDTR_DEVICE_TRACE){
-		trc_ev = &ctrl->uctrl.trc_ev;
+	if(ctrl->event == VTDTR_DEVICE_TRACE)
+	{
 		gettimeofday(&ts, NULL);
-		fprintf(time_fp, "%ld s %ld us for size %d \n", ts.tv_sec, ts.tv_usec, trc_ev->chunk_sz);
-		fflush(time_fp);
+		printf("Record time: %ld s %ld us \n", ts.tv_sec, ts.tv_usec);			fprintf(time_fp, "%ld s %ld us for size %d \n", ts.tv_sec, ts.tv_usec, trc_ev->chunk_sz);
+		fprintf(fp, "%ld s %ld us\n", ts.tv_sec, ts.tv_usec);			
+		fflush(time_fp)
 	}
 
 	switch (ctrl->event)
@@ -427,9 +435,12 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		pthread_mutex_lock(&sc->vsd_mtx);
 		sc->vsd_ready = 0;
 		pthread_mutex_unlock(&sc->vsd_mtx);
+		pthead_mutex_lock(&mq->mtx);
+		pci_vtdtr_mq_enqueue(mq);
+		pthread_mutex_unloc(&mq->mtx);
 		// int error = pthread_create(&saviour, NULL, pci_write, (void *)ctrl);
 		// assert(error == 0);
-		free(ctrl);
+		
 		break;
 	case VTDTR_DEVICE_METADATA:
 		pthread_mutex_lock(&sc->vsd_mtx);
@@ -656,12 +667,10 @@ pci_vtdtr_handle_mev(int fd __unused, enum ev_type et __unused, int ne,
 }
 #endif
 
-static __inline void
-pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
-					 struct pci_vtdtr_ctrl_entry *ctrl_entry)
-{
-	STAILQ_INSERT_TAIL(&cq->head, ctrl_entry, entries);
-}
+
+
+
+
 
 static __inline void
 pci_vtdtr_cq_enqueue_front(struct pci_vtdtr_ctrlq *cq,
@@ -674,6 +683,12 @@ static __inline int
 pci_vtdtr_cq_empty(struct pci_vtdtr_ctrlq *cq)
 {
 	return (STAILQ_EMPTY(&cq->head));
+}
+
+static __inline int
+pci_mq_empty(struct pci_mq *mq)
+{
+	return (STAILQ_EMPTY(&mq->head));
 }
 
 static struct pci_vtdtr_ctrl_entry *
@@ -1147,6 +1162,7 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	struct pci_vtdtr_softc *sc;
 	pthread_t communicator, listener; // reader;
 	int error;
+	pthread_t saviour;
 
 	error = 0;
 	sc = calloc(1, sizeof(struct pci_vtdtr_softc));
@@ -1154,6 +1170,10 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	sc->vsd_ctrlq = calloc(1, sizeof(struct pci_vtdtr_ctrlq));
 	assert(sc->vsd_ctrlq != NULL);
 	STAILQ_INIT(&sc->vsd_ctrlq->head);
+	STAILQ_INIT(mq->head);
+
+	error = pthread_create(&saviour, NULL, pci_write, sc);
+	assert(error == 0);
 
 	vi_softc_linkup(&sc->vsd_vs, &vtdtr_vi_consts,
 					sc, pci_inst, sc->vsd_queues);
