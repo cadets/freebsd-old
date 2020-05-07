@@ -322,7 +322,7 @@ static void *pci_write(void *xctrl){
 			assert(sz > 0);
 			sz = fwrite(&trc_ev->dtbd_cpu, sizeof(uint32_t), 1, trace_stream);
 			assert(sz > 0);
-			sz = fwrite(&trc_ev->dtbd_errors, sizeof(uint32_t), 1, trace_stream);
+			sz = fwrite(&trc_ev->dtbd_errors, sizeof(uint32_t), 1, trace_stream); 
 			assert(sz > 0);
 			sz = fwrite(&trc_ev->dtbd_drops, sizeof(uint64_t), 1, trace_stream);
 			assert(sz > 0);
@@ -359,11 +359,14 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 
 	assert(niov == 1);
 	retval = 0;
-	trc_ev = &ctrl->uctrl.trc_ev;
 	ctrl = malloc(sizeof(struct pci_vtdtr_control));
 	memcpy(ctrl,iov->iov_base,sizeof(struct pci_vtdtr_control));
-	fprintf(time_fp, "%ld s %ld us for size %d \n", ts.tv_sec, ts.tv_usec, trc_ev->chunk_sz);
-	fflush(time_fp);
+	if(ctrl->event = VTDTR_DEVICE_TRACE){
+			trc_ev = &ctrl->uctrl.trc_ev;
+			fprintf(time_fp, "%ld s %ld us for size %d \n", ts.tv_sec, ts.tv_usec, trc_ev->chunk_sz);
+			fflush(time_fp);
+	}
+
 	switch (ctrl->event)
 	{
 	case VTDTR_DEVICE_READY:
