@@ -361,7 +361,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	retval = 0;
 	ctrl = malloc(sizeof(struct pci_vtdtr_control));
 	assert(ctrl != NULL);
-	memcpy(ctrl,iov->iov_base,sizeof(struct pci_vtdtr_control));
+	memcpy(ctrl, iov->iov_base, sizeof(struct pci_vtdtr_control));
 	if(ctrl->event == VTDTR_DEVICE_TRACE){
 		trc_ev = &ctrl->uctrl.trc_ev;
 		fprintf(time_fp, "%ld s %ld us for size %d \n", ts.tv_sec, ts.tv_usec, trc_ev->chunk_sz);
@@ -426,8 +426,9 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		pthread_mutex_lock(&sc->vsd_mtx);
 		sc->vsd_ready = 0;
 		pthread_mutex_unlock(&sc->vsd_mtx);
-		int error = pthread_create(&saviour, NULL, pci_write, (void *)ctrl);
-		assert(error == 0);
+		// int error = pthread_create(&saviour, NULL, pci_write, (void *)ctrl);
+		// assert(error == 0);
+		free(ctrl);
 		break;
 	case VTDTR_DEVICE_METADATA:
 		pthread_mutex_lock(&sc->vsd_mtx);
