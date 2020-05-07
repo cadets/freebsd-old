@@ -359,7 +359,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 
 	assert(niov == 1);
 	retval = 0;
-	ctrl = malloc(sizeof(struct pci_vtdtr_control));
+	ctrl = calloc(1,sizeof(struct pci_vtdtr_control));
 	assert(ctrl != NULL);
 	memcpy(ctrl, iov->iov_base, sizeof(struct pci_vtdtr_control));
 	if(ctrl->event == VTDTR_DEVICE_TRACE){
