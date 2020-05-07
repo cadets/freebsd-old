@@ -722,16 +722,16 @@ vtdtr_queue_enqueue_ctrl(struct virtio_dtrace_queue *q,
 	error = sglist_append(&sg, ctrl, sizeof(struct virtio_dtrace_control));
 	KASSERT(error == 0, ("%s: error %d adding control to sglist",
 						 __func__, error));
-	if(ctrl->event == VIRTIO_DTRACE_TRACE)
-	{
-		hi = 1;
-	}
+	// if(ctrl->event == VIRTIO_DTRACE_TRACE)
+	// {
+	// 	hi = 1;
+	// }
 	error = virtqueue_enqueue(vq, ctrl, &sg, readable, writable);
-	if(hi == 1)
-	{ nanouptime(&tv2);
-	  device_printf(dev, "End frag %ld s %ld ns\n", tv2.tv_sec, tv2.tv_nsec);
-	}
-	hi = 0;
+	// if(hi == 1)
+	// { nanouptime(&tv2);
+	//   device_printf(dev, "End frag %ld s %ld ns\n", tv2.tv_sec, tv2.tv_nsec);
+	// }
+	// hi = 0;
 	return (error);
 }
 
@@ -1606,11 +1606,11 @@ vtdtr_run(void *xsc)
 				ctrls[nent].event != VIRTIO_DTRACE_DEVICE_READY)
 				ready_flag = 0;
 			
-			if(ctrl_entry->ctrl.event == VIRTIO_DTRACE_TRACE)
-			{
-				nanouptime(&tv1);
-				device_printf(dev, "Start frag %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
-			}
+			// if(ctrl_entry->ctrl.event == VIRTIO_DTRACE_TRACE)
+			// {
+			// 	nanouptime(&tv1);
+			// 	device_printf(dev, "Start frag %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
+			// }
 			vtdtr_fill_desc(txq, &ctrls[nent]);
 			free(ctrl_entry, M_DEVBUF);
 			nent++;

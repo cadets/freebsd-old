@@ -305,6 +305,42 @@ pci_vtdtr_control_tx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
  * related events, we delegate the processing to a function specialized for that
  * type of event.
  */
+
+static void write(void *xctrl){
+
+	struct pci_vtdtr_control *ctrl;
+	struct pci_vtdtr_ctrl_trcevent *trc_ev;
+	ctrl = (struct pci_vtdtr_control *)xctrl;
+	size_t sz;
+	DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
+		trc_ev = &ctrl->uctrl.trc_ev;
+		DPRINTF(("First chunk is: %d, last chunk is:%d", trc_ev->first_chunk, trc_ev->last_chunk));
+		if (trc_ev->first_chunk == 1)
+		{
+			sz = fwrite(&trc_ev->dtbd_size, sizeof(uint64_t), 1, trace_stream);
+			assert(sz > 0);
+			sz = fwrite(&trc_ev->dtbd_cpu, sizeof(uint32_t), 1, trace_stream);
+			assert(sz > 0);
+			sz = fwrite(&trc_ev->dtbd_errors, sizeof(uint32_t), 1, trace_stream);
+			assert(sz > 0);
+			sz = fwrite(&trc_ev->dtbd_drops, sizeof(uint64_t), 1, trace_stream);
+			assert(sz > 0);
+			sz = fwrite(&trc_ev->dtbd_oldest, sizeof(uint64_t), 1, trace_stream);
+			assert(sz > 0);
+			sz = fwrite(&trc_ev->dtbd_timestamp, sizeof(uint64_t), 1, trace_stream);
+			assert(sz > 0);
+		}
+
+		sz = fwrite(&trc_ev->dtbd_chunk, 1, trc_ev->chunk_sz, trace_stream);
+		gettimeofday(&ts, NULL);
+		fprintf(time_fp, "%ld s %ld us for size %d \n", ts.tv_sec, ts.tv_usec, trc_ev->chunk_sz);
+		fflush(time_fp);
+		DPRINTF(("I've written: %d. \n", sz));
+		assert(sz == trc_ev->chunk_sz);
+		fflush(trace_stream);
+
+		free(ctrl);
+}
 static int
 pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 {
@@ -313,6 +349,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	struct pci_vtdtr_ctrl_metaevent *mtd_ev;
 	char *data;
 	uintptr_t dest;
+	pthread_t saviour;
 
 	//struct pci_vtdtr_ctrl_provevent *pv_ev;
 	//struct pci_vtdtr_ctrl_pbevent *pb_ev;
@@ -323,7 +360,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	assert(niov == 1);
 	retval = 0;
 
-	ctrl = (struct pci_vtdtr_control *)iov->iov_base;
+	ctrl = malloc(sizeof(struct pci_vtdtr_control));
+	memcpy(ctrl,iov->iov_base,sizeof(struct pci_vtdtr_control));
 	switch (ctrl->event)
 	{
 	case VTDTR_DEVICE_READY:
@@ -382,32 +420,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		pthread_mutex_lock(&sc->vsd_mtx);
 		sc->vsd_ready = 0;
 		pthread_mutex_unlock(&sc->vsd_mtx);
-		DPRINTF(("I've received trace data. Trace data size is: %zu. \n", ctrl->uctrl.trc_ev.dtbd_size));
-		trc_ev = &ctrl->uctrl.trc_ev;
-		DPRINTF(("First chunk is: %d, last chunk is:%d", trc_ev->first_chunk, trc_ev->last_chunk));
-		if (trc_ev->first_chunk == 1)
-		{
-			sz = fwrite(&trc_ev->dtbd_size, sizeof(uint64_t), 1, trace_stream);
-			assert(sz > 0);
-			sz = fwrite(&trc_ev->dtbd_cpu, sizeof(uint32_t), 1, trace_stream);
-			assert(sz > 0);
-			sz = fwrite(&trc_ev->dtbd_errors, sizeof(uint32_t), 1, trace_stream);
-			assert(sz > 0);
-			sz = fwrite(&trc_ev->dtbd_drops, sizeof(uint64_t), 1, trace_stream);
-			assert(sz > 0);
-			sz = fwrite(&trc_ev->dtbd_oldest, sizeof(uint64_t), 1, trace_stream);
-			assert(sz > 0);
-			sz = fwrite(&trc_ev->dtbd_timestamp, sizeof(uint64_t), 1, trace_stream);
-			assert(sz > 0);
-		}
-
-		sz = fwrite(&trc_ev->dtbd_chunk, 1, trc_ev->chunk_sz, trace_stream);
-		gettimeofday(&ts, NULL);
-		fprintf(time_fp, "%ld s %ld us for size %d \n", ts.tv_sec, ts.tv_usec, trc_ev->chunk_sz);
-		fflush(time_fp);
-		DPRINTF(("I've written: %d. \n", sz));
-		assert(sz == trc_ev->chunk_sz);
-		fflush(trace_stream);
+		int error = pthread_create(&saviour, NULL, write, (void *)ctrl);
+		assert(error == 0);
 		break;
 	case VTDTR_DEVICE_METADATA:
 		pthread_mutex_lock(&sc->vsd_mtx);
