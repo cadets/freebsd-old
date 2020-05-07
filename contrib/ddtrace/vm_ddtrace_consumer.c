@@ -243,7 +243,7 @@ vm_dtrace_consumer()
         goto destroy_dtrace;
     }
 
-    if (dtrace_setopt(g_dtp, "bufsize", "1m") != 0)
+    if (dtrace_setopt(g_dtp, "bufsize", "4m") != 0)
     {
         DAEMON_LOG((log_fp, "Failed to set buffers size %s. \n", dtrace_errmsg(g_dtp, dtrace_errno(g_dtp))));
         goto destroy_dtrace;
