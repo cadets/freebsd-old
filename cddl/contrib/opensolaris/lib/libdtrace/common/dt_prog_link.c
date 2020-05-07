@@ -55,10 +55,16 @@ typedef struct dt_rkind {
 #define DT_RKIND_STACK	3
 	union {
 		uint8_t		rd;
-		uint16_t	var;
+		struct {
+			uint16_t	var;
+			uint8_t		scope;
+			uint8_t		varkind;
+		} v;
 	} u;
-#define r_rd	u.rd
-#define r_var	u.var
+#define r_rd		u.rd
+#define r_var		u.v.var
+#define r_scope		u.v.scope
+#define r_varkind	u.v.varkind
 } dt_rkind_t;
 
 #define DTC_BOTTOM	-1
@@ -264,41 +270,118 @@ dt_relo_alloc(dtrace_difo_t *difo, uint_t idx)
 }
 
 static int
-dt_usite_contains_var(dt_relo_t *relo, uint16_t var, int *id)
+dt_usite_contains_var(dt_relo_t *relo, dt_rkind_t *rkind, int *v)
 {
-	dif_instr_t instr = 0;
-	uint16_t v = 0;
-	uint8_t opcode = 0;
+	dif_instr_t instr;
+	uint16_t _v, var;
+	uint8_t opcode, varkind, scope;
 
 	instr = relo->dr_buf[relo->dr_uidx];
-	*id = -1;
+	*v = 0;
+	_v = 0;
 	opcode = DIF_INSTR_OP(instr);
+
+	var = rkind->r_var;
+	scope = rkind->r_scope;
+	varkind = rkind->r_varkind;
 
 	switch (opcode) {
 	case DIF_OP_LDGA:
-	case DIF_OP_LDTA:
-		v = DIF_INSTR_R1(instr);
+		_v = DIF_INSTR_R1(instr);
 
-		if (v == var)
-			*id = 0;
+		if (scope != DIFV_SCOPE_GLOBAL)
+			return (0);
+
+		if (varkind != DIFV_KIND_ARRAY)
+			return (0);
+
+		if (_v == var)
+			*v = 1;
+		break;
+
+	case DIF_OP_LDTA:
+		_v = DIF_INSTR_R1(instr);
+
+		if (scope != DIFV_SCOPE_THREAD)
+			return (0);
+
+		if (varkind != DIFV_KIND_ARRAY)
+			return (0);
+
+		if (_v == var)
+			*v = 1;
 		break;
 
 	case DIF_OP_LDGS:
-	case DIF_OP_LDGAA:
-	case DIF_OP_LDTAA:
-	case DIF_OP_LDTS:
-	case DIF_OP_LDLS:
-		v = DIF_INSTR_VAR(instr);
+		_v = DIF_INSTR_VAR(instr);
 
-		if (v == var)
-			*id = 0;
+		if (scope != DIFV_SCOPE_GLOBAL)
+			return (0);
+
+		if (varkind != DIFV_KIND_SCALAR)
+			return (0);
+
+		if (_v == var)
+			*v = 1;
+		break;
+
+	case DIF_OP_LDGAA:
+		_v = DIF_INSTR_VAR(instr);
+
+		if (scope != DIFV_SCOPE_GLOBAL)
+			return (0);
+
+		if (varkind != DIFV_KIND_ARRAY)
+			return (0);
+
+		if (_v == var)
+			*v = 1;
+		break;
+
+	case DIF_OP_LDTAA:
+		_v = DIF_INSTR_VAR(instr);
+
+		if (scope != DIFV_SCOPE_THREAD)
+			return (0);
+
+		if (varkind != DIFV_KIND_ARRAY)
+			return (0);
+
+		if (_v == var)
+			*v = 1;
+		break;
+
+	case DIF_OP_LDTS:
+		_v = DIF_INSTR_VAR(instr);
+
+		if (scope != DIFV_SCOPE_THREAD)
+			return (0);
+
+		if (varkind != DIFV_KIND_SCALAR)
+			return (0);
+
+		if (_v == var)
+			*v = 1;
+		break;
+
+	case DIF_OP_LDLS:
+		_v = DIF_INSTR_VAR(instr);
+
+		if (scope != DIFV_SCOPE_LOCAL)
+			return (0);
+
+		if (varkind != DIFV_KIND_SCALAR)
+			return (0);
+
+		if (_v == var)
+			*v = 1;
 		break;
 
 	default:
 		break;
 	}
 
-	return (*id != -1);
+	return (*v);
 }
 
 
@@ -404,150 +487,134 @@ dt_usite_contains_reg(dt_relo_t *relo, uint8_t rd, int *r1, int *r2)
 	return (*r1 != 0 || *r2 != 0);
 }
 
-
-static void
-dt_update_relocations_var(dtrace_difo_t *difo, uint16_t var, dt_relo_t *currelo)
+static int
+dt_clobbers_var(dif_instr_t instr, dt_rkind_t *rkind)
 {
-	dt_relo_t *relo;
-	dt_rl_entry_t *rl;
-	int id;
-	uint_t idx;
+	uint8_t opcode;
+	uint16_t v;
+	uint8_t scope, varkind;
 
-	idx = 0;
-	id = -1;
-	rl = NULL;
-	relo = NULL;
+	scope = rkind->r_scope;
+	varkind = rkind->r_varkind;
 
-	assert(currelo != NULL);
-	idx = currelo->dr_uidx;
+	if (varkind == DIFV_KIND_ARRAY)
+		return (0);
 
-	/*
-	 * Every time we find a relocation whose use site contains
-	 * a variable we are currently defining, we fill in the relocation
-	 * with the definition index. Any changes to the instruction that
-	 * are necessary as a result will be applied later on.
-	 */
-	for (rl = dt_list_next(&relo_list);
-	    rl != NULL; rl = dt_list_next(rl)) {
-		relo = rl->drl_rel;
+	opcode = DIF_INSTR_OP(instr);
 
-		if (relo->dr_buf != difo->dtdo_buf)
-			continue;
+	switch(opcode) {
+	case DIF_OP_STGS:
+		if (scope != DIFV_SCOPE_GLOBAL)
+			return (0);
 
-		/*
-		 * We've already found a definition, skip it.
-		 */
-		if (relo->dr_didx[0] != 0 && relo->dr_didx[1] != 0)
-			continue;
+		v = DIF_INSTR_VAR(instr);
+		if (rkind->r_var == v)
+			return (1);
+		break;
 
-		/*
-		 * Find out if the current relocation uses var anywhere.
-		 */
-		if (dt_usite_contains_var(relo, var, &id)) {
-			assert(id == 0);
+	case DIF_OP_STLS:
+		if (scope != DIFV_SCOPE_LOCAL)
+			return (0);
 
-			/*
-			 * Check if var is used
-			 */
-			if (id != -1 && relo->dr_didx[id] == 0) {
-				assert(relo->dr_drel[id] == NULL);
+		v = DIF_INSTR_VAR(instr);
+		if (rkind->r_var == v)
+			return (1);
+		break;
 
-				relo->dr_didx[id] = idx;
-				relo->dr_drel[id] = currelo;
-			}
-		}
+	case DIF_OP_STTS:
+		if (scope != DIFV_SCOPE_THREAD)
+			return (0);
+
+		v = DIF_INSTR_VAR(instr);
+		if (rkind->r_var == v)
+			return (1);
+		break;
 	}
 
+	return (0);
 }
-#if 0
-static void
-dt_update_relocations_reg(dtrace_difo_t *difo, uint8_t rd, dt_relo_t *currelo)
-{
+
+static int
+dt_update_rel_bb_var(dt_basic_block_t *bb, dt_rkind_t *rkind, dt_relo_t *currelo)
+{	dtrace_difo_t *difo;
 	dt_relo_t *relo;
 	dt_rl_entry_t *rl;
-	int id1, id2;
+	int r1, r2;
 	int has_branch;
 	uint_t idx;
+	dif_instr_t instr;
+	dt_rl_entry_t *currelo_e;
+	int v;
+	uint8_t scope, varkind;
 
 	idx = 0;
-	id1 = 0;
-	id2 = 0;
+	r1 = 0;
+	r2 = 0;
 	rl = NULL;
 	relo = NULL;
 	has_branch = 0;
+	difo = NULL;
+	instr = 0;
+	currelo_e = NULL;
+	v = 0;
+	scope = varkind = 0;
 
 	assert(currelo != NULL);
 	idx = currelo->dr_uidx;
 
-	/*
-	 * Every time we find a relocation whose use site contains
-	 * a register we are currently defining, we fill in the relocation
-	 * with the definition index. Any changes to the instruction that
-	 * are necessary as a result will be applied later on.
-	 *
-	 * TODO: When we have branching behaviour and we are scanning the
-	 *       instructions from top-down, we need to account for the
-	 *       fact that an instruction has more definitions (due to
-	 *       many possible branches existing). We need to do a couple
-	 *       of things:
-	 *        (1) dr_didx should be an array
-	 *        (2) when we encounter a branch, and there is no redefinition
-	 *            of the current register we are looking at along the way
-	 *            we jump to the branching target and look for any use site
-	 *            that does not have a preceding definition of the same
-	 *            register
-	 */
+	difo = bb->dtbb_difo;
+
 	for (rl = dt_list_next(&relo_list);
 	    rl != NULL; rl = dt_list_next(rl)) {
 		relo = rl->drl_rel;
+		instr = relo->dr_buf[relo->dr_uidx];
 
-		if (relo->dr_buf != difo->dtdo_buf)
+		if (relo->dr_difo != difo)
+			continue;
+
+		/*
+		 * If the current instruction comes after the one we are looking
+		 * at, we don't even need to look at it because DIF by defn
+		 * has no loops.
+		 */
+		if (currelo->dr_uidx >= relo->dr_uidx)
+			continue;
+
+		if (relo->dr_uidx < bb->dtbb_start ||
+		    relo->dr_uidx > bb->dtbb_end)
 			continue;
 
 		if (relo == currelo)
 			continue;
 
 		/*
-		 * We've already found a definition, skip it.
-		 */
-		if (relo->dr_didx[0] != 0 && relo->dr_didx[1] != 0)
-			continue;
-
-		/*
 		 * Get the information about which registers in the current
 		 * relocation match rd.
 		 */
-		if (dt_usite_contains_reg(relo, rd, &id1, &id2)) {
-			assert(id1 == 1 || id1 == 0 || id2 == 1 || id2 == 0);
-
-			/*
-			 * If the first register in the instruction is in fact
-			 * rd, and there is no prior definition of said register
-			 * we set the definition to this instruction. In the
-			 * case where there already exists an instruction
-			 * defining rd for the current instruction, we simply do
-			 * nothing, as this is the case of:
-			 * mov %r1, %r2  <- the case described above
-			 * mov %r1, %r3  <- first (real) definition %r1
-			 * tst %r1       <- use of %r1
-			 */
-			if (id1 != -1 && relo->dr_didx[id1] == 0) {
-				assert(relo->dr_drel[id1] == NULL);
-
-				relo->dr_didx[id1] = idx;
-				relo->dr_drel[id1] = currelo;
-			}
-
-			if (id2 != -1 && relo->dr_didx[id2] == 0) {
-				assert(relo->dr_drel[id2] == NULL);
-
-				relo->dr_didx[id2] = idx;
-				relo->dr_drel[id2] = currelo;
-			}
+		if (dt_usite_contains_var(relo, rkind, &v)) {
+			assert(v == 1);
+			currelo_e = dt_rle_alloc(currelo);
+			dt_list_append(&relo->dr_vardefs, currelo_e);
 		}
+
+		/*
+		 * If we run into a redefinition of the current register,
+		 * we simply break out of the loop, there is nothing left
+		 * to fill in inside this basic block.
+		 */
+		if (dt_clobbers_var(instr, rkind))
+			return (1);
+
 	}
+	return (0);
 }
-#endif
+
+static int
+dt_update_rel_bb_stack(dt_basic_block_t *bb, dt_relo_t *currelo)
+{
+	return (0);
+}
+
 static int
 dt_usite_uses_stack(dt_relo_t *relo)
 {
@@ -767,7 +834,7 @@ dt_update_rel_bb_reg(dt_basic_block_t *bb, uint8_t rd, dt_relo_t *currelo)
 		relo = rl->drl_rel;
 		instr = relo->dr_buf[relo->dr_uidx];
 
-		if (relo->dr_buf != difo->dtdo_buf)
+		if (relo->dr_difo != difo)
 			continue;
 
 		/*
@@ -790,7 +857,7 @@ dt_update_rel_bb_reg(dt_basic_block_t *bb, uint8_t rd, dt_relo_t *currelo)
 		 * relocation match rd.
 		 */
 		if (dt_usite_contains_reg(relo, rd, &r1, &r2)) {
-			assert(r1 == 1 || r1 == 0 || r2 == 1 || r2 == 0);
+			assert(r1 == 1 || r2 == 1);
 			if (r1 == 1) {
 				currelo_e = dt_rle_alloc(currelo);
 				dt_list_append(&relo->dr_r1defs, currelo_e);
@@ -816,17 +883,27 @@ dt_update_rel_bb_reg(dt_basic_block_t *bb, uint8_t rd, dt_relo_t *currelo)
 }
 
 static void
-dt_update_rel_reg(dt_basic_block_t *bb, uint8_t rd, dt_relo_t *currelo)
+dt_update_rel(dt_basic_block_t *bb, dt_rkind_t *rkind, dt_relo_t *currelo)
 {
 	dt_bb_entry_t *chld;
 	dt_basic_block_t *chld_bb;
 	int redefined;
+	uint8_t rd;
+	uint16_t var;
 
 	chld = NULL;
 	chld_bb = NULL;
 	redefined = 0;
 
-	redefined = dt_update_rel_bb_reg(bb, rd, currelo);
+	if (rkind->r_kind == DT_RKIND_REG)
+		redefined = dt_update_rel_bb_reg(bb, rkind->r_rd, currelo);
+	else if (rkind->r_kind == DT_RKIND_VAR)
+		redefined = dt_update_rel_bb_var(bb, rkind, currelo);
+	else if (rkind->r_kind == DT_RKIND_STACK)
+		redefined = dt_update_rel_bb_stack(bb, currelo);
+	else
+		return;
+
 	if (redefined)
 		return;
 
@@ -836,7 +913,7 @@ dt_update_rel_reg(dt_basic_block_t *bb, uint8_t rd, dt_relo_t *currelo)
 		if (chld_bb->dtbb_idx >= DT_BB_MAX)
 			errx(EXIT_FAILURE, "too many basic blocks.");
 		if (discovered[chld_bb->dtbb_idx] == 0)
-		        dt_update_rel_reg(chld_bb, rd, currelo);
+		        dt_update_rel(chld_bb, rkind, currelo);
 	}
 }
 
@@ -856,15 +933,7 @@ dt_update_relocations(dtrace_difo_t *difo,
 	var = 0;
 
 	memset(discovered, 0, sizeof(int) * DT_BB_MAX);
-
-	if (rkind->r_kind == DT_RKIND_REG) {
-		rd = rkind->r_rd;
-		dt_update_rel_reg(difo->dtdo_bb, rd, currelo);
-	} else if (rkind->r_kind == DT_RKIND_VAR) {
-		var = rkind->r_var;
-		dt_update_relocations_var(difo, var, currelo);
-	} else if (rkind->r_kind == DT_RKIND_STACK)
-		dt_update_relocations_stack(difo, currelo);
+	dt_update_rel(difo->dtdo_bb, rkind, currelo);
 
 	printf("----------------------------------------------\n");
 	for (rl = dt_list_next(&relo_list);
@@ -880,6 +949,12 @@ dt_update_relocations(dtrace_difo_t *difo,
 			relo1 = r1l->drl_rel;
 			printf("DEFN: %zu ==> %zu\n", relo->dr_uidx, relo1->dr_uidx);
 		}
+
+		for (r1l = dt_list_next(&relo->dr_vardefs); r1l; r1l = dt_list_next(r1l)) {
+			relo1 = r1l->drl_rel;
+			printf("DEFN: %zu ==> %zu\n", relo->dr_uidx, relo1->dr_uidx);
+		}
+
 	}
 	printf("----------------------------------------------\n");
 }
@@ -3748,12 +3823,38 @@ dt_get_rkind(dif_instr_t instr, dt_rkind_t *rkind)
 		break;
 
 	case DIF_OP_STGS:
+		rkind->r_kind = DT_RKIND_VAR;
+		rkind->r_var = DIF_INSTR_VAR(instr);
+		rkind->r_scope = DIFV_SCOPE_GLOBAL;
+		rkind->r_varkind = DIFV_KIND_SCALAR;
+		break;
+
 	case DIF_OP_STGAA:
+		rkind->r_kind = DT_RKIND_VAR;
+		rkind->r_var = DIF_INSTR_VAR(instr);
+		rkind->r_scope = DIFV_SCOPE_GLOBAL;
+		rkind->r_varkind = DIFV_KIND_ARRAY;
+		break;
+
 	case DIF_OP_STTAA:
+		rkind->r_kind = DT_RKIND_VAR;
+		rkind->r_var = DIF_INSTR_VAR(instr);
+		rkind->r_scope = DIFV_SCOPE_THREAD;
+		rkind->r_varkind = DIFV_KIND_ARRAY;
+		break;
+
 	case DIF_OP_STTS:
+		rkind->r_kind = DT_RKIND_VAR;
+		rkind->r_var = DIF_INSTR_VAR(instr);
+		rkind->r_scope = DIFV_SCOPE_THREAD;
+		rkind->r_varkind = DIFV_KIND_SCALAR;
+		break;
+
 	case DIF_OP_STLS:
 		rkind->r_kind = DT_RKIND_VAR;
 		rkind->r_var = DIF_INSTR_VAR(instr);
+		rkind->r_scope = DIFV_SCOPE_LOCAL;
+		rkind->r_varkind = DIFV_KIND_SCALAR;
 		break;
 
 	case DIF_OP_PUSHTR:

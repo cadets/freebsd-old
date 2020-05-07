@@ -337,6 +337,8 @@ dt_as(dt_pcb_t *pcb)
 	uint_t kmask, kbits, umask, ubits;
 	uint_t krel = 0, urel = 0, xlrefs = 0;
 
+	static size_t difo_id = 0;
+
 	/*
 	 * Select bitmasks based upon the desired symbol linking policy.  We
 	 * test (di_extern->di_flags & xmask) == xbits to determine if the
@@ -392,6 +394,10 @@ dt_as(dt_pcb_t *pcb)
 
 	if ((labels = dt_alloc(dtp, sizeof (uint_t) * dlp->dl_label)) == NULL)
 		longjmp(pcb->pcb_jmpbuf, EDT_NOMEM);
+
+	dp->dtdo_idx = difo_id++;
+
+	printf("dp->dtdo_idx = %zu\n", dp->dtdo_idx);
 
 	/*
 	 * Make an initial pass through the instruction list, filling in the

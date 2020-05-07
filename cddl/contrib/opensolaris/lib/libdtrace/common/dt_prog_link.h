@@ -40,6 +40,7 @@ typedef struct dt_relo {
 	struct dt_relo *dr_drel[2];	/* Pointer to the defn site */
 	dt_list_t dr_r1defs;
 	dt_list_t dr_r2defs;
+	dt_list_t dr_vardefs;
 	int dr_type;			/* D type */
 	ctf_id_t dr_ctfid;		/* CTF type */
 	size_t dr_sym;			/* symbol offset in symtab */
