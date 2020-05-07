@@ -129,7 +129,7 @@ static int vstate = 0;
 
 
 static struct vtdtr_traceq *tq;
-struct timespec tv1;
+struct timespec tv1,tv2;
 
 static int vtdtr_modevent(module_t, int, void *);
 static void vtdtr_cleanup(void);
@@ -1434,7 +1434,8 @@ vtdtr_consume_trace(void *xsc)
 					cv_signal(&sc->vtdtr_condvar);
 					mtx_unlock(&sc->vtdtr_condmtx);
 				}
-				device_printf(dev, "End frag %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
+				nanouptime(&tv2);
+				device_printf(dev, "End frag %ld s %ld ns\n", tv2.tv_sec, tv2.tv_nsec);
 			
 			break;
 		case DDTRACE_METADATA:
