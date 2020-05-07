@@ -48,25 +48,6 @@ static dt_list_t bb_list;
 static dt_rl_entry_t *relo_first = NULL;
 static int discovered[DT_BB_MAX] = {0};
 
-typedef struct dt_rkind {
-	int			r_kind;
-#define DT_RKIND_REG	1
-#define DT_RKIND_VAR	2
-#define DT_RKIND_STACK	3
-	union {
-		uint8_t		rd;
-		struct {
-			uint16_t	var;
-			uint8_t		scope;
-			uint8_t		varkind;
-		} v;
-	} u;
-#define r_rd		u.rd
-#define r_var		u.v.var
-#define r_scope		u.v.scope
-#define r_varkind	u.v.varkind
-} dt_rkind_t;
-
 #define DTC_BOTTOM	-1
 #define DTC_INT		 0
 #define DTC_STRUCT	 1
@@ -925,9 +906,11 @@ dt_update_relocations(dtrace_difo_t *difo,
 	uint16_t var;
 	dt_relo_t *relo, *relo1;
 	dt_rl_entry_t *rl, *r1l;
+	dt_rkind_t *__rkind;
 
 	relo = relo1 = NULL;
 	rl = r1l = NULL;
+	__rkind = NULL;
 
 	rd = 0;
 	var = 0;
@@ -952,7 +935,17 @@ dt_update_relocations(dtrace_difo_t *difo,
 
 		for (r1l = dt_list_next(&relo->dr_vardefs); r1l; r1l = dt_list_next(r1l)) {
 			relo1 = r1l->drl_rel;
-			printf("DEFN: %zu ==> %zu\n", relo->dr_uidx, relo1->dr_uidx);
+			__rkind = &relo1->dr_rkind;
+			if (__rkind->r_kind != DT_RKIND_VAR)
+				errx(EXIT_FAILURE, "rkind of relo1 is wrong: %d",
+				    __rkind->r_kind);
+
+			printf("VAR: (%s, %s)\n",
+			    __rkind->r_scope == DIFV_SCOPE_GLOBAL ?
+			    "global" : __rkind->r_scope == DIFV_SCOPE_THREAD
+			    ? "thread" : "local",
+			    __rkind->r_varkind == DIFV_KIND_SCALAR ? "scalar" : "array");
+			printf("\tDEFN: %zu ==> %zu\n", relo->dr_uidx, relo1->dr_uidx);
 		}
 
 	}
@@ -4126,7 +4119,7 @@ dt_compute_cfg(dtrace_difo_t *difo)
 			if (bb2->dtbb_difo != difo)
 				continue;
 
-			if (lbl != -1 && bb2->dtbb_end == lbl) {
+			if (lbl != -1 && bb2->dtbb_start == lbl) {
 				bb_new1 = malloc(sizeof(dt_bb_entry_t));
 				memcpy(bb_new1, bb_e2, sizeof(dt_bb_entry_t));
 
@@ -4233,9 +4226,9 @@ dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		dt_list_prepend(&relo_list, rl);
 		relo_first = rl;
 		dt_get_rkind(instr, &rkind);
+		memcpy(&relo->dr_rkind, &rkind, sizeof(dt_rkind_t));
 		dt_update_relocations(difo, &rkind, relo);
 	}
-	exit(0);
 
 	return (0);
 }
@@ -4305,9 +4298,9 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			if (rval != 0)
 				return (dt_set_errno(dtp, rval));
 
-			rval = dt_prog_infer_types(dtp, ad->dtad_difo);
-			if (rval != -0)
-				return (dt_set_errno(dtp, rval));
+//			rval = dt_prog_infer_types(dtp, ad->dtad_difo);
+//			if (rval != -0)
+//				return (dt_set_errno(dtp, rval));
 		}
 	}
 

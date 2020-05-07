@@ -34,6 +34,25 @@
 
 #include <dt_list.h>
 
+typedef struct dt_rkind {
+	int			r_kind;
+#define DT_RKIND_REG	1
+#define DT_RKIND_VAR	2
+#define DT_RKIND_STACK	3
+	union {
+		uint8_t		rd;
+		struct {
+			uint16_t	var;
+			uint8_t		scope;
+			uint8_t		varkind;
+		} v;
+	} u;
+#define r_rd		u.rd
+#define r_var		u.v.var
+#define r_scope		u.v.scope
+#define r_varkind	u.v.varkind
+} dt_rkind_t;
+
 typedef struct dt_relo {
 	size_t dr_uidx;			/* Index of the use site */
 	size_t dr_didx[2];		/* Index of the defn sites */
@@ -49,6 +68,7 @@ typedef struct dt_relo {
 	ctf_membinfo_t *dr_mip;		/* CTF member info (type, offs) */
 	dt_list_t dr_stacklist;		/* List of push instructions
 					 * if the instruction uses the stack */
+	struct dt_rkind dr_rkind;	/* rkind of the relocation */
 } dt_relo_t;
 
 typedef struct dt_rl_entry {
