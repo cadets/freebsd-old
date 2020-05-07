@@ -265,7 +265,7 @@ static void pci_vtdtr_handle_mev(int, enum ev_type, int, void *);
 static void pci_vtdtr_reset_queue(struct pci_vtdtr_softc *);
 static int pci_vtdtr_init(struct vmctx *, struct pci_devinst *, char *);
 static void *pci_vtdtr_read_script(void *);
-static void *write(void *);
+static void *pci_write(void *);
 
 static struct virtio_consts vtdtr_vi_consts = {
 	"vtdtr",		 /* name */
@@ -307,7 +307,7 @@ pci_vtdtr_control_tx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
  * type of event.
  */
 
-static void *write(void *xctrl){
+static void *pci_write(void *xctrl){
 
 	struct pci_vtdtr_control *ctrl;
 	struct pci_vtdtr_ctrl_trcevent *trc_ev;
@@ -421,7 +421,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		pthread_mutex_lock(&sc->vsd_mtx);
 		sc->vsd_ready = 0;
 		pthread_mutex_unlock(&sc->vsd_mtx);
-		int error = pthread_create(&saviour, NULL, write, (void *)ctrl);
+		int error = pthread_create(&saviour, NULL, pci_write, (void *)ctrl);
 		assert(error == 0);
 		break;
 	case VTDTR_DEVICE_METADATA:
