@@ -714,6 +714,7 @@ vtdtr_queue_enqueue_ctrl(struct virtio_dtrace_queue *q,
 	struct sglist sg;
 	struct virtqueue *vq;
 	int error;
+	int hi = 0;
 
 	vq = q->vtdq_vq;
 
@@ -721,9 +722,16 @@ vtdtr_queue_enqueue_ctrl(struct virtio_dtrace_queue *q,
 	error = sglist_append(&sg, ctrl, sizeof(struct virtio_dtrace_control));
 	KASSERT(error == 0, ("%s: error %d adding control to sglist",
 						 __func__, error));
-
+	if(ctrl->event == VIRTIO_DTRACE_TRACE)
+	{
+		hi = 1;
+	}
 	error = virtqueue_enqueue(vq, ctrl, &sg, readable, writable);
-
+	if(hi == 1)
+	{ nanouptime(&tv2);
+	  device_printf(dev, "End frag %ld s %ld ns\n", tv2.tv_sec, tv2.tv_nsec);
+	}
+	hi = 0;
 	return (error);
 }
 
@@ -1367,8 +1375,7 @@ vtdtr_consume_trace(void *xsc)
 				// device_printf(dev, "Trace data size: %zu. \n", trc->dtbd_size);
 				// device_printf(dev, "%s", trc->dtbd_data);
 				KASSERT(trc->dtbd_data != NULL, "Trace data buffer cannot be NULL.");
-				nanouptime(&tv1);
-				device_printf(dev, "Start frag %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
+				
 				ctrl = &ctrl_entry->ctrl;
 				ctrl->event = VIRTIO_DTRACE_TRACE;
 				ctrl_trc_ev = &ctrl->uctrl.trace_ev;
@@ -1434,8 +1441,6 @@ vtdtr_consume_trace(void *xsc)
 					cv_signal(&sc->vtdtr_condvar);
 					mtx_unlock(&sc->vtdtr_condmtx);
 				}
-				nanouptime(&tv2);
-				device_printf(dev, "End frag %ld s %ld ns\n", tv2.tv_sec, tv2.tv_nsec);
 			
 			break;
 		case DDTRACE_METADATA:
@@ -1601,10 +1606,11 @@ vtdtr_run(void *xsc)
 				ctrls[nent].event != VIRTIO_DTRACE_DEVICE_READY)
 				ready_flag = 0;
 			
-			// if(ctrl_entry->ctrl.event == VIRTIO_DTRACE_TRACE)
-			// {
-			// 
-			// }
+			if(ctrl_entry->ctrl.event == VIRTIO_DTRACE_TRACE)
+			{
+				nanouptime(&tv1);
+				device_printf(dev, "Start frag %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
+			}
 			vtdtr_fill_desc(txq, &ctrls[nent]);
 			free(ctrl_entry, M_DEVBUF);
 			nent++;
