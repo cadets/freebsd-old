@@ -1367,7 +1367,8 @@ vtdtr_consume_trace(void *xsc)
 				// device_printf(dev, "Trace data size: %zu. \n", trc->dtbd_size);
 				// device_printf(dev, "%s", trc->dtbd_data);
 				KASSERT(trc->dtbd_data != NULL, "Trace data buffer cannot be NULL.");
-
+				nanouptime(&tv1);
+				device_printf(dev, "Start frag %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
 				ctrl = &ctrl_entry->ctrl;
 				ctrl->event = VIRTIO_DTRACE_TRACE;
 				ctrl_trc_ev = &ctrl->uctrl.trace_ev;
@@ -1433,6 +1434,7 @@ vtdtr_consume_trace(void *xsc)
 					cv_signal(&sc->vtdtr_condvar);
 					mtx_unlock(&sc->vtdtr_condmtx);
 				}
+				device_printf(dev, "End frag %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
 			
 			break;
 		case DDTRACE_METADATA:
@@ -1600,8 +1602,7 @@ vtdtr_run(void *xsc)
 			
 			// if(ctrl_entry->ctrl.event == VIRTIO_DTRACE_TRACE)
 			// {
-			// 	nanouptime(&tv1);
-			// 	device_printf(dev, "Time of send %ld s %ld ns\n", tv1.tv_sec, tv1.tv_nsec);
+			// 
 			// }
 			vtdtr_fill_desc(txq, &ctrls[nent]);
 			free(ctrl_entry, M_DEVBUF);
