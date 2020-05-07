@@ -714,7 +714,6 @@ vtdtr_queue_enqueue_ctrl(struct virtio_dtrace_queue *q,
 	struct sglist sg;
 	struct virtqueue *vq;
 	int error;
-	int hi = 0;
 
 	vq = q->vtdq_vq;
 
