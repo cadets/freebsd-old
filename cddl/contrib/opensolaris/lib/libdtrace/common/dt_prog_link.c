@@ -54,6 +54,24 @@ static int discovered[DT_BB_MAX] = {0};
 #define DTC_STRING	 2
 
 static int
+dt_in_list(dt_list_t *defs, dt_relo_t *r)
+{
+	dt_rl_entry_t *rl;
+	dt_relo_t *cur;
+
+	rl = NULL;
+	cur = NULL;
+
+	for (rl = dt_list_next(defs); rl; rl = dt_list_next(rl)) {
+		cur = rl->drl_rel;
+		if (r == cur)
+			return (1);
+	}
+
+	return (0);
+}
+
+static int
 dt_get_class(char *buf)
 {
 	size_t len;
@@ -575,7 +593,8 @@ dt_update_rel_bb_var(dt_basic_block_t *bb, dt_rkind_t *rkind, dt_relo_t *currelo
 		if (dt_usite_contains_var(relo, rkind, &v)) {
 			assert(v == 1);
 			currelo_e = dt_rle_alloc(currelo);
-			dt_list_append(&relo->dr_vardefs, currelo_e);
+			if (dt_in_list(&relo->dr_vardefs, currelo) == 0)
+				dt_list_append(&relo->dr_vardefs, currelo_e);
 		}
 
 		/*
@@ -841,12 +860,14 @@ dt_update_rel_bb_reg(dt_basic_block_t *bb, uint8_t rd, dt_relo_t *currelo)
 			assert(r1 == 1 || r2 == 1);
 			if (r1 == 1) {
 				currelo_e = dt_rle_alloc(currelo);
-				dt_list_append(&relo->dr_r1defs, currelo_e);
+				if (dt_in_list(&relo->dr_r1defs, currelo) == 0)
+					dt_list_append(&relo->dr_r1defs, currelo_e);
 			}
 
 			if (r2 == 1) {
 				currelo_e = dt_rle_alloc(currelo);
-				dt_list_append(&relo->dr_r2defs, currelo_e);
+				if (dt_in_list(&relo->dr_r2defs, currelo) == 0)
+					dt_list_append(&relo->dr_r2defs, currelo_e);
 			}
 		}
 
