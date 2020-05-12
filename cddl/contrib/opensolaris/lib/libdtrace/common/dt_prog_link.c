@@ -1018,11 +1018,19 @@ dt_update_relocations(dtrace_difo_t *difo,
 	uint16_t var;
 	dt_relo_t *relo, *relo1;
 	dt_rl_entry_t *rl, *r1l;
+	dt_stacklist_t *sl;
+	dt_pathlist_t *il;
+	dt_list_t *stack;
+	dt_stack_t *se;
 	dt_rkind_t *__rkind;
 	dtrace_difo_t *_difo;
 
 	relo = relo1 = NULL;
 	rl = r1l = NULL;
+	sl = NULL;
+	stack = NULL;
+	se = NULL;
+	il = NULL;
 	__rkind = NULL;
 
 	rd = 0;
@@ -1059,6 +1067,22 @@ dt_update_relocations(dtrace_difo_t *difo,
 			    ? "thread" : "local",
 			    __rkind->r_varkind == DIFV_KIND_SCALAR ? "scalar" : "array");
 			printf("\tDEFN: %zu ==> %zu\n", relo->dr_uidx, relo1->dr_uidx);
+		}
+
+		for (sl = dt_list_next(&relo->dr_stacklist); sl; sl = dt_list_next(sl)) {
+			stack = &sl->dsl_stack;
+			printf("Stack identified by: ");
+			for (il = dt_list_next(&sl->dsl_identifier); il; il = dt_list_next(il)) {
+				if (dt_list_next(il) != NULL)
+					printf("%d--", il->dtpl_bb->dtbb_idx);
+				else
+					printf("%d\n", il->dtpl_bb->dtbb_idx);
+			}
+
+			for (se = dt_list_next(stack); se; se = dt_list_next(se)) {
+				relo1 = se->ds_rel;
+				printf("\tDEFN: %zu ==> %zu\n", relo->dr_uidx, relo1->dr_uidx);
+			}
 		}
 
 	}
