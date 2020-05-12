@@ -639,13 +639,13 @@ dt_usite_uses_stack(dt_relo_t *relo)
 }
 
 static void
-dt_copy_list(dt_list_t *fst, dt_list_t *snd, size_t entry_size)
+dt_copy_list(dt_list_t *dst, dt_list_t *src, size_t entry_size)
 {
 	void *e, *new;
 
 	e = new = NULL;
 
-	for (e = dt_list_next(fst); e; e = dt_list_next(e)) {
+	for (e = dt_list_next(src); e; e = dt_list_next(e)) {
 		new = malloc(entry_size);
 		memset(new, 0, sizeof(dt_list_t));
 		/*
@@ -655,6 +655,8 @@ dt_copy_list(dt_list_t *fst, dt_list_t *snd, size_t entry_size)
 		memcpy(((char *)new) + sizeof(dt_list_t),
 		    ((char *)e) + sizeof(dt_list_t),
 		    entry_size - sizeof(dt_list_t));
+
+		dt_list_append(dst, new);
 	}
 }
 
@@ -689,17 +691,18 @@ dt_get_stack(dt_list_t *bb_path, dt_relo_t *r)
 
 	for (sl = dt_list_next(&r->dr_stacklist); sl; sl = dt_list_next(sl)) {
 		if (dt_list_equal(bb_path,
-		    (dt_list_t *)sl, sizeof(dt_pathlist_t)))
+		    &sl->dsl_identifier, sizeof(dt_pathlist_t)))
 			break;
 	}
 
 	if (sl == NULL) {
 		sl = malloc(sizeof(dt_stacklist_t));
 		memset(sl, 0, sizeof(dt_stacklist_t));
-	}
+		dt_copy_list((dt_list_t *)&sl->dsl_identifier,
+		    bb_path, sizeof(dt_pathlist_t));
 
-	dt_copy_list((dt_list_t *)&sl->dsl_identifier,
-	    bb_path, sizeof(dt_pathlist_t));
+		dt_list_append(&r->dr_stacklist, sl);
+	}
 
 	return (sl);
 }
@@ -799,8 +802,9 @@ dt_update_rel_bb_stack(dt_list_t *bb_path, dtrace_difo_t *difo,
 				errx(EXIT_FAILURE, "curstack should not be NULL");
 
 			if (dt_in_list(&curstack->dsl_stack,
-			    (void *)&currelo, sizeof(dt_relo_t *)) == 0)
+			    (void *)&currelo, sizeof(dt_relo_t *)) == 0) {
 				dt_list_append(&curstack->dsl_stack, s_entry);
+			}
 		}
 	}
 
@@ -980,9 +984,7 @@ dt_update_rel(dtrace_difo_t *difo, dt_basic_block_t *bb,
 
 	bb_path_entry = malloc(sizeof(dt_pathlist_t));
 	memset(bb_path_entry, 0, sizeof(dt_pathlist_t));
-
 	bb_path_entry->dtpl_bb = bb;
-
 	dt_list_append(&bb_path, bb_path_entry);
 
 	if (rkind->r_kind == DT_RKIND_REG)
@@ -1008,6 +1010,7 @@ dt_update_rel(dtrace_difo_t *difo, dt_basic_block_t *bb,
 
 end:
 	dt_list_delete(&bb_path, bb_path_entry);
+	free(bb_path_entry);
 }
 
 static void
@@ -1074,9 +1077,9 @@ dt_update_relocations(dtrace_difo_t *difo,
 			printf("Stack identified by: ");
 			for (il = dt_list_next(&sl->dsl_identifier); il; il = dt_list_next(il)) {
 				if (dt_list_next(il) != NULL)
-					printf("%d--", il->dtpl_bb->dtbb_idx);
+					printf("%zu--", il->dtpl_bb->dtbb_idx);
 				else
-					printf("%d\n", il->dtpl_bb->dtbb_idx);
+					printf("%zu\n", il->dtpl_bb->dtbb_idx);
 			}
 
 			for (se = dt_list_next(stack); se; se = dt_list_next(se)) {
