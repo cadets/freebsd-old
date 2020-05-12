@@ -57,25 +57,7 @@ typedef struct dt_pathlist {
 	dt_list_t dtpl_list;
 	dt_basic_block_t *dtpl_bb;
 } dt_pathlist_t;
-#if 0
-static int
-dt_in_list(dt_list_t *defs, dt_relo_t *r)
-{
-	dt_rl_entry_t *rl;
-	dt_relo_t *cur;
 
-	rl = NULL;
-	cur = NULL;
-
-	for (rl = dt_list_next(defs); rl; rl = dt_list_next(rl)) {
-		cur = rl->drl_rel;
-		if (r == cur)
-			return (1);
-	}
-
-	return (0);
-}
-#endif
 static int
 dt_in_list(dt_list_t *lst, void *find, size_t size)
 {
