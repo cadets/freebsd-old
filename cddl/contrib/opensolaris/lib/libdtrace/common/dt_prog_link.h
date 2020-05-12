@@ -81,8 +81,14 @@ typedef struct dt_stacklist {
 	int dsl_kind;
 #define DT_SL_SPLIT	1
 #define DT_SL_REL	2
-	dt_relo_t *dsl_rel;
+	dt_list_t dsl_stack;
+	dt_list_t dsl_identifier;
 } dt_stacklist_t;
+
+typedef struct dt_stack {
+	dt_list_t ds_list;
+	dt_relo_t *ds_rel;
+} dt_stack_t;
 
 typedef struct dt_basic_block {
 	dtrace_difo_t *dtbb_difo;
