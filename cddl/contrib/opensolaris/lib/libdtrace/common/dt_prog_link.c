@@ -1207,7 +1207,7 @@ dt_builtin_type(dt_relo_t *r, uint16_t var)
 		if (r->dr_ctfid == CTF_ERR)
 			errx(EXIT_FAILURE, "failed to get type uint32_t: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
-
+x
 		r->dr_type = DIF_TYPE_CTF;
 		break;
 
@@ -1342,9 +1342,230 @@ dt_builtin_type(dt_relo_t *r, uint16_t var)
 }
 
 static int
+dt_typecheck_regdefs(dt_list_t *defs)
+{
+	dt_rl_entry_t *rl;
+	dt_relo_t *relo, *orelo;
+	char buf1[4096] = {0}, buf2[4096] = {0};
+	int type, otype;
+	int class1, class2;
+
+	rl = NULL;
+	type = otype = -1;
+	class1 = class2 = -1;
+	relo = orelo = NULL;
+
+	/*
+	 * We iterate over all the register definitions for a particular
+	 * relocation. We make sure that each of the definitions agrees
+	 * on the type of the register.
+	 */
+	for (rl = dt_list_next(defs); rl; rl = dt_list_next(rl)) {
+		orelo = relo;
+		relo = rl->drl_rel;
+
+		otype = type;
+		type = dt_infer_type(relo);
+
+		/*
+		 * We failed to infer the type to begin with, bail out.
+		 */
+		if (type == -1)
+			return (-1);
+
+		/*
+		 * The type at the previous definition does not match the type
+		 * inferred in the current one, which is nonsense.
+		 */
+		if (orelo && otype != type) {
+			fprintf(stderr, "otype = %d, type = %d\n", otype, type);
+			return (-1);
+		}
+
+		if (type == DIF_TYPE_CTF) {
+			/*
+			 * We get the type name for reporting purposes.
+			 */
+			if (ctf_type_name(ctf_file, relo->dr_ctfid, buf,
+			    sizeof(buf)) != ((char *)buf))
+				errx(EXIT_FAILURE,
+				    "failed at getting type name %ld: %s",
+				    relo->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If we are at the first definition, or only have one
+			 * definition, we don't need to check the types.
+			 */
+			if (orelo == NULL)
+				continue;
+
+ 			/*
+			 * Get the previous' relocation's inferred type for
+			 * error reporting.
+			 */
+			if (ctf_type_name(ctf_file, orelo->dr_ctfid, buf2,
+			    sizeof(buf2)) != ((char *)buf2))
+				errx(EXIT_FAILURE,
+				    "failed at getting type name %ld: %s",
+				    orelo->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * Fail to typecheck if the types don't match 100%.
+			 */
+			if (relo->dr_ctfid != orelo->dr_ctfid) {
+				fprintf(stderr, "types %s and %s do not match\n",
+				    buf1, buf2);
+				return (-1);
+			}
+		}
+	}
+
+	return (type);
+}
+
+
+static int
+dt_typecheck_vardefs(dt_list_t *defs)
+{
+	dt_rl_entry_t *rl;
+	dt_relo_t *relo, *orelo;
+	char buf1[4096] = {0}, buf2[4096] = {0};
+	int type, otype;
+	int class1, class2;
+
+	rl = NULL;
+	type = otype = -1;
+	class1 = class2 = -1;
+	relo = orelo = NULL;
+
+	/*
+	 * We iterate over all the variable definitions for a particular
+	 * relocation that is created through a variable load instruction.
+	 * We make sure that:
+	 *  (1) All definitions agree on the type of the variable
+	 *  (2) All definitions conform to the previously inferred variable
+	 *      type from a different DIFO (if it exists).
+	 */
+	for (rl = dt_list_next(defs); rl; rl = dt_list_next(rl)) {
+		orelo = relo;
+		relo = rl->drl_rel;
+
+		otype = type;
+		type = dt_infer_type(relo);
+
+		/*
+		 * We failed to infer the type to begin with, bail out.
+		 */
+		if (type == -1) {
+			fprintf(stderr, "failed to infer type\n");
+			return (-1);
+		}
+
+		/*
+		 * The type at the previous definition does not match the type
+		 * inferred in the current one, which is nonsense.
+		 */
+		if (orelo && otype != type) {
+			fprintf(stderr, "otype and type mismatch (%d, %d)\n",
+			    otype, type);
+			return (-1);
+		}
+
+		/*
+		 * We get the variable from the variable table.
+		 *
+		 * N.B.: This is not the variable table that is in the DIFO,
+		 *       it is rather a separate variable table that we use
+		 *       to keep track of types for each variable _across_
+		 *       DIFOs.
+		 *
+		 * TODO: Actually implement this.
+		 */
+		var = dt_get_variable(difo, varid, kind, scope);
+
+		/*
+		 * The previously inferred variable type must match the
+		 * current type we inferred.
+		 */
+		if (var->dtdv_type != type)
+			return (-1);
+
+		if (type == DIF_TYPE_CTF) {
+			/*
+			 * We get the type name for reporting purposes.
+			 */
+			if (ctf_type_name(ctf_file, relo->dr_ctfid, buf1,
+			    sizeof(buf1)) != ((char *)buf1))
+				errx(EXIT_FAILURE,
+				    "failed at getting type name %ld: %s",
+				    relo->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * If the variable already has a type assigned to it,
+			 * but it is not the same type that we just inferred
+			 * it to be, we get the type name of the variable and
+			 * report an error.
+			 */
+			if (var->dtdv_ctfid != -1 &&
+			    relo->dr_ctfid != var->dtdv_ctfid) {
+				if (var->dtdv_name >= difo->dtdo_strlen)
+					errx(EXIT_FAILURE,
+					    "variable name outside strtab "
+					    "(%zu, %zu)", var->dtdv_name,
+					    difo->dtdo_strlen);
+
+				if (ctf_type_name(ctf_file, var->dtdv_ctfid, buf2,
+					sizeof(buf2)) != ((char *)buf2))
+					errx(EXIT_FAILURE,
+					    "failed at getting type name %ld: %s",
+					    var->dtdv_ctfid,
+					    ctf_errmsg(ctf_errno(ctf_file)));
+
+				fprintf(stderr, "variable (%s) type and "
+				    "inferred type mismatch: %s, %s",
+				    difo->dtdo_strtab + var->dtdv_name,
+				    buf1, buf2);
+				return (-1);
+			}
+
+			/*
+			 * If we are at the first definition, or only have one
+			 * definition, we don't need to check the types.
+			 */
+			if (orelo == NULL)
+				continue;
+
+ 			/*
+			 * Get the previous' relocation's inferred type for
+			 * error reporting.
+			 */
+			if (ctf_type_name(ctf_file, orelo->dr_ctfid, buf2,
+			    sizeof(buf2)) != ((char *)buf2))
+				errx(EXIT_FAILURE,
+				    "failed at getting type name %ld: %s",
+				    other->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			/*
+			 * Fail to typecheck if the types don't match 100%.
+			 */
+			if (relo->dr_ctfid != orelo->dr_ctfid) {
+				fprintf(stderr, "types %s and %s do not match\n",
+				    buf1, buf2);
+				return (-1);
+			}
+		}
+	}
+
+	return (type);
+}
+
+static int
 dt_infer_type(dt_relo_t *r)
 {
-#if 0
 	dt_relo_t *dr1, *dr2, *tc_r, *symrelo, *other;
 	int type1, type2, res, i, t;
 	char buf[4096] = {0}, symname[4096] = {0};
@@ -1389,6 +1610,24 @@ dt_infer_type(dt_relo_t *r)
 
 	instr = r->dr_buf[r->dr_uidx];
 	opcode = DIF_INSTR_OP(instr);
+
+	type = dt_typecheck_regdefs(&r->dr_r1defs);
+	if (type == -1)
+		return (-1);
+
+	type = dt_typecheck_regdefs(&r->dr_r2defs);
+	if (type == -1)
+		return (-1);
+
+	type = dt_typecheck_vardefs(&r->dr_vardefs);
+	if (type == -1)
+		return (-1);
+
+	for (rl = dt_list_next(&r->dr_vardefs); rl; rl = dt_list_next(rl)) {
+	}
+
+	for (sl = dt_list_next(&r->dr_stacklist); sl; sl = dt_list_next(sl)) {
+	}
 
 	if (dr1 != NULL) {
 		type1 = dt_infer_type(dr1);
@@ -3809,7 +4048,7 @@ dt_infer_type(dt_relo_t *r)
 	case DIF_OP_RLDX:
 		break;
 	}
-#endif
+
 	return (-1);
 }
 

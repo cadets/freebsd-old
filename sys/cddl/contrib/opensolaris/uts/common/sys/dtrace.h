@@ -531,6 +531,9 @@ typedef struct dtrace_difv {
 	uint8_t dtdv_scope;		/* variable scope (see below) */
 	uint16_t dtdv_flags;		/* variable flags (see below) */
 	dtrace_diftype_t dtdv_type;	/* variable type (see above) */
+#ifndef _KERNEL
+	ctf_id_t dtdv_ctfid;		/* variable CTF identifier */
+#endif
 } dtrace_difv_t;
 
 #define	DIFV_KIND_ARRAY		0	/* variable is an array of quantities */
