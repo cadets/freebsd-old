@@ -42,11 +42,13 @@
 #include <sys/sysctl.h>
 #endif
 
-static ctf_file_t *ctf_file;
+static ctf_file_t *ctf_file = NULL;
 static dt_list_t relo_list;
 static dt_list_t bb_list;
 static dt_rl_entry_t *relo_first = NULL;
 static int discovered[DT_BB_MAX] = {0};
+static dt_list_t var_list;
+static dt_relo_t *r0relo = NULL;
 
 #define DTC_BOTTOM	-1
 #define DTC_INT		 0
@@ -57,6 +59,142 @@ typedef struct dt_pathlist {
 	dt_list_t dtpl_list;
 	dt_basic_block_t *dtpl_bb;
 } dt_pathlist_t;
+
+typedef struct dt_var_entry {
+	dt_list_t dtve_list;
+	dtrace_difv_t *dtve_var;
+} dt_var_entry_t;
+
+static int dt_infer_type(dt_relo_t *);
+
+static dtrace_difv_t *
+dt_get_variable(dtrace_difo_t *difo, uint16_t varid, int scope, int kind)
+{
+	dtrace_difv_t *var;
+	size_t i;
+
+	var = NULL;
+	i = 0;
+
+	for (i = 0; i < difo->dtdo_varlen; i++) {
+		var = &difo->dtdo_vartab[i];
+
+		if (var->dtdv_scope == scope && var->dtdv_kind == kind &&
+		    var->dtdv_id == varid)
+			return (var);
+
+	}
+
+	return (NULL);
+}
+
+static void
+dt_insert_var(dtrace_difo_t *difo, uint16_t varid, int scope, int kind)
+{
+	dt_var_entry_t *ve;
+	dtrace_difv_t *var, *d_var;
+
+	ve = NULL;
+	var = d_var = NULL;
+
+	/*
+	 * Search through the existing variable list looking for
+	 * the variable being currently defined. If we find it,
+	 * we will simply break out of the loop and move onto
+	 * the next instruction.
+	 */
+	for (ve = dt_list_next(&var_list); ve; ve = dt_list_next(ve)) {
+		var = ve->dtve_var;
+		if (var->dtdv_scope == scope &&
+		    var->dtdv_kind == kind   &&
+		    var->dtdv_id == varid)
+			break;
+	}
+
+	if (ve != NULL)
+		return;
+
+	/*
+	 * Get the variable we want from the DIFO table.
+	 */
+	d_var = dt_get_variable(difo, varid, scope, kind);
+	if (d_var == NULL)
+		errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+		    varid, scope, kind);
+
+	/*
+	 * Allocate a new variable to be put into our list and
+	 * copy the contents of the variable in the DIFO table
+	 * into the newly allocated region.
+	 */
+	var = malloc(sizeof(dtrace_difv_t));
+	if (var == NULL)
+		errx(EXIT_FAILURE, "failed to allocate a new variable");
+
+	memcpy(var, d_var, sizeof(dtrace_difv_t));
+	var->dtdv_ctfid = CTF_ERR;
+	var->dtdv_symname = NULL;
+
+	ve = malloc(sizeof(dt_var_entry_t));
+	if (ve == NULL)
+		errx(EXIT_FAILURE,
+		    "failed to allocate a new varlist entry");
+
+	memset(ve, 0, sizeof(dt_var_entry_t));
+	ve->dtve_var = var;
+
+	dt_list_append(&var_list, ve);
+}
+
+static void
+dt_populate_varlist(dtrace_difo_t *difo)
+{
+	dt_var_entry_t *ve;
+	dtrace_difv_t *var;
+	size_t i;
+	uint8_t opcode;
+	dif_instr_t instr;
+	uint16_t varid;
+
+	ve = NULL;
+	var = NULL;
+	i = 0;
+	opcode = 0;
+	instr = 0;
+	varid = 0;
+
+	for (i = 0; i < difo->dtdo_len; i++) {
+		instr = difo->dtdo_buf[i];
+		opcode = DIF_INSTR_OP(instr);
+
+		switch (opcode) {
+		case DIF_OP_STGS:
+			varid = DIF_INSTR_VAR(instr);
+			dt_insert_var(difo, varid, DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
+			break;
+
+		case DIF_OP_STLS:
+			varid = DIF_INSTR_VAR(instr);
+			dt_insert_var(difo, varid, DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
+			break;
+
+		case DIF_OP_STTS:
+			varid = DIF_INSTR_VAR(instr);
+			dt_insert_var(difo, varid, DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
+			break;
+
+		case DIF_OP_STGAA:
+			varid = DIF_INSTR_VAR(instr);
+			dt_insert_var(difo, varid, DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
+			break;
+
+		case DIF_OP_STTAA:
+			varid = DIF_INSTR_VAR(instr);
+			dt_insert_var(difo, varid, DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
+			break;
+		}
+	}
+}
 
 static int
 dt_in_list(dt_list_t *lst, void *find, size_t size)
@@ -184,6 +322,15 @@ dt_type_compare(dt_relo_t *dr1, dt_relo_t *dr2)
 	class1 = 0;
 	class2 = 0;
 
+	if (dr1->dr_type == DIF_TYPE_BOTTOM && dr2->dr_type == DIF_TYPE_BOTTOM)
+		errx(EXIT_FAILURE, "both types are bottom");
+
+	if (dr1->dr_type == DIF_TYPE_BOTTOM)
+		return (2);
+
+	if (dr2->dr_type == DIF_TYPE_BOTTOM)
+		return (1);
+
 	if (dr1->dr_type == DIF_TYPE_CTF)
 		if (ctf_type_name(ctf_file, dr1->dr_ctfid, buf1,
 		    sizeof(buf1)) != ((char *)buf1))
@@ -260,10 +407,6 @@ dt_relo_alloc(dtrace_difo_t *difo, uint_t idx)
 	relo->dr_type = -1;
 	relo->dr_sym = 0;
 	relo->dr_ctfid = -1;
-	relo->dr_drel[0] = NULL;
-	relo->dr_drel[1] = NULL;
-	relo->dr_didx[0] = 0;
-	relo->dr_didx[1] = 0;
 
 	return (relo);
 }
@@ -501,7 +644,7 @@ dt_clobbers_var(dif_instr_t instr, dt_rkind_t *rkind)
 
 	opcode = DIF_INSTR_OP(instr);
 
-	switch(opcode) {
+	switch (opcode) {
 	case DIF_OP_STGS:
 		if (scope != DIFV_SCOPE_GLOBAL)
 			return (0);
@@ -819,7 +962,7 @@ dt_clobbers_reg(dif_instr_t instr, uint8_t r)
 
 	opcode = DIF_INSTR_OP(instr);
 
-	switch(opcode) {
+	switch (opcode) {
 	case DIF_OP_ULOAD:
 	case DIF_OP_UULOAD:
 	case DIF_OP_USETX:
@@ -908,6 +1051,28 @@ dt_update_rel_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	if (_difo != difo)
 		return (0);
 */
+
+	if (dt_usite_contains_reg(currelo, 0, &r1, &r2)) {
+		assert(r1 == 1 || r2 == 1);
+		if (r1 == 1) {
+			currelo_e = dt_rle_alloc(r0relo);
+			if (dt_in_list(&currelo->dr_r1defs,
+			    (void *)&r0relo, sizeof(dt_relo_t *)) == 0)
+				dt_list_append(&currelo->dr_r1defs, currelo_e);
+		}
+
+		if (r2 == 1) {
+			currelo_e = dt_rle_alloc(r0relo);
+			if (dt_in_list(&currelo->dr_r2defs,
+				(void *)&r0relo, sizeof(dt_relo_t *)) == 0)
+				dt_list_append(&currelo->dr_r2defs, currelo_e);
+		}
+	}
+
+	currelo_e = NULL;
+	r1 = r2 = 0;
+
+
 	for (rl = dt_list_next(&relo_list);
 	    rl != NULL; rl = dt_list_next(rl)) {
 		relo = rl->drl_rel;
@@ -1095,7 +1260,7 @@ dt_update_relocations(dtrace_difo_t *difo,
 static void
 dt_builtin_type(dt_relo_t *r, uint16_t var)
 {
-	switch(var) {
+	switch (var) {
 	/*
 	 * struct thread *
 	 */
@@ -1207,7 +1372,7 @@ dt_builtin_type(dt_relo_t *r, uint16_t var)
 		if (r->dr_ctfid == CTF_ERR)
 			errx(EXIT_FAILURE, "failed to get type uint32_t: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
-x
+
 		r->dr_type = DIF_TYPE_CTF;
 		break;
 
@@ -1386,8 +1551,8 @@ dt_typecheck_regdefs(dt_list_t *defs)
 			/*
 			 * We get the type name for reporting purposes.
 			 */
-			if (ctf_type_name(ctf_file, relo->dr_ctfid, buf,
-			    sizeof(buf)) != ((char *)buf))
+			if (ctf_type_name(ctf_file, relo->dr_ctfid, buf1,
+			    sizeof(buf1)) != ((char *)buf1))
 				errx(EXIT_FAILURE,
 				    "failed at getting type name %ld: %s",
 				    relo->dr_ctfid,
@@ -1419,26 +1584,105 @@ dt_typecheck_regdefs(dt_list_t *defs)
 				    buf1, buf2);
 				return (-1);
 			}
+
+			if (relo->dr_sym != orelo->dr_sym) {
+				fprintf(stderr, "relocations have different "
+				    "symbols: %zu != %zu\n", relo->dr_sym,
+				    orelo->dr_sym);
+				return (-1);
+			}
 		}
 	}
 
 	return (type);
 }
 
+static dtrace_difv_t *
+dt_get_var_from_varlist(uint16_t varid, int scope, int kind)
+{
+	dtrace_difv_t *var;
+	dt_var_entry_t *ve;
+
+	ve = NULL;
+	var = NULL;
+
+	for (ve = dt_list_next(&var_list); ve; ve = dt_list_next(ve)) {
+		var = ve->dtve_var;
+
+		if (var->dtdv_scope == scope && var->dtdv_kind == kind &&
+		    var->dtdv_id == varid)
+			return (var);
+	}
+
+	return (NULL);
+}
+
+static void
+dt_get_varinfo(dif_instr_t instr, uint16_t *varid, int *scope, int *kind)
+{
+	uint8_t opcode;
+
+	opcode = DIF_INSTR_OP(instr);
+	switch (opcode) {
+	case DIF_OP_STGS:
+		*varid = DIF_INSTR_VAR(instr);
+		*scope = DIFV_SCOPE_GLOBAL;
+		*kind = DIFV_KIND_SCALAR;
+		break;
+
+	case DIF_OP_STTS:
+		*varid = DIF_INSTR_VAR(instr);
+		*scope = DIFV_SCOPE_THREAD;
+		*kind = DIFV_KIND_SCALAR;
+		break;
+
+	case DIF_OP_STLS:
+		*varid = DIF_INSTR_VAR(instr);
+		*scope = DIFV_SCOPE_LOCAL;
+		*kind = DIFV_KIND_SCALAR;
+		break;
+
+	case DIF_OP_STGAA:
+		*varid = DIF_INSTR_VAR(instr);
+		*scope = DIFV_SCOPE_GLOBAL;
+		*kind = DIFV_KIND_ARRAY;
+		break;
+
+	case DIF_OP_STTAA:
+		*varid = DIF_INSTR_VAR(instr);
+		*scope = DIFV_SCOPE_THREAD;
+		*kind = DIFV_KIND_ARRAY;
+		break;
+
+	default:
+		*varid = 0;
+		*scope = -1;
+		*kind = -1;
+		break;
+	}
+}
 
 static int
-dt_typecheck_vardefs(dt_list_t *defs)
+dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs)
 {
 	dt_rl_entry_t *rl;
 	dt_relo_t *relo, *orelo;
 	char buf1[4096] = {0}, buf2[4096] = {0};
 	int type, otype;
 	int class1, class2;
+	dtrace_difv_t *var;
+	uint16_t varid;
+	int scope, kind;
+	dif_instr_t instr;
 
 	rl = NULL;
 	type = otype = -1;
 	class1 = class2 = -1;
 	relo = orelo = NULL;
+	var = NULL;
+	varid = 0;
+	scope = kind = 0;
+	instr = 0;
 
 	/*
 	 * We iterate over all the variable definitions for a particular
@@ -1473,23 +1717,31 @@ dt_typecheck_vardefs(dt_list_t *defs)
 			return (-1);
 		}
 
+		instr = relo->dr_buf[relo->dr_uidx];
+		dt_get_varinfo(instr, &varid, &scope, &kind);
+		if (varid == 0 && scope == -1 && kind == -1)
+			errx(EXIT_FAILURE,
+			    "failed to get variable information");
+
 		/*
-		 * We get the variable from the variable table.
+		 * We get the variable from the variable list.
 		 *
 		 * N.B.: This is not the variable table that is in the DIFO,
 		 *       it is rather a separate variable table that we use
 		 *       to keep track of types for each variable _across_
 		 *       DIFOs.
-		 *
-		 * TODO: Actually implement this.
 		 */
-		var = dt_get_variable(difo, varid, kind, scope);
+		var = dt_get_var_from_varlist(varid, scope, kind);
+		if (var == NULL)
+			errx(EXIT_FAILURE,
+			    "could not find variable (%u, %d, %d) in varlist",
+			    varid, scope, kind);
 
 		/*
 		 * The previously inferred variable type must match the
 		 * current type we inferred.
 		 */
-		if (var->dtdv_type != type)
+		if (var->dtdv_type.dtdt_kind != type)
 			return (-1);
 
 		if (type == DIF_TYPE_CTF) {
@@ -1546,7 +1798,7 @@ dt_typecheck_vardefs(dt_list_t *defs)
 			    sizeof(buf2)) != ((char *)buf2))
 				errx(EXIT_FAILURE,
 				    "failed at getting type name %ld: %s",
-				    other->dr_ctfid,
+				    orelo->dr_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
 			/*
@@ -1564,11 +1816,24 @@ dt_typecheck_vardefs(dt_list_t *defs)
 }
 
 static int
+dt_var_is_builtin(uint16_t var)
+{
+	if (var == DIF_VAR_ARGS || var == DIF_VAR_REGS ||
+	    var == DIF_VAR_UREGS)
+		return (1);
+
+	if (var >= DIF_VAR_CURTHREAD && var <= DIF_VAR_MAX)
+		return (1);
+
+	return (0);
+}
+
+static int
 dt_infer_type(dt_relo_t *r)
 {
-	dt_relo_t *dr1, *dr2, *tc_r, *symrelo, *other;
+	dt_relo_t *dr1, *dr2, *dv, *tc_r, *symrelo, *other;
 	int type1, type2, res, i, t;
-	char buf[4096] = {0}, symname[4096] = {0};
+	char buf[4096] = {0}, symname[4096] = {0}, var_type[4096] = {0};
 	ctf_membinfo_t *mip;
 	size_t l;
 	uint16_t var;
@@ -1580,9 +1845,10 @@ dt_infer_type(dt_relo_t *r)
 	dt_relo_t *arg0, *arg1, *arg2, *arg3, *arg4, *arg5, *arg6, *arg7, *arg8;
 	ctf_file_t *octfp = NULL;
 	ctf_id_t type = 0;
+	dtrace_difv_t *dif_var;
+	char *symname_rel;
 
-	dr1 = r->dr_drel[0];
-	dr2 = r->dr_drel[1];
+	dr1 = dr2 = dv = NULL;
 	type1 = -1;
 	type2 = -1;
 	mip = NULL;
@@ -1601,6 +1867,8 @@ dt_infer_type(dt_relo_t *r)
 	subr = 0;
 	arg0 = arg1 = arg2 = arg3 = arg4 = arg5 = arg6 = arg7 = arg8 = NULL;
 	t = 0;
+	dif_var = NULL;
+	symname_rel = NULL;
 
 	/*
 	 * If we already have the type, we just return it.
@@ -1612,38 +1880,32 @@ dt_infer_type(dt_relo_t *r)
 	opcode = DIF_INSTR_OP(instr);
 
 	type = dt_typecheck_regdefs(&r->dr_r1defs);
-	if (type == -1)
+	if (type == -1) {
+		fprintf(stderr, "inferring types for r1defs failed\n");
 		return (-1);
+	}
+
+	/*
+	 * Doesn't really matter which definition we get, as long as the check
+	 * above passes without any errors.
+	 */
+	dr1 = dt_list_next(&r->dr_r1defs);
 
 	type = dt_typecheck_regdefs(&r->dr_r2defs);
-	if (type == -1)
+	if (type == -1) {
+		fprintf(stderr, "inferring types for r2defs failed\n");
 		return (-1);
+	}
 
-	type = dt_typecheck_vardefs(&r->dr_vardefs);
-	if (type == -1)
+	dr2 = dt_list_next(&r->dr_r2defs);
+
+	type = dt_typecheck_vardefs(difo, &r->dr_vardefs);
+	if (type == -1) {
+		fprintf(stderr, "inferring types for vardefs failed\n");
 		return (-1);
-
-	for (rl = dt_list_next(&r->dr_vardefs); rl; rl = dt_list_next(rl)) {
 	}
 
-	for (sl = dt_list_next(&r->dr_stacklist); sl; sl = dt_list_next(sl)) {
-	}
-
-	if (dr1 != NULL) {
-		type1 = dt_infer_type(dr1);
-		if (type1 != DIF_TYPE_CTF && type1 != DIF_TYPE_STRING) {
-			fprintf(stderr, "type1 could not be inferred\n");
-			return (-1);
-		}
-	}
-
-	if (dr2 != NULL) {
-		type2 = dt_infer_type(dr2);
-		if (type2 != DIF_TYPE_CTF && type2 != DIF_TYPE_STRING) {
-			fprintf(stderr, "type2 could not be inferred\n");
-			return (-1);
-		}
-	}
+	dv = dt_list_next(&r->dr_vardefs);
 
 	/*
 	 * It seems like we might need a poset of types, knowing what to cast to
@@ -1685,7 +1947,7 @@ dt_infer_type(dt_relo_t *r)
 	 * as well keep the information in what symbol was resolved in order to
 	 * reach the offset, e.g. struct foo * @ n (constant, sym_name).
 	 */
-	switch(opcode) {
+	switch (opcode) {
 	/*
 	 * Actual relocations
 	 */
@@ -1914,6 +2176,10 @@ dt_infer_type(dt_relo_t *r)
 		} else {
 			symrelo = dr1->dr_sym != 0 ? dr1 : dr2;
 			other = dr1->dr_sym != 0 ? dr2 : dr1;
+
+			if (other->dr_type == DIF_TYPE_BOTTOM ||
+			    symrelo->dr_type == DIF_TYPE_BOTTOM)
+				errx(EXIT_FAILURE, "unexpected bottom type");
 
 			/*
 			 * Get the type name
@@ -2167,30 +2433,232 @@ dt_infer_type(dt_relo_t *r)
 		return (r->dr_type);
 
 	case DIF_OP_STGS:
-	case DIF_OP_STTS:
-	case DIF_OP_STLS:
 		/*
 		 *  %r1 : t       var notin builtins
+		 *         var in var_list
+		 *         var_list @ var = t
 		 * ----------------------------------
-		 *     opcode %r1, var => var : t
+		 *     stgs %r1, var => var : t
+		 *
+		 *  %r1 : t       var notin builtins
+		 *         var notin var_list
+		 * ----------------------------------
+		 *     stgs %r1, var => var : t /\
+		 *        update var_list var t
 		 */
 
 		/*
-		 * This is redundant currently, but leave it here for error
-		 * reporting in the future.
+		 * If we are doing a STGS, and the variable is a builtin
+		 * variable, we fail to type-check the instruction.
 		 */
-		if (dr1 == NULL) {
-			/*
-			 * If we are doing a STGS, and the variable is a builtin
-			 * variable, we fail to type-check the instruction.
-			 */
-			fprintf(stderr, "st*: dr1 is NULL\n");
-			if (opcode == DIF_OP_STGS)
-				for (i = 0; i < DIF_VAR_MAX; i++)
-					if (var == i)
-						return (-1);
-
+		if (dt_var_is_builtin(var)) {
+			fprintf(stderr,
+			    "trying to store to a builtin variable\n");
 			return (-1);
+		}
+
+		if (dr1 == NULL) {
+			fprintf(stderr, "dr1 is NULL in stgs.\n");
+			return (-1);
+		}
+
+		dif_var = dt_get_var_from_varlist(var,
+		    DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
+
+		if (dif_var->dtdv_ctfid != CTF_ERR) {
+			if (dif_var->dtdv_ctfid != dr1->dr_ctfid) {
+				if (ctf_type_name(
+				    ctf_file, dif_var->dtdv_ctfid, var_type,
+				    sizeof(var_type)) != ((char *)var_type))
+					errx(EXIT_FAILURE,
+					    "failed at getting type name %ld: %s",
+					    dif_var->dtdv_ctfid,
+					    ctf_errmsg(ctf_errno(ctf_file)));
+
+				if (ctf_type_name(
+				    ctf_file, dr1->dr_ctfid, buf,
+				    sizeof(buf)) != ((char *)buf))
+					errx(EXIT_FAILURE,
+					    "failed at getting type name %ld: %s",
+					    dr1->dr_ctfid,
+					    ctf_errmsg(ctf_errno(ctf_file)));
+
+				fprintf(stderr, "type mismatch in STGS: %s != %s\n",
+				    var_type, buf);
+
+				return (-1);
+			}
+
+			if (dif_var->dtdv_symname != NULL) {
+				if (dr1->dr_sym)
+					symname_rel =
+					    dr1->dr_difo->dtdo_symtab +
+					    dr1->dr_sym;
+
+				if (symname_rel && strcmp(
+				    dif_var->dtdv_symname, symname_rel) != 0) {
+					fprintf(stderr,
+					    "symbol name mismatch: %s != %s\n",
+					    dif_var->dtdv_symname, symname_rel);
+
+					return (-1);
+				}
+			}
+		} else {
+			if (dr1->dr_sym)
+				symname_rel =
+				    dr1->dr_difo->dtdo_symtab + dr1->dr_sym;
+			dif_var->dtdv_ctfid = dr1->dr_ctfid;
+			dif_var->dtdv_symname = symname_rel ?
+			    strdup(symname_rel) : NULL;
+		}
+
+		r->dr_ctfid = dr1->dr_ctfid;
+		r->dr_type = dr1->dr_type;
+		r->dr_mip = dr1->dr_mip;
+		r->dr_sym = dr1->dr_sym;
+
+		return (r->dr_type);
+
+	case DIF_OP_STTS:
+		/*
+		 *             %r1 : t
+		 *         var in var_list
+		 *         var_list @ var = t
+		 * ----------------------------------
+		 *     stts %r1, var => var : t
+		 *
+		 *              %r1 : t
+		 *         var notin var_list
+		 * ----------------------------------
+		 *     stts %r1, var => var : t /\
+		 *        update var_list var t
+		 */
+
+
+		dif_var = dt_get_var_from_varlist(var,
+		    DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
+
+		if (dif_var->dtdv_ctfid != CTF_ERR) {
+			if (dif_var->dtdv_ctfid != dr1->dr_ctfid) {
+				if (ctf_type_name(
+				    ctf_file, dif_var->dtdv_ctfid, var_type,
+				    sizeof(var_type)) != ((char *)var_type))
+					errx(EXIT_FAILURE,
+					    "failed at getting type name %ld: %s",
+					    dif_var->dtdv_ctfid,
+					    ctf_errmsg(ctf_errno(ctf_file)));
+
+				if (ctf_type_name(
+				    ctf_file, dr1->dr_ctfid, buf,
+				    sizeof(buf)) != ((char *)buf))
+					errx(EXIT_FAILURE,
+					    "failed at getting type name %ld: %s",
+					    dr1->dr_ctfid,
+					    ctf_errmsg(ctf_errno(ctf_file)));
+
+				fprintf(stderr, "type mismatch in STTS: %s != %s\n",
+				    var_type, buf);
+
+				return (-1);
+			}
+
+			if (dif_var->dtdv_symname != NULL) {
+				if (dr1->dr_sym)
+					symname_rel =
+					    dr1->dr_difo->dtdo_symtab +
+					    dr1->dr_sym;
+
+				if (symname_rel && strcmp(
+				    dif_var->dtdv_symname, symname_rel) != 0) {
+					fprintf(stderr,
+					    "symbol name mismatch: %s != %s\n",
+					    dif_var->dtdv_symname, symname_rel);
+
+					return (-1);
+				}
+			}
+		} else {
+			if (dr1->dr_sym)
+				symname_rel =
+				    dr1->dr_difo->dtdo_symtab + dr1->dr_sym;
+			dif_var->dtdv_ctfid = dr1->dr_ctfid;
+			dif_var->dtdv_symname = symname_rel ?
+			    strdup(symname_rel) : NULL;
+		}
+
+		r->dr_ctfid = dr1->dr_ctfid;
+		r->dr_type = dr1->dr_type;
+		r->dr_mip = dr1->dr_mip;
+		r->dr_sym = dr1->dr_sym;
+
+		return (r->dr_type);
+
+	case DIF_OP_STLS:
+		/*
+		 *             %r1 : t
+		 *         var in var_list
+		 *         var_list @ var = t
+		 * ----------------------------------
+		 *     stls %r1, var => var : t
+		 *
+		 *              %r1 : t
+		 *         var notin var_list
+		 * ----------------------------------
+		 *     stls %r1, var => var : t /\
+		 *        update var_list var t
+		 */
+
+
+		dif_var = dt_get_variable(difo, var,
+		    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
+
+		if (dif_var->dtdv_ctfid != CTF_ERR) {
+			if (dif_var->dtdv_ctfid != dr1->dr_ctfid) {
+				if (ctf_type_name(
+				    ctf_file, dif_var->dtdv_ctfid, var_type,
+				    sizeof(var_type)) != ((char *)var_type))
+					errx(EXIT_FAILURE,
+					    "failed at getting type name %ld: %s",
+					    dif_var->dtdv_ctfid,
+					    ctf_errmsg(ctf_errno(ctf_file)));
+
+				if (ctf_type_name(
+				    ctf_file, dr1->dr_ctfid, buf,
+				    sizeof(buf)) != ((char *)buf))
+					errx(EXIT_FAILURE,
+					    "failed at getting type name %ld: %s",
+					    dr1->dr_ctfid,
+					    ctf_errmsg(ctf_errno(ctf_file)));
+
+				fprintf(stderr, "type mismatch in STTS: %s != %s\n",
+				    var_type, buf);
+
+				return (-1);
+			}
+
+			if (dif_var->dtdv_symname != NULL) {
+				if (dr1->dr_sym)
+					symname_rel =
+					    dr1->dr_difo->dtdo_symtab +
+					    dr1->dr_sym;
+
+				if (symname_rel && strcmp(
+				    dif_var->dtdv_symname, symname_rel) != 0) {
+					fprintf(stderr,
+					    "symbol name mismatch: %s != %s\n",
+					    dif_var->dtdv_symname, symname_rel);
+
+					return (-1);
+				}
+			}
+		} else {
+			if (dr1->dr_sym)
+				symname_rel =
+				    dr1->dr_difo->dtdo_symtab + dr1->dr_sym;
+			dif_var->dtdv_ctfid = dr1->dr_ctfid;
+			dif_var->dtdv_symname = symname_rel ?
+			    strdup(symname_rel) : NULL;
 		}
 
 		r->dr_ctfid = dr1->dr_ctfid;
@@ -2202,6 +2670,7 @@ dt_infer_type(dt_relo_t *r)
 
 	case DIF_OP_LDTA:
 	case DIF_OP_CALL:
+#if 0
 		/*
 		 *     subr : t1 -> t2 ... -> tn -> t
 		 *  stack[0] : t1    stack[1] : t2     ...
@@ -4039,6 +4508,8 @@ dt_infer_type(dt_relo_t *r)
 		}
 
 		return (r->dr_type);
+#endif
+		break;
 
 	case DIF_OP_LDGAA:
 	case DIF_OP_LDTAA:
@@ -4251,7 +4722,7 @@ dt_clobbers(dif_instr_t instr)
 	uint8_t opcode;
 
 	opcode = DIF_INSTR_OP(instr);
-	switch(opcode) {
+	switch (opcode) {
 	case DIF_OP_ULOAD:
 	case DIF_OP_UULOAD:
 	case DIF_OP_USETX:
@@ -4644,6 +5115,9 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	memset(&relo_list, 0, sizeof(dt_list_t));
 	memset(&bb_list, 0, sizeof(dt_list_t));
 
+	r0relo = dt_relo_alloc(NULL, UINT_MAX);
+	r0relo->dr_type = DIF_TYPE_BOTTOM;
+
 	/*
 	 * Go over all the statements in a D program
 	 */
@@ -4664,6 +5138,26 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		 */
 		if (sdp->dtsd_action_last == NULL)
 			return (dt_set_errno(dtp, EDT_ACTLAST));
+
+		/*
+		 * We populate the variable list before we actually do a pass
+		 * to infer definitions or type-checking. The reason for this
+		 * is to do with the semantics of probes being concurrent, in
+		 * the sense that they are in fact in parallel composition with
+		 * each other, rather than having some sort of ordering. Even
+		 * though for now we simply adopt the D style of type checking
+		 * for variables (store before a load), we would also like for
+		 * this to type-check:
+		 *
+		 * foo { y = x; } bar { x = 1; }
+		 */
+		for (ad = sdp->dtsd_action;
+		     ad != sdp->dtsd_action_last->dtad_next; ad = ad->dtad_next) {
+			if (ad->dtad_difo == NULL)
+				continue;
+
+			dt_populate_varlist(ad->dtad_difo);
+		}
 
 		/*
 		 * We go over each action and apply the relocations in each

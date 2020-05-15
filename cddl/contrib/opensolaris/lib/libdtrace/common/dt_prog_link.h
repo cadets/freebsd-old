@@ -32,6 +32,9 @@
 #include <sys/types.h>
 #include <sys/dtrace.h>
 
+#include <dt_program.h>
+#include <dtrace.h>
+
 #include <dt_list.h>
 
 typedef struct dt_rkind {
@@ -55,8 +58,6 @@ typedef struct dt_rkind {
 
 typedef struct dt_relo {
 	size_t dr_uidx;			/* Index of the use site */
-	size_t dr_didx[2];		/* Index of the defn sites */
-	struct dt_relo *dr_drel[2];	/* Pointer to the defn site */
 	dt_list_t dr_r1defs;
 	dt_list_t dr_r2defs;
 	dt_list_t dr_vardefs;
@@ -105,5 +106,7 @@ typedef struct dt_bb_entry {
 	dt_list_t dtbe_list;
 	dt_basic_block_t *dtbe_bb;
 } dt_bb_entry_t;
+
+int dt_prog_apply_rel(dtrace_hdl_t *, dtrace_prog_t *);
 
 #endif

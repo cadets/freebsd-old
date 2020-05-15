@@ -54,6 +54,7 @@
 #endif
 #ifdef __FreeBSD__
 #include <spawn.h>
+#include <dt_prog_link.h>
 #endif
 
 typedef struct dtrace_cmd {
