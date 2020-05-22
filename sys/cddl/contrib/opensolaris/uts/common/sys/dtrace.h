@@ -512,7 +512,8 @@ typedef struct dtrace_diftype {
 
 #define	DIF_TYPE_CTF		0	/* type is a CTF type */
 #define	DIF_TYPE_STRING		1	/* type is a D string */
-#define	DIF_TYPE_BOTTOM		0xFFFF	/* type can construct any other type */
+#define	DIF_TYPE_NONE		0xFE	/* type is none */
+#define	DIF_TYPE_BOTTOM		0xFF	/* type can construct any other type */
 
 #define	DIF_TF_BYREF		0x1	/* type is passed by reference */
 #define	DIF_TF_BYUREF		0x2	/* user type is passed by reference */
@@ -538,7 +539,8 @@ typedef struct dtrace_difv {
 	 * to type-check the DIFOs and apply relocations where necessary.
 	 */
 	ctf_id_t dtdv_ctfid;		/* variable CTF identifier */
-	char *dtdv_symname;		/* variable symbol name (if exists) */
+	char *dtdv_sym;			/* variable symbol name (if exists) */
+	struct dt_list *dtdv_stack;	/* expected stack (if applicable) */
 #endif
 } dtrace_difv_t;
 

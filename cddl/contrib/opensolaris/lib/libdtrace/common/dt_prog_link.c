@@ -132,8 +132,11 @@ dt_insert_var(dtrace_difo_t *difo, uint16_t varid, int scope, int kind)
 		errx(EXIT_FAILURE, "failed to allocate a new variable");
 
 	memcpy(var, d_var, sizeof(dtrace_difv_t));
+
 	var->dtdv_ctfid = CTF_ERR;
-	var->dtdv_symname = NULL;
+	var->dtdv_sym = NULL;
+	var->dtdv_type.dtdt_kind = DIF_TYPE_NONE;
+	var->dtdv_stack = NULL;
 
 	ve = malloc(sizeof(dt_var_entry_t));
 	if (ve == NULL)
@@ -213,7 +216,12 @@ static int
 dt_get_class(char *buf)
 {
 	size_t len;
+	ctf_id_t t, ot;
+	int k;
 
+	t = 0;
+	ot = -1;
+	k = 0;
 	len = strlen(buf);
 
 	if (len > strlen("struct") &&
@@ -221,92 +229,24 @@ dt_get_class(char *buf)
 	    buf[len - 1] == '*')
 		return (DTC_STRUCT);
 
-	if (strcmp(buf, "char") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "signed char") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "unsigned char") == 0)
-		return (DTC_INT);
+	t = ctf_lookup_by_name(ctf_file, buf);
+	if (t == CTF_ERR)
+		errx(EXIT_FAILURE, "failed getting type (%s) by name: %s\n",
+		    buf, ctf_errmsg(ctf_errno(ctf_file)));
 
-	if (strcmp(buf, "short") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "short int") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "signed short") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "signed short int") == 0)
-		return (DTC_INT);
+	do  {
 
-	if (strcmp(buf, "unsigned short") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "unsigned short int") == 0)
-		return (DTC_INT);
+		if ((k = ctf_type_kind(ctf_file, t)) == CTF_ERR)
+			errx(EXIT_FAILURE, "failed getting type (%s) kind: %s",
+			    buf, ctf_errmsg(ctf_errno(ctf_file)));
 
-	if (strcmp(buf, "int") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "signed") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "signed int") == 0)
-		return (DTC_INT);
+		if (t == ot)
+			break;
 
-	if (strcmp(buf, "unsigned") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "unsigned int") == 0)
-		return (DTC_INT);
+		ot = t;
+	} while (((t = ctf_type_reference(ctf_file, t)) != CTF_ERR));
 
-	if (strcmp(buf, "long") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "long int") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "signed long") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "signed long int") == 0)
-		return (DTC_INT);
-
-	if (strcmp(buf, "unsigned long") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "unsigned long int") == 0)
-		return (DTC_INT);
-
-	if (strcmp(buf, "long long") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "long long int") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "signed long long") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "signed long long int") == 0)
-		return (DTC_INT);
-
-	if (strcmp(buf, "unsigned long long") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "unsigned long long int") == 0)
-		return (DTC_INT);
-
-	if (strcmp(buf, "size_t") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "ssize_t") == 0)
-		return (DTC_INT);
-
-	if (strcmp(buf, "uint8_t") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "uint16_t") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "uint32_t") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "uint64_t") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "uintmax_t") == 0)
-		return (DTC_INT);
-
-	if (strcmp(buf, "int8_t") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "int16_t") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "int32_t") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "int64_t") == 0)
-		return (DTC_INT);
-	if (strcmp(buf, "intmax_t") == 0)
+	if (k == CTF_K_INTEGER)
 		return (DTC_INT);
 
 	return (DTC_BOTTOM);
@@ -331,21 +271,23 @@ dt_type_compare(dt_relo_t *dr1, dt_relo_t *dr2)
 	if (dr2->dr_type == DIF_TYPE_BOTTOM)
 		return (1);
 
-	if (dr1->dr_type == DIF_TYPE_CTF)
+	if (dr1->dr_type == DIF_TYPE_CTF) {
 		if (ctf_type_name(ctf_file, dr1->dr_ctfid, buf1,
 		    sizeof(buf1)) != ((char *)buf1))
 			errx(EXIT_FAILURE,
 			    "failed at getting type name %ld: %s",
 			    dr1->dr_ctfid,
 			    ctf_errmsg(ctf_errno(ctf_file)));
+	}
 
-	if (dr2->dr_type == DIF_TYPE_CTF)
+	if (dr2->dr_type == DIF_TYPE_CTF) {
 		if (ctf_type_name(ctf_file, dr2->dr_ctfid, buf2,
 		    sizeof(buf2)) != ((char *)buf2))
 			errx(EXIT_FAILURE,
 			    "failed at getting type name %ld: %s",
 			    dr2->dr_ctfid,
 			    ctf_errmsg(ctf_errno(ctf_file)));
+	}
 
 	class1 = dr1->dr_type == DIF_TYPE_CTF ? dt_get_class(buf1) : DTC_STRING;
 	class2 = dr2->dr_type == DIF_TYPE_CTF ? dt_get_class(buf2) : DTC_STRING;
@@ -396,6 +338,9 @@ dt_relo_alloc(dtrace_difo_t *difo, uint_t idx)
 	dt_relo_t *relo;
 
 	relo = malloc(sizeof(dt_relo_t));
+	if (relo == NULL)
+		errx(EXIT_FAILURE, "failed to malloc relo");
+
 	memset(relo, 0, sizeof(dt_relo_t));
 
 	relo->dr_difo = difo;
@@ -405,7 +350,7 @@ dt_relo_alloc(dtrace_difo_t *difo, uint_t idx)
 	 * Initialise the D type to -1 as 0 is defined as a CTF type.
 	 */
 	relo->dr_type = -1;
-	relo->dr_sym = 0;
+	relo->dr_sym = NULL;
 	relo->dr_ctfid = -1;
 
 	return (relo);
@@ -531,7 +476,7 @@ static int
 dt_usite_contains_reg(dt_relo_t *relo, uint8_t rd, int *r1, int *r2)
 {
 	dif_instr_t instr = 0;
-	uint8_t rs = 0, _r1 = 0, _r2 = 0, opcode = 0;
+	uint8_t rs = 0, _rd = 0, _r1 = 0, _r2 = 0, opcode = 0;
 
 	instr = relo->dr_buf[relo->dr_uidx];
 	*r1 = 0;
@@ -620,6 +565,13 @@ dt_usite_contains_reg(dt_relo_t *relo, uint8_t rd, int *r1, int *r2)
 
 		if (_r2 == rd)
 			*r2 = 1;
+		break;
+
+	case DIF_OP_RET:
+		_rd = DIF_INSTR_RD(instr);
+
+		if (_rd == rd)
+			*r1 = 1;
 		break;
 
 	default:
@@ -790,6 +742,9 @@ dt_copy_list(dt_list_t *dst, dt_list_t *src, size_t entry_size)
 
 	for (e = dt_list_next(src); e; e = dt_list_next(e)) {
 		new = malloc(entry_size);
+		if (new == NULL)
+			errx(EXIT_FAILURE, "failed to malloc new");
+
 		memset(new, 0, sizeof(dt_list_t));
 		/*
 		 * We ensure all pointers are set to NULL, and then we copy
@@ -840,6 +795,9 @@ dt_get_stack(dt_list_t *bb_path, dt_relo_t *r)
 
 	if (sl == NULL) {
 		sl = malloc(sizeof(dt_stacklist_t));
+		if (sl == NULL)
+			errx(EXIT_FAILURE, "failed to malloc sl");
+
 		memset(sl, 0, sizeof(dt_stacklist_t));
 		dt_copy_list((dt_list_t *)&sl->dsl_identifier,
 		    bb_path, sizeof(dt_pathlist_t));
@@ -936,6 +894,9 @@ dt_update_rel_bb_stack(dt_list_t *bb_path, dtrace_difo_t *difo,
 		 */
 		if (dt_usite_uses_stack(relo)) {
 			s_entry = malloc(sizeof(dt_stack_t));
+			if (s_entry == NULL)
+				errx(EXIT_FAILURE, "failed to malloc s_entry");
+
 			memset(s_entry, 0, sizeof(dt_stack_t));
 
 			s_entry->ds_rel = currelo;
@@ -1148,6 +1109,9 @@ dt_update_rel(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	bb_path_entry = NULL;
 
 	bb_path_entry = malloc(sizeof(dt_pathlist_t));
+	if (bb_path_entry == NULL)
+		errx(EXIT_FAILURE, "failed to malloc bb_path_entry");
+
 	memset(bb_path_entry, 0, sizeof(dt_pathlist_t));
 	bb_path_entry->dtpl_bb = bb;
 	dt_list_append(&bb_path, bb_path_entry);
@@ -1516,7 +1480,7 @@ dt_typecheck_regdefs(dt_list_t *defs)
 	int class1, class2;
 
 	rl = NULL;
-	type = otype = -1;
+	type = otype = DIF_TYPE_NONE;
 	class1 = class2 = -1;
 	relo = orelo = NULL;
 
@@ -1530,14 +1494,36 @@ dt_typecheck_regdefs(dt_list_t *defs)
 		relo = rl->drl_rel;
 
 		otype = type;
+
+		/*
+		 * FIXME: We should make sure here that a number of things happen:
+		 *   (1) The function returns a relocation we'll use later, instead
+		 *       of just a type
+		 *   (2) The r0relo is only ever returned if there is absolutely no
+		 *       indication on what the type could be, so we just keep it
+		 *       as BOTTOM and decide at use time
+		 *   (3) Variables have the same behaviour.
+		 */
+		if (relo == r0relo) {
+			type = otype;
+			continue;
+		}
+
 		type = dt_infer_type(relo);
 
 		/*
 		 * We failed to infer the type to begin with, bail out.
 		 */
-		if (type == -1)
+		if (type == -1) {
+			fprintf(stderr, "failed to infer type (-1)\n");
 			return (-1);
+		}
 
+		if (orelo == r0relo)
+			continue;
+
+		if (orelo && type == DIF_TYPE_BOTTOM)
+			type = otype;
 		/*
 		 * The type at the previous definition does not match the type
 		 * inferred in the current one, which is nonsense.
@@ -1585,9 +1571,9 @@ dt_typecheck_regdefs(dt_list_t *defs)
 				return (-1);
 			}
 
-			if (relo->dr_sym != orelo->dr_sym) {
+			if (strcmp(relo->dr_sym, orelo->dr_sym) != 0) {
 				fprintf(stderr, "relocations have different "
-				    "symbols: %zu != %zu\n", relo->dr_sym,
+				    "symbols: %s != %s\n", relo->dr_sym,
 				    orelo->dr_sym);
 				return (-1);
 			}
@@ -1676,7 +1662,7 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs)
 	dif_instr_t instr;
 
 	rl = NULL;
-	type = otype = -1;
+	type = otype = DIF_TYPE_NONE;
 	class1 = class2 = -1;
 	relo = orelo = NULL;
 	var = NULL;
@@ -1696,6 +1682,11 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs)
 		orelo = relo;
 		relo = rl->drl_rel;
 
+		/*
+		 * For r0relo, we don't actually have check anything because
+		 * by definition, the register r0 is always of type bottom,
+		 * allowing us to construct any type we find convenient.
+		 */
 		otype = type;
 		type = dt_infer_type(relo);
 
@@ -1829,9 +1820,243 @@ dt_var_is_builtin(uint16_t var)
 }
 
 static int
+dt_infer_type_var(dt_relo_t *dr, dtrace_difv_t *dif_var)
+{
+	char buf[4096] = {0}, var_type[4096] = {0};
+
+	if (dr == NULL && dif_var == NULL) {
+		fprintf(stderr, "both dr and dif_var are NULL\n");
+		return (-1);
+	}
+
+	if (dr == NULL)
+		return (dif_var->dtdv_type.dtdt_kind);
+
+	if (dif_var == NULL) {
+		fprintf(stderr, "dif_var is NULL, this makes no sense\n");
+		return (-1);
+	}
+
+	if (dif_var->dtdv_type.dtdt_kind != DIF_TYPE_NONE &&
+	    dif_var->dtdv_type.dtdt_kind != dr->dr_type) {
+		fprintf(stderr, "dif_var and dr have different types: %d != %d",
+		    dif_var->dtdv_type.dtdt_kind, dr->dr_type);
+
+		return (-1);
+	}
+
+	if (dr->dr_type == DIF_TYPE_NONE || dr->dr_type == DIF_TYPE_BOTTOM)
+		errx(EXIT_FAILURE, "unexpected type %d", dr->dr_type);
+
+	if (dif_var->dtdv_type.dtdt_kind == DIF_TYPE_STRING)
+		return (DIF_TYPE_STRING);
+
+	if (dif_var->dtdv_ctfid != CTF_ERR) {
+		if (dif_var->dtdv_ctfid != dr->dr_ctfid) {
+			if (ctf_type_name(
+			    ctf_file, dif_var->dtdv_ctfid, var_type,
+			    sizeof(var_type)) != ((char *)var_type))
+				errx(EXIT_FAILURE,
+				    "failed at getting type name %ld: %s",
+				    dif_var->dtdv_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			if (ctf_type_name(
+			    ctf_file, dr->dr_ctfid, buf,
+			    sizeof(buf)) != ((char *)buf))
+				errx(EXIT_FAILURE,
+				    "failed at getting type name %ld: %s",
+				    dr->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			fprintf(stderr, "type mismatch in STTS: %s != %s\n",
+			    var_type, buf);
+
+			return (-1);
+		}
+
+		if (dif_var->dtdv_sym != NULL) {
+			if (dr->dr_sym && strcmp(
+				dif_var->dtdv_sym, dr->dr_sym) != 0) {
+				fprintf(stderr,
+				    "symbol name mismatch: %s != %s\n",
+				    dif_var->dtdv_sym, dr->dr_sym);
+
+				return (-1);
+			}
+		}
+	} else {
+		dif_var->dtdv_ctfid = dr->dr_ctfid;
+		dif_var->dtdv_sym = dr->dr_sym;
+		dif_var->dtdv_type.dtdt_kind = dr->dr_type;
+	}
+
+	return (DIF_TYPE_CTF);
+}
+
+static int
+dt_var_stack_typecheck(dt_relo_t *r, dt_relo_t *dr1, dtrace_difv_t *dif_var)
+{
+	dt_stacklist_t *sl;
+	dt_stack_t *se1, *se2;
+	dt_relo_t *var_stackrelo, *relo;
+	char buf[4096] = {0}, var_type[4096] = {0};
+
+	sl = NULL;
+	se1 = se2 = NULL;
+	var_stackrelo = relo = NULL;
+
+	if (dr1 == NULL && dif_var == NULL) {
+		fprintf(stderr, "both dr1 and dif_var are NULL");
+		return (-1);
+	}
+
+	/*
+	 * If there was nothing to typecheck above, then we simply create a new
+	 * stack for the variable using the data from what we were comparing it
+	 * to and move on.
+	 */
+	if (dif_var->dtdv_stack == NULL) {
+		dif_var->dtdv_stack = malloc(sizeof(dt_list_t));
+		if (dif_var->dtdv_stack == NULL)
+			errx(EXIT_FAILURE, "failed to malloc dtdv_stack");
+
+		memset(dif_var->dtdv_stack, 0, sizeof(dt_list_t));
+
+
+		sl = dt_list_next(&r->dr_stacklist);
+		if (sl == NULL)
+			errx(EXIT_FAILURE, "sl is NULL, nonsense.");
+
+		for (se1 = dt_list_next(&sl->dsl_stack);
+		     se1; se1 = dt_list_next(se1)) {
+			se2 = malloc(sizeof(dt_stack_t));
+			if (se2 == NULL)
+				errx(EXIT_FAILURE, "failed to malloc se2");
+
+			memset(se2, 0, sizeof(dt_stack_t));
+
+			se2->ds_rel = se1->ds_rel;
+			dt_list_append(dif_var->dtdv_stack, se2);
+		}
+
+		return (0);
+	} else if (dr1 == NULL)
+		return (0);
+
+	for (sl = dt_list_next(&r->dr_stacklist); sl != NULL;
+	     sl = dt_list_next(sl)) {
+		for (se1 = dt_list_next(&sl->dsl_stack),
+		     se2 = dt_list_next(dif_var->dtdv_stack);
+		     se1 && se2;
+		     se1 = dt_list_next(se1), se2 = dt_list_next(se2)) {
+			relo = se1->ds_rel;
+			var_stackrelo = se2->ds_rel;
+
+			if (relo->dr_type != var_stackrelo->dr_type) {
+				fprintf(stderr, "type mismatch in variable\n");
+				return (-1);
+			}
+
+			if (relo->dr_type == DIF_TYPE_CTF) {
+				if (ctf_type_name(ctf_file, dr1->dr_ctfid, buf,
+				    sizeof(buf)) != ((char *)buf))
+					errx(EXIT_FAILURE,
+					    "failed at getting type name %ld: %s",
+					    dr1->dr_ctfid,
+					    ctf_errmsg(ctf_errno(ctf_file)));
+
+				if (ctf_type_name(ctf_file,
+				    var_stackrelo->dr_ctfid, var_type,
+				    sizeof(var_type)) != ((char *)var_type))
+					errx(EXIT_FAILURE,
+					    "failed at getting type name %ld: %s",
+					    var_stackrelo->dr_ctfid,
+					    ctf_errmsg(ctf_errno(ctf_file)));
+
+				if (var_stackrelo->dr_ctfid !=
+				    dr1->dr_ctfid) {
+					fprintf(stderr, "type mismatch "
+					    "in stgaa: %s != %s",
+					    buf, var_type);
+
+					return (-1);
+				}
+			}
+		}
+	}
+
+	return (0);
+}
+
+static int
+dt_typecheck_stack(dt_list_t *stacklist)
+{
+	dt_stacklist_t *sl;
+	dt_list_t *stack, *ostack;
+	dt_stack_t *se, *ose;
+	dt_relo_t *r, *or;
+	char buf1[4096] = {0}, buf2[4096] = {0};
+
+	se = ose = NULL;
+	stack = ostack = NULL;
+	sl = NULL;
+	r = or = NULL;
+
+	for (sl = dt_list_next(stacklist); sl; sl = dt_list_next(sl)) {
+		ostack = stack;
+		stack = &sl->dsl_stack;
+
+		for (se = dt_list_next(stack), ose = dt_list_next(ostack);
+		     se && ose; se = dt_list_next(se), ose = dt_list_next(ose)) {
+			r = se->ds_rel;
+			or = ose->ds_rel;
+
+			if (r->dr_type != or->dr_type) {
+				fprintf(stderr,
+				    "stack type mismatch: %d != %d\n",
+				    r->dr_type, or->dr_type);
+
+				return (-1);
+			}
+
+			if (r->dr_ctfid != or->dr_ctfid) {
+				if (ctf_type_name(ctf_file, r->dr_ctfid, buf1,
+				    sizeof(buf1)) != ((char *)buf1))
+					errx(EXIT_FAILURE,
+					    "failed at getting type name %ld: %s",
+					    r->dr_ctfid,
+					    ctf_errmsg(ctf_errno(ctf_file)));
+
+				if (ctf_type_name(ctf_file, or->dr_ctfid, buf2,
+				    sizeof(buf2)) != ((char *)buf2))
+					errx(EXIT_FAILURE,
+					    "failed at getting type name %ld: %s",
+					    or->dr_ctfid,
+					    ctf_errmsg(ctf_errno(ctf_file)));
+
+				fprintf(stderr,
+				    "stack ctf type mismatch: %s != %s\n",
+				    buf1, buf2);
+
+				return (-1);
+			}
+
+			if (r->dr_sym || or->dr_sym) {
+				fprintf(stderr, "symbol found on stack\n");
+				return (-1);
+			}
+		}
+	}
+
+	return (0); /* Successfully type-checked, not returning a type */
+}
+
+static int
 dt_infer_type(dt_relo_t *r)
 {
-	dt_relo_t *dr1, *dr2, *dv, *tc_r, *symrelo, *other;
+	dt_relo_t *dr1, *dr2, *drv, *tc_r,
+	    *symrelo, *other, *var_stackrelo, *relo;
 	int type1, type2, res, i, t;
 	char buf[4096] = {0}, symname[4096] = {0}, var_type[4096] = {0};
 	ctf_membinfo_t *mip;
@@ -1846,9 +2071,13 @@ dt_infer_type(dt_relo_t *r)
 	ctf_file_t *octfp = NULL;
 	ctf_id_t type = 0;
 	dtrace_difv_t *dif_var;
-	char *symname_rel;
+	dt_pathlist_t *il;
+	dt_stack_t *se;
+	dt_list_t *stack;
 
-	dr1 = dr2 = dv = NULL;
+        se = NULL;
+	il = NULL;
+	dr1 = dr2 = drv = var_stackrelo = relo = NULL;
 	type1 = -1;
 	type2 = -1;
 	mip = NULL;
@@ -1868,7 +2097,7 @@ dt_infer_type(dt_relo_t *r)
 	arg0 = arg1 = arg2 = arg3 = arg4 = arg5 = arg6 = arg7 = arg8 = NULL;
 	t = 0;
 	dif_var = NULL;
-	symname_rel = NULL;
+	stack = NULL;
 
 	/*
 	 * If we already have the type, we just return it.
@@ -1889,7 +2118,8 @@ dt_infer_type(dt_relo_t *r)
 	 * Doesn't really matter which definition we get, as long as the check
 	 * above passes without any errors.
 	 */
-	dr1 = dt_list_next(&r->dr_r1defs);
+	dr1 = dt_list_next(&r->dr_r1defs) ?
+	    ((dt_rl_entry_t *)dt_list_next(&r->dr_r1defs))->drl_rel : NULL;
 
 	type = dt_typecheck_regdefs(&r->dr_r2defs);
 	if (type == -1) {
@@ -1897,7 +2127,8 @@ dt_infer_type(dt_relo_t *r)
 		return (-1);
 	}
 
-	dr2 = dt_list_next(&r->dr_r2defs);
+	dr2 = dt_list_next(&r->dr_r2defs) ?
+	    ((dt_rl_entry_t *)dt_list_next(&r->dr_r2defs))->drl_rel : NULL;
 
 	type = dt_typecheck_vardefs(difo, &r->dr_vardefs);
 	if (type == -1) {
@@ -1905,7 +2136,16 @@ dt_infer_type(dt_relo_t *r)
 		return (-1);
 	}
 
-	dv = dt_list_next(&r->dr_vardefs);
+	drv = dt_list_next(&r->dr_vardefs) ?
+	    ((dt_rl_entry_t *)dt_list_next(&r->dr_vardefs))->drl_rel : NULL;
+
+	if (dt_typecheck_stack(&r->dr_stacklist) == -1) {
+		fprintf(stderr, "inferring types for stack failed\n");
+		return (-1);
+	}
+
+	stack = dt_list_next(&r->dr_stacklist) ?
+	    &((dt_stacklist_t *)dt_list_next(&r->dr_stacklist))->dsl_stack : NULL;
 
 	/*
 	 * It seems like we might need a poset of types, knowing what to cast to
@@ -1972,7 +2212,7 @@ dt_infer_type(dt_relo_t *r)
 		/*
 		 * If there is no symbol here, we can't do anything.
 		 */
-		if (dr1->dr_sym == 0) {
+		if (dr1->dr_sym == NULL) {
 			fprintf(stderr, "uload/uuload dr1 symbol is empty\n");
 			return (-1);
 		}
@@ -1980,19 +2220,11 @@ dt_infer_type(dt_relo_t *r)
 		/*
 		 * sym in range(symtab)
 		 */
-		if (dr1->dr_sym >= difo->dtdo_symlen)
-			errx(EXIT_FAILURE, "sym (%zu) is out of range: %zu",
-			    dr1->dr_sym, difo->dtdo_symlen);
-
-		/*
-		 * symtab(sym) = symname
-		 */
-		l = strlcpy(symname, difo->dtdo_symtab +
-		    dr1->dr_sym, sizeof(symname));
-		if (l >= sizeof(symname))
-			errx(EXIT_FAILURE,
-			    "l (%zu) >= %zu when copying symbol name",
-			    l, sizeof(symname));
+		if ((uintptr_t)dr1->dr_sym >= ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
+			errx(EXIT_FAILURE, "sym (%p) is out of range: %p",
+			    dr1->dr_sym,
+			    (void *)(((uintptr_t)difo->dtdo_symtab) +
+			    difo->dtdo_symlen));
 
 		/*
 		 * Get the original type name of dr1->dr_ctfid for
@@ -2013,6 +2245,9 @@ dt_infer_type(dt_relo_t *r)
 		 * Figure out t2 = type_at(t1, symname)
 		 */
 		mip = malloc(sizeof(ctf_membinfo_t));
+		if (mip == NULL)
+			errx(EXIT_FAILURE, "failed to malloc mip");
+
 		memset(mip, 0, sizeof(ctf_membinfo_t));
 
 		/*
@@ -2021,10 +2256,10 @@ dt_infer_type(dt_relo_t *r)
 		type = ctf_type_reference(ctf_file, dr1->dr_ctfid);
 
 		if (dt_lib_membinfo(
-		    octfp = ctf_file, type, symname, mip) == 0)
+		    octfp = ctf_file, type, dr1->dr_sym, mip) == 0)
 			errx(EXIT_FAILURE, "failed to get member info"
 			    " for %s(%s): %s",
-			    buf, symname,
+			    buf, dr1->dr_sym,
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
 		r->dr_mip = mip;
@@ -2052,7 +2287,7 @@ dt_infer_type(dt_relo_t *r)
 			errx(EXIT_FAILURE, "failed to get type uint64_t: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
-		r->dr_sym = sym;
+		r->dr_sym = difo->dtdo_symtab + sym;
 		r->dr_type = DIF_TYPE_CTF;
 		return (r->dr_type);
 
@@ -2150,7 +2385,7 @@ dt_infer_type(dt_relo_t *r)
 		 * If we have no type with a symbol associated with it,
 		 * we apply the first typing rule.
 		 */
-		if (dr1->dr_sym == 0 && dr2->dr_sym == 0) {
+		if (dr1->dr_sym == NULL && dr2->dr_sym == NULL) {
 			/*
 			 * Check which type is "bigger".
 			 */
@@ -2174,8 +2409,8 @@ dt_infer_type(dt_relo_t *r)
 			r->dr_type = tc_r->dr_type;
 			r->dr_ctfid = tc_r->dr_ctfid;
 		} else {
-			symrelo = dr1->dr_sym != 0 ? dr1 : dr2;
-			other = dr1->dr_sym != 0 ? dr2 : dr1;
+			symrelo = dr1->dr_sym != NULL ? dr1 : dr2;
+			other = dr1->dr_sym != NULL ? dr2 : dr1;
 
 			if (other->dr_type == DIF_TYPE_BOTTOM ||
 			    symrelo->dr_type == DIF_TYPE_BOTTOM)
@@ -2377,6 +2612,8 @@ dt_infer_type(dt_relo_t *r)
 		r->dr_type = DIF_TYPE_CTF;
 		return (r->dr_type);
 
+	case DIF_OP_ULDX:
+	case DIF_OP_RLDX:
 	case DIF_OP_LDX:
 	case DIF_OP_SETX:
 		/*
@@ -2404,25 +2641,219 @@ dt_infer_type(dt_relo_t *r)
 	case DIF_OP_LDGA:
 		break;
 
-	case DIF_OP_LDGS:
-	case DIF_OP_LDTS:
 	case DIF_OP_LDLS:
 		/*
 		 *           var : t
 		 * ----------------------------
-		 *  opcode var, %r1 => %r1 : t
+		 *  ldls var, %r1 => %r1 : t
 		 */
 
 		var = DIF_INSTR_VAR(instr);
 
-		if (dr1 == NULL) {
-			if (opcode == DIF_OP_LDGS && var < DIF_VAR_MAX) {
-				dt_builtin_type(r, var);
+		dif_var = dt_get_var_from_varlist(var,
+		    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
+		if (dif_var == NULL)
+			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			    var, DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
+
+		if (drv == NULL) {
+			if (dif_var == NULL) {
+				fprintf(stderr, "variable and drv don't exist\n");
+				return (-1);
+			} else {
+				r->dr_ctfid = dif_var->dtdv_ctfid;
+				r->dr_type = dif_var->dtdv_type.dtdt_kind;
+				r->dr_sym = dif_var->dtdv_sym;
+
 				return (r->dr_type);
 			}
+		}
 
-			fprintf(stderr, "ld*: dr1 is NULL\n");
-			return (-1);
+		if (dif_var != NULL) {
+			if (dif_var->dtdv_type.dtdt_kind != drv->dr_type) {
+				fprintf(stderr, "type mismatch %d != %d\n",
+				    dif_var->dtdv_type.dtdt_kind, dr1->dr_type);
+				return (-1);
+			}
+
+			if (dif_var->dtdv_ctfid != drv->dr_ctfid) {
+				if (ctf_type_name(ctf_file, drv->dr_ctfid, buf,
+				    sizeof(buf)) != ((char *)buf))
+					errx(EXIT_FAILURE,
+					    "failed at getting type name %ld: %s",
+					    drv->dr_ctfid,
+					    ctf_errmsg(ctf_errno(ctf_file)));
+
+				if (ctf_type_name(ctf_file, dif_var->dtdv_ctfid,
+				    var_type,
+				    sizeof(var_type)) != ((char *)var_type))
+					errx(EXIT_FAILURE,
+					    "failed at getting type name %ld: %s",
+					    dif_var->dtdv_ctfid,
+					    ctf_errmsg(ctf_errno(ctf_file)));
+
+				fprintf(stderr,
+				    "variable ctf type mismatch %s != %s\n",
+				    buf, var_type);
+				return (-1);
+			}
+
+			if (drv->dr_sym && dif_var->dtdv_sym == NULL) {
+				fprintf(stderr, "symbol mismatch %s != NULL\n",
+					drv->dr_sym);
+				return (-1);
+			}
+
+			if (drv->dr_sym == NULL && dif_var->dtdv_sym) {
+				fprintf(stderr, "symbol mismatch NULL != %s\n",
+				    dif_var->dtdv_sym);
+				return (-1);
+			}
+
+			if (strcmp(dif_var->dtdv_sym, drv->dr_sym) != 0) {
+				fprintf(stderr, "symbol mismatch %s != %s\n",
+				    drv->dr_sym, dif_var->dtdv_sym);
+				return (-1);
+			}
+
+		}
+
+		r->dr_ctfid = drv->dr_ctfid;
+		r->dr_type = drv->dr_type;
+		r->dr_mip = drv->dr_mip;
+		r->dr_sym = drv->dr_sym;
+
+		return (r->dr_type);
+
+	case DIF_OP_LDGS:
+		/*
+		 *           var : t
+		 * ----------------------------
+		 *  ldgs var, %r1 => %r1 : t
+		 */
+
+		var = DIF_INSTR_VAR(instr);
+
+		dif_var = dt_get_var_from_varlist(var,
+		    DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
+
+		if (dr1 == NULL) {
+			if (dt_var_is_builtin(var)) {
+				dt_builtin_type(r, var);
+				return (r->dr_type);
+			} else if (dif_var == NULL) {
+				fprintf(stderr,
+				    "variable %d and dr1 don't exist\n", var);
+				return (-1);
+			} else {
+				r->dr_ctfid = dif_var->dtdv_ctfid;
+				r->dr_type = dif_var->dtdv_type.dtdt_kind;
+				r->dr_sym = dif_var->dtdv_sym;
+				return (r->dr_type);
+			}
+		}
+
+		if (dif_var != NULL) {
+			if (dif_var->dtdv_type.dtdt_kind != dr1->dr_type) {
+				fprintf(stderr, "type mismatch %d != %d\n",
+				    dif_var->dtdv_type.dtdt_kind, dr1->dr_type);
+				return (-1);
+			}
+
+			if (dif_var->dtdv_ctfid != dr1->dr_ctfid) {
+				fprintf(stderr,
+				    "variable ctf type mismatch %s != %s\n",
+				    buf, var_type);
+				return (-1);
+			}
+
+			if (dr1->dr_sym && dif_var->dtdv_sym == NULL) {
+				fprintf(stderr, "symbol mismatch %s != NULL\n",
+					dr1->dr_sym);
+				return (-1);
+			}
+
+			if (dr1->dr_sym == NULL && dif_var->dtdv_sym) {
+				fprintf(stderr, "symbol mismatch NULL != %s\n",
+				    dif_var->dtdv_sym);
+				return (-1);
+			}
+
+			if (strcmp(dif_var->dtdv_sym, dr1->dr_sym) != 0) {
+				fprintf(stderr, "symbol mismatch %s != %s\n",
+				    dr1->dr_sym, dif_var->dtdv_sym);
+				return (-1);
+			}
+
+		}
+
+		r->dr_ctfid = dr1->dr_ctfid;
+		r->dr_type = dr1->dr_type;
+		r->dr_mip = dr1->dr_mip;
+		r->dr_sym = dr1->dr_sym;
+
+		return (r->dr_type);
+
+	case DIF_OP_LDTS:
+		/*
+		 *           var : t
+		 * ----------------------------
+		 *  ldts var, %r1 => %r1 : t
+		 */
+
+		var = DIF_INSTR_VAR(instr);
+
+		dif_var = dt_get_var_from_varlist(var,
+		    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
+		if (dif_var == NULL)
+			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			    var, DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
+
+		if (dr1 == NULL) {
+			if (dif_var == NULL) {
+				fprintf(stderr, "variable and dr1 don't exist\n");
+				return (-1);
+			} else {
+				r->dr_ctfid = dif_var->dtdv_ctfid;
+				r->dr_type = dif_var->dtdv_type.dtdt_kind;
+				r->dr_sym = dif_var->dtdv_sym;
+
+				return (r->dr_type);
+			}
+		}
+
+		if (dif_var != NULL) {
+			if (dif_var->dtdv_type.dtdt_kind != dr1->dr_type) {
+				fprintf(stderr, "type mismatch %d != %d\n",
+				    dif_var->dtdv_type.dtdt_kind, dr1->dr_type);
+				return (-1);
+			}
+
+			if (dif_var->dtdv_ctfid != dr1->dr_ctfid) {
+				fprintf(stderr,
+				    "variable ctf type mismatch %s != %s\n",
+				    buf, var_type);
+				return (-1);
+			}
+
+			if (dr1->dr_sym && dif_var->dtdv_sym == NULL) {
+				fprintf(stderr, "symbol mismatch %s != NULL\n",
+					dr1->dr_sym);
+				return (-1);
+			}
+
+			if (dr1->dr_sym == NULL && dif_var->dtdv_sym) {
+				fprintf(stderr, "symbol mismatch NULL != %s\n",
+				    dif_var->dtdv_sym);
+				return (-1);
+			}
+
+			if (strcmp(dif_var->dtdv_sym, dr1->dr_sym) != 0) {
+				fprintf(stderr, "symbol mismatch %s != %s\n",
+				    dr1->dr_sym, dif_var->dtdv_sym);
+				return (-1);
+			}
+
 		}
 
 		r->dr_ctfid = dr1->dr_ctfid;
@@ -2447,6 +2878,8 @@ dt_infer_type(dt_relo_t *r)
 		 *        update var_list var t
 		 */
 
+		var = DIF_INSTR_VAR(instr);
+
 		/*
 		 * If we are doing a STGS, and the variable is a builtin
 		 * variable, we fail to type-check the instruction.
@@ -2457,66 +2890,25 @@ dt_infer_type(dt_relo_t *r)
 			return (-1);
 		}
 
-		if (dr1 == NULL) {
-			fprintf(stderr, "dr1 is NULL in stgs.\n");
+		if (dr2 == NULL) {
+			fprintf(stderr, "dr2 is NULL in stgs.\n");
 			return (-1);
 		}
 
 		dif_var = dt_get_var_from_varlist(var,
 		    DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
 
-		if (dif_var->dtdv_ctfid != CTF_ERR) {
-			if (dif_var->dtdv_ctfid != dr1->dr_ctfid) {
-				if (ctf_type_name(
-				    ctf_file, dif_var->dtdv_ctfid, var_type,
-				    sizeof(var_type)) != ((char *)var_type))
-					errx(EXIT_FAILURE,
-					    "failed at getting type name %ld: %s",
-					    dif_var->dtdv_ctfid,
-					    ctf_errmsg(ctf_errno(ctf_file)));
+		if (dif_var == NULL)
+			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			    var, DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
 
-				if (ctf_type_name(
-				    ctf_file, dr1->dr_ctfid, buf,
-				    sizeof(buf)) != ((char *)buf))
-					errx(EXIT_FAILURE,
-					    "failed at getting type name %ld: %s",
-					    dr1->dr_ctfid,
-					    ctf_errmsg(ctf_errno(ctf_file)));
+		if (dt_infer_type_var(dr2, dif_var) == -1)
+			return (-1);
 
-				fprintf(stderr, "type mismatch in STGS: %s != %s\n",
-				    var_type, buf);
-
-				return (-1);
-			}
-
-			if (dif_var->dtdv_symname != NULL) {
-				if (dr1->dr_sym)
-					symname_rel =
-					    dr1->dr_difo->dtdo_symtab +
-					    dr1->dr_sym;
-
-				if (symname_rel && strcmp(
-				    dif_var->dtdv_symname, symname_rel) != 0) {
-					fprintf(stderr,
-					    "symbol name mismatch: %s != %s\n",
-					    dif_var->dtdv_symname, symname_rel);
-
-					return (-1);
-				}
-			}
-		} else {
-			if (dr1->dr_sym)
-				symname_rel =
-				    dr1->dr_difo->dtdo_symtab + dr1->dr_sym;
-			dif_var->dtdv_ctfid = dr1->dr_ctfid;
-			dif_var->dtdv_symname = symname_rel ?
-			    strdup(symname_rel) : NULL;
-		}
-
-		r->dr_ctfid = dr1->dr_ctfid;
-		r->dr_type = dr1->dr_type;
-		r->dr_mip = dr1->dr_mip;
-		r->dr_sym = dr1->dr_sym;
+		r->dr_ctfid = dr2->dr_ctfid;
+		r->dr_type = dr2->dr_type;
+		r->dr_mip = dr2->dr_mip;
+		r->dr_sym = dr2->dr_sym;
 
 		return (r->dr_type);
 
@@ -2535,62 +2927,26 @@ dt_infer_type(dt_relo_t *r)
 		 *        update var_list var t
 		 */
 
+		var = DIF_INSTR_VAR(instr);
+
+		if (dr2 == NULL) {
+			fprintf(stderr, "dr2 is NULL in stts.\n");
+			return (-1);
+		}
 
 		dif_var = dt_get_var_from_varlist(var,
 		    DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
+		if (dif_var == NULL)
+			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			    var, DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
 
-		if (dif_var->dtdv_ctfid != CTF_ERR) {
-			if (dif_var->dtdv_ctfid != dr1->dr_ctfid) {
-				if (ctf_type_name(
-				    ctf_file, dif_var->dtdv_ctfid, var_type,
-				    sizeof(var_type)) != ((char *)var_type))
-					errx(EXIT_FAILURE,
-					    "failed at getting type name %ld: %s",
-					    dif_var->dtdv_ctfid,
-					    ctf_errmsg(ctf_errno(ctf_file)));
+		if (dt_infer_type_var(dr2, dif_var) == -1)
+			return (-1);
 
-				if (ctf_type_name(
-				    ctf_file, dr1->dr_ctfid, buf,
-				    sizeof(buf)) != ((char *)buf))
-					errx(EXIT_FAILURE,
-					    "failed at getting type name %ld: %s",
-					    dr1->dr_ctfid,
-					    ctf_errmsg(ctf_errno(ctf_file)));
-
-				fprintf(stderr, "type mismatch in STTS: %s != %s\n",
-				    var_type, buf);
-
-				return (-1);
-			}
-
-			if (dif_var->dtdv_symname != NULL) {
-				if (dr1->dr_sym)
-					symname_rel =
-					    dr1->dr_difo->dtdo_symtab +
-					    dr1->dr_sym;
-
-				if (symname_rel && strcmp(
-				    dif_var->dtdv_symname, symname_rel) != 0) {
-					fprintf(stderr,
-					    "symbol name mismatch: %s != %s\n",
-					    dif_var->dtdv_symname, symname_rel);
-
-					return (-1);
-				}
-			}
-		} else {
-			if (dr1->dr_sym)
-				symname_rel =
-				    dr1->dr_difo->dtdo_symtab + dr1->dr_sym;
-			dif_var->dtdv_ctfid = dr1->dr_ctfid;
-			dif_var->dtdv_symname = symname_rel ?
-			    strdup(symname_rel) : NULL;
-		}
-
-		r->dr_ctfid = dr1->dr_ctfid;
-		r->dr_type = dr1->dr_type;
-		r->dr_mip = dr1->dr_mip;
-		r->dr_sym = dr1->dr_sym;
+		r->dr_ctfid = dr2->dr_ctfid;
+		r->dr_type = dr2->dr_type;
+		r->dr_mip = dr2->dr_mip;
+		r->dr_sym = dr2->dr_sym;
 
 		return (r->dr_type);
 
@@ -2609,68 +2965,32 @@ dt_infer_type(dt_relo_t *r)
 		 *        update var_list var t
 		 */
 
+		var = DIF_INSTR_VAR(instr);
 
-		dif_var = dt_get_variable(difo, var,
-		    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
-
-		if (dif_var->dtdv_ctfid != CTF_ERR) {
-			if (dif_var->dtdv_ctfid != dr1->dr_ctfid) {
-				if (ctf_type_name(
-				    ctf_file, dif_var->dtdv_ctfid, var_type,
-				    sizeof(var_type)) != ((char *)var_type))
-					errx(EXIT_FAILURE,
-					    "failed at getting type name %ld: %s",
-					    dif_var->dtdv_ctfid,
-					    ctf_errmsg(ctf_errno(ctf_file)));
-
-				if (ctf_type_name(
-				    ctf_file, dr1->dr_ctfid, buf,
-				    sizeof(buf)) != ((char *)buf))
-					errx(EXIT_FAILURE,
-					    "failed at getting type name %ld: %s",
-					    dr1->dr_ctfid,
-					    ctf_errmsg(ctf_errno(ctf_file)));
-
-				fprintf(stderr, "type mismatch in STTS: %s != %s\n",
-				    var_type, buf);
-
-				return (-1);
-			}
-
-			if (dif_var->dtdv_symname != NULL) {
-				if (dr1->dr_sym)
-					symname_rel =
-					    dr1->dr_difo->dtdo_symtab +
-					    dr1->dr_sym;
-
-				if (symname_rel && strcmp(
-				    dif_var->dtdv_symname, symname_rel) != 0) {
-					fprintf(stderr,
-					    "symbol name mismatch: %s != %s\n",
-					    dif_var->dtdv_symname, symname_rel);
-
-					return (-1);
-				}
-			}
-		} else {
-			if (dr1->dr_sym)
-				symname_rel =
-				    dr1->dr_difo->dtdo_symtab + dr1->dr_sym;
-			dif_var->dtdv_ctfid = dr1->dr_ctfid;
-			dif_var->dtdv_symname = symname_rel ?
-			    strdup(symname_rel) : NULL;
+		if (dr2 == NULL) {
+			fprintf(stderr, "dr2 is NULL in stls.\n");
+			return (-1);
 		}
 
-		r->dr_ctfid = dr1->dr_ctfid;
-		r->dr_type = dr1->dr_type;
-		r->dr_mip = dr1->dr_mip;
-		r->dr_sym = dr1->dr_sym;
+		dif_var = dt_get_var_from_varlist(var,
+		    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
+		if (dif_var == NULL)
+			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			    var, DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
+
+		if (dt_infer_type_var(dr2, dif_var) == -1)
+			return (-1);
+
+		r->dr_ctfid = dr2->dr_ctfid;
+		r->dr_type = dr2->dr_type;
+		r->dr_mip = dr2->dr_mip;
+		r->dr_sym = dr2->dr_sym;
 
 		return (r->dr_type);
 
 	case DIF_OP_LDTA:
+		break;
 	case DIF_OP_CALL:
-#if 0
 		/*
 		 *     subr : t1 -> t2 ... -> tn -> t
 		 *  stack[0] : t1    stack[1] : t2     ...
@@ -2681,26 +3001,6 @@ dt_infer_type(dt_relo_t *r)
 		 */
 
 		subr = DIF_INSTR_SUBR(instr);
-		/*
-		 * TODO: Add type-checking for things on the stack.
-		 *       getmajor/getminor?
-		 */
-		/*
-		 * Infer each of the stack types. We should at this point have:
-		 *  (1) the D type (CTF or string)
-		 *  (2) the CTF id if it's a CTF type
-		 *
-		 * which we can use to compare the CTF type ID with the expected
-		 * type for a subroutine, ensuring that proper arguments are
-		 * being passed through to the subroutines.
-		 */
-		for (sl = dt_list_next(&r->dr_stacklist); sl != NULL;
-		    sl = dt_list_next(sl))
-			if ((t = dt_infer_type(sl->dsl_rel)) == -1) {
-				fprintf(stderr,
-				    "stack type could not be inferred\n");
-				return (-1);
-			}
 
 		/*
 		 * We don't care if there are more things on the stack than
@@ -2737,12 +3037,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "struct mtx *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "mutex_owned/type() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -2771,12 +3071,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "struct mtx *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "mutex_owner() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -2813,12 +3113,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "struct rwlock *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "rw_read_held() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -2847,12 +3147,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "struct rwlock *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "rw_write_held() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -2881,12 +3181,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "struct rwlock *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "rw_iswriter() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -2915,12 +3215,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "uintptr_t" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "copyin() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -2940,12 +3240,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "size_t" as the second argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "copyin() second argument is NULL");
 
-			arg1 = sl->dsl_rel;
+			arg1 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -2975,12 +3275,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "uintptr_t" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "copyinstr() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3000,13 +3300,13 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * Check if the second (optional) argument is present
 			 */
-			sl = dt_list_next(sl);
+			se = dt_list_next(se);
 			if (sl != NULL) {
-				if (sl->dsl_rel == NULL)
+				if (se->ds_rel == NULL)
 					errx(EXIT_FAILURE,
-					    "copyinstr() dsl_rel is NULL");
+					    "copyinstr() ds_rel is NULL");
 
-				arg1 = sl->dsl_rel;
+				arg1 = se->ds_rel;
 
 				if (ctf_type_name(ctf_file,
 				    arg1->dr_ctfid,
@@ -3042,12 +3342,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "pid_t" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "progenyof() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3076,12 +3376,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "const char *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "strlen() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3111,12 +3411,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "void *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "copyout() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3136,12 +3436,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "uintptr_t" as a second argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "copyout() second argument is NULL");
 
-			arg1 = sl->dsl_rel;
+			arg1 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3161,12 +3461,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "size_t" as a third argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "copyout() third argument is NULL");
 
-			arg2 = sl->dsl_rel;
+			arg2 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg2->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3193,12 +3493,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "char *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "copyoutstr() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3218,12 +3518,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "uintptr_t" as a second argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "copyoutstr() second argument is NULL");
 
-			arg1 = sl->dsl_rel;
+			arg1 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3243,12 +3543,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "size_t" as a third argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "copyoutstr() third argument is NULL");
 
-			arg2 = sl->dsl_rel;
+			arg2 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg2->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3276,12 +3576,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "size_t" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "alloca() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3311,12 +3611,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "void *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "bcopy() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3336,12 +3636,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "void *" as a second argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "bcopy() second argument is NULL");
 
-			arg1 = sl->dsl_rel;
+			arg1 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3361,12 +3661,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "size_t" as a third argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "bcopy() third argument is NULL");
 
-			arg2 = sl->dsl_rel;
+			arg2 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg2->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3389,12 +3689,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "uintptr_t" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "copyinto() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3414,12 +3714,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "size_t" as a second argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "copyinto() second argument is NULL");
 
-			arg1 = sl->dsl_rel;
+			arg1 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3439,12 +3739,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "void *" as a third argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "copyinto() third argument is NULL");
 
-			arg2 = sl->dsl_rel;
+			arg2 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg2->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3469,12 +3769,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "mblk_t *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "msg(d)size() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3509,12 +3809,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "void *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "ddi_pathname() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3534,12 +3834,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "int64_t" as a second argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "ddi_pathname() second argument is NULL");
 
-			arg1 = sl->dsl_rel;
+			arg1 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3563,12 +3863,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "int64_t" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "lltostr() second argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3588,13 +3888,13 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * Check if the second (optional) argument is present
 			 */
-			sl = dt_list_next(sl);
+			se = dt_list_next(se);
 			if (sl != NULL) {
-				if (sl->dsl_rel == NULL)
+				if (se->ds_rel == NULL)
 					errx(EXIT_FAILURE,
-					    "lltostr() dsl_rel is NULL");
+					    "lltostr() ds_rel is NULL");
 
-				arg1 = sl->dsl_rel;
+				arg1 = se->ds_rel;
 
 				if (ctf_type_name(ctf_file,
 				    arg1->dr_ctfid,
@@ -3623,13 +3923,13 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "const char *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "basename/dirname/cleanpath() "
 				    "first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3654,12 +3954,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "const char *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "strchr() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3678,12 +3978,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "char" as a second argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "strchr() second argument is NULL");
 
-			arg1 = sl->dsl_rel;
+			arg1 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3707,12 +4007,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "const char *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "substr() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3731,12 +4031,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "int" as a second argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "substr() second argument is NULL");
 
-			arg1 = sl->dsl_rel;
+			arg1 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3757,11 +4057,11 @@ dt_infer_type(dt_relo_t *r)
 			 * Check if the third (optional) argument is present
 			 */
 			if (sl != NULL) {
-				if (sl->dsl_rel == NULL)
+				if (se->ds_rel == NULL)
 					errx(EXIT_FAILURE,
-					    "substr() dsl_rel is NULL");
+					    "substr() ds_rel is NULL");
 
-				arg2 = sl->dsl_rel;
+				arg2 = se->ds_rel;
 
 				if (ctf_type_name(ctf_file,
 				    arg2->dr_ctfid,
@@ -3789,12 +4089,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "const char *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "(r)index() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3814,12 +4114,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "const char *" as a second argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "(r)index() second argument is NULL");
 
-			arg1 = sl->dsl_rel;
+			arg1 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3840,11 +4140,11 @@ dt_infer_type(dt_relo_t *r)
 			 * Check if the third (optional) argument is present
 			 */
 			if (sl != NULL) {
-				if (sl->dsl_rel == NULL)
+				if (se->ds_rel == NULL)
 					errx(EXIT_FAILURE,
-					    "(r)index() dsl_rel is NULL");
+					    "(r)index() ds_rel is NULL");
 
-				arg2 = sl->dsl_rel;
+				arg2 = se->ds_rel;
 
 				if (ctf_type_name(ctf_file,
 				    arg2->dr_ctfid,
@@ -3877,12 +4177,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "uint16_t" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "ntohs/htons() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3913,12 +4213,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "uint32_t" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "ntohl/htonl() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3949,12 +4249,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "uint64_t" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "ntohll/htonll() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -3984,12 +4284,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "int" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "inet_ntop() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -4009,12 +4309,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "void *" as a second argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "ddi_pathname() second argument is NULL");
 
-			arg1 = sl->dsl_rel;
+			arg1 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -4038,12 +4338,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "in_addr_t *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "inet_ntoa() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -4067,12 +4367,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "struct in6_addr *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "inet_ntoa6() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -4097,12 +4397,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "const char *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "toupper/tolower() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -4126,12 +4426,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "void *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "memref() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -4151,12 +4451,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "size_t" as a second argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "memref() second argument is NULL");
 
-			arg1 = sl->dsl_rel;
+			arg1 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -4189,12 +4489,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a sx_str as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "sx_*() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -4223,12 +4523,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "void *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "memstr() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -4248,12 +4548,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "char" as a second argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "memstr() second argument is NULL");
 
-			arg1 = sl->dsl_rel;
+			arg1 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -4273,12 +4573,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "size_t" as a third argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "memstr() second argument is NULL");
 
-			arg2 = sl->dsl_rel;
+			arg2 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg2->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -4303,12 +4603,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "int" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "getf() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -4338,12 +4638,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "const char *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "strtoll() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -4363,13 +4663,13 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * Check if the second (optional) argument is present
 			 */
-			sl = dt_list_next(sl);
+			se = dt_list_next(se);
 			if (sl != NULL) {
-				if (sl->dsl_rel == NULL)
+				if (se->ds_rel == NULL)
 					errx(EXIT_FAILURE,
-					    "strtoll() dsl_rel is NULL");
+					    "strtoll() ds_rel is NULL");
 
-				arg1 = sl->dsl_rel;
+				arg1 = se->ds_rel;
 
 				if (ctf_type_name(ctf_file,
 				    arg1->dr_ctfid,
@@ -4412,12 +4712,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "uintptr_t" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "ptinfo() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -4454,12 +4754,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "const char *" as an argument.
 			 */
-			sl = dt_list_next(&r->dr_stacklist);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(stack);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "str/json() first argument is NULL");
 
-			arg0 = sl->dsl_rel;
+			arg0 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -4479,12 +4779,12 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * We expect a "const char *" as the second argument.
 			 */
-			sl = dt_list_next(sl);
-			if (sl == NULL || sl->dsl_rel == NULL)
+			se = dt_list_next(se);
+			if (se == NULL || se->ds_rel == NULL)
 				errx(EXIT_FAILURE,
 				    "str/json() second argument is NULL");
 
-			arg1 = sl->dsl_rel;
+			arg1 = se->ds_rel;
 
 			if (ctf_type_name(ctf_file,
 			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
@@ -4508,16 +4808,210 @@ dt_infer_type(dt_relo_t *r)
 		}
 
 		return (r->dr_type);
-#endif
-		break;
 
 	case DIF_OP_LDGAA:
+		var = DIF_INSTR_VAR(instr);
+
+		dif_var = dt_get_var_from_varlist(var,
+		    DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
+		if (dif_var == NULL)
+			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			    var, DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
+
+		/*
+		 * If the stack is empty, this instruction makes no sense.
+		 */
+		if (dt_list_next(&r->dr_stacklist) == NULL) {
+			fprintf(stderr, "stack list is empty in ldgaa\n");
+			return (-1);
+		}
+
+		/*
+		 * Make sure the stack contains what we expect
+		 */
+		if (dt_var_stack_typecheck(r, drv, dif_var) == -1)
+			return (-1);
+
+		if (dt_infer_type_var(drv, dif_var) == -1)
+			return (-1);
+
+		if (drv) {
+			r->dr_ctfid = drv->dr_ctfid;
+			r->dr_type = drv->dr_type;
+			r->dr_mip = drv->dr_mip;
+			r->dr_sym = drv->dr_sym;
+		} else {
+			r->dr_ctfid = dif_var->dtdv_ctfid;
+			r->dr_type = dif_var->dtdv_type.dtdt_kind;
+			r->dr_sym = dif_var->dtdv_sym;
+		}
+
+		return (r->dr_type);
+
 	case DIF_OP_LDTAA:
+		var = DIF_INSTR_VAR(instr);
+
+		dif_var = dt_get_var_from_varlist(var,
+		    DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
+		if (dif_var == NULL)
+			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			    var, DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
+
+		/*
+		 * If the stack is empty, this instruction makes no sense.
+		 */
+		if (dt_list_next(&r->dr_stacklist) == NULL) {
+			fprintf(stderr, "stack list is empty in ldgaa\n");
+			return (-1);
+		}
+
+		/*
+		 * Make sure the stack contains what we expect
+		 */
+		if (dt_var_stack_typecheck(r, drv, dif_var) == -1)
+			return (-1);
+
+		if (dt_infer_type_var(drv, dif_var) == -1)
+			return (-1);
+
+		if (drv) {
+			r->dr_ctfid = drv->dr_ctfid;
+			r->dr_type = drv->dr_type;
+			r->dr_mip = drv->dr_mip;
+			r->dr_sym = drv->dr_sym;
+		} else {
+			r->dr_ctfid = dif_var->dtdv_ctfid;
+			r->dr_type = dif_var->dtdv_type.dtdt_kind;
+			r->dr_sym = dif_var->dtdv_sym;
+		}
+
+		return (r->dr_type);
+
+	case DIF_OP_STGAA:
+		if (dr2 == NULL) {
+			fprintf(stderr, "dr2 is NULL in stgaa.\n");
+			return (-1);
+		}
+
+		var = DIF_INSTR_VAR(instr);
+
+		dif_var = dt_get_var_from_varlist(var,
+		    DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
+		if (dif_var == NULL)
+			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			    var, DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
+
+		/*
+		 * We compare the first seen stack and the current possible
+		 * stacks in order to make sure that we aren't doing something
+		 * like:
+		 *
+		 *  x[curthread] = 1;
+		 *  x[tid] = 2;
+		 */
+
+		if (dt_var_stack_typecheck(r, dr2, dif_var) == -1)
+			return (-1);
+
+		if (dt_infer_type_var(dr2, dif_var) == -1)
+			return (-1);
+
+		r->dr_ctfid = dr2->dr_ctfid;
+		r->dr_type = dr2->dr_type;
+		r->dr_mip = dr2->dr_mip;
+		r->dr_sym = dr2->dr_sym;
+
+		return (r->dr_type);
+
+	case DIF_OP_STTAA:
+		if (dr2 == NULL) {
+			fprintf(stderr, "dr2 is NULL in sttaa.\n");
+			return (-1);
+		}
+
+		var = DIF_INSTR_VAR(instr);
+
+		dif_var = dt_get_var_from_varlist(var,
+		    DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
+		if (dif_var == NULL)
+			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			    var, DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
+
+		/*
+		 * We compare the first seen stack and the current possible
+		 * stacks in order to make sure that we aren't doing something
+		 * like:
+		 *
+		 *  self->x[curthread] = 1;
+		 *  self->x[tid] = 2;
+		 */
+		if (dt_var_stack_typecheck(r, dr2, dif_var) == -1)
+			return (-1);
+
+		if (dt_infer_type_var(dr2, dif_var) == -1)
+			return (-1);
+
+		r->dr_ctfid = dr2->dr_ctfid;
+		r->dr_type = dr2->dr_type;
+		r->dr_mip = dr2->dr_mip;
+		r->dr_sym = dr2->dr_sym;
+
+		return (r->dr_type);
+
 	case DIF_OP_ALLOCS:
+		r->dr_ctfid = 0;
+		r->dr_type = DIF_TYPE_CTF;
+		r->dr_mip = NULL;
+		r->dr_sym = NULL;
+
+		return (r->dr_type);
+
 	case DIF_OP_COPYS:
-	case DIF_OP_ULDX:
-	case DIF_OP_RLDX:
-		break;
+		r->dr_ctfid = dr1->dr_ctfid;
+		r->dr_type = dr1->dr_type;
+		r->dr_mip = dr1->dr_mip;
+		r->dr_sym = dr1->dr_sym;
+
+		return (r->dr_type);
+
+	case DIF_OP_RET:
+		r->dr_ctfid = dr1->dr_ctfid;
+		r->dr_type = dr1->dr_type;
+		r->dr_mip = dr1->dr_mip;
+		r->dr_sym = dr1->dr_sym;
+
+		return (r->dr_type);
+
+	case DIF_OP_FLUSHTS:
+	case DIF_OP_POPTS:
+	case DIF_OP_PUSHTV:
+	case DIF_OP_PUSHTR:
+	case DIF_OP_PUSHTR_G:
+	case DIF_OP_PUSHTR_H:
+	case DIF_OP_CMP:
+	case DIF_OP_SCMP:
+	case DIF_OP_SCMP_HH:
+	case DIF_OP_SCMP_GG:
+	case DIF_OP_SCMP_GH:
+	case DIF_OP_SCMP_HG:
+	case DIF_OP_HYPERCALL:
+	case DIF_OP_TST:
+	case DIF_OP_BA:
+	case DIF_OP_BE:
+	case DIF_OP_BNE:
+	case DIF_OP_BG:
+	case DIF_OP_BGU:
+	case DIF_OP_BGE:
+	case DIF_OP_BGEU:
+	case DIF_OP_BL:
+	case DIF_OP_BLU:
+	case DIF_OP_BLE:
+	case DIF_OP_BLEU:
+	case DIF_OP_NOP:
+		return (DIF_TYPE_NONE);
+
+	default:
+		errx(EXIT_FAILURE, "unhandled instruction: %u", opcode);
 	}
 
 	return (-1);
@@ -4563,6 +5057,9 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		return (0);
 
 	difo->dtdo_types = malloc(sizeof(char *) * difo->dtdo_len);
+	if (difo->dtdo_types == NULL)
+		errx(EXIT_FAILURE, "failed to malloc dtdo_types");
+
 	i = difo->dtdo_len - 1;
 
 	for (rl = dt_list_next(&relo_list);
@@ -4580,7 +5077,8 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 
 		type = dt_infer_type(relo);
 		assert(type == -1 ||
-		    type == DIF_TYPE_CTF || type == DIF_TYPE_STRING);
+		    type == DIF_TYPE_CTF || type == DIF_TYPE_STRING ||
+		    type == DIF_TYPE_NONE || type == DIF_TYPE_BOTTOM);
 
 		if (type == -1)
 			errx(EXIT_FAILURE, "failed to infer a type");
@@ -4853,6 +5351,9 @@ dt_compute_bb(dtrace_difo_t *difo)
 	opcode = 0;
 
 	leaders = malloc(sizeof(int) * difo->dtdo_len);
+	if (leaders == NULL)
+		errx(EXIT_FAILURE, "failed to malloc leaders");
+
 	memset(leaders, 0, sizeof(int) * difo->dtdo_len);
 
 	/*
@@ -4972,9 +5473,17 @@ dt_compute_cfg(dtrace_difo_t *difo)
 
 			if (lbl != -1 && bb2->dtbb_start == lbl) {
 				bb_new1 = malloc(sizeof(dt_bb_entry_t));
+				if (bb_new1 == NULL)
+					errx(EXIT_FAILURE,
+					    "failed to malloc bb_new1");
+
 				memcpy(bb_new1, bb_e2, sizeof(dt_bb_entry_t));
 
 				bb_new2 = malloc(sizeof(dt_bb_entry_t));
+				if (bb_new2 == NULL)
+					errx(EXIT_FAILURE,
+					    "failed to malloc bb_new2");
+
 				memcpy(bb_new2, bb_e1, sizeof(dt_bb_entry_t));
 
 				dt_list_append(&bb1->dtbb_children, bb_new1);
@@ -4987,9 +5496,17 @@ dt_compute_cfg(dtrace_difo_t *difo)
 
 			if (bb1->dtbb_end + 1 == bb2->dtbb_start) {
 				bb_new1 = malloc(sizeof(dt_bb_entry_t));
+				if (bb_new1 == NULL)
+					errx(EXIT_FAILURE,
+					    "failed to malloc bb_new1");
+
 				memcpy(bb_new1, bb_e2, sizeof(dt_bb_entry_t));
 
 				bb_new2 = malloc(sizeof(dt_bb_entry_t));
+				if (bb_new2 == NULL)
+					errx(EXIT_FAILURE,
+					    "failed to malloc bb_new2");
+
 				memcpy(bb_new2, bb_e1, sizeof(dt_bb_entry_t));
 
 				dt_list_append(&bb1->dtbb_children, bb_new1);
@@ -5017,7 +5534,6 @@ dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	uint8_t opcode = 0;
 	uint8_t rd = 0;
 	uint16_t var = 0;
-	int *leaders = NULL;
 
 	memset(&rkind, 0, sizeof(dt_rkind_t));
 	/*
@@ -5046,9 +5562,6 @@ dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	if (difo->dtdo_symtab == NULL)
 		return (0);
 
-	leaders = malloc(sizeof(int) * difo->dtdo_len);
-	memset(leaders, 0, sizeof(int) * difo->dtdo_len);
-
 	/*
 	 * Compute the basic blocks
 	 */
@@ -5071,6 +5584,9 @@ dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 
 		relo = dt_relo_alloc(difo, idx);
 		rl = malloc(sizeof(dt_rl_entry_t));
+		if (rl == NULL)
+			errx(EXIT_FAILURE, "failed to malloc rl");
+
 		memset(rl, 0, sizeof(dt_rl_entry_t));
 
 		rl->drl_rel = relo;
@@ -5172,9 +5688,9 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			if (rval != 0)
 				return (dt_set_errno(dtp, rval));
 
-//			rval = dt_prog_infer_types(dtp, ad->dtad_difo);
-//			if (rval != -0)
-//				return (dt_set_errno(dtp, rval));
+			rval = dt_prog_infer_types(dtp, ad->dtad_difo);
+			if (rval != -0)
+				return (dt_set_errno(dtp, rval));
 		}
 	}
 

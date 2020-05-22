@@ -63,7 +63,7 @@ typedef struct dt_relo {
 	dt_list_t dr_vardefs;
 	int dr_type;			/* D type */
 	ctf_id_t dr_ctfid;		/* CTF type */
-	size_t dr_sym;			/* symbol offset in symtab */
+	char *dr_sym;			/* symbol offset in symtab */
 	dtrace_difo_t *dr_difo;		/* DIFO for this relocation */
 #define dr_buf dr_difo->dtdo_buf
 	ctf_membinfo_t *dr_mip;		/* CTF member info (type, offs) */
