@@ -276,9 +276,10 @@ dt_dis_call(const dtrace_difo_t *dp, const char *name,
 	uint_t subr = DIF_INSTR_SUBR(in);
 
 	if (type)
-		(void) fprintf(fp, "%-4s DIF_SUBR(%u), %%r%u => %%r%u : %s\t\t! %s",
-		    name, subr, DIF_INSTR_RD(in), DIF_INSTR_RD(in),
-		    type, dtrace_subrstr(NULL, subr));
+		(void) fprintf(fp,
+		    "%-4s DIF_SUBR(%u), %%r%u\t\t! %s => %%r%u : %s",
+		    name, subr, DIF_INSTR_RD(in), dtrace_subrstr(NULL, subr),
+		    DIF_INSTR_RD(in), type);
 	else
 		(void) fprintf(fp, "%-4s DIF_SUBR(%u), %%r%u\t\t! %s",
 		    name, subr, DIF_INSTR_RD(in), dtrace_subrstr(NULL, subr));
@@ -343,6 +344,12 @@ dt_dis_typestr(const dtrace_diftype_t *t, char *buf, size_t len)
 		break;
 	case DIF_TYPE_STRING:
 		(void) strcpy(kind, "string");
+		break;
+	case DIF_TYPE_NONE:
+		(void) strcpy(kind, "none");
+		break;
+	case DIF_TYPE_BOTTOM:
+		(void) strcpy(kind, "bottom");
 		break;
 	default:
 		(void) snprintf(kind, sizeof (kind), "0x%x", t->dtdt_kind);

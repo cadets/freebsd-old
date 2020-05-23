@@ -512,6 +512,7 @@ typedef struct dtrace_diftype {
 
 #define	DIF_TYPE_CTF		0	/* type is a CTF type */
 #define	DIF_TYPE_STRING		1	/* type is a D string */
+#define	DIF_TYPE_UNDEFINED	0xFD	/* type is undefined */
 #define	DIF_TYPE_NONE		0xFE	/* type is none */
 #define	DIF_TYPE_BOTTOM		0xFF	/* type can construct any other type */
 
