@@ -46,7 +46,6 @@ static ctf_file_t *ctf_file = NULL;
 static dt_list_t relo_list;
 static dt_list_t bb_list;
 static dt_rl_entry_t *relo_first = NULL;
-static int discovered[DT_BB_MAX] = {0};
 static dt_list_t var_list;
 static dt_relo_t *r0relo = NULL;
 
@@ -841,10 +840,7 @@ dt_update_rel_bb_stack(dt_list_t *bb_path, dtrace_difo_t *difo,
 	idx = currelo->dr_uidx;
 
 	_difo = bb->dtbb_difo;
-/*
-	if (_difo != difo)
-		return (0);
-*/
+
 	for (rl = dt_list_next(&relo_list);
 	    rl != NULL; rl = dt_list_next(rl)) {
 		relo = rl->drl_rel;
@@ -859,6 +855,13 @@ dt_update_rel_bb_stack(dt_list_t *bb_path, dtrace_difo_t *difo,
 
 		if (n_pushes < 1)
 			errx(EXIT_FAILURE, "n_pushes is %d", n_pushes);
+
+		if (relo->dr_uidx <= currelo->dr_uidx)
+			continue;
+
+		if (relo->dr_uidx < bb->dtbb_start ||
+		    relo->dr_uidx > bb->dtbb_end)
+			continue;
 
 		if (op == DIF_OP_FLUSHTS)
 			return (1);
@@ -875,18 +878,6 @@ dt_update_rel_bb_stack(dt_list_t *bb_path, dtrace_difo_t *difo,
 			n_pushes++;
 			continue;
 		}
-
-		/*
-		 * If the current instruction comes after the one we are looking
-		 * at, we don't even need to look at it because DIF by defn
-		 * has no loops.
-		 */
-		if (currelo->dr_uidx >= relo->dr_uidx)
-			continue;
-
-		if (relo->dr_uidx < bb->dtbb_start ||
-		    relo->dr_uidx > bb->dtbb_end)
-			continue;
 
 		/*
 		 * Get the information about which registers in the current
@@ -906,9 +897,8 @@ dt_update_rel_bb_stack(dt_list_t *bb_path, dtrace_difo_t *difo,
 				errx(EXIT_FAILURE, "curstack should not be NULL");
 
 			if (dt_in_list(&curstack->dsl_stack,
-			    (void *)&currelo, sizeof(dt_relo_t *)) == 0) {
+			    (void *)&currelo, sizeof(dt_relo_t *)) == 0)
 				dt_list_append(&curstack->dsl_stack, s_entry);
-			}
 		}
 	}
 
@@ -1133,8 +1123,7 @@ dt_update_rel(dtrace_difo_t *difo, dt_basic_block_t *bb,
 		chld_bb = chld->dtbe_bb;
 		if (chld_bb->dtbb_idx >= DT_BB_MAX)
 			errx(EXIT_FAILURE, "too many basic blocks.");
-		if (discovered[chld_bb->dtbb_idx] == 0)
-		        dt_update_rel(difo, chld_bb, rkind, currelo);
+		dt_update_rel(difo, chld_bb, rkind, currelo);
 	}
 
 end:
@@ -1168,7 +1157,6 @@ dt_update_relocations(dtrace_difo_t *difo,
 	rd = 0;
 	var = 0;
 
-	memset(discovered, 0, sizeof(int) * DT_BB_MAX);
 	dt_update_rel(_difo, difo->dtdo_bb, rkind, currelo);
 
 	printf("----------------------------------------------\n");
@@ -2008,7 +1996,6 @@ dt_var_stack_typecheck(dt_relo_t *r, dt_relo_t *dr1, dtrace_difv_t *dif_var)
 			errx(EXIT_FAILURE, "failed to malloc dtdv_stack");
 
 		memset(dif_var->dtdv_stack, 0, sizeof(dt_list_t));
-
 
 		sl = dt_list_next(&r->dr_stacklist);
 		if (sl == NULL)
@@ -5570,7 +5557,7 @@ dt_compute_cfg(dtrace_difo_t *difo)
 
 				dt_list_append(&bb1->dtbb_children, bb_new1);
 				dt_list_append(&bb2->dtbb_parents, bb_new2);
-				printf("bb1 (%p) -> bb2 (%p):\n", bb1, bb2);
+				printf("bb1 (%zu) -> bb2 (%zu):\n", bb1->dtbb_idx, bb2->dtbb_idx);
 				printf("\t(%zu, %zu) ===> (%zu, %zu)\n",
 				       bb1->dtbb_start, bb1->dtbb_end,
 				       bb2->dtbb_start, bb2->dtbb_end);
@@ -5593,7 +5580,7 @@ dt_compute_cfg(dtrace_difo_t *difo)
 
 				dt_list_append(&bb1->dtbb_children, bb_new1);
 				dt_list_append(&bb2->dtbb_parents, bb_new2);
-				printf("bb1 (%p) -> bb2 (%p):\n", bb1, bb2);
+				printf("bb1 (%zu) -> bb2 (%zu):\n", bb1->dtbb_idx, bb2->dtbb_idx);
 				printf("\t(%zu, %zu) ===> (%zu, %zu)\n",
 				       bb1->dtbb_start, bb1->dtbb_end,
 				       bb2->dtbb_start, bb2->dtbb_end);
