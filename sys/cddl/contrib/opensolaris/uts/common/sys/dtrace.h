@@ -1054,6 +1054,7 @@ typedef struct dtrace_difo {
 	char **dtdo_types;		/* array of types (dtdo_len size) */
 	struct dt_basic_block *dtdo_bb;	/* first basic block */
 	size_t dtdo_idx;		/* difo identifier */
+	struct dt_inttab *dtdo_inthash;	/* integer hash table (userspace only) */
 #endif
 } dtrace_difo_t;
 

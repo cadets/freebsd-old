@@ -70,6 +70,7 @@ typedef struct dt_relo {
 	dt_list_t dr_stacklist;		/* List of push instructions
 					 * if the instruction uses the stack */
 	struct dt_rkind dr_rkind;	/* rkind of the relocation */
+	dt_list_t dr_usetxs;
 } dt_relo_t;
 
 typedef struct dt_rl_entry {
