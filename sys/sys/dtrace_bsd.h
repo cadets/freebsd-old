@@ -179,12 +179,34 @@ size_t	kdtrace_thread_size(void);
 uint64_t	dtrace_gethrtime(void);
 uint64_t	dtrace_gethrestime(void);
 
+#ifndef DTRACE_TARGETNAMELEN
+#define DTRACE_TARGETNAMELEN	64
+#endif
+
+#ifndef DTRACE_PROVNAMELEN
 #define	DTRACE_PROVNAMELEN	64
+#endif
+
+#ifndef DTRACE_MODNAMELEN
 #define	DTRACE_MODNAMELEN	64
+#endif
+
+#ifndef DTRACE_FUNCNAMELEN
 #define	DTRACE_FUNCNAMELEN	192
+#endif
+
+#ifndef DTRACE_NAMELEN
 #define	DTRACE_NAMELEN		64
-#define	DTRACE_FULLNAMELEN	(DTRACE_PROVNAMELEN + DTRACE_MODNAMELEN + \
-				DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 4)
+#endif
+
+#ifndef DTRACE_FULLNAMELEN
+#define	DTRACE_FULLNAMELEN	(DTRACE_TARGETNAMELEN + DTRACE_PROVNAMELEN + \
+       	                  	DTRACE_MODNAMELEN +                          \
+       	                  	DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 4)
+#endif
+
+#ifndef DTRACE_ARGTYPELEN
 #define	DTRACE_ARGTYPELEN	128
+#endif
 
 #endif /* _SYS_DTRACE_BSD_H */

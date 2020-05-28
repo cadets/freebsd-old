@@ -46,6 +46,8 @@
 #include <dt_xlator.h>
 #include <dt_dof.h>
 
+#define sizeof_field(s,m) (sizeof((((s*)0)->m)))
+
 void
 dt_dof_init(dtrace_hdl_t *dtp)
 {
@@ -211,11 +213,52 @@ dof_attr(const dtrace_attribute_t *ap)
 	return (DOF_ATTR(ap->dtat_name, ap->dtat_data, ap->dtat_class));
 }
 
+typedef struct dtrace_kdifv {
+	uint32_t dtdkv_name;
+	uint32_t dtdkv_id;
+	uint8_t dtdkv_kind;
+	uint8_t dtdkv_scope;
+	uint16_t dtdkv_flags;
+	dtrace_diftype_t dtdkv_type;
+} dtrace_kdifv_t;
+
+static dtrace_kdifv_t *
+dof_construct_kvartab(dtrace_difo_t *dp)
+{
+	dtrace_kdifv_t *kvt;
+	dtrace_difv_t *vt;
+	int i;
+
+	i = 0;
+	kvt = NULL;
+	vt = NULL;
+
+	kvt = malloc(sizeof(dtrace_kdifv_t) * dp->dtdo_varlen);
+	if (kvt == NULL)
+		errx(EXIT_FAILURE, "failed to malloc kvt");
+	memset(kvt, 0, sizeof(dtrace_kdifv_t));
+
+	vt = dp->dtdo_vartab;
+
+	for (i = 0; i < dp->dtdo_varlen; i++) {
+		kvt[i].dtdkv_name = vt[i].dtdv_name;
+		kvt[i].dtdkv_id = vt[i].dtdv_id;
+		kvt[i].dtdkv_kind = vt[i].dtdv_kind;
+		kvt[i].dtdkv_scope = vt[i].dtdv_scope;
+		kvt[i].dtdkv_flags = vt[i].dtdv_flags;
+		memcpy(&kvt[i].dtdkv_type,
+		    &vt[i].dtdv_type, sizeof(dtrace_diftype_t));
+	}
+
+	return (kvt);
+}
+
 static dof_secidx_t
 dof_add_difo(dt_dof_t *ddo, const dtrace_difo_t *dp)
 {
 	dof_secidx_t dsecs[5]; /* enough for all possible DIFO sections */
 	uint_t nsecs = 0;
+	size_t var_size = 0;
 
 	dof_difohdr_t *dofd;
 	dof_relohdr_t dofr;
@@ -224,6 +267,8 @@ dof_add_difo(dt_dof_t *ddo, const dtrace_difo_t *dp)
 	dof_secidx_t strsec = DOF_SECIDX_NONE;
 	dof_secidx_t intsec = DOF_SECIDX_NONE;
 	dof_secidx_t hdrsec = DOF_SECIDX_NONE;
+
+	dtrace_kdifv_t *kvt = NULL;
 
 	if (dp->dtdo_buf != NULL) {
 		dsecs[nsecs++] = dof_add_lsect(ddo, dp->dtdo_buf,
@@ -243,9 +288,19 @@ dof_add_difo(dt_dof_t *ddo, const dtrace_difo_t *dp)
 	}
 
 	if (dp->dtdo_vartab != NULL) {
-		dsecs[nsecs++] = dof_add_lsect(ddo, dp->dtdo_vartab,
-		    DOF_SECT_VARTAB, sizeof (uint_t), 0, sizeof (dtrace_difv_t),
-		    sizeof (dtrace_difv_t) * dp->dtdo_varlen);
+		/*
+		 * Compute the size of kernel elements for a dtrace_difv_t
+		 *
+		 * FIXME: This is absolutely horrible. Please forgive me.
+		 */
+		var_size = sizeof(dtrace_kdifv_t);
+		kvt = dof_construct_kvartab(dp);
+
+		printf("var_size = %zu\n", var_size);
+
+		dsecs[nsecs++] = dof_add_lsect(ddo, kvt,
+		    DOF_SECT_VARTAB, sizeof (uint_t), 0, var_size,
+		    var_size * dp->dtdo_varlen);
 	}
 
 	if (dp->dtdo_xlmtab != NULL) {

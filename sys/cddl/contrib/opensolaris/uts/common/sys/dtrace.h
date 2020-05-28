@@ -538,9 +538,14 @@ typedef struct dtrace_difv {
 	 * These variables are only used in the compiler/linker in order
 	 * to type-check the DIFOs and apply relocations where necessary.
 	 */
-	ctf_id_t dtdv_ctfid;		/* variable CTF identifier */
-	char *dtdv_sym;			/* variable symbol name (if exists) */
-	struct dt_list *dtdv_stack;	/* expected stack (if applicable) */
+	struct {
+		ctf_id_t dtdv_ctfid;		/* variable CTF identifier */
+		char *dtdv_sym;			/* variable symbol name (if exists) */
+		struct dt_list *dtdv_stack;	/* expected stack (if applicable) */
+	} s;
+#define dtdv_ctfid s.dtdv_ctfid
+#define dtdv_sym s.dtdv_sym
+#define dtdv_stack s.dtdv_stack
 #endif
 } dtrace_difv_t;
 

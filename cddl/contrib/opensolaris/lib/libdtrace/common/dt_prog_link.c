@@ -5037,10 +5037,69 @@ dt_infer_type(dt_relo_t *r)
 		return (r->dr_type);
 
 	case DIF_OP_RET:
-		r->dr_ctfid = dr1->dr_ctfid;
-		r->dr_type = dr1->dr_type;
-		r->dr_mip = dr1->dr_mip;
-		r->dr_sym = dr1->dr_sym;
+		if (dr1 == NULL) {
+			fprintf(stderr, "ret dr1 is NULL\n");
+			return (-1);
+		}
+
+		if (dr1->dr_sym != NULL) {
+			/*
+			 * We only need one type here (the first one).
+			 */
+
+			/*
+			 * sym in range(symtab)
+			 */
+			if ((uintptr_t)dr1->dr_sym >=
+			    ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
+				errx(EXIT_FAILURE, "sym (%p) is out of range: %p",
+				    dr1->dr_sym,
+				    (void *)(((uintptr_t)difo->dtdo_symtab) +
+					difo->dtdo_symlen));
+
+			/*
+			 * Get the original type name of dr1->dr_ctfid for
+			 * error reporting.
+			 */
+			if (ctf_type_name(ctf_file, dr1->dr_ctfid, buf,
+				sizeof(buf)) != ((char *)buf))
+				errx(EXIT_FAILURE,
+				    "failed at getting type name %ld: %s",
+				    dr1->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+
+			if (dt_get_class(buf) != DTC_STRUCT)
+				return (-1);
+
+			/*
+			 * Figure out t2 = type_at(t1, symname)
+			 */
+			mip = malloc(sizeof(ctf_membinfo_t));
+			if (mip == NULL)
+				errx(EXIT_FAILURE, "failed to malloc mip");
+
+			memset(mip, 0, sizeof(ctf_membinfo_t));
+
+			/*
+			 * Get the non-pointer type. This should NEVER fail.
+			 */
+			type = ctf_type_reference(ctf_file, dr1->dr_ctfid);
+
+			if (dt_lib_membinfo(
+				octfp = ctf_file, type, dr1->dr_sym, mip) == 0)
+				errx(EXIT_FAILURE, "failed to get member info"
+				    " for %s(%s): %s",
+				    buf, dr1->dr_sym,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			r->dr_mip = mip;
+			r->dr_ctfid = mip->ctm_type;
+			r->dr_type = DIF_TYPE_CTF;
+		} else {
+			r->dr_ctfid = dr1->dr_ctfid;
+			r->dr_type = dr1->dr_type;
+		}
 
 		return (r->dr_type);
 
@@ -5810,6 +5869,47 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		instr = relo->dr_buf[relo->dr_uidx];
 		opcode = DIF_INSTR_OP(instr);
 		switch (opcode) {
+		case DIF_OP_RET:
+			if (relo->dr_mip == NULL)
+				continue;
+
+			ctfid = ctf_type_resolve(ctf_file, relo->dr_mip->ctm_type);
+		        size = ctf_type_size(ctf_file, ctfid);
+			kind = ctf_type_kind(ctf_file, ctfid);
+			offset = relo->dr_mip->ctm_offset;
+
+			for (usetx_rl = dt_list_next(&relo->dr_usetxs);
+			     usetx_rl; usetx_rl = dt_list_next(usetx_rl)) {
+				usetx_relo = usetx_rl->drl_rel;
+
+				instr = usetx_relo->dr_buf[usetx_relo->dr_uidx];
+				opcode = DIF_INSTR_OP(instr);
+				if (opcode != DIF_OP_USETX)
+					errx(EXIT_FAILURE,
+					    "opcode (%d) is not usetx", opcode);
+
+				rd = DIF_INSTR_RD(instr);
+
+				if (difo->dtdo_inthash == NULL) {
+					difo->dtdo_inthash =
+					    dt_inttab_create(dtp);
+
+					if (difo->dtdo_inthash == NULL)
+						errx(EXIT_FAILURE, "failed "
+						    "to allocate inttab");
+				}
+
+				if ((index = dt_inttab_insert(
+				    difo->dtdo_inthash, offset, 0)) == -1)
+					errx(EXIT_FAILURE,
+					    "failed to insert %u into inttab",
+					    offset);
+
+				usetx_relo->dr_buf[usetx_relo->dr_uidx] =
+				    DIF_INSTR_SETX(index, rd);
+			}
+			break;
+
 		case DIF_OP_ULOAD:
 		case DIF_OP_UULOAD:
 			ctfid = ctf_type_resolve(ctf_file, relo->dr_mip->ctm_type);
@@ -5972,7 +6072,8 @@ dt_update_usetx_bb(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_relo_t *r)
 		}
 
 		if (opcode == DIF_OP_ULOAD ||
-		    opcode == DIF_OP_UULOAD) {
+		    opcode == DIF_OP_UULOAD ||
+		    opcode == DIF_OP_RET) {
 			nrl = malloc(sizeof(dt_rl_entry_t));
 			memset(nrl, 0, sizeof(dt_rl_entry_t));
 
