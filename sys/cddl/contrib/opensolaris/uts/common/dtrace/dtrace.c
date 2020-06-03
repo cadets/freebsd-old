@@ -11188,6 +11188,8 @@ dtrace_difo_chunksize(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 			break;
 
 		case DIF_OP_PUSHTR:
+		case DIF_OP_PUSHTR_H:
+		case DIF_OP_PUSHTR_G:
 			if (ttop == DIF_DTR_NREGS)
 				return;
 

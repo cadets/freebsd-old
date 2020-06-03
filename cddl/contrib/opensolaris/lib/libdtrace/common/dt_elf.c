@@ -1112,6 +1112,7 @@ dt_elf_options(Elf *e)
 			errx(EXIT_FAILURE, "%s is too long to be copied",
 			    op->dteo_arg);
 
+
 		if (strcmp("define", op->dteo_name) == 0 ||
 		    strcmp("incdir", op->dteo_name) == 0 ||
 		    strcmp("undef",  op->dteo_name) == 0) {

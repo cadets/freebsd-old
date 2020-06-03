@@ -71,6 +71,7 @@ typedef struct dt_relo {
 					 * if the instruction uses the stack */
 	struct dt_rkind dr_rkind;	/* rkind of the relocation */
 	dt_list_t dr_usetxs;
+	int dr_relocated;
 } dt_relo_t;
 
 typedef struct dt_rl_entry {

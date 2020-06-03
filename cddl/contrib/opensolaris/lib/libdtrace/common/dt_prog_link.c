@@ -35,6 +35,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <assert.h>
 #include <err.h>
 
@@ -135,6 +136,7 @@ dt_insert_var(dtrace_difo_t *difo, uint16_t varid, int scope, int kind)
 	var->dtdv_ctfid = CTF_ERR;
 	var->dtdv_sym = NULL;
 	var->dtdv_type.dtdt_kind = DIF_TYPE_NONE;
+	var->dtdv_type.dtdt_size = 0;
 	var->dtdv_stack = NULL;
 
 	ve = malloc(sizeof(dt_var_entry_t));
@@ -510,6 +512,10 @@ dt_usite_contains_reg(dt_relo_t *relo, uint8_t rd, int *r1, int *r2)
 	case DIF_OP_RLDUH:
 	case DIF_OP_RLDUW:
 	case DIF_OP_RLDX:
+	case DIF_OP_PUSHTR:
+	case DIF_OP_PUSHTR_H:
+	case DIF_OP_PUSHTR_G:
+	case DIF_OP_PUSHTV:
 		rs = DIF_INSTR_RS(instr);
 		if (rd == rs)
 			*r1 = 1;
@@ -1891,9 +1897,12 @@ dt_var_is_builtin(uint16_t var)
 }
 
 static int
-dt_infer_type_var(dt_relo_t *dr, dtrace_difv_t *dif_var)
+dt_infer_type_var(dtrace_difo_t *difo, dt_relo_t *dr, dtrace_difv_t *dif_var)
 {
 	char buf[4096] = {0}, var_type[4096] = {0};
+	dtrace_difv_t *difovar;
+
+	difovar = NULL;
 
 	if (dr == NULL && dif_var == NULL) {
 		fprintf(stderr, "both dr and dif_var are NULL\n");
@@ -1963,6 +1972,9 @@ dt_infer_type_var(dt_relo_t *dr, dtrace_difv_t *dif_var)
 		dif_var->dtdv_ctfid = dr->dr_ctfid;
 		dif_var->dtdv_sym = dr->dr_sym;
 		dif_var->dtdv_type.dtdt_kind = dr->dr_type;
+		dif_var->dtdv_type.dtdt_size = ctf_type_size(
+		    ctf_file, dr->dr_ctfid);
+		dif_var->dtdv_type.dtdt_ckind = dr->dr_ctfid;
 	}
 
 	return (DIF_TYPE_CTF);
@@ -2032,7 +2044,7 @@ dt_var_stack_typecheck(dt_relo_t *r, dt_relo_t *dr1, dtrace_difv_t *dif_var)
 			}
 
 			if (relo->dr_type == DIF_TYPE_CTF) {
-				if (ctf_type_name(ctf_file, dr1->dr_ctfid, buf,
+				if (ctf_type_name(ctf_file, relo->dr_ctfid, buf,
 				    sizeof(buf)) != ((char *)buf))
 					errx(EXIT_FAILURE,
 					    "failed at getting type name %ld: %s",
@@ -2048,9 +2060,9 @@ dt_var_stack_typecheck(dt_relo_t *r, dt_relo_t *dr1, dtrace_difv_t *dif_var)
 					    ctf_errmsg(ctf_errno(ctf_file)));
 
 				if (var_stackrelo->dr_ctfid !=
-				    dr1->dr_ctfid) {
+				    relo->dr_ctfid) {
 					fprintf(stderr, "type mismatch "
-					    "in stgaa: %s != %s",
+					    "in stgaa: %s != %s\n",
 					    buf, var_type);
 
 					return (-1);
@@ -2964,7 +2976,7 @@ dt_infer_type(dt_relo_t *r)
 			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
 			    var, DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
 
-		if (dt_infer_type_var(dr2, dif_var) == -1)
+		if (dt_infer_type_var(r->dr_difo, dr2, dif_var) == -1)
 			return (-1);
 
 		r->dr_ctfid = dr2->dr_ctfid;
@@ -3002,7 +3014,7 @@ dt_infer_type(dt_relo_t *r)
 			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
 			    var, DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
 
-		if (dt_infer_type_var(dr2, dif_var) == -1)
+		if (dt_infer_type_var(r->dr_difo, dr2, dif_var) == -1)
 			return (-1);
 
 		r->dr_ctfid = dr2->dr_ctfid;
@@ -3040,7 +3052,7 @@ dt_infer_type(dt_relo_t *r)
 			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
 			    var, DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
 
-		if (dt_infer_type_var(dr2, dif_var) == -1)
+		if (dt_infer_type_var(r->dr_difo, dr2, dif_var) == -1)
 			return (-1);
 
 		r->dr_ctfid = dr2->dr_ctfid;
@@ -4894,7 +4906,7 @@ dt_infer_type(dt_relo_t *r)
 		if (dt_var_stack_typecheck(r, drv, dif_var) == -1)
 			return (-1);
 
-		if (dt_infer_type_var(drv, dif_var) == -1)
+		if (dt_infer_type_var(r->dr_difo, drv, dif_var) == -1)
 			return (-1);
 
 		if (drv) {
@@ -4933,7 +4945,7 @@ dt_infer_type(dt_relo_t *r)
 		if (dt_var_stack_typecheck(r, drv, dif_var) == -1)
 			return (-1);
 
-		if (dt_infer_type_var(drv, dif_var) == -1)
+		if (dt_infer_type_var(r->dr_difo, drv, dif_var) == -1)
 			return (-1);
 
 		if (drv) {
@@ -4975,7 +4987,7 @@ dt_infer_type(dt_relo_t *r)
 		if (dt_var_stack_typecheck(r, dr2, dif_var) == -1)
 			return (-1);
 
-		if (dt_infer_type_var(dr2, dif_var) == -1)
+		if (dt_infer_type_var(r->dr_difo, dr2, dif_var) == -1)
 			return (-1);
 
 		r->dr_ctfid = dr2->dr_ctfid;
@@ -5010,7 +5022,7 @@ dt_infer_type(dt_relo_t *r)
 		if (dt_var_stack_typecheck(r, dr2, dif_var) == -1)
 			return (-1);
 
-		if (dt_infer_type_var(dr2, dif_var) == -1)
+		if (dt_infer_type_var(r->dr_difo, dr2, dif_var) == -1)
 			return (-1);
 
 		r->dr_ctfid = dr2->dr_ctfid;
@@ -5103,12 +5115,74 @@ dt_infer_type(dt_relo_t *r)
 
 		return (r->dr_type);
 
-	case DIF_OP_FLUSHTS:
-	case DIF_OP_POPTS:
-	case DIF_OP_PUSHTV:
 	case DIF_OP_PUSHTR:
 	case DIF_OP_PUSHTR_G:
 	case DIF_OP_PUSHTR_H:
+		if (dr1 == NULL) {
+			fprintf(stderr, "pushtr dr1 is NULL\n");
+			return (-1);
+		}
+
+		if (dr1->dr_type == DIF_TYPE_CTF && dr1->dr_sym != NULL) {
+			/*
+			 * We only need one type here (the first one).
+			 */
+
+			/*
+			 * sym in range(symtab)
+			 */
+			if ((uintptr_t)dr1->dr_sym >=
+			    ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
+				errx(EXIT_FAILURE, "sym (%p) is out of range: %p",
+				    dr1->dr_sym,
+				    (void *)(((uintptr_t)difo->dtdo_symtab) +
+					difo->dtdo_symlen));
+
+			/*
+			 * Get the original type name of dr1->dr_ctfid for
+			 * error reporting.
+			 */
+			if (ctf_type_name(ctf_file, dr1->dr_ctfid, buf,
+				sizeof(buf)) != ((char *)buf))
+				errx(EXIT_FAILURE,
+				    "failed at getting type name %ld: %s",
+				    dr1->dr_ctfid,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			if (dt_get_class(buf) != DTC_STRUCT)
+				return (-1);
+
+			/*
+			 * Figure out t2 = type_at(t1, symname)
+			 */
+			mip = malloc(sizeof(ctf_membinfo_t));
+			if (mip == NULL)
+				errx(EXIT_FAILURE, "failed to malloc mip");
+
+			memset(mip, 0, sizeof(ctf_membinfo_t));
+
+			/*
+			 * Get the non-pointer type. This should NEVER fail.
+			 */
+			type = ctf_type_reference(ctf_file, dr1->dr_ctfid);
+
+			if (dt_lib_membinfo(
+				octfp = ctf_file, type, dr1->dr_sym, mip) == 0)
+				errx(EXIT_FAILURE, "failed to get member info"
+				    " for %s(%s): %s",
+				    buf, dr1->dr_sym,
+				    ctf_errmsg(ctf_errno(ctf_file)));
+
+			r->dr_mip = mip;
+			r->dr_ctfid = mip->ctm_type;
+			r->dr_type = DIF_TYPE_CTF;
+		}
+
+		return (DIF_TYPE_NONE);
+
+	case DIF_OP_FLUSHTS:
+	case DIF_OP_POPTS:
+	case DIF_OP_PUSHTV:
 	case DIF_OP_CMP:
 	case DIF_OP_SCMP:
 	case DIF_OP_SCMP_HH:
@@ -5729,92 +5803,6 @@ dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	return (0);
 }
 
-#if 0
-static dt_relo_t *
-dt_get_usetx(dt_relo_t *r)
-{
-	dif_instr_t instr;
-	uint8_t opcode;
-
-	instr = 0;
-	opcode = 0;
-
-	if (r == NULL)
-		return (NULL);
-
-	if (r->dr_sym == NULL)
-		return (NULL);
-
-	instr = r->dr_buf[r->dr_uidx];
-	opcode = DIF_INSTR_OP(instr);
-
-	if (opcode == DIF_OP_USETX)
-		return (r);
-
-	for (rl = dt_list_next(&r->dr_r1defs); rl; rl = dt_list_next(rl)) {
-		ur = dt_get_usetx(rl->drl_rel);
-	}
-}
-
-static dt_list_t *
-dt_get_usetx_relos(dt_relo_t *relo)
-{
-	if (relo->dr_sym == NULL)
-		return (NULL);
-
-	for (rl1 = dt_list_next(relo->dr_r1defs);
-	     rl1; rl1 = dt_list_next(rl1)) {
-		r1 = rl1->drl_relo;
-
-		ur = dt_get_usetx(r1);
-		if (ur == NULL)
-			continue;
-
-		if (ur->dr_sym == NULL)
-			errx(EXIT_FAILURE, "unexpected empty symbol in usetx");
-
-		if (strcmp(relo->dr_sym, ur->dr_sym) == 0) {
-			instr = ur->dr_buf[ur->dr_uidx];
-			opcode = DIF_INSTR_OP(instr);
-
-			if (opcode != DIF_OP_USETX)
-				errx(EXIT_FAILURE, "expected usetx");
-
-			if (dt_in_list(usetxs,
-			    (void *)&ur, sizeof(dt_relo_t *)) == 0)
-				dt_list_append(usetxs, ur);
-		}
-	}
-
-	for (rl2 = dt_list_next(relo->dr_r2defs);
-	     rl2; rl2 = dt_list_next(rl2)) {
-		r2 = rl2->drl_rel;
-
-		ur = dt_get_usetx(r2);
-		if (ur == NULL)
-			continue;
-
-		if (ur->dr_sym == NULL)
-			errx(EXIT_FAILURE, "unexpected empty symbol in usetx");
-
-		if (strcmp(relo->dr_sym, ur->dr_sym) == 0) {
-			instr = ur->dr_buf[ur->dr_uidx];
-			opcode = DIF_INSTR_OP(instr);
-
-			if (opcode != DIF_OP_USETX)
-				errx(EXIT_FAILURE, "expected usetx");
-
-			if (dt_in_list(usetxs,
-			    (void *)&ur, sizeof(dt_relo_t *)) == 0)
-				dt_list_append(usetxs, ur);
-		}
-
-	}
-
-	return (usetxs);
-}
-#endif
-
 static int
 dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 {
@@ -5870,17 +5858,22 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		opcode = DIF_INSTR_OP(instr);
 		switch (opcode) {
 		case DIF_OP_RET:
+		case DIF_OP_PUSHTR:
+		case DIF_OP_PUSHTR_H:
+		case DIF_OP_PUSHTR_G:
 			if (relo->dr_mip == NULL)
 				continue;
 
 			ctfid = ctf_type_resolve(ctf_file, relo->dr_mip->ctm_type);
 		        size = ctf_type_size(ctf_file, ctfid);
 			kind = ctf_type_kind(ctf_file, ctfid);
-			offset = relo->dr_mip->ctm_offset;
+			offset = relo->dr_mip->ctm_offset / 8; /* bytes */
 
 			for (usetx_rl = dt_list_next(&relo->dr_usetxs);
 			     usetx_rl; usetx_rl = dt_list_next(usetx_rl)) {
 				usetx_relo = usetx_rl->drl_rel;
+				if (usetx_relo->dr_relocated == 1)
+					continue;
 
 				instr = usetx_relo->dr_buf[usetx_relo->dr_uidx];
 				opcode = DIF_INSTR_OP(instr);
@@ -5907,6 +5900,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 
 				usetx_relo->dr_buf[usetx_relo->dr_uidx] =
 				    DIF_INSTR_SETX(index, rd);
+				usetx_relo->dr_relocated = 1;
 			}
 			break;
 
@@ -5974,11 +5968,13 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 				new_instr = DIF_INSTR_LOAD(new_op, r1, rd);
 			}
 
-			offset = relo->dr_mip->ctm_offset;
+			offset = relo->dr_mip->ctm_offset / 8; /* bytes */
 
 			for (usetx_rl = dt_list_next(&relo->dr_usetxs);
 			     usetx_rl; usetx_rl = dt_list_next(usetx_rl)) {
 				usetx_relo = usetx_rl->drl_rel;
+				if (usetx_relo->dr_relocated == 1)
+					continue;
 
 				instr = usetx_relo->dr_buf[usetx_relo->dr_uidx];
 				opcode = DIF_INSTR_OP(instr);
@@ -6005,9 +6001,11 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 
 				usetx_relo->dr_buf[usetx_relo->dr_uidx] =
 				    DIF_INSTR_SETX(index, rd);
+				usetx_relo->dr_relocated = 1;
 			}
 
 			relo->dr_buf[relo->dr_uidx] = new_instr;
+			relo->dr_relocated = 1;
 			break;
 
 		case DIF_OP_TYPECAST:
@@ -6018,6 +6016,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 			 * collapse the nops later.
 			 */
 			relo->dr_buf[relo->dr_uidx] = DIF_INSTR_NOP;
+			relo->dr_relocated = 1;
 			break;
 		}
 	}
@@ -6025,18 +6024,43 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	return (0);
 }
 
+static dt_relo_t *
+dt_find_relo_in_ifg(dt_relo_t *currelo, dt_relo_t *find)
+{
+	dt_relo_t *relo;
+	dt_rl_entry_t *rl;
+
+	relo = NULL;
+	rl = NULL;
+
+	if (currelo == find)
+		return (find);
+
+	for (rl = dt_list_next(&currelo->dr_r1defs); rl; rl = dt_list_next(rl)) {
+		if ((relo = dt_find_relo_in_ifg(rl->drl_rel, find)) == find)
+			return (relo);
+	}
+
+	for (rl = dt_list_next(&currelo->dr_r2defs); rl; rl = dt_list_next(rl)) {
+		if ((relo = dt_find_relo_in_ifg(rl->drl_rel, find)) == find)
+			return (relo);
+	}
+
+	return (NULL);
+}
+
 static int
 dt_update_usetx_bb(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_relo_t *r)
 {
 	dt_rl_entry_t *rl, *nrl;
 	dif_instr_t instr;
-	dt_relo_t *relo;
+	dt_relo_t *relo, *usetx_relo;
 	uint8_t opcode;
 	uint8_t rd, _rd, r1;
 
 	rl = NULL;
 	nrl = NULL;
-	relo = NULL;
+	relo = usetx_relo = NULL;
 	instr = 0;
 	opcode = 0;
 	rd = _rd = r1 = 0;
@@ -6064,16 +6088,17 @@ dt_update_usetx_bb(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_relo_t *r)
 		if (relo == r)
 			continue;
 
-		if (opcode == DIF_OP_USETX) {
-			_rd = DIF_INSTR_RD(instr);
-			if (rd == _rd)
-				return (1);
-			continue;
-		}
+		if (opcode == DIF_OP_ULOAD    ||
+		    opcode == DIF_OP_UULOAD   ||
+		    opcode == DIF_OP_RET      ||
+		    opcode == DIF_OP_PUSHTR   ||
+		    opcode == DIF_OP_PUSHTR_H ||
+		    opcode == DIF_OP_PUSHTR_G) {
+			usetx_relo = dt_find_relo_in_ifg(relo, r);
 
-		if (opcode == DIF_OP_ULOAD ||
-		    opcode == DIF_OP_UULOAD ||
-		    opcode == DIF_OP_RET) {
+			if (usetx_relo != r)
+				continue;
+
 			nrl = malloc(sizeof(dt_rl_entry_t));
 			memset(nrl, 0, sizeof(dt_rl_entry_t));
 
@@ -6082,13 +6107,6 @@ dt_update_usetx_bb(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_relo_t *r)
 			    (void *)&r, sizeof(dt_relo_t *)) == 0)
 				dt_list_append(&relo->dr_usetxs, nrl);
 		}
-
-		if (relo->dr_sym == NULL)
-			return (1);
-
-		if (relo->dr_sym && strcmp(r->dr_sym, relo->dr_sym) != 0)
-			return (1);
-
 	}
 
 	return (0);
@@ -6166,33 +6184,54 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 {
 	size_t inthash_size;
 	uint64_t *otab;
+	size_t i;
+	dtrace_difv_t *var, *vlvar;
 
+	var = vlvar = NULL;
+	i = 0;
         otab = NULL;
 	inthash_size = 0;
 
-	if (difo->dtdo_inthash == NULL) {
-		fprintf(stderr, "inthash is NULL\n");
-		return;
+	if (difo->dtdo_inthash != NULL) {
+		inthash_size = dt_inttab_size(difo->dtdo_inthash);
+		if (inthash_size == 0) {
+			fprintf(stderr, "inthash_size is 0\n");
+			return;
+		}
+
+		otab = difo->dtdo_inttab;
+		difo->dtdo_inttab = malloc(sizeof(uint64_t) * inthash_size);
+		if (difo->dtdo_inttab == NULL)
+			errx(EXIT_FAILURE, "failed to malloc inttab");
+
+		memset(difo->dtdo_inttab, 0, sizeof(uint64_t) * inthash_size);
+		free(otab);
+
+		dt_inttab_write(difo->dtdo_inthash,
+		    difo->dtdo_inttab);
+
+		difo->dtdo_intlen = inthash_size;
 	}
 
-	inthash_size = dt_inttab_size(difo->dtdo_inthash);
-	if (inthash_size == 0) {
-		fprintf(stderr, "inthash_size is 0\n");
-		return;
+	/*
+	 * By this time we should have any variable being used in this
+	 * DIFO inside the varlist because the only _valid_ DIF currently
+	 * is one where we store to a variable before loading it, so this
+	 * information should already be available.
+	 */
+	for (i = 0; i < difo->dtdo_varlen; i++) {
+		var = &difo->dtdo_vartab[i];
+
+		if (dt_var_is_builtin(var->dtdv_id))
+			continue;
+
+		vlvar = dt_get_var_from_varlist(var->dtdv_id,
+		    var->dtdv_scope, var->dtdv_kind);
+		assert(vlvar != NULL);
+
+		memcpy(&var->dtdv_type, &vlvar->dtdv_type,
+		    sizeof(dtrace_diftype_t));
 	}
-
-	otab = difo->dtdo_inttab;
-	difo->dtdo_inttab = malloc(sizeof(uint64_t) * inthash_size);
-	if (difo->dtdo_inttab == NULL)
-		errx(EXIT_FAILURE, "failed to malloc inttab");
-
-	memset(difo->dtdo_inttab, 0, sizeof(uint64_t) * inthash_size);
-	free(otab);
-
-	dt_inttab_write(difo->dtdo_inthash,
-	    difo->dtdo_inttab);
-
-	difo->dtdo_intlen = inthash_size;
 }
 
 int

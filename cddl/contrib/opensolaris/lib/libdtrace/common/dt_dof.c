@@ -296,8 +296,6 @@ dof_add_difo(dt_dof_t *ddo, const dtrace_difo_t *dp)
 		var_size = sizeof(dtrace_kdifv_t);
 		kvt = dof_construct_kvartab(dp);
 
-		printf("var_size = %zu\n", var_size);
-
 		dsecs[nsecs++] = dof_add_lsect(ddo, kvt,
 		    DOF_SECT_VARTAB, sizeof (uint_t), 0, var_size,
 		    var_size * dp->dtdo_varlen);
