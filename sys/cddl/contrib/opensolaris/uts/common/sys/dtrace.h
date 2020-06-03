@@ -27,6 +27,7 @@
 /*
  * Copyright (c) 2013, Joyent, Inc. All rights reserved.
  * Copyright (c) 2013 by Delphix. All rights reserved.
+ * Copyright (c) 2020 by Domagoj Stolfa. All rights reserved.
  */
 
 #ifndef _SYS_DTRACE_H

@@ -26,6 +26,7 @@
 /*
  * Copyright (c) 2013 by Delphix. All rights reserved.
  * Copyright (c) 2013 Joyent, Inc. All rights reserved.
+ * Copyright (c) 2020 Domagoj Stolfa. All rights reserved.
  */
 
 #include <sys/types.h>
@@ -396,8 +397,6 @@ dt_as(dt_pcb_t *pcb)
 		longjmp(pcb->pcb_jmpbuf, EDT_NOMEM);
 
 	dp->dtdo_idx = difo_id++;
-
-	printf("dp->dtdo_idx = %zu\n", dp->dtdo_idx);
 
 	/*
 	 * Make an initial pass through the instruction list, filling in the

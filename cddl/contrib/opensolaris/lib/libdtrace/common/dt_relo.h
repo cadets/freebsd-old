@@ -26,18 +26,13 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _DT_PROG_LINK_H_
-#define _DT_PROG_LINK_H_
-
-#include <sys/types.h>
-#include <sys/dtrace.h>
-
-#include <dt_program.h>
-#include <dtrace.h>
+#ifndef _DT_RELO_H_
+#define _DT_RELO_H_
 
 #include <_dt_relo.h>
-#include <_dt_basic_block.h>
 
-int dt_prog_apply_rel(dtrace_hdl_t *, dtrace_prog_t *);
+dt_rl_entry_t *dt_rle_alloc(dt_relo_t *);
+dt_relo_t *dt_relo_alloc(dtrace_difo_t *, uint_t);
+void dt_get_rkind(dif_instr_t, dt_rkind_t *);
 
-#endif /* _DT_PROG_LINK_H_ */
+#endif /* _DT_RELO_H_ */

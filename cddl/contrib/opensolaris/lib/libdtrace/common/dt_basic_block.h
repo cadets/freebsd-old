@@ -26,18 +26,16 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _DT_PROG_LINK_H_
-#define _DT_PROG_LINK_H_
+#ifndef _DT_BASIC_BLOCK_H_
+#define _DT_BASIC_BLOCK_H_
 
-#include <sys/types.h>
 #include <sys/dtrace.h>
 
-#include <dt_program.h>
-#include <dtrace.h>
-
-#include <_dt_relo.h>
 #include <_dt_basic_block.h>
 
-int dt_prog_apply_rel(dtrace_hdl_t *, dtrace_prog_t *);
+dt_basic_block_t *dt_alloc_bb(dtrace_difo_t *);
+dt_bb_entry_t *dt_alloc_bb_e(dtrace_difo_t *);
+void dt_compute_bb(dtrace_difo_t *);
 
-#endif /* _DT_PROG_LINK_H_ */
+
+#endif /* _DT_BASIC_BLOCK_H_ */

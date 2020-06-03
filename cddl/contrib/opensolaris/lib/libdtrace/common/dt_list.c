@@ -21,6 +21,7 @@
  */
 /*
  * Copyright 2003 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright 2020 Domagoj Stolfa. All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -108,4 +109,63 @@ dt_list_delete(dt_list_t *dlp, void *existing)
 		p->dl_next->dl_prev = p->dl_prev;
 	else
 		dlp->dl_prev = p->dl_prev;
+}
+
+void
+dt_list_copy(dt_list_t *dst, dt_list_t *src, size_t entry_size)
+{
+	void *e, *new;
+
+	e = new = NULL;
+
+	for (e = dt_list_next(src); e; e = dt_list_next(e)) {
+		new = malloc(entry_size);
+		if (new == NULL)
+			errx(EXIT_FAILURE, "failed to malloc new");
+
+		memset(new, 0, sizeof(dt_list_t));
+		/*
+		 * We ensure all pointers are set to NULL, and then we copy
+		 * the actual data at the right offset.
+		 */
+		memcpy(((char *)new) + sizeof(dt_list_t),
+		    ((char *)e) + sizeof(dt_list_t),
+		    entry_size - sizeof(dt_list_t));
+
+		dt_list_append(dst, new);
+	}
+}
+
+int
+dt_list_equal(dt_list_t *fst, dt_list_t *snd, size_t entry_size)
+{
+	int empty;
+	void *e1, *e2;
+
+	empty = 1;
+	e1 = e2 = NULL;
+
+	for (e1 = dt_list_next(fst), e2 = dt_list_next(snd);
+	     e1 && e2; e1 = dt_list_next(e1), e2 = dt_list_next(e2)) {
+		if (memcmp((char *)e1 + sizeof(dt_list_t),
+			(char *)e2 + sizeof(dt_list_t),
+			entry_size - sizeof(dt_list_t)) != 0)
+			return (0);
+
+		empty = 0;
+	}
+
+	return (!empty);
+}
+
+int
+dt_in_list(dt_list_t *lst, void *find, size_t size)
+{
+	void *e;
+
+	for (e = dt_list_next(lst); e; e = dt_list_next(e))
+		if (memcmp((char *)e + sizeof(dt_list_t), find, size) == 0)
+			return (1);
+
+	return (0);
 }

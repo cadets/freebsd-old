@@ -7,8 +7,10 @@ LIB=		dtrace
 SRCS=		dt_aggregate.c \
 		dt_analysis.c \
 		dt_as.c \
+		dt_basic_block.c \
 		dt_buf.c \
 		dt_cc.c \
+		dt_cfg.c \
 		dt_cg.c \
 		dt_consume.c \
 		dt_decl.c \
@@ -20,10 +22,12 @@ SRCS=		dt_aggregate.c \
 		dt_grammar.y \
 		dt_handle.c \
 		dt_ident.c \
+		dt_ifg.c \
 		dt_isadep.c \
 		dt_inttab.c \
 		dt_lex.l \
 		dt_link.c \
+		dt_linker_subr.c \
 		dt_list.c \
 		dt_map.c \
 		dt_module.c \
@@ -42,10 +46,12 @@ SRCS=		dt_aggregate.c \
 		dt_prog_link.c \
 		dt_provider.c \
 		dt_regset.c \
+		dt_relo.c \
 		dt_string.c \
 		dt_strtab.c \
 		dt_subr.c \
 		dt_sugar.c \
+		dt_typing.c \
 		dt_work.c \
 		dt_xlator.c \
 		gmatch.c

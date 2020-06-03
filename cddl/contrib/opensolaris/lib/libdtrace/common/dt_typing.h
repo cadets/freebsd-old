@@ -26,18 +26,17 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _DT_PROG_LINK_H_
-#define _DT_PROG_LINK_H_
+#ifndef _DT_TYPING_H_
+#define _DT_TYPING_H_
 
-#include <sys/types.h>
 #include <sys/dtrace.h>
-
-#include <dt_program.h>
 #include <dtrace.h>
 
-#include <_dt_relo.h>
-#include <_dt_basic_block.h>
+#define DTC_BOTTOM	-1
+#define DTC_INT		 0
+#define DTC_STRUCT	 1
+#define DTC_STRING	 2
 
-int dt_prog_apply_rel(dtrace_hdl_t *, dtrace_prog_t *);
+int dt_prog_infer_types(dtrace_hdl_t *, dtrace_difo_t *);
 
-#endif /* _DT_PROG_LINK_H_ */
+#endif /* _DT_TYPING_H_ */

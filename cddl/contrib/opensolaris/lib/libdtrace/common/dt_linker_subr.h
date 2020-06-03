@@ -26,18 +26,42 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _DT_PROG_LINK_H_
-#define _DT_PROG_LINK_H_
+#ifndef _DT_LINKER_SUBR_H_
+#define _DT_LINKER_SUBR_H_
 
 #include <sys/types.h>
 #include <sys/dtrace.h>
 
-#include <dt_program.h>
-#include <dtrace.h>
-
 #include <_dt_relo.h>
 #include <_dt_basic_block.h>
 
-int dt_prog_apply_rel(dtrace_hdl_t *, dtrace_prog_t *);
+#include <dt_list.h>
 
-#endif /* _DT_PROG_LINK_H_ */
+typedef struct dt_pathlist {
+	dt_list_t dtpl_list;
+	dt_basic_block_t *dtpl_bb;
+} dt_pathlist_t;
+
+typedef struct dt_var_entry {
+	dt_list_t dtve_list;
+	dtrace_difv_t *dtve_var;
+} dt_var_entry_t;
+
+extern ctf_file_t *ctf_file;
+extern dt_list_t relo_list;
+extern dt_list_t bb_list;
+extern dt_rl_entry_t *relo_last;
+extern dt_list_t var_list;
+extern dt_relo_t *r0relo;
+
+int dt_clobbers_reg(dif_instr_t, uint8_t);
+int dt_var_is_builtin(uint16_t);
+int dt_clobbers_var(dif_instr_t, dt_rkind_t *);
+dtrace_difv_t *dt_get_variable(dtrace_difo_t *, uint16_t, int, int);
+dtrace_difv_t *dt_get_var_from_varlist(uint16_t, int, int);
+void dt_get_varinfo(dif_instr_t, uint16_t *, int *, int *);
+void dt_insert_var(dtrace_difo_t *, uint16_t, int, int);
+void dt_populate_varlist(dtrace_difo_t *);
+dt_stacklist_t *dt_get_stack(dt_list_t *, dt_relo_t *);
+
+#endif /* _DT_LINKER_SUBR_H_ */

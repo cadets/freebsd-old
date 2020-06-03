@@ -21,6 +21,7 @@
  */
 /*
  * Copyright 2003 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright 2020 Domagoj Stolfa. All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -45,6 +46,9 @@ extern void dt_list_append(dt_list_t *, void *);
 extern void dt_list_prepend(dt_list_t *, void *);
 extern void dt_list_insert(dt_list_t *, void *, void *);
 extern void dt_list_delete(dt_list_t *, void *);
+extern void dt_list_copy(dt_list_t *, dt_list_t *, size_t);
+extern int dt_list_equal(dt_list_t *, dt_list_t *, size_t);
+extern int dt_in_list(dt_list_t *, void *, size_t);
 
 #ifdef	__cplusplus
 }
