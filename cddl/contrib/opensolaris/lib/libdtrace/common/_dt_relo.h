@@ -58,6 +58,8 @@ typedef struct dt_relo {
 	size_t dr_uidx;			/* Index of the use site */
 	dt_list_t dr_r1defs;
 	dt_list_t dr_r2defs;
+	dt_list_t dr_r1datadefs;
+	dt_list_t dr_r2datadefs;
 	dt_list_t dr_vardefs;
 	int dr_type;			/* D type */
 	ctf_id_t dr_ctfid;		/* CTF type */

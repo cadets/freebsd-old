@@ -333,8 +333,10 @@ dt_update_usetx_bb(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_relo_t *r)
 
 			nrl->drl_rel = r;
 			if (dt_in_list(&relo->dr_usetxs,
-			    (void *)&r, sizeof(dt_relo_t *)) == 0)
+			    (void *)&r, sizeof(dt_relo_t *)) == 0) {
+				printf("usetx %zu ==> %zu\n", r->dr_uidx, relo->dr_uidx);
 				dt_list_append(&relo->dr_usetxs, nrl);
+			}
 		}
 	}
 

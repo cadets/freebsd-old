@@ -558,6 +558,7 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			 * Fail to typecheck if the types don't match 100%.
 			 */
 			if (relo->dr_ctfid != orelo->dr_ctfid) {
+				printf("looking at %zu and %zu\n", relo->dr_uidx, orelo->dr_uidx);
 				fprintf(stderr, "types %s and %s do not match\n",
 				    buf1, buf2);
 				return (NULL);
@@ -1006,6 +1007,22 @@ dt_typecheck_stack(dt_list_t *stacklist, int *empty)
 		ostack = stack;
 		stack = &sl->dsl_stack;
 
+		assert(stack != NULL);
+
+		/*
+		 * Infer types on the stack.
+		 */
+		for (se = dt_list_next(stack); se; se = dt_list_next(se)) {
+			r = se->ds_rel;
+			if (dt_infer_type(r) == -1)
+				errx(EXIT_FAILURE, "failed to infer type for"
+				    "opcode %d at %zu\n",
+				    r->dr_buf[r->dr_uidx], r->dr_uidx);
+		}
+
+		if (ostack == NULL)
+			continue;
+
 		for (se = dt_list_next(stack), ose = dt_list_next(ostack);
 		     se && ose; se = dt_list_next(se), ose = dt_list_next(ose)) {
 			r = se->ds_rel;
@@ -1058,15 +1075,16 @@ static int
 dt_infer_type(dt_relo_t *r)
 {
 	dt_relo_t *dr1, *dr2, *drv, *tc_r,
-	    *symrelo, *other, *var_stackrelo, *relo;
+	    *symrelo, *other, *var_stackrelo, *relo,
+	    *data_dr1, *data_dr2;
 	int type1, type2, res, i, t;
 	char buf[4096] = {0}, symname[4096] = {0}, var_type[4096] = {0};
 	ctf_membinfo_t *mip;
 	size_t l;
 	uint16_t var;
 	dtrace_difo_t *difo;
-	dif_instr_t instr;
-	uint8_t opcode;
+	dif_instr_t instr, dr1_instr;
+	uint8_t opcode, dr1_op;
 	uint16_t sym, subr;
 	dt_stacklist_t *sl;
 	dt_relo_t *arg0, *arg1, *arg2, *arg3, *arg4, *arg5, *arg6, *arg7, *arg8;
@@ -1088,8 +1106,8 @@ dt_infer_type(dt_relo_t *r)
 	sl = NULL;
 	l = 0;
 	difo = r->dr_difo;
-	instr = 0;
-	opcode = 0;
+	instr = dr1_instr = 0;
+	opcode = dr1_op = 0;
 	sym = 0;
 	res = 0;
 	tc_r = NULL;
@@ -1121,6 +1139,18 @@ dt_infer_type(dt_relo_t *r)
         dr2 = dt_typecheck_regdefs(&r->dr_r2defs, &empty);
 	if (dr2 == NULL && empty == 0) {
 		fprintf(stderr, "inferring types for r2defs failed\n");
+		return (-1);
+	}
+
+	data_dr1 = dt_typecheck_regdefs(&r->dr_r1datadefs, &empty);
+	if (data_dr1 == NULL && empty == 0) {
+		fprintf(stderr, "inferring types for r1datadefs failed\n");
+		return (-1);
+	}
+
+        data_dr2 = dt_typecheck_regdefs(&r->dr_r2datadefs, &empty);
+	if (data_dr2 == NULL && empty == 0) {
+		fprintf(stderr, "inferring types for r2datadefs failed\n");
 		return (-1);
 	}
 
@@ -3707,18 +3737,26 @@ dt_infer_type(dt_relo_t *r)
 
 			arg0 = se->ds_rel;
 
-			if (ctf_type_name(ctf_file,
-			    arg0->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
-				    " %ld: %s", arg0->dr_ctfid,
-				    ctf_errmsg(ctf_errno(ctf_file)));
+			if (arg0->dr_type == DIF_TYPE_CTF) {
+				if (ctf_type_name(ctf_file,
+				    arg0->dr_ctfid, buf,
+				    sizeof(buf)) != (char *)buf)
+					errx(EXIT_FAILURE,
+					    "failed at getting type name"
+					    " %ld: %s", arg0->dr_ctfid,
+					    ctf_errmsg(ctf_errno(ctf_file)));
 
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "const char *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "const char *");
+				/*
+				 * If the argument type is wrong, fail to type check.
+				 */
+				if (strcmp(buf, "const char *") != 0 &&
+				    strcmp(buf, "char *") != 0) {
+					fprintf(stderr, "%s and %s are not the same",
+					    buf, "const char */char *");
+					return (-1);
+				}
+			} else if (arg0->dr_type == DIF_TYPE_NONE) {
+				fprintf(stderr, "str/json arg0 type is NONE\n");
 				return (-1);
 			}
 
@@ -3732,18 +3770,26 @@ dt_infer_type(dt_relo_t *r)
 
 			arg1 = se->ds_rel;
 
-			if (ctf_type_name(ctf_file,
-			    arg1->dr_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
-				    " %ld: %s", arg1->dr_ctfid,
-				    ctf_errmsg(ctf_errno(ctf_file)));
+			if (arg1->dr_type == DIF_TYPE_CTF) {
+				if (ctf_type_name(ctf_file,
+				    arg1->dr_ctfid, buf,
+				    sizeof(buf)) != (char *)buf)
+					errx(EXIT_FAILURE,
+					    "failed at getting type name"
+					    " %ld: %s", arg1->dr_ctfid,
+					    ctf_errmsg(ctf_errno(ctf_file)));
 
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "const char *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "const char *");
+				/*
+				 * If the argument type is wrong, fail to type check.
+				 */
+				if (strcmp(buf, "const char *") != 0 &&
+				    strcmp(buf, "char *") != 0) {
+					fprintf(stderr, "%s and %s are not the same",
+					    buf, "const char *");
+					return (-1);
+				}
+			} else if (arg0->dr_type == DIF_TYPE_NONE) {
+				fprintf(stderr, "str/json arg0 type is NONE\n");
 				return (-1);
 			}
 
@@ -3995,7 +4041,7 @@ dt_infer_type(dt_relo_t *r)
 			return (-1);
 		}
 
-		if (dr1->dr_type == DIF_TYPE_CTF && dr1->dr_sym != NULL) {
+		if (data_dr1->dr_sym != NULL) {
 			/*
 			 * We only need one type here (the first one).
 			 */
@@ -4003,10 +4049,10 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * sym in range(symtab)
 			 */
-			if ((uintptr_t)dr1->dr_sym >=
+			if ((uintptr_t)data_dr1->dr_sym >=
 			    ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
 				errx(EXIT_FAILURE, "sym (%p) is out of range: %p",
-				    dr1->dr_sym,
+				    data_dr1->dr_sym,
 				    (void *)(((uintptr_t)difo->dtdo_symtab) +
 					difo->dtdo_symlen));
 
@@ -4014,11 +4060,11 @@ dt_infer_type(dt_relo_t *r)
 			 * Get the original type name of dr1->dr_ctfid for
 			 * error reporting.
 			 */
-			if (ctf_type_name(ctf_file, dr1->dr_ctfid, buf,
+			if (ctf_type_name(ctf_file, data_dr1->dr_ctfid, buf,
 				sizeof(buf)) != ((char *)buf))
 				errx(EXIT_FAILURE,
 				    "failed at getting type name %ld: %s",
-				    dr1->dr_ctfid,
+				    data_dr1->dr_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
 			if (dt_get_class(buf) != DTC_STRUCT)
@@ -4036,25 +4082,46 @@ dt_infer_type(dt_relo_t *r)
 			/*
 			 * Get the non-pointer type. This should NEVER fail.
 			 */
-			type = ctf_type_reference(ctf_file, dr1->dr_ctfid);
+			type = ctf_type_reference(ctf_file, data_dr1->dr_ctfid);
 
 			if (dt_lib_membinfo(
-				octfp = ctf_file, type, dr1->dr_sym, mip) == 0)
+			    octfp = ctf_file, type, data_dr1->dr_sym, mip) == 0)
 				errx(EXIT_FAILURE, "failed to get member info"
 				    " for %s(%s): %s",
-				    buf, dr1->dr_sym,
+				    buf, data_dr1->dr_sym,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
 			r->dr_mip = mip;
-			r->dr_ctfid = mip->ctm_type;
-			r->dr_type = DIF_TYPE_CTF;
-		}
+			/*
+			 * This should only happen with a typecast.
+			 */
+			if (dr1 != data_dr1) {
+				dr1_instr = dr1->dr_buf[dr1->dr_uidx];
+				dr1_op = DIF_INSTR_OP(dr1_instr);
 
+				assert(dr1_op == DIF_OP_TYPECAST);
+
+				r->dr_ctfid = dr1->dr_ctfid;
+				r->dr_type = dr1->dr_type;
+			} else {
+				r->dr_ctfid = mip->ctm_type;
+				r->dr_type = DIF_TYPE_CTF;
+			}
+		} else if (dr1->dr_type == DIF_TYPE_CTF) {
+			r->dr_ctfid = dr1->dr_ctfid;
+			r->dr_type = dr1->dr_type;
+		} else
+			r->dr_type = dr1->dr_type;
+
+		return (DIF_TYPE_NONE);
+
+	case DIF_OP_PUSHTV:
+		r->dr_ctfid = dr1->dr_ctfid;
+		r->dr_type = dr1->dr_type;
 		return (DIF_TYPE_NONE);
 
 	case DIF_OP_FLUSHTS:
 	case DIF_OP_POPTS:
-	case DIF_OP_PUSHTV:
 	case DIF_OP_CMP:
 	case DIF_OP_SCMP:
 	case DIF_OP_SCMP_HH:

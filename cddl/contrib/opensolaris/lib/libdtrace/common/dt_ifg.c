@@ -485,27 +485,33 @@ dt_update_rel_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	dt_relo_t *relo;
 	dt_rl_entry_t *rl;
 	int r1, r2;
-	uint_t idx;
-	dif_instr_t instr;
+	dif_instr_t instr, curinstr;
+	uint8_t opcode, curop;
 	dt_rl_entry_t *currelo_e;
+	int seen_typecast;
 
-	idx = 0;
 	r1 = 0;
 	r2 = 0;
 	rl = NULL;
 	relo = NULL;
 	_difo = NULL;
 	instr = 0;
+	curinstr = 0;
+	opcode = 0;
+	curop = 0;
 	currelo_e = NULL;
+	seen_typecast = 0;
 
 	assert(currelo != NULL);
-	idx = currelo->dr_uidx;
 
 	_difo = bb->dtbb_difo;
 /*
 	if (_difo != difo)
 		return (0);
 */
+
+	curinstr = currelo->dr_buf[currelo->dr_uidx];
+	curop = DIF_INSTR_OP(curinstr);
 
 	if (dt_usite_contains_reg(currelo, 0, &r1, &r2)) {
 		assert(r1 == 1 || r2 == 1);
@@ -532,6 +538,7 @@ dt_update_rel_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	    rl != NULL; rl = dt_list_next(rl)) {
 		relo = rl->drl_rel;
 		instr = relo->dr_buf[relo->dr_uidx];
+		opcode = DIF_INSTR_OP(instr);
 
 		if (relo->dr_difo != _difo)
 			continue;
@@ -557,18 +564,36 @@ dt_update_rel_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 		 */
 		if (dt_usite_contains_reg(relo, rd, &r1, &r2)) {
 			assert(r1 == 1 || r2 == 1);
-			if (r1 == 1) {
+			if (r1 == 1 && seen_typecast == 0) {
 				currelo_e = dt_rle_alloc(currelo);
 				if (dt_in_list(&relo->dr_r1defs,
 				    (void *)&currelo, sizeof(dt_relo_t *)) == 0)
 					dt_list_append(&relo->dr_r1defs, currelo_e);
+
+
 			}
 
-			if (r2 == 1) {
+			if (r2 == 1 && seen_typecast == 0) {
 				currelo_e = dt_rle_alloc(currelo);
 				if (dt_in_list(&relo->dr_r2defs,
 				    (void *)&currelo, sizeof(dt_relo_t *)) == 0)
 					dt_list_append(&relo->dr_r2defs, currelo_e);
+			}
+
+			if (r1 == 1 && curop != DIF_OP_TYPECAST) {
+				currelo_e = dt_rle_alloc(currelo);
+				if (dt_in_list(&relo->dr_r1datadefs,
+				    (void *)&currelo, sizeof(dt_relo_t *)) == 0)
+					dt_list_append(&relo->dr_r1datadefs,
+					    currelo_e);
+			}
+
+			if (r2 == 1 && curop != DIF_OP_TYPECAST) {
+				currelo_e = dt_rle_alloc(currelo);
+				if (dt_in_list(&relo->dr_r2datadefs,
+				    (void *)&currelo, sizeof(dt_relo_t *)) == 0)
+					dt_list_append(&relo->dr_r2datadefs,
+					    currelo_e);
 			}
 		}
 
@@ -577,9 +602,12 @@ dt_update_rel_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 		 * we simply break out of the loop, there is nothing left
 		 * to fill in inside this basic block.
 		 */
-		if (dt_clobbers_reg(instr, rd))
+		if (dt_clobbers_reg(instr, rd) &&
+		    opcode != DIF_OP_TYPECAST)
 			return (1);
 
+		if (opcode == DIF_OP_TYPECAST)
+			seen_typecast = 1;
 	}
 
 	return (0);
@@ -806,12 +834,14 @@ dt_find_relo_in_ifg(dt_relo_t *currelo, dt_relo_t *find)
 	if (currelo == find)
 		return (find);
 
-	for (rl = dt_list_next(&currelo->dr_r1defs); rl; rl = dt_list_next(rl)) {
+	for (rl = dt_list_next(&currelo->dr_r1datadefs);
+	     rl; rl = dt_list_next(rl)) {
 		if ((relo = dt_find_relo_in_ifg(rl->drl_rel, find)) == find)
 			return (relo);
 	}
 
-	for (rl = dt_list_next(&currelo->dr_r2defs); rl; rl = dt_list_next(rl)) {
+	for (rl = dt_list_next(&currelo->dr_r2datadefs);
+	     rl; rl = dt_list_next(rl)) {
 		if ((relo = dt_find_relo_in_ifg(rl->drl_rel, find)) == find)
 			return (relo);
 	}
