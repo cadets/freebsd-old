@@ -97,7 +97,7 @@ dt_get_class(char *buf)
 }
 
 /*
- * dt_type_compare() takes in two relocations and "compares" their types.
+ * dt_type_compare() takes in two IFG nodes and "compares" their types.
  * Specifically, BOTTOM is the smallest element and no matter what it is
  * compared to, it is smaller than it (reflexivity applies). By convention,
  * we check dr1 for a BOTTOM type first and return dn2 if dr1 is BOTTOM
@@ -172,7 +172,7 @@ dt_type_compare(dt_ifg_node_t *dr1, dt_ifg_node_t *dn2)
 }
 
 /*
- * dt_builtin_type() takes a relocation and a builtin variable, returning
+ * dt_builtin_type() takes a node and a builtin variable, returning
  * the expected type of said builtin variable.
  */
 static void
@@ -425,8 +425,8 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 }
 
 /*
- * dt_typecheck_regdefs() takes in a list of relocations that define
- * the current relocation we are looking at and ensures that their types
+ * dt_typecheck_regdefs() takes in a list of nodes that define
+ * the current node we are looking at and ensures that their types
  * are consistent.
  */
 static dt_ifg_node_t *
@@ -459,11 +459,11 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 
 	/*
 	 * We iterate over all the register definitions for a particular
-	 * relocation. We make sure that each of the definitions agrees
+	 * node. We make sure that each of the definitions agrees
 	 * on the type of the register.
 	 *
 	 * Moreover, at this point we will have eliminated the case where
-	 * we only have 1 relocation (r0node) present in the list.
+	 * we only have 1 node (r0node) present in the list.
 	 */
 	for (ifgl = dt_list_next(defs); ifgl; ifgl = dt_list_next(ifgl)) {
 		onode = node;
@@ -472,24 +472,24 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 		otype = type;
 
 		/*
-		 * If we have bottom, we just take the old relocation's value.
-		 * onode is _the first_ relocation in the list, and could be
+		 * If we have bottom, we just take the old node's value.
+		 * onode is _the first_ node in the list, and could be
 		 * bottom as well. The only two states we will pass this check
 		 * in are:
 		 *  (i)  onode is also bottom and we move on until we find the
-		 *       first relocation that is not bottom, which we then
+		 *       first node that is not bottom, which we then
 		 *       infer the type of and bail out when we find onode to be
 		 *       bottom;
-		 *  (ii) onode is a relocation that is _not_ bottom, but the
-		 *       current relocation is bottom. We decide that we'll just
-		 *       set node's value to the last relocation we saw and
+		 *  (ii) onode is a node that is _not_ bottom, but the
+		 *       current node is bottom. We decide that we'll just
+		 *       set node's value to the last node we saw and
 		 *       inferred the type of which is not bottom. Two things
 		 *       can happen in the next run. We either realise that we
 		 *       have reached the end of the loop and bail out with the
-		 *       last relocation that was not bottom, or we reach the
+		 *       last node that was not bottom, or we reach the
 		 *       case where this check will fail and we can continue on
-		 *       typechecking our last seen relocation that was not
-		 *       bottom and the current relocation which is not bottom,
+		 *       typechecking our last seen node that was not
+		 *       bottom and the current node which is not bottom,
 		 *       giving us the desired type-checking behaviour, making
 		 *       sure that all branches have consistent register defns.
 		 */
@@ -543,7 +543,7 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 				continue;
 
  			/*
-			 * Get the previous' relocation's inferred type for
+			 * Get the previous' node's inferred type for
 			 * error reporting.
 			 */
 			if (ctf_type_name(ctf_file, onode->din_ctfid, buf2,
@@ -566,7 +566,7 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			if ((node->din_sym == NULL && onode->din_sym != NULL) ||
 			    (node->din_sym != NULL && onode->din_sym == NULL)) {
 				fprintf(stderr,
-				    "symbol is missing in a relocation\n");
+				    "symbol is missing in a node\n");
 				return (NULL);
 			}
 
@@ -576,7 +576,7 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			 */
 			if (node->din_sym &&
 			    strcmp(node->din_sym, onode->din_sym) != 0) {
-				fprintf(stderr, "relocations have different "
+				fprintf(stderr, "nodes have different "
 				    "symbols: %s != %s\n", node->din_sym,
 				    onode->din_sym);
 				return (NULL);
@@ -619,7 +619,7 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 
 	/*
 	 * We iterate over all the variable definitions for a particular
-	 * relocation that is created through a variable load instruction.
+	 * node that is created through a variable load instruction.
 	 * We make sure that:
 	 *  (1) All definitions agree on the type of the variable
 	 *  (2) All definitions conform to the previously inferred variable
@@ -730,7 +730,7 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 				continue;
 
  			/*
-			 * Get the previous' relocation's inferred type for
+			 * Get the previous' node's inferred type for
 			 * error reporting.
 			 */
 			if (ctf_type_name(ctf_file, onode->din_ctfid, buf2,
@@ -769,7 +769,7 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 			 */
 			if (node->din_sym &&
 			    strcmp(node->din_sym, onode->din_sym) != 0) {
-				fprintf(stderr, "relocations have different "
+				fprintf(stderr, "nodes have different "
 				    "symbols: %s != %s\n", node->din_sym,
 				    onode->din_sym);
 				return (NULL);
@@ -777,7 +777,7 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 
 			if (node->din_sym &&
 			    strcmp(node->din_sym, var->dtdv_sym) != 0) {
-				fprintf(stderr, "relocation and var "
+				fprintf(stderr, "node and var "
 				    "have different symbols: %s != %s\n",
 				    node->din_sym, onode->din_sym);
 				return (NULL);
@@ -1418,7 +1418,7 @@ dt_infer_type(dt_ifg_node_t *n)
 			}
 
 			/*
-			 * Get the type name of the other relocation
+			 * Get the type name of the other node
 			 */
 			if (ctf_type_name(ctf_file, other->din_ctfid, buf,
 			    sizeof(buf)) != ((char *)buf))
@@ -1430,7 +1430,7 @@ dt_infer_type(dt_ifg_node_t *n)
 			if (res == 1) {
 				if (strcmp(buf, "uint64_t") != 0)
 					errx(EXIT_FAILURE, "the type of the"
-					    " other relocation must be unit64_t"
+					    " other node must be unit64_t"
 					    " if symnode->din_ctfid <: "
 					    " other->din_ctfid, but it is: %s",
 					    buf);
