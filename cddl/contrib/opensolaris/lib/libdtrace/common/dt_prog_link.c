@@ -1,8 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
- *
- * Copyright (c) 2020 Domagoj Stolfa.
- * All rights reserved.
+ * Copyright (c) 2020 Domagoj Stolfa
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -13,10 +10,10 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY NETAPP, INC ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL NETAPP, INC OR CONTRIBUTORS BE LIABLE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
  * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
@@ -24,6 +21,8 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
+ *
+ * $FreeBSD$
  */
 
 #include <sys/dtrace.h>
@@ -51,18 +50,18 @@
 #endif
 
 ctf_file_t *ctf_file = NULL;
-dt_list_t relo_list;
+dt_list_t node_list;
 dt_list_t bb_list;
-dt_rl_entry_t *relo_last = NULL;
+dt_ifg_list_t *node_last = NULL;
 dt_list_t var_list;
-dt_relo_t *r0relo = NULL;
+dt_ifg_node_t *r0node = NULL;
 
 static int
 dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 {
 	size_t idx;
-	dt_rl_entry_t *rl, *usetx_rl;
-	dt_relo_t *relo, *usetx_relo;
+	dt_ifg_list_t *ifgl, *usetx_ifgl;
+	dt_ifg_node_t *node, *usetx_node;
 	dif_instr_t instr, new_instr;
 	uint8_t opcode, new_op;
 	size_t size, kind;
@@ -72,8 +71,8 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
         ctf_encoding_t ep;
 	int index, i;
 
-	rl = NULL;
-	relo = NULL;
+	ifgl = NULL;
+	node = NULL;
 	idx = 0;
 	instr = 0;
 	opcode = 0;
@@ -102,34 +101,34 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		}
 	}
 
-	for (rl = dt_list_next(&relo_list); rl != NULL; rl = dt_list_next(rl)) {
-		relo = rl->drl_rel;
+	for (ifgl = dt_list_next(&node_list); ifgl != NULL; ifgl = dt_list_next(ifgl)) {
+		node = ifgl->dil_ifgnode;
 
-		if (relo->dr_difo != difo)
+		if (node->din_difo != difo)
 			continue;
 
-		instr = relo->dr_buf[relo->dr_uidx];
+		instr = node->din_buf[node->din_uidx];
 		opcode = DIF_INSTR_OP(instr);
 		switch (opcode) {
 		case DIF_OP_RET:
 		case DIF_OP_PUSHTR:
 		case DIF_OP_PUSHTR_H:
 		case DIF_OP_PUSHTR_G:
-			if (relo->dr_mip == NULL)
+			if (node->din_mip == NULL)
 				continue;
 
-			ctfid = ctf_type_resolve(ctf_file, relo->dr_mip->ctm_type);
+			ctfid = ctf_type_resolve(ctf_file, node->din_mip->ctm_type);
 		        size = ctf_type_size(ctf_file, ctfid);
 			kind = ctf_type_kind(ctf_file, ctfid);
-			offset = relo->dr_mip->ctm_offset / 8; /* bytes */
+			offset = node->din_mip->ctm_offset / 8; /* bytes */
 
-			for (usetx_rl = dt_list_next(&relo->dr_usetxs);
-			     usetx_rl; usetx_rl = dt_list_next(usetx_rl)) {
-				usetx_relo = usetx_rl->drl_rel;
-				if (usetx_relo->dr_relocated == 1)
+			for (usetx_ifgl = dt_list_next(&node->din_usetxs);
+			     usetx_ifgl; usetx_ifgl = dt_list_next(usetx_ifgl)) {
+				usetx_node = usetx_ifgl->dil_ifgnode;
+				if (usetx_node->din_relocated == 1)
 					continue;
 
-				instr = usetx_relo->dr_buf[usetx_relo->dr_uidx];
+				instr = usetx_node->din_buf[usetx_node->din_uidx];
 				opcode = DIF_INSTR_OP(instr);
 				if (opcode != DIF_OP_USETX)
 					errx(EXIT_FAILURE,
@@ -152,15 +151,15 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 					    "failed to insert %u into inttab",
 					    offset);
 
-				usetx_relo->dr_buf[usetx_relo->dr_uidx] =
+				usetx_node->din_buf[usetx_node->din_uidx] =
 				    DIF_INSTR_SETX(index, rd);
-				usetx_relo->dr_relocated = 1;
+				usetx_node->din_relocated = 1;
 			}
 			break;
 
 		case DIF_OP_ULOAD:
 		case DIF_OP_UULOAD:
-			ctfid = ctf_type_resolve(ctf_file, relo->dr_mip->ctm_type);
+			ctfid = ctf_type_resolve(ctf_file, node->din_mip->ctm_type);
 		        size = ctf_type_size(ctf_file, ctfid);
 			kind = ctf_type_kind(ctf_file, ctfid);
 
@@ -222,15 +221,15 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 				new_instr = DIF_INSTR_LOAD(new_op, r1, rd);
 			}
 
-			offset = relo->dr_mip->ctm_offset / 8; /* bytes */
+			offset = node->din_mip->ctm_offset / 8; /* bytes */
 
-			for (usetx_rl = dt_list_next(&relo->dr_usetxs);
-			     usetx_rl; usetx_rl = dt_list_next(usetx_rl)) {
-				usetx_relo = usetx_rl->drl_rel;
-				if (usetx_relo->dr_relocated == 1)
+			for (usetx_ifgl = dt_list_next(&node->din_usetxs);
+			     usetx_ifgl; usetx_ifgl = dt_list_next(usetx_ifgl)) {
+				usetx_node = usetx_ifgl->dil_ifgnode;
+				if (usetx_node->din_relocated == 1)
 					continue;
 
-				instr = usetx_relo->dr_buf[usetx_relo->dr_uidx];
+				instr = usetx_node->din_buf[usetx_node->din_uidx];
 				opcode = DIF_INSTR_OP(instr);
 				if (opcode != DIF_OP_USETX)
 					errx(EXIT_FAILURE,
@@ -253,13 +252,13 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 					    "failed to insert %u into inttab",
 					    offset);
 
-				usetx_relo->dr_buf[usetx_relo->dr_uidx] =
+				usetx_node->din_buf[usetx_node->din_uidx] =
 				    DIF_INSTR_SETX(index, rd);
-				usetx_relo->dr_relocated = 1;
+				usetx_node->din_relocated = 1;
 			}
 
-			relo->dr_buf[relo->dr_uidx] = new_instr;
-			relo->dr_relocated = 1;
+			node->din_buf[node->din_uidx] = new_instr;
+			node->din_relocated = 1;
 			break;
 
 		case DIF_OP_TYPECAST:
@@ -269,8 +268,8 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 			 * actually execute it as an instruction. We will
 			 * collapse the nops later.
 			 */
-			relo->dr_buf[relo->dr_uidx] = DIF_INSTR_NOP;
-			relo->dr_relocated = 1;
+			node->din_buf[node->din_uidx] = DIF_INSTR_NOP;
+			node->din_relocated = 1;
 			break;
 		}
 	}
@@ -279,42 +278,42 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 }
 
 static int
-dt_update_usetx_bb(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_relo_t *r)
+dt_update_usetx_bb(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_ifg_node_t *n)
 {
-	dt_rl_entry_t *rl, *nrl;
+	dt_ifg_list_t *ifgl, *nifgl;
 	dif_instr_t instr;
-	dt_relo_t *relo, *usetx_relo;
+	dt_ifg_node_t *node, *usetx_node;
 	uint8_t opcode;
 	uint8_t rd, _rd, r1;
 
-	rl = NULL;
-	nrl = NULL;
-	relo = usetx_relo = NULL;
+	ifgl = NULL;
+	nifgl = NULL;
+	node = usetx_node = NULL;
 	instr = 0;
 	opcode = 0;
 	rd = _rd = r1 = 0;
 
-	rd = DIF_INSTR_RD(r->dr_buf[r->dr_uidx]);
+	rd = DIF_INSTR_RD(n->din_buf[n->din_uidx]);
 
-	if (r->dr_sym == NULL)
-		errx(EXIT_FAILURE, "usetx dr_sym should not be NULL");
+	if (n->din_sym == NULL)
+		errx(EXIT_FAILURE, "usetx din_sym should not be NULL");
 
-	for (rl = dt_list_next(&relo_list); rl; rl = dt_list_next(rl)) {
-		relo = rl->drl_rel;
-		instr = relo->dr_buf[relo->dr_uidx];
+	for (ifgl = dt_list_next(&node_list); ifgl; ifgl = dt_list_next(ifgl)) {
+		node = ifgl->dil_ifgnode;
+		instr = node->din_buf[node->din_uidx];
 		opcode = DIF_INSTR_OP(instr);
 
-		if (relo->dr_difo != difo)
+		if (node->din_difo != difo)
 			continue;
 
-		if (r->dr_uidx >= relo->dr_uidx)
+		if (n->din_uidx >= node->din_uidx)
 			continue;
 
-		if (relo->dr_uidx < bb->dtbb_start ||
-		    relo->dr_uidx > bb->dtbb_end)
+		if (node->din_uidx < bb->dtbb_start ||
+		    node->din_uidx > bb->dtbb_end)
 			continue;
 
-		if (relo == r)
+		if (node == n)
 			continue;
 
 		if (opcode == DIF_OP_ULOAD    ||
@@ -323,19 +322,19 @@ dt_update_usetx_bb(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_relo_t *r)
 		    opcode == DIF_OP_PUSHTR   ||
 		    opcode == DIF_OP_PUSHTR_H ||
 		    opcode == DIF_OP_PUSHTR_G) {
-			usetx_relo = dt_find_relo_in_ifg(relo, r);
+			usetx_node = dt_find_node_in_ifg(node, n);
 
-			if (usetx_relo != r)
+			if (usetx_node != n)
 				continue;
 
-			nrl = malloc(sizeof(dt_rl_entry_t));
-			memset(nrl, 0, sizeof(dt_rl_entry_t));
+			nifgl = malloc(sizeof(dt_ifg_list_t));
+			memset(nifgl, 0, sizeof(dt_ifg_list_t));
 
-			nrl->drl_rel = r;
-			if (dt_in_list(&relo->dr_usetxs,
-			    (void *)&r, sizeof(dt_relo_t *)) == 0) {
-				printf("usetx %zu ==> %zu\n", r->dr_uidx, relo->dr_uidx);
-				dt_list_append(&relo->dr_usetxs, nrl);
+			nifgl->dil_ifgnode = n;
+			if (dt_in_list(&node->din_usetxs,
+			    (void *)&n, sizeof(dt_ifg_node_t *)) == 0) {
+				printf("usetx %zu ==> %zu\n", n->din_uidx, node->din_uidx);
+				dt_list_append(&node->din_usetxs, nifgl);
 			}
 		}
 	}
@@ -344,7 +343,7 @@ dt_update_usetx_bb(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_relo_t *r)
 }
 
 static void
-_dt_update_usetxs(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_relo_t *r)
+_dt_update_usetxs(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_ifg_node_t *n)
 {
 	dt_bb_entry_t *chld;
 	dt_basic_block_t *chld_bb;
@@ -354,7 +353,7 @@ _dt_update_usetxs(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_relo_t *r)
 	chld_bb = NULL;
 	redefined = 0;
 
-	redefined = dt_update_usetx_bb(difo, bb, r);
+	redefined = dt_update_usetx_bb(difo, bb, n);
 	if (redefined)
 		return;
 
@@ -363,12 +362,12 @@ _dt_update_usetxs(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_relo_t *r)
 		chld_bb = chld->dtbe_bb;
 		if (chld_bb->dtbb_idx > DT_BB_MAX)
 			errx(EXIT_FAILURE, "too many basic blocks.");
-		_dt_update_usetxs(difo, chld_bb, r);
+		_dt_update_usetxs(difo, chld_bb, n);
 	}
 }
 
 static void
-dt_update_usetxs(dtrace_difo_t *difo, dt_relo_t *r)
+dt_update_usetxs(dtrace_difo_t *difo, dt_ifg_node_t *n)
 {
 	dif_instr_t instr;
 	uint8_t opcode;
@@ -376,37 +375,36 @@ dt_update_usetxs(dtrace_difo_t *difo, dt_relo_t *r)
 	instr = 0;
 	opcode = 0;
 
-	if (r == NULL)
+	if (n == NULL)
 		return;
 
-	instr = r->dr_buf[r->dr_uidx];
+	instr = n->din_buf[n->din_uidx];
 	opcode = DIF_INSTR_OP(instr);
 
 	if (opcode != DIF_OP_USETX)
 		return;
 
-	if (r->dr_sym == NULL)
+	if (n->din_sym == NULL)
 		errx(EXIT_FAILURE, "opcode is usetx but no symbol found");
 
-	if (r->dr_difo != difo)
+	if (n->din_difo != difo)
 		return;
 
-	_dt_update_usetxs(difo, difo->dtdo_bb, r);
-
+	_dt_update_usetxs(difo, difo->dtdo_bb, n);
 }
 
 static void
 dt_prog_infer_usetxs(dtrace_difo_t *difo)
 {
-	dt_rl_entry_t *rl;
-	dt_relo_t *r;
+	dt_ifg_list_t *ifgl;
+	dt_ifg_node_t *n;
 
-	rl = NULL;
-	r = NULL;
+	ifgl = NULL;
+	n = NULL;
 
-	for (rl = relo_last; rl; rl = dt_list_prev(rl)) {
-		r = rl->drl_rel;
-		dt_update_usetxs(difo, r);
+	for (ifgl = node_last; ifgl; ifgl = dt_list_prev(ifgl)) {
+		n = ifgl->dil_ifgnode;
+		dt_update_usetxs(difo, n);
 	}
 }
 
@@ -491,13 +489,13 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		    bootfile, ctf_errmsg(ctf_errno(ctf_file)));
 
 	/*
-	 * Zero out the relo list and basic block list.
+	 * Zero out the node list and basic block list.
 	 */
-	memset(&relo_list, 0, sizeof(dt_list_t));
+	memset(&node_list, 0, sizeof(dt_list_t));
 	memset(&bb_list, 0, sizeof(dt_list_t));
 
-	r0relo = dt_relo_alloc(NULL, UINT_MAX);
-	r0relo->dr_type = DIF_TYPE_BOTTOM;
+	r0node = dt_ifg_node_alloc(NULL, UINT_MAX);
+	r0node->din_type = DIF_TYPE_BOTTOM;
 
 	/*
 	 * Go over all the statements in a D program

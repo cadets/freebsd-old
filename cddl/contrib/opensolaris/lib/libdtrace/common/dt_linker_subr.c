@@ -1,8 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
- *
- * Copyright (c) 2020 Domagoj Stolfa.
- * All rights reserved.
+ * Copyright (c) 2020 Domagoj Stolfa
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -13,10 +10,10 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY NETAPP, INC ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL NETAPP, INC OR CONTRIBUTORS BE LIABLE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
  * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
@@ -24,6 +21,8 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
+ *
+ * $FreeBSD$
  */
 
 #include <dt_linker_subr.h>
@@ -126,14 +125,14 @@ dt_var_is_builtin(uint16_t var)
 }
 
 int
-dt_clobbers_var(dif_instr_t instr, dt_rkind_t *rkind)
+dt_clobbers_var(dif_instr_t instr, dt_node_kind_t *nkind)
 {
 	uint8_t opcode;
 	uint16_t v;
 	uint8_t scope, varkind;
 
-	scope = rkind->r_scope;
-	varkind = rkind->r_varkind;
+	scope = nkind->dtnk_scope;
+	varkind = nkind->dtnk_varkind;
 
 	if (varkind == DIFV_KIND_ARRAY)
 		return (0);
@@ -146,7 +145,7 @@ dt_clobbers_var(dif_instr_t instr, dt_rkind_t *rkind)
 			return (0);
 
 		v = DIF_INSTR_VAR(instr);
-		if (rkind->r_var == v)
+		if (nkind->dtnk_var == v)
 			return (1);
 		break;
 
@@ -155,7 +154,7 @@ dt_clobbers_var(dif_instr_t instr, dt_rkind_t *rkind)
 			return (0);
 
 		v = DIF_INSTR_VAR(instr);
-		if (rkind->r_var == v)
+		if (nkind->dtnk_var == v)
 			return (1);
 		break;
 
@@ -164,7 +163,7 @@ dt_clobbers_var(dif_instr_t instr, dt_rkind_t *rkind)
 			return (0);
 
 		v = DIF_INSTR_VAR(instr);
-		if (rkind->r_var == v)
+		if (nkind->dtnk_var == v)
 			return (1);
 		break;
 	}
@@ -372,15 +371,15 @@ dt_populate_varlist(dtrace_difo_t *difo)
 
 
 dt_stacklist_t *
-dt_get_stack(dt_list_t *bb_path, dt_relo_t *r)
+dt_get_stack(dt_list_t *bb_path, dt_ifg_node_t *n)
 {
 	dt_stacklist_t *sl;
 
 	sl = NULL;
 
-	for (sl = dt_list_next(&r->dr_stacklist); sl; sl = dt_list_next(sl)) {
+	for (sl = dt_list_next(&n->din_stacklist); sl; sl = dt_list_next(sl)) {
 		if (dt_list_equal(bb_path,
-			&sl->dsl_identifier, sizeof(dt_pathlist_t)))
+		    &sl->dsl_identifier, sizeof(dt_pathlist_t)))
 			break;
 	}
 
@@ -393,7 +392,7 @@ dt_get_stack(dt_list_t *bb_path, dt_relo_t *r)
 		dt_list_copy((dt_list_t *)&sl->dsl_identifier,
 		    bb_path, sizeof(dt_pathlist_t));
 
-		dt_list_append(&r->dr_stacklist, sl);
+		dt_list_append(&n->din_stacklist, sl);
 	}
 
 	return (sl);

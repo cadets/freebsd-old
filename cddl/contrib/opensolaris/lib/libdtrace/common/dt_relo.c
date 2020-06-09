@@ -1,8 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
- *
- * Copyright (c) 2020 Domagoj Stolfa.
- * All rights reserved.
+ * Copyright (c) 2020 Domagoj Stolfa
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -13,10 +10,10 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY NETAPP, INC ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL NETAPP, INC OR CONTRIBUTORS BE LIABLE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
  * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
@@ -24,6 +21,8 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
+ *
+ * $FreeBSD$
  */
 
 #include <dt_relo.h>
@@ -42,52 +41,51 @@
 #include <stddef.h>
 #include <stdlib.h>
 
-dt_rl_entry_t *
-dt_rle_alloc(dt_relo_t *relo)
+dt_ifg_list_t *
+dt_ifgl_alloc(dt_ifg_node_t *node)
 {
-	dt_rl_entry_t *rl;
+	dt_ifg_list_t *
+	ifgl = malloc(sizeof(dt_ifg_list_t));
+	if (ifgl == NULL)
+		errx(EXIT_FAILURE, "failed to malloc node entry");
 
-	rl = malloc(sizeof(dt_rl_entry_t));
-	if (rl == NULL)
-		errx(EXIT_FAILURE, "failed to malloc relo entry");
+	memset(ifgl, 0, sizeof(dt_ifg_list_t));
+	ifgl->dil_ifgnode = node;
 
-	memset(rl, 0, sizeof(dt_rl_entry_t));
-	rl->drl_rel = relo;
-
-	return (rl);
+	return (ifgl);
 }
 
-dt_relo_t *
-dt_relo_alloc(dtrace_difo_t *difo, uint_t idx)
+dt_ifg_node_t *
+dt_ifg_node_alloc(dtrace_difo_t *difo, uint_t idx)
 {
-	dt_relo_t *relo;
+	dt_ifg_node_t *node;
 
-	relo = malloc(sizeof(dt_relo_t));
-	if (relo == NULL)
-		errx(EXIT_FAILURE, "failed to malloc relo");
+	node = malloc(sizeof(dt_ifg_node_t));
+	if (node == NULL)
+		errx(EXIT_FAILURE, "failed to malloc node");
 
-	memset(relo, 0, sizeof(dt_relo_t));
+	memset(node, 0, sizeof(dt_ifg_node_t));
 
-	relo->dr_difo = difo;
-	relo->dr_uidx = idx;
+	node->din_difo = difo;
+	node->din_uidx = idx;
 
 	/*
 	 * Initialise the D type to -1 as 0 is defined as a CTF type.
 	 */
-	relo->dr_type = -1;
-	relo->dr_sym = NULL;
-	relo->dr_ctfid = CTF_ERR;
+	node->din_type = -1;
+	node->din_sym = NULL;
+	node->din_ctfid = CTF_ERR;
 
-	return (relo);
-	;}
+	return (node);
+}
 
 void
-dt_get_rkind(dif_instr_t instr, dt_rkind_t *rkind)
+dt_get_nkind(dif_instr_t instr, dt_node_kind_t *nkind)
 {
 	uint8_t opcode;
 
 	opcode = 0;
-	memset(rkind, 0, sizeof(dt_rkind_t));
+	memset(nkind, 0, sizeof(dt_node_kind_t));
 
 	opcode = DIF_INSTR_OP(instr);
 
@@ -144,50 +142,50 @@ dt_get_rkind(dif_instr_t instr, dt_rkind_t *rkind)
 	case DIF_OP_RLDUH:
 	case DIF_OP_RLDUW:
 	case DIF_OP_RLDX:
-		rkind->r_kind = DT_RKIND_REG;
-		rkind->r_rd = DIF_INSTR_RD(instr);
+		nkind->dtnk_kind = DT_NKIND_REG;
+		nkind->dtnk_rd = DIF_INSTR_RD(instr);
 		break;
 
 	case DIF_OP_STGS:
-		rkind->r_kind = DT_RKIND_VAR;
-		rkind->r_var = DIF_INSTR_VAR(instr);
-		rkind->r_scope = DIFV_SCOPE_GLOBAL;
-		rkind->r_varkind = DIFV_KIND_SCALAR;
+		nkind->dtnk_kind = DT_NKIND_VAR;
+		nkind->dtnk_var = DIF_INSTR_VAR(instr);
+		nkind->dtnk_scope = DIFV_SCOPE_GLOBAL;
+		nkind->dtnk_varkind = DIFV_KIND_SCALAR;
 		break;
 
 	case DIF_OP_STGAA:
-		rkind->r_kind = DT_RKIND_VAR;
-		rkind->r_var = DIF_INSTR_VAR(instr);
-		rkind->r_scope = DIFV_SCOPE_GLOBAL;
-		rkind->r_varkind = DIFV_KIND_ARRAY;
+		nkind->dtnk_kind = DT_NKIND_VAR;
+		nkind->dtnk_var = DIF_INSTR_VAR(instr);
+		nkind->dtnk_scope = DIFV_SCOPE_GLOBAL;
+		nkind->dtnk_varkind = DIFV_KIND_ARRAY;
 		break;
 
 	case DIF_OP_STTAA:
-		rkind->r_kind = DT_RKIND_VAR;
-		rkind->r_var = DIF_INSTR_VAR(instr);
-		rkind->r_scope = DIFV_SCOPE_THREAD;
-		rkind->r_varkind = DIFV_KIND_ARRAY;
+		nkind->dtnk_kind = DT_NKIND_VAR;
+		nkind->dtnk_var = DIF_INSTR_VAR(instr);
+		nkind->dtnk_scope = DIFV_SCOPE_THREAD;
+		nkind->dtnk_varkind = DIFV_KIND_ARRAY;
 		break;
 
 	case DIF_OP_STTS:
-		rkind->r_kind = DT_RKIND_VAR;
-		rkind->r_var = DIF_INSTR_VAR(instr);
-		rkind->r_scope = DIFV_SCOPE_THREAD;
-		rkind->r_varkind = DIFV_KIND_SCALAR;
+		nkind->dtnk_kind = DT_NKIND_VAR;
+		nkind->dtnk_var = DIF_INSTR_VAR(instr);
+		nkind->dtnk_scope = DIFV_SCOPE_THREAD;
+		nkind->dtnk_varkind = DIFV_KIND_SCALAR;
 		break;
 
 	case DIF_OP_STLS:
-		rkind->r_kind = DT_RKIND_VAR;
-		rkind->r_var = DIF_INSTR_VAR(instr);
-		rkind->r_scope = DIFV_SCOPE_LOCAL;
-		rkind->r_varkind = DIFV_KIND_SCALAR;
+		nkind->dtnk_kind = DT_NKIND_VAR;
+		nkind->dtnk_var = DIF_INSTR_VAR(instr);
+		nkind->dtnk_scope = DIFV_SCOPE_LOCAL;
+		nkind->dtnk_varkind = DIFV_KIND_SCALAR;
 		break;
 
 	case DIF_OP_PUSHTR:
 	case DIF_OP_PUSHTR_G:
 	case DIF_OP_PUSHTR_H:
 	case DIF_OP_PUSHTV:
-		rkind->r_kind = DT_RKIND_STACK;
+		nkind->dtnk_kind = DT_NKIND_STACK;
 
 	default:
 		break;

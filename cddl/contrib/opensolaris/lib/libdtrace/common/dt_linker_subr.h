@@ -1,8 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
- *
- * Copyright (c) 2020 Domagoj Stolfa.
- * All rights reserved.
+ * Copyright (c) 2020 Domagoj Stolfa
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -13,10 +10,10 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY NETAPP, INC ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL NETAPP, INC OR CONTRIBUTORS BE LIABLE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
  * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
@@ -24,6 +21,8 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
+ *
+ * $FreeBSD$
  */
 
 #ifndef _DT_LINKER_SUBR_H_
@@ -48,20 +47,20 @@ typedef struct dt_var_entry {
 } dt_var_entry_t;
 
 extern ctf_file_t *ctf_file;
-extern dt_list_t relo_list;
+extern dt_list_t node_list;
 extern dt_list_t bb_list;
-extern dt_rl_entry_t *relo_last;
+extern dt_ifg_list_t *node_last;
 extern dt_list_t var_list;
-extern dt_relo_t *r0relo;
+extern dt_ifg_node_t *r0node;
 
 int dt_clobbers_reg(dif_instr_t, uint8_t);
 int dt_var_is_builtin(uint16_t);
-int dt_clobbers_var(dif_instr_t, dt_rkind_t *);
+int dt_clobbers_var(dif_instr_t, dt_node_kind_t *);
 dtrace_difv_t *dt_get_variable(dtrace_difo_t *, uint16_t, int, int);
 dtrace_difv_t *dt_get_var_from_varlist(uint16_t, int, int);
 void dt_get_varinfo(dif_instr_t, uint16_t *, int *, int *);
 void dt_insert_var(dtrace_difo_t *, uint16_t, int, int);
 void dt_populate_varlist(dtrace_difo_t *);
-dt_stacklist_t *dt_get_stack(dt_list_t *, dt_relo_t *);
+dt_stacklist_t *dt_get_stack(dt_list_t *, dt_ifg_node_t *);
 
 #endif /* _DT_LINKER_SUBR_H_ */

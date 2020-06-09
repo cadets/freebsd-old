@@ -2205,7 +2205,6 @@ dt_node_pdesc_by_name(char *spec)
 	dnp->dn_spec = NULL;
 
 	strncpy(dt_target_ctx, dnp->dn_desc->dtpd_target, DTRACE_TARGETNAMELEN);
-
 	return (dnp);
 }
 
