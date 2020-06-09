@@ -31,7 +31,7 @@
 #include <sys/dtrace.h>
 
 #include <dtrace.h>
-#include <_dt_relo.h>
+#include <_dt_ifgnode.h>
 
 int dt_prog_infer_defns(dtrace_hdl_t *, dtrace_difo_t *);
 dt_ifg_node_t *dt_find_node_in_ifg(dt_ifg_node_t *, dt_ifg_node_t *);

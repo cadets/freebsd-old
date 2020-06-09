@@ -23,6 +23,7 @@ SRCS=		dt_aggregate.c \
 		dt_handle.c \
 		dt_ident.c \
 		dt_ifg.c \
+		dt_ifgnode.c \
 		dt_isadep.c \
 		dt_inttab.c \
 		dt_lex.l \
@@ -46,7 +47,6 @@ SRCS=		dt_aggregate.c \
 		dt_prog_link.c \
 		dt_provider.c \
 		dt_regset.c \
-		dt_relo.c \
 		dt_string.c \
 		dt_strtab.c \
 		dt_subr.c \

@@ -34,7 +34,7 @@
 #include <dt_impl.h>
 #include <dt_program.h>
 #include <dt_list.h>
-#include <dt_relo.h>
+#include <dt_ifgnode.h>
 #include <dt_basic_block.h>
 
 #include <stdio.h>

@@ -35,7 +35,7 @@
 #include <dt_program.h>
 #include <dtrace.h>
 
-#include <_dt_relo.h>
+#include <_dt_ifgnode.h>
 #include <_dt_basic_block.h>
 
 int dt_prog_apply_rel(dtrace_hdl_t *, dtrace_prog_t *);

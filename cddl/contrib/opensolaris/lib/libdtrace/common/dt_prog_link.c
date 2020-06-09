@@ -32,7 +32,7 @@
 #include <dt_program.h>
 #include <dtrace.h>
 
-#include <dt_relo.h>
+#include <dt_ifgnode.h>
 #include <dt_basic_block.h>
 #include <dt_ifg.h>
 #include <dt_cfg.h>

@@ -25,7 +25,7 @@
  * $FreeBSD$
  */
 
-#include <dt_relo.h>
+#include <dt_ifgnode.h>
 
 #include <sys/types.h>
 #include <sys/dtrace.h>

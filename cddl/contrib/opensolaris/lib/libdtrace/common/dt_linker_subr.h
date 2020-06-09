@@ -31,7 +31,7 @@
 #include <sys/types.h>
 #include <sys/dtrace.h>
 
-#include <_dt_relo.h>
+#include <_dt_ifgnode.h>
 #include <_dt_basic_block.h>
 
 #include <dt_list.h>

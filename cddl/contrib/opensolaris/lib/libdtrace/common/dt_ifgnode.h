@@ -28,7 +28,7 @@
 #ifndef _DT_RELO_H_
 #define _DT_RELO_H_
 
-#include <_dt_relo.h>
+#include <_dt_ifgnode.h>
 
 dt_ifg_list_t *dt_ifgl_alloc(dt_ifg_node_t *);
 dt_ifg_node_t *dt_ifg_node_alloc(dtrace_difo_t *, uint_t);
