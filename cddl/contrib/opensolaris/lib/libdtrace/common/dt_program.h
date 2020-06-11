@@ -47,6 +47,7 @@ struct dtrace_prog {
 	ulong_t **dp_xrefs;	/* array of translator reference bitmaps */
 	uint_t dp_xrefslen;	/* length of dp_xrefs array */
 	uint8_t dp_dofversion;	/* DOF version this program requires */
+	uint32_t dp_rflags;	/* resolver flags */
 };
 
 extern dtrace_prog_t *dt_program_create(dtrace_hdl_t *);

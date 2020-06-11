@@ -116,6 +116,7 @@
 #define	NOFILE		OPEN_MAX	/* max open files per process */
 #define	NOGROUP		65535		/* marker for empty group set member */
 #define MAXHOSTNAMELEN	256		/* max hostname size */
+#define	OSRELEASELEN	32		/* max OS release name */
 #define SPECNAMELEN	255		/* max length of devicename */
 
 /* More types and definitions used throughout the kernel. */

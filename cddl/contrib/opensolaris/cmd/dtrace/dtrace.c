@@ -35,6 +35,7 @@
 
 #include <dtrace.h>
 #include <dt_elf.h>
+#include <dt_resolver.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -99,6 +100,7 @@ static int g_impatient;
 static int g_newline;
 #ifdef __FreeBSD__
 static int g_siginfo;
+static uint32_t rslv = 0;
 #endif
 static int g_total;
 static int g_cflags;
@@ -677,6 +679,8 @@ exec_prog(const dtrace_cmd_t *dcp)
 	// Don't take any action based on unwanted mod/ref behaviour:
 	// checkmodref emits warnings and that's the end of it.
 	(void) dtrace_analyze_program_modref(dcp->dc_prog, checkmodref, stderr);
+
+	dcp->dc_prog->dp_rflags = rslv;
 
 	if (g_graphfile) {
 		FILE *graph_file = fopen(g_graphfile, "w");
@@ -1448,11 +1452,16 @@ main(int argc, char *argv[])
 	g_ofp = stdout;
 	int done = 0, mode = 0;
 	int err, i, c;
-	char *p, **v;
+	char *p, *p2, **v;
 	struct ps_prochandle *P;
 	pid_t pid;
+	size_t len1, len2;
 
+	p2 = NULL;
 	machine_filter = NULL;
+
+	rslv = 0;
+	len1 = len2 = 0;
 
 	g_pname = basename(argv[0]);
 
@@ -1808,6 +1817,32 @@ main(int argc, char *argv[])
 				if ((p = strchr(optarg, '=')) != NULL)
 					*p++ = '\0';
 
+				len1 = strlen(optarg);
+				len2 = strlen("resolvers");
+
+				/*
+				 * If the option is of form
+				 * "resolvers=hostname,version"
+				 * we get the two arguments, set the global
+				 * variable to have the appropriate flags and
+				 * break out of the switch statement.
+				 */
+				if (len1 == len2 &&
+				    strncmp(optarg, "resolvers", len1) == 0) {
+					if ((p2 = strchr(p, ',')) != NULL)
+						*p2++ = '\0';
+
+					if (strcmp(p, "hostname") == 0 ||
+					    (p2 && strcmp(p2, "hostname") == 0))
+						rslv |= (1 << DT_RSLV_HOSTNAME);
+
+					if (strcmp(p, "version") == 0 ||
+					    (p2 && strcmp(p2, "version") == 0))
+						rslv |= (1 << DT_RSLV_VERSION);
+
+					break;
+				}
+
 				if (dtrace_setopt(g_dtp, optarg, p) != 0)
 					dfatal("failed to set -x %s", optarg);
 				break;
@@ -1930,6 +1965,7 @@ main(int argc, char *argv[])
 	case DMODE_EXEC:
 		if (g_ofile != NULL && (g_ofp = fopen(g_ofile, "a")) == NULL)
 			fatal("failed to open output file '%s'", g_ofile);
+
 
 		for (i = 0; i < g_cmdc; i++)
 			exec_prog(&g_cmdv[i]);

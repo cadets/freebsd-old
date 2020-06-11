@@ -33,9 +33,9 @@
 
 #include <_dt_basic_block.h>
 
-dt_basic_block_t *dt_alloc_bb(dtrace_difo_t *);
-dt_bb_entry_t *dt_alloc_bb_e(dtrace_difo_t *);
-void dt_compute_bb(dtrace_difo_t *);
+extern dt_basic_block_t *dt_alloc_bb(dtrace_difo_t *);
+extern dt_bb_entry_t *dt_alloc_bb_e(dtrace_difo_t *);
+extern void dt_compute_bb(dtrace_difo_t *);
 
 
 #endif /* _DT_BASIC_BLOCK_H_ */

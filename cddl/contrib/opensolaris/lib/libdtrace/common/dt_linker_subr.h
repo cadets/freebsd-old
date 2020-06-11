@@ -53,14 +53,14 @@ extern dt_ifg_list_t *node_last;
 extern dt_list_t var_list;
 extern dt_ifg_node_t *r0node;
 
-int dt_clobbers_reg(dif_instr_t, uint8_t);
-int dt_var_is_builtin(uint16_t);
-int dt_clobbers_var(dif_instr_t, dt_node_kind_t *);
-dtrace_difv_t *dt_get_variable(dtrace_difo_t *, uint16_t, int, int);
-dtrace_difv_t *dt_get_var_from_varlist(uint16_t, int, int);
-void dt_get_varinfo(dif_instr_t, uint16_t *, int *, int *);
-void dt_insert_var(dtrace_difo_t *, uint16_t, int, int);
-void dt_populate_varlist(dtrace_difo_t *);
-dt_stacklist_t *dt_get_stack(dt_list_t *, dt_ifg_node_t *);
+extern int dt_clobbers_reg(dif_instr_t, uint8_t);
+extern int dt_var_is_builtin(uint16_t);
+extern int dt_clobbers_var(dif_instr_t, dt_node_kind_t *);
+extern dtrace_difv_t *dt_get_variable(dtrace_difo_t *, uint16_t, int, int);
+extern dtrace_difv_t *dt_get_var_from_varlist(uint16_t, int, int);
+extern void dt_get_varinfo(dif_instr_t, uint16_t *, int *, int *);
+extern void dt_insert_var(dtrace_difo_t *, uint16_t, int, int);
+extern void dt_populate_varlist(dtrace_difo_t *);
+extern dt_stacklist_t *dt_get_stack(dt_list_t *, dt_ifg_node_t *);
 
 #endif /* _DT_LINKER_SUBR_H_ */

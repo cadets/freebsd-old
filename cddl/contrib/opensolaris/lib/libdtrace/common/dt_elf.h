@@ -148,11 +148,14 @@ typedef struct dt_elf_stmt {
  *
  * dtep_first_stmt: A reference to an ELF section containing the first stmt.
  * dtep_dofversion: The DOF version required for this DTrace program.
+ * dtep_options:    A reference to an ELF section containing options.
+ * dtep_rflags:     Resolver flags.
  */
 typedef struct dt_elf_prog {
 	dt_elf_ref_t dtep_first_stmt;
 	uint8_t dtep_dofversion;
 	dt_elf_ref_t dtep_options;
+	uint32_t dtep_rflags;
 } dt_elf_prog_t;
 
 /*

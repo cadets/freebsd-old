@@ -30,6 +30,6 @@
 
 #include <sys/dtrace.h>
 
-void dt_compute_cfg(dtrace_difo_t *);
+extern void dt_compute_cfg(dtrace_difo_t *);
 
 #endif /* _DT_CFG_H_ */

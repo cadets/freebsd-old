@@ -28,6 +28,7 @@
 #include <dt_elf.h>
 #include <dt_program.h>
 #include <dt_impl.h>
+#include <dt_resolver.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -83,6 +84,7 @@ typedef struct dt_elf_state {
 	char *s_idname_table;
 	size_t s_idname_size;
 	size_t s_idname_offset;
+	uint32_t s_rflags;
 } dt_elf_state_t;
 
 char sec_strtab[] =
@@ -114,7 +116,6 @@ char sec_strtab[] =
 #define DTELF_BASESIZE		  0
 
 static dt_elf_state_t *dtelf_state;
-
 
 dt_elf_opt_t dtelf_ctopts[] = {
 	{ "aggpercpu", 0, NULL, DTRACE_A_PERCPU },
@@ -936,16 +937,7 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 	/*
 	 * If this action is an aggregation, we save the aggregation ID
 	 * and name.
-	 *
-	 * NOTE(dstolfa): Making a note here even though not really relevant here.
-	 *
-	 * dt_open calls a sysctl kern.bootfile to find out what the booted kernel
-	 * is. We will abuse the fact that after a make installkernel, this kernel
-	 * actually changes. We will then open that file on shutdown and re-link our
-	 * script, which should, if all goes well, result in a newly linked script
-	 * that runs with the correct type information.
 	 */
-
 	if (pstmt != NULL)
 		pstmt->dtes_next = elf_ndxscn(scn);
 
@@ -1442,6 +1434,7 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	 */
 	prog.dtep_first_stmt = elf_ndxscn(f_scn);
 	prog.dtep_dofversion = dt_prog->dp_dofversion;
+	prog.dtep_rflags = dt_prog->dp_rflags;
 
 	/*
 	 * Iterate over the other statements and create ELF sections with them.
@@ -1724,10 +1717,23 @@ dt_elf_get_eaid(Elf *e, dt_elf_ref_t aidref)
 }
 
 static void
+dt_elf_free_ecb(dtrace_ecbdesc_t *ecb)
+{
+	if (ecb == NULL)
+		return;
+
+	if (ecb->dted_pred.dtpdd_difo != NULL)
+		free(ecb->dted_pred.dtpdd_difo);
+
+	free(ecb);
+}
+
+static void
 dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog, dt_elf_stmt_t *estmt)
 {
 	dtrace_stmtdesc_t *stmt;
 	dt_stmt_t *stp;
+	const char *target;
 
 	assert(estmt != NULL);
 
@@ -1738,6 +1744,19 @@ dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog, dt_elf_stmt_t *estmt)
 	memset(stmt, 0, sizeof(dtrace_stmtdesc_t));
 
 	stmt->dtsd_ecbdesc = dt_elf_get_ecbdesc(e, estmt->dtes_ecbdesc);
+
+	/*
+	 * Get the target name and check if we match it.
+	 *
+	 * FIXME: This is not all that needs to be done, there actions still seem to
+	 *        get created, which means that ECBs seem to get created somehow.
+	 */
+	target = stmt->dtsd_ecbdesc->dted_probe.dtpd_target;
+	if (dt_resolve(target, dtelf_state->s_rflags) != 0) {
+		dt_elf_free_ecb(stmt->dtsd_ecbdesc);
+		return;
+	}
+
 	dt_elf_add_acts(stmt, estmt->dtes_action, estmt->dtes_action_last);
 	stmt->dtsd_descattr = estmt->dtes_descattr.dtea_attr;
 	stmt->dtsd_stmtattr = estmt->dtes_stmtattr.dtea_attr;
@@ -1983,6 +2002,8 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd)
 	assert(data->d_buf != NULL);
 	eprog = data->d_buf;
 
+	dtelf_state->s_rflags = eprog->dtep_rflags;
+
 	prog = malloc(sizeof(dtrace_prog_t));
 	if (prog == NULL)
 		errx(EXIT_FAILURE, "failed to malloc prog");
@@ -1996,7 +2017,6 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd)
 
 	free(dtelf_state);
 	(void) elf_end(e);
-
 	return (prog);
 }
 
