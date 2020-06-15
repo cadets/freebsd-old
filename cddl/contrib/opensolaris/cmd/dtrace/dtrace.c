@@ -100,7 +100,7 @@ static int g_impatient;
 static int g_newline;
 #ifdef __FreeBSD__
 static int g_siginfo;
-static uint32_t rslv = 0;
+static uint32_t rslv;
 #endif
 static int g_total;
 static int g_cflags;
@@ -1460,7 +1460,7 @@ main(int argc, char *argv[])
 	p2 = NULL;
 	machine_filter = NULL;
 
-	rslv = 0;
+	rslv = (1 << DT_RSLV_HOSTNAME) | (1 << DT_RSLV_VERSION);
 	len1 = len2 = 0;
 
 	g_pname = basename(argv[0]);
@@ -1832,13 +1832,15 @@ main(int argc, char *argv[])
 					if ((p2 = strchr(p, ',')) != NULL)
 						*p2++ = '\0';
 
-					if (strcmp(p, "hostname") == 0 ||
-					    (p2 && strcmp(p2, "hostname") == 0))
-						rslv |= (1 << DT_RSLV_HOSTNAME);
+					if (strcmp(p, "hostname") != 0      &&
+					    ((p2 && strcmp(p2, "hostname")) ||
+					    p2 == NULL))
+						rslv &= ~(1 << DT_RSLV_HOSTNAME);
 
-					if (strcmp(p, "version") == 0 ||
-					    (p2 && strcmp(p2, "version") == 0))
-						rslv |= (1 << DT_RSLV_VERSION);
+					if (strcmp(p, "version") != 0      &&
+					    ((p2 && strcmp(p2, "version")) ||
+					    p2 == NULL))
+						rslv &= ~(1 << DT_RSLV_VERSION);
 
 					break;
 				}
