@@ -136,7 +136,6 @@ MALLOC_DECLARE(M_PRISON);
 #include <sys/osd.h>
 
 #define	HOSTUUIDLEN	64
-#define	OSRELEASELEN	32
 
 struct racct;
 struct prison_racct;

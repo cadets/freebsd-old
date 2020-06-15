@@ -38,6 +38,8 @@
 
 #include <unistd.h>
 #include <assert.h>
+#include <string.h>
+
 #include <dt_list.h>
 
 void
@@ -120,8 +122,7 @@ dt_list_copy(dt_list_t *dst, dt_list_t *src, size_t entry_size)
 
 	for (e = dt_list_next(src); e; e = dt_list_next(e)) {
 		new = malloc(entry_size);
-		if (new == NULL)
-			errx(EXIT_FAILURE, "failed to malloc new");
+		assert(new != NULL);
 
 		memset(new, 0, sizeof(dt_list_t));
 		/*
@@ -158,14 +159,14 @@ dt_list_equal(dt_list_t *fst, dt_list_t *snd, size_t entry_size)
 	return (!empty);
 }
 
-int
+void *
 dt_in_list(dt_list_t *lst, void *find, size_t size)
 {
 	void *e;
 
 	for (e = dt_list_next(lst); e; e = dt_list_next(e))
 		if (memcmp((char *)e + sizeof(dt_list_t), find, size) == 0)
-			return (1);
+			return (e);
 
-	return (0);
+	return (NULL);
 }

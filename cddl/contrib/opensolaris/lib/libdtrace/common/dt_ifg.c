@@ -351,7 +351,7 @@ dt_update_nodes_bb_var(dtrace_difo_t *difo, dt_basic_block_t *bb,
 			assert(v == 1);
 			curnode_e = dt_ifgl_alloc(curnode);
 			if (dt_in_list(&n->din_vardefs,
-			    (void *)&curnode, sizeof(dt_ifg_node_t *)) == 0)
+			    (void *)&curnode, sizeof(dt_ifg_node_t *)) == NULL)
 				dt_list_append(&n->din_vardefs, curnode_e);
 		}
 
@@ -453,7 +453,7 @@ dt_update_nodes_bb_stack(dt_list_t *bb_path, dtrace_difo_t *difo,
 				errx(EXIT_FAILURE, "curstack should not be NULL");
 
 			if (dt_in_list(&curstack->dsl_stack,
-			    (void *)&curnode, sizeof(dt_ifg_node_t *)) == 0)
+			    (void *)&curnode, sizeof(dt_ifg_node_t *)) == NULL)
 				dt_list_append(&curstack->dsl_stack, s_entry);
 		}
 	}
@@ -502,14 +502,14 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 		if (r1 == 1) {
 			curnode_e = dt_ifgl_alloc(r0node);
 			if (dt_in_list(&curnode->din_r1defs,
-			    (void *)&r0node, sizeof(dt_ifg_node_t *)) == 0)
+			    (void *)&r0node, sizeof(dt_ifg_node_t *)) == NULL)
 				dt_list_append(&curnode->din_r1defs, curnode_e);
 		}
 
 		if (r2 == 1) {
 			curnode_e = dt_ifgl_alloc(r0node);
 			if (dt_in_list(&curnode->din_r2defs,
-			    (void *)&r0node, sizeof(dt_ifg_node_t *)) == 0)
+			    (void *)&r0node, sizeof(dt_ifg_node_t *)) == NULL)
 				dt_list_append(&curnode->din_r2defs, curnode_e);
 		}
 	}
@@ -547,7 +547,7 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 			if (r1 == 1 && seen_typecast == 0) {
 				curnode_e = dt_ifgl_alloc(curnode);
 				if (dt_in_list(&n->din_r1defs,
-				    (void *)&curnode, sizeof(dt_ifg_node_t *)) == 0)
+				    (void *)&curnode, sizeof(dt_ifg_node_t *)) == NULL)
 					dt_list_append(&n->din_r1defs, curnode_e);
 
 
@@ -556,14 +556,14 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 			if (r2 == 1 && seen_typecast == 0) {
 				curnode_e = dt_ifgl_alloc(curnode);
 				if (dt_in_list(&n->din_r2defs,
-				    (void *)&curnode, sizeof(dt_ifg_node_t *)) == 0)
+				    (void *)&curnode, sizeof(dt_ifg_node_t *)) == NULL)
 					dt_list_append(&n->din_r2defs, curnode_e);
 			}
 
 			if (r1 == 1 && curop != DIF_OP_TYPECAST) {
 				curnode_e = dt_ifgl_alloc(curnode);
 				if (dt_in_list(&n->din_r1datadefs,
-				    (void *)&curnode, sizeof(dt_ifg_node_t *)) == 0)
+				    (void *)&curnode, sizeof(dt_ifg_node_t *)) == NULL)
 					dt_list_append(&n->din_r1datadefs,
 					    curnode_e);
 			}
@@ -571,7 +571,7 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 			if (r2 == 1 && curop != DIF_OP_TYPECAST) {
 				curnode_e = dt_ifgl_alloc(curnode);
 				if (dt_in_list(&n->din_r2datadefs,
-				    (void *)&curnode, sizeof(dt_ifg_node_t *)) == 0)
+				    (void *)&curnode, sizeof(dt_ifg_node_t *)) == NULL)
 					dt_list_append(&n->din_r2datadefs,
 					    curnode_e);
 			}

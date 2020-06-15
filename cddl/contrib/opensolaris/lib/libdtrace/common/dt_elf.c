@@ -557,7 +557,7 @@ dt_elf_new_difo(Elf *e, dtrace_difo_t *difo)
  * This subroutine is always called with a valid actdesc.
  */
 static Elf_Scn *
-dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad)
+dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad, dt_elf_ref_t sscn)
 {
 	Elf_Scn *scn;
 	Elf32_Shdr *shdr;
@@ -600,7 +600,7 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad)
 	eact->dtea_kind = ad->dtad_kind;
 	eact->dtea_ntuple = ad->dtad_ntuple;
 	eact->dtea_arg = ad->dtad_arg;
-	eact->dtea_uarg = ad->dtad_uarg;
+	eact->dtea_uarg = sscn;
 
 	data->d_align = 8;
 	data->d_buf = eact;
@@ -641,7 +641,7 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad)
 }
 
 static void
-dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt)
+dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_ref_t sscn)
 {
 	Elf_Scn *scn;
 	Elf32_Shdr *shdr;
@@ -667,7 +667,7 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt)
 	for (ad = stmt->dtsd_action;
 	    ad != stmt->dtsd_action_last->dtad_next && ad != NULL;
 	    ad = ad->dtad_next) {
-		scn = dt_elf_new_action(e, ad);
+		scn = dt_elf_new_action(e, ad, sscn);
 
 		if (dtelf_state->s_eadprev != NULL)
 			dtelf_state->s_eadprev->dtea_next = elf_ndxscn(scn);
@@ -874,7 +874,7 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		     scn, elf_errmsg(-1));
 
-	dt_elf_create_actions(e, stmt);
+	dt_elf_create_actions(e, stmt, elf_ndxscn(scn));
 
 	estmt->dtes_ecbdesc = elf_ndxscn(dt_elf_new_ecbdesc(e, stmt));
 
@@ -1608,6 +1608,27 @@ dt_elf_get_difo(Elf *e, dt_elf_ref_t diforef)
 	return (difo);
 }
 
+static const char *
+dt_elf_get_target(Elf *e, dt_elf_ref_t ecbref)
+{
+	Elf_Scn *scn;
+	Elf_Data *data;
+	dt_elf_ecbdesc_t *eecb = NULL;
+
+	if ((scn = elf_getscn(e, ecbref)) == NULL)
+		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
+		    elf_errmsg(-1));
+
+	if ((data = elf_getdata(scn, NULL)) == NULL)
+		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
+
+	assert(data->d_buf != NULL);
+	eecb = data->d_buf;
+	return ((const char *)eecb->dtee_probe.dtep_pdesc.dtpd_target);
+}
+
+
 static dtrace_ecbdesc_t *
 dt_elf_get_ecbdesc(Elf *e, dt_elf_ref_t ecbref)
 {
@@ -1728,12 +1749,41 @@ dt_elf_free_ecb(dtrace_ecbdesc_t *ecb)
 	free(ecb);
 }
 
+static dt_elf_eact_list_t *
+dt_elf_in_actlist(dtrace_actdesc_t *find)
+{
+	dt_elf_eact_list_t *e;
+
+	e = NULL;
+	
+	for (e = dt_list_next(&dtelf_state->s_actions);
+	    e; e = dt_list_next(e))
+		if (e->act == find)
+			return (e);
+
+	return (NULL);
+}
+
+
 static void
-dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog, dt_elf_stmt_t *estmt)
+dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog,
+    dt_elf_stmt_t *estmt, dt_elf_ref_t sscn)
 {
 	dtrace_stmtdesc_t *stmt;
 	dt_stmt_t *stp;
+	dtrace_actdesc_t *ap, *nextap, *prevap;
+	dt_elf_eact_list_t *el, *rm_el;
 	const char *target;
+
+
+	stmt = NULL;
+	stp = NULL;
+	ap = NULL;
+	nextap = NULL;
+	prevap = NULL;
+	el = NULL;
+	rm_el = NULL;
+	target = NULL;
 
 	assert(estmt != NULL);
 
@@ -1747,13 +1797,72 @@ dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog, dt_elf_stmt_t *estmt)
 
 	/*
 	 * Get the target name and check if we match it.
-	 *
-	 * FIXME: This is not all that needs to be done, there actions still seem to
-	 *        get created, which means that ECBs seem to get created somehow.
 	 */
 	target = stmt->dtsd_ecbdesc->dted_probe.dtpd_target;
 	if (dt_resolve(target, dtelf_state->s_rflags) != 0) {
+		/*
+		 * We won't be needing the ECB nor the statement.
+		 */
 		dt_elf_free_ecb(stmt->dtsd_ecbdesc);
+		free(stmt);
+
+		/*
+		 * Go through the action list to find actions which have
+		 * this statement as their "dtad_uarg" in order to properly
+		 * free them and remove them from the action list. This
+		 * ensures that we don't end up in a situation where the action
+		 * is packed into the DOF later on as a stray action, not really
+		 * belonging to any statement, as DOF generates an "actions"
+		 * section with all the actions. If actions that do not belong
+		 * to this target machine are left in the action list (i.e.
+		 * they have an action in a statement where one of the next
+		 * pointers is that action), they will get put into DOF.
+		 */
+		for (el = dt_list_next(&dtelf_state->s_actions);
+		    el != NULL; el = dt_list_next(el)) {
+			ap = el->act;
+
+			if (ap->dtad_uarg == sscn) {
+				/*
+				 * While we have 'sscn' as the uarg in the
+				 * current action, we will keep removing them
+				 * from the list and freeing them, as they are
+				 * not meant for this target machine.
+				 */
+				while (ap && ap->dtad_uarg == sscn) {
+					nextap = ap->dtad_next;
+
+					rm_el = dt_elf_in_actlist(ap);
+					assert(rm_el != NULL);
+
+					dt_list_delete(&dtelf_state->s_actions, rm_el);
+					free(ap);
+					free(rm_el);
+
+					ap = nextap;
+				}
+
+				/*
+				 * If this is not the first action, we simply
+				 * set the previous action's next pointer (the
+				 * one that actually belongs to this target) to
+				 * the current action (even if NULL).
+				 */
+				if (prevap != NULL)
+					prevap->dtad_next = ap;
+
+				/*
+				 * Under the assumption that the actions were
+				 * parsed correctly, (ap == NULL) ==> empty list
+				 * so we simply exit out, we don't need to check
+				 * anything further.
+				 */
+				if (ap == NULL)
+					return;
+			}
+
+			prevap = ap;
+		}
 		return;
 	}
 
@@ -1866,7 +1975,7 @@ dt_elf_get_stmts(Elf *e, dtrace_prog_t *prog, dt_elf_ref_t first_stmt_scn)
 		if (first_stmt_scn == scnref)
 			dt_elf_alloc_actions(e, estmt);
 
-		dt_elf_add_stmt(e, prog, estmt);
+		dt_elf_add_stmt(e, prog, estmt, scnref);
 	}
 }
 
