@@ -1821,6 +1821,8 @@ dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog,
 		for (el = dt_list_next(&dtelf_state->s_actions);
 		    el != NULL; el = dt_list_next(el)) {
 			ap = el->act;
+			if (ap == NULL)
+				continue;
 
 			if (ap->dtad_uarg == sscn) {
 				/*
@@ -1835,9 +1837,8 @@ dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog,
 					rm_el = dt_elf_in_actlist(ap);
 					assert(rm_el != NULL);
 
-					dt_list_delete(&dtelf_state->s_actions, rm_el);
+					rm_el->act = NULL;
 					free(ap);
-					free(rm_el);
 
 					ap = nextap;
 				}
