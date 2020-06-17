@@ -671,19 +671,19 @@ dt_update_ifg(dtrace_difo_t *difo,
 
 	dt_update_nodes(_difo, difo->dtdo_bb, nkind, curnode);
 
-	printf("----------------------------------------------\n");
+	DPRINTF("----------------------------------------------\n");
 	for (ifgl = dt_list_next(&node_list);
 	     ifgl != NULL; ifgl = dt_list_next(ifgl)) {
 		n = ifgl->dil_ifgnode;
 
 		for (r1l = dt_list_next(&n->din_r1defs); r1l; r1l = dt_list_next(r1l)) {
 			n1 = r1l->dil_ifgnode;
-			printf("DEFN: %zu ==> %zu\n", n->din_uidx, n1->din_uidx);
+			DPRINTF("DEFN: %zu ==> %zu\n", n->din_uidx, n1->din_uidx);
 		}
 
 		for (r1l = dt_list_next(&n->din_r2defs); r1l; r1l = dt_list_next(r1l)) {
 			n1 = r1l->dil_ifgnode;
-			printf("DEFN: %zu ==> %zu\n", n->din_uidx, n1->din_uidx);
+			DPRINTF("DEFN: %zu ==> %zu\n", n->din_uidx, n1->din_uidx);
 		}
 
 		for (r1l = dt_list_next(&n->din_vardefs); r1l; r1l = dt_list_next(r1l)) {
@@ -693,32 +693,32 @@ dt_update_ifg(dtrace_difo_t *difo,
 				errx(EXIT_FAILURE, "nkind of n1 is wrong: %d",
 				    __nkind->dtnk_kind);
 
-			printf("VAR: (%s, %s)\n",
+			DPRINTF("VAR: (%s, %s)\n",
 			    __nkind->dtnk_scope == DIFV_SCOPE_GLOBAL ?
 			    "global" : __nkind->dtnk_scope == DIFV_SCOPE_THREAD
 			    ? "thread" : "local",
 			    __nkind->dtnk_varkind == DIFV_KIND_SCALAR ? "scalar" : "array");
-			printf("\tDEFN: %zu ==> %zu\n", n->din_uidx, n1->din_uidx);
+			DPRINTF("\tDEFN: %zu ==> %zu\n", n->din_uidx, n1->din_uidx);
 		}
 
 		for (sl = dt_list_next(&n->din_stacklist); sl; sl = dt_list_next(sl)) {
 			stack = &sl->dsl_stack;
-			printf("Stack identified by: ");
+			DPRINTF("Stack identified by: ");
 			for (il = dt_list_next(&sl->dsl_identifier); il; il = dt_list_next(il)) {
 				if (dt_list_next(il) != NULL)
-					printf("%zu--", il->dtpl_bb->dtbb_idx);
+					DPRINTF("%zu--", il->dtpl_bb->dtbb_idx);
 				else
-					printf("%zu\n", il->dtpl_bb->dtbb_idx);
+					DPRINTF("%zu\n", il->dtpl_bb->dtbb_idx);
 			}
 
 			for (se = dt_list_next(stack); se; se = dt_list_next(se)) {
 				n1 = se->ds_ifgnode;
-				printf("\tDEFN: %zu ==> %zu\n", n->din_uidx, n1->din_uidx);
+				DPRINTF("\tDEFN: %zu ==> %zu\n", n->din_uidx, n1->din_uidx);
 			}
 		}
 
 	}
-	printf("----------------------------------------------\n");
+	DPRINTF("----------------------------------------------\n");
 }
 
 /*

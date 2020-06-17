@@ -78,6 +78,12 @@ extern char	rw_str[MAXPATHLEN];
 extern char	sx_str[MAXPATHLEN];
 #endif
 
+#ifdef _DTRACE_DEBUG
+#define DPRINTF(...) printf(__VA_ARGS__)
+#else
+#define DPRINTF(...)
+#endif
+
 #define	DTRACE_O_NODEV		0x01	/* do not open dtrace(7D) device */
 #define	DTRACE_O_NOSYS		0x02	/* do not load /system/object modules */
 #define	DTRACE_O_LP64		0x04	/* force D compiler to be LP64 */

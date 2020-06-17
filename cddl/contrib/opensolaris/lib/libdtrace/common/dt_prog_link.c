@@ -333,7 +333,7 @@ dt_update_usetx_bb(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_ifg_node_t *n)
 			nifgl->dil_ifgnode = n;
 			if (dt_in_list(&node->din_usetxs,
 			    (void *)&n, sizeof(dt_ifg_node_t *)) == NULL) {
-				printf("usetx %zu ==> %zu\n", n->din_uidx, node->din_uidx);
+				DPRINTF("usetx %zu ==> %zu\n", n->din_uidx, node->din_uidx);
 				dt_list_append(&node->din_usetxs, nifgl);
 			}
 		}
