@@ -1682,19 +1682,22 @@ dt_elf_add_acts(dtrace_stmtdesc_t *stmt, dt_elf_ref_t fst, dt_elf_ref_t last)
 {
 	dt_elf_eact_list_t *el = NULL;
 	dtrace_actdesc_t *act = NULL;
-	dtrace_actdesc_t *p = NULL;
 
 	assert(stmt != NULL);
 
 	for (el = dt_list_next(&dtelf_state->s_actions);
 	    el != NULL; el = dt_list_next(el)) {
+		act = el->act;
+
 		if (el->eact_ndx == fst)
-			stmt->dtsd_action = el->act;
+			stmt->dtsd_action = act;
 
 		if (el->eact_ndx == last) {
-			stmt->dtsd_action_last = el->act;
+			stmt->dtsd_action_last = act;
 			break;
 		}
+
+		act->dtad_uarg = (uintptr_t)stmt;
 	}
 
 	assert(el != NULL);
