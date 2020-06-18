@@ -93,7 +93,6 @@ struct vtdtr_queue {
 
 static struct vtdtr_qentry *vtdtr_construct_entry(struct vtdtr_event *);
 static int vtdtr_subscribed(struct vtdtr_queue *, struct vtdtr_event *);
-static int vtdtr_read(struct cdev *, struct uio *, int);
 static int vtdtr_ioctl(struct cdev *, u_long, caddr_t, int, struct thread *);
 static int vtdtr_open(struct cdev *, int, int, struct thread *);
 static int vtdtr_close(struct cdev *, int, int, struct thread *);
@@ -108,18 +107,19 @@ static RB_HEAD(vtdtr_qtree, vtdtr_queue) vtdtr_queue_tree =
     RB_INITIALIZER(&vtdtr_queue_tree);
 RB_GENERATE_STATIC(vtdtr_qtree, vtdtr_queue, qnode, qtreecmp);
 
-static struct cdev *vtdtr_dev;
-static d_ioctl_t    vtdtr_ioctl;
-static d_read_t     vtdtr_read;
+static struct cdev	*vtdtr_dev;
+static d_ioctl_t	vtdtr_ioctl;
+static d_read_t		vtdtr_read;
+static d_write_t	vtdtr_write;
 
 static struct cdevsw vtdtr_cdevsw = {
-	.d_version = D_VERSION,
-	.d_read    = vtdtr_read,
-	.d_write   = NULL,
-	.d_ioctl   = vtdtr_ioctl,
-	.d_open    = vtdtr_open,
-	.d_close   = vtdtr_close,
-	.d_name    = "vtdtr"
+	.d_version	= D_VERSION,
+	.d_read		= vtdtr_read,
+	.d_write	= vtdtr_write,
+	.d_ioctl	= vtdtr_ioctl,
+	.d_open		= vtdtr_open,
+	.d_close	= vtdtr_close,
+	.d_name		= "vtdtr"
 };
 
 /*
@@ -340,6 +340,40 @@ vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags)
 }
 
 static int
+vtdtr_write(struct cdev *dev __unused, struct uio *uio, int flags)
+{
+	struct vtdtr_event e;
+	int rv;
+
+	memset(&e, 0, sizeof(struct vtdtr_event));
+	rv = 0;
+
+	/*
+	 * If there is nothing to copy in, there is no work to do.
+	 */
+	if (uio->uio_resid == 0)
+		return (0);
+
+	/*
+	 * We only support write(2) for vtdtr_events.
+	 */
+	if (uio->uio_resid != sizeof(struct vtdtr_event))
+		return (EINVAL);
+
+	if ((rv = uiomove(&e, sizeof(struct vtdtr_event), uio)) != 0)
+		return (rv);
+
+	/*
+	 * The only event that userspace can enqueue is an ELF event.
+	 */
+	if (e.type != VTDTR_EV_ELF)
+		return (EINVAL);
+
+	vtdtr_enqueue(&e);
+	return (0);
+}
+
+static int
 vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
     int flags __unused, struct thread *td)
 {
@@ -520,6 +554,11 @@ vtdtr_close(struct cdev *dev __unused, int foo, int bar, struct thread *td)
 static int
 vtdtr_modevent(module_t mod __unused, int type, void *data __unused)
 {
+	struct vtdtr_queue *q, *next;
+
+	q = NULL;
+	next = NULL;
+
 	switch(type) {
 	case MOD_LOAD:
 		if (bootverbose)
@@ -530,8 +569,59 @@ vtdtr_modevent(module_t mod __unused, int type, void *data __unused)
 		break;
 	case MOD_UNLOAD:
 		/*
-		 * FIXME: We ought to clean up the queues here.
+		 * Go over all the queues to clean up the events enqueued in
+		 * them and free the queues themselves.
 		 */
+		mtx_lock(&qtree_mtx);
+		for (q = RB_MIN(vtdtr_qtree, &vtdtr_queue_tree);
+		    q != NULL; q = next) {
+			/*
+			 * Get the next entry in the queue and remove the
+			 * current one.
+			 */
+			next = RB_NEXT(vtdtr_qtree, &vtdtr_queue_tree, q);
+			RB_REMOVE(vtdtr_qtree, &vtdtr_queue_tree, q);
+
+			/*
+			 * Free up every event in the event queue for the
+			 * current process queue.
+			 */
+			mtx_lock(&q->mtx);
+			vtdtr_flush(q);
+
+			/*
+			 * Destroy the queue condvar
+			 */
+			mtx_lock(&q->cvmtx);
+			cv_destroy(&q->cv);
+			mtx_unlock(&q->cvmtx);
+
+			/*
+			 * Destroy the queue condvar's mutex
+			 */
+			mtx_destroy(&q->cvmtx);
+
+			/*
+			 * Destroy the reconfiguration condvar
+			 */
+			mtx_lock(&q->rc_cvmtx);
+			cv_destroy(&q->rc_cv);
+			mtx_unlock(&q->rc_cvmtx);
+
+			/*
+			 * Destroy the roconfiguration condvar's mutex
+			 */
+			mtx_destroy(&q->rc_cvmtx);
+
+			/*
+			 * Destroy the queue mutex.
+			 */
+			mtx_unlock(&q->mtx);
+			mtx_destroy(&q->mtx);
+			free(q, M_DEVBUF);
+		}
+		mtx_unlock(&qtree_mtx);
+
 		mtx_destroy(&qtree_mtx);
 		destroy_dev(vtdtr_dev);
 		break;

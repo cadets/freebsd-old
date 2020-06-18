@@ -59,91 +59,65 @@ __FBSDID("$FreeBSD$");
 #include "pci_emul.h"
 #include "virtio.h"
 
-#define	VTDTR_RINGSZ 512
-#define	VTDTR_MAXQ     2
+#define	VTDTR_RINGSZ	512
+#define	VTDTR_MAXQ	2
 
-/*
- * As already documented in virtio_dtrace.h, probe installation/uninstallation
- * events are only meant to be sent to the guest presently. They have no effect
- * on the host.
- *
- * Provider registration and de-registration, as well as probe
- * creation/destruction is presently on meant to be executed on the host in
- * order to advertise DTrace probes from the guest.
- *
- * READY and EOF are used for synchronization purposes, while CLEANUP is meant
- * to be sent to the guest in order to clean up the TX virtqueue.
- */
-#define	VTDTR_DEVICE_READY           0x00
-#define	VTDTR_DEVICE_REGISTER        0x01
-#define	VTDTR_DEVICE_UNREGISTER      0x02
-#define	VTDTR_DEVICE_DESTROY         0x03
-#define	VTDTR_DEVICE_PROBE_CREATE    0x04
-#define	VTDTR_DEVICE_PROBE_INSTALL   0x05
-#define	VTDTR_DEVICE_PROBE_UNINSTALL 0x06
-#define	VTDTR_DEVICE_EOF             0x07
-#define VTDTR_DEVICE_GO              0x08
-#define VTDTR_DEVICE_STOP            0x09
+#define	VTDTR_DEVICE_READY		0x00 /* Device is ready */
+#define	VTDTR_DEVICE_REGISTER		0x01 /* UNUSED */
+#define	VTDTR_DEVICE_UNREGISTER		0x02 /* UNUSED */
+#define	VTDTR_DEVICE_DESTROY		0x03 /* UNUSED */
+#define	VTDTR_DEVICE_PROBE_CREATE	0x04 /* UNUSED */
+#define	VTDTR_DEVICE_PROBE_INSTALL	0x05 /* Install a given probe */
+#define	VTDTR_DEVICE_PROBE_UNINSTALL	0x06 /* Uninstall a given probe */
+#define	VTDTR_DEVICE_EOF		0x07 /* End of file */
+#define	VTDTR_DEVICE_GO			0x08 /* Start the tracing */
+#define	VTDTR_DEVICE_ELF		0x09 /* Send an ELF file */
+#define	VTDTR_DEVICE_STOP		0x0A /* Stop tracing */
 
 static int pci_vtdtr_debug;
 #define	DPRINTF(params) if (pci_vtdtr_debug) printf params
 #define	WPRINTF(params) printf params
 
-struct pci_vtdtr_probe_create_event {
-	char        mod[DTRACE_MODNAMELEN];
-	char        func[DTRACE_FUNCNAMELEN];
-	char        name[DTRACE_NAMELEN];
-	struct uuid uuid;
-}__attribute__((packed));
-
-struct pci_vtdtr_probe_toggle_event {
-	char *dif; /* TODO */
-}__attribute__((packed));
-
-struct pci_vtdtr_ctrl_pbevent {
-	uint32_t probe;
-
-	union {
-		struct pci_vtdtr_probe_create_event probe_evcreate;
-		struct pci_vtdtr_probe_toggle_event probe_evtoggle;
-	} upbev;
-}__attribute__((packed));
-
-struct pci_vtdtr_ctrl_provevent {
-	char        name[DTRACE_PROVNAMELEN];
-	struct uuid uuid;
-}__attribute__((packed));
-
 struct pci_vtdtr_control {
-	uint32_t event;
-
+	uint32_t 		pvc_event;
 	union {
-		struct pci_vtdtr_ctrl_pbevent   probe_ev;
-		struct pci_vtdtr_ctrl_provevent prov_ev;
+		uint32_t	pvc_probeid;	/* install/uninstall event */
+
+		struct {			/*  elf event */
+			size_t	pvc_elflen;
+			char	pvc_elf[];
+		} elf;
+
+		/*
+		 * Defines for easy access into the union and underlying structs
+		 */
+#define	pvc_probeid	uctrl.pvc_probeid
+#define	pvc_elflen	uctrl.elf.pvc_elflen
+#define	pvc_elf		uctrl.elf.pvc_elf
 	} uctrl;
 }__attribute__((packed));
 
 struct pci_vtdtr_ctrl_entry {
-	struct pci_vtdtr_control           ctrl;
-	STAILQ_ENTRY(pci_vtdtr_ctrl_entry) entries;
+	struct pci_vtdtr_control		ctrl;
+	STAILQ_ENTRY(pci_vtdtr_ctrl_entry)	entries;
 };
 
 struct pci_vtdtr_ctrlq {
-	STAILQ_HEAD(, pci_vtdtr_ctrl_entry) head;
-	pthread_mutex_t                          mtx;
+	STAILQ_HEAD(, pci_vtdtr_ctrl_entry)	head;
+	pthread_mutex_t				mtx;
 };
 
 struct pci_vtdtr_softc {
-	struct virtio_softc     vsd_vs;
-	struct vqueue_info      vsd_queues[VTDTR_MAXQ];
-	struct vmctx           *vsd_vmctx;
-	struct pci_vtdtr_ctrlq *vsd_ctrlq;
-	pthread_mutex_t         vsd_condmtx;
-	pthread_cond_t          vsd_cond;
-	pthread_mutex_t         vsd_mtx;
-	uint64_t                vsd_cfg;
-	int                     vsd_guest_ready;
-	int                     vsd_ready;
+	struct virtio_softc	vsd_vs;
+	struct vqueue_info	vsd_queues[VTDTR_MAXQ];
+	struct vmctx		*vsd_vmctx;
+	struct pci_vtdtr_ctrlq	*vsd_ctrlq;
+	pthread_mutex_t		vsd_condmtx;
+	pthread_cond_t		vsd_cond;
+	pthread_mutex_t		vsd_mtx;
+	uint64_t		vsd_cfg;
+	int			vsd_guest_ready;
+	int			vsd_ready;
 };
 
 static void pci_vtdtr_reset(void *);
@@ -170,9 +144,6 @@ static void pci_vtdtr_poll(struct vqueue_info *, int);
 static void pci_vtdtr_notify_ready(struct pci_vtdtr_softc *);
 static void pci_vtdtr_fill_eof_desc(struct vqueue_info *);
 static void * pci_vtdtr_run(void *);
-#if 0
-static void pci_vtdtr_handle_mev(int, enum ev_type, int, void *);
-#endif
 static void pci_vtdtr_reset_queue(struct pci_vtdtr_softc *);
 static int pci_vtdtr_init(struct vmctx *, struct pci_devinst *, char *);
 
@@ -219,72 +190,23 @@ static int
 pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 {
 	struct pci_vtdtr_control *ctrl;
-	//struct pci_vtdtr_ctrl_provevent *pv_ev;
-	//struct pci_vtdtr_ctrl_pbevent *pb_ev;
 	int retval;// error;
 
 	assert(niov == 1);
 	retval = 0;
 
 	ctrl = (struct pci_vtdtr_control *)iov->iov_base;
-	switch (ctrl->event) {
+	switch (ctrl->pvc_event) {
 	case VTDTR_DEVICE_READY:
 		pthread_mutex_lock(&sc->vsd_mtx);
 		sc->vsd_guest_ready = 1;
 		pthread_mutex_unlock(&sc->vsd_mtx);
 		break;
-#if 0
-	case VTDTR_DEVICE_REGISTER:
-		sc->vsd_ready = 0;
-		pv_ev = &ctrl->uctrl.prov_ev;
-		error = dthyve_register_provider(&pv_ev->uuid,
-		    vm_get_name(sc->vsd_vmctx), pv_ev->name);
-		if (error)
-			WPRINTF(("%s: error %d during registration",
-			    __func__, errno));
-		break;
-	case VTDTR_DEVICE_UNREGISTER:
-		sc->vsd_ready = 0;
-		pv_ev = &ctrl->uctrl.prov_ev;
-		error = dthyve_unregister_provider(&pv_ev->uuid);
-		if (error)
-			WPRINTF(("%s: error %d during unregistration",
-			    __func__, error));
-		break;
-	case VTDTR_DEVICE_DESTROY:
-		break;
-	case VTDTR_DEVICE_PROBE_CREATE: {
-		char *mod;
-		char *func;
-		char *name;
-		struct uuid *uuid;
-		/*
-		 * FIXME: All of this is fixed. Should be DTrace-defined.
-		 */
-		sc->vsd_ready = 0;
-		pb_ev = &ctrl->uctrl.probe_ev;
-
-		mod = pb_ev->upbev.probe_evcreate.mod;
-		func = pb_ev->upbev.probe_evcreate.func;
-		name = pb_ev->upbev.probe_evcreate.name;
-		uuid = &pb_ev->upbev.probe_evcreate.uuid;
-
-		error = dthyve_probe_create(uuid, mod, func, name,
-		    pb_ev->upbev.probe_evcreate.types);
-		if (error)
-			WPRINTF(("%s: error %d during probe creation",
-			    __func__, errno));
-		break;
-	}
-	case VTDTR_DEVICE_PROBE_INSTALL:
-	case VTDTR_DEVICE_PROBE_UNINSTALL:
-		break;
-#endif
 	case VTDTR_DEVICE_EOF:
 		retval = 1;
 		break;
 	default:
-		WPRINTF(("Warning: Unknown event: %u\n", ctrl->event));
+		WPRINTF(("Warning: Unknown event: %u\n", ctrl->pvc_event));
 		break;
 	}
 
@@ -350,52 +272,6 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 	pthread_mutex_unlock(&sc->vsd_condmtx);
 
 }
-
-#if 0
-/*
- * Here we handle the kernel event that we get from kqueue and identify various
- * control messages that we need to send
- */
-static void
-pci_vtdtr_handle_mev(int fd __unused, enum ev_type et __unused, int ne,
-    void *xsc)
-{
-	struct pci_vtdtr_softc *sc;
-	struct pci_vtdtr_control *ctrl;
-	struct pci_vtdtr_ctrl_entry *ctrl_entry;
-	char *name;
-
-	sc = xsc;
-	name = vm_get_name(sc->vsd_vmctx);
-
-	/*
-	 * FIXME: The DTrace error probe for each VM instance gets enabled
-	 * regardless of what we're tracing. This maybe shouldn't happen?
-	 */
-	if (strcmp(name, sc->vsd_pbi.instance) != 0)
-		return;
-
-	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
-	assert(ctrl_entry != NULL);
-	ctrl = &ctrl_entry->ctrl;
-
-	assert((ne & (NOTE_PROBE_INSTALL | NOTE_PROBE_UNINSTALL)) != 0);
-	if (ne & NOTE_PROBE_INSTALL)
-		ctrl->event = VTDTR_DEVICE_PROBE_INSTALL;
-	else
-		ctrl->event = VTDTR_DEVICE_PROBE_UNINSTALL;
-
-	ctrl->uctrl.probe_ev.probe = sc->vsd_pbi.id;
-
-	pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
-	pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
-
-	pthread_mutex_lock(&sc->vsd_condmtx);
-	pthread_cond_signal(&sc->vsd_cond);
-	pthread_mutex_unlock(&sc->vsd_condmtx);
-}
-#endif
 
 static __inline void
 pci_vtdtr_cq_enqueue(struct pci_vtdtr_ctrlq *cq,
@@ -479,7 +355,7 @@ pci_vtdtr_notify_ready(struct pci_vtdtr_softc *sc)
 
 	ctrl = &ctrl_entry->ctrl;
 
-	ctrl->event = VTDTR_DEVICE_READY;
+	ctrl->pvc_event = VTDTR_DEVICE_READY;
 
 
 	pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
@@ -491,7 +367,7 @@ static void
 pci_vtdtr_fill_eof_desc(struct vqueue_info *vq)
 {
 	struct pci_vtdtr_control ctrl;
-	ctrl.event = VTDTR_DEVICE_EOF;
+	ctrl.pvc_event = VTDTR_DEVICE_EOF;
 	pci_vtdtr_fill_desc(vq, &ctrl);
 }
 
@@ -549,7 +425,7 @@ pci_vtdtr_run(void *xsc)
 			assert(error == 0);
 
 			if (ready_flag &&
-			    ctrl_entry->ctrl.event != VTDTR_DEVICE_READY)
+			    ctrl_entry->ctrl.pvc_event != VTDTR_DEVICE_READY)
 				ready_flag = 0;
 
 			pci_vtdtr_fill_desc(vq, &ctrl_entry->ctrl);
@@ -656,16 +532,16 @@ pci_vtdtr_events(void *xsc)
 		DPRINTF(("event read: %zu\n", ev.type));
 		switch (ev.type) {
 		case VTDTR_EV_INSTALL:
-			ctrl->event = VTDTR_DEVICE_PROBE_INSTALL;
+			ctrl->pvc_event = VTDTR_DEVICE_PROBE_INSTALL;
 			break;
 		case VTDTR_EV_UNINSTALL:
-			ctrl->event = VTDTR_DEVICE_PROBE_UNINSTALL;
+			ctrl->pvc_event = VTDTR_DEVICE_PROBE_UNINSTALL;
 			break;
 		case VTDTR_EV_GO:
-			ctrl->event = VTDTR_DEVICE_GO;
+			ctrl->pvc_event = VTDTR_DEVICE_GO;
 			break;
 		case VTDTR_EV_STOP:
-			ctrl->event = VTDTR_DEVICE_STOP;
+			ctrl->pvc_event = VTDTR_DEVICE_STOP;
 			error = dthyve_conf(1 << VTDTR_EV_RECONF, 0);
 			assert(error == 0);
 			break;
@@ -685,12 +561,12 @@ pci_vtdtr_events(void *xsc)
 			break;
 		default:
 			/*
-			 * XXX: Meh.
+			 * Hard fail if we catch something unexpected.
 			 */
-			assert(0);
+			errx(EXIT_FAILURE, "unexpected event %d", ev.type);
 		}
 
-		ctrl->uctrl.probe_ev.probe = ev.args.p_toggle.probeid;
+		ctrl->pvc_probeid = ev.args.p_toggle.probeid;
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
