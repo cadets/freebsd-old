@@ -16,9 +16,7 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common \
 		-I${OPENSOLARIS_SYS_DISTDIR}/compat \
 		-I${SRCTOP}/cddl/lib/libdtrace \
-		-I${SRCTOP}/sys \
-		-fsanitize=address
-LDFLAGS+=	-fsanitize=address
+		-I${SRCTOP}/sys
 
 LIBADD=	dtrace proc
 

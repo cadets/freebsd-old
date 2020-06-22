@@ -83,10 +83,8 @@ CFLAGS+=	-I${.OBJDIR} -I${.CURDIR} \
 		-I${OPENSOLARIS_USR_DISTDIR}/head \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libctf/common \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libdtrace/common \
-		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common \
-		-fsanitize=address
+		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common
 
-LDFLAGS+=	-fsanitize=address
 #CFLAGS+=	-DYYDEBUG
 
 .if ${MACHINE_CPUARCH} == "aarch64"
