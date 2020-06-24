@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2020-18 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -53,7 +53,7 @@ static inline void
 usage(FILE * fp)
 {
 
-	(void) fprintf(fp, "Usage: %s -t topic -s script\n", g_pname);
+	(void) fprintf(fp, "Usage: %s [-Z] -t topic -s script\n", g_pname);
 }
 
 /*ARGSUSED*/
@@ -72,7 +72,7 @@ main(int argc, char *argv[])
 {
 	struct dl_client_config_desc *client_conf;
 	dtrace_consumer_t con;
-	FILE *fp;
+	FILE *fp = NULL;
 	nvlist_t *props;
 	char *topic_name;
 	size_t packed_len;
@@ -82,7 +82,8 @@ main(int argc, char *argv[])
 	dtrace_enable_io_t args;
 	void *dof;
 	int error, r;
-
+	int cflags = DTRACE_C_PSPEC | DTRACE_C_CPP;
+	
 	g_pname = basename(argv[0]); 	
 
 	script_argv = malloc(sizeof(char *) * argc);
@@ -95,7 +96,7 @@ main(int argc, char *argv[])
 
 	opterr = 0;
 	for (optind = 0; optind < argc; optind++) { 
-		while ((c = getopt(argc, argv, "t:s:")) != -1) {
+		while ((c = getopt(argc, argv, "t:s:Z:")) != -1) {
 			switch(c) {
 			case 't':
 				topic_name = optarg;
@@ -110,6 +111,10 @@ main(int argc, char *argv[])
 					ret = -1;
 					goto free_script_args;
 				}
+				break;
+			case 'Z':
+
+				cflags |= DTRACE_C_ZDEFS;
 				break;
 			case '?':
 			default:
