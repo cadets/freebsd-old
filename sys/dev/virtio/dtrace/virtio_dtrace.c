@@ -167,10 +167,6 @@ static struct vtdtr_ctrl_entry * vtdtr_cq_dequeue(struct vtdtr_ctrlq *);
 static void vtdtr_notify(struct virtio_dtrace_queue *);
 static void vtdtr_poll(struct virtio_dtrace_queue *);
 static void vtdtr_run(void *);
-static void vtdtr_advertise_prov_priv(void *, const char *, struct uuid *);
-static void vtdtr_destroy_prov_priv(void *, struct uuid *);
-static void vtdtr_advertise_probe_priv(void *, const char *, const char *,
-    const char *, struct uuid *);
 
 static device_method_t vtdtr_methods[] = {
 	/* Device methods. */
@@ -277,12 +273,6 @@ vtdtr_attach(device_t dev)
 	sc->vtdtr_tx_nseg = 1;
 	sc->vtdtr_shutdown = 0;
 	sc->vtdtr_host_ready = 1;
-
-	/*
-	vtdtr_advertise_prov = vtdtr_advertise_prov_priv;
-	vtdtr_destroy_prov = vtdtr_destroy_prov_priv;
-	vtdtr_advertise_probe = vtdtr_advertise_probe_priv;
-	*/
 
 	sc->vtdtr_ctrlq = malloc(sizeof(struct vtdtr_ctrlq),
 	    M_DEVBUF, M_NOWAIT | M_ZERO);
@@ -622,8 +612,6 @@ static int
 vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
     struct virtio_dtrace_control *ctrl)
 {
-	struct vtdtr_ctrl_pbevent *pb;
-	struct vtdtr_ctrl_provevent *pv;
 	device_t dev;
 	int retval;
 	int error;
@@ -635,41 +623,18 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	/*
 	 * XXX: Double switch statement... meh.
 	 */
-	switch (ctrl->event) {
+	switch (ctrl->vd_event) {
 	case VIRTIO_DTRACE_DEVICE_READY:
 		if (debug)
 			device_printf(dev, "VIRTIO_DTRACE_DEVICE_READY\n");
 		sc->vtdtr_host_ready = 1;
 		break;
-	case VIRTIO_DTRACE_REGISTER:
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_REGISTER\n");
-		sc->vtdtr_ready = 0;
-		pv = &ctrl->uctrl.prov_ev;
-		break;
-	case VIRTIO_DTRACE_UNREGISTER:
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_UNREGISTER\n");
-		sc->vtdtr_ready = 0;
-		pv = &ctrl->uctrl.prov_ev;
-		break;
-	case VIRTIO_DTRACE_DESTROY:
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_DESTROY\n");
-		sc->vtdtr_ready = 0;
-		break;
-	case VIRTIO_DTRACE_PROBE_CREATE:
-		pb = &ctrl->uctrl.probe_ev;
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_PROBE_CREATE: %d\n", pb->probe);
-		sc->vtdtr_ready = 0;
-		break;
 	case VIRTIO_DTRACE_PROBE_INSTALL: {
 		sc->vtdtr_ready = 0;
-		pb = &ctrl->uctrl.probe_ev;
 
 		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_PROBE_INSTALL: %d\n", pb->probe);
+			device_printf(dev, "VIRTIO_DTRACE_PROBE_INSTALL: %d\n",
+			    ctrl->vd_probeid);
 		if (vstate == 0) {
 			error = dtrace_virtstate_create();
 			if (error) {
@@ -684,10 +649,10 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 
 		KASSERT(vstate == 1, ("vstate must be 1\n"));
 		dtrace_provide_all_probes();
-		error = dtrace_probeid_enable(pb->probe);
+		error = dtrace_probeid_enable(ctrl->vd_probeid);
 		if (error) {
 			device_printf(dev, "%s: error %d enabling"
-			    " probe %d\n", __func__, error, pb->probe);
+			    " probe %d\n", __func__, error, ctrl->vd_probeid);
 		}
 		break;
 	}
@@ -699,7 +664,8 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 
 		error = dtrace_virtstate_go();
 		if (error)
-			device_printf(dev, "Error in dtrace_virtstate_go(): %d\n", error);
+			device_printf(dev,
+			    "Error in dtrace_virtstate_go(): %d\n", error);
 		else
 			device_printf(dev, "Starting the trace...\n");
 		break;
@@ -712,7 +678,8 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 
 		error = dtrace_virtstate_stop();
 		if (error)
-			device_printf(dev, "Error in dtrace_virtstate_stop(): %d\n", error);
+			device_printf(dev,
+			    "Error in dtrace_virtstate_stop(): %d\n", error);
 		else
 			device_printf(dev, "Stopping the trace...\n");
 
@@ -725,7 +692,8 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		retval = 1;
 		break;
 	default:
-		device_printf(dev, "WARNING: Wrong control event: %x\n", ctrl->event);
+		device_printf(dev,
+		    "WARNING: Wrong control event: %x\n", ctrl->vd_event);
 	}
 
 	return (retval);
@@ -876,7 +844,7 @@ vtdtr_send_eof(struct virtio_dtrace_queue *q)
 	    M_DEVBUF, M_NOWAIT | M_ZERO);
 	KASSERT(ctrl != NULL,
 	    ("%s: no memory to allocate a control message", __func__));
-	ctrl->event = VIRTIO_DTRACE_EOF;
+	ctrl->vd_event = VIRTIO_DTRACE_EOF;
 	vtdtr_fill_desc(q, ctrl);
 }
 
@@ -906,7 +874,7 @@ vtdtr_notify_ready(struct vtdtr_softc *sc)
 		return;
 	}
 
-	ctrl_entry->ctrl.event = VIRTIO_DTRACE_DEVICE_READY;
+	ctrl_entry->ctrl.vd_event = VIRTIO_DTRACE_DEVICE_READY;
 
 	mtx_lock(&sc->vtdtr_ctrlq->mtx);
 	vtdtr_cq_enqueue_front(sc->vtdtr_ctrlq, ctrl_entry);
@@ -943,10 +911,6 @@ vtdtr_rxq_tq_intr(void *xrxq, int pending)
 
 	VTDTR_QUEUE_LOCK(rxq);
 	while ((ctrl = virtqueue_dequeue(rxq->vtdq_vq, &len)) != NULL) {
-		KASSERT(len == sizeof(struct virtio_dtrace_control),
-		    ("%s: wrong control message length: %u, expected %zu",
-		     __func__, len, sizeof(struct virtio_dtrace_control)));
-
 		VTDTR_QUEUE_UNLOCK(rxq);
 		retval = vtdtr_ctrl_process_event(sc, ctrl);
 		VTDTR_QUEUE_LOCK(rxq);
@@ -1251,7 +1215,7 @@ vtdtr_run(void *xsc)
 			memcpy(&ctrls[nent], &ctrl_entry->ctrl,
 			    sizeof(struct virtio_dtrace_control));
 			if (ready_flag &&
-			    ctrls[nent].event != VIRTIO_DTRACE_DEVICE_READY)
+			    ctrls[nent].vd_event != VIRTIO_DTRACE_DEVICE_READY)
 				ready_flag = 0;
 			vtdtr_fill_desc(txq, &ctrls[nent]);
 			free(ctrl_entry, M_DEVBUF);
@@ -1276,107 +1240,4 @@ vtdtr_run(void *xsc)
 
 		mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 	}
-}
-
-static void
-vtdtr_advertise_prov_priv(void *xsc, const char *name, struct uuid *uuid)
-{
-	struct vtdtr_softc *sc;
-	struct vtdtr_ctrl_entry *ctrl_entry;
-	struct virtio_dtrace_control *ctrl;
-	device_t dev;
-
-	sc = xsc;
-	dev = sc->vtdtr_dev;
-
-	ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry),
-	    M_DEVBUF, M_NOWAIT | M_ZERO);
-
-	if (ctrl_entry == NULL) {
-		device_printf(dev, "no memory to allocate a control entry");
-		return;
-	}
-
-	ctrl = &ctrl_entry->ctrl;
-	ctrl->event = VIRTIO_DTRACE_REGISTER;
-	memcpy(&ctrl->uctrl.prov_ev.uuid, uuid, sizeof(struct uuid));
-	strlcpy(ctrl->uctrl.prov_ev.name, name, DTRACE_PROVNAMELEN);
-
-	mtx_lock(&sc->vtdtr_ctrlq->mtx);
-	vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
-	mtx_unlock(&sc->vtdtr_ctrlq->mtx);
-
-	mtx_lock(&sc->vtdtr_condmtx);
-	cv_signal(&sc->vtdtr_condvar);
-	mtx_unlock(&sc->vtdtr_condmtx);
-}
-
-static void
-vtdtr_destroy_prov_priv(void *xsc, struct uuid *uuid)
-{
-	struct vtdtr_softc *sc;
-	struct vtdtr_ctrl_entry *ctrl_entry;
-	struct virtio_dtrace_control *ctrl;
-	device_t dev;
-
-	sc = xsc;
-	dev = sc->vtdtr_dev;
-
-	ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry),
-	    M_DEVBUF, M_NOWAIT | M_ZERO);
-
-	if (ctrl_entry == NULL) {
-		device_printf(dev, "no memory to allocate a control entry");
-		return;
-	}
-
-	ctrl = &ctrl_entry->ctrl;
-	ctrl->event = VIRTIO_DTRACE_UNREGISTER;
-	memcpy(&ctrl->uctrl.prov_ev.uuid, uuid, sizeof(struct uuid));
-
-	mtx_lock(&sc->vtdtr_ctrlq->mtx);
-	vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
-	mtx_unlock(&sc->vtdtr_ctrlq->mtx);
-
-	mtx_lock(&sc->vtdtr_condmtx);
-	cv_signal(&sc->vtdtr_condvar);
-	mtx_unlock(&sc->vtdtr_condmtx);
-}
-
-static void
-vtdtr_advertise_probe_priv(void *xsc, const char *mod, const char *func,
-    const char *name, struct uuid *uuid)
-{
-	struct vtdtr_softc *sc;
-	struct vtdtr_ctrl_entry *ctrl_entry;
-	struct virtio_dtrace_control *ctrl;
-	struct vtdtr_pbev_create_event *cevent;
-	device_t dev;
-
-	sc = xsc;
-	dev = sc->vtdtr_dev;
-
-	ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry),
-	    M_DEVBUF, M_NOWAIT | M_ZERO);
-
-	if (ctrl_entry == NULL) {
-		device_printf(dev, "no memory to allocate a control entry");
-		return;
-	}
-
-	ctrl = &ctrl_entry->ctrl;
-	ctrl->event = VIRTIO_DTRACE_PROBE_CREATE;
-	cevent = &ctrl->uctrl.probe_ev.upbev.create;
-	strlcpy(cevent->mod, mod, DTRACE_MODNAMELEN);
-	strlcpy(cevent->func, func, DTRACE_FUNCNAMELEN);
-	strlcpy(cevent->name, name, DTRACE_NAMELEN);
-	memcpy(&cevent->uuid, uuid, sizeof(struct uuid));
-
-	mtx_lock(&sc->vtdtr_ctrlq->mtx);
-	vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
-	mtx_unlock(&sc->vtdtr_ctrlq->mtx);
-
-	mtx_lock(&sc->vtdtr_condmtx);
-	cv_signal(&sc->vtdtr_condvar);
-	mtx_unlock(&sc->vtdtr_condmtx);
 }

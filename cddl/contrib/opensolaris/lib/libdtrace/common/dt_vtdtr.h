@@ -25,29 +25,15 @@
  * $FreeBSD$
  */
 
-#ifndef __DT_BASIC_BLOCK_H_
-#define __DT_BASIC_BLOCK_H_
+#ifndef _DT_VTDTR_H_
+#define _DT_VTDTR_H_
 
-#include <sys/types.h>
-#include <sys/dtrace.h>
+struct dt_vtdrhdl;
+typedef struct dt_vtdtrhdl dt_vtdtrhdl_t;
 
-#include <dtrace.h>
-#include <dt_list.h>
+const char *dt_vtdtr_errno(dt_vtdtrhdl_t *);
+int dt_vtdtr_elfnotify(dt_vtdtrhdl_t *, const char *);
+dt_vtdtrhdl_t *dt_vtdtr_open(void);
+void dt_vtdtr_close(dt_vtdtrhdl_t *);
 
-typedef struct dt_basic_block {
-	dtrace_difo_t	*dtbb_difo;
-#define dtbb_buf dtbb_difo->dtdo_buf
-	size_t		dtbb_start;
-	size_t		dtbb_end;
-	size_t		dtbb_idx;
-#define	DT_BB_MAX	8192
-	dt_list_t	dtbb_children;
-	dt_list_t	dtbb_parents;
-} dt_basic_block_t;
-
-typedef struct dt_bb_entry {
-	dt_list_t		dtbe_list;
-	dt_basic_block_t	*dtbe_bb;
-} dt_bb_entry_t;
-
-#endif /* __DT_BASIC_BLOCK_H_ */
+#endif /* _DT_VTDTR_H_ */

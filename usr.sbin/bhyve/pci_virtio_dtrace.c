@@ -93,13 +93,14 @@ struct pci_vtdtr_control {
 		 */
 #define	pvc_probeid	uctrl.pvc_probeid
 #define	pvc_elflen	uctrl.elf.pvc_elflen
+
 #define	pvc_elf		uctrl.elf.pvc_elf
 	} uctrl;
 }__attribute__((packed));
 
 struct pci_vtdtr_ctrl_entry {
-	struct pci_vtdtr_control		ctrl;
 	STAILQ_ENTRY(pci_vtdtr_ctrl_entry)	entries;
+	struct pci_vtdtr_control		ctrl;
 };
 
 struct pci_vtdtr_ctrlq {

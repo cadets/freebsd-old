@@ -36,6 +36,7 @@
 #include <dtrace.h>
 #include <dt_elf.h>
 #include <dt_resolver.h>
+#include <dt_vtdtr.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -112,6 +113,7 @@ static const char *g_graphfile = NULL;
 static int g_mode = DMODE_EXEC;
 static int g_status = E_SUCCESS;
 static int g_grabanon = 0;
+static dt_vtdtrhdl_t *g_vtdtrhdl = NULL;
 
 static const char *g_ofile = NULL;
 static FILE *g_ofp;
@@ -675,6 +677,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 {
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_proginfo_t dpi;
+	char elfpath[MAXPATHLEN] = "/var/ddtrace/tracing_spec.elf";
 
 	// Don't take any action based on unwanted mod/ref behaviour:
 	// checkmodref emits warnings and that's the end of it.
@@ -697,8 +700,12 @@ exec_prog(const dtrace_cmd_t *dcp)
 	if (!g_exec) {
 		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
 		(void) dtrace_dump_actions(dcp->dc_prog);
-		if (g_elf)
-			dt_elf_create(dcp->dc_prog, ELFDATA2LSB);
+		if (g_elf) {
+			dt_elf_create(dcp->dc_prog, ELFDATA2LSB, elfpath);
+			if (dt_vtdtr_elfnotify(g_vtdtrhdl, elfpath))
+				fatal("failed to notify about %s: %s", elfpath,
+				    strerror(errno));
+		}
 	} else if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) == 0) {
 		(void) dtrace_dump_actions(dcp->dc_prog);
 		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
@@ -1922,6 +1929,11 @@ main(int argc, char *argv[])
 		}
 	}
 
+	g_vtdtrhdl = dt_vtdtr_open();
+	if (g_vtdtrhdl == NULL)
+		fatal("failed to open and configure /dev/vtdtr: %s",
+		    strerror(errno));
+
 	/*
 	 * In our fourth pass we finish g_cmdv[] by calling dc_func to convert
 	 * each string or file specification into a compiled program structure.
@@ -2214,6 +2226,7 @@ main(int argc, char *argv[])
 			dfatal("failed to print aggregations");
 	}
 
+	dt_vtdtr_close(g_vtdtrhdl);
 	dtrace_close(g_dtp);
 	return (g_status);
 }

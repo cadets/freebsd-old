@@ -1,6 +1,7 @@
 /*-
  * Copyright (c) 2018 Jonathan Anderson
  * Copyright (c) 2018 Brian Kidney
+ * Copyright (c) 2019 Domagoj Stolfa
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge

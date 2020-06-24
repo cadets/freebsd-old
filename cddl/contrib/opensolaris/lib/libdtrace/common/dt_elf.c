@@ -50,17 +50,17 @@
  * Helper structs
  */
 typedef struct dt_elf_eact_list {
-	dt_list_t list;
-	dtrace_actdesc_t *act;
-	dt_elf_ref_t eact_ndx;
-	dt_elf_actdesc_t *eact;
+	dt_list_t		list;
+	dtrace_actdesc_t	*act;
+	dt_elf_ref_t		eact_ndx;
+	dt_elf_actdesc_t	*eact;
 } dt_elf_eact_list_t;
 
 typedef struct _dt_elf_eopt {
-	char eo_name[DTELF_MAXOPTNAME];
-	uint64_t eo_option;
-	size_t eo_len;
-	char eo_arg[];
+	char		eo_name[DTELF_MAXOPTNAME];
+	uint64_t	eo_option;
+	size_t		eo_len;
+	char		eo_arg[];
 } _dt_elf_eopt_t;
 
 /*
@@ -74,17 +74,18 @@ typedef struct _dt_elf_eopt {
  * s_idname_table:      A table containing all of the identifier names.
  * s_idname_size:       Size of the idname table.
  * s_idname_offset:     Offset into the next-to-be-added entry in the table.
+ * s_rflags:            Resolver flags.
  */
 typedef struct dt_elf_state {
-	dt_elf_ref_t s_first_act_scn;
-	dt_elf_ref_t s_last_act_scn;
-	dt_elf_ref_t s_first_ecbdesc_scn;
-	dt_list_t s_actions;
-	dt_elf_actdesc_t *s_eadprev;
-	char *s_idname_table;
-	size_t s_idname_size;
-	size_t s_idname_offset;
-	uint32_t s_rflags;
+	dt_elf_ref_t		s_first_act_scn;
+	dt_elf_ref_t		s_last_act_scn;
+	dt_elf_ref_t		s_first_ecbdesc_scn;
+	dt_list_t		s_actions;
+	dt_elf_actdesc_t	*s_eadprev;
+	char			*s_idname_table;
+	size_t			s_idname_size;
+	size_t			s_idname_offset;
+	uint32_t		s_rflags;
 } dt_elf_state_t;
 
 char sec_strtab[] =
@@ -1264,7 +1265,7 @@ dt_elf_options(Elf *e)
 }
 
 void
-dt_elf_create(dtrace_prog_t *dt_prog, int endian)
+dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 {
 	int fd, err;
 	Elf *e;
@@ -1273,7 +1274,6 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian)
 	Elf_Data *data;
 	Elf32_Shdr *shdr, *s0hdr;
 	Elf32_Phdr *phdr;
-	const char *file_name = "/var/ddtrace/tracing_spec.elf";
 	dt_stmt_t *stp;
 
 	dtrace_stmtdesc_t *stmt = NULL;

@@ -42,51 +42,38 @@
  * READY and EOF are used for synchronization for purposes, while CLEANUP will
  * be used to clean up the TX virtqueue on the guest.
  */
-#define	VIRTIO_DTRACE_DEVICE_READY    0x00 /* The device is ready */
-#define	VIRTIO_DTRACE_REGISTER        0x01 /* Provider Registration */
-#define	VIRTIO_DTRACE_UNREGISTER      0x02 /* Provider Unregistration */
-#define	VIRTIO_DTRACE_DESTROY         0x03 /* Instance Destruction */
-#define	VIRTIO_DTRACE_PROBE_CREATE    0x04 /* Probe Creation */
-#define	VIRTIO_DTRACE_PROBE_INSTALL   0x05 /* Probe Installation */
-#define	VIRTIO_DTRACE_PROBE_UNDEFINED 0x06 /* Undefined */
-#define	VIRTIO_DTRACE_EOF             0x07 /* EOF Signal */
-#define	VIRTIO_DTRACE_GO              0x08 /* Start tracing */
-#define	VIRTIO_DTRACE_STOP            0x09 /* Start tracing */
+#define	VIRTIO_DTRACE_DEVICE_READY	0x00 /* The device is ready */
+#define	VIRTIO_DTRACE_REGISTER		0x01 /* UNUSED */
+#define	VIRTIO_DTRACE_UNREGISTER	0x02 /* UNUSED */
+#define	VIRTIO_DTRACE_DESTROY		0x03 /* UNUSED */
+#define	VIRTIO_DTRACE_PROBE_CREATE	0x04 /* UNUSED */
+#define	VIRTIO_DTRACE_PROBE_INSTALL	0x05 /* Probe Installation */
+#define	VIRTIO_DTRACE_PROBE_UNDEFINED	0x06 /* Undefined */
+#define	VIRTIO_DTRACE_EOF		0x07 /* EOF Signal */
+#define	VIRTIO_DTRACE_GO		0x08 /* Start tracing */
+#define	VIRTIO_DTRACE_ELF		0x09 /* ELF file transmission */
+#define	VIRTIO_DTRACE_STOP		0x0A /* Start tracing */
 
 struct vtdtr_softc;
 struct uuid;
 
-struct vtdtr_pbev_create_event {
-	char        mod[DTRACE_MODNAMELEN];
-	char        func[DTRACE_FUNCNAMELEN];
-	char        name[DTRACE_NAMELEN];
-	struct uuid uuid;
-}__attribute__((packed));
-
-struct vtdtr_pbev_toggle_event {
-	char *dif; /* TODO */
-}__attribute__((packed));
-
-struct vtdtr_ctrl_pbevent {
-	uint32_t probe;
-
-	union {
-		struct vtdtr_pbev_create_event create;
-		struct vtdtr_pbev_toggle_event toggle;
-	} upbev;
-}__attribute__((packed));
-
-struct vtdtr_ctrl_provevent {
-	char        name[DTRACE_PROVNAMELEN];
-	struct uuid uuid;
-}__attribute__((packed));
-
 struct virtio_dtrace_control {
-	uint32_t event;
+	uint32_t vd_event;
 
 	union {
-		struct vtdtr_ctrl_pbevent   probe_ev;
-		struct vtdtr_ctrl_provevent prov_ev;
+		uint32_t	vd_probeid;	/* install/uninstall event */
+
+		struct {			/*  elf event */
+			size_t	vd_elflen;
+			char	vd_elf[];
+		} elf;
+
+		/*
+		 * Defines for easy access into the union and underlying structs
+		 */
+#define	vd_probeid	uctrl.vd_probeid
+#define	vd_elflen	uctrl.elf.vd_elflen
+#define	vd_elf		uctrl.elf.vd_elf
 	} uctrl;
 }__attribute__((packed));
 
@@ -103,8 +90,8 @@ struct virtio_dtrace_queue {
 };
 
 struct vtdtr_ctrl_entry {
-	struct virtio_dtrace_control   ctrl;
 	STAILQ_ENTRY(vtdtr_ctrl_entry) entries;
+	struct virtio_dtrace_control   ctrl;
 };
 
 struct vtdtr_ctrlq {

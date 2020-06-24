@@ -67,28 +67,18 @@ typedef struct dt_elf_probedesc {
  * dted_destructive: Invoke destructive subroutines?
  */
 typedef struct dt_elf_difo {
-	dt_elf_ref_t dted_inttab;
-        dt_elf_ref_t dted_strtab;
-	dt_elf_ref_t dted_symtab;
-        dt_elf_ref_t dted_vartab;
-	uint64_t dted_intlen;
-	uint64_t dted_strlen;
-	uint64_t dted_symlen;
-	uint64_t dted_varlen;
-	dtrace_diftype_t dted_rtype;
-	uint64_t dted_destructive;
-	/*
-	 * XXX(dstolfa): kreltab, ureltab and xlmtab are also members of
-	 *               the userland version of dtrace_difo_t, however
-	 *               it seems that they are pretty much discarded in the
-	 *               assembly stage and there doesn't seem to be any code
-	 *               path that gets them used inside dt_dof.c For now, we
-	 *               won't pass those over to the target machine and will
-	 *               strongly assume that all of the DTrace "relocations"
-	 *               and translation happens on the source machine.
-	 */
-	uint64_t dted_len;
-	dif_instr_t dted_buf[];
+	dt_elf_ref_t		dted_inttab;
+        dt_elf_ref_t		dted_strtab;
+	dt_elf_ref_t		dted_symtab;
+        dt_elf_ref_t		dted_vartab;
+	uint64_t		dted_intlen;
+	uint64_t		dted_strlen;
+	uint64_t		dted_symlen;
+	uint64_t		dted_varlen;
+	dtrace_diftype_t	dted_rtype;
+	uint64_t		dted_destructive;
+	uint64_t		dted_len;
+	dif_instr_t		dted_buf[];
 } dt_elf_difo_t;
 
 /*
@@ -102,12 +92,12 @@ typedef struct dt_elf_difo {
  * dtea_uarg:   User argument.
  */
 typedef struct dt_elf_actdesc {
-	dt_elf_ref_t dtea_difo;
-	dt_elf_ref_t dtea_next;
-	dtrace_actkind_t dtea_kind;
-	uint64_t dtea_ntuple;
-	uint64_t dtea_arg;
-	uint64_t dtea_uarg;
+	dt_elf_ref_t		dtea_difo;
+	dt_elf_ref_t		dtea_next;
+	dtrace_actkind_t	dtea_kind;
+	uint64_t		dtea_ntuple;
+	uint64_t		dtea_arg;
+	uint64_t		dtea_uarg;
 } dt_elf_actdesc_t;
 
 /*
@@ -119,10 +109,10 @@ typedef struct dt_elf_actdesc {
  * dtee_uarg:   Library argument.
  */
 typedef struct dt_elf_ecbdesc {
-	dt_elf_ref_t dtee_action;
-	dt_elf_ref_t dtee_pred;
-	dt_elf_probedesc_t dtee_probe;
-	uint64_t dtee_uarg;
+	dt_elf_ref_t		dtee_action;
+	dt_elf_ref_t		dtee_pred;
+	dt_elf_probedesc_t	dtee_probe;
+	uint64_t		dtee_uarg;
 } dt_elf_ecbdesc_t;
 
 /*
@@ -134,13 +124,13 @@ typedef struct dt_elf_ecbdesc {
  * dtes_stmtattr: Statement attributes.
  */
 typedef struct dt_elf_stmt {
-	dt_elf_ref_t dtes_ecbdesc;
-	dt_elf_ref_t dtes_action;
-	dt_elf_ref_t dtes_action_last;
-	dt_elf_attribute_t dtes_descattr;
-	dt_elf_attribute_t dtes_stmtattr;
-	dt_elf_ref_t dtes_aggdata;
-	dt_elf_ref_t dtes_next;
+	dt_elf_ref_t		dtes_ecbdesc;
+	dt_elf_ref_t		dtes_action;
+	dt_elf_ref_t		dtes_action_last;
+	dt_elf_attribute_t	dtes_descattr;
+	dt_elf_attribute_t	dtes_stmtattr;
+	dt_elf_ref_t		dtes_aggdata;
+	dt_elf_ref_t		dtes_next;
 } dt_elf_stmt_t;
 
 /*
@@ -152,10 +142,10 @@ typedef struct dt_elf_stmt {
  * dtep_rflags:     Resolver flags.
  */
 typedef struct dt_elf_prog {
-	dt_elf_ref_t dtep_first_stmt;
-	uint8_t dtep_dofversion;
-	dt_elf_ref_t dtep_options;
-	uint32_t dtep_rflags;
+	dt_elf_ref_t	dtep_first_stmt;
+	uint8_t		dtep_dofversion;
+	dt_elf_ref_t	dtep_options;
+	uint32_t	dtep_rflags;
 } dt_elf_prog_t;
 
 /*
@@ -167,10 +157,10 @@ typedef struct dt_elf_prog {
  * dteo_option: An integer or a pointer to a string that is option-specific.
  */
 typedef struct dt_elf_opt {
-	const char *dteo_name;
-	int dteo_set;
-	const char *dteo_arg;
-	uintptr_t dteo_option;
+	const char	*dteo_name;
+	int		dteo_set;
+	const char	*dteo_arg;
+	uintptr_t	dteo_option;
 } dt_elf_opt_t;
 
 /*
@@ -186,19 +176,19 @@ typedef struct dt_elf_opt {
  * edi_vers:  Identifier version number.
  */
 typedef struct dt_elf_ident {
-	size_t edi_name;
-	ushort_t edi_kind;
-	ushort_t edi_flags;
-	uint_t edi_id;
-	dt_elf_attribute_t edi_attr;
-	uint_t edi_vers;
+	size_t			edi_name;
+	ushort_t		edi_kind;
+	ushort_t		edi_flags;
+	uint_t			edi_id;
+	dt_elf_attribute_t	edi_attr;
+	uint_t			edi_vers;
 } dt_elf_ident_t;
 
 extern dt_elf_opt_t dtelf_ctopts[];
 extern dt_elf_opt_t dtelf_rtopts[];
 extern dt_elf_opt_t dtelf_drtopts[];
 
-extern void dt_elf_create(dtrace_prog_t *, int);
+extern void dt_elf_create(dtrace_prog_t *, int, const char *);
 extern dtrace_prog_t *dt_elf_to_prog(dtrace_hdl_t *, int);
 extern void dtrace_use_elf(dtrace_hdl_t *);
 
