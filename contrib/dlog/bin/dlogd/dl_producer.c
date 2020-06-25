@@ -294,14 +294,20 @@ dlp_produce_thread(void *vargp)
 	struct dl_producer *self = (struct dl_producer *) vargp;
 	struct dl_request_element *request;
 	ssize_t nbytes;
+	int rc, old_cancel;
 
 	/* Validate the method's preconditions. */
 	assert_integrity(self);
 
 	if (self->dlp_debug_level > 1)
 		DLOGTR0(PRIO_LOW, "Producer thread started...\n");
+	
+	/* Set the thread cancellation type to DEFERRED. */
+	rc = pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &old_cancel);
+	DL_ASSERT(rc == 0, ("Failed setting thread's cancellaltion tpye"));
 
-	for (;;) {
+	while (true) {
+
 		/* Dequeue the request; this simply moves the item into
 		 * the unacknowledged part of the request queue.
 		 */
@@ -345,11 +351,6 @@ dlp_produce_thread(void *vargp)
 		    "as it is simply moving an item in the list."));
 	}
 
-	if (self->dlp_debug_level > 1) {
-		DLOGTR1(PRIO_LOW, "%s produce thread stopped.\n",
-	 	   dl_topic_get_name(self->dlp_topic));
-	}
-
 	pthread_exit(NULL);
 }
 
@@ -363,7 +364,7 @@ dlp_enqueue_thread(void *vargp)
 	struct dl_produce_request *message;
 	struct dl_segment *seg;
 	char *topic_name;
-	int rc;
+	int rc, old_cancel;
 
 	/* Validate the method's preconditions. */
 	assert_integrity(self);
@@ -382,13 +383,11 @@ dlp_enqueue_thread(void *vargp)
 	offset = dl_user_segment_get_offset((struct dl_user_segment *) seg);
 	DL_ASSERT(offset != NULL, ("Active segment's offset cannot be NULL"));
 
+	/* Set the thread cancellation type to DEFERRED. */
+	rc = pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &old_cancel);
+	DL_ASSERT(rc == 0, ("Failed setting thread's cancellaltion tpye"));
+
 	while (true) {
-
-		/* Check whether the thread has been terminated */
-		if (__atomic_load_n(&self->dlp_state, __ATOMIC_ACQUIRE) == DLP_FINAL) {
-
-			break;
-		}
 
 		if (dl_topic_get_message_by_offset(self->dlp_topic,
 	            &msg_buffer) == 0) {
@@ -480,7 +479,7 @@ dlp_enqueue_thread(void *vargp)
 		} else {
 			/* Self-trigger syncd() event. */
 			dl_producer_syncd(self);
-
+			
 			/* Wait for signal before resuming enqueuing log records */
 			pthread_mutex_lock(&self->dlp_enqueue_mtx);
 			pthread_cond_wait(&self->dlp_enqueue_cnd, &self->dlp_enqueue_mtx);
@@ -488,9 +487,6 @@ dlp_enqueue_thread(void *vargp)
 		}
 	}
 			
-	if (self->dlp_debug_level > 1)
-		DLOGTR0(PRIO_LOW, "Enqueue thread stopped.\n");
-
 	pthread_exit(NULL);
 }
 
@@ -959,36 +955,18 @@ dl_producer_delete(struct dl_producer *self)
 	DLOGTR1(PRIO_LOW, "Stopping %s Enqueue thread\n",
 	    dl_topic_get_name(self->dlp_topic));
 	
-	rc = pthread_cond_signal(&self->dlp_enqueue_cnd);
-	DL_ASSERT(rc == 0, ("Failed signalling enqueue thread"));
-
-	/* Join the enqueue thread to free its resources */
-	pthread_join(self->dlp_enqueue_tid, NULL);
-
-      	/* Stop the produce and resender threads */
-	/*
-	DLOGTR1(PRIO_LOW, "Stopping %s produce thread\n",
-	    dl_topic_get_name(self->dlp_topic));
-
-	pthread_cancel(self->dlp_produce_tid);
-	pthread_join(self->dlp_produce_tid, NULL);
-
-	if (self->dlp_resend) {
-		DLOGTR1(PRIO_LOW, "Stopping %s resend thread\n",
-		    dl_topic_get_name(self->dlp_topic));
-		pthread_cancel(self->dlp_resender_tid);
-		pthread_join(self->dlp_resender_tid, NULL);
-	}
-	*/
+	rc = pthread_cancel(self->dlp_enqueue_tid);
+	DL_ASSERT(rc == 0, ("Failed cancelling enqueue thread"));
 	
+	/* Join the enqueue thread to free its resources */
+	rc = pthread_join(self->dlp_enqueue_tid, NULL);
+	DL_ASSERT(rc == 0, ("Failed joining enqueue thread"));
+
 	/* Delete the topic managed by the producer. */
 	dl_topic_delete(self->dlp_topic);
 
 	/* Unregister any poll reactor handlers */
 	dl_poll_reactor_unregister(&self->dlp_ktimer_hdlr);
-
-	//if (self->dlp_transport != NULL)
-	//	dl_transport_delete(self->dlp_transport);
 
 	/* Close the kqueue used for timeout events. */
 	close(self->dlp_ktimer);
