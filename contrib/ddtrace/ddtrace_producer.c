@@ -96,7 +96,7 @@ main(int argc, char *argv[])
 
 	opterr = 0;
 	for (optind = 0; optind < argc; optind++) { 
-		while ((c = getopt(argc, argv, "t:s:Z:")) != -1) {
+		while ((c = getopt(argc, argv, "t:s:Z")) != -1) {
 			switch(c) {
 			case 't':
 				topic_name = optarg;
@@ -113,10 +113,8 @@ main(int argc, char *argv[])
 				}
 				break;
 			case 'Z':
-
 				cflags |= DTRACE_C_ZDEFS;
 				break;
-			case '?':
 			default:
 				usage(stderr);
 				ret = -1;
@@ -204,7 +202,7 @@ main(int argc, char *argv[])
 	dtrace_prog_t * prog;
 	dtrace_proginfo_t info;
 	if ((prog = dtrace_program_fcompile(g_dtp, fp,
-	    DTRACE_C_PSPEC | DTRACE_C_CPP, script_argc, script_argv)) == NULL) {
+	    cflags, script_argc, script_argv)) == NULL) {
 
 		fprintf(stderr, "%s: failed to compile dtrace program %s",
 		    g_pname, dtrace_errmsg(g_dtp, dtrace_errno(g_dtp)));
