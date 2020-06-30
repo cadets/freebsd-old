@@ -43,12 +43,10 @@ LIBADD+=ctf
 LIBADD+=elf
 LIBADD+=z
 LIBADD+=rtld_db
-LIBADD+=sbuf #?
 LIBADD+=nv
 
 CFLAGS+=-DNDEBUG
 CFLAGS+=-DNEED_SOLARIS_BOOLEAN
-CFLAGS+=-L/usr/local/lib
 CFLAGS+=-I/usr/local/include
 CFLAGS+=-I${SRCTOP}/cddl/compat/opensolaris/include
 CFLAGS+=-I${SRCTOP}/cddl/contrib/opensolaris/lib/libdtrace/common
