@@ -83,7 +83,7 @@ main(int argc, char *argv[])
 	void *dof;
 	int error, r;
 	int cflags = DTRACE_C_PSPEC | DTRACE_C_CPP;
-	
+
 	g_pname = basename(argv[0]); 	
 
 	script_argv = malloc(sizeof(char *) * argc);
@@ -196,8 +196,17 @@ main(int argc, char *argv[])
 	(void) dtrace_setopt(g_dtp, "ddtracearg", ddtracearg);
 	(void) dtrace_setopt(g_dtp, "ddtracetime", "1");
 #ifndef NDEBUG
-	printf("%s: dtrace options set\n", g_pname);
+	fprintf(stdout, "%s: dtrace options set\n", g_pname);
 #endif
+#if defined(__i386__)
+	/* XXX The 32-bit seems to need more buffer space by default -sson */
+	(void) dtrace_setopt(g_dtp, "bufsize", "12m");
+	(void) dtrace_setopt(g_dtp, "aggsize", "12m");
+#else
+	(void) dtrace_setopt(g_dtp, "bufsize", "4m");
+	(void) dtrace_setopt(g_dtp, "aggsize", "4m");
+#endif
+	(void) dtrace_setopt(g_dtp, "temporal", "yes");
 
 	dtrace_prog_t * prog;
 	dtrace_proginfo_t info;
@@ -300,4 +309,3 @@ free_script_args:
 
 	return ret;
 }
-
