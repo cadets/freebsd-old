@@ -198,6 +198,8 @@ main(int argc, char *argv[])
 #ifndef NDEBUG
 	fprintf(stdout, "%s: dtrace options set\n", g_pname);
 #endif
+
+	/* Default options copied over from dtrace(1) */
 #if defined(__i386__)
 	/* XXX The 32-bit seems to need more buffer space by default -sson */
 	(void) dtrace_setopt(g_dtp, "bufsize", "12m");
