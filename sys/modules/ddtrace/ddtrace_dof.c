@@ -283,7 +283,7 @@ ddtrace_dof_create(dtrace_state_t *state)
 		}
 
 		/* Add a DOF_SECT_PROBEDESC for the ECB's probe description,
-		 * and copy the descirption strings into thestring tableSTRTAB.
+		 * and copy the description strings into the string table STRTAB.
 		 */
 		dofp.dofp_strtab = strtab; 
 		dofp.dofp_provider = dof_add_string(&ddo, probe->dtpr_provider->dtpv_name);
@@ -336,8 +336,8 @@ ddtrace_dof_create(dtrace_state_t *state)
 
 					dofa[j].dofa_difo = DOF_SECIDX_NONE;
 				}
-			
-				if (ap->dta_rec.dtrd_arg == 0) {
+		
+				if (ap->dta_rec.dtrd_format == 0i) {
 
 					dofa[j].dofa_arg = ap->dta_rec.dtrd_arg;
 					dofa[j].dofa_strtab = DOF_SECIDX_NONE;
