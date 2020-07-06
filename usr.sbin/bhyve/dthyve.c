@@ -27,6 +27,11 @@
  */
 
 #include <sys/ioctl.h>
+#include <sys/param.h>
+
+#ifndef WITHOUT_CAPSICUM
+#include <sys/capsicum.h>
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,9 +40,17 @@
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
+#include <sysexits.h>
+#include <err.h>
+
+#ifndef WITHOUT_CAPSICUM
+#include <capsicum_helpers.h>
+#endif
 
 #include "dthyve.h"
 
+static int elfdir_fd = -1;
+static char elfdir_path[MAXPATHLEN] = {0};
 static int vtdtr_fd = -1;
 static struct vtdtr_conf vtdtr_conf;
 
@@ -45,9 +58,14 @@ static struct vtdtr_conf vtdtr_conf;
  * Open the vtdtr device in order to set up the state.
  */
 void
-dthyve_init(const char *vm __unused)
+dthyve_init(const char *elfdir)
 {
 	int error;
+#ifndef WITHOUT_CAPSICUM
+	cap_rights_t rights;
+	static const cap_ioctl_t cmds[] = { VTDTRIOC_CONF };
+#endif
+	size_t l;
 
 	error = 0;
 
@@ -58,11 +76,31 @@ dthyve_init(const char *vm __unused)
 		exit(1);
 	}
 
+#ifndef WITHOUT_CAPSICUM
+	cap_rights_init(&rights, CAP_IOCTL, CAP_READ);
+	if (caph_rights_limit(vtdtr_fd, &rights) == -1)
+		errx(EX_OSERR, "Unable to apply rights for sandbox");
+
+	if (caph_ioctls_limit(vtdtr_fd, cmds, nitems(cmds)) == -1)
+		errx(EX_OSERR, "Unable to apply rights for sandbox");
+#endif
+
 	error = dthyve_conf(1 << VTDTR_EV_RECONF, 0);
 	if (error) {
 		fprintf(stderr, "Error: %s attempting to reconfigure /dev/vtdtr\n",
 		    strerror(errno));
 		exit(1);
+	}
+
+	if (elfdir != NULL) {
+		l = strlcpy(elfdir_path, elfdir, MAXPATHLEN);
+		if (l >= MAXPATHLEN)
+			errx(EX_OSERR, "elfdir path %s is greater than %zu",
+			    elfdir, MAXPATHLEN);
+
+		elfdir_fd = open(elfdir, O_RDONLY);
+		if (elfdir_fd == -1)
+			errx(EX_OSERR, "Unable to open %s", elfdir);
 	}
 }
 
@@ -114,4 +152,25 @@ void
 dthyve_destroy()
 {
 	close(vtdtr_fd);
+}
+
+/*
+ * Calls openat in the predetermined director where DTrace ELF files go.
+ * It assumes that elfpath is a relative path, as if it's not it will simply
+ * fail with capsicum in the kernel. This subroutine currently assumes that
+ * capsicum is enabled and will simply not work without it.
+ */
+int
+dthyve_openelf(const char *elfpath)
+{
+	int fd;
+
+	fd = -1;
+
+#ifndef WITHOUT_CAPSICUM
+	fd = openat(elfdir_fd, elfpath, O_RDONLY);
+	if (fd == -1)
+		errx(EX_OSERR, "Failed to open %s/%s", elfdir_path, elfpath);
+#endif
+	return (fd);
 }

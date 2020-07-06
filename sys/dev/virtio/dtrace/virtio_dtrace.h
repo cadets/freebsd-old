@@ -65,7 +65,7 @@ struct virtio_dtrace_control {
 
 		struct {			/*  elf event */
 			size_t	vd_elflen;
-			char	vd_elf[];
+			int	vd_elfhasmore;
 		} elf;
 
 		/*
@@ -73,9 +73,11 @@ struct virtio_dtrace_control {
 		 */
 #define	vd_probeid	uctrl.vd_probeid
 #define	vd_elflen	uctrl.elf.vd_elflen
-#define	vd_elf		uctrl.elf.vd_elf
+#define	vd_elfhasmore	uctrl.elf.vd_elfhasmore
 	} uctrl;
-}__attribute__((packed));
+	
+	char	vd_elf[];
+} __packed;
 
 struct virtio_dtrace_queue {
 	struct mtx           vtdq_mtx;
@@ -90,14 +92,14 @@ struct virtio_dtrace_queue {
 };
 
 struct vtdtr_ctrl_entry {
-	STAILQ_ENTRY(vtdtr_ctrl_entry) entries;
-	struct virtio_dtrace_control   ctrl;
+	STAILQ_ENTRY(vtdtr_ctrl_entry)	entries;
+	struct virtio_dtrace_control	*ctrl;
 };
 
 struct vtdtr_ctrlq {
-	STAILQ_HEAD(, vtdtr_ctrl_entry) head;
-	struct mtx                           mtx;
-	size_t                               n_entries;
+	STAILQ_HEAD(, vtdtr_ctrl_entry)	head;
+	struct mtx			mtx;
+	size_t				n_entries;
 };
 
 

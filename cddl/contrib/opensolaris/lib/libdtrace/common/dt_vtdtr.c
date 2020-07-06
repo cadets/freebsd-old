@@ -68,14 +68,16 @@ dt_vtdtr_notify(dt_vtdtrhdl_t *hdl, size_t event, void *arg)
 		l = strlcpy(ev.args.elf_file.path, arg, MAXPATHLEN);
 		if (l >= MAXPATHLEN)
 			return (-1);
+		break;
+
 	default:
 		return (-1);
 	}
 
 	ev.type = event;
 
-	res = write(hdl->dtvt_fd, &ev, sizeof(ev));
-	if (res == -1)
+	res = ioctl(hdl->dtvt_fd, VTDTRIOC_NOTIFY, &ev);
+	if (res != 0)
 		hdl->dtvt_err = errno;
 	
 	return (res);
@@ -116,6 +118,8 @@ dt_vtdtr_open(void)
 		return (NULL);
 
 	memset(hdl, 0, sizeof(dt_vtdtrhdl_t));
+
+	hdl->dtvt_fd = open("/dev/vtdtr", O_RDWR);
 
 	err = dt_vtdtr_conf(hdl, 1 << VTDTR_EV_RECONF, 0);
 	if (err) {

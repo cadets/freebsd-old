@@ -44,5 +44,6 @@ struct vtdtr_conf {
 };
 
 #define	VTDTRIOC_CONF	_IOW('v',1,struct vtdtr_conf)
+#define	VTDTRIOC_NOTIFY	_IOW('v',2,struct vtdtr_event)
 
 #endif

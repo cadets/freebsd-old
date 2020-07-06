@@ -50,13 +50,13 @@ __FBSDID("$FreeBSD$");
 
 #include "vtdtr.h"
 
-#define BITS                8
-#define MAX_BITSHIFT        ((size_t)1 << (sizeof(size_t)*BITS-1))
-#define VTDTR_BITMASK       ((MAX_BITSHIFT - 1) | (MAX_BITSHIFT))
-#define VTDTR_DEFAULT_SIZE  ((size_t)VTDTR_BITMASK)
-#define VTDTR_ALL_EVENTS    ((size_t)VTDTR_BITMASK)
-#define VTDTR_TIMEOUT       (10*SBT_1S)
-#define VTDTR_MTX_NAME_SIZE 64
+#define BITS			8
+#define MAX_BITSHIFT		((size_t)1 << (sizeof(size_t)*BITS-1))
+#define VTDTR_BITMASK		((MAX_BITSHIFT - 1) | (MAX_BITSHIFT))
+#define VTDTR_DEFAULT_SIZE	((size_t)VTDTR_BITMASK)
+#define VTDTR_ALL_EVENTS	((size_t)VTDTR_BITMASK)
+#define VTDTR_TIMEOUT		(10*SBT_1S)
+#define VTDTR_MTX_NAME_SIZE	64
 
 static int debug = 1;
 #define DPRINTF(params) if (debug) printf params
@@ -110,12 +110,11 @@ RB_GENERATE_STATIC(vtdtr_qtree, vtdtr_queue, qnode, qtreecmp);
 static struct cdev	*vtdtr_dev;
 static d_ioctl_t	vtdtr_ioctl;
 static d_read_t		vtdtr_read;
-static d_write_t	vtdtr_write;
 
 static struct cdevsw vtdtr_cdevsw = {
 	.d_version	= D_VERSION,
 	.d_read		= vtdtr_read,
-	.d_write	= vtdtr_write,
+	.d_write	= NULL,
 	.d_ioctl	= vtdtr_ioctl,
 	.d_open		= vtdtr_open,
 	.d_close	= vtdtr_close,
@@ -340,51 +339,19 @@ vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags)
 }
 
 static int
-vtdtr_write(struct cdev *dev __unused, struct uio *uio, int flags)
-{
-	struct vtdtr_event e;
-	int rv;
-
-	memset(&e, 0, sizeof(struct vtdtr_event));
-	rv = 0;
-
-	/*
-	 * If there is nothing to copy in, there is no work to do.
-	 */
-	if (uio->uio_resid == 0)
-		return (0);
-
-	/*
-	 * We only support write(2) for vtdtr_events.
-	 */
-	if (uio->uio_resid != sizeof(struct vtdtr_event))
-		return (EINVAL);
-
-	if ((rv = uiomove(&e, sizeof(struct vtdtr_event), uio)) != 0)
-		return (rv);
-
-	/*
-	 * The only event that userspace can enqueue is an ELF event.
-	 */
-	if (e.type != VTDTR_EV_ELF)
-		return (EINVAL);
-
-	vtdtr_enqueue(&e);
-	return (0);
-}
-
-static int
 vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
     int flags __unused, struct thread *td)
 {
 	struct vtdtr_conf *conf;
 	struct vtdtr_queue *q, tmp;
+	struct vtdtr_event *event;
 	sbintime_t timeout = 0;
 	size_t max_size;
 	size_t event_flags;
 
 	max_size = VTDTR_DEFAULT_SIZE;
 	event_flags = VTDTR_ALL_EVENTS;
+	event = NULL;
 
 	switch (cmd) {
 	case VTDTRIOC_CONF:
@@ -408,7 +375,7 @@ vtdtr_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 
 		if (conf->max_size != 0)
 			max_size = conf->max_size;
-		if (conf->event_flags != 0)
+		if (conf->event_flags != ((size_t)1 << VTDTR_EV_RECONF))
 			event_flags = conf->event_flags;
 
 		/*
@@ -420,9 +387,7 @@ finalize_conf:
 
 		if ((event_flags & ((size_t)1 << VTDTR_EV_RECONF)) == 0)
 			return (EINVAL);
-		/*
-		 * XXX: Possibly CAS? Do we care?
-		 */
+
 		mtx_lock(&q->mtx);
 		q->max_size = max_size;
 		q->event_flags = event_flags;
@@ -434,6 +399,15 @@ finalize_conf:
 		cv_signal(&q->rc_cv);
 		mtx_unlock(&q->rc_cvmtx);
 		break;
+
+	case VTDTRIOC_NOTIFY:
+		event = (struct vtdtr_event *)addr;
+		if (event->type != VTDTR_EV_ELF)
+			return (EINVAL);
+
+		vtdtr_enqueue(event);
+		break;
+
 	default:
 		break;
 	}

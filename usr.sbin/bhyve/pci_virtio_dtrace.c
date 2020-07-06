@@ -41,16 +41,19 @@ __FBSDID("$FreeBSD$");
 #include <sys/ucred.h>
 #include <sys/dtrace_bsd.h>
 #include <sys/vtdtr.h>
+#include <sys/stat.h>
 
 #include <machine/vmm.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stddef.h>
 #include <unistd.h>
 #include <assert.h>
 #include <pthread.h>
 #include <errno.h>
+#include <err.h>
 
 #include <vmmapi.h>
 
@@ -59,7 +62,7 @@ __FBSDID("$FreeBSD$");
 #include "pci_emul.h"
 #include "virtio.h"
 
-#define	VTDTR_RINGSZ	512
+#define	VTDTR_RINGSZ	1024
 #define	VTDTR_MAXQ	2
 
 #define	VTDTR_DEVICE_READY		0x00 /* Device is ready */
@@ -85,22 +88,29 @@ struct pci_vtdtr_control {
 
 		struct {			/*  elf event */
 			size_t	pvc_elflen;
-			char	pvc_elf[];
+			int	pvc_elfhasmore;
 		} elf;
 
 		/*
 		 * Defines for easy access into the union and underlying structs
 		 */
 #define	pvc_probeid	uctrl.pvc_probeid
-#define	pvc_elflen	uctrl.elf.pvc_elflen
 
-#define	pvc_elf		uctrl.elf.pvc_elf
+#define	pvc_elflen	uctrl.elf.pvc_elflen
+#define	pvc_elfhasmore	uctrl.elf.pvc_elfhasmore
 	} uctrl;
-}__attribute__((packed));
+
+	/*
+	 * Use the fact that a flexibly array member is not included in the
+	 * struct's sizeof() to simply put it out of the union and simplify
+	 * the code which uses it.
+	 */
+	char	pvc_elf[];
+} __packed;
 
 struct pci_vtdtr_ctrl_entry {
 	STAILQ_ENTRY(pci_vtdtr_ctrl_entry)	entries;
-	struct pci_vtdtr_control		ctrl;
+	struct pci_vtdtr_control		*ctrl;
 };
 
 struct pci_vtdtr_ctrlq {
@@ -120,6 +130,13 @@ struct pci_vtdtr_softc {
 	int			vsd_guest_ready;
 	int			vsd_ready;
 };
+
+/*
+ * By defn, a flexibly array member is not included in the sizeof(), so we can
+ * simply compute the maximum amount of bytes we can fit in each event to not
+ * overwrite the ringbuffer using it.
+ */
+#define	PCI_VTDTR_MAXELFSIZE	(VTDTR_RINGSZ - sizeof(struct pci_vtdtr_control))
 
 static void pci_vtdtr_reset(void *);
 static void pci_vtdtr_control_tx(struct pci_vtdtr_softc *,
@@ -353,11 +370,14 @@ pci_vtdtr_notify_ready(struct pci_vtdtr_softc *sc)
 
 	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
 	assert(ctrl_entry != NULL);
+	memset(ctrl_entry, 0, sizeof(struct pci_vtdtr_ctrl_entry));
 
-	ctrl = &ctrl_entry->ctrl;
+	ctrl = malloc(sizeof(struct pci_vtdtr_control));
+	assert(ctrl != NULL);
+	memset(ctrl, 0, sizeof(struct pci_vtdtr_control));
 
 	ctrl->pvc_event = VTDTR_DEVICE_READY;
-
+	ctrl_entry->ctrl = ctrl;
 
 	pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 	pci_vtdtr_cq_enqueue_front(sc->vsd_ctrlq, ctrl_entry);
@@ -426,10 +446,11 @@ pci_vtdtr_run(void *xsc)
 			assert(error == 0);
 
 			if (ready_flag &&
-			    ctrl_entry->ctrl.pvc_event != VTDTR_DEVICE_READY)
+			    ctrl_entry->ctrl->pvc_event != VTDTR_DEVICE_READY)
 				ready_flag = 0;
 
-			pci_vtdtr_fill_desc(vq, &ctrl_entry->ctrl);
+			pci_vtdtr_fill_desc(vq, ctrl_entry->ctrl);
+			free(ctrl_entry->ctrl);
 			free(ctrl_entry);
 			nent++;
 			error = pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
@@ -497,14 +518,123 @@ pci_vtdtr_find(const char *vm,
 	return (-1);
 }
 
+static struct pci_vtdtr_control *
+vtdtr_elf_event(int fd, size_t offs, struct stat *st)
+{
+	struct pci_vtdtr_control *ctrl;
+	ssize_t rval;
+	size_t maxlen;
+	size_t len_to_read;
+	void *buf;
+	int hasmore;
+
+	rval = 0;
+	ctrl = NULL;
+	maxlen = 0;
+	len_to_read = 0;
+	buf = NULL;
+	hasmore = 0;
+
+	assert(fd != -1);
+
+	/*
+	 * Sanity checks.
+	 */
+	if (st == NULL) {
+		fprintf(stderr, "st is NULL\n");
+		return (NULL);
+	}
+
+	/*
+	 * Computer how much we'll actually be reading.
+	 */
+	maxlen = st->st_size - offs;
+	len_to_read = maxlen > PCI_VTDTR_MAXELFSIZE ?
+	    PCI_VTDTR_MAXELFSIZE : maxlen;
+	hasmore = maxlen > PCI_VTDTR_MAXELFSIZE ? 1 : 0;
+
+	/*
+	 * Allocate the control message with the appropriate size to fit
+	 * all of the data that we'll be reading in.
+	 */
+	ctrl = malloc(sizeof(struct pci_vtdtr_control) + len_to_read);
+	if (ctrl == NULL) {
+		fprintf(stderr, "failed to malloc a new control event\n");
+		return (NULL);
+	}
+
+	/*
+	 * Zero the control event.
+	 */
+	memset(ctrl, 0, sizeof(struct pci_vtdtr_control));
+
+	/*
+	 * We compute the offset to pvc_elf in the control message.
+	 */
+	buf = ctrl + offsetof(struct pci_vtdtr_control, pvc_elf);
+
+	/*
+	 * Read the actual data from the file.
+	 */
+	rval = pread(fd, buf, len_to_read, offs);
+	if (rval != len_to_read) {
+		fprintf(stderr, "failed to read from %d, got %zd bytes: %s\n",
+		    fd, rval, strerror(errno));
+
+		free(ctrl);
+		return (NULL);
+	}
+
+	/*
+	 * At this point, we will have returned NULL in any case of failure,
+	 * so we don't need to check anything further and can fill in the full
+	 * control message and return it.
+	 */
+	ctrl->pvc_event = VTDTR_DEVICE_ELF;
+	ctrl->pvc_elflen = len_to_read;
+	ctrl->pvc_elfhasmore = hasmore;
+
+	return (ctrl);
+}
+
+static struct stat *
+vtdtr_get_filestat(int fd)
+{
+	struct stat *st;
+	int rval;
+
+	st = NULL;
+	rval = 0;
+
+	st = malloc(sizeof(struct stat));
+	assert(st != NULL);
+	memset(st, 0, sizeof(struct stat));
+
+	rval = fstat(fd, st);
+	if (rval != 0) {
+		fprintf(stderr, "failed to fstat: %s\n", strerror(errno));
+		free(st);
+		return (NULL);
+	}
+
+	return (st);
+}
+
 static void *
 pci_vtdtr_events(void *xsc)
 {
 	struct pci_vtdtr_softc *sc;
 	int error;
 	size_t flags;
+	const char *elfpath;
+	int fd;
+	struct stat *st;
+	size_t offs;
 
 	sc = xsc;
+	fd = 0;
+	st = NULL;
+	offs = 0;
 
 	DPRINTF(("%s: starting event reads.\n", __func__));
 
@@ -516,6 +646,7 @@ pci_vtdtr_events(void *xsc)
 		struct pci_vtdtr_ctrl_entry *ctrl_entry;
 		struct pci_vtdtr_control *ctrl;
 
+next:
 		error = dthyve_read(&ev, 1);
 		if (error) {
 			fprintf(stderr, "Error: '%s' reading.\n",
@@ -528,38 +659,111 @@ pci_vtdtr_events(void *xsc)
 
 		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
 		assert(ctrl_entry != NULL);
-		ctrl = &ctrl_entry->ctrl;
+		memset(ctrl_entry, 0, sizeof(struct pci_vtdtr_ctrl_entry));
 
-		DPRINTF(("event read: %zu\n", ev.type));
 		switch (ev.type) {
 		case VTDTR_EV_INSTALL:
+			ctrl = malloc(sizeof(struct pci_vtdtr_control));
+			assert(ctrl != NULL);
+			memset(ctrl, 0, sizeof(struct pci_vtdtr_control));
+
 			ctrl->pvc_event = VTDTR_DEVICE_PROBE_INSTALL;
+			ctrl->pvc_probeid = ev.args.p_toggle.probeid;
 			break;
+
 		case VTDTR_EV_UNINSTALL:
+			ctrl = malloc(sizeof(struct pci_vtdtr_control));
+			assert(ctrl != NULL);
+			memset(ctrl, 0, sizeof(struct pci_vtdtr_control));
+
 			ctrl->pvc_event = VTDTR_DEVICE_PROBE_UNINSTALL;
+			ctrl->pvc_probeid = ev.args.p_toggle.probeid;
 			break;
+
 		case VTDTR_EV_GO:
+			ctrl = malloc(sizeof(struct pci_vtdtr_control));
+			assert(ctrl != NULL);
+			memset(ctrl, 0, sizeof(struct pci_vtdtr_control));
+
 			ctrl->pvc_event = VTDTR_DEVICE_GO;
 			break;
+
 		case VTDTR_EV_STOP:
+			ctrl = malloc(sizeof(struct pci_vtdtr_control));
+			assert(ctrl != NULL);
+			memset(ctrl, 0, sizeof(struct pci_vtdtr_control));
+
 			ctrl->pvc_event = VTDTR_DEVICE_STOP;
 			error = dthyve_conf(1 << VTDTR_EV_RECONF, 0);
 			assert(error == 0);
 			break;
+
+		case VTDTR_EV_ELF:
+			elfpath = ev.args.elf_file.path;
+
+			fd = dthyve_openelf(elfpath);
+			if (fd == -1) {
+				fprintf(stderr, "failed to open %s\n", elfpath);
+				goto next;
+			}
+
+			st = vtdtr_get_filestat(fd);
+
+			ctrl = vtdtr_elf_event(fd, offs, st);
+			assert(ctrl != NULL);
+
+			offs += ctrl->pvc_elflen;
+
+			while (ctrl->pvc_elfhasmore == 1) {
+				/*
+				 * Enqueue the current control entry into the
+				 * queue. We are always guaranteed to have one
+				 * here due to the first allocation.
+				 */
+				ctrl_entry->ctrl = ctrl;
+
+				pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+				pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
+				pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+
+				/*
+				 * Get the new control element
+				 */
+				ctrl = vtdtr_elf_event(fd, offs, st);
+				assert(ctrl != NULL);
+				
+				offs += ctrl->pvc_elflen;
+
+				ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+				assert(ctrl_entry != NULL);
+				memset(ctrl_entry, 0, sizeof(struct pci_vtdtr_ctrl_entry));
+			}
+
+			close(fd);
+			break;
+
 		case VTDTR_EV_RECONF:
 			flags = 1 << VTDTR_EV_RECONF;
 			char *vm = vm_get_name(sc->vsd_vmctx);
 
 			if (pci_vtdtr_find(vm, ev.args.d_config.vms,
 			    ev.args.d_config.count) == 0) {
-				flags |= (1 << VTDTR_EV_INSTALL) |
-				    (1 << VTDTR_EV_STOP)         |
+				flags |= (1 << VTDTR_EV_INSTALL)	|
+				    (1 << VTDTR_EV_STOP)		|
+				    (1 << VTDTR_EV_ELF)			|
 				    (1 << VTDTR_EV_GO);
 			}
 
 			error = dthyve_conf(flags, 0);
 			assert(error == 0);
-			break;
+			/*
+			 * We don't actually enqueue any event for this event,
+			 * so we simply go to the start of the loop again.
+			 *
+			 * XXX: A bit ugly, but does the job.
+			 */
+			goto next;
+
 		default:
 			/*
 			 * Hard fail if we catch something unexpected.
@@ -567,7 +771,7 @@ pci_vtdtr_events(void *xsc)
 			errx(EXIT_FAILURE, "unexpected event %d", ev.type);
 		}
 
-		ctrl->pvc_probeid = ev.args.p_toggle.probeid;
+		ctrl_entry->ctrl = ctrl;
 
 		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
@@ -634,9 +838,9 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 }
 
 struct pci_devemu pci_de_vdtr = {
-	.pe_emu      = "virtio-dtrace",
-	.pe_init     = pci_vtdtr_init,
-	.pe_barwrite = vi_pci_write,
-	.pe_barread  = vi_pci_read
+	.pe_emu		= "virtio-dtrace",
+	.pe_init	= pci_vtdtr_init,
+	.pe_barwrite	= vi_pci_write,
+	.pe_barread	= vi_pci_read
 };
 PCI_EMUL_SET(pci_de_vdtr);

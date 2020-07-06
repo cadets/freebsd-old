@@ -32,29 +32,11 @@
 #include <sys/types.h>
 #include <sys/vtdtr.h>
 
-#ifndef VTDTR
-struct vtdtr_event;
-
-void dthyve_init(const char *);
-int dthyve_conf(size_t, sbintime_t);
-int dthyve_configured(void);
-int dthyve_read(struct vtdtr_event *, size_t);
-void dthyve_destroy(void);
-#endif
-
-#ifdef VTDTR
-#ifdef DTVIRT
-
-struct uuid;
-
-int	dthyve_open(void);
-int	dthyve_register_provider(struct uuid *, const char *, const char *);
-int	dthyve_unregister_provider(struct uuid *);
-int	dthyve_probe_create(struct uuid *, const char *,
-    const char *, const char *, char types[10][128]);
-void	dthyve_cleanup(void);
-
-#endif /* DTVIRT */
-#endif
+void	dthyve_init(const char *);
+int	dthyve_conf(size_t, sbintime_t);
+int	dthyve_configured(void);
+int	dthyve_read(struct vtdtr_event *, size_t);
+void	dthyve_destroy(void);
+int	dthyve_openelf(const char *);
 
 #endif /* _DTHYVE_H_ */

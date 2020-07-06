@@ -702,9 +702,8 @@ exec_prog(const dtrace_cmd_t *dcp)
 		(void) dtrace_dump_actions(dcp->dc_prog);
 		if (g_elf) {
 			dt_elf_create(dcp->dc_prog, ELFDATA2LSB, elfpath);
-			if (dt_vtdtr_elfnotify(g_vtdtrhdl, elfpath))
-				fatal("failed to notify about %s: %s", elfpath,
-				    strerror(errno));
+			if (dt_vtdtr_elfnotify(g_vtdtrhdl, basename(elfpath)))
+				fatal("failed to notify about %s", elfpath);
 		}
 	} else if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) == 0) {
 		(void) dtrace_dump_actions(dcp->dc_prog);
@@ -1931,8 +1930,7 @@ main(int argc, char *argv[])
 
 	g_vtdtrhdl = dt_vtdtr_open();
 	if (g_vtdtrhdl == NULL)
-		fatal("failed to open and configure /dev/vtdtr: %s",
-		    strerror(errno));
+		fatal("failed to open and configure /dev/vtdtr");
 
 	/*
 	 * In our fourth pass we finish g_cmdv[] by calling dc_func to convert
