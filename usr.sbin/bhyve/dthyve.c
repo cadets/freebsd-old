@@ -98,7 +98,7 @@ dthyve_init(const char *elfdir)
 			errx(EX_OSERR, "elfdir path %s is greater than %zu",
 			    elfdir, MAXPATHLEN);
 
-		elfdir_fd = open(elfdir, O_RDONLY);
+		elfdir_fd = open(elfdir, O_RDONLY | O_CREAT);
 		if (elfdir_fd == -1)
 			errx(EX_OSERR, "Unable to open %s", elfdir);
 	}

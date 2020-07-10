@@ -226,6 +226,7 @@ fatal(const char *fmt, ...)
 	 * Close the DTrace handle to ensure that any controlled processes are
 	 * correctly restored and continued.
 	 */
+	dt_vtdtr_close(g_vtdtrhdl);
 	if (g_dtp)
 		dtrace_close(g_dtp);
 
@@ -267,6 +268,7 @@ dfatal(const char *fmt, ...)
 	 * Close the DTrace handle to ensure that any controlled processes are
 	 * correctly restored and continued.
 	 */
+	dt_vtdtr_close(g_vtdtrhdl);
 	dtrace_close(g_dtp);
 
 	exit(E_ERROR);
@@ -1983,7 +1985,9 @@ main(int argc, char *argv[])
 			exec_prog(&g_cmdv[i]);
 
 		if (done && !g_grabanon) {
+			dt_vtdtr_close(g_vtdtrhdl);
 			dtrace_close(g_dtp);
+
 			return (g_status);
 		}
 		break;
@@ -2006,7 +2010,9 @@ main(int argc, char *argv[])
 #endif
 
 		if (g_cmdc == 0) {
+			dt_vtdtr_close(g_vtdtrhdl);
 			dtrace_close(g_dtp);
+
 			return (g_status);
 		}
 
@@ -2041,15 +2047,19 @@ main(int argc, char *argv[])
 		etcsystem_add();
 		error("run update_drv(1M) or reboot to enable changes\n");
 #endif
-
+		
+		dt_vtdtr_close(g_vtdtrhdl);
 		dtrace_close(g_dtp);
+
 		return (g_status);
 
 	case DMODE_LINK:
 		if (g_cmdc == 0) {
 			(void) fprintf(stderr, "%s: -G requires one or more "
 			    "scripts or enabling options\n", g_pname);
+			dt_vtdtr_close(g_vtdtrhdl);
 			dtrace_close(g_dtp);
+
 			return (E_USAGE);
 		}
 
@@ -2067,6 +2077,7 @@ main(int argc, char *argv[])
 				dfatal(NULL); /* dtrace_errmsg() only */
 		}
 
+		dt_vtdtr_close(g_vtdtrhdl);
 		dtrace_close(g_dtp);
 		return (g_status);
 
@@ -2085,14 +2096,18 @@ main(int argc, char *argv[])
 		if (g_cmdc == 0)
 			(void) dtrace_probe_iter(g_dtp, NULL, list_probe, NULL);
 
+		dt_vtdtr_close(g_vtdtrhdl);
 		dtrace_close(g_dtp);
+		
 		return (g_status);
 
 	case DMODE_HEADER:
 		if (g_cmdc == 0) {
 			(void) fprintf(stderr, "%s: -h requires one or more "
 			    "scripts or enabling options\n", g_pname);
+			dt_vtdtr_close(g_vtdtrhdl);
 			dtrace_close(g_dtp);
+			
 			return (E_USAGE);
 		}
 
@@ -2103,7 +2118,9 @@ main(int argc, char *argv[])
 				(void) fprintf(stderr, "%s: -h requires an "
 				    "output file if multiple scripts are "
 				    "specified\n", g_pname);
+				dt_vtdtr_close(g_vtdtrhdl);
 				dtrace_close(g_dtp);
+				
 				return (E_USAGE);
 			}
 
@@ -2112,6 +2129,8 @@ main(int argc, char *argv[])
 				(void) fprintf(stderr, "%s: -h requires an "
 				    "output file if no scripts are "
 				    "specified\n", g_pname);
+				
+				dt_vtdtr_close(g_vtdtrhdl);
 				dtrace_close(g_dtp);
 				return (E_USAGE);
 			}
@@ -2131,6 +2150,7 @@ main(int argc, char *argv[])
 		    fclose(g_ofp) == EOF)
 			dfatal("failed to create header file %s", g_ofile);
 
+		dt_vtdtr_close(g_vtdtrhdl);
 		dtrace_close(g_dtp);
 		return (g_status);
 	}

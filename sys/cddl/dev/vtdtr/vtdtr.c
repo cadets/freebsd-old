@@ -89,6 +89,7 @@ struct vtdtr_queue {
 	size_t                      event_flags;  /* Configuration flags */
 	size_t                      drops;        /* Number of event drops */
 	uint8_t                     needs_reconf; /* Need to reconfigure? */
+	uint8_t                     sdown;        /* Shutting down? */
 };
 
 static struct vtdtr_qentry *vtdtr_construct_entry(struct vtdtr_event *);
@@ -241,7 +242,7 @@ vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags)
 	struct vtdtr_qentry *ent, *t;
 	struct proc *u_proc;
 	struct vtdtr_event *e;
-	char *data; /* Isn't actually a string */
+	char *data;
 	char *dptr;
 	size_t len;
 	int n_events, error;
@@ -256,9 +257,10 @@ vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags)
 
 	mtx_lock(&qtree_mtx);
 	q = RB_FIND(vtdtr_qtree, &vtdtr_queue_tree, &tmp);
-	mtx_unlock(&qtree_mtx);
-	if (q == NULL)
+	if (q == NULL) {
+		mtx_unlock(&qtree_mtx);
 		return (ESRCH);
+	}
 
 	/*
 	 * XXX: Modulo + division is painful, but we can fix this if it turns
@@ -271,18 +273,19 @@ vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags)
 	if (n_events == 0)
 		return (EINVAL);
 
-	/*
-	 * We don't lock here because we synchronize inside the if on the
-	 * condvar.
-	 */
+	mtx_lock(&q->mtx);
+	mtx_unlock(&qtree_mtx);
 	if (q->num_entries == 0) {
-		if (flags & O_NONBLOCK)
+		if (flags & O_NONBLOCK) {
+			mtx_unlock(&q->mtx);
 			return (EAGAIN);
-		else {
+		} else {
 			if (q->timeout == 0) {
 				mtx_lock(&q->cvmtx);
-				while (q->num_entries == 0) {
+				while (q->num_entries == 0 && q->sdown == 0) {
+					mtx_unlock(&q->mtx);
 					error = cv_wait_sig(&q->cv, &q->cvmtx);
+					mtx_lock(&q->mtx);
 					if (error) {
 						mtx_unlock(&q->cvmtx);
 						return (EINTR);
@@ -291,14 +294,21 @@ vtdtr_read(struct cdev *dev __unused, struct uio *uio, int flags)
 				mtx_unlock(&q->cvmtx);
 
 			} else {
-				mtx_lock(&q->mtx);
 				msleep_sbt(q, &q->mtx, 0, "qwait", q->timeout, 0, 0);
-				mtx_unlock(&q->mtx);
-				if (q->num_entries == 0)
+				if (q->num_entries == 0) {
+					mtx_unlock(&q->mtx);
 					return (EAGAIN);
+				}
 			}
 		}
 	}
+
+	if (q->sdown == 1) {
+		mtx_unlock(&q->mtx);
+		return (ECANCELED);
+	}
+
+	mtx_unlock(&q->mtx);
 
 	data = malloc(uio->uio_resid, M_TEMP, M_WAITOK | M_ZERO);
 	dptr = data;
@@ -440,9 +450,8 @@ vtdtr_open(struct cdev *dev __unused, int oflags, int devtype, struct thread *td
 	mtx_lock(&qtree_mtx);
 	q = RB_FIND(vtdtr_qtree, &vtdtr_queue_tree, &tmp);
 	mtx_unlock(&qtree_mtx);
-	if (q != NULL) {
+	if (q != NULL)
 		return (EBUSY);
-	}
 
 	/*
 	 * Set up the queue's initial state.
@@ -495,16 +504,30 @@ vtdtr_close(struct cdev *dev __unused, int foo, int bar, struct thread *td)
 	mtx_lock(&qtree_mtx);
 	q = RB_FIND(vtdtr_qtree, &vtdtr_queue_tree, &tmp);
 	if (q == NULL) {
+		printf("q is NULL\n");
 		mtx_unlock(&qtree_mtx);
 		return (ESRCH);
 	}
 
-	RB_REMOVE(vtdtr_qtree, &vtdtr_queue_tree, q);
+	printf("removing %d\n", td->td_proc->p_pid);
+	if (RB_REMOVE(vtdtr_qtree, &vtdtr_queue_tree, q) == NULL) {
+		printf(dev, "failed to remove queue\n");
+		return (ECANCELED);
+	}
+
 	mtx_unlock(&qtree_mtx);
 
 	mtx_lock(&q->mtx);
+	q->sdown = 1;
 	vtdtr_flush(q);
 
+	mtx_lock(&q->cvmtx);
+	cv_signal(&q->cv);
+	mtx_unlock(&q->cvmtx);
+
+	mtx_unlock(&q->mtx);
+	mtx_lock(&q->mtx);
+	
 	mtx_lock(&q->cvmtx);
 	cv_destroy(&q->cv);
 	mtx_unlock(&q->cvmtx);

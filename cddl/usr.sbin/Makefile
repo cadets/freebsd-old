@@ -2,7 +2,8 @@
 
 .include <src.opts.mk>
 
-SUBDIR=	${_dtrace} \
+SUBDIR=	${_dtdaemon} \
+	${_dtrace} \
 	${_dwatch} \
 	${_lockstat} \
 	${_plockstat} \
@@ -27,6 +28,7 @@ _dtrace=	dtrace
 _dwatch=	dwatch
 _lockstat=	lockstat
 _plockstat=	plockstat
+_dtdaemon=	dtdaemon
 .endif
 
 .if ${MACHINE_CPUARCH} == "aarch64" || ${MACHINE_CPUARCH} == "arm" || \

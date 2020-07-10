@@ -40,6 +40,7 @@
 #include <assert.h>
 #include <err.h>
 #include <errno.h>
+#include <sysexits.h>
 
 #include <sys/vtdtr.h>
 
@@ -119,7 +120,12 @@ dt_vtdtr_open(void)
 
 	memset(hdl, 0, sizeof(dt_vtdtrhdl_t));
 
-	hdl->dtvt_fd = open("/dev/vtdtr", O_RDWR);
+	hdl->dtvt_fd = open("/dev/vtdtr", O_RDONLY);
+	if (hdl->dtvt_fd == -1) {
+		free(hdl);
+		fprintf(stderr, "failed to open /dev/vtdtr\n");
+		return (NULL);
+	}
 
 	err = dt_vtdtr_conf(hdl, 1 << VTDTR_EV_RECONF, 0);
 	if (err) {
@@ -133,11 +139,13 @@ dt_vtdtr_open(void)
 void
 dt_vtdtr_close(dt_vtdtrhdl_t *hdl)
 {
+	printf("calling close\n");
 	if (hdl == NULL)
 		return;
 
 	if (hdl->dtvt_fd != -1)
-		close(hdl->dtvt_fd);
+		if (close(hdl->dtvt_fd))
+			errx(EX_OSERR, "Failed to close /dev/vtdtr");
 
 	free(hdl);
 }
