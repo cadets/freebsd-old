@@ -632,11 +632,12 @@ dl_producer_offline(struct dl_producer * const self)
 		pthread_join(self->dlp_resender_tid, NULL);
 	}
 
-	/* Delete the producer transport */
-	DL_ASSERT(self->dlp_transport != NULL,
-	   ("Transition to Offline with NULL Transport"));
-	dl_transport_delete(self->dlp_transport);
-	self->dlp_transport = NULL;
+	/* Delete the producer transport if present */
+	if (self->dlp_transport != NULL) {
+
+		dl_transport_delete(self->dlp_transport);
+		self->dlp_transport = NULL;
+	}
 
 	/* Trigger reconnect event after timeout period. */
 	EV_SET(&kev, RECONNECT_TIMEOUT_EVENT, EVFILT_TIMER,
@@ -723,6 +724,7 @@ dl_producer_new(struct dl_producer **self, char *topic_name,
 	struct dl_producer *producer;
 	struct dl_user_segment *segment;
 	char *client_id;
+	struct kevent kev;
 	int requestq_len, rc;
 
 	/* Validate the method's preconditions. */
@@ -882,14 +884,22 @@ dl_producer_new(struct dl_producer **self, char *topic_name,
 		goto err_producer_cond;
 	}
 
-	/* Synchnronously create the Producer in the connecting state. */
-	dl_producer_connecting(producer);
+	/* Synchronously create in the Offline state */
+	dl_producer_offline(producer);
 
 	/* Trigger update of the index.
 	 * This ensures that when the log is updated without dlogd
 	 * running these entries are indexed.
 	 */
 	dl_index_update(dl_user_segment_get_index(segment));
+
+	/* Trigger reconnect to fire immediately,
+	 * this beings the producer up from the Offline
+	 * to Connecting state.
+	 */
+	EV_SET(&kev, RECONNECT_TIMEOUT_EVENT, EVFILT_TIMER,
+	    EV_ADD | EV_ONESHOT, 0, 0, NULL);
+	kevent(producer->dlp_ktimer, &kev, 1, NULL, 0, NULL);
 
 	*self = producer;
 
