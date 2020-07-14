@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-20 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,19 +34,22 @@
  *
  */
 
-#include <sys/socket.h>
-#include <sys/poll.h>
 #include <sys/types.h>
+#include <sys/poll.h>
+#include <sys/socket.h>
 #include <sys/uio.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
-#include <strings.h>
-#include <stddef.h>
-#include <unistd.h>
+
 #include <errno.h>
+#include <unistd.h>
+#include <netdb.h>
+#include <strings.h>
+#include <string.h>
+#include <stddef.h>
 
 #include "dl_assert.h"
 #include "dl_bbuf.h"
@@ -96,44 +99,84 @@ dl_sock_transport_delete(struct dl_transport *self)
 
 static int
 dl_sock_transport_connect(struct dl_transport *self,
-    const char * const hostname, const int portnumber)
+    const char * const hostname, const int portnum)
 {
-	struct sockaddr_in dest;
-	int rc, flags;
+	struct addrinfo hints;
+	struct addrinfo *result, *rp;
+	int sock, rc, flags;
 
 	dl_transport_check_integrity(self->dlt_sock);
 
-	bzero(&dest, sizeof(dest));
-	dest.sin_family = AF_INET;
-	dest.sin_port = htons(portnumber);
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;    /* Allow IPv4 or IPv6 */
+	hints.ai_socktype = SOCK_STREAM; /* Streaming socket */
+	hints.ai_flags = AI_PASSIVE;    /* For wildcard IP address */
+	hints.ai_protocol = 0;          /* Any protocol */
+	hints.ai_canonname = NULL;
+	hints.ai_addr = NULL;
+	hints.ai_next = NULL;
 
-	self->dlt_sock->dlt_fd = socket(AF_INET, SOCK_STREAM|SOCK_NONBLOCK, 0);
-	if (self->dlt_sock->dlt_fd == -1) {
+	/* Convert the port nunber of a string to pass
+	 * into getaddrinfo().
+	 */
+	ssize_t n;
+	n = snprintf(NULL, 0, "%d", portnum);
+	
+	char port[n + 1];
+	snprintf(port, n + 1, "%d", portnum);
 
+ 	rc = getaddrinfo(hostname, port, &hints, &result);
+	if (rc != 0) {
+		
+		DLOGTR1(PRIO_HIGH,
+		    "getaddrinfo: %s\n", gai_strerror(rc));
+		return -1;
+        }
+
+	for (rp = result; rp != NULL; rp = rp->ai_next) {
+		
+		sock = socket(rp->ai_family, rp->ai_socktype,
+                       rp->ai_protocol);
+		if (sock == -1) {
+
+			continue;
+		}
+
+		rc = connect(sock, rp->ai_addr, rp->ai_addrlen);
+		if (rc == 0 ||
+		    (rc == -1 && errno == EINPROGRESS)) {
+
+			break;
+		}
+
+               	close(sock);
+
+	}
+
+	if (rp == NULL) {
+
+		DLOGTR1(PRIO_HIGH, "Error connecting to %s\n",
+		    hostname);
 		return -1;
 	}
+
+	freeaddrinfo(result);
+
+	/* Successfully connected to socket */
+	self->dlt_sock->dlt_fd = sock;
+
+	/* Register the event handler for the socket */
+	self->dlt_event_hdlr.dleh_instance = self;
+	self->dlt_event_hdlr.dleh_get_handle = dl_sock_get_transport_fd;
+	self->dlt_event_hdlr.dleh_handle_event = dl_sock_transport_hdlr;
+
+	dl_poll_reactor_register(&self->dlt_event_hdlr,
+	    POLLERR | POLLOUT | POLLHUP);
 
 	/* Disbale NAGLE - send small messages immediately. */
 	flags = 1;
 	setsockopt(self->dlt_sock->dlt_fd, IPPROTO_TCP, TCP_NODELAY,
 	   (void *) &flags, sizeof(flags));
-
-	if (inet_pton(AF_INET, hostname, &(dest.sin_addr)) == 0) {
-
-		return -2;
-	}
-
-	rc = connect(self->dlt_sock->dlt_fd, (struct sockaddr *) &dest,
-	    sizeof(dest));
-	if (rc == 0 || (rc == -1 && errno == EINPROGRESS)) {
-
-		self->dlt_event_hdlr.dleh_instance = self;
-		self->dlt_event_hdlr.dleh_get_handle = dl_sock_get_transport_fd;
-		self->dlt_event_hdlr.dleh_handle_event = dl_sock_transport_hdlr;
-
-		dl_poll_reactor_register(&self->dlt_event_hdlr,
-			POLLERR | POLLOUT | POLLHUP);
-	}
 
 	return rc;
 }
