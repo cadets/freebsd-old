@@ -134,7 +134,7 @@ dl_sock_transport_connect(struct dl_transport *self,
         }
 
 	for (rp = result; rp != NULL; rp = rp->ai_next) {
-		
+	
 		sock = socket(rp->ai_family, rp->ai_socktype,
                        rp->ai_protocol);
 		if (sock == -1) {
@@ -150,12 +150,11 @@ dl_sock_transport_connect(struct dl_transport *self,
 		}
 
                	close(sock);
-
 	}
 
 	if (rp == NULL) {
 
-		DLOGTR1(PRIO_HIGH, "Error connecting to %s\n",
+		DLOGTR1(PRIO_NORMAL, "Error connecting to %s\n",
 		    hostname);
 		return -1;
 	}
