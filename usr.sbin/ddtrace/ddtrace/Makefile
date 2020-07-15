@@ -31,10 +31,10 @@
 
 .PATH : ${SRCTOP}/contrib/ddtrace
 
-PROG= ddtrace_producer
+PROG= ddtrace
 BINDIR= /usr/sbin
 
-SRCS= ddtrace_producer.c
+SRCS= ddtrace.c
 MAN=
 
 LIBADD+=dtrace
