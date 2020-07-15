@@ -673,6 +673,8 @@ retry:
 
 	if (is_log_rotated(self)) {
 
+		DLOGTR0(PRIO_LOW, "Log rotated...\n");
+
 		if (rotate_log(self)) {
 
 			goto retry;
