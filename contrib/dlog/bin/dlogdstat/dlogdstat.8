@@ -1,0 +1,69 @@
+.\"-
+.\" Copyright (c) 2018 Robert N. M. Watson
+.\" All rights reserved.
+.\"
+.\" This software was developed by BAE Systems, the University of Cambridge
+.\" Computer Laboratory, and Memorial University under DARPA/AFRL contract
+.\" FA8650-15-C-7558 (\"CADETS\"), as part of the DARPA Transparent Computing
+.\" (TC) research program.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd October 24, 2018
+.Dt DLOGDSTAT 8
+.Os
+.Sh NAME
+.Nm dlogdstat
+.Nd Distributed DTrace Log Daemon Monitoring Tool
+.Sh SYNOPSIS
+.Nm
+.Fl p Ar path
+.Fl t Ar topic
+.Sh DESCRIPTION
+The
+.Nm
+tool monitors the
+.Xr dlogd 8
+daemon responsible for distributed
+.Xr dtrace 1
+operation, printing information on one active topic specified using the
+.Fl t Ar topic .
+.Pp
+The arguments must both be specified:
+.Bl -tag -width indent
+.It Fl p Ar path
+Use the
+.Nm dlogd
+data files found in
+.Pa path .
+.It Fl t Ar topic
+Display information on the topic
+.Va topic .
+.Sh AUTHORS
+This software and this manual page were developed by BAE Systems, the
+University of Cambridge Computer Laboratory, and Memorial University under
+DARPA/AFRL contract
+.Pq FA8650-15-C-7558
+.Pq Do CADETS Dc ,
+as part of the DARPA Transparent Computing (TC) research program.

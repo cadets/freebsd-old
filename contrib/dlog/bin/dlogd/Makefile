@@ -1,0 +1,102 @@
+#-
+# Copyright (c) 2018-2019 (Graeme Jenkinson)
+# All rights reserved.
+#
+# This software was developed by BAE Systems, the University of Cambridge
+# Computer Laboratory, and Memorial University under DARPA/AFRL contract
+# FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent Computing
+# (TC) research program.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+# OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+# HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+# OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+# SUCH DAMAGE.
+#
+
+.PATH : ../../src
+
+.OBJDIR:= obj
+MK_AUTO_OBJ:= yes
+
+PROGS= dlogd
+BINDIR= bin
+	
+DLOG_SRCS= dl_bbuf.c \
+	dl_config.c \
+	dl_correlation_id.c \
+	dl_index.c \
+	dl_metadata_request.c \
+	dl_message_set.c \
+	dl_new.c \
+	dl_offset.c \
+	dl_poll_reactor.c \
+	dl_primitive_types.c \
+	dl_produce_request.c \
+	dl_produce_response.c \
+	dl_producer.c \
+	dl_producer_stats.c \
+	dl_request.c \
+	dl_request_queue.c \
+	dl_record.c \
+	dl_record_batch.c \
+	dl_record_header.c \
+	dl_response_header.c \
+	dl_segment.c \
+	dl_topic.c \
+	dl_transport.c \
+	dl_sock_transport.c \
+	dl_tls_transport.c \
+	dl_user_segment.c \
+	dl_utils.c \
+	lookup3.c
+
+SRCS.dlogd = dlogd.c ${DLOG_SRCS}
+MAN.dlogd =
+
+LDADD+=-lc
+LDADD+=-lcrypto
+LDADD+=-lnv
+LDADD+=-lpthread
+LDADD+=-lsbuf
+LDADD+=-lssl
+LDADD+=-lutil
+LDADD+=-lz
+LDADD+=-lucl
+LDADD+=-ltcmalloc
+
+CFLAGS+=-DNDEBUG
+CFLAGS+=-DHEAPPROFILE
+CFLAGS+=-g
+CFLAGS+=-Wall
+CFLAGS+=-Werror
+CFLAGS+=-Wunused-variable
+CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
+CFLAGS+=-L/usr/local/lib
+CFLAGS+=-I/usr/local/include
+CFLAGS+=-I../../src
+CFLAGS+=-I.
+# Sanitizer
+CFLAGS+=-O0
+#CFLAGS+=-fsanitize=address
+#CFLAGS+=-fsanitize=thread
+CFLAGS+=-fsanitize=undefined
+CFLAGS+=-fno-omit-frame-pointer
+CFLAGS+=-fno-optimize-sibling-calls
+
+.include <bsd.progs.mk>
