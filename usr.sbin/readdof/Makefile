@@ -1,5 +1,5 @@
 #-
-# Copyright (c) 2018 (Graeme Jenkinson)
+# Copyright (c) 2018-20 (Graeme Jenkinson)
 # All rights reserved.
 #
 # This software was developed by BAE Systems, the University of Cambridge
@@ -39,6 +39,7 @@ MAN =
 
 LIBADD+=bbuf
 LIBADD+=dtrace
+LIBADD+=sbuf
 
 CFLAGS+=-DPRIVATE_BBUF
 CFLAGS+=-DNEED_SOLARIS_BOOLEAN
