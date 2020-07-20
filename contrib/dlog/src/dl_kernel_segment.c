@@ -256,7 +256,7 @@ dl_kernel_segment_ctor(void *_super, va_list *ap)
 			goto err_kseg_ctor;
 		}
 	} else {
-		DL_ASSERT(path_nd.vp != NULL,
+		DL_ASSERT(path_nd.ni_vp != NULL,
 		    ("KernelSegment base path (%s) vnode is NULL", path));
 		vrele(nd.ni_vp);
 	}
