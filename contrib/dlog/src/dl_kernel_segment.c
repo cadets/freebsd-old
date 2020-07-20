@@ -221,8 +221,8 @@ dl_kernel_segment_ctor(void *_super, va_list *ap)
 			goto err_kseg_ctor;
 		}
 	} else {
-		DL_ASSERT(path_nd.vp != NULL,
-		("KernelSegment file path (%s) vnode is NULL", path));
+		DL_ASSERT(path_nd.ni_vp != NULL,
+		    ("KernelSegment file path (%s) vnode is NULL", path));
 		vrele(path_nd.ni_vp);
 	}
 	NDFREE(&path_nd, NDF_ONLY_PNBUF);

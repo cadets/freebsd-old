@@ -516,7 +516,7 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 		tmp_desc = (struct dl_topics_desc *) dlog_alloc(
 		    sizeof(struct dl_topics_desc) +
 		    (count * sizeof(struct dl_topic_desc)));
-		DL_ASSERT(desc != NULL,
+		DL_ASSERT(tmp_desc != NULL,
 		    ("Failed to allocate temporary TopicsDesc instance"));
 
 		/* Copy the description of each topic into the allocated

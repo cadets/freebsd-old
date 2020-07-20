@@ -117,7 +117,7 @@ dlog_client_open(struct dlog_handle **self,
 	struct dl_topic *topic;
 	const char *topic_name;
 	
-	DL_ASSERT(config != NULL, ("Client configuration cannot be NULL"));
+	DL_ASSERT(props != NULL, ("Client configuration cannot be NULL"));
 	DLOGTR0(PRIO_NORMAL, "Opening the Dlog client...\n");
 
 	if (!nvlist_exists_string(props, DL_CONF_TOPIC)) {
