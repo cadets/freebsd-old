@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2019 (Graeme Jenkinson)
+ * Copyright (c) 2019-2020 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -283,7 +283,7 @@ ddtrace_dof_create(dtrace_state_t *state)
 		}
 
 		/* Add a DOF_SECT_PROBEDESC for the ECB's probe description,
-		 * and copy the descirption strings into thestring tableSTRTAB.
+		 * and copy the description strings into the string table STRTAB.
 		 */
 		dofp.dofp_strtab = strtab; 
 		dofp.dofp_provider = dof_add_string(&ddo, probe->dtpr_provider->dtpv_name);
@@ -321,9 +321,11 @@ ddtrace_dof_create(dtrace_state_t *state)
 			    M_TEMP, M_NOWAIT);
 			ASSERT(dofa != NULL);
 
-			/* Iterate through the actions adding the to
+			/* Iterate through the actions adding to
 			 * the dof_actdest_t array.
 			 */
+			uint32_t ntuple = 0;
+
 			for (j = 0, ap = ecb->dte_action; ap != NULL;
 			    ap = ap->dta_next, j++) {
 
@@ -334,9 +336,8 @@ ddtrace_dof_create(dtrace_state_t *state)
 
 					dofa[j].dofa_difo = DOF_SECIDX_NONE;
 				}
-			
-				/* TODO handle other actions than PRINTFLIKE */
-				if (ap->dta_rec.dtrd_arg == 0) {
+		
+				if (ap->dta_rec.dtrd_format == 0i) {
 
 					dofa[j].dofa_arg = ap->dta_rec.dtrd_arg;
 					dofa[j].dofa_strtab = DOF_SECIDX_NONE;
@@ -347,7 +348,23 @@ ddtrace_dof_create(dtrace_state_t *state)
 				}
 			
 				dofa[j].dofa_kind = ap->dta_kind;
-				dofa[j].dofa_ntuple = 0;
+
+				/* Recreate the ntuple value for AGGREGATION actions */
+				if (ap->dta_intuple == 1) {
+
+					ntuple++;
+				}
+
+				dofa[j].dofa_ntuple = ntuple;
+
+				/* If the added action is an AGGREGATION type, reset
+				 * the ntuple counter.
+				 */
+				if (DTRACEACT_ISAGG(ap->dta_kind)) {
+
+					ntuple = 0;
+				}
+
 				dofa[j].dofa_uarg = ap->dta_rec.dtrd_uarg;
 			}
 			

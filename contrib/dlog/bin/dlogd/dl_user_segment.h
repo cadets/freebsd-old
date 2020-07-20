@@ -54,6 +54,8 @@ extern void dl_user_segment_delete(struct dl_user_segment *);
 
 extern int dl_user_segment_get_fd(
     struct dl_user_segment const * const);
+extern struct dl_index * dl_user_segment_get_index(
+    struct dl_user_segment const * const);
 extern struct dl_offset * dl_user_segment_get_offset(
     struct dl_user_segment const * const);
 

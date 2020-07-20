@@ -36,6 +36,8 @@
 
 #include <sys/types.h>
 
+#include <stdbool.h>
+
 #include "dl_assert.h"
 #include "dl_memory.h"
 #include "dl_protocol.h"
@@ -111,7 +113,6 @@ int
 dl_request_header_encode(struct dl_request const * const request,
     struct dl_bbuf * const target)
 {
-	int rc = 0;
 
 	DL_ASSERT(request!= NULL, ("Request cannot be NULL."));
 	DL_ASSERT(target != NULL,
@@ -120,16 +121,16 @@ dl_request_header_encode(struct dl_request const * const request,
 	    ("Buffer for encoding must be auto extending."));
 
 	/* Encode the Request APIKey into the buffer. */
-	rc |= DL_ENCODE_API_KEY(target, request->dlrqm_api_key);
+	DL_ENCODE_API_KEY(target, request->dlrqm_api_key);
 
 	/* Encode the Request APIVersion into the buffer. */
-	rc |= DL_ENCODE_API_VERSION(target, DLOG_API_VERSION);
+	DL_ENCODE_API_VERSION(target, DLOG_API_VERSION);
 
 	/* Encode the Request CorrelationId into the buffer. */
-	rc |= DL_ENCODE_CORRELATION_ID(target, request->dlrqm_correlation_id);
+	DL_ENCODE_CORRELATION_ID(target, request->dlrqm_correlation_id);
 
 	/* Encode the Request ClientId into the buffer. */
-	rc |= DL_ENCODE_CLIENT_ID(target, request->dlrqm_client_id);
+	DL_ENCODE_CLIENT_ID(target, request->dlrqm_client_id);
 	
 	/* Check whether the encoding steps completed successfully. This
 	 * should be the case as the only way that this should fail is if the
@@ -137,8 +138,9 @@ dl_request_header_encode(struct dl_request const * const request,
 	 * autoextending that should only happen in circumstance when it
 	 * is difficult to recover from (system out of memory.)
 	 */
-	if (rc == 0)
+	if (dl_bbuf_error(target) == 0)
 		return 0;
+	DL_ASSERT(true , ("Encoding into autoextending buffer cannot fail"));
 
 	return -1;
 }

@@ -62,7 +62,12 @@ dl_new(void **self, const void *_class, ...)
 		va_list ap;
 
 		va_start(ap, _class);
-		class->dl_ctor(inst, &ap);
+		if (class->dl_ctor(inst, &ap) != 0) {
+
+			va_end(ap);
+			*self = NULL;
+			return -1;
+		}
 		va_end(ap);
 	}
 

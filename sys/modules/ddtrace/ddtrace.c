@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2019 (Graeme Jenkinson)
+ * Copyright (c) 2019-2020 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -126,6 +126,7 @@ const bbuf_free_func bbuf_free = dd_free;
 
 static char const * const DDTRACE_NAME = "ddtrace";
 static char * DDTRACE_KEY = "ddtrace";
+static char * DDTRACE_AGGKEY = "ddtrace_agg";
 static char * DDTRACE_DOF_KEY = "dof";
 static moduledata_t ddtrace_conf = {
 	DDTRACE_NAME,
@@ -278,9 +279,69 @@ ddtrace_buffer_switch(struct client *k)
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
 	DL_ASSERT(handle != NULL, ("DLog handle cannot be NULL\n"));
 
+	/* Process each of the per-CPU aggregation buffers.
+	 * The tomax and xamot buffers are first swtich using a xcall.
+	 * Provided that the xcall is successful in switching the buffers,
+	 * the buffer is then persisted into Dlog.
+	 */
+	for (int cpu_it = 0; cpu_it < mp_ncpus; cpu_it++) {
+
+		/* NOTE: Unlike in the BUFSNAP ioctl it is unnecessary to
+		 * acquire dtrace_lock. Really this seems dubious
+		 */
+		buf = &state->dts_aggbuffer[cpu];
+
+		if (buf->dtb_tomax == NULL)
+			break;
+
+		cached = buf->dtb_tomax;
+		DL_ASSERT(!(buf->dtb_flags & DTRACEBUF_NOSWITCH),
+		    ("DTrace buffer no switch flag set."));
+
+		/* Perform xcall to swap the CPU's DTrace buffers. */
+		dtrace_xcall(cpu, (dtrace_xcall_t) dtrace_buffer_switch, buf);
+
+		/* Check that xcall of dtrace_buffer_switch succeeded. */
+		if (buf->dtb_tomax == cached) {
+
+			DL_ASSERT(buf->dtb_xamot != cached,
+			   ("DTrace buffers pointers are inconsistent"));
+			continue;
+		}
+
+		DL_ASSERT(cached == buf->dtb_xamot,
+			("DTrace buffers pointers are inconsistent"));
+		
+		state->dts_errors += buf->dtb_xamot_errors;
+
+		desc.dtbd_data = buf->dtb_xamot;
+		desc.dtbd_size = buf->dtb_xamot_offset;
+		desc.dtbd_drops = buf->dtb_xamot_drops;
+		desc.dtbd_errors = buf->dtb_xamot_errors;
+		desc.dtbd_oldest = 0;
+		desc.dtbd_timestamp = buf->dtb_switched;
+		
+		/* If the buffer contains records persist them to the
+		 * distributed log.
+		 */
+		if (desc.dtbd_size != 0) {
+
+			if (dlog_produce(handle, DDTRACE_AGGKEY,
+			    desc.dtbd_data, desc.dtbd_size) != 0) {
+
+				DLOGTR0(PRIO_HIGH,
+				    "Error producing message to DLog\n");
+			}
+		}
+
+
+		/* Next CPU to process. */
+		cpu = (cpu +1) % mp_ncpus; 
+	}
+
 	/* Process each of the per-CPU buffers.
 	 * The tomax and xamot buffers are first swtich using a xcall.
-	 * Provided that the xcvall is successful in switching the buffers,
+	 * Provided that the xcall is successful in switching the buffers,
 	 * the buffer is then persisted into Dlog.
 	 * Persisting the buffer may involving splitting into portions portions
 	 * on a record boundary.
@@ -351,7 +412,7 @@ ddtrace_thread(void *arg)
 	    k->ddtrace_dlog_handle) != 0) {
 
 		DLOGTR0(PRIO_HIGH, "Failed persisting metadata.\n");
-		return;
+		kthread_exit();
 	}
 
 	/* Process the trace buffers. */

@@ -1041,6 +1041,7 @@ static const dt_option_t _dtrace_rtoptions[] = {
 	{ "grabanon", dt_opt_runtime, DTRACEOPT_GRABANON },
 	{ "jstackframes", dt_opt_runtime, DTRACEOPT_JSTACKFRAMES },
 	{ "ddtracearg", dt_opt_runtime, DTRACEOPT_DDTRACEARG},
+	{ "ddtracetime", dt_opt_runtime, DTRACEOPT_DDTRACETIME},
 	{ "jstackstrsize", dt_opt_size, DTRACEOPT_JSTACKSTRSIZE },
 	{ "nspec", dt_opt_runtime, DTRACEOPT_NSPEC },
 	{ "specsize", dt_opt_size, DTRACEOPT_SPECSIZE },

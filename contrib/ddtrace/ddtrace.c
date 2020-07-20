@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2020-18 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -53,7 +53,7 @@ static inline void
 usage(FILE * fp)
 {
 
-	(void) fprintf(fp, "Usage: %s -t topic -s script\n", g_pname);
+	(void) fprintf(fp, "Usage: %s [-Z] -t topic -s script\n", g_pname);
 }
 
 /*ARGSUSED*/
@@ -72,13 +72,17 @@ main(int argc, char *argv[])
 {
 	struct dl_client_config_desc *client_conf;
 	dtrace_consumer_t con;
-	FILE *fp;
+	FILE *fp = NULL;
 	nvlist_t *props;
 	char *topic_name;
 	size_t packed_len;
 	int c, dlog, done = 0, err, ret = 0, rc, script_argc = 0;
 	char ddtracearg[13];
 	char **script_argv;
+	dtrace_enable_io_t args;
+	void *dof;
+	int error, r;
+	int cflags = DTRACE_C_PSPEC | DTRACE_C_CPP;
 
 	g_pname = basename(argv[0]); 	
 
@@ -92,7 +96,7 @@ main(int argc, char *argv[])
 
 	opterr = 0;
 	for (optind = 0; optind < argc; optind++) { 
-		while ((c = getopt(argc, argv, "t:s:")) != -1) {
+		while ((c = getopt(argc, argv, "t:s:Z")) != -1) {
 			switch(c) {
 			case 't':
 				topic_name = optarg;
@@ -108,7 +112,9 @@ main(int argc, char *argv[])
 					goto free_script_args;
 				}
 				break;
-			case '?':
+			case 'Z':
+				cflags |= DTRACE_C_ZDEFS;
+				break;
 			default:
 				usage(stderr);
 				ret = -1;
@@ -188,14 +194,26 @@ main(int argc, char *argv[])
 
 	sprintf(ddtracearg, "%d", dlog);
 	(void) dtrace_setopt(g_dtp, "ddtracearg", ddtracearg);
+	(void) dtrace_setopt(g_dtp, "ddtracetime", "1");
 #ifndef NDEBUG
-	printf("%s: dtrace options set\n", g_pname);
+	fprintf(stdout, "%s: dtrace options set\n", g_pname);
 #endif
+
+	/* Default options copied over from dtrace(1) */
+#if defined(__i386__)
+	/* XXX The 32-bit seems to need more buffer space by default -sson */
+	(void) dtrace_setopt(g_dtp, "bufsize", "12m");
+	(void) dtrace_setopt(g_dtp, "aggsize", "12m");
+#else
+	(void) dtrace_setopt(g_dtp, "bufsize", "4m");
+	(void) dtrace_setopt(g_dtp, "aggsize", "4m");
+#endif
+	(void) dtrace_setopt(g_dtp, "temporal", "yes");
 
 	dtrace_prog_t * prog;
 	dtrace_proginfo_t info;
 	if ((prog = dtrace_program_fcompile(g_dtp, fp,
-	    DTRACE_C_PSPEC | DTRACE_C_CPP, script_argc, script_argv)) == NULL) {
+	    cflags, script_argc, script_argv)) == NULL) {
 
 		fprintf(stderr, "%s: failed to compile dtrace program %s",
 		    g_pname, dtrace_errmsg(g_dtp, dtrace_errno(g_dtp)));
@@ -206,6 +224,26 @@ main(int argc, char *argv[])
 #ifndef NDEBUG
 	fprintf(stdout, "%s: dtrace program compiled\n", g_pname);
 #endif
+
+	/* Set the runtime options before the enbalings are matched.
+	 * This ensures that resizing of the ECB takes into
+	 * account whether the ddtracetime option is set.
+	 */
+	if ((dof = dtrace_getopt_dof(g_dtp)) == NULL)
+		return (-1); /* dt_errno has been set for us */
+
+	args.dof = dof;
+	args.n_matched = 0;
+	r = dt_ioctl(g_dtp, DTRACEIOC_ENABLE, &args);
+	error = errno;
+	dtrace_dof_destroy(g_dtp, dof);
+
+	if (r == -1 && (error != ENOTTY || g_dtp->dt_vector == NULL)) {
+
+		fprintf(stderr, "failed to enable set dtrace options\n");
+		ret = -1;
+		goto destroy_dtrace;
+	}
 
 	if (dtrace_program_exec(g_dtp, prog, &info) == -1) {
 
@@ -273,4 +311,3 @@ free_script_args:
 
 	return ret;
 }
-

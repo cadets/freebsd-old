@@ -1057,7 +1057,8 @@ typedef struct dtrace_fmtdesc {
 #define	DTRACEOPT_ZONE		31	/* zone in which to enable probes */
 #define DTRACEOPT_OFORMAT	32	/* output format (JSON, XML, etc.) */
 #define	DTRACEOPT_DDTRACEARG	33	/* opaque DDTrace argument */
-#define	DTRACEOPT_MAX		34	/* number of options */
+#define	DTRACEOPT_DDTRACETIME 	34	/* walltimestamp 64-bit aligned */
+#define	DTRACEOPT_MAX		35	/* number of options */
 
 #define	DTRACEOPT_UNSET		(dtrace_optval_t)-2	/* unset option */
 
@@ -1105,6 +1106,11 @@ typedef struct dtrace_rechdr {
 	uint32_t dtrh_timestamp_lo;		/* high bits of hrtime_t */
 	uint32_t dtrh_timestamp_hi;		/* low bits of hrtime_t */
 } dtrace_rechdr_t;
+
+typedef struct ddtrace_rechdr {
+	dtrace_epid_t dtrh_epid;		/* enabled probe id */
+	uint64_t dtrh_timestamp;		/* hrestime() */
+} ddtrace_rechdr_t;
 
 #define	DTRACE_RECORD_LOAD_TIMESTAMP(dtrh)			\
 	((dtrh)->dtrh_timestamp_lo +				\

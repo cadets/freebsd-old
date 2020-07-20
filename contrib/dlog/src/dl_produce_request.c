@@ -36,6 +36,8 @@
 
 #include <sys/types.h>
 
+#include <stdbool.h>
+
 #include "dl_assert.h"
 #include "dl_memory.h"
 #include "dl_primitive_types.h"
@@ -181,7 +183,7 @@ dl_produce_request_encode_into(void * _self, struct dl_bbuf *target)
 	struct dl_produce_request *self = (struct dl_produce_request *) _self;
 	struct dl_produce_request_topic *req_topic;
 	struct dl_produce_request_partition *req_part;
-	int rc = 0, part;
+	int rc = 0;
 		
 	DL_ASSERT(self != NULL, ("ProduceRequest cannot be NULL"));
 	DL_ASSERT((dl_bbuf_get_flags(target) & DL_BBUF_AUTOEXTEND) != 0,
@@ -189,43 +191,33 @@ dl_produce_request_encode_into(void * _self, struct dl_bbuf *target)
 
 	/* Encode the Request TransactionalId into the buffer. */
 	if (DLOG_API_VERSION >= DLOG_API_V3) {
+
 		rc |= DL_ENCODE_TRANSACTIONAL_ID(target);
-		DL_ASSERT(rc == 0,
-		    ("Insert into autoextending buffer cannot fail."));
 	}
 
 	/* Encode the Request RequiredAcks into the buffer. */
 	rc |= DL_ENCODE_REQUIRED_ACKS(target, self->dlpr_required_acks);
-	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 
 	/* Encode the Request Timeout into the buffer. */
 	rc |= DL_ENCODE_TIMEOUT(target, self->dlpr_timeout);
-	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 
 	/* Encode the [topic_data] array. */
 	rc |= dl_bbuf_put_int32(target, self->dlpr_ntopics);
-	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 
 	SLIST_FOREACH(req_topic, &self->dlpr_topics, dlprt_entries) {
 
 		/* Encode the Request TopicName into the buffer. */
 		rc |= DL_ENCODE_TOPIC_NAME(target, req_topic->dlprt_name);
-		DL_ASSERT(rc == 0,
-		     ("Insert into autoextending buffer cannot fail."));
 	 
 		/* Encode the [data] array. */
 		rc |= dl_bbuf_put_int32(target, req_topic->dlprt_npartitions);
-		DL_ASSERT(rc == 0,
-		    ("Insert into autoextending buffer cannot fail."));
 
-		for (part = 0; part < req_topic->dlprt_npartitions; part++) {
+		for (int part = 0; part < req_topic->dlprt_npartitions; part++) {
 			
 			req_part = &req_topic->dlprt_partitions[part];
 
 			/* Encode the Partition into the buffer. */
 			rc |= DL_ENCODE_PARTITION(target, req_part->dlprp_num);
-			DL_ASSERT(rc == 0,
-			    ("Insert into autoextending buffer cannot fail."));
 
 			if (req_part->dlprp_message_set != NULL) {
 
@@ -236,9 +228,16 @@ dl_produce_request_encode_into(void * _self, struct dl_bbuf *target)
 			}
 		}
 	}
-
-	if (rc == 0)
+	
+	/* Check whether the encoding steps completed successfully. This
+	 * should be the case as the only way that this should fail is if the
+	 * buffer doesn't possess sufficient capacity, as the buffer is
+	 * autoextending that should only happen in circumstance when it
+	 * is difficult to recover from (system out of memory.)
+	 */
+	if (dl_bbuf_error(target) == 0)
 		return 0;
+	DL_ASSERT(true, ("Encoding into autoextending buffer cannot fail"));
 
 	DLOGTR0(PRIO_HIGH, "Failed encoding ProduceRequest.\n");
 	return -1;

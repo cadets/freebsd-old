@@ -212,14 +212,19 @@ dl_kernel_segment_ctor(void *_super, va_list *ap)
 	NDINIT(&path_nd, LOOKUP, NOFOLLOW, UIO_SYSSPACE, path, td);
 	if (namei(&path_nd) == -1 || path_nd.ni_vp == NULL) {
 
-		DLOGTR1(PRIO_HIGH,
-		    "Failed KernelSegment file path is invalid: %s\n", path);
-		NDFREE(&path_nd, NDF_ONLY_PNBUF);
-		goto err_kseg_ctor;
+		if (kern_mkdirat(td, 0, path, UIO_SYSSPACE,
+		    S_IRUSR | S_IWUSR) != 0) {
+
+			NDFREE(&path_nd, NDF_ONLY_PNBUF);
+			DLOGTR1(PRIO_HIGH,
+			    "Failed KernelSegment file path is invalid: %s\n", path);
+			goto err_kseg_ctor;
+		}
+	} else {
+		DL_ASSERT(path_nd.vp != NULL,
+		("KernelSegment file path (%s) vnode is NULL", path));
+		vrele(path_nd.ni_vp);
 	}
-	DL_ASSERT(path_nd.vp != NULL,
-	    ("KernelSegment file path (%s) vnode is NULL", path));
-	vrele(path_nd.ni_vp);
 	NDFREE(&path_nd, NDF_ONLY_PNBUF);
 
 	(void) sbuf_new(&sb, self->dlks_base_name, MAXPATHLEN, SBUF_FIXEDLEN);
@@ -245,14 +250,14 @@ dl_kernel_segment_ctor(void *_super, va_list *ap)
 		if (kern_mkdirat(td, 0, self->dlks_base_name, UIO_SYSSPACE,
 		    S_IRUSR | S_IWUSR) != 0) {
 
-
+			NDFREE(&nd, NDF_ONLY_PNBUF);
 			DLOGTR1(PRIO_HIGH,
 			    "Failed KernelSegment file path is invalid: %s\n", path);
 			goto err_kseg_ctor;
 		}
 	} else {
 		DL_ASSERT(path_nd.vp != NULL,
-		("KernelSegment base path (%s) vnode is NULL", path));
+		    ("KernelSegment base path (%s) vnode is NULL", path));
 		vrele(nd.ni_vp);
 	}
 	NDFREE(&nd, NDF_ONLY_PNBUF);
@@ -355,7 +360,7 @@ dlks_insert_message(struct dl_segment *super, struct dl_bbuf *buffer)
 	bzero(&u, sizeof(struct uio));
 	u.uio_iov = log_bufs;
 	u.uio_iovcnt = 1;
-	u.uio_offset = -1;
+	u.uio_offset = 0;
         u.uio_resid = log_bufs[0].iov_len;
         u.uio_segflg  = UIO_SYSSPACE;
         u.uio_rw = UIO_WRITE;

@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2019 (Graeme Jenkinson)
+ * Copyright (c) 2019-20 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -57,9 +57,6 @@ dl_config_new(char *conf_file, int debug_lvl)
 	char *topic_name;
 	nvlist_t *topics;
 	int nelements;
-
-	/* Create a new nvlist to store producer configuration. */
-	dlogd_props = nvlist_create(0);
 
 	nvlist_add_number(dlogd_props, DL_CONF_DEBUG_LEVEL, debug_lvl);
 
@@ -145,6 +142,10 @@ dl_config_new(char *conf_file, int debug_lvl)
 		} else if (strcmp(ucl_object_key(obj), DL_CONF_TOPICS) == 0) {
 
 			topics_obj = obj;
+		} else if (strcmp(ucl_object_key(obj), DL_CONF_FROM_BEGINNING) == 0) {
+
+			nvlist_add_bool(dlogd_props, DL_CONF_FROM_BEGINNING,
+			    ucl_object_toboolean(obj));
 		} else {
 			DLOGTR1(PRIO_HIGH,
 			   "Unrecongised configuration: %s\n",
