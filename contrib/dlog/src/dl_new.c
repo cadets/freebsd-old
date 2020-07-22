@@ -51,7 +51,7 @@ dl_new(void **self, const void *_class, ...)
 	DL_ASSERT(self != NULL, ("Object to instatiate cannot be NULL"));
 
 	inst = dlog_alloc(class->dl_size);
-	DL_ASSERT(inst != NULL, ("Failed to allocate %u bytes", class->dl_size));
+	DL_ASSERT(inst != NULL, ("Failed to allocate %zu bytes", class->dl_size));
 	if (inst == NULL )
 		return -1;
 

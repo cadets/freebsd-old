@@ -30,6 +30,7 @@ SUBDIR=	${SUBDIR_BOOTSTRAP} \
 	libalias \
 	libarchive \
 	libauditd \
+	libbbuf \
 	libbegemot \
 	libblocksruntime \
 	libbsdstat \

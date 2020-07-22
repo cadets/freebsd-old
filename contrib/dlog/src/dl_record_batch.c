@@ -39,7 +39,7 @@
 #ifdef _KERNEL
 #include <sys/types.h>
 #include <sys/libkern.h>
-#include <sys/zlib.h>
+#include <contrib/zlib/zlib.h>
 #else
 #include <stddef.h>
 #include <strings.h>
@@ -54,6 +54,9 @@
 #include "dl_record_batch.h"
 #include "dl_utils.h"
 
+extern uint32_t calculate_crc32c(uint32_t,
+    const unsigned char *, unsigned int);
+
 struct dl_record_batch {
 	struct dl_bbuf *dlrb_encoded_records;
 	int64_t dlrb_first_timestamp;
@@ -67,7 +70,7 @@ static const int8_t DL_MESSAGE_ATTRIBUTES_UNCOMPRESSED = 0x00;
 static const int8_t DL_MESSAGE_ATTRIBUTES_GZIP = 0x01;
 
 #ifdef _KERNEL
-#define CRC32(data, len) crc32(data, len)
+#define CRC32(data, len) crc32(0, data, len)
 #define CRC32C(data, len) calculate_crc32c(0xFFFFFFFF, data, len)
 #else
 #define CRC32(data, len) crc32(0, data, len)

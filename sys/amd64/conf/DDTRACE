@@ -1,0 +1,7 @@
+include GENERIC 
+ident DDTRACE
+
+# Distributed DTrace components
+options		DDTRACE
+# Kafka-compatible distributed log
+options		DLOG

@@ -224,10 +224,11 @@ static vmem_t		*dtrace_minor;		/* minor number arena */
 static taskq_t		*dtrace_taskq;		/* task queue */
 static struct unrhdr	*dtrace_arena;		/* Probe ID number.     */
 #endif
-static dtrace_probe_t	**dtrace_probes;	/* array of all probes */
-static int		dtrace_nprobes;		/* number of probes */
+dtrace_probe_t		**dtrace_probes;	/* array of all probes */
+int			dtrace_nprobes;		/* number of probes */
 static dtrace_provider_t *dtrace_provider;	/* provider list */
 static dtrace_meta_t	*dtrace_meta_pid;	/* user-land meta provider */
+static dtrace_dist_t *dtrace_dist = NULL;	/* dist list */
 static int		dtrace_opens;		/* number of opens */
 static int		dtrace_helpers;		/* number of helpers */
 static int		dtrace_getf;		/* number of unpriv getf()s */
@@ -290,6 +291,7 @@ static eventhandler_tag	dtrace_kld_unload_try_tag;
  */
 static kmutex_t		dtrace_lock;		/* probe state lock */
 static kmutex_t		dtrace_provider_lock;	/* provider state lock */
+static kmutex_t		dtrace_dist_lock;	/* dist state lock */
 static kmutex_t		dtrace_meta_lock;	/* meta-provider state lock */
 
 #ifndef illumos
@@ -6079,6 +6081,11 @@ inetout:	regs[rd] = (uintptr_t)end + 1;
 		break;
 	}
 #endif
+	case DIF_SUBR_RANDOM: {
+		regs[rd] = dtrace_xoroshiro128_plus_next(
+		    state->dts_rstate[curcpu]);
+		break;
+	}
 	}
 }
 
@@ -7357,6 +7364,7 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 
 	now = mstate.dtms_timestamp = dtrace_gethrtime();
 	mstate.dtms_present = DTRACE_MSTATE_TIMESTAMP;
+
 	vtime = dtrace_vtime_references != 0;
 
 	if (vtime && curthread->t_dtrace_start)
@@ -7530,16 +7538,32 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		ASSERT(tomax != NULL);
 
 		if (ecb->dte_size != 0) {
-			dtrace_rechdr_t dtrh;
-			if (!(mstate.dtms_present & DTRACE_MSTATE_TIMESTAMP)) {
-				mstate.dtms_timestamp = dtrace_gethrtime();
-				mstate.dtms_present |= DTRACE_MSTATE_TIMESTAMP;
+			if (ecb->dte_state->dts_options[DTRACEOPT_DDTRACETIME] == DTRACEOPT_UNSET) {
+				dtrace_rechdr_t dtrh;
+
+				if (!(mstate.dtms_present & DTRACE_MSTATE_TIMESTAMP)) {
+					mstate.dtms_timestamp = dtrace_gethrtime();
+					mstate.dtms_present |= DTRACE_MSTATE_TIMESTAMP;
+				}
+
+				ASSERT3U(ecb->dte_size, >=, sizeof (dtrace_rechdr_t));
+				dtrh.dtrh_epid = ecb->dte_epid;
+				DTRACE_RECORD_STORE_TIMESTAMP(&dtrh,
+			   	   mstate.dtms_timestamp);
+				DTRACE_STORE(dtrace_rechdr_t, tomax, offs, dtrh);
+			} else {
+				ddtrace_rechdr_t dtrh;
+
+				if (!(mstate.dtms_present & DTRACE_MSTATE_WALLTIMESTAMP)) {
+					mstate.dtms_walltimestamp = dtrace_gethrestime();
+					mstate.dtms_present |= DTRACE_MSTATE_WALLTIMESTAMP;
+				}
+			
+				ASSERT3U(ecb->dte_size, >=, sizeof (ddtrace_rechdr_t));
+				dtrh.dtrh_epid = ecb->dte_epid;
+				dtrh.dtrh_timestamp = mstate.dtms_walltimestamp;
+				DTRACE_STORE(ddtrace_rechdr_t, tomax, offs, dtrh);
 			}
-			ASSERT3U(ecb->dte_size, >=, sizeof (dtrace_rechdr_t));
-			dtrh.dtrh_epid = ecb->dte_epid;
-			DTRACE_RECORD_STORE_TIMESTAMP(&dtrh,
-			    mstate.dtms_timestamp);
-			*((dtrace_rechdr_t *)(tomax + offs)) = dtrh;
 		}
 
 		mstate.dtms_epid = ecb->dte_epid;
@@ -8675,6 +8699,97 @@ dtrace_probekey(dtrace_probedesc_t *pdp, dtrace_probekey_t *pkp)
 		pkp->dtpk_fmatch = &dtrace_match_nonzero;
 }
 
+/*
+ * Register the dist with the DTrace framework.
+ */
+int
+dtrace_dist_register(const char *name, const dtrace_dops_t *kops,
+    void *arg, dtrace_dist_id_t *id)
+{
+	dtrace_dist_t *dist;
+	dtrace_state_t *state;
+
+	if (name == NULL || kops == NULL || id == NULL) {
+		cmn_err(CE_WARN,
+		    "failed to register buf provider '%s': invalid arguments",
+		    name ? name : "<NULL>");
+		return (EINVAL);
+	}
+
+	if (name[0] == '\0') {
+		cmn_err(CE_WARN,
+		    "failed to register provider '%s': invalid dist name",
+		    name);
+		return (EINVAL);
+	}
+
+	/* Construct the dist instance. */
+	dist = kmem_zalloc(sizeof (dtrace_dist_t), KM_SLEEP);
+	ASSERT(dist != NULL);
+	dist->dtd_name = kmem_alloc(DTRACE_KONNAMELEN, KM_SLEEP);
+	ASSERT(dist->dtd_name != NULL);
+	(void) strncpy(dist->dtd_name, name, DTRACE_KONNAMELEN);
+	dist->dtd_name[DTRACE_KONNAMELEN -1] = 0;
+	dist->dtd_arg = arg;
+	dist->dtd_ops = *kops;
+	dist->dtd_next = NULL;
+
+	*id = (dtrace_dist_id_t)dist;
+
+	mutex_enter(&dtrace_dist_lock);
+	mutex_enter(&dtrace_lock);
+
+	/* Add the newly registered dist to the list. */
+	if (dtrace_dist != NULL) {
+		dist->dtd_next = dtrace_dist->dtd_next;
+		dtrace_dist->dtd_next = dist;
+	} else {
+		dtrace_dist = dist;
+	}
+
+	mutex_exit(&dtrace_lock);
+	mutex_exit(&dtrace_dist_lock);
+
+	return (0);
+}
+
+/*
+ * Un-register the dist with the DTrace framework.
+ */
+int
+dtrace_dist_unregister(dtrace_dist_id_t *id)
+{
+	dtrace_dist_t *old = (dtrace_dist_t *)*id;
+	dtrace_dist_t *prev = NULL;
+
+	mutex_enter(&dtrace_dist_lock);
+	mutex_enter(&dtrace_lock);
+
+	/* Remove the unregistered dist from the list. */
+	if ((prev = dtrace_dist) == old) {
+
+		dtrace_dist = old->dtd_next;
+	} else {
+		while (prev != NULL && prev->dtd_next != old)
+			prev = prev->dtd_next;
+
+		if (prev == NULL) {
+			panic("attempt to unregister non-existent "
+			    "dtrace dist %p\n", (void *)id);
+		}
+
+		prev->dtd_next = old->dtd_next;
+	}
+
+	mutex_exit(&dtrace_lock);
+	mutex_exit(&dtrace_dist_lock);
+
+	kmem_free(old->dtd_name, strlen(old->dtd_name) + 1);
+	kmem_free(old, sizeof(dtrace_dist_t));
+
+	return 0;
+}
+	
 /*
  * DTrace Provider-to-Framework API Functions
  *
@@ -11172,8 +11287,13 @@ dtrace_ecb_resize(dtrace_ecb_t *ecb)
 	 * If we record anything, we always record the dtrace_rechdr_t.  (And
 	 * we always record it first.)
 	 */
-	ecb->dte_size = sizeof (dtrace_rechdr_t);
-	ecb->dte_alignment = sizeof (dtrace_epid_t);
+	if (ecb->dte_state->dts_options[DTRACEOPT_DDTRACETIME] == DTRACEOPT_UNSET) {
+		ecb->dte_size = sizeof (dtrace_rechdr_t);
+		ecb->dte_alignment = sizeof (dtrace_epid_t);
+	} else {
+		ecb->dte_size = sizeof (ddtrace_rechdr_t);
+		ecb->dte_alignment = sizeof (((ddtrace_rechdr_t *)0)->dtrh_timestamp);
+	}
 
 	for (act = ecb->dte_action; act != NULL; act = act->dta_next) {
 		dtrace_recdesc_t *rec = &act->dta_rec;
@@ -11238,19 +11358,36 @@ dtrace_ecb_resize(dtrace_ecb_t *ecb)
 			ecb->dte_needed = MAX(ecb->dte_needed, ecb->dte_size);
 		}
 	}
+	if (ecb->dte_state->dts_options[DTRACEOPT_DDTRACETIME] == DTRACEOPT_UNSET) {
+		if ((act = ecb->dte_action) != NULL &&
+		   !(act->dta_kind == DTRACEACT_SPECULATE && act->dta_next == NULL) &&
+		   ecb->dte_size == sizeof (dtrace_rechdr_t)) {
+			/*
+			* If the size is still sizeof (dtrace_rechdr_t), then all
+			* actions store no data; set the size to 0.
+			*/
+			ecb->dte_size = 0;
+		}
 
-	if ((act = ecb->dte_action) != NULL &&
-	    !(act->dta_kind == DTRACEACT_SPECULATE && act->dta_next == NULL) &&
-	    ecb->dte_size == sizeof (dtrace_rechdr_t)) {
-		/*
-		 * If the size is still sizeof (dtrace_rechdr_t), then all
-		 * actions store no data; set the size to 0.
-		 */
-		ecb->dte_size = 0;
+		ecb->dte_size = P2ROUNDUP(ecb->dte_size, sizeof (dtrace_epid_t));
+		ecb->dte_needed = P2ROUNDUP(ecb->dte_needed, (sizeof (dtrace_epid_t)));
+	} else {
+		if ((act = ecb->dte_action) != NULL &&
+		   !(act->dta_kind == DTRACEACT_SPECULATE && act->dta_next == NULL) &&
+		   ecb->dte_size == sizeof (ddtrace_rechdr_t)) {
+			/*
+			* If the size is still sizeof (ddtrace_rechdr_t), then all
+			* actions store no data; set the size to 0.
+			*/
+			ecb->dte_size = 0;
+		}
+
+		ecb->dte_size = P2ROUNDUP(ecb->dte_size,
+		    sizeof (((ddtrace_rechdr_t *)0)->dtrh_timestamp));
+		ecb->dte_needed = P2ROUNDUP(ecb->dte_needed,
+		    sizeof (((ddtrace_rechdr_t *)0)->dtrh_timestamp));
 	}
 
-	ecb->dte_size = P2ROUNDUP(ecb->dte_size, sizeof (dtrace_epid_t));
-	ecb->dte_needed = P2ROUNDUP(ecb->dte_needed, (sizeof (dtrace_epid_t)));
 	ecb->dte_state->dts_needed = MAX(ecb->dte_state->dts_needed,
 	    ecb->dte_needed);
 	return (0);
@@ -11984,6 +12121,20 @@ dtrace_epid2ecb(dtrace_state_t *state, dtrace_epid_t id)
 	return (state->dts_ecbs[id - 1]);
 }
 
+size_t
+dtrace_epid2size(dtrace_state_t *state, dtrace_epid_t id)
+{
+	dtrace_ecb_t *ecb;
+
+	if (id == 0 || id > state->dts_necbs)
+		return (0);
+
+	ASSERT(state->dts_necbs > 0 && state->dts_ecbs != NULL);
+	ASSERT((ecb = state->dts_ecbs[id - 1]) == NULL || ecb->dte_epid == id);
+
+	return (state->dts_ecbs[id - 1]->dte_size);
+}
+
 static dtrace_aggregation_t *
 dtrace_aggid2agg(dtrace_state_t *state, dtrace_aggid_t id)
 {
@@ -12016,7 +12167,7 @@ dtrace_aggid2agg(dtrace_state_t *state, dtrace_aggid_t id)
  * interrupts serializes the execution with any execution of dtrace_probe() on
  * the same CPU.
  */
-static void
+void
 dtrace_buffer_switch(dtrace_buffer_t *buf)
 {
 	caddr_t tomax = buf->dtb_tomax;
@@ -12175,16 +12326,6 @@ err:
 	int i;
 
 	*factor = 1;
-#if defined(__aarch64__) || defined(__amd64__) || defined(__arm__) || \
-    defined(__mips__) || defined(__powerpc__) || defined(__riscv)
-	/*
-	 * FreeBSD isn't good at limiting the amount of memory we
-	 * ask to malloc, so let's place a limit here before trying
-	 * to do something that might well end in tears at bedtime.
-	 */
-	if (size > physmem * PAGE_SIZE / (128 * (mp_maxid + 1)))
-		return (ENOMEM);
-#endif
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 	CPU_FOREACH(i) {
@@ -13177,7 +13318,7 @@ dtrace_dof_error(dof_hdr_t *dof, const char *str)
  * DOF containing the run-time options -- but this could be expanded to create
  * complete DOF representing the enabled state.
  */
-static dof_hdr_t *
+dof_hdr_t *
 dtrace_dof_create(dtrace_state_t *state)
 {
 	dof_hdr_t *dof;
@@ -13487,7 +13628,7 @@ doferr:
 #endif /* !__FreeBSD__ */
 }
 
-static void
+void
 dtrace_dof_destroy(dof_hdr_t *dof)
 {
 	kmem_free(dof, dof->dofh_loadsz);
@@ -15018,7 +15159,6 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 		    opt[DTRACEOPT_GRABANON];
 
 		*cpu = dtrace_anon.dta_beganon;
-
 		/*
 		 * If the anonymous state is active (as it almost certainly
 		 * is if the anonymous enabling ultimately matched anything),
@@ -15208,6 +15348,26 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	dtrace_xcall(DTRACE_CPUALL,
 	    (dtrace_xcall_t)dtrace_buffer_activate, state);
 #endif
+
+	if (opt[DTRACEOPT_DDTRACEARG] != DTRACEOPT_UNSET) {
+		/* Iterate the DTrace dists and notify them of the
+		 * dtrace_state_go.
+		 */ 
+		dtrace_dist_t *dist = dtrace_dist;
+		while (dist != NULL ) {
+			if (dtrace_anon.dta_state != NULL) {
+				dtrace_anon.dta_state->
+				    dts_options[DTRACEOPT_DDTRACEARG] =
+				    opt[DTRACEOPT_DDTRACEARG];
+				dist->dtd_ops.dtdops_open(dist,
+				    dtrace_anon.dta_state);
+			} else {
+				dist->dtd_ops.dtdops_open(dist, state);
+			}
+			dist = dist->dtd_next;
+		}
+	}
+
 	goto out;
 
 err:
@@ -15233,7 +15393,6 @@ err:
 	kmem_free(spec, nspec * sizeof (dtrace_speculation_t));
 	state->dts_nspeculations = 0;
 	state->dts_speculations = NULL;
-
 out:
 	mutex_exit(&dtrace_lock);
 	mutex_exit(&cpu_lock);
@@ -15244,6 +15403,7 @@ out:
 static int
 dtrace_state_stop(dtrace_state_t *state, processorid_t *cpu)
 {
+	dtrace_optval_t *opt = state->dts_options, sz, nspec;
 	dtrace_icookie_t cookie;
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
@@ -15309,6 +15469,18 @@ dtrace_state_stop(dtrace_state_t *state, processorid_t *cpu)
 			dtrace_closef = NULL;
 	}
 #endif
+
+	if (opt[DTRACEOPT_DDTRACEARG] != DTRACEOPT_UNSET &&
+	    dtrace_anon.dta_state == NULL) {
+		/* Iterate the DTrace dists and notify them of the
+		 * dtrace_state_stop.
+		 */ 
+		dtrace_dist_t *dist = dtrace_dist;
+		while (dist != NULL ) {
+			dist->dtd_ops.dtdops_close(dist, state);
+			dist = dist->dtd_next;
+		}
+	}
 
 	return (0);
 }
@@ -15447,7 +15619,7 @@ dtrace_state_destroy(dtrace_state_t *state)
 
 	dtrace_buffer_free(state->dts_buffer);
 	dtrace_buffer_free(state->dts_aggbuffer);
-
+	
 	for (i = 0; i < nspec; i++)
 		dtrace_buffer_free(spec[i].dtsp_buffer);
 
@@ -17250,7 +17422,6 @@ dtrace_open(struct cdev *dev, int oflags, int devtype, struct thread *td)
 	state = dtrace_state_create(dev, NULL);
 	devfs_set_cdevpriv(state, dtrace_dtr);
 #endif
-
 	mutex_exit(&cpu_lock);
 
 	if (state == NULL) {
@@ -17319,6 +17490,13 @@ dtrace_dtr(void *data)
 		 */
 		buf = dtrace_helptrace_buffer;
 		dtrace_helptrace_buffer = NULL;
+	}
+
+	/* Iterate DTrace dists and notify them of the dtrace close. */ 
+	dtrace_dist_t *dist = dtrace_dist;
+	while (dist != NULL ){
+		dist->dtd_ops.dtdops_close(dist, state);
+		dist = dist->dtd_next;
 	}
 
 #ifdef illumos
@@ -17692,8 +17870,6 @@ dtrace_ioctl(dev_t dev, int cmd, intptr_t arg, int md, cred_t *cr, int *rv)
 
 		mutex_exit(&cpu_lock);
 		mutex_exit(&dtrace_lock);
-		dtrace_dof_destroy(dof);
-
 		return (err);
 	}
 

@@ -197,6 +197,8 @@ __DEFAULT_NO_OPTIONS = \
     BEARSSL \
     BSD_GREP \
     CLANG_EXTRAS \
+    DDTRACE \
+    DLOG \
     DTRACE_TESTS \
     EXPERIMENTAL \
     GCC \

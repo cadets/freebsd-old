@@ -170,11 +170,11 @@ create_segment_file(struct vnode **vp, char *base_name, uint64_t base_offset)
 
 		DLOGTR0(PRIO_HIGH,
 		    "KernelSegment vnode is NULL or not a regular file\n");
-		VOP_UNLOCK(*vp, 0);
+		VOP_UNLOCK(*vp);
 		return -1;
 	}
 
-	VOP_UNLOCK(*vp, 0);
+	VOP_UNLOCK(*vp);
 	return 0;
 }
 
@@ -221,7 +221,7 @@ dl_kernel_segment_ctor(void *_super, va_list *ap)
 			goto err_kseg_ctor;
 		}
 	} else {
-		DL_ASSERT(path_nd.vp != NULL,
+		DL_ASSERT(path_nd.ni_vp != NULL,
 		("KernelSegment file path (%s) vnode is NULL", path));
 		vrele(path_nd.ni_vp);
 	}
@@ -256,7 +256,7 @@ dl_kernel_segment_ctor(void *_super, va_list *ap)
 			goto err_kseg_ctor;
 		}
 	} else {
-		DL_ASSERT(path_nd.vp != NULL,
+		DL_ASSERT(path_nd.ni_vp != NULL,
 		    ("KernelSegment base path (%s) vnode is NULL", path));
 		vrele(nd.ni_vp);
 	}
@@ -274,7 +274,8 @@ dl_kernel_segment_ctor(void *_super, va_list *ap)
 	/* Initialize mutex used to atomically write to the 
 	 * log and update to offset.
 	 */
-	mtx_init(&self->dlks_mtx, NULL, "KernelSegment", MTX_DEF);
+	bzero(&self->dlks_mtx, sizeof(struct mtx));
+	mtx_init(&self->dlks_mtx, "KernelSegment", NULL, MTX_DEF);
 
 	assert_integrity(self);
 	return 0;
@@ -379,7 +380,7 @@ dlks_insert_message(struct dl_segment *super, struct dl_bbuf *buffer)
 	rc |= VOP_LOCK(self->dlks_vp, LK_EXCLUSIVE | LK_RETRY);
 	rc |= VOP_WRITE(self->dlks_vp, &u, IO_UNIT | IO_APPEND, td->td_ucred);
 	VOP_GETATTR(self->dlks_vp, &vattr, td->td_ucred);
-	rc |= VOP_UNLOCK(self->dlks_vp, 0);
+	rc |= VOP_UNLOCK(self->dlks_vp);
 	vn_finished_write(mp);
 
 	if (rc == 0) {
@@ -459,7 +460,7 @@ dlks_sync(struct dl_segment *super)
 	rc = vn_start_write(self->dlks_vp, &mp, V_WAIT);
 	rc |= VOP_LOCK(self->dlks_vp, LK_EXCLUSIVE | LK_RETRY);
 	rc |= VOP_FSYNC(self->dlks_vp, MNT_WAIT, curthread);
-	rc |= VOP_UNLOCK(self->dlks_vp, 0);
+	rc |= VOP_UNLOCK(self->dlks_vp);
 	vn_finished_write(mp);
 
 	return rc;

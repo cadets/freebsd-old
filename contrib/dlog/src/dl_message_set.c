@@ -38,7 +38,7 @@
 #ifdef _KERNEL
 #include <sys/types.h>
 #include <sys/libkern.h>
-#include <sys/zlib.h>
+#include <contrib/zlib/zlib.h>
 #else
 #include <zlib.h>
 #include <stddef.h>
@@ -60,7 +60,7 @@ static const int8_t DL_MESSAGE_ATTRIBUTES_GZIP= 0x01;
 static const int64_t DL_DEFAULT_OFFSET = 0;
 
 #ifdef _KERNEL
-#define CRC32(data, len) crc32(data, len)
+#define CRC32(data, len) crc32(0, data, len)
 #else
 #define CRC32(data, len) crc32(0, data, len)
 #endif

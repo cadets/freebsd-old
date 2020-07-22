@@ -129,7 +129,12 @@ SUBDIR.${MK_BSNMP}+=	bsnmpd
 SUBDIR.${MK_OPENSSL}+=	certctl
 .endif
 SUBDIR.${MK_CXGBETOOL}+=	cxgbetool
+SUBDIR.${MK_DDTRACE}+=	ddtrace
+SUBDIR.${MK_DDTRACE}+=	readdof
 SUBDIR.${MK_DIALOG}+=	bsdconfig
+SUBDIR.${MK_DLOG}+=	dlogconf
+SUBDIR.${MK_DLOG}+=	dlogd
+SUBDIR.${MK_DLOG}+=	dlogdstat
 SUBDIR.${MK_EFI}+=	efivar efidp efibootmgr
 .if ${MK_OPENSSL} != "no"
 SUBDIR.${MK_EFI}+=	uefisign

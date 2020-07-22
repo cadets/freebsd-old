@@ -75,6 +75,7 @@ struct dtrace_ecb;
 struct dtrace_predicate;
 struct dtrace_action;
 struct dtrace_provider;
+struct dtrace_dist;
 struct dtrace_state;
 
 typedef struct dtrace_probe dtrace_probe_t;
@@ -84,6 +85,7 @@ typedef struct dtrace_action dtrace_action_t;
 typedef struct dtrace_provider dtrace_provider_t;
 typedef struct dtrace_meta dtrace_meta_t;
 typedef struct dtrace_state dtrace_state_t;
+typedef struct dtrace_dist dtrace_dist_t;
 typedef uint32_t dtrace_optid_t;
 typedef uint32_t dtrace_specid_t;
 typedef uint64_t dtrace_genid_t;
@@ -1175,6 +1177,14 @@ struct dtrace_state {
 	size_t dts_nretained;			/* number of retained enabs */
 	int dts_getf;				/* number of getf() calls */
 	uint64_t dts_rstate[NCPU][2];		/* per-CPU random state */
+	dof_hdr_t *dts_dof;			/* DOF used by distributed dtrace */
+};
+
+struct dtrace_dist {
+	dtrace_dops_t dtd_ops;			/* konsumer operations */
+	char *dtd_name;				/* konsumer name */
+	void *dtd_arg;				/* konsumer argument */
+	struct dtrace_dist *dtd_next;		/* next konsumer */
 };
 
 struct dtrace_provider {
@@ -1320,6 +1330,11 @@ extern uint_t dtrace_getfprs(void);
 extern void dtrace_copy(uintptr_t, uintptr_t, size_t);
 extern void dtrace_copystr(uintptr_t, uintptr_t, size_t, volatile uint16_t *);
 #endif
+
+void dtrace_buffer_switch(dtrace_buffer_t *);
+size_t dtrace_epid2size(dtrace_state_t *, dtrace_epid_t);
+dof_hdr_t * dtrace_dof_create(dtrace_state_t *);
+void dtrace_dof_destroy(dof_hdr_t *);
 
 /*
  * DTrace Assertions

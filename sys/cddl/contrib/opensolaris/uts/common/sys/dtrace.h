@@ -83,6 +83,7 @@ typedef int model_t;
 #define	DTRACE_METAPROVNONE	0	/* invalid meta-provider identifier */
 #define	DTRACE_ARGNONE		-1	/* invalid argument index */
 
+#define	DTRACE_KONNAMELEN	64
 #define	DTRACE_PROVNAMELEN	64
 #define	DTRACE_MODNAMELEN	64
 #define	DTRACE_FUNCNAMELEN	192
@@ -315,7 +316,8 @@ typedef enum dtrace_probespec {
 #define	DIF_SUBR_GETF			51
 #define	DIF_SUBR_JSON			52
 #define	DIF_SUBR_STRTOLL		53
-#define	DIF_SUBR_MAX			53	/* max subroutine value */
+#define	DIF_SUBR_RANDOM			54
+#define	DIF_SUBR_MAX			54	/* max subroutine value */
 
 typedef uint32_t dif_instr_t;
 
@@ -1052,7 +1054,9 @@ typedef struct dtrace_fmtdesc {
 #define	DTRACEOPT_AGGPACK	29	/* packed aggregation output */
 #define	DTRACEOPT_AGGZOOM	30	/* zoomed aggregation scaling */
 #define	DTRACEOPT_ZONE		31	/* zone in which to enable probes */
-#define	DTRACEOPT_MAX		32	/* number of options */
+#define	DTRACEOPT_DDTRACEARG	32	/* opaque DDTrace argument */
+#define	DTRACEOPT_DDTRACETIME 	33	/* walltimestamp 64-bit aligned */
+#define	DTRACEOPT_MAX		34	/* number of options */
 
 #define	DTRACEOPT_UNSET		(dtrace_optval_t)-2	/* unset option */
 
@@ -1097,17 +1101,22 @@ typedef struct dtrace_bufdesc {
  */
 typedef struct dtrace_rechdr {
 	dtrace_epid_t dtrh_epid;		/* enabled probe id */
-	uint32_t dtrh_timestamp_hi;		/* high bits of hrtime_t */
-	uint32_t dtrh_timestamp_lo;		/* low bits of hrtime_t */
+	uint32_t dtrh_timestamp_lo;		/* high bits of hrtime_t */
+	uint32_t dtrh_timestamp_hi;		/* low bits of hrtime_t */
 } dtrace_rechdr_t;
+
+typedef struct ddtrace_rechdr {
+	dtrace_epid_t dtrh_epid;		/* enabled probe id */
+	uint64_t dtrh_timestamp;		/* hrestime() */
+} ddtrace_rechdr_t;
 
 #define	DTRACE_RECORD_LOAD_TIMESTAMP(dtrh)			\
 	((dtrh)->dtrh_timestamp_lo +				\
 	((uint64_t)(dtrh)->dtrh_timestamp_hi << 32))
 
 #define	DTRACE_RECORD_STORE_TIMESTAMP(dtrh, hrtime) {		\
-	(dtrh)->dtrh_timestamp_lo = (uint32_t)hrtime;		\
-	(dtrh)->dtrh_timestamp_hi = hrtime >> 32;		\
+	(dtrh)->dtrh_timestamp_lo = (uint32_t) (hrtime & 0xFFFFFFFFL);			\
+	(dtrh)->dtrh_timestamp_hi = (uint32_t) ((hrtime & 0xFFFFFFFF00000000L) >> 32);	\
 }
 
 /*
@@ -2122,6 +2131,14 @@ typedef struct dof_helper {
  *   instrument the kernel arbitrarily should be sure to not instrument these
  *   routines.
  */
+ 
+struct dtrace_state;
+
+typedef struct dtrace_dops {
+	void (*dtdops_open)(void *, struct dtrace_state *);
+	void (*dtdops_close)(void *, struct dtrace_state *);
+} dtrace_dops_t;
+
 typedef struct dtrace_pops {
 	void (*dtps_provide)(void *arg, dtrace_probedesc_t *spec);
 	void (*dtps_provide_module)(void *arg, modctl_t *mp);
@@ -2143,8 +2160,12 @@ typedef struct dtrace_pops {
 #define	DTRACE_MODE_NOPRIV_RESTRICT		0x20
 #define	DTRACE_MODE_LIMITEDPRIV_RESTRICT	0x40
 
+typedef uintptr_t	dtrace_dist_id_t;
 typedef uintptr_t	dtrace_provider_id_t;
 
+extern int dtrace_dist_register(const char *, const dtrace_dops_t *,
+    void *, dtrace_dist_id_t *);
+extern int dtrace_dist_unregister(dtrace_dist_id_t *);
 extern int dtrace_register(const char *, const dtrace_pattr_t *, uint32_t,
     cred_t *, const dtrace_pops_t *, void *, dtrace_provider_id_t *);
 extern int dtrace_unregister(dtrace_provider_id_t);

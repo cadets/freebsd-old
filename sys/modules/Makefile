@@ -104,6 +104,8 @@ SUBDIR=	\
 	dc \
 	dcons \
 	dcons_crom \
+	ddtrace \
+	dlog \
 	${_dpms} \
 	dummynet \
 	${_efirt} \

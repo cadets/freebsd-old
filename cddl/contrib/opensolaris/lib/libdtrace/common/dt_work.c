@@ -135,7 +135,7 @@ dtrace_status(dtrace_hdl_t *dtp)
 	hrtime_t now = gethrtime();
 
 	if (!dtp->dt_active)
-		return (DTRACE_STATUS_NONE);
+		return (DTRACE_STATUS_INACTIVE);
 
 	if (dtp->dt_stopped)
 		return (DTRACE_STATUS_STOPPED);
@@ -268,8 +268,7 @@ dtrace_stop(dtrace_hdl_t *dtp)
 
 
 dtrace_workstatus_t
-dtrace_work(dtrace_hdl_t *dtp, FILE *fp,
-    dtrace_consume_probe_f *pfunc, dtrace_consume_rec_f *rfunc, void *arg)
+dtrace_work(dtrace_hdl_t *dtp, FILE *fp, dtrace_consumer_t *con, void *arg)
 {
 	int status = dtrace_status(dtp);
 	dtrace_optval_t policy = dtp->dt_options[DTRACEOPT_BUFPOLICY];
@@ -294,7 +293,9 @@ dtrace_work(dtrace_hdl_t *dtp, FILE *fp,
 		rval = DTRACE_WORKSTATUS_OKAY;
 		break;
 
-	case -1:
+	case DTRACE_STATUS_INACTIVE:
+		return (dt_set_errno(dtp, EINVAL));
+	default:
 		return (DTRACE_WORKSTATUS_ERROR);
 	}
 
@@ -313,7 +314,32 @@ dtrace_work(dtrace_hdl_t *dtp, FILE *fp,
 	if (dtrace_aggregate_snap(dtp) == -1)
 		return (DTRACE_WORKSTATUS_ERROR);
 
-	if (dtrace_consume(dtp, fp, pfunc, rfunc, arg) == -1)
+	if (dtrace_consume(dtp, fp, con, arg) == -1)
+		return (DTRACE_WORKSTATUS_ERROR);
+
+	return (rval);
+}
+
+dtrace_workstatus_t
+dtrace_work_detached(dtrace_hdl_t *dtp, FILE *fp, dtrace_consumer_t *con,
+    void *arg)
+{
+	int status = dtrace_status(dtp);
+	dtrace_optval_t policy = dtp->dt_options[DTRACEOPT_BUFPOLICY];
+	dtrace_workstatus_t rval;
+
+	switch (status) {
+	case DTRACE_STATUS_INACTIVE:
+		rval = DTRACE_WORKSTATUS_OKAY;
+		break;
+	default:
+		return (DTRACE_WORKSTATUS_ERROR);
+	}
+
+	//if (dtrace_aggregate_snap(dtp) == -1)
+	//	return (DTRACE_WORKSTATUS_ERROR);
+
+	if (dtrace_consume(dtp, fp, con, arg) == -1)
 		return (DTRACE_WORKSTATUS_ERROR);
 
 	return (rval);
