@@ -57,6 +57,8 @@
 #include <dirent.h>
 #include <getopt.h>
 
+#include <openssl/sha.h>
+
 #include <spawn.h>
 #include <dt_prog_link.h>
 
@@ -70,7 +72,9 @@
 
 #define	LOCK(m) {						\
 	int err;						\
+	syslog(LOG_DEBUG, "%d: Locking in %s(%d)", pthread_self(), __func__, __LINE__); \
 	err = pthread_mutex_lock(m);				\
+	syslog(LOG_DEBUG, "%d: Locked in %s(%d)", pthread_self(), __func__, __LINE__); \
 	if (err != 0) {						\
 		syslog(LOG_ERR, "Failed to lock mutex: %m");	\
 	}							\
@@ -280,10 +284,18 @@ process_joblist(void *_s)
 				close(elffd);
 				break;
 			}
-			memset(contents, 0, elflen);
+			memset(contents, 0, elflen + 32); /* +32 for SHA256 */
 
-			if (read(elffd, contents, elflen) < 0) {
+			if (read(elffd, contents + 32, elflen) < 0) {
 				syslog(LOG_ERR, "Failed to read ELF contents: %m");
+				free(path);
+				free(contents);
+				close(elffd);
+				break;
+			}
+
+			if (SHA256(contents + 32, elflen, contents) == NULL) {
+				syslog(LOG_ERR, "Failed to create a SHA256 of the file");
 				free(path);
 				free(contents);
 				close(elffd);
@@ -304,8 +316,10 @@ process_joblist(void *_s)
 					 */
 					LOCK(&s->socklistmtx);
 					fde = dt_in_list(&s->sockfds, &fd, sizeof(int));
-					if (fde == NULL)
+					if (fde == NULL) {
+						UNLOCK(&s->socklistmtx);
 						break;
+					}
 
 					dt_list_delete(&s->sockfds, fde);
 					UNLOCK(&s->socklistmtx);

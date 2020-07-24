@@ -22,6 +22,6 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 #CFLAGS+=	-DNEED_ERRLOC
 #YFLAGS+=	-d
 
-LIBADD=	dtrace ctf elf proc pthread
+LIBADD=	dtrace ctf elf proc pthread crypto
 
 .include <bsd.prog.mk>
