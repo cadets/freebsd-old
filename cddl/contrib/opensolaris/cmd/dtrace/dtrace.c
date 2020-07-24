@@ -669,6 +669,48 @@ checkmodref(int action_modref, int cumulative_modref,
 	return (true);
 }
 
+static void
+get_randname(char *b, size_t len)
+{
+	size_t i;
+
+	/*
+	 * Generate lower-case random characters.
+	 */
+	for (i = 0; i < len; i++)
+		b[i] = arc4random_uniform(25) + 97;
+}
+
+static char *
+gen_filename(const char *dir)
+{
+	char *filename;
+	char *elfpath;
+	size_t len;
+
+	len = (MAXPATHLEN - strlen(dir)) / 64;
+	assert(len > 10);
+
+	filename = malloc(len);
+	get_randname(filename, len - 1);
+	filename[len - 1] = '\0';
+
+	elfpath = malloc(MAXPATHLEN);
+	strcpy(elfpath, dir);
+	strcpy(elfpath + strlen(dir), filename);
+
+	while (access(elfpath, F_OK) != -1) {
+		get_randname(filename, len - 1);
+		filename[len - 1] = '\0';
+		strcpy(elfpath + strlen(dir), filename);
+	}
+
+	free(filename);
+
+	printf("returning elfpath = %s\n", elfpath);
+	return (elfpath);
+}
+
 /*
  * Execute the specified program by enabling the corresponding instrumentation.
  * If -e has been specified, we get the program info but do not enable it.  If
@@ -679,7 +721,10 @@ exec_prog(const dtrace_cmd_t *dcp)
 {
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_proginfo_t dpi;
-	char elfpath[MAXPATHLEN] = "/var/ddtrace/tracing_spec.elf";
+	char *elfpath;
+	char elfdir[MAXPATHLEN] = "/var/ddtrace/";
+
+	elfpath = gen_filename(elfdir);
 
 	// Don't take any action based on unwanted mod/ref behaviour:
 	// checkmodref emits warnings and that's the end of it.
@@ -707,6 +752,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 			if (dt_vtdtr_elfnotify(g_vtdtrhdl, basename(elfpath)))
 				fatal("failed to notify about %s", elfpath);
 		}
+		free(elfpath);
 	} else if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) == 0) {
 		(void) dtrace_dump_actions(dcp->dc_prog);
 		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {

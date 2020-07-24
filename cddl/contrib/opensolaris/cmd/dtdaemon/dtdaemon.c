@@ -55,12 +55,18 @@
 #include <assert.h>
 #include <libgen.h>
 #include <dirent.h>
+#include <getopt.h>
 
 #include <spawn.h>
 #include <dt_prog_link.h>
 
 #define	SOCKFD_PATH	"/var/ddtrace/sub.sock"
+#define	SOCKFD_NAME	"sub.sock"
 #define	THREADPOOL_SIZE	4
+
+#define	NEXISTS		0
+#define	EXISTS_CHANGED	1
+#define	EXISTS_EQUAL	2
 
 #define	LOCK(m) {						\
 	int err;						\
@@ -109,6 +115,7 @@ struct dtd_state {
 	 *                        loop. Does not require locking.
 	 */
 	char		**paths;
+	time_t		*ctimes;
 	size_t		size;
 	size_t		len;
 
@@ -147,6 +154,8 @@ struct dtd_state {
 	dt_list_t	joblist;
 
 	int		shutdown;
+
+	int		dirfd;
 };
 
 struct dtd_fdlist {
@@ -176,12 +185,21 @@ typedef int (*foreach_fn_t)(struct dirent *, struct dtd_state *);
  */
 struct dtd_state state;
 
+static const struct option long_opts[] = {
+	{"help",		no_argument,		NULL,		0},
+	{"exclude",		required_argument,	NULL,		'e'},
+	{"version",		no_argument,		NULL,		'v'},
+	{0,			0,			0,		0}
+};
+
 static void
-shutdown_hdlr(int signo)
+sig_hdlr(int signo)
 {
 	if (signo == SIGTERM)
 		state.shutdown = 1;
-	else if (signo == SIGINT)
+	if (signo == SIGINT)
+		state.shutdown = 1;
+	if (signo == SIGPIPE)
 		return;
 }
 
@@ -190,13 +208,19 @@ process_joblist(void *_s)
 {
 	int err;
 	int fd;
+	int elffd;
 	char *path;
+	char *contents;
 	size_t pathlen;
+	size_t elflen;
 	struct dtd_joblist *curjob;
 	struct dtd_fdlist *fde;
 	struct dtd_state *s = (struct dtd_state *)_s;
-	
-	for (;;) {
+	struct stat stat;
+
+	memset(&stat, 0, sizeof(stat));
+
+	while (s->shutdown == 0) {
 		LOCK(&s->joblistcvmtx);
 		while (dt_list_next(&s->joblist) == NULL && s->shutdown == 0)
 			WAIT(&s->joblistcv, &s->joblistcvmtx);
@@ -207,7 +231,14 @@ process_joblist(void *_s)
 
 		LOCK(&s->joblistmtx);
 		curjob = dt_list_next(&s->joblist);
-		assert(curjob != NULL);
+		if (curjob == NULL) {
+			/*
+			 * It is possible that another thread already picked
+			 * this job up, in which case we simply loop again.
+			 */
+			UNLOCK(&s->joblistmtx);
+			continue;
+		}
 
 		dt_list_delete(&s->joblist, curjob);
 		UNLOCK(&s->joblistmtx);
@@ -225,7 +256,41 @@ process_joblist(void *_s)
 			assert(path != NULL);
 			assert(pathlen <= MAXPATHLEN);
 
-			if (write(fd, path, pathlen) < 0) {
+			assert(s->dirfd != -1);
+
+			elffd = openat(s->dirfd, path, O_RDONLY);
+			if (elffd == -1) {
+				syslog(LOG_ERR, "Failed to open %s: %m", path);
+				free(path);
+				break;
+			}
+
+			if (fstat(elffd, &stat) != 0) {
+				syslog(LOG_ERR, "Failed to fstat %s: %m", path);
+				free(path);
+				close(elffd);
+				break;
+			}
+
+			elflen = stat.st_size;
+			contents = malloc(elflen);
+			if (contents == NULL) {
+				syslog(LOG_ERR, "Failed to malloc ELF contents: %m");
+				free(path);
+				close(elffd);
+				break;
+			}
+			memset(contents, 0, elflen);
+
+			if (read(elffd, contents, elflen) < 0) {
+				syslog(LOG_ERR, "Failed to read ELF contents: %m");
+				free(path);
+				free(contents);
+				close(elffd);
+				break;
+			}
+
+			if (send(fd, contents, elflen, 0) < 0) {
 				if (errno == EPIPE) {
 					/*
 					 * Get the entry from a socket list to
@@ -239,7 +304,9 @@ process_joblist(void *_s)
 					 */
 					LOCK(&s->socklistmtx);
 					fde = dt_in_list(&s->sockfds, &fd, sizeof(int));
-					assert(fde != NULL);
+					if (fde == NULL)
+						break;
+
 					dt_list_delete(&s->sockfds, fde);
 					UNLOCK(&s->socklistmtx);
 				} else
@@ -249,6 +316,8 @@ process_joblist(void *_s)
 			}
 
 			free(path);
+			free(contents);
+			close(elffd);
 			break;
 
 		default:
@@ -287,7 +356,7 @@ accept_subs(void *_s)
 		pthread_exit(NULL);
 	}
 
-	for (;;) {
+	while (s->shutdown == 0) {
 		connsockfd = accept(s->sockfd, NULL, 0);
 		if (connsockfd == -1) {
 			/*
@@ -296,9 +365,9 @@ accept_subs(void *_s)
 			 * received on this thread is when we explicitly
 			 * call pthread_kill() on shutdown.
 			 */
-			if (errno == EINTR && s->shutdown == 1)
-				break;
-			
+			if (errno == EINTR && state.shutdown == 1)
+				goto exit;
+
 			syslog(LOG_ERR, "Failed to accept a connection: %m");
 			pthread_exit(NULL);
 		}
@@ -317,6 +386,7 @@ accept_subs(void *_s)
 		UNLOCK(&s->socklistmtx);
 	}
 
+exit:
 	pthread_exit(s);
 }
 
@@ -372,37 +442,57 @@ destroy_sockfd(struct dtd_state *s)
 {
 	int err;
 
-	err = shutdown(s->sockfd, SHUT_RDWR);
-	if (err != 0) {
-		syslog(LOG_ERR, "Failed to shutdown %d: %m", s->sockfd);
-		return (-1);
-	}
-
 	if (close(s->sockfd) != 0) {
 		syslog(LOG_ERR, "Failed to close %d: %m", s->sockfd);
 		return (-1);
 	}
 
 	s->sockfd = -1;
-	err = pthread_mutex_destroy(&s->sockmtx);
-	if (err != 0) {
-		syslog(LOG_ERR, "Failed to destroy sockmtx: %m");
-		return (-1);
-	}
+
+	if (unlink(SOCKFD_PATH) != 0)
+		syslog(LOG_ERR, "Failed to unlink %s: %m", SOCKFD_PATH);
 
 	return (0);
 }
 
 static int
-exists(const char *p, struct dtd_state *s)
+findpath(const char *p, struct dtd_state *s, struct stat *st)
 {
-	size_t i;
+	int i;
 	
 	for (i = 0; i < s->len; i++) {
-		if (strcmp(p, s->paths[i]) == 0)
-			return (1);
+		if (strcmp(p, s->paths[i]) == 0) {
+			if (fstatat(s->dirfd, p, st, AT_SYMLINK_NOFOLLOW) != 0) {
+				syslog(LOG_ERR, "Failed to stat %s: %m", p);
+				/*
+				 * Return -2 to indicate a failed syscall
+				 */
+				return (-2);
+			}
+
+			return (i);
+		}
 	}
 
+	return (-1);
+}
+
+static int
+waschanged(struct stat *st, int idx, struct dtd_state *s)
+{
+	if (idx < 0)
+		return (1);
+
+	/*
+	 * It would be nonesense if it was changed earlier than what
+	 * we've seen it change.
+	 */
+	assert(s->ctimes[idx] <= st->st_ctime);
+
+	if (s->ctimes[idx] < st->st_ctime)
+		return (1);
+
+	assert(s->ctimes[idx] == st->st_ctime);
 	return (0);
 }
 
@@ -410,6 +500,7 @@ static int
 expand_paths(struct dtd_state *s)
 {
 	char **newpaths;
+	time_t *newctimes;
 
 	if (s == NULL) {
 		syslog(LOG_DEBUG, "Expand paths called with state == NULL");
@@ -440,14 +531,27 @@ expand_paths(struct dtd_state *s)
 
 		memset(newpaths, 0, s->size * sizeof(char *));
 		if (s->paths) {
-			memcpy(newpaths, s->paths, s->len);
+			memcpy(newpaths, s->paths, s->len * sizeof(char *));
 			free(s->paths);
 		}
 
+		newctimes = malloc(s->size * sizeof(time_t));
+		if (newctimes == NULL) {
+			syslog(LOG_ERR, "Failed to malloc newctimes");
+			return (-1);
+		}
+
+		memset(newctimes, 0, s->size * sizeof(time_t));
+		if (s->ctimes) {
+			memcpy(newctimes, s->ctimes, s->len * sizeof(time_t));
+			free(s->ctimes);
+		}
+
 		/*
-		 * newpaths is now our new s->paths.
+		 * Assign the paths and ctimes
 		 */
 		s->paths = newpaths;
+		s->ctimes = newctimes;
 	}
 
 	return (0);
@@ -459,6 +563,8 @@ process_new(struct dirent *f, struct dtd_state *s)
 	int err;
 	struct dtd_fdlist *fd_list;
 	struct dtd_joblist *job;
+	struct stat st;
+	int idx, ch;
 
 	if (s == NULL) {
 		syslog(LOG_ERR, "state is NULL");
@@ -470,12 +576,32 @@ process_new(struct dirent *f, struct dtd_state *s)
 		return (-1);
 	}
 
+	if (strcmp(f->d_name, SOCKFD_NAME) == 0)
+		return (0);
+
+	if (strcmp(f->d_name, ".") == 0)
+		return (0);
+
+	if (strcmp(f->d_name, "..") == 0)
+		return (0);
+
 	/*
-	 * If this file already exists, we simply don't process it for now.
+	 * Get the index (if exists) of the path. We will use this to check
+	 * if the file has already been processed by comparing the last changed
+	 * time to the one we have stored. If our time is in the past, we need
+	 * to resend the file and update our state.
 	 */
-	if (exists(f->d_name, s)) {
+	idx = findpath(f->d_name, s, &st);
+	ch = waschanged(&st, idx, s);
+
+	if (idx >= 0 && ch == 0) {
 		syslog(LOG_DEBUG, "%s already exists in state", f->d_name);
 		return (0);
+	}
+
+	if (idx == -2) {
+		syslog(LOG_ERR, "Failed to process new entry: %m");
+		return (-1);
 	}
 
 	LOCK(&s->socklistmtx);
@@ -503,20 +629,26 @@ process_new(struct dirent *f, struct dtd_state *s)
 	}
 	UNLOCK(&s->socklistmtx);
 
-	/*
-	 * We have now written this file out to every single process that
-	 * asked to get informed about it. We will now simply add it to
-	 * the path array.
-	 */
-	err = expand_paths(s);
-	if (err != 0) {
-		syslog(LOG_ERR, "Failed to expand paths after processing %s",
-		    f->d_name);
-		return (-1);
-	}
+	if (idx == -1) {
+		/*
+		 * We have now written this file out to every single process that
+		 * asked to get informed about it. We will now simply add it to
+		 * the path array.
+		 */
+		err = expand_paths(s);
+		if (err != 0) {
+			syslog(LOG_ERR, "Failed to expand paths after processing %s",
+			    f->d_name);
+			return (-1);
+		}
 
-	assert(s->size > s->len);
-	s->paths[s->len++] = strdup(f->d_name);
+		assert(s->size > s->len);
+		s->ctimes[s->len] = st.st_ctime;
+		s->paths[s->len++] = strdup(f->d_name);
+	} else {
+		assert(ch != 0);
+		s->ctimes[idx] = st.st_ctime;
+	}
 
 	return (0);
 }
@@ -525,6 +657,7 @@ static int
 populate_existing(struct dirent *f, struct dtd_state *s)
 {
 	int err;
+	struct stat st;
 
 	if (s == NULL) {
 		syslog(LOG_ERR, "state is NULL\n");
@@ -536,6 +669,14 @@ populate_existing(struct dirent *f, struct dtd_state *s)
 		return (-1);
 	}
 
+	if (strcmp(f->d_name, SOCKFD_NAME) == 0)
+		return (0);
+	
+	if (strcmp(f->d_name, ".") == 0)
+		return (0);
+	if (strcmp(f->d_name, "..") == 0)
+		return (0);
+
 	err = expand_paths(s);
 	if (err != 0) {
 		syslog(LOG_ERR, "Failed to expand paths in initialization");
@@ -543,6 +684,13 @@ populate_existing(struct dirent *f, struct dtd_state *s)
 	}
 
 	assert(s->size > s->len);
+
+	if (fstatat(s->dirfd, f->d_name, &st, AT_SYMLINK_NOFOLLOW)) {
+		syslog(LOG_ERR, "Failed to fstatat %s: %m", f->d_name);
+		return (-1);
+	}
+
+	s->ctimes[s->len] = st.st_ctime;
 	s->paths[s->len++] = strdup(f->d_name);
 
 	return (0);
@@ -553,12 +701,14 @@ file_foreach(DIR *d, foreach_fn_t f, void *uarg)
 {
 	struct dirent *file;
 	int err;
-	
+
 	while ((file = readdir(d)) != NULL) {
 		err = f(file, uarg);
 		if (err)
 			return (err);
 	}
+
+	rewinddir(d);
 
 	return (0);
 }
@@ -690,15 +840,54 @@ destroy_state(struct dtd_state *s)
 	return (0);
 }
 
+static void
+print_help(void)
+{
+
+}
+
+static void
+print_version(void)
+{
+	
+}
+
 int
 main(int argc, char **argv)
 {
 	const char elfpath[MAXPATHLEN] = "/var/ddtrace";
-	int efd, err, rval, kq;
+	int efd, err, rval, kq, retry;
 	DIR *elfdir;
 	size_t i;
+	char ch;
 	struct kevent ev, ev_data;
 	struct dtd_state *retval;
+	int optidx = 0;
+
+	retry = 0;
+
+	while ((ch = getopt_long(argc, argv, "he:a::v", long_opts, &optidx)) != -1) {
+		switch (ch) {
+		case 'h':
+			print_help();
+			exit(0);
+
+		case 'v':
+			print_version();
+			exit(0);
+
+		case 'e':
+			/*
+			 * Option specifies that we want to ignore certain file
+			 * names. We simply add them to the list of ignored
+			 * names and later on when we notify our consumers check
+			 * if it should be ignored.
+			 */
+			break;
+		default:
+			break;
+		}
+	}
 
 	if (daemon(0, 0) != 0) {
 		syslog(LOG_ERR, "Failed to daemonize %m");
@@ -711,34 +900,51 @@ main(int argc, char **argv)
 		return (EXIT_FAILURE);
 	}
 
-	if (signal(SIGTERM, shutdown_hdlr) == SIG_ERR) {
+	if (signal(SIGTERM, sig_hdlr) == SIG_ERR) {
 		syslog(LOG_ERR, "Failed to install SIGTERM handler");
 		return (EX_OSERR);
 	}
 
-	if (signal(SIGINT, shutdown_hdlr) == SIG_ERR) {
-		syslog(LOG_ERR, "Failed to install SIGINT handler");
+	if (signal(SIGPIPE, sig_hdlr) == SIG_ERR) {
+		syslog(LOG_ERR, "Failed to install SIGPIPE handler");
 		return (EX_OSERR);
 	}
 
-	efd = open(elfpath, O_CREAT | O_RDWR);
+	if (siginterrupt(SIGTERM, 1) != 0) {
+		syslog(LOG_ERR,
+		    "Failed to enable system call interrupts for SIGTERM");
+		return (EX_OSERR);
+	}
+
+again:
+	efd = open(elfpath, O_RDONLY | O_DIRECTORY);
 	if (efd == -1) {
-		syslog(LOG_ERR, "Failed to open /var/ddtrace");
+		if (retry == 0 && errno == EINVAL) {
+			if (mkdir(elfpath, 0700) != 0)
+				syslog(LOG_ERR,
+				    "Failed to mkdir %s: %m", elfpath);
+			else {
+				retry = 1;
+				goto again;
+			}
+		}
+		syslog(LOG_ERR, "Failed to open %s: %m", elfpath);
 		return (EX_OSERR);
 	}
 
+	state.dirfd = efd;
 	elfdir = fdopendir(efd);
-
-	err = file_foreach(elfdir, populate_existing, &state);
-	if (err != 0) {
-		syslog(LOG_ERR, "Failed to populate existing files");
-		return (EXIT_FAILURE);
-	}
 
 	err = setup_sockfd(&state);
 	if (err != 0) {
 		syslog(LOG_ERR, "Failed to set up the socket");
 		return (EX_OSERR);
+	}
+
+	err = file_foreach(elfdir, populate_existing, &state);
+	if (err != 0) {
+		syslog(LOG_ERR, "Failed to populate existing files");
+		return (EXIT_FAILURE);
 	}
 
 	err = setup_threads(&state);
@@ -747,7 +953,7 @@ main(int argc, char **argv)
 		return (EX_OSERR);
 	}
 
-	if ((kq = kqueue()) != 0) {
+	if ((kq = kqueue()) == -1) {
 		syslog(LOG_ERR, "Failed to create a kqueue %m");
 		return (EX_OSERR);
 	}
@@ -760,8 +966,8 @@ main(int argc, char **argv)
 		assert(rval != 0);
 
 		if (rval < 0) {
-			if (rval == EINTR && state.shutdown == 1)
-				break;
+			if (errno == EINTR && state.shutdown == 1)
+				goto cleanup;
 
 			syslog(LOG_ERR, "kevent() failed with %m");
 			return (EX_OSERR);
@@ -773,13 +979,6 @@ main(int argc, char **argv)
 		}
 
 		if (rval > 0) {
-			syslog(LOG_DEBUG, "Event %" PRIdPTR
-			    " occurred. Filter %d, flags %d, filter flags %u"
-			    ", filter data %" PRIdPTR ", path %s\n",
-			    ev_data.ident, ev_data.filter, ev_data.flags,
-			    ev_data.fflags, ev_data.data,
-			    ev_data.udata);
-			
 			err = file_foreach(elfdir, process_new, &state);
 			if (err) {
 				syslog(LOG_ERR, "Failed to process new files");
@@ -788,7 +987,8 @@ main(int argc, char **argv)
 		}
 	}
 
-	err = pthread_kill(state.socktd, SIGINT);
+cleanup:
+	err = pthread_kill(state.socktd, SIGTERM);
 	if (err != 0) {
 		syslog(LOG_ERR, "Failed to interrupt socktd: %m");
 		return (EX_OSERR);
@@ -800,9 +1000,6 @@ main(int argc, char **argv)
 		return (EX_OSERR);
 	}
 
-	if (retval != &state)
-		syslog(LOG_ERR,
-		    "Socket thread failed to return the correct state");
 
 	LOCK(&state.joblistcvmtx);
 	BROADCAST(&state.joblistcv);
@@ -814,11 +1011,6 @@ main(int argc, char **argv)
 			syslog(LOG_ERR, "Failed to join threads: %m");
 			return (EX_OSERR);
 		}
-
-		if (retval != &state)
-			syslog(LOG_ERR,
-			    "Worker thread failed to return the correct state");
-
 	}
 
 	err = destroy_state(&state);
@@ -826,6 +1018,9 @@ main(int argc, char **argv)
 		syslog(LOG_ERR, "Failed to clean up state");
 		return (EXIT_FAILURE);
 	}
+
+	closedir(elfdir);
+	close(efd);
 
 	return (0);
 }
