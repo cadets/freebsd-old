@@ -72,9 +72,7 @@
 
 #define	LOCK(m) {						\
 	int err;						\
-	syslog(LOG_DEBUG, "%d: Locking in %s(%d)", pthread_self(), __func__, __LINE__); \
 	err = pthread_mutex_lock(m);				\
-	syslog(LOG_DEBUG, "%d: Locked in %s(%d)", pthread_self(), __func__, __LINE__); \
 	if (err != 0) {						\
 		syslog(LOG_ERR, "Failed to lock mutex: %m");	\
 	}							\
@@ -160,6 +158,8 @@ struct dtd_state {
 	int		shutdown;
 
 	int		dirfd;
+
+	int		nosha;
 };
 
 struct dtd_fdlist {
@@ -187,12 +187,14 @@ typedef int (*foreach_fn_t)(struct dirent *, struct dtd_state *);
 /*
  * Awful global variable, but is here because of the signal handler.
  */
-struct dtd_state state;
+static struct dtd_state state;
+static int nosha = 0;
 
 static const struct option long_opts[] = {
 	{"help",		no_argument,		NULL,		0},
 	{"exclude",		required_argument,	NULL,		'e'},
 	{"version",		no_argument,		NULL,		'v'},
+	{"no-checksum",		no_argument,		&nosha,		1},
 	{0,			0,			0,		0}
 };
 
@@ -277,16 +279,21 @@ process_joblist(void *_s)
 			}
 
 			elflen = stat.st_size;
-			contents = malloc(elflen);
+			contents = malloc(s->nosha ? elflen : elflen + 32);
 			if (contents == NULL) {
 				syslog(LOG_ERR, "Failed to malloc ELF contents: %m");
 				free(path);
 				close(elffd);
 				break;
 			}
-			memset(contents, 0, elflen + 32); /* +32 for SHA256 */
 
-			if (read(elffd, contents + 32, elflen) < 0) {
+			if (s->nosha)
+				memset(contents, 0, elflen);
+			else
+				memset(contents, 0, elflen + 32);
+			
+			if (read(elffd,
+			    s->nosha ? contents : contents + 32, elflen) < 0) {
 				syslog(LOG_ERR, "Failed to read ELF contents: %m");
 				free(path);
 				free(contents);
@@ -294,7 +301,8 @@ process_joblist(void *_s)
 				break;
 			}
 
-			if (SHA256(contents + 32, elflen, contents) == NULL) {
+			if (s->nosha == 0 &&
+			    SHA256(contents + 32, elflen, contents) == NULL) {
 				syslog(LOG_ERR, "Failed to create a SHA256 of the file");
 				free(path);
 				free(contents);
@@ -302,7 +310,8 @@ process_joblist(void *_s)
 				break;
 			}
 
-			if (send(fd, contents, elflen, 0) < 0) {
+			if (send(fd, contents,
+			    s->nosha ? elflen : elflen + 32, 0) < 0) {
 				if (errno == EPIPE) {
 					/*
 					 * Get the entry from a socket list to
@@ -880,7 +889,7 @@ main(int argc, char **argv)
 
 	retry = 0;
 
-	while ((ch = getopt_long(argc, argv, "he:a::v", long_opts, &optidx)) != -1) {
+	while ((ch = getopt_long(argc, argv, "a::e:hvZ", long_opts, &optidx)) != -1) {
 		switch (ch) {
 		case 'h':
 			print_help();
@@ -898,6 +907,10 @@ main(int argc, char **argv)
 			 * if it should be ignored.
 			 */
 			break;
+		case 'Z':
+			nosha = 1;
+			break;
+
 		default:
 			break;
 		}
@@ -913,6 +926,8 @@ main(int argc, char **argv)
 		syslog(LOG_ERR, "Failed to initialize the state");
 		return (EXIT_FAILURE);
 	}
+
+	state.nosha = nosha;
 
 	if (signal(SIGTERM, sig_hdlr) == SIG_ERR) {
 		syslog(LOG_ERR, "Failed to install SIGTERM handler");
