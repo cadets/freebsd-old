@@ -28,6 +28,8 @@
 
 #include <sys/ioctl.h>
 #include <sys/param.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #ifndef WITHOUT_CAPSICUM
 #include <sys/capsicum.h>
@@ -42,6 +44,7 @@
 #include <assert.h>
 #include <sysexits.h>
 #include <err.h>
+#include <syslog.h>
 
 #ifndef WITHOUT_CAPSICUM
 #include <capsicum_helpers.h>
@@ -49,71 +52,42 @@
 
 #include "dthyve.h"
 
-static int elfdir_fd = -1;
-static char elfdir_path[MAXPATHLEN] = {0};
-static int vtdtr_fd = -1;
-static struct vtdtr_conf vtdtr_conf;
+#define	DTDAEMON_SOCKPATH	"/var/ddtrace/sub.sock"
+
+static int sockfd = -1;
+static int filefd = -1;
 
 /*
  * Open the vtdtr device in order to set up the state.
  */
-void
-dthyve_init(const char *elfdir)
+int
+dthyve_init(void)
 {
 	int error;
-#ifndef WITHOUT_CAPSICUM
-	cap_rights_t rights;
-	static const cap_ioctl_t cmds[] = { VTDTRIOC_CONF };
-#endif
 	size_t l;
+	struct sockaddr_un addr;
 
-	error = 0;
+	sockfd = socket(PF_UNIX, SOCK_STREAM, 0);
+	if (sockfd == -1)
+		return (-1);
 
-	vtdtr_fd = open("/dev/vtdtr", O_RDWR);
-	if (vtdtr_fd == -1) {
-		fprintf(stderr, "Error: '%s' opening /dev/vtdtr\n",
-		    strerror(errno));
-		exit(1);
+	memset(&addr, 0, sizeof(addr));
+	addr.sun_family = PF_UNIX;
+	l = strlcpy(addr.sun_path, DTDAEMON_SOCKPATH, sizeof(addr.sun_path));
+	if (l >= sizeof(addr.sun_path)) {
+		sockfd = -1;
+		return (-1);
 	}
 
-#ifndef WITHOUT_CAPSICUM
-	cap_rights_init(&rights, CAP_IOCTL, CAP_READ);
-	if (caph_rights_limit(vtdtr_fd, &rights) == -1)
-		errx(EX_OSERR, "Unable to apply rights for sandbox");
-
-	if (caph_ioctls_limit(vtdtr_fd, cmds, nitems(cmds)) == -1)
-		errx(EX_OSERR, "Unable to apply rights for sandbox");
-#endif
-
-	error = dthyve_conf(1 << VTDTR_EV_RECONF, 0);
-	if (error) {
-		fprintf(stderr, "Error: %s attempting to reconfigure /dev/vtdtr\n",
-		    strerror(errno));
-		exit(1);
+	if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+		sockfd = -1;
+		return (-1);
 	}
 
-	if (elfdir != NULL) {
-		l = strlcpy(elfdir_path, elfdir, MAXPATHLEN);
-		if (l >= MAXPATHLEN)
-			errx(EX_OSERR, "elfdir path %s is greater than %zu",
-			    elfdir, MAXPATHLEN);
-
-		elfdir_fd = open(elfdir, O_RDONLY | O_CREAT);
-		if (elfdir_fd == -1)
-			errx(EX_OSERR, "Unable to open %s", elfdir);
-	}
-}
-
-/*
- * Issues an ioctl to vtdtr to configure itself.
- */
-int
-dthyve_conf(size_t flags, sbintime_t timeout)
-{
-
-	vtdtr_conf.timeout = timeout;
-	vtdtr_conf.event_flags = flags;
-	return (ioctl(vtdtr_fd, VTDTRIOC_CONF, &vtdtr_conf));
+	filefd = open("/root/elf_file", O_CREAT | O_WRONLY, 0600);
+	if (filefd == -1)
+		syslog(LOG_DEBUG, "Failed to open /elf_file: %m");
+	return (0);
 }
 
 /*
@@ -125,7 +99,7 @@ int
 dthyve_configured(void)
 {
 
-	return (vtdtr_fd != -1);
+	return (sockfd != -1);
 }
 
 /*
@@ -133,44 +107,47 @@ dthyve_configured(void)
  * read, depending on the configuration of vtdtr.
  */
 int
-dthyve_read(struct vtdtr_event *es, size_t n_events)
+dthyve_read(void **buf, size_t *len)
 {
-	ssize_t res;
+	/*
+	 * Buffer used for reading data in bit by bit.
+	 */
+	if (buf == NULL)
+		return (-1);
 
-	if (es == NULL || n_events == 0 || vtdtr_fd == -1) {
-		return (EINVAL);
+	if (recv(sockfd, len, sizeof(size_t), 0) < 0) {
+		fprintf(stderr, "Failed to recv from sub.sock: %s\n",
+		    strerror(errno));
+		return (-1);
 	}
 
-	res = read(vtdtr_fd, es, n_events * sizeof(struct vtdtr_event));
-	if (res != n_events * sizeof(struct vtdtr_event))
-		return (errno);
+	syslog(LOG_DEBUG, "Read len = %zu", *len);
 
+	*buf = malloc(*len);
+	if (*buf == NULL) {
+		fprintf(stderr, "Failed to malloc buf in dthyve_read()\n");
+		return (-1);
+	}
+	
+	memset(*buf, 0, *len);
+
+	if (recv(sockfd, *buf, *len, 0) < 0) {
+		fprintf(stderr, "Failed to recv from sub.sock: %s\n",
+		    strerror(errno));
+		return (-1);
+	}
+
+	syslog(LOG_DEBUG, "Read buf, filefd = %d", filefd);
+
+	if (filefd != -1) {
+		write(filefd, *buf, *len);
+	}
 	return (0);
 }
 
 void
 dthyve_destroy()
 {
-	close(vtdtr_fd);
-}
 
-/*
- * Calls openat in the predetermined director where DTrace ELF files go.
- * It assumes that elfpath is a relative path, as if it's not it will simply
- * fail with capsicum in the kernel. This subroutine currently assumes that
- * capsicum is enabled and will simply not work without it.
- */
-int
-dthyve_openelf(const char *elfpath)
-{
-	int fd;
-
-	fd = -1;
-
-#ifndef WITHOUT_CAPSICUM
-	fd = openat(elfdir_fd, elfpath, O_RDONLY);
-	if (fd == -1)
-		errx(EX_OSERR, "Failed to open %s/%s", elfdir_path, elfpath);
-#endif
-	return (fd);
+	close(sockfd);
 }

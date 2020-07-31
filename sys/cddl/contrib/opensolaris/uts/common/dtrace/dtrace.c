@@ -137,9 +137,6 @@
 #include <sys/sysctl.h>
 #include <machine/vmm.h>
 #include <dtvirt.h>
-#ifdef VTDTR
-#include <cddl/dev/vtdtr/vtdtr.h>
-#endif
 
 #include <sys/dtrace_bsd.h>
 
@@ -11830,9 +11827,6 @@ dtrace_ecb_enable(dtrace_ecb_t *ecb)
 	}
 
 	if (probe->dtpr_ecb == NULL) {
-#ifdef VTDTR
-		struct vtdtr_event e;
-#endif
 		dtrace_provider_t *prov = probe->dtpr_provider;
 
 		/*
@@ -11847,12 +11841,6 @@ dtrace_ecb_enable(dtrace_ecb_t *ecb)
 		    dtrace_filterfind(&state->dts_filter, "host") == 0)
 			prov->dtpv_pops.dtps_enable(prov->dtpv_arg,
 			    probe->dtpr_id, probe->dtpr_arg);
-
-#ifdef VTDTR
-		e.type = VTDTR_EV_INSTALL;
-		e.args.p_toggle.probeid = probe->dtpr_id;
-		vtdtr_enqueue(&e);
-#endif
 	} else {
 		/*
 		 * This probe is already active.  Swing the last pointer to
@@ -12507,9 +12495,6 @@ dtrace_ecb_disable(dtrace_ecb_t *ecb)
 	dtrace_sync();
 
 	if (probe->dtpr_ecb == NULL) {
-#ifdef VTDTR
-		struct vtdtr_event e;
-#endif
 		/*
 		 * That was the last ECB on the probe; clear the predicate
 		 * cache ID for the probe, disable it and sync one more time
@@ -12525,11 +12510,6 @@ dtrace_ecb_disable(dtrace_ecb_t *ecb)
 			prov->dtpv_pops.dtps_disable(prov->dtpv_arg,
 			    probe->dtpr_id, probe->dtpr_arg);
 		dtrace_sync();
-#ifdef VTDTR
-		e.type = VTDTR_EV_UNINSTALL;
-		e.args.p_toggle.probeid = probe->dtpr_id;
-		vtdtr_enqueue(&e);
-#endif
 	} else {
 		/*
 		 * There is at least one ECB remaining on the probe.  If there
@@ -19527,7 +19507,4 @@ SYSINIT(dtrace_anon_init, SI_SUB_DTRACE_ANON, SI_ORDER_FIRST, dtrace_anon_init, 
 DEV_MODULE(dtrace, dtrace_modevent, NULL);
 MODULE_VERSION(dtrace, 1);
 MODULE_DEPEND(dtrace, opensolaris, 1, 1, 1);
-#ifdef VTDTR
-MODULE_DEPEND(dtrace, vtdtr, 1, 1, 1);
-#endif
 #endif

@@ -32,11 +32,9 @@
 #include <sys/types.h>
 #include <sys/vtdtr.h>
 
-void	dthyve_init(const char *);
-int	dthyve_conf(size_t, sbintime_t);
+int	dthyve_init(void);
 int	dthyve_configured(void);
-int	dthyve_read(struct vtdtr_event *, size_t);
+int	dthyve_read(void **, size_t *);
 void	dthyve_destroy(void);
-int	dthyve_openelf(const char *);
 
 #endif /* _DTHYVE_H_ */

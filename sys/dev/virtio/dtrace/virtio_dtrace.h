@@ -54,6 +54,8 @@
 #define	VIRTIO_DTRACE_ELF		0x09 /* ELF file transmission */
 #define	VIRTIO_DTRACE_STOP		0x0A /* Start tracing */
 
+#define	VIRTIO_DTRACE_MAXELFLEN		512
+
 struct vtdtr_softc;
 struct uuid;
 
@@ -66,6 +68,7 @@ struct virtio_dtrace_control {
 		struct {			/*  elf event */
 			size_t	vd_elflen;
 			int	vd_elfhasmore;
+			char	vd_elf[VIRTIO_DTRACE_MAXELFLEN];
 		} elf;
 
 		/*
@@ -74,9 +77,8 @@ struct virtio_dtrace_control {
 #define	vd_probeid	uctrl.vd_probeid
 #define	vd_elflen	uctrl.elf.vd_elflen
 #define	vd_elfhasmore	uctrl.elf.vd_elfhasmore
+#define	vd_elf		uctrl.elf.vd_elf
 	} uctrl;
-	
-	char	vd_elf[];
 } __packed;
 
 struct virtio_dtrace_queue {

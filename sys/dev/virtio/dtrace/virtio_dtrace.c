@@ -46,7 +46,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/taskqueue.h>
 #include <sys/queue.h>
 #include <sys/uuid.h>
-#include <sys/vtdtr.h>
 #include <sys/dtrace.h>
 #include <sys/vnode.h>
 #include <sys/sema.h>
@@ -648,7 +647,6 @@ vtdtr_open_dtelf(struct vtdtr_softc *sc, struct vnode **vp, const char *name)
 		NDFREE(&nd, NDF_ONLY_PNBUF);
 		return (-1);
 	}
-	printf("past the first open\n");
 
 	*vp = nd.ni_vp;
 
@@ -661,7 +659,6 @@ vtdtr_open_dtelf(struct vtdtr_softc *sc, struct vnode **vp, const char *name)
 		VOP_UNLOCK(*vp);
 		return (-1);
 	}
-	printf("out now\n");
 
 	VOP_UNLOCK(*vp);
 	return (0);
@@ -760,42 +757,12 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		sc->vtdtr_host_ready = 1;
 		break;
 
-	case VIRTIO_DTRACE_PROBE_INSTALL:
-		sc->vtdtr_ready = 0;
-
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_PROBE_INSTALL: %d\n",
-			    ctrl->vd_probeid);
-		if (vstate == 0) {
-			error = dtrace_virtstate_create();
-			if (error) {
-				device_printf(dev, "%s: error %d creating "
-				    "virtstate", __func__, error);
-				break;
-			}
-
-			device_printf(dev, "Virtual state created\n");
-			vstate = 1;
-		}
-
-		KASSERT(vstate == 1, ("vstate must be 1\n"));
-		dtrace_provide_all_probes();
-		error = dtrace_probeid_enable(ctrl->vd_probeid);
-		if (error) {
-			device_printf(dev, "%s: error %d enabling"
-			    " probe %d\n", __func__, error, ctrl->vd_probeid);
-		}
-		
-		break;
-
 	case VIRTIO_DTRACE_ELF:
 		sc->vtdtr_ready = 0;
 
 		if (debug)
-			device_printf(dev,
-			    "VIRTIO_DTRACE_ELF (len = %zu, hasmore = %d)\n",
-			    ctrl->vd_elflen, ctrl->vd_elfhasmore);
-
+			device_printf(dev, "VIRTIO_DTRACE_ELF\n");
+		
 		if (vp == NULL) {
 			elfname = vtdtr_generate_dtelf_name();
 			if (elfname == NULL) {
@@ -836,20 +803,6 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			free(elfname, M_TEMP);
 			elfname = NULL;
 		}
-		break;
-
-	case VIRTIO_DTRACE_GO:
-		sc->vtdtr_ready = 0;
-
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_GO\n");
-
-		error = dtrace_virtstate_go();
-		if (error)
-			device_printf(dev,
-			    "Error in dtrace_virtstate_go(): %d\n", error);
-		else
-			device_printf(dev, "Starting the trace...\n");
 		break;
 
 	case VIRTIO_DTRACE_STOP:

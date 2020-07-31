@@ -35,7 +35,6 @@
 #include <dtrace.h>
 #include <dt_elf.h>
 #include <dt_resolver.h>
-#include <dt_vtdtr.h>
 
 #include <stdlib.h>
 #include <syslog.h>
@@ -216,7 +215,8 @@ process_joblist(void *_s)
 	int fd;
 	int elffd;
 	char *path;
-	char *contents;
+	char *contents, *msg;
+	size_t msglen;
 	size_t pathlen;
 	size_t elflen;
 	struct dtd_joblist *curjob;
@@ -279,21 +279,20 @@ process_joblist(void *_s)
 			}
 
 			elflen = stat.st_size;
-			contents = malloc(s->nosha ? elflen : elflen + 32);
-			if (contents == NULL) {
+			msglen = s->nosha ? elflen : elflen + 32;
+			msg = malloc(msglen);
+
+			if (msg == NULL) {
 				syslog(LOG_ERR, "Failed to malloc ELF contents: %m");
 				free(path);
 				close(elffd);
 				break;
 			}
 
-			if (s->nosha)
-				memset(contents, 0, elflen);
-			else
-				memset(contents, 0, elflen + 32);
+			memset(msg, 0, msglen);
+			contents = s->nosha ? msg : msg + 32;
 			
-			if (read(elffd,
-			    s->nosha ? contents : contents + 32, elflen) < 0) {
+			if (read(elffd, contents, elflen) < 0) {
 				syslog(LOG_ERR, "Failed to read ELF contents: %m");
 				free(path);
 				free(contents);
@@ -302,7 +301,7 @@ process_joblist(void *_s)
 			}
 
 			if (s->nosha == 0 &&
-			    SHA256(contents + 32, elflen, contents) == NULL) {
+			    SHA256(contents, elflen, msg) == NULL) {
 				syslog(LOG_ERR, "Failed to create a SHA256 of the file");
 				free(path);
 				free(contents);
@@ -310,8 +309,34 @@ process_joblist(void *_s)
 				break;
 			}
 
-			if (send(fd, contents,
-			    s->nosha ? elflen : elflen + 32, 0) < 0) {
+			if (send(fd, &msglen, sizeof(msglen), 0) < 0) {
+				if (errno == EPIPE) {
+					/*
+					 * Get the entry from a socket list to
+					 * delete it. This is a bit "slow", but
+					 * should be happening rarely enough
+					 * that we don't really care. A small
+					 * delay here is acceptable, as most
+					 * consumers of this event will open the
+					 * path sent to them and process the ELF
+					 * file.
+					 */
+					LOCK(&s->socklistmtx);
+					fde = dt_in_list(&s->sockfds, &fd, sizeof(int));
+					if (fde == NULL) {
+						UNLOCK(&s->socklistmtx);
+						break;
+					}
+
+					dt_list_delete(&s->sockfds, fde);
+					UNLOCK(&s->socklistmtx);
+				} else
+					syslog(LOG_ERR,
+					    "Failed to write to %d (%zu): %m",
+					    fd, msglen);
+			}
+
+			if (send(fd, msg, msglen, 0) < 0) {
 				if (errno == EPIPE) {
 					/*
 					 * Get the entry from a socket list to
@@ -339,7 +364,7 @@ process_joblist(void *_s)
 			}
 
 			free(path);
-			free(contents);
+			free(msg);
 			close(elffd);
 			break;
 
@@ -617,10 +642,8 @@ process_new(struct dirent *f, struct dtd_state *s)
 	idx = findpath(f->d_name, s, &st);
 	ch = waschanged(&st, idx, s);
 
-	if (idx >= 0 && ch == 0) {
-		syslog(LOG_DEBUG, "%s already exists in state", f->d_name);
+	if (idx >= 0 && ch == 0)
 		return (0);
-	}
 
 	if (idx == -2) {
 		syslog(LOG_ERR, "Failed to process new entry: %m");

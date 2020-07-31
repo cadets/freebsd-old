@@ -1132,7 +1132,8 @@ main(int argc, char *argv[])
 
 	vmname = argv[0];
 	ctx = do_open(vmname);
-	dthyve_init("/var/ddtrace");
+	if (dthyve_init())
+		fprintf(stderr, "Failed to init dthyve: %s\n", strerror(errno));
 
 	max_vcpus = num_vcpus_allowed(ctx);
 	if (guest_ncpus > max_vcpus) {

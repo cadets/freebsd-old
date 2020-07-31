@@ -36,7 +36,6 @@
 #include <dtrace.h>
 #include <dt_elf.h>
 #include <dt_resolver.h>
-#include <dt_vtdtr.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -113,7 +112,6 @@ static const char *g_graphfile = NULL;
 static int g_mode = DMODE_EXEC;
 static int g_status = E_SUCCESS;
 static int g_grabanon = 0;
-static dt_vtdtrhdl_t *g_vtdtrhdl = NULL;
 
 static const char *g_ofile = NULL;
 static FILE *g_ofp;
@@ -226,7 +224,6 @@ fatal(const char *fmt, ...)
 	 * Close the DTrace handle to ensure that any controlled processes are
 	 * correctly restored and continued.
 	 */
-	dt_vtdtr_close(g_vtdtrhdl);
 	if (g_dtp)
 		dtrace_close(g_dtp);
 
@@ -268,7 +265,6 @@ dfatal(const char *fmt, ...)
 	 * Close the DTrace handle to ensure that any controlled processes are
 	 * correctly restored and continued.
 	 */
-	dt_vtdtr_close(g_vtdtrhdl);
 	dtrace_close(g_dtp);
 
 	exit(E_ERROR);
@@ -749,8 +745,6 @@ exec_prog(const dtrace_cmd_t *dcp)
 		(void) dtrace_dump_actions(dcp->dc_prog);
 		if (g_elf) {
 			dt_elf_create(dcp->dc_prog, ELFDATA2LSB, elfpath);
-			if (dt_vtdtr_elfnotify(g_vtdtrhdl, basename(elfpath)))
-				fatal("failed to notify about %s", elfpath);
 		}
 		free(elfpath);
 	} else if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) == 0) {
@@ -1976,10 +1970,6 @@ main(int argc, char *argv[])
 		}
 	}
 
-	g_vtdtrhdl = dt_vtdtr_open();
-	if (g_vtdtrhdl == NULL)
-		fatal("failed to open and configure /dev/vtdtr");
-
 	/*
 	 * In our fourth pass we finish g_cmdv[] by calling dc_func to convert
 	 * each string or file specification into a compiled program structure.
@@ -2031,7 +2021,6 @@ main(int argc, char *argv[])
 			exec_prog(&g_cmdv[i]);
 
 		if (done && !g_grabanon) {
-			dt_vtdtr_close(g_vtdtrhdl);
 			dtrace_close(g_dtp);
 
 			return (g_status);
@@ -2056,7 +2045,6 @@ main(int argc, char *argv[])
 #endif
 
 		if (g_cmdc == 0) {
-			dt_vtdtr_close(g_vtdtrhdl);
 			dtrace_close(g_dtp);
 
 			return (g_status);
@@ -2094,7 +2082,6 @@ main(int argc, char *argv[])
 		error("run update_drv(1M) or reboot to enable changes\n");
 #endif
 		
-		dt_vtdtr_close(g_vtdtrhdl);
 		dtrace_close(g_dtp);
 
 		return (g_status);
@@ -2103,7 +2090,6 @@ main(int argc, char *argv[])
 		if (g_cmdc == 0) {
 			(void) fprintf(stderr, "%s: -G requires one or more "
 			    "scripts or enabling options\n", g_pname);
-			dt_vtdtr_close(g_vtdtrhdl);
 			dtrace_close(g_dtp);
 
 			return (E_USAGE);
@@ -2123,7 +2109,6 @@ main(int argc, char *argv[])
 				dfatal(NULL); /* dtrace_errmsg() only */
 		}
 
-		dt_vtdtr_close(g_vtdtrhdl);
 		dtrace_close(g_dtp);
 		return (g_status);
 
@@ -2142,7 +2127,6 @@ main(int argc, char *argv[])
 		if (g_cmdc == 0)
 			(void) dtrace_probe_iter(g_dtp, NULL, list_probe, NULL);
 
-		dt_vtdtr_close(g_vtdtrhdl);
 		dtrace_close(g_dtp);
 		
 		return (g_status);
@@ -2151,7 +2135,6 @@ main(int argc, char *argv[])
 		if (g_cmdc == 0) {
 			(void) fprintf(stderr, "%s: -h requires one or more "
 			    "scripts or enabling options\n", g_pname);
-			dt_vtdtr_close(g_vtdtrhdl);
 			dtrace_close(g_dtp);
 			
 			return (E_USAGE);
@@ -2164,7 +2147,6 @@ main(int argc, char *argv[])
 				(void) fprintf(stderr, "%s: -h requires an "
 				    "output file if multiple scripts are "
 				    "specified\n", g_pname);
-				dt_vtdtr_close(g_vtdtrhdl);
 				dtrace_close(g_dtp);
 				
 				return (E_USAGE);
@@ -2176,7 +2158,6 @@ main(int argc, char *argv[])
 				    "output file if no scripts are "
 				    "specified\n", g_pname);
 				
-				dt_vtdtr_close(g_vtdtrhdl);
 				dtrace_close(g_dtp);
 				return (E_USAGE);
 			}
@@ -2196,7 +2177,6 @@ main(int argc, char *argv[])
 		    fclose(g_ofp) == EOF)
 			dfatal("failed to create header file %s", g_ofile);
 
-		dt_vtdtr_close(g_vtdtrhdl);
 		dtrace_close(g_dtp);
 		return (g_status);
 	}
@@ -2290,7 +2270,6 @@ main(int argc, char *argv[])
 			dfatal("failed to print aggregations");
 	}
 
-	dt_vtdtr_close(g_vtdtrhdl);
 	dtrace_close(g_dtp);
 	return (g_status);
 }
