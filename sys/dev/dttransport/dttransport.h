@@ -1,6 +1,5 @@
 /*-
- * Copyright (c) 2017 Domagoj Stolfa
- * All rights reserved.
+ * Copyright (c) 2020 Domagoj Stolfa
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,36 +25,19 @@
  * $FreeBSD$
  */
 
-#ifndef _VIRTIO_DTRACE_H_
-#define _VIRTIO_DTRACE_H_
+#ifndef _DTTRANSPORT_H_
+#define _DTTRANSPORT_H_
 
-#include <sys/queue.h>
-#include <sys/dtrace_bsd.h>
+#define	DTT_MAXDATALEN	512
 
-/*
- * The events related to probe installation and uninstallation are presently
- * only meant to be used to instruct the guest.
- *
- * On the other hand, provider registration, probe creation/deletion and
- * provider de-registration is meant only for the host.
- *
- * READY and EOF are used for synchronization for purposes, while CLEANUP will
- * be used to clean up the TX virtqueue on the guest.
- */
-#define	VIRTIO_DTRACE_DEVICE_READY	0x00 /* The device is ready */
-#define	VIRTIO_DTRACE_REGISTER		0x01 /* UNUSED */
-#define	VIRTIO_DTRACE_UNREGISTER	0x02 /* UNUSED */
-#define	VIRTIO_DTRACE_DESTROY		0x03 /* UNUSED */
-#define	VIRTIO_DTRACE_PROBE_CREATE	0x04 /* UNUSED */
-#define	VIRTIO_DTRACE_PROBE_INSTALL	0x05 /* Probe Installation */
-#define	VIRTIO_DTRACE_PROBE_UNDEFINED	0x06 /* Undefined */
-#define	VIRTIO_DTRACE_EOF		0x07 /* EOF Signal */
-#define	VIRTIO_DTRACE_GO		0x08 /* Start tracing */
-#define	VIRTIO_DTRACE_ELF		0x09 /* ELF file transmission */
-#define	VIRTIO_DTRACE_STOP		0x0A /* Start tracing */
+typedef struct dtt_entry {
+	size_t 	len;
+	int	hasmore;
+	char	data[DTT_MAXDATALEN];
+} dtt_entry_t;
 
-#define	VIRTIO_DTRACE_MAXELFLEN		512
+#define	DTT_ENTRYLEN	sizeof(dtt_entry_t)
 
-int virtio_dtrace_enqueue(char *, size_t, int);
+int	dtt_queue_enqueue(dtt_entry_t *);
 
-#endif
+#endif // _DTTRANSPORT_H_

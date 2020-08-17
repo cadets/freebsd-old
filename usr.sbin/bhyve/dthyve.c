@@ -109,17 +109,28 @@ dthyve_configured(void)
 int
 dthyve_read(void **buf, size_t *len)
 {
+	int rval;
 	/*
 	 * Buffer used for reading data in bit by bit.
 	 */
 	if (buf == NULL)
 		return (-1);
 
-	if (recv(sockfd, len, sizeof(size_t), 0) < 0) {
+	if (sockfd == -1)
+		return (-1);
+
+	if ((rval = recv(sockfd, len, sizeof(size_t), 0)) < 0) {
 		fprintf(stderr, "Failed to recv from sub.sock: %s\n",
 		    strerror(errno));
 		return (-1);
 	}
+
+	if (rval == 0) {
+		close(sockfd);
+		sockfd = -1;
+		return (-1);
+	}
+
 
 	syslog(LOG_DEBUG, "Read len = %zu", *len);
 
@@ -131,9 +142,15 @@ dthyve_read(void **buf, size_t *len)
 	
 	memset(*buf, 0, *len);
 
-	if (recv(sockfd, *buf, *len, 0) < 0) {
+	if ((rval = recv(sockfd, *buf, *len, 0)) < 0) {
 		fprintf(stderr, "Failed to recv from sub.sock: %s\n",
 		    strerror(errno));
+		return (-1);
+	}
+
+	if (rval == 0) {
+		close(sockfd);
+		sockfd = -1;
 		return (-1);
 	}
 

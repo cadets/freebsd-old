@@ -105,6 +105,7 @@ SUBDIR=	\
 	dcons \
 	dcons_crom \
 	${_dpms} \
+	dttransport \
 	dummynet \
 	${_efirt} \
 	${_em} \

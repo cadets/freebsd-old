@@ -61,6 +61,8 @@ __FBSDID("$FreeBSD$");
 #include "virtio_dtrace.h"
 #include "virtio_if.h"
 
+struct vtdtr_softc;
+
 struct vtdtr_probe {
 	uint32_t                vtdprobe_id;
 	LIST_ENTRY(vtdtr_probe) vtdprobe_next;
@@ -69,6 +71,51 @@ struct vtdtr_probe {
 struct vtdtr_probelist {
 	LIST_HEAD(, vtdtr_probe) head;
 	struct mtx               mtx;
+};
+
+struct virtio_dtrace_control {
+	uint32_t vd_event;
+
+	union {
+		uint32_t	vd_probeid;	/* install/uninstall event */
+
+		struct {			/*  elf event */
+			size_t	vd_elflen;
+			int	vd_elfhasmore;
+			char	vd_elf[VIRTIO_DTRACE_MAXELFLEN];
+		} elf;
+
+		/*
+		 * Defines for easy access into the union and underlying structs
+		 */
+#define	vd_probeid	uctrl.vd_probeid
+#define	vd_elflen	uctrl.elf.vd_elflen
+#define	vd_elfhasmore	uctrl.elf.vd_elfhasmore
+#define	vd_elf		uctrl.elf.vd_elf
+	} uctrl;
+} __packed;
+
+struct virtio_dtrace_queue {
+	struct mtx           vtdq_mtx;
+	struct vtdtr_softc  *vtdq_sc;
+	struct virtqueue    *vtdq_vq;
+	void               (*vtdq_vqintr)(void *);
+	int                  vtdq_id;
+	struct taskqueue    *vtdq_tq;
+	struct task          vtdq_intrtask;
+	char                 vtdq_name[16];
+	int                  vtdq_ready;
+};
+
+struct vtdtr_ctrl_entry {
+	STAILQ_ENTRY(vtdtr_ctrl_entry)	entries;
+	struct virtio_dtrace_control	*ctrl;
+};
+
+struct vtdtr_ctrlq {
+	STAILQ_HEAD(, vtdtr_ctrl_entry)	head;
+	struct mtx			mtx;
+	size_t				n_entries;
 };
 
 struct vtdtr_softc {
@@ -103,7 +150,17 @@ struct vtdtr_softc {
 	int                        vtdtr_host_ready;
 };
 
+#define	VTDTR_QUEUE_LOCK(__q)   mtx_lock(&((__q)->vtdq_mtx))
+#define	VTDTR_QUEUE_UNLOCK(__q) mtx_unlock(&((__q)->vtdq_mtx))
+#define	VTDTR_QUEUE_LOCK_ASSERT(__q)		\
+	mtx_assert(&((__q)->vtdq_mtx), MA_OWNED)
+#define	VTDTR_QUEUE_LOCK_ASSERT_NOTOWNED(__q)	\
+	mtx_assert(&((__q)->vtdq_mtx), MA_NOTOWNED)
+
+
 static MALLOC_DEFINE(M_VTDTR, "vtdtr", "VirtIO DTrace memory");
+
+struct vtdtr_softc *gsc;
 
 SYSCTL_NODE(_dev, OID_AUTO, vtdtr, CTLFLAG_RD, NULL, NULL);
 
@@ -269,6 +326,7 @@ vtdtr_attach(device_t dev)
 	int error;
 
 	sc = device_get_softc(dev);
+	gsc = sc;
 	sc->vtdtr_dev = dev;
 	mtx_init(&sc->vtdtr_mtx, "vtdtrmtx", NULL, MTX_DEF);
 	sc->vtdtr_rx_nseg = 1;
@@ -1025,7 +1083,6 @@ vtdtr_notify_ready(struct vtdtr_softc *sc)
 	cv_signal(&sc->vtdtr_condvar);
 	mtx_unlock(&sc->vtdtr_condmtx);
 }
-
 /*
  * The separate thread (created by the taskqueue) that acts as an interrupt
  * handler that blocks, allowing us to process more interrupts. In here we
@@ -1378,4 +1435,41 @@ vtdtr_run(void *xsc)
 
 		mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 	}
+}
+
+int
+virtio_dtrace_enqueue(char *elf, size_t len, int hasmore)
+{
+	struct vtdtr_softc *sc;
+	struct virtio_dtrace_queue *q;
+	struct vtdtr_ctrl_entry *ctrl_entry;
+	struct virtio_dtrace_control *ctrl;
+	device_t dev;
+
+	/*
+	 * Since this is an external function, we get the global sc.
+	 */
+	sc = gsc;
+	
+	dev = sc->vtdtr_dev;
+	q = &sc->vtdtr_txq;
+
+	ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry),
+	    M_DEVBUF, M_WAITOK | M_ZERO);
+	ctrl = malloc(sizeof(struct virtio_dtrace_control),
+	    M_DEVBUF, M_WAITOK | M_ZERO);
+
+	ctrl->vd_event = VIRTIO_DTRACE_ELF;
+	ctrl->vd_elflen = len;
+	ctrl->vd_elfhasmore = hasmore;
+	memcpy(ctrl->vd_elf, elf, sizeof(ctrl->vd_elf));
+	ctrl_entry->ctrl = ctrl;
+
+	mtx_lock(&sc->vtdtr_ctrlq->mtx);
+	vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
+	mtx_unlock(&sc->vtdtr_ctrlq->mtx);
+
+	mtx_lock(&sc->vtdtr_condmtx);
+	cv_signal(&sc->vtdtr_condvar);
+	mtx_unlock(&sc->vtdtr_condmtx);
 }

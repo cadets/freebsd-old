@@ -56,6 +56,8 @@
 #include <dirent.h>
 #include <getopt.h>
 
+#include <dttransport.h>
+
 #include <openssl/sha.h>
 
 #include <spawn.h>
@@ -69,6 +71,9 @@
 #define	EXISTS_CHANGED	1
 #define	EXISTS_EQUAL	2
 
+/*
+ * Macros with sanity checks. This should be used everywhere in dtdaemon.
+ */
 #define	LOCK(m) {						\
 	int err;						\
 	err = pthread_mutex_lock(m);				\
@@ -108,6 +113,10 @@
 	}							\
 	}
 
+/*
+ * dtdaemon state structure. This contains everything relevant to dtdaemon's
+ * state management, such as files that exist, connected sockets, etc.
+ */
 struct dtd_state {
 	/*
 	 * Path-related members.
@@ -119,6 +128,16 @@ struct dtd_state {
 	time_t		*ctimes;
 	size_t		size;
 	size_t		len;
+
+	/*
+	 * Inbound and outbound directories.
+	 */
+	char		*outboundpath;
+	char		*inboundpath;
+	int		outbounddir_fd;
+	int		inbounddir_fd;
+	DIR		*outbounddir;
+	DIR		*inbounddir;
 
 	/*
 	 * Sockets.
@@ -140,6 +159,13 @@ struct dtd_state {
 	int		sockfd;
 
 	/*
+	 * dttransport fd and threads
+	 */
+	int		dtt_fd;
+	pthread_t	dtt_listentd;
+	pthread_t	dtt_writetd;
+
+	/*
 	 * Thread pool management.
 	 *
 	 * Concurrency behaviour: The threads are created at startup time and
@@ -154,10 +180,19 @@ struct dtd_state {
 	pthread_mutex_t	joblistmtx;
 	dt_list_t	joblist;
 
+	/*
+	 * Are we shutting down?
+	 */
 	int		shutdown;
 
+	/*
+	 * File descriptor of /var/ddtrace
+	 */
 	int		dirfd;
 
+	/*
+	 * In case we don't want checksumming.
+	 */
 	int		nosha;
 };
 
@@ -206,6 +241,179 @@ sig_hdlr(int signo)
 		state.shutdown = 1;
 	if (signo == SIGPIPE)
 		return;
+}
+
+/*
+ * Used for generating a random name of the outbound ELF file.
+ */
+static void
+get_randname(char *b, size_t len)
+{
+	size_t i;
+
+	/*
+	 * Generate lower-case random characters.
+	 */
+	for (i = 0; i < len; i++)
+		b[i] = arc4random_uniform(25) + 97;
+}
+
+static char *
+gen_filename(const char *dir)
+{
+	char *filename;
+	char *elfpath;
+	size_t len;
+
+	len = (MAXPATHLEN - strlen(dir)) / 64;
+	assert(len > 10);
+
+	filename = malloc(len);
+	get_randname(filename, len - 1);
+	filename[len - 1] = '\0';
+
+	elfpath = malloc(MAXPATHLEN);
+	strcpy(elfpath, dir);
+	strcpy(elfpath + strlen(dir), filename);
+
+	while (access(elfpath, F_OK) != -1) {
+		get_randname(filename, len - 1);
+		filename[len - 1] = '\0';
+		strcpy(elfpath + strlen(dir), filename);
+	}
+
+	free(filename);
+
+	return (elfpath);
+}
+
+/*
+ * Runs in its own thread. Reads ELF files from dttransport and puts them in
+ * the inbound directory.
+ */
+static void *
+listen_dttransport(void *_s)
+{
+	int err;
+	int fd;
+	struct dtd_state *s = (struct dtd_state *)_s;
+	dtt_entry_t e;
+	char *path;
+
+	err = 0;
+	fd = 0;
+	
+	memset(&e, 0, sizeof(e));
+
+	while (s->shutdown == 0) {
+		if (read(s->dtt_fd, &e, sizeof(e)) < 0) {
+			if (errno == EINTR && s->shutdown == 1)
+				break;
+
+			syslog(LOG_ERR, "Failed to read an entry: %m");
+			continue;
+		}
+
+		if (fd == -1) {
+			syslog(LOG_DEBUG, "Ignoring data because fd is -1");
+			continue;
+		}
+
+		/*
+		 * At this point we have the /var/ddtrace/inbound
+		 * open and created, so we can just create new files in it
+		 * without too much worry of failure because directory does
+		 * not exist.
+		 */
+		if (fd == 0) {
+			path = gen_filename(s->inboundpath);
+			fd = openat(s->inbounddir_fd, path,
+			    O_WRONLY | O_CREAT, 0600);
+			if (fd == -1) {
+				syslog(LOG_ERR, "Failed to open %s%s: %m",
+				    s->inboundpath, path);
+				continue;
+			}
+		}
+
+		if (write(fd, e.data, e.len) < 0)
+			syslog(LOG_ERR, "Failed to write data to %s: %m", path);
+
+		if (e.hasmore == 0) {
+			close(fd);
+			free(path);
+		}
+	}
+
+	return (s);
+}
+
+static void *
+write_dttransport(void *_s)
+{
+	ssize_t rval;
+	int sockfd;
+	struct dtd_state *s = (struct dtd_state *)_s;
+	dtt_entry_t e;
+	size_t l, lentoread, len;
+	struct sockaddr_un addr;
+
+	rval = 0;
+	sockfd = 0;
+	l = lentoread = len = 0;
+
+	sockfd = socket(PF_UNIX, SOCK_STREAM, 0);
+	if (sockfd == -1) {
+		syslog(LOG_ERR, "Failed creating a socket: %m");
+		return (NULL);
+	}
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sun_family = PF_UNIX;
+
+	l = strlcpy(addr.sun_path, "/var/ddtrace/sub.sock", sizeof(addr.sun_path));
+	if (l >= sizeof(addr.sun_path)) {
+		syslog(LOG_ERR, "Failed setting addr.sun_path"
+		    " to /var/ddtrace/sub.sock");
+		sockfd = -1;
+		return (NULL);
+	}
+
+	if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+		syslog(LOG_ERR, "connect to /var/ddtrace/sub.sock failed: %m");
+		sockfd = -1;
+		return (NULL);
+	}
+
+	while (s->shutdown == 0) {
+		if ((rval = recv(sockfd, &len, sizeof(size_t), 0)) < 0) {
+			syslog(LOG_ERR, "Failed to recv from sub.sock: %m");
+			continue;
+		}
+
+		while (len != 0) {
+			memset(&e, 0, sizeof(e));
+			lentoread = len > DTT_MAXDATALEN ? DTT_MAXDATALEN : len;
+
+			if ((rval = recv(sockfd, e.data, lentoread, 0)) < 0) {
+				syslog(LOG_ERR, "Failed to recv from sub.sock: %m");
+				continue;
+			}
+
+			e.hasmore = len > DTT_MAXDATALEN ? 1 : 0;
+			e.len = lentoread;
+
+			if (write(s->dtt_fd, &e, sizeof(e)) < 0) {
+				syslog(LOG_DEBUG, "Error writing to dttransport: %m");
+				return (NULL);
+			}
+
+			len -= lentoread;
+		}
+	}
+
+	return (s);
+
 }
 
 static void *
@@ -262,9 +470,9 @@ process_joblist(void *_s)
 			assert(path != NULL);
 			assert(pathlen <= MAXPATHLEN);
 
-			assert(s->dirfd != -1);
+			assert(s->outbounddir_fd != -1);
 
-			elffd = openat(s->dirfd, path, O_RDONLY);
+			elffd = openat(s->outbounddir_fd, path, O_RDONLY);
 			if (elffd == -1) {
 				syslog(LOG_ERR, "Failed to open %s: %m", path);
 				free(path);
@@ -504,13 +712,13 @@ destroy_sockfd(struct dtd_state *s)
 }
 
 static int
-findpath(const char *p, struct dtd_state *s, struct stat *st)
+findpath(const char *p, struct dtd_state *s, int fd, struct stat *st)
 {
 	int i;
 	
 	for (i = 0; i < s->len; i++) {
 		if (strcmp(p, s->paths[i]) == 0) {
-			if (fstatat(s->dirfd, p, st, AT_SYMLINK_NOFOLLOW) != 0) {
+			if (fstatat(fd, p, st, AT_SYMLINK_NOFOLLOW) != 0) {
 				syslog(LOG_ERR, "Failed to stat %s: %m", p);
 				/*
 				 * Return -2 to indicate a failed syscall
@@ -639,7 +847,7 @@ process_new(struct dirent *f, struct dtd_state *s)
 	 * time to the one we have stored. If our time is in the past, we need
 	 * to resend the file and update our state.
 	 */
-	idx = findpath(f->d_name, s, &st);
+	idx = findpath(f->d_name, s, s->outbounddir_fd, &st);
 	ch = waschanged(&st, idx, s);
 
 	if (idx >= 0 && ch == 0)
@@ -731,7 +939,7 @@ populate_existing(struct dirent *f, struct dtd_state *s)
 
 	assert(s->size > s->len);
 
-	if (fstatat(s->dirfd, f->d_name, &st, AT_SYMLINK_NOFOLLOW)) {
+	if (fstatat(s->outbounddir_fd, f->d_name, &st, AT_SYMLINK_NOFOLLOW)) {
 		syslog(LOG_ERR, "Failed to fstatat %s: %m", f->d_name);
 		return (-1);
 	}
@@ -783,6 +991,18 @@ setup_threads(struct dtd_state *s)
 
 	s->workers = threads;
 
+	err = pthread_create(&s->dtt_listentd, NULL, listen_dttransport, s);
+	if (err != 0) {
+		syslog(LOG_ERR, "Failed to create the dttransport thread: %m");
+		return (-1);
+	}
+
+	err = pthread_create(&s->dtt_writetd, NULL, write_dttransport, s);
+	if (err != 0) {
+		syslog(LOG_ERR, "Failed to create the dttransport thread: %m");
+		return (-1);
+	}
+
 	err = pthread_create(&s->socktd, NULL, accept_subs, s);
 	if (err != 0) {
 		syslog(LOG_ERR, "Failed to create the socket thread: %m");
@@ -825,6 +1045,11 @@ init_state(struct dtd_state *s)
 		return (-1);
 	}
 
+	s->dtt_fd = open("/dev/dttransport", O_RDWR);
+	if (s->dtt_fd == -1) {
+		syslog(LOG_ERR, "Failed to open /dev/dttransport: %m");
+		return (-1);
+	}
 
 	return (0);
 }
@@ -882,6 +1107,9 @@ destroy_state(struct dtd_state *s)
 	s->sockfd = -1;
 
 	free(s->workers);
+
+	close(s->dtt_fd);
+	s->dtt_fd = -1;
 
 	return (0);
 }
@@ -968,7 +1196,7 @@ main(int argc, char **argv)
 		return (EX_OSERR);
 	}
 
-again:
+againefd:
 	efd = open(elfpath, O_RDONLY | O_DIRECTORY);
 	if (efd == -1) {
 		if (retry == 0 && errno == EINVAL) {
@@ -977,9 +1205,10 @@ again:
 				    "Failed to mkdir %s: %m", elfpath);
 			else {
 				retry = 1;
-				goto again;
+				goto againefd;
 			}
 		}
+
 		syslog(LOG_ERR, "Failed to open %s: %m", elfpath);
 		return (EX_OSERR);
 	}
@@ -987,13 +1216,51 @@ again:
 	state.dirfd = efd;
 	elfdir = fdopendir(efd);
 
+againoutbound:
+	state.outbounddir_fd = open(state.outboundpath, O_RDONLY | O_DIRECTORY);
+	if (state.outbounddir_fd == -1) {
+		if (retry == 0 && errno == EINVAL) {
+			if (mkdir(state.outboundpath, 0700) != 0)
+				syslog(LOG_ERR, "Failed to mkdir %s: %m",
+				    state.outboundpath);
+			else {
+				retry = 1;
+				goto againoutbound;
+			}
+		}
+
+		syslog(LOG_ERR, "Failed to open %s: %m", state.outboundpath);
+		return (EX_OSERR);
+	}
+
+	state.outbounddir = fdopendir(efd);
+
+againinbound:
+	state.inbounddir_fd = open(state.inboundpath, O_RDONLY | O_DIRECTORY);
+	if (state.inbounddir_fd == -1) {
+		if (retry == 0 && errno == EINVAL) {
+			if (mkdir(state.inboundpath, 0700) != 0)
+				syslog(LOG_ERR, "Failed to mkdir %s: %m",
+				    state.inboundpath);
+			else {
+				retry = 1;
+				goto againinbound;
+			}
+		}
+
+		syslog(LOG_ERR, "Failed to open %s: %m", state.inboundpath);
+		return (EX_OSERR);
+	}
+
+	state.inbounddir = fdopendir(efd);
+
 	err = setup_sockfd(&state);
 	if (err != 0) {
 		syslog(LOG_ERR, "Failed to set up the socket");
 		return (EX_OSERR);
 	}
 
-	err = file_foreach(elfdir, populate_existing, &state);
+	err = file_foreach(state.outbounddir, populate_existing, &state);
 	if (err != 0) {
 		syslog(LOG_ERR, "Failed to populate existing files");
 		return (EXIT_FAILURE);
@@ -1010,8 +1277,8 @@ again:
 		return (EX_OSERR);
 	}
 
-	EV_SET(&ev, efd, EVFILT_VNODE, EV_ADD | EV_CLEAR,
-	    NOTE_WRITE, 0, (void *)elfpath);
+	EV_SET(&ev, state.outbounddir_fd, EVFILT_VNODE, EV_ADD | EV_CLEAR,
+	    NOTE_WRITE, 0, (void *)state.outboundpath);
 
 	for (;;) {
 		rval = kevent(kq, &ev, 1, &ev_data, 1, NULL);
