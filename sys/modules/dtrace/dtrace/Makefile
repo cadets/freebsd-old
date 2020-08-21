@@ -52,9 +52,6 @@ CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris \
 
 CFLAGS+=	-DSMP
 
-# Add VTDTR.
-CFLAGS+=	-DVTDTR
-
 EXPORT_SYMS=	dtrace_register \
 		dtrace_unregister \
 		dtrace_probe_lookup \

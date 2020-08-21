@@ -48,13 +48,14 @@ __FBSDID("$FreeBSD$");
 
 #include "dttransport.h"
 
+static MALLOC_DEFINE(M_DTTRANSPORT, "dttransport", "");
+
 typedef struct dtt_qentry {
 	TAILQ_ENTRY(dtt_qentry)	next;
-	struct dtt_entry_t	*ent;
+	struct dtt_entry	*ent;
 } dtt_qentry_t;
 
 struct dtt_softc {
-	device_t			dev;
 	struct cdev			*cdev;
 	struct mtx			mtx;
 	
@@ -67,7 +68,7 @@ struct dtt_softc {
 	struct proc			*proc;
 };
 
-struct dtt_softc *gsc;
+static struct dtt_softc *gsc = NULL;
 
 /*
  * device methods
@@ -82,11 +83,6 @@ static d_read_t		dtt_read;
 static d_write_t	dtt_write;
 static d_open_t		dtt_open;
 static d_close_t	dtt_close;
-
-static device_method_t dtt_methods[] = {
-	DEVMETHOD(device_attach, dtt_attach),
-	DEVMETHOD(device_detach, dtt_detach),
-};
 
 static struct cdevsw dtt_cdevsw = {
 	.d_version	= D_VERSION,
@@ -119,41 +115,54 @@ dtt_queue_remove(struct dtt_softc *sc, dtt_qentry_t *qe)
 }
 
 static int
-dtt_attach(device_t dev)
+dtt_handler(module_t mod, int what, void *arg)
 {
-	struct dtt_softc *sc;
+	struct dtt_softc *sc = NULL;
 
-	sc = device_get_softc(dev);
-	gsc = sc;
-	sc->dev = dev;
+	switch (what) {
+	case MOD_LOAD:
+		sc = malloc(sizeof(struct dtt_softc),
+		    M_DTTRANSPORT, M_WAITOK | M_ZERO);
+		gsc = sc;
 
-	TAILQ_INIT(&sc->dataq);
+		mtx_init(&sc->mtx, "dttscmtx", NULL, MTX_DEF);
+		mtx_init(&sc->qmtx, "dttqmtx", NULL, MTX_DEF);
+		mtx_init(&sc->cvmtx, "dttcvmtx", NULL, MTX_DEF);
 
-	mtx_init(&sc->mtx, "dttscmtx", NULL, MTX_DEF);
-	mtx_init(&sc->qmtx, "dttqmtx", NULL, MTX_DEF);
-	mtx_init(&sc->cvmtx, "dttcvmtx", NULL, MTX_DEF);
+		cv_init(&sc->cv, "dttransport CV");
 
-	cv_init(&sc->cv, "dttransport CV");
+		sc->cdev = make_dev(&dtt_cdevsw, 0, UID_ROOT, GID_OPERATOR,
+		    S_IRUSR | S_IWUSR, "dttransport");
+		sc->cdev->si_drv1 = sc;
+		TAILQ_INIT(&sc->dataq);
 
-	sc->cdev = make_dev(&dtt_cdevsw, 0, UID_ROOT, GID_OPERATOR,
-	    S_IRUSR | S_IWUSR, "dtt");
-	sc->cdev->si_drv1 = sc;
+		break;
+
+	case MOD_UNLOAD:
+		sc = gsc;
+
+		KASSERT(sc != NULL, ("sc must not be NULL on module unload"));
+
+		mtx_destroy(&sc->mtx);
+		mtx_destroy(&sc->qmtx);
+
+		mtx_lock(&sc->cvmtx);
+		cv_destroy(&sc->cv);
+		mtx_unlock(&sc->cvmtx);
+		
+		mtx_destroy(&sc->cvmtx);
+
+		free(sc, M_DTTRANSPORT);
+		gsc = NULL;
+		break;
+
+	default:
+		break;
+	}
 
 	return (0);
 }
 
-static int
-dtt_detach(device_t dev)
-{
-	struct dtt_softc *sc;
-
-	sc = device_get_softc(dev);
-	gsc = NULL;
-	sc->dev = NULL;
-	
-	destroy_dev(sc->cdev);
-	return (0);
-}
 
 static int
 dtt_open(struct cdev *dev, int flags, int fmt, struct thread *td)
@@ -284,15 +293,42 @@ dtt_queue_enqueue(dtt_entry_t *e)
 {
 	struct dtt_softc *sc;
 	dtt_qentry_t *qe;
+	dtt_entry_t *ent;
 
+	qe = NULL;
+	ent = NULL;
+	
 	sc = gsc;
 
-	qe = malloc(sizeof(dtt_qentry_t), M_DEVBUF, M_NOWAIT | M_ZERO);
+	qe = malloc(sizeof(dtt_qentry_t), M_DTTRANSPORT, M_NOWAIT | M_ZERO);
 	if (qe == NULL)
 		return (-1);
 
-	qe->ent = e;
+	ent = malloc(sizeof(dtt_entry_t), M_DTTRANSPORT, M_NOWAIT | M_ZERO);
+	if (ent == NULL) {
+		free(qe, M_DTTRANSPORT);
+		return (-1);
+	}
+
+	memcpy(ent, e, sizeof(dtt_entry_t));
+	qe->ent = ent;
+	mtx_lock(&sc->qmtx);
 	TAILQ_INSERT_TAIL(&sc->dataq, qe, next);
+	mtx_unlock(&sc->qmtx);
+
+	mtx_lock(&sc->cvmtx);
+	cv_signal(&sc->cv);
+	mtx_unlock(&sc->cvmtx);
 
 	return (0);
 }
+
+static moduledata_t dtt_kmod = {
+	"dttransport",
+	dtt_handler,
+	NULL
+};
+
+DECLARE_MODULE(dttransport, dtt_kmod, SI_SUB_DTRACE + 1, SI_ORDER_ANY);
+MODULE_VERSION(dttransport, 1);
+MODULE_DEPEND(dttransport, virtio_dtrace, 1, 1, 1);

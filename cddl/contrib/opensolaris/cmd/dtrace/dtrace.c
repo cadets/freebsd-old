@@ -81,7 +81,7 @@ typedef struct dtrace_cmd {
 #define	E_USAGE		2
 
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:M:n:o:p:P:qs:SU:vVwx:y:X:Z";
+	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:M:n:o:p:P:qs:SU:vVwx:y:Y:X:Z";
 
 static char **g_argv;
 static int g_argc;
@@ -703,7 +703,6 @@ gen_filename(const char *dir)
 
 	free(filename);
 
-	printf("returning elfpath = %s\n", elfpath);
 	return (elfpath);
 }
 
@@ -718,7 +717,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_proginfo_t dpi;
 	char *elfpath;
-	char elfdir[MAXPATHLEN] = "/var/ddtrace/";
+	char elfdir[MAXPATHLEN] = "/var/ddtrace/outbound/";
 
 	elfpath = gen_filename(elfdir);
 
@@ -954,6 +953,25 @@ link_elf(dtrace_cmd_t *dcp)
 
 	dcp->dc_desc = "ELF file";
 	dcp->dc_name = dcp->dc_arg;
+}
+
+static void
+link_elf_noexec(dtrace_cmd_t *dcp)
+{
+	char elfdir[MAXPATHLEN] = "/var/ddtrace/outbound/";
+	char *elfpath;
+
+	link_elf(dcp);
+
+	if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) != 0)
+		dfatal("Failed to apply relocations");
+
+	elfpath = gen_filename(elfdir);
+	dt_elf_create(dcp->dc_prog, ELFDATA2LSB, elfpath);
+	free(elfpath);
+
+	dtrace_close(g_dtp);
+	exit(0);
 }
 
 static void
@@ -1900,6 +1918,14 @@ main(int argc, char *argv[])
 			case 'y':
 				dcp = &g_cmdv[g_cmdc++];
 				dcp->dc_func = link_elf;
+				dcp->dc_spec = DTRACE_PROBESPEC_NONE;
+				dcp->dc_arg = optarg;
+				g_elf = 1;
+				break;
+
+			case 'Y':
+				dcp = &g_cmdv[g_cmdc++];
+				dcp->dc_func = link_elf_noexec;
 				dcp->dc_spec = DTRACE_PROBESPEC_NONE;
 				dcp->dc_arg = optarg;
 				g_elf = 1;

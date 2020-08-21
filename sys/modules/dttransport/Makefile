@@ -36,4 +36,6 @@ SRCS+=	bus_if.h device_if.h
 
 CFLAGS+=	-I${SYSDIR}
 
+EXPORT_SYMS=	dtt_queue_enqueue
+
 .include <bsd.kmod.mk>

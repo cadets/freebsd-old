@@ -58,6 +58,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/virtio/virtio.h>
 #include <dev/virtio/virtqueue.h>
 
+#include <dev/dttransport/dttransport.h>
+
 #include "virtio_dtrace.h"
 #include "virtio_if.h"
 
@@ -160,7 +162,7 @@ struct vtdtr_softc {
 
 static MALLOC_DEFINE(M_VTDTR, "vtdtr", "VirtIO DTrace memory");
 
-struct vtdtr_softc *gsc;
+static struct vtdtr_softc *gsc = NULL;
 
 SYSCTL_NODE(_dev, OID_AUTO, vtdtr, CTLFLAG_RD, NULL, NULL);
 
@@ -251,6 +253,7 @@ DRIVER_MODULE(virtio_dtrace, virtio_pci, vtdtr_driver, vtdtr_devclass,
 MODULE_VERSION(virtio_dtrace, 1);
 MODULE_DEPEND(virtio_dtrace, virtio, 1, 1, 1);
 MODULE_DEPEND(virtio_dtrace, dtrace, 1, 1, 1);
+MODULE_DEPEND(virtio_dtrace, dttransport, 1, 1, 1);
 
 static struct virtio_feature_desc vtdtr_feature_desc[] = {
 	{ 0, NULL }
@@ -798,16 +801,15 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	int error;
 	struct vnode *vp;
 	char *elfname;
+	dtt_entry_t e;
 
 	dev = sc->vtdtr_dev;
 	retval = 0;
 	error = 0;
 	vp = NULL;
 	elfname = NULL;
+	memset(&e, 0, sizeof(e));
 
-	/*
-	 * XXX: Double switch statement... meh.
-	 */
 	switch (ctrl->vd_event) {
 	case VIRTIO_DTRACE_DEVICE_READY:
 		if (debug)
@@ -820,7 +822,14 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 
 		if (debug)
 			device_printf(dev, "VIRTIO_DTRACE_ELF\n");
-		
+
+		memcpy(e.data, ctrl->vd_elf, ctrl->vd_elflen);
+		e.len = ctrl->vd_elflen;
+		e.hasmore = ctrl->vd_elfhasmore;
+
+		if (dtt_queue_enqueue(&e))
+			device_printf(dev, "dtt_queue_enqueue() failed.\n");
+#if 0
 		if (vp == NULL) {
 			elfname = vtdtr_generate_dtelf_name();
 			if (elfname == NULL) {
@@ -861,6 +870,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			free(elfname, M_TEMP);
 			elfname = NULL;
 		}
+#endif
 		break;
 
 	case VIRTIO_DTRACE_STOP:
@@ -1450,6 +1460,9 @@ virtio_dtrace_enqueue(char *elf, size_t len, int hasmore)
 	 * Since this is an external function, we get the global sc.
 	 */
 	sc = gsc;
+
+	if (sc == NULL)
+		return (ENXIO);
 	
 	dev = sc->vtdtr_dev;
 	q = &sc->vtdtr_txq;
@@ -1472,4 +1485,6 @@ virtio_dtrace_enqueue(char *elf, size_t len, int hasmore)
 	mtx_lock(&sc->vtdtr_condmtx);
 	cv_signal(&sc->vtdtr_condvar);
 	mtx_unlock(&sc->vtdtr_condmtx);
+
+	return (0);
 }

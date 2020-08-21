@@ -1601,6 +1601,7 @@ dev/drm2/ttm/ttm_execbuf_util.c	optional drm2
 dev/drm2/ttm/ttm_memory.c	optional drm2
 dev/drm2/ttm/ttm_page_alloc.c	optional drm2
 dev/drm2/ttm/ttm_bo_vm.c	optional drm2
+dev/dttransport/dttransport.c	standard
 dev/efidev/efidev.c		optional efirt
 dev/efidev/efirt.c		optional efirt
 dev/efidev/efirtc.c		optional efirt

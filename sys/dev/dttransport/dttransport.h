@@ -38,6 +38,6 @@ typedef struct dtt_entry {
 
 #define	DTT_ENTRYLEN	sizeof(dtt_entry_t)
 
-int	dtt_queue_enqueue(dtt_entry_t *);
+extern int	dtt_queue_enqueue(dtt_entry_t *);
 
 #endif // _DTTRANSPORT_H_
