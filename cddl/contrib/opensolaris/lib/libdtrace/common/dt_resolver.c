@@ -30,6 +30,12 @@ dt_resolve(const char *target, uint32_t flags)
 	    MAX(MAXHOSTNAMELEN, OSRELEASELEN) + sizeof("FreeBSD-")] = {0};
 	size_t len = MAX(MAXHOSTNAMELEN, OSRELEASELEN) + sizeof("FreeBSD-");
 
+	/*
+	 * If there is no target, we just assume that it's for all targets.
+	 */
+	if (strlen(target) == 0)
+		return (0);
+	
 	if (DT_RESOLVER_HOSTNAME(flags) != 0) {
 		if (gethostname(curtarget, MAXHOSTNAMELEN) != 0)
 			errx(EXIT_FAILURE, "failed to get hostname");

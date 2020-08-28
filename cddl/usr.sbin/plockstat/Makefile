@@ -18,6 +18,9 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${SRCTOP}/cddl/lib/libdtrace \
 		-I${SRCTOP}/sys
 
+CFLAGS+=	-fsanitize=address
+LDFLAGS+=	-fsanitize=address
+
 LIBADD=	dtrace proc
 
 .include <bsd.prog.mk>

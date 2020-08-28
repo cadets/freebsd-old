@@ -143,6 +143,8 @@ typedef struct dtd_dir {
 	size_t			efile_size;
 	size_t			efile_len;
 
+	pthread_mutex_t		dirmtx;
+
 	struct dtd_state	*state;
 } dtd_dir_t;
 
@@ -331,7 +333,7 @@ listen_dttransport(void *_s)
 	while (s->shutdown == 0) {
 		if (read(s->dtt_fd, &e, sizeof(e)) < 0) {
 			if (errno == EINTR && s->shutdown == 1)
-				break;
+				return (s);
 
 			syslog(LOG_ERR, "Failed to read an entry: %m");
 			continue;
@@ -349,22 +351,31 @@ listen_dttransport(void *_s)
 		 * not exist.
 		 */
 		if (fd == 0) {
+			LOCK(&s->inbounddir->dirmtx);
 			path = gen_filename(s->inbounddir->dirpath);
 			fd = openat(s->inbounddir->dirfd, path,
 			    O_WRONLY | O_CREAT, 0600);
 			if (fd == -1) {
 				syslog(LOG_ERR, "Failed to open %s%s: %m",
 				    s->inbounddir->dirpath, path);
+				UNLOCK(&s->inbounddir->dirmtx);
 				continue;
 			}
+			UNLOCK(&s->inbounddir->dirmtx);
 		}
 
-		if (write(fd, e.data, e.len) < 0)
+		if (write(fd, e.data, e.len) < 0) {
+			if (errno == EINTR && s->shutdown == 1)
+				return (s);
+
 			syslog(LOG_ERR, "Failed to write data to %s: %m", path);
+		}
 
 		if (e.hasmore == 0) {
 			close(fd);
 			free(path);
+			fd = 0;
+			path = NULL;
 		}
 	}
 
@@ -412,6 +423,9 @@ write_dttransport(void *_s)
 
 	while (s->shutdown == 0) {
 		if ((rval = recv(sockfd, &len, sizeof(size_t), 0)) < 0) {
+			if (errno == EINTR && s->shutdown == 1)
+				return (s);
+			
 			syslog(LOG_ERR, "Failed to recv from sub.sock: %m");
 			continue;
 		}
@@ -421,6 +435,8 @@ write_dttransport(void *_s)
 			lentoread = len > DTT_MAXDATALEN ? DTT_MAXDATALEN : len;
 
 			if ((rval = recv(sockfd, e.data, lentoread, 0)) < 0) {
+				if (errno == EINTR && s->shutdown == 1)
+					return (s);
 				/*
 				 * If the device is not configured, we don't
 				 * actually care to report an error here.
@@ -435,6 +451,9 @@ write_dttransport(void *_s)
 			e.len = lentoread;
 
 			if (write(s->dtt_fd, &e, sizeof(e)) < 0) {
+				if (errno == EINTR && s->shutdown == 1)
+					return (s);
+				
 				syslog(LOG_DEBUG, "Error writing to dttransport: %m");
 				return (NULL);
 			}
@@ -465,6 +484,7 @@ listen_inbound(void *_s)
 
 	for (;;) {
 		rval = kevent(kq, &ev, 1, &ev_data, 1, NULL);
+		syslog(LOG_DEBUG, "Got kevent on inbound");
 		assert(rval != 0);
 
 		if (rval < 0) {
@@ -482,7 +502,7 @@ listen_inbound(void *_s)
 
 		if (rval > 0) {
 			err = file_foreach(state.inbounddir->dir,
-			    process_outbound, state.inbounddir);
+			    process_inbound, state.inbounddir);
 			if (err) {
 				syslog(LOG_ERR, "Failed to process new files");
 				return (NULL);
@@ -499,6 +519,7 @@ process_joblist(void *_s)
 	int err;
 	int fd;
 	int elffd;
+	int i;
 	char *path;
 	char *contents, *msg;
 	size_t msglen;
@@ -509,7 +530,9 @@ process_joblist(void *_s)
 	struct dtd_state *s = (struct dtd_state *)_s;
 	dtd_dir_t *dir;
 	struct stat stat;
+	char chk[512];
 
+	chk[64] = '\0';
 	dir = NULL;
 	memset(&stat, 0, sizeof(stat));
 
@@ -567,8 +590,15 @@ process_joblist(void *_s)
 			}
 
 			elflen = stat.st_size;
-			msglen = s->nosha ? elflen : elflen + 32;
+			msglen = s->nosha ? elflen : elflen + SHA256_DIGEST_LENGTH;
 			msg = malloc(msglen);
+
+			/*
+			 * TODO: dtdaemon needs to have an option not to run as daemon, there
+			 * is a crash that ASAN catches. Also, this size does not match the computed
+			 * size in the guest. Figure out why that is.
+			 */
+			syslog(LOG_DEBUG, "Size to checksum: %zu", elflen);
 
 			if (msg == NULL) {
 				syslog(LOG_ERR, "Failed to malloc ELF contents: %m");
@@ -578,12 +608,12 @@ process_joblist(void *_s)
 			}
 
 			memset(msg, 0, msglen);
-			contents = s->nosha ? msg : msg + 32;
+			contents = s->nosha ? msg : msg + SHA256_DIGEST_LENGTH;
 			
 			if (read(elffd, contents, elflen) < 0) {
 				syslog(LOG_ERR, "Failed to read ELF contents: %m");
 				free(path);
-				free(contents);
+				free(msg);
 				close(elffd);
 				break;
 			}
@@ -592,10 +622,16 @@ process_joblist(void *_s)
 			    SHA256(contents, elflen, msg) == NULL) {
 				syslog(LOG_ERR, "Failed to create a SHA256 of the file");
 				free(path);
-				free(contents);
+				free(msg);
 				close(elffd);
 				break;
 			}
+
+			for (i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+				sprintf(chk + (i * 2), "%02x", msg[i]);
+			}
+
+			syslog(LOG_DEBUG, "%s", chk);
 
 			if (send(fd, &msglen, sizeof(msglen), 0) < 0) {
 				if (errno == EPIPE) {
@@ -686,7 +722,7 @@ accept_subs(void *_s)
 	if (s->sockfd == -1)
 		pthread_exit(NULL);
 
-	err = listen(s->sockfd, 32);
+	err = listen(s->sockfd, SHA256_DIGEST_LENGTH);
 	if (err != 0) {
 		syslog(LOG_ERR, "Failed to listen on %d: %m", s->sockfd);
 		pthread_exit(NULL);
@@ -923,7 +959,6 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	char *argv[2] = { 0 };
 
 	status = 0;
-
 	if (dir == NULL) {
 		syslog(LOG_ERR, "dir is NULL");
 		return (-1);
@@ -961,6 +996,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		return (-1);
 	}
 
+	syslog(LOG_DEBUG, "in the fork part");
 	l = strlcpy(fullpath, dir->dirpath, sizeof(fullpath));
 	if (l >= sizeof(fullpath)) {
 		syslog(LOG_ERR, "Failed to copy %s into a path string",
@@ -1047,6 +1083,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	if (strcmp(f->d_name, "..") == 0)
 		return (0);
 
+	syslog(LOG_DEBUG, "process outbound");
 	/*
 	 * Get the index (if exists) of the path. We will use this to check
 	 * if the file has already been processed by comparing the last changed
@@ -1239,6 +1276,9 @@ dtd_mkdir(const char *path)
 {
 	dtd_dir_t *dir;
 	int retry;
+	int err;
+
+	err = 0;
 
 	dir = malloc(sizeof(dtd_dir_t));
 	if (dir == NULL)
@@ -1247,6 +1287,10 @@ dtd_mkdir(const char *path)
 	memset(dir, 0, sizeof(dtd_dir_t));
 
 	dir->dirpath = strdup(path);
+	if ((err = pthread_mutex_init(&dir->dirmtx, NULL)) != 0) {
+		syslog(LOG_ERR, "Failed to create dir mutex: %m");
+		return (NULL);
+	}
 
 	retry = 0;
 againmkdir:
@@ -1329,6 +1373,7 @@ static void
 dtd_closedir(dtd_dir_t *dir)
 {
 	size_t i;
+	int err;
 	
 	free(dir->dirpath);
 	close(dir->dirfd);
@@ -1339,6 +1384,10 @@ dtd_closedir(dtd_dir_t *dir)
 
 	free(dir->existing_files);
 	free(dir->efile_ctimes);
+
+	err = pthread_mutex_destroy(&dir->dirmtx);
+	if (err != 0)
+		syslog(LOG_ERR, "Failed to destroy dirmtx: %m");
 
 	dir->efile_size = 0;
 	dir->efile_len = 0;
@@ -1450,11 +1499,12 @@ main(int argc, char **argv)
 			break;
 		}
 	}
-
+#if 0
 	if (daemon(0, 0) != 0) {
 		syslog(LOG_ERR, "Failed to daemonize %m");
 		return (EX_OSERR);
 	}
+#endif
 
 againefd:
 	efd = open(elfpath, O_RDONLY | O_DIRECTORY);
@@ -1529,6 +1579,7 @@ againefd:
 
 	for (;;) {
 		rval = kevent(kq, &ev, 1, &ev_data, 1, NULL);
+		syslog(LOG_DEBUG, "Got kevent on outbound");
 		assert(rval != 0);
 
 		if (rval < 0) {

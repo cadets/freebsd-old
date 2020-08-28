@@ -339,7 +339,7 @@ _DP_ucl=	m
 _DP_vmmapi=	util
 _DP_opencsd=	cxxrt
 _DP_ctf=	z
-_DP_dtrace=	ctf elf proc pthread rtld_db
+_DP_dtrace=	ctf elf proc pthread rtld_db crypto
 _DP_xo=		util
 # The libc dependencies are not strictly needed but are defined to make the
 # assert happy.

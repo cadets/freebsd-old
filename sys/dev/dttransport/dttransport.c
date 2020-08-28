@@ -228,9 +228,12 @@ dtt_read(struct cdev *dev, struct uio *uio, int flags)
 	mtx_unlock(&sc->mtx);
 
 	mtx_lock(&sc->cvmtx);
-	while (dtt_queue_empty(sc))
-		cv_wait(&sc->cv, &sc->cvmtx);
+	while (err == 0 && dtt_queue_empty(sc))
+		err = cv_wait_sig(&sc->cv, &sc->cvmtx);
 	mtx_unlock(&sc->cvmtx);
+
+	if (err)
+		return (err);
 
 	mtx_lock(&sc->qmtx);
 	entry = dtt_queue_fst(sc);

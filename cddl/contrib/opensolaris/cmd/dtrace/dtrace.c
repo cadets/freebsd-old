@@ -1621,6 +1621,22 @@ main(int argc, char *argv[])
 				machine_filter = strdup(optarg);
 				break;
 
+			case 'y':
+				dcp = &g_cmdv[g_cmdc++];
+				dcp->dc_func = link_elf;
+				dcp->dc_spec = DTRACE_PROBESPEC_NONE;
+				dcp->dc_arg = optarg;
+				g_elf = 1;
+				break;
+
+			case 'Y':
+				dcp = &g_cmdv[g_cmdc++];
+				dcp->dc_func = link_elf_noexec;
+				dcp->dc_spec = DTRACE_PROBESPEC_NONE;
+				dcp->dc_arg = optarg;
+				g_elf = 1;
+				break;
+
 			case 'l':
 				g_mode = DMODE_LIST;
 				g_cflags |= DTRACE_C_ZDEFS; /* -l implies -Z */
@@ -1717,6 +1733,7 @@ main(int argc, char *argv[])
 
 	if (g_elf)
 		dtrace_use_elf(g_dtp);
+
 
 #if defined(__i386__)
 	/* XXX The 32-bit seems to need more buffer space by default -sson */
@@ -1913,22 +1930,6 @@ main(int argc, char *argv[])
 
 				if (dtrace_setopt(g_dtp, optarg, p) != 0)
 					dfatal("failed to set -x %s", optarg);
-				break;
-
-			case 'y':
-				dcp = &g_cmdv[g_cmdc++];
-				dcp->dc_func = link_elf;
-				dcp->dc_spec = DTRACE_PROBESPEC_NONE;
-				dcp->dc_arg = optarg;
-				g_elf = 1;
-				break;
-
-			case 'Y':
-				dcp = &g_cmdv[g_cmdc++];
-				dcp->dc_func = link_elf_noexec;
-				dcp->dc_spec = DTRACE_PROBESPEC_NONE;
-				dcp->dc_arg = optarg;
-				g_elf = 1;
 				break;
 
 			case 'X':

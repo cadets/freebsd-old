@@ -127,11 +127,14 @@ SRCS+=		dis_tables.c
 DSRCS+=		regs_x86.d
 .endif
 
+CFLAGS+=	-fsanitize=address
+LDFLAGS+=	-fsanitize=address
+
 LFLAGS+=-l
 
 YFLAGS+=-d
 
-LIBADD=	ctf elf proc pthread rtld_db
+LIBADD=	ctf elf proc pthread rtld_db crypto
 
 CLEANFILES=	dt_errtags.c dt_names.c
 

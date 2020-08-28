@@ -18,6 +18,9 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common \
 		-I${OPENSOLARIS_SYS_DISTDIR}/compat
 
+CFLAGS+=	-fsanitize=address
+LDFLAGS+=	-fsanitize=address
+
 # Optional debugging stuff...
 #CFLAGS+=	-DNEED_ERRLOC
 #YFLAGS+=	-d

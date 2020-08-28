@@ -95,7 +95,7 @@ struct virtio_dtrace_control {
 #define	vd_elfhasmore	uctrl.elf.vd_elfhasmore
 #define	vd_elf		uctrl.elf.vd_elf
 	} uctrl;
-} __packed;
+};
 
 struct virtio_dtrace_queue {
 	struct mtx           vtdq_mtx;
@@ -647,147 +647,6 @@ vtdtr_queue_enqueue_ctrl(struct virtio_dtrace_queue *q,
 	return (error);
 }
 
-static int
-vtdtr_open_dtelf(struct vtdtr_softc *sc, struct vnode **vp, const char *name)
-{
-	struct nameidata nd, path_nd;
-	device_t dev;
-	struct vattr vattr;
-	char pathname[MAXPATHLEN] = "/var/ddtrace";
-	int cmode;
-	int flags;
-	int error;
-	u_int oflags;
-
-	dev = sc->vtdtr_dev;
-	cmode = 0;
-	flags = 0;
-	oflags = 0;
-	memset(&nd, 0, sizeof(nd));
-	memset(&path_nd, 0, sizeof(path_nd));
-	memset(&vattr, 0, sizeof(vattr));
-
-	/*
-	 * Set the flags for opening the ELF file we will be writing.
-	 */
-	cmode = S_IRUSR | S_IWUSR;
-	oflags = VN_OPEN_NOAUDIT | VN_OPEN_NAMECACHE;
-	flags = O_CREAT | FWRITE | O_NOFOLLOW;
-
-	NDINIT(&path_nd, LOOKUP, NOFOLLOW, UIO_SYSSPACE, pathname, curthread);
-	/*
-	 * Check if /var/ddtrace exists as a directory.
-	 */
-	if (namei(&path_nd) == -1 || path_nd.ni_vp == NULL) {
-		/*
-		 * Create the directory.
-		 */
-		if ((error = kern_mkdirat(curthread, 0, pathname, UIO_SYSSPACE,
-		    S_IRUSR | S_IWUSR)) != 0) {
-			NDFREE(&path_nd, NDF_ONLY_PNBUF);
-			device_printf(dev,
-			    "failed to create /var/ddtrace: %d\n", error);
-			return (-1);
-		}
-	} else {
-		KASSERT(path_nd.ni_vp != NULL, ("directory vnode is NULL\n"));
-		vrele(path_nd.ni_vp);
-	}
-
-	NDFREE(&path_nd, NDF_ONLY_PNBUF);
-
-	/*
-	 * At this point, we are certain that the directory which will contain
-	 * our ELF programs exists, so we simply open (and create) a new file
-	 * that will contain the DTrace program.
-	 */
-	NDINIT(&nd, LOOKUP, NOFOLLOW, UIO_SYSSPACE, name, curthread);
-	error = vn_open_cred(&nd, &flags, cmode, oflags, curthread->td_ucred, NULL);
-	if (error != 0) {
-		device_printf(dev, "failed  to open %s = %d\n", name, error);
-		NDFREE(&nd, NDF_ONLY_PNBUF);
-		return (-1);
-	}
-
-	*vp = nd.ni_vp;
-
-	NDFREE(&nd, NDF_ONLY_PNBUF);
-
-	if ((*vp)->v_type != VREG                              ||
-	    VOP_GETATTR(*vp, &vattr, curthread->td_ucred) != 0 ||
-	    vattr.va_nlink != 1                                ||
-	    ((*vp)->v_vflag & VV_SYSTEM) != 0) {
-		VOP_UNLOCK(*vp);
-		return (-1);
-	}
-
-	VOP_UNLOCK(*vp);
-	return (0);
-}
-
-static int
-vtdtr_close_dtelf(struct vtdtr_softc *sc, struct vnode **vp)
-{
-	int error;
-	int flags;
-
-	flags = O_CREAT | FWRITE | O_NOFOLLOW;
-	error = vn_close(*vp, flags, curthread->td_ucred, curthread);
-	
-	*vp = NULL;
-	
-	return (error);
-}
-
-static int
-vtdtr_write_dtelf(struct vtdtr_softc *sc, struct vnode *vp, size_t len, char *e)
-{
-	int rv;
-	struct mount *mp;
-	struct uio uio;
-	struct iovec iov;
-
-	rv = 0;
-	mp = NULL;
-	memset(&uio, 0, sizeof(uio));
-	memset(&iov, 0, sizeof(iov));
-
-	iov.iov_base = (caddr_t)e;
-	iov.iov_len = len;
-	uio.uio_iov = &iov;
-	uio.uio_iovcnt = 1;
-	uio.uio_offset = 0;
-	uio.uio_resid = len;
-	uio.uio_rw = UIO_WRITE;
-	uio.uio_segflg = UIO_SYSSPACE;
-	uio.uio_td = curthread;
-
-	rv = vn_start_write(vp, &mp, V_WAIT);
-	rv |= vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
-	rv |= VOP_WRITE(vp, &uio, IO_UNIT | IO_APPEND, curthread->td_ucred);
-	rv |= VOP_UNLOCK(vp);
-	vn_finished_write(mp);
-
-	return (0);
-}
-
-static char *
-vtdtr_generate_dtelf_name(void)
-{
-	char *name;
-	size_t l;
-
-	name = malloc(MAXPATHLEN, M_TEMP, M_WAITOK | M_ZERO);
-
-	l = strlcpy(name, "/var/ddtrace/tracing_spec.elf", MAXPATHLEN);
-	if (l >= MAXPATHLEN) {
-		free(name, M_TEMP);
-		return (NULL);
-	}
-
-	return (name);
-}
-
 /*
  * Used for identification of the event type we need to process and delegating
  * it to the according functions.
@@ -829,48 +688,6 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 
 		if (dtt_queue_enqueue(&e))
 			device_printf(dev, "dtt_queue_enqueue() failed.\n");
-#if 0
-		if (vp == NULL) {
-			elfname = vtdtr_generate_dtelf_name();
-			if (elfname == NULL) {
-				device_printf(dev,
-				    "failed to generate ELF name\n");
-				break;
-			}
-			
-			error = vtdtr_open_dtelf(sc, &vp, elfname);
-
-			if (error != 0) {
-				device_printf(dev,
-				    "failed to open %s\n", elfname);
-				break;
-			}
-		}
-
-		KASSERT(vp != NULL, ("vp is NULL after successful open\n"));
-
-		error = vtdtr_write_dtelf(sc, vp,
-		    ctrl->vd_elflen, (char *)ctrl->vd_elf);
-
-		if (error != 0) {
-			device_printf(dev, "failed to write to %s\n", elfname);
-		}
-
-		KASSERT(ctrl->vd_elfhasmore == 0 || ctrl->vd_elfhasmore == 1,
-		    ("elfhasmore must be 0 or 1 (is %d)\n",
-		    ctrl->vd_elfhasmore));
-
-		if (ctrl->vd_elfhasmore == 0) {
-			error = vtdtr_close_dtelf(sc, &vp);
-			if (error != 0) {
-				device_printf(dev, "failed to close %s (%d)\n",
-				    elfname, error);
-			}
-			
-			free(elfname, M_TEMP);
-			elfname = NULL;
-		}
-#endif
 		break;
 
 	case VIRTIO_DTRACE_STOP:

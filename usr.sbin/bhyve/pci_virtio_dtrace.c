@@ -54,6 +54,9 @@ __FBSDID("$FreeBSD$");
 #include <errno.h>
 #include <err.h>
 
+#include <syslog.h>
+#include <stdarg.h>
+
 #include <vmmapi.h>
 
 #include "dthyve.h"
@@ -102,13 +105,7 @@ struct pci_vtdtr_control {
 #define	pvc_elfhasmore	uctrl.elf.pvc_elfhasmore
 #define	pvc_elf		uctrl.elf.pvc_elf
 	} uctrl;
-
-	/*
-	 * Use the fact that a flexibly array member is not included in the
-	 * struct's sizeof() to simply put it out of the union and simplify
-	 * the code which uses it.
-	 */
-} __packed;
+};
 
 struct pci_vtdtr_ctrl_entry {
 	STAILQ_ENTRY(pci_vtdtr_ctrl_entry)	entries;
@@ -338,14 +335,11 @@ pci_vtdtr_fill_desc(struct vqueue_info *vq, struct pci_vtdtr_control *ctrl)
 	size_t len;
 	int n;
 	uint16_t idx;
-	size_t extra_len;
 
 	n = vq_getchain(vq, &idx, &iov, 1, NULL);
 	assert(n == 1);
 
-	extra_len = ctrl->pvc_event == VTDTR_DEVICE_ELF ? ctrl->pvc_elflen : 0;
-
-	len = sizeof(struct pci_vtdtr_control) + extra_len;
+	len = sizeof(struct pci_vtdtr_control);
 	memcpy(iov.iov_base, ctrl, len);
 
 	vq_relchain(vq, idx, len);

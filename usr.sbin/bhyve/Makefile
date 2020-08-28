@@ -73,7 +73,7 @@ SRCS=	\
 	spinup_ap.c		\
 	iov.c
 
-LDFLAGS+= -l dtrace -l proc -l ctf -l elf -l z -l rtld_db -l pthread -l util
+LDFLAGS+= -l proc -l ctf -l elf -l z -l rtld_db -l pthread -l util
 
 
 .PATH:  ${BHYVE_SYSDIR}/sys/amd64/vmm

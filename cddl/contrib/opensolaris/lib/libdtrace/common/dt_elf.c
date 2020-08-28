@@ -44,6 +44,8 @@
 #include <err.h>
 #include <errno.h>
 
+#include <openssl/sha.h>
+
 #define DTELF_MAXOPTNAME	64
 
 /*
@@ -113,8 +115,6 @@ char sec_strtab[] =
 #define	DTELF_VARIABLE_SIZE	  0
 
 #define	DTELF_PROG_SECIDX	  2
-
-#define DTELF_BASESIZE		  0
 
 static dt_elf_state_t *dtelf_state;
 
@@ -233,7 +233,7 @@ dt_elf_new_inttab(Elf *e, dtrace_difo_t *difo)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		     scn, elf_errmsg(-1));
 
-	inttab = malloc(DTELF_BASESIZE + sizeof(uint64_t) * difo->dtdo_intlen);
+	inttab = malloc(sizeof(uint64_t) * difo->dtdo_intlen);
 	if (inttab == NULL)
 		errx(EXIT_FAILURE, "failed to malloc inttab");
 
@@ -257,8 +257,8 @@ dt_elf_new_inttab(Elf *e, dtrace_difo_t *difo)
 	data->d_version = EV_CURRENT;
 
 	if ((shdr = elf32_getshdr(scn)) == NULL)
-		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
-		     elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
 
 	/*
 	 * The entsize is set to sizeof(uint64_t) because each entry is a 64-bit
@@ -300,7 +300,7 @@ dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		     scn, elf_errmsg(-1));
 
-	strtab = malloc(DTELF_BASESIZE + difo->dtdo_strlen);
+	strtab = malloc(difo->dtdo_strlen);
 	if (strtab == NULL)
 		errx(EXIT_FAILURE, "failed to malloc strtab");
 
@@ -321,8 +321,8 @@ dt_elf_new_strtab(Elf *e, dtrace_difo_t *difo)
 	data->d_version = EV_CURRENT;
 
 	if ((shdr = elf32_getshdr(scn)) == NULL)
-		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
-		    elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
 
 	/*
 	 * The strings in the string table are not fixed-size, so entsize is set to 0.
@@ -362,7 +362,7 @@ dt_elf_new_symtab(Elf *e, dtrace_difo_t *difo)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		     scn, elf_errmsg(-1));
 
-	symtab = malloc(DTELF_BASESIZE + difo->dtdo_symlen);
+	symtab = malloc(difo->dtdo_symlen);
 	if (symtab == NULL)
 		errx(EXIT_FAILURE, "failed to malloc symtab");
 
@@ -375,8 +375,8 @@ dt_elf_new_symtab(Elf *e, dtrace_difo_t *difo)
 	data->d_version = EV_CURRENT;
 
 	if ((shdr = elf32_getshdr(scn)) == NULL)
-		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
-		     elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
 
 	shdr->sh_type = SHT_DTRACE_elf;
 	shdr->sh_name = DTELF_DIFOSYMTAB;
@@ -413,8 +413,7 @@ dt_elf_new_vartab(Elf *e, dtrace_difo_t *difo)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		     scn, elf_errmsg(-1));
 
-	vartab = malloc(DTELF_BASESIZE +
-	    sizeof(dtrace_difv_t) * difo->dtdo_varlen);
+	vartab = malloc(sizeof(dtrace_difv_t) * difo->dtdo_varlen);
 	if (vartab == NULL)
 		errx(EXIT_FAILURE, "failed to malloc vartab");
 
@@ -434,8 +433,8 @@ dt_elf_new_vartab(Elf *e, dtrace_difo_t *difo)
 	data->d_version = EV_CURRENT;
 
 	if ((shdr = elf32_getshdr(scn)) == NULL)
-		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
-		     elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
 
 	/*
 	 * Each entry is of fixed size, so entsize is set to sizeof(dtrace_difv_t).
@@ -534,8 +533,8 @@ dt_elf_new_difo(Elf *e, dtrace_difo_t *difo)
 	data->d_version = EV_CURRENT;
 
 	if ((shdr = elf32_getshdr(scn)) == NULL)
-		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
-		     elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
 
 	/*
 	 * This is a section containing just _one_ DIFO. Therefore its size is not
@@ -610,8 +609,8 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad, dt_elf_ref_t sscn)
 	data->d_version = EV_CURRENT;
 
 	if ((shdr = elf32_getshdr(scn)) == NULL)
-		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
-		     elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
 
 	/*
 	 * Since actions are of fixed size (because they contain references to a DIFO)
@@ -762,8 +761,8 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt)
 	data->d_version = EV_CURRENT;
 
 	if ((shdr = elf32_getshdr(scn)) == NULL)
-		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
-		     elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
 
 	/*
 	 * Since dt_elf_ecbdesc_t is of fixed size, we set entsize to its size.
@@ -920,8 +919,8 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 		aid_data->d_version = EV_CURRENT;
 
 		if ((shdr = elf32_getshdr(aid_scn)) == NULL)
-			errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
-			    elf_errmsg(-1));
+			errx(EXIT_FAILURE, "elf_getshdr() failed with %s in %s",
+			    elf_errmsg(-1), __func__);
 
 		shdr->sh_type = SHT_DTRACE_elf;
 		shdr->sh_name = DTELF_IDENT;
@@ -949,8 +948,8 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 	data->d_version = EV_CURRENT;
 
 	if ((shdr = elf32_getshdr(scn)) == NULL)
-		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
-		     elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
 
 	shdr->sh_type = SHT_DTRACE_elf;
 	shdr->sh_name = DTELF_STMTDESC;
@@ -1232,8 +1231,10 @@ dt_elf_options(Elf *e)
 		buflen += len;
 	}
 
-	if (buflen == 0)
+	if (buflen == 0) {
+		fprintf(stderr, "buflen is 0, returning NULL scn\n");
 		return (NULL);
+	}
 
 	if ((scn = elf_newscn(e)) == NULL)
 		errx(EXIT_FAILURE, "elf_newscn(%p) failed with %s",
@@ -1250,8 +1251,8 @@ dt_elf_options(Elf *e)
 	data->d_version = EV_CURRENT;
 
 	if ((shdr = elf32_getshdr(scn)) == NULL)
-		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
-		    elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
 
 	shdr->sh_type = SHT_DTRACE_elf;
 	shdr->sh_name = DTELF_OPTS;
@@ -1296,19 +1297,25 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	memset(dtelf_state->s_idname_table, 0, dtelf_state->s_idname_size);
 
 	/*
-	 * Create the directory that contains the ELF file (if needed).
+	 * Create the directories that we will be using (if necessary)
 	 */
 	err = mkdir("/var/ddtrace", 0755);
 	if (err != 0 && errno != EEXIST)
 		errx(EXIT_FAILURE,
-		    "Failed to mkdir /var/ddtrace with permissions 0755 with %s",
+		    "Failed to mkdir /var/ddtrace(0755): %s",
+		    strerror(errno));
+
+	err = mkdir("/var/ddtrace/outbound", 0755);
+	if (err != 0 && errno != EEXIST)
+		errx(EXIT_FAILURE,
+		    "Failed to mkdir /var/ddtrace/outbound(0755): %s",
 		    strerror(errno));
 
 	if (elf_version(EV_CURRENT) == EV_NONE)
 		errx(EXIT_FAILURE, "ELF library initialization failed: %s",
 		    elf_errmsg(-1));
 
-	if ((fd = open(file_name, O_WRONLY | O_CREAT, 0777)) < 0)
+	if ((fd = open(file_name, O_WRONLY | O_CREAT, 0700)) < 0)
 		errx(EXIT_FAILURE, "Failed to open /var/ddtrace/%s", file_name);
 
 	if ((e = elf_begin(fd, ELF_C_WRITE, NULL)) == NULL)
@@ -1353,8 +1360,8 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	data->d_version = EV_CURRENT;
 
 	if ((shdr = elf32_getshdr(scn)) == NULL)
-		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
-		    elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
 
 	shdr->sh_type = SHT_STRTAB;
 	shdr->sh_name = DTELF_SHSTRTAB;
@@ -1368,8 +1375,8 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	 * For extended numbering
 	 */
 	if ((s0hdr = elf32_getshdr(elf_getscn(e, 0))) == NULL)
-		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
-		     elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
 
 	s0hdr->sh_size = 0; /* Number of sections -- filled in later! */
 	s0hdr->sh_link = elf_ndxscn(scn); /* .shstrtab index */
@@ -1395,8 +1402,8 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	data->d_version = EV_CURRENT;
 
 	if ((shdr = elf32_getshdr(scn)) == NULL)
-		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
-		    elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
 
 	/*
 	 * Currently we only have one program that put into the ELF file.
@@ -1416,6 +1423,9 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	 * Get the first stmt.
 	 */
 	stp = dt_list_next(&dt_prog->dp_stmts);
+
+	if (stp == NULL)
+		errx(EXIT_FAILURE, "DTrace program has no statements");
 	stmt = stp->ds_desc;
 
 	/*
@@ -1450,8 +1460,8 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	scn = dt_elf_options(e);
 
 	if ((shdr = elf32_getshdr(scn)) == NULL)
-		errx(EXIT_FAILURE, "elf_getshdr() failed with %s",
-		    elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_getshdr() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
 
 	shdr->sh_type = SHT_DTRACE_elf;
 	shdr->sh_name = DTELF_OPTS;
@@ -2007,8 +2017,71 @@ dt_elf_get_options(dtrace_hdl_t *dtp, Elf *e, dt_elf_ref_t eopts)
 	    eop != ((uintptr_t)data->d_buf) + data->d_size;
 	    eop = eop + dteop->eo_len + sizeof(_dt_elf_eopt_t)) {
 		dteop = (_dt_elf_eopt_t *)eop;
-		dtrace_setopt(dtp, dteop->eo_name, dteop->eo_arg);
+		dtrace_setopt(dtp, dteop->eo_name, strdup(dteop->eo_arg));
 	}
+}
+
+static int
+dt_elf_verify_file(char checksum[SHA256_DIGEST_LENGTH], int fd)
+{
+	char *buf;
+	struct stat st;
+	char elf_checksum[SHA256_DIGEST_LENGTH];
+	char chk[512];
+	char template[] = "/tmp/ddtrace-elf.XXXXXXXX";
+	int i, elf_fd;
+
+	chk[64] = '\0';
+	memset(elf_checksum, 0, sizeof(elf_checksum));
+
+	if (fstat(fd, &st) != 0)
+		errx(EXIT_FAILURE, "fstat() failed on fd with %s",
+		    strerror(errno));
+
+	if (st.st_size == 0)
+		errx(EXIT_FAILURE, "st_size is 0");
+
+	buf = malloc(st.st_size - SHA256_DIGEST_LENGTH);
+	if (buf == NULL)
+		errx(EXIT_FAILURE, "buf malloc() failed with %s",
+		    strerror(errno));
+
+	if (read(fd, buf, st.st_size - SHA256_DIGEST_LENGTH) < 0)
+		errx(EXIT_FAILURE, "read() failed on fd with %s",
+		    strerror(errno));
+
+	if (buf[0] != 0x7F ||
+	    buf[1] != 'E'  ||
+	    buf[2] != 'L'  ||
+	    buf[3] != 'F')
+		errx(EXIT_FAILURE, "Not an ELF file");
+
+	if (SHA256(
+	    buf, st.st_size - SHA256_DIGEST_LENGTH, elf_checksum) == NULL)
+		errx(EXIT_FAILURE, "SHA256() failed");
+
+	if (memcmp(checksum, elf_checksum, SHA256_DIGEST_LENGTH) != 0) {
+		for (i = 0; i < SHA256_DIGEST_LENGTH; i++)
+			sprintf(chk + (i * 2), "%02x", checksum[i]);
+		fprintf(stderr, "%s\n", chk);
+
+		for (i = 0; i < SHA256_DIGEST_LENGTH; i++)
+			sprintf(chk + (i * 2), "%02x", elf_checksum[i]);
+		fprintf(stderr, "%s\n", chk);
+
+		errx(EXIT_FAILURE, "SHA256 mismatch");
+	}
+
+	/*
+	 * Here we make a new (temporary) file which will contain our ELF
+	 * contents that we will run through libelf.
+	 */
+	elf_fd = mkstemp(template);
+
+	if (write(elf_fd, buf, st.st_size - SHA256_DIGEST_LENGTH) < 0)
+		errx(EXIT_FAILURE, "Failed to write ELF contents into tmp");
+	
+	return (elf_fd);
 }
 
 dtrace_prog_t *
@@ -2022,16 +2095,57 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd)
 	char *name;
 	int class;
 	GElf_Ehdr ehdr;
-
+	char buf[5];
+	char checksum[SHA256_DIGEST_LENGTH];
+	off_t off;
 	dtrace_prog_t *prog;
-
 	dt_elf_prog_t *eprog;
+	int iself;
+
+	iself = 0;
 
 	dtelf_state = malloc(sizeof(dt_elf_state_t));
 	if (dtelf_state == NULL)
 		errx(EXIT_FAILURE, "failed to malloc dtelf_state");
 
 	memset(dtelf_state, 0, sizeof(dt_elf_state_t));
+
+	if (read(fd, buf, 4) < 0)
+		errx(EXIT_FAILURE, "Failed reading from ELF file: %s",
+		    strerror(errno));
+
+	off = 0;
+	buf[4] = '\0';
+
+	if (buf[0] != 0x7F ||
+	    buf[1] != 'E'  ||
+	    buf[2] != 'L'  ||
+	    buf[3] != 'F') {
+		iself = 1;
+		off = lseek(fd, 0, SEEK_SET);
+		if (off == -1)
+			errx(EXIT_FAILURE, "lseek() failed with %s",
+			    strerror(errno));
+
+		if (read(fd, checksum, SHA256_DIGEST_LENGTH) < 0)
+			errx(EXIT_FAILURE, "Failed reading from ELF file: %s",
+			    strerror(errno));
+
+		off = lseek(fd, SHA256_DIGEST_LENGTH, SEEK_SET);
+		if (off == -1)
+			errx(EXIT_FAILURE, "lseek() failed with %s",
+			    strerror(errno));
+
+		fd = dt_elf_verify_file(checksum, fd);
+		if (fd == -1)
+			errx(EXIT_FAILURE, "Failed to create a "
+			    "temporary ELF file: %s", strerror(errno));
+	}
+
+	off = lseek(fd, 0, SEEK_SET);
+	if (off == -1)
+		errx(EXIT_FAILURE, "lseek() failed with %s",
+		    strerror(errno));
 
 	if (elf_version(EV_CURRENT) == EV_NONE)
 		errx(EXIT_FAILURE, "ELF library initialization failed: %s",
@@ -2041,7 +2155,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd)
 		errx(EXIT_FAILURE, "elf_begin() failed with %s", elf_errmsg(-1));
 
 	if (elf_kind(e) != ELF_K_ELF)
-		errx(EXIT_FAILURE, "tracing specification is not an ELF file");
+		errx(EXIT_FAILURE, "not an ELF file");
 
 	if (gelf_getehdr(e, &ehdr) == NULL)
 		errx(EXIT_FAILURE, "gelf_getehdr() failed with %s",
@@ -2066,8 +2180,8 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd)
 	while ((scn = elf_nextscn(e, scn)) != NULL) {
 		static const char idtab_name[] = ".dtrace_stmt_idname_table";
 		if (gelf_getshdr(scn, &shdr) != &shdr)
-			errx(EXIT_FAILURE, "gelf_getshdr() failed with %s",
-			    elf_errmsg(-1));
+			errx(EXIT_FAILURE, "gelf_getshdr() failed with %s in %s",
+			    elf_errmsg(-1), __func__);
 
 		if ((name = elf_strptr(e, shstrndx, shdr.sh_name)) == NULL)
 			errx(EXIT_FAILURE, "elf_strptr() failed with %s",
@@ -2097,8 +2211,8 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd)
 		    elf_errmsg(-1));
 
 	if (gelf_getshdr(scn, &shdr) != &shdr)
-		errx(EXIT_FAILURE, "gelf_getshdr() failed with %s",
-		     elf_errmsg(-1));
+		errx(EXIT_FAILURE, "gelf_getshdr() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
 
 	if ((name = elf_strptr(e, shstrndx, shdr.sh_name)) == NULL)
 		errx(EXIT_FAILURE, "elf_strptr() failed with %s",
@@ -2130,6 +2244,10 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd)
 
 	free(dtelf_state);
 	(void) elf_end(e);
+
+	if (iself)
+		close(fd);
+	
 	return (prog);
 }
 
