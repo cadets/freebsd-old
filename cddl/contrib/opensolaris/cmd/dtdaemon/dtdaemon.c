@@ -339,10 +339,8 @@ listen_dttransport(void *_s)
 			continue;
 		}
 
-		if (fd == -1) {
-			syslog(LOG_DEBUG, "Ignoring data because fd is -1");
+		if (fd == -1)
 			continue;
-		}
 
 		/*
 		 * At this point we have the /var/ddtrace/inbound
@@ -454,7 +452,7 @@ write_dttransport(void *_s)
 				if (errno == EINTR && s->shutdown == 1)
 					return (s);
 				
-				syslog(LOG_DEBUG, "Error writing to dttransport: %m");
+				syslog(LOG_ERR, "Error writing to dttransport: %m");
 				return (NULL);
 			}
 
@@ -480,11 +478,10 @@ listen_inbound(void *_s)
 	}
 
 	EV_SET(&ev, state.inbounddir->dirfd, EVFILT_VNODE, EV_ADD | EV_CLEAR,
-	    NOTE_WRITE, 0, (void *)state.inbounddir->dirpath);
+	    NOTE_WRITE, 0, (void *)state.inbounddir);
 
 	for (;;) {
 		rval = kevent(kq, &ev, 1, &ev_data, 1, NULL);
-		syslog(LOG_DEBUG, "Got kevent on inbound");
 		assert(rval != 0);
 
 		if (rval < 0) {
@@ -530,9 +527,7 @@ process_joblist(void *_s)
 	struct dtd_state *s = (struct dtd_state *)_s;
 	dtd_dir_t *dir;
 	struct stat stat;
-	char chk[512];
 
-	chk[64] = '\0';
 	dir = NULL;
 	memset(&stat, 0, sizeof(stat));
 
@@ -593,13 +588,6 @@ process_joblist(void *_s)
 			msglen = s->nosha ? elflen : elflen + SHA256_DIGEST_LENGTH;
 			msg = malloc(msglen);
 
-			/*
-			 * TODO: dtdaemon needs to have an option not to run as daemon, there
-			 * is a crash that ASAN catches. Also, this size does not match the computed
-			 * size in the guest. Figure out why that is.
-			 */
-			syslog(LOG_DEBUG, "Size to checksum: %zu", elflen);
-
 			if (msg == NULL) {
 				syslog(LOG_ERR, "Failed to malloc ELF contents: %m");
 				free(path);
@@ -626,12 +614,6 @@ process_joblist(void *_s)
 				close(elffd);
 				break;
 			}
-
-			for (i = 0; i < SHA256_DIGEST_LENGTH; i++) {
-				sprintf(chk + (i * 2), "%02x", msg[i]);
-			}
-
-			syslog(LOG_DEBUG, "%s", chk);
 
 			if (send(fd, &msglen, sizeof(msglen), 0) < 0) {
 				if (errno == EPIPE) {
@@ -886,7 +868,7 @@ expand_paths(dtd_dir_t *dir)
 	s = dir->state;
 
 	if (s == NULL) {
-		syslog(LOG_DEBUG, "Expand paths called with state == NULL");
+		syslog(LOG_ERR, "Expand paths called with state == NULL");
 		return (-1);
 	}
 
@@ -956,7 +938,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	char fullpath[MAXPATHLEN] = { 0 };
 	int status;
 	size_t l, dirpathlen;
-	char *argv[2] = { 0 };
+	char *argv[4] = { 0 };
 
 	status = 0;
 	if (dir == NULL) {
@@ -996,7 +978,6 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		return (-1);
 	}
 
-	syslog(LOG_DEBUG, "in the fork part");
 	l = strlcpy(fullpath, dir->dirpath, sizeof(fullpath));
 	if (l >= sizeof(fullpath)) {
 		syslog(LOG_ERR, "Failed to copy %s into a path string",
@@ -1022,10 +1003,12 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	} else if (pid > 0)
 		waitpid(pid, &status, 0);
 	else {
-		argv[0] = strdup("-y");
-		argv[1] = strdup(fullpath);
+		argv[0] = strdup("/usr/sbin/dtrace");
+		argv[1] = strdup("-Y");
+		argv[2] = strdup(fullpath);
+		argv[3] = NULL;
 		execve("/usr/sbin/dtrace", argv, NULL);
-		exit(EXIT_SUCCESS);
+		exit(EXIT_FAILURE);
 	}
 
 	if (idx == -1) {
@@ -1083,7 +1066,6 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	if (strcmp(f->d_name, "..") == 0)
 		return (0);
 
-	syslog(LOG_DEBUG, "process outbound");
 	/*
 	 * Get the index (if exists) of the path. We will use this to check
 	 * if the file has already been processed by comparing the last changed
@@ -1116,8 +1098,6 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		job->j.notify_elfwrite.path = strdup(f->d_name);
 		job->j.notify_elfwrite.pathlen = strlen(f->d_name);
 		job->j.notify_elfwrite.dir = dir;
-
-		syslog(LOG_DEBUG, "Adding %s for %d\n", f->d_name, fd_list->fd);
 
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);
@@ -1559,7 +1539,14 @@ againefd:
 	err = file_foreach(state.outbounddir->dir,
 	    populate_existing, state.outbounddir);
 	if (err != 0) {
-		syslog(LOG_ERR, "Failed to populate existing files");
+		syslog(LOG_ERR, "Failed to populate outbound existing files");
+		return (EXIT_FAILURE);
+	}
+
+	err = file_foreach(state.inbounddir->dir,
+	    populate_existing, state.inbounddir);
+	if (err != 0) {
+		syslog(LOG_ERR, "Failed to populate inbound existing files");
 		return (EXIT_FAILURE);
 	}
 
@@ -1575,11 +1562,10 @@ againefd:
 	}
 
 	EV_SET(&ev, state.outbounddir->dirfd, EVFILT_VNODE, EV_ADD | EV_CLEAR,
-	    NOTE_WRITE, 0, (void *)state.outbounddir->dirpath);
+	    NOTE_WRITE, 0, (void *)state.outbounddir);
 
 	for (;;) {
 		rval = kevent(kq, &ev, 1, &ev_data, 1, NULL);
-		syslog(LOG_DEBUG, "Got kevent on outbound");
 		assert(rval != 0);
 
 		if (rval < 0) {
