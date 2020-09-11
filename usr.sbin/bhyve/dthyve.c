@@ -45,6 +45,7 @@
 #include <sysexits.h>
 #include <err.h>
 #include <syslog.h>
+#include <dtdaemon.h>
 
 #ifndef WITHOUT_CAPSICUM
 #include <capsicum_helpers.h>
@@ -52,10 +53,8 @@
 
 #include "dthyve.h"
 
-#define	DTDAEMON_SOCKPATH	"/var/ddtrace/sub.sock"
-
-static int sockfd = -1;
-static int filefd = -1;
+static int sockfd	= -1;
+static int dirfd	= -1;
 
 /*
  * Open the vtdtr device in order to set up the state.
@@ -65,6 +64,7 @@ dthyve_init(void)
 {
 	int error;
 	size_t l;
+	int kind;
 	struct sockaddr_un addr;
 
 	sockfd = socket(PF_UNIX, SOCK_STREAM, 0);
@@ -84,9 +84,29 @@ dthyve_init(void)
 		return (-1);
 	}
 
-	filefd = open("/root/elf_file", O_CREAT | O_WRONLY, 0600);
-	if (filefd == -1)
-		syslog(LOG_DEBUG, "Failed to open /elf_file: %m");
+	if (recv(sockfd, &kind, sizeof(kind), 0) < 0) {
+		fprintf(stderr, "Failed to read from sockfd: %s",
+		    strerror(errno));
+		return (-1);
+	}
+
+	if (kind != DTDAEMON_KIND_DTDAEMON) {
+		fprintf(stderr, "Expected dtdaemon kind, got %zu\n", kind);
+		close(sockfd);
+		return (-1);
+	}
+
+	kind = DTDAEMON_KIND_FORWARDER;
+	if (send(sockfd, &kind, sizeof(kind), 0) < 0) {
+		fprintf(stderr, "Failed to write %zu to sockfd: %s",
+		    kind, strerror(errno));
+		return (-1);
+	}
+
+	dirfd = open("/var/ddtrace/inbound", O_DIRECTORY, 0600);
+	if (dirfd == -1)
+		syslog(LOG_DEBUG, "Failed to open /var/ddtrace/inbound: %m");
+	
 	return (0);
 }
 
@@ -154,11 +174,6 @@ dthyve_read(void **buf, size_t *len)
 		return (-1);
 	}
 
-	syslog(LOG_DEBUG, "Read buf, filefd = %d", filefd);
-
-	if (filefd != -1) {
-		write(filefd, *buf, *len);
-	}
 	return (0);
 }
 
@@ -168,3 +183,25 @@ dthyve_destroy()
 
 	close(sockfd);
 }
+
+int
+dthyve_newelf(char *name)
+{
+
+	return (openat(dirfd, name, O_CREAT | O_WRONLY, 0600));
+}
+
+int
+dthyve_rename(char *n1, char *n2)
+{
+
+	return (renameat(dirfd, n1, dirfd, n2));
+}
+
+int
+dthyve_access(char *path)
+{
+
+	return (faccessat(dirfd, path, F_OK, 0));
+}
+

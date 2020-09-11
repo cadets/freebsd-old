@@ -1,6 +1,5 @@
 /*-
- * Copyright (c) 2017 Domagoj Stolfa <domagoj.stolfa@gmail.com>
- * All rights reserved.
+ * Copyright (c) 2020 Domagoj Stolfa
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,18 +25,14 @@
  * $FreeBSD$
  */
 
-#ifndef _DTHYVE_H_
-#define _DTHYVE_H_
+#ifndef __DTDAEMON_H_
+#define __DTDAEMON_H_
 
-#include <sys/types.h>
-#include <sys/vtdtr.h>
+#define	DTDAEMON_SOCKPATH	"/var/ddtrace/sub.sock"
 
-int	dthyve_init(void);
-int	dthyve_configured(void);
-int	dthyve_read(void **, size_t *);
-void	dthyve_destroy(void);
-int	dthyve_newelf(char *);
-int	dthyve_rename(char *, char *);
-int	dthyve_access(char *);
+#define	DTDAEMON_KIND_UNKNOWN	0
+#define	DTDAEMON_KIND_CONSUMER	1
+#define	DTDAEMON_KIND_FORWARDER	2
+#define	DTDAEMON_KIND_DTDAEMON	3
 
-#endif /* _DTHYVE_H_ */
+#endif // __DTDAEMON_H_

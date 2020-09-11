@@ -56,6 +56,6 @@
 
 #define	VIRTIO_DTRACE_MAXELFLEN		512
 
-int virtio_dtrace_enqueue(char *, size_t, int);
+int virtio_dtrace_enqueue(char *, size_t, size_t, int);
 
 #endif

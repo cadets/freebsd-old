@@ -93,6 +93,7 @@ struct pci_vtdtr_control {
 		struct {			/*  elf event */
 			size_t	pvc_elflen;
 			int	pvc_elfhasmore;
+			size_t	pvc_totalelflen;
 			char	pvc_elf[PCI_VTDTR_MAXELFLEN];
 		} elf;
 
@@ -103,6 +104,7 @@ struct pci_vtdtr_control {
 
 #define	pvc_elflen	uctrl.elf.pvc_elflen
 #define	pvc_elfhasmore	uctrl.elf.pvc_elfhasmore
+#define	pvc_totalelflen	uctrl.elf.pvc_totalelflen
 #define	pvc_elf		uctrl.elf.pvc_elf
 	} uctrl;
 };
@@ -197,6 +199,41 @@ pci_vtdtr_control_tx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	 */
 }
 
+static void
+get_randname(char *b, size_t len)
+{
+	size_t i;
+
+	/*
+	 * Generate lower-case random characters.
+	 */
+	for (i = 0; i < len; i++)
+		b[i] = arc4random_uniform(25) + 97;
+}
+
+static char *
+gen_filename(void)
+{
+	char *filename;
+	size_t len;
+
+	len = MAXPATHLEN / 64;
+	assert(len > 10);
+
+	filename = malloc(len);
+	filename[0] = '.';
+	get_randname(filename + 1, len - 2);
+	filename[len - 1] = '\0';
+
+	while (dthyve_access(filename) != -1) {
+		filename[0] = '.';
+		get_randname(filename + 1, len - 2);
+		filename[len - 1] = '\0';
+	}
+
+	return (filename);
+}
+
 /*
  * In this function we process each of the events, for probe and provider
  * related events, we delegate the processing to a function specialized for that
@@ -206,7 +243,14 @@ static int
 pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 {
 	struct pci_vtdtr_control *ctrl;
-	int retval;// error;
+	int retval;
+	static int fd = 0;
+	static size_t len = 0;
+	static size_t offs = 0;
+	static char *elf;
+	static char *path = NULL;
+	char donepath[MAXPATHLEN] = { 0 };
+	size_t donepathlen;
 
 	assert(niov == 1);
 	retval = 0;
@@ -218,9 +262,75 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		sc->vsd_guest_ready = 1;
 		pthread_mutex_unlock(&sc->vsd_mtx);
 		break;
+		
+	case VTDTR_DEVICE_ELF:
+		sc->vsd_ready = 0;
+		if (fd == 0) {
+			/*
+			 * Create a temporary file that we will use to not
+			 * pollute the state in /var/ddtrace.
+			 */
+			path = gen_filename();
+			fd = dthyve_newelf(path);
+			if (fd == -1) {
+				fprintf(stderr, "failed opening %s with %s",
+				    path, strerror(errno));
+				break;
+			}
+
+			len = ctrl->pvc_totalelflen;
+			elf = malloc(ctrl->pvc_totalelflen);
+			memset(elf, 0, ctrl->pvc_totalelflen);
+		}
+
+		assert(offs < len);
+		assert(ctrl->pvc_elflen <= len);
+
+		if (elf == NULL)
+			return (retval);
+		
+		memcpy((void *)(((uintptr_t)elf) + offs),
+		    ctrl->pvc_elf, ctrl->pvc_elflen);
+		offs += ctrl->pvc_elflen;
+
+		if (ctrl->pvc_elfhasmore == 0) {
+			if (fd == 0) {
+				fprintf(stderr, "fd is 0\n");
+				offs = 0;
+				return (retval);
+			}
+
+			/*
+			 * Write the temporary file
+			 */
+			if (write(fd, elf, len) < 0)
+				fprintf(stderr, "Warning: Failed to write "
+				    "%zu bytes to %s", len, path);
+
+ 			donepathlen = strlen(path) - 1;
+			memset(donepath, 0, donepathlen);
+			memcpy(donepath, path + 1, donepathlen);
+			donepath[donepathlen - 1] = '\0';
+
+			if (dthyve_rename(path, donepath))
+				fprintf(stderr, "rename failed with %s",
+				    strerror(errno));
+			
+			free(elf);
+			close(fd);
+			free(path);
+			path = NULL;
+			len = 0;
+			offs = 0;
+			donepathlen = 0;
+			fd = 0;
+		}
+		break;
+
 	case VTDTR_DEVICE_EOF:
 		retval = 1;
 		break;
+
 	default:
 		WPRINTF(("Warning: Unknown event: %u\n", ctrl->pvc_event));
 		break;
@@ -533,7 +643,7 @@ vtdtr_elf_event(void *buf, size_t size, size_t offs)
 	hasmore = 0;
 
 	/*
-	 * Computer how much we'll actually be reading.
+	 * Compute how much we'll actually be reading.
 	 */
 	maxlen = size - offs;
 	len_to_read = maxlen > PCI_VTDTR_MAXELFLEN ?
@@ -563,6 +673,7 @@ vtdtr_elf_event(void *buf, size_t size, size_t offs)
 	 */
 	ctrl->pvc_event = VTDTR_DEVICE_ELF;
 	ctrl->pvc_elflen = len_to_read;
+	ctrl->pvc_totalelflen = size;
 	ctrl->pvc_elfhasmore = hasmore;
 
 	return (ctrl);

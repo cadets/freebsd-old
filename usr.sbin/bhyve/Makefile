@@ -98,6 +98,8 @@ CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/mii
 CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/usb/controller
 CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/virtio/dtrace
 
+CFLAGS+= -I${SRCTOP}/cddl/contrib/opensolaris/cmd/dtdaemon
+
 .ifdef GDB_LOG
 CFLAGS+=-DGDB_LOG
 .endif

@@ -33,6 +33,7 @@
 typedef struct dtt_entry {
 	size_t 	len;
 	int	hasmore;
+	size_t	totallen;
 	char	data[DTT_MAXDATALEN];
 } dtt_entry_t;
 

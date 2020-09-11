@@ -84,6 +84,7 @@ struct virtio_dtrace_control {
 		struct {			/*  elf event */
 			size_t	vd_elflen;
 			int	vd_elfhasmore;
+			size_t	vd_totalelflen;
 			char	vd_elf[VIRTIO_DTRACE_MAXELFLEN];
 		} elf;
 
@@ -93,6 +94,7 @@ struct virtio_dtrace_control {
 #define	vd_probeid	uctrl.vd_probeid
 #define	vd_elflen	uctrl.elf.vd_elflen
 #define	vd_elfhasmore	uctrl.elf.vd_elfhasmore
+#define	vd_totalelflen	uctrl.elf.vd_totalelflen
 #define	vd_elf		uctrl.elf.vd_elf
 	} uctrl;
 };
@@ -173,7 +175,7 @@ static uint32_t num_dtprobes;
 SYSCTL_U32(_dev_vtdtr, OID_AUTO, nprobes, CTLFLAG_RD, &num_dtprobes, 0,
     "Number of installed probes through virtio-dtrace");
 
-static uint32_t debug = 1;
+static uint32_t debug = 0;
 SYSCTL_U32(_dev_vtdtr, OID_AUTO, debug, CTLFLAG_RWTUN, &debug, 0,
     "Enable debugging of virtio-dtrace");
 
@@ -209,7 +211,7 @@ static void vtdtr_drain_taskqueues(struct vtdtr_softc *);
 static int vtdtr_vq_enable_intr(struct virtio_dtrace_queue *);
 static void vtdtr_vq_disable_intr(struct virtio_dtrace_queue *);
 static void vtdtr_rxq_tq_intr(void *, int);
-static void vtdtr_notify_ready(struct vtdtr_softc *);
+static int vtdtr_notify_ready(struct vtdtr_softc *);
 static void vtdtr_rxq_vq_intr(void *);
 static void vtdtr_txq_vq_intr(void *);
 static int vtdtr_init_txq(struct vtdtr_softc *, int);
@@ -400,7 +402,11 @@ vtdtr_attach(device_t dev)
 
 	vtdtr_start_taskqueues(sc);
 	sc->vtdtr_ready = 0;
-	vtdtr_notify_ready(sc);
+again:
+	error = vtdtr_notify_ready(sc);
+	if (error)
+		goto again;
+	
 	kthread_add(vtdtr_run, sc, NULL, &sc->vtdtr_commtd,
 	    0, 0, NULL, "vtdtr_communicator");
 
@@ -684,6 +690,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 
 		memcpy(e.data, ctrl->vd_elf, ctrl->vd_elflen);
 		e.len = ctrl->vd_elflen;
+		e.totallen = ctrl->vd_totalelflen;
 		e.hasmore = ctrl->vd_elfhasmore;
 
 		if (dtt_queue_enqueue(&e))
@@ -859,15 +866,20 @@ vtdtr_vq_disable_intr(struct virtio_dtrace_queue *q)
 	virtqueue_disable_intr(q->vtdq_vq);
 }
 
-static void
+static int
 vtdtr_send_eof(struct virtio_dtrace_queue *q)
 {
 	struct virtio_dtrace_control *ctrl;
 	ctrl = malloc(sizeof(struct virtio_dtrace_control),
-	    M_DEVBUF, M_WAITOK | M_ZERO);
+	    M_DEVBUF, M_NOWAIT | M_ZERO);
+	if (ctrl == NULL) {
+		return (-1);
+	}
 	
 	ctrl->vd_event = VIRTIO_DTRACE_EOF;
 	vtdtr_fill_desc(q, ctrl);
+
+	return (0);
 }
 
 /*
@@ -876,7 +888,7 @@ vtdtr_send_eof(struct virtio_dtrace_queue *q)
  * safe to proceed execution. If not, we enqueue the said descriptor and
  * following that notify the communicator.
  */
-static void
+static int
 vtdtr_notify_ready(struct vtdtr_softc *sc)
 {
 	struct virtio_dtrace_queue *q;
@@ -895,9 +907,16 @@ vtdtr_notify_ready(struct vtdtr_softc *sc)
 	 * sensible state.
 	 */
 	ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry),
-	    M_DEVBUF, M_WAITOK | M_ZERO);
+	    M_DEVBUF, M_NOWAIT | M_ZERO);
+	if (ctrl_entry == NULL)
+		return (-1);
+
 	ctrl = malloc(sizeof(struct virtio_dtrace_control),
-	    M_DEVBUF, M_WAITOK | M_ZERO);
+	    M_DEVBUF, M_NOWAIT | M_ZERO);
+	if (ctrl == NULL) {
+		free(ctrl_entry, M_DEVBUF);
+		return (-1);
+	}
 
 	ctrl->vd_event = VIRTIO_DTRACE_DEVICE_READY;
 	ctrl_entry->ctrl = ctrl;
@@ -909,6 +928,8 @@ vtdtr_notify_ready(struct vtdtr_softc *sc)
 	mtx_lock(&sc->vtdtr_condmtx);
 	cv_signal(&sc->vtdtr_condvar);
 	mtx_unlock(&sc->vtdtr_condmtx);
+
+	return (0);
 }
 /*
  * The separate thread (created by the taskqueue) that acts as an interrupt
@@ -951,8 +972,12 @@ vtdtr_rxq_tq_intr(void *xrxq, int pending)
 	if (vtdtr_vq_enable_intr(rxq) != 0)
 		taskqueue_enqueue(rxq->vtdq_tq, &rxq->vtdq_intrtask);
 
-	if (sc->vtdtr_ready == 0)
-		vtdtr_notify_ready(sc);
+	if (sc->vtdtr_ready == 0) {
+again:
+		retval = vtdtr_notify_ready(sc);
+		if (retval)
+			goto again;
+	}
 	mtx_unlock(&sc->vtdtr_mtx);
 
 	mtx_lock(&sc->vtdtr_condmtx);
@@ -1173,9 +1198,11 @@ vtdtr_run(void *xsc)
 	size_t vq_size;
 	int nent;
 	int ready_flag;
+	int err;
 
 	sc = xsc;
 	dev = sc->vtdtr_dev;
+	err = 0;
 
 	txq = &sc->vtdtr_txq;
 	vq = txq->vtdq_vq;
@@ -1253,7 +1280,10 @@ vtdtr_run(void *xsc)
 		if (nent) {
 			if (vtdtr_cq_empty(sc->vtdtr_ctrlq) &&
 			   !virtqueue_full(vq)) {
-				vtdtr_send_eof(txq);
+again:
+				err = vtdtr_send_eof(txq);
+				if (err)
+					goto again;
 			}
 
 			sc->vtdtr_host_ready = ready_flag;
@@ -1265,7 +1295,7 @@ vtdtr_run(void *xsc)
 }
 
 int
-virtio_dtrace_enqueue(char *elf, size_t len, int hasmore)
+virtio_dtrace_enqueue(char *elf, size_t len, size_t totallen, int hasmore)
 {
 	struct vtdtr_softc *sc;
 	struct virtio_dtrace_queue *q;
@@ -1292,6 +1322,7 @@ virtio_dtrace_enqueue(char *elf, size_t len, int hasmore)
 	ctrl->vd_event = VIRTIO_DTRACE_ELF;
 	ctrl->vd_elflen = len;
 	ctrl->vd_elfhasmore = hasmore;
+	ctrl->vd_totalelflen = totallen;
 	memcpy(ctrl->vd_elf, elf, sizeof(ctrl->vd_elf));
 	ctrl_entry->ctrl = ctrl;
 

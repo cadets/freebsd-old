@@ -32,6 +32,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #include <dtrace.h>
 #include <dt_elf.h>
@@ -58,6 +60,7 @@
 #include <spawn.h>
 #include <dt_prog_link.h>
 #endif
+#include <dtdaemon.h>
 
 typedef struct dtrace_cmd {
 	void (*dc_func)(struct dtrace_cmd *);	/* function to compile arg */
@@ -688,7 +691,8 @@ gen_filename(const char *dir)
 	assert(len > 10);
 
 	filename = malloc(len);
-	get_randname(filename, len - 1);
+	filename[0] = '.';
+	get_randname(filename + 1, len - 2);
 	filename[len - 1] = '\0';
 
 	elfpath = malloc(MAXPATHLEN);
@@ -696,7 +700,8 @@ gen_filename(const char *dir)
 	strcpy(elfpath + strlen(dir), filename);
 
 	while (access(elfpath, F_OK) != -1) {
-		get_randname(filename, len - 1);
+		filename[0] = '.';
+		get_randname(filename + 1, len - 2);
 		filename[len - 1] = '\0';
 		strcpy(elfpath + strlen(dir), filename);
 	}
@@ -718,7 +723,19 @@ exec_prog(const dtrace_cmd_t *dcp)
 	dtrace_proginfo_t dpi;
 	char *elfpath;
 	char elfdir[MAXPATHLEN] = "/var/ddtrace/outbound/";
+	char *elf;
+	size_t elflen;
+	int dtdaemon_sock;
+	size_t l;
+	struct sockaddr_un addr;
+	int kind, fd;
+	dtrace_prog_t *newprog;
+	char donepath[MAXPATHLEN] = { 0 };
+	size_t dirlen;
+	size_t donepathlen;
+	char template[] = "/tmp/ddtrace-elf.XXXXXXXX";
 
+	dirlen = strlen(elfdir);
 	elfpath = gen_filename(elfdir);
 
 	// Don't take any action based on unwanted mod/ref behaviour:
@@ -744,8 +761,111 @@ exec_prog(const dtrace_cmd_t *dcp)
 		(void) dtrace_dump_actions(dcp->dc_prog);
 		if (g_elf) {
 			dt_elf_create(dcp->dc_prog, ELFDATA2LSB, elfpath);
+			donepathlen = strlen(elfpath) - 1;
+
+			memset(donepath, 0, donepathlen);
+			memcpy(donepath, elfpath, dirlen);
+			memcpy(donepath + dirlen, elfpath + dirlen + 1,
+			    donepathlen - dirlen);
+
+			if (rename(elfpath, donepath)) {
+				dfatal("failed to move %s to %s",
+				    elfpath, donepath);
+			}
 		}
 		free(elfpath);
+	} else if (g_elf) {
+		/*
+		 * We open a dtdaemon socket because we expect the following
+		 * things to happen:
+		 *  (1) We write our ELF file to /var/ddtrace/outbound
+		 *  (2) dtdaemon forwards it to the guest
+		 *  (3) guest DTrace applies relocations to the program
+		 *  (4) guest dtdaemon sends it back to host dtdaemon
+		 *  (5) dtdaemon writes out the ELF file to this DTrace
+		 *      instance for further processing.
+		 */
+		dtdaemon_sock = socket(PF_UNIX, SOCK_STREAM, 0);
+		if (dtdaemon_sock == -1)
+			dfatal("failed to open dtdaemon socket");
+
+		memset(&addr, 0, sizeof(addr));
+		addr.sun_family = PF_UNIX;
+		l = strlcpy(addr.sun_path, DTDAEMON_SOCKPATH, sizeof(addr.sun_path));
+		if (l >= sizeof(addr.sun_path))
+			dfatal("failed to copy %s into sun_path", DTDAEMON_SOCKPATH);
+
+		if (connect(dtdaemon_sock, (struct sockaddr *)&addr, sizeof(addr)) == -1)
+			dfatal("failed to connect to %s", DTDAEMON_SOCKPATH);
+
+		kind = 0;
+		if (recv(dtdaemon_sock, &kind, sizeof(kind), 0) < 0)
+			dfatal("failed to read from dtdaemon_sock");
+
+		if (kind != DTDAEMON_KIND_DTDAEMON) {
+			close(dtdaemon_sock);
+			dfatal("expected dtdaemon kind, got %d\n", kind);
+		}
+
+		kind = DTDAEMON_KIND_CONSUMER;
+		if (send(dtdaemon_sock, &kind, sizeof(kind), 0) < 0)
+			dfatal("failed to read kind from %s",
+			    DTDAEMON_SOCKPATH);
+
+		dt_elf_create(dcp->dc_prog, ELFDATA2LSB, elfpath);
+		
+		donepathlen = strlen(elfpath) - 1;
+		memset(donepath, 0, donepathlen);
+		memcpy(donepath, elfpath, dirlen);
+		memcpy(donepath + dirlen, elfpath + dirlen + 1,
+		    donepathlen - dirlen);
+
+		if (rename(elfpath, donepath))
+			dfatal("failed to move %s to %s",
+			    elfpath, donepath);
+
+		/*
+		 * Now that we have created an ELF file, we wait for dtdaemon
+		 * to give us the new ELF file that contains all the applied
+		 * relocations. We will then verify that the relocations that
+		 * were applied are sensible, get the identifier of which VM
+		 * it actually is and fill in the necessary filters.
+		 */
+		if (recv(dtdaemon_sock, &elflen, sizeof(elflen), 0) < 0)
+			dfatal("failed to read elf length");
+
+		if (elflen <= 0)
+			dfatal("elflen is <= 0");
+
+		elf = malloc(elflen);
+		memset(elf, 0, elflen);
+
+		if (recv(dtdaemon_sock, elf, elflen, 0) < 0)
+			dfatal("failed to read elf file");
+
+		fd = mkstemp(template);
+		if (fd == -1)
+			dfatal("failed to create a temporary file");
+
+		if (write(fd, elf, elflen) < 0)
+			dfatal("failed to write to a temporary file");
+
+		newprog = dt_elf_to_prog(g_dtp, fd);
+		if (newprog == NULL)
+			dfatal("failed to parse elf file");
+
+		/*
+		 * XXX: For now we just dump actions instead of actually doing
+		 *      anything with them.
+		 */
+		dtrace_dump_actions(newprog);
+		dtrace_close(g_dtp);
+		exit(0);
+		/*
+		 * At this point we have processed the program as much as we
+		 * could. We now go over the DIFOs and simply add a new DIFO
+		 * for each modified probe in the new program.
+		 */
 	} else if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) == 0) {
 		(void) dtrace_dump_actions(dcp->dc_prog);
 		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
@@ -959,7 +1079,12 @@ static void
 link_elf_noexec(dtrace_cmd_t *dcp)
 {
 	char elfdir[MAXPATHLEN] = "/var/ddtrace/outbound/";
+	char donepath[MAXPATHLEN] = { 0 };
+	size_t donepathlen;
+	size_t dirlen;
 	char *elfpath;
+
+	dirlen = strlen(elfdir);
 
 	link_elf(dcp);
 
@@ -968,6 +1093,17 @@ link_elf_noexec(dtrace_cmd_t *dcp)
 
 	elfpath = gen_filename(elfdir);
 	dt_elf_create(dcp->dc_prog, ELFDATA2LSB, elfpath);
+
+	donepathlen = strlen(elfpath) - 1;
+	memset(donepath, 0, donepathlen);
+	memcpy(donepath, elfpath, dirlen);
+	memcpy(donepath + dirlen, elfpath + dirlen + 1,
+	    donepathlen - dirlen);
+
+	if (rename(elfpath, donepath))
+		dfatal("failed to move %s to %s",
+		    elfpath, donepath);
+
 	free(elfpath);
 
 	dtrace_close(g_dtp);
@@ -1593,7 +1729,6 @@ main(int argc, char *argv[])
 
 			case 'E':
 				g_elf = 1;
-				g_exec = 0; /* For now... */
 				done = 1;
 				break;
 

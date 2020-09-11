@@ -36,6 +36,7 @@
 #include <dt_elf.h>
 #include <dt_resolver.h>
 
+#include "dtdaemon.h"
 #include <stdlib.h>
 #include <syslog.h>
 #include <stdarg.h>
@@ -64,7 +65,6 @@
 #include <spawn.h>
 #include <dt_prog_link.h>
 
-#define	SOCKFD_PATH	"/var/ddtrace/sub.sock"
 #define	SOCKFD_NAME	"sub.sock"
 #define	THREADPOOL_SIZE	4
 
@@ -166,18 +166,12 @@ struct dtd_state {
 
 	/*
 	 * Sockets.
-	 *
-	 * Concurrency behaviour: Accessed by both the main loop and the socket
-	 *                        control thread. Locked in both when traversed.
 	 */
 	pthread_mutex_t	socklistmtx;
 	dt_list_t	sockfds;
 
 	/*
 	 * Configuration socket.
-	 *
-	 * Concurrency behaviour: Accessed by the shutdown code and the socket
-	 *                        control thread. Needs to be locked in both.
 	 */
 	pthread_mutex_t	sockmtx;
 	pthread_t	socktd;
@@ -193,12 +187,6 @@ struct dtd_state {
 
 	/*
 	 * Thread pool management.
-	 *
-	 * Concurrency behaviour: The threads are created at startup time and
-	 *                        torn down at shutdown of the daemon. However,
-	 *                        the list of jobs is accessed from the socket
-	 *                        control thread and each of the threads in the
-	 *                        worker pool.
 	 */
 	pthread_t	*workers;
 	pthread_mutex_t	joblistcvmtx;
@@ -225,6 +213,7 @@ struct dtd_state {
 struct dtd_fdlist {
 	dt_list_t	list;
 	int		fd;
+	int		kind;
 };
 
 struct dtd_joblist {
@@ -239,6 +228,7 @@ struct dtd_joblist {
 			size_t		pathlen;
 			char		*path;
 			dtd_dir_t	*dir;
+			int		nosha;
 		} notify_elfwrite;
 	} j;
 };
@@ -248,12 +238,15 @@ struct dtd_joblist {
  */
 static struct dtd_state state;
 static int nosha = 0;
+static int g_ctrlmachine = -1;
 
 static const struct option long_opts[] = {
 	{"help",		no_argument,		NULL,		0},
 	{"exclude",		required_argument,	NULL,		'e'},
 	{"version",		no_argument,		NULL,		'v'},
 	{"no-checksum",		no_argument,		&nosha,		1},
+	{"ctrl-machine",	no_argument,		&g_ctrlmachine,	1},
+	{"not-ctrl-machine",	no_argument,		&g_ctrlmachine,	0},
 	{0,			0,			0,		0}
 };
 
@@ -294,7 +287,8 @@ gen_filename(const char *dir)
 	assert(len > 10);
 
 	filename = malloc(len);
-	get_randname(filename, len - 1);
+	filename[0] = '.';
+	get_randname(filename + 1, len - 2);
 	filename[len - 1] = '\0';
 
 	elfpath = malloc(MAXPATHLEN);
@@ -302,7 +296,8 @@ gen_filename(const char *dir)
 	strcpy(elfpath + strlen(dir), filename);
 
 	while (access(elfpath, F_OK) != -1) {
-		get_randname(filename, len - 1);
+		filename[0] = '.';
+		get_randname(filename + 1, len - 2);
 		filename[len - 1] = '\0';
 		strcpy(elfpath + strlen(dir), filename);
 	}
@@ -323,12 +318,21 @@ listen_dttransport(void *_s)
 	int fd;
 	struct dtd_state *s = (struct dtd_state *)_s;
 	dtt_entry_t e;
-	char *path;
+	char *path = NULL;
+	char *elf = NULL;
+	size_t len, offs;
+	char donepath[MAXPATHLEN] = { 0 };
+	uintptr_t aux1, aux2;
+	size_t dirlen;
+	size_t donepathlen;
 
 	err = 0;
 	fd = 0;
+	offs = len = 0;
 	
 	memset(&e, 0, sizeof(e));
+
+	dirlen = strlen(s->inbounddir->dirpath);
 
 	while (s->shutdown == 0) {
 		if (read(s->dtt_fd, &e, sizeof(e)) < 0) {
@@ -351,27 +355,50 @@ listen_dttransport(void *_s)
 		if (fd == 0) {
 			LOCK(&s->inbounddir->dirmtx);
 			path = gen_filename(s->inbounddir->dirpath);
-			fd = openat(s->inbounddir->dirfd, path,
-			    O_WRONLY | O_CREAT, 0600);
+			fd = open(path, O_CREAT | O_WRONLY, 0600);
+			UNLOCK(&s->inbounddir->dirmtx);
+
 			if (fd == -1) {
 				syslog(LOG_ERR, "Failed to open %s%s: %m",
 				    s->inbounddir->dirpath, path);
-				UNLOCK(&s->inbounddir->dirmtx);
 				continue;
 			}
-			UNLOCK(&s->inbounddir->dirmtx);
+
+			elf = malloc(e.totallen);
+			memset(elf, 0, e.totallen);
+			len = e.totallen;
 		}
 
-		if (write(fd, e.data, e.len) < 0) {
-			if (errno == EINTR && s->shutdown == 1)
-				return (s);
-
-			syslog(LOG_ERR, "Failed to write data to %s: %m", path);
-		}
+		assert(offs < len);
+		memcpy(elf + offs, e.data, e.len);
+		offs += e.len;
 
 		if (e.hasmore == 0) {
+			if (write(fd, elf, len) < 0) {
+				if (errno == EINTR && s->shutdown == 1)
+					return (s);
+
+				syslog(LOG_ERR,
+				    "Failed to write data to %s: %m", path);
+			}
+
+ 			donepathlen = strlen(path) - 1;
+			memset(donepath, 0, donepathlen);
+			memcpy(donepath, path, dirlen);
+			memcpy(donepath + dirlen, path + dirlen + 1,
+			    donepathlen - dirlen);
+
+			if (rename(path, donepath)) {
+				syslog(LOG_ERR, "Failed to move %s to %s: %m",
+				    path, donepath);
+			}
+
+			len = 0;
+			offs = 0;
+			free(elf);
 			close(fd);
 			free(path);
+			donepathlen = 0;
 			fd = 0;
 			path = NULL;
 		}
@@ -387,12 +414,14 @@ write_dttransport(void *_s)
 	int sockfd;
 	struct dtd_state *s = (struct dtd_state *)_s;
 	dtt_entry_t e;
-	size_t l, lentoread, len;
+	size_t l, lentoread, len, totallen;
 	struct sockaddr_un addr;
+	int kind;
 
 	rval = 0;
 	sockfd = 0;
-	l = lentoread = len = 0;
+	l = lentoread = len = totallen = 0;
+	kind = 0;
 
 	sockfd = socket(PF_UNIX, SOCK_STREAM, 0);
 	if (sockfd == -1) {
@@ -403,7 +432,7 @@ write_dttransport(void *_s)
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = PF_UNIX;
 
-	l = strlcpy(addr.sun_path, "/var/ddtrace/sub.sock", sizeof(addr.sun_path));
+	l = strlcpy(addr.sun_path, DTDAEMON_SOCKPATH, sizeof(addr.sun_path));
 	if (l >= sizeof(addr.sun_path)) {
 		syslog(LOG_ERR, "Failed setting addr.sun_path"
 		    " to /var/ddtrace/sub.sock");
@@ -419,6 +448,24 @@ write_dttransport(void *_s)
 		return (NULL);
 	}
 
+	if (recv(sockfd, &kind, sizeof(kind), 0) < 0) {
+		fprintf(stderr, "Failed to read from sockfd: %m");
+		pthread_exit(NULL);
+	}
+
+	if (kind != DTDAEMON_KIND_DTDAEMON) {
+		syslog(LOG_ERR, "Expected dtdaemon kind, got %d\n", kind);
+		close(sockfd);
+		pthread_exit(NULL);
+	}
+
+	kind = DTDAEMON_KIND_FORWARDER;
+	if (send(sockfd, &kind, sizeof(kind), 0) < 0) {
+		syslog(LOG_ERR, "Failed to write %d to sockfd: %m",
+		    kind);
+		pthread_exit(NULL);
+	}
+
 	while (s->shutdown == 0) {
 		if ((rval = recv(sockfd, &len, sizeof(size_t), 0)) < 0) {
 			if (errno == EINTR && s->shutdown == 1)
@@ -427,6 +474,8 @@ write_dttransport(void *_s)
 			syslog(LOG_ERR, "Failed to recv from sub.sock: %m");
 			continue;
 		}
+
+		totallen = len;
 
 		while (len != 0) {
 			memset(&e, 0, sizeof(e));
@@ -447,6 +496,7 @@ write_dttransport(void *_s)
 
 			e.hasmore = len > DTT_MAXDATALEN ? 1 : 0;
 			e.len = lentoread;
+			e.totallen = totallen;
 
 			if (write(s->dtt_fd, &e, sizeof(e)) < 0) {
 				if (errno == EINTR && s->shutdown == 1)
@@ -461,7 +511,6 @@ write_dttransport(void *_s)
 	}
 
 	return (s);
-
 }
 
 static void *
@@ -514,6 +563,7 @@ static void *
 process_joblist(void *_s)
 {
 	int err;
+	int _nosha;
 	int fd;
 	int elffd;
 	int i;
@@ -528,6 +578,7 @@ process_joblist(void *_s)
 	dtd_dir_t *dir;
 	struct stat stat;
 
+	_nosha = s->nosha;
 	dir = NULL;
 	memset(&stat, 0, sizeof(stat));
 
@@ -560,6 +611,7 @@ process_joblist(void *_s)
 			path = curjob->j.notify_elfwrite.path;
 			pathlen = curjob->j.notify_elfwrite.pathlen;
 			dir = curjob->j.notify_elfwrite.dir;
+			_nosha = curjob->j.notify_elfwrite.nosha;
 
 			/*
 			 * Sanity assertions.
@@ -585,7 +637,7 @@ process_joblist(void *_s)
 			}
 
 			elflen = stat.st_size;
-			msglen = s->nosha ? elflen : elflen + SHA256_DIGEST_LENGTH;
+			msglen = _nosha ? elflen : elflen + SHA256_DIGEST_LENGTH;
 			msg = malloc(msglen);
 
 			if (msg == NULL) {
@@ -596,7 +648,7 @@ process_joblist(void *_s)
 			}
 
 			memset(msg, 0, msglen);
-			contents = s->nosha ? msg : msg + SHA256_DIGEST_LENGTH;
+			contents = _nosha ? msg : msg + SHA256_DIGEST_LENGTH;
 			
 			if (read(elffd, contents, elflen) < 0) {
 				syslog(LOG_ERR, "Failed to read ELF contents: %m");
@@ -606,7 +658,7 @@ process_joblist(void *_s)
 				break;
 			}
 
-			if (s->nosha == 0 &&
+			if (_nosha == 0 &&
 			    SHA256(contents, elflen, msg) == NULL) {
 				syslog(LOG_ERR, "Failed to create a SHA256 of the file");
 				free(path);
@@ -688,9 +740,12 @@ static void *
 accept_subs(void *_s)
 {
 	int err;
+	int kind;
 	int connsockfd;
 	struct dtd_fdlist *fde;
 	struct dtd_state *s = (struct dtd_state *)_s;
+
+	kind = 0;
 
 	/*
 	 * Sanity checks on the state.
@@ -728,6 +783,21 @@ accept_subs(void *_s)
 			pthread_exit(NULL);
 		}
 
+		kind = DTDAEMON_KIND_DTDAEMON;
+		if (send(connsockfd, &kind, sizeof(kind), 0) < 0) {
+			fprintf(stderr, "Failed to send %zu to connsockfd: %s",
+			    kind, strerror(errno));
+			pthread_exit(NULL);
+		}
+
+		kind = 0;
+		if (recv(connsockfd, &kind, sizeof(kind), 0) < 0) {
+			free(fde);
+			syslog(LOG_ERR, "Failed to read what kind of subscriber"
+			    " is being accepted: %m");
+			pthread_exit(NULL);
+		}
+
 		fde = malloc(sizeof(struct dtd_fdlist));
 		if (fde == NULL) {
 			syslog(LOG_ERR, "Failed to malloc a fdlist entry");
@@ -736,6 +806,7 @@ accept_subs(void *_s)
 		
 		memset(fde, 0, sizeof(struct dtd_fdlist));
 		fde->fd = connsockfd;
+		fde->kind = kind;
 
 		LOCK(&s->socklistmtx);
 		dt_list_append(&s->sockfds, fde);
@@ -762,10 +833,11 @@ setup_sockfd(struct dtd_state *s)
 	memset(&addr, 0, sizeof(addr));
 
 	addr.sun_family = PF_UNIX;
-	l = strlcpy(addr.sun_path, SOCKFD_PATH, sizeof(addr.sun_path));
+	l = strlcpy(addr.sun_path, DTDAEMON_SOCKPATH, sizeof(addr.sun_path));
 	if (l >= sizeof(addr.sun_path)) {
 		syslog(LOG_ERR,
-		    "Failed to copy %s into sockaddr (%zu)", SOCKFD_PATH, l);
+		    "Failed to copy %s into sockaddr (%zu)",
+		    DTDAEMON_SOCKPATH, l);
 		s->sockfd = -1;
 		err = pthread_mutex_destroy(&s->sockmtx);
 		if (err != 0)
@@ -805,8 +877,8 @@ destroy_sockfd(struct dtd_state *s)
 
 	s->sockfd = -1;
 
-	if (unlink(SOCKFD_PATH) != 0)
-		syslog(LOG_ERR, "Failed to unlink %s: %m", SOCKFD_PATH);
+	if (unlink(DTDAEMON_SOCKPATH) != 0)
+		syslog(LOG_ERR, "Failed to unlink %s: %m", DTDAEMON_SOCKPATH);
 
 	return (0);
 }
@@ -937,7 +1009,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	pid_t pid, parent;
 	char fullpath[MAXPATHLEN] = { 0 };
 	int status;
-	size_t l, dirpathlen;
+	size_t l, dirpathlen, filepathlen;
 	char *argv[4] = { 0 };
 
 	status = 0;
@@ -961,10 +1033,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	if (strcmp(f->d_name, SOCKFD_NAME) == 0)
 		return (0);
 
-	if (strcmp(f->d_name, ".") == 0)
-		return (0);
-
-	if (strcmp(f->d_name, "..") == 0)
+	if (f->d_name[0] == '.')
 		return (0);
 
 	idx = findpath(f->d_name, dir, &st);
@@ -993,22 +1062,68 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		    f->d_name);
 		return (-1);
 	}
+	filepathlen = strlen(fullpath);
 
-	parent = getpid();
-	pid = fork();
+	assert(g_ctrlmachine == 1 || g_ctrlmachine == 0);
+	if (g_ctrlmachine == 1) {
+		/*
+		 * If we have a host configuration of dtdaemon
+		 * we simply send off the ELF file to dtrace(1).
+		 *
+		 * We iterate over all our known dtrace(1)s that have
+		 * registered with dtdaemon and send off the file path
+		 * to them. They will parse said file path (we assume
+		 * they won't be writing over it since this requires root
+		 * anyway) and decide if the file is meant for them to
+		 * process. There may be more dtrace(1) instances that
+		 * want to process the same file in the future.
+		 */
+		LOCK(&s->socklistmtx);
+		for (fd_list = dt_list_next(&s->sockfds);
+		    fd_list; fd_list = dt_list_next(fd_list)) {
+			if (fd_list->kind != DTDAEMON_KIND_CONSUMER)
+				continue;
+			
+			job = malloc(sizeof(struct dtd_joblist));
+			if (job == NULL) {
+				syslog(LOG_ERR, "Failed to malloc a new job");
+				return (-1);
+			}
+			
+			memset(job, 0, sizeof(struct dtd_joblist));
+			job->job = NOTIFY_ELFWRITE;
+			job->j.notify_elfwrite.connsockfd = fd_list->fd;
+			job->j.notify_elfwrite.path = strdup(f->d_name);
+			job->j.notify_elfwrite.pathlen = strlen(f->d_name);
+			job->j.notify_elfwrite.dir = dir;
+			job->j.notify_elfwrite.nosha = 1;
 
-	if (pid == -1) {
-		syslog(LOG_ERR, "Failed to fork: %m");
-		return (-1);
-	} else if (pid > 0)
-		waitpid(pid, &status, 0);
-	else {
-		argv[0] = strdup("/usr/sbin/dtrace");
-		argv[1] = strdup("-Y");
-		argv[2] = strdup(fullpath);
-		argv[3] = NULL;
-		execve("/usr/sbin/dtrace", argv, NULL);
-		exit(EXIT_FAILURE);
+			LOCK(&s->joblistmtx);
+			dt_list_append(&s->joblist, job);
+			UNLOCK(&s->joblistmtx);
+
+			LOCK(&s->joblistcvmtx);
+			SIGNAL(&s->joblistcv);
+			UNLOCK(&s->joblistcvmtx);
+		}
+		UNLOCK(&s->socklistmtx);
+	} else {
+		parent = getpid();
+		pid = fork();
+
+		if (pid == -1) {
+			syslog(LOG_ERR, "Failed to fork: %m");
+			return (-1);
+		} else if (pid > 0)
+			waitpid(pid, &status, 0);
+		else {
+			argv[0] = strdup("/usr/sbin/dtrace");
+			argv[1] = strdup("-Y");
+			argv[2] = strdup(fullpath);
+			argv[3] = NULL;
+			execve("/usr/sbin/dtrace", argv, NULL);
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	if (idx == -1) {
@@ -1060,10 +1175,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	if (strcmp(f->d_name, SOCKFD_NAME) == 0)
 		return (0);
 
-	if (strcmp(f->d_name, ".") == 0)
-		return (0);
-
-	if (strcmp(f->d_name, "..") == 0)
+	if (f->d_name[0] == '.')
 		return (0);
 
 	/*
@@ -1086,6 +1198,9 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	LOCK(&s->socklistmtx);
 	for (fd_list = dt_list_next(&s->sockfds);
 	    fd_list; fd_list = dt_list_next(fd_list)) {
+		if (fd_list->kind != DTDAEMON_KIND_FORWARDER)
+			continue;
+		
 		job = malloc(sizeof(struct dtd_joblist));
 		if (job == NULL) {
 			syslog(LOG_ERR, "Failed to malloc a new job");
@@ -1098,6 +1213,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		job->j.notify_elfwrite.path = strdup(f->d_name);
 		job->j.notify_elfwrite.pathlen = strlen(f->d_name);
 		job->j.notify_elfwrite.dir = dir;
+		job->j.notify_elfwrite.nosha = s->nosha;
 
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);
@@ -1152,9 +1268,7 @@ populate_existing(struct dirent *f, dtd_dir_t *dir)
 	if (strcmp(f->d_name, SOCKFD_NAME) == 0)
 		return (0);
 	
-	if (strcmp(f->d_name, ".") == 0)
-		return (0);
-	if (strcmp(f->d_name, "..") == 0)
+	if (f->d_name[0] == '.')
 		return (0);
 
 	err = expand_paths(dir);
@@ -1453,7 +1567,7 @@ main(int argc, char **argv)
 
 	retry = 0;
 
-	while ((ch = getopt_long(argc, argv, "a::e:hvZ", long_opts, &optidx)) != -1) {
+	while ((ch = getopt_long(argc, argv, "Ca:ce:hvZ", long_opts, &optidx)) != -1) {
 		switch (ch) {
 		case 'h':
 			print_help();
@@ -1471,6 +1585,15 @@ main(int argc, char **argv)
 			 * if it should be ignored.
 			 */
 			break;
+
+		case 'C':
+			g_ctrlmachine = 1;
+			break;
+
+		case 'c':
+			g_ctrlmachine = 0;
+			break;
+
 		case 'Z':
 			nosha = 1;
 			break;
@@ -1479,6 +1602,9 @@ main(int argc, char **argv)
 			break;
 		}
 	}
+
+	if (g_ctrlmachine != 0 && g_ctrlmachine != 1)
+		errx(EXIT_FAILURE, "You must either specify -c or -C");
 #if 0
 	if (daemon(0, 0) != 0) {
 		syslog(LOG_ERR, "Failed to daemonize %m");

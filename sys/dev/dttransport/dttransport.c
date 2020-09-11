@@ -284,7 +284,8 @@ dtt_write(struct cdev *dev, struct uio *uio, int flags)
 	if (err)
 		return (err);
 
-	err = virtio_dtrace_enqueue(entry.data, entry.len, entry.hasmore);
+	err = virtio_dtrace_enqueue(entry.data, entry.len,
+	    entry.totallen, entry.hasmore);
 	if (err)
 		return (err);
 

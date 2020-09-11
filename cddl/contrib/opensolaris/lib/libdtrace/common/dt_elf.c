@@ -2077,6 +2077,8 @@ dt_elf_verify_file(char checksum[SHA256_DIGEST_LENGTH], int fd)
 	 * contents that we will run through libelf.
 	 */
 	elf_fd = mkstemp(template);
+	if (elf_fd == -1)
+		errx(EXIT_FAILURE, "Failed to create a temporary file");
 
 	if (write(elf_fd, buf, st.st_size - SHA256_DIGEST_LENGTH) < 0)
 		errx(EXIT_FAILURE, "Failed to write ELF contents into tmp");
