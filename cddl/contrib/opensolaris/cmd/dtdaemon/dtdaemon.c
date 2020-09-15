@@ -339,7 +339,7 @@ listen_dttransport(void *_s)
 	while (s->shutdown == 0) {
 		if (read(s->dtt_fd, &e, sizeof(e)) < 0) {
 			if (errno == EINTR && s->shutdown == 1)
-				return (s);
+				pthread_exit(s);
 
 			syslog(LOG_ERR, "Failed to read an entry: %m");
 			continue;
@@ -378,7 +378,7 @@ listen_dttransport(void *_s)
 		if (e.hasmore == 0) {
 			if (write(fd, elf, len) < 0) {
 				if (errno == EINTR && s->shutdown == 1)
-					return (s);
+					pthread_exit(s);
 
 				syslog(LOG_ERR,
 				    "Failed to write data to %s: %m", path);
@@ -406,7 +406,7 @@ listen_dttransport(void *_s)
 		}
 	}
 
-	return (s);
+	pthread_exit(s);
 }
 
 static void *
@@ -428,7 +428,7 @@ write_dttransport(void *_s)
 	sockfd = socket(PF_UNIX, SOCK_STREAM, 0);
 	if (sockfd == -1) {
 		syslog(LOG_ERR, "Failed creating a socket: %m");
-		return (NULL);
+		pthread_exit(NULL);
 	}
 
 	memset(&addr, 0, sizeof(addr));
@@ -439,7 +439,7 @@ write_dttransport(void *_s)
 		syslog(LOG_ERR, "Failed setting addr.sun_path"
 		    " to /var/ddtrace/sub.sock");
 		sockfd = -1;
-		return (NULL);
+		pthread_exit(NULL);
 	}
 
 	SWAIT(&s->socksema);
@@ -447,7 +447,7 @@ write_dttransport(void *_s)
 	if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
 		syslog(LOG_ERR, "connect to /var/ddtrace/sub.sock failed: %m");
 		sockfd = -1;
-		return (NULL);
+		pthread_exit(NULL);
 	}
 
 	if (recv(sockfd, &kind, sizeof(kind), 0) < 0) {
@@ -471,7 +471,7 @@ write_dttransport(void *_s)
 	while (s->shutdown == 0) {
 		if ((rval = recv(sockfd, &len, sizeof(size_t), 0)) < 0) {
 			if (errno == EINTR && s->shutdown == 1)
-				return (s);
+				pthread_exit(s);
 			
 			syslog(LOG_ERR, "Failed to recv from sub.sock: %m");
 			continue;
@@ -485,7 +485,7 @@ write_dttransport(void *_s)
 
 			if ((rval = recv(sockfd, e.data, lentoread, 0)) < 0) {
 				if (errno == EINTR && s->shutdown == 1)
-					return (s);
+					pthread_exit(s);
 				/*
 				 * If the device is not configured, we don't
 				 * actually care to report an error here.
@@ -502,17 +502,21 @@ write_dttransport(void *_s)
 
 			if (write(s->dtt_fd, &e, sizeof(e)) < 0) {
 				if (errno == EINTR && s->shutdown == 1)
-					return (s);
-				
-				syslog(LOG_ERR, "Error writing to dttransport: %m");
-				return (NULL);
+					pthread_exit(s);
+
+				/*
+				 * If we don't have dttransport opened,
+				 * we just move on. It might get opened
+				 * at some point.
+				 */
+				continue;
 			}
 
 			len -= lentoread;
 		}
 	}
 
-	return (s);
+	pthread_exit(s);
 }
 
 static void *
@@ -1573,6 +1577,11 @@ againefd:
 		return (EX_OSERR);
 	}
 
+	if (signal(SIGINT, sig_hdlr) == SIG_ERR) {
+		syslog(LOG_ERR, "Failed to install SIGINT handler");
+		return (EX_OSERR);
+	}
+
 	if (signal(SIGPIPE, sig_hdlr) == SIG_ERR) {
 		syslog(LOG_ERR, "Failed to install SIGPIPE handler");
 		return (EX_OSERR);
@@ -1671,13 +1680,13 @@ cleanup:
 	}
 
 	errval = pthread_kill(state.dtt_writetd, SIGTERM);
-	if (errval != 0) {
+	if (errval != 0 && errval != ESRCH) {
 		syslog(LOG_ERR, "Failed to interrupt dtt_writetd: %m");
 		return (EX_OSERR);
 	}
 
 	errval = pthread_join(state.dtt_writetd, (void **)&retval);
-	if (errval != 0) {
+	if (errval != 0 && errval != ESRCH) {
 		syslog(LOG_ERR, "Failed to join dtt_writetd: %m");
 		return (EX_OSERR);
 	}
