@@ -65,6 +65,7 @@
 #include <spawn.h>
 #include <dt_prog_link.h>
 
+#define	LOCK_FILE	"/var/dtdaemon.lock"
 #define	SOCKFD_NAME	"sub.sock"
 #define	THREADPOOL_SIZE	4
 
@@ -139,7 +140,6 @@ typedef struct dtd_dir {
 	DIR			*dir;
 
 	char			**existing_files;
-	time_t			*efile_ctimes;
 	size_t			efile_size;
 	size_t			efile_len;
 
@@ -208,6 +208,8 @@ struct dtd_state {
 	 * In case we don't want checksumming.
 	 */
 	int		nosha;
+
+	int		lockfd;
 };
 
 struct dtd_fdlist {
@@ -884,52 +886,22 @@ destroy_sockfd(struct dtd_state *s)
 }
 
 static int
-findpath(const char *p, dtd_dir_t *dir, struct stat *st)
+findpath(const char *p, dtd_dir_t *dir)
 {
 	int i;
 	
 	for (i = 0; i < dir->efile_len; i++) {
-		if (strcmp(p, dir->existing_files[i]) == 0) {
-			if (fstatat(dir->dirfd, p,
-			    st, AT_SYMLINK_NOFOLLOW) != 0) {
-				syslog(LOG_ERR, "Failed to stat %s: %m", p);
-				/*
-				 * Return -2 to indicate a failed syscall
-				 */
-				return (-2);
-			}
-
+		if (strcmp(p, dir->existing_files[i]) == 0)
 			return (i);
-		}
 	}
 
 	return (-1);
 }
 
 static int
-waschanged(struct stat *st, int idx, dtd_dir_t *dir)
-{
-	if (idx < 0)
-		return (1);
-
-	/*
-	 * It would be nonesense if it was changed earlier than what
-	 * we've seen it change.
-	 */
-	assert(dir->efile_ctimes[idx] <= st->st_ctime);
-
-	if (dir->efile_ctimes[idx] < st->st_ctime)
-		return (1);
-
-	assert(dir->efile_ctimes[idx] == st->st_ctime);
-	return (0);
-}
-
-static int
 expand_paths(dtd_dir_t *dir)
 {
 	char **newpaths;
-	time_t *newctimes;
 	struct dtd_state *s;
 
 	if (dir == NULL) {
@@ -974,24 +946,7 @@ expand_paths(dtd_dir_t *dir)
 			free(dir->existing_files);
 		}
 
-		newctimes = malloc(dir->efile_size * sizeof(time_t));
-		if (newctimes == NULL) {
-			syslog(LOG_ERR, "Failed to malloc newctimes");
-			return (-1);
-		}
-
-		memset(newctimes, 0, dir->efile_size * sizeof(time_t));
-		if (dir->efile_ctimes) {
-			memcpy(newctimes, dir->efile_ctimes,
-			    dir->efile_len * sizeof(time_t));
-			free(dir->efile_ctimes);
-		}
-
-		/*
-		 * Assign the paths and ctimes
-		 */
 		dir->existing_files = newpaths;
-		dir->efile_ctimes = newctimes;
 	}
 
 	return (0);
@@ -1003,9 +958,8 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	int err;
 	struct dtd_fdlist *fd_list;
 	struct dtd_joblist *job;
-	struct stat st;
 	struct dtd_state *s;
-	int idx, ch;
+	int idx;
 	pid_t pid, parent;
 	char fullpath[MAXPATHLEN] = { 0 };
 	int status;
@@ -1036,16 +990,10 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	if (f->d_name[0] == '.')
 		return (0);
 
-	idx = findpath(f->d_name, dir, &st);
-	ch = waschanged(&st, idx, dir);
+	idx = findpath(f->d_name, dir);
 
-	if (idx >= 0 && ch == 0)
+	if (idx >= 0)
 		return (0);
-
-	if (idx == -2) {
-		syslog(LOG_ERR, "Failed to process new entry: %m");
-		return (-1);
-	}
 
 	l = strlcpy(fullpath, dir->dirpath, sizeof(fullpath));
 	if (l >= sizeof(fullpath)) {
@@ -1126,21 +1074,15 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		}
 	}
 
-	if (idx == -1) {
-		err = expand_paths(s->inbounddir);
-		if (err != 0) {
-			syslog(LOG_ERR, "Failed to expand paths after processing %s",
-			    f->d_name);
-			return (-1);
-		}
-
-		assert(dir->efile_size > dir->efile_len);
-		dir->efile_ctimes[dir->efile_len] = st.st_ctime;
-		dir->existing_files[dir->efile_len++] = strdup(f->d_name);
-	} else {
-		assert(ch != 0);
-		dir->efile_ctimes[idx] = st.st_ctime;
+	err = expand_paths(dir);
+	if (err != 0) {
+		syslog(LOG_ERR, "Failed to expand paths after processing %s",
+		    f->d_name);
+		return (-1);
 	}
+
+	assert(dir->efile_size > dir->efile_len);
+	dir->existing_files[dir->efile_len++] = strdup(f->d_name);
 
 	return (0);
 }
@@ -1151,7 +1093,6 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	int err;
 	struct dtd_fdlist *fd_list;
 	struct dtd_joblist *job;
-	struct stat st;
 	struct dtd_state *s;
 	int idx, ch;
 
@@ -1178,22 +1119,10 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	if (f->d_name[0] == '.')
 		return (0);
 
-	/*
-	 * Get the index (if exists) of the path. We will use this to check
-	 * if the file has already been processed by comparing the last changed
-	 * time to the one we have stored. If our time is in the past, we need
-	 * to resend the file and update our state.
-	 */
-	idx = findpath(f->d_name, dir, &st);
-	ch = waschanged(&st, idx, dir);
+	idx = findpath(f->d_name, dir);
 
-	if (idx >= 0 && ch == 0)
+	if (idx >= 0)
 		return (0);
-
-	if (idx == -2) {
-		syslog(LOG_ERR, "Failed to process new entry: %m");
-		return (-1);
-	}
 
 	LOCK(&s->socklistmtx);
 	for (fd_list = dt_list_next(&s->sockfds);
@@ -1225,26 +1154,15 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	}
 	UNLOCK(&s->socklistmtx);
 
-	if (idx == -1) {
-		/*
-		 * We have now written this file out to every single process that
-		 * asked to get informed about it. We will now simply add it to
-		 * the path array.
-		 */
-		err = expand_paths(s->outbounddir);
-		if (err != 0) {
-			syslog(LOG_ERR, "Failed to expand paths after processing %s",
-			    f->d_name);
-			return (-1);
-		}
-
-		assert(dir->efile_size > dir->efile_len);
-		dir->efile_ctimes[dir->efile_len] = st.st_ctime;
-		dir->existing_files[dir->efile_len++] = strdup(f->d_name);
-	} else {
-		assert(ch != 0);
-		dir->efile_ctimes[idx] = st.st_ctime;
+	err = expand_paths(dir);
+	if (err != 0) {
+		syslog(LOG_ERR, "Failed to expand paths after processing %s",
+		    f->d_name);
+		return (-1);
 	}
+
+	assert(dir->efile_size > dir->efile_len);
+	dir->existing_files[dir->efile_len++] = strdup(f->d_name);
 
 	return (0);
 }
@@ -1253,7 +1171,6 @@ static int
 populate_existing(struct dirent *f, dtd_dir_t *dir)
 {
 	int err;
-	struct stat st;
 
 	if (dir == NULL) {
 		syslog(LOG_ERR, "dir is NULL\n");
@@ -1278,13 +1195,6 @@ populate_existing(struct dirent *f, dtd_dir_t *dir)
 	}
 
 	assert(dir->efile_size > dir->efile_len);
-
-	if (fstatat(dir->dirfd, f->d_name, &st, AT_SYMLINK_NOFOLLOW)) {
-		syslog(LOG_ERR, "Failed to fstatat %s: %m", f->d_name);
-		return (-1);
-	}
-
-	dir->efile_ctimes[dir->efile_len] = st.st_ctime;
 	dir->existing_files[dir->efile_len++] = strdup(f->d_name);
 
 	return (0);
@@ -1477,7 +1387,6 @@ dtd_closedir(dtd_dir_t *dir)
 		free(dir->existing_files[i]);
 
 	free(dir->existing_files);
-	free(dir->efile_ctimes);
 
 	err = pthread_mutex_destroy(&dir->dirmtx);
 	if (err != 0)
@@ -1557,15 +1466,19 @@ int
 main(int argc, char **argv)
 {
 	const char elfpath[MAXPATHLEN] = "/var/ddtrace";
-	int efd, err, rval, kq, retry;
+	int efd, errval, rval, kq, retry;
 	DIR *elfdir;
 	size_t i;
 	char ch;
+	char pidstr[256];
 	struct kevent ev, ev_data;
 	struct dtd_state *retval;
 	int optidx = 0;
+	int lockfd;
 
+	lockfd = 0;
 	retry = 0;
+	memset(pidstr, 0, sizeof(pidstr));
 
 	while ((ch = getopt_long(argc, argv, "Ca:ce:hvZ", long_opts, &optidx)) != -1) {
 		switch (ch) {
@@ -1603,6 +1516,21 @@ main(int argc, char **argv)
 		}
 	}
 
+	lockfd = open(LOCK_FILE, O_RDWR | O_CREAT, 0640);
+	if (lockfd == -1)
+		err(EXIT_FAILURE, "Could not open %s", LOCK_FILE);
+
+	if (lockf(lockfd, F_TLOCK, 0) < 0)
+		err(EXIT_FAILURE, "Could not lock %s", LOCK_FILE);
+
+	sprintf(pidstr, "%d\n", getpid());
+
+	if (write(lockfd, pidstr, strlen(pidstr)) < 0)
+		err(EXIT_FAILURE, "Failed to write pid to %s", LOCK_FILE);
+
+	state.lockfd = lockfd;
+	assert(state.lockfd != -1);
+
 	if (g_ctrlmachine != 0 && g_ctrlmachine != 1)
 		errx(EXIT_FAILURE, "You must either specify -c or -C");
 #if 0
@@ -1632,8 +1560,8 @@ againefd:
 	state.dirfd = efd;
 	elfdir = fdopendir(efd);
 
-	err = init_state(&state);
-	if (err != 0) {
+	errval = init_state(&state);
+	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to initialize the state");
 		return (EXIT_FAILURE);
 	}
@@ -1656,28 +1584,28 @@ againefd:
 		return (EX_OSERR);
 	}
 
-	err = setup_sockfd(&state);
-	if (err != 0) {
+	errval = setup_sockfd(&state);
+	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to set up the socket");
 		return (EX_OSERR);
 	}
 
-	err = file_foreach(state.outbounddir->dir,
+	errval = file_foreach(state.outbounddir->dir,
 	    populate_existing, state.outbounddir);
-	if (err != 0) {
+	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to populate outbound existing files");
 		return (EXIT_FAILURE);
 	}
 
-	err = file_foreach(state.inbounddir->dir,
+	errval = file_foreach(state.inbounddir->dir,
 	    populate_existing, state.inbounddir);
-	if (err != 0) {
+	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to populate inbound existing files");
 		return (EXIT_FAILURE);
 	}
 
-	err = setup_threads(&state);
-	if (err != 0) {
+	errval = setup_threads(&state);
+	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to set up threads");
 		return (EX_OSERR);
 	}
@@ -1708,9 +1636,9 @@ againefd:
 		}
 
 		if (rval > 0) {
-			err = file_foreach(state.outbounddir->dir,
+			errval = file_foreach(state.outbounddir->dir,
 			    process_outbound, state.outbounddir);
-			if (err) {
+			if (errval) {
 				syslog(LOG_ERR, "Failed to process new files");
 				return (EXIT_FAILURE);
 			}
@@ -1718,50 +1646,50 @@ againefd:
 	}
 
 cleanup:
-	err = pthread_kill(state.socktd, SIGTERM);
-	if (err != 0) {
+	errval = pthread_kill(state.socktd, SIGTERM);
+	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to interrupt socktd: %m");
 		return (EX_OSERR);
 	}
 
-	err = pthread_join(state.socktd, (void **)&retval);
-	if (err != 0) {
+	errval = pthread_join(state.socktd, (void **)&retval);
+	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to join socktd: %m");
 		return (EX_OSERR);
 	}
 
-	err = pthread_kill(state.dtt_listentd, SIGTERM);
-	if (err != 0) {
+	errval = pthread_kill(state.dtt_listentd, SIGTERM);
+	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to interrupt dtt_listentd: %m");
 		return (EX_OSERR);
 	}
 
-	err = pthread_join(state.dtt_listentd, (void **)&retval);
-	if (err != 0) {
+	errval = pthread_join(state.dtt_listentd, (void **)&retval);
+	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to join dtt_listentd: %m");
 		return (EX_OSERR);
 	}
 
-	err = pthread_kill(state.dtt_writetd, SIGTERM);
-	if (err != 0) {
+	errval = pthread_kill(state.dtt_writetd, SIGTERM);
+	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to interrupt dtt_writetd: %m");
 		return (EX_OSERR);
 	}
 
-	err = pthread_join(state.dtt_writetd, (void **)&retval);
-	if (err != 0) {
+	errval = pthread_join(state.dtt_writetd, (void **)&retval);
+	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to join dtt_writetd: %m");
 		return (EX_OSERR);
 	}
 
-	err = pthread_kill(state.inboundtd, SIGTERM);
-	if (err != 0) {
+	errval = pthread_kill(state.inboundtd, SIGTERM);
+	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to interrupt inboundtd: %m");
 		return (EX_OSERR);
 	}
 
-	err = pthread_join(state.inboundtd, (void **)&retval);
-	if (err != 0) {
+	errval = pthread_join(state.inboundtd, (void **)&retval);
+	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to join inboundtd: %m");
 		return (EX_OSERR);
 	}
@@ -1771,15 +1699,15 @@ cleanup:
 	UNLOCK(&state.joblistcvmtx);
 
 	for (i = 0; i < THREADPOOL_SIZE; i++) {
-		err = pthread_join(state.workers[i], (void **)&retval);
-		if (err != 0) {
+		errval = pthread_join(state.workers[i], (void **)&retval);
+		if (errval != 0) {
 			syslog(LOG_ERR, "Failed to join threads: %m");
 			return (EX_OSERR);
 		}
 	}
 
-	err = destroy_state(&state);
-	if (err != 0) {
+	errval = destroy_state(&state);
+	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to clean up state");
 		return (EXIT_FAILURE);
 	}
@@ -1787,5 +1715,6 @@ cleanup:
 	closedir(elfdir);
 	close(efd);
 
+	close(lockfd);
 	return (0);
 }

@@ -722,6 +722,7 @@ pci_vtdtr_events(void *xsc)
 	fd = 0;
 	st = NULL;
 	offs = 0;
+	len = 0;
 
 	for (;;) {
 		error = dthyve_read((void **)&buf, &len);
@@ -775,6 +776,9 @@ pci_vtdtr_events(void *xsc)
 		pthread_mutex_lock(&sc->vsd_condmtx);
 		pthread_cond_signal(&sc->vsd_cond);
 		pthread_mutex_unlock(&sc->vsd_condmtx);
+
+		offs = 0;
+		len = 0;
 	}
 }
 

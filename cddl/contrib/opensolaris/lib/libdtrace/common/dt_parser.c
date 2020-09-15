@@ -3298,6 +3298,13 @@ dt_cook_op2(dt_node_t *dnp, uint_t idflags)
 		}
 	}
 
+	/*
+	 * TODO:
+	 * In some cases, if we are creating an ELF file the check that
+	 * will be happening is nonsense, as said ELF file might be created
+	 * to use HyperTrace features and therefore needs to be typechecked
+	 * on another machine with potentially different types.
+	 */
 	switch (op) {
 	case DT_TOK_BAND:
 	case DT_TOK_XOR:
