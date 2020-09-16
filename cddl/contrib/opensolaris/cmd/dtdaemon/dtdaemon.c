@@ -529,7 +529,7 @@ listen_inbound(void *_s)
 
 	if ((kq = kqueue()) == -1) {
 		syslog(LOG_ERR, "Failed to create a kqueue %m");
-		return (NULL);
+		pthread_exit(NULL);
 	}
 
 	EV_SET(&ev, state.inbounddir->dirfd, EVFILT_VNODE, EV_ADD | EV_CLEAR,
@@ -541,7 +541,7 @@ listen_inbound(void *_s)
 
 		if (rval < 0) {
 			if (errno == EINTR && state.shutdown == 1)
-				return (_s);
+				pthread_exit(_s);
 
 			syslog(LOG_ERR, "kevent() failed with %m");
 			continue;
@@ -557,12 +557,12 @@ listen_inbound(void *_s)
 			    process_inbound, state.inbounddir);
 			if (err) {
 				syslog(LOG_ERR, "Failed to process new files");
-				return (NULL);
+				pthread_exit(NULL);
 			}
 		}
 	}
 
-	return (_s);
+	pthread_exit(_s);
 }
 
 static void *
