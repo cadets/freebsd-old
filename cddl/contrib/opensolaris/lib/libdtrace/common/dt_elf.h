@@ -189,7 +189,7 @@ extern dt_elf_opt_t dtelf_rtopts[];
 extern dt_elf_opt_t dtelf_drtopts[];
 
 extern void dt_elf_create(dtrace_prog_t *, int, const char *);
-extern dtrace_prog_t *dt_elf_to_prog(dtrace_hdl_t *, int);
+extern dtrace_prog_t *dt_elf_to_prog(dtrace_hdl_t *, int, int);
 extern void dtrace_use_elf(dtrace_hdl_t *);
 
 

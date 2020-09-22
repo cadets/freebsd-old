@@ -89,7 +89,12 @@
  *    In this state, the node is of type D string.  The string type is really
  *    a char[0] typedef, but requires special handling throughout the compiler.
  *
- * 4. dn_ctfp != NULL, dn_type = any other type ID
+ * 4. dn_ctfp != NULL, dn_type = DT_BOTTOM_TYPE
+ *    TODO:
+ *    In this state, the node is of a bottom type. This means that the node can
+ *    be used as a substitute for any type.
+ *
+ * 5. dn_ctfp != NULL, dn_type = any other type ID
  *
  *    In this state, the node is of some known D/CTF type.  The normal libctf
  *    APIs can be used to learn more about the type name or structure.  When
@@ -118,6 +123,7 @@
 #include <dt_provider.h>
 #include <dt_string.h>
 #include <dt_as.h>
+#include <dt_resolver.h>
 
 dt_pcb_t *yypcb;	/* current control block for parser */
 dt_node_t *yypragma;	/* lex token list for control lines */
@@ -535,6 +541,7 @@ dt_node_xalloc(dtrace_hdl_t *dtp, int kind)
 	dnp->dn_link = NULL;
 	dnp->dn_addr_type = 0;
 	bzero(&dnp->dn_u, sizeof (dnp->dn_u));
+	bzero(&dnp->dn_target, sizeof (dnp->dn_target));
 
 	return (dnp);
 }
@@ -968,6 +975,12 @@ dt_node_is_host(const dt_node_t *dnp)
 	return (dnp->dn_addr_type == DT_ADDR_HOST);
 }
 
+int
+dt_node_is_bottom(const dt_node_t *dnp)
+{
+	return (dnp->dn_ctfp != NULL &&
+	    dnp->dn_type == CTF_BOTTOM_TYPE);
+}
 
 int
 dt_node_is_string(const dt_node_t *dnp)

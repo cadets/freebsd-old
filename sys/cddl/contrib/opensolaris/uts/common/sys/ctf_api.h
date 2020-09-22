@@ -120,6 +120,12 @@ typedef struct ctf_lblinfo {
 #define	CTF_ERR	(-1L)
 
 /*
+ * The bottom type in CTF can construct any other CTF type on demand.
+ */
+#define	CTF_BOTTOM_TYPE	(-10L)
+
+
+/*
  * The CTF data model is inferred to be the caller's data model or the data
  * model of the given object, unless ctf_setmodel() is explicitly called.
  */

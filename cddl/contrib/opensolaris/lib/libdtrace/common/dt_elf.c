@@ -88,6 +88,7 @@ typedef struct dt_elf_state {
 	size_t			s_idname_size;
 	size_t			s_idname_offset;
 	uint32_t		s_rflags;
+	int			s_rslv;
 } dt_elf_state_t;
 
 char sec_strtab[] =
@@ -1426,6 +1427,7 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 
 	if (stp == NULL)
 		errx(EXIT_FAILURE, "DTrace program has no statements");
+	
 	stmt = stp->ds_desc;
 
 	/*
@@ -1812,7 +1814,8 @@ dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog,
 	 * Get the target name and check if we match it.
 	 */
 	target = stmt->dtsd_ecbdesc->dted_probe.dtpd_target;
-	if (dt_resolve(target, dtelf_state->s_rflags) != 0) {
+	if (dtelf_state->s_rslv &&
+	    dt_resolve(target, dtelf_state->s_rflags) != 0) {
 		/*
 		 * We won't be needing the ECB nor the statement.
 		 */
@@ -2087,7 +2090,7 @@ dt_elf_verify_file(char checksum[SHA256_DIGEST_LENGTH], int fd)
 }
 
 dtrace_prog_t *
-dt_elf_to_prog(dtrace_hdl_t *dtp, int fd)
+dt_elf_to_prog(dtrace_hdl_t *dtp, int fd, int rslv)
 {
 	Elf *e;
 	Elf_Scn *scn = NULL;
@@ -2111,6 +2114,8 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd)
 		errx(EXIT_FAILURE, "failed to malloc dtelf_state");
 
 	memset(dtelf_state, 0, sizeof(dt_elf_state_t));
+
+	dtelf_state->s_rslv = rslv;
 
 	if (read(fd, buf, 4) < 0)
 		errx(EXIT_FAILURE, "Failed reading from ELF file: %s",

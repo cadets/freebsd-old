@@ -850,7 +850,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if (write(fd, elf, elflen) < 0)
 			dfatal("failed to write to a temporary file");
 
-		newprog = dt_elf_to_prog(g_dtp, fd);
+		newprog = dt_elf_to_prog(g_dtp, fd, 0);
 		if (newprog == NULL)
 			dfatal("failed to parse elf file");
 
@@ -1066,7 +1066,7 @@ link_elf(dtrace_cmd_t *dcp)
 	if ((fd = open(dcp->dc_arg, O_RDONLY)) < 0)
 		fatal("failed to open %s with %s", dcp->dc_arg, strerror(errno));
 
-	if ((dcp->dc_prog = dt_elf_to_prog(g_dtp, fd)) == NULL)
+	if ((dcp->dc_prog = dt_elf_to_prog(g_dtp, fd, 1)) == NULL)
 		fatal("failed to parse the ELF file %s", dcp->dc_arg);
 
 	close(fd);
