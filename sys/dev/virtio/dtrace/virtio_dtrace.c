@@ -127,7 +127,6 @@ SYSCTL_U32(_dev_vtdtr, OID_AUTO, debug, CTLFLAG_RWTUN, &debug, 0,
 
 static int vstate = 0;
 
-
 static struct vtdtr_traceq *tq;
 struct timespec tv1;
 
@@ -761,12 +760,12 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	{
 	case VIRTIO_DTRACE_DEVICE_READY:
 		// if (debug)
-			// device_printf(dev, "VIRTIO_DTRACE_DEVICE_READY\n");
+		// device_printf(dev, "VIRTIO_DTRACE_DEVICE_READY\n");
 		sc->vtdtr_host_ready = 1;
 		break;
 	case VIRTIO_DTRACE_REGISTER:
 		// if (debug)
-			// device_printf(dev, "VIRTIO_DTRACE_REGISTER\n");
+		// device_printf(dev, "VIRTIO_DTRACE_REGISTER\n");
 		sc->vtdtr_ready = 0;
 		pv = &ctrl->uctrl.prov_ev;
 		break;
@@ -1337,7 +1336,6 @@ vtdtr_consume_trace(void *xsc)
 	size_t trc_buf_len, epdesc_len, pbdesc_len, fmt_len;
 	size_t cp;
 	int error;
-	
 
 	char *data;
 	uint64_t data_sz, to_send;
@@ -1350,11 +1348,7 @@ vtdtr_consume_trace(void *xsc)
 		mtx_lock(&tq->mtx);
 		while (!vtdtr_tq_empty(tq))
 		{
-			// microtime(&tv);
-			// device_printf("Got a metadata/trace event in %ld s. \n", tv.tv_sec);
-			// vtdtr_tq_print(tq, "In virtio_dtrace, before dequeue.");
 			trc_entry = vtdtr_tq_dequeue(tq);
-			// vtdtr_tq_print(tq, "In virtio_dtrace, after dequeue.");
 
 			ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 			KASSERT(ctrl_entry != NULL, "Failed allocating memory for control entry.");
@@ -1364,8 +1358,6 @@ vtdtr_consume_trace(void *xsc)
 			{
 			case DDTRACE_TRACE:
 				trc = &trc_entry->uentry.trace;
-				// device_printf(dev, "Trace data size: %zu. \n", trc->dtbd_size);
-				// device_printf(dev, "%s", trc->dtbd_data);
 				KASSERT(trc->dtbd_data != NULL, "Trace data buffer cannot be NULL.");
 
 				ctrl = &ctrl_entry->ctrl;
@@ -1383,19 +1375,13 @@ vtdtr_consume_trace(void *xsc)
 				data = trc->dtbd_data;
 				data_sz = trc->dtbd_size;
 				KASSERT(data_sz == ctrl_trc_ev->dtbd_size, "Invalid trace buffer size");
-				// device_printf(dev, "Data size is (before anything): %d. \n", data_sz);
 				to_send = (data_sz > FRAGMENTSZ) ? FRAGMENTSZ : data_sz;
-				// device_printf(dev, "Will send: %d", to_send);
 				ctrl_trc_ev->first_chunk = 1;
 				ctrl_trc_ev->last_chunk = (data_sz > FRAGMENTSZ) ? 0 : 1;
-				// device_printf(dev, "Is first chunk: %d?\n", ctrl_trc_ev->first_chunk);
-				// device_printf(dev, "Is last chunk: %d?\n", ctrl_trc_ev->last_chunk);
 				data_sz -= to_send;
-				
+
 				ctrl_trc_ev->chunk_sz = to_send;
-				// device_printf(dev, "Chunk size is: %d. \n", ctrl_trc_ev->chunk_sz);
 				memcpy(ctrl_trc_ev->dtbd_chunk, data, to_send);
-				//device_printf(dev, "%s", ctrl_trc_ev->dtbd_chunk);
 
 				mtx_lock(&sc->vtdtr_ctrlq->mtx);
 				vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
@@ -1405,10 +1391,8 @@ vtdtr_consume_trace(void *xsc)
 				cv_signal(&sc->vtdtr_condvar);
 				mtx_unlock(&sc->vtdtr_condmtx);
 
-				// device_printf(dev, "Data size is (outside for loop): %d. \n", data_sz);
 				while (data_sz > 0)
 				{
-					// device_printf(dev, "Data size is (in for loop): %d. \n", data_sz);
 					data += to_send;
 					ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry), M_DEVBUF, M_NOWAIT | M_ZERO);
 					KASSERT(ctrl_entry != NULL, "Failed allocating memory for control entry.");
@@ -1424,7 +1408,7 @@ vtdtr_consume_trace(void *xsc)
 
 					ctrl_trc_ev->chunk_sz = to_send;
 					memcpy(ctrl_trc_ev->dtbd_chunk, data, to_send);
-				
+
 					mtx_lock(&sc->vtdtr_ctrlq->mtx);
 					vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
 					mtx_unlock(&sc->vtdtr_ctrlq->mtx);
@@ -1433,76 +1417,70 @@ vtdtr_consume_trace(void *xsc)
 					cv_signal(&sc->vtdtr_condvar);
 					mtx_unlock(&sc->vtdtr_condmtx);
 				}
-			
-			break;
-		case DDTRACE_METADATA:
-			mtd = &trc_entry->uentry.metadata;
-			ctrl = &ctrl_entry->ctrl;
-			ctrl->event = VIRTIO_DTRACE_METADATA;
-			ctrl_mtd_ev = &ctrl->uctrl.meta_ev;
-			ctrl_mtd_ev->type = mtd->type;
-			switch (mtd->type)
-			{
-			case NFORMAT:
-				ctrl_mtd_ev->umtd.dts_nformats = mtd->umtd.dts_nformats;
-				// device_printf(dev, "Put NFORMAT in control entry: %d. \n", ctrl_mtd_ev->umtd.dts_nformats);
+
 				break;
-			case FORMAT_STRING:
-				fmt_len = strlen(mtd->umtd.dts_fmtstr);
-				//device_printf(dev, "Format string length is: %d. \n", fmt_len);
-				if (fmt_len < FRAGMENTSZ)
+			case DDTRACE_METADATA:
+				mtd = &trc_entry->uentry.metadata;
+				ctrl = &ctrl_entry->ctrl;
+				ctrl->event = VIRTIO_DTRACE_METADATA;
+				ctrl_mtd_ev = &ctrl->uctrl.meta_ev;
+				ctrl_mtd_ev->type = mtd->type;
+				switch (mtd->type)
 				{
-					cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dts_fmtstr, fmt_len + 1);
-					KASSERT(cp == fmt_len, "Error occurred while copying format string");
-					//device_printf(dev, "Successfully added format string to control entry: %s.\n", ctrl_mtd_ev->umtd.dts_fmtstr);
+				case NFORMAT:
+					ctrl_mtd_ev->umtd.dts_nformats = mtd->umtd.dts_nformats;
+					break;
+				case FORMAT_STRING:
+					fmt_len = strlen(mtd->umtd.dts_fmtstr);
+					if (fmt_len < FRAGMENTSZ)
+					{
+						cp = strlcpy(ctrl_mtd_ev->umtd.dts_fmtstr, mtd->umtd.dts_fmtstr, fmt_len + 1);
+						KASSERT(cp == fmt_len, "Error occurred while copying format string");
+					}
+					else
+					{
+						device_printf(dev, "Format string doesn't fit in control element");
+					}
+					break;
+				case NPROBES:
+					ctrl_mtd_ev->umtd.dtrace_nprobes = mtd->umtd.dtrace_nprobes;
+					break;
+				case NPDESC:
+					ctrl_mtd_ev->umtd.dt_npdescs = mtd->umtd.dt_npdescs;
+					break;
+				case PROBE_DESCRIPTION:
+					ctrl_mtd_ev->umtd.dt_pdesc.buf_size = mtd->umtd.dt_pdesc.buf_size;
+					KASSERT(ctrl_mtd_ev->umtd.dt_pdesc.buf_size == sizeof(dtrace_probedesc_t), "Probe description size is invalid");
+					memcpy(ctrl_mtd_ev->umtd.dt_pdesc.buf, mtd->umtd.dt_pdesc.buf, sizeof(dtrace_probedesc_t));
+					break;
+				case EPROBE_DESCRIPTION:
+					ctrl_mtd_ev->umtd.dt_epdesc.buf_size = mtd->umtd.dt_epdesc.buf_size;
+					memcpy(ctrl_mtd_ev->umtd.dt_epdesc.buf,
+						   mtd->umtd.dt_epdesc.buf,
+						   mtd->umtd.dt_epdesc.buf_size);
+					break;
+				default:
+					device_printf(dev, "WARNING: Wrong metadata event.");
+					break;
 				}
-				else
-				{
-					device_printf(dev, "Format string doesn't fit in control element");
-				}
-				break;
-			case NPROBES:
-				ctrl_mtd_ev->umtd.dtrace_nprobes = mtd->umtd.dtrace_nprobes;
-				// device_printf(dev, "Number of probes is: %d. \n", ctrl_mtd_ev->umtd.dtrace_nprobes);
-				break;
-			case NPDESC:
-				ctrl_mtd_ev->umtd.dt_npdescs = mtd->umtd.dt_npdescs;
-				//device_printf(dev, "Number of probes descriptions is: %d. \n", ctrl_mtd_ev->umtd.dt_npdescs);
-				break;
-			case PROBE_DESCRIPTION:
-				ctrl_mtd_ev->umtd.dt_pdesc.buf_size = mtd->umtd.dt_pdesc.buf_size;
-				KASSERT(ctrl_mtd_ev->umtd.dt_pdesc.buf_size == sizeof(dtrace_probedesc_t), "Probe description size is invalid");
-				memcpy(ctrl_mtd_ev->umtd.dt_pdesc.buf, mtd->umtd.dt_pdesc.buf, sizeof(dtrace_probedesc_t));
-				break;
-			case EPROBE_DESCRIPTION:
-				ctrl_mtd_ev->umtd.dt_epdesc.buf_size = mtd->umtd.dt_epdesc.buf_size;
-				memcpy(ctrl_mtd_ev->umtd.dt_epdesc.buf,
-					   mtd->umtd.dt_epdesc.buf,
-					   mtd->umtd.dt_epdesc.buf_size);
-				// device_printf(dev, "Eprobe description size: %d", ctrl_mtd_ev->umtd.dt_epdesc.buf_size);
+				mtx_lock(&sc->vtdtr_ctrlq->mtx);
+				vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
+				mtx_unlock(&sc->vtdtr_ctrlq->mtx);
+
+				mtx_lock(&sc->vtdtr_condmtx);
+				cv_signal(&sc->vtdtr_condvar);
+				mtx_unlock(&sc->vtdtr_condmtx);
 				break;
 			default:
-				device_printf(dev, "WARNING: Wrong metadata event.");
+				device_printf(dev, "WARNING: Wrong trace queue event.");
 				break;
 			}
-			mtx_lock(&sc->vtdtr_ctrlq->mtx);
-			vtdtr_cq_enqueue(sc->vtdtr_ctrlq, ctrl_entry);
-			mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 
-			mtx_lock(&sc->vtdtr_condmtx);
-			cv_signal(&sc->vtdtr_condvar);
-			mtx_unlock(&sc->vtdtr_condmtx);
-			break;
-		default:
-			device_printf(dev, "WARNING: Wrong trace queue event.");
-			break;
+			vtdtr_notify_ready(sc);
+			free(trc_entry, M_DEVBUF);
 		}
-		
-		vtdtr_notify_ready(sc);
-		free(trc_entry, M_DEVBUF);
+		mtx_unlock(&tq->mtx);
 	}
-	mtx_unlock(&tq->mtx);
-}
 }
 
 /*
@@ -1597,7 +1575,7 @@ vtdtr_run(void *xsc)
 			if (ready_flag &&
 				ctrls[nent].event != VIRTIO_DTRACE_DEVICE_READY)
 				ready_flag = 0;
-			
+
 			// if(ctrl_entry->ctrl.event == VIRTIO_DTRACE_TRACE)
 			// {
 			// 	nanouptime(&tv1);
