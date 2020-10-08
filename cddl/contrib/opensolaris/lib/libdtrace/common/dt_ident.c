@@ -117,6 +117,10 @@ dt_idcook_sign(dt_node_t *dnp, dt_ident_t *idp,
 static void
 dt_idcook_assc(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 {
+	int isbottom;
+
+	isbottom = 0;
+
 	if (idp->di_data == NULL) {
 		dt_idsig_t *isp = idp->di_data = malloc(sizeof (dt_idsig_t));
 		char n[DT_TYPE_NAMELEN];
@@ -151,7 +155,9 @@ dt_idcook_assc(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 		}
 
 		for (i = 0; i < argc; i++, args = args->dn_list) {
-			if (dt_node_is_dynamic(args) || dt_node_is_void(args)) {
+			isbottom = dt_node_is_bottom(args);
+			if (!isbottom &&
+			    dt_node_is_dynamic(args) || dt_node_is_void(args)) {
 				xyerror(D_KEY_TYPE, "%s expression may not be "
 				    "used as %s index: key #%d\n",
 				    dt_node_type_name(args, n, sizeof (n)),

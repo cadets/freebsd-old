@@ -171,6 +171,9 @@ ctf_type_resolve(ctf_file_t *fp, ctf_id_t type)
 	ctf_file_t *ofp = fp;
 	const ctf_type_t *tp;
 
+	if (type == CTF_BOTTOM_TYPE)
+		return (type);
+
 	while ((tp = ctf_lookup_by_id(&fp, type)) != NULL) {
 		switch (LCTF_INFO_KIND(fp, tp->ctt_info)) {
 		case CTF_K_TYPEDEF:
@@ -459,6 +462,9 @@ ctf_type_kind(ctf_file_t *fp, ctf_id_t type)
 {
 	const ctf_type_t *tp;
 
+	if (type == CTF_BOTTOM_TYPE)
+		return (CTF_K_UNKNOWN);
+
 	if ((tp = ctf_lookup_by_id(&fp, type)) == NULL)
 		return (CTF_ERR); /* errno is set for us */
 
@@ -603,6 +609,9 @@ ctf_type_compat(ctf_file_t *lfp, ctf_id_t ltype,
 	uint_t lkind, rkind;
 
 	if (ctf_type_cmp(lfp, ltype, rfp, rtype) == 0)
+		return (1);
+
+	if (ltype == CTF_BOTTOM_TYPE || rtype == CTF_BOTTOM_TYPE)
 		return (1);
 
 	ltype = ctf_type_resolve(lfp, ltype);

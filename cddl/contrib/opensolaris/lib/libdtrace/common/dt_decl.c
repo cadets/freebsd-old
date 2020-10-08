@@ -314,6 +314,9 @@ dt_decl_prototype(dt_node_t *plist,
 	int is_void, v = 0, i = 1;
 	int form = plist != flist;
 	dt_node_t *dnp;
+	int isbottom;
+
+	isbottom = 0;
 
 	for (dnp = plist; dnp != NULL; dnp = dnp->dn_list, i++) {
 
@@ -329,7 +332,8 @@ dt_decl_prototype(dt_node_t *plist,
 			    dnp->dn_string ? dnp->dn_string : "(anonymous)", i);
 		}
 
-		is_void = dt_node_is_void(dnp);
+		isbottom = dt_node_is_bottom(dnp);
+		is_void = isbottom ? 0 : dt_node_is_void(dnp);
 		v += is_void;
 
 		if (is_void && !(flags & DT_DP_VOID)) {

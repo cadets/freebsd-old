@@ -203,6 +203,7 @@ extern int dt_node_is_string(const dt_node_t *);
 extern int dt_node_is_strcompat(const dt_node_t *);
 extern int dt_node_is_pointer(const dt_node_t *);
 extern int dt_node_is_void(const dt_node_t *);
+extern int dt_node_is_bottom(const dt_node_t *);
 extern int dt_node_is_ptrcompat(const dt_node_t *, const dt_node_t *,
 	ctf_file_t **, ctf_id_t *);
 extern int dt_node_is_argcompat(const dt_node_t *, const dt_node_t *);

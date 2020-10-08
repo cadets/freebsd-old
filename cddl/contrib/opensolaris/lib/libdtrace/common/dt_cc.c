@@ -669,6 +669,7 @@ dt_action_trace(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 	dt_node_t *anp;
 	boolean_t isprintf = (dnp->dn_ident->di_id == DT_ACT_PRINTF);
 	boolean_t istrace = (dnp->dn_ident->di_id == DT_ACT_TRACE);
+	boolean_t isbottom = dt_node_is_bottom(dnp->dn_args);
 	const char *act = istrace ?  "trace" :  isprintf ? "printf" : "print";
 
 	/*
@@ -678,7 +679,7 @@ dt_action_trace(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 	if (isprintf)
 		assert(dtp->dt_use_elf);
 
-	if (dt_node_is_void(dnp->dn_args)) {
+	if (!isbottom && dt_node_is_void(dnp->dn_args)) {
 		dnerror(dnp->dn_args, istrace ? D_TRACE_VOID :
 		    isprintf ? D_PRINTF_VOID : D_PRINT_VOID,
 		    "%s( ) may not be applied to a void expression\n", act);
@@ -689,7 +690,7 @@ dt_action_trace(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 		    "%s( ) may not be called without non-format arguments", act);
 	}
 
-	if (dt_node_resolve(dnp->dn_args, DT_IDENT_XLPTR) != NULL) {
+	if (!isbottom && dt_node_resolve(dnp->dn_args, DT_IDENT_XLPTR) != NULL) {
 		dnerror(dnp->dn_args, istrace ? D_TRACE_DYN :
 		    isprintf ? D_PRINTF_DYN_TYPE : D_PRINT_DYN,
 		    "%s( ) may not be applied to a translated pointer\n", act);

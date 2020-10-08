@@ -69,8 +69,10 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	uint8_t rd, r1;
 	uint16_t offset;
         ctf_encoding_t ep;
+	dtrace_diftype_t *rtype;
 	int index, i;
 
+	rtype = NULL;
 	ifgl = NULL;
 	node = NULL;
 	idx = 0;
@@ -114,8 +116,45 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		case DIF_OP_PUSHTR:
 		case DIF_OP_PUSHTR_H:
 		case DIF_OP_PUSHTR_G:
+			/*
+			 * In case of a RET, we first patch up the DIFO with the
+			 * correct return type and size.
+			 */
+			if (opcode == DIF_OP_RET) {
+				rtype = &difo->dtdo_rtype;
+
+				rtype->dtdt_kind = node->din_type;
+				if (node->din_type == DIF_TYPE_CTF)
+					rtype->dtdt_ckind = node->din_ctfid;
+				/*
+				 * XXX(dstolfa), MAYBE:
+				 * In the case of din_type == DIF_TYPE_STRING,
+				 * we can't just fill in the DT_STR_TYPE() here
+				 * because the CTF identifier on the guest will
+				 */
+				else if (node->din_type == DIF_TYPE_STRING)
+					rtype->dtdt_ckind = DT_STR_TYPE(dtp);
+				else
+					errx(EXIT_FAILURE,
+					    "unexpected node->din_type (%x)",
+					    node->din_type);
+
+				rtype->dtdt_size = ctf_type_size(
+				    ctf_file, node->din_ctfid);
+
+				/*
+				 * Safety guard
+				 */
+				if (node->din_type == DIF_TYPE_STRING)
+					rtype->dtdt_ckind = CTF_ERR;
+			}
+
+			/*
+			 * If this instruction does not come from a usetx,
+			 * we don't really have to do anything with it.
+			 */
 			if (node->din_mip == NULL)
-				continue;
+				break;
 
 			ctfid = ctf_type_resolve(ctf_file, node->din_mip->ctm_type);
 		        size = ctf_type_size(ctf_file, ctfid);
@@ -155,6 +194,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 				    DIF_INSTR_SETX(index, rd);
 				usetx_node->din_relocated = 1;
 			}
+
 			break;
 
 		case DIF_OP_ULOAD:
