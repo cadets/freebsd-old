@@ -50,6 +50,8 @@
 #include <dt_strtab.h>
 #include <dt_impl.h>
 
+#include <dt_resolver.h>
+
 /*
  * Common code for cooking an identifier that uses a typed signature list (we
  * use this for associative arrays and functions).  If the argument list is
@@ -971,13 +973,16 @@ dt_ident_cook(dt_node_t *dnp, dt_ident_t *idp, dt_node_t **pargp)
 	dt_node_t *args, *argp;
 	int argc = 0;
 
+	uint32_t rslv_flags = (1 << DT_RSLV_HOSTNAME) | (1 << DT_RSLV_VERSION);
+
 	attr = dt_node_list_cook(pargp, DT_IDFLG_REF);
 	args = pargp ? *pargp : NULL;
 
 	for (argp = args; argp != NULL; argp = argp->dn_list)
 		argc++;
 
-	idp->di_ops->di_cook(dnp, idp, argc, args);
+	if (dt_resolve(dnp->dn_target, rslv_flags) == 0)
+		idp->di_ops->di_cook(dnp, idp, argc, args);
 
 	if (idp->di_flags & DT_IDFLG_USER)
 		dnp->dn_flags |= DT_NF_USERLAND;

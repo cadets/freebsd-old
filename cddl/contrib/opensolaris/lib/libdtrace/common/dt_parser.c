@@ -328,6 +328,8 @@ dt_type_name(ctf_file_t *ctfp, ctf_id_t type, char *buf, size_t len)
 		(void) snprintf(buf, len, "function");
 	else if (ctfp == DT_DYN_CTFP(dtp) && type == DT_DYN_TYPE(dtp))
 		(void) snprintf(buf, len, "dynamic variable");
+	else if (ctfp == NULL && type == CTF_BOTTOM_TYPE)
+		(void) snprintf(buf, len, "bottom");
 	else if (ctfp == NULL)
 		(void) snprintf(buf, len, "<none>");
 	else if (ctf_type_name(ctfp, type, buf, len) == NULL)
@@ -718,29 +720,33 @@ dt_node_type_assign(dt_node_t *dnp, ctf_file_t *fp, ctf_id_t type,
 	dnp->dn_flags &=
 	    ~(DT_NF_SIGNED | DT_NF_REF | DT_NF_BITFIELD | DT_NF_USERLAND);
 
-	if (kind == CTF_K_INTEGER && ctf_type_encoding(fp, base, &e) == 0) {
-		size_t size = e.cte_bits / NBBY;
+	if (type != CTF_BOTTOM_TYPE) {
+		if (kind == CTF_K_INTEGER &&
+		    ctf_type_encoding(fp, base, &e) == 0) {
+			size_t size = e.cte_bits / NBBY;
 
-		if (size > 8 || (e.cte_bits % NBBY) != 0 || (size & (size - 1)))
-			dnp->dn_flags |= DT_NF_BITFIELD;
+			if (size > 8 || (e.cte_bits % NBBY) != 0
+			    || (size & (size - 1)))
+				dnp->dn_flags |= DT_NF_BITFIELD;
 
-		if (e.cte_format & CTF_INT_SIGNED)
-			dnp->dn_flags |= DT_NF_SIGNED;
-	}
+			if (e.cte_format & CTF_INT_SIGNED)
+				dnp->dn_flags |= DT_NF_SIGNED;
+		}
 
-	if (kind == CTF_K_FLOAT && ctf_type_encoding(fp, base, &e) == 0) {
-		if (e.cte_bits / NBBY > sizeof (uint64_t))
+		if (kind == CTF_K_FLOAT &&
+		    ctf_type_encoding(fp, base, &e) == 0) {
+			if (e.cte_bits / NBBY > sizeof (uint64_t))
+				dnp->dn_flags |= DT_NF_REF;
+		}
+
+		if (kind == CTF_K_STRUCT || kind == CTF_K_UNION ||
+		    kind == CTF_K_FORWARD ||
+		    kind == CTF_K_ARRAY || kind == CTF_K_FUNCTION)
+			dnp->dn_flags |= DT_NF_REF;
+		else if (yypcb != NULL && fp == DT_DYN_CTFP(yypcb->pcb_hdl) &&
+		    type == DT_DYN_TYPE(yypcb->pcb_hdl))
 			dnp->dn_flags |= DT_NF_REF;
 	}
-
-	if (kind == CTF_K_STRUCT || kind == CTF_K_UNION ||
-	    kind == CTF_K_FORWARD ||
-	    kind == CTF_K_ARRAY || kind == CTF_K_FUNCTION)
-		dnp->dn_flags |= DT_NF_REF;
-	else if (yypcb != NULL && fp == DT_DYN_CTFP(yypcb->pcb_hdl) &&
-	    type == DT_DYN_TYPE(yypcb->pcb_hdl))
-		dnp->dn_flags |= DT_NF_REF;
-
 	if (user)
 		dnp->dn_flags |= DT_NF_USERLAND;
 
@@ -1117,6 +1123,9 @@ dt_node_is_ptrcompat(const dt_node_t *lp, const dt_node_t *rp,
 	if (dt_node_is_dynamic(lp) || dt_node_is_dynamic(rp))
 		return (0); /* fail if either node is a dynamic variable */
 
+	if (dt_node_is_bottom(lp) || dt_node_is_bottom(rp))
+		return (1);
+	
 	lp_is_int = dt_node_is_integer(lp);
 	rp_is_int = dt_node_is_integer(rp);
 
@@ -1308,6 +1317,8 @@ dt_node_int(uintmax_t value)
 	dnp->dn_op = DT_TOK_INT;
 	dnp->dn_value = value;
 
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
+
 	for (p = yyintsuffix; (c = *p) != '\0'; p++) {
 		if (c == 'U' || c == 'u')
 			i += 1;
@@ -1354,6 +1365,7 @@ dt_node_string(char *string)
 	dnp = dt_node_alloc(DT_NODE_STRING);
 	dnp->dn_op = DT_TOK_STRING;
 	dnp->dn_string = string;
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
 	dt_node_type_assign(dnp, DT_STR_CTFP(dtp), DT_STR_TYPE(dtp), B_FALSE);
 
 	return (dnp);
@@ -1386,7 +1398,8 @@ dt_node_ident(char *name)
 			dnp->dn_op = DT_TOK_INT;
 			dnp->dn_value = inp->din_root->dn_value;
 			dt_node_type_propagate(inp->din_root, dnp);
-
+			strncpy(dnp->dn_target,
+			    dt_target_ctx, DTRACE_TARGETNAMELEN);
 			return (dnp);
 		}
 	}
@@ -1394,6 +1407,7 @@ dt_node_ident(char *name)
 	dnp = dt_node_alloc(DT_NODE_IDENT);
 	dnp->dn_op = name[0] == '@' ? DT_TOK_AGG : DT_TOK_IDENT;
 	dnp->dn_string = name;
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
 
 	return (dnp);
 }
@@ -1430,6 +1444,7 @@ dt_node_type(dt_decl_t *ddp)
 	dnp = dt_node_alloc(DT_NODE_TYPE);
 	dnp->dn_op = DT_TOK_IDENT;
 	dnp->dn_string = name;
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
 
 	dt_node_type_assign(dnp, dtt.dtt_ctfp, dtt.dtt_type, dtt.dtt_flags);
 
@@ -1455,6 +1470,7 @@ dt_node_vatype(void)
 	dnp->dn_ctfp = yypcb->pcb_hdl->dt_cdefs->dm_ctfp;
 	dnp->dn_type = CTF_ERR;
 	dnp->dn_attr = _dtrace_defattr;
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
 
 	return (dnp);
 }
@@ -1841,6 +1857,7 @@ dt_node_func(dt_node_t *dnp, dt_node_t *args)
 	dnp->dn_ident = idp;
 	dnp->dn_args = args;
 	dnp->dn_list = NULL;
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
 
 	return (dnp);
 }
@@ -1900,7 +1917,6 @@ dt_node_t *
 dt_node_op1(int op, dt_node_t *cp)
 {
 	dt_node_t *dnp;
-
 	if (cp->dn_kind == DT_NODE_INT) {
 		switch (op) {
 		case DT_TOK_INEG:
@@ -2242,6 +2258,8 @@ dt_node_pdesc_by_name(char *spec)
 	dnp->dn_spec = NULL;
 
 	strncpy(dt_target_ctx, dnp->dn_desc->dtpd_target, DTRACE_TARGETNAMELEN);
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
+
 	return (dnp);
 }
 
@@ -2285,6 +2303,7 @@ dt_node_clause(dt_node_t *pdescs, dt_node_t *pred, dt_node_t *acts)
 	dnp->dn_pdescs = pdescs;
 	dnp->dn_pred = pred;
 	dnp->dn_acts = acts;
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
 
 	return (dnp);
 }
@@ -2349,6 +2368,7 @@ dt_node_inline(dt_node_t *expr)
 	dnp = dt_node_alloc(DT_NODE_INLINE);
 	dt_node_type_assign(dnp, dtt.dtt_ctfp, dtt.dtt_type, B_FALSE);
 	dt_node_attr_assign(dnp, _dtrace_defattr);
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
 
 	if (dt_node_is_void(dnp)) {
 		xyerror(D_DECL_VOIDOBJ,
@@ -2500,6 +2520,7 @@ dt_node_member(dt_decl_t *ddp, char *name, dt_node_t *expr)
 	dnp = dt_node_alloc(DT_NODE_MEMBER);
 	dnp->dn_membname = name;
 	dnp->dn_membexpr = expr;
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
 
 	if (ddp != NULL)
 		dt_node_type_assign(dnp, dtt.dtt_ctfp, dtt.dtt_type,
@@ -2569,6 +2590,7 @@ dt_node_xlator(dt_decl_t *ddp, dt_decl_t *sdp, char *name, dt_node_t *members)
 	dnp = dt_node_alloc(DT_NODE_XLATOR);
 	dnp->dn_xlator = dxp;
 	dnp->dn_members = members;
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
 
 	return (dt_node_cook(dnp, DT_IDFLG_REF));
 }
@@ -2598,6 +2620,7 @@ dt_node_probe(char *s, int protoc, dt_node_t *nargs, dt_node_t *xargs)
 	}
 
 	dnp = dt_node_alloc(DT_NODE_PROBE);
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
 
 	dnp->dn_ident = dt_ident_create(name, DT_IDENT_PROBE,
 	    DT_IDFLG_ORPHAN, DTRACE_IDNONE, _dtrace_defattr, 0,
@@ -2636,6 +2659,7 @@ dt_node_provider(char *name, dt_node_t *probes)
 
 	dnp->dn_provname = name;
 	dnp->dn_probes = probes;
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
 
 	if (strchr(name, '`') != NULL) {
 		dnerror(dnp, D_PROV_BADNAME, "provider name may not "
@@ -2688,6 +2712,7 @@ dt_node_program(dt_node_t *lnp)
 {
 	dt_node_t *dnp = dt_node_alloc(DT_NODE_PROG);
 	dnp->dn_list = lnp;
+	strncpy(dnp->dn_target, dt_target_ctx, DTRACE_TARGETNAMELEN);
 	return (dnp);
 }
 
@@ -2714,6 +2739,8 @@ dt_xcook_ident(dt_node_t *dnp, dt_idhash_t *dhp, uint_t idkind, int create)
 	const char *scope, *mark;
 	uchar_t dnkind;
 	char *name;
+
+	uint32_t rslv_flags = (1 << DT_RSLV_HOSTNAME) | (1 << DT_RSLV_VERSION);
 
 	/*
 	 * Look for scoping marks in the identifier.  If one is found, set our
@@ -2785,6 +2812,11 @@ dt_xcook_ident(dt_node_t *dnp, dt_idhash_t *dhp, uint_t idkind, int create)
 			dt_node_type_assign(dnp,
 			    DT_DYN_CTFP(dtp), DT_DYN_TYPE(dtp), B_FALSE);
 			attr = idp->di_attr;
+		}
+
+		if (dt_resolve(dnp->dn_target, rslv_flags) != 0) {
+			dnp->dn_ctfp = NULL;
+			dnp->dn_type = CTF_BOTTOM_TYPE;
 		}
 
 		free(dnp->dn_string);
@@ -2912,6 +2944,12 @@ dt_xcook_ident(dt_node_t *dnp, dt_idhash_t *dhp, uint_t idkind, int create)
 			attr = idp->di_attr;
 		}
 
+		if (dt_resolve(dnp->dn_target, rslv_flags) != 0) {
+			dnp->dn_ctfp = NULL;
+			dnp->dn_type = CTF_BOTTOM_TYPE;
+			dnp->dn_flags |= DT_NF_COOKED;
+		}
+
 		free(dnp->dn_string);
 		dnp->dn_string = NULL;
 		dnp->dn_kind = dnkind;
@@ -2939,7 +2977,7 @@ dt_cook_ident(dt_node_t *dnp, uint_t idflags)
 		dt_xcook_ident(dnp, dtp->dt_aggs, DT_IDENT_AGG, B_FALSE);
 	else
 		dt_xcook_ident(dnp, dtp->dt_globals, DT_IDENT_SCALAR, B_FALSE);
-
+	
 	return (dt_node_cook(dnp, idflags));
 }
 
@@ -3990,6 +4028,9 @@ asgn_common:
 			if (op == DT_TOK_DOT && (lp->dn_flags & DT_NF_LVALUE) &&
 			    (kind != CTF_K_ARRAY || dt_node_is_string(dnp)))
 				dnp->dn_flags |= DT_NF_LVALUE; /* see K&R[A7.3.3] */
+		} else {
+			dt_node_type_assign(dnp, NULL, CTF_BOTTOM_TYPE, B_FALSE);
+			dt_node_attr_assign(dnp, lp->dn_attr);
 		}
 
 		if (lp->dn_flags & DT_NF_WRITABLE)
@@ -4439,7 +4480,6 @@ dt_cook_inline(dt_node_t *dnp, uint_t idflags)
 
 	char n1[DT_TYPE_NAMELEN];
 	char n2[DT_TYPE_NAMELEN];
-
 	assert(dnp->dn_ident->di_flags & DT_IDFLG_INLINE);
 	assert(inp->din_root->dn_flags & DT_NF_COOKED);
 

@@ -171,7 +171,7 @@ ctf_type_resolve(ctf_file_t *fp, ctf_id_t type)
 	ctf_file_t *ofp = fp;
 	const ctf_type_t *tp;
 
-	if (type == CTF_BOTTOM_TYPE)
+	if (type == CTF_BOTTOM_TYPE || type == CTF_ERR)
 		return (type);
 
 	while ((tp = ctf_lookup_by_id(&fp, type)) != NULL) {
@@ -465,6 +465,9 @@ ctf_type_kind(ctf_file_t *fp, ctf_id_t type)
 	if (type == CTF_BOTTOM_TYPE)
 		return (CTF_K_UNKNOWN);
 
+	if (type == CTF_ERR)
+		return (CTF_ERR);
+
 	if ((tp = ctf_lookup_by_id(&fp, type)) == NULL)
 		return (CTF_ERR); /* errno is set for us */
 
@@ -537,6 +540,9 @@ ctf_type_encoding(ctf_file_t *fp, ctf_id_t type, ctf_encoding_t *ep)
 	const ctf_type_t *tp;
 	ssize_t increment;
 	uint_t data;
+
+	if (type == CTF_BOTTOM_TYPE || type == CTF_ERR)
+		return (CTF_ERR);
 
 	if ((tp = ctf_lookup_by_id(&fp, type)) == NULL)
 		return (CTF_ERR); /* errno is set for us */
