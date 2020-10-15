@@ -2083,6 +2083,8 @@ main(int argc, char *argv[])
 		}
 	}
 
+	dt_resolver_setflags(rslv);
+
 	if (g_ofp == NULL && g_mode != DMODE_EXEC) {
 		(void) fprintf(stderr, "%s: -B not valid in combination"
 		    " with [-AGl] options\n", g_pname);

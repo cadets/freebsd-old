@@ -2740,8 +2740,6 @@ dt_xcook_ident(dt_node_t *dnp, dt_idhash_t *dhp, uint_t idkind, int create)
 	uchar_t dnkind;
 	char *name;
 
-	uint32_t rslv_flags = (1 << DT_RSLV_HOSTNAME) | (1 << DT_RSLV_VERSION);
-
 	/*
 	 * Look for scoping marks in the identifier.  If one is found, set our
 	 * scope to either DTRACE_OBJ_KMODS or UMODS or to the first part of
@@ -2814,7 +2812,7 @@ dt_xcook_ident(dt_node_t *dnp, dt_idhash_t *dhp, uint_t idkind, int create)
 			attr = idp->di_attr;
 		}
 
-		if (dt_resolve(dnp->dn_target, rslv_flags) != 0) {
+		if (dt_resolve(dnp->dn_target, 0) != 0) {
 			dnp->dn_ctfp = NULL;
 			dnp->dn_type = CTF_BOTTOM_TYPE;
 		}
@@ -2944,7 +2942,7 @@ dt_xcook_ident(dt_node_t *dnp, dt_idhash_t *dhp, uint_t idkind, int create)
 			attr = idp->di_attr;
 		}
 
-		if (dt_resolve(dnp->dn_target, rslv_flags) != 0) {
+		if (dt_resolve(dnp->dn_target, 0) != 0) {
 			dnp->dn_ctfp = NULL;
 			dnp->dn_type = CTF_BOTTOM_TYPE;
 			dnp->dn_flags |= DT_NF_COOKED;
@@ -3028,7 +3026,6 @@ dt_cook_op1(dt_node_t *dnp, uint_t idflags)
 	ctf_arinfo_t r;
 	ctf_id_t type, base;
 	uint_t kind;
-	uint32_t rslv_flags = (1 << DT_RSLV_HOSTNAME) | (1 << DT_RSLV_VERSION);
 
 	if (dnp->dn_op == DT_TOK_PREINC || dnp->dn_op == DT_TOK_POSTINC ||
 	    dnp->dn_op == DT_TOK_PREDEC || dnp->dn_op == DT_TOK_POSTDEC)
@@ -3057,7 +3054,7 @@ dt_cook_op1(dt_node_t *dnp, uint_t idflags)
 	if (cp->dn_kind == DT_NODE_VAR)
 		cp->dn_ident->di_flags |= idflags;
 
-	if (dt_resolve(dnp->dn_target, rslv_flags) != 0) {
+	if (dt_resolve(dnp->dn_target, 0) != 0) {
 		dnp->dn_ctfp = NULL;
 		dnp->dn_type = CTF_BOTTOM_TYPE;
 		dnp->dn_flags |= DT_NF_COOKED;

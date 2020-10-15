@@ -19,6 +19,8 @@
 #define	DT_RESOLVER_HOSTNAME(f) ((f) & 1)
 #define	DT_RESOLVER_VERSION(f)  (((f) >> 1) & 1)
 
+static uint32_t resolve_flags;
+
 /*
  * This subroutine checks whether or not the current target machine matches
  * the "target" description, whatever it may be based on the flags passed in.
@@ -35,6 +37,12 @@ dt_resolve(const char *target, uint32_t flags)
 	 */
 	if (strlen(target) == 0)
 		return (0);
+
+	/*
+	 * If flags are 0, we assume default configuration
+	 */
+	if (flags == 0)
+		flags = resolve_flags;
 	
 	if (DT_RESOLVER_HOSTNAME(flags) != 0) {
 		if (gethostname(curtarget, MAXHOSTNAMELEN) != 0)
@@ -56,4 +64,11 @@ dt_resolve(const char *target, uint32_t flags)
 	}
 
 	return (-1);
+}
+
+void
+dt_resolver_setflags(uint32_t flags)
+{
+
+	resolve_flags = flags;
 }
