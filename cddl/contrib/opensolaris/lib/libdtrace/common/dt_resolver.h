@@ -30,7 +30,7 @@
 
 #include <sys/types.h>
 
-#define	DT_RSLV_HOSTNAME		0
+#define	DT_RSLV_HOSTNAME	0
 #define	DT_RSLV_VERSION		1
 
 extern int dt_resolve(const char *, uint32_t);
