@@ -289,6 +289,9 @@ gen_filename(const char *dir)
 	assert(len > 10);
 
 	filename = malloc(len);
+	if (filename == NULL)
+		return (NULL);
+	
 	filename[0] = '.';
 	get_randname(filename + 1, len - 2);
 	filename[len - 1] = '\0';
@@ -348,6 +351,7 @@ listen_dttransport(void *_s)
 		if (fd == -1)
 			continue;
 
+	retry:
 		/*
 		 * At this point we have the /var/ddtrace/inbound
 		 * open and created, so we can just create new files in it
@@ -357,6 +361,12 @@ listen_dttransport(void *_s)
 		if (fd == 0) {
 			LOCK(&s->inbounddir->dirmtx);
 			path = gen_filename(s->inbounddir->dirpath);
+			if (path == NULL) {
+				syslog(LOG_ERR, "gen_filename() failed with %s\n",
+				    strerror(errno));
+				UNLOCK(&s->inbounddir->dirmtx);
+				goto retry;
+			}
 			fd = open(path, O_CREAT | O_WRONLY, 0600);
 			UNLOCK(&s->inbounddir->dirmtx);
 
@@ -503,8 +513,7 @@ write_dttransport(void *_s)
 			if (write(s->dtt_fd, &e, sizeof(e)) < 0) {
 				if (errno == EINTR && s->shutdown == 1)
 					pthread_exit(s);
-
-				/*
+	/*
 				 * If we don't have dttransport opened,
 				 * we just move on. It might get opened
 				 * at some point.

@@ -30,9 +30,19 @@
  * Copyright (c) 2020 Domagoj Stolfa. All rights reserved.
  */
 
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <dt_impl.h>
+#include <dt_program.h>
+#include <dt_elf.h>
+
+#include <assert.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <err.h>
+#include <errno.h>
+#include <stddef.h>
 
 static const struct {
 	int err;
@@ -241,4 +251,101 @@ dtrace_faultstr(dtrace_hdl_t *dtp, int fault)
 	}
 
 	return ("unknown fault");
+}
+
+static void
+get_randname(char *b, size_t len)
+{
+	size_t i;
+
+	/*
+	 * Generate lower-case random characters.
+	 */
+	for (i = 0; i < len; i++)
+		b[i] = arc4random_uniform(25) + 97;
+}
+
+static char *
+gen_filename(const char *dir)
+{
+	char *filename;
+	char *elfpath;
+	size_t len;
+
+	len = (MAXPATHLEN - strlen(dir)) / 64;
+	assert(len > 10);
+
+	filename = malloc(len);
+	if (filename == NULL)
+		return (NULL);
+	
+	filename[0] = '.';
+	get_randname(filename + 1, len - 2);
+	filename[len - 1] = '\0';
+
+	elfpath = malloc(MAXPATHLEN);
+	strcpy(elfpath, dir);
+	strcpy(elfpath + strlen(dir), filename);
+
+	while (access(elfpath, F_OK) != -1) {
+		filename[0] = '.';
+		get_randname(filename + 1, len - 2);
+		filename[len - 1] = '\0';
+		strcpy(elfpath + strlen(dir), filename);
+	}
+
+	free(filename);
+
+	return (elfpath);
+}
+
+void
+dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
+{
+	size_t l = 0;
+	char *elfpath;
+	char elfdir[MAXPATHLEN] = "/var/ddtrace/outbound/";
+	char donepath[MAXPATHLEN] = { 0 };
+	size_t donepathlen = 0;
+	size_t dirlen;
+	va_list args;
+	
+	if (pgp == NULL)
+		return;
+
+	dirlen = strlen(elfdir);
+	elfpath = gen_filename(elfdir);
+	if (elfpath == NULL)
+		errx(EXIT_FAILURE, "gen_filename() failed with %s\n",
+		    strerror(errno));
+
+	pgp->dp_haserror = 1;
+	
+	va_start(args, fmt);
+	l = vsnprintf(pgp->dp_err, DT_PROG_ERRLEN, fmt, args);
+	va_end(args);
+	if (l >= DT_PROG_ERRLEN) {
+		warn("l (%zu) >= DT_PROG_ERRLEN (%zu)\n", l, DT_PROG_ERRLEN);
+		return;
+	}
+
+	/*
+	 * If this is not a guest machine, we don't really have to forward
+	 * anything, instead we just exit with the error.
+	 */
+	if (dtp->dt_is_guest == 0)
+		errx(EXIT_FAILURE, "%s", pgp->dp_err);
+	dt_elf_create(pgp, ELFDATA2LSB, elfpath);
+
+	donepathlen = strlen(elfpath) - 1;
+	memset(donepath, 0, donepathlen);
+	memcpy(donepath, elfpath, dirlen);
+	memcpy(donepath + dirlen, elfpath + dirlen + 1,
+	    donepathlen - dirlen);
+
+	if (rename(elfpath, donepath))
+		errx("failed to move %s to %s: %s\n",
+		    elfpath, donepath, strerror(errno));
+
+	errx(EXIT_FAILURE, "%s", pgp->dp_err);
 }

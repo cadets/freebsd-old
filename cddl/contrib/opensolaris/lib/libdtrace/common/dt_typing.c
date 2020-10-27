@@ -46,6 +46,9 @@
 
 static int dt_infer_type(dt_ifg_node_t *);
 
+static dtrace_hdl_t *g_dtp;
+static dtrace_prog_t *g_pgp;
+
 /*
  * dt_get_class() takes in a buffer containing the type name and returns
  * the internal DTrace class it belongs to (DTC_INT, DTC_BOTTOM, DTC_STRUCT).
@@ -75,13 +78,15 @@ dt_get_class(char *buf)
 
 	t = ctf_lookup_by_name(ctf_file, buf);
 	if (t == CTF_ERR)
-		errx(EXIT_FAILURE, "failed getting type (%s) by name: %s\n",
+		dt_set_progerr(g_dtp, g_pgp,
+		    "failed getting type (%s) by name: %s\n",
 		    buf, ctf_errmsg(ctf_errno(ctf_file)));
 
 	do  {
 
 		if ((k = ctf_type_kind(ctf_file, t)) == CTF_ERR)
-			errx(EXIT_FAILURE, "failed getting type (%s) kind: %s",
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed getting type (%s) kind: %s",
 			    buf, ctf_errmsg(ctf_errno(ctf_file)));
 
 		if (t == ot)
@@ -117,7 +122,7 @@ dt_type_compare(dt_ifg_node_t *dr1, dt_ifg_node_t *dn2)
 	class2 = 0;
 
 	if (dr1->din_type == DIF_TYPE_BOTTOM && dn2->din_type == DIF_TYPE_BOTTOM)
-		errx(EXIT_FAILURE, "both types are bottom");
+		dt_set_progerr(g_dtp, g_pgp, "both types are bottom");
 
 	if (dr1->din_type == DIF_TYPE_BOTTOM)
 		return (2);
@@ -128,7 +133,7 @@ dt_type_compare(dt_ifg_node_t *dr1, dt_ifg_node_t *dn2)
 	if (dr1->din_type == DIF_TYPE_CTF) {
 		if (ctf_type_name(ctf_file, dr1->din_ctfid, buf1,
 		    sizeof(buf1)) != ((char *)buf1))
-			errx(EXIT_FAILURE,
+			dt_set_progerr(g_dtp, g_pgp,
 			    "failed at getting type name %ld: %s",
 			    dr1->din_ctfid,
 			    ctf_errmsg(ctf_errno(ctf_file)));
@@ -137,7 +142,7 @@ dt_type_compare(dt_ifg_node_t *dr1, dt_ifg_node_t *dn2)
 	if (dn2->din_type == DIF_TYPE_CTF) {
 		if (ctf_type_name(ctf_file, dn2->din_ctfid, buf2,
 		    sizeof(buf2)) != ((char *)buf2))
-			errx(EXIT_FAILURE,
+			dt_set_progerr(g_dtp, g_pgp,
 			    "failed at getting type name %ld: %s",
 			    dn2->din_ctfid,
 			    ctf_errmsg(ctf_errno(ctf_file)));
@@ -147,10 +152,10 @@ dt_type_compare(dt_ifg_node_t *dr1, dt_ifg_node_t *dn2)
 	class2 = dn2->din_type == DIF_TYPE_CTF ? dt_get_class(buf2) : DTC_STRING;
 
 	if (class1 == DTC_BOTTOM)
-		errx(EXIT_FAILURE, "class1 is bottom because of %s", buf1);
+		dt_set_progerr(g_dtp, g_pgp, "class1 is bottom because of %s", buf1);
 
 	if (class2 == DTC_BOTTOM)
-		errx(EXIT_FAILURE, "class2 is bottom because of %s", buf2);
+		dt_set_progerr(g_dtp, g_pgp, "class2 is bottom because of %s", buf2);
 
 	if (class1 == DTC_STRING && class2 == DTC_INT)
 		return (1);
@@ -187,7 +192,7 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_HCURTHREAD:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, thread_str);
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE, "failed to get type %s: %s",
+			dt_set_progerr(g_dtp, g_pgp, "failed to get type %s: %s",
 			    thread_str, ctf_errmsg(ctf_errno(ctf_file)));
 
 		n->din_type = DIF_TYPE_CTF;
@@ -207,7 +212,7 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_HVTIMESTAMP:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint64_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE, "failed to get type uint64_t: %s",
+			dt_set_progerr(g_dtp, g_pgp, "failed to get type uint64_t: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
 		n->din_type = DIF_TYPE_CTF;
@@ -227,7 +232,7 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_GPRID:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE, "failed to get type uint_t: %s",
+			dt_set_progerr(g_dtp, g_pgp, "failed to get type uint_t: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
 		n->din_type = DIF_TYPE_CTF;
@@ -271,7 +276,7 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_HWALLTIMESTAMP:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "int64_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE, "failed to get type int64_t: %s",
+			dt_set_progerr(g_dtp, g_pgp, "failed to get type int64_t: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
 		n->din_type = DIF_TYPE_CTF;
@@ -288,7 +293,7 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_HUSTACKDEPTH:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint32_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE, "failed to get type uint32_t: %s",
+			dt_set_progerr(g_dtp, g_pgp, "failed to get type uint32_t: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
 		n->din_type = DIF_TYPE_CTF;
@@ -302,7 +307,7 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_HCALLER:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uintptr_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE, "failed to get type uintptr_t: %s",
+			dt_set_progerr(g_dtp, g_pgp, "failed to get type uintptr_t: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
 		n->din_type = DIF_TYPE_CTF;
@@ -352,7 +357,7 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_HPPID:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "pid_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE, "failed to get type pid_t: %s",
+			dt_set_progerr(g_dtp, g_pgp, "failed to get type pid_t: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
 		n->din_type = DIF_TYPE_CTF;
@@ -366,7 +371,7 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_TID:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "id_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE, "failed to get type id_t: %s",
+			dt_set_progerr(g_dtp, g_pgp, "failed to get type id_t: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
 		n->din_type = DIF_TYPE_CTF;
@@ -380,7 +385,7 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_HUID:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uid_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE, "failed to get type uid_t: %s",
+			dt_set_progerr(g_dtp, g_pgp, "failed to get type uid_t: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
 		n->din_type = DIF_TYPE_CTF;
@@ -394,7 +399,7 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_HGID:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "gid_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE, "failed to get type gid_t: %s",
+			dt_set_progerr(g_dtp, g_pgp, "failed to get type gid_t: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
 		n->din_type = DIF_TYPE_CTF;
@@ -414,13 +419,13 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_JID:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "int");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE, "failed to get type int: %s",
+			dt_set_progerr(g_dtp, g_pgp, "failed to get type int: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
 		n->din_type = DIF_TYPE_CTF;
 		break;
 	default:
-		errx(EXIT_FAILURE, "variable %x does not exist", var);
+		dt_set_progerr(g_dtp, g_pgp, "variable %x does not exist", var);
 	}
 }
 
@@ -527,7 +532,7 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			 */
 			if (ctf_type_name(ctf_file, node->din_ctfid, buf1,
 			    sizeof(buf1)) != ((char *)buf1))
-				errx(EXIT_FAILURE,
+				dt_set_progerr(g_dtp, g_pgp,
 				    "failed at getting type name node %ld: %s",
 				    node->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
@@ -548,7 +553,7 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			 */
 			if (ctf_type_name(ctf_file, onode->din_ctfid, buf2,
 			    sizeof(buf2)) != ((char *)buf2))
-				errx(EXIT_FAILURE,
+				dt_set_progerr(g_dtp, g_pgp,
 				    "failed at getting type onode name %ld: %s",
 				    onode->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
@@ -659,8 +664,7 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 		instr = node->din_buf[node->din_uidx];
 		dt_get_varinfo(instr, &varid, &scope, &kind);
 		if (varid == 0 && scope == -1 && kind == -1)
-			errx(EXIT_FAILURE,
-			    "failed to get variable information");
+			dt_set_progerr(g_dtp, g_pgp, "failed to get variable information");
 
 		/*
 		 * We get the variable from the variable list.
@@ -672,7 +676,7 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 		 */
 		var = dt_get_var_from_varlist(varid, scope, kind);
 		if (var == NULL)
-			errx(EXIT_FAILURE,
+			dt_set_progerr(g_dtp, g_pgp,
 			    "could not find variable (%u, %d, %d) in varlist",
 			    varid, scope, kind);
 
@@ -689,7 +693,7 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 			 */
 			if (ctf_type_name(ctf_file, node->din_ctfid, buf1,
 			    sizeof(buf1)) != ((char *)buf1))
-				errx(EXIT_FAILURE,
+				dt_set_progerr(g_dtp, g_pgp,
 				    "failed at getting type name %ld: %s",
 				    node->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
@@ -703,14 +707,14 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 			if (var->dtdv_ctfid != -1 &&
 			    node->din_ctfid != var->dtdv_ctfid) {
 				if (var->dtdv_name >= difo->dtdo_strlen)
-					errx(EXIT_FAILURE,
+					dt_set_progerr(g_dtp, g_pgp,
 					    "variable name outside strtab "
 					    "(%zu, %zu)", var->dtdv_name,
 					    difo->dtdo_strlen);
 
 				if (ctf_type_name(ctf_file, var->dtdv_ctfid, buf2,
 					sizeof(buf2)) != ((char *)buf2))
-					errx(EXIT_FAILURE,
+					dt_set_progerr(g_dtp, g_pgp,
 					    "failed at getting type name %ld: %s",
 					    var->dtdv_ctfid,
 					    ctf_errmsg(ctf_errno(ctf_file)));
@@ -735,7 +739,7 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 			 */
 			if (ctf_type_name(ctf_file, onode->din_ctfid, buf2,
 			    sizeof(buf2)) != ((char *)buf2))
-				errx(EXIT_FAILURE,
+				dt_set_progerr(g_dtp, g_pgp,
 				    "failed at getting type name %ld: %s",
 				    onode->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
@@ -823,7 +827,7 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 	}
 
 	if (dr->din_type == DIF_TYPE_NONE || dr->din_type == DIF_TYPE_BOTTOM)
-		errx(EXIT_FAILURE, "unexpected type %d", dr->din_type);
+		dt_set_progerr(g_dtp, g_pgp, "unexpected type %d", dr->din_type);
 
 	if (dif_var->dtdv_type.dtdt_kind == DIF_TYPE_STRING)
 		return (DIF_TYPE_STRING);
@@ -833,7 +837,7 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 			if (ctf_type_name(
 			    ctf_file, dif_var->dtdv_ctfid, var_type,
 			    sizeof(var_type)) != ((char *)var_type))
-				errx(EXIT_FAILURE,
+				dt_set_progerr(g_dtp, g_pgp,
 				    "failed at getting type name %ld: %s",
 				    dif_var->dtdv_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
@@ -841,7 +845,7 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 			if (ctf_type_name(
 			    ctf_file, dr->din_ctfid, buf,
 			    sizeof(buf)) != ((char *)buf))
-				errx(EXIT_FAILURE,
+				dt_set_progerr(g_dtp, g_pgp,
 				    "failed at getting type name %ld: %s",
 				    dr->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
@@ -908,19 +912,19 @@ dt_var_stack_typecheck(dt_ifg_node_t *n, dt_ifg_node_t *dr1, dtrace_difv_t *dif_
 	if (dif_var->dtdv_stack == NULL) {
 		dif_var->dtdv_stack = malloc(sizeof(dt_list_t));
 		if (dif_var->dtdv_stack == NULL)
-			errx(EXIT_FAILURE, "failed to malloc dtdv_stack");
+			dt_set_progerr(g_dtp, g_pgp, "failed to malloc dtdv_stack");
 
 		memset(dif_var->dtdv_stack, 0, sizeof(dt_list_t));
 
 		sl = dt_list_next(&n->din_stacklist);
 		if (sl == NULL)
-			errx(EXIT_FAILURE, "sl is NULL, nonsense.");
+			dt_set_progerr(g_dtp, g_pgp, "sl is NULL, nonsense.");
 
 		for (se1 = dt_list_next(&sl->dsl_stack);
 		     se1; se1 = dt_list_next(se1)) {
 			se2 = malloc(sizeof(dt_stack_t));
 			if (se2 == NULL)
-				errx(EXIT_FAILURE, "failed to malloc se2");
+				dt_set_progerr(g_dtp, g_pgp, "failed to malloc se2");
 
 			memset(se2, 0, sizeof(dt_stack_t));
 
@@ -954,7 +958,7 @@ dt_var_stack_typecheck(dt_ifg_node_t *n, dt_ifg_node_t *dr1, dtrace_difv_t *dif_
 			if (node->din_type == DIF_TYPE_CTF) {
 				if (ctf_type_name(ctf_file, node->din_ctfid, buf,
 				    sizeof(buf)) != ((char *)buf))
-					errx(EXIT_FAILURE,
+					dt_set_progerr(g_dtp, g_pgp,
 					    "failed at getting type name %ld: %s",
 					    dr1->din_ctfid,
 					    ctf_errmsg(ctf_errno(ctf_file)));
@@ -962,7 +966,7 @@ dt_var_stack_typecheck(dt_ifg_node_t *n, dt_ifg_node_t *dr1, dtrace_difv_t *dif_
 				if (ctf_type_name(ctf_file,
 				    var_stacknode->din_ctfid, var_type,
 				    sizeof(var_type)) != ((char *)var_type))
-					errx(EXIT_FAILURE,
+					dt_set_progerr(g_dtp, g_pgp,
 					    "failed at getting type name %ld: %s",
 					    var_stacknode->din_ctfid,
 					    ctf_errmsg(ctf_errno(ctf_file)));
@@ -1014,7 +1018,7 @@ dt_typecheck_stack(dt_list_t *stacklist, int *empty)
 		for (se = dt_list_next(stack); se; se = dt_list_next(se)) {
 			n = se->ds_ifgnode;
 			if (dt_infer_type(n) == -1)
-				errx(EXIT_FAILURE, "failed to infer type for"
+				dt_set_progerr(g_dtp, g_pgp, "failed to infer type for"
 				    "opcode %d at %zu\n",
 				    n->din_buf[n->din_uidx], n->din_uidx);
 		}
@@ -1038,14 +1042,14 @@ dt_typecheck_stack(dt_list_t *stacklist, int *empty)
 			if (n->din_ctfid != on->din_ctfid) {
 				if (ctf_type_name(ctf_file, n->din_ctfid, buf1,
 				    sizeof(buf1)) != ((char *)buf1))
-					errx(EXIT_FAILURE,
+					dt_set_progerr(g_dtp, g_pgp,
 					    "failed at getting type name %ld: %s",
 					    n->din_ctfid,
 					    ctf_errmsg(ctf_errno(ctf_file)));
 
 				if (ctf_type_name(ctf_file, on->din_ctfid, buf2,
 				    sizeof(buf2)) != ((char *)buf2))
-					errx(EXIT_FAILURE,
+					dt_set_progerr(g_dtp, g_pgp,
 					    "failed at getting type name %ld: %s",
 					    on->din_ctfid,
 					    ctf_errmsg(ctf_errno(ctf_file)));
@@ -1196,7 +1200,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		 * sym in range(symtab)
 		 */
 		if ((uintptr_t)dn1->din_sym >= ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
-			errx(EXIT_FAILURE, "sym (%p) is out of range: %p",
+			dt_set_progerr(g_dtp, g_pgp, "sym (%p) is out of range: %p",
 			    dn1->din_sym,
 			    (void *)(((uintptr_t)difo->dtdo_symtab) +
 			    difo->dtdo_symlen));
@@ -1207,7 +1211,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		 */
 		if (ctf_type_name(ctf_file, dn1->din_ctfid, buf,
 		    sizeof(buf)) != ((char *)buf))
-			errx(EXIT_FAILURE,
+			dt_set_progerr(g_dtp, g_pgp,
 			    "failed at getting type name %ld: %s",
 			    dn1->din_ctfid,
 			    ctf_errmsg(ctf_errno(ctf_file)));
@@ -1221,7 +1225,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		 */
 		mip = malloc(sizeof(ctf_membinfo_t));
 		if (mip == NULL)
-			errx(EXIT_FAILURE, "failed to malloc mip");
+			dt_set_progerr(g_dtp, g_pgp, "failed to malloc mip");
 
 		memset(mip, 0, sizeof(ctf_membinfo_t));
 
@@ -1232,7 +1236,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 		if (dt_lib_membinfo(
 		    octfp = ctf_file, type, dn1->din_sym, mip) == 0)
-			errx(EXIT_FAILURE, "failed to get member info"
+			dt_set_progerr(g_dtp, g_pgp, "failed to get member info"
 			    " for %s(%s): %s",
 			    buf, dn1->din_sym,
 			    ctf_errmsg(ctf_errno(ctf_file)));
@@ -1259,7 +1263,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint64_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE, "failed to get type uint64_t: %s",
+			dt_set_progerr(g_dtp, g_pgp, "failed to get type uint64_t: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
 		n->din_sym = difo->dtdo_symtab + sym;
@@ -1281,13 +1285,13 @@ dt_infer_type(dt_ifg_node_t *n)
 
 		l = strlcpy(symname, difo->dtdo_symtab + sym, sizeof(symname));
 		if (l >= sizeof(symname))
-			errx(EXIT_FAILURE,
+			dt_set_progerr(g_dtp, g_pgp,
 			    "l (%zu) >= %zu when copying type name",
 			    l, sizeof(symname));
 
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, symname);
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE, "failed to get type %s: %s",
+			dt_set_progerr(g_dtp, g_pgp, "failed to get type %s: %s",
 			    symname, ctf_errmsg(ctf_errno(ctf_file)));
 
 		n->din_type = DIF_TYPE_CTF;
@@ -1389,7 +1393,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (other->din_type == DIF_TYPE_BOTTOM ||
 			    symnode->din_type == DIF_TYPE_BOTTOM)
-				errx(EXIT_FAILURE, "unexpected bottom type");
+				dt_set_progerr(g_dtp, g_pgp, "unexpected bottom type");
 
 			/*
 			 * Get the type name
@@ -1397,12 +1401,12 @@ dt_infer_type(dt_ifg_node_t *n)
 			if (ctf_type_name(
 			    ctf_file, symnode->din_ctfid,
 			    buf, sizeof(buf)) != ((char *)buf))
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", symnode->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
 			if (strcmp(buf, "uint64_t") != 0)
-				errx(EXIT_FAILURE, "symbol may not exist if not"
+				dt_set_progerr(g_dtp, g_pgp, "symbol may not exist if not"
 				    " paired with a uint64_t: %s", buf);
 
 			/*
@@ -1422,14 +1426,14 @@ dt_infer_type(dt_ifg_node_t *n)
 			 */
 			if (ctf_type_name(ctf_file, other->din_ctfid, buf,
 			    sizeof(buf)) != ((char *)buf))
-				errx(EXIT_FAILURE,
+				dt_set_progerr(g_dtp, g_pgp,
 				    "failed at getting type name %ld: %s",
 				    other->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
 			if (res == 1) {
 				if (strcmp(buf, "uint64_t") != 0)
-					errx(EXIT_FAILURE, "the type of the"
+					dt_set_progerr(g_dtp, g_pgp, "the type of the"
 					    " other node must be unit64_t"
 					    " if symnode->din_ctfid <: "
 					    " other->din_ctfid, but it is: %s",
@@ -1495,7 +1499,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		 */
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "int8_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE,
+			dt_set_progerr(g_dtp, g_pgp,
 			    "failed to get type int8_t: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -1512,7 +1516,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		 */
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "int16_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE,
+			dt_set_progerr(g_dtp, g_pgp,
 			    "failed to get type int16_t: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -1529,7 +1533,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		 */
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "int32_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE,
+			dt_set_progerr(g_dtp, g_pgp,
 			     "failed to get type unsigned char: %s",
 			     ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -1546,7 +1550,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		 */
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint8_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE,
+			dt_set_progerr(g_dtp, g_pgp,
 			    "failed to get type uint8_t: %s",
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -1563,7 +1567,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		 */
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint16_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE,
+			dt_set_progerr(g_dtp, g_pgp,
 			     "failed to get type uint16_t: %s",
 			     ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -1580,7 +1584,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		 */
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint32_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE,
+			dt_set_progerr(g_dtp, g_pgp,
 			     "failed to get type uint32_t: %s",
 			     ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -1628,7 +1632,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		dif_var = dt_get_var_from_varlist(var,
 		    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
 		if (dif_var == NULL)
-			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			dt_set_progerr(g_dtp, g_pgp, "failed to find variable (%u, %d, %d)",
 			    var, DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
 
 		if (dnv == NULL) {
@@ -1781,7 +1785,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		dif_var = dt_get_var_from_varlist(var,
 		    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
 		if (dif_var == NULL)
-			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			dt_set_progerr(g_dtp, g_pgp, "failed to find variable (%u, %d, %d)",
 			    var, DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
 
 		if (dn1 == NULL) {
@@ -1874,7 +1878,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		    DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
 
 		if (dif_var == NULL)
-			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			dt_set_progerr(g_dtp, g_pgp, "failed to find variable (%u, %d, %d)",
 			    var, DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
 
 		if (dt_infer_type_var(n->din_difo, dn2, dif_var) == -1)
@@ -1912,7 +1916,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		dif_var = dt_get_var_from_varlist(var,
 		    DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
 		if (dif_var == NULL)
-			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			dt_set_progerr(g_dtp, g_pgp, "failed to find variable (%u, %d, %d)",
 			    var, DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
 
 		if (dt_infer_type_var(n->din_difo, dn2, dif_var) == -1)
@@ -1950,7 +1954,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		dif_var = dt_get_var_from_varlist(var,
 		    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
 		if (dif_var == NULL)
-			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			dt_set_progerr(g_dtp, g_pgp, "failed to find variable (%u, %d, %d)",
 			    var, DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
 
 		if (dt_infer_type_var(n->din_difo, dn2, dif_var) == -1)
@@ -2000,7 +2004,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		case DIF_SUBR_RAND:
 			n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint64_t");
 			if (n->din_ctfid == CTF_ERR)
-				errx(EXIT_FAILURE, "failed to get type uint64_t: %s",
+				dt_set_progerr(g_dtp, g_pgp, "failed to get type uint64_t: %s",
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
 			n->din_type = DIF_TYPE_CTF;
@@ -2021,7 +2025,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2036,7 +2040,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			n->din_ctfid = ctf_lookup_by_name(ctf_file, "int");
 			if (n->din_ctfid == CTF_ERR)
-				errx(EXIT_FAILURE, "failed to get type int: %s",
+				dt_set_progerr(g_dtp, g_pgp, "failed to get type int: %s",
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
 			n->din_type = DIF_TYPE_CTF;
@@ -2055,7 +2059,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2097,7 +2101,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2112,7 +2116,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			n->din_ctfid = ctf_lookup_by_name(ctf_file, "int");
 			if (n->din_ctfid == CTF_ERR)
-				errx(EXIT_FAILURE, "failed to get type int: %s",
+				dt_set_progerr(g_dtp, g_pgp, "failed to get type int: %s",
 				     ctf_errmsg(ctf_errno(ctf_file)));
 
 			n->din_type = DIF_TYPE_CTF;
@@ -2131,7 +2135,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2146,7 +2150,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			n->din_ctfid = ctf_lookup_by_name(ctf_file, "int");
 			if (n->din_ctfid == CTF_ERR)
-				errx(EXIT_FAILURE, "failed to get type int: %s",
+				dt_set_progerr(g_dtp, g_pgp, "failed to get type int: %s",
 				     ctf_errmsg(ctf_errno(ctf_file)));
 
 			n->din_type = DIF_TYPE_CTF;
@@ -2165,7 +2169,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2180,7 +2184,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			n->din_ctfid = ctf_lookup_by_name(ctf_file, "int");
 			if (n->din_ctfid == CTF_ERR)
-				errx(EXIT_FAILURE, "failed to get type int: %s",
+				dt_set_progerr(g_dtp, g_pgp, "failed to get type int: %s",
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
 			n->din_type = DIF_TYPE_CTF;
@@ -2199,7 +2203,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2224,7 +2228,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg1->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2259,7 +2263,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2307,7 +2311,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		case DIF_SUBR_SPECULATION:
 			n->din_ctfid = ctf_lookup_by_name(ctf_file, "int");
 			if (n->din_ctfid == CTF_ERR)
-				errx(EXIT_FAILURE, "failed to get type int: %s",
+				dt_set_progerr(g_dtp, g_pgp, "failed to get type int: %s",
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
 			n->din_type = DIF_TYPE_CTF;
@@ -2326,7 +2330,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2341,7 +2345,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			n->din_ctfid = ctf_lookup_by_name(ctf_file, "int");
 			if (n->din_ctfid == CTF_ERR)
-				errx(EXIT_FAILURE, "failed to get type int: %s",
+				dt_set_progerr(g_dtp, g_pgp, "failed to get type int: %s",
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
 			n->din_type = DIF_TYPE_CTF;
@@ -2360,7 +2364,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2395,7 +2399,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2420,7 +2424,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg1->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2445,7 +2449,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg2->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg2->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2477,7 +2481,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2502,7 +2506,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg1->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2527,7 +2531,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg2->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg2->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2560,7 +2564,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2595,7 +2599,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2620,7 +2624,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg1->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2645,7 +2649,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg2->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg2->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2673,7 +2677,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2698,7 +2702,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg1->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2723,7 +2727,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg2->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg2->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2753,7 +2757,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2793,7 +2797,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2818,7 +2822,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg1->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2847,7 +2851,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2908,7 +2912,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2938,7 +2942,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2962,7 +2966,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg1->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -2991,7 +2995,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3015,7 +3019,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg1->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3073,7 +3077,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3098,7 +3102,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg1->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3141,7 +3145,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			n->din_ctfid = ctf_lookup_by_name(ctf_file, "int");
 			if (n->din_ctfid == CTF_ERR)
-				errx(EXIT_FAILURE, "failed to get type int: %s",
+				dt_set_progerr(g_dtp, g_pgp, "failed to get type int: %s",
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
 			n->din_type = DIF_TYPE_CTF;
@@ -3161,7 +3165,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3197,7 +3201,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3233,7 +3237,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3268,7 +3272,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3293,7 +3297,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg1->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3322,7 +3326,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3351,7 +3355,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3381,7 +3385,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3410,7 +3414,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3435,7 +3439,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg1->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3473,7 +3477,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3488,7 +3492,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			n->din_ctfid = ctf_lookup_by_name(ctf_file, "int");
 			if (n->din_ctfid == CTF_ERR)
-				errx(EXIT_FAILURE, "failed to get type int: %s",
+				dt_set_progerr(g_dtp, g_pgp, "failed to get type int: %s",
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
 			n->din_type = DIF_TYPE_CTF;
@@ -3507,7 +3511,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3532,7 +3536,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg1->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3557,7 +3561,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg2->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg2->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3587,7 +3591,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3622,7 +3626,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3696,7 +3700,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (ctf_type_name(ctf_file,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", arg0->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
@@ -3806,7 +3810,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		dif_var = dt_get_var_from_varlist(var,
 		    DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
 		if (dif_var == NULL)
-			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			dt_set_progerr(g_dtp, g_pgp, "failed to find variable (%u, %d, %d)",
 			    var, DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
 
 		/*
@@ -3845,7 +3849,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		dif_var = dt_get_var_from_varlist(var,
 		    DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
 		if (dif_var == NULL)
-			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			dt_set_progerr(g_dtp, g_pgp, "failed to find variable (%u, %d, %d)",
 			    var, DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
 
 		/*
@@ -3889,7 +3893,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		dif_var = dt_get_var_from_varlist(var,
 		    DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
 		if (dif_var == NULL)
-			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			dt_set_progerr(g_dtp, g_pgp, "failed to find variable (%u, %d, %d)",
 			    var, DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
 
 		/*
@@ -3925,7 +3929,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		dif_var = dt_get_var_from_varlist(var,
 		    DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
 		if (dif_var == NULL)
-			errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+			dt_set_progerr(g_dtp, g_pgp, "failed to find variable (%u, %d, %d)",
 			    var, DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
 
 		/*
@@ -3981,7 +3985,7 @@ dt_infer_type(dt_ifg_node_t *n)
 			 */
 			if ((uintptr_t)dn1->din_sym >=
 			    ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
-				errx(EXIT_FAILURE, "sym (%p) is out of range: %p",
+				dt_set_progerr(g_dtp, g_pgp, "sym (%p) is out of range: %p",
 				    dn1->din_sym,
 				    (void *)(((uintptr_t)difo->dtdo_symtab) +
 				    difo->dtdo_symlen));
@@ -4006,7 +4010,7 @@ dt_infer_type(dt_ifg_node_t *n)
 			 */
 			mip = malloc(sizeof(ctf_membinfo_t));
 			if (mip == NULL)
-				errx(EXIT_FAILURE, "failed to malloc mip");
+				dt_set_progerr(g_dtp, g_pgp, "failed to malloc mip");
 
 			memset(mip, 0, sizeof(ctf_membinfo_t));
 
@@ -4017,7 +4021,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (dt_lib_membinfo(
 				octfp = ctf_file, type, dn1->din_sym, mip) == 0)
-				errx(EXIT_FAILURE, "failed to get member info"
+				dt_set_progerr(g_dtp, g_pgp, "failed to get member info"
 				    " for %s(%s): %s",
 				    buf, dn1->din_sym,
 				    ctf_errmsg(ctf_errno(ctf_file)));
@@ -4050,7 +4054,7 @@ dt_infer_type(dt_ifg_node_t *n)
 			 */
 			if ((uintptr_t)data_dn1->din_sym >=
 			    ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
-				errx(EXIT_FAILURE, "sym (%p) is out of range: %p",
+				dt_set_progerr(g_dtp, g_pgp, "sym (%p) is out of range: %p",
 				    data_dn1->din_sym,
 				    (void *)(((uintptr_t)difo->dtdo_symtab) +
 					difo->dtdo_symlen));
@@ -4074,7 +4078,7 @@ dt_infer_type(dt_ifg_node_t *n)
 			 */
 			mip = malloc(sizeof(ctf_membinfo_t));
 			if (mip == NULL)
-				errx(EXIT_FAILURE, "failed to malloc mip");
+				dt_set_progerr(g_dtp, g_pgp, "failed to malloc mip");
 
 			memset(mip, 0, sizeof(ctf_membinfo_t));
 
@@ -4085,7 +4089,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (dt_lib_membinfo(
 			    octfp = ctf_file, type, data_dn1->din_sym, mip) == 0)
-				errx(EXIT_FAILURE, "failed to get member info"
+				dt_set_progerr(g_dtp, g_pgp, "failed to get member info"
 				    " for %s(%s): %s",
 				    buf, data_dn1->din_sym,
 				    ctf_errmsg(ctf_errno(ctf_file)));
@@ -4144,14 +4148,14 @@ dt_infer_type(dt_ifg_node_t *n)
 		return (DIF_TYPE_NONE);
 
 	default:
-		errx(EXIT_FAILURE, "unhandled instruction: %u", opcode);
+		dt_set_progerr(g_dtp, g_pgp, "unhandled instruction: %u", opcode);
 	}
 
 	return (-1);
 }
 
 int
-dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
+dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 {
 	uint_t i = 0, idx = 0;
 	dt_ifg_node_t *node = NULL;
@@ -4189,9 +4193,18 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	if (difo->dtdo_symtab == NULL)
 		return (0);
 
+	if (pgp == NULL)
+		return (EDT_COMPILER);
+
+	if (dtp == NULL)
+		return (EDT_COMPILER);
+
+	g_dtp = dtp;
+	g_pgp = pgp;
+
 	difo->dtdo_types = malloc(sizeof(char *) * difo->dtdo_len);
 	if (difo->dtdo_types == NULL)
-		errx(EXIT_FAILURE, "failed to malloc dtdo_types");
+		dt_set_progerr(g_dtp, g_pgp, "failed to malloc dtdo_types");
 
 	i = difo->dtdo_len - 1;
 
@@ -4214,12 +4227,12 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		    type == DIF_TYPE_NONE || type == DIF_TYPE_BOTTOM);
 
 		if (type == -1)
-			errx(EXIT_FAILURE, "failed to infer a type");
+			dt_set_progerr(g_dtp, g_pgp, "failed to infer a type");
 
 		if (type == DIF_TYPE_CTF) {
 			if (ctf_type_name(ctf_file,
 			    node->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				errx(EXIT_FAILURE, "failed at getting type name"
+				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
 				    " %ld: %s", node->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 			difo->dtdo_types[node->din_uidx] = strdup(buf);
@@ -4234,5 +4247,8 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 
 	}
 
+	g_pgp = NULL;
+	g_dtp = NULL;
+	
 	return (0);
 }

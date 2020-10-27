@@ -146,6 +146,8 @@ typedef struct dt_elf_prog {
 	uint8_t		dtep_dofversion;
 	dt_elf_ref_t	dtep_options;
 	uint32_t	dtep_rflags;
+	int		dtep_haserror;
+	char		dtep_err[DT_PROG_ERRLEN];
 } dt_elf_prog_t;
 
 /*

@@ -1420,6 +1420,12 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
 	(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
 
+	prog.dtep_haserror = dt_prog->dp_haserror;
+	if (prog.dtep_haserror) {
+		memcpy(prog.dtep_err, dt_prog->dp_err, DT_PROG_ERRLEN);
+		goto finish;
+	}
+	
 	/*
 	 * Get the first stmt.
 	 */
@@ -1475,6 +1481,7 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	 */
 	prog.dtep_options = elf_ndxscn(scn);
 
+finish:
 	/*
 	 * Make the string table that will hold identifier names.
 	 */
@@ -2236,6 +2243,9 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd, int rslv)
 	assert(data->d_buf != NULL);
 	eprog = data->d_buf;
 
+	if (eprog->dtep_haserror)
+		errx(EXIT_FAILURE, "%s", eprog->dtep_err);
+
 	dtelf_state->s_rflags = eprog->dtep_rflags;
 
 	prog = malloc(sizeof(dtrace_prog_t));
@@ -2265,4 +2275,3 @@ dtrace_use_elf(dtrace_hdl_t *dtp)
 
 	dtp->dt_use_elf = 1;
 }
-

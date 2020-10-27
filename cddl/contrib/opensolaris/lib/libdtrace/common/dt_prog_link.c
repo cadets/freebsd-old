@@ -591,7 +591,7 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			if (rval != 0)
 				return (dt_set_errno(dtp, rval));
 
-			rval = dt_prog_infer_types(dtp, ad->dtad_difo);
+			rval = dt_prog_infer_types(dtp, pgp, ad->dtad_difo);
 			if (rval != 0)
 				return (dt_set_errno(dtp, rval));
 

@@ -88,6 +88,7 @@ static const char DTRACE_OPTSTR[] =
 
 static char **g_argv;
 static int g_argc;
+static int g_guest = 0;
 static char **g_objv;
 static int g_objc;
 static dtrace_cmd_t *g_cmdv;
@@ -691,6 +692,9 @@ gen_filename(const char *dir)
 	assert(len > 10);
 
 	filename = malloc(len);
+	if (filename == NULL)
+		return (NULL);
+	
 	filename[0] = '.';
 	get_randname(filename + 1, len - 2);
 	filename[len - 1] = '\0';
@@ -737,6 +741,9 @@ exec_prog(const dtrace_cmd_t *dcp)
 
 	dirlen = strlen(elfdir);
 	elfpath = gen_filename(elfdir);
+	if (elfpath == NULL)
+		errx(EXIT_FAILURE, "gen_filename() failed with %s\n",
+		    strerror(errno));
 
 	// Don't take any action based on unwanted mod/ref behaviour:
 	// checkmodref emits warnings and that's the end of it.
@@ -1770,6 +1777,7 @@ main(int argc, char *argv[])
 				dcp->dc_spec = DTRACE_PROBESPEC_NONE;
 				dcp->dc_arg = optarg;
 				g_elf = 1;
+				g_guest = 1;
 				break;
 
 			case 'l':
@@ -1866,6 +1874,9 @@ main(int argc, char *argv[])
 		    dtrace_errmsg(NULL, err));
 	}
 
+	if (g_guest)
+		dtrace_set_guest(g_dtp);
+	
 	if (g_elf)
 		dtrace_use_elf(g_dtp);
 

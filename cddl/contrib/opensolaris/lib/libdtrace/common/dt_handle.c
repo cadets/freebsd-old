@@ -483,3 +483,10 @@ dt_handle(dtrace_hdl_t *dtp, dtrace_probedata_t *data)
 
 	return (DTRACE_CONSUME_ERROR);
 }
+
+void
+dtrace_set_guest(dtrace_hdl_t *dtp)
+{
+
+	dtp->dt_is_guest = 1;
+}
