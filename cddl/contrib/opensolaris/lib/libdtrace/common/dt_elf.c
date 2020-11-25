@@ -1453,6 +1453,7 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	prog.dtep_first_stmt = elf_ndxscn(f_scn);
 	prog.dtep_dofversion = dt_prog->dp_dofversion;
 	prog.dtep_rflags = dt_prog->dp_rflags;
+	memcpy(prog.dtep_ident, dt_prog->dp_ident, DT_PROG_IDENTLEN);
 
 	/*
 	 * Iterate over the other statements and create ELF sections with them.
@@ -2097,7 +2098,8 @@ dt_elf_verify_file(char checksum[SHA256_DIGEST_LENGTH], int fd)
 }
 
 dtrace_prog_t *
-dt_elf_to_prog(dtrace_hdl_t *dtp, int fd, int rslv)
+dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
+    int rslv, int *err, dtrace_prog_t *oldpgp)
 {
 	Elf *e;
 	Elf_Scn *scn = NULL;
@@ -2242,6 +2244,12 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd, int rslv)
 
 	assert(data->d_buf != NULL);
 	eprog = data->d_buf;
+
+	if (oldpgp && memcmp(eprog->dtep_ident,
+	    oldpgp->dp_ident, DT_PROG_IDENTLEN) != 0) {
+		*err = EACCES;
+		return (NULL);
+	}
 
 	if (eprog->dtep_haserror)
 		errx(EXIT_FAILURE, "%s", eprog->dtep_err);

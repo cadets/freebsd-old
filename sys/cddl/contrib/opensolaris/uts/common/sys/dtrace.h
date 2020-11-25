@@ -1516,6 +1516,8 @@ typedef struct {
 							/* replicate enab */
 #define	DTRACEIOC_FILTER	_IOW('x',19,dtrace_machine_filter_t)
 							/* apply filter */
+#define	DTRACEIOC_AUGMENT	_IOW('x',20,dtrace_enable_io_t)
+							/* augment instrumentation */
 #endif
 
 /*

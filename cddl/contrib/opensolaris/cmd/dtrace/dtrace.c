@@ -35,6 +35,8 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+#include <machine/vmm.h>
+
 #include <dtrace.h>
 #include <dt_elf.h>
 #include <dt_resolver.h>
@@ -62,6 +64,8 @@
 #endif
 #include <dtdaemon.h>
 
+#include <pthread.h>
+
 typedef struct dtrace_cmd {
 	void (*dc_func)(struct dtrace_cmd *);	/* function to compile arg */
 	dtrace_probespec_t dc_spec;		/* probe specifier context */
@@ -71,6 +75,16 @@ typedef struct dtrace_cmd {
 	dtrace_prog_t *dc_prog;			/* program compiled from arg */
 	char dc_ofile[PATH_MAX];		/* derived output file name */
 } dtrace_cmd_t;
+
+typedef struct dtd_arg {
+	int sock;
+	dtrace_prog_t *hostpgp;
+} dtd_arg_t;
+
+typedef struct dt_pgplist {
+	dt_list_t list;
+	dtrace_prog_t *pgp;
+} dt_pgplist_t;
 
 #define	DMODE_VERS	0	/* display version information and exit (-V) */
 #define	DMODE_EXEC	1	/* compile program for enabling (-a/e/E) */
@@ -102,6 +116,15 @@ static int g_flowindent;
 static int g_intr;
 static int g_impatient;
 static int g_newline;
+
+/*
+ * Program list for HyperTrace
+ */
+static dt_list_t g_pgplist;
+static pthread_mutex_t g_pgplistmtx;
+static pthread_cond_t g_pgpcond;
+static pthread_mutex_t g_pgpcondmtx;
+
 #ifdef __FreeBSD__
 static int g_siginfo;
 static uint32_t rslv;
@@ -116,6 +139,9 @@ static const char *g_graphfile = NULL;
 static int g_mode = DMODE_EXEC;
 static int g_status = E_SUCCESS;
 static int g_grabanon = 0;
+
+static pthread_t g_dtdaemontd;
+static pthread_t g_worktd;
 
 static const char *g_ofile = NULL;
 static FILE *g_ofp;
@@ -140,6 +166,8 @@ NULL };
 #if !defined(illumos) && defined(NEED_ERRLOC)
 void dt_get_errloc(dtrace_hdl_t *, char **, int *);
 #endif /* !illumos && NEED_ERRLOC */
+
+static void go(void);
 
 static int
 usage(FILE *fp)
@@ -341,6 +369,55 @@ make_argv(char *s)
 
 	argv[argc] = NULL;
 	return (argv);
+}
+
+/*ARGSUSED*/
+static void
+intr(int signo)
+{
+	if (!g_intr)
+		g_newline = 1;
+
+	if (g_intr++)
+		g_impatient = 1;
+}
+
+#ifdef __FreeBSD__
+static void
+siginfo(int signo __unused)
+{
+
+	g_siginfo++;
+	g_newline = 1;
+}
+#endif
+
+static void
+installsighands(void)
+{
+	struct sigaction act, oact;
+
+	(void) sigemptyset(&act.sa_mask);
+	act.sa_flags = 0;
+	act.sa_handler = intr;
+
+	if (sigaction(SIGINT, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
+		(void) sigaction(SIGINT, &act, NULL);
+
+	if (sigaction(SIGTERM, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
+		(void) sigaction(SIGTERM, &act, NULL);
+
+#ifdef __FreeBSD__
+	if (sigaction(SIGPIPE, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
+		(void) sigaction(SIGPIPE, &act, NULL);
+
+	if (sigaction(SIGUSR1, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
+		(void) sigaction(SIGUSR1, &act, NULL);
+
+	act.sa_handler = siginfo;
+	if (sigaction(SIGINFO, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
+		(void) sigaction(SIGINFO, &act, NULL);
+#endif
 }
 
 static void
@@ -715,6 +792,353 @@ gen_filename(const char *dir)
 	return (elfpath);
 }
 
+static void *
+listen_dtdaemon(void *arg)
+{
+	/*
+	 * TODO: There should be a queue of things being received and then processed
+	 * in the main thread. The processing means creating a program, making a DOF
+	 * out of it and then sending it off to the kernel. If it's the first DOF file,
+	 * it goes through DTRACEIOC_ENABLE. If it's not the first one, it goes through
+	 * DTRACEIOC_AUGMENT. Might have to modify exec_prog or something along those lines,
+	 * though. We'll see.
+	 */
+	int sockfd;
+	size_t elflen;
+	char *elf;
+	size_t *size;
+	dtrace_prog_t *newprog;
+	dtrace_prog_t *hostpgp;
+	int fd;
+	int err;
+	char template[] = "/tmp/ddtrace-elf.XXXXXXXX";
+	char vm_name[VM_MAX_NAMELEN] = { 0 };
+	char *name;
+	dtd_arg_t *dtd_arg = (dtd_arg_t *)arg;
+	dt_pgplist_t *newpgpl;
+	int done;
+
+	sockfd = 0;
+	elflen = 0;
+	elf = NULL;
+	size = NULL;
+	newprog = NULL;
+	fd = 0;
+	err = 0;
+	name = NULL;
+	done = 0;
+	
+	/*
+	 * Assume this is an int.
+	 */
+	sockfd = dtd_arg->sock;
+	hostpgp = dtd_arg->hostpgp;
+
+	do {
+		/*
+		 * Now that we have created an ELF file, we wait for dtdaemon
+		 * to give us the new ELF file that contains all the applied
+		 * relocations. We will then verify that the relocations that
+		 * were applied are sensible, get the identifier of which VM
+		 * it actually is and fill in the necessary filters.
+		 */
+		if (!done && !g_intr &&
+		    recv(sockfd, &elflen, sizeof(elflen), 0) < 0 &&
+		    errno != EINTR)
+			dfatal("failed to read elf length");
+		if (g_intr) {
+			done = 1;
+			break;
+		}
+
+		if (elflen <= 0)
+			dfatal("elflen is <= 0");
+
+		elf = malloc(elflen);
+		if (elf == NULL)
+			dfatal("malloc(elf) failed");
+		memset(elf, 0, elflen);
+
+		if (!done && !g_intr && recv(sockfd, elf, elflen, 0) < 0)
+			dfatal("failed to read elf file");
+
+		if (g_intr) {
+			done = 1;
+			break;
+		}
+
+		size = (size_t *)elf;
+
+		elf += sizeof(size_t);
+
+		name = elf;
+		elf += *size;
+
+		if (*size > VM_MAX_NAMELEN)
+			dfatal("size (%zu) > VM_MAX_NAMELEN (%zu)",
+			    *size, VM_MAX_NAMELEN);
+
+		memcpy(vm_name, name, *size);
+
+		fd = mkstemp(template);
+		if (fd == -1)
+			dfatal("failed to create a temporary file");
+
+		if (write(fd, elf, elflen - *size - sizeof(size_t)) < 0)
+			dfatal("failed to write to a temporary file");
+
+		newprog = dt_elf_to_prog(g_dtp, fd, 0, &err, hostpgp);
+
+		if (!done && newprog == NULL && err != EACCES)
+			dfatal("failed to parse elf file");
+
+		/*
+		 * If this program was not meant for us, we simply move on.
+		 */
+		if (err == EACCES && newprog == NULL)
+			continue;
+
+		newpgpl = malloc(sizeof(dt_pgplist_t));
+		if (newpgpl == NULL)
+			dfatal("malloc of newpgpl failed");
+
+		newpgpl->pgp = newprog;
+
+		pthread_mutex_lock(&g_pgplistmtx);
+		dt_list_append(&g_pgplist, newpgpl);
+		pthread_mutex_unlock(&g_pgplistmtx);
+
+		pthread_mutex_lock(&g_pgpcondmtx);
+		pthread_cond_signal(&g_pgpcond);
+		pthread_mutex_unlock(&g_pgpcondmtx);
+	} while (!done);
+
+	return (arg);
+}
+
+/*ARGSUSED*/
+static int
+chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
+{
+	dtrace_actkind_t act;
+	uintptr_t addr;
+
+	if (rec == NULL) {
+		/*
+		 * We have processed the final record; output the newline if
+		 * we're not in quiet mode.
+		 */
+		if (!g_quiet)
+			oprintf("\n");
+
+		return (DTRACE_CONSUME_NEXT);
+	}
+
+	act = rec->dtrd_action;
+	addr = (uintptr_t)data->dtpda_data;
+
+	if (act == DTRACEACT_EXIT) {
+		g_status = *((uint32_t *)addr);
+		return (DTRACE_CONSUME_NEXT);
+	}
+
+	return (DTRACE_CONSUME_THIS);
+}
+
+/*ARGSUSED*/
+static int
+chew(const dtrace_probedata_t *data, void *arg)
+{
+	dtrace_probedesc_t *pd = data->dtpda_pdesc;
+	processorid_t cpu = data->dtpda_cpu;
+	static int heading;
+
+	if (g_impatient) {
+		g_newline = 0;
+		return (DTRACE_CONSUME_ABORT);
+	}
+
+	if (heading == 0) {
+		if (!g_flowindent) {
+			if (!g_quiet) {
+				oprintf("%3s %6s %32s\n",
+				    "CPU", "ID", "FUNCTION:NAME");
+			}
+		} else {
+			oprintf("%3s %-41s\n", "CPU", "FUNCTION");
+		}
+		heading = 1;
+	}
+
+	if (!g_flowindent) {
+		if (!g_quiet) {
+			char name[DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 2];
+
+			(void) snprintf(name, sizeof (name), "%s:%s",
+			    pd->dtpd_func, pd->dtpd_name);
+
+			oprintf("%3d %6d %32s ", cpu, pd->dtpd_id, name);
+		}
+	} else {
+		int indent = data->dtpda_indent;
+		char *name;
+		size_t len;
+
+		if (data->dtpda_flow == DTRACEFLOW_NONE) {
+			len = indent + DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 5;
+			name = alloca(len);
+			(void) snprintf(name, len, "%*s%s%s:%s", indent, "",
+			    data->dtpda_prefix, pd->dtpd_func,
+			    pd->dtpd_name);
+		} else {
+			len = indent + DTRACE_FUNCNAMELEN + 5;
+			name = alloca(len);
+			(void) snprintf(name, len, "%*s%s%s", indent, "",
+			    data->dtpda_prefix, pd->dtpd_func);
+		}
+
+		oprintf("%3d %-41s ", cpu, name);
+	}
+
+	return (DTRACE_CONSUME_THIS);
+}
+
+static void
+setup_tracing(void)
+{
+	dtrace_optval_t opt;
+	int i;
+	
+	/*
+	 * Start tracing.  Once we dtrace_go(), reload any options that affect
+	 * our globals in case consuming anonymous state has changed them.
+	 */
+	go();
+
+	if (g_elf == 0) {
+		(void) dtrace_getopt(g_dtp, "flowindent", &opt);
+		g_flowindent = opt != DTRACEOPT_UNSET;
+
+		(void) dtrace_getopt(g_dtp, "grabanon", &opt);
+		g_grabanon = opt != DTRACEOPT_UNSET;
+
+		(void) dtrace_getopt(g_dtp, "quiet", &opt);
+		g_quiet = opt != DTRACEOPT_UNSET;
+
+		(void) dtrace_getopt(g_dtp, "destructive", &opt);
+		if (opt != DTRACEOPT_UNSET)
+			notice("allowing destructive actions\n");
+	}
+	
+	installsighands();
+
+	/*
+	 * Now that tracing is active and we are ready to consume trace data,
+	 * continue any grabbed or created processes, setting them running
+	 * using the /proc control mechanism inside of libdtrace.
+	 */
+	for (i = 0; i < g_psc; i++)
+		dtrace_proc_continue(g_dtp, g_psv[i]);
+
+	g_pslive = g_psc; /* count for prochandler() */
+}
+
+static void *
+dtc_work(void *arg)
+{
+	int done = 0;
+	dtrace_consumer_t con;
+
+	con.dc_consume_probe = chew;
+	con.dc_consume_rec = chewrec;
+	con.dc_get_buf = NULL;
+	con.dc_put_buf = NULL;
+
+	do {
+		if (!g_intr && !done)
+			dtrace_sleep(g_dtp);
+
+#ifdef __FreeBSD__
+		if (g_siginfo) {
+			(void)dtrace_aggregate_print(g_dtp, g_ofp, NULL);
+			g_siginfo = 0;
+		}
+#endif
+
+		if (g_newline) {
+			/*
+			 * Output a newline just to make the output look
+			 * slightly cleaner.  Note that we do this even in
+			 * "quiet" mode...
+			 */
+			oprintf("\n");
+			g_newline = 0;
+		}
+
+		if (done || g_intr || (g_psc != 0 && g_pslive == 0)) {
+			done = 1;
+			if (dtrace_stop(g_dtp) == -1)
+				dfatal("couldn't stop tracing");
+		}
+
+		switch (dtrace_work(g_dtp, g_ofp, &con, NULL)) {
+		case DTRACE_WORKSTATUS_DONE:
+			done = 1;
+			break;
+		case DTRACE_WORKSTATUS_OKAY:
+			break;
+		default:
+			if (!g_impatient && dtrace_errno(g_dtp) != EINTR)
+				dfatal("processing aborted");
+		}
+
+		if (g_ofp != NULL && fflush(g_ofp) == EOF)
+			clearerr(g_ofp);
+
+	} while (!done);
+
+	oprintf("\n");
+
+	if (!g_impatient) {
+		if (dtrace_aggregate_print(g_dtp, g_ofp, NULL) == -1 &&
+		    dtrace_errno(g_dtp) != EINTR)
+			dfatal("failed to print aggregations");
+	}
+
+	pthread_mutex_lock(&g_pgpcondmtx);
+	pthread_cond_signal(&g_pgpcond);
+	pthread_mutex_unlock(&g_pgpcondmtx);
+
+	return (NULL);
+}
+
+static void
+process_new_pgp(dtrace_prog_t *pgp)
+{
+	void *dof;
+	static size_t n_pgps = 0;
+	dtrace_enable_io_t io;
+
+	memset(&io, 0, sizeof(io));
+
+	dtrace_dump_actions(pgp);
+	dof = dtrace_dof_create(g_dtp, pgp, 0);
+	if (dof == NULL)
+		dfatal("failed to create a DOF file");
+
+	io.dof = dof;
+
+	if (n_pgps == 0) {
+		setup_tracing();
+		pthread_create(&g_worktd, NULL, dtc_work, NULL);
+	} else {
+		if (dt_augment_tracing(g_dtp, pgp))
+			dfatal("failed to augment tracing");
+	}
+
+	n_pgps++;
+}
+
 /*
  * Execute the specified program by enabling the corresponding instrumentation.
  * If -e has been specified, we get the program info but do not enable it.  If
@@ -733,17 +1157,18 @@ exec_prog(const dtrace_cmd_t *dcp)
 	size_t l;
 	struct sockaddr_un addr;
 	int kind, fd;
-	dtrace_prog_t *newprog;
 	char donepath[MAXPATHLEN] = { 0 };
 	size_t dirlen;
 	size_t donepathlen;
-	char template[] = "/tmp/ddtrace-elf.XXXXXXXX";
+	int err = 0;
+	dtd_arg_t *dtd_arg = NULL;
+	void *rval;
+	dt_pgplist_t *pgpl = NULL;
 
 	dirlen = strlen(elfdir);
 	elfpath = gen_filename(elfdir);
 	if (elfpath == NULL)
-		errx(EXIT_FAILURE, "gen_filename() failed with %s\n",
-		    strerror(errno));
+		dfatal("gen_filename() failed");
 
 	// Don't take any action based on unwanted mod/ref behaviour:
 	// checkmodref emits warnings and that's the end of it.
@@ -765,7 +1190,6 @@ exec_prog(const dtrace_cmd_t *dcp)
 
 	if (!g_exec) {
 		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
-		(void) dtrace_dump_actions(dcp->dc_prog);
 		if (g_elf) {
 			dt_elf_create(dcp->dc_prog, ELFDATA2LSB, elfpath);
 			donepathlen = strlen(elfpath) - 1;
@@ -792,6 +1216,16 @@ exec_prog(const dtrace_cmd_t *dcp)
 		 *  (5) dtdaemon writes out the ELF file to this DTrace
 		 *      instance for further processing.
 		 */
+
+		if ((err = pthread_mutex_init(&g_pgplistmtx, NULL)) != 0)
+			dfatal("failed to init pgplistmtx");
+
+		if ((err = pthread_mutex_init(&g_pgpcondmtx, NULL)) != 0)
+			dfatal("failed to init pgpcondmtx");
+
+		if ((err = pthread_cond_init(&g_pgpcond, NULL)) != 0)
+			dfatal("failed to init pgpcond");
+
 		dtdaemon_sock = socket(PF_UNIX, SOCK_STREAM, 0);
 		if (dtdaemon_sock == -1)
 			dfatal("failed to open dtdaemon socket");
@@ -831,41 +1265,63 @@ exec_prog(const dtrace_cmd_t *dcp)
 			dfatal("failed to move %s to %s",
 			    elfpath, donepath);
 
-		/*
-		 * Now that we have created an ELF file, we wait for dtdaemon
-		 * to give us the new ELF file that contains all the applied
-		 * relocations. We will then verify that the relocations that
-		 * were applied are sensible, get the identifier of which VM
-		 * it actually is and fill in the necessary filters.
-		 */
-		if (recv(dtdaemon_sock, &elflen, sizeof(elflen), 0) < 0)
-			dfatal("failed to read elf length");
+		dtd_arg = malloc(sizeof(dtd_arg_t));
+		if (dtd_arg == NULL)
+			dfatal("failed to malloc dtd_arg");
 
-		if (elflen <= 0)
-			dfatal("elflen is <= 0");
+		dtd_arg->sock = dtdaemon_sock;
+		dtd_arg->hostpgp = dcp->dc_prog;
+		
+		err = pthread_create(&g_dtdaemontd, NULL,
+		    listen_dtdaemon, dtd_arg);
+		if (err != 0)
+			dfatal("failed to create g_dtdaemontd");
 
-		elf = malloc(elflen);
-		memset(elf, 0, elflen);
+		for (;;) {
+			/*
+			 * Wait for us to actually have a program in the list
+			 */
+			pthread_mutex_lock(&g_pgpcondmtx);
+			/*
+			 * XXX: Maybe a clean shutdown variable...?
+			 */
+			while (!g_intr &&
+			    (pgpl = dt_list_next(&g_pgplist)) == NULL)
+				pthread_cond_wait(&g_pgpcond, &g_pgpcondmtx);
+			pthread_mutex_unlock(&g_pgpcondmtx);
 
-		if (recv(dtdaemon_sock, elf, elflen, 0) < 0)
-			dfatal("failed to read elf file");
+			assert(pgpl != NULL || g_intr);
 
-		fd = mkstemp(template);
-		if (fd == -1)
-			dfatal("failed to create a temporary file");
+			if (g_intr)
+				break;
 
-		if (write(fd, elf, elflen) < 0)
-			dfatal("failed to write to a temporary file");
+			process_new_pgp(pgpl->pgp);
+			
+			pthread_mutex_lock(&g_pgplistmtx);
+			dt_list_delete(&g_pgplist, pgpl);
+			pthread_mutex_unlock(&g_pgplistmtx);
 
-		newprog = dt_elf_to_prog(g_dtp, fd, 0);
-		if (newprog == NULL)
-			dfatal("failed to parse elf file");
+			free(pgpl->pgp);
+			free(pgpl);
+		}
 
-		/*
-		 * XXX: For now we just dump actions instead of actually doing
-		 *      anything with them.
-		 */
-		dtrace_dump_actions(newprog);
+		err = pthread_kill(g_dtdaemontd, SIGTERM);
+		if (err != 0)
+			dfatal("failed to send SIGTERM to g_dtdaemontd");
+		err = pthread_kill(g_worktd, SIGTERM);
+		if (err != 0)
+			dfatal("failed to send SIGTERM to g_worktd");
+
+		err = pthread_join(g_dtdaemontd, &rval);
+		if (err != 0)
+			dfatal("failed to join g_dtdaemontd");
+		err = pthread_join(g_worktd, &rval);
+		if (err != 0)
+			dfatal("failed to join g_worktd");
+
+		pthread_mutex_destroy(&g_pgplistmtx);
+		pthread_mutex_destroy(&g_pgpcondmtx);
+		pthread_cond_destroy(&g_pgpcond);
 		dtrace_close(g_dtp);
 		exit(0);
 		/*
@@ -874,7 +1330,6 @@ exec_prog(const dtrace_cmd_t *dcp)
 		 * for each modified probe in the new program.
 		 */
 	} else if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) == 0) {
-		(void) dtrace_dump_actions(dcp->dc_prog);
 		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
 			dfatal("failed to enable '%s'", dcp->dc_name);
 		} else {
@@ -1067,13 +1522,14 @@ link_elf(dtrace_cmd_t *dcp)
 {
 	int fd;
 	dt_stmt_t *stp;
+	int err = 0;
 
 	assert(g_elf == 1);
 
 	if ((fd = open(dcp->dc_arg, O_RDONLY)) < 0)
 		fatal("failed to open %s with %s", dcp->dc_arg, strerror(errno));
 
-	if ((dcp->dc_prog = dt_elf_to_prog(g_dtp, fd, 1)) == NULL)
+	if ((dcp->dc_prog = dt_elf_to_prog(g_dtp, fd, 1, &err, NULL)) == NULL)
 		fatal("failed to parse the ELF file %s", dcp->dc_arg);
 
 	close(fd);
@@ -1373,93 +1829,6 @@ bufhandler(const dtrace_bufdata_t *bufdata, void *arg)
 	return (DTRACE_HANDLE_OK);
 }
 
-/*ARGSUSED*/
-static int
-chewrec(const dtrace_probedata_t *data, const dtrace_recdesc_t *rec, void *arg)
-{
-	dtrace_actkind_t act;
-	uintptr_t addr;
-
-	if (rec == NULL) {
-		/*
-		 * We have processed the final record; output the newline if
-		 * we're not in quiet mode.
-		 */
-		if (!g_quiet)
-			oprintf("\n");
-
-		return (DTRACE_CONSUME_NEXT);
-	}
-
-	act = rec->dtrd_action;
-	addr = (uintptr_t)data->dtpda_data;
-
-	if (act == DTRACEACT_EXIT) {
-		g_status = *((uint32_t *)addr);
-		return (DTRACE_CONSUME_NEXT);
-	}
-
-	return (DTRACE_CONSUME_THIS);
-}
-
-/*ARGSUSED*/
-static int
-chew(const dtrace_probedata_t *data, void *arg)
-{
-	dtrace_probedesc_t *pd = data->dtpda_pdesc;
-	processorid_t cpu = data->dtpda_cpu;
-	static int heading;
-
-	if (g_impatient) {
-		g_newline = 0;
-		return (DTRACE_CONSUME_ABORT);
-	}
-
-	if (heading == 0) {
-		if (!g_flowindent) {
-			if (!g_quiet) {
-				oprintf("%3s %6s %32s\n",
-				    "CPU", "ID", "FUNCTION:NAME");
-			}
-		} else {
-			oprintf("%3s %-41s\n", "CPU", "FUNCTION");
-		}
-		heading = 1;
-	}
-
-	if (!g_flowindent) {
-		if (!g_quiet) {
-			char name[DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 2];
-
-			(void) snprintf(name, sizeof (name), "%s:%s",
-			    pd->dtpd_func, pd->dtpd_name);
-
-			oprintf("%3d %6d %32s ", cpu, pd->dtpd_id, name);
-		}
-	} else {
-		int indent = data->dtpda_indent;
-		char *name;
-		size_t len;
-
-		if (data->dtpda_flow == DTRACEFLOW_NONE) {
-			len = indent + DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 5;
-			name = alloca(len);
-			(void) snprintf(name, len, "%*s%s%s:%s", indent, "",
-			    data->dtpda_prefix, pd->dtpd_func,
-			    pd->dtpd_name);
-		} else {
-			len = indent + DTRACE_FUNCNAMELEN + 5;
-			name = alloca(len);
-			(void) snprintf(name, len, "%*s%s%s", indent, "",
-			    data->dtpda_prefix, pd->dtpd_func);
-		}
-
-		oprintf("%3d %-41s ", cpu, name);
-	}
-
-	return (DTRACE_CONSUME_THIS);
-}
-
 static void
 go(void)
 {
@@ -1556,55 +1925,6 @@ go(void)
 	}
 }
 
-/*ARGSUSED*/
-static void
-intr(int signo)
-{
-	if (!g_intr)
-		g_newline = 1;
-
-	if (g_intr++)
-		g_impatient = 1;
-}
-
-#ifdef __FreeBSD__
-static void
-siginfo(int signo __unused)
-{
-
-	g_siginfo++;
-	g_newline = 1;
-}
-#endif
-
-static void
-installsighands(void)
-{
-	struct sigaction act, oact;
-
-	(void) sigemptyset(&act.sa_mask);
-	act.sa_flags = 0;
-	act.sa_handler = intr;
-
-	if (sigaction(SIGINT, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGINT, &act, NULL);
-
-	if (sigaction(SIGTERM, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGTERM, &act, NULL);
-
-#ifdef __FreeBSD__
-	if (sigaction(SIGPIPE, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGPIPE, &act, NULL);
-
-	if (sigaction(SIGUSR1, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGUSR1, &act, NULL);
-
-	act.sa_handler = siginfo;
-	if (sigaction(SIGINFO, NULL, &oact) == 0 && oact.sa_handler != SIG_IGN)
-		(void) sigaction(SIGINFO, &act, NULL);
-#endif
-}
-
 static void
 filter_machines(char *filt)
 {
@@ -1648,15 +1968,9 @@ main(int argc, char *argv[])
 {
 	dtrace_bufdesc_t buf;
 	dtrace_status_t status[2];
-	dtrace_optval_t opt;
 	dtrace_cmd_t *dcp;
+	dtrace_optval_t opt;
 	char *machine_filter;
-	dtrace_consumer_t con;
-
-	con.dc_consume_probe = chew;
-	con.dc_consume_rec = chewrec;
-	con.dc_get_buf = NULL;
-	con.dc_put_buf = NULL;
 
 	g_ofp = stdout;
 	int done = 0, mode = 0;
@@ -2363,87 +2677,8 @@ main(int argc, char *argv[])
 	if (g_total == 0 && !g_grabanon && !(g_cflags & DTRACE_C_ZDEFS))
 		dfatal("no probes %s\n", g_cmdc ? "matched" : "specified");
 
-	/*
-	 * Start tracing.  Once we dtrace_go(), reload any options that affect
-	 * our globals in case consuming anonymous state has changed them.
-	 */
-	go();
-
-	(void) dtrace_getopt(g_dtp, "flowindent", &opt);
-	g_flowindent = opt != DTRACEOPT_UNSET;
-
-	(void) dtrace_getopt(g_dtp, "grabanon", &opt);
-	g_grabanon = opt != DTRACEOPT_UNSET;
-
-	(void) dtrace_getopt(g_dtp, "quiet", &opt);
-	g_quiet = opt != DTRACEOPT_UNSET;
-
-	(void) dtrace_getopt(g_dtp, "destructive", &opt);
-	if (opt != DTRACEOPT_UNSET)
-		notice("allowing destructive actions\n");
-
-	installsighands();
-
-	/*
-	 * Now that tracing is active and we are ready to consume trace data,
-	 * continue any grabbed or created processes, setting them running
-	 * using the /proc control mechanism inside of libdtrace.
-	 */
-	for (i = 0; i < g_psc; i++)
-		dtrace_proc_continue(g_dtp, g_psv[i]);
-
-	g_pslive = g_psc; /* count for prochandler() */
-
-	do {
-		if (!g_intr && !done)
-			dtrace_sleep(g_dtp);
-
-#ifdef __FreeBSD__
-		if (g_siginfo) {
-			(void)dtrace_aggregate_print(g_dtp, g_ofp, NULL);
-			g_siginfo = 0;
-		}
-#endif
-
-		if (g_newline) {
-			/*
-			 * Output a newline just to make the output look
-			 * slightly cleaner.  Note that we do this even in
-			 * "quiet" mode...
-			 */
-			oprintf("\n");
-			g_newline = 0;
-		}
-
-		if (done || g_intr || (g_psc != 0 && g_pslive == 0)) {
-			done = 1;
-			if (dtrace_stop(g_dtp) == -1)
-				dfatal("couldn't stop tracing");
-		}
-
-		switch (dtrace_work(g_dtp, g_ofp, &con, NULL)) {
-		case DTRACE_WORKSTATUS_DONE:
-			done = 1;
-			break;
-		case DTRACE_WORKSTATUS_OKAY:
-			break;
-		default:
-			if (!g_impatient && dtrace_errno(g_dtp) != EINTR)
-				dfatal("processing aborted");
-		}
-
-		if (g_ofp != NULL && fflush(g_ofp) == EOF)
-			clearerr(g_ofp);
-
-	} while (!done);
-
-	oprintf("\n");
-
-	if (!g_impatient) {
-		if (dtrace_aggregate_print(g_dtp, g_ofp, NULL) == -1 &&
-		    dtrace_errno(g_dtp) != EINTR)
-			dfatal("failed to print aggregations");
-	}
+	setup_tracing();
+	(void) dtc_work(NULL);
 
 	dtrace_close(g_dtp);
 	return (g_status);

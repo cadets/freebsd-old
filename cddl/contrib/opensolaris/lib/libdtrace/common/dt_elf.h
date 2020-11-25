@@ -148,6 +148,7 @@ typedef struct dt_elf_prog {
 	uint32_t	dtep_rflags;
 	int		dtep_haserror;
 	char		dtep_err[DT_PROG_ERRLEN];
+	char		dtep_ident[DT_PROG_IDENTLEN];
 } dt_elf_prog_t;
 
 /*
@@ -191,7 +192,8 @@ extern dt_elf_opt_t dtelf_rtopts[];
 extern dt_elf_opt_t dtelf_drtopts[];
 
 extern void dt_elf_create(dtrace_prog_t *, int, const char *);
-extern dtrace_prog_t *dt_elf_to_prog(dtrace_hdl_t *, int, int);
+extern dtrace_prog_t *dt_elf_to_prog(dtrace_hdl_t *, int, int,
+    int *, dtrace_prog_t *);
 extern void dtrace_use_elf(dtrace_hdl_t *);
 
 

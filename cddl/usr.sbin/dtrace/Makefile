@@ -27,7 +27,7 @@ LDFLAGS+=	-fsanitize=address
 #CFLAGS+=	-DNEED_ERRLOC
 #YFLAGS+=	-d
 
-LIBADD=	dtrace ctf elf proc
+LIBADD=	dtrace ctf elf proc pthread
 
 .if ${MK_DTRACE_TESTS} != "no"
 SUBDIR+=	tests

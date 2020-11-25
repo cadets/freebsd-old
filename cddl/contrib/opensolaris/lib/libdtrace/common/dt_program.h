@@ -36,7 +36,8 @@ extern "C" {
 #include <dtrace.h>
 #include <dt_list.h>
 
-#define	DT_PROG_ERRLEN	4096
+#define	DT_PROG_ERRLEN		4096
+#define	DT_PROG_IDENTLEN	1024
 
 typedef struct dt_stmt {
 	dt_list_t ds_list;	/* list forward/back pointers */
@@ -52,6 +53,7 @@ struct dtrace_prog {
 	uint32_t dp_rflags;		/* resolver flags */
 	int dp_haserror;		/* does this program have an error? */
 	char dp_err[DT_PROG_ERRLEN];	/* error string */
+	char dp_ident[1024];		/* 1024-byte identifier of this prog */
 };
 
 extern dtrace_prog_t *dt_program_create(dtrace_hdl_t *);

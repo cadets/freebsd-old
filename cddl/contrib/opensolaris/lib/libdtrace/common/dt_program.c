@@ -44,7 +44,13 @@
 dtrace_prog_t *
 dt_program_create(dtrace_hdl_t *dtp)
 {
+	char buf[DT_PROG_IDENTLEN] = { 0 };
 	dtrace_prog_t *pgp = dt_zalloc(dtp, sizeof (dtrace_prog_t));
+
+	/*
+	 * Generate our random identifier
+	 */
+	arc4random_buf(buf, DT_PROG_IDENTLEN);
 
 	if (pgp != NULL) {
 		dt_list_append(&dtp->dt_programs, pgp);

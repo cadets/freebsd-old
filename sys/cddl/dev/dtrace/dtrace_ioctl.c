@@ -907,6 +907,50 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		return (0);
 	}
+	case DTRACEIOC_AUGMENT: {
+		dof_hdr_t *dof = NULL;
+		dtrace_enabling_t *enab = NULL;
+		dtrace_vstate_t *vstate;
+		int err = 0;
+		int rval;
+		dtrace_enable_io_t *p = (dtrace_enable_io_t *) addr;
+
+		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_AUGMENT\n",__func__,__LINE__);
+		mutex_enter(&cpu_lock);
+		mutex_enter(&dtrace_lock);
+		vstate = &state->dts_vstate;
+
+		if (state->dts_activity != DTRACE_ACTIVITY_ACTIVE) {
+			mutex_exit(&dtrace_lock);
+			mutex_exit(&cpu_lock);
+			dtrace_dof_destroy(dof);
+			return (ESHUTDOWN);
+		}
+
+		if (dtrace_dof_slurp(dof, vstate, td->td_ucred, &enab, 0, 0,
+		    B_TRUE) != 0) {
+			mutex_exit(&dtrace_lock);
+			mutex_exit(&cpu_lock);
+			dtrace_dof_destroy(dof);
+			return (EINVAL);
+		}
+
+		/*
+		 * We don't allow changing options in this ioctl.
+		 */
+
+		if ((err = dtrace_enabling_match(enab, &p->n_matched)) == 0) {
+			err = dtrace_enabling_retain(enab);
+		} else {
+			dtrace_enabling_destroy(enab);
+		}
+
+		mutex_exit(&cpu_lock);
+		mutex_exit(&dtrace_lock);
+		dtrace_dof_destroy(dof);
+
+		return (0);
+	}
 	default:
 		error = ENOTTY;
 	}

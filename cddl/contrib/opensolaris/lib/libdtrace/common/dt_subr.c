@@ -994,3 +994,10 @@ dtrace_uaddr2str(dtrace_hdl_t *dtp, pid_t pid,
 
 	return (dt_string2str(c, str, nbytes));
 }
+
+int
+dt_augment_tracing(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
+{
+
+	return (dt_ioctl(dtp, DTRACEIOC_AUGMENT, pgp));
+}

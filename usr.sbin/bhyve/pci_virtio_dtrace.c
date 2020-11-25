@@ -251,6 +251,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	static char *path = NULL;
 	char donepath[MAXPATHLEN] = { 0 };
 	size_t donepathlen;
+	size_t size;
+	char *name;
 
 	assert(niov == 1);
 	retval = 0;
@@ -300,12 +302,23 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 				return (retval);
 			}
 
+			name = vm_get_name(sc->vsd_vmctx);
+			size = strlen(name);
+
+			if (write(fd, &size, sizeof(size)) < 0)
+				fprintf(stderr, "Warning: Failed to write "
+				    "%zu bytes to %s\n", len, path);
+
+			if (write(fd, name, size) < 0)
+				fprintf(stderr, "Warning: Failed to write "
+				    "%zu bytes to %s\n", len, path);
+
 			/*
 			 * Write the temporary file
 			 */
 			if (write(fd, elf, len) < 0)
 				fprintf(stderr, "Warning: Failed to write "
-				    "%zu bytes to %s", len, path);
+				    "%zu bytes to %s\n", len, path);
 
  			donepathlen = strlen(path) - 1;
 			memset(donepath, 0, donepathlen);
