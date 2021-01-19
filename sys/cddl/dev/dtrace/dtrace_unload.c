@@ -27,6 +27,7 @@ dtrace_unload()
 {
 	dtrace_state_t *state;
 	int error = 0;
+	size_t i = 0;
 
 	destroy_dev(dtrace_dev);
 	destroy_dev(helper_dev);
@@ -69,22 +70,27 @@ dtrace_unload()
 
 	mutex_exit(&cpu_lock);
 
-	if (dtrace_probes != NULL) {
-		kmem_free(dtrace_probes, 0);
-		dtrace_probes = NULL;
-		dtrace_nprobes = 0;
+	for (i = 0; i < HYPERTRACE_MAX_VMS; i++) {
+		if (dtrace_vprobes[i] != NULL) {
+			kmem_free(dtrace_vprobes[i],
+			    sizeof (dtrace_probe_t *) * dtrace_nvprobes[i]);
+			dtrace_vprobes[i] = NULL;
+			dtrace_nvprobes[i] = 0;
+		}
+
+		dtrace_hash_destroy(dtrace_bymod[i]);
+		dtrace_hash_destroy(dtrace_byfunc[i]);
+		dtrace_hash_destroy(dtrace_byname[i]);
+		dtrace_bymod[i] = NULL;
+		dtrace_byfunc[i] = NULL;
+		dtrace_byname[i] = NULL;
+
+		delete_unrhdr(dtrace_arena[i]);
+		mtx_destroy(&dtrace_unr_mtx[i]);
 	}
 
-	dtrace_hash_destroy(dtrace_bymod);
-	dtrace_hash_destroy(dtrace_byfunc);
-	dtrace_hash_destroy(dtrace_byname);
-	dtrace_bymod = NULL;
-	dtrace_byfunc = NULL;
-	dtrace_byname = NULL;
 
 	kmem_cache_destroy(dtrace_state_cache);
-
-	delete_unrhdr(dtrace_arena);
 
 	if (dtrace_toxrange != NULL) {
 		kmem_free(dtrace_toxrange, 0);

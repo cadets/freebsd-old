@@ -253,9 +253,11 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	size_t donepathlen;
 	size_t size;
 	char *name;
+	uint16_t vmid;
 
 	assert(niov == 1);
 	retval = 0;
+	vmid = 0;
 
 	ctrl = (struct pci_vtdtr_control *)iov->iov_base;
 	switch (ctrl->pvc_event) {
@@ -301,6 +303,11 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 				offs = 0;
 				return (retval);
 			}
+
+			vmid = vm_get_vmid(sc->vsd_vmctx);
+			if (write(fd, &vmid, sizeof(vmid)) < 0)
+				fprintf(stderr, "Warning: Failed to write "
+				    "vmid (%u) to %s\n", vmid, path);
 
 			name = vm_get_name(sc->vsd_vmctx);
 			size = strlen(name);
@@ -623,20 +630,6 @@ pci_vtdtr_reset_queue(struct pci_vtdtr_softc *sc)
 
 	STAILQ_INIT(&q->head);
 	pthread_mutex_unlock(&q->mtx);
-}
-
-static int
-pci_vtdtr_find(const char *vm,
-    char vms[VTDTR_MAXVMS][VTDTR_VMNAMEMAX], size_t count)
-{
-	size_t i;
-
-	for (i = 0; i < count; i++) {
-		if (strcmp(vm, vms[i]) == 0)
-			return (0);
-	}
-
-	return (-1);
 }
 
 static struct pci_vtdtr_control *

@@ -127,7 +127,8 @@ dtmalloc_type_cb(struct malloc_type *mtp, void *arg __unused)
 		if (isspace(name[i]))
 			name[i] = '_';
 
-	if (dtrace_probe_lookup(dtmalloc_id, NULL, name, "malloc") != 0)
+	if (dtrace_probe_lookup(HYPERTRACE_HOSTID, dtmalloc_id,
+	    NULL, name, "malloc") != 0)
 		return;
 
 	(void) dtrace_probe_create(dtmalloc_id, NULL, name, "malloc", 0,

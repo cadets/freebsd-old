@@ -327,7 +327,8 @@ profile_create(hrtime_t interval, char *name, int kind)
 	if (interval < profile_interval_min)
 		return;
 
-	if (dtrace_probe_lookup(profile_id, NULL, NULL, name) != 0)
+	if (dtrace_probe_lookup(HYPERTRACE_HOSTID,
+	    profile_id, NULL, NULL, name) != 0)
 		return;
 
 	atomic_add_32(&profile_total, 1);

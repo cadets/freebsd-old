@@ -60,7 +60,7 @@ void
 dtvirt_probe(void *biscuit, int probeid, struct dtvirt_args *dtv_args)
 {
 
-	dtrace_ns_probe(biscuit, probeid, dtv_args);
+	dtrace_vprobe(biscuit, probeid, dtv_args);
 }
 
 static int

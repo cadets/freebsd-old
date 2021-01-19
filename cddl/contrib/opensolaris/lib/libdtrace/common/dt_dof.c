@@ -787,6 +787,7 @@ dtrace_dof_create(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, uint_t flags)
 		dofp.dofp_func = dof_add_string(ddo, pdp->dtpd_func);
 		dofp.dofp_name = dof_add_string(ddo, pdp->dtpd_name);
 		dofp.dofp_id = pdp->dtpd_id;
+		dofp.dofp_vmid = pdp->dtpd_vmid;
 
 		probesec = dof_add_lsect(ddo, &dofp, DOF_SECT_PROBEDESC,
 		    sizeof (dof_secidx_t), 0,

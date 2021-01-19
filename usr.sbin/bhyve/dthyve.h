@@ -30,7 +30,6 @@
 #define _DTHYVE_H_
 
 #include <sys/types.h>
-#include <sys/vtdtr.h>
 
 int	dthyve_init(void);
 int	dthyve_configured(void);

@@ -1598,3 +1598,10 @@ vm_get_name(struct vmctx *ctx)
 
 	return (ctx->name);
 }
+
+uint16_t
+vm_get_vmid(struct vmctx *ctx)
+{
+
+	return (ctx->id);
+}

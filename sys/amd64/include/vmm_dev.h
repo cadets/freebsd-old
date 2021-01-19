@@ -31,6 +31,8 @@
 #ifndef	_VMM_DEV_H_
 #define	_VMM_DEV_H_
 
+#include <sys/types.h>
+
 #ifdef _KERNEL
 void	vmmdev_init(void);
 int	vmmdev_cleanup(void);
@@ -424,5 +426,5 @@ enum {
 #define	VM_RESTART_INSTRUCTION \
 	_IOW('v', IOCNUM_RESTART_INSTRUCTION, int)
 #define	VM_GET_IDENTIFIER \
-	_IOW('v', IOCNUM_GET_ID, int16_t)
+	_IOR('v', IOCNUM_GET_ID, uint16_t)
 #endif

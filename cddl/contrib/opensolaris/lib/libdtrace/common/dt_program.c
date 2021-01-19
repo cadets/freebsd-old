@@ -632,3 +632,122 @@ dtrace_program_header(dtrace_hdl_t *dtp, FILE *out, const char *fname)
 
 	return (0);
 }
+
+int
+dt_prog_verify_difo(dtrace_hdl_t *dtp,
+    dtrace_difo_t *dbase, dtrace_difo_t *dnew)
+{
+	size_t i, j;
+	dif_instr_t ibase, inew;
+	uint8_t opbase, opnew;
+
+	i = 0;
+	j = 0;
+	ibase = 0;
+	inew = 0;
+	opbase = 0;
+	opnew = 0;
+
+	/*
+	 * Go through all of the base instructions and compare it to the new
+	 * instructions. If we encounter a relocation, we check that it has
+	 * been applied correctly and adjust the counter accordingly.
+	 */
+	for (i = 0; i < dbase->dtdo_len; i++) {
+		ibase = dbase->dtdo_buf[i];
+		inew = dnew->dtdo_buf[j];
+
+		opbase = DIF_INSTR_OP(ibase);
+		switch (opbase) {
+		case DIF_OP_USETX:
+			opnew = DIF_INSTR_OP(inew);
+			if (opnew != DIF_OP_SETX)
+				return (1);
+
+			break;
+
+		case DIF_OP_ULOAD:
+			opnew = DIF_INSTR_OP(inew);
+			if (opnew != DIF_OP_LDSB && opnew != DIF_OP_LDSH &&
+			    opnew != DIF_OP_LDSW && opnew != DIF_OP_LDX  &&
+			    opnew != DIF_OP_LDUB && opnew != DIF_OP_LDUH &&
+			    opnew != DIF_OP_LDUW)
+				return (1);
+			break;
+
+		case DIF_OP_UULOAD:
+			opnew = DIF_INSTR_OP(inew);
+			if (opnew != DIF_OP_ULDSB && opnew != DIF_OP_ULDSH &&
+			    opnew != DIF_OP_ULDSW && opnew != DIF_OP_ULDX  &&
+			    opnew != DIF_OP_ULDUB && opnew != DIF_OP_ULDUH &&
+			    opnew != DIF_OP_ULDUW)
+				return (1);
+			break;
+
+		case DIF_OP_TYPECAST:
+			opnew = DIF_INSTR_OP(inew);
+			if (opnew != DIF_OP_NOP)
+				return (1);
+			break;
+
+		default:
+			if (ibase != inew)
+				return (1);
+			break;
+		}
+	}
+
+	return (0);
+}
+
+int
+dt_prog_verify(dtrace_hdl_t *dtp, dtrace_prog_t *pbase,
+    dtrace_prog_t *pnew, uint16_t vmid)
+{
+	dt_stmt_t *sbase, *snew;
+	dtrace_stmtdesc_t *sdbase, *sdnew;
+	dtrace_actdesc_t *adbase, *adnew;
+	dtrace_ecbdesc_t *enew;
+	dtrace_probedesc_t *pdnew;
+
+	sbase = NULL;
+	snew = NULL;
+	sdbase = NULL;
+	sdnew = NULL;
+	adbase = NULL;
+	adnew = NULL;
+	enew = NULL;
+	pdnew = NULL;
+	
+	/*
+	 * Iterate through all the statements of both programs and verify
+	 * that they match up, or if they are relocations that they are
+	 * applied correctly.
+	 */
+	for (sbase = dt_list_next(&pbase->dp_stmts),
+	    snew = dt_list_next(&pnew->dp_stmts);
+	    sbase && snew;
+	    sbase = dt_list_next(sbase),
+	    snew = dt_list_next(snew)) {
+		sdbase = sbase->ds_desc;
+		sdnew = snew->ds_desc;
+
+		for (adbase = sdbase->dtsd_action,
+		    adnew = sdnew->dtsd_action;
+		    adbase != sdbase->dtsd_action_last &&
+		    adnew != sdnew->dtsd_action_last;
+		    adbase = adbase->dtad_next,
+		    adnew = adnew->dtad_next) {
+			if (dt_prog_verify_difo(dtp,
+			    adbase->dtad_difo, adnew->dtad_difo))
+				return (1);
+		}
+
+		enew = sdnew->dtsd_ecbdesc;
+		pdnew = &enew->dted_probe;
+
+		pdnew->dtpd_vmid = vmid;
+	}
+
+	return (0);
+}

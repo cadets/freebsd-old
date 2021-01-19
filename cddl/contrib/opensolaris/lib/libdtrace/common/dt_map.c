@@ -198,6 +198,7 @@ dt_epid_add(dtrace_hdl_t *dtp, dtrace_epid_t id)
 		return (dt_set_errno(dtp, EDT_NOMEM));
 	}
 
+	probe->dtpd_vmid = 0;
 	probe->dtpd_id = enabled->dtepd_probeid;
 
 	if (dt_ioctl(dtp, DTRACEIOC_PROBES, probe) == -1) {

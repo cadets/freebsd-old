@@ -331,25 +331,29 @@ dtnfsclient_provide(void *arg, dtrace_probedesc_t *desc)
 	/*
 	 * Register access cache probes.
 	 */
-	if (dtrace_probe_lookup(dtnfsclient_id, dtnfsclient_accesscache_str,
+	if (dtrace_probe_lookup(HYPERTRACE_HOSTID,
+	    dtnfsclient_id, dtnfsclient_accesscache_str,
 	    dtnfsclient_flush_str, dtnfsclient_done_str) == 0) {
 		nfscl_accesscache_flush_done_id = dtrace_probe_create(
 		    dtnfsclient_id, dtnfsclient_accesscache_str,
 		    dtnfsclient_flush_str, dtnfsclient_done_str, 0, NULL);
 	}
-	if (dtrace_probe_lookup(dtnfsclient_id, dtnfsclient_accesscache_str,
+	if (dtrace_probe_lookup(HYPERTRACE_HOSTID,
+	    dtnfsclient_id, dtnfsclient_accesscache_str,
 	    dtnfsclient_get_str, dtnfsclient_hit_str) == 0) {
 		nfscl_accesscache_get_hit_id = dtrace_probe_create(
 		    dtnfsclient_id, dtnfsclient_accesscache_str,
 		    dtnfsclient_get_str, dtnfsclient_hit_str, 0, NULL);
 	}
-	if (dtrace_probe_lookup(dtnfsclient_id, dtnfsclient_accesscache_str,
+	if (dtrace_probe_lookup(HYPERTRACE_HOSTID,
+	    dtnfsclient_id, dtnfsclient_accesscache_str,
 	    dtnfsclient_get_str, dtnfsclient_miss_str) == 0) {
 		nfscl_accesscache_get_miss_id = dtrace_probe_create(
 		    dtnfsclient_id, dtnfsclient_accesscache_str,
 		    dtnfsclient_get_str, dtnfsclient_miss_str, 0, NULL);
 	}
-	if (dtrace_probe_lookup(dtnfsclient_id, dtnfsclient_accesscache_str,
+	if (dtrace_probe_lookup(HYPERTRACE_HOSTID,
+	    dtnfsclient_id, dtnfsclient_accesscache_str,
 	    dtnfsclient_load_str, dtnfsclient_done_str) == 0) {
 		nfscl_accesscache_load_done_id = dtrace_probe_create(
 		    dtnfsclient_id, dtnfsclient_accesscache_str,
@@ -359,25 +363,29 @@ dtnfsclient_provide(void *arg, dtrace_probedesc_t *desc)
 	/*
 	 * Register attribute cache probes.
 	 */
-	if (dtrace_probe_lookup(dtnfsclient_id, dtnfsclient_attrcache_str,
+	if (dtrace_probe_lookup(HYPERTRACE_HOSTID,
+	    dtnfsclient_id, dtnfsclient_attrcache_str,
 	    dtnfsclient_flush_str, dtnfsclient_done_str) == 0) {
 		nfscl_attrcache_flush_done_id = dtrace_probe_create(
 		    dtnfsclient_id, dtnfsclient_attrcache_str,
 		    dtnfsclient_flush_str, dtnfsclient_done_str, 0, NULL);
 	}
-	if (dtrace_probe_lookup(dtnfsclient_id, dtnfsclient_attrcache_str,
+	if (dtrace_probe_lookup(HYPERTRACE_HOSTID,
+	    dtnfsclient_id, dtnfsclient_attrcache_str,
 	    dtnfsclient_get_str, dtnfsclient_hit_str) == 0) {
 		nfscl_attrcache_get_hit_id = dtrace_probe_create(
 		    dtnfsclient_id, dtnfsclient_attrcache_str,
 		    dtnfsclient_get_str, dtnfsclient_hit_str, 0, NULL);
 	}
-	if (dtrace_probe_lookup(dtnfsclient_id, dtnfsclient_attrcache_str,
+	if (dtrace_probe_lookup(HYPERTRACE_HOSTID,
+	    dtnfsclient_id, dtnfsclient_attrcache_str,
 	    dtnfsclient_get_str, dtnfsclient_miss_str) == 0) {
 		nfscl_attrcache_get_miss_id = dtrace_probe_create(
 		    dtnfsclient_id, dtnfsclient_attrcache_str,
 		    dtnfsclient_get_str, dtnfsclient_miss_str, 0, NULL);
 	}
-	if (dtrace_probe_lookup(dtnfsclient_id, dtnfsclient_attrcache_str,
+	if (dtrace_probe_lookup(HYPERTRACE_HOSTID,
+	    dtnfsclient_id, dtnfsclient_attrcache_str,
 	    dtnfsclient_load_str, dtnfsclient_done_str) == 0) {
 		nfscl_attrcache_load_done_id = dtrace_probe_create(
 		    dtnfsclient_id, dtnfsclient_attrcache_str,
@@ -390,7 +398,8 @@ dtnfsclient_provide(void *arg, dtrace_probedesc_t *desc)
 	 */
 	for (i = 0; i < NFSV41_NPROCS + 1; i++) {
 		if (dtnfsclient_rpcs[i].nr_v2_name != NULL &&
-		    dtrace_probe_lookup(dtnfsclient_id, dtnfsclient_nfs2_str,
+		    dtrace_probe_lookup(HYPERTRACE_HOSTID,
+		    dtnfsclient_id, dtnfsclient_nfs2_str,
 		    dtnfsclient_rpcs[i].nr_v2_name, dtnfsclient_start_str) ==
 		    0) {
 			dtnfsclient_rpcs[i].nr_v2_id_start =
@@ -401,7 +410,8 @@ dtnfsclient_provide(void *arg, dtrace_probedesc_t *desc)
 			    &nfscl_nfs2_start_probes[i]);
 		}
 		if (dtnfsclient_rpcs[i].nr_v2_name != NULL &&
-		    dtrace_probe_lookup(dtnfsclient_id, dtnfsclient_nfs2_str,
+		    dtrace_probe_lookup(HYPERTRACE_HOSTID,
+		    dtnfsclient_id, dtnfsclient_nfs2_str,
 		    dtnfsclient_rpcs[i].nr_v2_name, dtnfsclient_done_str) ==
 		    0) {
 			dtnfsclient_rpcs[i].nr_v2_id_done = 
@@ -419,7 +429,8 @@ dtnfsclient_provide(void *arg, dtrace_probedesc_t *desc)
 	 */
 	for (i = 0; i < NFSV41_NPROCS + 1; i++) {
 		if (dtnfsclient_rpcs[i].nr_v3_name != NULL &&
-		    dtrace_probe_lookup(dtnfsclient_id, dtnfsclient_nfs3_str,
+		    dtrace_probe_lookup(HYPERTRACE_HOSTID,
+		    dtnfsclient_id, dtnfsclient_nfs3_str,
 		    dtnfsclient_rpcs[i].nr_v3_name, dtnfsclient_start_str) ==
 		    0) {
 			dtnfsclient_rpcs[i].nr_v3_id_start =
@@ -430,7 +441,8 @@ dtnfsclient_provide(void *arg, dtrace_probedesc_t *desc)
 			    &nfscl_nfs3_start_probes[i]);
 		}
 		if (dtnfsclient_rpcs[i].nr_v3_name != NULL &&
-		    dtrace_probe_lookup(dtnfsclient_id, dtnfsclient_nfs3_str,
+		    dtrace_probe_lookup(HYPERTRACE_HOSTID,
+		    dtnfsclient_id, dtnfsclient_nfs3_str,
 		    dtnfsclient_rpcs[i].nr_v3_name, dtnfsclient_done_str) ==
 		    0) {
 			dtnfsclient_rpcs[i].nr_v3_id_done = 
@@ -446,7 +458,8 @@ dtnfsclient_provide(void *arg, dtrace_probedesc_t *desc)
 	 * Register NFSv4 RPC procedures.
 	 */
 	for (i = 0; i < NFSV41_NPROCS + 1; i++) {
-		if (dtrace_probe_lookup(dtnfsclient_id, dtnfsclient_nfs4_str,
+		if (dtrace_probe_lookup(HYPERTRACE_HOSTID,
+		    dtnfsclient_id, dtnfsclient_nfs4_str,
 		    dtnfsclient_rpcs[i].nr_v4_name, dtnfsclient_start_str) ==
 		    0) {
 			dtnfsclient_rpcs[i].nr_v4_id_start =
@@ -456,7 +469,8 @@ dtnfsclient_provide(void *arg, dtrace_probedesc_t *desc)
 			    dtnfsclient_start_str, 0,
 			    &nfscl_nfs4_start_probes[i]);
 		}
-		if (dtrace_probe_lookup(dtnfsclient_id, dtnfsclient_nfs4_str,
+		if (dtrace_probe_lookup(HYPERTRACE_HOSTID,
+		    dtnfsclient_id, dtnfsclient_nfs4_str,
 		    dtnfsclient_rpcs[i].nr_v4_name, dtnfsclient_done_str) ==
 		    0) {
 			dtnfsclient_rpcs[i].nr_v4_id_done = 

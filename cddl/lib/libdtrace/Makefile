@@ -53,7 +53,6 @@ SRCS=		dt_aggregate.c \
 		dt_subr.c \
 		dt_sugar.c \
 		dt_typing.c \
-		dt_vtdtr.c \
 		dt_work.c \
 		dt_xlator.c \
 		gmatch.c

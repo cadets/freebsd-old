@@ -1901,8 +1901,9 @@ fasttrap_add_probe(fasttrap_probe_spec_t *pdata)
 			(void) sprintf(name_str, "%llx",
 			    (unsigned long long)pdata->ftps_offs[i]);
 
-			if (dtrace_probe_lookup(provider->ftp_provid,
-			    pdata->ftps_mod, pdata->ftps_func, name_str) != 0)
+			if (dtrace_probe_lookup(HYPERTRACE_HOSTID,
+			    provider->ftp_provid, pdata->ftps_mod,
+			    pdata->ftps_func, name_str) != 0)
 				continue;
 
 			atomic_inc_32(&fasttrap_total);
@@ -1936,8 +1937,8 @@ fasttrap_add_probe(fasttrap_probe_spec_t *pdata)
 			    FASTTRAP_OFFSET_AFRAMES, pp);
 		}
 
-	} else if (dtrace_probe_lookup(provider->ftp_provid, pdata->ftps_mod,
-	    pdata->ftps_func, name) == 0) {
+	} else if (dtrace_probe_lookup(HYPERTRACE_HOSTID, provider->ftp_provid,
+	    pdata->ftps_mod, pdata->ftps_func, name) == 0) {
 		atomic_add_32(&fasttrap_total, pdata->ftps_noffs);
 
 		if (fasttrap_total > fasttrap_max) {

@@ -114,12 +114,22 @@ typedef uint64_t dtrace_genid_t;
  */
 struct dtrace_probe {
 	dtrace_id_t dtpr_id;			/* probe identifier */
+	dtrace_vmid_t dtpr_vmid;		/* VM identifier */
 	dtrace_ecb_t *dtpr_ecb;			/* ECB list; see below */
 	dtrace_ecb_t *dtpr_ecb_last;		/* last ECB in list */
 	void *dtpr_arg;				/* provider argument */
 	dtrace_cacheid_t dtpr_predcache;	/* predicate cache ID */
 	int dtpr_aframes;			/* artificial frames */
-	dtrace_provider_t *dtpr_provider;	/* pointer to provider */
+	dtrace_provider_id_t dtpr_provid;	/* provider ID */
+
+	/*
+	 * Defines to access different kinds of providers. Since virtual
+	 * providers don't actually exist on the host, we identify them by
+	 * their name.
+	 */
+#define	dtpr_provider	dtpr_provid
+#define	dtpr_vprovider	dtpr_provid
+
 	char *dtpr_mod;				/* probe's module name */
 	char *dtpr_func;			/* probe's function name */
 	char *dtpr_name;			/* probe's name */
@@ -144,6 +154,7 @@ typedef struct dtrace_probekey {
 	char *dtpk_name;			/* name to match */
 	dtrace_probekey_f *dtpk_nmatch;		/* name matching function */
 	dtrace_id_t dtpk_id;			/* identifier to match */
+	uint16_t dtpk_vmid;			/* VM identifier to match */
 } dtrace_probekey_t;
 
 typedef struct dtrace_hashbucket {
@@ -1156,6 +1167,7 @@ struct dtrace_state {
 	vmem_t *dts_aggid_arena;		/* arena for aggregation IDs */
 #else
 	struct unrhdr *dts_aggid_arena;		/* arena for aggregation IDs */
+	struct mtx dts_aggid_arenamtx;		/* mutex for aggid arena */
 #endif
 	uint64_t dts_errors;			/* total number of errors */
 	uint32_t dts_speculations_busy;		/* number of spec. busy */

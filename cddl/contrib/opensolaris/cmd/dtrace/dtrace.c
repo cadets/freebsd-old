@@ -817,6 +817,8 @@ listen_dtdaemon(void *arg)
 	dtd_arg_t *dtd_arg = (dtd_arg_t *)arg;
 	dt_pgplist_t *newpgpl;
 	int done;
+	uint16_t vmid;
+	size_t lentowrite;
 
 	sockfd = 0;
 	elflen = 0;
@@ -827,6 +829,8 @@ listen_dtdaemon(void *arg)
 	err = 0;
 	name = NULL;
 	done = 0;
+	vmid = 0;
+	lentowrite = 0;
 	
 	/*
 	 * Assume this is an int.
@@ -867,6 +871,9 @@ listen_dtdaemon(void *arg)
 			break;
 		}
 
+		vmid = *((uint16_t *)elf);
+		elf += sizeof(uint16_t);
+		
 		size = (size_t *)elf;
 
 		elf += sizeof(size_t);
@@ -884,10 +891,17 @@ listen_dtdaemon(void *arg)
 		if (fd == -1)
 			dfatal("failed to create a temporary file");
 
-		if (write(fd, elf, elflen - *size - sizeof(size_t)) < 0)
+		lentowrite = elflen - *size - sizeof(size_t) -sizeof(uint16_t);
+		if (write(fd, elf, lentowrite) < 0)
 			dfatal("failed to write to a temporary file");
 
 		newprog = dt_elf_to_prog(g_dtp, fd, 0, &err, hostpgp);
+
+		if (dt_prog_verify(g_dtp, hostpgp, newprog, vmid)) {
+			fprintf(stderr, "failed to verify DIF from %s (%u)\n",
+			    vm_name, vmid);
+			continue;
+		}
 
 		if (!done && newprog == NULL && err != EACCES)
 			dfatal("failed to parse elf file");
@@ -1118,8 +1132,10 @@ process_new_pgp(dtrace_prog_t *pgp)
 	void *dof;
 	static size_t n_pgps = 0;
 	dtrace_enable_io_t io;
+	dtrace_proginfo_t dpi;
 
 	memset(&io, 0, sizeof(io));
+
 
 	dtrace_dump_actions(pgp);
 	dof = dtrace_dof_create(g_dtp, pgp, 0);
@@ -1129,8 +1145,18 @@ process_new_pgp(dtrace_prog_t *pgp)
 	io.dof = dof;
 
 	if (n_pgps == 0) {
+		if (dtrace_program_exec(g_dtp, pgp, &dpi) == -1) {
+			dfatal("failed to enable program");
+		} else {
+			notice("matched %u probe%s\n", dpi.dpi_matches,
+			    dpi.dpi_matches == 1 ? "" : "s");
+		}
+
 		setup_tracing();
 		pthread_create(&g_worktd, NULL, dtc_work, NULL);
+		/*
+		 * TODO: Actually enable the probes.
+		 */
 	} else {
 		if (dt_augment_tracing(g_dtp, pgp))
 			dfatal("failed to augment tracing");
@@ -2679,7 +2705,6 @@ main(int argc, char *argv[])
 
 	setup_tracing();
 	(void) dtc_work(NULL);
-
 	dtrace_close(g_dtp);
 	return (g_status);
 }

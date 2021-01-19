@@ -71,6 +71,8 @@ typedef int model_t;
 #include <sys/stdint.h>
 #endif
 
+#include <sys/hypertrace.h>
+
 /*
  * DTrace Universal Constants and Typedefs
  */
@@ -98,6 +100,7 @@ typedef int model_t;
 #define	DTRACE_ARGTYPELEN	128
 
 typedef uint32_t dtrace_id_t;		/* probe identifier */
+typedef uint16_t dtrace_vmid_t;		/* VM identifier */
 typedef uint32_t dtrace_epid_t;		/* enabled probe identifier */
 typedef uint32_t dtrace_aggid_t;	/* aggregation identifier */
 typedef int64_t dtrace_aggvarid_t;	/* aggregation variable identifier */
@@ -923,6 +926,7 @@ typedef struct dof_probedesc {
 	dof_stridx_t dofp_func;		/* function string */
 	dof_stridx_t dofp_name;		/* name string */
 	uint32_t dofp_id;		/* probe identifier (or zero) */
+	uint16_t dofp_vmid;		/* VM identifier */
 } dof_probedesc_t;
 
 typedef struct dof_actdesc {
@@ -1086,6 +1090,7 @@ struct dtrace_predicate;
 
 typedef struct dtrace_probedesc {
 	dtrace_id_t dtpd_id;			  /* probe identifier */
+	dtrace_vmid_t dtpd_vmid;			  /* where is the probe? */
 	char dtpd_target[DTRACE_TARGETNAMELEN];   /* probe target name */
 	char dtpd_provider[DTRACE_PROVNAMELEN];   /* probe provider name */
 	char dtpd_mod[DTRACE_MODNAMELEN];	  /* probe module name */
@@ -1479,45 +1484,45 @@ typedef struct dtrace_machine_filter {
 #define	DTRACEIOC_REPLICATE	(DTRACEIOC | 18)	/* replicate enab */
 #else
 #define	DTRACEIOC_PROVIDER	_IOWR('x',1,dtrace_providerdesc_t)
-							/* provider query */
+						/* provider query */
 #define	DTRACEIOC_PROBES	_IOWR('x',2,dtrace_probedesc_t)
-							/* probe query */
+						/* probe query */
 #define	DTRACEIOC_BUFSNAP	_IOW('x',4,dtrace_bufdesc_t *)	
-							/* snapshot buffer */
+						/* snapshot buffer */
 #define	DTRACEIOC_PROBEMATCH	_IOWR('x',5,dtrace_probedesc_t)
-							/* match probes */
+						/* match probes */
 typedef struct {
 	void	*dof;		/* DOF userland address written to driver. */
 	int	n_matched;	/* # matches returned by driver. */
 } dtrace_enable_io_t;
 #define	DTRACEIOC_ENABLE	_IOWR('x',6,dtrace_enable_io_t)
-							/* enable probes */
+						/* enable probes */
 #define	DTRACEIOC_AGGSNAP	_IOW('x',7,dtrace_bufdesc_t *)
-							/* snapshot agg. */
+						/* snapshot agg. */
 #define	DTRACEIOC_EPROBE	_IOW('x',8,dtrace_eprobedesc_t)
-							/* get eprobe desc. */
+						/* get eprobe desc. */
 #define	DTRACEIOC_PROBEARG	_IOWR('x',9,dtrace_argdesc_t)
-							/* get probe arg */
+						/* get probe arg */
 #define	DTRACEIOC_CONF		_IOR('x',10,dtrace_conf_t)
-							/* get config. */
+						/* get config. */
 #define	DTRACEIOC_STATUS	_IOR('x',11,dtrace_status_t)
-							/* get status */
+						/* get status */
 #define	DTRACEIOC_GO		_IOR('x',12,processorid_t)
-							/* start tracing */
+						/* start tracing */
 #define	DTRACEIOC_STOP		_IOWR('x',13,processorid_t)
-							/* stop tracing */
+						/* stop tracing */
 #define	DTRACEIOC_AGGDESC	_IOW('x',15,dtrace_aggdesc_t *)	
-							/* get agg. desc. */
+						/* get agg. desc. */
 #define	DTRACEIOC_FORMAT	_IOWR('x',16,dtrace_fmtdesc_t)	
-							/* get format str */
+						/* get format str */
 #define	DTRACEIOC_DOFGET	_IOW('x',17,dof_hdr_t *)
-							/* get DOF */
+						/* get DOF */
 #define	DTRACEIOC_REPLICATE	_IOW('x',18,dtrace_repldesc_t)	
-							/* replicate enab */
+						/* replicate enab */
 #define	DTRACEIOC_FILTER	_IOW('x',19,dtrace_machine_filter_t)
-							/* apply filter */
+						/* apply filter */
 #define	DTRACEIOC_AUGMENT	_IOW('x',20,dtrace_enable_io_t)
-							/* augment instrumentation */
+						/* augment instrumentation */
 #endif
 
 /*
@@ -2349,14 +2354,16 @@ extern int dtrace_register(const char *, const dtrace_pattr_t *, uint32_t,
 extern int dtrace_unregister(dtrace_provider_id_t);
 extern int dtrace_condense(dtrace_provider_id_t);
 extern void dtrace_invalidate(dtrace_provider_id_t);
-extern dtrace_id_t dtrace_probe_lookup(dtrace_provider_id_t, char *,
-    char *, char *);
+extern dtrace_id_t dtrace_probe_lookup(dtrace_vmid_t, dtrace_provider_id_t,
+    char *, char *, char *);
 extern dtrace_id_t dtrace_probe_create(dtrace_provider_id_t, const char *,
     const char *, const char *, int, void *);
+extern dtrace_id_t dtrace_vprobe_create(uint16_t, dtrace_provider_id_t,
+    const char *, const char *, const char *);
 extern void *dtrace_probe_arg(dtrace_provider_id_t, dtrace_id_t);
 extern void dtrace_probe(dtrace_id_t, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4);
-extern void dtrace_ns_probe(void *, dtrace_id_t, struct dtvirt_args *);
+extern void dtrace_vprobe(void *, dtrace_id_t, struct dtvirt_args *);
 extern void (*dtrace_provide_all_probes)(void);
 extern int (*dtrace_probeid_enable)(dtrace_id_t id);
 extern int (*dtrace_virtstate_create)(void);

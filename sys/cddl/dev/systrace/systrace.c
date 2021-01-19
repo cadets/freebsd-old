@@ -272,7 +272,7 @@ systrace_provide(void *arg, dtrace_probedesc_t *desc)
 		return;
 
 	for (i = 0; i < MAXSYSCALL; i++) {
-		if (dtrace_probe_lookup(systrace_id, MODNAME,
+		if (dtrace_probe_lookup(HYPERTRACE_HOSTID, systrace_id, MODNAME,
 		    uglyhack.pp_syscallnames[i], "entry") != 0)
 			continue;
 

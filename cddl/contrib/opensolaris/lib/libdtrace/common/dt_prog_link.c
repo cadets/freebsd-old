@@ -139,8 +139,9 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 					    "unexpected node->din_type (%x)",
 					    node->din_type);
 
-				rtype->dtdt_size = ctf_type_size(
-				    ctf_file, node->din_ctfid);
+				if (rtype->dtdt_kind == DIF_TYPE_CTF)
+					rtype->dtdt_size = ctf_type_size(
+					    ctf_file, node->din_ctfid);
 
 				/*
 				 * Safety guard

@@ -20,22 +20,24 @@
  * NULL-terminate a string?
  */
 struct dtvirt_args {
-	uintptr_t dtv_args[DTVIRT_ARGS_MAX]; /* guest probe args */
-	void *dtv_curthread;		     /* guest thread */
-	char *dtv_execname;                  /* (v) guest execname */
-	char *dtv_execargs;		     /* (v) guest execargs */
-	lwpid_t dtv_tid;		     /* guest tid */
-	pid_t dtv_pid;			     /* guest pid */
-	pid_t dtv_ppid;			     /* guest ppid */
-	uid_t dtv_uid;			     /* guest uid */
-	gid_t dtv_gid;			     /* guest gid */
-	int dtv_errno;			     /* guest errno */
-	u_int dtv_curcpu;		     /* (h) guest curcpu */
-	u_int dtv_execargs_len;
-	char *dtv_probeprov;
-	char *dtv_probemod;
-	char *dtv_probefunc;
-	char *dtv_probename;
+	uintptr_t dtv_args[DTVIRT_ARGS_MAX];	/* guest probe args */
+	void *dtv_curthread;			/* guest thread */
+	char *dtv_execname;			/* (v) guest execname */
+	char *dtv_execargs;			/* (v) guest execargs */
+	lwpid_t dtv_tid;			/* guest tid */
+	pid_t dtv_pid;				/* guest pid */
+	pid_t dtv_ppid;				/* guest ppid */
+	uid_t dtv_uid;				/* guest uid */
+	gid_t dtv_gid;				/* guest gid */
+	int dtv_errno;				/* guest errno */
+	u_int dtv_curcpu;			/* (h) guest curcpu */
+	u_int dtv_execargs_len;			/* (v) guest execargs */
+	char *dtv_probeprov;			/* XXX: remove? */
+	char *dtv_probemod;			/* XXX: remove? */
+	char *dtv_probefunc;			/* XXX: remove? */
+	char *dtv_probename;			/* XXX: remove? */
+	char *dtv_jailname;			/* (v) guest jailname */
+	int dtv_jid;				/* guest jid */
 };
 
 extern void dtvirt_probe(void *, int, struct dtvirt_args *);

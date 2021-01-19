@@ -587,6 +587,11 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		dtrace_argdesc_t *desc = (dtrace_argdesc_t *) addr;
 		dtrace_probe_t *probe;
 		dtrace_provider_t *prov;
+		dtrace_probe_t **dtrace_probes;
+		int dtrace_nprobes;
+
+		dtrace_probes = dtrace_vprobes[HYPERTRACE_HOSTID];
+		dtrace_nprobes = dtrace_nvprobes[HYPERTRACE_HOSTID];
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_PROBEARG\n",__func__,__LINE__);
 
@@ -622,7 +627,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		mutex_exit(&dtrace_lock);
 
-		prov = probe->dtpr_provider;
+		prov = (dtrace_provider_t *)probe->dtpr_provider;
 
 		if (prov->dtpv_pops.dtps_getargdesc == NULL) {
 			/*
@@ -656,6 +661,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		uint32_t priv = 0;
 		uid_t uid = 0;
 		zoneid_t zoneid = 0;
+		dtrace_vmid_t vmid;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): %s\n",__func__,__LINE__,
 		    cmd == DTRACEIOC_PROBEMATCH ?
@@ -665,6 +671,8 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		p_desc->dtpd_mod[DTRACE_MODNAMELEN - 1] = '\0';
 		p_desc->dtpd_func[DTRACE_FUNCNAMELEN - 1] = '\0';
 		p_desc->dtpd_name[DTRACE_NAMELEN - 1] = '\0';
+
+		vmid = p_desc->dtpd_vmid;
 
 		/*
 		 * Before we attempt to match this probe, we want to give
@@ -687,8 +695,10 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_enter(&dtrace_lock);
 
 		if (cmd == DTRACEIOC_PROBEMATCH) {
-			for (i = p_desc->dtpd_id; i <= dtrace_nprobes; i++) {
-				if ((probe = dtrace_probes[i - 1]) != NULL &&
+			for (i = p_desc->dtpd_id;
+			    i <= dtrace_nvprobes[vmid]; i++) {
+				if ((probe =
+				    dtrace_vprobes[vmid][i - 1]) != NULL &&
 				    (m = dtrace_match_probe(probe, &pkey,
 				    priv, uid, zoneid)) != 0)
 					break;
@@ -700,8 +710,10 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 			}
 
 		} else {
-			for (i = p_desc->dtpd_id; i <= dtrace_nprobes; i++) {
-				if ((probe = dtrace_probes[i - 1]) != NULL &&
+			for (i = p_desc->dtpd_id;
+			    i <= dtrace_nvprobes[vmid]; i++) {
+				if ((probe =
+				    dtrace_vprobes[vmid][i - 1]) != NULL &&
 				    dtrace_match_priv(probe, priv, uid, zoneid))
 					break;
 			}

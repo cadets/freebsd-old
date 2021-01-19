@@ -51,6 +51,7 @@ dtrace_load(void *dummy)
 #ifdef EARLY_AP_STARTUP
 	int i;
 #endif
+	char mtxstr[512] = { 0 };
 
 #ifndef illumos
 	/*
@@ -74,7 +75,11 @@ dtrace_load(void *dummy)
 
 	dtrace_taskq = taskq_create("dtrace_taskq", 1, maxclsyspri, 0, 0, 0);
 
-	dtrace_arena = new_unrhdr(1, INT_MAX, &dtrace_unr_mtx);
+	for (i = 0; i < HYPERTRACE_MAX_VMS; i++) {
+		sprintf(mtxstr, "Unique resource identifier - %d", i);
+		mtx_init(&dtrace_unr_mtx[i], mtxstr, NULL, MTX_DEF);
+		dtrace_arena[i] = new_unrhdr(1, INT_MAX, &dtrace_unr_mtx[i]);
+	}
 
 	/* Register callbacks for linker file load and unload events. */
 	dtrace_kld_load_tag = EVENTHANDLER_REGISTER(kld_load,
@@ -91,9 +96,11 @@ dtrace_load(void *dummy)
 	 * the very problem we are trying to trace.
 	 */
 	mutex_init(&dtrace_lock,"dtrace probe state", MUTEX_DEFAULT, NULL);
-	mutex_init(&dtrace_provider_lock,"dtrace provider state", MUTEX_DEFAULT, NULL);
+	mutex_init(&dtrace_provider_lock,"dtrace provider state",
+	    MUTEX_DEFAULT, NULL);
 	mutex_init(&dtrace_dist_lock,"dtrace dist state", MUTEX_DEFAULT, NULL);
-	mutex_init(&dtrace_meta_lock,"dtrace meta-provider state", MUTEX_DEFAULT, NULL);
+	mutex_init(&dtrace_meta_lock,"dtrace meta-provider state",
+	    MUTEX_DEFAULT, NULL);
 #ifdef DEBUG
 	mutex_init(&dtrace_errlock,"dtrace error lock", MUTEX_DEFAULT, NULL);
 #endif
@@ -107,17 +114,22 @@ dtrace_load(void *dummy)
 	    NULL, NULL, NULL, NULL, NULL, 0);
 
 	ASSERT(MUTEX_HELD(&cpu_lock));
-	dtrace_bymod = dtrace_hash_create(offsetof(dtrace_probe_t, dtpr_mod),
-	    offsetof(dtrace_probe_t, dtpr_nextmod),
-	    offsetof(dtrace_probe_t, dtpr_prevmod));
+	for (i = 0; i < HYPERTRACE_MAX_VMS; i++) {
+		dtrace_bymod[i] = dtrace_hash_create(
+		    offsetof(dtrace_probe_t, dtpr_mod),
+		    offsetof(dtrace_probe_t, dtpr_nextmod),
+		    offsetof(dtrace_probe_t, dtpr_prevmod));
 
-	dtrace_byfunc = dtrace_hash_create(offsetof(dtrace_probe_t, dtpr_func),
-	    offsetof(dtrace_probe_t, dtpr_nextfunc),
-	    offsetof(dtrace_probe_t, dtpr_prevfunc));
+		dtrace_byfunc[i] = dtrace_hash_create(
+		    offsetof(dtrace_probe_t, dtpr_func),
+		    offsetof(dtrace_probe_t, dtpr_nextfunc),
+		    offsetof(dtrace_probe_t, dtpr_prevfunc));
 
-	dtrace_byname = dtrace_hash_create(offsetof(dtrace_probe_t, dtpr_name),
-	    offsetof(dtrace_probe_t, dtpr_nextname),
-	    offsetof(dtrace_probe_t, dtpr_prevname));
+		dtrace_byname[i] = dtrace_hash_create(
+		    offsetof(dtrace_probe_t, dtpr_name),
+		    offsetof(dtrace_probe_t, dtpr_nextname),
+		    offsetof(dtrace_probe_t, dtpr_prevname));
+	}
 
 	if (dtrace_retain_max < 1) {
 		cmn_err(CE_WARN, "illegal value (%lu) for dtrace_retain_max; "
