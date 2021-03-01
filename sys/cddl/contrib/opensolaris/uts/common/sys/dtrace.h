@@ -1494,6 +1494,8 @@ typedef struct dtrace_machine_filter {
 typedef struct {
 	void	*dof;		/* DOF userland address written to driver. */
 	int	n_matched;	/* # matches returned by driver. */
+	int	n_desc;		/* # of probe descriptions */
+	dtrace_probedesc_t *ps;	/* matched probes filled by driver */
 } dtrace_enable_io_t;
 #define	DTRACEIOC_ENABLE	_IOWR('x',6,dtrace_enable_io_t)
 						/* enable probes */

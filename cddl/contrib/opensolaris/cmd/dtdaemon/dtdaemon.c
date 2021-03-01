@@ -65,6 +65,10 @@
 #include <spawn.h>
 #include <dt_prog_link.h>
 
+#define	DTDAEMON_INBOUNDDIR	"/var/ddtrace/inbound/"
+#define	DTDAEMON_OUTBOUNDDIR	"/var/ddtrace/outbound/"
+#define	DTDAEMON_BASEDIR	"/var/ddtrace/base/"
+
 #define	LOCK_FILE	"/var/dtdaemon.lock"
 #define	SOCKFD_NAME	"sub.sock"
 #define	THREADPOOL_SIZE	4
@@ -133,6 +137,8 @@
 
 
 struct dtd_state;
+struct dtd_dir;
+typedef int (*foreach_fn_t)(struct dirent *, struct dtd_dir *);
 
 typedef struct dtd_dir {
 	char			*dirpath;
@@ -145,10 +151,10 @@ typedef struct dtd_dir {
 
 	pthread_mutex_t		dirmtx;
 
+	foreach_fn_t		processfn;
+
 	struct dtd_state	*state;
 } dtd_dir_t;
-
-typedef int (*foreach_fn_t)(struct dirent *, dtd_dir_t *);
 
 static int	file_foreach(DIR *, foreach_fn_t, dtd_dir_t *);
 static int	process_outbound(struct dirent *, dtd_dir_t *);
@@ -161,8 +167,10 @@ static int	process_inbound(struct dirent *, dtd_dir_t *);
 struct dtd_state {
 	dtd_dir_t	*inbounddir;
 	dtd_dir_t	*outbounddir;
+	dtd_dir_t	*basedir;
 
 	pthread_t	inboundtd;
+	pthread_t	basetd;
 
 	/*
 	 * Sockets.
@@ -359,16 +367,13 @@ listen_dttransport(void *_s)
 		 * not exist.
 		 */
 		if (fd == 0) {
-			LOCK(&s->inbounddir->dirmtx);
 			path = gen_filename(s->inbounddir->dirpath);
 			if (path == NULL) {
 				syslog(LOG_ERR, "gen_filename() failed with %s\n",
 				    strerror(errno));
-				UNLOCK(&s->inbounddir->dirmtx);
 				goto retry;
 			}
 			fd = open(path, O_CREAT | O_WRONLY, 0600);
-			UNLOCK(&s->inbounddir->dirmtx);
 
 			if (fd == -1) {
 				syslog(LOG_ERR, "Failed to open %s%s: %m",
@@ -529,10 +534,15 @@ write_dttransport(void *_s)
 }
 
 static void *
-listen_inbound(void *_s)
+listen_dir(void *_dir)
 {
 	int err, kq, rval;
 	struct kevent ev, ev_data;
+	struct dtd_state *s;
+	dtd_dir_t *dir;
+
+	dir = (dtd_dir_t *)_dir;
+	s = dir->state;
 
 	rval = err = kq = 0;
 
@@ -541,16 +551,16 @@ listen_inbound(void *_s)
 		pthread_exit(NULL);
 	}
 
-	EV_SET(&ev, state.inbounddir->dirfd, EVFILT_VNODE, EV_ADD | EV_CLEAR,
-	    NOTE_WRITE, 0, (void *)state.inbounddir);
+	EV_SET(&ev, dir->dirfd, EVFILT_VNODE, EV_ADD | EV_CLEAR,
+	    NOTE_WRITE, 0, (void *)dir);
 
 	for (;;) {
 		rval = kevent(kq, &ev, 1, &ev_data, 1, NULL);
 		assert(rval != 0);
 
 		if (rval < 0) {
-			if (errno == EINTR && state.shutdown == 1)
-				pthread_exit(_s);
+			if (errno == EINTR && s->shutdown == 1)
+				pthread_exit(s);
 
 			syslog(LOG_ERR, "kevent() failed with %m");
 			continue;
@@ -562,8 +572,7 @@ listen_inbound(void *_s)
 		}
 
 		if (rval > 0) {
-			err = file_foreach(state.inbounddir->dir,
-			    process_inbound, state.inbounddir);
+			err = file_foreach(dir->dir, dir->processfn, dir);
 			if (err) {
 				syslog(LOG_ERR, "Failed to process new files");
 				pthread_exit(NULL);
@@ -571,7 +580,7 @@ listen_inbound(void *_s)
 		}
 	}
 
-	pthread_exit(_s);
+	pthread_exit(s);
 }
 
 static void *
@@ -599,10 +608,10 @@ process_joblist(void *_s)
 
 	while (s->shutdown == 0) {
 		LOCK(&s->joblistcvmtx);
-		while (dt_list_next(&s->joblist) == NULL && s->shutdown == 0)
+		while (dt_list_next(&s->joblist) == NULL && s->shutdown == 0) {
 			WAIT(&s->joblistcv, &s->joblistcvmtx);
+		}
 		UNLOCK(&s->joblistcvmtx);
-
 		if (s->shutdown == 1)
 			break;
 
@@ -1004,7 +1013,6 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		return (0);
 
 	idx = findpath(f->d_name, dir);
-
 	if (idx >= 0)
 		return (0);
 
@@ -1048,6 +1056,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			job = malloc(sizeof(struct dtd_joblist));
 			if (job == NULL) {
 				syslog(LOG_ERR, "Failed to malloc a new job");
+				UNLOCK(&s->socklistmtx);
 				return (-1);
 			}
 			
@@ -1092,6 +1101,152 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		syslog(LOG_ERR, "Failed to expand paths after processing %s",
 		    f->d_name);
 		return (-1);
+}
+
+	assert(dir->efile_size > dir->efile_len);
+	dir->existing_files[dir->efile_len++] = strdup(f->d_name);
+
+	return (0);
+}
+
+static void
+dtdaemon_copyfile(const char *src, const char *dst)
+{
+	int fd, newfd;
+	struct stat sb;
+	void *buf;
+	size_t len, donepathlen, dirlen;
+	char donepath[MAXPATHLEN] = { 0 };
+
+	memset(&sb, 0, sizeof(struct stat));
+
+	fd = open(src, O_RDONLY);
+	if (fd == -1)
+		syslog(LOG_ERR, "Failed to open %s: %m", src);
+	
+	if (fstat(fd, &sb)) {
+		syslog(LOG_ERR, "Failed to fstat %s (%d): %m", src, fd);
+		close(fd);
+		return;
+	}
+
+	len = sb.st_size;
+	buf = malloc(len);
+
+	if (read(fd, buf, len) < 0) {
+		syslog(LOG_ERR, "Failed to read %zu bytes from %s (%d): %m",
+		    len, src, fd);
+		close(fd);
+		free(buf);
+		return;
+	}
+
+	close(fd);
+
+	newfd = open(dst, O_WRONLY | O_CREAT);
+	if (newfd == -1) {
+		syslog(LOG_ERR, "Failed to open and create %s: %m", dst);
+		free(buf);
+		return;
+	}
+
+	if (write(newfd, buf, len) < 0) {
+		syslog(LOG_ERR, "Failed to write %zu bytes to %s (%d): %m",
+		    len, dst, newfd);
+		close(newfd);
+		free(buf);
+		return;
+	}
+
+	close(newfd);
+	free(buf);
+
+	dirlen = strlen(dirname(dst)) + 1;
+	donepathlen = strlen(dst) - 1;
+	memset(donepath, 0, donepathlen);
+	memcpy(donepath, dst, dirlen);
+	memcpy(donepath + dirlen, dst + dirlen + 1,
+	    donepathlen - dirlen);
+
+	if (rename(dst, donepath))
+		syslog(LOG_ERR, "Failed to rename %s to %s: %m", dst, dst + 1);
+
+}
+
+static int
+process_base(struct dirent *f, dtd_dir_t *dir)
+{
+	struct dtd_state *s;
+	int idx, err;
+	char *newname;
+	char fullpath[MAXPATHLEN] = { 0 };
+	int status = 0;
+	pid_t pid, parent;
+	char *argv[4];
+	char fullarg[MAXPATHLEN*2 + 1] = { 0 };
+	size_t offset;
+	
+	if (dir == NULL) {
+		syslog(LOG_ERR, "dir is NULL in base "
+		    "directory monitoring thread");
+		return (-1);
+	}
+	
+	s = dir->state;
+
+	if (s == NULL) {
+		syslog(LOG_ERR, "state is NULL in base "
+		    "directory monitoring thread");
+		return (-1);
+	}
+
+	if (f == NULL) {
+		syslog(LOG_ERR, "dirent is NULL in base "
+		    "directory monitoring thread");
+		return (-1);
+	}
+
+	if (strcmp(f->d_name, SOCKFD_NAME) == 0)
+		return (0);
+
+	if (f->d_name[0] == '.')
+		return (0);
+
+	idx = findpath(f->d_name, dir);
+	if (idx >= 0)
+		return (0);
+
+	newname = gen_filename(s->outbounddir->dirpath);
+	strcpy(fullpath, dir->dirpath);
+	strcpy(fullpath + strlen(fullpath), f->d_name);
+	dtdaemon_copyfile(fullpath, newname);
+	free(newname);
+
+	parent = getpid();
+	pid = fork();
+
+	if (pid == -1) {
+		syslog(LOG_ERR, "Failed to fork: %m");
+		return (-1);
+	} else if (pid > 0)
+		waitpid(pid, &status, 0);
+	else {
+		argv[0] = strdup("/usr/sbin/dtrace");
+		argv[1] = strdup("-Y");
+		strcpy(fullarg, fullpath);
+		offset = strlen(fullarg);
+		strcpy(fullarg + offset, ",/var/ddtrace/inbound/");
+		argv[2] = strdup(fullarg);
+		argv[3] = NULL;
+		execve("/usr/sbin/dtrace", argv, NULL);
+		exit(EXIT_FAILURE);
+	}
+
+	err = expand_paths(dir);
+	if (err != 0) {
+		syslog(LOG_ERR, "Failed to expand paths after processing %s",
+		    f->d_name);
+		return (-1);
 	}
 
 	assert(dir->efile_size > dir->efile_len);
@@ -1108,6 +1263,8 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	struct dtd_joblist *job;
 	struct dtd_state *s;
 	int idx, ch;
+	char *newname = NULL;
+	char fullpath[MAXPATHLEN] = { 0 };
 
 	if (dir == NULL) {
 		syslog(LOG_ERR, "dir is NULL");
@@ -1146,6 +1303,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		job = malloc(sizeof(struct dtd_joblist));
 		if (job == NULL) {
 			syslog(LOG_ERR, "Failed to malloc a new job");
+			UNLOCK(&s->socklistmtx);
 			return (-1);
 		}
 		memset(job, 0, sizeof(struct dtd_joblist));
@@ -1278,10 +1436,17 @@ setup_threads(struct dtd_state *s)
 		return (-1);
 	}
 
-	err = pthread_create(&s->inboundtd, NULL, listen_inbound, s);
+	err = pthread_create(&s->inboundtd, NULL, listen_dir, s->inbounddir);
 	if (err != 0) {
 		syslog(LOG_ERR,
 		    "Failed to create inbound listening thread: %m");
+		return (-1);
+	}
+
+	err = pthread_create(&s->basetd, NULL, listen_dir, s->basedir);
+	if (err != 0) {
+		syslog(LOG_ERR,
+		    "Failed to create base listening thread: %m");
 		return (-1);
 	}
 
@@ -1289,7 +1454,7 @@ setup_threads(struct dtd_state *s)
 }
 
 dtd_dir_t *
-dtd_mkdir(const char *path)
+dtd_mkdir(const char *path, foreach_fn_t fn)
 {
 	dtd_dir_t *dir;
 	int retry;
@@ -1333,6 +1498,7 @@ againmkdir:
 		return (NULL);
 	}
 
+	dir->processfn = fn;
 	dir->dir = fdopendir(dir->dirfd);
 
 	return (dir);
@@ -1377,11 +1543,13 @@ init_state(struct dtd_state *s)
 		return (-1);
 	}
 
-	s->outbounddir = dtd_mkdir("/var/ddtrace/outbound/");
-	s->inbounddir = dtd_mkdir("/var/ddtrace/inbound/");
+	s->outbounddir = dtd_mkdir(DTDAEMON_OUTBOUNDDIR, &process_outbound);
+	s->inbounddir = dtd_mkdir(DTDAEMON_INBOUNDDIR, &process_inbound);
+	s->basedir = dtd_mkdir(DTDAEMON_BASEDIR, &process_base);
 
 	s->outbounddir->state = s;
 	s->inbounddir->state = s;
+	s->basedir->state = s;
 
 	return (0);
 }

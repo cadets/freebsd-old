@@ -86,6 +86,11 @@ typedef struct dt_pgplist {
 	dtrace_prog_t *pgp;
 } dt_pgplist_t;
 
+typedef struct dt_probelist {
+	dt_list_t list;
+	const dtrace_probedesc_t *pdesc;
+} dt_probelist_t;
+
 #define	DMODE_VERS	0	/* display version information and exit (-V) */
 #define	DMODE_EXEC	1	/* compile program for enabling (-a/e/E) */
 #define	DMODE_ANON	2	/* compile program for anonymous tracing (-A) */
@@ -120,6 +125,7 @@ static int g_newline;
 /*
  * Program list for HyperTrace
  */
+static dt_list_t g_probe_advlist;
 static dt_list_t g_pgplist;
 static pthread_mutex_t g_pgplistmtx;
 static pthread_cond_t g_pgpcond;
@@ -795,23 +801,17 @@ gen_filename(const char *dir)
 static void *
 listen_dtdaemon(void *arg)
 {
-	/*
-	 * TODO: There should be a queue of things being received and then processed
-	 * in the main thread. The processing means creating a program, making a DOF
-	 * out of it and then sending it off to the kernel. If it's the first DOF file,
-	 * it goes through DTRACEIOC_ENABLE. If it's not the first one, it goes through
-	 * DTRACEIOC_AUGMENT. Might have to modify exec_prog or something along those lines,
-	 * though. We'll see.
-	 */
 	int sockfd;
+	int novm = 0;
 	size_t elflen;
-	char *elf;
+	char *elf, *elfpath;
 	size_t *size;
 	dtrace_prog_t *newprog;
-	dtrace_prog_t *hostpgp;
+	dtrace_prog_t *hostpgp, *guestpgp;
 	int fd;
 	int err;
 	char template[] = "/tmp/ddtrace-elf.XXXXXXXX";
+	char elfdir[MAXPATHLEN] = "/var/ddtrace/outbound/";
 	char vm_name[VM_MAX_NAMELEN] = { 0 };
 	char *name;
 	dtd_arg_t *dtd_arg = (dtd_arg_t *)arg;
@@ -837,6 +837,7 @@ listen_dtdaemon(void *arg)
 	 */
 	sockfd = dtd_arg->sock;
 	hostpgp = dtd_arg->hostpgp;
+	guestpgp = NULL;
 
 	do {
 		/*
@@ -871,6 +872,12 @@ listen_dtdaemon(void *arg)
 			break;
 		}
 
+		if (elf[0] == 0x7F && elf[1] == 'E' &&
+		    elf[2] == 'L'  && elf[3] == 'F') {
+			novm = 1;
+			goto process_prog;
+		}
+
 		vmid = *((uint16_t *)elf);
 		elf += sizeof(uint16_t);
 		
@@ -887,19 +894,31 @@ listen_dtdaemon(void *arg)
 
 		memcpy(vm_name, name, *size);
 
+process_prog:
 		fd = mkstemp(template);
 		if (fd == -1)
-			dfatal("failed to create a temporary file");
+			dfatal("failed to create a temporary file (%s)",
+			    strerror(errno));
 
-		lentowrite = elflen - *size - sizeof(size_t) -sizeof(uint16_t);
+		strcpy(template, "/tmp/ddtrace-elf.XXXXXXXX");
+
+		lentowrite = novm ? elflen :
+		    (elflen - *size - sizeof(size_t) - sizeof(uint16_t));
 		if (write(fd, elf, lentowrite) < 0)
 			dfatal("failed to write to a temporary file");
 
+		if (fsync(fd))
+			dfatal("failed to sync file");
+
 		newprog = dt_elf_to_prog(g_dtp, fd, 0, &err, hostpgp);
+		if (newprog == NULL) {
+			fprintf(stderr, "newprog is NULL\n");
+			continue;
+		}
 
 		if (dt_prog_verify(g_dtp, hostpgp, newprog, vmid)) {
 			fprintf(stderr, "failed to verify DIF from %s (%u)\n",
-			    vm_name, vmid);
+			    vm_name == NULL ? "host" : vm_name, vmid);
 			continue;
 		}
 
@@ -917,6 +936,21 @@ listen_dtdaemon(void *arg)
 			dfatal("malloc of newpgpl failed");
 
 		newpgpl->pgp = newprog;
+
+		if (novm == 0) {
+			guestpgp = dt_vprog_from(newprog, PGP_KIND_HYPERCALLS);
+			if (guestpgp == NULL)
+				dfatal("failed to create a guest program");
+
+			guestpgp->dp_exec = 1;
+
+			/*
+			 * Send off the program that we actually want to execute
+			 * to the guest machine.
+			 */
+			elfpath = gen_filename(elfdir);
+			dt_elf_create(guestpgp, ELFDATA2LSB, elfpath);
+		}
 
 		pthread_mutex_lock(&g_pgplistmtx);
 		dt_list_append(&g_pgplist, newpgpl);
@@ -1129,20 +1163,10 @@ dtc_work(void *arg)
 static void
 process_new_pgp(dtrace_prog_t *pgp)
 {
-	void *dof;
 	static size_t n_pgps = 0;
-	dtrace_enable_io_t io;
 	dtrace_proginfo_t dpi;
 
-	memset(&io, 0, sizeof(io));
-
-
 	dtrace_dump_actions(pgp);
-	dof = dtrace_dof_create(g_dtp, pgp, 0);
-	if (dof == NULL)
-		dfatal("failed to create a DOF file");
-
-	io.dof = dof;
 
 	if (n_pgps == 0) {
 		if (dtrace_program_exec(g_dtp, pgp, &dpi) == -1) {
@@ -1154,9 +1178,6 @@ process_new_pgp(dtrace_prog_t *pgp)
 
 		setup_tracing();
 		pthread_create(&g_worktd, NULL, dtc_work, NULL);
-		/*
-		 * TODO: Actually enable the probes.
-		 */
 	} else {
 		if (dt_augment_tracing(g_dtp, pgp))
 			dfatal("failed to augment tracing");
@@ -1176,7 +1197,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_proginfo_t dpi;
 	char *elfpath;
-	char elfdir[MAXPATHLEN] = "/var/ddtrace/outbound/";
+	char elfdir[MAXPATHLEN] = "/var/ddtrace/base/";
 	char *elf;
 	size_t elflen;
 	int dtdaemon_sock;
@@ -1195,7 +1216,6 @@ exec_prog(const dtrace_cmd_t *dcp)
 	elfpath = gen_filename(elfdir);
 	if (elfpath == NULL)
 		dfatal("gen_filename() failed");
-
 	// Don't take any action based on unwanted mod/ref behaviour:
 	// checkmodref emits warnings and that's the end of it.
 	(void) dtrace_analyze_program_modref(dcp->dc_prog, checkmodref, stderr);
@@ -1236,9 +1256,9 @@ exec_prog(const dtrace_cmd_t *dcp)
 		 * We open a dtdaemon socket because we expect the following
 		 * things to happen:
 		 *  (1) We write our ELF file to /var/ddtrace/outbound
-		 *  (2) dtdaemon forwards it to the guest
-		 *  (3) guest DTrace applies relocations to the program
-		 *  (4) guest dtdaemon sends it back to host dtdaemon
+		 *  (2) dtdaemon forwards it to the traced machine (can be host)
+		 *  (3) traced DTrace applies relocations to the program
+		 *  (4) traced dtdaemon sends it back to host dtdaemon
 		 *  (5) dtdaemon writes out the ELF file to this DTrace
 		 *      instance for further processing.
 		 */
@@ -1258,11 +1278,14 @@ exec_prog(const dtrace_cmd_t *dcp)
 
 		memset(&addr, 0, sizeof(addr));
 		addr.sun_family = PF_UNIX;
-		l = strlcpy(addr.sun_path, DTDAEMON_SOCKPATH, sizeof(addr.sun_path));
+		l = strlcpy(addr.sun_path, DTDAEMON_SOCKPATH,
+		    sizeof(addr.sun_path));
 		if (l >= sizeof(addr.sun_path))
-			dfatal("failed to copy %s into sun_path", DTDAEMON_SOCKPATH);
+			dfatal("failed to copy %s into sun_path",
+			    DTDAEMON_SOCKPATH);
 
-		if (connect(dtdaemon_sock, (struct sockaddr *)&addr, sizeof(addr)) == -1)
+		if (connect(dtdaemon_sock,
+		    (struct sockaddr *)&addr, sizeof(addr)) == -1)
 			dfatal("failed to connect to %s", DTDAEMON_SOCKPATH);
 
 		kind = 0;
@@ -1468,6 +1491,22 @@ link_prog(dtrace_cmd_t *dcp)
 		dfatal("failed to link %s %s", dcp->dc_desc, dcp->dc_name);
 }
 
+static int
+insert_probe_to_advlist(dtrace_hdl_t *dtp,
+    const dtrace_probedesc_t *pdp, void *arg)
+{
+	dt_probelist_t *pb;
+
+	pb = malloc(sizeof(dt_probelist_t));
+	if (pb == NULL)
+		return (1);
+
+	memset(pb, 0, sizeof(dt_probelist_t));
+
+	pb->pdesc = pdp;
+	dt_list_append(&g_probe_advlist, pb);
+}
+
 /*ARGSUSED*/
 static int
 list_probe(dtrace_hdl_t *dtp, const dtrace_probedesc_t *pdp, void *arg)
@@ -1544,38 +1583,69 @@ compile_file(dtrace_cmd_t *dcp)
 }
 
 static void
-link_elf(dtrace_cmd_t *dcp)
+link_elf(dtrace_cmd_t *dcp, char *progpath, int exec)
 {
 	int fd;
 	dt_stmt_t *stp;
 	int err = 0;
+	void *dof = NULL;
 
 	assert(g_elf == 1);
 
-	if ((fd = open(dcp->dc_arg, O_RDONLY)) < 0)
-		fatal("failed to open %s with %s", dcp->dc_arg, strerror(errno));
+	if ((fd = open(progpath, O_RDONLY)) < 0)
+		fatal("failed to open %s with %s", progpath, strerror(errno));
 
 	if ((dcp->dc_prog = dt_elf_to_prog(g_dtp, fd, 1, &err, NULL)) == NULL)
 		fatal("failed to parse the ELF file %s", dcp->dc_arg);
 
+	if (dcp->dc_prog->dp_exec != exec)
+		dfatal("program is %smeant to be executed",
+		    exec == DT_PROG_EXEC ? "" : "not ");
+
 	close(fd);
+
+	if (exec == DT_PROG_EXEC) {
+		/*
+		 * We execute the program and gather all the information about
+		 * instrumentation that we'll need to send off to the host again
+		 */
+		dof = dtrace_dof_create(g_dtp, dcp->dc_prog, 0);
+		if (dof == NULL)
+			dfatal("failed to create DOF file");
+
+	}
 
 	dcp->dc_desc = "ELF file";
 	dcp->dc_name = dcp->dc_arg;
 }
 
 static void
+link_elf_exec(dtrace_cmd_t *dcp)
+{
+
+	link_elf(dcp, dcp->dc_arg, DT_PROG_EXEC);
+}
+
+static void
 link_elf_noexec(dtrace_cmd_t *dcp)
 {
-	char elfdir[MAXPATHLEN] = "/var/ddtrace/outbound/";
+	char elfdir[MAXPATHLEN] = { 0 };
+	char *dirpath;
 	char donepath[MAXPATHLEN] = { 0 };
 	size_t donepathlen;
 	size_t dirlen;
-	char *elfpath;
+	char *elfpath, *progpath;
+
+	progpath = strtok(dcp->dc_arg, ",");
+	if (progpath == NULL)
+		dfatal("failed to tokenize %s", dcp->dc_arg);
+	
+	dirpath = strtok(NULL, ",");
+	strcpy(elfdir, dirpath ? dirpath : "/var/ddtrace/outbound/");
 
 	dirlen = strlen(elfdir);
 
-	link_elf(dcp);
+	link_elf(dcp, progpath, DT_PROG_NOEXEC);
 
 	if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) != 0)
 		dfatal("Failed to apply relocations");
@@ -2105,7 +2175,7 @@ main(int argc, char *argv[])
 
 			case 'y':
 				dcp = &g_cmdv[g_cmdc++];
-				dcp->dc_func = link_elf;
+				dcp->dc_func = link_elf_exec;
 				dcp->dc_spec = DTRACE_PROBESPEC_NONE;
 				dcp->dc_arg = optarg;
 				g_elf = 1;

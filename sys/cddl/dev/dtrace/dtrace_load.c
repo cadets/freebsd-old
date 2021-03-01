@@ -162,6 +162,7 @@ dtrace_load(void *dummy)
 	dtrace_probeid_error = dtrace_probe_create((dtrace_provider_id_t)
 	    dtrace_provider, NULL, NULL, "ERROR", 1, NULL);
 
+	dtrace_ninstantiations = 1;
 	mutex_exit(&dtrace_lock);
 	mutex_exit(&dtrace_provider_lock);
 

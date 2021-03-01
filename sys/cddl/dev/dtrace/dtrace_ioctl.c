@@ -399,6 +399,8 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		dtrace_vstate_t *vstate;
 		int err = 0;
 		int rval;
+		int ndesc = 0;
+		dtrace_probedesc_t *probes = NULL;
 		dtrace_enable_io_t *p = (dtrace_enable_io_t *) addr;
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_ENABLE\n",__func__,__LINE__);
@@ -448,6 +450,23 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		if ((err = dtrace_enabling_match(enab, &p->n_matched)) == 0) {
 			err = dtrace_enabling_retain(enab);
+			if (p->n_matched > 0) {
+				/*
+				 * Patch up our probes so that userspace knows
+				 * what was enabled.
+				 */
+				probes = dtrace_enabling_list(enab, &ndesc);
+				if (probes == NULL)
+					return (ENOMEM);
+
+				if (ndesc > p->n_matched)
+					return (EINTEGRITY);
+
+				p->n_desc = ndesc;
+				rval = copyout(probes, p->ps, ndesc);
+				if (rval)
+					return (rval);
+			}
 		} else {
 			dtrace_enabling_destroy(enab);
 		}

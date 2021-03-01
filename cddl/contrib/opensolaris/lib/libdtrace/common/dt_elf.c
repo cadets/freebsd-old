@@ -2109,14 +2109,14 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	char *name;
 	int class;
 	GElf_Ehdr ehdr;
-	char buf[5];
+	char buf[5] = { 0 };
 	char checksum[SHA256_DIGEST_LENGTH];
 	off_t off;
 	dtrace_prog_t *prog;
 	dt_elf_prog_t *eprog;
-	int iself;
+	int needsclosing; /* Do we need to close the fd at the end? */
 
-	iself = 0;
+	needsclosing = 0;
 
 	dtelf_state = malloc(sizeof(dt_elf_state_t));
 	if (dtelf_state == NULL)
@@ -2125,6 +2125,11 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	memset(dtelf_state, 0, sizeof(dt_elf_state_t));
 
 	dtelf_state->s_rslv = rslv;
+
+	off = lseek(fd, 0, SEEK_SET);
+	if (off == -1)
+		errx(EXIT_FAILURE, "lseek() failed with %s",
+		    strerror(errno));
 
 	if (read(fd, buf, 4) < 0)
 		errx(EXIT_FAILURE, "Failed reading from ELF file: %s",
@@ -2137,7 +2142,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	    buf[1] != 'E'  ||
 	    buf[2] != 'L'  ||
 	    buf[3] != 'F') {
-		iself = 1;
+		needsclosing = 1;
 		off = lseek(fd, 0, SEEK_SET);
 		if (off == -1)
 			errx(EXIT_FAILURE, "lseek() failed with %s",
@@ -2248,6 +2253,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	if (oldpgp && memcmp(eprog->dtep_ident,
 	    oldpgp->dp_ident, DT_PROG_IDENTLEN) != 0) {
 		*err = EACCES;
+		fprintf(stderr, "identifier mismatch\n");
 		return (NULL);
 	}
 
@@ -2267,10 +2273,12 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	dt_elf_get_options(dtp, e, eprog->dtep_options);
 
+	memcpy(prog->dp_ident, eprog->dtep_ident, DT_PROG_IDENTLEN);
+
 	free(dtelf_state);
 	(void) elf_end(e);
 
-	if (iself)
+	if (needsclosing)
 		close(fd);
 	
 	return (prog);

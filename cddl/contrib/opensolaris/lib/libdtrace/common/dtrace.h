@@ -126,6 +126,7 @@ typedef struct dtrace_proginfo {
 	uint_t dpi_recgens;	/* number of record generating probes in prog */
 	uint_t dpi_matches;	/* number of probes matched by program */
 	uint_t dpi_speculations; /* number of speculations specified in prog */
+	dtrace_probedesc_t *dpi_pds; /* matched probes */
 } dtrace_proginfo_t;
 
 #define	DTRACE_C_DIFV	0x0001	/* DIF verbose mode: show each compiled DIFO */

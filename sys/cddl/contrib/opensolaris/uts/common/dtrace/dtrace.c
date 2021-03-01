@@ -135,6 +135,7 @@
 #include <sys/rwlock.h>
 #include <sys/sx.h>
 #include <sys/sysctl.h>
+#include <sys/hash.h>
 #include <machine/vmm.h>
 #include <dtvirt.h>
 
@@ -485,11 +486,8 @@ static kmutex_t dtrace_errlock;
 	    (((uint64_t)1 << 61) - 1)) | ((uint64_t)intr << 61); \
 }
 #else
-/*
- * FIXME(dstolfa): This does not work because we don't guarantee the uniqueness
- * of keys when firing on multiple guests + host.
- */
-#define	DTRACE_TLS_THRKEY(mstate, where) { \
+
+#define	DTRACE_TLS_THRKEY(mstate, where) {	  \
 	solaris_cpu_t *_c = &solaris_cpu[curcpu]; \
 	uint_t intr = 0; \
 	uint_t actv = _c->cpu_intr_actv; \
@@ -13897,6 +13895,54 @@ dtrace_enabling_retract(dtrace_state_t *state)
 	ASSERT(state->dts_nretained == 0);
 }
 
+static dtrace_probedesc_t *
+dtrace_enabling_list(dtrace_enabling_t *enab, int *ndesc)
+{
+	dtrace_probedesc_t *pdlist, *pdp;
+	dtrace_ecbdesc_t *edp;
+	size_t i;
+	uint32_t ndx;
+	uint8_t *pdlisthash;
+	size_t maxnprobes;
+
+	/*
+	 * Assume every ECB is for a different probe description. It doesn't
+	 * really matter if we use excess memory here, as it will be cleared
+	 * up as soon as we copyout the information to userspace.
+	 */
+	pdlist = kmem_zalloc(enab->dten_ndesc * sizeof(dtrace_probedesc_t),
+	    KM_SLEEP);
+
+	maxnprobes = dtrace_nvprobes[0];
+	for (i = 1; i < dtrace_ninstantiations; i++)
+		maxnprobes = MAX(maxnprobes, dtrace_nvprobes[i]);
+	ASSERT(maxnprobes > 0);
+	
+	pdlisthash = kmem_zalloc(maxnprobes * sizeof(size_t), KM_SLEEP);
+
+	for (i = 0; i < enab->dten_ndesc; i++) {
+		edp = enab->dten_desc[i];
+		pdp = &edp->dted_probe;
+
+		/*
+		 * We only add the probe once and maintain a hash table to avoid
+		 * lengthy searches.
+		 */
+		if (pdlisthash[ndx] == 0) {
+			memcpy(&pdlist[i], pdp, sizeof(dtrace_probedesc_t));
+
+			/*
+			 * Mark that we've already processed this probe and we
+			 * don't need to look at it again.
+			 */
+			pdlisthash[ndx] = 1;
+			*ndesc++;
+		}
+	}
+
+	return (pdlist);
+}
+
 static int
 dtrace_enabling_match(dtrace_enabling_t *enab, int *nmatched)
 {
@@ -19611,11 +19657,6 @@ dtrace_priv_provide_all_probes(void)
  * tracing state, create a DIFO with a DIF_OP_HYPERCALL instruction and
  * set up the ECB for a given probe.
  *
- * FIXMEDS: This can go through dtrace_enabling_match() and it will work.
- *   - We need:
- *      + dtrace_enabling_t *
- *      + dtrace_probedesc_t with probeid alone
- *      + ECB
  */
 static int
 dtrace_priv_probeid_enable(dtrace_id_t id)

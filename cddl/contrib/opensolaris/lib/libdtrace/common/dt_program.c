@@ -40,6 +40,7 @@
 #include <dt_printf.h>
 #include <dt_provider.h>
 
+void dt_prog_generate_ident(dtrace_prog_t *);
 
 dtrace_prog_t *
 dt_program_create(dtrace_hdl_t *dtp)
@@ -50,7 +51,7 @@ dt_program_create(dtrace_hdl_t *dtp)
 	/*
 	 * Generate our random identifier
 	 */
-	arc4random_buf(buf, DT_PROG_IDENTLEN);
+	dt_prog_generate_ident(pgp);
 
 	if (pgp != NULL) {
 		dt_list_append(&dtp->dt_programs, pgp);
@@ -718,6 +719,12 @@ dt_prog_verify(dtrace_hdl_t *dtp, dtrace_prog_t *pbase,
 	adnew = NULL;
 	enew = NULL;
 	pdnew = NULL;
+
+	if (pnew == NULL || pbase == NULL) {
+		fprintf(stderr, "pbase = %p, pnew = %p (NULL err)\n",
+		    pbase, pnew);
+		return (1);
+	}
 	
 	/*
 	 * Iterate through all the statements of both programs and verify
@@ -732,12 +739,24 @@ dt_prog_verify(dtrace_hdl_t *dtp, dtrace_prog_t *pbase,
 		sdbase = sbase->ds_desc;
 		sdnew = snew->ds_desc;
 
+		if (sdbase == NULL || sdnew == NULL) {
+			fprintf(stderr, "sdbase = %p, sdnew = %p (NULL err)\n",
+			    sdbase, sdnew);
+			return (1);
+		}
+
 		for (adbase = sdbase->dtsd_action,
 		    adnew = sdnew->dtsd_action;
 		    adbase != sdbase->dtsd_action_last &&
 		    adnew != sdnew->dtsd_action_last;
 		    adbase = adbase->dtad_next,
 		    adnew = adnew->dtad_next) {
+			if (adnew == NULL || adbase == NULL) {
+				fprintf(stderr, "adbase = %p, adnew = %p "
+				    "(NULL) err)\n", adbase, adnew);
+				return (1);
+			}
+
 			if (dt_prog_verify_difo(dtp,
 			    adbase->dtad_difo, adnew->dtad_difo))
 				return (1);
@@ -750,4 +769,134 @@ dt_prog_verify(dtrace_hdl_t *dtp, dtrace_prog_t *pbase,
 	}
 
 	return (0);
+}
+
+void
+dt_prog_generate_ident(dtrace_prog_t *pgp)
+{
+
+	arc4random_buf(pgp->dp_ident, DT_PROG_IDENTLEN);
+}
+
+static dtrace_prog_t *
+dt_vprog_hcalls(dtrace_prog_t *pgp)
+{
+	dtrace_prog_t *newpgp;
+	dt_stmt_t *newstmt, *stmt;
+	dtrace_stmtdesc_t *newstmtdesc, *curstmtdesc;
+	dtrace_ecbdesc_t *newecb, *curecb;
+	dtrace_actdesc_t *newact;
+	dtrace_difo_t *difo;
+
+	newpgp = malloc(sizeof(dtrace_prog_t));
+	if (newpgp == NULL)
+		return (NULL);
+
+	memset(newpgp, 0, sizeof(dtrace_prog_t));
+
+	for (stmt = dt_list_next(&pgp->dp_stmts);
+	     stmt; stmt = dt_list_next(stmt)) {
+		curstmtdesc = stmt->ds_desc;
+
+		newstmt = malloc(sizeof(dt_stmt_t));
+		newstmtdesc = malloc(sizeof(dtrace_stmtdesc_t));
+		newecb = malloc(sizeof(dtrace_ecbdesc_t));
+		newact = malloc(sizeof(dtrace_actdesc_t));
+
+		/*
+		 * TODO: Maybe at some point a proper cleanup here,
+		 *       but honestly if we are running out of virtual
+		 *       memory perhaps we do want to crash to find out
+		 *       what's going on?
+		 */
+		assert(newstmt != NULL);
+		assert(newstmtdesc != NULL);
+		assert(newecb != NULL);
+		assert(newact != NULL);
+
+		memset(newstmt, 0, sizeof(dt_stmt_t));
+		memset(newstmtdesc, 0, sizeof(dtrace_stmtdesc_t));
+		memset(newecb, 0, sizeof(dtrace_ecbdesc_t));
+		memset(newact, 0, sizeof(dtrace_actdesc_t));
+
+		newact->dtad_difo = malloc(sizeof(dtrace_difo_t));
+		difo = newact->dtad_difo;
+
+		assert(difo != NULL);
+		memset(difo, 0, sizeof(dtrace_difo_t));
+
+		/* 2 instructions: hcall; ret %r0 */
+		difo->dtdo_buf = malloc(sizeof(dif_instr_t) * 2);
+		assert(difo->dtdo_buf != NULL);
+
+		difo->dtdo_buf[0] = DIF_INSTR_FMT(DIF_OP_HYPERCALL, 0, 0, 0);
+		difo->dtdo_buf[1] = DIF_INSTR_RET(0);
+		difo->dtdo_len = 2;
+
+		newact->dtad_kind = DTRACEACT_DIFEXPR;
+
+		newecb->dted_action = newact;
+
+		curecb = curstmtdesc->dtsd_ecbdesc;
+		memcpy(&newecb->dted_probe, &curecb->dted_probe,
+		    sizeof(dtrace_probedesc_t));
+
+		newstmtdesc->dtsd_action = newact;
+		newstmtdesc->dtsd_action_last = NULL;
+		newstmtdesc->dtsd_ecbdesc = newecb;
+		newstmtdesc->dtsd_descattr.dtat_name
+		    = DTRACE_STABILITY_INTERNAL;
+		newstmtdesc->dtsd_descattr.dtat_data
+		    = DTRACE_STABILITY_INTERNAL;
+		newstmtdesc->dtsd_descattr.dtat_class = DTRACE_CLASS_PLATFORM;
+		newstmtdesc->dtsd_stmtattr.dtat_name
+		    = DTRACE_STABILITY_INTERNAL;
+		newstmtdesc->dtsd_stmtattr.dtat_data
+		    = DTRACE_STABILITY_INTERNAL;
+		newstmtdesc->dtsd_stmtattr.dtat_class = DTRACE_CLASS_ISA;
+
+		newstmt->ds_desc = newstmtdesc;
+		dt_list_append(&newpgp->dp_stmts, newstmt);
+	}
+
+	newpgp->dp_rflags = pgp->dp_rflags;
+	dt_prog_generate_ident(newpgp);
+
+	return (newpgp);
+}
+
+static dtrace_prog_t *
+dt_prog_dup(dtrace_prog_t *pgp)
+{
+	dtrace_prog_t *newpgp;
+
+	newpgp = NULL;
+	
+	return (newpgp);
+}
+
+dtrace_prog_t *
+dt_vprog_from(dtrace_prog_t *pgp, int pgp_kind)
+{
+	dtrace_prog_t *newpgp;
+
+	newpgp = NULL;
+
+	switch (pgp_kind) {
+	case PGP_KIND_HYPERCALLS:
+		newpgp = dt_vprog_hcalls(pgp);
+		break;
+
+	/*
+	 * XXX: Do we want to copy it as a new program??
+	 */
+	case PGP_KIND_ID:
+		newpgp = pgp;
+		break;
+
+	default:
+		break;
+	}
+
+	return (newpgp);
 }

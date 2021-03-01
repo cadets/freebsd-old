@@ -39,6 +39,12 @@ extern "C" {
 #define	DT_PROG_ERRLEN		4096
 #define	DT_PROG_IDENTLEN	1024
 
+#define	DT_PROG_NOEXEC		0
+#define	DT_PROG_EXEC		1
+
+#define	PGP_KIND_ID		0
+#define	PGP_KIND_HYPERCALLS	1
+
 typedef struct dt_stmt {
 	dt_list_t ds_list;	/* list forward/back pointers */
 	dtrace_stmtdesc_t *ds_desc; /* pointer to statement description */
@@ -54,6 +60,8 @@ struct dtrace_prog {
 	int dp_haserror;		/* does this program have an error? */
 	char dp_err[DT_PROG_ERRLEN];	/* error string */
 	char dp_ident[1024];		/* 1024-byte identifier of this prog */
+	int dp_exec;			/* should we exec this program? */
+	int dp_relocated;		/* has the program been relocated? */
 };
 
 extern dtrace_prog_t *dt_program_create(dtrace_hdl_t *);
@@ -64,6 +72,8 @@ extern dtrace_ecbdesc_t *dt_ecbdesc_create(dtrace_hdl_t *,
 extern void dt_ecbdesc_release(dtrace_hdl_t *, dtrace_ecbdesc_t *);
 extern int dt_prog_verify(dtrace_hdl_t *, dtrace_prog_t *,
     dtrace_prog_t *, uint16_t);
+extern void dt_prog_generate_ident(dtrace_prog_t *);
+extern dtrace_prog_t *dt_vprog_from(dtrace_prog_t *, int);
 #ifdef	__cplusplus
 }
 #endif
