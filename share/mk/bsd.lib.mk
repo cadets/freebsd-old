@@ -172,11 +172,9 @@ PO_FLAG=-pg
 	${CTFCONVERT_CMD}
 
 .cc.bco .C.bco .cpp.bco .cxx.bco:
-	@echo Brian bco cxx
 	${CXX} ${PICFLAG} -DPIC ${SHARED_CXXFLAGS} ${CXXFLAGS} -emit-llvm -c ${.IMPSRC} -o ${.TARGET}
 
 .c.bco:
-	@echo Brian bco c
 	${CC} ${PICFLAG} -DPIC ${SHARED_CFLAGS} ${CFLAGS} -emit-llvm -c ${.IMPSRC} -o ${.TARGET}
 
 _LIBDIR:=${LIBDIR}
@@ -306,7 +304,6 @@ SHLIB_INSTR=${SHLIB_NAME_FULL}.instrumented
 SHLIB_INSTR_IR=${SHLIB_INSTR}.${LLVM_IR_TYPE}
 
 ${SHLIB_NAME}.bc: ${BCOBJS}
-	@echo Brian ${SHLIB_NAME}.bc: ${BCOBJS}
 	@echo ${LLVM_LINK} -o ${.TARGET} ${BCOBJS}
 	${LLVM_LINK} -o ${.TARGET} ${BCOBJS}
 
@@ -314,7 +311,6 @@ ${SHLIB_NAME}.ll: ${LLOBJS}
 	${LLVM_LINK} -S -o ${.TARGET} ${LLOBJS}
 
 ${SHLIB_INSTR}.bc: ${SHLIB_NAME}.bc
-	@echo Brian ${SHLIB_INSTR}.bc: ${SHLIB_NAME}.bc
 	@echo ${OPT} ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${SHLIB_NAME}.bc
 	${OPT} ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${SHLIB_NAME}.bc
 
@@ -322,7 +318,6 @@ ${SHLIB_INSTR}.ll: ${SHLIB_NAME}.ll
 	${OPT} -S ${LLVM_INSTR_FLAGS} -o ${.TARGET} ${SHLIB_NAME}.ll
 
 ${SHLIB_INSTR}: ${SHLIB_INSTR_IR} ${NON_IR_OBJS}
-	@echo Brian ${SHLIB_INSTR}: ${SHLIB_INSTR_IR} ${NON_IR_OBJS}}
 	${_LD:N${CCACHE_BIN}} -fPIC ${LDFLAGS} ${SSP_CFLAGS} ${SOLINKOPTS} \
 	    -o ${.TARGET} -Wl,-soname,${SONAME} \
 	    `NM='${NM}' NMFLAGS='${NMFLAGS}' ${LORDER} ${SHLIB_INSTR_IR} \
