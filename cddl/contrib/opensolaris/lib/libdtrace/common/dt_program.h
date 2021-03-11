@@ -62,6 +62,8 @@ struct dtrace_prog {
 	char dp_ident[1024];		/* 1024-byte identifier of this prog */
 	int dp_exec;			/* should we exec this program? */
 	int dp_relocated;		/* has the program been relocated? */
+	uint32_t dp_neprobes;		/* number of enabled probes */
+	dtrace_probedesc_t *dp_eprobes;	/* enabled probe array */
 };
 
 extern dtrace_prog_t *dt_program_create(dtrace_hdl_t *);

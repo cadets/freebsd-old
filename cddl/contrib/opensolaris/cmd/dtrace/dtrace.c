@@ -1165,8 +1165,16 @@ process_new_pgp(dtrace_prog_t *pgp)
 {
 	static size_t n_pgps = 0;
 	dtrace_proginfo_t dpi;
+	int i;
 
 	dtrace_dump_actions(pgp);
+	printf("dp_neprobes = %u\n", pgp->dp_neprobes);
+	for (i = 0; i < pgp->dp_neprobes; i++) {
+		printf("matched %s:%s:%s:%s\n", pgp->dp_eprobes[i].dtpd_provider,
+		    pgp->dp_eprobes[i].dtpd_mod, pgp->dp_eprobes[i].dtpd_func,
+		    pgp->dp_eprobes[i].dtpd_name);
+	}
+
 
 	if (n_pgps == 0) {
 		if (dtrace_program_exec(g_dtp, pgp, &dpi) == -1) {

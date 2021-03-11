@@ -1243,6 +1243,9 @@ typedef struct dtrace_enabling {
 	dtrace_ecbdesc_t *dten_current;		/* current ECB description */
 	int dten_error;				/* current error value */
 	int dten_primed;			/* boolean: set if primed */
+	dtrace_probe_t **dten_probelist;	/* all enabled probes */
+	int dten_probelistsize;			/* size of above array */
+	dtrace_vmid_t dten_vmid;		/* assumed VMID */
 	struct dtrace_enabling *dten_prev;	/* previous enabling */
 	struct dtrace_enabling *dten_next;	/* next enabling */
 } dtrace_enabling_t;

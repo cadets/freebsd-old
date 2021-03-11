@@ -1280,7 +1280,8 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 
 	dtrace_stmtdesc_t *stmt = NULL;
 
-	dt_elf_prog_t prog = {0};
+	size_t progsize;
+	dt_elf_prog_t *prog = NULL;
 	dt_elf_stmt_t *p_stmt;
 
 	dtelf_state = malloc(sizeof(dt_elf_state_t));
@@ -1396,9 +1397,16 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 		errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
 		    scn, elf_errmsg(-1));
 
+	progsize = sizeof(dt_elf_prog_t) +
+	    (dt_prog->dp_neprobes * sizeof(dtrace_probedesc_t));
+	prog = malloc(progsize);
+	if (prog == NULL)
+		errx(EXIT_FAILURE, "failed to malloc ELF program");
+	memset(prog, 0, progsize);
+
 	data->d_align = 4;
-	data->d_buf = &prog;
-	data->d_size = sizeof(dt_elf_prog_t);
+	data->d_buf = prog;
+	data->d_size = progsize;
 	data->d_type = ELF_T_BYTE;
 	data->d_version = EV_CURRENT;
 
@@ -1420,11 +1428,22 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
 	(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
 
-	prog.dtep_haserror = dt_prog->dp_haserror;
-	if (prog.dtep_haserror) {
-		memcpy(prog.dtep_err, dt_prog->dp_err, DT_PROG_ERRLEN);
+	prog->dtep_haserror = dt_prog->dp_haserror;
+	if (prog->dtep_haserror) {
+		memcpy(prog->dtep_err, dt_prog->dp_err, DT_PROG_ERRLEN);
 		goto finish;
 	}
+
+	prog->dtep_neprobes = dt_prog->dp_neprobes;
+	memcpy(prog->dtep_eprobes, dt_prog->dp_eprobes,
+	    dt_prog->dp_neprobes * sizeof(dtrace_probedesc_t));
+	printf("dp_neprobes = %u\n", dt_prog->dp_neprobes);
+	for (i = 0; i < dt_prog->dp_neprobes; i++) {
+		printf("putting in ELF %s:%s:%s:%s\n", dt_prog->dp_eprobes[i].dtpd_provider,
+		    dt_prog->dp_eprobes[i].dtpd_mod, dt_prog->dp_eprobes[i].dtpd_func,
+		    dt_prog->dp_eprobes[i].dtpd_name);
+	}
+
 	
 	/*
 	 * Get the first stmt.
@@ -1450,10 +1469,10 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	 * section that contains the first statement and the DOF version
 	 * required for this program.
 	 */
-	prog.dtep_first_stmt = elf_ndxscn(f_scn);
-	prog.dtep_dofversion = dt_prog->dp_dofversion;
-	prog.dtep_rflags = dt_prog->dp_rflags;
-	memcpy(prog.dtep_ident, dt_prog->dp_ident, DT_PROG_IDENTLEN);
+	prog->dtep_first_stmt = elf_ndxscn(f_scn);
+	prog->dtep_dofversion = dt_prog->dp_dofversion;
+	prog->dtep_rflags = dt_prog->dp_rflags;
+	memcpy(prog->dtep_ident, dt_prog->dp_ident, DT_PROG_IDENTLEN);
 
 	/*
 	 * Iterate over the other statements and create ELF sections with them.
@@ -1480,7 +1499,7 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	/*
 	 * Save the options for this program.
 	 */
-	prog.dtep_options = elf_ndxscn(scn);
+	prog->dtep_options = elf_ndxscn(scn);
 
 finish:
 	/*
@@ -2274,6 +2293,25 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	dt_elf_get_options(dtp, e, eprog->dtep_options);
 
 	memcpy(prog->dp_ident, eprog->dtep_ident, DT_PROG_IDENTLEN);
+
+	prog->dp_neprobes = eprog->dtep_neprobes;
+	if (prog->dp_neprobes) {
+		prog->dp_eprobes = malloc(prog->dp_neprobes *
+		    sizeof(dtrace_probedesc_t));
+
+		assert(prog->dp_eprobes != NULL);
+
+		memcpy(prog->dp_eprobes, eprog->dtep_eprobes,
+		    prog->dp_neprobes * sizeof(dtrace_probedesc_t));
+
+		printf("dp_neprobes = %u\n", prog->dp_neprobes);
+		for (i = 0; i < prog->dp_neprobes; i++) {
+			printf("taking from ELF %s:%s:%s:%s\n", prog->dp_eprobes[i].dtpd_provider,
+			    prog->dp_eprobes[i].dtpd_mod, prog->dp_eprobes[i].dtpd_func,
+			    prog->dp_eprobes[i].dtpd_name);
+		}
+
+	}
 
 	free(dtelf_state);
 	(void) elf_end(e);

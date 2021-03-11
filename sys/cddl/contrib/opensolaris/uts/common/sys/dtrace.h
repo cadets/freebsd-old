@@ -1491,6 +1491,7 @@ typedef struct dtrace_machine_filter {
 						/* snapshot buffer */
 #define	DTRACEIOC_PROBEMATCH	_IOWR('x',5,dtrace_probedesc_t)
 						/* match probes */
+#define	DTRACE_MIN_NPROBES	200000		/* minimum size for ps */
 typedef struct {
 	void	*dof;		/* DOF userland address written to driver. */
 	int	n_matched;	/* # matches returned by driver. */

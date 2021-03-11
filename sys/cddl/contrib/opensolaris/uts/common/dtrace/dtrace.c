@@ -12922,8 +12922,18 @@ dtrace_ecb_create_enable(dtrace_probe_t *probe, void *arg)
 	dtrace_ecb_t *ecb;
 	dtrace_enabling_t *enab = arg;
 	dtrace_state_t *state = enab->dten_vstate->dtvs_state;
+	dtrace_probe_t **curprobelist;
+	int curprobelist_size;
+	dtrace_vmid_t vmid;
 
 	ASSERT(state != NULL);
+	ASSERT(MUTEX_HELD(&dtrace_lock));
+
+	/*
+	 * There shouldn't be any case where we are trying to enable a NULL
+	 * probe on the guest.
+	 */
+	vmid = probe ? probe->dtpr_vmid : 0;
 
 	if (probe != NULL && probe->dtpr_gen < enab->dten_probegen) {
 		/*
@@ -12938,6 +12948,46 @@ dtrace_ecb_create_enable(dtrace_probe_t *probe, void *arg)
 		return (DTRACE_MATCH_DONE);
 
 	dtrace_ecb_enable(ecb);
+	if (enab->dten_probelist == NULL) {
+		/*
+		 * Allocate the probe list, we assume that the first probe
+		 * we enable has the correct vmid, and we will bail out
+		 * in case we find a mismatch.
+		 */
+		enab->dten_vmid = vmid;
+		enab->dten_probelist = kmem_zalloc(dtrace_nvprobes[vmid] *
+		    sizeof(dtrace_probe_t *), KM_SLEEP);
+		enab->dten_probelistsize = dtrace_nvprobes[vmid];
+		ASSERT(enab->dten_probelist != NULL);
+	}
+
+	curprobelist_size = enab->dten_probelistsize;
+	if (vmid != enab->dten_vmid) {
+		printf("vmid != dten_vmid (%u != %u)\n", vmid, enab->dten_vmid);
+		dtrace_ecb_destroy(ecb);
+		return (DTRACE_MATCH_DONE);
+	}
+
+	/*
+	 * The sizes should always match, if there's a mismatch that means that
+	 * we've released a lock and another probe has appeared a probe has
+	 * disappeared.
+	 */
+	ASSERT(curprobelist_size == dtrace_nvprobes[vmid]);
+	curprobelist = enab->dten_probelist;
+
+	/*
+	 * Save the information regarding which _probes_ were enabled.
+	 *
+	 * NOTE: For now we simply store the probes that were
+	 *       enabled as a marker in the array. If this
+	 *       becomes a performance problem, we can think
+	 *       of a better way to do it.
+	 */
+	if (probe != NULL) {
+		ASSERT(probe->dtpr_id < curprobelist_size);
+		curprobelist[probe->dtpr_id] = probe;
+	}
 	return (DTRACE_MATCH_NEXT);
 }
 
@@ -13711,6 +13761,9 @@ dtrace_enabling_destroy(dtrace_enabling_t *enab)
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 
+	if (enab->dten_probelist)
+		kmem_free(enab->dten_probelist, enab->dten_probelistsize);
+
 	for (i = 0; i < enab->dten_ndesc; i++) {
 		dtrace_actdesc_t *act, *next;
 		dtrace_predicate_t *pred;
@@ -13895,51 +13948,88 @@ dtrace_enabling_retract(dtrace_state_t *state)
 	ASSERT(state->dts_nretained == 0);
 }
 
+/*
+ * This subroutine is destructive. It will free up all the data given over
+ * to the caller as subsequent calls could cause weird behaviour.
+ */
 static dtrace_probedesc_t *
 dtrace_enabling_list(dtrace_enabling_t *enab, int *ndesc)
 {
 	dtrace_probedesc_t *pdlist, *pdp;
-	dtrace_ecbdesc_t *edp;
-	size_t i;
-	uint32_t ndx;
-	uint8_t *pdlisthash;
-	size_t maxnprobes;
+	dtrace_provider_t *provider;
+	char *provname;
+	dtrace_probe_t *probe;
+	dtrace_vmid_t vmid;
+	int i, idx;
+	size_t l;
 
-	/*
-	 * Assume every ECB is for a different probe description. It doesn't
-	 * really matter if we use excess memory here, as it will be cleared
-	 * up as soon as we copyout the information to userspace.
-	 */
-	pdlist = kmem_zalloc(enab->dten_ndesc * sizeof(dtrace_probedesc_t),
-	    KM_SLEEP);
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 
-	maxnprobes = dtrace_nvprobes[0];
-	for (i = 1; i < dtrace_ninstantiations; i++)
-		maxnprobes = MAX(maxnprobes, dtrace_nvprobes[i]);
-	ASSERT(maxnprobes > 0);
-	
-	pdlisthash = kmem_zalloc(maxnprobes * sizeof(size_t), KM_SLEEP);
+	idx = 0;
+	pdlist = kmem_zalloc(enab->dten_probelistsize *
+	    sizeof(dtrace_probedesc_t), KM_SLEEP);
+	ASSERT(pdlist != NULL);
 
-	for (i = 0; i < enab->dten_ndesc; i++) {
-		edp = enab->dten_desc[i];
-		pdp = &edp->dted_probe;
+	for (i = 0; i < enab->dten_probelistsize; i++) {
+		probe = enab->dten_probelist[i];
+		if (probe == NULL)
+			continue;
 
-		/*
-		 * We only add the probe once and maintain a hash table to avoid
-		 * lengthy searches.
-		 */
-		if (pdlisthash[ndx] == 0) {
-			memcpy(&pdlist[i], pdp, sizeof(dtrace_probedesc_t));
-
-			/*
-			 * Mark that we've already processed this probe and we
-			 * don't need to look at it again.
-			 */
-			pdlisthash[ndx] = 1;
-			*ndesc++;
+		vmid = probe->dtpr_vmid;
+		if (vmid == 0) {
+			provider = (dtrace_provider_t *)probe->dtpr_provider;
+			provname = provider->dtpv_name;
+		} else {
+			provname = (char *)probe->dtpr_vprovider;
 		}
+
+		pdlist[idx].dtpd_id = probe->dtpr_id;
+		pdlist[idx].dtpd_vmid = probe->dtpr_vmid;
+		l = strlcpy(pdlist[idx].dtpd_provider,
+		    provname, DTRACE_PROVNAMELEN);
+		if (l >= DTRACE_PROVNAMELEN) {
+			printf("failed to copy provname\n");
+			kmem_free(pdlist, enab->dten_probelistsize);
+			return (NULL);
+		}
+
+		l = strlcpy(pdlist[idx].dtpd_mod,
+		    probe->dtpr_mod, DTRACE_MODNAMELEN);
+		if (l >= DTRACE_MODNAMELEN) {
+			printf("failed to copy modname\n");
+			kmem_free(pdlist, enab->dten_probelistsize);
+			return (NULL);
+		}
+
+		l = strlcpy(pdlist[idx].dtpd_func,
+		    probe->dtpr_func, DTRACE_FUNCNAMELEN);
+		if (l >= DTRACE_FUNCNAMELEN) {
+			printf("failed to copy func\n");
+			kmem_free(pdlist, enab->dten_probelistsize);
+			return (NULL);
+		}
+
+		l = strlcpy(pdlist[idx++].dtpd_name,
+		    probe->dtpr_name, DTRACE_NAMELEN);
+		if (l >= DTRACE_NAMELEN) {
+			printf("failed to copy name\n");
+			kmem_free(pdlist, enab->dten_probelistsize);
+			return (NULL);
+		}
+
+		printf("probe->dtpr_id = %d\n", probe->dtpr_id);
+		printf("probe->dtpr_vmid = %d\n", probe->dtpr_vmid);
+		printf("probe->dtpr_provider = %s\n", provname);
+		printf("probe->dtpr_mod = %s\n", probe->dtpr_mod);
+		printf("probe->dtpr_func = %s\n", probe->dtpr_func);
+		printf("probe->dtpr_name = %s\n", probe->dtpr_name);
 	}
 
+	*ndesc = idx;
+
+	kmem_free(enab->dten_probelist, enab->dten_probelistsize);
+	enab->dten_probelist = NULL;
+	enab->dten_probelistsize = 0;
 	return (pdlist);
 }
 

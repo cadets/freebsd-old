@@ -165,14 +165,21 @@ dtrace_program_exec(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	dtrace_enable_io_t args;
 	void *dof;
 	int n, err;
+	int i;
+	int expected_nprobes = 0;
 
 	dtrace_program_info(dtp, pgp, pip);
 
 	if ((dof = dtrace_dof_create(dtp, pgp, DTRACE_D_STRIP)) == NULL)
 		return (-1);
 
+	expected_nprobes = DTRACE_MIN_NPROBES;
+
 	args.dof = dof;
 	args.n_matched = 0;
+	args.n_desc = 0;
+	args.ps = malloc(sizeof(dtrace_probedesc_t) * expected_nprobes);
+	memset(args.ps, 0, sizeof(dtrace_probedesc_t) * expected_nprobes);
 	n = dt_ioctl(dtp, DTRACEIOC_ENABLE, &args);
 	dtrace_dof_destroy(dtp, dof);
 
@@ -200,6 +207,22 @@ dtrace_program_exec(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	if (pip != NULL)
 		pip->dpi_matches += args.n_matched;
 
+	pgp->dp_neprobes = args.n_desc;
+	if (pgp->dp_neprobes > 0) {
+		pgp->dp_eprobes = malloc(pgp->dp_neprobes *
+		    sizeof(dtrace_probedesc_t));
+
+		assert(pgp->dp_eprobes != NULL);
+		memcpy(pgp->dp_eprobes, args.ps,
+		    pgp->dp_neprobes * sizeof(dtrace_probedesc_t));
+	}
+
+	printf("args.n_desc = %d\n", args.n_desc);
+	for (i = 0; i < args.n_desc; i++) {
+		printf("matched %s:%s:%s:%s\n", args.ps[i].dtpd_provider,
+		    args.ps[i].dtpd_mod, args.ps[i].dtpd_func, args.ps[i].dtpd_name);
+	}
+	free(args.ps);
 	return (0);
 }
 

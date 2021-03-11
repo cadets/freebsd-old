@@ -456,16 +456,20 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 				 * what was enabled.
 				 */
 				probes = dtrace_enabling_list(enab, &ndesc);
-				if (probes == NULL)
+				printf("ndesc = %d\n", ndesc);
+				if (probes == NULL) {
+					mutex_exit(&dtrace_lock);
+					mutex_exit(&cpu_lock);
 					return (ENOMEM);
+				}
 
-				if (ndesc > p->n_matched)
+				if (ndesc > p->n_matched) {
+					mutex_exit(&dtrace_lock);
+					mutex_exit(&cpu_lock);
 					return (EINTEGRITY);
+				}
 
 				p->n_desc = ndesc;
-				rval = copyout(probes, p->ps, ndesc);
-				if (rval)
-					return (rval);
 			}
 		} else {
 			dtrace_enabling_destroy(enab);
@@ -473,6 +477,10 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		mutex_exit(&cpu_lock);
 		mutex_exit(&dtrace_lock);
+
+		if (err == 0)
+			err = copyout(probes, p->ps,
+			    ndesc * sizeof(dtrace_probedesc_t));
 		dtrace_dof_destroy(dof);
 
 		return (err);

@@ -122,6 +122,8 @@ typedef struct dt_elf_ecbdesc {
  * dtes_action:   A reference to an ELF section containing the first action.
  * dtes_descattr: probedesc attributes.
  * dtes_stmtattr: Statement attributes.
+ * dtes_aggdata:  Aggregation data.
+ * dtes_next:     Next statement in the ELF file.
  */
 typedef struct dt_elf_stmt {
 	dt_elf_ref_t		dtes_ecbdesc;
@@ -140,15 +142,22 @@ typedef struct dt_elf_stmt {
  * dtep_dofversion: The DOF version required for this DTrace program.
  * dtep_options:    A reference to an ELF section containing options.
  * dtep_rflags:     Resolver flags.
+ * dtep_haserror:   Does the program have an error?
+ * dtep_err:        The error message.
+ * dtep_ident:      Program's identifier.
+ * dtep_neprobes:   Number of enabled probes.
+ * dtep_eprobes:    Array of enabled probe descriptions.
  */
 typedef struct dt_elf_prog {
-	dt_elf_ref_t	dtep_first_stmt;
-	uint8_t		dtep_dofversion;
-	dt_elf_ref_t	dtep_options;
-	uint32_t	dtep_rflags;
-	int		dtep_haserror;
-	char		dtep_err[DT_PROG_ERRLEN];
-	char		dtep_ident[DT_PROG_IDENTLEN];
+	dt_elf_ref_t		dtep_first_stmt;
+	uint8_t			dtep_dofversion;
+	dt_elf_ref_t		dtep_options;
+	uint32_t		dtep_rflags;
+	int			dtep_haserror;
+	char			dtep_err[DT_PROG_ERRLEN];
+	char			dtep_ident[DT_PROG_IDENTLEN];
+	uint32_t		dtep_neprobes;
+	dtrace_probedesc_t	dtep_eprobes[];
 } dt_elf_prog_t;
 
 /*
