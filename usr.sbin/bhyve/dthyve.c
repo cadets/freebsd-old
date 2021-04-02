@@ -105,7 +105,7 @@ dthyve_init(void)
 
 	dirfd = open("/var/ddtrace/inbound", O_DIRECTORY, 0600);
 	if (dirfd == -1)
-		syslog(LOG_DEBUG, "Failed to open /var/ddtrace/inbound: %m");
+		syslog(LOG_ERR, "Failed to open /var/ddtrace/inbound: %m");
 	
 	return (0);
 }
@@ -151,8 +151,6 @@ dthyve_read(void **buf, size_t *len)
 		return (-1);
 	}
 
-
-	syslog(LOG_DEBUG, "Read len = %zu", *len);
 
 	*buf = malloc(*len);
 	if (*buf == NULL) {

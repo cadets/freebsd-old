@@ -80,7 +80,6 @@ dt_cg_resolve_addr_type(dt_node_t *dnp)
 	 */
 	if (dnp->dn_kind == DT_NODE_VAR &&
 	    (dnp->dn_ident->di_id == DIF_VAR_VMNAME  ||
-	     dnp->dn_ident->di_id == DIF_VAR_GVMNAME ||
 	     dnp->dn_ident->di_id == DIF_VAR_HVMNAME))
 		return (DT_ADDR_HOST);
 

@@ -79,7 +79,8 @@ __FBSDID("$FreeBSD$");
 #define	VTDTR_DEVICE_ELF		0x09 /* Send an ELF file */
 #define	VTDTR_DEVICE_STOP		0x0A /* Stop tracing */
 
-#define	PCI_VTDTR_MAXELFLEN	512
+#define	PCI_VTDTR_MAXELFLEN		512
+#define PCI_VTDTR_EVENTSLEEPTIME	1
 
 static int pci_vtdtr_debug;
 #define	DPRINTF(params) if (pci_vtdtr_debug) printf params
@@ -251,7 +252,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	static char *path = NULL;
 	char donepath[MAXPATHLEN] = { 0 };
 	size_t donepathlen;
-	size_t size;
+	uint64_t size;
 	char *name;
 	uint16_t vmid;
 
@@ -681,7 +682,7 @@ vtdtr_elf_event(void *buf, size_t size, size_t offs)
 	ctrl->pvc_elflen = len_to_read;
 	ctrl->pvc_totalelflen = size;
 	ctrl->pvc_elfhasmore = hasmore;
-
+	fprintf(stderr, "making an elf event\n");
 	return (ctrl);
 }
 
@@ -737,6 +738,9 @@ pci_vtdtr_events(void *xsc)
 			    strerror(errno));
 			if (errno == EINTR)
 				exit(1);
+
+			if (errno == EAGAIN)
+				sleep(PCI_VTDTR_EVENTSLEEPTIME);
 
 			continue;
 		}

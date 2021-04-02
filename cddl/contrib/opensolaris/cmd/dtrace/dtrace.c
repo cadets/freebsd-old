@@ -722,7 +722,7 @@ info_stmt(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 
 static bool
 checkmodref(int action_modref, int cumulative_modref,
-	     const dtrace_probedesc_t *dp, FILE *output)
+    const dtrace_probedesc_t *dp, FILE *output)
 {
 
 	if ((cumulative_modref & DTRACE_MODREF_ANY_MOD) == 0) {
@@ -878,12 +878,13 @@ listen_dtdaemon(void *arg)
 			goto process_prog;
 		}
 
+		novm = 0;
 		vmid = *((uint16_t *)elf);
 		elf += sizeof(uint16_t);
 		
-		size = (size_t *)elf;
+		size = (uint64_t *)elf;
 
-		elf += sizeof(size_t);
+		elf += sizeof(uint64_t);
 
 		name = elf;
 		elf += *size;
@@ -902,8 +903,9 @@ process_prog:
 
 		strcpy(template, "/tmp/ddtrace-elf.XXXXXXXX");
 
-		lentowrite = novm ? elflen :
-		    (elflen - *size - sizeof(size_t) - sizeof(uint16_t));
+		lentowrite = novm ?
+		    elflen :
+		    (elflen - *size - sizeof(uint64_t) - sizeof(uint16_t));
 		if (write(fd, elf, lentowrite) < 0)
 			dfatal("failed to write to a temporary file");
 

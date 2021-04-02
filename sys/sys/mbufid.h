@@ -46,15 +46,7 @@ void mbufid_generate(mbufid_t *mbufidp);
 int mbufid_isvalid(mbufid_t *mbufidp);
 
 #ifdef _KERNEL
-inline void
-mbufid_assert_sanity(mbufid_t *mbufidp)
-{
-
-	if (mbufid_isvalid(mbufidp))
-		KASSERT(mbufidp->mid_magic == MBUFID_MAGIC_NUMBER,
-			("%s: mbufid magic number is %lx but should be %lx",
-			 __func__, mbufidp->mid_magic, MBUFID_MAGIC_NUMBER));
-}
+void mbufid_assert_sanity(mbufid_t *);
 #endif /* _KERNEL */
 
 #endif

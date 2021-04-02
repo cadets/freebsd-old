@@ -1185,6 +1185,8 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	char *argv[4];
 	char fullarg[MAXPATHLEN*2 + 1] = { 0 };
 	size_t offset;
+	char donename[MAXPATHLEN] = { 0 };
+	size_t dirpathlen = 0;
 	
 	if (dir == NULL) {
 		syslog(LOG_ERR, "dir is NULL in base "
@@ -1217,9 +1219,14 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 		return (0);
 
 	newname = gen_filename(s->outbounddir->dirpath);
+	dirpathlen = strlen(s->outbounddir->dirpath);
 	strcpy(fullpath, dir->dirpath);
 	strcpy(fullpath + strlen(fullpath), f->d_name);
 	dtdaemon_copyfile(fullpath, newname);
+	strcpy(donename, s->outbounddir->dirpath);
+	strcpy(donename + dirpathlen, newname + dirpathlen + 1);
+	if (rename(newname, donename))
+		syslog(LOG_ERR, "Failed to rename %s to %s: %m", newname, donename);
 	free(newname);
 
 	parent = getpid();

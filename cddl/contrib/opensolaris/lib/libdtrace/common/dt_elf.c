@@ -1277,6 +1277,7 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	Elf32_Shdr *shdr, *s0hdr;
 	Elf32_Phdr *phdr;
 	dt_stmt_t *stp;
+	int i;
 
 	dtrace_stmtdesc_t *stmt = NULL;
 
@@ -1437,13 +1438,6 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	prog->dtep_neprobes = dt_prog->dp_neprobes;
 	memcpy(prog->dtep_eprobes, dt_prog->dp_eprobes,
 	    dt_prog->dp_neprobes * sizeof(dtrace_probedesc_t));
-	printf("dp_neprobes = %u\n", dt_prog->dp_neprobes);
-	for (i = 0; i < dt_prog->dp_neprobes; i++) {
-		printf("putting in ELF %s:%s:%s:%s\n", dt_prog->dp_eprobes[i].dtpd_provider,
-		    dt_prog->dp_eprobes[i].dtpd_mod, dt_prog->dp_eprobes[i].dtpd_func,
-		    dt_prog->dp_eprobes[i].dtpd_name);
-	}
-
 	
 	/*
 	 * Get the first stmt.
@@ -1880,8 +1874,11 @@ dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog,
 					rm_el = dt_elf_in_actlist(ap);
 					assert(rm_el != NULL);
 
+
 					rm_el->act = NULL;
 					free(ap);
+					dt_list_delete(
+					    &dtelf_state->s_actions, rm_el);
 
 					ap = nextap;
 				}
@@ -2134,6 +2131,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	dtrace_prog_t *prog;
 	dt_elf_prog_t *eprog;
 	int needsclosing; /* Do we need to close the fd at the end? */
+	int i;
 
 	needsclosing = 0;
 
@@ -2303,14 +2301,6 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 		memcpy(prog->dp_eprobes, eprog->dtep_eprobes,
 		    prog->dp_neprobes * sizeof(dtrace_probedesc_t));
-
-		printf("dp_neprobes = %u\n", prog->dp_neprobes);
-		for (i = 0; i < prog->dp_neprobes; i++) {
-			printf("taking from ELF %s:%s:%s:%s\n", prog->dp_eprobes[i].dtpd_provider,
-			    prog->dp_eprobes[i].dtpd_mod, prog->dp_eprobes[i].dtpd_func,
-			    prog->dp_eprobes[i].dtpd_name);
-		}
-
 	}
 
 	free(dtelf_state);

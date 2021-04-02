@@ -400,6 +400,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		int err = 0;
 		int rval;
 		int ndesc = 0;
+		int pbbufsize = 0;
 		dtrace_probedesc_t *probes = NULL;
 		dtrace_enable_io_t *p = (dtrace_enable_io_t *) addr;
 
@@ -450,13 +451,13 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		if ((err = dtrace_enabling_match(enab, &p->n_matched)) == 0) {
 			err = dtrace_enabling_retain(enab);
-			if (p->n_matched > 0) {
+			if (err == 0 && p->n_matched > 0 && p->ps != NULL) {
 				/*
 				 * Patch up our probes so that userspace knows
 				 * what was enabled.
 				 */
-				probes = dtrace_enabling_list(enab, &ndesc);
-				printf("ndesc = %d\n", ndesc);
+				probes = dtrace_enabling_list(
+				    enab, &ndesc, &pbbufsize);
 				if (probes == NULL) {
 					mutex_exit(&dtrace_lock);
 					mutex_exit(&cpu_lock);
@@ -469,7 +470,9 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 					return (EINTEGRITY);
 				}
 
-				p->n_desc = ndesc;
+				/*
+				p->n_desc = ndesc; */
+				p->n_desc = 0;
 			}
 		} else {
 			dtrace_enabling_destroy(enab);
@@ -478,9 +481,13 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_exit(&cpu_lock);
 		mutex_exit(&dtrace_lock);
 
-		if (err == 0)
+		if (err == 0 &&
+		    (ndesc * sizeof(dtrace_probedesc_t) <= p->ps_bufsize))
 			err = copyout(probes, p->ps,
 			    ndesc * sizeof(dtrace_probedesc_t));
+
+		if (probes)
+			kmem_free(probes, pbbufsize);
 		dtrace_dof_destroy(dof);
 
 		return (err);
@@ -953,6 +960,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		int err = 0;
 		int rval;
 		dtrace_enable_io_t *p = (dtrace_enable_io_t *) addr;
+		printf("IN AUGMENT\n");
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_AUGMENT\n",__func__,__LINE__);
 		mutex_enter(&cpu_lock);

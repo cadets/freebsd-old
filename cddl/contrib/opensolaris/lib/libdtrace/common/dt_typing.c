@@ -188,7 +188,6 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	 * struct thread *
 	 */
 	case DIF_VAR_CURTHREAD:
-	case DIF_VAR_GCURTHREAD:
 	case DIF_VAR_HCURTHREAD:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, thread_str);
 		if (n->din_ctfid == CTF_ERR)
@@ -202,12 +201,9 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	 * uint64_t
 	 */
 	case DIF_VAR_HUCALLER:
-	case DIF_VAR_GUCALLER:
 	case DIF_VAR_UCALLER:
 	case DIF_VAR_TIMESTAMP:
 	case DIF_VAR_VTIMESTAMP:
-	case DIF_VAR_GTIMESTAMP:
-	case DIF_VAR_GVTIMESTAMP:
 	case DIF_VAR_HTIMESTAMP:
 	case DIF_VAR_HVTIMESTAMP:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint64_t");
@@ -222,14 +218,11 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	 * uint_t
 	 */
 	case DIF_VAR_IPL:
-	case DIF_VAR_GIPL:
 	case DIF_VAR_HIPL:
-	case DIF_VAR_GEPID:
 	case DIF_VAR_HEPID:
 	case DIF_VAR_EPID:
 	case DIF_VAR_ID:
 	case DIF_VAR_HPRID:
-	case DIF_VAR_GPRID:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint_t");
 		if (n->din_ctfid == CTF_ERR)
 			dt_set_progerr(g_dtp, g_pgp, "failed to get type uint_t: %s",
@@ -251,16 +244,6 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_ARG7:
 	case DIF_VAR_ARG8:
 	case DIF_VAR_ARG9:
-	case DIF_VAR_GARG0:
-	case DIF_VAR_GARG1:
-	case DIF_VAR_GARG2:
-	case DIF_VAR_GARG3:
-	case DIF_VAR_GARG4:
-	case DIF_VAR_GARG5:
-	case DIF_VAR_GARG6:
-	case DIF_VAR_GARG7:
-	case DIF_VAR_GARG8:
-	case DIF_VAR_GARG9:
 	case DIF_VAR_HARG0:
 	case DIF_VAR_HARG1:
 	case DIF_VAR_HARG2:
@@ -271,7 +254,6 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_HARG7:
 	case DIF_VAR_HARG8:
 	case DIF_VAR_HARG9:
-	case DIF_VAR_GWALLTIMESTAMP:
 	case DIF_VAR_WALLTIMESTAMP:
 	case DIF_VAR_HWALLTIMESTAMP:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "int64_t");
@@ -287,8 +269,6 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	 */
 	case DIF_VAR_STACKDEPTH:
 	case DIF_VAR_USTACKDEPTH:
-	case DIF_VAR_GSTACKDEPTH:
-	case DIF_VAR_GUSTACKDEPTH:
 	case DIF_VAR_HSTACKDEPTH:
 	case DIF_VAR_HUSTACKDEPTH:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint32_t");
@@ -302,7 +282,6 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	/*
 	 * uintptr_t
 	 */
-	case DIF_VAR_GCALLER:
 	case DIF_VAR_CALLER:
 	case DIF_VAR_HCALLER:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uintptr_t");
@@ -320,10 +299,6 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_PROBEMOD:
 	case DIF_VAR_PROBEFUNC:
 	case DIF_VAR_PROBENAME:
-	case DIF_VAR_GPROBEPROV:
-	case DIF_VAR_GPROBEMOD:
-	case DIF_VAR_GPROBEFUNC:
-	case DIF_VAR_GPROBENAME:
 	case DIF_VAR_HPROBEPROV:
 	case DIF_VAR_HPROBEMOD:
 	case DIF_VAR_HPROBEFUNC:
@@ -332,16 +307,11 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_ZONENAME:
 	case DIF_VAR_HEXECNAME:
 	case DIF_VAR_HZONENAME:
-	case DIF_VAR_GEXECNAME:
-	case DIF_VAR_GZONENAME:
-	case DIF_VAR_GJAILNAME:
 	case DIF_VAR_JAILNAME:
 	case DIF_VAR_HJAILNAME:
 	case DIF_VAR_VMNAME:
-	case DIF_VAR_GVMNAME:
 	case DIF_VAR_HVMNAME:
 	case DIF_VAR_EXECARGS:
-	case DIF_VAR_GEXECARGS:
 	case DIF_VAR_HEXECARGS:
 		n->din_type = DIF_TYPE_STRING;
 		break;
@@ -349,11 +319,9 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	/*
 	 * pid_t
 	 */
-	case DIF_VAR_GPID:
 	case DIF_VAR_HPID:
 	case DIF_VAR_PID:
 	case DIF_VAR_PPID:
-	case DIF_VAR_GPPID:
 	case DIF_VAR_HPPID:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "pid_t");
 		if (n->din_ctfid == CTF_ERR)
@@ -366,7 +334,6 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	/*
 	 * id_t
 	 */
-	case DIF_VAR_GTID:
 	case DIF_VAR_HTID:
 	case DIF_VAR_TID:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "id_t");
@@ -381,7 +348,6 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	 * uid_t
 	 */
 	case DIF_VAR_UID:
-	case DIF_VAR_GUID:
 	case DIF_VAR_HUID:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uid_t");
 		if (n->din_ctfid == CTF_ERR)
@@ -395,7 +361,6 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	 * gid_t
 	 */
 	case DIF_VAR_GID:
-	case DIF_VAR_GGID:
 	case DIF_VAR_HGID:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "gid_t");
 		if (n->din_ctfid == CTF_ERR)
@@ -408,13 +373,10 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	/*
 	 * int
 	 */
-	case DIF_VAR_GCPU:
 	case DIF_VAR_HCPU:
 	case DIF_VAR_CPU:
 	case DIF_VAR_HERRNO:
-	case DIF_VAR_GERRNO:
 	case DIF_VAR_ERRNO:
-	case DIF_VAR_GJID:
 	case DIF_VAR_HJID:
 	case DIF_VAR_JID:
 		n->din_ctfid = ctf_lookup_by_name(ctf_file, "int");

@@ -306,49 +306,6 @@ typedef enum dtrace_probespec {
 #define	DIF_VAR_CPU		0x014f
 #endif
 
-#define	DIF_VAR_GARGS		0x0150 /* common across h/g */
-#define	DIF_VAR_GREGS		0x0151 /* guest regs */
-#define	DIF_VAR_GUREGS		0x0152 /* guest uregs */
-#define	DIF_VAR_GCURTHREAD	0x0250 /* guest curthread */
-#define	DIF_VAR_GTIMESTAMP	0x0251 /* common across h/g */
-#define	DIF_VAR_GVTIMESTAMP	0x0252 /* common across h/g */
-#define	DIF_VAR_GIPL		0x0253 /* not supported */
-#define	DIF_VAR_GEPID		0x0254 /* guest epid */
-#define	DIF_VAR_GPRID		0x0255 /* common across h/g */
-#define	DIF_VAR_GARG0		0x0256 /* common across h/g */
-#define	DIF_VAR_GARG1		0x0257 /* common across h/g */
-#define	DIF_VAR_GARG2		0x0258 /* common across h/g */
-#define	DIF_VAR_GARG3		0x0259 /* common across h/g */
-#define	DIF_VAR_GARG4		0x025a /* common across h/g */
-#define	DIF_VAR_GARG5		0x025b /* common across h/g */
-#define	DIF_VAR_GARG6		0x025c /* common across h/g */
-#define	DIF_VAR_GARG7		0x025d /* common across h/g */
-#define	DIF_VAR_GARG8		0x025e /* common across h/g */
-#define	DIF_VAR_GARG9		0x025f /* common across h/g */
-#define	DIF_VAR_GSTACKDEPTH	0x0260 /* guest stackdepth */
-#define	DIF_VAR_GCALLER		0x0261 /* guest caller */
-#define	DIF_VAR_GPROBEPROV	0x0262 /* common across h/g */
-#define	DIF_VAR_GPROBEMOD	0x0263 /* common across h/g */
-#define	DIF_VAR_GPROBEFUNC	0x0264 /* common across h/g */
-#define	DIF_VAR_GPROBENAME	0x0265 /* common across h/g */
-#define	DIF_VAR_GPID		0x0266 /* guest pid */
-#define	DIF_VAR_GTID		0x0267 /* guest tid */
-#define	DIF_VAR_GEXECNAME	0x0268 /* guest execname */
-#define	DIF_VAR_GZONENAME	0x0269 /* guest zonename */
-#define	DIF_VAR_GWALLTIMESTAMP	0x026a /* common across h/g */
-#define	DIF_VAR_GUSTACKDEPTH	0x026b /* guest ustackdepth */
-#define	DIF_VAR_GUCALLER	0x026c /* guest ucaller */
-#define	DIF_VAR_GPPID		0x026d /* guest ppid */
-#define	DIF_VAR_GUID		0x026e /* guest uid */
-#define	DIF_VAR_GGID		0x026f /* guest gid */
-#define	DIF_VAR_GERRNO		0x0270 /* guest errno */
-#define	DIF_VAR_GEXECARGS	0x0271 /* guest execargs */
-#define	DIF_VAR_GJID		0x0272	/* process jail id */
-#define	DIF_VAR_GJAILNAME	0x0273	/* process jail name */
-#define	DIF_VAR_GVMNAME		0x0274	/* current VM name */
-
-#define	DIF_VAR_GCPU		0x029f /* guest cpu */
-
 #define	DIF_VAR_HARGS		0x0300 /* common across h/g */
 #define	DIF_VAR_HREGS		0x0301 /* host regs */
 #define	DIF_VAR_HUREGS		0x0302 /* host uregs */
@@ -1494,9 +1451,10 @@ typedef struct dtrace_machine_filter {
 #define	DTRACE_MIN_NPROBES	200000		/* minimum size for ps */
 typedef struct {
 	void	*dof;		/* DOF userland address written to driver. */
+	dtrace_probedesc_t *ps;	/* matched probes filled by driver */
 	int	n_matched;	/* # matches returned by driver. */
 	int	n_desc;		/* # of probe descriptions */
-	dtrace_probedesc_t *ps;	/* matched probes filled by driver */
+	int	ps_bufsize;	/* size of ps */
 } dtrace_enable_io_t;
 #define	DTRACEIOC_ENABLE	_IOWR('x',6,dtrace_enable_io_t)
 						/* enable probes */

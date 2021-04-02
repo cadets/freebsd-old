@@ -179,7 +179,13 @@ dtrace_program_exec(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	args.n_matched = 0;
 	args.n_desc = 0;
 	args.ps = malloc(sizeof(dtrace_probedesc_t) * expected_nprobes);
+	if (args.ps == NULL) {
+		fprintf(stderr, "could not allocate args.ps\n");
+		return (-1);
+	}
+
 	memset(args.ps, 0, sizeof(dtrace_probedesc_t) * expected_nprobes);
+	args.ps_bufsize = expected_nprobes * sizeof(dtrace_probedesc_t);
 	n = dt_ioctl(dtp, DTRACEIOC_ENABLE, &args);
 	dtrace_dof_destroy(dtp, dof);
 
@@ -220,8 +226,17 @@ dtrace_program_exec(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	printf("args.n_desc = %d\n", args.n_desc);
 	for (i = 0; i < args.n_desc; i++) {
 		printf("matched %s:%s:%s:%s\n", args.ps[i].dtpd_provider,
-		    args.ps[i].dtpd_mod, args.ps[i].dtpd_func, args.ps[i].dtpd_name);
+		    args.ps[i].dtpd_mod, args.ps[i].dtpd_func,
+		    args.ps[i].dtpd_name);
 	}
+
+	for (i = 0; i < pgp->dp_neprobes; i++) {
+		printf("in pgp, matched %s:%s:%s:%s\n",
+		    pgp->dp_eprobes[i].dtpd_provider,
+		    pgp->dp_eprobes[i].dtpd_mod, pgp->dp_eprobes[i].dtpd_func,
+		    pgp->dp_eprobes[i].dtpd_name);
+	}
+
 	free(args.ps);
 	return (0);
 }
@@ -865,7 +880,7 @@ dt_vprog_hcalls(dtrace_prog_t *pgp)
 		    sizeof(dtrace_probedesc_t));
 
 		newstmtdesc->dtsd_action = newact;
-		newstmtdesc->dtsd_action_last = NULL;
+		newstmtdesc->dtsd_action_last = newact;
 		newstmtdesc->dtsd_ecbdesc = newecb;
 		newstmtdesc->dtsd_descattr.dtat_name
 		    = DTRACE_STABILITY_INTERNAL;

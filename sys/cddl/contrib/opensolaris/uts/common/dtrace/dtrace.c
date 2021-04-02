@@ -482,7 +482,7 @@ static kmutex_t dtrace_errlock;
 	for (; actv; actv >>= 1) \
 		intr++; \
 	ASSERT(intr < (1 << 3)); \
-	(where) = ((curthread->t_did + DIF_VARIABLE_MAX) & \
+	(where) = ((curthread->t_tid + DIF_VARIABLE_MAX) & \
 	    (((uint64_t)1 << 61) - 1)) | ((uint64_t)intr << 61); \
 }
 #else
@@ -3556,22 +3556,6 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		v = DIF_VAR_ARGS;
 	}
 
-	/*
-	 * FIXME(dstolfa): Need a better way to check for this that's not as
-	 * unstable as this.
-	 */
-	if (v >= DIF_VAR_GARGS &&
-	    v <= DIF_VAR_GCPU  &&
-	    mstate->dtms_biscuit == NULL)
-		return (0);
-
-	if (mstate->dtms_biscuit && v < DIF_VAR_GARGS)
-		v += DIF_VAR_GUESTVAR_OFFS;
-	else if (v < DIF_VAR_GARGS)
-		v += DIF_VAR_HOSTVAR_OFFS;
-
-	ASSERT(v >= DIF_VAR_GARGS);
-
 	switch (v) {
 	/*
 	 * This currently remains the same across guest and host because we are
@@ -3580,7 +3564,6 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 	 * for that.
 	 */
 	case DIF_VAR_ARGS:
-	case DIF_VAR_GARGS:
 	case DIF_VAR_HARGS:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_ARGS);
 		if (ndx >= sizeof (mstate->dtms_arg) /
@@ -3646,6 +3629,12 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		if (!dtrace_priv_proc(state))
 			return (0);
 
+		/*
+		 * TODO: Implement this for the guest
+		 */
+		if (mstate->dtms_probe->dtpr_vmid != 0)
+			return (0);
+
 		if ((tframe = curthread->td_frame) == NULL) {
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_BADADDR);
 			cpu_core[curcpu].cpuc_dtrace_illval = 0;
@@ -3655,20 +3644,18 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		return (dtrace_getreg(tframe, ndx));
 	}
 
-	case DIF_VAR_GUREGS:
-		return (0);
 #endif
 
 	case DIF_VAR_CURTHREAD:
 	case DIF_VAR_HCURTHREAD:
 		if (!dtrace_priv_proc(state))
 			return (0);
-		return ((uint64_t)(uintptr_t)curthread);
-	case DIF_VAR_GCURTHREAD:
-		if (!dtrace_priv_proc(state))
-			return (0);
-		return ((uint64_t)
-		    (uintptr_t)mstate->dtms_dtvargs->dtv_curthread);
+
+		if (mstate->dtms_probe->dtpr_vmid == 0)
+			return ((uint64_t)(uintptr_t)curthread);
+
+		return (
+		    (uint64_t)(uintptr_t)mstate->dtms_dtvargs->dtv_curthread);
 
 	/*
 	 * We currently keep these identical because maintain time on the host
@@ -3676,7 +3663,6 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 	 * separate for some occasions though.
 	 */
 	case DIF_VAR_TIMESTAMP:
-	case DIF_VAR_GTIMESTAMP:
 	case DIF_VAR_HTIMESTAMP:
 		if (!(mstate->dtms_present & DTRACE_MSTATE_TIMESTAMP)) {
 			mstate->dtms_timestamp = dtrace_gethrtime();
@@ -3685,13 +3671,11 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		return (mstate->dtms_timestamp);
 
 	case DIF_VAR_VTIMESTAMP:
-	case DIF_VAR_GVTIMESTAMP:
 	case DIF_VAR_HVTIMESTAMP:
 		ASSERT(dtrace_vtime_references != 0);
 		return (curthread->t_dtrace_vtime);
 
 	case DIF_VAR_WALLTIMESTAMP:
-	case DIF_VAR_GWALLTIMESTAMP:
 	case DIF_VAR_HWALLTIMESTAMP:
 		if (!(mstate->dtms_present & DTRACE_MSTATE_WALLTIMESTAMP)) {
 			mstate->dtms_walltimestamp = dtrace_gethrestime();
@@ -3710,14 +3694,12 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 #endif
 
 	case DIF_VAR_EPID:
-	case DIF_VAR_GEPID:
 	case DIF_VAR_HEPID:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_EPID);
 		return (mstate->dtms_epid);
 
 	case DIF_VAR_ID:
 	case DIF_VAR_HPRID:
-	case DIF_VAR_GPRID:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
 		return (mstate->dtms_probe->dtpr_id);
 
@@ -3725,6 +3707,13 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 	case DIF_VAR_HSTACKDEPTH:
 		if (!dtrace_priv_kernel(state))
 			return (0);
+		
+		/*
+		 * TODO: Implement this for the guest
+		 */
+		if (mstate->dtms_probe->dtpr_vmid != 0)
+			return (0);
+
 		if (!(mstate->dtms_present & DTRACE_MSTATE_STACKDEPTH)) {
 			int aframes = mstate->dtms_probe->dtpr_aframes + 2;
 
@@ -3732,13 +3721,18 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			mstate->dtms_present |= DTRACE_MSTATE_STACKDEPTH;
 		}
 		return (mstate->dtms_stackdepth);
-	case DIF_VAR_GSTACKDEPTH:
-		return (0);
 
 	case DIF_VAR_USTACKDEPTH:
 	case DIF_VAR_HUSTACKDEPTH:
 		if (!dtrace_priv_proc(state))
 			return (0);
+
+		/*
+		 * TODO: Implement this for the guest
+		 */
+		if (mstate->dtms_probe->dtpr_vmid != 0)
+			return (0);
+
 		if (!(mstate->dtms_present & DTRACE_MSTATE_USTACKDEPTH)) {
 			/*
 			 * See comment in DIF_VAR_PID.
@@ -3755,13 +3749,18 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			mstate->dtms_present |= DTRACE_MSTATE_USTACKDEPTH;
 		}
 		return (mstate->dtms_ustackdepth);
-	case DIF_VAR_GUSTACKDEPTH:
-		return (0);
 
 	case DIF_VAR_CALLER:
 	case DIF_VAR_HCALLER:
 		if (!dtrace_priv_kernel(state))
 			return (0);
+
+		/*
+		 * TODO: Implement this for the guest
+		 */
+		if (mstate->dtms_probe->dtpr_vmid != 0)
+			return (0);
+
 		if (!(mstate->dtms_present & DTRACE_MSTATE_CALLER)) {
 			int aframes = mstate->dtms_probe->dtpr_aframes + 2;
 
@@ -3793,12 +3792,16 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			mstate->dtms_present |= DTRACE_MSTATE_CALLER;
 		}
 		return (mstate->dtms_caller);
-	case DIF_VAR_GCALLER:
-		return (0);
 
 	case DIF_VAR_UCALLER:
 	case DIF_VAR_HUCALLER:
 		if (!dtrace_priv_proc(state))
+			return (0);
+
+		/*
+		 * TODO: Implement this for the guest
+		 */
+		if (mstate->dtms_probe->dtpr_vmid != 0)
 			return (0);
 
 		if (!(mstate->dtms_present & DTRACE_MSTATE_UCALLER)) {
@@ -3820,12 +3823,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		}
 
 		return (mstate->dtms_ucaller);
-	case DIF_VAR_GUCALLER:
-		if (!dtrace_priv_proc(state))
-			return (0);
-		return (0);
 
-	/* See DIF_VAR_GPRID */
 	case DIF_VAR_PROBEPROV:
 	case DIF_VAR_HPROBEPROV: {
 		dtrace_probe_t *pb;
@@ -3847,16 +3845,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		}
 	}
 
-	/*
-	 * TODO: This is obsolete with the new design.
-	 */
-	case DIF_VAR_GPROBEPROV:
-		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
-		return (dtrace_dif_varstr(
-		    (uintptr_t)mstate->dtms_dtvargs->dtv_probeprov,
-		    state, mstate));
 
-	/* See DIF_VAR_GPRID */
 	case DIF_VAR_PROBEMOD:
 	case DIF_VAR_HPROBEMOD:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
@@ -3864,16 +3853,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		    (uintptr_t)mstate->dtms_probe->dtpr_mod,
 		    state, mstate));
 
-	/*
-	 * TODO: This is obsolete with the new design.
-	 */
-	case DIF_VAR_GPROBEMOD:
-		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
-		return (dtrace_dif_varstr(
-		    (uintptr_t)mstate->dtms_dtvargs->dtv_probemod,
-		    state, mstate));
 
-	/* See DIF_VAR_GPRID */
 	case DIF_VAR_PROBEFUNC:
 	case DIF_VAR_HPROBEFUNC:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
@@ -3881,30 +3861,11 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		    (uintptr_t)mstate->dtms_probe->dtpr_func,
 		    state, mstate));
 
-	/*
-	 * TODO: This is obsolete with the new design.
-	 */
-	case DIF_VAR_GPROBEFUNC:
-		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
-		return (dtrace_dif_varstr(
-		    (uintptr_t)mstate->dtms_dtvargs->dtv_probefunc,
-		    state, mstate));
-
-	/* See DIF_VAR_GPRID */
 	case DIF_VAR_PROBENAME:
 	case DIF_VAR_HPROBENAME:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
 		return (dtrace_dif_varstr(
 		    (uintptr_t)mstate->dtms_probe->dtpr_name,
-		    state, mstate));
-
-	/*
-	 * TODO: This is obsolete with the new design.
-	 */
-	case DIF_VAR_GPROBENAME:
-		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
-		return (dtrace_dif_varstr(
-		    (uintptr_t)mstate->dtms_dtvargs->dtv_probename,
 		    state, mstate));
 
 	case DIF_VAR_PID:
@@ -3936,13 +3897,6 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		else
 			return ((uint64_t)mstate->dtms_dtvargs->dtv_pid);
 #endif
-	/*
-	 * TODO: This is obsolete with the new design.
-	 */
-	case DIF_VAR_GPID:
-		if (!dtrace_priv_proc(state))
-			return (0);
-		return ((uint64_t)mstate->dtms_dtvargs->dtv_pid);
 
 	case DIF_VAR_PPID:
 	case DIF_VAR_HPPID:
@@ -3975,16 +3929,6 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			return (mstate->dtms_dtvargs->dtv_ppid);
 		}
 #endif
-	/*
-	 * TODO: This is obsolete with the new design.
-	 */
-	case DIF_VAR_GPPID:
-		if (!dtrace_priv_proc(state))
-			return (0);
-		/* XXX(dstolfa): Hardcoding pid0 -- not good */
-		if (mstate->dtms_dtvargs->dtv_pid == 0)
-			return (mstate->dtms_dtvargs->dtv_pid);
-		return (mstate->dtms_dtvargs->dtv_ppid);
 
 	case DIF_VAR_TID:
 	case DIF_VAR_HTID:
@@ -3999,11 +3943,6 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			return ((uint64_t)curthread->t_tid);
 		else
 			return ((uint64_t)mstate->dtms_dtvargs->dtv_tid);
-	/*
-	 * TODO: This is obsolete with the new design.
-	 */
-	case DIF_VAR_GTID:
-		return ((uint64_t)mstate->dtms_dtvargs->dtv_tid);
 
 	case DIF_VAR_EXECARGS:
 	case DIF_VAR_HEXECARGS: {
@@ -4028,16 +3967,6 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		}
 	}
 		
-	/*
-	 * TODO: This is obsolete with the new design.
-	 */
-	case DIF_VAR_GEXECARGS:
-		if (mstate->dtms_dtvargs->dtv_execargs == NULL)
-			return (0);
-		return (dtrace_dif_varstrz(
-		    (uintptr_t) mstate->dtms_dtvargs->dtv_execargs,
-		    mstate->dtms_dtvargs->dtv_execargs_len, state, mstate));
-
 	case DIF_VAR_EXECNAME:
 	case DIF_VAR_HEXECNAME:
 #ifdef illumos
@@ -4069,12 +3998,6 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			    (uintptr_t)mstate->dtms_dtvargs->dtv_execname,
 			    state, mstate));
 #endif
-	/*
-	 * TODO: This is obsolete with the new design.
-	 */
-	case DIF_VAR_GEXECNAME:
-		return (dtrace_dif_varstr(
-		    (uintptr_t) mstate->dtms_dtvargs->dtv_execname, state, mstate));
 
 	case DIF_VAR_ZONENAME:
 	case DIF_VAR_HZONENAME:
@@ -4126,8 +4049,6 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 #else
 		return (0);
 #endif
-	case DIF_VAR_GZONENAME:
-		return (0);
 
 	case DIF_VAR_UID:
 	case DIF_VAR_HUID:
@@ -4157,13 +4078,6 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		else
 			return ((uint64_t)mstate->dtms_dtvargs->dtv_uid);
 #endif
-	/*
-	 * TODO: This is obsolete with the new design.
-	 */
-	case DIF_VAR_GUID:
-		if (!dtrace_priv_proc(state))
-			return (0);
-		return (((uint64_t)mstate->dtms_dtvargs->dtv_uid));
 
 	case DIF_VAR_GID:
 	case DIF_VAR_HGID:
@@ -4193,10 +4107,6 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		else
 			return ((uint64_t)mstate->dtms_dtvargs->dtv_gid);
 #endif
-	case DIF_VAR_GGID:
-		if (!dtrace_priv_proc(state))
-			return (0);
-		return (((uint64_t)mstate->dtms_dtvargs->dtv_gid));
 
 	case DIF_VAR_ERRNO:
 	case DIF_VAR_HERRNO: {
@@ -4228,18 +4138,16 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			return (mstate->dtms_dtvargs->dtv_errno);
 #endif
 	}
-	case DIF_VAR_GERRNO:
-		return (mstate->dtms_dtvargs->dtv_errno);
 #ifndef illumos
 	case DIF_VAR_CPU:
 	case DIF_VAR_HCPU:
-		return (curcpu);
-	case DIF_VAR_GCPU:
-		return (mstate->dtms_dtvargs->dtv_curcpu);
+		if (mstate->dtms_probe->dtpr_vmid == 0)
+			return (curcpu);
+		else
+			return (mstate->dtms_dtvargs->dtv_curcpu);
 #endif
 	case DIF_VAR_VMNAME:
 	case DIF_VAR_HVMNAME:
-	case DIF_VAR_GVMNAME:
 		if (mstate->dtms_probe->dtpr_vmid == 0)
 			return (dtrace_dif_varstr(
 				(uintptr_t)"host", state, mstate));
@@ -12922,8 +12830,6 @@ dtrace_ecb_create_enable(dtrace_probe_t *probe, void *arg)
 	dtrace_ecb_t *ecb;
 	dtrace_enabling_t *enab = arg;
 	dtrace_state_t *state = enab->dten_vstate->dtvs_state;
-	dtrace_probe_t **curprobelist;
-	int curprobelist_size;
 	dtrace_vmid_t vmid;
 
 	ASSERT(state != NULL);
@@ -12948,7 +12854,7 @@ dtrace_ecb_create_enable(dtrace_probe_t *probe, void *arg)
 		return (DTRACE_MATCH_DONE);
 
 	dtrace_ecb_enable(ecb);
-	if (enab->dten_probelist == NULL) {
+	if (probe && enab->dten_probelist == NULL) {
 		/*
 		 * Allocate the probe list, we assume that the first probe
 		 * we enable has the correct vmid, and we will bail out
@@ -12961,20 +12867,11 @@ dtrace_ecb_create_enable(dtrace_probe_t *probe, void *arg)
 		ASSERT(enab->dten_probelist != NULL);
 	}
 
-	curprobelist_size = enab->dten_probelistsize;
-	if (vmid != enab->dten_vmid) {
+	if (probe && vmid != enab->dten_vmid) {
 		printf("vmid != dten_vmid (%u != %u)\n", vmid, enab->dten_vmid);
 		dtrace_ecb_destroy(ecb);
 		return (DTRACE_MATCH_DONE);
 	}
-
-	/*
-	 * The sizes should always match, if there's a mismatch that means that
-	 * we've released a lock and another probe has appeared a probe has
-	 * disappeared.
-	 */
-	ASSERT(curprobelist_size == dtrace_nvprobes[vmid]);
-	curprobelist = enab->dten_probelist;
 
 	/*
 	 * Save the information regarding which _probes_ were enabled.
@@ -12985,8 +12882,8 @@ dtrace_ecb_create_enable(dtrace_probe_t *probe, void *arg)
 	 *       of a better way to do it.
 	 */
 	if (probe != NULL) {
-		ASSERT(probe->dtpr_id < curprobelist_size);
-		curprobelist[probe->dtpr_id] = probe;
+		ASSERT(probe->dtpr_id < enab->dten_probelistsize);
+		enab->dten_probelist[probe->dtpr_id] = probe;
 	}
 	return (DTRACE_MATCH_NEXT);
 }
@@ -13953,7 +13850,7 @@ dtrace_enabling_retract(dtrace_state_t *state)
  * to the caller as subsequent calls could cause weird behaviour.
  */
 static dtrace_probedesc_t *
-dtrace_enabling_list(dtrace_enabling_t *enab, int *ndesc)
+dtrace_enabling_list(dtrace_enabling_t *enab, int *ndesc, int *bufsize)
 {
 	dtrace_probedesc_t *pdlist, *pdp;
 	dtrace_provider_t *provider;
@@ -13966,9 +13863,15 @@ dtrace_enabling_list(dtrace_enabling_t *enab, int *ndesc)
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 
 	idx = 0;
-	pdlist = kmem_zalloc(enab->dten_probelistsize *
-	    sizeof(dtrace_probedesc_t), KM_SLEEP);
-	ASSERT(pdlist != NULL);
+	*bufsize = enab->dten_probelistsize * sizeof(dtrace_probedesc_t);
+	if (*bufsize == 0)
+		return (NULL);
+
+	pdlist = kmem_zalloc(*bufsize, KM_NOSLEEP);
+	if (pdlist == NULL) {
+		*bufsize = -1;
+		return (NULL);
+	}
 
 	for (i = 0; i < enab->dten_probelistsize; i++) {
 		probe = enab->dten_probelist[i];
@@ -13978,17 +13881,15 @@ dtrace_enabling_list(dtrace_enabling_t *enab, int *ndesc)
 		vmid = probe->dtpr_vmid;
 		if (vmid == 0) {
 			provider = (dtrace_provider_t *)probe->dtpr_provider;
-			provname = provider->dtpv_name;
-		} else {
+			provname = (char *)provider->dtpv_name;
+		} else
 			provname = (char *)probe->dtpr_vprovider;
-		}
 
 		pdlist[idx].dtpd_id = probe->dtpr_id;
 		pdlist[idx].dtpd_vmid = probe->dtpr_vmid;
 		l = strlcpy(pdlist[idx].dtpd_provider,
 		    provname, DTRACE_PROVNAMELEN);
 		if (l >= DTRACE_PROVNAMELEN) {
-			printf("failed to copy provname\n");
 			kmem_free(pdlist, enab->dten_probelistsize);
 			return (NULL);
 		}
@@ -13996,7 +13897,6 @@ dtrace_enabling_list(dtrace_enabling_t *enab, int *ndesc)
 		l = strlcpy(pdlist[idx].dtpd_mod,
 		    probe->dtpr_mod, DTRACE_MODNAMELEN);
 		if (l >= DTRACE_MODNAMELEN) {
-			printf("failed to copy modname\n");
 			kmem_free(pdlist, enab->dten_probelistsize);
 			return (NULL);
 		}
@@ -14004,7 +13904,6 @@ dtrace_enabling_list(dtrace_enabling_t *enab, int *ndesc)
 		l = strlcpy(pdlist[idx].dtpd_func,
 		    probe->dtpr_func, DTRACE_FUNCNAMELEN);
 		if (l >= DTRACE_FUNCNAMELEN) {
-			printf("failed to copy func\n");
 			kmem_free(pdlist, enab->dten_probelistsize);
 			return (NULL);
 		}
@@ -14012,20 +13911,17 @@ dtrace_enabling_list(dtrace_enabling_t *enab, int *ndesc)
 		l = strlcpy(pdlist[idx++].dtpd_name,
 		    probe->dtpr_name, DTRACE_NAMELEN);
 		if (l >= DTRACE_NAMELEN) {
-			printf("failed to copy name\n");
 			kmem_free(pdlist, enab->dten_probelistsize);
 			return (NULL);
 		}
 
-		printf("probe->dtpr_id = %d\n", probe->dtpr_id);
-		printf("probe->dtpr_vmid = %d\n", probe->dtpr_vmid);
-		printf("probe->dtpr_provider = %s\n", provname);
-		printf("probe->dtpr_mod = %s\n", probe->dtpr_mod);
-		printf("probe->dtpr_func = %s\n", probe->dtpr_func);
-		printf("probe->dtpr_name = %s\n", probe->dtpr_name);
 	}
 
 	*ndesc = idx;
+	if (idx == 0) {
+		kmem_free(pdlist, *bufsize);
+		return (NULL);
+	}
 
 	kmem_free(enab->dten_probelist, enab->dten_probelistsize);
 	enab->dten_probelist = NULL;

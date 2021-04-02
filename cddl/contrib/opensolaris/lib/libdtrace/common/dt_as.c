@@ -240,7 +240,6 @@ dt_as_is_host(dtrace_difo_t *dp)
 			else if (op == DIF_OP_LDGS) {
 				uint64_t var = DIF_INSTR_VAR(instr);
 				if (var == DIF_VAR_VMNAME  ||
-				    var == DIF_VAR_GVMNAME ||
 				    var == DIF_VAR_HVMNAME)
 					return (1);
 			} else
