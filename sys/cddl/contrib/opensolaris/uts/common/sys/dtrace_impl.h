@@ -1194,6 +1194,10 @@ struct dtrace_state {
 	int dts_getf;				/* number of getf() calls */
 	uint64_t dts_rstate[NCPU][2];		/* per-CPU random state */
 	dof_hdr_t *dts_dof;			/* DOF used by distributed dtrace */
+	/*
+	 * FIXME (dstolfa): make this... better.
+	 */
+	uint16_t dts_vmid[128];			/* vmid list */
 };
 
 struct dtrace_dist {

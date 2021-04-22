@@ -31,10 +31,11 @@
 #define	DTT_MAXDATALEN	512
 
 typedef struct dtt_entry {
-	size_t 	len;
-	int	hasmore;
-	size_t	totallen;
-	char	data[DTT_MAXDATALEN];
+	uint32_t identifier;		/* unique identifier for data */
+	size_t len;			/* length of the current message */
+	int hasmore;			/* are there more segments? */
+	size_t totallen;		/* total length of the data */
+	char data[DTT_MAXDATALEN];	/* the data itself */
 } dtt_entry_t;
 
 #define	DTT_ENTRYLEN	sizeof(dtt_entry_t)

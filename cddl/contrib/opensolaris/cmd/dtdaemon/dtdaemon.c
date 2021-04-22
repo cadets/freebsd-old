@@ -359,7 +359,7 @@ listen_dttransport(void *_s)
 		if (fd == -1)
 			continue;
 
-	retry:
+retry:
 		/*
 		 * At this point we have the /var/ddtrace/inbound
 		 * open and created, so we can just create new files in it
@@ -434,6 +434,7 @@ write_dttransport(void *_s)
 	size_t l, lentoread, len, totallen;
 	struct sockaddr_un addr;
 	int kind;
+	uint32_t identifier;
 
 	rval = 0;
 	sockfd = 0;
@@ -493,11 +494,15 @@ write_dttransport(void *_s)
 		}
 
 		totallen = len;
-
+		identifier = arc4random();
 		while (len != 0) {
 			memset(&e, 0, sizeof(e));
 			lentoread = len > DTT_MAXDATALEN ? DTT_MAXDATALEN : len;
 
+			/*
+			 * XXX: This won't be fragmented, but perhaps just to be
+			 * on the safe side we should loop instead of just if()?
+			 */
 			if ((rval = recv(sockfd, e.data, lentoread, 0)) < 0) {
 				if (errno == EINTR && s->shutdown == 1)
 					pthread_exit(s);
@@ -511,6 +516,7 @@ write_dttransport(void *_s)
 				continue;
 			}
 
+			e.identifier = identifier;
 			e.hasmore = len > DTT_MAXDATALEN ? 1 : 0;
 			e.len = lentoread;
 			e.totallen = totallen;
@@ -600,6 +606,7 @@ process_joblist(void *_s)
 	struct dtd_fdlist *fde;
 	struct dtd_state *s = (struct dtd_state *)_s;
 	dtd_dir_t *dir;
+	ssize_t r;
 	struct stat stat;
 
 	_nosha = s->nosha;
@@ -661,11 +668,13 @@ process_joblist(void *_s)
 			}
 
 			elflen = stat.st_size;
-			msglen = _nosha ? elflen : elflen + SHA256_DIGEST_LENGTH;
+			msglen =
+			    _nosha ? elflen : elflen + SHA256_DIGEST_LENGTH;
 			msg = malloc(msglen);
 
 			if (msg == NULL) {
-				syslog(LOG_ERR, "Failed to malloc ELF contents: %m");
+				syslog(LOG_ERR,
+				    "Failed to malloc ELF contents: %m");
 				free(path);
 				close(elffd);
 				break;
@@ -674,8 +683,9 @@ process_joblist(void *_s)
 			memset(msg, 0, msglen);
 			contents = _nosha ? msg : msg + SHA256_DIGEST_LENGTH;
 			
-			if (read(elffd, contents, elflen) < 0) {
-				syslog(LOG_ERR, "Failed to read ELF contents: %m");
+			if ((r = read(elffd, contents, elflen)) < 0) {
+				syslog(
+				    LOG_ERR, "Failed to read ELF contents: %m");
 				free(path);
 				free(msg);
 				close(elffd);
@@ -684,7 +694,8 @@ process_joblist(void *_s)
 
 			if (_nosha == 0 &&
 			    SHA256(contents, elflen, msg) == NULL) {
-				syslog(LOG_ERR, "Failed to create a SHA256 of the file");
+				syslog(LOG_ERR,
+				    "Failed to create a SHA256 of the file");
 				free(path);
 				free(msg);
 				close(elffd);
@@ -704,7 +715,8 @@ process_joblist(void *_s)
 					 * file.
 					 */
 					LOCK(&s->socklistmtx);
-					fde = dt_in_list(&s->sockfds, &fd, sizeof(int));
+					fde = dt_in_list(
+					    &s->sockfds, &fd, sizeof(int));
 					if (fde == NULL) {
 						UNLOCK(&s->socklistmtx);
 						break;
@@ -718,7 +730,7 @@ process_joblist(void *_s)
 					    fd, msglen);
 			}
 
-			if (send(fd, msg, msglen, 0) < 0) {
+			if ((r = send(fd, msg, msglen, 0)) < 0) {
 				if (errno == EPIPE) {
 					/*
 					 * Get the entry from a socket list to
@@ -731,7 +743,8 @@ process_joblist(void *_s)
 					 * file.
 					 */
 					LOCK(&s->socklistmtx);
-					fde = dt_in_list(&s->sockfds, &fd, sizeof(int));
+					fde = dt_in_list(
+					    &s->sockfds, &fd, sizeof(int));
 					if (fde == NULL) {
 						UNLOCK(&s->socklistmtx);
 						break;
@@ -741,7 +754,8 @@ process_joblist(void *_s)
 					UNLOCK(&s->socklistmtx);
 				} else
 					syslog(LOG_ERR,
-					    "Failed to write to %d (%s, %zu): %m",
+					    "Failed to write to %d "
+					    "(%s, %zu): %m",
 					    fd, path, pathlen);
 			}
 
@@ -1078,6 +1092,17 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		}
 		UNLOCK(&s->socklistmtx);
 	} else {
+		/*
+		 * FIXME(dstolfa): When we successfully execute dtrace and start
+		 * tracing, the tracing won't ever really exit. This means that
+		 * we don't have a reliable way of stopping tracing and killing
+		 * the forked process, hence we are deadlocked waiting on a
+		 * process that has nothing to trace.
+		 *
+		 * We should probably let dtdaemon handle this, rather than
+		 * propagating it even further out to the dtrace command line
+		 * tool.
+		 */
 		parent = getpid();
 		pid = fork();
 
@@ -1226,7 +1251,8 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	strcpy(donename, s->outbounddir->dirpath);
 	strcpy(donename + dirpathlen, newname + dirpathlen + 1);
 	if (rename(newname, donename))
-		syslog(LOG_ERR, "Failed to rename %s to %s: %m", newname, donename);
+		syslog(LOG_ERR, "Failed to rename %s to %s: %m", newname,
+		    donename);
 	free(newname);
 
 	parent = getpid();
@@ -1428,8 +1454,8 @@ setup_threads(struct dtd_state *s)
 	}
 
 	/*
-	 * The socket can't be connected at this point because accept_subs is not
-	 * running. Need a semaphore.
+	 * The socket can't be connected at this point because accept_subs is
+	 * not running. Need a semaphore.
 	 */
 	err = pthread_create(&s->dtt_writetd, NULL, write_dttransport, s);
 	if (err != 0) {
@@ -1668,7 +1694,8 @@ main(int argc, char **argv)
 	retry = 0;
 	memset(pidstr, 0, sizeof(pidstr));
 
-	while ((ch = getopt_long(argc, argv, "Ca:ce:hvZ", long_opts, &optidx)) != -1) {
+	while ((ch = getopt_long(
+	    argc, argv, "Ca:ce:hvZ", long_opts, &optidx)) != -1) {
 		switch (ch) {
 		case 'h':
 			print_help();

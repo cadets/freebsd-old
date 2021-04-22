@@ -82,16 +82,18 @@ struct virtio_dtrace_control {
 		uint32_t	vd_probeid;	/* install/uninstall event */
 
 		struct {			/*  elf event */
-			size_t	vd_elflen;
-			int	vd_elfhasmore;
-			size_t	vd_totalelflen;
-			char	vd_elf[VIRTIO_DTRACE_MAXELFLEN];
+			uint32_t	vd_identifier;
+			size_t		vd_elflen;
+			int		vd_elfhasmore;
+			size_t		vd_totalelflen;
+			char		vd_elf[VIRTIO_DTRACE_MAXELFLEN];
 		} elf;
 
 		/*
 		 * Defines for easy access into the union and underlying structs
 		 */
 #define	vd_probeid	uctrl.vd_probeid
+#define vd_identifier	uctrl.elf.vd_identifier
 #define	vd_elflen	uctrl.elf.vd_elflen
 #define	vd_elfhasmore	uctrl.elf.vd_elfhasmore
 #define	vd_totalelflen	uctrl.elf.vd_totalelflen
@@ -689,6 +691,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			device_printf(dev, "VIRTIO_DTRACE_ELF\n");
 
 		memcpy(e.data, ctrl->vd_elf, ctrl->vd_elflen);
+		e.identifier = ctrl->vd_identifier;
 		e.len = ctrl->vd_elflen;
 		e.totallen = ctrl->vd_totalelflen;
 		e.hasmore = ctrl->vd_elfhasmore;
@@ -1295,12 +1298,16 @@ again:
 }
 
 int
-virtio_dtrace_enqueue(char *elf, size_t len, size_t totallen, int hasmore)
+virtio_dtrace_enqueue(dtt_entry_t *e)
 {
 	struct vtdtr_softc *sc;
 	struct virtio_dtrace_queue *q;
 	struct vtdtr_ctrl_entry *ctrl_entry;
 	struct virtio_dtrace_control *ctrl;
+	char *elf;
+	size_t len, totallen;
+	int hasmore;
+	uint32_t identifier;
 	device_t dev;
 
 	/*
@@ -1319,7 +1326,14 @@ virtio_dtrace_enqueue(char *elf, size_t len, size_t totallen, int hasmore)
 	ctrl = malloc(sizeof(struct virtio_dtrace_control),
 	    M_DEVBUF, M_WAITOK | M_ZERO);
 
+	elf = e->data;
+	len = e->len;
+	totallen = e->totallen;
+	hasmore = e->hasmore;
+	identifier = e->identifier;
+
 	ctrl->vd_event = VIRTIO_DTRACE_ELF;
+	ctrl->vd_identifier = identifier;
 	ctrl->vd_elflen = len;
 	ctrl->vd_elfhasmore = hasmore;
 	ctrl->vd_totalelflen = totallen;

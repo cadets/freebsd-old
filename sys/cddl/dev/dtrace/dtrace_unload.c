@@ -36,7 +36,7 @@ dtrace_unload()
 	mutex_enter(&dtrace_lock);
 	mutex_enter(&cpu_lock);
 
-	dtrace_ninstantiations = 0;
+	dtrace_nvmids = 0;
 	ASSERT(dtrace_opens == 0);
 
 	if (dtrace_helpers > 0) {

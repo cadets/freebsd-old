@@ -105,7 +105,7 @@ dthyve_init(void)
 
 	dirfd = open("/var/ddtrace/inbound", O_DIRECTORY, 0600);
 	if (dirfd == -1)
-		syslog(LOG_ERR, "Failed to open /var/ddtrace/inbound: %m");
+		fprintf(stderr, "Failed to open /var/ddtrace/inbound: %m");
 	
 	return (0);
 }
@@ -133,11 +133,15 @@ dthyve_read(void **buf, size_t *len)
 	/*
 	 * Buffer used for reading data in bit by bit.
 	 */
-	if (buf == NULL)
+	if (buf == NULL) {
+		fprintf(stderr, "dthyve: buf is NULL\n");
 		return (-1);
+	}
 
-	if (sockfd == -1)
+	if (sockfd == -1) {
+		fprintf(stderr, "dthyve: sockfd has not been initialised\n");
 		return (-1);
+	}
 
 	if ((rval = recv(sockfd, len, sizeof(size_t), 0)) < 0) {
 		fprintf(stderr, "Failed to recv from sub.sock: %s\n",
@@ -146,6 +150,7 @@ dthyve_read(void **buf, size_t *len)
 	}
 
 	if (rval == 0) {
+		fprintf(stderr, "dthyve: received 0 bytes from %d\n", sockfd);
 		close(sockfd);
 		sockfd = -1;
 		return (-1);
@@ -154,7 +159,7 @@ dthyve_read(void **buf, size_t *len)
 
 	*buf = malloc(*len);
 	if (*buf == NULL) {
-		fprintf(stderr, "Failed to malloc buf in dthyve_read()\n");
+		fprintf(stderr, "dthyve: failed to malloc buf\n");
 		return (-1);
 	}
 	
@@ -167,6 +172,7 @@ dthyve_read(void **buf, size_t *len)
 	}
 
 	if (rval == 0) {
+		fprintf(stderr, "dthyve: received 0 bytes from %d\n", sockfd);
 		close(sockfd);
 		sockfd = -1;
 		return (-1);

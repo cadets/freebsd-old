@@ -1455,6 +1455,7 @@ typedef struct {
 	int	n_matched;	/* # matches returned by driver. */
 	int	n_desc;		/* # of probe descriptions */
 	int	ps_bufsize;	/* size of ps */
+	uint16_t vmid;		/* origin vm */
 } dtrace_enable_io_t;
 #define	DTRACEIOC_ENABLE	_IOWR('x',6,dtrace_enable_io_t)
 						/* enable probes */
@@ -1484,6 +1485,13 @@ typedef struct {
 						/* apply filter */
 #define	DTRACEIOC_AUGMENT	_IOW('x',20,dtrace_enable_io_t)
 						/* augment instrumentation */
+typedef struct {
+	dtrace_probedesc_t	*eprobes;	/* enabled vprobes */
+	size_t			neprobes;	/* number of enabled vprobes */
+	uint16_t		vmid;		/* vmid for these vprobes */
+} dtrace_vprobe_io_t;
+#define DTRACEIOC_VPROBE_CREATE	_IOW('x',21,dtrace_vprobe_io_t)
+						/* create vprobes */
 #endif
 
 /*
@@ -2319,8 +2327,9 @@ extern dtrace_id_t dtrace_probe_lookup(dtrace_vmid_t, dtrace_provider_id_t,
     char *, char *, char *);
 extern dtrace_id_t dtrace_probe_create(dtrace_provider_id_t, const char *,
     const char *, const char *, int, void *);
-extern dtrace_id_t dtrace_vprobe_create(uint16_t, dtrace_provider_id_t,
-    const char *, const char *, const char *);
+extern dtrace_id_t dtrace_vprobe_create(
+    uint16_t, const char *, const char *, const char *, const char *);
+extern void dtrace_vprobespace_destroy(uint16_t);
 extern void *dtrace_probe_arg(dtrace_provider_id_t, dtrace_id_t);
 extern void dtrace_probe(dtrace_id_t, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4);

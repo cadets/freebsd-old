@@ -284,8 +284,7 @@ dtt_write(struct cdev *dev, struct uio *uio, int flags)
 	if (err)
 		return (err);
 
-	err = virtio_dtrace_enqueue(entry.data, entry.len,
-	    entry.totallen, entry.hasmore);
+	err = virtio_dtrace_enqueue(&entry);
 	if (err)
 		return (err);
 
@@ -316,6 +315,7 @@ dtt_queue_enqueue(dtt_entry_t *e)
 
 	memcpy(ent, e, sizeof(dtt_entry_t));
 	qe->ent = ent;
+
 	mtx_lock(&sc->qmtx);
 	TAILQ_INSERT_TAIL(&sc->dataq, qe, next);
 	mtx_unlock(&sc->qmtx);

@@ -80,7 +80,7 @@ __FBSDID("$FreeBSD$");
 #define	VTDTR_DEVICE_STOP		0x0A /* Stop tracing */
 
 #define	PCI_VTDTR_MAXELFLEN		512
-#define PCI_VTDTR_EVENTSLEEPTIME	1
+#define PCI_VTDTR_EVENTSLEEPTIME	5
 
 static int pci_vtdtr_debug;
 #define	DPRINTF(params) if (pci_vtdtr_debug) printf params
@@ -91,11 +91,12 @@ struct pci_vtdtr_control {
 	union {
 		uint32_t	pvc_probeid;	/* install/uninstall event */
 
-		struct {			/*  elf event */
-			size_t	pvc_elflen;
-			int	pvc_elfhasmore;
-			size_t	pvc_totalelflen;
-			char	pvc_elf[PCI_VTDTR_MAXELFLEN];
+		struct {	/*  elf event */
+			uint32_t	pvc_identifier;
+			size_t		pvc_elflen;
+			int		pvc_elfhasmore;
+			size_t		pvc_totalelflen;
+			char		pvc_elf[PCI_VTDTR_MAXELFLEN];
 		} elf;
 
 		/*
@@ -103,6 +104,7 @@ struct pci_vtdtr_control {
 		 */
 #define	pvc_probeid	uctrl.pvc_probeid
 
+#define	pvc_identifier	uctrl.elf.pvc_identifier
 #define	pvc_elflen	uctrl.elf.pvc_elflen
 #define	pvc_elfhasmore	uctrl.elf.pvc_elfhasmore
 #define	pvc_totalelflen	uctrl.elf.pvc_totalelflen
@@ -320,6 +322,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			if (write(fd, name, size) < 0)
 				fprintf(stderr, "Warning: Failed to write "
 				    "%zu bytes to %s\n", len, path);
+
 
 			/*
 			 * Write the temporary file
@@ -682,7 +685,6 @@ vtdtr_elf_event(void *buf, size_t size, size_t offs)
 	ctrl->pvc_elflen = len_to_read;
 	ctrl->pvc_totalelflen = size;
 	ctrl->pvc_elfhasmore = hasmore;
-	fprintf(stderr, "making an elf event\n");
 	return (ctrl);
 }
 

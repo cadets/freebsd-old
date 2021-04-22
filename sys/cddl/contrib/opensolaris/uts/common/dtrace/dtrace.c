@@ -239,14 +239,12 @@ static taskq_t		*dtrace_taskq;		/* task queue */
 static struct unrhdr	*dtrace_arena[HYPERTRACE_MAX_VMS];
 						/* Probe ID number.     */
 #endif
-size_t			dtrace_ninstantiations;	/* number of VMs instantiated */
+size_t			dtrace_nvmids;	/* number of VMs instantiated */
 dtrace_probe_t		**dtrace_vprobes[HYPERTRACE_MAX_VMS];
 						/* array of all vprobes */
 int			dtrace_nvprobes[HYPERTRACE_MAX_VMS];
 						/* number of vprobes in each vm */
 
-//dtrace_probe_t		**dtrace_probes;	/* array of all probes */
-//int			dtrace_nprobes;		/* number of probes */
 static dtrace_provider_t *dtrace_provider;	/* provider list */
 static dtrace_meta_t	*dtrace_meta_pid;	/* user-land meta provider */
 static dtrace_dist_t *dtrace_dist = NULL;	/* dist list */
@@ -278,14 +276,11 @@ static dtrace_enabling_t *dtrace_retained;	/* list of retained enablings */
 static dtrace_genid_t	dtrace_retained_gen;	/* current retained enab gen */
 static dtrace_dynvar_t	dtrace_dynhash_sink;	/* end of dynamic hash chains */
 static int		dtrace_dynvar_failclean; /* dynvars failed to clean */
+static uint16_t		dtrace_curvmid;		/* current vmid (dtrace_lock) */
 #ifndef illumos
 static dtrace_state_t	*virt_state;
 static struct callout	virt_state_callout;
 static struct mtx	dtrace_unr_mtx[HYPERTRACE_MAX_VMS];
-/*
-MTX_SYSINIT(dtrace_unr_mtx, &dtrace_unr_mtx,
-    "Unique resource identifier", MTX_DEF);
-*/
 static eventhandler_tag	dtrace_kld_load_tag;
 static eventhandler_tag	dtrace_kld_unload_try_tag;
 
@@ -568,66 +563,68 @@ dtrace_get_paging(dtrace_mstate_t *mstate)
 	return (bis->paging);
 }
 
-#define	DTRACE_LOADFUNC(bits)						\
-/*CSTYLED*/								\
-uint##bits##_t								\
-dtrace_load##bits(dtrace_mstate_t *mstate, uintptr_t addr)		\
-{									\
-	size_t size = bits / NBBY;					\
-	/*CSTYLED*/							\
-	uint##bits##_t *loc;						\
-	uint##bits##_t rval;						\
-	void *biscuit;							\
-	int err;							\
-	int i;								\
-	volatile uint16_t *flags = (volatile uint16_t *)		\
-	    &cpu_core[curcpu].cpuc_dtrace_flags;			\
-									\
-	if (mstate)							\
-		biscuit = mstate->dtms_biscuit;				\
-	else								\
-		biscuit = NULL;						\
-									\
-	DTRACE_ALIGNCHECK(addr, size, flags);				\
-	loc = NULL;							\
-	if (biscuit != NULL) {						\
-		*flags |= CPU_DTRACE_NOFAULT;				\
-		err = dtrace_gla2hva(dtrace_get_paging(mstate),		\
-		    addr, &addr);					\
-		if (err) {						\
-			return (0);					\
-			*flags &= ~CPU_DTRACE_NOFAULT;			\
-		}							\
-		rval = *(uint##bits##_t *)addr;				\
-		*flags &= ~CPU_DTRACE_NOFAULT;				\
-		if ((*flags & CPU_DTRACE_FAULT) == 0) {			\
-			return (rval);					\
-		}							\
-		return (0);						\
-	} else {							\
-		for (i = 0; i < dtrace_toxranges; i++) {		\
-			if (addr >= dtrace_toxrange[i].dtt_limit)	\
-			continue;					\
-									\
-			if (addr + size <= dtrace_toxrange[i].dtt_base)	\
-			continue;					\
-									\
-			/*
-			 * This address falls within a toxic region; return 0.
-			 */						\
-			*flags |= CPU_DTRACE_BADADDR;			\
-			cpu_core[curcpu].cpuc_dtrace_illval = addr;	\
-			return (0);					\
-		}							\
-									\
-		*flags |= CPU_DTRACE_NOFAULT;				\
-		/*CSTYLED*/						\
-		rval = *((volatile uint##bits##_t *)addr);		\
-		*flags &= ~CPU_DTRACE_NOFAULT;				\
-									\
-		return (!(*flags & CPU_DTRACE_FAULT) ? rval : 0);	\
-	}								\
-}
+#define DTRACE_LOADFUNC(bits)                                                 \
+	/*CSTYLED*/                                                           \
+	uint##bits##_t dtrace_load##bits(                                     \
+	    dtrace_mstate_t *mstate, uintptr_t addr)                          \
+	{                                                                     \
+		size_t size = bits / NBBY;                                    \
+		/*CSTYLED*/                                                   \
+		uint##bits##_t *loc;                                          \
+		uint##bits##_t rval;                                          \
+		void *biscuit;                                                \
+		int err;                                                      \
+		int i;                                                        \
+		volatile uint16_t *flags =                                    \
+		    (volatile uint16_t *)&cpu_core[curcpu].cpuc_dtrace_flags; \
+                                                                              \
+		if (mstate)                                                   \
+			biscuit = mstate->dtms_biscuit;                       \
+		else                                                          \
+			biscuit = NULL;                                       \
+                                                                              \
+		DTRACE_ALIGNCHECK(addr, size, flags);                         \
+		loc = NULL;                                                   \
+		if (biscuit != NULL) {                                        \
+			*flags |= CPU_DTRACE_NOFAULT;                         \
+			err = dtrace_gla2hva(                                 \
+			    dtrace_get_paging(mstate), addr, &addr);          \
+			if (err) {                                            \
+				return (0);                                   \
+				*flags &= ~CPU_DTRACE_NOFAULT;                \
+			}                                                     \
+			rval = *(uint##bits##_t *)addr;                       \
+			*flags &= ~CPU_DTRACE_NOFAULT;                        \
+			if ((*flags & CPU_DTRACE_FAULT) == 0) {               \
+				return (rval);                                \
+			}                                                     \
+			return (0);                                           \
+		} else {                                                      \
+			for (i = 0; i < dtrace_toxranges; i++) {              \
+				if (addr >= dtrace_toxrange[i].dtt_limit)     \
+					continue;                             \
+                                                                              \
+				if (addr + size <=                            \
+				    dtrace_toxrange[i].dtt_base)              \
+					continue;                             \
+                                                                              \
+				/*                                            \
+				 * This address falls within a toxic region;  \
+				 * return 0.                                  \
+				 */                                           \
+				*flags |= CPU_DTRACE_BADADDR;                 \
+				cpu_core[curcpu].cpuc_dtrace_illval = addr;   \
+				return (0);                                   \
+			}                                                     \
+                                                                              \
+			*flags |= CPU_DTRACE_NOFAULT;                         \
+			/*CSTYLED*/                                           \
+			rval = *((volatile uint##bits##_t *)addr);            \
+			*flags &= ~CPU_DTRACE_NOFAULT;                        \
+                                                                              \
+			return (!(*flags & CPU_DTRACE_FAULT) ? rval : 0);     \
+		}                                                             \
+	}
 
 #ifdef _LP64
 #define	dtrace_loadptr		dtrace_load64
@@ -9931,7 +9928,8 @@ _dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_provider_id_t prov,
 	dtrace_probe_t *probe, **probes;
 	dtrace_id_t id;
 
-	if (vmid == 0 && prov == (dtrace_provider_id_t)dtrace_provider) {
+	if ((vmid == 0 && prov == (dtrace_provider_id_t)dtrace_provider) ||
+	    vmid > 0) {
 		ASSERT(MUTEX_HELD(&dtrace_lock));
 	} else {
 		mutex_enter(&dtrace_lock);
@@ -10013,13 +10011,13 @@ _dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_provider_id_t prov,
  *       dtrace_probe_create (see below) to create probes on the host.
  */
 dtrace_id_t
-dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_provider_id_t prov,
+dtrace_vprobe_create(dtrace_vmid_t vmid, const char *vprov,
     const char *mod, const char *func, const char *name)
 {
 
-	return (_dtrace_vprobe_create(vmid, prov, mod, func, name, 0, NULL));
+	return (_dtrace_vprobe_create(
+	    vmid, (dtrace_provider_id_t)vprov, mod, func, name, 0, NULL));
 }
-
 
 /*
  * Create a probe with the specified module name, function name, and name for
@@ -10035,6 +10033,55 @@ dtrace_probe_create(dtrace_provider_id_t prov, const char *mod,
 
 	return (_dtrace_vprobe_create(HYPERTRACE_HOSTID, prov, mod,
 	    func, name,aframes, arg));
+}
+
+void
+dtrace_vprobespace_destroy(uint16_t vmid)
+{
+	int dtrace_nprobes;
+	int i;
+	dtrace_probe_t **dtrace_probes;
+	dtrace_probe_t *probe;
+
+	if (vmid == 0) {
+		if (dtrace_err_verbose)
+			cmn_err(CE_WARN,
+			    "called dtrace_vprobespace_destroy with vmid == 0");
+		return;
+	}
+
+	for (i = 0; i < dtrace_nprobes; i++) {
+		probe = dtrace_probes[i];
+
+		if (probe == NULL) {
+			if (dtrace_err_verbose)
+				cmn_err(CE_WARN,
+				    "dtrace_vprobes[%u][%d] == NULL", vmid, i);
+
+			continue;
+		}
+
+		/*
+		 * If we have another enabling, we don't destroy this probe.
+		 */
+		if (probe->dtpr_ecb != NULL)
+			continue;
+
+		ASSERT(probe->dtpr_vmid == vmid);
+
+		dtrace_probes[i] = NULL;
+		dtrace_hash_remove(dtrace_bymod[vmid], probe);
+		dtrace_hash_remove(dtrace_byfunc[vmid], probe);
+		dtrace_hash_remove(dtrace_byname[vmid], probe);
+		free_unr(dtrace_arena[vmid], i + 1);
+
+		kmem_free((char *)probe->dtpr_vprovider,
+		    strlen((char *)probe->dtpr_vprovider) + 1);
+		kmem_free(probe->dtpr_mod, strlen(probe->dtpr_mod) + 1);
+		kmem_free(probe->dtpr_func, strlen(probe->dtpr_func) + 1);
+		kmem_free(probe->dtpr_name, strlen(probe->dtpr_name) + 1);
+		kmem_free(probe, sizeof (dtrace_probe_t));
+	}
 }
 
 static dtrace_probe_t *
@@ -10885,6 +10932,8 @@ dtrace_difo_validate(dtrace_difo_t *dp, dtrace_vstate_t *vstate, uint_t nregs,
 				err += efunc(pc, "invalid register %u\n", rs);
 			break;
 		case DIF_OP_HYPERCALL:
+			break;
+
 		default:
 			err += efunc(pc, "invalid opcode %u\n",
 			    DIF_INSTR_OP(instr));
@@ -12868,7 +12917,6 @@ dtrace_ecb_create_enable(dtrace_probe_t *probe, void *arg)
 	}
 
 	if (probe && vmid != enab->dten_vmid) {
-		printf("vmid != dten_vmid (%u != %u)\n", vmid, enab->dten_vmid);
 		dtrace_ecb_destroy(ecb);
 		return (DTRACE_MATCH_DONE);
 	}
@@ -18438,6 +18486,7 @@ static void
 dtrace_dtr(void *data)
 #endif
 {
+	int i;
 #ifdef illumos
 	minor_t minor = getminor(dev);
 	dtrace_state_t *state;
@@ -18494,6 +18543,13 @@ dtrace_dtr(void *data)
 	if (state != NULL) {
 		dtrace_state_destroy(state);
 		kmem_free(state, 0);
+
+		/*
+		 * XXX: Worth doing a full cleanup on every close()?
+		 */
+		for (i = 1; i < dtrace_nvmids; i++) {
+			dtrace_vprobespace_destroy(i);
+		}
 	}
 #endif
 	ASSERT(dtrace_opens > 0);
@@ -19358,11 +19414,11 @@ dtrace_destroy_vprobes(dtrace_vmid_t vmid)
 	mutex_enter(&dtrace_lock);
 
 	/*
-	 * vmid < dtrace_ninstantiations should also imply:
+	 * vmid < dtrace_nvmids should also imply:
 	 *   (1) dtrace_vprobes[vmid] != NULL
 	 *   (2) dtrace_nvprobes[vmid] > 0
 	 */
-	ASSERT(vmid < dtrace_ninstantiations);
+	ASSERT(vmid < dtrace_nvmids);
 	ASSERT(dtrace_vprobes[vmid] != NULL);
 	ASSERT(dtrace_nvprobes[vmid] > 0);
 
@@ -19460,13 +19516,13 @@ dtrace_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 	dtrace_probes = NULL;
 	dtrace_nprobes = 0;
 
-	for (i = 0; i < dtrace_ninstantiations; i++) {
+	for (i = 0; i < dtrace_nvmids; i++) {
 		dtrace_destroy_vprobes(i);
 		dtrace_vprobes[i] = NULL;
 		dtrace_nvprobes[i] = 0;
 	}
 
-	for (i = 0; i < dtrace_ninstantiations; i++) {
+	for (i = 0; i < dtrace_nvmids; i++) {
 		dtrace_hash_destroy(dtrace_bymod[i]);
 		dtrace_hash_destroy(dtrace_byfunc[i]);
 		dtrace_hash_destroy(dtrace_byname[i]);

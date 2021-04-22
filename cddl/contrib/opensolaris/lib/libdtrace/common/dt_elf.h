@@ -145,6 +145,8 @@ typedef struct dt_elf_stmt {
  * dtep_haserror:   Does the program have an error?
  * dtep_err:        The error message.
  * dtep_ident:      Program's identifier.
+ * dtep_srcident:   Source program identifier.
+ * dtep_exec:       Do we exec this program?
  * dtep_neprobes:   Number of enabled probes.
  * dtep_eprobes:    Array of enabled probe descriptions.
  */
@@ -156,6 +158,8 @@ typedef struct dt_elf_prog {
 	int			dtep_haserror;
 	char			dtep_err[DT_PROG_ERRLEN];
 	char			dtep_ident[DT_PROG_IDENTLEN];
+	char			dtep_srcident[DT_PROG_IDENTLEN];
+	int			dtep_exec;
 	uint32_t		dtep_neprobes;
 	dtrace_probedesc_t	dtep_eprobes[];
 } dt_elf_prog_t;

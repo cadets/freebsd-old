@@ -36,14 +36,13 @@ extern "C" {
 #include <dtrace.h>
 #include <dt_list.h>
 
-#define	DT_PROG_ERRLEN		4096
-#define	DT_PROG_IDENTLEN	1024
+#define	DT_PROG_ERRLEN		4096ull
+#define	DT_PROG_IDENTLEN	1024ull
 
 #define	DT_PROG_NOEXEC		0
 #define	DT_PROG_EXEC		1
 
-#define	PGP_KIND_ID		0
-#define	PGP_KIND_HYPERCALLS	1
+#define	PGP_KIND_HYPERCALLS	0
 
 typedef struct dt_stmt {
 	dt_list_t ds_list;	/* list forward/back pointers */
@@ -59,11 +58,15 @@ struct dtrace_prog {
 	uint32_t dp_rflags;		/* resolver flags */
 	int dp_haserror;		/* does this program have an error? */
 	char dp_err[DT_PROG_ERRLEN];	/* error string */
-	char dp_ident[1024];		/* 1024-byte identifier of this prog */
+	char dp_ident[DT_PROG_IDENTLEN];
+					/* program identifier */
+	char dp_srcident[DT_PROG_IDENTLEN];
+					/* source program identifier */
 	int dp_exec;			/* should we exec this program? */
 	int dp_relocated;		/* has the program been relocated? */
 	uint32_t dp_neprobes;		/* number of enabled probes */
 	dtrace_probedesc_t *dp_eprobes;	/* enabled probe array */
+	uint16_t dp_vmid;		/* origin vm of the program */
 };
 
 extern dtrace_prog_t *dt_program_create(dtrace_hdl_t *);
@@ -73,9 +76,9 @@ extern dtrace_ecbdesc_t *dt_ecbdesc_create(dtrace_hdl_t *,
     const dtrace_probedesc_t *);
 extern void dt_ecbdesc_release(dtrace_hdl_t *, dtrace_ecbdesc_t *);
 extern int dt_prog_verify(dtrace_hdl_t *, dtrace_prog_t *,
-    dtrace_prog_t *, uint16_t);
+    dtrace_prog_t *);
 extern void dt_prog_generate_ident(dtrace_prog_t *);
-extern dtrace_prog_t *dt_vprog_from(dtrace_prog_t *, int);
+extern dtrace_prog_t *dt_vprog_from(dtrace_hdl_t *, dtrace_prog_t *, int);
 #ifdef	__cplusplus
 }
 #endif

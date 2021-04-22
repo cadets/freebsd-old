@@ -400,6 +400,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		int err = 0;
 		int rval;
 		int ndesc = 0;
+		int i;
 		int pbbufsize = 0;
 		dtrace_probedesc_t *probes = NULL;
 		dtrace_enable_io_t *p = (dtrace_enable_io_t *) addr;
@@ -425,8 +426,10 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_enter(&cpu_lock);
 		mutex_enter(&dtrace_lock);
 		vstate = &state->dts_vstate;
+		dtrace_curvmid = p->vmid;
 
 		if (state->dts_activity != DTRACE_ACTIVITY_INACTIVE) {
+			dtrace_curvmid = 0;
 			mutex_exit(&dtrace_lock);
 			mutex_exit(&cpu_lock);
 			dtrace_dof_destroy(dof);
@@ -435,6 +438,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		if (dtrace_dof_slurp(dof, vstate, td->td_ucred, &enab, 0, 0,
 		    B_TRUE) != 0) {
+			dtrace_curvmid = 0;
 			mutex_exit(&dtrace_lock);
 			mutex_exit(&cpu_lock);
 			dtrace_dof_destroy(dof);
@@ -443,6 +447,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		if ((rval = dtrace_dof_options(dof, state)) != 0) {
 			dtrace_enabling_destroy(enab);
+			dtrace_curvmid = 0;
 			mutex_exit(&dtrace_lock);
 			mutex_exit(&cpu_lock);
 			dtrace_dof_destroy(dof);
@@ -459,25 +464,26 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 				probes = dtrace_enabling_list(
 				    enab, &ndesc, &pbbufsize);
 				if (probes == NULL) {
+					dtrace_curvmid = 0;
 					mutex_exit(&dtrace_lock);
 					mutex_exit(&cpu_lock);
 					return (ENOMEM);
 				}
 
 				if (ndesc > p->n_matched) {
+					dtrace_curvmid = 0;
 					mutex_exit(&dtrace_lock);
 					mutex_exit(&cpu_lock);
 					return (EINTEGRITY);
 				}
 
-				/*
-				p->n_desc = ndesc; */
-				p->n_desc = 0;
+				p->n_desc = ndesc;
 			}
 		} else {
 			dtrace_enabling_destroy(enab);
 		}
 
+		dtrace_curvmid = 0;
 		mutex_exit(&cpu_lock);
 		mutex_exit(&dtrace_lock);
 
@@ -705,7 +711,6 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		p_desc->dtpd_mod[DTRACE_MODNAMELEN - 1] = '\0';
 		p_desc->dtpd_func[DTRACE_FUNCNAMELEN - 1] = '\0';
 		p_desc->dtpd_name[DTRACE_NAMELEN - 1] = '\0';
-
 		vmid = p_desc->dtpd_vmid;
 
 		/*
@@ -889,70 +894,6 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		return (rval);
 	}
-	case DTRACEIOC_FILTER: {
-		dtrace_machine_filter_t *in = (dtrace_machine_filter_t *) addr;
-		dtrace_machine_filter_t *cur = &state->dts_filter;
-		size_t i, j;
-
-		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_FILTER\n",__func__,__LINE__);
-		mutex_enter(&dtrace_lock);
-
-		/*
-		 * Check for overflows.
-		 */
-		if (in->dtfl_count >= DTRACEFILT_MAX)
-			return (EINVAL);
-
-		if (cur->dtfl_count >= DTRACEFILT_MAX)
-			return (EINVAL);
-
-		/*
-		 * Iterate over the input filter.
-		 */
-		for (i = 0; i < in->dtfl_count; i++) {
-			char *entry;
-			uint8_t found;
-			size_t n;
-
-			entry = in->dtfl_entries[i];
-			found = 0;
-
-			/*
-			 * Iterate over the filters currently applied.
-			 */
-			for (j = 0; j < cur->dtfl_count; j++) {
-				/*
-				 * If we found the entry we want to filter in
-				 * the already applied filter list, break out of
-				 * the loop.
-				 */
-				if (strcmp(entry, cur->dtfl_entries[j]) == 0) {
-					found = 1;
-					break;
-				}
-			}
-
-			/*
-			 * If we haven't found it and we have room, copy over
-			 * the filter to the filter array and check for
-			 * overflow.
-			 */
-			if (found == 0) {
-				if (cur->dtfl_count < DTRACEFILT_MAX) {
-					n = strlcpy(
-					    cur->dtfl_entries[cur->dtfl_count++],
-					    entry, DTRACE_MAXFILTNAME);
-					if (n >= DTRACE_MAXFILTNAME)
-						return (EOVERFLOW);
-				} else
-					return (EDOOFUS);
-			}
-		}
-
-		mutex_exit(&dtrace_lock);
-
-		return (0);
-	}
 	case DTRACEIOC_AUGMENT: {
 		dof_hdr_t *dof = NULL;
 		dtrace_enabling_t *enab = NULL;
@@ -960,12 +901,23 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		int err = 0;
 		int rval;
 		dtrace_enable_io_t *p = (dtrace_enable_io_t *) addr;
-		printf("IN AUGMENT\n");
 
 		DTRACE_IOCTL_PRINTF("%s(%d): DTRACEIOC_AUGMENT\n",__func__,__LINE__);
+
+		if (p->dof == NULL)
+			return (EINVAL);
+
+		if ((dof = dtrace_dof_copyin((uintptr_t)p->dof, &rval)) == NULL)
+			return (EINVAL);
+
 		mutex_enter(&cpu_lock);
 		mutex_enter(&dtrace_lock);
 		vstate = &state->dts_vstate;
+
+		/*
+		 * XXX: For now we don't allocate a dts_vdof (or dts_dof) for
+		 * DDTrace.
+		 */
 
 		if (state->dts_activity != DTRACE_ACTIVITY_ACTIVE) {
 			mutex_exit(&dtrace_lock);
@@ -996,7 +948,69 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_exit(&dtrace_lock);
 		dtrace_dof_destroy(dof);
 
-		return (0);
+		return (err);
+	}
+	case DTRACEIOC_VPROBE_CREATE: {
+		dtrace_vprobe_io_t *p = (dtrace_vprobe_io_t *) addr;
+		dtrace_probedesc_t *vprobes_to_create;
+		dtrace_probedesc_t *vprobe;
+		size_t n_vprobes_to_create;
+		size_t i;
+		int err;
+		uint16_t vmid;
+
+		err = 0;
+
+		if (p->eprobes == NULL || p->neprobes == 0)
+			return (EINVAL);
+
+		if (p->vmid == 0)
+			return (EDOOFUS);
+
+		vmid = p->vmid;
+		n_vprobes_to_create = p->neprobes;
+		vprobes_to_create = kmem_zalloc(
+		    sizeof(dtrace_probedesc_t) * n_vprobes_to_create, KM_SLEEP);
+		ASSERT(vprobes_to_create != NULL);
+		ASSERT(n_vprobes_to_create != 0);
+
+		if (copyin(p->eprobes, vprobes_to_create,
+		    sizeof(dtrace_probedesc_t) * n_vprobes_to_create))
+			return (EFAULT);
+
+		mutex_enter(&cpu_lock);
+		mutex_enter(&dtrace_lock);
+
+		for (i = 0; i < n_vprobes_to_create; i++) {
+			vprobe = &vprobes_to_create[i];
+
+			/*
+			 * While NULL definitions don't make much sense, we have
+			 * to account for the fact that the guest might fill in
+			 * some bogus data and try things with NULL probe
+			 * descriptions.
+			 */
+			if (vprobe == NULL)
+				continue;
+
+			err = dtrace_vprobe_create(vmid, vprobe->dtpd_provider,
+			    vprobe->dtpd_mod, vprobe->dtpd_func,
+			    vprobe->dtpd_name);
+			
+			/*
+			 * If we encounter an error when creating probes, we're
+			 * just going to delete all of them.
+			 */
+			if (err) {
+				dtrace_vprobespace_destroy(vmid);
+				mutex_exit(&dtrace_lock);
+				mutex_exit(&cpu_lock);
+
+				return (err);
+			}
+		}
+		mutex_exit(&dtrace_lock);
+		mutex_exit(&cpu_lock);
 	}
 	default:
 		error = ENOTTY;

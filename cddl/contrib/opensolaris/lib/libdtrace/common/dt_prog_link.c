@@ -25,6 +25,8 @@
  * $FreeBSD$
  */
 
+#include <sys/types.h>
+
 #include <sys/dtrace.h>
 
 #include <dt_prog_link.h>
@@ -71,6 +73,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
         ctf_encoding_t ep;
 	dtrace_diftype_t *rtype;
 	int index, i;
+	int ctf_kind;
 
 	rtype = NULL;
 	ifgl = NULL;
@@ -84,6 +87,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	new_instr = 0;
 	new_op = 0;
 	index = i = 0;
+	ctf_kind = 0;
 	memset(&ep, 0, sizeof(ctf_encoding_t));
 
 	if (difo->dtdo_inttab != NULL) {
@@ -98,7 +102,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 			if ((index = dt_inttab_insert(difo->dtdo_inthash,
 			    difo->dtdo_inttab[i], 0)) != i)
 				errx(EXIT_FAILURE,
-				    "failed to insert %d, got %d (!= %d)\n",
+				    "failed to insert %lu, got %d (!= %d)\n",
 				    difo->dtdo_inttab[i], index, i);
 		}
 	}
@@ -139,9 +143,22 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 					    "unexpected node->din_type (%x)",
 					    node->din_type);
 
-				if (rtype->dtdt_kind == DIF_TYPE_CTF)
+				if (rtype->dtdt_kind == DIF_TYPE_CTF) {
+					ctf_kind = ctf_type_kind(
+					    ctf_file, node->din_ctfid);
+
+					/*
+					 * Set that we are returning this
+					 * by reference, rather than by value
+					 */
+					if (ctf_kind == CTF_K_ARRAY ||
+					    ctf_kind == CTF_K_POINTER)
+						rtype->dtdt_flags |=
+						    DIF_TF_BYREF;
+
 					rtype->dtdt_size = ctf_type_size(
 					    ctf_file, node->din_ctfid);
+				}
 
 				/*
 				 * Safety guard
@@ -204,11 +221,16 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		        size = ctf_type_size(ctf_file, ctfid);
 			kind = ctf_type_kind(ctf_file, ctfid);
 
-			if (kind != CTF_K_INTEGER && kind != CTF_K_POINTER)
-				errx(EXIT_FAILURE, "a load of kind %d is"
+			/*
+			 * NOTE: We support loading of CTF_K_ARRAY due to it
+			 * just being a pointer, really.
+			 */
+			if (kind != CTF_K_INTEGER && kind != CTF_K_POINTER &&
+			    kind != CTF_K_ARRAY)
+				errx(EXIT_FAILURE, "a load of kind %zu is"
 				    " unsupported in DIF.", kind);
 
-			if (kind == CTF_K_POINTER) {
+			if (kind == CTF_K_POINTER || kind == CTF_K_ARRAY) {
 				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDX : DIF_OP_ULDX;
 				rd = DIF_INSTR_RD(instr);
 				r1 = DIF_INSTR_R1(instr);
@@ -217,7 +239,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 			} else {
 			        if (ctf_type_encoding(ctf_file, ctfid, &ep) != 0)
 					errx(EXIT_FAILURE,
-					    "failed to get encoding for %d",
+					    "failed to get encoding for %ld",
 					    ctfid);
 
 				if (ep.cte_format & CTF_INT_SIGNED) {

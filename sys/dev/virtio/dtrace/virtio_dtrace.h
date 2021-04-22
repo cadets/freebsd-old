@@ -31,6 +31,7 @@
 
 #include <sys/queue.h>
 #include <sys/dtrace_bsd.h>
+#include <dev/dttransport/dttransport.h>
 
 /*
  * The events related to probe installation and uninstallation are presently
@@ -56,6 +57,6 @@
 
 #define	VIRTIO_DTRACE_MAXELFLEN		512
 
-int virtio_dtrace_enqueue(char *, size_t, size_t, int);
+int virtio_dtrace_enqueue(dtt_entry_t *);
 
 #endif

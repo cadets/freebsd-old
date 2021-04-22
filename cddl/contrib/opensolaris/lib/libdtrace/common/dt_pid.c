@@ -786,13 +786,14 @@ dt_pid_create_probes(dtrace_probedesc_t *pdp, dtrace_hdl_t *dtp, dt_pcb_t *pcb)
 int
 dt_pid_create_probes_module(dtrace_hdl_t *dtp, dt_proc_t *dpr)
 {
-	dtrace_enable_io_t args;
+	dtrace_enable_io_t args = { 0 };
 	dtrace_prog_t *pgp;
 	dt_stmt_t *stp;
 	dtrace_probedesc_t *pdp, pd;
 	pid_t pid;
 	int ret = 0, found = B_FALSE;
 	char provname[DTRACE_PROVNAMELEN];
+	int expected_nprobes = DTRACE_MIN_NPROBES;
 
 	(void) snprintf(provname, sizeof (provname), "pid%d",
 	    (int)dpr->dpr_pid);
@@ -833,6 +834,16 @@ dt_pid_create_probes_module(dtrace_hdl_t *dtp, dt_proc_t *dpr)
 		 */
 		args.dof = NULL;
 		args.n_matched = 0;
+		args.vmid = 0;
+		args.ps = malloc(sizeof(dtrace_probedesc_t) * expected_nprobes);
+		if (args.ps == NULL) {
+			fprintf(stderr, "could not allocate args.ps\n");
+			return (-1);
+		}
+
+		memset(
+		    args.ps, 0, sizeof(dtrace_probedesc_t) * expected_nprobes);
+		args.ps_bufsize = expected_nprobes * sizeof(dtrace_probedesc_t);
 		(void) dt_ioctl(dtp, DTRACEIOC_ENABLE, &args);
 	}
 

@@ -1215,7 +1215,6 @@ dt_vopen(int version, int flags, int *errp,
 	dtrace_typeinfo_t dtt;
 	ctf_funcinfo_t ctc;
 	ctf_arinfo_t ctr;
-	printf("dt_vopen with vector = %p\n", vector);
 
 	dt_fdlist_t df = { NULL, 0, 0 };
 

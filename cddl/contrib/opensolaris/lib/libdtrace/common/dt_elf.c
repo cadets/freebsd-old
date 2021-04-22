@@ -1087,6 +1087,7 @@ dt_elf_options(Elf *e)
 		if (op->dteo_set == 0)
 			continue;
 
+		assert(op->dteo_arg != NULL);
 		len = sizeof(_dt_elf_eopt_t) + strlen(op->dteo_arg) + 1;
 		eop = malloc(len);
 		if (eop == NULL)
@@ -1445,7 +1446,7 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	stp = dt_list_next(&dt_prog->dp_stmts);
 
 	if (stp == NULL)
-		errx(EXIT_FAILURE, "DTrace program has no statements");
+		goto skipstmt;
 	
 	stmt = stp->ds_desc;
 
@@ -1464,9 +1465,6 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	 * required for this program.
 	 */
 	prog->dtep_first_stmt = elf_ndxscn(f_scn);
-	prog->dtep_dofversion = dt_prog->dp_dofversion;
-	prog->dtep_rflags = dt_prog->dp_rflags;
-	memcpy(prog->dtep_ident, dt_prog->dp_ident, DT_PROG_IDENTLEN);
 
 	/*
 	 * Iterate over the other statements and create ELF sections with them.
@@ -1489,6 +1487,13 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	shdr->sh_name = DTELF_OPTS;
 	shdr->sh_flags = SHF_OS_NONCONFORMING;
 	shdr->sh_entsize = 0;
+
+skipstmt:
+	prog->dtep_dofversion = dt_prog->dp_dofversion;
+	prog->dtep_rflags = dt_prog->dp_rflags;
+	memcpy(prog->dtep_ident, dt_prog->dp_ident, DT_PROG_IDENTLEN);
+	memcpy(prog->dtep_srcident, dt_prog->dp_srcident, DT_PROG_IDENTLEN);
+	prog->dtep_exec = dt_prog->dp_exec;
 
 	/*
 	 * Save the options for this program.
@@ -1722,15 +1727,16 @@ dt_elf_add_acts(dtrace_stmtdesc_t *stmt, dt_elf_ref_t fst, dt_elf_ref_t last)
 	    el != NULL; el = dt_list_next(el)) {
 		act = el->act;
 
-		if (el->eact_ndx == fst)
+		if (el->eact_ndx == fst) {
 			stmt->dtsd_action = act;
+		}
 
+		act->dtad_uarg = (uintptr_t)stmt;
 		if (el->eact_ndx == last) {
 			stmt->dtsd_action_last = act;
 			break;
 		}
 
-		act->dtad_uarg = (uintptr_t)stmt;
 	}
 
 	assert(el != NULL);
@@ -2041,11 +2047,85 @@ dt_elf_get_options(dtrace_hdl_t *dtp, Elf *e, dt_elf_ref_t eopts)
 	 * a compiler developer.
 	 */
 	for (eop = (uintptr_t)data->d_buf;
-	    eop != ((uintptr_t)data->d_buf) + data->d_size;
+	    eop < ((uintptr_t)data->d_buf) + data->d_size;
 	    eop = eop + dteop->eo_len + sizeof(_dt_elf_eopt_t)) {
 		dteop = (_dt_elf_eopt_t *)eop;
 		dtrace_setopt(dtp, dteop->eo_name, strdup(dteop->eo_arg));
 	}
+}
+
+static void
+get_randname(char *b, size_t len)
+{
+	size_t i;
+
+	/*
+	 * Generate lower-case random characters.
+	 */
+	for (i = 0; i < len; i++)
+		b[i] = arc4random_uniform(25) + 97;
+}
+
+static void
+dump_buf(const char *path, char *buf, size_t size)
+{
+	char dumppath[MAXPATHLEN] = { 0 };
+	size_t dirlen = strlen(path);
+	size_t reasonable_size;
+	int fd;
+	int acc;
+
+	if (access(path, F_OK) != 0)
+		if (mkdir(path, 0660))
+			errx(EXIT_FAILURE,
+			    "failed to create directory %s: %s\n", path,
+			    strerror(errno));
+
+	/*
+	 * Makes no sense to call this function with strlen(path) >= MAXPATHLEN
+	 */
+	assert(dirlen < MAXPATHLEN);
+	memcpy(dumppath, path, dirlen);
+	/*
+	 * Add the trailing /
+	 */
+	dumppath[dirlen] = '/';
+
+	/*
+	 * Do this weird, ad-hoc computation to end up with filenames that
+	 * aren't full of junk.
+	 */
+	reasonable_size = MAXPATHLEN - dirlen - 1;
+	reasonable_size /= 64;
+
+	if (reasonable_size < 10)
+		reasonable_size *= 2;
+
+	if (reasonable_size > MAXPATHLEN - dirlen - 1)
+		reasonable_size = MAXPATHLEN - dirlen - 1;
+
+	/*
+	 * This should always be true...
+	 */
+	assert(reasonable_size < MAXPATHLEN);
+
+	do {
+		get_randname(dumppath + dirlen + 1, reasonable_size);
+		dumppath[dirlen + 1 + reasonable_size] = '0';
+	} while (access(dumppath, F_OK) != -1);
+
+	fd = open(dumppath, O_WRONLY | O_CREAT);
+	if (fd == -1)
+		errx(EXIT_FAILURE, "failed to create %s: %s\n", dumppath,
+		    strerror(errno));
+	
+	if (write(fd, buf, size) < 0) {
+		close(fd);
+		errx(EXIT_FAILURE, "failed to write to %s (%d): %s\n", dumppath,
+		    fd, strerror(errno));
+	}
+
+	close(fd);
 }
 
 static int
@@ -2057,6 +2137,7 @@ dt_elf_verify_file(char checksum[SHA256_DIGEST_LENGTH], int fd)
 	char chk[512];
 	char template[] = "/tmp/ddtrace-elf.XXXXXXXX";
 	int i, elf_fd;
+	ssize_t r = 0;
 
 	chk[64] = '\0';
 	memset(elf_checksum, 0, sizeof(elf_checksum));
@@ -2073,7 +2154,7 @@ dt_elf_verify_file(char checksum[SHA256_DIGEST_LENGTH], int fd)
 		errx(EXIT_FAILURE, "buf malloc() failed with %s",
 		    strerror(errno));
 
-	if (read(fd, buf, st.st_size - SHA256_DIGEST_LENGTH) < 0)
+	if ((r = read(fd, buf, st.st_size - SHA256_DIGEST_LENGTH)) < 0)
 		errx(EXIT_FAILURE, "read() failed on fd with %s",
 		    strerror(errno));
 
@@ -2095,6 +2176,9 @@ dt_elf_verify_file(char checksum[SHA256_DIGEST_LENGTH], int fd)
 		for (i = 0; i < SHA256_DIGEST_LENGTH; i++)
 			sprintf(chk + (i * 2), "%02x", elf_checksum[i]);
 		fprintf(stderr, "%s\n", chk);
+
+		dump_buf("/var/ddtrace/error", buf,
+		    st.st_size - SHA256_DIGEST_LENGTH);
 
 		errx(EXIT_FAILURE, "SHA256 mismatch");
 	}
@@ -2267,8 +2351,16 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	assert(data->d_buf != NULL);
 	eprog = data->d_buf;
 
-	if (oldpgp && memcmp(eprog->dtep_ident,
-	    oldpgp->dp_ident, DT_PROG_IDENTLEN) != 0) {
+	/*
+	 * We allow two kinds of programs in dt_elf_to_prog:
+	 *  (1) the program itself where the relocations were applied;
+	 *  (2) a program that was created by this program as a source.
+	 */
+	if (oldpgp                                    &&
+	    ((memcmp(eprog->dtep_ident,
+	    oldpgp->dp_ident, DT_PROG_IDENTLEN) != 0) &&
+	    (memcmp(eprog->dtep_srcident,
+	    oldpgp->dp_ident, DT_PROG_IDENTLEN) != 0))) {
 		*err = EACCES;
 		fprintf(stderr, "identifier mismatch\n");
 		return (NULL);
@@ -2291,7 +2383,9 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	dt_elf_get_options(dtp, e, eprog->dtep_options);
 
 	memcpy(prog->dp_ident, eprog->dtep_ident, DT_PROG_IDENTLEN);
+	memcpy(prog->dp_srcident, eprog->dtep_srcident, DT_PROG_IDENTLEN);
 
+	prog->dp_exec = eprog->dtep_exec;
 	prog->dp_neprobes = eprog->dtep_neprobes;
 	if (prog->dp_neprobes) {
 		prog->dp_eprobes = malloc(prog->dp_neprobes *
@@ -2309,6 +2403,10 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	if (needsclosing)
 		close(fd);
 	
+	/*
+	 * Append the parsed program to our program list and return it.
+	 */
+	dt_list_append(&dtp->dt_programs, prog);
 	return (prog);
 }
 

@@ -108,6 +108,7 @@ dtrace_load(void *dummy)
 	mutex_enter(&cpu_lock);
 	mutex_enter(&dtrace_provider_lock);
 	mutex_enter(&dtrace_lock);
+	dtrace_curvmid = 0;
 
 	dtrace_state_cache = kmem_cache_create("dtrace_state_cache",
 	    sizeof (dtrace_dstate_percpu_t) * NCPU, DTRACE_STATE_ALIGN,
@@ -162,7 +163,7 @@ dtrace_load(void *dummy)
 	dtrace_probeid_error = dtrace_probe_create((dtrace_provider_id_t)
 	    dtrace_provider, NULL, NULL, "ERROR", 1, NULL);
 
-	dtrace_ninstantiations = 1;
+	dtrace_nvmids = 1;
 	mutex_exit(&dtrace_lock);
 	mutex_exit(&dtrace_provider_lock);
 

@@ -45,6 +45,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
+#include <syslog.h>
 #include <unistd.h>
 #include <limits.h>
 #include <fcntl.h>
@@ -84,6 +85,13 @@ typedef struct dtd_arg {
 typedef struct dt_pgplist {
 	dt_list_t list;
 	dtrace_prog_t *pgp;
+	/*
+	 * NOTE: We call this "guest program" because even though for now it's
+	 * just a list, we might want to do some work in the future to achieve
+	 * more type-checking, etc.
+	 */
+	dtrace_prog_t *gpgp;
+	uint16_t vmid;
 } dt_pgplist_t;
 
 typedef struct dt_probelist {
@@ -103,7 +111,7 @@ typedef struct dt_probelist {
 #define	E_USAGE		2
 
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:M:n:o:p:P:qs:SU:vVwx:y:Y:X:Z";
+	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:n:o:p:P:qs:SU:vVwx:y:Y:X:Z";
 
 static char **g_argv;
 static int g_argc;
@@ -184,7 +192,6 @@ usage(FILE *fp)
 	    "[-b bufsz] [-c cmd] [-D name[=def]]\n\t[-g gv_output] [-I path] "
 	    "[-L path] [-o output] [-p pid] [-s script] [-U name]\n\t"
 	    "[-x opt[=val]] [-X a|c|s|t]\n\n"
-	    "\t[-M [ vm1,vm2,vm3,... ]\n"
 	    "\t[-P provider %s]\n"
 	    "\t[-m [ provider: ] module %s]\n"
 	    "\t[-f [[ provider: ] module: ] func %s]\n"
@@ -216,7 +223,6 @@ usage(FILE *fp)
 	    "\t-I  add include directory to preprocessor search path\n"
 	    "\t-l  list probes matching specified criteria\n"
 	    "\t-L  add library directory to library search path\n"
-	    "\t-M  specify virtual-machine filters\n"
 	    "\t-m  enable or list probes matching the specified module name\n"
 	    "\t-n  enable or list probes matching the specified probe name\n"
 	    "\t-o  set output file\n"
@@ -798,6 +804,32 @@ gen_filename(const char *dir)
 	return (elfpath);
 }
 
+static dt_pgplist_t *
+get_pgplist_entry(char *ident, uint16_t vmid, int *found)
+{
+	dt_pgplist_t *pgpl;
+	dtrace_prog_t *pgp;
+
+	*found = 0;
+	for (pgpl = dt_list_next(&g_pgplist); pgpl;
+	    pgpl = dt_list_next(pgpl)) {
+		pgp = pgpl->pgp;
+
+		if (memcmp(pgp->dp_ident, ident, DT_PROG_IDENTLEN) == 0 &&
+		    pgp->dp_vmid == vmid) {
+			*found = 1;
+			return (pgpl);
+		}
+	}
+
+	pgpl = malloc(sizeof(dt_pgplist_t));
+	if (pgpl == NULL)
+		return (NULL);
+
+	memset(pgpl, 0, sizeof(dt_pgplist_t));
+	return (pgpl);
+}
+
 static void *
 listen_dtdaemon(void *arg)
 {
@@ -819,6 +851,13 @@ listen_dtdaemon(void *arg)
 	int done;
 	uint16_t vmid;
 	size_t lentowrite;
+	int found;
+	char donepath[MAXPATHLEN] = { 0 };
+	size_t dirlen;
+	size_t donepathlen;
+	ssize_t r;
+	uintptr_t elf_ptr;
+	size_t len_to_recv;
 
 	sockfd = 0;
 	elflen = 0;
@@ -831,6 +870,7 @@ listen_dtdaemon(void *arg)
 	done = 0;
 	vmid = 0;
 	lentowrite = 0;
+	dirlen = strlen(elfdir);
 	
 	/*
 	 * Assume this is an int.
@@ -848,12 +888,22 @@ listen_dtdaemon(void *arg)
 		 * it actually is and fill in the necessary filters.
 		 */
 		if (!done && !g_intr &&
-		    recv(sockfd, &elflen, sizeof(elflen), 0) < 0 &&
+		    ((r = recv(sockfd, &elflen, sizeof(elflen), 0)) < 0) &&
 		    errno != EINTR)
 			dfatal("failed to read elf length");
+
 		if (g_intr) {
 			done = 1;
 			break;
+		}
+
+		if (r != sizeof(elflen)) {
+			fprintf(stderr, "received %zu bytes, expected %zu\n", r,
+			    sizeof(elflen));
+			/*
+			 * FIXME(dstolfa): Just for now.
+			 */
+			assert(0);
 		}
 
 		if (elflen <= 0)
@@ -864,8 +914,19 @@ listen_dtdaemon(void *arg)
 			dfatal("malloc(elf) failed");
 		memset(elf, 0, elflen);
 
-		if (!done && !g_intr && recv(sockfd, elf, elflen, 0) < 0)
-			dfatal("failed to read elf file");
+		elf_ptr = (uintptr_t)elf;
+		len_to_recv = elflen;
+
+		while (!done && !g_intr && len_to_recv > 0 &&
+		    ((r = recv(
+		    sockfd, (void *)elf_ptr, len_to_recv, 0)) != len_to_recv)) {
+			if (r < 0)
+				dfatal("failed to read from dtdaemon: %s",
+				    strerror(errno));
+
+			len_to_recv -= r;
+			elf_ptr += r;
+		}
 
 		if (g_intr) {
 			done = 1;
@@ -918,7 +979,8 @@ process_prog:
 			continue;
 		}
 
-		if (dt_prog_verify(g_dtp, hostpgp, newprog, vmid)) {
+		newprog->dp_vmid = vmid;
+		if (dt_prog_verify(g_dtp, hostpgp, newprog)) {
 			fprintf(stderr, "failed to verify DIF from %s (%u)\n",
 			    vm_name == NULL ? "host" : vm_name, vmid);
 			continue;
@@ -933,14 +995,40 @@ process_prog:
 		if (err == EACCES && newprog == NULL)
 			continue;
 
-		newpgpl = malloc(sizeof(dt_pgplist_t));
+		/*
+		 * srcident only is not sufficient here, as it's an one-to-many
+		 * relation. However, scoping it with vmid as well *should* give
+		 * us a unique program.
+		 */
+		newpgpl = get_pgplist_entry(newprog->dp_srcident, vmid, &found);
 		if (newpgpl == NULL)
 			dfatal("malloc of newpgpl failed");
 
-		newpgpl->pgp = newprog;
+		/*
+		 * vmid is only 0 when we haven't filled in the program we will
+		 * execute on the host.
+		 *
+		 * We check that we don't have a guest trying to pretend that it
+		 * is someone else.
+		 */
+		if (newpgpl->vmid != 0 && (newpgpl->vmid != vmid)) {
+			syslog(LOG_SECURITY, "vmid (%u) is claiming to be %u\n",
+			    vmid, newpgpl->vmid);
+			fprintf(stderr, "vmid (%u) is claiming to be %u\n",
+			    vmid, newpgpl->vmid);
+			continue;
+		}
 
-		if (novm == 0) {
-			guestpgp = dt_vprog_from(newprog, PGP_KIND_HYPERCALLS);
+		if (found)
+			newpgpl->gpgp = newprog;
+		else {
+			newpgpl->vmid = vmid;
+			newpgpl->pgp = newprog;
+		}
+
+		if (!found && novm == 0) {
+			guestpgp =
+			    dt_vprog_from(g_dtp, newprog, PGP_KIND_HYPERCALLS);
 			if (guestpgp == NULL)
 				dfatal("failed to create a guest program");
 
@@ -952,15 +1040,37 @@ process_prog:
 			 */
 			elfpath = gen_filename(elfdir);
 			dt_elf_create(guestpgp, ELFDATA2LSB, elfpath);
+
+			donepathlen = strlen(elfpath) - 1;
+
+			memset(donepath, 0, donepathlen);
+			memcpy(donepath, elfpath, dirlen);
+			memcpy(donepath + dirlen, elfpath + dirlen + 1,
+			    donepathlen - dirlen);
+
+
+			if (rename(elfpath, donepath)) {
+				dfatal("failed to move %s to %s",
+				    elfpath, donepath);
+			}
+
+			free(elfpath);
 		}
 
-		pthread_mutex_lock(&g_pgplistmtx);
-		dt_list_append(&g_pgplist, newpgpl);
-		pthread_mutex_unlock(&g_pgplistmtx);
+		/*
+		 * If this is a new program, we add it to the list.
+		 */
+		if (newpgpl->pgp == newprog) {
+			pthread_mutex_lock(&g_pgplistmtx);
+			dt_list_append(&g_pgplist, newpgpl);
+			pthread_mutex_unlock(&g_pgplistmtx);
+		}
 
-		pthread_mutex_lock(&g_pgpcondmtx);
-		pthread_cond_signal(&g_pgpcond);
-		pthread_mutex_unlock(&g_pgpcondmtx);
+		if (newpgpl->pgp && newpgpl->gpgp) {
+			pthread_mutex_lock(&g_pgpcondmtx);
+			pthread_cond_signal(&g_pgpcond);
+			pthread_mutex_unlock(&g_pgpcondmtx);
+		}
 	} while (!done);
 
 	return (arg);
@@ -1133,9 +1243,11 @@ dtc_work(void *arg)
 
 		switch (dtrace_work(g_dtp, g_ofp, &con, NULL)) {
 		case DTRACE_WORKSTATUS_DONE:
+			printf("WORKSTATUS_DONE\n");
 			done = 1;
 			break;
 		case DTRACE_WORKSTATUS_OKAY:
+			printf("WORKSTATUS_OKAY\n");
 			break;
 		default:
 			if (!g_impatient && dtrace_errno(g_dtp) != EINTR)
@@ -1163,20 +1275,31 @@ dtc_work(void *arg)
 }
 
 static void
-process_new_pgp(dtrace_prog_t *pgp)
+process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp)
 {
 	static size_t n_pgps = 0;
 	dtrace_proginfo_t dpi;
-	int i;
+	int i, n;
 
 	dtrace_dump_actions(pgp);
-	printf("dp_neprobes = %u\n", pgp->dp_neprobes);
-	for (i = 0; i < pgp->dp_neprobes; i++) {
-		printf("matched %s:%s:%s:%s\n", pgp->dp_eprobes[i].dtpd_provider,
-		    pgp->dp_eprobes[i].dtpd_mod, pgp->dp_eprobes[i].dtpd_func,
-		    pgp->dp_eprobes[i].dtpd_name);
+	printf("process_new_pgp: dp_neprobes = %u\n", gpgp->dp_neprobes);
+	for (i = 0; i < gpgp->dp_neprobes; i++) {
+		printf("process_new_pgp: matched %s:%s:%s:%s\n",
+		    gpgp->dp_eprobes[i].dtpd_provider,
+		    gpgp->dp_eprobes[i].dtpd_mod, gpgp->dp_eprobes[i].dtpd_func,
+		    gpgp->dp_eprobes[i].dtpd_name);
 	}
 
+	if (pgp->dp_vmid != gpgp->dp_vmid)
+		dfatal("mismatch between pgp and gpgp vmids (%u != %u)",
+		    pgp->dp_vmid, gpgp->dp_vmid);
+
+	if (gpgp->dp_vmid != 0) {
+		n = dt_vprobes_create(g_dtp, gpgp);
+		if (n == -1)
+			dfatal(
+			    "failed to create vprobes (%s)", strerror(errno));
+	}
 
 	if (n_pgps == 0) {
 		if (dtrace_program_exec(g_dtp, pgp, &dpi) == -1) {
@@ -1221,13 +1344,16 @@ exec_prog(const dtrace_cmd_t *dcp)
 	dtd_arg_t *dtd_arg = NULL;
 	void *rval;
 	dt_pgplist_t *pgpl = NULL;
+	int again = 0;
 
 	dirlen = strlen(elfdir);
 	elfpath = gen_filename(elfdir);
 	if (elfpath == NULL)
 		dfatal("gen_filename() failed");
-	// Don't take any action based on unwanted mod/ref behaviour:
-	// checkmodref emits warnings and that's the end of it.
+	/*
+	 * Don't take any action based on unwanted mod/ref behaviour;
+	 * checkmodref emits warnings and that's the end of it.
+	 */
 	(void) dtrace_analyze_program_modref(dcp->dc_prog, checkmodref, stderr);
 
 	dcp->dc_prog->dp_rflags = rslv;
@@ -1344,9 +1470,13 @@ exec_prog(const dtrace_cmd_t *dcp)
 			/*
 			 * XXX: Maybe a clean shutdown variable...?
 			 */
+again:
 			while (!g_intr &&
-			    (pgpl = dt_list_next(&g_pgplist)) == NULL)
+			    ((pgpl = dt_list_next(&g_pgplist)) == NULL ||
+			    again == 1)) {
 				pthread_cond_wait(&g_pgpcond, &g_pgpcondmtx);
+				again = 0;
+			}
 			pthread_mutex_unlock(&g_pgpcondmtx);
 
 			assert(pgpl != NULL || g_intr);
@@ -1354,7 +1484,46 @@ exec_prog(const dtrace_cmd_t *dcp)
 			if (g_intr)
 				break;
 
-			process_new_pgp(pgpl->pgp);
+			/*
+			 * We are in a situation where the condition variable
+			 * has been triggered and we expect to have at least one
+			 * pgplist entry which contains both the probe
+			 * specification that we need to create on the host and
+			 * the program that we need to run.
+			 */
+			for (; pgpl; pgpl = dt_list_next(pgpl)) {
+				if (pgpl->pgp && pgpl->gpgp)
+					break;
+			}
+
+			if (pgpl == NULL) {
+				/*
+				 * FIXME(dstolfa): This should be fprintf, but
+				 * for now we just want to catch these cases.
+				 */
+				errx(EXIT_FAILURE,
+				    "could not find a list entry "
+				    "that has both pgp and gpgp set");
+				again = 1;
+				goto again;
+			}
+
+			/*
+			 * If the condition variable fired when we don't have a
+			 * fully defined program to run, we will simply warn the
+			 * user and go to sleep again.
+			 */
+			if (pgpl->pgp == NULL || pgpl->gpgp == NULL) {
+				fprintf(stderr, "%s",
+				    pgpl->pgp ? "probe specification is NULL"
+						", sleeping...\n" :
+						      "program to run is NULL"
+						", sleeping...\n");
+				again = 1;
+				goto again;
+			}
+
+			process_new_pgp(pgpl->pgp, pgpl->gpgp);
 			
 			pthread_mutex_lock(&g_pgplistmtx);
 			dt_list_delete(&g_pgplist, pgpl);
@@ -1592,13 +1761,14 @@ compile_file(dtrace_cmd_t *dcp)
 	dcp->dc_name = dcp->dc_arg;
 }
 
-static void
-link_elf(dtrace_cmd_t *dcp, char *progpath, int exec)
+static int 
+link_elf(dtrace_cmd_t *dcp, char *progpath)
 {
 	int fd;
 	dt_stmt_t *stp;
 	int err = 0;
 	void *dof = NULL;
+	int prog_exec = 0;
 
 	assert(g_elf == 1);
 
@@ -1608,36 +1778,27 @@ link_elf(dtrace_cmd_t *dcp, char *progpath, int exec)
 	if ((dcp->dc_prog = dt_elf_to_prog(g_dtp, fd, 1, &err, NULL)) == NULL)
 		fatal("failed to parse the ELF file %s", dcp->dc_arg);
 
-	if (dcp->dc_prog->dp_exec != exec)
-		dfatal("program is %smeant to be executed",
-		    exec == DT_PROG_EXEC ? "" : "not ");
-
+	prog_exec = dcp->dc_prog->dp_exec;
 	close(fd);
-
-	if (exec == DT_PROG_EXEC) {
-		/*
-		 * We execute the program and gather all the information about
-		 * instrumentation that we'll need to send off to the host again
-		 */
-		dof = dtrace_dof_create(g_dtp, dcp->dc_prog, 0);
-		if (dof == NULL)
-			dfatal("failed to create DOF file");
-
-	}
 
 	dcp->dc_desc = "ELF file";
 	dcp->dc_name = dcp->dc_arg;
+
+	return (prog_exec);
 }
 
 static void
-link_elf_exec(dtrace_cmd_t *dcp)
+process_elf(dtrace_cmd_t *dcp)
 {
 
-	link_elf(dcp, dcp->dc_arg, DT_PROG_EXEC);
+	/*
+	 * FIXME: This won't work.
+	 */
+	(void) link_elf(dcp, dcp->dc_arg);
 }
 
 static void
-link_elf_noexec(dtrace_cmd_t *dcp)
+process_elf_hypertrace(dtrace_cmd_t *dcp)
 {
 	char elfdir[MAXPATHLEN] = { 0 };
 	char *dirpath;
@@ -1645,6 +1806,9 @@ link_elf_noexec(dtrace_cmd_t *dcp)
 	size_t donepathlen;
 	size_t dirlen;
 	char *elfpath, *progpath;
+	int prog_exec;
+	dtrace_proginfo_t dpi;
+	int i;
 
 	progpath = strtok(dcp->dc_arg, ",");
 	if (progpath == NULL)
@@ -1655,10 +1819,22 @@ link_elf_noexec(dtrace_cmd_t *dcp)
 
 	dirlen = strlen(elfdir);
 
-	link_elf(dcp, progpath, DT_PROG_NOEXEC);
+	prog_exec = link_elf(dcp, progpath);
 
 	if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) != 0)
 		dfatal("Failed to apply relocations");
+
+	if (prog_exec == DT_PROG_EXEC) {
+		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
+			dfatal("failed to enable program");
+		} else {
+			notice("matched %u probes%s\n", dpi.dpi_matches,
+			    dpi.dpi_matches == 1 ? "" : "s");
+		}
+
+		setup_tracing();
+		pthread_create(&g_worktd, NULL, dtc_work, NULL);
+	}
 
 	elfpath = gen_filename(elfdir);
 	dt_elf_create(dcp->dc_prog, ELFDATA2LSB, elfpath);
@@ -1675,8 +1851,13 @@ link_elf_noexec(dtrace_cmd_t *dcp)
 
 	free(elfpath);
 
+	if (prog_exec == DT_PROG_EXEC) {
+		if (pthread_join(g_worktd, NULL))
+			dfatal("failed to join worktd (%s)", strerror(errno));
+	}
+
 	dtrace_close(g_dtp);
-	exit(0);
+	exit(g_status);
 }
 
 static void
@@ -2031,44 +2212,6 @@ go(void)
 	}
 }
 
-static void
-filter_machines(char *filt)
-{
-	dtrace_machine_filter_t out;
-	char *list = strdup(filt);
-	char *f, *token;
-	size_t n, i;
-	int error;
-
-	memset(&out, 0, sizeof(dtrace_machine_filter_t));
-	f = NULL;
-	token = NULL;
-	error = 0;
-	n = 0;
-
-	if (filt == NULL)
-		return;
-
-	f = list;
-	while ((token = strsep(&f, ",")) != NULL) {
-		if (out.dtfl_count >= DTRACEFILT_MAX)
-			dfatal("Too many arguments\n");
-	        n = strlcpy((char*) &out.dtfl_entries[out.dtfl_count++],
-		    token, DTRACE_MAXFILTNAME);
-		if (n >= DTRACE_MAXFILTNAME)
-			dfatal("Name too long: %s", token);
-	}
-
-	if (out.dtfl_count > 0) {
-		error = dt_filter(g_dtp, &out);
-	}
-
-	if (error)
-		dfatal("Can't filter: %d\n", error);
-
-	free(list);
-}
-
 int
 main(int argc, char *argv[])
 {
@@ -2076,7 +2219,6 @@ main(int argc, char *argv[])
 	dtrace_status_t status[2];
 	dtrace_cmd_t *dcp;
 	dtrace_optval_t opt;
-	char *machine_filter;
 
 	g_ofp = stdout;
 	int done = 0, mode = 0;
@@ -2087,7 +2229,6 @@ main(int argc, char *argv[])
 	size_t len1, len2;
 
 	p2 = NULL;
-	machine_filter = NULL;
 
 	rslv = (1 << DT_RSLV_HOSTNAME) | (1 << DT_RSLV_VERSION);
 	len1 = len2 = 0;
@@ -2179,13 +2320,9 @@ main(int argc, char *argv[])
 				mode++;
 				break;
 
-			case 'M':
-				machine_filter = strdup(optarg);
-				break;
-
 			case 'y':
 				dcp = &g_cmdv[g_cmdc++];
-				dcp->dc_func = link_elf_exec;
+				dcp->dc_func = process_elf;
 				dcp->dc_spec = DTRACE_PROBESPEC_NONE;
 				dcp->dc_arg = optarg;
 				g_elf = 1;
@@ -2193,7 +2330,7 @@ main(int argc, char *argv[])
 
 			case 'Y':
 				dcp = &g_cmdv[g_cmdc++];
-				dcp->dc_func = link_elf_noexec;
+				dcp->dc_func = process_elf_hypertrace;
 				dcp->dc_spec = DTRACE_PROBESPEC_NONE;
 				dcp->dc_arg = optarg;
 				g_elf = 1;
@@ -2334,11 +2471,6 @@ main(int argc, char *argv[])
 		g_argc = 1;
 	} else if (g_mode == DMODE_ANON)
 		(void) dtrace_setopt(g_dtp, "linkmode", "primary");
-
-	if (machine_filter != NULL) {
-		filter_machines(machine_filter);
-		free(machine_filter);
-	}
 
 	/*
 	 * Now that we have libdtrace open, make a second pass through argv[]

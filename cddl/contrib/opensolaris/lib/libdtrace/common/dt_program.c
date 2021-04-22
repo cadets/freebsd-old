@@ -67,6 +67,11 @@ dt_program_create(dtrace_hdl_t *dtp)
 	 */
 	pgp->dp_dofversion = DOF_VERSION_1;
 
+	/*
+	 * Default to host
+	 */
+	pgp->dp_vmid = 0;
+
 	return (pgp);
 }
 
@@ -76,16 +81,25 @@ dt_program_destroy(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	dt_stmt_t *stp, *next;
 	uint_t i;
 
+	if (pgp == NULL)
+		return;
+
+	if (pgp->dp_eprobes)
+		dt_free(dtp, pgp->dp_eprobes);
+
 	for (stp = dt_list_next(&pgp->dp_stmts); stp != NULL; stp = next) {
 		next = dt_list_next(stp);
 		dtrace_stmt_destroy(dtp, stp->ds_desc);
 		dt_free(dtp, stp);
 	}
 
-	for (i = 0; i < pgp->dp_xrefslen; i++)
-		dt_free(dtp, pgp->dp_xrefs[i]);
+	for (i = 0; i < pgp->dp_xrefslen; i++) {
+		if (pgp->dp_xrefs && pgp->dp_xrefs[i])
+			dt_free(dtp, pgp->dp_xrefs[i]);
+	}
 
-	dt_free(dtp, pgp->dp_xrefs);
+	if (pgp->dp_xrefs)
+		dt_free(dtp, pgp->dp_xrefs);
 	dt_list_delete(&dtp->dt_programs, pgp);
 	dt_free(dtp, pgp);
 }
@@ -178,6 +192,7 @@ dtrace_program_exec(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	args.dof = dof;
 	args.n_matched = 0;
 	args.n_desc = 0;
+	args.vmid = pgp->dp_vmid;
 	args.ps = malloc(sizeof(dtrace_probedesc_t) * expected_nprobes);
 	if (args.ps == NULL) {
 		fprintf(stderr, "could not allocate args.ps\n");
@@ -223,18 +238,77 @@ dtrace_program_exec(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 		    pgp->dp_neprobes * sizeof(dtrace_probedesc_t));
 	}
 
-	printf("args.n_desc = %d\n", args.n_desc);
-	for (i = 0; i < args.n_desc; i++) {
-		printf("matched %s:%s:%s:%s\n", args.ps[i].dtpd_provider,
-		    args.ps[i].dtpd_mod, args.ps[i].dtpd_func,
-		    args.ps[i].dtpd_name);
+	free(args.ps);
+	return (0);
+}
+
+int
+dt_vprobes_create(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
+{
+	int n;
+	dtrace_vprobe_io_t args = { 0 };
+
+	args.eprobes = pgp->dp_eprobes;
+	args.neprobes = pgp->dp_neprobes;
+	args.vmid = pgp->dp_vmid;
+
+	n = dt_ioctl(dtp, DTRACEIOC_VPROBE_CREATE, &args);
+	if (n == -1) {
+		fprintf(stderr, "DTRACEIOC_VPROBE_CREATE: %s\n", strerror(errno));
+		return (n);
 	}
 
-	for (i = 0; i < pgp->dp_neprobes; i++) {
-		printf("in pgp, matched %s:%s:%s:%s\n",
-		    pgp->dp_eprobes[i].dtpd_provider,
-		    pgp->dp_eprobes[i].dtpd_mod, pgp->dp_eprobes[i].dtpd_func,
-		    pgp->dp_eprobes[i].dtpd_name);
+	dt_list_append(&dtp->dt_programs, pgp);
+	return (0);
+}
+
+int
+dt_augment_tracing(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
+{
+	dtrace_enable_io_t args = { 0 };
+	void *dof;
+	int n, err;
+	int i;
+	int expected_nprobes = DTRACE_MIN_NPROBES;
+
+	if ((dof = dtrace_dof_create(dtp, pgp, DTRACE_D_STRIP)) == NULL)
+		return (-1);
+
+	args.dof = dof;
+	args.n_matched = 0;
+	args.n_desc = 0;
+	args.vmid = pgp->dp_vmid;
+	args.ps = malloc(sizeof(dtrace_probedesc_t) * expected_nprobes);
+	if (args.ps == NULL) {
+		fprintf(stderr, "could not allocate args.ps\n");
+		return (-1);
+	}
+
+	memset(args.ps, 0, sizeof(dtrace_probedesc_t) * expected_nprobes);
+	args.ps_bufsize = sizeof(dtrace_probedesc_t) * expected_nprobes;
+	n = dt_ioctl(dtp, DTRACEIOC_AUGMENT, &args);
+	dtrace_dof_destroy(dtp, dof);
+
+	if (n == -1) {
+		switch (errno) {
+		case EINVAL:
+			err = EDT_DIFINVAL;
+			break;
+		case EFAULT:
+			err = EDT_DIFFAULT;
+			break;
+		case E2BIG:
+			err = EDT_DIFSIZE;
+			break;
+		case EBUSY:
+			err = EDT_ENABLING_ERR;
+			break;
+		default:
+			err = errno;
+		}
+
+		free(args.ps);
+		return (dt_set_errno(dtp, err));
 	}
 
 	free(args.ps);
@@ -741,13 +815,14 @@ dt_prog_verify_difo(dtrace_hdl_t *dtp,
 
 int
 dt_prog_verify(dtrace_hdl_t *dtp, dtrace_prog_t *pbase,
-    dtrace_prog_t *pnew, uint16_t vmid)
+    dtrace_prog_t *pnew)
 {
 	dt_stmt_t *sbase, *snew;
 	dtrace_stmtdesc_t *sdbase, *sdnew;
 	dtrace_actdesc_t *adbase, *adnew;
 	dtrace_ecbdesc_t *enew;
 	dtrace_probedesc_t *pdnew;
+	static const char testbuf[DT_PROG_IDENTLEN];
 
 	sbase = NULL;
 	snew = NULL;
@@ -763,6 +838,13 @@ dt_prog_verify(dtrace_hdl_t *dtp, dtrace_prog_t *pbase,
 		    pbase, pnew);
 		return (1);
 	}
+
+	/*
+	 * In case this is just a list of probes to enable, we don't need to
+	 * actually verify the program (because we won't run it).
+	 */
+	if (memcmp(testbuf, pbase->dp_srcident, DT_PROG_IDENTLEN))
+		return (0);
 	
 	/*
 	 * Iterate through all the statements of both programs and verify
@@ -803,7 +885,7 @@ dt_prog_verify(dtrace_hdl_t *dtp, dtrace_prog_t *pbase,
 		enew = sdnew->dtsd_ecbdesc;
 		pdnew = &enew->dted_probe;
 
-		pdnew->dtpd_vmid = vmid;
+		pdnew->dtpd_vmid = pnew->dp_vmid;
 	}
 
 	return (0);
@@ -817,7 +899,7 @@ dt_prog_generate_ident(dtrace_prog_t *pgp)
 }
 
 static dtrace_prog_t *
-dt_vprog_hcalls(dtrace_prog_t *pgp)
+dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 {
 	dtrace_prog_t *newpgp;
 	dt_stmt_t *newstmt, *stmt;
@@ -903,18 +985,8 @@ dt_vprog_hcalls(dtrace_prog_t *pgp)
 	return (newpgp);
 }
 
-static dtrace_prog_t *
-dt_prog_dup(dtrace_prog_t *pgp)
-{
-	dtrace_prog_t *newpgp;
-
-	newpgp = NULL;
-	
-	return (newpgp);
-}
-
 dtrace_prog_t *
-dt_vprog_from(dtrace_prog_t *pgp, int pgp_kind)
+dt_vprog_from(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, int pgp_kind)
 {
 	dtrace_prog_t *newpgp;
 
@@ -922,19 +994,19 @@ dt_vprog_from(dtrace_prog_t *pgp, int pgp_kind)
 
 	switch (pgp_kind) {
 	case PGP_KIND_HYPERCALLS:
-		newpgp = dt_vprog_hcalls(pgp);
-		break;
-
-	/*
-	 * XXX: Do we want to copy it as a new program??
-	 */
-	case PGP_KIND_ID:
-		newpgp = pgp;
+		newpgp = dt_vprog_hcalls(dtp, pgp);
 		break;
 
 	default:
-		break;
+		return (NULL);
 	}
 
+
+	/*
+	 * Patch up the necessary information to identify which program this one
+	 * comes from.
+	 */
+	memcpy(newpgp->dp_srcident, pgp->dp_ident, DT_PROG_IDENTLEN);
+	newpgp->dp_dofversion = pgp->dp_dofversion;
 	return (newpgp);
 }

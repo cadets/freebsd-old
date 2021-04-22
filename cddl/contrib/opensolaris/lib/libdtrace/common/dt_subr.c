@@ -171,6 +171,10 @@ dtrace_id2desc(dtrace_hdl_t *dtp, dtrace_id_t id, dtrace_probedesc_t *pdp)
 {
 	bzero(pdp, sizeof (dtrace_probedesc_t));
 	pdp->dtpd_id = id;
+	/*
+	 * NOTE: We only support id2desc for host probes.
+	 */
+	pdp->dtpd_vmid = 0;
 
 	if (dt_ioctl(dtp, DTRACEIOC_PROBES, pdp) == -1 ||
 	    pdp->dtpd_id != id)
@@ -995,9 +999,3 @@ dtrace_uaddr2str(dtrace_hdl_t *dtp, pid_t pid,
 	return (dt_string2str(c, str, nbytes));
 }
 
-int
-dt_augment_tracing(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
-{
-
-	return (dt_ioctl(dtp, DTRACEIOC_AUGMENT, pgp));
-}
