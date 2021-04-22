@@ -993,24 +993,21 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 			if (vprobe == NULL)
 				continue;
 
-			err = dtrace_vprobe_create(vmid, vprobe->dtpd_provider,
+			/*
+			 * We don't need to actually save any of the probe IDs.
+			 * We might wish to report that they were created, but
+			 * it's not really necessary as the subsequent ENABLE
+			 * will give us just that.
+			 */
+			(void)dtrace_vprobe_create(vmid, vprobe->dtpd_provider,
 			    vprobe->dtpd_mod, vprobe->dtpd_func,
 			    vprobe->dtpd_name);
-			
-			/*
-			 * If we encounter an error when creating probes, we're
-			 * just going to delete all of them.
-			 */
-			if (err) {
-				dtrace_vprobespace_destroy(vmid);
-				mutex_exit(&dtrace_lock);
-				mutex_exit(&cpu_lock);
-
-				return (err);
-			}
 		}
+
 		mutex_exit(&dtrace_lock);
 		mutex_exit(&cpu_lock);
+
+		return (0);
 	}
 	default:
 		error = ENOTTY;

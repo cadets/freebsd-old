@@ -1501,7 +1501,7 @@ again:
 				 * FIXME(dstolfa): This should be fprintf, but
 				 * for now we just want to catch these cases.
 				 */
-				errx(EXIT_FAILURE,
+				fprintf(stderr,
 				    "could not find a list entry "
 				    "that has both pgp and gpgp set");
 				again = 1;

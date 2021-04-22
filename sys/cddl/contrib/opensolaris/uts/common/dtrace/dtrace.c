@@ -9997,7 +9997,8 @@ _dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_provider_id_t prov,
 	ASSERT(dtrace_vprobes[vmid][id - 1] == NULL);
 	dtrace_vprobes[vmid][id - 1] = probe;
 
-	if (prov != (dtrace_provider_id_t)dtrace_provider)
+	if (!((vmid == 0 && prov == (dtrace_provider_id_t)dtrace_provider) ||
+	    vmid > 0))
 		mutex_exit(&dtrace_lock);
 
 	return (id);
