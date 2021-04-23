@@ -2371,7 +2371,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	dtelf_state->s_rflags = eprog->dtep_rflags;
 
-	prog = malloc(sizeof(dtrace_prog_t));
+	prog = dt_program_create(dtp);
 	if (prog == NULL)
 		errx(EXIT_FAILURE, "failed to malloc prog");
 
@@ -2403,10 +2403,6 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	if (needsclosing)
 		close(fd);
 	
-	/*
-	 * Append the parsed program to our program list and return it.
-	 */
-	dt_list_append(&dtp->dt_programs, prog);
 	return (prog);
 }
 

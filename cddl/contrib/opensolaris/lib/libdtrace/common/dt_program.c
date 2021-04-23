@@ -908,7 +908,7 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	dtrace_actdesc_t *newact;
 	dtrace_difo_t *difo;
 
-	newpgp = malloc(sizeof(dtrace_prog_t));
+	newpgp = dt_program_create(dtp);
 	if (newpgp == NULL)
 		return (NULL);
 

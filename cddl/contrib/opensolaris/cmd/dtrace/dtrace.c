@@ -1026,6 +1026,9 @@ process_prog:
 			newpgpl->pgp = newprog;
 		}
 
+		printf("newpgpl (%p) = (%p, %p)\n", newpgpl, newpgpl->pgp,
+		    newpgpl->gpgp);
+
 		if (!found && novm == 0) {
 			guestpgp =
 			    dt_vprog_from(g_dtp, newprog, PGP_KIND_HYPERCALLS);
@@ -1466,11 +1469,11 @@ exec_prog(const dtrace_cmd_t *dcp)
 			/*
 			 * Wait for us to actually have a program in the list
 			 */
+again:
 			pthread_mutex_lock(&g_pgpcondmtx);
 			/*
 			 * XXX: Maybe a clean shutdown variable...?
 			 */
-again:
 			while (!g_intr &&
 			    ((pgpl = dt_list_next(&g_pgplist)) == NULL ||
 			    again == 1)) {
@@ -1484,6 +1487,8 @@ again:
 			if (g_intr)
 				break;
 
+			printf("pgpl gathered (%p) = (%p, %p)\n", pgpl,
+			    pgpl ? pgpl->pgp : NULL, pgpl ? pgpl->gpgp : NULL);
 			/*
 			 * We are in a situation where the condition variable
 			 * has been triggered and we expect to have at least one
@@ -1517,7 +1522,7 @@ again:
 				fprintf(stderr, "%s",
 				    pgpl->pgp ? "probe specification is NULL"
 						", sleeping...\n" :
-						      "program to run is NULL"
+						"program to run is NULL"
 						", sleeping...\n");
 				again = 1;
 				goto again;
@@ -1529,7 +1534,6 @@ again:
 			dt_list_delete(&g_pgplist, pgpl);
 			pthread_mutex_unlock(&g_pgplistmtx);
 
-			free(pgpl->pgp);
 			free(pgpl);
 		}
 
