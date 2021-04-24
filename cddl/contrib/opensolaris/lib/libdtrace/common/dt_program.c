@@ -918,31 +918,31 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	     stmt; stmt = dt_list_next(stmt)) {
 		curstmtdesc = stmt->ds_desc;
 
-		newstmt = malloc(sizeof(dt_stmt_t));
-		newstmtdesc = malloc(sizeof(dtrace_stmtdesc_t));
-		newecb = malloc(sizeof(dtrace_ecbdesc_t));
-		newact = malloc(sizeof(dtrace_actdesc_t));
+		newecb = dt_ecbdesc_create(dtp, &curecb->dted_probe);
+		if (newecb == NULL)
+			errx(EXIT_FAILURE,
+			    "failed to allocate a new dtrace_ecbdesc_t: %s\n",
+			    strerror(errno));
 
-		/*
-		 * TODO: Maybe at some point a proper cleanup here,
-		 *       but honestly if we are running out of virtual
-		 *       memory perhaps we do want to crash to find out
-		 *       what's going on?
-		 */
-		assert(newstmt != NULL);
-		assert(newstmtdesc != NULL);
-		assert(newecb != NULL);
-		assert(newact != NULL);
+		newstmtdesc = dtrace_stmt_create(dtp, newecb);
+		if (newstmtdesc == NULL)
+			errx(EXIT_FAILURE,
+			    "failed to allocate a new dtrace_stmtdesc_t: %s\n",
+			    strerror(errno));
 
-		memset(newstmt, 0, sizeof(dt_stmt_t));
-		memset(newstmtdesc, 0, sizeof(dtrace_stmtdesc_t));
-		memset(newecb, 0, sizeof(dtrace_ecbdesc_t));
-		memset(newact, 0, sizeof(dtrace_actdesc_t));
+		newact = dtrace_stmt_action(dtp, newstmtdesc);
+		if (newact == NULL)
+			errx(EXIT_FAILURE,
+			    "failed to allocate a new dtrace_actdesc_t: %s\n",
+			    strerror(errno));
 
 		newact->dtad_difo = malloc(sizeof(dtrace_difo_t));
 		difo = newact->dtad_difo;
+		if (difo == NULL)
+			errx(EXIT_FAILURE,
+			    "failed to allocate a new DIFO: %s\n",
+			    strerror(errno));
 
-		assert(difo != NULL);
 		memset(difo, 0, sizeof(dtrace_difo_t));
 
 		/* 2 instructions: hcall; ret %r0 */
@@ -961,22 +961,12 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		memcpy(&newecb->dted_probe, &curecb->dted_probe,
 		    sizeof(dtrace_probedesc_t));
 
-		newstmtdesc->dtsd_action = newact;
-		newstmtdesc->dtsd_action_last = newact;
 		newstmtdesc->dtsd_ecbdesc = newecb;
-		newstmtdesc->dtsd_descattr.dtat_name
-		    = DTRACE_STABILITY_INTERNAL;
-		newstmtdesc->dtsd_descattr.dtat_data
-		    = DTRACE_STABILITY_INTERNAL;
-		newstmtdesc->dtsd_descattr.dtat_class = DTRACE_CLASS_PLATFORM;
-		newstmtdesc->dtsd_stmtattr.dtat_name
-		    = DTRACE_STABILITY_INTERNAL;
-		newstmtdesc->dtsd_stmtattr.dtat_data
-		    = DTRACE_STABILITY_INTERNAL;
-		newstmtdesc->dtsd_stmtattr.dtat_class = DTRACE_CLASS_ISA;
 
-		newstmt->ds_desc = newstmtdesc;
-		dt_list_append(&newpgp->dp_stmts, newstmt);
+		if (dtrace_stmt_add(dtp, newpgp, newstmtdesc))
+			errx(EXIT_FAILURE,
+			    "failed to add a new dtrace_stmtdesc_t: %s\n",
+			    strerror(errno));
 	}
 
 	newpgp->dp_rflags = pgp->dp_rflags;

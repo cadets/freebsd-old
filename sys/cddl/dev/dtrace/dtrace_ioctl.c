@@ -427,6 +427,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_enter(&dtrace_lock);
 		vstate = &state->dts_vstate;
 		dtrace_curvmid = p->vmid;
+		printf("dtrace_curvmid = %u\n", dtrace_curvmid);
 
 		if (state->dts_activity != DTRACE_ACTIVITY_INACTIVE) {
 			dtrace_curvmid = 0;
@@ -913,6 +914,8 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_enter(&cpu_lock);
 		mutex_enter(&dtrace_lock);
 		vstate = &state->dts_vstate;
+		dtrace_curvmid = p->vmid;
+		printf("augment, vmid = %u\n", dtrace_curvmid);
 
 		/*
 		 * XXX: For now we don't allocate a dts_vdof (or dts_dof) for
@@ -999,6 +1002,9 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 			 * it's not really necessary as the subsequent ENABLE
 			 * will give us just that.
 			 */
+			printf("Creating %u:%s:%s:%s:%s\n", vmid,
+			    vprobe->dtpd_provider, vprobe->dtpd_mod,
+			    vprobe->dtpd_func, vprobe->dtpd_name);
 			(void)dtrace_vprobe_create(vmid, vprobe->dtpd_provider,
 			    vprobe->dtpd_mod, vprobe->dtpd_func,
 			    vprobe->dtpd_name);

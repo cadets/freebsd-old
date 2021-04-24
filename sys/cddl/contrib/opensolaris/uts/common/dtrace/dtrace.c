@@ -7611,12 +7611,17 @@ dtrace_action_panic(dtrace_ecb_t *ecb)
 		    "dtrace: panic action at host probe %s:%s:%s:%s (ecb %p)",
 		    pvp->dtpv_name, probe->dtpr_mod,
 		    probe->dtpr_func, probe->dtpr_name, (void *)ecb);
-	else
+	else {
+		/*
+		 * FIXME(dstolfa): We should actually panic the guest here, but
+		 * for now and for testing purposes, we will panic the host.
+		 */
 		dtrace_panic(
 		    "dtrace: panic action as virtual probe (%u)"
 		    " %s:%s:%s:%s (ecb %p)",
 		    probe->dtpr_vmid, vpvp, probe->dtpr_mod,
 		    probe->dtpr_func, probe->dtpr_name, (void *)ecb);
+	}
 }
 
 static void

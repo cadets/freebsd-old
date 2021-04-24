@@ -830,6 +830,16 @@ get_pgplist_entry(char *ident, uint16_t vmid, int *found)
 	return (pgpl);
 }
 
+static int
+pgpl_valid(dt_pgplist_t *pgpl)
+{
+	if (pgpl == NULL)
+		return (0);
+
+	return ((pgpl->vmid > 0 && pgpl->pgp && pgpl->gpgp) ||
+	    (pgpl->vmid == 0 && pgpl->pgp));
+}
+
 static void *
 listen_dtdaemon(void *arg)
 {
@@ -1026,9 +1036,6 @@ process_prog:
 			newpgpl->pgp = newprog;
 		}
 
-		printf("newpgpl (%p) = (%p, %p)\n", newpgpl, newpgpl->pgp,
-		    newpgpl->gpgp);
-
 		if (!found && novm == 0) {
 			guestpgp =
 			    dt_vprog_from(g_dtp, newprog, PGP_KIND_HYPERCALLS);
@@ -1069,7 +1076,11 @@ process_prog:
 			pthread_mutex_unlock(&g_pgplistmtx);
 		}
 
-		if (newpgpl->pgp && newpgpl->gpgp) {
+		/*
+		 * For vmid == 0, we allow signalling because there will never
+		 * be a guest program that will be run.
+		 */
+		if (pgpl_valid(newpgpl)) {
 			pthread_mutex_lock(&g_pgpcondmtx);
 			pthread_cond_signal(&g_pgpcond);
 			pthread_mutex_unlock(&g_pgpcondmtx);
@@ -1285,19 +1296,28 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp)
 	int i, n;
 
 	dtrace_dump_actions(pgp);
-	printf("process_new_pgp: dp_neprobes = %u\n", gpgp->dp_neprobes);
-	for (i = 0; i < gpgp->dp_neprobes; i++) {
-		printf("process_new_pgp: matched %s:%s:%s:%s\n",
-		    gpgp->dp_eprobes[i].dtpd_provider,
-		    gpgp->dp_eprobes[i].dtpd_mod, gpgp->dp_eprobes[i].dtpd_func,
-		    gpgp->dp_eprobes[i].dtpd_name);
+	if (gpgp) {
+		printf(
+		    "process_new_pgp: dp_neprobes = %u\n", gpgp->dp_neprobes);
+		for (i = 0; i < gpgp->dp_neprobes; i++) {
+			printf("process_new_pgp: matched %s:%s:%s:%s\n",
+			    gpgp->dp_eprobes[i].dtpd_provider,
+			    gpgp->dp_eprobes[i].dtpd_mod,
+			    gpgp->dp_eprobes[i].dtpd_func,
+			    gpgp->dp_eprobes[i].dtpd_name);
+		}
 	}
 
-	if (pgp->dp_vmid != gpgp->dp_vmid)
+	if (gpgp == NULL && pgp->dp_vmid != 0)
+		dfatal("the guest program can only be NULL if program's vmid "
+		       "is 0, but it is %u\n",
+		    pgp->dp_vmid);
+
+	if (gpgp && (pgp->dp_vmid != gpgp->dp_vmid))
 		dfatal("mismatch between pgp and gpgp vmids (%u != %u)",
 		    pgp->dp_vmid, gpgp->dp_vmid);
 
-	if (gpgp->dp_vmid != 0) {
+	if (pgp->dp_vmid != 0) {
 		n = dt_vprobes_create(g_dtp, gpgp);
 		if (n == -1)
 			dfatal(
@@ -1487,8 +1507,6 @@ again:
 			if (g_intr)
 				break;
 
-			printf("pgpl gathered (%p) = (%p, %p)\n", pgpl,
-			    pgpl ? pgpl->pgp : NULL, pgpl ? pgpl->gpgp : NULL);
 			/*
 			 * We are in a situation where the condition variable
 			 * has been triggered and we expect to have at least one
@@ -1497,7 +1515,7 @@ again:
 			 * the program that we need to run.
 			 */
 			for (; pgpl; pgpl = dt_list_next(pgpl)) {
-				if (pgpl->pgp && pgpl->gpgp)
+				if (pgpl_valid(pgpl))
 					break;
 			}
 
@@ -1508,17 +1526,16 @@ again:
 				 */
 				fprintf(stderr,
 				    "could not find a list entry "
-				    "that has both pgp and gpgp set");
+				    "that has both pgp and gpgp set\n");
 				again = 1;
 				goto again;
 			}
 
 			/*
-			 * If the condition variable fired when we don't have a
-			 * fully defined program to run, we will simply warn the
-			 * user and go to sleep again.
+			 * Something's gone horribly wrong, report it and go to
+			 * sleep again.
 			 */
-			if (pgpl->pgp == NULL || pgpl->gpgp == NULL) {
+			if (!pgpl_valid(pgpl)) {
 				fprintf(stderr, "%s",
 				    pgpl->pgp ? "probe specification is NULL"
 						", sleeping...\n" :
@@ -1554,7 +1571,6 @@ again:
 		pthread_mutex_destroy(&g_pgplistmtx);
 		pthread_mutex_destroy(&g_pgpcondmtx);
 		pthread_cond_destroy(&g_pgpcond);
-		dtrace_close(g_dtp);
 		exit(0);
 		/*
 		 * At this point we have processed the program as much as we
