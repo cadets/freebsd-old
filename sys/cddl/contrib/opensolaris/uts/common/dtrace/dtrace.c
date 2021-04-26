@@ -7164,6 +7164,9 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			    regs, tupregs, ttop, mstate, state);
 			break;
 
+		/*
+		 * TODO(dstolfa): I think we can remove this?
+		 */
 		case DIF_OP_PUSHTR_G:
 		case DIF_OP_PUSHTR:
 			if (ttop == DIF_DTR_NREGS) {
@@ -7431,16 +7434,9 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			    (dtrace_provider_t *)(pr->dtpr_vmid == 0 ?
 			    pr->dtpr_provider : 0);
 
-			/*
-			 * NOTE: We don't actually support nested virtualization
-			 *       yet, so if we have a virtual probe inside a VM
-			 *       we don't actually allow a hypercall to go
-			 *       through.
-			 */
-			if (prov == NULL)
-				break;
-
+			printf("check hcalls\n");
 			if (bhyve_hypercalls_enabled()) {
+				printf("get args\n");
 				struct dtvirt_args _dtv_args = {
 					.dtv_args = {
 						mstate->dtms_arg[0],
@@ -7473,20 +7469,25 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 					.dtv_jailname = jail->pr_name,
 				};
 
+				printf("dtrace_strcpy\n");
 				dtrace_strcpy(mstate, curproc->p_comm,
 				    _dtv_args.dtv_execname, MAXCOMLEN);
+				printf("check args\n");
 				if (curproc->p_args != NULL) {
 					_dtv_args.dtv_execargs =
 					    curproc->p_args->ar_args;
 					_dtv_args.dtv_execargs_len =
 					    curproc->p_args->ar_length;
 				}
+				printf("got args\n");
 				if (curproc->p_pid != proc0.p_pid)
 					_dtv_args.dtv_ppid =
 					    curproc->p_pptr->p_pid;
+				printf("got everything, hypercall time\n");
 				hypercall_dtrace_probe(
 				    mstate->dtms_probe->dtpr_id,
 				    (uintptr_t)&_dtv_args, curthread->td_tid);
+				printf("back\n");
 			}
 			
 			break;
@@ -10307,6 +10308,10 @@ dtrace_probe_enable(dtrace_probedesc_t *desc, dtrace_enabling_t *enab)
 	}
 
 	dtrace_probekey(desc, &pkey);
+	printf("desc->dtpd_vmid = %u\n", desc->dtpd_vmid);
+	printf("%s:%s:%s:%s\n", desc->dtpd_provider, desc->dtpd_mod,
+	    desc->dtpd_func, desc->dtpd_name);
+	printf("match pkey vmid = %u\n", pkey.dtpk_vmid);
 	dtrace_cred2priv(enab->dten_vstate->dtvs_state->dts_cred.dcr_cred,
 	    &priv, &uid, &zoneid);
 
@@ -14666,6 +14671,8 @@ dtrace_dof_probedesc(dof_hdr_t *dof, dof_sec_t *sec, dtrace_probedesc_t *desc)
 
 	(void) strncpy(desc->dtpd_name, (char *)(str + probe->dofp_name),
 	    MIN(DTRACE_NAMELEN - 1, size - probe->dofp_name));
+
+	desc->dtpd_vmid = probe->dofp_vmid;
 
 	return (desc);
 }
@@ -19574,244 +19581,6 @@ dtrace_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 
 	return (DDI_SUCCESS);
 }
-#endif
-
-#ifndef illumos
-
-/*
- * dtrace_priv_virtstate_create,
- * dtrace_priv_virtstate_destroy,
- * dtrace_priv_virtstate_go,
- * dtrace_priv_virtstate_stop,
- * dtrace_priv_provide_all_probes,
- * dtrace_priv_probeid_enable
- *
- * are functions that are exposed to virtio_dtrace.c via function
- * pointers of the same name without "priv". They are used to set
- * up, destroy start and stop state as well as provide and enable
- * probes.
- *
- * These functions only run on the guest when controlled by the host
- * via VirtIO.
- */
-
-/*
- * Create the virtual tracing state (much like anonymous state is
- * created) and set the buffer size to 1KiB. We currently do not
- * need more, however with a different point in the design space
- * this may be bumped to a larger number in order to keep records
- * in the guest.
- */
-static int
-dtrace_priv_virtstate_create(void)
-{
-
-	mutex_enter(&dtrace_lock);
-	mutex_enter(&cpu_lock);
-	callout_init(&virt_state_callout, 1);
-	virt_state = dtrace_state_create(NULL, NULL);
-	if (virt_state == NULL) {
-		mutex_exit(&cpu_lock);
-		mutex_exit(&dtrace_lock);
-		return (ENOMEM);
-	}
-
-	virt_state->dts_options[DTRACEOPT_BUFSIZE] = 1024;
-	mutex_exit(&cpu_lock);
-	mutex_exit(&dtrace_lock);
-	return (0);
-}
-
-/*
- * Destroy the anonymous virtual tracing state that was created by
- * dtrace_priv_virtstate_create. This requires that the state is
- * in the stopped state by calling dtrace_priv_virtstate_stop by
- * nature of how dtrace_state_destroy works.
- */
-static void
-dtrace_priv_virtstate_destroy(void)
-{
-
-	ASSERT(virt_state != NULL);
-	mutex_enter(&dtrace_lock);
-	mutex_enter(&cpu_lock);
-	dtrace_state_destroy(virt_state);
-	callout_stop(&virt_state_callout);
-	callout_drain(&virt_state_callout);
-	mutex_exit(&cpu_lock);
-	mutex_exit(&dtrace_lock);
-	kmem_free(virt_state, sizeof(dtrace_state_t));
-	virt_state = NULL;
-}
-
-static int
-dtrace_priv_virtstate_go(void)
-{
-	int error;
-	processorid_t cpuid;
-
-	ASSERT(virt_state != NULL);
-	callout_reset(&virt_state_callout, hz * 2 * dtrace_deadman_interval / NANOSEC,
-	    dtrace_virt_state_tick, virt_state);
-
-	error = dtrace_state_go(virt_state, &cpuid);
-
-	return (error);
-}
-
-/*
- * Once the state has been created, we can call this function
- * on it to start tracing. This will allow dtrace_probe() to
- * execute DIF that we have set up in the enabling and produce
- * records.
- */
-static int
-dtrace_priv_virtstate_stop(void)
-{
-
-	processorid_t cpuid;
-	int err;
-
-	ASSERT(virt_state != NULL);
-	mutex_enter(&dtrace_lock);
-	err = dtrace_state_stop(virt_state, &cpuid);
-	mutex_exit(&dtrace_lock);
-
-	return (err);
-}
-
-/*
- * The guest providers may not have provided all of the probes
- * when they are loaded as kernel modules. This is called from
- * the VirtIO frontend in order to ensure that all of the probes
- * that we may be enabling from the host are indeed provided.
- */
-static void
-dtrace_priv_provide_all_probes(void)
-{
-
-	mutex_enter(&dtrace_provider_lock);
-	dtrace_probe_provide(NULL, NULL);
-	mutex_exit(&dtrace_provider_lock);
-}
-
-/*
- * This function is used to enabled a given probe ID. The assumption
- * is that the host is aware of the correct probe ID for a given probe
- * name -- which in the current prototype is manifested through a
- * homogeneous system.
- *
- * The function will perform a number of sanity-checks for the virtual
- * tracing state, create a DIFO with a DIF_OP_HYPERCALL instruction and
- * set up the ECB for a given probe.
- *
- */
-static int
-dtrace_priv_probeid_enable(dtrace_id_t id)
-{
-	dtrace_probe_t *probe;
-	dtrace_ecb_t *ecb;
-	dtrace_actdesc_t *adesc;
-	dtrace_difo_t *hdifo;
-	processorid_t cpuid;
-	dtrace_enabling_t *enabling;
-	dtrace_ecbdesc_t *ep;
-	dtrace_probedesc_t pdesc;
-	dtrace_vstate_t *vstate;
-	int error, nmatched;
-
-	error = 0;
-
-	/*
-	 * We MUST have virt_state at this point.
-	 */
-	ASSERT(virt_state != NULL);
-
-
-	/*
-	 * We allocate the enabling that will be retained in the case that we
-	 * enable probes correctly.
-	 */
-	enabling = kmem_zalloc(sizeof (dtrace_enabling_t), KM_SLEEP);
-	mutex_enter(&cpu_lock);
-	mutex_enter(&dtrace_lock);
-
-	/*
-	 * We need an ECB description to enable the probe. Here, we just set
-	 * the probe ID instead of setting the probe description, as it will be
-	 * populated for us by dtrace_enabling_match().
-	 */
-	ep = kmem_zalloc(sizeof (dtrace_ecbdesc_t), KM_SLEEP);
-	ep->dted_probe.dtpd_id = id;
-
-	/*
-	 * Here we set up the ECB description array. We only have one in this
-	 * case, as we're just enabling with virtual state, nothing else can
-	 * interfere with it.
-	 */
-	enabling->dten_desc = kmem_zalloc(sizeof (dtrace_ecbdesc_t *), KM_SLEEP);
-	enabling->dten_desc[0] = ep;
-	enabling->dten_ndesc = 1;
-	enabling->dten_maxdesc = 1;
-
-	/*
-	 * Create an action description.
-	 */
-	adesc = dtrace_actdesc_create(DTRACEACT_DIFEXPR, 0, 0, 0);
-	ASSERT(adesc != NULL);
-
-	/*
-	 * Get our DIFO.
-	 */
-	hdifo = kmem_zalloc(sizeof (dtrace_difo_t), KM_SLEEP);
-	hdifo->dtdo_buf = kmem_zalloc(sizeof (dif_instr_t) * 2, KM_SLEEP);
-	hdifo->dtdo_len = 2; /* We only do a hypercall for now */
-
-	hdifo->dtdo_buf[0] = DIF_INSTR_FMT(DIF_OP_HYPERCALL, 0, 0, 0);
-	hdifo->dtdo_buf[1] = DIF_INSTR_RET(0);
-
-	adesc->dtad_difo = hdifo;
-
-	ep->dted_action = adesc;
-
-	/*
-	 * We need the vstate in order to set up the correct structure of an
-	 * enabling. The state is gathered through vstate, and the only state
-	 * we care about here is virt_state.
-	 */
-	vstate = kmem_zalloc(sizeof (dtrace_vstate_t), KM_SLEEP);
-	vstate->dtvs_state = virt_state;
-
-	enabling->dten_vstate = vstate;
-
-	error = dtrace_enabling_match(enabling, &nmatched);
-	ASSERT(nmatched == 1);
-	if (error) {
-		/*
-		 * Oops, destroy everything.
-		 */
-		dtrace_enabling_destroy(enabling);
-		kmem_free(hdifo->dtdo_buf, hdifo->dtdo_len * sizeof (dif_instr_t));
-		kmem_free(hdifo, sizeof (dtrace_difo_t));
-		kmem_free(ecb, sizeof (dtrace_ecb_t));
-		kmem_free(adesc, sizeof (dtrace_actdesc_t));
-		mutex_exit(&dtrace_lock);
-		mutex_exit(&cpu_lock);
-		return (error);
-	} else {
-		/*
-		 * Retain the enabling so we don't get GC'd.
-		 */
-		error = dtrace_enabling_retain(enabling);
-		ASSERT(error == 0);
-	}
-
-	mutex_exit(&dtrace_lock);
-	mutex_exit(&cpu_lock);
-
-	return (error);
-}
-
 #endif
 
 #ifdef illumos

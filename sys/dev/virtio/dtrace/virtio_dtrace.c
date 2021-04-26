@@ -263,13 +263,6 @@ static struct virtio_feature_desc vtdtr_feature_desc[] = {
 	{ 0, NULL }
 };
 
-void (*dtrace_provide_all_probes)(void) = NULL;
-int (*dtrace_probeid_enable)(dtrace_id_t) = NULL;
-int (*dtrace_virtstate_create)(void) = NULL;
-void (*dtrace_virtstate_destroy)(void) = NULL;
-int (*dtrace_virtstate_go)(void) = NULL;
-int (*dtrace_virtstate_stop)(void) = NULL;
-
 static int
 vtdtr_modevent(module_t mod, int type, void *unused)
 {
@@ -698,24 +691,6 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 
 		if (dtt_queue_enqueue(&e))
 			device_printf(dev, "dtt_queue_enqueue() failed.\n");
-		break;
-
-	case VIRTIO_DTRACE_STOP:
-		sc->vtdtr_ready = 0;
-		KASSERT(vstate == 1, ("vstate must exist\n"));
-
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_STOP\n");
-
-		error = dtrace_virtstate_stop();
-		if (error)
-			device_printf(dev,
-			    "Error in dtrace_virtstate_stop(): %d\n", error);
-		else
-			device_printf(dev, "Stopping the trace...\n");
-
-		dtrace_virtstate_destroy();
-		vstate = 0;
 		break;
 
 	case VIRTIO_DTRACE_EOF:

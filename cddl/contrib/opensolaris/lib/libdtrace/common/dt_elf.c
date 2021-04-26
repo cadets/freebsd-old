@@ -2026,13 +2026,14 @@ dt_elf_get_stmts(Elf *e, dtrace_prog_t *prog, dt_elf_ref_t first_stmt_scn)
 	}
 }
 
-static void
+static int
 dt_elf_get_options(dtrace_hdl_t *dtp, Elf *e, dt_elf_ref_t eopts)
 {
 	Elf_Scn *scn;
 	Elf_Data *data;
         uintptr_t eop;
 	_dt_elf_eopt_t *dteop;
+	int err;
 
 	if ((scn = elf_getscn(e, eopts)) == NULL)
 		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
@@ -2050,7 +2051,15 @@ dt_elf_get_options(dtrace_hdl_t *dtp, Elf *e, dt_elf_ref_t eopts)
 	    eop < ((uintptr_t)data->d_buf) + data->d_size;
 	    eop = eop + dteop->eo_len + sizeof(_dt_elf_eopt_t)) {
 		dteop = (_dt_elf_eopt_t *)eop;
-		dtrace_setopt(dtp, dteop->eo_name, strdup(dteop->eo_arg));
+		/*
+		 * Set the options only if we are not a guest, if the option has
+		 * a name and if we're not actively tracing.
+		 */
+		if (dtp->dt_is_guest != 0 && dteop->eo_name[0] != '0' &&
+		    dtp->dt_active == 0)
+			if (err = dtrace_setopt(
+			    dtp, dteop->eo_name, strdup(dteop->eo_arg)))
+				return (err);
 	}
 }
 
@@ -2380,13 +2389,16 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	dt_elf_get_stmts(e, prog, eprog->dtep_first_stmt);
 
-	dt_elf_get_options(dtp, e, eprog->dtep_options);
+	err = dt_elf_get_options(dtp, e, eprog->dtep_options);
+	if (err)
+		return (NULL);
 
 	memcpy(prog->dp_ident, eprog->dtep_ident, DT_PROG_IDENTLEN);
 	memcpy(prog->dp_srcident, eprog->dtep_srcident, DT_PROG_IDENTLEN);
 
 	prog->dp_exec = eprog->dtep_exec;
 	prog->dp_neprobes = eprog->dtep_neprobes;
+	printf("prog->dp_neprobes = %zu\n", prog->dp_neprobes);
 	if (prog->dp_neprobes) {
 		prog->dp_eprobes = malloc(prog->dp_neprobes *
 		    sizeof(dtrace_probedesc_t));

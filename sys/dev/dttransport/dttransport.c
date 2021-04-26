@@ -71,12 +71,6 @@ struct dtt_softc {
 static struct dtt_softc *gsc = NULL;
 
 /*
- * device methods
- */
-static int	dtt_attach(device_t);
-static int	dtt_detach(device_t);
-
-/*
  * cdevsw
  */
 static d_read_t		dtt_read;

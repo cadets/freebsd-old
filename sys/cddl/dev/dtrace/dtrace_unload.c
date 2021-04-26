@@ -130,12 +130,5 @@ dtrace_unload()
 	/* Unhook from the trap handler. */
 	dtrace_trap_func = NULL;
 
-	dtrace_provide_all_probes = NULL;
-	dtrace_probeid_enable = NULL;
-	dtrace_virtstate_create = NULL;
-	dtrace_virtstate_destroy = NULL;
-	dtrace_virtstate_go = NULL;
-	dtrace_virtstate_stop = NULL;
-
 	return (error);
 }

@@ -776,6 +776,10 @@ dtrace_dof_create(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, uint_t flags)
 			continue; /* same ecb as previous statement */
 
 		pdp = &edp->dted_probe;
+		printf(
+		    "dtrace_dof_create(): pdp = %s:%s:%s:%s (target = %s, vmid = %u)\n",
+		    pdp->dtpd_provider, pdp->dtpd_mod, pdp->dtpd_func,
+		    pdp->dtpd_name, pdp->dtpd_target, pdp->dtpd_vmid);
 
 		/*
 		 * Add a DOF_SECT_PROBEDESC for the ECB's probe description,

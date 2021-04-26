@@ -1520,13 +1520,6 @@ again:
 			}
 
 			if (pgpl == NULL) {
-				/*
-				 * FIXME(dstolfa): This should be fprintf, but
-				 * for now we just want to catch these cases.
-				 */
-				fprintf(stderr,
-				    "could not find a list entry "
-				    "that has both pgp and gpgp set\n");
 				again = 1;
 				goto again;
 			}
@@ -1796,7 +1789,7 @@ link_elf(dtrace_cmd_t *dcp, char *progpath)
 		fatal("failed to open %s with %s", progpath, strerror(errno));
 
 	if ((dcp->dc_prog = dt_elf_to_prog(g_dtp, fd, 1, &err, NULL)) == NULL)
-		fatal("failed to parse the ELF file %s", dcp->dc_arg);
+		dfatal("failed to parse the ELF file %s", dcp->dc_arg);
 
 	prog_exec = dcp->dc_prog->dp_exec;
 	close(fd);
@@ -1856,6 +1849,7 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 		pthread_create(&g_worktd, NULL, dtc_work, NULL);
 	}
 
+	printf("dcp->dc_prog->dp_neprobes = %zu\n", dcp->dc_prog->dp_neprobes);
 	elfpath = gen_filename(elfdir);
 	dt_elf_create(dcp->dc_prog, ELFDATA2LSB, elfpath);
 

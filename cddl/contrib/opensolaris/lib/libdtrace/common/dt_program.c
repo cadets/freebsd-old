@@ -252,9 +252,12 @@ dt_vprobes_create(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	args.neprobes = pgp->dp_neprobes;
 	args.vmid = pgp->dp_vmid;
 
+	printf("args.neprobes = %zu\n", args.neprobes);
+
 	n = dt_ioctl(dtp, DTRACEIOC_VPROBE_CREATE, &args);
 	if (n == -1) {
-		fprintf(stderr, "DTRACEIOC_VPROBE_CREATE: %s\n", strerror(errno));
+		fprintf(
+		    stderr, "DTRACEIOC_VPROBE_CREATE: %s\n", strerror(errno));
 		return (n);
 	}
 
@@ -907,6 +910,7 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	dtrace_ecbdesc_t *newecb, *curecb;
 	dtrace_actdesc_t *newact;
 	dtrace_difo_t *difo;
+	dtrace_probedesc_t newpdesc = { 0 };
 
 	newpgp = dt_program_create(dtp);
 	if (newpgp == NULL)
@@ -917,13 +921,17 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	for (stmt = dt_list_next(&pgp->dp_stmts);
 	     stmt; stmt = dt_list_next(stmt)) {
 		curstmtdesc = stmt->ds_desc;
+		curecb = curstmtdesc->dtsd_ecbdesc;
 
-		newecb = dt_ecbdesc_create(dtp, &curecb->dted_probe);
+		newpdesc = curecb->dted_probe;
+		newpdesc.dtpd_vmid = 0;
+
+		newecb = dt_ecbdesc_create(dtp, &newpdesc);
 		if (newecb == NULL)
 			errx(EXIT_FAILURE,
 			    "failed to allocate a new dtrace_ecbdesc_t: %s\n",
 			    strerror(errno));
-
+		
 		newstmtdesc = dtrace_stmt_create(dtp, newecb);
 		if (newstmtdesc == NULL)
 			errx(EXIT_FAILURE,
@@ -955,18 +963,11 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 
 		newact->dtad_kind = DTRACEACT_DIFEXPR;
 
-		newecb->dted_action = newact;
-
-		curecb = curstmtdesc->dtsd_ecbdesc;
-		memcpy(&newecb->dted_probe, &curecb->dted_probe,
-		    sizeof(dtrace_probedesc_t));
-
-		newstmtdesc->dtsd_ecbdesc = newecb;
-
 		if (dtrace_stmt_add(dtp, newpgp, newstmtdesc))
 			errx(EXIT_FAILURE,
 			    "failed to add a new dtrace_stmtdesc_t: %s\n",
 			    strerror(errno));
+
 	}
 
 	newpgp->dp_rflags = pgp->dp_rflags;

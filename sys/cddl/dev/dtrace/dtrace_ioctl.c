@@ -457,6 +457,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		if ((err = dtrace_enabling_match(enab, &p->n_matched)) == 0) {
 			err = dtrace_enabling_retain(enab);
+			printf("p->n_matched = %u\n", p->n_matched);
 			if (err == 0 && p->n_matched > 0 && p->ps != NULL) {
 				/*
 				 * Patch up our probes so that userspace knows
@@ -961,9 +962,12 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		size_t i;
 		int err;
 		uint16_t vmid;
+		dtrace_id_t id;
 
 		err = 0;
 
+		printf("p->eprobes = %p, p->neprobes = %zu\n", p->eprobes,
+		    p->neprobes);
 		if (p->eprobes == NULL || p->neprobes == 0)
 			return (EINVAL);
 
@@ -1005,9 +1009,10 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 			printf("Creating %u:%s:%s:%s:%s\n", vmid,
 			    vprobe->dtpd_provider, vprobe->dtpd_mod,
 			    vprobe->dtpd_func, vprobe->dtpd_name);
-			(void)dtrace_vprobe_create(vmid, vprobe->dtpd_provider,
+			id = dtrace_vprobe_create(vmid, vprobe->dtpd_provider,
 			    vprobe->dtpd_mod, vprobe->dtpd_func,
 			    vprobe->dtpd_name);
+			printf("Created (probe id = %d)\n", id);
 		}
 
 		mutex_exit(&dtrace_lock);

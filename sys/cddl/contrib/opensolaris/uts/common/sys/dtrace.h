@@ -2334,13 +2334,6 @@ extern void *dtrace_probe_arg(dtrace_provider_id_t, dtrace_id_t);
 extern void dtrace_probe(dtrace_id_t, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4);
 extern void dtrace_vprobe(void *, dtrace_id_t, struct dtvirt_args *);
-extern void (*dtrace_provide_all_probes)(void);
-extern int (*dtrace_probeid_enable)(dtrace_id_t id);
-extern int (*dtrace_virtstate_create)(void);
-extern void (*dtrace_virtstate_destroy)(void);
-extern int (*dtrace_virtstate_go)(void);
-extern int (*dtrace_virtstate_stop)(void);
-
 
 /*
  * DTrace Meta Provider API

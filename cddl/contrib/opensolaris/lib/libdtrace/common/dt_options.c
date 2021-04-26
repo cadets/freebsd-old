@@ -1192,6 +1192,7 @@ dtrace_setopt(dtrace_hdl_t *dtp, const char *opt, const char *val)
 		}
 	}
 
+	printf("optname, bad name = %s\n", opt);
 	return (dt_set_errno(dtp, EDT_BADOPTNAME));
 }
 

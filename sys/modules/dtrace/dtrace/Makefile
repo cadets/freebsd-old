@@ -55,9 +55,6 @@ CFLAGS+=	-DSMP
 EXPORT_SYMS=	dtrace_register \
 		dtrace_unregister \
 		dtrace_probe_lookup \
-		dtrace_provide_all_probes \
-		dtrace_probeid_enable \
-		dtrace_probeid_disable \
 		dtrace_konsumer_register \
 		dtrace_konsumer_unregister \
 		dtrace_xcall \
