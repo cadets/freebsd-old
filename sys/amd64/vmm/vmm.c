@@ -1904,7 +1904,6 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 	}
 
 	dtvirt_probe(biscuit, (int)args[0], &dtv_args);
-
 	return (HYPERCALL_RET_SUCCESS);
 }
 

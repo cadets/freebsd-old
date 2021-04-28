@@ -90,9 +90,7 @@ static lwpid_t
 dtvirt_priv_gettid(void *biscuit)
 {
 
-	if (vmm_gettid != NULL)
-		return (vmm_gettid(biscuit));
-	return (0);
+	return (vmm_gettid == NULL ? 0 : vmm_gettid(biscuit));
 }
 
 /*
@@ -103,9 +101,7 @@ static uint16_t
 dtvirt_priv_getns(void *biscuit)
 {
 
-	if (vmm_getid != NULL)
-		return (vmm_getid(biscuit));
-	return (0);
+	return (vmm_getid == NULL ? 0 : vmm_getid(biscuit));
 }
 
 static const char *
