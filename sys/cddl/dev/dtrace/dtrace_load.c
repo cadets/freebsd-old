@@ -74,12 +74,8 @@ dtrace_load(void *dummy)
 	dtrace_invop_init();
 
 	dtrace_taskq = taskq_create("dtrace_taskq", 1, maxclsyspri, 0, 0, 0);
-
-	for (i = 0; i < HYPERTRACE_MAX_VMS; i++) {
-		sprintf(mtxstr, "Unique resource identifier - %d", i);
-		mtx_init(&dtrace_unr_mtx[i], mtxstr, NULL, MTX_DEF);
-		dtrace_arena[i] = new_unrhdr(1, INT_MAX, &dtrace_unr_mtx[i]);
-	}
+	mtx_init(&dtrace_unr_mtx, "Unique resource identifier", NULL, MTX_DEF);
+	dtrace_arena = new_unrhdr(1, INT_MAX, &dtrace_unr_mtx);
 
 	/* Register callbacks for linker file load and unload events. */
 	dtrace_kld_load_tag = EVENTHANDLER_REGISTER(kld_load,

@@ -2327,8 +2327,8 @@ extern dtrace_id_t dtrace_probe_lookup(dtrace_vmid_t, dtrace_provider_id_t,
     char *, char *, char *);
 extern dtrace_id_t dtrace_probe_create(dtrace_provider_id_t, const char *,
     const char *, const char *, int, void *);
-extern dtrace_id_t dtrace_vprobe_create(
-    uint16_t, const char *, const char *, const char *, const char *);
+extern dtrace_id_t dtrace_vprobe_create(dtrace_vmid_t, dtrace_id_t,
+    const char *, const char *, const char *, const char *);
 extern void dtrace_vprobespace_destroy(uint16_t);
 extern void *dtrace_probe_arg(dtrace_provider_id_t, dtrace_id_t);
 extern void dtrace_probe(dtrace_id_t, uintptr_t arg0, uintptr_t arg1,

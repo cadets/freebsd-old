@@ -427,7 +427,6 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_enter(&dtrace_lock);
 		vstate = &state->dts_vstate;
 		dtrace_curvmid = p->vmid;
-		printf("dtrace_curvmid = %u\n", dtrace_curvmid);
 
 		if (state->dts_activity != DTRACE_ACTIVITY_INACTIVE) {
 			dtrace_curvmid = 0;
@@ -457,7 +456,6 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		if ((err = dtrace_enabling_match(enab, &p->n_matched)) == 0) {
 			err = dtrace_enabling_retain(enab);
-			printf("p->n_matched = %u\n", p->n_matched);
 			if (err == 0 && p->n_matched > 0 && p->ps != NULL) {
 				/*
 				 * Patch up our probes so that userspace knows
@@ -916,7 +914,6 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_enter(&dtrace_lock);
 		vstate = &state->dts_vstate;
 		dtrace_curvmid = p->vmid;
-		printf("augment, vmid = %u\n", dtrace_curvmid);
 
 		/*
 		 * XXX: For now we don't allocate a dts_vdof (or dts_dof) for
@@ -966,8 +963,9 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		err = 0;
 
-		printf("p->eprobes = %p, p->neprobes = %zu\n", p->eprobes,
-		    p->neprobes);
+		DTRACE_IOCTL_PRINTF(
+		    "%s(%d): DTRACEIOC_VPROBE_CREATE\n", __func__, __LINE__);
+
 		if (p->eprobes == NULL || p->neprobes == 0)
 			return (EINVAL);
 
@@ -1006,13 +1004,12 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 			 * it's not really necessary as the subsequent ENABLE
 			 * will give us just that.
 			 */
-			printf("Creating %u:%s:%s:%s:%s\n", vmid,
+			id = dtrace_vprobe_create(vmid, vprobe->dtpd_id,
 			    vprobe->dtpd_provider, vprobe->dtpd_mod,
 			    vprobe->dtpd_func, vprobe->dtpd_name);
-			id = dtrace_vprobe_create(vmid, vprobe->dtpd_provider,
-			    vprobe->dtpd_mod, vprobe->dtpd_func,
-			    vprobe->dtpd_name);
-			printf("Created (probe id = %d)\n", id);
+			printf("created %d -> %u:%s:%s:%s:%s\n", id, vmid,
+			    vprobe->dtpd_provider, vprobe->dtpd_mod,
+			    vprobe->dtpd_func, vprobe->dtpd_name);
 		}
 
 		mutex_exit(&dtrace_lock);

@@ -236,7 +236,7 @@ static vmem_t		*dtrace_arena;		/* probe ID arena */
 static vmem_t		*dtrace_minor;		/* minor number arena */
 #else
 static taskq_t		*dtrace_taskq;		/* task queue */
-static struct unrhdr	*dtrace_arena[HYPERTRACE_MAX_VMS];
+static struct unrhdr	*dtrace_arena;
 						/* Probe ID number.     */
 #endif
 size_t			dtrace_nvmids;	/* number of VMs instantiated */
@@ -280,7 +280,7 @@ static uint16_t		dtrace_curvmid;		/* current vmid (dtrace_lock) */
 #ifndef illumos
 static dtrace_state_t	*virt_state;
 static struct callout	virt_state_callout;
-static struct mtx	dtrace_unr_mtx[HYPERTRACE_MAX_VMS];
+static struct mtx	dtrace_unr_mtx;
 static eventhandler_tag	dtrace_kld_load_tag;
 static eventhandler_tag	dtrace_kld_unload_try_tag;
 
@@ -411,8 +411,6 @@ static int		dtrace_helptrace_wrapped = 0;
 lwpid_t (*dtvirt_gettid)(void *);
 uint16_t (*dtvirt_getns)(void *);
 const char *(*dtvirt_getname)(void *);
-dtrace_vmid_t (*dtvirt_getvmid)(void *);
-
 
 /*
  * DTrace Error Hashing
@@ -7434,9 +7432,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			    (dtrace_provider_t *)(pr->dtpr_vmid == 0 ?
 			    pr->dtpr_provider : 0);
 
-			printf("check hcalls\n");
 			if (bhyve_hypercalls_enabled()) {
-				printf("get args\n");
 				struct dtvirt_args _dtv_args = {
 					.dtv_args = {
 						mstate->dtms_arg[0],
@@ -7469,25 +7465,20 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 					.dtv_jailname = jail->pr_name,
 				};
 
-				printf("dtrace_strcpy\n");
-				dtrace_strcpy(mstate, curproc->p_comm,
-				    _dtv_args.dtv_execname, MAXCOMLEN);
-				printf("check args\n");
+				dtrace_strcpy(mstate, _dtv_args.dtv_execname,
+				    curproc->p_comm, MAXCOMLEN);
 				if (curproc->p_args != NULL) {
 					_dtv_args.dtv_execargs =
 					    curproc->p_args->ar_args;
 					_dtv_args.dtv_execargs_len =
 					    curproc->p_args->ar_length;
 				}
-				printf("got args\n");
 				if (curproc->p_pid != proc0.p_pid)
 					_dtv_args.dtv_ppid =
 					    curproc->p_pptr->p_pid;
-				printf("got everything, hypercall time\n");
 				hypercall_dtrace_probe(
 				    mstate->dtms_probe->dtpr_id,
 				    (uintptr_t)&_dtv_args, curthread->td_tid);
-				printf("back\n");
 			}
 			
 			break;
@@ -7912,7 +7903,7 @@ dtrace_store_by_ref(dtrace_mstate_t *mstate, dtrace_difo_t *dp, caddr_t tomax, s
  * error probe.
  */
 static dtrace_icookie_t
-dtrace_probe_enter(dtrace_id_t id)
+dtrace_probe_enter(uint16_t vmid, dtrace_id_t id)
 {
 	dtrace_icookie_t cookie;
 
@@ -7926,8 +7917,12 @@ dtrace_probe_enter(dtrace_id_t id)
 	 * resulting in unexpected output. If there is an exception to this
 	 * assertion, a new case should be added.
 	 */
-	ASSERT(curthread->t_dtrace_inprobe == 0 ||
-	    id == dtrace_probeid_error);
+	if (vmid == 0)
+		ASSERT(curthread->t_dtrace_inprobe == 0 ||
+		    id == dtrace_probeid_error);
+	else
+		ASSERT(curthread->t_dtrace_inprobe == 0);
+
 	curthread->t_dtrace_inprobe = 1;
 
 	return (cookie);
@@ -7965,6 +7960,7 @@ dtrace_vprobe(void *biscuit, dtrace_id_t id, struct dtvirt_args *dtv_args)
 	volatile uint16_t *flags;
 	hrtime_t now;
 	uintptr_t arg0, arg1, arg2, arg3, arg4;
+	uint16_t vmid;
 
 	if (panicstr != NULL)
 		return;
@@ -7980,17 +7976,55 @@ dtrace_vprobe(void *biscuit, dtrace_id_t id, struct dtvirt_args *dtv_args)
 #endif
 
 	/*
-	 * In the case of biscuit being NULL, dtvirt_getvmid will return 0
+	 * In the case of biscuit being NULL, dtvirt_getns will return 0
 	 * giving us the host's probes.
 	 */
-	if (biscuit)
-		dtrace_probes = dtrace_vprobes[dtvirt_getvmid(biscuit)];
-	else
-		dtrace_probes = dtrace_vprobes[HYPERTRACE_HOSTID];
-	ASSERT(dtrace_probes != NULL);
+	if (biscuit) {
+		/*
+		 * Make sure this doesn't get pulled from under us.
+		 */
+		ASSERT(dtvirt_getns != NULL);
+		vmid = dtvirt_getns(biscuit);
+	} else
+		vmid = 0;
 
-	cookie = dtrace_probe_enter(id);
+	dtrace_probes = dtrace_vprobes[vmid];
+	/*
+	 * In the case of the host, we better have a dtrace_probes array when
+	 * firing a DTrace probe. However, a race condition makes this assertion
+	 * invalid for guest vprobes. The scenario which would panic the kernel,
+	 * but isn't necessarily invalid is one where a guest enables its probes
+	 * but the host doesn't have the information about which probes were
+	 * enabled yet. This causes hypercalls to happen and end up in this
+	 * subroutine, accessing the dtrace_vprobes array. As we index with the
+	 * correct vmid, we might be hitting the case where the vprobes were not
+	 * yet created and getting NULL as a result. Instead of asserting in
+	 * this case, we just return, as we anticipate that the probes will
+	 * start existing soon enough, and we will be able to process them
+	 * accordingly.
+	 */
+	if (vmid == 0)
+		ASSERT(dtrace_probes != NULL);
+	else if (vmid > 0 && dtrace_probes == NULL)
+		return;
+
+	cookie = dtrace_probe_enter(vmid, id);
 	probe = dtrace_probes[id - 1];
+
+	/*
+	 * If a bogus probe was fired, we just silently exit.
+	 */
+	if (vmid > 0 && probe == NULL) {
+		dtrace_probe_exit(cookie);
+
+		if (dtrace_err_verbose)
+			cmn_err(CE_WARN,
+			    "guest %u attempted to fire "
+			    "bogus probe (id = %d)\n",
+			    vmid, id);
+		return;
+	}
+
 	cpuid = curcpu;
 	onintr = CPU_ON_INTR(CPU);
 
@@ -9068,13 +9102,28 @@ dtrace_match_probe(const dtrace_probe_t *prp, const dtrace_probekey_t *pkp,
     uint32_t priv, uid_t uid, zoneid_t zoneid)
 {
 	dtrace_provider_t *pvp = (dtrace_provider_t *)prp->dtpr_provider;
+	char *vpvp = (char *)prp->dtpr_provider;
 	int rv;
 
-	if (pvp->dtpv_defunct)
+	/*
+	 * Only check for defunct providers if it's a host probe.
+	 */
+	if (pkp->dtpk_vmid == 0 && pvp->dtpv_defunct)
 		return (0);
 
-	if ((rv = pkp->dtpk_pmatch(pvp->dtpv_name, pkp->dtpk_prov, 0)) <= 0)
-		return (rv);
+	/*
+	 * We need a bit of special handling here for host and guest probes, as
+	 * guest probes will have vproviders, which are just names rather than
+	 * actual dtrace_provider_t pointers.
+	 */
+	if (pkp->dtpk_vmid == 0) {
+		if ((rv = pkp->dtpk_pmatch(
+		    pvp->dtpv_name, pkp->dtpk_prov, 0)) <= 0)
+			return (rv);
+	} else {
+		if ((rv = pkp->dtpk_pmatch(vpvp, pkp->dtpk_prov, 0)) <= 0)
+			return (rv);
+	}
 
 	if ((rv = pkp->dtpk_mmatch(prp->dtpr_mod, pkp->dtpk_mod, 0)) <= 0)
 		return (rv);
@@ -9303,7 +9352,6 @@ dtrace_match(const dtrace_probekey_t *pkp, uint32_t priv, uid_t uid,
 				continue;
 
 			nmatched++;
-
 			if ((*matched)(probe, arg) != DTRACE_MATCH_NEXT)
 				break;
 		}
@@ -9318,7 +9366,6 @@ dtrace_match(const dtrace_probekey_t *pkp, uint32_t priv, uid_t uid,
 	 */
 	for (probe = dtrace_hash_lookup(hash, &template); probe != NULL;
 	    probe = *(DTRACE_HASHNEXT(hash, probe))) {
-
 		if (dtrace_match_probe(probe, pkp, priv, uid, zoneid) <= 0)
 			continue;
 
@@ -9774,7 +9821,7 @@ dtrace_unregister(dtrace_provider_id_t id)
 #ifdef illumos
 		vmem_free(dtrace_arena, (void *)(uintptr_t)(probe->dtpr_id), 1);
 #else
-		free_unr(dtrace_arena[HYPERTRACE_HOSTID], probe->dtpr_id);
+		free_unr(dtrace_arena, probe->dtpr_id);
 #endif
 		kmem_free(probe, sizeof (dtrace_probe_t));
 	}
@@ -9900,7 +9947,7 @@ dtrace_condense(dtrace_provider_id_t id)
 #ifdef illumos
 		vmem_free(dtrace_arena, (void *)((uintptr_t)i + 1), 1);
 #else
-		free_unr(dtrace_arena[HYPERTRACE_HOSTID], i + 1);
+		free_unr(dtrace_arena, i + 1);
 #endif
 	}
 
@@ -9908,6 +9955,18 @@ dtrace_condense(dtrace_provider_id_t id)
 	mutex_exit(&dtrace_provider_lock);
 
 	return (0);
+}
+
+static size_t
+dtrace_nextpow2(size_t n)
+{
+	n--;
+	n |= n >> 1;
+	n |= n >> 2;
+	n |= n >> 4;
+	n |= n >> 8;
+	n |= n >> 16;
+	return (++n);
 }
 
 /*
@@ -9928,25 +9987,75 @@ dtrace_condense(dtrace_provider_id_t id)
  *        string which is just a name of the provider.
  */
 static dtrace_id_t
-_dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_provider_id_t prov,
-    const char *mod, const char *func, const char *name, int aframes, void *arg)
+_dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_id_t _id,
+    dtrace_provider_id_t prov, const char *mod, const char *func,
+    const char *name, int aframes, void *arg)
 {
 	dtrace_probe_t *probe, **probes;
 	dtrace_id_t id;
+	int needs_unlock = 0;
 
 	if ((vmid == 0 && prov == (dtrace_provider_id_t)dtrace_provider) ||
 	    vmid > 0) {
 		ASSERT(MUTEX_HELD(&dtrace_lock));
+		needs_unlock = 0;
 	} else {
 		mutex_enter(&dtrace_lock);
+		needs_unlock = 1;
 	}
 
+	if (vmid == 0 && _id != DTRACE_IDNONE) {
+		if (needs_unlock)
+			mutex_exit(&dtrace_lock);
+
+		return (DTRACE_IDNONE);
+	}
+
+	if (vmid > 0 && _id == DTRACE_IDNONE) {
+		if (needs_unlock)
+			mutex_exit(&dtrace_lock);
+
+		return (DTRACE_IDNONE);
+	}
+
+	if (_id == DTRACE_IDNONE) {
+		/*
+		 * Another sanity check...
+		 */
+		ASSERT(vmid == 0);
 #ifdef illumos
-	id = (dtrace_id_t)(uintptr_t)vmem_alloc(dtrace_arena[vmid], 1,
-	    VM_BESTFIT | VM_SLEEP);
+		id = (dtrace_id_t)(uintptr_t)vmem_alloc(
+		    dtrace_arena, 1, VM_BESTFIT | VM_SLEEP);
 #else
-	id = alloc_unr(dtrace_arena[vmid]);
+		id = alloc_unr(dtrace_arena);
 #endif
+	} else {
+		/*
+		 * If this probe is already created (or another probe has its
+		 * ID, we error out because we don't really know what to do
+		 * here.
+		 */
+		if (dtrace_nvprobes[vmid] > _id - 1 &&
+		    dtrace_vprobes[vmid][_id - 1] != NULL) {
+			probe = dtrace_vprobes[vmid][_id - 1];
+			if (dtrace_err_verbose)
+				cmn_err(CE_WARN,
+				    "attempting to create %u:%s:%s:%s:%s "
+				    "with id %d, but %u:%s:%s:%s:%s is already "
+				    "in its place\n",
+				    vmid, (char *)prov, mod, func, name, _id,
+				    vmid, (char *)probe->dtpr_vprovider,
+				    probe->dtpr_mod, probe->dtpr_func,
+				    probe->dtpr_name);
+			if (needs_unlock)
+				mutex_exit(&dtrace_lock);
+
+			return (DTRACE_IDNONE);
+		}
+
+		id = _id;
+	}
+
 	probe = kmem_zalloc(sizeof (dtrace_probe_t), KM_SLEEP);
 
 	probe->dtpr_id = id;
@@ -9967,10 +10076,16 @@ _dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_provider_id_t prov,
 	dtrace_hash_add(dtrace_byfunc[vmid], probe);
 	dtrace_hash_add(dtrace_byname[vmid], probe);
 
-	if (id - 1 >= dtrace_nvprobes[vmid]) {
+	if (id - 1 >= dtrace_nvprobes[vmid] &&
+	    id - 1 <= DTRACE_SENSIBLE_PROBELIMIT) {
 		size_t osize = dtrace_nvprobes[vmid] *
 		    sizeof (dtrace_probe_t *);
-		size_t nsize = osize << 1;
+		size_t nsize;
+
+		if (osize << 1 > id - 1)
+			nsize = osize << 1;
+		else
+			nsize = dtrace_nextpow2(id) * sizeof(dtrace_probe_t *);
 
 		if (nsize == 0) {
 			ASSERT(osize == 0);
@@ -9978,12 +10093,14 @@ _dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_provider_id_t prov,
 			nsize = sizeof (dtrace_probe_t *);
 		}
 
+		ASSERT(nsize > id - 1);
 		probes = kmem_zalloc(nsize, KM_SLEEP);
 
 		if (dtrace_vprobes[vmid] == NULL) {
 			ASSERT(osize == 0);
 			dtrace_vprobes[vmid] = probes;
-			dtrace_nvprobes[vmid] = 1;
+			dtrace_nvprobes[vmid] =
+			    nsize / sizeof(dtrace_probe_t *);
 		} else {
 			dtrace_probe_t **oprobes = dtrace_vprobes[vmid];
 
@@ -10003,8 +10120,7 @@ _dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_provider_id_t prov,
 	ASSERT(dtrace_vprobes[vmid][id - 1] == NULL);
 	dtrace_vprobes[vmid][id - 1] = probe;
 
-	if (!((vmid == 0 && prov == (dtrace_provider_id_t)dtrace_provider) ||
-	    vmid > 0))
+	if (needs_unlock)
 		mutex_exit(&dtrace_lock);
 
 	return (id);
@@ -10018,12 +10134,12 @@ _dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_provider_id_t prov,
  *       dtrace_probe_create (see below) to create probes on the host.
  */
 dtrace_id_t
-dtrace_vprobe_create(dtrace_vmid_t vmid, const char *vprov,
+dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_id_t id, const char *vprov,
     const char *mod, const char *func, const char *name)
 {
 
 	return (_dtrace_vprobe_create(
-	    vmid, (dtrace_provider_id_t)vprov, mod, func, name, 0, NULL));
+	    vmid, id, (dtrace_provider_id_t)vprov, mod, func, name, 0, NULL));
 }
 
 /*
@@ -10038,17 +10154,17 @@ dtrace_probe_create(dtrace_provider_id_t prov, const char *mod,
     const char *func, const char *name, int aframes, void *arg)
 {
 
-	return (_dtrace_vprobe_create(HYPERTRACE_HOSTID, prov, mod,
-	    func, name,aframes, arg));
+	return (_dtrace_vprobe_create(HYPERTRACE_HOSTID, DTRACE_IDNONE, prov,
+	    mod, func, name, aframes, arg));
 }
 
 void
 dtrace_vprobespace_destroy(uint16_t vmid)
 {
-	int dtrace_nprobes;
-	int i;
-	dtrace_probe_t **dtrace_probes;
+	int i, should_free = 1;
 	dtrace_probe_t *probe;
+
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 
 	if (vmid == 0) {
 		if (dtrace_err_verbose)
@@ -10057,30 +10173,26 @@ dtrace_vprobespace_destroy(uint16_t vmid)
 		return;
 	}
 
-	for (i = 0; i < dtrace_nprobes; i++) {
-		probe = dtrace_probes[i];
+	for (i = 0; i < dtrace_nvprobes[vmid]; i++) {
+		probe = dtrace_vprobes[vmid][i];
 
-		if (probe == NULL) {
-			if (dtrace_err_verbose)
-				cmn_err(CE_WARN,
-				    "dtrace_vprobes[%u][%d] == NULL", vmid, i);
-
+		if (probe == NULL)
 			continue;
-		}
 
 		/*
 		 * If we have another enabling, we don't destroy this probe.
 		 */
-		if (probe->dtpr_ecb != NULL)
+		if (probe->dtpr_ecb != NULL) {
+			should_free = 0;
 			continue;
+		}
 
 		ASSERT(probe->dtpr_vmid == vmid);
 
-		dtrace_probes[i] = NULL;
+		dtrace_vprobes[vmid][i] = NULL;
 		dtrace_hash_remove(dtrace_bymod[vmid], probe);
 		dtrace_hash_remove(dtrace_byfunc[vmid], probe);
 		dtrace_hash_remove(dtrace_byname[vmid], probe);
-		free_unr(dtrace_arena[vmid], i + 1);
 
 		kmem_free((char *)probe->dtpr_vprovider,
 		    strlen((char *)probe->dtpr_vprovider) + 1);
@@ -10088,6 +10200,13 @@ dtrace_vprobespace_destroy(uint16_t vmid)
 		kmem_free(probe->dtpr_func, strlen(probe->dtpr_func) + 1);
 		kmem_free(probe->dtpr_name, strlen(probe->dtpr_name) + 1);
 		kmem_free(probe, sizeof (dtrace_probe_t));
+	}
+
+	if (should_free) {
+		kmem_free(dtrace_vprobes[vmid],
+		    dtrace_nvprobes[vmid] * sizeof(dtrace_probe_t *));
+		dtrace_nvprobes[vmid] = 0;
+		dtrace_vprobes[vmid] = NULL;
 	}
 }
 
@@ -10308,10 +10427,6 @@ dtrace_probe_enable(dtrace_probedesc_t *desc, dtrace_enabling_t *enab)
 	}
 
 	dtrace_probekey(desc, &pkey);
-	printf("desc->dtpd_vmid = %u\n", desc->dtpd_vmid);
-	printf("%s:%s:%s:%s\n", desc->dtpd_provider, desc->dtpd_mod,
-	    desc->dtpd_func, desc->dtpd_name);
-	printf("match pkey vmid = %u\n", pkey.dtpk_vmid);
 	dtrace_cred2priv(enab->dten_vstate->dtvs_state->dts_cred.dcr_cred,
 	    &priv, &uid, &zoneid);
 
@@ -12941,9 +13056,10 @@ dtrace_ecb_create_enable(dtrace_probe_t *probe, void *arg)
 	 *       of a better way to do it.
 	 */
 	if (probe != NULL) {
-		ASSERT(probe->dtpr_id < enab->dten_probelistsize);
-		enab->dten_probelist[probe->dtpr_id] = probe;
+		ASSERT(probe->dtpr_id - 1 < enab->dten_probelistsize);
+		enab->dten_probelist[probe->dtpr_id - 1] = probe;
 	}
+
 	return (DTRACE_MATCH_NEXT);
 }
 
@@ -16035,72 +16151,6 @@ dtrace_state_prereserve(dtrace_state_t *state)
 	}
 }
 
-/*
- * We don't do anything with this yet, it's mainly here to act as an idea for a
- * VM scratch space. However, it will not be used yet.
- */
-#if 0
-static void
-dtrace_vmscratch_free(dtrace_state_t *state, int cpu)
-{
-	dtrace_optval_t *opt = state->dts_options;
-
-	kmem_free(state->dts_vmscratch[cpu], opt[DTRACEOPT_VMSCRATCHSIZE]);
-}
-
-static void
-dtrace_state_vmscratch_cleanup(dtrace_state_t *state)
-{
-	int i = 0;
-
-	CPU_FOREACH(i) {
-		dtrace_vmscratch_free(state, i);
-	}
-}
-
-static int
-dtrace_vmscratch_alloc(dtrace_state_t *state, int cpu)
-{
-	dtrace_optval_t *opt = state->dts_options;
-
-	/*
-	 * Truncate to 8-byte alignment.
-	 *
-	 * FIXME(dstolfa): What if our maximum alignment is > 8?
-	 */
-	opt[DTRACEOPT_VMSCRATCHSIZE] &= ~7;
-
-	state->dts_vmscratch[cpu] =
-	    kmem_zalloc(opt[DTRACEOPT_VMSCRATCHSIZE], KM_SLEEP);
-	return (0);
-}
-
-/*
- * We don't allocate space in the entire array (NCPU-sized) because it might
- * end up being very space-consuming. We really just need the actual number of
- * CPUs.
- */
-static int
-dtrace_state_vmscratch_setup(dtrace_state_t *state)
-{
-	int i;
-
-	i = 0;
-	CPU_FOREACH(i) {
-		rval = dtrace_vmscratch_alloc(state, i);
-		/*
-		 * XXX(dstolfa): Cleanup needed?
-		 */
-		if (rval != 0) {
-			dtrace_state_vmscratch_cleanup(state);
-			return (rval);
-		}
-	}
-
-	return (0);
-}
-#endif /* 0 */
-
 static int
 dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 {
@@ -18059,7 +18109,7 @@ dtrace_module_unloaded(modctl_t *ctl, int *error)
 #ifdef illumos
 		vmem_free(dtrace_arena, (void *)(uintptr_t)probe->dtpr_id, 1);
 #else
-		free_unr(dtrace_arena[HYPERTRACE_HOSTID], probe->dtpr_id);
+		free_unr(dtrace_arena, probe->dtpr_id);
 #endif
 		kmem_free(probe, sizeof (dtrace_probe_t));
 	}
@@ -19446,9 +19496,10 @@ dtrace_destroy_vprobes(dtrace_vmid_t vmid)
 		kmem_free(probe->dtpr_func, strlen(probe->dtpr_func) + 1);
 		kmem_free(probe->dtpr_name, strlen(probe->dtpr_name) + 1);
 		kmem_free(probe, sizeof (dtrace_probe_t));
-
-		free_unr(dtrace_arena[vmid], i + 1);
 	}
+
+	kmem_free(dtrace_vprobes[vmid]);
+	dtrace_nvprobes[vmid] = 0;
 
 	mutex_exit(&dtrace_lock);
 }

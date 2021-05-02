@@ -65,6 +65,10 @@ typedef	u_long			greg_t;
  */
 #define	DTRACE_MAXPROPLEN		128
 #define	DTRACE_DYNVAR_CHUNKSIZE		256
+/*
+ * We only allow a million vprobes per guest.
+ */
+#define	DTRACE_SENSIBLE_PROBELIMIT	(1 << 20)
 
 #ifdef __FreeBSD__
 #define	NCPU		MAXCPU

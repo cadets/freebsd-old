@@ -2962,6 +2962,7 @@ dtrace_consume(dtrace_hdl_t *dtp, FILE *fp, dtrace_consumer_t *dc, void *arg)
 
 			if (dc->dc_get_buf(dtp, i, &buf) != 0)
 				return (-1);
+
 			if (buf == NULL)
 				continue;
 

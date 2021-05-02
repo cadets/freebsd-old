@@ -2055,7 +2055,7 @@ dt_elf_get_options(dtrace_hdl_t *dtp, Elf *e, dt_elf_ref_t eopts)
 		 * Set the options only if we are not a guest, if the option has
 		 * a name and if we're not actively tracing.
 		 */
-		if (dtp->dt_is_guest != 0 && dteop->eo_name[0] != '0' &&
+		if (dtp->dt_is_guest && dteop->eo_name[0] != '0' &&
 		    dtp->dt_active == 0)
 			if (err = dtrace_setopt(
 			    dtp, dteop->eo_name, strdup(dteop->eo_arg)))

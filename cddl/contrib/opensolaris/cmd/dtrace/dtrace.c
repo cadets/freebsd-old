@@ -1849,7 +1849,6 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 		pthread_create(&g_worktd, NULL, dtc_work, NULL);
 	}
 
-	printf("dcp->dc_prog->dp_neprobes = %zu\n", dcp->dc_prog->dp_neprobes);
 	elfpath = gen_filename(elfdir);
 	dt_elf_create(dcp->dc_prog, ELFDATA2LSB, elfpath);
 

@@ -86,10 +86,10 @@ dtrace_unload()
 		dtrace_byfunc[i] = NULL;
 		dtrace_byname[i] = NULL;
 
-		delete_unrhdr(dtrace_arena[i]);
-		mtx_destroy(&dtrace_unr_mtx[i]);
 	}
 
+	delete_unrhdr(dtrace_arena);
+	mtx_destroy(&dtrace_unr_mtx);
 
 	kmem_cache_destroy(dtrace_state_cache);
 
