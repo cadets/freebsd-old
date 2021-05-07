@@ -257,6 +257,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	uint64_t size;
 	char *name;
 	uint16_t vmid;
+	static char padding[6] = {0,0,0,0,0,0};
 
 	assert(niov == 1);
 	retval = 0;
@@ -311,6 +312,10 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			if (write(fd, &vmid, sizeof(vmid)) < 0)
 				fprintf(stderr, "Warning: Failed to write "
 				    "vmid (%u) to %s\n", vmid, path);
+
+			if (write(fd, padding, sizeof(padding)) < 0)
+				fprintf(stderr, "Warning: Failed to write "
+				    "padding to %s\n", path);
 
 			name = vm_get_name(sc->vsd_vmctx);
 			size = strlen(name);
@@ -557,7 +562,8 @@ pci_vtdtr_run(void *xsc)
 		 */
 		while (!sc->vsd_guest_ready ||
 		    pci_vtdtr_cq_empty(sc->vsd_ctrlq)) {
-			error = pthread_cond_wait(&sc->vsd_cond, &sc->vsd_condmtx);
+			error =
+			    pthread_cond_wait(&sc->vsd_cond, &sc->vsd_condmtx);
 			assert(error == 0);
 		}
 		error = pthread_mutex_unlock(&sc->vsd_condmtx);
@@ -773,9 +779,11 @@ pci_vtdtr_events(void *xsc)
 			assert(ctrl != NULL);
 			offs += ctrl->pvc_elflen;
 
-			ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+			ctrl_entry =
+			    malloc(sizeof(struct pci_vtdtr_ctrl_entry));
 			assert(ctrl_entry != NULL);
-			memset(ctrl_entry, 0, sizeof(struct pci_vtdtr_ctrl_entry));
+			memset(
+			    ctrl_entry, 0, sizeof(struct pci_vtdtr_ctrl_entry));
 		}
 
 
