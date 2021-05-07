@@ -449,9 +449,9 @@ void vm_copyin(struct vm *vm, int vcpuid, struct vm_copyinfo *copyinfo,
     void *kaddr, size_t len);
 void vm_copyout(struct vm *vm, int vcpuid, const void *kaddr,
     struct vm_copyinfo *copyinfo, size_t len);
-extern lwpid_t (*vmm_gettid)(void *biscuit);
-extern uint16_t (*vmm_getid)(void *biscuit);
-extern const char *(*vmm_getname)(void *biscuit);
+extern lwpid_t (*vmm_gettid)(void *vhdl);
+extern uint16_t (*vmm_getid)(void *vhdl);
+extern const char *(*vmm_getname)(void *vhdl);
 
 int vcpu_trace_exceptions(struct vm *vm, int vcpuid);
 #endif	/* KERNEL */
@@ -517,7 +517,7 @@ struct vm_guest_paging {
 	enum vm_paging_mode paging_mode;
 };
 
-struct vm_biscuit {
+struct vm_hdl {
 	struct vm *vm;
 	struct vm_guest_paging *paging;
 	int vcpuid;

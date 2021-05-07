@@ -250,16 +250,6 @@ static struct mtx vm_unrmtx;
 MTX_SYSINIT(vm_unrmtx, &vm_unrmtx, "Unique resource identifier", MTX_DEF);
 
 /*
-int	(*vmmdt_hook_add)(const char *, int);
-int	(*vmmdt_hook_rm)(const char *, int);
-void	(*vmmdt_hook_enable)(const char *, int);
-void	(*vmmdt_hook_disable)(const char *, int);
-void	(*vmmdt_hook_fire_probe)(const char *, struct hypercall_args *);
-uint64_t (*vmmdt_hook_valueof)(const char *, int, int);
-void	(*vmmdt_hook_setargs)(const char *, int, const uint64_t[VMMDT_MAXARGS]);
-*/
-
-/*
  * The maximum amount of arguments currently supproted
  * through the hypercall functionality in the VMM.
  * Everything higher than HYPERCALL_MAX_ARGS will be
@@ -1741,6 +1731,7 @@ static __inline int
 hypercall_handle(uint64_t hcid, struct vm *vm, int vcpuid,
     struct vm_exit *vmexit, bool *retu)
 {
+
 	return (hc_handler[hypervisor_mode](hcid, vm, vcpuid, vmexit, retu));
 }
 
@@ -1801,7 +1792,7 @@ bhyve_handle_hypercall(uint64_t hcid, struct vm *vm, int vcpuid,
 
 	for (i = 0; i < HYPERCALL_MAX_ARGS; i++) {
 		error = vm_get_register(vm, vcpuid, arg_regs[i], &args[i]);
-		KASSERT(error == 0, ("%s: error %d getting RBX",
+		KASSERT(error == 0, ("%s: error %d getting register",
 		    __func__, error));
 	}
 
@@ -1832,7 +1823,8 @@ vm_handle_hypercall(struct vm *vm, int vcpuid, struct vm_exit *vmexit, bool *ret
 	 * the maximum number of hypercalls defined.
 	 */
 	if (hcid >= HYPERCALL_INDEX_MAX) {
-		error = vm_set_register(vm, vcpuid, VM_REG_GUEST_RAX, HYPERCALL_RET_ERROR);
+		error = vm_set_register(
+		    vm, vcpuid, VM_REG_GUEST_RAX, HYPERCALL_RET_ERROR);
 		KASSERT(error == 0, ("%s: error %d setting RAX",
 		    __func__, error));
 		return (0);
@@ -1846,8 +1838,10 @@ vm_handle_hypercall(struct vm *vm, int vcpuid, struct vm_exit *vmexit, bool *ret
 	 * The check ensures that each of the hypercalls that is called
 	 * from the guest is called from the correct protection ring.
 	 */
-	if (SEG_DESC_DPL(cs_desc.access) != ring_plevel[hypervisor_mode][hcid]) {
-		error = vm_set_register(vm, vcpuid, VM_REG_GUEST_RAX, HYPERCALL_RET_ERROR);
+	if (SEG_DESC_DPL(cs_desc.access) !=
+	    ring_plevel[hypervisor_mode][hcid]) {
+		error = vm_set_register(
+		    vm, vcpuid, VM_REG_GUEST_RAX, HYPERCALL_RET_ERROR);
 		KASSERT(error == 0, ("%s: error %d setting RAX",
 		    __func__, error));
 		return (0);
@@ -1860,6 +1854,7 @@ static __inline int64_t
 hc_handle_prototype(struct vm *vm, int vcpuid,
     uintptr_t *args, struct vm_guest_paging *paging)
 {
+
 	return (HYPERCALL_RET_SUCCESS);
 }
 
@@ -1867,19 +1862,18 @@ static int64_t
 hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
     uintptr_t *args, struct vm_guest_paging *paging)
 {
-	struct vm_biscuit *biscuit = malloc(sizeof(
-	    struct vm_biscuit), M_VM, M_ZERO | M_WAITOK);
+	struct vm_hdl *vhdl = malloc(sizeof(
+	    struct vm_hdl), M_VM, M_ZERO | M_WAITOK);
 	struct seg_desc ds_desc;
 	uintptr_t dt_probe_args[5];
 	struct dtvirt_args dtv_args;
-	char *execargs = NULL;
 	int err;
 
-	biscuit->vm = vm;
-	biscuit->paging = paging;
+	vhdl->vm = vm;
+	vhdl->paging = paging;
 	paging->pmap = vmspace_pmap(vm->vmspace);
-	biscuit->vcpuid = vcpuid;
-	biscuit->tid = args[2];
+	vhdl->vcpuid = vcpuid;
+	vhdl->tid = args[2];
 	err = 0;
 	memset(dt_probe_args, 0, sizeof(uintptr_t) * 5);
 
@@ -1892,18 +1886,7 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 	KASSERT(err == 0, ("%s: error %d copying the arguments",
 	    __func__, err));
 
-	execargs = dtv_args.dtv_execargs;
-	dtv_args.dtv_execargs = malloc(dtv_args.dtv_execargs_len, M_VM, M_WAITOK);
-	if (dtv_args.dtv_execargs != NULL) {
-		err = hypercall_copy_arg(vm, vcpuid, ds_desc.base,
-		    (uintptr_t) execargs,
-		    dtv_args.dtv_execargs_len, paging,
-		    dtv_args.dtv_execargs);
-		KASSERT(err == 0, ("%s: error %d copying execargs",
-		    __func__, err));
-	}
-
-	dtvirt_probe(biscuit, (int)args[0], &dtv_args);
+	dtvirt_probe(vhdl, (int)args[0], &dtv_args);
 	return (HYPERCALL_RET_SUCCESS);
 }
 
@@ -2435,15 +2418,6 @@ vm_inject_pf(void *vmarg, int vcpuid, int error_code, uint64_t cr2)
 	KASSERT(error == 0, ("vm_set_register(cr2) error %d", error));
 
 	vm_inject_fault(vm, vcpuid, IDT_PF, 1, error_code);
-}
-
-static __inline void
-vm_inject_bp(void *vm, int vcpuid)
-{
-	int error;
-	error = vm_inject_exception(vm, vcpuid, IDT_BP, 0, 0, 0);
-	KASSERT(error == 0, ("vm_inject_bp error %d", error));
-
 }
 
 static VMM_STAT(VCPU_NMI_COUNT, "number of NMIs delivered to vcpu");
@@ -3042,27 +3016,27 @@ vm_copyout(struct vm *vm, int vcpuid, const void *kaddr,
 }
 
 static lwpid_t
-vmm_priv_gettid(void *xbiscuit)
+vmm_priv_gettid(void *xvhdl)
 {
 
-	struct vm_biscuit *biscuit = xbiscuit;
-	return (biscuit->tid);
+	struct vm_hdl *vhdl = xvhdl;
+	return (vhdl->tid);
 }
 
 static uint16_t
-vmm_priv_getid(void *xbiscuit)
+vmm_priv_getid(void *xvhdl)
 {
 
-	struct vm_biscuit *biscuit = xbiscuit;
-	return (biscuit->vm->id);
+	struct vm_hdl *vhdl = xvhdl;
+	return (vhdl->vm->id);
 }
 
 static const char *
-vmm_priv_getname(void *xbiscuit)
+vmm_priv_getname(void *xvhdl)
 {
 
-	struct vm_biscuit *biscuit = xbiscuit;
-	return (biscuit->vm->name);
+	struct vm_hdl *vhdl = xvhdl;
+	return (vhdl->vm->name);
 }
 
 /*

@@ -45,40 +45,13 @@
 #include <sys/types.h>
 
 /*
- * Hierarchical structure with hypercall arguments. It contains the hypercall
- * identifier and hypercall-specific arguments packed into a union of types.
- */
-struct hypercall_args {
-	union {
-		struct {
-			int probeid;
-			uintptr_t args[10];
-			size_t n_args;
-			lwpid_t tid;
-			/* XXX(dstolfa): Do we have to copyin here */
-			char *execname;
-			uint32_t stackdepth;
-			/*
-			 * FIXME: Needs usym for this -- not sure how to do it.
-			 */
-			uint64_t ucaller;
-			pid_t ppid;
-			uid_t uid;
-			gid_t gid;
-			int errno;
-			struct pargs execargs; /* We fill this directly */
-		} dt;
-	} u;
-};
-
-/*
  * Arguments are only specified in this header file.
  * Do not move the arguments around in the assembly
  * file as the convention used is the SystemV ABI
  * calling convention.
  */
 int	hypercall_prototype(void /* args */);
-int	hypercall_dtrace_probe(uint32_t, uintptr_t, lwpid_t);
+int	hypercall_dtrace_probe(int, uintptr_t, lwpid_t);
 
 static __inline int
 bhyve_hypercalls_enabled(void)
