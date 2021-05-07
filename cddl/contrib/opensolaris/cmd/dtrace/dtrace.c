@@ -950,9 +950,18 @@ listen_dtdaemon(void *arg)
 		}
 
 		novm = 0;
+
+		/*
+		 * 2-byte aligned
+		 */
+		assert(((uintptr_t)elf & 1) == 0);
 		vmid = *((uint16_t *)elf);
-		elf += sizeof(uint16_t);
+		elf += (sizeof(uint16_t) + 6) /* vmid + padding */;
 		
+		/*
+		 * 8-byte aligned
+		 */
+		assert(((uintptr_t)elf & 7) == 0);
 		size = (uint64_t *)elf;
 
 		elf += sizeof(uint64_t);
@@ -976,7 +985,7 @@ process_prog:
 
 		lentowrite = novm ?
 		    elflen :
-		    (elflen - *size - sizeof(uint64_t) - sizeof(uint16_t));
+		    (elflen - *size - sizeof(uint64_t) - sizeof(uint16_t) - 6);
 		if (write(fd, elf, lentowrite) < 0)
 			dfatal("failed to write to a temporary file");
 
@@ -1423,42 +1432,42 @@ exec_prog(const dtrace_cmd_t *dcp)
 		 */
 
 		if ((err = pthread_mutex_init(&g_pgplistmtx, NULL)) != 0)
-			dfatal("failed to init pgplistmtx");
+			fatal("failed to init pgplistmtx");
 
 		if ((err = pthread_mutex_init(&g_pgpcondmtx, NULL)) != 0)
-			dfatal("failed to init pgpcondmtx");
+			fatal("failed to init pgpcondmtx");
 
 		if ((err = pthread_cond_init(&g_pgpcond, NULL)) != 0)
-			dfatal("failed to init pgpcond");
+			fatal("failed to init pgpcond");
 
 		dtdaemon_sock = socket(PF_UNIX, SOCK_STREAM, 0);
 		if (dtdaemon_sock == -1)
-			dfatal("failed to open dtdaemon socket");
+			fatal("failed to open dtdaemon socket");
 
 		memset(&addr, 0, sizeof(addr));
 		addr.sun_family = PF_UNIX;
 		l = strlcpy(addr.sun_path, DTDAEMON_SOCKPATH,
 		    sizeof(addr.sun_path));
 		if (l >= sizeof(addr.sun_path))
-			dfatal("failed to copy %s into sun_path",
+			fatal("failed to copy %s into sun_path",
 			    DTDAEMON_SOCKPATH);
 
 		if (connect(dtdaemon_sock,
 		    (struct sockaddr *)&addr, sizeof(addr)) == -1)
-			dfatal("failed to connect to %s", DTDAEMON_SOCKPATH);
+			fatal("failed to connect to %s", DTDAEMON_SOCKPATH);
 
 		kind = 0;
 		if (recv(dtdaemon_sock, &kind, sizeof(kind), 0) < 0)
-			dfatal("failed to read from dtdaemon_sock");
+			fatal("failed to read from dtdaemon_sock");
 
 		if (kind != DTDAEMON_KIND_DTDAEMON) {
 			close(dtdaemon_sock);
-			dfatal("expected dtdaemon kind, got %d\n", kind);
+			fatal("expected dtdaemon kind, got %d\n", kind);
 		}
 
 		kind = DTDAEMON_KIND_CONSUMER;
 		if (send(dtdaemon_sock, &kind, sizeof(kind), 0) < 0)
-			dfatal("failed to read kind from %s",
+			fatal("failed to read kind from %s",
 			    DTDAEMON_SOCKPATH);
 
 		dt_elf_create(dcp->dc_prog, ELFDATA2LSB, elfpath);
@@ -1470,12 +1479,12 @@ exec_prog(const dtrace_cmd_t *dcp)
 		    donepathlen - dirlen);
 
 		if (rename(elfpath, donepath))
-			dfatal("failed to move %s to %s",
+			fatal("failed to move %s to %s",
 			    elfpath, donepath);
 
 		dtd_arg = malloc(sizeof(dtd_arg_t));
 		if (dtd_arg == NULL)
-			dfatal("failed to malloc dtd_arg");
+			fatal("failed to malloc dtd_arg");
 
 		dtd_arg->sock = dtdaemon_sock;
 		dtd_arg->hostpgp = dcp->dc_prog;
@@ -1483,7 +1492,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 		err = pthread_create(&g_dtdaemontd, NULL,
 		    listen_dtdaemon, dtd_arg);
 		if (err != 0)
-			dfatal("failed to create g_dtdaemontd");
+			fatal("failed to create g_dtdaemontd");
 
 		for (;;) {
 			/*
@@ -1549,17 +1558,17 @@ again:
 
 		err = pthread_kill(g_dtdaemontd, SIGTERM);
 		if (err != 0)
-			dfatal("failed to send SIGTERM to g_dtdaemontd");
+			fatal("failed to send SIGTERM to g_dtdaemontd");
 		err = pthread_kill(g_worktd, SIGTERM);
 		if (err != 0)
-			dfatal("failed to send SIGTERM to g_worktd");
+			fatal("failed to send SIGTERM to g_worktd");
 
 		err = pthread_join(g_dtdaemontd, &rval);
 		if (err != 0)
-			dfatal("failed to join g_dtdaemontd");
+			fatal("failed to join g_dtdaemontd");
 		err = pthread_join(g_worktd, &rval);
 		if (err != 0)
-			dfatal("failed to join g_worktd");
+			fatal("failed to join g_worktd");
 
 		pthread_mutex_destroy(&g_pgplistmtx);
 		pthread_mutex_destroy(&g_pgpcondmtx);
@@ -1825,7 +1834,7 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 
 	progpath = strtok(dcp->dc_arg, ",");
 	if (progpath == NULL)
-		dfatal("failed to tokenize %s", dcp->dc_arg);
+		fatal("failed to tokenize %s", dcp->dc_arg);
 	
 	dirpath = strtok(NULL, ",");
 	strcpy(elfdir, dirpath ? dirpath : "/var/ddtrace/outbound/");
@@ -1859,14 +1868,14 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	    donepathlen - dirlen);
 
 	if (rename(elfpath, donepath))
-		dfatal("failed to move %s to %s",
+		fatal("failed to move %s to %s",
 		    elfpath, donepath);
 
 	free(elfpath);
 
 	if (prog_exec == DT_PROG_EXEC) {
 		if (pthread_join(g_worktd, NULL))
-			dfatal("failed to join worktd (%s)", strerror(errno));
+			fatal("failed to join worktd (%s)", strerror(errno));
 	}
 
 	dtrace_close(g_dtp);

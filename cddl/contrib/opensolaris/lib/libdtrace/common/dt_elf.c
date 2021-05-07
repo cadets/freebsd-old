@@ -995,6 +995,7 @@ dt_elf_options(Elf *e)
 	size_t len = 0; /* Length of the new entry */
 	size_t bufmaxlen = 0; /* Maximum buffer length */
 	size_t l;
+	size_t arglen;
 	unsigned char *buf = NULL, *obuf = NULL;
 	int needs_realloc = 0;
 
@@ -1010,17 +1011,22 @@ dt_elf_options(Elf *e)
 		if (op->dteo_set == 0)
 			continue;
 
-		len = sizeof(_dt_elf_eopt_t) + strlen(op->dteo_arg) + 1;
+		arglen = strlen(op->dteo_arg) + 1;
+		arglen = (arglen + 7) & (-8);
+
+		len = sizeof(_dt_elf_eopt_t) + arglen;
 		eop = malloc(len);
 		if (eop == NULL)
 			errx(EXIT_FAILURE, "failed to malloc eop");
+
+		memset(eop, 0, sizeof(len));
 
 		l = strlcpy(eop->eo_name, op->dteo_name, sizeof(eop->eo_name));
 		if (l >= sizeof(eop->eo_name))
 			errx(EXIT_FAILURE, "%s is too long to be copied",
 			    op->dteo_name);
 
-		eop->eo_len = strlen(op->dteo_arg) + 1;
+		eop->eo_len = arglen;
 
 		l = strlcpy(eop->eo_arg, op->dteo_arg, eop->eo_len);
 		if (l >= eop->eo_len)
@@ -1034,7 +1040,8 @@ dt_elf_options(Elf *e)
 			l = strlcpy((char *)eop->eo_option,
 			    (char *)op->dteo_option, sizeof(eop->eo_option));
 			if (l >= sizeof(eop->eo_option))
-				errx(EXIT_FAILURE, "%s is too long to be copied",
+				errx(EXIT_FAILURE,
+				    "%s is too long to be copied",
 				    op->dteo_option);
 		} else
 			eop->eo_option = op->dteo_option;
@@ -1087,8 +1094,11 @@ dt_elf_options(Elf *e)
 		if (op->dteo_set == 0)
 			continue;
 
+		arglen = strlen(op->dteo_arg) + 1;
+		arglen = (arglen + 7) & (-8);
+
 		assert(op->dteo_arg != NULL);
-		len = sizeof(_dt_elf_eopt_t) + strlen(op->dteo_arg) + 1;
+		len = sizeof(_dt_elf_eopt_t) + arglen;
 		eop = malloc(len);
 		if (eop == NULL)
 			errx(EXIT_FAILURE, "failed to malloc eop");
@@ -1098,7 +1108,7 @@ dt_elf_options(Elf *e)
 			errx(EXIT_FAILURE, "%s is too long to be copied",
 			    op->dteo_name);
 
-		eop->eo_len = strlen(op->dteo_arg) + 1;
+		eop->eo_len = arglen;
 
 		l = strlcpy(eop->eo_arg, op->dteo_arg, eop->eo_len);
 		if (l >= eop->eo_len)
@@ -1112,7 +1122,8 @@ dt_elf_options(Elf *e)
 		        l = strlcpy((char *)eop->eo_option,
 			    (char *)op->dteo_option, sizeof(eop->eo_option));
 			if (l >= sizeof(eop->eo_option))
-				errx(EXIT_FAILURE, "%s is too long to be copied",
+				errx(EXIT_FAILURE,
+				    "%s is too long to be copied",
 				    op->dteo_option);
 		} else
 			eop->eo_option = op->dteo_option;
@@ -1165,7 +1176,10 @@ dt_elf_options(Elf *e)
 		if (op->dteo_set == 0)
 			continue;
 
-		len = sizeof(_dt_elf_eopt_t) + strlen(op->dteo_arg) + 1;
+		arglen = strlen(op->dteo_arg) + 1;
+		arglen = (arglen + 7) & (-8);
+
+		len = sizeof(_dt_elf_eopt_t) + arglen;
 		eop = malloc(len);
 		if (eop == NULL)
 			errx(EXIT_FAILURE, "failed to malloc eop");
@@ -1175,7 +1189,7 @@ dt_elf_options(Elf *e)
 			errx(EXIT_FAILURE, "%s is too long to be copied",
 			    op->dteo_name);
 
-		eop->eo_len = strlen(op->dteo_arg) + 1;
+		eop->eo_len = arglen;
 
 		l = strlcpy(eop->eo_arg, op->dteo_arg, eop->eo_len);
 		if (l >= eop->eo_len)
@@ -1188,7 +1202,8 @@ dt_elf_options(Elf *e)
 			l = strlcpy((char *)eop->eo_option,
 			    (char *)op->dteo_option, sizeof(eop->eo_option));
 			if (l >= sizeof(eop->eo_option))
-				errx(EXIT_FAILURE, "%s is too long to be copied",
+				errx(EXIT_FAILURE,
+				    "%s is too long to be copied",
 				    op->dteo_option);
 		} else
 			eop->eo_option = op->dteo_option;
@@ -1323,7 +1338,8 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 		errx(EXIT_FAILURE, "Failed to open /var/ddtrace/%s", file_name);
 
 	if ((e = elf_begin(fd, ELF_C_WRITE, NULL)) == NULL)
-		errx(EXIT_FAILURE, "elf_begin() failed with %s", elf_errmsg(-1));
+		errx(
+		    EXIT_FAILURE, "elf_begin() failed with %s", elf_errmsg(-1));
 
 	if ((ehdr = elf32_newehdr(e)) == NULL)
 		errx(EXIT_FAILURE, "elf_newehdr(%p) failed with %s",
@@ -1570,7 +1586,8 @@ dt_elf_get_table(Elf *e, dt_elf_ref_t tabref)
 		return (NULL);
 
 	if ((scn = elf_getscn(e, tabref)) == NULL)
-		errx(EXIT_FAILURE, "elf_getscn() failed with %s", elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
+		    elf_errmsg(-1));
 
 	if ((data = elf_getdata(scn, NULL)) == NULL)
 		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
@@ -1604,7 +1621,8 @@ dt_elf_get_difo(Elf *e, dt_elf_ref_t diforef)
 		return (NULL);
 
 	if ((scn = elf_getscn(e, diforef)) == NULL)
-		errx(EXIT_FAILURE, "elf_getscn() failed with %s", elf_errmsg(-1));
+		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
+		    elf_errmsg(-1));
 
 	if ((data = elf_getdata(scn, NULL)) == NULL)
 		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
@@ -1987,7 +2005,8 @@ dt_elf_alloc_actions(Elf *e, dt_elf_stmt_t *estmt)
 
 	for (actref = fst; actref != 0; actref = ead->dtea_next) {
 		if ((scn = elf_getscn(e, actref)) == NULL)
-			errx(EXIT_FAILURE, "elf_getscn() failed with %s", elf_errmsg(-1));
+			errx(EXIT_FAILURE, "elf_getscn() failed with %s",
+			    elf_errmsg(-1));
 
 		if ((data = elf_getdata(scn, NULL)) == NULL)
 			errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
@@ -2010,7 +2029,8 @@ dt_elf_get_stmts(Elf *e, dtrace_prog_t *prog, dt_elf_ref_t first_stmt_scn)
 
 	for (scnref = first_stmt_scn; scnref != 0; scnref = estmt->dtes_next) {
 		if ((scn = elf_getscn(e, scnref)) == NULL)
-			errx(EXIT_FAILURE, "elf_getscn() failed with %s", elf_errmsg(-1));
+			errx(EXIT_FAILURE, "elf_getscn() failed with %s",
+			    elf_errmsg(-1));
 
 		if ((data = elf_getdata(scn, NULL)) == NULL)
 			errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
@@ -2032,6 +2052,7 @@ dt_elf_get_options(dtrace_hdl_t *dtp, Elf *e, dt_elf_ref_t eopts)
 	Elf_Scn *scn;
 	Elf_Data *data;
         uintptr_t eop;
+	void *op;
 	_dt_elf_eopt_t *dteop;
 	int err;
 
@@ -2043,24 +2064,41 @@ dt_elf_get_options(dtrace_hdl_t *dtp, Elf *e, dt_elf_ref_t eopts)
 		errx(EXIT_FAILURE, "elf_getdata() failed with %s",
 		    elf_errmsg(-1));
 
-	/*
-	 * If you remove the uintptr_ts, you will suffer at the hands of
-	 * a compiler developer.
-	 */
 	for (eop = (uintptr_t)data->d_buf;
-	    eop < ((uintptr_t)data->d_buf) + data->d_size;
-	    eop = eop + dteop->eo_len + sizeof(_dt_elf_eopt_t)) {
+	     eop < ((uintptr_t)data->d_buf) + data->d_size;
+	     eop = eop + dteop->eo_len + sizeof(_dt_elf_eopt_t)) {
+		/*
+		 * Make sure we are 8-byte aligned here
+		 */
+		assert((eop & 7) == 0);
 		dteop = (_dt_elf_eopt_t *)eop;
+		assert(dteop != NULL);
+
+		if (dteop->eo_name == NULL)
+			continue;
+
+		if (dteop->eo_name[0] == '\0')
+			continue;
+
+		if (dtp->dt_is_guest == 0)
+			continue;
+
+		if (dtp->dt_active == 1)
+			continue;
+
 		/*
 		 * Set the options only if we are not a guest, if the option has
 		 * a name and if we're not actively tracing.
 		 */
-		if (dtp->dt_is_guest && dteop->eo_name[0] != '0' &&
-		    dtp->dt_active == 0)
-			if (err = dtrace_setopt(
-			    dtp, dteop->eo_name, strdup(dteop->eo_arg)))
-				return (err);
+		if (err = dtrace_setopt(
+			dtp, dteop->eo_name, strdup(dteop->eo_arg))) {
+			fprintf(
+			    stderr, "failed to setopt %s\n", dteop->eo_name);
+			return (err);
+		}
 	}
+
+	return (0);
 }
 
 static void
@@ -2283,7 +2321,8 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 		    elf_errmsg(-1));
 
 	if ((e = elf_begin(fd, ELF_C_READ, NULL)) == NULL)
-		errx(EXIT_FAILURE, "elf_begin() failed with %s", elf_errmsg(-1));
+		errx(
+		    EXIT_FAILURE, "elf_begin() failed with %s", elf_errmsg(-1));
 
 	if (elf_kind(e) != ELF_K_ELF)
 		errx(EXIT_FAILURE, "not an ELF file");
@@ -2311,7 +2350,8 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	while ((scn = elf_nextscn(e, scn)) != NULL) {
 		static const char idtab_name[] = ".dtrace_stmt_idname_table";
 		if (gelf_getshdr(scn, &shdr) != &shdr)
-			errx(EXIT_FAILURE, "gelf_getshdr() failed with %s in %s",
+			errx(EXIT_FAILURE,
+			    "gelf_getshdr() failed with %s in %s",
 			    elf_errmsg(-1), __func__);
 
 		if ((name = elf_strptr(e, shstrndx, shdr.sh_name)) == NULL)
@@ -2320,7 +2360,8 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 		if (strncmp(name, idtab_name, sizeof(idtab_name)) == 0) {
 			if ((data = elf_getdata(scn, NULL)) == NULL)
-				errx(EXIT_FAILURE, "elf_getdata() failed with %s",
+				errx(EXIT_FAILURE,
+				    "elf_getdata() failed with %s",
 				    elf_errmsg(-1));
 
 			/*
@@ -2398,6 +2439,10 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	prog->dp_exec = eprog->dtep_exec;
 	prog->dp_neprobes = eprog->dtep_neprobes;
+	/*
+	 * TODO: Remove this.
+	 */
+#if 0 
 	printf("prog->dp_neprobes = %zu\n", prog->dp_neprobes);
 	if (prog->dp_neprobes) {
 		prog->dp_eprobes = malloc(prog->dp_neprobes *
@@ -2408,7 +2453,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 		memcpy(prog->dp_eprobes, eprog->dtep_eprobes,
 		    prog->dp_neprobes * sizeof(dtrace_probedesc_t));
 	}
-
+#endif
 	free(dtelf_state);
 	(void) elf_end(e);
 

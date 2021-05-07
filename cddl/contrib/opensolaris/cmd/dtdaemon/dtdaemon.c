@@ -37,9 +37,12 @@
 #include <dt_resolver.h>
 
 #include "dtdaemon.h"
+#include <assert.h>
+#include <execinfo.h>
 #include <stdlib.h>
 #include <syslog.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -57,6 +60,7 @@
 #include <dirent.h>
 #include <getopt.h>
 #include <semaphore.h>
+#include <unistd.h>
 
 #include <dttransport.h>
 
@@ -68,6 +72,7 @@
 #define	DTDAEMON_INBOUNDDIR	"/var/ddtrace/inbound/"
 #define	DTDAEMON_OUTBOUNDDIR	"/var/ddtrace/outbound/"
 #define	DTDAEMON_BASEDIR	"/var/ddtrace/base/"
+#define	DTDAEMON_BACKTRACELEN	128
 
 #define	LOCK_FILE	"/var/dtdaemon.lock"
 #define	SOCKFD_NAME	"sub.sock"
@@ -77,23 +82,7 @@
 #define	EXISTS_CHANGED	1
 #define	EXISTS_EQUAL	2
 
-/*
- * Macros with sanity checks. This should be used everywhere in dtdaemon.
- */
-#define	LOCK(m) {						\
-	int err;						\
-	err = pthread_mutex_lock(m);				\
-	if (err != 0) {						\
-		syslog(LOG_ERR, "Failed to lock mutex: %m");	\
-	}							\
-	}
-#define	UNLOCK(m) {						\
-	int err;						\
-	err = pthread_mutex_unlock(m);				\
-	if (err != 0) {						\
-		syslog(LOG_ERR, "Failed to unlock mutex: %m");	\
-	}							\
-	}
+#define OWNED(m) (atomic_load(&(m)->_owner) == pthread_self())	\
 
 #define	SIGNAL(c) {						\
 	int err;						\
@@ -135,6 +124,14 @@
 	}							\
 	}
 
+typedef struct mutex {
+	pthread_mutex_t		_m;
+	_Atomic pthread_t	_owner;
+	char			_name[32];
+#define	CHECKOWNER_NO		0
+#define	CHECKOWNER_YES		1
+	int			_checkowner;
+} mutex_t;
 
 struct dtd_state;
 struct dtd_dir;
@@ -149,7 +146,7 @@ typedef struct dtd_dir {
 	size_t			efile_size;
 	size_t			efile_len;
 
-	pthread_mutex_t		dirmtx;
+	mutex_t			dirmtx;
 
 	foreach_fn_t		processfn;
 
@@ -175,13 +172,13 @@ struct dtd_state {
 	/*
 	 * Sockets.
 	 */
-	pthread_mutex_t	socklistmtx;
+	mutex_t		socklistmtx;
 	dt_list_t	sockfds;
 
 	/*
 	 * Configuration socket.
 	 */
-	pthread_mutex_t	sockmtx;
+	mutex_t		sockmtx;
 	pthread_t	socktd;
 	int		sockfd;
 	sem_t		socksema;
@@ -197,15 +194,15 @@ struct dtd_state {
 	 * Thread pool management.
 	 */
 	pthread_t	*workers;
-	pthread_mutex_t	joblistcvmtx;
+	mutex_t		joblistcvmtx;
 	pthread_cond_t	joblistcv;
-	pthread_mutex_t	joblistmtx;
+	mutex_t		joblistmtx;
 	dt_list_t	joblist;
 
 	/*
 	 * Are we shutting down?
 	 */
-	int		shutdown;
+	_Atomic int	shutdown;
 
 	/*
 	 * File descriptor of /var/ddtrace
@@ -261,15 +258,144 @@ static const struct option long_opts[] = {
 };
 
 static void
-sig_hdlr(int signo)
+sig_term(int __unused signo)
 {
-	if (signo == SIGTERM)
-		state.shutdown = 1;
-	if (signo == SIGINT)
-		state.shutdown = 1;
-	if (signo == SIGPIPE)
-		return;
+
+	atomic_store(&state.shutdown, 1);
 }
+
+static void
+sig_int(int __unused signo)
+{
+
+	atomic_store(&state.shutdown, 1);
+}
+
+static void
+sig_pipe(int __unused signo)
+{
+
+}
+
+static void
+dump_errormsg(const char *msg, ...)
+{
+	va_list ap;
+
+	va_start(ap, msg);
+	if (msg) {
+		vfprintf(stderr, msg, ap);
+		vsyslog(LOG_ERR, msg, ap);
+	}
+	va_end(ap);
+}
+
+static int
+mutex_init(mutex_t *m, const pthread_mutexattr_t *restrict attr,
+    const char *name, int checkowner)
+{
+	size_t l;
+
+	assert(m != NULL);
+
+	if (name == NULL)
+		return (-1);
+
+	l = strlcpy(m->_name, name, 32);
+	if (l >= 32)
+		return (-1);
+
+	m->_checkowner = checkowner;
+
+	atomic_store(&m->_owner, NULL);
+	return (pthread_mutex_init(&m->_m, attr));
+}
+
+static int
+mutex_destroy(mutex_t *m)
+{
+
+	assert(atomic_load(&m->_owner) == NULL);
+	return (pthread_mutex_destroy(&m->_m));
+}
+
+static pthread_mutex_t *
+pmutex_of(mutex_t *m)
+{
+
+	return (&m->_m);
+}
+
+static void
+LOCK(mutex_t *m)
+{
+	int err;
+
+	err = pthread_mutex_lock(&(m)->_m);
+	if (err != 0) {
+		syslog(LOG_ERR, "Failed to lock mutex: %m");
+		return;
+	}
+
+	if (m->_checkowner != CHECKOWNER_NO)
+		atomic_store(&(m)->_owner, pthread_self());
+}
+
+static void
+dump_backtrace(void)
+{
+	int nptrs;
+	void *buffer[DTDAEMON_BACKTRACELEN];
+	char **strings;
+
+	nptrs = backtrace(buffer, DTDAEMON_BACKTRACELEN);
+	strings = backtrace_symbols(buffer, nptrs);
+
+	if (strings == NULL) {
+		syslog(LOG_ERR, "Failed to get backtrace symbols: %m");
+		exit(EXIT_FAILURE);
+	}
+
+	for (int j = 0; j < nptrs; j++)
+		dump_errormsg("%s\n", strings[j]);
+
+	free(strings);
+}
+
+static void
+UNLOCK(mutex_t *m)
+{
+	int err;
+
+	if (m->_checkowner != CHECKOWNER_NO) {
+		if (OWNED(m) == 0) {
+			dump_errormsg(
+			    "attempted unlock of %s which is not owned\n",
+			    m->_name);
+			dump_backtrace();
+			exit(EXIT_FAILURE);
+		}
+
+		assert(OWNED(m));
+		if (atomic_load(&m->_owner) != pthread_self()) {
+			dump_errormsg(
+			    "attempted unlock of %s by thread %p (!= %p)\n",
+			    m->_name, pthread_self(), atomic_load(&m->_owner));
+			dump_backtrace();
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	err = pthread_mutex_unlock(&(m)->_m);
+	if (err != 0) {
+		syslog(LOG_ERR, "Failed to unlock mutex: %m");
+		return;
+	}
+
+	if (m->_checkowner != CHECKOWNER_NO)
+		atomic_store(&m->_owner, NULL);
+}
+
 
 /*
  * Used for generating a random name of the outbound ELF file.
@@ -345,11 +471,13 @@ listen_dttransport(void *_s)
 	
 	memset(&e, 0, sizeof(e));
 
+	LOCK(&s->inbounddir->dirmtx);
 	dirlen = strlen(s->inbounddir->dirpath);
+	UNLOCK(&s->inbounddir->dirmtx);
 
-	while (s->shutdown == 0) {
+	while (atomic_load(&s->shutdown) == 0) {
 		if (read(s->dtt_fd, &e, sizeof(e)) < 0) {
-			if (errno == EINTR && s->shutdown == 1)
+			if (errno == EINTR && atomic_load(&s->shutdown) == 1)
 				pthread_exit(s);
 
 			syslog(LOG_ERR, "Failed to read an entry: %m");
@@ -367,7 +495,10 @@ retry:
 		 * not exist.
 		 */
 		if (fd == 0) {
+			LOCK(&s->inbounddir->dirmtx);
 			path = gen_filename(s->inbounddir->dirpath);
+			UNLOCK(&s->inbounddir->dirmtx);
+
 			if (path == NULL) {
 				syslog(LOG_ERR, "gen_filename() failed with %s\n",
 				    strerror(errno));
@@ -376,8 +507,7 @@ retry:
 			fd = open(path, O_CREAT | O_WRONLY, 0600);
 
 			if (fd == -1) {
-				syslog(LOG_ERR, "Failed to open %s%s: %m",
-				    s->inbounddir->dirpath, path);
+				syslog(LOG_ERR, "Failed to open %s: %m", path);
 				continue;
 			}
 
@@ -392,7 +522,8 @@ retry:
 
 		if (e.hasmore == 0) {
 			if (write(fd, elf, len) < 0) {
-				if (errno == EINTR && s->shutdown == 1)
+				if (errno == EINTR &&
+				    atomic_load(&s->shutdown) == 1)
 					pthread_exit(s);
 
 				syslog(LOG_ERR,
@@ -484,9 +615,9 @@ write_dttransport(void *_s)
 		pthread_exit(NULL);
 	}
 
-	while (s->shutdown == 0) {
+	while (atomic_load(&s->shutdown) == 0) {
 		if ((rval = recv(sockfd, &len, sizeof(size_t), 0)) < 0) {
-			if (errno == EINTR && s->shutdown == 1)
+			if (errno == EINTR && atomic_load(&s->shutdown) == 1)
 				pthread_exit(s);
 			
 			syslog(LOG_ERR, "Failed to recv from sub.sock: %m");
@@ -504,7 +635,8 @@ write_dttransport(void *_s)
 			 * on the safe side we should loop instead of just if()?
 			 */
 			if ((rval = recv(sockfd, e.data, lentoread, 0)) < 0) {
-				if (errno == EINTR && s->shutdown == 1)
+				if (errno == EINTR &&
+				    atomic_load(&s->shutdown) == 1)
 					pthread_exit(s);
 				/*
 				 * If the device is not configured, we don't
@@ -522,7 +654,8 @@ write_dttransport(void *_s)
 			e.totallen = totallen;
 
 			if (write(s->dtt_fd, &e, sizeof(e)) < 0) {
-				if (errno == EINTR && s->shutdown == 1)
+				if (errno == EINTR &&
+				    atomic_load(&s->shutdown) == 1)
 					pthread_exit(s);
 	/*
 				 * If we don't have dttransport opened,
@@ -539,6 +672,10 @@ write_dttransport(void *_s)
 	pthread_exit(s);
 }
 
+/*
+ * TODO(dstolfa): process_outbound should be called from here... we don't need
+ * to replicate this loop in the main thread.
+ */
 static void *
 listen_dir(void *_dir)
 {
@@ -554,19 +691,21 @@ listen_dir(void *_dir)
 
 	if ((kq = kqueue()) == -1) {
 		syslog(LOG_ERR, "Failed to create a kqueue %m");
-		pthread_exit(NULL);
+		return (NULL);
 	}
 
 	EV_SET(&ev, dir->dirfd, EVFILT_VNODE, EV_ADD | EV_CLEAR,
 	    NOTE_WRITE, 0, (void *)dir);
 
 	for (;;) {
+		LOCK(&dir->dirmtx);
+		UNLOCK(&dir->dirmtx);
 		rval = kevent(kq, &ev, 1, &ev_data, 1, NULL);
 		assert(rval != 0);
 
 		if (rval < 0) {
-			if (errno == EINTR && s->shutdown == 1)
-				pthread_exit(s);
+			if (errno == EINTR && atomic_load(&s->shutdown) == 1)
+				return (s);
 
 			syslog(LOG_ERR, "kevent() failed with %m");
 			continue;
@@ -581,12 +720,12 @@ listen_dir(void *_dir)
 			err = file_foreach(dir->dir, dir->processfn, dir);
 			if (err) {
 				syslog(LOG_ERR, "Failed to process new files");
-				pthread_exit(NULL);
+				return (NULL);
 			}
 		}
 	}
 
-	pthread_exit(s);
+	return (s);
 }
 
 static void *
@@ -613,14 +752,20 @@ process_joblist(void *_s)
 	dir = NULL;
 	memset(&stat, 0, sizeof(stat));
 
-	while (s->shutdown == 0) {
+	while (atomic_load(&s->shutdown) == 0) {
 		LOCK(&s->joblistcvmtx);
-		while (dt_list_next(&s->joblist) == NULL && s->shutdown == 0) {
-			WAIT(&s->joblistcv, &s->joblistcvmtx);
+		LOCK(&s->joblistmtx);
+		while (dt_list_next(&s->joblist) == NULL &&
+		    atomic_load(&s->shutdown) == 0) {
+			UNLOCK(&s->joblistmtx);
+			WAIT(&s->joblistcv, pmutex_of(&s->joblistcvmtx));
+			LOCK(&s->joblistmtx);
 		}
+		UNLOCK(&s->joblistmtx);
 		UNLOCK(&s->joblistcvmtx);
-		if (s->shutdown == 1)
+		if (atomic_load(&s->shutdown) == 1)
 			break;
+
 
 		LOCK(&s->joblistmtx);
 		curjob = dt_list_next(&s->joblist);
@@ -719,11 +864,12 @@ process_joblist(void *_s)
 					    &s->sockfds, &fd, sizeof(int));
 					if (fde == NULL) {
 						UNLOCK(&s->socklistmtx);
-						break;
+						goto cleanup;
 					}
 
 					dt_list_delete(&s->sockfds, fde);
 					UNLOCK(&s->socklistmtx);
+					goto cleanup;
 				} else
 					syslog(LOG_ERR,
 					    "Failed to write to %d (%zu): %m",
@@ -747,7 +893,7 @@ process_joblist(void *_s)
 					    &s->sockfds, &fd, sizeof(int));
 					if (fde == NULL) {
 						UNLOCK(&s->socklistmtx);
-						break;
+						goto cleanup;
 					}
 
 					dt_list_delete(&s->sockfds, fde);
@@ -759,6 +905,7 @@ process_joblist(void *_s)
 					    fd, path, pathlen);
 			}
 
+cleanup:
 			free(path);
 			free(msg);
 			close(elffd);
@@ -805,7 +952,7 @@ accept_subs(void *_s)
 
 	SPOST(&s->socksema);
 
-	while (s->shutdown == 0) {
+	while (atomic_load(&s->shutdown) == 0) {
 		connsockfd = accept(s->sockfd, NULL, 0);
 		if (connsockfd == -1) {
 			/*
@@ -814,7 +961,7 @@ accept_subs(void *_s)
 			 * received on this thread is when we explicitly
 			 * call pthread_kill() on shutdown.
 			 */
-			if (errno == EINTR && state.shutdown == 1)
+			if (errno == EINTR && atomic_load(&s->shutdown) == 1)
 				goto exit;
 
 			syslog(LOG_ERR, "Failed to accept a connection: %m");
@@ -823,6 +970,11 @@ accept_subs(void *_s)
 
 		kind = DTDAEMON_KIND_DTDAEMON;
 		if (send(connsockfd, &kind, sizeof(kind), 0) < 0) {
+			close(connsockfd);
+
+			if (errno == EINTR && atomic_load(&s->shutdown) == 1)
+				goto exit;
+
 			fprintf(stderr, "Failed to send %zu to connsockfd: %s",
 			    kind, strerror(errno));
 			pthread_exit(NULL);
@@ -831,6 +983,11 @@ accept_subs(void *_s)
 		kind = 0;
 		if (recv(connsockfd, &kind, sizeof(kind), 0) < 0) {
 			free(fde);
+			close(connsockfd);
+
+			if (errno == EINTR && atomic_load(&s->shutdown) == 1)
+				goto exit;
+
 			syslog(LOG_ERR, "Failed to read what kind of subscriber"
 			    " is being accepted: %m");
 			pthread_exit(NULL);
@@ -838,6 +995,7 @@ accept_subs(void *_s)
 
 		fde = malloc(sizeof(struct dtd_fdlist));
 		if (fde == NULL) {
+			close(connsockfd);
 			syslog(LOG_ERR, "Failed to malloc a fdlist entry");
 			pthread_exit(NULL);
 		}
@@ -877,7 +1035,7 @@ setup_sockfd(struct dtd_state *s)
 		    "Failed to copy %s into sockaddr (%zu)",
 		    DTDAEMON_SOCKPATH, l);
 		s->sockfd = -1;
-		err = pthread_mutex_destroy(&s->sockmtx);
+		err = mutex_destroy(&s->sockmtx);
 		if (err != 0)
 			syslog(LOG_ERR, "Failed to destroy sockmtx: %m");
 
@@ -893,7 +1051,7 @@ setup_sockfd(struct dtd_state *s)
 		}
 
 		s->sockfd = -1;
-		err = pthread_mutex_destroy(&s->sockmtx);
+		err = mutex_destroy(&s->sockmtx);
 		if (err != 0)
 			syslog(LOG_ERR, "Failed to destroy sockmtx: %m");
 
@@ -939,6 +1097,8 @@ expand_paths(dtd_dir_t *dir)
 {
 	char **newpaths;
 	struct dtd_state *s;
+
+	assert(OWNED(&dir->dirmtx));
 
 	if (dir == NULL) {
 		syslog(LOG_ERR, "Expand paths called with dir == NULL");
@@ -1026,18 +1186,24 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	if (f->d_name[0] == '.')
 		return (0);
 
+	LOCK(&dir->dirmtx);
 	idx = findpath(f->d_name, dir);
-	if (idx >= 0)
+	if (idx >= 0) {
+		UNLOCK(&dir->dirmtx);
 		return (0);
+	}
 
 	l = strlcpy(fullpath, dir->dirpath, sizeof(fullpath));
 	if (l >= sizeof(fullpath)) {
 		syslog(LOG_ERR, "Failed to copy %s into a path string",
 		    dir->dirpath);
+		UNLOCK(&dir->dirmtx);
 		return (-1);
 	}
 
 	dirpathlen = strlen(dir->dirpath);
+	UNLOCK(&dir->dirmtx);
+
 	l = strlcpy(fullpath + dirpathlen,
 	    f->d_name, sizeof(fullpath) - dirpathlen);
 	if (l >= sizeof(fullpath) - dirpathlen) {
@@ -1121,8 +1287,10 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		}
 	}
 
+	LOCK(&dir->dirmtx);
 	err = expand_paths(dir);
 	if (err != 0) {
+		UNLOCK(&dir->dirmtx);
 		syslog(LOG_ERR, "Failed to expand paths after processing %s",
 		    f->d_name);
 		return (-1);
@@ -1130,6 +1298,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 	assert(dir->efile_size > dir->efile_len);
 	dir->existing_files[dir->efile_len++] = strdup(f->d_name);
+	UNLOCK(&dir->dirmtx);
 
 	return (0);
 }
@@ -1186,16 +1355,6 @@ dtdaemon_copyfile(const char *src, const char *dst)
 	close(newfd);
 	free(buf);
 
-	dirlen = strlen(dirname(dst)) + 1;
-	donepathlen = strlen(dst) - 1;
-	memset(donepath, 0, donepathlen);
-	memcpy(donepath, dst, dirlen);
-	memcpy(donepath + dirlen, dst + dirlen + 1,
-	    donepathlen - dirlen);
-
-	if (rename(dst, donepath))
-		syslog(LOG_ERR, "Failed to rename %s to %s: %m", dst, dst + 1);
-
 }
 
 static int
@@ -1210,6 +1369,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	char *argv[4];
 	char fullarg[MAXPATHLEN*2 + 1] = { 0 };
 	size_t offset;
+	char *dirpath, *outbounddirpath;
 	char donename[MAXPATHLEN] = { 0 };
 	size_t dirpathlen = 0;
 	
@@ -1219,7 +1379,9 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 		return (-1);
 	}
 	
+	LOCK(&dir->dirmtx);
 	s = dir->state;
+	UNLOCK(&dir->dirmtx);
 
 	if (s == NULL) {
 		syslog(LOG_ERR, "state is NULL in base "
@@ -1239,21 +1401,33 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	if (f->d_name[0] == '.')
 		return (0);
 
+	LOCK(&dir->dirmtx);
 	idx = findpath(f->d_name, dir);
-	if (idx >= 0)
+	if (idx >= 0) {
+		UNLOCK(&dir->dirmtx);
 		return (0);
+	}
 
-	newname = gen_filename(s->outbounddir->dirpath);
-	dirpathlen = strlen(s->outbounddir->dirpath);
-	strcpy(fullpath, dir->dirpath);
+	dirpath = strdup(dir->dirpath);
+	UNLOCK(&dir->dirmtx);
+
+	LOCK(&s->outbounddir->dirmtx);
+	outbounddirpath = strdup(s->outbounddir->dirpath);
+	UNLOCK(&s->outbounddir->dirmtx);
+
+	newname = gen_filename(outbounddirpath);
+	dirpathlen = strlen(outbounddirpath);
+	strcpy(fullpath, dirpath);
 	strcpy(fullpath + strlen(fullpath), f->d_name);
 	dtdaemon_copyfile(fullpath, newname);
-	strcpy(donename, s->outbounddir->dirpath);
+	strcpy(donename, outbounddirpath);
 	strcpy(donename + dirpathlen, newname + dirpathlen + 1);
 	if (rename(newname, donename))
 		syslog(LOG_ERR, "Failed to rename %s to %s: %m", newname,
 		    donename);
 	free(newname);
+	free(dirpath);
+	free(outbounddirpath);
 
 	parent = getpid();
 	pid = fork();
@@ -1275,8 +1449,10 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 		exit(EXIT_FAILURE);
 	}
 
+	LOCK(&dir->dirmtx);
 	err = expand_paths(dir);
 	if (err != 0) {
+		UNLOCK(&dir->dirmtx);
 		syslog(LOG_ERR, "Failed to expand paths after processing %s",
 		    f->d_name);
 		return (-1);
@@ -1284,6 +1460,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 
 	assert(dir->efile_size > dir->efile_len);
 	dir->existing_files[dir->efile_len++] = strdup(f->d_name);
+	UNLOCK(&dir->dirmtx);
 
 	return (0);
 }
@@ -1322,7 +1499,9 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	if (f->d_name[0] == '.')
 		return (0);
 
+	LOCK(&dir->dirmtx);
 	idx = findpath(f->d_name, dir);
+	UNLOCK(&dir->dirmtx);
 
 	if (idx >= 0)
 		return (0);
@@ -1358,8 +1537,10 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	}
 	UNLOCK(&s->socklistmtx);
 
+	LOCK(&dir->dirmtx);
 	err = expand_paths(dir);
 	if (err != 0) {
+		UNLOCK(&dir->dirmtx);
 		syslog(LOG_ERR, "Failed to expand paths after processing %s",
 		    f->d_name);
 		return (-1);
@@ -1367,6 +1548,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 
 	assert(dir->efile_size > dir->efile_len);
 	dir->existing_files[dir->efile_len++] = strdup(f->d_name);
+	UNLOCK(&dir->dirmtx);
 
 	return (0);
 }
@@ -1502,7 +1684,8 @@ dtd_mkdir(const char *path, foreach_fn_t fn)
 	memset(dir, 0, sizeof(dtd_dir_t));
 
 	dir->dirpath = strdup(path);
-	if ((err = pthread_mutex_init(&dir->dirmtx, NULL)) != 0) {
+	if ((err = mutex_init(
+	    &dir->dirmtx, NULL, dir->dirpath, CHECKOWNER_YES)) != 0) {
 		syslog(LOG_ERR, "Failed to create dir mutex: %m");
 		return (NULL);
 	}
@@ -1545,22 +1728,26 @@ init_state(struct dtd_state *s)
 	memset(s, 0, sizeof(struct dtd_state));
 	s->sockfd = -1;
 
-	if ((err = pthread_mutex_init(&s->socklistmtx, NULL)) != 0) {
+	if ((err = mutex_init(
+	    &s->socklistmtx, NULL, "socklist", CHECKOWNER_YES)) != 0) {
 		syslog(LOG_ERR, "Failed to create sock list mutex: %m");
 		return (-1);
 	}
 
-	if ((err = pthread_mutex_init(&s->sockmtx, NULL)) != 0) {
+	if ((err = mutex_init(
+	    &s->sockmtx, NULL, "socket", CHECKOWNER_YES)) != 0) {
 		syslog(LOG_ERR, "Failed to create socket mutex: %m");
 		return (-1);
 	}
 
-	if ((err = pthread_mutex_init(&s->joblistcvmtx, NULL)) != 0) {
+	if ((err = mutex_init(
+	    &s->joblistcvmtx, NULL, "joblist condvar", CHECKOWNER_NO)) != 0) {
 		syslog(LOG_ERR, "Failed to create joblist condvar mutex: %m");
 		return (-1);
 	}
 
-	if ((err = pthread_mutex_init(&s->joblistmtx, NULL)) != 0) {
+	if ((err = mutex_init(
+	    &s->joblistmtx, NULL, "joblist", CHECKOWNER_YES)) != 0) {
 		syslog(LOG_ERR, "Failed to create joblist mutex: %m");
 		return (-1);
 	}
@@ -1593,6 +1780,7 @@ dtd_closedir(dtd_dir_t *dir)
 	size_t i;
 	int err;
 	
+	LOCK(&dir->dirmtx);
 	free(dir->dirpath);
 	close(dir->dirfd);
 	closedir(dir->dir);
@@ -1602,12 +1790,13 @@ dtd_closedir(dtd_dir_t *dir)
 
 	free(dir->existing_files);
 
-	err = pthread_mutex_destroy(&dir->dirmtx);
-	if (err != 0)
-		syslog(LOG_ERR, "Failed to destroy dirmtx: %m");
-
 	dir->efile_size = 0;
 	dir->efile_len = 0;
+	UNLOCK(&dir->dirmtx);
+
+	err = mutex_destroy(&dir->dirmtx);
+	if (err != 0)
+		syslog(LOG_ERR, "Failed to destroy dirmtx: %m");
 
 	free(dir);
 }
@@ -1627,19 +1816,19 @@ destroy_state(struct dtd_state *s)
 	}
 	UNLOCK(&s->joblistmtx);
 
-	if ((err = pthread_mutex_destroy(&s->socklistmtx)) != 0) {
+	if ((err = mutex_destroy(&s->socklistmtx)) != 0) {
 		syslog(LOG_ERR, "Failed to destroy sock list mutex: %m");
 		return (-1);
 	}
-	if ((err = pthread_mutex_destroy(&s->sockmtx)) != 0) {
+	if ((err = mutex_destroy(&s->sockmtx)) != 0) {
 		syslog(LOG_ERR, "Failed to destroy socket mutex: %m");
 		return (-1);
 	}
-	if ((err = pthread_mutex_destroy(&s->joblistcvmtx)) != 0) {
+	if ((err = mutex_destroy(&s->joblistcvmtx)) != 0) {
 		syslog(LOG_ERR, "Failed to destroy joblist condvar mutex: %m");
 		return (-1);
 	}
-	if ((err = pthread_mutex_destroy(&s->joblistmtx)) != 0) {
+	if ((err = mutex_destroy(&s->joblistmtx)) != 0) {
 		syslog(LOG_ERR, "Failed to destroy joblist mutex: %m");
 		return (-1);
 	}
@@ -1650,6 +1839,7 @@ destroy_state(struct dtd_state *s)
 
 	dtd_closedir(s->outbounddir);
 	dtd_closedir(s->inbounddir);
+	dtd_closedir(s->basedir);
 
 	sem_destroy(&s->socksema);
 
@@ -1783,17 +1973,17 @@ againefd:
 
 	state.nosha = nosha;
 
-	if (signal(SIGTERM, sig_hdlr) == SIG_ERR) {
+	if (signal(SIGTERM, sig_term) == SIG_ERR) {
 		syslog(LOG_ERR, "Failed to install SIGTERM handler");
 		return (EX_OSERR);
 	}
 
-	if (signal(SIGINT, sig_hdlr) == SIG_ERR) {
+	if (signal(SIGINT, sig_int) == SIG_ERR) {
 		syslog(LOG_ERR, "Failed to install SIGINT handler");
 		return (EX_OSERR);
 	}
 
-	if (signal(SIGPIPE, sig_hdlr) == SIG_ERR) {
+	if (signal(SIGPIPE, sig_pipe) == SIG_ERR) {
 		syslog(LOG_ERR, "Failed to install SIGPIPE handler");
 		return (EX_OSERR);
 	}
@@ -1830,6 +2020,11 @@ againefd:
 		return (EX_OSERR);
 	}
 
+	if (listen_dir(state.outbounddir) == NULL)
+		errx(EXIT_FAILURE, "listen_dir() on %s failed",
+		    state.outbounddir->dirpath);
+
+#if 0
 	if ((kq = kqueue()) == -1) {
 		syslog(LOG_ERR, "Failed to create a kqueue %m");
 		return (EX_OSERR);
@@ -1843,7 +2038,7 @@ againefd:
 		assert(rval != 0);
 
 		if (rval < 0) {
-			if (errno == EINTR && state.shutdown == 1)
+			if (errno == EINTR && atomic_load(&state.shutdown) == 1)
 				goto cleanup;
 
 			syslog(LOG_ERR, "kevent() failed with %m");
@@ -1864,6 +2059,7 @@ againefd:
 			}
 		}
 	}
+#endif
 
 cleanup:
 	errval = pthread_kill(state.socktd, SIGTERM);
@@ -1911,6 +2107,18 @@ cleanup:
 	errval = pthread_join(state.inboundtd, (void **)&retval);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to join inboundtd: %m");
+		return (EX_OSERR);
+	}
+
+	errval = pthread_kill(state.basetd, SIGTERM);
+	if (errval != 0) {
+		syslog(LOG_ERR, "Failed to interrupt basetd: %m");
+		return (EX_OSERR);
+	}
+
+	errval = pthread_join(state.basetd, (void **)&retval);
+	if (errval != 0) {
+		syslog(LOG_ERR, "Failed to join basetd: %m");
 		return (EX_OSERR);
 	}
 
