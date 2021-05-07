@@ -1308,7 +1308,11 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp)
 	if (gpgp) {
 		printf(
 		    "process_new_pgp: dp_neprobes = %u\n", gpgp->dp_neprobes);
+
+		if (gpgp->dp_neprobes != 0)
+			assert(gpgp->dp_eprobes != NULL);
 		for (i = 0; i < gpgp->dp_neprobes; i++) {
+			printf("probe %d:\n", i);
 			printf("process_new_pgp: matched %s:%s:%s:%s\n",
 			    gpgp->dp_eprobes[i].dtpd_provider,
 			    gpgp->dp_eprobes[i].dtpd_mod,

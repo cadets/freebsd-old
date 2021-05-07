@@ -1455,7 +1455,7 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	prog->dtep_neprobes = dt_prog->dp_neprobes;
 	memcpy(prog->dtep_eprobes, dt_prog->dp_eprobes,
 	    dt_prog->dp_neprobes * sizeof(dtrace_probedesc_t));
-	
+
 	/*
 	 * Get the first stmt.
 	 */
@@ -2439,11 +2439,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	prog->dp_exec = eprog->dtep_exec;
 	prog->dp_neprobes = eprog->dtep_neprobes;
-	/*
-	 * TODO: Remove this.
-	 */
-#if 0 
-	printf("prog->dp_neprobes = %zu\n", prog->dp_neprobes);
+
 	if (prog->dp_neprobes) {
 		prog->dp_eprobes = malloc(prog->dp_neprobes *
 		    sizeof(dtrace_probedesc_t));
@@ -2453,7 +2449,6 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 		memcpy(prog->dp_eprobes, eprog->dtep_eprobes,
 		    prog->dp_neprobes * sizeof(dtrace_probedesc_t));
 	}
-#endif
 	free(dtelf_state);
 	(void) elf_end(e);
 
