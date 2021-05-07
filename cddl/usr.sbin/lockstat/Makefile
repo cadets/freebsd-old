@@ -19,8 +19,8 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 
 CFLAGS+=	-DNEED_ERRLOC -g
 
-CFLAGS+=	-fsanitize=address
-LDFLAGS+=	-fsanitize=address
+CFLAGS+=	-fsanitize=address -fsanitize=undefined
+LDFLAGS+=	-fsanitize=address -fsanitize=undefined
 
 #YFLAGS+=	-d
 

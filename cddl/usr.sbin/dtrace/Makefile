@@ -20,8 +20,8 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${SRCTOP}/cddl/contrib/opensolaris/cmd/dtdaemon
 
 
-CFLAGS+=	-fsanitize=address
-LDFLAGS+=	-fsanitize=address
+CFLAGS+=	-fsanitize=address -fsanitize=undefined
+LDFLAGS+=	-fsanitize=address -fsanitize=undefined
 
 # Optional debugging stuff...
 #CFLAGS+=	-DNEED_ERRLOC
