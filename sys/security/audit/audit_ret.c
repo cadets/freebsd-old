@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/un.h>
 #include <sys/vnode.h>
+#include <sys/msgid.h>
 
 #include <netinet/in.h>
 #include <netinet/in_pcb.h>
