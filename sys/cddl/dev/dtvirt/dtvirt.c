@@ -52,15 +52,17 @@ static lwpid_t dtvirt_priv_gettid(void *);
 static uint16_t dtvirt_priv_getns(void *);
 static const char *dtvirt_priv_getname(void *);
 
-lwpid_t (*vmm_gettid)(void *biscuit);
-uint16_t (*vmm_getid)(void *biscuit);
-const char *(*vmm_getname)(void *biscuit);
+lwpid_t (*vmm_gettid)(void *vmhdl);
+uint16_t (*vmm_getid)(void *vmhdl);
+const char *(*vmm_getname)(void *vmhdl);
 
 void
-dtvirt_probe(void *biscuit, int probeid, struct dtvirt_args *dtv_args)
+dtvirt_probe(void *vmhdl, int probeid, struct dtvirt_args *dtv_args)
 {
 
-	dtrace_vprobe(biscuit, probeid, dtv_args);
+	printf("dtvirt_probe(): called\n");
+	dtrace_vprobe(vmhdl, probeid, dtv_args);
+	printf("dtvirt_probe(): return\n");
 }
 
 static int
@@ -87,10 +89,10 @@ dtvirt_handler(module_t mod __unused, int what, void *arg __unused)
  * Get the thread ID of the VM.
  */
 static lwpid_t
-dtvirt_priv_gettid(void *biscuit)
+dtvirt_priv_gettid(void *vmhdl)
 {
 
-	return (vmm_gettid == NULL ? 0 : vmm_gettid(biscuit));
+	return (vmm_gettid == NULL ? 0 : vmm_gettid(vmhdl));
 }
 
 /*
@@ -98,17 +100,17 @@ dtvirt_priv_gettid(void *biscuit)
  * thread-local storage in the DTrace probe context.
  */
 static uint16_t
-dtvirt_priv_getns(void *biscuit)
+dtvirt_priv_getns(void *vmhdl)
 {
 
-	return (vmm_getid == NULL ? 0 : vmm_getid(biscuit));
+	return (vmm_getid == NULL ? 0 : vmm_getid(vmhdl));
 }
 
 static const char *
-dtvirt_priv_getname(void *biscuit)
+dtvirt_priv_getname(void *vmhdl)
 {
 
-	return (vmm_getname == NULL ? 0 : vmm_getname(biscuit));
+	return (vmm_getname == NULL ? 0 : vmm_getname(vmhdl));
 }
 
 static moduledata_t dtvirt_kmod = {

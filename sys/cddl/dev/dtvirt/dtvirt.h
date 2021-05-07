@@ -32,10 +32,6 @@ struct dtvirt_args {
 	int dtv_errno;				/* guest errno */
 	u_int dtv_curcpu;			/* (h) guest curcpu */
 	u_int dtv_execargs_len;			/* (v) guest execargs */
-	char *dtv_probeprov;			/* XXX: remove? */
-	char *dtv_probemod;			/* XXX: remove? */
-	char *dtv_probefunc;			/* XXX: remove? */
-	char *dtv_probename;			/* XXX: remove? */
 	char *dtv_jailname;			/* (v) guest jailname */
 	int dtv_jid;				/* guest jid */
 };
