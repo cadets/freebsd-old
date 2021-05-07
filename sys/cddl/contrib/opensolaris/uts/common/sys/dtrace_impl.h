@@ -959,7 +959,7 @@ typedef struct dtrace_mstate {
 	uint32_t dtms_access;			/* memory access rights */
 	dtrace_difo_t *dtms_difo;		/* current dif object */
 	file_t *dtms_getf;			/* cached rval of getf() */
-	void *dtms_biscuit;			/* current VM biscuit */
+	void *dtms_vmhdl;			/* current VM handle */
 	struct dtvirt_args *dtms_dtvargs;	/* VM args */
 } dtrace_mstate_t;
 

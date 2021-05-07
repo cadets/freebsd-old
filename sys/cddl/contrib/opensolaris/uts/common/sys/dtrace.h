@@ -614,18 +614,6 @@ typedef struct dtrace_difv {
 #define	DTRACEACT_ISAGG(x)		\
 	(DTRACEACT_CLASS(x) == DTRACEACT_AGGREGATION)
 
-/*
- * DTrace-Virt functionality.
- */
-#define DTRACEACT_VIRT      0x0800
-#define DTRACEVT_HYPERCALL (DTRACEACT_VIRT + 1)
-
-#define	DTRACEACT_ISVIRT(x)		\
-	(DTRACEACT_CLASS(x) == DTRACEACT_VIRT)
-
-_Static_assert(DTRACEACT_ISVIRT(DTRACEVT_HYPERCALL) != 0,
-    "DTRACEVT_HYPERCALL has to be of class DTRACEACT_VIRT");
-
 #define	DTRACE_QUANTIZE_NBUCKETS	\
 	(((sizeof (uint64_t) * NBBY) - 1) * 2 + 1)
 

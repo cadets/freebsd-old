@@ -486,13 +486,13 @@ static kmutex_t dtrace_errlock;
 	uint_t actv = _c->cpu_intr_actv; \
 	lwpid_t tid; \
 	uint16_t ns; \
-	void *biscuit = mstate->dtms_biscuit; \
+	void *vmhdl = mstate->dtms_vmhdl; \
 	for (; actv; actv >>= 1) \
 		intr++; \
 	ASSERT(intr < (1 << 3)); \
-	if (biscuit) { \
-		tid = dtvirt_gettid(biscuit); \
-		ns = dtvirt_getns(biscuit); \
+	if (vmhdl) { \
+		tid = dtvirt_gettid(vmhdl); \
+		ns = dtvirt_getns(vmhdl); \
 	} \
 	else { \
 		tid = curthread->td_tid; \
@@ -557,8 +557,8 @@ _NOTE(CONSTCOND) } while (0)
 static struct vm_guest_paging *
 dtrace_get_paging(dtrace_mstate_t *mstate)
 {
-	struct vm_biscuit *bis = mstate->dtms_biscuit;
-	return (bis->paging);
+	struct vm_hdl *vmhdl = mstate->dtms_vmhdl;
+	return (vmhdl->paging);
 }
 
 #define DTRACE_LOADFUNC(bits)                                                 \
@@ -570,20 +570,20 @@ dtrace_get_paging(dtrace_mstate_t *mstate)
 		/*CSTYLED*/                                                   \
 		uint##bits##_t *loc;                                          \
 		uint##bits##_t rval;                                          \
-		void *biscuit;                                                \
+		void *vmhdl;                                                \
 		int err;                                                      \
 		int i;                                                        \
 		volatile uint16_t *flags =                                    \
 		    (volatile uint16_t *)&cpu_core[curcpu].cpuc_dtrace_flags; \
                                                                               \
 		if (mstate)                                                   \
-			biscuit = mstate->dtms_biscuit;                       \
+			vmhdl = mstate->dtms_vmhdl;                       \
 		else                                                          \
-			biscuit = NULL;                                       \
+			vmhdl = NULL;                                       \
                                                                               \
 		DTRACE_ALIGNCHECK(addr, size, flags);                         \
 		loc = NULL;                                                   \
-		if (biscuit != NULL) {                                        \
+		if (vmhdl != NULL) {                                        \
 			*flags |= CPU_DTRACE_NOFAULT;                         \
 			err = dtrace_gla2hva(                                 \
 			    dtrace_get_paging(mstate), addr, &addr);          \
@@ -787,7 +787,7 @@ uintptr_t
 dtrace_vmloadmem(dtrace_mstate_t *mstate, uintptr_t addr, size_t size)
 {
 	uintptr_t rval;
-	void *biscuit = mstate->dtms_biscuit;
+	void *vmhdl = mstate->dtms_vmhdl;
 	int err;
 	volatile uint16_t *flags = (volatile uint16_t *)
 	    &cpu_core[curcpu].cpuc_dtrace_flags;
@@ -4148,7 +4148,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 				(uintptr_t)"host", state, mstate));
 		
 		return (dtrace_dif_varstr(
-		    (uintptr_t)dtvirt_getname(mstate->dtms_biscuit),
+		    (uintptr_t)dtvirt_getname(mstate->dtms_vmhdl),
 		    state, mstate));
 
 	default:
@@ -7432,7 +7432,22 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			    (dtrace_provider_t *)(pr->dtpr_vmid == 0 ?
 			    pr->dtpr_provider : 0);
 
+			/*
+			 * We expect real providers, not vproviders.
+			 */
+			if (prov == NULL)
+				break;
+
 			if (bhyve_hypercalls_enabled()) {
+
+				struct dtvirt_args dtv_args;
+
+				ASSERT(prov != NULL);
+				ASSERT(jail != NULL);
+				ASSERT(mstate != NULL);
+				ASSERT(mstate->dtms_probe != NULL);
+				ASSERT(curthread != NULL);
+				ASSERT(curthread->td_ucred != NULL);
 				struct dtvirt_args _dtv_args = {
 					.dtv_args = {
 						mstate->dtms_arg[0],
@@ -7447,38 +7462,47 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 						0
 					},
 					.dtv_curthread = curthread,
-					.dtv_execname = "",
+					.dtv_execname = NULL, /* needs check */
 					.dtv_execargs = NULL, /* needs check */
 					.dtv_tid = curthread->td_tid,
-					.dtv_pid = curthread->td_proc->p_pid,
+					.dtv_pid = 0, /* needs check */
 					.dtv_ppid = 0, /* needs check */
-					.dtv_uid = curthread->td_ucred->cr_uid,
-					.dtv_gid = curthread->td_ucred->cr_gid,
+					.dtv_uid = 0, /* needs check */
+					.dtv_gid = 0, /* needs check */
 					.dtv_errno = curthread->td_errno,
 					.dtv_curcpu = curcpu,
-					.dtv_execargs_len = 0,
-					.dtv_probeprov = prov->dtpv_name,
-					.dtv_probemod = pr->dtpr_mod,
-					.dtv_probefunc = pr->dtpr_func,
-					.dtv_probename = pr->dtpr_name,
+					.dtv_execargs_len = 0, /* needs check */
 					.dtv_jid = jail->pr_id,
 					.dtv_jailname = jail->pr_name,
 				};
 
-				dtrace_strcpy(mstate, _dtv_args.dtv_execname,
-				    curproc->p_comm, MAXCOMLEN);
-				if (curproc->p_args != NULL) {
-					_dtv_args.dtv_execargs =
-					    curproc->p_args->ar_args;
-					_dtv_args.dtv_execargs_len =
-					    curproc->p_args->ar_length;
+				if (curproc != NULL) {
+					_dtv_args.dtv_execname =
+					    curproc->p_comm;
+					_dtv_args.dtv_pid = curproc->p_pid;
+
+					if (curproc->p_args != NULL) {
+						_dtv_args.dtv_execargs =
+						    curproc->p_args->ar_args;
+						_dtv_args.dtv_execargs_len =
+						    curproc->p_args->ar_length;
+					}
+
+					if (curproc->p_pid != proc0.p_pid)
+						_dtv_args.dtv_ppid =
+						    curproc->p_pptr->p_pid;
 				}
-				if (curproc->p_pid != proc0.p_pid)
-					_dtv_args.dtv_ppid =
-					    curproc->p_pptr->p_pid;
+
+				if (curthread->td_ucred) {
+					_dtv_args.dtv_uid =
+					    curthread->td_ucred->cr_uid;
+					_dtv_args.dtv_gid =
+					    curthread->td_ucred->cr_gid;
+				}
+
 				hypercall_dtrace_probe(
 				    mstate->dtms_probe->dtpr_id,
-				    (uintptr_t)&_dtv_args, curthread->td_tid);
+				    (uintptr_t)&dtv_args, curthread->td_tid);
 			}
 			
 			break;
@@ -7945,7 +7969,7 @@ dtrace_probe_exit(dtrace_icookie_t cookie)
  * subsequent probe-context DTrace activity emanates.
  */
 void
-dtrace_vprobe(void *biscuit, dtrace_id_t id, struct dtvirt_args *dtv_args)
+dtrace_vprobe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
 {
 	processorid_t cpuid;
 	dtrace_icookie_t cookie;
@@ -7976,15 +8000,15 @@ dtrace_vprobe(void *biscuit, dtrace_id_t id, struct dtvirt_args *dtv_args)
 #endif
 
 	/*
-	 * In the case of biscuit being NULL, dtvirt_getns will return 0
+	 * In the case of vmhdl being NULL, dtvirt_getns will return 0
 	 * giving us the host's probes.
 	 */
-	if (biscuit) {
+	if (vmhdl) {
 		/*
 		 * Make sure this doesn't get pulled from under us.
 		 */
 		ASSERT(dtvirt_getns != NULL);
-		vmid = dtvirt_getns(biscuit);
+		vmid = dtvirt_getns(vmhdl);
 	} else
 		vmid = 0;
 
@@ -8069,7 +8093,7 @@ dtrace_vprobe(void *biscuit, dtrace_id_t id, struct dtvirt_args *dtv_args)
 	mstate.dtms_arg[2] = dtv_args->dtv_args[2];
 	mstate.dtms_arg[3] = dtv_args->dtv_args[3];
 	mstate.dtms_arg[4] = dtv_args->dtv_args[4];
-	mstate.dtms_biscuit = biscuit;
+	mstate.dtms_vmhdl = vmhdl;
 	mstate.dtms_dtvargs = dtv_args;
 
 	flags = (volatile uint16_t *)&cpu_core[cpuid].cpuc_dtrace_flags;
@@ -12660,8 +12684,6 @@ dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
 		case DTRACEACT_STOP:
 		case DTRACEACT_BREAKPOINT:
 		case DTRACEACT_PANIC:
-		case DTRACEACT_VIRT:
-		case DTRACEVT_HYPERCALL:
 			break;
 
 		case DTRACEACT_CHILL:
