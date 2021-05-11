@@ -64,7 +64,7 @@ __FBSDID("$FreeBSD$");
 #include "pci_emul.h"
 #include "virtio.h"
 
-#define	VTDTR_RINGSZ	1024
+#define	VTDTR_RINGSZ	4096
 #define	VTDTR_MAXQ	2
 
 #define	VTDTR_DEVICE_READY		0x00 /* Device is ready */
@@ -79,7 +79,8 @@ __FBSDID("$FreeBSD$");
 #define	VTDTR_DEVICE_ELF		0x09 /* Send an ELF file */
 #define	VTDTR_DEVICE_STOP		0x0A /* Stop tracing */
 
-#define	PCI_VTDTR_MAXELFLEN		512
+#define PCI_VTDTR_MAXELFLEN		2048
+
 #define PCI_VTDTR_EVENTSLEEPTIME	5
 
 static int pci_vtdtr_debug;
@@ -92,10 +93,10 @@ struct pci_vtdtr_control {
 		uint32_t	pvc_probeid;	/* install/uninstall event */
 
 		struct {	/*  elf event */
-			uint32_t	pvc_identifier;
 			size_t		pvc_elflen;
-			int		pvc_elfhasmore;
 			size_t		pvc_totalelflen;
+			uint32_t	pvc_identifier;
+			int		pvc_elfhasmore;
 			char		pvc_elf[PCI_VTDTR_MAXELFLEN];
 		} elf;
 
@@ -111,6 +112,9 @@ struct pci_vtdtr_control {
 #define	pvc_elf		uctrl.elf.pvc_elf
 	} uctrl;
 };
+
+_Static_assert(sizeof(struct pci_vtdtr_control) <= 4096,
+    "pci_vtdtr_control must fit in one page");
 
 struct pci_vtdtr_ctrl_entry {
 	STAILQ_ENTRY(pci_vtdtr_ctrl_entry)	entries;
@@ -524,9 +528,14 @@ pci_vtdtr_notify_ready(struct pci_vtdtr_softc *sc)
 static void
 pci_vtdtr_fill_eof_desc(struct vqueue_info *vq)
 {
-	struct pci_vtdtr_control ctrl;
-	ctrl.pvc_event = VTDTR_DEVICE_EOF;
-	pci_vtdtr_fill_desc(vq, &ctrl);
+	/*
+	 * Do a malloc to ensure that we don't break the stack
+	 */
+	struct pci_vtdtr_control *ctrl;
+	ctrl = malloc(sizeof(struct pci_vtdtr_control));
+	ctrl->pvc_event = VTDTR_DEVICE_EOF;
+	pci_vtdtr_fill_desc(vq, ctrl);
+	free(ctrl);
 }
 
 /*

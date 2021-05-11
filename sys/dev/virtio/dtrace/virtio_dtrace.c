@@ -82,10 +82,11 @@ struct virtio_dtrace_control {
 		uint32_t	vd_probeid;	/* install/uninstall event */
 
 		struct {			/*  elf event */
-			uint32_t	vd_identifier;
 			size_t		vd_elflen;
-			int		vd_elfhasmore;
 			size_t		vd_totalelflen;
+			uint32_t	vd_identifier;
+			int		vd_elfhasmore;
+#define VIRTIO_DTRACE_MAXELFLEN		2048
 			char		vd_elf[VIRTIO_DTRACE_MAXELFLEN];
 		} elf;
 
@@ -100,6 +101,9 @@ struct virtio_dtrace_control {
 #define	vd_elf		uctrl.elf.vd_elf
 	} uctrl;
 };
+
+_Static_assert(sizeof(struct virtio_dtrace_control) <= 4096,
+    "virtio_dtrace_control must fit in one page");
 
 struct virtio_dtrace_queue {
 	struct mtx           vtdq_mtx;
@@ -1077,8 +1081,12 @@ static void
 vtdtr_fill_desc(struct virtio_dtrace_queue *q,
     struct virtio_dtrace_control *ctrl)
 {
+	int error;
+
 	VTDTR_QUEUE_LOCK(q);
-	vtdtr_queue_enqueue_ctrl(q, ctrl, 1, 0);
+	error = vtdtr_queue_enqueue_ctrl(q, ctrl, 1, 0);
+	KASSERT(error == 0, ("%s: cannot enqueue control buffer %d",
+	    __func__, error));
 	VTDTR_QUEUE_UNLOCK(q);
 }
 

@@ -28,15 +28,20 @@
 #ifndef _DTTRANSPORT_H_
 #define _DTTRANSPORT_H_
 
-#define	DTT_MAXDATALEN	512
+/*
+ * 4096 - sizeof(other members in dtt_entry_t)
+ */
+#define DTT_MAXDATALEN 2048
 
 typedef struct dtt_entry {
-	uint32_t identifier;		/* unique identifier for data */
 	size_t len;			/* length of the current message */
-	int hasmore;			/* are there more segments? */
 	size_t totallen;		/* total length of the data */
+	uint32_t identifier;		/* unique identifier for data */
+	int hasmore;			/* are there more segments? */
 	char data[DTT_MAXDATALEN];	/* the data itself */
 } dtt_entry_t;
+
+_Static_assert(sizeof(dtt_entry_t) <= 4096, "dtt_entry_t must fit in one page");
 
 #define	DTT_ENTRYLEN	sizeof(dtt_entry_t)
 

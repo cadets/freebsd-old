@@ -55,8 +55,6 @@
 #define	VIRTIO_DTRACE_ELF		0x09 /* ELF file transmission */
 #define	VIRTIO_DTRACE_STOP		0x0A /* Start tracing */
 
-#define	VIRTIO_DTRACE_MAXELFLEN		512
-
 int virtio_dtrace_enqueue(dtt_entry_t *);
 
 #endif
