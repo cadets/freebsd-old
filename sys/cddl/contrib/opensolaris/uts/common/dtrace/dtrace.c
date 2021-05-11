@@ -283,7 +283,6 @@ static struct callout	virt_state_callout;
 static struct mtx	dtrace_unr_mtx;
 static eventhandler_tag	dtrace_kld_load_tag;
 static eventhandler_tag	dtrace_kld_unload_try_tag;
-
 #endif
 
 /*
@@ -7499,7 +7498,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 					_dtv_args.dtv_gid =
 					    curthread->td_ucred->cr_gid;
 				}
-
+				
 				hypercall_dtrace_probe(
 				    mstate->dtms_probe->dtpr_id,
 				    (uintptr_t)&dtv_args, curthread->td_tid);
@@ -10091,7 +10090,12 @@ _dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_id_t _id,
 	 * Since dtpr_provid is a dtrace_provider_id_t (uintptr_t) we can
 	 * store a string here safely.
 	 */
-	probe->dtpr_provid = prov;
+	if (vmid == 0)
+		probe->dtpr_provid = prov;
+	else
+		probe->dtpr_provid =
+		    (dtrace_provider_id_t)dtrace_strdup((char *)prov);
+
 	probe->dtpr_aframes = aframes;
 	probe->dtpr_arg = arg;
 	probe->dtpr_vmid = vmid;
@@ -10185,7 +10189,7 @@ dtrace_probe_create(dtrace_provider_id_t prov, const char *mod,
 void
 dtrace_vprobespace_destroy(uint16_t vmid)
 {
-	int i, should_free = 1;
+	int i, should_free = dtrace_nvprobes[vmid] > 0 ? 1 : 0;
 	dtrace_probe_t *probe;
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
@@ -10202,6 +10206,7 @@ dtrace_vprobespace_destroy(uint16_t vmid)
 
 		if (probe == NULL)
 			continue;
+
 
 		/*
 		 * If we have another enabling, we don't destroy this probe.
@@ -18632,9 +18637,8 @@ dtrace_dtr(void *data)
 		/*
 		 * XXX: Worth doing a full cleanup on every close()?
 		 */
-		for (i = 1; i < dtrace_nvmids; i++) {
+		for (i = 1; i < dtrace_nvmids; i++)
 			dtrace_vprobespace_destroy(i);
-		}
 	}
 #endif
 	ASSERT(dtrace_opens > 0);

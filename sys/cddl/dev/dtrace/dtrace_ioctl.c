@@ -957,6 +957,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		dtrace_probedesc_t *vprobe;
 		size_t n_vprobes_to_create;
 		size_t i;
+		int needs_increment = 0;
 		int err;
 		uint16_t vmid;
 		dtrace_id_t id;
@@ -986,6 +987,14 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_enter(&cpu_lock);
 		mutex_enter(&dtrace_lock);
 
+		/*
+		 * Find out if we need to increment the dtrace_nvmids counter.
+		 * We don't do it here because creating probes can fail, in
+		 * which case we don't want to increment anything.
+		 */
+		if (dtrace_vprobes[vmid] == NULL)
+			needs_increment = 1;
+
 		for (i = 0; i < n_vprobes_to_create; i++) {
 			vprobe = &vprobes_to_create[i];
 
@@ -1007,10 +1016,16 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 			id = dtrace_vprobe_create(vmid, vprobe->dtpd_id,
 			    vprobe->dtpd_provider, vprobe->dtpd_mod,
 			    vprobe->dtpd_func, vprobe->dtpd_name);
-			printf("created %d -> %u:%s:%s:%s:%s\n", id, vmid,
-			    vprobe->dtpd_provider, vprobe->dtpd_mod,
-			    vprobe->dtpd_func, vprobe->dtpd_name);
+			if (id == DTRACE_IDNONE) {
+				dtrace_vprobespace_destroy(vmid);
+				mutex_exit(&dtrace_lock);
+				mutex_exit(&cpu_lock);
+				return (EINVAL);
+			}
 		}
+
+		if (needs_increment)
+			dtrace_nvmids++;
 
 		mutex_exit(&dtrace_lock);
 		mutex_exit(&cpu_lock);

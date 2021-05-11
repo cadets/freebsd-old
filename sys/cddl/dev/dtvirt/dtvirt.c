@@ -60,9 +60,7 @@ void
 dtvirt_probe(void *vmhdl, int probeid, struct dtvirt_args *dtv_args)
 {
 
-	printf("dtvirt_probe(): called\n");
 	dtrace_vprobe(vmhdl, probeid, dtv_args);
-	printf("dtvirt_probe(): return\n");
 }
 
 static int
