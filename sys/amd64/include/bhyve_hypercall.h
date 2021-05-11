@@ -31,7 +31,8 @@
 
 #define	HYPERCALL_PROTOTYPE		0
 #define	HYPERCALL_DTRACE_PROBE		1
-#define	HYPERCALL_INDEX_MAX		2
+#define	HYPERCALL_TEST			2
+#define	HYPERCALL_INDEX_MAX		3
 
 #define	HYPERCALL_RET_SUCCESS		0
 #define	HYPERCALL_RET_ERROR		1
@@ -51,6 +52,7 @@
  * calling convention.
  */
 int	hypercall_prototype(void /* args */);
+int	hypercall_test(void /* args */);
 int	hypercall_dtrace_probe(int, uintptr_t, lwpid_t);
 
 static __inline int

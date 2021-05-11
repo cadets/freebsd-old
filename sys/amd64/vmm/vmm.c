@@ -287,6 +287,9 @@ static int hypercall_copy_arg(struct vm *, int, uint64_t,
 static int64_t hc_handle_prototype(struct vm *, int,
     uintptr_t *, struct vm_guest_paging *);
 
+static int64_t hc_handle_test(struct vm *, int,
+    uintptr_t *, struct vm_guest_paging *);
+
 static int64_t hc_handle_dtrace_probe(struct vm *, int,
     uintptr_t *, struct vm_guest_paging *);
 
@@ -304,6 +307,7 @@ hc_dispatcher_t hc_dispatcher[VMM_MAX_MODES][HYPERCALL_INDEX_MAX] = {
 	[BHYVE_MODE] = {
 		[HYPERCALL_PROTOTYPE]    = hc_handle_prototype,
 		[HYPERCALL_DTRACE_PROBE] = hc_handle_dtrace_probe,
+		[HYPERCALL_TEST]         = hc_handle_test,
 	}
 };
 
@@ -317,7 +321,8 @@ hc_dispatcher_t hc_dispatcher[VMM_MAX_MODES][HYPERCALL_INDEX_MAX] = {
 static int8_t ring_plevel[VMM_MAX_MODES][HYPERCALL_INDEX_MAX] = {
 	[BHYVE_MODE] = {
 		[HYPERCALL_PROTOTYPE]    = 0,
-		[HYPERCALL_DTRACE_PROBE] = 0
+		[HYPERCALL_DTRACE_PROBE] = 0,
+		[HYPERCALL_TEST]         = 3,
 	}
 };
 
@@ -1852,6 +1857,14 @@ vm_handle_hypercall(struct vm *vm, int vcpuid, struct vm_exit *vmexit, bool *ret
 
 static __inline int64_t
 hc_handle_prototype(struct vm *vm, int vcpuid,
+    uintptr_t *args, struct vm_guest_paging *paging)
+{
+
+	return (HYPERCALL_RET_SUCCESS);
+}
+
+static __inline int64_t
+hc_handle_test(struct vm *vm, int vcpuid,
     uintptr_t *args, struct vm_guest_paging *paging)
 {
 

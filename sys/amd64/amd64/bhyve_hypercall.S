@@ -62,8 +62,16 @@ hc_dtrace_probe:
 	ret
 END(hypercall_dtrace_probe)
 
+ENTRY(hypercall_test)
+	movq $HYPERCALL_TEST, %rax
+hc_test:
+	.byte 0x0f,0x01,0xc1
+	ret
+END(hypercall_test)
+
 .type __set_hypercall_prototype, @object
 .type __set_hypercall_dtrace_probe, @object
+.type __set_hypercall_test, @object
 .section set_hypercall, "a", @progbits
 .align 8
 __set_hypercall_prototype:
@@ -72,3 +80,6 @@ __set_hypercall_prototype:
 __set_hypercall_dtrace_probe:
 	.quad hc_dtrace_probe
 	.size __set_hypercall_dtrace_probe, 3
+__set_hypercall_test:
+	.quad hc_test
+	.size __set_hypercall_test, 3
