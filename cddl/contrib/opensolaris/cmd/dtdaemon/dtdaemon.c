@@ -157,6 +157,11 @@ static int	file_foreach(DIR *, foreach_fn_t, dtd_dir_t *);
 static int	process_outbound(struct dirent *, dtd_dir_t *);
 static int	process_inbound(struct dirent *, dtd_dir_t *);
 
+typedef struct pidlist {
+	dt_list_t	list;
+	pid_t		pid;
+} pidlist_t;
+
 /*
  * dtdaemon state structure. This contains everything relevant to dtdaemon's
  * state management, such as files that exist, connected sockets, etc.
@@ -198,6 +203,9 @@ struct dtd_state {
 	pthread_cond_t	joblistcv;
 	mutex_t		joblistmtx;
 	dt_list_t	joblist;
+
+	mutex_t		pidlistmtx;
+	dt_list_t	pidlist;
 
 	/*
 	 * Are we shutting down?
@@ -984,7 +992,7 @@ accept_subs(void *_s)
 			    atomic_load(&s->shutdown) == 1)
 				goto exit;
 
-			fprintf(stderr, "Failed to send %zu to connsockfd: %s",
+			fprintf(stderr, "Failed to send %d to connsockfd: %s",
 			    kind, strerror(errno));
 			pthread_exit(NULL);
 		}
@@ -1171,6 +1179,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	int status;
 	size_t l, dirpathlen, filepathlen;
 	char *argv[4] = { 0 };
+	pidlist_t *pidl;
 
 	status = 0;
 	if (dir == NULL) {
@@ -1268,26 +1277,31 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		}
 		UNLOCK(&s->socklistmtx);
 	} else {
-		/*
-		 * FIXME(dstolfa): When we successfully execute dtrace and start
-		 * tracing, the tracing won't ever really exit. This means that
-		 * we don't have a reliable way of stopping tracing and killing
-		 * the forked process, hence we are deadlocked waiting on a
-		 * process that has nothing to trace.
-		 *
-		 * We should probably let dtdaemon handle this, rather than
-		 * propagating it even further out to the dtrace command line
-		 * tool.
-		 */
 		parent = getpid();
 		pid = fork();
 
+		/*
+		 * We don't wait for the process as we don't really care about
+		 * it. We will just save the pid as running and kill it whenever
+		 * a message arrives to do so.
+		 */
 		if (pid == -1) {
 			syslog(LOG_ERR, "Failed to fork: %m");
 			return (-1);
-		} else if (pid > 0)
-			waitpid(pid, &status, WEXITED | WSTOPPED);
-		else {
+		} else if (pid > 0) {
+			pidl = malloc(sizeof(pidlist_t));
+			if (pidl == NULL) {
+				syslog(LOG_ERR, "Failed to malloc pidl: %m");
+				return (-1);
+			}
+
+			memset(pidl, 0, sizeof(pidlist_t));
+			pidl->pid = pid;
+
+			LOCK(&s->pidlistmtx);
+			dt_list_append(&s->pidlist, pidl);
+			UNLOCK(&s->pidlistmtx);
+		} else if (pid == 0) {
 			argv[0] = strdup("/usr/sbin/dtrace");
 			argv[1] = strdup("-Y");
 			argv[2] = strdup(fullpath);
@@ -1765,6 +1779,12 @@ init_state(struct dtd_state *s)
 		return (-1);
 	}
 
+	if ((err = mutex_init(
+	    &s->pidlistmtx, NULL, "pidlist", CHECKOWNER_YES)) != 0) {
+		syslog(LOG_ERR, "Failed to create pidlist mutex: %m");
+		return (-1);
+	}
+
 	if ((err = pthread_cond_init(&s->joblistcv, NULL)) != 0) {
 		syslog(LOG_ERR, "Failed to create joblist condvar: %m");
 		return (-1);
@@ -1833,18 +1853,27 @@ destroy_state(struct dtd_state *s)
 		syslog(LOG_ERR, "Failed to destroy sock list mutex: %m");
 		return (-1);
 	}
+
 	if ((err = mutex_destroy(&s->sockmtx)) != 0) {
 		syslog(LOG_ERR, "Failed to destroy socket mutex: %m");
 		return (-1);
 	}
+
 	if ((err = mutex_destroy(&s->joblistcvmtx)) != 0) {
 		syslog(LOG_ERR, "Failed to destroy joblist condvar mutex: %m");
 		return (-1);
 	}
+
 	if ((err = mutex_destroy(&s->joblistmtx)) != 0) {
 		syslog(LOG_ERR, "Failed to destroy joblist mutex: %m");
 		return (-1);
 	}
+
+	if ((err = mutex_destroy(&s->pidlistmtx)) != 0) {
+		syslog(LOG_ERR, "Failed to destroy pidlist mutex: %m");
+		return (-1);
+	}
+
 	if ((err = pthread_cond_destroy(&s->joblistcv)) != 0) {
 		syslog(LOG_ERR, "Failed to destroy joblist condvar mutex: %m");
 		return (-1);
