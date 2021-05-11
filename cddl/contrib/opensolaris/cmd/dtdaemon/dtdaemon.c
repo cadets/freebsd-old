@@ -274,7 +274,6 @@ sig_int(int __unused signo)
 static void
 sig_pipe(int __unused signo)
 {
-
 }
 
 static void
@@ -657,7 +656,7 @@ write_dttransport(void *_s)
 				if (errno == EINTR &&
 				    atomic_load(&s->shutdown) == 1)
 					pthread_exit(s);
-	/*
+				/*
 				 * If we don't have dttransport opened,
 				 * we just move on. It might get opened
 				 * at some point.
@@ -697,7 +696,7 @@ listen_dir(void *_dir)
 	EV_SET(&ev, dir->dirfd, EVFILT_VNODE, EV_ADD | EV_CLEAR,
 	    NOTE_WRITE, 0, (void *)dir);
 
-	for (;;) {
+	while (atomic_load(&s->shutdown) == 0) {
 		LOCK(&dir->dirmtx);
 		UNLOCK(&dir->dirmtx);
 		rval = kevent(kq, &ev, 1, &ev_data, 1, NULL);
@@ -927,6 +926,7 @@ accept_subs(void *_s)
 	int err;
 	int kind;
 	int connsockfd;
+	int on = 1;
 	struct dtd_fdlist *fde;
 	struct dtd_state *s = (struct dtd_state *)_s;
 
@@ -968,11 +968,20 @@ accept_subs(void *_s)
 			pthread_exit(NULL);
 		}
 
+		if (setsockopt(connsockfd, SOL_SOCKET,
+		    SO_NOSIGPIPE, &on, sizeof(on))) {
+			fprintf(stderr,
+			    "Failed to setsockopt() SO_NOSIGPIPE to 1: %s\n",
+			    strerror(errno));
+			continue;
+		}
+
 		kind = DTDAEMON_KIND_DTDAEMON;
 		if (send(connsockfd, &kind, sizeof(kind), 0) < 0) {
 			close(connsockfd);
 
-			if (errno == EINTR && atomic_load(&s->shutdown) == 1)
+			if ((errno == EINTR || errno == EPIPE) &&
+			    atomic_load(&s->shutdown) == 1)
 				goto exit;
 
 			fprintf(stderr, "Failed to send %zu to connsockfd: %s",
@@ -985,7 +994,8 @@ accept_subs(void *_s)
 			free(fde);
 			close(connsockfd);
 
-			if (errno == EINTR && atomic_load(&s->shutdown) == 1)
+			if ((errno == EINTR || errno == EPIPE) &&
+			    atomic_load(&s->shutdown) == 1)
 				goto exit;
 
 			syslog(LOG_ERR, "Failed to read what kind of subscriber"
@@ -1007,7 +1017,7 @@ accept_subs(void *_s)
 		LOCK(&s->socklistmtx);
 		dt_list_append(&s->sockfds, fde);
 		UNLOCK(&s->socklistmtx);
-	}
+		}
 
 exit:
 	pthread_exit(s);
@@ -1276,7 +1286,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			syslog(LOG_ERR, "Failed to fork: %m");
 			return (-1);
 		} else if (pid > 0)
-			waitpid(pid, &status, 0);
+			waitpid(pid, &status, WEXITED | WSTOPPED);
 		else {
 			argv[0] = strdup("/usr/sbin/dtrace");
 			argv[1] = strdup("-Y");
@@ -1574,14 +1584,17 @@ populate_existing(struct dirent *f, dtd_dir_t *dir)
 	if (f->d_name[0] == '.')
 		return (0);
 
+	LOCK(&dir->dirmtx);
 	err = expand_paths(dir);
 	if (err != 0) {
+		UNLOCK(&dir->dirmtx);
 		syslog(LOG_ERR, "Failed to expand paths in initialization");
 		return (-1);
 	}
 
 	assert(dir->efile_size > dir->efile_len);
 	dir->existing_files[dir->efile_len++] = strdup(f->d_name);
+	UNLOCK(&dir->dirmtx);
 
 	return (0);
 }
@@ -1983,11 +1996,12 @@ againefd:
 		return (EX_OSERR);
 	}
 
+#if 0
 	if (signal(SIGPIPE, sig_pipe) == SIG_ERR) {
 		syslog(LOG_ERR, "Failed to install SIGPIPE handler");
 		return (EX_OSERR);
 	}
-
+#endif
 	if (siginterrupt(SIGTERM, 1) != 0) {
 		syslog(LOG_ERR,
 		    "Failed to enable system call interrupts for SIGTERM");
@@ -2024,44 +2038,6 @@ againefd:
 		errx(EXIT_FAILURE, "listen_dir() on %s failed",
 		    state.outbounddir->dirpath);
 
-#if 0
-	if ((kq = kqueue()) == -1) {
-		syslog(LOG_ERR, "Failed to create a kqueue %m");
-		return (EX_OSERR);
-	}
-
-	EV_SET(&ev, state.outbounddir->dirfd, EVFILT_VNODE, EV_ADD | EV_CLEAR,
-	    NOTE_WRITE, 0, (void *)state.outbounddir);
-
-	for (;;) {
-		rval = kevent(kq, &ev, 1, &ev_data, 1, NULL);
-		assert(rval != 0);
-
-		if (rval < 0) {
-			if (errno == EINTR && atomic_load(&state.shutdown) == 1)
-				goto cleanup;
-
-			syslog(LOG_ERR, "kevent() failed with %m");
-			return (EX_OSERR);
-		}
-
-		if (ev_data.flags == EV_ERROR) {
-			syslog(LOG_ERR, "kevent() got EV_ERROR with %m");
-			return (EX_OSERR);
-		}
-
-		if (rval > 0) {
-			errval = file_foreach(state.outbounddir->dir,
-			    process_outbound, state.outbounddir);
-			if (errval) {
-				syslog(LOG_ERR, "Failed to process new files");
-				return (EXIT_FAILURE);
-			}
-		}
-	}
-#endif
-
-cleanup:
 	errval = pthread_kill(state.socktd, SIGTERM);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to interrupt socktd: %m");
