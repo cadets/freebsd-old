@@ -41,6 +41,7 @@
 #include <dt_elf.h>
 #include <dt_resolver.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -126,9 +127,9 @@ static int g_pslive;
 static char *g_pname;
 static int g_quiet;
 static int g_flowindent;
-static int g_intr;
-static int g_impatient;
-static int g_newline;
+static _Atomic int g_intr;
+static _Atomic int g_impatient;
+static _Atomic int g_newline;
 
 /*
  * Program list for HyperTrace
@@ -140,7 +141,7 @@ static pthread_cond_t g_pgpcond;
 static pthread_mutex_t g_pgpcondmtx;
 
 #ifdef __FreeBSD__
-static int g_siginfo;
+static _Atomic int g_siginfo;
 static uint32_t rslv;
 #endif
 static int g_total;
@@ -159,7 +160,10 @@ static pthread_t g_worktd;
 
 static const char *g_ofile = NULL;
 static FILE *g_ofp;
+
+static pthread_mutex_t g_dtpmtx;
 static dtrace_hdl_t *g_dtp;
+
 #ifdef illumos
 static char *g_etcfile = "/etc/system";
 static const char *g_etcbegin = "* vvvv Added by DTrace";
@@ -271,6 +275,7 @@ fatal(const char *fmt, ...)
 	if (g_dtp)
 		dtrace_close(g_dtp);
 
+	sleep(10);
 	exit(E_ERROR);
 }
 
@@ -309,7 +314,12 @@ dfatal(const char *fmt, ...)
 	 * Close the DTrace handle to ensure that any controlled processes are
 	 * correctly restored and continued.
 	 */
+	pthread_mutex_lock(&g_dtpmtx);
 	dtrace_close(g_dtp);
+	g_dtp = NULL;
+	pthread_mutex_unlock(&g_dtpmtx);
+	
+	pthread_mutex_destroy(&g_dtpmtx);
 
 	exit(E_ERROR);
 }
@@ -387,11 +397,11 @@ make_argv(char *s)
 static void
 intr(int signo)
 {
-	if (!g_intr)
-		g_newline = 1;
+	if (!atomic_load(&g_intr))
+		atomic_store(&g_newline, 1);
 
-	if (g_intr++)
-		g_impatient = 1;
+	if (atomic_fetch_add(&g_intr, 1))
+		atomic_store(&g_impatient, 1);
 }
 
 #ifdef __FreeBSD__
@@ -399,8 +409,8 @@ static void
 siginfo(int signo __unused)
 {
 
-	g_siginfo++;
-	g_newline = 1;
+	atomic_fetch_add(&g_siginfo, 1);
+	atomic_store(&g_newline, 1);
 }
 #endif
 
@@ -897,12 +907,12 @@ listen_dtdaemon(void *arg)
 		 * were applied are sensible, get the identifier of which VM
 		 * it actually is and fill in the necessary filters.
 		 */
-		if (!done && !g_intr &&
+		if (!done && !atomic_load(&g_intr) &&
 		    ((r = recv(sockfd, &elflen, sizeof(elflen), 0)) < 0) &&
 		    errno != EINTR)
 			dfatal("failed to read elf length");
 
-		if (g_intr) {
+		if (atomic_load(&g_intr)) {
 			done = 1;
 			break;
 		}
@@ -927,7 +937,7 @@ listen_dtdaemon(void *arg)
 		elf_ptr = (uintptr_t)elf;
 		len_to_recv = elflen;
 
-		while (!done && !g_intr && len_to_recv > 0 &&
+		while (!done && !atomic_load(&g_intr) && len_to_recv > 0 &&
 		    ((r = recv(
 		    sockfd, (void *)elf_ptr, len_to_recv, 0)) != len_to_recv)) {
 			if (r < 0)
@@ -938,7 +948,7 @@ listen_dtdaemon(void *arg)
 			elf_ptr += r;
 		}
 
-		if (g_intr) {
+		if (atomic_load(&g_intr)) {
 			done = 1;
 			break;
 		}
@@ -993,6 +1003,7 @@ process_prog:
 			dfatal("failed to sync file");
 
 		newprog = dt_elf_to_prog(g_dtp, fd, 0, &err, hostpgp);
+		printf("newprog = %p\n", newprog);
 		if (newprog == NULL) {
 			fprintf(stderr, "newprog is NULL\n");
 			continue;
@@ -1136,8 +1147,8 @@ chew(const dtrace_probedata_t *data, void *arg)
 	processorid_t cpu = data->dtpda_cpu;
 	static int heading;
 
-	if (g_impatient) {
-		g_newline = 0;
+	if (atomic_load(&g_impatient)) {
+		atomic_store(&g_newline, 0);
 		return (DTRACE_CONSUME_ABORT);
 	}
 
@@ -1238,32 +1249,33 @@ dtc_work(void *arg)
 	con.dc_put_buf = NULL;
 
 	do {
-		if (!g_intr && !done)
+		if (!atomic_load(&g_intr) && !done)
 			dtrace_sleep(g_dtp);
 
 #ifdef __FreeBSD__
-		if (g_siginfo) {
+		if (atomic_load(&g_siginfo)) {
 			(void)dtrace_aggregate_print(g_dtp, g_ofp, NULL);
-			g_siginfo = 0;
+			atomic_store(&g_siginfo, 0);
 		}
 #endif
 
-		if (g_newline) {
+		if (atomic_load(&g_newline)) {
 			/*
 			 * Output a newline just to make the output look
 			 * slightly cleaner.  Note that we do this even in
 			 * "quiet" mode...
 			 */
 			oprintf("\n");
-			g_newline = 0;
+			atomic_store(&g_newline, 0);
 		}
 
-		if (done || g_intr || (g_psc != 0 && g_pslive == 0)) {
+		if (done || atomic_load(&g_intr) || (g_psc != 0 && g_pslive == 0)) {
 			done = 1;
 			if (dtrace_stop(g_dtp) == -1)
 				dfatal("couldn't stop tracing");
 		}
 
+		pthread_mutex_lock(&g_dtpmtx);
 		switch (dtrace_work(g_dtp, g_ofp, &con, NULL)) {
 		case DTRACE_WORKSTATUS_DONE:
 			printf("WORKSTATUS_DONE\n");
@@ -1273,9 +1285,13 @@ dtc_work(void *arg)
 			printf("WORKSTATUS_OKAY\n");
 			break;
 		default:
-			if (!g_impatient && dtrace_errno(g_dtp) != EINTR)
+			if (!atomic_load(&g_impatient) &&
+			    dtrace_errno(g_dtp) != EINTR) {
+				pthread_mutex_unlock(&g_dtpmtx);
 				dfatal("processing aborted");
+			}
 		}
+		pthread_mutex_unlock(&g_dtpmtx);
 
 		if (g_ofp != NULL && fflush(g_ofp) == EOF)
 			clearerr(g_ofp);
@@ -1284,7 +1300,7 @@ dtc_work(void *arg)
 
 	oprintf("\n");
 
-	if (!g_impatient) {
+	if (!atomic_load(&g_impatient)) {
 		if (dtrace_aggregate_print(g_dtp, g_ofp, NULL) == -1 &&
 		    dtrace_errno(g_dtp) != EINTR)
 			dfatal("failed to print aggregations");
@@ -1305,6 +1321,7 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp)
 	int i, n;
 
 	dtrace_dump_actions(pgp);
+#if 0
 	if (gpgp) {
 		printf(
 		    "process_new_pgp: dp_neprobes = %u\n", gpgp->dp_neprobes);
@@ -1320,26 +1337,36 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp)
 			    gpgp->dp_eprobes[i].dtpd_name);
 		}
 	}
-
-	if (gpgp == NULL && pgp->dp_vmid != 0)
-		dfatal("the guest program can only be NULL if program's vmid "
-		       "is 0, but it is %u\n",
+#endif
+	if (gpgp == NULL && pgp->dp_vmid != 0) {
+		atomic_store(&g_intr, 1);
+		fprintf(stderr,
+		    "the guest program can only be NULL if program's vmid "
+		    "is 0, but it is %u\n",
 		    pgp->dp_vmid);
+	}
 
-	if (gpgp && (pgp->dp_vmid != gpgp->dp_vmid))
-		dfatal("mismatch between pgp and gpgp vmids (%u != %u)",
+	if (gpgp && (pgp->dp_vmid != gpgp->dp_vmid)) {
+		atomic_store(&g_intr, 1);
+		fprintf(stderr,
+		    "mismatch between pgp and gpgp vmids (%u != %u)",
 		    pgp->dp_vmid, gpgp->dp_vmid);
+	}
 
 	if (pgp->dp_vmid != 0) {
 		n = dt_vprobes_create(g_dtp, gpgp);
-		if (n == -1)
-			dfatal(
-			    "failed to create vprobes (%s)", strerror(errno));
+		if (n == -1) {
+			atomic_store(&g_intr, 1);
+			fprintf(stderr, "failed to create vprobes: %s\n",
+			    strerror(errno));
+		}
 	}
 
 	if (n_pgps == 0) {
 		if (dtrace_program_exec(g_dtp, pgp, &dpi) == -1) {
-			dfatal("failed to enable program");
+			atomic_store(&g_intr, 1);
+			fprintf(stderr, "failed to enable program: %s",
+			    strerror(errno));
 		} else {
 			notice("matched %u probe%s\n", dpi.dpi_matches,
 			    dpi.dpi_matches == 1 ? "" : "s");
@@ -1348,8 +1375,11 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp)
 		setup_tracing();
 		pthread_create(&g_worktd, NULL, dtc_work, NULL);
 	} else {
-		if (dt_augment_tracing(g_dtp, pgp))
-			dfatal("failed to augment tracing");
+		if (dt_augment_tracing(g_dtp, pgp)) {
+			atomic_store(&g_intr, 1);
+			fprintf(stderr, "failed to augment tracing: %s",
+			    strerror(errno));
+		}
 	}
 
 	n_pgps++;
@@ -1504,20 +1534,21 @@ exec_prog(const dtrace_cmd_t *dcp)
 			 */
 again:
 			pthread_mutex_lock(&g_pgpcondmtx);
-			/*
-			 * XXX: Maybe a clean shutdown variable...?
-			 */
-			while (!g_intr &&
+			pthread_mutex_lock(&g_pgplistmtx);
+			while (!atomic_load(&g_intr) &&
 			    ((pgpl = dt_list_next(&g_pgplist)) == NULL ||
 			    again == 1)) {
+				pthread_mutex_unlock(&g_pgplistmtx);
 				pthread_cond_wait(&g_pgpcond, &g_pgpcondmtx);
 				again = 0;
+				pthread_mutex_lock(&g_pgplistmtx);
 			}
+			pthread_mutex_unlock(&g_pgplistmtx);
 			pthread_mutex_unlock(&g_pgpcondmtx);
 
-			assert(pgpl != NULL || g_intr);
+			assert(pgpl != NULL || atomic_load(&g_intr));
 
-			if (g_intr)
+			if (atomic_load(&g_intr))
 				break;
 
 			/*
@@ -1724,7 +1755,7 @@ list_probe(dtrace_hdl_t *dtp, const dtrace_probedesc_t *pdp, void *arg)
 	if (g_verbose && dtrace_probe_info(dtp, pdp, &p) == 0)
 		print_probe_info(&p);
 
-	if (g_intr != 0)
+	if (atomic_load(&g_intr) != 0)
 		return (1);
 
 	return (0);
@@ -1847,21 +1878,27 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 
 	prog_exec = link_elf(dcp, progpath);
 
+	dtrace_dump_actions(dcp->dc_prog);
+
 	if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) != 0)
 		dfatal("Failed to apply relocations");
+
+	dtrace_dump_actions(dcp->dc_prog);
 
 	if (prog_exec == DT_PROG_EXEC) {
 		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
 			dfatal("failed to enable program");
 		} else {
-			notice("matched %u probes%s\n", dpi.dpi_matches,
-			    dpi.dpi_matches == 1 ? "" : "s");
+			notice(
+			    "process_elf_hypertrace(): matched %u probes%s\n",
+			    dpi.dpi_matches, dpi.dpi_matches == 1 ? "" : "s");
 		}
 
 		setup_tracing();
 		pthread_create(&g_worktd, NULL, dtc_work, NULL);
 	}
 
+	
 	elfpath = gen_filename(elfdir);
 	dt_elf_create(dcp->dc_prog, ELFDATA2LSB, elfpath);
 
@@ -1882,7 +1919,12 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 			fatal("failed to join worktd (%s)", strerror(errno));
 	}
 
+	pthread_mutex_lock(&g_dtpmtx);
 	dtrace_close(g_dtp);
+	g_dtp = NULL;
+	pthread_mutex_unlock(&g_dtpmtx);
+
+	pthread_mutex_destroy(&g_dtpmtx);
 	exit(g_status);
 }
 
@@ -2447,6 +2489,9 @@ main(int argc, char *argv[])
 	 * Open libdtrace.  If we are not actually going to be enabling any
 	 * instrumentation attempt to reopen libdtrace using DTRACE_O_NODEV.
 	 */
+	if (pthread_mutex_init(&g_dtpmtx, NULL))
+		fatal("failed to create the dtp mutex");
+
 	while ((g_dtp = dtrace_open(DTRACE_VERSION, g_oflags, &err)) == NULL) {
 		if (!(g_oflags & DTRACE_O_NODEV) && !g_exec && !g_grabanon) {
 			g_oflags |= DTRACE_O_NODEV;
@@ -2774,7 +2819,13 @@ main(int argc, char *argv[])
 			exec_prog(&g_cmdv[i]);
 
 		if (done && !g_grabanon) {
-			dtrace_close(g_dtp);
+			pthread_mutex_lock(&g_dtpmtx);
+			if (g_dtp)
+				dtrace_close(g_dtp);
+			g_dtp = NULL;
+			pthread_mutex_unlock(&g_dtpmtx);
+
+			pthread_mutex_destroy(&g_dtpmtx);
 
 			return (g_status);
 		}
@@ -2798,7 +2849,12 @@ main(int argc, char *argv[])
 #endif
 
 		if (g_cmdc == 0) {
+			pthread_mutex_lock(&g_dtpmtx);
 			dtrace_close(g_dtp);
+			g_dtp = NULL;
+			pthread_mutex_unlock(&g_dtpmtx);
+
+			pthread_mutex_destroy(&g_dtpmtx);
 
 			return (g_status);
 		}
@@ -2943,6 +2999,11 @@ main(int argc, char *argv[])
 
 	setup_tracing();
 	(void) dtc_work(NULL);
-	dtrace_close(g_dtp);
+	pthread_mutex_lock(&g_dtpmtx);
+	if (g_dtp)
+		dtrace_close(g_dtp);
+	pthread_mutex_unlock(&g_dtpmtx);
+
+	pthread_mutex_destroy(&g_dtpmtx);
 	return (g_status);
 }
