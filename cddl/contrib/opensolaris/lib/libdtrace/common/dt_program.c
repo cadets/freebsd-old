@@ -100,6 +100,7 @@ dt_program_destroy(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 
 	if (pgp->dp_xrefs)
 		dt_free(dtp, pgp->dp_xrefs);
+
 	dt_list_delete(&dtp->dt_programs, pgp);
 	dt_free(dtp, pgp);
 }
@@ -251,8 +252,6 @@ dt_vprobes_create(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	args.eprobes = pgp->dp_eprobes;
 	args.neprobes = pgp->dp_neprobes;
 	args.vmid = pgp->dp_vmid;
-
-	printf("args.neprobes = %zu\n", args.neprobes);
 
 	n = dt_ioctl(dtp, DTRACEIOC_VPROBE_CREATE, &args);
 	if (n == -1) {
