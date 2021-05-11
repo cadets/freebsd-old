@@ -204,8 +204,14 @@ struct dtd_state {
 	mutex_t		joblistmtx;
 	dt_list_t	joblist;
 
-	mutex_t		pidlistmtx;
-	dt_list_t	pidlist;
+	/*
+	 * Children management.
+	 */
+	pthread_t	killtd;
+	mutex_t		kill_listmtx;
+	mutex_t		killcvmtx;
+	dt_list_t	kill_list;
+	pthread_cond_t	killcv;
 
 	/*
 	 * Are we shutting down?
@@ -451,6 +457,52 @@ gen_filename(const char *dir)
 	free(filename);
 
 	return (elfpath);
+}
+
+static void *
+manage_children(void *_s)
+{
+	struct dtd_state *s = (struct dtd_state *)_s;
+	pidlist_t *kill_entry;
+
+	while (atomic_load(&s->shutdown) == 0) {
+		/*
+		 * Wait for a notification that we need to kill a process
+		 */
+		LOCK(&s->killcvmtx);
+		LOCK(&s->kill_listmtx);
+		while (dt_list_next(&s->kill_list) == NULL &&
+		    atomic_load(&s->shutdown) == 0) {
+			UNLOCK(&s->kill_listmtx);
+			WAIT(&s->killcv, &s->killcvmtx);
+			LOCK(&s->kill_listmtx);
+		}
+		UNLOCK(&s->kill_listmtx);
+		UNLOCK(&s->killcvmtx);
+
+		LOCK(&s->kill_listmtx);
+		kill_entry = dt_list_next(&s->kill_list);
+		if (kill_entry == NULL) {
+			fprintf(stderr, "kill message pulled from under us\n");
+			UNLOCK(&s->kill_listmtx);
+			continue;
+		}
+
+		dt_list_delete(&s->kill_list, kill_entry);
+		UNLOCK(&s->kill_listmtx);
+
+		if (kill(kill_entry->pid, SIGTERM)) {
+			assert(errno != EINVAL);
+			assert(errno != EPERM);
+
+			if (errno == ESRCH) {
+				fprintf(stderr, "pid %d does not exist\n",
+				    kill_entry->pid);
+			}
+		}
+
+		free(kill_entry);
+	}
 }
 
 /*
@@ -1179,7 +1231,6 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	int status;
 	size_t l, dirpathlen, filepathlen;
 	char *argv[4] = { 0 };
-	pidlist_t *pidl;
 
 	status = 0;
 	if (dir == NULL) {
@@ -1289,18 +1340,9 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			syslog(LOG_ERR, "Failed to fork: %m");
 			return (-1);
 		} else if (pid > 0) {
-			pidl = malloc(sizeof(pidlist_t));
-			if (pidl == NULL) {
-				syslog(LOG_ERR, "Failed to malloc pidl: %m");
-				return (-1);
-			}
-
-			memset(pidl, 0, sizeof(pidlist_t));
-			pidl->pid = pid;
-
-			LOCK(&s->pidlistmtx);
-			dt_list_append(&s->pidlist, pidl);
-			UNLOCK(&s->pidlistmtx);
+			/*
+			 * Send the pid back to the host... somehow.
+			 */
 		} else if (pid == 0) {
 			argv[0] = strdup("/usr/sbin/dtrace");
 			argv[1] = strdup("-Y");
@@ -1692,6 +1734,13 @@ setup_threads(struct dtd_state *s)
 		return (-1);
 	}
 
+	err = pthread_create(&s->killtd, NULL, manage_children, s);
+	if (err != 0) {
+		syslog(LOG_ERR,
+		    "Failed to create a child management thread: %m");
+		return (-1);
+	}
+
 	return (0);
 }
 
@@ -1780,8 +1829,19 @@ init_state(struct dtd_state *s)
 	}
 
 	if ((err = mutex_init(
-	    &s->pidlistmtx, NULL, "pidlist", CHECKOWNER_YES)) != 0) {
-		syslog(LOG_ERR, "Failed to create pidlist mutex: %m");
+	    &s->kill_listmtx, NULL, "kill list", CHECKOWNER_NO)) != 0) {
+		syslog(LOG_ERR, "Failed to create kill list mutex: %m");
+		return (-1);
+	}
+
+	if ((err = mutex_init(
+	    &s->killcvmtx, NULL, "", CHECKOWNER_YES)) != 0) {
+		syslog(LOG_ERR, "Failed to create kill condvar mutex: %m");
+		return (-1);
+	}
+
+	if ((err = pthread_cond_init(&s->killcv, NULL)) != 0) {
+		syslog(LOG_ERR, "Failed to create kill list condvar: %m");
 		return (-1);
 	}
 
@@ -1869,13 +1929,23 @@ destroy_state(struct dtd_state *s)
 		return (-1);
 	}
 
-	if ((err = mutex_destroy(&s->pidlistmtx)) != 0) {
-		syslog(LOG_ERR, "Failed to destroy pidlist mutex: %m");
+	if ((err = mutex_destroy(&s->kill_listmtx)) != 0) {
+		syslog(LOG_ERR, "Failed to destroy kill list mutex: %m");
+		return (-1);
+	}
+
+	if ((err = mutex_destroy(&s->killcvmtx)) != 0) {
+		syslog(LOG_ERR, "Failed to destroy kill list cv mutex: %m");
+		return (-1);
+	}
+
+	if ((err = pthread_cond_destroy(&s->killcv)) != 0) {
+		syslog(LOG_ERR, "Failed to destroy kill condvar: %m");
 		return (-1);
 	}
 
 	if ((err = pthread_cond_destroy(&s->joblistcv)) != 0) {
-		syslog(LOG_ERR, "Failed to destroy joblist condvar mutex: %m");
+		syslog(LOG_ERR, "Failed to destroy joblist condvar: %m");
 		return (-1);
 	}
 
@@ -2137,6 +2207,12 @@ againefd:
 			syslog(LOG_ERR, "Failed to join threads: %m");
 			return (EX_OSERR);
 		}
+	}
+
+	errval = pthread_join(state.killtd, (void **)&retval);
+	if (errval != 0) {
+		syslog(LOG_ERR, "Failed to join child management thread: %m");
+		return (EX_OSERR);
 	}
 
 	errval = destroy_state(&state);
