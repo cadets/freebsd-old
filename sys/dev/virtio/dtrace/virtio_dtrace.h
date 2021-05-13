@@ -54,6 +54,7 @@
 #define	VIRTIO_DTRACE_GO		0x08 /* Start tracing */
 #define	VIRTIO_DTRACE_ELF		0x09 /* ELF file transmission */
 #define	VIRTIO_DTRACE_STOP		0x0A /* Start tracing */
+#define	VIRTIO_DTRACE_KILL		0x0B /* Kill a DTrace process */
 
 int virtio_dtrace_enqueue(dtt_entry_t *);
 

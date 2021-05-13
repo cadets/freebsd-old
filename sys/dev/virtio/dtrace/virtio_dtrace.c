@@ -90,6 +90,8 @@ struct virtio_dtrace_control {
 			char		vd_elf[VIRTIO_DTRACE_MAXELFLEN];
 		} elf;
 
+		pid_t		vd_pid;		/* kill event */
+
 		/*
 		 * Defines for easy access into the union and underlying structs
 		 */
@@ -99,6 +101,7 @@ struct virtio_dtrace_control {
 #define	vd_elfhasmore	uctrl.elf.vd_elfhasmore
 #define	vd_totalelflen	uctrl.elf.vd_totalelflen
 #define	vd_elf		uctrl.elf.vd_elf
+#define	vd_pid		uctrl.vd_pid
 	} uctrl;
 };
 
@@ -687,14 +690,28 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		if (debug)
 			device_printf(dev, "VIRTIO_DTRACE_ELF\n");
 
-		memcpy(e.data, ctrl->vd_elf, ctrl->vd_elflen);
-		e.identifier = ctrl->vd_identifier;
-		e.len = ctrl->vd_elflen;
-		e.totallen = ctrl->vd_totalelflen;
-		e.hasmore = ctrl->vd_elfhasmore;
+		e.event_kind = DTT_ELF;
+		memcpy(e.u.elf.data, ctrl->vd_elf, ctrl->vd_elflen);
+		e.u.elf.identifier = ctrl->vd_identifier;
+		e.u.elf.len = ctrl->vd_elflen;
+		e.u.elf.totallen = ctrl->vd_totalelflen;
+		e.u.elf.hasmore = ctrl->vd_elfhasmore;
 
 		if (dtt_queue_enqueue(&e))
 			device_printf(dev, "dtt_queue_enqueue() failed.\n");
+		break;
+
+	case VIRTIO_DTRACE_KILL:
+		sc->vtdtr_ready = 0;
+
+		if (debug)
+			device_printf(dev, "VIRTIO_DTRACE_KILL\n");
+
+		e.event_kind = DTT_KILL;
+		e.u.kill.pid = ctrl->vd_pid;
+
+		if (dtt_queue_enqueue(&e))
+			device_printf(dev, "dtt_queue_enqueue() failed\n");
 		break;
 
 	case VIRTIO_DTRACE_EOF:
@@ -1280,6 +1297,39 @@ again:
 	}
 }
 
+static struct virtio_dtrace_control *
+ctrl_from_dttentry(dtt_entry_t *e)
+{
+	struct virtio_dtrace_control *ctrl;
+
+	ctrl = malloc(
+	    sizeof(struct virtio_dtrace_control), M_DEVBUF, M_WAITOK | M_ZERO);
+
+	switch (e->event_kind) {
+	case DTT_ELF:
+		ctrl->vd_event = VIRTIO_DTRACE_ELF;
+		ctrl->vd_identifier = e->u.elf.identifier;
+		ctrl->vd_elflen = e->u.elf.len;
+		ctrl->vd_elfhasmore = e->u.elf.hasmore;
+		ctrl->vd_totalelflen = e->u.elf.totallen;
+		memcpy(ctrl->vd_elf, e->u.elf.data, sizeof(ctrl->vd_elf));
+		break;
+	case DTT_KILL:
+		/*
+		 * We have no business sending this to the host...
+		 */
+		free(ctrl, M_DEVBUF);
+		ctrl = NULL;
+		break;
+	default:
+		free(ctrl, M_DEVBUF);
+		ctrl = NULL;
+		break;
+	}
+
+	return (ctrl);
+}
+
 int
 virtio_dtrace_enqueue(dtt_entry_t *e)
 {
@@ -1304,23 +1354,13 @@ virtio_dtrace_enqueue(dtt_entry_t *e)
 	dev = sc->vtdtr_dev;
 	q = &sc->vtdtr_txq;
 
+
+	ctrl = ctrl_from_dttentry(e);
+	if (ctrl == NULL)
+		return (-1);
+
 	ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry),
 	    M_DEVBUF, M_WAITOK | M_ZERO);
-	ctrl = malloc(sizeof(struct virtio_dtrace_control),
-	    M_DEVBUF, M_WAITOK | M_ZERO);
-
-	elf = e->data;
-	len = e->len;
-	totallen = e->totallen;
-	hasmore = e->hasmore;
-	identifier = e->identifier;
-
-	ctrl->vd_event = VIRTIO_DTRACE_ELF;
-	ctrl->vd_identifier = identifier;
-	ctrl->vd_elflen = len;
-	ctrl->vd_elfhasmore = hasmore;
-	ctrl->vd_totalelflen = totallen;
-	memcpy(ctrl->vd_elf, elf, sizeof(ctrl->vd_elf));
 	ctrl_entry->ctrl = ctrl;
 
 	mtx_lock(&sc->vtdtr_ctrlq->mtx);
