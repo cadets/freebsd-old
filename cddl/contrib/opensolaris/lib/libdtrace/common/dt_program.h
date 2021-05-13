@@ -67,6 +67,7 @@ struct dtrace_prog {
 	uint32_t dp_neprobes;		/* number of enabled probes */
 	dtrace_probedesc_t *dp_eprobes;	/* enabled probe array */
 	uint16_t dp_vmid;		/* origin vm of the program */
+	pid_t dp_pid;			/* pid of the current dtrace instance */
 };
 
 extern dtrace_prog_t *dt_program_create(dtrace_hdl_t *);

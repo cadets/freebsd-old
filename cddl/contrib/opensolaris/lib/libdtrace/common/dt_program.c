@@ -72,6 +72,11 @@ dt_program_create(dtrace_hdl_t *dtp)
 	 */
 	pgp->dp_vmid = 0;
 
+	/*
+	 * We don't want to set this by default.
+	 */
+	pgp->dp_pid = 0;
+
 	return (pgp);
 }
 

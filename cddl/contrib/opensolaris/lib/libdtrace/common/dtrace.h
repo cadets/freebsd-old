@@ -698,6 +698,7 @@ extern const char *dtrace_class_name(dtrace_class_t);
 
 extern int dtrace_provider_modules(dtrace_hdl_t *, const char **, int);
 extern void dtrace_set_guest(dtrace_hdl_t *);
+extern int dtrace_is_guest(dtrace_hdl_t *);
 extern int dt_augment_tracing(dtrace_hdl_t *, dtrace_prog_t *);
 extern int dt_vprobes_create(dtrace_hdl_t *, dtrace_prog_t *);
 	

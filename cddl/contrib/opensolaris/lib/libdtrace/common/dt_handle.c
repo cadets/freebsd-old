@@ -490,3 +490,10 @@ dtrace_set_guest(dtrace_hdl_t *dtp)
 
 	dtp->dt_is_guest = 1;
 }
+
+int
+dtrace_is_guest(dtrace_hdl_t *dtp)
+{
+
+	return (dtp->dt_is_guest);
+}

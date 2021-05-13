@@ -1510,6 +1510,12 @@ skipstmt:
 	memcpy(prog->dtep_ident, dt_prog->dp_ident, DT_PROG_IDENTLEN);
 	memcpy(prog->dtep_srcident, dt_prog->dp_srcident, DT_PROG_IDENTLEN);
 	prog->dtep_exec = dt_prog->dp_exec;
+	/*
+	 * FIXME: We should make sure that we don't leak host pids here, rather
+	 * than just relying on the rest of the code being correct, but for now
+	 * it will do.
+	 */
+	prog->dtep_pid = dt_prog->dp_pid;
 
 	/*
 	 * Save the options for this program.
@@ -2438,6 +2444,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	memcpy(prog->dp_srcident, eprog->dtep_srcident, DT_PROG_IDENTLEN);
 
 	prog->dp_exec = eprog->dtep_exec;
+	prog->dp_pid = eprog->dtep_pid;
 	prog->dp_neprobes = eprog->dtep_neprobes;
 
 	if (prog->dp_neprobes) {

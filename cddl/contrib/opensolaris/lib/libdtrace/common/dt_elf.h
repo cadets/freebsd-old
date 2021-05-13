@@ -160,6 +160,7 @@ typedef struct dt_elf_prog {
 	char			dtep_ident[DT_PROG_IDENTLEN];
 	char			dtep_srcident[DT_PROG_IDENTLEN];
 	int			dtep_exec;
+	int			dtep_pid;
 	uint32_t		dtep_neprobes;
 	dtrace_probedesc_t	dtep_eprobes[];
 } dt_elf_prog_t;
