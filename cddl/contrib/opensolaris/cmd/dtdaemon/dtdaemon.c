@@ -31,6 +31,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/event.h>
+#include <sys/sysctl.h>
 
 #include <dtrace.h>
 #include <dt_elf.h>
@@ -241,6 +242,7 @@ struct dtd_joblist {
 	dt_list_t	list;
 
 #define	NOTIFY_ELFWRITE	1
+#define	KILL		2
 	int		job;
 
 	union {
@@ -251,6 +253,11 @@ struct dtd_joblist {
 			dtd_dir_t	*dir;
 			int		nosha;
 		} notify_elfwrite;
+
+		struct {
+			int		connsockfd;
+			pid_t		pid;
+		} kill;
 	} j;
 };
 
@@ -276,6 +283,8 @@ sig_term(int __unused signo)
 {
 
 	atomic_store(&state.shutdown, 1);
+	SIGNAL(&state.joblistcv);
+	SIGNAL(&state.killcv);
 }
 
 static void
@@ -283,6 +292,8 @@ sig_int(int __unused signo)
 {
 
 	atomic_store(&state.shutdown, 1);
+	SIGNAL(&state.joblistcv);
+	SIGNAL(&state.killcv);
 }
 
 static void
@@ -474,11 +485,14 @@ manage_children(void *_s)
 		while (dt_list_next(&s->kill_list) == NULL &&
 		    atomic_load(&s->shutdown) == 0) {
 			UNLOCK(&s->kill_listmtx);
-			WAIT(&s->killcv, &s->killcvmtx);
+			WAIT(&s->killcv, pmutex_of(&s->killcvmtx));
 			LOCK(&s->kill_listmtx);
 		}
 		UNLOCK(&s->kill_listmtx);
 		UNLOCK(&s->killcvmtx);
+
+		if (atomic_load(&s->shutdown) == 1)
+			pthread_exit(_s);
 
 		LOCK(&s->kill_listmtx);
 		kill_entry = dt_list_next(&s->kill_list);
@@ -503,6 +517,8 @@ manage_children(void *_s)
 
 		free(kill_entry);
 	}
+
+	return (_s);
 }
 
 /*
@@ -523,6 +539,7 @@ listen_dttransport(void *_s)
 	uintptr_t aux1, aux2;
 	size_t dirlen;
 	size_t donepathlen;
+	pidlist_t *kill_entry;
 
 	err = 0;
 	fd = 0;
@@ -536,78 +553,106 @@ listen_dttransport(void *_s)
 
 	while (atomic_load(&s->shutdown) == 0) {
 		if (read(s->dtt_fd, &e, sizeof(e)) < 0) {
-			if (errno == EINTR && atomic_load(&s->shutdown) == 1)
+			if (errno == EINTR)
 				pthread_exit(s);
 
 			syslog(LOG_ERR, "Failed to read an entry: %m");
 			continue;
 		}
 
-		if (fd == -1)
-			continue;
+		switch (e.event_kind) {
+		case DTT_ELF:
+			if (fd == -1)
+				continue;
 
 retry:
-		/*
-		 * At this point we have the /var/ddtrace/inbound
-		 * open and created, so we can just create new files in it
-		 * without too much worry of failure because directory does
-		 * not exist.
-		 */
-		if (fd == 0) {
-			LOCK(&s->inbounddir->dirmtx);
-			path = gen_filename(s->inbounddir->dirpath);
-			UNLOCK(&s->inbounddir->dirmtx);
+			/*
+			 * At this point we have the /var/ddtrace/inbound
+			 * open and created, so we can just create new files in
+			 * it without too much worry of failure because
+			 * directory does not exist.
+			 */
+			if (fd == 0) {
+				LOCK(&s->inbounddir->dirmtx);
+				path = gen_filename(s->inbounddir->dirpath);
+				UNLOCK(&s->inbounddir->dirmtx);
 
-			if (path == NULL) {
-				syslog(LOG_ERR, "gen_filename() failed with %s\n",
-				    strerror(errno));
-				goto retry;
-			}
-			fd = open(path, O_CREAT | O_WRONLY, 0600);
+				if (path == NULL) {
+					syslog(LOG_ERR,
+					    "gen_filename() failed with %s\n",
+					    strerror(errno));
+					goto retry;
+				}
+				fd = open(path, O_CREAT | O_WRONLY, 0600);
 
-			if (fd == -1) {
-				syslog(LOG_ERR, "Failed to open %s: %m", path);
-				continue;
-			}
+				if (fd == -1) {
+					syslog(LOG_ERR, "Failed to open %s: %m",
+					    path);
+					continue;
+				}
 
-			elf = malloc(e.totallen);
-			memset(elf, 0, e.totallen);
-			len = e.totallen;
-		}
-
-		assert(offs < len);
-		memcpy(elf + offs, e.data, e.len);
-		offs += e.len;
-
-		if (e.hasmore == 0) {
-			if (write(fd, elf, len) < 0) {
-				if (errno == EINTR &&
-				    atomic_load(&s->shutdown) == 1)
-					pthread_exit(s);
-
-				syslog(LOG_ERR,
-				    "Failed to write data to %s: %m", path);
+				elf = malloc(e.u.elf.totallen);
+				memset(elf, 0, e.u.elf.totallen);
+				len = e.u.elf.totallen;
 			}
 
- 			donepathlen = strlen(path) - 1;
-			memset(donepath, 0, donepathlen);
-			memcpy(donepath, path, dirlen);
-			memcpy(donepath + dirlen, path + dirlen + 1,
-			    donepathlen - dirlen);
+			assert(offs < len);
+			memcpy(elf + offs, e.u.elf.data, e.u.elf.len);
+			offs += e.u.elf.len;
 
-			if (rename(path, donepath)) {
-				syslog(LOG_ERR, "Failed to move %s to %s: %m",
-				    path, donepath);
+			if (e.u.elf.hasmore == 0) {
+				if (write(fd, elf, len) < 0) {
+					if (errno == EINTR)
+						pthread_exit(s);
+
+					syslog(LOG_ERR,
+					    "Failed to write data to %s: %m",
+					    path);
+				}
+
+				donepathlen = strlen(path) - 1;
+				memset(donepath, 0, donepathlen);
+				memcpy(donepath, path, dirlen);
+				memcpy(donepath + dirlen, path + dirlen + 1,
+				    donepathlen - dirlen);
+
+				if (rename(path, donepath)) {
+					syslog(LOG_ERR,
+					    "Failed to move %s to %s: %m", path,
+					    donepath);
+				}
+
+				len = 0;
+				offs = 0;
+				free(elf);
+				close(fd);
+				free(path);
+				donepathlen = 0;
+				fd = 0;
+				path = NULL;
 			}
+			break;
+		case DTT_KILL:
+			kill_entry = malloc(sizeof(pidlist_t));
+			if (kill_entry == NULL)
+				break;
 
-			len = 0;
-			offs = 0;
-			free(elf);
-			close(fd);
-			free(path);
-			donepathlen = 0;
-			fd = 0;
-			path = NULL;
+			kill_entry->pid = e.u.kill.pid;
+			LOCK(&s->kill_listmtx);
+			dt_list_append(&s->kill_list, kill_entry);
+			UNLOCK(&s->kill_listmtx);
+
+			LOCK(&s->killcvmtx);
+			SIGNAL(&s->killcv);
+			UNLOCK(&s->killcvmtx);
+
+			break;
+
+		default:
+			syslog(LOG_WARNING,
+			    "got unknown event (%d) from dttransport",
+			    e.event_kind);
+			break;
 		}
 	}
 
@@ -625,6 +670,10 @@ write_dttransport(void *_s)
 	struct sockaddr_un addr;
 	int kind;
 	uint32_t identifier;
+	dtdaemon_hdr_t hdr;
+	ssize_t r;
+	uintptr_t msg_ptr;
+	unsigned char *msg;
 
 	rval = 0;
 	sockfd = 0;
@@ -676,45 +725,62 @@ write_dttransport(void *_s)
 
 	while (atomic_load(&s->shutdown) == 0) {
 		if ((rval = recv(sockfd, &len, sizeof(size_t), 0)) < 0) {
-			if (errno == EINTR && atomic_load(&s->shutdown) == 1)
+			if (errno == EINTR)
 				pthread_exit(s);
 			
 			syslog(LOG_ERR, "Failed to recv from sub.sock: %m");
 			continue;
 		}
 
+		msg = malloc(len);
+		if (msg == NULL) {
+			syslog(
+			    LOG_ERR, "Failed to allocate a new message: %m\n");
+			atomic_store(&s->shutdown, 1);
+			pthread_exit(NULL);
+		}
+
 		totallen = len;
 		identifier = arc4random();
+		msg_ptr = (uintptr_t)msg;
+		while ((r = recv(sockfd, (void *)msg_ptr, len, 0)) != len) {
+			if (r < 0) {
+				atomic_store(&s->shutdown, 1);
+				pthread_exit(NULL);
+			}
+
+			len -= r;
+			msg_ptr += r;
+		}
+
+		memcpy(&hdr, msg, DTDAEMON_MSGHDRSIZE);
+		if (DTDAEMON_MSG_TYPE(hdr) != DTDAEMON_MSG_ELF) {
+			syslog(LOG_ERR, "Received unknown message type: %lu\n",
+			    DTDAEMON_MSG_TYPE(hdr));
+			atomic_store(&s->shutdown, 1);
+			pthread_exit(NULL);
+		}
+
+		assert(DTDAEMON_MSG_TYPE(hdr) == DTDAEMON_MSG_ELF);
+
+		msg_ptr = (uintptr_t)msg;
+		msg += DTDAEMON_MSGHDRSIZE;
+
+		totallen -= DTDAEMON_MSGHDRSIZE;
+		len = totallen;
 		while (len != 0) {
 			memset(&e, 0, sizeof(e));
 			lentoread = len > DTT_MAXDATALEN ? DTT_MAXDATALEN : len;
 
-			/*
-			 * XXX: This won't be fragmented, but perhaps just to be
-			 * on the safe side we should loop instead of just if()?
-			 */
-			if ((rval = recv(sockfd, e.data, lentoread, 0)) < 0) {
-				if (errno == EINTR &&
-				    atomic_load(&s->shutdown) == 1)
-					pthread_exit(s);
-				/*
-				 * If the device is not configured, we don't
-				 * actually care to report an error here.
-				 */
-				if (errno != ENXIO)
-					syslog(LOG_ERR,
-					    "Failed to recv from sub.sock: %m");
-				continue;
-			}
-
-			e.identifier = identifier;
-			e.hasmore = len > DTT_MAXDATALEN ? 1 : 0;
-			e.len = lentoread;
-			e.totallen = totallen;
+			e.event_kind = DTT_ELF;
+			e.u.elf.identifier = identifier;
+			e.u.elf.hasmore = len > DTT_MAXDATALEN ? 1 : 0;
+			e.u.elf.len = lentoread;
+			e.u.elf.totallen = totallen;
+			memcpy(e.u.elf.data, msg, lentoread);
 
 			if (write(s->dtt_fd, &e, sizeof(e)) < 0) {
-				if (errno == EINTR &&
-				    atomic_load(&s->shutdown) == 1)
+				if (errno == EINTR)
 					pthread_exit(s);
 				/*
 				 * If we don't have dttransport opened,
@@ -725,7 +791,14 @@ write_dttransport(void *_s)
 			}
 
 			len -= lentoread;
+			msg += lentoread;
+
+			assert((uintptr_t)msg >= msg_ptr);
+			assert((uintptr_t)msg <=
+			    (msg_ptr + totallen + DTDAEMON_MSGHDRSIZE));
 		}
+
+		free((void *)msg_ptr);
 	}
 
 	pthread_exit(s);
@@ -757,17 +830,15 @@ listen_dir(void *_dir)
 	    NOTE_WRITE, 0, (void *)dir);
 
 	while (atomic_load(&s->shutdown) == 0) {
-		LOCK(&dir->dirmtx);
-		UNLOCK(&dir->dirmtx);
 		rval = kevent(kq, &ev, 1, &ev_data, 1, NULL);
 		assert(rval != 0);
 
 		if (rval < 0) {
-			if (errno == EINTR && atomic_load(&s->shutdown) == 1)
+			if (errno == EINTR)
 				return (s);
 
 			syslog(LOG_ERR, "kevent() failed with %m");
-			continue;
+			return (NULL);
 		}
 
 		if (ev_data.flags == EV_ERROR) {
@@ -796,15 +867,17 @@ process_joblist(void *_s)
 	int elffd;
 	int i;
 	char *path;
-	char *contents, *msg;
+	char *contents, *msg, *_msg;
 	size_t msglen;
 	size_t pathlen;
 	size_t elflen;
 	struct dtd_joblist *curjob;
 	struct dtd_fdlist *fde;
 	struct dtd_state *s = (struct dtd_state *)_s;
+	dtdaemon_hdr_t hdr;
 	dtd_dir_t *dir;
 	ssize_t r;
+	pid_t pid;
 	struct stat stat;
 
 	_nosha = s->nosha;
@@ -841,6 +914,94 @@ process_joblist(void *_s)
 		UNLOCK(&s->joblistmtx);
 
 		switch (curjob->job) {
+		case KILL:
+			assert(0);
+			fd = curjob->j.kill.connsockfd;
+			pid = curjob->j.kill.pid;
+
+			assert(fd != -1);
+			/*
+			 * If we end up with pid <= 1, something went wrong.
+			 */
+			assert(pid > 1);
+			msglen = sizeof(pid_t) + DTDAEMON_MSGHDRSIZE;
+			msg = malloc(msglen);
+			if (msg == NULL) {
+				syslog(LOG_ERR,
+				    "Failed to allocate a kill message: %m");
+				break;
+			}
+
+			/*
+			 * For now the header only includes the message kind, so
+			 * we don't really make it a structure. In the future,
+			 * this might change.
+			 */
+			hdr = DTDAEMON_MSG_KILL;
+			memcpy(msg, &hdr, DTDAEMON_MSGHDRSIZE);
+			contents = msg + DTDAEMON_MSGHDRSIZE;
+
+			memcpy(contents, &pid, sizeof(pid));
+
+			if (send(fd, &msglen, sizeof(msglen), 0) < 0) {
+				if (errno == EPIPE) {
+					/*
+					 * Get the entry from a socket list to
+					 * delete it. This is a bit "slow", but
+					 * should be happening rarely enough
+					 * that we don't really care. A small
+					 * delay here is acceptable, as most
+					 * consumers of this event will open the
+					 * path sent to them and process the ELF
+					 * file.
+					 */
+					LOCK(&s->socklistmtx);
+					fde = dt_in_list(
+					    &s->sockfds, &fd, sizeof(int));
+					if (fde == NULL) {
+						UNLOCK(&s->socklistmtx);
+						goto cleanup;
+					}
+
+					dt_list_delete(&s->sockfds, fde);
+					UNLOCK(&s->socklistmtx);
+					goto cleanup;
+				} else
+					syslog(LOG_ERR,
+					    "Failed to write to %d (%zu): %m",
+					    fd, msglen);
+			}
+
+			if ((r = send(fd, msg, msglen, 0)) < 0) {
+				if (errno == EPIPE) {
+					/*
+					 * Get the entry from a socket list to
+					 * delete it. This is a bit "slow", but
+					 * should be happening rarely enough
+					 * that we don't really care. A small
+					 * delay here is acceptable, as most
+					 * consumers of this event will open the
+					 * path sent to them and process the ELF
+					 * file.
+					 */
+					LOCK(&s->socklistmtx);
+					fde = dt_in_list(
+					    &s->sockfds, &fd, sizeof(int));
+					if (fde == NULL) {
+						UNLOCK(&s->socklistmtx);
+						goto cleanup;
+					}
+
+					dt_list_delete(&s->sockfds, fde);
+					UNLOCK(&s->socklistmtx);
+				} else
+					syslog(LOG_ERR,
+					    "Failed to write to %d: %m", fd);
+			}
+
+			free(msg);
+			break;
+
 		case NOTIFY_ELFWRITE:
 			fd = curjob->j.notify_elfwrite.connsockfd;
 			path = curjob->j.notify_elfwrite.path;
@@ -874,19 +1035,24 @@ process_joblist(void *_s)
 			elflen = stat.st_size;
 			msglen =
 			    _nosha ? elflen : elflen + SHA256_DIGEST_LENGTH;
+			msglen += DTDAEMON_MSGHDRSIZE;
 			msg = malloc(msglen);
 
 			if (msg == NULL) {
 				syslog(LOG_ERR,
-				    "Failed to malloc ELF contents: %m");
+				    "Failed to allocate ELF contents: %m");
 				free(path);
 				close(elffd);
 				break;
 			}
 
+			hdr = DTDAEMON_MSG_ELF;
 			memset(msg, 0, msglen);
-			contents = _nosha ? msg : msg + SHA256_DIGEST_LENGTH;
-			
+			memcpy(msg, &hdr, DTDAEMON_MSGHDRSIZE);
+
+			_msg = msg + DTDAEMON_MSGHDRSIZE;
+			contents = _nosha ? _msg : _msg + SHA256_DIGEST_LENGTH;
+
 			if ((r = read(elffd, contents, elflen)) < 0) {
 				syslog(
 				    LOG_ERR, "Failed to read ELF contents: %m");
@@ -897,7 +1063,7 @@ process_joblist(void *_s)
 			}
 
 			if (_nosha == 0 &&
-			    SHA256(contents, elflen, msg) == NULL) {
+			    SHA256(contents, elflen, _msg) == NULL) {
 				syslog(LOG_ERR,
 				    "Failed to create a SHA256 of the file");
 				free(path);
@@ -905,6 +1071,12 @@ process_joblist(void *_s)
 				close(elffd);
 				break;
 			}
+
+			char tmpname[] = "/tmp/debug.XXX";
+			int tmpfd = mkstemp(tmpname);
+			(void)write(tmpfd, _msg, msglen - DTDAEMON_MSGHDRSIZE);
+			close(tmpfd);
+
 
 			if (send(fd, &msglen, sizeof(msglen), 0) < 0) {
 				if (errno == EPIPE) {
@@ -1021,7 +1193,7 @@ accept_subs(void *_s)
 			 * received on this thread is when we explicitly
 			 * call pthread_kill() on shutdown.
 			 */
-			if (errno == EINTR && atomic_load(&s->shutdown) == 1)
+			if (errno == EINTR)
 				goto exit;
 
 			syslog(LOG_ERR, "Failed to accept a connection: %m");
@@ -1040,8 +1212,7 @@ accept_subs(void *_s)
 		if (send(connsockfd, &kind, sizeof(kind), 0) < 0) {
 			close(connsockfd);
 
-			if ((errno == EINTR || errno == EPIPE) &&
-			    atomic_load(&s->shutdown) == 1)
+			if (errno == EINTR || errno == EPIPE)
 				goto exit;
 
 			fprintf(stderr, "Failed to send %d to connsockfd: %s",
@@ -1054,8 +1225,7 @@ accept_subs(void *_s)
 			free(fde);
 			close(connsockfd);
 
-			if ((errno == EINTR || errno == EPIPE) &&
-			    atomic_load(&s->shutdown) == 1)
+			if (errno == EINTR || errno == EPIPE)
 				goto exit;
 
 			syslog(LOG_ERR, "Failed to read what kind of subscriber"
@@ -1698,20 +1868,26 @@ setup_threads(struct dtd_state *s)
 
 	sem_init(&s->socksema, 0, 0);
 
-	err = pthread_create(&s->dtt_listentd, NULL, listen_dttransport, s);
-	if (err != 0) {
-		syslog(LOG_ERR, "Failed to create the dttransport thread: %m");
-		return (-1);
-	}
+	if (g_ctrlmachine == 0) {
+		err = pthread_create(
+		    &s->dtt_listentd, NULL, listen_dttransport, s);
+		if (err != 0) {
+			syslog(LOG_ERR,
+			    "Failed to create the dttransport thread: %m");
+			return (-1);
+		}
 
-	/*
-	 * The socket can't be connected at this point because accept_subs is
-	 * not running. Need a semaphore.
-	 */
-	err = pthread_create(&s->dtt_writetd, NULL, write_dttransport, s);
-	if (err != 0) {
-		syslog(LOG_ERR, "Failed to create the dttransport thread: %m");
-		return (-1);
+		/*
+		 * The socket can't be connected at this point because
+		 * accept_subs is not running. Need a semaphore.
+		 */
+		err =
+		    pthread_create(&s->dtt_writetd, NULL, write_dttransport, s);
+		if (err != 0) {
+			syslog(LOG_ERR,
+			    "Failed to create the dttransport thread: %m");
+			return (-1);
+		}
 	}
 
 	err = pthread_create(&s->socktd, NULL, accept_subs, s);
@@ -1850,10 +2026,12 @@ init_state(struct dtd_state *s)
 		return (-1);
 	}
 
-	s->dtt_fd = open("/dev/dttransport", O_RDWR);
-	if (s->dtt_fd == -1) {
-		syslog(LOG_ERR, "Failed to open /dev/dttransport: %m");
-		return (-1);
+	if (g_ctrlmachine == 0) {
+		s->dtt_fd = open("/dev/dttransport", O_RDWR);
+		if (s->dtt_fd == -1) {
+			syslog(LOG_ERR, "Failed to open /dev/dttransport: %m");
+			return (-1);
+		}
 	}
 
 	s->outbounddir = dtd_mkdir(DTDAEMON_OUTBOUNDDIR, &process_outbound);
@@ -1960,8 +2138,10 @@ destroy_state(struct dtd_state *s)
 
 	free(s->workers);
 
-	close(s->dtt_fd);
-	s->dtt_fd = -1;
+	if (g_ctrlmachine == 0) {
+		close(s->dtt_fd);
+		s->dtt_fd = -1;
+	}
 
 	return (0);
 }
@@ -1991,10 +2171,13 @@ main(int argc, char **argv)
 	struct dtd_state *retval;
 	int optidx = 0;
 	int lockfd;
+	char hypervisor[128];
+	size_t len = sizeof(hypervisor);
 
 	lockfd = 0;
 	retry = 0;
 	memset(pidstr, 0, sizeof(pidstr));
+	memset(hypervisor, 0, sizeof(hypervisor));
 
 	while ((ch = getopt_long(
 	    argc, argv, "Ca:ce:hvZ", long_opts, &optidx)) != -1) {
@@ -2017,10 +2200,46 @@ main(int argc, char **argv)
 			break;
 
 		case 'C':
+			if (sysctlbyname("kern.vm_guest", hypervisor, &len,
+			    NULL, 0)) {
+				syslog(LOG_ERR,
+				    "Failed to get kern.vm_guest: %m\n");
+				return (EX_OSERR);
+			}
+
+			if (strcmp(hypervisor, "none") != 0) {
+				/*
+				 * We are virtualized, so we can't be a control
+				 * machine.
+				 */
+				syslog(LOG_ERR,
+				    "-C is not allowed in a virtual machine");
+				exit(EXIT_FAILURE);
+			}
+
 			g_ctrlmachine = 1;
 			break;
 
 		case 'c':
+			if (sysctlbyname("kern.vm_guest", hypervisor, &len,
+			    NULL, 0)) {
+				syslog(LOG_ERR,
+				    "Failed to get kern.vm_guest: %m\n");
+				return (EX_OSERR);
+			}
+
+			if (strcmp(hypervisor, "bhyve bhyve ") != 0) {
+				/*
+				 * Warn the user that this makes very little
+				 * sense on a non-virtualized machine...
+				 *
+				 * XXX: We only support bhyve for now.
+				 */
+
+				syslog(LOG_WARNING,
+				    "-c specified on the host. "
+				    "Did you mean -C?");
+			}
 			g_ctrlmachine = 0;
 			break;
 
@@ -2034,22 +2253,30 @@ main(int argc, char **argv)
 	}
 
 	lockfd = open(LOCK_FILE, O_RDWR | O_CREAT, 0640);
-	if (lockfd == -1)
-		err(EXIT_FAILURE, "Could not open %s", LOCK_FILE);
+	if (lockfd == -1) {
+		syslog(LOG_ERR, "Could not open %s: %m", LOCK_FILE);
+		return (EX_OSERR);
+	}
 
-	if (lockf(lockfd, F_TLOCK, 0) < 0)
-		err(EXIT_FAILURE, "Could not lock %s", LOCK_FILE);
+	if (lockf(lockfd, F_TLOCK, 0) < 0) {
+		syslog(LOG_ERR, "Could not lock %s: %m", LOCK_FILE);
+		return (EX_OSERR);
+	}
 
 	sprintf(pidstr, "%d\n", getpid());
 
-	if (write(lockfd, pidstr, strlen(pidstr)) < 0)
-		err(EXIT_FAILURE, "Failed to write pid to %s", LOCK_FILE);
+	if (write(lockfd, pidstr, strlen(pidstr)) < 0) {
+		syslog(LOG_ERR, "Failed to write pid to %s: %m", LOCK_FILE);
+		return (EX_OSERR);
+	}
 
 	state.lockfd = lockfd;
 	assert(state.lockfd != -1);
 
-	if (g_ctrlmachine != 0 && g_ctrlmachine != 1)
-		errx(EXIT_FAILURE, "You must either specify -c or -C");
+	if (g_ctrlmachine != 0 && g_ctrlmachine != 1) {
+		syslog(LOG_ERR, "You must either specify -c or -C");
+		return (EX_OSERR);
+	}
 #if 0
 	if (daemon(0, 0) != 0) {
 		syslog(LOG_ERR, "Failed to daemonize %m");
@@ -2095,12 +2322,6 @@ againefd:
 		return (EX_OSERR);
 	}
 
-#if 0
-	if (signal(SIGPIPE, sig_pipe) == SIG_ERR) {
-		syslog(LOG_ERR, "Failed to install SIGPIPE handler");
-		return (EX_OSERR);
-	}
-#endif
 	if (siginterrupt(SIGTERM, 1) != 0) {
 		syslog(LOG_ERR,
 		    "Failed to enable system call interrupts for SIGTERM");
@@ -2133,9 +2354,11 @@ againefd:
 		return (EX_OSERR);
 	}
 
-	if (listen_dir(state.outbounddir) == NULL)
-		errx(EXIT_FAILURE, "listen_dir() on %s failed",
+	if (listen_dir(state.outbounddir) == NULL) {
+		syslog(LOG_ERR, "listen_dir() on %s failed",
 		    state.outbounddir->dirpath);
+		return (EXIT_FAILURE);
+	}
 
 	errval = pthread_kill(state.socktd, SIGTERM);
 	if (errval != 0) {
@@ -2207,6 +2430,12 @@ againefd:
 			syslog(LOG_ERR, "Failed to join threads: %m");
 			return (EX_OSERR);
 		}
+	}
+
+	errval = pthread_kill(state.killtd, SIGTERM);
+	if (errval != 0) {
+		syslog(LOG_ERR, "Failed to interrupt killtd: %m");
+		return (EX_OSERR);
 	}
 
 	errval = pthread_join(state.killtd, (void **)&retval);

@@ -35,4 +35,17 @@
 #define	DTDAEMON_KIND_FORWARDER		2
 #define	DTDAEMON_KIND_DTDAEMON		3
 
+typedef uint64_t dtdaemon_hdr_t;
+
+#define	DTDAEMON_MSGHDRSIZE		8
+
+/*
+ * Public message API
+ */
+#define	DTDAEMON_MSG_ELF		1
+#define	DTDAEMON_MSG_KILL		2
+#define	DTDAEMON_MSG_LAST		2
+
+#define	DTDAEMON_MSG_TYPE(m)		(m)
+
 #endif // __DTDAEMON_H_
