@@ -159,7 +159,7 @@ dthyve_read(void **buf, size_t *len)
 
 	*buf = malloc(*len);
 	if (*buf == NULL) {
-		fprintf(stderr, "dthyve: failed to malloc buf\n");
+		fprintf(stderr, "dthyve: failed to allocate buf\n");
 		return (-1);
 	}
 	

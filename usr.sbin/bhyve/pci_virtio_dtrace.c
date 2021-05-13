@@ -53,6 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <pthread.h>
 #include <errno.h>
 #include <err.h>
+#include <dtdaemon.h>
 
 #include <syslog.h>
 #include <stdarg.h>
@@ -78,6 +79,7 @@ __FBSDID("$FreeBSD$");
 #define	VTDTR_DEVICE_GO			0x08 /* Start the tracing */
 #define	VTDTR_DEVICE_ELF		0x09 /* Send an ELF file */
 #define	VTDTR_DEVICE_STOP		0x0A /* Stop tracing */
+#define	VTDTR_DEVICE_KILL		0x0B /* Kill a DTrace process */
 
 #define PCI_VTDTR_MAXELFLEN		2048
 
@@ -100,6 +102,8 @@ struct pci_vtdtr_control {
 			char		pvc_elf[PCI_VTDTR_MAXELFLEN];
 		} elf;
 
+		uint32_t	pvc_pid;	/* kill a dtrace process */
+
 		/*
 		 * Defines for easy access into the union and underlying structs
 		 */
@@ -110,6 +114,7 @@ struct pci_vtdtr_control {
 #define	pvc_elfhasmore	uctrl.elf.pvc_elfhasmore
 #define	pvc_totalelflen	uctrl.elf.pvc_totalelflen
 #define	pvc_elf		uctrl.elf.pvc_elf
+#define	pvc_pid		uctrl.pvc_pid
 	} uctrl;
 };
 
@@ -362,6 +367,12 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 
 	case VTDTR_DEVICE_EOF:
 		retval = 1;
+		break;
+
+	case VTDTR_DEVICE_KILL:
+		WPRINTF(("Warning: VTDTR_DEVICE_KILL received on the host "
+			 "for pid %d\n",
+		    ctrl->pvc_pid));
 		break;
 
 	default:
@@ -659,7 +670,6 @@ vtdtr_elf_event(void *buf, size_t size, size_t offs)
 	size_t maxlen;
 	size_t len_to_read;
 	int hasmore;
-	void *elfbuf;
 
 	rval = 0;
 	ctrl = NULL;
@@ -703,6 +713,25 @@ vtdtr_elf_event(void *buf, size_t size, size_t offs)
 	return (ctrl);
 }
 
+static struct pci_vtdtr_control *
+vtdtr_kill_event(void *buf, size_t size)
+{
+	struct pci_vtdtr_control *ctrl;
+
+	ctrl = malloc(sizeof(struct pci_vtdtr_control));
+	if (ctrl == NULL) {
+		fprintf(stderr, "failed to malloc new control event\n");
+		return (NULL);
+	}
+
+	memset(ctrl, 0, sizeof(struct pci_vtdtr_control));
+
+	ctrl->pvc_event = VTDTR_DEVICE_KILL;
+	memcpy(&ctrl->pvc_pid, buf, sizeof(ctrl->pvc_pid));
+
+	return (ctrl);
+}
+
 static struct stat *
 vtdtr_get_filestat(int fd)
 {
@@ -731,16 +760,16 @@ pci_vtdtr_events(void *xsc)
 {
 	struct pci_vtdtr_softc *sc;
 	int error;
-	size_t flags;
-	const char *elfpath;
 	int fd;
 	struct stat *st;
 	size_t offs;
-	char *buf = NULL;
+	char *buf = NULL, *_buf = NULL;
 	struct pci_vtdtr_control *ctrl;
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
 	size_t len;
+	dtdaemon_hdr_t hdr;
 
+	hdr = 0;
 	buf = NULL;
 	sc = xsc;
 	fd = 0;
@@ -762,52 +791,81 @@ pci_vtdtr_events(void *xsc)
 			continue;
 		}
 
+		memcpy(&hdr, buf, DTDAEMON_MSGHDRSIZE);
 		/*
-		 * We can't do anything meaningful if this malloc fails, so
-		 * we simply assume it will succeed every time and assert it.
+		 * We don't need the header anymore...
 		 */
+		_buf = buf + DTDAEMON_MSGHDRSIZE;
+		len -= DTDAEMON_MSGHDRSIZE;
+
 		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
 		assert(ctrl_entry != NULL);
 		memset(ctrl_entry, 0, sizeof(struct pci_vtdtr_ctrl_entry));
 
-		ctrl = vtdtr_elf_event(buf, len, offs);
-		assert(ctrl != NULL);
-		offs += ctrl->pvc_elflen;
-
-		while (ctrl->pvc_elfhasmore == 1) {
+		fprintf(stderr, "hdr = %lu\n", hdr);
+		switch (DTDAEMON_MSG_TYPE(hdr)) {
+		case DTDAEMON_MSG_KILL:
+			ctrl = vtdtr_kill_event(_buf, len);
 			ctrl_entry->ctrl = ctrl;
 
 			pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
 			pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
 			pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 
+			pthread_mutex_lock(&sc->vsd_condmtx);
+			pthread_cond_signal(&sc->vsd_cond);
+			pthread_mutex_unlock(&sc->vsd_condmtx);
+
+			break;
+
+		case DTDAEMON_MSG_ELF:
 			/*
-			 * Get the new control element
+			 * We can't do anything meaningful if this malloc fails,
+			 * so we simply assume it will succeed every time and
+			 * assert it.
 			 */
-			ctrl = vtdtr_elf_event(buf, len, offs);
+
+			ctrl = vtdtr_elf_event(_buf, len, offs);
 			assert(ctrl != NULL);
 			offs += ctrl->pvc_elflen;
 
-			ctrl_entry =
-			    malloc(sizeof(struct pci_vtdtr_ctrl_entry));
-			assert(ctrl_entry != NULL);
-			memset(
-			    ctrl_entry, 0, sizeof(struct pci_vtdtr_ctrl_entry));
+			while (ctrl->pvc_elfhasmore == 1) {
+				ctrl_entry->ctrl = ctrl;
+
+				pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+				pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
+				pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+
+				/*
+				 * Get the new control element
+				 */
+				ctrl = vtdtr_elf_event(_buf, len, offs);
+				assert(ctrl != NULL);
+				offs += ctrl->pvc_elflen;
+
+				ctrl_entry =
+				    malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+				assert(ctrl_entry != NULL);
+				memset(ctrl_entry, 0,
+				    sizeof(struct pci_vtdtr_ctrl_entry));
+			}
+
+			ctrl_entry->ctrl = ctrl;
+
+			pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+			pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
+			pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+
+			pthread_mutex_lock(&sc->vsd_condmtx);
+			pthread_cond_signal(&sc->vsd_cond);
+			pthread_mutex_unlock(&sc->vsd_condmtx);
+
+			offs = 0;
+			len = 0;
+			break;
 		}
 
-
-		ctrl_entry->ctrl = ctrl;
-
-		pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
-		pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
-		pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
-
-		pthread_mutex_lock(&sc->vsd_condmtx);
-		pthread_cond_signal(&sc->vsd_cond);
-		pthread_mutex_unlock(&sc->vsd_condmtx);
-
-		offs = 0;
-		len = 0;
+		free(buf);
 	}
 }
 
