@@ -975,6 +975,12 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 
 		vmid = p->vmid;
 		n_vprobes_to_create = p->neprobes;
+		/*
+		 * We would overflow the integer, so we just return.
+		 */
+		if (n_vprobes_to_create > SIZE_MAX/sizeof(dtrace_probedesc_t))
+			return (EINVAL);
+
 		vprobes_to_create = kmem_zalloc(
 		    sizeof(dtrace_probedesc_t) * n_vprobes_to_create, KM_SLEEP);
 		ASSERT(vprobes_to_create != NULL);
