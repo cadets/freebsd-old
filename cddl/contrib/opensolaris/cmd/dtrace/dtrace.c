@@ -878,6 +878,7 @@ listen_dtdaemon(void *arg)
 	ssize_t r;
 	uintptr_t elf_ptr;
 	size_t len_to_recv;
+	dtdaemon_hdr_t hdr;
 
 	sockfd = 0;
 	elflen = 0;
@@ -953,6 +954,27 @@ listen_dtdaemon(void *arg)
 			break;
 		}
 
+		/*
+		 * 8-byte aligned
+		 */
+		assert(((uintptr_t)elf & 7) == 0);
+		memcpy(&hdr, elf, sizeof(hdr));
+		elf += DTDAEMON_MSGHDRSIZE;
+		elflen -= DTDAEMON_MSGHDRSIZE;
+
+		if (hdr != DTDAEMON_MSG_ELF) {
+			/*
+			 * We shouldn't be receiving a kill command, so let's
+			 * just report it and ignore it...
+			 */
+			fprintf(stderr,
+			    "received unknown message (%lu), ignoring...\n",
+			    hdr);
+			continue;
+		}
+
+		assert(hdr == DTDAEMON_MSG_ELF);
+
 		if (elf[0] == 0x7F && elf[1] == 'E' &&
 		    elf[2] == 'L'  && elf[3] == 'F') {
 			novm = 1;
@@ -966,8 +988,8 @@ listen_dtdaemon(void *arg)
 		 */
 		assert(((uintptr_t)elf & 1) == 0);
 		vmid = *((uint16_t *)elf);
-		elf += (sizeof(uint16_t) + 6) /* vmid + padding */;
-		
+		elf += sizeof(uint16_t) + 6;
+
 		/*
 		 * 8-byte aligned
 		 */
@@ -1894,6 +1916,13 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 			    dpi.dpi_matches, dpi.dpi_matches == 1 ? "" : "s");
 		}
 
+		/*
+		 * If we are actually tracing things, we will need to stop at
+		 * some point. Get the pid so that the host can send a message
+		 * to dtdaemon to kill us later.
+		 */
+		assert(dtrace_is_guest(g_dtp) != 0);
+		dcp->dc_prog->dp_pid = getpid();
 		setup_tracing();
 		pthread_create(&g_worktd, NULL, dtc_work, NULL);
 	}
