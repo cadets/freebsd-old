@@ -26,112 +26,112 @@
  */
 
 #include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <sys/event.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/sysctl.h>
+#include <sys/un.h>
+#include <sys/wait.h>
 
-#include <dtrace.h>
-#include <dt_elf.h>
-#include <dt_resolver.h>
-
-#include "dtdaemon.h"
 #include <assert.h>
+#include <dirent.h>
+#include <dt_elf.h>
+#include <dt_prog_link.h>
+#include <dt_resolver.h>
+#include <dtrace.h>
+#include <dttransport.h>
+#include <err.h>
+#include <errno.h>
 #include <execinfo.h>
-#include <stdlib.h>
-#include <syslog.h>
+#include <fcntl.h>
+#include <getopt.h>
+#include <inttypes.h>
+#include <libgen.h>
+#include <limits.h>
+#include <openssl/sha.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <signal.h>
+#include <spawn.h>
 #include <stdarg.h>
 #include <stdatomic.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <unistd.h>
-#include <limits.h>
-#include <inttypes.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <err.h>
 #include <sysexits.h>
-#include <pthread.h>
-#include <signal.h>
-#include <assert.h>
-#include <libgen.h>
-#include <dirent.h>
-#include <getopt.h>
-#include <semaphore.h>
+#include <syslog.h>
 #include <unistd.h>
 
-#include <dttransport.h>
+#include "dtdaemon.h"
 
-#include <openssl/sha.h>
+#define DTDAEMON_INBOUNDDIR      "/var/ddtrace/inbound/"
+#define DTDAEMON_OUTBOUNDDIR     "/var/ddtrace/outbound/"
+#define DTDAEMON_BASEDIR         "/var/ddtrace/base/"
+#define DTDAEMON_BACKTRACELEN    128
 
-#include <spawn.h>
-#include <dt_prog_link.h>
+#define LOCK_FILE                "/var/dtdaemon.lock"
+#define SOCKFD_NAME              "sub.sock"
+#define THREADPOOL_SIZE          4
 
-#define	DTDAEMON_INBOUNDDIR	"/var/ddtrace/inbound/"
-#define	DTDAEMON_OUTBOUNDDIR	"/var/ddtrace/outbound/"
-#define	DTDAEMON_BASEDIR	"/var/ddtrace/base/"
-#define	DTDAEMON_BACKTRACELEN	128
+#define NEXISTS                  0
+#define EXISTS_CHANGED           1
+#define EXISTS_EQUAL             2
 
-#define	LOCK_FILE	"/var/dtdaemon.lock"
-#define	SOCKFD_NAME	"sub.sock"
-#define	THREADPOOL_SIZE	4
+#define OWNED(m)    (atomic_load(&(m)->_owner) == pthread_self())
 
-#define	NEXISTS		0
-#define	EXISTS_CHANGED	1
-#define	EXISTS_EQUAL	2
-
-#define OWNED(m) (atomic_load(&(m)->_owner) == pthread_self())	\
-
-#define	SIGNAL(c) {						\
-	int err;						\
-	err = pthread_cond_signal(c);				\
-	if (err != 0) {						\
-		syslog(LOG_ERR, "Failed to signal cv: %m");	\
-	}							\
+#define SIGNAL(c)						   \
+	{							   \
+		int err;					   \
+		err = pthread_cond_signal(c);			   \
+		if (err != 0) {					   \
+			syslog(LOG_ERR,"Failed to signal cv: %m"); \
+		}						   \
 	}
 
-#define	WAIT(c, m) {						\
-	int err;						\
-	err = pthread_cond_wait(c, m);				\
-	if (err != 0) {						\
-		syslog(LOG_ERR, "Failed to wait for cv: %m");	\
-	}							\
+#define WAIT(c,m)						     \
+	{							     \
+		int err;					     \
+		err = pthread_cond_wait(c,m);			     \
+		if (err != 0) {					     \
+			syslog(LOG_ERR,"Failed to wait for cv: %m"); \
+		}						     \
 	}
 
-#define	BROADCAST(c) {						\
-	int err;						\
-	err = pthread_cond_broadcast(c);			\
-	if (err != 0) {						\
-		syslog(LOG_ERR, "Failed to broadcast cv: %m");	\
-	}							\
+#define BROADCAST(c)						      \
+	{							      \
+		int err;					      \
+		err = pthread_cond_broadcast(c);		      \
+		if (err != 0) {					      \
+			syslog(LOG_ERR,"Failed to broadcast cv: %m"); \
+		}						      \
 	}
 
-#define	SWAIT(s) {						\
-	int err;						\
-	err = sem_wait(s);					\
-	if (err != 0) {						\
-		syslog(LOG_ERR, "Failed to wait for sema: %m");	\
-	}							\
+#define SWAIT(s)						       \
+	{							       \
+		int err;					       \
+		err = sem_wait(s);				       \
+		if (err != 0) {					       \
+			syslog(LOG_ERR,"Failed to wait for sema: %m"); \
+		}						       \
 	}
 
-#define	SPOST(s) {						\
-	int err;						\
-	err = sem_post(s);					\
-	if (err != 0) {						\
-		syslog(LOG_ERR, "Failed to post for sema: %m");	\
-	}							\
+#define SPOST(s)						       \
+	{							       \
+		int err;					       \
+		err = sem_post(s);				       \
+		if (err != 0) {					       \
+			syslog(LOG_ERR,"Failed to post for sema: %m"); \
+		}						       \
 	}
 
 typedef struct mutex {
-	pthread_mutex_t		_m;
-	_Atomic pthread_t	_owner;
-	char			_name[32];
-#define	CHECKOWNER_NO		0
-#define	CHECKOWNER_YES		1
-	int			_checkowner;
+	pthread_mutex_t _m;       /* pthread mutex */
+	_Atomic pthread_t _owner; /* owner thread of _m */
+	char _name[32];           /* name of the mutex */
+	int _checkowner;          /* do we want to check who owns the mutex? */
+#define CHECKOWNER_NO     0
+#define CHECKOWNER_YES    1
 } mutex_t;
 
 struct dtd_state;
@@ -139,28 +139,24 @@ struct dtd_dir;
 typedef int (*foreach_fn_t)(struct dirent *, struct dtd_dir *);
 
 typedef struct dtd_dir {
-	char			*dirpath;
-	int			dirfd;
-	DIR			*dir;
-
-	char			**existing_files;
-	size_t			efile_size;
-	size_t			efile_len;
-
-	mutex_t			dirmtx;
-
-	foreach_fn_t		processfn;
-
-	struct dtd_state	*state;
+	char *dirpath;		 /* directory path */
+	int dirfd;		 /* directory filedesc */
+	DIR *dir;		 /* directory pointer */
+	char **existing_files;	 /* files that exist in the dir */
+	size_t efile_size;	 /* vector size */
+	size_t efile_len;	 /* number of elements */
+	mutex_t dirmtx;		 /* directory mutex */
+	foreach_fn_t processfn;	 /* function to process the dir */
+	struct dtd_state *state; /* backpointer to state */
 } dtd_dir_t;
 
-static int	file_foreach(DIR *, foreach_fn_t, dtd_dir_t *);
-static int	process_outbound(struct dirent *, dtd_dir_t *);
-static int	process_inbound(struct dirent *, dtd_dir_t *);
+static int file_foreach(DIR *, foreach_fn_t, dtd_dir_t *);
+static int process_outbound(struct dirent *, dtd_dir_t *);
+static int process_inbound(struct dirent *, dtd_dir_t *);
 
 typedef struct pidlist {
-	dt_list_t	list;
-	pid_t		pid;
+	dt_list_t list; /* next element */
+	pid_t pid;
 } pidlist_t;
 
 /*
@@ -168,97 +164,88 @@ typedef struct pidlist {
  * state management, such as files that exist, connected sockets, etc.
  */
 struct dtd_state {
-	dtd_dir_t	*inbounddir;
-	dtd_dir_t	*outbounddir;
-	dtd_dir_t	*basedir;
+	dtd_dir_t *inbounddir;  /* /var/ddtrace/inbound */
+	dtd_dir_t *outbounddir; /* /var/ddtrace/outbound */
+	dtd_dir_t *basedir;     /* /var/ddtrace/base */
 
-	pthread_t	inboundtd;
-	pthread_t	basetd;
+	pthread_t inboundtd;    /* inbound monitoring thread */
+	pthread_t basetd;       /* base monitoring thread */
+	/* the outbound monitoring thread is the main thread */
 
 	/*
 	 * Sockets.
 	 */
-	mutex_t		socklistmtx;
-	dt_list_t	sockfds;
+	mutex_t socklistmtx; /* mutex fos sockfds */
+	dt_list_t sockfds;   /* list of sockets we know about */
 
 	/*
 	 * Configuration socket.
 	 */
-	mutex_t		sockmtx;
-	pthread_t	socktd;
-	int		sockfd;
-	sem_t		socksema;
+	mutex_t sockmtx;  /* config socket mutex */
+	pthread_t socktd; /* config socket thread */
+	int sockfd;       /* config socket filedesc */
+	sem_t socksema;   /* config socket semaphore */
 
 	/*
 	 * dttransport fd and threads
 	 */
-	int		dtt_fd;
-	pthread_t	dtt_listentd;
-	pthread_t	dtt_writetd;
+	int dtt_fd;             /* dttransport filedesc */
+	pthread_t dtt_listentd; /* read() on dtt_fd */
+	pthread_t dtt_writetd;  /* write() on dtt_fd */
 
 	/*
 	 * Thread pool management.
 	 */
-	pthread_t	*workers;
-	mutex_t		joblistcvmtx;
-	pthread_cond_t	joblistcv;
-	mutex_t		joblistmtx;
-	dt_list_t	joblist;
+	pthread_t *workers;       /* thread pool for the joblist */
+	mutex_t joblistcvmtx;     /* joblist condvar mutex */
+	pthread_cond_t joblistcv; /* joblist condvar */
+	mutex_t joblistmtx;       /* joblist mutex */
+	dt_list_t joblist;        /* the joblist itself */
 
 	/*
 	 * Children management.
 	 */
-	pthread_t	killtd;
-	mutex_t		kill_listmtx;
-	mutex_t		killcvmtx;
-	dt_list_t	kill_list;
-	pthread_cond_t	killcv;
+	pthread_t killtd;      /* handle sending kill(SIGTERM) to the guest */
+	mutex_t kill_listmtx;  /* mutex of the kill list */
+	mutex_t killcvmtx;     /* kill list condvar mutex */
+	dt_list_t kill_list;   /* a list of pids to kill */
+	pthread_cond_t killcv; /* kill list condvar */
 
-	/*
-	 * Are we shutting down?
-	 */
-	_Atomic int	shutdown;
-
-	/*
-	 * File descriptor of /var/ddtrace
-	 */
-	int		dirfd;
-
-	/*
-	 * In case we don't want checksumming.
-	 */
-	int		nosha;
-
-	int		lockfd;
+	_Atomic int shutdown;  /* shutdown flag */
+	int dirfd;             /* /var/ddtrace */
+	int nosha;             /* do we want to checksum? */
+	int lockfd;            /* lockfile */
 };
 
 struct dtd_fdlist {
-	dt_list_t	list;
-	int		fd;
-	int		kind;
+	dt_list_t list; /* next element */
+	int fd;         /* the actual filedesc */
+	int kind;       /* consumer/forwarder */
 };
 
 struct dtd_joblist {
-	dt_list_t	list;
-
-#define	NOTIFY_ELFWRITE	1
-#define	KILL		2
-	int		job;
+	dt_list_t list; /* next element */
+	int job;        /* job kind */
+#define NOTIFY_ELFWRITE    1
+#define KILL               2
 
 	union {
 		struct {
-			int		connsockfd;
-			size_t		pathlen;
-			char		*path;
-			dtd_dir_t	*dir;
-			int		nosha;
-		} notify_elfwrite;
+			int connsockfd; /* which socket do we send this on? */
+			size_t pathlen; /* how long is path? */
+			char *path;     /* path to file (based on dir) */
+			dtd_dir_t *dir; /* base directory of path */
+			int nosha;      /* do we want to checksum? */
+		}
+		notify_elfwrite;
 
 		struct {
-			int		connsockfd;
-			pid_t		pid;
-		} kill;
-	} j;
+			int connsockfd; /* which socket do we send this on? */
+			pid_t pid;      /* pid to kill */
+		}
+		kill;
+	}
+	j;
 };
 
 /*
@@ -269,13 +256,13 @@ static int nosha = 0;
 static int g_ctrlmachine = -1;
 
 static const struct option long_opts[] = {
-	{"help",		no_argument,		NULL,		0},
-	{"exclude",		required_argument,	NULL,		'e'},
-	{"version",		no_argument,		NULL,		'v'},
-	{"no-checksum",		no_argument,		&nosha,		1},
-	{"ctrl-machine",	no_argument,		&g_ctrlmachine,	1},
-	{"not-ctrl-machine",	no_argument,		&g_ctrlmachine,	0},
-	{0,			0,			0,		0}
+	{ "help",             no_argument,       NULL,           0   },
+	{ "exclude",          required_argument, NULL,           'e' },
+	{ "version",          no_argument,       NULL,           'v' },
+	{ "no-checksum",      no_argument,       &nosha,         1   },
+	{ "ctrl-machine",     no_argument,       &g_ctrlmachine, 1   },
+	{ "not-ctrl-machine", no_argument,       &g_ctrlmachine, 0   },
+	{ 0,                  0,                 0,              0   }
 };
 
 static void
@@ -420,7 +407,6 @@ UNLOCK(mutex_t *m)
 		atomic_store(&m->_owner, NULL);
 }
 
-
 /*
  * Used for generating a random name of the outbound ELF file.
  */
@@ -449,7 +435,7 @@ gen_filename(const char *dir)
 	filename = malloc(len);
 	if (filename == NULL)
 		return (NULL);
-	
+
 	filename[0] = '.';
 	get_randname(filename + 1, len - 2);
 	filename[len - 1] = '\0';
@@ -718,8 +704,7 @@ write_dttransport(void *_s)
 
 	kind = DTDAEMON_KIND_FORWARDER;
 	if (send(sockfd, &kind, sizeof(kind), 0) < 0) {
-		syslog(LOG_ERR, "Failed to write %d to sockfd: %m",
-		    kind);
+		syslog(LOG_ERR, "Failed to write %d to sockfd: %m", kind);
 		pthread_exit(NULL);
 	}
 
@@ -727,7 +712,7 @@ write_dttransport(void *_s)
 		if ((rval = recv(sockfd, &len, sizeof(size_t), 0)) < 0) {
 			if (errno == EINTR)
 				pthread_exit(s);
-			
+
 			syslog(LOG_ERR, "Failed to recv from sub.sock: %m");
 			continue;
 		}
@@ -804,10 +789,6 @@ write_dttransport(void *_s)
 	pthread_exit(s);
 }
 
-/*
- * TODO(dstolfa): process_outbound should be called from here... we don't need
- * to replicate this loop in the main thread.
- */
 static void *
 listen_dir(void *_dir)
 {
