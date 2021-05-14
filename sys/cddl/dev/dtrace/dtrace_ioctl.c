@@ -907,7 +907,8 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		if (p->dof == NULL)
 			return (EINVAL);
 
-		if ((dof = dtrace_dof_copyin((uintptr_t)p->dof, &rval)) == NULL)
+		if ((dof = dtrace_dof_copyin(
+		    (uintptr_t)p->dof, &rval)) == NULL)
 			return (EINVAL);
 
 		mutex_enter(&cpu_lock);
