@@ -1300,11 +1300,9 @@ dtc_work(void *arg)
 		pthread_mutex_lock(&g_dtpmtx);
 		switch (dtrace_work(g_dtp, g_ofp, &con, NULL)) {
 		case DTRACE_WORKSTATUS_DONE:
-			printf("WORKSTATUS_DONE\n");
 			done = 1;
 			break;
 		case DTRACE_WORKSTATUS_OKAY:
-			printf("WORKSTATUS_OKAY\n");
 			break;
 		default:
 			if (!atomic_load(&g_impatient) &&
@@ -1343,23 +1341,6 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp)
 	int i, n;
 
 	dtrace_dump_actions(pgp);
-#if 0
-	if (gpgp) {
-		printf(
-		    "process_new_pgp: dp_neprobes = %u\n", gpgp->dp_neprobes);
-
-		if (gpgp->dp_neprobes != 0)
-			assert(gpgp->dp_eprobes != NULL);
-		for (i = 0; i < gpgp->dp_neprobes; i++) {
-			printf("probe %d:\n", i);
-			printf("process_new_pgp: matched %s:%s:%s:%s\n",
-			    gpgp->dp_eprobes[i].dtpd_provider,
-			    gpgp->dp_eprobes[i].dtpd_mod,
-			    gpgp->dp_eprobes[i].dtpd_func,
-			    gpgp->dp_eprobes[i].dtpd_name);
-		}
-	}
-#endif
 	if (gpgp == NULL && pgp->dp_vmid != 0) {
 		atomic_store(&g_intr, 1);
 		fprintf(stderr,
