@@ -1228,7 +1228,7 @@ accept_subs(void *_s)
 		LOCK(&s->socklistmtx);
 		dt_list_append(&s->sockfds, fde);
 		UNLOCK(&s->socklistmtx);
-		}
+	}
 
 exit:
 	pthread_exit(s);
@@ -1425,11 +1425,11 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	dirpathlen = strlen(dir->dirpath);
 	UNLOCK(&dir->dirmtx);
 
-	l = strlcpy(fullpath + dirpathlen,
-	    f->d_name, sizeof(fullpath) - dirpathlen);
+	l = strlcpy(
+	    fullpath + dirpathlen, f->d_name, sizeof(fullpath) - dirpathlen);
 	if (l >= sizeof(fullpath) - dirpathlen) {
-		syslog(LOG_ERR, "Failed to copy %s into a path string",
-		    f->d_name);
+		syslog(
+		    LOG_ERR, "Failed to copy %s into a path string", f->d_name);
 		return (-1);
 	}
 	filepathlen = strlen(fullpath);
@@ -1449,18 +1449,18 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		 * want to process the same file in the future.
 		 */
 		LOCK(&s->socklistmtx);
-		for (fd_list = dt_list_next(&s->sockfds);
-		    fd_list; fd_list = dt_list_next(fd_list)) {
+		for (fd_list = dt_list_next(&s->sockfds); fd_list;
+		    fd_list = dt_list_next(fd_list)) {
 			if (fd_list->kind != DTDAEMON_KIND_CONSUMER)
 				continue;
-			
+
 			job = malloc(sizeof(struct dtd_joblist));
 			if (job == NULL) {
 				syslog(LOG_ERR, "Failed to malloc a new job");
 				UNLOCK(&s->socklistmtx);
 				return (-1);
 			}
-			
+
 			memset(job, 0, sizeof(struct dtd_joblist));
 			job->job = NOTIFY_ELFWRITE;
 			job->j.notify_elfwrite.connsockfd = fd_list->fd;
@@ -1511,7 +1511,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		syslog(LOG_ERR, "Failed to expand paths after processing %s",
 		    f->d_name);
 		return (-1);
-}
+	}
 
 	assert(dir->efile_size > dir->efile_len);
 	dir->existing_files[dir->efile_len++] = strdup(f->d_name);
