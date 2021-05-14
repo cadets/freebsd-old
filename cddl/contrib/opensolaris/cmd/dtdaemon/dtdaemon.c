@@ -1534,7 +1534,7 @@ dtdaemon_copyfile(const char *src, const char *dst)
 	fd = open(src, O_RDONLY);
 	if (fd == -1)
 		syslog(LOG_ERR, "Failed to open %s: %m", src);
-	
+
 	if (fstat(fd, &sb)) {
 		syslog(LOG_ERR, "Failed to fstat %s (%d): %m", src, fd);
 		close(fd);
@@ -1571,7 +1571,6 @@ dtdaemon_copyfile(const char *src, const char *dst)
 
 	close(newfd);
 	free(buf);
-
 }
 
 static int
@@ -1589,13 +1588,13 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	char *dirpath, *outbounddirpath;
 	char donename[MAXPATHLEN] = { 0 };
 	size_t dirpathlen = 0;
-	
+
 	if (dir == NULL) {
 		syslog(LOG_ERR, "dir is NULL in base "
 		    "directory monitoring thread");
 		return (-1);
 	}
-	
+
 	LOCK(&dir->dirmtx);
 	s = dir->state;
 	UNLOCK(&dir->dirmtx);
@@ -1724,11 +1723,11 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		return (0);
 
 	LOCK(&s->socklistmtx);
-	for (fd_list = dt_list_next(&s->sockfds);
-	    fd_list; fd_list = dt_list_next(fd_list)) {
+	for (fd_list = dt_list_next(&s->sockfds); fd_list;
+	    fd_list = dt_list_next(fd_list)) {
 		if (fd_list->kind != DTDAEMON_KIND_FORWARDER)
 			continue;
-		
+
 		job = malloc(sizeof(struct dtd_joblist));
 		if (job == NULL) {
 			syslog(LOG_ERR, "Failed to malloc a new job");
@@ -1787,7 +1786,7 @@ populate_existing(struct dirent *f, dtd_dir_t *dir)
 
 	if (strcmp(f->d_name, SOCKFD_NAME) == 0)
 		return (0);
-	
+
 	if (f->d_name[0] == '.')
 		return (0);
 
@@ -1862,8 +1861,8 @@ setup_threads(struct dtd_state *s)
 		 * The socket can't be connected at this point because
 		 * accept_subs is not running. Need a semaphore.
 		 */
-		err =
-		    pthread_create(&s->dtt_writetd, NULL, write_dttransport, s);
+		err = pthread_create(
+		    &s->dtt_writetd, NULL, write_dttransport, s);
 		if (err != 0) {
 			syslog(LOG_ERR,
 			    "Failed to create the dttransport thread: %m");
@@ -1879,22 +1878,21 @@ setup_threads(struct dtd_state *s)
 
 	err = pthread_create(&s->inboundtd, NULL, listen_dir, s->inbounddir);
 	if (err != 0) {
-		syslog(LOG_ERR,
-		    "Failed to create inbound listening thread: %m");
+		syslog(
+		    LOG_ERR, "Failed to create inbound listening thread: %m");
 		return (-1);
 	}
 
 	err = pthread_create(&s->basetd, NULL, listen_dir, s->basedir);
 	if (err != 0) {
-		syslog(LOG_ERR,
-		    "Failed to create base listening thread: %m");
+		syslog(LOG_ERR, "Failed to create base listening thread: %m");
 		return (-1);
 	}
 
 	err = pthread_create(&s->killtd, NULL, manage_children, s);
 	if (err != 0) {
-		syslog(LOG_ERR,
-		    "Failed to create a child management thread: %m");
+		syslog(
+		    LOG_ERR, "Failed to create a child management thread: %m");
 		return (-1);
 	}
 
@@ -2130,13 +2128,12 @@ destroy_state(struct dtd_state *s)
 static void
 print_help(void)
 {
-
 }
+
 
 static void
 print_version(void)
 {
-	
 }
 
 int
@@ -2270,8 +2267,8 @@ againefd:
 	if (efd == -1) {
 		if (retry == 0 && errno == ENOENT) {
 			if (mkdir(elfpath, 0700) != 0)
-				syslog(LOG_ERR,
-				    "Failed to mkdir %s: %m", elfpath);
+				syslog(
+				    LOG_ERR, "Failed to mkdir %s: %m", elfpath);
 			else {
 				retry = 1;
 				goto againefd;
@@ -2315,15 +2312,15 @@ againefd:
 		return (EX_OSERR);
 	}
 
-	errval = file_foreach(state.outbounddir->dir,
-	    populate_existing, state.outbounddir);
+	errval = file_foreach(
+	    state.outbounddir->dir, populate_existing, state.outbounddir);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to populate outbound existing files");
 		return (EXIT_FAILURE);
 	}
 
-	errval = file_foreach(state.inbounddir->dir,
-	    populate_existing, state.inbounddir);
+	errval = file_foreach(
+	    state.inbounddir->dir, populate_existing, state.inbounddir);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to populate inbound existing files");
 		return (EXIT_FAILURE);
