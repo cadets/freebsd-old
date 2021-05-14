@@ -255,16 +255,6 @@ static struct dtd_state state;
 static int nosha = 0;
 static int g_ctrlmachine = -1;
 
-static const struct option long_opts[] = {
-	{ "help",             no_argument,       NULL,           0   },
-	{ "exclude",          required_argument, NULL,           'e' },
-	{ "version",          no_argument,       NULL,           'v' },
-	{ "no-checksum",      no_argument,       &nosha,         1   },
-	{ "ctrl-machine",     no_argument,       &g_ctrlmachine, 1   },
-	{ "not-ctrl-machine", no_argument,       &g_ctrlmachine, 0   },
-	{ 0,                  0,                 0,              0   }
-};
-
 static void
 sig_term(int __unused signo)
 {
@@ -2150,6 +2140,7 @@ main(int argc, char **argv)
 	int optidx = 0;
 	int lockfd;
 	char hypervisor[128];
+	int daemonize = 0;
 	size_t len = sizeof(hypervisor);
 
 	lockfd = 0;
@@ -2157,8 +2148,7 @@ main(int argc, char **argv)
 	memset(pidstr, 0, sizeof(pidstr));
 	memset(hypervisor, 0, sizeof(hypervisor));
 
-	while ((ch = getopt_long(
-	    argc, argv, "Ca:ce:hvZ", long_opts, &optidx)) != -1) {
+	while ((ch = getopt(argc, argv, "Ca:cde:hvZ")) != -1) {
 		switch (ch) {
 		case 'h':
 			print_help();
@@ -2221,6 +2211,10 @@ main(int argc, char **argv)
 			g_ctrlmachine = 0;
 			break;
 
+		case 'd':
+			daemonize = 1;
+			break;
+
 		case 'Z':
 			nosha = 1;
 			break;
@@ -2255,12 +2249,11 @@ main(int argc, char **argv)
 		syslog(LOG_ERR, "You must either specify -c or -C");
 		return (EX_OSERR);
 	}
-#if 0
-	if (daemon(0, 0) != 0) {
+
+	if (daemonize && daemon(0, 0) != 0) {
 		syslog(LOG_ERR, "Failed to daemonize %m");
 		return (EX_OSERR);
 	}
-#endif
 
 againefd:
 	efd = open(elfpath, O_RDONLY | O_DIRECTORY);
