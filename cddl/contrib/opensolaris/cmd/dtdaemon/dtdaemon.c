@@ -211,10 +211,16 @@ struct dtd_state {
 	dt_list_t kill_list;   /* a list of pids to kill */
 	pthread_cond_t killcv; /* kill list condvar */
 
-	_Atomic int shutdown;  /* shutdown flag */
-	int dirfd;             /* /var/ddtrace */
-	int nosha;             /* do we want to checksum? */
-	int lockfd;            /* lockfile */
+	/*
+	 * Consumer threads
+	 */
+	pthread_t consumer_listentd; /* handle consumer messages */
+	pthread_t consumer_writetd;  /* send messages to consumers */
+
+	_Atomic int shutdown;        /* shutdown flag */
+	int dirfd;                   /* /var/ddtrace */
+	int nosha;                   /* do we want to checksum? */
+	int lockfd;                  /* lockfile */
 };
 
 struct dtd_fdlist {
@@ -1812,6 +1818,22 @@ file_foreach(DIR *d, foreach_fn_t f, dtd_dir_t *dir)
 	return (0);
 }
 
+static void *
+listen_consumer(void *_s)
+{
+	struct dtd_state *s = (struct dtd_state *)_s;
+
+	return (_s);
+}
+
+static void *
+write_consumer(void *_s)
+{
+	struct dtd_state *s = (struct dtd_state *)_s;
+
+	return (_s);
+}
+
 static int
 setup_threads(struct dtd_state *s)
 {
@@ -1883,6 +1905,19 @@ setup_threads(struct dtd_state *s)
 	if (err != 0) {
 		syslog(
 		    LOG_ERR, "Failed to create a child management thread: %m");
+		return (-1);
+	}
+
+	err = pthread_create(&s->consumer_listentd, NULL, listen_consumer, s);
+	if (err != 0) {
+		syslog(
+		    LOG_ERR, "Failed to create consumer listening thread: %m");
+		return (-1);
+	}
+
+	err = pthread_create(&s->consumer_writetd, NULL, write_consumer, s);
+	if (err != 0) {
+		syslog(LOG_ERR, "Failed to create consumer writing thread: %m");
 		return (-1);
 	}
 
@@ -2332,10 +2367,8 @@ againefd:
 	}
 
 	errval = pthread_kill(state.socktd, SIGTERM);
-	if (errval != 0) {
+	if (errval != 0)
 		syslog(LOG_ERR, "Failed to interrupt socktd: %m");
-		return (EX_OSERR);
-	}
 
 	errval = pthread_join(state.socktd, (void **)&retval);
 	if (errval != 0) {
@@ -2344,10 +2377,8 @@ againefd:
 	}
 
 	errval = pthread_kill(state.dtt_listentd, SIGTERM);
-	if (errval != 0) {
+	if (errval != 0)
 		syslog(LOG_ERR, "Failed to interrupt dtt_listentd: %m");
-		return (EX_OSERR);
-	}
 
 	errval = pthread_join(state.dtt_listentd, (void **)&retval);
 	if (errval != 0) {
@@ -2356,10 +2387,8 @@ againefd:
 	}
 
 	errval = pthread_kill(state.dtt_writetd, SIGTERM);
-	if (errval != 0 && errval != ESRCH) {
+	if (errval != 0 && errval != ESRCH)
 		syslog(LOG_ERR, "Failed to interrupt dtt_writetd: %m");
-		return (EX_OSERR);
-	}
 
 	errval = pthread_join(state.dtt_writetd, (void **)&retval);
 	if (errval != 0 && errval != ESRCH) {
@@ -2368,10 +2397,8 @@ againefd:
 	}
 
 	errval = pthread_kill(state.inboundtd, SIGTERM);
-	if (errval != 0) {
+	if (errval != 0)
 		syslog(LOG_ERR, "Failed to interrupt inboundtd: %m");
-		return (EX_OSERR);
-	}
 
 	errval = pthread_join(state.inboundtd, (void **)&retval);
 	if (errval != 0) {
@@ -2380,10 +2407,8 @@ againefd:
 	}
 
 	errval = pthread_kill(state.basetd, SIGTERM);
-	if (errval != 0) {
+	if (errval != 0)
 		syslog(LOG_ERR, "Failed to interrupt basetd: %m");
-		return (EX_OSERR);
-	}
 
 	errval = pthread_join(state.basetd, (void **)&retval);
 	if (errval != 0) {
@@ -2404,14 +2429,34 @@ againefd:
 	}
 
 	errval = pthread_kill(state.killtd, SIGTERM);
-	if (errval != 0) {
+	if (errval != 0)
 		syslog(LOG_ERR, "Failed to interrupt killtd: %m");
-		return (EX_OSERR);
-	}
 
 	errval = pthread_join(state.killtd, (void **)&retval);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to join child management thread: %m");
+		return (EX_OSERR);
+	}
+
+	errval = pthread_kill(state.consumer_listentd, SIGTERM);
+	if (errval != 0)
+		syslog(
+		    LOG_ERR, "Failed to interrupt consumer listen thread: %m");
+
+	errval = pthread_join(state.consumer_listentd, (void **)&retval);
+	if (errval != 0) {
+		syslog(LOG_ERR, "Failed to join consumer listen thread: %m");
+		return (EX_OSERR);
+	}
+
+	errval = pthread_kill(state.consumer_writetd, SIGTERM);
+	if (errval != 0)
+		syslog(
+		    LOG_ERR, "Failed to interrupt consumer write thread: %m");
+
+	errval = pthread_join(state.consumer_writetd, (void **)&retval);
+	if (errval != 0) {
+		syslog(LOG_ERR, "Failed to join consumer write thread: %m");
 		return (EX_OSERR);
 	}
 
