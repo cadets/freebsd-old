@@ -1283,9 +1283,9 @@ dt_elf_options(Elf *e)
 }
 
 void
-dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
+dt_elf_create(dtrace_prog_t *dt_prog, int endian, int fd)
 {
-	int fd, err;
+	int err;
 	Elf *e;
 	Elf32_Ehdr *ehdr;
 	Elf_Scn *scn, *f_scn;
@@ -1333,9 +1333,6 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, const char *file_name)
 	if (elf_version(EV_CURRENT) == EV_NONE)
 		errx(EXIT_FAILURE, "ELF library initialization failed: %s",
 		    elf_errmsg(-1));
-
-	if ((fd = open(file_name, O_WRONLY | O_CREAT, 0700)) < 0)
-		errx(EXIT_FAILURE, "Failed to open /var/ddtrace/%s", file_name);
 
 	if ((e = elf_begin(fd, ELF_C_WRITE, NULL)) == NULL)
 		errx(
@@ -1578,7 +1575,6 @@ finish:
 
 	free(dtelf_state);
 	(void) elf_end(e);
-	(void) close(fd);
 }
 
 static void *
@@ -2436,8 +2432,8 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	dt_elf_get_stmts(e, prog, eprog->dtep_first_stmt);
 
-	err = dt_elf_get_options(dtp, e, eprog->dtep_options);
-	if (err)
+	*err = dt_elf_get_options(dtp, e, eprog->dtep_options);
+	if (*err)
 		return (NULL);
 
 	memcpy(prog->dp_ident, eprog->dtep_ident, DT_PROG_IDENTLEN);

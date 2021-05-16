@@ -221,6 +221,7 @@ struct dtd_state {
 	int dirfd;                   /* /var/ddtrace */
 	int nosha;                   /* do we want to checksum? */
 	int lockfd;                  /* lockfile */
+	int kq_hdl;                  /* event loop kqueue */
 };
 
 struct dtd_fdlist {
@@ -232,12 +233,13 @@ struct dtd_fdlist {
 struct dtd_joblist {
 	dt_list_t list; /* next element */
 	int job;        /* job kind */
+	int connsockfd; /* which socket do we send this on? */
 #define NOTIFY_ELFWRITE    1
 #define KILL               2
+#define READ_DATA          3
 
 	union {
 		struct {
-			int connsockfd; /* which socket do we send this on? */
 			size_t pathlen; /* how long is path? */
 			char *path;     /* path to file (based on dir) */
 			dtd_dir_t *dir; /* base directory of path */
@@ -246,10 +248,14 @@ struct dtd_joblist {
 		notify_elfwrite;
 
 		struct {
-			int connsockfd; /* which socket do we send this on? */
 			pid_t pid;      /* pid to kill */
 		}
 		kill;
+
+		struct {
+			size_t nbytes; /* number of bytes to write */
+		}
+		read;
 	}
 	j;
 };
@@ -501,6 +507,58 @@ manage_children(void *_s)
 	}
 
 	return (_s);
+}
+
+static int
+write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
+{
+	struct dtd_state *s;
+	char *dirpath, *newname;
+	char donename[MAXPATHLEN];
+	size_t dirpathlen;
+	int fd;
+
+	if (dir == NULL) {
+		syslog(LOG_ERR, "dir is NULL in write_data()");
+		return (-1);
+	}
+
+	LOCK(&dir->dirmtx);
+	s = dir->state;
+	UNLOCK(&dir->dirmtx);
+
+	if (s == NULL) {
+		syslog(LOG_ERR, "state is NULL in write_data()");
+		return (-1);
+	}
+
+	LOCK(&dir->dirmtx);
+	dirpath = strdup(dir->dirpath);
+	UNLOCK(&dir->dirmtx);
+
+	dirpathlen = strlen(dirpath);
+	newname = gen_filename(dirpath);
+	strcpy(donename, dirpath);
+	strcpy(donename + dirpathlen, newname + dirpathlen + 1);
+	free(dirpath);
+
+	fd = open(newname, O_WRONLY | O_CREAT);
+	if (fd == -1) {
+		syslog(LOG_ERR, "open() failed with: %m");
+		return (-1);
+	}
+
+	if (write(fd, data, nbytes) < 0) {
+		syslog(LOG_ERR, "write() failed with: %m");
+		return (-1);
+	}
+
+	if (rename(newname, donename)) {
+		syslog(
+		    LOG_ERR, "rename() failed %s -> %s: %m", newname, donename);
+		return (-1);
+	}
+	return (0);
 }
 
 /*
@@ -856,6 +914,9 @@ process_joblist(void *_s)
 	ssize_t r;
 	pid_t pid;
 	struct stat stat;
+	unsigned char *buf, *_buf;
+	size_t nbytes;
+	dtdaemon_hdr_t header;
 
 	_nosha = s->nosha;
 	dir = NULL;
@@ -891,9 +952,61 @@ process_joblist(void *_s)
 		UNLOCK(&s->joblistmtx);
 
 		switch (curjob->job) {
+		case READ_DATA:
+			fd = curjob->connsockfd;
+			nbytes = curjob->j.read.nbytes;
+
+			buf = malloc(nbytes);
+			if (buf == NULL) {
+				syslog(LOG_ERR, "malloc() failed with: %m");
+				break;
+			}
+
+			_buf = buf;
+			while ((r = recv(fd, _buf, nbytes, 0)) != nbytes) {
+				if (r < 0) {
+					syslog(
+					    LOG_ERR, "recv() failed with: %m");
+					free(buf);
+					break;
+				}
+
+				_buf += r;
+				nbytes -= r;
+			}
+
+			if (r < 0)
+				break;
+
+			nbytes = curjob->j.read.nbytes;
+
+			/*
+			 * We now have our data (ELF file) in buf. Create an ELF
+			 * file in /var/ddtrace/base. This will kick off the
+			 * listen_dir thread for process_base.
+			 */
+
+			memcpy(&header, buf, DTDAEMON_MSGHDRSIZE);
+			switch (DTDAEMON_MSG_TYPE(header)) {
+			case DTDAEMON_MSG_ELF:
+				_buf += DTDAEMON_MSGHDRSIZE;
+				nbytes -= DTDAEMON_MSGHDRSIZE;
+
+				if (write_data(s->basedir, _buf, nbytes))
+					syslog(LOG_ERR, "write_data() failed");
+				break;
+			case DTDAEMON_MSG_KILL:
+				/*
+				 * Tell virtio-dtrace to send a kill message...
+				 * somehow.
+				 */
+				break;
+			}
+
+			free(buf);
+			break;
 		case KILL:
-			assert(0);
-			fd = curjob->j.kill.connsockfd;
+			fd = curjob->connsockfd;
 			pid = curjob->j.kill.pid;
 
 			assert(fd != -1);
@@ -980,7 +1093,7 @@ process_joblist(void *_s)
 			break;
 
 		case NOTIFY_ELFWRITE:
-			fd = curjob->j.notify_elfwrite.connsockfd;
+			fd = curjob->connsockfd;
 			path = curjob->j.notify_elfwrite.path;
 			pathlen = curjob->j.notify_elfwrite.pathlen;
 			dir = curjob->j.notify_elfwrite.dir;
@@ -1129,17 +1242,146 @@ cleanup:
 	pthread_exit(s);
 }
 
+static int
+accept_new_connection(struct dtd_state *s)
+{
+	int kind;
+	int connsockfd;
+	int on = 1;
+	int kq = s->kq_hdl;
+	struct dtd_fdlist *fde;
+	struct kevent change_event[4];
+
+	connsockfd = accept(s->sockfd, NULL, 0);
+	if (connsockfd == -1) {
+		syslog(LOG_ERR, "accept() failed: %m");
+		return (-1);
+	}
+
+	if (setsockopt(connsockfd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on))) {
+		close(connsockfd);
+		syslog(LOG_ERR, "setsockopt() failed: %m");
+		return (-1);
+	}
+
+	kind = DTDAEMON_KIND_DTDAEMON;
+	if (send(connsockfd, &kind, sizeof(int), 0) < 0) {
+		close(connsockfd);
+		syslog(LOG_ERR, "send() %d to connsockfd failed: %m", kind);
+		return (-1);
+	}
+
+	kind = 0;
+	if (recv(connsockfd, &kind, sizeof(int), 0) < 0) {
+		close(connsockfd);
+		syslog(LOG_ERR, "recv() get kind failed: %m");
+		return (-1);
+	}
+
+	fde = malloc(sizeof(struct dtd_fdlist));
+	if (fde == NULL) {
+		close(connsockfd);
+		syslog(LOG_ERR, "malloc() failed with: %m");
+		return (-1);
+	}
+
+	memset(fde, 0, sizeof(struct dtd_fdlist));
+	fde->fd = connsockfd;
+	fde->kind = kind;
+
+	EV_SET(change_event, connsockfd, EVFILT_READ | EVFILT_WRITE,
+	    EV_ADD | EV_ENABLE, 0, 0, &fde);
+	if (kevent(kq, change_event, 1, NULL, 0, NULL) < 0) {
+		close(connsockfd);
+		free(fde);
+		syslog(LOG_ERR, "kevent() adding new connection failed: %m");
+		return (-1);
+	}
+
+	LOCK(&s->socklistmtx);
+	dt_list_append(&s->sockfds, fde);
+	UNLOCK(&s->socklistmtx);
+
+	return (0);
+}
+
+/*
+ * NOTE: dispatch_event assumes that event has already been handled correctly in
+ * the main loop.
+ */
+static int
+dispatch_event(struct dtd_state *s, struct kevent *ev)
+{
+	struct dtd_joblist *job;
+
+	if (ev->filter == EVFILT_READ) {
+		/*
+		 * Read is a little bit more complicated than write, because we
+		 * have to read in the actual event and put it in the
+		 * /var/ddtrace/base directory for the directory monitoring
+		 * kqueues to wake up and process it further.
+		 */
+
+		job = malloc(sizeof(struct dtd_joblist));
+		if (job == NULL) {
+			syslog(LOG_ERR, "malloc() failed with: %m");
+			return (-1);
+		}
+
+		job->job = READ_DATA;
+		job->connsockfd = ev->ident;
+		job->j.read.nbytes = ev->data;
+
+		LOCK(&s->joblistmtx);
+		dt_list_append(&s->joblist, job);
+		UNLOCK(&s->joblistmtx);
+
+		LOCK(&s->joblistcvmtx);
+		SIGNAL(&s->joblistcv);
+		UNLOCK(&s->joblistcvmtx);
+	} else if (ev->filter == EVFILT_WRITE) {
+		/*
+		 * Because we are in a state where we know that:
+		 *  (1) There is a consumer waiting for an event and we can
+		 *      write to
+		 * and
+		 *  (2) We have said event
+		 *
+		 * we can signal the condition variable and rely on one of our
+		 * workers to pick up and process the event.
+		 */
+		LOCK(&s->joblistcvmtx);
+		SIGNAL(&s->joblistcv);
+		UNLOCK(&s->joblistcvmtx);
+	} else {
+		free(job);
+		syslog(LOG_ERR, "unexpected event flags: %d", ev->flags);
+		return (-1);
+	}
+
+	return (0);
+}
+
 static void *
-accept_subs(void *_s)
+process_consumers(void *_s)
 {
 	int err;
 	int kind;
 	int connsockfd;
 	int on = 1;
-	struct dtd_fdlist *fde;
+	int new_events;
+	int kq;
+	int efd;
+	int dispatch;
+	size_t i;
+	struct dtd_fdlist *fde, *udata_fde;
 	struct dtd_state *s = (struct dtd_state *)_s;
+	struct dtd_joblist *jle;
+
+	struct kevent change_event[4], event[4];
 
 	kind = 0;
+	dispatch = 0;
 
 	/*
 	 * Sanity checks on the state.
@@ -1159,74 +1401,124 @@ accept_subs(void *_s)
 		pthread_exit(NULL);
 	}
 
+	kq = kqueue();
+	if (kq == -1) {
+		syslog(LOG_ERR, "Failed to create dtdaemon socket kqueue: %m");
+		pthread_exit(NULL);
+	}
+
+	EV_SET(
+	    change_event, s->sockfd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, 0);
+
+	if (kevent(kq, change_event, 1, NULL, 0, NULL)) {
+		syslog(
+		    LOG_ERR, "Failed to register listening socket kevent: %m");
+		close(kq);
+		pthread_exit(NULL);
+	}
+
+	s->kq_hdl = kq;
 	SPOST(&s->socksema);
 
 	while (atomic_load(&s->shutdown) == 0) {
-		connsockfd = accept(s->sockfd, NULL, 0);
-		if (connsockfd == -1) {
+		new_events = kevent(kq, NULL, 0, event, 1, NULL);
+		if (new_events == -1) {
 			/*
-			 * EINTR will only happen if a signal was received.
-			 * The only time we really expect a signal to be
-			 * received on this thread is when we explicitly
-			 * call pthread_kill() on shutdown.
+			 * Because kevent failed, we are no longer reliably able
+			 * to accept any new connections, therefore the daemon
+			 * must exit and report an error.
 			 */
-			if (errno == EINTR)
-				goto exit;
-
-			syslog(LOG_ERR, "Failed to accept a connection: %m");
+			syslog(LOG_ERR, "kevent() failed with %m");
+			atomic_store(&s->shutdown, 1);
 			pthread_exit(NULL);
 		}
 
-		if (setsockopt(connsockfd, SOL_SOCKET,
-		    SO_NOSIGPIPE, &on, sizeof(on))) {
-			fprintf(stderr,
-			    "Failed to setsockopt() SO_NOSIGPIPE to 1: %s\n",
-			    strerror(errno));
-			continue;
+		for (i = 0; i < new_events; i++) {
+			efd = event[i].ident;
+
+			if (event[i].flags & EV_ERROR) {
+				close(efd);
+				syslog(LOG_ERR, "event error: %m");
+				continue;
+			}
+
+			if (event[i].flags & EV_EOF) {
+				close(efd);
+				continue;
+			}
+
+			if (efd == s->sockfd) {
+				/*
+				 * New connection incoming
+				 */
+				if (accept_new_connection(s))
+					pthread_exit(NULL);
+				continue;
+			}
+
+			if (event[i].filter == EVFILT_READ) {
+				/*
+				 * For any read event, we just dispatch an event
+				 * to actually read in the data.
+				 */
+				if (dispatch_event(s, &event[i])) {
+					syslog(
+					    LOG_ERR, "dispatch_event() failed");
+					pthread_exit(NULL);
+				}
+				continue;
+			}
+
+			if (event[i].filter == EVFILT_WRITE) {
+				dispatch = 0;
+
+				LOCK(&s->joblistmtx);
+				for (jle = dt_list_next(&s->joblist); jle;
+				     jle = dt_list_next(jle))
+					if (jle->connsockfd == efd) {
+						/*
+						 * Short sanity check before we
+						 * say that we should dispatch
+						 * the event.
+						 */
+						udata_fde = event[i].udata;
+						assert(udata_fde->fd == efd);
+						dispatch = 1;
+					}
+				UNLOCK(&s->joblistmtx);
+
+				/*
+				 * If we have a job to dispatch to the socket,
+				 * we tell a worker thread to actually do the
+				 * action.
+				 */
+				if (dispatch != 0) {
+					if (dispatch_event(s, &event[i])) {
+						syslog(LOG_ERR,
+						    "dispatch_event() failed");
+						pthread_exit(NULL);
+					}
+
+					continue;
+				}
+
+				/*
+				 * If there is no event, we will disable this
+				 * filedesc until we have something to write to
+				 * it.
+				 */
+				EV_SET(change_event, efd, EVFILT_WRITE,
+				    EV_DISABLE, 0, 0, event[i].udata);
+
+				if (kevent(kq, change_event, 1, NULL, 0, NULL)) {
+					syslog(LOG_ERR,
+					    "kevent() failed with: %m");
+					pthread_exit(NULL);
+				}
+			}
 		}
-
-		kind = DTDAEMON_KIND_DTDAEMON;
-		if (send(connsockfd, &kind, sizeof(kind), 0) < 0) {
-			close(connsockfd);
-
-			if (errno == EINTR || errno == EPIPE)
-				goto exit;
-
-			fprintf(stderr, "Failed to send %d to connsockfd: %s",
-			    kind, strerror(errno));
-			pthread_exit(NULL);
-		}
-
-		kind = 0;
-		if (recv(connsockfd, &kind, sizeof(kind), 0) < 0) {
-			free(fde);
-			close(connsockfd);
-
-			if (errno == EINTR || errno == EPIPE)
-				goto exit;
-
-			syslog(LOG_ERR, "Failed to read what kind of subscriber"
-			    " is being accepted: %m");
-			pthread_exit(NULL);
-		}
-
-		fde = malloc(sizeof(struct dtd_fdlist));
-		if (fde == NULL) {
-			close(connsockfd);
-			syslog(LOG_ERR, "Failed to malloc a fdlist entry");
-			pthread_exit(NULL);
-		}
-		
-		memset(fde, 0, sizeof(struct dtd_fdlist));
-		fde->fd = connsockfd;
-		fde->kind = kind;
-
-		LOCK(&s->socklistmtx);
-		dt_list_append(&s->sockfds, fde);
-		UNLOCK(&s->socklistmtx);
 	}
 
-exit:
 	pthread_exit(s);
 }
 
@@ -1378,6 +1670,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	int status;
 	size_t l, dirpathlen, filepathlen;
 	char *argv[4] = { 0 };
+	struct kevent change_event;
 
 	status = 0;
 	if (dir == NULL) {
@@ -1459,7 +1752,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 			memset(job, 0, sizeof(struct dtd_joblist));
 			job->job = NOTIFY_ELFWRITE;
-			job->j.notify_elfwrite.connsockfd = fd_list->fd;
+			job->connsockfd = fd_list->fd;
 			job->j.notify_elfwrite.path = strdup(f->d_name);
 			job->j.notify_elfwrite.pathlen = strlen(f->d_name);
 			job->j.notify_elfwrite.dir = dir;
@@ -1469,9 +1762,17 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			dt_list_append(&s->joblist, job);
 			UNLOCK(&s->joblistmtx);
 
-			LOCK(&s->joblistcvmtx);
-			SIGNAL(&s->joblistcv);
-			UNLOCK(&s->joblistcvmtx);
+			EV_SET(&change_event, fd_list->fd,
+			    EVFILT_READ | EVFILT_WRITE, EV_ENABLE, 0, 0,
+			    fd_list);
+
+			if (kevent(
+			    s->kq_hdl, &change_event, 1, NULL, 0, NULL)) {
+				syslog(LOG_ERR,
+				    "kevent() failed enabling %d: %m",
+				    fd_list->fd);
+				return (-1);
+			}
 		}
 		UNLOCK(&s->socklistmtx);
 	} else {
@@ -1650,6 +1951,12 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	} else if (pid > 0)
 		waitpid(pid, &status, 0);
 	else {
+		/*
+		 * FIXME: This is no longer the thing that should happen. We
+		 * need to get DTrace to apply the relocations -- but it no
+		 * longer writes to inbound directly, it needs to talk to the
+		 * daemon.
+		 */
 		argv[0] = strdup("/usr/sbin/dtrace");
 		argv[1] = strdup("-Y");
 		strcpy(fullarg, fullpath);
@@ -1687,6 +1994,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	int idx, ch;
 	char *newname = NULL;
 	char fullpath[MAXPATHLEN] = { 0 };
+	struct kevent change_event;
 
 	if (dir == NULL) {
 		syslog(LOG_ERR, "dir is NULL");
@@ -1733,7 +2041,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		memset(job, 0, sizeof(struct dtd_joblist));
 
 		job->job = NOTIFY_ELFWRITE;
-		job->j.notify_elfwrite.connsockfd = fd_list->fd;
+		job->connsockfd = fd_list->fd;
 		job->j.notify_elfwrite.path = strdup(f->d_name);
 		job->j.notify_elfwrite.pathlen = strlen(f->d_name);
 		job->j.notify_elfwrite.dir = dir;
@@ -1743,9 +2051,14 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		dt_list_append(&s->joblist, job);
 		UNLOCK(&s->joblistmtx);
 
-		LOCK(&s->joblistcvmtx);
-		SIGNAL(&s->joblistcv);
-		UNLOCK(&s->joblistcvmtx);
+		EV_SET(&change_event, fd_list->fd, EVFILT_READ | EVFILT_WRITE,
+		    EV_ENABLE, 0, 0, fd_list);
+
+		if (kevent(s->kq_hdl, &change_event, 1, NULL, 0, NULL)) {
+			syslog(LOG_ERR, "kevent() failed enabling %d: %m",
+			    fd_list->fd);
+			return (-1);
+		}
 	}
 	UNLOCK(&s->socklistmtx);
 
@@ -1818,22 +2131,6 @@ file_foreach(DIR *d, foreach_fn_t f, dtd_dir_t *dir)
 	return (0);
 }
 
-static void *
-listen_consumer(void *_s)
-{
-	struct dtd_state *s = (struct dtd_state *)_s;
-
-	return (_s);
-}
-
-static void *
-write_consumer(void *_s)
-{
-	struct dtd_state *s = (struct dtd_state *)_s;
-
-	return (_s);
-}
-
 static int
 setup_threads(struct dtd_state *s)
 {
@@ -1882,7 +2179,7 @@ setup_threads(struct dtd_state *s)
 		}
 	}
 
-	err = pthread_create(&s->socktd, NULL, accept_subs, s);
+	err = pthread_create(&s->socktd, NULL, process_consumers, s);
 	if (err != 0) {
 		syslog(LOG_ERR, "Failed to create the socket thread: %m");
 		return (-1);
@@ -1905,19 +2202,6 @@ setup_threads(struct dtd_state *s)
 	if (err != 0) {
 		syslog(
 		    LOG_ERR, "Failed to create a child management thread: %m");
-		return (-1);
-	}
-
-	err = pthread_create(&s->consumer_listentd, NULL, listen_consumer, s);
-	if (err != 0) {
-		syslog(
-		    LOG_ERR, "Failed to create consumer listening thread: %m");
-		return (-1);
-	}
-
-	err = pthread_create(&s->consumer_writetd, NULL, write_consumer, s);
-	if (err != 0) {
-		syslog(LOG_ERR, "Failed to create consumer writing thread: %m");
 		return (-1);
 	}
 
@@ -2435,28 +2719,6 @@ againefd:
 	errval = pthread_join(state.killtd, (void **)&retval);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to join child management thread: %m");
-		return (EX_OSERR);
-	}
-
-	errval = pthread_kill(state.consumer_listentd, SIGTERM);
-	if (errval != 0)
-		syslog(
-		    LOG_ERR, "Failed to interrupt consumer listen thread: %m");
-
-	errval = pthread_join(state.consumer_listentd, (void **)&retval);
-	if (errval != 0) {
-		syslog(LOG_ERR, "Failed to join consumer listen thread: %m");
-		return (EX_OSERR);
-	}
-
-	errval = pthread_kill(state.consumer_writetd, SIGTERM);
-	if (errval != 0)
-		syslog(
-		    LOG_ERR, "Failed to interrupt consumer write thread: %m");
-
-	errval = pthread_join(state.consumer_writetd, (void **)&retval);
-	if (errval != 0) {
-		syslog(LOG_ERR, "Failed to join consumer write thread: %m");
 		return (EX_OSERR);
 	}
 

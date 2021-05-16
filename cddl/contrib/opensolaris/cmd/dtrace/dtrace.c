@@ -850,6 +850,59 @@ pgpl_valid(dt_pgplist_t *pgpl)
 	    (pgpl->vmid == 0 && pgpl->pgp));
 }
 
+static int
+send_elf(int fromfd, int tofd)
+{
+	unsigned char *buf, *_buf;
+	size_t total_size;
+	struct stat sb;
+	dtdaemon_hdr_t header;
+
+	if (fromfd == -1 || tofd == -1) {
+		fprintf(stderr,
+		    "both file descriptors must be != -1 (%d, %d)\n", fromfd,
+		    tofd);
+		return (-1);
+	}
+
+	if (fstat(fromfd, &sb)) {
+		fprintf(stderr, "fstat() failed on %d: %s\n", fromfd,
+		    strerror(errno));
+		return (-1);
+	}
+
+	total_size = DTDAEMON_MSGHDRSIZE + sb.st_size;
+	buf = malloc(total_size);
+	if (buf == NULL) {
+		fprintf(stderr, "malloc() failed: %s\n", strerror(errno));
+		return (-1);
+	}
+
+	_buf = buf + DTDAEMON_MSGHDRSIZE;
+	if (read(fromfd, _buf, sb.st_size) < 0) {
+		fprintf(stderr, "read() from %d failed: %s\n", fromfd,
+		    strerror(errno));
+		free(buf);
+		return (-1);
+	}
+
+	DTDAEMON_MSG_TYPE(header) = DTDAEMON_MSG_ELF;
+
+	/*
+	 * Populate the header to the buffer that we will send to dtdaemon.
+	 */
+	memcpy(buf, &header, DTDAEMON_MSGHDRSIZE);
+	if (send(tofd, buf, total_size, 0) < 0) {
+		fprintf(
+		    stderr, "send() to %d failed: %s\n", tofd, strerror(errno));
+		free(buf);
+		return (-1);
+	}
+
+	free(buf);
+	return (0);
+}
+
 static void *
 listen_dtdaemon(void *arg)
 {
@@ -863,6 +916,7 @@ listen_dtdaemon(void *arg)
 	int fd;
 	int err;
 	char template[] = "/tmp/ddtrace-elf.XXXXXXXX";
+	int tmpfd;
 	char elfdir[MAXPATHLEN] = "/var/ddtrace/outbound/";
 	char vm_name[VM_MAX_NAMELEN] = { 0 };
 	char *name;
@@ -1012,7 +1066,6 @@ process_prog:
 		if (fd == -1)
 			dfatal("failed to create a temporary file (%s)",
 			    strerror(errno));
-
 		strcpy(template, "/tmp/ddtrace-elf.XXXXXXXX");
 
 		lentowrite = novm ?
@@ -1086,27 +1139,17 @@ process_prog:
 
 			guestpgp->dp_exec = 1;
 
-			/*
-			 * Send off the program that we actually want to execute
-			 * to the guest machine.
-			 */
-			elfpath = gen_filename(elfdir);
-			dt_elf_create(guestpgp, ELFDATA2LSB, elfpath);
+			tmpfd = mkstemp(template);
+			if (tmpfd == -1)
+				fatal("failed to mkstemp()");
+			strcpy(template, "/tmp/ddtrace-elf.XXXXXXXX");
 
-			donepathlen = strlen(elfpath) - 1;
+			dt_elf_create(guestpgp, ELFDATA2LSB, tmpfd);
 
-			memset(donepath, 0, donepathlen);
-			memcpy(donepath, elfpath, dirlen);
-			memcpy(donepath + dirlen, elfpath + dirlen + 1,
-			    donepathlen - dirlen);
+			if (send_elf(tmpfd, sockfd))
+				fatal("failed to send_elf()");
 
-
-			if (rename(elfpath, donepath)) {
-				dfatal("failed to move %s to %s",
-				    elfpath, donepath);
-			}
-
-			free(elfpath);
+			close(tmpfd);
 		}
 
 		/*
@@ -1388,6 +1431,60 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp)
 	n_pgps++;
 }
 
+static int
+open_dtdaemon(void)
+{
+	int dtdaemon_sock;
+	struct sockaddr_un addr;
+	int kind;
+	size_t l;
+
+	dtdaemon_sock = socket(PF_UNIX, SOCK_STREAM, 0);
+	if (dtdaemon_sock == -1)
+		fatal("failed to open dtdaemon socket");
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sun_family = PF_UNIX;
+	l = strlcpy(addr.sun_path, DTDAEMON_SOCKPATH, sizeof(addr.sun_path));
+	if (l >= sizeof(addr.sun_path)) {
+		fprintf(stderr, "failed to copy %s into sun_path\n",
+		    DTDAEMON_SOCKPATH);
+		return (-1);
+	}
+
+	if (connect(dtdaemon_sock,
+	    (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+		fprintf(stderr, "failed to connect to dtdaemon socket: %s\n",
+		    strerror(errno));
+		return (-1);
+	}
+
+	kind = 0;
+	if (recv(dtdaemon_sock, &kind, sizeof(kind), 0) < 0) {
+		fprintf(stderr, "failed to recv from dtdaemon socket: %s\n",
+		    strerror(errno));
+		close(dtdaemon_sock);
+		return (-1);
+	}
+
+	if (kind != DTDAEMON_KIND_DTDAEMON) {
+		fprintf(stderr, "expected kind %d but got %d\n",
+		    DTDAEMON_KIND_DTDAEMON, kind);
+		close(dtdaemon_sock);
+		return (-1);
+	}
+
+	kind = DTDAEMON_KIND_CONSUMER;
+	if (send(dtdaemon_sock, &kind, sizeof(kind), 0) < 0) {
+		fprintf(stderr, "failed to send to dtdaemon socket: %s\n",
+		    strerror(errno));
+		close(dtdaemon_sock);
+		return (-1);
+	}
+
+	return (dtdaemon_sock);
+}
+
 /*
  * Execute the specified program by enabling the corresponding instrumentation.
  * If -e has been specified, we get the program info but do not enable it.  If
@@ -1400,12 +1497,12 @@ exec_prog(const dtrace_cmd_t *dcp)
 	dtrace_proginfo_t dpi;
 	char *elfpath;
 	char elfdir[MAXPATHLEN] = "/var/ddtrace/base/";
+	char template[MAXPATHLEN] = "/tmp/dtrace-execprog.XXXXXXXX";
 	char *elf;
 	size_t elflen;
 	int dtdaemon_sock;
 	size_t l;
-	struct sockaddr_un addr;
-	int kind, fd;
+	int fd;
 	char donepath[MAXPATHLEN] = { 0 };
 	size_t dirlen;
 	size_t donepathlen;
@@ -1414,6 +1511,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 	void *rval;
 	dt_pgplist_t *pgpl = NULL;
 	int again = 0;
+	int tmpfd;
 
 	dirlen = strlen(elfdir);
 	elfpath = gen_filename(elfdir);
@@ -1442,18 +1540,20 @@ exec_prog(const dtrace_cmd_t *dcp)
 	if (!g_exec) {
 		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
 		if (g_elf) {
-			dt_elf_create(dcp->dc_prog, ELFDATA2LSB, elfpath);
-			donepathlen = strlen(elfpath) - 1;
+			tmpfd = mkstemp(template);
+			if (tmpfd == -1)
+				fatal("failed to mkstemp()");
 
-			memset(donepath, 0, donepathlen);
-			memcpy(donepath, elfpath, dirlen);
-			memcpy(donepath + dirlen, elfpath + dirlen + 1,
-			    donepathlen - dirlen);
+			/*
+			 * In this case we don't really send anything, we just
+			 * create the ELF file for debugging purposes and output
+			 * where it was created.
+			 */
+			dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
+			notice("created %s (ELF file)", template);
+			strcpy(template, "/tmp/dtrace-execprog.XXXXXXXX");
 
-			if (rename(elfpath, donepath)) {
-				dfatal("failed to move %s to %s",
-				    elfpath, donepath);
-			}
+			close(tmpfd);
 		}
 		free(elfpath);
 	} else if (g_elf) {
@@ -1477,47 +1577,21 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if ((err = pthread_cond_init(&g_pgpcond, NULL)) != 0)
 			fatal("failed to init pgpcond");
 
-		dtdaemon_sock = socket(PF_UNIX, SOCK_STREAM, 0);
+		dtdaemon_sock = open_dtdaemon();
 		if (dtdaemon_sock == -1)
-			fatal("failed to open dtdaemon socket");
+			fatal("failed to open dtdaemon");
 
-		memset(&addr, 0, sizeof(addr));
-		addr.sun_family = PF_UNIX;
-		l = strlcpy(addr.sun_path, DTDAEMON_SOCKPATH,
-		    sizeof(addr.sun_path));
-		if (l >= sizeof(addr.sun_path))
-			fatal("failed to copy %s into sun_path",
-			    DTDAEMON_SOCKPATH);
+		tmpfd = mkstemp(template);
+		if (tmpfd == -1)
+			fatal("failed to mkstemp()");
+		strcpy(template, "/tmp/dtrace-execprog.XXXXXXXX");
 
-		if (connect(dtdaemon_sock,
-		    (struct sockaddr *)&addr, sizeof(addr)) == -1)
-			fatal("failed to connect to %s", DTDAEMON_SOCKPATH);
+		dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
 
-		kind = 0;
-		if (recv(dtdaemon_sock, &kind, sizeof(kind), 0) < 0)
-			fatal("failed to read from dtdaemon_sock");
+		if (send_elf(tmpfd, dtdaemon_sock))
+			fatal("failed to send_elf()");
 
-		if (kind != DTDAEMON_KIND_DTDAEMON) {
-			close(dtdaemon_sock);
-			fatal("expected dtdaemon kind, got %d\n", kind);
-		}
-
-		kind = DTDAEMON_KIND_CONSUMER;
-		if (send(dtdaemon_sock, &kind, sizeof(kind), 0) < 0)
-			fatal("failed to read kind from %s",
-			    DTDAEMON_SOCKPATH);
-
-		dt_elf_create(dcp->dc_prog, ELFDATA2LSB, elfpath);
-		
-		donepathlen = strlen(elfpath) - 1;
-		memset(donepath, 0, donepathlen);
-		memcpy(donepath, elfpath, dirlen);
-		memcpy(donepath + dirlen, elfpath + dirlen + 1,
-		    donepathlen - dirlen);
-
-		if (rename(elfpath, donepath))
-			fatal("failed to move %s to %s",
-			    elfpath, donepath);
+		close(tmpfd);
 
 		dtd_arg = malloc(sizeof(dtd_arg_t));
 		if (dtd_arg == NULL)
@@ -1730,22 +1804,6 @@ link_prog(dtrace_cmd_t *dcp)
 		dfatal("failed to link %s %s", dcp->dc_desc, dcp->dc_name);
 }
 
-static int
-insert_probe_to_advlist(dtrace_hdl_t *dtp,
-    const dtrace_probedesc_t *pdp, void *arg)
-{
-	dt_probelist_t *pb;
-
-	pb = malloc(sizeof(dt_probelist_t));
-	if (pb == NULL)
-		return (1);
-
-	memset(pb, 0, sizeof(dt_probelist_t));
-
-	pb->pdesc = pdp;
-	dt_list_append(&g_probe_advlist, pb);
-}
-
 /*ARGSUSED*/
 static int
 list_probe(dtrace_hdl_t *dtp, const dtrace_probedesc_t *pdp, void *arg)
@@ -1864,11 +1922,14 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	char *dirpath;
 	char donepath[MAXPATHLEN] = { 0 };
 	size_t donepathlen;
+	char template[MAXPATHLEN] = "/tmp/dtrace-process-elf.XXXXXXXX";
 	size_t dirlen;
 	char *elfpath, *progpath;
 	int prog_exec;
 	dtrace_proginfo_t dpi;
 	int i;
+	int dtdaemon_sock;
+	int tmpfd;
 
 	progpath = strtok(dcp->dc_arg, ",");
 	if (progpath == NULL)
@@ -1909,20 +1970,22 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	}
 
 	
-	elfpath = gen_filename(elfdir);
-	dt_elf_create(dcp->dc_prog, ELFDATA2LSB, elfpath);
+	dtdaemon_sock = open_dtdaemon();
+	if (dtdaemon_sock == -1)
+		fatal("failed to open dtdaemon");
 
-	donepathlen = strlen(elfpath) - 1;
-	memset(donepath, 0, donepathlen);
-	memcpy(donepath, elfpath, dirlen);
-	memcpy(donepath + dirlen, elfpath + dirlen + 1,
-	    donepathlen - dirlen);
+	tmpfd = mkstemp(template);
+	if (tmpfd == -1)
+		fatal("mkstemp() failed (%s)", template);
+	strcpy(template, "/tmp/dtrace-process-elf.XXXXXXXX");
 
-	if (rename(elfpath, donepath))
-		fatal("failed to move %s to %s",
-		    elfpath, donepath);
+	dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
 
-	free(elfpath);
+	if (send_elf(tmpfd, dtdaemon_sock))
+		fatal("failed to send_elf()");
+
+	close(tmpfd);
+	close(dtdaemon_sock);
 
 	if (prog_exec == DT_PROG_EXEC) {
 		if (pthread_join(g_worktd, NULL))
