@@ -149,8 +149,8 @@ dt_list_equal(dt_list_t *fst, dt_list_t *snd, size_t entry_size)
 	for (e1 = dt_list_next(fst), e2 = dt_list_next(snd);
 	     e1 && e2; e1 = dt_list_next(e1), e2 = dt_list_next(e2)) {
 		if (memcmp((char *)e1 + sizeof(dt_list_t),
-			(char *)e2 + sizeof(dt_list_t),
-			entry_size - sizeof(dt_list_t)) != 0)
+		    (char *)e2 + sizeof(dt_list_t),
+		    entry_size - sizeof(dt_list_t)) != 0)
 			return (0);
 
 		empty = 0;
