@@ -102,7 +102,9 @@ struct pci_vtdtr_control {
 			char		pvc_elf[PCI_VTDTR_MAXELFLEN];
 		} elf;
 
-		uint32_t	pvc_pid;	/* kill a dtrace process */
+		struct {
+			pid_t pvc_pid; /* kill a dtrace process */
+		} kill;
 
 		/*
 		 * Defines for easy access into the union and underlying structs
@@ -114,7 +116,7 @@ struct pci_vtdtr_control {
 #define	pvc_elfhasmore	uctrl.elf.pvc_elfhasmore
 #define	pvc_totalelflen	uctrl.elf.pvc_totalelflen
 #define	pvc_elf		uctrl.elf.pvc_elf
-#define	pvc_pid		uctrl.pvc_pid
+#define	pvc_pid		uctrl.kill.pvc_pid
 	} uctrl;
 };
 
@@ -256,21 +258,25 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 {
 	struct pci_vtdtr_control *ctrl;
 	int retval;
-	static int fd = 0;
+	static int inprogress = 0;
 	static size_t len = 0;
 	static size_t offs = 0;
 	static char *elf;
-	static char *path = NULL;
-	char donepath[MAXPATHLEN] = { 0 };
-	size_t donepathlen;
 	uint64_t size;
 	char *name;
 	uint16_t vmid;
 	static char padding[6] = {0,0,0,0,0,0};
+	static char inbound[DTDAEMON_LOCSIZE] = "inbound";
+	size_t buflen;
+	unsigned char *buf, *_buf;
+	dtdaemon_hdr_t header;
 
+	memset(&header, 0, sizeof(header));
 	assert(niov == 1);
 	retval = 0;
 	vmid = 0;
+	buflen = 0;
+	buf = _buf = NULL;
 
 	ctrl = (struct pci_vtdtr_control *)iov->iov_base;
 	switch (ctrl->pvc_event) {
@@ -282,22 +288,11 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		
 	case VTDTR_DEVICE_ELF:
 		sc->vsd_ready = 0;
-		if (fd == 0) {
-			/*
-			 * Create a temporary file that we will use to not
-			 * pollute the state in /var/ddtrace.
-			 */
-			path = gen_filename();
-			fd = dthyve_newelf(path);
-			if (fd == -1) {
-				fprintf(stderr, "failed opening %s with %s",
-				    path, strerror(errno));
-				break;
-			}
-
+		if (inprogress == 0) {
 			len = ctrl->pvc_totalelflen;
 			elf = malloc(ctrl->pvc_totalelflen);
 			memset(elf, 0, ctrl->pvc_totalelflen);
+			inprogress = 1;
 		}
 
 		assert(offs < len);
@@ -311,57 +306,52 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		offs += ctrl->pvc_elflen;
 
 		if (ctrl->pvc_elfhasmore == 0) {
-			if (fd == 0) {
-				fprintf(stderr, "fd is 0\n");
-				offs = 0;
-				return (retval);
-			}
-
 			vmid = vm_get_vmid(sc->vsd_vmctx);
-			if (write(fd, &vmid, sizeof(vmid)) < 0)
-				fprintf(stderr, "Warning: Failed to write "
-				    "vmid (%u) to %s\n", vmid, path);
-
-			if (write(fd, padding, sizeof(padding)) < 0)
-				fprintf(stderr, "Warning: Failed to write "
-				    "padding to %s\n", path);
-
 			name = vm_get_name(sc->vsd_vmctx);
 			size = strlen(name);
 
-			if (write(fd, &size, sizeof(size)) < 0)
-				fprintf(stderr, "Warning: Failed to write "
-				    "%zu bytes to %s\n", len, path);
+			DTDAEMON_MSG_TYPE(header) = DTDAEMON_MSG_ELF;
+			memcpy(DTDAEMON_MSG_LOC(header), inbound,
+			    DTDAEMON_LOCSIZE);
 
-			if (write(fd, name, size) < 0)
-				fprintf(stderr, "Warning: Failed to write "
-				    "%zu bytes to %s\n", len, path);
+			buflen = DTDAEMON_MSGHDRSIZE + sizeof(vmid) +
+			    sizeof(size) + size + len;
 
-
-			/*
-			 * Write the temporary file
-			 */
-			if (write(fd, elf, len) < 0)
-				fprintf(stderr, "Warning: Failed to write "
-				    "%zu bytes to %s\n", len, path);
-
- 			donepathlen = strlen(path) - 1;
-			memset(donepath, 0, donepathlen);
-			memcpy(donepath, path + 1, donepathlen);
-			donepath[donepathlen - 1] = '\0';
-
-			if (dthyve_rename(path, donepath))
-				fprintf(stderr, "rename failed with %s",
+			buf = malloc(buflen);
+			if (buf == NULL) {
+				fprintf(stderr, "malloc() failed with: %s\n",
 				    strerror(errno));
-			
+				return (retval);
+			}
+
+			_buf = buf;
+			memcpy(_buf, &header, DTDAEMON_MSGHDRSIZE);
+			_buf += DTDAEMON_MSGHDRSIZE;
+
+			memcpy(_buf, &vmid, sizeof(vmid));
+			_buf += sizeof(vmid);
+
+			memcpy(_buf, padding, sizeof(padding));
+			_buf += sizeof(padding);
+
+			memcpy(_buf, &size, sizeof(size));
+			_buf += sizeof(size);
+
+			memcpy(_buf, name, size);
+			_buf += size;
+
+			memcpy(_buf, elf, len);
+
+			if (dthyve_write(buf, len) == -1) {
+				fprintf(stderr, "dthyve_write() failed\n");
+				return (retval);
+			}
+
+			free(buf);
 			free(elf);
-			close(fd);
-			free(path);
-			path = NULL;
 			len = 0;
+			inprogress = 0;
 			offs = 0;
-			donepathlen = 0;
-			fd = 0;
 		}
 		break;
 
@@ -767,15 +757,15 @@ pci_vtdtr_events(void *xsc)
 	struct pci_vtdtr_control *ctrl;
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
 	size_t len;
-	dtdaemon_hdr_t hdr;
+	dtdaemon_hdr_t header;
 
-	hdr = 0;
 	buf = NULL;
 	sc = xsc;
 	fd = 0;
 	st = NULL;
 	offs = 0;
 	len = 0;
+	memset(&header, 0, sizeof(header));
 
 	for (;;) {
 		error = dthyve_read((void **)&buf, &len);
@@ -791,7 +781,7 @@ pci_vtdtr_events(void *xsc)
 			continue;
 		}
 
-		memcpy(&hdr, buf, DTDAEMON_MSGHDRSIZE);
+		memcpy(&header, buf, DTDAEMON_MSGHDRSIZE);
 		/*
 		 * We don't need the header anymore...
 		 */
@@ -802,8 +792,7 @@ pci_vtdtr_events(void *xsc)
 		assert(ctrl_entry != NULL);
 		memset(ctrl_entry, 0, sizeof(struct pci_vtdtr_ctrl_entry));
 
-		fprintf(stderr, "hdr = %lu\n", hdr);
-		switch (DTDAEMON_MSG_TYPE(hdr)) {
+		switch (DTDAEMON_MSG_TYPE(header)) {
 		case DTDAEMON_MSG_KILL:
 			ctrl = vtdtr_kill_event(_buf, len);
 			ctrl_entry->ctrl = ctrl;

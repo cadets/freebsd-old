@@ -26,8 +26,8 @@
  * $FreeBSD$
  */
 
-#include <sys/ioctl.h>
 #include <sys/param.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
@@ -35,17 +35,17 @@
 #include <sys/capsicum.h>
 #endif
 
+#include <assert.h>
+#include <dtdaemon.h>
+#include <err.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <string.h>
-#include <errno.h>
-#include <assert.h>
 #include <sysexits.h>
-#include <err.h>
 #include <syslog.h>
-#include <dtdaemon.h>
+#include <unistd.h>
 
 #ifndef WITHOUT_CAPSICUM
 #include <capsicum_helpers.h>
@@ -53,8 +53,8 @@
 
 #include "dthyve.h"
 
-static int sockfd	= -1;
-static int dirfd	= -1;
+static int sockfd = -1;
+static int dirfd = -1;
 
 /*
  * Open the vtdtr device in order to set up the state.
@@ -62,7 +62,6 @@ static int dirfd	= -1;
 int
 dthyve_init(void)
 {
-	int error;
 	size_t l;
 	int kind;
 	struct sockaddr_un addr;
@@ -91,14 +90,14 @@ dthyve_init(void)
 	}
 
 	if (kind != DTDAEMON_KIND_DTDAEMON) {
-		fprintf(stderr, "Expected dtdaemon kind, got %zu\n", kind);
+		fprintf(stderr, "Expected dtdaemon kind, got %d\n", kind);
 		close(sockfd);
 		return (-1);
 	}
 
 	kind = DTDAEMON_KIND_FORWARDER;
 	if (send(sockfd, &kind, sizeof(kind), 0) < 0) {
-		fprintf(stderr, "Failed to write %zu to sockfd: %s",
+		fprintf(stderr, "Failed to write %d to sockfd: %s",
 		    kind, strerror(errno));
 		return (-1);
 	}
@@ -106,7 +105,7 @@ dthyve_init(void)
 	dirfd = open("/var/ddtrace/inbound", O_DIRECTORY, 0600);
 	if (dirfd == -1)
 		fprintf(stderr, "Failed to open /var/ddtrace/inbound: %m");
-	
+
 	return (0);
 }
 
@@ -178,6 +177,35 @@ dthyve_read(void **buf, size_t *len)
 		return (-1);
 	}
 
+	return (0);
+}
+
+int
+dthyve_write(void *buf, size_t len)
+{
+	unsigned char ack = 1;
+
+	if (buf == NULL) {
+		fprintf(stderr, "dthyve_write(): buf == NULL\n");
+		return (-1);
+	}
+
+	if (send(sockfd, buf, len, 0) < 0) {
+		fprintf(stderr, "send() failed with: %s\n", strerror(errno));
+		return (-1);
+	}
+
+	if (recv(sockfd, buf, 1, 0) < 0) {
+		fprintf(stderr, "recv() failed with: %s\n", strerror(errno));
+		return (-1);
+	}
+
+	if (memcmp(buf, &ack, 1) != 0) {
+		fprintf(stderr, "received %02x, expected %02x\n",
+		    *((unsigned char *)buf), ack);
+
+		return (-1);
+	}
 	return (0);
 }
 

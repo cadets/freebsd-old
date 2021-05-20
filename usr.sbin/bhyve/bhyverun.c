@@ -68,6 +68,7 @@ __FBSDID("$FreeBSD$");
 
 #include "bhyverun.h"
 #include "acpi.h"
+#include "dthyve.h"
 #include "atkbdc.h"
 #include "inout.h"
 #include "dbgport.h"

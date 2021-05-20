@@ -31,12 +31,13 @@
 
 #include <sys/types.h>
 
-int	dthyve_init(void);
-int	dthyve_configured(void);
-int	dthyve_read(void **, size_t *);
-void	dthyve_destroy(void);
-int	dthyve_newelf(char *);
-int	dthyve_rename(char *, char *);
-int	dthyve_access(char *);
+int dthyve_init(void);
+int dthyve_configured(void);
+int dthyve_read(void **, size_t *);
+int dthyve_write(void *, size_t);
+void dthyve_destroy(void);
+int dthyve_newelf(char *);
+int dthyve_rename(char *, char *);
+int dthyve_access(char *);
 
 #endif /* _DTHYVE_H_ */
