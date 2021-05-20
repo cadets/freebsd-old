@@ -768,52 +768,6 @@ checkmodref(int action_modref, int cumulative_modref,
 	return (true);
 }
 
-static void
-get_randname(char *b, size_t len)
-{
-	size_t i;
-
-	/*
-	 * Generate lower-case random characters.
-	 */
-	for (i = 0; i < len; i++)
-		b[i] = arc4random_uniform(25) + 97;
-}
-
-static char *
-gen_filename(const char *dir)
-{
-	char *filename;
-	char *elfpath;
-	size_t len;
-
-	len = (MAXPATHLEN - strlen(dir)) / 64;
-	assert(len > 10);
-
-	filename = malloc(len);
-	if (filename == NULL)
-		return (NULL);
-	
-	filename[0] = '.';
-	get_randname(filename + 1, len - 2);
-	filename[len - 1] = '\0';
-
-	elfpath = malloc(MAXPATHLEN);
-	strcpy(elfpath, dir);
-	strcpy(elfpath + strlen(dir), filename);
-
-	while (access(elfpath, F_OK) != -1) {
-		filename[0] = '.';
-		get_randname(filename + 1, len - 2);
-		filename[len - 1] = '\0';
-		strcpy(elfpath + strlen(dir), filename);
-	}
-
-	free(filename);
-
-	return (elfpath);
-}
-
 static dt_pgplist_t *
 get_pgplist_entry(char *ident, uint16_t vmid, int *found)
 {
@@ -851,12 +805,14 @@ pgpl_valid(dt_pgplist_t *pgpl)
 }
 
 static int
-send_elf(int fromfd, int tofd)
+send_elf(int fromfd, int tofd, const char *location)
 {
 	unsigned char *buf, *_buf;
 	size_t total_size;
 	struct stat sb;
+	unsigned char ack = 1;
 	dtdaemon_hdr_t header;
+	size_t l;
 
 	if (fromfd == -1 || tofd == -1) {
 		fprintf(stderr,
@@ -887,6 +843,13 @@ send_elf(int fromfd, int tofd)
 	}
 
 	DTDAEMON_MSG_TYPE(header) = DTDAEMON_MSG_ELF;
+	l = strlcpy(DTDAEMON_MSG_LOC(header), location, DTDAEMON_LOCSIZE);
+	if (l >= DTDAEMON_LOCSIZE) {
+		fprintf(stderr, "strlcpy() failed (%zu >= %zu)\n", l,
+		    DTDAEMON_LOCSIZE);
+		free(buf);
+		return (-1);
+	}
 
 	/*
 	 * Populate the header to the buffer that we will send to dtdaemon.
@@ -895,6 +858,21 @@ send_elf(int fromfd, int tofd)
 	if (send(tofd, buf, total_size, 0) < 0) {
 		fprintf(
 		    stderr, "send() to %d failed: %s\n", tofd, strerror(errno));
+		free(buf);
+		return (-1);
+	}
+
+	if (recv(tofd, buf, 1, 0) < 0) {
+		free(buf);
+		fprintf(
+		    stderr, "recv() on %d failed: %s\n", tofd, strerror(errno));
+		return (-1);
+	}
+
+	if (memcmp(buf, &ack, 1) != 0) {
+		fprintf(stderr, "received %02x, expected %02x\n",
+		    *((unsigned char *)buf), ack);
+
 		free(buf);
 		return (-1);
 	}
@@ -909,7 +887,7 @@ listen_dtdaemon(void *arg)
 	int sockfd;
 	int novm = 0;
 	size_t elflen;
-	char *elf, *elfpath;
+	char *elf;
 	size_t *size;
 	dtrace_prog_t *newprog;
 	dtrace_prog_t *hostpgp, *guestpgp;
@@ -917,7 +895,6 @@ listen_dtdaemon(void *arg)
 	int err;
 	char template[] = "/tmp/ddtrace-elf.XXXXXXXX";
 	int tmpfd;
-	char elfdir[MAXPATHLEN] = "/var/ddtrace/outbound/";
 	char vm_name[VM_MAX_NAMELEN] = { 0 };
 	char *name;
 	dtd_arg_t *dtd_arg = (dtd_arg_t *)arg;
@@ -926,13 +903,10 @@ listen_dtdaemon(void *arg)
 	uint16_t vmid;
 	size_t lentowrite;
 	int found;
-	char donepath[MAXPATHLEN] = { 0 };
-	size_t dirlen;
-	size_t donepathlen;
 	ssize_t r;
 	uintptr_t elf_ptr;
 	size_t len_to_recv;
-	dtdaemon_hdr_t hdr;
+	dtdaemon_hdr_t header;
 
 	sockfd = 0;
 	elflen = 0;
@@ -945,7 +919,6 @@ listen_dtdaemon(void *arg)
 	done = 0;
 	vmid = 0;
 	lentowrite = 0;
-	dirlen = strlen(elfdir);
 	
 	/*
 	 * Assume this is an int.
@@ -964,8 +937,10 @@ listen_dtdaemon(void *arg)
 		 */
 		if (!done && !atomic_load(&g_intr) &&
 		    ((r = recv(sockfd, &elflen, sizeof(elflen), 0)) < 0) &&
-		    errno != EINTR)
-			dfatal("failed to read elf length");
+		    errno != EINTR) {
+			fprintf(stderr, "failed to read elf length");
+			pthread_exit(NULL);
+		}
 
 		if (atomic_load(&g_intr)) {
 			done = 1;
@@ -975,18 +950,15 @@ listen_dtdaemon(void *arg)
 		if (r != sizeof(elflen)) {
 			fprintf(stderr, "received %zu bytes, expected %zu\n", r,
 			    sizeof(elflen));
-			/*
-			 * FIXME(dstolfa): Just for now.
-			 */
-			assert(0);
+			pthread_exit(NULL);
 		}
 
 		if (elflen <= 0)
-			dfatal("elflen is <= 0");
+			fatal("elflen is <= 0");
 
 		elf = malloc(elflen);
 		if (elf == NULL)
-			dfatal("malloc(elf) failed");
+			fatal("malloc(elf) failed");
 		memset(elf, 0, elflen);
 
 		elf_ptr = (uintptr_t)elf;
@@ -996,7 +968,7 @@ listen_dtdaemon(void *arg)
 		    ((r = recv(
 		    sockfd, (void *)elf_ptr, len_to_recv, 0)) != len_to_recv)) {
 			if (r < 0)
-				dfatal("failed to read from dtdaemon: %s",
+				fatal("failed to read from dtdaemon: %s",
 				    strerror(errno));
 
 			len_to_recv -= r;
@@ -1012,22 +984,22 @@ listen_dtdaemon(void *arg)
 		 * 8-byte aligned
 		 */
 		assert(((uintptr_t)elf & 7) == 0);
-		memcpy(&hdr, elf, sizeof(hdr));
+		memcpy(&header, elf, DTDAEMON_MSGHDRSIZE);
 		elf += DTDAEMON_MSGHDRSIZE;
 		elflen -= DTDAEMON_MSGHDRSIZE;
 
-		if (hdr != DTDAEMON_MSG_ELF) {
+		if (DTDAEMON_MSG_TYPE(header) != DTDAEMON_MSG_ELF) {
 			/*
 			 * We shouldn't be receiving a kill command, so let's
 			 * just report it and ignore it...
 			 */
 			fprintf(stderr,
 			    "received unknown message (%lu), ignoring...\n",
-			    hdr);
+			    DTDAEMON_MSG_TYPE(header));
 			continue;
 		}
 
-		assert(hdr == DTDAEMON_MSG_ELF);
+		assert(DTDAEMON_MSG_TYPE(header) == DTDAEMON_MSG_ELF);
 
 		if (elf[0] == 0x7F && elf[1] == 'E' &&
 		    elf[2] == 'L'  && elf[3] == 'F') {
@@ -1056,7 +1028,7 @@ listen_dtdaemon(void *arg)
 		elf += *size;
 
 		if (*size > VM_MAX_NAMELEN)
-			dfatal("size (%zu) > VM_MAX_NAMELEN (%zu)",
+			fatal("size (%zu) > VM_MAX_NAMELEN (%zu)",
 			    *size, VM_MAX_NAMELEN);
 
 		memcpy(vm_name, name, *size);
@@ -1064,7 +1036,7 @@ listen_dtdaemon(void *arg)
 process_prog:
 		fd = mkstemp(template);
 		if (fd == -1)
-			dfatal("failed to create a temporary file (%s)",
+			fatal("failed to create a temporary file (%s)",
 			    strerror(errno));
 		strcpy(template, "/tmp/ddtrace-elf.XXXXXXXX");
 
@@ -1072,13 +1044,12 @@ process_prog:
 		    elflen :
 		    (elflen - *size - sizeof(uint64_t) - sizeof(uint16_t) - 6);
 		if (write(fd, elf, lentowrite) < 0)
-			dfatal("failed to write to a temporary file");
+			fatal("failed to write to a temporary file");
 
 		if (fsync(fd))
-			dfatal("failed to sync file");
+			fatal("failed to sync file");
 
 		newprog = dt_elf_to_prog(g_dtp, fd, 0, &err, hostpgp);
-		printf("newprog = %p\n", newprog);
 		if (newprog == NULL) {
 			fprintf(stderr, "newprog is NULL\n");
 			continue;
@@ -1092,7 +1063,7 @@ process_prog:
 		}
 
 		if (!done && newprog == NULL && err != EACCES)
-			dfatal("failed to parse elf file");
+			fatal("failed to parse elf file");
 
 		/*
 		 * If this program was not meant for us, we simply move on.
@@ -1107,7 +1078,7 @@ process_prog:
 		 */
 		newpgpl = get_pgplist_entry(newprog->dp_srcident, vmid, &found);
 		if (newpgpl == NULL)
-			dfatal("malloc of newpgpl failed");
+			fatal("malloc of newpgpl failed");
 
 		/*
 		 * vmid is only 0 when we haven't filled in the program we will
@@ -1135,7 +1106,7 @@ process_prog:
 			guestpgp =
 			    dt_vprog_from(g_dtp, newprog, PGP_KIND_HYPERCALLS);
 			if (guestpgp == NULL)
-				dfatal("failed to create a guest program");
+				fatal("failed to create a guest program");
 
 			guestpgp->dp_exec = 1;
 
@@ -1146,7 +1117,13 @@ process_prog:
 
 			dt_elf_create(guestpgp, ELFDATA2LSB, tmpfd);
 
-			if (send_elf(tmpfd, sockfd))
+			if (fsync(tmpfd))
+				fatal("failed to sync file");
+
+			if (lseek(tmpfd, 0, SEEK_SET))
+				fatal("lseek() failed");
+
+			if (send_elf(tmpfd, sockfd, "outbound"))
 				fatal("failed to send_elf()");
 
 			close(tmpfd);
@@ -1495,17 +1472,12 @@ exec_prog(const dtrace_cmd_t *dcp)
 {
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_proginfo_t dpi;
-	char *elfpath;
-	char elfdir[MAXPATHLEN] = "/var/ddtrace/base/";
 	char template[MAXPATHLEN] = "/tmp/dtrace-execprog.XXXXXXXX";
 	char *elf;
 	size_t elflen;
 	int dtdaemon_sock;
 	size_t l;
 	int fd;
-	char donepath[MAXPATHLEN] = { 0 };
-	size_t dirlen;
-	size_t donepathlen;
 	int err = 0;
 	dtd_arg_t *dtd_arg = NULL;
 	void *rval;
@@ -1513,10 +1485,6 @@ exec_prog(const dtrace_cmd_t *dcp)
 	int again = 0;
 	int tmpfd;
 
-	dirlen = strlen(elfdir);
-	elfpath = gen_filename(elfdir);
-	if (elfpath == NULL)
-		dfatal("gen_filename() failed");
 	/*
 	 * Don't take any action based on unwanted mod/ref behaviour;
 	 * checkmodref emits warnings and that's the end of it.
@@ -1555,7 +1523,6 @@ exec_prog(const dtrace_cmd_t *dcp)
 
 			close(tmpfd);
 		}
-		free(elfpath);
 	} else if (g_elf) {
 		/*
 		 * We open a dtdaemon socket because we expect the following
@@ -1588,7 +1555,13 @@ exec_prog(const dtrace_cmd_t *dcp)
 
 		dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
 
-		if (send_elf(tmpfd, dtdaemon_sock))
+		if (fsync(tmpfd))
+			fatal("failed to sync file");
+
+		if (lseek(tmpfd, 0, SEEK_SET))
+			fatal("lseek() failed");
+
+		if (send_elf(tmpfd, dtdaemon_sock, "base"))
 			fatal("failed to send_elf()");
 
 		close(tmpfd);
@@ -1918,13 +1891,10 @@ process_elf(dtrace_cmd_t *dcp)
 static void
 process_elf_hypertrace(dtrace_cmd_t *dcp)
 {
-	char elfdir[MAXPATHLEN] = { 0 };
-	char *dirpath;
-	char donepath[MAXPATHLEN] = { 0 };
-	size_t donepathlen;
 	char template[MAXPATHLEN] = "/tmp/dtrace-process-elf.XXXXXXXX";
-	size_t dirlen;
-	char *elfpath, *progpath;
+	char *progpath;
+	char *hostorguest;
+	int host;
 	int prog_exec;
 	dtrace_proginfo_t dpi;
 	int i;
@@ -1935,10 +1905,15 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	if (progpath == NULL)
 		fatal("failed to tokenize %s", dcp->dc_arg);
 	
-	dirpath = strtok(NULL, ",");
-	strcpy(elfdir, dirpath ? dirpath : "/var/ddtrace/outbound/");
-
-	dirlen = strlen(elfdir);
+	hostorguest = strtok(NULL, ",");
+	if (hostorguest && strcmp(hostorguest, "host") == 0)
+		host = 1;
+	else if (hostorguest && strcmp(hostorguest, "guest") == 0)
+		host = 0;
+	else if (hostorguest == NULL)
+		host = 0;
+	else
+		fatal("unexpected string in -Y: %s", hostorguest);
 
 	prog_exec = link_elf(dcp, progpath);
 
@@ -1981,7 +1956,13 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 
 	dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
 
-	if (send_elf(tmpfd, dtdaemon_sock))
+	if (fsync(tmpfd))
+		fatal("failed to sync file");
+
+	if (lseek(tmpfd, 0, SEEK_SET))
+		fatal("lseek() failed");
+
+	if (send_elf(tmpfd, dtdaemon_sock, host ? "inbound" : "outbound"))
 		fatal("failed to send_elf()");
 
 	close(tmpfd);
