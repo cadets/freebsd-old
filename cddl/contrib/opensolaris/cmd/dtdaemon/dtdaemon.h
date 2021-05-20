@@ -28,24 +28,30 @@
 #ifndef __DTDAEMON_H_
 #define __DTDAEMON_H_
 
-#define	DTDAEMON_SOCKPATH	"/var/ddtrace/sub.sock"
+#define	DTDAEMON_SOCKPATH               "/var/ddtrace/sub.sock"
 
-#define	DTDAEMON_KIND_UNKNOWN		0
-#define	DTDAEMON_KIND_CONSUMER		1
-#define	DTDAEMON_KIND_FORWARDER		2
-#define	DTDAEMON_KIND_DTDAEMON		3
+#define	DTDAEMON_KIND_UNKNOWN           0
+#define	DTDAEMON_KIND_CONSUMER          1
+#define	DTDAEMON_KIND_FORWARDER         2
+#define	DTDAEMON_KIND_DTDAEMON          3
 
-typedef uint64_t dtdaemon_hdr_t;
+#define DTDAEMON_LOCSIZE                64ul
 
-#define	DTDAEMON_MSGHDRSIZE		8
+typedef struct dtdaemon_hdr {
+	uint64_t msg_type;		 /* message type (see DTDAEMON_MSG_*) */
+	char location[DTDAEMON_LOCSIZE]; /* message location */
+} dtdaemon_hdr_t;
+
+#define	DTDAEMON_MSGHDRSIZE             sizeof(dtdaemon_hdr_t)
 
 /*
  * Public message API
  */
-#define	DTDAEMON_MSG_ELF		1
-#define	DTDAEMON_MSG_KILL		2
-#define	DTDAEMON_MSG_LAST		2
+#define	DTDAEMON_MSG_ELF                1
+#define	DTDAEMON_MSG_KILL               2
+#define	DTDAEMON_MSG_LAST               2
 
-#define	DTDAEMON_MSG_TYPE(m)		(m)
+#define	DTDAEMON_MSG_TYPE(m)            ((m).msg_type)
+#define	DTDAEMON_MSG_LOC(m)             ((m).location)
 
 #endif // __DTDAEMON_H_

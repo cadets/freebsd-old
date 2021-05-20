@@ -72,7 +72,7 @@
 
 #define LOCK_FILE                "/var/dtdaemon.lock"
 #define SOCKFD_NAME              "sub.sock"
-#define THREADPOOL_SIZE          4
+#define THREADPOOL_SIZE          1
 
 #define NEXISTS                  0
 #define EXISTS_CHANGED           1
@@ -710,7 +710,7 @@ write_dttransport(void *_s)
 	struct sockaddr_un addr;
 	int kind;
 	uint32_t identifier;
-	dtdaemon_hdr_t hdr;
+	dtdaemon_hdr_t header;
 	ssize_t r;
 	uintptr_t msg_ptr;
 	unsigned char *msg;
@@ -792,15 +792,15 @@ write_dttransport(void *_s)
 			msg_ptr += r;
 		}
 
-		memcpy(&hdr, msg, DTDAEMON_MSGHDRSIZE);
-		if (DTDAEMON_MSG_TYPE(hdr) != DTDAEMON_MSG_ELF) {
+		memcpy(&header, msg, DTDAEMON_MSGHDRSIZE);
+		if (DTDAEMON_MSG_TYPE(header) != DTDAEMON_MSG_ELF) {
 			syslog(LOG_ERR, "Received unknown message type: %lu\n",
-			    DTDAEMON_MSG_TYPE(hdr));
+			    DTDAEMON_MSG_TYPE(header));
 			atomic_store(&s->shutdown, 1);
 			pthread_exit(NULL);
 		}
 
-		assert(DTDAEMON_MSG_TYPE(hdr) == DTDAEMON_MSG_ELF);
+		assert(DTDAEMON_MSG_TYPE(header) == DTDAEMON_MSG_ELF);
 
 		msg_ptr = (uintptr_t)msg;
 		msg += DTDAEMON_MSGHDRSIZE;
@@ -861,7 +861,7 @@ listen_dir(void *_dir)
 		return (NULL);
 	}
 
-	EV_SET(&ev, dir->dirfd, EVFILT_VNODE, EV_ADD | EV_CLEAR,
+	EV_SET(&ev, dir->dirfd, EVFILT_VNODE, EV_ADD | EV_CLEAR | EV_ENABLE,
 	    NOTE_WRITE, 0, (void *)dir);
 
 	while (atomic_load(&s->shutdown) == 0) {
@@ -869,22 +869,26 @@ listen_dir(void *_dir)
 		assert(rval != 0);
 
 		if (rval < 0) {
+			syslog(LOG_ERR, "kevent() failed on %s: %m",
+			    dir->dirpath);
 			if (errno == EINTR)
 				return (s);
 
-			syslog(LOG_ERR, "kevent() failed with %m");
 			return (NULL);
 		}
 
 		if (ev_data.flags == EV_ERROR) {
-			syslog(LOG_ERR, "kevent() got EV_ERROR with %m");
+			syslog(LOG_ERR, "kevent() got EV_ERROR on %s: %m",
+			    dir->dirpath);
 			continue;
 		}
 
 		if (rval > 0) {
 			err = file_foreach(dir->dir, dir->processfn, dir);
 			if (err) {
-				syslog(LOG_ERR, "Failed to process new files");
+				syslog(LOG_ERR,
+				    "Failed to process new files in %s",
+				    dir->dirpath);
 				return (NULL);
 			}
 		}
@@ -909,7 +913,6 @@ process_joblist(void *_s)
 	struct dtd_joblist *curjob;
 	struct dtd_fdlist *fde;
 	struct dtd_state *s = (struct dtd_state *)_s;
-	dtdaemon_hdr_t hdr;
 	dtd_dir_t *dir;
 	ssize_t r;
 	pid_t pid;
@@ -917,6 +920,8 @@ process_joblist(void *_s)
 	unsigned char *buf, *_buf;
 	size_t nbytes;
 	dtdaemon_hdr_t header;
+	struct kevent change_event[1];
+	unsigned char ack = 1;
 
 	_nosha = s->nosha;
 	dir = NULL;
@@ -968,15 +973,40 @@ process_joblist(void *_s)
 					syslog(
 					    LOG_ERR, "recv() failed with: %m");
 					free(buf);
+					buf = NULL;
 					break;
 				}
+
+				assert(r != 0);
 
 				_buf += r;
 				nbytes -= r;
 			}
 
-			if (r < 0)
+			if (send(fd, &ack, 1, 0) < 0) {
+				syslog(LOG_ERR, "send() failed with: %m");
+				if (buf)
+					free(buf);
 				break;
+			}
+
+			/*
+			 * We are done receiving the data and nothing failed,
+			 * re-enable the event and keep going.
+			 */
+			EV_SET(change_event, fd, EVFILT_READ,
+			    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
+			if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL)) {
+				syslog(LOG_ERR, "kevent() failed with: %m");
+				free(buf);
+				break;
+			}
+
+			if (r < 0) {
+				if (buf)
+					free(buf);
+				break;
+			}
 
 			nbytes = curjob->j.read.nbytes;
 
@@ -992,7 +1022,28 @@ process_joblist(void *_s)
 				_buf += DTDAEMON_MSGHDRSIZE;
 				nbytes -= DTDAEMON_MSGHDRSIZE;
 
-				if (write_data(s->basedir, _buf, nbytes))
+				if (strcmp(
+				    DTDAEMON_MSG_LOC(header), "base") == 0)
+					dir = s->basedir;
+				else if (strcmp(
+				    DTDAEMON_MSG_LOC(header), "outbound") == 0)
+					dir = s->outbounddir;
+				else if (strcmp(
+				    DTDAEMON_MSG_LOC(header), "inbound") == 0)
+					dir = s->inbounddir;
+				else
+					dir = NULL;
+
+				if (dir == NULL) {
+					syslog(LOG_ERR,
+					    "unrecognized location: %s",
+					    DTDAEMON_MSG_LOC(header));
+
+					free(buf);
+					pthread_exit(NULL);
+				}
+
+				if (write_data(dir, _buf, nbytes))
 					syslog(LOG_ERR, "write_data() failed");
 				break;
 			case DTDAEMON_MSG_KILL:
@@ -1001,6 +1052,8 @@ process_joblist(void *_s)
 				 * somehow.
 				 */
 				break;
+			default:
+				assert(0);
 			}
 
 			free(buf);
@@ -1027,8 +1080,8 @@ process_joblist(void *_s)
 			 * we don't really make it a structure. In the future,
 			 * this might change.
 			 */
-			hdr = DTDAEMON_MSG_KILL;
-			memcpy(msg, &hdr, DTDAEMON_MSGHDRSIZE);
+			DTDAEMON_MSG_TYPE(header) = DTDAEMON_MSG_KILL;
+			memcpy(msg, &header, DTDAEMON_MSGHDRSIZE);
 			contents = msg + DTDAEMON_MSGHDRSIZE;
 
 			memcpy(contents, &pid, sizeof(pid));
@@ -1050,16 +1103,17 @@ process_joblist(void *_s)
 					    &s->sockfds, &fd, sizeof(int));
 					if (fde == NULL) {
 						UNLOCK(&s->socklistmtx);
-						goto cleanup;
+						goto killcleanup;
 					}
 
 					dt_list_delete(&s->sockfds, fde);
 					UNLOCK(&s->socklistmtx);
-					goto cleanup;
 				} else
 					syslog(LOG_ERR,
 					    "Failed to write to %d (%zu): %m",
 					    fd, msglen);
+
+				goto killcleanup;
 			}
 
 			if ((r = send(fd, msg, msglen, 0)) < 0) {
@@ -1079,7 +1133,7 @@ process_joblist(void *_s)
 					    &s->sockfds, &fd, sizeof(int));
 					if (fde == NULL) {
 						UNLOCK(&s->socklistmtx);
-						goto cleanup;
+						goto killcleanup;
 					}
 
 					dt_list_delete(&s->sockfds, fde);
@@ -1087,8 +1141,21 @@ process_joblist(void *_s)
 				} else
 					syslog(LOG_ERR,
 					    "Failed to write to %d: %m", fd);
+
+				goto killcleanup;
 			}
 
+			EV_SET(change_event, fd, EVFILT_WRITE,
+			    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
+			if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL)) {
+				syslog(LOG_WARNING,
+				    "process_joblist: kevent() "
+				    "failed with: %m");
+				free(msg);
+				break;
+			}
+
+killcleanup:
 			free(msg);
 			break;
 
@@ -1136,9 +1203,9 @@ process_joblist(void *_s)
 				break;
 			}
 
-			hdr = DTDAEMON_MSG_ELF;
+			DTDAEMON_MSG_TYPE(header) = DTDAEMON_MSG_ELF;
 			memset(msg, 0, msglen);
-			memcpy(msg, &hdr, DTDAEMON_MSGHDRSIZE);
+			memcpy(msg, &header, DTDAEMON_MSGHDRSIZE);
 
 			_msg = msg + DTDAEMON_MSGHDRSIZE;
 			contents = _nosha ? _msg : _msg + SHA256_DIGEST_LENGTH;
@@ -1162,12 +1229,6 @@ process_joblist(void *_s)
 				break;
 			}
 
-			char tmpname[] = "/tmp/debug.XXX";
-			int tmpfd = mkstemp(tmpname);
-			(void)write(tmpfd, _msg, msglen - DTDAEMON_MSGHDRSIZE);
-			close(tmpfd);
-
-
 			if (send(fd, &msglen, sizeof(msglen), 0) < 0) {
 				if (errno == EPIPE) {
 					/*
@@ -1185,16 +1246,17 @@ process_joblist(void *_s)
 					    &s->sockfds, &fd, sizeof(int));
 					if (fde == NULL) {
 						UNLOCK(&s->socklistmtx);
-						goto cleanup;
+						goto elfcleanup;
 					}
 
 					dt_list_delete(&s->sockfds, fde);
 					UNLOCK(&s->socklistmtx);
-					goto cleanup;
 				} else
 					syslog(LOG_ERR,
 					    "Failed to write to %d (%zu): %m",
 					    fd, msglen);
+
+				goto elfcleanup;
 			}
 
 			if ((r = send(fd, msg, msglen, 0)) < 0) {
@@ -1214,7 +1276,7 @@ process_joblist(void *_s)
 					    &s->sockfds, &fd, sizeof(int));
 					if (fde == NULL) {
 						UNLOCK(&s->socklistmtx);
-						goto cleanup;
+						goto elfcleanup;
 					}
 
 					dt_list_delete(&s->sockfds, fde);
@@ -1224,9 +1286,17 @@ process_joblist(void *_s)
 					    "Failed to write to %d "
 					    "(%s, %zu): %m",
 					    fd, path, pathlen);
+
+				goto elfcleanup;
 			}
 
-cleanup:
+			EV_SET(change_event, fd, EVFILT_WRITE,
+			    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
+			if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL))
+				syslog(LOG_WARNING,
+				    "process_joblist: kevent() "
+				    "failed with: %m");
+elfcleanup:
 			free(path);
 			free(msg);
 			close(elffd);
@@ -1289,8 +1359,17 @@ accept_new_connection(struct dtd_state *s)
 	fde->fd = connsockfd;
 	fde->kind = kind;
 
-	EV_SET(change_event, connsockfd, EVFILT_READ | EVFILT_WRITE,
-	    EV_ADD | EV_ENABLE, 0, 0, &fde);
+	EV_SET(change_event, connsockfd, EVFILT_READ,
+	    EV_ADD | EV_ENABLE, 0, 0, fde);
+	if (kevent(kq, change_event, 1, NULL, 0, NULL) < 0) {
+		close(connsockfd);
+		free(fde);
+		syslog(LOG_ERR, "kevent() adding new connection failed: %m");
+		return (-1);
+	}
+
+	EV_SET(change_event, connsockfd, EVFILT_WRITE,
+	    EV_ADD | EV_ENABLE, 0, 0, fde);
 	if (kevent(kq, change_event, 1, NULL, 0, NULL) < 0) {
 		close(connsockfd);
 		free(fde);
@@ -1339,6 +1418,7 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 		LOCK(&s->joblistcvmtx);
 		SIGNAL(&s->joblistcv);
 		UNLOCK(&s->joblistcvmtx);
+
 	} else if (ev->filter == EVFILT_WRITE) {
 		/*
 		 * Because we are in a state where we know that:
@@ -1437,6 +1517,14 @@ process_consumers(void *_s)
 			efd = event[i].ident;
 
 			if (event[i].flags & EV_ERROR) {
+				/*
+				 * XXX: We could add some checks here to make
+				 * sure we're not doing something bad and
+				 * segfaulting.
+				 */
+				LOCK(&s->socklistmtx);
+				dt_list_delete(&s->sockfds, event[i].udata);
+				UNLOCK(&s->socklistmtx);
 				close(efd);
 				syslog(LOG_ERR, "event error: %m");
 				continue;
@@ -1457,10 +1545,22 @@ process_consumers(void *_s)
 			}
 
 			if (event[i].filter == EVFILT_READ) {
+				EV_SET(change_event, event[i].ident, EVFILT_READ,
+				    EV_DISABLE, 0, 0, event[i].udata);
+				if (kevent(s->kq_hdl, change_event, 1, NULL, 0,
+					NULL)) {
+					syslog(LOG_ERR,
+					    "kevent() failed with: %m");
+					pthread_exit(NULL);
+				}
+
 				/*
 				 * For any read event, we just dispatch an event
 				 * to actually read in the data.
 				 */
+				udata_fde = event[i].udata;
+				assert(udata_fde->fd == efd);
+
 				if (dispatch_event(s, &event[i])) {
 					syslog(
 					    LOG_ERR, "dispatch_event() failed");
@@ -1470,6 +1570,15 @@ process_consumers(void *_s)
 			}
 
 			if (event[i].filter == EVFILT_WRITE) {
+				EV_SET(change_event, efd, EVFILT_WRITE,
+				    EV_DISABLE, 0, 0, event[i].udata);
+				if (kevent(
+				    kq, change_event, 1, NULL, 0, NULL)) {
+					syslog(LOG_ERR,
+					    "kevent() failed with: %m");
+					pthread_exit(NULL);
+				}
+
 				dispatch = 0;
 
 				LOCK(&s->joblistmtx);
@@ -1500,20 +1609,6 @@ process_consumers(void *_s)
 					}
 
 					continue;
-				}
-
-				/*
-				 * If there is no event, we will disable this
-				 * filedesc until we have something to write to
-				 * it.
-				 */
-				EV_SET(change_event, efd, EVFILT_WRITE,
-				    EV_DISABLE, 0, 0, event[i].udata);
-
-				if (kevent(kq, change_event, 1, NULL, 0, NULL)) {
-					syslog(LOG_ERR,
-					    "kevent() failed with: %m");
-					pthread_exit(NULL);
 				}
 			}
 		}
@@ -1670,7 +1765,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	int status;
 	size_t l, dirpathlen, filepathlen;
 	char *argv[4] = { 0 };
-	struct kevent change_event;
+	struct kevent change_event[1];
 
 	status = 0;
 	if (dir == NULL) {
@@ -1758,21 +1853,19 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			job->j.notify_elfwrite.dir = dir;
 			job->j.notify_elfwrite.nosha = 1;
 
+			printf(
+			    "enqueue NOTIFY_ELFWRITE for fd = %d, path = %s\n",
+			    fd_list->fd, f->d_name);
 			LOCK(&s->joblistmtx);
 			dt_list_append(&s->joblist, job);
 			UNLOCK(&s->joblistmtx);
 
-			EV_SET(&change_event, fd_list->fd,
-			    EVFILT_READ | EVFILT_WRITE, EV_ENABLE, 0, 0,
-			    fd_list);
-
-			if (kevent(
-			    s->kq_hdl, &change_event, 1, NULL, 0, NULL)) {
-				syslog(LOG_ERR,
-				    "kevent() failed enabling %d: %m",
-				    fd_list->fd);
-				return (-1);
-			}
+			EV_SET(change_event, job->connsockfd, EVFILT_WRITE,
+			    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
+			if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL))
+				syslog(LOG_WARNING,
+				    "process_inbound: kevent() "
+				    "failed with: %m");
 		}
 		UNLOCK(&s->socklistmtx);
 	} else {
@@ -1801,6 +1894,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		}
 	}
 
+cleanup:
 	LOCK(&dir->dirmtx);
 	err = expand_paths(dir);
 	if (err != 0) {
@@ -1951,17 +2045,11 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	} else if (pid > 0)
 		waitpid(pid, &status, 0);
 	else {
-		/*
-		 * FIXME: This is no longer the thing that should happen. We
-		 * need to get DTrace to apply the relocations -- but it no
-		 * longer writes to inbound directly, it needs to talk to the
-		 * daemon.
-		 */
 		argv[0] = strdup("/usr/sbin/dtrace");
 		argv[1] = strdup("-Y");
 		strcpy(fullarg, fullpath);
 		offset = strlen(fullarg);
-		strcpy(fullarg + offset, ",/var/ddtrace/inbound/");
+		strcpy(fullarg + offset, ",host");
 		argv[2] = strdup(fullarg);
 		argv[3] = NULL;
 		execve("/usr/sbin/dtrace", argv, NULL);
@@ -1994,7 +2082,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	int idx, ch;
 	char *newname = NULL;
 	char fullpath[MAXPATHLEN] = { 0 };
-	struct kevent change_event;
+	struct kevent change_event[1];
 
 	if (dir == NULL) {
 		syslog(LOG_ERR, "dir is NULL");
@@ -2051,14 +2139,11 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		dt_list_append(&s->joblist, job);
 		UNLOCK(&s->joblistmtx);
 
-		EV_SET(&change_event, fd_list->fd, EVFILT_READ | EVFILT_WRITE,
-		    EV_ENABLE, 0, 0, fd_list);
-
-		if (kevent(s->kq_hdl, &change_event, 1, NULL, 0, NULL)) {
-			syslog(LOG_ERR, "kevent() failed enabling %d: %m",
-			    fd_list->fd);
-			return (-1);
-		}
+		EV_SET(change_event, job->connsockfd, EVFILT_WRITE,
+		    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
+		if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL))
+			syslog(LOG_WARNING,
+			    "process_outbound:kevent() failed with: %m");
 	}
 	UNLOCK(&s->socklistmtx);
 
@@ -2515,7 +2600,7 @@ main(int argc, char **argv)
 				return (EX_OSERR);
 			}
 
-			if (strcmp(hypervisor, "bhyve bhyve ") != 0) {
+			if (strcmp(hypervisor, "bhyve") != 0) {
 				/*
 				 * Warn the user that this makes very little
 				 * sense on a non-virtualized machine...
