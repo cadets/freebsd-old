@@ -79,8 +79,6 @@ struct virtio_dtrace_control {
 	uint32_t vd_event;
 
 	union {
-		uint32_t	vd_probeid;	/* install/uninstall event */
-
 		struct {			/*  elf event */
 			size_t		vd_elflen;
 			size_t		vd_totalelflen;
@@ -90,18 +88,19 @@ struct virtio_dtrace_control {
 			char		vd_elf[VIRTIO_DTRACE_MAXELFLEN];
 		} elf;
 
-		pid_t		vd_pid;		/* kill event */
+		struct { /* kill event */
+			pid_t vd_pid;
+		} kill;
 
 		/*
 		 * Defines for easy access into the union and underlying structs
 		 */
-#define	vd_probeid	uctrl.vd_probeid
 #define vd_identifier	uctrl.elf.vd_identifier
 #define	vd_elflen	uctrl.elf.vd_elflen
 #define	vd_elfhasmore	uctrl.elf.vd_elfhasmore
 #define	vd_totalelflen	uctrl.elf.vd_totalelflen
 #define	vd_elf		uctrl.elf.vd_elf
-#define	vd_pid		uctrl.vd_pid
+#define	vd_pid		uctrl.kill.vd_pid
 	} uctrl;
 };
 
@@ -1312,7 +1311,7 @@ ctrl_from_dttentry(dtt_entry_t *e)
 		ctrl->vd_elflen = e->u.elf.len;
 		ctrl->vd_elfhasmore = e->u.elf.hasmore;
 		ctrl->vd_totalelflen = e->u.elf.totallen;
-		memcpy(ctrl->vd_elf, e->u.elf.data, sizeof(ctrl->vd_elf));
+		memcpy(ctrl->vd_elf, e->u.elf.data, VIRTIO_DTRACE_MAXELFLEN);
 		break;
 	case DTT_KILL:
 		/*
