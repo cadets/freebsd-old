@@ -1940,7 +1940,7 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 			dfatal("failed to enable program");
 		} else {
 			notice(
-			    "process_elf_hypertrace(): matched %u probes%s\n",
+			    "process_elf_hypertrace(): matched %u probe%s\n",
 			    dpi.dpi_matches, dpi.dpi_matches == 1 ? "" : "s");
 		}
 
