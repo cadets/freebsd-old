@@ -35,12 +35,26 @@
 #define	DTDAEMON_KIND_FORWARDER         2
 #define	DTDAEMON_KIND_DTDAEMON          3
 
+#define DTD_SUB_READDATA                1
+#define DTD_SUB_ELFWRITE                (1 << 1)
+
 #define DTDAEMON_LOCSIZE                64ul
 
 typedef struct dtdaemon_hdr {
-	uint64_t msg_type;		 /* message type (see DTDAEMON_MSG_*) */
-	char location[DTDAEMON_LOCSIZE]; /* message location */
+	uint64_t msg_type;      /* message type (see DTDAEMON_MSG_*) */
+	struct {
+		char location[DTDAEMON_LOCSIZE]; /* elf location */
+	} elf;
+
+	struct {
+		pid_t pid; /* process id to kill */
+	} kill;
 } dtdaemon_hdr_t;
+
+typedef struct dtd_initmsg {
+	int kind;       /* kind (see above) */
+	uint64_t subs;  /* what are we subscribing to? */
+} dtd_initmsg_t;
 
 #define	DTDAEMON_MSGHDRSIZE             sizeof(dtdaemon_hdr_t)
 
@@ -52,6 +66,7 @@ typedef struct dtdaemon_hdr {
 #define	DTDAEMON_MSG_LAST               2
 
 #define	DTDAEMON_MSG_TYPE(m)            ((m).msg_type)
-#define	DTDAEMON_MSG_LOC(m)             ((m).location)
+#define	DTDAEMON_MSG_LOC(m)             ((m).elf.location)
+#define DTDAEMON_MSG_KILLPID(m)         ((m).kill.pid)
 
 #endif // __DTDAEMON_H_

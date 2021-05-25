@@ -228,6 +228,7 @@ struct dtd_fdlist {
 	dt_list_t list; /* next element */
 	int fd;         /* the actual filedesc */
 	int kind;       /* consumer/forwarder */
+	uint64_t subs;  /* events that efd subscribed to */
 };
 
 struct dtd_joblist {
@@ -253,7 +254,6 @@ struct dtd_joblist {
 		kill;
 
 		struct {
-			size_t nbytes; /* number of bytes to write */
 		}
 		read;
 	}
@@ -558,6 +558,7 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 		    LOG_ERR, "rename() failed %s -> %s: %m", newname, donename);
 		return (-1);
 	}
+
 	return (0);
 }
 
@@ -708,7 +709,7 @@ write_dttransport(void *_s)
 	dtt_entry_t e;
 	size_t l, lentoread, len, totallen;
 	struct sockaddr_un addr;
-	int kind;
+	dtd_initmsg_t initmsg;
 	uint32_t identifier;
 	dtdaemon_hdr_t header;
 	ssize_t r;
@@ -718,7 +719,7 @@ write_dttransport(void *_s)
 	rval = 0;
 	sockfd = 0;
 	l = lentoread = len = totallen = 0;
-	kind = 0;
+	memset(&initmsg, 0, sizeof(initmsg));
 
 	sockfd = socket(PF_UNIX, SOCK_STREAM, 0);
 	if (sockfd == -1) {
@@ -745,22 +746,26 @@ write_dttransport(void *_s)
 		pthread_exit(NULL);
 	}
 
-	if (recv(sockfd, &kind, sizeof(kind), 0) < 0) {
+	if (recv(sockfd, &initmsg, sizeof(initmsg), 0) < 0) {
 		fprintf(stderr, "Failed to read from sockfd: %m");
 		pthread_exit(NULL);
 	}
 
-	if (kind != DTDAEMON_KIND_DTDAEMON) {
-		syslog(LOG_ERR, "Expected dtdaemon kind, got %d\n", kind);
+	if (initmsg.kind != DTDAEMON_KIND_DTDAEMON) {
+		syslog(LOG_ERR, "Expected dtdaemon kind, got %d\n",
+		    initmsg.kind);
 		close(sockfd);
 		pthread_exit(NULL);
 	}
 
-	kind = DTDAEMON_KIND_FORWARDER;
-	if (send(sockfd, &kind, sizeof(kind), 0) < 0) {
-		syslog(LOG_ERR, "Failed to write %d to sockfd: %m", kind);
+	memset(&initmsg, 0, sizeof(initmsg));
+	initmsg.kind = DTDAEMON_KIND_FORWARDER;
+	initmsg.subs = DTD_SUB_ELFWRITE;
+	if (send(sockfd, &initmsg, sizeof(initmsg), 0) < 0) {
+		syslog(LOG_ERR, "Failed to write initmsg to sockfd: %m");
 		pthread_exit(NULL);
 	}
+
 
 	while (atomic_load(&s->shutdown) == 0) {
 		if ((rval = recv(sockfd, &len, sizeof(size_t), 0)) < 0) {
@@ -832,10 +837,13 @@ write_dttransport(void *_s)
 			len -= lentoread;
 			msg += lentoread;
 
+			assert(len >= 0 && len < totallen);
 			assert((uintptr_t)msg >= msg_ptr);
 			assert((uintptr_t)msg <=
 			    (msg_ptr + totallen + DTDAEMON_MSGHDRSIZE));
 		}
+
+		assert(len == 0);
 
 		free((void *)msg_ptr);
 	}
@@ -918,7 +926,7 @@ process_joblist(void *_s)
 	pid_t pid;
 	struct stat stat;
 	unsigned char *buf, *_buf;
-	size_t nbytes;
+	size_t nbytes, totalbytes;
 	dtdaemon_hdr_t header;
 	struct kevent change_event[1];
 	unsigned char ack = 1;
@@ -959,7 +967,15 @@ process_joblist(void *_s)
 		switch (curjob->job) {
 		case READ_DATA:
 			fd = curjob->connsockfd;
-			nbytes = curjob->j.read.nbytes;
+			nbytes = 0;
+			totalbytes = 0;
+
+			if ((r = recv(fd, &totalbytes, sizeof(nbytes), 0)) < 0) {
+				syslog(LOG_ERR, "recv() failed with: %m");
+				break;
+			}
+
+			nbytes = totalbytes;
 
 			buf = malloc(nbytes);
 			if (buf == NULL) {
@@ -982,6 +998,8 @@ process_joblist(void *_s)
 				_buf += r;
 				nbytes -= r;
 			}
+
+			assert(nbytes == r);
 
 			if (send(fd, &ack, 1, 0) < 0) {
 				syslog(LOG_ERR, "send() failed with: %m");
@@ -1008,7 +1026,8 @@ process_joblist(void *_s)
 				break;
 			}
 
-			nbytes = curjob->j.read.nbytes;
+			nbytes = totalbytes;
+			_buf = buf;
 
 			/*
 			 * We now have our data (ELF file) in buf. Create an ELF
@@ -1315,12 +1334,14 @@ elfcleanup:
 static int
 accept_new_connection(struct dtd_state *s)
 {
-	int kind;
 	int connsockfd;
 	int on = 1;
 	int kq = s->kq_hdl;
 	struct dtd_fdlist *fde;
+	dtd_initmsg_t initmsg;
 	struct kevent change_event[4];
+
+	memset(&initmsg, 0, sizeof(initmsg));
 
 	connsockfd = accept(s->sockfd, NULL, 0);
 	if (connsockfd == -1) {
@@ -1334,17 +1355,17 @@ accept_new_connection(struct dtd_state *s)
 		return (-1);
 	}
 
-	kind = DTDAEMON_KIND_DTDAEMON;
-	if (send(connsockfd, &kind, sizeof(int), 0) < 0) {
+	initmsg.kind = DTDAEMON_KIND_DTDAEMON;
+	if (send(connsockfd, &initmsg, sizeof(initmsg), 0) < 0) {
 		close(connsockfd);
-		syslog(LOG_ERR, "send() %d to connsockfd failed: %m", kind);
+		syslog(LOG_ERR, "send() initmsg to connsockfd failed: %m");
 		return (-1);
 	}
 
-	kind = 0;
-	if (recv(connsockfd, &kind, sizeof(int), 0) < 0) {
+	memset(&initmsg, 0, sizeof(initmsg));
+	if (recv(connsockfd, &initmsg, sizeof(initmsg), 0) < 0) {
 		close(connsockfd);
-		syslog(LOG_ERR, "recv() get kind failed: %m");
+		syslog(LOG_ERR, "recv() get initmsg failed: %m");
 		return (-1);
 	}
 
@@ -1357,7 +1378,8 @@ accept_new_connection(struct dtd_state *s)
 
 	memset(fde, 0, sizeof(struct dtd_fdlist));
 	fde->fd = connsockfd;
-	fde->kind = kind;
+	fde->kind = initmsg.kind;
+	fde->subs = initmsg.subs;
 
 	EV_SET(change_event, connsockfd, EVFILT_READ,
 	    EV_ADD | EV_ENABLE, 0, 0, fde);
@@ -1400,7 +1422,6 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 		 * /var/ddtrace/base directory for the directory monitoring
 		 * kqueues to wake up and process it further.
 		 */
-
 		job = malloc(sizeof(struct dtd_joblist));
 		if (job == NULL) {
 			syslog(LOG_ERR, "malloc() failed with: %m");
@@ -1409,7 +1430,6 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 
 		job->job = READ_DATA;
 		job->connsockfd = ev->ident;
-		job->j.read.nbytes = ev->data;
 
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);
@@ -1446,7 +1466,6 @@ static void *
 process_consumers(void *_s)
 {
 	int err;
-	int kind;
 	int connsockfd;
 	int on = 1;
 	int new_events;
@@ -1460,7 +1479,6 @@ process_consumers(void *_s)
 
 	struct kevent change_event[4], event[4];
 
-	kind = 0;
 	dispatch = 0;
 
 	/*
@@ -1545,6 +1563,16 @@ process_consumers(void *_s)
 			}
 
 			if (event[i].filter == EVFILT_READ) {
+				/*
+				 * assert that we are in a sane state.
+				 */
+				udata_fde = event[i].udata;
+				assert(udata_fde->fd == efd);
+
+				/*
+				 * Disable the EVFILT_READ event so we don't get
+				 * spammed by it.
+				 */
 				EV_SET(change_event, event[i].ident, EVFILT_READ,
 				    EV_DISABLE, 0, 0, event[i].udata);
 				if (kevent(s->kq_hdl, change_event, 1, NULL, 0,
@@ -1555,17 +1583,24 @@ process_consumers(void *_s)
 				}
 
 				/*
-				 * For any read event, we just dispatch an event
-				 * to actually read in the data.
+				 * If efd did not state it ever wants READDATA
+				 * to work on dtdaemon, we will simply ignore
+				 * it and report a warning.
 				 */
-				udata_fde = event[i].udata;
-				assert(udata_fde->fd == efd);
+				if ((udata_fde->subs & DTD_SUB_READDATA) == 0) {
+					syslog(LOG_WARNING,
+					    "socket %d tried to READDATA, but "
+					    "is not subscribed (%lx)",
+					    efd, udata_fde->subs);
+					continue;
+				}
 
 				if (dispatch_event(s, &event[i])) {
 					syslog(
 					    LOG_ERR, "dispatch_event() failed");
 					pthread_exit(NULL);
 				}
+
 				continue;
 			}
 
@@ -1838,6 +1873,9 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			if (fd_list->kind != DTDAEMON_KIND_CONSUMER)
 				continue;
 
+			if ((fd_list->subs & DTD_SUB_ELFWRITE) == 0)
+				continue;
+
 			job = malloc(sizeof(struct dtd_joblist));
 			if (job == NULL) {
 				syslog(LOG_ERR, "Failed to malloc a new job");
@@ -1853,9 +1891,6 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			job->j.notify_elfwrite.dir = dir;
 			job->j.notify_elfwrite.nosha = 1;
 
-			printf(
-			    "enqueue NOTIFY_ELFWRITE for fd = %d, path = %s\n",
-			    fd_list->fd, f->d_name);
 			LOCK(&s->joblistmtx);
 			dt_list_append(&s->joblist, job);
 			UNLOCK(&s->joblistmtx);
@@ -2118,6 +2153,9 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	for (fd_list = dt_list_next(&s->sockfds); fd_list;
 	    fd_list = dt_list_next(fd_list)) {
 		if (fd_list->kind != DTDAEMON_KIND_FORWARDER)
+			continue;
+
+		if ((fd_list->subs & DTD_SUB_ELFWRITE) == 0)
 			continue;
 
 		job = malloc(sizeof(struct dtd_joblist));
