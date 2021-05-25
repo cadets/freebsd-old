@@ -300,12 +300,13 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 
 		if (elf == NULL)
 			return (retval);
-		
-		memcpy((void *)(((uintptr_t)elf) + offs),
-		    ctrl->pvc_elf, ctrl->pvc_elflen);
+
+		assert((elf + offs) <= (elf + len));
+		memcpy((void *)(elf + offs), ctrl->pvc_elf, ctrl->pvc_elflen);
 		offs += ctrl->pvc_elflen;
 
 		if (ctrl->pvc_elfhasmore == 0) {
+			assert(elf + offs == elf + len);
 			vmid = vm_get_vmid(sc->vsd_vmctx);
 			name = vm_get_name(sc->vsd_vmctx);
 			size = strlen(name);
@@ -315,7 +316,9 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			    DTDAEMON_LOCSIZE);
 
 			buflen = DTDAEMON_MSGHDRSIZE + sizeof(vmid) +
-			    sizeof(size) + size + len;
+			    sizeof(padding) + sizeof(size) + size + len;
+
+			assert(buflen > len);
 
 			buf = malloc(buflen);
 			if (buf == NULL) {
@@ -325,24 +328,43 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			}
 
 			_buf = buf;
+
+			assert((_buf + DTDAEMON_MSGHDRSIZE) < (buf + buflen));
+
 			memcpy(_buf, &header, DTDAEMON_MSGHDRSIZE);
 			_buf += DTDAEMON_MSGHDRSIZE;
+
+			assert(_buf > buf);
+			assert((_buf + sizeof(vmid)) < (buf + buflen));
 
 			memcpy(_buf, &vmid, sizeof(vmid));
 			_buf += sizeof(vmid);
 
+			assert(_buf > buf);
+			assert((_buf + sizeof(padding)) < (buf + buflen));
+
 			memcpy(_buf, padding, sizeof(padding));
 			_buf += sizeof(padding);
+
+			assert(_buf > buf);
+			assert((_buf + sizeof(size)) < (buf + buflen));
 
 			memcpy(_buf, &size, sizeof(size));
 			_buf += sizeof(size);
 
+			assert(_buf > buf);
+			assert((_buf + size) < (buf + buflen));
+
 			memcpy(_buf, name, size);
 			_buf += size;
 
+			assert(_buf > buf);
+			assert((_buf + len) == (buf + buflen));
+
 			memcpy(_buf, elf, len);
 
-			if (dthyve_write(buf, len) == -1) {
+			fprintf(stderr, "dthyve_write() called\n");
+			if (dthyve_write(buf, buflen) == -1) {
 				fprintf(stderr, "dthyve_write() failed\n");
 				return (retval);
 			}

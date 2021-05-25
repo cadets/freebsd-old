@@ -53,8 +53,65 @@
 
 #include "dthyve.h"
 
-static int sockfd = -1;
+static int rx_sockfd = -1;
+static int wx_sockfd = -1;
 static int dirfd = -1;
+
+static int
+dtdaemon_sockinit(uint64_t subs)
+{
+	size_t l;
+	struct sockaddr_un addr;
+	dtd_initmsg_t initmsg;
+	int sock;
+
+	memset(&initmsg, 0, sizeof(initmsg));
+	sock = socket(PF_UNIX, SOCK_STREAM, 0);
+	if (sock == -1) {
+		fprintf(stderr, "socket() failed with: %s\n", strerror(errno));
+		return (-1);
+	}
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sun_family = PF_UNIX;
+	l = strlcpy(addr.sun_path, DTDAEMON_SOCKPATH, sizeof(addr.sun_path));
+	if (l >= sizeof(addr.sun_path)) {
+		fprintf(stderr,
+		    "attempting to copy %s failed (need %zu bytes)\n",
+		    DTDAEMON_SOCKPATH, l);
+		return (-1);
+	}
+
+	if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+		fprintf(stderr, "connect() failed with: %s\n", strerror(errno));
+		return (-1);
+	}
+
+	if (recv(sock, &initmsg, sizeof(initmsg), 0) < 0) {
+		fprintf(stderr, "read() initmsg failed with: %s",
+		    strerror(errno));
+		close(sock);
+		return (-1);
+	}
+
+	if (initmsg.kind != DTDAEMON_KIND_DTDAEMON) {
+		fprintf(stderr, "Expected dtdaemon kind, got %d\n",
+		    initmsg.kind);
+		close(sock);
+		return (-1);
+	}
+
+	initmsg.kind = DTDAEMON_KIND_FORWARDER;
+	initmsg.subs = subs;
+	if (send(sock, &initmsg, sizeof(initmsg), 0) < 0) {
+		fprintf(stderr, "write() initmsg failed with: %s",
+		    strerror(errno));
+		close(sock);
+		return (-1);
+	}
+
+	return (sock);
+}
 
 /*
  * Open the vtdtr device in order to set up the state.
@@ -62,49 +119,18 @@ static int dirfd = -1;
 int
 dthyve_init(void)
 {
-	size_t l;
-	int kind;
-	struct sockaddr_un addr;
+	rx_sockfd = dtdaemon_sockinit(DTD_SUB_ELFWRITE);
+	if (rx_sockfd == -1)
+		fprintf(stderr, "failed to init rx_socktfd\n");
 
-	sockfd = socket(PF_UNIX, SOCK_STREAM, 0);
-	if (sockfd == -1)
-		return (-1);
-
-	memset(&addr, 0, sizeof(addr));
-	addr.sun_family = PF_UNIX;
-	l = strlcpy(addr.sun_path, DTDAEMON_SOCKPATH, sizeof(addr.sun_path));
-	if (l >= sizeof(addr.sun_path)) {
-		sockfd = -1;
-		return (-1);
-	}
-
-	if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-		sockfd = -1;
-		return (-1);
-	}
-
-	if (recv(sockfd, &kind, sizeof(kind), 0) < 0) {
-		fprintf(stderr, "Failed to read from sockfd: %s",
-		    strerror(errno));
-		return (-1);
-	}
-
-	if (kind != DTDAEMON_KIND_DTDAEMON) {
-		fprintf(stderr, "Expected dtdaemon kind, got %d\n", kind);
-		close(sockfd);
-		return (-1);
-	}
-
-	kind = DTDAEMON_KIND_FORWARDER;
-	if (send(sockfd, &kind, sizeof(kind), 0) < 0) {
-		fprintf(stderr, "Failed to write %d to sockfd: %s",
-		    kind, strerror(errno));
-		return (-1);
-	}
+	wx_sockfd = dtdaemon_sockinit(DTD_SUB_READDATA);
+	if (wx_sockfd == -1)
+		fprintf(stderr, "failed to init wx_socktfd\n");
 
 	dirfd = open("/var/ddtrace/inbound", O_DIRECTORY, 0600);
 	if (dirfd == -1)
-		fprintf(stderr, "Failed to open /var/ddtrace/inbound: %m");
+		fprintf(stderr, "Failed to open /var/ddtrace/inbound: %s",
+		    strerror(errno));
 
 	return (0);
 }
@@ -118,7 +144,7 @@ int
 dthyve_configured(void)
 {
 
-	return (sockfd != -1);
+	return (rx_sockfd != -1 && wx_sockfd != -1);
 }
 
 /*
@@ -128,33 +154,36 @@ dthyve_configured(void)
 int
 dthyve_read(void **buf, size_t *len)
 {
-	int rval;
-	/*
-	 * Buffer used for reading data in bit by bit.
-	 */
+	ssize_t rval;
+	void *curpos;
+	size_t nbytes;
+
 	if (buf == NULL) {
 		fprintf(stderr, "dthyve: buf is NULL\n");
 		return (-1);
 	}
 
-	if (sockfd == -1) {
-		fprintf(stderr, "dthyve: sockfd has not been initialised\n");
+	if (rx_sockfd == -1) {
+		fprintf(stderr, "dthyve: rx_sockfd has not been initialised\n");
 		return (-1);
 	}
 
-	if ((rval = recv(sockfd, len, sizeof(size_t), 0)) < 0) {
+	if ((rval = recv(rx_sockfd, len, sizeof(size_t), 0)) < 0) {
 		fprintf(stderr, "Failed to recv from sub.sock: %s\n",
 		    strerror(errno));
+		close(rx_sockfd);
+		rx_sockfd = -1;
 		return (-1);
 	}
+
+	assert(rval == sizeof(size_t));
 
 	if (rval == 0) {
-		fprintf(stderr, "dthyve: received 0 bytes from %d\n", sockfd);
-		close(sockfd);
-		sockfd = -1;
+		fprintf(stderr, "dthyve: received 0 bytes from %d\n", rx_sockfd);
+		close(rx_sockfd);
+		rx_sockfd = -1;
 		return (-1);
 	}
-
 
 	*buf = malloc(*len);
 	if (*buf == NULL) {
@@ -164,16 +193,27 @@ dthyve_read(void **buf, size_t *len)
 	
 	memset(*buf, 0, *len);
 
-	if ((rval = recv(sockfd, *buf, *len, 0)) < 0) {
-		fprintf(stderr, "Failed to recv from sub.sock: %s\n",
-		    strerror(errno));
-		return (-1);
+	curpos = *buf;
+	nbytes = *len;
+	while ((rval = recv(rx_sockfd, curpos, nbytes, 0)) != nbytes) {
+		if (rval < 0) {
+			fprintf(stderr, "recv() failed with: %s\n",
+			    strerror(errno));
+			return (-1);
+		}
+
+		assert(rval != 0);
+
+		curpos += rval;
+		nbytes -= rval;
 	}
 
+	assert(nbytes == rval);
+
 	if (rval == 0) {
-		fprintf(stderr, "dthyve: received 0 bytes from %d\n", sockfd);
-		close(sockfd);
-		sockfd = -1;
+		fprintf(stderr, "dthyve: received 0 bytes from %d\n", rx_sockfd);
+		close(rx_sockfd);
+		rx_sockfd = -1;
 		return (-1);
 	}
 
@@ -183,29 +223,47 @@ dthyve_read(void **buf, size_t *len)
 int
 dthyve_write(void *buf, size_t len)
 {
-	unsigned char ack = 1;
+	unsigned char data = 0;
+	ssize_t rval;
 
 	if (buf == NULL) {
 		fprintf(stderr, "dthyve_write(): buf == NULL\n");
 		return (-1);
 	}
 
-	if (send(sockfd, buf, len, 0) < 0) {
+	if (wx_sockfd == -1) {
+		fprintf(stderr, "wx_sock is not initialized\n");
+		return (-1);
+	}
+
+	if (send(wx_sockfd, &len, sizeof(len), 0) < 0) {
+		close(wx_sockfd);
+		wx_sockfd = -1;
 		fprintf(stderr, "send() failed with: %s\n", strerror(errno));
 		return (-1);
 	}
 
-	if (recv(sockfd, buf, 1, 0) < 0) {
+	if ((rval = send(wx_sockfd, buf, len, 0)) < 0) {
+		close(wx_sockfd);
+		wx_sockfd = -1;
+		fprintf(stderr, "send() failed with: %s\n", strerror(errno));
+		return (-1);
+	}
+
+	if (recv(wx_sockfd, &data, 1, 0) < 0) {
+		close(wx_sockfd);
+		wx_sockfd = -1;
 		fprintf(stderr, "recv() failed with: %s\n", strerror(errno));
 		return (-1);
 	}
 
-	if (memcmp(buf, &ack, 1) != 0) {
-		fprintf(stderr, "received %02x, expected %02x\n",
-		    *((unsigned char *)buf), ack);
-
+	if (data != 1) {
+		close(wx_sockfd);
+		fprintf(stderr, "received %02x, expected %02x\n", data, 1);
+		wx_sockfd = -1;
 		return (-1);
 	}
+
 	return (0);
 }
 
@@ -213,7 +271,9 @@ void
 dthyve_destroy()
 {
 
-	close(sockfd);
+	close(rx_sockfd);
+	close(wx_sockfd);
+	close(dirfd);
 }
 
 int
