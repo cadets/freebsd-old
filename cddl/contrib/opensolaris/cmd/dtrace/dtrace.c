@@ -810,7 +810,7 @@ send_elf(int fromfd, int tofd, const char *location)
 	unsigned char *buf, *_buf;
 	size_t total_size;
 	struct stat sb;
-	unsigned char ack = 1;
+	unsigned char data = 0;
 	dtdaemon_hdr_t header;
 	size_t l;
 
@@ -851,6 +851,13 @@ send_elf(int fromfd, int tofd, const char *location)
 		return (-1);
 	}
 
+	if (send(tofd, &total_size, sizeof(total_size), 0) < 0) {
+		fprintf(stderr, "send() to %d failed: %s\n", tofd,
+		    strerror(errno));
+		free(buf);
+		return (-1);
+	}
+
 	/*
 	 * Populate the header to the buffer that we will send to dtdaemon.
 	 */
@@ -862,17 +869,15 @@ send_elf(int fromfd, int tofd, const char *location)
 		return (-1);
 	}
 
-	if (recv(tofd, buf, 1, 0) < 0) {
+	if (recv(tofd, &data, 1, 0) < 0) {
 		free(buf);
 		fprintf(
 		    stderr, "recv() on %d failed: %s\n", tofd, strerror(errno));
 		return (-1);
 	}
 
-	if (memcmp(buf, &ack, 1) != 0) {
-		fprintf(stderr, "received %02x, expected %02x\n",
-		    *((unsigned char *)buf), ack);
-
+	if (data != 1) {
+		fprintf(stderr, "received %02x, expected %02x\n", data, 1);
 		free(buf);
 		return (-1);
 	}
@@ -1409,16 +1414,19 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp)
 }
 
 static int
-open_dtdaemon(void)
+open_dtdaemon(uint64_t subs)
 {
 	int dtdaemon_sock;
 	struct sockaddr_un addr;
-	int kind;
+	dtd_initmsg_t initmsg;
 	size_t l;
 
+	memset(&initmsg, 0, sizeof(initmsg));
 	dtdaemon_sock = socket(PF_UNIX, SOCK_STREAM, 0);
-	if (dtdaemon_sock == -1)
-		fatal("failed to open dtdaemon socket");
+	if (dtdaemon_sock == -1) {
+		fprintf(stderr, "failed to open dtdaemon socket");
+		return (-1);
+	}
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = PF_UNIX;
@@ -1436,23 +1444,23 @@ open_dtdaemon(void)
 		return (-1);
 	}
 
-	kind = 0;
-	if (recv(dtdaemon_sock, &kind, sizeof(kind), 0) < 0) {
+	if (recv(dtdaemon_sock, &initmsg, sizeof(initmsg), 0) < 0) {
 		fprintf(stderr, "failed to recv from dtdaemon socket: %s\n",
 		    strerror(errno));
 		close(dtdaemon_sock);
 		return (-1);
 	}
 
-	if (kind != DTDAEMON_KIND_DTDAEMON) {
+	if (initmsg.kind != DTDAEMON_KIND_DTDAEMON) {
 		fprintf(stderr, "expected kind %d but got %d\n",
-		    DTDAEMON_KIND_DTDAEMON, kind);
+		    DTDAEMON_KIND_DTDAEMON, initmsg.kind);
 		close(dtdaemon_sock);
 		return (-1);
 	}
 
-	kind = DTDAEMON_KIND_CONSUMER;
-	if (send(dtdaemon_sock, &kind, sizeof(kind), 0) < 0) {
+	initmsg.kind = DTDAEMON_KIND_CONSUMER;
+	initmsg.subs = subs;
+	if (send(dtdaemon_sock, &initmsg, sizeof(initmsg), 0) < 0) {
 		fprintf(stderr, "failed to send to dtdaemon socket: %s\n",
 		    strerror(errno));
 		close(dtdaemon_sock);
@@ -1484,6 +1492,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 	dt_pgplist_t *pgpl = NULL;
 	int again = 0;
 	int tmpfd;
+	uint64_t subs = 0;
 
 	/*
 	 * Don't take any action based on unwanted mod/ref behaviour;
@@ -1544,7 +1553,8 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if ((err = pthread_cond_init(&g_pgpcond, NULL)) != 0)
 			fatal("failed to init pgpcond");
 
-		dtdaemon_sock = open_dtdaemon();
+		subs = DTD_SUB_READDATA | DTD_SUB_ELFWRITE;
+		dtdaemon_sock = open_dtdaemon(subs);
 		if (dtdaemon_sock == -1)
 			fatal("failed to open dtdaemon");
 
@@ -1900,6 +1910,7 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	int i;
 	int dtdaemon_sock;
 	int tmpfd;
+	uint64_t subs = 0;
 
 	progpath = strtok(dcp->dc_arg, ",");
 	if (progpath == NULL)
@@ -1945,7 +1956,8 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	}
 
 	
-	dtdaemon_sock = open_dtdaemon();
+	subs = DTD_SUB_READDATA;
+	dtdaemon_sock = open_dtdaemon(subs);
 	if (dtdaemon_sock == -1)
 		fatal("failed to open dtdaemon");
 
