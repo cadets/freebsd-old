@@ -84,7 +84,7 @@ struct virtio_dtrace_control {
 			size_t		vd_totalelflen;
 			uint32_t	vd_identifier;
 			int		vd_elfhasmore;
-#define VIRTIO_DTRACE_MAXELFLEN		2048
+#define VIRTIO_DTRACE_MAXELFLEN		2048ul
 			char		vd_elf[VIRTIO_DTRACE_MAXELFLEN];
 		} elf;
 
@@ -690,6 +690,9 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			device_printf(dev, "VIRTIO_DTRACE_ELF\n");
 
 		e.event_kind = DTT_ELF;
+		KASSERT(ctrl->vd_elflen <= DTT_MAXDATALEN,
+		    ("%s: elflen > DTT_MAXDATALEN (%zu > %zu)",
+		    __func__, ctrl->vd_elflen, DTT_MAXDATALEN));
 		memcpy(e.u.elf.data, ctrl->vd_elf, ctrl->vd_elflen);
 		e.u.elf.identifier = ctrl->vd_identifier;
 		e.u.elf.len = ctrl->vd_elflen;
