@@ -69,6 +69,7 @@
 #define DTDAEMON_OUTBOUNDDIR     "/var/ddtrace/outbound/"
 #define DTDAEMON_BASEDIR         "/var/ddtrace/base/"
 #define DTDAEMON_BACKTRACELEN    128
+#define DTDAEMON_BACKLOG_SIZE    4
 
 #define LOCK_FILE                "/var/dtdaemon.lock"
 #define SOCKFD_NAME              "sub.sock"
@@ -347,7 +348,7 @@ LOCK(mutex_t *m)
 	err = pthread_mutex_lock(&(m)->_m);
 	if (err != 0) {
 		syslog(LOG_ERR, "Failed to lock mutex: %m");
-		return;
+		exit(EXIT_FAILURE);
 	}
 
 	if (m->_checkowner != CHECKOWNER_NO)
@@ -652,6 +653,7 @@ retry:
 				}
 
 				donepathlen = strlen(path) - 1;
+				assert(donepathlen < MAXPATHLEN);
 				memset(donepath, 0, donepathlen);
 				memcpy(donepath, path, dirlen);
 				memcpy(donepath + dirlen, path + dirlen + 1,
@@ -970,10 +972,13 @@ process_joblist(void *_s)
 			nbytes = 0;
 			totalbytes = 0;
 
-			if ((r = recv(fd, &totalbytes, sizeof(nbytes), 0)) < 0) {
+			if ((r =
+			    recv(fd, &totalbytes, sizeof(totalbytes), 0)) < 0) {
 				syslog(LOG_ERR, "recv() failed with: %m");
 				break;
 			}
+
+			assert(r == sizeof(totalbytes));
 
 			nbytes = totalbytes;
 
@@ -1001,6 +1006,7 @@ process_joblist(void *_s)
 
 			assert(nbytes == r);
 
+			ack = 1;
 			if (send(fd, &ack, 1, 0) < 0) {
 				syslog(LOG_ERR, "send() failed with: %m");
 				if (buf)
@@ -1493,7 +1499,7 @@ process_consumers(void *_s)
 	if (s->sockfd == -1)
 		pthread_exit(NULL);
 
-	err = listen(s->sockfd, SHA256_DIGEST_LENGTH);
+	err = listen(s->sockfd, DTDAEMON_BACKLOG_SIZE);
 	if (err != 0) {
 		syslog(LOG_ERR, "Failed to listen on %d: %m", s->sockfd);
 		pthread_exit(NULL);
@@ -1543,12 +1549,18 @@ process_consumers(void *_s)
 				LOCK(&s->socklistmtx);
 				dt_list_delete(&s->sockfds, event[i].udata);
 				UNLOCK(&s->socklistmtx);
+				free(event[i].udata);
 				close(efd);
 				syslog(LOG_ERR, "event error: %m");
 				continue;
 			}
 
 			if (event[i].flags & EV_EOF) {
+				LOCK(&s->socklistmtx);
+				dt_list_delete(&s->sockfds, event[i].udata);
+				UNLOCK(&s->socklistmtx);
+				free(event[i].udata);
+
 				close(efd);
 				continue;
 			}
@@ -1952,8 +1964,7 @@ dtdaemon_copyfile(const char *src, const char *dst)
 	int fd, newfd;
 	struct stat sb;
 	void *buf;
-	size_t len, donepathlen, dirlen;
-	char donepath[MAXPATHLEN] = { 0 };
+	size_t len;
 
 	memset(&sb, 0, sizeof(struct stat));
 
