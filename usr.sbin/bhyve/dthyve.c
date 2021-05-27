@@ -168,7 +168,7 @@ dthyve_read(void **buf, size_t *len)
 		return (-1);
 	}
 
-	if ((rval = recv(rx_sockfd, len, sizeof(size_t), 0)) < 0) {
+	if ((rval = recv(rx_sockfd, len, sizeof(size_t), 0)) <= 0) {
 		fprintf(stderr, "Failed to recv from sub.sock: %s\n",
 		    strerror(errno));
 		close(rx_sockfd);

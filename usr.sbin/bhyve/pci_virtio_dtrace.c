@@ -81,7 +81,7 @@ __FBSDID("$FreeBSD$");
 #define	VTDTR_DEVICE_STOP		0x0A /* Stop tracing */
 #define	VTDTR_DEVICE_KILL		0x0B /* Kill a DTrace process */
 
-#define PCI_VTDTR_MAXELFLEN		2048
+#define PCI_VTDTR_MAXELFLEN		2048ul
 
 #define PCI_VTDTR_EVENTSLEEPTIME	5
 
@@ -363,7 +363,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 
 			memcpy(_buf, elf, len);
 
-			fprintf(stderr, "dthyve_write() called\n");
 			if (dthyve_write(buf, buflen) == -1) {
 				fprintf(stderr, "dthyve_write() failed\n");
 				return (retval);
