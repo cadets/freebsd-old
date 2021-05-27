@@ -79,7 +79,8 @@ typedef struct dtrace_cmd {
 } dtrace_cmd_t;
 
 typedef struct dtd_arg {
-	int sock;
+	int rx_sock;
+	int wx_sock;
 	dtrace_prog_t *hostpgp;
 } dtd_arg_t;
 
@@ -889,7 +890,8 @@ send_elf(int fromfd, int tofd, const char *location)
 static void *
 listen_dtdaemon(void *arg)
 {
-	int sockfd;
+	int rx_sockfd;
+	int wx_sockfd;
 	int novm = 0;
 	size_t elflen;
 	char *elf;
@@ -913,7 +915,7 @@ listen_dtdaemon(void *arg)
 	size_t len_to_recv;
 	dtdaemon_hdr_t header;
 
-	sockfd = 0;
+	rx_sockfd = 0;
 	elflen = 0;
 	elf = NULL;
 	size = NULL;
@@ -928,7 +930,8 @@ listen_dtdaemon(void *arg)
 	/*
 	 * Assume this is an int.
 	 */
-	sockfd = dtd_arg->sock;
+	rx_sockfd = dtd_arg->rx_sock;
+	wx_sockfd = dtd_arg->wx_sock;
 	hostpgp = dtd_arg->hostpgp;
 	guestpgp = NULL;
 
@@ -941,7 +944,7 @@ listen_dtdaemon(void *arg)
 		 * it actually is and fill in the necessary filters.
 		 */
 		if (!done && !atomic_load(&g_intr) &&
-		    ((r = recv(sockfd, &elflen, sizeof(elflen), 0)) < 0) &&
+		    ((r = recv(rx_sockfd, &elflen, sizeof(elflen), 0)) < 0) &&
 		    errno != EINTR) {
 			fprintf(stderr, "failed to read elf length");
 			pthread_exit(NULL);
@@ -970,8 +973,8 @@ listen_dtdaemon(void *arg)
 		len_to_recv = elflen;
 
 		while (!done && !atomic_load(&g_intr) && len_to_recv > 0 &&
-		    ((r = recv(
-		    sockfd, (void *)elf_ptr, len_to_recv, 0)) != len_to_recv)) {
+		    ((r = recv(rx_sockfd,
+		    (void *)elf_ptr, len_to_recv, 0)) != len_to_recv)) {
 			if (r < 0)
 				fatal("failed to read from dtdaemon: %s",
 				    strerror(errno));
@@ -1122,14 +1125,22 @@ process_prog:
 
 			dt_elf_create(guestpgp, ELFDATA2LSB, tmpfd);
 
-			if (fsync(tmpfd))
-				fatal("failed to sync file");
+			if (fsync(tmpfd)) {
+				fprintf(stderr, "failed to sync file: %s\n",
+				    strerror(errno));
+				pthread_exit(NULL);
+			}
 
-			if (lseek(tmpfd, 0, SEEK_SET))
-				fatal("lseek() failed");
+			if (lseek(tmpfd, 0, SEEK_SET)) {
+				fprintf(stderr, "lseek() failed: %s\n",
+				    strerror(errno));
+				pthread_exit(NULL);
+			}
 
-			if (send_elf(tmpfd, sockfd, "outbound"))
-				fatal("failed to send_elf()");
+			if (send_elf(tmpfd, wx_sockfd, "outbound")) {
+				fprintf(stderr, "failed to send_elf()\n");
+				pthread_exit(NULL);
+			}
 
 			close(tmpfd);
 		}
@@ -1483,7 +1494,8 @@ exec_prog(const dtrace_cmd_t *dcp)
 	char template[MAXPATHLEN] = "/tmp/dtrace-execprog.XXXXXXXX";
 	char *elf;
 	size_t elflen;
-	int dtdaemon_sock;
+	int rx_sock;
+	int wx_sock;
 	size_t l;
 	int fd;
 	int err = 0;
@@ -1553,10 +1565,13 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if ((err = pthread_cond_init(&g_pgpcond, NULL)) != 0)
 			fatal("failed to init pgpcond");
 
-		subs = DTD_SUB_READDATA | DTD_SUB_ELFWRITE;
-		dtdaemon_sock = open_dtdaemon(subs);
-		if (dtdaemon_sock == -1)
-			fatal("failed to open dtdaemon");
+		rx_sock = open_dtdaemon(DTD_SUB_ELFWRITE);
+		if (rx_sock == -1)
+			fatal("failed to open rx_sock");
+
+		wx_sock = open_dtdaemon(DTD_SUB_READDATA);
+		if (wx_sock == -1)
+			fatal("failed to open wx_sock");
 
 		tmpfd = mkstemp(template);
 		if (tmpfd == -1)
@@ -1571,7 +1586,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if (lseek(tmpfd, 0, SEEK_SET))
 			fatal("lseek() failed");
 
-		if (send_elf(tmpfd, dtdaemon_sock, "base"))
+		if (send_elf(tmpfd, wx_sock, "base"))
 			fatal("failed to send_elf()");
 
 		close(tmpfd);
@@ -1580,7 +1595,8 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if (dtd_arg == NULL)
 			fatal("failed to malloc dtd_arg");
 
-		dtd_arg->sock = dtdaemon_sock;
+		dtd_arg->rx_sock = rx_sock;
+		dtd_arg->wx_sock = wx_sock;
 		dtd_arg->hostpgp = dcp->dc_prog;
 		
 		err = pthread_create(&g_dtdaemontd, NULL,
@@ -1651,19 +1667,15 @@ again:
 			free(pgpl);
 		}
 
-		err = pthread_kill(g_dtdaemontd, SIGTERM);
-		if (err != 0)
-			fatal("failed to send SIGTERM to g_dtdaemontd");
-		err = pthread_kill(g_worktd, SIGTERM);
-		if (err != 0)
-			fatal("failed to send SIGTERM to g_worktd");
+		(void)pthread_kill(g_dtdaemontd, SIGTERM);
+		(void)pthread_kill(g_worktd, SIGTERM);
 
 		err = pthread_join(g_dtdaemontd, &rval);
 		if (err != 0)
-			fatal("failed to join g_dtdaemontd");
+			fprintf(stderr, "failed to join g_dtdaemontd\n");
 		err = pthread_join(g_worktd, &rval);
 		if (err != 0)
-			fatal("failed to join g_worktd");
+			fprintf(stderr, "failed to join g_worktd\n");
 
 		pthread_mutex_destroy(&g_pgplistmtx);
 		pthread_mutex_destroy(&g_pgpcondmtx);
@@ -1908,9 +1920,8 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	int prog_exec;
 	dtrace_proginfo_t dpi;
 	int i;
-	int dtdaemon_sock;
 	int tmpfd;
-	uint64_t subs = 0;
+	int dtdaemon_sock;
 
 	progpath = strtok(dcp->dc_arg, ",");
 	if (progpath == NULL)
@@ -1956,8 +1967,7 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	}
 
 	
-	subs = DTD_SUB_READDATA;
-	dtdaemon_sock = open_dtdaemon(subs);
+	dtdaemon_sock = open_dtdaemon(DTD_SUB_READDATA);
 	if (dtdaemon_sock == -1)
 		fatal("failed to open dtdaemon");
 
