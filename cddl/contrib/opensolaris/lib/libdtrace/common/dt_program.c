@@ -48,17 +48,18 @@ dt_program_create(dtrace_hdl_t *dtp)
 	char buf[DT_PROG_IDENTLEN] = { 0 };
 	dtrace_prog_t *pgp = dt_zalloc(dtp, sizeof (dtrace_prog_t));
 
-	/*
-	 * Generate our random identifier
-	 */
-	dt_prog_generate_ident(pgp);
-
 	if (pgp != NULL) {
 		dt_list_append(&dtp->dt_programs, pgp);
 	} else {
 		(void) dt_set_errno(dtp, EDT_NOMEM);
 		return (NULL);
 	}
+
+	/*
+	 * Generate our random identifier
+	 */
+	dt_prog_generate_ident(pgp);
+
 
 	/*
 	 * By default, programs start with DOF version 1 so that output files
@@ -265,7 +266,6 @@ dt_vprobes_create(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		return (n);
 	}
 
-	dt_list_append(&dtp->dt_programs, pgp);
 	return (0);
 }
 
