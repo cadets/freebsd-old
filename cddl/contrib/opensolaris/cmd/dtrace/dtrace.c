@@ -137,6 +137,7 @@ static _Atomic int g_newline;
  */
 static dt_list_t g_probe_advlist;
 static dt_list_t g_pgplist;
+static dt_list_t g_kill_list;
 static pthread_mutex_t g_pgplistmtx;
 static pthread_cond_t g_pgpcond;
 static pthread_mutex_t g_pgpcondmtx;
@@ -803,6 +804,43 @@ pgpl_valid(dt_pgplist_t *pgpl)
 
 	return ((pgpl->vmid > 0 && pgpl->pgp && pgpl->gpgp) ||
 	    (pgpl->vmid == 0 && pgpl->pgp));
+}
+
+static int
+send_kill(int tofd, dtrace_prog_t *pgp)
+{
+	pid_t pid_to_kill;
+	/*
+	 * For a kill message, we have everything we need in the header.
+	 * Therefore we don't really need to make a large message and the header
+	 * itself is sufficient.
+	 */
+	dtdaemon_hdr_t msg;
+
+	if (tofd == -1) {
+		fprintf(stderr, "file descriptor must be != -1\n");
+		return (-1);
+	}
+
+	memset(&msg, 0, DTDAEMON_MSGHDRSIZE);
+
+	assert(pgp != NULL);
+	pid_to_kill = pgp->dp_pid;
+	/*
+	 * It is highly unlikely we will have dtrace running as pid0 or init...
+	 */
+	assert(pid_to_kill != 0 && pid_to_kill != 1);
+
+	DTDAEMON_MSG_TYPE(msg) = DTDAEMON_MSG_KILL;
+	DTDAEMON_MSG_KILLPID(msg) = pid_to_kill;
+
+	if (send(tofd, &msg, sizeof(msg), 0) < 0) {
+		fprintf(stderr, "send() to %d failed: %s\n", tofd,
+		    strerror(errno));
+		return (-1);
+	}
+
+	return (0);
 }
 
 static int
@@ -1664,7 +1702,20 @@ again:
 			dt_list_delete(&g_pgplist, pgpl);
 			pthread_mutex_unlock(&g_pgplistmtx);
 
-			free(pgpl);
+
+			dt_list_append(&g_kill_list, pgpl);
+		}
+
+		/*
+		 * XXX: We could free(pgpl) here, but we're exiting the program
+		 * after this loop anyway, so we simpify the code by just
+		 * letting the OS do its magic.
+		 */
+		for (pgpl = dt_list_next(&g_kill_list); pgpl;
+		     pgpl = dt_list_next(pgpl)) {
+			if (pgpl->gpgp && send_kill(wx_sock, pgpl->gpgp))
+				fprintf(stderr, "send_kill() failed with: %s\n",
+				    strerror(errno));
 		}
 
 		(void)pthread_kill(g_dtdaemontd, SIGTERM);
@@ -1680,12 +1731,8 @@ again:
 		pthread_mutex_destroy(&g_pgplistmtx);
 		pthread_mutex_destroy(&g_pgpcondmtx);
 		pthread_cond_destroy(&g_pgpcond);
+		dtrace_close(g_dtp);
 		exit(0);
-		/*
-		 * At this point we have processed the program as much as we
-		 * could. We now go over the DIFOs and simply add a new DIFO
-		 * for each modified probe in the new program.
-		 */
 	} else if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) == 0) {
 		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
 			dfatal("failed to enable '%s'", dcp->dc_name);
