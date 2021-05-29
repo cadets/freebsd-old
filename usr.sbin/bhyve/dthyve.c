@@ -119,7 +119,7 @@ dtdaemon_sockinit(uint64_t subs)
 int
 dthyve_init(void)
 {
-	rx_sockfd = dtdaemon_sockinit(DTD_SUB_ELFWRITE);
+	rx_sockfd = dtdaemon_sockinit(DTD_SUB_ELFWRITE | DTD_SUB_KILL);
 	if (rx_sockfd == -1)
 		fprintf(stderr, "failed to init rx_socktfd\n");
 
