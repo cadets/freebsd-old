@@ -810,6 +810,7 @@ static int
 send_kill(int tofd, dtrace_prog_t *pgp)
 {
 	pid_t pid_to_kill;
+	size_t nbytes;
 	/*
 	 * For a kill message, we have everything we need in the header.
 	 * Therefore we don't really need to make a large message and the header
@@ -833,6 +834,12 @@ send_kill(int tofd, dtrace_prog_t *pgp)
 
 	DTDAEMON_MSG_TYPE(msg) = DTDAEMON_MSG_KILL;
 	DTDAEMON_MSG_KILLPID(msg) = pid_to_kill;
+
+	nbytes = DTDAEMON_MSGHDRSIZE;
+	if (send(tofd, &nbytes, sizeof(nbytes), 0) < 0) {
+		fprintf(stderr, "send() to %d failed with: %s\n", tofd,
+		    strerror(errno));
+	}
 
 	if (send(tofd, &msg, sizeof(msg), 0) < 0) {
 		fprintf(stderr, "send() to %d failed: %s\n", tofd,
