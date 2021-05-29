@@ -725,7 +725,7 @@ vtdtr_elf_event(void *buf, size_t size, size_t offs)
 }
 
 static struct pci_vtdtr_control *
-vtdtr_kill_event(void *buf, size_t size)
+vtdtr_kill_event(pid_t pid)
 {
 	struct pci_vtdtr_control *ctrl;
 
@@ -738,7 +738,8 @@ vtdtr_kill_event(void *buf, size_t size)
 	memset(ctrl, 0, sizeof(struct pci_vtdtr_control));
 
 	ctrl->pvc_event = VTDTR_DEVICE_KILL;
-	memcpy(&ctrl->pvc_pid, buf, sizeof(ctrl->pvc_pid));
+	ctrl->pvc_pid = pid;
+	printf("constructed VTDTR_DEVICE_KILL with pid = %d\n", pid);
 
 	return (ctrl);
 }
@@ -815,7 +816,7 @@ pci_vtdtr_events(void *xsc)
 
 		switch (DTDAEMON_MSG_TYPE(header)) {
 		case DTDAEMON_MSG_KILL:
-			ctrl = vtdtr_kill_event(_buf, len);
+			ctrl = vtdtr_kill_event(DTDAEMON_MSG_KILLPID(header));
 			ctrl_entry->ctrl = ctrl;
 
 			pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
