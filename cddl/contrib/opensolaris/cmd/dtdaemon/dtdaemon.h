@@ -37,6 +37,7 @@
 
 #define DTD_SUB_READDATA                1
 #define DTD_SUB_ELFWRITE                (1 << 1)
+#define DTD_SUB_KILL                    (1 << 2)
 
 #define DTDAEMON_LOCSIZE                64ul
 

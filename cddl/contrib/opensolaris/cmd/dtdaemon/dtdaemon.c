@@ -932,6 +932,8 @@ process_joblist(void *_s)
 	dtdaemon_hdr_t header;
 	struct kevent change_event[1];
 	unsigned char ack = 1;
+	struct dtd_joblist *job;
+	struct dtd_fdlist *fd_list;
 
 	_nosha = s->nosha;
 	dir = NULL;
@@ -1073,9 +1075,43 @@ process_joblist(void *_s)
 				break;
 			case DTDAEMON_MSG_KILL:
 				/*
-				 * Tell virtio-dtrace to send a kill message...
-				 * somehow.
+				 * We enqueue a KILL message in the joblist
+				 * (another thread will simply pick this up). We
+				 * need to only do it for FORWARDERs.
 				 */
+
+				LOCK(&s->socklistmtx);
+				for (fd_list = dt_list_next(&s->sockfds);
+				     fd_list; fd_list = dt_list_next(fd_list)) {
+					if (fd_list->kind !=
+					    DTDAEMON_KIND_FORWARDER)
+						continue;
+
+					if ((fd_list->subs & DTD_SUB_KILL) == 0)
+						continue;
+
+					job =
+					    malloc(sizeof(struct dtd_joblist));
+					if (job == NULL) {
+						syslog(LOG_ERR,
+						    "malloc() failed with: %m");
+						UNLOCK(&s->socklistmtx);
+						break;
+					}
+
+					memset(
+					    job, 0, sizeof(struct dtd_joblist));
+
+					job->job = KILL;
+					job->connsockfd = fd_list->fd;
+					job->j.kill.pid =
+					    DTDAEMON_MSG_KILLPID(header);
+
+					LOCK(&s->joblistmtx);
+					dt_list_append(&s->joblist, job);
+					UNLOCK(&s->joblistmtx);
+				}
+				UNLOCK(&s->socklistmtx);
 				break;
 			default:
 				assert(0);
@@ -2427,13 +2463,13 @@ init_state(struct dtd_state *s)
 	}
 
 	if ((err = mutex_init(
-	    &s->kill_listmtx, NULL, "kill list", CHECKOWNER_NO)) != 0) {
+	    &s->kill_listmtx, NULL, "kill list", CHECKOWNER_YES)) != 0) {
 		syslog(LOG_ERR, "Failed to create kill list mutex: %m");
 		return (-1);
 	}
 
 	if ((err = mutex_init(
-	    &s->killcvmtx, NULL, "", CHECKOWNER_YES)) != 0) {
+	    &s->killcvmtx, NULL, "", CHECKOWNER_NO)) != 0) {
 		syslog(LOG_ERR, "Failed to create kill condvar mutex: %m");
 		return (-1);
 	}
