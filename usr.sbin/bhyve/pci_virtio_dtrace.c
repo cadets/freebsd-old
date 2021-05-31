@@ -739,7 +739,6 @@ vtdtr_kill_event(pid_t pid)
 
 	ctrl->pvc_event = VTDTR_DEVICE_KILL;
 	ctrl->pvc_pid = pid;
-	printf("constructed VTDTR_DEVICE_KILL with pid = %d\n", pid);
 
 	return (ctrl);
 }
