@@ -158,7 +158,8 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 
 					rtype->dtdt_size = ctf_type_size(
 					    ctf_file, node->din_ctfid);
-				}
+				} else
+					rtype->dtdt_flags |= DIF_TF_BYREF;
 
 				/*
 				 * Safety guard

@@ -939,12 +939,10 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		/*
 		 * We don't allow changing options in this ioctl.
 		 */
-
-		if ((err = dtrace_enabling_match(enab, &p->n_matched)) == 0) {
+		if ((err = dtrace_enabling_match(enab, &p->n_matched)) == 0)
 			err = dtrace_enabling_retain(enab);
-		} else {
+		else
 			dtrace_enabling_destroy(enab);
-		}
 
 		mutex_exit(&cpu_lock);
 		mutex_exit(&dtrace_lock);
