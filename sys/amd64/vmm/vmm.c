@@ -1749,24 +1749,22 @@ hypercall_copy_arg(struct vm *vm, int vcpuid, uint64_t ds_base,
     uintptr_t arg, uint64_t arg_len, struct vm_guest_paging *paging, void *dst)
 {
 	struct vm_copyinfo copyinfo[2];
-	uint64_t gla;
+	uintptr_t gla;
 	int error, fault;
 
-	if (arg == 0) {
+	if (arg == 0)
 		return (HYPERCALL_RET_ERROR);
-	}
 
 	gla = ds_base + arg;
-	error = vm_copy_setup(vm, vcpuid, paging, gla, arg_len,
+	error = vm_copy_setup(vm, vcpuid, paging, (uint64_t)gla, arg_len,
 	    PROT_READ, copyinfo, nitems(copyinfo), &fault);
-	if (error || fault) {
+	if (error || fault)
 		return (error);
-	}
 
 	vm_copyin(vm, vcpuid, copyinfo, dst, arg_len);
 	vm_copy_teardown(vm, vcpuid, copyinfo, nitems(copyinfo));
 
-	return (0);
+	return (HYPERCALL_RET_SUCCESS);
 }
 
 static int

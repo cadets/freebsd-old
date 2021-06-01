@@ -73,7 +73,7 @@
 
 #define LOCK_FILE                "/var/dtdaemon.lock"
 #define SOCKFD_NAME              "sub.sock"
-#define THREADPOOL_SIZE          1
+#define THREADPOOL_SIZE          4
 
 #define NEXISTS                  0
 #define EXISTS_CHANGED           1

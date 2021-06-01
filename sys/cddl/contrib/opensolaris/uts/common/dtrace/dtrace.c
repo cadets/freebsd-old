@@ -569,20 +569,20 @@ dtrace_get_paging(dtrace_mstate_t *mstate)
 		/*CSTYLED*/                                                   \
 		uint##bits##_t *loc;                                          \
 		uint##bits##_t rval;                                          \
-		void *vmhdl;                                                \
+		void *vmhdl;                                                  \
 		int err;                                                      \
 		int i;                                                        \
 		volatile uint16_t *flags =                                    \
 		    (volatile uint16_t *)&cpu_core[curcpu].cpuc_dtrace_flags; \
                                                                               \
 		if (mstate)                                                   \
-			vmhdl = mstate->dtms_vmhdl;                       \
+			vmhdl = mstate->dtms_vmhdl;                           \
 		else                                                          \
-			vmhdl = NULL;                                       \
+			vmhdl = NULL;                                         \
                                                                               \
 		DTRACE_ALIGNCHECK(addr, size, flags);                         \
 		loc = NULL;                                                   \
-		if (vmhdl != NULL) {                                        \
+		if (vmhdl != NULL) {                                          \
 			*flags |= CPU_DTRACE_NOFAULT;                         \
 			err = dtrace_gla2hva(                                 \
 			    dtrace_get_paging(mstate), addr, &addr);          \
@@ -7438,16 +7438,13 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 				break;
 
 			if (bhyve_hypercalls_enabled()) {
-
-				struct dtvirt_args dtv_args;
-
 				ASSERT(prov != NULL);
 				ASSERT(jail != NULL);
 				ASSERT(mstate != NULL);
 				ASSERT(mstate->dtms_probe != NULL);
 				ASSERT(curthread != NULL);
 				ASSERT(curthread->td_ucred != NULL);
-				struct dtvirt_args _dtv_args = {
+				struct dtvirt_args dtv_args = {
 					.dtv_args = {
 						mstate->dtms_arg[0],
 						mstate->dtms_arg[1],
@@ -7476,26 +7473,26 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 				};
 
 				if (curproc != NULL) {
-					_dtv_args.dtv_execname =
+					dtv_args.dtv_execname =
 					    curproc->p_comm;
-					_dtv_args.dtv_pid = curproc->p_pid;
+					dtv_args.dtv_pid = curproc->p_pid;
 
 					if (curproc->p_args != NULL) {
-						_dtv_args.dtv_execargs =
+						dtv_args.dtv_execargs =
 						    curproc->p_args->ar_args;
-						_dtv_args.dtv_execargs_len =
+						dtv_args.dtv_execargs_len =
 						    curproc->p_args->ar_length;
 					}
 
 					if (curproc->p_pid != proc0.p_pid)
-						_dtv_args.dtv_ppid =
+						dtv_args.dtv_ppid =
 						    curproc->p_pptr->p_pid;
 				}
 
 				if (curthread->td_ucred) {
-					_dtv_args.dtv_uid =
+					dtv_args.dtv_uid =
 					    curthread->td_ucred->cr_uid;
-					_dtv_args.dtv_gid =
+					dtv_args.dtv_gid =
 					    curthread->td_ucred->cr_gid;
 				}
 				
@@ -7858,8 +7855,9 @@ out:
 }
 
 static void
-dtrace_store_by_ref(dtrace_mstate_t *mstate, dtrace_difo_t *dp, caddr_t tomax, size_t size,
-    size_t *valoffsp, uint64_t *valp, uint64_t end, int intuple, int dtkind, int xlate)
+dtrace_store_by_ref(dtrace_mstate_t *mstate, dtrace_difo_t *dp, caddr_t tomax,
+    size_t size, size_t *valoffsp, uint64_t *valp, uint64_t end, int intuple,
+    int dtkind, int xlate)
 {
 	volatile uint16_t *flags;
 	uint64_t val = *valp;
@@ -7984,6 +7982,7 @@ dtrace_vprobe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
 	hrtime_t now;
 	uintptr_t arg0, arg1, arg2, arg3, arg4;
 	uint16_t vmid;
+	int xlate;
 
 	if (panicstr != NULL)
 		return;
@@ -8620,11 +8619,24 @@ dtrace_vprobe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
 				    &dp->dtdo_rtype, NULL, &mstate, vstate))
 					continue;
 
+				/*
+				 * TODO(dstolfa): This is not quite what we
+				 * want. We want to be able to identify the
+				 * starting "host" or "guest" type of a
+				 * particular variable and then track it
+				 * throughout the execution in order to know
+				 * exactly what we get here and if we need to
+				 * translate or not.
+				 */
+				if (dp->dtdo_rtype.dtdt_kind == DIF_TYPE_STRING)
+					xlate = 1;
+				else
+					xlate = 0;
+
 				dtrace_store_by_ref(&mstate, dp, tomax, size, &valoffs,
 				    &val, end, act->dta_intuple,
 				    dp->dtdo_rtype.dtdt_flags & DIF_TF_BYREF ?
-				    DIF_TF_BYREF: DIF_TF_BYUREF,
-				    dp->dtdo_rtype.dtdt_flags & DIF_TF_GUEST ? 1 : 0);
+				    DIF_TF_BYREF: DIF_TF_BYUREF, xlate);
 				continue;
 			}
 
