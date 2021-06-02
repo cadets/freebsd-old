@@ -26,7 +26,7 @@
  */
 
 int
-dt_open_typefiles(void)
+dt_typefile_openall(void)
 {
 	int err = 0;
 	int kld;
@@ -61,7 +61,7 @@ dt_open_typefiles(void)
 }
 
 void
-dt_cleanup_typefiles(void)
+dt_typefile_cleanup(void)
 {
 	dt_typefile_t *typef;
 
@@ -72,7 +72,7 @@ dt_cleanup_typefiles(void)
 }
 
 dt_typefile_t *
-dt_get_typefile_by_kmod(const char *kmod)
+dt_typefile_by_kmod(const char *kmod)
 {
 	dt_typefile_t *typef;
 
@@ -86,7 +86,7 @@ dt_get_typefile_by_kmod(const char *kmod)
 }
 
 dt_typefile_t *
-dt_get_typefile_by_ctf(ctf_file_t *ctf)
+dt_typefile_by_ctfp(ctf_file_t *ctf)
 {
 	dt_typefile_t *typef;
 
@@ -100,35 +100,44 @@ dt_get_typefile_by_ctf(ctf_file_t *ctf)
 }
 
 ctf_id_t
-dt_get_ctfid_by_kmod(const char *kmod, const char *type)
+dt_typefile_ctfid_by_kmod(const char *kmod, const char *type)
 {
 	dt_typefile_t *typef;
-	typef = dt_get_typefile_by_kmod(kmod);
+	typef = dt_typefile_by_kmod(kmod);
 
 	return (ctf_lookup_by_name(typef->ctf_file, type))
 }
 
+ctf_id_t
+dt_typefile_ctfid(dt_typefile_t *typef, const char *type)
+{
+
+	return (ctf_lookup_by_name(typef->ctf_file, type));
+}
+
 char *
-dt_get_typename_by_kmod(const char *kmod, ctf_id_t id, char *buf, size_t buflen)
+dt_typefile_typename_by_kmod(const char *kmod, ctf_id_t id,
+    char *buf, size_t buflen)
 {
 	dt_typefile_t *typef;
-	typef = dt_get_typefile_by_kmod(kmod);
+	typef = dt_typefile_by_kmod(kmod);
 
 	return (ctf_type_name(typef.ctf_file, id, buf, buflen));
 }
 
 char *
-dt_get_typename(dt_typefile_t *typef, ctf_id_t id, char *buf, size_t buflen)
+dt_typefile_typename(dt_typefile_t *typef,
+    ctf_id_t id, char *buf, size_t buflen)
 {
 
 	return (ctf_type_name(typef.ctf_file, id, buf, buflen));
 }
 
 ctf_id_t
-dt_get_type_reference(dt_typefile_t *typef, ctf_id_t id)
+dt_typefile_reference(dt_typefile_t *typef, ctf_id_t id)
 {
 
-	return (typef.ctf_file, id);
+	return (ctf_type_reference(typef.ctf_file, id));
 }
 
 const char *
@@ -139,7 +148,7 @@ dt_typefile_error(dt_typefile_t *typef)
 }
 
 ctf_file_t *
-dt_get_type_membinfo(dt_typefile_t *typef, ctf_id_t type,
+dt_typefile_membinfo(dt_typefile_t *typef, ctf_id_t type,
     const char *s, ctf_membinfo_t *mp)
 {
 	ctf_file_t *fp;
@@ -163,4 +172,14 @@ dt_get_type_membinfo(dt_typefile_t *typef, ctf_id_t type,
 		return (NULL); /* ctf_errno is set for us */
 
 	return (fp);
+}
+
+dt_typefile_t *
+dt_typefile_kernel(void)
+{
+	for (typef = dt_list_next(&typefiles); typef; typef = dt_list_next(typef))
+		if (strcmp(typef.modname, "kernel"))
+			return (typef);
+
+	return (NULL);
 }
