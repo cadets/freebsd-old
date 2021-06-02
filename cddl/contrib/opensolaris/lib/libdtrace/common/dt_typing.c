@@ -189,10 +189,13 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	 */
 	case DIF_VAR_CURTHREAD:
 	case DIF_VAR_HCURTHREAD:
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, thread_str);
+		n->din_tf = dt_typefile_kernel();
+		assert(n->din_tf != NULL);
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, thread_str);
 		if (n->din_ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp, "failed to get type %s: %s",
-			    thread_str, ctf_errmsg(ctf_errno(ctf_file)));
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type %s: %s", thread_str,
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		break;
@@ -206,10 +209,13 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_VTIMESTAMP:
 	case DIF_VAR_HTIMESTAMP:
 	case DIF_VAR_HVTIMESTAMP:
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint64_t");
+		n->din_tf = dt_typefile_kernel();
+		assert(n->din_tf != NULL);
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint64_t");
 		if (n->din_ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp, "failed to get type uint64_t: %s",
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type uint64_t: %s",
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		break;
@@ -223,16 +229,23 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_EPID:
 	case DIF_VAR_ID:
 	case DIF_VAR_HPRID:
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint_t");
+		n->din_tf = dt_typefile_kernel();
+		assert(n->din_tf != NULL);
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint_t");
 		if (n->din_ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp, "failed to get type uint_t: %s",
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type uint_t: %s",
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		break;
 
 	/*
 	 * int64_t
+	 *
+	 * TODO: ARG0-ARG9, etc should be treated as pointers in some cases,
+	 * right now we treat them as int64_t, but this causes issues when we
+	 * try to write a script such as { trace(arg0->td_proc); }
 	 */
 	case DIF_VAR_ARG0:
 	case DIF_VAR_ARG1:
@@ -256,10 +269,13 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_HARG9:
 	case DIF_VAR_WALLTIMESTAMP:
 	case DIF_VAR_HWALLTIMESTAMP:
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "int64_t");
+		n->din_tf = dt_typefile_kernel();
+		assert(n->din_tf != NULL);
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int64_t");
 		if (n->din_ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp, "failed to get type int64_t: %s",
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type int64_t: %s",
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		break;
@@ -271,10 +287,13 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_USTACKDEPTH:
 	case DIF_VAR_HSTACKDEPTH:
 	case DIF_VAR_HUSTACKDEPTH:
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint32_t");
+		n->din_tf = dt_typefile_kernel();
+		assert(n->din_tf != NULL);
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint32_t");
 		if (n->din_ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp, "failed to get type uint32_t: %s",
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type uint32_t: %s",
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		break;
@@ -284,10 +303,13 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	 */
 	case DIF_VAR_CALLER:
 	case DIF_VAR_HCALLER:
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uintptr_t");
+		n->din_tf = dt_typefile_kernel();
+		assert(n->din_tf != NULL);
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uintptr_t");
 		if (n->din_ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp, "failed to get type uintptr_t: %s",
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type uintptr_t: %s",
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		break;
@@ -323,10 +345,13 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_PID:
 	case DIF_VAR_PPID:
 	case DIF_VAR_HPPID:
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "pid_t");
+		n->din_tf = dt_typefile_kernel();
+		assert(n->din_tf != NULL);
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "pid_t");
 		if (n->din_ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp, "failed to get type pid_t: %s",
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type pid_t: %s",
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		break;
@@ -336,10 +361,13 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	 */
 	case DIF_VAR_HTID:
 	case DIF_VAR_TID:
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "id_t");
+		n->din_tf = dt_typefile_kernel();
+		assert(n->din_tf != NULL);
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "id_t");
 		if (n->din_ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp, "failed to get type id_t: %s",
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type id_t: %s",
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		break;
@@ -349,10 +377,13 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	 */
 	case DIF_VAR_UID:
 	case DIF_VAR_HUID:
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uid_t");
+		n->din_tf = dt_typefile_kernel();
+		assert(n->din_tf != NULL);
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uid_t");
 		if (n->din_ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp, "failed to get type uid_t: %s",
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type uid_t: %s",
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		break;
@@ -362,10 +393,13 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	 */
 	case DIF_VAR_GID:
 	case DIF_VAR_HGID:
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "gid_t");
+		n->din_tf = dt_typefile_kernel();
+		assert(n->din_tf != NULL);
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "gid_t");
 		if (n->din_ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp, "failed to get type gid_t: %s",
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type gid_t: %s",
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		break;
@@ -379,10 +413,13 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_ERRNO:
 	case DIF_VAR_HJID:
 	case DIF_VAR_JID:
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "int");
+		n->din_tf = dt_typefile_kernel();
+		assert(n->din_tf != NULL);
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
 		if (n->din_ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp, "failed to get type int: %s",
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type int: %s",
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		break;
