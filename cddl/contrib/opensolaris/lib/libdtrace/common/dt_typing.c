@@ -54,7 +54,7 @@ static dtrace_prog_t *g_pgp;
  * the internal DTrace class it belongs to (DTC_INT, DTC_BOTTOM, DTC_STRUCT).
  */
 static int
-dt_get_class(char *buf)
+dt_get_class(dt_typefile_t *tf, char *buf)
 {
 	size_t len;
 	ctf_id_t t, ot;
@@ -76,24 +76,24 @@ dt_get_class(char *buf)
 	    buf[len - 1] == '*')
 		return (DTC_STRUCT);
 
-	t = ctf_lookup_by_name(ctf_file, buf);
+	t = dt_typefile_ctfid(tf, buf);
 	if (t == CTF_ERR)
 		dt_set_progerr(g_dtp, g_pgp,
-		    "failed getting type (%s) by name: %s\n",
-		    buf, ctf_errmsg(ctf_errno(ctf_file)));
+		    "failed getting type (%s) by name: %s\n", buf,
+		    dt_typefile_error(tf));
 
 	do  {
 
 		if ((k = ctf_type_kind(ctf_file, t)) == CTF_ERR)
 			dt_set_progerr(g_dtp, g_pgp,
-			    "failed getting type (%s) kind: %s",
-			    buf, ctf_errmsg(ctf_errno(ctf_file)));
+			    "failed getting type (%s) kind: %s", buf,
+			    dt_typefile_error(tf));
 
 		if (t == ot)
 			break;
 
 		ot = t;
-	} while (((t = ctf_type_reference(ctf_file, t)) != CTF_ERR));
+	} while (((t = dt_typefile_reference(tf, t)) != CTF_ERR));
 
 	if (k == CTF_K_INTEGER)
 		return (DTC_INT);
@@ -146,8 +146,12 @@ dt_type_compare(dt_ifg_node_t *dr1, dt_ifg_node_t *dn2)
 			    dn2->din_ctfid, dt_typefile_error(dr2->din_tf));
 	}
 
-	class1 = dr1->din_type == DIF_TYPE_CTF ? dt_get_class(buf1) : DTC_STRING;
-	class2 = dn2->din_type == DIF_TYPE_CTF ? dt_get_class(buf2) : DTC_STRING;
+	class1 = dr1->din_type == DIF_TYPE_CTF ?
+	    dt_get_class(dr1->din_tf, buf1) :
+	    DTC_STRING;
+	class2 = dn2->din_type == DIF_TYPE_CTF ?
+	    dt_get_class(dr2->din_tf, buf2) :
+	    DTC_STRING;
 
 	if (class1 == DTC_BOTTOM)
 		dt_set_progerr(g_dtp, g_pgp, "class1 is bottom because of %s", buf1);
@@ -1213,8 +1217,7 @@ dt_infer_type(dt_ifg_node_t *n)
 			    dn1->din_ctfid,
 			    ctf_errmsg(ctf_errno(ctf_file)));
 
-
-		if (dt_get_class(buf) != DTC_STRUCT)
+		if (dt_get_class(dn1->din_tf, buf) != DTC_STRUCT)
 			return (-1);
 
 		/*
@@ -3999,7 +4002,7 @@ dt_infer_type(dt_ifg_node_t *n)
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
 
-			if (dt_get_class(buf) != DTC_STRUCT)
+			if (dt_get_class(dn1->din_tf, buf) != DTC_STRUCT)
 				return (-1);
 
 			/*
@@ -4067,7 +4070,7 @@ dt_infer_type(dt_ifg_node_t *n)
 				    data_dn1->din_ctfid,
 				    ctf_errmsg(ctf_errno(ctf_file)));
 
-			if (dt_get_class(buf) != DTC_STRUCT)
+			if (dt_get_class(data_dn1->din_tf, buf) != DTC_STRUCT)
 				return (-1);
 
 			/*
