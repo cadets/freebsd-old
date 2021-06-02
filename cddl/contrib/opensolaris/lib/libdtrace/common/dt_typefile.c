@@ -108,9 +108,59 @@ dt_get_ctfid_by_kmod(const char *kmod, const char *type)
 	return (ctf_lookup_by_name(typef->ctf_file, type))
 }
 
+char *
+dt_get_typename_by_kmod(const char *kmod, ctf_id_t id, char *buf, size_t buflen)
+{
+	dt_typefile_t *typef;
+	typef = dt_get_typefile_by_kmod(kmod);
+
+	return (ctf_type_name(typef.ctf_file, id, buf, buflen));
+}
+
+char *
+dt_get_typename(dt_typefile_t *typef, ctf_id_t id, char *buf, size_t buflen)
+{
+
+	return (ctf_type_name(typef.ctf_file, id, buf, buflen));
+}
+
+ctf_id_t
+dt_get_type_reference(dt_typefile_t *typef, ctf_id_t id)
+{
+
+	return (typef.ctf_file, id);
+}
+
 const char *
 dt_typefile_error(dt_typefile_t *typef)
 {
 
 	return (ctf_errmsg(ctf_errno(typef->ctf_file)));
+}
+
+ctf_file_t *
+dt_get_type_membinfo(dt_typefile_t *typef, ctf_id_t type,
+    const char *s, ctf_membinfo_t *mp)
+{
+	ctf_file_t *fp;
+
+	fp = typef.ctf_file;
+
+	while (ctf_type_kind(fp, type) == CTF_K_FORWARD) {
+		char n[DT_TYPE_NAMELEN];
+		dtrace_typeinfo_t dtt;
+
+		if (ctf_type_name(fp, type, n, sizeof (n)) == NULL ||
+		    dt_type_lookup(n, &dtt) == -1 || (
+		    dtt.dtt_ctfp == fp && dtt.dtt_type == type))
+			break; /* unable to improve our position */
+
+		fp = dtt.dtt_ctfp;
+		type = ctf_type_resolve(fp, dtt.dtt_type);
+	}
+
+	if (ctf_member_info(fp, type, s, mp) == CTF_ERR)
+		return (NULL); /* ctf_errno is set for us */
+
+	return (fp);
 }
