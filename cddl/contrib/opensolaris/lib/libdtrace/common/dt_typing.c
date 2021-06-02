@@ -153,6 +153,13 @@ dt_type_compare(dt_ifg_node_t *dr1, dt_ifg_node_t *dn2)
 	    dt_get_class(dr2->din_tf, buf2) :
 	    DTC_STRING;
 
+	if (dn1->din_tf != dn2->din_tf)
+		dt_set_progerr(g_dtp, g_pgp,
+		    "dn1 (%s) is in typefile %s, "
+		    "while dn2 (%s) is in typefile %s",
+		    buf1, dt_typefile_stringof(dn1->din_tf),
+		    buf2, dt_typefile_stringof(dn2->din_tf));
+
 	if (class1 == DTC_BOTTOM)
 		dt_set_progerr(g_dtp, g_pgp, "class1 is bottom because of %s", buf1);
 
@@ -531,12 +538,12 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			/*
 			 * We get the type name for reporting purposes.
 			 */
-			if (ctf_type_name(ctf_file, node->din_ctfid, buf1,
-			    sizeof(buf1)) != ((char *)buf1))
+			if (dt_typefile_typename(node->din_tf, node->din_ctfid,
+			    buf1, sizeof(buf1)) != ((char *)buf1))
 				dt_set_progerr(g_dtp, g_pgp,
 				    "failed at getting type name node %ld: %s",
 				    node->din_ctfid,
-				    ctf_errmsg(ctf_errno(ctf_file)));
+				    dt_typefile_error(node->din_tf));
 
 			/*
 			 * If we are at the first definition, or only have one
@@ -552,18 +559,32 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			 * Get the previous' node's inferred type for
 			 * error reporting.
 			 */
-			if (ctf_type_name(ctf_file, onode->din_ctfid, buf2,
+			if (dt_typefile_filename(onode->din_tf,
+			    onode->din_ctfid, buf2,
 			    sizeof(buf2)) != ((char *)buf2))
 				dt_set_progerr(g_dtp, g_pgp,
 				    "failed at getting type onode name %ld: %s",
 				    onode->din_ctfid,
-				    ctf_errmsg(ctf_errno(ctf_file)));
+				    dt_typefile_error(onode->din_tf));
+
+			/*
+			 * We need to make sure that we are comparing types in
+			 * the same typefile, otherwise we could have a mismatch
+			 * of ctfids.
+			 */
+			if (node->din_tf != onode->din_tf) {
+				fprintf(stderr,
+				    "typefiles %s and %s do not match\n",
+				    dt_typefile_stringof(node->din_tf),
+				    dt_typefile_stringof(onode->din_tf));
+
+				return (NULL);
+			}
 
 			/*
 			 * Fail to typecheck if the types don't match 100%.
 			 */
 			if (node->din_ctfid != onode->din_ctfid) {
-				printf("looking at %zu and %zu\n", node->din_uidx, onode->din_uidx);
 				fprintf(stderr, "types %s and %s do not match\n",
 				    buf1, buf2);
 				return (NULL);
