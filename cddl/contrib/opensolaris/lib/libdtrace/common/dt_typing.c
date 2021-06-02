@@ -131,21 +131,19 @@ dt_type_compare(dt_ifg_node_t *dr1, dt_ifg_node_t *dn2)
 		return (1);
 
 	if (dr1->din_type == DIF_TYPE_CTF) {
-		if (ctf_type_name(ctf_file, dr1->din_ctfid, buf1,
+		if (dt_typefile_typename(dr1->din_tf, dr1->din_ctfid, buf1,
 		    sizeof(buf1)) != ((char *)buf1))
 			dt_set_progerr(g_dtp, g_pgp,
 			    "failed at getting type name %ld: %s",
-			    dr1->din_ctfid,
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			    dr1->din_ctfid, dt_typefile_error(dr1->din_tf));
 	}
 
 	if (dn2->din_type == DIF_TYPE_CTF) {
-		if (ctf_type_name(ctf_file, dn2->din_ctfid, buf2,
+		if (dt_typefile_typename(dr2->din_tf, dn2->din_ctfid, buf2,
 		    sizeof(buf2)) != ((char *)buf2))
 			dt_set_progerr(g_dtp, g_pgp,
 			    "failed at getting type name %ld: %s",
-			    dn2->din_ctfid,
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			    dn2->din_ctfid, dt_typefile_error(dr2->din_tf));
 	}
 
 	class1 = dr1->din_type == DIF_TYPE_CTF ? dt_get_class(buf1) : DTC_STRING;
