@@ -46,7 +46,6 @@ typedef struct dt_var_entry {
 	dtrace_difv_t *dtve_var;
 } dt_var_entry_t;
 
-extern ctf_file_t *ctf_file;
 extern dt_list_t node_list;
 extern dt_list_t bb_list;
 extern dt_ifg_list_t *node_last;

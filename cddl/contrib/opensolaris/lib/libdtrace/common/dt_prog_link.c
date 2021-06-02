@@ -26,6 +26,8 @@
  */
 
 #include <sys/types.h>
+#include <sys/param.h>
+#include <sys/linker.h>
 
 #include <sys/dtrace.h>
 
@@ -39,6 +41,7 @@
 #include <dt_ifg.h>
 #include <dt_cfg.h>
 #include <dt_linker_subr.h>
+#include <dt_typefile.h>
 #include <dt_typing.h>
 
 #include <stdio.h>
@@ -46,12 +49,12 @@
 #include <stddef.h>
 #include <assert.h>
 #include <err.h>
+#include <errno.h>
 
 #ifndef illumos
 #include <sys/sysctl.h>
 #endif
 
-ctf_file_t *ctf_file = NULL;
 dt_list_t node_list;
 dt_list_t bb_list;
 dt_ifg_list_t *node_last = NULL;
@@ -534,23 +537,12 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	dtrace_stmtdesc_t *sdp = NULL;
 	dtrace_actdesc_t *ad = NULL;
 	int rval = 0;
-	char bootfile[MAXPATHLEN] = {0};
-	size_t len = sizeof(bootfile);
 	int err = 0;
 
-	/*
-	 * Get the boot file location (default /boot/kernel/kernel)
-	 */
-	if (sysctlbyname("kern.bootfile", bootfile, &len, NULL, 0) != 0)
-		strlcpy(bootfile, "kernel", sizeof(bootfile));
-
-	/*
-	 * Open the boot file and read in the CTF information.
-	 */
-	ctf_file = ctf_open(bootfile, &err);
-	if (err != 0)
-		errx(EXIT_FAILURE, "failed opening bootfile(%s): %s",
-		    bootfile, ctf_errmsg(ctf_errno(ctf_file)));
+	err = dt_open_typefiles();
+	if (err)
+		errx(EXIT_FAILURE, "failed to open CTF files: %s\n",
+		    strerror(errno));
 
 	/*
 	 * Zero out the node list and basic block list.
@@ -629,6 +621,6 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		}
 	}
 
-	free(ctf_file);
+	dt_cleanup_typefiles();
 	return (0);
 }
