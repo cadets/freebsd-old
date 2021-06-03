@@ -2200,10 +2200,11 @@ dt_infer_type(dt_ifg_node_t *n)
 		 */
 		switch (subr) {
 		case DIF_SUBR_RAND:
-			n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint64_t");
+			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint64_t");
 			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp, "failed to get type uint64_t: %s",
-				    ctf_errmsg(ctf_errno(ctf_file)));
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed to get type uint64_t: %s",
+				    dt_typefile_error(n->din_tf));
 
 			n->din_type = DIF_TYPE_CTF;
 			break;
