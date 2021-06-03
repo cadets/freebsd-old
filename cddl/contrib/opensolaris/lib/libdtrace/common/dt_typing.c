@@ -2173,6 +2173,13 @@ dt_infer_type(dt_ifg_node_t *n)
 		subr = DIF_INSTR_SUBR(instr);
 
 		/*
+		 * The return typefile of a call instruction will always be the
+		 * kernel itself, so we just do it ahead of time.
+		 */
+		n->din_tf = dt_typefile_kernel();
+		assert(n->din_tf != NULL);
+
+		/*
 		 * We don't care if there are more things on the stack than
 		 * the arguments we need, because they will simply not be used.
 		 *
