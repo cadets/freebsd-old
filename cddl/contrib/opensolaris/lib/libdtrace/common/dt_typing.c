@@ -2143,13 +2143,15 @@ dt_infer_type(dt_ifg_node_t *n)
 		dif_var = dt_get_var_from_varlist(var,
 		    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
 		if (dif_var == NULL)
-			dt_set_progerr(g_dtp, g_pgp, "failed to find variable (%u, %d, %d)",
-			    var, DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to find variable (%u, %d, %d)", var,
+			    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
 
 		if (dt_infer_type_var(n->din_difo, dn2, dif_var) == -1)
 			return (-1);
 
 		n->din_ctfid = dn2->din_ctfid;
+		n->din_tf = dn2->din_tf;
 		n->din_type = dn2->din_type;
 		n->din_mip = dn2->din_mip;
 		n->din_sym = dn2->din_sym;
