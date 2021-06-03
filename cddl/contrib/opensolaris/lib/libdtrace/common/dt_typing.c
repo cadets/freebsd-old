@@ -1271,22 +1271,22 @@ dt_infer_type(dt_ifg_node_t *n)
 		/*
 		 * sym in range(symtab)
 		 */
-		if ((uintptr_t)dn1->din_sym >= ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
-			dt_set_progerr(g_dtp, g_pgp, "sym (%p) is out of range: %p",
-			    dn1->din_sym,
+		if ((uintptr_t)dn1->din_sym >=
+		    ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "sym (%p) is out of range: %p", dn1->din_sym,
 			    (void *)(((uintptr_t)difo->dtdo_symtab) +
-			    difo->dtdo_symlen));
+				difo->dtdo_symlen));
 
 		/*
 		 * Get the original type name of dn1->din_ctfid for
 		 * error reporting.
 		 */
-		if (ctf_type_name(ctf_file, dn1->din_ctfid, buf,
+		if (dt_typefile_typename(dn1->din_tf, dn1->din_ctfid, buf,
 		    sizeof(buf)) != ((char *)buf))
 			dt_set_progerr(g_dtp, g_pgp,
 			    "failed at getting type name %ld: %s",
-			    dn1->din_ctfid,
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			    dn1->din_ctfid, dt_typefile_error(dn1->din_tf));
 
 		if (dt_get_class(dn1->din_tf, buf) != DTC_STRUCT)
 			return (-1);
@@ -1303,14 +1303,15 @@ dt_infer_type(dt_ifg_node_t *n)
 		/*
 		 * Get the non-pointer type. This should NEVER fail.
 		 */
-		type = ctf_type_reference(ctf_file, dn1->din_ctfid);
+		type = dt_typefile_reference(dn1->din_tf, dn1->din_ctfid);
+		assert(type != CTF_ERR);
 
-		if (dt_lib_membinfo(
-		    octfp = ctf_file, type, dn1->din_sym, mip) == 0)
-			dt_set_progerr(g_dtp, g_pgp, "failed to get member info"
+		if (dt_typefile_membinfo(
+		    dn1->din_tf, type, dn1->din_sym, mip) == 0)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get member info"
 			    " for %s(%s): %s",
-			    buf, dn1->din_sym,
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			    buf, dn1->din_sym, dt_typefile_error(dn1->din_tf));
 
 		n->din_mip = mip;
 		n->din_ctfid = mip->ctm_type;
