@@ -1202,6 +1202,11 @@ dt_infer_type(dt_ifg_node_t *n)
 	if (n->din_type != -1)
 		return (n->din_type);
 
+	/*
+	 * We do not tolerate NULL ECBs.
+	 */
+	assert(n->din_edp != NULL);
+
 	instr = n->din_buf[n->din_uidx];
 	opcode = DIF_INSTR_OP(instr);
 
@@ -1363,10 +1368,27 @@ dt_infer_type(dt_ifg_node_t *n)
 			    "l (%zu) >= %zu when copying type name",
 			    l, sizeof(symname));
 
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, symname);
-		if (n->din_ctfid == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp, "failed to get type %s: %s",
-			    symname, ctf_errmsg(ctf_errno(ctf_file)));
+		/*
+		 * We kind of have to guess here. We start by getting the
+		 * 'module' field of the probe description and try to find that
+		 * module. If we can't, this might be a SDT probe that is
+		 * "poorly" defined. We then look for the type in the kernel
+		 * itself. If we can't find it there, we just bail out for now
+		 * rather than causing runtime failures.
+		 *
+		 * TODO: Maybe we can tolerate some failures by looking at
+		 * symbols too?
+		 */
+		n->din_tf = dt_typefile_mod(n->edp->dted_probe.dtpd_mod);
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, symname);
+		if (n->din_ctfid == CTF_ERR) {
+			n->din_tf = dt_typefile_kernel();
+			n->din_ctfid = dt_typefile_ctfid(n->din_tf, symname);
+			if (n->din_ctfid == CTF_ERR)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed to get type %s: %s", symname,
+				    dt_typefile_error(n->din_tf));
+		}
 
 		n->din_type = DIF_TYPE_CTF;
 		return (n->din_type);
@@ -1461,23 +1483,33 @@ dt_infer_type(dt_ifg_node_t *n)
 			 */
 			n->din_type = tc_n->din_type;
 			n->din_ctfid = tc_n->din_ctfid;
+			n->din_tf = tc_n->din_tf;
 		} else {
 			symnode = dn1->din_sym != NULL ? dn1 : dn2;
 			other = dn1->din_sym != NULL ? dn2 : dn1;
 
 			if (other->din_type == DIF_TYPE_BOTTOM ||
 			    symnode->din_type == DIF_TYPE_BOTTOM)
-				dt_set_progerr(g_dtp, g_pgp, "unexpected bottom type");
+				dt_set_progerr(
+				    g_dtp, g_pgp, "unexpected bottom type");
+
+			if (other->din_tf != symnode->din_tf)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "typefile %s does not match typefile %s",
+				    dt_typefile_stringof(other->din_tf),
+				    dt_typefile_stringof(symnode->din_tf));
 
 			/*
 			 * Get the type name
 			 */
-			if (ctf_type_name(
-			    ctf_file, symnode->din_ctfid,
-			    buf, sizeof(buf)) != ((char *)buf))
-				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
-				    " %ld: %s", symnode->din_ctfid,
-				    ctf_errmsg(ctf_errno(ctf_file)));
+			if (dt_typefile_typename(symnode->din_tf,
+			    symnode->din_ctfid, buf,
+			    sizeof(buf)) != ((char *)buf))
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed at getting type name"
+				    " %ld: %s",
+				    symnode->din_ctfid,
+				    dt_typefile_error(symnode->din_tf));
 
 			if (strcmp(buf, "uint64_t") != 0)
 				dt_set_progerr(g_dtp, g_pgp, "symbol may not exist if not"
@@ -1498,12 +1530,13 @@ dt_infer_type(dt_ifg_node_t *n)
 			/*
 			 * Get the type name of the other node
 			 */
-			if (ctf_type_name(ctf_file, other->din_ctfid, buf,
+			if (dt_typefile_typename(other->din_tf,
+			    other->din_ctfid, buf,
 			    sizeof(buf)) != ((char *)buf))
 				dt_set_progerr(g_dtp, g_pgp,
 				    "failed at getting type name %ld: %s",
 				    other->din_ctfid,
-				    ctf_errmsg(ctf_errno(ctf_file)));
+				    dt_typefile_error(other->din_tf));
 
 			if (res == 1) {
 				if (strcmp(buf, "uint64_t") != 0)
@@ -1528,6 +1561,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			n->din_sym = symnode->din_sym;
 			n->din_ctfid = other->din_ctfid;
+			n->din_tf = other->din_tf;
 			n->din_type = DIF_TYPE_CTF;
 		}
 
@@ -1557,6 +1591,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		 * base case of the recursive call.
 		 */
 		n->din_ctfid = dn1->din_ctfid;
+		n->din_tf = dn1->din_tf;
 		n->din_type = dn1->din_type;
 		n->din_mip = dn1->din_mip;
 		n->din_sym = dn1->din_sym;
@@ -1571,11 +1606,12 @@ dt_infer_type(dt_ifg_node_t *n)
 		 * -----------------------------------
 		 *  opcode [%r1], %r2 => %r2 : int8_t
 		 */
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "int8_t");
+		n->din_tf = dt_typefile_kernel();
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int8_t");
 		if (n->din_ctfid == CTF_ERR)
 			dt_set_progerr(g_dtp, g_pgp,
 			    "failed to get type int8_t: %s",
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		return (n->din_type);
@@ -1588,11 +1624,12 @@ dt_infer_type(dt_ifg_node_t *n)
 		 * ------------------------------------
 		 *  opcode [%r1], %r2 => %r2 : int16_t
 		 */
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "int16_t");
+		n->din_tf = dt_typefile_kernel();
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int16_t");
 		if (n->din_ctfid == CTF_ERR)
 			dt_set_progerr(g_dtp, g_pgp,
 			    "failed to get type int16_t: %s",
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		return (n->din_type);
@@ -1605,11 +1642,12 @@ dt_infer_type(dt_ifg_node_t *n)
 		 * ------------------------------------
 		 *  opcode [%r1], %r2 => %r2 : int32_t
 		 */
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "int32_t");
+		n->din_tf = dt_typefile_kernel();
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int32_t");
 		if (n->din_ctfid == CTF_ERR)
 			dt_set_progerr(g_dtp, g_pgp,
-			     "failed to get type unsigned char: %s",
-			     ctf_errmsg(ctf_errno(ctf_file)));
+			    "failed to get type unsigned char: %s",
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		return (n->din_type);
@@ -1622,11 +1660,12 @@ dt_infer_type(dt_ifg_node_t *n)
 		 * ------------------------------------
 		 *  opcode [%r1], %r2 => %r2 : uint8_t
 		 */
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint8_t");
+		n->din_tf = dt_typefile_kernel();
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint8_t");
 		if (n->din_ctfid == CTF_ERR)
 			dt_set_progerr(g_dtp, g_pgp,
 			    "failed to get type uint8_t: %s",
-			    ctf_errmsg(ctf_errno(ctf_file)));
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		return (n->din_type);
@@ -1639,11 +1678,12 @@ dt_infer_type(dt_ifg_node_t *n)
 		 * -------------------------------------
 		 *  opcode [%r1], %r2 => %r2 : uint16_t
 		 */
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint16_t");
+		n->din_tf = dt_typefile_kernel();
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint16_t");
 		if (n->din_ctfid == CTF_ERR)
 			dt_set_progerr(g_dtp, g_pgp,
-			     "failed to get type uint16_t: %s",
-			     ctf_errmsg(ctf_errno(ctf_file)));
+			    "failed to get type uint16_t: %s",
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		return (n->din_type);
@@ -1656,11 +1696,12 @@ dt_infer_type(dt_ifg_node_t *n)
 		 * -------------------------------------
 		 *  opcode [%r1], %r2 => %r2 : uint32_t
 		 */
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint32_t");
+		n->din_tf = dt_typefile_kernel();
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint32_t");
 		if (n->din_ctfid == CTF_ERR)
 			dt_set_progerr(g_dtp, g_pgp,
-			     "failed to get type uint32_t: %s",
-			     ctf_errmsg(ctf_errno(ctf_file)));
+			    "failed to get type uint32_t: %s",
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		return (n->din_type);
@@ -1674,10 +1715,12 @@ dt_infer_type(dt_ifg_node_t *n)
 		 *  setx idx, %r1 => %r1 : uint64_t
 		 */
 
-		n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint64_t");
+		n->din_tf = dt_typefile_kernel();
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint64_t");
 		if (n->din_ctfid == CTF_ERR)
-			errx(EXIT_FAILURE, "failed to get type uint64_t: %s",
-			     ctf_errmsg(ctf_errno(ctf_file)));
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type uint64_t: %s",
+			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
 		return (n->din_type);
