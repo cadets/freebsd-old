@@ -1948,8 +1948,9 @@ dt_infer_type(dt_ifg_node_t *n)
 		dif_var = dt_get_var_from_varlist(var,
 		    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
 		if (dif_var == NULL)
-			dt_set_progerr(g_dtp, g_pgp, "failed to find variable (%u, %d, %d)",
-			    var, DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to find variable (%u, %d, %d)", var,
+			    DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
 
 		if (dn1 == NULL) {
 			if (dif_var == NULL) {
@@ -1957,6 +1958,7 @@ dt_infer_type(dt_ifg_node_t *n)
 				return (-1);
 			} else {
 				n->din_ctfid = dif_var->dtdv_ctfid;
+				n->din_tf = dif_var->dtdv_tf;
 				n->din_type = dif_var->dtdv_type.dtdt_kind;
 				n->din_sym = dif_var->dtdv_sym;
 
@@ -1972,6 +1974,25 @@ dt_infer_type(dt_ifg_node_t *n)
 			}
 
 			if (dif_var->dtdv_ctfid != dn1->din_ctfid) {
+				if (dt_typefile_typename(dn1->din_tf,
+				    dn1->din_ctfid, buf,
+				    sizeof(buf)) != ((char *)buf))
+					errx(EXIT_FAILURE,
+					    "failed at getting type "
+					    "name %ld: %s\n",
+					    dn1->din_ctfid,
+					    dt_typefile_error(dn1->din_tf));
+
+				if (dt_typefile_typename(dif_var->dtdv_tf,
+				    dif_var->dtdv_ctfid, var_type,
+				    sizeof(var_type)) != ((char *)var_type))
+					errx(EXIT_FAILURE,
+					    "failed at getting type "
+					    "name %ld: %s\n",
+					    dn1->din_ctfid,
+					    dt_typefile_error(
+						dif_var->dtdv_tf));
+
 				fprintf(stderr,
 				    "variable ctf type mismatch %s != %s\n",
 				    buf, var_type);
@@ -1999,6 +2020,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		}
 
 		n->din_ctfid = dn1->din_ctfid;
+		n->din_tf = dn1->din_tf;
 		n->din_type = dn1->din_type;
 		n->din_mip = dn1->din_mip;
 		n->din_sym = dn1->din_sym;
