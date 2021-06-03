@@ -25,142 +25,149 @@
  * $FreeBSD$
  */
 
-int
-dt_typefile_openall(void)
-{
-	int err = 0;
-	int kld;
-	struct kld_file_stat kldinfo;
-	dt_typefile_t *typef;
+#include <sys/types.h>
+#include <sys/param.h>
 
-	for (kld = kldnext(0); kld > 0; kld = kldnext(kld)) {
-		kldinfo.version = sizeof(kldinfo);
-		if (kldstat(kld, &kldinfo) < 0)
-			return (-1);
+#include <sys/ctf.h>
 
-		/*
-		 * We open the type file and save it in a list that we will use
-		 * later in type-checking and applying relocations.
-		 */
-		typef = malloc(sizeof(dt_typefile_t));
-		if (typef == NULL)
-			errx(EXIT_FAILURE, "malloc() failed with: %s\n",
-			    strerror(errno));
+#include <sys/dtrace.h>
 
-		memcpy(typef->pathname, kldinfo.pathname, MAXPATHLEN);
-		memcpy(typef->modname, kldinfo.name, MAXPATHLEN);
-		typef->ctf_file = ctf_open(typef->pathname, &err);
-		if (err != 0)
-			errx(EXIT_FAILURE, "failed opening %s: %s\n",
-			    typef->pathname,
-			    ctf_errmsg(ctf_errno(typef->ctf_file)));
-		dt_list_append(&typefiles, typef);
-	}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <assert.h>
+#include <errno.h>
 
-	return (0);
-}
+#include <dtrace.h>
+#include <dt_module.h>
 
 void
-dt_typefile_cleanup(void)
+dt_typefile_openall(dtrace_hdl_t *dtp)
 {
+	dt_module_t *mod;
 	dt_typefile_t *typef;
 
-	while ((typef = dt_list_next(&typefiles)) != NULL) {
-		dt_list_delete(&typefiles, typef);
-		free(typef);
-	}
-}
+	do {
+		again = 0;
+		dtrace_update(dtp);
+		for (kld = kldnext(0); kld > 0; kld = kldnext(kld)) {
+			kldinfo.version = sizeof(kldinfo);
+			if (kldstat(kld, &kldinfo) < 0)
+				return (-1);
 
-dt_typefile_t *
-dt_typefile_by_kmod(const char *kmod)
-{
-	dt_typefile_t *typef;
+			mod = dt_module_lookup_by_name(dtp, kldinfo.name);
+			if (mod == NULL) {
+				again = 1;
+				break;
+			}
 
-	for (typef = dt_list_next(&typefiles); typef;
-	     typef = dt_list_next(typef)) {
-		if (strcmp(typef->modname, kmod) == 0)
-			return (typef);
-	}
+			typef = malloc(sizeof(dt_typefile_t));
+			if (typef == NULL)
+				errx(EXIT_FAILURE, "malloc() failed with: %s\n",
+				    strerror(errno));
 
-	return (NULL);
-}
+			typef->module = mod;
+			typef->dtp = dtp;
+			memcpy(typef->modname, kldinfo.name, MAXPATHLEN);
 
-dt_typefile_t *
-dt_typefile_by_ctfp(ctf_file_t *ctf)
-{
-	dt_typefile_t *typef;
+			dt_list_append(&typefiles, typef);
+		}
 
-	for (typef = dt_list_next(&typefiles); typef;
-	     typef = dt_list_next(typef)) {
-		if ((typef->ctf_file == ctf) == 0)
-			return (typef);
-	}
-
-	return (NULL);
-}
-
-ctf_id_t
-dt_typefile_ctfid_by_kmod(const char *kmod, const char *type)
-{
-	dt_typefile_t *typef;
-	typef = dt_typefile_by_kmod(kmod);
-
-	return (ctf_lookup_by_name(typef->ctf_file, type))
+		/*
+		 * This is a bit bad, but it will do for now.
+		 */
+		if (again) {
+			while ((typef = dt_list_next(&typefiles)) != NULL) {
+				dt_list_delete(&typefiles, typef);
+				free(typef);
+			}
+		}
+	} while (again)
 }
 
 ctf_id_t
 dt_typefile_ctfid(dt_typefile_t *typef, const char *type)
 {
+	ctf_file_t *ctfp;
 
-	return (ctf_lookup_by_name(typef->ctf_file, type));
-}
+	assert(typef->dtp != NULL);
+	assert(typef->module != NULL);
 
-char *
-dt_typefile_typename_by_kmod(const char *kmod, ctf_id_t id,
-    char *buf, size_t buflen)
-{
-	dt_typefile_t *typef;
-	typef = dt_typefile_by_kmod(kmod);
-
-	return (ctf_type_name(typef.ctf_file, id, buf, buflen));
+	ctfp = dt_module_getctf(typef->dtp, typef->module);
+	if (ctfp == NULL)
+		return (CTF_ERR);
+	return (ctf_lookup_by_name(ctfp, type));
 }
 
 char *
 dt_typefile_typename(dt_typefile_t *typef,
     ctf_id_t id, char *buf, size_t buflen)
 {
+	ctf_file_t *ctfp;
 
-	return (ctf_type_name(typef.ctf_file, id, buf, buflen));
+	assert(typef->dtp != NULL);
+	assert(typef->module != NULL);
+
+	ctfp = dt_module_getctf(typef->dtp, typef->module);
+	if (ctfp == NULL)
+		return (NULL);
+	return (ctf_type_name(ctfp, id, buf, buflen));
 }
 
 ctf_id_t
 dt_typefile_reference(dt_typefile_t *typef, ctf_id_t id)
 {
+	ctf_file_t *ctfp;
 
-	return (ctf_type_reference(typef.ctf_file, id));
+	assert(typef->dtp != NULL);
+	assert(typef->module != NULL);
+
+	ctfp = dt_module_getctf(typef->dtp, typef->module);
+	if (ctfp == NULL)
+		return (CTF_ERR);
+	return (ctf_type_reference(ctfp, id));
 }
 
 uint32_t
 dt_typefile_typesize(dt_typefile *typef, ctf_id_t id)
 {
+	ctf_file_t *ctfp;
 
-	return (ctf_type_size(typef.ctf_file, id));
+	assert(typef->dtp != NULL);
+	assert(typef->module != NULL);
+
+	ctfp = dt_module_getctf(typef->dtp, typef->module);
+	if (ctfp == NULL)
+		return (CTF_ERR);
+	return (ctf_type_size(ctfp, id));
 }
 
 const char *
 dt_typefile_error(dt_typefile_t *typef)
 {
+	ctf_file_t *ctfp;
 
-	return (ctf_errmsg(ctf_errno(typef->ctf_file)));
+	assert(typef->dtp != NULL);
+	assert(typef->module != NULL);
+
+	ctfp = dt_module_getctf(typef->dtp, typef->module);
+	if (ctfp == NULL)
+		return (CTF_ERR);
+	return (ctf_errmsg(ctf_errno(ctfp)));
 }
 
 ctf_file_t *
 dt_typefile_membinfo(dt_typefile_t *typef, ctf_id_t type,
     const char *s, ctf_membinfo_t *mp)
 {
+	dt_module_t *mod;
 	ctf_file_t *fp;
 
-	fp = typef.ctf_file;
+	assert(typef->dtp != NULL);
+	assert(typef->module != NULL);
+
+	mod = typef->module;
+	fp = dt_module_getctf(typef->dtp, mod);
 
 	while (ctf_type_kind(fp, type) == CTF_K_FORWARD) {
 		char n[DT_TYPE_NAMELEN];
@@ -184,9 +191,14 @@ dt_typefile_membinfo(dt_typefile_t *typef, ctf_id_t type,
 dt_typefile_t *
 dt_typefile_kernel(void)
 {
+	dt_module_t *mod;
+
 	for (typef = dt_list_next(&typefiles); typef; typef = dt_list_next(typef))
-		if (strcmp(typef.modname, "kernel"))
+		if (strcmp(typef.modname, "kernel")) {
+			mod = dt_module_lookup_by_name(dtp, "kernel");
+			assert(mod != typef->module);
 			return (typef);
+		}
 
 	return (NULL);
 }
