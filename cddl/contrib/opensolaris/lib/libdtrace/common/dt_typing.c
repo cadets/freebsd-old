@@ -1749,8 +1749,9 @@ dt_infer_type(dt_ifg_node_t *n)
 		dif_var = dt_get_var_from_varlist(var,
 		    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
 		if (dif_var == NULL)
-			dt_set_progerr(g_dtp, g_pgp, "failed to find variable (%u, %d, %d)",
-			    var, DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to find variable (%u, %d, %d)", var,
+			    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
 
 		if (dnv == NULL) {
 			if (dif_var == NULL) {
@@ -1758,6 +1759,7 @@ dt_infer_type(dt_ifg_node_t *n)
 				return (-1);
 			} else {
 				n->din_ctfid = dif_var->dtdv_ctfid;
+				n->din_tf = dif_var->dtdv_tf;
 				n->din_type = dif_var->dtdv_type.dtdt_kind;
 				n->din_sym = dif_var->dtdv_sym;
 
@@ -1772,21 +1774,34 @@ dt_infer_type(dt_ifg_node_t *n)
 				return (-1);
 			}
 
+			if (dif_var->dtdv_tf != dnv->din_tf) {
+				fprintf(stderr,
+				    "variable uses typefile %s, "
+				    "but dnv uses %s\n",
+				    dt_typefile_stringof(dif_var->dtdv_tf),
+				    dt_typefile_stringof(dnv->din_tf));
+				return (-1);
+			}
+
 			if (dif_var->dtdv_ctfid != dnv->din_ctfid) {
-				if (ctf_type_name(ctf_file, dnv->din_ctfid, buf,
+				if (dt_typefile_typename(dnv->din_tf,
+				    dnv->din_ctfid, buf,
 				    sizeof(buf)) != ((char *)buf))
 					errx(EXIT_FAILURE,
-					    "failed at getting type name %ld: %s",
+					    "failed at getting type "
+					    "name %ld: %s",
 					    dnv->din_ctfid,
-					    ctf_errmsg(ctf_errno(ctf_file)));
+					    dt_typefile_error(dnv->din_tf));
 
-				if (ctf_type_name(ctf_file, dif_var->dtdv_ctfid,
-				    var_type,
+				if (dt_typefile_typename(dif_var->dtdv_tf,
+				    dif_var->dtdv_ctfid, var_type,
 				    sizeof(var_type)) != ((char *)var_type))
 					errx(EXIT_FAILURE,
-					    "failed at getting type name %ld: %s",
+					    "failed at getting type "
+					    "name %ld: %s",
 					    dif_var->dtdv_ctfid,
-					    ctf_errmsg(ctf_errno(ctf_file)));
+					    dt_typefile_error(
+						dif_var->dtdv_tf));
 
 				fprintf(stderr,
 				    "variable ctf type mismatch %s != %s\n",
@@ -1815,6 +1830,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		}
 
 		n->din_ctfid = dnv->din_ctfid;
+		n->din_tf = dnv->din_tf;
 		n->din_type = dnv->din_type;
 		n->din_mip = dnv->din_mip;
 		n->din_sym = dnv->din_sym;
