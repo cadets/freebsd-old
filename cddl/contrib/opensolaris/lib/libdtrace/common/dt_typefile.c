@@ -140,6 +140,13 @@ dt_typefile_reference(dt_typefile_t *typef, ctf_id_t id)
 	return (ctf_type_reference(typef.ctf_file, id));
 }
 
+uint32_t
+dt_typefile_typesize(dt_typefile *typef, ctf_id_t id)
+{
+
+	return (ctf_type_size(typef.ctf_file, id));
+}
+
 const char *
 dt_typefile_error(dt_typefile_t *typef)
 {

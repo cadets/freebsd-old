@@ -882,22 +882,32 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 		return (DIF_TYPE_STRING);
 
 	if (dif_var->dtdv_ctfid != CTF_ERR) {
+		if (dif_var->dtdv_tf != dr->din_tf) {
+			fprintf(stderr,
+			    "variable %d has typefile %s, but the "
+			    "node we are compearing it to has "
+			    "typefile %s\n",
+			    dif_var->dtdv_id,
+			    dt_typefile_stringof(dif_var->dtdv_tf),
+			    dt_typefile_stringof(dr->din_tf));
+			return (-1);
+		}
+
 		if (dif_var->dtdv_ctfid != dr->din_ctfid) {
-			if (ctf_type_name(
-			    ctf_file, dif_var->dtdv_ctfid, var_type,
+			if (dt_typefile_typename(dif_var->dtdv_tf,
+			    dif_var->dtdv_ctfid, var_type,
 			    sizeof(var_type)) != ((char *)var_type))
 				dt_set_progerr(g_dtp, g_pgp,
 				    "failed at getting type name %ld: %s",
 				    dif_var->dtdv_ctfid,
-				    ctf_errmsg(ctf_errno(ctf_file)));
+				    dt_typefile_error(dif_var->dtdv_tf));
 
-			if (ctf_type_name(
-			    ctf_file, dr->din_ctfid, buf,
+			if (dt_typefile_typename(dr->din_tf, dr->din_ctfid, buf,
 			    sizeof(buf)) != ((char *)buf))
 				dt_set_progerr(g_dtp, g_pgp,
 				    "failed at getting type name %ld: %s",
 				    dr->din_ctfid,
-				    ctf_errmsg(ctf_errno(ctf_file)));
+				    dt_typefile_error(dr->din_tf));
 
 			fprintf(stderr, "type mismatch in STTS: %s != %s\n",
 			    var_type, buf);
@@ -919,11 +929,12 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 			}
 		}
 	} else {
+		dif_var->dtdv_tf = dr->din_tf;
 		dif_var->dtdv_ctfid = dr->din_ctfid;
 		dif_var->dtdv_sym = dr->din_sym;
 		dif_var->dtdv_type.dtdt_kind = dr->din_type;
-		dif_var->dtdv_type.dtdt_size = ctf_type_size(
-		    ctf_file, dr->din_ctfid);
+		dif_var->dtdv_type.dtdt_size =
+		    dt_typefile_typesize(dr->din_tf, dr->din_ctfid);
 		dif_var->dtdv_type.dtdt_ckind = dr->din_ctfid;
 	}
 
@@ -1004,21 +1015,33 @@ dt_var_stack_typecheck(dt_ifg_node_t *n, dt_ifg_node_t *dr1, dtrace_difv_t *dif_
 				return (-1);
 			}
 
+			if (node->din_tf != var_stacknode->din_tf) {
+				fprintf(stderr, "typefile mismatch: %s != %s\n",
+				    dt_typefile_stringof(node->din_tf),
+				    dt_typefile_stringof(
+					var_stacknode->din_tf));
+				return (-1);
+			}
+
 			if (node->din_type == DIF_TYPE_CTF) {
-				if (ctf_type_name(ctf_file, node->din_ctfid, buf,
+				if (dt_typefile_typename(node->din_tf,
+				    node->din_ctfid, buf,
 				    sizeof(buf)) != ((char *)buf))
 					dt_set_progerr(g_dtp, g_pgp,
-					    "failed at getting type name %ld: %s",
+					    "failed at getting "
+					    "type name %ld: %s",
 					    dr1->din_ctfid,
-					    ctf_errmsg(ctf_errno(ctf_file)));
+					    dt_typefile_error(node->din_tf));
 
-				if (ctf_type_name(ctf_file,
+				if (dt_typefile_typename(var_stacknode->din_tf,
 				    var_stacknode->din_ctfid, var_type,
 				    sizeof(var_type)) != ((char *)var_type))
 					dt_set_progerr(g_dtp, g_pgp,
-					    "failed at getting type name %ld: %s",
+					    "failed at getting "
+					    "type name %ld: %s",
 					    var_stacknode->din_ctfid,
-					    ctf_errmsg(ctf_errno(ctf_file)));
+					    dt_typefile_error(
+						var_stacknode->din_tf));
 
 				if (var_stacknode->din_ctfid !=
 				    node->din_ctfid) {
