@@ -599,11 +599,13 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		 * DIFO (if it exists).
 		 */
 		for (ad = sdp->dtsd_action;
-		    ad != sdp->dtsd_action_last->dtad_next; ad = ad->dtad_next) {
+		     ad != sdp->dtsd_action_last->dtad_next;
+		     ad = ad->dtad_next) {
 			if (ad->dtad_difo == NULL)
 				continue;
 
-			rval = dt_prog_infer_defns(dtp, ad->dtad_difo);
+			rval = dt_prog_infer_defns(
+			    dtp, sdp->dtsd_ecbdesc, ad->dtad_difo);
 			if (rval != 0)
 				return (dt_set_errno(dtp, rval));
 

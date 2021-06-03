@@ -33,7 +33,8 @@
 #include <dtrace.h>
 #include <_dt_ifgnode.h>
 
-extern int dt_prog_infer_defns(dtrace_hdl_t *, dtrace_difo_t *);
+extern int dt_prog_infer_defns(
+    dtrace_hdl_t *, dtrace_ecbdesc_t *, dtrace_difo_t *);
 extern dt_ifg_node_t *dt_find_node_in_ifg(dt_ifg_node_t *, dt_ifg_node_t *);
 
 #endif /* _DT_IFG_H_ */

@@ -56,7 +56,7 @@ dt_ifgl_alloc(dt_ifg_node_t *node)
 }
 
 dt_ifg_node_t *
-dt_ifg_node_alloc(dtrace_difo_t *difo, uint_t idx)
+dt_ifg_node_alloc(dtrace_ecbdesc_t *edp, dtrace_difo_t *difo, uint_t idx)
 {
 	dt_ifg_node_t *node;
 
@@ -68,6 +68,7 @@ dt_ifg_node_alloc(dtrace_difo_t *difo, uint_t idx)
 
 	node->din_difo = difo;
 	node->din_uidx = idx;
+	node->din_edp = edp;
 
 	/*
 	 * Initialise the D type to -1 as 0 is defined as a CTF type.

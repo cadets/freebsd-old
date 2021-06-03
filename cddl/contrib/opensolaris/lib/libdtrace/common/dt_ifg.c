@@ -725,7 +725,8 @@ dt_update_ifg(dtrace_difo_t *difo,
  * We assume that both dtp and difo are not NULL.
  */
 int
-dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
+dt_prog_infer_defns(
+    dtrace_hdl_t *dtp, dtrace_ecbdesc_t *edp, dtrace_difo_t *difo)
 {
 	uint_t i = 0, idx = 0;
 	dt_ifg_node_t *n = NULL;
@@ -783,7 +784,7 @@ dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		idx = difo->dtdo_len - 1 - i;
 		instr = difo->dtdo_buf[idx];
 
-		n = dt_ifg_node_alloc(difo, idx);
+		n = dt_ifg_node_alloc(edp, difo, idx);
 		ifgl = malloc(sizeof(dt_ifg_list_t));
 		if (ifgl == NULL)
 			errx(EXIT_FAILURE, "failed to malloc ifgl");
