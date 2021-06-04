@@ -999,3 +999,141 @@ dtrace_uaddr2str(dtrace_hdl_t *dtp, pid_t pid,
 	return (dt_string2str(c, str, nbytes));
 }
 
+int
+open_dtdaemon(uint64_t subs)
+{
+	int dtdaemon_sock;
+	struct sockaddr_un addr;
+	dtd_initmsg_t initmsg;
+	size_t l;
+
+	memset(&initmsg, 0, sizeof(initmsg));
+	dtdaemon_sock = socket(PF_UNIX, SOCK_STREAM, 0);
+	if (dtdaemon_sock == -1) {
+		fprintf(stderr, "failed to open dtdaemon socket");
+		return (-1);
+	}
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sun_family = PF_UNIX;
+	l = strlcpy(addr.sun_path, DTDAEMON_SOCKPATH, sizeof(addr.sun_path));
+	if (l >= sizeof(addr.sun_path)) {
+		fprintf(stderr, "failed to copy %s into sun_path\n",
+		    DTDAEMON_SOCKPATH);
+		return (-1);
+	}
+
+	if (connect(dtdaemon_sock,
+	    (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+		fprintf(stderr, "failed to connect to dtdaemon socket: %s\n",
+		    strerror(errno));
+		return (-1);
+	}
+
+	if (recv(dtdaemon_sock, &initmsg, sizeof(initmsg), 0) < 0) {
+		fprintf(stderr, "failed to recv from dtdaemon socket: %s\n",
+		    strerror(errno));
+		close(dtdaemon_sock);
+		return (-1);
+	}
+
+	if (initmsg.kind != DTDAEMON_KIND_DTDAEMON) {
+		fprintf(stderr, "expected kind %d but got %d\n",
+		    DTDAEMON_KIND_DTDAEMON, initmsg.kind);
+		close(dtdaemon_sock);
+		return (-1);
+	}
+
+	initmsg.kind = DTDAEMON_KIND_CONSUMER;
+	initmsg.subs = subs;
+	if (send(dtdaemon_sock, &initmsg, sizeof(initmsg), 0) < 0) {
+		fprintf(stderr, "failed to send to dtdaemon socket: %s\n",
+		    strerror(errno));
+		close(dtdaemon_sock);
+		return (-1);
+	}
+
+	return (dtdaemon_sock);
+}
+
+int
+send_elf(int fromfd, int tofd, const char *location)
+{
+	unsigned char *buf, *_buf;
+	size_t total_size;
+	struct stat sb;
+	unsigned char data = 0;
+	dtdaemon_hdr_t header;
+	size_t l;
+
+	if (fromfd == -1 || tofd == -1) {
+		fprintf(stderr,
+		    "both file descriptors must be != -1 (%d, %d)\n", fromfd,
+		    tofd);
+		return (-1);
+	}
+
+	if (fstat(fromfd, &sb)) {
+		fprintf(stderr, "fstat() failed on %d: %s\n", fromfd,
+		    strerror(errno));
+		return (-1);
+	}
+
+	total_size = dtdaemon_msghdrsize + sb.st_size;
+	buf = malloc(total_size);
+	if (buf == null) {
+		fprintf(stderr, "malloc() failed: %s\n", strerror(errno));
+		return (-1);
+	}
+
+	_buf = buf + dtdaemon_msghdrsize;
+	if (read(fromfd, _buf, sb.st_size) < 0) {
+		fprintf(stderr, "read() from %d failed: %s\n", fromfd,
+		    strerror(errno));
+		free(buf);
+		return (-1);
+	}
+
+	dtdaemon_msg_type(header) = dtdaemon_msg_elf;
+	l = strlcpy(dtdaemon_msg_loc(header), location, dtdaemon_locsize);
+	if (l >= dtdaemon_locsize) {
+		fprintf(stderr, "strlcpy() failed (%zu >= %zu)\n", l,
+		    dtdaemon_locsize);
+		free(buf);
+		return (-1);
+	}
+
+	if (send(tofd, &total_size, sizeof(total_size), 0) < 0) {
+		fprintf(stderr, "send() to %d failed: %s\n", tofd,
+		    strerror(errno));
+		free(buf);
+		return (-1);
+	}
+
+	/*
+	 * populate the header to the buffer that we will send to dtdaemon.
+	 */
+	memcpy(buf, &header, dtdaemon_msghdrsize);
+	if (send(tofd, buf, total_size, 0) < 0) {
+		fprintf(
+		    stderr, "send() to %d failed: %s\n", tofd, strerror(errno));
+		free(buf);
+		return (-1);
+	}
+
+	if (recv(tofd, &data, 1, 0) < 0) {
+		free(buf);
+		fprintf(
+		    stderr, "recv() on %d failed: %s\n", tofd, strerror(errno));
+		return (-1);
+	}
+
+	if (data != 1) {
+		fprintf(stderr, "received %02x, expected %02x\n", data, 1);
+		free(buf);
+		return (-1);
+	}
+
+	free(buf);
+	return (0);
+}

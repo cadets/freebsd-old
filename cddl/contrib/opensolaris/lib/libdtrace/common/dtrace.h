@@ -701,6 +701,8 @@ extern void dtrace_set_guest(dtrace_hdl_t *);
 extern int dtrace_is_guest(dtrace_hdl_t *);
 extern int dt_augment_tracing(dtrace_hdl_t *, dtrace_prog_t *);
 extern int dt_vprobes_create(dtrace_hdl_t *, dtrace_prog_t *);
+extern int open_dtdaemon(uint64_t);
+int send_elf(int, int, const char *);
 	
 extern const char *const _dtrace_version;
 extern int _dtrace_debug;
