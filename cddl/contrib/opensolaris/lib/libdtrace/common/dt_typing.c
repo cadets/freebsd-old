@@ -84,7 +84,7 @@ dt_get_class(dt_typefile_t *tf, char *buf)
 
 	do  {
 
-		if ((k = ctf_type_kind(ctf_file, t)) == CTF_ERR)
+		if ((k = dt_typefile_kind(tf, t)) == CTF_ERR)
 			dt_set_progerr(g_dtp, g_pgp,
 			    "failed getting type (%s) kind: %s", buf,
 			    dt_typefile_error(tf));
