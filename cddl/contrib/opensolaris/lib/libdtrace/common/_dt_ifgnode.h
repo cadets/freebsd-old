@@ -33,6 +33,7 @@
 
 #include <dtrace.h>
 #include <dt_list.h>
+#include <_dt_typefile.h>
 
 typedef struct dt_node_kind {
 	int                             dtnk_kind; /* kind (see below) */
@@ -62,7 +63,7 @@ typedef struct dt_ifg_node {
 	dt_list_t        din_vardefs;    /* list of variable defns in DIFO */
 	int              din_type;       /* D type */
 	dt_typefile_t    *din_tf;        /* type file */ 
-	dtrace_ecbdesc_t din_edp;        /* node's ecbdesc */
+	dtrace_ecbdesc_t *din_edp;       /* node's ecbdesc */
 	ctf_id_t         din_ctfid;      /* CTF type */
 	char             *din_sym;       /* symbol (if applicable) */
 	dtrace_difo_t    *din_difo;      /* DIFO which this node belongs to */
