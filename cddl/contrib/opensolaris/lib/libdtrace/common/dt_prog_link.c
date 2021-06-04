@@ -550,7 +550,7 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	memset(&node_list, 0, sizeof(dt_list_t));
 	memset(&bb_list, 0, sizeof(dt_list_t));
 
-	r0node = dt_ifg_node_alloc(NULL, UINT_MAX);
+	r0node = dt_ifg_node_alloc(NULL, NULL, UINT_MAX);
 	r0node->din_type = DIF_TYPE_BOTTOM;
 
 	/*
@@ -623,6 +623,5 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		}
 	}
 
-	dt_cleanup_typefiles();
 	return (0);
 }
