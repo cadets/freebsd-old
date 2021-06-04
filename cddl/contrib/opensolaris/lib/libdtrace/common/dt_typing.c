@@ -4054,18 +4054,20 @@ dt_infer_type(dt_ifg_node_t *n)
 				    "str/json() first argument is NULL");
 
 			arg0 = se->ds_ifgnode;
+			assert(arg0->din_tf != NULL);
 
 			if (arg0->din_type == DIF_TYPE_CTF) {
-				if (ctf_type_name(ctf_file,
+				if (dt_typefile_typename(arg0->din_tf,
 				    arg0->din_ctfid, buf,
 				    sizeof(buf)) != (char *)buf)
-					errx(EXIT_FAILURE,
+					dt_set_progerr(g_dtp, g_pgp,
 					    "failed at getting type name"
 					    " %ld: %s", arg0->din_ctfid,
-					    ctf_errmsg(ctf_errno(ctf_file)));
+					    dt_typefile_error(arg0->din_tf));
 
 				/*
-				 * If the argument type is wrong, fail to type check.
+				 * If the argument type is wrong, fail to type
+				 * check.
 				 */
 				if (strcmp(buf, "const char *") != 0 &&
 				    strcmp(buf, "char *") != 0) {
@@ -4087,15 +4089,16 @@ dt_infer_type(dt_ifg_node_t *n)
 				    "str/json() second argument is NULL");
 
 			arg1 = se->ds_ifgnode;
+			assert(arg1->din_tf != NULL);
 
 			if (arg1->din_type == DIF_TYPE_CTF) {
-				if (ctf_type_name(ctf_file,
+				if (dt_typefile_typename(arg1->din_tf,
 				    arg1->din_ctfid, buf,
 				    sizeof(buf)) != (char *)buf)
-					errx(EXIT_FAILURE,
+					dt_set_progerr(g_dtp, g_pgp,
 					    "failed at getting type name"
 					    " %ld: %s", arg1->din_ctfid,
-					    ctf_errmsg(ctf_errno(ctf_file)));
+					    dt_typefile_error(arg1->din_tf));
 
 				/*
 				 * If the argument type is wrong, fail to type check.
