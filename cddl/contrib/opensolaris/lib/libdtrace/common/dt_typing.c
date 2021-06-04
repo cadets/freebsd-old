@@ -1174,7 +1174,6 @@ dt_infer_type(dt_ifg_node_t *n)
 	uint16_t sym, subr;
 	dt_stacklist_t *sl;
 	dt_ifg_node_t *arg0, *arg1, *arg2, *arg3, *arg4, *arg5, *arg6, *arg7, *arg8;
-	ctf_file_t *octfp = NULL;
 	ctf_id_t type = 0;
 	dtrace_difv_t *dif_var;
 	dt_pathlist_t *il;
@@ -4582,11 +4581,12 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 			dt_set_progerr(g_dtp, g_pgp, "failed to infer a type");
 
 		if (type == DIF_TYPE_CTF) {
-			if (ctf_type_name(ctf_file,
+			if (dt_typefile_typename(node->din_tf,
 			    node->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
-				    " %ld: %s", node->din_ctfid,
-				    ctf_errmsg(ctf_errno(ctf_file)));
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed at getting type name %ld: %s",
+				    node->din_ctfid,
+				    dt_typefile_error(node->din_tf));
 			difo->dtdo_types[node->din_uidx] = strdup(buf);
 		} else if (type == DIF_TYPE_STRING)
 			difo->dtdo_types[node->din_uidx] = strdup("string");
