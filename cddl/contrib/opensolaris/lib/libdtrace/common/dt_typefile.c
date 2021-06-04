@@ -193,7 +193,7 @@ dt_typefile_typekind(dt_typefile_t *typef, ctf_id_t type)
 {
 	ctf_file_t *ctfp;
 
-	ctfp = dt_module_getctf(typef->dtp, typef->dtp_module);
+	ctfp = dt_module_getctf(typef->dtp, typef->module);
 	if (ctfp == NULL)
 		return (CTF_ERR);
 
@@ -214,4 +214,16 @@ dt_typefile_kernel(void)
 		}
 
 	return (NULL);
+}
+
+ctf_id_t
+dt_typefile_resolve(dt_typefile_t *typef, ctf_id_t type)
+{
+	ctf_file_t *ctfp;
+
+	ctfp = dt_module_getctf(typef->dtp, typef->module);
+	if (ctfp == NULL)
+		return (CTF_ERR);
+
+	return (ctf_type_resolve(ctfp, type));
 }
