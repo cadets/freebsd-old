@@ -3441,12 +3441,14 @@ dt_infer_type(dt_ifg_node_t *n)
 				    "ntohs/htons() first argument is NULL");
 
 			arg0 = se->ds_ifgnode;
+			assert(arg0->din_tf != NULL);
 
-			if (ctf_type_name(ctf_file,
+			if (dt_typefile_typename(arg0->din_tf,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
-				    " %ld: %s", arg0->din_ctfid,
-				    ctf_errmsg(ctf_errno(ctf_file)));
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed at getting type name %ld: %s",
+				    arg0->din_ctfid,
+				    dt_typefile_error(arg0->din_tf));
 
 			/*
 			 * If the argument type is wrong, fail to type check.
@@ -3457,11 +3459,11 @@ dt_infer_type(dt_ifg_node_t *n)
 				return (-1);
 			}
 
-			n->din_ctfid = ctf_lookup_by_name(ctf_file, "uint16_t");
+			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint16_t");
 			if (n->din_ctfid == CTF_ERR)
-				errx(EXIT_FAILURE,
+				dt_set_progerr(g_dtp, g_pgp,
 				    "failed to get type uint16_t: %s",
-				    ctf_errmsg(ctf_errno(ctf_file)));
+				    dt_typefile_error(n->din_tf));
 
 			n->din_type = DIF_TYPE_CTF;
 			break;
