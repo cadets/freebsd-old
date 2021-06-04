@@ -4460,6 +4460,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 	case DIF_OP_PUSHTV:
 		n->din_ctfid = dn1->din_ctfid;
+		n->din_tf = dn1->din_tf;
 		n->din_type = dn1->din_type;
 		return (DIF_TYPE_NONE);
 
