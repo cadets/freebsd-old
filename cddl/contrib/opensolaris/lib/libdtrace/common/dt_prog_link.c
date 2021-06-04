@@ -147,8 +147,8 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 					    node->din_type);
 
 				if (rtype->dtdt_kind == DIF_TYPE_CTF) {
-					ctf_kind = ctf_type_kind(
-					    ctf_file, node->din_ctfid);
+					ctf_kind = dt_typefile_typekind(
+					    node->din_tf, node->din_ctfid);
 
 					/*
 					 * Set that we are returning this
@@ -159,8 +159,8 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 						rtype->dtdt_flags |=
 						    DIF_TF_BYREF;
 
-					rtype->dtdt_size = ctf_type_size(
-					    ctf_file, node->din_ctfid);
+					rtype->dtdt_size = dt_typefile_typesize(
+					    node->din_tf, node->din_ctfid);
 				} else
 					rtype->dtdt_flags |= DIF_TF_BYREF;
 
@@ -178,9 +178,10 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 			if (node->din_mip == NULL)
 				break;
 
-			ctfid = ctf_type_resolve(ctf_file, node->din_mip->ctm_type);
-		        size = ctf_type_size(ctf_file, ctfid);
-			kind = ctf_type_kind(ctf_file, ctfid);
+			ctfid = dt_typefile_resolve(
+			    node->din_tf, node->din_mip->ctm_type);
+			size = dt_typefile_typesize(node->din_tf, ctfid);
+			kind = dt_typefile_typekind(node->din_tf, ctfid);
 			offset = node->din_mip->ctm_offset / 8; /* bytes */
 
 			for (usetx_ifgl = dt_list_next(&node->din_usetxs);
