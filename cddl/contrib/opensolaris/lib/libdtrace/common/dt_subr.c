@@ -29,6 +29,9 @@
 #include <sys/sysmacros.h>
 #endif
 #include <sys/isa_defs.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/stat.h>
 
 #include <strings.h>
 #include <unistd.h>
@@ -48,8 +51,10 @@
 #include <libgen.h>
 #include <limits.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #include <dt_impl.h>
+#include <dtdaemon.h>
 
 static const struct {
 	size_t dtps_offset;
@@ -1079,14 +1084,14 @@ send_elf(int fromfd, int tofd, const char *location)
 		return (-1);
 	}
 
-	total_size = dtdaemon_msghdrsize + sb.st_size;
+	total_size = DTDAEMON_MSGHDRSIZE + sb.st_size;
 	buf = malloc(total_size);
-	if (buf == null) {
+	if (buf == NULL) {
 		fprintf(stderr, "malloc() failed: %s\n", strerror(errno));
 		return (-1);
 	}
 
-	_buf = buf + dtdaemon_msghdrsize;
+	_buf = buf + DTDAEMON_MSGHDRSIZE;
 	if (read(fromfd, _buf, sb.st_size) < 0) {
 		fprintf(stderr, "read() from %d failed: %s\n", fromfd,
 		    strerror(errno));
@@ -1094,11 +1099,11 @@ send_elf(int fromfd, int tofd, const char *location)
 		return (-1);
 	}
 
-	dtdaemon_msg_type(header) = dtdaemon_msg_elf;
-	l = strlcpy(dtdaemon_msg_loc(header), location, dtdaemon_locsize);
-	if (l >= dtdaemon_locsize) {
+	DTDAEMON_MSG_TYPE(header) = DTDAEMON_MSG_ELF;
+	l = strlcpy(DTDAEMON_MSG_LOC(header), location, DTDAEMON_LOCSIZE);
+	if (l >= DTDAEMON_LOCSIZE) {
 		fprintf(stderr, "strlcpy() failed (%zu >= %zu)\n", l,
-		    dtdaemon_locsize);
+		    DTDAEMON_LOCSIZE);
 		free(buf);
 		return (-1);
 	}
@@ -1113,7 +1118,7 @@ send_elf(int fromfd, int tofd, const char *location)
 	/*
 	 * populate the header to the buffer that we will send to dtdaemon.
 	 */
-	memcpy(buf, &header, dtdaemon_msghdrsize);
+	memcpy(buf, &header, DTDAEMON_MSGHDRSIZE);
 	if (send(tofd, buf, total_size, 0) < 0) {
 		fprintf(
 		    stderr, "send() to %d failed: %s\n", tofd, strerror(errno));

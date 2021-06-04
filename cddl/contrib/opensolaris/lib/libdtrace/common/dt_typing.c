@@ -113,7 +113,7 @@ dt_get_class(dt_typefile_t *tf, char *buf)
  * a string or a structure, rather than as a number).
  */
 static int
-dt_type_compare(dt_ifg_node_t *dr1, dt_ifg_node_t *dn2)
+dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 {
 	char buf1[4096] = {0};
 	char buf2[4096] = {0};
@@ -122,36 +122,37 @@ dt_type_compare(dt_ifg_node_t *dr1, dt_ifg_node_t *dn2)
 	class1 = 0;
 	class2 = 0;
 
-	if (dr1->din_type == DIF_TYPE_BOTTOM && dn2->din_type == DIF_TYPE_BOTTOM)
+	if (dn1->din_type == DIF_TYPE_BOTTOM &&
+	    dn2->din_type == DIF_TYPE_BOTTOM)
 		dt_set_progerr(g_dtp, g_pgp, "both types are bottom");
 
-	if (dr1->din_type == DIF_TYPE_BOTTOM)
+	if (dn1->din_type == DIF_TYPE_BOTTOM)
 		return (2);
 
 	if (dn2->din_type == DIF_TYPE_BOTTOM)
 		return (1);
 
-	if (dr1->din_type == DIF_TYPE_CTF) {
-		if (dt_typefile_typename(dr1->din_tf, dr1->din_ctfid, buf1,
+	if (dn1->din_type == DIF_TYPE_CTF) {
+		if (dt_typefile_typename(dn1->din_tf, dn1->din_ctfid, buf1,
 		    sizeof(buf1)) != ((char *)buf1))
 			dt_set_progerr(g_dtp, g_pgp,
 			    "failed at getting type name %ld: %s",
-			    dr1->din_ctfid, dt_typefile_error(dr1->din_tf));
+			    dn1->din_ctfid, dt_typefile_error(dn1->din_tf));
 	}
 
 	if (dn2->din_type == DIF_TYPE_CTF) {
-		if (dt_typefile_typename(dr2->din_tf, dn2->din_ctfid, buf2,
+		if (dt_typefile_typename(dn2->din_tf, dn2->din_ctfid, buf2,
 		    sizeof(buf2)) != ((char *)buf2))
 			dt_set_progerr(g_dtp, g_pgp,
 			    "failed at getting type name %ld: %s",
-			    dn2->din_ctfid, dt_typefile_error(dr2->din_tf));
+			    dn2->din_ctfid, dt_typefile_error(dn2->din_tf));
 	}
 
-	class1 = dr1->din_type == DIF_TYPE_CTF ?
-	    dt_get_class(dr1->din_tf, buf1) :
+	class1 = dn1->din_type == DIF_TYPE_CTF ?
+	    dt_get_class(dn1->din_tf, buf1) :
 	    DTC_STRING;
 	class2 = dn2->din_type == DIF_TYPE_CTF ?
-	    dt_get_class(dr2->din_tf, buf2) :
+	    dt_get_class(dn2->din_tf, buf2) :
 	    DTC_STRING;
 
 	if (dn1->din_tf != dn2->din_tf)
@@ -162,10 +163,12 @@ dt_type_compare(dt_ifg_node_t *dr1, dt_ifg_node_t *dn2)
 		    buf2, dt_typefile_stringof(dn2->din_tf));
 
 	if (class1 == DTC_BOTTOM)
-		dt_set_progerr(g_dtp, g_pgp, "class1 is bottom because of %s", buf1);
+		dt_set_progerr(
+		    g_dtp, g_pgp, "class1 is bottom because of %s", buf1);
 
 	if (class2 == DTC_BOTTOM)
-		dt_set_progerr(g_dtp, g_pgp, "class2 is bottom because of %s", buf2);
+		dt_set_progerr(
+		    g_dtp, g_pgp, "class2 is bottom because of %s", buf2);
 
 	if (class1 == DTC_STRING && class2 == DTC_INT)
 		return (1);
@@ -560,7 +563,7 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			 * Get the previous' node's inferred type for
 			 * error reporting.
 			 */
-			if (dt_typefile_filename(onode->din_tf,
+			if (dt_typefile_typename(onode->din_tf,
 			    onode->din_ctfid, buf2,
 			    sizeof(buf2)) != ((char *)buf2))
 				dt_set_progerr(g_dtp, g_pgp,
@@ -1390,7 +1393,9 @@ dt_infer_type(dt_ifg_node_t *n)
 		 * TODO: Maybe we can tolerate some failures by looking at
 		 * symbols too?
 		 */
-		n->din_tf = dt_typefile_mod(n->edp->dted_probe.dtpd_mod);
+		n->din_tf = dt_typefile_mod(n->din_edp->dted_probe.dtpd_mod);
+		assert(n->din_tf != NULL);
+
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, symname);
 		if (n->din_ctfid == CTF_ERR) {
 			n->din_tf = dt_typefile_kernel();
@@ -2668,7 +2673,7 @@ dt_infer_type(dt_ifg_node_t *n)
 				dt_set_progerr(g_dtp, g_pgp,
 				    "failed at getting type name %ld: %s",
 				    arg1->din_ctfid,
-				    dt_typeflie_error(arg1->din_tf));
+				    dt_typefile_error(arg1->din_tf));
 
 			/*
 			 * If the argument type is wrong, fail to type check.
@@ -2932,7 +2937,7 @@ dt_infer_type(dt_ifg_node_t *n)
 				    "copyinto() first argument is NULL");
 
 			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULl);
+			assert(arg0->din_tf != NULL);
 
 			if (dt_typefile_typename(arg0->din_tf,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)

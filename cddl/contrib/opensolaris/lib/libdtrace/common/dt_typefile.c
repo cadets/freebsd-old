@@ -209,7 +209,7 @@ dt_typefile_kernel(void)
 	     typef = dt_list_next(typef))
 		if (strcmp(typef.modname, "kernel")) {
 			mod = dt_module_lookup_by_name(dtp, "kernel");
-			assert(mod != typef->module);
+			assert(mod == typef->module);
 			return (typef);
 		}
 
@@ -238,4 +238,28 @@ dt_typefile_encoding(dt_typefile_t *typef, ctf_id_t type, ctf_encoding_t *ep)
 		return (-1);
 
 	return (ctf_type_encoding(ctfp, type, ep));
+}
+
+const char *
+dt_typefile_stringof(dt_typefile_t *typef)
+{
+
+	return ((const char *)typef.modname);
+}
+
+dt_typefile_t *
+dt_typefile_mod(const char *mod)
+{
+	dt_typefile_t *typef;
+	dt_module_t *mod;
+
+	for (typef = dt_list_next(&typefiles); typef;
+	     typef = dt_list_next(typef))
+		if (strcmp(typef->modname, mod) == 0) {
+			mod = dt_module_lookup_by_name(typef->dtp);
+			assert(mod == typef->module);
+			return (typef);
+		}
+
+	return (NULL);
 }
