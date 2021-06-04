@@ -2530,10 +2530,11 @@ dt_infer_type(dt_ifg_node_t *n)
 			break;
 
 		case DIF_SUBR_SPECULATION:
-			n->din_ctfid = ctf_lookup_by_name(ctf_file, "int");
+			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
 			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp, "failed to get type int: %s",
-				    ctf_errmsg(ctf_errno(ctf_file)));
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed to get type int: %s",
+				    dt_typefile_error(n->din_tf));
 
 			n->din_type = DIF_TYPE_CTF;
 			break;
