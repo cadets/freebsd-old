@@ -37,6 +37,7 @@
 #include <dt_linker_subr.h>
 #include <dt_basic_block.h>
 #include <dt_ifgnode.h>
+#include <dt_typefile.h>
 
 #include <stdio.h>
 #include <stdlib.h>
