@@ -4150,11 +4150,13 @@ dt_infer_type(dt_ifg_node_t *n)
 
 		if (dnv) {
 			n->din_ctfid = dnv->din_ctfid;
+			n->din_tf = dnv->din_tf;
 			n->din_type = dnv->din_type;
 			n->din_mip = dnv->din_mip;
 			n->din_sym = dnv->din_sym;
 		} else {
 			n->din_ctfid = dif_var->dtdv_ctfid;
+			n->din_tf = dif_var->dtdv_tf;
 			n->din_type = dif_var->dtdv_type.dtdt_kind;
 			n->din_sym = dif_var->dtdv_sym;
 		}
