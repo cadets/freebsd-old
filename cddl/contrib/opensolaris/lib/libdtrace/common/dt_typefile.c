@@ -205,7 +205,8 @@ dt_typefile_kernel(void)
 {
 	dt_module_t *mod;
 
-	for (typef = dt_list_next(&typefiles); typef; typef = dt_list_next(typef))
+	for (typef = dt_list_next(&typefiles); typef;
+	     typef = dt_list_next(typef))
 		if (strcmp(typef.modname, "kernel")) {
 			mod = dt_module_lookup_by_name(dtp, "kernel");
 			assert(mod != typef->module);
