@@ -4234,6 +4234,7 @@ dt_infer_type(dt_ifg_node_t *n)
 			return (-1);
 
 		n->din_ctfid = dn2->din_ctfid;
+		n->din_tf = dn2->din_tf;
 		n->din_type = dn2->din_type;
 		n->din_mip = dn2->din_mip;
 		n->din_sym = dn2->din_sym;
