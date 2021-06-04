@@ -25,18 +25,23 @@
  * $FreeBSD$
  */
 
-#ifndef __DT_TYPEFILE_T_
-#define __DT_TYPEFILE_T_
+#ifndef _DT_TYPEFILE_T_
+#define _DT_TYPEFILE_T_
+
+#include <dtrace.h>
 
 #include <_dt_typefile.h>
 
-int dt_open_typefiles(void);
-void dt_cleanup_typefiles(void);
+int dt_typefile_openall(dtrace_hdl_t *);
 
-dt_typefile_t *dt_get_typefile_by_kmod(const char *);
-dt_typefile_t *dt_get_typefile_by_ctf(ctf_file_t *);
-ctf_id_t dt_get_ctfid_by_kmod(const char *);
-
+ctf_id_t dt_typefile_ctfid(dt_typefile_t *, const char *);
+char *dt_typefile_typename(dt_typefile_t *, ctf_id_t, char *, size_t);
+ctf_id_t dt_typefile_reference(dt_typefile_t *, ctf_id_t);
+uint32_t dt_typefile_typesize(dt_typefile *, ctf_id_t);
 const char *dt_typefile_error(dt_typefile_t *);
+ctf_file_t *dt_typefile_membinfo(dt_typefile_t *, ctf_id_t,
+    const char *, ctf_membinfo_t *);
+ctf_id_t dt_typefile_kind(dt_typefile_t *, ctf_id_t);
+dt_typefile_t *dt_typefile_kernel(void);
 
 #endif
