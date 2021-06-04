@@ -41,7 +41,7 @@ uint32_t dt_typefile_typesize(dt_typefile *, ctf_id_t);
 const char *dt_typefile_error(dt_typefile_t *);
 ctf_file_t *dt_typefile_membinfo(dt_typefile_t *, ctf_id_t,
     const char *, ctf_membinfo_t *);
-ctf_id_t dt_typefile_kind(dt_typefile_t *, ctf_id_t);
+ctf_id_t dt_typefile_typekind(dt_typefile_t *, ctf_id_t);
 dt_typefile_t *dt_typefile_kernel(void);
 
 #endif

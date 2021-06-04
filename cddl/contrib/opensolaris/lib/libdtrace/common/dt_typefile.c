@@ -189,7 +189,7 @@ dt_typefile_membinfo(dt_typefile_t *typef, ctf_id_t type,
 }
 
 ctf_id_t
-dt_typefile_kind(dt_typefile_t *typef, ctf_id_t type)
+dt_typefile_typekind(dt_typefile_t *typef, ctf_id_t type)
 {
 	ctf_file_t *ctfp;
 
