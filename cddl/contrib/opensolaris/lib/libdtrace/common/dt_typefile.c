@@ -227,3 +227,15 @@ dt_typefile_resolve(dt_typefile_t *typef, ctf_id_t type)
 
 	return (ctf_type_resolve(ctfp, type));
 }
+
+int
+dt_typefile_encoding(dt_typefile_t *typef, ctf_id_t type, ctf_encoding_t *ep)
+{
+	ctf_file_t *ctfp;
+
+	ctfp = dt_module_getctf(typef->dtp, typef->module);
+	if (ctfp == NULL)
+		return (-1);
+
+	return (ctf_type_encoding(ctfp, type, ep));
+}

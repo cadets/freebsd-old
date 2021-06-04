@@ -44,5 +44,6 @@ ctf_file_t *dt_typefile_membinfo(dt_typefile_t *, ctf_id_t,
 ctf_id_t dt_typefile_typekind(dt_typefile_t *, ctf_id_t);
 dt_typefile_t *dt_typefile_kernel(void);
 ctf_id_t dt_typefile_resolve(dt_typefile_t *, ctf_id_t);
+int dt_typefile_encoding(dt_typefile_t *, ctf_id_t, ctf_encoding_t *);
 
 #endif

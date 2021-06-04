@@ -73,7 +73,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	ctf_id_t ctfid;
 	uint8_t rd, r1;
 	uint16_t offset;
-        ctf_encoding_t ep;
+        ctf_encoding_t encoding;
 	dtrace_diftype_t *rtype;
 	int index, i;
 	int ctf_kind;
@@ -91,7 +91,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	new_op = 0;
 	index = i = 0;
 	ctf_kind = 0;
-	memset(&ep, 0, sizeof(ctf_encoding_t));
+	memset(&encoding, 0, sizeof(ctf_encoding_t));
 
 	if (difo->dtdo_inttab != NULL) {
 		assert(difo->dtdo_intlen != 0);
@@ -222,9 +222,10 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 
 		case DIF_OP_ULOAD:
 		case DIF_OP_UULOAD:
-			ctfid = ctf_type_resolve(ctf_file, node->din_mip->ctm_type);
-		        size = ctf_type_size(ctf_file, ctfid);
-			kind = ctf_type_kind(ctf_file, ctfid);
+			ctfid = dt_typefile_resolve(
+			    node->din_tf, node->din_mip->ctm_type);
+			size = dt_typefile_typesize(node->din_tf, ctfid);
+			kind = dt_typefile_typekind(node->din_tf, ctfid);
 
 			/*
 			 * NOTE: We support loading of CTF_K_ARRAY due to it
@@ -242,12 +243,13 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 
 				new_instr = DIF_INSTR_LOAD(new_op, r1, rd);
 			} else {
-			        if (ctf_type_encoding(ctf_file, ctfid, &ep) != 0)
+				if (dt_typefile_encoding(
+				    node->din_tf, ctfid, &encoding) != 0)
 					errx(EXIT_FAILURE,
 					    "failed to get encoding for %ld",
 					    ctfid);
 
-				if (ep.cte_format & CTF_INT_SIGNED) {
+				if (encoding.cte_format & CTF_INT_SIGNED) {
 					if (size == 1)
 						new_op = opcode == DIF_OP_ULOAD ?
 						    DIF_OP_LDSB : DIF_OP_ULDSB;
