@@ -4320,12 +4320,12 @@ dt_infer_type(dt_ifg_node_t *n)
 			 * Get the original type name of dn1->din_ctfid for
 			 * error reporting.
 			 */
-			if (ctf_type_name(ctf_file, dn1->din_ctfid, buf,
-			    sizeof(buf)) != ((char *)buf))
-				errx(EXIT_FAILURE,
+			if (dt_typefile_typename(dn1->din_tf, dn1->din_ctfid,
+			    buf, sizeof(buf)) != ((char *)buf))
+				dt_set_progerr(g_dtp, g_pgp,
 				    "failed at getting type name %ld: %s",
 				    dn1->din_ctfid,
-				    ctf_errmsg(ctf_errno(ctf_file)));
+				    dt_typefile_error(dn1->din_tf));
 
 
 			if (dt_get_class(dn1->din_tf, buf) != DTC_STRUCT)
@@ -4343,20 +4343,24 @@ dt_infer_type(dt_ifg_node_t *n)
 			/*
 			 * Get the non-pointer type. This should NEVER fail.
 			 */
-			type = ctf_type_reference(ctf_file, dn1->din_ctfid);
+			type =
+			    dt_typefile_reference(dn1->din_tf, dn1->din_ctfid);
 
-			if (dt_lib_membinfo(
-				octfp = ctf_file, type, dn1->din_sym, mip) == 0)
-				dt_set_progerr(g_dtp, g_pgp, "failed to get member info"
+			if (dt_typefile_membinfo(
+			    dn1->din_tf, type, dn1->din_sym, mip) == 0)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed to get member info"
 				    " for %s(%s): %s",
 				    buf, dn1->din_sym,
-				    ctf_errmsg(ctf_errno(ctf_file)));
+				    dt_typefile_error(dn1->din_tf));
 
 			n->din_mip = mip;
+			n->din_tf = dn1->din_tf;
 			n->din_ctfid = mip->ctm_type;
 			n->din_type = DIF_TYPE_CTF;
 		} else {
 			n->din_ctfid = dn1->din_ctfid;
+			n->din_tf = dn1->din_tf;
 			n->din_type = dn1->din_type;
 		}
 
