@@ -33,6 +33,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <unistd.h>
+
 #include <dt_impl.h>
 #include <dt_program.h>
 #include <dt_elf.h>
@@ -43,6 +45,8 @@
 #include <err.h>
 #include <errno.h>
 #include <stddef.h>
+
+#include <dtdaemon.h>
 
 static const struct {
 	int err;
@@ -309,6 +313,8 @@ dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
 	size_t donepathlen = 0;
 	size_t dirlen;
 	va_list args;
+	int dtdaemon_sock, tmpfd;
+	char template[MAXPATHLEN] = "/tmp/ddtrace-set-prog-err.XXXXXXX";
 	
 	if (pgp == NULL)
 		return;
@@ -335,17 +341,29 @@ dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
 	 */
 	if (dtp->dt_is_guest == 0)
 		errx(EXIT_FAILURE, "%s", pgp->dp_err);
-	dt_elf_create(pgp, ELFDATA2LSB, elfpath);
 
-	donepathlen = strlen(elfpath) - 1;
-	memset(donepath, 0, donepathlen);
-	memcpy(donepath, elfpath, dirlen);
-	memcpy(donepath + dirlen, elfpath + dirlen + 1,
-	    donepathlen - dirlen);
+	dtdaemon_sock = open_dtdaemon(DTD_SUB_READDATA);
+	if (dtdaemon_sock == -1)
+		errx(EXIT_FAILURE, "failed to open dtdaemon\n");
 
-	if (rename(elfpath, donepath))
-		errx("failed to move %s to %s: %s\n",
-		    elfpath, donepath, strerror(errno));
+	tmpfd = mkstemp(template);
+	if (tmpfd == -1)
+		errx(EXIT_FAILURE, "mkstemp() failed: %s\n", strerror(errno));
+	strcpy(template, "/tmp/ddtrace-set-prog-err.XXXXXXX");
+
+	dt_elf_create(pgp, ELFDATA2LSB, tmpfd);
+
+	if (fsync(tmpfd))
+		errx(EXIT_FAILURE, "fsync() failed: %s\n", strerror(errno));
+
+	if (lseek(tmpfd , 0, SEEK_SET))
+		errx(EXIT_FAILURE, "lseek() failed: %s\n", strerror(errno));
+
+	if (send_elf(tmpfd, dtdaemon_sock, "outbound"))
+		errx(EXIT_FAILURE, "send_elf() failed\n");
+
+	close(tmpfd);
+	close(dtdaemon_sock);
 
 	errx(EXIT_FAILURE, "%s", pgp->dp_err);
 }
