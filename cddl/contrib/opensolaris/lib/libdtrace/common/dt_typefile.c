@@ -188,6 +188,18 @@ dt_typefile_membinfo(dt_typefile_t *typef, ctf_id_t type,
 	return (fp);
 }
 
+ctf_id_t
+dt_typefile_kind(dt_typefile_t *typef, ctf_id_t type)
+{
+	ctf_file_t *ctfp;
+
+	ctfp = dt_module_getctf(typef->dtp, typef->dtp_module);
+	if (ctfp == NULL)
+		return (CTF_ERR);
+
+	return (ctf_type_kind(ctfp, type));
+}
+
 dt_typefile_t *
 dt_typefile_kernel(void)
 {

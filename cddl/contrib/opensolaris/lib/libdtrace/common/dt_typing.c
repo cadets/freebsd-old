@@ -58,7 +58,7 @@ dt_get_class(dt_typefile_t *tf, char *buf)
 {
 	size_t len;
 	ctf_id_t t, ot;
-	int k;
+	ctf_id_t k;
 
 	t = 0;
 	ot = -1;
