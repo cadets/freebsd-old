@@ -4384,21 +4384,23 @@ dt_infer_type(dt_ifg_node_t *n)
 			 */
 			if ((uintptr_t)data_dn1->din_sym >=
 			    ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
-				dt_set_progerr(g_dtp, g_pgp, "sym (%p) is out of range: %p",
+				dt_set_progerr(g_dtp, g_pgp,
+				    "sym (%p) is out of range: %p",
 				    data_dn1->din_sym,
 				    (void *)(((uintptr_t)difo->dtdo_symtab) +
-					difo->dtdo_symlen));
+				    difo->dtdo_symlen));
 
 			/*
 			 * Get the original type name of dn1->din_ctfid for
 			 * error reporting.
 			 */
-			if (ctf_type_name(ctf_file, data_dn1->din_ctfid, buf,
-				sizeof(buf)) != ((char *)buf))
-				errx(EXIT_FAILURE,
+			if (dt_typefile_typename(data_dn1->din_tf,
+			    data_dn1->din_ctfid, buf,
+			    sizeof(buf)) != ((char *)buf))
+				dt_set_progerr(g_dtp, g_pgp,
 				    "failed at getting type name %ld: %s",
 				    data_dn1->din_ctfid,
-				    ctf_errmsg(ctf_errno(ctf_file)));
+				    dt_typefile_error(data_dn1->din_tf));
 
 			if (dt_get_class(data_dn1->din_tf, buf) != DTC_STRUCT)
 				return (-1);
@@ -4415,14 +4417,16 @@ dt_infer_type(dt_ifg_node_t *n)
 			/*
 			 * Get the non-pointer type. This should NEVER fail.
 			 */
-			type = ctf_type_reference(ctf_file, data_dn1->din_ctfid);
+			type = dt_typefile_reference(
+			    data_dn1->din_tf, data_dn1->din_ctfid);
 
-			if (dt_lib_membinfo(
-			    octfp = ctf_file, type, data_dn1->din_sym, mip) == 0)
-				dt_set_progerr(g_dtp, g_pgp, "failed to get member info"
+			if (dt_typefile_membinfo(data_dn1->din_tf, type,
+			    data_dn1->din_sym, mip) == 0)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed to get member info"
 				    " for %s(%s): %s",
 				    buf, data_dn1->din_sym,
-				    ctf_errmsg(ctf_errno(ctf_file)));
+				    dt_typefile_error(data_dn1->din_tf));
 
 			n->din_mip = mip;
 			/*
@@ -4435,15 +4439,21 @@ dt_infer_type(dt_ifg_node_t *n)
 				assert(dn1_op == DIF_OP_TYPECAST);
 
 				n->din_ctfid = dn1->din_ctfid;
+				n->din_tf = dn1->din_tf;
 				n->din_type = dn1->din_type;
 			} else {
 				n->din_ctfid = mip->ctm_type;
+				n->din_tf = data_dn1->din_tf;
 				n->din_type = DIF_TYPE_CTF;
 			}
 		} else if (dn1->din_type == DIF_TYPE_CTF) {
 			n->din_ctfid = dn1->din_ctfid;
+			n->din_tf = dn1->din_tf;
 			n->din_type = dn1->din_type;
 		} else
+			/*
+			 * XXX: Do we need to store the typefile here?
+			 */
 			n->din_type = dn1->din_type;
 
 		return (DIF_TYPE_NONE);
