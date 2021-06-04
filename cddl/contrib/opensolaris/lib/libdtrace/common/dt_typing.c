@@ -4288,6 +4288,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 	case DIF_OP_COPYS:
 		n->din_ctfid = dn1->din_ctfid;
+		n->din_tf = dn1->din_tf;
 		n->din_type = dn1->din_type;
 		n->din_mip = dn1->din_mip;
 		n->din_sym = dn1->din_sym;
