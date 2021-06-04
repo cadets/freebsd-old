@@ -2477,12 +2477,14 @@ dt_infer_type(dt_ifg_node_t *n)
 				    "copyinstr() first argument is NULL");
 
 			arg0 = se->ds_ifgnode;
+			assert(arg0->din_tf != NULL);
 
-			if (ctf_type_name(ctf_file,
+			if (dt_typefile_typename(arg0->din_tf,
 			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp, "failed at getting type name"
-				    " %ld: %s", arg0->din_ctfid,
-				    ctf_errmsg(ctf_errno(ctf_file)));
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed at getting type name %ld: %s",
+				    arg0->din_ctfid,
+				    dt_typefile_error(arg0->din_tf));
 
 			/*
 			 * If the argument type is wrong, fail to type check.
@@ -2503,14 +2505,16 @@ dt_infer_type(dt_ifg_node_t *n)
 					    "copyinstr() ds_ifgnode is NULL");
 
 				arg1 = se->ds_ifgnode;
+				assert(arg1->din_tf != NULL);
 
-				if (ctf_type_name(ctf_file,
-				    arg1->din_ctfid,
-				    buf, sizeof(buf)) != (char *)buf)
-					errx(EXIT_FAILURE,
+				if (dt_typefile_typename(arg1->din_tf,
+				    arg1->din_ctfid, buf,
+				    sizeof(buf)) != (char *)buf)
+					dt_set_progerr(g_dtp, g_pgp,
 					    "failed at getting type name"
-					    " %ld: %s", arg1->din_ctfid,
-					    ctf_errmsg(ctf_errno(ctf_file)));
+					    " %ld: %s",
+					    arg1->din_ctfid,
+					    dt_typefile_error(arg1->din_tf));
 
 				/*
 				 * If the argument type is wrong, fail to type check.
