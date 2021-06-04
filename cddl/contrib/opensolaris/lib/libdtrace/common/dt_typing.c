@@ -1111,20 +1111,31 @@ dt_typecheck_stack(dt_list_t *stacklist, int *empty)
 				return (NULL);
 			}
 
+			/*
+			 * TODO(dstolfa, important): We don't really want to
+			 * compare by ctfid anymore because when we compare
+			 * types across modules, we will have differing ctfids.
+			 * We instead need to compare this via strings or some
+			 * other mechanism...
+			 */
 			if (n->din_ctfid != on->din_ctfid) {
-				if (ctf_type_name(ctf_file, n->din_ctfid, buf1,
+				if (dt_typefile_typename(n->din_tf,
+				    n->din_ctfid, buf1,
 				    sizeof(buf1)) != ((char *)buf1))
 					dt_set_progerr(g_dtp, g_pgp,
-					    "failed at getting type name %ld: %s",
+					    "failed at getting "
+					    "type name %ld: %s",
 					    n->din_ctfid,
-					    ctf_errmsg(ctf_errno(ctf_file)));
+					    dt_typefile_error(n->din_tf));
 
-				if (ctf_type_name(ctf_file, on->din_ctfid, buf2,
+				if (dt_typefile_typename(on->din_tf,
+				    on->din_ctfid, buf2,
 				    sizeof(buf2)) != ((char *)buf2))
 					dt_set_progerr(g_dtp, g_pgp,
-					    "failed at getting type name %ld: %s",
+					    "failed at getting "
+					    "type name %ld: %s",
 					    on->din_ctfid,
-					    ctf_errmsg(ctf_errno(ctf_file)));
+					    dt_typefile_error(on->din_tf));
 
 				fprintf(stderr,
 				    "stack ctf type mismatch: %s != %s\n",
