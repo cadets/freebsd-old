@@ -83,7 +83,7 @@ dt_get_class(dt_typefile_t *tf, char *buf)
 		    "failed getting type (%s) by name: %s\n", buf,
 		    dt_typefile_error(tf));
 
-	do  {
+	do {
 
 		if ((k = dt_typefile_typekind(tf, t)) == CTF_ERR)
 			dt_set_progerr(g_dtp, g_pgp,
@@ -589,8 +589,9 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			 * Fail to typecheck if the types don't match 100%.
 			 */
 			if (node->din_ctfid != onode->din_ctfid) {
-				fprintf(stderr, "types %s and %s do not match\n",
-				    buf1, buf2);
+				fprintf(stderr,
+				    "types %s and %s do not match\n", buf1,
+				    buf2);
 				return (NULL);
 			}
 
