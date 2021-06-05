@@ -32,7 +32,7 @@
 
 #include <_dt_typefile.h>
 
-int dt_typefile_openall(dtrace_hdl_t *);
+void dt_typefile_openall(dtrace_hdl_t *);
 
 ctf_id_t dt_typefile_ctfid(dt_typefile_t *, const char *);
 char *dt_typefile_typename(dt_typefile_t *, ctf_id_t, char *, size_t);

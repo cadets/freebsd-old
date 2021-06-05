@@ -52,6 +52,7 @@ SRCS=		dt_aggregate.c \
 		dt_strtab.c \
 		dt_subr.c \
 		dt_sugar.c \
+		dt_typefile.c \
 		dt_typing.c \
 		dt_work.c \
 		dt_xlator.c \

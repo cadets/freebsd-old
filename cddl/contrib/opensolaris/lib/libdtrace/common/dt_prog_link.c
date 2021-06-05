@@ -542,7 +542,7 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	int rval = 0;
 	int err = 0;
 
-	err = dt_typefile_openall(dtp);
+	dt_typefile_openall(dtp);
 	if (err)
 		errx(EXIT_FAILURE, "failed to open CTF files: %s\n",
 		    strerror(errno));

@@ -28,18 +28,7 @@
 #ifndef __DT_TYPEFILE_T_
 #define __DT_TYPEFILE_T_
 
-#include <sys/types.h>
-#include <sys/param.h>
-
-#include <sys/ctf.h>
-
-#include <dt_list.h>
-
-typedef struct dt_typefile {
-	dt_list_t list;
-	ctf_file_t *ctf_file;
-	char pathname[MAXPATHLEN];
-	char modname[MAXPATHLEN];
-} dt_typefile_t;
+struct dt_typefile;
+typedef struct dt_typefile dt_typefile_t;
 
 #endif
