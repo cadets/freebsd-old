@@ -786,7 +786,7 @@ dt_elf_new_id_name(const char *name)
 	int needs_realloc;
 	char *otab;
 
-	len = strlen(name);
+	len = strlen(name) + 1;
 	offset = dtelf_state->s_idname_offset;
 
 	/*
@@ -880,8 +880,8 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 	estmt->dtes_ecbdesc = elf_ndxscn(dt_elf_new_ecbdesc(e, stmt));
 
 	/*
-	 * Fill in the first and last action for a statement that we've previously
-	 * saved when creating actions.
+	 * Fill in the first and last action for a statement that we've
+	 * previously saved when creating actions.
 	 */
 	estmt->dtes_action = dtelf_state->s_first_act_scn;
 	estmt->dtes_action_last = dtelf_state->s_last_act_scn;
@@ -899,12 +899,16 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 			errx(EXIT_FAILURE,
 			    "elf_newscn(%p) failed with %s", e, elf_errmsg(-1));
 
-		if ((aid_data = elf_newdata(scn)) == NULL)
+		if ((aid_data = elf_newdata(aid_scn)) == NULL)
 			errx(EXIT_FAILURE, "elf_newdata(%p) failed with %s",
-			    scn, elf_errmsg(-1));
+			    aid_scn, elf_errmsg(-1));
 
 		eaid = malloc(sizeof(dt_elf_ident_t));
-		memset(eaid, 0, sizeof(dt_elf_ident_t));\
+		if (eaid == NULL)
+			errx(EXIT_FAILURE, "malloc() failed with: %s\n",
+			    strerror(errno));
+
+		memset(eaid, 0, sizeof(dt_elf_ident_t));
 
 		eaid->edi_name = dt_elf_new_id_name(aid->di_name);
 		eaid->edi_id = aid->di_id;
@@ -928,8 +932,8 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 		shdr->sh_flags = SHF_OS_NONCONFORMING;
 		shdr->sh_entsize = sizeof(dt_elf_ident_t);
 
-		(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
-		(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
+		(void) elf_flagshdr(aid_scn, ELF_C_SET, ELF_F_DIRTY);
+		(void) elf_flagscn(aid_scn, ELF_C_SET, ELF_F_DIRTY);
 		(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
 
 		estmt->dtes_aggdata = elf_ndxscn(aid_scn);
@@ -1817,7 +1821,7 @@ dt_elf_in_actlist(dtrace_actdesc_t *find)
 	dt_elf_eact_list_t *e;
 
 	e = NULL;
-	
+
 	for (e = dt_list_next(&dtelf_state->s_actions);
 	    e; e = dt_list_next(e))
 		if (e->act == find)

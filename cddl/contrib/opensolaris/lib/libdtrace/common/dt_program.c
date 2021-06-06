@@ -758,12 +758,11 @@ int
 dt_prog_verify_difo(dtrace_hdl_t *dtp,
     dtrace_difo_t *dbase, dtrace_difo_t *dnew)
 {
-	size_t i, j;
+	size_t i;
 	dif_instr_t ibase, inew;
 	uint8_t opbase, opnew;
 
 	i = 0;
-	j = 0;
 	ibase = 0;
 	inew = 0;
 	opbase = 0;
@@ -776,14 +775,18 @@ dt_prog_verify_difo(dtrace_hdl_t *dtp,
 	 */
 	for (i = 0; i < dbase->dtdo_len; i++) {
 		ibase = dbase->dtdo_buf[i];
-		inew = dnew->dtdo_buf[j];
+		inew = dnew->dtdo_buf[i];
 
 		opbase = DIF_INSTR_OP(ibase);
 		switch (opbase) {
 		case DIF_OP_USETX:
 			opnew = DIF_INSTR_OP(inew);
-			if (opnew != DIF_OP_SETX)
+			if (opnew != DIF_OP_SETX) {
+				fprintf(stderr,
+				    "usetx was not set to setx (!= %u)\n",
+				    opnew);
 				return (1);
+			}
 
 			break;
 
@@ -792,8 +795,13 @@ dt_prog_verify_difo(dtrace_hdl_t *dtp,
 			if (opnew != DIF_OP_LDSB && opnew != DIF_OP_LDSH &&
 			    opnew != DIF_OP_LDSW && opnew != DIF_OP_LDX  &&
 			    opnew != DIF_OP_LDUB && opnew != DIF_OP_LDUH &&
-			    opnew != DIF_OP_LDUW)
+			    opnew != DIF_OP_LDUW) {
+				fprintf(stderr,
+				    "uload was not set to a ld* "
+				    "instruction (!= %u)\n",
+				    opnew);
 				return (1);
+			}
 			break;
 
 		case DIF_OP_UULOAD:
@@ -801,19 +809,35 @@ dt_prog_verify_difo(dtrace_hdl_t *dtp,
 			if (opnew != DIF_OP_ULDSB && opnew != DIF_OP_ULDSH &&
 			    opnew != DIF_OP_ULDSW && opnew != DIF_OP_ULDX  &&
 			    opnew != DIF_OP_ULDUB && opnew != DIF_OP_ULDUH &&
-			    opnew != DIF_OP_ULDUW)
+			    opnew != DIF_OP_ULDUW) {
+				fprintf(stderr,
+				    "uuload was not set to a uld* "
+				    "instruction (!= %u)\n",
+				    opnew);
 				return (1);
+			}
 			break;
 
 		case DIF_OP_TYPECAST:
 			opnew = DIF_INSTR_OP(inew);
-			if (opnew != DIF_OP_NOP)
+			if (opnew != DIF_OP_NOP) {
+				fprintf(stderr,
+				    "typecast was not set to nop (!= %u)\n",
+				    opnew);
 				return (1);
+			}
 			break;
 
 		default:
-			if (ibase != inew)
+			if (ibase != inew) {
+				fprintf(stderr,
+				    "ibase and inew aren't "
+				    "the same (%x != %x)\n"
+				    "  opbase = %u\n"
+				    "  opnew = %u\n",
+				    ibase, inew, opbase, opnew);
 				return (1);
+			}
 			break;
 		}
 	}
@@ -853,7 +877,7 @@ dt_prog_verify(dtrace_hdl_t *dtp, dtrace_prog_t *pbase,
 	 */
 	if (memcmp(testbuf, pbase->dp_srcident, DT_PROG_IDENTLEN))
 		return (0);
-	
+
 	/*
 	 * Iterate through all the statements of both programs and verify
 	 * that they match up, or if they are relocations that they are
