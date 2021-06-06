@@ -10333,8 +10333,12 @@ dtrace_probe_description(const dtrace_probe_t *prp, dtrace_probedesc_t *pdp)
 	pdp->dtpd_id = prp->dtpr_id;
 	pdp->dtpd_vmid = prp->dtpr_vmid;
 
-	(void) strncpy(pdp->dtpd_provider,
-	    pvp->dtpv_name, DTRACE_PROVNAMELEN - 1);
+	if (prp->dtpr_vmid == 0)
+		(void)strncpy(
+		    pdp->dtpd_provider, pvp->dtpv_name, DTRACE_PROVNAMELEN - 1);
+	else
+		(void)strncpy(
+		    pdp->dtpd_provider, (char *)pvp, DTRACE_PROVNAMELEN - 1);
 
 	(void) strncpy(pdp->dtpd_mod, prp->dtpr_mod, DTRACE_MODNAMELEN - 1);
 	(void) strncpy(pdp->dtpd_func, prp->dtpr_func, DTRACE_FUNCNAMELEN - 1);

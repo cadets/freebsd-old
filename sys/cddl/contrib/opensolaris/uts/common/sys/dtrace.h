@@ -1096,6 +1096,7 @@ typedef struct dtrace_recdesc {
 
 typedef struct dtrace_eprobedesc {
 	dtrace_epid_t dtepd_epid;		/* enabled probe ID */
+	dtrace_vmid_t dtepd_vmid;		/* probe VMID */
 	dtrace_id_t dtepd_probeid;		/* probe ID */
 	uint64_t dtepd_uarg;			/* library argument */
 	uint32_t dtepd_size;			/* total size */
