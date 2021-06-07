@@ -43,12 +43,457 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <err.h>
+#include <errno.h>
 #include <assert.h>
 
 static int dt_infer_type(dt_ifg_node_t *);
 
 static dtrace_hdl_t *g_dtp;
 static dtrace_prog_t *g_pgp;
+
+typedef struct argcheck_cookie {
+	dt_ifg_node_t *node;
+	uint16_t varcode;
+} argcheck_cookie_t;
+
+static ctf_id_t
+dt_type_strip_ref(dt_typefile_t *tf, ctf_id_t *orig_id, size_t *n_stars)
+{
+	ctf_id_t kind;
+	ctf_id_t id;
+	size_t n_redirects;
+
+	assert(n_stars != NULL);
+	assert(orig_id != NULL);
+
+	kind = dt_typefile_typekind(tf, id);
+
+	*n_stars = 0;
+
+	if (kind != CTF_K_TYPEDEF && kind != CTF_K_POINTER)
+		return (kind);
+
+	n_redirects = 0;
+	while (kind == CTF_K_TYPEDEF || kind == CTF_K_POINTER) {
+		id = dt_typefile_reference(tf, id);
+		if (id == CTF_ERR) {
+			fprintf(stderr,
+			    "dt_typefile_reference() failed with: %s\n",
+			    dt_typefile_error(tf));
+			return (CTF_ERR);
+		}
+
+		if (kind == CTF_K_POINTER)
+			n_redirects++;
+
+		kind = dt_typefile_typekind(tf, id);
+	}
+
+	assert(kind != CTF_K_TYPEDEF && kind != CTF_K_POINTER);
+	*n_stars = n_redirects;
+	*orig_id = id;
+
+	return (kind);
+}
+
+static int
+dt_ctf_type_compare(dt_typefile_t *tf1, ctf_id_t id1,
+    dt_typefile_t *tf2, ctf_id_t id2)
+{
+
+	size_t n_stars1, n_stars2;
+	ctf_id_t kind1, kind2;
+	void *memb1, *memb2;
+	char type1_name[4096], type2_name[4096];
+	char memb1_name[4096], memb2_name[4096];
+	void *s1, *s2;
+
+	if (dt_typefile_typename(tf1, id1, type1_name, sizeof(type1_name)) !=
+	    (char *)type1_name) {
+		fprintf(stderr, "dt_typefile_typename() failed: %s\n",
+		    dt_typefile_error(tf1));
+		return (-1);
+	}
+
+	if (dt_typefile_typename(tf2, id2, type2_name, sizeof(type2_name)) !=
+	    (char *)type2_name) {
+		fprintf(stderr, "dt_typefile_typename() failed: %s\n",
+		    dt_typefile_error(tf2));
+		return (-1);
+	}
+
+	kind1 = dt_type_strip_ref(tf1, &id1, &n_stars1);
+	kind2 = dt_type_strip_ref(tf2, &id2, &n_stars2);
+
+	/*
+	 * Give integers some leeway.
+	 */
+	if (kind1 == CTF_K_INTEGER && kind2 == CTF_K_INTEGER) {
+		if (dt_typefile_compat(tf1, id1, tf2, id2) == 0) {
+			fprintf(stderr, "%s and %s are incompatible integers\n",
+			    type1_name, type2_name);
+			return (-1);
+		}
+
+		return (0);
+	}
+
+	assert(kind1 != CTF_K_UNKNOWN);
+	assert(kind2 != CTF_K_UNKNOWN);
+
+	assert(kind1 != CTF_K_FUNCTION);
+	assert(kind2 != CTF_K_FUNCTION);
+
+	assert(kind1 != CTF_K_FLOAT);
+	assert(kind2 != CTF_K_FLOAT);
+
+	assert(kind1 < CTF_K_MAX);
+	assert(kind2 < CTF_K_MAX);
+
+	/*
+	 * Names must match
+	 */
+	if (strcmp(type1_name, type2_name) != 0) {
+		fprintf(stderr, "subtyping not possible: %s != %s\n",
+		    type1_name, type2_name);
+		return (-1);
+	}
+
+	assert(kind1 == kind2);
+
+	if (kind1 == CTF_K_UNION || kind1 == CTF_K_ENUM ||
+	    kind1 == CTF_K_FORWARD) {
+		if (dt_typefile_compat(tf1, id1, tf2, id2) == 0) {
+			fprintf(stderr,
+			    "dt_typefile_compat() %s is not "
+			    "compatible with %s\n",
+			    type1_name, type2_name);
+			return (-1);
+		}
+
+		return (0);
+	}
+
+	if (kind1 == CTF_K_STRUCT) {
+		s1 = dt_typefile_buildup_struct(tf1, id1);
+		if (s1 == NULL) {
+			fprintf(stderr,
+			    "dt_typefile_buildup_struct(%s) "
+			    "failed for %s: %s\n",
+			    dt_typefile_stringof(tf1), type1_name,
+			    dt_typefile_error(tf1));
+			return (-1);
+		}
+
+		s2 = dt_typefile_buildup_struct(tf2, id2);
+		if (s2 == NULL) {
+			fprintf(stderr,
+			    "dt_typefile_buildup_struct(%s) "
+			    "failed for %s: %s\n",
+			    dt_typefile_stringof(tf2), type2_name,
+			    dt_typefile_error(tf2));
+			return (-1);
+		}
+
+		memb1 = dt_typefile_struct_next(s1);
+		memb2 = dt_typefile_struct_next(s2);
+
+		/*
+		 * Go over each member and ensure that if both exist, they are
+		 * pointwise equal. We don't accept *any* variety between them.
+		 */
+		while (memb1 && memb2) {
+			if (dt_typefile_typename(tf1,
+			    dt_typefile_memb_ctfid(memb1), memb1_name,
+			    sizeof(memb1_name)) != (char *)memb1_name) {
+				fprintf(stderr,
+				    "dt_typefile_typename() failed: %s\n",
+				    dt_typefile_error(tf1));
+				return (-1);
+			}
+
+			if (dt_typefile_typename(tf2,
+			    dt_typefile_memb_ctfid(memb2), memb2_name,
+			    sizeof(memb2_name)) != (char *)memb2_name) {
+				fprintf(stderr,
+				    "dt_typefile_typename() failed: %s\n",
+				    dt_typefile_error(tf2));
+				return (-1);
+			}
+
+			if (dt_ctf_type_compare(tf1,
+			    dt_typefile_memb_ctfid(memb1), tf2,
+			    dt_typefile_memb_ctfid(memb2))) {
+				fprintf(stderr,
+				    "comparison between %s and %s failed\n",
+				    memb1_name, memb2_name);
+				return (-1);
+			}
+
+			memb1 = dt_typefile_struct_next(s1);
+			memb2 = dt_typefile_struct_next(s2);
+		}
+
+		assert(memb1 == NULL || memb2 == NULL);
+
+		if (memb1 != memb2) {
+			fprintf(stderr,
+			    "structures %s (%s) and %s (%s) "
+			    "don't match\n",
+			    type1_name, dt_typefile_stringof(tf1), type2_name,
+			    dt_typefile_stringof(tf2));
+			return (-1);
+		}
+
+		return (0);
+	}
+
+	return (0);
+}
+
+static int
+dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
+    ctf_id_t id2, int *which)
+{
+	ctf_id_t kind1, kind2;
+	void *memb1, *memb2;
+	size_t n_stars1, n_stars2;
+	uint32_t size1, size2;
+	char memb1_name[4096], memb2_name[4096];
+	char type1_name[4096], type2_name[4096];
+	void *s1, *s2;
+
+	*which = 0;
+
+	if (dt_typefile_typename(tf1, id1, type1_name, sizeof(type1_name)) !=
+	    (char *)type1_name) {
+		fprintf(stderr, "dt_typefile_typename() failed: %s\n",
+		    dt_typefile_error(tf1));
+		return (-1);
+	}
+
+	if (dt_typefile_typename(tf2, id2, type2_name, sizeof(type2_name)) !=
+	    (char *)type2_name) {
+		fprintf(stderr, "dt_typefile_typename() failed: %s\n",
+		    dt_typefile_error(tf2));
+		return (-1);
+	}
+
+	kind1 = dt_type_strip_ref(tf1, &id1, &n_stars1);
+	kind2 = dt_type_strip_ref(tf2, &id2, &n_stars2);
+
+	/*
+	 * In case number of stars in a pointer didn't match.
+	 */
+	if (n_stars1 != n_stars2) {
+		fprintf(stderr,
+		    "mismatched pointer %s != %s "
+		    "(%zu stars != %zu stars)\n",
+		    type1_name, type2_name, n_stars1, n_stars2);
+		return (-1);
+	}
+
+	/*
+	 * We don't want bogus values, functions or floats here.
+	 */
+	assert(kind1 != CTF_K_UNKNOWN);
+	assert(kind2 != CTF_K_UNKNOWN);
+
+	assert(kind1 != CTF_K_FUNCTION);
+	assert(kind2 != CTF_K_FUNCTION);
+
+	assert(kind1 != CTF_K_FLOAT);
+	assert(kind2 != CTF_K_FLOAT);
+
+	assert(kind1 < CTF_K_MAX);
+	assert(kind2 < CTF_K_MAX);
+
+	/*
+	 * For integers, we just want to check if they are compatible and then
+	 * pick the one that is larger as the one to use for our storage.
+	 */
+	if (kind1 == CTF_K_INTEGER && kind2 == CTF_K_INTEGER) {
+		/*
+		 * dt_ctf_type_compare will do the error reporting for us.
+		 */
+		if (dt_ctf_type_compare(tf1, id1, tf2, id2))
+			return (-1);
+
+		size1 = dt_typefile_typesize(tf1, id1);
+		size2 = dt_typefile_typesize(tf2, id2);
+
+		*which = size1 > size2 ? 1 : 2;
+		return (0);
+
+#if 0
+		if (dt_typefile_compat(tf1, id1, tf2, id2) == 0) {
+			fprintf(stderr, "%s and %s are incompatible integers\n",
+			    type1_name, type2_name);
+			return (-1);
+		}
+#endif
+	}
+
+	/*
+	 * We require that arrays are fully compatible
+	 */
+	if (kind1 == CTF_K_ARRAY && kind2 == CTF_K_ARRAY) {
+		if (dt_ctf_type_compare(tf1, id1, tf2, id2))
+			return (-1);
+
+		/*
+		 * It doesn't matter which one we pick here.
+		 */
+		*which = 1;
+		return (0);
+
+#if 0
+		if (dt_typefile_compat(tf1, id1, tf2, id2) == 0) {
+			fprintf(stderr, "%s and %s are incompatible arrays\n",
+			    type1_name, type2_name);
+			return (-1);
+		}
+#endif
+	}
+
+	/*
+	 * Since this is C, we do a comparison by name first. If the names don't
+	 * match identically, we aren't really interested.
+	 *
+	 * Note that this is not really a requirement and we could require a
+	 * definition of equivalence defined by a bijection which is far more
+	 * relaxed, but for now we require that the name matches. This is easily
+	 * removed later.
+	 */
+	if (strcmp(type1_name, type2_name) != 0) {
+		fprintf(stderr, "subtyping not possible: %s != %s\n",
+		    type1_name, type2_name);
+		return (-1);
+	}
+
+	/*
+	 * Because we've identified that they are matching 1:1 in name, we
+	 * expect that they are going to be matching in CTF kind and a few other
+	 * things...
+	 */
+	assert(kind1 == kind2);
+
+	size1 = dt_typefile_typesize(tf1, id1);
+	size2 = dt_typefile_typesize(tf2, id2);
+
+	/*
+	 * We should never have gotten to this point if we were going to get
+	 * CTF_ERR.
+	 */
+	assert(size1 != CTF_ERR);
+	assert(size2 != CTF_ERR);
+
+	if (kind1 == CTF_K_STRUCT) {
+		/*
+		 * We have a few conditions for subtyping of structs.
+		 *
+		 * s1 is a subtype of s2 iff:
+		 *  (1) sizeof(s1) <= sizeof(s2)
+		 *  (2) s1 is a slice of s2 (s1 = s2 up to a point, but s2 has
+		 *                           more stuff afterwards)
+		 *
+		 * We could loosen this restriction quite a bit, but for now
+		 * this is sufficient.
+		 */
+
+		s1 = dt_typefile_buildup_struct(tf1, id1);
+		if (s1 == NULL) {
+			fprintf(stderr,
+			    "dt_typefile_buildup_struct(%s) "
+			    "failed for %s: %s\n",
+			    dt_typefile_stringof(tf1), type1_name,
+			    dt_typefile_error(tf1));
+			return (-1);
+		}
+
+		s2 = dt_typefile_buildup_struct(tf2, id2);
+		if (s2 == NULL) {
+			fprintf(stderr,
+			    "dt_typefile_buildup_struct(%s) "
+			    "failed for %s: %s\n",
+			    dt_typefile_stringof(tf2), type2_name,
+			    dt_typefile_error(tf2));
+			return (-1);
+		}
+
+		memb1 = dt_typefile_struct_next(s1);
+		memb2 = dt_typefile_struct_next(s2);
+
+		/*
+		 * Go over each member and ensure that if both exist, they are
+		 * pointwise equal. We don't accept *any* variety between them.
+		 */
+		while (memb1 && memb2) {
+			if (dt_typefile_typename(tf1,
+			    dt_typefile_memb_ctfid(memb1), memb1_name,
+			    sizeof(memb1_name)) != (char *)memb1_name) {
+				fprintf(stderr,
+				    "dt_typefile_typename() failed: %s\n",
+				    dt_typefile_error(tf1));
+				return (-1);
+			}
+
+			if (dt_typefile_typename(tf2,
+			    dt_typefile_memb_ctfid(memb2), memb2_name,
+			    sizeof(memb2_name)) != (char *)memb2_name) {
+				fprintf(stderr,
+				    "dt_typefile_typename() failed: %s\n",
+				    dt_typefile_error(tf2));
+				return (-1);
+			}
+
+			if (dt_ctf_type_compare(tf1,
+			    dt_typefile_memb_ctfid(memb1), tf2,
+			    dt_typefile_memb_ctfid(memb2))) {
+				fprintf(stderr,
+				    "comparison between %s and %s failed\n",
+				    memb1_name, memb2_name);
+				return (-1);
+			}
+
+			memb1 = dt_typefile_struct_next(s1);
+			memb2 = dt_typefile_struct_next(s2);
+		}
+
+		assert(memb1 == NULL || memb2 == NULL);
+
+		if (memb1 == NULL && memb2 != NULL)
+			*which = 1;
+		else if (memb1 != NULL && memb2 == NULL)
+			*which = 2;
+		else
+			/*
+			 * In this case, it doesn't really matter.
+			 */
+			*which = 1;
+
+		return (0);
+
+	} else if (kind1 == CTF_K_UNION || kind1 == CTF_K_ENUM ||
+	    kind1 == CTF_K_FORWARD) {
+		/*
+		 * It doesn't really make sense to support different unions or
+		 * enum types. We only check pointwise equality.
+		 */
+		if (dt_ctf_type_compare(tf1, id1, tf2, id2) == 0)
+			return (-1);
+
+		/*
+		 * Doesn't matter what we pick in this case.
+		 */
+		*which = 1;
+		return (0);
+	}
+
+	fprintf(stderr, "unknown typing error (%s != %s)\n", type1_name,
+	    type2_name);
+	return (-1);
+}
 
 /*
  * dt_get_class() takes in a buffer containing the type name and returns
@@ -189,6 +634,122 @@ dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 	return (-1);
 }
 
+static int
+dt_infer_type_arg(
+    dtrace_hdl_t *dtp, const dtrace_probedesc_t *pdp, void *_cookie)
+{
+	argcheck_cookie_t *cookie = (argcheck_cookie_t *)_cookie;
+	uint16_t var;
+	dt_ifg_node_t *n;
+	dtrace_argdesc_t ad;
+	char resolved_type[DTRACE_ARGTYPELEN];
+	char *mod;
+	dt_typefile_t *tf;
+	ctf_id_t ctfid;
+	int type, which;
+
+	memset(resolved_type, 0, DTRACE_ARGTYPELEN);
+	assert(cookie != NULL);
+	n = cookie->node;
+	var = cookie->varcode;
+
+	assert(n != NULL);
+	mod = n->din_edp->dted_probe.dtpd_mod;
+
+	memset(&ad, 0, sizeof(ad));
+	ad.dtargd_ndx = var - DIF_VAR_ARG0;
+	assert(ad.dtargd_ndx <= 9);
+
+	ad.dtargd_id = pdp->dtpd_id;
+	assert(ad.dtargd_id != DTRACE_IDNONE);
+
+	if (dt_ioctl(dtp, DTRACEIOC_PROBEARG, &ad) != 0) {
+		(void) dt_set_errno(dtp, errno);
+		return (1);
+	}
+
+	memcpy(resolved_type, ad.dtargd_native, DTRACE_ARGTYPELEN);
+
+	/*
+	 * Try by module first.
+	 */
+	tf = dt_typefile_mod(mod);
+	assert(tf != NULL);
+	ctfid = dt_typefile_ctfid(tf, resolved_type);
+	if (ctfid == CTF_ERR) {
+		/*
+		 * If we can't find it in the module, try in the kernel
+		 * itself.
+		 */
+		tf = dt_typefile_kernel();
+		assert(tf != NULL);
+		ctfid = dt_typefile_ctfid(n->din_tf, resolved_type);
+		if (ctfid == CTF_ERR) {
+			fprintf(stderr, "could not find type %s in %s\n",
+			    resolved_type, dt_typefile_stringof(tf));
+			return (1);
+		}
+	}
+
+	type = DIF_TYPE_CTF;
+
+	/*
+	 * This can't currently happen, but the assertion is here for
+	 * completeness.
+	 */
+	assert(type != DIF_TYPE_NONE);
+
+	if (n->din_type == DIF_TYPE_BOTTOM || n->din_type == DIF_TYPE_NONE) {
+		n->din_type = type;
+		n->din_tf = tf;
+		n->din_ctfid = ctfid;
+		return (0);
+	}
+
+	/*
+	 * This can't currently happen, but the rule is here for completness.
+	 */
+	if (type == DIF_TYPE_BOTTOM)
+		return (0);
+
+	if (n->din_type == DIF_TYPE_STRING && type == DIF_TYPE_STRING)
+		return (0);
+
+	if (n->din_type == DIF_TYPE_CTF) {
+		if (type != DIF_TYPE_CTF) {
+			fprintf(stderr,
+			    "node currently has CTF type, but type is %d\n",
+			    type);
+			return (1);
+		}
+
+		assert(n->din_type == type);
+
+		if (n->din_tf == tf &&
+		    ctfid == n->din_ctfid)
+			return (0);
+
+		assert(n->din_tf != tf);
+
+		if (dt_type_subtype(
+		    n->din_tf, n->din_ctfid, tf, ctfid, &which) == 0) {
+			assert(which == 0 || which == 1 || which == 2);
+			if (which == 0)
+				return (1);
+
+			n->din_tf = which == 1 ? n->din_tf : tf;
+			n->din_ctfid = which == 1 ? n->din_ctfid : ctfid;
+			n->din_type = type; /* should be the same */
+			return (0);
+		}
+	}
+
+	/*
+	 * If we don't have a matching case before this, we can't type-check it.
+	 */
+	return (1);
+}
+
 /*
  * dt_builtin_type() takes a node and a builtin variable, returning
  * the expected type of said builtin variable.
@@ -196,6 +757,9 @@ dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 static void
 dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 {
+	argcheck_cookie_t cookie;
+	memset(&cookie, 0, sizeof(cookie));
+
 	switch (var) {
 	/*
 	 * struct thread *
@@ -270,6 +834,12 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_ARG7:
 	case DIF_VAR_ARG8:
 	case DIF_VAR_ARG9:
+		cookie.node = n;
+		cookie.varcode = var;
+
+		dtrace_probe_iter(
+		    g_dtp, &n->din_edp->dted_probe, dt_infer_type_arg, &cookie);
+		break;
 	case DIF_VAR_HARG0:
 	case DIF_VAR_HARG1:
 	case DIF_VAR_HARG2:
@@ -1400,6 +1970,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, symname);
 		if (n->din_ctfid == CTF_ERR) {
 			n->din_tf = dt_typefile_kernel();
+			assert(n->din_tf != NULL);
 			n->din_ctfid = dt_typefile_ctfid(n->din_tf, symname);
 			if (n->din_ctfid == CTF_ERR)
 				dt_set_progerr(g_dtp, g_pgp,

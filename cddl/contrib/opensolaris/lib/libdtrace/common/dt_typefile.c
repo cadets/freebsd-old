@@ -46,6 +46,17 @@
 
 dt_list_t typefiles;
 
+typedef struct dtf_ctfid {
+	dt_list_t list;
+	ctf_id_t type;
+} dtf_ctfid_t;
+
+typedef struct dt_typefile_struct {
+	dt_typefile_t *typefile;
+	dt_list_t ctf_types;
+	dtf_ctfid_t *current;
+} dt_typefile_struct_t;
+
 void
 dt_typefile_openall(dtrace_hdl_t *dtp)
 {
@@ -137,7 +148,7 @@ dt_typefile_reference(dt_typefile_t *typef, ctf_id_t id)
 	return (ctf_type_reference(ctfp, id));
 }
 
-uint32_t
+ssize_t
 dt_typefile_typesize(dt_typefile_t *typef, ctf_id_t id)
 {
 	ctf_file_t *ctfp;
@@ -272,4 +283,96 @@ dt_typefile_mod(const char *mod)
 		}
 
 	return (NULL);
+}
+
+int
+dt_typefile_compat(
+    dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2, ctf_id_t id2)
+{
+	ctf_file_t *ctfp1, *ctfp2;
+
+	ctfp1 = dt_module_getctf(tf1->dtp, tf1->modhdl);
+	ctfp2 = dt_module_getctf(tf2->dtp, tf2->modhdl);
+
+	if (ctfp1 == NULL || ctfp2 == NULL)
+		return (0);
+
+	return (ctf_type_compat(ctfp1, id1, ctfp2, id2));
+}
+
+static int
+process_struct_member(const char *name, ctf_id_t type, ulong_t offset, void *_s)
+{
+	dt_typefile_struct_t *s;
+	dtf_ctfid_t *ctft;
+
+	s = (dt_typefile_struct_t *)_s;
+	assert(s != NULL);
+
+	ctft = malloc(sizeof(dtf_ctfid_t));
+	if (ctft == NULL)
+		return (-1);
+
+	memset(ctft, 0, sizeof(dtf_ctfid_t));
+	ctft->type = type;
+	dt_list_append(&s->ctf_types, ctft);
+
+	return (0);
+}
+
+void *
+dt_typefile_buildup_struct(dt_typefile_t *typef, ctf_id_t id)
+{
+	ctf_id_t kind;
+	ctf_file_t *ctfp;
+	dt_typefile_struct_t *s;
+
+	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
+	if (ctfp == NULL)
+		return (NULL);
+
+	s = malloc(sizeof(dt_typefile_struct_t));
+	if (s == NULL)
+		return (NULL);
+
+	memset(s, 0, sizeof(dt_typefile_struct_t));
+	s->typefile = typef;
+
+	/*
+	 * Populate the members of the struct.
+	 */
+	if (ctf_member_iter(ctfp, id, process_struct_member, s)) {
+		free(s);
+		return (NULL);
+	}
+
+	s->current = NULL;
+	return (s);
+}
+
+void *
+dt_typefile_struct_next(void *_s)
+{
+	dt_typefile_struct_t *s;
+
+	s = (dt_typefile_struct_t *)_s;
+	if (s == NULL)
+		return (NULL);
+
+	if (s->current)
+		s->current = dt_list_next(s->current);
+	else
+		s->current = dt_list_next(&s->ctf_types);
+	return (s->current);
+}
+
+ctf_id_t
+dt_typefile_memb_ctfid(void *_m)
+{
+	dtf_ctfid_t *m = (dtf_ctfid_t *)_m;
+
+	if (m == NULL)
+		return (CTF_ERR);
+
+	return (m->type);
 }

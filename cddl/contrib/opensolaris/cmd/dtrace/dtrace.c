@@ -2932,7 +2932,7 @@ main(int argc, char *argv[])
 			(void) dtrace_probe_iter(g_dtp, NULL, list_probe, NULL);
 
 		dtrace_close(g_dtp);
-		
+
 		return (g_status);
 
 	case DMODE_HEADER:
@@ -2940,7 +2940,7 @@ main(int argc, char *argv[])
 			(void) fprintf(stderr, "%s: -h requires one or more "
 			    "scripts or enabling options\n", g_pname);
 			dtrace_close(g_dtp);
-			
+
 			return (E_USAGE);
 		}
 
