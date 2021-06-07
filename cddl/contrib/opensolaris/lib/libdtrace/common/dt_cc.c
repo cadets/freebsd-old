@@ -672,13 +672,6 @@ dt_action_trace(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 	boolean_t isbottom = dt_node_is_bottom(dnp->dn_args);
 	const char *act = istrace ?  "trace" :  isprintf ? "printf" : "print";
 
-	/*
-	 * We should never end up in this function with a printf if
-	 * dt_use_elf is not set in the handle.
-	 */
-	if (isprintf)
-		assert(dtp->dt_use_elf);
-
 	if (!isbottom && dt_node_is_void(dnp->dn_args)) {
 		dnerror(dnp->dn_args, istrace ? D_TRACE_VOID :
 		    isprintf ? D_PRINTF_VOID : D_PRINT_VOID,
@@ -1171,11 +1164,8 @@ dt_compile_fun(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 		dt_action_printa(dtp, dnp->dn_expr, sdp);
 		break;
 	case DT_ACT_PRINTF:
-		if (dtp->dt_use_elf)
-			dt_action_trace(dtp, dnp->dn_expr, sdp);
-		else
-			dt_action_printflike(dtp, dnp->dn_expr,
-			    sdp, DTRACEACT_PRINTF);
+		dt_action_printflike(dtp, dnp->dn_expr,
+		    sdp, DTRACEACT_PRINTF);
 		break;
 	case DT_ACT_PRINTM:
 		dt_action_printm(dtp, dnp->dn_expr, sdp);

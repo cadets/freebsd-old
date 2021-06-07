@@ -889,7 +889,7 @@ listen_dtdaemon(void *arg)
 	done = 0;
 	vmid = 0;
 	lentowrite = 0;
-	
+
 	/*
 	 * Assume this is an int.
 	 */
@@ -1126,6 +1126,7 @@ process_prog:
 			pthread_cond_signal(&g_pgpcond);
 			pthread_mutex_unlock(&g_pgpcondmtx);
 		}
+
 	} while (!done);
 
 	return (arg);
@@ -1223,7 +1224,7 @@ setup_tracing(void)
 {
 	dtrace_optval_t opt;
 	int i;
-	
+
 	/*
 	 * Start tracing.  Once we dtrace_go(), reload any options that affect
 	 * our globals in case consuming anonymous state has changed them.
@@ -1244,7 +1245,7 @@ setup_tracing(void)
 		if (opt != DTRACEOPT_UNSET)
 			notice("allowing destructive actions\n");
 	}
-	
+
 	installsighands();
 
 	/*
@@ -1340,6 +1341,7 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp)
 	int i, n;
 
 	dtrace_dump_actions(pgp);
+
 	if (gpgp == NULL && pgp->dp_vmid != 0) {
 		atomic_store(&g_intr, 1);
 		fprintf(stderr,
@@ -1384,6 +1386,8 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp)
 		}
 	}
 
+	if (n_pgps > 0 && dt_hypertrace_options_update(g_dtp) == -1)
+		fatal("failed to load options");
 	n_pgps++;
 }
 
@@ -1504,7 +1508,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 		dtd_arg->rx_sock = rx_sock;
 		dtd_arg->wx_sock = wx_sock;
 		dtd_arg->hostpgp = dcp->dc_prog;
-		
+
 		err = pthread_create(&g_dtdaemontd, NULL,
 		    listen_dtdaemon, dtd_arg);
 		if (err != 0)
@@ -1565,7 +1569,7 @@ again:
 			}
 
 			process_new_pgp(pgpl->pgp, pgpl->gpgp);
-			
+
 			pthread_mutex_lock(&g_pgplistmtx);
 			dt_list_delete(&g_pgplist, pgpl);
 			pthread_mutex_unlock(&g_pgplistmtx);
@@ -1881,7 +1885,7 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 		pthread_create(&g_worktd, NULL, dtc_work, NULL);
 	}
 
-	
+
 	dtdaemon_sock = open_dtdaemon(DTD_SUB_READDATA);
 	if (dtdaemon_sock == -1)
 		fatal("failed to open dtdaemon");
@@ -2495,9 +2499,9 @@ main(int argc, char *argv[])
 
 	if (g_guest)
 		dtrace_set_guest(g_dtp);
-	
+
 	if (g_elf)
-		dtrace_use_elf(g_dtp);
+		dt_enable_hypertrace(g_dtp);
 
 
 #if defined(__i386__)

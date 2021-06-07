@@ -28,7 +28,14 @@
 #ifndef __DT_TYPEFILE_T_
 #define __DT_TYPEFILE_T_
 
-struct dt_typefile;
-typedef struct dt_typefile dt_typefile_t;
+#include <sys/types.h>
+#include <sys/param.h>
+
+typedef struct dt_typefile {
+	dt_list_t list;
+	dtrace_hdl_t *dtp;
+	void *modhdl;
+	char modname[MAXPATHLEN];
+} dt_typefile_t;
 
 #endif

@@ -1063,6 +1063,7 @@ static const dt_option_t _dtrace_rtoptions[] = {
 	{ "strsize", dt_opt_strsize, DTRACEOPT_STRSIZE },
 	{ "ustackframes", dt_opt_runtime, DTRACEOPT_USTACKFRAMES },
 	{ "temporal", dt_opt_runtime, DTRACEOPT_TEMPORAL },
+	{ "hypertrace", dt_opt_runtime, DTRACEOPT_HYPERTRACE },
 	{ NULL, NULL, 0 }
 };
 
@@ -1143,7 +1144,7 @@ dtrace_setopt(dtrace_hdl_t *dtp, const char *opt, const char *val)
 		return (0);
 	}
 
-	if (dtp->dt_use_elf) {
+	if (dt_hypertrace_enabled(dtp)) {
 		if (dtp->dt_active)
 			return (dt_set_errno(dtp, EDT_ACTIVE));
 

@@ -1142,3 +1142,28 @@ send_elf(int fromfd, int tofd, const char *location)
 	free(buf);
 	return (0);
 }
+
+void
+dt_enable_hypertrace(dtrace_hdl_t *dtp)
+{
+
+	(void) dtrace_setopt(dtp, "hypertrace", "yes");
+	dtp->dt_hypertrace = 1;
+}
+
+int
+dt_hypertrace_enabled(dtrace_hdl_t *dtp)
+{
+
+	return (dtp->dt_hypertrace);
+}
+
+int
+dt_hypertrace_options_update(dtrace_hdl_t *dtp)
+{
+
+	/*
+	 * For now, all we neeed to do is reload the kernel options.
+	 */
+	return (dt_options_load(dtp));
+}

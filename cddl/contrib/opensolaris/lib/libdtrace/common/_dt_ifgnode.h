@@ -55,24 +55,24 @@ typedef struct dt_node_kind {
 } dt_node_kind_t;
 
 typedef struct dt_ifg_node {
-	size_t           din_uidx;       /* index of the use site */
-	dt_list_t        din_r1defs;     /* type flow list for r1 */
-	dt_list_t        din_r2defs;     /* type flow list for r2 */
-	dt_list_t        din_r1datadefs; /* data flow list for r1 */
-	dt_list_t        din_r2datadefs; /* data flow list for r2 */
-	dt_list_t        din_vardefs;    /* list of variable defns in DIFO */
-	int              din_type;       /* D type */
-	dt_typefile_t    *din_tf;        /* type file */ 
-	dtrace_ecbdesc_t *din_edp;       /* node's ecbdesc */
-	ctf_id_t         din_ctfid;      /* CTF type */
-	char             *din_sym;       /* symbol (if applicable) */
-	dtrace_difo_t    *din_difo;      /* DIFO which this node belongs to */
+	size_t             din_uidx;       /* index of the use site */
+	dt_list_t          din_r1defs;     /* type flow list for r1 */
+	dt_list_t          din_r2defs;     /* type flow list for r2 */
+	dt_list_t          din_r1datadefs; /* data flow list for r1 */
+	dt_list_t          din_r2datadefs; /* data flow list for r2 */
+	dt_list_t          din_vardefs;    /* list of variable defns in DIFO */
+	int                din_type;       /* D type */
+	struct dt_typefile *din_tf;        /* type file */
+	dtrace_ecbdesc_t   *din_edp;       /* node's ecbdesc */
+	ctf_id_t           din_ctfid;      /* CTF type */
+	char               *din_sym;       /* symbol (if applicable) */
+	dtrace_difo_t      *din_difo;      /* DIFO which this node belongs to */
 #define din_buf din_difo->dtdo_buf
-	ctf_membinfo_t   *din_mip;       /* CTF member info (type, offs) */
-	dt_list_t        din_stacklist;  /* list of pushtr/pushtv nodes */
-        dt_node_kind_t   din_kind;       /* node kind (reg, var, stack) */
-	dt_list_t        din_usetxs;     /* usetx insn list defining the node */
-	int              din_relocated;  /* relocated or not? */
+	ctf_membinfo_t     *din_mip;       /* CTF member info (type, offs) */
+	dt_list_t          din_stacklist;  /* list of pushtr/pushtv nodes */
+	dt_node_kind_t     din_kind;       /* node kind (reg, var, stack) */
+	dt_list_t          din_usetxs;     /* usetx insn list defining the node */
+	int                din_relocated;  /* relocated or not? */
 } dt_ifg_node_t;
 
 typedef struct dt_ifg_list {

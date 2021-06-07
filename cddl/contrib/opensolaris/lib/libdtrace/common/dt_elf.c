@@ -916,7 +916,6 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 		eaid->edi_flags = aid->di_flags;
 		eaid->edi_attr.dtea_attr = aid->di_attr;
 		eaid->edi_vers = aid->di_vers;
-
 		aid_data->d_buf = eaid;
 		aid_data->d_size = sizeof(dt_elf_ident_t);
 		aid_data->d_align = 8;
@@ -2093,7 +2092,7 @@ dt_elf_get_options(dtrace_hdl_t *dtp, Elf *e, dt_elf_ref_t eopts)
 			continue;
 
 		/*
-		 * Set the options only if we are not a guest, if the option has
+		 * Set the options only if we are a guest, if the option has
 		 * a name and if we're not actively tracing.
 		 */
 		if (err = dtrace_setopt(
@@ -2461,14 +2460,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	if (needsclosing)
 		close(fd);
-	
+
 	return (prog);
 }
 
-
-void
-dtrace_use_elf(dtrace_hdl_t *dtp)
-{
-
-	dtp->dt_use_elf = 1;
-}

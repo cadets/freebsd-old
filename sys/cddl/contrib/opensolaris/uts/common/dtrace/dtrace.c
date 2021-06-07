@@ -16299,7 +16299,8 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 
 	if (opt[DTRACEOPT_AGGSIZE] != DTRACEOPT_UNSET &&
 	    opt[DTRACEOPT_AGGSIZE] != 0) {
-		if (state->dts_aggregations == NULL) {
+		if (opt[DTRACEOPT_HYPERTRACE] == 0 &&
+		    state->dts_aggregations == NULL) {
 			/*
 			 * We're not going to create an aggregation buffer
 			 * because we don't have any ECBs that contain

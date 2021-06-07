@@ -349,8 +349,8 @@ dtrace_work_detached(dtrace_hdl_t *dtp, FILE *fp, dtrace_consumer_t *con,
 		return (DTRACE_WORKSTATUS_ERROR);
 	}
 
-	//if (dtrace_aggregate_snap(dtp) == -1)
-	//	return (DTRACE_WORKSTATUS_ERROR);
+	if (dtrace_aggregate_snap(dtp) == -1)
+		return (DTRACE_WORKSTATUS_ERROR);
 
 	if (dtrace_consume(dtp, fp, con, arg) == -1)
 		return (DTRACE_WORKSTATUS_ERROR);

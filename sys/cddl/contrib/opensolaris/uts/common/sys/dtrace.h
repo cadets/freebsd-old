@@ -95,9 +95,10 @@ typedef int model_t;
 #define	DTRACE_MODNAMELEN	64
 #define	DTRACE_FUNCNAMELEN	192
 #define	DTRACE_NAMELEN		64
-#define	DTRACE_FULLNAMELEN	(DTRACE_TARGETNAMELEN + DTRACE_PROVNAMELEN + \
-				 DTRACE_MODNAMELEN + DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 4)
-#define	DTRACE_ARGTYPELEN	128
+#define DTRACE_FULLNAMELEN                                               \
+    (DTRACE_TARGETNAMELEN + DTRACE_PROVNAMELEN + DTRACE_MODNAMELEN +     \
+     DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 4)
+#define DTRACE_ARGTYPELEN 128
 
 typedef uint32_t dtrace_id_t;		/* probe identifier */
 typedef uint16_t dtrace_vmid_t;		/* VM identifier */
@@ -1177,7 +1178,8 @@ typedef struct dtrace_fmtdesc {
 #define	DTRACEOPT_ZONE		31	/* zone in which to enable probes */
 #define DTRACEOPT_OFORMAT	32	/* output format (JSON, XML, etc.) */
 #define	DTRACEOPT_DDTRACEARG	33	/* opaque DDTrace argument */
-#define	DTRACEOPT_MAX		34	/* number of options */
+#define DTRACEOPT_HYPERTRACE	34	/* are we hypertracing? */
+#define DTRACEOPT_MAX		35	/* number of options */
 
 #define	DTRACEOPT_UNSET		(dtrace_optval_t)-2	/* unset option */
 

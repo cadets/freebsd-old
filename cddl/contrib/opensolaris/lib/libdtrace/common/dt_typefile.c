@@ -44,13 +44,6 @@
 #include <dt_module.h>
 #include <dt_typefile.h>
 
-typedef struct dt_typefile {
-	dt_list_t list;
-	dtrace_hdl_t *dtp;
-	dt_module_t *module;
-	char modname[MAXPATHLEN];
-} dt_typefile_t;
-
 dt_list_t typefiles;
 
 void
@@ -83,12 +76,9 @@ dt_typefile_openall(dtrace_hdl_t *dtp)
 				errx(EXIT_FAILURE, "malloc() failed with: %s\n",
 				    strerror(errno));
 
-			typef->module = mod;
+			typef->modhdl = mod;
 			typef->dtp = dtp;
 			memcpy(typef->modname, kldinfo.name, MAXPATHLEN);
-
-			printf("adding typef: (%s, %p)\n", typef->modname,
-			    typef->module);
 			dt_list_append(&typefiles, typef);
 		}
 
@@ -110,9 +100,9 @@ dt_typefile_ctfid(dt_typefile_t *typef, const char *type)
 	ctf_file_t *ctfp;
 
 	assert(typef->dtp != NULL);
-	assert(typef->module != NULL);
+	assert(typef->modhdl != NULL);
 
-	ctfp = dt_module_getctf(typef->dtp, typef->module);
+	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
 		return (CTF_ERR);
 	return (ctf_lookup_by_name(ctfp, type));
@@ -125,9 +115,9 @@ dt_typefile_typename(dt_typefile_t *typef,
 	ctf_file_t *ctfp;
 
 	assert(typef->dtp != NULL);
-	assert(typef->module != NULL);
+	assert(typef->modhdl != NULL);
 
-	ctfp = dt_module_getctf(typef->dtp, typef->module);
+	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
 		return (NULL);
 	return (ctf_type_name(ctfp, id, buf, buflen));
@@ -139,9 +129,9 @@ dt_typefile_reference(dt_typefile_t *typef, ctf_id_t id)
 	ctf_file_t *ctfp;
 
 	assert(typef->dtp != NULL);
-	assert(typef->module != NULL);
+	assert(typef->modhdl != NULL);
 
-	ctfp = dt_module_getctf(typef->dtp, typef->module);
+	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
 		return (CTF_ERR);
 	return (ctf_type_reference(ctfp, id));
@@ -153,9 +143,9 @@ dt_typefile_typesize(dt_typefile_t *typef, ctf_id_t id)
 	ctf_file_t *ctfp;
 
 	assert(typef->dtp != NULL);
-	assert(typef->module != NULL);
+	assert(typef->modhdl != NULL);
 
-	ctfp = dt_module_getctf(typef->dtp, typef->module);
+	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
 		return (CTF_ERR);
 	return (ctf_type_size(ctfp, id));
@@ -167,9 +157,9 @@ dt_typefile_error(dt_typefile_t *typef)
 	ctf_file_t *ctfp;
 
 	assert(typef->dtp != NULL);
-	assert(typef->module != NULL);
+	assert(typef->modhdl != NULL);
 
-	ctfp = dt_module_getctf(typef->dtp, typef->module);
+	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
 		return ("CTF file is NULL");
 	return (ctf_errmsg(ctf_errno(ctfp)));
@@ -183,9 +173,9 @@ dt_typefile_membinfo(dt_typefile_t *typef, ctf_id_t type,
 	ctf_file_t *fp;
 
 	assert(typef->dtp != NULL);
-	assert(typef->module != NULL);
+	assert(typef->modhdl != NULL);
 
-	mod = typef->module;
+	mod = typef->modhdl;
 	fp = dt_module_getctf(typef->dtp, mod);
 
 	while (ctf_type_kind(fp, type) == CTF_K_FORWARD) {
@@ -212,7 +202,7 @@ dt_typefile_typekind(dt_typefile_t *typef, ctf_id_t type)
 {
 	ctf_file_t *ctfp;
 
-	ctfp = dt_module_getctf(typef->dtp, typef->module);
+	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
 		return (CTF_ERR);
 
@@ -229,7 +219,7 @@ dt_typefile_kernel(void)
 	     typef = dt_list_next(typef))
 		if (strcmp(typef->modname, "kernel") == 0) {
 			mod = dt_module_lookup_by_name(typef->dtp, "kernel");
-			assert(mod == typef->module);
+			assert(mod == typef->modhdl);
 			return (typef);
 		}
 
@@ -241,7 +231,7 @@ dt_typefile_resolve(dt_typefile_t *typef, ctf_id_t type)
 {
 	ctf_file_t *ctfp;
 
-	ctfp = dt_module_getctf(typef->dtp, typef->module);
+	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
 		return (CTF_ERR);
 
@@ -253,7 +243,7 @@ dt_typefile_encoding(dt_typefile_t *typef, ctf_id_t type, ctf_encoding_t *ep)
 {
 	ctf_file_t *ctfp;
 
-	ctfp = dt_module_getctf(typef->dtp, typef->module);
+	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
 		return (-1);
 
@@ -277,7 +267,7 @@ dt_typefile_mod(const char *mod)
 	     typef = dt_list_next(typef))
 		if (strcmp(typef->modname, mod) == 0) {
 			_mod = dt_module_lookup_by_name(typef->dtp, mod);
-			assert(_mod == typef->module);
+			assert(_mod == typef->modhdl);
 			return (typef);
 		}
 
