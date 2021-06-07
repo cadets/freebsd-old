@@ -3823,7 +3823,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		dtrace_probe_t *pb;
 
 		pb = mstate->dtms_probe;
-		
+
 		ASSERT(pb != NULL);
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
 		if (pb->dtpr_vmid > 0)
