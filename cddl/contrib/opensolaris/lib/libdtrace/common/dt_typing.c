@@ -108,6 +108,9 @@ dt_ctf_type_compare(dt_typefile_t *tf1, ctf_id_t id1,
 	char memb1_name[4096], memb2_name[4096];
 	void *s1, *s2;
 
+	assert(tf1 != NULL);
+	assert(tf2 != NULL);
+
 	if (dt_typefile_typename(tf1, id1, type1_name, sizeof(type1_name)) !=
 	    (char *)type1_name) {
 		fprintf(stderr, "dt_typefile_typename() failed: %s\n",
@@ -264,6 +267,9 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 	void *s1, *s2;
 
 	*which = 0;
+
+	assert(tf1 != NULL);
+	assert(tf2 != NULL);
 
 	if (dt_typefile_typename(tf1, id1, type1_name, sizeof(type1_name)) !=
 	    (char *)type1_name) {
@@ -577,6 +583,9 @@ dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 	if (dn2->din_type == DIF_TYPE_BOTTOM)
 		return (1);
 
+	assert(dn1->din_tf != NULL);
+	assert(dn2->din_tf != NULL);
+
 	if (dn1->din_type == DIF_TYPE_CTF) {
 		if (dt_typefile_typename(dn1->din_tf, dn1->din_ctfid, buf1,
 		    sizeof(buf1)) != ((char *)buf1))
@@ -654,7 +663,7 @@ dt_infer_type_arg(
 	var = cookie->varcode;
 
 	assert(n != NULL);
-	mod = n->din_edp->dted_probe.dtpd_mod;
+	mod = pdp->dtpd_mod;
 
 	memset(&ad, 0, sizeof(ad));
 	ad.dtargd_ndx = var - DIF_VAR_ARG0;
@@ -674,6 +683,11 @@ dt_infer_type_arg(
 	 * Try by module first.
 	 */
 	tf = dt_typefile_mod(mod);
+	if (tf == NULL) {
+		fprintf(stderr, "could not find module: %s\n", mod);
+		return (1);
+	}
+
 	assert(tf != NULL);
 	ctfid = dt_typefile_ctfid(tf, resolved_type);
 	if (ctfid == CTF_ERR) {
@@ -699,7 +713,8 @@ dt_infer_type_arg(
 	 */
 	assert(type != DIF_TYPE_NONE);
 
-	if (n->din_type == DIF_TYPE_BOTTOM || n->din_type == DIF_TYPE_NONE) {
+	if (n->din_type == DIF_TYPE_BOTTOM || n->din_type == DIF_TYPE_NONE ||
+	    n->din_type == -1) {
 		n->din_type = type;
 		n->din_tf = tf;
 		n->din_ctfid = ctfid;
@@ -744,6 +759,7 @@ dt_infer_type_arg(
 		}
 	}
 
+	fprintf(stderr, "failed to infer type for type = %s\n", resolved_type);
 	/*
 	 * If we don't have a matching case before this, we can't type-check it.
 	 */
@@ -1109,6 +1125,8 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 		}
 
 		if (type == DIF_TYPE_CTF) {
+			assert(node->din_tf != NULL);
+
 			/*
 			 * We get the type name for reporting purposes.
 			 */
@@ -1129,6 +1147,7 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			if (onode->din_type == DIF_TYPE_BOTTOM)
 				continue;
 
+			assert(onode->din_tf != NULL);
  			/*
 			 * Get the previous' node's inferred type for
 			 * error reporting.
@@ -1261,7 +1280,8 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 		instr = node->din_buf[node->din_uidx];
 		dt_get_varinfo(instr, &varid, &scope, &kind);
 		if (varid == 0 && scope == -1 && kind == -1)
-			dt_set_progerr(g_dtp, g_pgp, "failed to get variable information");
+			dt_set_progerr(
+			    g_dtp, g_pgp, "failed to get variable information");
 
 		/*
 		 * We get the variable from the variable list.
@@ -1393,7 +1413,7 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 
 			/*
 			 * We don't have to check anything except for
-			 * node->din_sym being not NULL 
+			 * node->din_sym being not NULL
 			 */
 			if (node->din_sym &&
 			    strcmp(node->din_sym, onode->din_sym) != 0) {
@@ -1451,7 +1471,8 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 	}
 
 	if (dr->din_type == DIF_TYPE_NONE || dr->din_type == DIF_TYPE_BOTTOM)
-		dt_set_progerr(g_dtp, g_pgp, "unexpected type %d", dr->din_type);
+		dt_set_progerr(
+		    g_dtp, g_pgp, "unexpected type %d", dr->din_type);
 
 	if (dif_var->dtdv_type.dtdt_kind == DIF_TYPE_STRING)
 		return (DIF_TYPE_STRING);
@@ -1906,6 +1927,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		n->din_mip = mip;
 		n->din_ctfid = mip->ctm_type;
 		n->din_type = DIF_TYPE_CTF;
+		n->din_tf = dn1->din_tf;
 		return (n->din_type);
 
 
@@ -5159,6 +5181,7 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 			dt_set_progerr(g_dtp, g_pgp, "failed to infer a type");
 
 		if (type == DIF_TYPE_CTF) {
+			assert(node->din_tf != NULL);
 			if (dt_typefile_typename(node->din_tf,
 			    node->din_ctfid, buf, sizeof(buf)) != (char *)buf)
 				dt_set_progerr(g_dtp, g_pgp,
@@ -5179,6 +5202,6 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 
 	g_pgp = NULL;
 	g_dtp = NULL;
-	
+
 	return (0);
 }

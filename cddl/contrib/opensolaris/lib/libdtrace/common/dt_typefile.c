@@ -39,6 +39,7 @@
 #include <assert.h>
 #include <err.h>
 #include <errno.h>
+#include <execinfo.h>
 
 #include <dtrace.h>
 #include <dt_module.h>
@@ -110,6 +111,7 @@ dt_typefile_ctfid(dt_typefile_t *typef, const char *type)
 {
 	ctf_file_t *ctfp;
 
+	assert(typef != NULL);
 	assert(typef->dtp != NULL);
 	assert(typef->modhdl != NULL);
 
@@ -125,6 +127,7 @@ dt_typefile_typename(dt_typefile_t *typef,
 {
 	ctf_file_t *ctfp;
 
+	assert(typef != NULL);
 	assert(typef->dtp != NULL);
 	assert(typef->modhdl != NULL);
 
@@ -139,6 +142,7 @@ dt_typefile_reference(dt_typefile_t *typef, ctf_id_t id)
 {
 	ctf_file_t *ctfp;
 
+	assert(typef != NULL);
 	assert(typef->dtp != NULL);
 	assert(typef->modhdl != NULL);
 
@@ -153,6 +157,7 @@ dt_typefile_typesize(dt_typefile_t *typef, ctf_id_t id)
 {
 	ctf_file_t *ctfp;
 
+	assert(typef != NULL);
 	assert(typef->dtp != NULL);
 	assert(typef->modhdl != NULL);
 
@@ -167,6 +172,7 @@ dt_typefile_error(dt_typefile_t *typef)
 {
 	ctf_file_t *ctfp;
 
+	assert(typef != NULL);
 	assert(typef->dtp != NULL);
 	assert(typef->modhdl != NULL);
 
@@ -183,6 +189,7 @@ dt_typefile_membinfo(dt_typefile_t *typef, ctf_id_t type,
 	dt_module_t *mod;
 	ctf_file_t *fp;
 
+	assert(typef != NULL);
 	assert(typef->dtp != NULL);
 	assert(typef->modhdl != NULL);
 
@@ -213,6 +220,8 @@ dt_typefile_typekind(dt_typefile_t *typef, ctf_id_t type)
 {
 	ctf_file_t *ctfp;
 
+	assert(typef != NULL);
+
 	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
 		return (CTF_ERR);
@@ -242,6 +251,8 @@ dt_typefile_resolve(dt_typefile_t *typef, ctf_id_t type)
 {
 	ctf_file_t *ctfp;
 
+	assert(typef != NULL);
+
 	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
 		return (CTF_ERR);
@@ -254,6 +265,8 @@ dt_typefile_encoding(dt_typefile_t *typef, ctf_id_t type, ctf_encoding_t *ep)
 {
 	ctf_file_t *ctfp;
 
+	assert(typef != NULL);
+
 	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
 		return (-1);
@@ -265,6 +278,7 @@ const char *
 dt_typefile_stringof(dt_typefile_t *typef)
 {
 
+	assert(typef != NULL);
 	return ((const char *)typef->modname);
 }
 
@@ -290,6 +304,9 @@ dt_typefile_compat(
     dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2, ctf_id_t id2)
 {
 	ctf_file_t *ctfp1, *ctfp2;
+
+	assert(tf1 != NULL);
+	assert(tf2 != NULL);
 
 	ctfp1 = dt_module_getctf(tf1->dtp, tf1->modhdl);
 	ctfp2 = dt_module_getctf(tf2->dtp, tf2->modhdl);
@@ -326,6 +343,8 @@ dt_typefile_buildup_struct(dt_typefile_t *typef, ctf_id_t id)
 	ctf_id_t kind;
 	ctf_file_t *ctfp;
 	dt_typefile_struct_t *s;
+
+	assert(typef != NULL);
 
 	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
