@@ -111,12 +111,13 @@ extern int dt_pfdict_create(dtrace_hdl_t *);
 extern void dt_pfdict_destroy(dtrace_hdl_t *);
 
 extern dt_pfargv_t *dt_printf_create(dtrace_hdl_t *, const char *);
+extern dt_pfargv_t *dt_printf_dup(dt_pfargv_t *);
 extern void dt_printf_destroy(dt_pfargv_t *);
 
 #define	DT_PRINTF_EXACTLEN	0x1	/* do not permit extra arguments */
 #define	DT_PRINTF_AGGREGATION	0x2	/* enable aggregation conversion */
 
-extern void dt_printf_validate(dt_pfargv_t *, uint_t,
+extern void dt_printf_validate(dtrace_hdl_t *, dt_pfargv_t *, uint_t,
     struct dt_ident *, int, dtrace_actkind_t, struct dt_node *);
 
 extern void dt_printa_validate(struct dt_node *, struct dt_node *);

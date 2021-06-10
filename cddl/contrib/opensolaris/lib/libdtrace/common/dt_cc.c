@@ -561,9 +561,10 @@ dt_action_printa(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 
 			sdp->dtsd_fmtdata =
 			    dt_printf_create(yypcb->pcb_hdl, format);
-			dt_printf_validate(sdp->dtsd_fmtdata,
-			    DT_PRINTF_AGGREGATION, dnp->dn_ident, 1,
-			    fid->di_id, ((dt_idsig_t *)aid->di_data)->dis_args);
+
+			dt_printf_validate(dtp, sdp->dtsd_fmtdata,
+			    DT_PRINTF_AGGREGATION, dnp->dn_ident, 1, fid->di_id,
+			    ((dt_idsig_t *)aid->di_data)->dis_args);
 			format = NULL;
 		}
 
@@ -627,7 +628,7 @@ dt_action_printflike(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp,
 
 	sdp->dtsd_fmtdata = dt_printf_create(dtp, str);
 
-	dt_printf_validate(sdp->dtsd_fmtdata, DT_PRINTF_EXACTLEN,
+	dt_printf_validate(dtp, sdp->dtsd_fmtdata, DT_PRINTF_EXACTLEN,
 	    dnp->dn_ident, 1, DTRACEACT_AGGREGATION, arg1);
 
 	if (arg1 == NULL) {

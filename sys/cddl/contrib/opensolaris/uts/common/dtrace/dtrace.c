@@ -15084,8 +15084,8 @@ dtrace_dof_actdesc(dof_hdr_t *dof, dof_sec_t *sec, dtrace_vstate_t *vstate,
 			 * is the format string.  For print(), this is the
 			 * CTF type of the expression result.
 			 */
-			if ((strtab = dtrace_dof_sect(dof,
-			    DOF_SECT_STRTAB, desc->dofa_strtab)) == NULL)
+			if ((strtab = dtrace_dof_sect(dof, DOF_SECT_STRTAB,
+			    desc->dofa_strtab)) == NULL)
 				goto err;
 
 			str = (char *)((uintptr_t)dof +

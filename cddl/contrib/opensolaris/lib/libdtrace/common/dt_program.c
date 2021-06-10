@@ -919,6 +919,13 @@ dt_prog_verify(dtrace_hdl_t *dtp, dtrace_prog_t *pbase,
 		pdnew = &enew->dted_probe;
 
 		pdnew->dtpd_vmid = pnew->dp_vmid;
+
+		/*
+		 * Copy over the old fmtdata so that we get the printf strings
+		 * right. We don't ever need to actually pass to the guest.
+		 */
+		sdnew->dtsd_fmtdata = dt_printf_dup(sdbase->dtsd_fmtdata);
+		assert(sdnew != NULL);
 	}
 
 	return (0);

@@ -1028,6 +1028,60 @@ dt_printf_create(dtrace_hdl_t *dtp, const char *s)
 	return (pfv);
 }
 
+dt_pfargv_t *
+dt_printf_dup(dt_pfargv_t *pfv)
+{
+	dt_pfargd_t *pfd, *nfd, *inner;
+	dt_pfargv_t *nfv;
+
+	assert(pfv != NULL);
+
+	nfv = malloc(sizeof(dt_pfargv_t));
+	if (nfv == NULL)
+		return (dt_printf_error(pfv->pfv_dtp, EDT_NOMEM));
+
+	memset(nfv, 0, sizeof(dt_pfargv_t));
+
+	nfv->pfv_dtp = pfv->pfv_dtp;
+	nfv->pfv_format = strdup(pfv->pfv_format);
+	nfv->pfv_argc = pfv->pfv_argc;
+	nfv->pfv_flags = pfv->pfv_flags;
+
+	for (pfd = pfv->pfv_argv; pfd != NULL; pfd = pfd->pfd_next) {
+		nfd = malloc(sizeof(dt_pfargd_t));
+		if (nfd == NULL)
+			return (dt_printf_error(pfv->pfv_dtp, EDT_NOMEM));
+
+		memset(nfd, 0, sizeof(dt_pfargd_t));
+
+		nfd->pfd_prefix = pfd->pfd_prefix;
+		nfd->pfd_preflen = pfd->pfd_preflen;
+		memcpy(nfd->pfd_fmt, pfd->pfd_fmt, 8);
+		nfd->pfd_flags = pfd->pfd_flags;
+		nfd->pfd_width = pfd->pfd_width;
+		nfd->pfd_dynwidth = pfd->pfd_dynwidth;
+		nfd->pfd_prec = pfd->pfd_prec;
+		nfd->pfd_conv = pfd->pfd_conv;
+		nfd->pfd_rec = pfd->pfd_rec;
+		/*
+		 * Make sure we don't cross the two lists.
+		 */
+		nfd->pfd_next = NULL;
+
+		for (inner = nfv->pfv_argv; inner && inner->pfd_next != NULL;
+		     inner = inner->pfd_next)
+			;
+
+		if (inner != NULL) {
+			assert(inner->pfd_next == NULL);
+			inner->pfd_next = nfd;
+		} else
+			nfv->pfv_argv = nfd;
+	}
+
+	return (nfv);
+}
+
 void
 dt_printf_destroy(dt_pfargv_t *pfv)
 {
@@ -1043,7 +1097,7 @@ dt_printf_destroy(dt_pfargv_t *pfv)
 }
 
 void
-dt_printf_validate(dt_pfargv_t *pfv, uint_t flags,
+dt_printf_validate(dtrace_hdl_t *dtp, dt_pfargv_t *pfv, uint_t flags,
     dt_ident_t *idp, int foff, dtrace_actkind_t kind, dt_node_t *dnp)
 {
 	dt_pfargd_t *pfd = pfv->pfv_argv;
@@ -1157,16 +1211,18 @@ dt_printf_validate(dt_pfargv_t *pfv, uint_t flags,
 		 * pfc_check() function below may optionally modify the format
 		 * as part of validating the type of the input argument.
 		 */
-		if (pfc->pfc_print == &pfprint_sint ||
-		    pfc->pfc_print == &pfprint_uint ||
-		    pfc->pfc_print == &pfprint_dint) {
-			if (dt_node_type_size(vnp) == sizeof (uint64_t))
-				(void) strcpy(pfd->pfd_fmt, "ll");
-		} else if (pfc->pfc_print == &pfprint_fp) {
-			if (dt_node_type_size(vnp) == sizeof (long double))
-				(void) strcpy(pfd->pfd_fmt, "L");
+		if (dt_hypertrace_enabled(dtp) == 0) {
+			if (pfc->pfc_print == &pfprint_sint ||
+			    pfc->pfc_print == &pfprint_uint ||
+			    pfc->pfc_print == &pfprint_dint) {
+				if (dt_node_type_size(vnp) == sizeof(uint64_t))
+					(void)strcpy(pfd->pfd_fmt, "ll");
+			} else if (pfc->pfc_print == &pfprint_fp) {
+				if (dt_node_type_size(vnp) ==
+				    sizeof(long double))
+					(void)strcpy(pfd->pfd_fmt, "L");
+			}
 		}
-
 		(void) strcat(pfd->pfd_fmt, pfc->pfc_ofmt);
 
 		/*
@@ -1175,13 +1231,17 @@ dt_printf_validate(dt_pfargv_t *pfv, uint_t flags,
 		 * string by concatenating together any required printf(3C)
 		 * size prefixes with the conversion's native format string.
 		 */
-		if (pfc->pfc_check(pfv, pfd, vnp) == 0) {
-			xyerror(D_PRINTF_ARG_TYPE,
-			    "%s( ) %s is incompatible with "
-			    "conversion #%d prototype:\n\tconversion: %%%s\n"
-			    "\t prototype: %s\n\t  argument: %s\n", func,
-			    vname, i + 1, pfc->pfc_name, pfc->pfc_tstr,
-			    dt_node_type_name(vnp, n, sizeof (n)));
+		if (dt_hypertrace_enabled(dtp) == 0) {
+			if (pfc->pfc_check(pfv, pfd, vnp) == 0) {
+				xyerror(D_PRINTF_ARG_TYPE,
+				    "%s( ) %s is incompatible with "
+				    "conversion #%d prototype:\n"
+				    "\tconversion: %%%s\n"
+				    "\t prototype: %s\n\t  argument: %s\n",
+				    func, vname, i + 1, pfc->pfc_name,
+				    pfc->pfc_tstr,
+				    dt_node_type_name(vnp, n, sizeof(n)));
+			}
 		}
 	}
 
