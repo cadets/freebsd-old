@@ -221,8 +221,6 @@ dt_usite_contains_reg(dt_ifg_node_t *n, uint8_t rd, int *r1, int *r2)
 	case DIF_OP_RLDUW:
 	case DIF_OP_RLDX:
 	case DIF_OP_PUSHTR:
-	case DIF_OP_PUSHTR_H:
-	case DIF_OP_PUSHTR_G:
 	case DIF_OP_PUSHTV:
 		rs = DIF_INSTR_RS(instr);
 		if (rd == rs)

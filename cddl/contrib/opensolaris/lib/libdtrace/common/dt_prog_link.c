@@ -121,8 +121,6 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		switch (opcode) {
 		case DIF_OP_RET:
 		case DIF_OP_PUSHTR:
-		case DIF_OP_PUSHTR_H:
-		case DIF_OP_PUSHTR_G:
 			/*
 			 * In case of a RET, we first patch up the DIFO with the
 			 * correct return type and size.
@@ -389,9 +387,7 @@ dt_update_usetx_bb(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_ifg_node_t *n)
 		if (opcode == DIF_OP_ULOAD    ||
 		    opcode == DIF_OP_UULOAD   ||
 		    opcode == DIF_OP_RET      ||
-		    opcode == DIF_OP_PUSHTR   ||
-		    opcode == DIF_OP_PUSHTR_H ||
-		    opcode == DIF_OP_PUSHTR_G) {
+		    opcode == DIF_OP_PUSHTR) {
 			usetx_node = dt_find_node_in_ifg(node, n);
 
 			if (usetx_node != n)

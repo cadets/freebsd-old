@@ -233,10 +233,6 @@ int dt_subr_h2g[DIF_SUBR_MAX+1] = {
 	[DIF_SUBR_JSON] = 1,
 	[DIF_SUBR_STRTOLL] = 0,
 	[DIF_SUBR_RANDOM] = 0,
-	[DIF_SUBR_STRJOIN_HH] = 1,
-	[DIF_SUBR_STRJOIN_GH] = 1,
-	[DIF_SUBR_STRJOIN_HG] = 1,
-	[DIF_SUBR_STRJOIN_GG] = 1,
 };
 
 /*
@@ -531,14 +527,6 @@ static const dt_ident_t _dtrace_globals[] = {
 { "strlen", DT_IDENT_FUNC, 0, DIF_SUBR_STRLEN, DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_func, "size_t(const char *)" },
 { "strjoin", DT_IDENT_FUNC, 0, DIF_SUBR_STRJOIN, DT_ATTR_STABCMN, DT_VERS_1_0,
-	&dt_idops_func, "string(const char *, const char *)" },
-{ "strjoin_hh", DT_IDENT_FUNC, 0, DIF_SUBR_STRJOIN_HH, DT_ATTR_STABCMN, DT_VERS_1_0,
-	&dt_idops_func, "string(const char *, const char *)" },
-{ "strjoin_hg", DT_IDENT_FUNC, 0, DIF_SUBR_STRJOIN_HG, DT_ATTR_STABCMN, DT_VERS_1_0,
-	&dt_idops_func, "string(const char *, const char *)" },
-{ "strjoin_gh", DT_IDENT_FUNC, 0, DIF_SUBR_STRJOIN_GH, DT_ATTR_STABCMN, DT_VERS_1_0,
-	&dt_idops_func, "string(const char *, const char *)" },
-{ "strjoin_gg", DT_IDENT_FUNC, 0, DIF_SUBR_STRJOIN_GG, DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_func, "string(const char *, const char *)" },
 { "strrchr", DT_IDENT_FUNC, 0, DIF_SUBR_STRRCHR, DT_ATTR_STABCMN, DT_VERS_1_1,
 	&dt_idops_func, "string(const char *, char)" },

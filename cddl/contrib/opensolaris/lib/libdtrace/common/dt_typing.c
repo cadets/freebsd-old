@@ -663,7 +663,7 @@ dt_infer_type_arg(
 	var = cookie->varcode;
 
 	assert(n != NULL);
-	mod = pdp->dtpd_mod;
+	mod = (char *)pdp->dtpd_mod;
 
 	memset(&ad, 0, sizeof(ad));
 	ad.dtargd_ndx = var - DIF_VAR_ARG0;
@@ -4650,10 +4650,6 @@ dt_infer_type(dt_ifg_node_t *n)
 		case DIF_SUBR_STRTOK:
 		case DIF_SUBR_STRSTR:
 		case DIF_SUBR_STRJOIN:
-		case DIF_SUBR_STRJOIN_HH:
-		case DIF_SUBR_STRJOIN_HG:
-		case DIF_SUBR_STRJOIN_GH:
-		case DIF_SUBR_STRJOIN_GG:
 		case DIF_SUBR_JSON:
 			/*
 			 * We expect a "const char *" as an argument.
@@ -4977,8 +4973,6 @@ dt_infer_type(dt_ifg_node_t *n)
 		return (n->din_type);
 
 	case DIF_OP_PUSHTR:
-	case DIF_OP_PUSHTR_G:
-	case DIF_OP_PUSHTR_H:
 		if (dn1 == NULL) {
 			fprintf(stderr, "pushtr dn1 is NULL\n");
 			return (-1);
@@ -5078,10 +5072,6 @@ dt_infer_type(dt_ifg_node_t *n)
 	case DIF_OP_POPTS:
 	case DIF_OP_CMP:
 	case DIF_OP_SCMP:
-	case DIF_OP_SCMP_HH:
-	case DIF_OP_SCMP_GG:
-	case DIF_OP_SCMP_GH:
-	case DIF_OP_SCMP_HG:
 	case DIF_OP_HYPERCALL:
 	case DIF_OP_TST:
 	case DIF_OP_BA:

@@ -183,8 +183,6 @@ dt_get_nkind(dif_instr_t instr, dt_node_kind_t *nkind)
 		break;
 
 	case DIF_OP_PUSHTR:
-	case DIF_OP_PUSHTR_G:
-	case DIF_OP_PUSHTR_H:
 	case DIF_OP_PUSHTV:
 		nkind->dtnk_kind = DT_NKIND_STACK;
 

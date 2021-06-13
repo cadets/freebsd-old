@@ -222,8 +222,6 @@ typedef enum dtrace_probespec {
 #define DIF_OP_SCMP_GH   82
 #define DIF_OP_SCMP_GG   83
 #define DIF_OP_SCMP_HG   84
-#define	DIF_OP_PUSHTR_G  85
-#define	DIF_OP_PUSHTR_H  86
 
 /*
  * Relocations
@@ -407,11 +405,7 @@ typedef enum dtrace_probespec {
 #define	DIF_SUBR_STRTOLL		53
 #define	DIF_SUBR_RANDOM			54
 #define	DIF_SUBR_PTINFO			55
-#define	DIF_SUBR_STRJOIN_HH		56
-#define	DIF_SUBR_STRJOIN_HG		57
-#define	DIF_SUBR_STRJOIN_GH		58
-#define	DIF_SUBR_STRJOIN_GG		59
-#define	DIF_SUBR_MAX			59	/* max subroutine value */
+#define	DIF_SUBR_MAX			55	/* max subroutine value */
 
 typedef uint32_t dif_instr_t;
 
