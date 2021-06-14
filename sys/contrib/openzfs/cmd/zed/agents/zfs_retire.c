@@ -38,6 +38,7 @@
 #include <sys/fs/zfs.h>
 #include <sys/fm/protocol.h>
 #include <sys/fm/fs/zfs.h>
+#include <libzutil.h>
 #include <libzfs.h>
 #include <string.h>
 
@@ -219,11 +220,17 @@ replace_with_spare(fmd_hdl_t *hdl, zpool_handle_t *zhp, nvlist_t *vdev)
 	 * replace it.
 	 */
 	for (s = 0; s < nspares; s++) {
-		char *spare_name;
+		boolean_t rebuild = B_FALSE;
+		char *spare_name, *type;
 
 		if (nvlist_lookup_string(spares[s], ZPOOL_CONFIG_PATH,
 		    &spare_name) != 0)
 			continue;
+
+		/* prefer sequential resilvering for distributed spares */
+		if ((nvlist_lookup_string(spares[s], ZPOOL_CONFIG_TYPE,
+		    &type) == 0) && strcmp(type, VDEV_TYPE_DRAID_SPARE) == 0)
+			rebuild = B_TRUE;
 
 		/* if set, add the "ashift" pool property to the spare nvlist */
 		if (source != ZPROP_SRC_DEFAULT)
@@ -234,10 +241,10 @@ replace_with_spare(fmd_hdl_t *hdl, zpool_handle_t *zhp, nvlist_t *vdev)
 		    ZPOOL_CONFIG_CHILDREN, &spares[s], 1);
 
 		fmd_hdl_debug(hdl, "zpool_vdev_replace '%s' with spare '%s'",
-		    dev_name, basename(spare_name));
+		    dev_name, zfs_basename(spare_name));
 
 		if (zpool_vdev_attach(zhp, dev_name, spare_name,
-		    replacement, B_TRUE, B_FALSE) == 0) {
+		    replacement, B_TRUE, rebuild) == 0) {
 			free(dev_name);
 			nvlist_free(replacement);
 			return (B_TRUE);
@@ -328,7 +335,7 @@ zfs_retire_recv(fmd_hdl_t *hdl, fmd_event_t *ep, nvlist_t *nvl,
 	 */
 	if (strcmp(class, "resource.fs.zfs.removed") == 0 ||
 	    (strcmp(class, "resource.fs.zfs.statechange") == 0 &&
-	    state == VDEV_STATE_REMOVED)) {
+	    (state == VDEV_STATE_REMOVED || state == VDEV_STATE_FAULTED))) {
 		char *devtype;
 		char *devname;
 
@@ -499,6 +506,7 @@ zfs_retire_recv(fmd_hdl_t *hdl, fmd_event_t *ep, nvlist_t *nvl,
 		 * Attempt to substitute a hot spare.
 		 */
 		(void) replace_with_spare(hdl, zhp, vdev);
+
 		zpool_close(zhp);
 	}
 

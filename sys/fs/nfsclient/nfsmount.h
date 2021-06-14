@@ -76,6 +76,7 @@ struct	nfsmount {
 	/* Newnfs additions */
 	TAILQ_HEAD(, nfsclds) nm_sess;	/* Session(s) for NFSv4.1. */
 	struct	nfsclclient *nm_clp;
+	char	*nm_tlscertname;	/* TLS certificate file name */
 	uid_t	nm_uid;			/* Uid for SetClientID etc. */
 	u_int64_t nm_clval;		/* identifies which clientid */
 	u_int64_t nm_fsid[2];		/* NFSv4 fsid */
@@ -114,6 +115,7 @@ struct	nfsmount {
 #define	NFSMNTP_NOXATTR		0x00000080
 #define	NFSMNTP_NOADVISE	0x00000100
 #define	NFSMNTP_NOALLOCATE	0x00000200
+#define	NFSMNTP_DELEGISSUED	0x00000400
 
 /* New mount flags only used by the kernel via nmount(2). */
 #define	NFSMNT_TLS		0x00000001

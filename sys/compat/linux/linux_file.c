@@ -45,6 +45,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/mount.h>
 #include <sys/mutex.h>
 #include <sys/namei.h>
+#include <sys/selinfo.h>
+#include <sys/pipe.h>
 #include <sys/proc.h>
 #include <sys/stat.h>
 #include <sys/sx.h>
@@ -162,6 +164,8 @@ linux_common_openflags(int l_flags)
 		bsd_flags |= O_NOFOLLOW;
 	if (l_flags & LINUX_O_DIRECTORY)
 		bsd_flags |= O_DIRECTORY;
+	if (l_flags & LINUX_O_PATH)
+		bsd_flags |= O_PATH;
 	/* XXX LINUX_O_NOATIME: unable to be easily implemented. */
 	return (bsd_flags);
 }
@@ -1109,7 +1113,7 @@ linux_link(struct thread *td, struct linux_link_args *args)
 
 	if (!LUSECONVPATH(td)) {
 		return (kern_linkat(td, AT_FDCWD, AT_FDCWD, args->path, args->to,
-		    UIO_USERSPACE, FOLLOW));
+		    UIO_USERSPACE, AT_SYMLINK_FOLLOW));
 	}
 	LCONVPATHEXIST(td, args->path, &path);
 	/* Expand LCONVPATHCREATE so that `path' can be freed on errors */
@@ -1119,7 +1123,7 @@ linux_link(struct thread *td, struct linux_link_args *args)
 		return (error);
 	}
 	error = kern_linkat(td, AT_FDCWD, AT_FDCWD, path, to, UIO_SYSSPACE,
-	    FOLLOW);
+	    AT_SYMLINK_FOLLOW);
 	LFREEPATH(path);
 	LFREEPATH(to);
 	return (error);
@@ -1130,18 +1134,20 @@ int
 linux_linkat(struct thread *td, struct linux_linkat_args *args)
 {
 	char *path, *to;
-	int error, olddfd, newdfd, follow;
+	int error, olddfd, newdfd, flag;
 
-	if (args->flag & ~LINUX_AT_SYMLINK_FOLLOW)
+	if (args->flag & ~(LINUX_AT_SYMLINK_FOLLOW | LINUX_AT_EMPTY_PATH))
 		return (EINVAL);
+
+	flag = (args->flag & LINUX_AT_SYMLINK_FOLLOW) == 0 ? AT_SYMLINK_FOLLOW :
+	    0;
+	flag |= (args->flag & LINUX_AT_EMPTY_PATH) == 0 ? AT_EMPTY_PATH : 0;
 
 	olddfd = (args->olddfd == LINUX_AT_FDCWD) ? AT_FDCWD : args->olddfd;
 	newdfd = (args->newdfd == LINUX_AT_FDCWD) ? AT_FDCWD : args->newdfd;
-	follow = (args->flag & LINUX_AT_SYMLINK_FOLLOW) == 0 ? NOFOLLOW :
-	    FOLLOW;
 	if (!LUSECONVPATH(td)) {
 		return (kern_linkat(td, olddfd, newdfd, args->oldname,
-		    args->newname, UIO_USERSPACE, follow));
+		    args->newname, UIO_USERSPACE, flag));
 	}
 	LCONVPATHEXIST_AT(td, args->oldname, &path, olddfd);
 	/* Expand LCONVPATHCREATE so that `path' can be freed on errors */
@@ -1150,7 +1156,7 @@ linux_linkat(struct thread *td, struct linux_linkat_args *args)
 		LFREEPATH(path);
 		return (error);
 	}
-	error = kern_linkat(td, olddfd, newdfd, path, to, UIO_SYSSPACE, follow);
+	error = kern_linkat(td, olddfd, newdfd, path, to, UIO_SYSSPACE, flag);
 	LFREEPATH(path);
 	LFREEPATH(to);
 	return (error);
@@ -1314,12 +1320,11 @@ linux_mount(struct thread *td, struct linux_mount_args *args)
 		strcpy(fstypename, "linprocfs");
 	} else if (strcmp(fstypename, "vfat") == 0) {
 		strcpy(fstypename, "msdosfs");
-	} else if (strcmp(fstypename, "fuse") == 0) {
+	} else if (strcmp(fstypename, "fuse") == 0 ||
+	    strncmp(fstypename, "fuse.", 5) == 0) {
 		char *fuse_options, *fuse_option, *fuse_name;
 
-		if (strcmp(mntfromname, "fuse") == 0)
-			strcpy(mntfromname, "/dev/fuse");
-
+		strcpy(mntfromname, "/dev/fuse");
 		strcpy(fstypename, "fusefs");
 		data = malloc(MNAMELEN, M_TEMP, M_WAITOK);
 		error = copyinstr(args->data, data, MNAMELEN - 1, NULL);
@@ -1520,6 +1525,7 @@ fcntl_common(struct thread *td, struct linux_fcntl_args *args)
 {
 	struct l_flock linux_flock;
 	struct flock bsd_flock;
+	struct pipe *fpipe;
 	struct file *fp;
 	long arg;
 	int error, result;
@@ -1651,8 +1657,23 @@ fcntl_common(struct thread *td, struct linux_fcntl_args *args)
 	case LINUX_F_ADD_SEALS:
 		return (kern_fcntl(td, args->fd, F_ADD_SEALS,
 		    linux_to_bsd_bits(args->arg, seal_bitmap, 0)));
+
+	case LINUX_F_GETPIPE_SZ:
+		error = fget(td, args->fd,
+		    &cap_fcntl_rights, &fp);
+		if (error != 0)
+			return (error);
+		if (fp->f_type != DTYPE_PIPE) {
+			fdrop(fp, td);
+			return (EINVAL);
+		}
+		fpipe = fp->f_data;
+		td->td_retval[0] = fpipe->pipe_buffer.size;
+		fdrop(fp, td);
+		return (0);
+
 	default:
-		linux_msg(td, "unsupported fcntl cmd %d\n", args->cmd);
+		linux_msg(td, "unsupported fcntl cmd %d", args->cmd);
 		return (EINVAL);
 	}
 }
@@ -1738,12 +1759,17 @@ linux_fchownat(struct thread *td, struct linux_fchownat_args *args)
 	char *path;
 	int error, dfd, flag;
 
-	if (args->flag & ~LINUX_AT_SYMLINK_NOFOLLOW)
+	if (args->flag & ~(LINUX_AT_SYMLINK_NOFOLLOW | LINUX_AT_EMPTY_PATH)) {
+		linux_msg(td, "fchownat unsupported flag 0x%x", args->flag);
 		return (EINVAL);
+	}
 
-	dfd = (args->dfd == LINUX_AT_FDCWD) ? AT_FDCWD :  args->dfd;
 	flag = (args->flag & LINUX_AT_SYMLINK_NOFOLLOW) == 0 ? 0 :
 	    AT_SYMLINK_NOFOLLOW;
+	flag |= (args->flag & LINUX_AT_EMPTY_PATH) == 0 ? 0 :
+	    AT_EMPTY_PATH;
+
+	dfd = (args->dfd == LINUX_AT_FDCWD) ? AT_FDCWD :  args->dfd;
 	if (!LUSECONVPATH(td)) {
 		return (kern_fchownat(td, dfd, args->filename, UIO_USERSPACE,
 		    args->uid, args->gid, flag));

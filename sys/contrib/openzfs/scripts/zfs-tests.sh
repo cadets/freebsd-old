@@ -242,7 +242,7 @@ constrain_path() {
 	# install to /usr/local/sbin. To avoid testing the wrong utils we
 	# need /usr/local to come before / in the path search order.
 	SYSTEM_DIRS="/usr/local/bin /usr/local/sbin"
-	SYSTEM_DIRS="$SYSTEM_DIRS /usr/bin /usr/sbin /bin /sbin"
+	SYSTEM_DIRS="$SYSTEM_DIRS /usr/bin /usr/sbin /bin /sbin $LIBEXEC_DIR"
 
 	if [ "$INTREE" = "yes" ]; then
 		# Constrained path set to ./zfs/bin/
@@ -265,7 +265,7 @@ constrain_path() {
 		create_links "$DIRS" "$ZFSTEST_FILES"
 	else
 		# Constrained path set to /var/tmp/constrained_path.*
-		SYSTEMDIR=${SYSTEMDIR:-/var/tmp/constrained_path.XXXX}
+		SYSTEMDIR=${SYSTEMDIR:-/var/tmp/constrained_path.XXXXXX}
 		STF_PATH=$(mktemp -d "$SYSTEMDIR")
 		STF_PATH_REMOVE="yes"
 		STF_MISSING_BIN=""
@@ -355,7 +355,6 @@ while getopts 'hvqxkfScn:d:s:r:?t:T:u:I:' OPTION; do
 		exit 1
 		;;
 	v)
-		# shellcheck disable=SC2034
 		VERBOSE="yes"
 		;;
 	q)
@@ -663,11 +662,11 @@ export PATH=$STF_PATH
 
 if [ "$UNAME" = "FreeBSD" ] ; then
 	mkdir -p "$FILEDIR" || true
-	RESULTS_FILE=$(mktemp -u "${FILEDIR}/zts-results.XXXX")
-	REPORT_FILE=$(mktemp -u "${FILEDIR}/zts-report.XXXX")
+	RESULTS_FILE=$(mktemp -u "${FILEDIR}/zts-results.XXXXXX")
+	REPORT_FILE=$(mktemp -u "${FILEDIR}/zts-report.XXXXXX")
 else
-	RESULTS_FILE=$(mktemp -u -t zts-results.XXXX -p "$FILEDIR")
-	REPORT_FILE=$(mktemp -u -t zts-report.XXXX -p "$FILEDIR")
+	RESULTS_FILE=$(mktemp -u -t zts-results.XXXXXX -p "$FILEDIR")
+	REPORT_FILE=$(mktemp -u -t zts-report.XXXXXX -p "$FILEDIR")
 fi
 
 #

@@ -61,6 +61,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/fcntl.h>
 #include <sys/sbuf.h>
 
+#include <dev/hid/hid.h>
+
 #include <dev/usb/usb.h>
 #include <dev/usb/usbdi.h>
 #include <dev/usb/usbdi_util.h>
@@ -378,7 +380,7 @@ tr_setup:
 		/* check if we can put more data into the FIFO */
 		if (usb_fifo_put_bytes_max(sc->sc_fifo.fp[USB_FIFO_RX]) == 0) {
 #ifdef EVDEV_SUPPORT
-			if (sc->sc_evflags == 0)
+			if ((sc->sc_evflags & UMS_EVDEV_OPENED) == 0)
 				break;
 #else
 			break;
@@ -614,7 +616,7 @@ ums_attach(device_t dev)
 		goto detach;
 	}
 
-	isize = hid_report_size(d_ptr, d_len, hid_input, &sc->sc_iid);
+	isize = hid_report_size_max(d_ptr, d_len, hid_input, &sc->sc_iid);
 
 	/*
 	 * The Microsoft Wireless Notebook Optical Mouse seems to be in worse
@@ -856,7 +858,10 @@ ums_fifo_stop_read(struct usb_fifo *fifo)
 {
 	struct ums_softc *sc = usb_fifo_softc(fifo);
 
-	ums_stop_rx(sc);
+#ifdef EVDEV_SUPPORT
+	if ((sc->sc_evflags & UMS_EVDEV_OPENED) == 0)
+#endif
+		ums_stop_rx(sc);
 }
 
 #if ((MOUSE_SYS_PACKETSIZE != 8) || \
@@ -943,12 +948,12 @@ ums_ev_open(struct evdev_dev *evdev)
 
 	mtx_assert(&sc->sc_mtx, MA_OWNED);
 
-	sc->sc_evflags = UMS_EVDEV_OPENED;
+	sc->sc_evflags |= UMS_EVDEV_OPENED;
 
 	if (sc->sc_fflags == 0) {
 		ums_reset(sc);
-		ums_start_rx(sc);
 	}
+	ums_start_rx(sc);
 
 	return (0);
 }
@@ -960,7 +965,7 @@ ums_ev_close(struct evdev_dev *evdev)
 
 	mtx_assert(&sc->sc_mtx, MA_OWNED);
 
-	sc->sc_evflags = 0;
+	sc->sc_evflags &= ~UMS_EVDEV_OPENED;
 
 	if (sc->sc_fflags == 0)
 		ums_stop_rx(sc);
@@ -982,7 +987,7 @@ ums_fifo_open(struct usb_fifo *fifo, int fflags)
 
 	/* check for first open */
 #ifdef EVDEV_SUPPORT
-	if (sc->sc_fflags == 0 && sc->sc_evflags == 0)
+	if (sc->sc_fflags == 0 && (sc->sc_evflags & UMS_EVDEV_OPENED) == 0)
 		ums_reset(sc);
 #else
 	if (sc->sc_fflags == 0)
@@ -1213,6 +1218,7 @@ static driver_t ums_driver = {
 
 DRIVER_MODULE(ums, uhub, ums_driver, ums_devclass, NULL, 0);
 MODULE_DEPEND(ums, usb, 1, 1, 1);
+MODULE_DEPEND(ums, hid, 1, 1, 1);
 #ifdef EVDEV_SUPPORT
 MODULE_DEPEND(ums, evdev, 1, 1, 1);
 #endif

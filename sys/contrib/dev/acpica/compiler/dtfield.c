@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2020, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2021, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -227,7 +227,7 @@ DtCompileOneField (
             break;
         }
 
-        /* Fall through. */
+        ACPI_FALLTHROUGH;
 
     case DT_FIELD_TYPE_BUFFER:
 
@@ -434,14 +434,14 @@ DtCompileInteger (
         {
             if (Value != 1)
             {
-                DtError (ASL_WARNING, ASL_MSG_RESERVED_VALUE, Field,
+                DtError (ASL_WARNING, ASL_MSG_RESERVED_FIELD, Field,
                     "Must be one, setting to one");
                 Value = 1;
             }
         }
         else if (Value != 0)
         {
-            DtError (ASL_WARNING, ASL_MSG_RESERVED_VALUE, Field,
+            DtError (ASL_WARNING, ASL_MSG_RESERVED_FIELD, Field,
                 "Must be zero, setting to zero");
             Value = 0;
         }

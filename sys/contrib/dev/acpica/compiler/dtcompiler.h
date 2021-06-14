@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2020, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2021, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -574,6 +574,10 @@ DtCompileCpep (
     void                    **PFieldList);
 
 ACPI_STATUS
+DtCompileCedt (
+    void                    **PFieldList);
+
+ACPI_STATUS
 DtCompileCsrt (
     void                    **PFieldList);
 
@@ -646,10 +650,6 @@ DtCompileMsct (
     void                    **PFieldList);
 
 ACPI_STATUS
-DtCompileMtmr (
-    void                    **PFieldList);
-
-ACPI_STATUS
 DtCompileNfit (
     void                    **PFieldList);
 
@@ -662,11 +662,23 @@ DtCompilePdtt (
     void                    **PFieldList);
 
 ACPI_STATUS
+DtCompilePhat (
+    void                    **PFieldList);
+
+ACPI_STATUS
 DtCompilePmtt (
     void                    **PFieldList);
 
 ACPI_STATUS
 DtCompilePptt (
+    void                    **PFieldList);
+
+ACPI_STATUS
+DtCompilePrmt (
+    void                    **PFieldList);
+
+ACPI_STATUS
+DtCompileRgrt (
     void                    **PFieldList);
 
 ACPI_STATUS
@@ -698,6 +710,10 @@ DtCompileStao (
     void                    **PFieldList);
 
 ACPI_STATUS
+DtCompileSvkl (
+    void                    **PFieldList);
+
+ACPI_STATUS
 DtCompileTcpa (
     void                    **PFieldList);
 
@@ -710,7 +726,7 @@ DtCompileUefi (
     void                    **PFieldList);
 
 ACPI_STATUS
-DtCompileVrtc (
+DtCompileViot (
     void                    **PFieldList);
 
 ACPI_STATUS
@@ -739,8 +755,10 @@ DtGetGenericTableInfo (
 
 extern const unsigned char  TemplateAsf[];
 extern const unsigned char  TemplateBoot[];
+extern const unsigned char  TemplateBdat[];
 extern const unsigned char  TemplateBert[];
 extern const unsigned char  TemplateBgrt[];
+extern const unsigned char  TemplateCedt[];
 extern const unsigned char  TemplateCpep[];
 extern const unsigned char  TemplateCsrt[];
 extern const unsigned char  TemplateDbg2[];
@@ -765,13 +783,15 @@ extern const unsigned char  TemplateMchi[];
 extern const unsigned char  TemplateMpst[];
 extern const unsigned char  TemplateMsct[];
 extern const unsigned char  TemplateMsdm[];
-extern const unsigned char  TemplateMtmr[];
 extern const unsigned char  TemplateNfit[];
 extern const unsigned char  TemplatePcct[];
 extern const unsigned char  TemplatePdtt[];
+extern const unsigned char  TemplatePhat[];
 extern const unsigned char  TemplatePmtt[];
 extern const unsigned char  TemplatePptt[];
+extern const unsigned char  TemplatePrmt[];
 extern const unsigned char  TemplateRasf[];
+extern const unsigned char  TemplateRgrt[];
 extern const unsigned char  TemplateRsdt[];
 extern const unsigned char  TemplateS3pt[];
 extern const unsigned char  TemplateSbst[];
@@ -783,10 +803,11 @@ extern const unsigned char  TemplateSpcr[];
 extern const unsigned char  TemplateSpmi[];
 extern const unsigned char  TemplateSrat[];
 extern const unsigned char  TemplateStao[];
+extern const unsigned char  TemplateSvkl[];
 extern const unsigned char  TemplateTcpa[];
 extern const unsigned char  TemplateTpm2[];
 extern const unsigned char  TemplateUefi[];
-extern const unsigned char  TemplateVrtc[];
+extern const unsigned char  TemplateViot[];
 extern const unsigned char  TemplateWaet[];
 extern const unsigned char  TemplateWdat[];
 extern const unsigned char  TemplateWddt[];

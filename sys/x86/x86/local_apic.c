@@ -43,6 +43,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/asan.h>
 #include <sys/bus.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
@@ -201,6 +202,7 @@ static u_long lapic_timer_divisor, count_freq;
 static struct eventtimer lapic_et;
 #ifdef SMP
 static uint64_t lapic_ipi_wait_mult;
+static int __read_mostly lapic_ds_idle_timeout = 1000000;
 #endif
 unsigned int max_apic_id;
 
@@ -211,6 +213,11 @@ SYSCTL_INT(_hw_apic, OID_AUTO, eoi_suppression, CTLFLAG_RD,
     &lapic_eoi_suppression, 0, "");
 SYSCTL_INT(_hw_apic, OID_AUTO, timer_tsc_deadline, CTLFLAG_RD,
     &lapic_timer_tsc_deadline, 0, "");
+#ifdef SMP
+SYSCTL_INT(_hw_apic, OID_AUTO, ds_idle_timeout, CTLFLAG_RWTUN,
+    &lapic_ds_idle_timeout, 0,
+    "timeout (in us) for APIC Delivery Status to become Idle (xAPIC only)");
+#endif
 
 static void lapic_calibrate_initcount(struct lapic *la);
 static void lapic_calibrate_deadline(struct lapic *la);
@@ -1299,6 +1306,9 @@ lapic_handle_intr(int vector, struct trapframe *frame)
 {
 	struct intsrc *isrc;
 
+	/* The frame may have been written into a poisoned region. */
+	kasan_mark(frame, sizeof(*frame), sizeof(*frame), 0);
+
 	isrc = intr_lookup_source(apic_idt_to_irq(PCPU_GET(apic_id),
 	    vector));
 	intr_execute_handlers(isrc, frame);
@@ -1313,6 +1323,9 @@ lapic_handle_timer(struct trapframe *frame)
 
 	/* Send EOI first thing. */
 	lapic_eoi();
+
+	/* The frame may have been written into a poisoned region. */
+	kasan_mark(frame, sizeof(*frame), sizeof(*frame), 0);
 
 #if defined(SMP) && !defined(SCHED_ULE)
 	/*
@@ -1966,7 +1979,7 @@ apic_setup_io(void *dummy __unused)
 		lapic_dump("BSP");
 
 	/* Enable the MSI "pic". */
-	init_ops.msi_init();
+	msi_init();
 
 #ifdef XENHVM
 	xen_intr_alloc_irqs();
@@ -2028,7 +2041,6 @@ native_lapic_ipi_raw(register_t icrlo, u_int dest)
 	}
 }
 
-#define	BEFORE_SPIN	50000
 #ifdef DETECT_DEADLOCK
 #define	AFTER_SPIN	50
 #endif
@@ -2075,7 +2087,7 @@ native_lapic_ipi_vectored(u_int vector, int dest)
 	icrlo |= APIC_DESTMODE_PHY | APIC_TRIGMOD_EDGE | APIC_LEVEL_ASSERT;
 
 	/* Wait for an earlier IPI to finish. */
-	if (!lapic_ipi_wait(BEFORE_SPIN)) {
+	if (!lapic_ipi_wait(lapic_ds_idle_timeout)) {
 		if (KERNEL_PANICKED())
 			return;
 		else
@@ -2143,6 +2155,9 @@ native_lapic_ipi_alloc(inthand_t *ipifunc)
 	for (idx = IPI_DYN_FIRST; idx <= IPI_DYN_LAST; idx++) {
 		ip = &idt[idx];
 		func = (ip->gd_hioffset << 16) | ip->gd_looffset;
+#ifdef __i386__
+		func -= setidt_disp;
+#endif
 		if ((!pti && func == (uintptr_t)&IDTVEC(rsvd)) ||
 		    (pti && func == (uintptr_t)&IDTVEC(rsvd_pti))) {
 			vector = idx;
@@ -2166,6 +2181,9 @@ native_lapic_ipi_free(int vector)
 	mtx_lock_spin(&icu_lock);
 	ip = &idt[vector];
 	func = (ip->gd_hioffset << 16) | ip->gd_looffset;
+#ifdef __i386__
+	func -= setidt_disp;
+#endif
 	KASSERT(func != (uintptr_t)&IDTVEC(rsvd) &&
 	    func != (uintptr_t)&IDTVEC(rsvd_pti),
 	    ("invalid idtfunc %#lx", func));

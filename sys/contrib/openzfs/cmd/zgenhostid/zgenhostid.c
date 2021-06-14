@@ -36,8 +36,6 @@
 #include <time.h>
 #include <unistd.h>
 
-static void usage(void);
-
 static void
 usage(void)
 {
@@ -47,10 +45,10 @@ usage(void)
 	    "  -h\t\t print this usage and exit\n"
 	    "  -o <filename>\t write hostid to this file\n\n"
 	    "If hostid file is not present, store a hostid in it.\n"
-	    "The optional value must be an 8-digit hex number between"
-	    "1 and 2^32-1.\n"
-	    "If no value is provided, a random one will"
-	    "be generated.\n"
+	    "The optional value should be an 8-digit hex number between"
+	    " 1 and 2^32-1.\n"
+	    "If the value is 0 or no value is provided, a random one"
+	    " will be generated.\n"
 	    "The value must be unique among your systems.\n");
 	exit(EXIT_FAILURE);
 	/* NOTREACHED */
@@ -60,12 +58,11 @@ int
 main(int argc, char **argv)
 {
 	/* default file path, can be optionally set by user */
-	char path[PATH_MAX] = "/etc/hostid";
+	const char *path = "/etc/hostid";
 	/* holds converted user input or lrand48() generated value */
 	unsigned long input_i = 0;
 
 	int opt;
-	int pathlen;
 	int force_fwrite = 0;
 	while ((opt = getopt_long(argc, argv, "fo:h?", 0, 0)) != -1) {
 		switch (opt) {
@@ -73,14 +70,7 @@ main(int argc, char **argv)
 			force_fwrite = 1;
 			break;
 		case 'o':
-			pathlen = snprintf(path, sizeof (path), "%s", optarg);
-			if (pathlen >= sizeof (path)) {
-				fprintf(stderr, "%s\n", strerror(EOVERFLOW));
-				exit(EXIT_FAILURE);
-			} else if (pathlen < 1) {
-				fprintf(stderr, "%s\n", strerror(EINVAL));
-				exit(EXIT_FAILURE);
-			}
+			path = optarg;
 			break;
 		case 'h':
 		case '?':
@@ -108,7 +98,7 @@ main(int argc, char **argv)
 			exit(EXIT_FAILURE);
 		}
 
-		if (input_i < 0x1 || input_i > UINT32_MAX) {
+		if (input_i > UINT32_MAX) {
 			fprintf(stderr, "%s\n", strerror(ERANGE));
 			usage();
 		}
@@ -118,7 +108,7 @@ main(int argc, char **argv)
 	if (force_fwrite == 0 && stat(path, &fstat) == 0 &&
 	    S_ISREG(fstat.st_mode)) {
 		fprintf(stderr, "%s: %s\n", path, strerror(EEXIST));
-			exit(EXIT_FAILURE);
+		exit(EXIT_FAILURE);
 	}
 
 	/*
@@ -137,7 +127,7 @@ main(int argc, char **argv)
 	}
 
 	/*
-	 * we need just 4 bytes in native endianess
+	 * we need just 4 bytes in native endianness
 	 * not using sethostid() because it may be missing or just a stub
 	 */
 	uint32_t hostid = input_i;

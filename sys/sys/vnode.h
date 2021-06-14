@@ -66,6 +66,7 @@ enum vgetstate	{ VGET_NONE, VGET_HOLDCNT, VGET_USECOUNT };
  */
 
 struct namecache;
+struct cache_fpl;
 
 struct vpollinfo {
 	struct	mtx vpi_lock;		/* lock to protect below */
@@ -108,6 +109,7 @@ struct vnode {
 	short	v_irflag;			/* i frequently read flags */
 	seqc_t	v_seqc;				/* i modification count */
 	uint32_t v_nchash;			/* u namecache hash */
+	u_int	v_hash;
 	struct	vop_vector *v_op;		/* u vnode operations vector */
 	void	*v_data;			/* u private data for fs */
 
@@ -162,14 +164,6 @@ struct vnode {
 	struct lockf *v_lockf;		/* Byte-level advisory lock list */
 	struct rangelock v_rl;			/* Byte-range lock */
 
-	/*
-	 * clustering stuff
-	 */
-	daddr_t	v_cstart;			/* v start block of cluster */
-	daddr_t	v_lasta;			/* v last allocation  */
-	daddr_t	v_lastw;			/* v last write  */
-	int	v_clen;				/* v length of cur. cluster */
-
 	u_int	v_holdcnt;			/* I prevents recycling. */
 	u_int	v_usecount;			/* I ref count of users */
 	u_short	v_iflag;			/* i vnode flags (see below) */
@@ -179,8 +173,18 @@ struct vnode {
 	int	v_writecount;			/* I ref count of writers or
 						   (negative) text users */
 	int	v_seqc_users;			/* i modifications pending */
-	u_int	v_hash;
 };
+
+#ifndef DEBUG_LOCKS
+#ifdef _LP64
+/*
+ * Not crossing 448 bytes fits 9 vnodes per page. If you have to add fields
+ * to the structure and there is nothing which can be done to prevent growth
+ * then so be it. But don't grow it without a good reason.
+ */
+_Static_assert(sizeof(struct vnode) <= 448, "vnode size crosses 448 bytes");
+#endif
+#endif
 
 #endif /* defined(_KERNEL) || defined(_KVM_VNODE) */
 
@@ -246,12 +250,15 @@ struct xvnode {
 #define	VIRF_DOOMED	0x0001	/* This vnode is being recycled */
 #define	VIRF_PGREAD	0x0002	/* Direct reads from the page cache are permitted,
 				   never cleared once set */
+#define	VIRF_MOUNTPOINT	0x0004	/* This vnode is mounted on */
 
 #define	VI_TEXT_REF	0x0001	/* Text ref grabbed use ref */
 #define	VI_MOUNT	0x0002	/* Mount in progress */
 #define	VI_DOINGINACT	0x0004	/* VOP_INACTIVE is in progress */
 #define	VI_OWEINACT	0x0008	/* Need to call inactive */
 #define	VI_DEFINACT	0x0010	/* deferred inactive */
+#define	VI_FOPENING	0x0020	/* In open, with opening process having the
+				   first right to advlock file */
 
 #define	VV_ROOT		0x0001	/* root of its filesystem */
 #define	VV_ISTTY	0x0002	/* vnode represents a tty */
@@ -267,6 +274,7 @@ struct xvnode {
 #define	VV_MD		0x0800	/* vnode backs the md device */
 #define	VV_FORCEINSMQ	0x1000	/* force the insmntque to succeed */
 #define	VV_READLINK	0x2000	/* fdescfs linux vnode */
+#define	VV_UNREF	0x4000	/* vunref, do not drop lock in inactive() */
 
 #define	VMP_LAZYLIST	0x0001	/* Vnode is on mnt's lazy list */
 
@@ -325,6 +333,7 @@ struct vattr {
 #define	IO_NOMACCHECK	0x1000		/* MAC checks unnecessary */
 #define	IO_BUFLOCKED	0x2000		/* ffs flag; indir buf is locked */
 #define	IO_RANGELOCKED	0x4000		/* range locked */
+#define	IO_DATASYNC	0x8000		/* do only data I/O synchronously */
 
 #define IO_SEQMAX	0x7F		/* seq heuristic max value */
 #define IO_SEQSHIFT	16		/* seq heuristic in upper 16 bits */
@@ -644,6 +653,10 @@ void	cache_purge(struct vnode *vp);
 void	cache_purge_vgone(struct vnode *vp);
 void	cache_purge_negative(struct vnode *vp);
 void	cache_purgevfs(struct mount *mp);
+char	*cache_symlink_alloc(size_t size, int flags);
+void	cache_symlink_free(char *string, size_t size);
+int	cache_symlink_resolve(struct cache_fpl *fpl, const char *string,
+	    size_t len);
 void	cache_vop_rename(struct vnode *fdvp, struct vnode *fvp, struct vnode *tdvp,
     struct vnode *tvp, struct componentname *fcnp, struct componentname *tcnp);
 void	cache_vop_rmdir(struct vnode *dvp, struct vnode *vp);
@@ -656,6 +669,7 @@ cache_validate(struct vnode *dvp, struct vnode *vp, struct componentname *cnp)
 {
 }
 #endif
+void	cache_fast_lookup_enabled_recalc(void);
 int	change_dir(struct vnode *vp, struct thread *td);
 void	cvtstat(struct stat *st, struct ostat *ost);
 void	freebsd11_cvtnstat(struct stat *sb, struct nstat *nsb);
@@ -702,7 +716,7 @@ void	vgone(struct vnode *vp);
 void	vhold(struct vnode *);
 void	vholdnz(struct vnode *);
 bool	vhold_smr(struct vnode *);
-void	vinactive(struct vnode *vp);
+int	vinactive(struct vnode *vp);
 int	vinvalbuf(struct vnode *vp, int save, int slpflag, int slptimeo);
 int	vtruncbuf(struct vnode *vp, off_t length, int blksize);
 void	v_inval_buf_range(struct vnode *vp, daddr_t startlbn, daddr_t endlbn,
@@ -774,13 +788,12 @@ int	vn_io_fault_uiomove(char *data, int xfersize, struct uio *uio);
 int	vn_io_fault_pgmove(vm_page_t ma[], vm_offset_t offset, int xfersize,
 	    struct uio *uio);
 
-void	vn_seqc_write_begin_unheld_locked(struct vnode *vp);
-void	vn_seqc_write_begin_unheld(struct vnode *vp);
 void	vn_seqc_write_begin_locked(struct vnode *vp);
 void	vn_seqc_write_begin(struct vnode *vp);
 void	vn_seqc_write_end_locked(struct vnode *vp);
 void	vn_seqc_write_end(struct vnode *vp);
 #define	vn_seqc_read_any(vp)		seqc_read_any(&(vp)->v_seqc)
+#define	vn_seqc_read_notmodify(vp)	seqc_read_notmodify(&(vp)->v_seqc)
 #define	vn_seqc_consistent(vp, seq)	seqc_consistent(&(vp)->v_seqc, seq)
 
 #define	vn_rangelock_unlock(vp, cookie)					\
@@ -797,13 +810,23 @@ void	vn_seqc_write_end(struct vnode *vp);
 #define	vn_rangelock_trywlock(vp, start, end)				\
 	rangelock_trywlock(&(vp)->v_rl, (start), (end), VI_MTX(vp))
 
+#define	vn_irflag_read(vp)	atomic_load_short(&(vp)->v_irflag)
+void	vn_irflag_set_locked(struct vnode *vp, short toset);
+void	vn_irflag_set(struct vnode *vp, short toset);
+void	vn_irflag_set_cond_locked(struct vnode *vp, short toset);
+void	vn_irflag_set_cond(struct vnode *vp, short toset);
+void	vn_irflag_unset_locked(struct vnode *vp, short tounset);
+void	vn_irflag_unset(struct vnode *vp, short tounset);
+
 int	vfs_cache_lookup(struct vop_lookup_args *ap);
 int	vfs_cache_root(struct mount *mp, int flags, struct vnode **vpp);
 void	vfs_timestamp(struct timespec *);
 void	vfs_write_resume(struct mount *mp, int flags);
 int	vfs_write_suspend(struct mount *mp, int flags);
 int	vfs_write_suspend_umnt(struct mount *mp);
-void	vnlru_free(int, struct vfsops *);
+struct vnode *vnlru_alloc_marker(void);
+void	vnlru_free_marker(struct vnode *);
+void	vnlru_free_vfsops(int, struct vfsops *, struct vnode *);
 int	vop_stdbmap(struct vop_bmap_args *);
 int	vop_stdfdatasync_buf(struct vop_fdatasync_args *);
 int	vop_stdfsync(struct vop_fsync_args *);
@@ -888,6 +911,8 @@ int	vop_sigdefer(struct vop_vector *vop, struct vop_generic_args *a);
 #ifdef DEBUG_VFS_LOCKS
 void	vop_fplookup_vexec_debugpre(void *a);
 void	vop_fplookup_vexec_debugpost(void *a, int rc);
+void	vop_fplookup_symlink_debugpre(void *a);
+void	vop_fplookup_symlink_debugpost(void *a, int rc);
 void	vop_strategy_debugpre(void *a);
 void	vop_lock_debugpre(void *a);
 void	vop_lock_debugpost(void *a, int rc);
@@ -898,6 +923,8 @@ void	vop_mkdir_debugpost(void *a, int rc);
 #else
 #define	vop_fplookup_vexec_debugpre(x)		do { } while (0)
 #define	vop_fplookup_vexec_debugpost(x, y)	do { } while (0)
+#define	vop_fplookup_symlink_debugpre(x)	do { } while (0)
+#define	vop_fplookup_symlink_debugpost(x, y)	do { } while (0)
 #define	vop_strategy_debugpre(x)		do { } while (0)
 #define	vop_lock_debugpre(x)			do { } while (0)
 #define	vop_lock_debugpost(x, y)		do { } while (0)
@@ -979,7 +1006,7 @@ do {									\
 #define	VOP_UNSET_TEXT_CHECKED(vp)		VOP_UNSET_TEXT((vp))
 #endif
 
-#define	VN_IS_DOOMED(vp)	__predict_false((vp)->v_irflag & VIRF_DOOMED)
+#define	VN_IS_DOOMED(vp)	__predict_false((vn_irflag_read(vp) & VIRF_DOOMED) != 0)
 
 void	vput(struct vnode *vp);
 void	vrele(struct vnode *vp);
@@ -1082,6 +1109,7 @@ int vn_dir_check_exec(struct vnode *vp, struct componentname *cnp);
 #define VFS_SMR()	vfs_smr
 #define vfs_smr_enter()	smr_enter(VFS_SMR())
 #define vfs_smr_exit()	smr_exit(VFS_SMR())
+#define vfs_smr_synchronize()	smr_synchronize(VFS_SMR())
 #define vfs_smr_entered_load(ptr)	smr_entered_load((ptr), VFS_SMR())
 #define VFS_SMR_ASSERT_ENTERED()	SMR_ASSERT_ENTERED(VFS_SMR())
 #define VFS_SMR_ASSERT_NOT_ENTERED()	SMR_ASSERT_NOT_ENTERED(VFS_SMR())
@@ -1091,7 +1119,7 @@ int vn_dir_check_exec(struct vnode *vp, struct componentname *cnp);
 	struct vnode *_vp = (vp);		\
 						\
 	VFS_SMR_ASSERT_ENTERED();		\
-	atomic_load_ptr(&(_vp)->v_data);	\
+	atomic_load_consume_ptr(&(_vp)->v_data);\
 })
 
 #endif /* _KERNEL */

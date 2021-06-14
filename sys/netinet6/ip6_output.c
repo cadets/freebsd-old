@@ -225,7 +225,7 @@ ip6_output_delayed_csum(struct mbuf *m, struct ifnet *ifp, int csum_flags,
 #if defined(SCTP) || defined(SCTP_SUPPORT)
 	    (csum_flags & CSUM_SCTP_IPV6) ||
 #endif
-	    (!frag && (ifp->if_capenable & IFCAP_NOMAP) == 0)) {
+	    (!frag && (ifp->if_capenable & IFCAP_MEXTPG) == 0)) {
 		m = mb_unmapped_to_ext(m);
 		if (m == NULL) {
 			if (frag)
@@ -656,9 +656,9 @@ again:
 	if (opt && opt->ip6po_tclass >= 0) {
 		int mask = 0;
 
-		if ((ip6->ip6_flow & htonl(0xfc << 20)) == 0)
+		if (IPV6_DSCP(ip6) == 0)
 			mask |= 0xfc;
-		if ((ip6->ip6_flow & htonl(0x03 << 20)) == 0)
+		if (IPV6_ECN(ip6) == 0)
 			mask |= 0x03;
 		if (mask != 0)
 			ip6->ip6_flow |= htonl((opt->ip6po_tclass & mask) << 20);
@@ -1177,7 +1177,6 @@ passout:
 			counter_u64_add(ia6->ia_ifa.ifa_opackets, 1);
 			counter_u64_add(ia6->ia_ifa.ifa_obytes,
 			    m->m_pkthdr.len);
-			ifa_free(&ia6->ia_ifa);
 		}
 		error = ip6_output_send(inp, ifp, origifp, m, dst, ro,
 		    (flags & IP_NO_SND_TAG_RL) ? false : true);
@@ -2497,6 +2496,7 @@ ip6_pcbopts(struct ip6_pktopts **pktopt, struct mbuf *m,
 	struct ip6_pktopts *opt = *pktopt;
 	int error = 0;
 	struct thread *td = sopt->sopt_td;
+	struct epoch_tracker et;
 
 	/* turn off any old options. */
 	if (opt) {
@@ -2524,12 +2524,15 @@ ip6_pcbopts(struct ip6_pktopts **pktopt, struct mbuf *m,
 	}
 
 	/*  set options specified by user. */
+	NET_EPOCH_ENTER(et);
 	if ((error = ip6_setpktopts(m, opt, NULL, (td != NULL) ?
 	    td->td_ucred : NULL, so->so_proto->pr_protocol)) != 0) {
 		ip6_clearpktopts(opt, -1); /* XXX: discard all options */
 		free(opt, M_IP6OPT);
+		NET_EPOCH_EXIT(et);
 		return (error);
 	}
+	NET_EPOCH_EXIT(et);
 	*pktopt = opt;
 	return (0);
 }
@@ -2824,6 +2827,12 @@ ip6_setpktopts(struct mbuf *control, struct ip6_pktopts *opt,
 
 	if (control == NULL || opt == NULL)
 		return (EINVAL);
+
+	/*
+	 * ip6_setpktopt can call ifnet_by_index(), so it's imperative that we are
+	 * in the net epoch here.
+	 */
+	NET_EPOCH_ASSERT();
 
 	ip6_initpktopts(opt);
 	if (stickyopt) {

@@ -561,38 +561,7 @@ vm_map_entry_set_vnode_text(vm_map_entry_t entry, bool add)
 	 * referenced by the entry we are processing, so it cannot go
 	 * away.
 	 */
-	vp = NULL;
-	vp_held = false;
-	if (object->type == OBJT_DEAD) {
-		/*
-		 * For OBJT_DEAD objects, v_writecount was handled in
-		 * vnode_pager_dealloc().
-		 */
-	} else if (object->type == OBJT_VNODE) {
-		vp = object->handle;
-	} else if (object->type == OBJT_SWAP) {
-		KASSERT((object->flags & OBJ_TMPFS_NODE) != 0,
-		    ("vm_map_entry_set_vnode_text: swap and !TMPFS "
-		    "entry %p, object %p, add %d", entry, object, add));
-		/*
-		 * Tmpfs VREG node, which was reclaimed, has
-		 * OBJ_TMPFS_NODE flag set, but not OBJ_TMPFS.  In
-		 * this case there is no v_writecount to adjust.
-		 */
-		VM_OBJECT_RLOCK(object);
-		if ((object->flags & OBJ_TMPFS) != 0) {
-			vp = object->un_pager.swp.swp_tmpfs;
-			if (vp != NULL) {
-				vhold(vp);
-				vp_held = true;
-			}
-		}
-		VM_OBJECT_RUNLOCK(object);
-	} else {
-		KASSERT(0,
-		    ("vm_map_entry_set_vnode_text: wrong object type, "
-		    "entry %p, object %p, add %d", entry, object, add));
-	}
+	vm_pager_getvp(object, &vp, &vp_held);
 	if (vp != NULL) {
 		if (add) {
 			VOP_SET_TEXT_CHECKED(vp);
@@ -1671,6 +1640,10 @@ vm_map_insert(vm_map_t map, vm_object_t object, vm_ooffset_t offset,
 	if (start == end || !vm_map_range_valid(map, start, end))
 		return (KERN_INVALID_ADDRESS);
 
+	if ((map->flags & MAP_WXORX) != 0 && (prot & (VM_PROT_WRITE |
+	    VM_PROT_EXECUTE)) == (VM_PROT_WRITE | VM_PROT_EXECUTE))
+		return (KERN_PROTECTION_FAILURE);
+
 	/*
 	 * Find the entry prior to the proposed starting address; if it's part
 	 * of an existing entry, this range is bogus.
@@ -2729,14 +2702,12 @@ vm_map_pmap_enter(vm_map_t map, vm_offset_t addr, vm_prot_t prot,
 /*
  *	vm_map_protect:
  *
- *	Sets the protection of the specified address
- *	region in the target map.  If "set_max" is
- *	specified, the maximum protection is to be set;
- *	otherwise, only the current protection is affected.
+ *	Sets the protection and/or the maximum protection of the
+ *	specified address region in the target map.
  */
 int
 vm_map_protect(vm_map_t map, vm_offset_t start, vm_offset_t end,
-	       vm_prot_t new_prot, boolean_t set_max)
+    vm_prot_t new_prot, vm_prot_t new_maxprot, int flags)
 {
 	vm_map_entry_t entry, first_entry, in_tran, prev_entry;
 	vm_object_t obj;
@@ -2747,9 +2718,22 @@ vm_map_protect(vm_map_t map, vm_offset_t start, vm_offset_t end,
 	if (start == end)
 		return (KERN_SUCCESS);
 
+	if ((flags & (VM_MAP_PROTECT_SET_PROT | VM_MAP_PROTECT_SET_MAXPROT)) ==
+	    (VM_MAP_PROTECT_SET_PROT | VM_MAP_PROTECT_SET_MAXPROT) &&
+	    (new_prot & new_maxprot) != new_prot)
+		return (KERN_OUT_OF_BOUNDS);
+
 again:
 	in_tran = NULL;
 	vm_map_lock(map);
+
+	if ((map->flags & MAP_WXORX) != 0 &&
+	    (flags & VM_MAP_PROTECT_SET_PROT) != 0 &&
+	    (new_prot & (VM_PROT_WRITE | VM_PROT_EXECUTE)) == (VM_PROT_WRITE |
+	    VM_PROT_EXECUTE)) {
+		vm_map_unlock(map);
+		return (KERN_PROTECTION_FAILURE);
+	}
 
 	/*
 	 * Ensure that we are not concurrently wiring pages.  vm_map_wire() may
@@ -2775,7 +2759,12 @@ again:
 			vm_map_unlock(map);
 			return (KERN_INVALID_ARGUMENT);
 		}
-		if ((new_prot & entry->max_protection) != new_prot) {
+		if ((flags & VM_MAP_PROTECT_SET_PROT) == 0)
+			new_prot = entry->protection;
+		if ((flags & VM_MAP_PROTECT_SET_MAXPROT) == 0)
+			new_maxprot = entry->max_protection;
+		if ((new_prot & entry->max_protection) != new_prot ||
+		    (new_maxprot & entry->max_protection) != new_maxprot) {
 			vm_map_unlock(map);
 			return (KERN_PROTECTION_FAILURE);
 		}
@@ -2816,12 +2805,11 @@ again:
 			return (rv);
 		}
 
-		if (set_max ||
+		if ((flags & VM_MAP_PROTECT_SET_PROT) == 0 ||
 		    ((new_prot & ~entry->protection) & VM_PROT_WRITE) == 0 ||
 		    ENTRY_CHARGED(entry) ||
-		    (entry->eflags & MAP_ENTRY_GUARD) != 0) {
+		    (entry->eflags & MAP_ENTRY_GUARD) != 0)
 			continue;
-		}
 
 		cred = curthread->td_ucred;
 		obj = entry->object.vm_object;
@@ -2838,10 +2826,12 @@ again:
 			continue;
 		}
 
-		if (obj->type != OBJT_DEFAULT && obj->type != OBJT_SWAP)
+		if (obj->type != OBJT_DEFAULT &&
+		    (obj->flags & OBJ_SWAP) == 0)
 			continue;
 		VM_OBJECT_WLOCK(obj);
-		if (obj->type != OBJT_DEFAULT && obj->type != OBJT_SWAP) {
+		if (obj->type != OBJT_DEFAULT &&
+		    (obj->flags & OBJ_SWAP) == 0) {
 			VM_OBJECT_WUNLOCK(obj);
 			continue;
 		}
@@ -2882,11 +2872,11 @@ again:
 
 		old_prot = entry->protection;
 
-		if (set_max)
-			entry->protection =
-			    (entry->max_protection = new_prot) &
-			    old_prot;
-		else
+		if ((flags & VM_MAP_PROTECT_SET_MAXPROT) != 0) {
+			entry->max_protection = new_maxprot;
+			entry->protection = new_maxprot & old_prot;
+		}
+		if ((flags & VM_MAP_PROTECT_SET_PROT) != 0)
 			entry->protection = new_prot;
 
 		/*
@@ -4152,7 +4142,7 @@ vm_map_copy_entry(
 		size = src_entry->end - src_entry->start;
 		if ((src_object = src_entry->object.vm_object) != NULL) {
 			if (src_object->type == OBJT_DEFAULT ||
-			    src_object->type == OBJT_SWAP) {
+			    (src_object->flags & OBJ_SWAP) != 0) {
 				vm_map_copy_swap_object(src_entry, dst_entry,
 				    size, fork_charge);
 				/* May have split/collapsed, reload obj. */
@@ -4292,7 +4282,8 @@ vmspace_fork(struct vmspace *vm1, vm_ooffset_t *fork_charge)
 	}
 
 	new_map->anon_loc = old_map->anon_loc;
-	new_map->flags |= old_map->flags & (MAP_ASLR | MAP_ASLR_IGNSTART);
+	new_map->flags |= old_map->flags & (MAP_ASLR | MAP_ASLR_IGNSTART |
+	    MAP_WXORX);
 
 	VM_MAP_ENTRY_FOREACH(old_entry, old_map) {
 		if ((old_entry->eflags & MAP_ENTRY_IS_SUB_MAP) != 0)
@@ -4876,6 +4867,10 @@ vmspace_unshare(struct proc *p)
 	struct vmspace *newvmspace;
 	vm_ooffset_t fork_charge;
 
+	/*
+	 * The caller is responsible for ensuring that the reference count
+	 * cannot concurrently transition 1 -> 2.
+	 */
 	if (refcount_load(&oldvmspace->vm_refcnt) == 1)
 		return (0);
 	fork_charge = 0;

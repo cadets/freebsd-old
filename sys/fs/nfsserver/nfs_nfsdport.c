@@ -146,8 +146,6 @@ static int nfsrv_dsremove(struct vnode *, char *, struct ucred *, NFSPROC_T *);
 static int nfsrv_dssetacl(struct vnode *, struct acl *, struct ucred *,
     NFSPROC_T *);
 static int nfsrv_pnfsstatfs(struct statfs *, struct mount *);
-static void nfsm_trimtrailing(struct nfsrv_descript *, struct mbuf *,
-    char *, int, int);
 
 int nfs_pnfsio(task_fn_t *, void *);
 
@@ -1107,7 +1105,8 @@ nfsvno_createsub(struct nfsrv_descript *nd, struct nameidata *ndp,
 				nfsrv_pnfscreate(ndp->ni_vp, &nvap->na_vattr,
 				    nd->nd_cred, p);
 			}
-			vput(ndp->ni_dvp);
+			VOP_VPUT_PAIR(ndp->ni_dvp, error == 0 ? &ndp->ni_vp :
+			    NULL, false);
 			nfsvno_relpathbuf(ndp);
 			if (!error) {
 				if (*exclusive_flagp) {
@@ -1142,7 +1141,8 @@ nfsvno_createsub(struct nfsrv_descript *nd, struct nameidata *ndp,
 			nvap->na_rdev = rdev;
 			error = VOP_MKNOD(ndp->ni_dvp, &ndp->ni_vp,
 			    &ndp->ni_cnd, &nvap->na_vattr);
-			vput(ndp->ni_dvp);
+			VOP_VPUT_PAIR(ndp->ni_dvp, error == 0 ? &ndp->ni_vp :
+			    NULL, false);
 			nfsvno_relpathbuf(ndp);
 			vrele(ndp->ni_startdir);
 			if (error)
@@ -1223,7 +1223,8 @@ nfsvno_mknod(struct nameidata *ndp, struct nfsvattr *nvap, struct ucred *cred,
 		vrele(ndp->ni_startdir);
 		error = VOP_CREATE(ndp->ni_dvp, &ndp->ni_vp,
 		    &ndp->ni_cnd, &nvap->na_vattr);
-		vput(ndp->ni_dvp);
+		VOP_VPUT_PAIR(ndp->ni_dvp, error == 0 ? &ndp->ni_vp : NULL,
+		    false);
 		nfsvno_relpathbuf(ndp);
 	} else {
 		if (nvap->na_type != VFIFO &&
@@ -1235,7 +1236,8 @@ nfsvno_mknod(struct nameidata *ndp, struct nfsvattr *nvap, struct ucred *cred,
 		}
 		error = VOP_MKNOD(ndp->ni_dvp, &ndp->ni_vp,
 		    &ndp->ni_cnd, &nvap->na_vattr);
-		vput(ndp->ni_dvp);
+		VOP_VPUT_PAIR(ndp->ni_dvp, error == 0 ? &ndp->ni_vp : NULL,
+		    false);
 		nfsvno_relpathbuf(ndp);
 		vrele(ndp->ni_startdir);
 		/*
@@ -1270,7 +1272,7 @@ nfsvno_mkdir(struct nameidata *ndp, struct nfsvattr *nvap, uid_t saved_uid,
 	}
 	error = VOP_MKDIR(ndp->ni_dvp, &ndp->ni_vp, &ndp->ni_cnd,
 	    &nvap->na_vattr);
-	vput(ndp->ni_dvp);
+	VOP_VPUT_PAIR(ndp->ni_dvp, error == 0 ? &ndp->ni_vp : NULL, false);
 	nfsvno_relpathbuf(ndp);
 
 out:
@@ -1302,17 +1304,15 @@ nfsvno_symlink(struct nameidata *ndp, struct nfsvattr *nvap, char *pathcp,
 
 	error = VOP_SYMLINK(ndp->ni_dvp, &ndp->ni_vp, &ndp->ni_cnd,
 	    &nvap->na_vattr, pathcp);
-	vput(ndp->ni_dvp);
-	vrele(ndp->ni_startdir);
-	nfsvno_relpathbuf(ndp);
 	/*
 	 * Although FreeBSD still had the lookup code in
 	 * it for 7/current, there doesn't seem to be any
 	 * point, since VOP_SYMLINK() returns the ni_vp.
 	 * Just vput it for v2.
 	 */
-	if (!not_v2 && !error)
-		vput(ndp->ni_vp);
+	VOP_VPUT_PAIR(ndp->ni_dvp, &ndp->ni_vp, !not_v2 && error == 0);
+	vrele(ndp->ni_startdir);
+	nfsvno_relpathbuf(ndp);
 
 out:
 	NFSEXITCODE(error);
@@ -1597,11 +1597,13 @@ nfsvno_link(struct nameidata *ndp, struct vnode *vp, struct ucred *cred,
 			error = VOP_LINK(ndp->ni_dvp, vp, &ndp->ni_cnd);
 		else
 			error = EPERM;
-		if (ndp->ni_dvp == vp)
+		if (ndp->ni_dvp == vp) {
 			vrele(ndp->ni_dvp);
-		else
-			vput(ndp->ni_dvp);
-		NFSVOPUNLOCK(vp);
+			NFSVOPUNLOCK(vp);
+		} else {
+			vref(vp);
+			VOP_VPUT_PAIR(ndp->ni_dvp, &vp, true);
+		}
 	} else {
 		if (ndp->ni_dvp == ndp->ni_vp)
 			vrele(ndp->ni_dvp);
@@ -1795,7 +1797,8 @@ nfsvno_open(struct nfsrv_descript *nd, struct nameidata *ndp,
 				nfsrv_pnfscreate(ndp->ni_vp, &nvap->na_vattr,
 				    cred, p);
 			}
-			vput(ndp->ni_dvp);
+			VOP_VPUT_PAIR(ndp->ni_dvp, nd->nd_repstat == 0 ?
+			    &ndp->ni_vp : NULL, false);
 			nfsvno_relpathbuf(ndp);
 			if (!nd->nd_repstat) {
 				if (*exclusive_flagp) {
@@ -3100,9 +3103,9 @@ nfsmout:
  */
 int
 nfsd_excred(struct nfsrv_descript *nd, struct nfsexstuff *exp,
-    struct ucred *credanon)
+    struct ucred *credanon, bool testsec)
 {
-	int error = 0;
+	int error;
 
 	/*
 	 * Check/setup credentials.
@@ -3112,18 +3115,12 @@ nfsd_excred(struct nfsrv_descript *nd, struct nfsexstuff *exp,
 
 	/*
 	 * Check to see if the operation is allowed for this security flavor.
-	 * RFC2623 suggests that the NFSv3 Fsinfo RPC be allowed to
-	 * AUTH_NONE or AUTH_SYS for file systems requiring RPCSEC_GSS.
-	 * Also, allow Secinfo, so that it can acquire the correct flavor(s).
 	 */
-	if (nfsvno_testexp(nd, exp) &&
-	    nd->nd_procnum != NFSV4OP_SECINFO &&
-	    nd->nd_procnum != NFSPROC_FSINFO) {
-		if (nd->nd_flag & ND_NFSV4)
-			error = NFSERR_WRONGSEC;
-		else
-			error = (NFSERR_AUTHERR | AUTH_TOOWEAK);
-		goto out;
+	error = 0;
+	if (testsec) {
+		error = nfsvno_testexp(nd, exp);
+		if (error != 0)
+			goto out;
 	}
 
 	/*
@@ -3243,30 +3240,37 @@ nfsvno_fhtovp(struct mount *mp, fhandle_t *fhp, struct sockaddr *nam,
 void
 nfsd_fhtovp(struct nfsrv_descript *nd, struct nfsrvfh *nfp, int lktype,
     struct vnode **vpp, struct nfsexstuff *exp,
-    struct mount **mpp, int startwrite)
+    struct mount **mpp, int startwrite, int nextop)
 {
-	struct mount *mp;
+	struct mount *mp, *mpw;
 	struct ucred *credanon;
 	fhandle_t *fhp;
+	int error;
 
-	fhp = (fhandle_t *)nfp->nfsrvfh_data;
-	/*
-	 * Check for the special case of the nfsv4root_fh.
-	 */
-	mp = vfs_busyfs(&fhp->fh_fsid);
 	if (mpp != NULL)
-		*mpp = mp;
+		*mpp = NULL;
+	*vpp = NULL;
+	fhp = (fhandle_t *)nfp->nfsrvfh_data;
+	mp = vfs_busyfs(&fhp->fh_fsid);
 	if (mp == NULL) {
-		*vpp = NULL;
 		nd->nd_repstat = ESTALE;
 		goto out;
 	}
 
 	if (startwrite) {
-		vn_start_write(NULL, mpp, V_WAIT);
+		mpw = mp;
+		error = vn_start_write(NULL, &mpw, V_WAIT);
+		if (error != 0) {
+			mpw = NULL;
+			vfs_unbusy(mp);
+			nd->nd_repstat = ESTALE;
+			goto out;
+		}
 		if (lktype == LK_SHARED && !(MNT_SHARED_WRITES(mp)))
 			lktype = LK_EXCLUSIVE;
-	}
+	} else
+		mpw = NULL;
+
 	nd->nd_repstat = nfsvno_fhtovp(mp, fhp, nd->nd_nam, lktype, vpp, exp,
 	    &credanon);
 	vfs_unbusy(mp);
@@ -3278,20 +3282,8 @@ nfsd_fhtovp(struct nfsrv_descript *nd, struct nfsrvfh *nfp, int lktype,
 	if (!nd->nd_repstat && exp->nes_exflag == 0 &&
 	    !(nd->nd_flag & ND_NFSV4)) {
 		vput(*vpp);
+		*vpp = NULL;
 		nd->nd_repstat = EACCES;
-	}
-
-	/*
-	 * If TLS is required by the export, check the flags in nd_flag.
-	 */
-	if (nd->nd_repstat == 0 && ((NFSVNO_EXTLS(exp) &&
-	    (nd->nd_flag & ND_TLS) == 0) ||
-	     (NFSVNO_EXTLSCERT(exp) &&
-	      (nd->nd_flag & ND_TLSCERT) == 0) ||
-	     (NFSVNO_EXTLSCERTUSER(exp) &&
-	      (nd->nd_flag & ND_TLSCERTUSER) == 0))) {
-		vput(*vpp);
-		nd->nd_repstat = NFSERR_ACCES;
 	}
 
 	/*
@@ -3331,18 +3323,18 @@ nfsd_fhtovp(struct nfsrv_descript *nd, struct nfsrvfh *nfp, int lktype,
 	 */
 	if (!nd->nd_repstat) {
 		nd->nd_saveduid = nd->nd_cred->cr_uid;
-		nd->nd_repstat = nfsd_excred(nd, exp, credanon);
+		nd->nd_repstat = nfsd_excred(nd, exp, credanon,
+		    nfsrv_checkwrongsec(nd, nextop, (*vpp)->v_type));
 		if (nd->nd_repstat)
 			vput(*vpp);
 	}
 	if (credanon != NULL)
 		crfree(credanon);
 	if (nd->nd_repstat) {
-		if (startwrite)
-			vn_finished_write(mp);
+		vn_finished_write(mpw);
 		*vpp = NULL;
-		if (mpp != NULL)
-			*mpp = NULL;
+	} else if (mpp != NULL) {
+		*mpp = mpw;
 	}
 
 out:
@@ -3604,7 +3596,7 @@ nfssvc_nfsd(struct thread *td, struct nfssvc_args *uap)
 		 * careful than too reckless.
 		 */
 		error = fget(td, sockarg.sock,
-		    cap_rights_init(&rights, CAP_SOCK_SERVER), &fp);
+		    cap_rights_init_one(&rights, CAP_SOCK_SERVER), &fp);
 		if (error != 0)
 			goto out;
 		if (fp->f_type != DTYPE_SOCKET) {
@@ -3972,6 +3964,24 @@ nfsvno_testexp(struct nfsrv_descript *nd, struct nfsexstuff *exp)
 	int i;
 
 	/*
+	 * Allow NFSv3 Fsinfo per RFC2623.
+	 */
+	if (((nd->nd_flag & ND_NFSV4) != 0 ||
+	     nd->nd_procnum != NFSPROC_FSINFO) &&
+	    ((NFSVNO_EXTLS(exp) && (nd->nd_flag & ND_TLS) == 0) ||
+	     (NFSVNO_EXTLSCERT(exp) &&
+	      (nd->nd_flag & ND_TLSCERT) == 0) ||
+	     (NFSVNO_EXTLSCERTUSER(exp) &&
+	      (nd->nd_flag & ND_TLSCERTUSER) == 0))) {
+		if ((nd->nd_flag & ND_NFSV4) != 0)
+			return (NFSERR_WRONGSEC);
+		else if ((nd->nd_flag & ND_TLS) == 0)
+			return (NFSERR_AUTHERR | AUTH_NEEDS_TLS);
+		else
+			return (NFSERR_AUTHERR | AUTH_NEEDS_TLS_MUTUAL_HOST);
+	}
+
+	/*
 	 * This seems odd, but allow the case where the security flavor
 	 * list is empty. This happens when NFSv4 is traversing non-exported
 	 * file systems. Exported file systems should always have a non-empty
@@ -3998,7 +4008,9 @@ nfsvno_testexp(struct nfsrv_descript *nd, struct nfsexstuff *exp)
 		    (nd->nd_flag & ND_GSS) == 0)
 			return (0);
 	}
-	return (1);
+	if ((nd->nd_flag & ND_NFSV4) != 0)
+		return (NFSERR_WRONGSEC);
+	return (NFSERR_AUTHERR | AUTH_TOOWEAK);
 }
 
 /*
@@ -4101,7 +4113,8 @@ nfsrv_dscreate(struct vnode *dvp, struct vattr *vap, struct vattr *nvap,
 	error = NFSVOPLOCK(dvp, LK_EXCLUSIVE);
 	if (error == 0) {
 		error = VOP_CREATE(dvp, &nvp, &named.ni_cnd, vap);
-		NFSVOPUNLOCK(dvp);
+		vref(dvp);
+		VOP_VPUT_PAIR(dvp, error == 0 ? &nvp : NULL, false);
 		if (error == 0) {
 			/* Set the ownership of the file. */
 			error = VOP_SETATTR(nvp, nvap, tcred);
@@ -6564,7 +6577,7 @@ out:
 /*
  * Trim trailing data off the mbuf list being built.
  */
-static void
+void
 nfsm_trimtrailing(struct nfsrv_descript *nd, struct mbuf *mb, char *bpos,
     int bextpg, int bextpgsiz)
 {
@@ -6576,6 +6589,12 @@ nfsm_trimtrailing(struct nfsrv_descript *nd, struct mbuf *mb, char *bpos,
 		mb->m_next = NULL;
 	}
 	if ((mb->m_flags & M_EXTPG) != 0) {
+		KASSERT(bextpg >= 0 && bextpg < mb->m_epg_npgs,
+		    ("nfsm_trimtrailing: bextpg out of range"));
+		KASSERT(bpos == (char *)(void *)
+		    PHYS_TO_DMAP(mb->m_epg_pa[bextpg]) + PAGE_SIZE - bextpgsiz,
+		    ("nfsm_trimtrailing: bextpgsiz bad!"));
+
 		/* First, get rid of any pages after this position. */
 		for (i = mb->m_epg_npgs - 1; i > bextpg; i--) {
 			pg = PHYS_TO_VM_PAGE(mb->m_epg_pa[i]);
@@ -6597,6 +6616,37 @@ nfsm_trimtrailing(struct nfsrv_descript *nd, struct mbuf *mb, char *bpos,
 		mb->m_len = bpos - mtod(mb, char *);
 	nd->nd_mb = mb;
 	nd->nd_bpos = bpos;
+}
+
+
+/*
+ * Check to see if a put file handle operation should test for
+ * NFSERR_WRONGSEC, although NFSv3 actually returns NFSERR_AUTHERR.
+ * When Open is the next operation, NFSERR_WRONGSEC cannot be
+ * replied for the Open cases that use a component.  Thia can
+ * be identified by the fact that the file handle's type is VDIR.
+ */
+bool
+nfsrv_checkwrongsec(struct nfsrv_descript *nd, int nextop, enum vtype vtyp)
+{
+
+	if ((nd->nd_flag & ND_NFSV4) == 0) {
+		if (nd->nd_procnum == NFSPROC_FSINFO)
+			return (false);
+		return (true);
+	}
+
+	if ((nd->nd_flag & ND_LASTOP) != 0)
+		return (false);
+
+	if (nextop == NFSV4OP_PUTROOTFH || nextop == NFSV4OP_PUTFH ||
+	    nextop == NFSV4OP_PUTPUBFH || nextop == NFSV4OP_RESTOREFH ||
+	    nextop == NFSV4OP_LOOKUP || nextop == NFSV4OP_LOOKUPP ||
+	    nextop == NFSV4OP_SECINFO || nextop == NFSV4OP_SECINFONONAME)
+		return (false);
+	if (nextop == NFSV4OP_OPEN && vtyp == VDIR)
+		return (false);
+	return (true);
 }
 
 extern int (*nfsd_call_nfsd)(struct thread *, struct nfssvc_args *);

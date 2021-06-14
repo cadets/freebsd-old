@@ -312,19 +312,22 @@ set_wr_hdr(struct work_request_hdr *wrp, uint32_t wr_hi, uint32_t wr_lo)
 struct coalesce_info {
 	int count;
 	int nbytes;
+	int noncoal;
 };
 
 static int
 coalesce_check(struct mbuf *m, void *arg)
 {
 	struct coalesce_info *ci = arg;
-	int *count = &ci->count;
-	int *nbytes = &ci->nbytes;
 
-	if ((*nbytes == 0) || ((*nbytes + m->m_len <= 10500) &&
-		(*count < 7) && (m->m_next == NULL))) {
-		*count += 1;
-		*nbytes += m->m_len;
+	if ((m->m_next != NULL) ||
+	    ((mtod(m, vm_offset_t) & PAGE_MASK) + m->m_len > PAGE_SIZE))
+		ci->noncoal = 1;
+
+	if ((ci->count == 0) || (ci->noncoal == 0 && (ci->count < 7) &&
+	    (ci->nbytes + m->m_len <= 10500))) {
+		ci->count++;
+		ci->nbytes += m->m_len;
 		return (1);
 	}
 	return (0);
@@ -341,7 +344,7 @@ cxgb_dequeue(struct sge_qset *qs)
 		return TXQ_RING_DEQUEUE(qs);
 
 	m_head = m_tail = NULL;
-	ci.count = ci.nbytes = 0;
+	ci.count = ci.nbytes = ci.noncoal = 0;
 	do {
 		m = TXQ_RING_DEQUEUE_COND(qs, coalesce_check, &ci);
 		if (m_head == NULL) {
@@ -2770,6 +2773,7 @@ get_packet(adapter_t *adap, unsigned int drop_thres, struct sge_qset *qs,
 		if (mh->mh_tail == NULL) {
 			log(LOG_ERR, "discarding intermediate descriptor entry\n");
 			m_freem(m);
+			m = NULL;
 			break;
 		}
 		mh->mh_tail->m_next = m;
@@ -2777,7 +2781,7 @@ get_packet(adapter_t *adap, unsigned int drop_thres, struct sge_qset *qs,
 		mh->mh_head->m_pkthdr.len += len;
 		break;
 	}
-	if (cxgb_debug)
+	if (cxgb_debug && m != NULL)
 		printf("len=%d pktlen=%d\n", m->m_len, m->m_pkthdr.len);
 done:
 	if (++fl->cidx == fl->size)

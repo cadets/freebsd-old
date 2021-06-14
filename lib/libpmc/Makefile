@@ -6,16 +6,17 @@ SRCS=	libpmc.c pmclog.c libpmc_pmu_util.c libpmc_json.cc
 INCS=	pmc.h pmclog.h pmcformat.h
 
 CFLAGS+= -I${SRCTOP}/${RELDIR:H}/libpmcstat
-
-.if ${MACHINE_CPUARCH} == "aarch64" || ${MACHINE_ARCH} == "amd64" || \
-    ${MACHINE_ARCH} == "i386"
+LDADD+=	-lc++
 
 .if ${MACHINE_CPUARCH} == "aarch64"
 EVENT_ARCH="arm64"
-.elif ${MACHINE_ARCH} == "amd64" || ${MACHINE_ARCH} == "i386"
+.elif ${MACHINE_CPUARCH} == "amd64" || ${MACHINE_CPUARCH} == "i386"
 EVENT_ARCH="x86"
-.elif ${MACHINE_ARCH} == "powerpc"
+.elif ${MACHINE_CPUARCH} == "powerpc" && ${MACHINE_ARCH:Mpowerpc64*} != ""
 EVENT_ARCH="powerpc"
+.else
+# This will generate an empty events table
+EVENT_ARCH="none"
 .endif
 
 .if ${MK_DIRDEPS_BUILD} == "yes"
@@ -39,7 +40,6 @@ libpmc_events.c: ${JEVENTS} .META
 	fi
 CLEANFILES+=	libpmc_events.c libpmc_events.c.tmp
 SRCS+=	libpmc_events.c
-.endif
 
 WARNS?=	3
 
@@ -93,7 +93,6 @@ MAN+=	pmc.tsc.3
 MAN+=	pmc.ucf.3
 MAN+=	pmc.westmere.3
 MAN+=	pmc.westmereuc.3
-MAN+=	pmc.xscale.3
 
 MLINKS+= \
 	pmc_allocate.3 pmc_release.3 \

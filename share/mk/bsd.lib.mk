@@ -47,7 +47,9 @@ CFLAGS+=	${CRUNCH_CFLAGS}
 
 .if ${MK_ASSERT_DEBUG} == "no"
 CFLAGS+= -DNDEBUG
-NO_WERROR=
+# XXX: shouldn't we ensure that !asserts marks potentially unused variables as
+# __unused instead of disabling -Werror globally?
+MK_WERROR=	no
 .endif
 
 .if defined(DEBUG_FLAGS)
@@ -447,8 +449,20 @@ _SHLINSTALLSYMLINKFLAGS:= ${SHLINSTALLSYMLINKFLAGS}
 _SHLINSTALLFLAGS:=	${_SHLINSTALLFLAGS${ie}}
 .endfor
 
+.if defined(PCFILES)
+.for pcfile in ${PCFILES}
+installpcfiles: installpcfiles-${pcfile}
+
+installpcfiles-${pcfile}: ${pcfile}
+	${INSTALL} ${TAG_ARGS:D${TAG_ARGS},dev} -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
+	    ${_INSTALLFLAGS} \
+	    ${.ALLSRC} ${DESTDIR}${LIBDATADIR}/pkgconfig
+.endfor
+.endif
+installpcfiles: .PHONY
+
 .if !defined(INTERNALLIB)
-realinstall: _libinstall
+realinstall: _libinstall installpcfiles
 .ORDER: beforeinstall _libinstall
 _libinstall:
 .if defined(LIB) && !empty(LIB) && ${MK_INSTALLLIB} != "no"

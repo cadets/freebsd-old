@@ -1,3 +1,5 @@
+include $(top_srcdir)/config/Shellcheck.am
+
 ACLOCAL_AMFLAGS = -I config
 
 SUBDIRS = include
@@ -6,7 +8,7 @@ SUBDIRS += rpm
 endif
 
 if CONFIG_USER
-SUBDIRS += etc man scripts lib tests cmd contrib
+SUBDIRS += man scripts lib tests cmd etc contrib
 if BUILD_LINUX
 SUBDIRS += udev
 endif
@@ -25,10 +27,9 @@ endif
 
 AUTOMAKE_OPTIONS = foreign
 EXTRA_DIST  = autogen.sh copy-builtin
-EXTRA_DIST += cppcheck-suppressions.txt
 EXTRA_DIST += config/config.awk config/rpm.am config/deb.am config/tgz.am
-EXTRA_DIST += META AUTHORS COPYRIGHT LICENSE NEWS NOTICE README.md
-EXTRA_DIST += CODE_OF_CONDUCT.md
+EXTRA_DIST += AUTHORS CODE_OF_CONDUCT.md COPYRIGHT LICENSE META NEWS NOTICE
+EXTRA_DIST += README.md RELEASES.md
 EXTRA_DIST += module/lua/README.zfs module/os/linux/spl/README.md
 
 # Include all the extra licensing information for modules
@@ -124,51 +125,19 @@ cstyle:
 
 filter_executable = -exec test -x '{}' \; -print
 
-PHONY += shellcheck
-shellcheck:
-	@if type shellcheck > /dev/null 2>&1; then \
-		shellcheck --exclude=SC1090 --exclude=SC1117 --format=gcc \
-			$$(find ${top_srcdir}/scripts/*.sh -type f) \
-			$$(find ${top_srcdir}/cmd/zed/zed.d/*.sh -type f) \
-			$$(find ${top_srcdir}/cmd/zpool/zpool.d/* \
-			-type f ${filter_executable}); \
-	else \
-		echo "skipping shellcheck because shellcheck is not installed"; \
-	fi
+SHELLCHECKDIRS = cmd contrib etc scripts tests
+SHELLCHECKSCRIPTS = autogen.sh
 
-PHONY += checkbashisms
-checkbashisms:
-	@if type checkbashisms > /dev/null 2>&1; then \
-		checkbashisms -n -p -x \
-			$$(find ${top_srcdir} \
-				-name '.git' -prune \
-				-o -name 'build' -prune \
-				-o -name 'tests' -prune \
-				-o -name 'config' -prune \
-				-o -name 'zed-functions.sh*' -prune \
-				-o -name 'zfs-import*' -prune \
-				-o -name 'zfs-mount*' -prune \
-				-o -name 'zfs-zed*' -prune \
-				-o -name 'smart' -prune \
-				-o -name 'paxcheck.sh' -prune \
-				-o -name 'make_gitrev.sh' -prune \
-				-o -type f ! -name 'config*' \
-				! -name 'libtool' \
-			-exec bash -c 'awk "NR==1 && /\#\!.*bin\/sh.*/ {print FILENAME;}" "{}"' \;); \
-	else \
-		echo "skipping checkbashisms because checkbashisms is not installed"; \
-	fi
+PHONY += checkabi storeabi
+checkabi: lib
+	$(MAKE) -C lib checkabi
+
+storeabi: lib
+	$(MAKE) -C lib storeabi
 
 PHONY += mancheck
 mancheck:
-	@if type mandoc > /dev/null 2>&1; then \
-		find ${top_srcdir}/man/man8 -type f -name 'zfs.8' \
-			-o -name 'zpool.8' -o -name 'zdb.8' \
-			-o -name 'zgenhostid.8' | \
-			xargs mandoc -Tlint -Werror; \
-	else \
-		echo "skipping mancheck because mandoc is not installed"; \
-	fi
+	${top_srcdir}/scripts/mancheck.sh ${top_srcdir}/man ${top_srcdir}/tests/test-runner/man
 
 if BUILD_LINUX
 stat_fmt = -c '%A %n'
@@ -196,13 +165,13 @@ vcscheck:
 PHONY += lint
 lint: cppcheck paxcheck
 
+CPPCHECKDIRS = cmd lib module
 PHONY += cppcheck
-cppcheck:
-	@if type cppcheck > /dev/null 2>&1; then \
-		cppcheck --quiet --force --error-exitcode=2 --inline-suppr \
-			--suppressions-list=${top_srcdir}/cppcheck-suppressions.txt \
-			-UHAVE_SSE2 -UHAVE_AVX512F -UHAVE_UIO_ZEROCOPY \
-			${top_srcdir}; \
+cppcheck: $(CPPCHECKDIRS)
+	@if test -n "$(CPPCHECK)"; then \
+		set -e ; for dir in $(CPPCHECKDIRS) ; do \
+			$(MAKE) -C $$dir cppcheck ; \
+		done \
 	else \
 		echo "skipping cppcheck because cppcheck is not installed"; \
 	fi

@@ -231,7 +231,7 @@ pci_dw_setup_hw(struct pci_dw_softc *sc)
 	/* If we have enouht viewports ..*/
 	if (sc->num_viewport >= 3 && sc->io_range.size != 0) {
 		/* Setup outbound I/O window */
-		rv = pci_dw_map_out_atu(sc, 0, IATU_CTRL1_TYPE_MEM,
+		rv = pci_dw_map_out_atu(sc, 2, IATU_CTRL1_TYPE_IO,
 		    sc->io_range.host, sc->io_range.pci, sc->io_range.size);
 		if (rv != 0)
 			return (rv);
@@ -341,6 +341,18 @@ pci_dw_decode_ranges(struct pci_dw_softc *sc, struct ofw_pci_range *ranges,
 		device_printf(sc->dev,
 		    " Not all required ranges are found in DT\n");
 		return (ENXIO);
+	}
+	if (sc->io_range.size > UINT32_MAX) {
+		device_printf(sc->dev,
+		    "ATU IO window size is too large. Up to 4GB windows "
+		    "are supported, trimming window size to 4GB\n");
+		sc->io_range.size = UINT32_MAX;
+	}
+	if (sc->mem_range.size > UINT32_MAX) {
+		device_printf(sc->dev,
+		    "ATU MEM window size is too large. Up to 4GB windows "
+		    "are supported, trimming window size to 4GB\n");
+		sc->mem_range.size = UINT32_MAX;
 	}
 	return (0);
 }
@@ -626,7 +638,7 @@ pci_dw_init(device_t dev)
 	if (rv != 0)
 		goto out;
 
-	rv = ofw_pci_init(dev);
+	rv = ofw_pcib_init(dev);
 	if (rv != 0)
 		goto out;
 	rv = pci_dw_decode_ranges(sc, sc->ofw_pci.sc_range,
@@ -674,4 +686,4 @@ static device_method_t pci_dw_methods[] = {
 };
 
 DEFINE_CLASS_1(pcib, pci_dw_driver, pci_dw_methods,
-    sizeof(struct pci_dw_softc), ofw_pci_driver);
+    sizeof(struct pci_dw_softc), ofw_pcib_driver);

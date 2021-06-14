@@ -60,8 +60,6 @@ static int bectl_cmd_unmount(int argc, char *argv[]);
 
 libbe_handle_t *be;
 
-int aok;
-
 int
 usage(bool explicit)
 {
@@ -81,13 +79,12 @@ usage(bool explicit)
 	    "\tbectl destroy [-Fo] {beName | beName@snapshot}\n"
 	    "\tbectl export sourceBe\n"
 	    "\tbectl import targetBe\n"
-	    "\tbectl jail {-b | -U} [{-o key=value | -u key}]... "
-	    "{jailID | jailName}\n"
-	    "\t      bootenv [utility [argument ...]]\n"
-	    "\tbectl list [-DHas] [{-c property | -C property}]\n"
+	    "\tbectl jail [-bU] [{-o key=value | -u key}]... beName\n"
+	    "\t      [utility [argument ...]]\n"
+	    "\tbectl list [-aDHs] [{-c property | -C property}]\n"
 	    "\tbectl mount beName [mountpoint]\n"
 	    "\tbectl rename origBeName newBeName\n"
-	    "\tbectl {ujail | unjail} {jailID | jailName} bootenv\n"
+	    "\tbectl {ujail | unjail} {jailID | jailName | beName}\n"
 	    "\tbectl {umount | unmount} [-f] beName\n");
 
 	return (explicit ? 0 : EX_USAGE);
@@ -236,7 +233,10 @@ bectl_cmd_create(int argc, char *argv[])
 	bootenv = *argv;
 
 	err = BE_ERR_SUCCESS;
-	if ((atpos = strchr(bootenv, '@')) != NULL) {
+	if (strchr(bootenv, ' ') != NULL)
+		/* BE datasets with spaces are not bootable */
+		err = BE_ERR_INVALIDNAME;
+	else if ((atpos = strchr(bootenv, '@')) != NULL) {
 		/*
 		 * This is the "create a snapshot variant". No new boot
 		 * environment is to be created here.
@@ -263,6 +263,10 @@ bectl_cmd_create(int argc, char *argv[])
 
 	switch (err) {
 	case BE_ERR_SUCCESS:
+		break;
+	case BE_ERR_INVALIDNAME:
+		fprintf(stderr,
+		    "bectl create: boot environment name must not contain spaces\n");
 		break;
 	default:
 		if (atpos != NULL)

@@ -63,6 +63,9 @@ __FBSDID("$FreeBSD$");
 #include <machine/frame.h>
 #endif
 
+static int vtterm_cngrab_noswitch(struct vt_device *, struct vt_window *);
+static int vtterm_cnungrab_noswitch(struct vt_device *, struct vt_window *);
+
 static tc_bell_t	vtterm_bell;
 static tc_cursor_t	vtterm_cursor;
 static tc_putchar_t	vtterm_putchar;
@@ -637,8 +640,10 @@ vt_termsize(struct vt_device *vd, struct vt_font *vf, term_pos_t *size)
 		size->tp_row -= vt_logo_sprite_height;
 	size->tp_col = vd->vd_width;
 	if (vf != NULL) {
-		size->tp_row /= vf->vf_height;
-		size->tp_col /= vf->vf_width;
+		size->tp_row = MIN(size->tp_row / vf->vf_height,
+		    PIXEL_HEIGHT(VT_FB_MAX_HEIGHT));
+		size->tp_col = MIN(size->tp_col / vf->vf_width,
+		    PIXEL_WIDTH(VT_FB_MAX_WIDTH));
 	}
 }
 
@@ -657,8 +662,10 @@ vt_termrect(struct vt_device *vd, struct vt_font *vf, term_rect_t *rect)
 		rect->tr_begin.tp_row =
 		    howmany(rect->tr_begin.tp_row, vf->vf_height);
 
-		rect->tr_end.tp_row /= vf->vf_height;
-		rect->tr_end.tp_col /= vf->vf_width;
+		rect->tr_end.tp_row = MIN(rect->tr_end.tp_row / vf->vf_height,
+		    PIXEL_HEIGHT(VT_FB_MAX_HEIGHT));
+		rect->tr_end.tp_col = MIN(rect->tr_end.tp_col / vf->vf_width,
+		    PIXEL_WIDTH(VT_FB_MAX_WIDTH));
 	}
 }
 
@@ -672,8 +679,10 @@ vt_winsize(struct vt_device *vd, struct vt_font *vf, struct winsize *size)
 	size->ws_row = size->ws_ypixel;
 	size->ws_col = size->ws_xpixel = vd->vd_width;
 	if (vf != NULL) {
-		size->ws_row /= vf->vf_height;
-		size->ws_col /= vf->vf_width;
+		size->ws_row = MIN(size->ws_row / vf->vf_height,
+		    PIXEL_HEIGHT(VT_FB_MAX_HEIGHT));
+		size->ws_col = MIN(size->ws_col / vf->vf_width,
+		    PIXEL_WIDTH(VT_FB_MAX_WIDTH));
 	}
 }
 
@@ -1030,7 +1039,7 @@ vt_allocate_keyboard(struct vt_device *vd)
 	if (vd->vd_curwindow == &vt_conswindow) {
 		grabbed = vd->vd_curwindow->vw_grabbed;
 		for (i = 0; i < grabbed; ++i)
-			vtterm_cnungrab(vd->vd_curwindow->vw_terminal);
+			vtterm_cnungrab_noswitch(vd, vd->vd_curwindow);
 	}
 
 	idx0 = kbd_allocate("kbdmux", -1, vd, vt_kbdevent, vd);
@@ -1068,7 +1077,7 @@ vt_allocate_keyboard(struct vt_device *vd)
 
 	if (vd->vd_curwindow == &vt_conswindow) {
 		for (i = 0; i < grabbed; ++i)
-			vtterm_cngrab(vd->vd_curwindow->vw_terminal);
+			vtterm_cngrab_noswitch(vd, vd->vd_curwindow);
 	}
 
 	return (idx0);
@@ -1484,6 +1493,8 @@ parse_font_info_static(struct font_info *fi)
 	vfp = &vt_font_loader;
 	vfp->vf_height = fi->fi_height;
 	vfp->vf_width = fi->fi_width;
+	/* This is default font, set refcount 1 to disable removal. */
+	vfp->vf_refcount = 1;
 	for (unsigned i = 0; i < VFNT_MAPS; i++) {
 		if (fi->fi_map_count[i] == 0)
 			continue;
@@ -1496,6 +1507,12 @@ parse_font_info_static(struct font_info *fi)
 	return (vfp);
 }
 
+/*
+ * Set up default font with allocated data structures.
+ * However, we can not set refcount here, because it is already set and
+ * incremented in vtterm_cnprobe() to avoid being released by font load from
+ * userland.
+ */
 static struct vt_font *
 parse_font_info(struct font_info *fi)
 {
@@ -1740,24 +1757,24 @@ vtterm_cngetc(struct terminal *tm)
 	return (-1);
 }
 
-static void
-vtterm_cngrab(struct terminal *tm)
+/*
+ * These two do most of what we want to do in vtterm_cnungrab, but without
+ * actually switching windows.  This is necessary for, e.g.,
+ * vt_allocate_keyboard() to get the current keyboard into the state it needs to
+ * be in without damaging the device's window state.
+ *
+ * Both return the current grab count, though it's only used in vtterm_cnungrab.
+ */
+static int
+vtterm_cngrab_noswitch(struct vt_device *vd, struct vt_window *vw)
 {
-	struct vt_device *vd;
-	struct vt_window *vw;
 	keyboard_t *kbd;
 
-	vw = tm->tm_softc;
-	vd = vw->vw_device;
-
-	if (!cold)
-		vt_window_switch(vw);
+	if (vw->vw_grabbed++ > 0)
+		return (vw->vw_grabbed);
 
 	if ((kbd = vd->vd_keyboard) == NULL)
-		return;
-
-	if (vw->vw_grabbed++ > 0)
-		return;
+		return (1);
 
 	/*
 	 * Make sure the keyboard is accessible even when the kbd device
@@ -1771,6 +1788,45 @@ vtterm_cngrab(struct terminal *tm)
 	vt_update_kbd_mode(vw, kbd);
 
 	kbdd_poll(kbd, TRUE);
+	return (1);
+}
+
+static int
+vtterm_cnungrab_noswitch(struct vt_device *vd, struct vt_window *vw)
+{
+	keyboard_t *kbd;
+
+	if (--vw->vw_grabbed > 0)
+		return (vw->vw_grabbed);
+
+	if ((kbd = vd->vd_keyboard) == NULL)
+		return (0);
+
+	kbdd_poll(kbd, FALSE);
+
+	vw->vw_kbdmode = vw->vw_prev_kbdmode;
+	vt_update_kbd_mode(vw, kbd);
+	kbdd_disable(kbd);
+	return (0);
+}
+
+static void
+vtterm_cngrab(struct terminal *tm)
+{
+	struct vt_device *vd;
+	struct vt_window *vw;
+
+	vw = tm->tm_softc;
+	vd = vw->vw_device;
+
+	/* To be restored after we ungrab. */
+	if (vd->vd_grabwindow == NULL)
+		vd->vd_grabwindow = vd->vd_curwindow;
+
+	if (!cold)
+		vt_window_switch(vw);
+
+	vtterm_cngrab_noswitch(vd, vw);
 }
 
 static void
@@ -1778,22 +1834,18 @@ vtterm_cnungrab(struct terminal *tm)
 {
 	struct vt_device *vd;
 	struct vt_window *vw;
-	keyboard_t *kbd;
 
 	vw = tm->tm_softc;
 	vd = vw->vw_device;
 
-	if ((kbd = vd->vd_keyboard) == NULL)
+	MPASS(vd->vd_grabwindow != NULL);
+	if (vtterm_cnungrab_noswitch(vd, vw) != 0)
 		return;
 
-	if (--vw->vw_grabbed > 0)
-		return;
+	if (!cold && vd->vd_grabwindow != vw)
+		vt_window_switch(vd->vd_grabwindow);
 
-	kbdd_poll(kbd, FALSE);
-
-	vw->vw_kbdmode = vw->vw_prev_kbdmode;
-	vt_update_kbd_mode(vw, kbd);
-	kbdd_disable(kbd);
+	vd->vd_grabwindow = NULL;
 }
 
 static void

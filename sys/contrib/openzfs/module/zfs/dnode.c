@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2012, 2019 by Delphix. All rights reserved.
+ * Copyright (c) 2012, 2020 by Delphix. All rights reserved.
  * Copyright (c) 2014 Spectra Logic Corporation, All rights reserved.
  */
 
@@ -609,7 +609,6 @@ dnode_allocate(dnode_t *dn, dmu_object_type_t ot, int blocksize, int ibs,
 	ASSERT0(dn->dn_maxblkid);
 	ASSERT0(dn->dn_allocated_txg);
 	ASSERT0(dn->dn_assigned_txg);
-	ASSERT0(dn->dn_dirty_txg);
 	ASSERT(zfs_refcount_is_zero(&dn->dn_tx_holds));
 	ASSERT3U(zfs_refcount_count(&dn->dn_holds), <=, 1);
 	ASSERT(avl_is_empty(&dn->dn_dbufs));
@@ -649,6 +648,7 @@ dnode_allocate(dnode_t *dn, dmu_object_type_t ot, int blocksize, int ibs,
 
 	dn->dn_free_txg = 0;
 	dn->dn_dirtyctx_firstset = NULL;
+	dn->dn_dirty_txg = 0;
 
 	dn->dn_allocated_txg = tx->tx_txg;
 	dn->dn_id_flags = 0;
@@ -754,7 +754,6 @@ dnode_move_impl(dnode_t *odn, dnode_t *ndn)
 	ASSERT(!RW_LOCK_HELD(&odn->dn_struct_rwlock));
 	ASSERT(MUTEX_NOT_HELD(&odn->dn_mtx));
 	ASSERT(MUTEX_NOT_HELD(&odn->dn_dbufs_mtx));
-	ASSERT(!MUTEX_HELD(&odn->dn_zfetch.zf_lock));
 
 	/* Copy fields. */
 	ndn->dn_objset = odn->dn_objset;
@@ -822,9 +821,7 @@ dnode_move_impl(dnode_t *odn, dnode_t *ndn)
 	ndn->dn_newgid = odn->dn_newgid;
 	ndn->dn_newprojid = odn->dn_newprojid;
 	ndn->dn_id_flags = odn->dn_id_flags;
-	dmu_zfetch_init(&ndn->dn_zfetch, NULL);
-	list_move_tail(&ndn->dn_zfetch.zf_stream, &odn->dn_zfetch.zf_stream);
-	ndn->dn_zfetch.zf_dnode = odn->dn_zfetch.zf_dnode;
+	dmu_zfetch_init(&ndn->dn_zfetch, ndn);
 
 	/*
 	 * Update back pointers. Updating the handle fixes the back pointer of
@@ -832,9 +829,6 @@ dnode_move_impl(dnode_t *odn, dnode_t *ndn)
 	 */
 	ASSERT(ndn->dn_handle->dnh_dnode == odn);
 	ndn->dn_handle->dnh_dnode = ndn;
-	if (ndn->dn_zfetch.zf_dnode == odn) {
-		ndn->dn_zfetch.zf_dnode = ndn;
-	}
 
 	/*
 	 * Invalidate the original dnode by clearing all of its back pointers.
@@ -1677,7 +1671,7 @@ dnode_setdirty(dnode_t *dn, dmu_tx_t *tx)
 	 */
 	dmu_objset_userquota_get_ids(dn, B_TRUE, tx);
 
-	multilist_t *dirtylist = os->os_dirty_dnodes[txg & TXG_MASK];
+	multilist_t *dirtylist = &os->os_dirty_dnodes[txg & TXG_MASK];
 	multilist_sublist_t *mls = multilist_sublist_lock_obj(dirtylist, dn);
 
 	/*
@@ -1812,6 +1806,7 @@ dnode_set_nlevels_impl(dnode_t *dn, int new_nlevels, dmu_tx_t *tx)
 
 	ASSERT(RW_WRITE_HELD(&dn->dn_struct_rwlock));
 
+	ASSERT3U(new_nlevels, >, dn->dn_nlevels);
 	dn->dn_nlevels = new_nlevels;
 
 	ASSERT3U(new_nlevels, >, dn->dn_next_nlevels[txgoff]);
@@ -1829,10 +1824,12 @@ dnode_set_nlevels_impl(dnode_t *dn, int new_nlevels, dmu_tx_t *tx)
 	list = &dn->dn_dirty_records[txgoff];
 	for (dr = list_head(list); dr; dr = dr_next) {
 		dr_next = list_next(&dn->dn_dirty_records[txgoff], dr);
-		if (dr->dr_dbuf->db_level != new_nlevels-1 &&
+
+		IMPLY(dr->dr_dbuf == NULL, old_nlevels == 1);
+		if (dr->dr_dbuf == NULL ||
+		    (dr->dr_dbuf->db_level == old_nlevels - 1 &&
 		    dr->dr_dbuf->db_blkid != DMU_BONUS_BLKID &&
-		    dr->dr_dbuf->db_blkid != DMU_SPILL_BLKID) {
-			ASSERT(dr->dr_dbuf->db_level == old_nlevels-1);
+		    dr->dr_dbuf->db_blkid != DMU_SPILL_BLKID)) {
 			list_remove(&dn->dn_dirty_records[txgoff], dr);
 			list_insert_tail(&new->dt.di.dr_children, dr);
 			dr->dr_parent = new;

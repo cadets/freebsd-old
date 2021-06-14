@@ -196,6 +196,15 @@ int linker_search_symbol_name(caddr_t value, char *buf, u_int buflen,
 /* HWPMC helper */
 void *linker_hwpmc_list_objects(void);
 
+/* kldload/kldunload syscalls blocking */
+#define	LINKER_UB_UNLOCK	0x0001	/* busy: unlock kld_sx locked on
+					   return */
+#define	LINKER_UB_LOCKED	0x0002	/* busy/unbusy: kld_sx locked on
+					   entry */
+#define	LINKER_UB_PCATCH	0x0004	/* busy: sleep interruptible */
+int linker_kldload_busy(int flags);
+void linker_kldload_unbusy(int flags);
+
 #endif	/* _KERNEL */
 
 /*
@@ -215,6 +224,7 @@ void *linker_hwpmc_list_objects(void);
 #define MODINFOMD_SSYM		0x0003		/* start of symbols */
 #define MODINFOMD_ESYM		0x0004		/* end of symbols */
 #define MODINFOMD_DYNAMIC	0x0005		/* _DYNAMIC pointer */
+#define MODINFOMD_MB2HDR	0x0006		/* MB2 header info */
 /* These values are MD on PowerPC */
 #if !defined(__powerpc__)
 #define MODINFOMD_ENVP		0x0006		/* envp[] */

@@ -33,6 +33,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
 
 #include <arpa/inet.h>
 #include <net/ethernet.h>
@@ -58,7 +59,8 @@ __FBSDID("$FreeBSD$");
 #define	max(x, y) ((x) > (y) ? (x) : (y))
 
 static const char *progname, *nexus;
-static int chip_id;	/* 4 for T4, 5 for T5 */
+static int chip_id;	/* 4 for T4, 5 for T5, and so on. */
+static int inst;	/* instance of nexus device */
 
 struct reg_info {
 	const char *name;
@@ -91,6 +93,8 @@ usage(FILE *fp)
 	fprintf(fp, "Usage: %s <nexus> [operation]\n", progname);
 	fprintf(fp,
 	    "\tclearstats <port>                   clear port statistics\n"
+	    "\tclip hold|release <ip6>             hold/release an address\n"
+	    "\tclip list                           list the CLIP table\n"
 	    "\tcontext <type> <id>                 show an SGE context\n"
 	    "\tdumpstate <dump.bin>                dump chip state\n"
 	    "\tfilter <idx> [<param> <val>] ...    set a filter\n"
@@ -100,7 +104,7 @@ usage(FILE *fp)
 	    "\thashfilter [<param> <val>] ...      set a hashfilter\n"
 	    "\thashfilter <idx> delete|clear       delete a hashfilter\n"
 	    "\thashfilter list                     list all hashfilters\n"
-	    "\thashfilter mode                     get global hashfilter mode\n"
+	    "\thashfilter mode [<match>] ...       get/set global hashfilter mode\n"
 	    "\ti2c <port> <devaddr> <addr> [<len>] read from i2c device\n"
 	    "\tloadboot <bi.bin> [pf|offset <val>] install boot image\n"
 	    "\tloadboot clear [pf|offset <val>]    remove boot image\n"
@@ -1046,6 +1050,8 @@ get_filter_mode(int hashfilter)
 	if (mode & T4_FILTER_VNIC) {
 		if (mode & T4_FILTER_IC_VNIC)
 			printf("vnic_id ");
+		else if (mode & T4_FILTER_IC_ENCAP)
+			printf("encap ");
 		else
 			printf("ovlan ");
 	}
@@ -1062,57 +1068,69 @@ get_filter_mode(int hashfilter)
 }
 
 static int
-set_filter_mode(int argc, const char *argv[])
+set_filter_mode(int argc, const char *argv[], int hashfilter)
 {
 	uint32_t mode = 0;
-	int vnic = 0, ovlan = 0;
+	int vnic = 0, ovlan = 0, invalid = 0;
 
 	for (; argc; argc--, argv++) {
-		if (!strcmp(argv[0], "frag"))
+		if (!strcmp(argv[0], "ipv4") || !strcmp(argv[0], "ipv6") ||
+		    !strcmp(argv[0], "sip") || !strcmp(argv[0], "dip") ||
+		    !strcmp(argv[0], "sport") || !strcmp(argv[0], "dport")) {
+			/* These are always available and enabled. */
+			continue;
+		} else if (!strcmp(argv[0], "frag"))
 			mode |= T4_FILTER_IP_FRAGMENT;
-
-		if (!strcmp(argv[0], "matchtype"))
+		else if (!strcmp(argv[0], "matchtype"))
 			mode |= T4_FILTER_MPS_HIT_TYPE;
-
-		if (!strcmp(argv[0], "macidx"))
+		else if (!strcmp(argv[0], "macidx"))
 			mode |= T4_FILTER_MAC_IDX;
-
-		if (!strcmp(argv[0], "ethtype"))
+		else if (!strcmp(argv[0], "ethtype"))
 			mode |= T4_FILTER_ETH_TYPE;
-
-		if (!strcmp(argv[0], "proto"))
+		else if (!strcmp(argv[0], "proto"))
 			mode |= T4_FILTER_IP_PROTO;
-
-		if (!strcmp(argv[0], "tos"))
+		else if (!strcmp(argv[0], "tos"))
 			mode |= T4_FILTER_IP_TOS;
-
-		if (!strcmp(argv[0], "vlan"))
+		else if (!strcmp(argv[0], "vlan"))
 			mode |= T4_FILTER_VLAN;
-
-		if (!strcmp(argv[0], "ovlan")) {
+		else if (!strcmp(argv[0], "ovlan")) {
 			mode |= T4_FILTER_VNIC;
-			ovlan++;
-		}
-
-		if (!strcmp(argv[0], "vnic_id")) {
+			ovlan = 1;
+		} else if (!strcmp(argv[0], "vnic_id")) {
 			mode |= T4_FILTER_VNIC;
 			mode |= T4_FILTER_IC_VNIC;
-			vnic++;
+			vnic = 1;
 		}
-
-		if (!strcmp(argv[0], "iport"))
+#ifdef notyet
+		else if (!strcmp(argv[0], "encap")) {
+			mode |= T4_FILTER_VNIC;
+			mode |= T4_FILTER_IC_ENCAP;
+			encap = 1;
+		}
+#endif
+		else if (!strcmp(argv[0], "iport"))
 			mode |= T4_FILTER_PORT;
-
-		if (!strcmp(argv[0], "fcoe"))
+		else if (!strcmp(argv[0], "fcoe"))
 			mode |= T4_FILTER_FCoE;
+		else {
+			warnx("\"%s\" is not valid while setting filter mode.",
+			    argv[0]);
+			invalid++;
+		}
 	}
 
-	if (vnic > 0 && ovlan > 0) {
+	if (vnic + ovlan > 1) {
 		warnx("\"vnic_id\" and \"ovlan\" are mutually exclusive.");
-		return (EINVAL);
+		invalid++;
 	}
 
-	return doit(CHELSIO_T4_SET_FILTER_MODE, &mode);
+	if (invalid > 0)
+		return (EINVAL);
+
+	if (hashfilter)
+		return doit(CHELSIO_T4_SET_FILTER_MASK, &mode);
+	else
+		return doit(CHELSIO_T4_SET_FILTER_MODE, &mode);
 }
 
 static int
@@ -1420,8 +1438,8 @@ filter_cmd(int argc, const char *argv[], int hashfilter)
 		return get_filter_mode(hashfilter);
 
 	/* mode <mode> */
-	if (!hashfilter && strcmp(argv[0], "mode") == 0)
-		return set_filter_mode(argc - 1, argv + 1);
+	if (strcmp(argv[0], "mode") == 0)
+		return set_filter_mode(argc - 1, argv + 1, hashfilter);
 
 	/* <idx> ... */
 	s = str_to_number(argv[0], NULL, &val);
@@ -3493,6 +3511,69 @@ load_offload_policy(int argc, const char *argv[])
 }
 
 static int
+display_clip(void)
+{
+	size_t clip_buf_size = 4096;
+	char *buf, name[32];
+	int rc;
+
+	buf = malloc(clip_buf_size);
+	if (buf == NULL) {
+		warn("%s", __func__);
+		return (errno);
+	}
+
+	snprintf(name, sizeof(name), "dev.t%unex.%u.misc.clip", chip_id, inst);
+	rc = sysctlbyname(name, buf, &clip_buf_size, NULL, 0);
+	if (rc != 0) {
+		warn("sysctl %s", name);
+		free(buf);
+		return (errno);
+	}
+
+	printf("%s\n", buf);
+	free(buf);
+	return (0);
+}
+
+static int
+clip_cmd(int argc, const char *argv[])
+{
+	int rc, af = AF_INET6, add;
+	struct t4_clip_addr ca = {0};
+
+	if (argc == 1 && !strcmp(argv[0], "list")) {
+		rc = display_clip();
+		return (rc);
+	}
+
+	if (argc != 2) {
+		warnx("incorrect number of arguments.");
+		return (EINVAL);
+	}
+
+	if (!strcmp(argv[0], "hold")) {
+		add = 1;
+	} else if (!strcmp(argv[0], "rel") || !strcmp(argv[0], "release")) {
+		add = 0;
+	} else {
+		warnx("first argument must be \"hold\" or \"release\"");
+		return (EINVAL);
+	}
+
+	rc = parse_ipaddr(argv[0], argv, &af, &ca.addr[0], &ca.mask[0], 1);
+	if (rc != 0)
+		return (rc);
+
+	if (add)
+		rc = doit(CHELSIO_T4_HOLD_CLIP_ADDR, &ca);
+	else
+		rc = doit(CHELSIO_T4_RELEASE_CLIP_ADDR, &ca);
+
+	return (rc);
+}
+
+static int
 run_cmd(int argc, const char *argv[])
 {
 	int rc = -1;
@@ -3542,6 +3623,8 @@ run_cmd(int argc, const char *argv[])
 		rc = load_offload_policy(argc, argv);
 	else if (!strcmp(cmd, "hashfilter"))
 		rc = filter_cmd(argc, argv, 1);
+	else if (!strcmp(cmd, "clip"))
+		rc = clip_cmd(argc, argv);
 	else {
 		rc = EINVAL;
 		warnx("invalid command \"%s\"", cmd);
@@ -3595,6 +3678,16 @@ run_cmd_loop(void)
 	return (rc);
 }
 
+static void
+parse_nexus_name(const char *s)
+{
+	char junk;
+
+	if (sscanf(s, "t%unex%u%c", &chip_id, &inst, &junk) != 2)
+		errx(EINVAL, "invalid nexus \"%s\"", s);
+	nexus = s;
+}
+
 int
 main(int argc, const char *argv[])
 {
@@ -3614,8 +3707,7 @@ main(int argc, const char *argv[])
 		exit(EINVAL);
 	}
 
-	nexus = argv[1];
-	chip_id = nexus[1] - '0';
+	parse_nexus_name(argv[1]);
 
 	/* progname and nexus */
 	argc -= 2;

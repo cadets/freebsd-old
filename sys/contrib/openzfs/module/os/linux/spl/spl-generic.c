@@ -284,9 +284,7 @@ int64_t
 __divdi3(int64_t u, int64_t v)
 {
 	int64_t q, t;
-	// cppcheck-suppress shiftTooManyBitsSigned
 	q = __udivdi3(abs64(u), abs64(v));
-	// cppcheck-suppress shiftTooManyBitsSigned
 	t = (u ^ v) >> 63;	// If u, v have different
 	return ((q ^ t) - t);	// signs, negate q.
 }
@@ -588,8 +586,10 @@ spl_getattr(struct file *filp, struct kstat *stat)
 	    AT_STATX_SYNC_AS_STAT);
 #elif defined(HAVE_2ARGS_VFS_GETATTR)
 	rc = vfs_getattr(&filp->f_path, stat);
-#else
+#elif defined(HAVE_3ARGS_VFS_GETATTR)
 	rc = vfs_getattr(filp->f_path.mnt, filp->f_dentry, stat);
+#else
+#error "No available vfs_getattr()"
 #endif
 	if (rc)
 		return (-rc);

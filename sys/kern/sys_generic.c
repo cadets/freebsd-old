@@ -55,6 +55,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/signalvar.h>
 #include <sys/socketvar.h>
 #include <sys/uio.h>
+#include <sys/eventfd.h>
 #include <sys/kernel.h>
 #include <sys/ktr.h>
 #include <sys/limits.h>
@@ -63,6 +64,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/resourcevar.h>
 #include <sys/selinfo.h>
 #include <sys/sleepqueue.h>
+#include <sys/specialfd.h>
 #include <sys/syscallsubr.h>
 #include <sys/sysctl.h>
 #include <sys/sysent.h>
@@ -860,6 +862,67 @@ kern_posix_fallocate(struct thread *td, int fd, off_t offset, off_t len)
 }
 
 int
+kern_specialfd(struct thread *td, int type, void *arg)
+{
+	struct file *fp;
+	struct specialfd_eventfd *ae;
+	int error, fd, fflags;
+
+	fflags = 0;
+	error = falloc_noinstall(td, &fp);
+	if (error != 0)
+		return (error);
+
+	switch (type) {
+	case SPECIALFD_EVENTFD:
+		ae = arg;
+		if ((ae->flags & EFD_CLOEXEC) != 0)
+			fflags |= O_CLOEXEC;
+		error = eventfd_create_file(td, fp, ae->initval, ae->flags);
+		break;
+	default:
+		error = EINVAL;
+		break;
+	}
+
+	if (error == 0)
+		error = finstall(td, fp, &fd, fflags, NULL);
+	fdrop(fp, td);
+	if (error == 0)
+		td->td_retval[0] = fd;
+	return (error);
+}
+
+int
+sys___specialfd(struct thread *td, struct __specialfd_args *args)
+{
+	struct specialfd_eventfd ae;
+	int error;
+
+	switch (args->type) {
+	case SPECIALFD_EVENTFD:
+		if (args->len != sizeof(struct specialfd_eventfd)) {
+			error = EINVAL;
+			break;
+		}
+		error = copyin(args->req, &ae, sizeof(ae));
+		if (error != 0)
+			break;
+		if ((ae.flags & ~(EFD_CLOEXEC | EFD_NONBLOCK |
+		    EFD_SEMAPHORE)) != 0) {
+			error = EINVAL;
+			break;
+		}
+		error = kern_specialfd(td, args->type, &ae);
+		break;
+	default:
+		error = EINVAL;
+		break;
+	}
+	return (error);
+}
+
+int
 poll_no_poll(int events)
 {
 	/*
@@ -1241,13 +1304,6 @@ selsetbits(fd_mask **ibits, fd_mask **obits, int idx, fd_mask bit, int events)
 	return (n);
 }
 
-static __inline int
-getselfd_cap(struct filedesc *fdp, int fd, struct file **fpp)
-{
-
-	return (fget_unlocked(fdp, fd, &cap_event_rights, fpp));
-}
-
 /*
  * Traverse the list of fds attached to this thread's seltd and check for
  * completion.
@@ -1264,10 +1320,12 @@ selrescan(struct thread *td, fd_mask **ibits, fd_mask **obits)
 	fd_mask bit;
 	int fd, ev, n, idx;
 	int error;
+	bool only_user;
 
 	fdp = td->td_proc->p_fd;
 	stp = td->td_sel;
 	n = 0;
+	only_user = FILEDESC_IS_ONLY_USER(fdp);
 	STAILQ_FOREACH_SAFE(sfp, &stp->st_selq, sf_link, sfn) {
 		fd = (int)(uintptr_t)sfp->sf_cookie;
 		si = sfp->sf_si;
@@ -1275,13 +1333,19 @@ selrescan(struct thread *td, fd_mask **ibits, fd_mask **obits)
 		/* If the selinfo wasn't cleared the event didn't fire. */
 		if (si != NULL)
 			continue;
-		error = getselfd_cap(fdp, fd, &fp);
-		if (error)
+		if (only_user)
+			error = fget_only_user(fdp, fd, &cap_event_rights, &fp);
+		else
+			error = fget_unlocked(fdp, fd, &cap_event_rights, &fp);
+		if (__predict_false(error != 0))
 			return (error);
 		idx = fd / NFDBITS;
 		bit = (fd_mask)1 << (fd % NFDBITS);
 		ev = fo_poll(fp, selflags(ibits, idx, bit), td->td_ucred, td);
-		fdrop(fp, td);
+		if (only_user)
+			fput_only_user(fdp, fp);
+		else
+			fdrop(fp, td);
 		if (ev != 0)
 			n += selsetbits(ibits, obits, idx, bit, ev);
 	}
@@ -1303,9 +1367,11 @@ selscan(struct thread *td, fd_mask **ibits, fd_mask **obits, int nfd)
 	int ev, flags, end, fd;
 	int n, idx;
 	int error;
+	bool only_user;
 
 	fdp = td->td_proc->p_fd;
 	n = 0;
+	only_user = FILEDESC_IS_ONLY_USER(fdp);
 	for (idx = 0, fd = 0; fd < nfd; idx++) {
 		end = imin(fd + NFDBITS, nfd);
 		for (bit = 1; fd < end; bit <<= 1, fd++) {
@@ -1313,12 +1379,18 @@ selscan(struct thread *td, fd_mask **ibits, fd_mask **obits, int nfd)
 			flags = selflags(ibits, idx, bit);
 			if (flags == 0)
 				continue;
-			error = getselfd_cap(fdp, fd, &fp);
-			if (error)
+			if (only_user)
+				error = fget_only_user(fdp, fd, &cap_event_rights, &fp);
+			else
+				error = fget_unlocked(fdp, fd, &cap_event_rights, &fp);
+			if (__predict_false(error != 0))
 				return (error);
 			selfdalloc(td, (void *)(uintptr_t)fd);
 			ev = fo_poll(fp, flags, td->td_ucred, td);
-			fdrop(fp, td);
+			if (only_user)
+				fput_only_user(fdp, fp);
+			else
+				fdrop(fp, td);
 			if (ev != 0)
 				n += selsetbits(ibits, obits, idx, bit, ev);
 		}
@@ -1345,12 +1417,13 @@ sys_poll(struct thread *td, struct poll_args *uap)
 	return (kern_poll(td, uap->fds, uap->nfds, tsp, NULL));
 }
 
+/*
+ * kfds points to an array in the kernel.
+ */
 int
-kern_poll(struct thread *td, struct pollfd *ufds, u_int nfds,
+kern_poll_kfds(struct thread *td, struct pollfd *kfds, u_int nfds,
     struct timespec *tsp, sigset_t *uset)
 {
-	struct pollfd *kfds;
-	struct pollfd stackfds[32];
 	sbintime_t sbt, precision, tmp;
 	time_t over;
 	struct timespec ts;
@@ -1381,28 +1454,11 @@ kern_poll(struct thread *td, struct pollfd *ufds, u_int nfds,
 	} else
 		sbt = -1;
 
-	/*
-	 * This is kinda bogus.  We have fd limits, but that is not
-	 * really related to the size of the pollfd array.  Make sure
-	 * we let the process use at least FD_SETSIZE entries and at
-	 * least enough for the system-wide limits.  We want to be reasonably
-	 * safe, but not overly restrictive.
-	 */
-	if (nfds > maxfilesperproc && nfds > FD_SETSIZE) 
-		return (EINVAL);
-	if (nfds > nitems(stackfds))
-		kfds = mallocarray(nfds, sizeof(*kfds), M_TEMP, M_WAITOK);
-	else
-		kfds = stackfds;
-	error = copyin(ufds, kfds, nfds * sizeof(*kfds));
-	if (error)
-		goto done;
-
 	if (uset != NULL) {
 		error = kern_sigprocmask(td, SIG_SETMASK, uset,
 		    &td->td_oldsigmask, 0);
 		if (error)
-			goto done;
+			return (error);
 		td->td_pflags |= TDP_OLDMASK;
 		/*
 		 * Make sure that ast() is called on return to
@@ -1429,20 +1485,11 @@ kern_poll(struct thread *td, struct pollfd *ufds, u_int nfds,
 	}
 	seltdclear(td);
 
-done:
 	/* poll is not restarted after signals... */
 	if (error == ERESTART)
 		error = EINTR;
 	if (error == EWOULDBLOCK)
 		error = 0;
-	if (error == 0) {
-		error = pollout(td, kfds, ufds, nfds);
-		if (error)
-			goto out;
-	}
-out:
-	if (nfds > nitems(stackfds))
-		free(kfds, M_TEMP);
 	return (error);
 }
 
@@ -1467,56 +1514,53 @@ sys_ppoll(struct thread *td, struct ppoll_args *uap)
 		ssp = &set;
 	} else
 		ssp = NULL;
-	/*
-	 * fds is still a pointer to user space. kern_poll() will
-	 * take care of copyin that array to the kernel space.
-	 */
-
 	return (kern_poll(td, uap->fds, uap->nfds, tsp, ssp));
 }
 
-#ifdef CAPABILITIES
-static int
-poll_fget(struct filedesc *fdp, int fd, struct file **fpp)
+/*
+ * ufds points to an array in user space.
+ */
+int
+kern_poll(struct thread *td, struct pollfd *ufds, u_int nfds,
+    struct timespec *tsp, sigset_t *set)
 {
-	const struct filedescent *fde;
-	const struct fdescenttbl *fdt;
-	const cap_rights_t *haverights;
-	struct file *fp;
+	struct pollfd *kfds;
+	struct pollfd stackfds[32];
 	int error;
 
-	if (__predict_false(fd >= fdp->fd_nfiles))
-		return (EBADF);
+	if (kern_poll_maxfds(nfds))
+		return (EINVAL);
+	if (nfds > nitems(stackfds))
+		kfds = mallocarray(nfds, sizeof(*kfds), M_TEMP, M_WAITOK);
+	else
+		kfds = stackfds;
+	error = copyin(ufds, kfds, nfds * sizeof(*kfds));
+	if (error != 0)
+		goto out;
 
-	fdt = fdp->fd_files;
-	fde = &fdt->fdt_ofiles[fd];
-	fp = fde->fde_file;
-	if (__predict_false(fp == NULL))
-		return (EBADF);
-	haverights = cap_rights_fde_inline(fde);
-	error = cap_check_inline(haverights, &cap_event_rights);
-	if (__predict_false(error != 0))
-		return (EBADF);
-	*fpp = fp;
-	return (0);
+	error = kern_poll_kfds(td, kfds, nfds, tsp, set);
+	if (error == 0)
+		error = pollout(td, kfds, ufds, nfds);
+
+out:
+	if (nfds > nitems(stackfds))
+		free(kfds, M_TEMP);
+	return (error);
 }
-#else
-static int
-poll_fget(struct filedesc *fdp, int fd, struct file **fpp)
+
+bool
+kern_poll_maxfds(u_int nfds)
 {
-	struct file *fp;
 
-	if (__predict_false(fd >= fdp->fd_nfiles))
-		return (EBADF);
-
-	fp = fdp->fd_ofiles[fd].fde_file;
-	if (__predict_false(fp == NULL))
-		return (EBADF);
-
-	*fpp = fp;
-	return (0);
+	/*
+	 * This is kinda bogus.  We have fd limits, but that is not
+	 * really related to the size of the pollfd array.  Make sure
+	 * we let the process use at least FD_SETSIZE entries and at
+	 * least enough for the system-wide limits.  We want to be reasonably
+	 * safe, but not overly restrictive.
+	 */
+	return (nfds > maxfilesperproc && nfds > FD_SETSIZE);
 }
-#endif
 
 static int
 pollrescan(struct thread *td)
@@ -1528,12 +1572,13 @@ pollrescan(struct thread *td)
 	struct filedesc *fdp;
 	struct file *fp;
 	struct pollfd *fd;
-	int n;
+	int n, error;
+	bool only_user;
 
 	n = 0;
 	fdp = td->td_proc->p_fd;
 	stp = td->td_sel;
-	FILEDESC_SLOCK(fdp);
+	only_user = FILEDESC_IS_ONLY_USER(fdp);
 	STAILQ_FOREACH_SAFE(sfp, &stp->st_selq, sf_link, sfn) {
 		fd = (struct pollfd *)sfp->sf_cookie;
 		si = sfp->sf_si;
@@ -1541,7 +1586,11 @@ pollrescan(struct thread *td)
 		/* If the selinfo wasn't cleared the event didn't fire. */
 		if (si != NULL)
 			continue;
-		if (poll_fget(fdp, fd->fd, &fp) != 0) {
+		if (only_user)
+			error = fget_only_user(fdp, fd->fd, &cap_event_rights, &fp);
+		else
+			error = fget_unlocked(fdp, fd->fd, &cap_event_rights, &fp);
+		if (__predict_false(error != 0)) {
 			fd->revents = POLLNVAL;
 			n++;
 			continue;
@@ -1551,10 +1600,13 @@ pollrescan(struct thread *td)
 		 * POLLERR if appropriate.
 		 */
 		fd->revents = fo_poll(fp, fd->events, td->td_ucred, td);
+		if (only_user)
+			fput_only_user(fdp, fp);
+		else
+			fdrop(fp, td);
 		if (fd->revents != 0)
 			n++;
 	}
-	FILEDESC_SUNLOCK(fdp);
 	stp->st_flags = 0;
 	td->td_retval[0] = n;
 	return (0);
@@ -1586,17 +1638,22 @@ pollscan(struct thread *td, struct pollfd *fds, u_int nfd)
 {
 	struct filedesc *fdp;
 	struct file *fp;
-	int i, n;
+	int i, n, error;
+	bool only_user;
 
 	n = 0;
 	fdp = td->td_proc->p_fd;
-	FILEDESC_SLOCK(fdp);
+	only_user = FILEDESC_IS_ONLY_USER(fdp);
 	for (i = 0; i < nfd; i++, fds++) {
 		if (fds->fd < 0) {
 			fds->revents = 0;
 			continue;
 		}
-		if (poll_fget(fdp, fds->fd, &fp) != 0) {
+		if (only_user)
+			error = fget_only_user(fdp, fds->fd, &cap_event_rights, &fp);
+		else
+			error = fget_unlocked(fdp, fds->fd, &cap_event_rights, &fp);
+		if (__predict_false(error != 0)) {
 			fds->revents = POLLNVAL;
 			n++;
 			continue;
@@ -1608,6 +1665,10 @@ pollscan(struct thread *td, struct pollfd *fds, u_int nfd)
 		selfdalloc(td, fds);
 		fds->revents = fo_poll(fp, fds->events,
 		    td->td_ucred, td);
+		if (only_user)
+			fput_only_user(fdp, fp);
+		else
+			fdrop(fp, td);
 		/*
 		 * POSIX requires POLLOUT to be never
 		 * set simultaneously with POLLHUP.
@@ -1618,7 +1679,6 @@ pollscan(struct thread *td, struct pollfd *fds, u_int nfd)
 		if (fds->revents != 0)
 			n++;
 	}
-	FILEDESC_SUNLOCK(fdp);
 	td->td_retval[0] = n;
 	return (0);
 }

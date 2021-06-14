@@ -61,6 +61,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/md_var.h>
 #include <machine/pcb.h>
 #include <machine/psl.h>
+#include <machine/reg.h>
 #include <machine/segments.h>
 #include <machine/specialreg.h>
 #include <x86/ifunc.h>
@@ -394,11 +395,9 @@ linux_old_select(struct thread *td, struct linux_old_select_args *args)
 int
 linux_set_cloned_tls(struct thread *td, void *desc)
 {
-	struct user_segment_descriptor sd;
 	struct l_user_desc info;
 	struct pcb *pcb;
 	int error;
-	int a[2];
 
 	error = copyin(desc, &info, sizeof(struct l_user_desc));
 	if (error) {
@@ -410,21 +409,17 @@ linux_set_cloned_tls(struct thread *td, void *desc)
 		if (error)
 			linux_msg(td, "set_cloned_tls copyout info failed!");
 
-		a[0] = LINUX_LDT_entry_a(&info);
-		a[1] = LINUX_LDT_entry_b(&info);
-
-		memcpy(&sd, &a, sizeof(a));
 		pcb = td->td_pcb;
+		update_pcb_bases(pcb);
 		pcb->pcb_gsbase = (register_t)info.base_addr;
 		td->td_frame->tf_gs = GSEL(GUGS32_SEL, SEL_UPL);
-		set_pcb_flags(pcb, PCB_32BIT);
 	}
 
 	return (error);
 }
 
 int
-linux_set_upcall_kse(struct thread *td, register_t stack)
+linux_set_upcall(struct thread *td, register_t stack)
 {
 
 	if (stack)
@@ -668,9 +663,7 @@ linux_set_thread_area(struct thread *td,
     struct linux_set_thread_area_args *args)
 {
 	struct l_user_desc info;
-	struct user_segment_descriptor sd;
 	struct pcb *pcb;
-	int a[2];
 	int error;
 
 	error = copyin(args->desc, &info, sizeof(struct l_user_desc));
@@ -721,21 +714,35 @@ linux_set_thread_area(struct thread *td,
 	if (error)
 		return (error);
 
-	if (LINUX_LDT_empty(&info)) {
-		a[0] = 0;
-		a[1] = 0;
-	} else {
-		a[0] = LINUX_LDT_entry_a(&info);
-		a[1] = LINUX_LDT_entry_b(&info);
-	}
-
-	memcpy(&sd, &a, sizeof(a));
 	pcb = td->td_pcb;
+	update_pcb_bases(pcb);
 	pcb->pcb_gsbase = (register_t)info.base_addr;
-	set_pcb_flags(pcb, PCB_32BIT);
 	update_gdt_gsbase(td, info.base_addr);
 
 	return (0);
+}
+
+void
+bsd_to_linux_regset32(struct reg32 *b_reg, struct linux_pt_regset32 *l_regset)
+{
+
+	l_regset->ebx = b_reg->r_ebx;
+	l_regset->ecx = b_reg->r_ecx;
+	l_regset->edx = b_reg->r_edx;
+	l_regset->esi = b_reg->r_esi;
+	l_regset->edi = b_reg->r_edi;
+	l_regset->ebp = b_reg->r_ebp;
+	l_regset->eax = b_reg->r_eax;
+	l_regset->ds = b_reg->r_ds;
+	l_regset->es = b_reg->r_es;
+	l_regset->fs = b_reg->r_fs;
+	l_regset->gs = b_reg->r_gs;
+	l_regset->orig_eax = b_reg->r_eax;
+	l_regset->eip = b_reg->r_eip;
+	l_regset->cs = b_reg->r_cs;
+	l_regset->eflags = b_reg->r_eflags;
+	l_regset->esp = b_reg->r_esp;
+	l_regset->ss = b_reg->r_ss;
 }
 
 int futex_xchgl_nosmap(int oparg, uint32_t *uaddr, int *oldval);

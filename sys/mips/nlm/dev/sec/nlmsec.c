@@ -281,7 +281,7 @@ nlm_xlpsec_msgring_handler(int vc, int size, int code, int src_id,
 		atomic_add_int(&creditleft, sc->sec_msgsz);
 		if (creditleft >= (NLM_CRYPTO_LEFT_REQS)) {
 			crypto_unblock(sc->sc_cid, sc->sc_needwakeup);
-			sc->sc_needwakeup &= (~(CRYPTO_SYMQ | CRYPTO_ASYMQ));
+			sc->sc_needwakeup &= ~CRYPTO_SYMQ;
 		}
 	}
 	if (cmd->hash_dst_len != 0) {
@@ -468,12 +468,15 @@ xlp_get_nsegs(struct cryptop *crp, unsigned int *nsegs)
 
 	switch (crp->crp_buf.cb_type) {
 	case CRYPTO_BUF_MBUF:
+	case CRYPTO_BUF_SINGLE_MBUF:
 	{
 		struct mbuf *m = NULL;
 
 		m = crp->crp_buf.cb_mbuf;
 		while (m != NULL) {
 			*nsegs += NLM_CRYPTO_NUM_SEGS_REQD(m->m_len);
+			if (crp->crp_buf.cb_type == CRYPTO_BUF_SINGLE_MBUF)
+				break;
 			m = m->m_next;
 		}
 		break;

@@ -42,6 +42,9 @@
 #include <libxo/xo.h>
 #include <ucl.h>
 
+#define BHYVE_RUN_DIR "/var/run/bhyve/"
+#define MAX_SNAPSHOT_FILENAME PATH_MAX
+
 struct vmctx;
 
 struct restore_state {
@@ -55,6 +58,31 @@ struct restore_state {
 
 	struct ucl_parser *meta_parser;
 	ucl_object_t *meta_root_obj;
+};
+
+/* Filename that will be used for save/restore */
+struct checkpoint_op {
+	char snapshot_filename[MAX_SNAPSHOT_FILENAME];
+};
+
+/* Messages that a bhyve process understands. */
+enum ipc_opcode {
+	START_CHECKPOINT,
+	START_SUSPEND,
+};
+
+/*
+ * The type of message and associated data to
+ * send to a bhyve process.
+ */
+struct ipc_message {
+        enum ipc_opcode code;
+        union {
+                /*
+                 * message specific structures
+                 */
+                struct checkpoint_op op;
+        } data;
 };
 
 struct checkpoint_thread_info {
@@ -99,6 +127,7 @@ int vm_resume_user_devs(struct vmctx *ctx);
 int get_checkpoint_msg(int conn_fd, struct vmctx *ctx);
 void *checkpoint_thread(void *param);
 int init_checkpoint_thread(struct vmctx *ctx);
+void init_snapshot(void);
 
 int load_restore_file(const char *filename, struct restore_state *rstate);
 

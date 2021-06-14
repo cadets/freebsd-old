@@ -28,7 +28,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd June 1, 2020
+.Dd June 2, 2021
 .Dt RTLD 1
 .Os
 .Sh NAME
@@ -131,6 +131,7 @@ all the environment variables listed below, but is being prefixed with
 .Ev LD_32_ ,
 for example:
 .Ev LD_32_TRACE_LOADED_OBJECTS .
+If the activated image is setuid or setgid, the variables are ignored.
 .Bl -tag -width ".Ev LD_LIBMAP_DISABLE"
 .It Ev LD_DUMP_REL_POST
 If set,
@@ -189,6 +190,14 @@ to be linked in before any
 other shared libraries.
 If the directory is not specified then
 the directories specified by
+.It Ev LD_PRELOAD_FDS
+A colon separated list of file descriptor numbers for libraries.
+This is intended for preloading libraries in which we already have a file
+descriptor.
+This may optimize the process of loading libraries because we do not have to
+look for them in directories.
+It may also be useful in a capability base system where we do not have access to
+global namespaces such as the filesystem.
 .Ev LD_LIBRARY_PATH
 will be searched first
 followed by the set of built-in standard directories.
@@ -305,6 +314,8 @@ The syntax of the direct invocation is
 .Op Fl b Ar exe
 .Op Fl f Ar fd
 .Op Fl p
+.Op Fl u
+.Op Fl v
 .Op Fl -
 .Pa image_path
 .Op Ar image arguments
@@ -345,6 +356,11 @@ character,
 uses the search path provided by the environment variable
 .Dv PATH
 to find the binary to execute.
+.It Fl u
+Ignore all
+.Ev LD_
+environment variables that otherwise affect the dynamic
+linker behavior.
 .It Fl v
 Display information about this run-time linker binary, then exit.
 .It Fl -
@@ -416,6 +432,13 @@ See
 Also it indicates the presence of
 .Va l_refname
 member of the structure.
+.It Dv _rtld_version_dlpi_tls_data
+The
+.Va dlpi_tls_data
+member of the structure
+.Vt dl_phdr_info
+contains the address of the module TLS segment for the calling thread,
+and not the address of the initialization segment.
 .El
 .Sh FILES
 .Bl -tag -width ".Pa /var/run/ld-elf32.so.hints" -compact

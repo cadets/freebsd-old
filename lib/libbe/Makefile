@@ -4,6 +4,7 @@ SHLIBDIR?=	/lib
 
 .include <src.opts.mk>
 
+PACKAGE=	runtime
 LIB=		be
 SHLIB_MAJOR=	1
 SHLIB_MINOR=	0
@@ -57,6 +58,7 @@ CFLAGS+= -I${SRCTOP}/sys/contrib/openzfs/include
 CFLAGS+= -I${SRCTOP}/sys/contrib/openzfs/include/os/freebsd
 CFLAGS+= -I${SRCTOP}/sys/contrib/openzfs/lib/libspl/include
 CFLAGS+= -I${SRCTOP}/sys/contrib/openzfs/lib/libspl/include/os/freebsd
+CFLAGS+= -I${SRCTOP}/sys/contrib/openzfs/lib/libzfs
 CFLAGS+= -I${SRCTOP}/sys
 CFLAGS+= -I${SRCTOP}/cddl/compat/opensolaris/include
 CFLAGS+= -include ${SRCTOP}/sys/contrib/openzfs/include/os/freebsd/spl/sys/ccompile.h

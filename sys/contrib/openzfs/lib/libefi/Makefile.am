@@ -1,6 +1,7 @@
 include $(top_srcdir)/config/Rules.am
 
 AM_CFLAGS += $(LIBUUID_CFLAGS) $(ZLIB_CFLAGS)
+AM_CFLAGS += -fvisibility=hidden
 
 noinst_LTLIBRARIES = libefi.la
 
@@ -10,3 +11,5 @@ USER_C = \
 libefi_la_SOURCES = $(USER_C)
 
 libefi_la_LIBADD = $(LIBUUID_LIBS) $(ZLIB_LIBS)
+
+include $(top_srcdir)/config/CppCheck.am

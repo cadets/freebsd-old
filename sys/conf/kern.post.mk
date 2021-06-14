@@ -38,7 +38,7 @@ MKMODULESENV+=	WITH_CTF="${WITH_CTF}"
 MKMODULESENV+=	WITH_EXTRA_TCP_STACKS="${WITH_EXTRA_TCP_STACKS}"
 .endif
 
-.if defined(KCSAN_ENABLED)
+.if !empty(KCSAN_ENABLED)
 MKMODULESENV+=	KCSAN_ENABLED="yes"
 .endif
 
@@ -462,8 +462,5 @@ embedfs_${MFS_IMAGE:T:R}.o: ${MFS_IMAGE} $S/dev/md/embedfs.S
 	    $S/dev/md/embedfs.S -o ${.TARGET}
 .endif
 .endif
-
-# XXX strictly, everything depends on Makefile because changes to ${PROF}
-# only appear there, but we don't handle that.
 
 .include "kern.mk"

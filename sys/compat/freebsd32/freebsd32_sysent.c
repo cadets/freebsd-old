@@ -16,43 +16,43 @@
 #define AS(name) (sizeof(struct name) / sizeof(register_t))
 
 #ifdef COMPAT_43
-#define compat(n, name) .sy_narg = n, .sy_call = (sy_call_t *)__CONCAT(o,name)
+#define compat(n, name) .sy_narg = n, .sy_call = (sy_call_t *)__CONCAT(o, name)
 #else
 #define compat(n, name) .sy_narg = 0, .sy_call = (sy_call_t *)nosys
 #endif
 
 #ifdef COMPAT_FREEBSD4
-#define compat4(n, name) .sy_narg = n, .sy_call = (sy_call_t *)__CONCAT(freebsd4_,name)
+#define compat4(n, name) .sy_narg = n, .sy_call = (sy_call_t *)__CONCAT(freebsd4_, name)
 #else
 #define compat4(n, name) .sy_narg = 0, .sy_call = (sy_call_t *)nosys
 #endif
 
 #ifdef COMPAT_FREEBSD6
-#define compat6(n, name) .sy_narg = n, .sy_call = (sy_call_t *)__CONCAT(freebsd6_,name)
+#define compat6(n, name) .sy_narg = n, .sy_call = (sy_call_t *)__CONCAT(freebsd6_, name)
 #else
 #define compat6(n, name) .sy_narg = 0, .sy_call = (sy_call_t *)nosys
 #endif
 
 #ifdef COMPAT_FREEBSD7
-#define compat7(n, name) .sy_narg = n, .sy_call = (sy_call_t *)__CONCAT(freebsd7_,name)
+#define compat7(n, name) .sy_narg = n, .sy_call = (sy_call_t *)__CONCAT(freebsd7_, name)
 #else
 #define compat7(n, name) .sy_narg = 0, .sy_call = (sy_call_t *)nosys
 #endif
 
 #ifdef COMPAT_FREEBSD10
-#define compat10(n, name) .sy_narg = n, .sy_call = (sy_call_t *)__CONCAT(freebsd10_,name)
+#define compat10(n, name) .sy_narg = n, .sy_call = (sy_call_t *)__CONCAT(freebsd10_, name)
 #else
 #define compat10(n, name) .sy_narg = 0, .sy_call = (sy_call_t *)nosys
 #endif
 
 #ifdef COMPAT_FREEBSD11
-#define compat11(n, name) .sy_narg = n, .sy_call = (sy_call_t *)__CONCAT(freebsd11_,name)
+#define compat11(n, name) .sy_narg = n, .sy_call = (sy_call_t *)__CONCAT(freebsd11_, name)
 #else
 #define compat11(n, name) .sy_narg = 0, .sy_call = (sy_call_t *)nosys
 #endif
 
 #ifdef COMPAT_FREEBSD12
-#define compat12(n, name) .sy_narg = n, .sy_call = (sy_call_t *)__CONCAT(freebsd12_,name)
+#define compat12(n, name) .sy_narg = n, .sy_call = (sy_call_t *)__CONCAT(freebsd12_, name)
 #else
 #define compat12(n, name) .sy_narg = 0, .sy_call = (sy_call_t *)nosys
 #endif
@@ -666,4 +666,7 @@ struct sysent freebsd32_sysent[] = {
 	{ .sy_narg = AS(__realpathat_args), .sy_call = (sy_call_t *)sys___realpathat, .sy_auevent = AUE_REALPATHAT, .sy_flags = 0, .sy_thrcnt = SY_THR_STATIC },	/* 574 = __realpathat */
 	{ .sy_narg = AS(close_range_args), .sy_call = (sy_call_t *)sys_close_range, .sy_auevent = AUE_CLOSERANGE, .sy_flags = SYF_CAPENABLED, .sy_thrcnt = SY_THR_STATIC },	/* 575 = close_range */
 	{ .sy_narg = AS(rpctls_syscall_args), .sy_call = (sy_call_t *)lkmressys, .sy_auevent = AUE_NULL, .sy_flags = 0, .sy_thrcnt = SY_THR_ABSENT },	/* 576 = rpctls_syscall */
+	{ .sy_narg = AS(__specialfd_args), .sy_call = (sy_call_t *)sys___specialfd, .sy_auevent = AUE_SPECIALFD, .sy_flags = SYF_CAPENABLED, .sy_thrcnt = SY_THR_STATIC },	/* 577 = __specialfd */
+	{ .sy_narg = AS(freebsd32_aio_writev_args), .sy_call = (sy_call_t *)freebsd32_aio_writev, .sy_auevent = AUE_AIO_WRITEV, .sy_flags = SYF_CAPENABLED, .sy_thrcnt = SY_THR_STATIC },	/* 578 = freebsd32_aio_writev */
+	{ .sy_narg = AS(freebsd32_aio_readv_args), .sy_call = (sy_call_t *)freebsd32_aio_readv, .sy_auevent = AUE_AIO_READV, .sy_flags = SYF_CAPENABLED, .sy_thrcnt = SY_THR_STATIC },	/* 579 = freebsd32_aio_readv */
 };

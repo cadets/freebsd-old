@@ -130,7 +130,20 @@ struct l_pselect6arg {
 	l_size_t	ss_len;
 };
 
-static int	linux_utimensat_nsec_valid(l_long);
+static int	linux_utimensat_lts_to_ts(struct l_timespec *,
+			struct timespec *);
+#if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
+static int	linux_utimensat_lts64_to_ts(struct l_timespec64 *,
+			struct timespec *);
+#endif
+static int	linux_common_utimensat(struct thread *, int,
+			const char *, struct timespec *, int);
+static int	linux_common_pselect6(struct thread *, l_int,
+			l_fd_set *, l_fd_set *, l_fd_set *,
+			struct timespec *, l_uintptr_t *);
+static int	linux_common_ppoll(struct thread *, struct pollfd *,
+			uint32_t, struct timespec *, l_sigset_t *,
+			l_size_t);
 
 int
 linux_sysinfo(struct thread *td, struct linux_sysinfo_args *args)
@@ -722,18 +735,10 @@ linux_utime(struct thread *td, struct linux_utime_args *args)
 	struct l_utimbuf lut;
 	char *fname;
 	int error;
-	bool convpath;
-
-	convpath = LUSECONVPATH(td);
-	if (convpath)
-		LCONVPATHEXIST(td, args->fname, &fname);
 
 	if (args->times) {
-		if ((error = copyin(args->times, &lut, sizeof lut))) {
-			if (convpath)
-				LFREEPATH(fname);
+		if ((error = copyin(args->times, &lut, sizeof lut)) != 0)
 			return (error);
-		}
 		tv[0].tv_sec = lut.l_actime;
 		tv[0].tv_usec = 0;
 		tv[1].tv_sec = lut.l_modtime;
@@ -742,10 +747,11 @@ linux_utime(struct thread *td, struct linux_utime_args *args)
 	} else
 		tvp = NULL;
 
-	if (!convpath) {
+	if (!LUSECONVPATH(td)) {
 		error = kern_utimesat(td, AT_FDCWD, args->fname, UIO_USERSPACE,
 		    tvp, UIO_SYSSPACE);
 	} else {
+		LCONVPATHEXIST(td, args->fname, &fname);
 		error = kern_utimesat(td, AT_FDCWD, fname, UIO_SYSSPACE, tvp,
 		    UIO_SYSSPACE);
 		LFREEPATH(fname);
@@ -762,17 +768,10 @@ linux_utimes(struct thread *td, struct linux_utimes_args *args)
 	struct timeval tv[2], *tvp = NULL;
 	char *fname;
 	int error;
-	bool convpath;
-
-	convpath = LUSECONVPATH(td);
-	if (convpath)
-		LCONVPATHEXIST(td, args->fname, &fname);
 
 	if (args->tptr != NULL) {
-		if ((error = copyin(args->tptr, ltv, sizeof ltv))) {
-			LFREEPATH(fname);
+		if ((error = copyin(args->tptr, ltv, sizeof ltv)) != 0)
 			return (error);
-		}
 		tv[0].tv_sec = ltv[0].tv_sec;
 		tv[0].tv_usec = ltv[0].tv_usec;
 		tv[1].tv_sec = ltv[1].tv_sec;
@@ -780,10 +779,11 @@ linux_utimes(struct thread *td, struct linux_utimes_args *args)
 		tvp = tv;
 	}
 
-	if (!convpath) {
+	if (!LUSECONVPATH(td)) {
 		error = kern_utimesat(td, AT_FDCWD, args->fname, UIO_USERSPACE,
 		    tvp, UIO_SYSSPACE);
 	} else {
+		LCONVPATHEXIST(td, args->fname, &fname);
 		error = kern_utimesat(td, AT_FDCWD, fname, UIO_SYSSPACE,
 		    tvp, UIO_SYSSPACE);
 		LFREEPATH(fname);
@@ -793,88 +793,67 @@ linux_utimes(struct thread *td, struct linux_utimes_args *args)
 #endif
 
 static int
-linux_utimensat_nsec_valid(l_long nsec)
+linux_utimensat_lts_to_ts(struct l_timespec *l_times, struct timespec *times)
 {
 
-	if (nsec == LINUX_UTIME_OMIT || nsec == LINUX_UTIME_NOW)
-		return (0);
-	if (nsec >= 0 && nsec <= 999999999)
-		return (0);
-	return (1);
+	if (l_times->tv_nsec != LINUX_UTIME_OMIT &&
+	    l_times->tv_nsec != LINUX_UTIME_NOW &&
+	    (l_times->tv_nsec < 0 || l_times->tv_nsec > 999999999))
+		return (EINVAL);
+
+	times->tv_sec = l_times->tv_sec;
+	switch (l_times->tv_nsec)
+	{
+	case LINUX_UTIME_OMIT:
+		times->tv_nsec = UTIME_OMIT;
+		break;
+	case LINUX_UTIME_NOW:
+		times->tv_nsec = UTIME_NOW;
+		break;
+	default:
+		times->tv_nsec = l_times->tv_nsec;
+	}
+
+	return (0);
 }
 
-int
-linux_utimensat(struct thread *td, struct linux_utimensat_args *args)
+static int
+linux_common_utimensat(struct thread *td, int ldfd, const char *pathname,
+    struct timespec *timesp, int lflags)
 {
-	struct l_timespec l_times[2];
-	struct timespec times[2], *timesp = NULL;
 	char *path = NULL;
 	int error, dfd, flags = 0;
 
-	dfd = (args->dfd == LINUX_AT_FDCWD) ? AT_FDCWD : args->dfd;
+	dfd = (ldfd == LINUX_AT_FDCWD) ? AT_FDCWD : ldfd;
 
-	if (args->flags & ~LINUX_AT_SYMLINK_NOFOLLOW)
+	if (lflags & ~(LINUX_AT_SYMLINK_NOFOLLOW | LINUX_AT_EMPTY_PATH))
 		return (EINVAL);
 
-	if (args->times != NULL) {
-		error = copyin(args->times, l_times, sizeof(l_times));
-		if (error != 0)
-			return (error);
-
-		if (linux_utimensat_nsec_valid(l_times[0].tv_nsec) != 0 ||
-		    linux_utimensat_nsec_valid(l_times[1].tv_nsec) != 0)
-			return (EINVAL);
-
-		times[0].tv_sec = l_times[0].tv_sec;
-		switch (l_times[0].tv_nsec)
-		{
-		case LINUX_UTIME_OMIT:
-			times[0].tv_nsec = UTIME_OMIT;
-			break;
-		case LINUX_UTIME_NOW:
-			times[0].tv_nsec = UTIME_NOW;
-			break;
-		default:
-			times[0].tv_nsec = l_times[0].tv_nsec;
-		}
-
-		times[1].tv_sec = l_times[1].tv_sec;
-		switch (l_times[1].tv_nsec)
-		{
-		case LINUX_UTIME_OMIT:
-			times[1].tv_nsec = UTIME_OMIT;
-			break;
-		case LINUX_UTIME_NOW:
-			times[1].tv_nsec = UTIME_NOW;
-			break;
-		default:
-			times[1].tv_nsec = l_times[1].tv_nsec;
-			break;
-		}
-		timesp = times;
-
+	if (timesp != NULL) {
 		/* This breaks POSIX, but is what the Linux kernel does
 		 * _on purpose_ (documented in the man page for utimensat(2)),
 		 * so we must follow that behaviour. */
-		if (times[0].tv_nsec == UTIME_OMIT &&
-		    times[1].tv_nsec == UTIME_OMIT)
+		if (timesp[0].tv_nsec == UTIME_OMIT &&
+		    timesp[1].tv_nsec == UTIME_OMIT)
 			return (0);
 	}
 
+	if (lflags & LINUX_AT_SYMLINK_NOFOLLOW)
+		flags |= AT_SYMLINK_NOFOLLOW;
+	if (lflags & LINUX_AT_EMPTY_PATH)
+		flags |= AT_EMPTY_PATH;
+
 	if (!LUSECONVPATH(td)) {
-		if (args->pathname != NULL) {
-			return (kern_utimensat(td, dfd, args->pathname,
+		if (pathname != NULL) {
+			return (kern_utimensat(td, dfd, pathname,
 			    UIO_USERSPACE, timesp, UIO_SYSSPACE, flags));
 		}
 	}
 
-	if (args->pathname != NULL)
-		LCONVPATHEXIST_AT(td, args->pathname, &path, dfd);
-	else if (args->flags != 0)
+	if (pathname != NULL)
+		LCONVPATHEXIST_AT(td, pathname, &path, dfd);
+	else if (lflags != 0)
 		return (EINVAL);
-
-	if (args->flags & LINUX_AT_SYMLINK_NOFOLLOW)
-		flags |= AT_SYMLINK_NOFOLLOW;
 
 	if (path == NULL)
 		error = kern_futimens(td, dfd, timesp, UIO_SYSSPACE);
@@ -887,6 +866,85 @@ linux_utimensat(struct thread *td, struct linux_utimensat_args *args)
 	return (error);
 }
 
+int
+linux_utimensat(struct thread *td, struct linux_utimensat_args *args)
+{
+	struct l_timespec l_times[2];
+	struct timespec times[2], *timesp;
+	int error;
+
+	if (args->times != NULL) {
+		error = copyin(args->times, l_times, sizeof(l_times));
+		if (error != 0)
+			return (error);
+
+		error = linux_utimensat_lts_to_ts(&l_times[0], &times[0]);
+		if (error != 0)
+			return (error);
+		error = linux_utimensat_lts_to_ts(&l_times[1], &times[1]);
+		if (error != 0)
+			return (error);
+		timesp = times;
+	} else
+		timesp = NULL;
+
+	return (linux_common_utimensat(td, args->dfd, args->pathname,
+	    timesp, args->flags));
+}
+
+#if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
+static int
+linux_utimensat_lts64_to_ts(struct l_timespec64 *l_times, struct timespec *times)
+{
+
+	if (l_times->tv_nsec != LINUX_UTIME_OMIT &&
+	    l_times->tv_nsec != LINUX_UTIME_NOW &&
+	    (l_times->tv_nsec < 0 || l_times->tv_nsec > 999999999))
+		return (EINVAL);
+
+	times->tv_sec = l_times->tv_sec;
+	switch (l_times->tv_nsec)
+	{
+	case LINUX_UTIME_OMIT:
+		times->tv_nsec = UTIME_OMIT;
+		break;
+	case LINUX_UTIME_NOW:
+		times->tv_nsec = UTIME_NOW;
+		break;
+	default:
+		times->tv_nsec = l_times->tv_nsec;
+	}
+
+	return (0);
+}
+
+int
+linux_utimensat_time64(struct thread *td, struct linux_utimensat_time64_args *args)
+{
+	struct l_timespec64 l_times[2];
+	struct timespec times[2], *timesp;
+	int error;
+
+	if (args->times64 != NULL) {
+		error = copyin(args->times64, l_times, sizeof(l_times));
+		if (error != 0)
+			return (error);
+
+		error = linux_utimensat_lts64_to_ts(&l_times[0], &times[0]);
+		if (error != 0)
+			return (error);
+		error = linux_utimensat_lts64_to_ts(&l_times[1], &times[1]);
+		if (error != 0)
+			return (error);
+		timesp = times;
+	} else
+		timesp = NULL;
+
+	return (linux_common_utimensat(td, args->dfd, args->pathname,
+	    timesp, args->flags));
+}
+#endif /* __i386__ || (__amd64__ && COMPAT_LINUX32) */
+
 #ifdef LINUX_LEGACY_SYSCALLS
 int
 linux_futimesat(struct thread *td, struct linux_futimesat_args *args)
@@ -895,19 +953,12 @@ linux_futimesat(struct thread *td, struct linux_futimesat_args *args)
 	struct timeval tv[2], *tvp = NULL;
 	char *fname;
 	int error, dfd;
-	bool convpath;
 
-	convpath = LUSECONVPATH(td);
 	dfd = (args->dfd == LINUX_AT_FDCWD) ? AT_FDCWD : args->dfd;
-	if (convpath)
-		LCONVPATHEXIST_AT(td, args->filename, &fname, dfd);
 
 	if (args->utimes != NULL) {
-		if ((error = copyin(args->utimes, ltv, sizeof ltv))) {
-			if (convpath)
-				LFREEPATH(fname);
+		if ((error = copyin(args->utimes, ltv, sizeof ltv)) != 0)
 			return (error);
-		}
 		tv[0].tv_sec = ltv[0].tv_sec;
 		tv[0].tv_usec = ltv[0].tv_usec;
 		tv[1].tv_sec = ltv[1].tv_sec;
@@ -915,11 +966,13 @@ linux_futimesat(struct thread *td, struct linux_futimesat_args *args)
 		tvp = tv;
 	}
 
-	if (!convpath) {
+	if (!LUSECONVPATH(td)) {
 		error = kern_utimesat(td, dfd, args->filename, UIO_USERSPACE,
 		    tvp, UIO_SYSSPACE);
 	} else {
-		error = kern_utimesat(td, dfd, fname, UIO_SYSSPACE, tvp, UIO_SYSSPACE);
+		LCONVPATHEXIST_AT(td, args->filename, &fname, dfd);
+		error = kern_utimesat(td, dfd, fname, UIO_SYSSPACE,
+		    tvp, UIO_SYSSPACE);
 		LFREEPATH(fname);
 	}
 	return (error);
@@ -2041,6 +2094,16 @@ linux_prctl(struct thread *td, struct linux_prctl_args *args)
 		 */
 		error = EINVAL;
 		break;
+	case LINUX_PR_CAPBSET_READ:
+#if 0
+		/*
+		 * This makes too much noise with Ubuntu Focal.
+		 */
+		linux_msg(td, "unsupported prctl PR_CAPBSET_READ %d",
+		    (int)args->arg2);
+#endif
+		error = EINVAL;
+		break;
 	case LINUX_PR_SET_NO_NEW_PRIVS:
 		linux_msg(td, "unsupported prctl PR_SET_NO_NEW_PRIVS");
 		error = EINVAL;
@@ -2291,18 +2354,49 @@ linux_prlimit64(struct thread *td, struct linux_prlimit64_args *args)
 int
 linux_pselect6(struct thread *td, struct linux_pselect6_args *args)
 {
+	struct l_timespec lts;
+	struct timespec ts, *tsp;
+	int error;
+
+	if (args->tsp != NULL) {
+		error = copyin(args->tsp, &lts, sizeof(lts));
+		if (error != 0)
+			return (error);
+		error = linux_to_native_timespec(&ts, &lts);
+		if (error != 0)
+			return (error);
+		tsp = &ts;
+	} else
+		tsp = NULL;
+
+	error = linux_common_pselect6(td, args->nfds, args->readfds,
+	    args->writefds, args->exceptfds, tsp, args->sig);
+	if (error != 0)
+		return (error);
+
+	if (args->tsp != NULL) {
+		error = native_to_linux_timespec(&lts, tsp);
+		if (error == 0)
+			error = copyout(&lts, args->tsp, sizeof(lts));
+	}
+	return (error);
+}
+
+static int
+linux_common_pselect6(struct thread *td, l_int nfds, l_fd_set *readfds,
+    l_fd_set *writefds, l_fd_set *exceptfds, struct timespec *tsp,
+    l_uintptr_t *sig)
+{
 	struct timeval utv, tv0, tv1, *tvp;
 	struct l_pselect6arg lpse6;
-	struct l_timespec lts;
-	struct timespec uts;
 	l_sigset_t l_ss;
 	sigset_t *ssp;
 	sigset_t ss;
 	int error;
 
 	ssp = NULL;
-	if (args->sig != NULL) {
-		error = copyin(args->sig, &lpse6, sizeof(lpse6));
+	if (sig != NULL) {
+		error = copyin(sig, &lpse6, sizeof(lpse6));
 		if (error != 0)
 			return (error);
 		if (lpse6.ss_len != sizeof(l_ss))
@@ -2315,21 +2409,15 @@ linux_pselect6(struct thread *td, struct linux_pselect6_args *args)
 			linux_to_bsd_sigset(&l_ss, &ss);
 			ssp = &ss;
 		}
-	}
+	} else
+		ssp = NULL;
 
 	/*
 	 * Currently glibc changes nanosecond number to microsecond.
 	 * This mean losing precision but for now it is hardly seen.
 	 */
-	if (args->tsp != NULL) {
-		error = copyin(args->tsp, &lts, sizeof(lts));
-		if (error != 0)
-			return (error);
-		error = linux_to_native_timespec(&uts, &lts);
-		if (error != 0)
-			return (error);
-
-		TIMESPEC_TO_TIMEVAL(&utv, &uts);
+	if (tsp != NULL) {
+		TIMESPEC_TO_TIMEVAL(&utv, tsp);
 		if (itimerfix(&utv))
 			return (EINVAL);
 
@@ -2338,10 +2426,10 @@ linux_pselect6(struct thread *td, struct linux_pselect6_args *args)
 	} else
 		tvp = NULL;
 
-	error = kern_pselect(td, args->nfds, args->readfds, args->writefds,
-	    args->exceptfds, tvp, ssp, LINUX_NFDBITS);
+	error = kern_pselect(td, nfds, readfds, writefds,
+	    exceptfds, tvp, ssp, LINUX_NFDBITS);
 
-	if (error == 0 && args->tsp != NULL) {
+	if (error == 0 && tsp != NULL) {
 		if (td->td_retval[0] != 0) {
 			/*
 			 * Compute how much time was left of the timeout,
@@ -2357,38 +2445,52 @@ linux_pselect6(struct thread *td, struct linux_pselect6_args *args)
 				timevalclear(&utv);
 		} else
 			timevalclear(&utv);
+		TIMEVAL_TO_TIMESPEC(&utv, tsp);
+	}
+	return (error);
+}
 
-		TIMEVAL_TO_TIMESPEC(&utv, &uts);
+#if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
+int
+linux_pselect6_time64(struct thread *td,
+    struct linux_pselect6_time64_args *args)
+{
+	struct l_timespec64 lts;
+	struct timespec ts, *tsp;
+	int error;
 
-		error = native_to_linux_timespec(&lts, &uts);
+	if (args->tsp != NULL) {
+		error = copyin(args->tsp, &lts, sizeof(lts));
+		if (error != 0)
+			return (error);
+		error = linux_to_native_timespec64(&ts, &lts);
+		if (error != 0)
+			return (error);
+		tsp = &ts;
+	} else
+		tsp = NULL;
+
+	error = linux_common_pselect6(td, args->nfds, args->readfds,
+	    args->writefds, args->exceptfds, tsp, args->sig);
+	if (error != 0)
+		return (error);
+
+	if (args->tsp != NULL) {
+		error = native_to_linux_timespec64(&lts, tsp);
 		if (error == 0)
 			error = copyout(&lts, args->tsp, sizeof(lts));
 	}
-
 	return (error);
 }
+#endif /* __i386__ || (__amd64__ && COMPAT_LINUX32) */
 
 int
 linux_ppoll(struct thread *td, struct linux_ppoll_args *args)
 {
-	struct timespec ts0, ts1;
-	struct l_timespec lts;
 	struct timespec uts, *tsp;
-	l_sigset_t l_ss;
-	sigset_t *ssp;
-	sigset_t ss;
+	struct l_timespec lts;
 	int error;
 
-	if (args->sset != NULL) {
-		if (args->ssize != sizeof(l_ss))
-			return (EINVAL);
-		error = copyin(args->sset, &l_ss, sizeof(l_ss));
-		if (error)
-			return (error);
-		linux_to_bsd_sigset(&l_ss, &ss);
-		ssp = &ss;
-	} else
-		ssp = NULL;
 	if (args->tsp != NULL) {
 		error = copyin(args->tsp, &lts, sizeof(lts));
 		if (error)
@@ -2396,31 +2498,90 @@ linux_ppoll(struct thread *td, struct linux_ppoll_args *args)
 		error = linux_to_native_timespec(&uts, &lts);
 		if (error != 0)
 			return (error);
-
-		nanotime(&ts0);
 		tsp = &uts;
 	} else
 		tsp = NULL;
 
-	error = kern_poll(td, args->fds, args->nfds, tsp, ssp);
-
-	if (error == 0 && args->tsp != NULL) {
-		if (td->td_retval[0]) {
-			nanotime(&ts1);
-			timespecsub(&ts1, &ts0, &ts1);
-			timespecsub(&uts, &ts1, &uts);
-			if (uts.tv_sec < 0)
-				timespecclear(&uts);
-		} else
-			timespecclear(&uts);
-
-		error = native_to_linux_timespec(&lts, &uts);
+	error = linux_common_ppoll(td, args->fds, args->nfds, tsp,
+	    args->sset, args->ssize);
+	if (error != 0)
+		return (error);
+	if (tsp != NULL) {
+		error = native_to_linux_timespec(&lts, tsp);
 		if (error == 0)
 			error = copyout(&lts, args->tsp, sizeof(lts));
 	}
-
 	return (error);
 }
+
+static int
+linux_common_ppoll(struct thread *td, struct pollfd *fds, uint32_t nfds,
+    struct timespec *tsp, l_sigset_t *sset, l_size_t ssize)
+{
+	struct timespec ts0, ts1;
+ 	l_sigset_t l_ss;
+ 	sigset_t *ssp;
+ 	sigset_t ss;
+ 	int error;
+
+	if (sset != NULL) {
+		if (ssize != sizeof(l_ss))
+			return (EINVAL);
+		error = copyin(sset, &l_ss, sizeof(l_ss));
+		if (error)
+			return (error);
+		linux_to_bsd_sigset(&l_ss, &ss);
+		ssp = &ss;
+	} else
+		ssp = NULL;
+	if (tsp != NULL)
+		nanotime(&ts0);
+
+	error = kern_poll(td, fds, nfds, tsp, ssp);
+
+	if (error == 0 && tsp != NULL) {
+		if (td->td_retval[0]) {
+			nanotime(&ts1);
+			timespecsub(&ts1, &ts0, &ts1);
+			timespecsub(tsp, &ts1, tsp);
+			if (tsp->tv_sec < 0)
+				timespecclear(tsp);
+		} else
+			timespecclear(tsp);
+	}
+	return (error);
+}
+
+#if defined(__i386__) || (defined(__amd64__) && defined(COMPAT_LINUX32))
+int
+linux_ppoll_time64(struct thread *td, struct linux_ppoll_time64_args *args)
+{
+	struct timespec uts, *tsp;
+	struct l_timespec64 lts;
+	int error;
+
+	if (args->tsp != NULL) {
+		error = copyin(args->tsp, &lts, sizeof(lts));
+		if (error != 0)
+			return (error);
+		error = linux_to_native_timespec64(&uts, &lts);
+		if (error != 0)
+			return (error);
+		tsp = &uts;
+	} else
+ 		tsp = NULL;
+	error = linux_common_ppoll(td, args->fds, args->nfds, tsp,
+	    args->sset, args->ssize);
+	if (error != 0)
+		return (error);
+	if (tsp != NULL) {
+		error = native_to_linux_timespec64(&lts, tsp);
+		if (error == 0)
+			error = copyout(&lts, args->tsp, sizeof(lts));
+	}
+	return (error);
+}
+#endif /* __i386__ || (__amd64__ && COMPAT_LINUX32) */
 
 int
 linux_sched_rr_get_interval(struct thread *td,

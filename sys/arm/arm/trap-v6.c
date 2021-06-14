@@ -70,10 +70,6 @@ __FBSDID("$FreeBSD$");
 
 extern char cachebailout[];
 
-#ifdef DEBUG
-int last_fault_code;	/* For the benefit of pmap_fault_fixup() */
-#endif
-
 struct ksig {
 	int sig;
 	u_long code;
@@ -495,10 +491,6 @@ abort_handler(struct trapframe *tf, int prefetch)
 	if (prefetch)
 		ftype |= VM_PROT_EXECUTE;
 
-#ifdef DEBUG
-	last_fault_code = fsr;
-#endif
-
 #ifdef INVARIANTS
 	onfault = pcb->pcb_onfault;
 	pcb->pcb_onfault = NULL;
@@ -562,6 +554,9 @@ abort_fatal(struct trapframe *tf, u_int idx, u_int fsr, u_int far,
 	bool usermode;
 	const char *mode;
 	const char *rw_mode;
+#ifdef KDB
+	bool handled;
+#endif
 
 	usermode = TRAPF_USERMODE(tf);
 #ifdef KDTRACE_HOOKS
@@ -609,8 +604,10 @@ abort_fatal(struct trapframe *tf, u_int idx, u_int fsr, u_int far,
 #ifdef KDB
 	if (debugger_on_trap) {
 		kdb_why = KDB_WHY_TRAP;
-		kdb_trap(fsr, 0, tf);
+		handled = kdb_trap(fsr, 0, tf);
 		kdb_why = KDB_WHY_UNSET;
+		if (handled)
+			return (0);
 	}
 #endif
 	panic("Fatal abort");

@@ -297,6 +297,8 @@ struct ada_softc {
 	char	announce_buffer[ADA_ANNOUNCE_SZ];
 };
 
+static uma_zone_t ada_ccb_zone;
+
 struct ada_quirk_entry {
 	struct scsi_inquiry_pattern inq_pat;
 	ada_quirks quirks;
@@ -894,14 +896,6 @@ static void		adaresume(void *arg);
 #define	ADA_WC	(softc->write_cache >= 0 ? \
 		 softc->write_cache : ada_write_cache)
 
-/*
- * Most platforms map firmware geometry to actual, but some don't.  If
- * not overridden, default to nothing.
- */
-#ifndef ata_disk_firmware_geom_adjust
-#define	ata_disk_firmware_geom_adjust(disk)
-#endif
-
 static int ada_retry_count = ADA_DEFAULT_RETRY;
 static int ada_default_timeout = ADA_DEFAULT_TIMEOUT;
 static int ada_send_ordered = ADA_DEFAULT_SEND_ORDERED;
@@ -910,6 +904,7 @@ static int ada_spindown_suspend = ADA_DEFAULT_SPINDOWN_SUSPEND;
 static int ada_read_ahead = ADA_DEFAULT_READ_AHEAD;
 static int ada_write_cache = ADA_DEFAULT_WRITE_CACHE;
 static int ada_enable_biospeedup = 1;
+static int ada_enable_uma_ccbs = 0;
 
 static SYSCTL_NODE(_kern_cam, OID_AUTO, ada, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
     "CAM Direct Access Disk driver");
@@ -929,6 +924,8 @@ SYSCTL_INT(_kern_cam_ada, OID_AUTO, write_cache, CTLFLAG_RWTUN,
            &ada_write_cache, 0, "Enable disk write cache");
 SYSCTL_INT(_kern_cam_ada, OID_AUTO, enable_biospeedup, CTLFLAG_RDTUN,
 	   &ada_enable_biospeedup, 0, "Enable BIO_SPEEDUP processing");
+SYSCTL_INT(_kern_cam_ada, OID_AUTO, enable_uma_ccbs, CTLFLAG_RWTUN,
+	    &ada_enable_uma_ccbs, 0, "Use UMA for CCBs");
 
 /*
  * ADA_ORDEREDTAG_INTERVAL determines how often, relative
@@ -1186,6 +1183,10 @@ adainit(void)
 {
 	cam_status status;
 
+	ada_ccb_zone = uma_zcreate("ada_ccb",
+	    sizeof(struct ccb_ataio), NULL, NULL, NULL, NULL,
+	    UMA_ALIGN_PTR, 0);
+
 	/*
 	 * Install a global async callback.  This callback will
 	 * receive async callbacks like "new device found".
@@ -1335,6 +1336,7 @@ adaasync(void *callback_arg, u_int32_t code,
 	case AC_GETDEV_CHANGED:
 	{
 		softc = (struct ada_softc *)periph->softc;
+		memset(&cgd, 0, sizeof(cgd));
 		xpt_setup_ccb(&cgd.ccb_h, periph->path, CAM_PRIORITY_NORMAL);
 		cgd.ccb_h.func_code = XPT_GDEV_TYPE;
 		xpt_action((union ccb *)&cgd);
@@ -1370,6 +1372,7 @@ adaasync(void *callback_arg, u_int32_t code,
 		cam_periph_async(periph, code, path, arg);
 		if (softc->state != ADA_STATE_NORMAL)
 			break;
+		memset(&cgd, 0, sizeof(cgd));
 		xpt_setup_ccb(&cgd.ccb_h, periph->path, CAM_PRIORITY_NORMAL);
 		cgd.ccb_h.func_code = XPT_GDEV_TYPE;
 		xpt_action((union ccb *)&cgd);
@@ -1862,6 +1865,15 @@ adaregister(struct cam_periph *periph, void *arg)
 	TUNABLE_INT_FETCH(announce_buf, &softc->write_cache);
 
 	/*
+	 * Let XPT know we can use UMA-allocated CCBs.
+	 */
+	if (ada_enable_uma_ccbs) {
+		KASSERT(ada_ccb_zone != NULL,
+		    ("%s: NULL ada_ccb_zone", __func__));
+		periph->ccb_zone = ada_ccb_zone;
+	}
+
+	/*
 	 * Set support flags based on the Identify data and quirks.
 	 */
 	adasetflags(softc, cgd);
@@ -1888,7 +1900,8 @@ adaregister(struct cam_periph *periph, void *arg)
 	softc->disk->d_close = adaclose;
 	softc->disk->d_strategy = adastrategy;
 	softc->disk->d_getattr = adagetattr;
-	softc->disk->d_dump = adadump;
+	if (cam_sim_pollable(periph->sim))
+		softc->disk->d_dump = adadump;
 	softc->disk->d_gone = adadiskgonecb;
 	softc->disk->d_name = "ada";
 	softc->disk->d_drv1 = periph;
@@ -3495,7 +3508,6 @@ adasetgeom(struct ada_softc *softc, struct ccb_getdev *cgd)
 	}
 	softc->disk->d_fwsectors = softc->params.secs_per_track;
 	softc->disk->d_fwheads = softc->params.heads;
-	ata_disk_firmware_geom_adjust(softc->disk);
 	softc->disk->d_rotation_rate = cgd->ident_data.media_rotation_rate;
 	snprintf(softc->disk->d_attachment, sizeof(softc->disk->d_attachment),
 	    "%s%d", softc->cpi.dev_name, softc->cpi.unit_number);

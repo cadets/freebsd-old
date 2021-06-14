@@ -17,6 +17,8 @@
     ..
     c++
         v1
+            __memory
+            ..
             experimental
             ..
             ext
@@ -53,6 +55,8 @@
         filemon
         ..
         firewire
+        ..
+        hid
         ..
         hwpmc
         ..
@@ -165,10 +169,6 @@
         stripe
         ..
         virstor
-        ..
-    ..
-    gnu
-        posix
         ..
     ..
     gssapi

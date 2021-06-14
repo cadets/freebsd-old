@@ -71,7 +71,7 @@ static int	oidfmt(int *, int, char *, u_int *);
 static int	parsefile(const char *);
 static int	parse(const char *, int);
 static int	show_var(int *, int, bool);
-static int	sysctl_all(int *oid, int len);
+static int	sysctl_all(int *, int);
 static int	name2oid(const char *, int *);
 
 static int	strIKtoi(const char *, char **, const char *);
@@ -794,8 +794,8 @@ S_efi_map(size_t l2, void *p)
 			type = types[map->md_type];
 		if (type == NULL)
 			type = "<INVALID>";
-		printf("\n%23s %012jx %12p %08jx ", type,
-		    (uintmax_t)map->md_phys, map->md_virt,
+		printf("\n%23s %012jx %012jx %08jx ", type,
+		    (uintmax_t)map->md_phys, (uintmax_t)map->md_virt,
 		    (uintmax_t)map->md_pages);
 		if (map->md_attr & EFI_MD_ATTR_UC)
 			printf("UC ");
@@ -1030,7 +1030,8 @@ show_var(int *oid, int nlen, bool honor_skip)
 	}
 
 	/* keep track of encountered skip nodes, ignoring descendants */
-	if (skip_len == 0 && (kind & CTLFLAG_SKIP) != 0) {
+	if ((skip_len == 0 || skip_len >= nlen * (int)sizeof(int)) &&
+	    (kind & CTLFLAG_SKIP) != 0) {
 		/* Save this oid so we can skip descendants. */
 		skip_len = nlen * sizeof(int);
 		memcpy(skip_oid, oid, skip_len);
@@ -1227,7 +1228,6 @@ sysctl_all(int *oid, int len)
 	int name1[22], name2[22];
 	int i, j;
 	size_t l1, l2;
-	bool honor_skip = false;
 
 	name1[0] = CTL_SYSCTL;
 	name1[1] = (oid != NULL || Nflag || dflag || tflag) ?
@@ -1258,12 +1258,11 @@ sysctl_all(int *oid, int len)
 		if (memcmp(name2, oid, len * sizeof(int)) != 0)
 			return (0);
 
-		i = show_var(name2, l2, honor_skip);
+		i = show_var(name2, l2, true);
 		if (!i && !bflag)
 			putchar('\n');
 
 		memcpy(name1 + 2, name2, l2 * sizeof(int));
 		l1 = 2 + l2;
-		honor_skip = true;
 	}
 }

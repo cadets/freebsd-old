@@ -714,7 +714,7 @@ static int build_memreg(struct t4_sq *sq, union t4_wr *wqe,
 	int pbllen = roundup(mhp->mpl_len * sizeof(u64), 32);
 	int rem;
 
-	if (mhp->mpl_len > t4_max_fr_depth(use_dsgl && dsgl_supported))
+	if (mhp->mpl_len > t4_max_fr_depth(&mhp->rhp->rdev, use_dsgl))
 		return -EINVAL;
 	if (wr->mr->page_size > C4IW_MAX_PAGE_SIZE)
 		return -EINVAL;
@@ -1127,7 +1127,7 @@ static void post_terminate(struct c4iw_qp *qhp, struct t4_cqe *err_cqe,
 	CTR4(KTR_IW_CXGBE, "%s qhp %p qid 0x%x tid %u", __func__, qhp,
 	    qhp->wq.sq.qid, qhp->ep->hwtid);
 
-	wr = alloc_wrqe(sizeof(*wqe), toep->ofld_txq);
+	wr = alloc_wrqe(sizeof(*wqe), &toep->ofld_txq->wrq);
 	if (wr == NULL)
 		return;
         wqe = wrtod(wr);
@@ -1259,7 +1259,7 @@ rdma_fini(struct c4iw_dev *rhp, struct c4iw_qp *qhp, struct c4iw_ep *ep)
 	CTR5(KTR_IW_CXGBE, "%s qhp %p qid 0x%x ep %p tid %u", __func__, qhp,
 	    qhp->wq.sq.qid, ep, ep->hwtid);
 
-	wr = alloc_wrqe(sizeof(*wqe), toep->ofld_txq);
+	wr = alloc_wrqe(sizeof(*wqe), &toep->ofld_txq->wrq);
 	if (wr == NULL)
 		return (0);
 	wqe = wrtod(wr);
@@ -1353,7 +1353,7 @@ static int rdma_init(struct c4iw_dev *rhp, struct c4iw_qp *qhp)
 	CTR5(KTR_IW_CXGBE, "%s qhp %p qid 0x%x ep %p tid %u", __func__, qhp,
 	    qhp->wq.sq.qid, ep, ep->hwtid);
 
-	wr = alloc_wrqe(sizeof(*wqe), toep->ofld_txq);
+	wr = alloc_wrqe(sizeof(*wqe), &toep->ofld_txq->wrq);
 	if (wr == NULL)
 		return (0);
 	wqe = wrtod(wr);

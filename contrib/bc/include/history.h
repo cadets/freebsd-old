@@ -3,7 +3,7 @@
  *
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2018-2020 Gavin D. Howard and contributors.
+ * Copyright (c) 2018-2021 Gavin D. Howard and contributors.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -165,6 +165,7 @@ typedef enum BcHistoryAction {
 	BC_ACTION_ENTER = 13,
 	BC_ACTION_CTRL_N = 14,
 	BC_ACTION_CTRL_P = 16,
+	BC_ACTION_CTRL_S = 19,
 	BC_ACTION_CTRL_T = 20,
 	BC_ACTION_CTRL_U = 21,
 	BC_ACTION_CTRL_W = 23,
@@ -185,6 +186,9 @@ typedef struct BcHistory {
 
 	/// The history.
 	BcVec history;
+
+	/// Any material printed without a trailing newline.
+	BcVec extras;
 
 #if BC_ENABLE_PROMPT
 	/// Prompt to display.

@@ -44,9 +44,11 @@
 #
 # DESTDIR	The tree where the module gets installed. [not set]
 #
-# KERNBUILDDIR
-#		Set to the location of the kernel build directory where
+# KERNBUILDDIR	Set to the location of the kernel build directory where
 #		the opt_*.h files, .o's and kernel winds up.
+#
+# BLOB_OBJS	Prebuilt binary blobs .o's from the src tree to be linked into
+#		the module. These are precious and not removed in make clean.
 #
 # +++ targets +++
 #
@@ -96,6 +98,7 @@ LINUXKPI_GENSRCS+= \
 	device_if.h \
 	pci_if.h \
 	pci_iov_if.h \
+	pcib_if.h \
 	vnode_if.h \
 	usb_if.h \
 	opt_usb.h \
@@ -145,7 +148,7 @@ LDFLAGS+=	--build-id=sha1
 .endif
 
 CFLAGS+=	${DEBUG_FLAGS}
-.if ${MACHINE_CPUARCH} == amd64
+.if ${MACHINE_CPUARCH} == aarch64 || ${MACHINE_CPUARCH} == amd64
 CFLAGS+=	-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer
 .endif
 
@@ -240,14 +243,14 @@ LDSCRIPT_FLAGS?= -T ${SYSDIR}/conf/ldscript.kmod.${MACHINE_ARCH}
 .endif
 
 .if ${__KLD_SHARED} == yes
-${KMOD}.kld: ${OBJS}
+${KMOD}.kld: ${OBJS} ${BLOB_OBJS}
 .else
-${FULLPROG}: ${OBJS}
+${FULLPROG}: ${OBJS} ${BLOB_OBJS}
 .endif
 	${LD} -m ${LD_EMULATION} ${_LDFLAGS} ${LDSCRIPT_FLAGS} -r -d \
-	    -o ${.TARGET} ${OBJS}
+	    -o ${.TARGET} ${OBJS} ${BLOB_OBJS}
 .if ${MK_CTF} != "no"
-	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${OBJS}
+	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${OBJS} ${BLOB_OBJS}
 .endif
 .if defined(EXPORT_SYMS)
 .if ${EXPORT_SYMS} != YES
@@ -308,7 +311,7 @@ ${_ILINKS}:
 	*) \
 		path=${SYSDIR}/${.TARGET:T}/include ;; \
 	esac ; \
-	path=`(cd $$path && /bin/pwd)` ; \
+	path=`realpath $$path`; \
 	${ECHO} ${.TARGET:T} "->" $$path ; \
 	ln -fns $$path ${.TARGET:T}
 
@@ -540,7 +543,9 @@ OPENZFS_CFLAGS=     \
 	-I${SYSDIR}/cddl/compat/opensolaris \
 	-I${SYSDIR}/cddl/contrib/opensolaris/uts/common \
 	-include ${ZINCDIR}/os/freebsd/spl/sys/ccompile.h
-
+OPENZFS_CWARNFLAGS= \
+	-Wno-nested-externs \
+	-Wno-redundant-decls
 
 .include <bsd.dep.mk>
 .include <bsd.clang-analyze.mk>

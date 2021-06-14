@@ -22,7 +22,7 @@ dnl # Determines if pyzfs can be built, requires Python 2.7 or later.
 dnl #
 AC_DEFUN([ZFS_AC_CONFIG_ALWAYS_PYZFS], [
 	AC_ARG_ENABLE([pyzfs],
-		AC_HELP_STRING([--enable-pyzfs],
+		AS_HELP_STRING([--enable-pyzfs],
 		[install libzfs_core python bindings @<:@default=check@:>@]),
 		[enable_pyzfs=$enableval],
 		[enable_pyzfs=check])
@@ -45,6 +45,21 @@ AC_DEFUN([ZFS_AC_CONFIG_ALWAYS_PYZFS], [
 		])
 	])
 	AC_SUBST(DEFINE_PYZFS)
+
+	dnl #
+	dnl # Python "packaging" (or, failing that, "distlib") module is required to build and install pyzfs
+	dnl #
+	AS_IF([test "x$enable_pyzfs" = xcheck -o "x$enable_pyzfs" = xyes], [
+		ZFS_AC_PYTHON_MODULE([packaging], [], [
+			ZFS_AC_PYTHON_MODULE([distlib], [], [
+				AS_IF([test "x$enable_pyzfs" = xyes], [
+					AC_MSG_ERROR("Python $PYTHON_VERSION packaging and distlib modules are not installed")
+				], [test "x$enable_pyzfs" != xno], [
+					enable_pyzfs=no
+				])
+			])
+		])
+	])
 
 	dnl #
 	dnl # Require python-devel libraries

@@ -23,8 +23,8 @@ AC_DEFUN([ZFS_AC_KERNEL_BLK_QUEUE_PLUG], [
 ])
 
 dnl #
-dnl # 2.6.32 - 4.11, statically allocated bdi in request_queue
-dnl # 4.12 - x.y, dynamically allocated bdi in request_queue
+dnl # 2.6.32 - 4.11: statically allocated bdi in request_queue
+dnl # 4.12: dynamically allocated bdi in request_queue
 dnl #
 AC_DEFUN([ZFS_AC_KERNEL_SRC_BLK_QUEUE_BDI], [
 	ZFS_LINUX_TEST_SRC([blk_queue_bdi], [
@@ -48,7 +48,7 @@ AC_DEFUN([ZFS_AC_KERNEL_BLK_QUEUE_BDI], [
 ])
 
 dnl #
-dnl # 2.6.32 - 4.x API,
+dnl # 2.6.32 API,
 dnl #   blk_queue_discard()
 dnl #
 AC_DEFUN([ZFS_AC_KERNEL_SRC_BLK_QUEUE_DISCARD], [
@@ -71,7 +71,7 @@ AC_DEFUN([ZFS_AC_KERNEL_BLK_QUEUE_DISCARD], [
 ])
 
 dnl #
-dnl # 4.8 - 4.x API,
+dnl # 4.8 API,
 dnl #   blk_queue_secure_erase()
 dnl #
 dnl # 2.6.36 - 4.7 API,
@@ -179,7 +179,7 @@ AC_DEFUN([ZFS_AC_KERNEL_SRC_BLK_QUEUE_FLUSH], [
 	], [
 		struct request_queue *q = NULL;
 		(void) blk_queue_flush(q, REQ_FLUSH);
-	], [$NO_UNUSED_BUT_SET_VARIABLE], [$ZFS_META_LICENSE])
+	], [$NO_UNUSED_BUT_SET_VARIABLE], [ZFS_META_LICENSE])
 
 	ZFS_LINUX_TEST_SRC([blk_queue_write_cache], [
 		#include <linux/kernel.h>
@@ -187,7 +187,7 @@ AC_DEFUN([ZFS_AC_KERNEL_SRC_BLK_QUEUE_FLUSH], [
 	], [
 		struct request_queue *q = NULL;
 		blk_queue_write_cache(q, true, true);
-	], [$NO_UNUSED_BUT_SET_VARIABLE], [$ZFS_META_LICENSE])
+	], [$NO_UNUSED_BUT_SET_VARIABLE], [ZFS_META_LICENSE])
 ])
 
 AC_DEFUN([ZFS_AC_KERNEL_BLK_QUEUE_FLUSH], [

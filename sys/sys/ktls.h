@@ -29,8 +29,10 @@
 #ifndef _SYS_KTLS_H_
 #define	_SYS_KTLS_H_
 
+#ifdef _KERNEL
 #include <sys/refcount.h>
 #include <sys/_task.h>
+#endif
 
 struct tls_record_layer {
 	uint8_t  tls_type;
@@ -44,6 +46,7 @@ struct tls_record_layer {
 #define	TLS_MAX_PARAM_SIZE	1024	/* Max key/mac/iv in sockopt */
 #define	TLS_AEAD_GCM_LEN	4
 #define	TLS_1_3_GCM_IV_LEN	12
+#define	TLS_CHACHA20_IV_LEN	12
 #define	TLS_CBC_IMPLICIT_IV_LEN	16
 
 /* Type values for the record layer */
@@ -163,8 +166,6 @@ struct tls_session_params {
 #define	KTLS_TX		1
 #define	KTLS_RX		2
 
-#define	KTLS_API_VERSION 7
-
 struct iovec;
 struct ktls_session;
 struct m_snd_tag;
@@ -172,21 +173,10 @@ struct mbuf;
 struct sockbuf;
 struct socket;
 
-struct ktls_crypto_backend {
-	LIST_ENTRY(ktls_crypto_backend) next;
-	int (*try)(struct socket *so, struct ktls_session *tls, int direction);
-	int prio;
-	int api_version;
-	int use_count;
-	const char *name;
-};
-
 struct ktls_session {
 	union {
-		int	(*sw_encrypt)(struct ktls_session *tls,
-		    const struct tls_record_layer *hdr, uint8_t *trailer,
-		    struct iovec *src, struct iovec *dst, int iovcnt,
-		    uint64_t seqno, uint8_t record_type);
+		int	(*sw_encrypt)(struct ktls_session *tls, struct mbuf *m,
+		    struct iovec *dst, int iovcnt);
 		int	(*sw_decrypt)(struct ktls_session *tls,
 		    const struct tls_record_layer *hdr, struct mbuf *m,
 		    uint64_t seqno, int *trailer_len);
@@ -195,26 +185,24 @@ struct ktls_session {
 		void *cipher;
 		struct m_snd_tag *snd_tag;
 	};
-	struct ktls_crypto_backend *be;
-	void (*free)(struct ktls_session *tls);
 	struct tls_session_params params;
 	u_int	wq_index;
 	volatile u_int refcount;
 	int mode;
+	bool reset_pending;
 
 	struct task reset_tag_task;
 	struct inpcb *inp;
-	bool reset_pending;
 } __aligned(CACHE_LINE_SIZE);
 
 void ktls_check_rx(struct sockbuf *sb);
-int ktls_crypto_backend_register(struct ktls_crypto_backend *be);
-int ktls_crypto_backend_deregister(struct ktls_crypto_backend *be);
 int ktls_enable_rx(struct socket *so, struct tls_enable *en);
 int ktls_enable_tx(struct socket *so, struct tls_enable *en);
 void ktls_destroy(struct ktls_session *tls);
 void ktls_frame(struct mbuf *m, struct ktls_session *tls, int *enqueue_cnt,
     uint8_t record_type);
+void ktls_ocf_free(struct ktls_session *tls);
+int ktls_ocf_try(struct socket *so, struct ktls_session *tls, int direction);
 void ktls_seq(struct sockbuf *sb, struct mbuf *m);
 void ktls_enqueue(struct mbuf *m, struct socket *so, int page_count);
 void ktls_enqueue_to_free(struct mbuf *m);

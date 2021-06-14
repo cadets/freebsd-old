@@ -72,7 +72,6 @@ MAN=	accept_filter.9 \
 	cr_seeothergids.9 \
 	cr_seeotheruids.9 \
 	crypto.9 \
-	crypto_asym.9 \
 	crypto_buffer.9 \
 	crypto_driver.9 \
 	crypto_request.9 \
@@ -137,6 +136,7 @@ MAN=	accept_filter.9 \
 	DRIVER_MODULE.9 \
 	efirt.9 \
 	epoch.9 \
+	ether_gen_addr.9 \
 	EVENTHANDLER.9 \
 	eventtimers.9 \
 	extattr.9 \
@@ -186,6 +186,7 @@ MAN=	accept_filter.9 \
 	insmntque.9 \
 	intro.9 \
 	ithread.9 \
+	kasan.9 \
 	KASSERT.9 \
 	kern_testfrwk.9 \
 	kernacc.9 \
@@ -401,6 +402,7 @@ MAN=	accept_filter.9 \
 	vn_isdisk.9 \
 	vnet.9 \
 	vnode.9 \
+	vnode_pager_setsize.9 \
 	VOP_ACCESS.9 \
 	VOP_ACLCHECK.9 \
 	VOP_ADVISE.9 \
@@ -425,6 +427,7 @@ MAN=	accept_filter.9 \
 	VOP_PATHCONF.9 \
 	VOP_PRINT.9 \
 	VOP_RDWR.9 \
+	VOP_READ_PGCACHE.9 \
 	VOP_READDIR.9 \
 	VOP_READLINK.9 \
 	VOP_REALLOCBLKS.9 \
@@ -441,6 +444,7 @@ MAN=	accept_filter.9 \
 	vrele.9 \
 	vslock.9 \
 	watchdog.9 \
+	zero_region.9 \
 	zone.9
 
 MLINKS=	unr.9 alloc_unr.9 \
@@ -611,6 +615,7 @@ MLINKS+=bitset.9 BITSET_DEFINE.9 \
 	bitset.9 BIT_EMPTY.9 \
 	bitset.9 BIT_ISFULLSET.9 \
 	bitset.9 BIT_FFS.9 \
+	bitset.9 BIT_FFS_AT.9 \
 	bitset.9 BIT_FLS.9 \
 	bitset.9 BIT_COUNT.9 \
 	bitset.9 BIT_SUBSET.9 \
@@ -627,6 +632,8 @@ MLINKS+=bitset.9 BITSET_DEFINE.9 \
 	bitset.9 BIT_CLR_ATOMIC.9 \
 	bitset.9 BIT_SET_ATOMIC.9 \
 	bitset.9 BIT_SET_ATOMIC_ACQ.9 \
+	bitset.9 BIT_TEST_SET_ATOMIC.9 \
+	bitset.9 BIT_TEST_CLR_ATOMIC.9 \
 	bitset.9 BIT_AND_ATOMIC.9 \
 	bitset.9 BIT_OR_ATOMIC.9 \
 	bitset.9 BIT_COPY_STORE_REL.9
@@ -854,6 +861,7 @@ MLINKS+=condvar.9 cv_broadcast.9 \
 	condvar.9 cv_wait_unlock.9 \
 	condvar.9 cv_wmesg.9
 MLINKS+=config_intrhook.9 config_intrhook_disestablish.9 \
+	config_intrhook.9 config_intrhook_drain.9 \
 	config_intrhook.9 config_intrhook_establish.9 \
 	config_intrhook.9 config_intrhook_oneshot.9
 MLINKS+=contigmalloc.9 contigmalloc_domainset.9 \
@@ -906,10 +914,6 @@ MLINKS+=cpuset.9 CPUSET_T_INITIALIZER.9 \
 	cpuset.9 CPU_COPY_STORE_REL.9
 MLINKS+=critical_enter.9 critical.9 \
 	critical_enter.9 critical_exit.9
-MLINKS+=crypto_asym.9 crypto_kdispatch.9 \
-	crypto_asym.9 crypto_kdone.9 \
-	crypto_asym.9 crypto_kregister.9 \
-	crypto_asym.9 CRYPTODEV_KPROCESS.9
 MLINKS+=crypto_buffer.9 crypto_apply.9 \
 	crypto_buffer.9 crypto_apply_buf.9 \
 	crypto_buffer.9 crypto_buffer_contiguous_segment.9 \
@@ -922,6 +926,7 @@ MLINKS+=crypto_buffer.9 crypto_apply.9 \
 	crypto_buffer.9 crypto_cursor_copydata_noadv.9 \
 	crypto_buffer.9 crypto_cursor_segbase.9 \
 	crypto_buffer.9 crypto_cursor_seglen.9 \
+	crypto_buffer.9 crypto_cursor_segment.9 \
 	crypto_buffer.9 CRYPTO_HAS_OUTPUT_BUFFER.9
 MLINKS+=crypto_driver.9 crypto_copyback.9 \
 	crypto_driver.9 crypto_copydata.9 \
@@ -1006,7 +1011,6 @@ MLINKS+=dnv.9 dnvlist.9 \
 MLINKS+=domain.9 DOMAIN_SET.9 \
 	domain.9 domain_add.9 \
 	domain.9 pfctlinput.9 \
-	domain.9 pfctlinput2.9 \
 	domain.9 pffinddomain.9 \
 	domain.9 pffindproto.9 \
 	domain.9 pffindtype.9
@@ -1305,6 +1309,8 @@ MLINKS+=kernel_mount.9 free_mntarg.9 \
 	kernel_mount.9 mount_argb.9 \
 	kernel_mount.9 mount_argf.9 \
 	kernel_mount.9 mount_argsu.9
+MLINKS+=kasan.9 KASAN.9 \
+	kasan.9 kasan_mark.9
 MLINKS+=khelp.9 khelp_add_hhook.9 \
 	khelp.9 KHELP_DECLARE_MOD.9 \
 	khelp.9 KHELP_DECLARE_MOD_UMA.9 \
@@ -1386,6 +1392,7 @@ MLINKS+=make_dev.9 destroy_dev.9 \
 MLINKS+=malloc.9 free.9 \
 	malloc.9 malloc_domainset.9 \
 	malloc.9 mallocarray.9 \
+	malloc.9 mallocarray_domainset.9 \
 	malloc.9 MALLOC_DECLARE.9 \
 	malloc.9 MALLOC_DEFINE.9 \
 	malloc.9 realloc.9 \
@@ -1936,6 +1943,7 @@ MLINKS+=sglist.9 sglist_alloc.9 \
 	sglist.9 sglist_append_mbuf_epg.9 \
 	sglist.9 sglist_append_phys.9 \
 	sglist.9 sglist_append_sglist.9 \
+	sglist.9 sglist_append_single_mbuf.9 \
 	sglist.9 sglist_append_uio.9 \
 	sglist.9 sglist_append_user.9 \
 	sglist.9 sglist_append_vmpages.9 \

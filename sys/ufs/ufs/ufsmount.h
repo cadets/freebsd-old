@@ -43,14 +43,14 @@ struct ufs_args {
 	struct	oexport_args export;	/* network export information */
 };
 
-#ifdef _KERNEL
-
 #include <sys/_task.h>
 
+#ifdef _KERNEL
 #ifdef MALLOC_DECLARE
 MALLOC_DECLARE(M_UFSMNT);
 MALLOC_DECLARE(M_TRIM);
 #endif
+#endif	/* _KERNEL */
 
 struct buf;
 struct inode;
@@ -71,6 +71,9 @@ struct fsfail_task {
 	struct task task;
 	fsid_t fsid;
 };
+
+#include <sys/_lock.h>
+#include <sys/_mutex.h>
 
 /*
  * This structure describes the UFS specific mount structure data.
@@ -97,6 +100,8 @@ struct ufsmount {
 	u_long	um_nindir;			/* (c) indirect ptrs per blk */
 	u_long	um_bptrtodb;			/* (c) indir disk block ptr */
 	u_long	um_seqinc;			/* (c) inc between seq blocks */
+	uint64_t um_maxsymlinklen;		/* (c) max size of short
+						       symlink */
 	struct	mtx um_lock;			/* (c) Protects ufsmount & fs */
 	pid_t	um_fsckpid;			/* (u) PID can do fsck sysctl */
 	struct	mount_softdeps *um_softdep;	/* (c) softdep mgmt structure */
@@ -190,6 +195,8 @@ struct ufsmount {
 #define	MNINDIR(ump)			((ump)->um_nindir)
 #define	blkptrtodb(ump, b)		((b) << (ump)->um_bptrtodb)
 #define	is_sequential(ump, a, b)	((b) == (a) + ump->um_seqinc)
-#endif /* _KERNEL */
+
+/* true if old FS format...*/
+#define OFSFMT(vp)	(VFSTOUFS((vp)->v_mount)->um_maxsymlinklen <= 0)
 
 #endif

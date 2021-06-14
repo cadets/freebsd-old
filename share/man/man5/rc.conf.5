@@ -24,7 +24,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd Sep 21, 2020
+.Dd May 13, 2021
 .Dt RC.CONF 5
 .Os
 .Sh NAME
@@ -251,6 +251,16 @@ Configuration file for
 .Xr ddb 8 .
 Default
 .Pa /etc/ddb.conf .
+.It Va devmatch_enable
+.Pq Vt bool
+If set to
+.Dq Li NO ,
+disable auto-loading of kernel modules with
+.Xr devmatch 8 .
+.It Va devmatch_blacklist
+.Pq Vt str
+A whitespace-separated list of kernel modules to be ignored by
+.Xr devmatch 8 .
 .It Va kld_list
 .Pq Vt str
 A whitespace-separated list of kernel modules to load right after
@@ -521,7 +531,7 @@ Valid selections from
 .Pa /etc/rc.firewall
 are:
 .Pp
-.Bl -tag -width ".Li simple" -compact
+.Bl -tag -width ".Li workstation" -compact
 .It Li open
 unrestricted IP access
 .It Li closed
@@ -529,12 +539,18 @@ all IP services disabled, except via
 .Dq Li lo0
 .It Li client
 basic protection for a workstation
+.It Li workstation
+basic protection for a workstation using stateful firewalling
 .It Li simple
 basic protection for a LAN.
 .El
 .Pp
 If a filename is specified, the full path
 must be given.
+.Pp
+Most of the predefined rulesets define additional configuration variables.
+These are documented in
+.Pa /etc/rc.firewall .
 .It Va firewall_quiet
 .Pq Vt bool
 Set to
@@ -777,16 +793,6 @@ Set to
 .Pa /etc/ipf.rules
 by default.
 This variable contains the name of the filter rule definition file.
-The file is expected to be readable for the
-.Xr ipf 8
-command to execute.
-.\" ----- ipv6_ipfilter_rules setting ---------------------------
-.It Va ipv6_ipfilter_rules
-.Pq Vt str
-Set to
-.Pa /etc/ipf6.rules
-by default.
-This variable contains the IPv6 filter rule definition file.
 The file is expected to be readable for the
 .Xr ipf 8
 command to execute.
@@ -2568,29 +2574,6 @@ This is mandatory when
 .Va pppoed_enable
 is set to
 .Dq Li YES .
-.It Va timed_enable
-.Pq Vt bool
-If set to
-.Dq Li YES ,
-run the
-.Xr timed 8
-service at boot time.
-This command is intended for networks of
-machines where a consistent
-.Dq "network time"
-for all hosts must be established.
-This is often useful in large NFS
-environments where time stamps on files are expected to be consistent
-network-wide.
-.It Va timed_flags
-.Pq Vt str
-If
-.Va timed_enable
-is set to
-.Dq Li YES ,
-these are the flags to pass to the
-.Xr timed 8
-service.
 .It Va ntpdate_enable
 .Pq Vt bool
 If set to
@@ -2812,10 +2795,19 @@ If not set to
 create a default route to this host name or IP address
 (use an IP address if this router is also required to get to the
 name server!).
+.It Va defaultrouter_fibN
+.Pq Vt str
+If not set to
+.Dq Li NO ,
+create a default route in FIB N to this host name or IP address.
 .It Va ipv6_defaultrouter
 .Pq Vt str
 The IPv6 equivalent of
 .Va defaultrouter .
+.It Va ipv6_defaultrouter_fibN
+.Pq Vt str
+The IPv6 equivalent of
+.Va defaultrouter_fibN .
 .It Va static_arp_pairs
 .Pq Vt str
 Set to the list of static ARP pairs that are to be added at system
@@ -4660,6 +4652,7 @@ it will be made permanently active.
 .Xr quotaon 8 ,
 .Xr rc 8 ,
 .Xr rc.sendmail 8 ,
+.Xr rcorder 8 ,
 .Xr rfcomm_pppd 8 ,
 .Xr route 8 ,
 .Xr routed 8 ,
@@ -4675,7 +4668,6 @@ it will be made permanently active.
 .Xr sysctl 8 ,
 .Xr syslogd 8 ,
 .Xr sysrc 8 ,
-.Xr timed 8 ,
 .Xr unbound 8 ,
 .Xr usbconfig 8 ,
 .Xr wlandebug 8 ,

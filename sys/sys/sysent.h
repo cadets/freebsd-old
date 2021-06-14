@@ -148,6 +148,8 @@ struct sysentvec {
 	void		(*sv_onexec)(struct proc *, struct image_params *);
 	void		(*sv_onexit)(struct proc *);
 	void		(*sv_ontdexit)(struct thread *td);
+	int		(*sv_setid_allowed)(struct thread *td,
+			    struct image_params *imgp);
 };
 
 #define	SV_ILP32	0x000100	/* 32-bit executable. */
@@ -170,6 +172,11 @@ struct sysentvec {
 #define	SV_ABI_FREEBSD 	9
 #define	SV_ABI_CLOUDABI	17
 #define	SV_ABI_UNDEF	255
+
+/* sv_coredump flags */
+#define	SVC_PT_COREDUMP	0x00000001	/* dump requested by ptrace(2) */
+#define	SVC_NOCOMPRESS	0x00000002	/* disable compression. */
+#define	SVC_ALL		0x00000004	/* dump everything */
 
 #ifdef _KERNEL
 extern struct sysentvec aout_sysvec;

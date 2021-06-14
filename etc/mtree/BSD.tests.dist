@@ -3,7 +3,7 @@
 # Please see the file src/etc/mtree/README before making changes to this file.
 #
 
-/set type=dir uname=root gname=wheel mode=0755
+/set type=dir uname=root gname=wheel mode=0755 tags=package=tests
 .
     bin
         cat
@@ -1056,6 +1056,8 @@
         ..
         soelim
         ..
+        sort
+        ..
         stat
         ..
         tail
@@ -1093,6 +1095,8 @@
     ..
     usr.sbin
         chown
+        ..
+        daemon
         ..
         etcupdate
         ..

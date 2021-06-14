@@ -62,6 +62,9 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_page.h>
 #include <vm/vm_object.h>
 
+#include <cam/scsi/scsi_all.h>
+#include <cam/ctl/ctl_io.h>
+
 #ifdef TCP_OFFLOAD
 #include "common/common.h"
 #include "common/t4_msg.h"
@@ -609,12 +612,7 @@ handle_ddp_indicate(struct toepcb *toep)
 	ddp_queue_toep(toep);
 }
 
-enum {
-	DDP_BUF0_INVALIDATED = 0x2,
-	DDP_BUF1_INVALIDATED
-};
-
-CTASSERT(DDP_BUF0_INVALIDATED == CPL_COOKIE_DDP0);
+CTASSERT(CPL_COOKIE_DDP0 + 1 == CPL_COOKIE_DDP1);
 
 static int
 do_ddp_tcb_rpl(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
@@ -635,12 +633,12 @@ do_ddp_tcb_rpl(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 	toep = lookup_tid(sc, tid);
 	inp = toep->inp;
 	switch (cpl->cookie) {
-	case V_WORD(W_TCB_RX_DDP_FLAGS) | V_COOKIE(DDP_BUF0_INVALIDATED):
-	case V_WORD(W_TCB_RX_DDP_FLAGS) | V_COOKIE(DDP_BUF1_INVALIDATED):
+	case V_WORD(W_TCB_RX_DDP_FLAGS) | V_COOKIE(CPL_COOKIE_DDP0):
+	case V_WORD(W_TCB_RX_DDP_FLAGS) | V_COOKIE(CPL_COOKIE_DDP1):
 		/*
 		 * XXX: This duplicates a lot of code with handle_ddp_data().
 		 */
-		db_idx = G_COOKIE(cpl->cookie) - DDP_BUF0_INVALIDATED;
+		db_idx = G_COOKIE(cpl->cookie) - CPL_COOKIE_DDP0;
 		MPASS(db_idx < nitems(toep->ddp.db));
 		INP_WLOCK(inp);
 		DDP_LOCK(toep);
@@ -986,6 +984,76 @@ have_pgsz:
 	return (0);
 }
 
+int
+t4_alloc_page_pods_for_sgl(struct ppod_region *pr, struct ctl_sg_entry *sgl,
+    int entries, struct ppod_reservation *prsv)
+{
+	int hcf, seglen, idx = 0, npages, nppods, i, len;
+	uintptr_t start_pva, end_pva, pva, p1 ;
+	vm_offset_t buf;
+	struct ctl_sg_entry *sge;
+
+	MPASS(entries > 0);
+	MPASS(sgl);
+
+	/*
+	 * The DDP page size is unrelated to the VM page size.	We combine
+	 * contiguous physical pages into larger segments to get the best DDP
+	 * page size possible.	This is the largest of the four sizes in
+	 * A_ULP_RX_ISCSI_PSZ that evenly divides the HCF of the segment sizes
+	 * in the page list.
+	 */
+	hcf = 0;
+	for (i = entries - 1; i >= 0; i--) {
+		sge = sgl + i;
+		buf = (vm_offset_t)sge->addr;
+		len = sge->len;
+		start_pva = trunc_page(buf);
+		end_pva = trunc_page(buf + len - 1);
+		pva = start_pva;
+		while (pva <= end_pva) {
+			seglen = PAGE_SIZE;
+			p1 = pmap_kextract(pva);
+			pva += PAGE_SIZE;
+			while (pva <= end_pva && p1 + seglen ==
+			    pmap_kextract(pva)) {
+				seglen += PAGE_SIZE;
+				pva += PAGE_SIZE;
+			}
+
+			hcf = calculate_hcf(hcf, seglen);
+			if (hcf < (1 << pr->pr_page_shift[1])) {
+				idx = 0;
+				goto have_pgsz; /* give up, short circuit */
+			}
+		}
+	}
+#define PR_PAGE_MASK(x) ((1 << pr->pr_page_shift[(x)]) - 1)
+	MPASS((hcf & PR_PAGE_MASK(0)) == 0); /* PAGE_SIZE is >= 4K everywhere */
+	for (idx = nitems(pr->pr_page_shift) - 1; idx > 0; idx--) {
+		if ((hcf & PR_PAGE_MASK(idx)) == 0)
+			break;
+	}
+#undef PR_PAGE_MASK
+
+have_pgsz:
+	MPASS(idx <= M_PPOD_PGSZ);
+
+	npages = 0;
+	while (entries--) {
+		npages++;
+		start_pva = trunc_page((vm_offset_t)sgl->addr);
+		end_pva = trunc_page((vm_offset_t)sgl->addr + sgl->len - 1);
+		npages += (end_pva - start_pva) >> pr->pr_page_shift[idx];
+		sgl = sgl + 1;
+	}
+	nppods = howmany(npages, PPOD_PAGES);
+	if (alloc_page_pods(pr, nppods, idx, prsv) != 0)
+		return (ENOMEM);
+	MPASS(prsv->prsv_nppods > 0);
+	return (0);
+}
+
 void
 t4_free_page_pods(struct ppod_reservation *prsv)
 {
@@ -1086,11 +1154,30 @@ t4_write_page_pods_for_ps(struct adapter *sc, struct sge_wrq *wrq, int tid,
 	return (0);
 }
 
-int
-t4_write_page_pods_for_buf(struct adapter *sc, struct sge_wrq *wrq, int tid,
-    struct ppod_reservation *prsv, vm_offset_t buf, int buflen)
+static struct mbuf *
+alloc_raw_wr_mbuf(int len)
 {
-	struct wrqe *wr;
+	struct mbuf *m;
+
+	if (len <= MHLEN)
+		m = m_gethdr(M_NOWAIT, MT_DATA);
+	else if (len <= MCLBYTES)
+		m = m_getcl(M_NOWAIT, MT_DATA, M_PKTHDR);
+	else
+		m = NULL;
+	if (m == NULL)
+		return (NULL);
+	m->m_pkthdr.len = len;
+	m->m_len = len;
+	set_mbuf_raw_wr(m, true);
+	return (m);
+}
+
+int
+t4_write_page_pods_for_buf(struct adapter *sc, struct toepcb *toep,
+    struct ppod_reservation *prsv, vm_offset_t buf, int buflen,
+    struct mbufq *wrq)
+{
 	struct ulp_mem_io *ulpmc;
 	struct ulptx_idata *ulpsc;
 	struct pagepod *ppod;
@@ -1099,6 +1186,7 @@ t4_write_page_pods_for_buf(struct adapter *sc, struct sge_wrq *wrq, int tid,
 	uint32_t cmd;
 	struct ppod_region *pr = prsv->prsv_pr;
 	uintptr_t end_pva, pva, pa;
+	struct mbuf *m;
 
 	cmd = htobe32(V_ULPTX_CMD(ULP_TX_MEM_WRITE));
 	if (is_t4(sc))
@@ -1118,12 +1206,12 @@ t4_write_page_pods_for_buf(struct adapter *sc, struct sge_wrq *wrq, int tid,
 		chunk = PPOD_SZ(n);
 		len = roundup2(sizeof(*ulpmc) + sizeof(*ulpsc) + chunk, 16);
 
-		wr = alloc_wrqe(len, wrq);
-		if (wr == NULL)
-			return (ENOMEM);	/* ok to just bail out */
-		ulpmc = wrtod(wr);
+		m = alloc_raw_wr_mbuf(len);
+		if (m == NULL)
+			return (ENOMEM);
+		ulpmc = mtod(m, struct ulp_mem_io *);
 
-		INIT_ULPTX_WR(ulpmc, len, 0, 0);
+		INIT_ULPTX_WR(ulpmc, len, 0, toep->tid);
 		ulpmc->cmd = cmd;
 		ulpmc->dlen = htobe32(V_ULP_MEMIO_DATA_LEN(chunk / 32));
 		ulpmc->len16 = htobe32(howmany(len - sizeof(ulpmc->wr), 16));
@@ -1136,7 +1224,7 @@ t4_write_page_pods_for_buf(struct adapter *sc, struct sge_wrq *wrq, int tid,
 		ppod = (struct pagepod *)(ulpsc + 1);
 		for (j = 0; j < n; i++, j++, ppod++) {
 			ppod->vld_tid_pgsz_tag_color = htobe64(F_PPOD_VALID |
-			    V_PPOD_TID(tid) |
+			    V_PPOD_TID(toep->tid) |
 			    (prsv->prsv_tag & ~V_PPOD_PGSZ(M_PPOD_PGSZ)));
 			ppod->len_offset = htobe64(V_PPOD_LEN(buflen) |
 			    V_PPOD_OFST(offset));
@@ -1153,7 +1241,7 @@ t4_write_page_pods_for_buf(struct adapter *sc, struct sge_wrq *wrq, int tid,
 #if 0
 				CTR5(KTR_CXGBE,
 				    "%s: tid %d ppod[%d]->addr[%d] = %p",
-				    __func__, tid, i, k,
+				    __func__, toep->tid, i, k,
 				    htobe64(ppod->addr[k]));
 #endif
 			}
@@ -1166,10 +1254,119 @@ t4_write_page_pods_for_buf(struct adapter *sc, struct sge_wrq *wrq, int tid,
 			pva -= ddp_pgsz;
 		}
 
-		t4_wrq_tx(sc, wr);
+		mbufq_enqueue(wrq, m);
 	}
 
 	MPASS(pva <= end_pva);
+
+	return (0);
+}
+
+int
+t4_write_page_pods_for_sgl(struct adapter *sc, struct toepcb *toep,
+    struct ppod_reservation *prsv, struct ctl_sg_entry *sgl, int entries,
+    int xferlen, struct mbufq *wrq)
+{
+	struct ulp_mem_io *ulpmc;
+	struct ulptx_idata *ulpsc;
+	struct pagepod *ppod;
+	int i, j, k, n, chunk, len, ddp_pgsz;
+	u_int ppod_addr, offset, sg_offset = 0;
+	uint32_t cmd;
+	struct ppod_region *pr = prsv->prsv_pr;
+	uintptr_t pva, pa;
+	struct mbuf *m;
+
+	MPASS(sgl != NULL);
+	MPASS(entries > 0);
+	cmd = htobe32(V_ULPTX_CMD(ULP_TX_MEM_WRITE));
+	if (is_t4(sc))
+		cmd |= htobe32(F_ULP_MEMIO_ORDER);
+	else
+		cmd |= htobe32(F_T5_ULP_MEMIO_IMM);
+	ddp_pgsz = 1 << pr->pr_page_shift[G_PPOD_PGSZ(prsv->prsv_tag)];
+	offset = (vm_offset_t)sgl->addr & PAGE_MASK;
+	ppod_addr = pr->pr_start + (prsv->prsv_tag & pr->pr_tag_mask);
+	pva = trunc_page((vm_offset_t)sgl->addr);
+	for (i = 0; i < prsv->prsv_nppods; ppod_addr += chunk) {
+
+		/* How many page pods are we writing in this cycle */
+		n = min(prsv->prsv_nppods - i, NUM_ULP_TX_SC_IMM_PPODS);
+		MPASS(n > 0);
+		chunk = PPOD_SZ(n);
+		len = roundup2(sizeof(*ulpmc) + sizeof(*ulpsc) + chunk, 16);
+
+		m = alloc_raw_wr_mbuf(len);
+		if (m == NULL)
+			return (ENOMEM);
+		ulpmc = mtod(m, struct ulp_mem_io *);
+
+		INIT_ULPTX_WR(ulpmc, len, 0, toep->tid);
+		ulpmc->cmd = cmd;
+		ulpmc->dlen = htobe32(V_ULP_MEMIO_DATA_LEN(chunk / 32));
+		ulpmc->len16 = htobe32(howmany(len - sizeof(ulpmc->wr), 16));
+		ulpmc->lock_addr = htobe32(V_ULP_MEMIO_ADDR(ppod_addr >> 5));
+
+		ulpsc = (struct ulptx_idata *)(ulpmc + 1);
+		ulpsc->cmd_more = htobe32(V_ULPTX_CMD(ULP_TX_SC_IMM));
+		ulpsc->len = htobe32(chunk);
+
+		ppod = (struct pagepod *)(ulpsc + 1);
+		for (j = 0; j < n; i++, j++, ppod++) {
+			ppod->vld_tid_pgsz_tag_color = htobe64(F_PPOD_VALID |
+			    V_PPOD_TID(toep->tid) |
+			    (prsv->prsv_tag & ~V_PPOD_PGSZ(M_PPOD_PGSZ)));
+			ppod->len_offset = htobe64(V_PPOD_LEN(xferlen) |
+			    V_PPOD_OFST(offset));
+			ppod->rsvd = 0;
+
+			for (k = 0; k < nitems(ppod->addr); k++) {
+				if (entries != 0) {
+					pa = pmap_kextract(pva + sg_offset);
+					ppod->addr[k] = htobe64(pa);
+				} else
+					ppod->addr[k] = 0;
+
+#if 0
+				CTR5(KTR_CXGBE,
+				    "%s: tid %d ppod[%d]->addr[%d] = %p",
+				    __func__, toep->tid, i, k,
+				    htobe64(ppod->addr[k]));
+#endif
+
+				/*
+				 * If this is the last entry in a pod,
+				 * reuse the same entry for first address
+				 * in the next pod.
+				 */
+				if (k + 1 == nitems(ppod->addr))
+					break;
+
+				/*
+				 * Don't move to the next DDP page if the
+				 * sgl is already finished.
+				 */
+				if (entries == 0)
+					continue;
+
+				sg_offset += ddp_pgsz;
+				if (sg_offset == sgl->len) {
+					/*
+					 * This sgl entry is done.  Go
+					 * to the next.
+					 */
+					entries--;
+					sgl++;
+					sg_offset = 0;
+					if (entries != 0)
+						pva = trunc_page(
+						    (vm_offset_t)sgl->addr);
+				}
+			}
+		}
+
+		mbufq_enqueue(wrq, m);
+	}
 
 	return (0);
 }
@@ -1845,7 +2042,7 @@ t4_aio_cancel_active(struct kaiocb *job)
 			    V_TF_DDP_BUF1_VALID(1);
 			t4_set_tcb_field(sc, toep->ctrlq, toep,
 			    W_TCB_RX_DDP_FLAGS, valid_flag, 0, 1,
-			    i + DDP_BUF0_INVALIDATED);
+			    CPL_COOKIE_DDP0 + i);
 			toep->ddp.db[i].cancel_pending = 1;
 			CTR2(KTR_CXGBE, "%s: request %p marked pending",
 			    __func__, job);

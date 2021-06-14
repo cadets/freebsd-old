@@ -151,6 +151,7 @@ static int	lagg_snd_tag_modify(struct m_snd_tag *,
 static int	lagg_snd_tag_query(struct m_snd_tag *,
 		    union if_snd_tag_query_params *);
 static void	lagg_snd_tag_free(struct m_snd_tag *);
+static struct m_snd_tag *lagg_next_snd_tag(struct m_snd_tag *);
 static void     lagg_ratelimit_query(struct ifnet *,
 		    struct if_ratelimit_query_results *);
 #endif
@@ -511,11 +512,6 @@ lagg_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	int if_type;
 	int error;
 	static const uint8_t eaddr[LAGG_ADDR_LEN];
-	static const uint8_t ib_bcast_addr[INFINIBAND_ADDR_LEN] = {
-		0x00, 0xff, 0xff, 0xff,
-		0xff, 0x12, 0x40, 0x1b,	0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00,	0xff, 0xff, 0xff, 0xff
-	};
 
 	if (params != NULL) {
 		error = copyin(params, &iflp, sizeof(iflp));
@@ -590,6 +586,7 @@ lagg_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	ifp->if_snd_tag_modify = lagg_snd_tag_modify;
 	ifp->if_snd_tag_query = lagg_snd_tag_query;
 	ifp->if_snd_tag_free = lagg_snd_tag_free;
+	ifp->if_next_snd_tag = lagg_next_snd_tag;
 	ifp->if_ratelimit_query = lagg_ratelimit_query;
 #endif
 	ifp->if_capenable = ifp->if_capabilities = IFCAP_HWSTATS;
@@ -603,7 +600,7 @@ lagg_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 		ether_ifattach(ifp, eaddr);
 		break;
 	case IFT_INFINIBAND:
-		infiniband_ifattach(ifp, eaddr, ib_bcast_addr);
+		infiniband_ifattach(ifp, eaddr, sc->sc_bcast_addr);
 		break;
 	default:
 		break;
@@ -1239,8 +1236,11 @@ lagg_watchdog_infiniband(void *arg)
 		lp_ifp = lp->lp_ifp;
 
 		if (ifp != NULL && lp_ifp != NULL &&
-		    memcmp(IF_LLADDR(ifp), IF_LLADDR(lp_ifp), ifp->if_addrlen) != 0) {
+		    (memcmp(IF_LLADDR(ifp), IF_LLADDR(lp_ifp), ifp->if_addrlen) != 0 ||
+		     memcmp(sc->sc_bcast_addr, lp_ifp->if_broadcastaddr, ifp->if_addrlen) != 0)) {
 			memcpy(IF_LLADDR(ifp), IF_LLADDR(lp_ifp), ifp->if_addrlen);
+			memcpy(sc->sc_bcast_addr, lp_ifp->if_broadcastaddr, ifp->if_addrlen);
+
 			CURVNET_SET(ifp->if_vnet);
 			EVENTHANDLER_INVOKE(iflladdr_event, ifp);
 			CURVNET_RESTORE();
@@ -1834,6 +1834,15 @@ lagg_snd_tag_alloc(struct ifnet *ifp,
 
 	*ppmt = &lst->com;
 	return (0);
+}
+
+static struct m_snd_tag *
+lagg_next_snd_tag(struct m_snd_tag *mst)
+{
+	struct lagg_snd_tag *lst;
+
+	lst = mst_to_lst(mst);
+	return (lst->tag);
 }
 
 static int

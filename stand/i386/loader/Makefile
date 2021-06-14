@@ -23,7 +23,13 @@ VERSION_FILE=	${.CURDIR}/../loader/version
 .PATH:		${BOOTSRC}/i386/loader
 
 # architecture-specific loader code
-SRCS=		main.c conf.c vers.c chain.c
+SRCS=		main.c conf.c vers.c chain.c gfx_fb.c 8x16.c
+
+CFLAGS.gfx_fb.c += -I${.CURDIR}/../libi386
+CFLAGS.gfx_fb.c += -I$(SRCTOP)/sys/teken
+CFLAGS.gfx_fb.c += -I${SRCTOP}/sys/cddl/contrib/opensolaris/common/lz4
+CFLAGS.gfx_fb.c += -I${SRCTOP}/contrib/pnglite
+CFLAGS.gfx_fb.c += -DHAVE_MEMCPY -I${SRCTOP}/sys/contrib/zlib
 
 # Include bcache code.
 HAVE_BCACHE=	yes
@@ -49,7 +55,7 @@ HELP_FILES=	${.CURDIR}/help.i386
 # Always add MI sources
 .include	"${BOOTSRC}/loader.mk"
 
-CLEANFILES+=	${LOADER} ${LOADER}.bin
+CLEANFILES+=	${LOADER} ${LOADER}.bin 8x16.c
 
 ORG=		0x0
 
@@ -63,6 +69,9 @@ CFLAGS+=	-I${BOOTSRC}/i386
 # Debug me!
 #CFLAGS+=	-g
 #LDFLAGS+=	-g
+
+8x16.c: ${SRCTOP}/contrib/terminus/ter-u16b.bdf
+	vtfontcvt -f compressed-source -o ${.TARGET} ${.ALLSRC}
 
 ${LOADER}: ${LOADER}.bin ${BTXLDR} ${BTXKERN}
 	btxld -v -f aout -e ${LOADER_ADDRESS} -o ${.TARGET} -l ${BTXLDR} \
@@ -80,8 +89,18 @@ LINKS+=		${BINDIR}/${LOADER} ${BINDIR}/loader
 FILES+=	${LOADER}
 FILESMODE_${LOADER}= ${BINMODE} -b
 
-# XXX crt0.o needs to be first for pxeboot(8) to work
-OBJS=	${BTXCRT}
+# Note: crt0.o needs to be first for pxeboot(8) to work. It assumes that the
+# startup code is located at the start of the loader and will jump
+# there. Although btx is more flexible than this, the emulated boot2 environment
+# that pxeloader provides has none of that flexibility because it lacks access
+# to the a.out/elf headers and assumes an entry point of 0.
+#
+# We must add it to the LDFLAGS instead of the OBJS becauce the former won't try
+# to clean it. When it is in OBJS, this cleaning can lead to races where
+# btxcrt.o is rebuilt, but boot2 isn't, leading to errors at installation time.
+# LDFLAGS does not have this baggage and will be included first in the list of
+# files.
+LDFLAGS+=	${BTXCRT}
 
 DPADD=	${LDR_INTERP32} ${LIBFIREWIRE} ${LIBI386} ${LIBSA32}
 LDADD=	${LDR_INTERP32} ${LIBFIREWIRE} ${LIBI386} ${LIBSA32}

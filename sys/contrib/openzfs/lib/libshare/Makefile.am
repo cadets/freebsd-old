@@ -2,11 +2,14 @@ include $(top_srcdir)/config/Rules.am
 
 DEFAULT_INCLUDES += -I$(srcdir)
 
+AM_CFLAGS += -fvisibility=hidden
+
 noinst_LTLIBRARIES = libshare.la
 
 USER_C = \
 	libshare_impl.h \
 	libshare.c \
+	nfs.c \
 	nfs.h \
 	smb.h
 
@@ -23,3 +26,5 @@ USER_C += \
 endif
 
 libshare_la_SOURCES = $(USER_C)
+
+include $(top_srcdir)/config/CppCheck.am

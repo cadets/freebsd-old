@@ -396,8 +396,8 @@ vdev_geom_io(struct g_consumer *cp, int *cmds, void **datas, off_t *offsets,
 		p = datas[i];
 		s = sizes[i];
 		end = off + s;
-		ASSERT((off % cp->provider->sectorsize) == 0);
-		ASSERT((s % cp->provider->sectorsize) == 0);
+		ASSERT0(off % cp->provider->sectorsize);
+		ASSERT0(s % cp->provider->sectorsize);
 
 		for (; off < end; off += maxio, p += maxio, s -= maxio, j++) {
 			bios[j] = g_alloc_bio();
@@ -409,7 +409,7 @@ vdev_geom_io(struct g_consumer *cp, int *cmds, void **datas, off_t *offsets,
 			g_io_request(bios[j], cp);
 		}
 	}
-	ASSERT(j == n_bios);
+	ASSERT3S(j, ==, n_bios);
 
 	/* Wait for all of the bios to complete, and clean them up */
 	for (i = j = 0; i < ncmds; i++) {
@@ -467,7 +467,7 @@ vdev_geom_read_config(struct g_consumer *cp, nvlist_t **configp)
 		offsets[l] = vdev_label_offset(psize, l, 0) + VDEV_SKIP_SIZE;
 		sizes[l] = size;
 		errors[l] = 0;
-		ASSERT(offsets[l] % pp->sectorsize == 0);
+		ASSERT0(offsets[l] % pp->sectorsize);
 	}
 
 	/* Issue the IO requests */
@@ -557,7 +557,7 @@ process_vdev_config(nvlist_t ***configs, uint64_t *count, nvlist_t *cfg,
 	if (nvlist_lookup_uint64(vdev_tree, ZPOOL_CONFIG_ID, &id) != 0)
 		goto ignore;
 
-	VERIFY(nvlist_lookup_uint64(cfg, ZPOOL_CONFIG_POOL_TXG, &txg) == 0);
+	txg = fnvlist_lookup_uint64(cfg, ZPOOL_CONFIG_POOL_TXG);
 
 	if (*known_pool_guid != 0) {
 		if (pool_guid != *known_pool_guid)
@@ -568,8 +568,8 @@ process_vdev_config(nvlist_t ***configs, uint64_t *count, nvlist_t *cfg,
 	resize_configs(configs, count, id);
 
 	if ((*configs)[id] != NULL) {
-		VERIFY(nvlist_lookup_uint64((*configs)[id],
-		    ZPOOL_CONFIG_POOL_TXG, &known_txg) == 0);
+		known_txg = fnvlist_lookup_uint64((*configs)[id],
+		    ZPOOL_CONFIG_POOL_TXG);
 		if (txg <= known_txg)
 			goto ignore;
 		nvlist_free((*configs)[id]);
@@ -813,7 +813,7 @@ vdev_geom_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	 * Set the TLS to indicate downstack that we
 	 * should not access zvols
 	 */
-	VERIFY(tsd_set(zfs_geom_probe_vdev_key, vd) == 0);
+	VERIFY0(tsd_set(zfs_geom_probe_vdev_key, vd));
 
 	/*
 	 * We must have a pathname, and it must be absolute.
@@ -873,7 +873,7 @@ vdev_geom_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	}
 
 	/* Clear the TLS now that tasting is done */
-	VERIFY(tsd_set(zfs_geom_probe_vdev_key, NULL) == 0);
+	VERIFY0(tsd_set(zfs_geom_probe_vdev_key, NULL));
 
 	if (cp == NULL) {
 		ZFS_LOG(1, "Vdev %s not found.", vd->vdev_path);
@@ -1141,7 +1141,6 @@ sendreq:
 		break;
 	case ZIO_TYPE_IOCTL:
 		bp->bio_cmd = BIO_FLUSH;
-		bp->bio_flags |= BIO_ORDERED;
 		bp->bio_data = NULL;
 		bp->bio_offset = cp->provider->mediasize;
 		bp->bio_length = 0;
@@ -1161,7 +1160,7 @@ vdev_geom_io_done(zio_t *zio)
 	struct bio *bp = zio->io_bio;
 
 	if (zio->io_type != ZIO_TYPE_READ && zio->io_type != ZIO_TYPE_WRITE) {
-		ASSERT(bp == NULL);
+		ASSERT3P(bp, ==, NULL);
 		return;
 	}
 
@@ -1190,17 +1189,26 @@ vdev_geom_rele(vdev_t *vd)
 }
 
 vdev_ops_t vdev_disk_ops = {
-	vdev_geom_open,
-	vdev_geom_close,
-	vdev_default_asize,
-	vdev_geom_io_start,
-	vdev_geom_io_done,
-	NULL,
-	NULL,
-	vdev_geom_hold,
-	vdev_geom_rele,
-	NULL,
-	vdev_default_xlate,
-	VDEV_TYPE_DISK,		/* name of this vdev type */
-	B_TRUE			/* leaf vdev */
+	.vdev_op_init = NULL,
+	.vdev_op_fini = NULL,
+	.vdev_op_open = vdev_geom_open,
+	.vdev_op_close = vdev_geom_close,
+	.vdev_op_asize = vdev_default_asize,
+	.vdev_op_min_asize = vdev_default_min_asize,
+	.vdev_op_min_alloc = NULL,
+	.vdev_op_io_start = vdev_geom_io_start,
+	.vdev_op_io_done = vdev_geom_io_done,
+	.vdev_op_state_change = NULL,
+	.vdev_op_need_resilver = NULL,
+	.vdev_op_hold = vdev_geom_hold,
+	.vdev_op_rele = vdev_geom_rele,
+	.vdev_op_remap = NULL,
+	.vdev_op_xlate = vdev_default_xlate,
+	.vdev_op_rebuild_asize = NULL,
+	.vdev_op_metaslab_init = NULL,
+	.vdev_op_config_generate = NULL,
+	.vdev_op_nparity = NULL,
+	.vdev_op_ndisks = NULL,
+	.vdev_op_type = VDEV_TYPE_DISK,		/* name of this vdev type */
+	.vdev_op_leaf = B_TRUE			/* leaf vdev */
 };

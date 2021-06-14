@@ -83,6 +83,23 @@
 #ZED_SLACK_WEBHOOK_URL=""
 
 ##
+# Pushover token.
+# This defines the application from which the notification will be sent.
+#   <https://pushover.net/api#registration>
+# Disabled by default; uncomment to enable.
+# ZED_PUSHOVER_USER, below, must also be configured.
+#
+#ZED_PUSHOVER_TOKEN=""
+
+##
+# Pushover user key.
+# This defines which user or group will receive Pushover notifications.
+#  <https://pushover.net/api#identifiers>
+# Disabled by default; uncomment to enable.
+# ZED_PUSHOVER_TOKEN, above, must also be configured.
+#ZED_PUSHOVER_USER=""
+
+##
 # Default directory for zed state files.
 #
 #ZED_RUNDIR="/var/run"
@@ -118,5 +135,10 @@ ZED_USE_ENCLOSURE_LEDS=1
 # Otherwise, if ZED_SYSLOG_SUBCLASS_EXCLUDE is set, the
 # matching subclasses are excluded from logging.
 #ZED_SYSLOG_SUBCLASS_INCLUDE="checksum|scrub_*|vdev.*"
-#ZED_SYSLOG_SUBCLASS_EXCLUDE="statechange|config_*|history_event"
+ZED_SYSLOG_SUBCLASS_EXCLUDE="history_event"
+
+##
+# Use GUIDs instead of names when logging pool and vdevs
+# Disabled by default, 1 to enable and 0 to disable.
+#ZED_SYSLOG_DISPLAY_GUIDS=1
 

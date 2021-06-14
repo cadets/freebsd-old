@@ -38,6 +38,7 @@
 #include <sys/ucred.h>
 #include <sys/queue.h>
 #ifdef _KERNEL
+#include <sys/types.h>
 #include <sys/lock.h>
 #include <sys/lockmgr.h>
 #include <sys/tslog.h>
@@ -163,7 +164,9 @@ struct ostatfs {
 	 */
 	long	f_spare[2];		/* unused spare */
 };
+#endif	/* _KERNEL */
 
+#if defined(_WANT_MOUNT) || defined(_KERNEL)
 TAILQ_HEAD(vnodelst, vnode);
 
 /* Mount options list */
@@ -196,6 +199,7 @@ _Static_assert(sizeof(struct mount_pcpu) == 16,
  * 	l - mnt_listmtx
  *	m - mountlist_mtx
  *	i - interlock
+ *	i* - interlock of uppers' list head
  *	v - vnode freelist mutex
  *
  * Unmarked fields are considered stable as long as a ref is held.
@@ -221,7 +225,6 @@ struct mount {
 	int		mnt_writeopcount;	/* (i) write syscalls pending */
 	struct vfsoptlist *mnt_opt;		/* current mount options */
 	struct vfsoptlist *mnt_optnew;		/* new options passed to fs */
-	int		mnt_maxsymlinklen;	/* max size of short symlink */
 	struct statfs	mnt_stat;		/* cache of filesystem stats */
 	struct ucred	*mnt_cred;		/* credentials of mounter */
 	void *		mnt_data;		/* private data */
@@ -239,11 +242,14 @@ struct mount {
 	struct mtx	mnt_listmtx;
 	struct vnodelst	mnt_lazyvnodelist;	/* (l) list of lazy vnodes */
 	int		mnt_lazyvnodelistsize;	/* (l) # of lazy vnodes */
+	int		mnt_pinned_count;	/* (i) unmount prevented */
 	struct lock	mnt_explock;		/* vfs_export walkers lock */
-	TAILQ_ENTRY(mount) mnt_upper_link;	/* (m) we in the all uppers */
-	TAILQ_HEAD(, mount) mnt_uppers;		/* (m) upper mounts over us*/
+	TAILQ_ENTRY(mount) mnt_upper_link;	/* (i*) we in the all uppers */
+	TAILQ_HEAD(, mount) mnt_uppers;		/* (i) upper mounts over us */
 };
+#endif	/* _WANT_MOUNT || _KERNEL */
 
+#ifdef _KERNEL
 /*
  * Definitions for MNT_VNODE_FOREACH_ALL.
  */
@@ -755,7 +761,8 @@ struct mntarg;
 typedef int vfs_cmount_t(struct mntarg *ma, void *data, uint64_t flags);
 typedef int vfs_unmount_t(struct mount *mp, int mntflags);
 typedef int vfs_root_t(struct mount *mp, int flags, struct vnode **vpp);
-typedef	int vfs_quotactl_t(struct mount *mp, int cmds, uid_t uid, void *arg);
+typedef	int vfs_quotactl_t(struct mount *mp, int cmds, uid_t uid, void *arg,
+		    bool *mp_busy);
 typedef	int vfs_statfs_t(struct mount *mp, struct statfs *sbp);
 typedef	int vfs_sync_t(struct mount *mp, int waitfor);
 typedef	int vfs_vget_t(struct mount *mp, ino_t ino, int flags,
@@ -828,10 +835,10 @@ vfs_statfs_t	__vfs_statfs;
 	_rc = (*(MP)->mnt_op->vfs_cachedroot)(MP, FLAGS, VPP);		\
 	_rc; })
 
-#define	VFS_QUOTACTL(MP, C, U, A) ({					\
+#define	VFS_QUOTACTL(MP, C, U, A, MP_BUSY) ({				\
 	int _rc;							\
 									\
-	_rc = (*(MP)->mnt_op->vfs_quotactl)(MP, C, U, A);		\
+	_rc = (*(MP)->mnt_op->vfs_quotactl)(MP, C, U, A, MP_BUSY);	\
 	_rc; })
 
 #define	VFS_STATFS(MP, SBP) ({						\
@@ -997,6 +1004,7 @@ void	vfs_mount_error(struct mount *, const char *, ...);
 void	vfs_mountroot(void);			/* mount our root filesystem */
 void	vfs_mountedfrom(struct mount *, const char *from);
 void	vfs_notify_upper(struct vnode *, int);
+struct mount *vfs_ref_from_vp(struct vnode *);
 void	vfs_ref(struct mount *);
 void	vfs_rel(struct mount *);
 struct mount *vfs_mount_alloc(struct vnode *, struct vfsconf *, const char *,
@@ -1004,6 +1012,8 @@ struct mount *vfs_mount_alloc(struct vnode *, struct vfsconf *, const char *,
 int	vfs_suser(struct mount *, struct thread *);
 void	vfs_unbusy(struct mount *);
 void	vfs_unmountall(void);
+struct mount *vfs_pin_from_vp(struct vnode *);
+void	vfs_unpin(struct mount *);
 extern	TAILQ_HEAD(mntlist, mount) mountlist;	/* mounted filesystem list */
 extern	struct mtx_padalign mountlist_mtx;
 extern	struct nfs_public nfs_pub;
@@ -1086,7 +1096,7 @@ void resume_all_fs(void);
 	_mpcpu = vfs_mount_pcpu(mp);				\
 	MPASS(mpcpu->mntp_thread_in_ops == 0);			\
 	_mpcpu->mntp_thread_in_ops = 1;				\
-	__compiler_membar();					\
+	atomic_interrupt_fence();					\
 	if (__predict_false(mp->mnt_vfs_ops > 0)) {		\
 		vfs_op_thread_exit_crit(mp, _mpcpu);		\
 		_retval_crit = false;				\
@@ -1106,7 +1116,7 @@ void resume_all_fs(void);
 #define vfs_op_thread_exit_crit(mp, _mpcpu) do {		\
 	MPASS(_mpcpu == vfs_mount_pcpu(mp));			\
 	MPASS(_mpcpu->mntp_thread_in_ops == 1);			\
-	__compiler_membar();					\
+	atomic_interrupt_fence();					\
 	_mpcpu->mntp_thread_in_ops = 0;				\
 } while (0)
 

@@ -39,6 +39,7 @@
 #include "opt_apic.h"
 #include "opt_atpic.h"
 #include "opt_hwpmc_hooks.h"
+#include "opt_hyperv.h"
 
 #include "assym.inc"
 
@@ -95,9 +96,6 @@ tramp_idleptd:	.long	0
  * trampoline area.  As the consequence, all code there and in included files
  * must be PIC.
  */
-
-MCOUNT_LABEL(user)
-MCOUNT_LABEL(btrap)
 
 #define	TRAP(a)		pushl $(a) ; jmp alltraps
 
@@ -172,7 +170,6 @@ alltraps_with_regs_pushed:
 	SET_KERNEL_SREGS
 	cld
 	KENTER
-	FAKE_MCOUNT(TF_EIP(%esp))
 calltrap:
 	pushl	%esp
 	movl	$trap,%eax
@@ -182,7 +179,6 @@ calltrap:
 	/*
 	 * Return via doreti to handle ASTs.
 	 */
-	MEXITCOUNT
 	jmp	doreti
 
 	.globl	irettraps
@@ -227,8 +223,7 @@ irettraps:
 	movl	$(2 * TF_SZ - TF_FS), %ecx
 	jmp	6f
 	/* kernel mode, normal */
-5:	FAKE_MCOUNT(TF_EIP(%esp))
-	jmp	calltrap
+5:	jmp	calltrap
 6:	cmpl	$PMAP_TRM_MIN_ADDRESS, %esp	/* trampoline stack ? */
 	jb	5b	/* if not, no need to change stacks */
 	movl	(tramp_idleptd - 1b)(%ebx), %eax
@@ -239,7 +234,6 @@ irettraps:
 	movl	%esp, %esi
 	rep; movsb
 	movl	%edx, %esp
-	FAKE_MCOUNT(TF_EIP(%esp))
 	jmp	calltrap
 
 /*
@@ -307,7 +301,6 @@ IDTVEC(dbg)
 1:	popl	%eax
 	movl	(tramp_idleptd - 1b)(%eax), %eax
 	movl	%eax, %cr3
-	FAKE_MCOUNT(TF_EIP(%esp))
 	testl	$PSL_VM, TF_EFLAGS(%esp)
 	jnz	dbg_user
 	testb	$SEL_RPL_MASK,TF_CS(%esp)
@@ -321,7 +314,6 @@ dbg_user:
 	call	*%eax
 	add	$4, %esp
 	movl	$T_RESERVED, TF_TRAPNO(%esp)
-	MEXITCOUNT
 	jmp	doreti
 
 IDTVEC(mchk)
@@ -352,7 +344,6 @@ nmi_mchk_common:
 1:	popl	%eax
 	movl	(tramp_idleptd - 1b)(%eax), %eax
 	movl	%eax, %cr3
-	FAKE_MCOUNT(TF_EIP(%esp))
 	jmp	calltrap
 
 /*
@@ -375,12 +366,10 @@ IDTVEC(int0x80_syscall)
 	movl	$handle_ibrs_entry,%eax
 	call	*%eax
 	sti
-	FAKE_MCOUNT(TF_EIP(%esp))
 	pushl	%esp
 	movl	$syscall, %eax
 	call	*%eax
 	add	$4, %esp
-	MEXITCOUNT
 	jmp	doreti
 
 ENTRY(fork_trampoline)
@@ -395,25 +384,13 @@ ENTRY(fork_trampoline)
 	/*
 	 * Return via doreti to handle ASTs.
 	 */
-	MEXITCOUNT
 	jmp	doreti
 
-
-/*
- * To efficiently implement classification of trap and interrupt handlers
- * for profiling, there must be only trap handlers between the labels btrap
- * and bintr, and only interrupt handlers between the labels bintr and
- * eintr.  This is implemented (partly) by including files that contain
- * some of the handlers.  Before including the files, set up a normal asm
- * environment so that the included files doen't need to know that they are
- * included.
- */
 
 	.data
 	.p2align 4
 	.text
 	SUPERALIGN_TEXT
-MCOUNT_LABEL(bintr)
 
 #ifdef DEV_ATPIC
 #include <i386/i386/atpic_vector.s>
@@ -430,6 +407,14 @@ MCOUNT_LABEL(bintr)
 #include <i386/i386/apic_vector.s>
 #endif
 
+#ifdef HYPERV
+	.data
+	.p2align 4
+	.text
+	SUPERALIGN_TEXT
+#include <dev/hyperv/vmbus/i386/vmbus_vector.S>
+#endif
+
 	.data
 	.p2align 4
 	.text
@@ -437,7 +422,6 @@ MCOUNT_LABEL(bintr)
 #include <i386/i386/vm86bios.s>
 
 	.text
-MCOUNT_LABEL(eintr)
 
 #include <i386/i386/copyout_fast.s>
 
@@ -451,7 +435,6 @@ MCOUNT_LABEL(eintr)
 	.type	doreti,@function
 	.globl	doreti
 doreti:
-	FAKE_MCOUNT($bintr)		/* init "from" bintr -> doreti */
 doreti_next:
 	/*
 	 * Check if ASTs can be handled now.  ASTs cannot be safely
@@ -504,8 +487,6 @@ doreti_ast:
 	 *	registers.  The fault is handled in trap.c.
 	 */
 doreti_exit:
-	MEXITCOUNT
-
 	cmpl	$T_NMI, TF_TRAPNO(%esp)
 	je	doreti_iret_nmi
 	cmpl	$T_MCHK, TF_TRAPNO(%esp)

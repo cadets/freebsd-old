@@ -4,7 +4,7 @@
 # For more information on this file, please read the config(5) manual page,
 # and/or the handbook section on Kernel Configuration Files:
 #
-#    https://www.FreeBSD.org/doc/en_US.ISO8859-1/books/handbook/kernelconfig-config.html
+#    https://docs.freebsd.org/en/books/handbook/kernelconfig/#kernelconfig-config
 #
 # The handbook is also available locally in /usr/share/doc/handbook
 # if you've installed the doc distribution, otherwise always see the
@@ -228,8 +228,8 @@ device		e6000sw
 device		miibus
 
 device		awg			# 10/100/1000 integrated EMAC controller
+device		cgem			# Cadence GEM Gigabit Ethernet device
 device		cpsw			# TI Common Platform Ethernet Switch (CPSW)
-device		cgem			# Zynq-7000 gig ethernet device
 device		dwc			# 10/100/1000 integrated GMAC controller
 device		emac			# 10/100 integrated EMAC controller
 device		ffec			# Freescale Fast Ethernet Controller
@@ -279,6 +279,9 @@ device		aw_sid		# Allwinner Secure ID EFUSE
 
 # Thermal sensors
 device		aw_thermal	# Allwinner Thermal Sensor Controller
+
+# HID support
+device		hid		# Generic HID support
 
 # Flattened Device Tree
 options 	FDT			# Configure using FDT/DTB data

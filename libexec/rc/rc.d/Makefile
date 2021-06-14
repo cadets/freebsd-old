@@ -11,9 +11,7 @@ CONFS=	DAEMON \
 	LOGIN \
 	NETWORKING \
 	SERVERS \
-	addswap \
 	adjkerntz \
-	archdep \
 	bgfsck \
 	${_blacklistd} \
 	bridge \
@@ -80,6 +78,7 @@ CONFS=	DAEMON \
 	pf \
 	pflog \
 	pfsync \
+	powerd \
 	ppp \
 	pppoed \
 	pwcheck \
@@ -106,6 +105,7 @@ CONFS=	DAEMON \
 	swap \
 	swaplate \
 	sysctl \
+	sysctl_lastload \
 	syslogd \
 	sysvipc \
 	tmp \
@@ -136,10 +136,6 @@ ACPI=		power_profile
 ACPIPACKAGE=	acpi
 .endif
 
-.if ${MK_ACPI} != "no" || ${MK_APM} != "no"
-CONFS+=		powerd
-.endif
-
 .if ${MK_APM} != "no"
 CONFGROUPS+=	APM
 APM+=		apm
@@ -153,6 +149,7 @@ APMPACKAGE=	apm
 CONFGROUPS+=	AUDIT
 AUDIT+=		auditd
 AUDIT+=		auditdistd
+AUDITPACKAGE=	rc
 .endif
 
 .if ${MK_AUTOFS} != "no"
@@ -270,6 +267,10 @@ _opensm=	opensm
 
 .if ${MK_OPENSSL} != "no"
 CONFS+=		keyserv
+.if ${MK_OPENSSL_KTLS} != "no"
+CONFS+=		tlsclntd \
+		tlsservd
+.endif
 .endif
 
 .if ${MK_OPENSSH} != "no"
@@ -320,6 +321,7 @@ ZFS+=		zfsbe
 ZFS+=		zfsd
 ZFS+=		zpool
 ZFS+=		zvol
+ZFSPACKAGE=	rc
 .endif
 
 .for fg in ${CONFGROUPS}

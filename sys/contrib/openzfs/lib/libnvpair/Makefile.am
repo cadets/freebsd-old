@@ -7,8 +7,11 @@ VPATH = \
 # Includes kernel code, generate warnings for large stack frames
 # and required CFLAGS for libtirpc
 AM_CFLAGS += $(FRAME_LARGER_THAN) $(LIBTIRPC_CFLAGS)
+AM_CFLAGS += -fvisibility=hidden
 
 lib_LTLIBRARIES = libnvpair.la
+
+include $(top_srcdir)/config/Abigail.am
 
 USER_C = \
 	libnvpair.c \
@@ -37,8 +40,9 @@ if !ASAN_ENABLED
 libnvpair_la_LDFLAGS += -Wl,-z,defs
 endif
 
-if BUILD_FREEBSD
 libnvpair_la_LDFLAGS += -version-info 3:0:0
-else
-libnvpair_la_LDFLAGS += -version-info 1:1:0
-endif
+
+include $(top_srcdir)/config/CppCheck.am
+
+# Library ABI
+EXTRA_DIST = libnvpair.abi libnvpair.suppr

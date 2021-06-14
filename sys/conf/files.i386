@@ -75,9 +75,10 @@ compat/linux/linux_uid16.c	optional compat_linux
 compat/linux/linux_util.c	optional compat_linux
 compat/linux/linux_vdso.c	optional compat_linux
 compat/linux/linux.c		optional compat_linux
-compat/ndis/winx32_wrap.S	optional ndisapi pci
 crypto/aesni/aeskeys_i386.S	optional aesni
 crypto/des/arch/i386/des_enc.S	optional netsmb
+crypto/openssl/i386/chacha-x86.S	optional ossl
+crypto/openssl/i386/poly1305-x86.S	optional ossl
 crypto/openssl/i386/sha1-586.S	optional ossl
 crypto/openssl/i386/sha256-586.S	optional ossl
 crypto/openssl/i386/sha512-586.S	optional ossl
@@ -101,7 +102,6 @@ dev/glxiic/glxiic.c		optional glxiic
 dev/glxsb/glxsb.c		optional glxsb
 dev/glxsb/glxsb_hash.c		optional glxsb
 dev/hyperv/vmbus/i386/hyperv_machdep.c			optional	hyperv
-dev/hyperv/vmbus/i386/vmbus_vector.S			optional	hyperv
 dev/le/if_le_isa.c		optional le isa
 dev/nctgpio/nctgpio.c		optional nctgpio
 dev/nfe/if_nfe.c		optional nfe pci
@@ -114,7 +114,7 @@ dev/ntb/ntb_hw/ntb_hw_intel.c	optional ntb_hw_intel | ntb_hw
 dev/ntb/ntb_hw/ntb_hw_plx.c	optional ntb_hw_plx | ntb_hw
 dev/ntb/test/ntb_tool.c		optional ntb_tool
 dev/nvram/nvram.c		optional	nvram isa
-dev/ofw/ofwpci.c		optional fdt pci
+dev/ofw/ofw_pcib.c		optional fdt pci
 dev/pcf/pcf_isa.c		optional pcf
 dev/random/ivy.c		optional rdrand_rng !random_loadable
 dev/random/nehemiah.c		optional padlock_rng !random_loadable
@@ -189,7 +189,6 @@ i386/i386/perfmon.c		optional perfmon
 i386/i386/pmap_base.c		standard
 i386/i386/pmap_nopae.c		standard
 i386/i386/pmap_pae.c		standard
-i386/i386/prof_machdep.c	optional profiling-routine
 i386/i386/ptrace_machdep.c	standard
 i386/i386/sigtramp.s		standard
 i386/i386/support.s		standard
@@ -219,6 +218,7 @@ libkern/memcmp.c		standard
 libkern/memset.c		standard
 libkern/moddi3.c		standard
 libkern/qdivrem.c		standard
+libkern/strlen.c		standard
 libkern/ucmpdi2.c		standard
 libkern/udivdi3.c		standard
 libkern/umoddi3.c		standard
@@ -226,11 +226,6 @@ libkern/umoddi3.c		standard
 # x86 real mode BIOS support, required by dpms/pci/vesa
 #
 compat/x86bios/x86bios.c	optional x86bios | dpms | pci | vesa
-#
-# bvm console
-#
-dev/bvm/bvm_console.c		optional	bvmconsole
-dev/bvm/bvm_dbg.c		optional	bvmdebug
 # Common files where we currently configure the system differently, but perhaps shouldn't
 # config(8) doesn't have a way to force standard options, so we've been inconsistent
 # about marking non-optional things 'standard'.
@@ -246,3 +241,6 @@ x86/x86/local_apic.c		optional apic
 x86/x86/mptable.c		optional apic
 x86/x86/mptable_pci.c		optional apic pci
 x86/x86/msi.c			optional apic pci
+
+compat/linuxkpi/common/src/linux_fpu.c		optional compat_linuxkpi \
+	compile-with "${LINUXKPI_C}"

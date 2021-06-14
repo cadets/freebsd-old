@@ -102,6 +102,7 @@ dteske [label="Devin Teske\ndteske@FreeBSD.org\n2018/03/01"]
 dumbbell [label="Jean-Sebastien Pedron\ndumbbell@FreeBSD.org\n2017/01/10"]
 dvl [label="Dan Langille\ndvl@FreeBSD.org\n2014/08/10"]
 eadler [label="Eitan Adler\neadler@FreeBSD.org\n2011/08/17"]
+eduardo [label="Nuno Teixeira\neduardo@FreeBSD.org\n2021/01/27"]
 edwin [label="Edwin Groothuis\nedwin@FreeBSD.org\n2002/10/22"]
 egypcio [label="Vin&iacute;cius Zavam\negypcio@FreeBSD.org\n2018/10/04"]
 ehaupt [label="Emanuel Haupt\nehaupt@FreeBSD.org\n2005/10/03"]
@@ -167,6 +168,7 @@ laszlof [label="Frank Laszlo\nlaszlof@FreeBSD.org\n2006/11/07"]
 lawrance [label="Sam Lawrance\nlawrance@FreeBSD.org\n2005/04/11\n2007/02/21"]
 lbartoletti [label="Loïc Bartoletti\nlbartoletti@FreeBSD.org\n2020/01/02"]
 lbr [label="Lars Balker Rasmussen\nlbr@FreeBSD.org\n2006/04/30"]
+lcook [label="Lewis Cook\nlcook@FreeBSD.org\n2021/01/21"]
 leeym [label="Yen-Ming Lee\nleeym@FreeBSD.org\n2002/08/14"]
 ler [label="Larry Rosenman\nler@FreeBSD.org\n2017/01/09"]
 leres [label="Craig Leres\nleres@FreeBSD.org\n2017/10/10"]
@@ -203,6 +205,7 @@ mm [label="Martin Matuska\nmm@FreeBSD.org\n2007/04/04"]
 mmokhi [label="Mahdi Mokhtari\nmmokhi@FreeBSD.org\n2017/02/09"]
 mnag [label="Marcus Alves Grando\nmnag@FreeBSD.org\n2005/09/15"]
 mva [label="Marcus von Appen\nmva@FreeBSD.org\n2009/02/16"]
+nc [label="Neel Chauhan\nnc@FreeBSD.org\n2021/01/02"]
 nemysis [label="Rusmir Dusko\nnemysis@FreeBSD.org\n2013/07/31"]
 nemoliu [label="Tong Liu\nnemoliu@FreeBSD.org\n2007/04/25"]
 netchild [label="Alexander Leidinger\nnetchild@FreeBSD.org\n2002/03/19"]
@@ -280,6 +283,7 @@ ultima [label="Richard Gallamore\nultima@FreeBSD.org\n2017/06/07"]
 uqs [label="Ulrich Spoerlein\nuqs@FreeBSD.org\n2012/01/19"]
 vd [label="Vasil Dimov\nvd@FreeBSD.org\n2006/01/19"]
 vg [label="Veniamin Gvozdikov\nvg@FreeBSD.org\n2013/06/11"]
+vishwin [label="Charlie Li\nvishwin@FreeBSD.org\n2021/04/29"]
 vsevolod [label="Vsevolod Stakhov\nvsevolod@FreeBSD.org\n2005/07/22"]
 wen [label="Wen Heping\nwen@FreeBSD.org\n2010/12/13"]
 wg [label="William Grzybowski\nwg@FreeBSD.org\n2013/04/01"]
@@ -287,6 +291,7 @@ woodsb02 [label="Ben Woods\nwoodsb02@FreeBSD.org\n2016/05/09"]
 wxs [label="Wesley Shields\nwxs@FreeBSD.org\n2008/01/03"]
 xmj [label="Johannes Jost Meixner\nxmj@FreeBSD.org\n2014/04/07"]
 xride [label="Soeren Straarup\nxride@FreeBSD.org\n2006/09/27"]
+ygy [label="Guangyuan Yang\nygy@FreeBSD.org\n2021/05/17"]
 yuri [label="Yuri Victorovich\nyuri@FreeBSD.org\n2017/10/30"]
 yzlin [label="Yi-Jheng Lin\nyzlin@FreeBSD.org\n2009/07/19"]
 zeising [label="Niclas Zeising\nzeising@FreeBSD.org\n2012/07/03"]
@@ -296,6 +301,8 @@ znerd [label="Ernst de Haan\nznerd@FreeBSD.org\n2001/11/15"]
 # Here are the mentor/mentee relationships.
 # Group together all the mentees for a particular mentor.
 # Keep the list sorted by mentor login.
+
+"0mp" -> nc
 
 adamw -> ahze
 adamw -> jylefort
@@ -323,6 +330,7 @@ araujo -> pgollucci
 araujo -> samm
 
 arrowd -> rhurlin
+arrowd -> vishwin
 
 arved -> markus
 arved -> stefan
@@ -392,6 +400,8 @@ culot -> wg
 db -> tj
 db -> shurd
 
+dbaio -> eduardo
+
 decke -> sperber
 
 delphij -> junovitch
@@ -434,6 +444,8 @@ feld -> junovitch
 feld -> mmokhi
 feld -> rezny
 
+fernape -> lcook
+
 fjoe -> danfe
 fjoe -> flo
 fjoe -> krion
@@ -443,6 +455,8 @@ flo -> bar
 flo -> jase
 flo -> jbeich
 flo -> grembo
+
+fluffy -> vishwin
 
 flz -> garga
 flz -> johans
@@ -460,6 +474,7 @@ gabor -> scheidell
 garga -> acm
 garga -> alepulver
 garga -> dbaio
+garga -> eduardo
 garga -> mandree
 garga -> mm
 garga -> rnoland
@@ -549,6 +564,7 @@ lioux -> pat
 lme -> pizzamig
 lme -> tobik
 
+lwhsu -> ygy
 lwhsu -> yzlin
 
 maho -> stephen
@@ -751,10 +767,12 @@ tcberner -> fernape
 tcberner -> joneum
 tcberner -> kai
 tcberner -> lbartoletti
+tcberner -> lcook
 tcberner -> pkubaj
 tcberner -> rhurlin
 tcberner -> rigoletto
 tcberner -> salvadore
+tcberner -> vishwin
 tcberner -> yuri
 
 thierry -> jadawin

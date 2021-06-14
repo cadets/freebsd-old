@@ -179,8 +179,14 @@ int
 sys_mmap(struct thread *td, struct mmap_args *uap)
 {
 
-	return (kern_mmap(td, (uintptr_t)uap->addr, uap->len, uap->prot,
-	    uap->flags, uap->fd, uap->pos));
+	return (kern_mmap(td, &(struct mmap_req){
+		.mr_hint = (uintptr_t)uap->addr,
+		.mr_len = uap->len,
+		.mr_prot = uap->prot,
+		.mr_flags = uap->flags,
+		.mr_fd = uap->fd,
+		.mr_pos = uap->pos,
+	    }));
 }
 
 int
@@ -197,23 +203,7 @@ kern_mmap_maxprot(struct proc *p, int prot)
 }
 
 int
-kern_mmap(struct thread *td, uintptr_t addr0, size_t len, int prot, int flags,
-    int fd, off_t pos)
-{
-	struct mmap_req mr = {
-		.mr_hint = addr0,
-		.mr_len = len,
-		.mr_prot = prot,
-		.mr_flags = flags,
-		.mr_fd = fd,
-		.mr_pos = pos
-	};
-
-	return (kern_mmap_req(td, &mr));
-}
-
-int
-kern_mmap_req(struct thread *td, const struct mmap_req *mrp)
+kern_mmap(struct thread *td, const struct mmap_req *mrp)
 {
 	struct vmspace *vms;
 	struct file *fp;
@@ -442,9 +432,14 @@ done:
 int
 freebsd6_mmap(struct thread *td, struct freebsd6_mmap_args *uap)
 {
-
-	return (kern_mmap(td, (uintptr_t)uap->addr, uap->len, uap->prot,
-	    uap->flags, uap->fd, uap->pos));
+	return (kern_mmap(td, &(struct mmap_req){
+		.mr_hint = (uintptr_t)uap->addr,
+		.mr_len = uap->len,
+		.mr_prot = uap->prot,
+		.mr_flags = uap->flags,
+		.mr_fd = uap->fd,
+		.mr_pos = uap->pos,
+	    }));
 }
 #endif
 
@@ -496,8 +491,14 @@ ommap(struct thread *td, struct ommap_args *uap)
 		flags |= MAP_PRIVATE;
 	if (uap->flags & OMAP_FIXED)
 		flags |= MAP_FIXED;
-	return (kern_mmap(td, (uintptr_t)uap->addr, uap->len, prot, flags,
-	    uap->fd, uap->pos));
+	return (kern_mmap(td, &(struct mmap_req){
+		.mr_hint = (uintptr_t)uap->addr,
+		.mr_len = uap->len,
+		.mr_prot = prot,
+		.mr_flags = flags,
+		.mr_fd = uap->fd,
+		.mr_pos = uap->pos,
+	    }));
 }
 #endif				/* COMPAT_43 */
 
@@ -653,6 +654,7 @@ kern_mprotect(struct thread *td, uintptr_t addr0, size_t size, int prot)
 	vm_offset_t addr;
 	vm_size_t pageoff;
 	int vm_error, max_prot;
+	int flags;
 
 	addr = addr0;
 	if ((prot & ~(_PROT_ALL | PROT_MAX(_PROT_ALL))) != 0)
@@ -672,16 +674,11 @@ kern_mprotect(struct thread *td, uintptr_t addr0, size_t size, int prot)
 	if (addr + size < addr)
 		return (EINVAL);
 
-	vm_error = KERN_SUCCESS;
-	if (max_prot != 0) {
-		if ((max_prot & prot) != prot)
-			return (ENOTSUP);
-		vm_error = vm_map_protect(&td->td_proc->p_vmspace->vm_map,
-		    addr, addr + size, max_prot, TRUE);
-	}
-	if (vm_error == KERN_SUCCESS)
-		vm_error = vm_map_protect(&td->td_proc->p_vmspace->vm_map,
-		    addr, addr + size, prot, FALSE);
+	flags = VM_MAP_PROTECT_SET_PROT;
+	if (max_prot != 0)
+		flags |= VM_MAP_PROTECT_SET_MAXPROT;
+	vm_error = vm_map_protect(&td->td_proc->p_vmspace->vm_map,
+	    addr, addr + size, prot, max_prot, flags);
 
 	switch (vm_error) {
 	case KERN_SUCCESS:
@@ -690,6 +687,8 @@ kern_mprotect(struct thread *td, uintptr_t addr0, size_t size, int prot)
 		return (EACCES);
 	case KERN_RESOURCE_SHORTAGE:
 		return (ENOMEM);
+	case KERN_OUT_OF_BOUNDS:
+		return (ENOTSUP);
 	}
 	return (EINVAL);
 }
@@ -931,7 +930,7 @@ retry:
 					VM_OBJECT_WLOCK(object);
 				}
 				if (object->type == OBJT_DEFAULT ||
-				    object->type == OBJT_SWAP ||
+				    (object->flags & OBJ_SWAP) != 0 ||
 				    object->type == OBJT_VNODE) {
 					pindex = OFF_TO_IDX(current->offset +
 					    (addr - current->start));
@@ -1358,7 +1357,8 @@ vm_mmap_vnode(struct thread *td, vm_size_t objsize,
 			goto done;
 		}
 	} else {
-		KASSERT(obj->type == OBJT_DEFAULT || obj->type == OBJT_SWAP,
+		KASSERT(obj->type == OBJT_DEFAULT ||
+		    (obj->flags & OBJ_SWAP) != 0,
 		    ("wrong object type"));
 		vm_object_reference(obj);
 #if VM_NRESERVLEVEL > 0

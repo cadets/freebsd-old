@@ -117,9 +117,6 @@ static const u_char etherbroadcastaddr[ETHER_ADDR_LEN] =
 
 static	int ether_resolvemulti(struct ifnet *, struct sockaddr **,
 		struct sockaddr *);
-#ifdef VIMAGE
-static	void ether_reassign(struct ifnet *, struct vnet *, char *);
-#endif
 static	int ether_requestencap(struct ifnet *, struct if_encap_req *);
 
 #define senderr(e) do { error = (e); goto bad;} while (0)
@@ -287,7 +284,7 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 	char linkhdr[ETHER_HDR_LEN], *phdr;
 	struct ether_header *eh;
 	struct pf_mtag *t;
-	int loop_copy = 1;
+	bool loop_copy;
 	int hlen;	/* link layer header length */
 	uint32_t pflags;
 	struct llentry *lle = NULL;
@@ -357,7 +354,7 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 		update_mbuf_csumflags(m, m);
 		return (if_simloop(ifp, m, dst->sa_family, 0));
 	}
-	loop_copy = pflags & RT_MAY_LOOP;
+	loop_copy = (pflags & RT_MAY_LOOP) != 0;
 
 	/*
 	 * Add local net header.  If no space in first mbuf,
@@ -1446,6 +1443,11 @@ ether_gen_addr(struct ifnet *ifp, struct ether_addr *hwaddr)
 	char jailname[MAXHOSTNAMELEN];
 
 	getcredhostuuid(curthread->td_ucred, uuid, sizeof(uuid));
+	if (strncmp(uuid, DEFAULT_HOSTUUID, sizeof(uuid)) == 0) {
+		/* Fall back to a random mac address. */
+		goto rando;
+	}
+
 	/* If each (vnet) jail would also have a unique hostuuid this would not
 	 * be necessary. */
 	getjailname(curthread->td_ucred, jailname, sizeof(jailname));
@@ -1453,9 +1455,7 @@ ether_gen_addr(struct ifnet *ifp, struct ether_addr *hwaddr)
 	    jailname);
 	if (sz < 0) {
 		/* Fall back to a random mac address. */
-		arc4rand(hwaddr, sizeof(*hwaddr), 0);
-		hwaddr->octet[0] = 0x02;
-		return;
+		goto rando;
 	}
 
 	SHA1Init(&ctx);
@@ -1470,6 +1470,14 @@ ether_gen_addr(struct ifnet *ifp, struct ether_addr *hwaddr)
 		hwaddr->octet[i] = addr >> ((ETHER_ADDR_LEN - i - 1) * 8) &
 		    0xFF;
 	}
+
+	return;
+rando:
+	arc4rand(hwaddr, sizeof(*hwaddr), 0);
+	/* Unicast */
+	hwaddr->octet[0] &= 0xFE;
+	/* Locally administered. */
+	hwaddr->octet[0] |= 0x02;
 }
 
 DECLARE_MODULE(ether, ether_mod, SI_SUB_INIT_IF, SI_ORDER_ANY);

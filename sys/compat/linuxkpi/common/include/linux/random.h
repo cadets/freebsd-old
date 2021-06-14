@@ -32,6 +32,7 @@
 #ifndef _LINUX_RANDOM_H_
 #define	_LINUX_RANDOM_H_
 
+#include <linux/types.h>
 #include <sys/random.h>
 #include <sys/libkern.h>
 
@@ -57,6 +58,15 @@ static inline u_long
 get_random_long(void)
 {
 	u_long val;
+
+	get_random_bytes(&val, sizeof(val));
+	return (val);
+}
+
+static __inline uint32_t
+prandom_u32(void)
+{
+	uint32_t val;
 
 	get_random_bytes(&val, sizeof(val));
 	return (val);

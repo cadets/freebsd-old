@@ -382,7 +382,7 @@ sysctl_igmp_stat(SYSCTL_HANDLER_ARGS)
 		 * igps0 must be "all zero".
 		 */
 		p = (char *)&igps0;
-		while (*p == '\0' && p < (char *)&igps0 + sizeof(igps0))
+		while (p < (char *)&igps0 + sizeof(igps0) && *p == '\0')
 			p++;
 		if (p != (char *)&igps0 + sizeof(igps0)) {
 			error = EINVAL;
@@ -1589,6 +1589,7 @@ igmp_input(struct mbuf **mp, int *offp, int proto)
 				if (nsrc * sizeof(in_addr_t) >
 				    UINT16_MAX - iphlen - IGMP_V3_QUERY_MINLEN) {
 					IGMPSTAT_INC(igps_rcv_tooshort);
+					m_freem(m);
 					return (IPPROTO_DONE);
 				}
 				/*

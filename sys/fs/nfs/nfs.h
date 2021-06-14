@@ -50,7 +50,7 @@
 #define	NFS_MAXRCVTIMEO	60		/* 1 minute in seconds */
 #define	NFS_MINIDEMTIMEO (5 * NFS_HZ)	/* Min timeout for non-idempotent ops*/
 #define	NFS_MAXREXMIT	100		/* Stop counting after this many */
-#define	NFSV4_CALLBACKTIMEO (2 * NFS_HZ) /* Timeout in ticks */
+#define	NFSV4_CALLBACKTIMEO 800		/* Timeout in msec */
 #define	NFSV4_CALLBACKRETRY 5		/* Number of retries before failure */
 #define	NFSV4_SLOTS	64		/* Number of slots, fore channel */
 #define	NFSV4_CBSLOTS	8		/* Number of slots, back channel */
@@ -721,6 +721,7 @@ struct nfsrv_descript {
 #define	ND_EXTLS		0x8000000000
 #define	ND_EXTLSCERT		0x10000000000
 #define	ND_EXTLSCERTUSER	0x20000000000
+#define	ND_ERELOOKUP		0x40000000000
 
 /*
  * ND_GSS should be the "or" of all GSS type authentications.

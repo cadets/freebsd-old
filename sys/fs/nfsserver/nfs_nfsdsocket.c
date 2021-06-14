@@ -188,7 +188,7 @@ int (*nfsrv4_ops0[NFSV42_NOPS])(struct nfsrv_descript *,
 	nfsrvd_layoutcommit,
 	nfsrvd_layoutget,
 	nfsrvd_layoutreturn,
-	nfsrvd_notsupp,
+	nfsrvd_secinfononame,
 	nfsrvd_sequence,
 	nfsrvd_notsupp,
 	nfsrvd_teststateid,
@@ -534,9 +534,21 @@ nfsrvd_dorpc(struct nfsrv_descript *nd, int isdgram, u_char *tag, int taglen,
 {
 	int error = 0, lktype;
 	vnode_t vp;
-	mount_t mp = NULL;
+	mount_t mp;
 	struct nfsrvfh fh;
 	struct nfsexstuff nes;
+	struct mbuf *md;
+	char *dpos;
+
+	/*
+	 * Save the current position in the request mbuf list so
+	 * that a rollback to this location can be done upon an
+	 * ERELOOKUP error return from an RPC function.
+	 */
+	md = nd->nd_md;
+	dpos = nd->nd_dpos;
+tryagain:
+	mp = NULL;
 
 	/*
 	 * Get a locked vnode for the first file handle
@@ -572,10 +584,10 @@ nfsrvd_dorpc(struct nfsrv_descript *nd, int isdgram, u_char *tag, int taglen,
 				lktype = LK_EXCLUSIVE;
 			if (nd->nd_flag & ND_PUBLOOKUP)
 				nfsd_fhtovp(nd, &nfs_pubfh, lktype, &vp, &nes,
-				    &mp, nfsrv_writerpc[nd->nd_procnum]);
+				    &mp, nfsrv_writerpc[nd->nd_procnum], -1);
 			else
 				nfsd_fhtovp(nd, &fh, lktype, &vp, &nes,
-				    &mp, nfsrv_writerpc[nd->nd_procnum]);
+				    &mp, nfsrv_writerpc[nd->nd_procnum], -1);
 			if (nd->nd_repstat == NFSERR_PROGNOTV4)
 				goto out;
 		}
@@ -600,8 +612,7 @@ nfsrvd_dorpc(struct nfsrv_descript *nd, int isdgram, u_char *tag, int taglen,
 		nfsrvd_statstart(nfsv3to4op[nd->nd_procnum], /*now*/ NULL);
 		nfsrvd_statend(nfsv3to4op[nd->nd_procnum], /*bytes*/ 0,
 		   /*now*/ NULL, /*then*/ NULL);
-		if (mp != NULL && nfsrv_writerpc[nd->nd_procnum] != 0)
-			vn_finished_write(mp);
+		vn_finished_write(mp);
 		goto out;
 	}
 
@@ -631,8 +642,22 @@ nfsrvd_dorpc(struct nfsrv_descript *nd, int isdgram, u_char *tag, int taglen,
 			error = (*(nfsrv3_procs0[nd->nd_procnum]))(nd, isdgram,
 			    vp, &nes);
 		}
-		if (mp != NULL && nfsrv_writerpc[nd->nd_procnum] != 0)
-			vn_finished_write(mp);
+		vn_finished_write(mp);
+
+		if (error == 0 && nd->nd_repstat == ERELOOKUP) {
+			/*
+			 * Roll back to the beginning of the RPC request
+			 * arguments.
+			 */
+			nd->nd_md = md;
+			nd->nd_dpos = dpos;
+
+			/* Free the junk RPC reply and redo the RPC. */
+			m_freem(nd->nd_mreq);
+			nd->nd_mreq = nd->nd_mb = NULL;
+			nd->nd_repstat = 0;
+			goto tryagain;
+		}
 
 		nfsrvd_statend(nfsv3to4op[nd->nd_procnum], /*bytes*/ 0,
 		    /*now*/ NULL, /*then*/ &start_time);
@@ -677,10 +702,10 @@ static void
 nfsrvd_compound(struct nfsrv_descript *nd, int isdgram, u_char *tag,
     int taglen, u_int32_t minorvers)
 {
-	int i, lktype, op, op0 = 0, statsinprog = 0;
+	int i, lktype, op, op0 = 0, rstat, statsinprog = 0;
 	u_int32_t *tl;
 	struct nfsclient *clp, *nclp;
-	int numops, error = 0, igotlock;
+	int error = 0, igotlock, nextop, numops, savefhcnt;
 	u_int32_t retops = 0, *retopsp = NULL, *repp;
 	vnode_t vp, nvp, savevp;
 	struct nfsrvfh fh;
@@ -691,6 +716,9 @@ nfsrvd_compound(struct nfsrv_descript *nd, int isdgram, u_char *tag,
 	static u_int64_t compref = 0;
 	struct bintime start_time;
 	struct thread *p;
+	struct mbuf *mb, *md;
+	char *bpos, *dpos;
+	int bextpg, bextpgsiz;
 
 	p = curthread;
 
@@ -794,6 +822,8 @@ nfsrvd_compound(struct nfsrv_descript *nd, int isdgram, u_char *tag,
 	savevp = vp = NULL;
 	save_fsid.val[0] = save_fsid.val[1] = 0;
 	cur_fsid.val[0] = cur_fsid.val[1] = 0;
+	nextop = -1;
+	savefhcnt = 0;
 
 	/* If taglen < 0, there was a parsing error in nfsd_getminorvers(). */
 	if (taglen < 0) {
@@ -822,10 +852,20 @@ nfsrvd_compound(struct nfsrv_descript *nd, int isdgram, u_char *tag,
 	 * savevpnes and vpnes - are the export flags for the above.
 	 */
 	for (i = 0; i < numops; i++) {
-		NFSM_DISSECT(tl, u_int32_t *, NFSX_UNSIGNED);
 		NFSM_BUILD(repp, u_int32_t *, 2 * NFSX_UNSIGNED);
-		*repp = *tl;
-		op = fxdr_unsigned(int, *tl);
+		if (savefhcnt > 0) {
+			op = NFSV4OP_SAVEFH;
+			*repp = txdr_unsigned(op);
+			savefhcnt--;
+		} else if (nextop == -1) {
+			NFSM_DISSECT(tl, u_int32_t *, NFSX_UNSIGNED);
+			*repp = *tl;
+			op = fxdr_unsigned(int, *tl);
+		} else {
+			op = nextop;
+			*repp = txdr_unsigned(op);
+			nextop = -1;
+		}
 		NFSD_DEBUG(4, "op=%d\n", op);
 		if (op < NFSV4OP_ACCESS || op >= NFSV42_NOPS ||
 		    (op >= NFSV4OP_NOPS && (nd->nd_flag & ND_NFSV41) == 0) ||
@@ -922,9 +962,28 @@ nfsrvd_compound(struct nfsrv_descript *nd, int isdgram, u_char *tag,
 			error = nfsrv_mtofh(nd, &fh);
 			if (error)
 				goto nfsmout;
+			if ((nd->nd_flag & ND_LASTOP) == 0) {
+				/*
+				 * Pre-parse the next op#.  If it is
+				 * SaveFH, count it and skip to the
+				 * next op#, if not the last op#.
+				 * nextop is used to determine if
+				 * NFSERR_WRONGSEC can be returned,
+				 * per RFC5661 Sec. 2.6.
+				 */
+				do {
+					NFSM_DISSECT(tl, uint32_t *,
+					    NFSX_UNSIGNED);
+					nextop = fxdr_unsigned(int, *tl);
+					if (nextop == NFSV4OP_SAVEFH &&
+					    i < numops - 1)
+						savefhcnt++;
+				} while (nextop == NFSV4OP_SAVEFH &&
+				    i < numops - 1);
+			}
 			if (!nd->nd_repstat)
 				nfsd_fhtovp(nd, &fh, LK_SHARED, &nvp, &nes,
-				    NULL, 0);
+				    NULL, 0, nextop);
 			/* For now, allow this for non-export FHs */
 			if (!nd->nd_repstat) {
 				if (vp)
@@ -936,11 +995,31 @@ nfsrvd_compound(struct nfsrv_descript *nd, int isdgram, u_char *tag,
 			}
 			break;
 		case NFSV4OP_PUTPUBFH:
-			if (nfs_pubfhset)
-			    nfsd_fhtovp(nd, &nfs_pubfh, LK_SHARED, &nvp,
-				&nes, NULL, 0);
-			else
-			    nd->nd_repstat = NFSERR_NOFILEHANDLE;
+			if (nfs_pubfhset) {
+				if ((nd->nd_flag & ND_LASTOP) == 0) {
+					/*
+					 * Pre-parse the next op#.  If it is
+					 * SaveFH, count it and skip to the
+					 * next op#, if not the last op#.
+					 * nextop is used to determine if
+					 * NFSERR_WRONGSEC can be returned,
+					 * per RFC5661 Sec. 2.6.
+					 */
+					do {
+						NFSM_DISSECT(tl, uint32_t *,
+						    NFSX_UNSIGNED);
+						nextop = fxdr_unsigned(int,
+						    *tl);
+						if (nextop == NFSV4OP_SAVEFH &&
+						    i < numops - 1)
+							savefhcnt++;
+					} while (nextop == NFSV4OP_SAVEFH &&
+					    i < numops - 1);
+				}
+				nfsd_fhtovp(nd, &nfs_pubfh, LK_SHARED, &nvp,
+				    &nes, NULL, 0, nextop);
+			} else
+				nd->nd_repstat = NFSERR_NOFILEHANDLE;
 			if (!nd->nd_repstat) {
 				if (vp)
 					vrele(vp);
@@ -952,8 +1031,28 @@ nfsrvd_compound(struct nfsrv_descript *nd, int isdgram, u_char *tag,
 			break;
 		case NFSV4OP_PUTROOTFH:
 			if (nfs_rootfhset) {
+				if ((nd->nd_flag & ND_LASTOP) == 0) {
+					/*
+					 * Pre-parse the next op#.  If it is
+					 * SaveFH, count it and skip to the
+					 * next op#, if not the last op#.
+					 * nextop is used to determine if
+					 * NFSERR_WRONGSEC can be returned,
+					 * per RFC5661 Sec. 2.6.
+					 */
+					do {
+						NFSM_DISSECT(tl, uint32_t *,
+						    NFSX_UNSIGNED);
+						nextop = fxdr_unsigned(int,
+						    *tl);
+						if (nextop == NFSV4OP_SAVEFH &&
+						    i < numops - 1)
+							savefhcnt++;
+					} while (nextop == NFSV4OP_SAVEFH &&
+					    i < numops - 1);
+				}
 				nfsd_fhtovp(nd, &nfs_rootfh, LK_SHARED, &nvp,
-				    &nes, NULL, 0);
+				    &nes, NULL, 0, nextop);
 				if (!nd->nd_repstat) {
 					if (vp)
 						vrele(vp);
@@ -988,16 +1087,44 @@ nfsrvd_compound(struct nfsrv_descript *nd, int isdgram, u_char *tag,
 			break;
 		case NFSV4OP_RESTOREFH:
 			if (savevp) {
+				if ((nd->nd_flag & ND_LASTOP) == 0) {
+					/*
+					 * Pre-parse the next op#.  If it is
+					 * SaveFH, count it and skip to the
+					 * next op#, if not the last op#.
+					 * nextop is used to determine if
+					 * NFSERR_WRONGSEC can be returned,
+					 * per RFC5661 Sec. 2.6.
+					 */
+					do {
+						NFSM_DISSECT(tl, uint32_t *,
+						    NFSX_UNSIGNED);
+						nextop = fxdr_unsigned(int,
+						    *tl);
+						if (nextop == NFSV4OP_SAVEFH &&
+						    i < numops - 1)
+							savefhcnt++;
+					} while (nextop == NFSV4OP_SAVEFH &&
+					    i < numops - 1);
+				}
 				nd->nd_repstat = 0;
 				/* If vp == savevp, a no-op */
 				if (vp != savevp) {
-					VREF(savevp);
-					vrele(vp);
-					vp = savevp;
-					vpnes = savevpnes;
-					cur_fsid = save_fsid;
+					if (nfsrv_checkwrongsec(nd, nextop,
+					    savevp->v_type))
+						nd->nd_repstat =
+						    nfsvno_testexp(nd,
+						    &savevpnes);
+					if (nd->nd_repstat == 0) {
+						VREF(savevp);
+						vrele(vp);
+						vp = savevp;
+						vpnes = savevpnes;
+						cur_fsid = save_fsid;
+					}
 				}
-				if ((nd->nd_flag & ND_SAVEDCURSTATEID) != 0) {
+				if (nd->nd_repstat == 0 &&
+				     (nd->nd_flag & ND_SAVEDCURSTATEID) != 0) {
 					nd->nd_curstateid =
 					    nd->nd_savedcurstateid;
 					nd->nd_flag |= ND_CURSTATEID;
@@ -1024,14 +1151,9 @@ nfsrvd_compound(struct nfsrv_descript *nd, int isdgram, u_char *tag,
 			    op != NFSV4OP_GETFH &&
 			    op != NFSV4OP_ACCESS &&
 			    op != NFSV4OP_READLINK &&
-			    op != NFSV4OP_SECINFO)
+			    op != NFSV4OP_SECINFO &&
+			    op != NFSV4OP_SECINFONONAME)
 				nd->nd_repstat = NFSERR_NOFILEHANDLE;
-			else if (nfsvno_testexp(nd, &vpnes) &&
-			    op != NFSV4OP_LOOKUP &&
-			    op != NFSV4OP_GETFH &&
-			    op != NFSV4OP_GETATTR &&
-			    op != NFSV4OP_SECINFO)
-				nd->nd_repstat = NFSERR_WRONGSEC;
 			if (nd->nd_repstat) {
 				if (op == NFSV4OP_SETATTR) {
 				    /*
@@ -1045,10 +1167,34 @@ nfsrvd_compound(struct nfsrv_descript *nd, int isdgram, u_char *tag,
 				break;
 			}
 		    }
+
+		    /*
+		     * Save the current positions in the mbuf lists so
+		     * that a rollback to this location can be done upon a
+		     * redo due to a ERELOOKUP return for a operation.
+		     */
+		    mb = nd->nd_mb;
+		    bpos = nd->nd_bpos;
+		    bextpg = nd->nd_bextpg;
+		    bextpgsiz = nd->nd_bextpgsiz;
+		    md = nd->nd_md;
+		    dpos = nd->nd_dpos;
+tryagain:
+
 		    if (nfsv4_opflag[op].retfh == 1) {
 			if (!vp) {
 				nd->nd_repstat = NFSERR_NOFILEHANDLE;
 				break;
+			}
+			if (NFSVNO_EXPORTED(&vpnes) && (op == NFSV4OP_LOOKUP ||
+			    op == NFSV4OP_LOOKUPP || (op == NFSV4OP_OPEN &&
+			    vp->v_type == VDIR))) {
+				/* Check for wrong security. */
+				rstat = nfsvno_testexp(nd, &vpnes);
+				if (rstat != 0) {
+					nd->nd_repstat = rstat;
+					break;
+				}
 			}
 			VREF(vp);
 			if (nfsv4_opflag[op].modifyfs)
@@ -1064,7 +1210,7 @@ nfsrvd_compound(struct nfsrv_descript *nd, int isdgram, u_char *tag,
 					nd->nd_nam, &nes, &credanon);
 				    if (!nd->nd_repstat)
 					nd->nd_repstat = nfsd_excred(nd,
-					    &nes, credanon);
+					    &nes, credanon, true);
 				    if (credanon != NULL)
 					crfree(credanon);
 				    if (!nd->nd_repstat) {
@@ -1133,9 +1279,20 @@ nfsrvd_compound(struct nfsrv_descript *nd, int isdgram, u_char *tag,
 					}
 					break;
 				}
-				if (nd->nd_repstat == 0)
+				if (nd->nd_repstat == 0) {
 					error = (*(nfsrv4_ops0[op]))(nd,
 					    isdgram, vp, &vpnes);
+					if ((op == NFSV4OP_SECINFO ||
+					     op == NFSV4OP_SECINFONONAME) &&
+					    error == 0 && nd->nd_repstat == 0) {
+						/*
+						 * Secinfo and Secinfo_no_name
+						 * consume the current FH.
+						 */
+						vrele(vp);
+						vp = NULL;
+					}
+				}
 				if (nfsv4_opflag[op].modifyfs)
 					vn_finished_write(temp_mp);
 			} else {
@@ -1153,6 +1310,25 @@ nfsrvd_compound(struct nfsrv_descript *nd, int isdgram, u_char *tag,
 			}
 			error = 0;
 		}
+
+		if (nd->nd_repstat == ERELOOKUP) {
+			/*
+			 * Roll back to the beginning of the operation
+			 * arguments.
+			 */
+			nd->nd_md = md;
+			nd->nd_dpos = dpos;
+
+			/*
+			 * Trim off the bogus reply for this operation
+			 * and redo the operation.
+			 */
+			nfsm_trimtrailing(nd, mb, bpos, bextpg, bextpgsiz);
+			nd->nd_repstat = 0;
+			nd->nd_flag |= ND_ERELOOKUP;
+			goto tryagain;
+		}
+		nd->nd_flag &= ~ND_ERELOOKUP;
 
 		if (statsinprog != 0) {
 			nfsrvd_statend(op, /*bytes*/ 0, /*now*/ NULL,

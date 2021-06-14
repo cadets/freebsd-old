@@ -37,17 +37,21 @@ __FBSDID("$FreeBSD$");
 #include <sys/ktls.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
+#include <sys/mbuf.h>
 #include <sys/module.h>
 #include <sys/mutex.h>
 #include <sys/sysctl.h>
 #include <sys/uio.h>
+#include <vm/vm.h>
+#include <vm/pmap.h>
+#include <vm/vm_param.h>
 #include <opencrypto/cryptodev.h>
 
 struct ocf_session {
 	crypto_session_t sid;
 	crypto_session_t mac_sid;
-	int mac_len;
 	struct mtx lock;
+	int mac_len;
 	bool implicit_iv;
 
 	/* Only used for TLS 1.0 with the implicit IV. */
@@ -72,43 +76,59 @@ static SYSCTL_NODE(_kern_ipc_tls_stats, OID_AUTO, ocf,
     CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
     "Kernel TLS offload via OCF stats");
 
-static counter_u64_t ocf_tls10_cbc_crypts;
+static COUNTER_U64_DEFINE_EARLY(ocf_tls10_cbc_crypts);
 SYSCTL_COUNTER_U64(_kern_ipc_tls_stats_ocf, OID_AUTO, tls10_cbc_crypts,
     CTLFLAG_RD, &ocf_tls10_cbc_crypts,
     "Total number of OCF TLS 1.0 CBC encryption operations");
 
-static counter_u64_t ocf_tls11_cbc_crypts;
+static COUNTER_U64_DEFINE_EARLY(ocf_tls11_cbc_crypts);
 SYSCTL_COUNTER_U64(_kern_ipc_tls_stats_ocf, OID_AUTO, tls11_cbc_crypts,
     CTLFLAG_RD, &ocf_tls11_cbc_crypts,
     "Total number of OCF TLS 1.1/1.2 CBC encryption operations");
 
-static counter_u64_t ocf_tls12_gcm_crypts;
+static COUNTER_U64_DEFINE_EARLY(ocf_tls12_gcm_crypts);
 SYSCTL_COUNTER_U64(_kern_ipc_tls_stats_ocf, OID_AUTO, tls12_gcm_crypts,
     CTLFLAG_RD, &ocf_tls12_gcm_crypts,
     "Total number of OCF TLS 1.2 GCM encryption operations");
 
-static counter_u64_t ocf_tls13_gcm_crypts;
+static COUNTER_U64_DEFINE_EARLY(ocf_tls12_chacha20_crypts);
+SYSCTL_COUNTER_U64(_kern_ipc_tls_stats_ocf, OID_AUTO, tls12_chacha20_crypts,
+    CTLFLAG_RD, &ocf_tls12_chacha20_crypts,
+    "Total number of OCF TLS 1.2 Chacha20-Poly1305 encryption operations");
+
+static COUNTER_U64_DEFINE_EARLY(ocf_tls13_gcm_crypts);
 SYSCTL_COUNTER_U64(_kern_ipc_tls_stats_ocf, OID_AUTO, tls13_gcm_crypts,
     CTLFLAG_RD, &ocf_tls13_gcm_crypts,
     "Total number of OCF TLS 1.3 GCM encryption operations");
 
-static counter_u64_t ocf_inplace;
+static COUNTER_U64_DEFINE_EARLY(ocf_tls13_chacha20_crypts);
+SYSCTL_COUNTER_U64(_kern_ipc_tls_stats_ocf, OID_AUTO, tls13_chacha20_crypts,
+    CTLFLAG_RD, &ocf_tls13_chacha20_crypts,
+    "Total number of OCF TLS 1.3 Chacha20-Poly1305 encryption operations");
+
+static COUNTER_U64_DEFINE_EARLY(ocf_inplace);
 SYSCTL_COUNTER_U64(_kern_ipc_tls_stats_ocf, OID_AUTO, inplace,
     CTLFLAG_RD, &ocf_inplace,
     "Total number of OCF in-place operations");
 
-static counter_u64_t ocf_separate_output;
+static COUNTER_U64_DEFINE_EARLY(ocf_separate_output);
 SYSCTL_COUNTER_U64(_kern_ipc_tls_stats_ocf, OID_AUTO, separate_output,
     CTLFLAG_RD, &ocf_separate_output,
     "Total number of OCF operations with a separate output buffer");
 
-static counter_u64_t ocf_retries;
+static COUNTER_U64_DEFINE_EARLY(ocf_retries);
 SYSCTL_COUNTER_U64(_kern_ipc_tls_stats_ocf, OID_AUTO, retries, CTLFLAG_RD,
     &ocf_retries,
     "Number of OCF encryption operation retries");
 
 static int
-ktls_ocf_callback(struct cryptop *crp)
+ktls_ocf_callback_sync(struct cryptop *crp __unused)
+{
+	return (0);
+}
+
+static int
+ktls_ocf_callback_async(struct cryptop *crp)
 {
 	struct ocf_operation *oo;
 
@@ -125,21 +145,26 @@ ktls_ocf_dispatch(struct ocf_session *os, struct cryptop *crp)
 {
 	struct ocf_operation oo;
 	int error;
+	bool async;
 
 	oo.os = os;
 	oo.done = false;
 
 	crp->crp_opaque = &oo;
-	crp->crp_callback = ktls_ocf_callback;
 	for (;;) {
+		async = !CRYPTO_SESS_SYNC(crp->crp_session);
+		crp->crp_callback = async ? ktls_ocf_callback_async :
+		    ktls_ocf_callback_sync;
+
 		error = crypto_dispatch(crp);
 		if (error)
 			break;
-
-		mtx_lock(&os->lock);
-		while (!oo.done)
-			mtx_sleep(&oo, &os->lock, 0, "ocfktls", 0);
-		mtx_unlock(&os->lock);
+		if (async) {
+			mtx_lock(&os->lock);
+			while (!oo.done)
+				mtx_sleep(&oo, &os->lock, 0, "ocfktls", 0);
+			mtx_unlock(&os->lock);
+		}
 
 		if (crp->crp_etype != EAGAIN) {
 			error = crp->crp_etype;
@@ -155,33 +180,35 @@ ktls_ocf_dispatch(struct ocf_session *os, struct cryptop *crp)
 }
 
 static int
-ktls_ocf_tls_cbc_encrypt(struct ktls_session *tls,
-    const struct tls_record_layer *hdr, uint8_t *trailer, struct iovec *iniov,
-    struct iovec *outiov, int iovcnt, uint64_t seqno,
-    uint8_t record_type __unused)
+ktls_ocf_tls_cbc_encrypt(struct ktls_session *tls, struct mbuf *m,
+    struct iovec *outiov, int outiovcnt)
 {
-	struct uio uio, out_uio;
+	const struct tls_record_layer *hdr;
+	struct uio uio;
 	struct tls_mac_data ad;
 	struct cryptop crp;
 	struct ocf_session *os;
-	struct iovec iov[iovcnt + 2];
-	struct iovec out_iov[iovcnt + 1];
+	struct iovec iov[m->m_epg_npgs + 2];
+	u_int pgoff;
 	int i, error;
 	uint16_t tls_comp_len;
 	uint8_t pad;
-	bool inplace;
+
+	MPASS(outiovcnt + 1 <= nitems(iov));
 
 	os = tls->cipher;
+	hdr = (const struct tls_record_layer *)m->m_epg_hdr;
 
 #ifdef INVARIANTS
 	if (os->implicit_iv) {
 		mtx_lock(&os->lock);
 		KASSERT(!os->in_progress,
 		    ("concurrent implicit IV encryptions"));
-		if (os->next_seqno != seqno) {
+		if (os->next_seqno != m->m_epg_seqno) {
 			printf("KTLS CBC: TLS records out of order.  "
 			    "Expected %ju, got %ju\n",
-			    (uintmax_t)os->next_seqno, (uintmax_t)seqno);
+			    (uintmax_t)os->next_seqno,
+			    (uintmax_t)m->m_epg_seqno);
 			mtx_unlock(&os->lock);
 			return (EINVAL);
 		}
@@ -190,23 +217,11 @@ ktls_ocf_tls_cbc_encrypt(struct ktls_session *tls,
 	}
 #endif
 
-	/*
-	 * Compute the payload length.
-	 *
-	 * XXX: This could be easily computed O(1) from the mbuf
-	 * fields, but we don't have those accessible here.  Can
-	 * at least compute inplace as well while we are here.
-	 */
-	tls_comp_len = 0;
-	inplace = true;
-	for (i = 0; i < iovcnt; i++) {
-		tls_comp_len += iniov[i].iov_len;
-		if (iniov[i].iov_base != outiov[i].iov_base)
-			inplace = false;
-	}
+	/* Payload length. */
+	tls_comp_len = m->m_len - (m->m_epg_hdrlen + m->m_epg_trllen);
 
 	/* Initialize the AAD. */
-	ad.seq = htobe64(seqno);
+	ad.seq = htobe64(m->m_epg_seqno);
 	ad.type = hdr->tls_type;
 	ad.tls_vmajor = hdr->tls_vmajor;
 	ad.tls_vminor = hdr->tls_vminor;
@@ -215,11 +230,16 @@ ktls_ocf_tls_cbc_encrypt(struct ktls_session *tls,
 	/* First, compute the MAC. */
 	iov[0].iov_base = &ad;
 	iov[0].iov_len = sizeof(ad);
-	memcpy(&iov[1], iniov, sizeof(*iniov) * iovcnt);
-	iov[iovcnt + 1].iov_base = trailer;
-	iov[iovcnt + 1].iov_len = os->mac_len;
+	pgoff = m->m_epg_1st_off;
+	for (i = 0; i < m->m_epg_npgs; i++, pgoff = 0) {
+		iov[i + 1].iov_base = (void *)PHYS_TO_DMAP(m->m_epg_pa[i] +
+		    pgoff);
+		iov[i + 1].iov_len = m_epg_pagelen(m, i, pgoff);
+	}
+	iov[m->m_epg_npgs + 1].iov_base = m->m_epg_trail;
+	iov[m->m_epg_npgs + 1].iov_len = os->mac_len;
 	uio.uio_iov = iov;
-	uio.uio_iovcnt = iovcnt + 2;
+	uio.uio_iovcnt = m->m_epg_npgs + 2;
 	uio.uio_offset = 0;
 	uio.uio_segflg = UIO_SYSSPACE;
 	uio.uio_td = curthread;
@@ -247,54 +267,42 @@ ktls_ocf_tls_cbc_encrypt(struct ktls_session *tls,
 	}
 
 	/* Second, add the padding. */
-	pad = (unsigned)(AES_BLOCK_LEN - (tls_comp_len + os->mac_len + 1)) %
-	    AES_BLOCK_LEN;
+	pad = m->m_epg_trllen - os->mac_len - 1;
 	for (i = 0; i < pad + 1; i++)
-		trailer[os->mac_len + i] = pad;
+		m->m_epg_trail[os->mac_len + i] = pad;
 
 	/* Finally, encrypt the record. */
-
-	/*
-	 * Don't recopy the input iovec, instead just adjust the
-	 * trailer length and skip over the AAD vector in the uio.
-	 */
-	iov[iovcnt + 1].iov_len += pad + 1;
-	uio.uio_iov = iov + 1;
-	uio.uio_iovcnt = iovcnt + 1;
-	uio.uio_resid = tls_comp_len + iov[iovcnt + 1].iov_len;
-	KASSERT(uio.uio_resid % AES_BLOCK_LEN == 0,
-	    ("invalid encryption size"));
-
 	crypto_initreq(&crp, os->sid);
-	crp.crp_payload_start = 0;
-	crp.crp_payload_length = uio.uio_resid;
+	crp.crp_payload_start = m->m_epg_hdrlen;
+	crp.crp_payload_length = tls_comp_len + m->m_epg_trllen;
+	KASSERT(crp.crp_payload_length % AES_BLOCK_LEN == 0,
+	    ("invalid encryption size"));
+	crypto_use_single_mbuf(&crp, m);
 	crp.crp_op = CRYPTO_OP_ENCRYPT;
 	crp.crp_flags = CRYPTO_F_CBIMM | CRYPTO_F_IV_SEPARATE;
 	if (os->implicit_iv)
 		memcpy(crp.crp_iv, os->iv, AES_BLOCK_LEN);
 	else
 		memcpy(crp.crp_iv, hdr + 1, AES_BLOCK_LEN);
-	crypto_use_uio(&crp, &uio);
-	if (!inplace) {
-		memcpy(out_iov, outiov, sizeof(*iniov) * iovcnt);
-		out_iov[iovcnt] = iov[iovcnt + 1];
-		out_uio.uio_iov = out_iov;
-		out_uio.uio_iovcnt = iovcnt + 1;
-		out_uio.uio_offset = 0;
-		out_uio.uio_segflg = UIO_SYSSPACE;
-		out_uio.uio_td = curthread;
-		out_uio.uio_resid = uio.uio_resid;
-		crypto_use_output_uio(&crp, &out_uio);
+
+	if (outiov != NULL) {
+		uio.uio_iov = outiov;
+		uio.uio_iovcnt = outiovcnt;
+		uio.uio_offset = 0;
+		uio.uio_segflg = UIO_SYSSPACE;
+		uio.uio_td = curthread;
+		uio.uio_resid = crp.crp_payload_length;
+		crypto_use_output_uio(&crp, &uio);
 	}
 
 	if (os->implicit_iv)
 		counter_u64_add(ocf_tls10_cbc_crypts, 1);
 	else
 		counter_u64_add(ocf_tls11_cbc_crypts, 1);
-	if (inplace)
-		counter_u64_add(ocf_inplace, 1);
-	else
+	if (outiov != NULL)
 		counter_u64_add(ocf_separate_output, 1);
+	else
+		counter_u64_add(ocf_inplace, 1);
 	error = ktls_ocf_dispatch(os, &crp);
 
 	crypto_destroyreq(&crp);
@@ -302,11 +310,11 @@ ktls_ocf_tls_cbc_encrypt(struct ktls_session *tls,
 	if (os->implicit_iv) {
 		KASSERT(os->mac_len + pad + 1 >= AES_BLOCK_LEN,
 		    ("trailer too short to read IV"));
-		memcpy(os->iv, trailer + os->mac_len + pad + 1 - AES_BLOCK_LEN,
+		memcpy(os->iv, m->m_epg_trail + m->m_epg_trllen - AES_BLOCK_LEN,
 		    AES_BLOCK_LEN);
 #ifdef INVARIANTS
 		mtx_lock(&os->lock);
-		os->next_seqno = seqno + 1;
+		os->next_seqno = m->m_epg_seqno + 1;
 		os->in_progress = false;
 		mtx_unlock(&os->lock);
 #endif
@@ -315,44 +323,40 @@ ktls_ocf_tls_cbc_encrypt(struct ktls_session *tls,
 }
 
 static int
-ktls_ocf_tls12_gcm_encrypt(struct ktls_session *tls,
-    const struct tls_record_layer *hdr, uint8_t *trailer, struct iovec *iniov,
-    struct iovec *outiov, int iovcnt, uint64_t seqno,
-    uint8_t record_type __unused)
+ktls_ocf_tls12_aead_encrypt(struct ktls_session *tls, struct mbuf *m,
+    struct iovec *outiov, int outiovcnt)
 {
-	struct uio uio, out_uio, *tag_uio;
+	const struct tls_record_layer *hdr;
+	struct uio uio;
 	struct tls_aead_data ad;
 	struct cryptop crp;
 	struct ocf_session *os;
-	struct iovec iov[iovcnt + 1];
-	int i, error;
+	int error;
 	uint16_t tls_comp_len;
-	bool inplace;
 
 	os = tls->cipher;
-
-	uio.uio_iov = iniov;
-	uio.uio_iovcnt = iovcnt;
-	uio.uio_offset = 0;
-	uio.uio_segflg = UIO_SYSSPACE;
-	uio.uio_td = curthread;
-
-	out_uio.uio_iov = outiov;
-	out_uio.uio_iovcnt = iovcnt;
-	out_uio.uio_offset = 0;
-	out_uio.uio_segflg = UIO_SYSSPACE;
-	out_uio.uio_td = curthread;
+	hdr = (const struct tls_record_layer *)m->m_epg_hdr;
 
 	crypto_initreq(&crp, os->sid);
 
 	/* Setup the IV. */
-	memcpy(crp.crp_iv, tls->params.iv, TLS_AEAD_GCM_LEN);
-	memcpy(crp.crp_iv + TLS_AEAD_GCM_LEN, hdr + 1, sizeof(uint64_t));
+	if (tls->params.cipher_algorithm == CRYPTO_AES_NIST_GCM_16) {
+		memcpy(crp.crp_iv, tls->params.iv, TLS_AEAD_GCM_LEN);
+		memcpy(crp.crp_iv + TLS_AEAD_GCM_LEN, hdr + 1,
+		    sizeof(uint64_t));
+	} else {
+		/*
+		 * Chacha20-Poly1305 constructs the IV for TLS 1.2
+		 * identically to constructing the IV for AEAD in TLS
+		 * 1.3.
+		 */
+		memcpy(crp.crp_iv, tls->params.iv, tls->params.iv_len);
+		*(uint64_t *)(crp.crp_iv + 4) ^= htobe64(m->m_epg_seqno);
+	}
 
 	/* Setup the AAD. */
-	tls_comp_len = ntohs(hdr->tls_length) -
-	    (AES_GMAC_HASH_LEN + sizeof(uint64_t));
-	ad.seq = htobe64(seqno);
+	tls_comp_len = m->m_len - (m->m_epg_hdrlen + m->m_epg_trllen);
+	ad.seq = htobe64(m->m_epg_seqno);
 	ad.type = hdr->tls_type;
 	ad.tls_vmajor = hdr->tls_vmajor;
 	ad.tls_vminor = hdr->tls_vminor;
@@ -360,42 +364,35 @@ ktls_ocf_tls12_gcm_encrypt(struct ktls_session *tls,
 	crp.crp_aad = &ad;
 	crp.crp_aad_length = sizeof(ad);
 
-	/* Compute payload length and determine if encryption is in place. */
-	inplace = true;
-	crp.crp_payload_start = 0;
-	for (i = 0; i < iovcnt; i++) {
-		if (iniov[i].iov_base != outiov[i].iov_base)
-			inplace = false;
-		crp.crp_payload_length += iniov[i].iov_len;
-	}
-	uio.uio_resid = crp.crp_payload_length;
-	out_uio.uio_resid = crp.crp_payload_length;
+	/* Set fields for input payload. */
+	crypto_use_single_mbuf(&crp, m);
+	crp.crp_payload_start = m->m_epg_hdrlen;
+	crp.crp_payload_length = tls_comp_len;
 
-	if (inplace)
-		tag_uio = &uio;
-	else
-		tag_uio = &out_uio;
+	if (outiov != NULL) {
+		crp.crp_digest_start = crp.crp_payload_length;
 
-	/* Duplicate iovec and append vector for tag. */
-	memcpy(iov, tag_uio->uio_iov, iovcnt * sizeof(struct iovec));
-	iov[iovcnt].iov_base = trailer;
-	iov[iovcnt].iov_len = AES_GMAC_HASH_LEN;
-	tag_uio->uio_iov = iov;
-	tag_uio->uio_iovcnt++;
-	crp.crp_digest_start = tag_uio->uio_resid;
-	tag_uio->uio_resid += AES_GMAC_HASH_LEN;
+		uio.uio_iov = outiov;
+		uio.uio_iovcnt = outiovcnt;
+		uio.uio_offset = 0;
+		uio.uio_segflg = UIO_SYSSPACE;
+		uio.uio_td = curthread;
+		uio.uio_resid = crp.crp_payload_length + tls->params.tls_tlen;
+		crypto_use_output_uio(&crp, &uio);
+	} else
+		crp.crp_digest_start = crp.crp_payload_start +
+		    crp.crp_payload_length;
 
 	crp.crp_op = CRYPTO_OP_ENCRYPT | CRYPTO_OP_COMPUTE_DIGEST;
 	crp.crp_flags = CRYPTO_F_CBIMM | CRYPTO_F_IV_SEPARATE;
-	crypto_use_uio(&crp, &uio);
-	if (!inplace)
-		crypto_use_output_uio(&crp, &out_uio);
-
-	counter_u64_add(ocf_tls12_gcm_crypts, 1);
-	if (inplace)
-		counter_u64_add(ocf_inplace, 1);
+	if (tls->params.cipher_algorithm == CRYPTO_AES_NIST_GCM_16)
+		counter_u64_add(ocf_tls12_gcm_crypts, 1);
 	else
+		counter_u64_add(ocf_tls12_chacha20_crypts, 1);
+	if (outiov != NULL)
 		counter_u64_add(ocf_separate_output, 1);
+	else
+		counter_u64_add(ocf_inplace, 1);
 	error = ktls_ocf_dispatch(os, &crp);
 
 	crypto_destroyreq(&crp);
@@ -403,7 +400,7 @@ ktls_ocf_tls12_gcm_encrypt(struct ktls_session *tls,
 }
 
 static int
-ktls_ocf_tls12_gcm_decrypt(struct ktls_session *tls,
+ktls_ocf_tls12_aead_decrypt(struct ktls_session *tls,
     const struct tls_record_layer *hdr, struct mbuf *m, uint64_t seqno,
     int *trailer_len)
 {
@@ -422,12 +419,26 @@ ktls_ocf_tls12_gcm_decrypt(struct ktls_session *tls,
 	crypto_initreq(&crp, os->sid);
 
 	/* Setup the IV. */
-	memcpy(crp.crp_iv, tls->params.iv, TLS_AEAD_GCM_LEN);
-	memcpy(crp.crp_iv + TLS_AEAD_GCM_LEN, hdr + 1, sizeof(uint64_t));
+	if (tls->params.cipher_algorithm == CRYPTO_AES_NIST_GCM_16) {
+		memcpy(crp.crp_iv, tls->params.iv, TLS_AEAD_GCM_LEN);
+		memcpy(crp.crp_iv + TLS_AEAD_GCM_LEN, hdr + 1,
+		    sizeof(uint64_t));
+	} else {
+		/*
+		 * Chacha20-Poly1305 constructs the IV for TLS 1.2
+		 * identically to constructing the IV for AEAD in TLS
+		 * 1.3.
+		 */
+		memcpy(crp.crp_iv, tls->params.iv, tls->params.iv_len);
+		*(uint64_t *)(crp.crp_iv + 4) ^= htobe64(seqno);
+	}
 
 	/* Setup the AAD. */
-	tls_comp_len = ntohs(hdr->tls_length) -
-	    (AES_GMAC_HASH_LEN + sizeof(uint64_t));
+	if (tls->params.cipher_algorithm == CRYPTO_AES_NIST_GCM_16)
+		tls_comp_len = ntohs(hdr->tls_length) -
+		    (AES_GMAC_HASH_LEN + sizeof(uint64_t));
+	else
+		tls_comp_len = ntohs(hdr->tls_length) - POLY1305_HASH_LEN;
 	ad.seq = htobe64(seqno);
 	ad.type = hdr->tls_type;
 	ad.tls_vmajor = hdr->tls_vmajor;
@@ -444,35 +455,37 @@ ktls_ocf_tls12_gcm_decrypt(struct ktls_session *tls,
 	crp.crp_flags = CRYPTO_F_CBIMM | CRYPTO_F_IV_SEPARATE;
 	crypto_use_mbuf(&crp, m);
 
-	counter_u64_add(ocf_tls12_gcm_crypts, 1);
+	if (tls->params.cipher_algorithm == CRYPTO_AES_NIST_GCM_16)
+		counter_u64_add(ocf_tls12_gcm_crypts, 1);
+	else
+		counter_u64_add(ocf_tls12_chacha20_crypts, 1);
 	error = ktls_ocf_dispatch(os, &crp);
 
 	crypto_destroyreq(&crp);
-	*trailer_len = AES_GMAC_HASH_LEN;
+	*trailer_len = tls->params.tls_tlen;
 	return (error);
 }
 
 static int
-ktls_ocf_tls13_gcm_encrypt(struct ktls_session *tls,
-    const struct tls_record_layer *hdr, uint8_t *trailer, struct iovec *iniov,
-    struct iovec *outiov, int iovcnt, uint64_t seqno, uint8_t record_type)
+ktls_ocf_tls13_aead_encrypt(struct ktls_session *tls, struct mbuf *m,
+    struct iovec *outiov, int outiovcnt)
 {
-	struct uio uio, out_uio;
+	const struct tls_record_layer *hdr;
+	struct uio uio;
 	struct tls_aead_data_13 ad;
 	char nonce[12];
 	struct cryptop crp;
 	struct ocf_session *os;
-	struct iovec iov[iovcnt + 1], out_iov[iovcnt + 1];
-	int i, error;
-	bool inplace;
+	int error;
 
 	os = tls->cipher;
+	hdr = (const struct tls_record_layer *)m->m_epg_hdr;
 
 	crypto_initreq(&crp, os->sid);
 
 	/* Setup the nonce. */
 	memcpy(nonce, tls->params.iv, tls->params.iv_len);
-	*(uint64_t *)(nonce + 4) ^= htobe64(seqno);
+	*(uint64_t *)(nonce + 4) ^= htobe64(m->m_epg_seqno);
 
 	/* Setup the AAD. */
 	ad.type = hdr->tls_type;
@@ -482,68 +495,49 @@ ktls_ocf_tls13_gcm_encrypt(struct ktls_session *tls,
 	crp.crp_aad = &ad;
 	crp.crp_aad_length = sizeof(ad);
 
-	/* Compute payload length and determine if encryption is in place. */
-	inplace = true;
-	crp.crp_payload_start = 0;
-	for (i = 0; i < iovcnt; i++) {
-		if (iniov[i].iov_base != outiov[i].iov_base)
-			inplace = false;
-		crp.crp_payload_length += iniov[i].iov_len;
-	}
+	/* Set fields for input payload. */
+	crypto_use_single_mbuf(&crp, m);
+	crp.crp_payload_start = m->m_epg_hdrlen;
+	crp.crp_payload_length = m->m_len - (m->m_epg_hdrlen + m->m_epg_trllen);
 
 	/* Store the record type as the first byte of the trailer. */
-	trailer[0] = record_type;
+	m->m_epg_trail[0] = m->m_epg_record_type;
 	crp.crp_payload_length++;
-	crp.crp_digest_start = crp.crp_payload_length;
 
-	/*
-	 * Duplicate the input iov to append the trailer.  Always
-	 * include the full trailer as input to get the record_type
-	 * even if only the first byte is used.
-	 */
-	memcpy(iov, iniov, iovcnt * sizeof(*iov));
-	iov[iovcnt].iov_base = trailer;
-	iov[iovcnt].iov_len = AES_GMAC_HASH_LEN + 1;
-	uio.uio_iov = iov;
-	uio.uio_iovcnt = iovcnt + 1;
-	uio.uio_offset = 0;
-	uio.uio_resid = crp.crp_payload_length + AES_GMAC_HASH_LEN;
-	uio.uio_segflg = UIO_SYSSPACE;
-	uio.uio_td = curthread;
-	crypto_use_uio(&crp, &uio);
+	if (outiov != NULL) {
+		crp.crp_digest_start = crp.crp_payload_length;
 
-	if (!inplace) {
-		/* Duplicate the output iov to append the trailer. */
-		memcpy(out_iov, outiov, iovcnt * sizeof(*out_iov));
-		out_iov[iovcnt] = iov[iovcnt];
-
-		out_uio.uio_iov = out_iov;
-		out_uio.uio_iovcnt = iovcnt + 1;
-		out_uio.uio_offset = 0;
-		out_uio.uio_resid = crp.crp_payload_length +
-		    AES_GMAC_HASH_LEN;
-		out_uio.uio_segflg = UIO_SYSSPACE;
-		out_uio.uio_td = curthread;
-		crypto_use_output_uio(&crp, &out_uio);
-	}
+		uio.uio_iov = outiov;
+		uio.uio_iovcnt = outiovcnt;
+		uio.uio_offset = 0;
+		uio.uio_segflg = UIO_SYSSPACE;
+		uio.uio_td = curthread;
+		uio.uio_resid = m->m_len - m->m_epg_hdrlen;
+		crypto_use_output_uio(&crp, &uio);
+	} else
+		crp.crp_digest_start = crp.crp_payload_start +
+		    crp.crp_payload_length;
 
 	crp.crp_op = CRYPTO_OP_ENCRYPT | CRYPTO_OP_COMPUTE_DIGEST;
 	crp.crp_flags = CRYPTO_F_CBIMM | CRYPTO_F_IV_SEPARATE;
 
 	memcpy(crp.crp_iv, nonce, sizeof(nonce));
 
-	counter_u64_add(ocf_tls13_gcm_crypts, 1);
-	if (inplace)
-		counter_u64_add(ocf_inplace, 1);
+	if (tls->params.cipher_algorithm == CRYPTO_AES_NIST_GCM_16)
+		counter_u64_add(ocf_tls13_gcm_crypts, 1);
 	else
+		counter_u64_add(ocf_tls13_chacha20_crypts, 1);
+	if (outiov != NULL)
 		counter_u64_add(ocf_separate_output, 1);
+	else
+		counter_u64_add(ocf_inplace, 1);
 	error = ktls_ocf_dispatch(os, &crp);
 
 	crypto_destroyreq(&crp);
 	return (error);
 }
 
-static void
+void
 ktls_ocf_free(struct ktls_session *tls)
 {
 	struct ocf_session *os;
@@ -554,7 +548,7 @@ ktls_ocf_free(struct ktls_session *tls)
 	zfree(os, M_KTLS_OCF);
 }
 
-static int
+int
 ktls_ocf_try(struct socket *so, struct ktls_session *tls, int direction)
 {
 	struct crypto_session_params csp, mac_csp;
@@ -640,6 +634,32 @@ ktls_ocf_try(struct socket *so, struct ktls_session *tls, int direction)
 		mac_csp.csp_auth_key = tls->params.auth_key;
 		mac_csp.csp_auth_klen = tls->params.auth_key_len;
 		break;
+	case CRYPTO_CHACHA20_POLY1305:
+		switch (tls->params.cipher_key_len) {
+		case 256 / 8:
+			break;
+		default:
+			return (EINVAL);
+		}
+
+		/* Only TLS 1.2 and 1.3 are supported. */
+		if (tls->params.tls_vmajor != TLS_MAJOR_VER_ONE ||
+		    tls->params.tls_vminor < TLS_MINOR_VER_TWO ||
+		    tls->params.tls_vminor > TLS_MINOR_VER_THREE)
+			return (EPROTONOSUPPORT);
+
+		/* TLS 1.3 is not yet supported for receive. */
+		if (direction == KTLS_RX &&
+		    tls->params.tls_vminor == TLS_MINOR_VER_THREE)
+			return (EPROTONOSUPPORT);
+
+		csp.csp_flags |= CSP_F_SEPARATE_OUTPUT | CSP_F_SEPARATE_AAD;
+		csp.csp_mode = CSP_MODE_AEAD;
+		csp.csp_cipher_alg = CRYPTO_CHACHA20_POLY1305;
+		csp.csp_cipher_key = tls->params.cipher_key;
+		csp.csp_cipher_klen = tls->params.cipher_key_len;
+		csp.csp_ivlen = CHACHA20_POLY1305_IV_LEN;
+		break;
 	default:
 		return (EPROTONOSUPPORT);
 	}
@@ -668,14 +688,15 @@ ktls_ocf_try(struct socket *so, struct ktls_session *tls, int direction)
 
 	mtx_init(&os->lock, "ktls_ocf", NULL, MTX_DEF);
 	tls->cipher = os;
-	if (tls->params.cipher_algorithm == CRYPTO_AES_NIST_GCM_16) {
+	if (tls->params.cipher_algorithm == CRYPTO_AES_NIST_GCM_16 ||
+	    tls->params.cipher_algorithm == CRYPTO_CHACHA20_POLY1305) {
 		if (direction == KTLS_TX) {
 			if (tls->params.tls_vminor == TLS_MINOR_VER_THREE)
-				tls->sw_encrypt = ktls_ocf_tls13_gcm_encrypt;
+				tls->sw_encrypt = ktls_ocf_tls13_aead_encrypt;
 			else
-				tls->sw_encrypt = ktls_ocf_tls12_gcm_encrypt;
+				tls->sw_encrypt = ktls_ocf_tls12_aead_encrypt;
 		} else {
-			tls->sw_decrypt = ktls_ocf_tls12_gcm_decrypt;
+			tls->sw_decrypt = ktls_ocf_tls12_aead_decrypt;
 		}
 	} else {
 		tls->sw_encrypt = ktls_ocf_tls_cbc_encrypt;
@@ -684,53 +705,5 @@ ktls_ocf_try(struct socket *so, struct ktls_session *tls, int direction)
 			memcpy(os->iv, tls->params.iv, AES_BLOCK_LEN);
 		}
 	}
-	tls->free = ktls_ocf_free;
 	return (0);
 }
-
-struct ktls_crypto_backend ocf_backend = {
-	.name = "OCF",
-	.prio = 5,
-	.api_version = KTLS_API_VERSION,
-	.try = ktls_ocf_try,
-};
-
-static int
-ktls_ocf_modevent(module_t mod, int what, void *arg)
-{
-	int error;
-
-	switch (what) {
-	case MOD_LOAD:
-		ocf_tls10_cbc_crypts = counter_u64_alloc(M_WAITOK);
-		ocf_tls11_cbc_crypts = counter_u64_alloc(M_WAITOK);
-		ocf_tls12_gcm_crypts = counter_u64_alloc(M_WAITOK);
-		ocf_tls13_gcm_crypts = counter_u64_alloc(M_WAITOK);
-		ocf_inplace = counter_u64_alloc(M_WAITOK);
-		ocf_separate_output = counter_u64_alloc(M_WAITOK);
-		ocf_retries = counter_u64_alloc(M_WAITOK);
-		return (ktls_crypto_backend_register(&ocf_backend));
-	case MOD_UNLOAD:
-		error = ktls_crypto_backend_deregister(&ocf_backend);
-		if (error)
-			return (error);
-		counter_u64_free(ocf_tls10_cbc_crypts);
-		counter_u64_free(ocf_tls11_cbc_crypts);
-		counter_u64_free(ocf_tls12_gcm_crypts);
-		counter_u64_free(ocf_tls13_gcm_crypts);
-		counter_u64_free(ocf_inplace);
-		counter_u64_free(ocf_separate_output);
-		counter_u64_free(ocf_retries);
-		return (0);
-	default:
-		return (EOPNOTSUPP);
-	}
-}
-
-static moduledata_t ktls_ocf_moduledata = {
-	"ktls_ocf",
-	ktls_ocf_modevent,
-	NULL
-};
-
-DECLARE_MODULE(ktls_ocf, ktls_ocf_moduledata, SI_SUB_PROTO_END, SI_ORDER_ANY);

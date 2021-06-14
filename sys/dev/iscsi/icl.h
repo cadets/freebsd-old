@@ -89,8 +89,6 @@ struct icl_pdu {
 #define ICL_CONN_STATE_DATA		4
 #define ICL_CONN_STATE_DATA_DIGEST	5
 
-#define	ICL_MAX_DATA_SEGMENT_LENGTH	(128 * 1024)
-
 #define	ICL_NOCOPY			(1 << 30)
 
 struct icl_conn {
@@ -111,7 +109,8 @@ struct icl_conn {
 	bool			ic_data_crc32c;
 	bool			ic_send_running;
 	bool			ic_receive_running;
-	size_t			ic_max_data_segment_length;
+	uint32_t		ic_max_recv_data_segment_length;
+	uint32_t		ic_max_send_data_segment_length;
 	size_t			ic_maxtags;
 	bool			ic_disconnecting;
 	bool			ic_iser;

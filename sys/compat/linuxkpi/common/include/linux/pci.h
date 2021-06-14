@@ -54,6 +54,7 @@
 #include <linux/errno.h>
 #include <asm/atomic.h>
 #include <linux/device.h>
+#include <linux/pci_ids.h>
 
 struct pci_device_id {
 	uint32_t	vendor;
@@ -67,35 +68,7 @@ struct pci_device_id {
 
 #define	MODULE_DEVICE_TABLE(bus, table)
 
-#define	PCI_BASE_CLASS_DISPLAY		0x03
-#define	PCI_CLASS_DISPLAY_VGA		0x0300
-#define	PCI_CLASS_DISPLAY_OTHER		0x0380
-#define	PCI_BASE_CLASS_BRIDGE		0x06
-#define	PCI_CLASS_BRIDGE_ISA		0x0601
-
 #define	PCI_ANY_ID			-1U
-#define	PCI_VENDOR_ID_APPLE		0x106b
-#define	PCI_VENDOR_ID_ASUSTEK		0x1043
-#define	PCI_VENDOR_ID_ATI		0x1002
-#define	PCI_VENDOR_ID_DELL		0x1028
-#define	PCI_VENDOR_ID_HP		0x103c
-#define	PCI_VENDOR_ID_IBM		0x1014
-#define	PCI_VENDOR_ID_INTEL		0x8086
-#define	PCI_VENDOR_ID_MELLANOX			0x15b3
-#define	PCI_VENDOR_ID_REDHAT_QUMRANET	0x1af4
-#define	PCI_VENDOR_ID_SERVERWORKS	0x1166
-#define	PCI_VENDOR_ID_SONY		0x104d
-#define	PCI_VENDOR_ID_TOPSPIN			0x1867
-#define	PCI_VENDOR_ID_VIA		0x1106
-#define	PCI_SUBVENDOR_ID_REDHAT_QUMRANET	0x1af4
-#define	PCI_DEVICE_ID_ATI_RADEON_QY	0x5159
-#define	PCI_DEVICE_ID_MELLANOX_TAVOR		0x5a44
-#define	PCI_DEVICE_ID_MELLANOX_TAVOR_BRIDGE	0x5a46
-#define	PCI_DEVICE_ID_MELLANOX_ARBEL_COMPAT	0x6278
-#define	PCI_DEVICE_ID_MELLANOX_ARBEL		0x6282
-#define	PCI_DEVICE_ID_MELLANOX_SINAI_OLD	0x5e8c
-#define	PCI_DEVICE_ID_MELLANOX_SINAI		0x6274
-#define	PCI_SUBDEVICE_ID_QEMU		0x1100
 
 #define PCI_DEVFN(slot, func)   ((((slot) & 0x1f) << 3) | ((func) & 0x07))
 #define PCI_SLOT(devfn)		(((devfn) >> 3) & 0x1f)
@@ -113,8 +86,12 @@ struct pci_device_id {
 
 #define	PCI_VENDOR_ID		PCIR_DEVVENDOR
 #define	PCI_COMMAND		PCIR_COMMAND
+#define	PCI_COMMAND_INTX_DISABLE	PCIM_CMD_INTxDIS
 #define	PCI_EXP_DEVCTL		PCIER_DEVICE_CTL		/* Device Control */
 #define	PCI_EXP_LNKCTL		PCIER_LINK_CTL			/* Link Control */
+#define	PCI_EXP_LNKCTL_ASPM_L0S	PCIEM_LINK_CTL_ASPMC_L0S
+#define	PCI_EXP_LNKCTL_ASPM_L1	PCIEM_LINK_CTL_ASPMC_L1
+#define	PCI_EXP_LNKCTL_CLKREQ_EN PCIEM_LINK_CTL_ECPM		/* Enable clock PM */
 #define	PCI_EXP_FLAGS_TYPE	PCIEM_FLAGS_TYPE		/* Device/Port type */
 #define	PCI_EXP_DEVCAP		PCIER_DEVICE_CAP		/* Device capabilities */
 #define	PCI_EXP_DEVSTA		PCIER_DEVICE_STA		/* Device Status */
@@ -128,6 +105,7 @@ struct pci_device_id {
 #define	PCI_EXP_RTSTA		PCIER_ROOT_STA			/* Root Status */
 #define	PCI_EXP_DEVCAP2		PCIER_DEVICE_CAP2		/* Device Capabilities 2 */
 #define	PCI_EXP_DEVCTL2		PCIER_DEVICE_CTL2		/* Device Control 2 */
+#define	PCI_EXP_DEVCTL2_LTR_EN	PCIEM_CTL2_LTR_ENABLE
 #define	PCI_EXP_LNKCAP2		PCIER_LINK_CAP2			/* Link Capabilities 2 */
 #define	PCI_EXP_LNKCTL2		PCIER_LINK_CTL2			/* Link Control 2 */
 #define	PCI_EXP_LNKSTA2		PCIER_LINK_STA2			/* Link Status 2 */
@@ -177,6 +155,10 @@ enum pcie_link_width {
 	PCIE_LNK_WIDTH_UNKNOWN	= 0xff,
 };
 
+#define	PCIE_LINK_STATE_L0S		0x00000001
+#define	PCIE_LINK_STATE_L1		0x00000002
+#define	PCIE_LINK_STATE_CLKPM		0x00000004
+
 typedef int pci_power_t;
 
 #define PCI_D0	PCI_POWERSTATE_D0
@@ -186,6 +168,11 @@ typedef int pci_power_t;
 #define PCI_D3cold	4
 
 #define PCI_POWER_ERROR	PCI_POWERSTATE_UNKNOWN
+
+#define	PCI_ERR_ROOT_COMMAND		PCIR_AER_ROOTERR_CMD
+#define	PCI_ERR_ROOT_ERR_SRC		PCIR_AER_COR_SOURCE_ID
+
+#define	PCI_EXT_CAP_ID_ERR		PCIZ_AER
 
 struct pci_dev;
 
@@ -243,6 +230,8 @@ struct pci_dev {
 	uint32_t		class;
 	uint8_t			revision;
 	bool			msi_enabled;
+	phys_addr_t		rom;
+	size_t			romlen;
 
 	TAILQ_HEAD(, pci_mmio_region)	mmio;
 };
@@ -336,6 +325,14 @@ pci_set_drvdata(struct pci_dev *pdev, void *data)
 {
 
 	dev_set_drvdata(&pdev->dev, data);
+}
+
+static __inline void
+pci_dev_put(struct pci_dev *pdev)
+{
+
+	if (pdev != NULL)
+		put_device(&pdev->dev);
 }
 
 static inline int
@@ -459,6 +456,9 @@ linux_pci_disable_msi(struct pci_dev *pdev)
 	pdev->irq = pdev->dev.irq;
 	pdev->msi_enabled = false;
 }
+
+#define	pci_free_irq_vectors(pdev) \
+	linux_pci_disable_msi(pdev)
 
 unsigned long	pci_resource_start(struct pci_dev *pdev, int bar);
 unsigned long	pci_resource_len(struct pci_dev *pdev, int bar);
@@ -702,13 +702,30 @@ pci_iounmap(struct pci_dev *dev, void *res)
 	}
 }
 
+static inline void
+lkpi_pci_save_state(struct pci_dev *pdev)
+{
+
+	pci_save_state(pdev->dev.bsddev);
+}
+
+static inline void
+lkpi_pci_restore_state(struct pci_dev *pdev)
+{
+
+	pci_restore_state(pdev->dev.bsddev);
+}
+
+#define pci_save_state(dev)	lkpi_pci_save_state(dev)
+#define pci_restore_state(dev)	lkpi_pci_restore_state(dev)
+
 #define DEFINE_PCI_DEVICE_TABLE(_table) \
 	const struct pci_device_id _table[] __devinitdata
 
 /* XXX This should not be necessary. */
 #define	pcix_set_mmrbc(d, v)	0
 #define	pcix_get_max_mmrbc(d)	0
-#define	pcie_set_readrq(d, v)	pci_set_max_read_req(&(d)->dev, (v))
+#define	pcie_set_readrq(d, v)	pci_set_max_read_req((d)->dev.bsddev, (v))
 
 #define	PCI_DMA_BIDIRECTIONAL	0
 #define	PCI_DMA_TODEVICE	1
@@ -1057,5 +1074,81 @@ pci_dev_present(const struct pci_device_id *cur)
 	}
 	return (0);
 }
+
+static inline bool
+pci_is_root_bus(struct pci_bus *pbus)
+{
+
+	return (pbus->self == NULL);
+}
+
+struct pci_dev *lkpi_pci_get_domain_bus_and_slot(int domain,
+    unsigned int bus, unsigned int devfn);
+#define	pci_get_domain_bus_and_slot(domain, bus, devfn)	\
+	lkpi_pci_get_domain_bus_and_slot(domain, bus, devfn)
+
+static inline int
+pci_domain_nr(struct pci_bus *pbus)
+{
+
+	return (pbus->domain);
+}
+
+static inline int
+pci_bus_read_config(struct pci_bus *bus, unsigned int devfn,
+                    int pos, uint32_t *val, int len)
+{
+
+	*val = pci_read_config(bus->self->dev.bsddev, pos, len);
+	return (0);
+}
+
+static inline int
+pci_bus_read_config_word(struct pci_bus *bus, unsigned int devfn, int pos, u16 *val)
+{
+	uint32_t tmp;
+	int ret;
+
+	ret = pci_bus_read_config(bus, devfn, pos, &tmp, 2);
+	*val = (u16)tmp;
+	return (ret);
+}
+
+static inline int
+pci_bus_read_config_byte(struct pci_bus *bus, unsigned int devfn, int pos, u8 *val)
+{
+	uint32_t tmp;
+	int ret;
+
+	ret = pci_bus_read_config(bus, devfn, pos, &tmp, 1);
+	*val = (u8)tmp;
+	return (ret);
+}
+
+static inline int
+pci_bus_write_config(struct pci_bus *bus, unsigned int devfn, int pos,
+    uint32_t val, int size)
+{
+
+	pci_write_config(bus->self->dev.bsddev, pos, val, size);
+	return (0);
+}
+
+static inline int
+pci_bus_write_config_byte(struct pci_bus *bus, unsigned int devfn, int pos,
+    uint8_t val)
+{
+	return (pci_bus_write_config(bus, devfn, pos, val, 1));
+}
+
+static inline int
+pci_bus_write_config_word(struct pci_bus *bus, unsigned int devfn, int pos,
+    uint16_t val)
+{
+	return (pci_bus_write_config(bus, devfn, pos, val, 2));
+}
+
+struct pci_dev *lkpi_pci_get_class(unsigned int class, struct pci_dev *from);
+#define	pci_get_class(class, from)	lkpi_pci_get_class(class, from)
 
 #endif	/* _LINUX_PCI_H_ */

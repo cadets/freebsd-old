@@ -326,6 +326,7 @@ struct mps_softc {
 	u_int				enable_ssu;
 	int				spinup_wait_time;
 	int				use_phynum;
+	int				dump_reqs_alltypes;
 	uint64_t			chain_alloc_fail;
 	struct sysctl_ctx_list		sysctl_ctx;
 	struct sysctl_oid		*sysctl_tree;
@@ -548,7 +549,7 @@ mps_free_command(struct mps_softc *sc, struct mps_command *cm)
 	struct mps_chain *chain, *chain_temp;
 
 	KASSERT(cm->cm_state == MPS_CM_STATE_BUSY,
-	    ("state not busy: %d\n", cm->cm_state));
+	    ("state not busy: %u\n", cm->cm_state));
 
 	if (cm->cm_reply != NULL)
 		mps_free_reply(sc, cm->cm_reply_data);
@@ -584,7 +585,7 @@ mps_alloc_command(struct mps_softc *sc)
 		return (NULL);
 
 	KASSERT(cm->cm_state == MPS_CM_STATE_FREE,
-	    ("mps: Allocating busy command: %d\n", cm->cm_state));
+	    ("mps: Allocating busy command: %u\n", cm->cm_state));
 
 	TAILQ_REMOVE(&sc->req_list, cm, cm_link);
 	cm->cm_state = MPS_CM_STATE_BUSY;
@@ -598,7 +599,7 @@ mps_free_high_priority_command(struct mps_softc *sc, struct mps_command *cm)
 	struct mps_chain *chain, *chain_temp;
 
 	KASSERT(cm->cm_state == MPS_CM_STATE_BUSY,
-	    ("state not busy: %d\n", cm->cm_state));
+	    ("state not busy: %u\n", cm->cm_state));
 
 	if (cm->cm_reply != NULL)
 		mps_free_reply(sc, cm->cm_reply_data);
@@ -627,7 +628,7 @@ mps_alloc_high_priority_command(struct mps_softc *sc)
 		return (NULL);
 
 	KASSERT(cm->cm_state == MPS_CM_STATE_FREE,
-	    ("mps: Allocating high priority busy command: %d\n", cm->cm_state));
+	    ("mps: Allocating high priority busy command: %u\n", cm->cm_state));
 
 	TAILQ_REMOVE(&sc->high_priority_req_list, cm, cm_link);
 	cm->cm_state = MPS_CM_STATE_BUSY;
@@ -831,10 +832,6 @@ int mpssas_send_reset(struct mps_softc *sc, struct mps_command *tm,
 SYSCTL_DECL(_hw_mps);
 
 /* Compatibility shims for different OS versions */
-#define mps_kproc_create(func, farg, proc_ptr, flags, stackpgs, fmtstr, arg) \
-    kproc_create(func, farg, proc_ptr, flags, stackpgs, fmtstr, arg)
-#define mps_kproc_exit(arg)	kproc_exit(arg)
-
 #if defined(CAM_PRIORITY_XPT)
 #define MPS_PRIORITY_XPT	CAM_PRIORITY_XPT
 #else

@@ -48,9 +48,8 @@
 #include <sys/zio_compress.h>
 #include <sys/zfeature.h>
 #include <sys/dmu_tx.h>
+#include <zfeature_common.h>
 #include <libzutil.h>
-
-extern boolean_t zfeature_checks_disable;
 
 const char cmdname[] = "zhack";
 static importargs_t g_importargs;
@@ -150,6 +149,7 @@ zhack_import(char *target, boolean_t readonly)
 	zfeature_checks_disable = B_TRUE;
 	error = spa_import(target, config, props,
 	    (readonly ?  ZFS_IMPORT_SKIP_MMP : ZFS_IMPORT_NORMAL));
+	fnvlist_free(config);
 	zfeature_checks_disable = B_FALSE;
 	if (error == EEXIST)
 		error = 0;

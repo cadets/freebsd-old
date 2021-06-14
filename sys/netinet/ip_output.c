@@ -83,6 +83,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/in_var.h>
 #include <netinet/ip_var.h>
 #include <netinet/ip_options.h>
+#include <netinet/ip_mroute.h>
 
 #include <netinet/udp.h>
 #include <netinet/udp_var.h>
@@ -319,6 +320,7 @@ int
 ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
     struct ip_moptions *imo, struct inpcb *inp)
 {
+	MROUTER_RLOCK_TRACKER;
 	struct rm_priotracker in_ifa_tracker;
 	struct ip *ip;
 	struct ifnet *ifp = NULL;	/* keep compiler happy */
@@ -613,6 +615,7 @@ again:
 			 * above, will be forwarded by the ip_input() routine,
 			 * if necessary.
 			 */
+			MROUTER_RLOCK();
 			if (V_ip_mrouter && (flags & IP_FORWARDING) == 0) {
 				/*
 				 * If rsvp daemon is not running, do not
@@ -624,10 +627,12 @@ again:
 					imo = NULL;
 				if (ip_mforward &&
 				    ip_mforward(ip, ifp, m, imo) != 0) {
+					MROUTER_RUNLOCK();
 					m_freem(m);
 					goto done;
 				}
 			}
+			MROUTER_RUNLOCK();
 		}
 
 		/*
@@ -746,7 +751,7 @@ sendit:
 		}
 		in_delayed_cksum(m);
 		m->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
-	} else if ((ifp->if_capenable & IFCAP_NOMAP) == 0) {
+	} else if ((ifp->if_capenable & IFCAP_MEXTPG) == 0) {
 		m = mb_unmapped_to_ext(m);
 		if (m == NULL) {
 			IPSTAT_INC(ips_odropped);

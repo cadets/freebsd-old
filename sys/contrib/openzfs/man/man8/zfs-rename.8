@@ -18,7 +18,6 @@
 .\"
 .\" CDDL HEADER END
 .\"
-.\"
 .\" Copyright (c) 2009 Sun Microsystems, Inc. All Rights Reserved.
 .\" Copyright 2011 Joshua M. Clulow <josh@sysmgr.org>
 .\" Copyright (c) 2011, 2019 by Delphix. All rights reserved.
@@ -33,41 +32,43 @@
 .Dd September 1, 2020
 .Dt ZFS-RENAME 8
 .Os
+.
 .Sh NAME
-.Nm zfs Ns Pf - Cm rename
-.Nd Renames the given dataset (filesystem or snapshot).
+.Nm zfs-rename
+.Nd rename ZFS dataset
 .Sh SYNOPSIS
-.Nm
+.Nm zfs
 .Cm rename
 .Op Fl f
 .Ar filesystem Ns | Ns Ar volume Ns | Ns Ar snapshot
 .Ar filesystem Ns | Ns Ar volume Ns | Ns Ar snapshot
-.Nm
+.Nm zfs
 .Cm rename
 .Fl p
 .Op Fl f
 .Ar filesystem Ns | Ns Ar volume
 .Ar filesystem Ns | Ns Ar volume
-.Nm
+.Nm zfs
 .Cm rename
 .Fl u
 .Op Fl f
 .Ar filesystem Ar filesystem
-.Nm
+.Nm zfs
 .Cm rename
 .Fl r
 .Ar snapshot Ar snapshot
+.
 .Sh DESCRIPTION
 .Bl -tag -width ""
 .It Xo
-.Nm
+.Nm zfs
 .Cm rename
 .Op Fl f
 .Ar filesystem Ns | Ns Ar volume Ns | Ns Ar snapshot
 .Ar filesystem Ns | Ns Ar volume Ns | Ns Ar snapshot
 .Xc
 .It Xo
-.Nm
+.Nm zfs
 .Cm rename
 .Fl p
 .Op Fl f
@@ -75,7 +76,7 @@
 .Ar filesystem Ns | Ns Ar volume
 .Xc
 .It Xo
-.Nm
+.Nm zfs
 .Cm rename
 .Fl u
 .Op Fl f
@@ -112,7 +113,7 @@ or
 the file system is not unmounted even if this option is not given.
 .El
 .It Xo
-.Nm
+.Nm zfs
 .Cm rename
 .Fl r
 .Ar snapshot Ar snapshot

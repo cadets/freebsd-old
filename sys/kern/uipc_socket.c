@@ -112,6 +112,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/capsicum.h>
 #include <sys/fcntl.h>
 #include <sys/limits.h>
 #include <sys/lock.h>
@@ -475,7 +476,6 @@ sodealloc(struct socket *so)
 #endif
 	hhook_run_socket(so, NULL, HHOOK_SOCKET_CLOSE);
 
-	crfree(so->so_cred);
 	khelp_destroy_osd(&so->osd);
 	if (SOLISTENING(so)) {
 		if (so->sol_accept_filter != NULL)
@@ -492,6 +492,7 @@ sodealloc(struct socket *so)
 		SOCKBUF_LOCK_DESTROY(&so->so_snd);
 		SOCKBUF_LOCK_DESTROY(&so->so_rcv);
 	}
+	crfree(so->so_cred);
 	mtx_destroy(&so->so_lock);
 	uma_zfree(socket_zone, so);
 }
@@ -525,6 +526,9 @@ socreate(int dom, struct socket **aso, int type, int proto,
 	if (prp->pr_usrreqs->pru_attach == NULL ||
 	    prp->pr_usrreqs->pru_attach == pru_attach_notsupp)
 		return (EPROTONOSUPPORT);
+
+	if (IN_CAPABILITY_MODE(td) && (prp->pr_flags & PR_CAPATTACH) == 0)
+		return (ECAPMODE);
 
 	if (prison_check_af(cred, prp->pr_domain->dom_family) != 0)
 		return (EPROTONOSUPPORT);
@@ -718,6 +722,7 @@ sonewconn(struct socket *head, int connstatus)
 	}
 	so->so_listen = head;
 	so->so_type = head->so_type;
+	so->so_options = head->so_options & ~SO_ACCEPTCONN;
 	so->so_linger = head->so_linger;
 	so->so_state = head->so_state | SS_NOFDREF;
 	so->so_fibnum = head->so_fibnum;
@@ -754,7 +759,6 @@ sonewconn(struct socket *head, int connstatus)
 	if (head->sol_accept_filter != NULL)
 		connstatus = 0;
 	so->so_state |= connstatus;
-	so->so_options = head->so_options & ~SO_ACCEPTCONN;
 	soref(head); /* A socket on (in)complete queue refs head. */
 	if (connstatus) {
 		TAILQ_INSERT_TAIL(&head->sol_comp, so, so_list);
@@ -1763,18 +1767,13 @@ restart:
 
 #ifdef KERN_TLS
 			if (tls != NULL && tls->mode == TCP_TLS_MODE_SW) {
-				/*
-				 * Note that error is intentionally
-				 * ignored.
-				 *
-				 * Like sendfile(), we rely on the
-				 * completion routine (pru_ready())
-				 * to free the mbufs in the event that
-				 * pru_send() encountered an error and
-				 * did not append them to the sockbuf.
-				 */
-				soref(so);
-				ktls_enqueue(top, so, tls_enq_cnt);
+				if (error != 0) {
+					m_freem(top);
+					top = NULL;
+				} else {
+					soref(so);
+					ktls_enqueue(top, so, tls_enq_cnt);
+				}
 			}
 #endif
 			clen = 0;
@@ -2199,7 +2198,8 @@ dontblock:
 			SBLASTMBUFCHK(&so->so_rcv);
 			SOCKBUF_UNLOCK(&so->so_rcv);
 			if ((m->m_flags & M_EXTPG) != 0)
-				error = m_unmappedtouio(m, moff, uio, (int)len);
+				error = m_unmapped_uiomove(m, moff, uio,
+				    (int)len);
 			else
 				error = uiomove(mtod(m, char *) + moff,
 				    (int)len, uio);
@@ -3567,9 +3567,11 @@ sopoll_generic(struct socket *so, int events, struct ucred *active_cred,
 					revents |= POLLHUP;
 			}
 		}
+		if (so->so_rcv.sb_state & SBS_CANTRCVMORE)
+			revents |= events & POLLRDHUP;
 		if (revents == 0) {
 			if (events &
-			    (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND)) {
+			    (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND | POLLRDHUP)) {
 				selrecord(td, &so->so_rdsel);
 				so->so_rcv.sb_flags |= SB_SEL;
 			}
@@ -3735,7 +3737,11 @@ pru_send_notsupp(struct socket *so, int flags, struct mbuf *m,
     struct sockaddr *addr, struct mbuf *control, struct thread *td)
 {
 
-	return EOPNOTSUPP;
+	if (control != NULL)
+		m_freem(control);
+	if ((flags & PRUS_NOTREADY) == 0)
+		m_freem(m);
+	return (EOPNOTSUPP);
 }
 
 int

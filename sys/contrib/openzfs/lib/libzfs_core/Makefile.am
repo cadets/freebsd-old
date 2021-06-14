@@ -2,7 +2,11 @@ include $(top_srcdir)/config/Rules.am
 
 pkgconfig_DATA = libzfs_core.pc
 
+AM_CFLAGS += -fvisibility=hidden
+
 lib_LTLIBRARIES = libzfs_core.la
+
+include $(top_srcdir)/config/Abigail.am
 
 USER_C = \
 	libzfs_core.c
@@ -23,7 +27,11 @@ endif
 
 if BUILD_FREEBSD
 libzfs_core_la_LIBADD += -lutil -lgeom
-libzfs_core_la_LDFLAGS += -version-info 3:0:0
-else
-libzfs_core_la_LDFLAGS += -version-info 1:0:0
 endif
+
+libzfs_core_la_LDFLAGS += -version-info 3:0:0
+
+include $(top_srcdir)/config/CppCheck.am
+
+# Library ABI
+EXTRA_DIST = libzfs_core.abi libzfs_core.suppr

@@ -27,12 +27,12 @@
  * Copyright (c) 2014 Integros [integros.com]
  * Copyright (c) 2017, Intel Corporation.
  * Copyright (c) 2019 Datto Inc.
+ * Portions Copyright 2010 Robert Milkowski
+ * Copyright (c) 2021, Colm Buckley <colm@tuatha.org>
  */
 
-/* Portions Copyright 2010 Robert Milkowski */
-
 #ifndef	_SYS_FS_ZFS_H
-#define	_SYS_FS_ZFS_H
+#define	_SYS_FS_ZFS_H extern __attribute__((visibility("default")))
 
 #include <sys/time.h>
 #include <sys/zio_priority.h>
@@ -205,7 +205,7 @@ typedef enum {
 	ZFS_NUM_USERQUOTA_PROPS
 } zfs_userquota_prop_t;
 
-extern const char *zfs_userquota_prop_prefixes[ZFS_NUM_USERQUOTA_PROPS];
+_SYS_FS_ZFS_H const char *zfs_userquota_prop_prefixes[ZFS_NUM_USERQUOTA_PROPS];
 
 /*
  * Pool properties are identified by these constants and must be added to the
@@ -246,10 +246,11 @@ typedef enum {
 	ZPOOL_PROP_CHECKPOINT,
 	ZPOOL_PROP_LOAD_GUID,
 	ZPOOL_PROP_AUTOTRIM,
+	ZPOOL_PROP_COMPATIBILITY,
 	ZPOOL_NUM_PROPS
 } zpool_prop_t;
 
-/* Small enough to not hog a whole line of printout in zpool(1M). */
+/* Small enough to not hog a whole line of printout in zpool(8). */
 #define	ZPROP_MAX_COMMENT	32
 
 #define	ZPROP_VALUE		"value"
@@ -300,38 +301,41 @@ typedef int (*zprop_func)(int, void *);
 /*
  * Dataset property functions shared between libzfs and kernel.
  */
-const char *zfs_prop_default_string(zfs_prop_t);
-uint64_t zfs_prop_default_numeric(zfs_prop_t);
-boolean_t zfs_prop_readonly(zfs_prop_t);
-boolean_t zfs_prop_visible(zfs_prop_t prop);
-boolean_t zfs_prop_inheritable(zfs_prop_t);
-boolean_t zfs_prop_setonce(zfs_prop_t);
-boolean_t zfs_prop_encryption_key_param(zfs_prop_t);
-boolean_t zfs_prop_valid_keylocation(const char *, boolean_t);
-const char *zfs_prop_to_name(zfs_prop_t);
-zfs_prop_t zfs_name_to_prop(const char *);
-boolean_t zfs_prop_user(const char *);
-boolean_t zfs_prop_userquota(const char *);
-boolean_t zfs_prop_written(const char *);
-int zfs_prop_index_to_string(zfs_prop_t, uint64_t, const char **);
-int zfs_prop_string_to_index(zfs_prop_t, const char *, uint64_t *);
-uint64_t zfs_prop_random_value(zfs_prop_t, uint64_t seed);
-boolean_t zfs_prop_valid_for_type(int, zfs_type_t, boolean_t);
+_SYS_FS_ZFS_H const char *zfs_prop_default_string(zfs_prop_t);
+_SYS_FS_ZFS_H uint64_t zfs_prop_default_numeric(zfs_prop_t);
+_SYS_FS_ZFS_H boolean_t zfs_prop_readonly(zfs_prop_t);
+_SYS_FS_ZFS_H boolean_t zfs_prop_visible(zfs_prop_t prop);
+_SYS_FS_ZFS_H boolean_t zfs_prop_inheritable(zfs_prop_t);
+_SYS_FS_ZFS_H boolean_t zfs_prop_setonce(zfs_prop_t);
+_SYS_FS_ZFS_H boolean_t zfs_prop_encryption_key_param(zfs_prop_t);
+_SYS_FS_ZFS_H boolean_t zfs_prop_valid_keylocation(const char *, boolean_t);
+_SYS_FS_ZFS_H const char *zfs_prop_to_name(zfs_prop_t);
+_SYS_FS_ZFS_H zfs_prop_t zfs_name_to_prop(const char *);
+_SYS_FS_ZFS_H boolean_t zfs_prop_user(const char *);
+_SYS_FS_ZFS_H boolean_t zfs_prop_userquota(const char *);
+_SYS_FS_ZFS_H boolean_t zfs_prop_written(const char *);
+_SYS_FS_ZFS_H int zfs_prop_index_to_string(zfs_prop_t, uint64_t, const char **);
+_SYS_FS_ZFS_H int zfs_prop_string_to_index(zfs_prop_t, const char *,
+    uint64_t *);
+_SYS_FS_ZFS_H uint64_t zfs_prop_random_value(zfs_prop_t, uint64_t seed);
+_SYS_FS_ZFS_H boolean_t zfs_prop_valid_for_type(int, zfs_type_t, boolean_t);
 
 /*
  * Pool property functions shared between libzfs and kernel.
  */
-zpool_prop_t zpool_name_to_prop(const char *);
-const char *zpool_prop_to_name(zpool_prop_t);
-const char *zpool_prop_default_string(zpool_prop_t);
-uint64_t zpool_prop_default_numeric(zpool_prop_t);
-boolean_t zpool_prop_readonly(zpool_prop_t);
-boolean_t zpool_prop_setonce(zpool_prop_t);
-boolean_t zpool_prop_feature(const char *);
-boolean_t zpool_prop_unsupported(const char *);
-int zpool_prop_index_to_string(zpool_prop_t, uint64_t, const char **);
-int zpool_prop_string_to_index(zpool_prop_t, const char *, uint64_t *);
-uint64_t zpool_prop_random_value(zpool_prop_t, uint64_t seed);
+_SYS_FS_ZFS_H zpool_prop_t zpool_name_to_prop(const char *);
+_SYS_FS_ZFS_H const char *zpool_prop_to_name(zpool_prop_t);
+_SYS_FS_ZFS_H const char *zpool_prop_default_string(zpool_prop_t);
+_SYS_FS_ZFS_H uint64_t zpool_prop_default_numeric(zpool_prop_t);
+_SYS_FS_ZFS_H boolean_t zpool_prop_readonly(zpool_prop_t);
+_SYS_FS_ZFS_H boolean_t zpool_prop_setonce(zpool_prop_t);
+_SYS_FS_ZFS_H boolean_t zpool_prop_feature(const char *);
+_SYS_FS_ZFS_H boolean_t zpool_prop_unsupported(const char *);
+_SYS_FS_ZFS_H int zpool_prop_index_to_string(zpool_prop_t, uint64_t,
+    const char **);
+_SYS_FS_ZFS_H int zpool_prop_string_to_index(zpool_prop_t, const char *,
+    uint64_t *);
+_SYS_FS_ZFS_H uint64_t zpool_prop_random_value(zpool_prop_t, uint64_t seed);
 
 /*
  * Definitions for the Delegation.
@@ -617,6 +621,7 @@ typedef struct zpool_load_policy {
 #define	ZPOOL_CONFIG_PREV_INDIRECT_VDEV	"com.delphix:prev_indirect_vdev"
 #define	ZPOOL_CONFIG_PATH		"path"
 #define	ZPOOL_CONFIG_DEVID		"devid"
+#define	ZPOOL_CONFIG_SPARE_ID		"spareid"
 #define	ZPOOL_CONFIG_METASLAB_ARRAY	"metaslab_array"
 #define	ZPOOL_CONFIG_METASLAB_SHIFT	"metaslab_shift"
 #define	ZPOOL_CONFIG_ASHIFT		"ashift"
@@ -732,6 +737,7 @@ typedef struct zpool_load_policy {
 #define	ZPOOL_CONFIG_ALLOCATION_BIAS	"alloc_bias"	/* not stored on disk */
 #define	ZPOOL_CONFIG_EXPANSION_TIME	"expansion_time"	/* not stored */
 #define	ZPOOL_CONFIG_REBUILD_STATS	"org.openzfs:rebuild_stats"
+#define	ZPOOL_CONFIG_COMPATIBILITY	"compatibility"
 
 /*
  * The persistent vdev state is stored as separate values rather than a single
@@ -757,10 +763,17 @@ typedef struct zpool_load_policy {
 #define	ZPOOL_CONFIG_LOAD_DATA_ERRORS	"verify_data_errors"
 #define	ZPOOL_CONFIG_REWIND_TIME	"seconds_of_rewind"
 
+/* dRAID configuration */
+#define	ZPOOL_CONFIG_DRAID_NDATA	"draid_ndata"
+#define	ZPOOL_CONFIG_DRAID_NSPARES	"draid_nspares"
+#define	ZPOOL_CONFIG_DRAID_NGROUPS	"draid_ngroups"
+
 #define	VDEV_TYPE_ROOT			"root"
 #define	VDEV_TYPE_MIRROR		"mirror"
 #define	VDEV_TYPE_REPLACING		"replacing"
 #define	VDEV_TYPE_RAIDZ			"raidz"
+#define	VDEV_TYPE_DRAID			"draid"
+#define	VDEV_TYPE_DRAID_SPARE		"dspare"
 #define	VDEV_TYPE_DISK			"disk"
 #define	VDEV_TYPE_FILE			"file"
 #define	VDEV_TYPE_MISSING		"missing"
@@ -769,6 +782,12 @@ typedef struct zpool_load_policy {
 #define	VDEV_TYPE_LOG			"log"
 #define	VDEV_TYPE_L2CACHE		"l2cache"
 #define	VDEV_TYPE_INDIRECT		"indirect"
+
+#define	VDEV_RAIDZ_MAXPARITY		3
+
+#define	VDEV_DRAID_MAXPARITY		3
+#define	VDEV_DRAID_MIN_CHILDREN		2
+#define	VDEV_DRAID_MAX_CHILDREN		UINT8_MAX
 
 /* VDEV_TOP_ZAP_* are used in top-level vdev ZAP objects. */
 #define	VDEV_TOP_ZAP_INDIRECT_OBSOLETE_SM \
@@ -831,6 +850,19 @@ typedef struct zpool_load_policy {
  */
 #define	ZPOOL_CACHE_BOOT	"/boot/zfs/zpool.cache"
 #define	ZPOOL_CACHE		"/etc/zfs/zpool.cache"
+/*
+ * Settings for zpool compatibility features files
+ */
+#define	ZPOOL_SYSCONF_COMPAT_D	SYSCONFDIR "/zfs/compatibility.d"
+#define	ZPOOL_DATA_COMPAT_D	PKGDATADIR "/compatibility.d"
+#define	ZPOOL_COMPAT_MAXSIZE	16384
+
+/*
+ * Hard-wired compatibility settings
+ */
+#define	ZPOOL_COMPAT_LEGACY	"legacy"
+#define	ZPOOL_COMPAT_OFF	"off"
+
 /*
  * vdev states are ordered from least to most healthy.
  * A vdev that's CANT_OPEN or below is considered unusable.
@@ -1438,9 +1470,11 @@ typedef enum {
 #define	ZPOOL_HIST_IOCTL	"ioctl"
 #define	ZPOOL_HIST_INPUT_NVL	"in_nvl"
 #define	ZPOOL_HIST_OUTPUT_NVL	"out_nvl"
+#define	ZPOOL_HIST_OUTPUT_SIZE	"out_size"
 #define	ZPOOL_HIST_DSNAME	"dsname"
 #define	ZPOOL_HIST_DSID		"dsid"
 #define	ZPOOL_HIST_ERRNO	"errno"
+#define	ZPOOL_HIST_ELAPSED_NS	"elapsed_ns"
 
 /*
  * Special nvlist name that will not have its args recorded in the pool's
@@ -1581,6 +1615,47 @@ typedef enum {
 #define	ZFS_EV_HIST_DSNAME	"history_dsname"
 #define	ZFS_EV_HIST_DSID	"history_dsid"
 #define	ZFS_EV_RESILVER_TYPE	"resilver_type"
+
+
+/*
+ * We currently support block sizes from 512 bytes to 16MB.
+ * The benefits of larger blocks, and thus larger IO, need to be weighed
+ * against the cost of COWing a giant block to modify one byte, and the
+ * large latency of reading or writing a large block.
+ *
+ * Note that although blocks up to 16MB are supported, the recordsize
+ * property can not be set larger than zfs_max_recordsize (default 1MB).
+ * See the comment near zfs_max_recordsize in dsl_dataset.c for details.
+ *
+ * Note that although the LSIZE field of the blkptr_t can store sizes up
+ * to 32MB, the dnode's dn_datablkszsec can only store sizes up to
+ * 32MB - 512 bytes.  Therefore, we limit SPA_MAXBLOCKSIZE to 16MB.
+ */
+#define	SPA_MINBLOCKSHIFT	9
+#define	SPA_OLD_MAXBLOCKSHIFT	17
+#define	SPA_MAXBLOCKSHIFT	24
+#define	SPA_MINBLOCKSIZE	(1ULL << SPA_MINBLOCKSHIFT)
+#define	SPA_OLD_MAXBLOCKSIZE	(1ULL << SPA_OLD_MAXBLOCKSHIFT)
+#define	SPA_MAXBLOCKSIZE	(1ULL << SPA_MAXBLOCKSHIFT)
+
+
+/* supported encryption algorithms */
+enum zio_encrypt {
+	ZIO_CRYPT_INHERIT = 0,
+	ZIO_CRYPT_ON,
+	ZIO_CRYPT_OFF,
+	ZIO_CRYPT_AES_128_CCM,
+	ZIO_CRYPT_AES_192_CCM,
+	ZIO_CRYPT_AES_256_CCM,
+	ZIO_CRYPT_AES_128_GCM,
+	ZIO_CRYPT_AES_192_GCM,
+	ZIO_CRYPT_AES_256_GCM,
+	ZIO_CRYPT_FUNCTIONS
+};
+
+#define	ZIO_CRYPT_ON_VALUE	ZIO_CRYPT_AES_256_GCM
+#define	ZIO_CRYPT_DEFAULT	ZIO_CRYPT_OFF
+
 
 #ifdef	__cplusplus
 }

@@ -238,6 +238,7 @@ enum {
 	INTERPOS_fdatasync,
 	INTERPOS_clock_nanosleep,
 	INTERPOS_distribute_static_tls,
+	INTERPOS_pdfork,
 	INTERPOS_MAX
 };
 
@@ -260,8 +261,9 @@ void _init_tls(void);
 int _once(pthread_once_t *, void (*)(void));
 
 /*
- * Set the TLS thread pointer
+ * Get/set the TLS thread pointer
  */
+void *_get_tp(void);
 void _set_tp(void *tp);
 
 /*
@@ -353,6 +355,7 @@ int		__sys_msync(void *, __size_t, int);
 int		__sys_nanosleep(const struct timespec *, struct timespec *);
 int		__sys_open(const char *, int, ...);
 int		__sys_openat(int, const char *, int, ...);
+int		__sys_pdfork(int *, int);
 int		__sys_pselect(int, struct fd_set *, struct fd_set *,
 		    struct fd_set *, const struct timespec *,
 		    const __sigset_t *);
@@ -382,6 +385,7 @@ int		__sys_sigtimedwait(const __sigset_t *, struct __siginfo *,
 		    const struct timespec *);
 int		__sys_sigwait(const __sigset_t *, int *);
 int		__sys_sigwaitinfo(const __sigset_t *, struct __siginfo *);
+int		__sys___specialfd(int, const void *, __size_t);
 int		__sys_statfs(const char *, struct statfs *);
 int		__sys_swapcontext(struct __ucontext *,
 		    const struct __ucontext *);

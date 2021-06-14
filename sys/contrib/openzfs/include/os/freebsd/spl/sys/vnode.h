@@ -66,12 +66,7 @@ typedef	struct vop_vector	vnodeops_t;
 #define	vop_fid_args	vop_vptofh_args
 #define	a_fid		a_fhp
 
-#define	IS_XATTRDIR(dvp)	(0)
-
-#define	v_count	v_usecount
-
 #define	rootvfs		(rootvnode == NULL ? NULL : rootvnode->v_mount)
-
 
 #ifndef IN_BASE
 static __inline int
@@ -127,7 +122,9 @@ vn_is_readonly(vnode_t *vp)
 #define	FCREAT		O_CREAT
 #define	FTRUNC		O_TRUNC
 #define	FEXCL		O_EXCL
+#ifndef FDSYNC
 #define	FDSYNC		FFSYNC
+#endif
 #define	FRSYNC		FFSYNC
 #define	FSYNC		FFSYNC
 #define	FOFFMAX		0x00

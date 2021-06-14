@@ -2893,10 +2893,31 @@ xbb_connect_ring(struct xbb_softc *xbb)
 	     ring_idx < xbb->ring_config.ring_pages;
 	     ring_idx++, gnt++) {
 		if (gnt->status != 0) {
+			struct gnttab_unmap_grant_ref unmap[XBB_MAX_RING_PAGES];
+			unsigned int i, j;
+
 			xbb->ring_config.va = 0;
 			xenbus_dev_fatal(xbb->dev, EACCES,
 					 "Ring shared page mapping failed. "
 					 "Status %d.", gnt->status);
+
+			/* Unmap everything to avoid leaking grant table maps */
+			for (i = 0, j = 0; i < xbb->ring_config.ring_pages;
+			    i++) {
+				if (gnts[i].status != GNTST_okay)
+					continue;
+
+				unmap[j].host_addr = gnts[i].host_addr;
+				unmap[j].dev_bus_addr = gnts[i].dev_bus_addr;
+				unmap[j++].handle = gnts[i].handle;
+			}
+			if (j != 0) {
+				error = HYPERVISOR_grant_table_op(
+				    GNTTABOP_unmap_grant_ref, unmap, j);
+				if (error != 0)
+					panic("Unable to unmap grants (%d)",
+					    error);
+			}
 			return (EACCES);
 		}
 		xbb->ring_config.handle[ring_idx]   = gnt->handle;
@@ -3391,7 +3412,6 @@ xbb_shutdown(struct xbb_softc *xbb)
 		free(xbb->hotplug_watch.node, M_XENBLOCKBACK);
 		xbb->hotplug_watch.node = NULL;
 	}
-	xbb->hotplug_done = false;
 
 	if (xenbus_get_state(xbb->dev) < XenbusStateClosing)
 		xenbus_set_state(xbb->dev, XenbusStateClosing);
@@ -3576,39 +3596,14 @@ xbb_setup_sysctl(struct xbb_softc *xbb)
 }
 
 static void
-xbb_attach_disk(struct xs_watch *watch, const char **vec, unsigned int len)
+xbb_attach_disk(device_t dev)
 {
-	device_t		 dev;
 	struct xbb_softc	*xbb;
 	int			 error;
 
-	dev = (device_t) watch->callback_data;
 	xbb = device_get_softc(dev);
 
-	error = xs_gather(XST_NIL, xenbus_get_node(dev), "physical-device-path",
-	    NULL, &xbb->dev_name, NULL);
-	if (error != 0)
-		return;
-
-	xs_unregister_watch(watch);
-	free(watch->node, M_XENBLOCKBACK);
-	watch->node = NULL;
-
-	/* Collect physical device information. */
-	error = xs_gather(XST_NIL, xenbus_get_otherend_path(xbb->dev),
-			  "device-type", NULL, &xbb->dev_type,
-			  NULL);
-	if (error != 0)
-		xbb->dev_type = NULL;
-
-	error = xs_gather(XST_NIL, xenbus_get_node(dev),
-                          "mode", NULL, &xbb->dev_mode,
-                          NULL);
-	if (error != 0) {
-		xbb_attach_failed(xbb, error, "reading backend fields at %s",
-				  xenbus_get_node(dev));
-                return;
-        }
+	KASSERT(xbb->hotplug_done, ("Missing hotplug execution"));
 
 	/* Parse fopen style mode flags. */
 	if (strchr(xbb->dev_mode, 'w') == NULL)
@@ -3672,11 +3667,46 @@ xbb_attach_disk(struct xs_watch *watch, const char **vec, unsigned int len)
 		return;
 	}
 
-	xbb->hotplug_done = true;
-
 	/* The front end might be waiting for the backend, attach if so. */
 	if (xenbus_get_otherend_state(xbb->dev) == XenbusStateInitialised)
 		xbb_connect(xbb);
+}
+
+static void
+xbb_attach_cb(struct xs_watch *watch, const char **vec, unsigned int len)
+{
+	device_t dev;
+	struct xbb_softc *xbb;
+	int error;
+
+	dev = (device_t)watch->callback_data;
+	xbb = device_get_softc(dev);
+
+	error = xs_gather(XST_NIL, xenbus_get_node(dev), "physical-device-path",
+	    NULL, &xbb->dev_name, NULL);
+	if (error != 0)
+		return;
+
+	xs_unregister_watch(watch);
+	free(watch->node, M_XENBLOCKBACK);
+	watch->node = NULL;
+	xbb->hotplug_done = true;
+
+	/* Collect physical device information. */
+	error = xs_gather(XST_NIL, xenbus_get_otherend_path(dev), "device-type",
+	    NULL, &xbb->dev_type, NULL);
+	if (error != 0)
+		xbb->dev_type = NULL;
+
+	error = xs_gather(XST_NIL, xenbus_get_node(dev), "mode", NULL,
+	   &xbb->dev_mode, NULL);
+	if (error != 0) {
+		xbb_attach_failed(xbb, error, "reading backend fields at %s",
+		    xenbus_get_node(dev));
+		return;
+	}
+
+	xbb_attach_disk(dev);
 }
 
 /**
@@ -3736,16 +3766,29 @@ xbb_attach(device_t dev)
 		return (error);
 	}
 
+	/* Tell the toolstack blkback has attached. */
+	xenbus_set_state(dev, XenbusStateInitWait);
+
+	if (xbb->hotplug_done) {
+		xbb_attach_disk(dev);
+		return (0);
+	}
+
 	/*
 	 * We need to wait for hotplug script execution before
 	 * moving forward.
 	 */
-	KASSERT(!xbb->hotplug_done, ("Hotplug scripts already executed"));
 	watch_path = xs_join(xenbus_get_node(xbb->dev), "physical-device-path");
 	xbb->hotplug_watch.callback_data = (uintptr_t)dev;
-	xbb->hotplug_watch.callback = xbb_attach_disk;
+	xbb->hotplug_watch.callback = xbb_attach_cb;
 	KASSERT(xbb->hotplug_watch.node == NULL, ("watch node already setup"));
 	xbb->hotplug_watch.node = strdup(sbuf_data(watch_path), M_XENBLOCKBACK);
+	/*
+	 * We don't care about the path updated, just about the value changes
+	 * on that single node, hence there's no need to queue more that one
+	 * event.
+	 */
+	xbb->hotplug_watch.max_pending = 1;
 	sbuf_delete(watch_path);
 	error = xs_register_watch(&xbb->hotplug_watch);
 	if (error != 0) {
@@ -3754,9 +3797,6 @@ xbb_attach(device_t dev)
 		free(xbb->hotplug_watch.node, M_XENBLOCKBACK);
 		return (error);
 	}
-
-	/* Tell the toolstack blkback has attached. */
-	xenbus_set_state(dev, XenbusStateInitWait);
 
 	return (0);
 }

@@ -184,7 +184,7 @@ int	kern_kldload(struct thread *td, const char *file, int *fileid);
 int	kern_kldstat(struct thread *td, int fileid, struct kld_file_stat *stat);
 int	kern_kldunload(struct thread *td, int fileid, int flags);
 int	kern_linkat(struct thread *td, int fd1, int fd2, const char *path1,
-	    const char *path2, enum uio_seg segflg, int follow);
+	    const char *path2, enum uio_seg segflg, int flag);
 int	kern_listen(struct thread *td, int s, int backlog);
 int	kern_lseek(struct thread *td, int fd, off_t offset, int whence);
 int	kern_lutimes(struct thread *td, const char *path, enum uio_seg pathseg,
@@ -201,12 +201,10 @@ int	kern_mknodat(struct thread *td, int fd, const char *path,
 	    enum uio_seg pathseg, int mode, dev_t dev);
 int	kern_mlock(struct proc *proc, struct ucred *cred, uintptr_t addr,
 	    size_t len);
-int	kern_mmap(struct thread *td, uintptr_t addr, size_t len, int prot,
-	    int flags, int fd, off_t pos);
+int	kern_mmap(struct thread *td, const struct mmap_req *mrp);
 int	kern_mmap_racct_check(struct thread *td, struct vm_map *map,
 	    vm_size_t size);
 int	kern_mmap_maxprot(struct proc *p, int prot);
-int	kern_mmap_req(struct thread *td, const struct mmap_req *mrp);
 int	kern_mprotect(struct thread *td, uintptr_t addr, size_t size, int prot);
 int	kern_msgctl(struct thread *, int, int, struct msqid_ds *);
 int	kern_msgrcv(struct thread *, int, void *, size_t, long, int, long *);
@@ -227,6 +225,9 @@ int	kern_pipe(struct thread *td, int fildes[2], int flags,
 	    struct filecaps *fcaps1, struct filecaps *fcaps2);
 int	kern_poll(struct thread *td, struct pollfd *fds, u_int nfds,
 	    struct timespec *tsp, sigset_t *uset);
+int	kern_poll_kfds(struct thread *td, struct pollfd *fds, u_int nfds,
+	    struct timespec *tsp, sigset_t *uset);
+bool	kern_poll_maxfds(u_int nfds);
 int	kern_posix_error(struct thread *td, int error);
 int	kern_posix_fadvise(struct thread *td, int fd, off_t offset, off_t len,
 	    int advice);
@@ -304,6 +305,7 @@ int	kern_socket(struct thread *td, int domain, int type, int protocol);
 int	kern_statat(struct thread *td, int flag, int fd, const char *path,
 	    enum uio_seg pathseg, struct stat *sbp,
 	    void (*hook)(struct vnode *vp, struct stat *sbp));
+int	kern_specialfd(struct thread *td, int type, void *arg);
 int	kern_statfs(struct thread *td, const char *path, enum uio_seg pathseg,
 	    struct statfs *buf);
 int	kern_symlinkat(struct thread *td, const char *path1, int fd,

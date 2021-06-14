@@ -775,7 +775,7 @@ PLIST(uart3_p)= {"clk_uart3_div", "clk_uart3_frac", "xin24m"};
 static struct rk_clk rk3399_clks[] = {
 	/* External clocks */
 	LINK("xin24m"),
-	FRATE(0, "xin32k", 32768),
+	LINK("xin32k"),
 	FFACT(0, "xin12m", "xin24m", 1, 2),
 	FRATE(0, "clkin_i2s", 0),
 	FRATE(0, "pclkin_cif", 0),
@@ -964,19 +964,19 @@ static struct rk_clk rk3399_clks[] = {
 	    27, 0, 10,	15, 1),
 
 	/* CRU_CLKSEL_CON28 */
-	MUX(0, "clk_i2s0_mux", i2s0_p, 0,
+	MUX(0, "clk_i2s0_mux", i2s0_p, RK_CLK_MUX_REPARENT,
 	    28, 8, 2),
 	COMP(0, "clk_i2s0_div_c", pll_src_cpll_gpll_p, 0,
 	    28, 0, 7,	7, 1),
 
 	/* CRU_CLKSEL_CON29 */
-	MUX(0, "clk_i2s1_mux", i2s1_p, 0,
+	MUX(0, "clk_i2s1_mux", i2s1_p, RK_CLK_MUX_REPARENT,
 	    29,		8, 2),
 	COMP(0, "clk_i2s1_div_c", pll_src_cpll_gpll_p, 0,
 	    29, 0, 7,	7, 1),
 
 	/* CRU_CLKSEL_CON30 */
-	MUX(0, "clk_i2s2_mux", i2s2_p, 0,
+	MUX(0, "clk_i2s2_mux", i2s2_p, RK_CLK_MUX_REPARENT,
 	    30,		8, 2),
 	COMP(0, "clk_i2s2_div_c", pll_src_cpll_gpll_p, 0,
 	    30, 0, 7,	7, 1),

@@ -99,10 +99,10 @@ __FBSDID("$FreeBSD$");
 #define	AP_BOOTPT_SZ		(PAGE_SIZE * 4)
 
 /* Temporary variables for init_secondary()  */
-char *doublefault_stack;
-char *mce_stack;
-char *nmi_stack;
-char *dbg_stack;
+static char *doublefault_stack;
+static char *mce_stack;
+static char *nmi_stack;
+static char *dbg_stack;
 
 extern u_int mptramp_la57;
 
@@ -245,7 +245,7 @@ cpu_mp_start(void)
 	mptramp_la57 = la57;
 
 	/* Start each Application Processor */
-	init_ops.start_all_aps();
+	start_all_aps();
 
 	set_interrupt_apic_ids();
 
@@ -397,7 +397,7 @@ mp_realloc_pcpu(int cpuid, int domain)
  * start each AP in our list
  */
 int
-native_start_all_aps(void)
+start_all_aps(void)
 {
 	u_int64_t *pt5, *pt4, *pt3, *pt2;
 	u_int32_t mpbioswarmvec;
@@ -660,6 +660,7 @@ smp_targeted_tlb_shootdown(cpuset_t mask, pmap_t pmap, vm_offset_t addr1,
 	cpuset_t other_cpus, mask1;
 	uint32_t generation, *p_cpudone;
 	int cpu;
+	bool is_all;
 
 	/*
 	 * It is not necessary to signal other CPUs while booting or
@@ -673,14 +674,10 @@ smp_targeted_tlb_shootdown(cpuset_t mask, pmap_t pmap, vm_offset_t addr1,
 	/*
 	 * Check for other cpus.  Return if none.
 	 */
-	if (CPU_ISFULLSET(&mask)) {
-		if (mp_ncpus <= 1)
-			goto local_cb;
-	} else {
-		CPU_CLR(PCPU_GET(cpuid), &mask);
-		if (CPU_EMPTY(&mask))
-			goto local_cb;
-	}
+	is_all = !CPU_CMP(&mask, &all_cpus);
+	CPU_CLR(PCPU_GET(cpuid), &mask);
+	if (CPU_EMPTY(&mask))
+		goto local_cb;
 
 	/*
 	 * Initiator must have interrupts enabled, which prevents
@@ -719,7 +716,7 @@ smp_targeted_tlb_shootdown(cpuset_t mask, pmap_t pmap, vm_offset_t addr1,
 	 * (zeroing slot) and reading from it below (wait for
 	 * acknowledgment).
 	 */
-	if (CPU_ISFULLSET(&mask)) {
+	if (is_all) {
 		ipi_all_but_self(IPI_INVLOP);
 		other_cpus = all_cpus;
 		CPU_CLR(PCPU_GET(cpuid), &other_cpus);
@@ -854,7 +851,8 @@ invltlb_invpcid_pti_handler(pmap_t smp_tlb_pmap)
 		invpcid(&d, INVPCID_CTXGLOB);
 	} else {
 		invpcid(&d, INVPCID_CTX);
-		if (smp_tlb_pmap == PCPU_GET(curpmap))
+		if (smp_tlb_pmap == PCPU_GET(curpmap) &&
+		    smp_tlb_pmap->pm_ucr3 != PMAP_NO_CR3)
 			PCPU_SET(ucr3_load_mask, ~CR3_PCID_SAVE);
 	}
 }

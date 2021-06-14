@@ -4,10 +4,10 @@ KERNEL_H = \
 	atomic.h \
 	byteorder.h \
 	callb.h \
+	ccompat.h \
 	ccompile.h \
 	cmn_err.h \
 	condvar.h \
-	console.h \
 	cred.h \
 	ctype.h \
 	debug.h \
@@ -15,11 +15,14 @@ KERNEL_H = \
 	disp.h \
 	dkio.h \
 	extdirent.h \
+	fcntl.h \
 	file.h \
 	freebsd_rwlock.h \
+	idmap.h \
 	inttypes.h \
 	isa_defs.h \
 	kmem_cache.h \
+	kidmap.h \
 	kmem.h \
 	kstat.h \
 	list_impl.h \
@@ -65,6 +68,7 @@ KERNEL_H = \
 	vmsystm.h \
 	vnode_impl.h \
 	vnode.h \
+	wmsum.h \
 	zmod.h \
 	zone.h
 

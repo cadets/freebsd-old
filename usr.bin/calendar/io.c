@@ -122,7 +122,7 @@ cal_fopen(const char *file)
 	unsigned int i;
 	struct stat sb;
 	static bool warned = false;
-	char calendarhome[MAXPATHLEN];
+	static char calendarhome[MAXPATHLEN];
 
 	if (home == NULL || *home == '\0') {
 		warnx("Cannot get home directory");
@@ -405,7 +405,7 @@ cal_parse(FILE *in, FILE *out)
 {
 	char *mylocale = NULL;
 	char *line = NULL;
-	char *buf;
+	char *buf, *bufp;
 	size_t linecap = 0;
 	ssize_t linelen;
 	ssize_t l;
@@ -443,21 +443,27 @@ cal_parse(FILE *in, FILE *out)
 			}
 		}
 		if (!incomment) {
+			bufp = buf;
 			do {
-				c = strstr(buf, "//");
-				cc = strstr(buf, "/*");
+				c = strstr(bufp, "//");
+				cc = strstr(bufp, "/*");
 				if (c != NULL && (cc == NULL || c - cc < 0)) {
-					/* single line comment */
-					*c = '\0';
-					linelen = c - buf;
-					break;
+					bufp = c + 2;
+					/* ignore "//" within string to allow it in an URL */
+					if (c == buf || isspace(c[-1])) {
+						/* single line comment */
+						*c = '\0';
+						linelen = c - buf;
+						break;
+					}
 				} else if (cc != NULL) {
 					c = strstr(cc + 2, "*/");
-					if (c != NULL) {
+					if (c != NULL) { // 'a /* b */ c' -- cc=2, c=7+2
 						/* multi-line comment ending on same line */
 						c += 2;
 						memmove(cc, c, buf + linelen + 1 - c);
 						linelen -= c - cc;
+						bufp = cc;
 					} else {
 						/* multi-line comment */
 						*cc = '\0';

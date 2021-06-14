@@ -45,6 +45,7 @@
 
 #include <linux/bitops.h>
 #include <linux/compiler.h>
+#include <linux/stringify.h>
 #include <linux/errno.h>
 #include <linux/sched.h>
 #include <linux/types.h>
@@ -88,8 +89,23 @@
 #define	S64_C(x) x ## LL
 #define	U64_C(x) x ## ULL
 
+/*
+ * BUILD_BUG_ON() can happen inside functions where _Static_assert() does not
+ * seem to work.  Use old-schoold-ish CTASSERT from before commit
+ * a3085588a88fa58eb5b1eaae471999e1995a29cf but also make sure we do not
+ * end up with an unused typedef or variable. The compiler should optimise
+ * it away entirely.
+ */
+#define	_O_CTASSERT(x)		_O__CTASSERT(x, __LINE__)
+#define	_O__CTASSERT(x, y)	_O___CTASSERT(x, y)
+#define	_O___CTASSERT(x, y)	while (0) { \
+    typedef char __assert_line_ ## y[(x) ? 1 : -1]; \
+    __assert_line_ ## y _x; \
+    _x[0] = '\0'; \
+}
+
 #define	BUILD_BUG()			do { CTASSERT(0); } while (0)
-#define	BUILD_BUG_ON(x)			CTASSERT(!(x))
+#define	BUILD_BUG_ON(x)			_O_CTASSERT(!(x))
 #define	BUILD_BUG_ON_MSG(x, msg)	BUILD_BUG_ON(x)
 #define	BUILD_BUG_ON_NOT_POWER_OF_2(x)	BUILD_BUG_ON(!powerof2(x))
 #define	BUILD_BUG_ON_INVALID(expr)	while (0) { (void)(expr); }
@@ -235,6 +251,8 @@ extern int linuxkpi_debug;
 	log(LOG_CRIT, pr_fmt(fmt), ##__VA_ARGS__)
 #define pr_err(fmt, ...) \
 	log(LOG_ERR, pr_fmt(fmt), ##__VA_ARGS__)
+#define pr_err_once(fmt, ...) \
+	log_once(LOG_ERR, pr_fmt(fmt), ##__VA_ARGS__)
 #define pr_warning(fmt, ...) \
 	log(LOG_WARNING, pr_fmt(fmt), ##__VA_ARGS__)
 #define pr_warn(...) \
@@ -282,6 +300,8 @@ extern int linuxkpi_debug;
 #define	ARRAY_SIZE(x)	(sizeof(x) / sizeof((x)[0]))
 
 #define	u64_to_user_ptr(val)	((void *)(uintptr_t)(val))
+
+#define _RET_IP_		__builtin_return_address(0)
 
 static inline unsigned long long
 simple_strtoull(const char *cp, char **endp, unsigned int base)
@@ -592,5 +612,47 @@ linux_ratelimited(linux_ratelimit_t *rl)
 
 #define	TAINT_WARN	0
 #define	test_taint(x)	(0)
+
+/*
+ * Checking if an option is defined would be easy if we could do CPP inside CPP.
+ * The defined case whether -Dxxx or -Dxxx=1 are easy to deal with.  In either
+ * case the defined value is "1". A more general -Dxxx=<c> case will require
+ * more effort to deal with all possible "true" values. Hope we do not have
+ * to do this as well.
+ * The real problem is the undefined case.  To avoid this problem we do the
+ * concat/varargs trick: "yyy" ## xxx can make two arguments if xxx is "1"
+ * by having a #define for yyy_1 which is "ignore,".
+ * Otherwise we will just get "yyy".
+ * Need to be careful about variable substitutions in macros though.
+ * This way we make a (true, false) problem a (don't care, true, false) or a
+ * (don't care true, false).  Then we can use a variadic macro to only select
+ * the always well known and defined argument #2.  And that seems to be
+ * exactly what we need.  Use 1 for true and 0 for false to also allow
+ * #if IS_*() checks pre-compiler checks which do not like #if true.
+ */
+#define ___XAB_1		dontcare,
+#define ___IS_XAB(_ignore, _x, ...)	(_x)
+#define	__IS_XAB(_x)		___IS_XAB(_x 1, 0)
+#define	_IS_XAB(_x)		__IS_XAB(__CONCAT(___XAB_, _x))
+
+/* This is if CONFIG_ccc=y. */
+#define	IS_BUILTIN(_x)		_IS_XAB(_x)
+/* This is if CONFIG_ccc=m. */
+#define	IS_MODULE(_x)		_IS_XAB(_x ## _MODULE)
+/* This is if CONFIG_ccc is compiled in(=y) or a module(=m). */
+#define	IS_ENABLED(_x)		(IS_BUILTIN(_x) || IS_MODULE(_x))
+/*
+ * This is weird case.  If the CONFIG_ccc is builtin (=y) this returns true;
+ * or if the CONFIG_ccc is a module (=m) and the caller is built as a module
+ * (-DMODULE defined) this returns true, but if the callers is not a module
+ * (-DMODULE not defined, which means caller is BUILTIN) then it returns
+ * false.  In other words, a module can reach the kernel, a module can reach
+ * a module, but the kernel cannot reach a module, and code never compiled
+ * cannot be reached either.
+ * XXX -- I'd hope the module-to-module case would be handled by a proper
+ * module dependency definition (MODULE_DEPEND() in FreeBSD).
+ */
+#define	IS_REACHABLE(_x)	(IS_BUILTIN(_x) || \
+				    (IS_MODULE(_x) && IS_BUILTIN(MODULE)))
 
 #endif	/* _LINUX_KERNEL_H_ */

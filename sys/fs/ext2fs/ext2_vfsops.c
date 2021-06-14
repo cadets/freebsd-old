@@ -924,6 +924,7 @@ ext2_mountfs(struct vnode *devvp, struct mount *mp)
 	 */
 	e2fs_maxcontig = MAX(1, maxphys / ump->um_e2fs->e2fs_bsize);
 	ump->um_e2fs->e2fs_contigsumsize = MIN(e2fs_maxcontig, EXT2_MAXCONTIG);
+	ump->um_e2fs->e2fs_maxsymlinklen = EXT2_MAXSYMLINKLEN;
 	if (ump->um_e2fs->e2fs_contigsumsize > 0) {
 		size = ump->um_e2fs->e2fs_gcount * sizeof(int32_t);
 		ump->um_e2fs->e2fs_maxcluster = malloc(size, M_EXT2MNT, M_WAITOK);
@@ -957,7 +958,6 @@ ext2_mountfs(struct vnode *devvp, struct mount *mp)
 	mp->mnt_data = ump;
 	mp->mnt_stat.f_fsid.val[0] = dev2udev(dev);
 	mp->mnt_stat.f_fsid.val[1] = mp->mnt_vfc->vfc_typenum;
-	mp->mnt_maxsymlinklen = EXT2_MAXSYMLINKLEN;
 	MNT_ILOCK(mp);
 	mp->mnt_flag |= MNT_LOCAL;
 	MNT_IUNLOCK(mp);
@@ -1229,6 +1229,7 @@ ext2_vget(struct mount *mp, ino_t ino, int flags, struct vnode **vpp)
 	ip->i_e2fs = fs = ump->um_e2fs;
 	ip->i_ump = ump;
 	ip->i_number = ino;
+	cluster_init_vn(&ip->i_clusterw);
 
 	lockmgr(vp->v_vnlock, LK_EXCLUSIVE, NULL);
 	error = insmntque(vp, mp);
@@ -1282,11 +1283,18 @@ ext2_vget(struct mount *mp, ino_t ino, int flags, struct vnode **vpp)
 		for (i = used_blocks; i < EXT2_NDIR_BLOCKS; i++)
 			ip->i_db[i] = 0;
 	}
+
+	bqrelse(bp);
+
 #ifdef EXT2FS_PRINT_EXTENTS
 	ext2_print_inode(ip);
-	ext4_ext_print_extent_tree_status(ip);
+	error = ext4_ext_walk(ip);
+	if (error) {
+		vput(vp);
+		*vpp = NULL;
+		return (error);
+	}
 #endif
-	bqrelse(bp);
 
 	/*
 	 * Initialize the vnode from the inode, check for aliases.

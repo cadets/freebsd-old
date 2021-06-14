@@ -403,6 +403,8 @@ struct da_softc {
 		softc->delete_available &= ~(1 << delete_method);	\
 	}
 
+static uma_zone_t da_ccb_zone;
+
 struct da_quirk_entry {
 	struct scsi_inquiry_pattern inq_pat;
 	da_quirks quirks;
@@ -1557,6 +1559,7 @@ static sbintime_t da_default_softtimeout = DA_DEFAULT_SOFTTIMEOUT;
 static int da_send_ordered = DA_DEFAULT_SEND_ORDERED;
 static int da_disable_wp_detection = 0;
 static int da_enable_biospeedup = 1;
+static int da_enable_uma_ccbs = 0;
 
 static SYSCTL_NODE(_kern_cam, OID_AUTO, da, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
     "CAM Direct Access Disk driver");
@@ -1573,6 +1576,8 @@ SYSCTL_INT(_kern_cam_da, OID_AUTO, disable_wp_detection, CTLFLAG_RWTUN,
 	   "Disable detection of write-protected disks");
 SYSCTL_INT(_kern_cam_da, OID_AUTO, enable_biospeedup, CTLFLAG_RDTUN,
 	    &da_enable_biospeedup, 0, "Enable BIO_SPEEDUP processing");
+SYSCTL_INT(_kern_cam_da, OID_AUTO, enable_uma_ccbs, CTLFLAG_RWTUN,
+	    &da_enable_uma_ccbs, 0, "Use UMA for CCBs");
 
 SYSCTL_PROC(_kern_cam_da, OID_AUTO, default_softtimeout,
     CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, NULL, 0,
@@ -1995,6 +2000,10 @@ static void
 dainit(void)
 {
 	cam_status status;
+
+	da_ccb_zone = uma_zcreate("da_ccb",
+	    sizeof(struct ccb_scsiio), NULL, NULL, NULL, NULL,
+	    UMA_ALIGN_PTR, 0);
 
 	/*
 	 * Install a global async callback.  This callback will
@@ -2849,7 +2858,16 @@ daregister(struct cam_periph *periph, void *arg)
 	TASK_INIT(&softc->sysctl_task, 0, dasysctlinit, periph);
 
 	/*
-	 * Take an exclusive section lock qon the periph while dastart is called
+	 * Let XPT know we can use UMA-allocated CCBs.
+	 */
+	if (da_enable_uma_ccbs) {
+		KASSERT(da_ccb_zone != NULL,
+		    ("%s: NULL da_ccb_zone", __func__));
+		periph->ccb_zone = da_ccb_zone;
+	}
+
+	/*
+	 * Take an exclusive section lock on the periph while dastart is called
 	 * to finish the probe.  The lock will be dropped in dadone at the end
 	 * of probe. This locks out daopen and daclose from racing with the
 	 * probe.
@@ -2914,7 +2932,8 @@ daregister(struct cam_periph *periph, void *arg)
 	softc->disk->d_open = daopen;
 	softc->disk->d_close = daclose;
 	softc->disk->d_strategy = dastrategy;
-	softc->disk->d_dump = dadump;
+	if (cam_sim_pollable(periph->sim))
+		softc->disk->d_dump = dadump;
 	softc->disk->d_getattr = dagetattr;
 	softc->disk->d_gone = dadiskgonecb;
 	softc->disk->d_name = "da";
@@ -3649,14 +3668,14 @@ out:
 	}
 	case DA_STATE_PROBE_BDC:
 	{
-		struct scsi_vpd_block_characteristics *bdc;
+		struct scsi_vpd_block_device_characteristics *bdc;
 
 		if (!scsi_vpd_supported_page(periph, SVPD_BDC)) {
 			softc->state = DA_STATE_PROBE_ATA;
 			goto skipstate;
 		}
 
-		bdc = (struct scsi_vpd_block_characteristics *)
+		bdc = (struct scsi_vpd_block_device_characteristics *)
 			malloc(sizeof(*bdc), M_SCSIDA, M_NOWAIT|M_ZERO);
 
 		if (bdc == NULL) {
@@ -4878,6 +4897,7 @@ dadone_proberc(struct cam_periph *periph, union ccb *done_ccb)
 						 /*timeout*/0,
 						 /*getcount_only*/0);
 
+			memset(&cgd, 0, sizeof(cgd));
 			xpt_setup_ccb(&cgd.ccb_h, done_ccb->ccb_h.path,
 				      CAM_PRIORITY_NORMAL);
 			cgd.ccb_h.func_code = XPT_GDEV_TYPE;
@@ -5207,8 +5227,7 @@ dadone_probebdc(struct cam_periph *periph, union ccb *done_ccb)
 		    medium_rotation_rate)) {
 			softc->disk->d_rotation_rate =
 				scsi_2btoul(bdc->medium_rotation_rate);
-			if (softc->disk->d_rotation_rate ==
-			    SVPD_BDC_RATE_NON_ROTATING) {
+			if (softc->disk->d_rotation_rate == SVPD_NON_ROTATING) {
 				cam_iosched_set_sort_queue(
 				    softc->cam_iosched, 0);
 				softc->flags &= ~DA_FLAG_ROTATING;
@@ -6125,6 +6144,7 @@ dasetgeom(struct cam_periph *periph, uint32_t block_len, uint64_t maxsector,
 	 * up with something that will make this a bootable
 	 * device.
 	 */
+	memset(&ccg, 0, sizeof(ccg));
 	xpt_setup_ccb(&ccg.ccb_h, periph->path, CAM_PRIORITY_NORMAL);
 	ccg.ccb_h.func_code = XPT_CALC_GEOMETRY;
 	ccg.block_size = dp->secsize;
@@ -6162,6 +6182,7 @@ dasetgeom(struct cam_periph *periph, uint32_t block_len, uint64_t maxsector,
 		  min(sizeof(softc->rcaplong), rcap_len)) != 0)) {
 		struct ccb_dev_advinfo cdai;
 
+		memset(&cdai, 0, sizeof(cdai));
 		xpt_setup_ccb(&cdai.ccb_h, periph->path, CAM_PRIORITY_NORMAL);
 		cdai.ccb_h.func_code = XPT_DEV_ADVINFO;
 		cdai.buftype = CDAI_TYPE_RCAPLONG;

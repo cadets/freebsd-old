@@ -726,6 +726,7 @@ aproberequestdefaultnegotiation(struct cam_periph *periph)
 {
 	struct ccb_trans_settings cts;
 
+	bzero(&cts, sizeof(cts));
 	xpt_setup_ccb(&cts.ccb_h, periph->path, CAM_PRIORITY_NONE);
 	cts.ccb_h.func_code = XPT_GET_TRAN_SETTINGS;
 	cts.type = CTS_TYPE_USER_SETTINGS;
@@ -1693,6 +1694,7 @@ ata_device_transport(struct cam_path *path)
 	    ata_version(ident_buf->version_major) : cpi.transport_version;
 
 	/* Tell the controller what we think */
+	bzero(&cts, sizeof(cts));
 	xpt_setup_ccb(&cts.ccb_h, path, CAM_PRIORITY_NONE);
 	cts.ccb_h.func_code = XPT_SET_TRAN_SETTINGS;
 	cts.type = CTS_TYPE_CURRENT_SETTINGS;
@@ -1792,6 +1794,21 @@ ata_dev_advinfo(union ccb *start_ccb)
 static void
 ata_action(union ccb *start_ccb)
 {
+
+	if (start_ccb->ccb_h.func_code != XPT_ATA_IO) {
+#ifdef notyet
+		KASSERT((start_ccb->ccb_h.alloc_flags & CAM_CCB_FROM_UMA) == 0,
+		    ("%s: ccb %p, func_code %#x should not be allocated "
+		    "from UMA zone\n",
+		    __func__, start_ccb, start_ccb->ccb_h.func_code));
+#else
+		if ((start_ccb->ccb_h.alloc_flags & CAM_CCB_FROM_UMA) != 0) {
+			printf("%s: ccb %p, func_code %#x should not be allocated "
+			    "from UMA zone\n",
+			    __func__, start_ccb, start_ccb->ccb_h.func_code);
+		}
+#endif
+	}
 
 	switch (start_ccb->ccb_h.func_code) {
 	case XPT_SET_TRAN_SETTINGS:
@@ -2125,6 +2142,7 @@ ata_announce_periph(struct cam_periph *periph)
 	struct ccb_trans_settings cts;
 	u_int speed, mb;
 
+	bzero(&cts, sizeof(cts));
 	_ata_announce_periph(periph, &cts, &speed);
 	if ((cts.ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP)
 		return;
@@ -2177,6 +2195,7 @@ ata_announce_periph_sbuf(struct cam_periph *periph, struct sbuf *sb)
 	struct ccb_trans_settings cts;
 	u_int speed, mb;
 
+	bzero(&cts, sizeof(cts));
 	_ata_announce_periph(periph, &cts, &speed);
 	if ((cts.ccb_h.status & CAM_STATUS_MASK) != CAM_REQ_CMP)
 		return;
