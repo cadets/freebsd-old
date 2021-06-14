@@ -25,7 +25,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd November 29, 2018
+.Dd February 23, 2021
 .Dt FHLINK 2
 .Os
 .Sh NAME
@@ -95,26 +95,6 @@ the directory associated with the file descriptor
 .Fa tofd
 instead of the current working directory.
 .Pp
-Values for
-.Fa flag
-are constructed by a bitwise-inclusive OR of flags from the following
-list, defined in
-.In fcntl.h :
-.Bl -tag -width indent
-.It Dv AT_SYMLINK_FOLLOW
-If
-.Fa fhp
-names a symbolic link, a new link for the target of the symbolic link is
-created.
-.It Dv AT_BENEATH
-Only allow to link to a file which is beneath of the topping directory.
-See the description of the
-.Dv O_BENEATH
-flag in the
-.Xr open 2
-manual page.
-.El
-.Pp
 If
 .Fn fhlinkat
 is passed the special value
@@ -171,7 +151,7 @@ The link count of the file pointed at by
 .Fa fhp
 would exceed 32767.
 .It Bq Er EACCES
-A component of 
+A component of
 .Fa to
 prefix denies search permission.
 .It Bq Er EACCES
@@ -219,6 +199,8 @@ containing the directory has been exhausted.
 .It Bq Er EIO
 An I/O error occurred while reading from or writing to
 the file system to make the directory entry.
+.It Bq Er EINTEGRITY
+Corrupted data was detected while reading from the file system.
 .It Bq Er EROFS
 The requested link requires writing in a directory on a read-only file
 system.
@@ -263,6 +245,6 @@ is not
 nor a file descriptor associated with a directory.
 .El
 .Sh SEE ALSO
-.Xr fhstat 2 ,
-.Xr fhreadlink 2 ,
 .Xr fhopen 2 ,
+.Xr fhreadlink 2 ,
+.Xr fhstat 2

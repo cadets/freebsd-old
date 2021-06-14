@@ -38,6 +38,7 @@
 #include <sys/ucred.h>
 #include <sys/queue.h>
 #ifdef _KERNEL
+#include <sys/types.h>
 #include <sys/lock.h>
 #include <sys/lockmgr.h>
 #include <sys/tslog.h>
@@ -52,9 +53,14 @@
 
 typedef struct fsid { int32_t val[2]; } fsid_t;	/* filesystem id type */
 
+#define fsidcmp(a, b) memcmp((a), (b), sizeof(fsid_t))
+
 /*
  * File identifier.
  * These are unique per filesystem on a single machine.
+ *
+ * Note that the offset of fid_data is 4 bytes, so care must be taken to avoid
+ * undefined behavior accessing unaligned fields within an embedded struct.
  */
 #define	MAXFIDSZ	16
 
@@ -158,7 +164,9 @@ struct ostatfs {
 	 */
 	long	f_spare[2];		/* unused spare */
 };
+#endif	/* _KERNEL */
 
+#if defined(_WANT_MOUNT) || defined(_KERNEL)
 TAILQ_HEAD(vnodelst, vnode);
 
 /* Mount options list */
@@ -172,6 +180,16 @@ struct vfsopt {
 	int	seen;
 };
 
+struct mount_pcpu {
+	int		mntp_thread_in_ops;
+	int		mntp_ref;
+	int		mntp_lockref;
+	int		mntp_writeopcount;
+};
+
+_Static_assert(sizeof(struct mount_pcpu) == 16,
+    "the struct is allocated from pcpu 16 zone");
+
 /*
  * Structure per mounted filesystem.  Each mounted filesystem has an
  * array of operations and an instance record.  The filesystems are
@@ -181,29 +199,32 @@ struct vfsopt {
  * 	l - mnt_listmtx
  *	m - mountlist_mtx
  *	i - interlock
+ *	i* - interlock of uppers' list head
  *	v - vnode freelist mutex
  *
  * Unmarked fields are considered stable as long as a ref is held.
  *
  */
 struct mount {
-	struct mtx	mnt_mtx;		/* mount structure interlock */
+	int 		mnt_vfs_ops;		/* (i) pending vfs ops */
+	int		mnt_kern_flag;		/* (i) kernel only flags */
+	uint64_t	mnt_flag;		/* (i) flags shared with user */
+	struct mount_pcpu *mnt_pcpu;		/* per-CPU data */
+	struct vnode	*mnt_rootvnode;
+	struct vnode	*mnt_vnodecovered;	/* vnode we mounted on */
+	struct vfsops	*mnt_op;		/* operations on fs */
+	struct vfsconf	*mnt_vfc;		/* configuration info */
+	struct mtx __aligned(CACHE_LINE_SIZE)	mnt_mtx; /* mount structure interlock */
 	int		mnt_gen;		/* struct mount generation */
 #define	mnt_startzero	mnt_list
 	TAILQ_ENTRY(mount) mnt_list;		/* (m) mount list */
-	struct vfsops	*mnt_op;		/* operations on fs */
-	struct vfsconf	*mnt_vfc;		/* configuration info */
-	struct vnode	*mnt_vnodecovered;	/* vnode we mounted on */
 	struct vnode	*mnt_syncer;		/* syncer vnode */
 	int		mnt_ref;		/* (i) Reference count */
 	struct vnodelst	mnt_nvnodelist;		/* (i) list of vnodes */
 	int		mnt_nvnodelistsize;	/* (i) # of vnodes */
 	int		mnt_writeopcount;	/* (i) write syscalls pending */
-	int		mnt_kern_flag;		/* (i) kernel only flags */
-	uint64_t	mnt_flag;		/* (i) flags shared with user */
 	struct vfsoptlist *mnt_opt;		/* current mount options */
 	struct vfsoptlist *mnt_optnew;		/* new options passed to fs */
-	int		mnt_maxsymlinklen;	/* max size of short symlink */
 	struct statfs	mnt_stat;		/* cache of filesystem stats */
 	struct ucred	*mnt_cred;		/* credentials of mounter */
 	void *		mnt_data;		/* private data */
@@ -221,17 +242,14 @@ struct mount {
 	struct mtx	mnt_listmtx;
 	struct vnodelst	mnt_lazyvnodelist;	/* (l) list of lazy vnodes */
 	int		mnt_lazyvnodelistsize;	/* (l) # of lazy vnodes */
+	int		mnt_pinned_count;	/* (i) unmount prevented */
 	struct lock	mnt_explock;		/* vfs_export walkers lock */
-	TAILQ_ENTRY(mount) mnt_upper_link;	/* (m) we in the all uppers */
-	TAILQ_HEAD(, mount) mnt_uppers;		/* (m) upper mounts over us*/
-	int __aligned(CACHE_LINE_SIZE)	mnt_vfs_ops;/* (i) pending vfs ops */
-	int		*mnt_thread_in_ops_pcpu;
-	int		*mnt_ref_pcpu;
-	int		*mnt_lockref_pcpu;
-	int		*mnt_writeopcount_pcpu;
-	struct vnode	*mnt_rootvnode;
+	TAILQ_ENTRY(mount) mnt_upper_link;	/* (i*) we in the all uppers */
+	TAILQ_HEAD(, mount) mnt_uppers;		/* (i) upper mounts over us */
 };
+#endif	/* _WANT_MOUNT || _KERNEL */
 
+#ifdef _KERNEL
 /*
  * Definitions for MNT_VNODE_FOREACH_ALL.
  */
@@ -289,6 +307,45 @@ void          __mnt_vnode_markerfree_lazy(struct vnode **mvp, struct mount *mp);
 
 #endif /* _KERNEL */
 
+#if defined(_WANT_MNTOPTNAMES) || defined(_KERNEL)
+struct mntoptnames {
+	uint64_t o_opt;
+	const char *o_name;
+};
+#define MNTOPT_NAMES							\
+	{ MNT_ASYNC,		"asynchronous" },			\
+	{ MNT_EXPORTED,		"NFS exported" },			\
+	{ MNT_LOCAL,		"local" },				\
+	{ MNT_NOATIME,		"noatime" },				\
+	{ MNT_NOEXEC,		"noexec" },				\
+	{ MNT_NOSUID,		"nosuid" },				\
+	{ MNT_NOSYMFOLLOW,	"nosymfollow" },			\
+	{ MNT_QUOTA,		"with quotas" },			\
+	{ MNT_RDONLY,		"read-only" },				\
+	{ MNT_SYNCHRONOUS,	"synchronous" },			\
+	{ MNT_UNION,		"union" },				\
+	{ MNT_NOCLUSTERR,	"noclusterr" },				\
+	{ MNT_NOCLUSTERW,	"noclusterw" },				\
+	{ MNT_SUIDDIR,		"suiddir" },				\
+	{ MNT_SOFTDEP,		"soft-updates" },			\
+	{ MNT_SUJ,		"journaled soft-updates" },		\
+	{ MNT_MULTILABEL,	"multilabel" },				\
+	{ MNT_ACLS,		"acls" },				\
+	{ MNT_NFS4ACLS,		"nfsv4acls" },				\
+	{ MNT_GJOURNAL,		"gjournal" },				\
+	{ MNT_AUTOMOUNTED,	"automounted" },			\
+	{ MNT_VERIFIED,		"verified" },				\
+	{ MNT_UNTRUSTED,	"untrusted" },				\
+	{ MNT_NOCOVER,		"nocover" },				\
+	{ MNT_EMPTYDIR,		"emptydir" },				\
+	{ MNT_UPDATE,		"update" },				\
+	{ MNT_DELEXPORT,	"delexport" },				\
+	{ MNT_RELOAD,		"reload" },				\
+	{ MNT_FORCE,		"force" },				\
+	{ MNT_SNAPSHOT,		"snapshot" },				\
+	{ 0, NULL }
+#endif
+
 /*
  * User specifiable flags, stored in mnt_flag.
  */
@@ -321,6 +378,9 @@ void          __mnt_vnode_markerfree_lazy(struct vnode **mvp, struct mount *mp);
 #define	MNT_EXPORTANON	0x0000000000000400ULL	/* anon uid mapping for all */
 #define	MNT_EXKERB	0x0000000000000800ULL	/* exported with Kerberos */
 #define	MNT_EXPUBLIC	0x0000000020000000ULL	/* public export (WebNFS) */
+#define	MNT_EXTLS	0x0000004000000000ULL /* require TLS */
+#define	MNT_EXTLSCERT	0x0000008000000000ULL /* require TLS with client cert */
+#define	MNT_EXTLSCERTUSER 0x0000010000000000ULL /* require TLS with user cert */
 
 /*
  * Flags set by internal operations,
@@ -415,6 +475,8 @@ void          __mnt_vnode_markerfree_lazy(struct vnode **mvp, struct mount *mp);
 #define	MNTK_TEXT_REFS		0x00008000 /* Keep use ref for text */
 #define	MNTK_VMSETSIZE_BUG	0x00010000
 #define	MNTK_UNIONFS	0x00020000	/* A hack for F_ISUNIONSTACK */
+#define	MNTK_FPLOOKUP	0x00040000	/* fast path lookup is supported */
+#define	MNTK_SUSPEND_ALL	0x00080000 /* Suspended by all-fs suspension */
 #define MNTK_NOASYNC	0x00800000	/* disable async */
 #define MNTK_UNMOUNT	0x01000000	/* unmount in progress */
 #define	MNTK_MWAIT	0x02000000	/* waiting for unmount to finish */
@@ -494,13 +556,31 @@ struct oexport_args {
 };
 
 /*
- * Export arguments for local filesystem mount calls.
+ * Not quite so old export arguments with 32bit ex_flags and xucred ex_anon.
  */
 #define	MAXSECFLAVORS	5
-struct export_args {
+struct o2export_args {
 	int	ex_flags;		/* export related flags */
 	uid_t	ex_root;		/* mapping for root uid */
 	struct	xucred ex_anon;		/* mapping for anonymous user */
+	struct	sockaddr *ex_addr;	/* net address to which exported */
+	u_char	ex_addrlen;		/* and the net address length */
+	struct	sockaddr *ex_mask;	/* mask of valid bits in saddr */
+	u_char	ex_masklen;		/* and the smask length */
+	char	*ex_indexfile;		/* index file for WebNFS URLs */
+	int	ex_numsecflavors;	/* security flavor count */
+	int	ex_secflavors[MAXSECFLAVORS]; /* list of security flavors */
+};
+
+/*
+ * Export arguments for local filesystem mount calls.
+ */
+struct export_args {
+	uint64_t ex_flags;		/* export related flags */
+	uid_t	ex_root;		/* mapping for root uid */
+	uid_t	ex_uid;			/* mapping for anonymous user */
+	int	ex_ngroups;
+	gid_t	*ex_groups;
 	struct	sockaddr *ex_addr;	/* net address to which exported */
 	u_char	ex_addrlen;		/* and the net address length */
 	struct	sockaddr *ex_mask;	/* mask of valid bits in saddr */
@@ -681,7 +761,8 @@ struct mntarg;
 typedef int vfs_cmount_t(struct mntarg *ma, void *data, uint64_t flags);
 typedef int vfs_unmount_t(struct mount *mp, int mntflags);
 typedef int vfs_root_t(struct mount *mp, int flags, struct vnode **vpp);
-typedef	int vfs_quotactl_t(struct mount *mp, int cmds, uid_t uid, void *arg);
+typedef	int vfs_quotactl_t(struct mount *mp, int cmds, uid_t uid, void *arg,
+		    bool *mp_busy);
 typedef	int vfs_statfs_t(struct mount *mp, struct statfs *sbp);
 typedef	int vfs_sync_t(struct mount *mp, int waitfor);
 typedef	int vfs_vget_t(struct mount *mp, ino_t ino, int flags,
@@ -689,8 +770,8 @@ typedef	int vfs_vget_t(struct mount *mp, ino_t ino, int flags,
 typedef	int vfs_fhtovp_t(struct mount *mp, struct fid *fhp,
 		    int flags, struct vnode **vpp);
 typedef	int vfs_checkexp_t(struct mount *mp, struct sockaddr *nam,
-		    int *extflagsp, struct ucred **credanonp,
-		    int *numsecflavors, int **secflavors);
+		    uint64_t *extflagsp, struct ucred **credanonp,
+		    int *numsecflavors, int *secflavors);
 typedef	int vfs_init_t(struct vfsconf *);
 typedef	int vfs_uninit_t(struct vfsconf *);
 typedef	int vfs_extattrctl_t(struct mount *mp, int cmd,
@@ -754,10 +835,10 @@ vfs_statfs_t	__vfs_statfs;
 	_rc = (*(MP)->mnt_op->vfs_cachedroot)(MP, FLAGS, VPP);		\
 	_rc; })
 
-#define	VFS_QUOTACTL(MP, C, U, A) ({					\
+#define	VFS_QUOTACTL(MP, C, U, A, MP_BUSY) ({				\
 	int _rc;							\
 									\
-	_rc = (*(MP)->mnt_op->vfs_quotactl)(MP, C, U, A);		\
+	_rc = (*(MP)->mnt_op->vfs_quotactl)(MP, C, U, A, MP_BUSY);	\
 	_rc; })
 
 #define	VFS_STATFS(MP, SBP) ({						\
@@ -923,8 +1004,7 @@ void	vfs_mount_error(struct mount *, const char *, ...);
 void	vfs_mountroot(void);			/* mount our root filesystem */
 void	vfs_mountedfrom(struct mount *, const char *from);
 void	vfs_notify_upper(struct vnode *, int);
-void	vfs_oexport_conv(const struct oexport_args *oexp,
-	    struct export_args *exp);
+struct mount *vfs_ref_from_vp(struct vnode *);
 void	vfs_ref(struct mount *);
 void	vfs_rel(struct mount *);
 struct mount *vfs_mount_alloc(struct vnode *, struct vfsconf *, const char *,
@@ -932,14 +1012,18 @@ struct mount *vfs_mount_alloc(struct vnode *, struct vfsconf *, const char *,
 int	vfs_suser(struct mount *, struct thread *);
 void	vfs_unbusy(struct mount *);
 void	vfs_unmountall(void);
+struct mount *vfs_pin_from_vp(struct vnode *);
+void	vfs_unpin(struct mount *);
 extern	TAILQ_HEAD(mntlist, mount) mountlist;	/* mounted filesystem list */
-extern	struct mtx mountlist_mtx;
+extern	struct mtx_padalign mountlist_mtx;
 extern	struct nfs_public nfs_pub;
 extern	struct sx vfsconf_sx;
 #define	vfsconf_lock()		sx_xlock(&vfsconf_sx)
 #define	vfsconf_unlock()	sx_xunlock(&vfsconf_sx)
 #define	vfsconf_slock()		sx_slock(&vfsconf_sx)
 #define	vfsconf_sunlock()	sx_sunlock(&vfsconf_sx)
+struct vnode *mntfs_allocvp(struct mount *, struct vnode *);
+void   mntfs_freevp(struct vnode *);
 
 /*
  * Declarations for these vfs default operations are located in
@@ -982,14 +1066,12 @@ void	vfs_dump_mount_counters(struct mount *);
 enum mount_counter { MNT_COUNT_REF, MNT_COUNT_LOCKREF, MNT_COUNT_WRITEOPCOUNT };
 int	vfs_mount_fetch_counter(struct mount *, enum mount_counter);
 
+void suspend_all_fs(void);
+void resume_all_fs(void);
+
 /*
- * We mark ourselves as entering the section and post a sequentially consistent
- * fence, meaning the store is completed before we get into the section and
- * mnt_vfs_ops is only read afterwards.
- *
- * Any thread transitioning the ops counter 0->1 does things in the opposite
- * order - first bumps the count, posts a sequentially consistent fence and
- * observes all CPUs not executing within the section.
+ * Code transitioning mnt_vfs_ops to > 0 issues IPIs until it observes
+ * all CPUs not executing code enclosed by thread_in_ops_pcpu variable.
  *
  * This provides an invariant that by the time the last CPU is observed not
  * executing, everyone else entering will see the counter > 0 and exit.
@@ -999,39 +1081,58 @@ int	vfs_mount_fetch_counter(struct mount *, enum mount_counter);
  * before making any changes or only make changes safe while the section is
  * executed.
  */
+#define	vfs_mount_pcpu(mp)		zpcpu_get(mp->mnt_pcpu)
+#define	vfs_mount_pcpu_remote(mp, cpu)	zpcpu_get_cpu(mp->mnt_pcpu, cpu)
+
 #define vfs_op_thread_entered(mp) ({				\
 	MPASS(curthread->td_critnest > 0);			\
-	*(int *)zpcpu_get(mp->mnt_thread_in_ops_pcpu) == 1;	\
+	struct mount_pcpu *_mpcpu = vfs_mount_pcpu(mp);		\
+	_mpcpu->mntp_thread_in_ops == 1;			\
 })
 
-#define vfs_op_thread_enter(mp) ({				\
-	bool _retval = true;					\
-	critical_enter();					\
-	MPASS(!vfs_op_thread_entered(mp));			\
-	*(int *)zpcpu_get(mp->mnt_thread_in_ops_pcpu) = 1;	\
-	atomic_thread_fence_seq_cst();				\
+#define vfs_op_thread_enter_crit(mp, _mpcpu) ({			\
+	bool _retval_crit = true;				\
+	MPASS(curthread->td_critnest > 0);			\
+	_mpcpu = vfs_mount_pcpu(mp);				\
+	MPASS(mpcpu->mntp_thread_in_ops == 0);			\
+	_mpcpu->mntp_thread_in_ops = 1;				\
+	atomic_interrupt_fence();					\
 	if (__predict_false(mp->mnt_vfs_ops > 0)) {		\
-		vfs_op_thread_exit(mp);				\
-		_retval = false;				\
+		vfs_op_thread_exit_crit(mp, _mpcpu);		\
+		_retval_crit = false;				\
 	}							\
+	_retval_crit;						\
+})
+
+#define vfs_op_thread_enter(mp, _mpcpu) ({			\
+	bool _retval;						\
+	critical_enter();					\
+	_retval = vfs_op_thread_enter_crit(mp, _mpcpu);		\
+	if (__predict_false(!_retval))				\
+		critical_exit();				\
 	_retval;						\
 })
 
-#define vfs_op_thread_exit(mp) do {				\
-	MPASS(vfs_op_thread_entered(mp));			\
-	atomic_thread_fence_rel();				\
-	*(int *)zpcpu_get(mp->mnt_thread_in_ops_pcpu) = 0;	\
+#define vfs_op_thread_exit_crit(mp, _mpcpu) do {		\
+	MPASS(_mpcpu == vfs_mount_pcpu(mp));			\
+	MPASS(_mpcpu->mntp_thread_in_ops == 1);			\
+	atomic_interrupt_fence();					\
+	_mpcpu->mntp_thread_in_ops = 0;				\
+} while (0)
+
+#define vfs_op_thread_exit(mp, _mpcpu) do {			\
+	vfs_op_thread_exit_crit(mp, _mpcpu);			\
 	critical_exit();					\
 } while (0)
 
-#define vfs_mp_count_add_pcpu(mp, count, val) do {		\
-	MPASS(vfs_op_thread_entered(mp));			\
-	(*(int *)zpcpu_get(mp->mnt_##count##_pcpu)) += val;	\
+#define vfs_mp_count_add_pcpu(_mpcpu, count, val) do {		\
+	MPASS(_mpcpu->mntp_thread_in_ops == 1);			\
+	_mpcpu->mntp_##count += val;				\
 } while (0)
 
-#define vfs_mp_count_sub_pcpu(mp, count, val) do {		\
-	MPASS(vfs_op_thread_entered(mp));			\
-	(*(int *)zpcpu_get(mp->mnt_##count##_pcpu)) -= val;	\
+#define vfs_mp_count_sub_pcpu(_mpcpu, count, val) do {		\
+	MPASS(_mpcpu->mntp_thread_in_ops == 1);			\
+	_mpcpu->mntp_##count -= val;				\
 } while (0)
 
 #else /* !_KERNEL */

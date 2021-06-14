@@ -24,7 +24,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd July 27, 2018
+.Dd May 26, 2021
 .Dt KQUEUE 2
 .Os
 .Sh NAME
@@ -38,7 +38,14 @@
 .Ft int
 .Fn kqueue "void"
 .Ft int
-.Fn kevent "int kq" "const struct kevent *changelist" "int nchanges" "struct kevent *eventlist" "int nevents" "const struct timespec *timeout"
+.Fo kevent
+.Fa "int kq"
+.Fa "const struct kevent *changelist"
+.Fa "int nchanges"
+.Fa "struct kevent *eventlist"
+.Fa "int nevents"
+.Fa "const struct timespec *timeout"
+.Fc
 .Fn EV_SET "kev" ident filter flags fflags data udata
 .Sh DESCRIPTION
 The
@@ -233,6 +240,11 @@ to always be returned.
 When a filter is successfully added the
 .Va data
 field will be zero.
+Note that if this flag is encountered and there is no remaining space in
+.Fa eventlist
+to hold the
+.Dv EV_ERROR
+event, then subsequent changes will not get processed.
 .It Dv EV_ONESHOT
 Causes the event to return only the first occurrence of the filter
 being triggered.
@@ -318,8 +330,7 @@ When the last writer disconnects, the filter will set
 .Dv EV_EOF
 in
 .Va flags .
-This may be cleared by passing in
-.Dv EV_CLEAR ,
+This will be cleared by the filter when a new writer connects,
 at which point the
 filter will resume waiting for data to become available before
 returning.
@@ -330,6 +341,11 @@ when the BPF has
 enabled and there is any data to read;
 .Va data
 contains the number of bytes available.
+.It Eventfds
+Returns when the counter is greater than 0;
+.Va data
+contains the counter value, which must be cast to
+.Vt uint64_t .
 .El
 .It Dv EVFILT_WRITE
 Takes a descriptor as the identifier, and returns whenever
@@ -338,15 +354,21 @@ For sockets, pipes
 and fifos,
 .Va data
 will contain the amount of space remaining in the write buffer.
-The filter will set EV_EOF when the reader disconnects, and for
-the fifo case, this may be cleared by use of
-.Dv EV_CLEAR .
+The filter will set
+.Dv EV_EOF
+when the reader disconnects, and for the fifo case, this will be cleared
+when a new reader connects.
 Note that this filter is not supported for vnodes or BPF devices.
 .Pp
 For sockets, the low water mark and socket error handling is
 identical to the
 .Dv EVFILT_READ
 case.
+.Pp
+For eventfds,
+.Va data
+will contain the maximum value that can be added to the counter
+without blocking.
 .It Dv EVFILT_EMPTY
 Takes a descriptor as the identifier, and returns whenever
 there is no remaining data in the write buffer.
@@ -740,6 +762,8 @@ events were placed on the kqueue for return.
 A cancellation request was delivered to the thread, but not yet handled.
 .It Bq Er EINVAL
 The specified time limit or filter is invalid.
+.It Bq Er EINVAL
+The specified length of the event or change lists is negative.
 .It Bq Er ENOENT
 The event could not be found to be modified or deleted.
 .It Bq Er ENOMEM
@@ -771,6 +795,14 @@ have been applied.
 .Xr write 2 ,
 .Xr pthread_setcancelstate 3 ,
 .Xr signal 3
+.Rs
+.%A Jonathan Lemon
+.%T "Kqueue: A Generic and Scalable Event Notification Facility"
+.%I USENIX Association
+.%B Proceedings of the FREENIX Track: 2001 USENIX Annual Technical Conference
+.%D June 25-30, 2001
+.\".http://www.usenix.org/event/usenix01/freenix01/full_papers/lemon/lemon.pdf
+.Re
 .Sh HISTORY
 The
 .Fn kqueue

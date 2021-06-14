@@ -2876,7 +2876,7 @@ install_delete () {
 	rm newfiles killfiles
 }
 
-# Install new files, delete old files, and update linker.hints
+# Install new files, delete old files, and update generated files
 install_files () {
 	# If we haven't already dealt with the kernel, deal with it.
 	if ! [ -f $1/kerneldone ]; then
@@ -2944,24 +2944,22 @@ Kernel updates have been installed.  Please reboot and run
 		install_from_index INDEX-NEW || return 1
 		install_delete INDEX-OLD INDEX-NEW || return 1
 
-		# Rebuild generated pwd files.
-		if [ ${BASEDIR}/etc/master.passwd -nt ${BASEDIR}/etc/spwd.db ] ||
-		    [ ${BASEDIR}/etc/master.passwd -nt ${BASEDIR}/etc/pwd.db ] ||
-		    [ ${BASEDIR}/etc/master.passwd -nt ${BASEDIR}/etc/passwd ]; then
-			pwd_mkdb -d ${BASEDIR}/etc -p ${BASEDIR}/etc/master.passwd
+		# Rehash certs if we actually have certctl installed.
+		if which certctl>/dev/null; then
+			env DESTDIR=${BASEDIR} certctl rehash
 		fi
 
-		# Rebuild /etc/login.conf.db if necessary.
-		if [ ${BASEDIR}/etc/login.conf -nt ${BASEDIR}/etc/login.conf.db ]; then
-			cap_mkdb ${BASEDIR}/etc/login.conf
-		fi
+		# Rebuild generated pwd files and /etc/login.conf.db.
+		pwd_mkdb -d ${BASEDIR}/etc -p ${BASEDIR}/etc/master.passwd
+		cap_mkdb ${BASEDIR}/etc/login.conf
 
 		# Rebuild man page databases, if necessary.
 		for D in /usr/share/man /usr/share/openssl/man; do
 			if [ ! -d ${BASEDIR}/$D ]; then
 				continue
 			fi
-			if [ -z "$(find ${BASEDIR}/$D -type f -newer ${BASEDIR}/$D/mandoc.db)" ]; then
+			if [ -f ${BASEDIR}/$D/mandoc.db ] && \
+			    [ -z "$(find ${BASEDIR}/$D -type f -newer ${BASEDIR}/$D/mandoc.db)" ]; then
 				continue;
 			fi
 			makewhatis ${BASEDIR}/$D
@@ -3295,12 +3293,12 @@ get_params () {
 	parse_cmdline $@
 	parse_conffile
 	default_params
-	finalize_components_config ${COMPONENTS}
 }
 
 # Fetch command.  Make sure that we're being called
 # interactively, then run fetch_check_params and fetch_run
 cmd_fetch () {
+	finalize_components_config ${COMPONENTS}
 	if [ ! -t 0 -a $NOTTYOK -eq 0 ]; then
 		echo -n "`basename $0` fetch should not "
 		echo "be run non-interactively."
@@ -3321,6 +3319,7 @@ cmd_cron () {
 	sleep `jot -r 1 0 3600`
 
 	TMPFILE=`mktemp /tmp/freebsd-update.XXXXXX` || exit 1
+	finalize_components_config ${COMPONENTS} >> ${TMPFILE}
 	if ! fetch_run >> ${TMPFILE} ||
 	    ! grep -q "No updates needed" ${TMPFILE} ||
 	    [ ${VERBOSELEVEL} = "debug" ]; then
@@ -3332,12 +3331,24 @@ cmd_cron () {
 
 # Fetch files for upgrading to a new release.
 cmd_upgrade () {
+	finalize_components_config ${COMPONENTS}
 	upgrade_check_params
 	upgrade_run || exit 1
 }
 
-# Check if there are fetched updates ready to install
+# Check if there are fetched updates ready to install.
+# Chdir into the working directory.
 cmd_updatesready () {
+	finalize_components_config ${COMPONENTS}
+	# Check if working directory exists (if not, no updates pending)
+	if ! [ -e "${WORKDIR}" ]; then
+		echo "No updates are available to install."
+		exit 2
+	fi
+	
+	# Change into working directory (fail if no permission/directory etc.)
+	cd ${WORKDIR} || exit 1
+
 	# Construct a unique name from ${BASEDIR}
 	BDHASH=`echo ${BASEDIR} | sha256 -q`
 
@@ -3353,24 +3364,28 @@ cmd_updatesready () {
 
 # Install downloaded updates.
 cmd_install () {
+	finalize_components_config ${COMPONENTS}
 	install_check_params
 	install_run || exit 1
 }
 
 # Rollback most recently installed updates.
 cmd_rollback () {
+	finalize_components_config ${COMPONENTS}
 	rollback_check_params
 	rollback_run || exit 1
 }
 
 # Compare system against a "known good" index.
 cmd_IDS () {
+	finalize_components_config ${COMPONENTS}
 	IDS_check_params
 	IDS_run || exit 1
 }
 
 # Output configuration.
 cmd_showconfig () {
+	finalize_components_config ${COMPONENTS}
 	for X in ${CONFIGOPTIONS}; do
 		echo $X=$(eval echo \$${X})
 	done

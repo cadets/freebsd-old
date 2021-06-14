@@ -75,6 +75,7 @@ static const STRUCT_USB_HOST_ID axge_devs[] = {
 #define	AXGE_DEV(v,p) { USB_VP(USB_VENDOR_##v, USB_PRODUCT_##v##_##p) }
 	AXGE_DEV(ASIX, AX88178A),
 	AXGE_DEV(ASIX, AX88179),
+	AXGE_DEV(BELKIN, B2B128),
 	AXGE_DEV(DLINK, DUB1312),
 	AXGE_DEV(LENOVO, GIGALAN),
 	AXGE_DEV(SITECOMEU, LN032),
@@ -142,7 +143,8 @@ static void	axge_csum_cfg(struct usb_ether *);
 #ifdef USB_DEBUG
 static int axge_debug = 0;
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, axge, CTLFLAG_RW, 0, "USB axge");
+static SYSCTL_NODE(_hw_usb, OID_AUTO, axge, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "USB axge");
 SYSCTL_INT(_hw_usb_axge, OID_AUTO, debug, CTLFLAG_RWTUN, &axge_debug, 0,
     "Debug level");
 #endif
@@ -593,7 +595,6 @@ axge_detach(device_t dev)
 	sc = device_get_softc(dev);
 	ue = &sc->sc_ue;
 	if (device_is_attached(dev)) {
-
 		/* wait for any post attach or other command to complete */
 		usb_proc_drain(&ue->ue_tq);
 
@@ -739,7 +740,6 @@ tr_setup:
 			goto tr_setup;
 		}
 		return;
-
 	}
 }
 

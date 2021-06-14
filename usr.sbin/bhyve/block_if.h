@@ -38,8 +38,12 @@
 #ifndef _BLOCK_IF_H_
 #define _BLOCK_IF_H_
 
+#include <sys/nv.h>
 #include <sys/uio.h>
 #include <sys/unistd.h>
+
+struct vm_snapshot_meta;
+
 
 /*
  * BLOCKIF_IOV_MAX is the maximum number of scatter/gather entries in
@@ -59,7 +63,13 @@ struct blockif_req {
 };
 
 struct blockif_ctxt;
-struct blockif_ctxt *blockif_open(const char *optstr, const char *ident);
+
+typedef void blockif_resize_cb(struct blockif_ctxt *, void *, size_t);
+
+int	blockif_legacy_config(nvlist_t *nvl, const char *opts);
+struct blockif_ctxt *blockif_open(nvlist_t *nvl, const char *ident);
+int	blockif_register_resize_callback(struct blockif_ctxt *bc,
+    blockif_resize_cb *cb, void *cb_arg);
 off_t	blockif_size(struct blockif_ctxt *bc);
 void	blockif_chs(struct blockif_ctxt *bc, uint16_t *c, uint8_t *h,
     uint8_t *s);
@@ -74,5 +84,13 @@ int	blockif_flush(struct blockif_ctxt *bc, struct blockif_req *breq);
 int	blockif_delete(struct blockif_ctxt *bc, struct blockif_req *breq);
 int	blockif_cancel(struct blockif_ctxt *bc, struct blockif_req *breq);
 int	blockif_close(struct blockif_ctxt *bc);
+#ifdef BHYVE_SNAPSHOT
+void	blockif_pause(struct blockif_ctxt *bc);
+void	blockif_resume(struct blockif_ctxt *bc);
+int	blockif_snapshot_req(struct blockif_req *br,
+    struct vm_snapshot_meta *meta);
+int	blockif_snapshot(struct blockif_ctxt *bc,
+    struct vm_snapshot_meta *meta);
+#endif
 
 #endif /* _BLOCK_IF_H_ */

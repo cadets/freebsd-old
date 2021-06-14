@@ -57,6 +57,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/vnode.h>
 #include <sys/dirent.h>
 #include <sys/poll.h>
+#include <sys/stat.h>
+#include <security/audit/audit.h>
+#include <sys/priv.h>
 
 #include <security/mac/mac_framework.h>
 
@@ -87,6 +90,9 @@ static int vop_stdadd_writecount(struct vop_add_writecount_args *ap);
 static int vop_stdcopy_file_range(struct vop_copy_file_range_args *ap);
 static int vop_stdfdatasync(struct vop_fdatasync_args *ap);
 static int vop_stdgetpages_async(struct vop_getpages_async_args *ap);
+static int vop_stdread_pgcache(struct vop_read_pgcache_args *ap);
+static int vop_stdstat(struct vop_stat_args *ap);
+static int vop_stdvput_pair(struct vop_vput_pair_args *ap);
 
 /*
  * This vnode table stores what we want to do if the filesystem doesn't
@@ -114,6 +120,7 @@ struct vop_vector default_vnodeops = {
 	.vop_bmap =		vop_stdbmap,
 	.vop_close =		VOP_NULL,
 	.vop_fsync =		VOP_NULL,
+	.vop_stat =		vop_stdstat,
 	.vop_fdatasync =	vop_stdfdatasync,
 	.vop_getpages =		vop_stdgetpages,
 	.vop_getpages_async =	vop_stdgetpages_async,
@@ -130,6 +137,7 @@ struct vop_vector default_vnodeops = {
 	.vop_poll =		vop_nopoll,
 	.vop_putpages =		vop_stdputpages,
 	.vop_readlink =		VOP_EINVAL,
+	.vop_read_pgcache =	vop_stdread_pgcache,
 	.vop_rename =		vop_norename,
 	.vop_revoke =		VOP_PANIC,
 	.vop_strategy =		vop_nostrategy,
@@ -144,6 +152,7 @@ struct vop_vector default_vnodeops = {
 	.vop_unset_text =	vop_stdunset_text,
 	.vop_add_writecount =	vop_stdadd_writecount,
 	.vop_copy_file_range =	vop_stdcopy_file_range,
+	.vop_vput_pair =	vop_stdvput_pair,
 };
 VFS_VOP_VECTOR_REGISTER(default_vnodeops);
 
@@ -188,6 +197,13 @@ vop_enoent(struct vop_generic_args *ap)
 {
 
 	return (ENOENT);
+}
+
+int
+vop_eagain(struct vop_generic_args *ap)
+{
+
+	return (EAGAIN);
 }
 
 int
@@ -407,10 +423,25 @@ int
 vop_stdadvlock(struct vop_advlock_args *ap)
 {
 	struct vnode *vp;
+	struct mount *mp;
 	struct vattr vattr;
 	int error;
 
 	vp = ap->a_vp;
+
+	/*
+	 * Provide atomicity of open(O_CREAT | O_EXCL | O_EXLOCK) for
+	 * local filesystems.  See vn_open_cred() for reciprocal part.
+	 */
+	mp = vp->v_mount;
+	if (mp != NULL && (mp->mnt_flag & MNT_LOCAL) != 0 &&
+	    ap->a_op == F_SETLK && (ap->a_flags & F_FIRSTOPEN) == 0) {
+		VI_LOCK(vp);
+		while ((vp->v_iflag & VI_FOPENING) != 0)
+			msleep(vp, VI_MTX(vp), PLOCK, "lockfo", 0);
+		VI_UNLOCK(vp);
+	}
+
 	if (ap->a_fl->l_whence == SEEK_END) {
 		/*
 		 * The NFSv4 server must avoid doing a vn_lock() here, since it
@@ -513,7 +544,7 @@ vop_stdlock(ap)
 	struct mtx *ilk;
 
 	ilk = VI_MTX(vp);
-	return (lockmgr_lock_fast_path(vp->v_vnlock, ap->a_flags,
+	return (lockmgr_lock_flags(vp->v_vnlock, ap->a_flags,
 	    &ilk->lock_object, ap->a_file, ap->a_line));
 }
 
@@ -573,7 +604,7 @@ vop_lock(ap)
 	}
 other:
 	ilk = VI_MTX(vp);
-	return (lockmgr_lock_fast_path(&vp->v_lock, flags,
+	return (lockmgr_lock_flags(&vp->v_lock, flags,
 	    &ilk->lock_object, ap->a_file, ap->a_line));
 }
 
@@ -616,7 +647,9 @@ vop_nopoll(ap)
 	} */ *ap;
 {
 
-	return (poll_no_poll(ap->a_events));
+	if (ap->a_events & ~POLLSTANDARD)
+		return (POLLNVAL);
+	return (ap->a_events & (POLLIN | POLLOUT | POLLRDNORM | POLLWRNORM));
 }
 
 /*
@@ -659,29 +692,7 @@ vop_stdgetwritemount(ap)
 	 * with releasing it.
 	 */
 	vp = ap->a_vp;
-	mp = vp->v_mount;
-	if (mp == NULL) {
-		*(ap->a_mpp) = NULL;
-		return (0);
-	}
-	if (vfs_op_thread_enter(mp)) {
-		if (mp == vp->v_mount) {
-			vfs_mp_count_add_pcpu(mp, ref, 1);
-			vfs_op_thread_exit(mp);
-		} else {
-			vfs_op_thread_exit(mp);
-			mp = NULL;
-		}
-	} else {
-		MNT_ILOCK(mp);
-		if (mp == vp->v_mount) {
-			MNT_REF(mp);
-			MNT_IUNLOCK(mp);
-		} else {
-			MNT_IUNLOCK(mp);
-			mp = NULL;
-		}
-	}
+	mp = vfs_ref_from_vp(vp);
 	*(ap->a_mpp) = mp;
 	return (0);
 }
@@ -765,7 +776,8 @@ vop_stdgetpages_async(struct vop_getpages_async_args *ap)
 
 	error = VOP_GETPAGES(ap->a_vp, ap->a_m, ap->a_count, ap->a_rbehind,
 	    ap->a_rahead);
-	ap->a_iodone(ap->a_arg, ap->a_m, ap->a_count, error);
+	if (ap->a_iodone != NULL)
+		ap->a_iodone(ap->a_arg, ap->a_m, ap->a_count, error);
 	return (error);
 }
 
@@ -802,7 +814,7 @@ vop_stdvptocnp(struct vop_vptocnp_args *ap)
 {
 	struct vnode *vp = ap->a_vp;
 	struct vnode **dvp = ap->a_vpp;
-	struct ucred *cred = ap->a_cred;
+	struct ucred *cred;
 	char *buf = ap->a_buf;
 	size_t *buflen = ap->a_buflen;
 	char *dirbuf, *cpos;
@@ -819,6 +831,7 @@ vop_stdvptocnp(struct vop_vptocnp_args *ap)
 	error = 0;
 	covered = 0;
 	td = curthread;
+	cred = td->td_ucred;
 
 	if (vp->v_type != VDIR)
 		return (ENOENT);
@@ -955,8 +968,8 @@ vop_stdallocate(struct vop_allocate_args *ap)
 	iosize = vap->va_blocksize;
 	if (iosize == 0)
 		iosize = BLKDEV_IOSIZE;
-	if (iosize > MAXPHYS)
-		iosize = MAXPHYS;
+	if (iosize > maxphys)
+		iosize = maxphys;
 	buf = malloc(iosize, M_TEMP, M_WAITOK);
 
 #ifdef __notyet__
@@ -1164,9 +1177,23 @@ vop_stdset_text(struct vop_set_text_args *ap)
 {
 	struct vnode *vp;
 	struct mount *mp;
-	int error;
+	int error, n;
 
 	vp = ap->a_vp;
+
+	/*
+	 * Avoid the interlock if execs are already present.
+	 */
+	n = atomic_load_int(&vp->v_writecount);
+	for (;;) {
+		if (n > -1) {
+			break;
+		}
+		if (atomic_fcmpset_int(&vp->v_writecount, &n, n - 1)) {
+			return (0);
+		}
+	}
+
 	VI_LOCK(vp);
 	if (vp->v_writecount > 0) {
 		error = ETXTBSY;
@@ -1178,11 +1205,12 @@ vop_stdset_text(struct vop_set_text_args *ap)
 		mp = vp->v_mount;
 		if (mp != NULL && (mp->mnt_kern_flag & MNTK_TEXT_REFS) != 0 &&
 		    vp->v_writecount == 0) {
+			VNPASS((vp->v_iflag & VI_TEXT_REF) == 0, vp);
 			vp->v_iflag |= VI_TEXT_REF;
 			vrefl(vp);
 		}
 
-		vp->v_writecount--;
+		atomic_subtract_int(&vp->v_writecount, 1);
 		error = 0;
 	}
 	VI_UNLOCK(vp);
@@ -1193,10 +1221,24 @@ static int
 vop_stdunset_text(struct vop_unset_text_args *ap)
 {
 	struct vnode *vp;
-	int error;
+	int error, n;
 	bool last;
 
 	vp = ap->a_vp;
+
+	/*
+	 * Avoid the interlock if this is not the last exec.
+	 */
+	n = atomic_load_int(&vp->v_writecount);
+	for (;;) {
+		if (n >= -1) {
+			break;
+		}
+		if (atomic_fcmpset_int(&vp->v_writecount, &n, n + 1)) {
+			return (0);
+		}
+	}
+
 	last = false;
 	VI_LOCK(vp);
 	if (vp->v_writecount < 0) {
@@ -1205,7 +1247,7 @@ vop_stdunset_text(struct vop_unset_text_args *ap)
 			last = true;
 			vp->v_iflag &= ~VI_TEXT_REF;
 		}
-		vp->v_writecount++;
+		atomic_add_int(&vp->v_writecount, 1);
 		error = 0;
 	} else {
 		error = EINVAL;
@@ -1308,13 +1350,13 @@ vfs_stdstatfs (mp, sbp)
 }
 
 int
-vfs_stdquotactl (mp, cmds, uid, arg)
+vfs_stdquotactl (mp, cmds, uid, arg, mp_busy)
 	struct mount *mp;
 	int cmds;
 	uid_t uid;
 	void *arg;
+	bool *mp_busy;
 {
-
 	return (EOPNOTSUPP);
 }
 
@@ -1340,7 +1382,7 @@ loop:
 			VI_UNLOCK(vp);
 			continue;
 		}
-		if ((error = vget(vp, lockreq, td)) != 0) {
+		if ((error = vget(vp, lockreq)) != 0) {
 			if (error == ENOENT) {
 				MNT_VNODE_FOREACH_ALL_ABORT(mp, mvp);
 				goto loop;
@@ -1457,4 +1499,132 @@ vop_sigdefer(struct vop_vector *vop, struct vop_generic_args *a)
 	rc = bp(a);
 	sigallowstop(prev_stops);
 	return (rc);
+}
+
+static int
+vop_stdstat(struct vop_stat_args *a)
+{
+	struct vattr vattr;
+	struct vattr *vap;
+	struct vnode *vp;
+	struct stat *sb;
+	int error;
+	u_short mode;
+
+	vp = a->a_vp;
+	sb = a->a_sb;
+
+	error = vop_stat_helper_pre(a);
+	if (error != 0)
+		return (error);
+
+	vap = &vattr;
+
+	/*
+	 * Initialize defaults for new and unusual fields, so that file
+	 * systems which don't support these fields don't need to know
+	 * about them.
+	 */
+	vap->va_birthtime.tv_sec = -1;
+	vap->va_birthtime.tv_nsec = 0;
+	vap->va_fsid = VNOVAL;
+	vap->va_gen = 0;
+	vap->va_rdev = NODEV;
+
+	error = VOP_GETATTR(vp, vap, a->a_active_cred);
+	if (error)
+		goto out;
+
+	/*
+	 * Zero the spare stat fields
+	 */
+	bzero(sb, sizeof *sb);
+
+	/*
+	 * Copy from vattr table
+	 */
+	if (vap->va_fsid != VNOVAL)
+		sb->st_dev = vap->va_fsid;
+	else
+		sb->st_dev = vp->v_mount->mnt_stat.f_fsid.val[0];
+	sb->st_ino = vap->va_fileid;
+	mode = vap->va_mode;
+	switch (vap->va_type) {
+	case VREG:
+		mode |= S_IFREG;
+		break;
+	case VDIR:
+		mode |= S_IFDIR;
+		break;
+	case VBLK:
+		mode |= S_IFBLK;
+		break;
+	case VCHR:
+		mode |= S_IFCHR;
+		break;
+	case VLNK:
+		mode |= S_IFLNK;
+		break;
+	case VSOCK:
+		mode |= S_IFSOCK;
+		break;
+	case VFIFO:
+		mode |= S_IFIFO;
+		break;
+	default:
+		error = EBADF;
+		goto out;
+	}
+	sb->st_mode = mode;
+	sb->st_nlink = vap->va_nlink;
+	sb->st_uid = vap->va_uid;
+	sb->st_gid = vap->va_gid;
+	sb->st_rdev = vap->va_rdev;
+	if (vap->va_size > OFF_MAX) {
+		error = EOVERFLOW;
+		goto out;
+	}
+	sb->st_size = vap->va_size;
+	sb->st_atim.tv_sec = vap->va_atime.tv_sec;
+	sb->st_atim.tv_nsec = vap->va_atime.tv_nsec;
+	sb->st_mtim.tv_sec = vap->va_mtime.tv_sec;
+	sb->st_mtim.tv_nsec = vap->va_mtime.tv_nsec;
+	sb->st_ctim.tv_sec = vap->va_ctime.tv_sec;
+	sb->st_ctim.tv_nsec = vap->va_ctime.tv_nsec;
+	sb->st_birthtim.tv_sec = vap->va_birthtime.tv_sec;
+	sb->st_birthtim.tv_nsec = vap->va_birthtime.tv_nsec;
+
+	/*
+	 * According to www.opengroup.org, the meaning of st_blksize is
+	 *   "a filesystem-specific preferred I/O block size for this
+	 *    object.  In some filesystem types, this may vary from file
+	 *    to file"
+	 * Use minimum/default of PAGE_SIZE (e.g. for VCHR).
+	 */
+
+	sb->st_blksize = max(PAGE_SIZE, vap->va_blocksize);
+	sb->st_flags = vap->va_flags;
+	sb->st_blocks = vap->va_bytes / S_BLKSIZE;
+	sb->st_gen = vap->va_gen;
+out:
+	return (vop_stat_helper_post(a, error));
+}
+
+static int
+vop_stdread_pgcache(struct vop_read_pgcache_args *ap __unused)
+{
+	return (EJUSTRETURN);
+}
+
+static int
+vop_stdvput_pair(struct vop_vput_pair_args *ap)
+{
+	struct vnode *dvp, *vp, **vpp;
+
+	dvp = ap->a_dvp;
+	vpp = ap->a_vpp;
+	vput(dvp);
+	if (vpp != NULL && ap->a_unlock_vp && (vp = *vpp) != NULL)
+		vput(vp);
+	return (0);
 }

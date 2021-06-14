@@ -39,6 +39,8 @@ __FBSDID("$FreeBSD$");
 #include <capsicum_helpers.h>
 #endif
 
+#include <machine/vmm_snapshot.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -60,6 +62,10 @@ __FBSDID("$FreeBSD$");
 #define	COM1_IRQ	4
 #define	COM2_BASE      	0x2F8
 #define	COM2_IRQ	3
+#define	COM3_BASE	0x3E8
+#define	COM3_IRQ	4
+#define	COM4_BASE	0x2E8
+#define	COM4_IRQ	3
 
 #define	DEFAULT_RCLK	1843200
 #define	DEFAULT_BAUD	9600
@@ -87,6 +93,8 @@ static struct {
 } uart_lres[] = {
 	{ COM1_BASE, COM1_IRQ, false},
 	{ COM2_BASE, COM2_IRQ, false},
+	{ COM3_BASE, COM3_IRQ, false},
+	{ COM4_BASE, COM4_IRQ, false},
 };
 
 #define	UART_NLDEVS	(sizeof(uart_lres) / sizeof(uart_lres[0]))
@@ -671,7 +679,7 @@ uart_stdio_backend(struct uart_softc *sc)
 }
 
 static int
-uart_tty_backend(struct uart_softc *sc, const char *opts)
+uart_tty_backend(struct uart_softc *sc, const char *path)
 {
 #ifndef WITHOUT_CAPSICUM
 	cap_rights_t rights;
@@ -679,7 +687,7 @@ uart_tty_backend(struct uart_softc *sc, const char *opts)
 #endif
 	int fd;
 
-	fd = open(opts, O_RDWR | O_NONBLOCK);
+	fd = open(path, O_RDWR | O_NONBLOCK);
 	if (fd < 0)
 		return (-1);
 
@@ -703,19 +711,51 @@ uart_tty_backend(struct uart_softc *sc, const char *opts)
 }
 
 int
-uart_set_backend(struct uart_softc *sc, const char *opts)
+uart_set_backend(struct uart_softc *sc, const char *device)
 {
 	int retval;
 
-	if (opts == NULL)
+	if (device == NULL)
 		return (0);
 
-	if (strcmp("stdio", opts) == 0)
+	if (strcmp("stdio", device) == 0)
 		retval = uart_stdio_backend(sc);
 	else
-		retval = uart_tty_backend(sc, opts);
+		retval = uart_tty_backend(sc, device);
 	if (retval == 0)
 		uart_opentty(sc);
 
 	return (retval);
 }
+
+#ifdef BHYVE_SNAPSHOT
+int
+uart_snapshot(struct uart_softc *sc, struct vm_snapshot_meta *meta)
+{
+	int ret;
+
+	SNAPSHOT_VAR_OR_LEAVE(sc->data, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->ier, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->lcr, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->mcr, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->lsr, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->msr, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->fcr, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->scr, meta, ret, done);
+
+	SNAPSHOT_VAR_OR_LEAVE(sc->dll, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->dlh, meta, ret, done);
+
+	SNAPSHOT_VAR_OR_LEAVE(sc->rxfifo.rindex, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->rxfifo.windex, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->rxfifo.num, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->rxfifo.size, meta, ret, done);
+	SNAPSHOT_BUF_OR_LEAVE(sc->rxfifo.buf, sizeof(sc->rxfifo.buf),
+			      meta, ret, done);
+
+	sc->thre_int_pending = 1;
+
+done:
+	return (ret);
+}
+#endif

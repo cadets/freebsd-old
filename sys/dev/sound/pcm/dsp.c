@@ -460,7 +460,7 @@ dsp_open(struct cdev *i_dev, int flags, int mode, struct thread *td)
 		return (ENODEV);
 
 	d = dsp_get_info(i_dev);
-	if (!PCM_REGISTERED(d))
+	if (PCM_DETACHING(d) || !PCM_REGISTERED(d))
 		return (EBADF);
 
 	PCM_GIANT_ENTER(d);
@@ -649,7 +649,6 @@ dsp_open(struct cdev *i_dev, int flags, int mode, struct thread *td)
 		}
 	}
 
-
 	PCM_LOCK(d);
 
 	/*
@@ -830,7 +829,7 @@ dsp_io_ops(struct cdev *i_dev, struct uio *buf)
 	    ("%s(): io train wreck!", __func__));
 
 	d = dsp_get_info(i_dev);
-	if (!DSP_REGISTERED(d, i_dev))
+	if (PCM_DETACHING(d) || !DSP_REGISTERED(d, i_dev))
 		return (EBADF);
 
 	PCM_GIANT_ENTER(d);
@@ -858,6 +857,8 @@ dsp_io_ops(struct cdev *i_dev, struct uio *buf)
 	getchns(i_dev, &rdch, &wrch, prio);
 
 	if (*ch == NULL || !((*ch)->flags & CHN_F_BUSY)) {
+		if (rdch != NULL || wrch != NULL)
+			relchns(i_dev, rdch, wrch, prio);
 		PCM_GIANT_EXIT(d);
 		return (EBADF);
 	}
@@ -1075,7 +1076,7 @@ dsp_ioctl(struct cdev *i_dev, u_long cmd, caddr_t arg, int mode,
 	int *arg_i, ret, tmp;
 
 	d = dsp_get_info(i_dev);
-	if (!DSP_REGISTERED(d, i_dev))
+	if (PCM_DETACHING(d) || !DSP_REGISTERED(d, i_dev))
 		return (EBADF);
 
 	PCM_GIANT_ENTER(d);
@@ -1703,6 +1704,10 @@ dsp_ioctl(struct cdev *i_dev, u_long cmd, caddr_t arg, int mode,
 		*arg_i = PCM_CAP_REALTIME | PCM_CAP_MMAP | PCM_CAP_TRIGGER;
 		if (rdch && wrch && !(dsp_get_flags(i_dev) & SD_F_SIMPLEX))
 			*arg_i |= PCM_CAP_DUPLEX;
+		if (rdch && (rdch->flags & CHN_F_VIRTUAL) != 0)
+			*arg_i |= PCM_CAP_VIRTUAL;
+		if (wrch && (wrch->flags & CHN_F_VIRTUAL) != 0)
+			*arg_i |= PCM_CAP_VIRTUAL;
 		PCM_UNLOCK(d);
 		break;
 
@@ -2170,9 +2175,11 @@ dsp_poll(struct cdev *i_dev, int events, struct thread *td)
 	int ret, e;
 
 	d = dsp_get_info(i_dev);
-	if (!DSP_REGISTERED(d, i_dev))
-		return (EBADF);
-
+	if (PCM_DETACHING(d) || !DSP_REGISTERED(d, i_dev)) {
+		/* XXX many clients don't understand POLLNVAL */
+		return (events & (POLLHUP | POLLPRI | POLLIN |
+		    POLLRDNORM | POLLOUT | POLLWRNORM));
+	}
 	PCM_GIANT_ENTER(d);
 
 	wrch = NULL;
@@ -2246,7 +2253,7 @@ dsp_mmap_single(struct cdev *i_dev, vm_ooffset_t *offset,
 		return (EINVAL);
 
 	d = dsp_get_info(i_dev);
-	if (!DSP_REGISTERED(d, i_dev))
+	if (PCM_DETACHING(d) || !DSP_REGISTERED(d, i_dev))
 		return (EINVAL);
 
 	PCM_GIANT_ENTER(d);
@@ -2287,8 +2294,7 @@ dsp_stdclone(char *name, char *namep, char *sep, int use_sep, int *u, int *c)
 	size_t len;
 
 	len = strlen(namep);
-
-	if (bcmp(name, namep, len) != 0)
+	if (strncmp(name, namep, len) != 0)
 		return (ENODEV);
 
 	name += len;
@@ -2651,6 +2657,7 @@ dsp_oss_audioinfo(struct cdev *i_dev, oss_audioinfo *ai)
 			 *       these in pcmchan::caps?
 			 */
 			ai->caps = PCM_CAP_REALTIME | PCM_CAP_MMAP | PCM_CAP_TRIGGER |
+			    ((ch->flags & CHN_F_VIRTUAL) ? PCM_CAP_VIRTUAL : 0) |
 			    ((ch->direction == PCMDIR_PLAY) ? PCM_CAP_OUTPUT : PCM_CAP_INPUT);
 
 			/*
@@ -2886,7 +2893,6 @@ dsp_oss_syncgroup(struct pcm_channel *wrch, struct pcm_channel *rdch, oss_syncgr
 		wrch->flags |= CHN_F_NOTRIGGER;
 		wrch->sm = smwr;
 	}
-
 
 out:
 	if (ret != 0) {

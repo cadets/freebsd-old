@@ -144,7 +144,8 @@ __FBSDID("$FreeBSD$");
 #ifdef USB_DEBUG
 static int mos_debug = 0;
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, mos, CTLFLAG_RW, 0, "USB mos");
+static SYSCTL_NODE(_hw_usb, OID_AUTO, mos, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "USB mos");
 SYSCTL_INT(_hw_usb_mos, OID_AUTO, debug, CTLFLAG_RWTUN, &mos_debug, 0,
     "Debug level");
 #endif
@@ -154,8 +155,6 @@ SYSCTL_INT(_hw_usb_mos, OID_AUTO, debug, CTLFLAG_RWTUN, &mos_debug, 0,
 
 #define	USB_PRODUCT_MOSCHIP_MCS7730	0x7730
 #define	USB_PRODUCT_SITECOMEU_LN030	0x0021
-
-
 
 /* Various supported device vendors/products. */
 static const STRUCT_USB_HOST_ID mos_devs[] = {
@@ -197,7 +196,6 @@ static void mos_setmulti(struct usb_ether *);
 static void mos_setpromisc(struct usb_ether *);
 
 static const struct usb_config mos_config[MOS_ENDPT_MAX] = {
-
 	[MOS_ENDPT_TX] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -268,7 +266,6 @@ static const struct usb_ether_methods mos_ue_methods = {
 	.ue_mii_upd = mos_ifmedia_upd,
 	.ue_mii_sts = mos_ifmedia_sts,
 };
-
 
 static int
 mos_reg_read_1(struct mos_softc *sc, int reg)
@@ -720,7 +717,6 @@ mos_attach(device_t dev)
 	ue->ue_mtx = &sc->sc_mtx;
 	ue->ue_methods = &mos_ue_methods;
 
-
 	if (sc->mos_flags & MCS7730) {
 		MOS_DPRINTFN("model: MCS7730");
 	} else if (sc->mos_flags & MCS7830) {
@@ -735,12 +731,10 @@ mos_attach(device_t dev)
 	}
 	return (0);
 
-
 detach:
 	mos_detach(dev);
 	return (ENXIO);
 }
-
 
 static void
 mos_attach_post(struct usb_ether *ue)
@@ -771,9 +765,6 @@ mos_detach(device_t dev)
 
 	return (0);
 }
-
-
-
 
 /*
  * A frame has been uploaded: pass the resulting mbuf chain up to
@@ -860,8 +851,6 @@ mos_bulk_write_callback(struct usb_xfer *xfer, usb_error_t error)
 	struct usb_page_cache *pc;
 	struct mbuf *m;
 
-
-
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
 		MOS_DPRINTFN("transfer of complete");
@@ -880,7 +869,6 @@ tr_setup:
 		usbd_m_copy_in(pc, 0, m, 0, m->m_pkthdr.len);
 
 		usbd_xfer_set_frame_len(xfer, 0, m->m_pkthdr.len);
-
 
 		/*
 		 * if there's a BPF listener, bounce a copy
@@ -921,7 +909,6 @@ mos_tick(struct usb_ether *ue)
 		mos_start(ue);
 	}
 }
-
 
 static void
 mos_start(struct usb_ether *ue)
@@ -977,7 +964,6 @@ mos_init(struct usb_ether *ue)
 	mos_start(ue);
 }
 
-
 static void
 mos_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 {
@@ -1009,7 +995,6 @@ tr_setup:
 		return;
 	}
 }
-
 
 /*
  * Stop the adapter and free any mbufs allocated to the

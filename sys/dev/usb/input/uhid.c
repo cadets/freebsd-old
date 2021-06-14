@@ -43,6 +43,8 @@ __FBSDID("$FreeBSD$");
  * HID spec: http://www.usb.org/developers/devclass_docs/HID1_11.pdf
  */
 
+#include "opt_hid.h"
+
 #include <sys/stdint.h>
 #include <sys/stddef.h>
 #include <sys/param.h>
@@ -64,12 +66,15 @@ __FBSDID("$FreeBSD$");
 #include <sys/conf.h>
 #include <sys/fcntl.h>
 
+#include <dev/hid/hid.h>
+
 #include "usbdevs.h"
 #include <dev/usb/usb.h>
 #include <dev/usb/usbdi.h>
 #include <dev/usb/usbdi_util.h>
 #include <dev/usb/usbhid.h>
 #include <dev/usb/usb_ioctl.h>
+#include <dev/usb/usb_generic.h>
 
 #define	USB_DEBUG_VAR uhid_debug
 #include <dev/usb/usb_debug.h>
@@ -80,7 +85,8 @@ __FBSDID("$FreeBSD$");
 #ifdef USB_DEBUG
 static int uhid_debug = 0;
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, uhid, CTLFLAG_RW, 0, "USB uhid");
+static SYSCTL_NODE(_hw_usb, OID_AUTO, uhid, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "USB uhid");
 SYSCTL_INT(_hw_usb_uhid, OID_AUTO, debug, CTLFLAG_RWTUN,
     &uhid_debug, 0, "Debug level");
 #endif
@@ -143,11 +149,13 @@ static usb_fifo_cmd_t uhid_stop_write;
 static usb_fifo_open_t uhid_open;
 static usb_fifo_close_t uhid_close;
 static usb_fifo_ioctl_t uhid_ioctl;
+static usb_fifo_ioctl_t uhid_ioctl_post;
 
 static struct usb_fifo_methods uhid_fifo_methods = {
 	.f_open = &uhid_open,
 	.f_close = &uhid_close,
 	.f_ioctl = &uhid_ioctl,
+	.f_ioctl_post = &uhid_ioctl_post,
 	.f_start_read = &uhid_start_read,
 	.f_stop_read = &uhid_stop_read,
 	.f_start_write = &uhid_start_write,
@@ -337,7 +345,6 @@ uhid_read_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_SETUP:
 
 		if (usb_fifo_put_bytes_max(sc->sc_fifo.fp[USB_FIFO_RX]) > 0) {
-
 			uhid_fill_get_report
 			    (&req, sc->sc_iface_no, UHID_INPUT_REPORT,
 			    sc->sc_iid, sc->sc_isize);
@@ -359,7 +366,6 @@ uhid_read_callback(struct usb_xfer *xfer, usb_error_t error)
 }
 
 static const struct usb_config uhid_config[UHID_N_TRANSFER] = {
-
 	[UHID_INTR_DT_WR] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
@@ -450,10 +456,6 @@ uhid_get_report(struct uhid_softc *sc, uint8_t type,
 
 	if (kern_data == NULL) {
 		kern_data = malloc(len, M_USBDEV, M_WAITOK);
-		if (kern_data == NULL) {
-			err = ENOMEM;
-			goto done;
-		}
 		free_data = 1;
 	}
 	err = usbd_req_get_report(sc->sc_udev, NULL, kern_data,
@@ -486,10 +488,6 @@ uhid_set_report(struct uhid_softc *sc, uint8_t type,
 
 	if (kern_data == NULL) {
 		kern_data = malloc(len, M_USBDEV, M_WAITOK);
-		if (kern_data == NULL) {
-			err = ENOMEM;
-			goto done;
-		}
 		free_data = 1;
 		err = copyin(user_data, kern_data, len);
 		if (err) {
@@ -576,7 +574,6 @@ uhid_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 			break;
 		}
 		if (*(int *)addr) {
-
 			/* do a test read */
 
 			error = uhid_get_report(sc, UHID_INPUT_REPORT,
@@ -652,6 +649,24 @@ uhid_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 
 	case USB_GET_REPORT_ID:
 		*(int *)addr = 0;	/* XXX: we only support reportid 0? */
+		break;
+
+	default:
+		error = ENOIOCTL;
+		break;
+	}
+	return (error);
+}
+
+static int
+uhid_ioctl_post(struct usb_fifo *fifo, u_long cmd, void *addr,
+    int fflags)
+{
+	int error;
+
+	switch (cmd) {
+	case USB_GET_DEVICEINFO:
+		error = ugen_fill_deviceinfo(fifo, addr);
 		break;
 
 	default:
@@ -753,17 +768,14 @@ uhid_attach(device_t dev)
 		goto detach;
 	}
 	if (uaa->info.idVendor == USB_VENDOR_WACOM) {
-
 		/* the report descriptor for the Wacom Graphire is broken */
 
 		if (uaa->info.idProduct == USB_PRODUCT_WACOM_GRAPHIRE) {
-
 			sc->sc_repdesc_size = sizeof(uhid_graphire_report_descr);
 			sc->sc_repdesc_ptr = __DECONST(void *, &uhid_graphire_report_descr);
 			sc->sc_flags |= UHID_FLAG_STATIC_DESC;
 
 		} else if (uaa->info.idProduct == USB_PRODUCT_WACOM_GRAPHIRE3_4X5) {
-
 			static uint8_t reportbuf[] = {2, 2, 2};
 
 			/*
@@ -804,7 +816,6 @@ uhid_attach(device_t dev)
 		sc->sc_flags |= UHID_FLAG_STATIC_DESC;
 	}
 	if (sc->sc_repdesc_ptr == NULL) {
-
 		error = usbd_req_get_hid_desc(uaa->device, NULL,
 		    &sc->sc_repdesc_ptr, &sc->sc_repdesc_size,
 		    M_USBDEV, uaa->info.bIfaceIndex);
@@ -821,13 +832,13 @@ uhid_attach(device_t dev)
 		DPRINTF("set idle failed, error=%s (ignored)\n",
 		    usbd_errstr(error));
 	}
-	sc->sc_isize = hid_report_size
+	sc->sc_isize = hid_report_size_max
 	    (sc->sc_repdesc_ptr, sc->sc_repdesc_size, hid_input, &sc->sc_iid);
 
-	sc->sc_osize = hid_report_size
+	sc->sc_osize = hid_report_size_max
 	    (sc->sc_repdesc_ptr, sc->sc_repdesc_size, hid_output, &sc->sc_oid);
 
-	sc->sc_fsize = hid_report_size
+	sc->sc_fsize = hid_report_size_max
 	    (sc->sc_repdesc_ptr, sc->sc_repdesc_size, hid_feature, &sc->sc_fid);
 
 	if (sc->sc_isize > UHID_BSIZE) {
@@ -882,7 +893,9 @@ uhid_detach(device_t dev)
 	return (0);
 }
 
+#ifndef HIDRAW_MAKE_UHID_ALIAS
 static devclass_t uhid_devclass;
+#endif
 
 static device_method_t uhid_methods[] = {
 	DEVMETHOD(device_probe, uhid_probe),
@@ -893,12 +906,21 @@ static device_method_t uhid_methods[] = {
 };
 
 static driver_t uhid_driver = {
+#ifdef HIDRAW_MAKE_UHID_ALIAS
+	.name = "hidraw",
+#else
 	.name = "uhid",
+#endif
 	.methods = uhid_methods,
 	.size = sizeof(struct uhid_softc),
 };
 
+#ifdef HIDRAW_MAKE_UHID_ALIAS
+DRIVER_MODULE(uhid, uhub, uhid_driver, hidraw_devclass, NULL, 0);
+#else
 DRIVER_MODULE(uhid, uhub, uhid_driver, uhid_devclass, NULL, 0);
+#endif
 MODULE_DEPEND(uhid, usb, 1, 1, 1);
+MODULE_DEPEND(uhid, hid, 1, 1, 1);
 MODULE_VERSION(uhid, 1);
 USB_PNP_HOST_INFO(uhid_devs);

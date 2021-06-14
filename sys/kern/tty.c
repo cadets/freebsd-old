@@ -67,6 +67,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/ucred.h>
 #include <sys/vnode.h>
 
+#include <fs/devfs/devfs.h>
+
 #include <machine/stdarg.h>
 
 static MALLOC_DEFINE(M_TTY, "tty", "tty device");
@@ -228,7 +230,7 @@ static void
 ttydev_leave(struct tty *tp)
 {
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	if (tty_opened(tp) || tp->t_flags & TF_OPENCLOSE) {
 		/* Device is still opened somewhere. */
@@ -413,7 +415,7 @@ static __inline int
 tty_is_ctty(struct tty *tp, struct proc *p)
 {
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	return (p->p_session == tp->t_session && p->p_flag & P_CONTROLT);
 }
@@ -421,16 +423,30 @@ tty_is_ctty(struct tty *tp, struct proc *p)
 int
 tty_wait_background(struct tty *tp, struct thread *td, int sig)
 {
-	struct proc *p = td->td_proc;
+	struct proc *p;
 	struct pgrp *pg;
 	ksiginfo_t ksi;
 	int error;
 
 	MPASS(sig == SIGTTIN || sig == SIGTTOU);
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
+	p = td->td_proc;
 	for (;;) {
+		pg = p->p_pgrp;
+		PGRP_LOCK(pg);
 		PROC_LOCK(p);
+
+		/*
+		 * pg may no longer be our process group.
+		 * Re-check after locking.
+		 */
+		if (p->p_pgrp != pg) {
+			PROC_UNLOCK(p);
+			PGRP_UNLOCK(pg);
+			continue;
+		}
+
 		/*
 		 * The process should only sleep, when:
 		 * - This terminal is the controlling terminal
@@ -443,6 +459,7 @@ tty_wait_background(struct tty *tp, struct thread *td, int sig)
 		if (!tty_is_ctty(tp, p) || p->p_pgrp == tp->t_pgrp) {
 			/* Allow the action to happen. */
 			PROC_UNLOCK(p);
+			PGRP_UNLOCK(pg);
 			return (0);
 		}
 
@@ -450,13 +467,15 @@ tty_wait_background(struct tty *tp, struct thread *td, int sig)
 		    SIGISMEMBER(td->td_sigmask, sig)) {
 			/* Only allow them in write()/ioctl(). */
 			PROC_UNLOCK(p);
+			PGRP_UNLOCK(pg);
 			return (sig == SIGTTOU ? 0 : EIO);
 		}
 
-		pg = p->p_pgrp;
-		if (p->p_flag & P_PPWAIT || pg->pg_jobc == 0) {
+		if ((p->p_flag & P_PPWAIT) != 0 ||
+		    (pg->pg_flags & PGRP_ORPHANED) != 0) {
 			/* Don't allow the action to happen. */
 			PROC_UNLOCK(p);
+			PGRP_UNLOCK(pg);
 			return (EIO);
 		}
 		PROC_UNLOCK(p);
@@ -471,7 +490,7 @@ tty_wait_background(struct tty *tp, struct thread *td, int sig)
 			ksi.ksi_signo = sig;
 			sig = 0;
 		}
-		PGRP_LOCK(pg);
+
 		pgsignal(pg, ksi.ksi_signo, 1, &ksi);
 		PGRP_UNLOCK(pg);
 
@@ -506,7 +525,7 @@ static int
 ttydev_write(struct cdev *dev, struct uio *uio, int ioflag)
 {
 	struct tty *tp = dev->si_drv1;
-	int error;
+	int defer, error;
 
 	error = ttydev_enter(tp);
 	if (error)
@@ -530,7 +549,9 @@ ttydev_write(struct cdev *dev, struct uio *uio, int ioflag)
 		}
 
 		tp->t_flags |= TF_BUSY_OUT;
+		defer = sigdeferstop(SIGDEFERSTOP_ERESTART);
 		error = ttydisc_write(tp, uio, ioflag);
+		sigallowstop(defer);
 		tp->t_flags &= ~TF_BUSY_OUT;
 		cv_signal(&tp->t_outserwait);
 	}
@@ -697,7 +718,7 @@ tty_kqops_read_event(struct knote *kn, long hint __unused)
 {
 	struct tty *tp = kn->kn_hook;
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	if (tty_gone(tp) || tp->t_flags & TF_ZOMBIE) {
 		kn->kn_flags |= EV_EOF;
@@ -721,7 +742,7 @@ tty_kqops_write_event(struct knote *kn, long hint __unused)
 {
 	struct tty *tp = kn->kn_hook;
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	if (tty_gone(tp)) {
 		kn->kn_flags |= EV_EOF;
@@ -1122,7 +1143,7 @@ tty_rel_free(struct tty *tp)
 {
 	struct cdev *dev;
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 #define	TF_ACTIVITY	(TF_GONE|TF_OPENED|TF_HOOK|TF_OPENCLOSE)
 	if (tp->t_sessioncnt != 0 || (tp->t_flags & TF_ACTIVITY) != TF_GONE) {
@@ -1153,7 +1174,7 @@ tty_rel_pgrp(struct tty *tp, struct pgrp *pg)
 {
 
 	MPASS(tp->t_sessioncnt > 0);
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	if (tp->t_pgrp == pg)
 		tp->t_pgrp = NULL;
@@ -1180,7 +1201,7 @@ void
 tty_rel_gone(struct tty *tp)
 {
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 	MPASS(!tty_gone(tp));
 
 	/* Simulate carrier removal. */
@@ -1256,7 +1277,7 @@ tty_drop_ctty(struct tty *tp, struct proc *p)
 	 * is either changed or released.
 	 */
 	if (vp != NULL)
-		vrele(vp);
+		devfs_ctty_unref(vp);
 	return (0);
 }
 
@@ -1268,7 +1289,7 @@ static void
 tty_to_xtty(struct tty *tp, struct xtty *xt)
 {
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	xt->xt_size = sizeof(struct xtty);
 	xt->xt_insize = ttyinq_getsize(&tp->t_inq);
@@ -1459,15 +1480,23 @@ void
 tty_signal_sessleader(struct tty *tp, int sig)
 {
 	struct proc *p;
+	struct session *s;
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 	MPASS(sig >= 1 && sig < NSIG);
 
 	/* Make signals start output again. */
 	tp->t_flags &= ~TF_STOPPED;
+	tp->t_termios.c_lflag &= ~FLUSHO;
 
-	if (tp->t_session != NULL && tp->t_session->s_leader != NULL) {
-		p = tp->t_session->s_leader;
+	/*
+	 * Load s_leader exactly once to avoid race where s_leader is
+	 * set to NULL by a concurrent invocation of killjobc() by the
+	 * session leader.  Note that we are not holding t_session's
+	 * lock for the read.
+	 */
+	if ((s = tp->t_session) != NULL &&
+	    (p = atomic_load_ptr(&s->s_leader)) != NULL) {
 		PROC_LOCK(p);
 		kern_psignal(p, sig);
 		PROC_UNLOCK(p);
@@ -1479,11 +1508,12 @@ tty_signal_pgrp(struct tty *tp, int sig)
 {
 	ksiginfo_t ksi;
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 	MPASS(sig >= 1 && sig < NSIG);
 
 	/* Make signals start output again. */
 	tp->t_flags &= ~TF_STOPPED;
+	tp->t_termios.c_lflag &= ~FLUSHO;
 
 	if (sig == SIGINFO && !(tp->t_termios.c_lflag & NOKERNINFO))
 		tty_info(tp);
@@ -1818,7 +1848,6 @@ tty_generic_ioctl(struct tty *tp, u_long cmd, void *data, int fflag,
 		tp->t_session = p->p_session;
 		tp->t_session->s_ttyp = tp;
 		tp->t_sessioncnt++;
-		sx_xunlock(&proctree_lock);
 
 		/* Assign foreground process group. */
 		tp->t_pgrp = p->p_pgrp;
@@ -1826,6 +1855,7 @@ tty_generic_ioctl(struct tty *tp, u_long cmd, void *data, int fflag,
 		p->p_flag |= P_CONTROLT;
 		PROC_UNLOCK(p);
 
+		sx_xunlock(&proctree_lock);
 		return (0);
 	}
 	case TIOCSPGRP: {
@@ -1928,6 +1958,7 @@ tty_generic_ioctl(struct tty *tp, u_long cmd, void *data, int fflag,
 		return (0);
 	case TIOCSTART:
 		tp->t_flags &= ~TF_STOPPED;
+		tp->t_termios.c_lflag &= ~FLUSHO;
 		ttydevsw_outwakeup(tp);
 		ttydevsw_pktnotify(tp, TIOCPKT_START);
 		return (0);
@@ -1957,7 +1988,7 @@ tty_ioctl(struct tty *tp, u_long cmd, void *data, int fflag, struct thread *td)
 {
 	int error;
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	if (tty_gone(tp))
 		return (ENXIO);
@@ -2058,7 +2089,7 @@ ttyhook_register(struct tty **rtp, struct proc *p, int fd, struct ttyhook *th,
 
 	/* Validate the file descriptor. */
 	fdp = p->p_fd;
-	error = fget_unlocked(fdp, fd, cap_rights_init(&rights, CAP_TTYHOOK),
+	error = fget_unlocked(fdp, fd, cap_rights_init_one(&rights, CAP_TTYHOOK),
 	    &fp);
 	if (error != 0)
 		return (error);
@@ -2124,7 +2155,7 @@ void
 ttyhook_unregister(struct tty *tp)
 {
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 	MPASS(tp->t_flags & TF_HOOK);
 
 	/* Disconnect the hook. */
@@ -2367,9 +2398,8 @@ DB_SHOW_COMMAND(tty, db_show_tty)
 	_db_show_hooks("\t", tp->t_hook);
 
 	/* Process info. */
-	db_printf("\tpgrp: %p gid %d jobc %d\n", tp->t_pgrp,
-	    tp->t_pgrp ? tp->t_pgrp->pg_id : 0,
-	    tp->t_pgrp ? tp->t_pgrp->pg_jobc : 0);
+	db_printf("\tpgrp: %p gid %d\n", tp->t_pgrp,
+	    tp->t_pgrp ? tp->t_pgrp->pg_id : 0);
 	db_printf("\tsession: %p", tp->t_session);
 	if (tp->t_session != NULL)
 	    db_printf(" count %u leader %p tty %p sid %d login %s",

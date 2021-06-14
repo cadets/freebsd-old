@@ -40,6 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sysexits.h>
 #include <unistd.h>
 
 #include "nvmecontrol.h"
@@ -94,7 +95,7 @@ print_namespace(struct nvme_namespace_data *nsdata)
 	     NVME_NS_DATA_DPC_PIT3_MASK) ? "Type 3, " : "",
 	    ((nsdata->dpc >> NVME_NS_DATA_DPC_PIT2_SHIFT) &
 	     NVME_NS_DATA_DPC_PIT2_MASK) ? "Type 2, " : "",
-	    ((nsdata->dpc >> NVME_NS_DATA_DPC_PIT2_MASK) &
+	    ((nsdata->dpc >> NVME_NS_DATA_DPC_PIT1_SHIFT) &
 	     NVME_NS_DATA_DPC_PIT1_MASK) ? "Type 1" : "");
 	printf("Data Protection Settings:    ");
 	ptype = (nsdata->dps >> NVME_NS_DATA_DPS_PIT_SHIFT) &
@@ -151,15 +152,15 @@ print_namespace(struct nvme_namespace_data *nsdata)
 	   uint128_to_str(to128(nsdata->nvmcap), cbuf, sizeof(cbuf)));
 	if ((nsdata->nsfeat >> NVME_NS_DATA_NSFEAT_NPVALID_SHIFT) &
 	    NVME_NS_DATA_NSFEAT_NPVALID_MASK) {
-		printf("Preferred Write Granularity: %u blocks",
+		printf("Preferred Write Granularity: %u blocks\n",
 		    nsdata->npwg + 1);
-		printf("Preferred Write Alignment:   %u blocks",
+		printf("Preferred Write Alignment:   %u blocks\n",
 		    nsdata->npwa + 1);
-		printf("Preferred Deallocate Granul: %u blocks",
+		printf("Preferred Deallocate Granul: %u blocks\n",
 		    nsdata->npdg + 1);
-		printf("Preferred Deallocate Align:  %u blocks",
+		printf("Preferred Deallocate Align:  %u blocks\n",
 		    nsdata->npda + 1);
-		printf("Optimal Write Size:          %u blocks",
+		printf("Optimal Write Size:          %u blocks\n",
 		    nsdata->nows + 1);
 	}
 	printf("Globally Unique Identifier:  ");
@@ -191,7 +192,8 @@ identify_ctrlr(int fd)
 	struct nvme_controller_data	cdata;
 	int				hexlength;
 
-	read_controller_data(fd, &cdata);
+	if (read_controller_data(fd, &cdata))
+		errx(EX_IOERR, "Identify request failed");
 	close(fd);
 
 	if (opt.hex) {
@@ -214,7 +216,8 @@ identify_ns(int fd, uint32_t nsid)
 	struct nvme_namespace_data	nsdata;
 	int				hexlength;
 
-	read_namespace_data(fd, nsid, &nsdata);
+	if (read_namespace_data(fd, nsid, &nsdata))
+		errx(EX_IOERR, "Identify request failed");
 	close(fd);
 
 	if (opt.hex) {
@@ -238,9 +241,10 @@ identify(const struct cmd *f, int argc, char *argv[])
 	int		fd;
 	uint32_t	nsid;
 
-	arg_parse(argc, argv, f);
+	if (arg_parse(argc, argv, f))
+		return;
 
-	open_dev(opt.dev, &fd, 1, 1);
+	open_dev(opt.dev, &fd, 0, 1);
 	get_nsid(fd, &path, &nsid);
 	if (nsid != 0) {
 		/*
@@ -250,7 +254,7 @@ identify(const struct cmd *f, int argc, char *argv[])
 		 * the IDENTIFY command itself.
 		 */
 		close(fd);
-		open_dev(path, &fd, 1, 1);
+		open_dev(path, &fd, 0, 1);
 	}
 	free(path);
 	if (opt.nsid != NONE)

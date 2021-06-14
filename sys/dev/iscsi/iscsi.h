@@ -2,7 +2,6 @@
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
  * Copyright (c) 2012 The FreeBSD Foundation
- * All rights reserved.
  *
  * This software was developed by Edward Tomasz Napierala under sponsorship
  * from the FreeBSD Foundation.
@@ -46,7 +45,7 @@ struct iscsi_outstanding {
 	union ccb			*io_ccb;
 	size_t				io_received;
 	uint32_t			io_initiator_task_tag;
-	uint32_t			io_datasn;
+	uint32_t			io_referenced_task_tag;
 	void				*io_icl_prv;
 };
 
@@ -61,16 +60,13 @@ struct iscsi_session {
 	uint32_t			is_expcmdsn;
 	uint32_t			is_maxcmdsn;
 	uint32_t			is_initiator_task_tag;
-	int				is_header_digest;
-	int				is_data_digest;
+	int				is_protocol_level;
 	int				is_initial_r2t;
 	int				is_max_burst_length;
 	int				is_first_burst_length;
 	uint8_t				is_isid[6];
 	uint16_t			is_tsih;
 	bool				is_immediate_data;
-	int				is_max_recv_data_segment_length;
-	int				is_max_send_data_segment_length;
 	char				is_target_alias[ISCSI_ALIAS_LEN];
 
 	TAILQ_HEAD(, iscsi_outstanding)	is_outstanding;
@@ -134,6 +130,7 @@ struct iscsi_softc {
 	TAILQ_HEAD(, iscsi_session)	sc_sessions;
 	struct cv			sc_cv;
 	unsigned int			sc_last_session_id;
+	bool				sc_unloading;
 	eventhandler_tag		sc_shutdown_pre_eh;
 	eventhandler_tag		sc_shutdown_post_eh;
 };

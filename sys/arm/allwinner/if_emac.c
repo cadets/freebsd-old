@@ -467,7 +467,7 @@ emac_watchdog(struct emac_softc *sc)
 			    "(missed link)\n");
 	} else
 		if_printf(sc->emac_ifp, "watchdog timeout -- resetting\n");
-	
+
 	if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
 	ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 	emac_init_locked(sc);
@@ -601,7 +601,6 @@ emac_init_locked(struct emac_softc *sc)
 
 	callout_reset(&sc->emac_tick_ch, hz, emac_tick, sc);
 }
-
 
 static void
 emac_start(struct ifnet *ifp)
@@ -923,7 +922,8 @@ emac_attach(device_t dev)
 	/* Create device sysctl node. */
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)),
-	    OID_AUTO, "process_limit", CTLTYPE_INT | CTLFLAG_RW,
+	    OID_AUTO, "process_limit",
+	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
 	    &sc->emac_rx_process_limit, 0, sysctl_hw_emac_proc_limit, "I",
 	    "max number of Rx events to process");
 

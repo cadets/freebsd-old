@@ -136,7 +136,7 @@ DRIVER_MODULE(cpufreq, cpu, cpufreq_driver, cpufreq_dc, 0, 0);
 
 static int		cf_lowest_freq;
 static int		cf_verbose;
-static SYSCTL_NODE(_debug, OID_AUTO, cpufreq, CTLFLAG_RD, NULL,
+static SYSCTL_NODE(_debug, OID_AUTO, cpufreq, CTLFLAG_RD | CTLFLAG_MPSAFE, NULL,
     "cpufreq debugging");
 SYSCTL_INT(_debug_cpufreq, OID_AUTO, lowest, CTLFLAG_RWTUN, &cf_lowest_freq, 1,
     "Don't provide levels below this frequency.");
@@ -183,11 +183,12 @@ cpufreq_attach(device_t dev)
 	    M_DEVBUF, M_WAITOK);
 	SYSCTL_ADD_PROC(&sc->sysctl_ctx,
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(parent)),
-	    OID_AUTO, "freq", CTLTYPE_INT | CTLFLAG_RW, sc, 0,
-	    cpufreq_curr_sysctl, "I", "Current CPU frequency");
+	    OID_AUTO, "freq", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+	    sc, 0, cpufreq_curr_sysctl, "I", "Current CPU frequency");
 	SYSCTL_ADD_PROC(&sc->sysctl_ctx,
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(parent)),
-	    OID_AUTO, "freq_levels", CTLTYPE_STRING | CTLFLAG_RD, sc, 0,
+	    OID_AUTO, "freq_levels",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
 	    cpufreq_levels_sysctl, "A", "CPU frequency levels");
 
 	/*
@@ -324,6 +325,12 @@ cf_set_method(device_t dev, const struct cf_level *level, int priority)
 
 		/* Bind to the target CPU before switching. */
 		pc = cpu_get_pcpu(set->dev);
+
+		/* Skip settings if CPU is not started. */
+		if (pc == NULL) {
+			error = 0;
+			goto out;
+		}
 		thread_lock(curthread);
 		pri = curthread->td_priority;
 		sched_prio(curthread, PRI_MIN);
@@ -688,7 +695,6 @@ cf_levels_method(device_t dev, struct cf_level *levels, int *count)
 	/* Finally, output the list of levels. */
 	i = 0;
 	TAILQ_FOREACH(lev, &sc->all_levels, link) {
-
 		/* Skip levels that have a frequency that is too low. */
 		if (lev->total_set.freq < cf_lowest_freq) {
 			sc->all_count--;
@@ -1080,7 +1086,8 @@ cpufreq_register(device_t dev)
 	/* Add a sysctl to get each driver's settings separately. */
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)),
-	    OID_AUTO, "freq_settings", CTLTYPE_STRING | CTLFLAG_RD, dev, 0,
+	    OID_AUTO, "freq_settings",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, dev, 0,
 	    cpufreq_settings_sysctl, "A", "CPU frequency driver settings");
 
 	/*

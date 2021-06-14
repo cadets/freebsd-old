@@ -50,7 +50,7 @@ find_gdb()
 {
 	local binary
 
-	for binary in /usr/local/bin/gdb /usr/libexec/gdb /usr/bin/gdb; do
+	for binary in /usr/local/bin/gdb /usr/libexec/gdb; do
 		if [ -x ${binary} ]; then
 			GDB=${binary}
 			return
@@ -177,6 +177,7 @@ fi
 find_gdb
 if [ -z "$GDB" ]; then
 	echo "Unable to find a kernel debugger."
+	echo "Please install the devel/gdb port or gdb package."
 	exit 1
 fi
 
@@ -312,12 +313,6 @@ echo
 w -M $VMCORE -N $KERNEL -dn
 echo
 fi
-
-echo "------------------------------------------------------------------------"
-echo "nfsstat"
-echo
-nfsstat -M $VMCORE -N $KERNEL
-echo
 
 echo "------------------------------------------------------------------------"
 echo "netstat -s"

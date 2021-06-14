@@ -30,11 +30,9 @@
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
 #include <netinet/ip.h>
-#ifndef	linux
 # include <netinet/ip_var.h>
 # include <net/route.h>
 # include <netinet/if_ether.h>
-#endif
 #include <netdb.h>
 #include <arpa/nameser.h>
 #include <arpa/inet.h>
@@ -45,11 +43,6 @@
 #include "ipf.h"
 #include "iplang.h"
 
-#if !defined(__NetBSD__) && (!defined(__FreeBSD_version) && \
-    __FreeBSD_version < 400020) && (!SOLARIS || SOLARIS2 < 10)
-extern	struct ether_addr *ether_aton __P((char *));
-#endif
-
 extern	int	opts;
 extern	struct ipopt_names ionames[];
 extern	int	state, state, lineNum, token;
@@ -58,11 +51,7 @@ extern	char	yytext[];
 extern	FILE	*yyin;
 int	yylex	__P((void));
 #define	YYDEBUG 1
-#if !defined(ultrix) && !defined(hpux)
 int	yydebug = 1;
-#else
-extern	int	yydebug;
-#endif
 
 iface_t *iflist = NULL, **iftail = &iflist;
 iface_t *cifp = NULL;
@@ -70,8 +59,8 @@ arp_t *arplist = NULL, **arptail = &arplist, *carp = NULL;
 struct in_addr defrouter;
 send_t	sending;
 char	*sclass = NULL;
-u_short	c_chksum __P((u_short *, u_int, u_long));
-u_long	p_chksum __P((u_short *, u_int));
+u_short	c_chksum(u_short *, u_int, u_long);
+u_long	p_chksum(u_short *, u_int);
 
 u_long	ipbuffer[67584/sizeof(u_long)];		/* 66K */
 aniphdr_t	*aniphead = NULL, *canip = NULL, **aniptail = &aniphead;
@@ -85,85 +74,85 @@ struct statetoopt {
 	int	sto_op;
 };
 
-struct	in_addr getipv4addr __P((char *arg));
-u_short	getportnum __P((char *, char *));
-struct	ether_addr *geteaddr __P((char *, struct ether_addr *));
-void	*new_header __P((int));
-void	free_aniplist __P((void));
-void	inc_anipheaders __P((int));
-void	new_data __P((void));
-void	set_datalen __P((char **));
-void	set_datafile __P((char **));
-void	set_data __P((char **));
-void	new_packet __P((void));
-void	set_ipv4proto __P((char **));
-void	set_ipv4src __P((char **));
-void	set_ipv4dst __P((char **));
-void	set_ipv4off __P((char **));
-void	set_ipv4v __P((char **));
-void	set_ipv4hl __P((char **));
-void	set_ipv4ttl __P((char **));
-void	set_ipv4tos __P((char **));
-void	set_ipv4id __P((char **));
-void	set_ipv4sum __P((char **));
-void	set_ipv4len __P((char **));
-void	new_tcpheader __P((void));
-void	set_tcpsport __P((char **));
-void	set_tcpdport __P((char **));
-void	set_tcpseq __P((char **));
-void	set_tcpack __P((char **));
-void	set_tcpoff __P((char **));
-void	set_tcpurp __P((char **));
-void	set_tcpwin __P((char **));
-void	set_tcpsum __P((char **));
-void	set_tcpflags __P((char **));
-void	set_tcpopt __P((int, char **));
-void	end_tcpopt __P((void));
-void	new_udpheader __P((void));
-void	set_udplen __P((char **));
-void	set_udpsum __P((char **));
-void	prep_packet __P((void));
-void	packet_done __P((void));
-void	new_interface __P((void));
-void	check_interface __P((void));
-void	set_ifname __P((char **));
-void	set_ifmtu __P((int));
-void	set_ifv4addr __P((char **));
-void	set_ifeaddr __P((char **));
-void	new_arp __P((void));
-void	set_arpeaddr __P((char **));
-void	set_arpv4addr __P((char **));
-void	reset_send __P((void));
-void	set_sendif __P((char **));
-void	set_sendvia __P((char **));
-void	set_defaultrouter __P((char **));
-void	new_icmpheader __P((void));
-void	set_icmpcode __P((int));
-void	set_icmptype __P((int));
-void	set_icmpcodetok __P((char **));
-void	set_icmptypetok __P((char **));
-void	set_icmpid __P((int));
-void	set_icmpseq __P((int));
-void	set_icmpotime __P((int));
-void	set_icmprtime __P((int));
-void	set_icmpttime __P((int));
-void	set_icmpmtu __P((int));
-void	set_redir __P((int, char **));
-void	new_ipv4opt __P((void));
-void	set_icmppprob __P((int));
-void	add_ipopt __P((int, void *));
-void	end_ipopt __P((void));
-void	set_secclass __P((char **));
-void	free_anipheader __P((void));
-void	end_ipv4 __P((void));
-void	end_icmp __P((void));
-void	end_udp __P((void));
-void	end_tcp __P((void));
-void	end_data __P((void));
-void	yyerror __P((char *));
-void	iplang __P((FILE *));
-int	arp_getipv4 __P((char *, char *));
-int	yyparse __P((void));
+struct	in_addr getipv4addr(char *arg);
+u_short	getportnum(char *, char *);
+struct	ether_addr *geteaddr(char *, struct ether_addr *);
+void	*new_header(int);
+void	free_aniplist(void);
+void	inc_anipheaders(int);
+void	new_data(void);
+void	set_datalen(char **);
+void	set_datafile(char **);
+void	set_data(char **);
+void	new_packet(void);
+void	set_ipv4proto(char **);
+void	set_ipv4src(char **);
+void	set_ipv4dst(char **);
+void	set_ipv4off(char **);
+void	set_ipv4v(char **);
+void	set_ipv4hl(char **);
+void	set_ipv4ttl(char **);
+void	set_ipv4tos(char **);
+void	set_ipv4id(char **);
+void	set_ipv4sum(char **);
+void	set_ipv4len(char **);
+void	new_tcpheader(void);
+void	set_tcpsport(char **);
+void	set_tcpdport(char **);
+void	set_tcpseq(char **);
+void	set_tcpack(char **);
+void	set_tcpoff(char **);
+void	set_tcpurp(char **);
+void	set_tcpwin(char **);
+void	set_tcpsum(char **);
+void	set_tcpflags(char **);
+void	set_tcpopt(int, char **);
+void	end_tcpopt(void);
+void	new_udpheader(void);
+void	set_udplen(char **);
+void	set_udpsum(char **);
+void	prep_packet(void);
+void	packet_done(void);
+void	new_interface(void);
+void	check_interface(void);
+void	set_ifname(char **);
+void	set_ifmtu(int);
+void	set_ifv4addr(char **);
+void	set_ifeaddr(char **);
+void	new_arp(void);
+void	set_arpeaddr(char **);
+void	set_arpv4addr(char **);
+void	reset_send(void);
+void	set_sendif(char **);
+void	set_sendvia(char **);
+void	set_defaultrouter(char **);
+void	new_icmpheader(void);
+void	set_icmpcode(int);
+void	set_icmptype(int);
+void	set_icmpcodetok(char **);
+void	set_icmptypetok(char **);
+void	set_icmpid(int);
+void	set_icmpseq(int);
+void	set_icmpotime(int);
+void	set_icmprtime(int);
+void	set_icmpttime(int);
+void	set_icmpmtu(int);
+void	set_redir(int, char **);
+void	new_ipv4opt(void);
+void	set_icmppprob(int);
+void	add_ipopt(int, void *);
+void	end_ipopt(void);
+void	set_secclass(char **);
+void	free_anipheader(void);
+void	end_ipv4(void);
+void	end_icmp(void);
+void	end_udp(void);
+void	end_tcp(void);
+void	end_data(void);
+void	yyerror(char *);
+void	iplang(FILE *);
+int	arp_getipv4(char *, char *);
+int	yyparse(void);
 %}
 %union {
 	char	*str;
@@ -598,28 +587,6 @@ struct	statetoopt	tosecopts[] = {
 	{ 0, 0 }
 };
 
-#ifdef	bsdi
-struct ether_addr *
-ether_aton(s)
-	char *s;
-{
-	static struct ether_addr n;
-	u_int i[6];
-
-	if (sscanf(s, " %x:%x:%x:%x:%x:%x ", &i[0], &i[1],
-	    &i[2], &i[3], &i[4], &i[5]) == 6) {
-		n.ether_addr_octet[0] = (u_char)i[0];
-		n.ether_addr_octet[1] = (u_char)i[1];
-		n.ether_addr_octet[2] = (u_char)i[2];
-		n.ether_addr_octet[3] = (u_char)i[3];
-		n.ether_addr_octet[4] = (u_char)i[4];
-		n.ether_addr_octet[5] = (u_char)i[5];
-		return &n;
-	}
-	return NULL;
-}
-#endif
-
 
 struct in_addr getipv4addr(arg)
 char *arg;
@@ -654,7 +621,6 @@ struct ether_addr *buf;
 {
 	struct ether_addr *e;
 
-#if !defined(hpux) && !defined(linux)
 	e = ether_aton(arg);
 	if (!e)
 		fprintf(stderr, "Invalid ethernet address: %s\n", arg);
@@ -666,9 +632,6 @@ struct ether_addr *buf;
 		      sizeof(e->ether_addr_octet));
 # endif
 	return e;
-#else
-	return NULL;
-#endif
 }
 
 
@@ -1593,9 +1556,7 @@ int arg;
 void set_icmpmtu(arg)
 int arg;
 {
-#if	BSD >= 199306
 	icmp->icmp_nextmtu = htons(arg);
-#endif
 }
 
 

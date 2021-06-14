@@ -73,7 +73,7 @@ typedef	__sa_family_t	sa_family_t;
 typedef	__socklen_t	socklen_t;
 #define	_SOCKLEN_T_DECLARED
 #endif
- 
+
 #ifndef _SSIZE_T_DECLARED
 typedef	__ssize_t	ssize_t;
 #define	_SSIZE_T_DECLARED
@@ -265,7 +265,8 @@ struct accept_filter_arg {
 #define	AF_IEEE80211	37		/* IEEE 802.11 protocol */
 #define	AF_INET_SDP	40		/* OFED Socket Direct Protocol ipv4 */
 #define	AF_INET6_SDP	42		/* OFED Socket Direct Protocol ipv6 */
-#define	AF_MAX		42
+#define	AF_HYPERV	43		/* HyperV sockets */
+#define	AF_MAX		43
 /*
  * When allocating a new AF_ constant, please only allocate
  * even numbered constants for FreeBSD until 134 as odd numbered AF_
@@ -273,7 +274,6 @@ struct accept_filter_arg {
  */
 #define AF_VENDOR00 39
 #define AF_VENDOR01 41
-#define AF_VENDOR02 43
 #define AF_VENDOR03 45
 #define AF_VENDOR04 47
 #define AF_VENDOR05 49
@@ -416,6 +416,8 @@ struct sockproto {
 #define	NET_RT_IFMALIST	4		/* return multicast address list */
 #define	NET_RT_IFLISTL	5		/* Survey interface list, using 'l'en
 					 * versions of msghdr structs. */
+#define NET_RT_NHOP	6		/* dump routing nexthops */
+#define NET_RT_NHGRP	7		/* dump routing nexthop groups */
 #endif /* __BSD_VISIBLE */
 
 /*
@@ -467,6 +469,7 @@ struct msghdr {
 #endif
 #ifdef _KERNEL
 #define	MSG_MORETOCOME	 0x00100000	/* additional data pending */
+#define	MSG_TLSAPPDATA	 0x00200000	/* only soreceive() app. data (TLS) */
 #endif
 
 /*
@@ -507,7 +510,7 @@ struct cmsgcred {
 };
 
 /*
- * Socket credentials.
+ * Socket credentials (LOCAL_CREDS).
  */
 struct sockcred {
 	uid_t	sc_uid;			/* real user id */
@@ -523,6 +526,22 @@ struct sockcred {
  */
 #define	SOCKCREDSIZE(ngrps) \
 	(sizeof(struct sockcred) + (sizeof(gid_t) * ((ngrps) - 1)))
+
+/*
+ * Socket credentials (LOCAL_CREDS_PERSISTENT).
+ */
+struct sockcred2 {
+	int	sc_version;		/* version of this structure */
+	pid_t	sc_pid;			/* PID of sending process */
+	uid_t	sc_uid;			/* real user id */
+	uid_t	sc_euid;		/* effective user id */
+	gid_t	sc_gid;			/* real group id */
+	gid_t	sc_egid;		/* effective group id */
+	int	sc_ngroups;		/* number of supplemental groups */
+	gid_t	sc_groups[1];		/* variable length */
+};
+#define	SOCKCRED2SIZE(ngrps) \
+	(sizeof(struct sockcred2) + (sizeof(gid_t) * ((ngrps) - 1)))
 
 #endif /* __BSD_VISIBLE */
 
@@ -568,6 +587,7 @@ struct sockcred {
 #define	SCM_REALTIME	0x05		/* timestamp (struct timespec) */
 #define	SCM_MONOTONIC	0x06		/* timestamp (struct timespec) */
 #define	SCM_TIME_INFO	0x07		/* timestamp info */
+#define	SCM_CREDS2	0x08		/* process creds (struct sockcred2) */
 
 struct sock_timestamp_info {
 	__uint32_t	st_info_flags;
@@ -616,7 +636,6 @@ struct omsghdr {
 #define PRU_FLUSH_WR     SHUT_WR
 #define PRU_FLUSH_RDWR   SHUT_RDWR
 #endif
-
 
 #if __BSD_VISIBLE
 /*

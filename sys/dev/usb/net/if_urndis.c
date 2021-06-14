@@ -96,7 +96,8 @@ static uint32_t	urndis_ctrl_halt(struct urndis_softc *sc);
 
 #ifdef USB_DEBUG
 static int urndis_debug = 0;
-static	SYSCTL_NODE(_hw_usb, OID_AUTO, urndis, CTLFLAG_RW, 0, "USB RNDIS-Ethernet");
+static	SYSCTL_NODE(_hw_usb, OID_AUTO, urndis, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "USB RNDIS-Ethernet");
 SYSCTL_INT(_hw_usb_urndis, OID_AUTO, debug, CTLFLAG_RWTUN, &urndis_debug, 0,
     "Debug level");
 #endif
@@ -178,6 +179,9 @@ static const STRUCT_USB_HOST_ID urndis_host_devs[] = {
 	/* Nokia 7 plus */
 	{USB_IFACE_CLASS(UICLASS_IAD), USB_IFACE_SUBCLASS(0x4),
 		USB_IFACE_PROTOCOL(UIPROTO_ACTIVESYNC)},
+	/* Novatel Wireless 8800/8000/etc */
+	{USB_IFACE_CLASS(UICLASS_IAD), USB_IFACE_SUBCLASS(0xef),
+		USB_IFACE_PROTOCOL(UIPROTO_RNDIS)},
 };
 
 DRIVER_MODULE(urndis, uhub, urndis_driver, urndis_devclass, NULL, NULL);

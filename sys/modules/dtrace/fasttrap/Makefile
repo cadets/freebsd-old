@@ -6,12 +6,10 @@ SYSDIR?=	${SRCTOP}/sys
 
 KMOD=		fasttrap
 SRCS=		fasttrap.c fasttrap_isa.c
-SRCS+=		vnode_if.h
+SRCS+=		vnode_if.h  opt_global.h
 
-CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris \
-		-I${SYSDIR}/cddl/contrib/opensolaris/uts/common \
-		-I${SYSDIR}/cddl/contrib/opensolaris/uts/common/dtrace \
-		-I${SYSDIR}
+CFLAGS+= 	-include ${.OBJDIR}/opt_global.h
+CFLAGS+=	${OPENZFS_CFLAGS}
 
 .if ${MACHINE_CPUARCH} == "amd64" ||  ${MACHINE_CPUARCH} == "i386"
 CFLAGS+=	-I${SYSDIR}/cddl/contrib/opensolaris/uts/intel
@@ -21,14 +19,13 @@ CFLAGS+=	-I${SYSDIR}/cddl/contrib/opensolaris/uts/powerpc
 .PATH:		${SYSDIR}/cddl/contrib/opensolaris/uts/powerpc/dtrace
 .endif
 
-.PATH:		${SYSDIR}/cddl/contrib/opensolaris/common/unicode
+.PATH:		${SYSDIR}/contrib/openzfs/module/unicode
 SRCS+=		u8_textprep.c
-
-CFLAGS+=	-DSMP
 
 .include <bsd.kmod.mk>
 
 CFLAGS+=	-include ${SYSDIR}/cddl/compat/opensolaris/sys/debug_compat.h
 
+CWARNFLAGS+=	${OPENZFS_CWARNFLAGS}
 CWARNFLAGS+=	-Wno-cast-qual
 CWARNFLAGS+=	-Wno-unused

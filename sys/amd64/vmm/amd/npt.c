@@ -41,7 +41,8 @@ __FBSDID("$FreeBSD$");
 #include "npt.h"
 
 SYSCTL_DECL(_hw_vmm);
-SYSCTL_NODE(_hw_vmm, OID_AUTO, npt, CTLFLAG_RW, NULL, NULL);
+SYSCTL_NODE(_hw_vmm, OID_AUTO, npt, CTLFLAG_RW | CTLFLAG_MPSAFE, NULL,
+    NULL);
 
 static int npt_flags;
 SYSCTL_INT(_hw_vmm_npt, OID_AUTO, pmap_flags, CTLFLAG_RD,
@@ -61,7 +62,7 @@ svm_npt_init(int ipinum)
 	TUNABLE_INT_FETCH("hw.vmm.npt.enable_superpage", &enable_superpage);
 	if (enable_superpage)
 		npt_flags |= PMAP_PDE_SUPERPAGE; 
-	
+
 	return (0);
 }
 
@@ -75,7 +76,7 @@ npt_pinit(pmap_t pmap)
 struct vmspace *
 svm_npt_alloc(vm_offset_t min, vm_offset_t max)
 {
-	
+
 	return (vmspace_alloc(min, max, npt_pinit));
 }
 

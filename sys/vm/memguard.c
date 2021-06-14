@@ -64,7 +64,8 @@ __FBSDID("$FreeBSD$");
 #include <vm/uma_int.h>
 #include <vm/memguard.h>
 
-static SYSCTL_NODE(_vm, OID_AUTO, memguard, CTLFLAG_RW, NULL, "MemGuard data");
+static SYSCTL_NODE(_vm, OID_AUTO, memguard, CTLFLAG_RW | CTLFLAG_MPSAFE, NULL,
+    "MemGuard data");
 /*
  * The vm_memguard_divisor variable controls how much of kernel_arena should be
  * reserved for MemGuard.
@@ -156,7 +157,6 @@ SYSCTL_UINT(_vm_memguard, OID_AUTO, frequency, CTLFLAG_RWTUN,
     &memguard_frequency, 0, "Times in 100000 that MemGuard will randomly run");
 SYSCTL_ULONG(_vm_memguard, OID_AUTO, frequency_hits, CTLFLAG_RD,
     &memguard_frequency_hits, 0, "# times MemGuard randomly chose");
-
 
 /*
  * Return a fudged value to be used for vm_kmem_size for allocating
@@ -502,4 +502,10 @@ memguard_cmp_zone(uma_zone_t zone)
 	 * but it is also the slowest way.
 	 */
 	return (strcmp(zone->uz_name, vm_memguard_desc) == 0);
+}
+
+unsigned long
+memguard_get_req_size(const void *addr)
+{
+	return (*v2sizep(trunc_page((uintptr_t)addr)));
 }

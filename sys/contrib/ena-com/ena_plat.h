@@ -1,7 +1,7 @@
 /*-
- * BSD LICENSE
+ * SPDX-License-Identifier: BSD-3-Clause
  *
- * Copyright (c) 2015-2019 Amazon.com, Inc. or its affiliates.
+ * Copyright (c) 2015-2020 Amazon.com, Inc. or its affiliates.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -65,6 +65,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/in_cksum.h>
 #include <machine/pcpu.h>
 #include <machine/resource.h>
+#include <machine/_inttypes.h>
 
 #include <net/bpf.h>
 #include <net/ethernet.h>
@@ -105,27 +106,40 @@ extern struct ena_bus_space ebs;
 #define ENA_ADMQ	(1 << 8) /* Detailed info about admin queue. 	      */
 #define ENA_NETMAP	(1 << 9) /* Detailed info about netmap. 	      */
 
+#define DEFAULT_ALLOC_ALIGNMENT	8
+
 extern int ena_log_level;
 
-#define ena_trace_raw(level, fmt, args...)			\
+#define container_of(ptr, type, member)					\
+	({								\
+		const __typeof(((type *)0)->member) *__p = (ptr);	\
+		(type *)((uintptr_t)__p - offsetof(type, member));	\
+	})
+
+#define ena_trace_raw(ctx, level, fmt, args...)			\
 	do {							\
+		((void)(ctx));					\
 		if (((level) & ena_log_level) != (level))	\
 			break;					\
 		printf(fmt, ##args);				\
 	} while (0)
 
-#define ena_trace(level, fmt, args...)				\
-	ena_trace_raw(level, "%s() [TID:%d]: "			\
+#define ena_trace(ctx, level, fmt, args...)			\
+	ena_trace_raw(ctx, level, "%s() [TID:%d]: "		\
 	    fmt, __func__, curthread->td_tid, ##args)
 
 
-#define ena_trc_dbg(format, arg...) 	ena_trace(ENA_DBG, format, ##arg)
-#define ena_trc_info(format, arg...) 	ena_trace(ENA_INFO, format, ##arg)
-#define ena_trc_warn(format, arg...) 	ena_trace(ENA_WARNING, format, ##arg)
-#define ena_trc_err(format, arg...) 	ena_trace(ENA_ALERT, format, ##arg)
+#define ena_trc_dbg(ctx, format, arg...)	\
+	ena_trace(ctx, ENA_DBG, format, ##arg)
+#define ena_trc_info(ctx, format, arg...)	\
+	ena_trace(ctx, ENA_INFO, format, ##arg)
+#define ena_trc_warn(ctx, format, arg...)	\
+	ena_trace(ctx, ENA_WARNING, format, ##arg)
+#define ena_trc_err(ctx, format, arg...)	\
+	ena_trace(ctx, ENA_ALERT, format, ##arg)
 
-#define unlikely(x)	__predict_false(x)
-#define likely(x)  	__predict_true(x)
+#define unlikely(x)	__predict_false(!!(x))
+#define likely(x)  	__predict_true(!!(x))
 
 #define __iomem
 #define ____cacheline_aligned __aligned(CACHE_LINE_SIZE)
@@ -133,19 +147,10 @@ extern int ena_log_level;
 #define MAX_ERRNO 4095
 #define IS_ERR_VALUE(x) unlikely((x) <= (unsigned long)MAX_ERRNO)
 
-#define ENA_ASSERT(cond, format, arg...)				\
-	do {								\
-		if (unlikely(!(cond))) {				\
-			ena_trc_err(					\
-				"Assert failed on %s:%s:%d:" format,	\
-				__FILE__, __func__, __LINE__, ##arg);	\
-		}							\
-	} while (0)
-
-#define ENA_WARN(cond, format, arg...)					\
+#define ENA_WARN(cond, ctx, format, arg...)				\
 	do {								\
 		if (unlikely((cond))) {					\
-			ena_trc_warn(format, ##arg);			\
+			ena_trc_warn(ctx, format, ##arg);		\
 		}							\
 	} while (0)
 
@@ -184,12 +189,14 @@ static inline long PTR_ERR(const void *ptr)
 #define	ENA_COM_NO_DEVICE	ENODEV
 #define	ENA_COM_PERMISSION	EPERM
 #define ENA_COM_TIMER_EXPIRED	ETIMEDOUT
+#define ENA_COM_EIO		EIO
 
 #define ENA_MSLEEP(x) 		pause_sbt("ena", SBT_1MS * (x), SBT_1MS, 0)
+#define ENA_USLEEP(x) 		pause_sbt("ena", SBT_1US * (x), SBT_1US, 0)
 #define ENA_UDELAY(x) 		DELAY(x)
 #define ENA_GET_SYSTEM_TIMEOUT(timeout_us) \
     ((long)cputick2usec(cpu_ticks()) + (timeout_us))
-#define ENA_TIME_EXPIRE(timeout)  ((timeout) < (long)cputick2usec(cpu_ticks()))
+#define ENA_TIME_EXPIRE(timeout)  ((timeout) < cputick2usec(cpu_ticks()))
 #define ENA_MIGHT_SLEEP()
 
 #define min_t(type, _x, _y) ((type)(_x) < (type)(_y) ? (type)(_x) : (type)(_y))
@@ -231,10 +238,17 @@ static inline long PTR_ERR(const void *ptr)
 		cv_init(&((waitqueue).wq), "cv");			\
 		mtx_init(&((waitqueue).mtx), "wq", NULL, MTX_DEF);	\
 	} while (0)
-#define ENA_WAIT_EVENT_DESTROY(waitqueue)				\
+#define ENA_WAIT_EVENTS_DESTROY(admin_queue)				\
 	do {								\
-		cv_destroy(&((waitqueue).wq));				\
-		mtx_destroy(&((waitqueue).mtx));			\
+		struct ena_comp_ctx *comp_ctx;				\
+		int i;							\
+		for (i = 0; i < admin_queue->q_depth; i++) {		\
+			comp_ctx = get_comp_ctxt(admin_queue, i, false); \
+			if (comp_ctx != NULL) {				\
+				cv_destroy(&((comp_ctx->wait_event).wq)); \
+				mtx_destroy(&((comp_ctx->wait_event).mtx)); \
+			}						\
+		}							\
 	} while (0)
 #define ENA_WAIT_EVENT_CLEAR(waitqueue)					\
 	cv_init(&((waitqueue).wq), (waitqueue).wq.cv_description)
@@ -276,10 +290,23 @@ struct ena_bus {
 
 typedef uint32_t ena_atomic32_t;
 
+#define ENA_PRIu64 PRIu64
+
+typedef uint64_t ena_time_t;
+typedef struct ifnet ena_netdev;
+
 void	ena_dmamap_callback(void *arg, bus_dma_segment_t *segs, int nseg,
     int error);
 int	ena_dma_alloc(device_t dmadev, bus_size_t size, ena_mem_handle_t *dma,
-    int mapflags);
+    int mapflags, bus_size_t alignment);
+
+static inline uint32_t
+ena_reg_read32(struct ena_bus *bus, bus_size_t offset)
+{
+	uint32_t v = bus_space_read_4(bus->reg_bar_t, bus->reg_bar_h, offset);
+	rmb();
+	return v;
+}
 
 #define ENA_MEMCPY_TO_DEVICE_64(dst, src, size)				\
 	do {								\
@@ -294,20 +321,34 @@ int	ena_dma_alloc(device_t dmadev, bus_size_t size, ena_mem_handle_t *dma,
 
 #define ENA_MEM_ALLOC(dmadev, size) malloc(size, M_DEVBUF, M_NOWAIT | M_ZERO)
 #define ENA_MEM_ALLOC_NODE(dmadev, size, virt, node, dev_node) (virt = NULL)
-#define ENA_MEM_FREE(dmadev, ptr) free(ptr, M_DEVBUF)
-#define ENA_MEM_ALLOC_COHERENT_NODE(dmadev, size, virt, phys, handle, node, \
-    dev_node)								\
+#define ENA_MEM_FREE(dmadev, ptr, size)					\
+	do { 								\
+		(void)(size);						\
+		free(ptr, M_DEVBUF);					\
+	} while (0)
+#define ENA_MEM_ALLOC_COHERENT_NODE_ALIGNED(dmadev, size, virt, phys,	\
+    handle, node, dev_node, alignment) 					\
 	do {								\
 		((virt) = NULL);					\
 		(void)(dev_node);					\
 	} while (0)
 
-#define ENA_MEM_ALLOC_COHERENT(dmadev, size, virt, phys, dma)		\
+#define ENA_MEM_ALLOC_COHERENT_NODE(dmadev, size, virt, phys, handle,	\
+    node, dev_node)							\
+	ENA_MEM_ALLOC_COHERENT_NODE_ALIGNED(dmadev, size, virt,		\
+	    phys, handle, node, dev_node, DEFAULT_ALLOC_ALIGNMENT)
+
+#define ENA_MEM_ALLOC_COHERENT_ALIGNED(dmadev, size, virt, phys, dma,	\
+    alignment)								\
 	do {								\
-		ena_dma_alloc((dmadev), (size), &(dma), 0);		\
+		ena_dma_alloc((dmadev), (size), &(dma), 0, alignment);	\
 		(virt) = (void *)(dma).vaddr;				\
 		(phys) = (dma).paddr;					\
 	} while (0)
+
+#define ENA_MEM_ALLOC_COHERENT(dmadev, size, virt, phys, dma)		\
+	ENA_MEM_ALLOC_COHERENT_ALIGNED(dmadev, size, virt,		\
+	    phys, dma, DEFAULT_ALLOC_ALIGNMENT)
 
 #define ENA_MEM_FREE_COHERENT(dmadev, size, virt, phys, dma)		\
 	do {								\
@@ -321,18 +362,19 @@ int	ena_dma_alloc(device_t dmadev, bus_size_t size, ena_mem_handle_t *dma,
 
 /* Register R/W methods */
 #define ENA_REG_WRITE32(bus, value, offset)				\
+	do {								\
+		wmb();							\
+		ENA_REG_WRITE32_RELAXED(bus, value, offset);		\
+	} while (0)
+
+#define ENA_REG_WRITE32_RELAXED(bus, value, offset)			\
 	bus_space_write_4(						\
 			  ((struct ena_bus*)bus)->reg_bar_t,		\
 			  ((struct ena_bus*)bus)->reg_bar_h,		\
 			  (bus_size_t)(offset), (value))
-#define ENA_REG_WRITE32_RELAXED(bus, value, offset)			\
-	ENA_REG_WRITE32(bus, value, offset)
 
 #define ENA_REG_READ32(bus, offset)					\
-	bus_space_read_4(						\
-			 ((struct ena_bus*)bus)->reg_bar_t,		\
-			 ((struct ena_bus*)bus)->reg_bar_h,		\
-			 (bus_size_t)(offset))
+	ena_reg_read32((struct ena_bus*)(bus), (bus_size_t)(offset))
 
 #define ENA_DB_SYNC_WRITE(mem_handle) bus_dmamap_sync(			\
 	(mem_handle)->tag, (mem_handle)->map, BUS_DMASYNC_PREWRITE)
@@ -383,6 +425,12 @@ int	ena_dma_alloc(device_t dmadev, bus_size_t size, ena_mem_handle_t *dma,
 #define lower_32_bits(n) ((uint32_t)(n))
 
 #define DIV_ROUND_UP(n, d) (((n) + (d) - 1) / (d))
+
+#define ENA_FFS(x) ffs(x)
+
+void	ena_rss_key_fill(void *key, size_t size);
+
+#define ENA_RSS_FILL_KEY(key, size) ena_rss_key_fill(key, size)
 
 #include "ena_defs/ena_includes.h"
 

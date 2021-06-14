@@ -11,19 +11,18 @@ ATF_TESTS_C+=		qsort_s_test
 ATF_TESTS_C+=		set_constraint_handler_s_test
 ATF_TESTS_C+=		strfmon_test
 ATF_TESTS_C+=		tsearch_test
-.if ${COMPILER_FEATURES:Mc++11}
 ATF_TESTS_CXX+=		cxa_thread_atexit_test
 ATF_TESTS_CXX+=		cxa_thread_atexit_nothr_test
-.endif
 
 # All architectures on FreeBSD have fenv.h
 CFLAGS+=	-D__HAVE_FENV
 
-# Not sure why this isn't defined for all architectures, since most
-# have long double.
+# Define __HAVE_LONG_DOUBLE for architectures whose long double has greater
+# precision than their double.
 .if ${MACHINE_CPUARCH} == "aarch64" || \
     ${MACHINE_CPUARCH} == "amd64" || \
-    ${MACHINE_CPUARCH} == "i386"
+    ${MACHINE_CPUARCH} == "i386" || \
+    ${MACHINE_CPUARCH} == "riscv"
 CFLAGS+=	-D__HAVE_LONG_DOUBLE
 .endif
 

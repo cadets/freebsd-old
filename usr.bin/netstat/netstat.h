@@ -41,6 +41,8 @@
 extern int	Aflag;	/* show addresses of protocol control block */
 extern int	aflag;	/* show all sockets (including servers) */
 extern int	bflag;	/* show i/f total bytes in/out */
+extern int	cflag;	/* show congestion control stats */
+extern int	Cflag;	/* show congestion control algo and stack */
 extern int	dflag;	/* show i/f dropped packets */
 extern int	gflag;	/* show group (multicast) routing or stats */
 extern int	hflag;	/* show counters in human readable format */
@@ -147,6 +149,10 @@ void	rt_stats(void);
 char	*routename(struct sockaddr *, int);
 const char *netname(struct sockaddr *, struct sockaddr *);
 void	routepr(int, int);
+int	p_sockaddr(const char *name, struct sockaddr *sa,
+	    struct sockaddr *mask, int flags, int width);
+const char *fmt_sockaddr(struct sockaddr *sa, struct sockaddr *mask,
+	    int flags);
 
 #ifdef NETGRAPH
 void	netgraphprotopr(u_long, const char *, int, int);
@@ -157,3 +163,5 @@ void	unixpr(u_long, u_long, u_long, u_long, u_long, bool *);
 void	mroutepr(void);
 void	mrt_stats(void);
 void	bpf_stats(char *);
+void	nhops_print(int fibnum, int af);
+void	nhgrp_print(int fibnum, int af);

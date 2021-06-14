@@ -3,14 +3,13 @@
 .include <bsd.own.mk>
 
 # OpenSSL version used for manual page generation
-OPENSSL_VER=	1.1.1d
-OPENSSL_DATE=	2019-09-10
+OPENSSL_VER=	1.1.1k
+OPENSSL_DATE=	2021-03-25
 
 LCRYPTO_SRC=	${SRCTOP}/crypto/openssl
 LCRYPTO_DOC=	${LCRYPTO_SRC}/doc
 
 CFLAGS+=	-I${LCRYPTO_SRC}
-CFLAGS+=	-I${LCRYPTO_SRC}/crypto/include
 CFLAGS+=	-I${LCRYPTO_SRC}/include
 
 .include <bsd.endian.mk>
@@ -75,7 +74,7 @@ CFLAGS+=	-DPOLY1305_ASM
 
 .if defined(LIB)
 CFLAGS+=	-DOPENSSLDIR="\"/etc/ssl\""
-CFLAGS+=	-DENGINESDIR="\"/usr/lib/engines\""
+CFLAGS+=	-DENGINESDIR="\"${LIBDIR}/engines\""
 .endif
 
 CFLAGS+=	-DNDEBUG

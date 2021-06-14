@@ -124,11 +124,9 @@ db_putchar(int c, void *arg)
 	struct dbputchar_arg *dap = arg;
 
 	if (dap->da_pbufr == NULL) {
-
 		 /* No bufferized output is provided. */
 		db_putc(c);
 	} else {
-
 		*dap->da_pnext++ = c;
 		dap->da_remain--;
 
@@ -262,7 +260,7 @@ db_pager(void)
 	db_printf("--More--\r");
 	done = 0;
 	while (!done) {
-		c = cngetc();
+		c = db_getc();
 		switch (c) {
 		case 'e':
 		case 'j':

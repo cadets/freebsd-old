@@ -9,7 +9,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2020, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2021, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -156,7 +156,6 @@
 
 #include <stdlib.h>
 #include <string.h>
-YYSTYPE AslCompilerlval;
 
 /*
  * Generation:  Use the following command line:
@@ -195,6 +194,7 @@ count (int type);
 
 LeadNameChar                [A-Za-z_]
 DigitChar                   [0-9]
+ErrorCode                   [(][ ]*[1-9][0-9][0-9][0-9][ ]*[)]
 OctalChar                   [0-7]
 HexDigitChar                [A-Fa-f0-9]
 RootChar                    [\\]
@@ -279,8 +279,8 @@ NamePathTail                [.]{NameSeg}
     /*
      * Begin standard ASL grammar
      */
-[0-9][a-zA-Z0-9]*            { AslCompilerlval.i = UtDoConstant ((char *) AslCompilertext);
-                                count (1); return (PARSEOP_INTEGER); }
+[0-9][a-zA-Z0-9]*            { count (1); AslCompilerlval.i = UtDoConstant ((char *) AslCompilertext);
+                                 return (PARSEOP_INTEGER); }
 
 "Include"                   { count (1); return (PARSEOP_INCLUDE); }
 "External"                  { count (1); return (PARSEOP_EXTERNAL); }
@@ -434,6 +434,7 @@ NamePathTail                [.]{NameSeg}
 "ResourceTemplate"          { count (1); return (PARSEOP_RESOURCETEMPLATE); }
 "RawDataBuffer"             { count (1); return (PARSEOP_DATABUFFER); }
 
+"Csi2Bus"                   { count (1); return (PARSEOP_CSI2_SERIALBUS); }
 "DMA"                       { count (1); return (PARSEOP_DMA); }
 "DWordIO"                   { count (1); return (PARSEOP_DWORDIO); }
 "DWordMemory"               { count (1); return (PARSEOP_DWORDMEMORY); }
@@ -692,7 +693,8 @@ NamePathTail                [.]{NameSeg}
 "IPMI"                      { count (0); return (PARSEOP_REGIONSPACE_IPMI); }
 "GeneralPurposeIo"          { count (0); return (PARSEOP_REGIONSPACE_GPIO); }       /* ACPI 5.0 */
 "GenericSerialBus"          { count (0); return (PARSEOP_REGIONSPACE_GSBUS); }      /* ACPI 5.0 */
-"PlatformCommChannel"       { count (0); return (PARSEOP_REGIONSPACE_PCC); }        /* ACPI 5.0 */
+"PCC"                       { count (0); return (PARSEOP_REGIONSPACE_PCC); }        /* ACPI 5.0 */
+"PlatformRtMechanism"       { count (0); return (PARSEOP_REGIONSPACE_PRM); }
 "FFixedHW"                  { count (0); return (PARSEOP_REGIONSPACE_FFIXEDHW); }
 
     /* ResourceTypeKeyword: Resource Usage - Resource Descriptors */
@@ -810,6 +812,22 @@ NamePathTail                [.]{NameSeg}
 "__LINE__"                  { count (0); return (PARSEOP___LINE__); }
 "__PATH__"                  { count (0); return (PARSEOP___PATH__); }
 "__METHOD__"                { count (0); return (PARSEOP___METHOD__); }
+"__EXPECT__"{ErrorCode}     { char *s;
+                                unsigned int index = 0;
+                                count (0);
+                                while (!isdigit ((int) AslCompilertext[index]))
+                                {
+                                    index++;
+                                }
+
+                                /*
+                                 * The error code is contained inside the
+                                 * {ErrorCode} pattern. Extract it and log it
+                                 * as the expected error code.
+                                 */
+                                s = UtLocalCacheCalloc (ASL_ERROR_CODE_LENGTH + 1);
+                                memcpy (s, AslCompilertext + index, ASL_ERROR_CODE_LENGTH);
+                                AslLogExpectedExceptionByLine (s); }
 
 {NameSeg}                   { char *s;
                                 count (0);
@@ -824,7 +842,6 @@ NamePathTail                [.]{NameSeg}
                                      * the required length.
                                      */
                                     strcpy (s, "____");
-                                    AcpiUtStrupr (AslCompilertext);
                                 }
                                 memcpy (s, AslCompilertext, strlen (AslCompilertext));
                                 AslCompilerlval.s = s;
@@ -834,7 +851,6 @@ NamePathTail                [.]{NameSeg}
 {NameString}                { char *s;
                                 count (0);
                                 s=UtLocalCacheCalloc (strlen (AslCompilertext)+1);
-                                AcpiUtStrupr (AslCompilertext);
                                 strcpy (s, AslCompilertext);
                                 AslCompilerlval.s = s;
                                 DbgPrint (ASL_PARSE_OUTPUT, "NameString: %s\n", s);

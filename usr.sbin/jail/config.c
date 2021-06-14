@@ -71,8 +71,10 @@ static const struct ipspec intparams[] = {
     [IP_EXEC_JAIL_USER] =	{"exec.jail_user",	PF_INTERNAL},
     [IP_EXEC_POSTSTART] =	{"exec.poststart",	PF_INTERNAL},
     [IP_EXEC_POSTSTOP] =	{"exec.poststop",	PF_INTERNAL},
+    [IP_EXEC_PREPARE] =		{"exec.prepare",	PF_INTERNAL},
     [IP_EXEC_PRESTART] =	{"exec.prestart",	PF_INTERNAL},
     [IP_EXEC_PRESTOP] =		{"exec.prestop",	PF_INTERNAL},
+    [IP_EXEC_RELEASE] =		{"exec.release",	PF_INTERNAL},
     [IP_EXEC_CREATED] =		{"exec.created",	PF_INTERNAL},
     [IP_EXEC_START] =		{"exec.start",		PF_INTERNAL},
     [IP_EXEC_STOP] =		{"exec.stop",		PF_INTERNAL},
@@ -364,9 +366,16 @@ add_param(struct cfjail *j, const struct cfparam *p, enum intparam ipnum,
 				break;
 	if (dp != NULL) {
 		/* Found it - append or replace. */
+		if ((flags ^ dp->flags) & PF_VAR) {
+			jail_warnx(j, "variable \"$%s\" cannot have the same "
+			    "name as a parameter.", name);
+			j->flags |= JF_FAILED;
+			return;
+		}
 		if (dp->flags & PF_IMMUTABLE) {
-			jail_warnx(j, "cannot redefine variable \"%s\".",
+			jail_warnx(j, "cannot redefine parameter \"%s\".",
 			    dp->name);
+			j->flags |= JF_FAILED;
 			return;
 		}
 		if (strcmp(dp->name, name)) {
@@ -392,6 +401,15 @@ add_param(struct cfjail *j, const struct cfparam *p, enum intparam ipnum,
 			for (ipnum = IP__NULL + 1; ipnum < IP_NPARAM; ipnum++)
 				if (!(intparams[ipnum].flags & PF_CONV) &&
 				    equalopts(name, intparams[ipnum].name)) {
+					if (flags & PF_VAR) {
+						jail_warnx(j,
+						    "variable \"$%s\" "
+						    "cannot have the same "
+						    "name as a parameter.",
+						    name);
+						j->flags |= JF_FAILED;
+						return;
+					}
 					j->intparams[ipnum] = np;
 					np->flags |= intparams[ipnum].flags;
 					break;
@@ -596,8 +614,8 @@ check_intparams(struct cfjail *j)
 			if (cs || defif)
 				add_param(j, NULL, IP__IP4_IFADDR, s->s);
 			if (cs) {
-				strcpy(s->s, cs + 1);
 				s->len -= cs + 1 - s->s;
+				memmove(s->s, cs + 1, s->len + 1);
 			}
 			if ((cs = strchr(s->s, '/')) != NULL) {
 				*cs = '\0';
@@ -617,8 +635,8 @@ check_intparams(struct cfjail *j)
 			if (cs || defif)
 				add_param(j, NULL, IP__IP6_IFADDR, s->s);
 			if (cs) {
-				strcpy(s->s, cs + 1);
 				s->len -= cs + 1 - s->s;
+				memmove(s->s, cs + 1, s->len + 1);
 			}
 			if ((cs = strchr(s->s, '/')) != NULL) {
 				*cs = '\0';

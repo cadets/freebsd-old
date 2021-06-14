@@ -30,11 +30,7 @@
 ############################################################ CONFIGURATION
 
 : ${DESTDIR:=}
-: ${TRUSTPATH:=${DESTDIR}/usr/share/certs/trusted:${DESTDIR}/usr/local/share/certs:${DESTDIR}/usr/local/etc/ssl/certs}
-: ${BLACKLISTPATH:=${DESTDIR}/usr/share/certs/blacklisted:${DESTDIR}/usr/local/etc/ssl/blacklisted}
-: ${CERTDESTDIR:=${DESTDIR}/etc/ssl/certs}
-: ${BLACKLISTDESTDIR:=${DESTDIR}/etc/ssl/blacklisted}
-: ${EXTENSIONS:="*.pem *.crt *.cer *.crl *.0"}
+: ${FILEPAT:="\.pem$|\.crt$|\.cer$|\.crl$"}
 : ${VERBOSE:=0}
 
 ############################################################ GLOBALS
@@ -42,6 +38,7 @@
 SCRIPTNAME="${0##*/}"
 ERRORS=0
 NOOP=0
+UNPRIV=0
 
 ############################################################ FUNCTIONS
 
@@ -59,36 +56,78 @@ do_hash()
 	fi
 }
 
-create_trusted_link()
+get_decimal()
 {
-	local hash
+	local checkdir hash decimal
 
-	hash=$( do_hash "$1" ) || return
-	if [ -e "$BLACKLISTDESTDIR/$hash.0" ]; then
-		echo "Skipping blacklisted certificate $1 ($BLACKLISTDESTDIR/$hash.0)"
-		return 1
-	fi
-	[ $VERBOSE -gt 0 ] && echo "Adding $hash.0 to trust store"
-	[ $NOOP -eq 0 ] && ln -fs $(realpath "$1") "$CERTDESTDIR/$hash.0"
+	checkdir=$1
+	hash=$2
+	decimal=0
+
+	while [ -e "$checkdir/$hash.$decimal" ]; do
+		decimal=$((decimal + 1))
+	done
+
+	echo ${decimal}
+	return 0
 }
 
-create_blacklisted()
+create_trusted_link()
+{
+	local blisthash certhash hash
+	local suffix
+
+	hash=$( do_hash "$1" ) || return
+	certhash=$( openssl x509 -sha1 -in "$1" -noout -fingerprint )
+	for blistfile in $(find $BLACKLISTDESTDIR -name "$hash.*"); do
+		blisthash=$( openssl x509 -sha1 -in "$blistfile" -noout -fingerprint )
+		if [ "$certhash" = "$blisthash" ]; then
+			echo "Skipping blacklisted certificate $1 ($blistfile)"
+			return 1
+		fi
+	done
+	suffix=$(get_decimal "$CERTDESTDIR" "$hash")
+	[ $VERBOSE -gt 0 ] && echo "Adding $hash.$suffix to trust store"
+	[ $NOOP -eq 0 ] && \
+		install ${INSTALLFLAGS} -lrs $(realpath "$1") "$CERTDESTDIR/$hash.$suffix"
+}
+
+# Accepts either dot-hash form from `certctl list` or a path to a valid cert.
+resolve_certname()
 {
 	local hash srcfile filename
+	local suffix
 
 	# If it exists as a file, we'll try that; otherwise, we'll scan
 	if [ -e "$1" ]; then
 		hash=$( do_hash "$1" ) || return
 		srcfile=$(realpath "$1")
-		filename="$hash.0"
+		suffix=$(get_decimal "$BLACKLISTDESTDIR" "$hash")
+		filename="$hash.$suffix"
+		echo "$srcfile" "$hash.$suffix"
 	elif [ -e "${CERTDESTDIR}/$1" ];  then
 		srcfile=$(realpath "${CERTDESTDIR}/$1")
-		filename="$1"
-	else
+		hash=$(echo "$1" | sed -Ee 's/\.([0-9])+$//')
+		suffix=$(get_decimal "$BLACKLISTDESTDIR" "$hash")
+		filename="$hash.$suffix"
+		echo "$srcfile" "$hash.$suffix"
+	fi
+}
+
+create_blacklisted()
+{
+	local srcfile filename
+
+	set -- $(resolve_certname "$1")
+	srcfile=$1
+	filename=$2
+
+	if [ -z "$srcfile" -o -z "$filename" ]; then
 		return
 	fi
+
 	[ $VERBOSE -gt 0 ] && echo "Adding $filename to blacklist"
-	[ $NOOP -eq 0 ] && ln -fs "$srcfile" "$BLACKLISTDESTDIR/$filename"
+	[ $NOOP -eq 0 ] && install ${INSTALLFLAGS} -lrs "$srcfile" "$BLACKLISTDESTDIR/$filename"
 }
 
 do_scan()
@@ -104,13 +143,11 @@ do_scan()
 	for CPATH in "$@"; do
 		[ -d "$CPATH" ] || continue
 		echo "Scanning $CPATH for certificates..."
-		cd "$CPATH"
-		for CFILE in $EXTENSIONS; do
-			[ -e "$CFILE" ] || continue
+		for CFILE in $(ls -1 "${CPATH}" | grep -Ee "${FILEPAT}"); do
+			[ -e "$CPATH/$CFILE" ] || continue
 			[ $VERBOSE -gt 0 ] && echo "Reading $CFILE"
 			"$CFUNC" "$CPATH/$CFILE"
 		done
-		cd -
 	done
 }
 
@@ -120,7 +157,7 @@ do_list()
 
 	if [ -e "$1" ]; then
 		cd "$1"
-		for CFILE in *.0; do
+		for CFILE in *.[0-9]; do
 			if [ ! -s "$CFILE" ]; then
 				echo "Unable to read $CFILE" >&2
 				ERRORS=$(( $ERRORS + 1 ))
@@ -142,9 +179,18 @@ do_list()
 cmd_rehash()
 {
 
-	[ $NOOP -eq 0 ] && rm -rf "$CERTDESTDIR"
-	[ $NOOP -eq 0 ] && mkdir -p "$CERTDESTDIR"
-	[ $NOOP -eq 0 ] && mkdir -p "$BLACKLISTDESTDIR"
+	if [ $NOOP -eq 0 ]; then
+		if [ -e "$CERTDESTDIR" ]; then
+			find "$CERTDESTDIR" -type link -delete
+		else
+			mkdir -p "$CERTDESTDIR"
+		fi
+		if [ -e "$BLACKLISTDESTDIR" ]; then
+			find "$BLACKLISTDESTDIR" -type link -delete
+		else
+			mkdir -p "$BLACKLISTDESTDIR"
+		fi
+	fi
 
 	do_scan create_blacklisted "$BLACKLISTPATH"
 	do_scan create_trusted_link "$TRUSTPATH"
@@ -170,14 +216,20 @@ cmd_blacklist()
 
 cmd_unblacklist()
 {
-	local BFILE hash
+	local BFILE blisthash certhash hash
 
 	shift # verb
 	for BFILE in "$@"; do
 		if [ -s "$BFILE" ]; then
 			hash=$( do_hash "$BFILE" )
-			echo "Removing $hash.0 from blacklist"
-			[ $NOOP -eq 0 ] && rm -f "$BLACKLISTDESTDIR/$hash.0"
+			certhash=$( openssl x509 -sha1 -in "$BFILE" -noout -fingerprint )
+			for BLISTEDFILE in $(find $BLACKLISTDESTDIR -name "$hash.*"); do
+				blisthash=$( openssl x509 -sha1 -in "$BLISTEDFILE" -noout -fingerprint )
+				if [ "$certhash" = "$blisthash" ]; then
+					echo "Removing $(basename "$BLISTEDFILE") from blacklist"
+					[ $NOOP -eq 0 ] && rm -f $BLISTEDFILE
+				fi
+			done
 		elif [ -e "$BLACKLISTDESTDIR/$BFILE" ]; then
 			echo "Removing $BFILE from blacklist"
 			[ $NOOP -eq 0 ] && rm -f "$BLACKLISTDESTDIR/$BFILE"
@@ -202,7 +254,7 @@ usage()
 	echo "		List trusted certificates"
 	echo "	$SCRIPTNAME [-v] blacklisted"
 	echo "		List blacklisted certificates"
-	echo "	$SCRIPTNAME [-nv] rehash"
+	echo "	$SCRIPTNAME [-nUv] [-D <destdir>] [-M <metalog>] rehash"
 	echo "		Generate hash links for all certificates"
 	echo "	$SCRIPTNAME [-nv] blacklist <file>"
 	echo "		Add <file> to the list of blacklisted certificates"
@@ -213,13 +265,25 @@ usage()
 
 ############################################################ MAIN
 
-while getopts nv flag; do
+while getopts D:M:nUv flag; do
 	case "$flag" in
+	D) DESTDIR=${OPTARG} ;;
+	M) METALOG=${OPTARG} ;;
 	n) NOOP=1 ;;
+	U) UNPRIV=1 ;;
 	v) VERBOSE=$(( $VERBOSE + 1 )) ;;
 	esac
 done
 shift $(( $OPTIND - 1 ))
+
+: ${METALOG:=${DESTDIR}/METALOG}
+INSTALLFLAGS=
+[ $UNPRIV -eq 1 ] && INSTALLFLAGS="-U -M ${METALOG} -D ${DESTDIR}"
+: ${LOCALBASE:=$(sysctl -n user.localbase)}
+: ${TRUSTPATH:=${DESTDIR}/usr/share/certs/trusted:${DESTDIR}${LOCALBASE}/share/certs:${DESTDIR}${LOCALBASE}/etc/ssl/certs}
+: ${BLACKLISTPATH:=${DESTDIR}/usr/share/certs/blacklisted:${DESTDIR}${LOCALBASE}/etc/ssl/blacklisted}
+: ${CERTDESTDIR:=${DESTDIR}/etc/ssl/certs}
+: ${BLACKLISTDESTDIR:=${DESTDIR}/etc/ssl/blacklisted}
 
 [ $# -gt 0 ] || usage
 case "$1" in

@@ -128,6 +128,8 @@ tasklet_subsystem_uninit(void *arg __unused)
 	struct tasklet_worker *tw;
 	int i;
 
+	taskqgroup_drain_all(qgroup_softirq);
+
 	CPU_FOREACH(i) {
 		if (CPU_ABSENT(i))
 			continue;
@@ -225,6 +227,13 @@ tasklet_disable(struct tasklet_struct *ts)
 
 	atomic_inc(&ts->count);
 	tasklet_unlock_wait(ts);
+}
+
+void
+tasklet_disable_nosync(struct tasklet_struct *ts)
+{
+	atomic_inc(&ts->count);
+	barrier();
 }
 
 int

@@ -41,15 +41,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/bus.h>
 #include <sys/lock.h>
-
-#if __FreeBSD_version < 500000
-#include "opt_pci.h"
-#endif
-
-#if __FreeBSD_version > 500000
 #include <sys/mutex.h>
 #include <sys/proc.h>
-#endif
 
 #include <dev/agp/agppriv.h>
 #include <dev/agp/agpreg.h>
@@ -444,7 +437,6 @@ static device_method_t agp_nvidia_methods[] = {
 	DEVMETHOD(agp_free_memory,	agp_generic_free_memory),
 	DEVMETHOD(agp_bind_memory,	agp_generic_bind_memory),
 	DEVMETHOD(agp_unbind_memory,	agp_generic_unbind_memory),
-
 	{ 0, 0 }
 };
 

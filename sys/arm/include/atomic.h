@@ -49,11 +49,7 @@
 #include <machine/sysarch.h>
 #endif
 
-#if __ARM_ARCH >= 6
 #include <machine/atomic-v6.h>
-#else /* < armv6 */
-#include <machine/atomic-v4.h>
-#endif /* Arch >= v6 */
 
 static __inline u_long
 atomic_swap_long(volatile u_long *p, u_long v)
@@ -102,5 +98,7 @@ atomic_swap_long(volatile u_long *p, u_long v)
 #define atomic_load_acq_int		atomic_load_acq_32
 #define atomic_store_rel_int		atomic_store_rel_32
 #define atomic_swap_int			atomic_swap_32
+
+#include <sys/_atomic_subword.h>
 
 #endif /* _MACHINE_ATOMIC_H_ */

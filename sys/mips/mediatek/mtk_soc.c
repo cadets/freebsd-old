@@ -35,6 +35,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/rman.h>
 
 #include <machine/fdt.h>
+#include <machine/md_var.h>
 
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofw_bus.h>
@@ -395,8 +396,6 @@ mtk_soc_try_early_detect(void)
 
 	bus_space_unmap(bst, bsh, MTK_DEFAULT_SIZE);
 }
-
-extern char cpu_model[];
 
 void
 mtk_soc_set_cpu_model(void)

@@ -7,6 +7,7 @@ SUBDIR=	alias \
 	apply \
 	asa \
 	awk \
+	backlight \
 	banner \
 	basename \
 	brandelf \
@@ -31,7 +32,7 @@ SUBDIR=	alias \
 	diff \
 	dirname \
 	du \
-	elf2aout \
+	elfctl \
 	elfdump \
 	enigma \
 	env \
@@ -66,7 +67,6 @@ SUBDIR=	alias \
 	ktrace \
 	ktrdump \
 	lam \
-	lastcomm \
 	ldd \
 	leave \
 	less \
@@ -97,6 +97,7 @@ SUBDIR=	alias \
 	mkuzip \
 	mt \
 	ncal \
+	ncurses \
 	netstat \
 	newgrp \
 	nfsstat \
@@ -146,7 +147,6 @@ SUBDIR=	alias \
 	strings \
 	su \
 	systat \
-	tabs \
 	tail \
 	tar \
 	tcopy \
@@ -156,11 +156,9 @@ SUBDIR=	alias \
 	tip \
 	top \
 	touch \
-	tput \
 	tr \
 	true \
 	truncate \
-	tset \
 	tsort \
 	tty \
 	uname \
@@ -191,6 +189,7 @@ SUBDIR=	alias \
 
 # NB: keep these sorted by MK_* knobs
 
+SUBDIR.${MK_ACCT}+=	lastcomm
 SUBDIR.${MK_AT}+=	at
 SUBDIR.${MK_ATM}+=	atm
 SUBDIR.${MK_BLUETOOTH}+=	bluetooth
@@ -211,10 +210,12 @@ SUBDIR.${MK_GAMES}+=	number
 SUBDIR.${MK_GAMES}+=	pom
 SUBDIR.${MK_GAMES}+=	primes
 SUBDIR.${MK_GAMES}+=	random
-.if ${MK_GPL_DTC} != "yes"
-.if ${COMPILER_FEATURES:Mc++11}
-SUBDIR+=	dtc
-.endif
+SUBDIR.${MK_CXX}+=	dtc
+.if ${MK_GH_BC} == "yes"
+SUBDIR+=		gh-bc
+.else
+SUBDIR.${MK_OPENSSL}+=	bc
+SUBDIR.${MK_OPENSSL}+=	dc
 .endif
 SUBDIR.${MK_HESIOD}+=	hesinfo
 SUBDIR.${MK_ICONV}+=	iconv
@@ -240,14 +241,13 @@ SUBDIR.${MK_NIS}+=	ypcat
 SUBDIR.${MK_NIS}+=	ypmatch
 SUBDIR.${MK_NIS}+=	ypwhich
 SUBDIR.${MK_OPENSSH}+=	ssh-copy-id
-SUBDIR.${MK_OPENSSL}+=	bc
 SUBDIR.${MK_OPENSSL}+=	chkey
-SUBDIR.${MK_OPENSSL}+=	dc
 SUBDIR.${MK_OPENSSL}+=	newkey
 SUBDIR.${MK_QUOTAS}+=	quota
 SUBDIR.${MK_SENDMAIL}+=	vacation
 SUBDIR.${MK_TALK}+=	talk
 SUBDIR.${MK_TELNET}+=	telnet
+SUBDIR.${MK_TESTS_SUPPORT}.${MK_CXX}+=	kyua
 SUBDIR.${MK_TESTS}+=	tests
 SUBDIR.${MK_TEXTPROC}+=	ul
 SUBDIR.${MK_TFTP}+=	tftp
@@ -256,14 +256,12 @@ SUBDIR.${MK_TOOLCHAIN}+=	ar
 SUBDIR.${MK_TOOLCHAIN}+=	c89
 SUBDIR.${MK_TOOLCHAIN}+=	c99
 SUBDIR.${MK_TOOLCHAIN}+=	ctags
+.if ${MK_LLVM_CXXFILT} == "no"
 SUBDIR.${MK_TOOLCHAIN}+=	cxxfilt
+.endif
 SUBDIR.${MK_TOOLCHAIN}+=	objcopy
 SUBDIR.${MK_TOOLCHAIN}+=	file2c
-# ARM64TODO gprof does not build
-# RISCVTODO gprof does not build
-.if ${MACHINE_ARCH} != "aarch64"
 SUBDIR.${MK_TOOLCHAIN}+=	gprof
-.endif
 SUBDIR.${MK_TOOLCHAIN}+=	indent
 SUBDIR.${MK_TOOLCHAIN}+=	lex
 SUBDIR.${MK_TOOLCHAIN}+=	mkstr
@@ -283,8 +281,6 @@ SUBDIR.${MK_UTMPX}+=	last
 SUBDIR.${MK_UTMPX}+=	users
 .endif
 SUBDIR.${MK_UTMPX}+=	who
-SUBDIR.${MK_SVN}+=	svn
-SUBDIR.${MK_SVNLITE}+=	svn
 SUBDIR.${MK_OFED}+=	ofed
 
 # These are normally only handled for build-tools.

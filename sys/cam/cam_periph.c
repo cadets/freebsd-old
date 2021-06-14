@@ -39,12 +39,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/bio.h>
 #include <sys/conf.h>
+#include <sys/devctl.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/buf.h>
 #include <sys/proc.h>
 #include <sys/devicestat.h>
-#include <sys/bus.h>
 #include <sys/sbuf.h>
 #include <sys/sysctl.h>
 #include <vm/vm.h>
@@ -54,6 +54,7 @@ __FBSDID("$FreeBSD$");
 #include <cam/cam_ccb.h>
 #include <cam/cam_queue.h>
 #include <cam/cam_xpt_periph.h>
+#include <cam/cam_xpt_internal.h>
 #include <cam/cam_periph.h>
 #include <cam/cam_debug.h>
 #include <cam/cam_sim.h>
@@ -217,7 +218,6 @@ cam_periph_alloc(periph_ctor_t *periph_ctor,
 	 * handler.  If it looks like a mistaken re-allocation, complain.
 	 */
 	if ((periph = cam_periph_find(path, name)) != NULL) {
-
 		if ((periph->flags & CAM_PERIPH_INVALID) != 0
 		 && (periph->flags & CAM_PERIPH_NEW_DEV_FOUND) == 0) {
 			periph->flags |= CAM_PERIPH_NEW_DEV_FOUND;
@@ -233,15 +233,14 @@ cam_periph_alloc(periph_ctor_t *periph_ctor,
 		}
 		return (CAM_REQ_INVALID);
 	}
-	
+
 	periph = (struct cam_periph *)malloc(sizeof(*periph), M_CAMPERIPH,
 					     M_NOWAIT|M_ZERO);
 
 	if (periph == NULL)
 		return (CAM_RESRC_UNAVAIL);
-	
-	init_level++;
 
+	init_level++;
 
 	sim = xpt_path_sim(path);
 	path_id = xpt_path_path_id(path);
@@ -342,7 +341,6 @@ cam_periph_find(struct cam_path *path, char *name)
 
 	xpt_lock_buses();
 	for (p_drv = periph_drivers; *p_drv != NULL; p_drv++) {
-
 		if (name != NULL && (strcmp((*p_drv)->driver_name, name) != 0))
 			continue;
 
@@ -380,7 +378,6 @@ retry:
 	count = 0;
 	xpt_lock_buses();
 	for (p_drv = periph_drivers; *p_drv != NULL; p_drv++) {
-
 		TAILQ_FOREACH(periph, &(*p_drv)->units, unit_links) {
 			if (xpt_path_comp(periph->path, path) != 0)
 				continue;
@@ -468,7 +465,7 @@ cam_periph_release(struct cam_periph *periph)
 
 	if (periph == NULL)
 		return;
-	
+
 	cam_periph_assert(periph, MA_NOTOWNED);
 	mtx = cam_periph_mtx(periph);
 	mtx_lock(mtx);
@@ -549,7 +546,6 @@ camperiphnextunit(struct periph_driver *p_drv, u_int newunit, int wired,
 
 	periph_name = p_drv->driver_name;
 	for (;;newunit++) {
-
 		for (periph = TAILQ_FIRST(&p_drv->units);
 		     periph != NULL && periph->unit_number != newunit;
 		     periph = TAILQ_NEXT(periph, unit_links))
@@ -649,7 +645,7 @@ cam_periph_invalidate(struct cam_periph *periph)
 
 	cam_periph_assert(periph, MA_OWNED);
 	/*
-	 * We only call this routine the first time a peripheral is
+	 * We only tear down the device the first time a peripheral is
 	 * invalidated.
 	 */
 	if ((periph->flags & CAM_PERIPH_INVALID) != 0)
@@ -729,7 +725,9 @@ camperiphfree(struct cam_periph *periph)
 		periph->periph_dtor(periph);
 
 	/*
-	 * The peripheral list is protected by the topology lock.
+	 * The peripheral list is protected by the topology lock. We have to
+	 * remove the periph from the drv list before we call deferred_ac. The
+	 * AC_FOUND_DEVICE callback won't create a new periph if it's still there.
 	 */
 	xpt_lock_buses();
 
@@ -748,6 +746,7 @@ camperiphfree(struct cam_periph *periph)
 		union ccb ccb;
 		void *arg;
 
+		memset(&ccb, 0, sizeof(ccb));
 		switch (periph->deferred_ac) {
 		case AC_FOUND_DEVICE:
 			ccb.ccb_h.func_code = XPT_GDEV_TYPE;
@@ -775,7 +774,7 @@ camperiphfree(struct cam_periph *periph)
  * Map user virtual pointers into kernel virtual address space, so we can
  * access the memory.  This is now a generic function that centralizes most
  * of the sanity checks on the data flags, if any.
- * This also only works for up to MAXPHYS memory.  Since we use
+ * This also only works for up to maxphys memory.  Since we use
  * buffers to map stuff in and out, we're limited to the buffer size.
  */
 int
@@ -786,13 +785,12 @@ cam_periph_mapmem(union ccb *ccb, struct cam_periph_map_info *mapinfo,
 	u_int8_t **data_ptrs[CAM_PERIPH_MAXMAPS];
 	u_int32_t lengths[CAM_PERIPH_MAXMAPS];
 	u_int32_t dirs[CAM_PERIPH_MAXMAPS];
-	bool misaligned[CAM_PERIPH_MAXMAPS];
 
 	bzero(mapinfo, sizeof(*mapinfo));
 	if (maxmap == 0)
 		maxmap = DFLTPHYS;	/* traditional default */
-	else if (maxmap > MAXPHYS)
-		maxmap = MAXPHYS;	/* for safety */
+	else if (maxmap > maxphys)
+		maxmap = maxphys;	/* for safety */
 	switch(ccb->ccb_h.func_code) {
 	case XPT_DEV_MATCH:
 		if (ccb->cdm.match_buf_len == 0) {
@@ -816,9 +814,9 @@ cam_periph_mapmem(union ccb *ccb, struct cam_periph_map_info *mapinfo,
 		}
 		/*
 		 * This request will not go to the hardware, no reason
-		 * to be so strict. vmapbuf() is able to map up to MAXPHYS.
+		 * to be so strict. vmapbuf() is able to map up to maxphys.
 		 */
-		maxmap = MAXPHYS;
+		maxmap = maxphys;
 		break;
 	case XPT_SCSI_IO:
 	case XPT_CONT_TARGET_IO:
@@ -884,9 +882,9 @@ cam_periph_mapmem(union ccb *ccb, struct cam_periph_map_info *mapinfo,
 
 		/*
 		 * This request will not go to the hardware, no reason
-		 * to be so strict. vmapbuf() is able to map up to MAXPHYS.
+		 * to be so strict. vmapbuf() is able to map up to maxphys.
 		 */
-		maxmap = MAXPHYS;
+		maxmap = maxphys;
 		break;
 	default:
 		return(EINVAL);
@@ -904,17 +902,6 @@ cam_periph_mapmem(union ccb *ccb, struct cam_periph_map_info *mapinfo,
 			       (long)(lengths[i]), (u_long)maxmap);
 			return (E2BIG);
 		}
-
-		/*
-		 * The userland data pointer passed in may not be page
-		 * aligned.  vmapbuf() truncates the address to a page
-		 * boundary, so if the address isn't page aligned, we'll
-		 * need enough space for the given transfer length, plus
-		 * whatever extra space is necessary to make it to the page
-		 * boundary.
-		 */
-		misaligned[i] = (lengths[i] +
-		    (((vm_offset_t)(*data_ptrs[i])) & PAGE_MASK) > MAXPHYS);
 	}
 
 	/*
@@ -928,7 +915,6 @@ cam_periph_mapmem(union ccb *ccb, struct cam_periph_map_info *mapinfo,
 	PHOLD(curproc);
 
 	for (i = 0; i < numbufs; i++) {
-
 		/* Save the user's data address. */
 		mapinfo->orig[i] = *data_ptrs[i];
 
@@ -938,7 +924,7 @@ cam_periph_mapmem(union ccb *ccb, struct cam_periph_map_info *mapinfo,
 		 * small allocations malloc is backed by UMA, and so much
 		 * cheaper on SMP systems.
 		 */
-		if ((lengths[i] <= periph_mapmem_thresh || misaligned[i]) &&
+		if (lengths[i] <= periph_mapmem_thresh &&
 		    ccb->ccb_h.func_code != XPT_MMC_IO) {
 			*data_ptrs[i] = malloc(lengths[i], M_CAMPERIPH,
 			    M_WAITOK);
@@ -959,25 +945,12 @@ cam_periph_mapmem(union ccb *ccb, struct cam_periph_map_info *mapinfo,
 		 */
 		mapinfo->bp[i] = uma_zalloc(pbuf_zone, M_WAITOK);
 
-		/* put our pointer in the data slot */
-		mapinfo->bp[i]->b_data = *data_ptrs[i];
-
-		/* set the transfer length, we know it's < MAXPHYS */
-		mapinfo->bp[i]->b_bufsize = lengths[i];
-
 		/* set the direction */
 		mapinfo->bp[i]->b_iocmd = (dirs[i] == CAM_DIR_OUT) ?
 		    BIO_WRITE : BIO_READ;
 
-		/*
-		 * Map the buffer into kernel memory.
-		 *
-		 * Note that useracc() alone is not a  sufficient test.
-		 * vmapbuf() can still fail due to a smaller file mapped
-		 * into a larger area of VM, or if userland races against
-		 * vmapbuf() after the useracc() check.
-		 */
-		if (vmapbuf(mapinfo->bp[i], 1) < 0) {
+		/* Map the buffer into kernel memory. */
+		if (vmapbuf(mapinfo->bp[i], *data_ptrs[i], lengths[i], 1) < 0) {
 			uma_zfree(pbuf_zone, mapinfo->bp[i]);
 			goto fail;
 		}
@@ -1151,7 +1124,6 @@ cam_periph_ioctl(struct cam_periph *periph, u_long cmd, caddr_t addr,
 			ccb->cgdl.index = 0;
 			ccb->cgdl.status = CAM_GDEVLIST_MORE_DEVS;
 			while (ccb->cgdl.status == CAM_GDEVLIST_MORE_DEVS) {
-
 				/* we want the next device in the list */
 				xpt_action(ccb);
 				if (strncmp(ccb->cgdl.periph_name, 
@@ -1277,7 +1249,10 @@ cam_periph_runccb(union ccb *ccb,
 	 * in the do loop below.
 	 */
 	if (must_poll) {
-		timeout = xpt_poll_setup(ccb);
+		if (cam_sim_pollable(ccb->ccb_h.path->bus->sim))
+			timeout = xpt_poll_setup(ccb);
+		else
+			timeout = 0;
 	}
 
 	if (timeout == 0) {
@@ -1344,6 +1319,7 @@ cam_freeze_devq(struct cam_path *path)
 	struct ccb_hdr ccb_h;
 
 	CAM_DEBUG(path, CAM_DEBUG_TRACE, ("cam_freeze_devq\n"));
+	memset(&ccb_h, 0, sizeof(ccb_h));
 	xpt_setup_ccb(&ccb_h, path, /*priority*/1);
 	ccb_h.func_code = XPT_NOOP;
 	ccb_h.flags = CAM_DEV_QFREEZE;
@@ -1359,6 +1335,7 @@ cam_release_devq(struct cam_path *path, u_int32_t relsim_flags,
 
 	CAM_DEBUG(path, CAM_DEBUG_TRACE, ("cam_release_devq(%u, %u, %u, %d)\n",
 	    relsim_flags, openings, arg, getcount_only));
+	memset(&crs, 0, sizeof(crs));
 	xpt_setup_ccb(&crs.ccb_h, path, CAM_PRIORITY_NORMAL);
 	crs.ccb_h.func_code = XPT_REL_SIMQ;
 	crs.ccb_h.flags = getcount_only ? CAM_DEV_QFREEZE : 0;
@@ -1482,6 +1459,7 @@ cam_periph_bus_settle(struct cam_periph *periph, u_int bus_settle)
 {
 	struct ccb_getdevstats cgds;
 
+	memset(&cgds, 0, sizeof(cgds));
 	xpt_setup_ccb(&cgds.ccb_h, periph->path, CAM_PRIORITY_NORMAL);
 	cgds.ccb_h.func_code = XPT_GDEV_STATS;
 	xpt_action((union ccb *)&cgds);
@@ -1553,6 +1531,7 @@ camperiphscsistatuserror(union ccb *ccb, union ccb **orig_ccb,
 		 * First off, find out what the current
 		 * transaction counts are.
 		 */
+		memset(&cgds, 0, sizeof(cgds));
 		xpt_setup_ccb(&cgds.ccb_h,
 			      ccb->ccb_h.path,
 			      CAM_PRIORITY_NORMAL);
@@ -1671,6 +1650,7 @@ camperiphscsisenseerror(union ccb *ccb, union ccb **orig,
 		/*
 		 * Grab the inquiry data for this device.
 		 */
+		memset(&cgd, 0, sizeof(cgd));
 		xpt_setup_ccb(&cgd.ccb_h, ccb->ccb_h.path, CAM_PRIORITY_NORMAL);
 		cgd.ccb_h.func_code = XPT_GDEV_TYPE;
 		xpt_action((union ccb *)&cgd);
@@ -2037,7 +2017,6 @@ cam_periph_error(union ccb *ccb, cam_flags camflags,
 				    xpt_path_path_id(ccb->ccb_h.path),
 				    xpt_path_target_id(ccb->ccb_h.path),
 				    lun_id) == CAM_REQ_CMP) {
-
 			/*
 			 * Let peripheral drivers know that this
 			 * device has gone away.
@@ -2057,7 +2036,6 @@ cam_periph_error(union ccb *ccb, cam_flags camflags,
 				    xpt_path_path_id(ccb->ccb_h.path),
 				    xpt_path_target_id(ccb->ccb_h.path),
 				    CAM_LUN_WILDCARD) == CAM_REQ_CMP) {
-
 			scan_ccb = xpt_alloc_ccb_nowait();
 			if (scan_ccb != NULL) {
 				scan_ccb->ccb_h.path = newpath;

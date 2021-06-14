@@ -35,7 +35,6 @@
 typedef struct {
 	volatile int64_t counter;
 } atomic64_t;
-
 #define	ATOMIC64_INIT(x)	{ .counter = (x) }
 
 /*------------------------------------------------------------------------*
@@ -101,6 +100,20 @@ atomic64_add_unless(atomic64_t *v, int64_t a, int64_t u)
 			break;
 	}
 	return (c != u);
+}
+
+static inline int64_t
+atomic64_fetch_add_unless(atomic64_t *v, int64_t a, int64_t u)
+{
+	int64_t c = atomic64_read(v);
+
+	for (;;) {
+		if (unlikely(c == u))
+			break;
+		if (likely(atomic_fcmpset_64(&v->counter, &c, c + a)))
+			break;
+	}
+	return (c);
 }
 
 static inline int64_t

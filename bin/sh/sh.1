@@ -32,7 +32,7 @@
 .\"	from: @(#)sh.1	8.6 (Berkeley) 5/4/95
 .\" $FreeBSD$
 .\"
-.Dd February 24, 2019
+.Dd May 10, 2021
 .Dt SH 1
 .Os
 .Sh NAME
@@ -1351,6 +1351,15 @@ If not set, the default editor is
 The default editor used with the
 .Ic fc
 built-in.
+.It Va HISTFILE
+File used for persistent history storage.
+If unset
+.Pa ~/.sh_history
+will be used.
+If set but empty or
+.Va HISTSIZE
+is set to 0
+the shell will not load and save the history.
 .It Va HISTSIZE
 The number of previous commands that are accessible.
 .It Va HOME
@@ -1425,9 +1434,9 @@ The final component of the current working directory.
 The entire path of the current working directory.
 .It Li \e$
 Superuser status.
-.Dq Li "$ "
+.Dq Li "$"
 for normal users and
-.Dq Li "# "
+.Dq Li "#"
 for superusers.
 .It Li \e\e
 A literal backslash.

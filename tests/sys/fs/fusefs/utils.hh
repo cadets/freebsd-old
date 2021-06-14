@@ -44,10 +44,17 @@ inline void nap()
 	usleep(NAP_NS / 1000);
 }
 
+enum cache_mode {
+	Uncached,
+	Writethrough,
+	Writeback,
+	WritebackAsync
+};
+
+const char *cache_mode_to_s(enum cache_mode cm);
 bool is_unsafe_aio_enabled(void);
 
 extern const uint32_t libfuse_max_write;
-extern const uint32_t default_max_write;
 class FuseTest : public ::testing::Test {
 	protected:
 	uint32_t m_maxreadahead;
@@ -72,7 +79,7 @@ class FuseTest : public ::testing::Test {
 
 	FuseTest():
 		m_maxreadahead(0),
-		m_maxwrite(default_max_write),
+		m_maxwrite(0),
 		m_init_flags(0),
 		m_allow_other(false),
 		m_default_permissions(false),
@@ -123,6 +130,12 @@ class FuseTest : public ::testing::Test {
 	 * attributes, like the given size and the mode S_IFREG | 0644
 	 */
 	void expect_getattr(uint64_t ino, uint64_t size);
+
+	/*
+	 * Create an expectation that FUSE_GETXATTR will be called once for the
+	 * given inode.
+	 */
+	void expect_getxattr(uint64_t ino, const char *attr, ProcessMockerT r);
 
 	/*
 	 * Create an expectation that FUSE_LOOKUP will be called for the given

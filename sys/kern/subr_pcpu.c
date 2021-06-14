@@ -95,6 +95,7 @@ pcpu_init(struct pcpu *pcpu, int cpuid, size_t size)
 	cpu_pcpu_init(pcpu, cpuid, size);
 	pcpu->pc_rm_queue.rmq_next = &pcpu->pc_rm_queue;
 	pcpu->pc_rm_queue.rmq_prev = &pcpu->pc_rm_queue;
+	pcpu->pc_zpcpu_offset = zpcpu_offset_cpu(cpuid);
 }
 
 void
@@ -130,24 +131,30 @@ dpcpu_startup(void *dummy __unused)
 SYSINIT(dpcpu, SI_SUB_KLD, SI_ORDER_FIRST, dpcpu_startup, NULL);
 
 /*
- * UMA_PCPU_ZONE zones, that are available for all kernel
- * consumers. Right now 64 bit zone is used for counter(9)
- * and int zone is used for mount point counters.
+ * UMA_ZONE_PCPU zones for general kernel use.
  */
-
-uma_zone_t pcpu_zone_int;
+uma_zone_t pcpu_zone_4;
+uma_zone_t pcpu_zone_8;
+uma_zone_t pcpu_zone_16;
+uma_zone_t pcpu_zone_32;
 uma_zone_t pcpu_zone_64;
 
 static void
 pcpu_zones_startup(void)
 {
 
-	pcpu_zone_int = uma_zcreate("int pcpu", sizeof(int),
+	pcpu_zone_4 = uma_zcreate("pcpu-4", 4,
 	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_PCPU);
-	pcpu_zone_64 = uma_zcreate("64 pcpu", sizeof(uint64_t),
+	pcpu_zone_8 = uma_zcreate("pcpu-8", 8,
+	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_PCPU);
+	pcpu_zone_16 = uma_zcreate("pcpu-16", 16,
+	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_PCPU);
+	pcpu_zone_32 = uma_zcreate("pcpu-32", 32,
+	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_PCPU);
+	pcpu_zone_64 = uma_zcreate("pcpu-64", 64,
 	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_PCPU);
 }
-SYSINIT(pcpu_zones, SI_SUB_VM, SI_ORDER_ANY, pcpu_zones_startup, NULL);
+SYSINIT(pcpu_zones, SI_SUB_COUNTER, SI_ORDER_FIRST, pcpu_zones_startup, NULL);
 
 /*
  * First-fit extent based allocator for allocating space in the per-cpu

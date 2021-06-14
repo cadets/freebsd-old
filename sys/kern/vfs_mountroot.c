@@ -237,27 +237,13 @@ root_mounted(void)
 static void
 set_rootvnode(void)
 {
-	struct proc *p;
 
 	if (VFS_ROOT(TAILQ_FIRST(&mountlist), LK_EXCLUSIVE, &rootvnode))
 		panic("set_rootvnode: Cannot find root vnode");
 
 	VOP_UNLOCK(rootvnode);
 
-	p = curthread->td_proc;
-	FILEDESC_XLOCK(p->p_fd);
-
-	if (p->p_fd->fd_cdir != NULL)
-		vrele(p->p_fd->fd_cdir);
-	p->p_fd->fd_cdir = rootvnode;
-	VREF(rootvnode);
-
-	if (p->p_fd->fd_rdir != NULL)
-		vrele(p->p_fd->fd_rdir);
-	p->p_fd->fd_rdir = rootvnode;
-	VREF(rootvnode);
-
-	FILEDESC_XUNLOCK(p->p_fd);
+	pwd_set_rootvnode();
 }
 
 static int
@@ -340,17 +326,18 @@ vfs_mountroot_shuffle(struct thread *td, struct mount *mpdevfs)
 	TAILQ_INSERT_TAIL(&mountlist, mpdevfs, mnt_list);
 	mtx_unlock(&mountlist_mtx);
 
-	cache_purgevfs(mporoot, true);
+	cache_purgevfs(mporoot);
 	if (mporoot != mpdevfs)
-		cache_purgevfs(mpdevfs, true);
+		cache_purgevfs(mpdevfs);
 
 	if (VFS_ROOT(mporoot, LK_EXCLUSIVE, &vporoot))
 		panic("vfs_mountroot_shuffle: Cannot find root vnode");
 
 	VI_LOCK(vporoot);
 	vporoot->v_iflag &= ~VI_MOUNT;
-	VI_UNLOCK(vporoot);
+	vn_irflag_unset_locked(vporoot, VIRF_MOUNTPOINT);
 	vporoot->v_mountedhere = NULL;
+	VI_UNLOCK(vporoot);
 	mporoot->mnt_flag &= ~MNT_ROOTFS;
 	mporoot->mnt_vnodecovered = NULL;
 	vput(vporoot);
@@ -358,7 +345,7 @@ vfs_mountroot_shuffle(struct thread *td, struct mount *mpdevfs)
 	/* Set up the new rootvnode, and purge the cache */
 	mpnroot->mnt_vnodecovered = NULL;
 	set_rootvnode();
-	cache_purgevfs(rootvnode->v_mount, true);
+	cache_purgevfs(rootvnode->v_mount);
 
 	if (mporoot != mpdevfs) {
 		/* Remount old root under /.mount or /mnt */
@@ -407,11 +394,17 @@ vfs_mountroot_shuffle(struct thread *td, struct mount *mpdevfs)
 			vpdevfs = mpdevfs->mnt_vnodecovered;
 			if (vpdevfs != NULL) {
 				cache_purge(vpdevfs);
+				VI_LOCK(vpdevfs);
+				vn_irflag_unset_locked(vpdevfs, VIRF_MOUNTPOINT);
 				vpdevfs->v_mountedhere = NULL;
+				VI_UNLOCK(vpdevfs);
 				vrele(vpdevfs);
 			}
+			VI_LOCK(vp);
 			mpdevfs->mnt_vnodecovered = vp;
+			vn_irflag_set_locked(vp, VIRF_MOUNTPOINT);
 			vp->v_mountedhere = mpdevfs;
+			VI_UNLOCK(vp);
 			VOP_UNLOCK(vp);
 		} else
 			vput(vp);
@@ -1063,7 +1056,7 @@ vfs_mountroot(void)
 	struct thread *td;
 	time_t timebase;
 	int error;
-	
+
 	mtx_assert(&Giant, MA_NOTOWNED);
 
 	TSENTER();
@@ -1145,8 +1138,7 @@ parse_mountroot_options(struct mntarg *ma, const char *options)
 			*val = '\0';
 			++val;
 		}
-		if( strcmp(name, "rw") == 0 ||
-		    strcmp(name, "noro") == 0) {
+		if (strcmp(name, "rw") == 0 || strcmp(name, "noro") == 0) {
 			/*
 			 * The first time we mount the root file system,
 			 * we need to mount 'ro', so We need to ignore

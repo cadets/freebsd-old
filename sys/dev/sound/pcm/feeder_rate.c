@@ -185,8 +185,9 @@ sysctl_hw_snd_feeder_rate_min(SYSCTL_HANDLER_ARGS)
 
 	return (0);
 }
-SYSCTL_PROC(_hw_snd, OID_AUTO, feeder_rate_min, CTLTYPE_INT | CTLFLAG_RWTUN,
-    0, sizeof(int), sysctl_hw_snd_feeder_rate_min, "I",
+SYSCTL_PROC(_hw_snd, OID_AUTO, feeder_rate_min,
+    CTLTYPE_INT | CTLFLAG_RWTUN | CTLFLAG_NEEDGIANT, 0, sizeof(int),
+    sysctl_hw_snd_feeder_rate_min, "I",
     "minimum allowable rate");
 
 static int
@@ -207,8 +208,9 @@ sysctl_hw_snd_feeder_rate_max(SYSCTL_HANDLER_ARGS)
 
 	return (0);
 }
-SYSCTL_PROC(_hw_snd, OID_AUTO, feeder_rate_max, CTLTYPE_INT | CTLFLAG_RWTUN,
-    0, sizeof(int), sysctl_hw_snd_feeder_rate_max, "I",
+SYSCTL_PROC(_hw_snd, OID_AUTO, feeder_rate_max,
+    CTLTYPE_INT | CTLFLAG_RWTUN | CTLFLAG_NEEDGIANT, 0, sizeof(int),
+    sysctl_hw_snd_feeder_rate_max, "I",
     "maximum allowable rate");
 
 static int
@@ -229,8 +231,9 @@ sysctl_hw_snd_feeder_rate_round(SYSCTL_HANDLER_ARGS)
 
 	return (0);
 }
-SYSCTL_PROC(_hw_snd, OID_AUTO, feeder_rate_round, CTLTYPE_INT | CTLFLAG_RWTUN,
-    0, sizeof(int), sysctl_hw_snd_feeder_rate_round, "I",
+SYSCTL_PROC(_hw_snd, OID_AUTO, feeder_rate_round,
+    CTLTYPE_INT | CTLFLAG_RWTUN | CTLFLAG_NEEDGIANT, 0, sizeof(int),
+    sysctl_hw_snd_feeder_rate_round, "I",
     "sample rate converter rounding threshold");
 
 static int
@@ -281,12 +284,12 @@ sysctl_hw_snd_feeder_rate_quality(SYSCTL_HANDLER_ARGS)
 
 	return (0);
 }
-SYSCTL_PROC(_hw_snd, OID_AUTO, feeder_rate_quality, CTLTYPE_INT | CTLFLAG_RWTUN,
-    0, sizeof(int), sysctl_hw_snd_feeder_rate_quality, "I",
+SYSCTL_PROC(_hw_snd, OID_AUTO, feeder_rate_quality,
+    CTLTYPE_INT | CTLFLAG_RWTUN | CTLFLAG_NEEDGIANT, 0, sizeof(int),
+    sysctl_hw_snd_feeder_rate_quality, "I",
     "sample rate converter quality ("__XSTRING(Z_QUALITY_MIN)"=low .. "
     __XSTRING(Z_QUALITY_MAX)"=high)");
 #endif	/* _KERNEL */
-
 
 /*
  * Resampler type.
@@ -1077,7 +1080,7 @@ z_resampler_build_polyphase(struct z_info *info)
 			z += info->z_dy;
 		}
 	}
-	
+
 #ifndef _KERNEL
 	fprintf(stderr, "Polyphase: [%d/%d] %d entries\n",
 	    info->z_gx, info->z_gy, info->z_size * info->z_gy * 2);

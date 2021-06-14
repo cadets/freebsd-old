@@ -46,8 +46,10 @@ __SCCSID("@(#)kvm.c	8.2 (Berkeley) 2/13/94");
 #include <sys/linker.h>
 #include <sys/pcpu.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
 #include <sys/mman.h>
 
+#include <stdbool.h>
 #include <net/vnet.h>
 
 #include <fcntl.h>
@@ -295,6 +297,8 @@ kvm_close(kvm_t *kd)
 		free((void *) kd->argspc);
 	if (kd->argv != 0)
 		free((void *)kd->argv);
+	if (kd->dpcpu_initialized != 0)
+		free(kd->dpcpu_off);
 	if (kd->pt_map != NULL)
 		free(kd->pt_map);
 	if (kd->page_map != NULL)
@@ -338,6 +342,10 @@ kvm_nlist(kvm_t *kd, struct nlist *nl)
 	if (count == 0)
 		return (0);
 	kl = calloc(count + 1, sizeof(*kl));
+	if (kl == NULL) {
+		_kvm_err(kd, kd->program, "cannot allocate memory");
+		return (-1);
+	}
 	for (i = 0; i < count; i++)
 		kl[i].n_name = nl[i].n_name;
 	nfail = kvm_nlist2(kd, kl);
@@ -347,6 +355,7 @@ kvm_nlist(kvm_t *kd, struct nlist *nl)
 		nl[i].n_desc = 0;
 		nl[i].n_value = kl[i].n_value;
 	}
+	free(kl);
 	return (nfail);
 }
 
@@ -498,4 +507,33 @@ kvm_walk_pages(kvm_t *kd, kvm_walk_pages_cb_t *cb, void *closure)
 		return (0);
 
 	return (kd->arch->ka_walk_pages(kd, cb, closure));
+}
+
+kssize_t
+kvm_kerndisp(kvm_t *kd)
+{
+	unsigned long kernbase, rel_kernbase;
+	size_t kernbase_len = sizeof(kernbase);
+	size_t rel_kernbase_len = sizeof(rel_kernbase);
+
+	if (ISALIVE(kd)) {
+		if (sysctlbyname("kern.base_address", &kernbase,
+		    &kernbase_len, NULL, 0) == -1) {
+			_kvm_syserr(kd, kd->program,
+				"failed to get kernel base address");
+			return (0);
+		}
+		if (sysctlbyname("kern.relbase_address", &rel_kernbase,
+		    &rel_kernbase_len, NULL, 0) == -1) {
+			_kvm_syserr(kd, kd->program,
+				"failed to get relocated kernel base address");
+			return (0);
+		}
+		return (rel_kernbase - kernbase);
+	}
+
+	if (kd->arch->ka_kerndisp == NULL)
+		return (0);
+
+	return (kd->arch->ka_kerndisp(kd));
 }

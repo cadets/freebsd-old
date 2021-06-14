@@ -54,21 +54,6 @@ static void	heap_up(cam_pinfo **queue_array, int new_index);
 static void	heap_down(cam_pinfo **queue_array, int index,
 			  int last_index);
 
-struct camq *
-camq_alloc(int size)
-{
-	struct camq *camq;
-
-	camq = (struct camq *)malloc(sizeof(*camq), M_CAMQ, M_NOWAIT);
-	if (camq != NULL) {
-		if (camq_init(camq, size) != 0) {
-			free(camq, M_CAMQ);
-			camq = NULL;
-		}
-	}
-	return (camq);
-}
-	
 int
 camq_init(struct camq *camq, int size)
 {
@@ -96,15 +81,6 @@ camq_init(struct camq *camq, int size)
  * obtained a camq structure.  The XPT should ensure that the queue
  * is empty before calling this routine.
  */
-void
-camq_free(struct camq *queue)
-{
-	if (queue != NULL) {
-		camq_fini(queue);
-		free(queue, M_CAMQ);
-	}
-}
-
 void
 camq_fini(struct camq *queue)
 {
@@ -275,7 +251,7 @@ cam_ccbq_alloc(int openings)
 		free(ccbq, M_CAMCCBQ);
 		return (NULL);		
 	}
-	
+
 	return (ccbq);
 }
 
@@ -372,7 +348,6 @@ heap_up(cam_pinfo **queue_array, int new_index)
 	child = new_index;
 
 	while (child != 1) {
-
 		parent = child >> 1;
 		if (queue_cmp(queue_array, parent, child) <= 0)
 			break;
@@ -391,11 +366,10 @@ heap_down(cam_pinfo **queue_array, int index, int num_entries)
 {
 	int child;
 	int parent;
-	
+
 	parent = index;
 	child = parent << 1;
 	for (; child <= num_entries; child = parent << 1) {
-
 		if (child < num_entries) {
 			/* child+1 is the right child of parent */
 			if (queue_cmp(queue_array, child + 1, child) < 0)

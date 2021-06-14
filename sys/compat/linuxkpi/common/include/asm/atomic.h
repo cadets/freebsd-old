@@ -35,7 +35,6 @@
 #include <linux/compiler.h>
 #include <sys/types.h>
 #include <machine/atomic.h>
-
 #define	ATOMIC_INIT(x)	{ .counter = (x) }
 
 typedef struct {
@@ -117,6 +116,20 @@ atomic_add_unless(atomic_t *v, int a, int u)
 			break;
 	}
 	return (c != u);
+}
+
+static inline int
+atomic_fetch_add_unless(atomic_t *v, int a, int u)
+{
+	int c = atomic_read(v);
+
+	for (;;) {
+		if (unlikely(c == u))
+			break;
+		if (likely(atomic_fcmpset_int(&v->counter, &c, c + a)))
+			break;
+	}
+	return (c);
 }
 
 static inline void

@@ -3,6 +3,7 @@
  *
  * Copyright (c) 2013  Peter Grehan <grehan@freebsd.org>
  * All rights reserved.
+ * Copyright 2020 Joyent, Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -57,10 +58,13 @@ __FBSDID("$FreeBSD$");
 #include <unistd.h>
 
 #include <machine/atomic.h>
+#include <machine/vmm_snapshot.h>
 
 #include "bhyverun.h"
+#include "config.h"
 #include "debug.h"
 #include "mevent.h"
+#include "pci_emul.h"
 #include "block_if.h"
 
 #define BLOCKIF_SIG	0xb109b109
@@ -104,9 +108,16 @@ struct blockif_ctxt {
 	int			bc_psectsz;
 	int			bc_psectoff;
 	int			bc_closing;
+	int			bc_paused;
+	int			bc_work_count;
 	pthread_t		bc_btid[BLOCKIF_NUMTHR];
 	pthread_mutex_t		bc_mtx;
 	pthread_cond_t		bc_cond;
+	pthread_cond_t		bc_paused_cond;
+	pthread_cond_t		bc_work_done_cond;
+	blockif_resize_cb	*bc_resize_cb;
+	void			*bc_resize_cb_arg;
+	struct mevent		*bc_resize_event;
 
 	/* Request elements and free/pending/busy queues */
 	TAILQ_HEAD(, blockif_elem) bc_freeq;       
@@ -209,6 +220,18 @@ blockif_complete(struct blockif_ctxt *bc, struct blockif_elem *be)
 	TAILQ_INSERT_TAIL(&bc->bc_freeq, be, be_link);
 }
 
+static int
+blockif_flush_bc(struct blockif_ctxt *bc)
+{
+	if (bc->bc_ischr) {
+		if (ioctl(bc->bc_fd, DIOCGFLUSH))
+			return (errno);
+	} else if (fsync(bc->bc_fd))
+		return (errno);
+
+	return (0);
+}
+
 static void
 blockif_proc(struct blockif_ctxt *bc, struct blockif_elem *be, uint8_t *buf)
 {
@@ -299,11 +322,7 @@ blockif_proc(struct blockif_ctxt *bc, struct blockif_elem *be, uint8_t *buf)
 		}
 		break;
 	case BOP_FLUSH:
-		if (bc->bc_ischr) {
-			if (ioctl(bc->bc_fd, DIOCGFLUSH))
-				err = errno;
-		} else if (fsync(bc->bc_fd))
-			err = errno;
+		err = blockif_flush_bc(bc);
 		break;
 	case BOP_DELETE:
 		if (!bc->bc_candelete)
@@ -347,15 +366,30 @@ blockif_thr(void *arg)
 
 	pthread_mutex_lock(&bc->bc_mtx);
 	for (;;) {
-		while (blockif_dequeue(bc, t, &be)) {
+		bc->bc_work_count++;
+
+		/* We cannot process work if the interface is paused */
+		while (!bc->bc_paused && blockif_dequeue(bc, t, &be)) {
 			pthread_mutex_unlock(&bc->bc_mtx);
 			blockif_proc(bc, be, buf);
 			pthread_mutex_lock(&bc->bc_mtx);
 			blockif_complete(bc, be);
 		}
+
+		bc->bc_work_count--;
+
+		/* If none of the workers are busy, notify the main thread */
+		if (bc->bc_work_count == 0)
+			pthread_cond_broadcast(&bc->bc_work_done_cond);
+
 		/* Check ctxt status here to see if exit requested */
 		if (bc->bc_closing)
 			break;
+
+		/* Make all worker threads wait here if the device is paused */
+		while (bc->bc_paused)
+			pthread_cond_wait(&bc->bc_paused_cond, &bc->bc_mtx);
+
 		pthread_cond_wait(&bc->bc_cond, &bc->bc_mtx);
 	}
 	pthread_mutex_unlock(&bc->bc_mtx);
@@ -398,18 +432,40 @@ blockif_init(void)
 	(void) signal(SIGCONT, SIG_IGN);
 }
 
+int
+blockif_legacy_config(nvlist_t *nvl, const char *opts)
+{
+	char *cp, *path;
+
+	if (opts == NULL)
+		return (0);
+
+	cp = strchr(opts, ',');
+	if (cp == NULL) {
+		set_config_value_node(nvl, "path", opts);
+		return (0);
+	}
+	path = strndup(opts, cp - opts);
+	set_config_value_node(nvl, "path", path);
+	free(path);
+	return (pci_parse_legacy_config(nvl, cp + 1));
+}
+
 struct blockif_ctxt *
-blockif_open(const char *optstr, const char *ident)
+blockif_open(nvlist_t *nvl, const char *ident)
 {
 	char tname[MAXCOMLEN + 1];
 	char name[MAXPATHLEN];
-	char *nopt, *xopts, *cp;
+	const char *path, *pssval, *ssval;
+	char *cp;
 	struct blockif_ctxt *bc;
 	struct stat sbuf;
 	struct diocgattr_arg arg;
 	off_t size, psectsz, psectoff;
 	int extra, fd, i, sectsz;
-	int nocache, sync, ro, candelete, geom, ssopt, pssopt;
+	int ro, candelete, geom, ssopt, pssopt;
+	int nodelete;
+
 #ifndef WITHOUT_CAPSICUM
 	cap_rights_t rights;
 	cap_ioctl_t cmds[] = { DIOCGFLUSH, DIOCGDELETE };
@@ -418,62 +474,68 @@ blockif_open(const char *optstr, const char *ident)
 	pthread_once(&blockif_once, blockif_init);
 
 	fd = -1;
+	extra = 0;
 	ssopt = 0;
-	nocache = 0;
-	sync = 0;
 	ro = 0;
+	nodelete = 0;
 
-	/*
-	 * The first element in the optstring is always a pathname.
-	 * Optional elements follow
-	 */
-	nopt = xopts = strdup(optstr);
-	while (xopts != NULL) {
-		cp = strsep(&xopts, ",");
-		if (cp == nopt)		/* file or device pathname */
-			continue;
-		else if (!strcmp(cp, "nocache"))
-			nocache = 1;
-		else if (!strcmp(cp, "sync") || !strcmp(cp, "direct"))
-			sync = 1;
-		else if (!strcmp(cp, "ro"))
-			ro = 1;
-		else if (sscanf(cp, "sectorsize=%d/%d", &ssopt, &pssopt) == 2)
-			;
-		else if (sscanf(cp, "sectorsize=%d", &ssopt) == 1)
+	if (get_config_bool_node_default(nvl, "nocache", false))
+		extra |= O_DIRECT;
+	if (get_config_bool_node_default(nvl, "nodelete", false))
+		nodelete = 1;
+	if (get_config_bool_node_default(nvl, "sync", false) ||
+	    get_config_bool_node_default(nvl, "direct", false))
+		extra |= O_SYNC;
+	if (get_config_bool_node_default(nvl, "ro", false))
+		ro = 1;
+	ssval = get_config_value_node(nvl, "sectorsize");
+	if (ssval != NULL) {
+		ssopt = strtol(ssval, &cp, 10);
+		if (cp == ssval) {
+			EPRINTLN("Invalid sector size \"%s\"", ssval);
+			goto err;
+		}
+		if (*cp == '\0') {
 			pssopt = ssopt;
-		else {
-			EPRINTLN("Invalid device option \"%s\"", cp);
+		} else if (*cp == '/') {
+			pssval = cp + 1;
+			pssopt = strtol(pssval, &cp, 10);
+			if (cp == pssval || *cp != '\0') {
+				EPRINTLN("Invalid sector size \"%s\"", ssval);
+				goto err;
+			}
+		} else {
+			EPRINTLN("Invalid sector size \"%s\"", ssval);
 			goto err;
 		}
 	}
 
-	extra = 0;
-	if (nocache)
-		extra |= O_DIRECT;
-	if (sync)
-		extra |= O_SYNC;
+	path = get_config_value_node(nvl, "path");
+	if (path == NULL) {
+		EPRINTLN("Missing \"path\" for block device.");
+		goto err;
+	}
 
-	fd = open(nopt, (ro ? O_RDONLY : O_RDWR) | extra);
+	fd = open(path, (ro ? O_RDONLY : O_RDWR) | extra);
 	if (fd < 0 && !ro) {
 		/* Attempt a r/w fail with a r/o open */
-		fd = open(nopt, O_RDONLY | extra);
+		fd = open(path, O_RDONLY | extra);
 		ro = 1;
 	}
 
 	if (fd < 0) {
-		warn("Could not open backing file: %s", nopt);
+		warn("Could not open backing file: %s", path);
 		goto err;
 	}
 
         if (fstat(fd, &sbuf) < 0) {
-		warn("Could not stat backing file %s", nopt);
+		warn("Could not stat backing file %s", path);
 		goto err;
         }
 
 #ifndef WITHOUT_CAPSICUM
 	cap_rights_init(&rights, CAP_FSYNC, CAP_IOCTL, CAP_READ, CAP_SEEK,
-	    CAP_WRITE);
+	    CAP_WRITE, CAP_FSTAT, CAP_EVENT);
 	if (ro)
 		cap_rights_clear(&rights, CAP_FSYNC, CAP_WRITE);
 
@@ -500,7 +562,7 @@ blockif_open(const char *optstr, const char *ident)
 			ioctl(fd, DIOCGSTRIPEOFFSET, &psectoff);
 		strlcpy(arg.name, "GEOM::candelete", sizeof(arg.name));
 		arg.len = sizeof(arg.value.i);
-		if (ioctl(fd, DIOCGATTR, &arg) == 0)
+		if (nodelete == 0 && ioctl(fd, DIOCGATTR, &arg) == 0)
 			candelete = arg.value.i;
 		if (ioctl(fd, DIOCGPROVIDERNAME, name) == 0)
 			geom = 1;
@@ -559,6 +621,10 @@ blockif_open(const char *optstr, const char *ident)
 	bc->bc_psectoff = psectoff;
 	pthread_mutex_init(&bc->bc_mtx, NULL);
 	pthread_cond_init(&bc->bc_cond, NULL);
+	bc->bc_paused = 0;
+	bc->bc_work_count = 0;
+	pthread_cond_init(&bc->bc_paused_cond, NULL);
+	pthread_cond_init(&bc->bc_work_done_cond, NULL);
 	TAILQ_INIT(&bc->bc_freeq);
 	TAILQ_INIT(&bc->bc_pendq);
 	TAILQ_INIT(&bc->bc_busyq);
@@ -577,8 +643,63 @@ blockif_open(const char *optstr, const char *ident)
 err:
 	if (fd >= 0)
 		close(fd);
-	free(nopt);
 	return (NULL);
+}
+
+static void
+blockif_resized(int fd, enum ev_type type, void *arg)
+{
+	struct blockif_ctxt *bc;
+	struct stat sb;
+
+	if (fstat(fd, &sb) != 0)
+		return;
+
+	bc = arg;
+	pthread_mutex_lock(&bc->bc_mtx);
+	if (sb.st_size != bc->bc_size) {
+		bc->bc_size = sb.st_size;
+		bc->bc_resize_cb(bc, bc->bc_resize_cb_arg, bc->bc_size);
+	}
+	pthread_mutex_unlock(&bc->bc_mtx);
+}
+
+int
+blockif_register_resize_callback(struct blockif_ctxt *bc, blockif_resize_cb *cb,
+    void *cb_arg)
+{
+	struct stat sb;
+	int err;
+
+	if (cb == NULL)
+		return (EINVAL);
+
+	pthread_mutex_lock(&bc->bc_mtx);
+	if (bc->bc_resize_cb != NULL) {
+		err = EBUSY;
+		goto out;
+	}
+
+	assert(bc->bc_closing == 0);
+
+	if (fstat(bc->bc_fd, &sb) != 0) {
+		err = errno;
+		goto out;
+	}
+
+	bc->bc_resize_event = mevent_add_flags(bc->bc_fd, EVF_VNODE,
+	    EVFF_ATTRIB, blockif_resized, bc);
+	if (bc->bc_resize_event == NULL) {
+		err = ENXIO;
+		goto out;
+	}
+
+	bc->bc_resize_cb = cb;
+	bc->bc_resize_cb_arg = cb_arg;
+out:
+	pthread_mutex_unlock(&bc->bc_mtx);
+
+	return (err);
 }
 
 static int
@@ -651,6 +772,8 @@ blockif_cancel(struct blockif_ctxt *bc, struct blockif_req *breq)
 	assert(bc->bc_magic == BLOCKIF_SIG);
 
 	pthread_mutex_lock(&bc->bc_mtx);
+	/* XXX: not waiting while paused */
+
 	/*
 	 * Check pending requests.
 	 */
@@ -732,6 +855,8 @@ blockif_close(struct blockif_ctxt *bc)
 	 */
 	pthread_mutex_lock(&bc->bc_mtx);
 	bc->bc_closing = 1;
+	if (bc->bc_resize_event != NULL)
+		mevent_disable(bc->bc_resize_event);
 	pthread_mutex_unlock(&bc->bc_mtx);
 	pthread_cond_broadcast(&bc->bc_cond);
 	for (i = 0; i < BLOCKIF_NUMTHR; i++)
@@ -849,3 +974,100 @@ blockif_candelete(struct blockif_ctxt *bc)
 	assert(bc->bc_magic == BLOCKIF_SIG);
 	return (bc->bc_candelete);
 }
+
+#ifdef BHYVE_SNAPSHOT
+void
+blockif_pause(struct blockif_ctxt *bc)
+{
+	assert(bc != NULL);
+	assert(bc->bc_magic == BLOCKIF_SIG);
+
+	pthread_mutex_lock(&bc->bc_mtx);
+	bc->bc_paused = 1;
+
+	/* The interface is paused. Wait for workers to finish their work */
+	while (bc->bc_work_count)
+		pthread_cond_wait(&bc->bc_work_done_cond, &bc->bc_mtx);
+	pthread_mutex_unlock(&bc->bc_mtx);
+
+	if (blockif_flush_bc(bc))
+		fprintf(stderr, "%s: [WARN] failed to flush backing file.\r\n",
+			__func__);
+}
+
+void
+blockif_resume(struct blockif_ctxt *bc)
+{
+	assert(bc != NULL);
+	assert(bc->bc_magic == BLOCKIF_SIG);
+
+	pthread_mutex_lock(&bc->bc_mtx);
+	bc->bc_paused = 0;
+	/* resume the threads waiting for paused */
+	pthread_cond_broadcast(&bc->bc_paused_cond);
+	/* kick the threads after restore */
+	pthread_cond_broadcast(&bc->bc_cond);
+	pthread_mutex_unlock(&bc->bc_mtx);
+}
+
+int
+blockif_snapshot_req(struct blockif_req *br, struct vm_snapshot_meta *meta)
+{
+	int i;
+	struct iovec *iov;
+	int ret;
+
+	SNAPSHOT_VAR_OR_LEAVE(br->br_iovcnt, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(br->br_offset, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(br->br_resid, meta, ret, done);
+
+	/*
+	 * XXX: The callback and parameter must be filled by the virtualized
+	 * device that uses the interface, during its init; we're not touching
+	 * them here.
+	 */
+
+	/* Snapshot the iovecs. */
+	for (i = 0; i < br->br_iovcnt; i++) {
+		iov = &br->br_iov[i];
+
+		SNAPSHOT_VAR_OR_LEAVE(iov->iov_len, meta, ret, done);
+
+		/* We assume the iov is a guest-mapped address. */
+		SNAPSHOT_GUEST2HOST_ADDR_OR_LEAVE(iov->iov_base, iov->iov_len,
+			false, meta, ret, done);
+	}
+
+done:
+	return (ret);
+}
+
+int
+blockif_snapshot(struct blockif_ctxt *bc, struct vm_snapshot_meta *meta)
+{
+	int ret;
+
+	if (bc->bc_paused == 0) {
+		fprintf(stderr, "%s: Snapshot failed: "
+			"interface not paused.\r\n", __func__);
+		return (ENXIO);
+	}
+
+	pthread_mutex_lock(&bc->bc_mtx);
+
+	SNAPSHOT_VAR_OR_LEAVE(bc->bc_magic, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(bc->bc_ischr, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(bc->bc_isgeom, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(bc->bc_candelete, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(bc->bc_rdonly, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(bc->bc_size, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(bc->bc_sectsz, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(bc->bc_psectsz, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(bc->bc_psectoff, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(bc->bc_closing, meta, ret, done);
+
+done:
+	pthread_mutex_unlock(&bc->bc_mtx);
+	return (ret);
+}
+#endif

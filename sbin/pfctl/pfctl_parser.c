@@ -412,7 +412,7 @@ print_fromto(struct pf_rule_addr *src, pf_osfp_t osfp, struct pf_rule_addr *dst,
 }
 
 void
-print_pool(struct pf_pool *pool, u_int16_t p1, u_int16_t p2,
+print_pool(struct pfctl_pool *pool, u_int16_t p1, u_int16_t p2,
     sa_family_t af, int id)
 {
 	struct pf_pooladdr	*pooladdr;
@@ -486,6 +486,9 @@ print_pool(struct pf_pool *pool, u_int16_t p1, u_int16_t p2,
 		printf(" sticky-address");
 	if (id == PF_NAT && p1 == 0 && p2 == 0)
 		printf(" static-port");
+	if (pool->mape.offset > 0)
+		printf(" map-e-portset %u/%u/%u",
+		    pool->mape.offset, pool->mape.psidlen, pool->mape.psid);
 }
 
 const char	* const pf_reasons[PFRES_MAX+1] = PFRES_NAMES;
@@ -694,7 +697,7 @@ print_src_node(struct pf_src_node *sn, int opts)
 }
 
 void
-print_rule(struct pf_rule *r, const char *anchor_call, int verbose, int numeric)
+print_rule(struct pfctl_rule *r, const char *anchor_call, int verbose, int numeric)
 {
 	static const char *actiontypes[] = { "pass", "block", "scrub",
 	    "no scrub", "nat", "no nat", "binat", "no binat", "rdr", "no rdr" };
@@ -1016,8 +1019,9 @@ print_rule(struct pf_rule *r, const char *anchor_call, int verbose, int numeric)
 
 		printf(" fragment reassemble");
 	}
-	if (r->label[0])
-		printf(" label \"%s\"", r->label);
+	i = 0;
+	while (r->label[i][0])
+		printf(" label \"%s\"", r->label[i++]);
 	if (r->qname[0] && r->pqname[0])
 		printf(" queue(%s, %s)", r->qname, r->pqname);
 	else if (r->qname[0])
@@ -1370,13 +1374,11 @@ struct node_host *
 ifa_exists(char *ifa_name)
 {
 	struct node_host	*n;
-	int			s;
 
 	if (iftab == NULL)
 		ifa_load();
 
 	/* check whether this is a group */
-	s = get_query_socket();
 	if (is_a_group(ifa_name)) {
 		/* fake a node_host */
 		if ((n = calloc(1, sizeof(*n))) == NULL)
@@ -1438,14 +1440,15 @@ ifa_lookup(char *ifa_name, int flags)
 	int			 got4 = 0, got6 = 0;
 	const char		 *last_if = NULL;
 
+	/* first load iftab and isgroup_map */
+	if (iftab == NULL)
+		ifa_load();
+
 	if ((h = ifa_grouplookup(ifa_name, flags)) != NULL)
 		return (h);
 
 	if (!strncmp(ifa_name, "self", IFNAMSIZ))
 		ifa_name = NULL;
-
-	if (iftab == NULL)
-		ifa_load();
 
 	for (p = iftab; p; p = p->next) {
 		if (ifa_skip_if(ifa_name, p))
@@ -1563,16 +1566,17 @@ host(const char *s)
 		mask = -1;
 	}
 
-	/* interface with this name exists? */
-	if (cont && (h = host_if(ps, mask)) != NULL)
-		cont = 0;
-
 	/* IPv4 address? */
 	if (cont && (h = host_v4(s, mask)) != NULL)
 		cont = 0;
 
 	/* IPv6 address? */
 	if (cont && (h = host_v6(ps, v6mask)) != NULL)
+		cont = 0;
+
+	/* interface with this name exists? */
+	/* expensive with thousands of interfaces - prioritze IPv4/6 check */
+	if (cont && (h = host_if(ps, mask)) != NULL)
 		cont = 0;
 
 	/* dns lookup */

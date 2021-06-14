@@ -24,8 +24,6 @@
  * Use is subject to license terms.
  */
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 #include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -35,25 +33,27 @@
  * leading underscores.
  */
 
-static int
+extern int _go(int);
+
+static int __unused
 go(int a)
 {
 	return (a + 1);
 }
 
-#pragma weak _go = go
-
 static void
-handle(int sig)
+handle(int sig __unused)
 {
 	_go(1);
 	exit(0);
 }
 
 int
-main(int argc, char **argv)
+main(void)
 {
 	(void) signal(SIGUSR1, handle);
 	for (;;)
 		getpid();
 }
+
+#pragma weak _go = go

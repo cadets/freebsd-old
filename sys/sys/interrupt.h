@@ -133,7 +133,8 @@ struct intr_event {
 #define	IE_SOFT		0x000001	/* Software interrupt. */
 #define	IE_ADDING_THREAD 0x000004	/* Currently building an ithread. */
 
-/* Flags to pass to sched_swi. */
+/* Flags to pass to swi_sched. */
+#define	SWI_FROMNMI	0x1
 #define	SWI_DELAY	0x2
 
 /*
@@ -151,17 +152,13 @@ struct intr_event {
 
 struct proc;
 
+extern struct	intr_event *clk_intr_event;
 extern struct	intr_event *tty_intr_event;
 extern void	*vm_ih;
 
 /* Counts and names for statistics (defined in MD code). */
-#if defined(__amd64__) || defined(__i386__) || defined(__powerpc__)
 extern u_long 	*intrcnt;	/* counts for for each device and stray */
 extern char 	*intrnames;	/* string table containing device names */
-#else
-extern u_long 	intrcnt[];	/* counts for for each device and stray */
-extern char 	intrnames[];	/* string table containing device names */
-#endif
 extern size_t	sintrcnt;	/* size of intrcnt table */
 extern size_t	sintrnames;	/* size of intrnames table */
 
@@ -193,7 +190,7 @@ int	intr_event_resume_handler(void *cookie);
 int	intr_getaffinity(int irq, int mode, void *mask);
 void	*intr_handler_source(void *cookie);
 int	intr_setaffinity(int irq, int mode, void *mask);
-void	_intr_drain(int irq);  /* Linux compat only. */
+void	_intr_drain(int irq);  /* LinuxKPI only. */
 int	swi_add(struct intr_event **eventp, const char *name,
 	    driver_intr_t handler, void *arg, int pri, enum intr_type flags,
 	    void **cookiep);

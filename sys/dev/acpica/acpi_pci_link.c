@@ -157,7 +157,7 @@ acpi_pci_link_probe(device_t dev)
 	rv = ACPI_ID_PROBE(device_get_parent(dev), dev, pci_link_ids, NULL);
 	if (rv > 0)
 	  return (rv);
-	
+
 	if (ACPI_SUCCESS(acpi_short_name(acpi_get_handle(dev), name,
 	    sizeof(name)))) {
 		snprintf(descr, sizeof(descr), "ACPI PCI Link %s", name);
@@ -811,11 +811,9 @@ acpi_pci_link_srs_from_links(struct acpi_pci_link_softc *sc,
 	srsbuf->Pointer = NULL;
 	link = sc->pl_links;
 	for (i = 0; i < sc->pl_num_links; i++) {
-
 		/* Add a new IRQ resource from each link. */
 		link = &sc->pl_links[i];
 		if (link->l_prs_template.Type == ACPI_RESOURCE_TYPE_IRQ) {
-
 			/* Build an IRQ resource. */
 			bcopy(&link->l_prs_template, &newres,
 			    ACPI_RS_SIZE(newres.Data.Irq));
@@ -828,7 +826,6 @@ acpi_pci_link_srs_from_links(struct acpi_pci_link_softc *sc,
 			} else
 				newres.Data.Irq.Interrupts[0] = 0;
 		} else {
-
 			/* Build an ExtIRQ resuorce. */
 			bcopy(&link->l_prs_template, &newres,
 			    ACPI_RS_SIZE(newres.Data.ExtendedIrq));
@@ -846,8 +843,10 @@ acpi_pci_link_srs_from_links(struct acpi_pci_link_softc *sc,
 			device_printf(sc->pl_dev,
 			    "Unable to build resources: %s\n",
 			    AcpiFormatException(status));
-			if (srsbuf->Pointer != NULL)
+			if (srsbuf->Pointer != NULL) {
 				AcpiOsFree(srsbuf->Pointer);
+				srsbuf->Pointer = NULL;
+			}
 			return (status);
 		}
 	}
@@ -870,6 +869,8 @@ acpi_pci_link_route_irqs(device_t dev)
 		status = acpi_pci_link_srs_from_links(sc, &srsbuf);
 	else
 		status = acpi_pci_link_srs_from_crs(sc, &srsbuf);
+	if (ACPI_FAILURE(status))
+		return (status);
 
 	/* Write out new resources via _SRS. */
 	status = AcpiSetCurrentResources(acpi_get_handle(dev), &srsbuf);

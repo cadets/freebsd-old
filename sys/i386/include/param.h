@@ -35,7 +35,6 @@
  * $FreeBSD$
  */
 
-
 #ifndef _I386_INCLUDE_PARAM_H_
 #define	_I386_INCLUDE_PARAM_H_
 
@@ -44,7 +43,6 @@
 /*
  * Machine dependent constants for Intel 386.
  */
-
 
 #define __HAVE_ACPI
 #define	__HAVE_PIR
@@ -58,13 +56,13 @@
 #endif
 #define MID_MACHINE	MID_I386
 
-#if defined(SMP) || defined(KLD_MODULE)
+#ifdef SMP
 #ifndef MAXCPU
 #define MAXCPU		32
 #endif
 #else
 #define MAXCPU		1
-#endif /* SMP || KLD_MODULE */
+#endif
 
 #ifndef MAXMEMDOM
 #define	MAXMEMDOM	1

@@ -57,6 +57,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/uart/uart_ppstypes.h>
 #ifdef DEV_ACPI
 #include <dev/uart/uart_cpu_acpi.h>
+#include <contrib/dev/acpica/include/acpi.h>
 #endif
 
 #include <dev/ic/ns16550.h>
@@ -139,7 +140,7 @@ ns8250_divisor(int rclk, int baudrate)
 	actual_baud = rclk / (divisor << 4);
 
 	/* 10 times error in percent: */
-	error = ((actual_baud - baudrate) * 2000 / baudrate + 1) >> 1;
+	error = ((actual_baud - baudrate) * 2000 / baudrate + 1) / 2;
 
 	/* enforce maximum error tolerance: */
 	if (error < -UART_DEV_TOLERANCE_PCT || error > UART_DEV_TOLERANCE_PCT)
@@ -415,7 +416,7 @@ struct uart_class uart_ns8250_class = {
 static struct acpi_uart_compat_data acpi_compat_data[] = {
 	{"AMD0020",	&uart_ns8250_class, 0, 2, 0, 48000000, UART_F_BUSY_DETECT, "AMD / Synopsys Designware UART"},
 	{"AMDI0020", &uart_ns8250_class, 0, 2, 0, 48000000, UART_F_BUSY_DETECT, "AMD / Synopsys Designware UART"},
-	{"MRVL0001", &uart_ns8250_class, 0, 2, 0, 200000000, UART_F_BUSY_DETECT, "Marvell / Synopsys Designware UART"},
+	{"MRVL0001", &uart_ns8250_class, ACPI_DBG2_16550_SUBSET, 2, 0, 200000000, UART_F_BUSY_DETECT, "Marvell / Synopsys Designware UART"},
 	{"SCX0006",  &uart_ns8250_class, 0, 2, 0, 62500000, UART_F_BUSY_DETECT, "SynQuacer / Synopsys Designware UART"},
 	{"HISI0031", &uart_ns8250_class, 0, 2, 0, 200000000, UART_F_BUSY_DETECT, "HiSilicon / Synopsys Designware UART"},
 	{"PNP0500", &uart_ns8250_class, 0, 0, 0, 0, 0, "Standard PC COM port"},
@@ -514,19 +515,19 @@ ns8250_bus_attach(struct uart_softc *sc)
 			ns8250->fcr |= FCR_RX_MEDH;
 	} else 
 		ns8250->fcr |= FCR_RX_MEDH;
-	
+
 	/* Get IER mask */
 	ivar = 0xf0;
 	resource_int_value("uart", device_get_unit(sc->sc_dev), "ier_mask",
 	    &ivar);
 	ns8250->ier_mask = (uint8_t)(ivar & 0xff);
-	
+
 	/* Get IER RX interrupt bits */
 	ivar = IER_EMSC | IER_ERLS | IER_ERXRDY;
 	resource_int_value("uart", device_get_unit(sc->sc_dev), "ier_rxbits",
 	    &ivar);
 	ns8250->ier_rxbits = (uint8_t)(ivar & 0xff);
-	
+
 	uart_setreg(bas, REG_FCR, ns8250->fcr);
 	uart_barrier(bas);
 	ns8250_bus_flush(sc, UART_FLUSH_RECEIVER|UART_FLUSH_TRANSMITTER);
@@ -738,6 +739,7 @@ ns8250_bus_ipend(struct uart_softc *sc)
 	} else {
 		if (iir & IIR_TXRDY) {
 			ipend |= SER_INT_TXIDLE;
+			ns8250->ier &= ~IER_ETXRDY;
 			uart_setreg(bas, REG_IER, ns8250->ier);
 			uart_barrier(bas);
 		} else
@@ -1035,7 +1037,9 @@ ns8250_bus_transmit(struct uart_softc *sc)
 		uart_setreg(bas, REG_DATA, sc->sc_txbuf[i]);
 		uart_barrier(bas);
 	}
-	uart_setreg(bas, REG_IER, ns8250->ier | IER_ETXRDY);
+	if (!broken_txfifo)
+		ns8250->ier |= IER_ETXRDY;
+	uart_setreg(bas, REG_IER, ns8250->ier);
 	uart_barrier(bas);
 	if (broken_txfifo)
 		ns8250_drain(bas, UART_DRAIN_TRANSMITTER);

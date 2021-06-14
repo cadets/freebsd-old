@@ -13,7 +13,6 @@ SRCS+=		fuzzer/FuzzerExtraCounters.cpp
 SRCS+=		fuzzer/FuzzerFork.cpp
 SRCS+=		fuzzer/FuzzerIO.cpp
 SRCS+=		fuzzer/FuzzerIOPosix.cpp
-SRCS+=		fuzzer/FuzzerIOWindows.cpp
 SRCS+=		fuzzer/FuzzerLoop.cpp
 SRCS+=		fuzzer/FuzzerMain.cpp
 SRCS+=		fuzzer/FuzzerMerge.cpp
@@ -23,5 +22,9 @@ SRCS+=		fuzzer/FuzzerTracePC.cpp
 SRCS+=		fuzzer/FuzzerUtil.cpp
 SRCS+=		fuzzer/FuzzerUtilLinux.cpp
 SRCS+=		fuzzer/FuzzerUtilPosix.cpp
+
+.PATH:		${CRTSRC}/include/fuzzer
+INCSDIR=	${CLANGDIR}/include/fuzzer
+INCS+=		FuzzedDataProvider.h
 
 .include <bsd.lib.mk>

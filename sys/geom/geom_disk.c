@@ -45,13 +45,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/sysctl.h>
 #include <sys/bio.h>
-#include <sys/bus.h>
 #include <sys/ctype.h>
+#include <sys/devctl.h>
 #include <sys/fcntl.h>
 #include <sys/malloc.h>
 #include <sys/sbuf.h>
 #include <sys/devicestat.h>
-#include <machine/md_var.h>
 
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -92,7 +91,7 @@ static struct g_class g_disk_class = {
 };
 
 SYSCTL_DECL(_kern_geom);
-static SYSCTL_NODE(_kern_geom, OID_AUTO, disk, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_kern_geom, OID_AUTO, disk, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
     "GEOM_DISK stuff");
 
 DECLARE_GEOM_CLASS(g_disk_class, g_disk);
@@ -499,8 +498,6 @@ g_disk_start(struct bio *bp)
 			break;
 		else if (g_handleattr_int(bp, "GEOM::fwheads", dp->d_fwheads))
 			break;
-		else if (g_handleattr_off_t(bp, "GEOM::frontstuff", 0))
-			break;
 		else if (g_handleattr_str(bp, "GEOM::ident", dp->d_ident))
 			break;
 		else if (g_handleattr_str(bp, "GEOM::descr", dp->d_descr))
@@ -719,11 +716,9 @@ g_disk_create(void *arg, int flag)
 	sc->d_devstat = dp->d_devstat;
 	gp = g_new_geomf(&g_disk_class, "%s%d", dp->d_name, dp->d_unit);
 	gp->softc = sc;
-	LIST_FOREACH(dap, &dp->d_aliases, da_next) {
-		snprintf(tmpstr, sizeof(tmpstr), "%s%d", dap->da_alias, dp->d_unit);
-		g_geom_add_alias(gp, tmpstr);
-	}
 	pp = g_new_providerf(gp, "%s", gp->name);
+	LIST_FOREACH(dap, &dp->d_aliases, da_next)
+		g_provider_add_alias(pp, "%s%d", dap->da_alias, dp->d_unit);
 	devstat_remove_entry(pp->stat);
 	pp->stat = NULL;
 	dp->d_devstat->id = pp;
@@ -742,7 +737,7 @@ g_disk_create(void *arg, int flag)
 	snprintf(tmpstr, sizeof(tmpstr), "GEOM disk %s", gp->name);
 	sc->sysctl_tree = SYSCTL_ADD_NODE(&sc->sysctl_ctx,
 		SYSCTL_STATIC_CHILDREN(_kern_geom_disk), OID_AUTO, gp->name,
-		CTLFLAG_RD, 0, tmpstr);
+		CTLFLAG_RD | CTLFLAG_MPSAFE, 0, tmpstr);
 	if (sc->sysctl_tree != NULL) {
 		SYSCTL_ADD_STRING(&sc->sysctl_ctx,
 		    SYSCTL_CHILDREN(sc->sysctl_tree), OID_AUTO, "led",
@@ -750,8 +745,8 @@ g_disk_create(void *arg, int flag)
 		    "LED name");
 		SYSCTL_ADD_PROC(&sc->sysctl_ctx,
 		    SYSCTL_CHILDREN(sc->sysctl_tree), OID_AUTO, "flags",
-		    CTLTYPE_STRING | CTLFLAG_RD, dp, 0, g_disk_sysctl_flags,
-		    "A", "Report disk flags");
+		    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, dp, 0,
+		    g_disk_sysctl_flags, "A", "Report disk flags");
 	}
 	pp->private = sc;
 	dp->d_geom = gp;
@@ -1084,7 +1079,7 @@ sysctl_disks(SYSCTL_HANDLER_ARGS)
 	sbuf_delete(sb);
 	return error;
 }
- 
+
 SYSCTL_PROC(_kern, OID_AUTO, disks,
     CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, 0,
     sysctl_disks, "A", "names of available disks");

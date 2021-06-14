@@ -102,7 +102,6 @@ isci_io_request_complete(SCI_CONTROLLER_HANDLE_T scif_controller,
 	switch (completion_status) {
 	case SCI_IO_SUCCESS:
 	case SCI_IO_SUCCESS_COMPLETE_BEFORE_START:
-#if __FreeBSD_version >= 900026
 		if (ccb->ccb_h.func_code == XPT_SMP_IO) {
 			void *smp_response =
 			    scif_io_request_get_response_iu_address(
@@ -111,7 +110,6 @@ isci_io_request_complete(SCI_CONTROLLER_HANDLE_T scif_controller,
 			memcpy(ccb->smpio.smp_response, smp_response,
 			    ccb->smpio.smp_response_len);
 		}
-#endif
 		ccb->ccb_h.status |= CAM_REQ_CMP;
 		break;
 
@@ -188,6 +186,7 @@ isci_io_request_complete(SCI_CONTROLLER_HANDLE_T scif_controller,
 			    cam_sim_path(isci_controller->sim),
 			    isci_remote_device->index, 0);
 
+			memset(&ccb_relsim, 0, sizeof(ccb_relsim));
 			xpt_setup_ccb(&ccb_relsim.ccb_h, path, 5);
 			ccb_relsim.ccb_h.func_code = XPT_REL_SIMQ;
 			ccb_relsim.ccb_h.flags = CAM_DEV_QFREEZE;
@@ -802,7 +801,6 @@ isci_io_request_timeout(void *arg)
 	mtx_unlock(&controller->lock);
 }
 
-#if __FreeBSD_version >= 900026
 /**
  * @brief This callback method gets the size of and pointer to the buffer
  *         (if any) containing the request buffer for an SMP request.
@@ -990,4 +988,3 @@ isci_io_request_execute_smp_io(union ccb *ccb,
 		    SBT_1MS *  ccb->ccb_h.timeout, 0, isci_io_request_timeout,
 		    request, 0);
 }
-#endif

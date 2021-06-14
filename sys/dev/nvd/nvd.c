@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2012-2016 Intel Corporation
  * All rights reserved.
- * Copyright (C) 2018 Alexander Motin <mav@FreeBSD.org>
+ * Copyright (C) 2018-2020 Alexander Motin <mav@FreeBSD.org>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,6 +45,9 @@ __FBSDID("$FreeBSD$");
 #include <geom/geom_disk.h>
 
 #include <dev/nvme/nvme.h>
+#include <dev/nvme/nvme_private.h>
+
+#include <dev/pci/pcivar.h>
 
 #define NVD_STR		"nvd"
 
@@ -92,7 +95,7 @@ struct nvd_disk {
 };
 
 struct nvd_controller {
-
+	struct nvme_controller		*ctrlr;
 	TAILQ_ENTRY(nvd_controller)	tailq;
 	TAILQ_HEAD(, nvd_disk)		disk_head;
 };
@@ -101,7 +104,8 @@ static struct mtx			nvd_lock;
 static TAILQ_HEAD(, nvd_controller)	ctrlr_head;
 static TAILQ_HEAD(disk_list, nvd_disk)	disk_head;
 
-static SYSCTL_NODE(_hw, OID_AUTO, nvd, CTLFLAG_RD, 0, "nvd driver parameters");
+static SYSCTL_NODE(_hw, OID_AUTO, nvd, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "nvd driver parameters");
 /*
  * The NVMe specification does not define a maximum or optimal delete size, so
  *  technically max delete size is min(full size of the namespace, 2^32 - 1
@@ -400,6 +404,7 @@ nvd_new_controller(struct nvme_controller *ctrlr)
 	nvd_ctrlr = malloc(sizeof(struct nvd_controller), M_NVD,
 	    M_ZERO | M_WAITOK);
 
+	nvd_ctrlr->ctrlr = ctrlr;
 	TAILQ_INIT(&nvd_ctrlr->disk_head);
 	mtx_lock(&nvd_lock);
 	TAILQ_INSERT_TAIL(&ctrlr_head, nvd_ctrlr, tailq);
@@ -415,6 +420,7 @@ nvd_new_disk(struct nvme_namespace *ns, void *ctrlr_arg)
 	struct nvd_disk		*ndisk, *tnd;
 	struct disk		*disk;
 	struct nvd_controller	*ctrlr = ctrlr_arg;
+	device_t		 dev = ctrlr->ctrlr->dev;
 	int unit;
 
 	ndisk = malloc(sizeof(struct nvd_disk), M_NVD, M_ZERO | M_WAITOK);
@@ -478,7 +484,13 @@ nvd_new_disk(struct nvme_namespace *ns, void *ctrlr_arg)
 	    NVME_MODEL_NUMBER_LENGTH);
 	strlcpy(disk->d_descr, descr, sizeof(descr));
 
+	disk->d_hba_vendor = pci_get_vendor(dev);
+	disk->d_hba_device = pci_get_device(dev);
+	disk->d_hba_subvendor = pci_get_subvendor(dev);
+	disk->d_hba_subdevice = pci_get_subdevice(dev);
 	disk->d_rotation_rate = DISK_RR_NON_ROTATING;
+	strlcpy(disk->d_attachment, device_get_nameunit(dev),
+	    sizeof(disk->d_attachment));
 
 	disk_create(disk, DISK_VERSION);
 
@@ -506,4 +518,3 @@ nvd_controller_fail(void *ctrlr_arg)
 	mtx_unlock(&nvd_lock);
 	free(ctrlr, M_NVD);
 }
-

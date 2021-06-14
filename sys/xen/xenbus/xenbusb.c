@@ -67,9 +67,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/sx.h>
 #include <sys/taskqueue.h>
 
-#include <machine/xen/xen-os.h>
 #include <machine/stdarg.h>
 
+#include <xen/xen-os.h>
 #include <xen/gnttab.h>
 #include <xen/xenstore/xenstorevar.h>
 #include <xen/xenbus/xenbusb.h>
@@ -242,7 +242,7 @@ xenbusb_delete_child(device_t dev, device_t child)
 		xs_unregister_watch(&ivars->xd_otherend_watch);
 	if (ivars->xd_local_watch.node != NULL)
 		xs_unregister_watch(&ivars->xd_local_watch);
-	
+
 	device_delete_child(dev, child);
 	xenbusb_free_child_ivars(ivars);
 }
@@ -255,7 +255,6 @@ static void
 xenbusb_verify_device(device_t dev, device_t child)
 {
 	if (xs_exists(XST_NIL, xenbus_get_node(child), "") == 0) {
-
 		/*
 		 * Device tree has been removed from Xenbus.
 		 * Tear down the device.
@@ -351,7 +350,7 @@ xenbusb_device_sysctl_init(device_t dev)
 			SYSCTL_CHILDREN(tree),
 			OID_AUTO,
 			"xenstore_path",
-			CTLTYPE_STRING | CTLFLAG_RD,
+			CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE,
 			dev,
 			XENBUS_IVAR_NODE,
 			xenbusb_device_sysctl_handler,
@@ -362,7 +361,7 @@ xenbusb_device_sysctl_init(device_t dev)
 			SYSCTL_CHILDREN(tree),
 			OID_AUTO,
 			"xenbus_dev_type",
-			CTLTYPE_STRING | CTLFLAG_RD,
+			CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE,
 			dev,
 			XENBUS_IVAR_TYPE,
 			xenbusb_device_sysctl_handler,
@@ -373,7 +372,7 @@ xenbusb_device_sysctl_init(device_t dev)
 			SYSCTL_CHILDREN(tree),
 			OID_AUTO,
 			"xenbus_connection_state",
-			CTLTYPE_STRING | CTLFLAG_RD,
+			CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE,
 			dev,
 			XENBUS_IVAR_STATE,
 			xenbusb_device_sysctl_handler,
@@ -384,7 +383,7 @@ xenbusb_device_sysctl_init(device_t dev)
 			SYSCTL_CHILDREN(tree),
 			OID_AUTO,
 			"xenbus_peer_domid",
-			CTLTYPE_INT | CTLFLAG_RD,
+			CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE,
 			dev,
 			XENBUS_IVAR_OTHEREND_ID,
 			xenbusb_device_sysctl_handler,
@@ -395,7 +394,7 @@ xenbusb_device_sysctl_init(device_t dev)
 			SYSCTL_CHILDREN(tree),
 			OID_AUTO,
 			"xenstore_peer_path",
-			CTLTYPE_STRING | CTLFLAG_RD,
+			CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE,
 			dev,
 			XENBUS_IVAR_OTHEREND_PATH,
 			xenbusb_device_sysctl_handler,
@@ -702,10 +701,21 @@ xenbusb_add_device(device_t dev, const char *type, const char *id)
 		ivars->xd_otherend_watch.node = statepath;
 		ivars->xd_otherend_watch.callback = xenbusb_otherend_watch_cb;
 		ivars->xd_otherend_watch.callback_data = (uintptr_t)ivars;
+		/*
+		 * Other end state node watch, limit to one pending event
+		 * to prevent frontends from queuing too many events that
+		 * could cause resource starvation.
+		 */
+		ivars->xd_otherend_watch.max_pending = 1;
 
 		ivars->xd_local_watch.node = ivars->xd_node;
 		ivars->xd_local_watch.callback = xenbusb_local_watch_cb;
 		ivars->xd_local_watch.callback_data = (uintptr_t)ivars;
+		/*
+		 * Watch our local path, only writable by us or a privileged
+		 * domain, no need to limit.
+		 */
+		ivars->xd_local_watch.max_pending = 0;
 
 		mtx_lock(&xbs->xbs_lock);
 		xbs->xbs_connecting_children++;
@@ -764,6 +774,12 @@ xenbusb_attach(device_t dev, char *bus_node, u_int id_components)
 	xbs->xbs_device_watch.node = bus_node;
 	xbs->xbs_device_watch.callback = xenbusb_devices_changed;
 	xbs->xbs_device_watch.callback_data = (uintptr_t)xbs;
+	/*
+	 * Allow for unlimited pending watches, as those are local paths
+	 * either controlled by the guest or only writable by privileged
+	 * domains.
+	 */
+	xbs->xbs_device_watch.max_pending = 0;
 
 	TASK_INIT(&xbs->xbs_probe_children, 0, xenbusb_probe_children_cb, dev);
 

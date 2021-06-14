@@ -95,6 +95,7 @@ ttydisc_close(struct tty *tp)
 
 	/* Clean up our flags when leaving the discipline. */
 	tp->t_flags &= ~(TF_STOPPED|TF_HIWAT|TF_ZOMBIE);
+	tp->t_termios.c_lflag &= ~FLUSHO;
 
 	/*
 	 * POSIX states that we must drain output and flush input on
@@ -326,7 +327,7 @@ ttydisc_read(struct tty *tp, struct uio *uio, int ioflag)
 {
 	int error;
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	if (uio->uio_resid == 0)
 		return (0);
@@ -458,7 +459,7 @@ ttydisc_write(struct tty *tp, struct uio *uio, int ioflag)
 	int error = 0;
 	unsigned int oblen = 0;
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	if (tp->t_flags & TF_ZOMBIE)
 		return (EIO);
@@ -473,6 +474,12 @@ ttydisc_write(struct tty *tp, struct uio *uio, int ioflag)
 		unsigned int nlen;
 
 		MPASS(oblen == 0);
+
+		if (CMP_FLAG(l, FLUSHO)) {
+			uio->uio_offset += uio->uio_resid;
+			uio->uio_resid = 0;
+			return (0);
+		}
 
 		/* Step 1: read data. */
 		obstart = ob;
@@ -494,6 +501,12 @@ ttydisc_write(struct tty *tp, struct uio *uio, int ioflag)
 		/* Step 2: process data. */
 		do {
 			unsigned int plen, wlen;
+
+			if (CMP_FLAG(l, FLUSHO)) {
+				uio->uio_offset += uio->uio_resid;
+				uio->uio_resid = 0;
+				return (0);
+			}
 
 			/* Search for special characters for post processing. */
 			if (CMP_FLAG(o, OPOST)) {
@@ -573,7 +586,7 @@ done:
 void
 ttydisc_optimize(struct tty *tp)
 {
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	if (ttyhook_hashook(tp, rint_bypass)) {
 		tp->t_flags |= TF_BYPASS;
@@ -594,7 +607,7 @@ void
 ttydisc_modem(struct tty *tp, int open)
 {
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	if (open)
 		cv_broadcast(&tp->t_dcdwait);
@@ -628,6 +641,9 @@ ttydisc_modem(struct tty *tp, int open)
 static int
 ttydisc_echo_force(struct tty *tp, char c, int quote)
 {
+
+	if (CMP_FLAG(l, FLUSHO))
+		return 0;
 
 	if (CMP_FLAG(o, OPOST) && CTL_ECHO(c, quote)) {
 		/*
@@ -842,7 +858,7 @@ ttydisc_rint(struct tty *tp, char c, int flags)
 	char ob[3] = { 0xff, 0x00 };
 	size_t ol;
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	atomic_add_long(&tty_nin, 1);
 
@@ -879,8 +895,10 @@ ttydisc_rint(struct tty *tp, char c, int flags)
 	}
 
 	/* Allow any character to perform a wakeup. */
-	if (CMP_FLAG(i, IXANY))
+	if (CMP_FLAG(i, IXANY)) {
 		tp->t_flags &= ~TF_STOPPED;
+		tp->t_termios.c_lflag &= ~FLUSHO;
+	}
 
 	/* Remove the top bit. */
 	if (CMP_FLAG(i, ISTRIP))
@@ -905,6 +923,18 @@ ttydisc_rint(struct tty *tp, char c, int flags)
 			}
 			tp->t_flags |= TF_LITERAL;
 			return (0);
+		}
+		/* Discard processing */
+		if (CMP_CC(VDISCARD, c)) {
+			if (CMP_FLAG(l, FLUSHO)) {
+				tp->t_termios.c_lflag &= ~FLUSHO;
+			} else {
+				tty_flush(tp, FWRITE);
+				ttydisc_echo(tp, c, 0);
+				if (tp->t_inq.ti_end > 0)
+					ttydisc_reprint(tp);
+				tp->t_termios.c_lflag |= FLUSHO;
+			}
 		}
 	}
 
@@ -1085,7 +1115,7 @@ ttydisc_rint_bypass(struct tty *tp, const void *buf, size_t len)
 {
 	size_t ret;
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	MPASS(tp->t_flags & TF_BYPASS);
 
@@ -1106,7 +1136,7 @@ void
 ttydisc_rint_done(struct tty *tp)
 {
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	if (ttyhook_hashook(tp, rint_done))
 		ttyhook_rint_done(tp);
@@ -1122,7 +1152,7 @@ ttydisc_rint_poll(struct tty *tp)
 {
 	size_t l;
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	if (ttyhook_hashook(tp, rint_poll))
 		return ttyhook_rint_poll(tp);
@@ -1165,7 +1195,7 @@ size_t
 ttydisc_getc(struct tty *tp, void *buf, size_t len)
 {
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	if (tp->t_flags & TF_STOPPED)
 		return (0);
@@ -1192,7 +1222,7 @@ ttydisc_getc_uio(struct tty *tp, struct uio *uio)
 	size_t len;
 	char buf[TTY_STACKBUF];
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	if (tp->t_flags & TF_STOPPED)
 		return (0);
@@ -1233,7 +1263,7 @@ size_t
 ttydisc_getc_poll(struct tty *tp)
 {
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	if (tp->t_flags & TF_STOPPED)
 		return (0);
@@ -1255,7 +1285,7 @@ tty_putstrn(struct tty *tp, const char *p, size_t n)
 {
 	size_t i;
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	if (tty_gone(tp))
 		return (-1);

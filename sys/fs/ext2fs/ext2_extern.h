@@ -64,6 +64,7 @@ e4fs_daddr_t	ext2_blkpref(struct inode *, e2fs_lbn_t, int, e2fs_daddr_t *,
 int	ext2_bmap(struct vop_bmap_args *);
 int	ext2_bmaparray(struct vnode *, daddr_t, daddr_t *, int *, int *);
 int	ext4_bmapext(struct vnode *, int32_t, int64_t *, int *, int *);
+int	ext2_bmap_seekdata(struct vnode *, off_t *);
 void	ext2_clusteracct(struct m_ext2fs *, char *, int, e4fs_daddr_t, int);
 void	ext2_dirbad(struct inode *ip, doff_t offset, char *how);
 int	ext2_ei2i(struct ext2fs_dinode *, struct inode *);
@@ -134,6 +135,13 @@ void	ext2_gd_csum_set(struct m_ext2fs *);
 
 /* Flags to low-level allocation routines.
  * The low 16-bits are reserved for IO_ flags from vnode.h.
+ *
+ * The BA_CLRBUF flag specifies that the existing content of the block
+ * will not be completely overwritten by the caller, so buffers for new
+ * blocks must be cleared and buffers for existing blocks must be read.
+ * When BA_CLRBUF is not set the buffer will be completely overwritten
+ * and there is no reason to clear them or to spend I/O fetching existing
+ * data. The BA_CLRBUF flag is handled in the ext2_balloc() functions.
  */
 #define	BA_CLRBUF	0x00010000	/* Clear invalid areas of buffer. */
 #define	BA_SEQMASK	0x7F000000	/* Bits holding seq heuristic. */

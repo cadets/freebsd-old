@@ -1516,7 +1516,7 @@ sched_initticks(void *dummy)
  * When a thread's sleep time is greater than its run time the
  * calculation is:
  *
- *                           scaling factor 
+ *                           scaling factor
  * interactivity score =  ---------------------
  *                        sleep time / run time
  *
@@ -1524,9 +1524,9 @@ sched_initticks(void *dummy)
  * When a thread's run time is greater than its sleep time the
  * calculation is:
  *
- *                           scaling factor 
- * interactivity score =  ---------------------    + scaling factor
- *                        run time / sleep time
+ *                                                 scaling factor
+ * interactivity score = 2 * scaling factor  -  ---------------------
+ *                                              run time / sleep time
  */
 static int
 sched_interact_score(struct thread *td)
@@ -1900,7 +1900,7 @@ sched_lend_user_prio_cond(struct thread *td, u_char prio)
 		goto lend;
 	if (td->td_user_pri != min(prio, td->td_base_user_pri))
 		goto lend;
-	if (td->td_priority >= td->td_user_pri)
+	if (td->td_priority != td->td_user_pri)
 		goto lend;
 	return;
 
@@ -3083,11 +3083,13 @@ sysctl_kern_quantum(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
-SYSCTL_NODE(_kern, OID_AUTO, sched, CTLFLAG_RW, 0, "Scheduler");
+SYSCTL_NODE(_kern, OID_AUTO, sched, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "Scheduler");
 SYSCTL_STRING(_kern_sched, OID_AUTO, name, CTLFLAG_RD, "ULE", 0,
     "Scheduler name");
-SYSCTL_PROC(_kern_sched, OID_AUTO, quantum, CTLTYPE_INT | CTLFLAG_RW,
-    NULL, 0, sysctl_kern_quantum, "I",
+SYSCTL_PROC(_kern_sched, OID_AUTO, quantum,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, NULL, 0,
+    sysctl_kern_quantum, "I",
     "Quantum for timeshare threads in microseconds");
 SYSCTL_INT(_kern_sched, OID_AUTO, slice, CTLFLAG_RW, &sched_slice, 0,
     "Quantum for timeshare threads in stathz ticks");
@@ -3126,4 +3128,5 @@ SYSCTL_PROC(_kern_sched, OID_AUTO, topology_spec, CTLTYPE_STRING |
 
 /* ps compat.  All cpu percentages from ULE are weighted. */
 static int ccpu = 0;
-SYSCTL_INT(_kern, OID_AUTO, ccpu, CTLFLAG_RD, &ccpu, 0, "");
+SYSCTL_INT(_kern, OID_AUTO, ccpu, CTLFLAG_RD, &ccpu, 0,
+    "Decay factor used for updating %CPU in 4BSD scheduler");

@@ -65,6 +65,7 @@ SDT_PROBE_DECLARE(sdt, , , m__init);
 SDT_PROBE_DECLARE(sdt, , , m__gethdr);
 SDT_PROBE_DECLARE(sdt, , , m__get);
 SDT_PROBE_DECLARE(sdt, , , m__getcl);
+SDT_PROBE_DECLARE(sdt, , , m__getjcl);
 SDT_PROBE_DECLARE(sdt, , , m__clget);
 SDT_PROBE_DECLARE(sdt, , , m__cljget);
 SDT_PROBE_DECLARE(sdt, , , m__cljset);
@@ -140,6 +141,7 @@ struct m_tag {
 struct m_snd_tag {
 	struct ifnet *ifp;		/* network interface tag belongs to */
 	volatile u_int refcount;
+	u_int	type;			/* One of IF_SND_TAG_TYPE_*. */
 };
 
 /*
@@ -170,7 +172,10 @@ struct pkthdr {
 			uint8_t		 l3hlen;	/* layer 3 hdr len */
 			uint8_t		 l4hlen;	/* layer 4 hdr len */
 			uint8_t		 l5hlen;	/* layer 5 hdr len */
-			uint32_t	 spare;
+			uint8_t		 inner_l2hlen;
+			uint8_t		 inner_l3hlen;
+			uint8_t		 inner_l4hlen;
+			uint8_t		 inner_l5hlen;
 		};
 	};
 	union {
@@ -193,14 +198,47 @@ struct pkthdr {
 	} PH_loc;
 };
 #define	ether_vtag	PH_per.sixteen[0]
+#define tcp_tun_port	PH_per.sixteen[0] /* outbound */
 #define	PH_vt		PH_per
 #define	vt_nrecs	sixteen[0]	  /* mld and v6-ND */
 #define	tso_segsz	PH_per.sixteen[1] /* inbound after LRO */
 #define	lro_nsegs	tso_segsz	  /* inbound after LRO */
 #define	csum_data	PH_per.thirtytwo[1] /* inbound from hardware up */
-#define lro_len		PH_loc.sixteen[0] /* inbound during LRO (no reassembly) */
-#define lro_csum	PH_loc.sixteen[1] /* inbound during LRO (no reassembly) */
+#define	lro_tcp_d_len	PH_loc.sixteen[0] /* inbound during LRO (no reassembly) */
+#define	lro_tcp_d_csum	PH_loc.sixteen[1] /* inbound during LRO (no reassembly) */
+#define	lro_tcp_h_off	PH_loc.sixteen[2] /* inbound during LRO (no reassembly) */
+#define	lro_etype	PH_loc.sixteen[3] /* inbound during LRO (no reassembly) */
 /* Note PH_loc is used during IP reassembly (all 8 bytes as a ptr) */
+
+/*
+ * TLS records for TLS 1.0-1.2 can have the following header lengths:
+ * - 5 (AES-CBC with implicit IV)
+ * - 21 (AES-CBC with explicit IV)
+ * - 13 (AES-GCM with 8 byte explicit IV)
+ */
+#define	MBUF_PEXT_HDR_LEN	23
+
+/*
+ * TLS records for TLS 1.0-1.2 can have the following maximum trailer
+ * lengths:
+ * - 16 (AES-GCM)
+ * - 36 (AES-CBC with SHA1 and up to 16 bytes of padding)
+ * - 48 (AES-CBC with SHA2-256 and up to 16 bytes of padding)
+ * - 64 (AES-CBC with SHA2-384 and up to 16 bytes of padding)
+ */
+#define	MBUF_PEXT_TRAIL_LEN	64
+
+#if defined(__LP64__)
+#define MBUF_PEXT_MAX_PGS (40 / sizeof(vm_paddr_t))
+#else
+#define MBUF_PEXT_MAX_PGS (72 / sizeof(vm_paddr_t))
+#endif
+
+#define	MBUF_PEXT_MAX_BYTES						\
+    (MBUF_PEXT_MAX_PGS * PAGE_SIZE + MBUF_PEXT_HDR_LEN + MBUF_PEXT_TRAIL_LEN)
+
+struct ktls_session;
+struct socket;
 
 /*
  * Description of external storage mapped into mbuf; valid only if M_EXT is
@@ -224,29 +262,50 @@ struct m_ext {
 		volatile u_int	 ext_count;
 		volatile u_int	*ext_cnt;
 	};
-	union {
-		/*
-		 * If ext_type == EXT_PGS, 'ext_pgs' points to a
-		 * structure describing the buffer.  Otherwise,
-		 * 'ext_buf' points to the start of the buffer.
-		 */
-		struct mbuf_ext_pgs *ext_pgs;
-		char		*ext_buf;
-	};
 	uint32_t	 ext_size;	/* size of buffer, for ext_free */
 	uint32_t	 ext_type:8,	/* type of external storage */
 			 ext_flags:24;	/* external storage mbuf flags */
+	union {
+		struct {
+			/*
+			 * Regular M_EXT mbuf:
+			 * o ext_buf always points to the external buffer.
+			 * o ext_free (below) and two optional arguments
+			 *   ext_arg1 and ext_arg2 store the free context for
+			 *   the external storage.  They are set only in the
+			 *   refcount carrying mbuf, the one with
+			 *   EXT_FLAG_EMBREF flag, with exclusion for
+			 *   EXT_EXTREF type, where the free context is copied
+			 *   into all mbufs that use same external storage.
+			 */
+			char 	*ext_buf;	/* start of buffer */
+#define	m_ext_copylen	offsetof(struct m_ext, ext_arg2)
+			void	*ext_arg2;
+		};
+		struct {
+			/*
+			 * Multi-page M_EXTPG mbuf:
+			 * o extpg_pa - page vector.
+			 * o extpg_trail and extpg_hdr - TLS trailer and
+			 *   header.
+			 * Uses ext_free and may also use ext_arg1.
+			 */
+			vm_paddr_t	extpg_pa[MBUF_PEXT_MAX_PGS];
+			char		extpg_trail[MBUF_PEXT_TRAIL_LEN];
+			char		extpg_hdr[MBUF_PEXT_HDR_LEN];
+			/* Pretend these 3 fields are part of mbuf itself. */
+#define	m_epg_pa	m_ext.extpg_pa
+#define	m_epg_trail	m_ext.extpg_trail
+#define	m_epg_hdr	m_ext.extpg_hdr
+#define	m_epg_ext_copylen	offsetof(struct m_ext, ext_free)
+		};
+	};
 	/*
-	 * Fields below store the free context for the external storage.
-	 * They are valid only in the refcount carrying mbuf, the one with
-	 * EXT_FLAG_EMBREF flag, with exclusion for EXT_EXTREF type, where
-	 * the free context is copied into all mbufs that use same external
-	 * storage.
+	 * Free method and optional argument pointer, both
+	 * used by M_EXT and M_EXTPG.
 	 */
-#define	m_ext_copylen	offsetof(struct m_ext, ext_free)
-	m_ext_free_t	*ext_free;	/* free routine if not the usual */
-	void		*ext_arg1;	/* optional argument pointer */
-	void		*ext_arg2;	/* optional argument pointer */
+	m_ext_free_t	*ext_free;
+	void		*ext_arg1;
 };
 
 /*
@@ -288,9 +347,48 @@ struct mbuf {
 	 */
 	union {
 		struct {
-			struct pkthdr	m_pkthdr;	/* M_PKTHDR set */
 			union {
-				struct m_ext	m_ext;	/* M_EXT set */
+				/* M_PKTHDR set. */
+				struct pkthdr	m_pkthdr;
+
+				/* M_EXTPG set.
+				 * Multi-page M_EXTPG mbuf has its meta data
+				 * split between the below anonymous structure
+				 * and m_ext.  It carries vector of pages,
+				 * optional header and trailer char vectors
+				 * and pointers to socket/TLS data.
+				 */
+#define	m_epg_startcopy		m_epg_npgs
+#define	m_epg_endcopy		m_epg_stailq
+				struct {
+					/* Overall count of pages and count of
+					 * pages with I/O pending. */
+					uint8_t	m_epg_npgs;
+					uint8_t	m_epg_nrdy;
+					/* TLS header and trailer lengths.
+					 * The data itself resides in m_ext. */
+					uint8_t	m_epg_hdrlen;
+					uint8_t	m_epg_trllen;
+					/* Offset into 1st page and length of
+					 * data in the last page. */
+					uint16_t m_epg_1st_off;
+					uint16_t m_epg_last_len;
+					uint8_t	m_epg_flags;
+#define	EPG_FLAG_ANON	0x1	/* Data can be encrypted in place. */
+#define	EPG_FLAG_2FREE	0x2	/* Scheduled for free. */
+					uint8_t	m_epg_record_type;
+					uint8_t	__spare[2];
+					int	m_epg_enc_cnt;
+					struct ktls_session *m_epg_tls;
+					struct socket	*m_epg_so;
+					uint64_t	m_epg_seqno;
+					STAILQ_ENTRY(mbuf) m_epg_stailq;
+				};
+			};
+			union {
+				/* M_EXT or M_EXTPG set. */
+				struct m_ext	m_ext;
+				/* M_PKTHDR set, neither M_EXT nor M_EXTPG. */
 				char		m_pktdat[0];
 			};
 		};
@@ -298,95 +396,51 @@ struct mbuf {
 	};
 };
 
-struct ktls_session;
-struct socket;
-
-/*
- * TLS records for TLS 1.0-1.2 can have the following header lengths:
- * - 5 (AES-CBC with implicit IV)
- * - 21 (AES-CBC with explicit IV)
- * - 13 (AES-GCM with 8 byte explicit IV)
- */
-#define	MBUF_PEXT_HDR_LEN	23
-
-/*
- * TLS records for TLS 1.0-1.2 can have the following maximum trailer
- * lengths:
- * - 16 (AES-GCM)
- * - 36 (AES-CBC with SHA1 and up to 16 bytes of padding)
- * - 48 (AES-CBC with SHA2-256 and up to 16 bytes of padding)
- * - 64 (AES-CBC with SHA2-384 and up to 16 bytes of padding)
- */
-#define	MBUF_PEXT_TRAIL_LEN	64
-
-#ifdef __LP64__
-#define	MBUF_PEXT_MAX_PGS	(152 / sizeof(vm_paddr_t))
-#else
-#define	MBUF_PEXT_MAX_PGS	(156 / sizeof(vm_paddr_t))
-#endif
-
-#define	MBUF_PEXT_MAX_BYTES						\
-    (MBUF_PEXT_MAX_PGS * PAGE_SIZE + MBUF_PEXT_HDR_LEN + MBUF_PEXT_TRAIL_LEN)
-
-#define MBUF_PEXT_FLAG_ANON	1	/* Data can be encrypted in place. */
-
-/*
- * This struct is 256 bytes in size and is arranged so that the most
- * common case (accessing the first 4 pages of a 16KB TLS record) will
- * fit in a single 64 byte cacheline.
- */
-struct mbuf_ext_pgs {
-	uint8_t		npgs;			/* Number of attached pages */
-	uint8_t		nrdy;			/* Pages with I/O pending */
-	uint8_t		hdr_len;		/* TLS header length */
-	uint8_t		trail_len;		/* TLS trailer length */
-	uint16_t	first_pg_off;		/* Offset into 1st page */
-	uint16_t	last_pg_len;		/* Length of last page */
-	vm_paddr_t	pa[MBUF_PEXT_MAX_PGS];	/* phys addrs of pages */
-	char		hdr[MBUF_PEXT_HDR_LEN];	/* TLS header */
-	uint8_t		flags;			/* Flags */
-	struct ktls_session *tls;		/* TLS session */
-#if defined(__i386__) || \
-    (defined(__powerpc__) && !defined(__powerpc64__) && defined(BOOKE))
-	/*
-	 * i386 and Book-E PowerPC have 64-bit vm_paddr_t, so there is
-	 * a 4 byte remainder from the space allocated for pa[].
-	 */
-	uint32_t	pad;
-#endif
-	union {
-		char	trail[MBUF_PEXT_TRAIL_LEN]; /* TLS trailer */
-		struct {
-			uint8_t record_type;	/* Must be first */
-			struct socket *so;
-			struct mbuf *mbuf;
-			uint64_t seqno;
-			STAILQ_ENTRY(mbuf_ext_pgs) stailq;
-			int enc_cnt;
-		};
-	};
-};
-
 #ifdef _KERNEL
 static inline int
-mbuf_ext_pg_len(struct mbuf_ext_pgs *ext_pgs, int pidx, int pgoff)
+m_epg_pagelen(const struct mbuf *m, int pidx, int pgoff)
 {
+
 	KASSERT(pgoff == 0 || pidx == 0,
-	    ("page %d with non-zero offset %d in %p", pidx, pgoff, ext_pgs));
-	if (pidx == ext_pgs->npgs - 1) {
-		return (ext_pgs->last_pg_len);
+	    ("page %d with non-zero offset %d in %p", pidx, pgoff, m));
+
+	if (pidx == m->m_epg_npgs - 1) {
+		return (m->m_epg_last_len);
 	} else {
 		return (PAGE_SIZE - pgoff);
 	}
 }
 
-#ifdef INVARIANT_SUPPORT
-void	mb_ext_pgs_check(struct mbuf_ext_pgs *ext_pgs);
-#endif
 #ifdef INVARIANTS
-#define	MBUF_EXT_PGS_ASSERT_SANITY(ext_pgs)	mb_ext_pgs_check((ext_pgs))
+#define	MCHECK(ex, msg)	KASSERT((ex),				\
+	    ("Multi page mbuf %p with " #msg " at %s:%d",	\
+	    m, __FILE__, __LINE__))
+/*
+ * NB: This expects a non-empty buffer (npgs > 0 and
+ * last_pg_len > 0).
+ */
+#define	MBUF_EXT_PGS_ASSERT_SANITY(m)	do {				\
+	MCHECK(m->m_epg_npgs > 0, "no valid pages");		\
+	MCHECK(m->m_epg_npgs <= nitems(m->m_epg_pa),		\
+	    "too many pages");						\
+	MCHECK(m->m_epg_nrdy <= m->m_epg_npgs,			\
+	    "too many ready pages");					\
+	MCHECK(m->m_epg_1st_off < PAGE_SIZE,			\
+		"too large page offset");				\
+	MCHECK(m->m_epg_last_len > 0, "zero last page length");	\
+	MCHECK(m->m_epg_last_len <= PAGE_SIZE,			\
+	    "too large last page length");				\
+	if (m->m_epg_npgs == 1)					\
+		MCHECK(m->m_epg_1st_off +			\
+		    m->m_epg_last_len <=	 PAGE_SIZE,		\
+		    "single page too large");				\
+	MCHECK(m->m_epg_hdrlen <= sizeof(m->m_epg_hdr),		\
+	    "too large header length");					\
+	MCHECK(m->m_epg_trllen <= sizeof(m->m_epg_trail),	\
+	    "too large header length");					\
+} while (0)
 #else
-#define	MBUF_EXT_PGS_ASSERT_SANITY(ext_pgs)
+#define	MBUF_EXT_PGS_ASSERT_SANITY(m)	do {} while (0);
 #endif
 #endif
 
@@ -404,7 +458,7 @@ void	mb_ext_pgs_check(struct mbuf_ext_pgs *ext_pgs);
 #define	M_MCAST		0x00000020 /* send/received as link-level multicast */
 #define	M_PROMISC	0x00000040 /* packet was not for us */
 #define	M_VLANTAG	0x00000080 /* ether_vtag is valid */
-#define	M_NOMAP		0x00000100 /* mbuf data is unmapped */
+#define	M_EXTPG		0x00000100 /* has array of unmapped pages and TLS */
 #define	M_NOFREE	0x00000200 /* do not free mbuf, embedded in cluster */
 #define	M_TSTMP		0x00000400 /* rcv_tstmp field is valid */
 #define	M_TSTMP_HPREC	0x00000800 /* rcv_tstmp is high-prec, typically
@@ -445,7 +499,7 @@ void	mb_ext_pgs_check(struct mbuf_ext_pgs *ext_pgs);
  */
 #define	M_FLAG_BITS \
     "\20\1M_EXT\2M_PKTHDR\3M_EOR\4M_RDONLY\5M_BCAST\6M_MCAST" \
-    "\7M_PROMISC\10M_VLANTAG\11M_NOMAP\12M_NOFREE\13M_TSTMP\14M_TSTMP_HPREC\15M_TSTMP_LRO"
+    "\7M_PROMISC\10M_VLANTAG\11M_EXTPG\12M_NOFREE\13M_TSTMP\14M_TSTMP_HPREC\15M_TSTMP_LRO"
 #define	M_FLAG_PROTOBITS \
     "\16M_PROTO1\17M_PROTO2\20M_PROTO3\21M_PROTO4" \
     "\22M_PROTO5\23M_PROTO6\24M_PROTO7\25M_PROTO8\26M_PROTO9" \
@@ -480,6 +534,7 @@ void	mb_ext_pgs_check(struct mbuf_ext_pgs *ext_pgs);
  * https://docs.microsoft.com/en-us/windows-hardware/drivers/network/rss-hashing-types#ndishashipv6ex
  */
 #define	M_HASHTYPE_HASHPROP		0x80	/* has hash properties */
+#define	M_HASHTYPE_INNER		0x40	/* calculated from inner headers */
 #define	M_HASHTYPE_HASH(t)		(M_HASHTYPE_HASHPROP | (t))
 /* Microsoft RSS standard hash types */
 #define	M_HASHTYPE_NONE			0
@@ -496,15 +551,19 @@ void	mb_ext_pgs_check(struct mbuf_ext_pgs *ext_pgs);
 #define	M_HASHTYPE_RSS_UDP_IPV6_EX	M_HASHTYPE_HASH(10)/* IPv6 UDP 4-tuple +
 							    * ext hdrs */
 
-#define	M_HASHTYPE_OPAQUE		63	/* ordering, not affinity */
+#define	M_HASHTYPE_OPAQUE		0x3f	/* ordering, not affinity */
 #define	M_HASHTYPE_OPAQUE_HASH		M_HASHTYPE_HASH(M_HASHTYPE_OPAQUE)
 						/* ordering+hash, not affinity*/
 
 #define	M_HASHTYPE_CLEAR(m)	((m)->m_pkthdr.rsstype = 0)
-#define	M_HASHTYPE_GET(m)	((m)->m_pkthdr.rsstype)
+#define	M_HASHTYPE_GET(m)	((m)->m_pkthdr.rsstype & ~M_HASHTYPE_INNER)
 #define	M_HASHTYPE_SET(m, v)	((m)->m_pkthdr.rsstype = (v))
 #define	M_HASHTYPE_TEST(m, v)	(M_HASHTYPE_GET(m) == (v))
-#define	M_HASHTYPE_ISHASH(m)	(M_HASHTYPE_GET(m) & M_HASHTYPE_HASHPROP)
+#define	M_HASHTYPE_ISHASH(m)	\
+    (((m)->m_pkthdr.rsstype & M_HASHTYPE_HASHPROP) != 0)
+#define	M_HASHTYPE_SETINNER(m)	do {			\
+	(m)->m_pkthdr.rsstype |= M_HASHTYPE_INNER;	\
+    } while (0)
 
 /*
  * External mbuf storage buffer types.
@@ -517,7 +576,6 @@ void	mb_ext_pgs_check(struct mbuf_ext_pgs *ext_pgs);
 #define	EXT_PACKET	6	/* mbuf+cluster from packet zone */
 #define	EXT_MBUF	7	/* external mbuf reference */
 #define	EXT_RXRING	8	/* data in NIC receive ring */
-#define	EXT_PGS		9	/* array of unmapped pages */
 
 #define	EXT_VENDOR1	224	/* for vendor-internal use */
 #define	EXT_VENDOR2	225	/* for vendor-internal use */
@@ -562,11 +620,6 @@ void	mb_ext_pgs_check(struct mbuf_ext_pgs *ext_pgs);
     "\24EXT_FLAG_VENDOR4\25EXT_FLAG_EXP1\26EXT_FLAG_EXP2\27EXT_FLAG_EXP3" \
     "\30EXT_FLAG_EXP4"
 
-#define MBUF_EXT_PGS_ASSERT(m)						\
-	KASSERT((((m)->m_flags & M_EXT) != 0) &&			\
-	    ((m)->m_ext.ext_type == EXT_PGS),				\
-	    ("%s: m %p !M_EXT or !EXT_PGS", __func__, m))
-
 /*
  * Flags indicating checksum, segmentation and other offload work to be
  * done, or already done, by hardware or lower layers.  It is split into
@@ -575,7 +628,13 @@ void	mb_ext_pgs_check(struct mbuf_ext_pgs *ext_pgs);
  * Outbound flags that are set by upper protocol layers requesting lower
  * layers, or ideally the hardware, to perform these offloading tasks.
  * For outbound packets this field and its flags can be directly tested
- * against ifnet if_hwassist.
+ * against ifnet if_hwassist.  Note that the outbound and the inbound flags do
+ * not collide right now but they could be allowed to (as long as the flags are
+ * scrubbed appropriately when the direction of an mbuf changes).  CSUM_BITS
+ * would also have to split into CSUM_BITS_TX and CSUM_BITS_RX.
+ *
+ * CSUM_INNER_<x> is the same as CSUM_<x> but it applies to the inner frame.
+ * The CSUM_ENCAP_<x> bits identify the outer encapsulation.
  */
 #define	CSUM_IP			0x00000001	/* IP header checksum offload */
 #define	CSUM_IP_UDP		0x00000002	/* UDP checksum offload */
@@ -584,13 +643,28 @@ void	mb_ext_pgs_check(struct mbuf_ext_pgs *ext_pgs);
 #define	CSUM_IP_TSO		0x00000010	/* TCP segmentation offload */
 #define	CSUM_IP_ISCSI		0x00000020	/* iSCSI checksum offload */
 
+#define	CSUM_INNER_IP6_UDP	0x00000040
+#define	CSUM_INNER_IP6_TCP	0x00000080
+#define	CSUM_INNER_IP6_TSO	0x00000100
 #define	CSUM_IP6_UDP		0x00000200	/* UDP checksum offload */
 #define	CSUM_IP6_TCP		0x00000400	/* TCP checksum offload */
 #define	CSUM_IP6_SCTP		0x00000800	/* SCTP checksum offload */
 #define	CSUM_IP6_TSO		0x00001000	/* TCP segmentation offload */
 #define	CSUM_IP6_ISCSI		0x00002000	/* iSCSI checksum offload */
 
+#define	CSUM_INNER_IP		0x00004000
+#define	CSUM_INNER_IP_UDP	0x00008000
+#define	CSUM_INNER_IP_TCP	0x00010000
+#define	CSUM_INNER_IP_TSO	0x00020000
+
+#define	CSUM_ENCAP_VXLAN	0x00040000	/* VXLAN outer encapsulation */
+#define	CSUM_ENCAP_RSVD1	0x00080000
+
 /* Inbound checksum support where the checksum was verified by hardware. */
+#define	CSUM_INNER_L3_CALC	0x00100000
+#define	CSUM_INNER_L3_VALID	0x00200000
+#define	CSUM_INNER_L4_CALC	0x00400000
+#define	CSUM_INNER_L4_VALID	0x00800000
 #define	CSUM_L3_CALC		0x01000000	/* calculated layer 3 csum */
 #define	CSUM_L3_VALID		0x02000000	/* checksum is correct */
 #define	CSUM_L4_CALC		0x04000000	/* calculated layer 4 csum */
@@ -601,16 +675,31 @@ void	mb_ext_pgs_check(struct mbuf_ext_pgs *ext_pgs);
 
 #define	CSUM_SND_TAG		0x80000000	/* Packet header has send tag */
 
+#define CSUM_FLAGS_TX (CSUM_IP | CSUM_IP_UDP | CSUM_IP_TCP | CSUM_IP_SCTP | \
+    CSUM_IP_TSO | CSUM_IP_ISCSI | CSUM_INNER_IP6_UDP | CSUM_INNER_IP6_TCP | \
+    CSUM_INNER_IP6_TSO | CSUM_IP6_UDP | CSUM_IP6_TCP | CSUM_IP6_SCTP | \
+    CSUM_IP6_TSO | CSUM_IP6_ISCSI | CSUM_INNER_IP | CSUM_INNER_IP_UDP | \
+    CSUM_INNER_IP_TCP | CSUM_INNER_IP_TSO | CSUM_ENCAP_VXLAN | \
+    CSUM_ENCAP_RSVD1 | CSUM_SND_TAG)
+
+#define CSUM_FLAGS_RX (CSUM_INNER_L3_CALC | CSUM_INNER_L3_VALID | \
+    CSUM_INNER_L4_CALC | CSUM_INNER_L4_VALID | CSUM_L3_CALC | CSUM_L3_VALID | \
+    CSUM_L4_CALC | CSUM_L4_VALID | CSUM_L5_CALC | CSUM_L5_VALID | \
+    CSUM_COALESCED)
+
 /*
  * CSUM flag description for use with printf(9) %b identifier.
  */
 #define	CSUM_BITS \
     "\20\1CSUM_IP\2CSUM_IP_UDP\3CSUM_IP_TCP\4CSUM_IP_SCTP\5CSUM_IP_TSO" \
-    "\6CSUM_IP_ISCSI" \
-    "\12CSUM_IP6_UDP\13CSUM_IP6_TCP\14CSUM_IP6_SCTP\15CSUM_IP6_TSO" \
-    "\16CSUM_IP6_ISCSI" \
-    "\31CSUM_L3_CALC\32CSUM_L3_VALID\33CSUM_L4_CALC\34CSUM_L4_VALID" \
-    "\35CSUM_L5_CALC\36CSUM_L5_VALID\37CSUM_COALESCED\40CSUM_SND_TAG"
+    "\6CSUM_IP_ISCSI\7CSUM_INNER_IP6_UDP\10CSUM_INNER_IP6_TCP" \
+    "\11CSUM_INNER_IP6_TSO\12CSUM_IP6_UDP\13CSUM_IP6_TCP\14CSUM_IP6_SCTP" \
+    "\15CSUM_IP6_TSO\16CSUM_IP6_ISCSI\17CSUM_INNER_IP\20CSUM_INNER_IP_UDP" \
+    "\21CSUM_INNER_IP_TCP\22CSUM_INNER_IP_TSO\23CSUM_ENCAP_VXLAN" \
+    "\24CSUM_ENCAP_RSVD1\25CSUM_INNER_L3_CALC\26CSUM_INNER_L3_VALID" \
+    "\27CSUM_INNER_L4_CALC\30CSUM_INNER_L4_VALID\31CSUM_L3_CALC" \
+    "\32CSUM_L3_VALID\33CSUM_L4_CALC\34CSUM_L4_VALID\35CSUM_L5_CALC" \
+    "\36CSUM_L5_VALID\37CSUM_COALESCED\40CSUM_SND_TAG"
 
 /* CSUM flags compatibility mappings. */
 #define	CSUM_IP_CHECKED		CSUM_L3_CALC
@@ -626,6 +715,7 @@ void	mb_ext_pgs_check(struct mbuf_ext_pgs *ext_pgs);
 #define	CSUM_UDP		CSUM_IP_UDP
 #define	CSUM_SCTP		CSUM_IP_SCTP
 #define	CSUM_TSO		(CSUM_IP_TSO|CSUM_IP6_TSO)
+#define	CSUM_INNER_TSO		(CSUM_INNER_IP_TSO|CSUM_INNER_IP6_TSO)
 #define	CSUM_UDP_IPV6		CSUM_IP6_UDP
 #define	CSUM_TCP_IPV6		CSUM_IP6_TCP
 #define	CSUM_SCTP_IPV6		CSUM_IP6_SCTP
@@ -672,6 +762,7 @@ void	mb_ext_pgs_check(struct mbuf_ext_pgs *ext_pgs);
 #define	MBUF_EXTPGS_MEM_NAME	"mbuf_extpgs"
 
 #ifdef _KERNEL
+union if_snd_tag_alloc_params;
 
 #ifdef WITNESS
 #define	MBUF_CHECKSLEEP(how) do {					\
@@ -698,12 +789,17 @@ extern uma_zone_t	zone_extpgs;
 
 void		 mb_dupcl(struct mbuf *, struct mbuf *);
 void		 mb_free_ext(struct mbuf *);
+void		 mb_free_extpg(struct mbuf *);
 void		 mb_free_mext_pgs(struct mbuf *);
-struct mbuf	*mb_alloc_ext_pgs(int, bool, m_ext_free_t);
+struct mbuf	*mb_alloc_ext_pgs(int, m_ext_free_t);
+struct mbuf	*mb_alloc_ext_plus_pages(int, int);
+struct mbuf	*mb_mapped_to_unmapped(struct mbuf *, int, int, int,
+		    struct mbuf **);
 int		 mb_unmapped_compress(struct mbuf *m);
 struct mbuf 	*mb_unmapped_to_ext(struct mbuf *m);
 void		 mb_free_notready(struct mbuf *m, int count);
 void		 m_adj(struct mbuf *, int);
+void		 m_adj_decap(struct mbuf *, int);
 int		 m_apply(struct mbuf *, int, int,
 		    int (*)(void *, void *, u_int), void *);
 int		 m_append(struct mbuf *, int, c_caddr_t);
@@ -737,7 +833,6 @@ struct mbuf	*m_getm2(struct mbuf *, int, int, short, int);
 struct mbuf	*m_getptr(struct mbuf *, int, int *);
 u_int		 m_length(struct mbuf *, struct mbuf **);
 int		 m_mbuftouio(struct uio *, const struct mbuf *, int);
-int		 m_unmappedtouio(const struct mbuf *, int, struct uio *, int);
 void		 m_move_pkthdr(struct mbuf *, struct mbuf *);
 int		 m_pkthdr_init(struct mbuf *, int);
 struct mbuf	*m_prepend(struct mbuf *, int, int);
@@ -747,8 +842,12 @@ struct mbuf	*m_pullup(struct mbuf *, int);
 int		 m_sanity(struct mbuf *, int);
 struct mbuf	*m_split(struct mbuf *, int, int);
 struct mbuf	*m_uiotombuf(struct uio *, int, int, int, int);
+int		 m_unmapped_uiomove(const struct mbuf *, int, struct uio *,
+		    int);
 struct mbuf	*m_unshare(struct mbuf *, int);
-void		 m_snd_tag_init(struct m_snd_tag *, struct ifnet *);
+int		 m_snd_tag_alloc(struct ifnet *,
+		    union if_snd_tag_alloc_params *, struct m_snd_tag **);
+void		 m_snd_tag_init(struct m_snd_tag *, struct ifnet *, u_int);
 void		 m_snd_tag_destroy(struct m_snd_tag *);
 
 static __inline int
@@ -992,7 +1091,7 @@ m_extrefcnt(struct mbuf *m)
  * be both the local data payload, or an external buffer area, depending on
  * whether M_EXT is set).
  */
-#define	M_WRITABLE(m)	(((m)->m_flags & (M_RDONLY | M_NOMAP)) == 0 &&	\
+#define	M_WRITABLE(m)	(((m)->m_flags & (M_RDONLY | M_EXTPG)) == 0 &&	\
 			 (!(((m)->m_flags & M_EXT)) ||			\
 			 (m_extrefcnt(m) == 1)))
 
@@ -1000,6 +1099,11 @@ m_extrefcnt(struct mbuf *m)
 #define	M_ASSERTPKTHDR(m)						\
 	KASSERT((m) != NULL && (m)->m_flags & M_PKTHDR,			\
 	    ("%s: no mbuf packet header!", __func__))
+
+/* Check if mbuf is multipage. */
+#define M_ASSERTEXTPG(m)						\
+	KASSERT(((m)->m_flags & (M_EXTPG|M_PKTHDR)) == M_EXTPG,		\
+	    ("%s: m %p is not multipage!", __func__, m))
 
 /*
  * Ensure that the supplied mbuf is a valid, non-free mbuf.
@@ -1010,12 +1114,23 @@ m_extrefcnt(struct mbuf *m)
 	KASSERT((((struct mbuf *)m)->m_flags & 0) == 0,			\
 	    ("%s: attempted use of a free mbuf!", __func__))
 
+/* Check whether any mbuf in the chain is unmapped. */
+#ifdef INVARIANTS
+#define	M_ASSERTMAPPED(m) do {						\
+	for (struct mbuf *__m = (m); __m != NULL; __m = __m->m_next)	\
+		KASSERT((__m->m_flags & M_EXTPG) == 0,			\
+		    ("%s: chain %p contains an unmapped mbuf", __func__, (m)));\
+} while (0)
+#else
+#define	M_ASSERTMAPPED(m)
+#endif
+
 /*
  * Return the address of the start of the buffer associated with an mbuf,
  * handling external storage, packet-header mbufs, and regular data mbufs.
  */
 #define	M_START(m)							\
-	(((m)->m_flags & M_NOMAP) ? NULL :				\
+	(((m)->m_flags & M_EXTPG) ? NULL :				\
 	 ((m)->m_flags & M_EXT) ? (m)->m_ext.ext_buf :			\
 	 ((m)->m_flags & M_PKTHDR) ? &(m)->m_pktdat[0] :		\
 	 &(m)->m_dat[0])
@@ -1341,7 +1456,9 @@ m_free(struct mbuf *m)
 		m_tag_delete_chain(m, NULL);
 	if (m->m_flags & M_PKTHDR && m->m_pkthdr.csum_flags & CSUM_SND_TAG)
 		m_snd_tag_rele(m->m_pkthdr.snd_tag);
-	if (m->m_flags & M_EXT)
+	if (m->m_flags & M_EXTPG)
+		mb_free_extpg(m);
+	else if (m->m_flags & M_EXT)
 		mb_free_ext(m);
 	else if ((m->m_flags & M_NOFREE) == 0)
 		uma_zfree(zone_mbuf, m);
@@ -1362,14 +1479,16 @@ rt_m_getfib(struct mbuf *m)
 	((_m)->m_pkthdr.fibnum) = (_fib);				\
 } while (0)
 
-/* flags passed as first argument for "m_ether_tcpip_hash()" */
+/* flags passed as first argument for "m_xxx_tcpip_hash()" */
 #define	MBUF_HASHFLAG_L2	(1 << 2)
 #define	MBUF_HASHFLAG_L3	(1 << 3)
 #define	MBUF_HASHFLAG_L4	(1 << 4)
 
 /* mbuf hashing helper routines */
 uint32_t	m_ether_tcpip_hash_init(void);
-uint32_t	m_ether_tcpip_hash(const uint32_t, const struct mbuf *, const uint32_t);
+uint32_t	m_ether_tcpip_hash(const uint32_t, const struct mbuf *, uint32_t);
+uint32_t	m_infiniband_tcpip_hash_init(void);
+uint32_t	m_infiniband_tcpip_hash(const uint32_t, const struct mbuf *, uint32_t);
 
 #ifdef MBUF_PROFILING
  void m_profile(struct mbuf *m);
@@ -1513,9 +1632,8 @@ static inline bool
 mbuf_has_tls_session(struct mbuf *m)
 {
 
-	if (m->m_flags & M_NOMAP) {
-		MBUF_EXT_PGS_ASSERT(m);
-		if (m->m_ext.ext_pgs->tls != NULL) {
+	if (m->m_flags & M_EXTPG) {
+		if (m->m_epg_tls != NULL) {
 			return (true);
 		}
 	}

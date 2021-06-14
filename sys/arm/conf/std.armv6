@@ -3,7 +3,6 @@
 # $FreeBSD$
 
 options 	HZ=1000
-options 	ARM_L2_PIPT		# Only L2 PIPT is supported
 options 	INTRNG			# All arm systems use INTRNG these days
 options 	PREEMPTION		# Enable kernel thread preemption
 options 	VIMAGE			# Subsystem virtualization, e.g. VNET
@@ -12,7 +11,7 @@ options 	INET6			# IPv6 communications protocols
 options 	TCP_HHOOK		# hhook(9) framework for TCP
 device		crypto			# core crypto support
 options 	IPSEC_SUPPORT		# Allow kldload of ipsec and tcpmd5
-options 	SCTP			# Stream Control Transmission Protocol
+options 	SCTP_SUPPORT		# Allow kldload of SCTP
 options 	FFS			# Berkeley Fast Filesystem
 options 	SOFTUPDATES		# Enable FFS soft updates support
 options 	UFS_ACL			# Support for access control lists
@@ -64,6 +63,7 @@ options 	KDB_TRACE		# Print a stack trace for a panic.
 
 # For full debugger support use (turn off in stable branch):
 options 	DDB			# Support DDB
+options 	GDB			# Support remote GDB
 #options 	DEADLKRES		# Enable the deadlock resolver
 options 	INVARIANTS		# Enable calls of extra sanity checking
 options 	INVARIANT_SUPPORT	# Extra sanity checks of internal structures, required by INVARIANTS

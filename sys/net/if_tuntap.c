@@ -123,7 +123,7 @@ struct tuntap_softc {
 #define	TUN_OPEN	0x0001
 #define	TUN_INITED	0x0002
 #define	TUN_UNUSED1	0x0008
-#define	TUN_DSTADDR	0x0010
+#define	TUN_UNUSED2	0x0010
 #define	TUN_LMODE	0x0020
 #define	TUN_RWAIT	0x0040
 #define	TUN_ASYNC	0x0080
@@ -168,7 +168,6 @@ struct tuntap_softc {
 #define TAP_ALL_OFFLOAD		(CSUM_TSO | CSUM_TCP | CSUM_UDP |\
 				    CSUM_TCP_IPV6 | CSUM_UDP_IPV6)
 
-
 /*
  * All mutable global variables in if_tun are locked using tunmtx, with
  * the exception of tundebug, which is used unlocked, and the drivers' *clones,
@@ -195,13 +194,13 @@ SX_SYSINIT(tun_ioctl_sx, &tun_ioctl_sx, "tun_ioctl");
 
 SYSCTL_DECL(_net_link);
 /* tun */
-static SYSCTL_NODE(_net_link, OID_AUTO, tun, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_net_link, OID_AUTO, tun, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
     "IP tunnel software network interface");
 SYSCTL_INT(_net_link_tun, OID_AUTO, devfs_cloning, CTLFLAG_RWTUN, &tundclone, 0,
     "Enable legacy devfs interface creation");
 
 /* tap */
-static SYSCTL_NODE(_net_link, OID_AUTO, tap, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_net_link, OID_AUTO, tap, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
     "Ethernet tunnel software network interface");
 SYSCTL_INT(_net_link_tap, OID_AUTO, user_open, CTLFLAG_RW, &tap_allow_uopen, 0,
     "Enable legacy devfs interface creation for all users");
@@ -387,7 +386,6 @@ tun_busy(struct tuntap_softc *tp)
 	return (ret);
 }
 
-
 static void
 tun_unbusy(struct tuntap_softc *tp)
 {
@@ -475,8 +473,6 @@ tuntap_driver_from_flags(int tun_flags)
 
 	return (NULL);
 }
-
-
 
 static int
 tun_clone_match(struct if_clone *ifc, const char *name)
@@ -965,7 +961,6 @@ tuncreate(struct cdev *dev)
 	ifp->if_capenable |= IFCAP_LINKSTATE;
 
 	if ((tp->tun_flags & TUN_L2) != 0) {
-		ifp->if_mtu = ETHERMTU;
 		ifp->if_init = tunifinit;
 		ifp->if_start = tunstart_l2;
 
@@ -1165,19 +1160,8 @@ tundtor(void *data)
 
 	/* Delete all addresses and routes which reference this interface. */
 	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
-		struct ifaddr *ifa;
-
 		ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 		TUN_UNLOCK(tp);
-		CK_STAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
-			/* deal w/IPv4 PtP destination; unlocked read */
-			if (!l2tun && ifa->ifa_addr->sa_family == AF_INET) {
-				rtinit(ifa, (int)RTM_DELETE,
-				    tp->tun_flags & TUN_DSTADDR ? RTF_HOST : 0);
-			} else {
-				rtinit(ifa, (int)RTM_DELETE, 0);
-			}
-		}
 		if_purgeaddrs(ifp);
 		TUN_LOCK(tp);
 	}
@@ -1202,10 +1186,6 @@ static void
 tuninit(struct ifnet *ifp)
 {
 	struct tuntap_softc *tp = ifp->if_softc;
-#ifdef INET
-	struct epoch_tracker et;
-	struct ifaddr *ifa;
-#endif
 
 	TUNDEBUG(ifp, "tuninit\n");
 
@@ -1214,21 +1194,6 @@ tuninit(struct ifnet *ifp)
 	if ((tp->tun_flags & TUN_L2) == 0) {
 		ifp->if_flags |= IFF_UP;
 		getmicrotime(&ifp->if_lastchange);
-#ifdef INET
-		NET_EPOCH_ENTER(et);
-		CK_STAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
-			if (ifa->ifa_addr->sa_family == AF_INET) {
-				struct sockaddr_in *si;
-
-				si = (struct sockaddr_in *)ifa->ifa_dstaddr;
-				if (si && si->sin_addr.s_addr) {
-					tp->tun_flags |= TUN_DSTADDR;
-					break;
-				}
-			}
-		}
-		NET_EPOCH_EXIT(et);
-#endif
 		TUN_UNLOCK(tp);
 	} else {
 		ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;

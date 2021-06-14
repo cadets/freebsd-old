@@ -1,9 +1,6 @@
 .\" $FreeBSD$
 .\" Man page generated from reStructuredText.
 .
-.TH "CLANG" "1" "Aug 02, 2018" "7" "Clang"
-.SH NAME
-clang \- the Clang C, C++, and Objective-C compiler
 .
 .nr rst2man-indent-level 0
 .
@@ -31,6 +28,9 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
+.TH "CLANG" "1" "2021-06-07" "12" "Clang"
+.SH NAME
+clang \- the Clang C, C++, and Objective-C compiler
 .SH SYNOPSIS
 .sp
 \fBclang\fP [\fIoptions\fP] \fIfilename ...\fP
@@ -89,7 +89,7 @@ an "a.out", ".dylib" or ".so" file.
 .sp
 The Clang Static Analyzer is a tool that scans source code to try to find bugs
 through code analysis.  This tool uses many parts of Clang and is built into
-the same driver.  Please see <\fI\%http://clang\-analyzer.llvm.org\fP> for more details
+the same driver.  Please see <\fI\%https://clang\-analyzer.llvm.org\fP> for more details
 on how to use the static analyzer.
 .SH OPTIONS
 .SS Stage Selection Options
@@ -224,7 +224,7 @@ ISO C 2017 with GNU extensions
 .UNINDENT
 .UNINDENT
 .sp
-The default C language standard is \fBgnu11\fP, except on PS4, where it is
+The default C language standard is \fBgnu17\fP, except on PS4, where it is
 \fBgnu99\fP\&.
 .sp
 Supported values for the C++ language are:
@@ -417,7 +417,9 @@ Enable trigraphs.
 .TP
 .B \-ffreestanding
 Indicate that the file should be compiled for a freestanding, not a hosted,
-environment.
+environment. Note that it is assumed that a freestanding environment will
+additionally provide \fImemcpy\fP, \fImemmove\fP, \fImemset\fP and \fImemcmp\fP
+implementations, as these are needed for efficient codegen for many programs.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -458,8 +460,21 @@ strings and other optimizations.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-flax\-vector\-conversions
+.B \-flax\-vector\-conversions, \-flax\-vector\-conversions=<kind>, \-fno\-lax\-vector\-conversions
 Allow loose type checking rules for implicit vector conversions.
+Possible values of <kind>:
+.INDENT 7.0
+.IP \(bu 2
+\fBnone\fP: allow no implicit conversions between vectors
+.IP \(bu 2
+\fBinteger\fP: allow implicit bitcasts between integer vectors of the same
+overall bit\-width
+.IP \(bu 2
+\fBall\fP: allow implicit bitcasts between any vectors of the same
+overall bit\-width
+.UNINDENT
+.sp
+<kind> defaults to \fBinteger\fP if unspecified.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -499,7 +514,7 @@ Specify the architecture to build for.
 .INDENT 0.0
 .TP
 .B \-mmacosx\-version\-min=<version>
-When building for Mac OS X, specify the minimum version supported by your
+When building for macOS, specify the minimum version supported by your
 application.
 .UNINDENT
 .INDENT 0.0
@@ -507,6 +522,18 @@ application.
 .B \-miphoneos\-version\-min
 When building for iPhone OS, specify the minimum version supported by your
 application.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-print\-supported\-cpus
+Print out a list of supported processors for the given target (specified
+through \fB\-\-target=<architecture>\fP or \fI\%\-arch\fP \fB<architecture>\fP). If no
+target is specified, the system default target will be used.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-mcpu=?, \-mtune=?
+Acts as an alias for \fI\%\-\-print\-supported\-cpus\fP\&.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -548,7 +575,7 @@ size further.
 \fI\%\-Og\fP Like \fI\%\-O1\fP\&. In future versions, this option might
 disable different optimizations in order to improve debuggability.
 .sp
-\fI\%\-O\fP Equivalent to \fI\%\-O2\fP\&.
+\fI\%\-O\fP Equivalent to \fI\%\-O1\fP\&.
 .sp
 \fI\%\-O4\fP and higher
 .INDENT 0.0
@@ -608,6 +635,13 @@ program.
 .UNINDENT
 .INDENT 0.0
 .TP
+.B \-feliminate\-unused\-debug\-types
+By default, Clang does not emit type information for types that are defined
+but not used in a program. To retain the debug info for these unused types,
+the negation \fB\-fno\-eliminate\-unused\-debug\-types\fP can be used.
+.UNINDENT
+.INDENT 0.0
+.TP
 .B \-fexceptions
 Enable generation of unwind information. This allows exceptions to be thrown
 through Clang compiled stack frames.  This is on by default in x86\-64.
@@ -652,6 +686,19 @@ LLVM bitcode is suitable for monolithic Link Time Optimization (LTO), where
 the linker merges all such modules into a single combined module for
 optimization. With "thin", ThinLTO
 compilation is invoked instead.
+.sp
+\fBNOTE:\fP
+.INDENT 7.0
+.INDENT 3.5
+On Darwin, when using \fI\%\-flto\fP along with \fB\-g\fP and
+compiling and linking in separate steps, you also need to pass
+\fB\-Wl,\-object_path_lto,<lto\-filename>.o\fP at the linking step to instruct the
+ld64 linker not to delete the temporary object file generated during Link
+Time Optimization (this flag is automatically passed to the linker by Clang
+if compilation and linking are done in a single step). This allows debugging
+the executable as well as generating the \fB\&.dSYM\fP bundle using \fBdsymutil(1)\fP\&.
+.UNINDENT
+.UNINDENT
 .UNINDENT
 .SS Driver Options
 .INDENT 0.0
@@ -848,7 +895,7 @@ Darwin targets.
 .UNINDENT
 .SH BUGS
 .sp
-To report bugs, please visit <\fI\%http://llvm.org/bugs/\fP>.  Most bug reports should
+To report bugs, please visit <\fI\%https://bugs.llvm.org/\fP>.  Most bug reports should
 include preprocessed source files (use the \fI\%\-E\fP option) and the full
 output of the compiler, along with information to reproduce.
 .SH SEE ALSO
@@ -857,6 +904,6 @@ output of the compiler, along with information to reproduce.
 .SH AUTHOR
 Maintained by the Clang / LLVM Team (<http://clang.llvm.org>)
 .SH COPYRIGHT
-2007-2018, The Clang Team
+2007-2021, The Clang Team
 .\" Generated by docutils manpage writer.
 .

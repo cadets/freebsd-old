@@ -2,6 +2,8 @@
 
 PACKAGE=	tests
 
+WARNS?=		3
+
 _LIBARCHIVEDIR=	${SRCTOP}/contrib/libarchive
 
 ATF_TESTS_SH+=	functional_test
@@ -72,6 +74,7 @@ TESTS_SRCS=	\
 	test_option_q.c				\
 	test_option_r.c				\
 	test_option_s.c				\
+	test_option_safe_writes.c		\
 	test_option_uid_uname.c			\
 	test_option_uuencode.c			\
 	test_option_xattrs.c			\

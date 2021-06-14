@@ -394,10 +394,13 @@
 #define	NFSPROC_RMEXTATTR	63
 #define	NFSPROC_LISTEXTATTR	64
 
+/* BindConnectionToSession, done by the krpc for a new connection. */
+#define	NFSPROC_BINDCONNTOSESS	65
+
 /*
  * Must be defined as one higher than the last NFSv4.2 Proc# above.
  */
-#define	NFSV42_NPROCS		65
+#define	NFSV42_NPROCS		66
 
 #endif	/* NFS_V3NPROCS */
 
@@ -722,6 +725,10 @@
 #define	NFSCDFS4_FORE		0x1
 #define	NFSCDFS4_BACK		0x2
 #define	NFSCDFS4_BOTH		0x3
+
+/* Enum values for Secinfo_no_name. */
+#define	NFSSECINFONONAME_CURFH	0
+#define	NFSSECINFONONAME_PARENT	1
 
 #if defined(_KERNEL) || defined(KERNEL)
 /* Conversion macros */
@@ -1127,6 +1134,7 @@ struct nfsv3_sattr {
  	NFSATTRBM_SPACETOTAL |						\
  	NFSATTRBM_SPACEUSED |						\
  	NFSATTRBM_TIMEACCESS |						\
+ 	NFSATTRBM_TIMECREATE |						\
  	NFSATTRBM_TIMEDELTA |						\
  	NFSATTRBM_TIMEMETADATA |					\
  	NFSATTRBM_TIMEMODIFY |						\
@@ -1135,7 +1143,6 @@ struct nfsv3_sattr {
     	NFSATTRBM_QUOTASOFT |                        			\
     	NFSATTRBM_QUOTAUSED |						\
 	NFSATTRBM_FSLAYOUTTYPE)
-
 
 #ifdef QUOTA
 /*
@@ -1176,6 +1183,7 @@ struct nfsv3_sattr {
  	(NFSATTRBM_MODE |						\
  	NFSATTRBM_OWNER |						\
  	NFSATTRBM_OWNERGROUP |						\
+ 	NFSATTRBM_TIMECREATE |					\
  	NFSATTRBM_TIMEACCESSSET |					\
  	NFSATTRBM_TIMEMODIFYSET)
 #define	NFSATTRBIT_SETABLE2						\
@@ -1223,6 +1231,7 @@ struct nfsv3_sattr {
  	NFSATTRBM_RAWDEV |						\
  	NFSATTRBM_SPACEUSED |						\
  	NFSATTRBM_TIMEACCESS |						\
+	NFSATTRBM_TIMECREATE |						\
  	NFSATTRBM_TIMEMETADATA |					\
  	NFSATTRBM_TIMEMODIFY)
 
@@ -1254,6 +1263,7 @@ struct nfsv3_sattr {
  	NFSATTRBM_RAWDEV |						\
  	NFSATTRBM_SPACEUSED |						\
  	NFSATTRBM_TIMEACCESS |						\
+	NFSATTRBM_TIMECREATE |						\
  	NFSATTRBM_TIMEMETADATA |					\
  	NFSATTRBM_TIMEMODIFY)
 

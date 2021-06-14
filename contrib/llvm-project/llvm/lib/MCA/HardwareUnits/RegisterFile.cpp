@@ -147,7 +147,7 @@ void RegisterFile::freePhysRegs(const RegisterRenamingInfo &Entry,
 void RegisterFile::addRegisterWrite(WriteRef Write,
                                     MutableArrayRef<unsigned> UsedPhysRegs) {
   WriteState &WS = *Write.getWriteState();
-  unsigned RegID = WS.getRegisterID();
+  MCPhysReg RegID = WS.getRegisterID();
   assert(RegID && "Adding an invalid register definition?");
 
   LLVM_DEBUG({
@@ -194,17 +194,11 @@ void RegisterFile::addRegisterWrite(WriteRef Write,
   }
 
   // Update zero registers.
-  unsigned ZeroRegisterID =
+  MCPhysReg ZeroRegisterID =
       WS.clearsSuperRegisters() ? RegID : WS.getRegisterID();
-  if (IsWriteZero) {
-    ZeroRegisters.setBit(ZeroRegisterID);
-    for (MCSubRegIterator I(ZeroRegisterID, &MRI); I.isValid(); ++I)
-      ZeroRegisters.setBit(*I);
-  } else {
-    ZeroRegisters.clearBit(ZeroRegisterID);
-    for (MCSubRegIterator I(ZeroRegisterID, &MRI); I.isValid(); ++I)
-      ZeroRegisters.clearBit(*I);
-  }
+  ZeroRegisters.setBitVal(ZeroRegisterID, IsWriteZero);
+  for (MCSubRegIterator I(ZeroRegisterID, &MRI); I.isValid(); ++I)
+    ZeroRegisters.setBitVal(*I, IsWriteZero);
 
   // If this is move has been eliminated, then the call to tryEliminateMove
   // should have already updated all the register mappings.
@@ -233,10 +227,7 @@ void RegisterFile::addRegisterWrite(WriteRef Write,
       RegisterMappings[*I].second.AliasRegID = 0U;
     }
 
-    if (IsWriteZero)
-      ZeroRegisters.setBit(*I);
-    else
-      ZeroRegisters.clearBit(*I);
+    ZeroRegisters.setBitVal(*I, IsWriteZero);
   }
 }
 
@@ -247,7 +238,7 @@ void RegisterFile::removeRegisterWrite(
   if (WS.isEliminated())
     return;
 
-  unsigned RegID = WS.getRegisterID();
+  MCPhysReg RegID = WS.getRegisterID();
 
   assert(RegID != 0 && "Invalidating an already invalid register?");
   assert(WS.getCyclesLeft() != UNKNOWN_CYCLES &&
@@ -255,7 +246,7 @@ void RegisterFile::removeRegisterWrite(
   assert(WS.getCyclesLeft() <= 0 && "Invalid cycles left for this write!");
 
   bool ShouldFreePhysRegs = !WS.isWriteZero();
-  unsigned RenameAs = RegisterMappings[RegID].second.RenameAs;
+  MCPhysReg RenameAs = RegisterMappings[RegID].second.RenameAs;
   if (RenameAs && RenameAs != RegID) {
     RegID = RenameAs;
 
@@ -355,7 +346,7 @@ bool RegisterFile::tryEliminateMove(WriteState &WS, ReadState &RS) {
 
 void RegisterFile::collectWrites(const ReadState &RS,
                                  SmallVectorImpl<WriteRef> &Writes) const {
-  unsigned RegID = RS.getRegisterID();
+  MCPhysReg RegID = RS.getRegisterID();
   assert(RegID && RegID < RegisterMappings.size());
   LLVM_DEBUG(dbgs() << "RegisterFile: collecting writes for register "
                     << MRI.getName(RegID) << '\n');
@@ -397,7 +388,7 @@ void RegisterFile::collectWrites(const ReadState &RS,
 
 void RegisterFile::addRegisterRead(ReadState &RS,
                                    const MCSubtargetInfo &STI) const {
-  unsigned RegID = RS.getRegisterID();
+  MCPhysReg RegID = RS.getRegisterID();
   const RegisterRenamingInfo &RRI = RegisterMappings[RegID].second;
   RS.setPRF(RRI.IndexPlusCost.first);
   if (RS.isIndependentFromDef())
@@ -424,11 +415,11 @@ void RegisterFile::addRegisterRead(ReadState &RS,
   }
 }
 
-unsigned RegisterFile::isAvailable(ArrayRef<unsigned> Regs) const {
+unsigned RegisterFile::isAvailable(ArrayRef<MCPhysReg> Regs) const {
   SmallVector<unsigned, 4> NumPhysRegs(getNumRegisterFiles());
 
   // Find how many new mappings must be created for each register file.
-  for (const unsigned RegID : Regs) {
+  for (const MCPhysReg RegID : Regs) {
     const RegisterRenamingInfo &RRI = RegisterMappings[RegID].second;
     const IndexPlusCostPairTy &Entry = RRI.IndexPlusCost;
     if (Entry.first)

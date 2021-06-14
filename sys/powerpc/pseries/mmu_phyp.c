@@ -54,9 +54,6 @@ __FBSDID("$FreeBSD$");
 
 #include <powerpc/aim/mmu_oea64.h>
 
-#include "mmu_if.h"
-#include "moea64_if.h"
-
 #include "phyp-hvcall.h"
 
 #define MMU_PHYP_DEBUG 0
@@ -75,34 +72,41 @@ static struct rmlock mphyp_eviction_lock;
  * Kernel MMU interface
  */
 
-static void	mphyp_bootstrap(mmu_t mmup, vm_offset_t kernelstart,
+static void	mphyp_install(void);
+static void	mphyp_bootstrap(vm_offset_t kernelstart,
 		    vm_offset_t kernelend);
-static void	mphyp_cpu_bootstrap(mmu_t mmup, int ap);
-static void	*mphyp_dump_pmap(mmu_t mmu, void *ctx, void *buf,
+static void	mphyp_cpu_bootstrap(int ap);
+static void	*mphyp_dump_pmap(void *ctx, void *buf,
 		    u_long *nbytes);
-static int64_t	mphyp_pte_synch(mmu_t, struct pvo_entry *pvo);
-static int64_t	mphyp_pte_clear(mmu_t, struct pvo_entry *pvo, uint64_t ptebit);
-static int64_t	mphyp_pte_unset(mmu_t, struct pvo_entry *pvo);
-static int	mphyp_pte_insert(mmu_t, struct pvo_entry *pvo);
+static int64_t	mphyp_pte_synch(struct pvo_entry *pvo);
+static int64_t	mphyp_pte_clear(struct pvo_entry *pvo, uint64_t ptebit);
+static int64_t	mphyp_pte_unset(struct pvo_entry *pvo);
+static int64_t	mphyp_pte_insert(struct pvo_entry *pvo);
+static int64_t	mphyp_pte_unset_sp(struct pvo_entry *pvo);
+static int64_t	mphyp_pte_insert_sp(struct pvo_entry *pvo);
+static int64_t	mphyp_pte_replace_sp(struct pvo_entry *pvo);
 
-static mmu_method_t mphyp_methods[] = {
-        MMUMETHOD(mmu_bootstrap,        mphyp_bootstrap),
-        MMUMETHOD(mmu_cpu_bootstrap,    mphyp_cpu_bootstrap),
-        MMUMETHOD(mmu_dump_pmap,        mphyp_dump_pmap),
-
-	MMUMETHOD(moea64_pte_synch,     mphyp_pte_synch),
-        MMUMETHOD(moea64_pte_clear,     mphyp_pte_clear),
-        MMUMETHOD(moea64_pte_unset,     mphyp_pte_unset),
-        MMUMETHOD(moea64_pte_insert,    mphyp_pte_insert),
-
-	/* XXX: pmap_copy_page, pmap_init_page with H_PAGE_INIT */
-
-        { 0, 0 }
+static struct pmap_funcs mphyp_methods = {
+	.install =           mphyp_install,
+        .bootstrap =         mphyp_bootstrap,
+        .cpu_bootstrap =     mphyp_cpu_bootstrap,
+        .dumpsys_dump_pmap = mphyp_dump_pmap,
 };
 
-MMU_DEF_INHERIT(pseries_mmu, "mmu_phyp", mphyp_methods, 0, oea64_mmu);
+static struct moea64_funcs mmu_phyp_funcs = {
+	.pte_synch =      mphyp_pte_synch,
+        .pte_clear =      mphyp_pte_clear,
+        .pte_unset =      mphyp_pte_unset,
+        .pte_insert =     mphyp_pte_insert,
+        .pte_unset_sp =   mphyp_pte_unset_sp,
+        .pte_insert_sp =  mphyp_pte_insert_sp,
+        .pte_replace_sp = mphyp_pte_replace_sp,
+};
+
+MMU_DEF_INHERIT(pseries_mmu, "mmu_phyp", mphyp_methods, oea64_mmu);
 
 static int brokenkvm = 0;
+static uint64_t final_pteg_count = 0;
 
 static void
 print_kvm_bug_warning(void *data)
@@ -120,40 +124,34 @@ SYSINIT(kvmbugwarn2, SI_SUB_LAST, SI_ORDER_THIRD + 1, print_kvm_bug_warning,
     NULL);
 
 static void
-mphyp_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
+mphyp_install()
 {
-	uint64_t final_pteg_count = 0;
 	char buf[8];
 	uint32_t prop[2];
 	uint32_t nptlp, shift = 0, slb_encoding = 0;
 	uint32_t lp_size, lp_encoding;
-	struct lpte old;
-	uint64_t vsid;
 	phandle_t dev, node, root;
 	int idx, len, res;
-
-	rm_init(&mphyp_eviction_lock, "pte eviction");
-
-	moea64_early_bootstrap(mmup, kernelstart, kernelend);
+	bool has_lp;
 
 	root = OF_peer(0);
 
-        dev = OF_child(root);
+	dev = OF_child(root);
 	while (dev != 0) {
-                res = OF_getprop(dev, "name", buf, sizeof(buf));
-                if (res > 0 && strcmp(buf, "cpus") == 0)
-                        break;
-                dev = OF_peer(dev);
-        }
+		res = OF_getprop(dev, "name", buf, sizeof(buf));
+		if (res > 0 && strcmp(buf, "cpus") == 0)
+			break;
+		dev = OF_peer(dev);
+	}
 
 	node = OF_child(dev);
 
 	while (node != 0) {
-                res = OF_getprop(node, "device_type", buf, sizeof(buf));
-                if (res > 0 && strcmp(buf, "cpu") == 0)
-                        break;
-                node = OF_peer(node);
-        }
+		res = OF_getprop(node, "device_type", buf, sizeof(buf));
+		if (res > 0 && strcmp(buf, "cpu") == 0)
+			break;
+		node = OF_peer(node);
+	}
 
 	res = OF_getencprop(node, "ibm,pft-size", prop, sizeof(prop));
 	if (res <= 0)
@@ -163,20 +161,6 @@ mphyp_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 	if (res > 0)
 		n_slbs = prop[0];
 	dprintf0("slb-size=%i\n", n_slbs);
-
-	moea64_pteg_count = final_pteg_count / sizeof(struct lpteg);
-
-	/* Clear any old page table entries */
-	for (idx = 0; idx < moea64_pteg_count*8; idx++) {
-		phyp_pft_hcall(H_READ, 0, idx, 0, 0, &old.pte_hi,
-		    &old.pte_lo, &old.pte_lo);
-		vsid = (old.pte_hi << (ADDR_API_SHFT64 - ADDR_PIDX_SHFT)) >> 28;
-		if (vsid == VSID_VRMA || vsid == 0 /* Older VRMA */)
-			continue;
-		
-		if (old.pte_hi & LPTE_VALID)
-			phyp_hcall(H_REMOVE, 0, idx, 0);
-	}
 
 	/*
 	 * Scan the large page size property for PAPR compatible machines.
@@ -195,6 +179,7 @@ mphyp_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 		    sizeof(arr));
 		len /= 4;
 		idx = 0;
+		has_lp = false;
 		while (len > 0) {
 			shift = arr[idx];
 			slb_encoding = arr[idx + 1];
@@ -216,18 +201,22 @@ mphyp_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 				    lp_encoding);
 
 				if (slb_encoding == SLBV_L && lp_encoding == 0)
-					break;
+					has_lp = true;
+
+				if (slb_encoding == SLB_PGSZ_4K_4K &&
+				    lp_encoding == LP_4K_16M)
+					moea64_has_lp_4k_16m = true;
 
 				idx += 2;
 				len -= 2;
 				nptlp--;
 			}
 			dprintf("\n");
-			if (nptlp && slb_encoding == SLBV_L && lp_encoding == 0)
+			if (has_lp && moea64_has_lp_4k_16m)
 				break;
 		}
 
-		if (len > 0) {
+		if (has_lp) {
 			moea64_large_page_shift = shift;
 			moea64_large_page_size = 1ULL << lp_size;
 			moea64_large_page_mask = moea64_large_page_size - 1;
@@ -246,8 +235,38 @@ mphyp_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 		}
 	}
 
-	moea64_mid_bootstrap(mmup, kernelstart, kernelend);
-	moea64_late_bootstrap(mmup, kernelstart, kernelend);
+	moea64_ops = &mmu_phyp_funcs;
+
+	moea64_install();
+}
+
+static void
+mphyp_bootstrap(vm_offset_t kernelstart, vm_offset_t kernelend)
+{
+	struct lpte old;
+	uint64_t vsid;
+	int idx;
+
+	rm_init(&mphyp_eviction_lock, "pte eviction");
+
+	moea64_early_bootstrap(kernelstart, kernelend);
+
+	moea64_pteg_count = final_pteg_count / sizeof(struct lpteg);
+
+	/* Clear any old page table entries */
+	for (idx = 0; idx < moea64_pteg_count*8; idx++) {
+		phyp_pft_hcall(H_READ, 0, idx, 0, 0, &old.pte_hi,
+		    &old.pte_lo, &old.pte_lo);
+		vsid = (old.pte_hi << (ADDR_API_SHFT64 - ADDR_PIDX_SHFT)) >> 28;
+		if (vsid == VSID_VRMA || vsid == 0 /* Older VRMA */)
+			continue;
+
+		if (old.pte_hi & LPTE_VALID)
+			phyp_hcall(H_REMOVE, 0, idx, 0);
+	}
+
+	moea64_mid_bootstrap(kernelstart, kernelend);
+	moea64_late_bootstrap(kernelstart, kernelend);
 
 	/* Test for broken versions of KVM that don't conform to the spec */
 	if (phyp_hcall(H_CLEAR_MOD, 0, 0) == H_FUNCTION)
@@ -255,7 +274,7 @@ mphyp_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 }
 
 static void
-mphyp_cpu_bootstrap(mmu_t mmup, int ap)
+mphyp_cpu_bootstrap(int ap)
 {
 	struct slb *slb = PCPU_GET(aim.slb);
 	register_t seg0;
@@ -277,7 +296,7 @@ mphyp_cpu_bootstrap(mmu_t mmup, int ap)
 }
 
 static int64_t
-mphyp_pte_synch(mmu_t mmu, struct pvo_entry *pvo)
+mphyp_pte_synch(struct pvo_entry *pvo)
 {
 	struct lpte pte;
 	uint64_t junk;
@@ -296,7 +315,7 @@ mphyp_pte_synch(mmu_t mmu, struct pvo_entry *pvo)
 }
 
 static int64_t
-mphyp_pte_clear(mmu_t mmu, struct pvo_entry *pvo, uint64_t ptebit)
+mphyp_pte_clear(struct pvo_entry *pvo, uint64_t ptebit)
 {
 	struct rm_priotracker track;
 	int64_t refchg;
@@ -313,7 +332,7 @@ mphyp_pte_clear(mmu_t mmu, struct pvo_entry *pvo, uint64_t ptebit)
 	PMAP_LOCK_ASSERT(pvo->pvo_pmap, MA_OWNED);
 	rm_rlock(&mphyp_eviction_lock, &track);
 
-	refchg = mphyp_pte_synch(mmu, pvo);
+	refchg = mphyp_pte_synch(pvo);
 	if (refchg < 0) {
 		rm_runlock(&mphyp_eviction_lock, &track);
 		return (refchg);
@@ -350,7 +369,7 @@ mphyp_pte_clear(mmu_t mmu, struct pvo_entry *pvo, uint64_t ptebit)
 }
 
 static int64_t
-mphyp_pte_unset(mmu_t mmu, struct pvo_entry *pvo)
+mphyp_pte_unset(struct pvo_entry *pvo)
 {
 	struct lpte pte;
 	uint64_t junk;
@@ -389,7 +408,7 @@ mphyp_pte_spillable_ident(uintptr_t ptegbase, struct lpte *to_evict)
 		phyp_pft_hcall(H_READ, 0, slot, 0, 0, &pt.pte_hi,
 		    &pt.pte_lo, &junk);
 		
-		if (pt.pte_hi & LPTE_WIRED)
+		if ((pt.pte_hi & (LPTE_WIRED | LPTE_BIG)) != 0)
 			continue;
 
 		/* This is a candidate, so remember it */
@@ -410,68 +429,61 @@ mphyp_pte_spillable_ident(uintptr_t ptegbase, struct lpte *to_evict)
 	return (k);
 }
 
-static int
-mphyp_pte_insert(mmu_t mmu, struct pvo_entry *pvo)
+static __inline int64_t
+mphyp_pte_insert_locked(struct pvo_entry *pvo, struct lpte *pte)
 {
-	struct rm_priotracker track;
+	struct lpte evicted;
+	uint64_t index, junk;
 	int64_t result;
-	struct lpte evicted, pte;
-	uint64_t index, junk, lastptelo;
-
-	PMAP_LOCK_ASSERT(pvo->pvo_pmap, MA_OWNED);
-
-	/* Initialize PTE */
-	moea64_pte_from_pvo(pvo, &pte);
-	evicted.pte_hi = 0;
-
-	/* Make sure further insertion is locked out during evictions */
-	rm_rlock(&mphyp_eviction_lock, &track);
 
 	/*
 	 * First try primary hash.
 	 */
 	pvo->pvo_pte.slot &= ~7UL; /* Base slot address */
-	result = phyp_pft_hcall(H_ENTER, 0, pvo->pvo_pte.slot, pte.pte_hi,
-	    pte.pte_lo, &index, &evicted.pte_lo, &junk);
+	result = phyp_pft_hcall(H_ENTER, 0, pvo->pvo_pte.slot, pte->pte_hi,
+	    pte->pte_lo, &index, &evicted.pte_lo, &junk);
 	if (result == H_SUCCESS) {
-		rm_runlock(&mphyp_eviction_lock, &track);
 		pvo->pvo_pte.slot = index;
 		return (0);
 	}
 	KASSERT(result == H_PTEG_FULL, ("Page insertion error: %ld "
 	    "(ptegidx: %#zx/%#lx, PTE %#lx/%#lx", result, pvo->pvo_pte.slot,
-	    moea64_pteg_count, pte.pte_hi, pte.pte_lo));
+	    moea64_pteg_count, pte->pte_hi, pte->pte_lo));
 
 	/*
 	 * Next try secondary hash.
 	 */
 	pvo->pvo_vaddr ^= PVO_HID;
-	pte.pte_hi ^= LPTE_HID;
+	pte->pte_hi ^= LPTE_HID;
 	pvo->pvo_pte.slot ^= (moea64_pteg_mask << 3);
 
 	result = phyp_pft_hcall(H_ENTER, 0, pvo->pvo_pte.slot,
-	    pte.pte_hi, pte.pte_lo, &index, &evicted.pte_lo, &junk);
+	    pte->pte_hi, pte->pte_lo, &index, &evicted.pte_lo, &junk);
 	if (result == H_SUCCESS) {
-		rm_runlock(&mphyp_eviction_lock, &track);
 		pvo->pvo_pte.slot = index;
 		return (0);
 	}
 	KASSERT(result == H_PTEG_FULL, ("Secondary page insertion error: %ld",
 	    result));
 
-	/*
-	 * Out of luck. Find a PTE to sacrifice.
-	 */
+	return (-1);
+}
 
-	/* Lock out all insertions for a bit */
-	rm_runlock(&mphyp_eviction_lock, &track);
-	rm_wlock(&mphyp_eviction_lock);
+
+static __inline int64_t
+mphyp_pte_evict_and_insert_locked(struct pvo_entry *pvo, struct lpte *pte)
+{
+	struct lpte evicted;
+	uint64_t index, junk, lastptelo;
+	int64_t result;
+
+	evicted.pte_hi = 0;
 
 	index = mphyp_pte_spillable_ident(pvo->pvo_pte.slot, &evicted);
 	if (index == -1L) {
 		/* Try other hash table? */
 		pvo->pvo_vaddr ^= PVO_HID;
-		pte.pte_hi ^= LPTE_HID;
+		pte->pte_hi ^= LPTE_HID;
 		pvo->pvo_pte.slot ^= (moea64_pteg_mask << 3);
 		index = mphyp_pte_spillable_ident(pvo->pvo_pte.slot, &evicted);
 	}
@@ -496,20 +508,52 @@ mphyp_pte_insert(mmu_t mmu, struct pvo_entry *pvo)
 	/*
 	 * Set the new PTE.
 	 */
-	result = phyp_pft_hcall(H_ENTER, H_EXACT, index, pte.pte_hi,
-	    pte.pte_lo, &index, &evicted.pte_lo, &junk);
-	rm_wunlock(&mphyp_eviction_lock); /* All clear */
+	result = phyp_pft_hcall(H_ENTER, H_EXACT, index, pte->pte_hi,
+	    pte->pte_lo, &index, &evicted.pte_lo, &junk);
 
 	pvo->pvo_pte.slot = index;
 	if (result == H_SUCCESS)
 		return (0);
 
+	rm_wunlock(&mphyp_eviction_lock);
 	panic("Page replacement error: %ld", result);
 	return (result);
 }
 
+static int64_t
+mphyp_pte_insert(struct pvo_entry *pvo)
+{
+	struct rm_priotracker track;
+	int64_t ret;
+	struct lpte pte;
+
+	PMAP_LOCK_ASSERT(pvo->pvo_pmap, MA_OWNED);
+
+	/* Initialize PTE */
+	moea64_pte_from_pvo(pvo, &pte);
+
+	/* Make sure further insertion is locked out during evictions */
+	rm_rlock(&mphyp_eviction_lock, &track);
+
+	ret = mphyp_pte_insert_locked(pvo, &pte);
+	rm_runlock(&mphyp_eviction_lock, &track);
+
+	if (ret == -1) {
+		/*
+		 * Out of luck. Find a PTE to sacrifice.
+		 */
+
+		/* Lock out all insertions for a bit */
+		rm_wlock(&mphyp_eviction_lock);
+		ret = mphyp_pte_evict_and_insert_locked(pvo, &pte);
+		rm_wunlock(&mphyp_eviction_lock); /* All clear */
+	}
+
+	return (ret);
+}
+
 static void *
-mphyp_dump_pmap(mmu_t mmu, void *ctx, void *buf, u_long *nbytes)
+mphyp_dump_pmap(void *ctx, void *buf, u_long *nbytes)
 {
 	struct dump_context *dctx;
 	struct lpte p, *pbuf;
@@ -536,4 +580,92 @@ mphyp_dump_pmap(mmu_t mmu, void *ctx, void *buf, u_long *nbytes)
 
 	dctx->ptex = ptex;
 	return (buf);
+}
+
+static int64_t
+mphyp_pte_unset_sp(struct pvo_entry *pvo)
+{
+	struct lpte pte;
+	uint64_t junk, refchg;
+	int err;
+	vm_offset_t eva;
+	pmap_t pm;
+
+	pm = pvo->pvo_pmap;
+	PMAP_LOCK_ASSERT(pm, MA_OWNED);
+	KASSERT((PVO_VADDR(pvo) & HPT_SP_MASK) == 0,
+	    ("%s: va %#jx unaligned", __func__, (uintmax_t)PVO_VADDR(pvo)));
+
+	refchg = 0;
+	eva = PVO_VADDR(pvo) + HPT_SP_SIZE;
+
+	for (; pvo != NULL && PVO_VADDR(pvo) < eva;
+	    pvo = RB_NEXT(pvo_tree, &pm->pmap_pvo, pvo)) {
+		moea64_pte_from_pvo(pvo, &pte);
+
+		err = phyp_pft_hcall(H_REMOVE, H_AVPN, pvo->pvo_pte.slot,
+		    pte.pte_hi & LPTE_AVPN_MASK, 0, &pte.pte_hi, &pte.pte_lo,
+		    &junk);
+		KASSERT(err == H_SUCCESS || err == H_NOT_FOUND,
+		    ("Error removing page: %d", err));
+
+		if (err == H_NOT_FOUND)
+			STAT_MOEA64(moea64_pte_overflow--);
+		refchg |= pte.pte_lo & (LPTE_REF | LPTE_CHG);
+	}
+
+	return (refchg);
+}
+
+static int64_t
+mphyp_pte_insert_sp(struct pvo_entry *pvo)
+{
+	struct rm_priotracker track;
+	int64_t ret;
+	struct lpte pte;
+	vm_offset_t eva;
+	pmap_t pm;
+
+	pm = pvo->pvo_pmap;
+	PMAP_LOCK_ASSERT(pm, MA_OWNED);
+	KASSERT((PVO_VADDR(pvo) & HPT_SP_MASK) == 0,
+	    ("%s: va %#jx unaligned", __func__, (uintmax_t)PVO_VADDR(pvo)));
+
+	eva = PVO_VADDR(pvo) + HPT_SP_SIZE;
+
+	/* Make sure further insertion is locked out during evictions */
+	rm_rlock(&mphyp_eviction_lock, &track);
+
+	for (; pvo != NULL && PVO_VADDR(pvo) < eva;
+	    pvo = RB_NEXT(pvo_tree, &pm->pmap_pvo, pvo)) {
+		/* Initialize PTE */
+		moea64_pte_from_pvo(pvo, &pte);
+
+		ret = mphyp_pte_insert_locked(pvo, &pte);
+		if (ret == -1) {
+			/*
+			 * Out of luck. Find a PTE to sacrifice.
+			 */
+
+			/* Lock out all insertions for a bit */
+			rm_runlock(&mphyp_eviction_lock, &track);
+			rm_wlock(&mphyp_eviction_lock);
+			mphyp_pte_evict_and_insert_locked(pvo, &pte);
+			rm_wunlock(&mphyp_eviction_lock); /* All clear */
+			rm_rlock(&mphyp_eviction_lock, &track);
+		}
+	}
+
+	rm_runlock(&mphyp_eviction_lock, &track);
+	return (0);
+}
+
+static int64_t
+mphyp_pte_replace_sp(struct pvo_entry *pvo)
+{
+	int64_t refchg;
+
+	refchg = mphyp_pte_unset_sp(pvo);
+	mphyp_pte_insert_sp(pvo);
+	return (refchg);
 }

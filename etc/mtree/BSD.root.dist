@@ -22,6 +22,8 @@
         ..
         firmware
         ..
+        loader.conf.d             tags=package=bootloader
+        ..
         lua
         ..
         kernel
@@ -53,6 +55,8 @@
         dma
         ..
         gss
+        ..
+        kyua             tags=package=tests
         ..
         mail
         ..
@@ -91,6 +95,8 @@
         syslog.d
         ..
         zfs
+            compatibility.d
+            ..
         ..
     ..
     lib
@@ -115,7 +121,7 @@
     ..
     rescue
     ..
-    root
+    root            mode=0750
     ..
     sbin
     ..

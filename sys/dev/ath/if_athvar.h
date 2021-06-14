@@ -308,6 +308,7 @@ struct ath_buf {
 
 		/* 16 bit? */
 		uint32_t bfs_ctsduration;	/* CTS duration (pre-11n NICs) */
+		int32_t bfs_rc_maxpktlen;	/* max packet length/bucket from ratectrl or -1 */
 		struct ath_rc_series bfs_rc[ATH_RC_NUM];	/* non-11n TX series */
 	} bf_state;
 };
@@ -409,7 +410,6 @@ struct ath_txq {
 #define	ATH_TXQ_LOCK_ASSERT(_tq)	mtx_assert(&(_tq)->axq_lock, MA_OWNED)
 #define	ATH_TXQ_UNLOCK_ASSERT(_tq)	mtx_assert(&(_tq)->axq_lock,	\
 					    MA_NOTOWNED)
-
 
 #define	ATH_NODE_LOCK(_an)		mtx_lock(&(_an)->an_mtx)
 #define	ATH_NODE_UNLOCK(_an)		mtx_unlock(&(_an)->an_mtx)
@@ -780,9 +780,11 @@ struct ath_softc {
 	ath_bufhead		sc_bbuf;	/* beacon buffers */
 	u_int			sc_bhalq;	/* HAL q for outgoing beacons */
 	u_int			sc_bmisscount;	/* missed beacon transmits */
-	u_int32_t		sc_ant_tx[8];	/* recent tx frames/antenna */
+	u_int32_t		sc_ant_tx[ATH_IOCTL_STATS_NUM_TX_ANTENNA];
+						/* recent tx frames/antenna */
 	struct ath_txq		*sc_cabq;	/* tx q for cab frames */
 	struct task		sc_bmisstask;	/* bmiss int processing */
+	struct task		sc_tsfoortask;	/* TSFOOR int processing */
 	struct task		sc_bstucktask;	/* stuck beacon processing */
 	struct task		sc_resettask;	/* interface reset task */
 	struct task		sc_fataltask;	/* fatal task */
@@ -1490,6 +1492,10 @@ void	ath_intr(void *);
 	((*(_ah)->ah_setChainMasks)((_ah), (_txchainmask), (_rxchainmask)))
 #define	ath_hal_set_quiet(_ah, _p, _d, _o, _f) \
 	((*(_ah)->ah_setQuiet)((_ah), (_p), (_d), (_o), (_f)))
+#define	ath_hal_getnav(_ah) \
+	((*(_ah)->ah_getNav)((_ah)))
+#define	ath_hal_setnav(_ah, _val) \
+	((*(_ah)->ah_setNav)((_ah), (_val)))
 
 #define	ath_hal_spectral_supported(_ah) \
 	(ath_hal_getcapability(_ah, HAL_CAP_SPECTRAL_SCAN, 0, NULL) == HAL_OK)

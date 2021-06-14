@@ -25,9 +25,10 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
+
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/elf.h>
@@ -195,6 +196,42 @@ procstat_auxv(struct procstat *procstat, struct kinfo_proc *kipp)
 		case AT_HWCAP2:
 			xo_emit("{dw:/%s}{Lw:/%-16s/%s}{:AT_HWCAP2/%#lx}\n",
 			    prefix, "AT_HWCAP2", (u_long)auxv[i].a_un.a_val);
+			break;
+#endif
+#ifdef AT_BSDFLAGS
+		case AT_BSDFLAGS:
+			xo_emit("{dw:/%s}{Lw:/%-16s/%s}{:AT_BSDFLAGS/%#lx}\n",
+			    prefix, "AT_BSDFLAGS", (u_long)auxv[i].a_un.a_val);
+			break;
+#endif
+#ifdef AT_ARGC
+		case AT_ARGC:
+			xo_emit("{dw:/%s}{Lw:/%-16s/%s}{:AT_ARGC/%ld}\n",
+			    prefix, "AT_ARGC", (long)auxv[i].a_un.a_val);
+			break;
+#endif
+#ifdef AT_ARGV
+		case AT_ARGV:
+			xo_emit("{dw:/%s}{Lw:/%-16s/%s}{:AT_ARGV/%p}\n",
+			    prefix, "AT_ARGV", auxv[i].a_un.a_ptr);
+			break;
+#endif
+#ifdef AT_ENVC
+		case AT_ENVC:
+			xo_emit("{dw:/%s}{Lw:/%-16s/%s}{:AT_ENVC/%ld}\n",
+			    prefix, "AT_ENVC", (long)auxv[i].a_un.a_val);
+			break;
+#endif
+#ifdef AT_ENVV
+		case AT_ENVV:
+			xo_emit("{dw:/%s}{Lw:/%-16s/%s}{:AT_ENVV/%p}\n",
+			    prefix, "AT_ENVV", auxv[i].a_un.a_ptr);
+			break;
+#endif
+#ifdef AT_PS_STRINGS
+		case AT_PS_STRINGS:
+			xo_emit("{dw:/%s}{Lw:/%-16s/%s}{:AT_PS_STRINGS/%p}\n",
+			    prefix, "AT_PS_STRINGS", auxv[i].a_un.a_ptr);
 			break;
 #endif
 		default:

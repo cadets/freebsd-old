@@ -44,7 +44,7 @@
  * received from its medium.
  *
  * Output occurs when the routine if_output is called, with three parameters:
- *	(*ifp->if_output)(ifp, m, dst, rt)
+ *	(*ifp->if_output)(ifp, m, dst, ro)
  * Here m is the mbuf chain to be sent and dst is the destination address.
  * The output routine encapsulates the supplied datagram if necessary,
  * and then transmits it on its medium.
@@ -61,7 +61,6 @@
  */
 
 struct	rtentry;		/* ifa_rtrequest */
-struct	rt_addrinfo;		/* ifa_rtrequest */
 struct	socket;
 struct	carp_if;
 struct	carp_softc;
@@ -192,12 +191,14 @@ struct m_snd_tag;
 #define	IF_SND_TAG_TYPE_RATE_LIMIT 0
 #define	IF_SND_TAG_TYPE_UNLIMITED 1
 #define	IF_SND_TAG_TYPE_TLS 2
-#define	IF_SND_TAG_TYPE_MAX 3
+#define	IF_SND_TAG_TYPE_TLS_RATE_LIMIT 3
+#define	IF_SND_TAG_TYPE_MAX 4
 
 struct if_snd_tag_alloc_header {
 	uint32_t type;		/* send tag type, see IF_SND_TAG_XXX */
 	uint32_t flowid;	/* mbuf hash value */
 	uint32_t flowtype;	/* mbuf hash type */
+	uint8_t numa_domain;	/* numa domain of associated inp */
 };
 
 struct if_snd_tag_alloc_rate_limit {
@@ -213,6 +214,13 @@ struct if_snd_tag_alloc_tls {
 	const struct ktls_session *tls;
 };
 
+struct if_snd_tag_alloc_tls_rate_limit {
+	struct if_snd_tag_alloc_header hdr;
+	struct inpcb *inp;
+	const struct ktls_session *tls;
+	uint64_t max_rate;	/* in bytes/s */
+};
+
 struct if_snd_tag_rate_limit_params {
 	uint64_t max_rate;	/* in bytes/s */
 	uint32_t queue_level;	/* 0 (empty) .. 65535 (full) */
@@ -226,16 +234,19 @@ union if_snd_tag_alloc_params {
 	struct if_snd_tag_alloc_rate_limit rate_limit;
 	struct if_snd_tag_alloc_rate_limit unlimited;
 	struct if_snd_tag_alloc_tls tls;
+	struct if_snd_tag_alloc_tls_rate_limit tls_rate_limit;
 };
 
 union if_snd_tag_modify_params {
 	struct if_snd_tag_rate_limit_params rate_limit;
 	struct if_snd_tag_rate_limit_params unlimited;
+	struct if_snd_tag_rate_limit_params tls_rate_limit;
 };
 
 union if_snd_tag_query_params {
 	struct if_snd_tag_rate_limit_params rate_limit;
 	struct if_snd_tag_rate_limit_params unlimited;
+	struct if_snd_tag_rate_limit_params tls_rate_limit;
 };
 
 /* Query return flags */
@@ -252,6 +263,7 @@ union if_snd_tag_query_params {
 					 */
 #define RT_IS_FIXED_TABLE 0x00000004	/* A fixed table is attached */
 #define RT_IS_UNUSABLE	  0x00000008	/* It is not usable for this */
+#define RT_IS_SETUP_REQ	  0x00000010	/* The interface setup must be called before use */
 
 struct if_ratelimit_query_results {
 	const uint64_t *rate_table;	/* Pointer to table if present */
@@ -266,9 +278,10 @@ typedef int (if_snd_tag_alloc_t)(struct ifnet *, union if_snd_tag_alloc_params *
 typedef int (if_snd_tag_modify_t)(struct m_snd_tag *, union if_snd_tag_modify_params *);
 typedef int (if_snd_tag_query_t)(struct m_snd_tag *, union if_snd_tag_query_params *);
 typedef void (if_snd_tag_free_t)(struct m_snd_tag *);
+typedef struct m_snd_tag *(if_next_send_tag_t)(struct m_snd_tag *);
 typedef void (if_ratelimit_query_t)(struct ifnet *,
     struct if_ratelimit_query_results *);
-
+typedef int (if_ratelimit_setup_t)(struct ifnet *, uint64_t, uint32_t);
 
 /*
  * Structure defining a network interface.
@@ -368,7 +381,7 @@ struct ifnet {
 	if_init_fn_t	if_init;	/* Init routine */
 	int	(*if_resolvemulti)	/* validate/resolve multicast */
 		(struct ifnet *, struct sockaddr **, struct sockaddr *);
-	if_qflush_fn_t	if_qflush;	/* flush any queue */	
+	if_qflush_fn_t	if_qflush;	/* flush any queue */
 	if_transmit_fn_t if_transmit;   /* initiate output routine */
 
 	void	(*if_reassign)		/* reassign to vnet routine */
@@ -410,7 +423,9 @@ struct ifnet {
 	if_snd_tag_modify_t *if_snd_tag_modify;
 	if_snd_tag_query_t *if_snd_tag_query;
 	if_snd_tag_free_t *if_snd_tag_free;
+	if_next_send_tag_t *if_next_snd_tag;
 	if_ratelimit_query_t *if_ratelimit_query;
+	if_ratelimit_setup_t *if_ratelimit_setup;
 
 	/* Ethernet PCP */
 	uint8_t if_pcp;
@@ -547,15 +562,13 @@ struct ifaddr {
 	struct	ifnet *ifa_ifp;		/* back-pointer to interface */
 	struct	carp_softc *ifa_carp;	/* pointer to CARP data */
 	CK_STAILQ_ENTRY(ifaddr) ifa_link;	/* queue macro glue */
-	void	(*ifa_rtrequest)	/* check or clean routes (+ or -)'d */
-		(int, struct rtentry *, struct rt_addrinfo *);
 	u_short	ifa_flags;		/* mostly rt_flags for cloning */
 #define	IFA_ROUTE	RTF_UP		/* route installed */
 #define	IFA_RTSELF	RTF_HOST	/* loopback route to self installed */
 	u_int	ifa_refcnt;		/* references to this structure */
 
 	counter_u64_t	ifa_ipackets;
-	counter_u64_t	ifa_opackets;	 
+	counter_u64_t	ifa_opackets;
 	counter_u64_t	ifa_ibytes;
 	counter_u64_t	ifa_obytes;
 	struct	epoch_context	ifa_epoch_ctx;
@@ -564,6 +577,7 @@ struct ifaddr {
 struct ifaddr *	ifa_alloc(size_t size, int flags);
 void	ifa_free(struct ifaddr *ifa);
 void	ifa_ref(struct ifaddr *ifa);
+int __result_use_check ifa_try_ref(struct ifaddr *ifa);
 
 /*
  * Multicast address structure.  This is analogous to the ifaddr
@@ -582,29 +596,12 @@ struct ifmultiaddr {
 	struct	epoch_context	ifma_epoch_ctx;
 };
 
-extern	struct rwlock ifnet_rwlock;
 extern	struct sx ifnet_sxlock;
 
-#define	IFNET_WLOCK() do {						\
-	sx_xlock(&ifnet_sxlock);					\
-	rw_wlock(&ifnet_rwlock);					\
-} while (0)
-
-#define	IFNET_WUNLOCK() do {						\
-	rw_wunlock(&ifnet_rwlock);					\
-	sx_xunlock(&ifnet_sxlock);					\
-} while (0)
-
-/*
- * To assert the ifnet lock, you must know not only whether it's for read or
- * write, but also whether it was acquired with sleep support or not.
- */
-#define	IFNET_RLOCK_ASSERT()		sx_assert(&ifnet_sxlock, SA_SLOCKED)
-#define	IFNET_WLOCK_ASSERT() do {					\
-	sx_assert(&ifnet_sxlock, SA_XLOCKED);				\
-	rw_assert(&ifnet_rwlock, RA_WLOCKED);				\
-} while (0)
-
+#define	IFNET_WLOCK()		sx_xlock(&ifnet_sxlock)
+#define	IFNET_WUNLOCK()		sx_xunlock(&ifnet_sxlock)
+#define	IFNET_RLOCK_ASSERT()	sx_assert(&ifnet_sxlock, SA_SLOCKED)
+#define	IFNET_WLOCK_ASSERT()	sx_assert(&ifnet_sxlock, SA_XLOCKED)
 #define	IFNET_RLOCK()		sx_slock(&ifnet_sxlock)
 #define	IFNET_RUNLOCK()		sx_sunlock(&ifnet_sxlock)
 
@@ -662,8 +659,10 @@ void	if_free(struct ifnet *);
 void	if_initname(struct ifnet *, const char *, int);
 void	if_link_state_change(struct ifnet *, int);
 int	if_printf(struct ifnet *, const char *, ...) __printflike(2, 3);
+int	if_log(struct ifnet *, int, const char *, ...) __printflike(3, 4);
 void	if_ref(struct ifnet *);
 void	if_rele(struct ifnet *);
+bool	__result_use_check if_try_ref(struct ifnet *);
 int	if_setlladdr(struct ifnet *, const u_char *, int);
 int	if_tunnel_check_nesting(struct ifnet *, struct mbuf *, uint32_t, int);
 void	if_up(struct ifnet *);
@@ -681,8 +680,8 @@ int		ifa_ifwithaddr_check(const struct sockaddr *);
 struct	ifaddr *ifa_ifwithbroadaddr(const struct sockaddr *, int);
 struct	ifaddr *ifa_ifwithdstaddr(const struct sockaddr *, int);
 struct	ifaddr *ifa_ifwithnet(const struct sockaddr *, int, int);
-struct	ifaddr *ifa_ifwithroute(int, const struct sockaddr *, struct sockaddr *,
-    u_int);
+struct	ifaddr *ifa_ifwithroute(int, const struct sockaddr *,
+    const struct sockaddr *, u_int);
 struct	ifaddr *ifaof_ifpforaddr(const struct sockaddr *, struct ifnet *);
 int	ifa_preferred(struct ifaddr *, struct ifaddr *);
 
@@ -769,7 +768,7 @@ void if_setstartfn(if_t ifp, void (*)(if_t));
 void if_settransmitfn(if_t ifp, if_transmit_fn_t);
 void if_setqflushfn(if_t ifp, if_qflush_fn_t);
 void if_setgetcounterfn(if_t ifp, if_get_counter_t);
- 
+
 /* Revisit the below. These are inline functions originally */
 int drbr_inuse_drv(if_t ifp, struct buf_ring *br);
 struct mbuf* drbr_dequeue_drv(if_t ifp, struct buf_ring *br);
@@ -782,6 +781,8 @@ int if_hw_tsomax_update(if_t ifp, struct ifnet_hw_tsomax *);
 
 /* accessors for struct ifreq */
 void *ifr_data_get_ptr(void *ifrp);
+void *ifr_buffer_get_buffer(void *data);
+size_t ifr_buffer_get_length(void *data);
 
 int ifhwioctl(u_long, struct ifnet *, caddr_t, struct thread *);
 

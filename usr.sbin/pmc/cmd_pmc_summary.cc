@@ -81,8 +81,6 @@ typedef std::pair<uint64_t, uint32_t> sampleid;
 typedef std::pair<uint64_t, std::string> samplename;
 typedef unordered_map <uint32_t, std::vector<samplename>> eventcountmap;
 
-#define	P_KPROC		0x00004	/* Kernel process. */
-
 static void __dead2
 usage(void)
 {
@@ -156,7 +154,7 @@ pmc_summary_handler(int logfd, int k, bool do_full)
 			auto rate = ratemap[kv.first];
 			std::cout << "idx: " << kv.first << " name: " << name << " rate: " << rate << std::endl;
 			while (!kv.second.empty()) {
-				auto &val = kv.second.back();
+				auto val = kv.second.back();
 				kv.second.pop_back();
 				std::cout << val.second << ": " << val.first << std::endl;
 			}

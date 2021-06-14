@@ -1,4 +1,4 @@
-//===-- DWARFDebugAranges.cpp -----------------------------------*- C++ -*-===//
+//===-- DWARFDebugAranges.cpp ---------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -39,7 +39,7 @@ DWARFDebugAranges::extract(const DWARFDataExtractor &debug_aranges_data) {
   Range range;
   while (debug_aranges_data.ValidOffset(offset)) {
     llvm::Error error = set.extract(debug_aranges_data, &offset);
-    if (!error)
+    if (error)
       return error;
 
     const uint32_t num_descriptors = set.NumDescriptors();
@@ -66,8 +66,8 @@ void DWARFDebugAranges::Dump(Log *log) const {
   for (size_t i = 0; i < num_entries; ++i) {
     const RangeToDIE::Entry *entry = m_aranges.GetEntryAtIndex(i);
     if (entry)
-      log->Printf("0x%8.8x: [0x%" PRIx64 " - 0x%" PRIx64 ")", entry->data,
-                  entry->GetRangeBase(), entry->GetRangeEnd());
+      LLDB_LOGF(log, "0x%8.8x: [0x%" PRIx64 " - 0x%" PRIx64 ")", entry->data,
+                entry->GetRangeBase(), entry->GetRangeEnd());
   }
 }
 
@@ -78,8 +78,7 @@ void DWARFDebugAranges::AppendRange(dw_offset_t offset, dw_addr_t low_pc,
 }
 
 void DWARFDebugAranges::Sort(bool minimize) {
-  static Timer::Category func_cat(LLVM_PRETTY_FUNCTION);
-  Timer scoped_timer(func_cat, "%s this = %p", LLVM_PRETTY_FUNCTION,
+  LLDB_SCOPED_TIMERF("%s this = %p", LLVM_PRETTY_FUNCTION,
                      static_cast<void *>(this));
 
   m_aranges.Sort();

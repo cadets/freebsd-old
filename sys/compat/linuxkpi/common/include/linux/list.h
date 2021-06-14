@@ -31,8 +31,9 @@
 #ifndef _LINUX_LIST_H_
 #define _LINUX_LIST_H_
 
+#ifndef _STANDALONE
 /*
- * Since LIST_HEAD conflicts with the linux definition we must include any
+ * Since LIST_HEAD conflicts with the Linux definition we must include any
  * FreeBSD header which requires it here so it is resolved with the correct
  * definition prior to the undef.
  */
@@ -52,6 +53,7 @@
 #include <sys/mbuf.h>
 
 #include <net/bpf.h>
+#include <net/ethernet.h>
 #include <net/if.h>
 #include <net/if_var.h>
 #include <net/if_types.h>
@@ -66,9 +68,14 @@
 #include <netinet6/in6_var.h>
 #include <netinet6/nd6.h>
 
+#include <net80211/ieee80211.h>
+#include <net80211/ieee80211_var.h>
+#include <net80211/ieee80211_node.h>
+
 #include <vm/vm.h>
 #include <vm/vm_object.h>
 #include <vm/pmap.h>
+#endif
 
 #ifndef prefetch
 #define	prefetch(x)
@@ -194,6 +201,8 @@ list_del_init(struct list_head *entry)
 #define list_for_each_entry(p, h, field)				\
 	for (p = list_entry((h)->next, typeof(*p), field); &(p)->field != (h); \
 	    p = list_entry((p)->field.next, typeof(*p), field))
+
+#define list_for_each_entry_lockless(...) list_for_each_entry(__VA_ARGS__)
 
 #define list_for_each_entry_safe(p, n, h, field)			\
 	for (p = list_entry((h)->next, typeof(*p), field),		\
@@ -324,7 +333,6 @@ list_splice_tail_init(struct list_head *list, struct list_head *head)
 #undef LIST_HEAD
 #define LIST_HEAD(name)	struct list_head name = { &(name), &(name) }
 
-
 struct hlist_head {
 	struct hlist_node *first;
 };
@@ -332,7 +340,6 @@ struct hlist_head {
 struct hlist_node {
 	struct hlist_node *next, **pprev;
 };
-
 #define	HLIST_HEAD_INIT { }
 #define	HLIST_HEAD(name) struct hlist_head name = HLIST_HEAD_INIT
 #define	INIT_HLIST_HEAD(head) (head)->first = NULL
@@ -447,6 +454,13 @@ static inline void list_cut_position(struct list_head *list,
 		INIT_LIST_HEAD(list);
 	else
 		__list_cut_position(list, head, entry);
+}
+
+static inline int list_is_first(const struct list_head *list,
+				const struct list_head *head)
+{
+
+	return (list->prev == head);
 }
 
 static inline int list_is_last(const struct list_head *list,

@@ -65,7 +65,6 @@ __FBSDID("$FreeBSD$");
 
 #define WRAPINCR(val, limit)	(((val) + 1 == (limit)) ? 0 : ((val) + 1))
 #define WRAPDECR(val, limit)	(((val) == 0) ? ((limit) - 1) : ((val) - 1))
-#define OFSFMT(vp)		((vp)->v_mount->mnt_maxsymlinklen <= 0)
 #define BLKFREE2IDX(n)		((n) > DH_NFSTATS ? DH_NFSTATS : (n))
 
 static MALLOC_DEFINE(M_DIRHASH, "ufs_dirhash", "UFS directory hash tables");
@@ -90,9 +89,9 @@ SYSCTL_INT(_vfs_ufs, OID_AUTO, dirhash_lowmemcount, CTLFLAG_RD,
 static int ufs_dirhashreclaimpercent = 10;
 static int ufsdirhash_set_reclaimpercent(SYSCTL_HANDLER_ARGS);
 SYSCTL_PROC(_vfs_ufs, OID_AUTO, dirhash_reclaimpercent,
-    CTLTYPE_INT | CTLFLAG_RW, 0, 0, ufsdirhash_set_reclaimpercent, "I",
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+    0, 0, ufsdirhash_set_reclaimpercent, "I",
     "set percentage of dirhash cache to be removed in low VM events");
-
 
 static int ufsdirhash_hash(struct dirhash *dh, char *name, int namelen);
 static void ufsdirhash_adjfree(struct dirhash *dh, doff_t offset, int diff);
@@ -108,7 +107,7 @@ static uma_zone_t	ufsdirhash_zone;
 
 #define DIRHASHLIST_LOCK() 		mtx_lock(&ufsdirhash_mtx)
 #define DIRHASHLIST_UNLOCK() 		mtx_unlock(&ufsdirhash_mtx)
-#define DIRHASH_BLKALLOC_WAITOK() 	uma_zalloc(ufsdirhash_zone, M_WAITOK)
+#define DIRHASH_BLKALLOC() 		uma_zalloc(ufsdirhash_zone, M_NOWAIT)
 #define DIRHASH_BLKFREE(ptr) 		uma_zfree(ufsdirhash_zone, (ptr))
 #define	DIRHASH_ASSERT_LOCKED(dh)					\
     sx_assert(&(dh)->dh_lock, SA_LOCKED)
@@ -425,7 +424,7 @@ ufsdirhash_build(struct inode *ip)
 	if (dh->dh_blkfree == NULL)
 		goto fail;
 	for (i = 0; i < narrays; i++) {
-		if ((dh->dh_hash[i] = DIRHASH_BLKALLOC_WAITOK()) == NULL)
+		if ((dh->dh_hash[i] = DIRHASH_BLKALLOC()) == NULL)
 			goto fail;
 		for (j = 0; j < DH_NBLKOFF; j++)
 			dh->dh_hash[i][j] = DIRHASH_EMPTY;
@@ -812,7 +811,7 @@ ufsdirhash_add(struct inode *ip, struct direct *dirp, doff_t offset)
 
 	if ((dh = ufsdirhash_acquire(ip)) == NULL)
 		return;
-	
+
 	KASSERT(offset < dh->dh_dirblks * DIRBLKSIZ,
 	    ("ufsdirhash_add: bad offset"));
 	/*
@@ -1186,7 +1185,7 @@ ufsdirhash_destroy(struct dirhash *dh)
 	int i, mem, narrays;
 
 	KASSERT(dh->dh_hash != NULL, ("dirhash: NULL hash on list"));
-	
+
 	/* Remove it from the list and detach its memory. */
 	TAILQ_REMOVE(&ufsdirhash_list, dh, dh_list);
 	dh->dh_onlist = 0;

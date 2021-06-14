@@ -65,22 +65,20 @@ struct ctl_io_pool {
 };
 
 typedef enum {
-	CTL_SER_BLOCK,
-	CTL_SER_BLOCKOPT,
-	CTL_SER_EXTENT,
-	CTL_SER_EXTENTOPT,
-	CTL_SER_EXTENTSEQ,
+	CTL_SER_SEQ,
 	CTL_SER_PASS,
-	CTL_SER_SKIP
+	CTL_SER_EXTENTOPT,
+	CTL_SER_EXTENT,
+	CTL_SER_BLOCKOPT,
+	CTL_SER_BLOCK,
 } ctl_serialize_action;
 
 typedef enum {
-	CTL_ACTION_BLOCK,
-	CTL_ACTION_OVERLAP,
-	CTL_ACTION_OVERLAP_TAG,
 	CTL_ACTION_PASS,
 	CTL_ACTION_SKIP,
-	CTL_ACTION_ERROR
+	CTL_ACTION_BLOCK,
+	CTL_ACTION_OVERLAP,
+	CTL_ACTION_OVERLAP_TAG
 } ctl_action;
 
 /*
@@ -147,7 +145,6 @@ typedef enum {
 	CTL_LUN_RESERVED	= 0x002,
 	CTL_LUN_INVALID		= 0x004,
 	CTL_LUN_DISABLED	= 0x008,
-	CTL_LUN_MALLOCED	= 0x010,
 	CTL_LUN_STOPPED		= 0x020,
 	CTL_LUN_NO_MEDIA	= 0x040,
 	CTL_LUN_EJECTED		= 0x080,
@@ -392,7 +389,7 @@ struct ctl_lun {
 	sbintime_t			idle_time;
 	sbintime_t			last_busy;
 #endif
-	TAILQ_HEAD(ctl_ooaq, ctl_io_hdr)  ooa_queue;
+	LIST_HEAD(ctl_ooaq, ctl_io_hdr)	ooa_queue;
 	STAILQ_ENTRY(ctl_lun)		links;
 	struct scsi_sense_data		**pending_sense;
 	ctl_ua_type			**pending_ua;
@@ -458,7 +455,6 @@ struct ctl_softc {
 	struct ctl_lun		**ctl_luns;
 	uint32_t		*ctl_port_mask;
 	STAILQ_HEAD(, ctl_lun)	lun_list;
-	STAILQ_HEAD(, ctl_be_lun)	pending_lun_queue;
 	uint32_t		num_frontends;
 	STAILQ_HEAD(, ctl_frontend)	fe_list;
 	uint32_t		num_ports;
@@ -470,7 +466,6 @@ struct ctl_softc {
 	uint32_t		cur_pool_id;
 	int			shutdown;
 	struct ctl_thread	threads[CTL_MAX_THREADS];
-	struct thread		*lun_thread;
 	struct thread		*thresh_thread;
 	TAILQ_HEAD(tpc_tokens, tpc_token)	tpc_tokens;
 	struct callout		tpc_timeout;
@@ -520,6 +515,7 @@ int ctl_get_event_status(struct ctl_scsiio *ctsio);
 int ctl_mechanism_status(struct ctl_scsiio *ctsio);
 int ctl_persistent_reserve_in(struct ctl_scsiio *ctsio);
 int ctl_persistent_reserve_out(struct ctl_scsiio *ctsio);
+int ctl_report_ident_info(struct ctl_scsiio *ctsio);
 int ctl_report_tagret_port_groups(struct ctl_scsiio *ctsio);
 int ctl_report_supported_opcodes(struct ctl_scsiio *ctsio);
 int ctl_report_supported_tmf(struct ctl_scsiio *ctsio);

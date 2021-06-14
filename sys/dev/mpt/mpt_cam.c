@@ -426,7 +426,6 @@ mpt_read_config_info_fc(struct mpt_softc *mpt)
 		 mpt->mpt_fcport_page0.Header.PageNumber,
 		 mpt->mpt_fcport_page0.Header.PageType);
 
-
 	rv = mpt_read_cur_cfg_page(mpt, 0, &mpt->mpt_fcport_page0.Header,
 	    sizeof(mpt->mpt_fcport_page0), FALSE, 5000);
 	if (rv) {
@@ -1293,10 +1292,6 @@ mpt_execute_req_a64(void *arg, bus_dma_segment_t *dm_segs, int nseg, int error)
 	hdrp = req->req_vbuf;
 	mpt_off = req->req_vbuf;
 
-	if (error == 0 && ((uint32_t)nseg) >= mpt->max_seg_cnt) {
-		error = EFBIG;
-	}
-
 	if (error == 0) {
 		switch (hdrp->Function) {
 		case MPI_FUNCTION_SCSI_IO_REQUEST:
@@ -1314,12 +1309,6 @@ mpt_execute_req_a64(void *arg, bus_dma_segment_t *dm_segs, int nseg, int error)
 			error = EINVAL;
 			break;
 		}
-	}
-
-	if (error == 0 && ((uint32_t)nseg) >= mpt->max_seg_cnt) {
-		error = EFBIG;
-		mpt_prt(mpt, "segment count %d too large (max %u)\n",
-		    nseg, mpt->max_seg_cnt);
 	}
 
 bad:
@@ -1377,7 +1366,6 @@ bad:
 		se1->FlagsLength = htole32(se1->FlagsLength);
 		goto out;
 	}
-
 
 	flags = MPI_SGE_FLAGS_SIMPLE_ELEMENT | MPI_SGE_FLAGS_64_BIT_ADDRESSING;
 	if (istgt == 0) {
@@ -1696,10 +1684,6 @@ mpt_execute_req(void *arg, bus_dma_segment_t *dm_segs, int nseg, int error)
 	hdrp = req->req_vbuf;
 	mpt_off = req->req_vbuf;
 
-	if (error == 0 && ((uint32_t)nseg) >= mpt->max_seg_cnt) {
-		error = EFBIG;
-	}
-
 	if (error == 0) {
 		switch (hdrp->Function) {
 		case MPI_FUNCTION_SCSI_IO_REQUEST:
@@ -1716,12 +1700,6 @@ mpt_execute_req(void *arg, bus_dma_segment_t *dm_segs, int nseg, int error)
 			error = EINVAL;
 			break;
 		}
-	}
-
-	if (error == 0 && ((uint32_t)nseg) >= mpt->max_seg_cnt) {
-		error = EFBIG;
-		mpt_prt(mpt, "segment count %d too large (max %u)\n",
-		    nseg, mpt->max_seg_cnt);
 	}
 
 bad:
@@ -1779,7 +1757,6 @@ bad:
 		se1->FlagsLength = htole32(se1->FlagsLength);
 		goto out;
 	}
-
 
 	flags = MPI_SGE_FLAGS_SIMPLE_ELEMENT;
 	if (istgt == 0) {
@@ -1908,11 +1885,8 @@ bad:
 		chain_list_addr = trq->req_pbuf;
 		chain_list_addr += cur_off;
 
-
-
 		ce->Address = htole32(chain_list_addr);
 		ce->Flags = MPI_SGE_FLAGS_CHAIN_ELEMENT;
-
 
 		/*
 		 * If we have more than a frame's worth of segments left,
@@ -2474,6 +2448,7 @@ mpt_cam_event(struct mpt_softc *mpt, request_t *req,
 				    "XPT_REL_SIMQ");
 				break;
 			}
+			memset(&crs, 0, sizeof(crs));
 			xpt_setup_ccb(&crs.ccb_h, tmppath, 5);
 			crs.ccb_h.func_code = XPT_REL_SIMQ;
 			crs.ccb_h.flags = CAM_DEV_QFREEZE;
@@ -2880,7 +2855,6 @@ mpt_fc_els_reply_handler(struct mpt_softc *mpt, request_t *req,
 		return (TRUE);
 	}
 
-
 	rctl = (le32toh(rp->Rctl_Did) & MPI_FC_RCTL_MASK) >> MPI_FC_RCTL_SHIFT;
 	type = (le32toh(rp->Type_Fctl) & MPI_FC_TYPE_MASK) >> MPI_FC_TYPE_SHIFT;
 
@@ -3126,7 +3100,6 @@ XXXX
 			if ((sstate & MPI_SCSI_STATE_AUTOSENSE_FAILED) != 0)
 				mpt_set_ccb_status(ccb, CAM_AUTOSENSE_FAIL);
 		} else if ((sstate & MPI_SCSI_STATE_RESPONSE_INFO_VALID) != 0) {
-
 			/* XXX Handle SPI-Packet and FCP-2 response info. */
 			mpt_set_ccb_status(ccb, CAM_REQ_CMP_ERR);
 		} else
@@ -4253,7 +4226,6 @@ mpt_add_target_commands(struct mpt_softc *mpt)
 		mpt_post_target_command(mpt, req, i);
 	}
 
-
 	if (i == 0) {
 		mpt_lprt(mpt, MPT_PRT_ERROR, "could not add any target bufs\n");
 		free(mpt->tgt_cmd_ptrs, M_DEVBUF);
@@ -4498,7 +4470,6 @@ mpt_scsi_tgt_local(struct mpt_softc *mpt, request_t *cmd_req,
 		return;
 	}
 	tgt->is_local = 1;
-
 
 	memset(req->req_vbuf, 0, MPT_RQSL(mpt));
 	ta = req->req_vbuf;
@@ -5056,7 +5027,6 @@ mpt_scsi_tgt_atio(struct mpt_softc *mpt, request_t *req, uint32_t reply_desc)
 		return;
 	}
 
-
 	atiop = (struct ccb_accept_tio *) STAILQ_FIRST(&trtp->atios);
 	if (atiop == NULL) {
 		mpt_lprt(mpt, MPT_PRT_WARN,
@@ -5094,7 +5064,7 @@ mpt_scsi_tgt_atio(struct mpt_softc *mpt, request_t *req, uint32_t reply_desc)
 		mpt_prtc(mpt, " itag %x tag %x rdesc %x dl=%u\n",
 		    tgt->itag, tgt->tag_id, tgt->reply_desc, tgt->resid);
 	}
-	
+
 	xpt_done((union ccb *)atiop);
 }
 

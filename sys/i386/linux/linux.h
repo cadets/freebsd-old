@@ -30,6 +30,7 @@
 #ifndef _I386_LINUX_H_
 #define	_I386_LINUX_H_
 
+#include <sys/abi_compat.h>
 #include <sys/signal.h>	/* for sigval union */
 
 #include <compat/linux/linux.h>
@@ -41,14 +42,6 @@
 
 #define	LINUX_SHAREDPAGE	(VM_MAXUSER_ADDRESS - PAGE_SIZE)
 #define	LINUX_USRSTACK		LINUX_SHAREDPAGE
-
-#define	PTRIN(v)	(void *)(v)
-#define	PTROUT(v)	(l_uintptr_t)(v)
-
-#define	CP(src,dst,fld) do { (dst).fld = (src).fld; } while (0)
-#define	CP2(src,dst,sfld,dfld) do { (dst).dfld = (src).sfld; } while (0)
-#define	PTRIN_CP(src,dst,fld) \
-	do { (dst).fld = PTRIN((src).fld); } while (0)
 
 /*
  * Provide a separate set of types for the Linux types.
@@ -78,6 +71,7 @@ typedef l_int		l_pid_t;
 typedef l_uint		l_size_t;
 typedef l_long		l_suseconds_t;
 typedef l_long		l_time_t;
+typedef l_longlong	l_time64_t;
 typedef l_uint		l_uid_t;
 typedef l_ushort	l_uid16_t;
 typedef l_int		l_timer_t;
@@ -139,7 +133,7 @@ struct l_mmap_argv {
 	l_int		flags;
 	l_int		fd;
 	l_off_t		pgoff;
-} __packed;
+};
 
 /*
  * stat family of syscalls
@@ -147,6 +141,12 @@ struct l_mmap_argv {
 struct l_timespec {
 	l_time_t	tv_sec;
 	l_long		tv_nsec;
+};
+
+/* __kernel_timespec */
+struct l_timespec64 {
+	l_time64_t	tv_sec;
+	l_longlong	tv_nsec;
 };
 
 struct l_newstat {
@@ -514,7 +514,6 @@ struct l_user_desc {
 struct l_desc_struct {
 	unsigned long	a, b;
 };
-
 
 #define	LINUX_LOWERWORD	0x0000ffff
 

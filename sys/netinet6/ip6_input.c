@@ -159,7 +159,8 @@ sysctl_netinet6_intr_queue_maxlen(SYSCTL_HANDLER_ARGS)
 }
 SYSCTL_DECL(_net_inet6_ip6);
 SYSCTL_PROC(_net_inet6_ip6, IPV6CTL_INTRQMAXLEN, intr_queue_maxlen,
-    CTLTYPE_INT|CTLFLAG_RW, 0, 0, sysctl_netinet6_intr_queue_maxlen, "I",
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
+    0, 0, sysctl_netinet6_intr_queue_maxlen, "I",
     "Maximum size of the IPv6 input queue");
 
 #ifdef RSS
@@ -186,8 +187,9 @@ sysctl_netinet6_intr_direct_queue_maxlen(SYSCTL_HANDLER_ARGS)
 	return (netisr_setqlimit(&ip6_direct_nh, qlimit));
 }
 SYSCTL_PROC(_net_inet6_ip6, IPV6CTL_INTRDQMAXLEN, intr_direct_queue_maxlen,
-    CTLTYPE_INT|CTLFLAG_RW, 0, 0, sysctl_netinet6_intr_direct_queue_maxlen,
-    "I", "Maximum size of the IPv6 direct input queue");
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
+    0, 0, sysctl_netinet6_intr_direct_queue_maxlen, "I",
+    "Maximum size of the IPv6 direct input queue");
 
 #endif
 
@@ -377,7 +379,6 @@ ip6_destroy(void *unused __unused)
 		/* Cannot lock here - lock recursion. */
 		/* IF_ADDR_LOCK(ifp); */
 		CK_STAILQ_FOREACH_SAFE(ifa, &ifp->if_addrhead, ifa_link, nifa) {
-
 			if (ifa->ifa_addr->sa_family != AF_INET6)
 				continue;
 			in6_purgeaddr(ifa);
@@ -385,10 +386,11 @@ ip6_destroy(void *unused __unused)
 		/* IF_ADDR_UNLOCK(ifp); */
 		in6_ifdetach_destroy(ifp);
 		mld_domifdetach(ifp);
-		/* Make sure any routes are gone as well. */
-		rt_flushifroutes_af(ifp, AF_INET6);
 	}
 	IFNET_RUNLOCK();
+
+	/* Make sure any routes are gone as well. */
+	rib_flush_routes_family(AF_INET6);
 
 	frag6_destroy();
 	nd6_destroy();
@@ -802,7 +804,7 @@ passin:
 	 * XXX: For now we keep link-local IPv6 addresses with embedded
 	 *      scope zone id, therefore we use zero zoneid here.
 	 */
-	ia = in6ifa_ifwithaddr(&ip6->ip6_dst, 0 /* XXX */);
+	ia = in6ifa_ifwithaddr(&ip6->ip6_dst, 0 /* XXX */, false);
 	if (ia != NULL) {
 		if (ia->ia6_flags & IN6_IFF_NOTREADY) {
 			char ip6bufs[INET6_ADDRSTRLEN];
@@ -812,13 +814,11 @@ passin:
 			    "ip6_input: packet to an unready address %s->%s\n",
 			    ip6_sprintf(ip6bufs, &ip6->ip6_src),
 			    ip6_sprintf(ip6bufd, &ip6->ip6_dst)));
-			ifa_free(&ia->ia_ifa);
 			goto bad;
 		}
 		/* Count the packet in the ip address stats */
 		counter_u64_add(ia->ia_ifa.ifa_ipackets, 1);
 		counter_u64_add(ia->ia_ifa.ifa_ibytes, m->m_pkthdr.len);
-		ifa_free(&ia->ia_ifa);
 		ours = 1;
 		goto hbhcheck;
 	}
@@ -1490,7 +1490,6 @@ ip6_savecontrol(struct inpcb *inp, struct mbuf *m, struct mbuf **mp)
 				 * other cases).
 				 */
 				goto loopend;
-
 			}
 
 			/* proceed with the next header. */

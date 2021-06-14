@@ -296,6 +296,9 @@ FBSDprivate_1.0 {
 	_thread_size_key;
 	_thread_state_running;
 	_thread_state_zoombie;
+
+	/* ABI bug workaround, indicate that pli->rtli_version is valid */
+	_pli_rtli_version;
 };
 
 FBSD_1.1 {
@@ -325,4 +328,10 @@ FBSD_1.4 {
 
 FBSD_1.5 {
 	 pthread_get_name_np;
+};
+
+FBSD_1.6 {
+	 pthread_getname_np;
+	 pthread_peekjoin_np;
+	 pthread_setname_np;
 };

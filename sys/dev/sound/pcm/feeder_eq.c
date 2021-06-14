@@ -240,7 +240,6 @@ FEEDEQ_DECLARE(U, 32, BE)
 		feed_eq_biquad_##SIGN##BIT##ENDIAN			\
 	}
 
-
 static const struct {
 	uint32_t format;
 	feed_eq_t biquad;
@@ -651,7 +650,6 @@ sysctl_dev_pcm_eq_preamp(SYSCTL_HANDLER_ARGS)
 					(void)FEEDER_SET(f, FEEDEQ_PREAMP, val);
 				CHN_UNLOCK(c);
 			}
-
 		}
 
 		PCM_RELEASE(d);
@@ -684,8 +682,8 @@ feeder_eq_initsys(device_t dev)
 
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)), OID_AUTO,
-	    "eq", CTLTYPE_INT | CTLFLAG_RWTUN, d, sizeof(d),
-	    sysctl_dev_pcm_eq, "I",
+	    "eq", CTLTYPE_INT | CTLFLAG_RWTUN | CTLFLAG_MPSAFE, d,
+	    sizeof(d), sysctl_dev_pcm_eq, "I",
 	    "Bass/Treble Equalizer (0=disable, 1=enable, 2=bypass)");
 
 	(void)snprintf(buf, sizeof(buf), "Bass/Treble Equalizer Preamp "
@@ -696,7 +694,7 @@ feeder_eq_initsys(device_t dev)
 
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)), OID_AUTO,
-	    "eq_preamp", CTLTYPE_STRING | CTLFLAG_RWTUN, d, sizeof(d),
-	    sysctl_dev_pcm_eq_preamp, "A", buf);
+	    "eq_preamp", CTLTYPE_STRING | CTLFLAG_RWTUN | CTLFLAG_MPSAFE,
+	    d, sizeof(d), sysctl_dev_pcm_eq_preamp, "A", buf);
 }
 #endif

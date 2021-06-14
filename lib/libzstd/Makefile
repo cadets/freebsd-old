@@ -13,6 +13,7 @@ SRCS=	entropy_common.c \
 	zstd_compress.c \
 	zstd_compress_literals.c \
 	zstd_compress_sequences.c \
+	zstd_compress_superblock.c \
 	zstdmt_compress.c \
 	huf_decompress.c \
 	zstd_ddict.c \
@@ -32,13 +33,14 @@ SRCS=	entropy_common.c \
 	debug.c \
 	hist.c \
 	fastcover.c
-WARNS=	2
+WARNS?=	2
 INCS=	zstd.h
 CFLAGS+=	-I${ZSTDDIR}/lib -I${ZSTDDIR}/lib/common -DXXH_NAMESPACE=ZSTD_ \
-		-DZSTD_MULTITHREAD=1
+		-DZSTD_MULTITHREAD=1 -fvisibility=hidden
 LIBADD=	pthread
 
 PRIVATELIB=	yes
+PACKAGE=	runtime
 
 ZSTDDIR=	${SRCTOP}/sys/contrib/zstd
 .PATH:	${ZSTDDIR}/lib/common ${ZSTDDIR}/lib/compress \
@@ -54,13 +56,6 @@ ZSTDDIR=	${SRCTOP}/sys/contrib/zstd
 # turning off vectorization, which is why there were both."
 .if ${COMPILER_TYPE} == "gcc"
 CFLAGS.zstd_decompress_block.c+=	-fno-tree-vectorize
-.endif
-
-# Work around for LLVM bug 35023, https://bugs.llvm.org/show_bug.cgi?id=35023
-# Fixed in https://reviews.llvm.org/rL349935 ; not sure if we have that version
-# in our LLVM or not yet.
-.if ${MACHINE_ARCH:Marm*} != ""
-CFLAGS.zstd_compress.c+= -O0
 .endif
 
 # Work around lack of __bswap[sd]i2() intrinsics on riscv.  Probably should be

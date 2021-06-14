@@ -57,6 +57,9 @@ __FBSDID("$FreeBSD$");
 
 #include "libc_private.h"
 
+/* Maximum number of characters of syslog message */
+#define	MAXLINE		8192
+
 static int	LogFile = -1;		/* fd for log */
 static int	status;			/* connection status */
 static int	opened;			/* have done openlog() */
@@ -74,6 +77,9 @@ static pthread_mutex_t	syslog_mutex = PTHREAD_MUTEX_INITIALIZER;
 	do {								\
 		if (__isthreaded) _pthread_mutex_unlock(&syslog_mutex);	\
 	} while(0)
+
+/* RFC5424 defined value. */
+#define NILVALUE "-"
 
 static void	disconnectlog(void); /* disconnect from syslogd */
 static void	connectlog(void);	/* (re)connect to syslogd */
@@ -138,7 +144,7 @@ vsyslog1(int pri, const char *fmt, va_list ap)
 	char ch, *p;
 	long tz_offset;
 	int cnt, fd, saved_errno;
-	char hostname[MAXHOSTNAMELEN], *stdp, tbuf[2048], fmt_cpy[1024],
+	char hostname[MAXHOSTNAMELEN], *stdp, tbuf[MAXLINE], fmt_cpy[MAXLINE],
 	    errstr[64], tz_sign;
 	FILE *fp, *fmt_fp;
 	struct bufcookie tbuf_cookie;
@@ -190,25 +196,30 @@ vsyslog1(int pri, const char *fmt, va_list ap)
 		    tm.tm_hour, tm.tm_min, tm.tm_sec, now.tv_usec,
 		    tz_sign, tz_offset / 3600, (tz_offset % 3600) / 60);
 	} else
-		(void)fprintf(fp, "- ");
+		(void)fputs(NILVALUE " ", fp);
 	/* Hostname. */
 	(void)gethostname(hostname, sizeof(hostname));
-	(void)fprintf(fp, "%s ", hostname);
+	(void)fprintf(fp, "%s ",
+	    hostname[0] == '\0' ? NILVALUE : hostname);
 	if (LogStat & LOG_PERROR) {
 		/* Transfer to string buffer */
 		(void)fflush(fp);
 		stdp = tbuf + (sizeof(tbuf) - tbuf_cookie.left);
 	}
+	/* Application name. */
+	if (LogTag == NULL)
+		LogTag = _getprogname();
+	(void)fprintf(fp, "%s ", LogTag == NULL ? NILVALUE : LogTag);
 	/*
-	 * Application name, process ID, message ID and structured data.
 	 * Provide the process ID regardless of whether LOG_PID has been
 	 * specified, as it provides valuable information. Many
 	 * applications tend not to use this, even though they should.
 	 */
-	if (LogTag == NULL)
-		LogTag = _getprogname();
-	(void)fprintf(fp, "%s %d - - ",
-	    LogTag == NULL ? "-" : LogTag, getpid());
+	(void)fprintf(fp, "%d ", getpid());
+	/* Message ID. */
+	(void)fputs(NILVALUE " ", fp);
+	/* Structured data. */
+	(void)fputs(NILVALUE " ", fp);
 
 	/* Check to see if we can skip expanding the %m */
 	if (strstr(fmt, "%m")) {
@@ -251,6 +262,7 @@ vsyslog1(int pri, const char *fmt, va_list ap)
 		fmt = fmt_cpy;
 	}
 
+	/* Message. */
 	(void)vfprintf(fp, fmt, ap);
 	(void)fclose(fp);
 
@@ -387,9 +399,19 @@ connectlog(void)
 	struct sockaddr_un SyslogAddr;	/* AF_UNIX address of local logger */
 
 	if (LogFile == -1) {
+		socklen_t len;
+
 		if ((LogFile = _socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC,
 		    0)) == -1)
 			return;
+		if (_getsockopt(LogFile, SOL_SOCKET, SO_SNDBUF, &len,
+		    &(socklen_t){sizeof(len)}) == 0) {
+			if (len < MAXLINE) {
+				len = MAXLINE;
+				(void)_setsockopt(LogFile, SOL_SOCKET, SO_SNDBUF,
+				    &len, sizeof(len));
+			}
+		}
 	}
 	if (LogFile != -1 && status == NOCONN) {
 		SyslogAddr.sun_len = sizeof(SyslogAddr);

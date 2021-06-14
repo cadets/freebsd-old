@@ -108,7 +108,8 @@ __read_mostly struct pmc_domain_buffer_header *pmc_dom_hdrs[MAXMEMDOM];
  * PMC Soft use a global table to store registered events.
  */
 
-SYSCTL_NODE(_kern, OID_AUTO, hwpmc, CTLFLAG_RW, 0, "HWPMC parameters");
+SYSCTL_NODE(_kern, OID_AUTO, hwpmc, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "HWPMC parameters");
 
 static int pmc_softevents = 16;
 SYSCTL_INT(_kern_hwpmc, OID_AUTO, softevents, CTLFLAG_RDTUN,
@@ -363,4 +364,3 @@ init_hwpmc(void *dummy __unused)
 }
 
 SYSINIT(hwpmc, SI_SUB_KDTRACE, SI_ORDER_FIRST, init_hwpmc, NULL);
-

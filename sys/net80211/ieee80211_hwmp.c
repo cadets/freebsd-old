@@ -1,33 +1,33 @@
-/*- 
+/*-
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
- * Copyright (c) 2009 The FreeBSD Foundation 
- * All rights reserved. 
- * 
+ * Copyright (c) 2009 The FreeBSD Foundation
+ * All rights reserved.
+ *
  * This software was developed by Rui Paulo under sponsorship from the
- * FreeBSD Foundation. 
- *  
- * Redistribution and use in source and binary forms, with or without 
- * modification, are permitted provided that the following conditions 
- * are met: 
- * 1. Redistributions of source code must retain the above copyright 
- *    notice, this list of conditions and the following disclaimer. 
- * 2. Redistributions in binary form must reproduce the above copyright 
- *    notice, this list of conditions and the following disclaimer in the 
- *    documentation and/or other materials provided with the distribution. 
- * 
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE 
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL 
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS 
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) 
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY 
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
- * SUCH DAMAGE. 
- */ 
+ * FreeBSD Foundation.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
 #include <sys/cdefs.h>
 #ifdef __FreeBSD__
 __FBSDID("$FreeBSD$");
@@ -120,7 +120,6 @@ static void	hwmp_peerdown(struct ieee80211_node *);
 static struct timeval ieee80211_hwmp_preqminint = { 0, 100000 };
 static struct timeval ieee80211_hwmp_perrminint = { 0, 100000 };
 
-
 /* NB: the Target Address set in a Proactive PREQ is the broadcast address. */
 static const uint8_t	broadcastaddr[IEEE80211_ADDR_LEN] =
 	{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
@@ -154,39 +153,46 @@ struct ieee80211_hwmp_state {
 	uint8_t			hs_maxhops;	/* max hop count */
 };
 
-static SYSCTL_NODE(_net_wlan, OID_AUTO, hwmp, CTLFLAG_RD, 0,
+static SYSCTL_NODE(_net_wlan, OID_AUTO, hwmp, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
     "IEEE 802.11s HWMP parameters");
 static int	ieee80211_hwmp_targetonly = 0;
 SYSCTL_INT(_net_wlan_hwmp, OID_AUTO, targetonly, CTLFLAG_RW,
     &ieee80211_hwmp_targetonly, 0, "Set TO bit on generated PREQs");
 static int	ieee80211_hwmp_pathtimeout = -1;
-SYSCTL_PROC(_net_wlan_hwmp, OID_AUTO, pathlifetime, CTLTYPE_INT | CTLFLAG_RW,
+SYSCTL_PROC(_net_wlan_hwmp, OID_AUTO, pathlifetime,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
     &ieee80211_hwmp_pathtimeout, 0, ieee80211_sysctl_msecs_ticks, "I",
     "path entry lifetime (ms)");
 static int	ieee80211_hwmp_maxpreq_retries = -1;
-SYSCTL_PROC(_net_wlan_hwmp, OID_AUTO, maxpreq_retries, CTLTYPE_INT | CTLFLAG_RW,
+SYSCTL_PROC(_net_wlan_hwmp, OID_AUTO, maxpreq_retries,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
     &ieee80211_hwmp_maxpreq_retries, 0, ieee80211_sysctl_msecs_ticks, "I",
     "maximum number of preq retries");
 static int	ieee80211_hwmp_net_diameter_traversaltime = -1;
 SYSCTL_PROC(_net_wlan_hwmp, OID_AUTO, net_diameter_traversal_time,
-    CTLTYPE_INT | CTLFLAG_RW, &ieee80211_hwmp_net_diameter_traversaltime, 0,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
+    &ieee80211_hwmp_net_diameter_traversaltime, 0,
     ieee80211_sysctl_msecs_ticks, "I",
     "estimate travelse time across the MBSS (ms)");
 static int	ieee80211_hwmp_roottimeout = -1;
-SYSCTL_PROC(_net_wlan_hwmp, OID_AUTO, roottimeout, CTLTYPE_INT | CTLFLAG_RW,
+SYSCTL_PROC(_net_wlan_hwmp, OID_AUTO, roottimeout,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
     &ieee80211_hwmp_roottimeout, 0, ieee80211_sysctl_msecs_ticks, "I",
     "root PREQ timeout (ms)");
 static int	ieee80211_hwmp_rootint = -1;
-SYSCTL_PROC(_net_wlan_hwmp, OID_AUTO, rootint, CTLTYPE_INT | CTLFLAG_RW,
+SYSCTL_PROC(_net_wlan_hwmp, OID_AUTO, rootint,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
     &ieee80211_hwmp_rootint, 0, ieee80211_sysctl_msecs_ticks, "I",
     "root interval (ms)");
 static int	ieee80211_hwmp_rannint = -1;
-SYSCTL_PROC(_net_wlan_hwmp, OID_AUTO, rannint, CTLTYPE_INT | CTLFLAG_RW,
+SYSCTL_PROC(_net_wlan_hwmp, OID_AUTO, rannint,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
     &ieee80211_hwmp_rannint, 0, ieee80211_sysctl_msecs_ticks, "I",
     "root announcement interval (ms)");
 static struct timeval ieee80211_hwmp_rootconfint = { 0, 0 };
 static int	ieee80211_hwmp_rootconfint_internal = -1;
-SYSCTL_PROC(_net_wlan_hwmp, OID_AUTO, rootconfint, CTLTYPE_INT | CTLFLAG_RD,
+SYSCTL_PROC(_net_wlan_hwmp, OID_AUTO, rootconfint,
+    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE,
     &ieee80211_hwmp_rootconfint_internal, 0, ieee80211_sysctl_msecs_ticks, "I",
     "root confirmation interval (ms) (read-only)");
 
@@ -205,10 +211,10 @@ static struct ieee80211_mesh_proto_path mesh_proto_hwmp = {
 	.mpp_newstate	= hwmp_newstate,
 	.mpp_privlen	= sizeof(struct ieee80211_hwmp_route),
 };
-SYSCTL_PROC(_net_wlan_hwmp, OID_AUTO, inact, CTLTYPE_INT | CTLFLAG_RW,
-	&mesh_proto_hwmp.mpp_inact, 0, ieee80211_sysctl_msecs_ticks, "I",
-	"mesh route inactivity timeout (ms)");
-
+SYSCTL_PROC(_net_wlan_hwmp, OID_AUTO, inact,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+    &mesh_proto_hwmp.mpp_inact, 0, ieee80211_sysctl_msecs_ticks, "I",
+    "mesh route inactivity timeout (ms)");
 
 static void
 ieee80211_hwmp_init(void)
@@ -276,7 +282,7 @@ hwmp_vdetach(struct ieee80211vap *vap)
 	callout_drain(&hs->hs_roottimer);
 	IEEE80211_FREE(vap->iv_hwmp, M_80211_VAP);
 	vap->iv_hwmp = NULL;
-} 
+}
 
 static int
 hwmp_newstate(struct ieee80211vap *vap, enum ieee80211_state ostate, int arg)
@@ -372,7 +378,7 @@ verify_mesh_perr_len(struct ieee80211vap *vap,
 	}
 
 	iefrm_t += IEEE80211_MESHPERR_NDEST_OFFSET + 1; /* flag is next field */
-	/* We need to check each destionation flag to know size */
+	/* We need to check each destination flag to know size */
 	for(i = 0; i<ndest; i++) {
 		if ((*iefrm_t) & IEEE80211_MESHPERR_FLAGS_AE)
 			iefrm_t += IEEE80211_MESHPERR_DEST_SZ_AE;
@@ -442,7 +448,7 @@ hwmp_recv_action_meshpath(struct ieee80211_node *ni,
 			preq->preq_lifetime = le32dec(iefrm_t); iefrm_t += 4;
 			preq->preq_metric = le32dec(iefrm_t); iefrm_t += 4;
 			preq->preq_tcount = *iefrm_t++;
-			
+
 			for (i = 0; i < preq->preq_tcount; i++) {
 				preq->preq_targets[i].target_flags = *iefrm_t++;
 				IEEE80211_ADDR_COPY(
@@ -977,7 +983,7 @@ hwmp_recv_preq(struct ieee80211vap *vap, struct ieee80211_node *ni,
 		return;
 	}
 	/*
-	 * Acceptance criteria: if unicast addressed 
+	 * Acceptance criteria: if unicast addressed
 	 * AND no valid forwarding for Target of PREQ, discard this PREQ.
 	 */
 	if(rttarg != NULL)
@@ -1869,7 +1875,6 @@ hwmp_rediscover_cb(void *arg)
 	}
 
 	hr->hr_preqretries++;
-
 
 	IEEE80211_NOTE_MAC(vap, IEEE80211_MSG_HWMP, rt->rt_dest,
 	    "start path rediscovery , target seq %u", hr->hr_seq);

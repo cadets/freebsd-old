@@ -34,6 +34,17 @@ CFLAGS+=	-I${.CURDIR}/ld128
 
 CFLAGS+=	-I${.CURDIR}/${ARCH_SUBDIR}
 
+.include <bsd.compiler.mk>
+.if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 100000 && \
+    (${MACHINE_CPUARCH} == "amd64" || ${MACHINE_CPUARCH} == "i386")
+# When using clang with x86_64 CPUs that support AVX, some floating point
+# transformations may raise exceptions that would not have been raised by the
+# original code. To avoid this, use the -fp-exception-behavior=maytrap flag,
+# introduced in clang 10.0.0.
+# See also: https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=254911
+CFLAGS+=	-ffp-exception-behavior=maytrap
+.endif
+
 .PATH:	${.CURDIR}/bsdsrc
 .PATH:	${.CURDIR}/src
 .PATH:	${.CURDIR}/man
@@ -108,13 +119,12 @@ COMMON_SRCS+=	catrigl.c \
 	s_nextafterl.c s_nexttoward.c s_remquol.c s_rintl.c s_roundl.c \
 	s_scalbnl.c s_sinl.c s_sincosl.c \
 	s_tanhl.c s_tanl.c s_truncl.c w_cabsl.c
-# Work around this warning from gcc 6:
+# Work around this warning from gcc:
 #     lib/msun/ld80/e_powl.c:275:1: error: floating constant exceeds range of
 #     'long double' [-Werror=overflow]
 #     if( y >= LDBL_MAX )
 # See also: https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=130067
-.include <bsd.compiler.mk>
-.if ${COMPILER_TYPE} == "gcc" && ${COMPILER_VERSION} >= 60000
+.if ${COMPILER_TYPE} == "gcc"
 CFLAGS.e_powl.c+= -Wno-error=overflow
 .endif
 .endif
@@ -244,5 +254,11 @@ MLINKS+=trunc.3 truncf.3 trunc.3 truncl.3
 
 HAS_TESTS=
 SUBDIR.${MK_TESTS}+= tests
+
+.include <bsd.compiler.mk>
+.if ${COMPILER_TYPE} == "clang" && ${COMPILER_VERSION} >= 120000
+# Silence '#pragma FENV_ACCESS' is not supported on this target - ignored
+CWARNFLAGS+=	-Wno-error=ignored-pragmas
+.endif
 
 .include <bsd.lib.mk>

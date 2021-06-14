@@ -151,7 +151,6 @@ static void lptintr(void *arg);
 
 static devclass_t lpt_devclass;
 
-
 /* bits for state */
 #define	OPEN		(1<<0)	/* device is open */
 #define	ASLP		(1<<1)	/* awaiting draining of printer */
@@ -175,7 +174,6 @@ static devclass_t lpt_devclass;
 
 #define	MAX_SLEEP	(hz*5)	/* Timeout while waiting for device ready */
 #define	MAX_SPIN	20	/* Max delay for device ready in usecs */
-
 
 static	d_open_t	lptopen;
 static	d_close_t	lptclose;
@@ -272,7 +270,7 @@ lpt_port_test(device_t ppbus, u_char data, u_char mask)
  *
  *	2) You should be able to write to and read back the same value
  *	   to the control port lower 5 bits, the upper 3 bits are reserved
- *	   per the IBM PC technical reference manauls and different boards
+ *	   per the IBM PC technical reference manuals and different boards
  *	   do different things with them.  Do an alternating zeros, alternating
  *	   ones, walking zero, and walking one test to check for stuck bits.
  *
@@ -708,7 +706,6 @@ lpt_pushbytes(struct lpt_data *sc)
 		/* strobe */
 		ppb_wctr(ppbus, sc->sc_control|LPC_STB);
 		ppb_wctr(ppbus, sc->sc_control);
-
 	}
 	return(0);
 }
@@ -990,7 +987,6 @@ static device_method_t lpt_methods[] = {
 	DEVMETHOD(device_probe,		lpt_probe),
 	DEVMETHOD(device_attach,	lpt_attach),
 	DEVMETHOD(device_detach,	lpt_detach),
-
 	{ 0, 0 }
 };
 

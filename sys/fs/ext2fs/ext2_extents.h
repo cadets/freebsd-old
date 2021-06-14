@@ -108,29 +108,29 @@ struct ext4_extent_path {
     sizeof(struct ext4_extent_header)))
 #define EXT_FIRST_INDEX(hdr) ((struct ext4_extent_index *)(((char *)(hdr)) + \
     sizeof(struct ext4_extent_header)))
-#define EXT_LAST_EXTENT(hdr) (EXT_FIRST_EXTENT((hdr)) + (hdr)->eh_ecount - 1)
-#define EXT_LAST_INDEX(hdr) (EXT_FIRST_INDEX((hdr)) + (hdr)->eh_ecount - 1)
+#define EXT_LAST_EXTENT(hdr) (EXT_FIRST_EXTENT((hdr)) + le16toh((hdr)->eh_ecount) - 1)
+#define EXT_LAST_INDEX(hdr) (EXT_FIRST_INDEX((hdr)) + le16toh((hdr)->eh_ecount) - 1)
 #define EXT4_EXTENT_TAIL_OFFSET(hdr) (sizeof(struct ext4_extent_header) + \
-    (sizeof(struct ext4_extent) * (hdr)->eh_max))
+    (sizeof(struct ext4_extent) * le16toh((hdr)->eh_max)))
 #define EXT_HAS_FREE_INDEX(path) \
-    ((path)->ep_header->eh_ecount < (path)->ep_header->eh_max)
-#define EXT_MAX_EXTENT(hdr) (EXT_FIRST_EXTENT(hdr) + ((hdr)->eh_max) - 1)
-#define EXT_MAX_INDEX(hdr) (EXT_FIRST_INDEX((hdr)) + (hdr)->eh_max - 1)
+    (le16toh((path)->ep_header->eh_ecount) < le16toh((path)->ep_header->eh_max))
+#define EXT_MAX_EXTENT(hdr) (EXT_FIRST_EXTENT(hdr) + le16toh((hdr)->eh_max) - 1)
+#define EXT_MAX_INDEX(hdr) (EXT_FIRST_INDEX((hdr)) + le16toh((hdr)->eh_max) - 1)
 
 struct inode;
 struct m_ext2fs;
 void	ext4_ext_tree_init(struct inode *ip);
 int	ext4_ext_in_cache(struct inode *, daddr_t, struct ext4_extent *);
 void	ext4_ext_put_cache(struct inode *, struct ext4_extent *, int);
-int ext4_ext_find_extent(struct inode *, daddr_t, struct ext4_extent_path **);
-void ext4_ext_path_free(struct ext4_extent_path *path);
-int ext4_ext_remove_space(struct inode *ip, off_t length, int flags,
+int	ext4_ext_find_extent(struct inode *, daddr_t, struct ext4_extent_path **);
+void	ext4_ext_path_free(struct ext4_extent_path *path);
+int	ext4_ext_remove_space(struct inode *ip, off_t length, int flags,
     struct ucred *cred, struct thread *td);
-int ext4_ext_get_blocks(struct inode *ip, int64_t iblock,
+int	ext4_ext_get_blocks(struct inode *ip, int64_t iblock,
     unsigned long max_blocks, struct ucred *cred, struct buf **bpp,
     int *allocate, daddr_t *);
 #ifdef EXT2FS_PRINT_EXTENTS
-void ext4_ext_print_extent_tree_status(struct inode *ip);
+int	ext4_ext_walk(struct inode *ip);
 #endif
 
 #endif	/* !_FS_EXT2FS_EXT2_EXTENTS_H_ */

@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_NativeProcessProtocol_h_
-#define liblldb_NativeProcessProtocol_h_
+#ifndef LLDB_HOST_COMMON_NATIVEPROCESSPROTOCOL_H
+#define LLDB_HOST_COMMON_NATIVEPROCESSPROTOCOL_H
 
 #include "NativeBreakpointList.h"
 #include "NativeThreadProtocol.h"
@@ -17,6 +17,7 @@
 #include "lldb/Utility/ArchSpec.h"
 #include "lldb/Utility/Status.h"
 #include "lldb/Utility/TraceOptions.h"
+#include "lldb/Utility/UnimplementedError.h"
 #include "lldb/lldb-private-forward.h"
 #include "lldb/lldb-types.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -31,6 +32,14 @@
 namespace lldb_private {
 class MemoryRegionInfo;
 class ResumeActionList;
+
+struct SVR4LibraryInfo {
+  std::string name;
+  lldb::addr_t link_map;
+  lldb::addr_t base_addr;
+  lldb::addr_t ld_addr;
+  lldb::addr_t next;
+};
 
 // NativeProcessProtocol
 class NativeProcessProtocol {
@@ -76,15 +85,50 @@ public:
   Status ReadMemoryWithoutTrap(lldb::addr_t addr, void *buf, size_t size,
                                size_t &bytes_read);
 
+  /// Reads a null terminated string from memory.
+  ///
+  /// Reads up to \p max_size bytes of memory until it finds a '\0'.
+  /// If a '\0' is not found then it reads max_size-1 bytes as a string and a
+  /// '\0' is added as the last character of the \p buffer.
+  ///
+  /// \param[in] addr
+  ///     The address in memory to read from.
+  ///
+  /// \param[in] buffer
+  ///     An allocated buffer with at least \p max_size size.
+  ///
+  /// \param[in] max_size
+  ///     The maximum number of bytes to read from memory until it reads the
+  ///     string.
+  ///
+  /// \param[out] total_bytes_read
+  ///     The number of bytes read from memory into \p buffer.
+  ///
+  /// \return
+  ///     Returns a StringRef backed up by the \p buffer passed in.
+  llvm::Expected<llvm::StringRef>
+  ReadCStringFromMemory(lldb::addr_t addr, char *buffer, size_t max_size,
+                        size_t &total_bytes_read);
+
   virtual Status WriteMemory(lldb::addr_t addr, const void *buf, size_t size,
                              size_t &bytes_written) = 0;
 
-  virtual Status AllocateMemory(size_t size, uint32_t permissions,
-                                lldb::addr_t &addr) = 0;
+  virtual llvm::Expected<lldb::addr_t> AllocateMemory(size_t size,
+                                                      uint32_t permissions) {
+    return llvm::make_error<UnimplementedError>();
+  }
 
-  virtual Status DeallocateMemory(lldb::addr_t addr) = 0;
+  virtual llvm::Error DeallocateMemory(lldb::addr_t addr) {
+    return llvm::make_error<UnimplementedError>();
+  }
 
   virtual lldb::addr_t GetSharedLibraryInfoAddress() = 0;
+
+  virtual llvm::Expected<std::vector<SVR4LibraryInfo>>
+  GetLoadedSVR4Libraries() {
+    return llvm::createStringError(llvm::inconvertibleErrorCode(),
+                                   "Not implemented");
+  }
 
   virtual bool IsAlive() const;
 
@@ -340,18 +384,17 @@ public:
   /// \param[in] traceid
   ///     The user id of the tracing instance.
   ///
-  /// \param[in] config
-  ///     The thread id of the tracing instance, in case configuration
-  ///     for a specific thread is needed should be specified in the
-  ///     config.
-  ///
-  /// \param[out] error
-  ///     Status indicates what went wrong.
-  ///
   /// \param[out] config
-  ///     The actual configuration being used for tracing.
+  ///     The configuration being used for tracing.
+  ///
+  /// \return A status indicating what went wrong.
   virtual Status GetTraceConfig(lldb::user_id_t traceid, TraceOptions &config) {
     return Status("Not implemented");
+  }
+
+  /// \copydoc Process::GetSupportedTraceType()
+  virtual llvm::Expected<TraceTypeInfo> GetSupportedTraceType() {
+    return llvm::make_error<UnimplementedError>();
   }
 
 protected:
@@ -390,6 +433,8 @@ protected:
   // to, and then this function should be called.
   NativeProcessProtocol(lldb::pid_t pid, int terminal_fd,
                         NativeDelegate &delegate);
+
+  void SetID(lldb::pid_t pid) { m_pid = pid; }
 
   // interface for state handling
   void SetState(lldb::StateType state, bool notify_delegates = true);
@@ -434,4 +479,4 @@ private:
 };
 } // namespace lldb_private
 
-#endif // #ifndef liblldb_NativeProcessProtocol_h_
+#endif // LLDB_HOST_COMMON_NATIVEPROCESSPROTOCOL_H

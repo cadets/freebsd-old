@@ -316,18 +316,16 @@ static struct if_shared_ctx bnxt_sctx_init = {
 	.isc_nrxd_default = {PAGE_SIZE / sizeof(struct cmpl_base) * 8,
 	    PAGE_SIZE / sizeof(struct rx_prod_pkt_bd),
 	    PAGE_SIZE / sizeof(struct rx_prod_pkt_bd)},
-	.isc_nrxd_max = {INT32_MAX, INT32_MAX, INT32_MAX},
+	.isc_nrxd_max = {BNXT_MAX_RXD, BNXT_MAX_RXD, BNXT_MAX_RXD},
 	.isc_ntxd_min = {16, 16, 16},
 	.isc_ntxd_default = {PAGE_SIZE / sizeof(struct cmpl_base) * 2,
 	    PAGE_SIZE / sizeof(struct tx_bd_short)},
-	.isc_ntxd_max = {INT32_MAX, INT32_MAX, INT32_MAX},
+	.isc_ntxd_max = {BNXT_MAX_TXD, BNXT_MAX_TXD, BNXT_MAX_TXD},
 
 	.isc_admin_intrcnt = 1,
 	.isc_vendor_info = bnxt_vendor_info_array,
 	.isc_driver_version = bnxt_driver_version,
 };
-
-if_shared_ctx_t bnxt_sctx = &bnxt_sctx_init;
 
 /*
  * Device Methods
@@ -336,7 +334,7 @@ if_shared_ctx_t bnxt_sctx = &bnxt_sctx_init;
 static void *
 bnxt_register(device_t dev)
 {
-	return bnxt_sctx;
+	return (&bnxt_sctx_init);
 }
 
 /*
@@ -712,7 +710,6 @@ bnxt_attach_pre(if_ctx_t ctx)
 	rc = bnxt_alloc_hwrm_dma_mem(softc);
 	if (rc)
 		goto dma_fail;
-
 
 	/* Get firmware version and compare with driver */
 	softc->ver_info = malloc(sizeof(struct bnxt_ver_info),
@@ -1094,7 +1091,6 @@ bnxt_init(if_ctx_t ctx)
 		rc = bnxt_hwrm_ring_grp_alloc(softc, &softc->grp_info[i]);
 		if (rc)
 			goto fail;
-
 	}
 
 	/* Allocate the VNIC RSS context */
@@ -1249,7 +1245,6 @@ bnxt_media_status(if_ctx_t ctx, struct ifmediareq * ifmr)
 	struct ifmedia_entry *next;
 	uint64_t target_baudrate = bnxt_get_baudrate(link_info);
 	int active_media = IFM_UNKNOWN;
-
 
 	bnxt_update_link(softc, true);
 
@@ -1537,7 +1532,7 @@ bnxt_msix_intr_assign(if_ctx_t ctx, int msix)
 	for (i=0; i<softc->scctx->isc_nrxqsets; i++) {
 		snprintf(irq_name, sizeof(irq_name), "rxq%d", i);
 		rc = iflib_irq_alloc_generic(ctx, &softc->rx_cp_rings[i].irq,
-		    softc->rx_cp_rings[i].ring.id + 1, IFLIB_INTR_RX,
+		    softc->rx_cp_rings[i].ring.id + 1, IFLIB_INTR_RXTX,
 		    bnxt_handle_rx_cp, &softc->rx_cp_rings[i], i, irq_name);
 		if (rc) {
 			device_printf(iflib_get_dev(ctx),
@@ -1650,25 +1645,25 @@ bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 {
 	struct bnxt_softc *softc = iflib_get_softc(ctx);
 	struct ifreq *ifr = (struct ifreq *)data;
-	struct ifreq_buffer *ifbuf = &ifr->ifr_ifru.ifru_buffer;
-	struct bnxt_ioctl_header *ioh =
-	    (struct bnxt_ioctl_header *)(ifbuf->buffer);
+	struct bnxt_ioctl_header *ioh;
+	size_t iol;
 	int rc = ENOTSUP;
-	struct bnxt_ioctl_data *iod = NULL;
+	struct bnxt_ioctl_data iod_storage, *iod = &iod_storage;
 
 	switch (command) {
 	case SIOCGPRIVATE_0:
 		if ((rc = priv_check(curthread, PRIV_DRIVER)) != 0)
 			goto exit;
 
-		iod = malloc(ifbuf->length, M_DEVBUF, M_NOWAIT | M_ZERO);
-		if (!iod) {
-			rc = ENOMEM;
-			goto exit;
-		}
-		copyin(ioh, iod, ifbuf->length);
+		ioh = ifr_buffer_get_buffer(ifr);
+		iol = ifr_buffer_get_length(ifr);
+		if (iol > sizeof(iod_storage))
+			return (EINVAL);
 
-		switch (ioh->type) {
+		if ((rc = copyin(ioh, iod, iol)) != 0)
+			goto exit;
+
+		switch (iod->hdr.type) {
 		case BNXT_HWRM_NVM_FIND_DIR_ENTRY:
 		{
 			struct bnxt_ioctl_hwrm_nvm_find_dir_entry *find =
@@ -1686,7 +1681,7 @@ bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 			}
 			else {
 				iod->hdr.rc = 0;
-				copyout(iod, ioh, ifbuf->length);
+				copyout(iod, ioh, iol);
 			}
 
 			rc = 0;
@@ -1726,7 +1721,7 @@ bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 				remain -= csize;
 			}
 			if (iod->hdr.rc == 0)
-				copyout(iod, ioh, ifbuf->length);
+				copyout(iod, ioh, iol);
 
 			iflib_dma_free(&dma_data);
 			rc = 0;
@@ -1746,7 +1741,7 @@ bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 			}
 			else {
 				iod->hdr.rc = 0;
-				copyout(iod, ioh, ifbuf->length);
+				copyout(iod, ioh, iol);
 			}
 
 			rc = 0;
@@ -1766,7 +1761,7 @@ bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 			}
 			else {
 				iod->hdr.rc = 0;
-				copyout(iod, ioh, ifbuf->length);
+				copyout(iod, ioh, iol);
 			}
 
 			rc = 0;
@@ -1788,7 +1783,7 @@ bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 			}
 			else {
 				iod->hdr.rc = 0;
-				copyout(iod, ioh, ifbuf->length);
+				copyout(iod, ioh, iol);
 			}
 
 			rc = 0;
@@ -1807,7 +1802,7 @@ bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 			}
 			else {
 				iod->hdr.rc = 0;
-				copyout(iod, ioh, ifbuf->length);
+				copyout(iod, ioh, iol);
 			}
 
 			rc = 0;
@@ -1827,7 +1822,7 @@ bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 			}
 			else {
 				iod->hdr.rc = 0;
-				copyout(iod, ioh, ifbuf->length);
+				copyout(iod, ioh, iol);
 			}
 
 			rc = 0;
@@ -1854,7 +1849,7 @@ bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 				copyout(dma_data.idi_vaddr, get->data,
 				    get->entry_length * get->entries);
 				iod->hdr.rc = 0;
-				copyout(iod, ioh, ifbuf->length);
+				copyout(iod, ioh, iol);
 			}
 			iflib_dma_free(&dma_data);
 
@@ -1875,7 +1870,7 @@ bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 			}
 			else {
 				iod->hdr.rc = 0;
-				copyout(iod, ioh, ifbuf->length);
+				copyout(iod, ioh, iol);
 			}
 
 			rc = 0;
@@ -1897,7 +1892,7 @@ bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 			}
 			else {
 				iod->hdr.rc = 0;
-				copyout(iod, ioh, ifbuf->length);
+				copyout(iod, ioh, iol);
 			}
 
 			rc = 0;
@@ -1916,7 +1911,7 @@ bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 			}
 			else {
 				iod->hdr.rc = 0;
-				copyout(iod, ioh, ifbuf->length);
+				copyout(iod, ioh, iol);
 			}
 
 			rc = 0;
@@ -1937,7 +1932,7 @@ bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 			}
 			else {
 				iod->hdr.rc = 0;
-				copyout(iod, ioh, ifbuf->length);
+				copyout(iod, ioh, iol);
 			}
 
 			rc = 0;
@@ -1958,7 +1953,7 @@ bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 			}
 			else {
 				iod->hdr.rc = 0;
-				copyout(iod, ioh, ifbuf->length);
+				copyout(iod, ioh, iol);
 			}
 
 			rc = 0;
@@ -1969,8 +1964,6 @@ bnxt_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 	}
 
 exit:
-	if (iod)
-		free(iod, M_DEVBUF);
 	return rc;
 }
 
@@ -2087,7 +2080,7 @@ bnxt_add_media_types(struct bnxt_softc *softc)
 		BNXT_IFMEDIA_ADD(supported, SPEEDS_100MB, IFM_100_T);
 		BNXT_IFMEDIA_ADD(supported, SPEEDS_10MB, IFM_10_T);
 		break;
-	
+
 	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_BASEKX:
 		BNXT_IFMEDIA_ADD(supported, SPEEDS_10GB, IFM_10G_KR);
 		BNXT_IFMEDIA_ADD(supported, SPEEDS_2_5GB, IFM_2500_KX);

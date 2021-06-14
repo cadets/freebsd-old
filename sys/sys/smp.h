@@ -154,7 +154,6 @@ struct cpu_group *smp_topo_2level(int l2share, int l2count, int l1share,
 struct cpu_group *smp_topo_find(struct cpu_group *top, int cpu);
 
 extern void (*cpustop_restartfunc)(void);
-extern int smp_cpus;
 /* The suspend/resume cpusets are x86 only, but minimize ifdefs. */
 extern volatile cpuset_t resuming_cpus;	/* woken up cpus in suspend pen */
 extern volatile cpuset_t started_cpus;	/* cpus to let out of stop pen */
@@ -169,6 +168,7 @@ extern u_int mp_maxid;
 extern int mp_maxcpus;
 extern int mp_ncores;
 extern int mp_ncpus;
+extern int smp_cpus;
 extern volatile int smp_started;
 extern int smp_threads_per_core;
 
@@ -276,6 +276,19 @@ void	smp_rendezvous_cpus(cpuset_t,
 		       void (*)(void *),
 		       void (*)(void *),
 		       void *arg);
+
+struct smp_rendezvous_cpus_retry_arg {
+	cpuset_t cpus;
+};
+void	smp_rendezvous_cpus_retry(cpuset_t,
+		       void (*)(void *),
+		       void (*)(void *),
+		       void (*)(void *),
+		       void (*)(void *, int),
+		       struct smp_rendezvous_cpus_retry_arg *);
+
+void	smp_rendezvous_cpus_done(struct smp_rendezvous_cpus_retry_arg *);
+
 #endif /* !LOCORE */
 #endif /* _KERNEL */
 #endif /* _SYS_SMP_H_ */

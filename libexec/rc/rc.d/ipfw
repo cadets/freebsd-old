@@ -47,12 +47,25 @@ ipfw_prestart()
 
 ipfw_start()
 {
-	local   _firewall_type
+	local   _firewall_type _module _sysctl_reload
 
 	if [ -n "${1}" ]; then
 		_firewall_type=$1
 	else
 		_firewall_type=${firewall_type}
+	fi
+
+	_sysctl_reload=no
+	for _module in ${required_modules}
+	do
+		if kldstat -qn ${_module}; then
+			_sysctl_reload=yes
+			break
+		fi
+	done
+
+	if [ ${_sysctl_reload} = yes ]; then
+		/etc/rc.d/sysctl reload
 	fi
 
 	# set the firewall rules script if none was specified
@@ -63,7 +76,7 @@ ipfw_start()
 		echo 'Firewall rules loaded.'
 	elif [ "`ipfw list 65535`" = "65535 deny ip from any to any" ]; then
 		echo 'Warning: kernel has firewall functionality, but' \
-		    ' firewall rules are not enabled.'
+		    'firewall rules are not enabled.'
 		echo '           All ip services are disabled.'
 	fi
 
@@ -74,8 +87,14 @@ ipfw_start()
 		${SYSCTL} net.inet.ip.fw.verbose=1 >/dev/null
 	fi
 	if checkyesno firewall_logif; then
-		ifconfig ipfw0 create
-		echo 'Firewall logging pseudo-interface (ipfw0) created.'
+		if ! ifconfig ipfw0 >/dev/null 2>&1; then
+			ifconfig ipfw0 create
+			echo 'Firewall logging pseudo-interface (ipfw0)' \
+			    'created.'
+		else
+			echo 'Firewall logging pseudo-interface (ipfw0)' \
+			    'already created.'
+		fi
 	fi
 }
 
@@ -129,7 +148,9 @@ ipfw_status()
 	status=$(sysctl -i -n net.inet.ip.fw.enable)
 	: ${status:=0}
 	if afexists inet6; then
-		status=$((${status} + $(sysctl -i -n net.inet6.ip6.fw.enable)))
+		status6=$(sysctl -i -n net.inet6.ip6.fw.enable)
+		: ${status6:=0}
+		status=$((${status} + ${status6}))
 	fi
 	if [ ${status} -eq 0 ]; then
 		echo "ipfw is not enabled"

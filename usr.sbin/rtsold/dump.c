@@ -84,6 +84,8 @@ rtsold_dump(FILE *fp)
 		}
 		fprintf(fp, "  interface status: %s\n",
 		    ifi->active > 0 ? "active" : "inactive");
+		fprintf(fp, "  managed config: %s\n",
+		    ifi->managedconfig ? "on" : "off");
 		fprintf(fp, "  other config: %s\n",
 		    ifi->otherconfig ? "on" : "off");
 		fprintf(fp, "  rtsold status: %s\n", ifstatstr[ifi->state]);
@@ -146,6 +148,7 @@ rtsold_init_dumpfile(const char *dumpfile)
 	if (caph_rights_limit(fileno(fp), &rights) != 0) {
 		warnmsg(LOG_WARNING, __func__, "caph_rights_limit(%s): %s",
 		    dumpfile, strerror(errno));
+		(void)fclose(fp);
 		return (NULL);
 	}
 	return (fp);

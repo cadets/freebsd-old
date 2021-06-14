@@ -50,7 +50,6 @@
     ((sc)->arge_rdata.arge_rx_ring_paddr + sizeof(struct arge_desc) * (i))
 #define	ARGE_INC(x,y)		(x) = (((x) + 1) % y)
 
-
 #define	ARGE_MII_TIMEOUT	1000
 
 #define	ARGE_LOCK(_sc)		mtx_lock(&(_sc)->arge_mtx)
@@ -206,6 +205,7 @@ struct arge_softc {
 		uint32_t	tx_pkts_unaligned;
 		uint32_t	tx_pkts_unaligned_start;
 		uint32_t	tx_pkts_unaligned_len;
+		uint32_t	tx_pkts_unaligned_tooshort;
 		uint32_t	tx_pkts_nosegs;
 		uint32_t	tx_pkts_aligned;
 		uint32_t	rx_overflow;

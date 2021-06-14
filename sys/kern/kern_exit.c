@@ -39,6 +39,7 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_ddb.h"
 #include "opt_ktrace.h"
 
 #include <sys/param.h>
@@ -53,7 +54,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/proc.h>
 #include <sys/procdesc.h>
-#include <sys/pioctl.h>
 #include <sys/jail.h>
 #include <sys/tty.h>
 #include <sys/wait.h>
@@ -66,6 +66,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sched.h>
 #include <sys/sx.h>
 #include <sys/syscallsubr.h>
+#include <sys/sysctl.h>
 #include <sys/syslog.h>
 #include <sys/ptrace.h>
 #include <sys/acct.h>		/* for acct_process() function prototype */
@@ -73,6 +74,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/sdt.h>
 #include <sys/shm.h>
 #include <sys/sem.h>
+#include <sys/sysent.h>
+#include <sys/timers.h>
 #include <sys/umtx.h>
 #ifdef KTRACE
 #include <sys/ktrace.h>
@@ -97,8 +100,10 @@ dtrace_execexit_func_t	dtrace_fasttrap_exit;
 SDT_PROVIDER_DECLARE(proc);
 SDT_PROBE_DEFINE1(proc, , , exit, "int");
 
-/* Hook for NFS teardown procedure. */
-void (*nlminfo_release_p)(struct proc *p);
+static int kern_kill_on_dbg_exit = 1;
+SYSCTL_INT(_kern, OID_AUTO, kill_on_debugger_exit, CTLFLAG_RWTUN,
+    &kern_kill_on_dbg_exit, 0,
+    "Kill ptraced processes when debugger exits");
 
 struct proc *
 proc_realparent(struct proc *child)
@@ -108,7 +113,7 @@ proc_realparent(struct proc *child)
 	sx_assert(&proctree_lock, SX_LOCKED);
 	if ((child->p_treeflag & P_TREE_ORPHANED) == 0)
 		return (child->p_pptr->p_pid == child->p_oppid ?
-			    child->p_pptr : initproc);
+		    child->p_pptr : child->p_reaper);
 	for (p = child; (p->p_treeflag & P_TREE_FIRST_ORPHAN) == 0;) {
 		/* Cannot use LIST_PREV(), since the list head is not known. */
 		p = __containerof(p->p_orphan.le_prev, struct proc,
@@ -281,15 +286,6 @@ exit1(struct thread *td, int rval, int signo)
 	p->p_xsig = signo;
 
 	/*
-	 * Wakeup anyone in procfs' PIOCWAIT.  They should have a hold
-	 * on our vmspace, so we should block below until they have
-	 * released their reference to us.  Note that if they have
-	 * requested S_EXIT stops we will block here until they ack
-	 * via PIOCCONT.
-	 */
-	_STOPEVENT(p, S_EXIT, 0);
-
-	/*
 	 * Ignore any pending request to stop due to a stop signal.
 	 * Once P_WEXIT is set, future requests will be ignored as
 	 * well.
@@ -297,13 +293,8 @@ exit1(struct thread *td, int rval, int signo)
 	p->p_flag &= ~P_STOPPED_SIG;
 	KASSERT(!P_SHOULDSTOP(p), ("exiting process is stopped"));
 
-	/*
-	 * Note that we are exiting and do another wakeup of anyone in
-	 * PIOCWAIT in case they aren't listening for S_EXIT stops or
-	 * decided to wait again after we told them we are exiting.
-	 */
+	/* Note that we are exiting. */
 	p->p_flag |= P_WEXIT;
-	wakeup(&p->p_stype);
 
 	/*
 	 * Wait for any processes that have a hold on our vmspace to
@@ -342,6 +333,11 @@ exit1(struct thread *td, int rval, int signo)
 		mtx_unlock(&ppeers_lock);
 	}
 
+	itimers_exit(p);
+
+	if (p->p_sysent->sv_onexit != NULL)
+		p->p_sysent->sv_onexit(p);
+
 	/*
 	 * Check if any loadable modules need anything done at process exit.
 	 * E.g. SYSV IPC stuff.
@@ -373,23 +369,19 @@ exit1(struct thread *td, int rval, int signo)
 	PROC_UNLOCK(p);
 
 	umtx_thread_exit(td);
+	seltdfini(td);
 
 	/*
 	 * Reset any sigio structures pointing to us as a result of
-	 * F_SETOWN with our pid.
+	 * F_SETOWN with our pid.  The P_WEXIT flag interlocks with fsetown().
 	 */
 	funsetownlst(&p->p_sigiolst);
-
-	/*
-	 * If this process has an nlminfo data area (for lockd), release it
-	 */
-	if (nlminfo_release_p != NULL && p->p_nlminfo != NULL)
-		(*nlminfo_release_p)(p);
 
 	/*
 	 * Close open files and release open-file table.
 	 * This may block!
 	 */
+	pdescfree(td);
 	fdescfree(td);
 
 	/*
@@ -415,7 +407,6 @@ exit1(struct thread *td, int rval, int signo)
 	}
 
 	vmspace_exit(td);
-	killjobc();
 	(void)acct_process(td);
 
 #ifdef KTRACE
@@ -452,12 +443,26 @@ exit1(struct thread *td, int rval, int signo)
 	 */
 	sx_xlock(&allproc_lock);
 	LIST_REMOVE(p, p_list);
+
+#ifdef DDB
+	/*
+	 * Used by ddb's 'ps' command to find this process via the
+	 * pidhash.
+	 */
+	p->p_list.le_prev = NULL;
+#endif
 	sx_xunlock(&allproc_lock);
 
 	sx_xlock(&proctree_lock);
 	PROC_LOCK(p);
 	p->p_flag &= ~(P_TRACED | P_PPWAIT | P_PPTRACE);
 	PROC_UNLOCK(p);
+
+	/*
+	 * killjobc() might drop and re-acquire proctree_lock to
+	 * revoke control tty if exiting process was a session leader.
+	 */
+	killjobc();
 
 	/*
 	 * Reparent all children processes:
@@ -505,8 +510,9 @@ exit1(struct thread *td, int rval, int signo)
 			}
 		} else {
 			/*
-			 * Traced processes are killed since their existence
-			 * means someone is screwing up.
+			 * Traced processes are killed by default
+			 * since their existence means someone is
+			 * screwing up.
 			 */
 			t = proc_realparent(q);
 			if (t == p) {
@@ -523,14 +529,23 @@ exit1(struct thread *td, int rval, int signo)
 			 * orphan link for q now while q is locked.
 			 */
 			proc_clear_orphan(q);
-			q->p_flag &= ~(P_TRACED | P_STOPPED_TRACE);
+			q->p_flag &= ~P_TRACED;
 			q->p_flag2 &= ~P2_PTRACE_FSTP;
 			q->p_ptevents = 0;
+			p->p_xthread = NULL;
 			FOREACH_THREAD_IN_PROC(q, tdt) {
 				tdt->td_dbgflags &= ~(TDB_SUSPEND | TDB_XSIG |
 				    TDB_FSTP);
+				tdt->td_xsig = 0;
 			}
-			kern_psignal(q, SIGKILL);
+			if (kern_kill_on_dbg_exit) {
+				q->p_flag &= ~P_STOPPED_TRACE;
+				kern_psignal(q, SIGKILL);
+			} else if ((q->p_flag & (P_STOPPED_TRACE |
+			    P_STOPPED_SIG)) != 0) {
+				sigqueue_delete_proc(q, SIGTRAP);
+				ptrace_unsuspend(q);
+			}
 		}
 		PROC_UNLOCK(q);
 		if (ksi != NULL)
@@ -574,6 +589,9 @@ exit1(struct thread *td, int rval, int signo)
 	/* Save exit status. */
 	PROC_LOCK(p);
 	p->p_xthread = td;
+
+	if (p->p_sysent->sv_ontdexit != NULL)
+		p->p_sysent->sv_ontdexit(td);
 
 #ifdef KDTRACE_HOOKS
 	/*
@@ -952,8 +970,7 @@ proc_reap(struct thread *td, struct proc *p, int *status, int options)
 	/*
 	 * Free credentials, arguments, and sigacts.
 	 */
-	crfree(p->p_ucred);
-	proc_set_cred(p, NULL);
+	proc_unset_cred(p);
 	pargs_drop(p->p_args);
 	p->p_args = NULL;
 	sigacts_free(p->p_sigacts);

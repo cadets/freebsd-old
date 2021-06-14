@@ -44,9 +44,11 @@
 #
 # DESTDIR	The tree where the module gets installed. [not set]
 #
-# KERNBUILDDIR
-#		Set to the location of the kernel build directory where
+# KERNBUILDDIR	Set to the location of the kernel build directory where
 #		the opt_*.h files, .o's and kernel winds up.
+#
+# BLOB_OBJS	Prebuilt binary blobs .o's from the src tree to be linked into
+#		the module. These are precious and not removed in make clean.
 #
 # +++ targets +++
 #
@@ -88,11 +90,19 @@ __KLD_SHARED=no
 .if !empty(CFLAGS:M-O[23s]) && empty(CFLAGS:M-fno-strict-aliasing)
 CFLAGS+=	-fno-strict-aliasing
 .endif
-.if ${COMPILER_TYPE} == "gcc" && ${COMPILER_VERSION} < 50000
-WERROR?=	-Wno-error
-.else
 WERROR?=	-Werror
-.endif
+
+LINUXKPI_GENSRCS+= \
+	backlight_if.h \
+	bus_if.h \
+	device_if.h \
+	pci_if.h \
+	pci_iov_if.h \
+	pcib_if.h \
+	vnode_if.h \
+	usb_if.h \
+	opt_usb.h \
+	opt_stack.h
 
 CFLAGS+=	${WERROR}
 CFLAGS+=	-D_KERNEL
@@ -123,6 +133,13 @@ CFLAGS.gcc+= --param large-function-growth=1000
 
 # Disallow common variables, and if we end up with commons from
 # somewhere unexpected, allocate storage for them in the module itself.
+#
+# -fno-common is the default for src builds, but this should be left in place
+# until at least we catch up to GCC10/LLVM11 or otherwise enable -fno-common
+# in <bsd.sys.mk> instead.  For now, we will have duplicate -fno-common in
+# CFLAGS for in-tree module builds as they will also pick it up from
+# share/mk/src.sys.mk, but the following is important for out-of-tree modules
+# (e.g. ports).
 CFLAGS+=	-fno-common
 LDFLAGS+=	-d -warn-common
 
@@ -131,7 +148,7 @@ LDFLAGS+=	--build-id=sha1
 .endif
 
 CFLAGS+=	${DEBUG_FLAGS}
-.if ${MACHINE_CPUARCH} == amd64
+.if ${MACHINE_CPUARCH} == aarch64 || ${MACHINE_CPUARCH} == amd64
 CFLAGS+=	-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer
 .endif
 
@@ -143,11 +160,7 @@ CFLAGS+=	-fPIC
 # Temporary workaround for PR 196407, which contains the fascinating details.
 # Don't allow clang to use fpu instructions or registers in kernel modules.
 .if ${MACHINE_CPUARCH} == arm
-.if ${COMPILER_VERSION} < 30800
-CFLAGS.clang+=	-mllvm -arm-use-movt=0
-.else
 CFLAGS.clang+=	-mno-movt
-.endif
 CFLAGS.clang+=	-mfpu=none
 CFLAGS+=	-funwind-tables
 .endif
@@ -177,19 +190,13 @@ SRCS+=	${KMOD:S/$/.c/}
 CLEANFILES+=	${KMOD:S/$/.c/}
 
 .for _firmw in ${FIRMWS}
-${_firmw:C/\:.*$/.fwo/:T}:	${_firmw:C/\:.*$//}
+${_firmw:C/\:.*$/.fwo/:T}:	${_firmw:C/\:.*$//} ${SYSDIR}/kern/firmw.S
 	@${ECHO} ${_firmw:C/\:.*$//} ${.ALLSRC:M*${_firmw:C/\:.*$//}}
-	@if [ -e ${_firmw:C/\:.*$//} ]; then			\
-		${LD} -b binary --no-warn-mismatch ${_LDFLAGS}	\
-		    -m ${LD_EMULATION} -r -d			\
-		    -o ${.TARGET} ${_firmw:C/\:.*$//};		\
-	else							\
-		ln -s ${.ALLSRC:M*${_firmw:C/\:.*$//}} ${_firmw:C/\:.*$//}; \
-		${LD} -b binary --no-warn-mismatch ${_LDFLAGS}	\
-		    -m ${LD_EMULATION} -r -d			\
-		    -o ${.TARGET} ${_firmw:C/\:.*$//};		\
-		rm ${_firmw:C/\:.*$//};				\
-	fi
+	${CC:N${CCACHE_BIN}} -c -x assembler-with-cpp -DLOCORE 	\
+	    ${CFLAGS} ${WERROR} 				\
+	    -DFIRMW_FILE="${.ALLSRC:M*${_firmw:C/\:.*$//}}" 	\
+	    -DFIRMW_SYMBOL="${_firmw:C/\:.*$//:C/[-.\/]/_/g}"	\
+	    ${SYSDIR}/kern/firmw.S -o ${.TARGET}
 
 OBJS+=	${_firmw:C/\:.*$/.fwo/:T}
 .endfor
@@ -206,7 +213,7 @@ OBJS+=	${SRCS:N*.h:R:S/$/.o/g}
 PROG=	${KMOD}.ko
 .endif
 
-.if !defined(DEBUG_FLAGS)
+.if !defined(DEBUG_FLAGS) || ${MK_KERNEL_SYMBOLS} == "no"
 FULLPROG=	${PROG}
 .else
 FULLPROG=	${PROG}.full
@@ -236,14 +243,14 @@ LDSCRIPT_FLAGS?= -T ${SYSDIR}/conf/ldscript.kmod.${MACHINE_ARCH}
 .endif
 
 .if ${__KLD_SHARED} == yes
-${KMOD}.kld: ${OBJS}
+${KMOD}.kld: ${OBJS} ${BLOB_OBJS}
 .else
-${FULLPROG}: ${OBJS}
+${FULLPROG}: ${OBJS} ${BLOB_OBJS}
 .endif
 	${LD} -m ${LD_EMULATION} ${_LDFLAGS} ${LDSCRIPT_FLAGS} -r -d \
-	    -o ${.TARGET} ${OBJS}
+	    -o ${.TARGET} ${OBJS} ${BLOB_OBJS}
 .if ${MK_CTF} != "no"
-	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${OBJS}
+	${CTFMERGE} ${CTFFLAGS} -o ${.TARGET} ${OBJS} ${BLOB_OBJS}
 .endif
 .if defined(EXPORT_SYMS)
 .if ${EXPORT_SYMS} != YES
@@ -266,10 +273,7 @@ ${FULLPROG}: ${OBJS}
 	${OBJCOPY} --strip-debug ${.TARGET}
 .endif
 
-.if ${COMPILER_TYPE} == "clang" || \
-    (${COMPILER_TYPE} == "gcc" && ${COMPILER_VERSION} >= 60000)
 _MAP_DEBUG_PREFIX= yes
-.endif
 
 _ILINKS=machine
 .if ${MACHINE_CPUARCH} == "i386" || ${MACHINE_CPUARCH} == "amd64"
@@ -307,13 +311,13 @@ ${_ILINKS}:
 	*) \
 		path=${SYSDIR}/${.TARGET:T}/include ;; \
 	esac ; \
-	path=`(cd $$path && /bin/pwd)` ; \
+	path=`realpath $$path`; \
 	${ECHO} ${.TARGET:T} "->" $$path ; \
 	ln -fns $$path ${.TARGET:T}
 
 CLEANFILES+= ${PROG} ${KMOD}.kld ${OBJS}
 
-.if defined(DEBUG_FLAGS)
+.if defined(DEBUG_FLAGS) && ${MK_KERNEL_SYMBOLS} != "no"
 CLEANFILES+= ${FULLPROG} ${PROG}.debug
 .endif
 
@@ -332,7 +336,7 @@ _kmodinstall: .PHONY
 	${INSTALL} -T release -o ${KMODOWN} -g ${KMODGRP} -m ${KMODMODE} \
 	    ${_INSTALLFLAGS} ${PROG} ${DESTDIR}${KMODDIR}/
 .if defined(DEBUG_FLAGS) && !defined(INSTALL_NODEBUG) && ${MK_KERNEL_SYMBOLS} != "no"
-	${INSTALL} -T debug -o ${KMODOWN} -g ${KMODGRP} -m ${KMODMODE} \
+	${INSTALL} -T dbg -o ${KMODOWN} -g ${KMODGRP} -m ${KMODMODE} \
 	    ${_INSTALLFLAGS} ${PROG}.debug ${DESTDIR}${KERN_DEBUGDIR}${KMODDIR}/
 .endif
 
@@ -507,13 +511,13 @@ assym.inc: ${SYSDIR}/kern/genassym.sh
 	sh ${SYSDIR}/kern/genassym.sh genassym.o > ${.TARGET}
 genassym.o: ${SYSDIR}/${MACHINE}/${MACHINE}/genassym.c offset.inc
 genassym.o: ${SRCS:Mopt_*.h}
-	${CC} -c ${CFLAGS:N-flto:N-fno-common} \
+	${CC} -c ${CFLAGS:N-flto:N-fno-common} -fcommon \
 	    ${SYSDIR}/${MACHINE}/${MACHINE}/genassym.c
 offset.inc: ${SYSDIR}/kern/genoffset.sh genoffset.o
 	sh ${SYSDIR}/kern/genoffset.sh genoffset.o > ${.TARGET}
 genoffset.o: ${SYSDIR}/kern/genoffset.c
 genoffset.o: ${SRCS:Mopt_*.h}
-	${CC} -c ${CFLAGS:N-flto:N-fno-common} \
+	${CC} -c ${CFLAGS:N-flto:N-fno-common} -fcommon \
 	    ${SYSDIR}/kern/genoffset.c
 
 CLEANDEPENDFILES+=	${_ILINKS}
@@ -525,6 +529,23 @@ OBJS_DEPEND_GUESS+= ${SRCS:M*.h}
 .if defined(KERNBUILDDIR)
 OBJS_DEPEND_GUESS+= opt_global.h
 .endif
+
+ZINCDIR=${SYSDIR}/contrib/openzfs/include
+OPENZFS_CFLAGS=     \
+	-D_SYS_VMEM_H_  \
+	-D__KERNEL__ \
+	-nostdinc \
+	-DSMP \
+	-I${ZINCDIR}  \
+	-I${ZINCDIR}/os/freebsd \
+	-I${ZINCDIR}/os/freebsd/spl \
+	-I${ZINCDIR}/os/freebsd/zfs \
+	-I${SYSDIR}/cddl/compat/opensolaris \
+	-I${SYSDIR}/cddl/contrib/opensolaris/uts/common \
+	-include ${ZINCDIR}/os/freebsd/spl/sys/ccompile.h
+OPENZFS_CWARNFLAGS= \
+	-Wno-nested-externs \
+	-Wno-redundant-decls
 
 .include <bsd.dep.mk>
 .include <bsd.clang-analyze.mk>

@@ -109,7 +109,6 @@ SUBDIR=	adduser \
 
 SUBDIR.${MK_ACCT}+=	accton
 SUBDIR.${MK_ACCT}+=	sa
-SUBDIR.${MK_AMD}+=	amd
 SUBDIR.${MK_AUDIT}+=	audit
 SUBDIR.${MK_AUDIT}+=	auditd
 .if ${MK_OPENSSL} != "no"
@@ -143,11 +142,9 @@ SUBDIR.${MK_FLOPPY}+=	fdcontrol
 SUBDIR.${MK_FLOPPY}+=	fdformat
 SUBDIR.${MK_FLOPPY}+=	fdread
 SUBDIR.${MK_FLOPPY}+=	fdwrite
-SUBDIR.${MK_FMTREE}+=	fmtree
 SUBDIR.${MK_FREEBSD_UPDATE}+=	freebsd-update
 SUBDIR.${MK_GSSAPI}+=	gssd
 SUBDIR.${MK_GPIO}+=	gpioctl
-SUBDIR.${MK_HTTPD}+=	simple_httpd
 SUBDIR.${MK_INET6}+=	ip6addrctl
 SUBDIR.${MK_INET6}+=	mld6query
 SUBDIR.${MK_INET6}+=	ndp
@@ -169,10 +166,8 @@ SUBDIR.${MK_LEGACY_CONSOLE}+=	kbdcontrol
 SUBDIR.${MK_LEGACY_CONSOLE}+=	kbdmap
 SUBDIR.${MK_LEGACY_CONSOLE}+=	moused
 SUBDIR.${MK_LEGACY_CONSOLE}+=	vidcontrol
-.if ${MK_LIBTHR} != "no" || ${MK_LIBPTHREAD} != "no"
 SUBDIR.${MK_PPP}+=	pppctl
 SUBDIR.${MK_NS_CACHING}+=	nscd
-.endif
 SUBDIR.${MK_LPR}+=	lpr
 SUBDIR.${MK_MAN_UTILS}+=	manctl
 SUBDIR.${MK_MLX5TOOL}+=	mlx5tool
@@ -191,12 +186,11 @@ SUBDIR.${MK_NIS}+=	ypserv
 SUBDIR.${MK_NIS}+=	ypset
 SUBDIR.${MK_NTP}+=	ntp
 SUBDIR.${MK_OPENSSL}+=	keyserv
+SUBDIR.${MK_OPENSSL_KTLS}+=	rpc.tlsclntd
+SUBDIR.${MK_OPENSSL_KTLS}+=	rpc.tlsservd
 SUBDIR.${MK_PF}+=	ftp-proxy
 SUBDIR.${MK_PKGBOOTSTRAP}+=	pkg
-.if ${COMPILER_FEATURES:Mc++11}
-SUBDIR.${MK_PMC}+=	pmc
-.endif
-SUBDIR.${MK_PMC}+=	pmcannotate pmccontrol pmcstat pmcstudy
+SUBDIR.${MK_PMC}+=	pmc pmcannotate pmccontrol pmcstat pmcstudy
 SUBDIR.${MK_PORTSNAP}+=	portsnap
 SUBDIR.${MK_PPP}+=	ppp
 SUBDIR.${MK_QUOTAS}+=	edquota
@@ -219,7 +213,6 @@ SUBDIR.${MK_USB}+=	usbdump
 SUBDIR.${MK_UTMPX}+=	ac
 SUBDIR.${MK_UTMPX}+=	lastlogin
 SUBDIR.${MK_UTMPX}+=	utx
-SUBDIR.${MK_WIRELESS}+=	ancontrol
 SUBDIR.${MK_WIRELESS}+=	wlandebug
 SUBDIR.${MK_WIRELESS}+=	wpa
 

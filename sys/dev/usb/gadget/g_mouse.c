@@ -61,7 +61,8 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/usb/gadget/g_mouse.h>
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, g_mouse, CTLFLAG_RW, 0, "USB mouse gadget");
+static SYSCTL_NODE(_hw_usb, OID_AUTO, g_mouse, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "USB mouse gadget");
 
 #ifdef USB_DEBUG
 static int g_mouse_debug = 0;
@@ -154,7 +155,6 @@ DRIVER_MODULE(g_mouse, uhub, g_mouse_driver, g_mouse_devclass, 0, 0);
 MODULE_DEPEND(g_mouse, usb, 1, 1, 1);
 
 static const struct usb_config g_mouse_config[G_MOUSE_N_TRANSFER] = {
-
 	[G_MOUSE_INTR_DT] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,

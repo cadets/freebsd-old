@@ -16,13 +16,9 @@ static const char rcsid[] = "@(#)$Id$";
 # define	KERNEL	1
 # define	_KERNEL	1
 #endif
-#if defined(__FreeBSD_version) && \
+#if defined(__FreeBSD__) && \
     !defined(KLD_MODULE) && !defined(IPFILTER_LKM)
 # include "opt_inet6.h"
-#endif
-#if defined(__FreeBSD_version) && \
-    !defined(KLD_MODULE) && !defined(IPFILTER_LKM)
-# include "opt_random_ip_id.h"
 #endif
 #include <sys/param.h>
 #include <sys/eventhandler.h>
@@ -34,9 +30,9 @@ static const char rcsid[] = "@(#)$Id$";
 #include <sys/filio.h>
 #include <sys/time.h>
 #include <sys/systm.h>
-# include <sys/dirent.h>
-#if defined(__FreeBSD_version)
-#include <sys/jail.h>
+#include <sys/dirent.h>
+#if defined(__FreeBSD__)
+# include <sys/jail.h>
 #endif
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
@@ -44,11 +40,11 @@ static const char rcsid[] = "@(#)$Id$";
 #include <sys/socket.h>
 #include <sys/selinfo.h>
 #include <netinet/tcp_var.h>
-
 #include <net/if.h>
 #include <net/if_var.h>
 #include <net/netisr.h>
 #include <net/route.h>
+#include <net/route/nhop.h>
 #include <netinet/in.h>
 #include <netinet/in_fib.h>
 #include <netinet/in_var.h>
@@ -74,31 +70,31 @@ static const char rcsid[] = "@(#)$Id$";
 #include "netinet/ip_lookup.h"
 #include "netinet/ip_dstlist.h"
 #ifdef	IPFILTER_SCAN
-#include "netinet/ip_scan.h"
+# include "netinet/ip_scan.h"
 #endif
 #include "netinet/ip_pool.h"
 #include <sys/malloc.h>
 #include <sys/kernel.h>
 #ifdef CSUM_DATA_VALID
-#include <machine/in_cksum.h>
+# include <machine/in_cksum.h>
 #endif
-extern	int	ip_optcopy __P((struct ip *, struct ip *));
+extern	int	ip_optcopy(struct ip *, struct ip *);
 
-# ifdef IPFILTER_M_IPFILTER
+#ifdef IPFILTER_M_IPFILTER
 MALLOC_DEFINE(M_IPFILTER, "ipfilter", "IP Filter packet filter data structures");
-# endif
+#endif
 
 
-static	int	ipf_send_ip __P((fr_info_t *, mb_t *));
-static void	ipf_timer_func __P((void *arg));
+static	int	ipf_send_ip(fr_info_t *, mb_t *);
+static void	ipf_timer_func(void *arg);
 
 VNET_DEFINE(ipf_main_softc_t, ipfmain) = {
 	.ipf_running		= -2,
 };
 #define	V_ipfmain		VNET(ipfmain)
 
-# include <sys/conf.h>
-#  include <net/pfil.h>
+#include <sys/conf.h>
+#include <net/pfil.h>
 
 VNET_DEFINE_STATIC(eventhandler_tag, ipf_arrivetag);
 VNET_DEFINE_STATIC(eventhandler_tag, ipf_departtag);
@@ -277,8 +273,8 @@ ipfdetach(softc)
 int
 ipfioctl(dev, cmd, data, mode, p)
 	struct thread *p;
-#    define	p_cred	td_ucred
-#    define	p_uid	td_ucred->cr_ruid
+#define	p_cred	td_ucred
+#define	p_uid	td_ucred->cr_ruid
 	struct cdev *dev;
 	ioctlcmd_t cmd;
 	caddr_t data;
@@ -288,14 +284,12 @@ ipfioctl(dev, cmd, data, mode, p)
 	SPL_INT(s);
 
 	CURVNET_SET(TD_TO_VNET(p));
-#if (BSD >= 199306)
         if (securelevel_ge(p->p_cred, 3) && (mode & FWRITE))
 	{
 		V_ipfmain.ipf_interror = 130001;
 		CURVNET_RESTORE();
 		return EPERM;
 	}
-#endif
 
 	unit = GET_MINOR(dev);
 	if ((IPL_LOGMAX < unit) || (unit < 0)) {
@@ -382,11 +376,9 @@ ipf_send_reset(fin)
 	}
 
 	m->m_len = sizeof(*tcp2) + hlen;
-#if (BSD >= 199103)
 	m->m_data += max_linkhdr;
 	m->m_pkthdr.len = m->m_len;
 	m->m_pkthdr.rcvif = (struct ifnet *)0;
-#endif
 	ip = mtod(m, struct ip *);
 	bzero((char *)ip, hlen);
 #ifdef USE_INET6
@@ -698,8 +690,7 @@ ipf_fastroute(m0, mpp, fin, fdp)
 	int len, off, error = 0, hlen, code;
 	struct ifnet *ifp, *sifp;
 	struct sockaddr_in dst;
-	struct nhop4_extended nh4;
-	int has_nhop = 0;
+	struct nhop_object *nh;
 	u_long fibnum = 0;
 	u_short ip_off;
 	frdest_t node;
@@ -774,7 +765,9 @@ ipf_fastroute(m0, mpp, fin, fdp)
 		dst.sin_addr = fdp->fd_ip;
 
 	fibnum = M_GETFIB(m0);
-	if (fib4_lookup_nh_ext(fibnum, dst.sin_addr, NHR_REF, 0, &nh4) != 0) {
+	NET_EPOCH_ASSERT();
+	nh = fib4_lookup(fibnum, dst.sin_addr, 0, NHR_NONE, 0);
+	if (nh == NULL) {
 		if (in_localaddr(ip->ip_dst))
 			error = EHOSTUNREACH;
 		else
@@ -782,11 +775,10 @@ ipf_fastroute(m0, mpp, fin, fdp)
 		goto bad;
 	}
 
-	has_nhop = 1;
 	if (ifp == NULL)
-		ifp = nh4.nh_ifp;
-	if (nh4.nh_flags & NHF_GATEWAY)
-		dst.sin_addr = nh4.nh_addr;
+		ifp = nh->nh_ifp;
+	if (nh->nh_flags & NHF_GATEWAY)
+		dst.sin_addr = nh->gw4_sa.sin_addr;
 
 	/*
 	 * For input packets which are being "fastrouted", they won't
@@ -926,9 +918,6 @@ done:
 	else
 		V_ipfmain.ipf_frouteok[1]++;
 
-	if (has_nhop)
-		fib4_free_nh_ext(fibnum, &nh4);
-
 	return 0;
 bad:
 	if (error == EMSGSIZE) {
@@ -949,11 +938,13 @@ int
 ipf_verifysrc(fin)
 	fr_info_t *fin;
 {
-	struct nhop4_basic nh4;
+	struct nhop_object *nh;
 
-	if (fib4_lookup_nh_basic(0, fin->fin_src, 0, 0, &nh4) != 0)
+	NET_EPOCH_ASSERT();
+	nh = fib4_lookup(RT_DEFAULT_FIB, fin->fin_src, 0, NHR_NONE, 0);
+	if (nh == NULL)
 		return (0);
-	return (fin->fin_ifp == nh4.nh_ifp);
+	return (fin->fin_ifp == nh->nh_ifp);
 }
 
 
@@ -1496,3 +1487,10 @@ ipf_pcksum6(m, ip6, off, len)
 #endif
 }
 #endif
+
+void
+ipf_fbsd_kenv_get(ipf_main_softc_t *softc)
+{
+	TUNABLE_INT_FETCH("net.inet.ipf.large_nat",
+		&softc->ipf_large_nat);
+}

@@ -71,7 +71,9 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/blockcount.h>
 #include <sys/cpuset.h>
+#include <sys/limits.h>
 #include <sys/lock.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
@@ -149,33 +151,23 @@ struct mtx vm_object_list_mtx;	/* lock for object list and count */
 
 struct vm_object kernel_object_store;
 
-static SYSCTL_NODE(_vm_stats, OID_AUTO, object, CTLFLAG_RD, 0,
+static SYSCTL_NODE(_vm_stats, OID_AUTO, object, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
     "VM object stats");
 
-static counter_u64_t object_collapses = EARLY_COUNTER;
+static COUNTER_U64_DEFINE_EARLY(object_collapses);
 SYSCTL_COUNTER_U64(_vm_stats_object, OID_AUTO, collapses, CTLFLAG_RD,
     &object_collapses,
     "VM object collapses");
 
-static counter_u64_t object_bypasses = EARLY_COUNTER;
+static COUNTER_U64_DEFINE_EARLY(object_bypasses);
 SYSCTL_COUNTER_U64(_vm_stats_object, OID_AUTO, bypasses, CTLFLAG_RD,
     &object_bypasses,
     "VM object bypasses");
 
-static counter_u64_t object_collapse_waits = EARLY_COUNTER;
+static COUNTER_U64_DEFINE_EARLY(object_collapse_waits);
 SYSCTL_COUNTER_U64(_vm_stats_object, OID_AUTO, collapse_waits, CTLFLAG_RD,
     &object_collapse_waits,
     "Number of sleeps for collapse");
-
-static void
-counter_startup(void)
-{
-
-	object_collapses = counter_u64_alloc(M_WAITOK);
-	object_bypasses = counter_u64_alloc(M_WAITOK);
-	object_collapse_waits = counter_u64_alloc(M_WAITOK);
-}
-SYSINIT(object_counters, SI_SUB_CPU, SI_ORDER_ANY, counter_startup, NULL);
 
 static uma_zone_t obj_zone;
 
@@ -201,12 +193,8 @@ vm_object_zdtor(void *mem, int size, void *arg)
 	    ("object %p has reservations",
 	    object));
 #endif
-	KASSERT(REFCOUNT_COUNT(object->paging_in_progress) == 0,
-	    ("object %p paging_in_progress = %d",
-	    object, REFCOUNT_COUNT(object->paging_in_progress)));
-	KASSERT(object->busy == 0,
-	    ("object %p busy = %d",
-	    object, object->busy));
+	KASSERT(!vm_object_busied(object),
+	    ("object %p busy = %d", object, blockcount_read(&object->busy)));
 	KASSERT(object->resident_page_count == 0,
 	    ("object %p resident_page_count = %d",
 	    object, object->resident_page_count));
@@ -231,8 +219,8 @@ vm_object_zinit(void *mem, int size, int flags)
 	object->type = OBJT_DEAD;
 	vm_radix_init(&object->rtree);
 	refcount_init(&object->ref_count, 0);
-	refcount_init(&object->paging_in_progress, 0);
-	refcount_init(&object->busy, 0);
+	blockcount_init(&object->paging_in_progress);
+	blockcount_init(&object->busy);
 	object->resident_page_count = 0;
 	object->shadow_count = 0;
 	object->flags = OBJ_DEAD;
@@ -252,7 +240,8 @@ _vm_object_allocate(objtype_t type, vm_pindex_t size, u_short flags,
 	LIST_INIT(&object->shadow_head);
 
 	object->type = type;
-	if (type == OBJT_SWAP)
+	object->flags = flags;
+	if ((flags & OBJ_SWAP) != 0)
 		pctrie_init(&object->un_pager.swp.swp_blks);
 
 	/*
@@ -263,7 +252,6 @@ _vm_object_allocate(objtype_t type, vm_pindex_t size, u_short flags,
 	atomic_thread_fence_rel();
 
 	object->pg_color = 0;
-	object->flags = flags;
 	object->size = size;
 	object->domain.dr_policy = NULL;
 	object->generation = 1;
@@ -291,7 +279,7 @@ vm_object_init(void)
 {
 	TAILQ_INIT(&vm_object_list);
 	mtx_init(&vm_object_list_mtx, "vm object_list", NULL, MTX_DEF);
-	
+
 	rw_init(&kernel_object->lock, "kernel vm object");
 	_vm_object_allocate(OBJT_PHYS, atop(VM_MAX_KERNEL_ADDRESS -
 	    VM_MIN_KERNEL_ADDRESS), OBJ_UNMANAGED, kernel_object, NULL);
@@ -299,11 +287,15 @@ vm_object_init(void)
 	kernel_object->flags |= OBJ_COLORED;
 	kernel_object->pg_color = (u_short)atop(VM_MIN_KERNEL_ADDRESS);
 #endif
+	kernel_object->un_pager.phys.ops = &default_phys_pg_ops;
 
 	/*
 	 * The lock portion of struct vm_object must be type stable due
 	 * to vm_pageout_fallback_object_lock locking a vm object
 	 * without holding any references to it.
+	 *
+	 * paging_in_progress is valid always.  Lockless references to
+	 * the objects may acquire pip and then check OBJ_DEAD.
 	 */
 	obj_zone = uma_zcreate("VM OBJECT", sizeof (struct vm_object), NULL,
 #ifdef INVARIANTS
@@ -338,23 +330,12 @@ vm_object_set_memattr(vm_object_t object, vm_memattr_t memattr)
 {
 
 	VM_OBJECT_ASSERT_WLOCKED(object);
-	switch (object->type) {
-	case OBJT_DEFAULT:
-	case OBJT_DEVICE:
-	case OBJT_MGTDEVICE:
-	case OBJT_PHYS:
-	case OBJT_SG:
-	case OBJT_SWAP:
-	case OBJT_VNODE:
-		if (!TAILQ_EMPTY(&object->memq))
-			return (KERN_FAILURE);
-		break;
-	case OBJT_DEAD:
+
+	if (object->type == OBJT_DEAD)
 		return (KERN_INVALID_ARGUMENT);
-	default:
-		panic("vm_object_set_memattr: object %p is of undefined type",
-		    object);
-	}
+	if (!TAILQ_EMPTY(&object->memq))
+		return (KERN_FAILURE);
+
 	object->memattr = memattr;
 	return (KERN_SUCCESS);
 }
@@ -363,56 +344,55 @@ void
 vm_object_pip_add(vm_object_t object, short i)
 {
 
-	refcount_acquiren(&object->paging_in_progress, i);
+	if (i > 0)
+		blockcount_acquire(&object->paging_in_progress, i);
 }
 
 void
 vm_object_pip_wakeup(vm_object_t object)
 {
 
-	refcount_release(&object->paging_in_progress);
+	vm_object_pip_wakeupn(object, 1);
 }
 
 void
 vm_object_pip_wakeupn(vm_object_t object, short i)
 {
 
-	refcount_releasen(&object->paging_in_progress, i);
+	if (i > 0)
+		blockcount_release(&object->paging_in_progress, i);
 }
 
 /*
- * Atomically drop the interlock and wait for pip to drain.  This protects
- * from sleep/wakeup races due to identity changes.  The lock is not
- * re-acquired on return.
+ * Atomically drop the object lock and wait for pip to drain.  This protects
+ * from sleep/wakeup races due to identity changes.  The lock is not re-acquired
+ * on return.
  */
 static void
-vm_object_pip_sleep(vm_object_t object, char *waitid)
+vm_object_pip_sleep(vm_object_t object, const char *waitid)
 {
 
-	refcount_sleep_interlock(&object->paging_in_progress,
-	    &object->lock, waitid, PVM);
+	(void)blockcount_sleep(&object->paging_in_progress, &object->lock,
+	    waitid, PVM | PDROP);
 }
 
 void
-vm_object_pip_wait(vm_object_t object, char *waitid)
+vm_object_pip_wait(vm_object_t object, const char *waitid)
 {
 
 	VM_OBJECT_ASSERT_WLOCKED(object);
 
-	while (REFCOUNT_COUNT(object->paging_in_progress) > 0) {
-		vm_object_pip_sleep(object, waitid);
-		VM_OBJECT_WLOCK(object);
-	}
+	blockcount_wait(&object->paging_in_progress, &object->lock, waitid,
+	    PVM);
 }
 
 void
-vm_object_pip_wait_unlocked(vm_object_t object, char *waitid)
+vm_object_pip_wait_unlocked(vm_object_t object, const char *waitid)
 {
 
 	VM_OBJECT_ASSERT_UNLOCKED(object);
 
-	while (REFCOUNT_COUNT(object->paging_in_progress) > 0)
-		refcount_wait(&object->paging_in_progress, waitid, PVM);
+	blockcount_wait(&object->paging_in_progress, NULL, waitid, PVM);
 }
 
 /*
@@ -430,8 +410,10 @@ vm_object_allocate(objtype_t type, vm_pindex_t size)
 	case OBJT_DEAD:
 		panic("vm_object_allocate: can't create OBJT_DEAD");
 	case OBJT_DEFAULT:
-	case OBJT_SWAP:
 		flags = OBJ_COLORED;
+		break;
+	case OBJT_SWAP:
+		flags = OBJ_COLORED | OBJ_SWAP;
 		break;
 	case OBJT_DEVICE:
 	case OBJT_SG:
@@ -447,10 +429,23 @@ vm_object_allocate(objtype_t type, vm_pindex_t size)
 		flags = 0;
 		break;
 	default:
-		panic("vm_object_allocate: type %d is undefined", type);
+		panic("vm_object_allocate: type %d is undefined or dynamic",
+		    type);
 	}
 	object = (vm_object_t)uma_zalloc(obj_zone, M_WAITOK);
 	_vm_object_allocate(type, size, flags, object, NULL);
+
+	return (object);
+}
+
+vm_object_t
+vm_object_allocate_dyn(objtype_t dyntype, vm_pindex_t size, u_short flags)
+{
+	vm_object_t object;
+
+	MPASS(dyntype >= OBJT_FIRST_DYN /* && dyntype < nitems(pagertab) */);
+	object = (vm_object_t)uma_zalloc(obj_zone, M_WAITOK);
+	_vm_object_allocate(dyntype, size, flags, object, NULL);
 
 	return (object);
 }
@@ -485,7 +480,6 @@ vm_object_allocate_anon(vm_pindex_t size, vm_object_t backing_object,
 static void
 vm_object_reference_vnode(vm_object_t object)
 {
-	struct vnode *vp;
 	u_int old;
 
 	/*
@@ -495,10 +489,8 @@ vm_object_reference_vnode(vm_object_t object)
 	if (!refcount_acquire_if_gt(&object->ref_count, 0)) {
 		VM_OBJECT_RLOCK(object);
 		old = refcount_acquire(&object->ref_count);
-		if (object->type == OBJT_VNODE && old == 0) {
-			vp = object->handle;
-			vref(vp);
-		}
+		if (object->type == OBJT_VNODE && old == 0)
+			vref(object->handle);
 		VM_OBJECT_RUNLOCK(object);
 	}
 }
@@ -533,13 +525,12 @@ vm_object_reference(vm_object_t object)
 void
 vm_object_reference_locked(vm_object_t object)
 {
-	struct vnode *vp;
 	u_int old;
 
 	VM_OBJECT_ASSERT_LOCKED(object);
 	old = refcount_acquire(&object->ref_count);
-	if (object->type == OBJT_VNODE && old == 0) {
-		vp = object->handle; vref(vp); }
+	if (object->type == OBJT_VNODE && old == 0)
+		vref(object->handle);
 	KASSERT((object->flags & OBJ_DEAD) == 0,
 	    ("vm_object_reference: Referenced dead object."));
 }
@@ -571,7 +562,6 @@ vm_object_deallocate_vnode(vm_object_t object)
 	vrele(vp);
 }
 
-
 /*
  * We dropped a reference on an object and discovered that it had a
  * single remaining shadow.  This is a sibling of the reference we
@@ -587,7 +577,7 @@ vm_object_deallocate_anon(vm_object_t backing_object)
 	KASSERT(object != NULL && backing_object->shadow_count == 1,
 	    ("vm_object_anon_deallocate: ref_count: %d, shadow_count: %d",
 	    backing_object->ref_count, backing_object->shadow_count));
-	KASSERT((object->flags & (OBJ_TMPFS_NODE | OBJ_ANON)) == OBJ_ANON,
+	KASSERT((object->flags & OBJ_ANON) != 0,
 	    ("invalid shadow object %p", object));
 
 	if (!VM_OBJECT_TRYWLOCK(object)) {
@@ -691,7 +681,8 @@ vm_object_deallocate(vm_object_t object)
 		umtx_shm_object_terminated(object);
 		temp = object->backing_object;
 		if (temp != NULL) {
-			KASSERT((object->flags & OBJ_TMPFS_NODE) == 0,
+			KASSERT(object->type == OBJT_DEFAULT ||
+			    object->type == OBJT_SWAP,
 			    ("shadowed tmpfs v_object 2 %p", object));
 			vm_object_backing_remove(object);
 		}
@@ -951,12 +942,13 @@ vm_object_terminate(vm_object_t object)
 	    ("terminating shadow obj %p", object));
 
 	/*
-	 * wait for the pageout daemon to be done with the object
+	 * Wait for the pageout daemon and other current users to be
+	 * done with the object.  Note that new paging_in_progress
+	 * users can come after this wait, but they must check
+	 * OBJ_DEAD flag set (without unlocking the object), and avoid
+	 * the object being terminated.
 	 */
 	vm_object_pip_wait(object, "objtrm");
-
-	KASSERT(!REFCOUNT_COUNT(object->paging_in_progress),
-	    ("vm_object_terminate: pageout in progress"));
 
 	KASSERT(object->ref_count == 0,
 	    ("vm_object_terminate: object with references, ref_count=%d",
@@ -971,7 +963,7 @@ vm_object_terminate(vm_object_t object)
 #endif
 
 	KASSERT(object->cred == NULL || object->type == OBJT_DEFAULT ||
-	    object->type == OBJT_SWAP,
+	    (object->flags & OBJ_SWAP) != 0,
 	    ("%s: non-swap obj %p has cred", __func__, object));
 
 	/*
@@ -1017,6 +1009,10 @@ vm_object_page_remove_write(vm_page_t p, int flags, boolean_t *allclean)
  *	write out pages with PGA_NOSYNC set (originally comes from MAP_NOSYNC),
  *	leaving the object dirty.
  *
+ *	For swap objects backing tmpfs regular files, do not flush anything,
+ *	but remove write protection on the mapped pages to update mtime through
+ *	mmaped writes.
+ *
  *	When stuffing pages asynchronously, allow clustering.  XXX we need a
  *	synchronous clustering mode implementation.
  *
@@ -1038,8 +1034,7 @@ vm_object_page_clean(vm_object_t object, vm_ooffset_t start, vm_ooffset_t end,
 
 	VM_OBJECT_ASSERT_WLOCKED(object);
 
-	if (object->type != OBJT_VNODE || !vm_object_mightbedirty(object) ||
-	    object->resident_page_count == 0)
+	if (!vm_object_mightbedirty(object) || object->resident_page_count == 0)
 		return (TRUE);
 
 	pagerflags = (flags & (OBJPC_SYNC | OBJPC_INVAL)) != 0 ?
@@ -1072,32 +1067,36 @@ rescan:
 			vm_page_xunbusy(p);
 			continue;
 		}
+		if (object->type == OBJT_VNODE) {
+			n = vm_object_page_collect_flush(object, p, pagerflags,
+			    flags, &allclean, &eio);
+			if (eio) {
+				res = FALSE;
+				allclean = FALSE;
+			}
+			if (object->generation != curgeneration &&
+			    (flags & OBJPC_SYNC) != 0)
+				goto rescan;
 
-		n = vm_object_page_collect_flush(object, p, pagerflags,
-		    flags, &allclean, &eio);
-		if (eio) {
-			res = FALSE;
-			allclean = FALSE;
-		}
-		if (object->generation != curgeneration &&
-		    (flags & OBJPC_SYNC) != 0)
-			goto rescan;
-
-		/*
-		 * If the VOP_PUTPAGES() did a truncated write, so
-		 * that even the first page of the run is not fully
-		 * written, vm_pageout_flush() returns 0 as the run
-		 * length.  Since the condition that caused truncated
-		 * write may be permanent, e.g. exhausted free space,
-		 * accepting n == 0 would cause an infinite loop.
-		 *
-		 * Forwarding the iterator leaves the unwritten page
-		 * behind, but there is not much we can do there if
-		 * filesystem refuses to write it.
-		 */
-		if (n == 0) {
+			/*
+			 * If the VOP_PUTPAGES() did a truncated write, so
+			 * that even the first page of the run is not fully
+			 * written, vm_pageout_flush() returns 0 as the run
+			 * length.  Since the condition that caused truncated
+			 * write may be permanent, e.g. exhausted free space,
+			 * accepting n == 0 would cause an infinite loop.
+			 *
+			 * Forwarding the iterator leaves the unwritten page
+			 * behind, but there is not much we can do there if
+			 * filesystem refuses to write it.
+			 */
+			if (n == 0) {
+				n = 1;
+				allclean = FALSE;
+			}
+		} else {
 			n = 1;
-			allclean = FALSE;
+			vm_page_xunbusy(p);
 		}
 		np = vm_page_find_least(object, pi + n);
 	}
@@ -1105,7 +1104,12 @@ rescan:
 	VOP_FSYNC(vp, (pagerflags & VM_PAGER_PUT_SYNC) ? MNT_WAIT : 0);
 #endif
 
-	if (allclean)
+	/*
+	 * Leave updating cleangeneration for tmpfs objects to tmpfs
+	 * scan.  It needs to update mtime, which happens for other
+	 * filesystems during page writeouts.
+	 */
+	if (allclean && object->type == OBJT_VNODE)
 		object->cleangeneration = curgeneration;
 	return (res);
 }
@@ -1278,8 +1282,8 @@ vm_object_madvise_freespace(vm_object_t object, int advice, vm_pindex_t pindex,
     vm_size_t size)
 {
 
-	if (advice == MADV_FREE && object->type == OBJT_SWAP)
-		swap_pager_freespace(object, pindex, size);
+	if (advice == MADV_FREE)
+		vm_pager_freespace(object, pindex, size);
 }
 
 /*
@@ -1499,7 +1503,7 @@ vm_object_shadow(vm_object_t *object, vm_ooffset_t *offset, vm_size_t length,
 void
 vm_object_split(vm_map_entry_t entry)
 {
-	vm_page_t m, m_next;
+	vm_page_t m, m_busy, m_next;
 	vm_object_t orig_object, new_object, backing_object;
 	vm_pindex_t idx, offidxstart;
 	vm_size_t size;
@@ -1556,8 +1560,14 @@ vm_object_split(vm_map_entry_t entry)
 	 * that the object is in transition.
 	 */
 	vm_object_set_flag(orig_object, OBJ_SPLIT);
+	m_busy = NULL;
+#ifdef INVARIANTS
+	idx = 0;
+#endif
 retry:
 	m = vm_page_find_least(orig_object, offidxstart);
+	KASSERT(m == NULL || idx <= m->pindex - offidxstart,
+	    ("%s: object %p was repopulated", __func__, orig_object));
 	for (; m != NULL && (idx = m->pindex - offidxstart) < size;
 	    m = m_next) {
 		m_next = TAILQ_NEXT(m, listq);
@@ -1612,17 +1622,25 @@ retry:
 		 */
 		vm_reserv_rename(m, new_object, orig_object, offidxstart);
 #endif
+
+		/*
+		 * orig_object's type may change while sleeping, so keep track
+		 * of the beginning of the busied range.
+		 */
 		if (orig_object->type != OBJT_SWAP)
 			vm_page_xunbusy(m);
+		else if (m_busy == NULL)
+			m_busy = m;
 	}
-	if (orig_object->type == OBJT_SWAP) {
+	if ((orig_object->flags & OBJ_SWAP) != 0) {
 		/*
 		 * swap_pager_copy() can sleep, in which case the orig_object's
 		 * and new_object's locks are released and reacquired. 
 		 */
 		swap_pager_copy(orig_object, new_object, offidxstart, 0);
-		TAILQ_FOREACH(m, &new_object->memq, listq)
-			vm_page_xunbusy(m);
+		if (m_busy != NULL)
+			TAILQ_FOREACH_FROM(m_busy, &new_object->memq, listq)
+				vm_page_xunbusy(m_busy);
 	}
 	vm_object_clear_flag(orig_object, OBJ_SPLIT);
 	VM_OBJECT_WUNLOCK(orig_object);
@@ -1785,9 +1803,7 @@ vm_object_collapse_scan(vm_object_t object)
 
 		if (p->pindex < backing_offset_index ||
 		    new_pindex >= object->size) {
-			if (backing_object->type == OBJT_SWAP)
-				swap_pager_freespace(backing_object, p->pindex,
-				    1);
+			vm_pager_freespace(backing_object, p->pindex, 1);
 
 			KASSERT(!pmap_page_is_mapped(p),
 			    ("freeing mapped page %p", p));
@@ -1836,9 +1852,7 @@ vm_object_collapse_scan(vm_object_t object)
 			 * page alone.  Destroy the original page from the
 			 * backing object.
 			 */
-			if (backing_object->type == OBJT_SWAP)
-				swap_pager_freespace(backing_object, p->pindex,
-				    1);
+			vm_pager_freespace(backing_object, p->pindex, 1);
 			KASSERT(!pmap_page_is_mapped(p),
 			    ("freeing mapped page %p", p));
 			if (vm_page_remove(p))
@@ -1862,9 +1876,8 @@ vm_object_collapse_scan(vm_object_t object)
 		}
 
 		/* Use the old pindex to free the right page. */
-		if (backing_object->type == OBJT_SWAP)
-			swap_pager_freespace(backing_object,
-			    new_pindex + backing_offset_index, 1);
+		vm_pager_freespace(backing_object, new_pindex +
+		    backing_offset_index, 1);
 
 #if VM_NRESERVLEVEL > 0
 		/*
@@ -1947,7 +1960,7 @@ vm_object_collapse(vm_object_t object)
 			/*
 			 * Move the pager from backing_object to object.
 			 */
-			if (backing_object->type == OBJT_SWAP) {
+			if ((backing_object->flags & OBJ_SWAP) != 0) {
 				/*
 				 * swap_pager_copy() can sleep, in which case
 				 * the backing_object's and object's locks are
@@ -2124,6 +2137,9 @@ wired:
 		vm_page_free(p);
 	}
 	vm_object_pip_wakeup(object);
+
+	vm_pager_freespace(object, start, (end == 0 ? object->size : end) -
+	    start);
 }
 
 /*
@@ -2265,7 +2281,6 @@ vm_object_coalesce(vm_object_t prev_object, vm_ooffset_t prev_offset,
 	 * Account for the charge.
 	 */
 	if (prev_object->cred != NULL) {
-
 		/*
 		 * If prev_object was charged, then this mapping,
 		 * although not charged now, may become writable
@@ -2291,9 +2306,6 @@ vm_object_coalesce(vm_object_t prev_object, vm_ooffset_t prev_offset,
 	if (next_pindex < prev_object->size) {
 		vm_object_page_remove(prev_object, next_pindex, next_pindex +
 		    next_size, 0);
-		if (prev_object->type == OBJT_SWAP)
-			swap_pager_freespace(prev_object,
-					     next_pindex, next_size);
 #if 0
 		if (prev_object->cred != NULL) {
 			KASSERT(prev_object->charge >=
@@ -2317,14 +2329,15 @@ vm_object_coalesce(vm_object_t prev_object, vm_ooffset_t prev_offset,
 }
 
 void
-vm_object_set_writeable_dirty(vm_object_t object)
+vm_object_set_writeable_dirty_(vm_object_t object)
 {
-
-	/* Only set for vnodes & tmpfs */
-	if (object->type != OBJT_VNODE &&
-	    (object->flags & OBJ_TMPFS_NODE) == 0)
-		return;
 	atomic_add_int(&object->generation, 1);
+}
+
+bool
+vm_object_mightbedirty_(vm_object_t object)
+{
+	return (object->generation != object->cleangeneration);
 }
 
 /*
@@ -2421,19 +2434,9 @@ vm_object_vnode(vm_object_t object)
 	struct vnode *vp;
 
 	VM_OBJECT_ASSERT_LOCKED(object);
-	if (object->type == OBJT_VNODE) {
-		vp = object->handle;
-		KASSERT(vp != NULL, ("%s: OBJT_VNODE has no vnode", __func__));
-	} else if (object->type == OBJT_SWAP &&
-	    (object->flags & OBJ_TMPFS) != 0) {
-		vp = object->un_pager.swp.swp_tmpfs;
-		KASSERT(vp != NULL, ("%s: OBJT_TMPFS has no vnode", __func__));
-	} else {
-		vp = NULL;
-	}
+	vm_pager_getvp(object, &vp, NULL);
 	return (vp);
 }
-
 
 /*
  * Busy the vm object.  This prevents new pages belonging to the object from
@@ -2446,7 +2449,7 @@ vm_object_busy(vm_object_t obj)
 
 	VM_OBJECT_ASSERT_LOCKED(obj);
 
-	refcount_acquire(&obj->busy);
+	blockcount_acquire(&obj->busy, 1);
 	/* The fence is required to order loads of page busy. */
 	atomic_thread_fence_acq_rel();
 }
@@ -2455,8 +2458,7 @@ void
 vm_object_unbusy(vm_object_t obj)
 {
 
-
-	refcount_release(&obj->busy);
+	blockcount_release(&obj->busy, 1);
 }
 
 void
@@ -2465,43 +2467,7 @@ vm_object_busy_wait(vm_object_t obj, const char *wmesg)
 
 	VM_OBJECT_ASSERT_UNLOCKED(obj);
 
-	if (obj->busy)
-		refcount_sleep(&obj->busy, wmesg, PVM);
-}
-
-/*
- * Return the kvme type of the given object.
- * If vpp is not NULL, set it to the object's vm_object_vnode() or NULL.
- */
-int
-vm_object_kvme_type(vm_object_t object, struct vnode **vpp)
-{
-
-	VM_OBJECT_ASSERT_LOCKED(object);
-	if (vpp != NULL)
-		*vpp = vm_object_vnode(object);
-	switch (object->type) {
-	case OBJT_DEFAULT:
-		return (KVME_TYPE_DEFAULT);
-	case OBJT_VNODE:
-		return (KVME_TYPE_VNODE);
-	case OBJT_SWAP:
-		if ((object->flags & OBJ_TMPFS_NODE) != 0)
-			return (KVME_TYPE_VNODE);
-		return (KVME_TYPE_SWAP);
-	case OBJT_DEVICE:
-		return (KVME_TYPE_DEVICE);
-	case OBJT_PHYS:
-		return (KVME_TYPE_PHYS);
-	case OBJT_DEAD:
-		return (KVME_TYPE_DEAD);
-	case OBJT_SG:
-		return (KVME_TYPE_SG);
-	case OBJT_MGTDEVICE:
-		return (KVME_TYPE_MGTDEVICE);
-	default:
-		return (KVME_TYPE_UNKNOWN);
-	}
+	(void)blockcount_sleep(&obj->busy, NULL, wmesg, PVM);
 }
 
 static int
@@ -2513,6 +2479,7 @@ sysctl_vm_object_list(SYSCTL_HANDLER_ARGS)
 	struct vattr va;
 	vm_object_t obj;
 	vm_page_t m;
+	u_long sp;
 	int count, error;
 
 	if (req->oldptr == NULL) {
@@ -2579,11 +2546,20 @@ sysctl_vm_object_list(SYSCTL_HANDLER_ARGS)
 		freepath = NULL;
 		fullpath = "";
 		kvo->kvo_type = vm_object_kvme_type(obj, &vp);
-		if (vp != NULL)
+		if (vp != NULL) {
 			vref(vp);
+		} else if ((obj->flags & OBJ_ANON) != 0) {
+			MPASS(kvo->kvo_type == KVME_TYPE_DEFAULT ||
+			    kvo->kvo_type == KVME_TYPE_SWAP);
+			kvo->kvo_me = (uintptr_t)obj;
+			/* tmpfs objs are reported as vnodes */
+			kvo->kvo_backing_obj = (uintptr_t)obj->backing_object;
+			sp = swap_pager_swapped_pages(obj);
+			kvo->kvo_swapped = sp > UINT32_MAX ? UINT32_MAX : sp;
+		}
 		VM_OBJECT_RUNLOCK(obj);
 		if (vp != NULL) {
-			vn_fullpath(curthread, vp, &fullpath, &freepath);
+			vn_fullpath(vp, &fullpath, &freepath);
 			vn_lock(vp, LK_SHARED | LK_RETRY);
 			if (VOP_GETATTR(vp, &va, curthread->td_ucred) == 0) {
 				kvo->kvo_vn_fileid = va.va_fileid;
@@ -2699,6 +2675,8 @@ DB_SHOW_COMMAND(vmochk, vm_object_check)
 				    (void *)object->backing_object);
 			}
 		}
+		if (db_pager_quit)
+			return;
 	}
 }
 
@@ -2749,6 +2727,9 @@ DB_SHOW_COMMAND(object, vm_object_print_static)
 
 		db_printf("(off=0x%jx,page=0x%jx)",
 		    (uintmax_t)p->pindex, (uintmax_t)VM_PAGE_TO_PHYS(p));
+
+		if (db_pager_quit)
+			break;
 	}
 	if (count != 0)
 		db_printf("\n");

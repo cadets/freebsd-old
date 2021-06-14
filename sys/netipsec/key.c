@@ -101,6 +101,7 @@
 #define FULLMASK	0xff
 #define	_BITS(bytes)	((bytes) << 3)
 
+#define	UINT32_80PCT	0xcccccccc
 /*
  * Note on SA reference counting:
  * - SAs that are not in DEAD state will have (total external reference + 1)
@@ -508,7 +509,9 @@ SYSCTL_INT(_net_key, KEYCTL_AH_KEYMIN, ah_keymin,
 SYSCTL_INT(_net_key, KEYCTL_PREFERED_OLDSA, preferred_oldsa,
 	CTLFLAG_VNET | CTLFLAG_RW, &VNET_NAME(key_preferred_oldsa), 0, "");
 
-static SYSCTL_NODE(_net_key, OID_AUTO, spdcache, CTLFLAG_RW, 0, "SPD cache");
+static SYSCTL_NODE(_net_key, OID_AUTO, spdcache,
+    CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "SPD cache");
 
 SYSCTL_UINT(_net_key_spdcache, OID_AUTO, maxentries,
 	CTLFLAG_VNET | CTLFLAG_RDTUN, &VNET_NAME(key_spdcache_maxentries), 0,
@@ -581,13 +584,8 @@ static struct supported_ealgs {
 	int sadb_alg;
 	const struct enc_xform *xform;
 } supported_ealgs[] = {
-	{ SADB_EALG_DESCBC,		&enc_xform_des },
-	{ SADB_EALG_3DESCBC,		&enc_xform_3des },
 	{ SADB_X_EALG_AES,		&enc_xform_rijndael128 },
-	{ SADB_X_EALG_BLOWFISHCBC,	&enc_xform_blf },
-	{ SADB_X_EALG_CAST128CBC,	&enc_xform_cast5 },
 	{ SADB_EALG_NULL,		&enc_xform_null },
-	{ SADB_X_EALG_CAMELLIACBC,	&enc_xform_camellia },
 	{ SADB_X_EALG_AESCTR,		&enc_xform_aes_icm },
 	{ SADB_X_EALG_AESGCM16,		&enc_xform_aes_nist_gcm },
 	{ SADB_X_EALG_AESGMAC,		&enc_xform_aes_nist_gmac },
@@ -598,11 +596,7 @@ static struct supported_aalgs {
 	const struct auth_hash *xform;
 } supported_aalgs[] = {
 	{ SADB_X_AALG_NULL,		&auth_hash_null },
-	{ SADB_AALG_MD5HMAC,		&auth_hash_hmac_md5 },
 	{ SADB_AALG_SHA1HMAC,		&auth_hash_hmac_sha1 },
-	{ SADB_X_AALG_RIPEMD160HMAC,	&auth_hash_hmac_ripemd_160 },
-	{ SADB_X_AALG_MD5,		&auth_hash_key_md5 },
-	{ SADB_X_AALG_SHA,		&auth_hash_key_sha1 },
 	{ SADB_X_AALG_SHA2_256,		&auth_hash_hmac_sha2_256 },
 	{ SADB_X_AALG_SHA2_384,		&auth_hash_hmac_sha2_384 },
 	{ SADB_X_AALG_SHA2_512,		&auth_hash_hmac_sha2_512 },
@@ -878,7 +872,6 @@ key_do_allocsp(struct secpolicyindex *spidx, u_int dir)
 	return (sp);
 }
 
-
 /*
  * allocating a SP for OUTBOUND or INBOUND packet.
  * Must call key_freesp() later.
@@ -1043,7 +1036,6 @@ key_allocsa_policy(struct secpolicy *sp, const struct secasindex *saidx,
 		    kdebug_secash(sah, "  "));
 		if (key_cmpsaidx(&sah->saidx, saidx, CMP_MODE_REQID))
 			break;
-
 	}
 	if (sah != NULL) {
 		/*
@@ -3066,28 +3058,17 @@ key_cleansav(struct secasvar *sav)
 	}
 	if (sav->flags & SADB_X_EXT_F_CLONED)
 		return;
-	/*
-	 * Cleanup xform state.  Note that zeroize'ing causes the
-	 * keys to be cleared; otherwise we must do it ourself.
-	 */
 	if (sav->tdb_xform != NULL) {
-		sav->tdb_xform->xf_zeroize(sav);
+		sav->tdb_xform->xf_cleanup(sav);
 		sav->tdb_xform = NULL;
-	} else {
-		if (sav->key_auth != NULL)
-			bzero(sav->key_auth->key_data, _KEYLEN(sav->key_auth));
-		if (sav->key_enc != NULL)
-			bzero(sav->key_enc->key_data, _KEYLEN(sav->key_enc));
 	}
 	if (sav->key_auth != NULL) {
-		if (sav->key_auth->key_data != NULL)
-			free(sav->key_auth->key_data, M_IPSEC_MISC);
+		zfree(sav->key_auth->key_data, M_IPSEC_MISC);
 		free(sav->key_auth, M_IPSEC_MISC);
 		sav->key_auth = NULL;
 	}
 	if (sav->key_enc != NULL) {
-		if (sav->key_enc->key_data != NULL)
-			free(sav->key_enc->key_data, M_IPSEC_MISC);
+		zfree(sav->key_enc->key_data, M_IPSEC_MISC);
 		free(sav->key_enc, M_IPSEC_MISC);
 		sav->key_enc = NULL;
 	}
@@ -3128,7 +3109,7 @@ key_delsav(struct secasvar *sav)
 	if ((sav->flags & SADB_X_EXT_F_CLONED) == 0) {
 		mtx_destroy(sav->lock);
 		free(sav->lock, M_IPSEC_MISC);
-		uma_zfree(V_key_lft_zone, sav->lft_c);
+		uma_zfree_pcpu(V_key_lft_zone, sav->lft_c);
 	}
 	free(sav, M_IPSEC_SA);
 }
@@ -4084,7 +4065,6 @@ key_dup_keymsg(const struct sadb_key *src, size_t len,
 	} else {
 		ipseclog((LOG_DEBUG, "%s: No more memory.\n",
 		    __func__));
-
 	}
 	return (dst);
 }
@@ -4151,7 +4131,6 @@ key_cmpsaidx(const struct secasindex *saidx0, const struct secasindex *saidx1,
 		    saidx0->dst.sa.sa_len) != 0)
 			return 0;
 	} else {
-
 		/* CMP_MODE_REQID, CMP_REQID, CMP_HEAD */
 		if (flag == CMP_MODE_REQID || flag == CMP_REQID) {
 			/*
@@ -4558,7 +4537,11 @@ key_flush_sad(time_t now)
 			    (sav->lft_s->usetime != 0 && sav->firstused &&
 			    now - sav->firstused > sav->lft_s->usetime) ||
 			    (sav->lft_s->bytes != 0 && counter_u64_fetch(
-				sav->lft_c_bytes) > sav->lft_s->bytes))) {
+				sav->lft_c_bytes) > sav->lft_s->bytes) ||
+			    (!(sav->flags & SADB_X_SAFLAGS_ESN) &&
+			    (sav->replay != NULL) && (
+			    (sav->replay->count > UINT32_80PCT) ||
+			    (sav->replay->last > UINT32_80PCT))))) {
 				SECASVAR_UNLOCK(sav);
 				SAV_ADDREF(sav);
 				LIST_INSERT_HEAD(&sexpireq, sav, drainq);
@@ -5049,7 +5032,6 @@ key_do_getnewspi(struct sadb_spirange *spirange, struct secasindex *saidx)
 		count--; /* taking one cost. */
 		newspi = min;
 	} else {
-
 		/* init SPI */
 		newspi = 0;
 
@@ -6379,8 +6361,6 @@ key_getsizes_ah(const struct auth_hash *ah, int alg, u_int16_t* min,
 		 * key size is restricted.  Enforce this here.
 		 */
 		switch (alg) {
-		case SADB_X_AALG_MD5:	*min = *max = 16; break;
-		case SADB_X_AALG_SHA:	*min = *max = 20; break;
 		case SADB_X_AALG_NULL:	*min = 1; *max = 256; break;
 		case SADB_X_AALG_SHA2_256: *min = *max = 32; break;
 		case SADB_X_AALG_SHA2_384: *min = *max = 48; break;
@@ -6411,7 +6391,6 @@ key_getcomb_ah()
 #if 1
 		/* we prefer HMAC algorithms, not old algorithms */
 		if (i != SADB_AALG_SHA1HMAC &&
-		    i != SADB_AALG_MD5HMAC  &&
 		    i != SADB_X_AALG_SHA2_256 &&
 		    i != SADB_X_AALG_SHA2_384 &&
 		    i != SADB_X_AALG_SHA2_512)
@@ -8557,7 +8536,7 @@ key_setlifetime(struct seclifetime *src, uint16_t exttype)
 	p->sadb_lifetime_bytes = src->bytes;
 	p->sadb_lifetime_addtime = src->addtime;
 	p->sadb_lifetime_usetime = src->usetime;
-	
+
 	return m;
 
 }
@@ -8594,4 +8573,3 @@ comp_algorithm_lookup(int alg)
 			return (supported_calgs[i].xform);
 	return (NULL);
 }
-

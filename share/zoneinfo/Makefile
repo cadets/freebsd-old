@@ -3,33 +3,36 @@
 #
 # HOW TO UPDATE THE ZONEINFO DATA
 #
-# With the use of subversion, this is a little bit simpler than the CVS method.
-#
 # Import the new sources to the vendor branch:
 #
-# $ cd ~/svn/vendor/tzdata/dist
-# $ tar zxvf /usr/ports/distfile/tzdata2008X.tar.gz
-#   (check with "svn stat" and "svn diff" if it all makes sense)
-# $ svn commit	# Commit message: "Vendor import of tzdata2008X (+details)" 
-#
-# Tag it
-#
-# $ cd ~/svn/vendor/tzdata
-# $ svn cp svn+ssh://svn.freebsd.org/base/vendor/tzdata/dist \
-#	svn+ssh://svn.freebsd.org/base/vendor/tzdata/tzdata2008X
-# $ svn commit	# Commit message: "Tag of tzdata2008X"
+# $ cd ~/freebsd/src
+# $ git worktree add ../tzdata vendor/tzdata
+# $ pushd ../tzdata
+# $ tar -xvf ../tzdata-latest.tar.gz
+#   (check with "git status" and "git diff" if it all makes sense)
+# $ git add -A
+# $ git commit -m "Import tzdata 20XXX"
+# $ git tag -a -m "Tag import of tzdata 20XXX" vendor/tzdata/tzdata20XXX
+# $ git push --follow-tags freebsd vendor/tzdata
+# $ popd
 #
 # Merge-from-vendor
 #
-# $ cd ~/svn/head/contrib/tzdata
-# $ svn update
-# $ svn merge -c X --accept=postpone \
-#	svn+ssh://svn.freebsd.org/base/vendor/tzdata/dist .
-# $ svn commit	# Commit message: "MFV of tzdata2008X"
+# $ git subtree merge -P contrib/tzdata vendor/tzdata
+#   (write a meaningful commit message)
+# $ git push freebsd HEAD:main
+#
+# MFC
+#
+# $ git checkout -b freebsd/stable/12 stable-12
+# $ git cherry-pick -x [hash of merge commit to main] -m 1 --edit
+#   (write a meaningful commit message)
+# $ git push freebsd HEAD:stable/12
 #
 
 .include <src.opts.mk>
 
+PACKAGE=	zoneinfo
 CLEANFILES+=	yearistype
 CLEANDIRS+=	builddir
 CONTRIBDIR=	${SRCTOP}/contrib/tzdata/
@@ -40,11 +43,6 @@ CONTRIBDIR=	${SRCTOP}/contrib/tzdata/
 MK_ZONEINFO_LEAPSECONDS_SUPPORT= yes
 .endif
 
-.if defined(OLDTIMEZONES)
-.warning "Using backwards compatibility variable for OLDTIMEZONES; please use WITH_ZONEINFO_OLD_TIMEZONES_SUPPORT instead"
-MK_ZONEINFO_OLD_TIMEZONES_SUPPORT= yes
-.endif
-
 .if ${MK_ZONEINFO_LEAPSECONDS_SUPPORT} != "no"
 LEAPFILE=	-L ${CONTRIBDIR}leapseconds
 .else
@@ -53,11 +51,8 @@ LEAPFILE=
 
 TZFILES=	africa antarctica asia australasia etcetera europe \
 		factory northamerica southamerica
-POSIXRULES=	America/New_York
-
-.if ${MK_ZONEINFO_OLD_TIMEZONES_SUPPORT} != "no"
 TZFILES+=	backward systemv
-.endif
+POSIXRULES=	America/New_York
 
 TZFILES:=	${TZFILES:S/^/${CONTRIBDIR}/}
 
@@ -78,10 +73,7 @@ TZBUILDSUBDIRS=	\
 		Indian \
 		Pacific \
 		SystemV
-
-.if ${MK_ZONEINFO_OLD_TIMEZONES_SUPPORT} != "no"
 TZBUILDSUBDIRS+= US Mexico Chile Canada Brazil
-.endif
 
 .if !defined(_SKIP_BUILD)
 all: zoneinfo

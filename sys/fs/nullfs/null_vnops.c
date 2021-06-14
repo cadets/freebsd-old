@@ -182,6 +182,7 @@
 #include <sys/namei.h>
 #include <sys/sysctl.h>
 #include <sys/vnode.h>
+#include <sys/stat.h>
 
 #include <fs/nullfs/null.h>
 
@@ -226,6 +227,7 @@ null_bypass(struct vop_generic_args *ap)
 	struct vnode *old_vps[VDESC_MAX_VPS];
 	struct vnode **vps_p[VDESC_MAX_VPS];
 	struct vnode ***vppp;
+	struct vnode *lvp;
 	struct vnodeop_desc *descp = ap->a_desc;
 	int reles, i;
 
@@ -271,7 +273,6 @@ null_bypass(struct vop_generic_args *ap)
 			if (reles & VDESC_VP0_WILLRELE)
 				VREF(*this_vp_p);
 		}
-
 	}
 
 	/*
@@ -295,6 +296,23 @@ null_bypass(struct vop_generic_args *ap)
 		if (descp->vdesc_vp_offsets[i] == VDESC_NO_OFFSET)
 			break;   /* bail out at end of list */
 		if (old_vps[i]) {
+			lvp = *(vps_p[i]);
+
+			/*
+			 * If lowervp was unlocked during VOP
+			 * operation, nullfs upper vnode could have
+			 * been reclaimed, which changes its v_vnlock
+			 * back to private v_lock.  In this case we
+			 * must move lock ownership from lower to
+			 * upper (reclaimed) vnode.
+			 */
+			if (lvp != NULLVP &&
+			    VOP_ISLOCKED(lvp) == LK_EXCLUSIVE &&
+			    old_vps[i]->v_vnlock != lvp->v_vnlock) {
+				VOP_UNLOCK(lvp);
+				VOP_LOCK(old_vps[i], LK_EXCLUSIVE | LK_RETRY);
+			}
+
 			*(vps_p[i]) = old_vps[i];
 #if 0
 			if (reles & VDESC_VP0_WILLUNLOCK)
@@ -371,10 +389,21 @@ null_lookup(struct vop_lookup_args *ap)
 	 */
 	ldvp = NULLVPTOLOWERVP(dvp);
 	vp = lvp = NULL;
-	KASSERT((ldvp->v_vflag & VV_ROOT) == 0 ||
-	    ((dvp->v_vflag & VV_ROOT) != 0 && (flags & ISDOTDOT) == 0),
-	    ("ldvp %p fl %#x dvp %p fl %#x flags %#x", ldvp, ldvp->v_vflag,
-	     dvp, dvp->v_vflag, flags));
+
+	/*
+	 * Renames in the lower mounts might create an inconsistent
+	 * configuration where lower vnode is moved out of the
+	 * directory tree remounted by our null mount.  Do not try to
+	 * handle it fancy, just avoid VOP_LOOKUP() with DOTDOT name
+	 * which cannot be handled by VOP, at least passing over lower
+	 * root.
+	 */
+	if ((ldvp->v_vflag & VV_ROOT) != 0 && (flags & ISDOTDOT) != 0) {
+		KASSERT((dvp->v_vflag & VV_ROOT) == 0,
+		    ("ldvp %p fl %#x dvp %p fl %#x flags %#x",
+		    ldvp, ldvp->v_vflag, dvp, dvp->v_vflag, flags));
+		return (ENOENT);
+	}
 
 	/*
 	 * Hold ldvp.  The reference on it, owned by dvp, is lost in
@@ -438,8 +467,15 @@ null_open(struct vop_open_args *ap)
 	vp = ap->a_vp;
 	ldvp = NULLVPTOLOWERVP(vp);
 	retval = null_bypass(&ap->a_gen);
-	if (retval == 0)
+	if (retval == 0) {
 		vp->v_object = ldvp->v_object;
+		if ((vn_irflag_read(ldvp) & VIRF_PGREAD) != 0) {
+			MPASS(vp->v_object != NULL);
+			if ((vn_irflag_read(vp) & VIRF_PGREAD) == 0) {
+				vn_irflag_set_cond(vp, VIRF_PGREAD);
+			}
+		}
+	}
 	return (retval);
 }
 
@@ -484,8 +520,20 @@ null_setattr(struct vop_setattr_args *ap)
 }
 
 /*
- *  We handle getattr only to change the fsid.
+ *  We handle stat and getattr only to change the fsid.
  */
+static int
+null_stat(struct vop_stat_args *ap)
+{
+	int error;
+
+	if ((error = null_bypass((struct vop_generic_args *)ap)) != 0)
+		return (error);
+
+	ap->a_sb->st_dev = ap->a_vp->v_mount->mnt_stat.f_fsid.val[0];
+	return (0);
+}
+
 static int
 null_getattr(struct vop_getattr_args *ap)
 {
@@ -770,7 +818,7 @@ static int
 null_need_inactive(struct vop_need_inactive_args *ap)
 {
 
-	return (null_want_recycle(ap->a_vp));
+	return (null_want_recycle(ap->a_vp) || vn_need_pageq_flush(ap->a_vp));
 }
 
 /*
@@ -870,7 +918,6 @@ null_vptocnp(struct vop_vptocnp_args *ap)
 	struct vnode *vp = ap->a_vp;
 	struct vnode **dvp = ap->a_vpp;
 	struct vnode *lvp, *ldvp;
-	struct ucred *cred = ap->a_cred;
 	struct mount *mp;
 	int error, locked;
 
@@ -882,7 +929,7 @@ null_vptocnp(struct vop_vptocnp_args *ap)
 	VOP_UNLOCK(vp); /* vp is held by vn_vptocnp_locked that called us */
 	ldvp = lvp;
 	vref(lvp);
-	error = vn_vptocnp(&ldvp, cred, ap->a_buf, ap->a_buflen);
+	error = vn_vptocnp(&ldvp, ap->a_buf, ap->a_buflen);
 	vdrop(lvp);
 	if (error != 0) {
 		vn_lock(vp, locked | LK_RETRY);
@@ -909,6 +956,93 @@ null_vptocnp(struct vop_vptocnp_args *ap)
 	return (error);
 }
 
+static int
+null_read_pgcache(struct vop_read_pgcache_args *ap)
+{
+	struct vnode *lvp, *vp;
+	struct null_node *xp;
+	int error;
+
+	vp = ap->a_vp;
+	VI_LOCK(vp);
+	xp = VTONULL(vp);
+	if (xp == NULL) {
+		VI_UNLOCK(vp);
+		return (EJUSTRETURN);
+	}
+	lvp = xp->null_lowervp;
+	vref(lvp);
+	VI_UNLOCK(vp);
+	error = VOP_READ_PGCACHE(lvp, ap->a_uio, ap->a_ioflag, ap->a_cred);
+	vrele(lvp);
+	return (error);
+}
+
+/*
+ * Avoid standard bypass, since lower dvp and vp could be no longer
+ * valid after vput().
+ */
+static int
+null_vput_pair(struct vop_vput_pair_args *ap)
+{
+	struct mount *mp;
+	struct vnode *dvp, *ldvp, *lvp, *vp, *vp1, **vpp;
+	int error, res;
+
+	dvp = ap->a_dvp;
+	ldvp = NULLVPTOLOWERVP(dvp);
+	vref(ldvp);
+
+	vpp = ap->a_vpp;
+	vp = NULL;
+	lvp = NULL;
+	mp = NULL;
+	if (vpp != NULL)
+		vp = *vpp;
+	if (vp != NULL) {
+		lvp = NULLVPTOLOWERVP(vp);
+		vref(lvp);
+		if (!ap->a_unlock_vp) {
+			vhold(vp);
+			vhold(lvp);
+			mp = vp->v_mount;
+			vfs_ref(mp);
+		}
+	}
+
+	res = VOP_VPUT_PAIR(ldvp, lvp != NULL ? &lvp : NULL, true);
+	if (vp != NULL && ap->a_unlock_vp)
+		vrele(vp);
+	vrele(dvp);
+
+	if (vp == NULL || ap->a_unlock_vp)
+		return (res);
+
+	/* lvp has been unlocked and vp might be reclaimed */
+	VOP_LOCK(vp, LK_EXCLUSIVE | LK_RETRY);
+	if (vp->v_data == NULL && vfs_busy(mp, MBF_NOWAIT) == 0) {
+		vput(vp);
+		vget(lvp, LK_EXCLUSIVE | LK_RETRY);
+		if (VN_IS_DOOMED(lvp)) {
+			vput(lvp);
+			vget(vp, LK_EXCLUSIVE | LK_RETRY);
+		} else {
+			error = null_nodeget(mp, lvp, &vp1);
+			if (error == 0) {
+				*vpp = vp1;
+			} else {
+				vget(vp, LK_EXCLUSIVE | LK_RETRY);
+			}
+		}
+		vfs_unbusy(mp);
+	}
+	vdrop(lvp);
+	vdrop(vp);
+	vfs_rel(mp);
+
+	return (res);
+}
+
 /*
  * Global vfs data structures
  */
@@ -918,6 +1052,7 @@ struct vop_vector null_vnodeops = {
 	.vop_accessx =		null_accessx,
 	.vop_advlockpurge =	vop_stdadvlockpurge,
 	.vop_bmap =		VOP_EOPNOTSUPP,
+	.vop_stat =		null_stat,
 	.vop_getattr =		null_getattr,
 	.vop_getwritemount =	null_getwritemount,
 	.vop_inactive =		null_inactive,
@@ -927,6 +1062,7 @@ struct vop_vector null_vnodeops = {
 	.vop_lookup =		null_lookup,
 	.vop_open =		null_open,
 	.vop_print =		null_print,
+	.vop_read_pgcache =	null_read_pgcache,
 	.vop_reclaim =		null_reclaim,
 	.vop_remove =		null_remove,
 	.vop_rename =		null_rename,
@@ -937,5 +1073,6 @@ struct vop_vector null_vnodeops = {
 	.vop_vptocnp =		null_vptocnp,
 	.vop_vptofh =		null_vptofh,
 	.vop_add_writecount =	null_add_writecount,
+	.vop_vput_pair =	null_vput_pair,
 };
 VFS_VOP_VECTOR_REGISTER(null_vnodeops);

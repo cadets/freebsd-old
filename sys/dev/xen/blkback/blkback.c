@@ -143,9 +143,10 @@ static MALLOC_DEFINE(M_XENBLOCKBACK, "xbbd", "Xen Block Back Driver Data");
 /**
  * The maximum mapped region size per request we will allow in a negotiated
  * block-front/back communication channel.
+ * Use old default of MAXPHYS == 128K.
  */
 #define	XBB_MAX_REQUEST_SIZE					\
-	MIN(MAXPHYS, BLKIF_MAX_SEGMENTS_PER_REQUEST * PAGE_SIZE)
+	MIN(128 * 1024, BLKIF_MAX_SEGMENTS_PER_REQUEST * PAGE_SIZE)
 
 /**
  * The maximum number of segments (within a request header and accompanying
@@ -255,7 +256,6 @@ struct xbb_xen_reqlist {
 	 * of this request's kva region.
 	 */
 	uint64_t	 	 gnt_base;
-
 
 #ifdef XBB_USE_BOUNCE_BUFFERS
 	/**
@@ -545,7 +545,6 @@ typedef int (*xbb_dispatch_t)(struct xbb_softc *xbb,
  * Per-instance configuration data.
  */
 struct xbb_softc {
-
 	/**
 	 * Task-queue used to process I/O requests.
 	 */
@@ -1029,7 +1028,6 @@ xbb_get_kva(struct xbb_softc *xbb, int nr_pages)
 		 * to satisfy the request.
 		 */
 		if (++num_clear == nr_pages) {
-
 			bit_nset(xbb->kva_free, first_clear,
 				 first_clear + nr_pages - 1);
 
@@ -1093,7 +1091,6 @@ xbb_unmap_reqlist(struct xbb_xen_reqlist *reqlist)
 
 	invcount = 0;
 	for (i = 0; i < reqlist->nr_segments; i++) {
-
 		if (reqlist->gnt_handles[i] == GRANT_REF_INVALID)
 			continue;
 
@@ -1127,7 +1124,6 @@ xbb_get_reqlist(struct xbb_softc *xbb)
 	mtx_assert(&xbb->lock, MA_OWNED);
 
 	if ((reqlist = STAILQ_FIRST(&xbb->reqlist_free_stailq)) != NULL) {
-
 		STAILQ_REMOVE_HEAD(&xbb->reqlist_free_stailq, links);
 		reqlist->flags = XBB_REQLIST_NONE;
 		reqlist->kva = NULL;
@@ -1366,7 +1362,6 @@ xbb_push_responses(struct xbb_softc *xbb, int *run_taskqueue, int *notify)
 	RING_PUSH_RESPONSES_AND_CHECK_NOTIFY(&xbb->rings.common, *notify);
 
 	if (xbb->rings.common.rsp_prod_pvt == xbb->rings.common.req_cons) {
-
 		/*
 		 * Tail check for pending requests. Allows frontend to avoid
 		 * notifications if requests are already in flight (lower
@@ -1374,7 +1369,6 @@ xbb_push_responses(struct xbb_softc *xbb, int *run_taskqueue, int *notify)
 		 */
 		RING_FINAL_CHECK_FOR_REQUESTS(&xbb->rings.common, more_to_do);
 	} else if (RING_HAS_UNCONSUMED_REQUESTS(&xbb->rings.common)) {
-
 		more_to_do = 1;
 	}
 
@@ -1505,7 +1499,6 @@ xbb_bio_done(struct bio *bio)
 
 		if (bio->bio_error == ENXIO
 		 && xenbus_get_state(xbb->dev) == XenbusStateConnected) {
-
 			/*
 			 * Backend device has disappeared.  Signal the
 			 * front-end that we (the device proxy) want to
@@ -1744,7 +1737,6 @@ xbb_dispatch_io(struct xbb_softc *xbb, struct xbb_xen_reqlist *reqlist)
 
 	for (seg_idx = 0, map = xbb->maps; seg_idx < reqlist->nr_segments;
 	     seg_idx++, map++){
-
 		if (__predict_false(map->status != 0)) {
 			DPRINTF("invalid buffer -- could not remap "
 			        "it (%d)\n", map->status);
@@ -1760,7 +1752,6 @@ xbb_dispatch_io(struct xbb_softc *xbb, struct xbb_xen_reqlist *reqlist)
 	}
 	if (reqlist->starting_sector_number + total_sects >
 	    xbb->media_num_sectors) {
-
 		DPRINTF("%s of [%" PRIu64 ",%" PRIu64 "] "
 			"extends past end of device %s\n",
 			operation == BIO_READ ? "read" : "write",
@@ -1830,7 +1821,6 @@ xbb_run_queue(void *context, int pending)
 	uint64_t		cur_sector;
 	int			cur_operation;
 	struct xbb_xen_reqlist *reqlist;
-
 
 	xbb   = (struct xbb_softc *)context;
 	rings = &xbb->rings;
@@ -2121,7 +2111,6 @@ xbb_dispatch_dev(struct xbb_softc *xbb, struct xbb_xen_reqlist *reqlist,
 	nseg = reqlist->nr_segments;
 
 	for (seg_idx = 0; seg_idx < nseg; seg_idx++, xbb_sg++) {
-
 		/*
 		 * KVA will not be contiguous, so any additional
 		 * I/O will need to be represented in a new bio.
@@ -2173,7 +2162,6 @@ xbb_dispatch_dev(struct xbb_softc *xbb, struct xbb_xen_reqlist *reqlist,
 		bio_offset      += xbb_sg->nsect << 9;
 
 		if (xbb_sg->last_sect != (PAGE_SIZE - 512) >> 9) {
-
 			if ((bio->bio_length & (xbb->sector_size - 1)) != 0) {
 				printf("%s: Discontiguous I/O request "
 				       "from domain %d ends on "
@@ -2224,7 +2212,7 @@ xbb_dispatch_dev(struct xbb_softc *xbb, struct xbb_xen_reqlist *reqlist,
 fail_free_bios:
 	for (bio_idx = 0; bio_idx < (nbio-1); bio_idx++)
 		g_destroy_bio(bios[bio_idx]);
-	
+
 	return (error);
 }
 
@@ -2302,7 +2290,6 @@ xbb_dispatch_file(struct xbb_softc *xbb, struct xbb_xen_reqlist *reqlist,
 	nseg = reqlist->nr_segments;
 
 	for (xiovec = NULL, seg_idx = 0; seg_idx < nseg; seg_idx++, xbb_sg++) {
-
 		/*
 		 * If the first sector is not 0, the KVA will
 		 * not be contiguous and we'll need to go on
@@ -2354,7 +2341,6 @@ xbb_dispatch_file(struct xbb_softc *xbb, struct xbb_xen_reqlist *reqlist,
 		for (seg_idx = 0, p_vaddr = file_data->xiovecs_vaddr,
 		     xiovec = xuio.uio_iov; seg_idx < xuio.uio_iovcnt;
 		     seg_idx++, xiovec++, p_vaddr++) {
-
 			memcpy(xiovec->iov_base, *p_vaddr, xiovec->iov_len);
 		}
 	} else {
@@ -2448,12 +2434,10 @@ xbb_dispatch_file(struct xbb_softc *xbb, struct xbb_xen_reqlist *reqlist,
 #ifdef XBB_USE_BOUNCE_BUFFERS
 	/* We only need to copy here for read operations */
 	if (operation == BIO_READ) {
-
 		for (seg_idx = 0, p_vaddr = file_data->xiovecs_vaddr,
 		     xiovec = file_data->saved_xiovecs;
 		     seg_idx < saved_uio_iovcnt; seg_idx++,
 		     xiovec++, p_vaddr++) {
-
 			/*
 			 * Note that we have to use the copy of the 
 			 * io vector we made above.  uiomove() modifies
@@ -2562,7 +2546,6 @@ xbb_open_dev(struct xbb_softc *xbb)
 				 xbb->dev_name);
 		return (error);
 	}
-
 
 	dev = xbb->vn->v_rdev;
 	devsw = dev->si_devsw;
@@ -2735,7 +2718,7 @@ xbb_open_backend(struct xbb_softc *xbb)
 	xbb->vn = nd.ni_vp;
 
 	/* We only support disks and files. */
-	if (vn_isdisk(xbb->vn, &error)) {
+	if (vn_isdisk_error(xbb->vn, &error)) {
 		error = xbb_open_dev(xbb);
 	} else if (xbb->vn->v_type == VREG) {
 		error = xbb_open_file(xbb);
@@ -2814,11 +2797,10 @@ xbb_disconnect(struct xbb_softc *xbb)
 	 */
 	if (xbb->active_request_count != 0)
 		return (EAGAIN);
-	
+
 	for (ring_idx = 0, op = ops;
 	     ring_idx < xbb->ring_config.ring_pages;
 	     ring_idx++, op++) {
-
 		op->host_addr    = xbb->ring_config.gnt_addr
 			         + (ring_idx * PAGE_SIZE);
 		op->dev_bus_addr = xbb->ring_config.bus_addr[ring_idx];
@@ -2895,7 +2877,6 @@ xbb_connect_ring(struct xbb_softc *xbb)
 	for (ring_idx = 0, gnt = gnts;
 	     ring_idx < xbb->ring_config.ring_pages;
 	     ring_idx++, gnt++) {
-
 		gnt->host_addr = xbb->ring_config.gnt_addr
 			       + (ring_idx * PAGE_SIZE);
 		gnt->flags     = GNTMAP_host_map;
@@ -2912,10 +2893,31 @@ xbb_connect_ring(struct xbb_softc *xbb)
 	     ring_idx < xbb->ring_config.ring_pages;
 	     ring_idx++, gnt++) {
 		if (gnt->status != 0) {
+			struct gnttab_unmap_grant_ref unmap[XBB_MAX_RING_PAGES];
+			unsigned int i, j;
+
 			xbb->ring_config.va = 0;
 			xenbus_dev_fatal(xbb->dev, EACCES,
 					 "Ring shared page mapping failed. "
 					 "Status %d.", gnt->status);
+
+			/* Unmap everything to avoid leaking grant table maps */
+			for (i = 0, j = 0; i < xbb->ring_config.ring_pages;
+			    i++) {
+				if (gnts[i].status != GNTST_okay)
+					continue;
+
+				unmap[j].host_addr = gnts[i].host_addr;
+				unmap[j].dev_bus_addr = gnts[i].dev_bus_addr;
+				unmap[j++].handle = gnts[i].handle;
+			}
+			if (j != 0) {
+				error = HYPERVISOR_grant_table_op(
+				    GNTTABOP_unmap_grant_ref, unmap, j);
+				if (error != 0)
+					panic("Unable to unmap grants (%d)",
+					    error);
+			}
 			return (EACCES);
 		}
 		xbb->ring_config.handle[ring_idx]   = gnt->handle;
@@ -3138,13 +3140,10 @@ xbb_collect_frontend_info(struct xbb_softc *xbb)
 		 */
 		xbb->abi = BLKIF_PROTOCOL_NATIVE;
 	} else if (!strcmp(protocol_abi, XEN_IO_PROTO_ABI_X86_32)) {
-
 		xbb->abi = BLKIF_PROTOCOL_X86_32;
 	} else if (!strcmp(protocol_abi, XEN_IO_PROTO_ABI_X86_64)) {
-
 		xbb->abi = BLKIF_PROTOCOL_X86_64;
 	} else {
-
 		xenbus_dev_fatal(xbb->dev, EINVAL,
 				 "Unknown protocol ABI (%s) published by "
 				 "frontend.  Unable to connect.", protocol_abi);
@@ -3361,7 +3360,7 @@ xbb_connect(struct xbb_softc *xbb)
 		/* Specific errors are reported by xbb_connect_ring(). */
 		return;
 	}
-	
+
 	if (xbb_publish_backend_info(xbb) != 0) {
 		/*
 		 * If we can't publish our data, we cannot participate
@@ -3413,7 +3412,6 @@ xbb_shutdown(struct xbb_softc *xbb)
 		free(xbb->hotplug_watch.node, M_XENBLOCKBACK);
 		xbb->hotplug_watch.node = NULL;
 	}
-	xbb->hotplug_done = false;
 
 	if (xenbus_get_state(xbb->dev) < XenbusStateClosing)
 		xenbus_set_state(xbb->dev, XenbusStateClosing);
@@ -3496,7 +3494,7 @@ xbb_attach_failed(struct xbb_softc *xbb, int err, const char *fmt, ...)
 static int
 xbb_probe(device_t dev)
 {
- 
+
         if (!strcmp(xenbus_get_type(dev), "vbd")) {
                 device_set_desc(dev, "Backend Virtual Block Device");
                 device_quiet(dev);
@@ -3517,7 +3515,7 @@ xbb_setup_sysctl(struct xbb_softc *xbb)
 {
 	struct sysctl_ctx_list *sysctl_ctx = NULL;
 	struct sysctl_oid      *sysctl_tree = NULL;
-	
+
 	sysctl_ctx = device_get_sysctl_ctx(xbb->dev);
 	if (sysctl_ctx == NULL)
 		return;
@@ -3598,39 +3596,14 @@ xbb_setup_sysctl(struct xbb_softc *xbb)
 }
 
 static void
-xbb_attach_disk(struct xs_watch *watch, const char **vec, unsigned int len)
+xbb_attach_disk(device_t dev)
 {
-	device_t		 dev;
 	struct xbb_softc	*xbb;
 	int			 error;
 
-	dev = (device_t) watch->callback_data;
 	xbb = device_get_softc(dev);
 
-	error = xs_gather(XST_NIL, xenbus_get_node(dev), "physical-device-path",
-	    NULL, &xbb->dev_name, NULL);
-	if (error != 0)
-		return;
-
-	xs_unregister_watch(watch);
-	free(watch->node, M_XENBLOCKBACK);
-	watch->node = NULL;
-
-	/* Collect physical device information. */
-	error = xs_gather(XST_NIL, xenbus_get_otherend_path(xbb->dev),
-			  "device-type", NULL, &xbb->dev_type,
-			  NULL);
-	if (error != 0)
-		xbb->dev_type = NULL;
-
-	error = xs_gather(XST_NIL, xenbus_get_node(dev),
-                          "mode", NULL, &xbb->dev_mode,
-                          NULL);
-	if (error != 0) {
-		xbb_attach_failed(xbb, error, "reading backend fields at %s",
-				  xenbus_get_node(dev));
-                return;
-        }
+	KASSERT(xbb->hotplug_done, ("Missing hotplug execution"));
 
 	/* Parse fopen style mode flags. */
 	if (strchr(xbb->dev_mode, 'w') == NULL)
@@ -3694,11 +3667,46 @@ xbb_attach_disk(struct xs_watch *watch, const char **vec, unsigned int len)
 		return;
 	}
 
-	xbb->hotplug_done = true;
-
 	/* The front end might be waiting for the backend, attach if so. */
 	if (xenbus_get_otherend_state(xbb->dev) == XenbusStateInitialised)
 		xbb_connect(xbb);
+}
+
+static void
+xbb_attach_cb(struct xs_watch *watch, const char **vec, unsigned int len)
+{
+	device_t dev;
+	struct xbb_softc *xbb;
+	int error;
+
+	dev = (device_t)watch->callback_data;
+	xbb = device_get_softc(dev);
+
+	error = xs_gather(XST_NIL, xenbus_get_node(dev), "physical-device-path",
+	    NULL, &xbb->dev_name, NULL);
+	if (error != 0)
+		return;
+
+	xs_unregister_watch(watch);
+	free(watch->node, M_XENBLOCKBACK);
+	watch->node = NULL;
+	xbb->hotplug_done = true;
+
+	/* Collect physical device information. */
+	error = xs_gather(XST_NIL, xenbus_get_otherend_path(dev), "device-type",
+	    NULL, &xbb->dev_type, NULL);
+	if (error != 0)
+		xbb->dev_type = NULL;
+
+	error = xs_gather(XST_NIL, xenbus_get_node(dev), "mode", NULL,
+	   &xbb->dev_mode, NULL);
+	if (error != 0) {
+		xbb_attach_failed(xbb, error, "reading backend fields at %s",
+		    xenbus_get_node(dev));
+		return;
+	}
+
+	xbb_attach_disk(dev);
 }
 
 /**
@@ -3758,16 +3766,29 @@ xbb_attach(device_t dev)
 		return (error);
 	}
 
+	/* Tell the toolstack blkback has attached. */
+	xenbus_set_state(dev, XenbusStateInitWait);
+
+	if (xbb->hotplug_done) {
+		xbb_attach_disk(dev);
+		return (0);
+	}
+
 	/*
 	 * We need to wait for hotplug script execution before
 	 * moving forward.
 	 */
-	KASSERT(!xbb->hotplug_done, ("Hotplug scripts already executed"));
 	watch_path = xs_join(xenbus_get_node(xbb->dev), "physical-device-path");
 	xbb->hotplug_watch.callback_data = (uintptr_t)dev;
-	xbb->hotplug_watch.callback = xbb_attach_disk;
+	xbb->hotplug_watch.callback = xbb_attach_cb;
 	KASSERT(xbb->hotplug_watch.node == NULL, ("watch node already setup"));
 	xbb->hotplug_watch.node = strdup(sbuf_data(watch_path), M_XENBLOCKBACK);
+	/*
+	 * We don't care about the path updated, just about the value changes
+	 * on that single node, hence there's no need to queue more that one
+	 * event.
+	 */
+	xbb->hotplug_watch.max_pending = 1;
 	sbuf_delete(watch_path);
 	error = xs_register_watch(&xbb->hotplug_watch);
 	if (error != 0) {
@@ -3776,9 +3797,6 @@ xbb_attach(device_t dev)
 		free(xbb->hotplug_watch.node, M_XENBLOCKBACK);
 		return (error);
 	}
-
-	/* Tell the toolstack blkback has attached. */
-	xenbus_set_state(dev, XenbusStateInitWait);
 
 	return (0);
 }
@@ -3930,7 +3948,6 @@ static device_method_t xbb_methods[] = {
 
 	/* Xenbus interface */
 	DEVMETHOD(xenbus_otherend_changed, xbb_frontend_changed),
-
 	{ 0, 0 }
 };
 

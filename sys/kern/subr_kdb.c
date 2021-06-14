@@ -82,37 +82,53 @@ static int kdb_sysctl_available(SYSCTL_HANDLER_ARGS);
 static int kdb_sysctl_current(SYSCTL_HANDLER_ARGS);
 static int kdb_sysctl_enter(SYSCTL_HANDLER_ARGS);
 static int kdb_sysctl_panic(SYSCTL_HANDLER_ARGS);
+static int kdb_sysctl_panic_str(SYSCTL_HANDLER_ARGS);
 static int kdb_sysctl_trap(SYSCTL_HANDLER_ARGS);
 static int kdb_sysctl_trap_code(SYSCTL_HANDLER_ARGS);
 static int kdb_sysctl_stack_overflow(SYSCTL_HANDLER_ARGS);
 
-static SYSCTL_NODE(_debug, OID_AUTO, kdb, CTLFLAG_RW, NULL, "KDB nodes");
+static SYSCTL_NODE(_debug, OID_AUTO, kdb, CTLFLAG_RW | CTLFLAG_MPSAFE, NULL,
+    "KDB nodes");
 
-SYSCTL_PROC(_debug_kdb, OID_AUTO, available, CTLTYPE_STRING | CTLFLAG_RD, NULL,
-    0, kdb_sysctl_available, "A", "list of available KDB backends");
+SYSCTL_PROC(_debug_kdb, OID_AUTO, available,
+    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, 0,
+    kdb_sysctl_available, "A",
+    "list of available KDB backends");
 
-SYSCTL_PROC(_debug_kdb, OID_AUTO, current, CTLTYPE_STRING | CTLFLAG_RW, NULL,
-    0, kdb_sysctl_current, "A", "currently selected KDB backend");
+SYSCTL_PROC(_debug_kdb, OID_AUTO, current,
+    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, NULL, 0,
+    kdb_sysctl_current, "A",
+    "currently selected KDB backend");
 
 SYSCTL_PROC(_debug_kdb, OID_AUTO, enter,
-    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_SECURE, NULL, 0,
-    kdb_sysctl_enter, "I", "set to enter the debugger");
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_SECURE | CTLFLAG_MPSAFE, NULL, 0,
+    kdb_sysctl_enter, "I",
+    "set to enter the debugger");
 
 SYSCTL_PROC(_debug_kdb, OID_AUTO, panic,
-    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_SECURE, NULL, 0,
-    kdb_sysctl_panic, "I", "set to panic the kernel");
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_SECURE | CTLFLAG_MPSAFE, NULL, 0,
+    kdb_sysctl_panic, "I",
+    "set to panic the kernel");
+
+SYSCTL_PROC(_debug_kdb, OID_AUTO, panic_str,
+    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_SECURE | CTLFLAG_MPSAFE, NULL, 0,
+    kdb_sysctl_panic_str, "A",
+    "trigger a kernel panic, using the provided string as the panic message");
 
 SYSCTL_PROC(_debug_kdb, OID_AUTO, trap,
-    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_SECURE, NULL, 0,
-    kdb_sysctl_trap, "I", "set to cause a page fault via data access");
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_SECURE | CTLFLAG_MPSAFE, NULL, 0,
+    kdb_sysctl_trap, "I",
+    "set to cause a page fault via data access");
 
 SYSCTL_PROC(_debug_kdb, OID_AUTO, trap_code,
-    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_SECURE, NULL, 0,
-    kdb_sysctl_trap_code, "I", "set to cause a page fault via code access");
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_SECURE | CTLFLAG_MPSAFE, NULL, 0,
+    kdb_sysctl_trap_code, "I",
+    "set to cause a page fault via code access");
 
 SYSCTL_PROC(_debug_kdb, OID_AUTO, stack_overflow,
-    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_SECURE, NULL, 0,
-    kdb_sysctl_stack_overflow, "I", "set to cause a stack overflow");
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_SECURE | CTLFLAG_MPSAFE, NULL, 0,
+    kdb_sysctl_stack_overflow, "I",
+    "set to cause a stack overflow");
 
 SYSCTL_INT(_debug_kdb, OID_AUTO, break_to_debugger,
     CTLFLAG_RWTUN | CTLFLAG_SECURE,
@@ -193,6 +209,20 @@ kdb_sysctl_panic(SYSCTL_HANDLER_ARGS)
 	if (error != 0 || req->newptr == NULL)
 		return (error);
 	panic("kdb_sysctl_panic");
+	return (0);
+}
+
+static int
+kdb_sysctl_panic_str(SYSCTL_HANDLER_ARGS)
+{
+	int error;
+	static char buf[256]; /* static buffer to limit mallocs when panicing */
+
+	*buf = '\0';
+	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	panic("kdb_sysctl_panic: %s", buf);
 	return (0);
 }
 
@@ -576,9 +606,10 @@ kdb_thr_first(void)
 {
 	struct proc *p;
 	struct thread *thr;
+	u_int i;
 
-	FOREACH_PROC_IN_SYSTEM(p) {
-		if (p->p_flag & P_INMEM) {
+	for (i = 0; i <= pidhash; i++) {
+		LIST_FOREACH(p, &pidhashtbl[i], p_hash) {
 			thr = FIRST_THREAD_IN_PROC(p);
 			if (thr != NULL)
 				return (thr);
@@ -592,8 +623,8 @@ kdb_thr_from_pid(pid_t pid)
 {
 	struct proc *p;
 
-	FOREACH_PROC_IN_SYSTEM(p) {
-		if (p->p_flag & P_INMEM && p->p_pid == pid)
+	LIST_FOREACH(p, PIDHASH(pid), p_hash) {
+		if (p->p_pid == pid)
 			return (FIRST_THREAD_IN_PROC(p));
 	}
 	return (NULL);
@@ -614,17 +645,24 @@ struct thread *
 kdb_thr_next(struct thread *thr)
 {
 	struct proc *p;
+	u_int hash;
 
 	p = thr->td_proc;
 	thr = TAILQ_NEXT(thr, td_plist);
-	do {
+	if (thr != NULL)
+		return (thr);
+	hash = p->p_pid & pidhash;
+	for (;;) {
+		p = LIST_NEXT(p, p_hash);
+		while (p == NULL) {
+			if (++hash > pidhash)
+				return (NULL);
+			p = LIST_FIRST(&pidhashtbl[hash]);
+		}
+		thr = FIRST_THREAD_IN_PROC(p);
 		if (thr != NULL)
 			return (thr);
-		p = LIST_NEXT(p, p_list);
-		if (p != NULL && (p->p_flag & P_INMEM))
-			thr = FIRST_THREAD_IN_PROC(p);
-	} while (p != NULL);
-	return (NULL);
+	}
 }
 
 int

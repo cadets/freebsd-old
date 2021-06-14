@@ -1,3 +1,0 @@
-.\" $FreeBSD$
-Build binutils (as on i386 and amd64, objdump, and ld on powerpc)
-as part of the bootstrap process.

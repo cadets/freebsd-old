@@ -16,7 +16,6 @@
 #include "llvm/ADT/CachedHashString.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/DebugInfo/DWARF/DWARFDebugLine.h"
 #include "llvm/IR/Comdat.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/ELF.h"
@@ -25,18 +24,15 @@
 #include <map>
 
 namespace llvm {
-class TarWriter;
 struct DILineInfo;
+class TarWriter;
 namespace lto {
 class InputFile;
 }
 } // namespace llvm
 
 namespace lld {
-namespace elf {
-class InputFile;
-class InputSectionBase;
-}
+class DWARFCache;
 
 // Returns "<internal>", "foo.a(bar.o)" or "baz.o".
 std::string toString(const elf::InputFile *f);
@@ -96,9 +92,11 @@ public:
     return symbols;
   }
 
-  // Filename of .a which contained this file. If this file was
-  // not in an archive file, it is the empty string. We use this
-  // string for creating error messages.
+  // Get filename to use for linker script processing.
+  StringRef getNameForScript() const;
+
+  // If not empty, this stores the name of the archive containing this file.
+  // We use this string for creating error messages.
   std::string archiveName;
 
   // If this is an architecture-specific file, the following members
@@ -132,6 +130,10 @@ public:
   // [.got, .got + 0xFFFC].
   bool ppc64SmallCodeModelTocRelocs = false;
 
+  // True if the file has TLSGD/TLSLD GOT relocations without R_PPC64_TLSGD or
+  // R_PPC64_TLSLD. Disable TLS relaxation to avoid bad code generation.
+  bool ppc64DisableTLSRelax = false;
+
   // groupId is used for --warn-backrefs which is an optional error
   // checking feature. All files within the same --{start,end}-group or
   // --{start,end}-lib get the same group ID. Otherwise, each file gets a new
@@ -151,6 +153,9 @@ protected:
 
 private:
   const Kind fileKind;
+
+  // Cache for getNameForScript().
+  mutable std::string nameForScriptCache;
 };
 
 class ELFFileBase : public InputFile {
@@ -184,12 +189,7 @@ protected:
 
 // .o file.
 template <class ELFT> class ObjFile : public ELFFileBase {
-  using Elf_Rel = typename ELFT::Rel;
-  using Elf_Rela = typename ELFT::Rela;
-  using Elf_Sym = typename ELFT::Sym;
-  using Elf_Shdr = typename ELFT::Shdr;
-  using Elf_Word = typename ELFT::Word;
-  using Elf_CGProfile = typename ELFT::CGProfile;
+  LLVM_ELF_IMPORT_TYPES_ELFT(ELFT)
 
 public:
   static bool classof(const InputFile *f) { return f->kind() == ObjKind; }
@@ -202,7 +202,7 @@ public:
   ArrayRef<Symbol *> getGlobalSymbols();
 
   ObjFile(MemoryBufferRef m, StringRef archiveName) : ELFFileBase(ObjKind, m) {
-    this->archiveName = archiveName;
+    this->archiveName = std::string(archiveName);
   }
 
   void parse(bool ignoreComdats = false);
@@ -252,16 +252,19 @@ public:
   // SHT_LLVM_CALL_GRAPH_PROFILE table
   ArrayRef<Elf_CGProfile> cgProfile;
 
+  // Get cached DWARF information.
+  DWARFCache *getDwarf();
+
 private:
   void initializeSections(bool ignoreComdats);
   void initializeSymbols();
   void initializeJustSymbols();
-  void initializeDwarf();
+
   InputSectionBase *getRelocTarget(const Elf_Shdr &sec);
   InputSectionBase *createInputSection(const Elf_Shdr &sec);
   StringRef getSectionName(const Elf_Shdr &sec);
 
-  bool shouldMerge(const Elf_Shdr &sec);
+  bool shouldMerge(const Elf_Shdr &sec, StringRef name);
 
   // Each ELF symbol contains a section index which the symbol belongs to.
   // However, because the number of bits dedicated for that is limited, a
@@ -284,15 +287,8 @@ private:
   // reporting. Linker may find reasonable number of errors in a
   // single object file, so we cache debugging information in order to
   // parse it only once for each object file we link.
-  std::unique_ptr<llvm::DWARFContext> dwarf;
-  std::vector<const llvm::DWARFDebugLine::LineTable *> lineTables;
-  struct VarLoc {
-    const llvm::DWARFDebugLine::LineTable *lt;
-    unsigned file;
-    unsigned line;
-  };
-  llvm::DenseMap<StringRef, VarLoc> variableLoc;
-  llvm::once_flag initDwarfLine;
+  std::unique_ptr<DWARFCache> dwarf;
+  llvm::once_flag initDwarf;
 };
 
 // LazyObjFile is analogous to ArchiveFile in the sense that
@@ -307,13 +303,19 @@ public:
   LazyObjFile(MemoryBufferRef m, StringRef archiveName,
               uint64_t offsetInArchive)
       : InputFile(LazyObjKind, m), offsetInArchive(offsetInArchive) {
-    this->archiveName = archiveName;
+    this->archiveName = std::string(archiveName);
   }
 
   static bool classof(const InputFile *f) { return f->kind() == LazyObjKind; }
 
   template <class ELFT> void parse();
   void fetch();
+
+  // Check if a non-common symbol should be fetched to override a common
+  // definition.
+  bool shouldFetchForCommon(const StringRef &name);
+
+  bool fetched = false;
 
 private:
   uint64_t offsetInArchive;
@@ -331,6 +333,15 @@ public:
   // function does nothing (so we don't instantiate the same file
   // more than once.)
   void fetch(const Archive::Symbol &sym);
+
+  // Check if a non-common symbol should be fetched to override a common
+  // definition.
+  bool shouldFetchForCommon(const Archive::Symbol &sym);
+
+  size_t getMemberCount() const;
+  size_t getFetchedMemberCount() const { return seen.size(); }
+
+  bool parsed = false;
 
 private:
   std::unique_ptr<Archive> file;
@@ -350,7 +361,7 @@ public:
 class SharedFile : public ELFFileBase {
 public:
   SharedFile(MemoryBufferRef m, StringRef defaultSoName)
-      : ELFFileBase(SharedKind, m), soName(defaultSoName),
+      : ELFFileBase(SharedKind, m), soName(std::string(defaultSoName)),
         isNeeded(!config->asNeeded) {}
 
   // This is actually a vector of Elf_Verdef pointers.
@@ -375,6 +386,11 @@ public:
 
   // Used for --as-needed
   bool isNeeded;
+
+private:
+  template <typename ELFT>
+  std::vector<uint32_t> parseVerneed(const llvm::object::ELFFile<ELFT> &obj,
+                                     const typename ELFT::Shdr *sec);
 };
 
 class BinaryFile : public InputFile {
@@ -393,6 +409,7 @@ inline bool isBitcode(MemoryBufferRef mb) {
 
 std::string replaceThinLTOSuffix(StringRef path);
 
+extern std::vector<ArchiveFile *> archiveFiles;
 extern std::vector<BinaryFile *> binaryFiles;
 extern std::vector<BitcodeFile *> bitcodeFiles;
 extern std::vector<LazyObjFile *> lazyObjFiles;

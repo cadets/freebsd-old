@@ -47,6 +47,10 @@
 /* SBI Implementation IDs */
 #define	SBI_IMPL_ID_BBL			0
 #define	SBI_IMPL_ID_OPENSBI		1
+#define	SBI_IMPL_ID_XVISOR		2
+#define	SBI_IMPL_ID_KVM			3
+#define	SBI_IMPL_ID_RUSTSBI		4
+#define	SBI_IMPL_ID_DIOSIX		5
 
 /* SBI Error Codes */
 #define	SBI_SUCCESS			0
@@ -55,6 +59,7 @@
 #define	SBI_ERR_INVALID_PARAM		-3
 #define	SBI_ERR_DENIED			-4
 #define	SBI_ERR_INVALID_ADDRESS		-5
+#define	SBI_ERR_ALREADY_AVAILABLE	-6
 
 /* SBI Base Extension */
 #define	SBI_EXT_ID_BASE			0x10
@@ -65,6 +70,43 @@
 #define	SBI_BASE_GET_MVENDORID		4
 #define	SBI_BASE_GET_MARCHID		5
 #define	SBI_BASE_GET_MIMPID		6
+
+/* Timer (TIME) Extension */
+#define	SBI_EXT_ID_TIME			0x54494D45
+#define	SBI_TIME_SET_TIMER		0
+
+/* IPI (IPI) Extension */
+#define	SBI_EXT_ID_IPI			0x735049
+#define	SBI_IPI_SEND_IPI		0
+
+/* RFENCE (RFNC) Extension */
+#define	SBI_EXT_ID_RFNC				0x52464E43
+#define	SBI_RFNC_REMOTE_FENCE_I			0
+#define	SBI_RFNC_REMOTE_SFENCE_VMA		1
+#define	SBI_RFNC_REMOTE_SFENCE_VMA_ASID		2
+#define	SBI_RFNC_REMOTE_HFENCE_GVMA_VMID	3
+#define	SBI_RFNC_REMOTE_HFENCE_GVMA		4
+#define	SBI_RFNC_REMOTE_HFENCE_VVMA_ASID	5
+#define	SBI_RFNC_REMOTE_HFENCE_VVMA		6
+
+/* Hart State Management (HSM) Extension */
+#define	SBI_EXT_ID_HSM			0x48534D
+#define	SBI_HSM_HART_START		0
+#define	SBI_HSM_HART_STOP		1
+#define	SBI_HSM_HART_STATUS		2
+#define	 SBI_HSM_STATUS_STARTED		0
+#define	 SBI_HSM_STATUS_STOPPED		1
+#define	 SBI_HSM_STATUS_START_PENDING	2
+#define	 SBI_HSM_STATUS_STOP_PENDING	3
+
+/* System Reset (SRST) Extension */
+#define	SBI_EXT_ID_SRST			0x53525354
+#define	SBI_SRST_SYSTEM_RESET		0
+#define	 SBI_SRST_TYPE_SHUTDOWN		0
+#define	 SBI_SRST_TYPE_COLD_REBOOT	1
+#define	 SBI_SRST_TYPE_WARM_REBOOT	2
+#define	 SBI_SRST_REASON_NONE		0
+#define	 SBI_SRST_REASON_SYSTEM_FAILURE	1
 
 /* Legacy Extensions */
 #define	SBI_SET_TIMER			0
@@ -77,11 +119,12 @@
 #define	SBI_REMOTE_SFENCE_VMA_ASID	7
 #define	SBI_SHUTDOWN			8
 
-#define	SBI_CALL0(e, f)			SBI_CALL4(e, f, 0, 0, 0, 0)
-#define	SBI_CALL1(e, f, p1)		SBI_CALL4(e, f, p1, 0, 0, 0)
-#define	SBI_CALL2(e, f, p1, p2)		SBI_CALL4(e, f, p1, p2, 0, 0)
-#define	SBI_CALL3(e, f, p1, p2, p3)	SBI_CALL4(e, f, p1, p2, p3, 0)
-#define	SBI_CALL4(e, f, p1, p2, p3, p4)	sbi_call(e, f, p1, p2, p3, p4)
+#define	SBI_CALL0(e, f)				SBI_CALL5(e, f, 0, 0, 0, 0, 0)
+#define	SBI_CALL1(e, f, p1)			SBI_CALL5(e, f, p1, 0, 0, 0, 0)
+#define	SBI_CALL2(e, f, p1, p2)			SBI_CALL5(e, f, p1, p2, 0, 0, 0)
+#define	SBI_CALL3(e, f, p1, p2, p3)		SBI_CALL5(e, f, p1, p2, p3, 0, 0)
+#define	SBI_CALL4(e, f, p1, p2, p3, p4)		SBI_CALL5(e, f, p1, p2, p3, p4, 0)
+#define	SBI_CALL5(e, f, p1, p2, p3, p4, p5)	sbi_call(e, f, p1, p2, p3, p4, p5)
 
 /*
  * Documentation available at
@@ -95,7 +138,7 @@ struct sbi_ret {
 
 static __inline struct sbi_ret
 sbi_call(uint64_t arg7, uint64_t arg6, uint64_t arg0, uint64_t arg1,
-    uint64_t arg2, uint64_t arg3)
+    uint64_t arg2, uint64_t arg3, uint64_t arg4)
 {
 	struct sbi_ret ret;
 
@@ -103,13 +146,14 @@ sbi_call(uint64_t arg7, uint64_t arg6, uint64_t arg0, uint64_t arg1,
 	register uintptr_t a1 __asm ("a1") = (uintptr_t)(arg1);
 	register uintptr_t a2 __asm ("a2") = (uintptr_t)(arg2);
 	register uintptr_t a3 __asm ("a3") = (uintptr_t)(arg3);
+	register uintptr_t a4 __asm ("a4") = (uintptr_t)(arg4);
 	register uintptr_t a6 __asm ("a6") = (uintptr_t)(arg6);
 	register uintptr_t a7 __asm ("a7") = (uintptr_t)(arg7);
 
 	__asm __volatile(			\
 		"ecall"				\
 		:"+r"(a0), "+r"(a1)		\
-		:"r"(a2), "r"(a3), "r"(a6), "r"(a7)	\
+		:"r"(a2), "r"(a3), "r"(a4), "r"(a6), "r"(a7)	\
 		:"memory");
 
 	ret.error = a0;
@@ -128,6 +172,54 @@ sbi_probe_extension(long id)
 	return (SBI_CALL1(SBI_EXT_ID_BASE, SBI_BASE_PROBE_EXTENSION, id).value);
 }
 
+/* TIME extension functions. */
+void sbi_set_timer(uint64_t val);
+
+/* IPI extension functions. */
+void sbi_send_ipi(const u_long *hart_mask);
+
+/* RFENCE extension functions. */
+void sbi_remote_fence_i(const u_long *hart_mask);
+void sbi_remote_sfence_vma(const u_long *hart_mask, u_long start, u_long size);
+void sbi_remote_sfence_vma_asid(const u_long *hart_mask, u_long start,
+    u_long size, u_long asid);
+
+/* Hart State Management extension functions. */
+
+/*
+ * Start execution on the specified hart at physical address start_addr. The
+ * register a0 will contain the hart's ID, and a1 will contain the value of
+ * priv.
+ */
+int sbi_hsm_hart_start(u_long hart, u_long start_addr, u_long priv);
+
+/*
+ * Stop execution on the current hart. Interrupts should be disabled, or this
+ * function may return.
+ */
+void sbi_hsm_hart_stop(void);
+
+/*
+ * Get the execution status of the specified hart. The status will be one of:
+ *  - SBI_HSM_STATUS_STARTED
+ *  - SBI_HSM_STATUS_STOPPED
+ *  - SBI_HSM_STATUS_START_PENDING
+ *  - SBI_HSM_STATUS_STOP_PENDING
+ */
+int sbi_hsm_hart_status(u_long hart);
+
+/* System Reset extension functions. */
+
+/*
+ * Reset the system based on the following 'type' and 'reason' chosen from:
+ *  - SBI_SRST_TYPE_SHUTDOWN
+ *  - SBI_SRST_TYPE_COLD_REBOOT
+ *  - SBI_SRST_TYPE_WARM_REBOOT
+ *  - SBI_SRST_REASON_NONE
+ *  - SBI_SRST_REASON_SYSTEM_FAILURE
+ */
+void sbi_system_reset(u_long reset_type, u_long reset_reason);
+
 /* Legacy extension functions. */
 static __inline void
 sbi_console_putchar(int ch)
@@ -145,60 +237,6 @@ sbi_console_getchar(void)
 	 * continue to return their value in a0.
 	 */
 	return (SBI_CALL0(SBI_CONSOLE_GETCHAR, 0).error);
-}
-
-static __inline void
-sbi_set_timer(uint64_t val)
-{
-
-	(void)SBI_CALL1(SBI_SET_TIMER, 0, val);
-}
-
-static __inline void
-sbi_shutdown(void)
-{
-
-	(void)SBI_CALL0(SBI_SHUTDOWN, 0);
-}
-
-static __inline void
-sbi_clear_ipi(void)
-{
-
-	(void)SBI_CALL0(SBI_CLEAR_IPI, 0);
-}
-
-static __inline void
-sbi_send_ipi(const unsigned long *hart_mask)
-{
-
-	(void)SBI_CALL1(SBI_SEND_IPI, 0, (uint64_t)hart_mask);
-}
-
-static __inline void
-sbi_remote_fence_i(const unsigned long *hart_mask)
-{
-
-	(void)SBI_CALL1(SBI_REMOTE_FENCE_I, 0, (uint64_t)hart_mask);
-}
-
-static __inline void
-sbi_remote_sfence_vma(const unsigned long *hart_mask,
-    unsigned long start, unsigned long size)
-{
-
-	(void)SBI_CALL3(SBI_REMOTE_SFENCE_VMA, 0, (uint64_t)hart_mask, start,
-	    size);
-}
-
-static __inline void
-sbi_remote_sfence_vma_asid(const unsigned long *hart_mask,
-    unsigned long start, unsigned long size,
-    unsigned long asid)
-{
-
-	(void)SBI_CALL4(SBI_REMOTE_SFENCE_VMA_ASID, 0, (uint64_t)hart_mask,
-	    start, size, asid);
 }
 
 void sbi_print_version(void);

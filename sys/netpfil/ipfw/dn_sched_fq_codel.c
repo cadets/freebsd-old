@@ -123,24 +123,26 @@ fqcodel_sysctl_target_handler(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
-
 SYSBEGIN(f4)
 
 SYSCTL_DECL(_net_inet);
 SYSCTL_DECL(_net_inet_ip);
 SYSCTL_DECL(_net_inet_ip_dummynet);
 static SYSCTL_NODE(_net_inet_ip_dummynet, OID_AUTO, fqcodel,
-	CTLFLAG_RW, 0, "FQ_CODEL");
+    CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "FQ_CODEL");
 
 #ifdef SYSCTL_NODE
-	
+
 SYSCTL_PROC(_net_inet_ip_dummynet_fqcodel, OID_AUTO, target,
-	CTLTYPE_LONG | CTLFLAG_RW, NULL, 0, fqcodel_sysctl_target_handler, "L",
-	"FQ_CoDel target in microsecond");
+    CTLTYPE_LONG | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+    NULL, 0, fqcodel_sysctl_target_handler, "L",
+    "FQ_CoDel target in microsecond");
 SYSCTL_PROC(_net_inet_ip_dummynet_fqcodel, OID_AUTO, interval,
-	CTLTYPE_LONG | CTLFLAG_RW, NULL, 0, fqcodel_sysctl_interval_handler, "L",
-	"FQ_CoDel interval in microsecond");
-	
+    CTLTYPE_LONG | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+    NULL, 0, fqcodel_sysctl_interval_handler, "L",
+    "FQ_CoDel interval in microsecond");
+
 SYSCTL_UINT(_net_inet_ip_dummynet_fqcodel, OID_AUTO, quantum,
 	CTLFLAG_RW, &fq_codel_sysctl.quantum, 1514, "FQ_CoDel quantum");
 SYSCTL_UINT(_net_inet_ip_dummynet_fqcodel, OID_AUTO, flows,
@@ -163,7 +165,7 @@ codel_drop_head(struct fq_codel_flow *q, struct fq_codel_si *si)
 	fq_update_stats(q, si, -m->m_pkthdr.len, 1);
 
 	if (si->main_q.ni.length == 0) /* queue is now idle */
-			si->main_q.q_time = dn_cfg.curr_time;
+			si->main_q.q_time = V_dn_cfg.curr_time;
 
 	FREE_PKT(m);
 }
@@ -187,10 +189,8 @@ codel_enqueue(struct fq_codel_flow *q, struct mbuf *m, struct fq_codel_si *si)
 	if (mtag == NULL)
 		mtag = m_tag_alloc(MTAG_ABI_COMPAT, DN_AQM_MTAG_TS, sizeof(aqm_time_t),
 			M_NOWAIT);
-	if (mtag == NULL) {
-		m_freem(m); 
+	if (mtag == NULL)
 		goto drop;
-	}
 	*(aqm_time_t *)(mtag + 1) = AQM_UNOW;
 	m_tag_prepend(m, mtag);
 
@@ -246,7 +246,6 @@ fq_codel_classify_flow(struct mbuf *m, uint16_t fcount, struct fq_codel_si *si)
 			break;
 		default:
 			memset(&tuple[37], 0, 4);
-
 		}
 
 		hash = jenkins_hash(tuple, 41, HASHINIT) %  fcount;
@@ -274,7 +273,6 @@ fq_codel_classify_flow(struct mbuf *m, uint16_t fcount, struct fq_codel_si *si)
 			break;
 		default:
 			memset(&tuple[13], 0, 4);
-
 	}
 	hash = jenkins_hash(tuple, 17, HASHINIT) %  fcount;
 
@@ -306,11 +304,11 @@ fq_codel_enqueue(struct dn_sch_inst *_si, struct dn_queue *_q,
 	 * Note: 'codel_enqueue' function returns 1 only when it unable to 
 	 * add timestamp to packet (no limit check)*/
 	drop = codel_enqueue(&si->flows[idx], m, si);
-	
+
 	/* codel unable to timestamp a packet */ 
 	if (drop)
 		return 1;
-	
+
 	/* If the flow (sub-queue) is not active ,then add it to the tail of
 	 * new flows list, initialize and activate it.
 	 */
@@ -422,7 +420,7 @@ fq_codel_dequeue(struct dn_sch_inst *_si)
 		return mbuf;
 
 	} while (1);
-	
+
 	/* unreachable point */
 	return NULL;
 }
@@ -504,7 +502,7 @@ fq_codel_config(struct dn_schk *_schk)
 	struct fq_codel_schk *schk;
 	struct dn_extra_parms *ep;
 	struct dn_sch_fq_codel_parms *fqc_cfg;
-	
+
 	schk = (struct fq_codel_schk *)(_schk+1);
 	ep = (struct dn_extra_parms *) _schk->cfg;
 
@@ -514,7 +512,6 @@ fq_codel_config(struct dn_schk *_schk)
 	 */
 	if (ep && ep->oid.len ==sizeof(*ep) &&
 		ep->oid.subtype == DN_SCH_PARAMS) {
-
 		fqc_cfg = &schk->cfg;
 		if (ep->par[0] < 0)
 			fqc_cfg->ccfg.target = fq_codel_sysctl.ccfg.target;
@@ -569,7 +566,6 @@ fq_codel_config(struct dn_schk *_schk)
  */
 static int 
 fq_codel_getconfig (struct dn_schk *_schk, struct dn_extra_parms *ep) {
-	
 	struct fq_codel_schk *schk = (struct fq_codel_schk *)(_schk+1);
 	struct dn_sch_fq_codel_parms *fqc_cfg;
 

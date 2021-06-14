@@ -9,6 +9,10 @@
 
 .if exists(${.CURDIR}/tests)
 PROG= make
+.if ${PROGNAME:U} != "bmake"
+LINKS= ${BINDIR}/make ${BINDIR}/bmake
+MLINKS= ${MAN} b${MAN}
+.endif
 .endif
 
 .if !defined(MK_SHARED_TOOLCHAIN) || ${MK_SHARED_TOOLCHAIN} == "no"
@@ -22,7 +26,7 @@ NO_SHARED?=     YES
 SUBDIR+= tests
 .endif
 
-WARNS=3
+WARNS?=3
 CFLAGS+= -DNO_PWD_OVERRIDE
 
 .if make(after-import)

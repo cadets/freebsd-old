@@ -85,7 +85,8 @@ static keyboard_t	*kbd_ini;
 static keyboard_t	**keyboard = &kbd_ini;
 
 static int keymap_restrict_change;
-static SYSCTL_NODE(_hw, OID_AUTO, kbd, CTLFLAG_RD, 0, "kbd");
+static SYSCTL_NODE(_hw, OID_AUTO, kbd, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "kbd");
 SYSCTL_INT(_hw_kbd, OID_AUTO, keymap_restrict_change, CTLFLAG_RW,
     &keymap_restrict_change, 0, "restrict ability to change keymap");
 
@@ -452,7 +453,7 @@ static d_poll_t		genkbdpoll;
 
 static struct cdevsw kbd_cdevsw = {
 	.d_version =	D_VERSION,
-	.d_flags =	D_NEEDGIANT,
+	.d_flags =	D_NEEDGIANT | D_GIANTOK,
 	.d_open =	genkbdopen,
 	.d_close =	genkbdclose,
 	.d_read =	genkbdread,

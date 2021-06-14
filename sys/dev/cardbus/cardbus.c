@@ -57,7 +57,8 @@ __FBSDID("$FreeBSD$");
 #include "pcib_if.h"
 
 /* sysctl vars */
-static SYSCTL_NODE(_hw, OID_AUTO, cardbus, CTLFLAG_RD, 0, "CardBus parameters");
+static SYSCTL_NODE(_hw, OID_AUTO, cardbus, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "CardBus parameters");
 
 int    cardbus_debug = 0;
 SYSCTL_INT(_hw_cardbus, OID_AUTO, debug, CTLFLAG_RWTUN,
@@ -255,10 +256,11 @@ cardbus_detach_card(device_t cbdev)
 {
 	int err = 0;
 
+	mtx_lock(&Giant);
 	err = bus_generic_detach(cbdev);
-	if (err)
-		return (err);
-	err = device_delete_children(cbdev);
+	if (err == 0)
+		err = device_delete_children(cbdev);
+	mtx_unlock(&Giant);
 	if (err)
 		return (err);
 
@@ -359,7 +361,6 @@ static device_method_t cardbus_methods[] = {
 
 	/* PCI interface */
 	DEVMETHOD(pci_alloc_devinfo,	cardbus_alloc_devinfo),
-
 	{0,0}
 };
 

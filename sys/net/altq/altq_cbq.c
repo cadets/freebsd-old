@@ -55,7 +55,6 @@
 #include <net/altq/altq.h>
 #include <net/altq/altq_cbq.h>
 
-
 /*
  * Forward Declarations.
  */
@@ -217,7 +216,7 @@ cbq_pfattach(struct pf_altq *a)
 		return (EINVAL);
 	s = splnet();
 	error = altq_attach(&ifp->if_snd, ALTQT_CBQ, a->altq_disc,
-	    cbq_enqueue, cbq_dequeue, cbq_request, NULL, NULL);
+	    cbq_enqueue, cbq_dequeue, cbq_request);
 	splx(s);
 	return (error);
 }

@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2009,2010 Free Software Foundation, Inc.              *
+ * Copyright 2020 Thomas E. Dickey                                          *
+ * Copyright 1998-2009,2010 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -34,7 +35,7 @@
 
 #include "form.priv.h"
 
-MODULE_ID("$Id: fty_enum.c,v 1.26 2010/05/01 21:11:07 tom Exp $")
+MODULE_ID("$Id: fty_enum.c,v 1.31 2020/12/12 01:15:37 tom Exp $")
 
 typedef struct
   {
@@ -65,7 +66,7 @@ static void *
 Generic_Enum_Type(void *arg)
 {
   enumARG *argp = (enumARG *)0;
-  enumParams *params = (enumParams *) arg;
+  enumParams *params = (enumParams *)arg;
 
   if (params)
     {
@@ -424,15 +425,14 @@ static FIELDTYPE typeENUM =
 #endif
 };
 
-NCURSES_EXPORT_VAR(FIELDTYPE *)
-TYPE_ENUM = &typeENUM;
+FORM_EXPORT_VAR(FIELDTYPE *) TYPE_ENUM = &typeENUM;
 
 #if NCURSES_INTEROP_FUNCS
 /* The next routines are to simplify the use of ncurses from
-   programming languages with restictions on interop with C level
+   programming languages with restrictions on interop with C level
    constructs (e.g. variable access or va_list + ellipsis constructs)
 */
-NCURSES_EXPORT(FIELDTYPE *)
+FORM_EXPORT(FIELDTYPE *)
 _nc_TYPE_ENUM(void)
 {
   return TYPE_ENUM;

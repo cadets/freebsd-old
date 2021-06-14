@@ -31,6 +31,7 @@
 #include <dev/mlx5/mlx5_ifc.h>
 #include <dev/mlx5/mlx5_fpga/core.h>
 #include "mlx5_core.h"
+#include "eswitch.h"
 
 #include "opt_rss.h"
 
@@ -65,7 +66,8 @@ enum {
 			       (1ull << MLX5_EVENT_TYPE_PORT_CHANGE)	    | \
 			       (1ull << MLX5_EVENT_TYPE_SRQ_CATAS_ERROR)    | \
 			       (1ull << MLX5_EVENT_TYPE_SRQ_LAST_WQE)	    | \
-			       (1ull << MLX5_EVENT_TYPE_SRQ_RQ_LIMIT))
+			       (1ull << MLX5_EVENT_TYPE_SRQ_RQ_LIMIT)	    | \
+			       (1ull << MLX5_EVENT_TYPE_NIC_VPORT_CHANGE))
 
 struct map_eq_in {
 	u64	mask;
@@ -238,14 +240,13 @@ static int mlx5_eq_int(struct mlx5_core_dev *dev, struct mlx5_eq *eq)
 		 * Make sure we read EQ entry contents after we've
 		 * checked the ownership bit.
 		 */
-		rmb();
+		atomic_thread_fence_acq();
 
 		mlx5_core_dbg(eq->dev, "eqn %d, eqe type %s\n",
 			      eq->eqn, eqe_type_str(eqe->type));
 		switch (eqe->type) {
 		case MLX5_EVENT_TYPE_COMP:
-			cqn = be32_to_cpu(eqe->data.comp.cqn) & 0xffffff;
-			mlx5_cq_completion(dev, cqn);
+			mlx5_cq_completion(dev, eqe);
 			break;
 
 		case MLX5_EVENT_TYPE_PATH_MIG:
@@ -353,6 +354,9 @@ static int mlx5_eq_int(struct mlx5_core_dev *dev, struct mlx5_eq *eq)
 					     MLX5_DEV_EVENT_VPORT_CHANGE,
 					     (unsigned long)vport_num);
 			}
+			if (dev->priv.eswitch != NULL)
+				mlx5_eswitch_vport_event(dev->priv.eswitch,
+				    eqe);
 			break;
 
 		case MLX5_EVENT_TYPE_FPGA_ERROR:
@@ -415,7 +419,7 @@ static void init_eq_buf(struct mlx5_eq *eq)
 }
 
 int mlx5_create_map_eq(struct mlx5_core_dev *dev, struct mlx5_eq *eq, u8 vecidx,
-		       int nent, u64 mask, struct mlx5_uar *uar)
+		       int nent, u64 mask)
 {
 	u32 out[MLX5_ST_SZ_DW(create_eq_out)] = {0};
 	struct mlx5_priv *priv = &dev->priv;
@@ -450,7 +454,7 @@ int mlx5_create_map_eq(struct mlx5_core_dev *dev, struct mlx5_eq *eq, u8 vecidx,
 
 	eqc = MLX5_ADDR_OF(create_eq_in, in, eq_context_entry);
 	MLX5_SET(eqc, eqc, log_eq_size, ilog2(eq->nent));
-	MLX5_SET(eqc, eqc, uar_page, uar->index);
+	MLX5_SET(eqc, eqc, uar_page, priv->uar->index);
 	MLX5_SET(eqc, eqc, intr, vecidx);
 	MLX5_SET(eqc, eqc, log_page_size,
 		 eq->buf.page_shift - MLX5_ADAPTER_PAGE_SHIFT);
@@ -462,7 +466,7 @@ int mlx5_create_map_eq(struct mlx5_core_dev *dev, struct mlx5_eq *eq, u8 vecidx,
 	eq->eqn = MLX5_GET(create_eq_out, out, eq_number);
 	eq->irqn = vecidx;
 	eq->dev = dev;
-	eq->doorbell = uar->map + MLX5_EQ_DOORBEL_OFFSET;
+	eq->doorbell = priv->uar->map + MLX5_EQ_DOORBEL_OFFSET;
 	err = request_irq(priv->msix_arr[vecidx].vector, mlx5_msix_handler, 0,
 			  "mlx5_core", eq);
 	if (err)
@@ -565,8 +569,7 @@ int mlx5_start_eqs(struct mlx5_core_dev *dev)
 	}
 
 	err = mlx5_create_map_eq(dev, &table->cmd_eq, MLX5_EQ_VEC_CMD,
-				 MLX5_NUM_CMD_EQE, 1ull << MLX5_EVENT_TYPE_CMD,
-				 &dev->priv.uuari.uars[0]);
+				 MLX5_NUM_CMD_EQE, 1ull << MLX5_EVENT_TYPE_CMD);
 	if (err) {
 		mlx5_core_warn(dev, "failed to create cmd EQ %d\n", err);
 		return err;
@@ -575,8 +578,7 @@ int mlx5_start_eqs(struct mlx5_core_dev *dev)
 	mlx5_cmd_use_events(dev);
 
 	err = mlx5_create_map_eq(dev, &table->async_eq, MLX5_EQ_VEC_ASYNC,
-				 MLX5_NUM_ASYNC_EQE, async_event_mask,
-				 &dev->priv.uuari.uars[0]);
+				 MLX5_NUM_ASYNC_EQE, async_event_mask);
 	if (err) {
 		mlx5_core_warn(dev, "failed to create async EQ %d\n", err);
 		goto err1;
@@ -585,8 +587,7 @@ int mlx5_start_eqs(struct mlx5_core_dev *dev)
 	err = mlx5_create_map_eq(dev, &table->pages_eq,
 				 MLX5_EQ_VEC_PAGES,
 				 /* TODO: sriov max_vf + */ 1,
-				 1 << MLX5_EVENT_TYPE_PAGE_REQUEST,
-				 &dev->priv.uuari.uars[0]);
+				 1 << MLX5_EVENT_TYPE_PAGE_REQUEST);
 	if (err) {
 		mlx5_core_warn(dev, "failed to create pages EQ %d\n", err);
 		goto err2;
@@ -654,6 +655,20 @@ static const char *mlx5_port_module_event_error_type_to_string(u8 error_type)
 		return "High Temperature";
 	case MLX5_MODULE_EVENT_ERROR_CABLE_IS_SHORTED:
 		return "Bad or shorted cable/module";
+	case MLX5_MODULE_EVENT_ERROR_PMD_TYPE_NOT_ENABLED:
+		return "PMD type is not enabled";
+	case MLX5_MODULE_EVENT_ERROR_LASTER_TEC_FAILURE:
+		return "Laster_TEC_failure";
+	case MLX5_MODULE_EVENT_ERROR_HIGH_CURRENT:
+		return "High_current";
+	case MLX5_MODULE_EVENT_ERROR_HIGH_VOLTAGE:
+		return "High_voltage";
+	case MLX5_MODULE_EVENT_ERROR_PCIE_SYS_POWER_SLOT_EXCEEDED:
+		return "pcie_system_power_slot_Exceeded";
+	case MLX5_MODULE_EVENT_ERROR_HIGH_POWER:
+		return "High_power";
+	case MLX5_MODULE_EVENT_ERROR_MODULE_STATE_MACHINE_FAULT:
+		return "Module_state_machine_fault";
 	default:
 		return "Unknown error type";
 	}
@@ -739,3 +754,28 @@ static void mlx5_port_general_notification_event(struct mlx5_core_dev *dev,
 	}
 }
 
+void
+mlx5_disable_interrupts(struct mlx5_core_dev *dev)
+{
+	int nvec = dev->priv.eq_table.num_comp_vectors + MLX5_EQ_VEC_COMP_BASE;
+	int x;
+
+	for (x = 0; x != nvec; x++)
+		disable_irq(dev->priv.msix_arr[x].vector);
+}
+
+void
+mlx5_poll_interrupts(struct mlx5_core_dev *dev)
+{
+	struct mlx5_eq *eq;
+
+	if (unlikely(dev->priv.disable_irqs != 0))
+		return;
+
+	mlx5_eq_int(dev, &dev->priv.eq_table.cmd_eq);
+	mlx5_eq_int(dev, &dev->priv.eq_table.async_eq);
+	mlx5_eq_int(dev, &dev->priv.eq_table.pages_eq);
+
+	list_for_each_entry(eq, &dev->priv.eq_table.comp_eqs_list, list)
+		mlx5_eq_int(dev, eq);
+}

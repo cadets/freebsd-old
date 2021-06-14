@@ -88,8 +88,17 @@ typedef u_char vm_prot_t;	/* protection codes */
 #define VM_PROT_RW		(VM_PROT_READ|VM_PROT_WRITE)
 #define	VM_PROT_DEFAULT		VM_PROT_ALL
 
-enum obj_type { OBJT_DEFAULT, OBJT_SWAP, OBJT_VNODE, OBJT_DEVICE, OBJT_PHYS,
-		OBJT_DEAD, OBJT_SG, OBJT_MGTDEVICE };
+enum obj_type {
+	OBJT_DEFAULT,
+	OBJT_SWAP,
+	OBJT_VNODE,
+	OBJT_DEVICE,
+	OBJT_PHYS,
+	OBJT_DEAD,
+	OBJT_SG,
+	OBJT_MGTDEVICE,
+	OBJT_FIRST_DYN,
+};
 typedef u_char objtype_t;
 
 union vm_map_object;
@@ -112,7 +121,9 @@ typedef struct vm_object *vm_object_t;
  * Define it here for "applications" that include vm headers (e.g.,
  * genassym).
  */
+#ifndef HAVE_BOOLEAN
 typedef int boolean_t;
+#endif
 
 /*
  * The exact set of memory attributes is machine dependent.  However,
@@ -143,6 +154,9 @@ struct kva_md_info {
 	vm_offset_t	clean_eva;
 };
 
+#define VA_IS_CLEANMAP(va)					\
+	((va) >= kmi.clean_sva && (va) < kmi.clean_eva)
+
 extern struct kva_md_info	kmi;
 extern void vm_ksubmap_init(struct kva_md_info *);
 
@@ -150,13 +164,14 @@ extern int old_mlock;
 
 extern int vm_ndomains;
 
+#ifdef _KERNEL
 struct ucred;
-int swap_reserve(vm_ooffset_t incr);
-int swap_reserve_by_cred(vm_ooffset_t incr, struct ucred *cred);
+bool swap_reserve(vm_ooffset_t incr);
+bool swap_reserve_by_cred(vm_ooffset_t incr, struct ucred *cred);
 void swap_reserve_force(vm_ooffset_t incr);
 void swap_release(vm_ooffset_t decr);
 void swap_release_by_cred(vm_ooffset_t decr, struct ucred *cred);
 void swapper(void);
+#endif
 
 #endif				/* VM_H */
-

@@ -28,7 +28,7 @@
 .\"     @(#)stat.2	8.4 (Berkeley) 5/1/95
 .\" $FreeBSD$
 .\"
-.Dd December 5, 2018
+.Dd March 30, 2021
 .Dt STAT 2
 .Os
 .Sh NAME
@@ -84,9 +84,7 @@ and
 .Fn lstat
 except when the
 .Fa path
-specifies a relative path, or the
-.Dv AT_BENEATH
-flag is provided.
+specifies a relative path.
 For
 .Fn fstatat
 and relative
@@ -95,13 +93,6 @@ the status is retrieved from a file relative to
 the directory associated with the file descriptor
 .Fa fd
 instead of the current working directory.
-For
-.Dv AT_BENEATH
-and absolute
-.Fa path ,
-the status is retrieved from a file specified by the
-.Fa path ,
-but additional permission checks are performed, see below.
 .Pp
 The values for the
 .Fa flag
@@ -113,13 +104,24 @@ defined in
 If
 .Fa path
 names a symbolic link, the status of the symbolic link is returned.
-.It Dv AT_BENEATH
-Only stat files and directories below the topping directory.
+.It Dv AT_RESOLVE_BENEATH
+Only walk paths below the starting directory.
 See the description of the
-.Dv O_BENEATH
+.Dv O_RESOLVE_BENEATH
 flag in the
 .Xr open 2
 manual page.
+.It Dv AT_EMPTY_PATH
+If the
+.Fa path
+argument is an empty string, operate on the file or directory
+referenced by the descriptor
+.Fa fd .
+If
+.Fa fd
+is equal to
+.Dv AT_FDCWD ,
+operate on the current working directory.
 .El
 .Pp
 If
@@ -141,19 +143,10 @@ bit is set in
 When
 .Fn fstatat
 is called with an absolute
-.Fa path
-without the
-.Dv AT_BENEATH
-flag, it ignores the
+.Fa path ,
+it ignores the
 .Fa fd
 argument.
-When
-.Dv AT_BENEATH
-is specified with an absolute
-.Fa path ,
-a directory passed by the
-.Fa fd
-argument is used as the topping point for the resolution.
 .Pp
 The
 .Fa sb
@@ -379,6 +372,8 @@ argument
 points to an invalid address.
 .It Bq Er EIO
 An I/O error occurred while reading from or writing to the file system.
+.It Bq Er EINTEGRITY
+Corrupted data was detected while reading from the file system.
 .It Bq Er ELOOP
 Too many symbolic links were encountered in translating the pathname.
 .It Bq Er ENAMETOOLONG
@@ -410,6 +405,8 @@ argument
 points to an invalid address.
 .It Bq Er EIO
 An I/O error occurred while reading from or writing to the file system.
+.It Bq Er EINTEGRITY
+Corrupted data was detected while reading from the file system.
 .It Bq Er EOVERFLOW
 The file size in bytes cannot be
 represented correctly in the structure pointed to by
@@ -448,18 +445,9 @@ is an absolute path,
 or contained a ".." component leading to a
 directory outside of the directory hierarchy specified by
 .Fa fd ,
-and the process is in capability mode.
-.It Bq Er ENOTCAPABLE
-The
-.Dv AT_BENEATH
-flag was provided to
-.Fn fstatat ,
-and the absolute
-.Fa path
-does not have its tail fully contained under the topping directory,
-or the relative
-.Fa path
-escapes it.
+and the process is in capability mode or the
+.Dv AT_RESOLVE_BENEATH
+flag was specified.
 .El
 .Sh SEE ALSO
 .Xr access 2 ,

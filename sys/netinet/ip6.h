@@ -105,11 +105,10 @@ struct ip6_hdr {
 #endif /* LITTLE_ENDIAN */
 #endif
 #define IPV6_FLOWLABEL_LEN	20
-#if 1
-/* ECN bits proposed by Sally Floyd */
-#define IP6TOS_CE		0x01	/* congestion experienced */
-#define IP6TOS_ECT		0x02	/* ECN-capable transport */
-#endif
+
+#define	IPV6_TRAFFIC_CLASS(ip6)	((ntohl((ip6)->ip6_flow) >> 20) & 0xff)
+#define	IPV6_DSCP(ip6)		((ntohl((ip6)->ip6_flow) >> 20) & 0xfc)
+#define	IPV6_ECN(ip6)		((ntohl((ip6)->ip6_flow) >> 20) & 0x03)
 
 /*
  * Extension Headers

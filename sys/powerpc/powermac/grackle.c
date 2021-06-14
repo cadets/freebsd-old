@@ -100,7 +100,7 @@ static device_method_t	grackle_methods[] = {
 
 static devclass_t	grackle_devclass;
 DEFINE_CLASS_1(pcib, grackle_driver, grackle_methods,
-    sizeof(struct grackle_softc), ofw_pci_driver);
+    sizeof(struct grackle_softc), ofw_pcib_driver);
 DRIVER_MODULE(grackle, ofwbus, grackle_driver, grackle_devclass, 0, 0);
 
 static int
@@ -137,7 +137,7 @@ grackle_attach(device_t dev)
 	sc->sc_addr = (vm_offset_t)pmap_mapdev(GRACKLE_ADDR, PAGE_SIZE);
 	sc->sc_data = (vm_offset_t)pmap_mapdev(GRACKLE_DATA, PAGE_SIZE);
 
-	return (ofw_pci_attach(dev));
+	return (ofw_pcib_attach(dev));
 }
 
 static u_int32_t
@@ -152,7 +152,6 @@ grackle_read_config(device_t dev, u_int bus, u_int slot, u_int func, u_int reg,
 	caoff = sc->sc_data + (reg & 0x03);
 
 	if (grackle_enable_config(sc, bus, slot, func, reg) != 0) {
-
 		/*
 		 * Config probes to non-existent devices on the
 		 * secondary bus generates machine checks. Be sure
@@ -311,7 +310,6 @@ static device_method_t grackle_hb_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,         grackle_hb_probe),
 	DEVMETHOD(device_attach,        grackle_hb_attach),
-
 	{ 0, 0 }
 };
 

@@ -30,6 +30,7 @@
 
 #include <sys/types.h>
 #include <sys/errno.h>
+#include <sys/pmc.h>
 #include <sys/sysctl.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -42,12 +43,12 @@
 #include <libpmcstat.h>
 #include "pmu-events/pmu-events.h"
 
-#if defined(__amd64__) || defined(__i386__)
 struct pmu_alias {
 	const char *pa_alias;
 	const char *pa_name;
 };
 
+#if defined(__amd64__) || defined(__i386__)
 typedef enum {
 	PMU_INVALID,
 	PMU_INTEL,
@@ -71,7 +72,7 @@ static struct pmu_alias pmu_intel_alias_table[] = {
 	{"BRANCH-MISSES-RETIRED", "BR_MISP_RETIRED.ALL_BRANCHES"},
 	{"cycles", "tsc-tsc"},
 	{"unhalted-cycles", "CPU_CLK_UNHALTED.THREAD_P_ANY"},
-	{"instructions", "inst-retired.any_p"},
+	{"instructions", "inst_retired.any_p"},
 	{"branch-mispredicts", "br_misp_retired.all_branches"},
 	{"branches", "br_inst_retired.all_branches"},
 	{"interrupts", "hw_interrupts.received"},
@@ -89,27 +90,20 @@ static struct pmu_alias pmu_amd_alias_table[] = {
 static pmu_mfr_t
 pmu_events_mfr(void)
 {
-	char *buf;
-	size_t s;
+	char buf[PMC_CPUID_LEN];
+	size_t s = sizeof(buf);
 	pmu_mfr_t mfr;
 
-	if (sysctlbyname("kern.hwpmc.cpuid", (void *)NULL, &s,
+	if (sysctlbyname("kern.hwpmc.cpuid", buf, &s,
 	    (void *)NULL, 0) == -1)
 		return (PMU_INVALID);
-	if ((buf = malloc(s + 1)) == NULL)
-		return (PMU_INVALID);
-	if (sysctlbyname("kern.hwpmc.cpuid", buf, &s,
-		(void *)NULL, 0) == -1) {
-		free(buf);
-		return (PMU_INVALID);
-	}
-	if (strcasestr(buf, "AuthenticAMD") != NULL)
+	if (strcasestr(buf, "AuthenticAMD") != NULL ||
+	    strcasestr(buf, "HygonGenuine") != NULL)
 		mfr = PMU_AMD;
 	else if (strcasestr(buf, "GenuineIntel") != NULL)
 		mfr = PMU_INTEL;
 	else
 		mfr = PMU_INVALID;
-	free(buf);
 	return (mfr);
 }
 
@@ -145,6 +139,16 @@ pmu_alias_get(const char *name)
 	return (name);
 }
 
+#else
+
+static const char *
+pmu_alias_get(const char *name)
+{
+
+	return (name);
+}
+#endif
+
 struct pmu_event_desc {
 	uint64_t ped_period;
 	uint64_t ped_offcore_rsp;
@@ -168,17 +172,14 @@ pmu_events_map_get(const char *cpuid)
 {
 	regex_t re;
 	regmatch_t pmatch[1];
-	size_t s, len;
-	char buf[64];
+	char buf[PMC_CPUID_LEN];
+	size_t s = sizeof(buf);
 	int match;
 	const struct pmu_events_map *pme;
 
 	if (cpuid != NULL) {
-		memcpy(buf, cpuid, 64);
+		strlcpy(buf, cpuid, s);
 	} else {
-		if (sysctlbyname("kern.hwpmc.cpuid", (void *)NULL, &s,
-		    (void *)NULL, 0) == -1)
-			return (NULL);
 		if (sysctlbyname("kern.hwpmc.cpuid", buf, &s,
 		    (void *)NULL, 0) == -1)
 			return (NULL);
@@ -192,8 +193,8 @@ pmu_events_map_get(const char *cpuid)
 		match = regexec(&re, buf, 1, pmatch, 0);
 		regfree(&re);
 		if (match == 0) {
-			len = pmatch[0].rm_eo - pmatch[0].rm_so;
-			if(len == strlen(buf))
+			if (pmatch[0].rm_so == 0 && (buf[pmatch[0].rm_eo] == 0
+			    || buf[pmatch[0].rm_eo] == '-'))
 				return (pme);
 		}
 	}
@@ -311,8 +312,6 @@ pmc_pmu_sample_rate_get(const char *event_name)
 	event_name = pmu_alias_get(event_name);
 	if ((pe = pmu_event_get(NULL, event_name, NULL)) == NULL)
 		return (DEFAULT_SAMPLE_COUNT);
-	if (pe->alias && (pe = pmu_event_get(NULL, pe->alias, NULL)) == NULL)
-		return (DEFAULT_SAMPLE_COUNT);
 	if (pe->event == NULL)
 		return (DEFAULT_SAMPLE_COUNT);
 	if (pmu_parse_event(&ped, pe->event))
@@ -428,6 +427,7 @@ pmc_pmu_print_counter_full(const char *ev)
 	}
 }
 
+#if defined(__amd64__) || defined(__i386__)
 static int
 pmc_pmu_amd_pmcallocate(const char *event_name, struct pmc_op_pmcallocate *pm,
 	struct pmu_event_desc *ped)
@@ -481,9 +481,7 @@ pmc_pmu_intel_pmcallocate(const char *event_name, struct pmc_op_pmcallocate *pm,
 	struct pmu_event_desc *ped)
 {
 	struct pmc_md_iap_op_pmcallocate *iap;
-	int isfixed;
 
-	isfixed = 0;
 	iap = &pm->pm_md.pm_iap;
 	if (strcasestr(event_name, "UNC_") == event_name ||
 	    strcasestr(event_name, "uncore") != NULL) {
@@ -537,8 +535,6 @@ pmc_pmu_pmcallocate(const char *event_name, struct pmc_op_pmcallocate *pm)
 	event_name = pmu_alias_get(event_name);
 	if ((pe = pmu_event_get(NULL, event_name, &idx)) == NULL)
 		return (ENOENT);
-	if (pe->alias && (pe = pmu_event_get(NULL, pe->alias, &idx)) == NULL)
-		return (ENOENT);
 	assert(idx >= 0);
 	pm->pm_ev = idx;
 
@@ -553,85 +549,11 @@ pmc_pmu_pmcallocate(const char *event_name, struct pmc_op_pmcallocate *pm)
 		return (pmc_pmu_amd_pmcallocate(event_name, pm, &ped));
 }
 
-/*
- * Ultimately rely on AMD calling theirs the same
- */
-static const char *stat_mode_cntrs[] = {
-	"cpu_clk_unhalted.thread",
-	"inst_retired.any",
-	"br_inst_retired.all_branches",
-	"br_misp_retired.all_branches",
-	"longest_lat_cache.reference",
-	"longest_lat_cache.miss",
-};
-
-int
-pmc_pmu_stat_mode(const char ***cntrs)
-{
-	if (pmc_pmu_enabled()) {
-		*cntrs = stat_mode_cntrs;
-		return (0);
-	}
-	return (EOPNOTSUPP);
-}
-
 #else
-
-uint64_t
-pmc_pmu_sample_rate_get(const char *event_name __unused)
-{
-	return (DEFAULT_SAMPLE_COUNT);
-}
-
-void
-pmc_pmu_print_counters(const char *event_name __unused)
-{
-}
-
-void
-pmc_pmu_print_counter_desc(const char *e __unused)
-{
-}
-
-void
-pmc_pmu_print_counter_desc_long(const char *e __unused)
-{
-}
-
-void
-pmc_pmu_print_counter_full(const char *e __unused)
-{
-
-}
-
-int
-pmc_pmu_enabled(void)
-{
-	return (0);
-}
 
 int
 pmc_pmu_pmcallocate(const char *e __unused, struct pmc_op_pmcallocate *p __unused)
 {
 	return (EOPNOTSUPP);
 }
-
-const char *
-pmc_pmu_event_get_by_idx(const char *c __unused, int idx __unused)
-{
-	return (NULL);
-}
-
-int
-pmc_pmu_stat_mode(const char ***a __unused)
-{
-	return (EOPNOTSUPP);
-}
-
-int
-pmc_pmu_idx_get_by_event(const char *c __unused, const char *e __unused)
-{
-	return (-1);
-}
-
 #endif

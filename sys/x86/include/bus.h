@@ -96,8 +96,8 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _X86_BUS_H_
-#define _X86_BUS_H_
+#ifndef _MACHINE_BUS_H_
+#define _MACHINE_BUS_H_
 
 #include <machine/_bus.h>
 #include <machine/cpufunc.h>
@@ -135,8 +135,16 @@
 #define	BUS_SPACE_BARRIER_READ	0x01		/* force read barrier */
 #define	BUS_SPACE_BARRIER_WRITE	0x02		/* force write barrier */
 
-#if defined(KCSAN) && !defined(KCSAN_RUNTIME)
-#include <sys/_cscan_bus.h>
+#ifndef SAN_RUNTIME
+#if defined(KASAN)
+#define	BUS_SAN_PREFIX	kasan
+#elif defined(KCSAN)
+#define	BUS_SAN_PREFIX	kcsan
+#endif
+#endif
+
+#ifdef BUS_SAN_PREFIX
+#include <sys/bus_san.h>
 #else
 
 /*
@@ -193,7 +201,6 @@ bus_space_free(bus_space_tag_t t __unused, bus_space_handle_t bsh __unused,
 	       bus_size_t size __unused)
 {
 }
-
 
 /*
  * Read a 1, 2, 4, or 8 byte quantity from bus space
@@ -361,7 +368,6 @@ static __inline void bus_space_read_region_4(bus_space_tag_t tag,
 					     bus_space_handle_t bsh,
 					     bus_size_t offset, u_int32_t *addr,
 					     size_t count);
-
 
 static __inline void
 bus_space_read_region_1(bus_space_tag_t tag, bus_space_handle_t bsh,
@@ -1091,6 +1097,38 @@ bus_space_barrier(bus_space_tag_t tag __unused, bus_space_handle_t bsh __unused,
 #define	bus_space_copy_region_stream_4(t, h1, o1, h2, o2, c) \
 	bus_space_copy_region_4((t), (h1), (o1), (h2), (o2), (c))
 
-#endif /* KCSAN && !KCSAN_RUNTIME */
+#define BUS_PEEK_FUNC(width, type)					\
+	static inline int						\
+	bus_space_peek_##width(bus_space_tag_t tag,			\
+	    bus_space_handle_t hnd, bus_size_t offset, type *value)	\
+	{								\
+		type tmp;						\
+		tmp = bus_space_read_##width(tag, hnd, offset);		\
+		*value = (type)tmp;					\
+		return (0);						\
+	}
+BUS_PEEK_FUNC(1, uint8_t)
+BUS_PEEK_FUNC(2, uint16_t)
+BUS_PEEK_FUNC(4, uint32_t)
+#ifdef __amd64__
+BUS_PEEK_FUNC(8, uint64_t)
+#endif
 
-#endif /* _X86_BUS_H_ */
+#define BUS_POKE_FUNC(width, type)					\
+	static inline int						\
+	bus_space_poke_##width(bus_space_tag_t tag,			\
+	    bus_space_handle_t hnd, bus_size_t offset, type value)	\
+	{								\
+		bus_space_write_##width(tag, hnd, offset, value);	\
+		return (0); 						\
+	}
+BUS_POKE_FUNC(1, uint8_t)
+BUS_POKE_FUNC(2, uint16_t)
+BUS_POKE_FUNC(4, uint32_t)
+#ifdef __amd64__
+BUS_POKE_FUNC(8, uint64_t)
+#endif
+
+#endif /* !BUS_SAN_PREFIX */
+
+#endif /* !_MACHINE_BUS_H_ */

@@ -62,7 +62,8 @@ MALLOC_DEFINE(M_ACCF, "accf", "accept filter data");
 
 static int unloadable = 0;
 
-SYSCTL_NODE(_net, OID_AUTO, accf, CTLFLAG_RW, 0, "Accept filters");
+SYSCTL_NODE(_net, OID_AUTO, accf, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "Accept filters");
 SYSCTL_INT(_net_accf, OID_AUTO, unloadable, CTLFLAG_RW, &unloadable, 0,
 	"Allow unload of accept filters (not recommended)");
 
@@ -298,6 +299,7 @@ accept_filt_setopt(struct socket *so, struct sockopt *sopt)
 	so->sol_accept_filter = afp;
 	so->sol_accept_filter_arg = accept_filter_arg;
 	so->sol_accept_filter_str = accept_filter_str;
+	accept_filter_str = NULL;
 	so->so_options |= SO_ACCEPTFILTER;
 out:
 	SOCK_UNLOCK(so);

@@ -78,7 +78,8 @@ devclass_t ata_devclass;
 int ata_dma_check_80pin = 1;
 
 /* sysctl vars */
-static SYSCTL_NODE(_hw, OID_AUTO, ata, CTLFLAG_RD, 0, "ATA driver parameters");
+static SYSCTL_NODE(_hw, OID_AUTO, ata, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "ATA driver parameters");
 SYSCTL_INT(_hw_ata, OID_AUTO, ata_dma_check_80pin,
 	   CTLFLAG_RWTUN, &ata_dma_check_80pin, 0,
 	   "Check for 80pin cable before setting ATA DMA mode");
@@ -138,7 +139,7 @@ ata_attach(device_t dev)
 		if (ch->flags & ATA_SATA)
 			ch->user[i].bytecount = 8192;
 		else
-			ch->user[i].bytecount = MAXPHYS;
+			ch->user[i].bytecount = 65536;
 		ch->user[i].caps = 0;
 		ch->curr[i] = ch->user[i];
 		if (ch->flags & ATA_SATA) {

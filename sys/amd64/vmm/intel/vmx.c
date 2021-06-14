@@ -32,6 +32,8 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_bhyve_snapshot.h"
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/smp.h>
@@ -39,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/pcpu.h>
 #include <sys/proc.h>
+#include <sys/smr.h>
 #include <sys/sysctl.h>
 
 #include <vm/vm.h>
@@ -56,6 +59,8 @@ __FBSDID("$FreeBSD$");
 #include <machine/vmm.h>
 #include <machine/vmm_dev.h>
 #include <machine/vmm_instruction_emul.h>
+#include <machine/vmm_snapshot.h>
+
 #include "vmm_lapic.h"
 #include "vmm_host.h"
 #include "vmm_ioport.h"
@@ -123,7 +128,8 @@ static MALLOC_DEFINE(M_VMX, "vmx", "vmx");
 static MALLOC_DEFINE(M_VLAPIC, "vlapic", "vlapic");
 
 SYSCTL_DECL(_hw_vmm);
-SYSCTL_NODE(_hw_vmm, OID_AUTO, vmx, CTLFLAG_RW, NULL, NULL);
+SYSCTL_NODE(_hw_vmm, OID_AUTO, vmx, CTLFLAG_RW | CTLFLAG_MPSAFE, NULL,
+    NULL);
 
 int vmxon_enabled[MAXCPU];
 static char vmxon_region[MAXCPU][PAGE_SIZE] __aligned(PAGE_SIZE);
@@ -150,7 +156,9 @@ SYSCTL_INT(_hw_vmm_vmx, OID_AUTO, initialized, CTLFLAG_RD,
 /*
  * Optional capabilities
  */
-static SYSCTL_NODE(_hw_vmm_vmx, OID_AUTO, cap, CTLFLAG_RW, NULL, NULL);
+static SYSCTL_NODE(_hw_vmm_vmx, OID_AUTO, cap,
+    CTLFLAG_RW | CTLFLAG_MPSAFE, NULL,
+    NULL);
 
 static int cap_halt_exit;
 SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, halt_exit, CTLFLAG_RD, &cap_halt_exit, 0,
@@ -159,6 +167,14 @@ SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, halt_exit, CTLFLAG_RD, &cap_halt_exit, 0,
 static int cap_pause_exit;
 SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, pause_exit, CTLFLAG_RD, &cap_pause_exit,
     0, "PAUSE triggers a VM-exit");
+
+static int cap_rdpid;
+SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, rdpid, CTLFLAG_RD, &cap_rdpid, 0,
+    "Guests are allowed to use RDPID");
+
+static int cap_rdtscp;
+SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, rdtscp, CTLFLAG_RD, &cap_rdtscp, 0,
+    "Guests are allowed to use RDTSCP");
 
 static int cap_unrestricted_guest;
 SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, unrestricted_guest, CTLFLAG_RD,
@@ -171,6 +187,10 @@ SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, monitor_trap, CTLFLAG_RD,
 static int cap_invpcid;
 SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, invpcid, CTLFLAG_RD, &cap_invpcid,
     0, "Guests are allowed to use INVPCID");
+
+static int tpr_shadowing;
+SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, tpr_shadowing, CTLFLAG_RD,
+    &tpr_shadowing, 0, "TPR shadowing support");
 
 static int virtual_interrupt_delivery;
 SYSCTL_INT(_hw_vmm_vmx_cap, OID_AUTO, virtual_interrupt_delivery, CTLFLAG_RD,
@@ -288,6 +308,21 @@ static int vmx_getdesc(void *arg, int vcpu, int reg, struct seg_desc *desc);
 static int vmx_getreg(void *arg, int vcpu, int reg, uint64_t *retval);
 static int vmxctx_setreg(struct vmxctx *vmxctx, int reg, uint64_t val);
 static void vmx_inject_pir(struct vlapic *vlapic);
+#ifdef BHYVE_SNAPSHOT
+static int vmx_restore_tsc(void *arg, int vcpu, uint64_t now);
+#endif
+
+static inline bool
+host_has_rdpid(void)
+{
+	return ((cpu_stdext_feature2 & CPUID_STDEXT2_RDPID) != 0);
+}
+
+static inline bool
+host_has_rdtscp(void)
+{
+	return ((amd_feature & AMDID_RDTSCP) != 0);
+}
 
 #ifdef KTR
 static const char *
@@ -575,7 +610,7 @@ vmx_disable(void *arg __unused)
 }
 
 static int
-vmx_cleanup(void)
+vmx_modcleanup(void)
 {
 
 	if (pirvec >= 0)
@@ -617,7 +652,7 @@ vmx_enable(void *arg __unused)
 }
 
 static void
-vmx_restore(void)
+vmx_modresume(void)
 {
 
 	if (vmxon_enabled[curcpu])
@@ -625,15 +660,16 @@ vmx_restore(void)
 }
 
 static int
-vmx_init(int ipinum)
+vmx_modinit(int ipinum)
 {
-	int error, use_tpr_shadow;
+	int error;
 	uint64_t basic, fixed0, fixed1, feature_control;
 	uint32_t tmp, procbased2_vid_bits;
 
 	/* CPUID.1:ECX[bit 5] must be 1 for processor to support VMX */
 	if (!(cpu_feature2 & CPUID2_VMX)) {
-		printf("vmx_init: processor does not support VMX operation\n");
+		printf("vmx_modinit: processor does not support VMX "
+		    "operation\n");
 		return (ENXIO);
 	}
 
@@ -644,7 +680,7 @@ vmx_init(int ipinum)
 	feature_control = rdmsr(MSR_IA32_FEATURE_CONTROL);
 	if ((feature_control & IA32_FEATURE_CONTROL_LOCK) == 1 &&
 	    (feature_control & IA32_FEATURE_CONTROL_VMX_EN) == 0) {
-		printf("vmx_init: VMX operation disabled by BIOS\n");
+		printf("vmx_modinit: VMX operation disabled by BIOS\n");
 		return (ENXIO);
 	}
 
@@ -654,7 +690,7 @@ vmx_init(int ipinum)
 	 */
 	basic = rdmsr(MSR_VMX_BASIC);
 	if ((basic & (1UL << 54)) == 0) {
-		printf("vmx_init: processor does not support desired basic "
+		printf("vmx_modinit: processor does not support desired basic "
 		    "capabilities\n");
 		return (EINVAL);
 	}
@@ -665,8 +701,8 @@ vmx_init(int ipinum)
 			       PROCBASED_CTLS_ONE_SETTING,
 			       PROCBASED_CTLS_ZERO_SETTING, &procbased_ctls);
 	if (error) {
-		printf("vmx_init: processor does not support desired primary "
-		       "processor-based controls\n");
+		printf("vmx_modinit: processor does not support desired "
+		    "primary processor-based controls\n");
 		return (error);
 	}
 
@@ -679,8 +715,8 @@ vmx_init(int ipinum)
 			       PROCBASED_CTLS2_ONE_SETTING,
 			       PROCBASED_CTLS2_ZERO_SETTING, &procbased_ctls2);
 	if (error) {
-		printf("vmx_init: processor does not support desired secondary "
-		       "processor-based controls\n");
+		printf("vmx_modinit: processor does not support desired "
+		    "secondary processor-based controls\n");
 		return (error);
 	}
 
@@ -696,8 +732,8 @@ vmx_init(int ipinum)
 			       PINBASED_CTLS_ONE_SETTING,
 			       PINBASED_CTLS_ZERO_SETTING, &pinbased_ctls);
 	if (error) {
-		printf("vmx_init: processor does not support desired "
-		       "pin-based controls\n");
+		printf("vmx_modinit: processor does not support desired "
+		    "pin-based controls\n");
 		return (error);
 	}
 
@@ -707,7 +743,7 @@ vmx_init(int ipinum)
 			       VM_EXIT_CTLS_ZERO_SETTING,
 			       &exit_ctls);
 	if (error) {
-		printf("vmx_init: processor does not support desired "
+		printf("vmx_modinit: processor does not support desired "
 		    "exit controls\n");
 		return (error);
 	}
@@ -717,7 +753,7 @@ vmx_init(int ipinum)
 	    VM_ENTRY_CTLS_ONE_SETTING, VM_ENTRY_CTLS_ZERO_SETTING,
 	    &entry_ctls);
 	if (error) {
-		printf("vmx_init: processor does not support desired "
+		printf("vmx_modinit: processor does not support desired "
 		    "entry controls\n");
 		return (error);
 	}
@@ -741,6 +777,43 @@ vmx_init(int ipinum)
 					 PROCBASED_PAUSE_EXITING, 0,
 					 &tmp) == 0);
 
+	/*
+	 * Check support for RDPID and/or RDTSCP.
+	 *
+	 * Support a pass-through-based implementation of these via the
+	 * "enable RDTSCP" VM-execution control and the "RDTSC exiting"
+	 * VM-execution control.
+	 *
+	 * The "enable RDTSCP" VM-execution control applies to both RDPID
+	 * and RDTSCP (see SDM volume 3, section 25.3, "Changes to
+	 * Instruction Behavior in VMX Non-root operation"); this is why
+	 * only this VM-execution control needs to be enabled in order to
+	 * enable passing through whichever of RDPID and/or RDTSCP are
+	 * supported by the host.
+	 *
+	 * The "RDTSC exiting" VM-execution control applies to both RDTSC
+	 * and RDTSCP (again, per SDM volume 3, section 25.3), and is
+	 * already set up for RDTSC and RDTSCP pass-through by the current
+	 * implementation of RDTSC.
+	 *
+	 * Although RDPID and RDTSCP are optional capabilities, since there
+	 * does not currently seem to be a use case for enabling/disabling
+	 * these via libvmmapi, choose not to support this and, instead,
+	 * just statically always enable or always disable this support
+	 * across all vCPUs on all VMs. (Note that there may be some
+	 * complications to providing this functionality, e.g., the MSR
+	 * bitmap is currently per-VM rather than per-vCPU while the
+	 * capability API wants to be able to control capabilities on a
+	 * per-vCPU basis).
+	 */
+	error = vmx_set_ctlreg(MSR_VMX_PROCBASED_CTLS2,
+			       MSR_VMX_PROCBASED_CTLS2,
+			       PROCBASED2_ENABLE_RDTSCP, 0, &tmp);
+	cap_rdpid = error == 0 && host_has_rdpid();
+	cap_rdtscp = error == 0 && host_has_rdtscp();
+	if (cap_rdpid || cap_rdtscp)
+		procbased_ctls2 |= PROCBASED2_ENABLE_RDTSCP;
+
 	cap_unrestricted_guest = (vmx_set_ctlreg(MSR_VMX_PROCBASED_CTLS2,
 					MSR_VMX_PROCBASED_CTLS2,
 					PROCBASED2_UNRESTRICTED_GUEST, 0,
@@ -751,6 +824,24 @@ vmx_init(int ipinum)
 	    &tmp) == 0);
 
 	/*
+	 * Check support for TPR shadow.
+	 */
+	error = vmx_set_ctlreg(MSR_VMX_PROCBASED_CTLS,
+	    MSR_VMX_TRUE_PROCBASED_CTLS, PROCBASED_USE_TPR_SHADOW, 0,
+	    &tmp);
+	if (error == 0) {
+		tpr_shadowing = 1;
+		TUNABLE_INT_FETCH("hw.vmm.vmx.use_tpr_shadowing",
+		    &tpr_shadowing);
+	}
+
+	if (tpr_shadowing) {
+		procbased_ctls |= PROCBASED_USE_TPR_SHADOW;
+		procbased_ctls &= ~PROCBASED_CR8_LOAD_EXITING;
+		procbased_ctls &= ~PROCBASED_CR8_STORE_EXITING;
+	}
+
+	/*
 	 * Check support for virtual interrupt delivery.
 	 */
 	procbased2_vid_bits = (PROCBASED2_VIRTUALIZE_APIC_ACCESSES |
@@ -758,13 +849,9 @@ vmx_init(int ipinum)
 	    PROCBASED2_APIC_REGISTER_VIRTUALIZATION |
 	    PROCBASED2_VIRTUAL_INTERRUPT_DELIVERY);
 
-	use_tpr_shadow = (vmx_set_ctlreg(MSR_VMX_PROCBASED_CTLS,
-	    MSR_VMX_TRUE_PROCBASED_CTLS, PROCBASED_USE_TPR_SHADOW, 0,
-	    &tmp) == 0);
-
 	error = vmx_set_ctlreg(MSR_VMX_PROCBASED_CTLS2, MSR_VMX_PROCBASED_CTLS2,
 	    procbased2_vid_bits, 0, &tmp);
-	if (error == 0 && use_tpr_shadow) {
+	if (error == 0 && tpr_shadowing) {
 		virtual_interrupt_delivery = 1;
 		TUNABLE_INT_FETCH("hw.vmm.vmx.use_apic_vid",
 		    &virtual_interrupt_delivery);
@@ -774,13 +861,6 @@ vmx_init(int ipinum)
 		procbased_ctls |= PROCBASED_USE_TPR_SHADOW;
 		procbased_ctls2 |= procbased2_vid_bits;
 		procbased_ctls2 &= ~PROCBASED2_VIRTUALIZE_X2APIC_MODE;
-
-		/*
-		 * No need to emulate accesses to %CR8 if virtual
-		 * interrupt delivery is enabled.
-		 */
-		procbased_ctls &= ~PROCBASED_CR8_LOAD_EXITING;
-		procbased_ctls &= ~PROCBASED_CR8_STORE_EXITING;
 
 		/*
 		 * Check for Posted Interrupts only if Virtual Interrupt
@@ -794,8 +874,9 @@ vmx_init(int ipinum)
 			    &IDTVEC(justreturn));
 			if (pirvec < 0) {
 				if (bootverbose) {
-					printf("vmx_init: unable to allocate "
-					    "posted interrupt vector\n");
+					printf("vmx_modinit: unable to "
+					    "allocate posted interrupt "
+					    "vector\n");
 				}
 			} else {
 				posted_interrupts = 1;
@@ -811,7 +892,7 @@ vmx_init(int ipinum)
 	/* Initialize EPT */
 	error = ept_init(ipinum);
 	if (error) {
-		printf("vmx_init: ept initialization failed (%d)\n", error);
+		printf("vmx_modinit: ept initialization failed (%d)\n", error);
 		return (error);
 	}
 
@@ -936,7 +1017,7 @@ vmx_setup_cr_shadow(int which, struct vmcs *vmcs, uint32_t initial)
 #define	vmx_setup_cr4_shadow(vmcs,init)	vmx_setup_cr_shadow(4, (vmcs), (init))
 
 static void *
-vmx_vminit(struct vm *vm, pmap_t pmap)
+vmx_init(struct vm *vm, pmap_t pmap)
 {
 	uint16_t vpid[VM_MAXCPU];
 	int i, error;
@@ -952,7 +1033,7 @@ vmx_vminit(struct vm *vm, pmap_t pmap)
 	}
 	vmx->vm = vm;
 
-	vmx->eptp = eptp(vtophys((vm_offset_t)pmap->pm_pml4));
+	vmx->eptp = eptp(vtophys((vm_offset_t)pmap->pm_pmltop));
 
 	/*
 	 * Clean up EPTP-tagged guest physical and combined mappings
@@ -986,6 +1067,15 @@ vmx_vminit(struct vm *vm, pmap_t pmap)
 	 * the "use TSC offsetting" execution control is enabled and the
 	 * difference between the host TSC and the guest TSC is written
 	 * into the TSC offset in the VMCS.
+	 *
+	 * Guest TSC_AUX support is enabled if any of guest RDPID and/or
+	 * guest RDTSCP support are enabled (since, as per Table 2-2 in SDM
+	 * volume 4, TSC_AUX is supported if any of RDPID and/or RDTSCP are
+	 * supported). If guest TSC_AUX support is enabled, TSC_AUX is
+	 * exposed read-only so that the VMM can do one fewer MSR read per
+	 * exit than if this register were exposed read-write; the guest
+	 * restore value can be updated during guest writes (expected to be
+	 * rare) instead of during all exits (common).
 	 */
 	if (guest_msr_rw(vmx, MSR_GSBASE) ||
 	    guest_msr_rw(vmx, MSR_FSBASE) ||
@@ -993,8 +1083,9 @@ vmx_vminit(struct vm *vm, pmap_t pmap)
 	    guest_msr_rw(vmx, MSR_SYSENTER_ESP_MSR) ||
 	    guest_msr_rw(vmx, MSR_SYSENTER_EIP_MSR) ||
 	    guest_msr_rw(vmx, MSR_EFER) ||
-	    guest_msr_ro(vmx, MSR_TSC))
-		panic("vmx_vminit: error setting guest msr access");
+	    guest_msr_ro(vmx, MSR_TSC) ||
+	    ((cap_rdpid || cap_rdtscp) && guest_msr_ro(vmx, MSR_TSC_AUX)))
+		panic("vmx_init: error setting guest msr access");
 
 	vpid_alloc(vpid, VM_MAXCPU);
 
@@ -1011,7 +1102,7 @@ vmx_vminit(struct vm *vm, pmap_t pmap)
 		vmcs->identifier = vmx_revision();
 		error = vmclear(vmcs);
 		if (error != 0) {
-			panic("vmx_vminit: vmclear error %d on vcpu %d\n",
+			panic("vmx_init: vmclear error %d on vcpu %d\n",
 			      error, i);
 		}
 
@@ -1051,10 +1142,13 @@ vmx_vminit(struct vm *vm, pmap_t pmap)
 		vmx->ctx[i].guest_dr6 = DBREG_DR6_RESERVED1;
 		error += vmwrite(VMCS_GUEST_DR7, DBREG_DR7_RESERVED1);
 
-		if (virtual_interrupt_delivery) {
-			error += vmwrite(VMCS_APIC_ACCESS, APIC_ACCESS_ADDRESS);
+		if (tpr_shadowing) {
 			error += vmwrite(VMCS_VIRTUAL_APIC,
 			    vtophys(&vmx->apic_page[i]));
+		}
+
+		if (virtual_interrupt_delivery) {
+			error += vmwrite(VMCS_APIC_ACCESS, APIC_ACCESS_ADDRESS);
 			error += vmwrite(VMCS_EOI_EXIT0, 0);
 			error += vmwrite(VMCS_EOI_EXIT1, 0);
 			error += vmwrite(VMCS_EOI_EXIT2, 0);
@@ -1066,9 +1160,11 @@ vmx_vminit(struct vm *vm, pmap_t pmap)
 			    vtophys(&vmx->pir_desc[i]));
 		}
 		VMCLEAR(vmcs);
-		KASSERT(error == 0, ("vmx_vminit: error customizing the vmcs"));
+		KASSERT(error == 0, ("vmx_init: error customizing the vmcs"));
 
 		vmx->cap[i].set = 0;
+		vmx->cap[i].set |= cap_rdpid != 0 ? 1 << VM_CAP_RDPID : 0;
+		vmx->cap[i].set |= cap_rdtscp != 0 ? 1 << VM_CAP_RDTSCP : 0;
 		vmx->cap[i].proc_ctls = procbased_ctls;
 		vmx->cap[i].proc_ctls2 = procbased_ctls2;
 		vmx->cap[i].exc_bitmap = exc_bitmap;
@@ -1100,15 +1196,11 @@ vmx_vminit(struct vm *vm, pmap_t pmap)
 static int
 vmx_handle_cpuid(struct vm *vm, int vcpu, struct vmxctx *vmxctx)
 {
-	int handled, func;
+	int handled;
 
-	func = vmxctx->guest_rax;
-
-	handled = x86_emulate_cpuid(vm, vcpu,
-				    (uint32_t*)(&vmxctx->guest_rax),
-				    (uint32_t*)(&vmxctx->guest_rbx),
-				    (uint32_t*)(&vmxctx->guest_rcx),
-				    (uint32_t*)(&vmxctx->guest_rdx));
+	handled = x86_emulate_cpuid(vm, vcpu, (uint64_t *)&vmxctx->guest_rax,
+	    (uint64_t *)&vmxctx->guest_rbx, (uint64_t *)&vmxctx->guest_rcx,
+	    (uint64_t *)&vmxctx->guest_rdx);
 	return (handled);
 }
 
@@ -1184,7 +1276,7 @@ vmx_invvpid(struct vmx *vmx, int vcpu, pmap_t pmap, int running)
 	 * Note also that this will invalidate mappings tagged with 'vpid'
 	 * for "all" EP4TAs.
 	 */
-	if (pmap->pm_eptgen == vmx->eptgen[curcpu]) {
+	if (atomic_load_long(&pmap->pm_eptgen) == vmx->eptgen[curcpu]) {
 		invvpid_desc._res1 = 0;
 		invvpid_desc._res2 = 0;
 		invvpid_desc.vpid = vmxstate->vpid;
@@ -1282,7 +1374,10 @@ vmx_set_tsc_offset(struct vmx *vmx, int vcpu, uint64_t offset)
 	}
 
 	error = vmwrite(VMCS_TSC_OFFSET, offset);
-
+#ifdef BHYVE_SNAPSHOT
+	if (error == 0)
+		error = vm_set_tsc_offset(vmx->vm, vcpu, offset);
+#endif
 	return (error);
 }
 
@@ -1844,14 +1939,18 @@ vmx_cpu_mode(void)
 static enum vm_paging_mode
 vmx_paging_mode(void)
 {
+	uint64_t cr4;
 
 	if (!(vmcs_read(VMCS_GUEST_CR0) & CR0_PG))
 		return (PAGING_MODE_FLAT);
-	if (!(vmcs_read(VMCS_GUEST_CR4) & CR4_PAE))
+	cr4 = vmcs_read(VMCS_GUEST_CR4);
+	if (!(cr4 & CR4_PAE))
 		return (PAGING_MODE_32);
-	if (vmcs_read(VMCS_GUEST_IA32_EFER) & EFER_LME)
-		return (PAGING_MODE_64);
-	else
+	if (vmcs_read(VMCS_GUEST_IA32_EFER) & EFER_LME) {
+		if (!(cr4 & CR4_LA57))
+			return (PAGING_MODE_64);
+		return (PAGING_MODE_64_LA57);
+	} else
 		return (PAGING_MODE_PAE);
 }
 
@@ -2658,6 +2757,12 @@ vmx_exit_process(struct vmx *vmx, int vcpu, struct vm_exit *vmexit)
 		SDT_PROBE3(vmm, vmx, exit, mwait, vmx, vcpu, vmexit);
 		vmexit->exitcode = VM_EXITCODE_MWAIT;
 		break;
+	case EXIT_REASON_TPR:
+		vlapic = vm_lapic(vmx->vm, vcpu);
+		vlapic_sync_tpr(vlapic);
+		vmexit->inst_length = 0;
+		handled = HANDLED;
+		break;
 	case EXIT_REASON_VMCALL:
 	case EXIT_REASON_VMCLEAR:
 	case EXIT_REASON_VMLAUNCH:
@@ -2733,7 +2838,6 @@ vmx_exit_inst_error(struct vmxctx *vmxctx, int rc, struct vm_exit *vmexit)
 	switch (rc) {
 	case VMX_VMRESUME_ERROR:
 	case VMX_VMLAUNCH_ERROR:
-	case VMX_INVEPT_ERROR:
 		vmexit->u.vmx.inst_type = rc;
 		break;
 	default:
@@ -2838,6 +2942,31 @@ vmx_dr_leave_guest(struct vmxctx *vmxctx)
 	write_rflags(read_rflags() | vmxctx->host_tf);
 }
 
+static __inline void
+vmx_pmap_activate(struct vmx *vmx, pmap_t pmap)
+{
+	long eptgen;
+	int cpu;
+
+	cpu = curcpu;
+
+	CPU_SET_ATOMIC(cpu, &pmap->pm_active);
+	smr_enter(pmap->pm_eptsmr);
+	eptgen = atomic_load_long(&pmap->pm_eptgen);
+	if (eptgen != vmx->eptgen[cpu]) {
+		vmx->eptgen[cpu] = eptgen;
+		invept(INVEPT_TYPE_SINGLE_CONTEXT,
+		    (struct invept_desc){ .eptp = vmx->eptp, ._res = 0 });
+	}
+}
+
+static __inline void
+vmx_pmap_deactivate(struct vmx *vmx, pmap_t pmap)
+{
+	smr_exit(pmap->pm_eptsmr);
+	CPU_CLR_ATOMIC(curcpu, &pmap->pm_active);
+}
+
 static int
 vmx_run(void *arg, int vcpu, register_t rip, pmap_t pmap,
     struct vm_eventinfo *evinfo)
@@ -2874,7 +3003,7 @@ vmx_run(void *arg, int vcpu, register_t rip, pmap_t pmap,
 	 * from a different process than the one that actually runs it.
 	 *
 	 * If the life of a virtual machine was spent entirely in the context
-	 * of a single process we could do this once in vmx_vminit().
+	 * of a single process we could do this once in vmx_init().
 	 */
 	vmcs_write(VMCS_HOST_CR3, rcr3());
 
@@ -2944,6 +3073,16 @@ vmx_run(void *arg, int vcpu, register_t rip, pmap_t pmap,
 		}
 
 		/*
+		 * If TPR Shadowing is enabled, the TPR Threshold
+		 * must be updated right before entering the guest.
+		 */
+		if (tpr_shadowing && !virtual_interrupt_delivery) {
+			if ((vmx->cap[vcpu].proc_ctls & PROCBASED_USE_TPR_SHADOW) != 0) {
+				vmcs_write(VMCS_TPR_THRESHOLD, vlapic_get_cr8(vlapic));
+			}
+		}
+
+		/*
 		 * VM exits restore the base address but not the
 		 * limits of GDTR and IDTR.  The VMCS only stores the
 		 * base address, so VM exits set the limits to 0xffff.
@@ -2959,10 +3098,37 @@ vmx_run(void *arg, int vcpu, register_t rip, pmap_t pmap,
 		sidt(&idtr);
 		ldt_sel = sldt();
 
-		vmx_run_trace(vmx, vcpu);
+		/*
+		 * The TSC_AUX MSR must be saved/restored while interrupts
+		 * are disabled so that it is not possible for the guest
+		 * TSC_AUX MSR value to be overwritten by the resume
+		 * portion of the IPI_SUSPEND codepath. This is why the
+		 * transition of this MSR is handled separately from those
+		 * handled by vmx_msr_guest_{enter,exit}(), which are ok to
+		 * be transitioned with preemption disabled but interrupts
+		 * enabled.
+		 *
+		 * These vmx_msr_guest_{enter,exit}_tsc_aux() calls can be
+		 * anywhere in this loop so long as they happen with
+		 * interrupts disabled. This location is chosen for
+		 * simplicity.
+		 */
+		vmx_msr_guest_enter_tsc_aux(vmx, vcpu);
+
 		vmx_dr_enter_guest(vmxctx);
+
+		/*
+		 * Mark the EPT as active on this host CPU and invalidate
+		 * EPTP-tagged TLB entries if required.
+		 */
+		vmx_pmap_activate(vmx, pmap);
+
+		vmx_run_trace(vmx, vcpu);
 		rc = vmx_enter_guest(vmxctx, vmx, launched);
+
+		vmx_pmap_deactivate(vmx, pmap);
 		vmx_dr_leave_guest(vmxctx);
+		vmx_msr_guest_exit_tsc_aux(vmx, vcpu);
 
 		bare_lgdt(&gdtr);
 		lidt(&idtr);
@@ -3013,7 +3179,7 @@ vmx_run(void *arg, int vcpu, register_t rip, pmap_t pmap,
 }
 
 static void
-vmx_vmcleanup(void *arg)
+vmx_cleanup(void *arg)
 {
 	int i;
 	struct vmx *vmx = arg;
@@ -3206,6 +3372,10 @@ vmx_setreg(void *arg, int vcpu, int reg, uint64_t val)
 	if (vmxctx_setreg(&vmx->ctx[vcpu], reg, val) == 0)
 		return (0);
 
+	/* Do not permit user write access to VMCS fields by offset. */
+	if (reg < 0)
+		return (EINVAL);
+
 	error = vmcs_setreg(&vmx->vmcs[vcpu], running, reg, val);
 
 	if (error == 0) {
@@ -3301,6 +3471,14 @@ vmx_getcap(void *arg, int vcpu, int type, int *retval)
 		if (cap_monitor_trap)
 			ret = 0;
 		break;
+	case VM_CAP_RDPID:
+		if (cap_rdpid)
+			ret = 0;
+		break;
+	case VM_CAP_RDTSCP:
+		if (cap_rdtscp)
+			ret = 0;
+		break;
 	case VM_CAP_UNRESTRICTED_GUEST:
 		if (cap_unrestricted_guest)
 			ret = 0;
@@ -3365,6 +3543,17 @@ vmx_setcap(void *arg, int vcpu, int type, int val)
 			reg = VMCS_PRI_PROC_BASED_CTLS;
 		}
 		break;
+	case VM_CAP_RDPID:
+	case VM_CAP_RDTSCP:
+		if (cap_rdpid || cap_rdtscp)
+			/*
+			 * Choose not to support enabling/disabling
+			 * RDPID/RDTSCP via libvmmapi since, as per the
+			 * discussion in vmx_modinit(), RDPID/RDTSCP are
+			 * either always enabled or always disabled.
+			 */
+			error = EOPNOTSUPP;
+		break;
 	case VM_CAP_UNRESTRICTED_GUEST:
 		if (cap_unrestricted_guest) {
 			retval = 0;
@@ -3428,6 +3617,18 @@ vmx_setcap(void *arg, int vcpu, int type, int val)
 	}
 
 	return (0);
+}
+
+static struct vmspace *
+vmx_vmspace_alloc(vm_offset_t min, vm_offset_t max)
+{
+	return (ept_vmspace_alloc(min, max));
+}
+
+static void
+vmx_vmspace_free(struct vmspace *vmspace)
+{
+	ept_vmspace_free(vmspace);
 }
 
 struct vlapic_vtx {
@@ -3631,7 +3832,30 @@ vmx_set_tmr(struct vlapic *vlapic, int vector, bool level)
 }
 
 static void
-vmx_enable_x2apic_mode(struct vlapic *vlapic)
+vmx_enable_x2apic_mode_ts(struct vlapic *vlapic)
+{
+	struct vmx *vmx;
+	struct vmcs *vmcs;
+	uint32_t proc_ctls;
+	int vcpuid;
+
+	vcpuid = vlapic->vcpuid;
+	vmx = ((struct vlapic_vtx *)vlapic)->vmx;
+	vmcs = &vmx->vmcs[vcpuid];
+
+	proc_ctls = vmx->cap[vcpuid].proc_ctls;
+	proc_ctls &= ~PROCBASED_USE_TPR_SHADOW;
+	proc_ctls |= PROCBASED_CR8_LOAD_EXITING;
+	proc_ctls |= PROCBASED_CR8_STORE_EXITING;
+	vmx->cap[vcpuid].proc_ctls = proc_ctls;
+
+	VMPTRLD(vmcs);
+	vmcs_write(VMCS_PRI_PROC_BASED_CTLS, proc_ctls);
+	VMCLEAR(vmcs);
+}
+
+static void
+vmx_enable_x2apic_mode_vid(struct vlapic *vlapic)
 {
 	struct vmx *vmx;
 	struct vmcs *vmcs;
@@ -3792,12 +4016,16 @@ vmx_vlapic_init(void *arg, int vcpuid)
 	vlapic_vtx->pir_desc = &vmx->pir_desc[vcpuid];
 	vlapic_vtx->vmx = vmx;
 
+	if (tpr_shadowing) {
+		vlapic->ops.enable_x2apic_mode = vmx_enable_x2apic_mode_ts;
+	}
+
 	if (virtual_interrupt_delivery) {
 		vlapic->ops.set_intr_ready = vmx_set_intr_ready;
 		vlapic->ops.pending_intr = vmx_pending_intr;
 		vlapic->ops.intr_accepted = vmx_intr_accepted;
 		vlapic->ops.set_tmr = vmx_set_tmr;
-		vlapic->ops.enable_x2apic_mode = vmx_enable_x2apic_mode;
+		vlapic->ops.enable_x2apic_mode = vmx_enable_x2apic_mode_vid;
 	}
 
 	if (posted_interrupts)
@@ -3816,21 +4044,173 @@ vmx_vlapic_cleanup(void *arg, struct vlapic *vlapic)
 	free(vlapic, M_VLAPIC);
 }
 
-struct vmm_ops vmm_ops_intel = {
+#ifdef BHYVE_SNAPSHOT
+static int
+vmx_snapshot(void *arg, struct vm_snapshot_meta *meta)
+{
+	struct vmx *vmx;
+	struct vmxctx *vmxctx;
+	int i;
+	int ret;
+
+	vmx = arg;
+
+	KASSERT(vmx != NULL, ("%s: arg was NULL", __func__));
+
+	for (i = 0; i < VM_MAXCPU; i++) {
+		SNAPSHOT_BUF_OR_LEAVE(vmx->guest_msrs[i],
+		      sizeof(vmx->guest_msrs[i]), meta, ret, done);
+
+		vmxctx = &vmx->ctx[i];
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_rdi, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_rsi, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_rdx, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_rcx, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_r8, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_r9, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_rax, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_rbx, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_rbp, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_r10, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_r11, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_r12, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_r13, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_r14, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_r15, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_cr2, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_dr0, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_dr1, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_dr2, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_dr3, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vmxctx->guest_dr6, meta, ret, done);
+	}
+
+done:
+	return (ret);
+}
+
+static int
+vmx_vmcx_snapshot(void *arg, struct vm_snapshot_meta *meta, int vcpu)
+{
+	struct vmcs *vmcs;
+	struct vmx *vmx;
+	int err, run, hostcpu;
+
+	vmx = (struct vmx *)arg;
+	err = 0;
+
+	KASSERT(arg != NULL, ("%s: arg was NULL", __func__));
+	vmcs = &vmx->vmcs[vcpu];
+
+	run = vcpu_is_running(vmx->vm, vcpu, &hostcpu);
+	if (run && hostcpu != curcpu) {
+		printf("%s: %s%d is running", __func__, vm_name(vmx->vm), vcpu);
+		return (EINVAL);
+	}
+
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_CR0, meta);
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_CR3, meta);
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_CR4, meta);
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_DR7, meta);
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_RSP, meta);
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_RIP, meta);
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_RFLAGS, meta);
+
+	/* Guest segments */
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_ES, meta);
+	err += vmcs_snapshot_desc(vmcs, run, VM_REG_GUEST_ES, meta);
+
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_CS, meta);
+	err += vmcs_snapshot_desc(vmcs, run, VM_REG_GUEST_CS, meta);
+
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_SS, meta);
+	err += vmcs_snapshot_desc(vmcs, run, VM_REG_GUEST_SS, meta);
+
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_DS, meta);
+	err += vmcs_snapshot_desc(vmcs, run, VM_REG_GUEST_DS, meta);
+
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_FS, meta);
+	err += vmcs_snapshot_desc(vmcs, run, VM_REG_GUEST_FS, meta);
+
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_GS, meta);
+	err += vmcs_snapshot_desc(vmcs, run, VM_REG_GUEST_GS, meta);
+
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_TR, meta);
+	err += vmcs_snapshot_desc(vmcs, run, VM_REG_GUEST_TR, meta);
+
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_LDTR, meta);
+	err += vmcs_snapshot_desc(vmcs, run, VM_REG_GUEST_LDTR, meta);
+
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_EFER, meta);
+
+	err += vmcs_snapshot_desc(vmcs, run, VM_REG_GUEST_IDTR, meta);
+	err += vmcs_snapshot_desc(vmcs, run, VM_REG_GUEST_GDTR, meta);
+
+	/* Guest page tables */
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_PDPTE0, meta);
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_PDPTE1, meta);
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_PDPTE2, meta);
+	err += vmcs_snapshot_reg(vmcs, run, VM_REG_GUEST_PDPTE3, meta);
+
+	/* Other guest state */
+	err += vmcs_snapshot_any(vmcs, run, VMCS_GUEST_IA32_SYSENTER_CS, meta);
+	err += vmcs_snapshot_any(vmcs, run, VMCS_GUEST_IA32_SYSENTER_ESP, meta);
+	err += vmcs_snapshot_any(vmcs, run, VMCS_GUEST_IA32_SYSENTER_EIP, meta);
+	err += vmcs_snapshot_any(vmcs, run, VMCS_GUEST_INTERRUPTIBILITY, meta);
+	err += vmcs_snapshot_any(vmcs, run, VMCS_GUEST_ACTIVITY, meta);
+	err += vmcs_snapshot_any(vmcs, run, VMCS_ENTRY_CTLS, meta);
+	err += vmcs_snapshot_any(vmcs, run, VMCS_EXIT_CTLS, meta);
+
+	return (err);
+}
+
+static int
+vmx_restore_tsc(void *arg, int vcpu, uint64_t offset)
+{
+	struct vmcs *vmcs;
+	struct vmx *vmx = (struct vmx *)arg;
+	int error, running, hostcpu;
+
+	KASSERT(arg != NULL, ("%s: arg was NULL", __func__));
+	vmcs = &vmx->vmcs[vcpu];
+
+	running = vcpu_is_running(vmx->vm, vcpu, &hostcpu);
+	if (running && hostcpu != curcpu) {
+		printf("%s: %s%d is running", __func__, vm_name(vmx->vm), vcpu);
+		return (EINVAL);
+	}
+
+	if (!running)
+		VMPTRLD(vmcs);
+
+	error = vmx_set_tsc_offset(vmx, vcpu, offset);
+
+	if (!running)
+		VMCLEAR(vmcs);
+	return (error);
+}
+#endif
+
+const struct vmm_ops vmm_ops_intel = {
+	.modinit	= vmx_modinit,
+	.modcleanup	= vmx_modcleanup,
+	.modresume	= vmx_modresume,
 	.init		= vmx_init,
+	.run		= vmx_run,
 	.cleanup	= vmx_cleanup,
-	.resume		= vmx_restore,
-	.vminit		= vmx_vminit,
-	.vmrun		= vmx_run,
-	.vmcleanup	= vmx_vmcleanup,
-	.vmgetreg	= vmx_getreg,
-	.vmsetreg	= vmx_setreg,
-	.vmgetdesc	= vmx_getdesc,
-	.vmsetdesc	= vmx_setdesc,
-	.vmgetcap	= vmx_getcap,
-	.vmsetcap	= vmx_setcap,
-	.vmspace_alloc	= ept_vmspace_alloc,
-	.vmspace_free	= ept_vmspace_free,
+	.getreg		= vmx_getreg,
+	.setreg		= vmx_setreg,
+	.getdesc	= vmx_getdesc,
+	.setdesc	= vmx_setdesc,
+	.getcap		= vmx_getcap,
+	.setcap		= vmx_setcap,
+	.vmspace_alloc	= vmx_vmspace_alloc,
+	.vmspace_free	= vmx_vmspace_free,
 	.vlapic_init	= vmx_vlapic_init,
 	.vlapic_cleanup	= vmx_vlapic_cleanup,
+#ifdef BHYVE_SNAPSHOT
+	.snapshot	= vmx_snapshot,
+	.vmcx_snapshot	= vmx_vmcx_snapshot,
+	.restore_tsc	= vmx_restore_tsc,
+#endif
 };

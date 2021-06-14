@@ -863,9 +863,9 @@ axp2xx_intr(void *arg)
 		if (reg & AXP2XX_IRQ2_BATT_DISCONN)
 			devctl_notify("PMU", "Battery", "disconnected", NULL);
 		if (reg & AXP2XX_IRQ2_BATT_TEMP_LOW)
-			devctl_notify("PMU", "Battery", "low temp", NULL);
+			devctl_notify("PMU", "Battery", "low-temp", NULL);
 		if (reg & AXP2XX_IRQ2_BATT_TEMP_OVER)
-			devctl_notify("PMU", "Battery", "high temp", NULL);
+			devctl_notify("PMU", "Battery", "high-temp", NULL);
 		axp2xx_write(sc->dev, AXP2XX_IRQ2_STATUS, AXP2XX_IRQ_ACK);
 	}
 
@@ -1075,7 +1075,6 @@ axp2xx_gpio_pin_set(device_t dev, uint32_t pin, unsigned int val)
 	return (error);
 }
 
-
 static int
 axp2xx_gpio_pin_toggle(device_t dev, uint32_t pin)
 {
@@ -1268,7 +1267,7 @@ axp2xx_start(void *pdev)
 		SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
 		    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)),
 		    OID_AUTO, sc->sensors[i].name,
-		    CTLTYPE_INT | CTLFLAG_RD,
+		    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_NEEDGIANT,
 		    dev, sc->sensors[i].id, axp2xx_sysctl,
 		    sc->sensors[i].format,
 		    sc->sensors[i].desc);

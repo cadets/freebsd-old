@@ -2,7 +2,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
- * Copyright (c) 2008 Hans Petter Selasky. All rights reserved.
+ * Copyright (c) 2008-2020 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -103,7 +103,6 @@ static void	usb_suspend_resume_sub(struct usb_device *, device_t,
 		    uint8_t);
 static usb_proc_callback_t usbd_clear_stall_proc;
 static usb_error_t usb_config_parse(struct usb_device *, uint8_t, uint8_t);
-static void	usbd_set_device_strings(struct usb_device *);
 #if USB_HAVE_DEVCTL
 static void	usb_notify_addq(const char *type, struct usb_device *);
 #endif
@@ -326,7 +325,6 @@ usbd_get_ep_by_addr(struct usb_device *udev, uint8_t ea_val)
 	 * based on the endpoint address:
 	 */
 	for (; ep != ep_end; ep++) {
-
 		if (ep->edesc == NULL) {
 			continue;
 		}
@@ -437,7 +435,6 @@ usbd_get_endpoint(struct usb_device *udev, uint8_t iface_index,
 	 * the endpoints from the beginning of the "udev->endpoints" array.
 	 */
 	for (; ep != ep_end; ep++) {
-
 		if ((ep->edesc == NULL) ||
 		    (ep->iface_index != iface_index)) {
 			continue;
@@ -884,7 +881,6 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 	ep_max = 0;
 
 	while ((id = usb_idesc_foreach(udev->cdesc, &ips))) {
-
 		iface = udev->ifaces + ips.iface_index;
 
 		/* check for specific interface match */
@@ -901,6 +897,9 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 				/* initialise interface */
 				do_init = 1;
 			}
+			/* update number of alternate settings, if any */
+			if (iface_index == USB_IFACE_INDEX_ANY)
+				iface->num_altsetting = ips.iface_index_alt + 1;
 		} else
 			do_init = 0;
 
@@ -909,6 +908,7 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 			/* update current number of endpoints */
 			ep_curr = ep_max;
 		}
+
 		/* check for init */
 		if (do_init) {
 			/* setup the USB interface structure */
@@ -930,7 +930,6 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 
 		/* iterate all the endpoint descriptors */
 		while ((ed = usb_edesc_foreach(udev->cdesc, ed))) {
-
 			/* check if endpoint limit has been reached */
 			if (temp >= USB_MAX_EP_UNITS) {
 				DPRINTF("Endpoint limit reached\n");
@@ -1185,7 +1184,6 @@ usb_reset_iface_endpoints(struct usb_device *udev, uint8_t iface_index)
 	ep_end = udev->endpoints + udev->endpoints_max;
 
 	for (; ep != ep_end; ep++) {
-
 		if ((ep->edesc == NULL) ||
 		    (ep->iface_index != iface_index)) {
 			continue;
@@ -1294,7 +1292,6 @@ usb_detach_device(struct usb_device *udev, uint8_t iface_index,
 	/* do the detach */
 
 	for (; i != iface_index; i++) {
-
 		iface = usbd_get_iface(udev, i);
 		if (iface == NULL) {
 			/* looks like the end of the USB interfaces */
@@ -1327,7 +1324,6 @@ usb_probe_and_attach_sub(struct usb_device *udev,
 	}
 	dev = iface->subdev;
 	if (dev) {
-
 		/* clean up after module unload */
 
 		if (device_is_attached(dev)) {
@@ -1339,7 +1335,6 @@ usb_probe_and_attach_sub(struct usb_device *udev,
 		iface->subdev = NULL;
 
 		if (device_delete_child(udev->parent_dev, dev)) {
-
 			/*
 			 * Panic here, else one can get a double call
 			 * to device_detach().  USB devices should
@@ -1349,7 +1344,6 @@ usb_probe_and_attach_sub(struct usb_device *udev,
 		}
 	}
 	if (uaa->temp_dev == NULL) {
-
 		/* create a new child */
 		uaa->temp_dev = device_add_child(udev->parent_dev, NULL, -1);
 		if (uaa->temp_dev == NULL) {
@@ -1403,7 +1397,7 @@ usbd_set_parent_iface(struct usb_device *udev, uint8_t iface_index,
 {
 	struct usb_interface *iface;
 
-	if (udev == NULL) {
+	if (udev == NULL || iface_index == parent_index) {
 		/* nothing to do */
 		return;
 	}
@@ -1472,7 +1466,6 @@ usb_probe_and_attach(struct usb_device *udev, uint8_t iface_index)
 	 * handler(s):
 	 */
 	if (iface_index == USB_IFACE_INDEX_ANY) {
-
 		if (usb_test_quirk(&uaa, UQ_MSC_DYMO_EJECT) != 0 &&
 		    usb_dymo_eject(udev, 0) == 0) {
 			/* success, mark the udev as disappearing */
@@ -1499,7 +1492,6 @@ usb_probe_and_attach(struct usb_device *udev, uint8_t iface_index)
 
 	/* Do the probe and attach */
 	for (; i != j; i++) {
-
 		iface = usbd_get_iface(udev, i);
 		if (iface == NULL) {
 			/*
@@ -1617,7 +1609,6 @@ usb_suspend_resume(struct usb_device *udev, uint8_t do_suspend)
 	/* do the suspend or resume */
 
 	for (i = 0; i != USB_IFACE_MAX; i++) {
-
 		iface = usbd_get_iface(udev, i);
 		if (iface == NULL) {
 			/* looks like the end of the USB interfaces */
@@ -1652,6 +1643,85 @@ usbd_clear_stall_proc(struct usb_proc_msg *_pm)
 }
 
 /*------------------------------------------------------------------------*
+ *      usb_get_langid
+ *
+ * This function tries to figure out the USB string language to use.
+ *------------------------------------------------------------------------*/
+void
+usb_get_langid(struct usb_device *udev)
+{
+	uint8_t *scratch_ptr;
+	uint8_t do_unlock;
+	int err;
+
+	/*
+	 * Workaround for buggy USB devices.
+	 *
+	 * It appears that some string-less USB chips will crash and
+	 * disappear if any attempts are made to read any string
+	 * descriptors.
+	 *
+	 * Try to detect such chips by checking the strings in the USB
+	 * device descriptor. If no strings are present there we
+	 * simply disable all USB strings.
+	 */
+
+	/* Protect scratch area */
+	do_unlock = usbd_ctrl_lock(udev);
+
+	scratch_ptr = udev->scratch.data;
+
+	if (udev->flags.no_strings) {
+		err = USB_ERR_INVAL;
+	} else if (udev->ddesc.iManufacturer ||
+	    udev->ddesc.iProduct ||
+	    udev->ddesc.iSerialNumber) {
+		/* read out the language ID string */
+		err = usbd_req_get_string_desc(udev, NULL,
+		    (char *)scratch_ptr, 4, 0, USB_LANGUAGE_TABLE);
+	} else {
+		err = USB_ERR_INVAL;
+	}
+
+	if (err || (scratch_ptr[0] < 4)) {
+		udev->flags.no_strings = 1;
+	} else {
+		uint16_t langid;
+		uint16_t pref;
+		uint16_t mask;
+		uint8_t x;
+
+		/* load preferred value and mask */
+		pref = usb_lang_id;
+		mask = usb_lang_mask;
+
+		/* align length correctly */
+		scratch_ptr[0] &= ~1U;
+
+		/* fix compiler warning */
+		langid = 0;
+
+		/* search for preferred language */
+		for (x = 2; x < scratch_ptr[0]; x += 2) {
+			langid = UGETW(scratch_ptr + x);
+			if ((langid & mask) == pref)
+				break;
+		}
+		if (x >= scratch_ptr[0]) {
+			/* pick the first language as the default */
+			DPRINTFN(1, "Using first language\n");
+			langid = UGETW(scratch_ptr + 2);
+		}
+
+		DPRINTFN(1, "Language selected: 0x%04x\n", langid);
+		udev->langid = langid;
+	}
+
+	if (do_unlock)
+		usbd_ctrl_unlock(udev);
+}
+
+/*------------------------------------------------------------------------*
  *	usb_alloc_device
  *
  * This function allocates a new USB device. This function is called
@@ -1672,13 +1742,11 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 	struct usb_device *udev;
 	struct usb_device *adev;
 	struct usb_device *hub;
-	uint8_t *scratch_ptr;
 	usb_error_t err;
 	uint8_t device_index;
 	uint8_t config_index;
 	uint8_t config_quirk;
 	uint8_t set_config_failed;
-	uint8_t do_unlock;
 
 	DPRINTF("parent_dev=%p, bus=%p, parent_hub=%p, depth=%u, "
 	    "port_index=%u, port_no=%u, speed=%u, usb_mode=%u\n",
@@ -1709,9 +1777,11 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 		return (NULL);
 	}
 	udev = malloc(sizeof(*udev), M_USB, M_WAITOK | M_ZERO);
+#if (USB_HAVE_MALLOC_WAITOK == 0)
 	if (udev == NULL) {
 		return (NULL);
 	}
+#endif
 	/* initialise our SX-lock */
 	sx_init_flags(&udev->enum_sx, "USB config SX lock", SX_DUPOK);
 	sx_init_flags(&udev->sr_sx, "USB suspend and resume SX lock", SX_NOWITNESS);
@@ -1820,7 +1890,6 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 	usb_set_device_state(udev, USB_STATE_POWERED);
 
 	if (udev->flags.usb_mode == USB_MODE_HOST) {
-
 		err = usbd_req_set_address(udev, NULL, device_index);
 
 		/*
@@ -1888,76 +1957,13 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 	if (usb_test_quirk(&uaa, UQ_NO_STRINGS)) {
 		udev->flags.no_strings = 1;
 	}
-	/*
-	 * Workaround for buggy USB devices.
-	 *
-	 * It appears that some string-less USB chips will crash and
-	 * disappear if any attempts are made to read any string
-	 * descriptors.
-	 *
-	 * Try to detect such chips by checking the strings in the USB
-	 * device descriptor. If no strings are present there we
-	 * simply disable all USB strings.
-	 */
 
-	/* Protect scratch area */
-	do_unlock = usbd_ctrl_lock(udev);
-
-	scratch_ptr = udev->scratch.data;
-
-	if (udev->flags.no_strings) {
-		err = USB_ERR_INVAL;
-	} else if (udev->ddesc.iManufacturer ||
-	    udev->ddesc.iProduct ||
-	    udev->ddesc.iSerialNumber) {
-		/* read out the language ID string */
-		err = usbd_req_get_string_desc(udev, NULL,
-		    (char *)scratch_ptr, 4, 0, USB_LANGUAGE_TABLE);
-	} else {
-		err = USB_ERR_INVAL;
-	}
-
-	if (err || (scratch_ptr[0] < 4)) {
-		udev->flags.no_strings = 1;
-	} else {
-		uint16_t langid;
-		uint16_t pref;
-		uint16_t mask;
-		uint8_t x;
-
-		/* load preferred value and mask */
-		pref = usb_lang_id;
-		mask = usb_lang_mask;
-
-		/* align length correctly */
-		scratch_ptr[0] &= ~1U;
-
-		/* fix compiler warning */
-		langid = 0;
-
-		/* search for preferred language */
-		for (x = 2; (x < scratch_ptr[0]); x += 2) {
-			langid = UGETW(scratch_ptr + x);
-			if ((langid & mask) == pref)
-				break;
-		}
-		if (x >= scratch_ptr[0]) {
-			/* pick the first language as the default */
-			DPRINTFN(1, "Using first language\n");
-			langid = UGETW(scratch_ptr + 2);
-		}
-
-		DPRINTFN(1, "Language selected: 0x%04x\n", langid);
-		udev->langid = langid;
-	}
-
-	if (do_unlock)
-		usbd_ctrl_unlock(udev);
+	usb_get_langid(udev);
 
 	/* assume 100mA bus powered for now. Changed when configured. */
 	udev->power = USB_MIN_POWER;
 	/* fetch the vendor and product strings from the device */
-	usbd_set_device_strings(udev);
+	usb_set_device_strings(udev);
 
 	if (udev->flags.usb_mode == USB_MODE_DEVICE) {
 		/* USB device mode setup is complete */
@@ -2043,7 +2049,6 @@ repeat_set_config:
 	if (set_config_failed == 0 && config_index == 0 &&
 	    usb_test_quirk(&uaa, UQ_MSC_NO_SYNC_CACHE) == 0 &&
 	    usb_test_quirk(&uaa, UQ_MSC_NO_GETMAXLUN) == 0) {
-
 		/*
 		 * Try to figure out if there are any MSC quirks we
 		 * should apply automatically:
@@ -2324,7 +2329,7 @@ usb_free_device(struct usb_device *udev, uint8_t flag)
 
 	/* wait for all references to go away */
 	usb_wait_pending_refs(udev);
-	
+
 	sx_destroy(&udev->enum_sx);
 	sx_destroy(&udev->sr_sx);
 	sx_destroy(&udev->ctrl_sx);
@@ -2409,7 +2414,6 @@ usbd_find_descriptor(struct usb_device *udev, void *id, uint8_t iface_index,
 	desc = (void *)id;
 
 	while ((desc = usb_desc_foreach(cd, desc))) {
-
 		if (desc->bDescriptorType == UDESC_INTERFACE) {
 			break;
 		}
@@ -2477,8 +2481,8 @@ struct usb_knowndev {
 #include "usbdevs_data.h"
 #endif					/* USB_VERBOSE */
 
-static void
-usbd_set_device_strings(struct usb_device *udev)
+void
+usb_set_device_strings(struct usb_device *udev)
 {
 	struct usb_device_descriptor *udd = &udev->ddesc;
 #ifdef USB_VERBOSE
@@ -2498,6 +2502,16 @@ usbd_set_device_strings(struct usb_device *udev)
 
 	vendor_id = UGETW(udd->idVendor);
 	product_id = UGETW(udd->idProduct);
+
+	/* cleanup old strings, if any */
+	free(udev->serial, M_USB);
+	free(udev->manufacturer, M_USB);
+	free(udev->product, M_USB);
+
+	/* zero the string pointers */
+	udev->serial = NULL;
+	udev->manufacturer = NULL;
+	udev->product = NULL;
 
 	/* get serial number string */
 	usbd_req_get_string_any(udev, NULL, temp_ptr, temp_size,

@@ -38,6 +38,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/sdt.h>
 
+#include <security/audit/audit.h>
+
 #include <arm64/linux/linux.h>
 #include <arm64/linux/linux_proto.h>
 #include <compat/linux/linux_dtrace.h>
@@ -50,7 +52,7 @@ __FBSDID("$FreeBSD$");
 LIN_SDT_PROVIDER_DECLARE(LINUX_DTRACE);
 
 /* DTrace probes */
-LIN_SDT_PROBE_DEFINE0(machdep, linux_set_upcall_kse, todo);
+LIN_SDT_PROBE_DEFINE0(machdep, linux_set_upcall, todo);
 LIN_SDT_PROBE_DEFINE0(machdep, linux_mmap2, todo);
 LIN_SDT_PROBE_DEFINE0(machdep, linux_rt_sigsuspend, todo);
 LIN_SDT_PROBE_DEFINE0(machdep, linux_sigaltstack, todo);
@@ -67,22 +69,27 @@ linux_execve(struct thread *td, struct linux_execve_args *uap)
 	char *path;
 	int error;
 
-	LCONVPATHEXIST(td, uap->path, &path);
-
-	error = exec_copyin_args(&eargs, path, UIO_SYSSPACE, uap->argp,
-	    uap->envp);
-	free(path, M_TEMP);
+	if (!LUSECONVPATH(td)) {
+		error = exec_copyin_args(&eargs, uap->path, UIO_USERSPACE,
+		    uap->argp, uap->envp);
+	} else {
+		LCONVPATHEXIST(td, uap->path, &path);
+		error = exec_copyin_args(&eargs, path, UIO_SYSSPACE,
+		    uap->argp, uap->envp);
+		LFREEPATH(path);
+	}
 	if (error == 0)
 		error = linux_common_execve(td, &eargs);
+	AUDIT_SYSCALL_EXIT(error == EJUSTRETURN ? 0 : error, td);
 	return (error);
 }
 
-/* LINUXTODO: implement (or deduplicate) arm64 linux_set_upcall_kse */
+/* LINUXTODO: implement (or deduplicate) arm64 linux_set_upcall */
 int
-linux_set_upcall_kse(struct thread *td, register_t stack)
+linux_set_upcall(struct thread *td, register_t stack)
 {
 
-	LIN_SDT_PROBE0(machdep, linux_set_upcall_kse, todo);
+	LIN_SDT_PROBE0(machdep, linux_set_upcall, todo);
 	return (EDOOFUS);
 }
 
@@ -102,6 +109,13 @@ linux_mprotect(struct thread *td, struct linux_mprotect_args *uap)
 
 	return (linux_mprotect_common(td, PTROUT(uap->addr), uap->len,
 	    uap->prot));
+}
+
+int
+linux_madvise(struct thread *td, struct linux_madvise_args *uap)
+{
+
+	return (linux_madvise_common(td, PTROUT(uap->addr), uap->len, uap->behav));
 }
 
 /* LINUXTODO: implement arm64 linux_rt_sigsuspend */

@@ -27,15 +27,16 @@ CFLAGS+=	-I${OBJTOP}/lib/clang/libllvm
 
 SRCDIR=		lld
 SRCS+=		Common/Args.cpp
+SRCS+=		Common/DWARF.cpp
 SRCS+=		Common/ErrorHandler.cpp
 SRCS+=		Common/Filesystem.cpp
 SRCS+=		Common/Memory.cpp
 SRCS+=		Common/Reproduce.cpp
 SRCS+=		Common/Strings.cpp
 SRCS+=		Common/TargetOptionsCommandFlags.cpp
-SRCS+=		Common/Threads.cpp
 SRCS+=		Common/Version.cpp
 SRCS+=		ELF/AArch64ErrataFix.cpp
+SRCS+=		ELF/ARMErrataFix.cpp
 SRCS+=		ELF/Arch/AArch64.cpp
 SRCS+=		ELF/Arch/AMDGPU.cpp
 SRCS+=		ELF/Arch/ARM.cpp

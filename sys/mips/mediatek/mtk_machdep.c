@@ -58,6 +58,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_object.h>
 #include <vm/vm_page.h>
 #include <vm/vm_phys.h>
+#include <vm/vm_dumpset.h>
 
 #include <machine/cache.h>
 #include <machine/clock.h>
@@ -257,6 +258,7 @@ platform_start(__register_t a0 __unused, __register_t a1 __unused,
 
 	printf("FDT DTB  at: 0x%08x\n", (uint32_t)dtbp);
 
+	printf("CPU   model: %s\n", cpu_model);
 	printf("CPU   clock: %4dMHz\n", mtk_soc_get_cpuclk()/(1000*1000));
 	printf("Timer clock: %4dMHz\n", timer_clk/(1000*1000));
 	printf("UART  clock: %4dMHz\n\n", mtk_soc_get_uartclk()/(1000*1000));
@@ -296,7 +298,6 @@ platform_start(__register_t a0 __unused, __register_t a1 __unused,
 		else
 			kern_setenv(n, arg);
 	}
-
 
 	mips_init();
 	mips_timer_init_params(timer_clk, 0);

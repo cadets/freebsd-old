@@ -235,9 +235,9 @@ struct pkt_node {
 	/* Number of segments currently in the reassembly queue. */
 	int			t_segqlen;
 	/* Flowid for the connection. */
-	u_int			flowid;	
+	u_int			flowid;
 	/* Flow type for the connection. */
-	u_int			flowtype;	
+	u_int			flowtype;
 	/* Link to next pkt_node in the list. */
 	STAILQ_ENTRY(pkt_node)	nodes;
 };
@@ -295,21 +295,22 @@ static char direction[2] = {'i','o'};
 static int siftr_sysctl_enabled_handler(SYSCTL_HANDLER_ARGS);
 static int siftr_sysctl_logfile_name_handler(SYSCTL_HANDLER_ARGS);
 
-
 /* Declare the net.inet.siftr sysctl tree and populate it. */
 
 SYSCTL_DECL(_net_inet_siftr);
 
-SYSCTL_NODE(_net_inet, OID_AUTO, siftr, CTLFLAG_RW, NULL,
+SYSCTL_NODE(_net_inet, OID_AUTO, siftr, CTLFLAG_RW | CTLFLAG_MPSAFE, NULL,
     "siftr related settings");
 
-SYSCTL_PROC(_net_inet_siftr, OID_AUTO, enabled, CTLTYPE_UINT|CTLFLAG_RW,
+SYSCTL_PROC(_net_inet_siftr, OID_AUTO, enabled,
+    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &siftr_enabled, 0, &siftr_sysctl_enabled_handler, "IU",
     "switch siftr module operations on/off");
 
-SYSCTL_PROC(_net_inet_siftr, OID_AUTO, logfile, CTLTYPE_STRING|CTLFLAG_RW,
-    &siftr_logfile_shadow, sizeof(siftr_logfile_shadow), &siftr_sysctl_logfile_name_handler,
-    "A", "file to save siftr log messages to");
+SYSCTL_PROC(_net_inet_siftr, OID_AUTO, logfile,
+    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT, &siftr_logfile_shadow,
+    sizeof(siftr_logfile_shadow), &siftr_sysctl_logfile_name_handler, "A",
+    "file to save siftr log messages to");
 
 SYSCTL_UINT(_net_inet_siftr, OID_AUTO, ppl, CTLFLAG_RW,
     &siftr_pkts_per_log, 1,
@@ -328,7 +329,6 @@ SYSCTL_UINT(_net_inet_siftr, OID_AUTO, binary, CTLFLAG_RW,
     &siftr_binary_log, 0,
     "write log files in binary instead of ascii");
 */
-
 
 /* Begin functions. */
 
@@ -558,7 +558,6 @@ siftr_process_pkt(struct pkt_node * pkt_node)
 	alq_post_flags(siftr_alq, log_buf, 0);
 }
 
-
 static void
 siftr_pkt_manager_thread(void *arg)
 {
@@ -636,7 +635,6 @@ siftr_pkt_manager_thread(void *arg)
 	kthread_exit();
 }
 
-
 static uint32_t
 hash_pkt(struct mbuf *m, uint32_t offset)
 {
@@ -666,7 +664,6 @@ hash_pkt(struct mbuf *m, uint32_t offset)
 
 	return (hash);
 }
-
 
 /*
  * Check if a given mbuf has the SIFTR mbuf tag. If it does, log the fact that
@@ -701,7 +698,6 @@ siftr_chkreinject(struct mbuf *m, int dir, struct siftr_stats *ss)
 
 	return (0);
 }
-
 
 /*
  * Look up an inpcb for a packet. Return the inpcb pointer if found, or NULL
@@ -756,7 +752,6 @@ siftr_findinpcb(int ipver, struct ip *ip, struct mbuf *m, uint16_t sport,
 
 	return (inp);
 }
-
 
 static inline void
 siftr_siftdata(struct pkt_node *pn, struct inpcb *inp, struct tcpcb *tp,
@@ -822,7 +817,6 @@ siftr_siftdata(struct pkt_node *pn, struct inpcb *inp, struct tcpcb *tp,
 	TCP_PROBE1(siftr, &pn);
 
 }
-
 
 /*
  * pfil hook that is called for each IPv4 packet making its way through the
@@ -1012,7 +1006,6 @@ ret:
 	return (PFIL_PASS);
 }
 
-
 #ifdef SIFTR_IPV6
 static int
 siftr_chkpkt6(struct mbuf **m, struct ifnet *ifp, int flags, struct inpcb *inp)
@@ -1103,7 +1096,7 @@ siftr_chkpkt6(struct mbuf **m, struct ifnet *ifp, int flags, struct inpcb *inp)
 	 * Only pkts selected by the tcp port filter
 	 * can be inserted into the pkt_queue
 	 */
-	if ((siftr_port_filter != 0) && 
+	if ((siftr_port_filter != 0) &&
 	    (siftr_port_filter != ntohs(inp->inp_lport)) &&
 	    (siftr_port_filter != ntohs(inp->inp_fport))) {
 		goto inp_unlock6;
@@ -1194,7 +1187,6 @@ siftr_pfil(int action)
 
 	return (0);
 }
-
 
 static int
 siftr_sysctl_logfile_name_handler(SYSCTL_HANDLER_ARGS)
@@ -1479,7 +1471,6 @@ siftr_manage_ops(uint8_t action)
 	return (error);
 }
 
-
 static int
 siftr_sysctl_enabled_handler(SYSCTL_HANDLER_ARGS)
 {
@@ -1503,7 +1494,6 @@ siftr_sysctl_enabled_handler(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
-
 static void
 siftr_shutdown_handler(void *arg)
 {
@@ -1511,7 +1501,6 @@ siftr_shutdown_handler(void *arg)
 		siftr_manage_ops(SIFTR_DISABLE);
 	}
 }
-
 
 /*
  * Module is being unloaded or machine is shutting down. Take care of cleanup.
@@ -1527,7 +1516,6 @@ deinit_siftr(void)
 
 	return (0);
 }
-
 
 /*
  * Module has just been loaded into the kernel.
@@ -1552,7 +1540,6 @@ init_siftr(void)
 
 	return (0);
 }
-
 
 /*
  * This is the function that is called to load and unload the module.
@@ -1591,7 +1578,6 @@ siftr_load_handler(module_t mod, int what, void *arg)
 
 	return (ret);
 }
-
 
 static moduledata_t siftr_mod = {
 	.name = "siftr",

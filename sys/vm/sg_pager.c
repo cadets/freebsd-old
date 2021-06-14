@@ -40,6 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/rwlock.h>
 #include <sys/sglist.h>
+#include <sys/user.h>
 #include <sys/vmmeter.h>
 
 #include <vm/vm.h>
@@ -59,7 +60,8 @@ static void sg_pager_putpages(vm_object_t, vm_page_t *, int,
 static boolean_t sg_pager_haspage(vm_object_t, vm_pindex_t, int *,
 		int *);
 
-struct pagerops sgpagerops = {
+const struct pagerops sgpagerops = {
+	.pgo_kvme_type = KVME_TYPE_SG,
 	.pgo_alloc =	sg_pager_alloc,
 	.pgo_dealloc =	sg_pager_dealloc,
 	.pgo_getpages =	sg_pager_getpages,
@@ -134,7 +136,7 @@ sg_pager_dealloc(vm_object_t object)
 		TAILQ_REMOVE(&object->un_pager.sgp.sgp_pglist, m, plinks.q);
 		vm_page_putfake(m);
 	}
-	
+
 	sg = object->handle;
 	sglist_free(sg);
 	object->handle = NULL;

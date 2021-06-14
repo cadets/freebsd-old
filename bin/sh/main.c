@@ -75,6 +75,9 @@ __FBSDID("$FreeBSD$");
 #include "cd.h"
 #include "redir.h"
 #include "builtins.h"
+#ifndef NO_HISTORY
+#include "myhistedit.h"
+#endif
 
 int rootpid;
 int rootshell;
@@ -134,6 +137,7 @@ main(int argc, char *argv[])
 	setstackmark(&smark);
 	setstackmark(&smark2);
 	procargs(argc, argv);
+	trap_init();
 	pwd_init(iflag);
 	INTON;
 	if (iflag)
@@ -156,6 +160,10 @@ state2:
 			read_profile(shinit);
 		}
 	}
+#ifndef NO_HISTORY
+	if (iflag)
+		histload();
+#endif
 state3:
 	state = 4;
 	popstackmark(&smark2);
@@ -228,6 +236,10 @@ cmdloop(int top)
 		}
 	}
 	popstackmark(&smark);
+	if (top && iflag) {
+		out2c('\n');
+		flushout(out2);
+	}
 }
 
 

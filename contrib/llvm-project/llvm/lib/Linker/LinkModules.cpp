@@ -248,7 +248,7 @@ bool ModuleLinker::shouldLinkFromSource(bool &LinkFromSrc,
   }
 
   // We always have to add Src if it has appending linkage.
-  if (Src.hasAppendingLinkage()) {
+  if (Src.hasAppendingLinkage() || Dest.hasAppendingLinkage()) {
     LinkFromSrc = true;
     return false;
   }
@@ -351,7 +351,8 @@ bool ModuleLinker::linkIfNeeded(GlobalValue &GV) {
         SGVar->setConstant(false);
       }
       if (DGVar->hasCommonLinkage() && SGVar->hasCommonLinkage()) {
-        unsigned Align = std::max(DGVar->getAlignment(), SGVar->getAlignment());
+        MaybeAlign Align(
+            std::max(DGVar->getAlignment(), SGVar->getAlignment()));
         SGVar->setAlignment(Align);
         DGVar->setAlignment(Align);
       }

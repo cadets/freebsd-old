@@ -83,20 +83,22 @@ SYSCTL_INT(_machdep, OID_AUTO, disable_tsc, CTLFLAG_RDTUN, &tsc_disabled, 0,
     "Disable x86 Time Stamp Counter");
 
 static int	tsc_skip_calibration;
-SYSCTL_INT(_machdep, OID_AUTO, disable_tsc_calibration, CTLFLAG_RDTUN |
-    CTLFLAG_NOFETCH, &tsc_skip_calibration, 0,
+SYSCTL_INT(_machdep, OID_AUTO, disable_tsc_calibration, CTLFLAG_RDTUN,
+    &tsc_skip_calibration, 0,
     "Disable TSC frequency calibration");
 
 static void tsc_freq_changed(void *arg, const struct cf_level *level,
     int status);
 static void tsc_freq_changing(void *arg, const struct cf_level *level,
     int *status);
-static unsigned tsc_get_timecount(struct timecounter *tc);
-static inline unsigned tsc_get_timecount_low(struct timecounter *tc);
-static unsigned tsc_get_timecount_lfence(struct timecounter *tc);
-static unsigned tsc_get_timecount_low_lfence(struct timecounter *tc);
-static unsigned tsc_get_timecount_mfence(struct timecounter *tc);
-static unsigned tsc_get_timecount_low_mfence(struct timecounter *tc);
+static u_int tsc_get_timecount(struct timecounter *tc);
+static inline u_int tsc_get_timecount_low(struct timecounter *tc);
+static u_int tsc_get_timecount_lfence(struct timecounter *tc);
+static u_int tsc_get_timecount_low_lfence(struct timecounter *tc);
+static u_int tsc_get_timecount_mfence(struct timecounter *tc);
+static u_int tsc_get_timecount_low_mfence(struct timecounter *tc);
+static u_int tscp_get_timecount(struct timecounter *tc);
+static u_int tscp_get_timecount_low(struct timecounter *tc);
 static void tsc_levels_changed(void *arg, int unit);
 static uint32_t x86_tsc_vdso_timehands(struct vdso_timehands *vdso_th,
     struct timecounter *tc);
@@ -143,7 +145,7 @@ tsc_freq_vmware(void)
  * tsc_freq_intel(), when available.
  */
 static bool
-tsc_freq_cpuid(void)
+tsc_freq_cpuid(uint64_t *res)
 {
 	u_int regs[4];
 
@@ -151,7 +153,7 @@ tsc_freq_cpuid(void)
 		return (false);
 	do_cpuid(0x15, regs);
 	if (regs[0] != 0 && regs[1] != 0 && regs[2] != 0) {
-		tsc_freq = (uint64_t)regs[2] * regs[1] / regs[0];
+		*res = (uint64_t)regs[2] * regs[1] / regs[0];
 		return (true);
 	}
 
@@ -159,7 +161,7 @@ tsc_freq_cpuid(void)
 		return (false);
 	do_cpuid(0x16, regs);
 	if (regs[0] != 0) {
-		tsc_freq = (uint64_t)regs[0] * 1000000;
+		*res = (uint64_t)regs[0] * 1000000;
 		return (true);
 	}
 
@@ -228,8 +230,8 @@ tsc_freq_intel(void)
 static void
 probe_tsc_freq(void)
 {
-	uint64_t tsc1, tsc2;
-	uint16_t bootflags;
+	uint64_t tmp_freq, tsc1, tsc2;
+	int no_cpuid_override;
 
 	if (cpu_power_ecx & CPUID_PERF_STAT) {
 		/*
@@ -286,30 +288,13 @@ probe_tsc_freq(void)
 		break;
 	}
 
-	if (!TUNABLE_INT_FETCH("machdep.disable_tsc_calibration",
-	    &tsc_skip_calibration)) {
-		/*
-		 * User did not give the order about calibration.
-		 * If he did, we do not try to guess.
-		 *
-		 * Otherwise, if ACPI FADT reports that the platform
-		 * is legacy-free and CPUID provides TSC frequency,
-		 * use it.  The calibration could fail anyway since
-		 * ISA timer can be absent or power gated.
-		 */
-		if (acpi_get_fadt_bootflags(&bootflags) &&
-		    (bootflags & ACPI_FADT_LEGACY_DEVICES) == 0 &&
-		    tsc_freq_cpuid()) {
-			printf("Skipping TSC calibration since no legacy "
-			    "devices reported by FADT and CPUID works\n");
-			tsc_skip_calibration = 1;
-		}
-	}
 	if (tsc_skip_calibration) {
-		if (tsc_freq_cpuid())
-			;
+		if (tsc_freq_cpuid(&tmp_freq))
+			tsc_freq = tmp_freq;
 		else if (cpu_vendor_id == CPU_VENDOR_INTEL)
 			tsc_freq_intel();
+		if (tsc_freq == 0)
+			tsc_disabled = 1;
 	} else {
 		if (bootverbose)
 			printf("Calibrating TSC clock ... ");
@@ -317,6 +302,33 @@ probe_tsc_freq(void)
 		DELAY(1000000);
 		tsc2 = rdtsc();
 		tsc_freq = tsc2 - tsc1;
+
+		/*
+		 * If the difference between calibrated frequency and
+		 * the frequency reported by CPUID 0x15/0x16 leafs
+		 * differ significantly, this probably means that
+		 * calibration is bogus.  It happens on machines
+		 * without 8254 timer.  The BIOS rarely properly
+		 * reports it in FADT boot flags, so just compare the
+		 * frequencies directly.
+		 */
+		if (tsc_freq_cpuid(&tmp_freq) && qabs(tsc_freq - tmp_freq) >
+		    uqmin(tsc_freq, tmp_freq)) {
+			no_cpuid_override = 0;
+			TUNABLE_INT_FETCH("machdep.disable_tsc_cpuid_override",
+			    &no_cpuid_override);
+			if (!no_cpuid_override) {
+				if (bootverbose) {
+					printf(
+	"TSC clock: calibration freq %ju Hz, CPUID freq %ju Hz%s\n",
+					    (uintmax_t)tsc_freq,
+					    (uintmax_t)tmp_freq,
+					    no_cpuid_override ? "" :
+					    ", doing CPUID override");
+				}
+				tsc_freq = tmp_freq;
+			}
+		}
 	}
 	if (bootverbose)
 		printf("TSC clock: %ju Hz\n", (intmax_t)tsc_freq);
@@ -489,8 +501,16 @@ test_tsc(int adj_max_count)
 	uint64_t *data, *tsc;
 	u_int i, size, adj;
 
-	if ((!smp_tsc && !tsc_is_invariant) || vm_guest)
+	if ((!smp_tsc && !tsc_is_invariant))
 		return (-100);
+	/*
+	 * Misbehavior of TSC under VirtualBox has been observed.  In
+	 * particular, threads doing small (~1 second) sleeps may miss their
+	 * wakeup and hang around in sleep state, causing hangs on shutdown.
+	 */
+	if (vm_guest == VM_GUEST_VBOX)
+		return (0);
+
 	size = (mp_maxid + 1) * 3;
 	data = malloc(sizeof(*data) * size * N, M_TEMP, M_WAITOK);
 	adj = 0;
@@ -515,6 +535,13 @@ retry:
 		switch (cpu_vendor_id) {
 		case CPU_VENDOR_AMD:
 		case CPU_VENDOR_HYGON:
+			/*
+			 * Processor Programming Reference (PPR) for AMD
+			 * Family 17h states that the TSC uses a common
+			 * reference for all sockets, cores and threads.
+			 */
+			if (CPUID_TO_FAMILY(cpu_id) >= 0x17)
+				return (1000);
 			/*
 			 * Starting with Family 15h processors, TSC clock
 			 * source is in the north bridge.  Check whether
@@ -611,7 +638,18 @@ init_TSC_tc(void)
 init:
 	for (shift = 0; shift <= 31 && (tsc_freq >> shift) > max_freq; shift++)
 		;
-	if ((cpu_feature & CPUID_SSE2) != 0 && mp_ncpus > 1) {
+
+	/*
+	 * Timecounter implementation selection, top to bottom:
+	 * - If RDTSCP is available, use RDTSCP.
+	 * - If fence instructions are provided (SSE2), use LFENCE;RDTSC
+	 *   on Intel, and MFENCE;RDTSC on AMD.
+	 * - For really old CPUs, just use RDTSC.
+	 */
+	if ((amd_feature & AMDID_RDTSCP) != 0) {
+		tsc_timecounter.tc_get_timecount = shift > 0 ?
+		    tscp_get_timecount_low : tscp_get_timecount;
+	} else if ((cpu_feature & CPUID_SSE2) != 0 && mp_ncpus > 1) {
 		if (cpu_vendor_id == CPU_VENDOR_AMD ||
 		    cpu_vendor_id == CPU_VENDOR_HYGON) {
 			tsc_timecounter.tc_get_timecount = shift > 0 ?
@@ -754,14 +792,23 @@ sysctl_machdep_tsc_freq(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
-SYSCTL_PROC(_machdep, OID_AUTO, tsc_freq, CTLTYPE_U64 | CTLFLAG_RW,
-    0, 0, sysctl_machdep_tsc_freq, "QU", "Time Stamp Counter frequency");
+SYSCTL_PROC(_machdep, OID_AUTO, tsc_freq,
+    CTLTYPE_U64 | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+    0, 0, sysctl_machdep_tsc_freq, "QU",
+    "Time Stamp Counter frequency");
 
 static u_int
 tsc_get_timecount(struct timecounter *tc __unused)
 {
 
 	return (rdtsc32());
+}
+
+static u_int
+tscp_get_timecount(struct timecounter *tc __unused)
+{
+
+	return (rdtscp32());
 }
 
 static inline u_int
@@ -771,6 +818,16 @@ tsc_get_timecount_low(struct timecounter *tc)
 
 	__asm __volatile("rdtsc; shrd %%cl, %%edx, %0"
 	    : "=a" (rv) : "c" ((int)(intptr_t)tc->tc_priv) : "edx");
+	return (rv);
+}
+
+static u_int
+tscp_get_timecount_low(struct timecounter *tc)
+{
+	uint32_t rv;
+
+	__asm __volatile("rdtscp; movl %1, %%ecx; shrd %%cl, %%edx, %0"
+	    : "=&a" (rv) : "m" (tc->tc_priv) : "ecx", "edx");
 	return (rv);
 }
 

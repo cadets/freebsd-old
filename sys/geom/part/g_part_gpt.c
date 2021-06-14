@@ -55,7 +55,8 @@ __FBSDID("$FreeBSD$");
 FEATURE(geom_part_gpt, "GEOM partitioning class for GPT partitions support");
 
 SYSCTL_DECL(_kern_geom_part);
-static SYSCTL_NODE(_kern_geom_part, OID_AUTO, gpt, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_kern_geom_part, OID_AUTO, gpt,
+    CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
     "GEOM_PART_GPT GUID Partition Table");
 
 static u_int allow_nesting = 0;
@@ -64,6 +65,8 @@ SYSCTL_UINT(_kern_geom_part_gpt, OID_AUTO, allow_nesting,
 
 CTASSERT(offsetof(struct gpt_hdr, padding) == 92);
 CTASSERT(sizeof(struct gpt_ent) == 128);
+
+extern u_int geom_part_check_integrity;
 
 #define	EQUUID(a,b)	(memcmp(a, b, sizeof(struct uuid)) == 0)
 
@@ -167,6 +170,7 @@ static struct uuid gpt_uuid_apple_raid = GPT_ENT_TYPE_APPLE_RAID;
 static struct uuid gpt_uuid_apple_raid_offline = GPT_ENT_TYPE_APPLE_RAID_OFFLINE;
 static struct uuid gpt_uuid_apple_tv_recovery = GPT_ENT_TYPE_APPLE_TV_RECOVERY;
 static struct uuid gpt_uuid_apple_ufs = GPT_ENT_TYPE_APPLE_UFS;
+static struct uuid gpt_uuid_apple_zfs = GPT_ENT_TYPE_APPLE_ZFS;
 static struct uuid gpt_uuid_bios_boot = GPT_ENT_TYPE_BIOS_BOOT;
 static struct uuid gpt_uuid_chromeos_firmware = GPT_ENT_TYPE_CHROMEOS_FIRMWARE;
 static struct uuid gpt_uuid_chromeos_kernel = GPT_ENT_TYPE_CHROMEOS_KERNEL;
@@ -208,6 +212,14 @@ static struct uuid gpt_uuid_netbsd_raid = GPT_ENT_TYPE_NETBSD_RAID;
 static struct uuid gpt_uuid_netbsd_swap = GPT_ENT_TYPE_NETBSD_SWAP;
 static struct uuid gpt_uuid_openbsd_data = GPT_ENT_TYPE_OPENBSD_DATA;
 static struct uuid gpt_uuid_prep_boot = GPT_ENT_TYPE_PREP_BOOT;
+static struct uuid gpt_uuid_solaris_boot = GPT_ENT_TYPE_SOLARIS_BOOT;
+static struct uuid gpt_uuid_solaris_root = GPT_ENT_TYPE_SOLARIS_ROOT;
+static struct uuid gpt_uuid_solaris_swap = GPT_ENT_TYPE_SOLARIS_SWAP;
+static struct uuid gpt_uuid_solaris_backup = GPT_ENT_TYPE_SOLARIS_BACKUP;
+static struct uuid gpt_uuid_solaris_var = GPT_ENT_TYPE_SOLARIS_VAR;
+static struct uuid gpt_uuid_solaris_home = GPT_ENT_TYPE_SOLARIS_HOME;
+static struct uuid gpt_uuid_solaris_altsec = GPT_ENT_TYPE_SOLARIS_ALTSEC;
+static struct uuid gpt_uuid_solaris_reserved = GPT_ENT_TYPE_SOLARIS_RESERVED;
 static struct uuid gpt_uuid_unused = GPT_ENT_TYPE_UNUSED;
 static struct uuid gpt_uuid_vmfs = GPT_ENT_TYPE_VMFS;
 static struct uuid gpt_uuid_vmkdiag = GPT_ENT_TYPE_VMKDIAG;
@@ -228,6 +240,7 @@ static struct g_part_uuid_alias {
 	{ &gpt_uuid_apple_raid_offline,	G_PART_ALIAS_APPLE_RAID_OFFLINE, 0 },
 	{ &gpt_uuid_apple_tv_recovery,	G_PART_ALIAS_APPLE_TV_RECOVERY,	 0 },
 	{ &gpt_uuid_apple_ufs,		G_PART_ALIAS_APPLE_UFS,		 0 },
+	{ &gpt_uuid_apple_zfs,		G_PART_ALIAS_APPLE_ZFS,		 0 },
 	{ &gpt_uuid_bios_boot,		G_PART_ALIAS_BIOS_BOOT,		 0 },
 	{ &gpt_uuid_chromeos_firmware,	G_PART_ALIAS_CHROMEOS_FIRMWARE,	 0 },
 	{ &gpt_uuid_chromeos_kernel,	G_PART_ALIAS_CHROMEOS_KERNEL,	 0 },
@@ -269,6 +282,14 @@ static struct g_part_uuid_alias {
 	{ &gpt_uuid_netbsd_swap,	G_PART_ALIAS_NETBSD_SWAP,	 0 },
 	{ &gpt_uuid_openbsd_data,	G_PART_ALIAS_OPENBSD_DATA,	 0 },
 	{ &gpt_uuid_prep_boot,		G_PART_ALIAS_PREP_BOOT,		 0x41 },
+	{ &gpt_uuid_solaris_boot,	G_PART_ALIAS_SOLARIS_BOOT,	 0 },
+	{ &gpt_uuid_solaris_root,	G_PART_ALIAS_SOLARIS_ROOT,	 0 },
+	{ &gpt_uuid_solaris_swap,	G_PART_ALIAS_SOLARIS_SWAP,	 0 },
+	{ &gpt_uuid_solaris_backup,	G_PART_ALIAS_SOLARIS_BACKUP,	 0 },
+	{ &gpt_uuid_solaris_var,	G_PART_ALIAS_SOLARIS_VAR,	 0 },
+	{ &gpt_uuid_solaris_home,	G_PART_ALIAS_SOLARIS_HOME,	 0 },
+	{ &gpt_uuid_solaris_altsec,	G_PART_ALIAS_SOLARIS_ALTSEC,	 0 },
+	{ &gpt_uuid_solaris_reserved,	G_PART_ALIAS_SOLARIS_RESERVED,	 0 },
 	{ &gpt_uuid_vmfs,		G_PART_ALIAS_VMFS,		 0 },
 	{ &gpt_uuid_vmkdiag,		G_PART_ALIAS_VMKDIAG,		 0 },
 	{ &gpt_uuid_vmreserved,		G_PART_ALIAS_VMRESERVED,	 0 },
@@ -461,8 +482,9 @@ gpt_read_hdr(struct g_part_gpt_table *table, struct g_consumer *cp,
 	if (hdr->hdr_lba_self != table->lba[elt])
 		goto fail;
 	hdr->hdr_lba_alt = le64toh(buf->hdr_lba_alt);
-	if (hdr->hdr_lba_alt == hdr->hdr_lba_self ||
-	    hdr->hdr_lba_alt > last)
+	if (hdr->hdr_lba_alt == hdr->hdr_lba_self)
+		goto fail;
+	if (hdr->hdr_lba_alt > last && geom_part_check_integrity)
 		goto fail;
 
 	/* Check the managed area. */
@@ -530,8 +552,8 @@ gpt_read_tbl(struct g_part_gpt_table *table, struct g_consumer *cp,
 	tblsz = hdr->hdr_entries * hdr->hdr_entsz;
 	sectors = howmany(tblsz, pp->sectorsize);
 	buf = g_malloc(sectors * pp->sectorsize, M_WAITOK | M_ZERO);
-	for (idx = 0; idx < sectors; idx += MAXPHYS / pp->sectorsize) {
-		size = (sectors - idx > MAXPHYS / pp->sectorsize) ?  MAXPHYS:
+	for (idx = 0; idx < sectors; idx += maxphys / pp->sectorsize) {
+		size = (sectors - idx > maxphys / pp->sectorsize) ?  maxphys:
 		    (sectors - idx) * pp->sectorsize;
 		p = g_read_data(cp, (table->lba[elt] + idx) * pp->sectorsize,
 		    size, &error);
@@ -1215,11 +1237,11 @@ g_part_gpt_write(struct g_part_table *basetable, struct g_consumer *cp)
 	crc = crc32(buf, table->hdr->hdr_size);
 	le32enc(buf + 16, crc);
 
-	for (index = 0; index < tblsz; index += MAXPHYS / pp->sectorsize) {
+	for (index = 0; index < tblsz; index += maxphys / pp->sectorsize) {
 		error = g_write_data(cp,
 		    (table->lba[GPT_ELT_PRITBL] + index) * pp->sectorsize,
 		    buf + (index + 1) * pp->sectorsize,
-		    (tblsz - index > MAXPHYS / pp->sectorsize) ? MAXPHYS:
+		    (tblsz - index > maxphys / pp->sectorsize) ? maxphys :
 		    (tblsz - index) * pp->sectorsize);
 		if (error)
 			goto out;
@@ -1237,11 +1259,11 @@ g_part_gpt_write(struct g_part_table *basetable, struct g_consumer *cp)
 	crc = crc32(buf, table->hdr->hdr_size);
 	le32enc(buf + 16, crc);
 
-	for (index = 0; index < tblsz; index += MAXPHYS / pp->sectorsize) {
+	for (index = 0; index < tblsz; index += maxphys / pp->sectorsize) {
 		error = g_write_data(cp,
 		    (table->lba[GPT_ELT_SECTBL] + index) * pp->sectorsize,
 		    buf + (index + 1) * pp->sectorsize,
-		    (tblsz - index > MAXPHYS / pp->sectorsize) ? MAXPHYS:
+		    (tblsz - index > maxphys / pp->sectorsize) ? maxphys :
 		    (tblsz - index) * pp->sectorsize);
 		if (error)
 			goto out;

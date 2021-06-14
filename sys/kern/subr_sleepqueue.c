@@ -147,8 +147,10 @@ struct sleepqueue_chain {
 
 #ifdef SLEEPQUEUE_PROFILING
 u_int sleepq_max_depth;
-static SYSCTL_NODE(_debug, OID_AUTO, sleepq, CTLFLAG_RD, 0, "sleepq profiling");
-static SYSCTL_NODE(_debug_sleepq, OID_AUTO, chains, CTLFLAG_RD, 0,
+static SYSCTL_NODE(_debug, OID_AUTO, sleepq, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "sleepq profiling");
+static SYSCTL_NODE(_debug_sleepq, OID_AUTO, chains,
+    CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
     "sleepq chain stats");
 SYSCTL_UINT(_debug_sleepq, OID_AUTO, max_depth, CTLFLAG_RD, &sleepq_max_depth,
     0, "maxmimum depth achieved of a single chain");
@@ -195,7 +197,8 @@ init_sleepqueue_profiling(void)
 		snprintf(chain_name, sizeof(chain_name), "%u", i);
 		chain_oid = SYSCTL_ADD_NODE(NULL,
 		    SYSCTL_STATIC_CHILDREN(_debug_sleepq_chains), OID_AUTO,
-		    chain_name, CTLFLAG_RD, NULL, "sleepq chain stats");
+		    chain_name, CTLFLAG_RD | CTLFLAG_MPSAFE, NULL,
+		    "sleepq chain stats");
 		SYSCTL_ADD_UINT(NULL, SYSCTL_CHILDREN(chain_oid), OID_AUTO,
 		    "depth", CTLFLAG_RD, &sleepq_chains[i].sc_depth, 0, NULL);
 		SYSCTL_ADD_UINT(NULL, SYSCTL_CHILDREN(chain_oid), OID_AUTO,
@@ -322,7 +325,7 @@ sleepq_add(const void *wchan, struct lock_object *lock, const char *wmesg,
 #ifdef EPOCH_TRACE
 		epoch_trace_list(curthread);
 #endif
-		KASSERT(1,
+		KASSERT(0,
 		    ("%s: td %p to sleep on wchan %p with sleeping prohibited",
 		    __func__, td, wchan));
 	}
@@ -430,6 +433,66 @@ sleepq_sleepcnt(const void *wchan, int queue)
 	return (sq->sq_blockedcnt[queue]);
 }
 
+static int
+sleepq_check_ast_sc_locked(struct thread *td, struct sleepqueue_chain *sc)
+{
+	struct proc *p;
+	int ret;
+
+	mtx_assert(&sc->sc_lock, MA_OWNED);
+
+	if ((td->td_pflags & TDP_WAKEUP) != 0) {
+		td->td_pflags &= ~TDP_WAKEUP;
+		thread_lock(td);
+		return (EINTR);
+	}
+
+	/*
+	 * See if there are any pending signals or suspension requests for this
+	 * thread.  If not, we can switch immediately.
+	 */
+	thread_lock(td);
+	if ((td->td_flags & (TDF_NEEDSIGCHK | TDF_NEEDSUSPCHK)) == 0)
+		return (0);
+
+	thread_unlock(td);
+	mtx_unlock_spin(&sc->sc_lock);
+
+	p = td->td_proc;
+	CTR3(KTR_PROC, "sleepq catching signals: thread %p (pid %ld, %s)",
+	    (void *)td, (long)p->p_pid, td->td_name);
+	PROC_LOCK(p);
+
+	/*
+	 * Check for suspension first. Checking for signals and then
+	 * suspending could result in a missed signal, since a signal
+	 * can be delivered while this thread is suspended.
+	 */
+	ret = sig_ast_checksusp(td);
+	if (ret != 0) {
+		PROC_UNLOCK(p);
+		mtx_lock_spin(&sc->sc_lock);
+		thread_lock(td);
+		return (ret);
+	}
+
+	ret = sig_ast_needsigchk(td);
+
+	/*
+	 * Lock the per-process spinlock prior to dropping the
+	 * PROC_LOCK to avoid a signal delivery race.
+	 * PROC_LOCK, PROC_SLOCK, and thread_lock() are
+	 * currently held in tdsendsignal().
+	 */
+	PROC_SLOCK(p);
+	mtx_lock_spin(&sc->sc_lock);
+	PROC_UNLOCK(p);
+	thread_lock(td);
+	PROC_SUNLOCK(p);
+
+	return (ret);
+}
+
 /*
  * Marks the pending sleep of the current thread as interruptible and
  * makes an initial check for pending signals before putting a thread
@@ -439,116 +502,39 @@ sleepq_sleepcnt(const void *wchan, int queue)
 static int
 sleepq_catch_signals(const void *wchan, int pri)
 {
+	struct thread *td;
 	struct sleepqueue_chain *sc;
 	struct sleepqueue *sq;
-	struct thread *td;
-	struct proc *p;
-	struct sigacts *ps;
-	int sig, ret;
+	int ret;
 
-	ret = 0;
-	td = curthread;
-	p = curproc;
 	sc = SC_LOOKUP(wchan);
 	mtx_assert(&sc->sc_lock, MA_OWNED);
 	MPASS(wchan != NULL);
-	if ((td->td_pflags & TDP_WAKEUP) != 0) {
-		td->td_pflags &= ~TDP_WAKEUP;
-		ret = EINTR;
-		thread_lock(td);
-		goto out;
-	}
+	td = curthread;
 
-	/*
-	 * See if there are any pending signals or suspension requests for this
-	 * thread.  If not, we can switch immediately.
-	 */
-	thread_lock(td);
-	if ((td->td_flags & (TDF_NEEDSIGCHK | TDF_NEEDSUSPCHK)) != 0) {
-		thread_unlock(td);
-		mtx_unlock_spin(&sc->sc_lock);
-		CTR3(KTR_PROC, "sleepq catching signals: thread %p (pid %ld, %s)",
-			(void *)td, (long)p->p_pid, td->td_name);
-		PROC_LOCK(p);
-		/*
-		 * Check for suspension first. Checking for signals and then
-		 * suspending could result in a missed signal, since a signal
-		 * can be delivered while this thread is suspended.
-		 */
-		if ((td->td_flags & TDF_NEEDSUSPCHK) != 0) {
-			ret = thread_suspend_check(1);
-			MPASS(ret == 0 || ret == EINTR || ret == ERESTART);
-			if (ret != 0) {
-				PROC_UNLOCK(p);
-				mtx_lock_spin(&sc->sc_lock);
-				thread_lock(td);
-				goto out;
-			}
-		}
-		if ((td->td_flags & TDF_NEEDSIGCHK) != 0) {
-			ps = p->p_sigacts;
-			mtx_lock(&ps->ps_mtx);
-			sig = cursig(td);
-			if (sig == -1) {
-				mtx_unlock(&ps->ps_mtx);
-				KASSERT((td->td_flags & TDF_SBDRY) != 0,
-				    ("lost TDF_SBDRY"));
-				KASSERT(TD_SBDRY_INTR(td),
-				    ("lost TDF_SERESTART of TDF_SEINTR"));
-				KASSERT((td->td_flags &
-				    (TDF_SEINTR | TDF_SERESTART)) !=
-				    (TDF_SEINTR | TDF_SERESTART),
-				    ("both TDF_SEINTR and TDF_SERESTART"));
-				ret = TD_SBDRY_ERRNO(td);
-			} else if (sig != 0) {
-				ret = SIGISMEMBER(ps->ps_sigintr, sig) ?
-				    EINTR : ERESTART;
-				mtx_unlock(&ps->ps_mtx);
-			} else {
-				mtx_unlock(&ps->ps_mtx);
-			}
+	ret = sleepq_check_ast_sc_locked(td, sc);
+	THREAD_LOCK_ASSERT(td, MA_OWNED);
+	mtx_assert(&sc->sc_lock, MA_OWNED);
 
-			/*
-			 * Do not go into sleep if this thread was the
-			 * ptrace(2) attach leader.  cursig() consumed
-			 * SIGSTOP from PT_ATTACH, but we usually act
-			 * on the signal by interrupting sleep, and
-			 * should do that here as well.
-			 */
-			if ((td->td_dbgflags & TDB_FSTP) != 0) {
-				if (ret == 0)
-					ret = EINTR;
-				td->td_dbgflags &= ~TDB_FSTP;
-			}
-		}
-		/*
-		 * Lock the per-process spinlock prior to dropping the PROC_LOCK
-		 * to avoid a signal delivery race.  PROC_LOCK, PROC_SLOCK, and
-		 * thread_lock() are currently held in tdsendsignal().
-		 */
-		PROC_SLOCK(p);
-		mtx_lock_spin(&sc->sc_lock);
-		PROC_UNLOCK(p);
-		thread_lock(td);
-		PROC_SUNLOCK(p);
-	}
 	if (ret == 0) {
+		/*
+		 * No pending signals and no suspension requests found.
+		 * Switch the thread off the cpu.
+		 */
 		sleepq_switch(wchan, pri);
-		return (0);
+	} else {
+		/*
+		 * There were pending signals and this thread is still
+		 * on the sleep queue, remove it from the sleep queue.
+		 */
+		if (TD_ON_SLEEPQ(td)) {
+			sq = sleepq_lookup(wchan);
+			sleepq_remove_thread(sq, td);
+		}
+		MPASS(td->td_lock != &sc->sc_lock);
+		mtx_unlock_spin(&sc->sc_lock);
+		thread_unlock(td);
 	}
-out:
-	/*
-	 * There were pending signals and this thread is still
-	 * on the sleep queue, remove it from the sleep queue.
-	 */
-	if (TD_ON_SLEEPQ(td)) {
-		sq = sleepq_lookup(wchan);
-		sleepq_remove_thread(sq, td);
-	}
-	MPASS(td->td_lock != &sc->sc_lock);
-	mtx_unlock_spin(&sc->sc_lock);
-	thread_unlock(td);
-
 	return (ret);
 }
 
@@ -866,6 +852,26 @@ sleepq_remove_thread(struct sleepqueue *sq, struct thread *td)
 
 	CTR3(KTR_PROC, "sleepq_wakeup: thread %p (pid %ld, %s)",
 	    (void *)td, (long)td->td_proc->p_pid, td->td_name);
+}
+
+void
+sleepq_remove_nested(struct thread *td)
+{
+	struct sleepqueue_chain *sc;
+	struct sleepqueue *sq;
+	const void *wchan;
+
+	MPASS(TD_ON_SLEEPQ(td));
+
+	wchan = td->td_wchan;
+	sc = SC_LOOKUP(wchan);
+	mtx_lock_spin(&sc->sc_lock);
+	sq = sleepq_lookup(wchan);
+	MPASS(sq != NULL);
+	thread_lock(td);
+	sleepq_remove_thread(sq, td);
+	mtx_unlock_spin(&sc->sc_lock);
+	/* Returns with the thread lock owned. */
 }
 
 #ifdef INVARIANTS
@@ -1426,13 +1432,18 @@ dump_sleepq_prof_stats(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
-SYSCTL_PROC(_debug_sleepq, OID_AUTO, stats, CTLTYPE_STRING | CTLFLAG_RD,
-    NULL, 0, dump_sleepq_prof_stats, "A", "Sleepqueue profiling statistics");
-SYSCTL_PROC(_debug_sleepq, OID_AUTO, reset, CTLTYPE_INT | CTLFLAG_RW,
-    NULL, 0, reset_sleepq_prof_stats, "I",
+SYSCTL_PROC(_debug_sleepq, OID_AUTO, stats,
+    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, NULL, 0,
+    dump_sleepq_prof_stats, "A",
+    "Sleepqueue profiling statistics");
+SYSCTL_PROC(_debug_sleepq, OID_AUTO, reset,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, NULL, 0,
+    reset_sleepq_prof_stats, "I",
     "Reset sleepqueue profiling statistics");
-SYSCTL_PROC(_debug_sleepq, OID_AUTO, enable, CTLTYPE_INT | CTLFLAG_RW,
-    NULL, 0, enable_sleepq_prof, "I", "Enable sleepqueue profiling");
+SYSCTL_PROC(_debug_sleepq, OID_AUTO, enable,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, NULL, 0,
+    enable_sleepq_prof, "I",
+    "Enable sleepqueue profiling");
 #endif
 
 #ifdef DDB

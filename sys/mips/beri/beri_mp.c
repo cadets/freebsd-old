@@ -132,7 +132,7 @@ platform_cpu_mask(cpuset_t *mask)
 				continue;
 			}
 			if (se->entry_addr != 1) {
-				printf("%s: CPU %d has uninitalized spin "
+				printf("%s: CPU %d has uninitialized spin "
 				    "entry\n", __func__, reg);
 				continue;
 			}
@@ -170,7 +170,6 @@ platform_init_secondary(int cpuid)
 		mips_wr_status(mips_rd_status() | (((1 << ipi) << 8) << 2));
 	}
 }
-
 
 void
 platform_ipi_send(int cpuid)

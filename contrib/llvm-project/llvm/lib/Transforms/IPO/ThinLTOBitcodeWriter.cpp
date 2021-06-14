@@ -14,9 +14,11 @@
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Object/ModuleSymbolTable.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/ScopedPrinter.h"
@@ -24,6 +26,7 @@
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/FunctionAttrs.h"
 #include "llvm/Transforms/IPO/FunctionImport.h"
+#include "llvm/Transforms/IPO/LowerTypeTests.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 using namespace llvm;
@@ -218,10 +221,18 @@ void splitAndWriteThinLTOBitcode(
 
   promoteTypeIds(M, ModuleId);
 
-  // Returns whether a global has attached type metadata. Such globals may
-  // participate in CFI or whole-program devirtualization, so they need to
-  // appear in the merged module instead of the thin LTO module.
+  // Returns whether a global or its associated global has attached type
+  // metadata. The former may participate in CFI or whole-program
+  // devirtualization, so they need to appear in the merged module instead of
+  // the thin LTO module. Similarly, globals that are associated with globals
+  // with type metadata need to appear in the merged module because they will
+  // reference the global's section directly.
   auto HasTypeMetadata = [](const GlobalObject *GO) {
+    if (MDNode *MD = GO->getMetadata(LLVMContext::MD_associated))
+      if (auto *AssocVM = dyn_cast_or_null<ValueAsMetadata>(MD->getOperand(0)))
+        if (auto *AssocGO = dyn_cast<GlobalObject>(AssocVM->getValue()))
+          if (AssocGO->hasMetadata(LLVMContext::MD_type))
+            return true;
     return GO->hasMetadata(LLVMContext::MD_type);
   };
 
@@ -250,7 +261,7 @@ void splitAndWriteThinLTOBitcode(
         if (!RT || RT->getBitWidth() > 64 || F->arg_empty() ||
             !F->arg_begin()->use_empty())
           return;
-        for (auto &Arg : make_range(std::next(F->arg_begin()), F->arg_end())) {
+        for (auto &Arg : drop_begin(F->args())) {
           auto *ArgT = dyn_cast<IntegerType>(Arg.getType());
           if (!ArgT || ArgT->getBitWidth() > 64)
             return;
@@ -315,16 +326,15 @@ void splitAndWriteThinLTOBitcode(
     SmallVector<Metadata *, 4> Elts;
     Elts.push_back(MDString::get(Ctx, F.getName()));
     CfiFunctionLinkage Linkage;
-    if (!F.isDeclarationForLinker())
+    if (lowertypetests::isJumpTableCanonical(&F))
       Linkage = CFL_Definition;
-    else if (F.isWeakForLinker())
+    else if (F.hasExternalWeakLinkage())
       Linkage = CFL_WeakDeclaration;
     else
       Linkage = CFL_Declaration;
     Elts.push_back(ConstantAsMetadata::get(
         llvm::ConstantInt::get(Type::getInt8Ty(Ctx), Linkage)));
-    for (auto Type : Types)
-      Elts.push_back(Type);
+    append_range(Elts, Types);
     CfiFunctionMDs.push_back(MDTuple::get(Ctx, Elts));
   }
 
@@ -457,7 +467,7 @@ void writeThinLTOBitcode(raw_ostream &OS, raw_ostream *ThinLinkOS,
       // splitAndWriteThinLTOBitcode). Just always build it once via the
       // buildModuleSummaryIndex when Module(s) are ready.
       ProfileSummaryInfo PSI(M);
-      NewIndex = llvm::make_unique<ModuleSummaryIndex>(
+      NewIndex = std::make_unique<ModuleSummaryIndex>(
           buildModuleSummaryIndex(M, nullptr, &PSI));
       Index = NewIndex.get();
     }

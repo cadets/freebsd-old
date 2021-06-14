@@ -79,7 +79,7 @@ procfs_doprocfile(PFS_FILL_ARGS)
 	textvp = p->p_textvp;
 	vhold(textvp);
 	PROC_UNLOCK(p);
-	error = vn_fullpath(td, textvp, &fullpath, &freepath);
+	error = vn_fullpath(textvp, &fullpath, &freepath);
 	vdrop(textvp);
 	if (error == 0)
 		sbuf_printf(sb, "%s", fullpath);
@@ -100,7 +100,6 @@ procfs_docurproc(PFS_FILL_ARGS)
 
 static int
 procfs_attr(PFS_ATTR_ARGS, int mode) {
-
 	vap->va_mode = mode;
 	if (p != NULL) {
 		PROC_LOCK_ASSERT(p, MA_OWNED);
@@ -163,7 +162,6 @@ procfs_init(PFS_INIT_ARGS)
 {
 	struct pfs_node *root;
 	struct pfs_node *dir;
-	struct pfs_node *node;
 
 	root = pi->pi_root;
 
@@ -182,10 +180,8 @@ procfs_init(PFS_INIT_ARGS)
 	    procfs_attr_rw, procfs_candebug, NULL, PFS_RDWR | PFS_RAW);
 	pfs_create_file(dir, "map", procfs_doprocmap,
 	    NULL, procfs_notsystem, NULL, PFS_RD);
-	node = pfs_create_file(dir, "mem", procfs_doprocmem,
+	pfs_create_file(dir, "mem", procfs_doprocmem,
 	    procfs_attr_rw, procfs_candebug, NULL, PFS_RDWR | PFS_RAW);
-	node->pn_ioctl = procfs_ioctl;
-	node->pn_close = procfs_close;
 	pfs_create_file(dir, "note", procfs_doprocnote,
 	    procfs_attr_w, procfs_candebug, NULL, PFS_WR);
 	pfs_create_file(dir, "notepg", procfs_doprocnote,

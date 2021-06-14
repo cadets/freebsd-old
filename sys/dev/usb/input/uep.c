@@ -65,7 +65,8 @@
 #ifdef USB_DEBUG
 static int uep_debug = 0;
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, uep, CTLFLAG_RW, 0, "USB uep");
+static SYSCTL_NODE(_hw_usb, OID_AUTO, uep, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "USB uep");
 SYSCTL_INT(_hw_usb_uep, OID_AUTO, debug, CTLFLAG_RWTUN,
     &uep_debug, 0, "Debug level");
 #endif
@@ -266,7 +267,7 @@ uep_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			memcpy(sc->buf + sc->buf_len, buf, res);
 			uep_process_pkt(sc, sc->buf);
 			sc->buf_len = 0;
- 
+
 			p = buf + res;
 			len -= res;
 		} else
@@ -380,8 +381,8 @@ uep_attach(device_t dev)
 	evdev_support_event(sc->evdev, EV_ABS);
 	evdev_support_event(sc->evdev, EV_KEY);
 	evdev_support_key(sc->evdev, BTN_TOUCH);
-	evdev_support_abs(sc->evdev, ABS_X, 0, 0, UEP_MAX_X, 0, 0, 0);
-	evdev_support_abs(sc->evdev, ABS_Y, 0, 0, UEP_MAX_Y, 0, 0, 0);
+	evdev_support_abs(sc->evdev, ABS_X, 0, UEP_MAX_X, 0, 0, 0);
+	evdev_support_abs(sc->evdev, ABS_Y, 0, UEP_MAX_Y, 0, 0, 0);
 
 	error = evdev_register_mtx(sc->evdev, &sc->mtx);
 	if (error) {

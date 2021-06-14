@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016 Mellanox Technologies. All rights reserved.
+ * Copyright (c) 2016-2020 Mellanox Technologies. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -66,6 +66,7 @@ mlx5e_rl_build_cq_param(struct mlx5e_rl_priv_data *rl,
 	MLX5_SET(cqc, cqc, log_cq_size, log_sq_size);
 	MLX5_SET(cqc, cqc, cq_period, rl->param.tx_coalesce_usecs);
 	MLX5_SET(cqc, cqc, cq_max_count, rl->param.tx_coalesce_pkts);
+	MLX5_SET(cqc, cqc, uar_page, rl->priv->mdev->priv.uar->index);
 
 	switch (rl->param.tx_coalesce_mode) {
 	case 0:
@@ -116,7 +117,7 @@ mlx5e_rl_create_sq(struct mlx5e_priv *priv, struct mlx5e_sq *sq,
 		goto done;
 
 	/* use shared UAR */
-	sq->uar = priv->rl.sq_uar;
+	sq->uar_map = priv->bfreg.map;
 
 	err = mlx5_wq_cyc_create(mdev, &param->wq, sqc_wq, &sq->wq,
 	    &sq->wq_ctrl);
@@ -124,11 +125,6 @@ mlx5e_rl_create_sq(struct mlx5e_priv *priv, struct mlx5e_sq *sq,
 		goto err_free_dma_tag;
 
 	sq->wq.db = &sq->wq.db[MLX5_SND_DBR];
-	/*
-	 * The sq->bf_buf_size variable is intentionally left zero so
-	 * that the doorbell writes will occur at the same memory
-	 * location.
-	 */
 
 	err = mlx5e_alloc_sq_db(sq);
 	if (err)
@@ -232,7 +228,7 @@ mlx5e_rl_open_channel(struct mlx5e_rl_worker *rlw, int eq_ix,
 	*ppsq = sq;
 
 	/* poll TX queue initially */
-	sq->cq.mcq.comp(&sq->cq.mcq);
+	sq->cq.mcq.comp(&sq->cq.mcq, NULL);
 
 	return (0);
 
@@ -751,15 +747,10 @@ mlx5e_rl_init(struct mlx5e_priv *priv)
 
 	sx_init(&rl->rl_sxlock, "ratelimit-sxlock");
 
-	/* allocate shared UAR for SQs */
-	error = mlx5_alloc_map_uar(priv->mdev, &rl->sq_uar);
-	if (error)
-		goto done;
-
 	/* open own TIS domain for ratelimit SQs */
 	error = mlx5e_rl_open_tis(priv);
 	if (error)
-		goto err_uar;
+		goto done;
 
 	/* setup default value for parameters */
 	mlx5e_rl_set_default_params(&rl->param, priv->mdev);
@@ -770,7 +761,7 @@ mlx5e_rl_init(struct mlx5e_priv *priv)
 	/* create root node */
 	node = SYSCTL_ADD_NODE(&rl->ctx,
 	    SYSCTL_CHILDREN(priv->sysctl_ifnet), OID_AUTO,
-	    "rate_limit", CTLFLAG_RW, NULL, "Rate limiting support");
+	    "rate_limit", CTLFLAG_RW | CTLFLAG_MPSAFE, NULL, "Rate limiting support");
 
 	if (node != NULL) {
 		/* create SYSCTLs */
@@ -782,7 +773,7 @@ mlx5e_rl_init(struct mlx5e_priv *priv)
 		}
 
 		stats = SYSCTL_ADD_NODE(&rl->ctx, SYSCTL_CHILDREN(node),
-		    OID_AUTO, "stats", CTLFLAG_RD, NULL,
+		    OID_AUTO, "stats", CTLFLAG_RD | CTLFLAG_MPSAFE, NULL,
 		    "Rate limiting statistics");
 		if (stats != NULL) {
 			/* create SYSCTLs */
@@ -861,8 +852,6 @@ mlx5e_rl_init(struct mlx5e_priv *priv)
 
 	return (0);
 
-err_uar:
-	mlx5_unmap_free_uar(priv->mdev, &rl->sq_uar);
 done:
 	sysctl_ctx_free(&rl->ctx);
 	sx_destroy(&rl->rl_sxlock);
@@ -973,9 +962,6 @@ mlx5e_rl_cleanup(struct mlx5e_priv *priv)
 	PRIV_UNLOCK(priv);
 
 	mlx5e_rl_reset_rates(rl);
-
-	/* free shared UAR for SQs */
-	mlx5_unmap_free_uar(priv->mdev, &rl->sq_uar);
 
 	/* close TIS domain */
 	mlx5e_rl_close_tis(priv);
@@ -1128,9 +1114,9 @@ mlx5e_rl_snd_tag_alloc(struct ifnet *ifp,
 	}
 
 	/* store pointer to mbuf tag */
-	MPASS(channel->tag.m_snd_tag.refcount == 0);
-	m_snd_tag_init(&channel->tag.m_snd_tag, ifp);
-	*ppmt = &channel->tag.m_snd_tag;
+	MPASS(channel->tag.refcount == 0);
+	m_snd_tag_init(&channel->tag, ifp, IF_SND_TAG_TYPE_RATE_LIMIT);
+	*ppmt = &channel->tag;
 done:
 	return (error);
 }
@@ -1140,7 +1126,7 @@ int
 mlx5e_rl_snd_tag_modify(struct m_snd_tag *pmt, union if_snd_tag_modify_params *params)
 {
 	struct mlx5e_rl_channel *channel =
-	    container_of(pmt, struct mlx5e_rl_channel, tag.m_snd_tag);
+	    container_of(pmt, struct mlx5e_rl_channel, tag);
 
 	return (mlx5e_rl_modify(channel->worker, channel, params->rate_limit.max_rate));
 }
@@ -1149,7 +1135,7 @@ int
 mlx5e_rl_snd_tag_query(struct m_snd_tag *pmt, union if_snd_tag_query_params *params)
 {
 	struct mlx5e_rl_channel *channel =
-	    container_of(pmt, struct mlx5e_rl_channel, tag.m_snd_tag);
+	    container_of(pmt, struct mlx5e_rl_channel, tag);
 
 	return (mlx5e_rl_query(channel->worker, channel, params));
 }
@@ -1158,7 +1144,7 @@ void
 mlx5e_rl_snd_tag_free(struct m_snd_tag *pmt)
 {
 	struct mlx5e_rl_channel *channel =
-	    container_of(pmt, struct mlx5e_rl_channel, tag.m_snd_tag);
+	    container_of(pmt, struct mlx5e_rl_channel, tag);
 
 	mlx5e_rl_free(channel->worker, channel);
 }

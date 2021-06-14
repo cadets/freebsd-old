@@ -1,4 +1,4 @@
-//===-- DynamicLoaderPOSIXDYLD.cpp ------------------------------*- C++ -*-===//
+//===-- DynamicLoaderPOSIXDYLD.cpp ----------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -28,6 +28,8 @@
 
 using namespace lldb;
 using namespace lldb_private;
+
+LLDB_PLUGIN_DEFINE_ADV(DynamicLoaderPOSIXDYLD, DynamicLoaderPosixDYLD)
 
 void DynamicLoaderPOSIXDYLD::Initialize() {
   PluginManager::RegisterPlugin(GetPluginNameStatic(),
@@ -74,7 +76,8 @@ DynamicLoaderPOSIXDYLD::DynamicLoaderPOSIXDYLD(Process *process)
       m_load_offset(LLDB_INVALID_ADDRESS), m_entry_point(LLDB_INVALID_ADDRESS),
       m_auxv(), m_dyld_bid(LLDB_INVALID_BREAK_ID),
       m_vdso_base(LLDB_INVALID_ADDRESS),
-      m_interpreter_base(LLDB_INVALID_ADDRESS) {}
+      m_interpreter_base(LLDB_INVALID_ADDRESS), m_initial_modules_added(false) {
+}
 
 DynamicLoaderPOSIXDYLD::~DynamicLoaderPOSIXDYLD() {
   if (m_dyld_bid != LLDB_INVALID_BREAK_ID) {
@@ -85,32 +88,32 @@ DynamicLoaderPOSIXDYLD::~DynamicLoaderPOSIXDYLD() {
 
 void DynamicLoaderPOSIXDYLD::DidAttach() {
   Log *log(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_DYNAMIC_LOADER));
-  if (log)
-    log->Printf("DynamicLoaderPOSIXDYLD::%s() pid %" PRIu64, __FUNCTION__,
-                m_process ? m_process->GetID() : LLDB_INVALID_PROCESS_ID);
-  m_auxv = llvm::make_unique<AuxVector>(m_process->GetAuxvData());
+  LLDB_LOGF(log, "DynamicLoaderPOSIXDYLD::%s() pid %" PRIu64, __FUNCTION__,
+            m_process ? m_process->GetID() : LLDB_INVALID_PROCESS_ID);
+  m_auxv = std::make_unique<AuxVector>(m_process->GetAuxvData());
 
-  if (log)
-    log->Printf("DynamicLoaderPOSIXDYLD::%s pid %" PRIu64 " reloaded auxv data",
-                __FUNCTION__,
-                m_process ? m_process->GetID() : LLDB_INVALID_PROCESS_ID);
+  LLDB_LOGF(
+      log, "DynamicLoaderPOSIXDYLD::%s pid %" PRIu64 " reloaded auxv data",
+      __FUNCTION__, m_process ? m_process->GetID() : LLDB_INVALID_PROCESS_ID);
 
   // ask the process if it can load any of its own modules
-  m_process->LoadModules();
+  auto error = m_process->LoadModules();
+  LLDB_LOG_ERROR(log, std::move(error), "Couldn't load modules: {0}");
 
   ModuleSP executable_sp = GetTargetExecutable();
   ResolveExecutableModule(executable_sp);
+  m_rendezvous.UpdateExecutablePath();
 
   // find the main process load offset
   addr_t load_offset = ComputeLoadOffset();
-  if (log)
-    log->Printf("DynamicLoaderPOSIXDYLD::%s pid %" PRIu64
-                " executable '%s', load_offset 0x%" PRIx64,
-                __FUNCTION__,
-                m_process ? m_process->GetID() : LLDB_INVALID_PROCESS_ID,
-                executable_sp ? executable_sp->GetFileSpec().GetPath().c_str()
-                              : "<null executable>",
-                load_offset);
+  LLDB_LOGF(log,
+            "DynamicLoaderPOSIXDYLD::%s pid %" PRIu64
+            " executable '%s', load_offset 0x%" PRIx64,
+            __FUNCTION__,
+            m_process ? m_process->GetID() : LLDB_INVALID_PROCESS_ID,
+            executable_sp ? executable_sp->GetFileSpec().GetPath().c_str()
+                          : "<null executable>",
+            load_offset);
 
   EvalSpecialModulesStatus();
 
@@ -137,12 +140,12 @@ void DynamicLoaderPOSIXDYLD::DidAttach() {
     ModuleList module_list;
 
     module_list.Append(executable_sp);
-    if (log)
-      log->Printf("DynamicLoaderPOSIXDYLD::%s pid %" PRIu64
-                  " added executable '%s' to module load list",
-                  __FUNCTION__,
-                  m_process ? m_process->GetID() : LLDB_INVALID_PROCESS_ID,
-                  executable_sp->GetFileSpec().GetPath().c_str());
+    LLDB_LOGF(log,
+              "DynamicLoaderPOSIXDYLD::%s pid %" PRIu64
+              " added executable '%s' to module load list",
+              __FUNCTION__,
+              m_process ? m_process->GetID() : LLDB_INVALID_PROCESS_ID,
+              executable_sp->GetFileSpec().GetPath().c_str());
 
     UpdateLoadedSections(executable_sp, LLDB_INVALID_ADDRESS, load_offset,
                          true);
@@ -151,14 +154,15 @@ void DynamicLoaderPOSIXDYLD::DidAttach() {
 
     m_process->GetTarget().ModulesDidLoad(module_list);
     if (log) {
-      log->Printf("DynamicLoaderPOSIXDYLD::%s told the target about the "
-                  "modules that loaded:",
-                  __FUNCTION__);
+      LLDB_LOGF(log,
+                "DynamicLoaderPOSIXDYLD::%s told the target about the "
+                "modules that loaded:",
+                __FUNCTION__);
       for (auto module_sp : module_list.Modules()) {
-        log->Printf("-- [module] %s (pid %" PRIu64 ")",
-                    module_sp ? module_sp->GetFileSpec().GetPath().c_str()
-                              : "<null>",
-                    m_process ? m_process->GetID() : LLDB_INVALID_PROCESS_ID);
+        LLDB_LOGF(log, "-- [module] %s (pid %" PRIu64 ")",
+                  module_sp ? module_sp->GetFileSpec().GetPath().c_str()
+                            : "<null>",
+                  m_process ? m_process->GetID() : LLDB_INVALID_PROCESS_ID);
       }
     }
   }
@@ -174,13 +178,12 @@ void DynamicLoaderPOSIXDYLD::DidAttach() {
 
 void DynamicLoaderPOSIXDYLD::DidLaunch() {
   Log *log(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_DYNAMIC_LOADER));
-  if (log)
-    log->Printf("DynamicLoaderPOSIXDYLD::%s()", __FUNCTION__);
+  LLDB_LOGF(log, "DynamicLoaderPOSIXDYLD::%s()", __FUNCTION__);
 
   ModuleSP executable;
   addr_t load_offset;
 
-  m_auxv = llvm::make_unique<AuxVector>(m_process->GetAuxvData());
+  m_auxv = std::make_unique<AuxVector>(m_process->GetAuxvData());
 
   executable = GetTargetExecutable();
   load_offset = ComputeLoadOffset();
@@ -191,9 +194,8 @@ void DynamicLoaderPOSIXDYLD::DidLaunch() {
     module_list.Append(executable);
     UpdateLoadedSections(executable, LLDB_INVALID_ADDRESS, load_offset, true);
 
-    if (log)
-      log->Printf("DynamicLoaderPOSIXDYLD::%s about to call ProbeEntry()",
-                  __FUNCTION__);
+    LLDB_LOGF(log, "DynamicLoaderPOSIXDYLD::%s about to call ProbeEntry()",
+              __FUNCTION__);
 
     if (!SetRendezvousBreakpoint()) {
       // If we cannot establish rendezvous breakpoint right now we'll try again
@@ -227,22 +229,20 @@ void DynamicLoaderPOSIXDYLD::ProbeEntry() {
 
   const addr_t entry = GetEntryPoint();
   if (entry == LLDB_INVALID_ADDRESS) {
-    if (log)
-      log->Printf(
-          "DynamicLoaderPOSIXDYLD::%s pid %" PRIu64
-          " GetEntryPoint() returned no address, not setting entry breakpoint",
-          __FUNCTION__,
-          m_process ? m_process->GetID() : LLDB_INVALID_PROCESS_ID);
+    LLDB_LOGF(
+        log,
+        "DynamicLoaderPOSIXDYLD::%s pid %" PRIu64
+        " GetEntryPoint() returned no address, not setting entry breakpoint",
+        __FUNCTION__, m_process ? m_process->GetID() : LLDB_INVALID_PROCESS_ID);
     return;
   }
 
-  if (log)
-    log->Printf("DynamicLoaderPOSIXDYLD::%s pid %" PRIu64
-                " GetEntryPoint() returned address 0x%" PRIx64
-                ", setting entry breakpoint",
-                __FUNCTION__,
-                m_process ? m_process->GetID() : LLDB_INVALID_PROCESS_ID,
-                entry);
+  LLDB_LOGF(log,
+            "DynamicLoaderPOSIXDYLD::%s pid %" PRIu64
+            " GetEntryPoint() returned address 0x%" PRIx64
+            ", setting entry breakpoint",
+            __FUNCTION__,
+            m_process ? m_process->GetID() : LLDB_INVALID_PROCESS_ID, entry);
 
   if (m_process) {
     Breakpoint *const entry_break =
@@ -271,11 +271,10 @@ bool DynamicLoaderPOSIXDYLD::EntryBreakpointHit(
   Log *log(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_DYNAMIC_LOADER));
   DynamicLoaderPOSIXDYLD *const dyld_instance =
       static_cast<DynamicLoaderPOSIXDYLD *>(baton);
-  if (log)
-    log->Printf("DynamicLoaderPOSIXDYLD::%s called for pid %" PRIu64,
-                __FUNCTION__,
-                dyld_instance->m_process ? dyld_instance->m_process->GetID()
-                                         : LLDB_INVALID_PROCESS_ID);
+  LLDB_LOGF(log, "DynamicLoaderPOSIXDYLD::%s called for pid %" PRIu64,
+            __FUNCTION__,
+            dyld_instance->m_process ? dyld_instance->m_process->GetID()
+                                     : LLDB_INVALID_PROCESS_ID);
 
   // Disable the breakpoint --- if a stop happens right after this, which we've
   // seen on occasion, we don't want the breakpoint stepping thread-plan logic
@@ -287,22 +286,22 @@ bool DynamicLoaderPOSIXDYLD::EntryBreakpointHit(
     BreakpointSP breakpoint_sp =
         dyld_instance->m_process->GetTarget().GetBreakpointByID(break_id);
     if (breakpoint_sp) {
-      if (log)
-        log->Printf("DynamicLoaderPOSIXDYLD::%s pid %" PRIu64
-                    " disabling breakpoint id %" PRIu64,
-                    __FUNCTION__, dyld_instance->m_process->GetID(), break_id);
+      LLDB_LOGF(log,
+                "DynamicLoaderPOSIXDYLD::%s pid %" PRIu64
+                " disabling breakpoint id %" PRIu64,
+                __FUNCTION__, dyld_instance->m_process->GetID(), break_id);
       breakpoint_sp->SetEnabled(false);
     } else {
-      if (log)
-        log->Printf("DynamicLoaderPOSIXDYLD::%s pid %" PRIu64
-                    " failed to find breakpoint for breakpoint id %" PRIu64,
-                    __FUNCTION__, dyld_instance->m_process->GetID(), break_id);
+      LLDB_LOGF(log,
+                "DynamicLoaderPOSIXDYLD::%s pid %" PRIu64
+                " failed to find breakpoint for breakpoint id %" PRIu64,
+                __FUNCTION__, dyld_instance->m_process->GetID(), break_id);
     }
   } else {
-    if (log)
-      log->Printf("DynamicLoaderPOSIXDYLD::%s breakpoint id %" PRIu64
-                  " no Process instance!  Cannot disable breakpoint",
-                  __FUNCTION__, break_id);
+    LLDB_LOGF(log,
+              "DynamicLoaderPOSIXDYLD::%s breakpoint id %" PRIu64
+              " no Process instance!  Cannot disable breakpoint",
+              __FUNCTION__, break_id);
   }
 
   dyld_instance->LoadAllCurrentModules();
@@ -393,23 +392,22 @@ bool DynamicLoaderPOSIXDYLD::RendezvousBreakpointHit(
   Log *log(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_DYNAMIC_LOADER));
   DynamicLoaderPOSIXDYLD *const dyld_instance =
       static_cast<DynamicLoaderPOSIXDYLD *>(baton);
-  if (log)
-    log->Printf("DynamicLoaderPOSIXDYLD::%s called for pid %" PRIu64,
-                __FUNCTION__,
-                dyld_instance->m_process ? dyld_instance->m_process->GetID()
-                                         : LLDB_INVALID_PROCESS_ID);
+  LLDB_LOGF(log, "DynamicLoaderPOSIXDYLD::%s called for pid %" PRIu64,
+            __FUNCTION__,
+            dyld_instance->m_process ? dyld_instance->m_process->GetID()
+                                     : LLDB_INVALID_PROCESS_ID);
 
   dyld_instance->RefreshModules();
 
   // Return true to stop the target, false to just let the target run.
   const bool stop_when_images_change = dyld_instance->GetStopWhenImagesChange();
-  if (log)
-    log->Printf("DynamicLoaderPOSIXDYLD::%s pid %" PRIu64
-                " stop_when_images_change=%s",
-                __FUNCTION__,
-                dyld_instance->m_process ? dyld_instance->m_process->GetID()
-                                         : LLDB_INVALID_PROCESS_ID,
-                stop_when_images_change ? "true" : "false");
+  LLDB_LOGF(log,
+            "DynamicLoaderPOSIXDYLD::%s pid %" PRIu64
+            " stop_when_images_change=%s",
+            __FUNCTION__,
+            dyld_instance->m_process ? dyld_instance->m_process->GetID()
+                                     : LLDB_INVALID_PROCESS_ID,
+            stop_when_images_change ? "true" : "false");
   return stop_when_images_change;
 }
 
@@ -422,14 +420,38 @@ void DynamicLoaderPOSIXDYLD::RefreshModules() {
 
   ModuleList &loaded_modules = m_process->GetTarget().GetImages();
 
-  if (m_rendezvous.ModulesDidLoad()) {
+  if (m_rendezvous.ModulesDidLoad() || !m_initial_modules_added) {
     ModuleList new_modules;
 
-    E = m_rendezvous.loaded_end();
-    for (I = m_rendezvous.loaded_begin(); I != E; ++I) {
+    // If this is the first time rendezvous breakpoint fires, we need
+    // to take care of adding all the initial modules reported by
+    // the loader.  This is necessary to list ld-linux.so on Linux,
+    // and all DT_NEEDED entries on *BSD.
+    if (m_initial_modules_added) {
+      I = m_rendezvous.loaded_begin();
+      E = m_rendezvous.loaded_end();
+    } else {
+      I = m_rendezvous.begin();
+      E = m_rendezvous.end();
+      m_initial_modules_added = true;
+    }
+    for (; I != E; ++I) {
       ModuleSP module_sp =
           LoadModuleAtAddress(I->file_spec, I->link_addr, I->base_addr, true);
       if (module_sp.get()) {
+        if (module_sp->GetObjectFile()->GetBaseAddress().GetLoadAddress(
+                &m_process->GetTarget()) == m_interpreter_base &&
+            module_sp != m_interpreter_module.lock()) {
+          // If this is a duplicate instance of ld.so, unload it.  We may end up
+          // with it if we load it via a different path than before (symlink
+          // vs real path).
+          // TODO: remove this once we either fix library matching or avoid
+          // loading the interpreter when setting the rendezvous breakpoint.
+          UnloadSections(module_sp);
+          loaded_modules.Remove(module_sp);
+          continue;
+        }
+
         loaded_modules.AppendIfNeeded(module_sp);
         new_modules.Append(module_sp);
       }
@@ -548,6 +570,7 @@ ModuleSP DynamicLoaderPOSIXDYLD::LoadInterpreterModule() {
                                                     true /* notify */)) {
     UpdateLoadedSections(module_sp, LLDB_INVALID_ADDRESS, m_interpreter_base,
                          false);
+    m_interpreter_module = module_sp;
     return module_sp;
   }
   return nullptr;
@@ -562,10 +585,10 @@ void DynamicLoaderPOSIXDYLD::LoadAllCurrentModules() {
   LoadVDSO();
 
   if (!m_rendezvous.Resolve()) {
-    if (log)
-      log->Printf("DynamicLoaderPOSIXDYLD::%s unable to resolve POSIX DYLD "
-                  "rendezvous address",
-                  __FUNCTION__);
+    LLDB_LOGF(log,
+              "DynamicLoaderPOSIXDYLD::%s unable to resolve POSIX DYLD "
+              "rendezvous address",
+              __FUNCTION__);
     return;
   }
 
@@ -589,10 +612,10 @@ void DynamicLoaderPOSIXDYLD::LoadAllCurrentModules() {
       module_list.Append(module_sp);
     } else {
       Log *log(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_DYNAMIC_LOADER));
-      if (log)
-        log->Printf(
-            "DynamicLoaderPOSIXDYLD::%s failed loading module %s at 0x%" PRIx64,
-            __FUNCTION__, I->file_spec.GetCString(), I->base_addr);
+      LLDB_LOGF(
+          log,
+          "DynamicLoaderPOSIXDYLD::%s failed loading module %s at 0x%" PRIx64,
+          __FUNCTION__, I->file_spec.GetCString(), I->base_addr);
     }
   }
 
@@ -697,12 +720,12 @@ DynamicLoaderPOSIXDYLD::GetThreadLocalData(const lldb::ModuleSP module_sp,
   addr_t tls_block = ReadPointer(dtv_slot + metadata.tls_offset);
 
   Log *log(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_DYNAMIC_LOADER));
-  if (log)
-    log->Printf("DynamicLoaderPOSIXDYLD::Performed TLS lookup: "
-                "module=%s, link_map=0x%" PRIx64 ", tp=0x%" PRIx64
-                ", modid=%" PRId64 ", tls_block=0x%" PRIx64 "\n",
-                module_sp->GetObjectName().AsCString(""), link_map, tp,
-                (int64_t)modid, tls_block);
+  LLDB_LOGF(log,
+            "DynamicLoaderPOSIXDYLD::Performed TLS lookup: "
+            "module=%s, link_map=0x%" PRIx64 ", tp=0x%" PRIx64
+            ", modid=%" PRId64 ", tls_block=0x%" PRIx64 "\n",
+            module_sp->GetObjectName().AsCString(""), link_map, tp,
+            (int64_t)modid, tls_block);
 
   if (tls_block == LLDB_INVALID_ADDRESS)
     return LLDB_INVALID_ADDRESS;
@@ -722,18 +745,17 @@ void DynamicLoaderPOSIXDYLD::ResolveExecutableModule(
 
   ProcessInstanceInfo process_info;
   if (!m_process->GetProcessInfo(process_info)) {
-    if (log)
-      log->Printf("DynamicLoaderPOSIXDYLD::%s - failed to get process info for "
-                  "pid %" PRIu64,
-                  __FUNCTION__, m_process->GetID());
+    LLDB_LOGF(log,
+              "DynamicLoaderPOSIXDYLD::%s - failed to get process info for "
+              "pid %" PRIu64,
+              __FUNCTION__, m_process->GetID());
     return;
   }
 
-  if (log)
-    log->Printf("DynamicLoaderPOSIXDYLD::%s - got executable by pid %" PRIu64
-                ": %s",
-                __FUNCTION__, m_process->GetID(),
-                process_info.GetExecutableFile().GetPath().c_str());
+  LLDB_LOGF(
+      log, "DynamicLoaderPOSIXDYLD::%s - got executable by pid %" PRIu64 ": %s",
+      __FUNCTION__, m_process->GetID(),
+      process_info.GetExecutableFile().GetPath().c_str());
 
   ModuleSpec module_spec(process_info.GetExecutableFile(),
                          process_info.GetArchitecture());
@@ -748,10 +770,10 @@ void DynamicLoaderPOSIXDYLD::ResolveExecutableModule(
     StreamString stream;
     module_spec.Dump(stream);
 
-    if (log)
-      log->Printf("DynamicLoaderPOSIXDYLD::%s - failed to resolve executable "
-                  "with module spec \"%s\": %s",
-                  __FUNCTION__, stream.GetData(), error.AsCString());
+    LLDB_LOGF(log,
+              "DynamicLoaderPOSIXDYLD::%s - failed to resolve executable "
+              "with module spec \"%s\": %s",
+              __FUNCTION__, stream.GetData(), error.AsCString());
     return;
   }
 

@@ -59,7 +59,7 @@ void RegisterClassInfo::runOnMachineFunction(const MachineFunction &mf) {
   if (Update || CSR != CalleeSavedRegs) {
     // Build a CSRAlias map. Every CSR alias saves the last
     // overlapping CSR.
-    CalleeSavedAliases.resize(TRI->getNumRegs(), 0);
+    CalleeSavedAliases.assign(TRI->getNumRegs(), 0);
     for (const MCPhysReg *I = CSR; *I; ++I)
       for (MCRegAliasIterator AI(*I, TRI, true); AI.isValid(); ++AI)
         CalleeSavedAliases[*AI] = *I;
@@ -186,8 +186,16 @@ unsigned RegisterClassInfo::computePSetLimit(unsigned Idx) const {
       NumRCUnits = NUnits;
     }
   }
+  assert(RC && "Failed to find register class");
   compute(RC);
-  unsigned NReserved = RC->getNumRegs() - getNumAllocatableRegs(RC);
-  return TRI->getRegPressureSetLimit(*MF, Idx) -
-         TRI->getRegClassWeight(RC).RegWeight * NReserved;
+  unsigned NAllocatableRegs = getNumAllocatableRegs(RC);
+  unsigned RegPressureSetLimit = TRI->getRegPressureSetLimit(*MF, Idx);
+  // If all the regs are reserved, return raw RegPressureSetLimit.
+  // One example is VRSAVERC in PowerPC.
+  // Avoid returning zero, getRegPressureSetLimit(Idx) assumes computePSetLimit
+  // return non-zero value.
+  if (NAllocatableRegs == 0)
+    return RegPressureSetLimit;
+  unsigned NReserved = RC->getNumRegs() - NAllocatableRegs;
+  return RegPressureSetLimit - TRI->getRegClassWeight(RC).RegWeight * NReserved;
 }

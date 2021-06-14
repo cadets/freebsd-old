@@ -30,10 +30,11 @@
 
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
+
+#include <sys/param.h>
 #include <sys/endian.h>
 #include <sys/systm.h>
 #include <sys/sockio.h>
-#include <sys/param.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/proc.h>
@@ -902,7 +903,6 @@ fail:
 	return (err);
 }
 
-
 static int
 nlm_xlpge_gmac_config_speed(struct nlm_xlpge_softc *sc)
 {
@@ -1004,7 +1004,6 @@ xlpge_read_mac_addr(struct nlm_xlpge_softc *sc)
 		    sc->port, sc->type, sc->dev_addr);
 }
 
-
 static int
 xlpge_mediachange(struct ifnet *ifp)
 {
@@ -1052,8 +1051,7 @@ nlm_xlpge_ifinit(struct nlm_xlpge_softc *sc)
 	}
 	ifp->if_softc = sc;
 	if_initname(ifp, device_get_name(dev), device_get_unit(dev));
-	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST |
-	    IFF_NEEDSEPOCH;
+	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	sc->if_flags = ifp->if_flags;
 	/*ifp->if_capabilities = IFCAP_TXCSUM | IFCAP_VLAN_HWTAGGING;*/
 	ifp->if_capabilities = 0;
@@ -1160,10 +1158,10 @@ nlm_xlpge_setup_stats_sysctl(device_t dev, struct nlm_xlpge_softc *sc)
 	tree = device_get_sysctl_tree(dev);
 	child = SYSCTL_CHILDREN(tree);
 
-#define XLPGE_STAT(name, offset, desc) \
-	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, name,	\
-	    CTLTYPE_UINT | CTLFLAG_RD, sc, offset,	\
-	    xlpge_stats_sysctl, "IU", desc)
+#define XLPGE_STAT(name, offset, desc)				\
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, name,		\
+	    CTLTYPE_UINT | CTLFLAG_RD | CTLFLAG_NEEDGIANT,	\
+	    sc, offset,	xlpge_stats_sysctl, "IU", desc)
 
 	XLPGE_STAT("tr127", nlm_sgmii_stats_tr127, "TxRx 64 - 127 Bytes");
 	XLPGE_STAT("tr255", nlm_sgmii_stats_tr255, "TxRx 128 - 255 Bytes");

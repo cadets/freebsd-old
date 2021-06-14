@@ -558,7 +558,7 @@ struct linux_rt_sigpending_args {
 struct linux_rt_sigtimedwait_args {
 	char mask_l_[PADL_(l_sigset_t *)]; l_sigset_t * mask; char mask_r_[PADR_(l_sigset_t *)];
 	char ptr_l_[PADL_(l_siginfo_t *)]; l_siginfo_t * ptr; char ptr_r_[PADR_(l_siginfo_t *)];
-	char timeout_l_[PADL_(struct l_timeval *)]; struct l_timeval * timeout; char timeout_r_[PADR_(struct l_timeval *)];
+	char timeout_l_[PADL_(struct l_timespec *)]; struct l_timespec * timeout; char timeout_r_[PADR_(struct l_timespec *)];
 	char sigsetsize_l_[PADL_(l_size_t)]; l_size_t sigsetsize; char sigsetsize_r_[PADR_(l_size_t)];
 };
 struct linux_rt_sigqueueinfo_args {
@@ -606,7 +606,10 @@ struct linux_sigaltstack_args {
 	char uoss_l_[PADL_(l_stack_t *)]; l_stack_t * uoss; char uoss_r_[PADR_(l_stack_t *)];
 };
 struct linux_sendfile_args {
-	register_t dummy;
+	char out_l_[PADL_(l_int)]; l_int out; char out_r_[PADR_(l_int)];
+	char in_l_[PADL_(l_int)]; l_int in; char in_r_[PADR_(l_int)];
+	char offset_l_[PADL_(l_long *)]; l_long * offset; char offset_r_[PADR_(l_long *)];
+	char count_l_[PADL_(l_size_t)]; l_size_t count; char count_r_[PADR_(l_size_t)];
 };
 struct linux_vfork_args {
 	register_t dummy;
@@ -684,6 +687,11 @@ struct linux_mincore_args {
 	char len_l_[PADL_(l_size_t)]; l_size_t len; char len_r_[PADR_(l_size_t)];
 	char vec_l_[PADL_(u_char *)]; u_char * vec; char vec_r_[PADR_(u_char *)];
 };
+struct linux_madvise_args {
+	char addr_l_[PADL_(void *)]; void * addr; char addr_r_[PADR_(void *)];
+	char len_l_[PADL_(size_t)]; size_t len; char len_r_[PADR_(size_t)];
+	char behav_l_[PADL_(int)]; int behav; char behav_r_[PADR_(int)];
+};
 struct linux_getdents64_args {
 	char fd_l_[PADL_(l_uint)]; l_uint fd; char fd_r_[PADR_(l_uint)];
 	char dirent_l_[PADL_(void *)]; void * dirent; char dirent_r_[PADR_(void *)];
@@ -698,48 +706,84 @@ struct linux_gettid_args {
 	register_t dummy;
 };
 struct linux_setxattr_args {
-	register_t dummy;
+	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
+	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
+	char value_l_[PADL_(const char *)]; const char * value; char value_r_[PADR_(const char *)];
+	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
+	char flags_l_[PADL_(l_int)]; l_int flags; char flags_r_[PADR_(l_int)];
 };
 struct linux_lsetxattr_args {
-	register_t dummy;
+	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
+	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
+	char value_l_[PADL_(const char *)]; const char * value; char value_r_[PADR_(const char *)];
+	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
+	char flags_l_[PADL_(l_int)]; l_int flags; char flags_r_[PADR_(l_int)];
 };
 struct linux_fsetxattr_args {
-	register_t dummy;
+	char fd_l_[PADL_(l_int)]; l_int fd; char fd_r_[PADR_(l_int)];
+	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
+	char value_l_[PADL_(const char *)]; const char * value; char value_r_[PADR_(const char *)];
+	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
+	char flags_l_[PADL_(l_int)]; l_int flags; char flags_r_[PADR_(l_int)];
 };
 struct linux_getxattr_args {
-	register_t dummy;
+	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
+	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
+	char value_l_[PADL_(char *)]; char * value; char value_r_[PADR_(char *)];
+	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
 };
 struct linux_lgetxattr_args {
-	register_t dummy;
+	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
+	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
+	char value_l_[PADL_(char *)]; char * value; char value_r_[PADR_(char *)];
+	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
 };
 struct linux_fgetxattr_args {
-	register_t dummy;
+	char fd_l_[PADL_(l_int)]; l_int fd; char fd_r_[PADR_(l_int)];
+	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
+	char value_l_[PADL_(char *)]; char * value; char value_r_[PADR_(char *)];
+	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
 };
 struct linux_listxattr_args {
-	register_t dummy;
+	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
+	char list_l_[PADL_(const char *)]; const char * list; char list_r_[PADR_(const char *)];
+	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
 };
 struct linux_llistxattr_args {
-	register_t dummy;
+	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
+	char list_l_[PADL_(const char *)]; const char * list; char list_r_[PADR_(const char *)];
+	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
 };
 struct linux_flistxattr_args {
-	register_t dummy;
+	char fd_l_[PADL_(l_int)]; l_int fd; char fd_r_[PADR_(l_int)];
+	char list_l_[PADL_(const char *)]; const char * list; char list_r_[PADR_(const char *)];
+	char size_l_[PADL_(l_size_t)]; l_size_t size; char size_r_[PADR_(l_size_t)];
 };
 struct linux_removexattr_args {
-	register_t dummy;
+	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
+	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
 };
 struct linux_lremovexattr_args {
-	register_t dummy;
+	char path_l_[PADL_(const char *)]; const char * path; char path_r_[PADR_(const char *)];
+	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
 };
 struct linux_fremovexattr_args {
-	register_t dummy;
+	char fd_l_[PADL_(l_int)]; l_int fd; char fd_r_[PADR_(l_int)];
+	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
 };
 struct linux_tkill_args {
 	char tid_l_[PADL_(int)]; int tid; char tid_r_[PADR_(int)];
 	char sig_l_[PADL_(int)]; int sig; char sig_r_[PADR_(int)];
 };
+struct linux_sendfile64_args {
+	char out_l_[PADL_(l_int)]; l_int out; char out_r_[PADR_(l_int)];
+	char in_l_[PADL_(l_int)]; l_int in; char in_r_[PADR_(l_int)];
+	char offset_l_[PADL_(l_loff_t *)]; l_loff_t * offset; char offset_r_[PADR_(l_loff_t *)];
+	char count_l_[PADL_(l_size_t)]; l_size_t count; char count_r_[PADR_(l_size_t)];
+};
 struct linux_sys_futex_args {
-	char uaddr_l_[PADL_(void *)]; void * uaddr; char uaddr_r_[PADR_(void *)];
-	char op_l_[PADL_(int)]; int op; char op_r_[PADR_(int)];
+	char uaddr_l_[PADL_(uint32_t *)]; uint32_t * uaddr; char uaddr_r_[PADR_(uint32_t *)];
+	char op_l_[PADL_(l_int)]; l_int op; char op_r_[PADR_(l_int)];
 	char val_l_[PADL_(uint32_t)]; uint32_t val; char val_r_[PADR_(uint32_t)];
 	char timeout_l_[PADL_(struct l_timespec *)]; struct l_timespec * timeout; char timeout_r_[PADR_(struct l_timespec *)];
 	char uaddr2_l_[PADL_(uint32_t *)]; uint32_t * uaddr2; char uaddr2_r_[PADR_(uint32_t *)];
@@ -868,22 +912,36 @@ struct linux_set_mempolicy_args {
 	register_t dummy;
 };
 struct linux_mq_open_args {
-	register_t dummy;
+	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
+	char oflag_l_[PADL_(l_int)]; l_int oflag; char oflag_r_[PADR_(l_int)];
+	char mode_l_[PADL_(l_mode_t)]; l_mode_t mode; char mode_r_[PADR_(l_mode_t)];
+	char attr_l_[PADL_(struct mq_attr *)]; struct mq_attr * attr; char attr_r_[PADR_(struct mq_attr *)];
 };
 struct linux_mq_unlink_args {
-	register_t dummy;
+	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
 };
 struct linux_mq_timedsend_args {
-	register_t dummy;
+	char mqd_l_[PADL_(l_mqd_t)]; l_mqd_t mqd; char mqd_r_[PADR_(l_mqd_t)];
+	char msg_ptr_l_[PADL_(const char *)]; const char * msg_ptr; char msg_ptr_r_[PADR_(const char *)];
+	char msg_len_l_[PADL_(l_size_t)]; l_size_t msg_len; char msg_len_r_[PADR_(l_size_t)];
+	char msg_prio_l_[PADL_(l_uint)]; l_uint msg_prio; char msg_prio_r_[PADR_(l_uint)];
+	char abs_timeout_l_[PADL_(const struct l_timespec *)]; const struct l_timespec * abs_timeout; char abs_timeout_r_[PADR_(const struct l_timespec *)];
 };
 struct linux_mq_timedreceive_args {
-	register_t dummy;
+	char mqd_l_[PADL_(l_mqd_t)]; l_mqd_t mqd; char mqd_r_[PADR_(l_mqd_t)];
+	char msg_ptr_l_[PADL_(char *)]; char * msg_ptr; char msg_ptr_r_[PADR_(char *)];
+	char msg_len_l_[PADL_(l_size_t)]; l_size_t msg_len; char msg_len_r_[PADR_(l_size_t)];
+	char msg_prio_l_[PADL_(l_uint *)]; l_uint * msg_prio; char msg_prio_r_[PADR_(l_uint *)];
+	char abs_timeout_l_[PADL_(const struct l_timespec *)]; const struct l_timespec * abs_timeout; char abs_timeout_r_[PADR_(const struct l_timespec *)];
 };
 struct linux_mq_notify_args {
-	register_t dummy;
+	char mqd_l_[PADL_(l_mqd_t)]; l_mqd_t mqd; char mqd_r_[PADR_(l_mqd_t)];
+	char abs_timeout_l_[PADL_(const struct l_timespec *)]; const struct l_timespec * abs_timeout; char abs_timeout_r_[PADR_(const struct l_timespec *)];
 };
 struct linux_mq_getsetattr_args {
-	register_t dummy;
+	char mqd_l_[PADL_(l_mqd_t)]; l_mqd_t mqd; char mqd_r_[PADR_(l_mqd_t)];
+	char attr_l_[PADL_(const struct mq_attr *)]; const struct mq_attr * attr; char attr_r_[PADR_(const struct mq_attr *)];
+	char oattr_l_[PADL_(struct mq_attr *)]; struct mq_attr * oattr; char oattr_r_[PADR_(struct mq_attr *)];
 };
 struct linux_kexec_load_args {
 	register_t dummy;
@@ -1024,7 +1082,12 @@ struct linux_get_robust_list_args {
 	char len_l_[PADL_(l_size_t *)]; l_size_t * len; char len_r_[PADR_(l_size_t *)];
 };
 struct linux_splice_args {
-	register_t dummy;
+	char fd_in_l_[PADL_(int)]; int fd_in; char fd_in_r_[PADR_(int)];
+	char off_in_l_[PADL_(l_loff_t *)]; l_loff_t * off_in; char off_in_r_[PADR_(l_loff_t *)];
+	char fd_out_l_[PADL_(int)]; int fd_out; char fd_out_r_[PADR_(int)];
+	char off_out_l_[PADL_(l_loff_t *)]; l_loff_t * off_out; char off_out_r_[PADR_(l_loff_t *)];
+	char len_l_[PADL_(l_size_t)]; l_size_t len; char len_r_[PADR_(l_size_t)];
+	char flags_l_[PADL_(l_uint)]; l_uint flags; char flags_r_[PADR_(l_uint)];
 };
 struct linux_sync_file_range_args {
 	char fd_l_[PADL_(l_int)]; l_int fd; char fd_r_[PADR_(l_int)];
@@ -1155,10 +1218,16 @@ struct linux_prlimit64_args {
 	char old_l_[PADL_(struct rlimit *)]; struct rlimit * old; char old_r_[PADR_(struct rlimit *)];
 };
 struct linux_name_to_handle_at_args {
-	register_t dummy;
+	char dirfd_l_[PADL_(l_int)]; l_int dirfd; char dirfd_r_[PADR_(l_int)];
+	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
+	char handle_l_[PADL_(struct l_file_handle *)]; struct l_file_handle * handle; char handle_r_[PADR_(struct l_file_handle *)];
+	char mnt_id_l_[PADL_(l_int *)]; l_int * mnt_id; char mnt_id_r_[PADR_(l_int *)];
+	char flags_l_[PADL_(l_int)]; l_int flags; char flags_r_[PADR_(l_int)];
 };
 struct linux_open_by_handle_at_args {
-	register_t dummy;
+	char mountdirfd_l_[PADL_(l_int)]; l_int mountdirfd; char mountdirfd_r_[PADR_(l_int)];
+	char handle_l_[PADL_(struct l_file_handle *)]; struct l_file_handle * handle; char handle_r_[PADR_(struct l_file_handle *)];
+	char flags_l_[PADL_(l_int)]; l_int flags; char flags_r_[PADR_(l_int)];
 };
 struct linux_clock_adjtime_args {
 	register_t dummy;
@@ -1450,19 +1519,25 @@ struct linux_msgctl_args {
 	char buf_l_[PADL_(struct l_msqid_ds *)]; struct l_msqid_ds * buf; char buf_r_[PADR_(struct l_msqid_ds *)];
 };
 struct linux_clock_gettime64_args {
-	register_t dummy;
+	char which_l_[PADL_(clockid_t)]; clockid_t which; char which_r_[PADR_(clockid_t)];
+	char tp_l_[PADL_(struct l_timespec64 *)]; struct l_timespec64 * tp; char tp_r_[PADR_(struct l_timespec64 *)];
 };
 struct linux_clock_settime64_args {
-	register_t dummy;
+	char which_l_[PADL_(clockid_t)]; clockid_t which; char which_r_[PADR_(clockid_t)];
+	char tp_l_[PADL_(struct l_timespec64 *)]; struct l_timespec64 * tp; char tp_r_[PADR_(struct l_timespec64 *)];
 };
 struct linux_clock_adjtime64_args {
 	register_t dummy;
 };
 struct linux_clock_getres_time64_args {
-	register_t dummy;
+	char which_l_[PADL_(clockid_t)]; clockid_t which; char which_r_[PADR_(clockid_t)];
+	char tp_l_[PADL_(struct l_timespec64 *)]; struct l_timespec64 * tp; char tp_r_[PADR_(struct l_timespec64 *)];
 };
 struct linux_clock_nanosleep_time64_args {
-	register_t dummy;
+	char which_l_[PADL_(clockid_t)]; clockid_t which; char which_r_[PADR_(clockid_t)];
+	char flags_l_[PADL_(l_int)]; l_int flags; char flags_r_[PADR_(l_int)];
+	char rqtp_l_[PADL_(struct l_timespec64 *)]; struct l_timespec64 * rqtp; char rqtp_r_[PADR_(struct l_timespec64 *)];
+	char rmtp_l_[PADL_(struct l_timespec64 *)]; struct l_timespec64 * rmtp; char rmtp_r_[PADR_(struct l_timespec64 *)];
 };
 struct linux_timer_gettime64_args {
 	register_t dummy;
@@ -1477,13 +1552,25 @@ struct linux_timerfd_settime64_args {
 	register_t dummy;
 };
 struct linux_utimensat_time64_args {
-	register_t dummy;
+	char dfd_l_[PADL_(l_int)]; l_int dfd; char dfd_r_[PADR_(l_int)];
+	char pathname_l_[PADL_(const char *)]; const char * pathname; char pathname_r_[PADR_(const char *)];
+	char times64_l_[PADL_(const struct l_timespec64 *)]; const struct l_timespec64 * times64; char times64_r_[PADR_(const struct l_timespec64 *)];
+	char flags_l_[PADL_(l_int)]; l_int flags; char flags_r_[PADR_(l_int)];
 };
 struct linux_pselect6_time64_args {
-	register_t dummy;
+	char nfds_l_[PADL_(l_int)]; l_int nfds; char nfds_r_[PADR_(l_int)];
+	char readfds_l_[PADL_(l_fd_set *)]; l_fd_set * readfds; char readfds_r_[PADR_(l_fd_set *)];
+	char writefds_l_[PADL_(l_fd_set *)]; l_fd_set * writefds; char writefds_r_[PADR_(l_fd_set *)];
+	char exceptfds_l_[PADL_(l_fd_set *)]; l_fd_set * exceptfds; char exceptfds_r_[PADR_(l_fd_set *)];
+	char tsp_l_[PADL_(struct l_timespec64 *)]; struct l_timespec64 * tsp; char tsp_r_[PADR_(struct l_timespec64 *)];
+	char sig_l_[PADL_(l_uintptr_t *)]; l_uintptr_t * sig; char sig_r_[PADR_(l_uintptr_t *)];
 };
 struct linux_ppoll_time64_args {
-	register_t dummy;
+	char fds_l_[PADL_(struct pollfd *)]; struct pollfd * fds; char fds_r_[PADR_(struct pollfd *)];
+	char nfds_l_[PADL_(uint32_t)]; uint32_t nfds; char nfds_r_[PADR_(uint32_t)];
+	char tsp_l_[PADL_(struct l_timespec *)]; struct l_timespec * tsp; char tsp_r_[PADR_(struct l_timespec *)];
+	char sset_l_[PADL_(l_sigset_t *)]; l_sigset_t * sset; char sset_r_[PADR_(l_sigset_t *)];
+	char ssize_l_[PADL_(l_size_t)]; l_size_t ssize; char ssize_r_[PADR_(l_size_t)];
 };
 struct linux_io_pgetevents_time64_args {
 	register_t dummy;
@@ -1501,10 +1588,18 @@ struct linux_semtimedop_time64_args {
 	register_t dummy;
 };
 struct linux_rt_sigtimedwait_time64_args {
-	register_t dummy;
+	char mask_l_[PADL_(l_sigset_t *)]; l_sigset_t * mask; char mask_r_[PADR_(l_sigset_t *)];
+	char ptr_l_[PADL_(l_siginfo_t *)]; l_siginfo_t * ptr; char ptr_r_[PADR_(l_siginfo_t *)];
+	char timeout_l_[PADL_(struct l_timespec64 *)]; struct l_timespec64 * timeout; char timeout_r_[PADR_(struct l_timespec64 *)];
+	char sigsetsize_l_[PADL_(l_size_t)]; l_size_t sigsetsize; char sigsetsize_r_[PADR_(l_size_t)];
 };
-struct linux_futex_time64_args {
-	register_t dummy;
+struct linux_sys_futex_time64_args {
+	char uaddr_l_[PADL_(uint32_t *)]; uint32_t * uaddr; char uaddr_r_[PADR_(uint32_t *)];
+	char op_l_[PADL_(l_int)]; l_int op; char op_r_[PADR_(l_int)];
+	char val_l_[PADL_(uint32_t)]; uint32_t val; char val_r_[PADR_(uint32_t)];
+	char timeout_l_[PADL_(struct l_timespec64 *)]; struct l_timespec64 * timeout; char timeout_r_[PADR_(struct l_timespec64 *)];
+	char uaddr2_l_[PADL_(uint32_t *)]; uint32_t * uaddr2; char uaddr2_r_[PADR_(uint32_t *)];
+	char val3_l_[PADL_(uint32_t)]; uint32_t val3; char val3_r_[PADR_(uint32_t)];
 };
 struct linux_sched_rr_get_interval_time64_args {
 	register_t dummy;
@@ -1522,6 +1617,51 @@ struct linux_io_uring_enter_args {
 	register_t dummy;
 };
 struct linux_io_uring_register_args {
+	register_t dummy;
+};
+struct linux_open_tree_args {
+	register_t dummy;
+};
+struct linux_move_mount_args {
+	register_t dummy;
+};
+struct linux_fsopen_args {
+	register_t dummy;
+};
+struct linux_fsconfig_args {
+	register_t dummy;
+};
+struct linux_fsmount_args {
+	register_t dummy;
+};
+struct linux_fspick_args {
+	register_t dummy;
+};
+struct linux_pidfd_open_args {
+	register_t dummy;
+};
+struct linux_clone3_args {
+	register_t dummy;
+};
+struct linux_close_range_args {
+	register_t dummy;
+};
+struct linux_openat2_args {
+	register_t dummy;
+};
+struct linux_pidfd_getfd_args {
+	register_t dummy;
+};
+struct linux_faccessat2_args {
+	register_t dummy;
+};
+struct linux_process_madvise_args {
+	register_t dummy;
+};
+struct linux_epoll_pwait2_args {
+	register_t dummy;
+};
+struct linux_mount_setattr_args {
 	register_t dummy;
 };
 #define	nosys	linux_nosys
@@ -1682,6 +1822,7 @@ int	linux_setfsuid(struct thread *, struct linux_setfsuid_args *);
 int	linux_setfsgid(struct thread *, struct linux_setfsgid_args *);
 int	linux_pivot_root(struct thread *, struct linux_pivot_root_args *);
 int	linux_mincore(struct thread *, struct linux_mincore_args *);
+int	linux_madvise(struct thread *, struct linux_madvise_args *);
 int	linux_getdents64(struct thread *, struct linux_getdents64_args *);
 int	linux_fcntl64(struct thread *, struct linux_fcntl64_args *);
 int	linux_gettid(struct thread *, struct linux_gettid_args *);
@@ -1698,6 +1839,7 @@ int	linux_removexattr(struct thread *, struct linux_removexattr_args *);
 int	linux_lremovexattr(struct thread *, struct linux_lremovexattr_args *);
 int	linux_fremovexattr(struct thread *, struct linux_fremovexattr_args *);
 int	linux_tkill(struct thread *, struct linux_tkill_args *);
+int	linux_sendfile64(struct thread *, struct linux_sendfile64_args *);
 int	linux_sys_futex(struct thread *, struct linux_sys_futex_args *);
 int	linux_sched_setaffinity(struct thread *, struct linux_sched_setaffinity_args *);
 int	linux_sched_getaffinity(struct thread *, struct linux_sched_getaffinity_args *);
@@ -1864,12 +2006,27 @@ int	linux_mq_timedsend_time64(struct thread *, struct linux_mq_timedsend_time64_
 int	linux_mq_timedreceive_time64(struct thread *, struct linux_mq_timedreceive_time64_args *);
 int	linux_semtimedop_time64(struct thread *, struct linux_semtimedop_time64_args *);
 int	linux_rt_sigtimedwait_time64(struct thread *, struct linux_rt_sigtimedwait_time64_args *);
-int	linux_futex_time64(struct thread *, struct linux_futex_time64_args *);
+int	linux_sys_futex_time64(struct thread *, struct linux_sys_futex_time64_args *);
 int	linux_sched_rr_get_interval_time64(struct thread *, struct linux_sched_rr_get_interval_time64_args *);
 int	linux_pidfd_send_signal(struct thread *, struct linux_pidfd_send_signal_args *);
 int	linux_io_uring_setup(struct thread *, struct linux_io_uring_setup_args *);
 int	linux_io_uring_enter(struct thread *, struct linux_io_uring_enter_args *);
 int	linux_io_uring_register(struct thread *, struct linux_io_uring_register_args *);
+int	linux_open_tree(struct thread *, struct linux_open_tree_args *);
+int	linux_move_mount(struct thread *, struct linux_move_mount_args *);
+int	linux_fsopen(struct thread *, struct linux_fsopen_args *);
+int	linux_fsconfig(struct thread *, struct linux_fsconfig_args *);
+int	linux_fsmount(struct thread *, struct linux_fsmount_args *);
+int	linux_fspick(struct thread *, struct linux_fspick_args *);
+int	linux_pidfd_open(struct thread *, struct linux_pidfd_open_args *);
+int	linux_clone3(struct thread *, struct linux_clone3_args *);
+int	linux_close_range(struct thread *, struct linux_close_range_args *);
+int	linux_openat2(struct thread *, struct linux_openat2_args *);
+int	linux_pidfd_getfd(struct thread *, struct linux_pidfd_getfd_args *);
+int	linux_faccessat2(struct thread *, struct linux_faccessat2_args *);
+int	linux_process_madvise(struct thread *, struct linux_process_madvise_args *);
+int	linux_epoll_pwait2(struct thread *, struct linux_epoll_pwait2_args *);
+int	linux_mount_setattr(struct thread *, struct linux_mount_setattr_args *);
 
 #ifdef COMPAT_43
 
@@ -2076,6 +2233,7 @@ int	linux_io_uring_register(struct thread *, struct linux_io_uring_register_args
 #define	LINUX32_SYS_AUE_linux_setfsgid	AUE_SETFSGID
 #define	LINUX32_SYS_AUE_linux_pivot_root	AUE_PIVOT_ROOT
 #define	LINUX32_SYS_AUE_linux_mincore	AUE_MINCORE
+#define	LINUX32_SYS_AUE_linux_madvise	AUE_MADVISE
 #define	LINUX32_SYS_AUE_linux_getdents64	AUE_GETDIRENTRIES
 #define	LINUX32_SYS_AUE_linux_fcntl64	AUE_FCNTL
 #define	LINUX32_SYS_AUE_linux_gettid	AUE_NULL
@@ -2092,6 +2250,7 @@ int	linux_io_uring_register(struct thread *, struct linux_io_uring_register_args
 #define	LINUX32_SYS_AUE_linux_lremovexattr	AUE_NULL
 #define	LINUX32_SYS_AUE_linux_fremovexattr	AUE_NULL
 #define	LINUX32_SYS_AUE_linux_tkill	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_sendfile64	AUE_SENDFILE
 #define	LINUX32_SYS_AUE_linux_sys_futex	AUE_NULL
 #define	LINUX32_SYS_AUE_linux_sched_setaffinity	AUE_NULL
 #define	LINUX32_SYS_AUE_linux_sched_getaffinity	AUE_NULL
@@ -2258,12 +2417,27 @@ int	linux_io_uring_register(struct thread *, struct linux_io_uring_register_args
 #define	LINUX32_SYS_AUE_linux_mq_timedreceive_time64	AUE_NULL
 #define	LINUX32_SYS_AUE_linux_semtimedop_time64	AUE_NULL
 #define	LINUX32_SYS_AUE_linux_rt_sigtimedwait_time64	AUE_NULL
-#define	LINUX32_SYS_AUE_linux_futex_time64	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_sys_futex_time64	AUE_NULL
 #define	LINUX32_SYS_AUE_linux_sched_rr_get_interval_time64	AUE_NULL
 #define	LINUX32_SYS_AUE_linux_pidfd_send_signal	AUE_NULL
 #define	LINUX32_SYS_AUE_linux_io_uring_setup	AUE_NULL
 #define	LINUX32_SYS_AUE_linux_io_uring_enter	AUE_NULL
 #define	LINUX32_SYS_AUE_linux_io_uring_register	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_open_tree	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_move_mount	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_fsopen	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_fsconfig	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_fsmount	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_fspick	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_pidfd_open	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_clone3	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_close_range	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_openat2	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_pidfd_getfd	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_faccessat2	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_process_madvise	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_epoll_pwait2	AUE_NULL
+#define	LINUX32_SYS_AUE_linux_mount_setattr	AUE_NULL
 
 #undef PAD_
 #undef PADL_

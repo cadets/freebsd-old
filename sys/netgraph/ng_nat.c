@@ -806,11 +806,16 @@ ng_nat_rcvdata(hook_p hook, item_p item )
 		panic("Corrupted priv->dlt: %u", priv->dlt);
 	}
 
+	if (m->m_pkthdr.len < ipofs + sizeof(struct ip))
+		goto send;		/* packet too short to hold IP */
+
 	c = (char *)mtodo(m, ipofs);
 	ip = (struct ip *)mtodo(m, ipofs);
 
-	KASSERT(m->m_pkthdr.len == ipofs + ntohs(ip->ip_len),
-	    ("ng_nat: ip_len != m_pkthdr.len"));
+	if (ip->ip_v != IPVERSION)
+		goto send;		/* other IP version, let it pass */
+	if (m->m_pkthdr.len < ipofs + ntohs(ip->ip_len))
+		goto send;		/* packet too short (i.e. fragmented or broken) */
 
 	/*
 	 * We drop packet when:
@@ -879,7 +884,7 @@ ng_nat_rcvdata(hook_p hook, item_p item )
 			th->th_sum = in_pseudo(ip->ip_src.s_addr,
 			    ip->ip_dst.s_addr, htons(IPPROTO_TCP +
 			    ip_len - (ip->ip_hl << 2)));
-	
+
 			if ((m->m_pkthdr.csum_flags & CSUM_TCP) == 0) {
 				m->m_pkthdr.csum_data = offsetof(struct tcphdr,
 				    th_sum);
@@ -941,7 +946,7 @@ static unsigned int
 ng_nat_translate_flags(unsigned int x)
 {
 	unsigned int	res = 0;
-	
+
 	if (x & NG_NAT_LOG)
 		res |= PKT_ALIAS_LOG;
 	if (x & NG_NAT_DENY_INCOMING)
@@ -956,6 +961,8 @@ ng_nat_translate_flags(unsigned int x)
 		res |= PKT_ALIAS_PROXY_ONLY;
 	if (x & NG_NAT_REVERSE)
 		res |= PKT_ALIAS_REVERSE;
+	if (x & NG_NAT_UNREGISTERED_CGN)
+		res |= PKT_ALIAS_UNREGISTERED_CGN;
 
 	return (res);
 }

@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2020, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2021, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -200,12 +200,16 @@ const AH_PREDEFINED_NAME    AslPredefinedInfo[] =
     AH_PREDEF ("_BMC",    "Battery Maintenance Control", "Sets battery maintenance and control features"),
     AH_PREDEF ("_BMD",    "Battery Maintenance Data", "Returns battery maintenance, control, and state data"),
     AH_PREDEF ("_BMS",    "Battery Measurement Sampling Time", "Sets the battery measurement sampling time"),
+    AH_PREDEF ("_BPC",    "Battery Power Characteristics", "Returns static values used to configure power threshold support in the platform firmware"),
+    AH_PREDEF ("_BPS",    "Battery Power State", "Returns the power delivery capabilities of the battery at the present time"),
+    AH_PREDEF ("_BPT",    "Battery Power Threshold", "Set a relative battery peak power capability change threshold"),
     AH_PREDEF ("_BQC",    "Brightness Query Current", "Returns the current display brightness level"),
     AH_PREDEF ("_BST",    "Battery Status", "Returns a Control Method Battery status block"),
     AH_PREDEF ("_BTH",    "Battery Throttle Limit", "Thermal limit for charging and discharging"),
     AH_PREDEF ("_BTM",    "Battery Time", "Returns the battery runtime"),
     AH_PREDEF ("_BTP",    "Battery Trip Point", "Sets a Control Method Battery trip point"),
     AH_PREDEF ("_CBA",    "Configuration Base Address", "Sets the base address for a PCI Express host bridge"),
+    AH_PREDEF ("_CBR",    "CXL Host Bridge Register Info", "Get the memory location of CXL Host Bridge Registers"),
     AH_PREDEF ("_CCA",    "Cache Coherency Attribute", "Returns a device's support level for cache coherency"),
     AH_PREDEF ("_CDM",    "Clock Domain", "Returns a logical processor's clock domain identifier"),
     AH_PREDEF ("_CID",    "Compatible ID", "Returns a device's Plug and Play Compatible ID list"),
@@ -393,6 +397,11 @@ const AH_PREDEFINED_NAME    AslPredefinedInfo[] =
     AH_PREDEF ("_S3W",    "S3 Device Wake State", "Returns the lowest D-state for this device that can wake the system from S3"),
     AH_PREDEF ("_S4W",    "S4 Device Wake State", "Returns the lowest D-state for this device that can wake the system from S4"),
     AH_PREDEF ("_SB_",    "System Bus", "Predefined scope for device and bus objects"),
+    AH_PREDEF ("_SBA",    "SM Bus Alert information", "Returns info on an SMBus alert"),
+    AH_PREDEF ("_SBI",    "SM Bus General information", "Returns info on an SMBus segment"),
+    AH_PREDEF ("_SBR",    "SM Bus Data read", "Reads Byte, Word, or Block data from an SMBus segment"),
+    AH_PREDEF ("_SBT",    "SM Bus Data transfer", "Performs data transfer to/from an SMBus segment. Implements ProcessCall protocol"),
+    AH_PREDEF ("_SBW",    "SM Bus Data write", "Writes Byte, Word, or Block data to an SMBus segment"),
     AH_PREDEF ("_SBS",    "Smart Battery Subsystem", "Returns the subsystem configuration"),
     AH_PREDEF ("_SCP",    "Set Cooling Policy", "Sets the cooling policy (active or passive)"),
     AH_PREDEF ("_SDD",    "Set Device Data", "Sets data for a SATA device"),

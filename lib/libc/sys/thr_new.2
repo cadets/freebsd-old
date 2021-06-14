@@ -28,7 +28,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd June 2, 2016
+.Dd May 5, 2020
 .Dt THR_NEW 2
 .Os
 .Sh NAME
@@ -225,6 +225,7 @@ There was not enough kernel memory to allocate the new thread structures.
 .El
 .Sh SEE ALSO
 .Xr ps 1 ,
+.Xr _umtx_op 2 ,
 .Xr execve 2 ,
 .Xr racct 2 ,
 .Xr thr_exit 2 ,
@@ -232,7 +233,6 @@ There was not enough kernel memory to allocate the new thread structures.
 .Xr thr_kill2 2 ,
 .Xr thr_self 2 ,
 .Xr thr_set_name 2 ,
-.Xr _umtx_op 2 ,
 .Xr pthread_create 3
 .Sh STANDARDS
 The
@@ -243,3 +243,8 @@ to implement
 .St -p1003.1-2001
 .Xr pthread 3
 functionality.
+.Sh HISTORY
+The
+.Fn thr_new
+system call first appeared in
+.Fx 5.2 .

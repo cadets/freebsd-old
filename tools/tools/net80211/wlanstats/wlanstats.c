@@ -276,7 +276,11 @@ static const struct fmt wlanstats[] = {
 	{ 8,  "amsdu_decap",	"decap",	"A-MSDU frames received" },
 #define	S_AMSDU_ENCAP		AFTER(S_AMSDU_DECAP)
 	{ 8,  "amsdu_encap",	"encap",	"A-MSDU frames transmitted" },
-#define	S_AMPDU_REORDER		AFTER(S_AMSDU_ENCAP)
+#define	S_AMSDU_RX_MORE		AFTER(S_AMSDU_ENCAP)
+	{ 13,  "rx_amsdu_more",	"rx_amsdu_more",	"A-MSDU HW intermediary decap'ed received" },
+#define	S_AMSDU_RX_MORE_END		AFTER(S_AMSDU_RX_MORE)
+	{ 17,  "rx_amsdu_more_end",	"rx_amsdu_more_end",	"A-MSDU HW end decap'ed received" },
+#define	S_AMPDU_REORDER		AFTER(S_AMSDU_RX_MORE_END)
 	{ 8,  "ampdu_reorder",	"reorder","A-MPDU frames held in reorder q" },
 #define	S_AMPDU_FLUSH		AFTER(S_AMPDU_REORDER)
 	{ 8,  "ampdu_flush",	"flush",	"A-MPDU frames sent up from reorder q" },
@@ -459,7 +463,7 @@ getlladdr(struct wlanstatfoo_p *wf)
 		errx(1, "did not find link layer address for interface %s",
 			wf->ifr.ifr_name);
 	sdl = (const struct sockaddr_dl *) p->ifa_addr;
-	IEEE80211_ADDR_COPY(wf->mac, LLADDR(sdl));
+	IEEE80211_ADDR_COPY(wf->mac, CLLADDR(sdl));
 	freeifaddrs(ifp);
 }
 
@@ -557,8 +561,8 @@ wlan_update_tot(struct bsdstat *sf)
 	wf->ntotal = wf->ncur;
 }
 
-void
-setreason(char b[], size_t bs, int v)
+static void
+setreason(char b[], size_t bs, unsigned int v)
 {
     static const char *reasons[] = {
 	[IEEE80211_REASON_UNSPECIFIED]		= "unspecified",
@@ -591,8 +595,8 @@ setreason(char b[], size_t bs, int v)
 	    snprintf(b, bs, "%u", v);
 }
 
-void
-setstatus(char b[], size_t bs, int v)
+static void
+setstatus(char b[], size_t bs, unsigned int v)
 {
     static const char *status[] = {
 	[IEEE80211_STATUS_SUCCESS]		= "success",
@@ -778,6 +782,8 @@ wlan_get_curstat(struct bsdstat *sf, int s, char b[], size_t bs)
 	case S_AMSDU_SPLIT:	STAT(amsdu_split);
 	case S_AMSDU_DECAP:	STAT(amsdu_decap);
 	case S_AMSDU_ENCAP:	STAT(amsdu_encap);
+	case S_AMSDU_RX_MORE:	NSTAT(rx_amsdu_more);
+	case S_AMSDU_RX_MORE_END:	NSTAT(rx_amsdu_more_end);
 	case S_AMPDU_REORDER:	STAT(ampdu_rx_reorder);
 	case S_AMPDU_FLUSH:	STAT(ampdu_rx_flush);
 	case S_AMPDU_BARBAD:	STAT(ampdu_bar_bad);
@@ -941,6 +947,8 @@ wlan_get_totstat(struct bsdstat *sf, int s, char b[], size_t bs)
 	case S_AMSDU_SPLIT:	STAT(amsdu_split);
 	case S_AMSDU_DECAP:	STAT(amsdu_decap);
 	case S_AMSDU_ENCAP:	STAT(amsdu_encap);
+	case S_AMSDU_RX_MORE:	NSTAT(rx_amsdu_more);
+	case S_AMSDU_RX_MORE_END:	NSTAT(rx_amsdu_more_end);
 	case S_AMPDU_REORDER:	STAT(ampdu_rx_reorder);
 	case S_AMPDU_FLUSH:	STAT(ampdu_rx_flush);
 	case S_AMPDU_BARBAD:	STAT(ampdu_bar_bad);

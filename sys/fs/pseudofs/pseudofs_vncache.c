@@ -54,7 +54,7 @@ static eventhandler_tag pfs_exit_tag;
 static void pfs_exit(void *arg, struct proc *p);
 static void pfs_purge_all(void);
 
-static SYSCTL_NODE(_vfs_pfs, OID_AUTO, vncache, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_vfs_pfs, OID_AUTO, vncache, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
     "pseudofs vnode cache");
 
 static int pfs_vncache_entries;
@@ -120,6 +120,7 @@ pfs_vncache_alloc(struct mount *mp, struct vnode **vpp,
 	struct pfs_vncache_head *hash;
 	struct pfs_vdata *pvd, *pvd2;
 	struct vnode *vp;
+	enum vgetstate vs;
 	int error;
 
 	/*
@@ -134,9 +135,9 @@ retry:
 		if (pvd->pvd_pn == pn && pvd->pvd_pid == pid &&
 		    pvd->pvd_vnode->v_mount == mp) {
 			vp = pvd->pvd_vnode;
-			VI_LOCK(vp);
+			vs = vget_prep(vp);
 			mtx_unlock(&pfs_vncache_mutex);
-			if (vget(vp, LK_EXCLUSIVE | LK_INTERLOCK, curthread) == 0) {
+			if (vget_finish(vp, LK_EXCLUSIVE, vs) == 0) {
 				++pfs_vncache_hits;
 				*vpp = vp;
 				/*
@@ -218,7 +219,7 @@ retry2:
 			vp = pvd2->pvd_vnode;
 			VI_LOCK(vp);
 			mtx_unlock(&pfs_vncache_mutex);
-			if (vget(vp, LK_EXCLUSIVE | LK_INTERLOCK, curthread) == 0) {
+			if (vget(vp, LK_EXCLUSIVE | LK_INTERLOCK) == 0) {
 				++pfs_vncache_hits;
 				vgone(*vpp);
 				vput(*vpp);

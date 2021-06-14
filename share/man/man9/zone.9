@@ -25,7 +25,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd January 8, 2020
+.Dd April 14, 2021
 .Dt UMA 9
 .Os
 .Sh NAME
@@ -86,8 +86,6 @@ typedef void (*uma_free)(void *item, vm_size_t size, uint8_t pflag);
 .Ft void
 .Fn uma_zfree_arg "uma_zone_t zone" "void *item" "void *arg"
 .Ft void
-.Fn uma_zfree_domain "uma_zone_t zone" "void *item" "void *arg"
-.Ft void
 .Fn uma_zfree_pcpu "uma_zone_t zone" "void *item"
 .Ft void
 .Fn uma_zfree_pcpu_arg "uma_zone_t zone" "void *item" "void *arg"
@@ -100,7 +98,11 @@ typedef void (*uma_free)(void *item, vm_size_t size, uint8_t pflag);
 .Ft void
 .Fn uma_reclaim "int req"
 .Ft void
+.Fn uma_reclaim_domain "int req" "int domain"
+.Ft void
 .Fn uma_zone_reclaim "uma_zone_t zone" "int req"
+.Ft void
+.Fn uma_zone_reclaim_domain "uma_zone_t zone" "int req" "int domain"
 .Ft void
 .Fn uma_zone_set_allocf "uma_zone_t zone" "uma_alloc allocf"
 .Ft void
@@ -117,8 +119,6 @@ typedef void (*uma_free)(void *item, vm_size_t size, uint8_t pflag);
 .Fn uma_zone_set_warning "uma_zone_t zone" "const char *warning"
 .Ft void
 .Fn uma_zone_set_maxaction "uma_zone_t zone" "void (*maxaction)(uma_zone_t)"
-.Ft void
-.Fn uma_reclaim
 .In sys/sysctl.h
 .Fn SYSCTL_UMA_MAX parent nbr name access zone descr
 .Fn SYSCTL_ADD_UMA_MAX ctx parent nbr name access zone descr
@@ -340,6 +340,10 @@ was allocated will cause mixing in per-CPU caches.
 See
 .Xr numa 4
 for more details.
+.It Dv UMA_ZONE_CONTIG
+Items in this zone must be contiguous in physical address space.
+Items will follow normal alignment constraints and may span page boundaries
+between pages with contiguous physical addresses.
 .El
 .Pp
 Zones can be destroyed using
@@ -383,6 +387,22 @@ specify an argument for the
 and
 .Dv dtor
 functions of the zone, respectively.
+The variants
+.Fn uma_zalloc_pcpu
+and
+.Fn uma_zfree_pcpu
+allocate and free
+.Va mp_ncpu
+shadow copies as described for
+.Dv UMA_ZONE_PCPU .
+If
+.Fa item
+is
+.Dv NULL ,
+then
+.Fn uma_zfree_pcpu
+does nothing.
+.Pp
 The
 .Fn uma_zalloc_domain
 function allows callers to specify a fixed
@@ -390,14 +410,9 @@ function allows callers to specify a fixed
 domain to allocate from.
 This uses a guaranteed but slow path in the allocator which reduces
 concurrency.
-The
-.Fn uma_zfree_domain
-function should be used to return memory allocated in this fashion.
-This function infers the domain from the pointer and does not require it as an
-argument.
 .Pp
 The
-.Fn uma_zone_prealloc
+.Fn uma_prealloc
 function allocates slabs for the requested number of items, typically following
 the initial creation of a zone.
 Subsequent allocations from the zone will be satisfied using the pre-allocated
@@ -405,7 +420,7 @@ slabs.
 Note that slab allocation is performed with the
 .Dv M_WAITOK
 flag, so
-.Fn uma_zone_prealloc
+.Fn uma_prealloc
 may sleep.
 .Pp
 The
@@ -458,6 +473,14 @@ Free items in the per-CPU caches are left alone.
 .It Dv UMA_RECLAIM_DRAIN_CPU
 Reclaim all cached items.
 .El
+The
+.Fn uma_reclaim_domain
+and
+.Fn uma_zone_reclaim_domain
+functions apply only to items allocated from the specified domain.
+In the case of domains using a round-robin NUMA policy, cached items from all
+domains are freed to the keg, but only slabs from the specific domain will
+be freed.
 .Pp
 The
 .Fn uma_zone_set_allocf
@@ -465,12 +488,8 @@ and
 .Fn uma_zone_set_freef
 functions allow a zone's default slab allocation and free functions to be
 overridden.
-This is useful if the zone's items have special memory allocation constraints.
-For example, if multi-page objects are required to be physically contiguous,
-an
-.Fa allocf
-function which requests contiguous memory from the kernel's page allocator
-may be used.
+This is useful if memory with special constraints such as attributes,
+alignment, or address ranges must be used.
 .Pp
 The
 .Fn uma_zone_set_max

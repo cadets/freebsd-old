@@ -190,20 +190,13 @@
 #define	SHAREDPAGE		(VM_MAXUSER_ADDRESS - PAGE_SIZE)
 #define	USRSTACK		SHAREDPAGE
 
-#define	KERNENTRY		(0)
+#define	VM_EARLY_DTB_ADDRESS	(VM_MAX_KERNEL_ADDRESS - (2 * L2_SIZE))
 
 /*
  * How many physical pages per kmem arena virtual page.
  */
 #ifndef VM_KMEM_SIZE_SCALE
-#define	VM_KMEM_SIZE_SCALE	(3)
-#endif
-
-/*
- * Optional floor (in bytes) on the size of the kmem arena.
- */
-#ifndef VM_KMEM_SIZE_MIN
-#define	VM_KMEM_SIZE_MIN	(16 * 1024 * 1024)
+#define	VM_KMEM_SIZE_SCALE	(1)
 #endif
 
 /*
@@ -235,5 +228,16 @@ extern vm_offset_t init_pt_va;
 #define	ZERO_REGION_SIZE	(64 * 1024)	/* 64KB */
 
 #define	DEVMAP_MAX_VADDR	VM_MAX_KERNEL_ADDRESS
+#define	PMAP_MAPDEV_EARLY_SIZE	(L2_SIZE * 2)
+
+/*
+ * No non-transparent large page support in the pmap.
+ */
+#define	PMAP_HAS_LARGEPAGES	0
+
+/*
+ * Need a page dump array for minidump.
+ */
+#define MINIDUMP_PAGE_TRACKING	1
 
 #endif /* !_MACHINE_VMPARAM_H_ */

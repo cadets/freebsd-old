@@ -209,12 +209,12 @@ VFS_VOP_VECTOR_REGISTER(ext2_fifoops);
  * endianness problems.
  */
 static struct dirtemplate mastertemplate = {
-	0, 12, 1, EXT2_FT_DIR, ".",
-	0, DIRBLKSIZ - 12, 2, EXT2_FT_DIR, ".."
+	0, htole16(12), 1, EXT2_FT_DIR, ".",
+	0, htole16(DIRBLKSIZ - 12), 2, EXT2_FT_DIR, ".."
 };
 static struct dirtemplate omastertemplate = {
-	0, 12, 1, EXT2_FT_UNKNOWN, ".",
-	0, DIRBLKSIZ - 12, 2, EXT2_FT_UNKNOWN, ".."
+	0, htole16(12), 1, EXT2_FT_UNKNOWN, ".",
+	0, htole16(DIRBLKSIZ - 12), 2, EXT2_FT_UNKNOWN, ".."
 };
 
 static void
@@ -322,9 +322,6 @@ ext2_access(struct vop_access_args *ap)
 	accmode_t accmode = ap->a_accmode;
 	int error;
 
-	if (vp->v_type == VBLK || vp->v_type == VCHR)
-		return (EOPNOTSUPP);
-
 	/*
 	 * Disallow write attempts on read-only file systems;
 	 * unless the file is a socket, fifo, or a block or
@@ -348,7 +345,7 @@ ext2_access(struct vop_access_args *ap)
 		return (EPERM);
 
 	error = vaccess(vp->v_type, ip->i_mode, ip->i_uid, ip->i_gid,
-	    ap->a_accmode, ap->a_cred, NULL);
+	    ap->a_accmode, ap->a_cred);
 	return (error);
 }
 
@@ -377,7 +374,7 @@ ext2_getattr(struct vop_getattr_args *ap)
 	vap->va_mtime.tv_nsec = E2DI_HAS_XTIME(ip) ? ip->i_mtimensec : 0;
 	vap->va_ctime.tv_sec = ip->i_ctime;
 	vap->va_ctime.tv_nsec = E2DI_HAS_XTIME(ip) ? ip->i_ctimensec : 0;
-	if E2DI_HAS_XTIME(ip) {
+	if (E2DI_HAS_XTIME(ip)) {
 		vap->va_birthtime.tv_sec = ip->i_birthtime;
 		vap->va_birthtime.tv_nsec = ip->i_birthnsec;
 	}
@@ -506,8 +503,10 @@ ext2_setattr(struct vop_setattr_args *ap)
 			ip->i_mtime = vap->va_mtime.tv_sec;
 			ip->i_mtimensec = vap->va_mtime.tv_nsec;
 		}
-		ip->i_birthtime = vap->va_birthtime.tv_sec;
-		ip->i_birthnsec = vap->va_birthtime.tv_nsec;
+		if (E2DI_HAS_XTIME(ip) && vap->va_birthtime.tv_sec != VNOVAL) {
+			ip->i_birthtime = vap->va_birthtime.tv_sec;
+			ip->i_birthnsec = vap->va_birthtime.tv_nsec;
+		}
 		error = ext2_update(vp, 0);
 		if (error)
 			return (error);
@@ -620,6 +619,18 @@ ext2_fsync(struct vop_fsync_args *ap)
 	return (ext2_update(ap->a_vp, ap->a_waitfor == MNT_WAIT));
 }
 
+static int
+ext2_check_mknod_limits(dev_t dev)
+{
+	unsigned maj = major(dev);
+	unsigned min = minor(dev);
+
+	if (maj > EXT2_MAJOR_MAX || min > EXT2_MINOR_MAX)
+		return (EINVAL);
+
+	return (0);
+}
+
 /*
  * Mknod vnode call
  */
@@ -633,20 +644,21 @@ ext2_mknod(struct vop_mknod_args *ap)
 	ino_t ino;
 	int error;
 
+	if (vap->va_rdev != VNOVAL) {
+		error = ext2_check_mknod_limits(vap->va_rdev);
+		if (error)
+			return (error);
+	}
+
 	error = ext2_makeinode(MAKEIMODE(vap->va_type, vap->va_mode),
 	    ap->a_dvp, vpp, ap->a_cnp);
 	if (error)
 		return (error);
 	ip = VTOI(*vpp);
 	ip->i_flag |= IN_ACCESS | IN_CHANGE | IN_UPDATE;
-	if (vap->va_rdev != VNOVAL) {
-		/*
-		 * Want to be able to use this to make badblock
-		 * inodes, so don't truncate the dev number.
-		 */
-		if (!(ip->i_flag & IN_E4EXTENTS))
-			ip->i_rdev = vap->va_rdev;
-	}
+	if (vap->va_rdev != VNOVAL)
+		ip->i_rdev = vap->va_rdev;
+
 	/*
 	 * Remove inode, then reload it through VFS_VGET so it is
 	 * checked to see if it is an alias of an existing entry in
@@ -1018,10 +1030,11 @@ abortit:
 		 */
 		ext2_dec_nlink(xp);
 		if (doingdirectory) {
-			if (--xp->i_nlink != 0)
+			if (xp->i_nlink > 2)
 				panic("ext2_rename: linked directory");
 			error = ext2_truncate(tvp, (off_t)0, IO_SYNC,
 			    tcnp->cn_cred, tcnp->cn_thread);
+			xp->i_nlink = 0;
 		}
 		xp->i_flag |= IN_CHANGE;
 		vput(tvp);
@@ -1076,10 +1089,6 @@ abortit:
 			ext2_dec_nlink(dp);
 			dp->i_flag |= IN_CHANGE;
 			dirbuf = malloc(dp->i_e2fs->e2fs_bsize, M_TEMP, M_WAITOK | M_ZERO);
-			if (!dirbuf) {
-				error = ENOMEM;
-				goto bad;
-			}
 			error = vn_rdwr(UIO_READ, fvp, (caddr_t)dirbuf,
 			    ip->i_e2fs->e2fs_bsize, (off_t)0,
 			    UIO_SYSSPACE, IO_NODELOCKED | IO_NOMACCHECK,
@@ -1093,7 +1102,7 @@ abortit:
 					ext2_dirbad(xp, (doff_t)12,
 					    "rename: mangled dir");
 				} else {
-					dirbuf->dotdot_ino = newparent;
+					dirbuf->dotdot_ino = htole32(newparent);
 					/*
 					 * dirblock 0 could be htree root,
 					 * try both csum update functions.
@@ -1379,24 +1388,20 @@ ext2_mkdir(struct vop_mkdir_args *ap)
 	else
 		dtp = &omastertemplate;
 	dirtemplate = *dtp;
-	dirtemplate.dot_ino = ip->i_number;
-	dirtemplate.dotdot_ino = dp->i_number;
+	dirtemplate.dot_ino = htole32(ip->i_number);
+	dirtemplate.dotdot_ino = htole32(dp->i_number);
 	/*
 	 * note that in ext2 DIRBLKSIZ == blocksize, not DEV_BSIZE so let's
 	 * just redefine it - for this function only
 	 */
 #undef  DIRBLKSIZ
 #define DIRBLKSIZ  VTOI(dvp)->i_e2fs->e2fs_bsize
-	dirtemplate.dotdot_reclen = DIRBLKSIZ - 12;
+	dirtemplate.dotdot_reclen = htole16(DIRBLKSIZ - 12);
 	buf = malloc(DIRBLKSIZ, M_TEMP, M_WAITOK | M_ZERO);
-	if (!buf) {
-		error = ENOMEM;
-		ext2_dec_nlink(dp);
-		dp->i_flag |= IN_CHANGE;
-		goto bad;
-	}
 	if (EXT2_HAS_RO_COMPAT_FEATURE(fs, EXT2F_ROCOMPAT_METADATA_CKSUM)) {
-		dirtemplate.dotdot_reclen -= sizeof(struct ext2fs_direct_tail);
+		dirtemplate.dotdot_reclen =
+		    htole16(le16toh(dirtemplate.dotdot_reclen) -
+		    sizeof(struct ext2fs_direct_tail));
 		ext2_init_dirent_tail(EXT2_DIRENT_TAIL(buf, DIRBLKSIZ));
 	}
 	memcpy(buf, &dirtemplate, sizeof(dirtemplate));
@@ -1528,7 +1533,7 @@ ext2_symlink(struct vop_symlink_args *ap)
 		return (error);
 	vp = *vpp;
 	len = strlen(ap->a_target);
-	if (len < vp->v_mount->mnt_maxsymlinklen) {
+	if (len < VFSTOEXT2(vp->v_mount)->um_e2fs->e2fs_maxsymlinklen) {
 		ip = VTOI(vp);
 		bcopy(ap->a_target, (char *)ip->i_shortlink, len);
 		ip->i_size = len;
@@ -1553,7 +1558,7 @@ ext2_readlink(struct vop_readlink_args *ap)
 	int isize;
 
 	isize = ip->i_size;
-	if (isize < vp->v_mount->mnt_maxsymlinklen) {
+	if (isize < VFSTOEXT2(vp->v_mount)->um_e2fs->e2fs_maxsymlinklen) {
 		uiomove((char *)ip->i_shortlink, isize, ap->a_uio);
 		return (0);
 	}
@@ -1579,7 +1584,6 @@ ext2_strategy(struct vop_strategy_args *ap)
 	if (vp->v_type == VBLK || vp->v_type == VCHR)
 		panic("ext2_strategy: spec");
 	if (bp->b_blkno == bp->b_lblkno) {
-
 		if (VTOI(ap->a_vp)->i_flag & IN_E4EXTENTS)
 			error = ext4_bmapext(vp, bp->b_lblkno, &blkno, NULL, NULL);
 		else
@@ -2071,7 +2075,8 @@ ext2_read(struct vop_read_args *ap)
 		panic("%s: mode", "ext2_read");
 
 	if (vp->v_type == VLNK) {
-		if ((int)ip->i_size < vp->v_mount->mnt_maxsymlinklen)
+		if ((int)ip->i_size <
+		    VFSTOEXT2(vp->v_mount)->um_e2fs->e2fs_maxsymlinklen)
 			panic("%s: short symlink", "ext2_read");
 	} else if (vp->v_type != VREG && vp->v_type != VDIR)
 		panic("%s: type %d", "ext2_read", vp->v_type);
@@ -2157,11 +2162,24 @@ ext2_read(struct vop_read_args *ap)
 static int
 ext2_ioctl(struct vop_ioctl_args *ap)
 {
+	struct vnode *vp;
+	int error;
 
+	vp = ap->a_vp;
 	switch (ap->a_command) {
 	case FIOSEEKDATA:
+		if (!(VTOI(vp)->i_flag & IN_E4EXTENTS)) {
+			error = vn_lock(vp, LK_SHARED);
+			if (error == 0) {
+				error = ext2_bmap_seekdata(vp,
+				    (off_t *)ap->a_data);
+				VOP_UNLOCK(vp);
+			} else
+				error = EBADF;
+			return (error);
+		}
 	case FIOSEEKHOLE:
-		return (vn_bmap_seekhole(ap->a_vp, ap->a_command,
+		return (vn_bmap_seekhole(vp, ap->a_command,
 		    (off_t *)ap->a_data, ap->a_cred));
 	default:
 		return (ENOTTY);
@@ -2308,7 +2326,8 @@ ext2_write(struct vop_write_args *ap)
 		} else if (xfersize + blkoffset == fs->e2fs_fsize) {
 			if ((vp->v_mount->mnt_flag & MNT_NOCLUSTERW) == 0) {
 				bp->b_flags |= B_CLUSTEROK;
-				cluster_write(vp, bp, ip->i_size, seqcount, 0);
+				cluster_write(vp, &ip->i_clusterw, bp,
+				    ip->i_size, seqcount, 0);
 			} else {
 				bawrite(bp);
 			}

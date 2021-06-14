@@ -484,6 +484,18 @@ acpi_parse_resources(device_t dev, ACPI_HANDLE handle,
     if (acpi_MatchHid(handle, "ARMH0011") != ACPI_MATCHHID_NOMATCH)
 	    arc.ignore_producer_flag = true;
 
+    /*
+     * ARM Coresight on N1SDP set ResourceProducer on memory resources.
+     * Coresight devices: ETM, STM, TPIU, ETF/ETR, REP, FUN.
+     */
+    if (acpi_MatchHid(handle, "ARMHC500") != ACPI_MATCHHID_NOMATCH ||
+        acpi_MatchHid(handle, "ARMHC502") != ACPI_MATCHHID_NOMATCH ||
+        acpi_MatchHid(handle, "ARMHC979") != ACPI_MATCHHID_NOMATCH ||
+        acpi_MatchHid(handle, "ARMHC97C") != ACPI_MATCHHID_NOMATCH ||
+        acpi_MatchHid(handle, "ARMHC98D") != ACPI_MATCHHID_NOMATCH ||
+        acpi_MatchHid(handle, "ARMHC9FF") != ACPI_MATCHHID_NOMATCH)
+	    arc.ignore_producer_flag = true;
+
     status = AcpiWalkResources(handle, "_CRS", acpi_parse_resource, &arc);
     if (ACPI_FAILURE(status) && status != AE_NOT_FOUND) {
 	printf("can't fetch resources for %s - %s\n",
@@ -631,17 +643,13 @@ acpi_res_set_irq(device_t dev, void *context, uint8_t *irq, int count,
     int trig, int pol)
 {
     struct acpi_res_context	*cp = (struct acpi_res_context *)context;
-    rman_res_t intr;
+    int i;
 
     if (cp == NULL || irq == NULL)
 	return;
 
-    /* This implements no resource relocation. */
-    if (count != 1)
-	return;
-
-    intr = *irq;
-    bus_set_resource(dev, SYS_RES_IRQ, cp->ar_nirq++, intr, 1);
+    for (i = 0; i < count; i++)
+        bus_set_resource(dev, SYS_RES_IRQ, cp->ar_nirq++, irq[i], 1);
 }
 
 static void
@@ -649,17 +657,13 @@ acpi_res_set_ext_irq(device_t dev, void *context, uint32_t *irq, int count,
     int trig, int pol)
 {
     struct acpi_res_context	*cp = (struct acpi_res_context *)context;
-    rman_res_t intr;
+    int i;
 
     if (cp == NULL || irq == NULL)
 	return;
 
-    /* This implements no resource relocation. */
-    if (count != 1)
-	return;
-
-    intr = *irq;
-    bus_set_resource(dev, SYS_RES_IRQ, cp->ar_nirq++, intr, 1);
+    for (i = 0; i < count; i++)
+        bus_set_resource(dev, SYS_RES_IRQ, cp->ar_nirq++, irq[i], 1);
 }
 
 static void

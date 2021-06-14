@@ -32,6 +32,7 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+#include <sys/disk.h>
 #include <sys/kernel.h>
 #include <sys/systm.h>
 #include <sys/bio.h>
@@ -256,6 +257,17 @@ devstat_start_transaction_bio(struct devstat *ds, struct bio *bp)
 		return;
 
 	binuptime(&bp->bio_t0);
+	devstat_start_transaction_bio_t0(ds, bp);
+}
+
+void
+devstat_start_transaction_bio_t0(struct devstat *ds, struct bio *bp)
+{
+
+	/* sanity check */
+	if (ds == NULL)
+		return;
+
 	devstat_start_transaction(ds, &bp->bio_t0);
 	DTRACE_DEVSTAT_BIO_START();
 }
@@ -436,11 +448,13 @@ sysctl_devstat(SYSCTL_HANDLER_ARGS)
  * Sysctl entries for devstat.  The first one is a node that all the rest
  * hang off of. 
  */
-static SYSCTL_NODE(_kern, OID_AUTO, devstat, CTLFLAG_RD, NULL,
+static SYSCTL_NODE(_kern, OID_AUTO, devstat, CTLFLAG_RD | CTLFLAG_MPSAFE, NULL,
     "Device Statistics");
 
-SYSCTL_PROC(_kern_devstat, OID_AUTO, all, CTLFLAG_RD|CTLTYPE_OPAQUE,
-    NULL, 0, sysctl_devstat, "S,devstat", "All devices in the devstat list");
+SYSCTL_PROC(_kern_devstat, OID_AUTO, all,
+    CTLFLAG_RD | CTLTYPE_OPAQUE | CTLFLAG_MPSAFE, NULL, 0,
+    sysctl_devstat, "S,devstat",
+    "All devices in the devstat list");
 /*
  * Export the number of devices in the system so that userland utilities
  * can determine how much memory to allocate to hold all the devices.
@@ -460,10 +474,12 @@ SYSCTL_INT(_kern_devstat, OID_AUTO, version, CTLFLAG_RD,
 
 #define statsperpage (PAGE_SIZE / sizeof(struct devstat))
 
+static d_ioctl_t devstat_ioctl;
 static d_mmap_t devstat_mmap;
 
 static struct cdevsw devstat_cdevsw = {
 	.d_version =	D_VERSION,
+	.d_ioctl =	devstat_ioctl,
 	.d_mmap =	devstat_mmap,
 	.d_name =	"devstat",
 };
@@ -474,8 +490,25 @@ struct statspage {
 	u_int			nfree;
 };
 
+static size_t pagelist_pages = 0;
 static TAILQ_HEAD(, statspage)	pagelist = TAILQ_HEAD_INITIALIZER(pagelist);
 static MALLOC_DEFINE(M_DEVSTAT, "devstat", "Device statistics");
+
+static int
+devstat_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag,
+    struct thread *td)
+{
+	int error = ENOTTY;
+
+	switch (cmd) {
+	case DIOCGMEDIASIZE:
+		error = 0;
+		*(off_t *)data = pagelist_pages * PAGE_SIZE;
+		break;
+	}
+
+	return (error);
+}
 
 static int
 devstat_mmap(struct cdev *dev, vm_ooffset_t offset, vm_paddr_t *paddr,
@@ -543,6 +576,7 @@ devstat_alloc(void)
 			 * head but the order on the list determine the
 			 * sequence of the mapping so we can't do that.
 			 */
+			pagelist_pages++;
 			TAILQ_INSERT_TAIL(&pagelist, spp, list);
 		} else
 			break;

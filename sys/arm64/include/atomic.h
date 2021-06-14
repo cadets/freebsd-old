@@ -54,7 +54,7 @@
 #define	rmb()	dmb(ld)	/* Full system memory barrier load */
 
 #if defined(KCSAN) && !defined(KCSAN_RUNTIME)
-#include <sys/_cscan_atomic.h>
+#include <sys/atomic_san.h>
 #else
 
 #include <sys/atomic_common.h>
@@ -257,6 +257,11 @@ _ATOMIC_FCMPSET_PROTO(t, bar, )						\
 	_ATOMIC_CMPSET_IMPL(32, w,  , bar, a, l)			\
 	_ATOMIC_CMPSET_IMPL(64,  ,  , bar, a, l)
 
+#define	atomic_cmpset_8		atomic_cmpset_8
+#define	atomic_fcmpset_8	atomic_fcmpset_8
+#define	atomic_cmpset_16	atomic_cmpset_16
+#define	atomic_fcmpset_16	atomic_fcmpset_16
+
 _ATOMIC_CMPSET(    ,  , )
 _ATOMIC_CMPSET(acq_, a, )
 _ATOMIC_CMPSET(rel_,  ,l)
@@ -404,7 +409,7 @@ _ATOMIC_TEST_OP_PROTO(t, op, _llsc)					\
 	uint##t##_t mask, old, tmp;					\
 	int res;							\
 									\
-	mask = 1u << (val & 0x1f);					\
+	mask = ((uint##t##_t)1) << (val & (t - 1));			\
 	__asm __volatile(						\
 	    "1: ldxr		%"#w"2, [%3]\n"				\
 	    "  "#llsc_asm_op"	%"#w"0, %"#w"2, %"#w"4\n"		\
@@ -422,7 +427,7 @@ _ATOMIC_TEST_OP_PROTO(t, op, _lse)					\
 {									\
 	uint##t##_t mask, old;						\
 									\
-	mask = 1u << (val & 0x1f);					\
+	mask = ((uint##t##_t)1) << (val & (t - 1));			\
 	__asm __volatile(						\
 	    ".arch_extension lse\n"					\
 	    "ld"#lse_asm_op"	%"#w"2, %"#w"0, [%1]\n"			\
@@ -465,6 +470,8 @@ atomic_load_acq_##t(volatile uint##t##_t *p)				\
 	return (ret);							\
 }
 
+#define	atomic_load_acq_8	atomic_load_acq_8
+#define	atomic_load_acq_16	atomic_load_acq_16
 _ATOMIC_LOAD_ACQ_IMPL(8,  w, b)
 _ATOMIC_LOAD_ACQ_IMPL(16, w, h)
 _ATOMIC_LOAD_ACQ_IMPL(32, w,  )
@@ -595,6 +602,8 @@ atomic_thread_fence_seq_cst(void)
 
 	dmb(sy);
 }
+
+#include <sys/_atomic_subword.h>
 
 #endif /* KCSAN && !KCSAN_RUNTIME */
 #endif /* _MACHINE_ATOMIC_H_ */

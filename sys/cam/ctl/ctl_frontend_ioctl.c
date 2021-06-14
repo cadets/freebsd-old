@@ -84,9 +84,7 @@ struct cfi_softc {
 	TAILQ_HEAD(, cfi_port)	ports;
 };
 
-
 static struct cfi_softc cfi_softc;
-
 
 static int cfi_init(void);
 static int cfi_shutdown(void);
@@ -183,7 +181,7 @@ cfi_ioctl_port_create(struct ctl_req *req)
 	val = dnvlist_get_string(req->args_nvl, "pp", NULL);
 	if (val != NULL)
 		pp = strtol(val, NULL, 10);
-	
+
 	val = dnvlist_get_string(req->args_nvl, "vp", NULL);
 	if (val != NULL)
 		vp = strtol(val, NULL, 10);
@@ -226,7 +224,7 @@ cfi_ioctl_port_create(struct ctl_req *req)
 		req->status = CTL_LUN_ERROR;
 		snprintf(req->error_str, sizeof(req->error_str),
 		    "ctl_port_register() failed with error %d", retval);
-		free(port, M_CTL);
+		free(cfi, M_CTL);
 		return;
 	}
 
@@ -247,7 +245,9 @@ cfi_ioctl_port_create(struct ctl_req *req)
 		req->status = CTL_LUN_ERROR;
 		snprintf(req->error_str, sizeof(req->error_str),
 		    "make_dev_s() failed with error %d", retval);
-		free(port, M_CTL);
+		ctl_port_offline(port);
+		ctl_port_deregister(port);
+		free(cfi, M_CTL);
 		return;
 	}
 
@@ -524,7 +524,7 @@ cfi_submit_wait(union ctl_io *io)
 	CTL_DEBUG_PRINT(("cfi_submit_wait\n"));
 
 	/* This shouldn't happen */
-	if ((retval = ctl_queue(io)) != CTL_RETVAL_COMPLETE)
+	if ((retval = ctl_run(io)) != CTL_RETVAL_COMPLETE)
 		return (retval);
 
 	done = 0;
@@ -566,7 +566,7 @@ cfi_submit_wait(union ctl_io *io)
 			 * will immediately call back and wake us up,
 			 * probably using our own context.
 			 */
-			io->scsiio.be_move_done(io);
+			ctl_datamove_done(io, false);
 			break;
 		case CTL_IOCTL_DONE:
 			mtx_unlock(&params.ioctl_mtx);

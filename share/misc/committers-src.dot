@@ -157,6 +157,7 @@ dexuan [label="Dexuan Cui\ndexuan@FreeBSD.org\n2016/10/24"]
 dfr [label="Doug Rabson\ndfr@FreeBSD.org\n????/??/??"]
 dg [label="David Greenman\ndg@FreeBSD.org\n1993/06/14"]
 dim [label="Dimitry Andric\ndim@FreeBSD.org\n2010/08/30"]
+donner [label="Lutz Donnerhacke\ndonner@FreeBSD.org\n2021/01/14"]
 dougm [label="Doug Moore\ndougm@FreeBSD.org\n2019/04/30"]
 dteske [label="Devin Teske\ndteske@FreeBSD.org\n2012/04/10"]
 dumbbell [label="Jean-Sebastien Pedron\ndumbbell@FreeBSD.org\n2004/11/29"]
@@ -175,6 +176,7 @@ fabient [label="Fabien Thomas\nfabient@FreeBSD.org\n2009/03/16"]
 fanf [label="Tony Finch\nfanf@FreeBSD.org\n2002/05/05"]
 fjoe [label="Max Khon\nfjoe@FreeBSD.org\n2001/08/06"]
 flz [label="Florent Thoumie\nflz@FreeBSD.org\n2006/03/30"]
+freqlabs [label="Ryan Moeller\nfreqlabs@FreeBSD.org\n2020/02/10"]
 fsu [label="Fedor Uporov\nfsu@FreeBSD.org\n2017/08/28"]
 gabor [label="Gabor Kovesdan\ngabor@FreeBSD.org\n2010/02/02"]
 gad [label="Garance A. Drosehn\ngad@FreeBSD.org\n2000/10/27"]
@@ -235,6 +237,7 @@ ken [label="Ken Merry\nken@FreeBSD.org\n1998/09/08"]
 kensmith [label="Ken Smith\nkensmith@FreeBSD.org\n2004/01/23"]
 kevans [label="Kyle Evans\nkevans@FreeBSD.org\n2017/06/20"]
 kevlo [label="Kevin Lo\nkevlo@FreeBSD.org\n2006/07/23"]
+khng [label="Ka Ho Ng\nkhng@FreeBSD.org\n2021/03/15"]
 kib [label="Konstantin Belousov\nkib@FreeBSD.org\n2006/06/03"]
 kibab [label="Ilya Bakulin\nkibab@FreeBSD.org\n2017/09/02"]
 kmacy [label="Kip Macy\nkmacy@FreeBSD.org\n2005/06/01"]
@@ -274,11 +277,13 @@ mw [label="Marcin Wojtas\nmw@FreeBSD.org\n2017/07/18"]
 neel [label="Neel Natu\nneel@FreeBSD.org\n2009/09/20"]
 netchild [label="Alexander Leidinger\nnetchild@FreeBSD.org\n2005/03/31"]
 ngie [label="Enji Cooper\nngie@FreeBSD.org\n2014/07/27"]
+nick [label="Nick O'Brien\nnick@FreeBSD.org\n2020/03/09"]
 nork [label="Norikatsu Shigemura\nnork@FreeBSD.org\n2009/06/09"]
 np [label="Navdeep Parhar\nnp@FreeBSD.org\n2009/06/05"]
 nwhitehorn [label="Nathan Whitehorn\nnwhitehorn@FreeBSD.org\n2008/07/03"]
 n_hibma [label="Nick Hibma\nn_hibma@FreeBSD.org\n1998/11/26"]
 obrien [label="David E. O'Brien\nobrien@FreeBSD.org\n1996/10/29"]
+oh [label="Oskar Holmlund\noh@FreeBSD.org\n2021/04/21"]
 olli [label="Oliver Fromme\nolli@FreeBSD.org\n2008/02/14"]
 oshogbo [label="Mariusz Zaborski\noshogbo@FreeBSD.org\n2015/04/15"]
 peadar [label="Peter Edwards\npeadar@FreeBSD.org\n2004/03/08"]
@@ -294,10 +299,12 @@ pkelsey [label="Patrick Kelsey\pkelsey@FreeBSD.org\n2014/05/29"]
 pluknet [label="Sergey Kandaurov\npluknet@FreeBSD.org\n2010/10/05"]
 ps [label="Paul Saab\nps@FreeBSD.org\n2000/02/23"]
 qingli [label="Qing Li\nqingli@FreeBSD.org\n2005/04/13"]
+rajeshasp [label="Rajesh Kumar M A\nrajeshasp@FreeBSD.org\n2021/01/27"]
 ram [label="Ram Kishore Vegesna\nram@FreeBSD.org\n2018/04/04"]
 ray [label="Aleksandr Rybalko\nray@FreeBSD.org\n2011/05/25"]
 rdivacky [label="Roman Divacky\nrdivacky@FreeBSD.org\n2008/03/13"]
 remko [label="Remko Lodder\nremko@FreeBSD.org\n2007/02/23"]
+rew [label="Robert Wing\nrew@FreeBSD.org\n2020/07/23"]
 rgrimes [label="Rodney W. Grimes\nrgrimes@FreeBSD.org\n1993/06/12\n2017/03/03"]
 rik [label="Roman Kurakin\nrik@FreeBSD.org\n2003/12/18"]
 rlibby [label="Ryan Libby\nrlibby@FreeBSD.org\n2017/06/07"]
@@ -310,6 +317,7 @@ royger [label="Roger Pau Monne\nroyger@FreeBSD.org\n2013/11/26"]
 rpaulo [label="Rui Paulo\nrpaulo@FreeBSD.org\n2007/09/25"]
 rpokala [label="Ravi Pokala\nrpokala@FreeBSD.org\n2015/11/19"]
 rrs [label="Randall R Stewart\nrrs@FreeBSD.org\n2007/02/08"]
+rscheff [label="Richard Scheffenegger\nrscheff@FreeBSD.org\n2020/04/06"]
 rse [label="Ralf S. Engelschall\nrse@FreeBSD.org\n1997/07/31"]
 rstone [label="Ryan Stone\nrstone@FreeBSD.org\n2010/04/19"]
 ru [label="Ruslan Ermilov\nru@FreeBSD.org\n1999/05/27"]
@@ -401,6 +409,7 @@ adrian -> sgalabov
 
 ae -> melifaro
 
+allanjude -> rew
 allanjude -> tsoome
 
 alc -> davide
@@ -523,6 +532,7 @@ erj -> jeb
 fjoe -> versus
 
 gallatin -> ticso
+gallatin -> rajeshasp
 
 gavin -> versus
 
@@ -670,6 +680,8 @@ ken -> ram
 ken -> slm
 ken -> will
 
+kevans -> rew
+
 kib -> ae
 kib -> badger
 kib -> dchagin
@@ -698,6 +710,13 @@ kib -> zont
 
 kmacy -> lstewart
 
+kp -> donner
+kp -> nick
+
+lwhsu -> khng
+
+manu -> oh
+
 marcel -> allanjude
 marcel -> art
 marcel -> arun
@@ -716,6 +735,7 @@ markm -> sheldonh
 
 mav -> ae
 mav -> eugen
+mav -> freqlabs
 mav -> ram
 
 mdf -> gleb
@@ -730,6 +750,8 @@ mlaier -> benjsc
 mlaier -> dhartmei
 mlaier -> thompsa
 mlaier -> eri
+
+mmacy -> freqlabs
 
 msmith -> cokane
 msmith -> jasone
@@ -766,11 +788,14 @@ peter -> jayanth
 peter -> ps
 
 philip -> benl
+philip -> donner
 philip -> ed
 philip -> jls
+philip -> khng
 philip -> matteo
 philip -> uqs
 philip -> kp
+philip -> nick
 
 phk -> jkoshy
 phk -> mux
@@ -784,6 +809,7 @@ pjd -> smh
 pjd -> trociny
 
 rgrimes -> markm
+rgrimes -> rscheff
 
 rmacklem -> jwd
 
@@ -875,12 +901,16 @@ thompsa -> eri
 trasz -> jh
 trasz -> mjg
 
+tuexen -> rscheff
+
 ume -> jinmei
 ume -> suz
 ume -> tshiozak
 
 vangyzen -> badger
 vangyzen -> dab
+
+vmaffione -> rajeshasp
 
 wes -> scf
 

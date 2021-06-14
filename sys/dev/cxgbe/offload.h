@@ -87,13 +87,8 @@ enum {
 	EO_FLUSH_RPL_PENDING	= (1 << 3),	/* credit flush rpl due back */
 };
 
-struct cxgbe_snd_tag {
-	struct m_snd_tag com;
-	int type;
-};
-
 struct cxgbe_rate_tag {
-	struct cxgbe_snd_tag com;
+	struct m_snd_tag com;
 	struct adapter *adapter;
 	u_int flags;
 	struct mtx lock;
@@ -101,7 +96,7 @@ struct cxgbe_rate_tag {
 	int etid;
 	struct mbufq pending_tx, pending_fwack;
 	int plen;
-	struct sge_wrq *eo_txq;
+	struct sge_ofld_txq *eo_txq;
 	uint32_t ctrl0;
 	uint16_t iqid;
 	int8_t schedcl;
@@ -112,17 +107,10 @@ struct cxgbe_rate_tag {
 	uint8_t ncompl;		/* # of completions outstanding. */
 };
 
-static inline struct cxgbe_snd_tag *
-mst_to_cst(struct m_snd_tag *t)
-{
-
-	return (__containerof(t, struct cxgbe_snd_tag, com));
-}
-
 static inline struct cxgbe_rate_tag *
 mst_to_crt(struct m_snd_tag *t)
 {
-	return ((struct cxgbe_rate_tag *)mst_to_cst(t));
+	return (__containerof(t, struct cxgbe_rate_tag, com));
 }
 
 union etid_entry {
@@ -228,6 +216,7 @@ struct uld_info {
 	int uld_id;
 	int (*activate)(struct adapter *);
 	int (*deactivate)(struct adapter *);
+	void (*async_event)(struct adapter *);
 };
 
 struct tom_tunables {
@@ -236,12 +225,14 @@ struct tom_tunables {
 	int ddp;
 	int rx_coalesce;
 	int tls;
+	int tls_rx_timeout;
 	int *tls_rx_ports;
 	int num_tls_rx_ports;
 	int tx_align;
 	int tx_zcopy;
 	int cop_managed_offloading;
 	int autorcvbuf_inc;
+	int update_hc_on_pmtu_change;
 };
 
 /* iWARP driver tunables */

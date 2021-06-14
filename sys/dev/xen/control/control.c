@@ -113,6 +113,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/filedesc.h>
 #include <sys/kdb.h>
 #include <sys/module.h>
+#include <sys/mount.h>
 #include <sys/namei.h>
 #include <sys/proc.h>
 #include <sys/reboot.h>
@@ -204,6 +205,7 @@ xctrl_suspend()
 	xs_lock();
 	stop_all_proc();
 	xs_unlock();
+	suspend_all_fs();
 	EVENTHANDLER_INVOKE(power_suspend);
 
 #ifdef EARLY_AP_STARTUP
@@ -303,7 +305,6 @@ xctrl_suspend()
 	 * Warm up timecounter again and reset system clock.
 	 */
 	timecounter->tc_get_timecount(timecounter);
-	timecounter->tc_get_timecount(timecounter);
 	inittodr(time_second);
 
 #ifdef EARLY_AP_STARTUP
@@ -318,6 +319,7 @@ xctrl_suspend()
 	}
 #endif
 
+	resume_all_fs();
 	resume_all_proc();
 
 	EVENTHANDLER_INVOKE(power_resume);
@@ -357,10 +359,10 @@ xctrl_on_watch_event(struct xs_watch *watch, const char **vec, unsigned int len)
 	char *result;
 	int   error;
 	int   result_len;
-	
+
 	error = xs_read(XST_NIL, "control", "shutdown",
 			&result_len, (void **)&result);
-	if (error != 0)
+	if (error != 0 || result_len == 0)
 		return;
 
 	/* Acknowledge the request by writing back an empty string. */
@@ -371,7 +373,6 @@ xctrl_on_watch_event(struct xs_watch *watch, const char **vec, unsigned int len)
 	reason = xctrl_shutdown_reasons;
 	last_reason = reason + nitems(xctrl_shutdown_reasons);
 	while (reason < last_reason) {
-
 		if (!strcmp(result, reason->name)) {
 			reason->handler();
 			break;
@@ -433,6 +434,12 @@ xctrl_attach(device_t dev)
 	xctrl->xctrl_watch.node = "control/shutdown";
 	xctrl->xctrl_watch.callback = xctrl_on_watch_event;
 	xctrl->xctrl_watch.callback_data = (uintptr_t)xctrl;
+	/*
+	 * We don't care about the path updated, just about the value changes
+	 * on that single node, hence there's no need to queue more that one
+	 * event.
+	 */
+	xctrl->xctrl_watch.max_pending = 1;
 	xs_register_watch(&xctrl->xctrl_watch);
 
 	if (xen_pv_domain())
@@ -470,11 +477,11 @@ static device_method_t xctrl_methods[] = {
 	DEVMETHOD(device_probe,         xctrl_probe), 
 	DEVMETHOD(device_attach,        xctrl_attach), 
 	DEVMETHOD(device_detach,        xctrl_detach), 
- 
+
 	DEVMETHOD_END
 }; 
 
 DEFINE_CLASS_0(xctrl, xctrl_driver, xctrl_methods, sizeof(struct xctrl_softc));
 devclass_t xctrl_devclass; 
- 
+
 DRIVER_MODULE(xctrl, xenstore, xctrl_driver, xctrl_devclass, NULL, NULL);

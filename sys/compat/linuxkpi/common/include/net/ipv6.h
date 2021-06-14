@@ -34,6 +34,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <linux/types.h>
+#include <linux/bitops.h>
 
 #define	IPV6_DEFAULT_HOPLIMIT 64
 
@@ -109,6 +110,5 @@ static inline int ipv6_addr_cmp(const struct in6_addr *a1, const struct in6_addr
 {
 	return memcmp(a1, a2, sizeof(struct in6_addr));
 }
-
 
 #endif	/* _LINUX_NET_IPV6_H_ */

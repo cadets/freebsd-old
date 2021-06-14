@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2004,2010 Free Software Foundation, Inc.              *
+ * Copyright 2020 Thomas E. Dickey                                          *
+ * Copyright 1998-2004,2010 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -37,7 +38,7 @@
 
 #include "menu.priv.h"
 
-MODULE_ID("$Id: m_item_opt.c,v 1.18 2010/01/23 21:20:10 tom Exp $")
+MODULE_ID("$Id: m_item_opt.c,v 1.21 2020/12/12 00:38:08 tom Exp $")
 
 /*---------------------------------------------------------------------------
 |   Facility      :  libnmenu  
@@ -50,8 +51,8 @@ MODULE_ID("$Id: m_item_opt.c,v 1.18 2010/01/23 21:20:10 tom Exp $")
 |   Return Values :  E_OK            - success
 |                    E_BAD_ARGUMENT  - invalid item options
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(int)
-set_item_opts(ITEM * item, Item_Options opts)
+MENU_EXPORT(int)
+set_item_opts(ITEM *item, Item_Options opts)
 {
   T((T_CALLED("set_menu_opts(%p,%d)"), (void *)item, opts));
 
@@ -93,8 +94,8 @@ set_item_opts(ITEM * item, Item_Options opts)
 |   Return Values :  E_OK            - success
 |                    E_BAD_ARGUMENT  - invalid options
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(int)
-item_opts_off(ITEM * item, Item_Options opts)
+MENU_EXPORT(int)
+item_opts_off(ITEM *item, Item_Options opts)
 {
   ITEM *citem = item;		/* use a copy because set_item_opts must detect
 
@@ -121,8 +122,8 @@ item_opts_off(ITEM * item, Item_Options opts)
 |   Return Values :  E_OK            - success
 |                    E_BAD_ARGUMENT  - invalid options
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(int)
-item_opts_on(ITEM * item, Item_Options opts)
+MENU_EXPORT(int)
+item_opts_on(ITEM *item, Item_Options opts)
 {
   ITEM *citem = item;		/* use a copy because set_item_opts must detect
 
@@ -149,8 +150,8 @@ item_opts_on(ITEM * item, Item_Options opts)
 |
 |   Return Values :  Items options
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(Item_Options)
-item_opts(const ITEM * item)
+MENU_EXPORT(Item_Options)
+item_opts(const ITEM *item)
 {
   T((T_CALLED("item_opts(%p)"), (const void *)item));
   returnItemOpts(ALL_ITEM_OPTS & Normalize_Item(item)->opt);

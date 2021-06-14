@@ -43,12 +43,14 @@ struct ufs_args {
 	struct	oexport_args export;	/* network export information */
 };
 
-#ifdef _KERNEL
+#include <sys/_task.h>
 
+#ifdef _KERNEL
 #ifdef MALLOC_DECLARE
 MALLOC_DECLARE(M_UFSMNT);
 MALLOC_DECLARE(M_TRIM);
 #endif
+#endif	/* _KERNEL */
 
 struct buf;
 struct inode;
@@ -65,6 +67,13 @@ struct inodedep;
 TAILQ_HEAD(inodedeplst, inodedep);
 LIST_HEAD(bmsafemaphd, bmsafemap);
 LIST_HEAD(trimlist_hashhead, ffs_blkfree_trim_params);
+struct fsfail_task {
+	struct task task;
+	fsid_t fsid;
+};
+
+#include <sys/_lock.h>
+#include <sys/_mutex.h>
 
 /*
  * This structure describes the UFS specific mount structure data.
@@ -83,13 +92,16 @@ struct ufsmount {
 	struct	cdev *um_dev;			/* (r) device mounted */
 	struct	g_consumer *um_cp;		/* (r) GEOM access point */
 	struct	bufobj *um_bo;			/* (r) Buffer cache object */
-	struct	vnode *um_devvp;		/* (r) blk dev mounted vnode */
+	struct	vnode *um_odevvp;		/* (r) devfs dev vnode */
+	struct	vnode *um_devvp;		/* (r) mntfs private vnode */
 	u_long	um_fstype;			/* (c) type of filesystem */
 	struct	fs *um_fs;			/* (r) pointer to superblock */
 	struct	ufs_extattr_per_mount um_extattr; /* (c) extended attrs */
 	u_long	um_nindir;			/* (c) indirect ptrs per blk */
 	u_long	um_bptrtodb;			/* (c) indir disk block ptr */
 	u_long	um_seqinc;			/* (c) inc between seq blocks */
+	uint64_t um_maxsymlinklen;		/* (c) max size of short
+						       symlink */
 	struct	mtx um_lock;			/* (c) Protects ufsmount & fs */
 	pid_t	um_fsckpid;			/* (u) PID can do fsck sysctl */
 	struct	mount_softdeps *um_softdep;	/* (c) softdep mgmt structure */
@@ -111,6 +123,7 @@ struct ufsmount {
 	struct	taskqueue *um_trim_tq;		/* (c) trim request queue */
 	struct	trimlist_hashhead *um_trimhash;	/* (i) trimlist hash table */
 	u_long	um_trimlisthashsize;		/* (i) trim hash table size-1 */
+	struct	fsfail_task *um_fsfail_task;	/* (i) task for fsfail cleanup*/
 						/* (c) - below function ptrs */
 	int	(*um_balloc)(struct vnode *, off_t, int, struct ucred *,
 		    int, struct buf **);
@@ -131,7 +144,9 @@ struct ufsmount {
  */
 #define UM_CANDELETE		0x00000001	/* devvp supports TRIM */
 #define UM_WRITESUSPENDED	0x00000002	/* suspension in progress */
-
+#define UM_CANSPEEDUP		0x00000004	/* devvp supports SPEEDUP */
+#define UM_FSFAIL_CLEANUP	0x00000008	/* need cleanup after
+						   unrecoverable error */
 /*
  * function prototypes
  */
@@ -180,6 +195,8 @@ struct ufsmount {
 #define	MNINDIR(ump)			((ump)->um_nindir)
 #define	blkptrtodb(ump, b)		((b) << (ump)->um_bptrtodb)
 #define	is_sequential(ump, a, b)	((b) == (a) + ump->um_seqinc)
-#endif /* _KERNEL */
+
+/* true if old FS format...*/
+#define OFSFMT(vp)	(VFSTOUFS((vp)->v_mount)->um_maxsymlinklen <= 0)
 
 #endif

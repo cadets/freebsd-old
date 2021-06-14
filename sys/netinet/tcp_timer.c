@@ -82,46 +82,62 @@ __FBSDID("$FreeBSD$");
 #endif
 
 int    tcp_persmin;
-SYSCTL_PROC(_net_inet_tcp, OID_AUTO, persmin, CTLTYPE_INT|CTLFLAG_RW,
-    &tcp_persmin, 0, sysctl_msec_to_ticks, "I", "minimum persistence interval");
+SYSCTL_PROC(_net_inet_tcp, OID_AUTO, persmin,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+    &tcp_persmin, 0, sysctl_msec_to_ticks, "I",
+    "minimum persistence interval");
 
 int    tcp_persmax;
-SYSCTL_PROC(_net_inet_tcp, OID_AUTO, persmax, CTLTYPE_INT|CTLFLAG_RW,
-    &tcp_persmax, 0, sysctl_msec_to_ticks, "I", "maximum persistence interval");
+SYSCTL_PROC(_net_inet_tcp, OID_AUTO, persmax,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+    &tcp_persmax, 0, sysctl_msec_to_ticks, "I",
+    "maximum persistence interval");
 
 int	tcp_keepinit;
-SYSCTL_PROC(_net_inet_tcp, TCPCTL_KEEPINIT, keepinit, CTLTYPE_INT|CTLFLAG_RW,
-    &tcp_keepinit, 0, sysctl_msec_to_ticks, "I", "time to establish connection");
+SYSCTL_PROC(_net_inet_tcp, TCPCTL_KEEPINIT, keepinit,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+    &tcp_keepinit, 0, sysctl_msec_to_ticks, "I",
+    "time to establish connection");
 
 int	tcp_keepidle;
-SYSCTL_PROC(_net_inet_tcp, TCPCTL_KEEPIDLE, keepidle, CTLTYPE_INT|CTLFLAG_RW,
-    &tcp_keepidle, 0, sysctl_msec_to_ticks, "I", "time before keepalive probes begin");
+SYSCTL_PROC(_net_inet_tcp, TCPCTL_KEEPIDLE, keepidle,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+    &tcp_keepidle, 0, sysctl_msec_to_ticks, "I",
+    "time before keepalive probes begin");
 
 int	tcp_keepintvl;
-SYSCTL_PROC(_net_inet_tcp, TCPCTL_KEEPINTVL, keepintvl, CTLTYPE_INT|CTLFLAG_RW,
-    &tcp_keepintvl, 0, sysctl_msec_to_ticks, "I", "time between keepalive probes");
+SYSCTL_PROC(_net_inet_tcp, TCPCTL_KEEPINTVL, keepintvl,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+    &tcp_keepintvl, 0, sysctl_msec_to_ticks, "I",
+    "time between keepalive probes");
 
 int	tcp_delacktime;
-SYSCTL_PROC(_net_inet_tcp, TCPCTL_DELACKTIME, delacktime, CTLTYPE_INT|CTLFLAG_RW,
+SYSCTL_PROC(_net_inet_tcp, TCPCTL_DELACKTIME, delacktime,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &tcp_delacktime, 0, sysctl_msec_to_ticks, "I",
     "Time before a delayed ACK is sent");
 
 int	tcp_msl;
-SYSCTL_PROC(_net_inet_tcp, OID_AUTO, msl, CTLTYPE_INT|CTLFLAG_RW,
-    &tcp_msl, 0, sysctl_msec_to_ticks, "I", "Maximum segment lifetime");
+SYSCTL_PROC(_net_inet_tcp, OID_AUTO, msl,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+    &tcp_msl, 0, sysctl_msec_to_ticks, "I",
+    "Maximum segment lifetime");
 
 int	tcp_rexmit_initial;
-SYSCTL_PROC(_net_inet_tcp, OID_AUTO, rexmit_initial, CTLTYPE_INT|CTLFLAG_RW,
+SYSCTL_PROC(_net_inet_tcp, OID_AUTO, rexmit_initial,
+   CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &tcp_rexmit_initial, 0, sysctl_msec_to_ticks, "I",
     "Initial Retransmission Timeout");
 
 int	tcp_rexmit_min;
-SYSCTL_PROC(_net_inet_tcp, OID_AUTO, rexmit_min, CTLTYPE_INT|CTLFLAG_RW,
+SYSCTL_PROC(_net_inet_tcp, OID_AUTO, rexmit_min,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &tcp_rexmit_min, 0, sysctl_msec_to_ticks, "I",
     "Minimum Retransmission Timeout");
 
 int	tcp_rexmit_slop;
-SYSCTL_PROC(_net_inet_tcp, OID_AUTO, rexmit_slop, CTLTYPE_INT|CTLFLAG_RW,
+SYSCTL_PROC(_net_inet_tcp, OID_AUTO, rexmit_slop,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &tcp_rexmit_slop, 0, sysctl_msec_to_ticks, "I",
     "Retransmission Timer Slop");
 
@@ -131,13 +147,15 @@ SYSCTL_INT(_net_inet_tcp, OID_AUTO, always_keepalive, CTLFLAG_VNET|CTLFLAG_RW,
     "Assume SO_KEEPALIVE on all TCP connections");
 
 int    tcp_fast_finwait2_recycle = 0;
-SYSCTL_INT(_net_inet_tcp, OID_AUTO, fast_finwait2_recycle, CTLFLAG_RW, 
+SYSCTL_INT(_net_inet_tcp, OID_AUTO, fast_finwait2_recycle, CTLFLAG_RW,
     &tcp_fast_finwait2_recycle, 0,
     "Recycle closed FIN_WAIT_2 connections faster");
 
 int    tcp_finwait2_timeout;
-SYSCTL_PROC(_net_inet_tcp, OID_AUTO, finwait2_timeout, CTLTYPE_INT|CTLFLAG_RW,
-    &tcp_finwait2_timeout, 0, sysctl_msec_to_ticks, "I", "FIN-WAIT2 timeout");
+SYSCTL_PROC(_net_inet_tcp, OID_AUTO, finwait2_timeout,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+    &tcp_finwait2_timeout, 0, sysctl_msec_to_ticks, "I",
+    "FIN-WAIT2 timeout");
 
 int	tcp_keepcnt = TCPTV_KEEPCNT;
 SYSCTL_INT(_net_inet_tcp, OID_AUTO, keepcnt, CTLFLAG_RW, &tcp_keepcnt, 0,
@@ -326,8 +344,8 @@ tcp_timer_2msl(void *xtp)
 	 * If in TIME_WAIT state just ignore as this timeout is handled in
 	 * tcp_tw_2msl_scan().
 	 *
-	 * If fastrecycle of FIN_WAIT_2, in FIN_WAIT_2 and receiver has closed, 
-	 * there's no point in hanging onto FIN_WAIT_2 socket. Just close it. 
+	 * If fastrecycle of FIN_WAIT_2, in FIN_WAIT_2 and receiver has closed,
+	 * there's no point in hanging onto FIN_WAIT_2 socket. Just close it.
 	 * Ignore fact that there were recent incoming segments.
 	 */
 	if ((inp->inp_flags & INP_TIMEWAIT) != 0) {
@@ -336,7 +354,7 @@ tcp_timer_2msl(void *xtp)
 		return;
 	}
 	if (tcp_fast_finwait2_recycle && tp->t_state == TCPS_FIN_WAIT_2 &&
-	    tp->t_inpcb && tp->t_inpcb->inp_socket && 
+	    tp->t_inpcb && tp->t_inpcb->inp_socket &&
 	    (tp->t_inpcb->inp_socket->so_rcv.sb_state & SBS_CANTRCVMORE)) {
 		TCPSTAT_INC(tcps_finwait2_drops);
 		if (inp->inp_flags & (INP_TIMEWAIT | INP_DROPPED)) {
@@ -344,7 +362,7 @@ tcp_timer_2msl(void *xtp)
 			goto out;
 		}
 		NET_EPOCH_ENTER(et);
-		tp = tcp_close(tp);             
+		tp = tcp_close(tp);
 		NET_EPOCH_EXIT(et);
 		tcp_inpinfo_lock_del(inp, tp);
 		goto out;
@@ -596,6 +614,7 @@ tcp_timer_rexmt(void * xtp)
 	int rexmt;
 	struct inpcb *inp;
 	struct epoch_tracker et;
+	bool isipv6;
 #ifdef TCPDEBUG
 	int ostate;
 
@@ -694,22 +713,50 @@ tcp_timer_rexmt(void * xtp)
 	 * packets and process straight to FIN. In that case we won't catch
 	 * ESTABLISHED state.
 	 */
-	if (V_tcp_pmtud_blackhole_detect && (((tp->t_state == TCPS_ESTABLISHED))
-	    || (tp->t_state == TCPS_FIN_WAIT_1))) {
 #ifdef INET6
-		int isipv6;
+	isipv6 = (tp->t_inpcb->inp_vflag & INP_IPV6) ? true : false;
+#else
+	isipv6 = false;
 #endif
-
-		/*
-		 * Idea here is that at each stage of mtu probe (usually, 1448
-		 * -> 1188 -> 524) should be given 2 chances to recover before
-		 *  further clamping down. 'tp->t_rxtshift % 2 == 0' should
-		 *  take care of that.
-		 */
+	if (((V_tcp_pmtud_blackhole_detect == 1) ||
+	    (V_tcp_pmtud_blackhole_detect == 2 && !isipv6) ||
+	    (V_tcp_pmtud_blackhole_detect == 3 && isipv6)) &&
+	    ((tp->t_state == TCPS_ESTABLISHED) ||
+	    (tp->t_state == TCPS_FIN_WAIT_1))) {
+		if (tp->t_rxtshift == 1) {
+			/*
+			 * We enter blackhole detection after the first
+			 * unsuccessful timer based retransmission.
+			 * Then we reduce up to two times the MSS, each
+			 * candidate giving two tries of retransmissions.
+			 * But we give a candidate only two tries, if it
+			 * actually reduces the MSS.
+			 */
+			tp->t_blackhole_enter = 2;
+			tp->t_blackhole_exit = tp->t_blackhole_enter;
+			if (isipv6) {
+#ifdef INET6
+				if (tp->t_maxseg > V_tcp_v6pmtud_blackhole_mss)
+					tp->t_blackhole_exit += 2;
+				if (tp->t_maxseg > V_tcp_v6mssdflt &&
+				    V_tcp_v6pmtud_blackhole_mss > V_tcp_v6mssdflt)
+					tp->t_blackhole_exit += 2;
+#endif
+			} else {
+#ifdef INET
+				if (tp->t_maxseg > V_tcp_pmtud_blackhole_mss)
+					tp->t_blackhole_exit += 2;
+				if (tp->t_maxseg > V_tcp_mssdflt &&
+				    V_tcp_pmtud_blackhole_mss > V_tcp_mssdflt)
+					tp->t_blackhole_exit += 2;
+#endif
+			}
+		}
 		if (((tp->t_flags2 & (TF2_PLPMTU_PMTUD|TF2_PLPMTU_MAXSEGSNT)) ==
 		    (TF2_PLPMTU_PMTUD|TF2_PLPMTU_MAXSEGSNT)) &&
-		    (tp->t_rxtshift >= 2 && tp->t_rxtshift < 6 &&
-		    tp->t_rxtshift % 2 == 0)) {
+		    (tp->t_rxtshift >= tp->t_blackhole_enter &&
+		    tp->t_rxtshift < tp->t_blackhole_exit &&
+		    (tp->t_rxtshift - tp->t_blackhole_enter) % 2 == 0)) {
 			/*
 			 * Enter Path MTU Black-hole Detection mechanism:
 			 * - Disable Path MTU Discovery (IP "DF" bit).
@@ -723,14 +770,14 @@ tcp_timer_rexmt(void * xtp)
 				tp->t_pmtud_saved_maxseg = tp->t_maxseg;
 			}
 
-			/* 
+			/*
 			 * Reduce the MSS to blackhole value or to the default
 			 * in an attempt to retransmit.
 			 */
 #ifdef INET6
-			isipv6 = (tp->t_inpcb->inp_vflag & INP_IPV6) ? 1 : 0;
 			if (isipv6 &&
-			    tp->t_maxseg > V_tcp_v6pmtud_blackhole_mss) {
+			    tp->t_maxseg > V_tcp_v6pmtud_blackhole_mss &&
+			    V_tcp_v6pmtud_blackhole_mss > V_tcp_v6mssdflt) {
 				/* Use the sysctl tuneable blackhole MSS. */
 				tp->t_maxseg = V_tcp_v6pmtud_blackhole_mss;
 				TCPSTAT_INC(tcps_pmtud_blackhole_activated);
@@ -749,7 +796,8 @@ tcp_timer_rexmt(void * xtp)
 			else
 #endif
 #ifdef INET
-			if (tp->t_maxseg > V_tcp_pmtud_blackhole_mss) {
+			if (tp->t_maxseg > V_tcp_pmtud_blackhole_mss &&
+			    V_tcp_pmtud_blackhole_mss > V_tcp_mssdflt) {
 				/* Use the sysctl tuneable blackhole MSS. */
 				tp->t_maxseg = V_tcp_pmtud_blackhole_mss;
 				TCPSTAT_INC(tcps_pmtud_blackhole_activated);
@@ -776,11 +824,9 @@ tcp_timer_rexmt(void * xtp)
 			 * with a lowered MTU, maybe this isn't a blackhole and
 			 * we restore the previous MSS and blackhole detection
 			 * flags.
-			 * The limit '6' is determined by giving each probe
-			 * stage (1448, 1188, 524) 2 chances to recover.
 			 */
 			if ((tp->t_flags2 & TF2_PLPMTU_BLACKHOLE) &&
-			    (tp->t_rxtshift >= 6)) {
+			    (tp->t_rxtshift >= tp->t_blackhole_exit)) {
 				tp->t_flags2 |= TF2_PLPMTU_PMTUD;
 				tp->t_flags2 &= ~TF2_PLPMTU_BLACKHOLE;
 				tp->t_maxseg = tp->t_pmtud_saved_maxseg;
@@ -930,7 +976,7 @@ tcp_timer_active(struct tcpcb *tp, uint32_t timer_type)
  * timer never to run. The flag is needed to assure
  * a race does not leave it running and cause
  * the timer to possibly restart itself (keep and persist
- * especially do this). 
+ * especially do this).
  */
 int
 tcp_timer_suspend(struct tcpcb *tp, uint32_t timer_type)
@@ -988,7 +1034,7 @@ tcp_timers_unsuspend(struct tcpcb *tp, uint32_t timer_type)
 				    (tcp_timer_active((tp), TT_PERSIST) == 0) &&
 				    tp->snd_wnd) {
 					/* We have outstanding data activate a timer */
-					tcp_timer_activate(tp, TT_REXMT, 
+					tcp_timer_activate(tp, TT_REXMT,
                                             tp->t_rxtcur);
 				}
 			}
@@ -1053,7 +1099,7 @@ tcp_timer_stop(struct tcpcb *tp, uint32_t timer_type)
 			break;
 		default:
 			if (tp->t_fb->tfb_tcp_timer_stop) {
-				/* 
+				/*
 				 * XXXrrs we need to look at this with the
 				 * stop case below (flags).
 				 */
@@ -1067,7 +1113,7 @@ tcp_timer_stop(struct tcpcb *tp, uint32_t timer_type)
 		/*
 		 * Can't stop the callout, defer tcpcb actual deletion
 		 * to the last one. We do this using the async drain
-		 * function and incrementing the count in 
+		 * function and incrementing the count in
 		 */
 		tp->t_timers->tt_draincnt++;
 	}

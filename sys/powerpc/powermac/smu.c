@@ -379,8 +379,8 @@ smu_attach(device_t dev)
 
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
             SYSCTL_CHILDREN(device_get_sysctl_tree(dev)), OID_AUTO,
-	    "server_mode", CTLTYPE_INT | CTLFLAG_RW, dev, 0,
-	    smu_server_mode, "I", "Enable reboot after power failure");
+	    "server_mode", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, dev,
+	    0, smu_server_mode, "I", "Enable reboot after power failure");
 
 	/*
 	 * Set up doorbell interrupt.
@@ -464,7 +464,7 @@ smu_doorbell_intr(void *xdev)
 
 	/* Check result. First invalidate the cache again... */
 	__asm __volatile("dcbf 0,%0; sync" :: "r"(sc->sc_cmd) : "memory");
-	
+
 	bus_dmamap_sync(sc->sc_dmatag, sc->sc_cmd_dmamap, BUS_DMASYNC_POSTREAD);
 
 	sc->sc_cur_cmd->cmd = sc->sc_cmd->cmd;
@@ -676,7 +676,7 @@ smu_fan_check_old_style(struct smu_fan *fan)
 	 * them except by seeing if the new one fails. If the new one
 	 * fails, use the old one.
 	 */
-	
+
 	cmd.cmd = SMU_FAN;
 	cmd.len = 2;
 	cmd.data[0] = 0x31;
@@ -787,14 +787,14 @@ smu_fan_set_pwm(struct smu_fan *fan, int pwm)
 	 * them except by seeing if the new one fails. If the new one
 	 * fails, use the old one.
 	 */
-	
+
 	if (!fan->old_style) {
 		cmd.len = 4;
 		cmd.data[0] = 0x30;
 		cmd.data[1] = fan->reg;
 		cmd.data[2] = (pwm >> 8) & 0xff;
 		cmd.data[3] = pwm & 0xff;
-	
+
 		error = smu_run_cmd(smu, &cmd, 1);
 		if (error && error != EWOULDBLOCK)
 			fan->old_style = 1;
@@ -1014,7 +1014,7 @@ smu_attach_fans(device_t dev, phandle_t fanroot)
 
 	/* Now fill in the properties. */
 	smu_count_fans(dev);
-	
+
 	/* Register fans with pmac_thermal */
 	for (i = 0; i < sc->sc_nfans; i++)
 		pmac_thermal_fan_register(&sc->sc_fans[i].fan);
@@ -1022,7 +1022,7 @@ smu_attach_fans(device_t dev, phandle_t fanroot)
 	ctx = device_get_sysctl_ctx(dev);
 	fanroot_oid = SYSCTL_ADD_NODE(ctx,
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)), OID_AUTO, "fans",
-	    CTLFLAG_RD, 0, "SMU Fan Information");
+	    CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "SMU Fan Information");
 
 	/* Add sysctls */
 	for (i = 0; i < sc->sc_nfans; i++) {
@@ -1035,9 +1035,9 @@ smu_attach_fans(device_t dev, phandle_t fanroot)
 		sysctl_name[j] = 0;
 		if (fan->type == SMU_FAN_RPM) {
 			oid = SYSCTL_ADD_NODE(ctx,
-					      SYSCTL_CHILDREN(fanroot_oid),
-					      OID_AUTO, sysctl_name,
-					      CTLFLAG_RD, 0, "Fan Information");
+			    SYSCTL_CHILDREN(fanroot_oid), OID_AUTO,
+			    sysctl_name, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+			    "Fan Information");
 			SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
 				       "minrpm", CTLFLAG_RD,
 				       &fan->fan.min_rpm, 0,
@@ -1056,9 +1056,9 @@ smu_attach_fans(device_t dev, phandle_t fanroot)
 
 		} else {
 			oid = SYSCTL_ADD_NODE(ctx,
-					      SYSCTL_CHILDREN(fanroot_oid),
-					      OID_AUTO, sysctl_name,
-					      CTLFLAG_RD, 0, "Fan Information");
+			    SYSCTL_CHILDREN(fanroot_oid), OID_AUTO,
+			        sysctl_name, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+				"Fan Information");
 			SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
 				       "minpwm", CTLFLAG_RD,
 				       &fan->fan.min_rpm, 0,
@@ -1079,7 +1079,6 @@ smu_attach_fans(device_t dev, phandle_t fanroot)
 					smu_fanrpm_sysctl, "I", "Fan RPM");
 			fan->fan.read = NULL;
 			fan->fan.set = (int (*)(struct pmac_fan *, int))smu_fan_set_pwm;
-
 		}
 		if (bootverbose)
 			device_printf(dev, "Fan: %s type: %d\n",
@@ -1104,7 +1103,7 @@ smu_sensor_read(struct smu_sensor *sens)
 	error = smu_run_cmd(smu, &cmd, 1);
 	if (error != 0)
 		return (-1);
-	
+
 	sc = device_get_softc(smu);
 	value = (cmd.data[0] << 8) | cmd.data[1];
 
@@ -1205,7 +1204,7 @@ smu_attach_sensors(device_t dev, phandle_t sensroot)
 	ctx = device_get_sysctl_ctx(dev);
 	sensroot_oid = SYSCTL_ADD_NODE(ctx,
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)), OID_AUTO, "sensors",
-	    CTLFLAG_RD, 0, "SMU Sensor Information");
+	    CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "SMU Sensor Information");
 
 	for (child = OF_child(sensroot); child != 0; child = OF_peer(child)) {
 		char sysctl_name[40], sysctl_desc[40];
@@ -1286,7 +1285,7 @@ smu_server_mode(SYSCTL_HANDLER_ARGS)
 	u_int server_mode;
 	device_t smu = arg1;
 	int error;
-	
+
 	cmd.cmd = SMU_POWER_EVENTS;
 	cmd.len = 1;
 	cmd.data[0] = SMU_PWR_GET_POWERUP;
@@ -1402,7 +1401,6 @@ static device_method_t smuiic_methods[] = {
 
 	/* ofw_bus interface */
 	DEVMETHOD(ofw_bus_get_node,     smuiic_get_node),
-
 	{ 0, 0 }
 };
 
@@ -1582,4 +1580,3 @@ smuiic_get_node(device_t bus, device_t dev)
 
 	return (ofw_bus_get_node(bus));
 }
-

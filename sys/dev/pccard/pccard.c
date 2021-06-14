@@ -63,7 +63,8 @@ __FBSDID("$FreeBSD$");
 #define PCCARDDEBUG
 
 /* sysctl vars */
-static SYSCTL_NODE(_hw, OID_AUTO, pccard, CTLFLAG_RD, 0, "PCCARD parameters");
+static SYSCTL_NODE(_hw, OID_AUTO, pccard, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "PCCARD parameters");
 
 int	pccard_debug = 0;
 SYSCTL_INT(_hw_pccard, OID_AUTO, debug, CTLFLAG_RWTUN,
@@ -134,7 +135,6 @@ static const struct pccard_product *
 pccard_do_product_lookup(device_t bus, device_t dev,
 			 const struct pccard_product *tab, size_t ent_size,
 			 pccard_product_match_fn matchfn);
-
 
 static int
 pccard_ccr_read(struct pccard_function *pf, int ccr)
@@ -454,7 +454,7 @@ pccard_select_cfe(device_t dev, int entry)
 {
 	struct pccard_ivar *devi = PCCARD_IVAR(dev);
 	struct pccard_function *pf = devi->pf;
-	
+
 	pccard_function_init(pf, entry);
 	return (pf->cfe ? 0 : ENOMEM);
 }
@@ -844,6 +844,7 @@ pccard_attach(device_t dev)
 	sc->sc_enabled_count = 0;
 	if ((err = pccard_device_create(sc)) != 0)
 		return  (err);
+	gone_in_dev(dev, 13, "PC Card to be removed.");
 	STAILQ_INIT(&sc->card.pf_head);
 	return (bus_generic_attach(dev));
 }
@@ -1257,7 +1258,7 @@ static void
 pccard_intr(void *arg)
 {
 	struct pccard_function *pf = (struct pccard_function*) arg;
-	
+
 	pf->intr_handler(pf->intr_handler_arg);	
 }
 
@@ -1430,7 +1431,6 @@ pccard_ccr_write_impl(device_t brdev, device_t child, uint32_t offset,
 	return 0;
 }
 
-
 static device_method_t pccard_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		pccard_probe),
@@ -1469,7 +1469,6 @@ static device_method_t pccard_methods[] = {
 	DEVMETHOD(card_attr_write,	pccard_attr_write_impl),
 	DEVMETHOD(card_ccr_read,	pccard_ccr_read_impl),
 	DEVMETHOD(card_ccr_write,	pccard_ccr_write_impl),
-
 	{ 0, 0 }
 };
 

@@ -37,7 +37,7 @@
 typedef struct kobj		*kobj_t;
 typedef struct kobj_class	*kobj_class_t;
 typedef const struct kobj_method kobj_method_t;
-typedef int			(*kobjop_t)(void);
+typedef void			(*kobjop_t)(void);
 typedef struct kobj_ops		*kobj_ops_t;
 typedef struct kobjop_desc	*kobjop_desc_t;
 struct malloc_type;
@@ -175,7 +175,6 @@ struct kobj_class classvar = {				\
 	#name, methods, size, name ## _baseclasses	\
 }
 
-
 /*
  * Compile the method table in a class.
  */
@@ -235,7 +234,7 @@ extern u_int kobj_lookup_misses;
 	} else							\
 		kobj_lookup_hits++;				\
 	_m = _ce->func;						\
-} while(0)
+} while (0)
 #else
 #define KOBJOPLOOKUP(OPS,OP) do {				\
 	kobjop_desc_t _desc = &OP##_##desc;			\
@@ -246,13 +245,12 @@ extern u_int kobj_lookup_misses;
 		_ce = kobj_lookup_method(OPS->cls,		\
 					 _cep, _desc);		\
 	_m = _ce->func;						\
-} while(0)
+} while (0)
 #endif
 
 kobj_method_t* kobj_lookup_method(kobj_class_t cls,
 				  kobj_method_t **cep,
 				  kobjop_desc_t desc);
-
 
 /*
  * Default method implementation. Returns ENXIO.

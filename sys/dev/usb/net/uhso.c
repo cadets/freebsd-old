@@ -288,7 +288,8 @@ static const STRUCT_USB_HOST_ID uhso_devs[] = {
 #undef UHSO_DEV
 };
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, uhso, CTLFLAG_RW, 0, "USB uhso");
+static SYSCTL_NODE(_hw_usb, OID_AUTO, uhso, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "USB uhso");
 static int uhso_autoswitch = 1;
 SYSCTL_INT(_hw_usb_uhso, OID_AUTO, auto_switch, CTLFLAG_RWTUN,
     &uhso_autoswitch, 0, "Automatically switch to modem mode");
@@ -599,7 +600,8 @@ uhso_attach(device_t self)
 	    CTLFLAG_RD, uhso_port[UHSO_IFACE_PORT(sc->sc_type)], 0,
 	    "Port available at this interface");
 	SYSCTL_ADD_PROC(sctx, SYSCTL_CHILDREN(soid), OID_AUTO, "radio",
-	    CTLTYPE_INT | CTLFLAG_RWTUN, sc, 0, uhso_radio_sysctl, "I", "Enable radio");
+	    CTLTYPE_INT | CTLFLAG_RWTUN | CTLFLAG_MPSAFE, sc, 0,
+	    uhso_radio_sysctl, "I", "Enable radio");
 
 	/*
 	 * The default interface description on most Option devices isn't
@@ -619,7 +621,7 @@ uhso_attach(device_t self)
 		    CTLFLAG_RD, &sc->sc_ttys, 0, "Number of attached serial ports");
 
 		tree = SYSCTL_ADD_NODE(sctx, SYSCTL_CHILDREN(soid), OID_AUTO,
-		    "port", CTLFLAG_RD, NULL, "Serial ports");
+		    "port", CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "Serial ports");
 	}
 
 	/*
@@ -638,7 +640,7 @@ uhso_attach(device_t self)
 		desc = uhso_port_type_sysctl[port];
 
 		tty_node = SYSCTL_ADD_NODE(sctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-		    desc, CTLFLAG_RD, NULL, "");
+		    desc, CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "");
 
 		ht->ht_name[0] = 0;
 		if (sc->sc_ttys == 1)
@@ -689,10 +691,10 @@ uhso_detach(device_t self)
 		free_unr(uhso_ifnet_unit, sc->sc_ifp->if_dunit);
 		mtx_lock(&sc->sc_mtx);
 		uhso_if_stop(sc);
+		mtx_unlock(&sc->sc_mtx);
 		bpfdetach(sc->sc_ifp);
 		if_detach(sc->sc_ifp);
 		if_free(sc->sc_ifp);
-		mtx_unlock(&sc->sc_mtx);
 		usbd_transfer_unsetup(sc->sc_if_xfer, UHSO_IFNET_MAX);
 	}
 
@@ -940,7 +942,6 @@ uhso_probe_iface(struct uhso_softc *sc, int index,
 		}
 	} else if ((UHSO_IFACE_USB_TYPE(type) & UHSO_IF_BULK) &&
 	    UHSO_IFACE_PORT(type) & UHSO_PORT_SERIAL) {
-
 		error = uhso_attach_bulkserial(sc, iface, type);
 		if (error)
 			return (ENXIO);
@@ -1232,7 +1233,6 @@ tr_setup:
 		pc = usbd_xfer_get_frame(xfer, 1);
 		if (ucom_get_data(&sc->sc_ucom[ht->ht_muxport], pc,
 		    0, 32, &actlen)) {
-
 			usbd_get_page(pc, 0, &res);
 
 			memset(&req, 0, sizeof(struct usb_device_request));
@@ -1530,7 +1530,6 @@ uhso_ucom_start_write(struct ucom_softc *ucom)
 		    &sc->sc_tty[ucom->sc_subunit]);
 		usbd_transfer_start(
 		    sc->sc_tty[ucom->sc_subunit].ht_xfer[UHSO_CTRL_WRITE]);
-
 	}
 	else if (UHSO_IFACE_USB_TYPE(sc->sc_type) & UHSO_IF_BULK) {
 		usbd_transfer_start(sc->sc_xfer[UHSO_BULK_ENDPT_WRITE]);

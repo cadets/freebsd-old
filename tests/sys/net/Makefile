@@ -1,15 +1,17 @@
 # $FreeBSD$
 
-.include <bsd.own.mk>
+PACKAGE=	tests
 
 TESTSDIR=	${TESTSBASE}/sys/net
 BINDIR=		${TESTSDIR}
 
-ATF_TESTS_SH+=	if_lagg_test
+ATF_TESTS_C+=	if_epair
+ATF_TESTS_SH+=	if_bridge_test
+TEST_METADATA.if_bridge_test+=	required_programs="python"
 ATF_TESTS_SH+=	if_clone_test
+ATF_TESTS_SH+=	if_lagg_test
 ATF_TESTS_SH+=	if_tun_test
 ATF_TESTS_SH+=	if_vlan
-ATF_TESTS_C+=	if_epair
 
 TESTS_SUBDIRS+=	routing
 
@@ -18,9 +20,14 @@ TESTS_SUBDIRS+=	routing
 # locked.
 TEST_METADATA+=	is_exclusive=true
 
+${PACKAGE}FILES+=	\
+		stp.py
+
+${PACKAGE}FILESMODE_stp.py=		0555
+
 MAN=
 PROGS+=		randsleep
 
-WARNS?=		6
+CFLAGS+=        -I${.CURDIR:H:H}
 
 .include <bsd.test.mk>

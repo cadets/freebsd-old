@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2011,2012 Free Software Foundation, Inc.              *
+ * Copyright 2018,2020 Thomas E. Dickey                                     *
+ * Copyright 1998-2011,2012 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -39,7 +40,7 @@
 #define CUR SP_TERMTYPE
 #endif
 
-MODULE_ID("$Id: lib_print.c,v 1.23 2012/02/22 22:34:31 tom Exp $")
+MODULE_ID("$Id: lib_print.c,v 1.28 2020/08/29 16:22:03 juergen Exp $")
 
 NCURSES_EXPORT(int)
 NCURSES_SP_NAME(mcprint) (NCURSES_SP_DCLx char *data, int len)
@@ -59,7 +60,7 @@ NCURSES_SP_NAME(mcprint) (NCURSES_SP_DCLx char *data, int len)
     }
 
     if (prtr_non) {
-	switchon = TPARM_1(prtr_non, len);
+	switchon = TIPARM_1(prtr_non, len);
 	onsize = strlen(switchon);
 	offsize = 0;
     } else {
@@ -95,7 +96,7 @@ NCURSES_SP_NAME(mcprint) (NCURSES_SP_DCLx char *data, int len)
      * kernel will ship the contiguous clist items from the last write
      * immediately.
      */
-#ifndef __MINGW32__
+#ifndef _NC_WINDOWS
     (void) sleep(0);
 #endif
     free(mybuf);

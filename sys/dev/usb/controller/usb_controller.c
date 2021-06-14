@@ -86,7 +86,8 @@ static void	usb_attach_sub(device_t, struct usb_bus *);
 #ifdef USB_DEBUG
 static int usb_ctrl_debug = 0;
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, ctrl, CTLFLAG_RW, 0, "USB controller");
+static SYSCTL_NODE(_hw_usb, OID_AUTO, ctrl, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "USB controller");
 SYSCTL_INT(_hw_usb_ctrl, OID_AUTO, debug, CTLFLAG_RWTUN, &usb_ctrl_debug, 0,
     "Debug level");
 #endif
@@ -380,7 +381,6 @@ usb_bus_explore(struct usb_proc_msg *pm)
 	}
 
 	if (udev != NULL && udev->hub != NULL) {
-
 		if (bus->do_probe) {
 			bus->do_probe = 0;
 			bus->driver_added_refcount++;
@@ -655,7 +655,6 @@ usb_bus_cleanup(struct usb_proc_msg *pm)
 	bus = ((struct usb_bus_msg *)pm)->bus;
 
 	while ((pd = LIST_FIRST(&bus->pd_cleanup_list)) != NULL) {
-
 		LIST_REMOVE(pd, pd_next);
 		USB_BUS_UNLOCK(bus);
 

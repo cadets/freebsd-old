@@ -30,8 +30,6 @@ __FBSDID("$FreeBSD$");
 
 static uint64_t zfs_crc64_table[256];
 
-#define	ECKSUM	666
-
 #define	ASSERT3S(x, y, z)	((void)0)
 #define	ASSERT3U(x, y, z)	((void)0)
 #define	ASSERT3P(x, y, z)	((void)0)
@@ -42,9 +40,6 @@ static uint64_t zfs_crc64_table[256];
 	printf(__VA_ARGS__);						\
 	for (;;) ;							\
 } while (0)
-
-#define	kmem_alloc(size, flag)	zfs_alloc((size))
-#define	kmem_free(ptr, size)	zfs_free((ptr), (size))
 
 static void
 zfs_init_crc(void)
@@ -109,6 +104,11 @@ typedef struct zio_checksum_info {
 #include "fletcher.c"
 #include "sha256.c"
 #include "skein_zfs.c"
+
+#ifdef HAS_ZSTD_ZFS
+extern int zfs_zstd_decompress(void *s_start, void *d_start, size_t s_len,
+    size_t d_len, int n);
+#endif
 
 static zio_checksum_info_t zio_checksum_table[ZIO_CHECKSUM_FUNCTIONS] = {
 	{{NULL, NULL}, NULL, NULL, 0, "inherit"},
@@ -184,6 +184,9 @@ static zio_compress_info_t zio_compress_table[ZIO_COMPRESS_FUNCTIONS] = {
 	{NULL,			NULL,			9,	"gzip-9"},
 	{NULL,			zle_decompress,		64,	"zle"},
 	{NULL,			lz4_decompress,		0,	"lz4"},
+#ifdef HAS_ZSTD_ZFS
+	{NULL,			zfs_zstd_decompress, ZIO_ZSTD_LEVEL_DEFAULT, "zstd"}
+#endif
 };
 
 static void
@@ -375,9 +378,6 @@ zap_hash(uint64_t salt, const char *name)
 
 	return (crc);
 }
-
-static void *zfs_alloc(size_t size);
-static void zfs_free(void *ptr, size_t size);
 
 typedef struct raidz_col {
 	uint64_t rc_devidx;		/* child device index for I/O */
@@ -981,7 +981,11 @@ vdev_raidz_matrix_reconstruct(raidz_map_t *rm, int n, int nmissing,
 
 	log = 0;	/* gcc */
 	psize = sizeof (invlog[0][0]) * n * nmissing;
-	p = zfs_alloc(psize);
+	p = malloc(psize);
+	if (p == NULL) {
+		printf("Out of memory\n");
+		return;
+	}
 
 	for (pp = p, i = 0; i < nmissing; i++) {
 		invlog[i] = pp;
@@ -1037,7 +1041,7 @@ vdev_raidz_matrix_reconstruct(raidz_map_t *rm, int n, int nmissing,
 		}
 	}
 
-	zfs_free(p, psize);
+	free(p);
 }
 
 static int
@@ -1098,7 +1102,11 @@ vdev_raidz_reconstruct_general(raidz_map_t *rm, int *tgts, int ntgts)
 
 	psize = (sizeof (rows[0][0]) + sizeof (invrows[0][0])) *
 	    nmissing_rows * n + sizeof (used[0]) * n;
-	p = kmem_alloc(psize, KM_SLEEP);
+	p = malloc(psize);
+	if (p == NULL) {
+		printf("Out of memory\n");
+		return (code);
+	}
 
 	for (pp = p, i = 0; i < nmissing_rows; i++) {
 		rows[i] = pp;
@@ -1141,7 +1149,7 @@ vdev_raidz_reconstruct_general(raidz_map_t *rm, int *tgts, int ntgts)
 	vdev_raidz_matrix_reconstruct(rm, n, nmissing_rows, missing_rows,
 	    invrows, used);
 
-	kmem_free(p, psize);
+	free(p);
 
 	return (code);
 }
@@ -1214,7 +1222,9 @@ vdev_raidz_map_alloc(void *data, off_t offset, size_t size, uint64_t unit_shift,
 
 	ASSERT3U(acols, <=, scols);
 
-	rm = zfs_alloc(offsetof(raidz_map_t, rm_col[scols]));
+	rm = malloc(offsetof(raidz_map_t, rm_col[scols]));
+	if (rm == NULL)
+		return (rm);
 
 	rm->rm_cols = acols;
 	rm->rm_scols = scols;
@@ -1259,8 +1269,16 @@ vdev_raidz_map_alloc(void *data, off_t offset, size_t size, uint64_t unit_shift,
 	ASSERT3U(rm->rm_asize - asize, ==, rm->rm_nskip << unit_shift);
 	ASSERT3U(rm->rm_nskip, <=, nparity);
 
-	for (c = 0; c < rm->rm_firstdatacol; c++)
-		rm->rm_col[c].rc_data = zfs_alloc(rm->rm_col[c].rc_size);
+	for (c = 0; c < rm->rm_firstdatacol; c++) {
+		rm->rm_col[c].rc_data = malloc(rm->rm_col[c].rc_size);
+		if (rm->rm_col[c].rc_data == NULL) {
+			c++;
+			while (c != 0)
+				free(rm->rm_col[--c].rc_data);
+			free(rm);
+			return (NULL);
+		}
+	}
 
 	rm->rm_col[c].rc_data = data;
 
@@ -1312,9 +1330,9 @@ vdev_raidz_map_free(raidz_map_t *rm)
 	int c;
 
 	for (c = rm->rm_firstdatacol - 1; c >= 0; c--)
-		zfs_free(rm->rm_col[c].rc_data, rm->rm_col[c].rc_size);
+		free(rm->rm_col[c].rc_data);
 
-	zfs_free(rm, offsetof(raidz_map_t, rm_col[rm->rm_scols]));
+	free(rm);
 }
 
 static vdev_t *
@@ -1358,8 +1376,12 @@ raidz_parity_verify(raidz_map_t *rm)
 		rc = &rm->rm_col[c];
 		if (!rc->rc_tried || rc->rc_error != 0)
 			continue;
-		orig[c] = zfs_alloc(rc->rc_size);
-		bcopy(rc->rc_data, orig[c], rc->rc_size);
+		orig[c] = malloc(rc->rc_size);
+		if (orig[c] != NULL) {
+			bcopy(rc->rc_data, orig[c], rc->rc_size);
+		} else {
+			printf("Out of memory\n");
+		}
 	}
 
 	vdev_raidz_generate_parity(rm);
@@ -1368,11 +1390,12 @@ raidz_parity_verify(raidz_map_t *rm)
 		rc = &rm->rm_col[c];
 		if (!rc->rc_tried || rc->rc_error != 0)
 			continue;
-		if (bcmp(orig[c], rc->rc_data, rc->rc_size) != 0) {
+		if (orig[c] == NULL ||
+		    bcmp(orig[c], rc->rc_data, rc->rc_size) != 0) {
 			rc->rc_error = ECKSUM;
 			ret++;
 		}
-		zfs_free(orig[c], rc->rc_size);
+		free(orig[c]);
 	}
 
 	return (ret);
@@ -1440,7 +1463,11 @@ vdev_raidz_combrec(const spa_t *spa, raidz_map_t *rm, const blkptr_t *bp,
 			ASSERT(orig[i] != NULL);
 		}
 
-		orig[n - 1] = zfs_alloc(rm->rm_col[0].rc_size);
+		orig[n - 1] = malloc(rm->rm_col[0].rc_size);
+		if (orig[n - 1] == NULL) {
+			ret = ENOMEM;
+			goto done;
+		}
 
 		current = 0;
 		next = tgts[current];
@@ -1523,7 +1550,7 @@ vdev_raidz_combrec(const spa_t *spa, raidz_map_t *rm, const blkptr_t *bp,
 	n--;
 done:
 	for (i = n - 1; i >= 0; i--) {
-		zfs_free(orig[i], rm->rm_col[0].rc_size);
+		free(orig[i]);
 	}
 
 	return (ret);
@@ -1552,6 +1579,8 @@ vdev_raidz_read(vdev_t *vd, const blkptr_t *bp, void *data,
 
 	rm = vdev_raidz_map_alloc(data, offset, bytes, tvd->v_ashift,
 	    vd->v_nchildren, vd->v_nparity);
+	if (rm == NULL)
+		return (ENOMEM);
 
 	/*
 	 * Iterate over the columns in reverse order so that we hit the parity

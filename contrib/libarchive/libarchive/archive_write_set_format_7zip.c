@@ -52,6 +52,7 @@ __FBSDID("$FreeBSD$");
 #include "archive_rb.h"
 #include "archive_string.h"
 #include "archive_write_private.h"
+#include "archive_write_set_format_private.h"
 
 /*
  * Codec ID
@@ -164,7 +165,7 @@ struct file {
 	mode_t			 mode;
 	uint32_t		 crc32;
 
-	int			 dir:1;
+	signed int		 dir:1;
 };
 
 struct _7zip {
@@ -1926,8 +1927,8 @@ compression_init_encoder_lzma(struct archive *a,
 		return (ARCHIVE_FATAL);
 	}
 	lzmafilters = (lzma_filter *)(strm+1);
-	if (level > 6)
-		level = 6;
+	if (level > 9)
+		level = 9;
 	if (lzma_lzma_preset(&lzma_opt, level)) {
 		free(strm);
 		lastrm->real_stream = NULL;

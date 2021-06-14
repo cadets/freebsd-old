@@ -599,7 +599,6 @@ nfs_access(struct vop_access_args *ap)
 	}
 }
 
-
 /*
  * nfs open vnode op
  * Check to see if the type is ok
@@ -963,23 +962,8 @@ nfs_getattr(struct vop_getattr_args *ap)
 	 * First look in the cache.
 	 */
 	if (ncl_getattrcache(vp, &vattr) == 0) {
-		vap->va_type = vattr.va_type;
-		vap->va_mode = vattr.va_mode;
-		vap->va_nlink = vattr.va_nlink;
-		vap->va_uid = vattr.va_uid;
-		vap->va_gid = vattr.va_gid;
-		vap->va_fsid = vattr.va_fsid;
-		vap->va_fileid = vattr.va_fileid;
-		vap->va_size = vattr.va_size;
-		vap->va_blocksize = vattr.va_blocksize;
-		vap->va_atime = vattr.va_atime;
-		vap->va_mtime = vattr.va_mtime;
-		vap->va_ctime = vattr.va_ctime;
-		vap->va_gen = vattr.va_gen;
-		vap->va_flags = vattr.va_flags;
-		vap->va_rdev = vattr.va_rdev;
-		vap->va_bytes = vattr.va_bytes;
-		vap->va_filerev = vattr.va_filerev;
+		ncl_copy_vattr(vap, &vattr);
+
 		/*
 		 * Get the local modify time for the case of a write
 		 * delegation.
@@ -1040,7 +1024,9 @@ nfs_setattr(struct vop_setattr_args *ap)
 	 */
   	if ((vap->va_flags != VNOVAL || vap->va_uid != (uid_t)VNOVAL ||
 	    vap->va_gid != (gid_t)VNOVAL || vap->va_atime.tv_sec != VNOVAL ||
-	    vap->va_mtime.tv_sec != VNOVAL || vap->va_mode != (mode_t)VNOVAL) &&
+	    vap->va_mtime.tv_sec != VNOVAL ||
+	    vap->va_birthtime.tv_sec != VNOVAL ||
+	    vap->va_mode != (mode_t)VNOVAL) &&
 	    (vp->v_mount->mnt_flag & MNT_RDONLY))
 		return (EROFS);
 	if (vap->va_size != VNOVAL) {
@@ -1053,6 +1039,7 @@ nfs_setattr(struct vop_setattr_args *ap)
  		case VFIFO:
 			if (vap->va_mtime.tv_sec == VNOVAL &&
 			    vap->va_atime.tv_sec == VNOVAL &&
+			    vap->va_birthtime.tv_sec == VNOVAL &&
 			    vap->va_mode == (mode_t)VNOVAL &&
 			    vap->va_uid == (uid_t)VNOVAL &&
 			    vap->va_gid == (gid_t)VNOVAL)
@@ -1177,7 +1164,7 @@ nfs_lookup(struct vop_lookup_args *ap)
 	struct nfsvattr dnfsva, nfsva;
 	struct vattr vattr;
 	struct timespec nctime;
-	
+
 	*vpp = NULLVP;
 	if ((flags & ISLASTCN) && (mp->mnt_flag & MNT_RDONLY) &&
 	    (cnp->cn_nameiop == DELETE || cnp->cn_nameiop == RENAME))
@@ -1424,7 +1411,7 @@ nfs_lookup(struct vop_lookup_args *ap)
 	}
 	if (cnp->cn_nameiop != LOOKUP && (flags & ISLASTCN))
 		cnp->cn_flags |= SAVENAME;
-	if ((cnp->cn_flags & MAKEENTRY) &&
+	if ((cnp->cn_flags & MAKEENTRY) && dvp != newvp &&
 	    (cnp->cn_nameiop != DELETE || !(flags & ISLASTCN)) &&
 	    attrflag != 0 && (newvp->v_type != VDIR || dattrflag != 0))
 		cache_enter_time(dvp, newvp, cnp, &nfsva.na_ctime,
@@ -1498,7 +1485,7 @@ ncl_readrpc(struct vnode *vp, struct uio *uiop, struct ucred *cred)
 	struct nfsvattr nfsva;
 	struct nfsmount *nmp;
 
-	nmp = VFSTONFS(vnode_mount(vp));
+	nmp = VFSTONFS(vp->v_mount);
 	error = EIO;
 	attrflag = 0;
 	if (NFSHASPNFS(nmp))
@@ -1529,7 +1516,7 @@ ncl_writerpc(struct vnode *vp, struct uio *uiop, struct ucred *cred,
 	int error, attrflag, ret;
 	struct nfsmount *nmp;
 
-	nmp = VFSTONFS(vnode_mount(vp));
+	nmp = VFSTONFS(vp->v_mount);
 	error = EIO;
 	attrflag = 0;
 	if (NFSHASPNFS(nmp))
@@ -1687,7 +1674,7 @@ nfs_create(struct vop_create_args *ap)
 	if (vap->va_vaflags & VA_EXCLUSIVE)
 		fmode |= O_EXCL;
 	dnp = VTONFS(dvp);
-	nmp = VFSTONFS(vnode_mount(dvp));
+	nmp = VFSTONFS(dvp->v_mount);
 again:
 	/* For NFSv4, wait until any remove is done. */
 	NFSLOCKNODE(dnp);
@@ -1753,9 +1740,14 @@ again:
 		}
 	}
 	if (!error) {
-		if ((cnp->cn_flags & MAKEENTRY) && attrflag)
-			cache_enter_time(dvp, newvp, cnp, &nfsva.na_ctime,
-			    NULL);
+		if ((cnp->cn_flags & MAKEENTRY) && attrflag) {
+			if (dvp != newvp)
+				cache_enter_time(dvp, newvp, cnp,
+				    &nfsva.na_ctime, NULL);
+			else
+				printf("nfs_create: bogus NFS server returned "
+				    "the directory as the new file object\n");
+		}
 		*ap->a_vpp = newvp;
 	} else if (NFS_ISV4(dvp)) {
 		error = nfscl_maperr(cnp->cn_thread, error, vap->va_uid,
@@ -2127,7 +2119,11 @@ nfs_link(struct vop_link_args *ap)
 	 */
 	if (VFSTONFS(vp->v_mount)->nm_negnametimeo != 0 &&
 	    (cnp->cn_flags & MAKEENTRY) && attrflag != 0 && error == 0) {
-		cache_enter_time(tdvp, vp, cnp, &nfsva.na_ctime, NULL);
+		if (tdvp != vp)
+			cache_enter_time(tdvp, vp, cnp, &nfsva.na_ctime, NULL);
+		else
+			printf("nfs_link: bogus NFS server returned "
+			    "the directory as the new link\n");
 	}
 	if (error && NFS_ISV4(vp))
 		error = nfscl_maperr(cnp->cn_thread, error, (uid_t)0,
@@ -2206,7 +2202,12 @@ nfs_symlink(struct vop_symlink_args *ap)
 	 */
 	if (VFSTONFS(dvp->v_mount)->nm_negnametimeo != 0 &&
 	    (cnp->cn_flags & MAKEENTRY) && attrflag != 0 && error == 0) {
-		cache_enter_time(dvp, newvp, cnp, &nfsva.na_ctime, NULL);
+		if (dvp != newvp)
+			cache_enter_time(dvp, newvp, cnp, &nfsva.na_ctime,
+			    NULL);
+		else
+			printf("nfs_symlink: bogus NFS server returned "
+			    "the directory as the new file object\n");
 	}
 	return (error);
 }
@@ -2279,9 +2280,15 @@ nfs_mkdir(struct vop_mkdir_args *ap)
 		 */
 		if (VFSTONFS(dvp->v_mount)->nm_negnametimeo != 0 &&
 		    (cnp->cn_flags & MAKEENTRY) &&
-		    attrflag != 0 && dattrflag != 0)
-			cache_enter_time(dvp, newvp, cnp, &nfsva.na_ctime,
-			    &dnfsva.na_ctime);
+		    attrflag != 0 && dattrflag != 0) {
+			if (dvp != newvp)
+				cache_enter_time(dvp, newvp, cnp,
+				    &nfsva.na_ctime, &dnfsva.na_ctime);
+			else
+				printf("nfs_mkdir: bogus NFS server returned "
+				    "the directory that the directory was "
+				    "created in as the new file object\n");
+		}
 		*ap->a_vpp = newvp;
 	}
 	return (error);
@@ -2341,7 +2348,7 @@ nfs_readdir(struct vop_readdir_args *ap)
 	ssize_t tresid, left;
 	int error = 0;
 	struct vattr vattr;
-	
+
 	if (ap->a_eofflag != NULL)
 		*ap->a_eofflag = 0;
 	if (vp->v_type != VDIR) 
@@ -2350,8 +2357,10 @@ nfs_readdir(struct vop_readdir_args *ap)
 	/*
 	 * First, check for hit on the EOF offset cache
 	 */
+	NFSLOCKNODE(np);
 	if (np->n_direofoffset > 0 && uio->uio_offset >= np->n_direofoffset &&
 	    (np->n_flag & NMODIFIED) == 0) {
+		NFSUNLOCKNODE(np);
 		if (VOP_GETATTR(vp, &vattr, ap->a_cred) == 0) {
 			NFSLOCKNODE(np);
 			if ((NFS_ISV4(vp) && np->n_change == vattr.va_filerev) ||
@@ -2364,7 +2373,8 @@ nfs_readdir(struct vop_readdir_args *ap)
 			} else
 				NFSUNLOCKNODE(np);
 		}
-	}
+	} else
+		NFSUNLOCKNODE(np);
 
 	/*
 	 * NFS always guarantees that directory entries don't straddle
@@ -2388,7 +2398,7 @@ nfs_readdir(struct vop_readdir_args *ap)
 		if (ap->a_eofflag != NULL)
 			*ap->a_eofflag = 1;
 	}
-	
+
 	/* Add the partial DIRBLKSIZ (left) back in. */
 	uio->uio_resid += left;
 	return (error);
@@ -2417,6 +2427,7 @@ ncl_readdirrpc(struct vnode *vp, struct uio *uiop, struct ucred *cred,
 	 * If there is no cookie, assume directory was stale.
 	 */
 	ncl_dircookie_lock(dnp);
+	NFSUNLOCKNODE(dnp);
 	cookiep = ncl_getcookie(dnp, uiop->uio_offset, 0);
 	if (cookiep) {
 		cookie = *cookiep;
@@ -2439,12 +2450,15 @@ ncl_readdirrpc(struct vnode *vp, struct uio *uiop, struct ucred *cred,
 		 * We are now either at the end of the directory or have filled
 		 * the block.
 		 */
-		if (eof)
+		if (eof) {
+			NFSLOCKNODE(dnp);
 			dnp->n_direofoffset = uiop->uio_offset;
-		else {
+			NFSUNLOCKNODE(dnp);
+		} else {
 			if (uiop->uio_resid > 0)
 				printf("EEK! readdirrpc resid > 0\n");
 			ncl_dircookie_lock(dnp);
+			NFSUNLOCKNODE(dnp);
 			cookiep = ncl_getcookie(dnp, uiop->uio_offset, 1);
 			*cookiep = cookie;
 			ncl_dircookie_unlock(dnp);
@@ -2477,6 +2491,7 @@ ncl_readdirplusrpc(struct vnode *vp, struct uio *uiop, struct ucred *cred,
 	 * If there is no cookie, assume directory was stale.
 	 */
 	ncl_dircookie_lock(dnp);
+	NFSUNLOCKNODE(dnp);
 	cookiep = ncl_getcookie(dnp, uiop->uio_offset, 0);
 	if (cookiep) {
 		cookie = *cookiep;
@@ -2498,12 +2513,15 @@ ncl_readdirplusrpc(struct vnode *vp, struct uio *uiop, struct ucred *cred,
 		 * We are now either at end of the directory or have filled the
 		 * the block.
 		 */
-		if (eof)
+		if (eof) {
+			NFSLOCKNODE(dnp);
 			dnp->n_direofoffset = uiop->uio_offset;
-		else {
+			NFSUNLOCKNODE(dnp);
+		} else {
 			if (uiop->uio_resid > 0)
 				printf("EEK! readdirplusrpc resid > 0\n");
 			ncl_dircookie_lock(dnp);
+			NFSUNLOCKNODE(dnp);
 			cookiep = ncl_getcookie(dnp, uiop->uio_offset, 1);
 			*cookiep = cookie;
 			ncl_dircookie_unlock(dnp);
@@ -3148,7 +3166,7 @@ nfs_advlock(struct vop_advlock_args *ap)
 	struct vattr va;
 	int ret, error;
 	u_quad_t size;
-	
+
 	error = NFSVOPLOCK(vp, LK_SHARED);
 	if (error != 0)
 		return (EBADF);
@@ -3277,7 +3295,7 @@ nfs_advlockasync(struct vop_advlockasync_args *ap)
 	struct vnode *vp = ap->a_vp;
 	u_quad_t size;
 	int error;
-	
+
 	if (NFS_ISV4(vp))
 		return (EOPNOTSUPP);
 	error = NFSVOPLOCK(vp, LK_SHARED);
@@ -3393,8 +3411,8 @@ nfsspec_access(struct vop_access_args *ap)
 	error = VOP_GETATTR(vp, vap, cred);
 	if (error)
 		goto out;
-	error  = vaccess(vp->v_type, vap->va_mode, vap->va_uid, vap->va_gid,
-	    accmode, cred, NULL);
+	error = vaccess(vp->v_type, vap->va_mode, vap->va_uid, vap->va_gid,
+	    accmode, cred);
 out:
 	return error;
 }
@@ -3639,7 +3657,7 @@ nfs_copy_file_range(struct vop_copy_file_range_args *ap)
 	struct vattr *vap;
 	struct uio io;
 	struct nfsmount *nmp;
-	size_t len, len2, copiedlen;
+	size_t len, len2;
 	int error, inattrflag, outattrflag, ret, ret2;
 	off_t inoff, outoff;
 	bool consecutive, must_commit, tryoutcred;
@@ -3732,7 +3750,11 @@ nfs_copy_file_range(struct vop_copy_file_range_args *ap)
 		} else
 			error = 0;
 	}
-	copiedlen = 0;
+
+	/*
+	 * len will be set to 0 upon a successful Copy RPC.
+	 * As such, this only loops when the Copy RPC needs to be retried.
+	 */
 	while (len > 0 && error == 0) {
 		inattrflag = outattrflag = 0;
 		len2 = len;
@@ -3762,18 +3784,9 @@ nfs_copy_file_range(struct vop_copy_file_range_args *ap)
 				} else
 					error = NFSERR_OFFLOADNOREQS;
 			}
-			/*
-			 * If the Copy returns a length == 0, it hit the
-			 * EOF on the input file.
-			 */
-			if (len2 == 0) {
-				*ap->a_lenp = copiedlen;
-				len = 0;
-			} else {
-				len -= len2;
-				copiedlen += len2;
-			}
-			if (len == 0 && must_commit && error == 0)
+			*ap->a_lenp = len2;
+			len = 0;
+			if (len2 > 0 && must_commit && error == 0)
 				error = ncl_commit(outvp, outoff, *ap->a_lenp,
 				    ap->a_outcred, curthread);
 			if (error == 0 && ret != 0)
@@ -3784,6 +3797,9 @@ nfs_copy_file_range(struct vop_copy_file_range_args *ap)
 			/*
 			 * Try consecutive == false, which is ok only if all
 			 * bytes are copied.
+			 * If only some bytes were copied when consecutive
+			 * is false, there is no way to know which bytes
+			 * still need to be written.
 			 */
 			consecutive = false;
 			error = 0;
@@ -3982,7 +3998,7 @@ nfs_setextattr(struct vop_setextattr_args *ap)
 	}
 	mtx_unlock(&nmp->nm_mtx);
 
-	if (ap->a_uio->uio_resid <= 0)
+	if (ap->a_uio->uio_resid < 0)
 		return (EINVAL);
 	cred = ap->a_cred;
 	if (cred == NULL)
@@ -4292,4 +4308,3 @@ nfs_pathconf(struct vop_pathconf_args *ap)
 	}
 	return (error);
 }
-

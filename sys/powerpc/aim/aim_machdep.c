@@ -61,6 +61,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_kstack_pages.h"
 #include "opt_platform.h"
 
+#include <sys/endian.h>
 #include <sys/param.h>
 #include <sys/proc.h>
 #include <sys/systm.h>
@@ -136,6 +137,8 @@ __FBSDID("$FreeBSD$");
 struct bat	battable[16];
 #endif
 
+int radix_mmu = 0;
+
 #ifndef __powerpc64__
 /* Bits for running on 64-bit systems in 32-bit mode. */
 extern void	*testppc64, *testppc64size;
@@ -161,6 +164,7 @@ extern void	*dsmisstrap, *dsmisssize;
 
 extern void *ap_pcpu;
 extern void __restartkernel(vm_offset_t, vm_offset_t, vm_offset_t, void *, uint32_t, register_t offset, register_t msr);
+extern void __restartkernel_virtual(vm_offset_t, vm_offset_t, vm_offset_t, void *, uint32_t, register_t offset, register_t msr);
 
 void aim_early_init(vm_offset_t fdt, vm_offset_t toc, vm_offset_t ofentry,
     void *mdp, uint32_t mdp_cookie);
@@ -184,13 +188,22 @@ aim_early_init(vm_offset_t fdt, vm_offset_t toc, vm_offset_t ofentry, void *mdp,
 
 #ifdef __powerpc64__
 	/*
-	 * If in real mode, relocate to high memory so that the kernel
+	 * Relocate to high memory so that the kernel
 	 * can execute from the direct map.
+	 *
+	 * If we are in virtual mode already, use a special entry point
+	 * that sets up a temporary DMAP to execute from until we can
+	 * properly set up the MMU.
 	 */
-	if (!(mfmsr() & PSL_DR) &&
-	    (vm_offset_t)&aim_early_init < DMAP_BASE_ADDRESS)
-		__restartkernel(fdt, 0, ofentry, mdp, mdp_cookie,
-		    DMAP_BASE_ADDRESS, mfmsr());
+	if ((vm_offset_t)&aim_early_init < DMAP_BASE_ADDRESS) {
+		if (mfmsr() & PSL_DR) {
+			__restartkernel_virtual(fdt, 0, ofentry, mdp,
+			    mdp_cookie, DMAP_BASE_ADDRESS, mfmsr());
+		} else {
+			__restartkernel(fdt, 0, ofentry, mdp, mdp_cookie,
+			    DMAP_BASE_ADDRESS, mfmsr());
+		}
+	}
 #endif
 
 	/* Various very early CPU fix ups */
@@ -245,14 +258,36 @@ aim_cpu_init(vm_offset_t toc)
 	psl_kernset |= PSL_SF;
 	if (mfmsr() & PSL_HV)
 		psl_kernset |= PSL_HV;
+
+#if BYTE_ORDER == LITTLE_ENDIAN
+	psl_kernset |= PSL_LE;
+#endif
+
 #endif
 	psl_userset = psl_kernset | PSL_PR;
 #ifdef __powerpc64__
 	psl_userset32 = psl_userset & ~PSL_SF;
 #endif
 
-	/* Bits that users aren't allowed to change */
-	psl_userstatic = ~(PSL_VEC | PSL_FP | PSL_FE0 | PSL_FE1);
+	/*
+	 * Zeroed bits in this variable signify that the value of the bit
+	 * in its position is allowed to vary between userspace contexts.
+	 *
+	 * All other bits are required to be identical for every userspace
+	 * context. The actual *value* of the bit is determined by
+	 * psl_userset and/or psl_userset32, and is not allowed to change.
+	 *
+	 * Remember to update this set when implementing support for
+	 * *conditionally* enabling a processor facility. Failing to do
+	 * this will cause swapcontext() in userspace to break when a
+	 * process uses a conditionally-enabled facility.
+	 *
+	 * When *unconditionally* implementing support for a processor
+	 * facility, update psl_userset / psl_userset32 instead.
+	 *
+	 * See the access control check in set_mcontext().
+	 */
+	psl_userstatic = ~(PSL_VSX | PSL_VEC | PSL_FP | PSL_FE0 | PSL_FE1);
 	/*
 	 * Mask bits from the SRR1 that aren't really the MSR:
 	 * Bits 1-4, 10-15 (ppc32), 33-36, 42-47 (ppc64)
@@ -361,6 +396,24 @@ aim_cpu_init(vm_offset_t toc)
 		bcopy(&restorebridge, (void *)EXC_MCHK, trap_offset);
 		bcopy(&restorebridge, (void *)EXC_TRC, trap_offset);
 		bcopy(&restorebridge, (void *)EXC_BPT, trap_offset);
+	} else {
+		/*
+		 * Use an IBAT and a DBAT to map the bottom 256M segment.
+		 *
+		 * It is very important to do it *now* to avoid taking a
+		 * fault in .text / .data before the MMU is bootstrapped,
+		 * because until then, the translation data has not been
+		 * copied over from OpenFirmware, so our DSI/ISI will fail
+		 * to find a match.
+		 */
+
+		battable[0x0].batl = BATL(0x00000000, BAT_M, BAT_PP_RW);
+		battable[0x0].batu = BATU(0x00000000, BAT_BL_256M, BAT_Vs);
+
+		__asm (".balign 32; \n"
+		    "mtibatu 0,%0; mtibatl 0,%1; isync; \n"
+		    "mtdbatu 0,%0; mtdbatl 0,%1; isync"
+		    :: "r"(battable[0].batu), "r"(battable[0].batl));
 	}
 	#else
 	trapsize = (size_t)&hypertrapcodeend - (size_t)&hypertrapcode;
@@ -424,7 +477,14 @@ aim_cpu_init(vm_offset_t toc)
 	 * in case the platform module had a better idea of what we
 	 * should do.
 	 */
-	if (cpu_features & PPC_FEATURE_64)
+	if (cpu_features2 & PPC_FEATURE2_ARCH_3_00) {
+		radix_mmu = 0;
+		TUNABLE_INT_FETCH("radix_mmu", &radix_mmu);
+		if (radix_mmu)
+			pmap_mmu_install(MMU_TYPE_RADIX, BUS_PROBE_GENERIC);
+		else
+			pmap_mmu_install(MMU_TYPE_G5, BUS_PROBE_GENERIC);
+	} else if (cpu_features & PPC_FEATURE_64)
 		pmap_mmu_install(MMU_TYPE_G5, BUS_PROBE_GENERIC);
 	else
 		pmap_mmu_install(MMU_TYPE_OEA, BUS_PROBE_GENERIC);
@@ -488,6 +548,36 @@ memcpy(pcpu->pc_aim.slb, PCPU_GET(aim.slb), sizeof(pcpu->pc_aim.slb));
 #endif
 }
 
+/* Return 0 on handled success, otherwise signal number. */
+int
+cpu_machine_check(struct thread *td, struct trapframe *frame, int *ucode)
+{
+#ifdef __powerpc64__
+	/*
+	 * This block is 64-bit CPU specific currently.  Punt running in 32-bit
+	 * mode on 64-bit CPUs.
+	 */
+	/* Check if the important information is in DSISR */
+	if ((frame->srr1 & SRR1_MCHK_DATA) != 0) {
+		printf("Machine check, DSISR: %016lx\n", frame->cpu.aim.dsisr);
+		/* SLB multi-hit is recoverable. */
+		if ((frame->cpu.aim.dsisr & DSISR_MC_SLB_MULTIHIT) != 0)
+			return (0);
+		if ((frame->cpu.aim.dsisr &
+		    (DSISR_MC_DERAT_MULTIHIT | DSISR_MC_TLB_MULTIHIT)) != 0) {
+			pmap_tlbie_all();
+			return (0);
+		}
+		/* TODO: Add other machine check recovery procedures. */
+	} else {
+		if ((frame->srr1 & SRR1_MCHK_IFETCH_M) == SRR1_MCHK_IFETCH_SLBMH)
+			return (0);
+	}
+#endif
+	*ucode = BUS_OBJERR;
+	return (SIGBUS);
+}
+
 #ifndef __powerpc64__
 uint64_t
 va_to_vsid(pmap_t pm, vm_offset_t va)
@@ -546,7 +636,8 @@ flush_disable_caches(void)
 	mtspr(SPR_MSSCR0, msscr0);
 	powerpc_sync();
 	isync();
-	__asm__ __volatile__("dssall; sync");
+	/* 7e00066c: dssall */
+	__asm__ __volatile__(".long 0x7e00066c; sync");
 	powerpc_sync();
 	isync();
 	__asm__ __volatile__("dcbf 0,%0" :: "r"(0));
@@ -630,8 +721,9 @@ flush_disable_caches(void)
 	mtmsr(msr);
 }
 
+#ifndef __powerpc64__
 void
-cpu_sleep()
+mpc745x_sleep()
 {
 	static u_quad_t timebase = 0;
 	static register_t sprgs[4];
@@ -676,7 +768,8 @@ cpu_sleep()
 		while (1)
 			mtmsr(msr);
 	}
-	platform_smp_timebase_sync(timebase, 0);
+	/* XXX: The mttb() means this *only* works on single-CPU systems. */
+	mttb(timebase);
 	PCPU_SET(curthread, curthread);
 	PCPU_SET(curpcb, curthread->td_pcb);
 	pmap_activate(curthread);
@@ -694,4 +787,4 @@ cpu_sleep()
 		enable_vec(curthread);
 	powerpc_sync();
 }
-
+#endif

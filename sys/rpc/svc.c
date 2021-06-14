@@ -128,15 +128,15 @@ svcpool_create(const char *name, struct sysctl_oid_list *sysctl_base)
 	sysctl_ctx_init(&pool->sp_sysctl);
 	if (sysctl_base) {
 		SYSCTL_ADD_PROC(&pool->sp_sysctl, sysctl_base, OID_AUTO,
-		    "minthreads", CTLTYPE_INT | CTLFLAG_RW,
+		    "minthreads", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
 		    pool, 0, svcpool_minthread_sysctl, "I",
 		    "Minimal number of threads");
 		SYSCTL_ADD_PROC(&pool->sp_sysctl, sysctl_base, OID_AUTO,
-		    "maxthreads", CTLTYPE_INT | CTLFLAG_RW,
+		    "maxthreads", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
 		    pool, 0, svcpool_maxthread_sysctl, "I",
 		    "Maximal number of threads");
 		SYSCTL_ADD_PROC(&pool->sp_sysctl, sysctl_base, OID_AUTO,
-		    "threads", CTLTYPE_INT | CTLFLAG_RD,
+		    "threads", CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE,
 		    pool, 0, svcpool_threads_sysctl, "I",
 		    "Current number of threads");
 		SYSCTL_ADD_INT(&pool->sp_sysctl, sysctl_base, OID_AUTO,
@@ -203,6 +203,8 @@ svcpool_cleanup(SVCPOOL *pool)
 		mtx_unlock(&grp->sg_lock);
 	}
 	TAILQ_FOREACH_SAFE(xprt, &cleanup, xp_link, nxprt) {
+		if (xprt->xp_socket != NULL)
+			soshutdown(xprt->xp_socket, SHUT_WR);
 		SVC_RELEASE(xprt);
 	}
 
@@ -388,6 +390,8 @@ xprt_unregister(SVCXPRT *xprt)
 	xprt_unregister_locked(xprt);
 	mtx_unlock(&grp->sg_lock);
 
+	if (xprt->xp_socket != NULL)
+		soshutdown(xprt->xp_socket, SHUT_WR);
 	SVC_RELEASE(xprt);
 }
 
@@ -902,6 +906,8 @@ svc_xprt_free(SVCXPRT *xprt)
 {
 
 	mem_free(xprt->xp_p3, sizeof(SVCXPRT_EXT));
+	/* The size argument is ignored, so 0 is ok. */
+	mem_free(xprt->xp_gidp, 0);
 	mem_free(xprt, sizeof(SVCXPRT));
 }
 
@@ -1076,6 +1082,7 @@ svc_checkidle(SVCGROUP *grp)
 
 	mtx_unlock(&grp->sg_lock);
 	TAILQ_FOREACH_SAFE(xprt, &cleanup, xp_link, nxprt) {
+		soshutdown(xprt->xp_socket, SHUT_WR);
 		SVC_RELEASE(xprt);
 	}
 	mtx_lock(&grp->sg_lock);

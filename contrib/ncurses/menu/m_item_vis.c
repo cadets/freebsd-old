@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2004,2010 Free Software Foundation, Inc.              *
+ * Copyright 2020 Thomas E. Dickey                                          *
+ * Copyright 1998-2004,2010 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -37,7 +38,7 @@
 
 #include "menu.priv.h"
 
-MODULE_ID("$Id: m_item_vis.c,v 1.16 2010/01/23 21:20:10 tom Exp $")
+MODULE_ID("$Id: m_item_vis.c,v 1.19 2020/12/12 00:38:08 tom Exp $")
 
 /*---------------------------------------------------------------------------
 |   Facility      :  libnmenu  
@@ -49,8 +50,8 @@ MODULE_ID("$Id: m_item_vis.c,v 1.16 2010/01/23 21:20:10 tom Exp $")
 |   Return Values :  TRUE  if visible
 |                    FALSE if invisible
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(bool)
-item_visible(const ITEM * item)
+MENU_EXPORT(bool)
+item_visible(const ITEM *item)
 {
   MENU *menu;
 

@@ -501,7 +501,7 @@ _mapping_get_free_ir_mt_idx(struct mpr_softc *sc)
 		    "free entry in the mapping table for a Volume. The mapping "
 		    "table is probably corrupt.\n", __func__);
 	}
-	
+
 	return high_idx;
 }
 
@@ -561,7 +561,6 @@ _mapping_get_dpm_idx_from_id(struct mpr_softc *sc, u64 id, u32 phy_bits)
 
 	return MPR_DPM_BAD_IDX;
 }
-
 
 /**
  * _mapping_get_free_dpm_idx - get first available DPM index
@@ -778,7 +777,7 @@ _mapping_add_to_removal_table(struct mpr_softc *sc, u16 dpm_idx)
 	for (i = 0; i < sc->max_devices; i++, remove_entry++) {
 		if (remove_entry->dpm_entry_num != MPR_DPM_BAD_IDX)
 			continue;
- 
+
 		mpr_dprint(sc, MPR_MAPPING, "%s: Adding DPM entry %d to table "
 		    "for removal.\n", __func__, dpm_idx);
 		remove_entry->dpm_entry_num = dpm_idx;
@@ -1214,9 +1213,10 @@ _mapping_get_dev_info(struct mpr_softc *sc,
 				phy_change->is_processed = 1;
 				mpr_dprint(sc, MPR_ERROR | MPR_MAPPING, "%s: "
 				    "failed to add the device with handle "
-				    "0x%04x because the enclosure is not in "
-				    "the mapping table\n", __func__,
-				    phy_change->dev_handle);
+				    "0x%04x because enclosure handle 0x%04x "
+				    "is not in the mapping table\n", __func__,
+				    phy_change->dev_handle,
+				    topo_change->enc_handle);
 				continue;
 			}
 			if (!((phy_change->device_info &
@@ -1369,9 +1369,10 @@ _mapping_get_pcie_dev_info(struct mpr_softc *sc,
 				port_change->is_processed = 1;
 				mpr_dprint(sc, MPR_ERROR | MPR_MAPPING, "%s: "
 				    "failed to add the device with handle "
-				    "0x%04x because the enclosure is not in "
-				    "the mapping table\n", __func__,
-				    port_change->dev_handle);
+				    "0x%04x because enclosure handle 0x%04x "
+				    "is not in the mapping table\n", __func__,
+				    port_change->dev_handle,
+				    topo_change->enc_handle);
 				continue;
 			}
 			if (!(port_change->device_info &
@@ -1610,9 +1611,10 @@ _mapping_add_new_device(struct mpr_softc *sc,
 				phy_change->is_processed = 1;
 				mpr_dprint(sc, MPR_ERROR | MPR_MAPPING, "%s: "
 				    "failed to add the device with handle "
-				    "0x%04x because the enclosure is not in "
-				    "the mapping table\n", __func__,
-				    phy_change->dev_handle);
+				    "0x%04x because enclosure handle 0x%04x "
+				    "is not in the mapping table\n", __func__,
+				    phy_change->dev_handle,
+				    topo_change->enc_handle);
 				continue;
 			}
 
@@ -1705,7 +1707,6 @@ _mapping_add_new_device(struct mpr_softc *sc,
 		} else if ((ioc_pg8_flags &
 		    MPI2_IOCPAGE8_FLAGS_MASK_MAPPING_MODE) ==
 		    MPI2_IOCPAGE8_FLAGS_DEVICE_PERSISTENCE_MAPPING) {
-
 			/*
 			 * Get the mapping table index for this device. If it's
 			 * not in the mapping table yet, find a free entry if
@@ -1867,9 +1868,10 @@ _mapping_add_new_pcie_device(struct mpr_softc *sc,
 				port_change->is_processed = 1;
 				mpr_dprint(sc, MPR_ERROR | MPR_MAPPING, "%s: "
 				    "failed to add the device with handle "
-				    "0x%04x because the enclosure is not in "
-				    "the mapping table\n", __func__,
-				    port_change->dev_handle);
+				    "0x%04x because enclosure handle 0x%04x "
+				    "is not in the mapping table\n", __func__,
+				    port_change->dev_handle,
+				    topo_change->enc_handle);
 				continue;
 			}
 
@@ -1962,7 +1964,6 @@ _mapping_add_new_pcie_device(struct mpr_softc *sc,
 		} else if ((ioc_pg8_flags &
 		    MPI2_IOCPAGE8_FLAGS_MASK_MAPPING_MODE) ==
 		    MPI2_IOCPAGE8_FLAGS_DEVICE_PERSISTENCE_MAPPING) {
-
 			/*
 			 * Get the mapping table index for this device. If it's
 			 * not in the mapping table yet, find a free entry if
@@ -2208,7 +2209,7 @@ mpr_mapping_free_memory(struct mpr_softc *sc)
 	free(sc->dpm_pg0, M_MPR);
 }
 
-static bool
+static void
 _mapping_process_dpm_pg0(struct mpr_softc *sc)
 {
 	u8 missing_cnt, enc_idx;
@@ -2276,7 +2277,6 @@ _mapping_process_dpm_pg0(struct mpr_softc *sc)
 		}
 		if ((ioc_pg8_flags & MPI2_IOCPAGE8_FLAGS_MASK_MAPPING_MODE) ==
 		    MPI2_IOCPAGE8_FLAGS_ENCLOSURE_SLOT_MAPPING) {
-
 			/*
 			 * The dev_idx for an enclosure is the start index. If
 			 * the start index is within the controller's default
@@ -2335,8 +2335,8 @@ _mapping_process_dpm_pg0(struct mpr_softc *sc)
 				    MPR_DPM_BAD_IDX) {
 					mpr_dprint(sc, MPR_ERROR | MPR_MAPPING,
 					    "%s: Conflict in mapping table for "
-					    " enclosure %d\n", __func__,
-					    enc_idx);
+					    "enclosure %d device %d\n",
+					    __func__, enc_idx, map_idx);
 					goto fail;
 				}
 				physical_id =
@@ -2352,7 +2352,6 @@ _mapping_process_dpm_pg0(struct mpr_softc *sc)
 		} else if ((ioc_pg8_flags &
 		    MPI2_IOCPAGE8_FLAGS_MASK_MAPPING_MODE) ==
 		    MPI2_IOCPAGE8_FLAGS_DEVICE_PERSISTENCE_MAPPING) {
-
 			/*
 			 * Device mapping, so simply copy the DPM entries to the
 			 * mapping table, but check for a corrupt mapping table
@@ -2376,20 +2375,26 @@ _mapping_process_dpm_pg0(struct mpr_softc *sc)
 			mt_entry->device_info = MPR_DEV_RESERVED;
 		}
 	} /*close the loop for DPM table */
-	return (true);
+	return;
 
 fail:
+	mpr_dprint(sc, MPR_ERROR | MPR_MAPPING, "%s: "
+	    "Wiping DPM to start from scratch\n", __func__);
+	dpm_entry = (Mpi2DriverMap0Entry_t *) ((uint8_t *) sc->dpm_pg0 +
+	    sizeof(MPI2_CONFIG_EXTENDED_PAGE_HEADER));
+	bzero(dpm_entry, sizeof(Mpi2DriverMap0Entry_t) * sc->max_dpm_entries);
 	for (entry_num = 0; entry_num < sc->max_dpm_entries; entry_num++) {
+		sc->dpm_flush_entry[entry_num] = 1;
 		sc->dpm_entry_used[entry_num] = 0;
 		/*
 		 * for IR firmware, it may be necessary to wipe out
 		 * sc->mapping_table volumes tooi
 		 */
 	}
+	_mapping_flush_dpm_pages(sc);
 	for (enc_idx = 0; enc_idx < sc->num_enc_table_entries; enc_idx++)
 		_mapping_clear_enc_entry(sc->enclosure_table + enc_idx);
 	sc->num_enc_table_entries = 0;
-	return (false);
 }
 
 /*
@@ -2572,21 +2577,21 @@ mpr_mapping_initialize(struct mpr_softc *sc)
 	sc->pending_map_events = 0;
 	sc->num_enc_table_entries = 0;
 	sc->num_rsvd_entries = 0;
-	sc->max_dpm_entries = sc->ioc_pg8.MaxPersistentEntries;
+	sc->max_dpm_entries = le16toh(sc->ioc_pg8.MaxPersistentEntries);
 	sc->is_dpm_enable = (sc->max_dpm_entries) ? 1 : 0;
 	sc->track_mapping_events = 0;
 
 	mpr_dprint(sc, MPR_MAPPING, "%s: Mapping table has a max of %d entries "
 	    "and DPM has a max of %d entries.\n", __func__, sc->max_devices,
 	    sc->max_dpm_entries);
-	
+
 	if (ioc_pg8_flags & MPI2_IOCPAGE8_FLAGS_DISABLE_PERSISTENT_MAPPING)
 		sc->is_dpm_enable = 0;
 
 	if (ioc_pg8_flags & MPI2_IOCPAGE8_FLAGS_RESERVED_TARGETID_0)
 		sc->num_rsvd_entries = 1;
 
-	volume_mapping_flags = sc->ioc_pg8.IRVolumeMappingFlags &
+	volume_mapping_flags = le16toh(sc->ioc_pg8.IRVolumeMappingFlags) &
 	    MPI2_IOCPAGE8_IRFLAGS_MASK_VOLUME_MAPPING_MODE;
 	if (sc->ir_firmware && (volume_mapping_flags ==
 	    MPI2_IOCPAGE8_IRFLAGS_LOW_VOLUME_MAPPING))
@@ -2629,10 +2634,8 @@ retry_read_dpm:
 		}
 	}
 
-	if (sc->is_dpm_enable) {
-		if (!_mapping_process_dpm_pg0(sc))
-			sc->is_dpm_enable = 0;
-	}
+	if (sc->is_dpm_enable)
+		_mapping_process_dpm_pg0(sc);
 	if (! sc->is_dpm_enable) {
 		mpr_dprint(sc, MPR_MAPPING, "%s: DPM processing is disabled. "
 		    "Device mappings will not persist across reboots or "
@@ -2828,14 +2831,24 @@ mpr_mapping_enclosure_dev_status_change_event(struct mpr_softc *sc,
 			 * and the enclosure has enough space in the Mapping
 			 * Table to map its devices.
 			 */
-			enc_idx = sc->num_enc_table_entries;
-			if (enc_idx >= sc->max_enclosures) {
+			if (sc->num_enc_table_entries < sc->max_enclosures) {
+				enc_idx = sc->num_enc_table_entries;
+				sc->num_enc_table_entries++;
+			} else {
+				enc_idx = _mapping_get_high_missing_et_idx(sc);
+				if (enc_idx != MPR_ENCTABLE_BAD_IDX) {
+					et_entry = &sc->enclosure_table[enc_idx];
+					_mapping_add_to_removal_table(sc,
+					    et_entry->dpm_entry_num);
+					_mapping_clear_enc_entry(et_entry);
+				}
+			}
+			if (enc_idx == MPR_ENCTABLE_BAD_IDX) {
 				mpr_dprint(sc, MPR_ERROR | MPR_MAPPING, "%s: "
 				    "Enclosure cannot be added to mapping "
 				    "table because it's full.\n", __func__);
 				goto out;
 			}
-			sc->num_enc_table_entries++;
 			et_entry = &sc->enclosure_table[enc_idx];
 			et_entry->enc_handle = le16toh(event_data->
 			    EnclosureHandle);
@@ -2862,8 +2875,9 @@ mpr_mapping_enclosure_dev_status_change_event(struct mpr_softc *sc,
 		    le16toh(event_data->EnclosureHandle));
 		if (enc_idx == MPR_ENCTABLE_BAD_IDX) {
 			mpr_dprint(sc, MPR_ERROR | MPR_MAPPING, "%s: Cannot "
-			    "unmap enclosure %d because it has already been "
-			    "deleted.\n", __func__, enc_idx);
+			    "unmap enclosure with handle 0x%04x because it "
+			    "has already been deleted.\n", __func__,
+			    le16toh(event_data->EnclosureHandle));
 			goto out;
 		}
 		et_entry = &sc->enclosure_table[enc_idx];

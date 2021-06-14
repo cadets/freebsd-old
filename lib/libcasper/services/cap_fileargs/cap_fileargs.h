@@ -31,6 +31,7 @@
 #ifndef _FILEARGS_H_
 #define	_FILEARGS_H_
 
+#include <sys/cdefs.h>
 #include <sys/dnv.h>
 #include <sys/nv.h>
 
@@ -38,11 +39,14 @@
 
 #define	FA_OPEN		1
 #define	FA_LSTAT	2
+#define	FA_REALPATH	4
 
 #ifdef WITH_CASPER
 struct fileargs;
 typedef struct fileargs fileargs_t;
 struct stat;
+
+__BEGIN_DECLS
 
 fileargs_t *fileargs_init(int argc, char *argv[], int flags, mode_t mode,
     cap_rights_t *rightsp, int operations);
@@ -52,11 +56,16 @@ fileargs_t *fileargs_initnv(nvlist_t *limits);
 fileargs_t *fileargs_cinitnv(cap_channel_t *cas, nvlist_t *limits);
 int fileargs_lstat(fileargs_t *fa, const char *name, struct stat *sb);
 int fileargs_open(fileargs_t *fa, const char *name);
+char *fileargs_realpath(fileargs_t *fa, const char *pathname,
+    char *reserved_path);
 void fileargs_free(fileargs_t *fa);
 FILE *fileargs_fopen(fileargs_t *fa, const char *name, const char *mode);
 
 fileargs_t *fileargs_wrap(cap_channel_t *chan, int fdflags);
 cap_channel_t *fileargs_unwrap(fileargs_t *fa, int *fdflags);
+
+__END_DECLS
+
 #else
 typedef struct fileargs {
 	int	fa_flags;
@@ -111,6 +120,9 @@ fileargs_cinitnv(cap_channel_t *cas __unused, nvlist_t *limits)
 	lstat(name, sb)
 #define	fileargs_open(fa, name)							\
 	open(name, fa->fa_flags, fa->fa_mode)
+#define	fileargs_realpath(fa, pathname, reserved_path)				\
+	realpath(pathname, reserved_path)
+
 static inline
 FILE *fileargs_fopen(fileargs_t *fa, const char *name, const char *mode)
 {

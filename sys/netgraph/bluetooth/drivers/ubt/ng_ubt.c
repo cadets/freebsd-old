@@ -423,7 +423,10 @@ static const STRUCT_USB_HOST_ID ubt_ignore_devs[] =
 	{ USB_VPI(0x0489, 0xe03c, 0), USB_DEV_BCD_LTEQ(1) },
 	{ USB_VPI(0x0489, 0xe036, 0), USB_DEV_BCD_LTEQ(1) },
 
-	/* Intel Wireless 8260 and successors are handled in ng_ubt_intel.c */
+	/* Intel Wireless controllers are handled in ng_ubt_intel.c */
+	{ USB_VPI(USB_VENDOR_INTEL2, 0x07dc, 0) },
+	{ USB_VPI(USB_VENDOR_INTEL2, 0x0a2a, 0) },
+	{ USB_VPI(USB_VENDOR_INTEL2, 0x0aa7, 0) },
 	{ USB_VPI(USB_VENDOR_INTEL2, 0x0a2b, 0) },
 	{ USB_VPI(USB_VENDOR_INTEL2, 0x0aaa, 0) },
 	{ USB_VPI(USB_VENDOR_INTEL2, 0x0025, 0) },
@@ -508,6 +511,7 @@ static const STRUCT_USB_HOST_ID ubt_devs[] =
 	{ USB_VPI(USB_VENDOR_LITEON, 0x2003, 0) },
 	{ USB_VPI(USB_VENDOR_FOXCONN, 0xe042, 0) },
 	{ USB_VPI(USB_VENDOR_DELL, 0x8197, 0) },
+	{ USB_VPI(USB_VENDOR_BELKIN, 0x065a, 0) },
 };
 
 /*
@@ -559,7 +563,6 @@ ubt_do_hci_request(struct usb_device *udev, struct ubt_hci_cmd *cmd,
 	error = usbd_transfer_setup(udev, &iface_index, xfer,
 	    &ubt_probe_config, 1, evt, &mtx);
 	if (error == USB_ERR_NORMAL_COMPLETION) {
-
 		mtx_lock(&mtx);
 		usbd_transfer_start(*xfer);
 
@@ -623,7 +626,7 @@ ubt_attach(device_t dev)
 	struct usb_endpoint_descriptor	*ed;
 	struct usb_interface_descriptor *id;
 	struct usb_interface		*iface;
-	uint16_t			wMaxPacketSize;
+	uint32_t			wMaxPacketSize;
 	uint8_t				alt_index, i, j;
 	uint8_t				iface_index[2] = { 0, 1 };
 
@@ -702,7 +705,6 @@ ubt_attach(device_t dev)
 	while ((ed = (struct usb_endpoint_descriptor *)usb_desc_foreach(
 	    usbd_get_config_descriptor(uaa->device), 
 	    (struct usb_descriptor *)ed))) {
-
 		if ((ed->bDescriptorType == UDESC_INTERFACE) &&
 		    (ed->bLength >= sizeof(*id))) {
 			id = (struct usb_interface_descriptor *)ed;
@@ -713,9 +715,10 @@ ubt_attach(device_t dev)
 		if ((ed->bDescriptorType == UDESC_ENDPOINT) &&
 		    (ed->bLength >= sizeof(*ed)) &&
 		    (i == 1)) {
-			uint16_t temp;
+			uint32_t temp;
 
-			temp = UGETW(ed->wMaxPacketSize);
+			temp = usbd_get_max_frame_length(
+			    ed, NULL, usbd_get_speed(uaa->device));
 			if (temp > wMaxPacketSize) {
 				wMaxPacketSize = temp;
 				alt_index = j;
@@ -825,8 +828,6 @@ ubt_probe_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 
         case USB_ST_SETUP:
 submit_next:
-		/* Try clear stall first */
-		usbd_xfer_set_stall(xfer);
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		break;
@@ -835,6 +836,8 @@ submit_next:
 		if (error != USB_ERR_CANCELLED) {
 			printf("ng_ubt: interrupt transfer failed: %s\n",
 				usbd_errstr(error));
+			/* Try clear stall first */
+			usbd_xfer_set_stall(xfer);
 			goto submit_next;
 		}
 		break;
@@ -1676,7 +1679,7 @@ ng_ubt_disconnect(hook_p hook)
 
 	return (0);
 } /* ng_ubt_disconnect */
-	
+
 /*
  * Process control message.
  * Netgraph context.

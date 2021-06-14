@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2020, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2021, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -195,6 +195,7 @@ enum AcpiExDebuggerCommands
 {
     CMD_NOT_FOUND = 0,
     CMD_NULL,
+    CMD_ALL,
     CMD_ALLOCATIONS,
     CMD_ARGS,
     CMD_ARGUMENTS,
@@ -275,6 +276,7 @@ static const ACPI_DB_COMMAND_INFO   AcpiGbl_DbCommands[] =
 {
     {"<NOT FOUND>",  0},
     {"<NULL>",       0},
+    {"ALL",          1},
     {"ALLOCATIONS",  0},
     {"ARGS",         0},
     {"ARGUMENTS",    0},
@@ -377,6 +379,7 @@ static const ACPI_DB_COMMAND_HELP   AcpiGbl_DbCommandHelp[] =
     {1, "  Type <Object>",                      "Display object type\n"},
 
     {0, "\nControl Method Execution:",          "\n"},
+    {1, "  All <NameSeg>",                      "Evaluate all objects named NameSeg\n"},
     {1, "  Evaluate <Namepath> [Arguments]",    "Evaluate object or control method\n"},
     {1, "  Execute <Namepath> [Arguments]",     "Synonym for Evaluate\n"},
 #ifdef ACPI_APPLICATION
@@ -599,7 +602,7 @@ AcpiDbDisplayHelp (
     }
     else
     {
-        /* Display help for all commands that match the subtring */
+        /* Display help for all commands that match the substring */
 
         AcpiDbDisplayCommandInfo (Command, TRUE);
     }
@@ -637,19 +640,16 @@ AcpiDbGetNextToken (
         return (NULL);
     }
 
-    /* Remove any spaces at the beginning */
+    /* Remove any spaces at the beginning, ignore blank lines */
 
-    if (*String == ' ')
+    while (*String && isspace ((int) *String))
     {
-        while (*String && (*String == ' '))
-        {
-            String++;
-        }
+        String++;
+    }
 
-        if (!(*String))
-        {
-            return (NULL);
-        }
+    if (!(*String))
+    {
+        return (NULL);
     }
 
     switch (*String)
@@ -754,7 +754,7 @@ AcpiDbGetNextToken (
 
         /* Find end of token */
 
-        while (*String && (*String != ' '))
+        while (*String && !isspace ((int) *String))
         {
             String++;
         }
@@ -948,6 +948,13 @@ AcpiDbCommandDispatch (
         {
             return (AE_OK);
         }
+        break;
+
+    case CMD_ALL:
+
+        AcpiOsPrintf ("Executing all objects with NameSeg: %s\n", AcpiGbl_DbArgs[1]);
+        AcpiDbExecute (AcpiGbl_DbArgs[1],
+            &AcpiGbl_DbArgs[2], &AcpiGbl_DbArgTypes[2], EX_NO_SINGLE_STEP | EX_ALL);
         break;
 
     case CMD_ALLOCATIONS:

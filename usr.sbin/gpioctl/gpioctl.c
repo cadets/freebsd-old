@@ -62,6 +62,11 @@ static struct flag_desc gpio_flags[] = {
 	{ "II", GPIO_PIN_INVIN },
 	{ "IO", GPIO_PIN_INVOUT },
 	{ "PULSE", GPIO_PIN_PULSATE },
+	{ "INTRLL", GPIO_INTR_LEVEL_LOW},
+	{ "INTRLH", GPIO_INTR_LEVEL_HIGH},
+	{ "INTRER", GPIO_INTR_EDGE_RISING},
+	{ "INTREF", GPIO_INTR_EDGE_FALLING},
+	{ "INTREB", GPIO_INTR_EDGE_BOTH},
 	{ NULL, 0 },
 };
 
@@ -327,6 +332,8 @@ main(int argc, char **argv)
 			flag = 	str2cap(argv[i]);
 			if (flag < 0)
 				fail("Invalid flag: %s\n", argv[i]);
+			else if ((flag & GPIO_INTR_MASK) != 0)
+				fail("Interrupt capability %s cannot be set as configuration flag\n", argv[i]);
 			flags |= flag;
 		}
 		pin.g_pin = pinn;

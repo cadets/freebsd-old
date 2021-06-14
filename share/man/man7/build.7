@@ -24,12 +24,12 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd December 3, 2018
+.Dd May 15, 2021
 .Dt BUILD 7
 .Os
 .Sh NAME
 .Nm build
-.Nd information on how to build the system
+.Nd General instructions on how to build the system
 .Sh DESCRIPTION
 The sources for the
 .Fx
@@ -40,11 +40,11 @@ normally
 and
 .Pa /usr/ports .
 These directories may be initially empty or non-existent until updated with
-.Xr svn 1
-or
-.Xr svnlite 1
-or
-.Xr portsnap 8 .
+Git
+.Po installed from packages with
+.Xr pkg 7
+or from
+.Xr ports 7 Pc .
 Directory
 .Pa /usr/src
 contains the
@@ -68,10 +68,11 @@ command is used in each of these directories to build and install the
 things in that directory.
 Issuing the
 .Xr make 1
-command in any directory or
-subdirectory of those directories has the same effect as issuing the
-same command in all subdirectories of that directory.
-With no target specified, the things in that directory are just built.
+command in any directory issues the
+.Xr make 1
+command recursively in all subdirectories.
+With no target specified, the items in the directories are built
+and no further action is taken.
 .Pp
 A source tree is allowed to be read-only.
 As described in
@@ -94,6 +95,14 @@ variables described in the
 .Sx ENVIRONMENT
 section below, and by the variables documented in
 .Xr make.conf 5 .
+.Pp
+The default components included in the build are specified in the file
+.Pa /etc/src.conf
+in the source tree.
+To override the default file, include the SRCCONF option in the make steps,
+pointing to a custom src.conf file.
+For more information see
+.Xr src.conf 5 .
 .Pp
 The following list provides the names and actions for the targets
 supported by the build system:
@@ -289,6 +298,18 @@ for all kernels for that architecture,
 including
 .Pa LINT .
 This command takes a long time.
+.It Cm kernels
+Like
+.Cm universe
+with
+.Va WITHOUT_WORLDS
+defined so only the kernels for each architecture are built.
+.It Cm worlds
+Like
+.Cm universe
+with
+.Va WITHOUT_KERNELS
+defined so only the worlds for each architecture are built.
 .It Cm update
 Get updated sources as configured in
 .Xr make.conf 5 .
@@ -473,7 +494,7 @@ and not via
 or
 .Pa /etc/src.conf
 or the command line.
-.It Va NO_WERROR
+.It Va WITHOUT_WERROR
 If defined, compiler warnings will not cause the build to halt,
 even if the makefile says otherwise.
 .It Va WITH_CTF
@@ -553,6 +574,16 @@ If set, this variable supplies a list of additional mtrees relative to the
 root of the source tree to use as part of the
 .Cm hierarchy
 target.
+.It Va LOCAL_LEGACY_DIRS
+If set, this variable supplies a list of additional directories relative to
+the root of the source tree to build as part of the
+.Cm legacy
+target.
+.It Va LOCAL_BSTOOL_DIRS
+If set, this variable supplies a list of additional directories relative to
+the root of the source tree to build as part of the
+.Cm bootstrap-tools
+target.
 .It Va LOCAL_TOOL_DIRS
 If set, this variable supplies a list of additional directories relative to
 the root of the source tree to build as part of the
@@ -571,8 +602,14 @@ and
 .Cm installkernel
 process.
 .Bd -literal -offset indent
-make PORTS_MODULES=emulators/kqemu-kmod kernel
+make PORTS_MODULES=emulators/virtualbox-ose-kmod kernel
 .Ed
+.It Va SRCCONF
+Specify a file to override the default
+.Pa /etc/src.conf .
+The src.conf file controls the components to build.
+See
+.Xr src.conf 5
 .It Va STRIPBIN
 Command to use at install time when stripping binaries.
 Be sure to add any additional tools required to run
@@ -612,6 +649,14 @@ This variable can also be useful when debugging failed builds.
 .Bd -literal -offset indent
 make some-target SUBDIR_OVERRIDE=foo/bar
 .Ed
+.It Va SYSDIR
+Specify the location of the kernel source to override the default
+.Pa /usr/src/sys .
+The kernel source is located in the
+.Pa sys
+subdirectory of the source tree checked out from the
+.Pa src.git
+repository.
 .It Va TARGET
 The target hardware platform.
 This is analogous to the
@@ -761,7 +806,7 @@ The default action is to build documentation for all languages.
 .Pp
 Builds using the
 .Cm universe
-target are influenced by the following
+and related targets are influenced by the following
 .Xr make 1
 variables:
 .Bl -tag -width ".Va MAKE_JUST_KERNELS"
@@ -775,11 +820,26 @@ while still building each architecture serially.
 Only build kernels for each supported architecture.
 .It Va MAKE_JUST_WORLDS
 Only build worlds for each supported architecture.
+.It Va WITHOUT_WORLDS
+Only build kernels for each supported architecture.
+.It Va WITHOUT_KERNELS
+Only build worlds for each supported architecture.
 .It Va UNIVERSE_TARGET
 Execute the specified
 .Xr make 1
 target for each supported architecture instead of the default action of
 building a world and one or more kernels.
+This variable implies
+.Va WITHOUT_KERNELS .
+.It Va TARGETS
+Only build the listed targets instead of each supported architecture.
+.It Va EXTRA_TARGETS
+In addition to the supported architectures, build the semi-supported
+architectures.
+A semi-supported architecture has build support in the
+.Fx
+tree, but receives significantly less testing and is generally for
+fringe uses that do not have a wide appeal.
 .El
 .Sh FILES
 .Bl -tag -width ".Pa /usr/share/examples/etc/make.conf" -compact
@@ -806,21 +866,25 @@ cd /usr/src
 make TARGET_ARCH=armv6 buildworld buildkernel
 make TARGET_ARCH=armv6 DESTDIR=/clients/arm installworld installkernel
 .Ed
+.Sh HISTORY
+The
+.Nm
+manpage first appeared in
+.Fx 4.3 .
 .Sh SEE ALSO
 .Xr cc 1 ,
 .Xr install 1 ,
 .Xr make 1 ,
-.Xr svn 1 ,
-.Xr svnlite 1 ,
 .Xr make.conf 5 ,
 .Xr src.conf 5 ,
 .Xr arch 7 ,
+.Xr pkg 7 ,
 .Xr ports 7 ,
 .Xr release 7 ,
 .Xr tests 7 ,
 .Xr config 8 ,
+.Xr etcupdate 8 ,
 .Xr mergemaster 8 ,
-.Xr portsnap 8 ,
 .Xr reboot 8 ,
 .Xr shutdown 8
 .Sh AUTHORS

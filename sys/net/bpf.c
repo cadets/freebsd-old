@@ -214,7 +214,8 @@ static int	filt_bpfread(struct knote *, long);
 static void	bpf_drvinit(void *);
 static int	bpf_stats_sysctl(SYSCTL_HANDLER_ARGS);
 
-SYSCTL_NODE(_net, OID_AUTO, bpf, CTLFLAG_RW, 0, "bpf sysctl");
+SYSCTL_NODE(_net, OID_AUTO, bpf, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "bpf sysctl");
 int bpf_maxinsns = BPF_MAXINSNS;
 SYSCTL_INT(_net_bpf, OID_AUTO, maxinsns, CTLFLAG_RW,
     &bpf_maxinsns, 0, "Maximum bpf program instructions");
@@ -226,7 +227,7 @@ static SYSCTL_NODE(_net_bpf, OID_AUTO, stats, CTLFLAG_MPSAFE | CTLFLAG_RW,
 
 VNET_DEFINE_STATIC(int, bpf_optimize_writers) = 0;
 #define	V_bpf_optimize_writers VNET(bpf_optimize_writers)
-SYSCTL_INT(_net_bpf, OID_AUTO, optimize_writers, CTLFLAG_VNET | CTLFLAG_RW,
+SYSCTL_INT(_net_bpf, OID_AUTO, optimize_writers, CTLFLAG_VNET | CTLFLAG_RWTUN,
     &VNET_NAME(bpf_optimize_writers), 0,
     "Do not send packets until BPF program is set");
 
@@ -576,7 +577,6 @@ bpf_movein(struct uio *uio, int linktype, struct ifnet *ifp, struct mbuf **mp,
 	 * for the link level header.
 	 */
 	switch (linktype) {
-
 	case DLT_SLIP:
 		sockp->sa_family = AF_INET;
 		hlen = 0;
@@ -1427,7 +1427,6 @@ bpfioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 
 	CURVNET_SET(TD_TO_VNET(td));
 	switch (cmd) {
-
 	default:
 		error = EINVAL;
 		break;

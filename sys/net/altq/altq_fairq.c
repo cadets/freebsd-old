@@ -142,7 +142,7 @@ fairq_pfattach(struct pf_altq *a)
 		return (EINVAL);
 
 	error = altq_attach(&ifp->if_snd, ALTQT_FAIRQ, a->altq_disc,
-	    fairq_enqueue, fairq_dequeue, fairq_request, NULL, NULL);
+	    fairq_enqueue, fairq_dequeue, fairq_request);
 
 	return (error);
 }
@@ -156,7 +156,6 @@ fairq_add_altq(struct ifnet *ifp, struct pf_altq *a)
 		return (EINVAL);
 	if (!ALTQ_IS_READY(&ifp->if_snd))
 		return (ENODEV);
-
 
 	pif = malloc(sizeof(struct fairq_if),
 			M_DEVBUF, M_WAITOK | M_ZERO);

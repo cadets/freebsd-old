@@ -155,8 +155,6 @@ makefile(void)
 	}
 	if (debugging)
 		fprintf(ofp, "DEBUG=-g\n");
-	if (profiling)
-		fprintf(ofp, "PROFLEVEL=%d\n", profiling);
 	if (*srcdir != '\0')
 		fprintf(ofp,"S=%s\n", srcdir);
 	while (fgets(line, BUFSIZ, ifp) != NULL) {
@@ -195,7 +193,7 @@ sanitize_envline(char *result, const char *src)
 
 	/* If there is no '=' it's not a well-formed name=value line. */
 	if ((eq = strchr(src, '=')) == NULL) {
-		*result = 0;
+		*result = '\0';
 		return;
 	}
 	dst = result;
@@ -212,7 +210,7 @@ sanitize_envline(char *result, const char *src)
 
 	/* If it was all leading space, we don't have a well-formed line. */
 	if (leading) {
-		*result = 0;
+		*result = '\0';
 		return;
 	}
 
@@ -223,7 +221,7 @@ sanitize_envline(char *result, const char *src)
 
 	/* Copy chars after the '=', skipping any leading whitespace. */
 	leading = true;
-	while ((c = *src++) != 0) {
+	while ((c = *src++) != '\0') {
 		if (leading && (isspace(c) || c == '"'))
 			continue;
 		*dst++ = c;
@@ -232,7 +230,7 @@ sanitize_envline(char *result, const char *src)
 
 	/* If it was all leading space, it's a valid 'var=' (nil value). */
 	if (leading) {
-		*dst = 0;
+		*dst = '\0';
 		return;
 	}
 
@@ -240,7 +238,7 @@ sanitize_envline(char *result, const char *src)
 	while (isspace(dst[-1]) || dst[-1] == '"')
 		--dst;
 
-	*dst = 0;
+	*dst = '\0';
 }
 
 /*
@@ -397,7 +395,7 @@ read_file(char *fname)
 	char *wd, *this, *compilewith, *depends, *clean, *warning;
 	const char *objprefix;
 	int compile, match, nreqs, std, filetype, not,
-	    imp_rule, no_obj, before_depend, nowerror;
+	    imp_rule, no_ctfconvert, no_obj, before_depend, nowerror;
 
 	fp = fopen(fname, "r");
 	if (fp == NULL)
@@ -406,7 +404,7 @@ next:
 	/*
 	 * include "filename"
 	 * filename    [ standard | optional ]
-	 *	[ dev* [ | dev* ... ] | profiling-routine ] [ no-obj ]
+	 *	[ dev* [ | dev* ... ] | [ no-obj ]
 	 *	[ compile-with "compile rule" [no-implicit-rule] ]
 	 *      [ dependency "dependency-list"] [ before-depend ]
 	 *	[ clean "file-list"] [ warning "text warning" ]
@@ -446,12 +444,13 @@ next:
 	compile = 0;
 	match = 1;
 	nreqs = 0;
-	compilewith = 0;
-	depends = 0;
-	clean = 0;
-	warning = 0;
+	compilewith = NULL;
+	depends = NULL;
+	clean = NULL;
+	warning = NULL;
 	std = 0;
 	imp_rule = 0;
+	no_ctfconvert = 0;
 	no_obj = 0;
 	before_depend = 0;
 	nowerror = 0;
@@ -477,6 +476,10 @@ next:
 			compile += match;
 			match = 1;
 			nreqs = 0;
+			continue;
+		}
+		if (eq(wd, "no-ctfconvert")) {
+			no_ctfconvert++;
 			continue;
 		}
 		if (eq(wd, "no-obj")) {
@@ -549,10 +552,6 @@ next:
 			continue;
 		}
 		nreqs++;
-		if (eq(wd, "profiling-routine")) {
-			filetype = PROFILING;
-			continue;
-		}
 		if (std)
 			errout("standard entry %s has optional inclusion specifier %s!\n",
 			       this, wd);
@@ -580,8 +579,6 @@ nextparam:;
 		if (std == 0 && nreqs == 0)
 			errout("%s: what is %s optional on?\n",
 			       fname, this);
-		if (filetype == PROFILING && profiling == 0)
-			goto next;
 		tp = new_fent();
 		tp->f_fn = this;
 		tp->f_type = filetype;
@@ -591,8 +588,10 @@ nextparam:;
 			tp->f_srcprefix = "$S/";
 		if (imp_rule)
 			tp->f_flags |= NO_IMPLCT_RULE;
+		if (no_ctfconvert)
+			tp->f_flags |= NO_CTFCONVERT;
 		if (no_obj)
-			tp->f_flags |= NO_OBJ;
+			tp->f_flags |= NO_OBJ | NO_CTFCONVERT;
 		if (before_depend)
 			tp->f_flags |= BEFORE_DEPEND;
 		if (nowerror)
@@ -782,11 +781,6 @@ do_rules(FILE *f)
 			case NORMAL:
 				ftype = "NORMAL";
 				break;
-			case PROFILING:
-				if (!profiling)
-					continue;
-				ftype = "PROFILE";
-				break;
 			default:
 				fprintf(stderr,
 				    "config: don't know rules for %s\n", np);
@@ -805,7 +799,7 @@ do_rules(FILE *f)
 		else
 			fprintf(f, "\t%s\n", compilewith);
 
-		if (!(ftp->f_flags & NO_OBJ))
+		if (!(ftp->f_flags & NO_CTFCONVERT))
 			fprintf(f, "\t${NORMAL_CTFCONVERT}\n\n");
 		else
 			fprintf(f, "\n");

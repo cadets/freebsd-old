@@ -72,10 +72,6 @@ SYSCTL_DECL(_debug_ddb);
 #define	DB_MAXSCRIPTRECURSION	3
 #endif
 
-#ifndef DB_STOFFS
-#define DB_STOFFS(offs)		(offs)
-#endif
-
 #ifndef DB_CALL
 #define	DB_CALL	db_fncall_generic
 #else
@@ -87,7 +83,7 @@ int	DB_CALL(db_expr_t, db_expr_t *, int, db_expr_t[]);
  * Most users should use db_fetch_symtab in order to set them from the
  * boot loader provided values.
  */
-extern vm_offset_t ksymtab, kstrtab, ksymtab_size;
+extern vm_offset_t ksymtab, kstrtab, ksymtab_size, ksymtab_relbase;
 
 /*
  * There are three "command tables":
@@ -201,6 +197,7 @@ db_addr_t	db_disasm(db_addr_t loc, bool altfmt);
 				/* instruction disassembler */
 void		db_error(const char *s);
 int		db_expression(db_expr_t *valuep);
+int		db_getc(void);
 int		db_get_variable(db_expr_t *valuep);
 void		db_iprintf(const char *,...) __printflike(1, 2);
 struct proc	*db_lookup_proc(db_expr_t addr);
@@ -208,8 +205,6 @@ struct thread	*db_lookup_thread(db_expr_t addr, bool check_pid);
 struct vm_map	*db_map_addr(vm_offset_t);
 bool		db_map_current(struct vm_map *);
 bool		db_map_equal(struct vm_map *, struct vm_map *);
-int		db_md_set_watchpoint(db_expr_t addr, db_expr_t size);
-int		db_md_clr_watchpoint(db_expr_t addr, db_expr_t size);
 void		db_md_list_watchpoints(void);
 void		db_print_loc_and_inst(db_addr_t loc);
 void		db_print_thread(void);
@@ -232,7 +227,8 @@ bool		db_value_of_name_vnet(const char *name, db_expr_t *valuep);
 int		db_write_bytes(vm_offset_t addr, size_t size, char *data);
 void		db_command_register(struct command_table *, struct command *);
 void		db_command_unregister(struct command_table *, struct command *);
-int		db_fetch_ksymtab(vm_offset_t ksym_start, vm_offset_t ksym_end);
+int		db_fetch_ksymtab(vm_offset_t ksym_start, vm_offset_t ksym_end,
+		    vm_offset_t relbase);
 
 db_cmdfcn_t	db_breakpoint_cmd;
 db_cmdfcn_t	db_capture_cmd;

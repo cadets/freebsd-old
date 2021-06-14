@@ -28,7 +28,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd December 2, 2016
+.Dd May 5, 2020
 .Dt THR_SET_NAME 2
 .Os
 .Sh NAME
@@ -78,12 +78,12 @@ does not exist in the current process.
 .El
 .Sh SEE ALSO
 .Xr ps 1 ,
+.Xr _umtx_op 2 ,
 .Xr thr_exit 2 ,
 .Xr thr_kill 2 ,
 .Xr thr_kill2 2 ,
 .Xr thr_new 2 ,
 .Xr thr_self 2 ,
-.Xr _umtx_op 2 ,
 .Xr pthread_set_name_np 3 ,
 .Xr ddb 4 ,
 .Xr ktr 9
@@ -92,3 +92,8 @@ The
 .Fn thr_set_name
 system call is non-standard and is used by the
 .Lb libthr .
+.Sh HISTORY
+The
+.Fn thr_set_name
+system call first appeared in
+.Fx 5.2 .

@@ -92,7 +92,6 @@ enum random_entropy_source {
 	RANDOM_PURE_OCTEON = RANDOM_PURE_START,
 	RANDOM_PURE_SAFE,
 	RANDOM_PURE_GLXSB,
-	RANDOM_PURE_UBSEC,
 	RANDOM_PURE_HIFN,
 	RANDOM_PURE_RDRAND,
 	RANDOM_PURE_NEHEMIAH,
@@ -153,7 +152,6 @@ void random_harvest_deregister_source(enum random_entropy_source);
 #else /* !defined(RANDOM_ENABLE_ETHER) */
 #define random_harvest_queue_ether(a, b)	do {} while (0)
 #endif /* defined(RANDOM_ENABLE_ETHER) */
-
 
 #endif /* _KERNEL */
 

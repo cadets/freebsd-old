@@ -60,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/atomic.h>
 #include <machine/cpu.h>
 #include <machine/md_var.h>
+#include <machine/smp.h>
 #include <machine/stdarg.h>
 #ifdef DDB
 #include <ddb/ddb.h>
@@ -85,6 +86,7 @@ struct	intr_entropy {
 	uintptr_t event;
 };
 
+struct	intr_event *clk_intr_event;
 struct	intr_event *tty_intr_event;
 void	*vm_ih;
 struct proc *intrproc;
@@ -189,12 +191,12 @@ intr_event_update(struct intr_event *ie)
 {
 	struct intr_handler *ih;
 	char *last;
-	int missed, space;
+	int missed, space, flags;
 
 	/* Start off with no entropy and just the name of the event. */
 	mtx_assert(&ie->ie_lock, MA_OWNED);
 	strlcpy(ie->ie_fullname, ie->ie_name, sizeof(ie->ie_fullname));
-	ie->ie_hflags = 0;
+	flags = 0;
 	missed = 0;
 	space = 1;
 
@@ -207,8 +209,9 @@ intr_event_update(struct intr_event *ie)
 			space = 0;
 		} else
 			missed++;
-		ie->ie_hflags |= ih->ih_flags;
+		flags |= ih->ih_flags;
 	}
+	ie->ie_hflags = flags;
 
 	/*
 	 * If there is only one handler and its name is too long, just copy in
@@ -780,8 +783,8 @@ intr_handler_barrier(struct intr_handler *handler)
  * Sleep until an ithread finishes executing an interrupt handler.
  *
  * XXX Doesn't currently handle interrupt filters or fast interrupt
- * handlers.  This is intended for compatibility with linux drivers
- * only.  Do not use in BSD code.
+ * handlers. This is intended for LinuxKPI drivers only.
+ * Do not use in BSD code.
  */
 void
 _intr_drain(int irq)
@@ -989,7 +992,7 @@ intr_event_schedule_thread(struct intr_event *ie)
 		sched_add(td, SRQ_INTR);
 	} else {
 		CTR5(KTR_INTR, "%s: pid %d (%s): it_need %d, state %d",
-		    __func__, td->td_proc->p_pid, td->td_name, it->it_need, td->td_state);
+		    __func__, td->td_proc->p_pid, td->td_name, it->it_need, TD_GET_STATE(td));
 		thread_unlock(td);
 	}
 
@@ -1017,7 +1020,7 @@ swi_add(struct intr_event **eventp, const char *name, driver_intr_t handler,
 	    void *arg, int pri, enum intr_type flags, void **cookiep)
 {
 	struct intr_event *ie;
-	int error;
+	int error = 0;
 
 	if (flags & INTR_ENTROPY)
 		return (EINVAL);
@@ -1035,8 +1038,10 @@ swi_add(struct intr_event **eventp, const char *name, driver_intr_t handler,
 		if (eventp != NULL)
 			*eventp = ie;
 	}
-	error = intr_event_add_handler(ie, name, NULL, handler, arg,
-	    PI_SWI(pri), flags, cookiep);
+	if (handler != NULL) {
+		error = intr_event_add_handler(ie, name, NULL, handler, arg,
+		    PI_SWI(pri), flags, cookiep);
+	}
 	return (error);
 }
 
@@ -1054,9 +1059,11 @@ swi_sched(void *cookie, int flags)
 	CTR3(KTR_INTR, "swi_sched: %s %s need=%d", ie->ie_name, ih->ih_name,
 	    ih->ih_need);
 
-	entropy.event = (uintptr_t)ih;
-	entropy.td = curthread;
-	random_harvest_queue(&entropy, sizeof(entropy), RANDOM_SWI);
+	if ((flags & SWI_FROMNMI) == 0) {
+		entropy.event = (uintptr_t)ih;
+		entropy.td = curthread;
+		random_harvest_queue(&entropy, sizeof(entropy), RANDOM_SWI);
+	}
 
 	/*
 	 * Set ih_need for this handler so that if the ithread is already
@@ -1065,7 +1072,16 @@ swi_sched(void *cookie, int flags)
 	 */
 	ih->ih_need = 1;
 
-	if (!(flags & SWI_DELAY)) {
+	if (flags & SWI_DELAY)
+		return;
+
+	if (flags & SWI_FROMNMI) {
+#if defined(SMP) && (defined(__i386__) || defined(__amd64__))
+		KASSERT(ie == clk_intr_event,
+		    ("SWI_FROMNMI used not with clk_intr_event"));
+		ipi_self_from_nmi(IPI_SWI);
+#endif
+	} else {
 		VM_CNT_INC(v_soft);
 		error = intr_event_schedule_thread(ie);
 		KASSERT(error == 0, ("stray software interrupt"));
@@ -1208,6 +1224,7 @@ ithread_loop(void *arg)
 	struct thread *td;
 	struct proc *p;
 	int wake, epoch_count;
+	bool needs_epoch;
 
 	td = curthread;
 	p = td->td_proc;
@@ -1242,20 +1259,22 @@ ithread_loop(void *arg)
 		 * that the load of ih_need in ithread_execute_handlers()
 		 * is ordered after the load of it_need here.
 		 */
-		if (ie->ie_hflags & IH_NET) {
+		needs_epoch =
+		    (atomic_load_int(&ie->ie_hflags) & IH_NET) != 0;
+		if (needs_epoch) {
 			epoch_count = 0;
 			NET_EPOCH_ENTER(et);
 		}
 		while (atomic_cmpset_acq_int(&ithd->it_need, 1, 0) != 0) {
 			ithread_execute_handlers(p, ie);
-			if ((ie->ie_hflags & IH_NET) &&
+			if (needs_epoch &&
 			    ++epoch_count >= intr_epoch_batch) {
 				NET_EPOCH_EXIT(et);
 				epoch_count = 0;
 				NET_EPOCH_ENTER(et);
 			}
 		}
-		if (ie->ie_hflags & IH_NET)
+		if (needs_epoch)
 			NET_EPOCH_EXIT(et);
 		WITNESS_WARN(WARN_PANIC, NULL, "suspending ithread");
 		mtx_assert(&Giant, MA_NOTOWNED);
@@ -1341,6 +1360,8 @@ intr_event_handle(struct intr_event *ie, struct trapframe *frame)
 
 	CK_SLIST_FOREACH(ih, &ie->ie_handlers, ih_next) {
 		if ((ih->ih_flags & IH_SUSP) != 0)
+			continue;
+		if ((ie->ie_flags & IE_SOFT) != 0 && ih->ih_need == 0)
 			continue;
 		if (ih->ih_filter == NULL) {
 			thread = true;
@@ -1566,6 +1587,9 @@ static void
 start_softintr(void *dummy)
 {
 
+	if (swi_add(&clk_intr_event, "clk", NULL, NULL, SWI_CLOCK,
+	    INTR_MPSAFE, NULL))
+		panic("died while creating clk swi ithread");
 	if (swi_add(NULL, "vm", swi_vm, NULL, SWI_VM, INTR_MPSAFE, &vm_ih))
 		panic("died while creating vm swi ithread");
 }
@@ -1587,8 +1611,10 @@ sysctl_intrnames(SYSCTL_HANDLER_ARGS)
 	return (sysctl_handle_opaque(oidp, intrnames, sintrnames, req));
 }
 
-SYSCTL_PROC(_hw, OID_AUTO, intrnames, CTLTYPE_OPAQUE | CTLFLAG_RD,
-    NULL, 0, sysctl_intrnames, "", "Interrupt Names");
+SYSCTL_PROC(_hw, OID_AUTO, intrnames,
+    CTLTYPE_OPAQUE | CTLFLAG_RD | CTLFLAG_NEEDGIANT, NULL, 0,
+    sysctl_intrnames, "",
+    "Interrupt Names");
 
 static int
 sysctl_intrcnt(SYSCTL_HANDLER_ARGS)
@@ -1614,8 +1640,10 @@ sysctl_intrcnt(SYSCTL_HANDLER_ARGS)
 	return (sysctl_handle_opaque(oidp, intrcnt, sintrcnt, req));
 }
 
-SYSCTL_PROC(_hw, OID_AUTO, intrcnt, CTLTYPE_OPAQUE | CTLFLAG_RD,
-    NULL, 0, sysctl_intrcnt, "", "Interrupt Counts");
+SYSCTL_PROC(_hw, OID_AUTO, intrcnt,
+    CTLTYPE_OPAQUE | CTLFLAG_RD | CTLFLAG_NEEDGIANT, NULL, 0,
+    sysctl_intrcnt, "",
+    "Interrupt Counts");
 
 #ifdef DDB
 /*

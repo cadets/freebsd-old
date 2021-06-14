@@ -22,19 +22,27 @@ SRCS=	autoload.c \
 	framebuffer.c \
 	main.c \
 	self_reloc.c \
-	smbios.c \
-	vers.c
+	vers.c \
+	gfx_fb.c \
+	8x16.c
 
 CFLAGS+=	-I${.CURDIR}/../loader
 .if ${MK_LOADER_ZFS} != "no"
 CFLAGS+=	-I${ZFSSRC}
+CFLAGS+=        -I${SYSDIR}/contrib/openzfs/include
+CFLAGS+=        -I${SYSDIR}/contrib/openzfs/include/os/freebsd/zfs
 CFLAGS+=	-DEFI_ZFS_BOOT
 HAVE_ZFS=	yes
 .endif
 
-.if ${COMPILER_TYPE} == "gcc" && ${COMPILER_VERSION} > 40201
-CWARNFLAGS.self_reloc.c+=	-Wno-error=maybe-uninitialized
-.endif
+CFLAGS.bootinfo.c += -I$(SRCTOP)/sys/teken
+CFLAGS.bootinfo.c += -I${SRCTOP}/contrib/pnglite
+CFLAGS.framebuffer.c += -I$(SRCTOP)/sys/teken
+CFLAGS.framebuffer.c += -I${SRCTOP}/contrib/pnglite
+CFLAGS.gfx_fb.c += -I$(SRCTOP)/sys/teken
+CFLAGS.gfx_fb.c += -I${SRCTOP}/sys/cddl/contrib/opensolaris/common/lz4
+CFLAGS.gfx_fb.c += -I${SRCTOP}/contrib/pnglite
+CFLAGS.gfx_fb.c += -DHAVE_MEMCPY -I${SRCTOP}/sys/contrib/zlib
 
 # We implement a slightly non-standard %S in that it always takes a
 # CHAR16 that's common in UEFI-land instead of a wchar_t. This only
@@ -45,8 +53,6 @@ CWARNFLAGS.main.c+=	-Wno-format
 
 .PATH: ${.CURDIR}/../loader
 .PATH: ${.CURDIR}/../loader/arch/${MACHINE}
-# For smbios.c XXX need to abstract properly
-.PATH: ${BOOTSRC}/i386/libi386
 .include "${.CURDIR}/../loader/arch/${MACHINE}/Makefile.inc"
 
 CFLAGS+=	-I${.CURDIR}
@@ -56,18 +62,6 @@ CFLAGS+=	-I${EFISRC}/include/${MACHINE}
 CFLAGS+=	-I${SYSDIR}/contrib/dev/acpica/include
 CFLAGS+=	-I${BOOTSRC}/i386/libi386
 CFLAGS+=	-DEFI
-
-.if !defined(BOOT_HIDE_SERIAL_NUMBERS)
-# Export serial numbers, UUID, and asset tag from loader.
-CFLAGS+= -DSMBIOS_SERIAL_NUMBERS
-.if defined(BOOT_LITTLE_ENDIAN_UUID)
-# Use little-endian UUID format as defined in SMBIOS 2.6.
-CFLAGS+= -DSMBIOS_LITTLE_ENDIAN_UUID
-.elif defined(BOOT_NETWORK_ENDIAN_UUID)
-# Use network-endian UUID format for backward compatibility.
-CFLAGS+= -DSMBIOS_NETWORK_ENDIAN_UUID
-.endif
-.endif
 
 .if defined(HAVE_FDT) && ${MK_FDT} != "no"
 .include	"${BOOTSRC}/fdt.mk"
@@ -91,6 +85,11 @@ VERSION_FILE=	${.CURDIR}/../loader/version
 # Always add MI sources
 .include	"${BOOTSRC}/loader.mk"
 
+CLEANFILES+=	8x16.c
+
+8x16.c:		${SRCTOP}/contrib/terminus/ter-u16b.bdf
+	vtfontcvt -f compressed-source -o ${.TARGET} ${.ALLSRC}
+
 FILES+=	${LOADER}.efi
 FILESMODE_${LOADER}.efi=	${BINMODE}
 
@@ -99,7 +98,7 @@ LINKS+=		${BINDIR}/${LOADER}.efi ${BINDIR}/loader.efi
 .endif
 
 LDSCRIPT=	${.CURDIR}/../loader/arch/${MACHINE}/ldscript.${MACHINE}
-LDFLAGS+=	-Wl,-T${LDSCRIPT},-Bsymbolic,-znotext -shared
+LDFLAGS+=	-Wl,-T${LDSCRIPT},-Bsymbolic,-znotext -pie
 
 CLEANFILES+=	loader.efi
 

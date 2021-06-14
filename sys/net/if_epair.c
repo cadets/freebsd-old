@@ -81,7 +81,8 @@ __FBSDID("$FreeBSD$");
 #include <net/vnet.h>
 
 SYSCTL_DECL(_net_link);
-static SYSCTL_NODE(_net_link, OID_AUTO, epair, CTLFLAG_RW, 0, "epair sysctl");
+static SYSCTL_NODE(_net_link, OID_AUTO, epair, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "epair sysctl");
 
 #ifdef EPAIR_DEBUG
 static int epair_debug = 0;
@@ -132,8 +133,9 @@ sysctl_epair_netisr_maxqlen(SYSCTL_HANDLER_ARGS)
 		return (EINVAL);
 	return (netisr_setqlimit(&epair_nh, qlimit));
 }
-SYSCTL_PROC(_net_link_epair, OID_AUTO, netisr_maxqlen, CTLTYPE_INT|CTLFLAG_RW,
-    0, 0, sysctl_epair_netisr_maxqlen, "I",
+SYSCTL_PROC(_net_link_epair, OID_AUTO, netisr_maxqlen,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, 0, 0,
+    sysctl_epair_netisr_maxqlen, "I",
     "Maximum if_epair(4) netisr \"hw\" queue length");
 
 struct epair_softc {
@@ -487,7 +489,7 @@ epair_transmit_locked(struct ifnet *ifp, struct mbuf *m)
 
 	if (m == NULL)
 		return (0);
-	
+
 	/*
 	 * We are not going to use the interface en/dequeue mechanism
 	 * on the TX side. We are called from ether_output_frame()
@@ -607,7 +609,7 @@ static void
 epair_qflush(struct ifnet *ifp)
 {
 	struct epair_softc *sc;
-	
+
 	sc = ifp->if_softc;
 	KASSERT(sc != NULL, ("%s: ifp=%p, epair_softc gone? sc=%p\n",
 	    __func__, ifp, sc));
@@ -678,7 +680,6 @@ static void
 epair_init(void *dummy __unused)
 {
 }
-
 
 /*
  * Interface cloning functions.
@@ -798,7 +799,7 @@ epair_clone_create(struct if_clone *ifc, char *name, size_t len, caddr_t params)
 		ifc_free_unit(ifc, unit);
 		return (ENOSPC);
 	}
-	
+
 	/*
 	 * Cross-reference the interfaces so we will be able to free both.
 	 */
@@ -823,7 +824,7 @@ epair_clone_create(struct if_clone *ifc, char *name, size_t len, caddr_t params)
 	ifmedia_init(&scb->media, 0, epair_media_change, epair_media_status);
 	ifmedia_add(&scb->media, IFM_ETHER | IFM_10G_T, 0, NULL);
 	ifmedia_set(&scb->media, IFM_ETHER | IFM_10G_T);
-	
+
 	/* Finish initialization of interface <n>a. */
 	ifp = sca->ifp;
 	ifp->if_softc = sca;
@@ -930,7 +931,7 @@ epair_clone_destroy(struct if_clone *ifc, struct ifnet *ifp)
 	 */
 	if (ifp->if_softc == NULL)
 		return (0);
-	
+
 	unit = ifp->if_dunit;
 	sca = ifp->if_softc;
 	oifp = sca->oifp;

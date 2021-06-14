@@ -25,9 +25,10 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
+
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/capsicum.h>
@@ -383,11 +384,6 @@ procstat_files(struct procstat *procstat, struct kinfo_proc *kipp)
 			xo_emit("{eq:fd_type/kqueue}");
 			break;
 
-		case PS_FST_TYPE_CRYPTO:
-			str = "c";
-			xo_emit("{eq:fd_type/crypto}");
-			break;
-
 		case PS_FST_TYPE_MQUEUE:
 			str = "m";
 			xo_emit("{eq:fd_type/mqueue}");
@@ -416,6 +412,11 @@ procstat_files(struct procstat *procstat, struct kinfo_proc *kipp)
 		case PS_FST_TYPE_DEV:
 			str = "D";
 			xo_emit("{eq:fd_type/dev}");
+			break;
+
+		case PS_FST_TYPE_EVENTFD:
+			str = "E";
+			xo_emit("{eq:fd_type/eventfd}");
 			break;
 
 		case PS_FST_TYPE_NONE:

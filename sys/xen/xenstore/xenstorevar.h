@@ -70,6 +70,15 @@ struct xs_watch
 
 	/* Callback client data untouched by the XenStore watch mechanism. */
 	uintptr_t callback_data;
+
+	/* Maximum number of pending watch events to be delivered. */
+	unsigned int max_pending;
+
+	/*
+	 * Private counter used by xenstore to keep track of the pending
+	 * watches. Protected by xs.watch_events_lock.
+	 */
+	unsigned int pending;
 };
 LIST_HEAD(xs_watch_list, xs_watch);
 
@@ -332,7 +341,7 @@ int xs_gather(struct xs_transaction t, const char *dir, ...);
  *          xenbus_watch objects, to watch the same path in the XenStore.
  */
 int xs_register_watch(struct xs_watch *watch);
- 
+
 /**
  * Unregister a XenStore watch.
  *
@@ -368,4 +377,3 @@ void xs_lock(void);
 void xs_unlock(void);
 
 #endif /* _XEN_XENSTORE_XENSTOREVAR_H */
-

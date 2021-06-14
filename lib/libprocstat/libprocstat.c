@@ -68,14 +68,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/mman.h>
 #include <sys/capsicum.h>
 #include <sys/ptrace.h>
-#define	_KERNEL
+#define	_WANT_MOUNT
 #include <sys/mount.h>
+#include <sys/filedesc.h>
 #include <sys/pipe.h>
-#include <ufs/ufs/quota.h>
-#include <ufs/ufs/inode.h>
 #include <fs/devfs/devfs.h>
 #include <fs/devfs/devfs_int.h>
-#undef _KERNEL
 #include <nfs/nfsproto.h>
 #include <nfsclient/nfs.h>
 #include <nfsclient/nfsnode.h>
@@ -459,31 +457,51 @@ procstat_getfiles_kvm(struct procstat *procstat, struct kinfo_proc *kp, int mmap
 {
 	struct file file;
 	struct filedesc filed;
+	struct pwddesc pathsd;
+	struct fdescenttbl *fdt;
+	struct pwd pwd;
+	unsigned long pwd_addr;
 	struct vm_map_entry vmentry;
 	struct vm_object object;
 	struct vmspace vmspace;
 	vm_map_entry_t entryp;
 	vm_object_t objp;
 	struct vnode *vp;
-	struct file **ofiles;
 	struct filestat *entry;
 	struct filestat_list *head;
 	kvm_t *kd;
 	void *data;
-	int i, fflags;
+	int fflags;
+	unsigned int i;
 	int prot, type;
+	size_t fdt_size;
 	unsigned int nfiles;
+	bool haspwd;
 
 	assert(procstat);
 	kd = procstat->kd;
 	if (kd == NULL)
 		return (NULL);
-	if (kp->ki_fd == NULL)
+	if (kp->ki_fd == NULL || kp->ki_pd == NULL)
 		return (NULL);
 	if (!kvm_read_all(kd, (unsigned long)kp->ki_fd, &filed,
 	    sizeof(filed))) {
 		warnx("can't read filedesc at %p", (void *)kp->ki_fd);
 		return (NULL);
+	}
+	if (!kvm_read_all(kd, (unsigned long)kp->ki_pd, &pathsd,
+	    sizeof(pathsd))) {
+		warnx("can't read pwddesc at %p", (void *)kp->ki_pd);
+		return (NULL);
+	}
+	haspwd = false;
+	pwd_addr = (unsigned long)(PWDDESC_KVM_LOAD_PWD(&pathsd));
+	if (pwd_addr != 0) {
+		if (!kvm_read_all(kd, pwd_addr, &pwd, sizeof(pwd))) {
+			warnx("can't read fd_pwd at %p", (void *)pwd_addr);
+			return (NULL);
+		}
+		haspwd = true;
 	}
 
 	/*
@@ -495,25 +513,27 @@ procstat_getfiles_kvm(struct procstat *procstat, struct kinfo_proc *kp, int mmap
 	STAILQ_INIT(head);
 
 	/* root directory vnode, if one. */
-	if (filed.fd_rdir) {
-		entry = filestat_new_entry(filed.fd_rdir, PS_FST_TYPE_VNODE, -1,
-		    PS_FST_FFLAG_READ, PS_FST_UFLAG_RDIR, 0, 0, NULL, NULL);
-		if (entry != NULL)
-			STAILQ_INSERT_TAIL(head, entry, next);
-	}
-	/* current working directory vnode. */
-	if (filed.fd_cdir) {
-		entry = filestat_new_entry(filed.fd_cdir, PS_FST_TYPE_VNODE, -1,
-		    PS_FST_FFLAG_READ, PS_FST_UFLAG_CDIR, 0, 0, NULL, NULL);
-		if (entry != NULL)
-			STAILQ_INSERT_TAIL(head, entry, next);
-	}
-	/* jail root, if any. */
-	if (filed.fd_jdir) {
-		entry = filestat_new_entry(filed.fd_jdir, PS_FST_TYPE_VNODE, -1,
-		    PS_FST_FFLAG_READ, PS_FST_UFLAG_JAIL, 0, 0, NULL, NULL);
-		if (entry != NULL)
-			STAILQ_INSERT_TAIL(head, entry, next);
+	if (haspwd) {
+		if (pwd.pwd_rdir) {
+			entry = filestat_new_entry(pwd.pwd_rdir, PS_FST_TYPE_VNODE, -1,
+			    PS_FST_FFLAG_READ, PS_FST_UFLAG_RDIR, 0, 0, NULL, NULL);
+			if (entry != NULL)
+				STAILQ_INSERT_TAIL(head, entry, next);
+		}
+		/* current working directory vnode. */
+		if (pwd.pwd_cdir) {
+			entry = filestat_new_entry(pwd.pwd_cdir, PS_FST_TYPE_VNODE, -1,
+			    PS_FST_FFLAG_READ, PS_FST_UFLAG_CDIR, 0, 0, NULL, NULL);
+			if (entry != NULL)
+				STAILQ_INSERT_TAIL(head, entry, next);
+		}
+		/* jail root, if any. */
+		if (pwd.pwd_jdir) {
+			entry = filestat_new_entry(pwd.pwd_jdir, PS_FST_TYPE_VNODE, -1,
+			    PS_FST_FFLAG_READ, PS_FST_UFLAG_JAIL, 0, 0, NULL, NULL);
+			if (entry != NULL)
+				STAILQ_INSERT_TAIL(head, entry, next);
+		}
 	}
 	/* ktrace vnode, if one */
 	if (kp->ki_tracep) {
@@ -539,26 +559,31 @@ procstat_getfiles_kvm(struct procstat *procstat, struct kinfo_proc *kp, int mmap
 			STAILQ_INSERT_TAIL(head, entry, next);
 	}
 
-	nfiles = filed.fd_lastfile + 1;
-	ofiles = malloc(nfiles * sizeof(struct file *));
-	if (ofiles == NULL) {
-		warn("malloc(%zu)", nfiles * sizeof(struct file *));
+	if (!kvm_read_all(kd, (unsigned long)filed.fd_files, &nfiles,
+	    sizeof(nfiles))) {
+		warnx("can't read fd_files at %p", (void *)filed.fd_files);
+		return (NULL);
+	}
+
+	fdt_size = sizeof(*fdt) + nfiles * sizeof(struct filedescent);
+	fdt = malloc(fdt_size);
+	if (fdt == NULL) {
+		warn("malloc(%zu)", fdt_size);
 		goto do_mmapped;
 	}
-	if (!kvm_read_all(kd, (unsigned long)filed.fd_ofiles, ofiles,
-	    nfiles * sizeof(struct file *))) {
-		warnx("cannot read file structures at %p",
-		    (void *)filed.fd_ofiles);
-		free(ofiles);
+	if (!kvm_read_all(kd, (unsigned long)filed.fd_files, fdt, fdt_size)) {
+		warnx("cannot read file structures at %p", (void *)filed.fd_files);
+		free(fdt);
 		goto do_mmapped;
 	}
-	for (i = 0; i <= filed.fd_lastfile; i++) {
-		if (ofiles[i] == NULL)
+	for (i = 0; i < nfiles; i++) {
+		if (fdt->fdt_ofiles[i].fde_file == NULL) {
 			continue;
-		if (!kvm_read_all(kd, (unsigned long)ofiles[i], &file,
+		}
+		if (!kvm_read_all(kd, (unsigned long)fdt->fdt_ofiles[i].fde_file, &file,
 		    sizeof(struct file))) {
 			warnx("can't read file %d at %p", i,
-			    (void *)ofiles[i]);
+			    (void *)fdt->fdt_ofiles[i].fde_file);
 			continue;
 		}
 		switch (file.f_type) {
@@ -600,6 +625,10 @@ procstat_getfiles_kvm(struct procstat *procstat, struct kinfo_proc *kp, int mmap
 			type = PS_FST_TYPE_DEV;
 			data = file.f_data;
 			break;
+		case DTYPE_EVENTFD:
+			type = PS_FST_TYPE_EVENTFD;
+			data = file.f_data;
+			break;
 		default:
 			continue;
 		}
@@ -609,7 +638,7 @@ procstat_getfiles_kvm(struct procstat *procstat, struct kinfo_proc *kp, int mmap
 		if (entry != NULL)
 			STAILQ_INSERT_TAIL(head, entry, next);
 	}
-	free(ofiles);
+	free(fdt);
 
 do_mmapped:
 
@@ -680,7 +709,6 @@ kinfo_type2fst(int kftype)
 		int	fst_type;
 	} kftypes2fst[] = {
 		{ KF_TYPE_PROCDESC, PS_FST_TYPE_PROCDESC },
-		{ KF_TYPE_CRYPTO, PS_FST_TYPE_CRYPTO },
 		{ KF_TYPE_DEV, PS_FST_TYPE_DEV },
 		{ KF_TYPE_FIFO, PS_FST_TYPE_FIFO },
 		{ KF_TYPE_KQUEUE, PS_FST_TYPE_KQUEUE },
@@ -692,6 +720,7 @@ kinfo_type2fst(int kftype)
 		{ KF_TYPE_SHM, PS_FST_TYPE_SHM },
 		{ KF_TYPE_SOCKET, PS_FST_TYPE_SOCKET },
 		{ KF_TYPE_VNODE, PS_FST_TYPE_VNODE },
+		{ KF_TYPE_EVENTFD, PS_FST_TYPE_EVENTFD },
 		{ KF_TYPE_UNKNOWN, PS_FST_TYPE_UNKNOWN }
 	};
 #define NKFTYPES	(sizeof(kftypes2fst) / sizeof(*kftypes2fst))
@@ -2064,18 +2093,18 @@ procstat_freegroups(struct procstat *procstat __unused, gid_t *groups)
 static int
 procstat_getumask_kvm(kvm_t *kd, struct kinfo_proc *kp, unsigned short *maskp)
 {
-	struct filedesc fd;
+	struct pwddesc pd;
 
 	assert(kd != NULL);
 	assert(kp != NULL);
-	if (kp->ki_fd == NULL)
+	if (kp->ki_pd == NULL)
 		return (-1);
-	if (!kvm_read_all(kd, (unsigned long)kp->ki_fd, &fd, sizeof(fd))) {
-		warnx("can't read filedesc at %p for pid %d", kp->ki_fd,
+	if (!kvm_read_all(kd, (unsigned long)kp->ki_pd, &pd, sizeof(pd))) {
+		warnx("can't read pwddesc at %p for pid %d", kp->ki_pd,
 		    kp->ki_pid);
 		return (-1);
 	}
-	*maskp = fd.fd_cmask;
+	*maskp = pd.pd_cmask;
 	return (0);
 }
 
@@ -2580,7 +2609,8 @@ procstat_getkstack_sysctl(pid_t pid, int *cntp)
 		warn("malloc(%zu)", len);
 		return (NULL);
 	}
-	if (sysctl(name, nitems(name), kkstp, &len, NULL, 0) == -1) {
+	if (sysctl(name, nitems(name), kkstp, &len, NULL, 0) == -1 &&
+	    errno != ENOMEM) {
 		warn("sysctl: kern.proc.pid: %d", pid);
 		free(kkstp);
 		return (NULL);

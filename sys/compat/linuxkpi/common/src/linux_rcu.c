@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 2016 Matthew Macy (mmacy@mattmacy.io)
- * Copyright (c) 2017 Hans Petter Selasky (hselasky@freebsd.org)
+ * Copyright (c) 2017-2021 Hans Petter Selasky (hselasky@freebsd.org)
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -74,6 +74,7 @@ struct linux_epoch_record {
 	ck_epoch_record_t epoch_record;
 	TAILQ_HEAD(, task_struct) ts_head;
 	int cpuid;
+	int type;
 } __aligned(CACHE_LINE_SIZE);
 
 /*
@@ -85,14 +86,25 @@ struct linux_epoch_record {
 CTASSERT(sizeof(struct rcu_head) == sizeof(struct callback_head));
 
 /*
+ * Verify that "rcu_section[0]" has the same size as
+ * "ck_epoch_section_t". This has been done to avoid having to add
+ * special compile flags for including ck_epoch.h to all clients of
+ * the LinuxKPI.
+ */
+CTASSERT(sizeof(((struct task_struct *)0)->rcu_section[0] ==
+    sizeof(ck_epoch_section_t)));
+
+/*
  * Verify that "epoch_record" is at beginning of "struct
  * linux_epoch_record":
  */
 CTASSERT(offsetof(struct linux_epoch_record, epoch_record) == 0);
 
-static ck_epoch_t linux_epoch;
-static struct linux_epoch_head linux_epoch_head;
-DPCPU_DEFINE_STATIC(struct linux_epoch_record, linux_epoch_record);
+CTASSERT(TS_RCU_TYPE_MAX == RCU_TYPE_MAX);
+
+static ck_epoch_t linux_epoch[RCU_TYPE_MAX];
+static struct linux_epoch_head linux_epoch_head[RCU_TYPE_MAX];
+DPCPU_DEFINE_STATIC(struct linux_epoch_record, linux_epoch_record[RCU_TYPE_MAX]);
 
 static void linux_rcu_cleaner_func(void *, int);
 
@@ -101,23 +113,28 @@ linux_rcu_runtime_init(void *arg __unused)
 {
 	struct linux_epoch_head *head;
 	int i;
+	int j;
 
-	ck_epoch_init(&linux_epoch);
+	for (j = 0; j != RCU_TYPE_MAX; j++) {
+		ck_epoch_init(&linux_epoch[j]);
 
-	head = &linux_epoch_head;
+		head = &linux_epoch_head[j];
 
-	mtx_init(&head->lock, "LRCU-HEAD", NULL, MTX_DEF);
-	TASK_INIT(&head->task, 0, linux_rcu_cleaner_func, NULL);
-	STAILQ_INIT(&head->cb_head);
+		mtx_init(&head->lock, "LRCU-HEAD", NULL, MTX_DEF);
+		TASK_INIT(&head->task, 0, linux_rcu_cleaner_func, head);
+		STAILQ_INIT(&head->cb_head);
 
-	CPU_FOREACH(i) {
-		struct linux_epoch_record *record;
+		CPU_FOREACH(i) {
+			struct linux_epoch_record *record;
 
-		record = &DPCPU_ID_GET(i, linux_epoch_record);
+			record = &DPCPU_ID_GET(i, linux_epoch_record[j]);
 
-		record->cpuid = i;
-		ck_epoch_register(&linux_epoch, &record->epoch_record, NULL);
-		TAILQ_INIT(&record->ts_head);
+			record->cpuid = i;
+			record->type = j;
+			ck_epoch_register(&linux_epoch[j],
+			    &record->epoch_record, NULL);
+			TAILQ_INIT(&record->ts_head);
+		}
 	}
 }
 SYSINIT(linux_rcu_runtime, SI_SUB_CPU, SI_ORDER_ANY, linux_rcu_runtime_init, NULL);
@@ -126,24 +143,27 @@ static void
 linux_rcu_runtime_uninit(void *arg __unused)
 {
 	struct linux_epoch_head *head;
+	int j;
 
-	head = &linux_epoch_head;
+	for (j = 0; j != RCU_TYPE_MAX; j++) {
+		head = &linux_epoch_head[j];
 
-	/* destroy head lock */
-	mtx_destroy(&head->lock);
+		mtx_destroy(&head->lock);
+	}
 }
 SYSUNINIT(linux_rcu_runtime, SI_SUB_LOCK, SI_ORDER_SECOND, linux_rcu_runtime_uninit, NULL);
 
 static void
-linux_rcu_cleaner_func(void *context __unused, int pending __unused)
+linux_rcu_cleaner_func(void *context, int pending __unused)
 {
 	struct linux_epoch_head *head;
 	struct callback_head *rcu;
 	STAILQ_HEAD(, callback_head) tmp_head;
+	uintptr_t offset;
 
 	linux_set_current(curthread);
 
-	head = &linux_epoch_head;
+	head = context;
 
 	/* move current callbacks into own queue */
 	mtx_lock(&head->lock);
@@ -152,12 +172,10 @@ linux_rcu_cleaner_func(void *context __unused, int pending __unused)
 	mtx_unlock(&head->lock);
 
 	/* synchronize */
-	linux_synchronize_rcu();
+	linux_synchronize_rcu(head - linux_epoch_head);
 
 	/* dispatch all callbacks, if any */
 	while ((rcu = STAILQ_FIRST(&tmp_head)) != NULL) {
-		uintptr_t offset;
-
 		STAILQ_REMOVE_HEAD(&tmp_head, entry);
 
 		offset = (uintptr_t)rcu->func;
@@ -170,12 +188,22 @@ linux_rcu_cleaner_func(void *context __unused, int pending __unused)
 }
 
 void
-linux_rcu_read_lock(void)
+linux_rcu_read_lock(unsigned type)
 {
 	struct linux_epoch_record *record;
 	struct task_struct *ts;
 
+	MPASS(type < RCU_TYPE_MAX);
+
 	if (RCU_SKIP())
+		return;
+
+	ts = current;
+
+	/* assert valid refcount */
+	MPASS(ts->rcu_recurse[type] != INT_MAX);
+
+	if (++(ts->rcu_recurse[type]) != 1)
 		return;
 
 	/*
@@ -184,42 +212,48 @@ linux_rcu_read_lock(void)
 	 */
 	sched_pin();
 
-	record = &DPCPU_GET(linux_epoch_record);
-	ts = current;
+	record = &DPCPU_GET(linux_epoch_record[type]);
 
 	/*
 	 * Use a critical section to prevent recursion inside
 	 * ck_epoch_begin(). Else this function supports recursion.
 	 */
 	critical_enter();
-	ck_epoch_begin(&record->epoch_record, NULL);
-	ts->rcu_recurse++;
-	if (ts->rcu_recurse == 1)
-		TAILQ_INSERT_TAIL(&record->ts_head, ts, rcu_entry);
+	ck_epoch_begin(&record->epoch_record,
+	    (ck_epoch_section_t *)&ts->rcu_section[type]);
+	TAILQ_INSERT_TAIL(&record->ts_head, ts, rcu_entry[type]);
 	critical_exit();
 }
 
 void
-linux_rcu_read_unlock(void)
+linux_rcu_read_unlock(unsigned type)
 {
 	struct linux_epoch_record *record;
 	struct task_struct *ts;
 
+	MPASS(type < RCU_TYPE_MAX);
+
 	if (RCU_SKIP())
 		return;
 
-	record = &DPCPU_GET(linux_epoch_record);
 	ts = current;
+
+	/* assert valid refcount */
+	MPASS(ts->rcu_recurse[type] > 0);
+	
+	if (--(ts->rcu_recurse[type]) != 0)
+		return;
+
+	record = &DPCPU_GET(linux_epoch_record[type]);
 
 	/*
 	 * Use a critical section to prevent recursion inside
 	 * ck_epoch_end(). Else this function supports recursion.
 	 */
 	critical_enter();
-	ck_epoch_end(&record->epoch_record, NULL);
-	ts->rcu_recurse--;
-	if (ts->rcu_recurse == 0)
-		TAILQ_REMOVE(&record->ts_head, ts, rcu_entry);
+	ck_epoch_end(&record->epoch_record,
+	    (ck_epoch_section_t *)&ts->rcu_section[type]);
+	TAILQ_REMOVE(&record->ts_head, ts, rcu_entry[type]);
 	critical_exit();
 
 	sched_unpin();
@@ -244,7 +278,7 @@ linux_synchronize_rcu_cb(ck_epoch_t *epoch __unused, ck_epoch_record_t *epoch_re
 		 * the threads in the queue are CPU-pinned and cannot
 		 * go anywhere while the current thread is locked.
 		 */
-		TAILQ_FOREACH(ts, &record->ts_head, rcu_entry) {
+		TAILQ_FOREACH(ts, &record->ts_head, rcu_entry[record->type]) {
 			if (ts->task_thread->td_priority > prio)
 				prio = ts->task_thread->td_priority;
 			is_sleeping |= (ts->task_thread->td_inhibitors != 0);
@@ -283,13 +317,15 @@ linux_synchronize_rcu_cb(ck_epoch_t *epoch __unused, ck_epoch_record_t *epoch_re
 }
 
 void
-linux_synchronize_rcu(void)
+linux_synchronize_rcu(unsigned type)
 {
 	struct thread *td;
 	int was_bound;
 	int old_cpu;
 	int old_pinned;
 	u_char old_prio;
+
+	MPASS(type < RCU_TYPE_MAX);
 
 	if (RCU_SKIP())
 		return;
@@ -314,7 +350,7 @@ linux_synchronize_rcu(void)
 	td->td_pinned = 0;
 	sched_bind(td, old_cpu);
 
-	ck_epoch_synchronize_wait(&linux_epoch,
+	ck_epoch_synchronize_wait(&linux_epoch[type],
 	    &linux_synchronize_rcu_cb, NULL);
 
 	/* restore CPU binding, if any */
@@ -337,23 +373,30 @@ linux_synchronize_rcu(void)
 }
 
 void
-linux_rcu_barrier(void)
+linux_rcu_barrier(unsigned type)
 {
 	struct linux_epoch_head *head;
 
-	linux_synchronize_rcu();
+	MPASS(type < RCU_TYPE_MAX);
 
-	head = &linux_epoch_head;
+	linux_synchronize_rcu(type);
+
+	head = &linux_epoch_head[type];
 
 	/* wait for callbacks to complete */
 	taskqueue_drain(taskqueue_fast, &head->task);
 }
 
 void
-linux_call_rcu(struct rcu_head *context, rcu_callback_t func)
+linux_call_rcu(unsigned type, struct rcu_head *context, rcu_callback_t func)
 {
-	struct callback_head *rcu = (struct callback_head *)context;
-	struct linux_epoch_head *head = &linux_epoch_head;
+	struct callback_head *rcu;
+	struct linux_epoch_head *head;
+
+	MPASS(type < RCU_TYPE_MAX);
+
+	rcu = (struct callback_head *)context;
+	head = &linux_epoch_head[type];
 
 	mtx_lock(&head->lock);
 	rcu->func = func;
@@ -376,24 +419,24 @@ cleanup_srcu_struct(struct srcu_struct *srcu)
 int
 srcu_read_lock(struct srcu_struct *srcu)
 {
-	linux_rcu_read_lock();
+	linux_rcu_read_lock(RCU_TYPE_SLEEPABLE);
 	return (0);
 }
 
 void
 srcu_read_unlock(struct srcu_struct *srcu, int key __unused)
 {
-	linux_rcu_read_unlock();
+	linux_rcu_read_unlock(RCU_TYPE_SLEEPABLE);
 }
 
 void
 synchronize_srcu(struct srcu_struct *srcu)
 {
-	linux_synchronize_rcu();
+	linux_synchronize_rcu(RCU_TYPE_SLEEPABLE);
 }
 
 void
 srcu_barrier(struct srcu_struct *srcu)
 {
-	linux_rcu_barrier();
+	linux_rcu_barrier(RCU_TYPE_SLEEPABLE);
 }

@@ -36,11 +36,12 @@
 #ifndef _IP_DN_AQM_H
 #define _IP_DN_AQM_H
 
+#include <sys/ck.h>
 
 /* NOW is the current time in millisecond*/
-#define NOW ((dn_cfg.curr_time * tick) / 1000)
+#define NOW ((V_dn_cfg.curr_time * tick) / 1000)
 
-#define AQM_UNOW (dn_cfg.curr_time * tick)
+#define AQM_UNOW (V_dn_cfg.curr_time * tick)
 #define AQM_TIME_1US ((aqm_time_t)(1))
 #define AQM_TIME_1MS ((aqm_time_t)(1000))
 #define AQM_TIME_1S ((aqm_time_t)(AQM_TIME_1MS * 1000))
@@ -54,9 +55,6 @@ typedef int32_t aqm_stime_t;
 /* Macro for variable bounding */
 #define BOUND_VAR(x,l,h)  ((x) > (h)? (h) : ((x) > (l)? (x) : (l)))
 
-/* sysctl variable to count number of dropped packets */
-extern unsigned long io_pkt_drop; 
-
 /*
  * Structure for holding data and function pointers that together represent a
  * AQM algorithm.
@@ -65,7 +63,7 @@ extern unsigned long io_pkt_drop;
 #define DN_AQM_NAME_MAX 50
 	char			name[DN_AQM_NAME_MAX];	/* name of AQM algorithm */
 	uint32_t	type;	/* AQM type number */
-	
+
 	/* Methods implemented by AQM algorithm:
 	 * 
 	 * enqueue	enqueue packet 'm' on queue 'q'.
@@ -100,7 +98,7 @@ extern unsigned long io_pkt_drop;
 	 * the AQM configurations using 'par' array.
 	 * 
 	 */
-	
+
 	int (*enqueue)(struct dn_queue *, struct mbuf *);
 	struct mbuf * (*dequeue)(struct dn_queue *);
 	int (*config)(struct dn_fsk *, struct dn_extra_parms *ep, int);
@@ -111,7 +109,7 @@ extern unsigned long io_pkt_drop;
 
 	int	ref_count; /*Number of queues instances in the system */
 	int	cfg_ref_count;	/*Number of AQM instances in the system */
-	SLIST_ENTRY (dn_aqm) next; /* Next AQM in the list */
+	CK_LIST_ENTRY(dn_aqm) next; /* Next AQM in the list */
 };
 
 /* Helper function to update queue and scheduler statistics.
@@ -126,7 +124,7 @@ update_stats(struct dn_queue *q, int len, int drop)
 	int inc = 0;
 	struct dn_flow *sni;
 	struct dn_flow *qni;
-	
+
 	sni = &q->_si->ni;
 	qni = &q->ni;
 
@@ -138,7 +136,7 @@ update_stats(struct dn_queue *q, int len, int drop)
 	if (drop) {
 			qni->drops++;
 			sni->drops++;
-			io_pkt_drop++;
+			V_dn_cfg.io_pkt_drop++;
 	} else {
 		/*update queue stats */
 		qni->length += inc;
@@ -150,7 +148,6 @@ update_stats(struct dn_queue *q, int len, int drop)
 	}
 	/* tot_pkts  is updated in dn_enqueue function */
 }
-
 
 /* kernel module related function */
 int

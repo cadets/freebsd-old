@@ -205,25 +205,35 @@ addWordToHash(struct hashValue *h, const Char *word)
 {
     uint32_t a = h->a, b = h->b, c = h->c;
 #ifdef SHORT_STRINGS
+#define GETK    if ((k = (uChar)*word++) == 0) break
 #ifdef WIDE_STRINGS
     assert(sizeof(Char) >= 4);
     while (1) {
 	unsigned k;
-	if ((k = (uChar)*word++) == 0) break; a += k;
-	if ((k = (uChar)*word++) == 0) break; b += k;
-	if ((k = (uChar)*word++) == 0) break; c += k;
+	GETK;
+	a += k;
+	GETK;
+	b += k;
+	GETK;
+	c += k;
 	mix(a, b, c);
     }
 #else
     assert(sizeof(Char) == 2);
     while (1) {
 	unsigned k;
-	if ((k = (uChar)*word++) == 0) break; a += k;
-	if ((k = (uChar)*word++) == 0) break; a += k << 16;
-	if ((k = (uChar)*word++) == 0) break; b += k;
-	if ((k = (uChar)*word++) == 0) break; b += k << 16;
-	if ((k = (uChar)*word++) == 0) break; c += k;
-	if ((k = (uChar)*word++) == 0) break; c += k << 16;
+	GETK;
+	a += k;
+	GETK;
+	a += k << 16;
+	GETK;
+	b += k;
+	GETK;
+	b += k << 16;
+	GETK;
+	c += k;
+	GETK;
+	c += k << 16;
 	mix(a, b, c);
     }
 #endif
@@ -1054,9 +1064,9 @@ phist(struct Hist *hp, int hflg)
         output_raw = 1;
 	cleanup_push(&old_output_raw, output_raw_restore);
 	if (hflg & HIST_TIME)
-	    /* 
+	    /*
 	     * Make file entry with history time in format:
-	     * "+NNNNNNNNNN" (10 digits, left padded with ascii '0') 
+	     * "+NNNNNNNNNN" (10 digits, left padded with ascii '0')
 	     */
 
 	    xprintf("#+%010lu\n", (unsigned long)hp->Htime);
@@ -1216,17 +1226,23 @@ dotlock_cleanup(void* lockpath)
 
 /* Save history before exiting the shell. */
 void
-rechist(Char *fname, int ref)
+rechist(Char *xfname, int ref)
 {
     Char    *snum, *rs;
-    int     fp, ftmp, oldidfds;
+    int     fp, ftmp, oldidfds, ophup_disabled;
     struct varent *shist;
     char path[MAXPATHLEN];
     struct stat st;
+    static Char *fname;
     static Char   *dumphist[] = {STRhistory, STRmhT, 0, 0};
 
-    if (fname == NULL && !ref) 
+    if (fname == NULL && !ref)
 	return;
+
+    fname = xfname;
+    ophup_disabled = phup_disabled;
+    phup_disabled = 1;
+
     /*
      * If $savehist is just set, we use the value of $history
      * else we use the value in $savehist
@@ -1249,8 +1265,8 @@ rechist(Char *fname, int ref)
     /*
      * The 'savehist merge' feature is intended for an environment
      * with numerous shells being in simultaneous use. Imagine
-     * any kind of window system. All these shells 'share' the same 
-     * ~/.history file for recording their command line history. 
+     * any kind of window system. All these shells 'share' the same
+     * ~/.history file for recording their command line history.
      * We try to handle the case of multiple shells trying to merge
      * histories at the same time, by creating semi-unique filenames
      * and saving the history there first and then trying to rename
@@ -1261,7 +1277,7 @@ rechist(Char *fname, int ref)
 		 * by optional lock parameter to savehist.
      *
      * jw.
-     */ 
+     */
     /*
      * We need the didfds stuff before loadhist otherwise
      * exec in a script will fail to print if merge is set.
@@ -1292,7 +1308,7 @@ rechist(Char *fname, int ref)
 #endif
 	    }
 	    getexit(osetexit);
-	    if (setexit())
+	    if (setexit() == 0)
 		loadhist(fname, 1);
 	    resexit(osetexit);
 	}
@@ -1305,6 +1321,7 @@ rechist(Char *fname, int ref)
     if (fp == -1) {
 	didfds = oldidfds;
 	cleanup_until(fname);
+	phup_disabled = ophup_disabled;
 	return;
     }
     /* Try to preserve ownership and permissions of the original history file */
@@ -1326,9 +1343,10 @@ rechist(Char *fname, int ref)
 #ifndef WINNT_NATIVE
     (void)rename(path, short2str(fname));
 #else
-    (void)ReplaceFile( short2str(fname),path,NULL,0,NULL,NULL);
+    (void)ReplaceFile(short2str(fname), path, NULL, 0, NULL, NULL);
 #endif
     cleanup_until(fname);
+    phup_disabled = ophup_disabled;
 }
 
 

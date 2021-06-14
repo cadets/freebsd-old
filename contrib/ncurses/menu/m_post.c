@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2010,2012 Free Software Foundation, Inc.              *
+ * Copyright 2020 Thomas E. Dickey                                          *
+ * Copyright 1998-2010,2012 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -37,7 +38,7 @@
 
 #include "menu.priv.h"
 
-MODULE_ID("$Id: m_post.c,v 1.31 2012/06/09 23:54:35 tom Exp $")
+MODULE_ID("$Id: m_post.c,v 1.34 2020/12/12 00:38:14 tom Exp $")
 
 /*---------------------------------------------------------------------------
 |   Facility      :  libnmenu
@@ -48,8 +49,8 @@ MODULE_ID("$Id: m_post.c,v 1.31 2012/06/09 23:54:35 tom Exp $")
 |
 |   Return Values :  -
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(void)
-_nc_Post_Item(const MENU * menu, const ITEM * item)
+MENU_EXPORT(void)
+_nc_Post_Item(const MENU *menu, const ITEM *item)
 {
   int i;
   chtype ch;
@@ -196,8 +197,8 @@ _nc_Post_Item(const MENU * menu, const ITEM * item)
 |
 |   Return Values :  -
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(void)
-_nc_Draw_Menu(const MENU * menu)
+MENU_EXPORT(void)
+_nc_Draw_Menu(const MENU *menu)
 {
   ITEM *item = menu->items[0];
   ITEM *lasthor, *lastvert;
@@ -212,14 +213,14 @@ _nc_Draw_Menu(const MENU * menu)
   werase(menu->win);
   wbkgdset(menu->win, s_bkgd);
 
-  lastvert = (menu->opt & O_NONCYCLIC) ? (ITEM *) 0 : item;
+  lastvert = (menu->opt & O_NONCYCLIC) ? (ITEM *)0 : item;
 
   do
     {
       wmove(menu->win, y, 0);
 
       hitem = item;
-      lasthor = (menu->opt & O_NONCYCLIC) ? (ITEM *) 0 : hitem;
+      lasthor = (menu->opt & O_NONCYCLIC) ? (ITEM *)0 : hitem;
 
       do
 	{
@@ -266,8 +267,8 @@ _nc_Draw_Menu(const MENU * menu)
 |                    E_BAD_STATE         - Menu in userexit routine
 |                    E_POSTED            - Menu already posted
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(int)
-post_menu(MENU * menu)
+MENU_EXPORT(int)
+post_menu(MENU *menu)
 {
   T((T_CALLED("post_menu(%p)"), (void *)menu));
 
@@ -338,8 +339,8 @@ post_menu(MENU * menu)
 |                    E_BAD_STATE       - menu in userexit routine
 |                    E_NOT_POSTED      - menu is not posted
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(int)
-unpost_menu(MENU * menu)
+MENU_EXPORT(int)
+unpost_menu(MENU *menu)
 {
   WINDOW *win;
 

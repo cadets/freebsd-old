@@ -39,27 +39,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#if __amd64__
-#   include "amd64.h"
-#endif
-#if __arm__
-#   include "arm.h"
-#endif
-#if __i386__
-#   include "i386.h"
-#endif
-#if __mips__
-#   include "mips.h"
-#endif
-#if __powerpc__
-#   include "powerpc.h"
-#endif
-#if __sparc64__
-#   include "sparc64.h"
-#endif
-#if __riscv
-#    include "riscv.h"
-#endif
+    /*
+     *	offset (in bytes) of the code from the entry address of a routine.
+     *	(see asgnsamples for use and explanation.)
+     */
+#define OFFSET_OF_CODE	0
+
+enum opermodes { dummy };
+typedef enum opermodes	operandenum;
 
     /*
      * booleans
@@ -75,18 +62,22 @@ typedef int	bool;
      */
 #define	HISTORICAL_SCALE_2	2
 
+#ifndef EXTERN
+#define	EXTERN	extern
+#endif
+
     /*
      *	ticks per second
      */
-long	hz;
+EXTERN long	hz;
 
-size_t	histcounter_size;
-int	histcounter_type;
+EXTERN size_t	histcounter_size;
+EXTERN int	histcounter_type;
 
-char	*a_outname;
+EXTERN char	*a_outname;
 #define	A_OUTNAME		"a.out"
 
-char	*gmonname;
+EXTERN char	*gmonname;
 #define	GMONSUM			"gmon.sum"
 
     /*
@@ -146,9 +137,9 @@ struct nl {
 };
 typedef struct nl	nltype;
 
-nltype	*nl;			/* the whole namelist */
-nltype	*npe;			/* the virtual end of the namelist */
-int	nname;			/* the number of function names */
+EXTERN nltype	*nl;			/* the whole namelist */
+EXTERN nltype	*npe;			/* the virtual end of the namelist */
+EXTERN int	nname;			/* the number of function names */
 
 #define	HASCYCLEXIT	0x08	/* node has arc exiting from cycle */
 #define	CYCLEHEAD	0x10	/* node marked as head of a cycle */
@@ -167,9 +158,9 @@ struct cl {
 };
 typedef struct cl cltype;
 
-arctype	*archead;		/* the head of arcs in current cycle list */
-cltype	*cyclehead;		/* the head of the list */
-int	cyclecnt;		/* the number of cycles found */
+EXTERN arctype	*archead;	/* the head of arcs in current cycle list */
+EXTERN cltype	*cyclehead;	/* the head of the list */
+EXTERN int	cyclecnt;	/* the number of cycles found */
 #define	CYCLEMAX	100	/* maximum cycles before cutting one of them */
 
     /*
@@ -183,8 +174,8 @@ int	cyclecnt;		/* the number of cycles found */
      *	namelist entries for cycle headers.
      *	the number of discovered cycles.
      */
-nltype	*cyclenl;		/* cycle header namelist */
-int	ncycle;			/* number of cycles discovered */
+EXTERN nltype	*cyclenl;		/* cycle header namelist */
+EXTERN int	ncycle;			/* number of cycles discovered */
 
     /*
      * The header on the gmon.out file.
@@ -200,43 +191,46 @@ struct ophdr {
     int		ncnt;
 };
 
-int	debug;
+EXTERN int	debug;
 
     /*
      * Each discretized pc sample has
      * a count of the number of samples in its range
      */
-double	*samples;
+EXTERN double	*samples;
 
-unsigned long	s_lowpc;	/* lowpc from the profile file */
-unsigned long	s_highpc;	/* highpc from the profile file */
-unsigned long	lowpc, highpc;	/* range profiled, in historical units  */
-unsigned sampbytes;		/* number of bytes of samples */
-int	nsamples;		/* number of samples */
-double	actime;			/* accumulated time thus far for putprofline */
-double	totime;			/* total time for all routines */
-double	printtime;		/* total of time being printed */
-double	scale;			/* scale factor converting samples to pc
+EXTERN unsigned long	s_lowpc;	/* lowpc from the profile file */
+EXTERN unsigned long	s_highpc;	/* highpc from the profile file */
+/* range profiled, in historical units  */
+EXTERN unsigned long	lowpc, highpc;
+EXTERN unsigned sampbytes;		/* number of bytes of samples */
+EXTERN int	nsamples;		/* number of samples */
+/* accumulated time thus far for putprofline */
+EXTERN double	actime;
+EXTERN double	totime;			/* total time for all routines */
+EXTERN double	printtime;		/* total of time being printed */
+EXTERN double	scale;			/* scale factor converting samples to pc
 				   values: each sample covers scale bytes */
-unsigned char	*textspace;	/* text space of a.out in core */
-int	cyclethreshold;		/* with -C, minimum cycle size to ignore */
+EXTERN unsigned char	*textspace;	/* text space of a.out in core */
+/* with -C, minimum cycle size to ignore */
+EXTERN int	cyclethreshold;
 
     /*
      *	option flags, from a to z.
      */
-bool	aflag;				/* suppress static functions */
-bool	bflag;				/* blurbs, too */
-bool	Cflag;				/* find cut-set to eliminate cycles */
-bool	dflag;				/* debugging options */
-bool	eflag;				/* specific functions excluded */
-bool	Eflag;				/* functions excluded with time */
-bool	fflag;				/* specific functions requested */
-bool	Fflag;				/* functions requested with time */
-bool	kflag;				/* arcs to be deleted */
-bool	Kflag;				/* use the running kernel for symbols */
-bool	sflag;				/* sum multiple gmon.out files */
-bool	uflag;				/* suppress symbols hidden from C */
-bool	zflag;				/* zero time/called functions, too */
+EXTERN bool	aflag;			/* suppress static functions */
+EXTERN bool	bflag;			/* blurbs, too */
+EXTERN bool	Cflag;			/* find cut-set to eliminate cycles */
+EXTERN bool	dflag;			/* debugging options */
+EXTERN bool	eflag;			/* specific functions excluded */
+EXTERN bool	Eflag;			/* functions excluded with time */
+EXTERN bool	fflag;			/* specific functions requested */
+EXTERN bool	Fflag;			/* functions requested with time */
+EXTERN bool	kflag;			/* arcs to be deleted */
+EXTERN bool	Kflag;			/* use the running kernel for symbols */
+EXTERN bool	sflag;			/* sum multiple gmon.out files */
+EXTERN bool	uflag;			/* suppress symbols hidden from C */
+EXTERN bool	zflag;			/* zero time/called functions, too */
 
     /*
      *	structure for various string lists
@@ -245,12 +239,12 @@ struct stringlist {
     struct stringlist	*next;
     char		*string;
 };
-struct stringlist	*elist;
-struct stringlist	*Elist;
-struct stringlist	*flist;
-struct stringlist	*Flist;
-struct stringlist	*kfromlist;
-struct stringlist	*ktolist;
+extern struct stringlist	*elist;
+extern struct stringlist	*Elist;
+extern struct stringlist	*flist;
+extern struct stringlist	*Flist;
+extern struct stringlist	*kfromlist;
+extern struct stringlist	*ktolist;
 
     /*
      *	function declarations
@@ -259,9 +253,6 @@ void		addarc(nltype *, nltype *, long);
 bool		addcycle(arctype **, arctype **);
 void		addlist(struct stringlist *, char *);
 void		alignentries(void);
-#ifdef WITH_AOUT
-int		aout_getnfile(const char *, char ***);
-#endif
 int		arccmp(arctype *, arctype *);
 arctype		*arclookup(nltype *, nltype *);
 void		asgnsamples(void);
@@ -328,7 +319,6 @@ int		totalcmp(const void *, const void *);
 #define	TALLYDEBUG	8
 #define	TIMEDEBUG	16
 #define	SAMPLEDEBUG	32
-#define	AOUTDEBUG	64
 #define	CALLDEBUG	128
 #define	LOOKUPDEBUG	256
 #define	PROPDEBUG	512

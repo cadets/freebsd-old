@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/dirent.h>
+#include <sys/file.h>
 #include <sys/limits.h>
 #include <sys/lock.h>
 #include <sys/mount.h>
@@ -79,7 +80,7 @@ __FBSDID("$FreeBSD$");
  */
 #define TMPFS_DEFAULT_ROOT_MODE	(S_IRWXU|S_IRGRP|S_IXGRP|S_IROTH|S_IXOTH)
 
-MALLOC_DEFINE(M_TMPFSMNT, "tmpfs mount", "tmpfs mount structures");
+static MALLOC_DEFINE(M_TMPFSMNT, "tmpfs mount", "tmpfs mount structures");
 MALLOC_DEFINE(M_TMPFSNAME, "tmpfs name", "tmpfs file names");
 
 static int	tmpfs_mount(struct mount *);
@@ -88,59 +89,61 @@ static int	tmpfs_root(struct mount *, int flags, struct vnode **);
 static int	tmpfs_fhtovp(struct mount *, struct fid *, int,
 		    struct vnode **);
 static int	tmpfs_statfs(struct mount *, struct statfs *);
-static void	tmpfs_susp_clean(struct mount *);
 
 static const char *tmpfs_opts[] = {
 	"from", "size", "maxfilesize", "inodes", "uid", "gid", "mode", "export",
-	"union", "nonc", NULL
+	"union", "nonc", "nomtime", NULL
 };
 
 static const char *tmpfs_updateopts[] = {
-	"from", "export", "size", NULL
+	"from", "export", "nomtime", "size", NULL
 };
 
-/*
- * Handle updates of time from writes to mmaped regions.  Use
- * MNT_VNODE_FOREACH_ALL instead of MNT_VNODE_FOREACH_LAZY, since
- * unmap of the tmpfs-backed vnode does not call vinactive(), due to
- * vm object type is OBJT_SWAP.
- * If lazy, only handle delayed update of mtime due to the writes to
- * mapped files.
- */
-static void
-tmpfs_update_mtime(struct mount *mp, bool lazy)
+static int
+tmpfs_update_mtime_lazy_filter(struct vnode *vp, void *arg)
 {
-	struct vnode *vp, *mvp;
 	struct vm_object *obj;
 
+	if (vp->v_type != VREG)
+		return (0);
+
+	obj = atomic_load_ptr(&vp->v_object);
+	if (obj == NULL)
+		return (0);
+
+	return (vm_object_mightbedirty_(obj));
+}
+
+static void
+tmpfs_update_mtime_lazy(struct mount *mp)
+{
+	struct vnode *vp, *mvp;
+
+	MNT_VNODE_FOREACH_LAZY(vp, mp, mvp, tmpfs_update_mtime_lazy_filter, NULL) {
+		if (vget(vp, LK_EXCLUSIVE | LK_INTERLOCK) != 0)
+			continue;
+		tmpfs_check_mtime(vp);
+		vput(vp);
+	}
+}
+
+static void
+tmpfs_update_mtime_all(struct mount *mp)
+{
+	struct vnode *vp, *mvp;
+
+	if (VFS_TO_TMPFS(mp)->tm_nomtime)
+		return;
 	MNT_VNODE_FOREACH_ALL(vp, mp, mvp) {
 		if (vp->v_type != VREG) {
 			VI_UNLOCK(vp);
 			continue;
 		}
-		obj = vp->v_object;
-		KASSERT((obj->flags & (OBJ_TMPFS_NODE | OBJ_TMPFS)) ==
-		    (OBJ_TMPFS_NODE | OBJ_TMPFS), ("non-tmpfs obj"));
-
-		/*
-		 * In lazy case, do unlocked read, avoid taking vnode
-		 * lock if not needed.  Lost update will be handled on
-		 * the next call.
-		 * For non-lazy case, we must flush all pending
-		 * metadata changes now.
-		 */
-		if (!lazy || obj->generation != obj->cleangeneration) {
-			if (vget(vp, LK_EXCLUSIVE | LK_INTERLOCK,
-			    curthread) != 0)
-				continue;
-			tmpfs_check_mtime(vp);
-			if (!lazy)
-				tmpfs_update(vp);
-			vput(vp);
-		} else {
-			VI_UNLOCK(vp);
+		if (vget(vp, LK_EXCLUSIVE | LK_INTERLOCK) != 0)
 			continue;
-		}
+		tmpfs_check_mtime(vp);
+		tmpfs_update(vp);
+		vput(vp);
 	}
 }
 
@@ -225,8 +228,7 @@ again:
 			    (entry->max_protection & VM_PROT_WRITE) == 0)
 				continue;
 			object = entry->object.vm_object;
-			if (object == NULL || object->type != OBJT_SWAP ||
-			    (object->flags & OBJ_TMPFS_NODE) == 0)
+			if (object == NULL || object->type != tmpfs_pager_type)
 				continue;
 			/*
 			 * No need to dig into shadow chain, mapping
@@ -239,8 +241,7 @@ again:
 				continue;
 			}
 			MPASS(object->ref_count > 1);
-			if ((object->flags & (OBJ_TMPFS_NODE | OBJ_TMPFS)) !=
-			    (OBJ_TMPFS_NODE | OBJ_TMPFS)) {
+			if ((object->flags & OBJ_TMPFS) == 0) {
 				VM_OBJECT_RUNLOCK(object);
 				continue;
 			}
@@ -302,7 +303,7 @@ tmpfs_rw_to_ro(struct mount *mp)
 	MNT_IUNLOCK(mp);
 	for (;;) {
 		tmpfs_all_rw_maps(mp, tmpfs_revoke_rw_maps_cb, NULL);
-		tmpfs_update_mtime(mp, false);
+		tmpfs_update_mtime_all(mp);
 		error = vflush(mp, 0, flags, curthread);
 		if (error != 0) {
 			VFS_TO_TMPFS(mp)->tm_ronly = 0;
@@ -327,7 +328,7 @@ tmpfs_mount(struct mount *mp)
 	struct tmpfs_mount *tmp;
 	struct tmpfs_node *root;
 	int error;
-	bool nonc;
+	bool nomtime, nonc;
 	/* Size counters. */
 	u_quad_t pages;
 	off_t nodes_max, size_max, maxfilesize;
@@ -346,6 +347,7 @@ tmpfs_mount(struct mount *mp)
 		/* Only support update mounts for certain options. */
 		if (vfs_filteropt(mp->mnt_optnew, tmpfs_updateopts) != 0)
 			return (EOPNOTSUPP);
+		tmp = VFS_TO_TMPFS(mp);
 		if (vfs_getopt_size(mp->mnt_optnew, "size", &size_max) == 0) {
 			/*
 			 * On-the-fly resizing is not supported (yet). We still
@@ -354,21 +356,30 @@ tmpfs_mount(struct mount *mp)
 			 * parameter, say trying to change rw to ro or vice
 			 * versa, would cause vfs_filteropt() to bail.
 			 */
-			if (size_max != VFS_TO_TMPFS(mp)->tm_size_max)
+			if (size_max != tmp->tm_size_max)
 				return (EOPNOTSUPP);
 		}
 		if (vfs_flagopt(mp->mnt_optnew, "ro", NULL, 0) &&
-		    !(VFS_TO_TMPFS(mp)->tm_ronly)) {
+		    !tmp->tm_ronly) {
 			/* RW -> RO */
 			return (tmpfs_rw_to_ro(mp));
 		} else if (!vfs_flagopt(mp->mnt_optnew, "ro", NULL, 0) &&
-		    VFS_TO_TMPFS(mp)->tm_ronly) {
+		    tmp->tm_ronly) {
 			/* RO -> RW */
-			VFS_TO_TMPFS(mp)->tm_ronly = 0;
+			tmp->tm_ronly = 0;
 			MNT_ILOCK(mp);
 			mp->mnt_flag &= ~MNT_RDONLY;
 			MNT_IUNLOCK(mp);
 		}
+		tmp->tm_nomtime = vfs_getopt(mp->mnt_optnew, "nomtime", NULL,
+		    0) == 0;
+		MNT_ILOCK(mp);
+		if ((mp->mnt_flag & MNT_UNION) == 0) {
+			mp->mnt_kern_flag |= MNTK_FPLOOKUP;
+		} else {
+			mp->mnt_kern_flag &= ~MNTK_FPLOOKUP;
+		}
+		MNT_IUNLOCK(mp);
 		return (0);
 	}
 
@@ -394,6 +405,7 @@ tmpfs_mount(struct mount *mp)
 	if (vfs_getopt_size(mp->mnt_optnew, "maxfilesize", &maxfilesize) != 0)
 		maxfilesize = 0;
 	nonc = vfs_getopt(mp->mnt_optnew, "nonc", NULL, NULL) == 0;
+	nomtime = vfs_getopt(mp->mnt_optnew, "nomtime", NULL, NULL) == 0;
 
 	/* Do not allow mounts if we do not have enough memory to preserve
 	 * the minimum reserved pages. */
@@ -440,6 +452,7 @@ tmpfs_mount(struct mount *mp)
 	new_unrhdr64(&tmp->tm_ino_unr, 2);
 	tmp->tm_ronly = (mp->mnt_flag & MNT_RDONLY) != 0;
 	tmp->tm_nonc = nonc;
+	tmp->tm_nomtime = nomtime;
 
 	/* Allocate the root node. */
 	error = tmpfs_alloc_node(mp, tmp, VDIR, root_uid, root_gid,
@@ -457,6 +470,8 @@ tmpfs_mount(struct mount *mp)
 	mp->mnt_flag |= MNT_LOCAL;
 	mp->mnt_kern_flag |= MNTK_LOOKUP_SHARED | MNTK_EXTENDED_SHARED |
 	    MNTK_TEXT_REFS | MNTK_NOMSYNC;
+	if (!nonc && (mp->mnt_flag & MNT_UNION) == 0)
+		mp->mnt_kern_flag |= MNTK_FPLOOKUP;
 	MNT_IUNLOCK(mp);
 
 	mp->mnt_data = tmp;
@@ -530,8 +545,9 @@ tmpfs_unmount(struct mount *mp, int mntflags)
 void
 tmpfs_free_tmp(struct tmpfs_mount *tmp)
 {
-
+	TMPFS_MP_ASSERT_LOCKED(tmp);
 	MPASS(tmp->tm_refcount > 0);
+
 	tmp->tm_refcount--;
 	if (tmp->tm_refcount > 0) {
 		TMPFS_UNLOCK(tmp);
@@ -561,24 +577,29 @@ static int
 tmpfs_fhtovp(struct mount *mp, struct fid *fhp, int flags,
     struct vnode **vpp)
 {
-	struct tmpfs_fid *tfhp;
+	struct tmpfs_fid_data tfd;
 	struct tmpfs_mount *tmp;
 	struct tmpfs_node *node;
 	int error;
 
-	tmp = VFS_TO_TMPFS(mp);
-
-	tfhp = (struct tmpfs_fid *)fhp;
-	if (tfhp->tf_len != sizeof(struct tmpfs_fid))
+	if (fhp->fid_len != sizeof(tfd))
 		return (EINVAL);
 
-	if (tfhp->tf_id >= tmp->tm_nodes_max)
+	/*
+	 * Copy from fid_data onto the stack to avoid unaligned pointer use.
+	 * See the comment in sys/mount.h on struct fid for details.
+	 */
+	memcpy(&tfd, fhp->fid_data, fhp->fid_len);
+
+	tmp = VFS_TO_TMPFS(mp);
+
+	if (tfd.tfd_id >= tmp->tm_nodes_max)
 		return (EINVAL);
 
 	TMPFS_LOCK(tmp);
 	LIST_FOREACH(node, &tmp->tm_nodes_used, tn_entries) {
-		if (node->tn_id == tfhp->tf_id &&
-		    node->tn_gen == tfhp->tf_gen) {
+		if (node->tn_id == tfd.tfd_id &&
+		    node->tn_gen == tfd.tfd_gen) {
 			tmpfs_ref_node(node);
 			break;
 		}
@@ -635,23 +656,21 @@ tmpfs_sync(struct mount *mp, int waitfor)
 		mp->mnt_kern_flag |= MNTK_SUSPEND2 | MNTK_SUSPENDED;
 		MNT_IUNLOCK(mp);
 	} else if (waitfor == MNT_LAZY) {
-		tmpfs_update_mtime(mp, true);
+		tmpfs_update_mtime_lazy(mp);
 	}
 	return (0);
-}
-
-/*
- * The presence of a susp_clean method tells the VFS to track writes.
- */
-static void
-tmpfs_susp_clean(struct mount *mp __unused)
-{
 }
 
 static int
 tmpfs_init(struct vfsconf *conf)
 {
-	tmpfs_subr_init();
+	int res;
+
+	res = tmpfs_subr_init();
+	if (res != 0)
+		return (res);
+	memcpy(&tmpfs_fnops, &vnops, sizeof(struct fileops));
+	tmpfs_fnops.fo_close = tmpfs_fo_close;
 	return (0);
 }
 
@@ -673,7 +692,6 @@ struct vfsops tmpfs_vfsops = {
 	.vfs_statfs =			tmpfs_statfs,
 	.vfs_fhtovp =			tmpfs_fhtovp,
 	.vfs_sync =			tmpfs_sync,
-	.vfs_susp_clean =		tmpfs_susp_clean,
 	.vfs_init =			tmpfs_init,
 	.vfs_uninit =			tmpfs_uninit,
 };

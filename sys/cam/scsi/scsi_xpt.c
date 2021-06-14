@@ -80,7 +80,8 @@ struct scsi_quirk_entry {
 
 static int cam_srch_hi = 0;
 static int sysctl_cam_search_luns(SYSCTL_HANDLER_ARGS);
-SYSCTL_PROC(_kern_cam, OID_AUTO, cam_srch_hi, CTLTYPE_INT | CTLFLAG_RWTUN, 0, 0,
+SYSCTL_PROC(_kern_cam, OID_AUTO, cam_srch_hi,
+    CTLTYPE_INT | CTLFLAG_RWTUN | CTLFLAG_NEEDGIANT, 0, 0,
     sysctl_cam_search_luns, "I",
     "allow search above LUN 7 for SCSI3 and greater devices");
 
@@ -648,7 +649,7 @@ static struct xpt_proto scsi_proto = {
 CAM_XPT_PROTO(scsi_proto);
 
 static void
-probe_periph_init()
+probe_periph_init(void)
 {
 }
 
@@ -796,7 +797,6 @@ again:
 		 */
 		if (((periph->path->device->flags & CAM_DEV_UNCONFIGURED) == 0)
 		 && ((softc->flags & PROBE_INQUIRY_CKSUM) == 0)) {
-
 			MD5Init(&softc->context);
 			MD5Update(&softc->context, (unsigned char *)inq_buf,
 				  sizeof(struct scsi_inquiry_data));
@@ -1036,6 +1036,7 @@ proberequestdefaultnegotiation(struct cam_periph *periph)
 {
 	struct ccb_trans_settings cts;
 
+	memset(&cts, 0, sizeof(cts));
 	xpt_setup_ccb(&cts.ccb_h, periph->path, CAM_PRIORITY_NONE);
 	cts.ccb_h.func_code = XPT_GET_TRAN_SETTINGS;
 	cts.type = CTS_TYPE_USER_SETTINGS;
@@ -1111,7 +1112,6 @@ proberequestbackoff(struct cam_periph *periph, struct cam_ed *device)
 		return (0);
 	}
 
-
 	/*
 	 * Jump sync_period up by one, but stop at 5MHz and fall back to Async.
 	 * We don't try to remember 'last' settings to see if the SIM actually
@@ -1174,7 +1174,6 @@ probedone(struct cam_periph *periph, union ccb *done_ccb)
 	case PROBE_TUR:
 	{
 		if (cam_ccb_status(done_ccb) != CAM_REQ_CMP) {
-
 			if (cam_periph_error(done_ccb, 0, SF_NO_PRINT) ==
 			    ERESTART) {
 outr:
@@ -1211,8 +1210,6 @@ out:
 
 			if (periph_qual == SID_QUAL_LU_CONNECTED ||
 			    periph_qual == SID_QUAL_LU_OFFLINE) {
-				u_int8_t len;
-
 				/*
 				 * We conservatively request only
 				 * SHORT_INQUIRY_LEN bytes of inquiry
@@ -1223,11 +1220,9 @@ out:
 				 * the amount of information the device
 				 * is willing to give.
 				 */
-				len = inq_buf->additional_length
-				    + offsetof(struct scsi_inquiry_data,
-                                               additional_length) + 1;
 				if (softc->action == PROBE_INQUIRY
-				    && len > SHORT_INQUIRY_LENGTH) {
+				    && SID_ADDITIONAL_LENGTH(inq_buf)
+				    > SHORT_INQUIRY_LENGTH) {
 					PROBE_SET_ACTION(softc, PROBE_FULL_INQUIRY);
 					xpt_release_ccb(done_ccb);
 					xpt_schedule(periph, priority);
@@ -1592,7 +1587,6 @@ probe_device_check:
 			 */
 		} else if (cam_ccb_status(done_ccb) == CAM_REQ_CMP
 			&& (serial_buf->length > 0)) {
-
 			have_serialnum = 1;
 			path->device->serial_num =
 				(u_int8_t *)malloc((serial_buf->length + 1),
@@ -2021,7 +2015,6 @@ scsi_scan_bus(struct cam_periph *periph, union ccb *request_ccb)
 		low_target = 0;
 		initiator_id = scan_info->cpi->initiator_id;
 
-
 		/*
 		 * We can scan all targets in parallel, or do it sequentially.
 		 */
@@ -2310,6 +2303,7 @@ scsi_scan_lun(struct cam_periph *periph, struct cam_path *path,
 
 	CAM_DEBUG(path, CAM_DEBUG_TRACE, ("scsi_scan_lun\n"));
 
+	memset(&cpi, 0, sizeof(cpi));
 	xpt_setup_ccb(&cpi.ccb_h, path, CAM_PRIORITY_NONE);
 	cpi.ccb_h.func_code = XPT_PATH_INQ;
 	xpt_action((union ccb *)&cpi);
@@ -2436,6 +2430,7 @@ scsi_devise_transport(struct cam_path *path)
 	struct scsi_inquiry_data *inq_buf;
 
 	/* Get transport information from the SIM */
+	memset(&cpi, 0, sizeof(cpi));
 	xpt_setup_ccb(&cpi.ccb_h, path, CAM_PRIORITY_NONE);
 	cpi.ccb_h.func_code = XPT_PATH_INQ;
 	xpt_action((union ccb *)&cpi);
@@ -2496,6 +2491,7 @@ scsi_devise_transport(struct cam_path *path)
 	 */
 
 	/* Tell the controller what we think */
+	memset(&cts, 0, sizeof(cts));
 	xpt_setup_ccb(&cts.ccb_h, path, CAM_PRIORITY_NONE);
 	cts.ccb_h.func_code = XPT_SET_TRAN_SETTINGS;
 	cts.type = CTS_TYPE_CURRENT_SETTINGS;
@@ -2629,6 +2625,21 @@ static void
 scsi_action(union ccb *start_ccb)
 {
 
+	if (start_ccb->ccb_h.func_code != XPT_SCSI_IO) {
+#ifdef notyet
+		KASSERT((start_ccb->ccb_h.alloc_flags & CAM_CCB_FROM_UMA) == 0,
+		    ("%s: ccb %p, func_code %#x should not be allocated "
+		    "from UMA zone\n",
+		    __func__, start_ccb, start_ccb->ccb_h.func_code));
+#else
+		if ((start_ccb->ccb_h.alloc_flags & CAM_CCB_FROM_UMA) != 0) {
+			printf("%s: ccb %p, func_code %#x should not be allocated "
+			    "from UMA zone\n",
+			    __func__, start_ccb, start_ccb->ccb_h.func_code);
+		}
+#endif
+	}
+
 	switch (start_ccb->ccb_h.func_code) {
 	case XPT_SET_TRAN_SETTINGS:
 	{
@@ -2737,6 +2748,7 @@ scsi_set_transfer_settings(struct ccb_trans_settings *cts, struct cam_path *path
 
 	inq_data = &device->inq_data;
 	scsi = &cts->proto_specific.scsi;
+	memset(&cpi, 0, sizeof(cpi));
 	xpt_setup_ccb(&cpi.ccb_h, path, CAM_PRIORITY_NONE);
 	cpi.ccb_h.func_code = XPT_PATH_INQ;
 	xpt_action((union ccb *)&cpi);
@@ -2758,6 +2770,7 @@ scsi_set_transfer_settings(struct ccb_trans_settings *cts, struct cam_path *path
 		 * Perform sanity checking against what the
 		 * controller and device can do.
 		 */
+		memset(&cur_cts, 0, sizeof(cur_cts));
 		xpt_setup_ccb(&cur_cts.ccb_h, path, CAM_PRIORITY_NONE);
 		cur_cts.ccb_h.func_code = XPT_GET_TRAN_SETTINGS;
 		cur_cts.type = cts->type;
@@ -2904,7 +2917,6 @@ scsi_set_transfer_settings(struct ccb_trans_settings *cts, struct cam_path *path
 		  && device_tagenb == FALSE)
 		 || ((scsi->flags & CTS_SCSI_FLAGS_TAG_ENB) == 0
 		  && device_tagenb == TRUE)) {
-
 			if ((scsi->flags & CTS_SCSI_FLAGS_TAG_ENB) != 0) {
 				/*
 				 * Delay change to use tags until after a
@@ -2942,6 +2954,7 @@ scsi_toggle_tags(struct cam_path *path)
  	  && (dev->inq_flags & (SID_Sync|SID_WBus16|SID_WBus32)) != 0)) {
 		struct ccb_trans_settings cts;
 
+		memset(&cts, 0, sizeof(cts));
 		xpt_setup_ccb(&cts.ccb_h, path, CAM_PRIORITY_NONE);
 		cts.protocol = PROTO_SCSI;
 		cts.protocol_version = PROTO_VERSION_UNSPECIFIED;
@@ -2989,7 +3002,6 @@ scsi_dev_async(u_int32_t async_code, struct cam_eb *bus, struct cam_et *target,
 		status = CAM_REQ_CMP_ERR;
 
 	if (status == CAM_REQ_CMP) {
-
 		/*
 		 * Allow transfer negotiation to occur in a
 		 * tag free environment and after settle delay.
@@ -3048,8 +3060,9 @@ _scsi_announce_periph(struct cam_periph *periph, u_int *speed, u_int *freq, stru
 	xpt_action((union ccb*)cts);
 	if (cam_ccb_status((union ccb *)cts) != CAM_REQ_CMP)
 		return;
-	
+
 	/* Ask the SIM for its base transfer speed */
+	memset(&cpi, 0, sizeof(cpi));
 	xpt_setup_ccb(&cpi.ccb_h, path, CAM_PRIORITY_NORMAL);
 	cpi.ccb_h.func_code = XPT_PATH_INQ;
 	xpt_action((union ccb *)&cpi);
@@ -3092,6 +3105,7 @@ scsi_announce_periph_sbuf(struct cam_periph *periph, struct sbuf *sb)
 	struct	ccb_trans_settings cts;
 	u_int speed, freq, mb;
 
+	memset(&cts, 0, sizeof(cts));
 	_scsi_announce_periph(periph, &speed, &freq, &cts);
 	if (cam_ccb_status((union ccb *)&cts) != CAM_REQ_CMP)
 		return;
@@ -3148,6 +3162,7 @@ scsi_announce_periph(struct cam_periph *periph)
 	struct	ccb_trans_settings cts;
 	u_int speed, freq, mb;
 
+	memset(&cts, 0, sizeof(cts));
 	_scsi_announce_periph(periph, &speed, &freq, &cts);
 	if (cam_ccb_status((union ccb *)&cts) != CAM_REQ_CMP)
 		return;

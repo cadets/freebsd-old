@@ -183,14 +183,11 @@ save_vec(struct thread *td)
 void
 save_vec_nodrop(struct thread *td)
 {
-	struct thread *vtd;
 	struct pcb *pcb;
 	int i;
 
-	vtd = PCPU_GET(vecthread);
-	if (td == vtd) {
+	if (td == PCPU_GET(vecthread))
 		save_vec_int(td);
-	}
 
 	pcb = td->td_pcb;
 
@@ -199,7 +196,6 @@ save_vec_nodrop(struct thread *td)
 		    td->td_frame ? td->td_frame->fixreg[i] : 0;
 	}
 }
-
 
 #define	SPE_INST_MASK	0x31f
 #define	EADD	0x200
@@ -488,7 +484,7 @@ spe_handle_fpdata(struct trapframe *frame)
 	uint32_t msr;
 
 	err = fueword32((void *)frame->srr0, &instr);
-	
+
 	if (err != 0)
 		return;
 		/* Fault. */;

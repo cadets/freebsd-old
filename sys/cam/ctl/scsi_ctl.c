@@ -383,7 +383,6 @@ ctlfeasync(void *callback_arg, uint32_t code, struct cam_path *path, void *arg)
 		break;
 	}
 	case AC_PATH_DEREGISTERED: {
-
 		if (softc != NULL) {
 			/*
 			 * XXX KDM are we certain at this point that there
@@ -463,7 +462,7 @@ ctlferegister(struct cam_periph *periph, void *arg)
 
 	softc = (struct ctlfe_lun_softc *)arg;
 	bus_softc = softc->parent_softc;
-	
+
 	STAILQ_INIT(&softc->work_queue);
 	LIST_INIT(&softc->atio_list);
 	LIST_INIT(&softc->inot_list);
@@ -1116,7 +1115,6 @@ ctlfedone(struct cam_periph *periph, union ccb *done_ccb)
 
 	switch (done_ccb->ccb_h.func_code) {
 	case XPT_ACCEPT_TARGET_IO: {
-
 		LIST_REMOVE(&done_ccb->ccb_h, periph_links.le);
 		atio = &done_ccb->atio;
 		status = atio->ccb_h.status & CAM_STATUS_MASK;
@@ -1153,6 +1151,7 @@ ctlfedone(struct cam_periph *periph, union ccb *done_ccb)
 		} else {
 			io->io_hdr.nexus.targ_lun = atio->ccb_h.target_lun;
 		}
+		io->scsiio.priority = atio->priority;
 		io->scsiio.tag_num = atio->tag_id;
 		switch (atio->tag_action) {
 		case CAM_TAG_ACTION_NONE:
@@ -1395,8 +1394,7 @@ ctlfedone(struct cam_periph *periph, union ccb *done_ccb)
 				xpt_release_ccb(done_ccb);
 				mtx_unlock(mtx);
 
-				/* Call the backend move done callback */
-				io->scsiio.be_move_done(io);
+				ctl_datamove_done(io, false);
 			}
 			return;
 		}
@@ -1492,6 +1490,7 @@ ctlfedone(struct cam_periph *periph, union ccb *done_ccb)
 			ctlfe_free_ccb(periph, done_ccb);
 			goto out;
 		}
+		mtx_unlock(mtx);
 		if (send_ctl_io != 0) {
 			ctl_queue(io);
 		} else {
@@ -1499,7 +1498,7 @@ ctlfedone(struct cam_periph *periph, union ccb *done_ccb)
 			done_ccb->ccb_h.func_code = XPT_NOTIFY_ACKNOWLEDGE;
 			xpt_action(done_ccb);
 		}
-		break;
+		return;
 	}
 	case XPT_NOTIFY_ACKNOWLEDGE:
 		/* Queue this back down to the SIM as an immediate notify. */
@@ -1910,7 +1909,7 @@ ctlfe_datamove(union ctl_io *io)
 	struct ctlfe_lun_softc *softc;
 
 	KASSERT(io->io_hdr.io_type == CTL_IO_SCSI,
-	    ("Unexpected io_type (%d) in ctlfe_datamove", io->io_hdr.io_type));
+	    ("%s: unexpected I/O type %x", __func__, io->io_hdr.io_type));
 
 	io->scsiio.ext_data_filled = 0;
 	ccb = PRIV_CCB(io);

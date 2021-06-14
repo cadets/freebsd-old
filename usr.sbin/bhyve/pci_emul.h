@@ -34,6 +34,7 @@
 #include <sys/types.h>
 #include <sys/queue.h>
 #include <sys/kernel.h>
+#include <sys/nv.h>
 #include <sys/_pthreadtypes.h>
 
 #include <dev/pci/pcireg.h>
@@ -45,13 +46,16 @@
 struct vmctx;
 struct pci_devinst;
 struct memory_region;
+struct vm_snapshot_meta;
 
 struct pci_devemu {
 	char      *pe_emu;		/* Name of device emulation */
 
 	/* instance creation */
 	int       (*pe_init)(struct vmctx *, struct pci_devinst *,
-			     char *opts);
+			     nvlist_t *);
+	int	(*pe_legacy_config)(nvlist_t *, const char *);
+	const char *pe_alias;
 
 	/* ACPI DSDT enumeration */
 	void	(*pe_write_dsdt)(struct pci_devinst *);
@@ -71,6 +75,15 @@ struct pci_devemu {
 	uint64_t  (*pe_barread)(struct vmctx *ctx, int vcpu,
 				struct pci_devinst *pi, int baridx,
 				uint64_t offset, int size);
+
+	void	(*pe_baraddr)(struct vmctx *ctx, struct pci_devinst *pi,
+			      int baridx, int enabled, uint64_t address);
+
+	/* Save/restore device state */
+	int	(*pe_snapshot)(struct vm_snapshot_meta *meta);
+	int	(*pe_pause)(struct vmctx *ctx, struct pci_devinst *pi);
+	int	(*pe_resume)(struct vmctx *ctx, struct pci_devinst *pi);
+
 };
 #define PCI_EMUL_SET(x)   DATA_SET(pci_devemu_set, x);
 
@@ -212,17 +225,13 @@ typedef void (*pci_lintr_cb)(int b, int s, int pin, int pirq_pin,
     int ioapic_irq, void *arg);
 
 int	init_pci(struct vmctx *ctx);
-void	msicap_cfgwrite(struct pci_devinst *pi, int capoff, int offset,
-	    int bytes, uint32_t val);
-void	msixcap_cfgwrite(struct pci_devinst *pi, int capoff, int offset,
-	    int bytes, uint32_t val);
 void	pci_callback(void);
 int	pci_emul_alloc_bar(struct pci_devinst *pdi, int idx,
 	    enum pcibar_type type, uint64_t size);
-int	pci_emul_alloc_pbar(struct pci_devinst *pdi, int idx,
-	    uint64_t hostbase, enum pcibar_type type, uint64_t size);
 int	pci_emul_add_msicap(struct pci_devinst *pi, int msgnum);
 int	pci_emul_add_pciecap(struct pci_devinst *pi, int pcie_device_type);
+void	pci_emul_capwrite(struct pci_devinst *pi, int offset, int bytes,
+	    uint32_t val, uint8_t capoff, int capid);
 void	pci_emul_cmd_changed(struct pci_devinst *pi, uint16_t old);
 void	pci_generate_msi(struct pci_devinst *pi, int msgnum);
 void	pci_generate_msix(struct pci_devinst *pi, int msgnum);
@@ -234,6 +243,7 @@ int	pci_msix_enabled(struct pci_devinst *pi);
 int	pci_msix_table_bar(struct pci_devinst *pi);
 int	pci_msix_pba_bar(struct pci_devinst *pi);
 int	pci_msi_maxmsgnum(struct pci_devinst *pi);
+int	pci_parse_legacy_config(nvlist_t *nvl, const char *opt);
 int	pci_parse_slot(char *opt);
 void    pci_print_supported_devices();
 void	pci_populate_msicap(struct msicap *cap, int msgs, int nextptr);
@@ -246,6 +256,11 @@ void	pci_walk_lintr(int bus, pci_lintr_cb cb, void *arg);
 void	pci_write_dsdt(void);
 uint64_t pci_ecfg_base(void);
 int	pci_bus_configured(int bus);
+#ifdef BHYVE_SNAPSHOT
+int	pci_snapshot(struct vm_snapshot_meta *meta);
+int	pci_pause(struct vmctx *ctx, const char *dev_name);
+int	pci_resume(struct vmctx *ctx, const char *dev_name);
+#endif
 
 static __inline void 
 pci_set_cfgdata8(struct pci_devinst *pi, int offset, uint8_t val)

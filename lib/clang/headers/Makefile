@@ -1,4 +1,3 @@
-
 # $FreeBSD$
 
 .include "../clang.pre.mk"
@@ -6,13 +5,10 @@
 .PATH:		${CLANG_SRCS}/lib/Headers
 
 INCSGROUPS=	INCS CUDA OMP PPC
-INCSDIR=	${LIBDIR}/clang/9.0.1/include
+INCSDIR=	${LIBDIR}/clang/12.0.0/include
 CUDADIR=	${INCSDIR}/cuda_wrappers
 OMPDIR=		${INCSDIR}/openmp_wrappers
 PPCDIR=		${INCSDIR}/ppc_wrappers
-
-GENINCS+=	arm_fp16.h
-GENINCS+=	arm_neon.h
 
 INCS+=		__clang_cuda_builtin_vars.h
 INCS+=		__clang_cuda_cmath.h
@@ -20,16 +16,23 @@ INCS+=		__clang_cuda_complex_builtins.h
 INCS+=		__clang_cuda_device_functions.h
 INCS+=		__clang_cuda_intrinsics.h
 INCS+=		__clang_cuda_libdevice_declares.h
+INCS+=		__clang_cuda_math.h
 INCS+=		__clang_cuda_math_forward_declares.h
 INCS+=		__clang_cuda_runtime_wrapper.h
+INCS+=		__clang_hip_cmath.h
+INCS+=		__clang_hip_libdevice_declares.h
+INCS+=		__clang_hip_math.h
+INCS+=		__clang_hip_runtime_wrapper.h
 INCS+=		__stddef_max_align_t.h
 INCS+=		__wmmintrin_aes.h
 INCS+=		__wmmintrin_pclmul.h
 INCS+=		adxintrin.h
 INCS+=		altivec.h
 INCS+=		ammintrin.h
+INCS+=		amxintrin.h
 INCS+=		arm64intr.h
 INCS+=		arm_acle.h
+INCS+=		arm_cmse.h
 INCS+=		armintr.h
 INCS+=		avx2intrin.h
 INCS+=		avx512bf16intrin.h
@@ -59,8 +62,10 @@ INCS+=		avx512vp2intersectintrin.h
 INCS+=		avx512vpopcntdqintrin.h
 INCS+=		avx512vpopcntdqvlintrin.h
 INCS+=		avxintrin.h
+INCS+=		avxvnniintrin.h
 INCS+=		bmi2intrin.h
 INCS+=		bmiintrin.h
+INCS+=		cet.h
 INCS+=		cetintrin.h
 INCS+=		cldemoteintrin.h
 INCS+=		clflushoptintrin.h
@@ -74,11 +79,13 @@ INCS+=		fma4intrin.h
 INCS+=		fmaintrin.h
 INCS+=		fxsrintrin.h
 INCS+=		gfniintrin.h
+INCS+=		hresetintrin.h
 INCS+=		htmintrin.h
 INCS+=		htmxlintrin.h
 INCS+=		ia32intrin.h
 INCS+=		immintrin.h
 INCS+=		invpcidintrin.h
+INCS+=		keylockerintrin.h
 INCS+=		lwpintrin.h
 INCS+=		lzcntintrin.h
 INCS+=		mm3dnow.h
@@ -100,18 +107,23 @@ INCS+=		ptwriteintrin.h
 INCS+=		rdseedintrin.h
 INCS+=		rtmintrin.h
 INCS+=		s390intrin.h
+INCS+=		serializeintrin.h
 INCS+=		sgxintrin.h
 INCS+=		shaintrin.h
 INCS+=		smmintrin.h
 INCS+=		tbmintrin.h
 INCS+=		tmmintrin.h
+INCS+=		tsxldtrkintrin.h
+INCS+=		uintrintrin.h
 INCS+=		vadefs.h
 INCS+=		vaesintrin.h
 INCS+=		vecintrin.h
 INCS+=		vpclmulqdqintrin.h
 INCS+=		waitpkgintrin.h
+INCS+=		wasm_simd128.h
 INCS+=		wbnoinvdintrin.h
 INCS+=		wmmintrin.h
+INCS+=		x86gprintrin.h
 INCS+=		x86intrin.h
 INCS+=		xmmintrin.h
 INCS+=		xopintrin.h
@@ -123,7 +135,7 @@ INCS+=		xtestintrin.h
 INCS+=		${GENINCS}
 
 # Headers which possibly conflict with our own versions:
-.if defined(INSTALL_CONFLICTING_CLANG_HEADERS)
+.ifdef INSTALL_CONFLICTING_CLANG_HEADERS
 INCS+=		float.h
 INCS+=		intrin.h
 INCS+=		inttypes.h
@@ -139,31 +151,36 @@ INCS+=		stdnoreturn.h
 INCS+=		tgmath.h
 INCS+=		unwind.h
 INCS+=		varargs.h
-.endif
+.endif # INSTALL_CONFLICTING_CLANG_HEADERS
 
 CUDA+=		cuda_wrappers/algorithm
 CUDA+=		cuda_wrappers/complex
 CUDA+=		cuda_wrappers/new
 
-OMP+=		openmp_wrappers/__clang_openmp_math.h
-OMP+=		openmp_wrappers/__clang_openmp_math_declares.h
+OMP+=		openmp_wrappers/__clang_openmp_device_functions.h
 OMP+=		openmp_wrappers/cmath
+OMP+=		openmp_wrappers/complex
+OMP+=		openmp_wrappers/complex.h
+OMP+=		openmp_wrappers/complex_cmath.h
 OMP+=		openmp_wrappers/math.h
+OMP+=		openmp_wrappers/new
 
 PPC+=		ppc_wrappers/emmintrin.h
 PPC+=		ppc_wrappers/mm_malloc.h
 PPC+=		ppc_wrappers/mmintrin.h
+PPC+=		ppc_wrappers/pmmintrin.h
+PPC+=		ppc_wrappers/smmintrin.h
+PPC+=		ppc_wrappers/tmmintrin.h
 PPC+=		ppc_wrappers/xmmintrin.h
 
-arm_fp16.h: ${CLANG_SRCS}/include/clang/Basic/arm_fp16.td
-	${CLANG_TBLGEN} -gen-arm-fp16 \
+.for hdr in bf16/bf16 cde/cde-header fp16/fp16 mve/mve-header neon/neon \
+	sve/sve-header
+arm_${hdr:H}.h: ${CLANG_SRCS}/include/clang/Basic/arm_${hdr:H}.td
+	${CLANG_TBLGEN} -gen-arm-${hdr:T} \
 	    -I ${CLANG_SRCS}/include/clang/Basic -d ${.TARGET:C/$/.d/} \
-	    -o ${.TARGET} ${CLANG_SRCS}/include/clang/Basic/arm_fp16.td
-
-arm_neon.h: ${CLANG_SRCS}/include/clang/Basic/arm_neon.td
-	${CLANG_TBLGEN} -gen-arm-neon \
-	    -I ${CLANG_SRCS}/include/clang/Basic -d ${.TARGET:C/$/.d/} \
-	    -o ${.TARGET} ${CLANG_SRCS}/include/clang/Basic/arm_neon.td
+	    -o ${.TARGET} ${CLANG_SRCS}/include/clang/Basic/arm_${hdr:H}.td
+GENINCS+=	arm_${hdr:H}.h
+.endfor
 
 CLEANFILES=	${GENINCS} ${GENINCS:C/$/.d/}
 

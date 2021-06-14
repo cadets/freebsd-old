@@ -70,10 +70,6 @@ __FBSDID("$FreeBSD$");
 
 extern char cachebailout[];
 
-#ifdef DEBUG
-int last_fault_code;	/* For the benefit of pmap_fault_fixup() */
-#endif
-
 struct ksig {
 	int sig;
 	u_long code;
@@ -169,7 +165,8 @@ static const struct abort aborts[] = {
 };
 
 static __inline void
-call_trapsignal(struct thread *td, int sig, int code, vm_offset_t addr)
+call_trapsignal(struct thread *td, int sig, int code, vm_offset_t addr,
+    int trapno)
 {
 	ksiginfo_t ksi;
 
@@ -185,6 +182,7 @@ call_trapsignal(struct thread *td, int sig, int code, vm_offset_t addr)
 	ksi.ksi_signo = sig;
 	ksi.ksi_code = code;
 	ksi.ksi_addr = (void *)addr;
+	ksi.ksi_trapno = trapno;
 	trapsignal(td, &ksi);
 }
 
@@ -252,7 +250,7 @@ abort_debug(struct trapframe *tf, u_int fsr, u_int prefetch, bool usermode,
 		struct thread *td;
 
 		td = curthread;
-		call_trapsignal(td, SIGTRAP, TRAP_BRKPT, far);
+		call_trapsignal(td, SIGTRAP, TRAP_BRKPT, far, FAULT_DEBUG);
 		userret(td, tf);
 	} else {
 #ifdef KDB
@@ -462,8 +460,11 @@ abort_handler(struct trapframe *tf, int prefetch)
 		/*
 		 * Don't allow user-mode faults in kernel address space.
 		 */
-		if (usermode)
+		if (usermode) {
+			ksig.sig = SIGSEGV;
+			ksig.code = SEGV_ACCERR;
 			goto nogo;
+		}
 
 		map = kernel_map;
 	} else {
@@ -472,8 +473,11 @@ abort_handler(struct trapframe *tf, int prefetch)
 		 * is NULL or curproc->p_vmspace is NULL the fault is fatal.
 		 */
 		vm = (p != NULL) ? p->p_vmspace : NULL;
-		if (vm == NULL)
+		if (vm == NULL) {
+			ksig.sig = SIGSEGV;
+			ksig.code = 0;
 			goto nogo;
+		}
 
 		map = &vm->vm_map;
 		if (!usermode && (td->td_intr_nesting_level != 0 ||
@@ -486,10 +490,6 @@ abort_handler(struct trapframe *tf, int prefetch)
 	ftype = (fsr & FSR_WNR) ? VM_PROT_WRITE : VM_PROT_READ;
 	if (prefetch)
 		ftype |= VM_PROT_EXECUTE;
-
-#ifdef DEBUG
-	last_fault_code = fsr;
-#endif
 
 #ifdef INVARIANTS
 	onfault = pcb->pcb_onfault;
@@ -523,7 +523,7 @@ nogo:
 	ksig.addr = far;
 
 do_trapsignal:
-	call_trapsignal(td, ksig.sig, ksig.code, ksig.addr);
+	call_trapsignal(td, ksig.sig, ksig.code, ksig.addr, idx);
 out:
 	if (usermode)
 		userret(td, tf);
@@ -554,6 +554,9 @@ abort_fatal(struct trapframe *tf, u_int idx, u_int fsr, u_int far,
 	bool usermode;
 	const char *mode;
 	const char *rw_mode;
+#ifdef KDB
+	bool handled;
+#endif
 
 	usermode = TRAPF_USERMODE(tf);
 #ifdef KDTRACE_HOOKS
@@ -601,8 +604,10 @@ abort_fatal(struct trapframe *tf, u_int idx, u_int fsr, u_int far,
 #ifdef KDB
 	if (debugger_on_trap) {
 		kdb_why = KDB_WHY_TRAP;
-		kdb_trap(fsr, 0, tf);
+		handled = kdb_trap(fsr, 0, tf);
 		kdb_why = KDB_WHY_UNSET;
+		if (handled)
+			return (0);
 	}
 #endif
 	panic("Fatal abort");

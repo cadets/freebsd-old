@@ -84,7 +84,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/serial/uftdi_reg.h>
 #include <dev/usb/uftdiio.h>
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, uftdi, CTLFLAG_RW, 0, "USB uftdi");
+static SYSCTL_NODE(_hw_usb, OID_AUTO, uftdi, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "USB uftdi");
 
 #ifdef USB_DEBUG
 static int uftdi_debug = 0;
@@ -213,7 +214,6 @@ static void	uftdi_stop_write(struct ucom_softc *);
 static void	uftdi_poll(struct ucom_softc *ucom);
 
 static const struct usb_config uftdi_config[UFTDI_N_TRANSFER] = {
-
 	[UFTDI_BULK_DT_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -293,6 +293,8 @@ static const STRUCT_USB_HOST_ID uftdi_devs[] = {
 	UFTDI_DEV(BBELECTRONICS, USPTL4, 0),
 	UFTDI_DEV(BBELECTRONICS, USTL4, 0),
 	UFTDI_DEV(BBELECTRONICS, ZZ_PROG1_USB, 0),
+	UFTDI_DEV(BRAINBOXES, US257, 0),
+	UFTDI_DEV(BRAINBOXES, US25701, 0),
 	UFTDI_DEV(CONTEC, COM1USBH, 0),
 	UFTDI_DEV(DRESDENELEKTRONIK, SENSORTERMINALBOARD, 0),
 	UFTDI_DEV(DRESDENELEKTRONIK, WIRELESSHANDHELDTERMINAL, 0),
@@ -509,6 +511,7 @@ static const STRUCT_USB_HOST_ID uftdi_devs[] = {
 	UFTDI_DEV(FTDI, SIGNALYZER_SH4, UFTDI_JTAG_IFACE(0)),
 	UFTDI_DEV(FTDI, SIGNALYZER_SLITE, UFTDI_JTAG_IFACE(0)),
 	UFTDI_DEV(FTDI, SIGNALYZER_ST, UFTDI_JTAG_IFACE(0)),
+	UFTDI_DEV(FTDI, SITOP_UPS500S, 0),
 	UFTDI_DEV(FTDI, SPECIAL_1, 0),
 	UFTDI_DEV(FTDI, SPECIAL_3, 0),
 	UFTDI_DEV(FTDI, SPECIAL_4, 0),
@@ -1100,7 +1103,6 @@ uftdi_attach(device_t dev)
 	device_set_usb_desc(dev);
 	mtx_init(&sc->sc_mtx, "uftdi", NULL, MTX_DEF);
 	ucom_ref(&sc->sc_super_ucom);
-
 
 	uftdi_devtype_setup(sc, uaa);
 

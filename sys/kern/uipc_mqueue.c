@@ -199,7 +199,7 @@ struct mqueue_msg {
 	/* following real data... */
 };
 
-static SYSCTL_NODE(_kern, OID_AUTO, mqueue, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_kern, OID_AUTO, mqueue, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
 	"POSIX real time message queue");
 
 static int	default_maxmsg  = 10;
@@ -754,7 +754,7 @@ mqfs_allocv(struct mount *mp, struct vnode **vpp, struct mqfs_node *pn)
 found:
 		*vpp = vd->mv_vnode;
 		sx_xunlock(&mqfs->mi_lock);
-		error = vget(*vpp, LK_RETRY | LK_EXCLUSIVE, curthread);
+		error = vget(*vpp, LK_RETRY | LK_EXCLUSIVE);
 		vdrop(*vpp);
 		return (error);
 	}
@@ -907,7 +907,7 @@ mqfs_lookupx(struct vop_cachedlookup_args *ap)
 	if (pn != NULL)
 		mqnode_addref(pn);
 	sx_xunlock(&mqfs->mi_lock);
-	
+
 	/* found */
 	if (pn != NULL) {
 		/* DELETE */
@@ -932,7 +932,7 @@ mqfs_lookupx(struct vop_cachedlookup_args *ap)
 			cache_enter(dvp, *vpp, cnp);
 		return (error);
 	}
-	
+
 	/* not found */
 
 	/* will create a new entry in the directory ? */
@@ -1099,7 +1099,6 @@ mqfs_inactive(struct vop_inactive_args *ap)
 struct vop_reclaim_args {
 	struct vop_generic_args a_gen;
 	struct vnode *a_vp;
-	struct thread *a_td;
 };
 #endif
 
@@ -1178,8 +1177,8 @@ mqfs_access(struct vop_access_args *ap)
 	error = VOP_GETATTR(vp, &vattr, ap->a_cred);
 	if (error)
 		return (error);
-	error = vaccess(vp->v_type, vattr.va_mode, vattr.va_uid,
-	    vattr.va_gid, ap->a_accmode, ap->a_cred, NULL);
+	error = vaccess(vp->v_type, vattr.va_mode, vattr.va_uid, vattr.va_gid,
+	    ap->a_accmode, ap->a_cred);
 	return (error);
 }
 
@@ -1426,6 +1425,7 @@ mqfs_readdir(struct vop_readdir_args *ap)
 		if (!pn->mn_fileno)
 			mqfs_fileno_alloc(mi, pn);
 		entry.d_fileno = pn->mn_fileno;
+		entry.d_off = offset + entry.d_reclen;
 		for (i = 0; i < MQFS_NAMELEN - 1 && pn->mn_name[i] != '\0'; ++i)
 			entry.d_name[i] = pn->mn_name[i];
 		entry.d_namlen = i;
@@ -1562,28 +1562,28 @@ static int
 mqfs_prison_remove(void *obj, void *data __unused)
 {
 	const struct prison *pr = obj;
-	const struct prison *tpr;
+	struct prison *tpr;
 	struct mqfs_node *pn, *tpn;
-	int found;
+	struct vnode *pr_root;
 
-	found = 0;
+	pr_root = pr->pr_root;
+	if (pr->pr_parent->pr_root == pr_root)
+		return (0);
 	TAILQ_FOREACH(tpr, &allprison, pr_list) {
-		if (tpr->pr_root == pr->pr_root && tpr != pr && tpr->pr_ref > 0)
-			found = 1;
+		if (tpr != pr && tpr->pr_root == pr_root)
+			return (0);
 	}
-	if (!found) {
-		/*
-		 * No jails are rooted in this directory anymore,
-		 * so no queues should be either.
-		 */
-		sx_xlock(&mqfs_data.mi_lock);
-		LIST_FOREACH_SAFE(pn, &mqfs_data.mi_root->mn_children,
-		    mn_sibling, tpn) {
-			if (pn->mn_pr_root == pr->pr_root)
-				(void)do_unlink(pn, curthread->td_ucred);
-		}
-		sx_xunlock(&mqfs_data.mi_lock);
+	/*
+	 * No jails are rooted in this directory anymore,
+	 * so no queues should be either.
+	 */
+	sx_xlock(&mqfs_data.mi_lock);
+	LIST_FOREACH_SAFE(pn, &mqfs_data.mi_root->mn_children,
+	    mn_sibling, tpn) {
+		if (pn->mn_pr_root == pr_root)
+			(void)do_unlink(pn, curthread->td_ucred);
 	}
+	sx_xunlock(&mqfs_data.mi_lock);
 	return (0);
 }
 
@@ -1917,7 +1917,7 @@ static int
 _mqueue_recv(struct mqueue *mq, struct mqueue_msg **msg, int timo)
 {	
 	int error = 0;
-	
+
 	mtx_lock(&mq->mq_mutex);
 	while ((*msg = TAILQ_FIRST(&mq->mq_msgq)) == NULL && error == 0) {
 		if (timo < 0) {
@@ -2012,7 +2012,7 @@ kern_kmq_open(struct thread *td, const char *upath, int flags, mode_t mode,
 {
 	char path[MQFS_NAMELEN + 1];
 	struct mqfs_node *pn;
-	struct filedesc *fdp;
+	struct pwddesc *pdp;
 	struct file *fp;
 	struct mqueue *mq;
 	int fd, error, len, cmode;
@@ -2020,8 +2020,8 @@ kern_kmq_open(struct thread *td, const char *upath, int flags, mode_t mode,
 	AUDIT_ARG_FFLAGS(flags);
 	AUDIT_ARG_MODE(mode);
 
-	fdp = td->td_proc->p_fd;
-	cmode = (((mode & ~fdp->fd_cmask) & ALLPERMS) & ~S_ISTXT);
+	pdp = td->td_proc->p_pd;
+	cmode = (((mode & ~pdp->pd_cmask) & ALLPERMS) & ~S_ISTXT);
 	mq = NULL;
 	if ((flags & O_CREAT) != 0 && attr != NULL) {
 		if (attr->mq_maxmsg <= 0 || attr->mq_maxmsg > maxmsg)
@@ -2088,7 +2088,7 @@ kern_kmq_open(struct thread *td, const char *upath, int flags, mode_t mode,
 			if (flags & FWRITE)
 				accmode |= VWRITE;
 			error = vaccess(VREG, pn->mn_mode, pn->mn_uid,
-				    pn->mn_gid, accmode, td->td_ucred, NULL);
+			    pn->mn_gid, accmode, td->td_ucred);
 		}
 	}
 
@@ -2448,7 +2448,7 @@ mqueue_fdclose(struct thread *td, int fd, struct file *fp)
 	struct mqueue *mq;
 #ifdef INVARIANTS
 	struct filedesc *fdp;
- 
+
 	fdp = td->td_proc->p_fd;
 	FILEDESC_LOCK_ASSERT(fdp);
 #endif
@@ -2566,7 +2566,7 @@ mqf_chmod(struct file *fp, mode_t mode, struct ucred *active_cred,
 	pn = fp->f_data;
 	sx_xlock(&mqfs_data.mi_lock);
 	error = vaccess(VREG, pn->mn_mode, pn->mn_uid, pn->mn_gid, VADMIN,
-	    active_cred, NULL);
+	    active_cred);
 	if (error != 0)
 		goto out;
 	pn->mn_mode = mode & ACCESSPERMS;

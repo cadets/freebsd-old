@@ -13,7 +13,7 @@
  */
 
 /*-
- * The following functions are based in the vn(4) driver: mdstart_swap(),
+ * The following functions are based on the vn(4) driver: mdstart_swap(),
  * mdstart_vnode(), mdcreate_swap(), mdcreate_vnode() and mddestroy(),
  * and as such under the following copyright:
  *
@@ -187,8 +187,6 @@ int mfs_root_size;
 #else
 extern volatile u_char __weak_symbol mfs_root;
 extern volatile u_char __weak_symbol mfs_root_end;
-__GLOBL(mfs_root);
-__GLOBL(mfs_root_end);
 #define mfs_root_size ((uintptr_t)(&mfs_root_end - &mfs_root))
 #endif
 #endif
@@ -225,7 +223,6 @@ struct g_class g_md_class = {
 };
 
 DECLARE_GEOM_CLASS(g_md_class, g_md);
-
 
 static LIST_HEAD(, md_s) md_softc_list = LIST_HEAD_INITIALIZER(md_softc_list);
 
@@ -443,7 +440,6 @@ s_write(struct indir *ip, off_t offset, uintptr_t ptr)
 	}
 	return (0);
 }
-
 
 static int
 g_md_access(struct g_provider *pp, int r, int w, int e)
@@ -962,9 +958,10 @@ mdstart_vnode(struct md_s *sc, struct bio *bp)
 		piov = auio.uio_iov;
 	} else if ((bp->bio_flags & BIO_UNMAPPED) != 0) {
 		pb = uma_zalloc(md_pbuf_zone, M_WAITOK);
+		MPASS((pb->b_flags & B_MAXPHYS) != 0);
 		bp->bio_resid = len;
 unmapped_step:
-		npages = atop(min(MAXPHYS, round_page(len + (ma_offs &
+		npages = atop(min(maxphys, round_page(len + (ma_offs &
 		    PAGE_MASK))));
 		iolen = min(ptoa(npages) - (ma_offs & PAGE_MASK), len);
 		KASSERT(iolen > 0, ("zero iolen"));
@@ -1013,11 +1010,11 @@ unmapped_step:
 				goto unmapped_step;
 		}
 		uma_zfree(md_pbuf_zone, pb);
+	} else {
+		bp->bio_resid = auio.uio_resid;
 	}
 
 	free(piov, M_MD);
-	if (pb == NULL)
-		bp->bio_resid = auio.uio_resid;
 	return (error);
 }
 
@@ -1060,9 +1057,7 @@ mdstart_swap(struct md_s *sc, struct bio *bp)
 	vm_object_pip_add(sc->object, 1);
 	for (i = bp->bio_offset / PAGE_SIZE; i <= lastp; i++) {
 		len = ((i == lastp) ? lastend : PAGE_SIZE) - offs;
-		VM_OBJECT_WLOCK(sc->object);
-		m = vm_page_grab(sc->object, i, VM_ALLOC_SYSTEM);
-		VM_OBJECT_WUNLOCK(sc->object);
+		m = vm_page_grab_unlocked(sc->object, i, VM_ALLOC_SYSTEM);
 		if (bp->bio_cmd == BIO_READ) {
 			if (vm_page_all_valid(m))
 				rv = VM_PAGER_OK;
@@ -1149,8 +1144,6 @@ mdstart_swap(struct md_s *sc, struct bio *bp)
 			VM_OBJECT_WUNLOCK(sc->object);
 		}
 		if (m != NULL) {
-			vm_page_xunbusy(m);
-
 			/*
 			 * The page may be deactivated prior to setting
 			 * PGA_REFERENCED, but in this case it will be
@@ -1160,6 +1153,7 @@ mdstart_swap(struct md_s *sc, struct bio *bp)
 				vm_page_reference(m);
 			else
 				vm_page_activate(m);
+			vm_page_xunbusy(m);
 		}
 
 		/* Actions on further pages start at offset 0 */
@@ -1185,6 +1179,23 @@ mdstart_null(struct md_s *sc, struct bio *bp)
 	}
 	bp->bio_resid = 0;
 	return (0);
+}
+
+static void
+md_handleattr(struct md_s *sc, struct bio *bp)
+{
+	if (sc->fwsectors && sc->fwheads &&
+	    (g_handleattr_int(bp, "GEOM::fwsectors", sc->fwsectors) != 0 ||
+	    g_handleattr_int(bp, "GEOM::fwheads", sc->fwheads) != 0))
+		return;
+	if (g_handleattr_int(bp, "GEOM::candelete", 1) != 0)
+		return;
+	if (sc->ident[0] != '\0' &&
+	    g_handleattr_str(bp, "GEOM::ident", sc->ident) != 0)
+		return;
+	if (g_handleattr_int(bp, "MNT::verified", (sc->flags & MD_VERIFY) != 0))
+		return;
+	g_io_deliver(bp, EOPNOTSUPP);
 }
 
 static void
@@ -1215,40 +1226,22 @@ md_kthread(void *arg)
 		}
 		mtx_unlock(&sc->queue_mtx);
 		if (bp->bio_cmd == BIO_GETATTR) {
-			int isv = ((sc->flags & MD_VERIFY) != 0);
-
-			if ((sc->fwsectors && sc->fwheads &&
-			    (g_handleattr_int(bp, "GEOM::fwsectors",
-			    sc->fwsectors) ||
-			    g_handleattr_int(bp, "GEOM::fwheads",
-			    sc->fwheads))) ||
-			    g_handleattr_int(bp, "GEOM::candelete", 1))
-				error = -1;
-			else if (sc->ident[0] != '\0' &&
-			    g_handleattr_str(bp, "GEOM::ident", sc->ident))
-				error = -1;
-			else if (g_handleattr_int(bp, "MNT::verified", isv))
-				error = -1;
-			else
-				error = EOPNOTSUPP;
+			md_handleattr(sc, bp);
 		} else {
 			error = sc->start(sc, bp);
-		}
-
-		if (bp->bio_cmd == BIO_READ || bp->bio_cmd == BIO_WRITE) {
-			/*
-			 * Devstat uses (bio_bcount, bio_resid) for
-			 * determining the length of the completed part of
-			 * the i/o.  g_io_deliver() will translate from
-			 * bio_completed to that, but it also destroys the
-			 * bio so we must do our own translation.
-			 */
-			bp->bio_bcount = bp->bio_length;
-			bp->bio_resid = (error == -1 ? bp->bio_bcount : 0);
-			devstat_end_transaction_bio(sc->devstat, bp);
-		}
-		if (error != -1) {
-			bp->bio_completed = bp->bio_length;
+			if (bp->bio_cmd == BIO_READ || bp->bio_cmd == BIO_WRITE) {
+				/*
+				 * Devstat uses (bio_bcount, bio_resid) for
+				 * determining the length of the completed part
+				 * of the i/o.  g_io_deliver() will translate
+				 * from bio_completed to that, but it also
+				 * destroys the bio so we must do our own
+				 * translation.
+				 */
+				bp->bio_bcount = bp->bio_length;
+				devstat_end_transaction_bio(sc->devstat, bp);
+			}
+			bp->bio_completed = bp->bio_length - bp->bio_resid;
 			g_io_deliver(bp, error);
 		}
 	}
@@ -1375,7 +1368,6 @@ mdcreate_malloc(struct md_s *sc, struct md_req *mdr)
 	}
 	return (error);
 }
-
 
 static int
 mdsetcred(struct md_s *sc, struct ucred *cred)
@@ -1563,13 +1555,11 @@ mdresize(struct md_s *sc, struct md_req *mdr)
 		if (mdr->md_mediasize <= 0 ||
 		    (mdr->md_mediasize % PAGE_SIZE) != 0)
 			return (EDOM);
-		oldpages = OFF_TO_IDX(round_page(sc->mediasize));
-		newpages = OFF_TO_IDX(round_page(mdr->md_mediasize));
+		oldpages = OFF_TO_IDX(sc->mediasize);
+		newpages = OFF_TO_IDX(mdr->md_mediasize);
 		if (newpages < oldpages) {
 			VM_OBJECT_WLOCK(sc->object);
 			vm_object_page_remove(sc->object, newpages, 0, 0);
-			swap_pager_freespace(sc->object, newpages,
-			    oldpages - newpages);
 			swap_release_by_cred(IDX_TO_OFF(oldpages -
 			    newpages), sc->cred);
 			sc->object->charge = IDX_TO_OFF(newpages);
@@ -1691,7 +1681,7 @@ kern_mdattach_locked(struct thread *td, struct md_req *mdr)
 		sectsize = DEV_BSIZE;
 	else
 		sectsize = mdr->md_sectorsize;
-	if (sectsize > MAXPHYS || mdr->md_mediasize < sectsize)
+	if (sectsize > maxphys || mdr->md_mediasize < sectsize)
 		return (EINVAL);
 	if (mdr->md_options & MD_AUTOUNIT)
 		sc = mdnew(-1, &error, mdr->md_type);

@@ -9,7 +9,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2021, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -170,7 +170,6 @@ extern char                 *DtCompilerParsertext;
 extern DT_FIELD             *AslGbl_CurrentField;
 
 extern int                  DtLabelByteOffset;
-extern UINT64               DtCompilerParserResult; /* Expression return value */
 extern UINT64               DtCompilerParserlineno; /* Current line number */
 
 extern UINT32               DtTokenFirstLine;

@@ -24,12 +24,15 @@
 * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#ifndef ARCHIVE_DIGEST_PRIVATE_H_INCLUDED
+#define ARCHIVE_DIGEST_PRIVATE_H_INCLUDED
+
 #ifndef __LIBARCHIVE_BUILD
 #error This header is only to be used internally to libarchive.
 #endif
-
-#ifndef ARCHIVE_CRYPTO_PRIVATE_H_INCLUDED
-#define ARCHIVE_CRYPTO_PRIVATE_H_INCLUDED
+#ifndef __LIBARCHIVE_CONFIG_H_INCLUDED
+#error "Should have include config.h first!"
+#endif
 
 /*
  * Crypto support in various Operating Systems:

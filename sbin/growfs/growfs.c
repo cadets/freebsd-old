@@ -590,6 +590,7 @@ updjcg(int cylno, time_t modtime, int fsi, int fso, unsigned int Nflag)
 		if (sblock.fs_magic == FS_UFS1_MAGIC)
 			acg.cg_old_ncyl = sblock.fs_old_cpg;
 
+		cgckhash(&acg);
 		wtfs(fsbtodb(&sblock, cgtod(&sblock, cylno)),
 		    (size_t)sblock.fs_cgsize, (void *)&acg, fso, Nflag);
 		DBG_PRINT0("jcg written\n");
@@ -965,6 +966,7 @@ updcsloc(time_t modtime, int fsi, int fso, unsigned int Nflag)
 	 * Now write the former cylinder group containing the cylinder
 	 * summary back to disk.
 	 */
+	cgckhash(&acg);
 	wtfs(fsbtodb(&sblock, cgtod(&sblock, ocscg)),
 	    (size_t)sblock.fs_cgsize, (void *)&acg, fso, Nflag);
 	DBG_PRINT0("oscg written\n");
@@ -1057,6 +1059,7 @@ updcsloc(time_t modtime, int fsi, int fso, unsigned int Nflag)
 	 * Write the new cylinder group containing the cylinder summary
 	 * back to disk.
 	 */
+	cgckhash(&acg);
 	wtfs(fsbtodb(&sblock, cgtod(&sblock, ncscg)),
 	    (size_t)sblock.fs_cgsize, (void *)&acg, fso, Nflag);
 	DBG_PRINT0("nscg written\n");
@@ -1457,6 +1460,11 @@ main(int argc, char **argv)
 			errc(1, ret, "unable to read superblock");
 		}
 	}
+	/*
+	 * Check for filesystem that was unclean at mount time.
+	 */
+	if ((fs->fs_flags & (FS_UNCLEAN | FS_NEEDSFSCK)) != 0)
+		errx(1, "%s is not clean - run fsck.\n", *argv);
 	memcpy(&osblock, fs, fs->fs_sbsize);
 	free(fs);
 	memcpy((void *)&fsun1, (void *)&fsun2, osblock.fs_sbsize);

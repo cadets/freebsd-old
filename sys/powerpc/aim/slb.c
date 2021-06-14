@@ -100,7 +100,6 @@ esid2idx(uint64_t esid, int level)
 #define uad_baseok(ua)                          \
 	(esid2base(ua->ua_base, ua->ua_level) == ua->ua_base)
 
-
 static inline uint64_t
 esid2base(uint64_t esid, int level)
 {
@@ -523,12 +522,12 @@ slb_uma_real_alloc(uma_zone_t zone, vm_size_t bytes, int domain,
 static void
 slb_zone_init(void *dummy)
 {
-
 	slbt_zone = uma_zcreate("SLB tree node", sizeof(struct slbtnode),
-	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_VM);
+	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR,
+	    UMA_ZONE_CONTIG | UMA_ZONE_VM);
 	slb_cache_zone = uma_zcreate("SLB cache",
 	    (n_slbs + 1)*sizeof(struct slb *), NULL, NULL, NULL, NULL,
-	    UMA_ALIGN_PTR, UMA_ZONE_VM);
+	    UMA_ALIGN_PTR, UMA_ZONE_CONTIG | UMA_ZONE_VM);
 
 	if (platform_real_maxaddr() != VM_MAX_ADDRESS) {
 		uma_zone_set_allocf(slb_cache_zone, slb_uma_real_alloc);
@@ -561,7 +560,7 @@ handle_kernel_slb_spill(int type, register_t dar, register_t srr0)
 	slbcache = PCPU_GET(aim.slb);
 	esid = (uintptr_t)addr >> ADDR_SR_SHFT;
 	slbe = (esid << SLBE_ESID_SHIFT) | SLBE_VALID;
-	
+
 	/* See if the hardware flushed this somehow (can happen in LPARs) */
 	for (i = 0; i < n_slbs; i++)
 		if (slbcache[i].slbe == (slbe | (uint64_t)i))

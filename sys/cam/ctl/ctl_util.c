@@ -740,8 +740,9 @@ ctl_io_sbuf(union ctl_io *io, struct sbuf *sb)
 	case CTL_IO_SCSI:
 		sbuf_cat(sb, path_str);
 		ctl_scsi_command_string(&io->scsiio, NULL, sb);
-		sbuf_printf(sb, " Tag: %#x/%d\n",
-			    io->scsiio.tag_num, io->scsiio.tag_type);
+		sbuf_printf(sb, " Tag: %#x/%d, Prio: %d\n",
+			    io->scsiio.tag_num, io->scsiio.tag_type,
+			    io->scsiio.priority);
 		break;
 	case CTL_IO_TASK:
 		sbuf_cat(sb, path_str);
@@ -861,7 +862,7 @@ ctl_data_print(union ctl_io *io)
 		return;
 	if (io->io_hdr.flags & CTL_FLAG_BUS_ADDR)
 		return;
-	if (io->scsiio.ext_sg_entries > 0)	/* XXX: Implement */
+	if (io->scsiio.kern_sg_entries > 0)	/* XXX: Implement */
 		return;
 	ctl_scsi_path_string(io, path_str, sizeof(path_str));
 	len = min(io->scsiio.kern_data_len, 4096);

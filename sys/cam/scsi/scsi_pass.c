@@ -445,7 +445,6 @@ pass_add_physpath(void *context, int pending)
 	if (xpt_getattr(physpath, MAXPATHLEN,
 			"GEOM::physpath", periph->path) == 0
 	 && strlen(physpath) != 0) {
-
 		mtx_unlock(mtx);
 		make_dev_physpath_alias(MAKEDEV_WAITOK, &softc->alias_dev,
 					softc->dev, softc->alias_dev, physpath);
@@ -484,7 +483,7 @@ passasync(void *callback_arg, u_int32_t code,
 	{
 		struct ccb_getdev *cgd;
 		cam_status status;
- 
+
 		cgd = (struct ccb_getdev *)arg;
 		if (cgd == NULL)
 			break;
@@ -584,15 +583,15 @@ passregister(struct cam_periph *periph, void *arg)
 		 periph->periph_name, periph->unit_number);
 	snprintf(softc->io_zone_name, sizeof(softc->io_zone_name), "%s%dIO",
 		 periph->periph_name, periph->unit_number);
-	softc->io_zone_size = MAXPHYS;
+	softc->io_zone_size = maxphys;
 	knlist_init_mtx(&softc->read_select.si_note, cam_periph_mtx(periph));
 
 	xpt_path_inq(&cpi, periph->path);
 
 	if (cpi.maxio == 0)
 		softc->maxio = DFLTPHYS;	/* traditional default */
-	else if (cpi.maxio > MAXPHYS)
-		softc->maxio = MAXPHYS;		/* for safety */
+	else if (cpi.maxio > maxphys)
+		softc->maxio = maxphys;		/* for safety */
 	else
 		softc->maxio = cpi.maxio;	/* real value */
 
@@ -652,6 +651,7 @@ passregister(struct cam_periph *periph, void *arg)
 	args.mda_gid = GID_OPERATOR;
 	args.mda_mode = 0600;
 	args.mda_si_drv1 = periph;
+	args.mda_flags = MAKEDEV_NOWAIT;
 	error = make_dev_s(&args, &softc->dev, "%s%d", periph->periph_name,
 	    periph->unit_number);
 	if (error != 0) {
@@ -831,7 +831,6 @@ passclose(struct cdev *dev, int flag, int fmt, struct thread *td)
 
 	return (0);
 }
-
 
 static void
 passstart(struct cam_periph *periph, union ccb *start_ccb)
@@ -1038,7 +1037,6 @@ passcreatezone(struct cam_periph *periph)
 		("%s called when the pass(4) zone is allocated!\n", __func__));
 
 	if ((softc->flags & PASS_FLAG_ZONE_INPROG) == 0) {
-
 		/*
 		 * We're the first context through, so we need to create
 		 * the pass(4) UMA zone for I/O requests.
@@ -1231,15 +1229,6 @@ passcopysglist(struct cam_periph *periph, struct pass_io_req *io_req,
 
 		user_watermark += len_to_copy;
 		kern_watermark += len_to_copy;
-
-		if (!useracc(user_ptr, len_to_copy,
-		    (direction == CAM_DIR_IN) ? VM_PROT_WRITE : VM_PROT_READ)) {
-			xpt_print(periph->path, "%s: unable to access user "
-				  "S/G list element %p len %zu\n", __func__,
-				  user_ptr, len_to_copy);
-			error = EFAULT;
-			goto bailout;
-		}
 
 		if (direction == CAM_DIR_IN) {
 			error = copyout(kern_ptr, user_ptr, len_to_copy);
@@ -1445,20 +1434,6 @@ passmemsetup(struct cam_periph *periph, struct pass_io_req *io_req)
 			if (io_req->lengths[i] == 0)
 				continue;
 
-			/*
-			 * Make sure that the user's buffer is accessible
-			 * to that process.
-			 */
-			if (!useracc(io_req->user_bufs[i], io_req->lengths[i],
-			    (io_req->dirs[i] == CAM_DIR_IN) ? VM_PROT_WRITE :
-			     VM_PROT_READ)) {
-				xpt_print(periph->path, "%s: user address %p "
-				    "length %u is not accessible\n", __func__,
-				    io_req->user_bufs[i], io_req->lengths[i]);
-				error = EFAULT;
-				goto bailout;
-			}
-
 			tmp_buf = malloc(lengths[i], M_SCSIPASS,
 					 M_WAITOK | M_ZERO);
 			io_req->kern_bufs[i] = tmp_buf;
@@ -1532,7 +1507,7 @@ passmemsetup(struct cam_periph *periph, struct pass_io_req *io_req)
 
 		/*
 		 * We allocate buffers in io_zone_size increments for an
-		 * S/G list.  This will generally be MAXPHYS.
+		 * S/G list.  This will generally be maxphys.
 		 */
 		if (lengths[0] <= softc->io_zone_size)
 			num_segs_needed = 1;
@@ -1560,13 +1535,6 @@ passmemsetup(struct cam_periph *periph, struct pass_io_req *io_req)
 			io_req->flags |= PASS_IO_USER_SEG_MALLOC;
 		} else
 			io_req->user_segptr = io_req->user_segs;
-
-		if (!useracc(*data_ptrs[0], sg_length, VM_PROT_READ)) {
-			xpt_print(periph->path, "%s: unable to access user "
-				  "S/G list at %p\n", __func__, *data_ptrs[0]);
-			error = EFAULT;
-			goto bailout;
-		}
 
 		error = copyin(*data_ptrs[0], io_req->user_segptr, sg_length);
 		if (error != 0) {
@@ -1723,7 +1691,6 @@ passmemdone(struct cam_periph *periph, struct pass_io_req *io_req)
 					  io_req->user_bufs[i]);
 				goto bailout;
 			}
-
 		}
 		break;
 	case CAM_DATA_PADDR:
@@ -1785,7 +1752,6 @@ passdoioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag, struct thread 
 	error = 0;
 
 	switch (cmd) {
-
 	case CAMIOCOMMAND:
 	{
 		union ccb *inccb;
@@ -2229,7 +2195,6 @@ passsendccb(struct cam_periph *periph, union ccb *ccb, union ccb *inccb)
 	if ((fc == XPT_SCSI_IO) || (fc == XPT_ATA_IO) || (fc == XPT_SMP_IO)
             || (fc == XPT_DEV_MATCH) || (fc == XPT_DEV_ADVINFO) || (fc == XPT_MMC_IO)
             || (fc == XPT_NVME_ADMIN) || (fc == XPT_NVME_IO)) {
-
 		bzero(&mapinfo, sizeof(mapinfo));
 
 		/*
@@ -2280,6 +2245,6 @@ passerror(union ccb *ccb, u_int32_t cam_flags, u_int32_t sense_flags)
 
 	periph = xpt_path_periph(ccb->ccb_h.path);
 	softc = (struct pass_softc *)periph->softc;
-	
+
 	return(cam_periph_error(ccb, cam_flags, sense_flags));
 }

@@ -46,6 +46,8 @@ __FBSDID("$FreeBSD$");
 #ifndef WITHOUT_CAPSICUM
 #include <capsicum_helpers.h>
 #endif
+#include <machine/vmm_snapshot.h>
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -63,6 +65,7 @@ __FBSDID("$FreeBSD$");
 #include "mii.h"
 
 #include "bhyverun.h"
+#include "config.h"
 #include "debug.h"
 #include "pci_emul.h"
 #include "mevent.h"
@@ -1699,18 +1702,18 @@ e82545_write_register(struct e82545_softc *sc, uint32_t offset, uint32_t value)
 		break;
 	case E1000_TDBAL(0):
 		sc->esc_TDBAL = value & ~0xF;
-		if (sc->esc_tx_enabled) {
-			/* Apparently legal */
+		if (sc->esc_tx_enabled)
 			e82545_tx_update_tdba(sc);
-		}
 		break;
 	case E1000_TDBAH(0):
-		//assert(!sc->esc_tx_enabled);		
 		sc->esc_TDBAH = value;
+		if (sc->esc_tx_enabled)
+			e82545_tx_update_tdba(sc);
 		break;
 	case E1000_TDLEN(0):
-		//assert(!sc->esc_tx_enabled);
 		sc->esc_TDLEN = value & ~0xFFF0007F;
+		if (sc->esc_tx_enabled)
+			e82545_tx_update_tdba(sc);
 		break;
 	case E1000_TDH(0):
 		//assert(!sc->esc_tx_enabled);
@@ -2275,15 +2278,12 @@ e82545_reset(struct e82545_softc *sc, int drvr)
 }
 
 static int
-e82545_init(struct vmctx *ctx, struct pci_devinst *pi, char *opts)
+e82545_init(struct vmctx *ctx, struct pci_devinst *pi, nvlist_t *nvl)
 {
 	char nstr[80];
 	struct e82545_softc *sc;
-	char *devname;
-	char *vtopts;
-	int mac_provided;
-
-	DPRINTF("Loading with options: %s", opts);
+	const char *mac;
+	int err;
 
 	/* Setup our softc */
 	sc = calloc(1, sizeof(*sc));
@@ -2321,35 +2321,20 @@ e82545_init(struct vmctx *ctx, struct pci_devinst *pi, char *opts)
 	pci_emul_alloc_bar(pi, E82545_BAR_IO, PCIBAR_IO,
 		E82545_BAR_IO_LEN);
 
-	/*
-	 * Attempt to open the net backend and read the MAC address
-	 * if specified.  Copied from virtio-net, slightly modified.
-	 */
-	mac_provided = 0;
-	sc->esc_be = NULL;
-	if (opts != NULL) {
-		int err;
-
-		devname = vtopts = strdup(opts);
-		(void) strsep(&vtopts, ",");
-
-		if (vtopts != NULL) {
-			err = net_parsemac(vtopts, sc->esc_mac.octet);
-			if (err != 0) {
-				free(devname);
-				return (err);
-			}
-			mac_provided = 1;
-		}
-
-		err = netbe_init(&sc->esc_be, devname, e82545_rx_callback, sc);
-		free(devname);
-		if (err)
+	mac = get_config_value_node(nvl, "mac");
+	if (mac != NULL) {
+		err = net_parsemac(mac, sc->esc_mac.octet);
+		if (err) {
+			free(sc);
 			return (err);
-	}
-
-	if (!mac_provided) {
+		}
+	} else
 		net_genmac(pi, sc->esc_mac.octet);
+
+	err = netbe_init(&sc->esc_be, nvl, e82545_rx_callback, sc);
+	if (err) {
+		free(sc);
+		return (err);
 	}
 
 	netbe_rx_enable(sc->esc_be);
@@ -2360,11 +2345,169 @@ e82545_init(struct vmctx *ctx, struct pci_devinst *pi, char *opts)
 	return (0);
 }
 
+#ifdef BHYVE_SNAPSHOT
+static int
+e82545_snapshot(struct vm_snapshot_meta *meta)
+{
+	int i;
+	int ret;
+	struct e82545_softc *sc;
+	struct pci_devinst *pi;
+	uint64_t bitmap_value;
+
+	pi = meta->dev_data;
+	sc = pi->pi_arg;
+
+	/* esc_mevp and esc_mevpitr should be reinitiated at init. */
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_mac, meta, ret, done);
+
+	/* General */
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_CTRL, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_FCAL, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_FCAH, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_FCT, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_VET, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_FCTTV, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_LEDCTL, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_PBA, meta, ret, done);
+
+	/* Interrupt control */
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_irq_asserted, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_ICR, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_ITR, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_ICS, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_IMS, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_IMC, meta, ret, done);
+
+	/*
+	 * Transmit
+	 *
+	 * The fields in the unions are in superposition to access certain
+	 * bytes in the larger uint variables.
+	 * e.g., ip_config = [ipcss|ipcso|ipcse0|ipcse1]
+	 */
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_txctx.lower_setup.ip_config, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_txctx.upper_setup.tcp_config, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_txctx.cmd_and_length, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_txctx.tcp_seg_setup.data, meta, ret, done);
+
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_tx_enabled, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_tx_active, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_TXCW, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_TCTL, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_TIPG, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_AIT, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_tdba, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_TDBAL, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_TDBAH, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_TDLEN, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_TDH, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_TDHr, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_TDT, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_TIDV, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_TXDCTL, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_TADV, meta, ret, done);
+
+	/* Has dependency on esc_TDLEN; reoreder of fields from struct. */
+	SNAPSHOT_GUEST2HOST_ADDR_OR_LEAVE(sc->esc_txdesc, sc->esc_TDLEN,
+		true, meta, ret, done);
+
+	/* L2 frame acceptance */
+	for (i = 0; i < nitems(sc->esc_uni); i++) {
+		SNAPSHOT_VAR_OR_LEAVE(sc->esc_uni[i].eu_valid, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(sc->esc_uni[i].eu_addrsel, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(sc->esc_uni[i].eu_eth, meta, ret, done);
+	}
+
+	SNAPSHOT_BUF_OR_LEAVE(sc->esc_fmcast, sizeof(sc->esc_fmcast),
+			      meta, ret, done);
+	SNAPSHOT_BUF_OR_LEAVE(sc->esc_fvlan, sizeof(sc->esc_fvlan),
+			      meta, ret, done);
+
+	/* Receive */
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_rx_enabled, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_rx_active, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_rx_loopback, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_RCTL, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_FCRTL, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_FCRTH, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_rdba, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_RDBAL, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_RDBAH, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_RDLEN, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_RDH, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_RDT, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_RDTR, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_RXDCTL, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_RADV, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_RSRPD, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->esc_RXCSUM, meta, ret, done);
+
+	/* Has dependency on esc_RDLEN; reoreder of fields from struct. */
+	SNAPSHOT_GUEST2HOST_ADDR_OR_LEAVE(sc->esc_rxdesc, sc->esc_TDLEN,
+		true, meta, ret, done);
+
+	/* IO Port register access */
+	SNAPSHOT_VAR_OR_LEAVE(sc->io_addr, meta, ret, done);
+
+	/* Shadow copy of MDIC */
+	SNAPSHOT_VAR_OR_LEAVE(sc->mdi_control, meta, ret, done);
+
+	/* Shadow copy of EECD */
+	SNAPSHOT_VAR_OR_LEAVE(sc->eeprom_control, meta, ret, done);
+
+	/* Latest NVM in/out */
+	SNAPSHOT_VAR_OR_LEAVE(sc->nvm_data, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->nvm_opaddr, meta, ret, done);
+
+	/* Stats */
+	SNAPSHOT_VAR_OR_LEAVE(sc->missed_pkt_count, meta, ret, done);
+	SNAPSHOT_BUF_OR_LEAVE(sc->pkt_rx_by_size, sizeof(sc->pkt_rx_by_size),
+			      meta, ret, done);
+	SNAPSHOT_BUF_OR_LEAVE(sc->pkt_tx_by_size, sizeof(sc->pkt_tx_by_size),
+			      meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->good_pkt_rx_count, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->bcast_pkt_rx_count, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->mcast_pkt_rx_count, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->good_pkt_tx_count, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->bcast_pkt_tx_count, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->mcast_pkt_tx_count, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->oversize_rx_count, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->tso_tx_count, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->good_octets_rx, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->good_octets_tx, meta, ret, done);
+	SNAPSHOT_VAR_OR_LEAVE(sc->missed_octets, meta, ret, done);
+
+	if (meta->op == VM_SNAPSHOT_SAVE)
+		bitmap_value = sc->nvm_bits;
+	SNAPSHOT_VAR_OR_LEAVE(bitmap_value, meta, ret, done);
+	if (meta->op == VM_SNAPSHOT_RESTORE)
+		sc->nvm_bits = bitmap_value;
+
+	if (meta->op == VM_SNAPSHOT_SAVE)
+		bitmap_value = sc->nvm_bits;
+	SNAPSHOT_VAR_OR_LEAVE(bitmap_value, meta, ret, done);
+	if (meta->op == VM_SNAPSHOT_RESTORE)
+		sc->nvm_bits = bitmap_value;
+
+	/* EEPROM data */
+	SNAPSHOT_BUF_OR_LEAVE(sc->eeprom_data, sizeof(sc->eeprom_data),
+			      meta, ret, done);
+
+done:
+	return (ret);
+}
+#endif
+
 struct pci_devemu pci_de_e82545 = {
 	.pe_emu = 	"e1000",
 	.pe_init =	e82545_init,
+	.pe_legacy_config = netbe_legacy_config,
 	.pe_barwrite =	e82545_write,
-	.pe_barread =	e82545_read
+	.pe_barread =	e82545_read,
+#ifdef BHYVE_SNAPSHOT
+	.pe_snapshot =	e82545_snapshot,
+#endif
 };
 PCI_EMUL_SET(pci_de_e82545);
 

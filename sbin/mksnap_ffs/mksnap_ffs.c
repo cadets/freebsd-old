@@ -40,7 +40,11 @@
 #include <sys/param.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
+
+#include <ufs/ufs/extattr.h>
+#include <ufs/ufs/quota.h>
 #include <ufs/ufs/ufsmount.h>
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -81,8 +85,7 @@ issamefs(const char *path, struct statfs *stfsp)
 		return (-1);
 	if (statfs(path, &stfsbuf) < 0)
 		return (-1);
-	if ((stfsbuf.f_fsid.val[0] != stfsp->f_fsid.val[0]) ||
-	    (stfsbuf.f_fsid.val[1] != stfsp->f_fsid.val[1]))
+	if (fsidcmp(&stfsbuf.f_fsid, &stfsp->f_fsid) != 0)
 		return (0);
 	return (1);
 }

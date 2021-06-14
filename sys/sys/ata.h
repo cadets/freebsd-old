@@ -46,6 +46,7 @@ struct ata_params {
 #define ATA_ATAPI_TYPE_TAPE             0x0100  /* streaming tape */
 #define ATA_ATAPI_TYPE_CDROM            0x0500  /* CD-ROM device */
 #define ATA_ATAPI_TYPE_OPTICAL          0x0700  /* optical disk */
+#define ATA_ATAPI_REMOVABLE             0x0080
 #define ATA_DRQ_MASK                    0x0060
 #define ATA_DRQ_SLOW                    0x0000  /* cpu 3 ms delay */
 #define ATA_DRQ_INTR                    0x0020  /* interrupt 10 ms delay */
@@ -383,7 +384,6 @@ struct ata_params {
 #define ATA_SA600               0x49
 #define ATA_DMA_MAX             0x4f
 
-
 /* ATA commands */
 #define ATA_NOP                         0x00    /* NOP */
 #define         ATA_NF_FLUSHQUEUE       0x00    /* flush queued cmd's */
@@ -507,7 +507,6 @@ struct ata_params {
 #define         ATA_SF_DIS_SRVIRQ       0xde    /* disable service interrupt */
 #define 	ATA_SF_LPSAERC		0x62	/* Long Phys Sect Align ErrRep*/
 #define 	ATA_SF_DSN		0x63	/* Device Stats Notification */
-#define ATA_CHECK_POWER_MODE		0xe5	/* Check Power Mode */
 #define ATA_SECURITY_SET_PASSWORD       0xf1    /* set drive password */
 #define ATA_SECURITY_UNLOCK             0xf2    /* unlock drive using passwd */
 #define ATA_SECURITY_ERASE_PREPARE      0xf3    /* prepare to erase drive */
@@ -516,7 +515,6 @@ struct ata_params {
 #define ATA_SECURITY_DISABLE_PASSWORD   0xf6    /* disable drive password */
 #define ATA_READ_NATIVE_MAX_ADDRESS     0xf8    /* read native max address */
 #define ATA_SET_MAX_ADDRESS             0xf9    /* set max address */
-
 
 /* ATAPI commands */
 #define ATAPI_TEST_UNIT_READY           0x00    /* check if device is ready */
@@ -578,7 +576,6 @@ struct ata_params {
 #define ATAPI_READ_CD                   0xbe    /* read data */
 #define ATAPI_POLL_DSC                  0xff    /* poll DSC status bit */
 
-
 struct ata_ioc_devices {
     int                 channel;
     char                name[2][32];
@@ -629,7 +626,7 @@ struct atapi_sense {
     u_int8_t	specific;		/* sense key specific */
 #define	ATA_SENSE_SPEC_VALID	0x80
 #define	ATA_SENSE_SPEC_MASK	0x7f
-	
+
     u_int8_t	specific1;		/* sense key specific */
     u_int8_t	specific2;		/* sense key specific */
 } __packed;
@@ -1008,7 +1005,6 @@ struct ata_security_password {
 
 #define IOCATAGSPINDOWN		_IOR('a', 104, int)
 #define IOCATASSPINDOWN		_IOW('a', 105, int)
-
 
 struct ata_ioc_raid_config {
 	    int                 lun;

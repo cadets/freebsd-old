@@ -44,6 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/specialreg.h>
 
 #include <errno.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -53,8 +54,10 @@ __FBSDID("$FreeBSD$");
 
 #include <libutil.h>
 
+#include <vm/vm.h>
 #include <machine/vmm.h>
 #include <machine/vmm_dev.h>
+#include <machine/vmm_snapshot.h>
 
 #include "vmmapi.h"
 
@@ -115,6 +118,7 @@ struct vmctx *
 vm_open(const char *name)
 {
 	struct vmctx *vm;
+	int saved_errno;
 
 	vm = malloc(sizeof(struct vmctx) + strlen(name) + 1);
 	assert(vm != NULL);
@@ -130,7 +134,9 @@ vm_open(const char *name)
 
 	return (vm);
 err:
-	vm_destroy(vm);
+	saved_errno = errno;
+	free(vm);
+	errno = saved_errno;
 	return (NULL);
 }
 
@@ -234,6 +240,30 @@ vm_mmap_memseg(struct vmctx *ctx, vm_paddr_t gpa, int segid, vm_ooffset_t off,
 	}
 
 	error = ioctl(ctx->fd, VM_MMAP_MEMSEG, &memmap);
+	return (error);
+}
+
+int
+vm_get_guestmem_from_ctx(struct vmctx *ctx, char **guest_baseaddr,
+    size_t *lowmem_size, size_t *highmem_size)
+{
+
+	*guest_baseaddr = ctx->baseaddr;
+	*lowmem_size = ctx->lowmem;
+	*highmem_size = ctx->highmem;
+	return (0);
+}
+
+int
+vm_munmap_memseg(struct vmctx *ctx, vm_paddr_t gpa, size_t len)
+{
+	struct vm_munmap munmap;
+	int error;
+
+	munmap.gpa = gpa;
+	munmap.len = len;
+
+	error = ioctl(ctx->fd, VM_MUNMAP_MEMSEG, &munmap);
 	return (error);
 }
 
@@ -446,6 +476,34 @@ vm_map_gpa(struct vmctx *ctx, vm_paddr_t gaddr, size_t len)
 	}
 
 	return (NULL);
+}
+
+vm_paddr_t
+vm_rev_map_gpa(struct vmctx *ctx, void *addr)
+{
+	vm_paddr_t offaddr;
+
+	offaddr = (char *)addr - ctx->baseaddr;
+
+	if (ctx->lowmem > 0)
+		if (offaddr >= 0 && offaddr <= ctx->lowmem)
+			return (offaddr);
+
+	if (ctx->highmem > 0)
+		if (offaddr >= 4*GB && offaddr < 4*GB + ctx->highmem)
+			return (offaddr);
+
+	return ((vm_paddr_t)-1);
+}
+
+/* TODO: maximum size for vmname */
+int
+vm_get_name(struct vmctx *ctx, char *buf, size_t max_len)
+{
+
+	if (strlcpy(buf, ctx->name, max_len) >= max_len)
+		return (EINVAL);
+	return (0);
 }
 
 size_t
@@ -757,6 +815,25 @@ vm_ioapic_pincount(struct vmctx *ctx, int *pincount)
 }
 
 int
+vm_readwrite_kernemu_device(struct vmctx *ctx, int vcpu, vm_paddr_t gpa,
+    bool write, int size, uint64_t *value)
+{
+	struct vm_readwrite_kernemu_device irp = {
+		.vcpuid = vcpu,
+		.access_width = fls(size) - 1,
+		.gpa = gpa,
+		.value = write ? *value : ~0ul,
+	};
+	long cmd = (write ? VM_SET_KERNEMU_DEV : VM_GET_KERNEMU_DEV);
+	int rc;
+
+	rc = ioctl(ctx->fd, cmd, &irp);
+	if (rc == 0 && !write)
+		*value = irp.value;
+	return (rc);
+}
+
+int
 vm_isa_assert_irq(struct vmctx *ctx, int atpic_irq, int ioapic_irq)
 {
 	struct vm_isa_irq isa_irq;
@@ -816,16 +893,13 @@ vm_inject_nmi(struct vmctx *ctx, int vcpu)
 	return (ioctl(ctx->fd, VM_INJECT_NMI, &vmnmi));
 }
 
-static struct {
-	const char	*name;
-	int		type;
-} capstrmap[] = {
-	{ "hlt_exit",		VM_CAP_HALT_EXIT },
-	{ "mtrap_exit",		VM_CAP_MTRAP_EXIT },
-	{ "pause_exit",		VM_CAP_PAUSE_EXIT },
-	{ "unrestricted_guest",	VM_CAP_UNRESTRICTED_GUEST },
-	{ "enable_invpcid",	VM_CAP_ENABLE_INVPCID },
-	{ 0 }
+static const char *capstrmap[] = {
+	[VM_CAP_HALT_EXIT]  = "hlt_exit",
+	[VM_CAP_MTRAP_EXIT] = "mtrap_exit",
+	[VM_CAP_PAUSE_EXIT] = "pause_exit",
+	[VM_CAP_UNRESTRICTED_GUEST] = "unrestricted_guest",
+	[VM_CAP_ENABLE_INVPCID] = "enable_invpcid",
+	[VM_CAP_BPT_EXIT] = "bpt_exit",
 };
 
 int
@@ -833,9 +907,9 @@ vm_capability_name2type(const char *capname)
 {
 	int i;
 
-	for (i = 0; capstrmap[i].name != NULL && capname != NULL; i++) {
-		if (strcmp(capstrmap[i].name, capname) == 0)
-			return (capstrmap[i].type);
+	for (i = 0; i < nitems(capstrmap); i++) {
+		if (strcmp(capstrmap[i], capname) == 0)
+			return (i);
 	}
 
 	return (-1);
@@ -844,12 +918,8 @@ vm_capability_name2type(const char *capname)
 const char *
 vm_capability_type2name(int type)
 {
-	int i;
-
-	for (i = 0; capstrmap[i].name != NULL; i++) {
-		if (capstrmap[i].type == type)
-			return (capstrmap[i].name);
-	}
+	if (type >= 0 && type < nitems(capstrmap))
+		return (capstrmap[type]);
 
 	return (NULL);
 }
@@ -927,6 +997,22 @@ vm_map_pptdev_mmio(struct vmctx *ctx, int bus, int slot, int func,
 }
 
 int
+vm_unmap_pptdev_mmio(struct vmctx *ctx, int bus, int slot, int func,
+		     vm_paddr_t gpa, size_t len)
+{
+	struct vm_pptdev_mmio pptmmio;
+
+	bzero(&pptmmio, sizeof(pptmmio));
+	pptmmio.bus = bus;
+	pptmmio.slot = slot;
+	pptmmio.func = func;
+	pptmmio.gpa = gpa;
+	pptmmio.len = len;
+
+	return (ioctl(ctx->fd, VM_UNMAP_PPTDEV_MMIO, &pptmmio));
+}
+
+int
 vm_setup_pptdev_msi(struct vmctx *ctx, int vcpu, int bus, int slot, int func,
     uint64_t addr, uint64_t msg, int numvec)
 {
@@ -961,6 +1047,19 @@ vm_setup_pptdev_msix(struct vmctx *ctx, int vcpu, int bus, int slot, int func,
 	pptmsix.vector_control = vector_control;
 
 	return ioctl(ctx->fd, VM_PPTDEV_MSIX, &pptmsix);
+}
+
+int
+vm_disable_pptdev_msix(struct vmctx *ctx, int bus, int slot, int func)
+{
+	struct vm_pptdev ppt;
+
+	bzero(&ppt, sizeof(ppt));
+	ppt.bus = bus;
+	ppt.slot = slot;
+	ppt.func = func;
+
+	return ioctl(ctx->fd, VM_PPTDEV_DISABLE_MSIX, &ppt);
 }
 
 uint64_t *
@@ -1509,6 +1608,29 @@ vm_restart_instruction(void *arg, int vcpu)
 }
 
 int
+vm_snapshot_req(struct vm_snapshot_meta *meta)
+{
+
+	if (ioctl(meta->ctx->fd, VM_SNAPSHOT_REQ, meta) == -1) {
+#ifdef SNAPSHOT_DEBUG
+		fprintf(stderr, "%s: snapshot failed for %s: %d\r\n",
+		    __func__, meta->dev_name, errno);
+#endif
+		return (-1);
+	}
+	return (0);
+}
+
+int
+vm_restore_time(struct vmctx *ctx)
+{
+	int dummy;
+
+	dummy = 0;
+	return (ioctl(ctx->fd, VM_RESTORE_TIME, &dummy));
+}
+
+int
 vm_set_topology(struct vmctx *ctx,
     uint16_t sockets, uint16_t cores, uint16_t threads, uint16_t maxcpus)
 {
@@ -1554,16 +1676,18 @@ vm_get_ioctls(size_t *len)
 	/* keep in sync with machine/vmm_dev.h */
 	static const cap_ioctl_t vm_ioctl_cmds[] = { VM_RUN, VM_SUSPEND, VM_REINIT,
 	    VM_ALLOC_MEMSEG, VM_GET_MEMSEG, VM_MMAP_MEMSEG, VM_MMAP_MEMSEG,
-	    VM_MMAP_GETNEXT, VM_SET_REGISTER, VM_GET_REGISTER,
+	    VM_MMAP_GETNEXT, VM_MUNMAP_MEMSEG, VM_SET_REGISTER, VM_GET_REGISTER,
 	    VM_SET_SEGMENT_DESCRIPTOR, VM_GET_SEGMENT_DESCRIPTOR,
 	    VM_SET_REGISTER_SET, VM_GET_REGISTER_SET,
+	    VM_SET_KERNEMU_DEV, VM_GET_KERNEMU_DEV,
 	    VM_INJECT_EXCEPTION, VM_LAPIC_IRQ, VM_LAPIC_LOCAL_IRQ,
 	    VM_LAPIC_MSI, VM_IOAPIC_ASSERT_IRQ, VM_IOAPIC_DEASSERT_IRQ,
 	    VM_IOAPIC_PULSE_IRQ, VM_IOAPIC_PINCOUNT, VM_ISA_ASSERT_IRQ,
 	    VM_ISA_DEASSERT_IRQ, VM_ISA_PULSE_IRQ, VM_ISA_SET_IRQ_TRIGGER,
 	    VM_SET_CAPABILITY, VM_GET_CAPABILITY, VM_BIND_PPTDEV,
 	    VM_UNBIND_PPTDEV, VM_MAP_PPTDEV_MMIO, VM_PPTDEV_MSI,
-	    VM_PPTDEV_MSIX, VM_INJECT_NMI, VM_STATS, VM_STAT_DESC,
+	    VM_PPTDEV_MSIX, VM_UNMAP_PPTDEV_MMIO, VM_PPTDEV_DISABLE_MSIX,
+	    VM_INJECT_NMI, VM_STATS, VM_STAT_DESC,
 	    VM_SET_X2APIC_STATE, VM_GET_X2APIC_STATE,
 	    VM_GET_HPET_CAPABILITIES, VM_GET_GPA_PMAP, VM_GLA2GPA,
 	    VM_GLA2GPA_NOFAULT,

@@ -32,6 +32,8 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_bhyve_snapshot.h"
+
 #include <sys/param.h>
 #include <sys/queue.h>
 #include <sys/lock.h>
@@ -42,6 +44,7 @@ __FBSDID("$FreeBSD$");
 
 #include <x86/apicreg.h>
 #include <machine/vmm.h>
+#include <machine/vmm_snapshot.h>
 
 #include "vmm_ktr.h"
 #include "vmm_lapic.h"
@@ -119,8 +122,14 @@ vioapic_send_intr(struct vioapic *vioapic, int pin)
 	phys = ((low & IOART_DESTMOD) == IOART_DESTPHY);
 	delmode = low & IOART_DELMOD;
 	level = low & IOART_TRGRLVL ? true : false;
-	if (level)
+	if (level) {
+		if ((low & IOART_REM_IRR) != 0) {
+			VIOAPIC_CTR1(vioapic, "ioapic pin%d: irr pending",
+			    pin);
+			return;
+		}
 		vioapic->rtbl[pin].reg |= IOART_REM_IRR;
+	}
 
 	vector = low & IOART_INTVEC;
 	dest = high >> APIC_ID_SHIFT;
@@ -339,6 +348,16 @@ vioapic_write(struct vioapic *vioapic, int vcpuid, uint32_t addr, uint32_t data)
 		vioapic->rtbl[pin].reg &= ~mask64 | RTBL_RO_BITS;
 		vioapic->rtbl[pin].reg |= data64 & ~RTBL_RO_BITS;
 
+		/*
+		 * Switching from level to edge triggering will clear the IRR
+		 * bit. This is what FreeBSD will do in order to EOI an
+		 * interrupt when the IO-APIC doesn't support targeted EOI (see
+		 * _ioapic_eoi_source).
+		 */
+		if ((vioapic->rtbl[pin].reg & IOART_TRGRMOD) == IOART_TRGREDG &&
+		    (vioapic->rtbl[pin].reg & IOART_REM_IRR) != 0)
+			vioapic->rtbl[pin].reg &= ~IOART_REM_IRR;
+
 		VIOAPIC_CTR2(vioapic, "ioapic pin%d: redir table entry %#lx",
 		    pin, vioapic->rtbl[pin].reg);
 
@@ -360,12 +379,10 @@ vioapic_write(struct vioapic *vioapic, int vcpuid, uint32_t addr, uint32_t data)
 
 		/*
 		 * Generate an interrupt if the following conditions are met:
-		 * - pin is not masked
-		 * - previous interrupt has been EOIed
+		 * - pin trigger mode is level
 		 * - pin level is asserted
 		 */
-		if ((vioapic->rtbl[pin].reg & IOART_INTMASK) == IOART_INTMCLR &&
-		    (vioapic->rtbl[pin].reg & IOART_REM_IRR) == 0 &&
+		if ((vioapic->rtbl[pin].reg & IOART_TRGRMOD) == IOART_TRGRLVL &&
 		    (vioapic->rtbl[pin].acnt > 0)) {
 			VIOAPIC_CTR2(vioapic, "ioapic pin%d: asserted at rtbl "
 			    "write, acnt %d", pin, vioapic->rtbl[pin].acnt);
@@ -499,3 +516,22 @@ vioapic_pincount(struct vm *vm)
 
 	return (REDIR_ENTRIES);
 }
+
+#ifdef BHYVE_SNAPSHOT
+int
+vioapic_snapshot(struct vioapic *vioapic, struct vm_snapshot_meta *meta)
+{
+	int ret;
+	int i;
+
+	SNAPSHOT_VAR_OR_LEAVE(vioapic->ioregsel, meta, ret, done);
+
+	for (i = 0; i < nitems(vioapic->rtbl); i++) {
+		SNAPSHOT_VAR_OR_LEAVE(vioapic->rtbl[i].reg, meta, ret, done);
+		SNAPSHOT_VAR_OR_LEAVE(vioapic->rtbl[i].acnt, meta, ret, done);
+	}
+
+done:
+	return (ret);
+}
+#endif

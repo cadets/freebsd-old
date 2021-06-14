@@ -43,11 +43,13 @@ __FBSDID("$FreeBSD$");
 #include <sys/queue.h>
 
 #include <arpa/inet.h>		/* for ntohl() */
+#include <machine/atomic.h>
 
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <nl_types.h>
+#include <paths.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,8 +58,11 @@ __FBSDID("$FreeBSD$");
 #include "un-namespace.h"
 
 #include "../locale/xlocale_private.h"
+#include "libc_private.h"
 
-#define _DEFAULT_NLS_PATH "/usr/share/nls/%L/%N.cat:/usr/share/nls/%N/%L:/usr/local/share/nls/%L/%N.cat:/usr/local/share/nls/%N/%L"
+#define _DEFAULT_NLS_PATH "/usr/share/nls/%L/%N.cat:/usr/share/nls/%N/%L:"	\
+				_PATH_LOCALBASE "/share/nls/%L/%N.cat:"		\
+				_PATH_LOCALBASE "/share/nls/%N/%L"
 
 #define RLOCK(fail)	{ int ret;						\
 			  if (__isthreaded &&					\
@@ -76,19 +81,25 @@ __FBSDID("$FreeBSD$");
 
 #define	NLERR		((nl_catd) -1)
 #define NLRETERR(errc)  { errno = errc; return (NLERR); }
-#define SAVEFAIL(n, l, e)	{ WLOCK(NLERR);					\
-				  np = malloc(sizeof(struct catentry));		\
+#define SAVEFAIL(n, l, e)	{ np = calloc(1, sizeof(struct catentry));	\
 				  if (np != NULL) {				\
 				  	np->name = strdup(n);			\
-					np->path = NULL;			\
 					np->catd = NLERR;			\
-					np->refcount = 0;			\
 					np->lang = (l == NULL) ? NULL :		\
 					    strdup(l);				\
 					np->caterrno = e;			\
-				  	SLIST_INSERT_HEAD(&cache, np, list);	\
+					if (np->name == NULL ||			\
+					    (l != NULL && np->lang == NULL)) {	\
+						free(np->name);			\
+						free(np->lang);			\
+						free(np);			\
+					} else {				\
+						WLOCK(NLERR);			\
+						SLIST_INSERT_HEAD(&cache, np,	\
+						    list);			\
+						UNLOCK;				\
+					}					\
 				  }						\
-				  UNLOCK;					\
 				  errno = e;					\
 				}
 
@@ -112,6 +123,12 @@ SLIST_HEAD(listhead, catentry) cache =
 nl_catd
 catopen(const char *name, int type)
 {
+	return (__catopen_l(name, type, __get_locale()));
+}
+
+nl_catd
+__catopen_l(const char *name, int type, locale_t locale)
+{
 	struct stat sbuf;
 	struct catentry *np;
 	char *base, *cptr, *cptr1, *nlspath, *pathP, *pcode;
@@ -129,7 +146,7 @@ catopen(const char *name, int type)
 		lang = NULL;
 	else {
 		if (type == NL_CAT_LOCALE)
-			lang = querylocale(LC_MESSAGES_MASK, __get_locale());
+			lang = querylocale(LC_MESSAGES_MASK, locale);
 		else
 			lang = getenv("LANG");
 
@@ -152,7 +169,7 @@ catopen(const char *name, int type)
 				NLRETERR(np->caterrno);
 			} else {
 				/* Found cached successful entry */
-				np->refcount++;
+				atomic_add_int(&np->refcount, 1);
 				UNLOCK;
 				return (np->catd);
 			}
@@ -355,8 +372,7 @@ catclose(nl_catd catd)
 	WLOCK(-1);
 	SLIST_FOREACH(np, &cache, list) {
 		if (catd == np->catd) {
-			np->refcount--;
-			if (np->refcount == 0)
+			if (atomic_fetchadd_int(&np->refcount, -1) == 1)
 				catfree(np);
 			break;
 		}
@@ -376,6 +392,7 @@ load_msgcat(const char *path, const char *name, const char *lang)
 	nl_catd	catd;
 	struct catentry *np;
 	void *data;
+	char *copy_path, *copy_name, *copy_lang;
 	int fd;
 
 	/* path/name will never be NULL here */
@@ -387,7 +404,7 @@ load_msgcat(const char *path, const char *name, const char *lang)
 	RLOCK(NLERR);
 	SLIST_FOREACH(np, &cache, list) {
 		if ((np->path != NULL) && (strcmp(np->path, path) == 0)) {
-			np->refcount++;
+			atomic_add_int(&np->refcount, 1);
 			UNLOCK;
 			return (np->catd);
 		}
@@ -432,7 +449,20 @@ load_msgcat(const char *path, const char *name, const char *lang)
 		NLRETERR(EFTYPE);
 	}
 
-	if ((catd = malloc(sizeof (*catd))) == NULL) {
+	copy_name = strdup(name);
+	copy_path = strdup(path);
+	copy_lang = (lang == NULL) ? NULL : strdup(lang);
+	catd = malloc(sizeof (*catd));
+	np = calloc(1, sizeof(struct catentry));
+
+	if (copy_name == NULL || copy_path == NULL ||
+	    (lang != NULL && copy_lang == NULL) ||
+	    catd == NULL || np == NULL) {
+		free(copy_name);
+		free(copy_path);
+		free(copy_lang);
+		free(catd);
+		free(np);
 		munmap(data, (size_t)st.st_size);
 		SAVEFAIL(name, lang, ENOMEM);
 		NLRETERR(ENOMEM);
@@ -442,16 +472,13 @@ load_msgcat(const char *path, const char *name, const char *lang)
 	catd->__size = (int)st.st_size;
 
 	/* Caching opened catalog */
+	np->name = copy_name;
+	np->path = copy_path;
+	np->catd = catd;
+	np->lang = copy_lang;
+	atomic_store_int(&np->refcount, 1);
 	WLOCK(NLERR);
-	if ((np = malloc(sizeof(struct catentry))) != NULL) {
-		np->name = strdup(name);
-		np->path = strdup(path);
-		np->catd = catd;
-		np->lang = (lang == NULL) ? NULL : strdup(lang);
-		np->refcount = 1;
-		np->caterrno = 0;
-		SLIST_INSERT_HEAD(&cache, np, list);
-	}
+	SLIST_INSERT_HEAD(&cache, np, list);
 	UNLOCK;
 	return (catd);
 }

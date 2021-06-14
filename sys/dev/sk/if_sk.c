@@ -265,16 +265,14 @@ static int sysctl_hw_sk_int_mod(SYSCTL_HANDLER_ARGS);
 /* Tunables. */
 static int jumbo_disable = 0;
 TUNABLE_INT("hw.skc.jumbo_disable", &jumbo_disable);
- 
+
 /*
  * It seems that SK-NET GENESIS supports very simple checksum offload
  * capability for Tx and I believe it can generate 0 checksum value for
  * UDP packets in Tx as the hardware can't differenciate UDP packets from
  * TCP packets. 0 chcecksum value for UDP packet is an invalid one as it
  * means sender didn't perforam checksum computation. For the safety I
- * disabled UDP checksum offload capability at the moment. Alternatively
- * we can intrduce a LINK0/LINK1 flag as hme(4) did in its Tx checksum
- * offload routine.
+ * disabled UDP checksum offload capability at the moment.
  */
 #define SK_CSUM_FEATURES	(CSUM_TCP)
 
@@ -936,7 +934,6 @@ sk_discard_rxbuf(sc_if, idx)
 	struct sk_rxdesc	*rxd;
 	struct mbuf		*m;
 
-
 	r = &sc_if->sk_rdata.sk_rx_ring[idx];
 	rxd = &sc_if->sk_cdata.sk_rxdesc[idx];
 	m = rxd->rx_m;
@@ -1596,7 +1593,8 @@ skc_attach(dev)
 
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
 		SYSCTL_CHILDREN(device_get_sysctl_tree(dev)),
-		OID_AUTO, "int_mod", CTLTYPE_INT|CTLFLAG_RW,
+		OID_AUTO, "int_mod",
+		CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
 		&sc->sk_int_mod, 0, sysctl_hw_sk_int_mod, "I",
 		"SK interrupt moderation");
 
@@ -2534,7 +2532,6 @@ sk_start_locked(ifp)
 		sc_if->sk_watchdog_timer = 5;
 	}
 }
-
 
 static void
 sk_watchdog(arg)

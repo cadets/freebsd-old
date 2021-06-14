@@ -63,6 +63,7 @@ __FBSDID("$FreeBSD$");
 #include <net/netisr.h>
 #include <net/ethernet.h>
 #include <net/route.h>
+#include <net/route/nhop.h>
 #include <net/vnet.h>
 
 #include <netinet/in.h>
@@ -91,8 +92,12 @@ enum arp_llinfo_state {
 };
 
 SYSCTL_DECL(_net_link_ether);
-static SYSCTL_NODE(_net_link_ether, PF_INET, inet, CTLFLAG_RW, 0, "");
-static SYSCTL_NODE(_net_link_ether, PF_ARP, arp, CTLFLAG_RW, 0, "");
+static SYSCTL_NODE(_net_link_ether, PF_INET, inet,
+    CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "");
+static SYSCTL_NODE(_net_link_ether, PF_ARP, arp,
+    CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "");
 
 /* timer values */
 VNET_DEFINE_STATIC(int, arpt_keep) = (20*60);	/* once resolved, good for 20
@@ -109,7 +114,7 @@ VNET_PCPUSTAT_SYSINIT(arpstat);
 VNET_PCPUSTAT_SYSUNINIT(arpstat);
 #endif /* VIMAGE */
 
-VNET_DEFINE_STATIC(int, arp_maxhold) = 1;
+VNET_DEFINE_STATIC(int, arp_maxhold) = 16;
 
 #define	V_arpt_keep		VNET(arpt_keep)
 #define	V_arpt_down		VNET(arpt_down)
@@ -174,7 +179,6 @@ SYSCTL_INT(_net_link_ether_arp, OID_AUTO, log_level, CTLFLAG_VNET | CTLFLAG_RW,
 		log((pri), "arp: " __VA_ARGS__);			\
 } while (0)
 
-
 static void	arpintr(struct mbuf *);
 static void	arptimer(void *);
 #ifdef INET
@@ -211,7 +215,7 @@ arptimer(void *arg)
 	LLE_WLOCK(lle);
 	if (callout_pending(&lle->lle_timer)) {
 		/*
-		 * Here we are a bit odd here in the treatment of 
+		 * Here we are a bit odd here in the treatment of
 		 * active/pending. If the pending bit is set, it got
 		 * rescheduled before I ran. The active
 		 * bit we ignore, since if it was stopped
@@ -345,7 +349,6 @@ arp_fillheader(struct ifnet *ifp, struct arphdr *ah, int bcast, u_char *buf,
 
 	return (error);
 }
-
 
 /*
  * Broadcast an ARP request. Caller specifies:
@@ -709,7 +712,7 @@ arpintr(struct mbuf *m)
 		layer = "ethernet";
 		break;
 	case ARPHRD_INFINIBAND:
-		hlen = 20;	/* RFC 4391, INFINIBAND_ALEN */ 
+		hlen = 20;	/* RFC 4391, INFINIBAND_ALEN */
 		layer = "infiniband";
 		break;
 	case ARPHRD_IEEE1394:
@@ -800,7 +803,7 @@ in_arpinput(struct mbuf *m)
 	int carped;
 	struct sockaddr_in sin;
 	struct sockaddr *dst;
-	struct nhop4_basic nh4;
+	struct nhop_object *nh;
 	uint8_t linkhdr[LLE_MAX_LINKHDR];
 	struct route ro;
 	size_t linkhdrsize;
@@ -981,7 +984,6 @@ match:
 		/* Allocate new entry */
 		la = lltable_alloc_entry(LLTABLE(ifp), 0, dst);
 		if (la == NULL) {
-
 			/*
 			 * lle creation may fail if source address belongs
 			 * to non-directly connected subnet. However, we
@@ -1040,7 +1042,11 @@ reply:
 		(void)memcpy(ar_tha(ah), ar_sha(ah), ah->ar_hln);
 		(void)memcpy(ar_sha(ah), enaddr, ah->ar_hln);
 	} else {
-		struct llentry *lle = NULL;
+		/*
+		 * Destination address is not ours. Check if
+		 * proxyarp entry exists or proxyarp is turned on globally.
+		 */
+		struct llentry *lle;
 
 		sin.sin_addr = itaddr;
 		lle = lla_lookup(LLTABLE(ifp), 0, (struct sockaddr *)&sin);
@@ -1050,15 +1056,15 @@ reply:
 			(void)memcpy(ar_sha(ah), lle->ll_addr, ah->ar_hln);
 			LLE_RUNLOCK(lle);
 		} else {
-
 			if (lle != NULL)
 				LLE_RUNLOCK(lle);
 
 			if (!V_arp_proxyall)
 				goto drop;
 
-			/* XXX MRT use table 0 for arp reply  */
-			if (fib4_lookup_nh_basic(0, itaddr, 0, 0, &nh4) != 0)
+			NET_EPOCH_ASSERT();
+			nh = fib4_lookup(ifp->if_fib, itaddr, 0, 0, 0);
+			if (nh == NULL)
 				goto drop;
 
 			/*
@@ -1066,7 +1072,7 @@ reply:
 			 * as this one came out of, or we'll get into a fight
 			 * over who claims what Ether address.
 			 */
-			if (nh4.nh_ifp == ifp)
+			if (nh->nh_ifp == ifp)
 				goto drop;
 
 			(void)memcpy(ar_tha(ah), ar_sha(ah), ah->ar_hln);
@@ -1079,10 +1085,10 @@ reply:
 			 * wrong network.
 			 */
 
-			/* XXX MRT use table 0 for arp checks */
-			if (fib4_lookup_nh_basic(0, isaddr, 0, 0, &nh4) != 0)
+			nh = fib4_lookup(ifp->if_fib, isaddr, 0, 0, 0);
+			if (nh == NULL)
 				goto drop;
-			if (nh4.nh_ifp != ifp) {
+			if (nh->nh_ifp != ifp) {
 				ARP_LOG(LOG_INFO, "proxy: ignoring request"
 				    " from %s via %s\n",
 				    inet_ntoa_r(isaddr, addrbuf),
@@ -1473,6 +1479,10 @@ arp_handle_ifllchange(struct ifnet *ifp)
 static void
 arp_iflladdr(void *arg __unused, struct ifnet *ifp)
 {
+	/* if_bridge can update its lladdr during if_vmove(), after we've done
+	 * if_detach_internal()/dom_ifdetach(). */
+	if (ifp->if_afdata[AF_INET] == NULL)
+		return;
 
 	lltable_update_ifaddr(LLTABLE(ifp));
 

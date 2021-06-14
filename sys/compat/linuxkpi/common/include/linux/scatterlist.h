@@ -32,6 +32,9 @@
 #ifndef	_LINUX_SCATTERLIST_H_
 #define	_LINUX_SCATTERLIST_H_
 
+#include <sys/types.h>
+#include <sys/sf_buf.h>
+
 #include <linux/page.h>
 #include <linux/slab.h>
 #include <linux/mm.h>
@@ -66,6 +69,10 @@ struct sg_page_iter {
 	} internal;
 };
 
+struct sg_dma_page_iter {
+	struct sg_page_iter base;
+};
+
 #define	SCATTERLIST_MAX_SEGMENT	(-1U & ~(PAGE_SIZE - 1))
 
 #define	SG_MAX_SINGLE_ALLOC	(PAGE_SIZE / sizeof(struct scatterlist))
@@ -85,6 +92,8 @@ struct sg_page_iter {
 #define	for_each_sg_page(sgl, iter, nents, pgoffset)			\
 	for (_sg_iter_init(sgl, iter, nents, pgoffset);			\
 	     (iter)->sg; _sg_iter_next(iter))
+#define	for_each_sg_dma_page(sgl, iter, nents, pgoffset) 		\
+	for_each_sg_page(sgl, &(iter)->base, nents, pgoffset)
 
 #define	for_each_sg(sglist, sg, sgmax, iter)				\
 	for (iter = 0, sg = (sglist); iter < (sgmax); iter++, sg = sg_next(sg))
@@ -337,7 +346,7 @@ __sg_alloc_table_from_pages(struct sg_table *sgt,
 		}
 
 		seg_size = ((j - cur) << PAGE_SHIFT) - off;
-		sg_set_page(s, pages[cur], min(size, seg_size), off);
+		sg_set_page(s, pages[cur], MIN(size, seg_size), off);
 		size -= seg_size;
 		off = 0;
 		cur = j;
@@ -404,10 +413,14 @@ sg_page_count(struct scatterlist *sg)
 {
 	return (PAGE_ALIGN(sg->offset + sg->length) >> PAGE_SHIFT);
 }
+#define	sg_dma_page_count(sg) \
+	sg_page_count(sg)
 
 static inline bool
 __sg_page_iter_next(struct sg_page_iter *piter)
 {
+	unsigned int pgcount;
+
 	if (piter->internal.nents == 0)
 		return (0);
 	if (piter->sg == NULL)
@@ -416,8 +429,11 @@ __sg_page_iter_next(struct sg_page_iter *piter)
 	piter->sg_pgoffset += piter->internal.pg_advance;
 	piter->internal.pg_advance = 1;
 
-	while (piter->sg_pgoffset >= sg_page_count(piter->sg)) {
-		piter->sg_pgoffset -= sg_page_count(piter->sg);
+	while (1) {
+		pgcount = sg_page_count(piter->sg);
+		if (likely(piter->sg_pgoffset < pgcount))
+			break;
+		piter->sg_pgoffset -= pgcount;
 		piter->sg = sg_next(piter->sg);
 		if (--piter->internal.nents == 0)
 			return (0);
@@ -426,6 +442,8 @@ __sg_page_iter_next(struct sg_page_iter *piter)
 	}
 	return (1);
 }
+#define	__sg_page_iter_dma_next(itr) \
+	__sg_page_iter_next(&(itr)->base)
 
 static inline void
 _sg_iter_init(struct scatterlist *sgl, struct sg_page_iter *iter,
@@ -443,11 +461,20 @@ _sg_iter_init(struct scatterlist *sgl, struct sg_page_iter *iter,
 	}
 }
 
-static inline dma_addr_t
-sg_page_iter_dma_address(struct sg_page_iter *spi)
-{
-	return (spi->sg->dma_address + (spi->sg_pgoffset << PAGE_SHIFT));
-}
+/*
+ * sg_page_iter_dma_address() is implemented as a macro because it
+ * needs to accept two different and identical structure types. This
+ * allows both old and new code to co-exist. The compile time assert
+ * adds some safety, that the structure sizes match.
+ */
+#define	sg_page_iter_dma_address(spi) ({		\
+	struct sg_page_iter *__spi = (void *)(spi);	\
+	dma_addr_t __dma_address;			\
+	CTASSERT(sizeof(*(spi)) == sizeof(*__spi));	\
+	__dma_address = __spi->sg->dma_address +	\
+	    (__spi->sg_pgoffset << PAGE_SHIFT);		\
+	__dma_address;					\
+})
 
 static inline struct page *
 sg_page_iter_page(struct sg_page_iter *piter)
@@ -455,5 +482,55 @@ sg_page_iter_page(struct sg_page_iter *piter)
 	return (nth_page(sg_page(piter->sg), piter->sg_pgoffset));
 }
 
+static __inline size_t
+sg_pcopy_from_buffer(struct scatterlist *sgl, unsigned int nents,
+    const void *buf, size_t buflen, off_t skip)
+{
+	struct sg_page_iter piter;
+	struct page *page;
+	struct sf_buf *sf;
+	size_t len, copied;
+	char *p, *b;
+
+	if (buflen == 0)
+		return (0);
+
+	b = __DECONST(char *, buf);
+	copied = 0;
+	sched_pin();
+	for_each_sg_page(sgl, &piter, nents, 0) {
+
+		/* Skip to the start. */
+		if (piter.sg->length <= skip) {
+			skip -= piter.sg->length;
+			continue;
+		}
+
+		/* See how much to copy. */
+		KASSERT(((piter.sg->length - skip) != 0 && (buflen != 0)),
+		    ("%s: sg len %u - skip %ju || buflen %zu is 0\n",
+		    __func__, piter.sg->length, (uintmax_t)skip, buflen));
+		len = min(piter.sg->length - skip, buflen);
+
+		page = sg_page_iter_page(&piter);
+		sf = sf_buf_alloc(page, SFB_CPUPRIVATE | SFB_NOWAIT);
+		if (sf == NULL)
+			break;
+		p = (char *)sf_buf_kva(sf) + piter.sg_pgoffset + skip;
+		memcpy(p, b, len);
+		sf_buf_free(sf);
+
+		copied += len;
+		/* Either we exactly filled the page, or we are done. */
+		buflen -= len;
+		if (buflen == 0)
+			break;
+		skip -= len;
+		b += len;
+	}
+	sched_unpin();
+
+	return (copied);
+}
 
 #endif					/* _LINUX_SCATTERLIST_H_ */

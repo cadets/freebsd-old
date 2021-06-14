@@ -38,7 +38,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/rman.h>
 
-#include <machine/fdt.h>
+#include <machine/bus.h>
 #include <machine/intr.h>
 #include <machine/resource.h>
 
@@ -78,6 +78,7 @@ static struct resource_spec lic_spec[] = {
 
 static struct ofw_compat_data compat_data[] = {
 	{"nvidia,tegra124-ictlr", 	1},
+	{"nvidia,tegra210-ictlr", 	1},
 	{NULL,				0}
 };
 
@@ -156,7 +157,6 @@ tegra_lic_pre_ithread(device_t dev, struct intr_irqsrc *isrc)
 	PIC_PRE_ITHREAD(sc->parent, isrc);
 }
 
-
 static void
 tegra_lic_post_ithread(device_t dev, struct intr_irqsrc *isrc)
 {
@@ -231,7 +231,6 @@ tegra_lic_attach(device_t dev)
 		WR4(sc, i, LIC_CPU_IER_CLR, 0xFFFFFFFF);
 		WR4(sc, i, LIC_CPU_IEP_CLASS, 0);
 	}
-
 
 	if (intr_pic_register(dev, OF_xref_from_node(node)) == NULL) {
 		device_printf(dev, "Cannot register PIC\n");

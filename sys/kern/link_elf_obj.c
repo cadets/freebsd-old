@@ -34,16 +34,17 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/fcntl.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
+#include <sys/linker.h>
 #include <sys/mutex.h>
 #include <sys/mount.h>
-#include <sys/proc.h>
 #include <sys/namei.h>
-#include <sys/fcntl.h>
+#include <sys/proc.h>
+#include <sys/rwlock.h>
 #include <sys/vnode.h>
-#include <sys/linker.h>
 
 #include <machine/elf.h>
 
@@ -53,11 +54,13 @@ __FBSDID("$FreeBSD$");
 
 #include <vm/vm.h>
 #include <vm/vm_param.h>
-#include <vm/vm_object.h>
-#include <vm/vm_kern.h>
-#include <vm/vm_extern.h>
 #include <vm/pmap.h>
+#include <vm/vm_extern.h>
+#include <vm/vm_kern.h>
 #include <vm/vm_map.h>
+#include <vm/vm_object.h>
+#include <vm/vm_page.h>
+#include <vm/vm_pager.h>
 
 #include <sys/link_elf.h>
 
@@ -216,7 +219,8 @@ link_elf_protect_range(elf_file_t ef, vm_offset_t start, vm_offset_t end,
 #endif
 		return;
 	}
-	error = vm_map_protect(kernel_map, start, end, prot, FALSE);
+	error = vm_map_protect(kernel_map, start, end, prot, 0,
+	    VM_MAP_PROTECT_SET_PROT);
 	KASSERT(error == KERN_SUCCESS,
 	    ("link_elf_protect_range: vm_map_protect() returned %d", error));
 }
@@ -382,6 +386,8 @@ link_elf_link_preload(linker_class_t cls, const char *filename,
 #ifdef __amd64__
 		case SHT_X86_64_UNWIND:
 #endif
+		case SHT_INIT_ARRAY:
+		case SHT_FINI_ARRAY:
 			/* Ignore sections not loaded by the loader. */
 			if (shdr[i].sh_addr == 0)
 				break;
@@ -466,6 +472,8 @@ link_elf_link_preload(linker_class_t cls, const char *filename,
 #ifdef __amd64__
 		case SHT_X86_64_UNWIND:
 #endif
+		case SHT_INIT_ARRAY:
+		case SHT_FINI_ARRAY:
 			if (shdr[i].sh_addr == 0)
 				break;
 			ef->progtab[pb].addr = (void *)shdr[i].sh_addr;
@@ -475,6 +483,10 @@ link_elf_link_preload(linker_class_t cls, const char *filename,
 			else if (shdr[i].sh_type == SHT_X86_64_UNWIND)
 				ef->progtab[pb].name = "<<UNWIND>>";
 #endif
+			else if (shdr[i].sh_type == SHT_INIT_ARRAY)
+				ef->progtab[pb].name = "<<INIT_ARRAY>>";
+			else if (shdr[i].sh_type == SHT_FINI_ARRAY)
+				ef->progtab[pb].name = "<<FINI_ARRAY>>";
 			else
 				ef->progtab[pb].name = "<<NOBITS>>";
 			ef->progtab[pb].size = shdr[i].sh_size;
@@ -521,10 +533,17 @@ link_elf_link_preload(linker_class_t cls, const char *filename,
 				vnet_data_copy(vnet_data, shdr[i].sh_size);
 				ef->progtab[pb].addr = vnet_data;
 #endif
-			} else if (ef->progtab[pb].name != NULL &&
-			    !strcmp(ef->progtab[pb].name, ".ctors")) {
-				lf->ctors_addr = ef->progtab[pb].addr;
-				lf->ctors_size = shdr[i].sh_size;
+			} else if ((ef->progtab[pb].name != NULL &&
+			    strcmp(ef->progtab[pb].name, ".ctors") == 0) ||
+			    shdr[i].sh_type == SHT_INIT_ARRAY) {
+				if (lf->ctors_addr != 0) {
+					printf(
+				    "%s: multiple ctor sections in %s\n",
+					    __func__, filename);
+				} else {
+					lf->ctors_addr = ef->progtab[pb].addr;
+					lf->ctors_size = shdr[i].sh_size;
+				}
 			}
 
 			/* Update all symbol values with the offset. */
@@ -769,6 +788,8 @@ link_elf_load_file(linker_class_t cls, const char *filename,
 #ifdef __amd64__
 		case SHT_X86_64_UNWIND:
 #endif
+		case SHT_INIT_ARRAY:
+		case SHT_FINI_ARRAY:
 			if ((shdr[i].sh_flags & SHF_ALLOC) == 0)
 				break;
 			ef->nprogtab++;
@@ -890,6 +911,8 @@ link_elf_load_file(linker_class_t cls, const char *filename,
 #ifdef __amd64__
 		case SHT_X86_64_UNWIND:
 #endif
+		case SHT_INIT_ARRAY:
+		case SHT_FINI_ARRAY:
 			if ((shdr[i].sh_flags & SHF_ALLOC) == 0)
 				break;
 			alignmask = shdr[i].sh_addralign - 1;
@@ -905,11 +928,15 @@ link_elf_load_file(linker_class_t cls, const char *filename,
 	 * This stuff needs to be in a single chunk so that profiling etc
 	 * can get the bounds and gdb can associate offsets with modules
 	 */
-	ef->object = vm_object_allocate(OBJT_PHYS, atop(round_page(mapsize)));
+	ef->object = vm_pager_allocate(OBJT_PHYS, NULL, round_page(mapsize),
+	    VM_PROT_ALL, 0, thread0.td_ucred);
 	if (ef->object == NULL) {
 		error = ENOMEM;
 		goto out;
 	}
+#if VM_NRESERVLEVEL > 0
+	vm_object_color(ef->object, 0);
+#endif
 
 	/*
 	 * In order to satisfy amd64's architectural requirements on the
@@ -963,6 +990,8 @@ link_elf_load_file(linker_class_t cls, const char *filename,
 #ifdef __amd64__
 		case SHT_X86_64_UNWIND:
 #endif
+		case SHT_INIT_ARRAY:
+		case SHT_FINI_ARRAY:
 			if ((shdr[i].sh_flags & SHF_ALLOC) == 0)
 				break;
 			alignmask = shdr[i].sh_addralign - 1;
@@ -971,9 +1000,18 @@ link_elf_load_file(linker_class_t cls, const char *filename,
 			if (ef->shstrtab != NULL && shdr[i].sh_name != 0) {
 				ef->progtab[pb].name =
 				    ef->shstrtab + shdr[i].sh_name;
-				if (!strcmp(ef->progtab[pb].name, ".ctors")) {
-					lf->ctors_addr = (caddr_t)mapbase;
-					lf->ctors_size = shdr[i].sh_size;
+				if (!strcmp(ef->progtab[pb].name, ".ctors") ||
+				    shdr[i].sh_type == SHT_INIT_ARRAY) {
+					if (lf->ctors_addr != 0) {
+						printf(
+				    "%s: multiple ctor sections in %s\n",
+						    __func__, filename);
+					} else {
+						lf->ctors_addr =
+						    (caddr_t)mapbase;
+						lf->ctors_size =
+						    shdr[i].sh_size;
+					}
 				}
 			} else if (shdr[i].sh_type == SHT_PROGBITS)
 				ef->progtab[pb].name = "<<PROGBITS>>";
@@ -1457,7 +1495,7 @@ link_elf_each_function_name(linker_file_t file,
 	elf_file_t ef = (elf_file_t)file;
 	const Elf_Sym *symp;
 	int i, error;
-	
+
 	/* Exhaustive search */
 	for (i = 0, symp = ef->ddbsymtab; i < ef->ddbsymcnt; i++, symp++) {
 		if (symp->st_value != 0 &&
@@ -1672,9 +1710,11 @@ link_elf_reloc_local(linker_file_t lf, bool ifuncs)
 			if (ELF_ST_BIND(sym->st_info) != STB_LOCAL)
 				continue;
 			if ((ELF_ST_TYPE(sym->st_info) == STT_GNU_IFUNC ||
-			    elf_is_ifunc_reloc(rel->r_info)) == ifuncs)
-				elf_reloc_local(lf, base, rel, ELF_RELOC_REL,
-				    elf_obj_lookup);
+			    elf_is_ifunc_reloc(rel->r_info)) != ifuncs)
+				continue;
+			if (elf_reloc_local(lf, base, rel, ELF_RELOC_REL,
+			    elf_obj_lookup) != 0)
+				return (ENOEXEC);
 		}
 	}
 
@@ -1700,9 +1740,11 @@ link_elf_reloc_local(linker_file_t lf, bool ifuncs)
 			if (ELF_ST_BIND(sym->st_info) != STB_LOCAL)
 				continue;
 			if ((ELF_ST_TYPE(sym->st_info) == STT_GNU_IFUNC ||
-			    elf_is_ifunc_reloc(rela->r_info)) == ifuncs)
-				elf_reloc_local(lf, base, rela, ELF_RELOC_RELA,
-				    elf_obj_lookup);
+			    elf_is_ifunc_reloc(rela->r_info)) != ifuncs)
+				continue;
+			if (elf_reloc_local(lf, base, rela, ELF_RELOC_RELA,
+			    elf_obj_lookup) != 0)
+				return (ENOEXEC);
 		}
 	}
 	return (0);

@@ -63,6 +63,11 @@
 #define	hweight64(x)	bitcount64(x)
 #define	hweight_long(x)	bitcountl(x)
 
+#define	HWEIGHT8(x)	(bitcount8((uint8_t)(x)) + 1)
+#define	HWEIGHT16(x)	(bitcount16(x) + 1)
+#define	HWEIGHT32(x)	(bitcount32(x) + 1)
+#define	HWEIGHT64(x)	(bitcount64(x) + 1)
+
 static inline int
 __ffs(int mask)
 {
@@ -272,8 +277,11 @@ find_next_zero_bit(const unsigned long *addr, unsigned long size,
 #define	clear_bit(i, a)							\
     atomic_clear_long(&((volatile unsigned long *)(a))[BIT_WORD(i)], BIT_MASK(i))
 
+#define	clear_bit_unlock(i, a)						\
+    atomic_clear_rel_long(&((volatile unsigned long *)(a))[BIT_WORD(i)], BIT_MASK(i))
+
 #define	test_bit(i, a)							\
-    !!(READ_ONCE(((volatile unsigned long *)(a))[BIT_WORD(i)]) & BIT_MASK(i))
+    !!(READ_ONCE(((volatile const unsigned long *)(a))[BIT_WORD(i)]) & BIT_MASK(i))
 
 static inline int
 test_and_clear_bit(long bit, volatile unsigned long *var)
@@ -357,7 +365,7 @@ linux_reg_op(unsigned long *bitmap, int pos, int order, int reg_op)
         index = pos / BITS_PER_LONG;
         offset = pos - (index * BITS_PER_LONG);
         nlongs_reg = BITS_TO_LONGS(nbits_reg);
-        nbitsinlong = min(nbits_reg,  BITS_PER_LONG);
+        nbitsinlong = MIN(nbits_reg,  BITS_PER_LONG);
 
         mask = (1UL << (nbitsinlong - 1));
         mask += mask - 1;

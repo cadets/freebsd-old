@@ -11,8 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "RISCVInstPrinter.h"
-#include "MCTargetDesc/RISCVMCExpr.h"
-#include "Utils/RISCVBaseInfo.h"
+#include "RISCVBaseInfo.h"
+#include "RISCVMCExpr.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
@@ -39,8 +39,33 @@ static cl::opt<bool>
               cl::desc("Disable the emission of assembler pseudo instructions"),
               cl::init(false), cl::Hidden);
 
-void RISCVInstPrinter::printInst(const MCInst *MI, raw_ostream &O,
-                                 StringRef Annot, const MCSubtargetInfo &STI) {
+static cl::opt<bool>
+    ArchRegNames("riscv-arch-reg-names",
+                 cl::desc("Print architectural register names rather than the "
+                          "ABI names (such as x2 instead of sp)"),
+                 cl::init(false), cl::Hidden);
+
+// The command-line flags above are used by llvm-mc and llc. They can be used by
+// `llvm-objdump`, but we override their values here to handle options passed to
+// `llvm-objdump` with `-M` (which matches GNU objdump). There did not seem to
+// be an easier way to allow these options in all these tools, without doing it
+// this way.
+bool RISCVInstPrinter::applyTargetSpecificCLOption(StringRef Opt) {
+  if (Opt == "no-aliases") {
+    NoAliases = true;
+    return true;
+  }
+  if (Opt == "numeric") {
+    ArchRegNames = true;
+    return true;
+  }
+
+  return false;
+}
+
+void RISCVInstPrinter::printInst(const MCInst *MI, uint64_t Address,
+                                 StringRef Annot, const MCSubtargetInfo &STI,
+                                 raw_ostream &O) {
   bool Res = false;
   const MCInst *NewMI = MI;
   MCInst UncompressedMI;
@@ -48,8 +73,8 @@ void RISCVInstPrinter::printInst(const MCInst *MI, raw_ostream &O,
     Res = uncompressInst(UncompressedMI, *MI, MRI, STI);
   if (Res)
     NewMI = const_cast<MCInst *>(&UncompressedMI);
-  if (NoAliases || !printAliasInstr(NewMI, STI, O))
-    printInstruction(NewMI, STI, O);
+  if (NoAliases || !printAliasInstr(NewMI, Address, STI, O))
+    printInstruction(NewMI, Address, STI, O);
   printAnnotation(O, Annot);
 }
 
@@ -75,6 +100,24 @@ void RISCVInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
 
   assert(MO.isExpr() && "Unknown operand kind in printOperand");
   MO.getExpr()->print(O, &MAI);
+}
+
+void RISCVInstPrinter::printBranchOperand(const MCInst *MI, uint64_t Address,
+                                          unsigned OpNo,
+                                          const MCSubtargetInfo &STI,
+                                          raw_ostream &O) {
+  const MCOperand &MO = MI->getOperand(OpNo);
+  if (!MO.isImm())
+    return printOperand(MI, OpNo, STI, O);
+
+  if (PrintBranchImmAsAddress) {
+    uint64_t Target = Address + MO.getImm();
+    if (!STI.hasFeature(RISCV::Feature64Bit))
+      Target &= 0xffffffff;
+    O << formatHex(Target);
+  } else {
+    O << MO.getImm();
+  }
 }
 
 void RISCVInstPrinter::printCSRSystemRegister(const MCInst *MI, unsigned OpNo,
@@ -122,5 +165,28 @@ void RISCVInstPrinter::printAtomicMemOp(const MCInst *MI, unsigned OpNo,
   O << "(";
   printRegName(O, MO.getReg());
   O << ")";
-  return;
+}
+
+void RISCVInstPrinter::printVTypeI(const MCInst *MI, unsigned OpNo,
+                                   const MCSubtargetInfo &STI, raw_ostream &O) {
+  unsigned Imm = MI->getOperand(OpNo).getImm();
+  RISCVVType::printVType(Imm, O);
+}
+
+void RISCVInstPrinter::printVMaskReg(const MCInst *MI, unsigned OpNo,
+                                     const MCSubtargetInfo &STI,
+                                     raw_ostream &O) {
+  const MCOperand &MO = MI->getOperand(OpNo);
+
+  assert(MO.isReg() && "printVMaskReg can only print register operands");
+  if (MO.getReg() == RISCV::NoRegister)
+    return;
+  O << ", ";
+  printRegName(O, MO.getReg());
+  O << ".t";
+}
+
+const char *RISCVInstPrinter::getRegisterName(unsigned RegNo) {
+  return getRegisterName(RegNo, ArchRegNames ? RISCV::NoRegAltName
+                                             : RISCV::ABIRegAltName);
 }

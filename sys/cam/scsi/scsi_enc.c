@@ -78,8 +78,8 @@ static  periph_dtor_t   enc_dtor;
 static void enc_async(void *, uint32_t, struct cam_path *, void *);
 static enctyp enc_type(struct ccb_getdev *);
 
-SYSCTL_NODE(_kern_cam, OID_AUTO, enc, CTLFLAG_RD, 0,
-            "CAM Enclosure Services driver");
+SYSCTL_NODE(_kern_cam, OID_AUTO, enc, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "CAM Enclosure Services driver");
 
 #if defined(DEBUG) || defined(ENC_DEBUG)
 int enc_verbose = 1;
@@ -429,7 +429,7 @@ enc_ioctl(struct cdev *dev, u_long cmd, caddr_t arg_addr, int flag,
 			return (EBADF);
 		}
 	}
- 
+
 	/*
 	 * XXX The values read here are only valid for the current
 	 *     configuration generation.  We need these ioctls
@@ -489,6 +489,10 @@ enc_ioctl(struct cdev *dev, u_long cmd, caddr_t arg_addr, int flag,
 		cam_periph_lock(periph);
 		error = enc->enc_vec.handle_string(enc, &sstr, cmd);
 		cam_periph_unlock(periph);
+		if (error == 0 || error == ENOMEM)
+			(void)copyout(&sstr.bufsiz,
+			    &((encioc_string_t *)addr)->bufsiz,
+			    sizeof(sstr.bufsiz));
 		break;
 
 	case ENCIOC_GETELMSTAT:
@@ -761,7 +765,7 @@ enc_fsm_step(enc_softc_t *enc)
 	struct enc_fsm_state *cur_state;
 	int		      error;
 	uint32_t	      xfer_len;
-	
+
 	ENC_DLOG(enc, "%s enter %p\n", __func__, enc);
 
 	enc->current_action   = ffs(enc->pending_actions) - 1;
@@ -832,7 +836,6 @@ enc_daemon(void *arg)
 	cam_periph_lock(enc->periph);
 	while ((enc->enc_flags & ENC_FLAG_SHUTDOWN) == 0) {
 		if (enc->pending_actions == 0) {
-
 			/*
 			 * Reset callout and msleep, or
 			 * issue timed task completion
@@ -1030,4 +1033,3 @@ out:
 		enc_dtor(periph);
 	return (status);
 }
-

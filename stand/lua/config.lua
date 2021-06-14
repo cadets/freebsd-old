@@ -39,11 +39,13 @@ local env_changed = {}
 -- Values to restore env to (nil to unset)
 local env_restore = {}
 
+local MSG_FAILDIR = "Failed to load conf dir '%s': not a directory"
 local MSG_FAILEXEC = "Failed to exec '%s'"
 local MSG_FAILSETENV = "Failed to '%s' with value: %s"
 local MSG_FAILOPENCFG = "Failed to open config: '%s'"
 local MSG_FAILREADCFG = "Failed to read config: '%s'"
 local MSG_FAILPARSECFG = "Failed to parse config: '%s'"
+local MSG_FAILPARSEVAR = "Failed to parse variable '%s': %s"
 local MSG_FAILEXBEF = "Failed to execute '%s' before loading '%s'"
 local MSG_FAILEXAF = "Failed to execute '%s' after loading '%s'"
 local MSG_MALFORMED = "Malformed line (%d):\n\t'%s'"
@@ -55,11 +57,27 @@ local MSG_KERNLOADING = "Loading kernel..."
 local MSG_MODLOADING = "Loading configured modules..."
 local MSG_MODBLACKLIST = "Not loading blacklisted module '%s'"
 
-local MODULEEXPR = '([%w-_]+)'
-local QVALEXPR = "\"([%w%s%p]-)\""
+local MSG_FAILSYN_QUOTE = "Stray quote at position '%d'"
+local MSG_FAILSYN_EOLESC = "Stray escape at end of line"
+local MSG_FAILSYN_EOLVAR = "Unescaped $ at end of line"
+local MSG_FAILSYN_BADVAR = "Malformed variable expression at position '%d'"
+
+local MODULEEXPR = '([-%w_]+)'
+local QVALEXPR = '"(.*)"'
 local QVALREPL = QVALEXPR:gsub('%%', '%%%%')
-local WORDEXPR = "([%w]+)"
+local WORDEXPR = "([-%w%d][-%w%d_.]*)"
 local WORDREPL = WORDEXPR:gsub('%%', '%%%%')
+
+-- Entries that should never make it into the environment; each one should have
+-- a documented reason for its existence, and these should all be implementation
+-- details of the config module.
+local loader_env_restricted_table = {
+	-- loader_conf_files should be considered write-only, and consumers
+	-- should not rely on any particular value; it's a loader implementation
+	-- detail.  Moreover, it's not a particularly useful variable to have in
+	-- the kenv.  Save the overhead, let it get fetched other ways.
+	loader_conf_files = true,
+}
 
 local function restoreEnv()
 	-- Examine changed environment variables
@@ -88,13 +106,30 @@ local function restoreEnv()
 	env_restore = {}
 end
 
+-- XXX This getEnv/setEnv should likely be exported at some point.  We can save
+-- the call back into loader.getenv for any variable that's been set or
+-- overridden by any loader.conf using this implementation with little overhead
+-- since we're already tracking the values.
+local function getEnv(key)
+	if loader_env_restricted_table[key] ~= nil or
+	    env_changed[key] ~= nil then
+		return env_changed[key]
+	end
+
+	return loader.getenv(key)
+end
+
 local function setEnv(key, value)
+	env_changed[key] = value
+
+	if loader_env_restricted_table[key] ~= nil then
+		return 0
+	end
+
 	-- Track the original value for this if we haven't already
 	if env_restore[key] == nil then
 		env_restore[key] = {value = loader.getenv(key)}
 	end
-
-	env_changed[key] = value
 
 	return loader.setenv(key, value)
 end
@@ -117,15 +152,59 @@ local function escapeName(name)
 end
 
 local function processEnvVar(value)
-	for name in value:gmatch("${([^}]+)}") do
-		local replacement = loader.getenv(name) or ""
-		value = value:gsub("${" .. escapeName(name) .. "}", replacement)
+	local pval, vlen = '', #value
+	local nextpos, vdelim, vinit = 1
+	local vpat
+	for i = 1, vlen do
+		if i < nextpos then
+			goto nextc
+		end
+
+		local c = value:sub(i, i)
+		if c == '\\' then
+			if i == vlen then
+				return nil, MSG_FAILSYN_EOLESC
+			end
+			nextpos = i + 2
+			pval = pval .. value:sub(i + 1, i + 1)
+		elseif c == '"' then
+			return nil, MSG_FAILSYN_QUOTE:format(i)
+		elseif c == "$" then
+			if i == vlen then
+				return nil, MSG_FAILSYN_EOLVAR
+			else
+				if value:sub(i + 1, i + 1) == "{" then
+					-- Skip ${
+					vinit = i + 2
+					vdelim = '}'
+					vpat = "^([^}]+)}"
+				else
+					-- Skip the $
+					vinit = i + 1
+					vdelim = nil
+					vpat = "^([%w][-%w%d_.]*)"
+				end
+
+				local name = value:match(vpat, vinit)
+				if not name then
+					return nil, MSG_FAILSYN_BADVAR:format(i)
+				else
+					nextpos = vinit + #name
+					if vdelim then
+						nextpos = nextpos + 1
+					end
+
+					local repl = loader.getenv(name) or ""
+					pval = pval .. repl
+				end
+			end
+		else
+			pval = pval .. c
+		end
+		::nextc::
 	end
-	for name in value:gmatch("$([%w%p]+)%s*") do
-		local replacement = loader.getenv(name) or ""
-		value = value:gsub("$" .. escapeName(name), replacement)
-	end
-	return value
+
+	return pval
 end
 
 local function checkPattern(line, pattern)
@@ -231,21 +310,17 @@ local pattern_table = {
 		end,
 		groups = 1,
 	},
-	--  env_var="value"
+	--  env_var="value" or env_var=[word|num]
 	{
-		str = "([%w%p]+)%s*=%s*$VALUE",
+		str = "([%w][%w%d-_.]*)%s*=%s*$VALUE",
 		process = function(k, v)
-			if setEnv(k, processEnvVar(v)) ~= 0 then
-				print(MSG_FAILSETENV:format(k, v))
+			local pv, msg = processEnvVar(v)
+			if not pv then
+				print(MSG_FAILPARSEVAR:format(k, msg))
+				return
 			end
-		end,
-	},
-	--  env_var=num
-	{
-		str = "([%w%p]+)%s*=%s*(-?%d+)",
-		process = function(k, v)
-			if setEnv(k, processEnvVar(v)) ~= 0 then
-				print(MSG_FAILSETENV:format(k, tostring(v)))
+			if setEnv(k, pv) ~= 0 then
+				print(MSG_FAILSETENV:format(k, v))
 			end
 		end,
 	},
@@ -271,7 +346,7 @@ local function getBlacklist()
 		return blacklist
 	end
 
-	for mod in blacklist_str:gmatch("[;, ]?([%w-_]+)[;, ]?") do
+	for mod in blacklist_str:gmatch("[;, ]?([-%w_]+)[;, ]?") do
 		blacklist[mod] = true
 	end
 	return blacklist
@@ -284,7 +359,7 @@ local function loadModule(mod, silent)
 	for k, v in pairs(mod) do
 		if v.load ~= nil and v.load:lower() == "yes" then
 			local module_name = v.name or k
-			if blacklist[module_name] ~= nil then
+			if not v.force and blacklist[module_name] ~= nil then
 				if not silent then
 					print(MSG_MODBLACKLIST:format(module_name))
 				end
@@ -340,34 +415,6 @@ local function loadModule(mod, silent)
 	return status
 end
 
-local function readConfFiles(loaded_files)
-	local f = loader.getenv("loader_conf_files")
-	if f ~= nil then
-		for name in f:gmatch("([%w%p]+)%s*") do
-			if loaded_files[name] ~= nil then
-				goto continue
-			end
-
-			local prefiles = loader.getenv("loader_conf_files")
-
-			print("Loading " .. name)
-			-- These may or may not exist, and that's ok. Do a
-			-- silent parse so that we complain on parse errors but
-			-- not for them simply not existing.
-			if not config.processFile(name, true) then
-				print(MSG_FAILPARSECFG:format(name))
-			end
-
-			loaded_files[name] = true
-			local newfiles = loader.getenv("loader_conf_files")
-			if prefiles ~= newfiles then
-				readConfFiles(loaded_files)
-			end
-			::continue::
-		end
-	end
-end
-
 local function readFile(name, silent)
 	local f = io.open(name)
 	if f == nil then
@@ -389,7 +436,14 @@ end
 
 local function checkNextboot()
 	local nextboot_file = loader.getenv("nextboot_conf")
+	local nextboot_enable = loader.getenv("nextboot_enable")
+
 	if nextboot_file == nil then
+		return
+	end
+
+	-- is nextboot_enable set in nvstore?
+	if nextboot_enable == "NO" then
 		return
 	end
 
@@ -398,7 +452,8 @@ local function checkNextboot()
 		return
 	end
 
-	if text:match("^nextboot_enable=\"NO\"") ~= nil then
+	if nextboot_enable == nil and
+	    text:match("^nextboot_enable=\"NO\"") ~= nil then
 		-- We're done; nextboot is not enabled
 		return
 	end
@@ -421,6 +476,7 @@ local function checkNextboot()
 		io.write(nfile, "nextboot_enable=\"NO\" ")
 		io.close(nfile)
 	end
+	loader.setenv("nextboot_enable", "NO")
 end
 
 -- Module exports
@@ -486,6 +542,63 @@ function config.parse(text)
 	end
 
 	return status
+end
+
+function config.readConf(file, loaded_files)
+	if loaded_files == nil then
+		loaded_files = {}
+	end
+
+	if loaded_files[file] ~= nil then
+		return
+	end
+
+	-- We'll process loader_conf_dirs at the top-level readConf
+	local load_conf_dirs = next(loaded_files) == nil
+	print("Loading " .. file)
+
+	-- The final value of loader_conf_files is not important, so just
+	-- clobber it here.  We'll later check if it's no longer nil and process
+	-- the new value for files to read.
+	setEnv("loader_conf_files", nil)
+
+	-- These may or may not exist, and that's ok. Do a
+	-- silent parse so that we complain on parse errors but
+	-- not for them simply not existing.
+	if not config.processFile(file, true) then
+		print(MSG_FAILPARSECFG:format(file))
+	end
+
+	loaded_files[file] = true
+
+	-- Going to process "loader_conf_files" extra-files
+	local loader_conf_files = getEnv("loader_conf_files")
+	if loader_conf_files ~= nil then
+		for name in loader_conf_files:gmatch("[%w%p]+") do
+			config.readConf(name, loaded_files)
+		end
+	end
+
+	if load_conf_dirs then
+		local loader_conf_dirs = getEnv("loader_conf_dirs")
+		if loader_conf_dirs ~= nil then
+			for name in loader_conf_dirs:gmatch("[%w%p]+") do
+				if lfs.attributes(name, "mode") ~= "directory" then
+					print(MSG_FAILDIR:format(name))
+					goto nextdir
+				end
+				for cfile in lfs.dir(name) do
+					if cfile:match(".conf$") then
+						local fpath = name .. "/" .. cfile
+						if lfs.attributes(fpath, "mode") == "file" then
+							config.readConf(fpath, loaded_files)
+						end
+					end
+				end
+				::nextdir::
+			end
+		end
+	end
 end
 
 -- other_kernel is optionally the name of a kernel to load, if not the default
@@ -596,12 +709,7 @@ function config.load(file, reloading)
 		file = "/boot/defaults/loader.conf"
 	end
 
-	if not config.processFile(file) then
-		print(MSG_FAILPARSECFG:format(file))
-	end
-
-	local loaded_files = {file = true}
-	readConfFiles(loaded_files)
+	config.readConf(file)
 
 	checkNextboot()
 
@@ -623,7 +731,7 @@ end
 function config.loadelf()
 	local xen_kernel = loader.getenv('xen_kernel')
 	local kernel = config.kernel_selected or config.kernel_loaded
-	local loaded, status
+	local status
 
 	if xen_kernel ~= nil then
 		print(MSG_XENKERNLOADING)
@@ -633,11 +741,10 @@ function config.loadelf()
 		end
 	end
 	print(MSG_KERNLOADING)
-	loaded = config.loadKernel(kernel)
-
-	if not loaded then
+	if not config.loadKernel(kernel) then
 		return false
 	end
+	hook.runAll("kernel.loaded")
 
 	print(MSG_MODLOADING)
 	status = loadModule(modules, not config.verbose)
@@ -645,7 +752,54 @@ function config.loadelf()
 	return status
 end
 
+function config.enableModule(modname)
+	if modules[modname] == nil then
+		modules[modname] = {}
+	elseif modules[modname].load == "YES" then
+		modules[modname].force = true
+		return true
+	end
+
+	modules[modname].load = "YES"
+	modules[modname].force = true
+	return true
+end
+
+function config.disableModule(modname)
+	if modules[modname] == nil then
+		return false
+	elseif modules[modname].load ~= "YES" then
+		return true
+	end
+
+	modules[modname].load = "NO"
+	modules[modname].force = nil
+	return true
+end
+
+function config.isModuleEnabled(modname)
+	local mod = modules[modname]
+	if not mod or mod.load ~= "YES" then
+		return false
+	end
+
+	if mod.force then
+		return true
+	end
+
+	local blacklist = getBlacklist()
+	return not blacklist[modname]
+end
+
+function config.getModuleInfo()
+	return {
+		modules = modules,
+		blacklist = getBlacklist()
+	}
+end
+
 hook.registerType("config.loaded")
 hook.registerType("config.reloaded")
+hook.registerType("kernel.loaded")
 hook.registerType("modules.loaded")
 return config

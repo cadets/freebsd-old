@@ -94,14 +94,15 @@ __FBSDID("$FreeBSD$");
 #include <sys/vmmeter.h>
 
 #include <vm/vm.h>
+#include <vm/vm_param.h>
 #include <vm/vm_extern.h>
 #include <vm/vm_kern.h>
 #include <vm/vm_page.h>
 #include <vm/vm_map.h>
 #include <vm/vm_object.h>
 #include <vm/vm_pager.h>
-#include <vm/vm_param.h>
 #include <vm/vm_phys.h>
+#include <vm/vm_dumpset.h>
 
 #ifdef DDB
 #ifndef KDB
@@ -211,9 +212,6 @@ extern struct sysentvec elf32_freebsd_sysvec;
 struct init_ops init_ops = {
 	.early_clock_source_init =	i8254_init,
 	.early_delay =			i8254_delay,
-#ifdef DEV_APIC
-	.msi_init =			msi_init,
-#endif
 };
 
 static void
@@ -1121,6 +1119,34 @@ setup_priv_lcall_gate(struct proc *p)
 #endif
 
 /*
+ * Reset the hardware debug registers if they were in use.
+ * They won't have any meaning for the newly exec'd process.
+ */
+void
+x86_clear_dbregs(struct pcb *pcb)
+{
+        if ((pcb->pcb_flags & PCB_DBREGS) == 0)
+		return;
+
+	pcb->pcb_dr0 = 0;
+	pcb->pcb_dr1 = 0;
+	pcb->pcb_dr2 = 0;
+	pcb->pcb_dr3 = 0;
+	pcb->pcb_dr6 = 0;
+	pcb->pcb_dr7 = 0;
+
+	if (pcb == curpcb) {
+		/*
+		 * Clear the debug registers on the running CPU,
+		 * otherwise they will end up affecting the next
+		 * process we switch to.
+		 */
+		reset_dbregs();
+	}
+	pcb->pcb_flags &= ~PCB_DBREGS;
+}
+
+/*
  * Reset registers to default values on exec.
  */
 void
@@ -1171,29 +1197,9 @@ exec_setregs(struct thread *td, struct image_params *imgp, uintptr_t stack)
 	regs->tf_cs = _ucodesel;
 
 	/* PS_STRINGS value for BSD/OS binaries.  It is 0 for non-BSD/OS. */
-	regs->tf_ebx = imgp->ps_strings;
+	regs->tf_ebx = (register_t)imgp->ps_strings;
 
-        /*
-         * Reset the hardware debug registers if they were in use.
-         * They won't have any meaning for the newly exec'd process.  
-         */
-        if (pcb->pcb_flags & PCB_DBREGS) {
-                pcb->pcb_dr0 = 0;
-                pcb->pcb_dr1 = 0;
-                pcb->pcb_dr2 = 0;
-                pcb->pcb_dr3 = 0;
-                pcb->pcb_dr6 = 0;
-                pcb->pcb_dr7 = 0;
-                if (pcb == curpcb) {
-		        /*
-			 * Clear the debug registers on the running
-			 * CPU, otherwise they will end up affecting
-			 * the next process we switch to.
-			 */
-		        reset_dbregs();
-                }
-		pcb->pcb_flags &= ~PCB_DBREGS;
-        }
+	x86_clear_dbregs(pcb);
 
 	pcb->pcb_initial_npxcw = __INITIAL_NPXCW__;
 
@@ -1235,10 +1241,6 @@ cpu_setregs(void)
 u_long bootdev;		/* not a struct cdev *- encoding is different */
 SYSCTL_ULONG(_machdep, OID_AUTO, guessed_bootdev,
 	CTLFLAG_RD, &bootdev, 0, "Maybe the Boot device (not in struct cdev *format)");
-
-static char bootmethod[16] = "BIOS";
-SYSCTL_STRING(_machdep, OID_AUTO, bootmethod, CTLFLAG_RD, bootmethod, 0,
-    "System firmware boot method");
 
 /*
  * Initialize 386 and configure to run kernel
@@ -1505,7 +1507,7 @@ static struct soft_segment_descriptor ldt_segs[] = {
 	.ssd_gran = 1		},
 };
 
-uintptr_t setidt_disp;
+size_t setidt_disp;
 
 void
 setidt(int idx, inthand_t *func, int typ, int dpl, int selec)
@@ -1667,7 +1669,7 @@ add_physmap_entry(uint64_t base, uint64_t length, vm_paddr_t *physmap,
 	int i, insert_idx, physmap_idx;
 
 	physmap_idx = *physmap_idxp;
-	
+
 	if (length == 0)
 		return (1);
 
@@ -1828,7 +1830,7 @@ getmemsize(int first)
 	 * Tell the physical memory allocator about pages used to store
 	 * the kernel and preloaded data.  See kmem_bootstrap_free().
 	 */
-	vm_phys_add_seg((vm_paddr_t)KERNLOAD, trunc_page(first));
+	vm_phys_early_add_seg((vm_paddr_t)KERNLOAD, trunc_page(first));
 
 	TUNABLE_INT_FETCH("hw.above4g_allow", &above4g_allow);
 	TUNABLE_INT_FETCH("hw.above24g_allow", &above24g_allow);
@@ -2151,7 +2153,7 @@ do_next:
 		}
 	}
 	pmap_cmap3(0, 0);
-	
+
 	/*
 	 * XXX
 	 * The last chunk must contain at least one page plus the message
@@ -2180,7 +2182,7 @@ static void
 i386_kdb_init(void)
 {
 #ifdef DDB
-	db_fetch_ksymtab(bootinfo.bi_symtab, bootinfo.bi_esymtab);
+	db_fetch_ksymtab(bootinfo.bi_symtab, bootinfo.bi_esymtab, 0);
 #endif
 	kdb_init();
 #ifdef KDB
@@ -2347,6 +2349,9 @@ init386(int first)
 	/* Init basic tunables, hz etc */
 	init_param1();
 
+	/* Set bootmethod to BIOS: it's the only supported on i386. */
+	strlcpy(bootmethod, "BIOS", sizeof(bootmethod));
+
 	/*
 	 * Make gdt memory segments.  All segments cover the full 4GB
 	 * of address space and permissions are enforced at page level.
@@ -2503,8 +2508,6 @@ init386(int first)
 	thread0.td_pcb->pcb_cr3 = pmap_get_kcr3();
 	thread0.td_pcb->pcb_ext = 0;
 	thread0.td_frame = &proc0_tf;
-
-	cpu_probe_amdc1e();
 
 #ifdef FDT
 	x86_init_fdt();
@@ -2666,8 +2669,10 @@ smap_sysctl_handler(SYSCTL_HANDLER_ARGS)
 	}
 	return (error);
 }
-SYSCTL_PROC(_machdep, OID_AUTO, smap, CTLTYPE_OPAQUE|CTLFLAG_RD, NULL, 0,
-    smap_sysctl_handler, "S,bios_smap_xattr", "Raw BIOS SMAP data");
+SYSCTL_PROC(_machdep, OID_AUTO, smap,
+    CTLTYPE_OPAQUE | CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, 0,
+    smap_sysctl_handler, "S,bios_smap_xattr",
+    "Raw BIOS SMAP data");
 
 void
 spinlock_enter(void)

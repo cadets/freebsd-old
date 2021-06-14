@@ -29,7 +29,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd August 14, 2018
+.Dd November 25, 2020
 .Dt INET6 4
 .Os
 .Sh NAME
@@ -91,7 +91,7 @@ Sockets may be created with the local address
 .Dq Dv ::
 (which is equal to IPv6 address
 .Dv 0:0:0:0:0:0:0:0 )
-to affect
+to effect
 .Dq wildcard
 matching on incoming messages.
 .Pp
@@ -130,7 +130,7 @@ or
 are able to use this notation.
 With special programs
 like
-.Xr ping6 8 ,
+.Xr ping 8 ,
 you can specify the outgoing interface by an extra command line option
 to disambiguate scoped addresses.
 .Pp

@@ -76,7 +76,8 @@ int mp_maxcpus = MAXCPU;
 volatile int smp_started;
 u_int mp_maxid;
 
-static SYSCTL_NODE(_kern, OID_AUTO, smp, CTLFLAG_RD|CTLFLAG_CAPRD, NULL,
+static SYSCTL_NODE(_kern, OID_AUTO, smp,
+    CTLFLAG_RD | CTLFLAG_CAPRD | CTLFLAG_MPSAFE, NULL,
     "Kernel SMP");
 
 SYSCTL_INT(_kern_smp, OID_AUTO, maxid, CTLFLAG_RD|CTLFLAG_CAPRD, &mp_maxid, 0,
@@ -103,7 +104,7 @@ SYSCTL_INT(_kern_smp, OID_AUTO, threads_per_core, CTLFLAG_RD|CTLFLAG_CAPRD,
 
 int mp_ncores = -1;	/* how many physical cores running */
 SYSCTL_INT(_kern_smp, OID_AUTO, cores, CTLFLAG_RD|CTLFLAG_CAPRD, &mp_ncores, 0,
-    "Number of CPUs online");
+    "Number of physical cores online");
 
 int smp_topology = 0;	/* Which topology we're using. */
 SYSCTL_INT(_kern_smp, OID_AUTO, topology, CTLFLAG_RDTUN, &smp_topology, 0,
@@ -492,7 +493,7 @@ smp_rendezvous_action(void)
 #ifdef INVARIANTS
 	owepreempt = td->td_owepreempt;
 #endif
-	
+
 	/*
 	 * If requested, run a setup function before the main action
 	 * function.  Ensure all CPUs have completed the setup
@@ -719,7 +720,7 @@ smp_topo_none(void)
 	top->cg_children = 0;
 	top->cg_level = CG_SHARE_NONE;
 	top->cg_flags = 0;
-	
+
 	return (top);
 }
 
@@ -884,26 +885,89 @@ smp_no_rendezvous_barrier(void *dummy)
 #endif
 }
 
+void
+smp_rendezvous_cpus_retry(cpuset_t map,
+	void (* setup_func)(void *),
+	void (* action_func)(void *),
+	void (* teardown_func)(void *),
+	void (* wait_func)(void *, int),
+	struct smp_rendezvous_cpus_retry_arg *arg)
+{
+	int cpu;
+
+	CPU_COPY(&map, &arg->cpus);
+
+	/*
+	 * Only one CPU to execute on.
+	 */
+	if (!smp_started) {
+		spinlock_enter();
+		if (setup_func != NULL)
+			setup_func(arg);
+		if (action_func != NULL)
+			action_func(arg);
+		if (teardown_func != NULL)
+			teardown_func(arg);
+		spinlock_exit();
+		return;
+	}
+
+	/*
+	 * Execute an action on all specified CPUs while retrying until they
+	 * all acknowledge completion.
+	 */
+	for (;;) {
+		smp_rendezvous_cpus(
+		    arg->cpus,
+		    setup_func,
+		    action_func,
+		    teardown_func,
+		    arg);
+
+		if (CPU_EMPTY(&arg->cpus))
+			break;
+
+		CPU_FOREACH(cpu) {
+			if (!CPU_ISSET(cpu, &arg->cpus))
+				continue;
+			wait_func(arg, cpu);
+		}
+	}
+}
+
+void
+smp_rendezvous_cpus_done(struct smp_rendezvous_cpus_retry_arg *arg)
+{
+
+	CPU_CLR_ATOMIC(curcpu, &arg->cpus);
+}
+
 /*
+ * If (prio & PDROP) == 0:
  * Wait for specified idle threads to switch once.  This ensures that even
  * preempted threads have cycled through the switch function once,
  * exiting their codepaths.  This allows us to change global pointers
  * with no other synchronization.
+ * If (prio & PDROP) != 0:
+ * Force the specified CPUs to switch context at least once.
  */
 int
 quiesce_cpus(cpuset_t map, const char *wmesg, int prio)
 {
 	struct pcpu *pcpu;
-	u_int gen[MAXCPU];
+	u_int *gen;
 	int error;
 	int cpu;
 
 	error = 0;
-	for (cpu = 0; cpu <= mp_maxid; cpu++) {
-		if (!CPU_ISSET(cpu, &map) || CPU_ABSENT(cpu))
-			continue;
-		pcpu = pcpu_find(cpu);
-		gen[cpu] = pcpu->pc_idlethread->td_generation;
+	if ((prio & PDROP) == 0) {
+		gen = malloc(sizeof(u_int) * MAXCPU, M_TEMP, M_WAITOK);
+		for (cpu = 0; cpu <= mp_maxid; cpu++) {
+			if (!CPU_ISSET(cpu, &map) || CPU_ABSENT(cpu))
+				continue;
+			pcpu = pcpu_find(cpu);
+			gen[cpu] = pcpu->pc_idlethread->td_generation;
+		}
 	}
 	for (cpu = 0; cpu <= mp_maxid; cpu++) {
 		if (!CPU_ISSET(cpu, &map) || CPU_ABSENT(cpu))
@@ -912,8 +976,10 @@ quiesce_cpus(cpuset_t map, const char *wmesg, int prio)
 		thread_lock(curthread);
 		sched_bind(curthread, cpu);
 		thread_unlock(curthread);
+		if ((prio & PDROP) != 0)
+			continue;
 		while (gen[cpu] == pcpu->pc_idlethread->td_generation) {
-			error = tsleep(quiesce_cpus, prio, wmesg, 1);
+			error = tsleep(quiesce_cpus, prio & ~PDROP, wmesg, 1);
 			if (error != EWOULDBLOCK)
 				goto out;
 			error = 0;
@@ -923,6 +989,8 @@ out:
 	thread_lock(curthread);
 	sched_unbind(curthread);
 	thread_unlock(curthread);
+	if ((prio & PDROP) == 0)
+		free(gen, M_TEMP);
 
 	return (error);
 }
@@ -1260,4 +1328,3 @@ topo_analyze(struct topo_node *topo_root, int all,
 }
 
 #endif /* SMP */
-

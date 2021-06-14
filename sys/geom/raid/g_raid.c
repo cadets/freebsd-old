@@ -54,7 +54,8 @@ __FBSDID("$FreeBSD$");
 static MALLOC_DEFINE(M_RAID, "raid_data", "GEOM_RAID Data");
 
 SYSCTL_DECL(_kern_geom);
-SYSCTL_NODE(_kern_geom, OID_AUTO, raid, CTLFLAG_RW, 0, "GEOM_RAID stuff");
+SYSCTL_NODE(_kern_geom, OID_AUTO, raid, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "GEOM_RAID stuff");
 int g_raid_enable = 1;
 SYSCTL_INT(_kern_geom_raid, OID_AUTO, enable, CTLFLAG_RWTUN,
     &g_raid_enable, 0, "Enable on-disk metadata taste");
@@ -774,7 +775,7 @@ g_raid_open_consumer(struct g_raid_softc *sc, const char *name)
 
 	g_topology_assert();
 
-	if (strncmp(name, "/dev/", 5) == 0)
+	if (strncmp(name, _PATH_DEV, 5) == 0)
 		name += 5;
 	pp = g_provider_by_name(name);
 	if (pp == NULL)
@@ -2227,7 +2228,8 @@ g_raid_taste(struct g_class *mp, struct g_provider *pp, int flags __unused)
 	gp->orphan = g_raid_taste_orphan;
 	cp = g_new_consumer(gp);
 	cp->flags |= G_CF_DIRECT_RECEIVE;
-	g_attach(cp, pp);
+	if (g_attach(cp, pp) != 0)
+		goto ofail2;
 	if (g_access(cp, 1, 0, 0) != 0)
 		goto ofail;
 
@@ -2250,6 +2252,7 @@ g_raid_taste(struct g_class *mp, struct g_provider *pp, int flags __unused)
 		(void)g_access(cp, -1, 0, 0);
 ofail:
 	g_detach(cp);
+ofail2:
 	g_destroy_consumer(cp);
 	g_destroy_geom(gp);
 	G_RAID_DEBUG(2, "Tasting provider %s done.", pp->name);
