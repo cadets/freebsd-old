@@ -15550,7 +15550,7 @@ dtrace_dof_relocate(dof_hdr_t *dof, dof_sec_t *sec, uint64_t ubase,
 				return (-1);
 			}
 
-			ASSERT(taddr & 7 == 0);
+			ASSERT((taddr & 7) == 0);
 
 			if (r->dofr_type == DOF_RELO_SETX)
 				*(uint64_t *)taddr += ubase;
